@@ -60,6 +60,33 @@ test('UX-5: the pickup feed gets the bag\'s 3D icons from the same item-icons mo
   assert.equal(row.box.children[0].src, 'data:image/png;base64,AAAA');
 });
 
+test('UX-6: first-run hints continue loot -> rope -> hammer -> first floor and cannot lock up', async () => {
+  const H = await import(new URL('hud.js', base));
+  const inv = await import(new URL('inventory-state.js', base));
+  assert.deepEqual(H.HINTS.map(h => h.id).slice(-3), ['rope', 'hammer', 'build']);
+  // Hint text matches the real recipes.
+  const hm = inv.RECIPES.hammer, rp = inv.RECIPES.rope;
+  const req = r => ({ ...r.cost });
+  assert.deepEqual(req(rp), { leaf: 2 });
+  assert.deepEqual(req(hm), { wood: 4, rope: 2 });
+  // A fresh player walks the chain.
+  const done = new Set(['throw', 'loot', 'bag', 'slots']);
+  const step = (ctx, st) => { for (const id of H.hintsFromState(st)) done.add(id); return H.nextHint(done, ctx)?.id ?? null; };
+  assert.equal(step({ hasLeaf: false }, {}), null, 'waits for palm leaves');
+  assert.equal(step({ hasLeaf: true }, {}), 'rope');
+  assert.equal(step({ hasLeaf: false }, { hasRope: true }), 'hammer');
+  assert.equal(step({ heldKind: 'hook' }, { hasRope: true, hasHammer: true }), null, 'build waits until the hammer is held');
+  assert.equal(step({ heldKind: 'hammer' }, { hasHammer: true }), 'build');
+  assert.equal(step({ heldKind: 'hammer' }, { hasHammer: true, built: true }), null);
+  assert.ok(done.has('build'));
+  // A returning player who already owns a hammer (and used up the rope) is never stuck on 'rope'.
+  const old = new Set(['throw', 'loot', 'bag', 'slots']);
+  for (const id of H.hintsFromState({ hasRope: false, hasHammer: true })) old.add(id);
+  assert.equal(H.nextHint(old, { heldKind: 'hammer', hasLeaf: false })?.id, 'build');
+  for (const id of H.hintsFromState({ hasHammer: true, built: true })) old.add(id);
+  assert.ok(H.HINTS.every(h => old.has(h.id)), 'whole chain completes');
+});
+
 test('UX-8: after a hold batch the button reports the craft, not "Missing materials"', () => {
   assert.equal(book.craftButtonText('missing', { n: 6, name: 'Rope' }), 'Crafted 6 Rope');
   assert.equal(book.craftButtonText('ready', { n: 1, name: 'Rope' }), 'Crafted 1 Rope');

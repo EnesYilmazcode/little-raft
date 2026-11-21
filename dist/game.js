@@ -26,7 +26,7 @@ import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave } f
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
-import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint } from './hud.js?build=v3-survival-ae77fa84ac2b';
+import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, hintsFromState } from './hud.js?build=v3-survival-ae77fa84ac2b';
 import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 
@@ -44,6 +44,7 @@ const ITEM_NAMES = Object.freeze({wood:'plank', leaf:'bundle of leaves', scrap:'
 const SPAWN_TABLE = Object.freeze(['wood', 'wood', 'wood', 'plastic', 'plastic', 'plastic', 'leaf', 'leaf', 'leaf', 'scrap', 'barrel']);
 const LOOT = Object.freeze({wood:{wood:2}, leaf:{leaf:1}, scrap:{scrap:1}, plastic:{plastic:1}, barrel:{wood:3, leaf:2, scrap:1, plastic:1, seed:1}});
 const STOCK_KEYS = Object.freeze(['wood', 'leaf', 'scrap', 'plastic']); // legacy world.stock (derived)
+const START_TILES = 4; // newWorld() raft size; more tiles means the player has built a floor
 const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
 const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12});
@@ -428,7 +429,9 @@ export function mount(transfer = null) {
   // panel opens so notices stay visible over the open bag (a modal dialog would otherwise cover it).
   function updateNotices(dialog) {
     if (survivalUI?.isOpen) hintDone('bag');
-    const hint = running && !dialog && !guestWaiting() ? nextHint(hintsDone, {heldKind:heldKind(), castOut:!!hook, hasLoot:hintsDone.has('loot')}) : null;
+    const bag = localBag(), has = k => { try { return bag.count(k) > 0; } catch { return false; } };
+    for (const id of hintsFromState({hasRope:has('rope'), hasHammer:has('hammer'), built:(world?.tiles?.length ?? 0) > START_TILES})) hintDone(id);
+    const hint = running && !dialog && !guestWaiting() ? nextHint(hintsDone, {heldKind:heldKind(), castOut:!!hook, hasLoot:hintsDone.has('loot'), hasLeaf:has('leaf')}) : null;
     const sig = (hint?.id ?? '') + '|' + dialog;
     if (sig === noticeCache) return; noticeCache = sig;
     let el = $('#pickupFeed');
@@ -587,6 +590,7 @@ export function mount(transfer = null) {
     else if (typeof e.text === 'string' && e.text) notice(e.text);
     sfx(e.kind === 'build' ? 'build' : e.kind === 'repair' ? 'repair' : e.kind === 'craft' ? 'build' : e.kind === 'loot' ? 'collect' : 'ui', e.kind === 'craft' ? .6 : 1);
     if (e.kind === 'loot') hintDone('loot');
+    if (e.kind === 'build') hintDone('build');
   }
   function wearHook(bag, slot, actor) {
     const i = hookIndex(bag, slot); if (i < 0) return;
