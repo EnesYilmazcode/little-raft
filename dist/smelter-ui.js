@@ -5,7 +5,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const SPRITE_URL = (() => { try { return new URL('icons.svg', import.meta.url).href; } catch { return 'icons.svg'; } })();
 const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'repair', 'hammer', 'compass']);
 let ICONS = {};
-import('./item-icons.js').then(m => { ICONS = m.ITEM_ICONS || m.default || {}; }).catch(() => {});
+const iconsReady = import('./item-icons.js').then(m => { ICONS = m.ITEM_ICONS || m.default || {}; }).catch(() => {});
 
 const CSS = `
 #stationPanel.st-dlg{padding:0;margin:auto;border:0;background:transparent;box-shadow:none;width:max-content;max-width:96vw;color:#fff2cc;font:500 14px/1.35 ${FONT};overflow:visible}
@@ -166,6 +166,7 @@ export function createStationPanel({ getStation, getBag, items = {}, fuelValue =
     else if (e.target.closest('[data-act=back]')) safe(onTakeInput);
     update();
   }, opt);
+  iconsReady.then(() => { for (const k in last) delete last[k]; update(); });
   dlg.addEventListener('wheel', e => e.stopPropagation(), { ...opt, passive: true });
 
   return {

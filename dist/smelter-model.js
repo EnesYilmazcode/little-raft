@@ -129,7 +129,7 @@ export function createSmelterModel(T) {
   const body = K.roughen(new T.LatheGeometry(prof, 8), 0.06, (x, y, z) => Math.hypot(x, z) < 0.01);
   K.paint(body, 0xc0764a, (x, y, z, nx, ny, nz, c) => {
     const band = Math.floor(y / 0.13) % 2;
-    c.multiplyScalar((band ? 1.07 : 0.9) * (0.93 + 0.14 * Math.sin(x * 31 + z * 23 + y * 7)));
+    c.multiplyScalar((band ? 1.1 : 0.84) * (0.93 + 0.14 * Math.sin(x * 31 + z * 23 + y * 7)));
     c.lerp(new T.Color(0x4a3428), Math.max(0, (y - 0.5) / 0.34) * 0.45);
     if (y < 0.03) c.multiplyScalar(0.7);
   });
@@ -181,7 +181,7 @@ export function createSmelterModel(T) {
   const TW = [K.plank(0.28, 0.02, 0.22, 0x7a5636, 0, -0.01, 0)];
   for (const s of [-1, 1]) TW.push(K.plank(0.3, 0.045, 0.025, 0x6a4a2e, 0, 0.012, s * 0.1));
   K.add(tray, TW, M.wood, 'ingotTrayWood');
-  MT.push(K.solid(new T.CylinderGeometry(0.06, 0.085, 0.045, 4, 1), 0xc3c8cc, 0, 0.0225, 0, 0, Math.PI / 4, 0, 1.5, 1, 0.8));
+  MT.push(K.solid(new T.CylinderGeometry(0.06, 0.085, 0.045, 4, 1), 0xd9dde0, 0, 0.0225, 0, 0, Math.PI / 4, 0, 1.5, 1, 0.8));
   const ingot = K.add(tray, MT, M.metal, 'ingot');
   ingot.visible = false;
   g.add(tray);
@@ -271,21 +271,21 @@ export function createGrillModel(T) {
   MT.push(K.bake(bowl, 0, Y - 0.22, 0, 0, 0.2, 0));
   MT.push(K.bake(K.paint(new T.CircleGeometry(0.14, 8), 0x2a2d2f), 0, Y - 0.218, 0, -Math.PI / 2, 0, 0));
   // grate: four bars across, two rails under
-  for (let i = 0; i < 4; i++) MT.push(K.bake(K.paint(new T.BoxGeometry(0.72, 0.02, 0.022), 0x3c4043), 0, Y + 0.012, -0.18 + i * 0.12));
-  for (const s of [-1, 1]) MT.push(K.bake(K.paint(new T.BoxGeometry(0.03, 0.025, 0.56), 0x3c4043), s * 0.24, Y - 0.01, 0));
+  for (let i = 0; i < 4; i++) MT.push(K.bake(K.paint(new T.BoxGeometry(0.02, 0.02, 0.72), 0x3c4043), -0.21 + i * 0.14, Y + 0.012, 0));
+  for (const s of [-1, 1]) MT.push(K.bake(K.paint(new T.BoxGeometry(0.6, 0.025, 0.03), 0x3c4043), 0, Y - 0.01, s * 0.24));
 
   // coals (glow) sitting in the bowl
   for (const [x, z, s] of [[-0.1, 0.05, 0.08], [0.09, -0.06, 0.09], [0.02, 0.12, 0.07], [-0.05, -0.11, 0.07]]) GL.push(K.bake(new T.IcosahedronGeometry(s, 0), x, Y - 0.1, z, K.rnd() * 3, K.rnd() * 3, 0, 1, 0.6, 1));
 
   // a fat fish cooking on the grate
-  const fish = new T.SphereGeometry(0.075, 7, 4);
+  const fish = new T.SphereGeometry(0.085, 7, 4);
   K.paint(fish, 0x9fb2b6, (x, y, z, nx, ny, nz, c) => { if (ny > 0.35) c.setHex(0xa8703c); else if (ny < -0.35) c.setHex(0xe6dfcc); });
-  FS.push(K.bake(fish, 0.03, Y + 0.075, 0.02, 0, 0.35, 0, 2.5, 0.75, 1.05));
-  const tail = new T.ConeGeometry(0.075, 0.12, 3);
+  FS.push(K.bake(fish, 0.03, Y + 0.075, 0.02, 0, 0.35, 0, 2.6, 0.7, 1.05));
+  const tail = new T.ConeGeometry(0.09, 0.13, 3);
   K.paint(tail, 0x8a6a44);
   const ca = Math.cos(0.35), sa = Math.sin(0.35);
-  FS.push(K.bake(tail, 0.03 - ca * 0.23, Y + 0.075, 0.02 + sa * 0.23, 0, 0.35, Math.PI / 2, 1, 1, 0.3));
-  for (const s of [-1, 1]) FS.push(K.bake(K.paint(new T.SphereGeometry(0.014, 4, 3), 0x111111), 0.03 + ca * 0.14 + sa * s * 0.0, Y + 0.095, 0.02 - sa * 0.14 + s * 0.055 * ca));
+  FS.push(K.bake(tail, 0.03 - ca * 0.27, Y + 0.075, 0.02 + sa * 0.27, 0, 0.35, Math.PI / 2, 1, 1, 0.3));
+  for (const s of [-1, 1]) FS.push(K.bake(K.paint(new T.SphereGeometry(0.014, 4, 3), 0x111111), 0.03 + ca * 0.16 + sa * s * 0.05, Y + 0.1, 0.02 - sa * 0.16 + s * 0.05 * ca));
 
   K.add(g, MT, M.metal, 'grillIron');
   K.add(g, S, M.stone, 'grillStones');
