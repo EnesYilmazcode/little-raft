@@ -3,6 +3,7 @@
 // See docs/cloud/sailing-spec.md. The raft never moves in x/z: the world drifts past it instead.
 import { SAIL, cleanSailing, defaultSailing, stepSailing, sailTarget, applySailAction, wrapAxis, placeUpstream, driftedOut, windVector } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
 import { createSailingUI } from './sailing-ui.js';
+import { mergeChildMeshesPBR } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 
 const WRAP = SAIL.ISLAND_WRAP > 0 ? SAIL.ISLAND_WRAP : 150, LEASH = 10, STEER_RATE = 1.6, REACH = 3.2, MAST_H = 3.6, MAST_R = .25, ANCHOR_R = .35, DECK_Y = .22;
 const CLOTH_R = 1.2, CLOTH_Y0 = 1, CLOTH_Y1 = 3.4; // raised cloth hit volume around the mast axis (cheap approximation)
@@ -62,7 +63,11 @@ export function createSailing(T, ctx) {
   const hook = new T.Group(); anchorRoot.add(hook);
   const anchorMesh = mesh(G.anchor, M.iron, 0, 0, 0, hook, false);
   hook.position.set(0, .95 - ROPE_UP, .57);
-  for (const m of [post, drum, crank, arm, anchorMesh]) freeze(m); // rigid parts; coil, rope and hook animate (animateAnchor)
+  { // static shadow casters (post, drum, arm) -> one mesh: 2 fewer draws in both the main and the shadow pass
+    const w = mergeChildMeshesPBR(T, anchorRoot, { skip: c => !c.castShadow || c === coil });
+    if (w) { G.windlass = w.geometry; M.windlass = w.material; }
+  }
+  for (const m of [crank, anchorMesh]) freeze(m); // rigid parts; coil, rope and hook animate (animateAnchor)
 
   // Furled-canvas roll (pooled, one per sail): a cream cylinder with two ties, re-parented onto each sail group.
   function roll(i) {
