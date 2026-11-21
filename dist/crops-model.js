@@ -1,4 +1,4 @@
-// Small Crop Plot model and crop plant meshes (own low-poly art). Given THREE, imports nothing.
+// Small and Medium Crop Plot models and crop plant meshes (own low-poly art). Given THREE, imports nothing.
 // Local origin = centre of the floor tile top (game.js places decor at y = .22). The plot body is one
 // merged vertex-coloured mesh (receives shadows, casts none). Plant stages share one geometry per
 // (crop, stage) and one material across every plot; both are flagged userData.shared so rebuildRaft
@@ -6,6 +6,8 @@
 
 export const SLOT_X = .55;   // slot spacing along the plot's local x
 export const SOIL_Y = .27;   // soil surface above the deck
+export const SLOT_X2 = .86;  // [fruit] Medium Crop Plot: 2 slots at +-SLOT_X2/2
+export const MEDIUM = Object.freeze({ W: 1.92, D: 1.06, H: .3 }); // [fruit] outer size of the medium plot box
 
 // Merge [geometry, hex, matrix] parts into one non-indexed geometry with a colour attribute.
 function bake(T, parts) {
@@ -73,6 +75,39 @@ export function createCropPlot(T) {
   return g;
 }
 
+// [fruit] Medium Crop Plot: a deeper, wider box with two big slots, corner posts with cross-braced ends
+// and a scrap-metal band round the top (it costs scrap). Same soil height, so the plants share the kit.
+export function createMediumPlot(T) {
+  const g = new T.Group(); g.name = 'craft_cropplot2';
+  const { list, add } = parts(T);
+  const { W, D, H } = MEDIUM, WALL = .08;
+  for (const sz of [-1, 1]) for (let r = 0; r < 3; r++) add(new T.BoxGeometry(W, H / 3 - .008, WALL), r === 1 ? '#9a6a3e' : r ? '#8a5c34' : '#7f5430', 0, H / 6 + r * H / 3, sz * (D / 2 - WALL / 2));
+  for (const sx of [-1, 1]) for (let r = 0; r < 3; r++) add(new T.BoxGeometry(WALL, H / 3 - .008, D - WALL * 2), r === 1 ? '#946540' : '#86592f', sx * (W / 2 - WALL / 2), H / 6 + r * H / 3, 0);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new T.BoxGeometry(.12, H + .07, .12), '#6b4728', sx * (W / 2 - .04), (H + .07) / 2, sz * (D / 2 - .04));
+  // scrap band and rivets along the rim
+  for (const sz of [-1, 1]) add(new T.BoxGeometry(W - .14, .045, WALL + .035), '#8f9ba3', 0, H + .02, sz * (D / 2 - WALL / 2));
+  for (const sx of [-1, 1]) add(new T.BoxGeometry(WALL + .035, .045, D - .14), '#8f9ba3', sx * (W / 2 - WALL / 2), H + .02, 0);
+  for (const sz of [-1, 1]) for (let i = 0; i < 5; i++) add(new T.CylinderGeometry(.014, .014, .012, 6), '#c6d0d6', (i - 2) * .4, H + .048, sz * (D / 2 - WALL / 2));
+  // end cross braces
+  for (const sx of [-1, 1]) for (const a of [-1, 1]) add(new T.BoxGeometry(.03, .04, D * .9), '#5a3a20', sx * (W / 2 + .012), H / 2, 0, a * .3, 0, 0);
+  // soil, two big slot hollows, clods
+  add(new T.BoxGeometry(W - WALL * 2, SOIL_Y - .03, D - WALL * 2), '#3b291b', 0, .03 + (SOIL_Y - .03) / 2, 0);
+  for (let i = 0; i < 2; i++) {
+    const x = SLOT_X2 * (i - .5);
+    add(new T.CylinderGeometry(.3, .26, .012, 14), '#21160d', x, SOIL_Y, 0);
+    add(new T.TorusGeometry(.32, .034, 5, 16), '#4d3726', x, SOIL_Y, 0, Math.PI / 2);
+  }
+  for (let i = 0; i < 12; i++) {
+    const x = (jit(i, 9) - .5) * (W - .3), z = (jit(i, 2) > .5 ? .38 : -.38) + (jit(i, 3) - .5) * .05;
+    add(new T.DodecahedronGeometry(.026 + jit(i, 4) * .016, 0), i % 2 ? '#4a3424' : '#2f2116', x, SOIL_Y, z, jit(i, 5) * 3, jit(i, 6) * 3, 0);
+  }
+  const body = new T.Mesh(bake(T, list), new T.MeshStandardMaterial({ vertexColors: true, roughness: .9, metalness: 0, flatShading: true }));
+  body.name = 'cropPlotBody'; body.castShadow = false; body.receiveShadow = true;
+  g.add(body);
+  g.userData.craftType = 'cropplot2';
+  return g;
+}
+
 // ------------------------------------------------------------------ plants
 
 // A leaf blade fanned out from the slot centre at yaw `a`, tilted up by `tilt`.
@@ -119,13 +154,58 @@ function potato(T, ripe) {
   return bake(T, list);
 }
 
-/** Shared plant geometries + materials for every plot. Keys: sprout, beet1, beet2, potato1, potato2. */
+// [fruit] Watermelon: a fan of lobed vine leaves trailing over the soil; ripe, a big striped melon in the middle.
+function watermelon(T, ripe) {
+  const { list, add } = parts(T), n = ripe ? 8 : 6, L = ripe ? .3 : .2;
+  for (let i = 0; i < n; i++) { // runners along the soil with a broad leaf at each end
+    const a = i * Math.PI * 2 / n + (jit(i, 11) - .5) * .5, r = L * (.75 + jit(i, 12) * .4);
+    add(new T.CylinderGeometry(.008, .01, r, 4), '#4f8a3a', Math.sin(a) * r * .5, .02, Math.cos(a) * r * .5, Math.PI / 2, a, 0, 1, 1, 1, 'YXZ');
+    add(new T.IcosahedronGeometry(1, 0), i % 2 ? '#3f8a3e' : '#56a048', Math.sin(a) * r, .045 + jit(i, 13) * .03, Math.cos(a) * r, -.25, a, 0, .085, .014, .075, 'YXZ');
+    if (i % 2 === 0) add(new T.IcosahedronGeometry(1, 0), '#6cb456', Math.sin(a + .35) * r * .6, .06, Math.cos(a + .35) * r * .6, -.4, a + .35, 0, .06, .012, .05, 'YXZ');
+  }
+  if (ripe) {
+    const R = .17; // the melon lies a little sunk in the soil, long axis along local x
+    add(new T.IcosahedronGeometry(R, 2), '#2f6b2c', 0, R * .62, 0, 0, 0, 0, 1.3, .92, 1);
+    for (let k = 0; k < 8; k++) { // pale stripes: thin flattened bands wrapped round the long axis
+      const a = k * Math.PI / 4;
+      add(new T.IcosahedronGeometry(1, 1), '#8fc463', 0, R * .62 + Math.sin(a) * R * .9, Math.cos(a) * R * .97, Math.PI / 2 - a, 0, 0, R * 1.24, .012, .02);
+    }
+    add(new T.IcosahedronGeometry(.05, 0), '#e9d98a', .02, .045, R * .7, 0, 0, 0, 1.6, .6, 1); // the pale ground spot
+    add(new T.CylinderGeometry(.008, .012, .05, 4), '#6f8a3a', -R * 1.28, R * .7, 0, 0, 0, 1.2);
+  }
+  return bake(T, list);
+}
+// [fruit] Pineapple: a rosette of stiff spiky leaves; ripe, a golden fruit on a short stalk with a leafy crown.
+function pineapple(T, ripe) {
+  const { list, add } = parts(T), n = ripe ? 12 : 9, L = ripe ? .34 : .22;
+  for (let i = 0; i < n; i++) {
+    const a = i * 2.4 + jit(i, 14) * .4, tilt = .45 + (i % 3) * .22, s = L * (.8 + jit(i, 15) * .35);
+    const r = s * .5 * Math.cos(tilt);
+    add(new T.ConeGeometry(.028, s, 3), i % 2 ? '#4f8a52' : '#6a9e5a', Math.sin(a) * r, s * .5 * Math.sin(tilt) + .01, Math.cos(a) * r, Math.PI / 2 - tilt, a, 0, 1, 1, .35, 'YXZ');
+  }
+  if (ripe) {
+    add(new T.CylinderGeometry(.018, .024, .1, 5), '#5f7f3a', 0, .12, 0);
+    const y = .27, R = .085;
+    add(new T.IcosahedronGeometry(R, 1), '#d99a2b', 0, y, 0, 0, 0, 0, 1, 1.45, 1);
+    for (let k = 0; k < 4; k++) for (let j = 0; j < 6; j++) { // dark eyes in a diamond pattern
+      const a = j * Math.PI / 3 + (k % 2) * Math.PI / 6, h = (k - 1.5) * .045;
+      const rr = R * Math.sqrt(Math.max(.15, 1 - (h / (R * 1.45)) ** 2)) * 1.01;
+      add(new T.IcosahedronGeometry(.01, 0), '#a8681c', Math.sin(a) * rr, y + h, Math.cos(a) * rr);
+    }
+    for (let i = 0; i < 7; i++) { const a = i * 2.2, t = .25 + (i % 2) * .3; add(new T.ConeGeometry(.018, .11, 3), i % 2 ? '#4f8a52' : '#3f7a44', Math.sin(a) * .02, y + R * 1.4 + .04, Math.cos(a) * .02, t, a, 0, 1, 1, .4, 'YXZ'); }
+  }
+  return bake(T, list);
+}
+
+/** Shared plant geometries + materials for every plot. Keys: sprout, beet1, beet2, potato1, potato2, [fruit] watermelon1/2, pineapple1/2. */
 export function cropKit(T) {
-  const geos = { sprout: sprout(T), beet1: beet(T, false), beet2: beet(T, true), potato1: potato(T, false), potato2: potato(T, true) };
+  const geos = { sprout: sprout(T), beet1: beet(T, false), beet2: beet(T, true), potato1: potato(T, false), potato2: potato(T, true),
+    watermelon1: watermelon(T, false), watermelon2: watermelon(T, true), pineapple1: pineapple(T, false), pineapple2: pineapple(T, true) }; // [fruit]
   for (const g of Object.values(geos)) g.userData.shared = true;
   const plantMat = new T.MeshStandardMaterial({ vertexColors: true, roughness: .8, metalness: 0, flatShading: true, side: T.DoubleSide });
   const wetGeo = new T.CircleGeometry(.17, 12); wetGeo.rotateX(-Math.PI / 2); wetGeo.translate(0, .009, 0);
+  const wetGeo2 = new T.CircleGeometry(.29, 14); wetGeo2.rotateX(-Math.PI / 2); wetGeo2.translate(0, .009, 0); wetGeo2.userData.shared = true; // [fruit] medium slots
   const wetMat = new T.MeshStandardMaterial({ color: '#140c06', roughness: .15, metalness: 0, transparent: true, opacity: .55, depthWrite: false });
   wetGeo.userData.shared = true; plantMat.userData.shared = true; wetMat.userData.shared = true;
-  return { geos, plantMat, wetGeo, wetMat };
+  return { geos, plantMat, wetGeo, wetGeo2, wetMat };
 }

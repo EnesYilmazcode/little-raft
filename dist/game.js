@@ -73,7 +73,7 @@ import { createWaterEffects } from './waterfx.js?build=v3-survival-ae77fa84ac2b'
 import { createIsland } from './scenery-islands.js?build=v3-survival-ae77fa84ac2b'; // decorative distant islands (islands.js is the content lane's dockable islands)
 import { cleanTileArmor } from './armor.js?build=v3-survival-ae77fa84ac2b'; // [armor] foundation armor (world.tileArmor)
 import { cleanNets, copyNets, migrateDeckNets, netSpot, netBlock, netOnCell, catchNet, netAt, findNet, netDistance, emptyNet, createNetView, createNetModel, netEdgeX, netEdgeZ, netYaw, netCenterX, netCenterZ, NET_CAPACITY, NET_REACH } from './nets.js?build=v3-survival-ae77fa84ac2b'; // [nets] edge collection nets
-import { cleanCrop, withoutCrops } from './crops.js?build=v3-survival-ae77fa84ac2b'; // [crops] crop plot slots live on the decor entry
+import { cleanCrop, withoutCrops, isPlot as isCropPlot } from './crops.js?build=v3-survival-ae77fa84ac2b'; // [crops] crop plot slots live on the decor entry
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b'; // [nets] net frame + netting
 import { UNDECOR_TEXT, decorAt as undecorIndex, coreUndecorBlock, coreUndecorLoot, assembleLoot, tryLoot, clearCoreTile, targetFromAim, hostCanUndecor } from './decor-pickup.js?build=v3-survival-ae77fa84ac2b'; // [undecor] pick up placed items (docs/specs/decor-pickup.md)
 
@@ -223,7 +223,7 @@ export function mount(transfer = null) {
       const k = d.x + ',' + d.z; if (!seen.has(k) || used.has(k)) continue;
       const rot = Number.isFinite(d.rot) ? Math.round(wrapRot(d.rot) * 1000) / 1000 : 0; // placement rotation (R / shift+wheel while placing)
       used.add(k); const e = rot ? {type:d.type, x:d.x, z:d.z, rot} : {type:d.type, x:d.x, z:d.z};
-      if (d.type === 'cropplot') e.crop = cleanCrop(d.crop); // [crops] old saves: empty slots
+      if (isCropPlot(d)) e.crop = cleanCrop(d.crop, d.type); // [crops] old saves: empty slots; [fruit] per plot type
       decor.push(e);
     }
     const nets = cleanNets(v.nets, tiles), deckNets = decor.filter(d => d.type === 'net'); // [nets] old deck nets move to the raft edge
@@ -245,7 +245,7 @@ export function mount(transfer = null) {
     return out;
   }
   function copyWorld(w) { // isolation from the previous engine's live object (rollback safety)
-    return {...w, tiles:w.tiles.map(t => [t[0], t[1]]), decor:Array.isArray(w.decor) ? w.decor.map(d => (d.crop ? {...d, crop:cleanCrop(d.crop)} : {...d})) : [], items:Array.isArray(w.items) ? w.items.map(i => ({...i})) : [], stock:{...(w.stock || {})}, pieces:Array.isArray(w.pieces) ? w.pieces.map(p => ({...p})) : [],
+    return {...w, tiles:w.tiles.map(t => [t[0], t[1]]), decor:Array.isArray(w.decor) ? w.decor.map(d => (d.crop ? {...d, crop:cleanCrop(d.crop, d.type)} : {...d})) : [], items:Array.isArray(w.items) ? w.items.map(i => ({...i})) : [], stock:{...(w.stock || {})}, pieces:Array.isArray(w.pieces) ? w.pieces.map(p => ({...p})) : [],
       fish:isInt(w.fish) ? w.fish : 0, collected:isInt(w.collected) ? w.collected : 0, signal:cleanSignal(w.signal), ext:cleanExt(w.ext), sailing:cleanSailing(w.sailing), // content + sailing hooks
       ...cleanProgress(w), // fresh, validated notes/achievements arrays
       tileHp:cleanTileHp(w.tileHp, w.tiles), tileArmor:cleanTileArmor(w.tileArmor, w.tiles), shark:cleanShark(w.shark), nets:copyNets(w.nets), // shark lane; [armor]
@@ -1385,7 +1385,8 @@ export function mount(transfer = null) {
     if (a.kind === 'eat') { // [vitals] host removes the item (and gives the cup back); the eater applies the bars on 'ate'
       const k = a.item; if (!isEdible(k) || bag.count(k) < 1) return;
       const s = new Bag(bag.snapshot()); if (!s.remove(k, 1)) return;
-      const back = FOOD[k].returns; if (back && s.add(back, 1) > 0) { emit({kind:'full', text:`No room for the empty ${itemName(back).replace(/^empty /, '')}`}, actor); return; }
+      const back = FOOD[k].returns; if (back && s.add(back, 1) > 0) { emit({kind:'full', text:isEdible(back) ? 'Your bag is full' : `No room for the empty ${itemName(back).replace(/^empty /, '')}`}, actor); return; }
+      if (back && isEdible(back) && !s.slots[s.selectedIndex]) { const j = s.slots.findIndex(x => x && x.kind === back); if (j >= 0 && j !== s.selectedIndex) s.move(j, s.selectedIndex, 1); } // [fruit] the slice stays in hand for the second bite
       commit(bag, s); emit({kind:'ate', item:k}, actor); return;
     }
     if (a.kind === 'shark:loot') { // shark lane: harvest the floating body (E)

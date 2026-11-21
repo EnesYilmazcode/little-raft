@@ -107,7 +107,7 @@ test('models: merged plot body casts no shadow; plant kit is shared and survives
   let meshes = 0, casters = 0; g.traverse(o => { if (o.isMesh) { meshes++; if (o.castShadow) casters++; } });
   assert.equal(meshes, 1); assert.equal(casters, 0); assert.equal(g.name, 'craft_cropplot');
   const kit = M.cropKit(T);
-  assert.deepEqual(Object.keys(kit.geos).sort(), ['beet1', 'beet2', 'potato1', 'potato2', 'sprout']);
+  assert.deepEqual(Object.keys(kit.geos).sort(), ['beet1', 'beet2', 'pineapple1', 'pineapple2', 'potato1', 'potato2', 'sprout', 'watermelon1', 'watermelon2']); // [fruit]
   for (const geo of [...Object.values(kit.geos), kit.wetGeo]) { assert.ok(geo.userData.shared); assert.ok(geo.attributes.position.count > 0); }
   assert.ok(kit.plantMat.userData.shared && kit.wetMat.userData.shared);
 });
