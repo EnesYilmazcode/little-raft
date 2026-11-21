@@ -199,6 +199,8 @@ const LIST = [
   // [camera] Little Camera (dist/camera.js): no durability, photos stay in this browser
   item('camera', 'Little Camera', 'tool', { iconTint: '#e07a5f', stack: 1, recipe: hand({ glass: 1, plastic: 2, scrap: 2, rope: 1 }), unlock: research('glass'),
     tip: 'Click to snap a photo. Press P to open your album.' }),
+  item('glidehandle', 'Glide Handle', 'tool', { iconTint: '#b0805a', stack: 1, recipe: hand({ wood: 2, rope: 2, scrap: 2 }), unlock: discover('nail'), // [zipline] tool:false, no durability
+    tip: 'A wooden T-bar with a wheel. E links two posts or hooks you onto a line. Space lets go.' }),
 
   // ----- food -----
   item('coconut', 'Coconut', 'food', { iconTint: '#6b4a2a',
@@ -277,6 +279,13 @@ const LIST = [
     tip: 'Pin up the crew tasks for the day.' }),
   item('photoframe', 'Photo Frame', 'decor', { placeable: true, iconTint: '#c69860', recipe: hand({ wood: 3, glass: 1, nail: 1 }), unlock: research('glass', 'nail'), // [camera]
     tip: 'Hang a favourite photo on your raft. Press E on it to choose one.' }),
+  // [fireworks] sky rocket (model in dist/fireworks-model.js, logic in dist/fireworks.js)
+  item('skyrocket', 'Sky Rocket', 'decor', { placeable: true, stack: 20, iconTint: '#e9a08c',
+    recipe: hand({ plastic: 2, leaf: 1, scrap: 1 }, 3), unlock: discover('plastic', 'scrap'),
+    tip: 'A paper-and-plastic rocket on a little stand. Press E to light it, best after dark!' }),
+  item('scarecrow', 'Scarecrow', 'decor', { placeable: true, iconTint: '#c9a46a', // [scarecrow] model in dist/scarecrow-model.js
+    recipe: hand({ wood: 3, leaf: 4, rope: 2, plastic: 1 }), unlock: discover('rope'),
+    tip: 'A friendly driftwood scarecrow. Gulls leave nearby planters alone and sit on its hat instead.' }),
   item('sail', 'Sail', 'build', { icon: 'icon-sail', placeholder: false, placeable: true,
     recipe: hand({ wood: 10, leaf: 20, scrap: 3 }), unlock: discover('leaf', 'scrap'), // Raft: 10 planks + 20 leaves + 3 scrap
     tip: 'Catch the breeze and look the part of a proper sea captain.' }),
@@ -292,6 +301,13 @@ const LIST = [
   item('maptable', 'Map Table', 'decor', { iconTint: '#c9a46a', stack: 5, placeable: true,
     recipe: hand({ wood: 6, rope: 3, nail: 2, copperingot: 1 }), unlock: research('copperingot'),
     tip: 'A little chart table. It remembers the islands you meet and points the sail where you like.' }),
+  // [zipline] glide posts (models in dist/zipline-model.js, logic in dist/zipline.js)
+  item('glidepost', 'Glide Post', 'decor', { placeable: true, iconTint: '#a57a4c',
+    recipe: hand({ wood: 6, rope: 3, nail: 2 }), unlock: discover('nail'),
+    tip: 'A tall mast with a little wheel on top. String a glide line to another post.' }),
+  item('glidestep', 'Low Glide Post', 'decor', { placeable: true, iconTint: '#8b6a43',
+    recipe: hand({ wood: 4, rope: 2, nail: 1 }), unlock: discover('nail'),
+    tip: 'A shorter glide post. Run a line down to it from a tall one for a speedy glide.' }),
 
   item('armor', 'Foundation Armor', 'build', { iconTint: '#8e9aa4',
     recipe: hand({ metalingot: 1, nail: 2 }), unlock: research('metalingot', 'nail'),
@@ -332,6 +348,9 @@ export const BLOCK_RADII = deepFreeze({
   taskboard: 0.3, // [tasks]
   photoframe: 0.15, // [camera]
   recycler: 0.45, // [recycler]
+  scarecrow: 0.25, // [scarecrow]
+  skyrocket: 0.1, // [fireworks]
+  glidepost: 0.15, glidestep: 0.15, // [zipline]
 });
 
 /** Damage one landed spear thrust deals (spear lane; see docs/loop/research/fidelity-r1-shark.md). */
