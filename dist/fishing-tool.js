@@ -16,12 +16,12 @@
 //   gripAxis    Vector3  unit rod axis (+Y, butt -> tip)
 //   float       Group    float (hide while the line is cast out)
 //   leader      Mesh     tip -> float line (hide while cast out)
-//   rodLine     Mesh     reel -> guides -> tip line (always visible)
-//   reelSpool   Mesh     spool (rotate .rotation.x to animate reeling; axis is model X)
+//   reelSpool   Group    spool + crank (rotate .rotation.x to animate reeling; axis is model X)
 //   size        {x,y,z}  approximate bounds
-//   meshCount   number   (15: static brass / steel parts on the root are merged per material)
+//   meshCount   number   (4: all static parts on the root, the spool + crank and the float are each merged into one
+//                        mesh with per-vertex colour/roughness/metalness; the leader stays separate)
 //   dispose()   frees all owned geometries and materials
-import { mergeChildMeshes } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
+import { mergeGeometries, mergeChildMeshesPBR } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 
 export function createFishingTool(T) {
   const root = new T.Group();
@@ -155,35 +155,29 @@ export function createFishingTool(T) {
     wraps.push([-0.36, rAt(-0.36) + 0.0016, 0.016]);
     wraps.push([RY - 0.032, 0.0265, 0.01]);   // reel bands over the reel foot
     wraps.push([RY + 0.032, 0.0265, 0.01]);
-    const im = new T.InstancedMesh(G(new T.CylinderGeometry(1, 1, 1, 12)), threadMat, wraps.length);
-    const o = new T.Object3D();
-    wraps.forEach(([y, r, h], i) => { o.position.set(0, y, 0); o.scale.set(r, h, r); o.updateMatrix(); im.setMatrixAt(i, o.matrix); });
-    im.instanceMatrix.needsUpdate = true;
-    im.castShadow = false; im.receiveShadow = false; im.frustumCulled = false;
-    root.add(im); meshCount++;
+    const o = new T.Object3D(), unit = new T.CylinderGeometry(1, 1, 1, 12), list = [];
+    wraps.forEach(([y, r, h]) => { o.position.set(0, y, 0); o.scale.set(r, h, r); o.updateMatrix(); list.push(unit.clone().applyMatrix4(o.matrix)); });
+    add(mergeGeometries(T, list), threadMat);
+    unit.dispose(); list.forEach((g) => g.dispose());
   }
 
   // ---------- 7-8. line guides: steel rings + stems (instanced) ----------
   const guideCenters = [];
   {
-    const n = GUIDES.length;
-    const rings = new T.InstancedMesh(G(new T.TorusGeometry(1, 0.16, 6, 16)), steelMat, n);
-    const stems = new T.InstancedMesh(G(new T.CylinderGeometry(1, 1, 1, 6)), steelMat, n);
+    const ring = new T.TorusGeometry(1, 0.16, 6, 16), stem = new T.CylinderGeometry(1, 1, 1, 6), parts = [];
     const o = new T.Object3D();
     GUIDES.forEach((y, i) => {
       const r = rAt(y), zc = r + STEM[i] + RING_R[i];
       guideCenters.push(V3(0, y, zc));
       o.position.set(0, y, zc); o.rotation.set(Math.PI / 2, 0, 0); o.scale.setScalar(RING_R[i]);
-      o.updateMatrix(); rings.setMatrixAt(i, o.matrix);
+      o.updateMatrix(); parts.push(ring.clone().applyMatrix4(o.matrix));
       const z0 = r - 0.002, z1 = r + STEM[i] + 0.001;
       o.position.set(0, y, (z0 + z1) / 2); o.rotation.set(Math.PI / 2, 0, 0); o.scale.set(0.0018, z1 - z0, 0.0018);
-      o.updateMatrix(); stems.setMatrixAt(i, o.matrix);
+      o.updateMatrix(); parts.push(stem.clone().applyMatrix4(o.matrix));
     });
-    for (const im of [rings, stems]) {
-      im.instanceMatrix.needsUpdate = true;
-      im.castShadow = false; im.receiveShadow = false; im.frustumCulled = false;
-      root.add(im); meshCount++;
-    }
+    for (const g of parts) g.deleteAttribute('uv');
+    add(mergeGeometries(T, parts), steelMat);
+    ring.dispose(); stem.dispose(); parts.forEach((g) => g.dispose());
   }
 
   // ---------- 9. reel frame plate: foot + pillar + round side plate (one extrusion) ----------
@@ -221,8 +215,8 @@ export function createFishingTool(T) {
       }
     });
     geo.rotateZ(Math.PI / 2);              // lathe Y -> model X
-    spool = add(geo, spoolMat, 0, RY, CZ);
-    spool.name = 'reelSpool';
+    spool = new T.Group(); spool.name = 'reelSpool'; spool.position.set(0, RY, CZ); root.add(spool);
+    add(geo, spoolMat, 0, 0, 0, spool);
   }
 
   // ---------- 11-12. crank arm + wooden knob on the spool face ----------
@@ -264,8 +258,11 @@ export function createFishingTool(T) {
     leader.name = 'leader';
   }
 
-  // ---------- merge static unnamed parts sharing a material (brass caps, steel tip top + reel plate) ----------
-  for (const m of mergeChildMeshes(T, root, { skip: (c) => !!c.name })) G(m.geometry);
+  // ---------- merge: every static root part, the spool with its crank, and the float each become one mesh ----------
+  for (const [parent, skip] of [[root, (c) => c === leader], [spool, null], [float, null]]) {
+    const m = mergeChildMeshesPBR(T, parent, { skip });
+    if (m) { G(m.geometry); mats.push(m.material); m.frustumCulled = false; }
+  }
   meshCount = 0; root.traverse((o) => { if (o.isMesh) meshCount++; });
 
   // ---------- reference nodes ----------
@@ -284,7 +281,6 @@ export function createFishingTool(T) {
   root.userData.tipNode = tipNode;
   root.userData.float = float;
   root.userData.leader = leader;
-  root.userData.rodLine = rodLine;
   root.userData.reelSpool = spool;
   root.userData.size = { x: 0.10, y: 1.5, z: 0.12 };
   root.userData.meshCount = meshCount;
