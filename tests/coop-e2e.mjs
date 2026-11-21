@@ -149,6 +149,13 @@ async function main() {
   await sleep(800);
 
   // ---------- (4) middle-click ping ----------
+  if (process.env.PROBE) {
+    const b = () => guest.evaluate(() => coopChaos.bytes.sent.coop);
+    let b0 = await b(); await guest.evaluate(() => document.getElementById('world').dispatchEvent(new PointerEvent('pointerdown', {clientX:500, clientY:320, button:1, buttons:4, bubbles:true, cancelable:true}))); await guest.waitForTimeout(200);
+    console.error('PROBE0 synthetic down before any move', await b() - b0);
+    b0 = await b(); await guest.mouse.move(CX + 5, CY + 55); await guest.waitForTimeout(200); await guest.evaluate(() => document.getElementById('world').dispatchEvent(new PointerEvent('pointerdown', {clientX:500, clientY:320, button:1, buttons:4, bubbles:true, cancelable:true}))); await guest.waitForTimeout(200);
+    console.error('PROBE0 after pw move', await b() - b0);
+  }
   const pingBefore = (await feedLog(host)).filter(t => /look here/i.test(t)).length;
   await guest.evaluate(() => { window.__pd = []; document.addEventListener('pointerdown', e => window.__pd.push([e.button, e.target.id || e.target.tagName]), true); });
   await guest.mouse.move(CX, CY + 60); await guest.waitForTimeout(100);
