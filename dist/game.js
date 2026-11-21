@@ -444,7 +444,7 @@ export function mount(transfer = null) {
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
       getPush:(s, o) => { content?.sailPush(s, o); }, steerTargets:() => content?.steerTargets() ?? null}); /* engine: motor push + wheel grab points */ for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
-    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); diving?.warm(renderer); } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
+    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id}), getVitals:() => vitals, onDrown:(n, first) => { if (hurtPlayer(n, 'drown') > 0 && first) notice('Out of air! You are drowning', 2000); }}); diving?.warm(renderer); } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     initShark(); // shark lane
     rebuildRaft();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));

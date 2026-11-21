@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
-const { DIVE, DiveBody, stepOxygen } = await import(new URL('diving.js', base));
+const { DIVE, DiveBody, stepOxygen, airSeconds } = await import(new URL('diving.js', base));
 
 const ENV = { waterY: -0.24, floorY: -11, tiles: [], deckY: 0.2 };
 const run = (body, secs, input, env = ENV) => {
@@ -128,6 +128,35 @@ test('stepOxygen: drains over OXY_SECONDS, refills faster, clamps', () => {
   assert.ok(Math.abs(r.oxygen - 0.5) < 1e-9);
   assert.equal(stepOxygen(0.9, 100, false).oxygen, 1);
   assert.equal(stepOxygen(NaN, NaN, true).oxygen, 1);
+});
+
+test('air: Raft 33 s, 17 s when hunger or thirst is empty', () => {
+  assert.equal(DIVE.OXY_SECONDS, 33); assert.equal(DIVE.OXY_SECONDS_WEAK, 17); assert.equal(DIVE.DROWN_HP, 3.5);
+  assert.equal(airSeconds({ food: 50, water: 50 }), 33);
+  assert.equal(airSeconds({ food: 0, water: 50 }), 17);
+  assert.equal(airSeconds({ food: 50, water: 0 }), 17);
+  assert.equal(airSeconds(null), 33); assert.equal(airSeconds({ food: NaN }), 33);
+  let o = 1; for (let i = 0; i < 16; i++) o = stepOxygen(o, 1, true, 17).oxygen;
+  assert.ok(o > 0 && o < 0.1, `o ${o}`);
+  assert.equal(stepOxygen(o, 1, true, 17).empty, true);
+  // refill speed does not depend on the weak breath
+  assert.equal(stepOxygen(0, 1, false, 17).oxygen, stepOxygen(0, 1, false).oxygen);
+  const weak = new DiveBody({ x: 10, y: -5, z: 0 }), strong = new DiveBody({ x: 10, y: -5, z: 0 });
+  for (let i = 0; i < 60; i++) { weak.step(1 / 60, {}, { ...ENV, airSeconds: 17 }); strong.step(1 / 60, {}, ENV); }
+  assert.ok(weak.oxygen < strong.oxygen);
+});
+
+test('drowning: no damage with air, 3.5 HP/s once empty, stops when surfaced', () => {
+  // step() returns a reused scratch object, so read it inside the loop
+  const sim = (body, secs, input) => { let hp = 0, steps = 0, surfaced = false, lastDrown = 0;
+    for (let t = 0; t < secs && !surfaced; t += 1 / 60) { const ev = body.step(1 / 60, input, ENV); hp += ev.drown; if (ev.drown > 0) steps++; surfaced = ev.surfaced; lastDrown = ev.drown; }
+    return { hp, steps, surfaced, lastDrown }; };
+  assert.equal(sim(new DiveBody({ x: 10, y: -3, z: 0, oxygen: 0.5 }), 1, { down: true }).hp, 0);
+  const r = sim(new DiveBody({ x: 10, y: -9, z: 0, oxygen: 0 }), 30, { down: true });
+  assert.equal(r.surfaced, true); assert.equal(r.lastDrown, 0);
+  assert.ok(r.steps > 30, `drowned for ${r.steps} steps`);
+  assert.ok(Math.abs(r.hp - r.steps / 60 * 3.5) < 1e-6, `hp ${r.hp}`);
+  assert.ok(r.hp > 3.5 && r.hp < 20, `a forced rise from ~9 m costs some but not all HP: ${r.hp}`);
 });
 
 const seafloorPath = fileURLToPath(new URL('seafloor.js', base));
