@@ -792,3 +792,14 @@ Fixes: icons.svg was invalid XML on master (unclosed sprinkler symbol) — close
 Checks: npm test 835/835; shoot2.py errors []; coop2 loopback base failures only (3, 4, 6; 2b flaky under load); loopback verified guest board, guest draughts moves, guest course finish.
 Observed: master now shows health/hunger/thirst vitals bars — a design change from the original "no damage, no hunger" brief made in another lane; not touched here.
 Known limits: held driftboard viewmodel is a plain box; noughts winning line not highlighted; chest/trader/sleep take E before the board while riding.
+
+## 2026-11-21 · loop-features-202611210911 (features, round 5)
+Base: origin/claude/raft-master (5a86582, holding rounds 1–3) + round 4 merged in (2e4bc70). Also closed master's unclosed `icon-wheel` symbol; round-4 files updated for master's lint rules (`?build=` on every import, PRELOAD in live.js).
+Avoided features other loop runs took (railing/hatch/ladder/gate, flagpole, sitting, decor pickup, spyglass, storm, crops, night light, zipline, …).
+- **Sunken shipwreck dive sites** (`shipwreck`) — a seeded wreck (3 layouts) docks 6–12 m down every 8–12 min; hold E with the gather ring to open crates, barrels and a captain's chest (loot from existing items, logbook note). New hooks: diving.js `getTargets`, `content.diveTargets(...)`, contentCtx `floorAt`/`diving`/`award`.
+- **Dolphin friend** (`dolphin`) — toss three fish to the visiting dolphin, name it; it loops and leaps, escorts swimmers and board riders (+15% dive swim nearby), answers a Conch Call, nudges driftwood toward the raft and points toward a signal cache or docked wreck.
+- **Sky Kites** (`kite`) — three patterns; fly from the deck (closed-form flight on apparent wind, steer by looking, RMB line length, tug), tie to railings/pillars to keep them flying, occasional "driftwood spotted" pull; partner kites visible in co-op (HELD 21–23).
+Fleet: merge agent, 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (14 agents).
+Fixes: shipwreck sync slice trimmed (~-45%), rebuild-loop hardening; conch row locked until befriended; dolphin yields to kite pulls; kite prune/return/gate/apparent-wind easing/partner reel/slot re-announce/string lag; back-lit kites, legible name tag, gather label vs dive prompt overlap (pre-existing), lighter wreck wood.
+Checks: npm test 1054/1054; shoot2.py errors []; coop2 loopback base failures only (3, 4, 6), bandwidth 5.7 KB/s of 6 KB/s cap — little headroom left, consider a per-slice revision skip for ext in hostState.
+Note: FEATURES array must not contain inline comments with `]` (tests parse it with `[^\]]*`).
