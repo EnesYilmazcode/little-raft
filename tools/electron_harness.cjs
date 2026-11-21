@@ -42,6 +42,8 @@ class HarnessWindow extends electron.BrowserWindow {
     wc.on('did-navigate', (_e, url) => log('did-navigate', { url }));
     wc.on('did-navigate-in-page', (_e, url) => log('did-navigate-in-page', { url }));
     wc.on('render-process-gone', (_e, d) => log('render-process-gone', d));
+    // Which Escape presses reach the main process at all (a shell may claim Escape here, see desktop/main.cjs).
+    wc.on('before-input-event', (_e, i) => { if (i.key === 'Escape' && !i.isAutoRepeat) log('before-input', { type: i.type, key: i.key }); });
     wc.on('console-message', (e, level, message) => {
       const lv = e.level ?? level, m = e.message ?? message;
       if (lv === 'error' || lv === 3) log('console-error', { message: String(m).slice(0, 300) });
