@@ -47,7 +47,7 @@ const CSS = `
 #lrGame .lr-gt-pc.lr-gt-shell{background:radial-gradient(circle at 35% 30%,#fffaf0,#fff2cc 45%,#d9c49a);box-shadow:0 2px 0 #8a7650,inset 0 0 0 2px #e8d6ae}
 #lrGame .lr-gt-pc.lr-gt-pebble{background:radial-gradient(circle at 35% 30%,#8a979d,#5d6a70 50%,#3f494e);box-shadow:0 2px 0 #222a2e,inset 0 0 0 2px #6f7c82}
 #lrGame .lr-gt-pc.lr-gt-king{box-shadow:0 2px 0 #0007,inset 0 0 0 3px #ffbd66,inset 0 0 0 5px #fff2cc44}
-#lrGame .lr-gt-pc.lr-gt-x{width:62%;height:62%;border-radius:0;background:linear-gradient(45deg,transparent 41%,#e0a060 41% 59%,transparent 59%),linear-gradient(-45deg,transparent 41%,#e0a060 41% 59%,transparent 59%);filter:drop-shadow(0 2px 0 #0006)}
+#lrGame .lr-gt-pc.lr-gt-px{width:62%;height:62%;border-radius:0;background:linear-gradient(45deg,transparent 41%,#e0a060 41% 59%,transparent 59%),linear-gradient(-45deg,transparent 41%,#e0a060 41% 59%,transparent 59%);filter:drop-shadow(0 2px 0 #0006)}
 #lrGame .lr-gt-pc.lr-gt-o{width:58%;height:58%;box-shadow:inset 0 0 0 calc(var(--sq) * .075) #7fd0cd,0 2px 0 #0006}
 #lrGame .lr-gt-c.lr-gt-sel .lr-gt-pc{transform:translate(-50%,-50%) translateY(-2px) scale(1.06)}
 #lrGame .lr-gt-foot{display:flex;flex-wrap:nowrap;align-items:center;gap:8px;padding:0 2px;font:700 13px/1.2 ${FONT};color:#2a1b0e}
@@ -169,7 +169,7 @@ export function createGameTableUI(api) {
         c.setAttribute('aria-label', name + ', ' + (side < 0 ? (to(sq) ? 'empty, move here' : 'empty') : ownerWord(gm, side, mine) + PIECE[ch]));
       } else {
         const ch = gm.b[sq], side = ch === 'x' ? 0 : ch === 'o' ? 1 : -1;
-        pc.className = 'lr-gt-pc' + (side === 0 ? ' lr-gt-x' : side === 1 ? ' lr-gt-o' : '');
+        pc.className = 'lr-gt-pc' + (side === 0 ? ' lr-gt-px' : side === 1 ? ' lr-gt-o' : '');
         c.classList.toggle('lr-gt-to', turn && side < 0);
         c.classList.toggle('lr-gt-last', sq === gm.last[1]);
         c.setAttribute('aria-label', CELL_NAMES[i] + ', ' + (side < 0 ? 'empty' : ownerWord(gm, side, mine) + PIECE[ch]));

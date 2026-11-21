@@ -7,7 +7,8 @@ import { buildCourseModels } from './buoycourse-model.js';
 const CSS = '#buoyTimer{position:fixed;top:48px;left:50%;transform:translateX(-50%);padding:4px 12px;border-radius:999px;'
   + 'background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.05em;'
   + 'pointer-events:none;z-index:30;white-space:nowrap;display:none;font-variant-numeric:tabular-nums}'
-  + '#buoyTimer.big{font-size:34px;line-height:1.1;padding:4px 22px;letter-spacing:.02em}';
+  + '#buoyTimer.big{font-size:34px;line-height:1.1;padding:4px 22px;letter-spacing:.02em}'
+  + '@media(max-width:520px){#buoyTimer{left:16px;transform:none;max-width:calc(100vw - 150px);overflow:hidden;text-overflow:ellipsis}#buoyTimer.big{left:50%;transform:translateX(-50%)}}';
 const REACH = 3, AIM_R = .45, SHOW_S = 20, TAIL_S = 3;
 
 const readName = () => { try { return (localStorage.getItem('little-raft-name') || '').trim().slice(0, 16); } catch { return ''; } };

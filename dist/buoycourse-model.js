@@ -136,7 +136,7 @@ export function buildCourseModels(T) {
   const floatMat = share(new T.MeshLambertMaterial({ color: '#ffffff' }));
   const floats = new T.InstancedMesh(floatGeo, floatMat, RING.MAXG * 2);
   const beamGeo = share(new T.CylinderGeometry(.22, .22, 6, 12, 1, true));
-  const beamMat = share(new T.MeshBasicMaterial({ color: NEXT, transparent: true, opacity: .25, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
+  const beamMat = share(new T.MeshBasicMaterial({ color: NEXT, transparent: true, opacity: .16, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
   const beam = new T.Mesh(beamGeo, beamMat);
   const cNext = new T.Color(NEXT), cPend = new T.Color(PENDING), cDone = new T.Color(CLEARED), cFin = new T.Color(FINISH), cRed = new T.Color('#e8553f'), cWhite = new T.Color('#f6f1e6');
   for (let i = 0; i < RING.MAXG; i++) { ring.setColorAt(i, cPend); floats.setColorAt(i * 2, cRed); floats.setColorAt(i * 2 + 1, cWhite); }
@@ -179,7 +179,7 @@ export function buildCourseModels(T) {
         o.position.set(x + nz * side, h + .05, z - nx * side);
         o.rotation.set(0, 0, 0); o.updateMatrix(); floats.setMatrixAt(i * 2 + s, o.matrix);
       }
-      if (i === bi) beam.position.set(x, h + 3, z);
+      if (i === bi) beam.position.set(x, h + .3 + RING.R + 3, z); // rises from the arc top so the gap stays clear
     }
     beam.visible = bi >= 0 && bi < n;
     ring.instanceMatrix.needsUpdate = true; floats.instanceMatrix.needsUpdate = true;
