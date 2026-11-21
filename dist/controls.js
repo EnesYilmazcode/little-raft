@@ -18,7 +18,7 @@ function storage() { try { return globalThis.localStorage ?? null; } catch { ret
 const emit = (type, detail) => { try { globalThis.dispatchEvent?.(new CustomEvent(type, {detail})); } catch {} };
 
 // g: {canvas, isBlocked, sensitivity, motion, look(dx,dy), hotbarSize, slot(), selectSlot(i), interact(),
-//     inventory(), repair(), pause(), useDown(), useUp(), reelDown(), reelUp(), buildPieces?}
+//     inventory(), repair(), pause(), useDown(), useUp(), useCancel(), reelDown(), reelUp(), buildPieces?}
 export function createControls(g) {
   const map = new ActionMap({storage:storage()});
   const feel = new MoveFeel({motionScale:1});
@@ -42,16 +42,19 @@ export function createControls(g) {
 
   function openRadial() {
     if (g.isBlocked?.()) return;
-    radial ??= createBuildRadial({items:g.buildPieces ?? BUILD_PIECES, onPick:id => emit('little-raft-action', {id:'buildPick', piece:id})});
+    radial ??= createBuildRadial({items:g.buildPieces ?? BUILD_PIECES, onPick:it => emit('little-raft-action', {id:'buildPick', piece:it?.id})});
     cursor = [0, 0]; radial.open();
   }
 
   // Call once per frame before physics. Returns the shaped input for physics.update().
   function movement(dt, active, physics) {
+    if (radial?.isOpen && g.isBlocked?.()) radial.close(); // a dialog opened over the radial: cancel, never pick behind it
     input.update(dt);
     const {dx, dy} = input.lookDelta();
     if (radial?.isOpen) { // look input steers a virtual stick (works for right stick and locked mouse)
-      const c = cursor; c[0] += dx * 6; c[1] += dy * 6; const l = Math.hypot(c[0], c[1]); if (l > 1) { c[0] /= l; c[1] /= l; }
+      input.hotbarStep(); input.hotbarSlot(); // drain: bumpers pressed while choosing must not fire on close
+      const inv = map.settings[input.activeDevice === 'pad' ? 'padInvertY' : 'invertY'] ? -1 : 1; // radial is screen space (+y down)
+      const c = cursor; c[0] += dx * 6; c[1] += dy * inv * 6; const l = Math.hypot(c[0], c[1]); if (l > 1) { c[0] /= l; c[1] /= l; }
       radial.update(c[0], c[1]); return {forward:0, strafe:0, sprint:false, jump:false}; }
     if (dx || dy) call('look', dx, dy);
     const step = input.hotbarStep(), slot = input.hotbarSlot(), n = g.hotbarSize ?? 8;
@@ -59,7 +62,8 @@ export function createControls(g) {
     else if (step) call('selectSlot', (((call('slot') ?? 0) + step) % n + n) % n);
     // gamepad triggers: RT = use / charge-throw, LT = reel (mouse clicks stay with game.js)
     const t = input.triggers(), use = t.throw > .5, reel = t.reel > .5;
-    if (use !== padUse) { padUse = use; call(use ? 'useDown' : 'useUp'); }
+    // released by a dialog/pause or a pad disconnect (not the player): cancel the charge like a lost pointer lock does
+    if (use !== padUse) { padUse = use; call(use ? 'useDown' : g.isBlocked?.() || input.activePad < 0 ? 'useCancel' : 'useUp'); }
     if (reel !== padReel) { padReel = reel; call(reel ? 'reelDown' : 'reelUp'); }
     const m = active ? input.move() : {forward:0, strafe:0};
     const crouch = active && input.crouching();
@@ -79,6 +83,7 @@ export function createControls(g) {
   const camera = yaw => ({x:Math.cos(yaw) * fx.bobX, y:fx.bobY + fx.eyeOffset, z:-Math.sin(yaw) * fx.bobX, roll:fx.roll});
 
   const api = {map, input, feel, movement, afterMove, camera,
+    get radialOpen() { return !!radial?.isOpen; },
     clear() { input.clear(); padUse = padReel = false; radial?.close(); },
     mountTab(container) { // the tab's own dispose() should be paired with api.unmountTab(tab)
       const t = createControlsTab({map, input}); t.mount(container); tabs.add(t); return t; },

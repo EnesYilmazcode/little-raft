@@ -866,6 +866,7 @@ export function mount(transfer = null) {
   });
   on(canvas, 'pointerdown', e => {
     if (!running || !scene || e.button !== 0 || uiBlocked()) return;
+    if (controls?.radialOpen) return; // controls lane: a click while the build radial is open picks a piece, not the tool
     if (isLocked()) {
       if (castOut()) reeling = true;
       else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); }
@@ -924,7 +925,7 @@ export function mount(transfer = null) {
       look:(dx, dy) => look(dx, dy, 1), hotbarSize:HOTBAR, slot:() => localBag().selectedIndex, selectSlot:i => running && selectSlot(i),
       interact, inventory:openInventory, repair, pause:() => settingsController?.open(),
       useDown:() => { if (castOut()) reeling = true; else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); } },
-      useUp:() => { reeling = false; if (charging) releaseCharge(pickCenter()); }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});
+      useUp:() => { reeling = false; if (charging) releaseCharge(pickCenter()); }, useCancel:() => { reeling = false; if (charging?.x === null) charging = null; }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});
     signal.addEventListener('abort', () => controls?.dispose());
   } catch (e) { console.error('controls lane failed to start', e); controls = null; }
   on(window, 'beforeunload', () => { save(); send({type:'leaving'}); try { conn?.close(); peer?.destroy(); } catch {} });
