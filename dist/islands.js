@@ -1,5 +1,5 @@
 // Islands content module: small islands drift past the raft, dock for a few minutes, and let players
-// gather wood, leaves, seeds, stone and sand with E. Host-authoritative; saved in world.ext.islands.
+// gather wood, leaves, flower seeds, stone and sand with E. Host-authoritative; saved in world.ext.islands.
 // Design and notes: docs/features/islands.md. Pure logic lives in islands-layout.js (unit tested).
 import {
   ISLAND, NODE_MAX, SHORE_U, layoutFor, pathAt, clean, lootFor, groundHeight, nextDelay, dockOffset,
@@ -26,7 +26,7 @@ const LOCAL_COOLDOWN = 0.35;
 const SLEW_SNAP = 1, SLEW_RATE = 4; // guest clock: snap past 1 s of error, else ease at 4/s
 
 // Prompt text, built once: PROMPTS[kind][left].
-const LABEL = { palm: 'Gather palm: wood and leaves', bush: 'Pick from bush: leaves, maybe a seed or a flower', rock: 'Gather stone', sand: 'Scoop sand' };
+const LABEL = { palm: 'Gather palm: wood and leaves', bush: 'Pick from bush: leaves, maybe a flower seed', rock: 'Gather stone', sand: 'Scoop sand' };
 const PROMPTS = {};
 for (const k of KINDS) {
   PROMPTS[k] = [];

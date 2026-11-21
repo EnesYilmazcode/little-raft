@@ -65,3 +65,19 @@ test('SURV-4: feed notes never carry the raw "E  " key prefix', () => {
     assert.ok(!note.startsWith('E '));
   }
 });
+
+// ---------------------------------------------------------------- round 3
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+const gameSrc = readFileSync(fileURLToPath(new URL('game.js', base)), 'utf8');
+const L = await import(new URL('islands-layout.js', base));
+const CB = await import(new URL('craft-book.js', base));
+
+test('SURV-1 r3: palm seeds no longer drop, the kind stays registered and the copy is honest', () => {
+  for (let s = 0; s < 300; s++) for (const k of ['palm', 'bush']) for (let u = 0; u < 4; u++)
+    assert.ok(!L.lootFor(k, s, 1, u).some(([x]) => x === 'seed'), `${k} ${s} ${u}`);
+  assert.ok(ITEM_INFO.seed, 'old bags holding seeds still load');
+  assert.doesNotMatch(CB.ITEM_SOURCE.seed.how, /barrel|harvest/i);
+  assert.match(gameSrc, /kind === 'seed'\) \{ notice\('Planters grow from fresh water/);
+  assert.doesNotMatch(gameSrc, /farmPlot/);
+});

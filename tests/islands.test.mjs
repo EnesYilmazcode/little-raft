@@ -121,12 +121,11 @@ test('clean fixes or drops bad fields', () => {
 
 test('lootFor table', () => {
   assert.deepEqual(lootFor('palm', 1, 0, 0), [['wood', 1], ['leaf', 1]]);
-  assert.deepEqual(lootFor('palm', 1, 0, 2), [['wood', 1], ['leaf', 1], ['seed', 1]]);
+  assert.deepEqual(lootFor('palm', 1, 0, 2), [['wood', 1], ['leaf', 1]]); // no palm seed: planters grow from water alone
   assert.deepEqual(lootFor('rock', 1, 0, 0), [['stone', 1]]);
   assert.deepEqual(lootFor('sand', 1, 0, 3), [['sand', 1]]);
   for (let s = 0; s < 50; s++) assert.deepEqual(lootFor('bush', s, 2, 1), lootFor('bush', s, 2, 1));
-  const seeds = Array.from({ length: 400 }, (_, s) => lootFor('bush', s, 0, 0).length - 1).reduce((a, b) => a + b);
-  assert.ok(seeds > 120 && seeds < 280, `bush seed rate ${seeds}/400`);
+  for (let s = 0; s < 400; s++) for (const k of ['palm', 'bush']) for (let u = 0; u < 3; u++) assert.ok(!lootFor(k, s, 0, u).some(([x]) => x === 'seed'), 'palm seeds never drop');
   const flowers = Array.from({ length: 400 }, (_, s) => lootFor('bush', s, 0, 0).some(([k]) => k === 'flowerseed') ? 1 : 0).reduce((a, b) => a + b); // [bees]
   assert.ok(flowers > 40 && flowers < 130, `bush flower seed rate ${flowers}/400`);
 });
@@ -146,11 +145,11 @@ test('applyGather grants loot and counts the gather', () => {
   assert.equal(r.ok, true);
   assert.equal(bag.count('stone'), 1);
   assert.equal(st.isl.used[k], 1);
-  // palm on the third gather gives a seed
+  // palm on the third gather gives no seed
   const p = st.layout.nodes.findIndex(n => n.kind === 'palm'), pn = st.layout.nodes[p];
   const ppos = { x: st.cx + pn.x, z: st.cz + pn.z + 1 };
   for (let i = 0; i < 3; i++) { st.clock += 1; assert.equal(applyGather(st, { kind: 'islands.gather', seed: 1234, node: p }, 'host', ppos, bag).ok, true); }
-  assert.equal(bag.count('wood'), 3); assert.equal(bag.count('leaf'), 3); assert.equal(bag.count('seed'), 1);
+  assert.equal(bag.count('wood'), 3); assert.equal(bag.count('leaf'), 3); assert.equal(bag.count('seed'), 0);
 });
 
 test('applyGather rejects bad requests without changes', () => {

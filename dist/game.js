@@ -263,7 +263,6 @@ export function mount(transfer = null) {
   let fc = null; // [fishing-cooking] rod fishing v2 + grills + journal (dist/fishing-cooking.js)
   let instruments = null; // [instruments]
   let logbookUI = null;
-  const farmPlot = () => null; // planters run on the watering lane (watering.js), not farming.js plots: seeds never point at one
   let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
@@ -1145,6 +1144,7 @@ export function mount(transfer = null) {
       fishWait = 3 + Math.random() * 2; hook = {end:new T.Vector3(p.x, .1, p.z), t:0, duration:fishWait + .8, fishing:true};
       swing = 1; noticeUntil = 0; play('throw', .5); // the context prompt shows the wait
     }
+    if (kind === 'seed') { notice('Planters grow from fresh water; seeds aren\u2019t needed'); return; } // old saves: palm seeds no longer drop
     if (kind === 'cup' || kind === 'saltcup' || kind === 'freshcup') { const w = wateringTarget(aim); if (w?.click) { swing = 1; action(w.click); } else notice(w?.why ?? WATER_WHY[kind]); return; }
   }
   function beginCharge(at) {
@@ -1315,7 +1315,7 @@ export function mount(transfer = null) {
     const kind = heldKind(), motion = options.cameraMotion;
     const ch = charging ? clamp((performance.now() - charging.start) / CHARGE_MS, 0, 1) : 0;
     hands.setHeld(running ? kind : null);
-    pointing = running && isPlaceable(kind) && (kind !== 'seed' || !!farmPlot(frameAim)); // the one place the pointing-finger pose is decided; seeds point only at a planter
+    pointing = running && isPlaceable(kind) && kind !== 'seed' && kind !== 'seeds'; // the one place the pointing-finger pose is decided; old palm seeds have no target
     hands.setPose(pointing ? 'point' : null);
     const rod = kind === 'fishingrod' ? hands.itemModel('fishingrod') : null, out = !!hook?.fishing;
     if (rod?.userData.float) { rod.userData.float.visible = !out; rod.userData.leader.visible = !out; }
