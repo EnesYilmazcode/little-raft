@@ -2,7 +2,8 @@
 // Usage: import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
 //        const g = createFloor(T, index, color => material); g.position.set(x * 2, 0, z * 2);
 // Local bounds: x,z in [-1, 1], y in [0, ~0.2]. Walkable top surface FLOOR_TOP = 0.20 (unevenness <= 0.017).
-// All geometry is created per tile (dispose via g.userData.dispose()). Materials come from getMaterial and are never disposed here.
+// floorParts() gives one tile's geometry as plain arrays; createFloorChunk() merges many tiles into a few meshes.
+// Dispose groups via g.userData.dispose(). Materials come from getMaterial and are never disposed here.
 
 export const FLOOR_TOP = 0.2;
 export const FLOOR_BOUNDS = Object.freeze({minX:-1, maxX:1, minY:0, maxY:0.2, minZ:-1, maxZ:1});
@@ -19,21 +20,23 @@ function makeRng(index) {
   return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
-// Merge geometries into one non-indexed BufferGeometry (position/normal/uv). Sources are disposed.
-function merge(T, geos) {
-  let count = 0;
-  const parts = geos.map(g => { const n = g.index ? g.toNonIndexed() : g; if (n !== g) g.dispose(); count += n.attributes.position.count; return n; });
+// Flatten geometries into packed non-indexed arrays (position/normal/uv). Sources are disposed.
+function flatten(geos) {
+  const parts = geos.map(g => { const n = g.index ? g.toNonIndexed() : g; if (n !== g) g.dispose(); return n; });
+  const count = parts.reduce((a, g) => a + g.attributes.position.count, 0);
   const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3), uv = new Float32Array(count * 2);
   let o = 0;
   for (const g of parts) {
-    const c = g.attributes.position.count;
-    for (let i = 0; i < c; i++) {
-      pos[(o + i) * 3] = g.attributes.position.getX(i); pos[(o + i) * 3 + 1] = g.attributes.position.getY(i); pos[(o + i) * 3 + 2] = g.attributes.position.getZ(i);
-      if (g.attributes.normal) { nor[(o + i) * 3] = g.attributes.normal.getX(i); nor[(o + i) * 3 + 1] = g.attributes.normal.getY(i); nor[(o + i) * 3 + 2] = g.attributes.normal.getZ(i); }
-      if (g.attributes.uv) { uv[(o + i) * 2] = g.attributes.uv.getX(i); uv[(o + i) * 2 + 1] = g.attributes.uv.getY(i); }
-    }
+    const a = g.attributes, c = a.position.count;
+    pos.set(a.position.array.subarray(0, c * 3), o * 3);
+    if (a.normal) nor.set(a.normal.array.subarray(0, c * 3), o * 3);
+    if (a.uv) uv.set(a.uv.array.subarray(0, c * 2), o * 2);
     o += c; g.dispose();
   }
+  return {pos, nor, uv};
+}
+
+function toGeometry(T, pos, nor, uv) {
   const out = new T.BufferGeometry();
   out.setAttribute('position', new T.BufferAttribute(pos, 3));
   out.setAttribute('normal', new T.BufferAttribute(nor, 3));
@@ -120,7 +123,7 @@ function lashing(T, rng, x, zb, surf, out) {
   const Ry = (topC - bottomC) / 2, yc = (topC + bottomC) / 2, ky = Ry / R;
   const wraps = 3;
   for (let w = 0; w < wraps; w++) {
-    const t = new T.TorusGeometry(R, tube, 4, 14);
+    const t = new T.TorusGeometry(R, tube, 3, 8);
     t.rotateY(Math.PI / 2); t.scale(1, ky, 1);
     t.rotateZ((rng() - 0.5) * 0.12);
     t.translate(x + (w - (wraps - 1) / 2) * 0.016, yc, zb);
@@ -132,10 +135,9 @@ function lashing(T, rng, x, zb, surf, out) {
   out.push(k);
 }
 
-export function createFloor(T, index = 0, getMaterial) {
+// One tile's parts in tile space: [{name, color, castShadow, pos, nor, uv}] (packed Float32Arrays, no GPU objects).
+export function floorParts(T, index = 0) {
   const rng = makeRng(index);
-  const mat = c => getMaterial ? getMaterial(c) : new T.MeshStandardMaterial({color:c, roughness:0.86});
-  const g = new T.Group(); g.name = 'raft-floor';
 
   // Plank layout: 7 or 8 planks running along Z, uneven widths, gaps <= ~0.022.
   const n = rng() < 0.3 ? 7 : 8, pitch = 2 / n;
@@ -194,23 +196,66 @@ export function createFloor(T, index = 0, getMaterial) {
       for (const x of xs) {
         const z = z0 + (rng() - 0.5) * 0.03;
         const h = new T.CylinderGeometry(0.0105, 0.012, 0.008, 6);
+        h.setIndex(Array.from(h.index.array.slice(0, h.groups[2].start))); // bottom cap is buried in the plank
         h.rotateY(rng() * 1.05); h.translate(x, plankSurface(p, x, z) + 0.0005, z);
         nails.push(h);
       }
     }
   }
 
-  const add = (geo, m, name) => { const mesh = new T.Mesh(geo, m); mesh.name = name; mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh); return mesh; };
-  for (const [color, list] of byColor) add(merge(T, list), mat(color), 'floor-planks');
-  add(merge(T, beams), mat(BEAM_COLOR), 'floor-logs');
-  add(merge(T, caps), mat(BEAM_END_COLOR), 'floor-log-ends');
-  if (ropes.length) add(merge(T, ropes), mat(ROPE_COLOR), 'floor-lashings');
-  if (nails.length) add(merge(T, nails), mat(NAIL_COLOR), 'floor-nails').castShadow = false;
+  const parts = [];
+  const add = (geos, color, name, castShadow = true) => parts.push({name, color, castShadow, ...flatten(geos)});
+  for (const [color, list] of byColor) add(list, color, 'floor-planks');
+  add(beams, BEAM_COLOR, 'floor-logs');
+  add(caps, BEAM_END_COLOR, 'floor-log-ends');
+  if (ropes.length) add(ropes, ROPE_COLOR, 'floor-lashings', false); // thin rope: its shadow is invisible, skip the shadow pass
+  if (nails.length) add(nails, NAIL_COLOR, 'floor-nails', false);
+  return parts;
+}
 
+const defaultMat = T => c => new T.MeshStandardMaterial({color:c, roughness:0.86});
+const disposeMeshes = g => () => g.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
+
+export function createFloor(T, index = 0, getMaterial) {
+  const mat = getMaterial || defaultMat(T);
+  const g = new T.Group(); g.name = 'raft-floor';
+  for (const p of floorParts(T, index)) {
+    const mesh = new T.Mesh(toGeometry(T, p.pos, p.nor, p.uv), mat(p.color)); mesh.name = p.name;
+    mesh.castShadow = p.castShadow; mesh.receiveShadow = true; g.add(mesh);
+  }
   g.userData.kind = 'floor';
   g.userData.index = index;
   g.userData.topY = FLOOR_TOP;
   g.userData.bounds = FLOOR_BOUNDS;
-  g.userData.dispose = () => g.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
+  g.userData.dispose = disposeMeshes(g);
+  return g;
+}
+
+// Many tiles in one Group with one mesh per material + shadow mode (a handful of draw calls however many tiles).
+// tiles: [{parts:floorParts(...), x, z}] with x,z the tile origin in the parent's space. Parts are only read.
+export function createFloorChunk(T, tiles, getMaterial) {
+  const mat = getMaterial || defaultMat(T), buckets = new Map();
+  for (const t of tiles) for (const p of t.parts) {
+    const key = p.color + '|' + p.castShadow;
+    let b = buckets.get(key);
+    if (!b) buckets.set(key, b = {name:p.name, color:p.color, castShadow:p.castShadow, verts:0, list:[]});
+    b.verts += p.pos.length / 3; b.list.push([p, t.x, t.z]);
+  }
+  const g = new T.Group(); g.name = 'raft-floor-chunk';
+  for (const b of buckets.values()) {
+    const pos = new Float32Array(b.verts * 3), nor = new Float32Array(b.verts * 3), uv = new Float32Array(b.verts * 2);
+    let o = 0;
+    for (const [p, x, z] of b.list) {
+      const end = o + p.pos.length;
+      pos.set(p.pos, o); nor.set(p.nor, o); uv.set(p.uv, o / 3 * 2);
+      for (let i = o; i < end; i += 3) { pos[i] += x; pos[i + 2] += z; }
+      o = end;
+    }
+    const mesh = new T.Mesh(toGeometry(T, pos, nor, uv), mat(b.color)); mesh.name = b.name;
+    mesh.castShadow = b.castShadow; mesh.receiveShadow = true; g.add(mesh);
+  }
+  g.userData.kind = 'floor';
+  g.userData.topY = FLOOR_TOP;
+  g.userData.dispose = disposeMeshes(g);
   return g;
 }
