@@ -6,6 +6,7 @@
 // Root is untransformed (engine positions/rotates it). Content is centered on the origin.
 // Each item is ONE mesh whose geometry and material are shared and cached per engine (flagged
 // userData.shared: the engine must not dispose them per item). seed picks one of 3 variants.
+// export createItemBatch(T, group) -> THREE.Group: draws the items under `group` instanced (see below).
 
 const TYPES = ['wood', 'leaf', 'scrap', 'barrel'];
 
@@ -412,10 +413,87 @@ export function createDebris(T, type, getMaterial, opts = {}) {
   const m = new T.Mesh(geo, c.mats[type]);
   m.name = `debris-${type}-model`;
   m.receiveShadow = true; // no castShadow: the water never receives it, so it only doubled draw calls
+  m.userData.batch = true; // shared geometry: createItemBatch may draw it instanced
   root.add(m);
   const size = geo.boundingBox.getSize(new T.Vector3());
   root.userData.size = { x: size.x, y: size.y, z: size.z };
   return root;
+}
+
+// Instanced drawing for floating items built from shared geometry. Add the returned object to the scene
+// (not to `group`, whose children are item roots; both must be direct, untransformed-parent scene children). Each frame, from the scene's matrix update (after all
+// gameplay moves), it gathers every mesh under group's children flagged userData.batch with a
+// userData.shared geometry, hides it, and draws them all as one InstancedMesh per geometry+material+shadow
+// flag. The hidden meshes stay in place for raycasting (Raycaster ignores visibility); item roots keep their
+// own position/rotation/scale/visible, which the instances follow. Add/remove item roots as usual.
+// getCamera (optional) -> the view camera: non-shadow-casting instances outside its frustum are skipped.
+export function createItemBatch(T, group, getCamera) {
+  const holder = new T.Group();
+  holder.name = 'item-batch';
+  const adopted = new WeakMap(), slots = new Map(), slotList = [], m4 = new T.Matrix4(), base = new T.Matrix4();
+  const frustum = new T.Frustum(), sphere = new T.Sphere(), view = new T.Matrix4();
+  const noRaycast = () => {};
+  function entries(item) {
+    let list = adopted.get(item);
+    if (list) return list;
+    list = [];
+    item.traverse((o) => {
+      if (!o.isMesh || o.isInstancedMesh || !o.userData.batch || !o.geometry.userData.shared || Array.isArray(o.material)) return;
+      const local = new T.Matrix4();
+      for (let p = o; p && p !== item; p = p.parent) { if (p.matrixAutoUpdate) p.updateMatrix(); local.premultiply(p.matrix); }
+      o.visible = false;
+      list.push({ key: `${o.geometry.id}:${o.material.id}:${o.castShadow ? 1 : 0}`, mesh: o, local });
+    });
+    adopted.set(item, list);
+    return list;
+  }
+  function grow(s, src, cap) {
+    const im = new T.InstancedMesh(src.geometry, src.material, cap);
+    im.name = 'item-batch-instances';
+    im.castShadow = src.castShadow;
+    im.receiveShadow = src.receiveShadow;
+    im.raycast = noRaycast; // picking resolves through the hidden per-item meshes
+    im.instanceMatrix.setUsage(T.DynamicDrawUsage);
+    if (s.im) { im.instanceMatrix.array.set(s.im.instanceMatrix.array); holder.remove(s.im); s.im.dispose(); }
+    s.im = im; s.cap = cap;
+    holder.add(im);
+  }
+  function sync() {
+    for (let i = 0; i < slotList.length; i++) slotList[i].n = 0;
+    if (group.matrixAutoUpdate) group.updateMatrix(); // group sits directly in the scene, like the holder
+    const cam = getCamera?.();
+    if (cam) { if (!cam.parent) cam.updateMatrixWorld(); frustum.setFromProjectionMatrix(view.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse)); }
+    const kids = group.children;
+    for (let i = 0; i < kids.length; i++) {
+      const item = kids[i], parts = entries(item);
+      if (!parts.length || !item.visible) continue;
+      if (item.matrixAutoUpdate) item.updateMatrix();
+      base.multiplyMatrices(group.matrix, item.matrix);
+      for (let j = 0; j < parts.length; j++) {
+        const e = parts[j];
+        let s = slots.get(e.key);
+        if (!s) { s = { im: null, cap: 0, n: 0 }; slots.set(e.key, s); slotList.push(s); }
+        if (!s.im) grow(s, e.mesh, 16); else if (s.n >= s.cap) grow(s, e.mesh, s.cap * 2);
+        m4.multiplyMatrices(base, e.local);
+        if (cam && !e.mesh.castShadow) { // per-instance view culling, as the per-item meshes had
+          const g = e.mesh.geometry;
+          if (!g.boundingSphere) g.computeBoundingSphere();
+          if (!frustum.intersectsSphere(sphere.copy(g.boundingSphere).applyMatrix4(m4))) continue;
+        }
+        s.im.setMatrixAt(s.n++, m4);
+      }
+    }
+    for (let i = 0; i < slotList.length; i++) {
+      const s = slotList[i];
+      s.im.count = s.n; s.im.visible = s.n > 0;
+      if (s.n) { s.im.instanceMatrix.needsUpdate = true; s.im.computeBoundingSphere(); }
+    }
+  }
+  holder.updateMatrixWorld = function (force) {
+    sync();
+    T.Object3D.prototype.updateMatrixWorld.call(this, force);
+  };
+  return holder;
 }
 
 export default createDebris;

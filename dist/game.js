@@ -9,7 +9,7 @@ import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
 import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-survival-ae77fa84ac2b';
 import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
-import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
+import { createDebris, createItemBatch } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
@@ -431,6 +431,7 @@ export function mount(transfer = null) {
   const itemMeshes = new Map();
   function syncItems() {
     if (!itemsGroup) return;
+    if (!itemsGroup.userData.batch) scene.add(itemsGroup.userData.batch = createItemBatch(T, itemsGroup, () => camera)); // one instanced draw per item variant
     const live = new Set(world.items.map(x => x.token));
     for (const [token, m] of itemMeshes) if (!live.has(token)) { itemsGroup.remove(m); disposeGeometry(m); itemMeshes.delete(token); }
     for (const token of pending.keys()) if (!live.has(token)) pending.delete(token);
