@@ -36,13 +36,13 @@ without this line: `ctx.note?.('bells', k, .8) || ctx.emit?.({kind:'buoy', sound
 ## Pure core API (`dist/buoycourse-core.js`)
 ```
 export const SHAPES = ['loop','sprint','zigzag','eight'];   NAMES = {loop:'Loop', sprint:'Sprint', zigzag:'Zigzag', eight:'Figure 8'}
-export const MODES = ['swim','board'];   export const RING = {R:1.5, HIT:1.6, YLO:-1.6, YHI:2.0, TELEPORT:3, CLEAR:5, FAR:20, LIM:40, MAXG:10, TOP:5}
+export const MODES = ['swim','board'];   export const RING = {R:1.5, HIT:1.6, YLO:-1.6, YHI:1.4, YHI_BOARD:2.0, TELEPORT:3, CLEAR:5, FAR:20, LIM:40, MAXG:10, TOP:5}
 export const MAX_MS = 600000, MIN_SPEED = 6;           // m/s ceiling for validation (fins + meal + dive / board sprint < 6)
 bbox(tiles) -> {x0,x1,z0,z1} | null                    // metres; tile [tx,tz] covers tx*2±1, tz*2±1
 clearOf(b, x, z) -> number                             // distance from point to bbox rectangle, 0 inside
 nearestTile(tiles, x, z) -> number                     // distance to the nearest tile square
 makeCourse(shape, tiles, flag:[fx,fz]) -> [[x,z,yaw],...] | null   // null if unknown shape, no tiles, or any gate fails bounds
-crossGate(p0, p1, g, waterY) -> boolean                // p = {x,y,z} (eye), g = [x,z,yaw]
+crossGate(p0, p1, g, waterY, hi=RING.YHI) -> boolean                // p = {x,y,z} (eye), g = [x,z,yaw]
 pathLength(gates, fx, fz) -> metres                    // flag (fx*2,fz*2) -> g0 -> g1 ... -> last
 minMs(gates, fx, fz) -> Math.floor(pathLength / MIN_SPEED * 1000)
 addBest(list, name, ms) -> {list, rank, best}          // new array, asc by ms, one row per name (keeps faster), TOP rows; rank 0-based or -1
@@ -55,7 +55,7 @@ validFinish(st, a) -> boolean                          // the buoy.finish predic
 **Gate frame.** For a gate `[x,z,yaw]`, the normal is `n = (sin yaw, cos yaw)` (the travel direction) and the tangent is `t = (n.z, -n.x)`. Round x and z to 0.1 and yaw to 0.01.
 
 **crossGate.** Return false if any value is not finite or the horizontal distance `|p1-p0| > TELEPORT`. Let `d0=(p0-c)·n` and `d1=(p1-c)·n`. A hit
-needs `d0 < 0 && d1 >= 0`. Then `s=d0/(d0-d1)` and `q=lerp(p0,p1,s)`. Require `|(q-c)·t| <= HIT` and `waterY+YLO <= q.y <= waterY+YHI`. YHI 2.0 lets the board rider's eye (≈ waterY+1.72 plus swell lag, paddleboard.md asks for ≥ 1.9) through. The deck is solid, so walkers never reach these gates.
+needs `d0 < 0 && d1 >= 0`. Then `s=d0/(d0-d1)` and `q=lerp(p0,p1,s)`. Require `|(q-c)·t| <= HIT` and `waterY+YLO <= q.y <= waterY+hi`. The caller passes `hi = RING.YHI_BOARD` (2.0) when `ctx.physics.mount === 'driftboard'`, so the rider's eye (≈ waterY+1.72 plus swell lag, ≥ 1.9 per paddleboard.md) registers; otherwise 1.4 (swim/shallow dive). The deck is solid, so walkers never reach these gates.
 
 **makeCourse.** Let `b = bbox(tiles)`, centre `(cx,cz)`, half sizes `hx,hz`. The flag side is the bbox side nearest the flag tile
 centre. Its outward unit axis is `d` (±x or ±z), the along axis is `a = (d.z, -d.x)`, and `e` is that side's coordinate (e.g. `x1` for +x).
@@ -95,7 +95,7 @@ Every candidate gate is pushed radially away from `(cx,cz)` in 0.5 m steps (≤ 
 - **Countdown:** `cd = 3`. The pill shows big "3", "2", "1" with `ctx.emit({kind:'buoy', sound:'ui'}, 'host')` on each tick, then "Go!",
   and the phase becomes `'go'` with `t = 0`, `next = 0`, `gk = st.shape + ':' + gateHash(st.g)`, `shape = st.shape`.
 - **Timer:** in `update(dt)`, `t += dt` while phase is go (game dt is capped, so a stall can't add much). Stored ms = `Math.round(t*1000)`.
-- **Detection** happens in `afterMove(physics, dt)` while phase is go: `p1 = physics`. If `prev.ok && crossGate(prev, p1, st.g[next], ctx.ocean.getHeight(g.x, g.z))`,
+- **Detection** happens in `afterMove(physics, dt)` while phase is go: `p1 = physics`. If `prev.ok && crossGate(prev, p1, st.g[next], ctx.ocean.getHeight(g.x, g.z), ridingBoard() ? RING.YHI_BOARD : RING.YHI)`,
   then `ctx.note?.('bells', Math.min(next, 7), .8)`. If `ridingBoard()` is true, `run.mode = 'board'` (sticky). Then `next++`. When `next === g.length`, finish: send
   `ctx.action({kind:'buoy.finish', shape, mode, ms, name:readName(), gk})` and go idle. Copy p1 into `prev` with no allocation.
   Only `g[next]` is tested. A missed gate stays lit, so you can't skip ahead.
@@ -153,7 +153,7 @@ Example QA: `place`, `shape('sprint')`, `start()`, `teleportThrough(0..4)` → a
 
 ## Tests (`tests/buoycourse.test.mjs`)
 1. crossGate: a straight swim through the centre hits. The reverse direction misses. Parallel misses. Lateral 1.55 hits, 1.7 misses.
-2. crossGate: an eye 1.7 under the water misses, a board eye +1.9 hits, +2.1 misses. A >3 m jump (teleport) misses. NaN misses. A start exactly on the plane (d0=0) misses, and ending on the plane hits.
+2. crossGate: an eye 1.7 under the water misses, an eye at +1.6 misses with the default hi and hits with YHI_BOARD; +1.9 hits and +2.1 misses with YHI_BOARD. A >3 m jump (teleport) misses. NaN misses. A start exactly on the plane (d0=0) misses, and ending on the plane hits.
 3. makeCourse, for each shape on a 1-tile, 3x3, 6x2 and L-shaped raft: the right count (7/5/6/9), every gate `nearestTile ≥ 4` and `≤ 20`, |x|,|z| ≤ 40, deterministic.
 4. makeCourse: a huge raft (40x40 tiles) gives null for every shape, unknown shape or empty tiles give null, and with the flag on an edge tile, the sprint finish is ≤ 7 m from it.
 5. Gate yaw follows the path: a swimmer stepping gate→gate along the polyline hits every gate in order.
