@@ -34,3 +34,12 @@ test('C1: game.js records user lock losses, resets failures on them, and feeds t
   assert.match(g, /userExitAt = now; lockFailures = 0;/);
   assert.match(g, /pageReleaseAt = performance\.now\(\); document\.exitPointerLock/);
 });
+
+test('C2: drag-look fallback never hides the cursor waiting for a relock', () => {
+  const g = read('game.js'), s = read('settings.js');
+  assert.match(g, /b\.toggle\('drag-look', lockFallback\); if \(lockFallback\) b\.remove\('relock'\)/);
+  assert.doesNotMatch(s, /body\.relock #world\{cursor:none\}/);
+  assert.match(s, /body\.relock:not\(\.drag-look\) #world\{cursor:none\}/);
+  assert.match(s, /body\.relock:not\(\.drag-look\) #resumeHint\{display:none!important\}/);
+  assert.match(s, /!document\.body\.classList\.contains\('drag-look'\)\) document\.body\.classList\.add\('relock'\)/);
+});
