@@ -27,7 +27,7 @@ import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?bui
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint } from './hud.js?build=v3-survival-ae77fa84ac2b';
 import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
-import { keyDecision } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
+import { keyDecision, createLookFilter } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -211,6 +211,7 @@ export function mount(transfer = null) {
   let physics = makePhysics(X);
   let other = X?.other ? validPose(X.other) : null;
   let keys = X?.keys && typeof X.keys === 'object' ? {...X.keys} : {};
+  const lookFilter = createLookFilter(); // drops pointer-lock spikes without cutting real flicks short
   let hook = X?.hook && (X.hook.fishing || typeof X.hook.update === 'function') ? X.hook : null;
   let castId = typeof X?.castId === 'string' ? X.castId : newToken();
   let hookSlot = isInt(X?.hookSlot) ? X.hookSlot : -1;
@@ -487,9 +488,9 @@ export function mount(transfer = null) {
   }
   function releaseLock() { if (isLocked()) document.exitPointerLock?.(); }
   function look(dx, dy, k) { yaw -= dx * k; pitch = clamp(pitch - (options.invertY ? -dy : dy) * k, -PITCH_LIMIT, PITCH_LIMIT); }
-  function clearInput() { keys = {}; charging = null; reeling = false; down = null; }
+  function clearInput() { keys = {}; charging = null; reeling = false; down = null; lookFilter.reset(); }
   // A panel opening keeps held keys (keyup still arrives); only window blur really loses keyups.
-  function pauseInput() { charging = null; reeling = false; down = null; }
+  function pauseInput() { charging = null; reeling = false; down = null; lookFilter.reset(); }
 
   // ---------- Aiming ----------
   function pickNdc(nx, ny) {
@@ -990,6 +991,7 @@ export function mount(transfer = null) {
   // ---------- Input ----------
   const on = (target, type, fn, opts = {}) => target?.addEventListener(type, guard(fn), {...opts, signal});
   on(document, 'pointerlockchange', () => {
+    lookFilter.reset({dropFirst:isLocked()}); // the first move after lock is often a bogus jump
     if (isLocked()) { lockFallback = false; lockFailures = 0; }
     else { if (charging && charging.x === null) charging = null; reeling = false; }
     down = null; refreshPointerUI(true);
@@ -997,7 +999,8 @@ export function mount(transfer = null) {
   on(document, 'pointerlockerror', lockFailed);
   on(document, 'mousemove', e => {
     if (!isLocked() || uiBlocked()) return;
-    look(clamp(e.movementX, -200, 200), clamp(e.movementY, -200, 200), LOOK_SENSITIVITY * options.sensitivity);
+    const [dx, dy] = lookFilter.filter(e.movementX, e.movementY);
+    look(dx, dy, LOOK_SENSITIVITY * options.sensitivity);
   });
   on(canvas, 'pointerdown', e => {
     if (!running || !scene || e.button !== 0 || uiBlocked()) return;
