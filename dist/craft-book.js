@@ -26,7 +26,7 @@ export const ITEM_TEXT = Object.freeze({
   scrap:      { desc: 'Bent bits of salvaged metal.', use: 'Lanterns, crates and hook repairs.' },
   rope:       { desc: 'Palm fibre twisted into a sturdy cord.', use: 'Binds hammers, rods, nets and sails.' },
   fish:       { desc: 'A fresh catch from the open water.', use: 'Proof of a good day out on the waves.' },
-  hook:       { desc: 'A scrap hook on a rope. Throw it at floating supplies.', use: 'Collecting wood, leaves, plastic and barrels.' },
+  hook:       { desc: 'A scrap hook on a rope. Throw it at floating supplies.', use: 'Pulls in floating wood, leaves, plastic and barrels.' },
   hammer:     { desc: 'A rope-bound building hammer.', use: 'Adds raft floor tiles (2 wood + 2 plastic each).' },
   fishingrod: { desc: 'A bamboo rod with a float and line.', use: 'Cast into the sea and wait for a bite to catch fish.' },
   sail:       { desc: 'A tall mast with a woven sail.', use: 'Decorates the raft; place it on a floor tile.' },
