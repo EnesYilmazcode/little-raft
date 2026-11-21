@@ -322,7 +322,7 @@ export function mount(transfer = null) {
   function hasTile(x, z) { const ts = world.tiles; for (let i = 0; i < ts.length; i++) if (ts[i][0] === x && ts[i][1] === z) return true; return false; }
   const isLocked = () => !!canvas && document.pointerLockElement === canvas;
   const dialogOpen = () => !!document.querySelector('dialog[open]');
-  const uiBlocked = () => dialogOpen() || !!survivalUI?.isOpen;
+  const uiBlocked = () => dialogOpen() || !!survivalUI?.isOpen || deadUntil > 0; // [needs] the dead player cannot move or act until respawn
   const castOut = () => (hook && !hook.fishing ? hook : null);
   const guestWaiting = () => role === 'guest' && !networkReady;
   const chargeValue = () => (charging ? clamp((performance.now() - charging.start) / CHARGE_MS, MIN_CHARGE, 1) : 0);
@@ -421,7 +421,7 @@ export function mount(transfer = null) {
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
     building = createBuilding(T, scene); // building-pieces lane hook
     // [shark] host/solo simulate, a guest renders the host's pose; tiles are torn off through sharkTearTile()
-    try { shark = createSharkRuntime({T, scene, ocean, bus:sharkBus, modes:SHARK_MODES, role:() => role, tiles:() => world.tiles, local:() => physics, other:() => other,
+    try { shark = createSharkRuntime({T, scene, ocean, bus:sharkBus, modes:SHARK_MODES, role:() => role, tiles:() => world.tiles, local:() => (deadUntil ? null : physics), other:() => other,
       isProtected:sharkProtected, destroyTile:sharkTearTile, emit, play, action}); } catch (e) { console.error('shark failed', e); shark = null; }
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
@@ -807,7 +807,7 @@ export function mount(transfer = null) {
     if (Array.isArray(e.tokens)) for (const t of e.tokens) if (typeof t === 'string') pending.delete(t);
     if (e.kind === 'needs:eat') needs.eat(e.food); // [needs] the host took the item from our bag
     if (prog?.effect(e)) return; // [progression-hook]
-    if (e.kind === 'sharkBite') sharkBus.needs?.damage?.(SHARK_BITE_DAMAGE, 'shark'); // [shark] host tells whoever got bitten
+    if (e.kind === 'sharkBite') needs.damage(SHARK_BITE_DAMAGE, 'shark'); // [shark] host tells whoever got bitten (this engine's own needs, not the shared bus slot another mount may hold during a hot swap)
     if (e.loot && typeof e.loot === 'object') { for (const [k, n] of Object.entries(e.loot)) if (ITEM_INFO[k] && isInt(n) && n > 0) pickupFeed.add(k, n); } // pickup feed rows with icons
     else if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90));
     if (e.kind === 'note' || e.kind === 'achievement') logbookUI?.celebrate?.(e);
