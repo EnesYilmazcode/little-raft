@@ -1,5 +1,6 @@
 import * as T from './vendor/three.module.js';
 import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
+import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
@@ -147,7 +148,7 @@ export function mount(transfer = null) {
   function validPose(p) {
     if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.z) || Math.abs(p.x) >= 120 || Math.abs(p.z) >= 120) return null;
     const y = Number.isFinite(p.y) && p.y >= -10 && p.y <= 30 ? p.y : null;
-    return {x:p.x, y, z:p.z, yaw:Number.isFinite(p.yaw) ? p.yaw : 0, swimming:!!p.swimming};
+    return {x:p.x, y, z:p.z, yaw:Number.isFinite(p.yaw) ? p.yaw : 0, pitch:Number.isFinite(p.pitch) ? p.pitch : 0, swimming:!!p.swimming, held:typeof p.held === 'string' ? p.held.slice(0, 16) : null};
   }
   // Own-raft backup while visiting as a guest. v2 stored a bare world; v3 stores {world, host, guest, physics}.
   function normaliseBackup(b) {
@@ -196,7 +197,11 @@ export function mount(transfer = null) {
   let castId = typeof X?.castId === 'string' ? X.castId : newToken();
   let hookSlot = isInt(X?.hookSlot) ? X.hookSlot : -1;
   let fishWait = Number.isFinite(X?.fishWait) ? X.fishWait : 0;
-  let sound = X ? X.sound !== false : true, audio = X?.audio ?? null;
+  let sound = X ? X.sound !== false : true;
+  const sfx = createOceanAudio({context:X?.audio ?? null, volume:sound ? options.volume : 0});
+  const play = (ev, s) => sfx.play(ev, s);
+  const applyVolume = () => sfx.setVolume(sound ? options.volume : 0);
+  if (X?.audio) sfx.resume(); // hot swap: the old context is already unlocked
   let charging = X?.charging && Number.isFinite(X.charging.start) ? {...X.charging} : null, reeling = !!X?.reeling && !!hook;
   let lastCaughtCount = isInt(X?.lastCaughtCount) ? X.lastCaughtCount : (hook?.caughtItems?.length ?? (hook?.caught ? 1 : 0));
   const pending = new Map(X?.pending instanceof Map ? X.pending : []); // item token -> expiry; hides supplies we reeled in while the host confirms
@@ -397,7 +402,6 @@ export function mount(transfer = null) {
     const el = $('#toast'); if (!el) return; el.textContent = s; el.classList.add('show');
     toastTimer = cancelTimer(toastTimer); toastTimer = later(() => { toastTimer = 0; el.classList.remove('show'); }, 2600);
   }
-  function beep(f = 500) { if (!sound || !(options?.volume > 0)) return; try { audio ??= new AudioContext(); audio.resume(); const o = audio.createOscillator(), g = audio.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(f, audio.currentTime); o.frequency.exponentialRampToValueAtTime(f * 1.4, audio.currentTime + .12); g.gain.setValueAtTime(.12 * options.volume, audio.currentTime); g.gain.exponentialRampToValueAtTime(.001, audio.currentTime + .22); o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + .23); } catch {} }
   function updateContext(dialog) {
     let html = '';
     if (running && !dialog) {
@@ -527,7 +531,7 @@ export function mount(transfer = null) {
     if (!e || typeof e !== 'object') return;
     if (Array.isArray(e.tokens)) for (const t of e.tokens) if (typeof t === 'string') pending.delete(t);
     if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90));
-    beep(e.kind === 'build' ? 640 : e.kind === 'craft' ? 560 : e.kind === 'full' ? 220 : 440);
+    play(e.kind === 'build' ? (/repaired/.test(e.text) ? 'repair' : 'build') : e.kind === 'craft' ? 'craft' : e.kind === 'loot' ? 'collect' : 'deny', e.kind === 'notice' ? .6 : 1);
   }
   function wearHook(bag, slot, actor) {
     const i = hookIndex(bag, slot); if (i < 0) return;
@@ -598,7 +602,7 @@ export function mount(transfer = null) {
   function selectSlot(i) {
     if (!isInt(i) || i < 0 || i >= HOTBAR) return;
     const bag = localBag(); if (bag.selectedIndex === i) return;
-    charging = null; hover = null;
+    charging = null; hover = null; play('ui', .5);
     if (role === 'guest') { if (!networkReady) return; bag.select(i); action({kind:'selectSlot', index:i}); }
     else action({kind:'selectSlot', index:i});
   }
@@ -609,13 +613,13 @@ export function mount(transfer = null) {
   }
   function craft(recipe) { if (typeof recipe === 'string') action({kind:'craft', recipe}); }
   function repair() { if (!running) return; const bag = localBag(); action({kind:'repair', slot:hookIndex(bag)}); }
-  function openInventory() { if (!running || !survivalUI) return; clearInput(); releaseLock(); survivalUI.open?.(); }
+  function openInventory() { if (!running || !survivalUI) return; clearInput(); releaseLock(); survivalUI.open?.(); play('open'); }
   function interact() {
     if (!running || uiBlocked()) return;
     const target = pickupFrom(currentAim());
     if (target) {
       if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
-      pending.set(target.token, performance.now() + PENDING_MS); swing = .6; beep(500);
+      pending.set(target.token, performance.now() + PENDING_MS); swing = .6;
       action({kind:'collect', id:target.id, token:target.token});
       return;
     }
@@ -637,7 +641,7 @@ export function mount(transfer = null) {
       if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2))) { notice('Point at the water to fish'); return; }
       if (Math.hypot(p.x - physics.x, p.z - physics.z) > FISH_REACH) { notice('Try a spot a little closer'); return; }
       fishWait = 3 + Math.random() * 2; hook = {end:new T.Vector3(p.x, .1, p.z), t:0, duration:fishWait + .8, fishing:true};
-      swing = 1; notice('Wait for a bite…', 2500); beep(280);
+      swing = 1; notice('Wait for a bite…', 2500); play('throw', .5);
     }
   }
   function beginCharge(at) {
@@ -658,7 +662,7 @@ export function mount(transfer = null) {
     const durability = clamp(slot.durability ?? MAX_HEALTH, 0, MAX_HEALTH), maxRange = 16 + durability * .16;
     const direction = aim?.dir ?? camera.getWorldDirection(new T.Vector3());
     hook = new HookCast(T, {origin:handPos.clone(), direction, maxRange, charge});
-    castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; beep(230);
+    castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; play('throw', charge);
     if (durability <= 0) notice('Worn hook: shorter throws. R to repair');
   }
 
@@ -679,6 +683,7 @@ export function mount(transfer = null) {
   }
 
   // ---------- Movement ----------
+  let swimStroke = 0;
   const held = (...codes) => codes.some(c => keys[c]);
   function movePlayer(dt, input) {
     if (!running) { walking = false; return; }
@@ -686,8 +691,12 @@ export function mount(transfer = null) {
     const ev = physics.update(dt, {forward:fwd, strafe:side, yaw, jump:input && held('Space'), sprint:input && held('ShiftLeft', 'ShiftRight'),
       tiles:world.tiles, deckY:deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList});
     const speed = Math.hypot(physics.vx, physics.vz);
+    const wasGrounded = physics.grounded, stepFrom = Math.floor(walkPhase / Math.PI);
     walking = physics.grounded && speed > .4; if (walking) walkPhase += dt * 9 * Math.min(1.6, speed / 2.6);
-    if (ev?.splashed) beep(180);
+    if (walking && Math.floor(walkPhase / Math.PI) !== stepFrom) play('step', clamp(speed / 4, .45, 1));
+    if (physics.swimming && speed > .5) { swimStroke += dt; if (swimStroke > .75) { swimStroke = 0; play('swim', .7); } }
+    if (ev?.splashed) play('splash'); else if (ev?.landed && !wasGrounded) play('land', .7);
+    else if (wasGrounded && !physics.grounded && physics.vy > 1) play('jump', .8);
     if (![physics.x, physics.y, physics.z].every(Number.isFinite)) { const s = spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); }
   }
 
@@ -741,8 +750,11 @@ export function mount(transfer = null) {
     friend.visible = !!other;
     if (other) {
       friendTarget.set(other.x, other.y !== null ? other.y - EYE_OFFSET : deckY(), other.z);
-      if (friend.position.distanceTo(friendTarget) > 3) friend.position.copy(friendTarget); else friend.position.lerp(friendTarget, Math.min(1, dt * 12));
+      const before = tmpV.copy(friend.position);
       friend.rotation.y = (other.yaw ?? 0) + Math.PI;
+      if (friend.position.distanceTo(friendTarget) > 3) friend.position.copy(friendTarget); else friend.position.lerp(friendTarget, Math.min(1, dt * 12));
+      friend.userData.setHeld?.(other.held);
+      friend.userData.animate?.(dt, {speed:Math.min(6, Math.hypot(friend.position.x - before.x, friend.position.z - before.z) / dt), swimming:other.swimming, pitch:other.pitch});
     }
   }
   function updateItems(dt) {
@@ -767,6 +779,7 @@ export function mount(transfer = null) {
       m.rotation.set(-s.z * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.x * 1.2 + Math.sin(elapsed + it.phase) * .05);
     }
   }
+  let hookStage = '';
   function endHook() { hook = null; lastCaughtCount = 0; reeling = false; rope.visible = false; hookMesh.visible = false; }
   function updateHook(dt) {
     if (!hook) { rope.visible = false; hookMesh.visible = false; return; }
@@ -789,7 +802,7 @@ export function mount(transfer = null) {
     for (let i = 1; i < pts.length; i++) pts[i].y = surfaceY(pts[i].x, pts[i].z, pts[i].y);
     pts[pts.length - 1].copy(pos); setRope(pts);
     const caught = caughtList(hook);
-    if (caught.length !== lastCaughtCount) { if (caught.length > lastCaughtCount) beep(520 + caught.length * 30); lastCaughtCount = caught.length; }
+    if (caught.length !== lastCaughtCount) { if (caught.length > lastCaughtCount) play('catch'); lastCaughtCount = caught.length; }
     for (let i = 0; i < caught.length; i++) { // visual only: the whole catch trails the hook as a bundle
       const m = itemMeshes.get(caught[i].token), cp = hook.caughtPosition(i, tmpV);
       if (m && cp) { m.position.set(cp.x, surfaceY(cp.x, cp.z, cp.y) - .02, cp.z); m.scale.setScalar(clamp(hook.distance / 2.5, .35, 1)); }
@@ -801,7 +814,10 @@ export function mount(transfer = null) {
         pending.set(it.token, performance.now() + PENDING_MS);
         action({kind:'collect', id:it.id, token:it.token, cast:castId, slot:hookSlot});
       }
-    } else if (ev?.kind === 'returned') beep(300);
+    } else if (ev?.kind === 'returned') play('catch', .35);
+    if (hook.stage === 'floating' && hookStage === 'flying') play('splash', .8);
+    if (hook.stage === 'reeling') play('reel', .7);
+    hookStage = hook.stage;
     if (hook.stage === 'done') endHook();
   }
   function updateGhost() {
@@ -816,13 +832,13 @@ export function mount(transfer = null) {
     return {type:'state', v:3, ack:guestAck, bag:guestBag.snapshot(), other:pose(),
       world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items}};
   }
-  const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, swimming:physics.swimming});
+  const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, held:heldKind()});
   function frame() {
     const now = performance.now(), dt = Math.min((now - last) / 1000, .05); last = now; elapsed += dt;
     const dialog = uiBlocked();
     if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { closeConnection(); toast('Host disconnected. You are back on your own raft.'); }
     if (role === 'host' && conn?.open && now - lastGuestMessage > 8000) { const stale = conn; conn = null; unbindTarget(stale); stale.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); }
-    ocean.update(elapsed, camera);
+    ocean.update(elapsed, camera); sfx.tick(dt, {swimming:physics.swimming});
     updateRaft(dt); movePlayer(dt, running && !dialog);
     updateAvatars(dt); updateCamera(dt);
     frameAim = running && !dialog ? currentAim() : null;
@@ -900,6 +916,10 @@ export function mount(transfer = null) {
   }, {passive:false});
   on($('#resumeHint'), 'click', () => requestLock());
 
+  // audio unlocks on the first gesture; every menu button gets the same soft click
+  on(window, 'pointerdown', () => { sfx.resume(); }, {capture:true});
+  on(window, 'keydown', () => { sfx.resume(); }, {capture:true});
+  on(document, 'click', e => { if (e.target?.closest?.('button, [role=button], .slot')) play('ui', .8); });
   on(window, 'keydown', e => {
     if (e.target?.matches?.('input, textarea, select') || uiBlocked()) return;
     keys[e.code] = true;
@@ -925,7 +945,7 @@ export function mount(transfer = null) {
   setHandler($('#repairButton'), 'onclick', repair);
   document.querySelectorAll('[data-close]').forEach(b => setHandler(b, 'onclick', () => $('#' + b.dataset.close)?.close()));
   const soundLabel = () => setText('#soundButton', 'Sound: ' + (sound ? 'on' : 'off'));
-  setHandler($('#soundButton'), 'onclick', () => { sound = !sound; soundLabel(); });
+  setHandler($('#soundButton'), 'onclick', () => { sound = !sound; applyVolume(); soundLabel(); });
   soundLabel();
 
   // ---------- Networking (PeerJS, host authoritative) ----------
@@ -1092,6 +1112,7 @@ export function mount(transfer = null) {
   }
   const worldPos = o => { if (!o) return null; const p = o.getWorldPosition(new T.Vector3()); return {x:p.x, y:p.y, z:p.z, visible:o.visible}; };
   const debugApi = Object.freeze({
+    audio:sfx, // volume buses (setBus/getBus master|effects|ambience|music) and setMusic for the menus
     get state() {
       const hc = castOut(), bag = localBag(), counts = bag.counts(), kind = heldKind();
       const mode = kind === 'hammer' ? 'build' : kind === 'fishingrod' ? 'fish' : kind === 'hook' ? 'hook' : DECOR_TYPES.includes(kind) ? 'place' : 'none';
@@ -1136,7 +1157,7 @@ export function mount(transfer = null) {
     return {
       version:3, world, bags:{host:hostBag.snapshot(), guest:guestBag.snapshot(), remote:remoteBag ? remoteBag.snapshot() : null},
       physics:physics.capture(), me:{x:physics.x, y:physics.y, z:physics.z}, other:other ? {...other} : null, yaw, pitch, running, elapsed, walkPhase,
-      hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio, peer, conn, role, networkReady, room, ownWorldBackup, pending:new Map(pending),
+      hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio:sfx.context, peer, conn, role, networkReady, room, ownWorldBackup, pending:new Map(pending),
       wornCasts:{...wornCasts}, seq, lastSeqSent, guestAck,
       joinDeadline:joinTimer ? joinDeadline : 0, saveAvailable, lockFallback, keys:{...keys},
       charging:charging ? {...charging} : null, reeling, down:down ? {...down} : null,
@@ -1167,7 +1188,7 @@ export function mount(transfer = null) {
   }
   function dispose() {
     if (disposed) return;
-    pause(); disposed = true; ac.abort();
+    pause(); disposed = true; ac.abort(); sfx.destroy();
     try { settingsController?.destroy(); } catch {}
     try { survivalUI?.destroy?.(); } catch {}
     for (const id of timers) clearTimeout(id); timers.clear();
@@ -1180,13 +1201,13 @@ export function mount(transfer = null) {
   try {
     if (!canvas) throw new Error('#world canvas missing');
     init();
-    settingsController = createSettings({onChange:next => { options = next; if (renderer) { renderer.setPixelRatio(Math.min(devicePixelRatio, next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3)); renderer.shadowMap.enabled = next.graphics !== 'low'; } }, onPause:clearInput, onResume:() => requestLock()});
+    settingsController = createSettings({onChange:next => { options = next; applyVolume(); if (renderer) { renderer.setPixelRatio(Math.min(devicePixelRatio, next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3)); renderer.shadowMap.enabled = next.graphics !== 'low'; } }, onPause:clearInput, onResume:() => requestLock()});
     survivalUI = createSurvivalUI({
       getBag:() => localBag(),
       onSelect:guard(i => selectSlot(i)),
       onMove:guard((from, to, amount) => moveSlot(from, to, amount)),
       onCraft:guard(id => craft(id)),
-      onResume:guard(() => requestLock()),
+      onResume:guard(() => { play('close'); requestLock(); }),
       onPause:guard(clearInput),
     });
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
