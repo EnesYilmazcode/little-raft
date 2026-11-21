@@ -377,13 +377,16 @@ function boot() {
     const headH = (head.offsetHeight || 22) + 14; // header strip with the panel padding
     const span = {left:pr.left, right:pr.right, top, bottom:top + natural};
     const tr = trk && !trk.hasAttribute('data-ob-yield') ? visRect(trk) : null;
-    let cap = notesCap(span, [tr, ...col], GUTTER);
+    const floor = {left:0, right:innerWidth, top:innerHeight, bottom:innerHeight + 1}; // short windows: never past the bottom edge
+    let cap = notesCap(span, [tr, visRect($('.tools.sv-hotbar')), floor, ...col], GUTTER);
     if (cap === null && capPx !== null && now < capUntil) cap = capPx; // hold the last cap briefly
     else if (cap !== null) capUntil = now + COL_HOLD_MS;
     capPx = cap;
     const clear = cap !== null && cap < headH, capped = cap !== null && !clear && cap < natural;
-    const mh = capped ? `${fitRows(cap, headH, [...rowsEl.children].map(li => li.offsetTop + li.offsetHeight + 10))}px` : '';
+    const lis = [...rowsEl.children], bottoms = lis.map(li => li.offsetTop + li.offsetHeight + 10), fit = capped ? fitRows(cap, headH, bottoms) : Infinity;
+    const mh = capped ? `${fit}px` : '';
     if (st.maxHeight !== mh) { if (mh) st.maxHeight = mh; else st.removeProperty('max-height'); }
+    lis.forEach((li, i) => li.classList.toggle('ob-cut', bottoms[i] > fit)); // a cut row would peek through the bottom padding
     panel.classList.toggle('ob-capped', capped); panel.classList.toggle('ob-clear', clear);
   }
 
