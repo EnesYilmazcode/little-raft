@@ -81,6 +81,7 @@ const STOCK_KEYS = Object.freeze(['wood', 'leaf', 'scrap', 'plastic']); // legac
 const START_TILES = 9; // newWorld() raft size (3x3); more tiles means the player has built a floor
 const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
+const REPAIR_PICK = Object.freeze({costOf: repairCost, roleOf: toolRole}); // R repairs any repairable tool (selected first), else a worn hook
 const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12, receiver:.35, antenna:.1, purifier:.3, rainbarrel:.3, sprinkler:.12, ...CONTENT_BLOCK_RADIUS, ...BLOCK_RADII}); // content hook, [progression-hook]
 const SAVE = 'little-raft-v1';
 const SAVE_STATUS = "Solo and hosted rafts save automatically. Joining uses the host's world."; // #saveStatus default
@@ -150,6 +151,7 @@ export function mount(transfer = null) {
   const commit = (bag, scratch) => { for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i]; };
   const canAfford = (bag, cost) => Object.entries(cost).every(([k, n]) => bag.count(k) >= n);
   const itemName = k => (ITEM_INFO[k]?.name ?? k).toLowerCase();
+  const toolName = k => ITEM_INFO[k]?.name ?? k;
   const missingText = (bag, cost) => Object.entries(cost).filter(([k, n]) => bag.count(k) < n).map(([k, n]) => `${n - bag.count(k)} more ${itemName(k)}`).join(' and ');
   function spend(bag, cost) { // atomic
     const s = new Bag(bag.snapshot());
@@ -475,7 +477,7 @@ export function mount(transfer = null) {
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !inputBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
       getPush:(s, o) => { content?.sailPush(s, o); }, steerTargets:() => content?.steerTargets() ?? null, sailKnown}); /* engine: motor push + wheel grab points */ for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
-    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
+    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id}), ground:() => sailing?.ground ?? null, wrap:sailing?.islandWrap ?? 0}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     initShark(); // shark lane
     rebuildRaft(); fitShadow();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
@@ -728,6 +730,7 @@ export function mount(transfer = null) {
     const k = running && !dialog && fainted < 0 && !hook && !fishWait && !pickTarget && !waterAim?.click ? eatKind() : null;
     if (!k) { eatTip = null; return; }
     if (eating) { EATING_TIP.label = FOOD[k].food > 0 ? 'Eating…' : 'Drinking…'; eatTip = EATING_TIP; return; }
+    if (waterAim?.why && CUP_KINDS.includes(k)) { eatTip = null; return; } // a cup at a busy station shows its status (promptTip), not Drink
     eatTip = eatTips.get(k); if (!eatTip) { eatTip = {key:'LMB', label:eatLabel(k)}; eatTips.set(k, eatTip); }
   }
   function promptTip() { // watering hints only when actionable or while holding a cup (never hides the hook's "Throw")
@@ -1174,9 +1177,9 @@ export function mount(transfer = null) {
       return;
     }
     if (a.kind === 'gather') { // diving lane hook: seafloor node, validated by id + diver distance
-      const n = nodeById(a.id, islands), p = actor === 'guest' ? other : physics; if (!n || !p || p.y == null) return;
+      const f = diving?.seafloor?.frame ?? null, n = nodeById(a.id, islands, f), p = actor === 'guest' ? other : physics; if (!n || !p || p.y == null) return; // ground-space node (seafloor drifts with sailing)
       if (gatheredIds.has(n.id) || diving?.seafloor?.isGathered?.(n.id)) { nodeTaken(n.id, actor); return; } // tell a stale client it is gone
-      if (Math.hypot(n.x - p.x, n.y - p.y, n.z - p.z) > DIVE.REACH + 1.5) return;
+      if (Math.hypot(n.x - (f?.gx ?? 0) - p.x, n.y - p.y, n.z - (f?.gz ?? 0) - p.z) > DIVE.REACH + 1.5) return; // reach in scene space
       const scratch = new Bag(bag.snapshot()), loot = NODE_LOOT[n.type];
       for (const [k, c] of Object.entries(loot)) if (scratch.add(k, c) > 0) { emit({kind:'full', text:'Your bag is full'}, actor); return; }
       commit(bag, scratch); gatheredIds.add(n.id); later(() => gatheredIds.delete(n.id), DIVE.REGROW * 1000); nodeTaken(n.id, 'all');
@@ -1189,12 +1192,13 @@ export function mount(transfer = null) {
       award({kind:'fish'}); return;
     }
     if (a.kind === 'repair') {
-      const i = repairHookSlot(bag.slots, a.slot, MAX_HEALTH);
-      if (i < 0) { emit({kind:'notice', text:'No hook to repair'}, actor); return; }
-      if ((bag.slots[i].durability ?? MAX_HEALTH) >= MAX_HEALTH) { emit({kind:'notice', text:'Your hook is in great shape'}, actor); return; }
+      const i = repairHookSlot(bag.slots, a.slot, MAX_HEALTH, REPAIR_PICK);
+      if (i < 0) { emit({kind:'notice', text:'No worn tool to repair'}, actor); return; }
+      const name = toolName(bag.slots[i].kind);
+      if ((bag.slots[i].durability ?? MAX_HEALTH) >= MAX_HEALTH) { emit({kind:'notice', text:'Your ' + name + ' is in great shape'}, actor); return; }
       const cost = repairCost(bag.slots[i].kind) ?? REPAIR_COST; // [progression-hook]
-      if (!spend(bag, cost)) { emit({kind:'notice', text:'Repair needs ' + missingText(bag, cost)}, actor); return; }
-      bag.slots[i].durability = MAX_HEALTH; emit({kind:'build', text:'Hook repaired!', sound:'repair'}, actor);
+      if (!spend(bag, cost)) { emit({kind:'notice', text:name + ' repair needs ' + missingText(bag, cost)}, actor); return; }
+      bag.slots[i].durability = MAX_HEALTH; emit({kind:'build', text:name + ' repaired!', sound:'repair'}, actor);
       award({kind:'repair'}); return;
     }
     if (a.kind === 'eat') { // [vitals] host removes the item (and gives the cup back); the eater applies the bars on 'ate'
@@ -1249,7 +1253,7 @@ export function mount(transfer = null) {
   function craft(recipe) { if (typeof recipe !== 'string') return false; const g = craftGate(recipe); action({kind:'craft', recipe}); return !g; }
   function repair() { if (!running || fainted >= 0) return; const bag = localBag();
     const sel = bag.slots[bag.selectedIndex]; if (sel?.kind === 'spade') { action({kind:'treasure.repair'}); return; } // [treasure-hook] R on a held spade
-    action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH)}); }
+    action({kind:'repair', slot:bag.selectedIndex}); } // host picks the slot (repairHookSlot + REPAIR_PICK), same rule for host and guest
   // Pad build radial pick: hold the hammer (from the hotbar) and select that piece on the building wheel.
   function pickBuildPiece(id) {
     if (!running || !building || !Object.hasOwn(PIECES, id)) return;
@@ -1286,7 +1290,7 @@ export function mount(transfer = null) {
     if (kind === 'spear' ? spearRep?.use() : kind === 'hammer' && spearRep?.useHammer()) return; // [spear-repair] thrust / repair a damaged tile
     if (isEdible(kind)) { // [vitals] a fresh cup on a planter still waters it, a salt cup at a purifier still loads it
       const w = CUP_KINDS.includes(kind) ? wateringTarget(aim) : null;
-      if (w?.click) { swing = 1; action(w.click); } else startEat(kind);
+      if (w?.click) { swing = 1; action(w.click); } else if (w?.why) notice(w.why); else startEat(kind); // aimed at a busy station: say why instead of drinking the cup
       return;
     }
     if (kind === 'hammer' && building && building.piece !== 'foundation') { // building-pieces lane hook
@@ -1767,13 +1771,14 @@ export function mount(transfer = null) {
   on(window, 'keydown', e => {
     const kd = keyDecision({inField:!!e.target?.matches?.('input, textarea, select'), blocked:inputBlocked()});
     if (!kd.act) { if (kd.record && !controls) keys[e.code] = true; return; } // held keys survive a panel; movePlayer gets input=false meanwhile
+    if (running && e.code === 'KeyR' && !e.repeat && sailing?.grab()) { e.stopImmediatePropagation(); e.preventDefault(); return; } // [sailing] aimed at a sail/wheel: R steers whatever is held (decoration or hammer piece)
     if (running && building?.key(e.code, true, heldKind() === 'hammer', e.repeat)) { e.stopImmediatePropagation(); if (e.code === 'KeyX' || e.code === 'KeyR') e.preventDefault(); return; } // building-pieces lane hook
     if (controls) { if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault(); return; } // controls lane: actions come from the action map
     keys[e.code] = true;
     const m = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
     if (m && running) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
     if (e.code === 'KeyE' && !e.repeat) interact();
-    if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration
+    if (e.code === 'KeyR' && !e.repeat) { if (sailing?.grab()) return; if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? -ROT_STEP : ROT_STEP); else repair(); } // [sailing] hold R at a sail/wheel to steer (first); else R turns a held decoration
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
   on(window, 'keyup', e => {
@@ -1813,7 +1818,7 @@ export function mount(transfer = null) {
     controls = createControls({canvas, isBlocked:() => !running || inputBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
       look:(dx, dy) => { if (!building?.menu.isOpen) look(dx, dy, 1); }, hotbarSize:HOTBAR, // building wheel steals mouse look while open
       slot:() => localBag().selectedIndex, selectSlot:i => running && selectSlot(i),
-      interact, inventory:openInventory, repair:back => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(back ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
+      interact, inventory:openInventory, repair:back => { if (sailing?.grab()) return; if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(back ? -ROT_STEP : ROT_STEP); else repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail/wheel to steer (first, any held item); else R turns a held decoration
       pause:() => settingsController?.open(),
       buildPieces:() => PIECE_ORDER.map(id => ({id, label:PIECES[id].name})), buildPick:pickBuildPiece, // pad build radial = the hammer's wheel
       menuBack:() => { if (!running) return; if (survivalUI?.isOpen) survivalUI.close(); else if (settingsController?.isOpen) settingsController.close(); }, // pad Y/Start/B: same close + relock as the keyboard

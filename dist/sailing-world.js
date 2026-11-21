@@ -357,7 +357,8 @@ export function createSailing(T, ctx) {
     rolls.length = 0; lastOp.clear(); drifters.length = 0; stepOpts.blockers.length = 0;
   }
   return { update, onRaftBuilt, addDrifter, itemFlow, respawned, outOfRange, interact, grab, release, apply, debug, dispose,
-    get steering() { return steering; } };
+    get steering() { return steering; },
+    get ground() { return disp; }, islandWrap: WRAP }; // read-only: displayed ground offset (drifters sit at wrap(base - ground, islandWrap)); the seafloor follows it
 }
 
 // Anchor (one merged geometry, ring at the origin, hanging down -y): top ring, stock bar, shank, two flukes in a V.

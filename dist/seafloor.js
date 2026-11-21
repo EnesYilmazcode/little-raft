@@ -28,6 +28,7 @@ const NODE_MAX_Y = -1.5;          // no nodes where the floor is shallower than 
 const NODE_CHANCE = 0.22;         // per CELL
 const NODE_WEIGHTS = [0.35, 0.25, 0.22, 0.18];
 const CELL_LIMIT = 100000;        // reject absurd ids
+const GROUND_STEP = 2;            // m of sailing before the floor patch is rebuilt (the raft-deep cap follows the raft)
 const RECENTER = 16;              // patch recentre grid (m); 96 m patch keeps >= 40 m around the camera (fog far <= 34 m)
 
 // ---------- deterministic noise ----------
@@ -53,7 +54,10 @@ const CAP_FAR = FLOOR.MIN_DEPTH_UNDER_RAFT + (FLOOR.SHALLOWEST - FLOOR.MIN_DEPTH
 // sand-colour noise vnoise(x/14, z/14, 31) per point. vnoise and hash are hand-inlined (same integer and float
 // ops in the same order, so bit-identical to the functions above): this is the patch-rebuild hot loop, and V8
 // boxed every double crossing a non-inlined call (~1 MB of garbage per rebuild). seafloorHeight runs it for one point.
-function latticeHeights(out, sand, count, ox, oz, offs, islands) {
+// Ground frame (sailing): x/z here are ground (seabed) coordinates; the raft sits at ground (gx, gz), so the
+// raft-deep cap uses x - gx, and each island is shelved where it is displayed: at wrap(island - g, W) relative to
+// the raft (sailing-world.js moves the island groups the same way). gx = gz = W = 0 is the old fixed frame.
+function latticeHeights(out, sand, count, ox, oz, offs, islands, gx = 0, gz = 0, W = 0) {
   const octaves = sand ? 4 : 3;
   for (let i = 0, i3 = 0; i < count; i++, i3 += 3) {
     const x = ox + offs[i3], z = oz + offs[i3 + 2];
@@ -74,33 +78,39 @@ function latticeHeights(out, sand, count, ox, oz, offs, islands) {
     let h = FLOOR.BASE + (n - 0.5) * 5;                    // about -13.5 .. -8.5
     let t = 0;                                             // island shelf influence
     for (let k = 0; k < islands.length; k++) {
-      const isl = islands[k], r = isl.r ?? 5, dx = x - isl.x, dz = z - isl.z;
+      const isl = islands[k], r = isl.r ?? 5;
+      const dx = W > 0 ? (x - gx) - wrapAxis(isl.x - gx, W) : x - isl.x, dz = W > 0 ? (z - gz) - wrapAxis(isl.z - gz, W) : z - isl.z;
       if (dx * dx + dz * dz >= (r + 40) * (r + 40)) continue;   // outside the shelf: contributes 0
       t = Math.max(t, 1 - smoothstep(r, r + 40, Math.hypot(dx, dz)));
     }
     h += (FLOOR.SHALLOWEST - h) * t;
     // keep the raft area deep: cap rises smoothly from -7 (<= 9 m) to SHALLOWEST (>= 20 m)
-    const cap = x * x + z * z >= 400 ? CAP_FAR
-      : FLOOR.MIN_DEPTH_UNDER_RAFT + (FLOOR.SHALLOWEST - FLOOR.MIN_DEPTH_UNDER_RAFT) * smoothstep(9, 20, Math.hypot(x, z));
+    const rx = x - gx, rz = z - gz;
+    const cap = rx * rx + rz * rz >= 400 ? CAP_FAR
+      : FLOOR.MIN_DEPTH_UNDER_RAFT + (FLOOR.SHALLOWEST - FLOOR.MIN_DEPTH_UNDER_RAFT) * smoothstep(9, 20, Math.hypot(rx, rz));
     out[i] = Math.min(h, cap, FLOOR.SHALLOWEST);
   }
 }
 const ONE = new Float64Array(1), ORIGIN = new Float32Array(3);
+function wrapAxis(v, W) { const p = 2 * W; return v - p * Math.floor((v + W) / p); } // = sailing-core.js wrapAxis
+const fr = (f, k) => (f && Number.isFinite(f[k]) ? f[k] : 0);
 
-/** Deterministic world y of the seafloor. Always <= FLOOR.SHALLOWEST. */
-export function seafloorHeight(x, z, islands = []) {
-  latticeHeights(ONE, null, 1, x, z, ORIGIN, islands);   // x + 0 === x (bar -0, which gives the same height)
+/** Deterministic world y of the seafloor. Always <= FLOOR.SHALLOWEST.
+ *  frame = {gx, gz, wrap} (optional): x/z are ground coordinates, the raft is at ground (gx, gz) and islands
+ *  repeat every 2*wrap (SAIL.ISLAND_WRAP); omitted = the fixed frame (raft at the origin, islands unwrapped). */
+export function seafloorHeight(x, z, islands = [], frame = null) {
+  latticeHeights(ONE, null, 1, x, z, ORIGIN, islands, fr(frame, 'gx'), fr(frame, 'gz'), fr(frame, 'wrap'));   // x + 0 === x (bar -0, which gives the same height)
   return ONE[0];
 }
 
-/** Gatherable node in integer cell (cx, cz), or null. */
-export function nodeAt(cx, cz, islands = []) {
+/** Gatherable node in integer cell (cx, cz), or null. Cells, ids and x/z are ground coordinates (see frame). */
+export function nodeAt(cx, cz, islands = [], frame = null) {
   if (!Number.isInteger(cx) || !Number.isInteger(cz) || Math.abs(cx) > CELL_LIMIT || Math.abs(cz) > CELL_LIMIT) return null;
   if (hash(cx, cz, 21) >= NODE_CHANCE) return null;
   const C = FLOOR.CELL;
   const x = (cx + 0.2 + 0.6 * hash(cx, cz, 22)) * C;
   const z = (cz + 0.2 + 0.6 * hash(cx, cz, 23)) * C;
-  const y = seafloorHeight(x, z, islands);
+  const y = seafloorHeight(x, z, islands, frame);
   if (y > NODE_MAX_Y) return null;
   let r = hash(cx, cz, 24), i = 0;
   while (i < NODE_TYPES.length - 1 && r >= NODE_WEIGHTS[i]) r -= NODE_WEIGHTS[i++];
@@ -108,10 +118,10 @@ export function nodeAt(cx, cz, islands = []) {
 }
 
 /** Parse "cx,cz" -> nodeAt(cx, cz) or null for junk. */
-export function nodeById(id, islands = []) {
+export function nodeById(id, islands = [], frame = null) {
   const m = typeof id === 'string' && /^(-?\d{1,6}),(-?\d{1,6})$/.exec(id);
   if (!m) return null;
-  const node = nodeAt(Number(m[1]), Number(m[2]), islands);
+  const node = nodeAt(Number(m[1]), Number(m[2]), islands, frame);
   return node && node.id === id ? node : null;   // rejects "-0,1", "01,2" etc.
 }
 
@@ -286,10 +296,19 @@ function seaweedGeometry(T) {
   return merge(T, blades);
 }
 
-export function createSeafloor(T, { islands = [] } = {}) {
+// ground() -> {gx, gz} (optional): the sailing displacement. The patch is built in ground space and the group is
+// offset by -g, so the floor, rocks and nodes drift with the islands; heightAt / nodesNear take and return scene
+// (raft-relative) coordinates; node ids stay ground cells (pass the same frame to nodeById when validating).
+export function createSeafloor(T, { islands = [], ground = null, wrap = 0 } = {}) {
   const { CELL, PATCH, SEGMENTS } = FLOOR;
   const STEP = PATCH / SEGMENTS, ROW = SEGMENTS + 1;
-  const heightAt = (x, z) => seafloorHeight(x, z, islands);
+  const frame = { gx: 0, gz: 0, wrap: wrap > 0 ? wrap : 0 };
+  const syncFrame = () => {
+    let g = null; try { g = ground?.(); } catch { g = null; }
+    frame.gx = Number.isFinite(g?.gx) ? g.gx : 0; frame.gz = Number.isFinite(g?.gz) ? g.gz : 0;
+    return frame;
+  };
+  const heightAt = (x, z) => { syncFrame(); return seafloorHeight(x + frame.gx, z + frame.gz, islands, frame); };
   const uniforms = { uTime: { value: 0 }, uCaustic: { value: 0 } };
   const group = Object.assign(new T.Group(), { name: 'Seafloor' });
   const std = (o, sway = false) => addCaustics(new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0, ...o }), uniforms, sway);
@@ -325,7 +344,7 @@ export function createSeafloor(T, { islands = [] } = {}) {
   }
 
   const gathered = new Set();
-  let patchNodes = [], hlId = null, hlType = null, centreX = NaN, centreZ = NaN;
+  let patchNodes = [], hlId = null, hlType = null, centreX = NaN, centreZ = NaN, builtGX = NaN, builtGZ = NaN;
   const m4 = new T.Matrix4(), q = new T.Quaternion(), v = new T.Vector3(), s = new T.Vector3(), up = new T.Vector3(0, 1, 0);
   const place = (mesh, x, y, z, yaw, sx, sy = sx, sz = sx) => {
     if (mesh.count >= mesh.instanceMatrix.count) return -1;
@@ -359,7 +378,7 @@ export function createSeafloor(T, { islands = [] } = {}) {
     // floor vertices on a world-aligned STEP lattice so recentring never shifts the floor
     const ox = Math.round(cx / STEP) * STEP, oz = Math.round(cz / STEP) * STEP;
     const pos = floorGeo.attributes.position.array, col = floorGeo.attributes.color.array, nor = floorGeo.attributes.normal.array;
-    latticeHeights(ys, sand, ys.length, ox, oz, baseXZ, islands);
+    latticeHeights(ys, sand, ys.length, ox, oz, baseXZ, islands, frame.gx, frame.gz, frame.wrap);
     fillPatch(pos, col, heights, ys, sand, baseXZ, ox, oz, STEP, SAND, LIGHT, DARK);
     // analytic normals from central differences on the height grid (one-sided at the rim)
     for (let r = 0; r < ROW; r++) {
@@ -381,10 +400,10 @@ export function createSeafloor(T, { islands = [] } = {}) {
     const half = Math.floor(PATCH / 2 / CELL), bx = Math.round(cx / CELL), bz = Math.round(cz / CELL);
     for (let iz = bz - half; iz < bz + half; iz++) {
       for (let ix = bx - half; ix < bx + half; ix++) {
-        const node = nodeAt(ix, iz, islands);
+        const node = nodeAt(ix, iz, islands, frame);
         if (node) { patchNodes.push(node); continue; }
         const r = hash(ix, iz, 41);
-        const x = (ix + hash(ix, iz, 42)) * CELL, z = (iz + hash(ix, iz, 43)) * CELL, y = seafloorHeight(x, z, islands);
+        const x = (ix + hash(ix, iz, 42)) * CELL, z = (iz + hash(ix, iz, 43)) * CELL, y = seafloorHeight(x, z, islands, frame);
         if (r < 0.12 && y < -1.4) {
           const sc = 0.35 + 0.9 * hash(ix, iz, 44);
           place(rocks, x, y - 0.15 * sc, z, r * 60, sc * 1.2, sc * (0.6 + 0.4 * hash(ix, iz, 45)), sc);
@@ -392,7 +411,7 @@ export function createSeafloor(T, { islands = [] } = {}) {
           const tufts = 1 + Math.floor(hash(ix, iz, 46) * 3), tint = hash(ix, iz, 47) < 0.3 ? kelpTint : white;
           for (let t = 0; t < tufts; t++) {
             const wx = x + (hash(ix, iz, 50 + t) - 0.5) * 1.6, wz = z + (hash(ix, iz, 60 + t) - 0.5) * 1.6;
-            const k = place(weed, wx, seafloorHeight(wx, wz, islands) - 0.05, wz, hash(ix, iz, 70 + t) * 6.283, 1, 0.75 + 0.5 * hash(ix, iz, 80 + t), 1);
+            const k = place(weed, wx, seafloorHeight(wx, wz, islands, frame) - 0.05, wz, hash(ix, iz, 70 + t) * 6.283, 1, 0.75 + 0.5 * hash(ix, iz, 80 + t), 1);
             if (k >= 0) weed.setColorAt(k, tint);
           }
         }
@@ -407,6 +426,7 @@ export function createSeafloor(T, { islands = [] } = {}) {
     group,
     uniforms,
     heightAt,
+    get frame() { return syncFrame(); },   // {gx, gz, wrap}: pass to nodeById so a host checks gathers in this frame
     update(dt, camera, time) {
       if (Number.isFinite(time)) uniforms.uTime.value = time;
       if (hlType) {   // gentle emissive pulse on the targeted node
@@ -415,18 +435,22 @@ export function createSeafloor(T, { islands = [] } = {}) {
       }
       const p = camera && camera.position;
       if (!p) return;
-      const cx = Math.round(p.x / RECENTER) * RECENTER, cz = Math.round(p.z / RECENTER) * RECENTER;
-      if (cx !== centreX || cz !== centreZ) { centreX = cx; centreZ = cz; rebuild(cx, cz); }
+      syncFrame(); group.position.set(-frame.gx, 0, -frame.gz);
+      const cx = Math.round((p.x + frame.gx) / RECENTER) * RECENTER, cz = Math.round((p.z + frame.gz) / RECENTER) * RECENTER;
+      // the raft-deep cap and the island shelves are raft-relative, so also rebuild once the ground has moved GROUND_STEP
+      const moved = !(Math.abs(frame.gx - builtGX) < GROUND_STEP && Math.abs(frame.gz - builtGZ) < GROUND_STEP);
+      if (cx !== centreX || cz !== centreZ || moved) { centreX = cx; centreZ = cz; builtGX = frame.gx; builtGZ = frame.gz; rebuild(cx, cz); }
     },
-    nodesNear(x, y, z, radius) {
+    nodesNear(x, y, z, radius) {   // scene coordinates in and out (ids are ground cells)
+      syncFrame(); const gx = frame.gx, gz = frame.gz; x += gx; z += gz;
       const out = [], r2 = radius * radius;
       const x0 = Math.floor((x - radius) / CELL), x1 = Math.floor((x + radius) / CELL);
       const z0 = Math.floor((z - radius) / CELL), z1 = Math.floor((z + radius) / CELL);
       if ((x1 - x0) * (z1 - z0) > 4096) return out;   // guard against huge radii
       for (let iz = z0; iz <= z1; iz++) {
         for (let ix = x0; ix <= x1; ix++) {
-          const n = nodeAt(ix, iz, islands);
-          if (n && !gathered.has(n.id) && (n.x - x) ** 2 + (n.y - y) ** 2 + (n.z - z) ** 2 <= r2) out.push(n);
+          const n = nodeAt(ix, iz, islands, frame);
+          if (n && !gathered.has(n.id) && (n.x - x) ** 2 + (n.y - y) ** 2 + (n.z - z) ** 2 <= r2) { n.x -= gx; n.z -= gz; out.push(n); }
         }
       }
       return out;

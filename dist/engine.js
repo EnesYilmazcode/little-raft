@@ -232,6 +232,10 @@ export function createEngine(ctx) {
     ctx.action(a);
   }
 
+  // Labels say what E does. A motor left on with 0 fuel stays on (spec: engine.md) but is not running, so it reads
+  // "Turn off · Out of fuel"; the wheel says Stop only while a motor really runs (runningCount, anchor ignored).
+  const motorVerb = (d, fuel) => !onOf(d.x, d.z) ? 'Start motor' : fuel > 0 ? 'Stop motor' : 'Turn off';
+  const wheelVerb = () => runningCount(st, decor(), false) > 0 ? 'Stop motors' : anyOn() ? 'Turn off motors · out of fuel' : 'Start motors';
   const MAX_HINT = ' · Max ' + ENGINE.MAX_MOTORS + ' motors help';
   // The visible key prompt is prompts.js (#lrPrompt); game.js's #contextPrompt (fed by prompt() below) is hidden by
   // prompts.css. So the same texts are also provided to window.raftPrompts as {key,label} rows (no HTML).
@@ -241,12 +245,12 @@ export function createEngine(ctx) {
     const rows = [];
     if (d.type === 'wheel') {
       if (!anyMotor(decor())) return [{ key: 'R', hold: true, label: 'Steer' }, { label: 'No motors yet', muted: true }];
-      rows.push({ key: 'E', label: (anyOn() ? 'Stop' : 'Start') + ' motors' }, many ?? { key: 'R', hold: true, label: 'Steer' });
+      rows.push({ key: 'E', label: wheelVerb() }, many ?? { key: 'R', hold: true, label: 'Steer' });
       return rows;
     }
     const held = heldKind(), fuel = fuelOf(d.x, d.z);
     if (held && ENGINE.FUEL[held] && fuel < ENGINE.FUEL_CAP - 1) return [{ key: 'E', label: 'Add ' + NAMES[held] + ' (+' + ENGINE.FUEL[held] + ' s)' }];
-    rows.push({ key: 'E', label: (onOf(d.x, d.z) ? 'Stop' : 'Start') + ' motor' }, many ?? { label: fuel > 0 ? fmtFuel(fuel) + ' fuel' : 'Needs fuel', muted: true });
+    rows.push({ key: 'E', label: motorVerb(d, fuel) }, many ?? { label: fuel > 0 ? fmtFuel(fuel) + ' fuel' : onOf(d.x, d.z) ? 'Out of fuel' : 'Needs fuel', muted: true });
     return rows;
   }
   let unprovide = null, mod = null;
@@ -304,11 +308,11 @@ export function createEngine(ctx) {
       const many = runningCount(st, decor(), anchored()) > ENGINE.MAX_MOTORS ? MAX_HINT : '';
       if (d.type === 'wheel') {
         if (!anyMotor(decor())) return 'Hold <kbd>R</kbd> to steer · no motors yet';
-        return '<kbd>E</kbd>' + (anyOn() ? 'Stop' : 'Start') + ' motors · hold <kbd>R</kbd> to steer' + many;
+        return '<kbd>E</kbd>' + wheelVerb() + ' · hold <kbd>R</kbd> to steer' + many;
       }
       const held = heldKind(), fuel = fuelOf(d.x, d.z);
       if (held && ENGINE.FUEL[held] && fuel < ENGINE.FUEL_CAP - 1) return '<kbd>E</kbd>Add ' + NAMES[held] + ' (+' + ENGINE.FUEL[held] + ' s)';
-      return '<kbd>E</kbd>' + (onOf(d.x, d.z) ? 'Stop' : 'Start') + ' motor · ' + (fuel > 0 ? fmtFuel(fuel) + ' fuel' : 'Needs fuel') + many;
+      return '<kbd>E</kbd>' + motorVerb(d, fuel) + ' · ' + (fuel > 0 ? fmtFuel(fuel) + ' fuel' : onOf(d.x, d.z) ? 'Out of fuel' : 'Needs fuel') + many;
     },
     sailPush(sailing, out) {
       enginePush(st, decor(), nTiles(), sailing, out);
