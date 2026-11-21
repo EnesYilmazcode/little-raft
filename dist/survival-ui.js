@@ -531,12 +531,40 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   }
 
   // ---------- render ----------
+  // Per-slot change detection read straight off bag.slots, so an unchanged frame allocates nothing.
+  const lastRef = new Array(TOTAL).fill(undefined), lastKind = new Array(TOTAL).fill(undefined);
+  const lastCount = new Array(TOTAL).fill(0), lastDur = new Array(TOTAL).fill(undefined);
+  let lastSel = NaN, lastBag = null, lastHot = null;
+  function unchanged(bag) {
+    const live = bag.slots;
+    if (bag !== lastBag || hotEls !== lastHot || !Array.isArray(live) || live.length !== TOTAL || bag.selectedIndex !== lastSel) return false;
+    for (let i = 0; i < TOTAL; i++) {
+      const s = live[i];
+      if (lastRef[i] !== s) return false;
+      if (s && (lastKind[i] !== s.kind || lastCount[i] !== s.count || lastDur[i] !== s.durability)) return false;
+    }
+    return true;
+  }
+  function remember(bag) {
+    const live = bag.slots;
+    if (!Array.isArray(live) || live.length !== TOTAL) { lastBag = null; return; }
+    lastBag = bag; lastHot = hotEls; lastSel = bag.selectedIndex;
+    for (let i = 0; i < TOTAL; i++) {
+      const s = live[i];
+      lastRef[i] = s; lastKind[i] = s ? s.kind : null; lastCount[i] = s ? s.count : 0; lastDur[i] = s ? s.durability : undefined;
+    }
+  }
+
   function render(force) {
     if (!alive) return;
     const bag = bagNow();
     ensureTools();
-    const snap = bag && readSnap(bag);
-    if (!snap) return;
+    if (!bag) return;
+    // Nothing changed and nothing pending a repaint: skip the snapshot/signature work entirely.
+    if (!force && unchanged(bag) && (!isOpen || dragging || lastSig !== null)) return;
+    const snap = readSnap(bag);
+    if (!snap) { lastBag = null; return; }
+    remember(bag);
     const slots = snap.slots;
     const selected = Number.isInteger(snap.selected) ? snap.selected : -1;
     const sigs = new Array(TOTAL);
