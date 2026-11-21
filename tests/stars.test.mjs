@@ -179,3 +179,26 @@ test('module: content FEATURES has stars right after storm; live PRELOAD lists t
   assert.match(src('content.js'), /createStorm, createStars,/);
   for (const f of ['stars-core.js', 'stars-model.js', 'stars.js']) assert.ok(src('live.js').includes(`'${f}'`));
 });
+
+test('module: E steps aside while in bed or on a paddleboard, and wishes otherwise', async () => {
+  const T = await import(new URL('vendor/three.module.js', base));
+  const { createStars } = await import(new URL('stars.js' + STAMP, base));
+  const seed = 4242, day = clearShowerDay(seed);
+  let k = 0, m = makeMeteor(); while (!meteorAt(seed, day, k, m).ok) k++;
+  const clock = m.t0 + m.life * 0.5, dir = { x: 0, y: 1, z: 0 }; headDir(m, clock, dir);
+  const sent = [], bed = { in: { host: null, guest: null } }; let board = false;
+  const ctx = { T, scene: new T.Scene(), camera: new T.PerspectiveCamera(), role: 'host', aim: () => ({ dir }), physics: { x: 0, z: 0 }, action: a => sent.push(a), play() {}, uiOpen: () => false };
+  const mods = { daynight: { clock, seed, skyA: 1 }, sleep: { serialize: () => bed }, paddleboard: { riding: () => board } };
+  const s = createStars(ctx, name => mods[name] ?? null);
+  s.update(0.016);
+  assert.equal(s.debug.state().aimed, k);
+  bed.in.host = [0, 0];
+  assert.equal(s.prompt({ dir }), null); assert.equal(s.interact({ dir }), false);
+  bed.in.host = null; board = true;
+  assert.equal(s.interact({ dir }), false);
+  board = false;
+  assert.match(s.prompt({ dir }), /Make a wish/);
+  assert.equal(s.interact({ dir }), true);
+  assert.deepEqual(sent, [{ kind: 'stars.wish', day, k }]);
+  s.dispose();
+});

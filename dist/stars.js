@@ -99,8 +99,14 @@ export function createStars(ctx, peer = () => null) {
     const p = aim.point, ph = ctx.physics;
     return !!(p && ph && Number.isFinite(p.x) && Math.hypot(p.x - ph.x, p.z - ph.z) < REACH);
   }
+  // E must still get you out of a bed or off a paddleboard (both sit after stars in FEATURES and are not seated())
+  function busy() {
+    try { const sl = peer('sleep')?.serialize?.(); if (sl && sl.in && sl.in[me()]) return true; } catch {}
+    try { if (peer('paddleboard')?.riding?.()) return true; } catch {}
+    return false;
+  }
   function canWish(aim) {
-    if (aimK < 0 || !ready() || ctx.uiOpen?.() || nearTarget(aim ?? ctx.aim?.())) return false;
+    if (aimK < 0 || !ready() || ctx.uiOpen?.() || nearTarget(aim ?? ctx.aim?.()) || busy()) return false;
     return true;
   }
   function prompt(aim) {
