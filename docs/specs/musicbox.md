@@ -150,3 +150,27 @@ audio.js: header, `buildGraph`, `play`, new `box`, `destroy`, return object · g
 
 ## Out of scope
 Player-composed tunes, more than one audible box at once, syncing over the network beyond the slice, a crank-winding mechanic and achievements.
+
+## Build notes
+- **Files.** New: `dist/musicbox-core.js`, `dist/musicbox-model.js`, `dist/musicbox.js`, `tests/musicbox.test.mjs` (15 tests). Hooks tagged `// [musicbox]` in
+  audio.js (header, `duck` node in `buildGraph`/`destroy`, duck in `play`, `box()`, `now` getter), settings.js (`music` slider), game.js (`applyVolume`, `contentCtx.box/audioNow`),
+  content.js (import + `FEATURES` before `createCookpot`), items.js (item + `BLOCK_RADII`), craft-book.js, item-svg.js, and live.js `PRELOAD` (required by tests/live-preload.test.mjs).
+- **Recipe deviation.** `shell` is a content-items kind (trader currency), not an `ITEMS` entry, so `hand({…shell:2…})` and `discover('shell')` fail
+  tests/progression.test.mjs (cost/unlock refs must be ITEMS, and reachability). Shipped `recipe: hand({ wood:3, nail:1, scrap:2 }), unlock: discover('nail')`.
+  The shell inlay stays as decoration only.
+- **Tune deviation.** Gull's Nap ships with `bars: 12` (not 16): 16 bars of 8 eighths at 88 bpm is a 43.6 s loop, over the 40 s cap in test 2. Seeds unchanged; no seed had to change for originality.
+- **Composer details the spec left open.** The pentatonic index range 0..9 reaches `root + 21` (not 19); the max hz is still 1175 Hz. "Tonic index" means any index whose pitch class is 0
+  (0/5 for pent, 0/7 for major). Each rhythm step always draws two rng values (sound, hold), so the draw order is fixed. A'''s cadence bar is the tonic on beat 1 (the nearest tonic
+  at or below the previous note), plus, for meter 8, a 50% repeat at mid-bar. A bass note that is in unison with a melody note on the same step is dropped (one tine, not two).
+  `compose(i)` also returns `bar`, `bars`, `meter`, `root` and `scale`.
+- **Pinned values.** `mulberry32(1)` → 0.62707394, 0.00273572, 0.52744704, 0.98105097, 0.96837790. Checksums (FNV-1a of `m:t.toFixed(4)` joined by ','):
+  a7a154ea, 3a7df5e, a1dcc7bf, 2065c0c9, b942b77. Loops: 17.1, 30.0, 32.7, 35.6 and 21.6 s.
+- **Scheduler.** The window starts 1 µs before the cursor, and notes at or before the previous frame's last scheduled time are skipped, so float error at the seam can neither drop nor
+  double a note. A re-anchor moves to the next bar line after anything already queued. `windowNotes` reuses pooled `{n, dt}` cells per output array, so it allocates nothing once warm.
+- **Duck test.** Test 7 uses `play('build')`: `chop` is not in `EVENTS`, so it returns before the duck.
+- **Debug extra.** `raftDebug.content.musicbox.sent()` returns the last 8 actions this peer sent (QA for the double-E rule).
+- **Headless smoke** (swiftshader, about 4 fps at 1280x720). Placing, `play(1)` and the prompt (`Stop · ♪ Lantern Tide`) all work, `box()` calls are scheduled, and the Music slider shows 70%.
+  A single E stops after one game second, E then E plays the next tune, and no console errors appear. An offline render of Lantern Tide through the real `box()` (master 0.5)
+  peaks at 0.055 (RMS 0.006) with 0 refused voices, so it does not clip.
+- **Known gaps.** Below 20 fps the game clamps dt, so the daynight clock runs slower than audio time. The drift and jump checks then re-anchor often, and the box plays with rests
+  (near silent at around 4 fps headless). This is by design: phase follows the shared clock. The double-E window uses `ctx.elapsed`, which also slows down at low fps.
