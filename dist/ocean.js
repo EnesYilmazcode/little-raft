@@ -91,19 +91,28 @@ void ripple(vec2 d, float a, float k, float w, vec2 p, inout vec2 g) {
 void main() {
   vec3 toCam = cameraPosition - vWorld;
   float dist = length(toCam.xz);
+  // Past uFadeFar the fade below is exactly 1, so the pixel is just the sky colour: skip all shading.
+  if (dist >= uFadeFar) {
+    gl_FragColor = vec4(uSky, 1.0);
+    #include <colorspace_fragment>
+    return;
+  }
   vec3 V = normalize(toCam);
   vec3 L = normalize(uSunDir);
 
   // Detail ripples fade with distance to avoid shimmering / aliasing.
-  float near = 1.0 - smoothstep(8.0, 60.0, dist);
+  // near = 1 - smoothstep(8, 60, dist) is exactly 0 from 60 m out, so the ripples only run inside that.
   vec2 g = vec2(0.0);
   vec2 p = vWorld.xz;
-  ripple(normalize(vec2(0.8, 0.6)), 0.010, 2.10, 1.30, p, g);
-  ripple(normalize(vec2(-0.5, 0.9)), 0.008, 2.90, 1.70, p, g);
-  ripple(normalize(vec2(0.95, -0.3)), 0.006, 4.30, 2.10, p, g);
-  ripple(normalize(vec2(-0.9, -0.4)), 0.004, 6.70, 2.60, p, g);
-  ripple(normalize(vec2(0.2, 1.0)), 0.003, 9.10, 3.10, p, g);
-  g *= near;
+  if (dist < 60.0) {
+    float near = 1.0 - smoothstep(8.0, 60.0, dist);
+    ripple(normalize(vec2(0.8, 0.6)), 0.010, 2.10, 1.30, p, g);
+    ripple(normalize(vec2(-0.5, 0.9)), 0.008, 2.90, 1.70, p, g);
+    ripple(normalize(vec2(0.95, -0.3)), 0.006, 4.30, 2.10, p, g);
+    ripple(normalize(vec2(-0.9, -0.4)), 0.004, 6.70, 2.60, p, g);
+    ripple(normalize(vec2(0.2, 1.0)), 0.003, 9.10, 3.10, p, g);
+    g *= near;
+  }
   vec3 n = normalize(vec3(vNormalW.x - g.x, vNormalW.y, vNormalW.z - g.y));
 
   float ndv = max(dot(n, V), 0.0);
@@ -131,16 +140,18 @@ void main() {
   spec = min(spec, 1.4) * (1.0 - smoothstep(40.0, 120.0, dist) * 0.7);
   col += uSunColor * spec;
 
-  // Thin, sparse lacy foam riding the crests.
-  vec2 fp = p + vec2(uTime * 0.35, uTime * 0.12);
-  float n1 = vnoise(fp * 0.9);
-  float n2 = vnoise(fp * 2.6 + vec2(uTime * -0.2, uTime * 0.15));
-  float lace = 1.0 - smoothstep(0.0, 0.035, abs(n1 * 0.7 + n2 * 0.3 - 0.5));
-  float crest = smoothstep(0.06, 0.17, vHeight);
-  float speck = smoothstep(0.86, 0.93, vnoise(fp * 3.7)) * smoothstep(0.0, 0.12, vHeight);
-  float foam = clamp(lace * crest * 0.55 + speck * 0.35, 0.0, 0.6);
-  foam *= 1.0 - smoothstep(30.0, 90.0, dist);
-  col = mix(col, uFoam, foam);
+  // Thin, sparse lacy foam riding the crests (its distance fade is exactly 0 from 90 m out).
+  if (dist < 90.0) {
+    vec2 fp = p + vec2(uTime * 0.35, uTime * 0.12);
+    float n1 = vnoise(fp * 0.9);
+    float n2 = vnoise(fp * 2.6 + vec2(uTime * -0.2, uTime * 0.15));
+    float lace = 1.0 - smoothstep(0.0, 0.035, abs(n1 * 0.7 + n2 * 0.3 - 0.5));
+    float crest = smoothstep(0.06, 0.17, vHeight);
+    float speck = smoothstep(0.86, 0.93, vnoise(fp * 3.7)) * smoothstep(0.0, 0.12, vHeight);
+    float foam = clamp(lace * crest * 0.55 + speck * 0.35, 0.0, 0.6);
+    foam *= 1.0 - smoothstep(30.0, 90.0, dist);
+    col = mix(col, uFoam, foam);
+  }
 
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
@@ -185,6 +196,9 @@ export function createOcean(T, options = {}) {
   mesh.name = 'ocean';
   mesh.position.y = BASE_Y;
   mesh.frustumCulled = false; // displaced vertices; plane always surrounds the player
+  // Draw after the other opaques (renderOrder 0) so the expensive water shader is depth-rejected where
+  // the raft, debris and islands cover it. Only reorders the opaque list; transparents still draw later.
+  mesh.renderOrder = 1;
 
   const step = size / segments;
   let time = 0;
@@ -203,40 +217,56 @@ export function createOcean(T, options = {}) {
   }
 
   // CPU mirror of the vertex shader (inverts horizontal Gerstner shift with 2 iterations).
-  const pre = WAVES.map(([dx, dz, a, l, q]) => {
+  // Wave params are flattened into one Float64Array (stride 6: k, dx, dz, c, dx*q*a, dz*q*a) and sampled
+  // with indexed loops + scalar locals so per-frame calls allocate nothing. The arithmetic order matches the
+  // shader-mirror maths term for term, so results are bit-identical to the original object-based version.
+  const NW = WAVES.length;
+  const W = new Float64Array(NW * 6);
+  const AMP = new Float64Array(NW);
+  WAVES.forEach(([dx, dz, a, l, q], i) => {
     const len = Math.hypot(dx, dz);
+    const ndx = dx / len, ndz = dz / len;
     const k = (Math.PI * 2) / l;
-    return { dx: dx / len, dz: dz / len, a, k, c: Math.sqrt(9.8 / k) * SPEED, q };
+    const o = i * 6;
+    W[o] = k; W[o + 1] = ndx; W[o + 2] = ndz; W[o + 3] = Math.sqrt(9.8 / k) * SPEED;
+    W[o + 4] = ndx * q * a; W[o + 5] = ndz * q * a;
+    AMP[i] = a;
   });
-  function displace(x, z, t, out) {
-    let ox = 0, oy = 0, oz = 0;
-    for (const w of pre) {
-      const f = w.k * (w.dx * x + w.dz * z - w.c * t);
-      const co = Math.cos(f);
-      ox += w.dx * w.q * w.a * co;
-      oz += w.dz * w.q * w.a * co;
-      oy += w.a * Math.sin(f);
-    }
-    out[0] = ox; out[1] = oy; out[2] = oz;
-    return out;
-  }
-  const tmp = [0, 0, 0];
   function getHeight(x, z, t = time) {
     let px = x, pz = z;
-    for (let i = 0; i < 2; i++) {
-      displace(px, pz, t, tmp);
-      px = x - tmp[0];
-      pz = z - tmp[2];
+    for (let it = 0; it < 2; it++) {
+      let ox = 0, oz = 0;
+      for (let i = 0, o = 0; i < NW; i++, o += 6) {
+        const co = Math.cos(W[o] * (W[o + 1] * px + W[o + 2] * pz - W[o + 3] * t));
+        ox += W[o + 4] * co;
+        oz += W[o + 5] * co;
+      }
+      px = x - ox;
+      pz = z - oz;
     }
-    displace(px, pz, t, tmp);
-    return mesh.position.y + tmp[1];
+    let oy = 0;
+    for (let i = 0, o = 0; i < NW; i++, o += 6) {
+      oy += AMP[i] * Math.sin(W[o] * (W[o + 1] * px + W[o + 2] * pz - W[o + 3] * t));
+    }
+    return mesh.position.y + oy;
   }
   // Approximate surface slope for tilting floating objects: returns {x, z} tilt gradient.
-  function getSlope(x, z, t = time, e = 0.6) {
-    return {
-      x: (getHeight(x + e, z, t) - getHeight(x - e, z, t)) / (2 * e),
-      z: (getHeight(x, z + e, t) - getHeight(x, z - e, t)) / (2 * e),
-    };
+  // Pass `out` to reuse an object (its .x/.z are written and it is returned) instead of allocating.
+  function getSlope(x, z, t = time, e = 0.6, out) {
+    const sx = (getHeight(x + e, z, t) - getHeight(x - e, z, t)) / (2 * e);
+    const sz = (getHeight(x, z + e, t) - getHeight(x, z - e, t)) / (2 * e);
+    if (!out) return { x: sx, z: sz };
+    out.x = sx; out.z = sz;
+    return out;
+  }
+  // Combined query: sample(x, z, out?, t = now, e = 0.6) writes out.h === getHeight(x, z, t) and
+  // out.sx / out.sz === getSlope(x, z, t, e).x / .z. Pass a reused `out` to avoid allocation.
+  function sample(x, z, out, t = time, e = 0.6) {
+    const r = out ?? { h: 0, sx: 0, sz: 0 };
+    r.h = getHeight(x, z, t);
+    r.sx = (getHeight(x + e, z, t) - getHeight(x - e, z, t)) / (2 * e);
+    r.sz = (getHeight(x, z + e, t) - getHeight(x, z - e, t)) / (2 * e);
+    return r;
   }
 
   function dispose() {
@@ -244,5 +274,5 @@ export function createOcean(T, options = {}) {
     material.dispose();
   }
 
-  return { mesh, update, getHeight, getSlope, uniforms, material, dispose };
+  return { mesh, update, getHeight, getSlope, sample, uniforms, material, dispose };
 }
