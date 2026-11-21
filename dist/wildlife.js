@@ -314,11 +314,11 @@ export function createWildlife(ctx) {
   const last = { gx: new Float32Array(GULL_MAX * 3), gs: new Array(GULL_MAX).fill('hidden'), sx: new Float32Array(SCHOOL_MAX * 2), nG: 0, nS: 0 };
 
   let built = false, disposed = false, group = null, gullBody = null, gullWing = null, fish = null, dolphin = null, turtle = null, material = null, gullMat = null, fishMat = null, tuck = null;
-  let m4, mA, mB, mC, mD, mE, vP, v3, v3b, sc3, q4, qR, eul, col, zero, UP, fishDark, fishWater;
+  let m4, mA, mB, mC, mD, mE, vP, vT, v3, v3b, sc3, q4, qR, eul, col, zero, UP, fishDark, fishWater;
 
   function build() {
     const T = ctx.T;
-    m4 = new T.Matrix4(); mA = new T.Matrix4(); mB = new T.Matrix4(); mC = new T.Matrix4(); mD = new T.Matrix4(); mE = new T.Matrix4(); vP = new T.Vector3();
+    m4 = new T.Matrix4(); mA = new T.Matrix4(); mB = new T.Matrix4(); mC = new T.Matrix4(); mD = new T.Matrix4(); mE = new T.Matrix4(); vP = new T.Vector3(); vT = new T.Vector3();
     v3 = new T.Vector3(); v3b = new T.Vector3(); sc3 = new T.Vector3(1, 1, 1); q4 = new T.Quaternion(); qR = new T.Quaternion();
     eul = new T.Euler(0, 0, 0, 'YXZ'); col = new T.Color(); zero = new T.Matrix4().makeScale(0, 0, 0); UP = new T.Vector3(0, 1, 0);
     fishDark = new T.Color('#0b2f36'); fishWater = new T.Color('#3f8c88');
@@ -436,6 +436,21 @@ export function createWildlife(ctx) {
     return L.on ? L : null;
   }
 
+  // Title screen: the logo and menu sit on the left, so a gull drifting into the upper-left of the frame is
+  // squeezed down to a low band just over the horizon. Done in screen space with a smooth ramp across the
+  // middle, so a gull crossing the line glides down instead of popping. Depth is kept, so its size is too.
+  const TITLE_Y0 = 0.22, TITLE_SQUEEZE = 0.08, TITLE_XA = -0.15, TITLE_XB = 0.2; // NDC
+  function titleClear(p) {
+    const cam = ctx.camera;
+    if (ctx.running !== false || !cam || !cam.projectionMatrix) return;
+    vT.copy(p).project(cam);
+    if (!(vT.z < 1) || vT.y <= TITLE_Y0) return; // behind the camera, or already low
+    const k = Math.min(1, Math.max(0, (TITLE_XB - vT.x) / (TITLE_XB - TITLE_XA))), w = k * k * (3 - 2 * k);
+    if (w <= 0) return;
+    vT.y = TITLE_Y0 + (vT.y - TITLE_Y0) * (1 - w * (1 - TITLE_SQUEEZE));
+    p.copy(vT.unproject(cam));
+  }
+
   function updateGulls(t, nG, raft) {
     const slot = Math.floor(t / GULL_SLOT);
     gullBody.count = nG; gullWing.count = nG * 2;
@@ -471,6 +486,7 @@ export function createWildlife(ctx) {
         const ny = plan2.sy + (v3.y - plan2.sy) * b2 + 1.5 * k2 - v3b.y, nh = Math.hypot(nx, nz);
         if (nh > 1e-4) { yaw = Math.atan2(nx, nz); pitch = Math.max(-0.5, Math.min(0.5, -Math.atan2(ny, nh))); }
       }
+      titleClear(v3b);
       tuck.array[i] = plan.state === 'perched' ? 0 : 1 - plan.fold; // legs down only close to the deck
       eul.set(pitch, yaw, plan.roll, 'YXZ'); q4.setFromEuler(eul);
       if (raft && b > 0) { qR.identity().slerp(raft.quaternion, b); q4.premultiply(qR); }
