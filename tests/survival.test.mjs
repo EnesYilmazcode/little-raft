@@ -405,7 +405,7 @@ function run(c, seconds, items, reeling) {
 }
 // Closed-form ballistic range from the module's documented launch model.
 function analyticRange(deg, charge, y0 = 1.2) {
-  const s = 7 + charge * 11, a = deg * Math.PI / 180;
+  const s = 5 + charge * 7, a = deg * Math.PI / 180;
   const vy = Math.sin(a) * s + 1, vh = Math.cos(a) * s, g = 9.8;
   const t = (vy + Math.sqrt(vy * vy + 2 * g * (y0 - WATER_Y))) / g;
   return vh * t;
@@ -445,6 +445,16 @@ test('HookCast: aim elevation changes range and flight time', () => {
   assert.ok(range(legacy) > 5, `not snapped to the target: ${range(legacy)}`);
 });
 
+test('HookCast: throw distances feel like Raft (level ~10 m, max under ~18 m, weakest a few m)', () => {
+  // game.js adds THROW_LOFT .12 to the aim; the hand is ~1.5 m above the water.
+  const lofted = (deg) => { const d = elevDir(deg); d.y += 0.12; return d.normalize(); };
+  const at = (deg, charge) => { const c = new HookCast(T, { origin: new T.Vector3(0, 1.5, 0), direction: lofted(deg), charge, maxRange: 100, drift: { x: 0, z: 0 } }); flyOut(c); return range(c); };
+  const level = at(0, 1), best = Math.max(...[20, 30, 40, 45, 50].map(d => at(d, 1))), weak = at(0, 0.15);
+  assert.ok(level > 9 && level < 12.5, `level ${level}`);
+  assert.ok(best > 14 && best < 19, `max ${best}`);
+  assert.ok(weak > 2.5 && weak < 6, `weakest ${weak}`);
+});
+
 test('HookCast: the rope tethers flight at maxRange', () => {
   const c = cast({ direction: elevDir(30), charge: 1, maxRange: 5 });
   flyOut(c);
@@ -465,7 +475,7 @@ test('HookCast: a miss reels back with a single "returned" event and no items', 
   assert.equal(c.update(0.02, { hand: hand(), items, reeling: true }), null);
 });
 
-// Flat full-charge throw lands ~10.8 m out on -Z; the flight is only low enough
+// A 15 degree full-charge throw lands ~12 m out on -Z; the flight is only low enough
 // to snag things in its last ~1.5 m, so these items are reachable only by the reel sweep.
 const reelItems = () => Object.freeze([
   Object.freeze({ id: 'a', token: 'ta', type: 'wood', x: 0.5, z: -5 }),
@@ -475,7 +485,7 @@ const reelItems = () => Object.freeze([
 
 test('HookCast: reeling sweeps up multiple items and pays them out exactly once', () => {
   const items = reelItems();
-  const c = cast({ direction: elevDir(0), charge: 1 });
+  const c = cast({ direction: elevDir(15), charge: 1 });
   flyOut(c, items);
   assert.ok(range(c) > 9, 'landed beyond the items');
   run(c, 0.5, items, false);
@@ -498,7 +508,7 @@ test('HookCast: reeling sweeps up multiple items and pays them out exactly once'
 
 test('HookCast: caught items that vanish from the world are not paid out', () => {
   const items = reelItems();
-  const c = cast({ direction: elevDir(0), charge: 1 });
+  const c = cast({ direction: elevDir(15), charge: 1 });
   flyOut(c, items);
   let ev = null;
   for (let i = 0; i < 500 && c.caughtItems.length < 2; i++) {

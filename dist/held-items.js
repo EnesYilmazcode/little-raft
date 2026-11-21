@@ -28,16 +28,17 @@ const FACTORY_FIRST = ['cup', 'water'];
 const SEED_KINDS = ['seed', 'seeds'];
 
 export const HOLD = Object.freeze({
-  hook:       { hand: 'right', pose: 'grip' },
-  hammer:     { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2 },
+  // arm: [dx, dy, dz] camera-space nudge of the right arm at rest for this kind.
+  hook:       { hand: 'right', pose: 'grip', arm: [0.03, -0.025, 0] },          // hook tip stays right of the screen centre
+  hammer:     { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2, arm: [0.02, -0.06, 0], tilt: 0.55 }, // tilt: head leans forward
   fishingrod: { hand: 'right', pose: 'grip', rx: -0.15, rz: 0.6 },
   brush:      { hand: 'right', pose: 'grip', rx: -0.25, ry: 0.35, rz: 0.35 }, // content hook (paint)
   wood:       { hand: 'right', pose: 'grip', rx: 0.25, ry: 0.5, rz: 0.15 },
   leaf:       { hand: 'right', pose: 'grip', rx: -0.35, ry: 0.4, rz: 0.35 },
   scrap:      { hand: 'right', pose: 'grip', rx: 1.1, ry: 0.3, rz: -0.3 },
   plastic:    { hand: 'right', pose: 'grip', rx: 0.1, ry: 1.2, rz: 0.1 },
-  rope:       { hand: 'right', pose: 'grip', ry: 0.4 },
-  fish:       { hand: 'right', pose: 'grip', rx: 0.15, ry: -0.5, rz: 0.15 },
+  rope:       { hand: 'right', pose: 'grip', ry: 0.4, arm: [-0.01, 0.05, 0] },     // coil hangs off the fist, in front of the palm
+  fish:       { hand: 'right', pose: 'grip', rx: 0.1, ry: 0.35, rz: 0.25, arm: [-0.02, 0.06, 0] },      // by the tail, body across the view
   cup:        { hand: 'right', pose: 'grip', ry: 0.3 },
   water:      { hand: 'right', pose: 'grip', ry: 0.3 },
   drum: { hand: 'left', pose: 'grip', rx: -0.7 }, pipes: { hand: 'right', pose: 'grip', rx: 0.2 }, bells: { hand: 'left', pose: 'grip', rx: -1.25 }, // [instruments]
@@ -46,7 +47,9 @@ export const HOLD = Object.freeze({
 // Unknown kinds (other lanes may add items): carried on the left fist if placeable, else gripped.
 export const holdFor = (kind) => HOLD[kind] || (isPlaceable(kind) ? HOLD.crate : { hand: 'right', pose: 'grip' });
 
-const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.15, fish: 0.3, sail: 0.22, palm: 0.2, lantern: 0.2, net: 0.2, bench: 0.16, crate: 0.13,
+// Left-fist (placeable) models are capped to a small carried size so they never fill the lower left.
+export const HELD_LEFT_MAX = 0.075;
+const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.22, fish: 0.3, sail: 0.22, palm: 0.2, lantern: 0.2, net: 0.2, bench: 0.16, crate: 0.13,
   planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11,
   drum: 0.24, pipes: 0.2, bells: 0.26 }; // [instruments]
 
@@ -146,11 +149,12 @@ export function buildItemModel(T, kind, factory = null) {
   if (!kind) return null;
   let root = null;
   const left = holdFor(kind).hand === 'left';
+  const dim = (k, d) => (left ? Math.min(SIZE[k] || d, HELD_LEFT_MAX) : SIZE[k] || d);
   if (factory && !TOOL_KINDS.includes(kind) && (left || !HOLD[kind] || FACTORY_FIRST.includes(kind))) {
     let m = null;
     try { m = factory(kind); } catch { m = null; }
     if (m?.isObject3D) {
-      root = fit(T, m, SIZE[kind] || 0.16, (s) => new T.Vector3(0, left ? -s.y / 2 : -s.y * 0.2, 0));
+      root = fit(T, m, dim(kind, 0.16), (s) => new T.Vector3(0, left ? -s.y / 2 : -s.y * 0.2, 0));
       root.userData.shared = true;
     }
   }
@@ -162,7 +166,7 @@ export function buildItemModel(T, kind, factory = null) {
     root.userData.size = { x: m.userData.size.x * k, y: m.userData.size.y * k, z: m.userData.size.z * k };
     root.userData.grip = [gp.x, gp.y, gp.z];
   } else if (kind === 'hammer' || kind === 'fishingrod' || kind === 'brush') {
-    const m = kind === 'hammer' ? createHammer(T) : kind === 'brush' ? createBrush(T) : createFishingTool(T), s = kind === 'fishingrod' ? 0.55 : 0.6;
+    const m = kind === 'hammer' ? createHammer(T) : kind === 'brush' ? createBrush(T) : createFishingTool(T), s = kind === 'fishingrod' ? 0.55 : kind === 'hammer' ? 0.42 : 0.6; // compact hammer
     m.scale.setScalar(s);
     root = new T.Group(); root.add(m);
     const gp = m.userData.grip.clone().multiplyScalar(s), sz = m.userData.size || { x: 0.1, y: 0.8, z: 0.1 };
@@ -177,22 +181,21 @@ export function buildItemModel(T, kind, factory = null) {
   } else if (kind === 'plastic') {
     root = fit(T, createPlastic(T), SIZE.plastic, (s) => new T.Vector3(0, s.y * 0.2, 0));
   } else if (kind === 'rope') {
-    root = fit(T, buildRope(T), SIZE.rope, (s) => new T.Vector3(0, s.y * 0.3, 0));
+    root = fit(T, buildRope(T), SIZE.rope, (s) => new T.Vector3(s.x * 0.38, s.y * 0.1, 0));   // fist on the coil's right rim
   } else if (kind === 'fish') {
-    const f = buildFish(T); f.rotation.z = Math.PI / 2;           // held by the tail, head down
-    root = fit(T, f, SIZE.fish, (s) => new T.Vector3(0, s.y * 0.4, 0));
+    root = fit(T, buildFish(T), SIZE.fish, (s) => new T.Vector3(s.x * 0.42, 0, 0));   // tail in the fist, head out to the left
   } else if (DECOR_KINDS.includes(kind)) {
     const c = createCraft(T, kind);
-    if (c) root = fit(T, c, SIZE[kind], (s) => new T.Vector3(0, -s.y / 2, 0)); // grip = base centre
+    if (c) root = fit(T, c, dim(kind), (s) => new T.Vector3(0, -s.y / 2, 0)); // grip = base centre
   } else if (kind === 'cup' || kind === 'water') {
     root = fit(T, buildCup(T, kind === 'water'), SIZE[kind], () => new T.Vector3(0, 0, 0));
   } else if (kind === 'seed' || kind === 'seeds') {
-    root = fit(T, buildSeeds(T), SIZE[kind], (s) => new T.Vector3(0, -s.y / 2, 0));
+    root = fit(T, buildSeeds(T), dim(kind), (s) => new T.Vector3(0, -s.y / 2, 0));
   } else if (kind === 'planter') {
-    root = fit(T, createCraft(T, 'palm'), SIZE.planter, (s) => new T.Vector3(0, -s.y / 2, 0));
+    root = fit(T, createCraft(T, 'palm'), dim('planter'), (s) => new T.Vector3(0, -s.y / 2, 0));
   }
   if (!root) { const ins = buildInstrument(T, kind), gf = ins?.userData.gripFrac; if (ins) root = fit(T, ins, SIZE[kind], gf ? (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z) : null); } // [instruments]
-  if (!root) root = fit(T, buildBundle(T), 0.12, (s) => new T.Vector3(0, left ? -s.y / 2 : 0, 0));
+  if (!root) root = fit(T, buildBundle(T), left ? HELD_LEFT_MAX : 0.12, (s) => new T.Vector3(0, left ? -s.y / 2 : 0, 0));
   root.name = 'item_' + kind;
   root.userData.kind = kind;
   root.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });

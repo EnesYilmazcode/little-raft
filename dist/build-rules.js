@@ -9,6 +9,7 @@ export const BLOCK_TEXT = Object.freeze({
   bound: 'Raft can’t grow further this way',
   cap: 'Raft can’t grow further this way',
   reach: 'Too far away: step closer',
+  nofloor: 'Place it on the raft floor',
 });
 
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
