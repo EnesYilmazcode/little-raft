@@ -621,7 +621,7 @@ export function createWildlife(ctx) {
     },
     release() { for (const f of forced) f.on = false; for (const p of pinned) p.on = false; forceC.kind = null; },
     setTime(t) { if (fin(t)) offset = target = t - (fin(ctx.elapsed) ? ctx.elapsed : 0); return now(); },
-    get perches() { return perches.map(p => ({ ...p })); },
+    get perches() { refreshPerches(); return perches.map(p => ({ ...p })); }, // [scarecrow] fresh after a debug layout change
     setVisible(on) { if (group) group.visible = !!on; return !!group; }, // for draw-call measurements
     renderCalls() { const r = ctx.renderer; return r && r.info ? r.info.render.calls : null; },
   };

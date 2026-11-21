@@ -150,3 +150,14 @@ Run `npm test` and shoot.py, and the `errors` list must be empty.
   - It calls `ctx.rebuildRaft()`, then `peer('wildlife').debug.landGull(0, {perch: <index of the first palm perch>, instant:true, stay:30})` and forces an immediate `pickPecks`.
   - It returns `{palms:[keys], scarecrow:key}`. Screenshot the pecking gull, the shoo prompt and the sway.
 - `shoo()` acts as E on the pecked key. `fastForward(sec)` runs the host 1 Hz loop.
+
+## Build notes
+- Hook lines are tagged `// [scarecrow]` (game.js `tickWatering` line uses an inline `/* [scarecrow] */` because the line continues).
+- `createScarecrow` sits right after `createWildlife` in `FEATURES`, as specced. `content.palmPrompt` wraps the call in try/catch and disables the module on a throw, like other content calls.
+- Fold clamp (section 3): `gullPlan` already measures the downstroke from the perch `py` (`hh = out.y - out.py`), so a pot-rim perch needed no change there.
+- `wildlife.debug.perches` now refreshes perches before it copies them, so `scarecrow.scene()` can find the new palm perch right after `rebuildRaft()`.
+- `onPalm` reuses one `{i, key}` per gull. `shoo` also matches a latched perch only in the current slot.
+- `scene()` adds missing raft tiles if the raft has no free spot. If no palm perch exists (`protect:true`), the gull lands on the scarecrow hat instead. The forced first `pickPecks` uses the landed gull directly, because wildlife has not drawn a frame yet. It also returns `perch` and `pecked` for QA.
+- The model's leaf skirt and rags use `DoubleSide` on the shared vertex-coloured material, with 3 meshes per scarecrow. The `ragL`/`ragR` group refs are cached in `userData.rags`, so `swayRags` does no lookups.
+- The planter that `palmPrompt` checks comes from its own ray pick, the same as bees `target`. It does not use the watering aim. On adjacent palms both normally pick the same pot.
+- Mixed-version co-op is unsupported (an old guest sees no gull on the pot, and an old host means no pecks). Say so in the PR.

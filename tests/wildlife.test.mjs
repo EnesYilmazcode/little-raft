@@ -18,13 +18,21 @@ test('mulberry32 is deterministic and in [0,1)', () => {
   for (let i = 0; i < 100; i++) { const x = a(); assert.equal(x, b()); assert.ok(x >= 0 && x < 1); }
 });
 
-test('perchesFrom: free tiles plus raised sail/crate/bench tops, sorted, order independent', () => {
+test('perchesFrom: free tiles plus raised sail/crate/bench tops and palm rims, sorted, order independent', () => {
   const p = perchesFrom(TILES, DECOR);
-  assert.equal(p.length, 8); // palm tile dropped
-  assert.ok(!p.some(q => q.key === '0,1'));
+  assert.equal(p.length, 9); // [scarecrow] the palm tile is a pot-rim perch now
+  const palm = p.find(q => q.key === '0,1');
+  assert.equal(palm.kind, 'palm'); assert.ok(Math.abs(palm.y - 0.72) < 1e-9);
+  assert.ok(Math.abs(Math.hypot(palm.x - 0, palm.z - 2) - 0.3) < 1e-9, 'rim offset');
   const sail = p.find(q => q.key === '1,0'), crate = p.find(q => q.key === '1,1'), free = p.find(q => q.key === '0,0');
   assert.ok(sail.y > 3.5 && crate.y > 0.9 && crate.y < 1.2 && free.y === 0.2);
-  assert.deepEqual(p.map(q => q.key), ['-1,-1', '-1,0', '-1,1', '0,-1', '0,0', '1,-1', '1,0', '1,1']);
+  assert.equal(free.kind, 'deck'); assert.equal(sail.kind, 'sail'); assert.equal(crate.kind, 'crate');
+  assert.deepEqual(p.map(q => q.key), ['-1,-1', '-1,0', '-1,1', '0,-1', '0,0', '0,1', '1,-1', '1,0', '1,1']);
+  // [scarecrow] a scarecrow at 0,0 guards the palm at 0,1 and gives a hat perch
+  const q = perchesFrom(TILES, [...DECOR, { type: 'scarecrow', x: 0, z: 0 }]);
+  assert.ok(!q.some(e => e.key === '0,1'));
+  const hat = q.find(e => e.key === '0,0');
+  assert.equal(hat.kind, 'scarecrow'); assert.ok(Math.abs(hat.y - (0.22 + 1.75)) < 1e-9);
   const shuffled = [...TILES].reverse(), d2 = [...DECOR].reverse();
   assert.deepEqual(perchesFrom(shuffled, d2), p);
   assert.deepEqual(perchesFrom([], []), []);
@@ -186,7 +194,7 @@ test('module: fresh arrays with the same layout do not rebuild perches', () => {
   assert.equal(m.debug.snapshot().rebuilds, 1);
   ctx.world = { tiles: TILES.map(t => [...t]), decor: [...DECOR, { type: 'palm', x: 0, z: 0 }] }; m.update(0.016);
   assert.equal(m.debug.snapshot().rebuilds, 2);
-  assert.equal(m.debug.snapshot().perches, 7);
+  assert.equal(m.debug.snapshot().perches, 9); // [scarecrow] palm planters are rim perches now
 });
 
 test('animals keep clear of a big raft', () => {
