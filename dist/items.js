@@ -40,8 +40,10 @@
 // plus BARREL_PITY is tuned for ~43 barrels -> smelter (~66 min) and ~48 -> metal hook.
 
 const STACK = 20;
-const SLOT_COUNT = 28;   // mirrors inventory-state.js
-const HOTBAR_SIZE = 8;   // mirrors inventory-state.js
+// These mirror inventory-state.js (which imports this file, so it cannot be imported back here).
+// tests/items-hotbar.test.mjs keeps them in sync.
+export const SLOT_COUNT = 28;
+export const HOTBAR_SIZE = 10;
 const MAX_DURABILITY = 100;
 
 const deepFreeze = (o) => {
