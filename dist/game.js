@@ -646,7 +646,7 @@ export function mount(transfer = null) {
   const itemMeshes = new Map();
   function syncItems() {
     if (!itemsGroup) return;
-    if (!itemsGroup.userData.batch) itemsGroup.add(itemsGroup.userData.batch = createItemBatch(T)); // one instanced draw per item variant
+    if (!itemsGroup.userData.batch) itemsGroup.add(itemsGroup.userData.batch = createItemBatch(T, {camera:() => camera})); // one instanced draw per item variant; culls and LODs against the view camera
     const live = new Set(world.items.map(x => x.token));
     for (const [token, m] of itemMeshes) if (!live.has(token)) { itemsGroup.remove(m); disposeGeometry(m); itemMeshes.delete(token); }
     for (const token of pending.keys()) if (!live.has(token)) pending.delete(token);
