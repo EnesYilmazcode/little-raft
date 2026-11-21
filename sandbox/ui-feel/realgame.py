@@ -1,19 +1,23 @@
 """ui-feel in the REAL game, headless.
-Usage: python sandbox/ui-feel/realgame.py [--hook-tries N] [--freeze MS] [--keep] [--patch-only]
+Usage: python sandbox/ui-feel/realgame.py [--hook-tries N] [--freeze MS] [--keep] [--patch-only] [--topup]
 
 1. Copies dist/ to a temp folder and applies docs/tech/ui-feel-ADOPT.md literally: every block tagged
    <!-- copy: ... -->, <!-- apply: FILE --> (a ```diff whose '-' and ' ' lines must occur exactly once in FILE)
-   or <!-- append: FILE --> is parsed out of the doc, so the doc and this check cannot drift apart.
+   or <!-- append: FILE --> is parsed out of the doc, so the doc and this check cannot drift apart. It stops
+   with an error if dist/game.js is not the N-line base the doc header names (re-check the doc first).
    A scratch-only QA line (`window.__qaAction` / `window.__qaEffect`) is added on top; it is not part of ADOPT.
    --patch-only stops here and prints the scratch folder (for running tests/ with RAFT_DIST=<it>/dist).
 2. Boots the game (Solo) at 1280x720 and checks the layer attached in "main" mode (no own hotbar cursor, no
    toast popover). Tries to land a real hook catch; after N misses sends the same {kind:'collect'} action a
    catch sends. Either way loot reaches ui-feel through applyAction -> emit -> effect -> feelEffect.
 3. Freezes the fly MS after the pickup (rg-01), at 600 ms (rg-02) and landed (rg-03); records that the target
-   slots keep their old count until the icon lands. Crafts through the real recipe row + craft button
-   (rg-04, 1280x720), resizes to 1024x600 with the bag open (rg-05). Checks the partner-build marker and the
-   guards (a throwing pickup, a throwing per-frame hover). Enters fullscreen through Pause > Graphics and lands
-   another pickup (rg-06). Writes sandbox/ui-feel/shots/rg-*.png and prints JSON.
+   slots keep their old count until the icon lands, and that every flying icon has art (img/svg). Crafts
+   through the real recipe row + craft button (rg-04, 1280x720); if nothing is craftable (or --topup) it first
+   gives 2 leaf through raftDebug.give, so the craft is never skipped. Resizes to 1024x600 with the bag open
+   (rg-05). Checks the partner-build marker, the guards (a throwing pickup, a throwing hit marker) and that
+   main's reticle is untouched (4 px dot, .usable 8 px, only the .uf-x-hit part added). Enters fullscreen
+   through Pause > Graphics and lands another pickup (rg-06). Writes sandbox/ui-feel/shots/rg-*.png, prints
+   JSON with a `checks` map and exits 1 if any check failed.
 """
 import re, sys, json, shutil, tempfile, threading, functools, http.server, socketserver
 from pathlib import Path
@@ -33,6 +37,11 @@ D = tmp / 'dist'
 shutil.copytree(REPO / 'dist', D)
 doc = (REPO / 'docs/tech/ui-feel-ADOPT.md').read_text()
 BLOCK = re.compile(r'<!-- (copy|apply|append): (.+?) -->\n```[a-z]*\n(.*?)```', re.S)
+# The doc names the dist it was checked against; a different game.js means the doc must be re-checked first.
+base = re.search(r'`dist/game\.js` (\d+) lines', doc)
+assert base, 'ADOPT header must name the `dist/game.js` N lines it was checked against'
+have = (REPO / 'dist/game.js').read_text().count('\n')
+assert have == int(base.group(1)), f'ADOPT was checked against a {base.group(1)}-line dist/game.js, this dist has {have}: re-check every block against current main'
 applied = []
 for verb, arg, body in BLOCK.findall(doc):
     if verb == 'copy':
@@ -50,11 +59,12 @@ for verb, arg, body in BLOCK.findall(doc):
     n = s.count(old_s)
     assert n == 1, f'ADOPT block for dist/{arg}: expected 1 match, found {n}:\n{old_s[:300]}'
     p.write_text(s.replace(old_s, new_s)); applied.append(f'apply {arg}: {old[0].strip()[:60]}')
-assert sum(a.startswith('apply game.js') for a in applied) == 11, applied
+assert sum(a.startswith('apply game.js') for a in applied) == 10, applied
+assert sum(a.startswith('apply live.js') for a in applied) == 1, applied
 # scratch-only QA hooks (NOT part of ADOPT)
 g = D / 'game.js'; s = g.read_text(); a = '  window.raftDebug = debugApi;\n'
 assert s.count(a) == 1
-g.write_text(s.replace(a, a + '  window.__qaAction = a => action(a); window.__qaEffect = e => effect(e); window.__qaFeelFailed = () => feelFailed;\n'))
+g.write_text(s.replace(a, a + '  window.__qaAction = a => action(a); window.__qaEffect = e => effect(e);\n'))
 log = {'adopt': applied, 'scratch': str(tmp)}
 if '--patch-only' in argv:
     print(json.dumps(log, indent=1)); sys.exit(0)
@@ -77,6 +87,9 @@ FREEZE = """ms => { const f = window.__littleRaftUIFeel, orig = f.pickup; window
       for (const a of document.getAnimations()) { a.pause(); a.currentTime = ms; }
       const t0 = performance.now(); performance.now = () => t0; window.__frozen = 1;
       window.__feedAtFreeze = [...document.querySelectorAll('#pickupFeed .pf-row')].map(r => r.textContent.trim());
+      window.__flyArt = [...document.querySelectorAll('#uf-layer .uf-fly')].filter(f => f.getAnimations().length).map(f => {
+        const a = f.querySelector('.uf-art'), i = a.querySelector('img,svg');
+        return {label: f.lastChild.textContent, artChars: a.innerHTML.length, art: i ? i.tagName.toLowerCase() : 'none'}; });
       window.__held = [...document.querySelectorAll('.tools .sv-slot.uf-wait')].map(s => ({slot: +s.dataset.slot,
         painted: s.querySelector('.sv-count').textContent, shown: s.querySelector('.sv-count').dataset.ufOld, fresh: s.classList.contains('uf-fresh')})); });
     return r; };
@@ -123,7 +136,9 @@ with sync_playwright() as p:
         if not ts: pg.wait_for_timeout(800); continue
         t = ts[0]; s = t['screen']
         pg.mouse.move(s['x'], s['y']); pg.mouse.down(); pg.wait_for_timeout(600)
-        if attempt == 0: shot('00-charge')
+        if attempt == 0:
+            shot('00-charge')
+            log['chargeRing'] = pg.evaluate("(() => { const m = document.getElementById('chargeMeter'); return {shown: !!m && !m.hidden && getComputedStyle(m).display !== 'none', c: m && m.style.getPropertyValue('--c')}; })()")
         pg.wait_for_timeout(350); pg.mouse.up()
         try: pg.wait_for_function('raftDebug.state.hookStage!=="flying"', timeout=8000)
         except Exception: pass
@@ -142,7 +157,10 @@ with sync_playwright() as p:
     log['loot'] = pg.evaluate('window.__loot')
     log['heldWhileFlying'] = pg.evaluate('window.__held')
     log['feedAtFreeze'] = pg.evaluate('window.__feedAtFreeze')
+    log['flyArt'] = pg.evaluate('window.__flyArt')
     pg.evaluate(SEEK, 600); pg.wait_for_timeout(150); shot('02-flight-600ms')
+    log['flightAt600ms'] = pg.evaluate("""() => [...document.querySelectorAll('#uf-layer .uf-fly')].filter(f => f.getAnimations().length)
+      .map(f => { const r = f.querySelector('.uf-art').getBoundingClientRect(); return {w: Math.round(r.width), h: Math.round(r.height), opacity: +(+getComputedStyle(f).opacity).toFixed(2)}; })""")
     # finish() (not a seek) so the flights' onfinish runs: the slots release their held count and bump
     pg.evaluate("document.getAnimations().forEach(a => { if (a.effect && a.effect.getComputedTiming().endTime !== Infinity) a.finish(); })")
     pg.wait_for_timeout(400); pg.evaluate(SEEK, 100000); pg.wait_for_timeout(150); shot('03-landed')
@@ -153,7 +171,12 @@ with sync_playwright() as p:
     # ---------- craft through the real UI, inventory at 1280 and 1024 ----------
     pg.keyboard.press('Tab'); pg.wait_for_function('raftDebug.state.inventoryOpen'); pg.wait_for_timeout(500)
     ready = pg.locator('#inventory .sv-recipe.sv-ready')
-    log['craftReady'] = ready.count()
+    log['craftReady'] = ready.count(); log['craftToppedUp'] = None
+    if not ready.count() or '--topup' in argv:  # nothing craftable from this pickup: give one rope's worth (2 leaf), reopen
+        pg.keyboard.press('Tab'); pg.wait_for_function('!raftDebug.state.inventoryOpen')
+        log['craftToppedUp'] = pg.evaluate("raftDebug.give('leaf', 2)")
+        pg.keyboard.press('Tab'); pg.wait_for_function('raftDebug.state.inventoryOpen'); pg.wait_for_timeout(500)
+        log['craftReady'] = ready.count()
     if ready.count():
         # recipes are filtered by category tab and the list scrolls: pick through the real click handlers in JS
         log['craftPicked'] = pg.evaluate("""() => { const r = document.querySelector('#inventory .sv-recipe.sv-ready');
@@ -194,13 +217,18 @@ with sync_playwright() as p:
     pg.evaluate("window.__qaEffect({kind:'craft', loot:{'x\"]\\n[y':1}, text:'Crafted ?'})")
     pg.evaluate("window.__qaEffect({kind:'craft', loot:{toString:null}, text:'Crafted ?'})")
     log['guardHostileCraft'] = {'pageErrors': len(errors) - n0}
-    pg.evaluate("""() => { const x = window.__littleRaftUIFeel.crosshair; window.__origHover = x.hover; x.hover = () => { throw new Error('QA-EXPECTED hover'); }; }""")
-    pg.wait_for_timeout(1500)
-    log['guardFrame'] = pg.evaluate("""async () => { const t0 = raftDebug.state.camera; await new Promise(r => setTimeout(r, 1200));
-      return {feelFailed: window.__qaFeelFailed(), stillRunning: raftDebug.state.running}; }""")
-    log['guardFrame']['pageErrors'] = len(errors) - n0
-    log['guardFrame']['expectedConsoleErrors'] = len(expected)
-    pg.evaluate("() => { window.__littleRaftUIFeel.crosshair.hover = window.__origHover; }")
+    pg.evaluate("""() => { const x = window.__littleRaftUIFeel.crosshair; window.__origHit = x.hit; x.hit = () => { throw new Error('QA-EXPECTED hit'); }; }""")
+    pg.evaluate("window.__qaEffect({kind:'full', text:'Your bag is full'})")
+    pg.evaluate("() => { window.__littleRaftUIFeel.crosshair.hit = window.__origHit; }")
+    pg.wait_for_timeout(800)
+    log['guardHit'] = {'stillRunning': pg.evaluate('raftDebug.state.running'), 'pageErrors': len(errors) - n0, 'expectedConsoleErrors': len(expected)}
+
+    # ---------- reticle: main's dot + .usable + #chargeMeter stay main's; ui-feel adds only the hit ticks ----------
+    log['reticle'] = pg.evaluate("""() => { const x = document.getElementById('crosshair'), s = getComputedStyle(x);
+      const base = {cls: x.className, width: s.width, shadow: s.boxShadow, radius: s.borderRadius,
+        parts: [...x.querySelectorAll('.uf-x')].map(c => [...c.classList].join(' '))};
+      x.classList.add('usable'); const u = getComputedStyle(x).width; x.classList.remove('usable');
+      return {...base, usableWidth: u, chargeMeterHiddenByFeel: !!document.querySelector('#ui-feel-style')?.textContent.includes('#chargeMeter')}; }""")
 
     # ---------- fullscreen through Pause > Graphics, then another pickup ----------
     pg.keyboard.press('Escape')
@@ -225,4 +253,18 @@ with sync_playwright() as p:
 srv.shutdown()
 if '--keep' not in argv: shutil.rmtree(tmp, ignore_errors=True); log.pop('scratch')
 log['shots'] = shots
+fa = log.get('flyArt') or []
+checks = {
+    'flyIconsNonEmpty': bool(fa) and all(f['artChars'] > 0 and f['art'] != 'none' for f in fa),
+    'heldWhileFlying': bool(log.get('heldWhileFlying')),
+    'crafted': log.get('craftToppedUp') != -1 and bool(log.get('craft')) and all(c['flashed'] is True for c in log['craft']),
+    'buildMarkerOwnOnly': log.get('buildMarker') == {'partner (by:guest)': 0, 'no owner': 0, 'mine (by:host)': 1},
+    'reticleIsMains': 'uf-xm' in log['reticle']['cls'] and 'uf-xh' not in log['reticle']['cls'] and log['reticle']['width'] == '4px'
+                      and log['reticle']['usableWidth'] == '8px' and len(log['reticle']['parts']) == 1 and log['reticle']['parts'][0].startswith('uf-x uf-x-hit') and not log['reticle']['chargeMeterHiddenByFeel'],
+    'guards': log['guardEffect']['pageErrors'] == 0 and log['guardHostileCraft']['pageErrors'] == 0 and log['guardHit']['pageErrors'] == 0 and log['guardHit']['stillRunning'],
+    'noPageErrors': not [e for e in errors if 'favicon' not in e and '404' not in e],
+}
+log['checks'] = checks
 print(json.dumps(log, indent=1))
+failed = [k for k, v in checks.items() if not v]
+if failed: print('FAILED: ' + ', '.join(failed), file=sys.stderr); sys.exit(1)
