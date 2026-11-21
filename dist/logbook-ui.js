@@ -55,6 +55,7 @@ const CSS = `
 #lb-toast[hidden]{display:none}
 #lb-toast .lb-icon{width:32px;height:32px;flex:none}
 @media (prefers-reduced-motion:reduce){#lb-toast{transition:none;transform:none}}
+@media (max-width:760px){#lb-toast{top:52px}} /* clear the centred signal readout pill */
 @media (max-width:520px){.lb [role=tab]{flex:1}.lb-grid{grid-template-columns:1fr}.lb [role=tabpanel]{padding:8px}}
 `;
 

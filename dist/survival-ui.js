@@ -184,6 +184,7 @@ const CSS = `
 #inventory .sv-tip small{display:block;font:500 12px/1.3 ${FONT};color:#d9c9a6}
 @media(max-width:860px),(max-height:520px){#inventory.sv-inv{width:auto}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}#inventory .sv-craft{flex:none;width:auto;min-width:0;max-height:36vh}#inventory .sv-bag{min-width:0}
   #inventory .sv-grid{grid-template-columns:repeat(7,44px)}#inventory .sv-hotrow{grid-template-columns:repeat(${HB},44px)}#inventory.sv-inv button.sv-slot{width:44px;height:44px}#inventory .sv-slot .sv-art{inset:6px}}
+@media(max-width:440px){#inventory .sv-grid{grid-template-columns:repeat(7,36px);gap:4px}#inventory .sv-hotrow{grid-template-columns:repeat(${HB},36px);gap:4px}#inventory.sv-inv button.sv-slot{width:36px;height:36px}#inventory .sv-slot .sv-art{inset:5px}#inventory .sv-slot .sv-count{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.sv-slot,.sv-recipe{transition:none}}
 `;
 
