@@ -380,6 +380,7 @@ export function mount(transfer = null) {
     get elapsed() { return elapsed; }, get options() { return options; }, get other() { return other; },
     localBag: () => localBag(), actorBag: a => actorBag(a), action: a => action(a), emit: (e, to) => emit(e, to), notice: (s, ms) => notice(s, ms),
     esc: s => esc(s), mat: c => mat(c), rebuildRaft: () => rebuildRaft(), deckY: () => deckY(), uiOpen: () => uiBlocked(),
+    observe: (ev, actor) => content?.observe(ev, actor), dayIndex: () => content?.day() ?? null, hasGrill: () => (fc?.grills?.size ?? 0) > 0, // [tasks]
     openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
   };
   function init() {
@@ -431,7 +432,7 @@ export function mount(transfer = null) {
     return {scene, raft, ocean, camera, signal, get rodModel() { return hands?.itemModel('fishingrod') ?? null; }, role:() => role, netReady:() => networkReady, send, action, notice, beep,
       selectedKind, aim:() => currentAim(), rodTip:() => handPos, player:() => ({x:physics.x, y:physics.y, z:physics.z, yaw}),
       hasTile, decorAt:(x, z) => world.decor.some(d => d.x === x && d.z === z), bagCount:k => localBag().count(k),
-      running:() => running, uiBlocked, resume:() => requestLock(), busy:() => !!hook || !!fishWait || !!charging};
+      running:() => running, uiBlocked, resume:() => requestLock(), busy:() => !!hook || !!fishWait || !!charging, observe:(ev, actor) => content?.observe(ev, actor)}; // [tasks] observe
   }
   function fallbackAvatar(color) {
     const g = new T.Group();
@@ -815,7 +816,7 @@ export function mount(transfer = null) {
     if (typeof a.cast === 'string' && a.cast && wornCasts[actor] !== a.cast) { wornCasts[actor] = a.cast; wearHook(bag, a.slot, actor); }
     if (n < 0) { emit({kind:'notice', text:'An empty bottle. Someone out there says hi!'}, actor); return; }
     emit({kind:'note', note:n, text:`Message in a bottle! (${world.notes.length}/${NOTE_COUNT}) · L to read`}, 'all');
-    award({kind:'note'});
+    award({kind:'note'}); content?.observe({kind:'bottle'}, actor); // [tasks]
   }
   function award(ev, quiet = false) {
     if (role === 'guest') return [];
@@ -843,6 +844,7 @@ export function mount(transfer = null) {
         : a.kind === 'waterPlant' ? waterPlant(world, key, bag) : harvestPlant(world, key, bag, rand);
     }
     emit({kind:r.ok ? r.kind : (r.reason === 'full' ? 'full' : 'notice'), text:r.text}, actor);
+    if (r.ok && (a.kind === 'waterPlant' || a.kind === 'harvestPlant')) content?.observe({kind:a.kind === 'waterPlant' ? 'water' : 'harvest'}, actor); // [tasks]
   }
   function applyRain(a, actor, bag) { // rain-sprinkler: host-side validation (logic in rain.js)
     const p = actor === 'guest' ? other : physics; if (!p) return;
@@ -875,7 +877,7 @@ export function mount(transfer = null) {
       if (r.ok) emit({kind:'craft', text:`Crafted ${ITEM_INFO[r.crafted.kind]?.name ?? r.crafted.kind}`, loot:{[r.crafted.kind]:r.crafted.count}}, actor);
       else if (r.reason === 'full') emit({kind:'full', text:'Your bag is full'}, actor);
       else if (r.reason === 'missing') emit({kind:'notice', text:'Need ' + r.missing.map(m => `${m.count} more ${itemName(m.kind)}`).join(' and ')}, actor);
-      if (r.ok) award({kind:'craft', crafted:r.crafted.kind});
+      if (r.ok) { award({kind:'craft', crafted:r.crafted.kind}); content?.observe({kind:'craft', item:r.crafted.kind, count:r.crafted.count}, actor); } // [tasks] observe
       return;
     }
     if (a.kind === 'collect') {
@@ -893,7 +895,7 @@ export function mount(transfer = null) {
       if (typeof a.cast === 'string' && a.cast && wornCasts[actor] !== a.cast) { wornCasts[actor] = a.cast; wearHook(bag, a.slot, actor); }
       if (isCache) emit({kind:'build', text:'Signal cache recovered!'}, actor === 'host' ? 'guest' : 'host');
       if (!a.net) emit({kind:'loot', text:(isCache ? 'Signal cache! + ' : '+ ') + Object.entries(loot).map(([k, n]) => `${n} ${itemName(k)}`).join(' · '), loot}, actor);
-      award({kind:'collect'});
+      award({kind:'collect'}); content?.observe({kind:'collect', type:it.type, loot, net:!!a.net}, actor); // [tasks]
       return;
     }
     if (a.kind === 'build') {
@@ -919,7 +921,7 @@ export function mount(transfer = null) {
         if (a.recipe === 'antenna') { const n = countAntennas(world.decor); placedText = n > antennasBefore ? `Antenna placed · signal ${n}/3` : antennasBefore >= 3 ? 'Antenna placed' : 'Antenna placed (put it 2+ tiles from the receiver)'; }
       } else return;
       rebuildRaft(); fitShadow(); emit({kind:'build', text:placedText ?? (a.recipe === 'floor' ? 'A little more room!' : `${ITEM_INFO[a.recipe].name} placed`), sound:a.recipe === 'floor' ? 'build' : 'place'}, 'all');
-      award({kind:'build'});
+      award({kind:'build'}); content?.observe({kind:'build', recipe:a.recipe}, actor); // [tasks]
       return;
     }
     if ((a.kind === 'piece' || a.kind === 'unpiece') && building) { // building-pieces lane hook
@@ -940,7 +942,7 @@ export function mount(transfer = null) {
       if (bag.count('fishingrod') < 1) return;
       if (bag.add('fish', 1) > 0) { emit({kind:'full', text:'Bag full: the fish swam away'}, actor); return; }
       world.fish++; emit({kind:'loot', text:'You caught a fish!', loot:{fish:1}}, actor);
-      award({kind:'fish'}); return;
+      award({kind:'fish'}); content?.observe({kind:'fish'}, actor); return; // [tasks] observe
     }
     if (a.kind === 'repair') {
       const i = repairHookSlot(bag.slots, a.slot, MAX_HEALTH);
@@ -949,7 +951,7 @@ export function mount(transfer = null) {
       const cost = repairCost(bag.slots[i].kind) ?? REPAIR_COST; // [progression-hook]
       if (!spend(bag, cost)) { emit({kind:'notice', text:'Repair needs ' + missingText(bag, cost)}, actor); return; }
       bag.slots[i].durability = MAX_HEALTH; emit({kind:'build', text:'Hook repaired!', sound:'repair'}, actor);
-      award({kind:'repair'}); return;
+      award({kind:'repair'}); content?.observe({kind:'repair'}, actor); return; // [tasks] observe
     }
     if (content?.action(a, actor, bag)) return; // content hook: module actions (chest, research, gather…)
     if (WATER_ACTIONS.includes(a.kind)) { applyWatering(a, actor, bag); return; }
@@ -1827,7 +1829,7 @@ export function mount(transfer = null) {
   const optionsDialog = document.getElementById('options'), previousSettingsOwner = optionsDialog?.dataset.owner;
   try {
     if (!canvas) throw new Error('#world canvas missing');
-    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), resume:() => requestLock(), pause:clearInput}); // [progression-hook]
+    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), resume:() => requestLock(), pause:clearInput, observe:(ev, actor) => content?.observe(ev, actor)}); // [tasks] observe // [progression-hook]
     init();
     try { coop = createCoop(coopContext(), X?.coop); } catch (e) { console.warn('co-op layer unavailable', e); coop = null; } // coop
     settingsController = createSettings({onChange:next => { applyOptions(next); soundLabel(); }, onPause:pauseInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});
@@ -1842,7 +1844,7 @@ export function mount(transfer = null) {
       recipeGate:id => prog?.recipeGate(id), // [progression-hook]
     });
     prog.installUI(); // [progression-hook]
-    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock())});
+    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock()), tasks:{view:() => content?.tasksView?.() ?? null, claim:id => action({kind:'tasks.claim', i:id})}}); // [tasks] Tasks tab
     if (role !== 'guest') retroAward();
     pickupFeed.setIconProvider(getItemIcon); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
