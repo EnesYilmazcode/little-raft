@@ -61,7 +61,7 @@ export const CONTENT_ITEMS = Object.freeze({
 const recipe = (id, name, count, cost) => Object.freeze({ id, name, output: Object.freeze({ kind: id, count }), cost: Object.freeze(cost) });
 
 export const CONTENT_RECIPES = Object.freeze({
-  research: recipe('research', 'Tinker\u2019s Desk', 1, { wood: 6, scrap: 2 }),
+  research: recipe('research', 'Tinker\u2019s Desk', 1, { wood: 14, scrap: 2 }), // Raft's Research Table: 14 planks + 2 scrap
   // decor pack (decor-pack.js)
   rug:     recipe('rug',     'Woven Deck Mat',    1, { leaf: 4, rope: 2 }),
   pennant: recipe('pennant', 'Wind Pennant',      1, { wood: 2, leaf: 2, rope: 1 }),
