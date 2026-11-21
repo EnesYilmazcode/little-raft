@@ -15,7 +15,8 @@
 //     .snapshot()                       plain JSON; the constructor sanitises anything (never throws)
 // Visuals (T = THREE):
 //   createGrillModel(T, {light}?) -> Group, origin at the floor surface, ~0.86 x 0.62 m, ~0.72 m tall.
-//     userData: slotPositions[2], fireAnchor, smokeAnchor, setFire(0..1), update(dt,time), dispose(), meshCount (9)
+//     userData: slotPositions[2], fireAnchor, smokeAnchor, setFire(0..1), update(dt,time), dispose(), meshCount (4)
+//     Static geometry/materials are shared by all grills (refcounted per THREE instance); dispose() releases them.
 //   createSmoke(T, {max=48}) -> { points, emit(x,y,z,n,dark), update(dt,wind{x,z}), dispose() }  one draw call
 
 export const COOK_TUNING = Object.freeze({
@@ -31,6 +32,7 @@ const NO_EVENTS = Object.freeze([]);
 const STATES = ['raw', 'cooked', 'burnt'];
 const fin = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const pushEv = (ev, e) => { if (ev === NO_EVENTS) ev = []; ev.push(e); return ev; };
 const cmOf = fish => clamp(fin(fish && fish.cm, 30), 1, 300);
 
 export function cookTime(fish) {
@@ -105,20 +107,19 @@ export class GrillState {
     }
     const use = Math.min(burn, this.fuel);
     this.fuel -= use;
-    let ev = NO_EVENTS;
-    const push = e => { if (ev === NO_EVENTS) ev = []; ev.push(e); };
+    let ev = NO_EVENTS; // allocated only when an event fires (no per-frame closure/array)
     if (occ) {
       for (let i = 0; i < this.slots.length; i++) {
         const f = this.slots[i];
         if (!f || f.state === 'burnt') continue;
         const ct = cookTime(f);
         f.t += use;
-        if (f.state === 'raw' && f.t >= ct) { f.state = 'cooked'; push({ kind: 'cooked', slot: i }); }
-        if (f.state === 'cooked' && f.t >= ct + COOK_TUNING.burnAfter) { f.state = 'burnt'; push({ kind: 'burnt', slot: i }); }
+        if (f.state === 'raw' && f.t >= ct) { f.state = 'cooked'; ev = pushEv(ev, { kind: 'cooked', slot: i }); }
+        if (f.state === 'cooked' && f.t >= ct + COOK_TUNING.burnAfter) { f.state = 'burnt'; ev = pushEv(ev, { kind: 'burnt', slot: i }); }
       }
     }
-    if (this.fuel <= 1e-9) { this.fuel = 0; push({ kind: 'out' }); }
-    else if (!occ && this.idle >= IB) push({ kind: 'out', idle: true });
+    if (this.fuel <= 1e-9) { this.fuel = 0; ev = pushEv(ev, { kind: 'out' }); }
+    else if (!occ && this.idle >= IB) ev = pushEv(ev, { kind: 'out', idle: true });
     return ev;
   }
   snapshot() {
@@ -130,9 +131,13 @@ export class GrillState {
 }
 
 // ---------------------------------------------------------------- grill model
-export function createGrillModel(T, opts = {}) {
-  const g = new T.Group();
-  g.name = 'grill';
+// Static grill geometry + materials are identical for every grill (fixed seed), so they are built once per THREE
+// instance and shared (refcounted); only the ember/flame materials (fire level) are per grill.
+// Draw calls per lit grill: 4 (wood+logs+stones, box+grate, embers, 3 instanced flames); shadow casters: 2.
+const KITS = new WeakMap();
+function grillKit(T) {
+  let kit = KITS.get(T);
+  if (kit) { kit.refs++; return kit; }
   let seed = 0x51c0ffee;
   const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) | 0; return (seed >>> 8) / 16777216; };
   const _m = new T.Matrix4(), _q = new T.Quaternion(), _e = new T.Euler(), _p = new T.Vector3(), _s = new T.Vector3();
@@ -155,7 +160,7 @@ export function createGrillModel(T, opts = {}) {
     geo.setAttribute('color', new T.BufferAttribute(arr, 3));
     return geo;
   };
-  const solid = (geo, hex, j = 0) => { c2.set(hex).multiplyScalar(1 - j / 2 + rnd() * j); const k = c2.clone(); return paint(geo, (x, y, z, o) => o.copy(k)); };
+  const solid = (geo, hex, j = 0, mul = 1) => { c2.set(hex).multiplyScalar((1 - j / 2 + rnd() * j) * mul); const k = c2.clone(); return paint(geo, (x, y, z, o) => o.copy(k)); };
   const merge = list => {
     const parts = list.map(x => (x.index ? x.toNonIndexed() : x));
     const out = new T.BufferGeometry();
@@ -169,12 +174,6 @@ export function createGrillModel(T, opts = {}) {
     new Set(list.concat(parts)).forEach(x => x.dispose());
     out.computeBoundingSphere();
     return out;
-  };
-  let meshCount = 0;
-  const add = (list, mat, name) => {
-    const m = new T.Mesh(Array.isArray(list) ? merge(list) : list, mat);
-    m.name = name; m.castShadow = m.receiveShadow = true; g.add(m); meshCount++;
-    return m;
   };
   const std = (o) => new T.MeshStandardMaterial(Object.assign({ color: 0xffffff, vertexColors: true, roughness: 0.85, metalness: 0 }, o));
 
@@ -206,7 +205,6 @@ export function createGrillModel(T, opts = {}) {
     WOOD.push(stick(V(-0.42, 0.17, sz * 0.25), V(0.42, 0.17, sz * 0.25), 0.02, 0.018, 0xa89a82));
     for (const sx of [-1, 1]) WOOD.push(bake(solid(new T.TorusGeometry(0.024, 0.008, 4, 10), 0x8c6a3f), sx * 0.37, 0.17, sz * 0.25, 0, Math.PI / 2));
   }
-  add(WOOD, std({ roughness: 0.95 }), 'grillWood');
 
   // --- dented scrap-metal fire box: floor, 4 walls (dents pushed inward), rolled rim, rivets
   const METAL = [];
@@ -239,54 +237,77 @@ export function createGrillModel(T, opts = {}) {
       METAL.push(bake(solid(new T.SphereGeometry(0.011, 6, 4), 0x4b4440), sx * (BX / 2 + TH * 0.6), y, sz * (BZ / 2 - 0.035)));
     }
   }
-  add(METAL, std({ roughness: 0.62, metalness: 0.45 }), 'grillBox');
 
-  // --- wire grate: frame, cross wires, two bent carry handles
-  const WIRE = [], wr = 0.0055, gw = BX - 0.03, gd = BZ - 0.03;
-  const wire = (a, b, r = wr) => WIRE.push(along(solid(new T.CylinderGeometry(r, r, a.distanceTo(b), 5), 0x2f3133), a, b));
+  // --- wire grate: frame, cross wires, two bent carry handles. Merged into the box mesh (one material); the wire
+  // colour is pre-darkened so its diffuse matches the old dedicated metalness 0.7 material.
+  const wr = 0.0055, gw = BX - 0.03, gd = BZ - 0.03, WIRE_MUL = 0.6;
+  const wire = (a, b, r = wr) => METAL.push(along(solid(new T.CylinderGeometry(r, r, a.distanceTo(b), 5), 0x2f3133, 0, WIRE_MUL), a, b));
   for (let i = 0; i <= 10; i++) { const z = -gd / 2 + gd * i / 10; wire(V(-gw / 2, GY, z), V(gw / 2, GY, z)); }
   for (const x of [-gw / 2, -0.19, 0, 0.19, gw / 2]) wire(V(x, GY - 0.007, -gd / 2), V(x, GY - 0.007, gd / 2), x === 0 || Math.abs(x) > 0.3 ? 0.008 : wr);
-  for (const sx of [-1, 1]) WIRE.push(bake(solid(new T.TorusGeometry(0.06, 0.006, 4, 12, Math.PI), 0x2f3133), sx * (BX / 2 + 0.01), GY, 0, Math.PI / 2, 0, sx * Math.PI / 2));
-  add(WIRE, std({ vertexColors: true, roughness: 0.5, metalness: 0.7 }), 'grillGrate');
+  for (const sx of [-1, 1]) METAL.push(bake(solid(new T.TorusGeometry(0.06, 0.006, 4, 12, Math.PI), 0x2f3133, 0, WIRE_MUL), sx * (BX / 2 + 0.01), GY, 0, Math.PI / 2, 0, sx * Math.PI / 2));
 
-  // --- stones: a little lip around the fire bed + two by the legs
-  const STONE = [];
+  // --- stones: a little lip around the fire bed + two by the legs. Icosahedra are non-indexed, so their computed
+  // normals are already per-face (the flat look) and they share the wood mesh/material (same roughness).
   const stone = (r, x, y, z) => {
     const geo = new T.IcosahedronGeometry(r, 0), p = geo.attributes.position;
     for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) * (0.8 + rnd() * 0.4), p.getY(i) * (0.55 + rnd() * 0.3), p.getZ(i) * (0.8 + rnd() * 0.4));
     geo.computeVertexNormals();
-    STONE.push(bake(solid(geo, [0x6f6d68, 0x7d786e, 0x5f5b56, 0x868174][(rnd() * 4) | 0], 0.15), x, y, z, 0, rnd() * 6));
+    WOOD.push(bake(solid(geo, [0x6f6d68, 0x7d786e, 0x5f5b56, 0x868174][(rnd() * 4) | 0], 0.15), x, y, z, 0, rnd() * 6));
   };
   for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; stone(0.04 + rnd() * 0.015, Math.cos(a) * 0.3, Y0 + 0.025, Math.sin(a) * 0.19); }
   stone(0.05, 0.43, 0.03, 0.33); stone(0.04, 0.44, 0.022, 0.18); stone(0.045, -0.42, 0.025, -0.34);
-  add(STONE, std({ flatShading: true, roughness: 0.95 }), 'grillStones');
 
-  // --- charred logs and an ember bed (basic material so vertex colours glow; tinted by fire level)
-  const LOG = [];
+  // --- charred logs (also in the wood mesh) and an ember bed (basic material so vertex colours glow)
   for (const [a, b] of [[V(-0.22, Y0 + 0.04, -0.08), V(0.2, Y0 + 0.06, 0.09)], [V(-0.2, Y0 + 0.06, 0.1), V(0.22, Y0 + 0.04, -0.07)]]) {
-    LOG.push(along(paint(new T.CylinderGeometry(0.03, 0.035, a.distanceTo(b), 7, 3),
+    WOOD.push(along(paint(new T.CylinderGeometry(0.03, 0.035, a.distanceTo(b), 7, 3),
       (x, y, z, o) => o.set(0x3a2a20).lerp(c2.set(0x15100d), 0.5 + 0.5 * Math.sin(y * 50 + x * 30))), a, b));
   }
-  add(LOG, std({ roughness: 1 }), 'grillLogs');
   const EMB = [];
   for (let i = 0; i < 22; i++) {
     const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * 0.22;
     EMB.push(bake(paint(new T.IcosahedronGeometry(0.018 + rnd() * 0.016, 0), (x, y, z, o) => o.set(0xff7a1a).lerp(c2.set(0xffd04a), rnd() * 0.6).multiplyScalar(0.6 + rnd() * 0.6)),
       Math.cos(a) * r * 1.2, Y0 + 0.014, Math.sin(a) * r * 0.7));
   }
-  const emberMat = new T.MeshBasicMaterial({ color: 0xffffff, vertexColors: true });
-  add(EMB, emberMat, 'grillEmbers').castShadow = false;
-
-  // --- three flickering cone flames sharing one additive material
-  const fgeo = paint(new T.ConeGeometry(0.085, 1, 8, 4, true).translate(0, 0.5, 0), (x, y, z, o) =>
+  const flame = paint(new T.ConeGeometry(0.085, 1, 8, 4, true).translate(0, 0.5, 0), (x, y, z, o) =>
     o.set(0xffe27a).lerp(c2.set(0xff5a14), clamp(y * 1.4, 0, 1)).multiplyScalar(1 - y * 0.75));
-  const flameMat = new T.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, toneMapped: false });
-  const flames = [[-0.1, 0.04, 0.27, 1.0], [0.11, -0.04, 0.24, 1.1], [0, 0, 0.36, 1.3]].map(([x, z, h, w], i) => {
-    const m = new T.Mesh(fgeo, flameMat);
-    m.position.set(x, Y0 + 0.03, z); m.userData.f = { h, w, ph: i * 2.1 };
-    m.name = 'grillFlame' + i; m.castShadow = false; g.add(m); meshCount++;
+  kit = {
+    refs: 1, Y0, GY,
+    wood: merge(WOOD), metal: merge(METAL), embers: merge(EMB), flame,
+    woodMat: std({ roughness: 0.95 }), metalMat: std({ roughness: 0.62, metalness: 0.45 }),
+    release() {
+      if (--kit.refs > 0) return;
+      for (const x of [kit.wood, kit.metal, kit.embers, kit.flame, kit.woodMat, kit.metalMat]) x.dispose();
+      if (KITS.get(T) === kit) KITS.delete(T);
+    },
+  };
+  KITS.set(T, kit);
+  return kit;
+}
+
+export function createGrillModel(T, opts = {}) {
+  const g = new T.Group();
+  g.name = 'grill';
+  const kit = grillKit(T), { Y0, GY } = kit;
+  const V = (x, y, z) => new T.Vector3(x, y, z);
+  let meshCount = 0;
+  const add = (geo, mat, name, shadow = true) => {
+    const m = new T.Mesh(geo, mat);
+    m.name = name; m.castShadow = shadow; m.receiveShadow = true; g.add(m); meshCount++;
     return m;
-  });
+  };
+  add(kit.wood, kit.woodMat, 'grillWood');
+  add(kit.metal, kit.metalMat, 'grillBox');
+  const emberMat = new T.MeshBasicMaterial({ color: 0xffffff, vertexColors: true });
+  add(kit.embers, emberMat, 'grillEmbers', false);
+
+  // --- three flickering cone flames: one instanced draw call, additive, no shadows
+  const flameMat = new T.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, toneMapped: false });
+  const FL = [[-0.1, 0.04, 0.27, 1.0], [0.11, -0.04, 0.24, 1.1], [0, 0, 0.36, 1.3]].map(([x, z, h, w], i) => ({ x, z, h, w, ph: i * 2.1 }));
+  const flames = new T.InstancedMesh(kit.flame, flameMat, FL.length);
+  flames.instanceMatrix.setUsage(T.DynamicDrawUsage);
+  flames.boundingSphere = new T.Sphere(V(0, Y0 + 0.25, 0), 0.5); // fixed: instance scales animate (never recomputed)
+  flames.name = 'grillFlame'; flames.castShadow = false; flames.receiveShadow = false; g.add(flames); meshCount++;
+  const dummy = new T.Object3D();
   const light = opts.light ? new T.PointLight(0xff8a3a, 0, 2.6, 2) : null;
   if (light) { light.position.set(0, Y0 + 0.25, 0); g.add(light); }
 
@@ -296,23 +317,28 @@ export function createGrillModel(T, opts = {}) {
   ud.fireAnchor = V(0, Y0 + 0.04, 0);
   ud.smokeAnchor = V(0, GY + 0.1, 0);
   ud.meshCount = meshCount;
-  ud.setFire = (v) => { level = clamp(fin(v, 0), 0, 1); for (const f of flames) f.visible = level > 0.01; };
+  ud.setFire = (v) => { level = clamp(fin(v, 0), 0, 1); flames.visible = level > 0.01; };
   ud.update = (dt, time = 0) => {
     const t = fin(time, 0);
-    for (const f of flames) {
-      const { h, w, ph } = f.userData.f;
-      const k = 0.78 + 0.16 * Math.sin(t * 9.3 + ph) + 0.1 * Math.sin(t * 23.7 + ph * 3);
-      f.scale.set(w * (0.55 + 0.45 * level) * (1.1 - k * 0.2), h * level * k, w * (0.55 + 0.45 * level));
-      f.rotation.set(0.12 * Math.sin(t * 5.1 + ph), t * 1.7 + ph, 0.12 * Math.sin(t * 4.3 + ph * 2));
+    if (flames.visible) {
+      for (let i = 0; i < FL.length; i++) {
+        const { x, z, h, w, ph } = FL[i];
+        const k = 0.78 + 0.16 * Math.sin(t * 9.3 + ph) + 0.1 * Math.sin(t * 23.7 + ph * 3);
+        dummy.position.set(x, Y0 + 0.03, z);
+        dummy.scale.set(w * (0.55 + 0.45 * level) * (1.1 - k * 0.2), h * level * k, w * (0.55 + 0.45 * level));
+        dummy.rotation.set(0.12 * Math.sin(t * 5.1 + ph), t * 1.7 + ph, 0.12 * Math.sin(t * 4.3 + ph * 2));
+        dummy.updateMatrix(); flames.setMatrixAt(i, dummy.matrix);
+      }
+      flames.instanceMatrix.needsUpdate = true;
+      flameMat.opacity = 0.75 + 0.15 * Math.sin(t * 13);
     }
-    flameMat.opacity = 0.75 + 0.15 * Math.sin(t * 13);
     emberMat.color.setScalar(0.16 + level * (0.75 + 0.15 * Math.sin(t * 3.1) + 0.1 * Math.sin(t * 7.7)));
     if (light) light.intensity = level * (0.8 + 0.25 * Math.sin(t * 11) + 0.2 * Math.sin(t * 27));
   };
+  let disposed = false;
   ud.dispose = () => {
-    const seen = new Set();
-    g.traverse(o => { if (o.isMesh) { seen.add(o.geometry); seen.add(o.material); } });
-    seen.forEach(x => x.dispose());
+    if (disposed) return; disposed = true;
+    emberMat.dispose(); flameMat.dispose(); flames.dispose(); kit.release();
     if (light) light.dispose();
   };
   ud.setFire(0); ud.update(0, 0);

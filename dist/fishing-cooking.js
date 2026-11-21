@@ -9,7 +9,7 @@
 // guest, own grills are stashed and the host's broadcast grills are shown instead.
 // Debug: window.raftFC = { state, session, journal, grills, forceBite(id), forceCatch(id) }.
 import { FishingSession, createFishingV2 } from './fishing-v2.js';
-import { Journal, createJournalPanel } from './fish-journal.js';
+import { Journal, createJournalPanel, BASKET_MAX } from './fish-journal.js';
 import { SPECIES, speciesById, dishName } from './fish-species.js';
 import { GrillState, COOK_TUNING, cookTime, createGrillModel, createSmoke } from './cooking.js';
 import { createFishModel, setFishState, wiggle } from './fish-models.js';
@@ -70,7 +70,15 @@ export function createFishingCooking(T, host) {
   }
   function clearGrills() { for (const g of [...grills.values()]) removeGrill(g); }
   const snapshots = () => [...grills.values()].map((g) => g.st.snapshot());
-  function loadGrills(list) { if (Array.isArray(list)) for (const s of list.slice(0, MAX_GRILLS)) if (s && !grillAt(Math.round(s.x), Math.round(s.z))) addGrill(s); }
+  function loadGrills(list) { // own saved grills: sanitise first, then keep only those on an empty raft tile (one per tile)
+    if (!Array.isArray(list)) return;
+    for (const s of list) {
+      if (grills.size >= MAX_GRILLS) break;
+      if (!s || typeof s !== 'object') continue;
+      const x = Math.round(Number(s.x)), z = Math.round(Number(s.z));
+      if (Number.isFinite(x) && Number.isFinite(z) && host.hasTile(x, z) && !host.decorAt(x, z) && !grillAt(x, z)) addGrill(s);
+    }
+  }
   function dropFish(g, i) { const m = g.fish[i]; if (!m) return; g.model.remove(m); m.userData.dispose?.(); g.fish[i] = null; }
   function syncFish(g) {
     const pos = g.model.userData.slotPositions || [];
@@ -84,15 +92,27 @@ export function createFishingCooking(T, host) {
         m.scale.setScalar(Math.min(1, 0.48 / (m.userData.length || f.cm / 100)));
         if (pos[i]) m.position.copy(pos[i]);
         m.position.y += 0.02; m.rotation.set(0, Math.PI / 2 + (i ? 0.12 : -0.12), 0); // lie across the grate, head away
+        m.traverse((o) => { o.castShadow = false; }); // lies on the grate inside the box: shadow is invisible, skip the shadow draw
         g.model.add(m); g.fish[i] = m;
       } else if (m.userData.state !== f.state) setFishState(m, f.state);
     });
   }
   const grillAt = (x, z) => { for (const g of grills.values()) if (g.st.x === x && g.st.z === z) return g; return null; };
-  const worldOf = (g, out) => { out.set(g.st.x * 2, 0.22, g.st.z * 2); return raft ? raft.localToWorld(out) : out; };
+  // raft.matrixWorld is refreshed by the renderer every frame; localToWorld() would re-walk the parent chain per call.
+  const worldOf = (g, out) => { out.set(g.st.x * 2, 0.22, g.st.z * 2); return raft ? out.applyMatrix4(raft.matrixWorld) : out; };
   loadGrills(saved && saved.grills);
   if (isGuest(lastRole)) { stash = snapshots(); clearGrills(); }
-  raft?.add(grillGroup);
+  // Grills live in the scene and copy the raft pose each frame: game.js rebuildRaft() removes AND disposes every
+  // raft child on each build, which would free the grill + shared fish-cache GPU resources every time.
+  const followRaft = () => { if (!raft) return; grillGroup.position.copy(raft.position); grillGroup.quaternion.copy(raft.quaternion); grillGroup.scale.copy(raft.scale); };
+  followRaft(); (raft?.parent || scene)?.add(grillGroup);
+  function syncRole() { // also run on net/save paths so a message arriving before the next frame sees the new role
+    const role = host.role();
+    if (role === lastRole) return role;
+    if (isGuest(role)) { stash = snapshots(); clearGrills(); }
+    else if (isGuest(lastRole)) { clearGrills(); loadGrills(stash); stash = null; }
+    lastRole = role; markChanged(); return role;
+  }
   const markChanged = () => { dirty = true; changed = true; };
 
   // ---------- local item delivery (cook/take results) ----------
@@ -157,6 +177,7 @@ export function createFishingCooking(T, host) {
   }
   function onNet(msg, from) {
     if (!msg || msg.type !== 'fc') return;
+    syncRole();
     if (Array.isArray(msg.grills) && from === 'host' && isGuest(host.role())) applySnapshots(msg.grills);
     if (msg.took && from === 'host') receive(msg.took);
     if (msg.catchFx) { const sp = speciesById(msg.catchFx.species); if (sp) { host.notice(`Your friend caught a ${sp.name}!`); host.beep(520); } }
@@ -165,12 +186,12 @@ export function createFishingCooking(T, host) {
   // ---------- save ----------
   let saveClock = 0;
   function save() {
-    dirty = false;
+    dirty = false; syncRole();
     try { store()?.setItem(FC_SAVE_KEY, JSON.stringify({ v: 1, journal: journal.snapshot(), grills: isGuest(host.role()) ? (stash || []) : snapshots() })); } catch {}
   }
 
   // ---------- DOM: chip, toast, journal ----------
-  let chip = null, toastBox = null, chipN = -1, panel = null, ownStyle = null;
+  let chip = null, toastBox = null, chipN = -1, chipAt = -1e9, panel = null, ownStyle = null;
   const toasts = [];
   if (HAS_DOC) {
     if (!document.getElementById('fc-style-glue')) { ownStyle = document.createElement('style'); ownStyle.id = 'fc-style-glue'; ownStyle.textContent = CSS; document.head.appendChild(ownStyle); }
@@ -186,11 +207,14 @@ export function createFishingCooking(T, host) {
   function updateDom() {
     for (let i = toasts.length - 1; i >= 0; i--) {
       const t = toasts[i];
-      if (elapsed > t.until + 0.45) { t.el.remove(); toasts.splice(i, 1); } else if (elapsed > t.until) t.el.classList.add('out');
+      if (elapsed > t.until + 0.45) { t.el.remove(); toasts.splice(i, 1); } else if (elapsed > t.until && !t.out) { t.out = true; t.el.classList.add('out'); }
     }
     if (!chip) return;
-    const n = journal.speciesSeen().length, show = host.running();
-    if (n !== chipN) { chipN = n; chip.textContent = `🎣 ${n}/${SPECIES.length} · J journal`; }
+    const show = host.running();
+    if (Math.abs(elapsed - chipAt) >= 0.5) { // speciesSeen() allocates: poll it at 2 Hz, not per frame
+      chipAt = elapsed; const n = journal.speciesSeen().length;
+      if (n !== chipN) { chipN = n; chip.textContent = `🎣 ${n}/${SPECIES.length} · J journal`; }
+    }
     if (chip.hidden === show) chip.hidden = !show;
   }
   function toggleJournal() {
@@ -220,6 +244,7 @@ export function createFishingCooking(T, host) {
   const fx = createFishingV2(T, { scene, ocean: host.ocean });
   let session = null, downHeld = false;
   const origin = new T.Vector3(), castDir = new T.Vector3(0, 0, -1), tipV = new T.Vector3();
+  const fxOpts = { tip: null, origin, dir: castDir, time: 0 }; // reused every frame (no per-frame object)
   const canFish = () => host.selectedKind() === 'fishingrod' && host.running() && !host.uiBlocked() && !host.busy();
   function clampToWater() { // push the landing point past raft tiles so the bobber lands in the water
     const pl = host.player(); origin.set(pl.x, pl.y, pl.z);
@@ -263,7 +288,7 @@ export function createFishingCooking(T, host) {
       held = createFishModel(T, sp.id, { cm: c.cm, state: 'raw' });
       held.scale.setScalar(Math.min(1, 0.42 / (held.userData.length || c.cm / 100)));
       held.position.set(0.26, -0.2, -0.62); held.rotation.set(0.25, 0.5, 0.35);
-      held.traverse((o) => { o.renderOrder = 999; });
+      held.traverse((o) => { o.renderOrder = 999; o.castShadow = false; }); // viewmodel: no shadow pass
       camera.add(held); heldT = 2.2;
     }
     dirty = true;
@@ -303,6 +328,7 @@ export function createFishingCooking(T, host) {
     });
     const tail = status ? ` · ${status}` : '';
     const done = st.slots.findIndex((f) => f && f.state !== 'raw');
+    if (done >= 0 && journal.basket.length >= BASKET_MAX && journal.basket.every((b) => b.state === 'raw')) return 'Basket full of raw fish · cook some first' + tail;
     if (done >= 0) { nextAct = { kind: 'fc:take', id: st.id, slot: done }; return `<kbd>E</kbd> Take ${esc(dishName(st.slots[done].species, st.slots[done].state))}${tail}`; }
     if (!st.lit) {
       if (wood > 0) { nextAct = { kind: 'fc:fuel', id: st.id }; return `<kbd>E</kbd> Add fuel (wood)${tail}`; }
@@ -334,19 +360,18 @@ export function createFishingCooking(T, host) {
   function update(dt, time = elapsed + dt) {
     if (disposed) return;
     dt = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.1) : 0; elapsed = time;
-    const role = host.role();
-    if (role !== lastRole) {
-      if (isGuest(role)) { stash = snapshots(); clearGrills(); }
-      else if (isGuest(lastRole)) { clearGrills(); loadGrills(stash); stash = null; }
-      lastRole = role; markChanged();
-    }
-    if (raft && grillGroup.parent !== raft) raft.add(grillGroup);
+    const role = syncRole();
+    followRaft(); if (!grillGroup.parent) (raft?.parent || scene)?.add(grillGroup);
     // fishing
     if (session && (host.selectedKind() !== 'fishingrod' || !host.running())) { session.cancel(); downHeld = false; }
+    else if (downHeld && host.uiBlocked()) { // a dialog took the pointer: its pointerup never reaches the canvas
+      downHeld = false; if (session) { if (session.stage === 'charging') session.cancel(); else session.release(); }
+    }
     if (session) { const ev = session.update(dt); if (ev) onFishEvent(ev); }
     const tip = host.rodTip(); if (tip) tipV.copy(tip);
     const pl = host.player(); origin.set(pl.x, pl.y, pl.z);
-    fx.update(dt, session, { tip: tip ? tipV : null, origin, dir: castDir, time });
+    fxOpts.tip = tip ? tipV : null; fxOpts.time = time;
+    fx.update(dt, session, fxOpts);
     if (session && session.stage === 'done') session = null;
     const out = !!session && session.stage !== 'idle' && session.stage !== 'charging';
     const ud = host.rodModel?.userData;
@@ -378,7 +403,8 @@ export function createFishingCooking(T, host) {
         g.smokeT += dt * (dark ? 6 : cooking ? 3 : 1);
         if (g.smokeT >= 1) {
           g.smokeT -= Math.floor(g.smokeT);
-          tmp.copy(g.model.userData.smokeAnchor || tmp.set(0, 0.6, 0)); g.model.localToWorld(tmp);
+          tmp.copy(g.model.userData.smokeAnchor || tmp.set(0, 0.6, 0)).add(g.model.position); // grillGroup mirrors the raft pose (followRaft)
+          if (raft) tmp.applyMatrix4(raft.matrixWorld);
           smoke.emit(tmp.x, tmp.y, tmp.z, 1, dark);
         }
       }
@@ -404,7 +430,8 @@ export function createFishingCooking(T, host) {
     for (const g of [...grills.values()]) removeGrill(g);
     grillGroup.parent?.remove(grillGroup);
     scene?.remove(smoke.points); smoke.dispose(); fx.dispose();
-    panel?.destroy(); chip?.remove(); toastBox?.remove(); ownStyle?.remove();
+    panel?.destroy(); chip?.remove(); toastBox?.remove();
+    if (HAS_DOC && !document.getElementById('fcChip')) document.getElementById('fc-style-glue')?.remove(); // hot swap: the new engine still uses it
     if (typeof window !== 'undefined' && window.raftFC === debug) delete window.raftFC;
   }
 
@@ -426,8 +453,9 @@ export function createFishingCooking(T, host) {
   return {
     pointerDown, pointerUp, interact, update, applyAction, onNet, dispose,
     get prompt() { return prompt; },
+    hasGrill: (x, z) => !!grillAt(x, z), // game.js keeps decor off grill tiles
     get rodReeling() { return !!session && session.stage === 'reeling' && session.holding; },
-    capture() { save(); return { v: 1, journal: journal.snapshot(), grills: snapshots() }; },
+    capture() { save(); return { v: 1, journal: journal.snapshot(), grills: isGuest(lastRole) ? (stash || []) : snapshots() }; },
     // test/QA helpers
     journal, grills, save,
   };

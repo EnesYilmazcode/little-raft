@@ -156,7 +156,7 @@ function createHud() {
       const tx = m === 'charge' ? 'Cast power' : tv > 0.7 ? 'Ease off!' : s.holding ? 'Reeling...' : 'Reel! Hold click';
       if (tx !== text) { txt.textContent = tx; text = tx; }
     },
-    dispose() { el.remove(); document.getElementById('fc-style-reel')?.remove(); },
+    dispose() { el.remove(); if (!document.getElementById('fcReelHud')) document.getElementById('fc-style-reel')?.remove(); }, // hot swap: keep it for the new HUD
   };
 }
 
@@ -227,7 +227,7 @@ export function createFishingV2(T, { scene, ocean } = {}) {
     } else {
       if (st === 'reeling') {
         const pr = session.progress * 0.9;
-        const px = -(land.z - tip.z), pz = land.x - tip.x, pl = Math.hypot(px, pz) || 1;
+        const px = -(land.z - tip.z), pz = land.x - tip.x, pl = Math.sqrt(px * px + pz * pz) || 1;
         side += ((session.pulling ? Math.sin(time * 9) * 0.35 : 0) - side) * Math.min(1, dt * 6);
         p.x = land.x + (tip.x - land.x) * pr + px / pl * side; p.z = land.z + (tip.z - land.z) * pr + pz / pl * side;
       } else { p.x = land.x; p.z = land.z; }

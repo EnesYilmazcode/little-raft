@@ -547,7 +547,7 @@ export function mount(transfer = null) {
   function placementFor(kind, p) {
     if (!p) return null; const x = Math.round(p.x / 2), z = Math.round(p.z / 2);
     if (kind === 'hammer') { if (hasTile(x, z) || !NEIGHBOURS.some(([a, b]) => hasTile(x + a, z + b))) return null; }
-    else if (DECOR_TYPES.includes(kind)) { if (!hasTile(x, z) || world.decor.some(d => d.x === x && d.z === z)) return null; }
+    else if (DECOR_TYPES.includes(kind)) { if (!hasTile(x, z) || world.decor.some(d => d.x === x && d.z === z) || fc?.hasGrill(x, z)) return null; } // [fishing-cooking] grill tiles
     else return null;
     return {x, z};
   }
@@ -621,7 +621,7 @@ export function mount(transfer = null) {
         if (!spend(bag, FLOOR_COST)) { emit({kind:'notice', text:'Floor needs ' + missingText(bag, FLOOR_COST)}, actor); return; }
         world.tiles.push([a.x, a.z]);
       } else if (DECOR_TYPES.includes(a.recipe)) {
-        if (!hasTile(a.x, a.z) || world.decor.some(d => d.x === a.x && d.z === a.z)) return;
+        if (!hasTile(a.x, a.z) || world.decor.some(d => d.x === a.x && d.z === a.z) || fc?.hasGrill(a.x, a.z)) return; // [fishing-cooking] grill tiles
         const sel = bag.slots[bag.selectedIndex];
         if (sel?.kind === a.recipe) { sel.count--; if (sel.count <= 0) bag.slots[bag.selectedIndex] = null; }
         else if (!bag.remove(a.recipe, 1)) { emit({kind:'notice', text:`Craft a ${itemName(a.recipe)} first`}, actor); return; }
@@ -961,7 +961,7 @@ export function mount(transfer = null) {
       else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); }
       return;
     }
-    if (lockFallback && fc?.pointerDown()) return; // [fishing-cooking]
+    if (lockFallback && fc?.pointerDown()) { try { canvas.setPointerCapture(e.pointerId); } catch {} return; } // [fishing-cooking] capture so a release off-canvas still ends the reel hold
     down = {x:e.clientX, y:e.clientY, moved:false}; try { canvas.setPointerCapture(e.pointerId); } catch {}
     if (castOut()) reeling = true; // hold to reel works without lock too
     else if (lockFallback && selectedKind() === 'hook' && !hook && !fishWait) beginCharge({x:e.clientX, y:e.clientY});
