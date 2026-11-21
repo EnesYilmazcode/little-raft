@@ -98,8 +98,16 @@ export function statePrompt(s, opt = {}) {
     if (stage === 'fishing' || s.fishWait) return {label:'Waiting for a bite…', muted:true}; // bites land automatically (game.js fishWait)
     return stage === 'idle' ? {key:'LMB', label:'Cast line'} : null;
   }
-  if (DECOR_NAMES[held] && s.tool === 'place') return s.build?.hover ? {key:'LMB', label:'Place ' + DECOR_NAMES[held]} : {label:'Aim at the raft floor', muted:true};
+  if (held && s.tool === 'place') return placePrompt(s);
   return null;
+}
+// Place mode: the placement row always shows; an aim prompt (game.js aimHtml, e.g. storage's "E Open crate") stacks under it,
+// because game.js mutes its own game-aim providers while a placeable is held.
+export function placePrompt(s) {
+  const name = DECOR_NAMES[s.heldKind] ?? String(s.heldKind).replace(/[-_]+/g, ' ');
+  const place = s.build?.hover ? {key:'LMB', label:'Place ' + name} : {label:'Aim at the raft floor', muted:true};
+  const aim = s.aimPrompt ? promptFromHtml(s.aimPrompt) : null;
+  return aim ? [place, aim] : place;
 }
 
 // ---------- DOM layer ----------

@@ -1794,7 +1794,7 @@ export function mount(transfer = null) {
     active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
     // onboarding/prompts hook (docs/cloud/onboarding.md): lets dist/prompts.js raycast with the live camera.
     unprompt.splice(0).forEach(f => f()); // aim prompts -> raftPrompts: actions outrank held-tool tips (instruments), status lines do not
-    const aimPrompt = want => () => { const p = running && aimHtml && !physics.swimming ? promptFromHtml(aimHtml) : null; return p && !!p.key === want ? p : null; };
+    const aimPrompt = want => () => { const p = running && aimHtml && !physics.swimming && !DECOR_TYPES.includes(heldKind()) ? promptFromHtml(aimHtml) : null; // place mode: prompts.js statePrompt stacks it under the placement row return p && !!p.key === want ? p : null; };
     try { const rp = window.raftPrompts; if (rp?.provide) unprompt.push(rp.provide({id:'game-aim', priority:2, prompt:aimPrompt(true)}), rp.provide({id:'game-aim-status', priority:0, prompt:aimPrompt(false)})); } catch {}
     try { window.raftMount = {T, scene, camera, debug:debugApi}; window.dispatchEvent(new CustomEvent('raft:mount', {detail:window.raftMount})); } catch {}
   } catch (e) {
