@@ -738,3 +738,10 @@ Base: origin/claude/raft-master (d56c3ef). Fleet: critic, 6 builders (sky, water
   - thumb blob on the hook grip
   - faint banding in the pause panel
 - Integrator merge into raft-master: only the orange-claw hook (hook.js) was taken; sky, daynight, ocean, deck, wood, islands, hands and HUD were stale parallel copies of work already on raft-master, so raft-master kept its versions (sky stays driven by daynight via sky.follow).
+
+## 2026-11-21 · integrator round 5 (integrator A)
+- Merged into raft-master: fleet-tech procedural-models/foliage/audio/perf/water/icons, loop-perf-0708, loop-features-0648, raft-tech, raft-content, raft-tests, lane-models, loop-perf-0648 (daynight refresh at 10 Hz, late no-shadow warm, idle dive warm), loop-perf-0720 (ghost hold after place, Shift+R 15° steps; Alt+R now turns backwards), loop-features-0703, loop-ux-0603/0648 remainders (bee item sources, title save line), loop-features-0831 (juicer, gull, building pack; restored after the earlier revert once the branch was finished).
+- Skipped: lane-placement (old placement model, superseded), raft-reference (third-party reference frames, not game code).
+- PR #2 review (2 reviewers, comments on the PR). Fixed: items.js still had an 8-slot hotbar, so slots 9/0 reset on load and for co-op guests; red off-deck ghost said "Place"; slot 9/0 onboarding hint; pickup feed covered the vitals panel; vitals panel overlapped the 10-slot hotbar below 1100px; resume hint forced next to the crosshair by an !important rule; sky noise texture leaked on hot swap.
+- Gate at dbf2ca9: 983/983, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text. Perf vs main (pinned, median of 3, interleaved): 185/191 vs 195/192 ms, 49-52 vs 51-55 draw calls.
+- Merged PR #4 into main (912d941).
