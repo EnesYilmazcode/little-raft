@@ -412,7 +412,7 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
     tint(T, place(T, new T.CylinderGeometry(0.036, 0.04, 0.035, lod ? 6 : 12), bx, capY + 0.03, bz), '#6b4426'),
     tint(T, place(T, new T.BoxGeometry(0.05, 0.012, 0.012), bx, capY + 0.052, bz), '#6b4426'),
   );
-  mesh(T, merge(T, [...wood.map((g) => slot(T, g, 'paint')), ...metal.map((g) => slot(T, g, 'metal'))], true), pbrMat(T, T.FrontSide), body);
+  mesh(T, merge(T, [...wood.map((g) => slot(T, g, 'paint')), ...metal.map((g) => slot(T, g, 'metal'))], true), pbrMat(T, T.DoubleSide), body); // DoubleSide: same material (and program) as scrap; also closes the open lathe stave ends at the gaps
 
   // tilt pivot (root stays untransformed for the engine)
   const tilt = opts.tilt != null ? opts.tilt : 0.14 + r() * 0.14;

@@ -25,6 +25,7 @@ const SPEC = {
   renderScale: { tab: 'graphics', label: 'Render scale', type: 'range', min: 0.5, max: 1, step: 0.05, def: PRESETS.medium.renderScale, fmt: pct }, // matches the default 'medium' preset
   shadows: { tab: 'graphics', label: 'Shadows', type: 'toggle', def: true },
   sound: { tab: 'audio', label: 'Sound', type: 'toggle', def: true }, // mirrors #soundButton / little-raft-sound (game.js)
+  stormFlash: { tab: 'graphics', label: 'Lightning flashes', type: 'select', options: ['full', 'soft', 'off'], def: 'full' },
   volume: { tab: 'audio', label: 'Master volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.5, fmt: pct },
   effects: { tab: 'audio', label: 'Effects', type: 'range', min: 0, max: 1, step: 0.05, def: 1, fmt: pct },
   ambience: { tab: 'audio', label: 'Ocean ambience', type: 'range', min: 0, max: 1, step: 0.05, def: 0.7, fmt: pct },
@@ -34,7 +35,7 @@ const KEYS = Object.keys(SPEC);
 const TABS = [['controls', 'Controls'], ['graphics', 'Graphics'], ['audio', 'Audio']];
 // Bag keys use the same phrasing as hud.js BAG_OPEN_KEYS / BAG_CLOSE_KEYS (checked by tests/ux-layout.test.mjs).
 const KEYMAP = [['W A S D', 'Walk'], ['Space', 'Jump'], ['Shift', 'Sprint'], ['Click', 'Use tool / charge throw'], ['Hold click', 'Reel in'],
-  ['1 - 0 / Wheel', 'Pick hotbar slot'], ['Tab, I or E', 'Open the bag'], ['Tab, E, I or Esc', 'Close the bag'], ['E', 'Interact'], ['R', 'Rotate piece / repair hook'], ['Shift + wheel', 'Fine rotate piece'], ['X', 'Remove piece (Hammer)'], ['L', 'Logbook'], ['Q', 'Build wheel (Hammer)'], ['G', 'Place grill'], ['J', 'Fish journal'], ['C', 'Crouch'], ['Esc', 'Back / pause']];
+  ['1 - 0 / Wheel', 'Pick hotbar slot'], ['Q / Right-click', 'Build wheel (hammer)'], ['Tab, I or E', 'Open the bag'], ['Tab, E, I or Esc', 'Close the bag'], ['E', 'Interact'], ['R', 'Rotate piece / repair hook'], ['Shift + wheel', 'Fine rotate piece'], ['X', 'Remove piece (Hammer)'], ['L', 'Logbook'], ['G', 'Place grill'], ['J', 'Fish journal'], ['C', 'Crouch'], ['Esc', 'Back / pause']];
 
 export function validateSettings(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
@@ -176,6 +177,7 @@ function markup() {
 <button type="button" data-act="crew">Play together</button>
 <button type="button" data-act="logbook">Raft logbook</button>
 <button type="button" data-act="look">Change look</button>
+<button type="button" data-act="album">Photo album</button>
 <button type="button" class="rs-quit" data-act="quit">Save and quit to title</button>
 <div class="rs-foot"><kbd>Esc</kbd>Back</div></nav>
 <section class="rs-panel" data-panel="settings" aria-label="Settings" hidden><div class="rs-tabs" role="tablist">${tabs}</div>${pages}</section>
@@ -328,7 +330,10 @@ export function createSettings({ onChange, onResume, onPause, onQuit, initial } 
     if (dialog.open) { const m = openPanel(); if (m) { setPanel(false); form.querySelector(`[data-act="${m}"]`)?.focus({ preventScroll: true }); } else close(true); return true; }
     const others = otherDialogs();
     if (others.length) { others[others.length - 1].close(); return true; }
-    if (buildWheelOpen()) return false; // the game's own key handler closes the wheel
+    if (buildWheelOpen()) { // desktop app: the shell swallowed the keydown, so close the wheel through the game (lock kept)
+      try { if (window.raftShell?.closeBuildWheel?.()) return true; } catch { /* fall through */ }
+      return false;
+    }
     if (!gameActive()) { // title screen: Escape only leaves fullscreen (the desktop app swallows the native one)
       if (!document.fullscreenElement) return false;
       Promise.resolve(document.exitFullscreen?.()).catch(() => {});
@@ -352,9 +357,10 @@ export function createSettings({ onChange, onResume, onPause, onQuit, initial } 
     if (event.repeat) { esc.keydown(now, { repeat: true }); if (dialog.open) event.preventDefault(); return; }
     // Another menu (inventory/crew/help) closes natively through its own cancel; only suppress the keyup pause fallback.
     if (!dialog.open && otherDialogs().length) { esc.keydown(now, { handled: true }); return; }
-    // The build wheel closes through the game's own key handler; that press is still handled, so its keyup never pauses.
-    const wheel = buildWheelOpen();
-    if (escape()) event.preventDefault(); else esc.keydown(now, { handled: wheel });
+    // The build wheel closes through the game's own key handler for this keydown (not escape(): no double handling);
+    // that press is still handled, so its keyup never pauses.
+    if (!dialog.open && buildWheelOpen()) { esc.keydown(now, { handled: true }); return; }
+    if (escape()) event.preventDefault(); else esc.keydown(now, { handled: false });
   }), { capture: true, signal: ac.signal });
 
   // Browsers often swallow the keydown that ends pointer lock; the keyup still arrives.
@@ -412,6 +418,8 @@ export function createSettings({ onChange, onResume, onPause, onQuit, initial } 
     }), 150);
   }), { capture: true, signal: ac.signal });
   window.addEventListener('pointerdown', () => document.body.classList.remove('relock'), { capture: true, signal: ac.signal });
+  // Focus lost (alt-tab): show the cursor and the "away" resume hint again; a click on return relocks.
+  window.addEventListener('blur', () => document.body.classList.remove('relock'), { signal: ac.signal });
 
   // Native dialog Escape: route through our escape so the engine resumes.
   dialog.addEventListener('cancel', guard((event) => {
@@ -445,8 +453,14 @@ export function createSettings({ onChange, onResume, onPause, onQuit, initial } 
       Promise.resolve(req).catch(() => {}).finally(syncFullscreen);
       return;
     }
-    if (act === 'logbook') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-logbook')); return; }
+    if (act === 'logbook') {
+      close(false); document.dispatchEvent(new CustomEvent('littleraft:open-logbook'));
+      const lb = document.getElementById('logbook'); // like Crew/Help: closing it comes back to this menu
+      if (lb instanceof HTMLDialogElement && lb.open) { returnToPause = lb; lb.dataset.fromPause = '1'; }
+      return;
+    }
     if (act === 'look') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-look')); return; }
+    if (act === 'album') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-album')); return; } // [camera]
     if (act === 'crew') {
       const target = document.getElementById(act);
       if (!(target instanceof HTMLDialogElement)) return;

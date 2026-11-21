@@ -64,7 +64,8 @@ export function createJuicerModel(T) {
   // hopper: an open funnel, double-sided so its inside shows from above, with a dark throat at the bottom
   const hopper = new T.Mesh(new T.CylinderGeometry(.13, .045, .11, 8, 1, true).translate(0, TOP_Y + BODY_H + .055, BODY_Z),
     new T.MeshStandardMaterial({ color: '#8d97a3', roughness: .7, metalness: .1, flatShading: true, side: T.DoubleSide }));
-  hopper.name = 'hopper'; hopper.castShadow = true; g.add(hopper);
+  hopper.name = 'hopper'; hopper.castShadow = false; // the body's shadow already covers it; no extra shadow caster
+  g.add(hopper);
   const throat = new T.Mesh(new T.CircleGeometry(.046, 8).rotateX(-Math.PI / 2).translate(0, TOP_Y + BODY_H + .003, BODY_Z), new T.MeshLambertMaterial({ color: '#2b3036' }));
   throat.name = 'hopperThroat'; g.add(throat);
 

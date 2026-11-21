@@ -1,9 +1,26 @@
 # Integration status
 
+Updated: 2026-11-21 09:25 UTC, integrator B round 4. PR #5 (round 6) open at 9b3ba49, under review.
+Gate at 9b3ba49: 1023/1023 tests, no page errors, hook-only spawn, Esc from inventory stays in play, prompts beside the crosshair,
+perf 133 ms / 43 draw calls vs main 912d941 229 ms / 49 (fair probe, median of 3).
+
+Skipped this round (need a rebase by their workers): loop-fidelity-202611210747, loop-perf-202611210720, loop-ux-202611210742, loop-ux-202611210547.
+Known flake: art atlas build-time test under heavy machine load.
+
+
 ## Claims (to avoid double merges between integrators)
+Integrator F (09:34 UTC): merged loop-features-202611210926 (docs); skipped loop-visuals-202611210548 (stale, freezes sky).
+Integrator B, round 6 (from 09:30 UTC), in worktrees: loop-fidelity-202611210804, -0821; loop-features-202611210814; loop-perf-202611210708;
+loop-ux-202611210648, -0742, -0743, -0833; loop-visuals-202611210805. Also gating and merging PR #5.
 Integrator B, round 5 (from 09:10 UTC), merging in worktrees; please skip these or coordinate here:
 loop-fidelity-202611210804, -0821 (0747 skipped: duplicate shark/needs systems); loop-features-202611210735, -0749, -0753-zfs, -0814;
 loop-perf-202611210708; loop-ux-202611210648 (new commits), -0742, -0748, -0833; loop-visuals-202611210748, -0558.
+Features-lane integrator (09:30-10:10 UTC) ALREADY MERGED AND PUSHED to raft-master: loop-features-202611210648 (2b73d39b), -0735 (b44f40f2),
+-0749 (ffbbe117), -0753-zfs (1ba50d82); integrator B can drop those from its list. It left -0814 (B), -0849/-0847-r2 (C), -0855 (D) to their claimants.
+Integrator C, round 5: DONE. Merged and pushed loop-features-202611210831 (+ later commits), -0847-r2 (sitting, flags, decor pickup), -0849 (goats, spyglass, storms), loop-perf-202611210847 (shadow pass off without program change). Spyglass is co-op HELD index 22 (glidehandle kept 21); sitting and zipline share content.ride(dt, physics, input) and pose bits 8/16. Decor pickup refuses shelf/trophystand/fishtrap/cookpot/perch until those modules get undecor hooks.
+Integrator E (formerly logged as C before the name clash; from 09:25 UTC), in a worktree: loop-features-202611210911; loop-perf-202611210823.
+Integrator D (from 09:20 UTC), in worktrees: loop-features-202611210855; loop-fidelity-202611210900, -0910, -0914; loop-ux-202611210848, -0852; loop-visuals-202611210843; loop-perf-202611210748, -0859.
+Integrator ux-lane: done, nothing pushed. loop-ux-0547 was merged by another integrator (ead02a0) while I worked. loop-ux-0743 (16 new round-3 commits) skipped: needs a worker rebase. It rebuilds the dark-glass crafting panel that raft-master replaced with the Raft-style wood panel (0748), puts prompts in the bottom-left notice stack where raft-master shows them beside the crosshair, and conflicts in 23 files (35 hunks in survival-ui.js). Isolated fixes worth keeping in the rebase: 11c336f0 (Cup wording, duplicate seed text, research-table text), 22a2a91d (station and instrument 3D icons, seed and water drawings), b0b24257 (logbook side panel), d04e8b83 (smelter closes on E/Tab). 0648/0742/0748/0833 left to B, 0848 to D.
 
 Updated: 2026-11-21 09:10 UTC, round 5 (integrator A, alongside integrator B). PR #4 merged into main at 912d941 (raft-master dbf2ca9).
 Gate: 983/983 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text.

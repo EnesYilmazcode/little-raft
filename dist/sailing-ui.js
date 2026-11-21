@@ -80,6 +80,9 @@ export function createSailingUI({ signal } = {}) {
         : (m === 'up' ? 'Sail up · ' : m === 'motor' ? 'Motor · ' : m === 'sailmotor' ? 'Sail + motor · ' : 'Drifting · ') + (sp / 10).toFixed(1) + ' m/s';
       if (t !== labelText) { labelText = t; label.textContent = t; }
     }
+    // "No sail — craft one" only once a sail is something the player can make (info.sailKnown false hides it).
+    const quiet = m === 'none' && info.sailKnown === false;
+    if (quiet !== label.hidden) label.hidden = quiet;
     const ls = !hasSail ? '' : info.anchored ? 'Anchor dropped' : info.raised ? 'Sail raised' : 'Sail lowered';
     if (ls !== liveState) { if (liveState !== null && ls) live.textContent = ls; liveState = ls; }
   }

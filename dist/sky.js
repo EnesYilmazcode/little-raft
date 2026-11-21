@@ -119,7 +119,30 @@ function bakeNoise(T, size = 256, octaves = 6) {
 
 const lum = c => .2126 * c.r + .7152 * c.g + .0722 * c.b;
 
+// Horizon-aware fog. Fully fogged objects take the fog colour (the sky horizon), but below the horizon
+// the backdrop is far sea (ocean fade + this dome), so a far island or lagoon sitting on the sea would
+// show as a pale silhouette. Heavily fogged fragments below the horizon fade to the far-sea colour
+// instead, with the same blend as the dome below. One plain {x,y,z,w} object is shared by reference
+// by every built-in material (cloneUniforms copies only Color/Vector values): rgb = far sea in output
+// (sRGB) space, like fogColor; w = 1 while the dome shows (0 underwater, or for materials without it).
+const HORIZON_FOG = { x: 0, y: 0, z: 0, w: 0 };
+function installHorizonFog(T) {
+  const C = T.ShaderChunk;
+  if (!C || C.fog_fragment.includes('fogHorizon')) return;
+  C.fog_pars_vertex += '\n#ifdef USE_FOG\n\tvarying vec3 vFogView;\n#endif';
+  C.fog_vertex += '\n#ifdef USE_FOG\n\tvFogView = mvPosition.xyz;\n#endif';
+  C.fog_pars_fragment += '\n#ifdef USE_FOG\n\tvarying vec3 vFogView;\n\tuniform vec4 fogHorizon;\n#endif';
+  C.fog_fragment = C.fog_fragment.replace('gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );', `vec3 fogCol = fogColor;
+	if ( fogHorizon.w > 0.0 ) {
+		float fogY = normalize( ( vec4( vFogView, 0.0 ) * viewMatrix ).xyz ).y;
+		fogCol = mix( fogColor, fogHorizon.rgb, smoothstep( 0.0, -0.004, fogY ) * smoothstep( 0.5, 1.0, fogFactor ) * fogHorizon.w );
+	}
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, fogCol, fogFactor );`);
+  for (const lib of Object.values(T.ShaderLib || {})) if (lib?.uniforms?.fogColor) lib.uniforms.fogHorizon = { value: HORIZON_FOG };
+}
+
 export function createSky(T, options = {}) {
+  installHorizonFog(T);
   const sunDirection = (options.sunDirection ?? new T.Vector3(-15, 28, 12)).clone().normalize();
 
   const uniforms = {
@@ -168,9 +191,12 @@ export function createSky(T, options = {}) {
       group.position.x = p.x;
       group.position.z = p.z;
     }
+    const fs = _tmpC.copy(uniforms.uFarSea.value).convertLinearToSRGB();
+    HORIZON_FOG.x = fs.r; HORIZON_FOG.y = fs.g; HORIZON_FOG.z = fs.b;
+    HORIZON_FOG.w = group.visible && mesh.visible ? 1 : 0; // hidden underwater: plain fog there
   }
 
-  const _tmp = new T.Vector3();
+  const _tmp = new T.Vector3(), _tmpC = new T.Color();
 
   // Follow the live palette (day/night drives the ocean uniforms and scene.background every frame):
   // horizon from the background, zenith from the ocean's sky reflection, sun from the ocean glint
@@ -190,6 +216,7 @@ export function createSky(T, options = {}) {
   }
 
   function dispose() {
+    HORIZON_FOG.w = 0;
     group.remove(mesh);
     geometry.dispose();
     material.dispose();

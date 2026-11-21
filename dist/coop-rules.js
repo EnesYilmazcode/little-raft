@@ -1,8 +1,7 @@
-// Small pure helpers for nets, co-op hook state and decor colliders. No DOM, no Three.js.
+// Small pure helpers for bag fits, co-op hook state and decor colliders. No DOM, no Three.js.
 
 import { blockerGap } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 
-export const NET_RANGE = 4;
 export const GUEST_HELD_TTL = 1500; // ms a guest's reported hook contents stay valid without a fresh move
 const MAX_HELD = 32;
 
@@ -12,17 +11,6 @@ export function lootFits(bag, loot) {
   const scratch = new bag.constructor(bag.snapshot());
   for (const [k, n] of Object.entries(loot)) if (scratch.add(k, n) > 0) return false;
   return true;
-}
-
-// First item near the net that is not held or pending and whose loot fits.
-// unit: metres per net coordinate (2 = legacy tile cells, 1 = raft-local metres as placement.js stores decor).
-export function pickNetItem(items, net, {held = new Set(), isPending = () => false, fits = () => true, unit = 2} = {}) {
-  for (const it of items) {
-    if (held.has(it.token) || isPending(it)) continue;
-    if (Math.hypot(it.x - net.x * unit, it.z - net.z * unit) >= NET_RANGE) continue;
-    if (fits(it)) return it;
-  }
-  return null;
 }
 
 // Items a hook may sweep or keep: not pending, and not on the other player's hook unless our own hook
@@ -73,14 +61,24 @@ export function playerInWay(blockers, players, r) {
   return -1;
 }
 
+// True when a cast thrown from `slot` no longer has a hook there (moved in the bag or put in a crate),
+// so the line should be pulled in. isHook as for repairHookSlot.
+export function castHookGone(slots, slot, isHook = s => s?.kind === 'hook') {
+  if (!Array.isArray(slots) || !Number.isInteger(slot) || slot < 0 || slot >= slots.length) return true;
+  return !slots[slot] || !isHook(slots[slot]);
+}
+
 // Which hook slot R repairs: the preferred (selected) slot if it holds a hook, else the most worn
 // hook below `max`, else the first hook (already in great shape). -1 when there is no hook.
-export function repairHookSlot(slots, prefer, max = 100) {
+// isHook decides what counts as a hook (game.js passes the toolRole check so a metal hook counts).
+const plainHook = s => s?.kind === 'hook';
+export function repairHookSlot(slots, prefer, max = 100, isHook = plainHook) {
   if (!Array.isArray(slots)) return -1;
-  if (Number.isInteger(prefer) && slots[prefer]?.kind === 'hook') return prefer;
+  if (typeof isHook !== 'function') isHook = plainHook;
+  if (Number.isInteger(prefer) && slots[prefer] && isHook(slots[prefer])) return prefer;
   let best = -1, worst = max;
   slots.forEach((s, i) => {
-    if (s?.kind !== 'hook') return;
+    if (!s || !isHook(s)) return;
     const d = Number.isFinite(s.durability) ? s.durability : max;
     if (best < 0 || d < worst) { best = i; worst = d; }
   });

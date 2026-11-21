@@ -1,5 +1,7 @@
 // Little Raft build menu: the hammer's radial piece wheel + a small "current piece" HUD chip.
-// DOM only (no THREE). createBuildMenu({ pieces, onPick, root }) -> controller (see bottom of file).
+// DOM only (no THREE). createBuildMenu({ pieces, onPick, root, countOf, nameOf }) -> controller (see bottom of file).
+// countOf(kind) -> how many the player has: each cost line is then coloured on its own (have / need).
+// nameOf(kind) -> the bag's display name (wood is 'Plank' there).
 
 const STYLE_ID = 'lr-build-menu-style';
 const SPRITE = (() => { try { return new URL('icons.svg', import.meta.url).href; } catch { return 'icons.svg'; } })();
@@ -59,6 +61,11 @@ const CSS = `
 .bm-req.bm-short{color:#ff9f86}
 .bm-req.bm-short svg{opacity:.5;filter:grayscale(.7)}
 .bm-free{font:600 12px/1 ${FONT};color:#d9c9a6}
+.bm-tag{position:absolute;left:50%;top:50%;padding:4px 10px;border-radius:10px;white-space:nowrap;pointer-events:none;background:#24170cf0;border:1.5px solid #ffe3a6;
+  color:#fff2cc;font:700 13px/1.2 ${FONT};box-shadow:0 3px 10px #0007;transform:translate(-50%,-50%)}
+.bm-tag[hidden]{display:none}
+/* the hammer's "Aim at the raft edge" prompt sits under the hub: hide it while the wheel is up */
+body.bm-wheel-up #lrPrompt,body.bm-wheel-up #contextPrompt{visibility:hidden}
 .bm-chip{position:fixed;left:max(16px,calc(50% - 253px));bottom:var(--bm-chip-bottom,112px);z-index:3;text-align:left;display:flex;align-items:center;gap:10px;
   padding:7px 14px 7px 7px;border-radius:12px;pointer-events:none;max-width:calc(100vw - 32px);
   background:repeating-linear-gradient(90deg,#0000000f 0 2px,transparent 2px 21px),linear-gradient(#5d4129f0,#3d2a19f0);
@@ -86,22 +93,33 @@ function sectorPath(a0, a1) {
   return `M${pt(R_OUT, a0)}A${R_OUT} ${R_OUT} 0 ${big} 1 ${pt(R_OUT, a1)}L${pt(R_IN, a1)}A${R_IN} ${R_IN} 0 ${big} 0 ${pt(R_IN, a0)}Z`;
 }
 
-export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
+export function costParts(cost, haveOf = null, nameOf = null, canAfford = () => true) {
+  const ks = Object.keys(cost || {}).filter(k => cost[k] > 0);
+  const all = canAfford(cost);
+  return ks.map(k => {
+    const need = cost[k], have = haveOf ? Math.max(0, Number(haveOf(k)) || 0) : null;
+    let name = null; try { name = nameOf?.(k) || null; } catch { name = null; }
+    return { kind: k, need, have, name: String(name || MAT_NAME[k] || k), short: have == null ? !all : have < need };
+  });
+}
+
+export function createBuildMenu({ pieces, onPick, root = document.body, countOf = null, nameOf = null } = {}) {
   if (!document.getElementById(STYLE_ID)) {
     const st = document.createElement('style'); st.id = STYLE_ID; st.textContent = CSS; document.head.appendChild(st);
   }
   const list = (pieces || []).map(p => ({ id: String(p.id), name: String(p.name ?? p.id), cost: p.cost || {} }));
   const n = Math.max(1, list.length), step = 360 / n;
   const byId = new Map(list.map((p, i) => [p.id, i]));
+  let haveOf = typeof countOf === 'function' ? countOf : null;
   let canAfford = () => true, selected = byId.has('foundation') ? 'foundation' : (list[0]?.id ?? null);
   let open = false, hot = -1, vx = 0, vy = 0, cx = 0, cy = 0, scale = 1;
 
+  // Each material is red or not on its own; with a count source it reads have/need like the bag.
   const costHtml = cost => {
-    const ks = Object.keys(cost).filter(k => cost[k] > 0);
-    if (!ks.length) return '<span class="bm-free">Free</span>';
-    const ok = canAfford(cost);
-    return ks.map(k => `<span class="bm-req${ok ? '' : ' bm-short'}">${MAT_SPRITE[k]
-      ? `<svg viewBox="0 0 48 48" aria-hidden="true"><use href="${SPRITE}#icon-${MAT_SPRITE[k]}"/></svg>` : ''}${cost[k]}<em>${esc(MAT_NAME[k] || k)}</em></span>`).join('');
+    const parts = costParts(cost, haveOf, nameOf, canAfford);
+    if (!parts.length) return '<span class="bm-free">Free</span>';
+    return parts.map(p => `<span class="bm-req${p.short ? ' bm-short' : ''}" aria-label="${esc(p.name)}: ${p.have == null ? '' : `have ${p.have}, `}need ${p.need}">${MAT_SPRITE[p.kind]
+      ? `<svg viewBox="0 0 48 48" aria-hidden="true"><use href="${SPRITE}#icon-${MAT_SPRITE[p.kind]}"/></svg>` : ''}${p.have == null ? p.need : `${Math.min(p.have, 999)}/${p.need}`}<em>${esc(p.name)}</em></span>`).join('');
   };
 
   // ---- wheel ----
@@ -114,9 +132,10 @@ export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
       `<g class="bm-ic" transform="translate(${(ix - 22).toFixed(2)} ${(iy - 22).toFixed(2)})">${iconSvg(p.id, 44)}</g></g>`;
   }).join('')}<circle class="bm-hub" r="${R_IN - 6}"/><circle class="bm-hubin" r="${R_IN - 12}"/>` +
     `<g class="bm-pipg"><path class="bm-pip" d="M-7 ${-(R_IN - 1)}L0 ${-(R_IN + 7)}L7 ${-(R_IN - 1)}Z"/></g></svg>` +
-    `<div class="bm-mid" aria-live="polite"><small>Selected</small><b></b><div class="bm-cost"></div></div>`;
+    `<div class="bm-mid" aria-live="polite"><small>Selected</small><b></b><div class="bm-cost"></div></div><span class="bm-tag" aria-hidden="true" hidden></span>`;
   const secs = [...wheel.querySelectorAll('.bm-sec')];
   const pipG = wheel.querySelector('.bm-pipg');
+  const tag = wheel.querySelector('.bm-tag');
   const midLabel = wheel.querySelector('.bm-mid small'), midName = wheel.querySelector('.bm-mid b'), midCost = wheel.querySelector('.bm-cost');
   root.appendChild(wheel);
 
@@ -124,15 +143,19 @@ export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
   const chip = document.createElement('div');
   chip.className = 'bm-chip'; chip.hidden = true; chip.setAttribute('role', 'status');
   chip.innerHTML = '<i></i><div><span class="bm-row"><b></b><span class="bm-cost"></span></span>' +
-    '<span class="bm-hint"><kbd>Right-click</kbd> pieces · <kbd>R</kbd> rotate · <kbd>X</kbd> remove</span><span class="bm-status"></span></div>';
+    '<span class="bm-hint"><kbd>Q</kbd> / <kbd>Right-click</kbd> pieces · <kbd>R</kbd> rotate · <kbd>X</kbd> remove</span><span class="bm-status"></span></div>';
   const chipIcon = chip.querySelector('i'), chipName = chip.querySelector('b'), chipCost = chip.querySelector('.bm-cost'), chipStatus = chip.querySelector('.bm-status');
   root.appendChild(chip);
-  let chipShown = false, chipText = '';
+  let chipShown = false, chipText = '', chipSig = '';
 
+  // Cheap to call every frame: the DOM is only touched when the piece or a count changed.
   function renderChip() {
     const p = list[byId.get(selected)];
     if (!p) return;
-    chipIcon.innerHTML = iconSvg(p.id, 26); chipName.textContent = p.name; chipCost.innerHTML = costHtml(p.cost);
+    const cost = costHtml(p.cost), sig = p.id + '|' + cost;
+    if (sig === chipSig) return;
+    chipSig = sig;
+    chipIcon.innerHTML = iconSvg(p.id, 26); chipName.textContent = p.name; chipCost.innerHTML = cost;
   }
   function renderMid() {
     const i = hot >= 0 ? hot : byId.get(selected) ?? -1, p = list[i];
@@ -145,8 +168,16 @@ export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
     if (hot >= 0) secs[hot].classList.remove('bm-hot');
     hot = i;
     if (hot >= 0) { secs[hot].classList.add('bm-hot'); pipG.setAttribute('transform', `rotate(${hot * step})`); }
+    placeTag();
     wheel.classList.toggle('bm-has', hot >= 0);
     renderMid();
+  }
+  // Name tag just outside the ring at the hovered sector (the icons alone do not say what they are).
+  function placeTag() {
+    tag.hidden = hot < 0; if (hot < 0) return;
+    const [x, y] = pt(R_OUT + 26, hot * step).split(' ').map(Number);
+    tag.textContent = list[hot].name;
+    tag.style.left = `${50 + x / (VB * 2) * 100}%`; tag.style.top = `${50 + y / (VB * 2) * 100}%`;
   }
   // Sector from an offset (screen px, y down). Dead zone -> -1.
   function pickAt(dx, dy, dead) {
@@ -180,7 +211,7 @@ export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
     open() {
       if (open || !list.length) return;
       open = true; vx = vy = 0; wheel.hidden = false;
-      refreshAfford(); setHot(-1); renderMid(); chip.classList.add('bm-dim');
+      refreshAfford(); setHot(-1); renderMid(); chip.classList.add('bm-dim'); document.body.classList.add('bm-wheel-up');
       void wheel.offsetWidth; wheel.classList.add('bm-open'); measure();
     },
     move(dx, dy) {
@@ -198,7 +229,7 @@ export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
     },
     close(confirm = true) {
       if (!open) return;
-      open = false; wheel.classList.remove('bm-open'); wheel.hidden = true; chip.classList.remove('bm-dim');
+      open = false; wheel.classList.remove('bm-open'); wheel.hidden = true; chip.classList.remove('bm-dim'); document.body.classList.remove('bm-wheel-up');
       const i = hot; setHot(-1);
       if (confirm && i >= 0) { selected = list[i].id; renderChip(); onPick?.(selected); }
     },
@@ -206,12 +237,13 @@ export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
     get selected() { return selected; },
     setSelected(id) { if (byId.has(id) && id !== selected) { selected = id; renderChip(); if (open) { refreshAfford(); renderMid(); } } },
     setAfford(fn) { canAfford = typeof fn === 'function' ? fn : () => true; api.refresh(); },
+    setCount(fn) { haveOf = typeof fn === 'function' ? fn : null; api.refresh(); },
     refresh() { if (chipShown) renderChip(); if (open) { refreshAfford(); renderMid(); } },
     setVisible(v) { v = !!v; if (v === chipShown) return; chipShown = v; chip.hidden = !v; if (v) renderChip(); },
     setChip(text) { text = text ? String(text) : ''; if (text !== chipText) { chipText = text; chipStatus.textContent = text; } },
     dispose() {
       wheel.removeEventListener('click', onClick); wheel.removeEventListener('contextmenu', onCtx);
-      removeEventListener('resize', onResize); wheel.remove(); chip.remove(); open = false;
+      removeEventListener('resize', onResize); wheel.remove(); chip.remove(); open = false; document.body.classList.remove('bm-wheel-up');
     },
   };
   renderChip();

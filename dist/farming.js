@@ -1,7 +1,7 @@
 // Farming rules for palm planters. Pure ES module: no DOM, no THREE, no timers.
 //
 // Loop (after Raft's crop plots): craft and place a Palm Planter (empty, dry soil), click it
-// holding a Palm Seed (barrels and harvests drop them) and a SEEDLING appears. Fill a Filter
+// holding a Palm Seed (barrels and harvests drop them) and a SEEDLING appears. Fill a
 // Cup at the sea for a Cup of Fresh Water, pour it on the planter, and the plant grows through
 // 4 stages, but only while the soil is wet. A mature palm is harvested with E for leaves and
 // a seed; the empty planter takes that seed again.
@@ -21,10 +21,10 @@ export const PLOT_TYPE = 'palm';
 // Bag item and recipe definitions the integrator merges into inventory-state.js.
 export const FARM_ITEMS = Object.freeze({
   seed:  Object.freeze({ kind: 'seed',  name: 'Palm Seed',            icon: 'icon-leaf',   maxStack: 20, tool: false, placeholder: true }),
-  cup:   Object.freeze({ kind: 'cup',   name: 'Filter Cup',           icon: 'icon-scrap',  maxStack: 20, tool: false, placeholder: true }),
+  cup:   Object.freeze({ kind: 'cup',   name: 'Cup',                  icon: 'icon-cup',    maxStack: 5,  tool: false, placeholder: false }), // = inventory-state.js ITEM_INFO.cup
   water: Object.freeze({ kind: 'water', name: 'Cup of Fresh Water',   icon: 'icon-barrel', maxStack: 20, tool: false, placeholder: true }),
 });
-export const FARM_RECIPES = Object.freeze({ cup: Object.freeze({ plastic: 2, leaf: 1 }) });
+export const FARM_RECIPES = Object.freeze({ cup: Object.freeze({ plastic: 4 }) }); // same Cup and cost as inventory-state.js RECIPES.cup (Raft: 4 plastic)
 
 const isNum = Number.isFinite;
 const clampN = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -132,7 +132,7 @@ export function applyFarmAction(world, bag, a) {
   const fail = (text, effect = 'notice') => ({ ok: false, text, effect, changed: false });
   if (!a || typeof a.op !== 'string') return fail('');
   if (a.op === 'fill') { // the cup's leaf filter turns a scoop of sea into fresh water
-    if (bag.count('cup') < 1) return fail('Craft a Filter Cup first');
+    if (bag.count('cup') < 1) return fail('Craft a cup first');
     const scratch = new bag.constructor(bag.snapshot());
     if (!takeOne(scratch, 'cup') || scratch.add('water', 1) > 0) return fail('Your bag is full', 'full');
     for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i];
@@ -153,7 +153,7 @@ export function applyFarmAction(world, bag, a) {
     if (p.w >= WATER_SECONDS * .5) return fail('The soil is still wet');
     const scratch = new bag.constructor(bag.snapshot());
     const from = takeOneAt(scratch, 'water');
-    if (from < 0) return fail('Fill a Filter Cup at the sea first');
+    if (from < 0) return fail('Fill a cup at the sea first');
     // The empty cup goes back where the water was; with no room at all nothing is used up.
     const kept = !scratch.slots[from] ? (scratch.slots[from] = { kind: 'cup', count: 1 }, true) : scratch.add('cup', 1) === 0;
     if (!kept) return fail('Your bag is full', 'full');

@@ -186,6 +186,8 @@ export function createBees(ctx) {
 
   return {
     name: 'bees',
+    beforeUndecor(d) { return d?.type === 'beehive' && (st.h[tileKey(d.x, d.z)]?.c ?? 0) > 0 ? 'Collect the honey first' : null; }, // [undecor]
+    afterUndecor(d) { if (d?.type !== 'beehive') return; const k = tileKey(d.x, d.z); if (st.h[k]) { delete st.h[k]; st.r++; } }, // [undecor]
     load,
     serialize,
     update(dt) {

@@ -4,6 +4,7 @@
 // update() runs per frame; it only compares numbers/strings and repaints on change.
 import { iconSVG, slotSig, paintSlot, itemName } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { arrowNeighbor } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 
 const CHEST = 12;
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
@@ -96,7 +97,7 @@ const CSS = `
 .lr-sr-lock svg{display:block;width:15px;height:15px}
 /* craft list in #inventory */
 #inventory .sv-rlist{display:flex;flex-direction:column}
-#inventory .sv-recipe[data-locked]{order:1;pointer-events:none;cursor:default;opacity:1!important;background:linear-gradient(#3f2b1a,#33231a);box-shadow:inset 0 0 0 1px #d4b07a22}
+#inventory .sv-recipe[data-locked]{order:1;opacity:1!important;background:linear-gradient(#3f2b1a,#33231a);box-shadow:inset 0 0 0 1px #d4b07a22}
 #inventory .sv-recipe[data-locked] .sv-rart{position:relative}
 #inventory .sv-recipe[data-locked] .sv-rart .sv-icon{filter:grayscale(1) brightness(.75);opacity:.6}
 #inventory .sv-recipe[data-locked] .sv-rname{color:#d9c9a6}
@@ -108,7 +109,7 @@ const CSS = `
 #inventory .sv-recipe.sv-gated[data-locked] .sv-rart::after{filter:grayscale(1) brightness(.55)}
 #inventory .sv-recipe .sv-rbody[data-needs]::after{content:attr(data-needs);display:block;margin-top:4px;font:700 12px/1.2 ${FONT};color:#ffcf9a}
 #inventory .sv-recipe.lr-sr-first{position:relative;margin-top:30px}
-#inventory .sv-recipe.lr-sr-first::before{content:'Discover at a Tinker\\2019s Desk';position:absolute;left:2px;top:-22px;width:max-content;white-space:nowrap;font:800 11px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#d9c9a6}
+#inventory .sv-recipe.lr-sr-first::before{content:attr(data-sr-head);position:absolute;left:2px;right:2px;top:-21px;width:auto;height:14px;grid-column:1/-1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:700 12px/14px ${FONT};letter-spacing:.2px;color:#d9c9a6;pointer-events:none}
 #inventory .sv-recipe.lr-sr-fresh{animation:lrSrFresh 2.4s ease-out}
 #inventory .lr-sr-more{display:block;width:100%;margin:0 0 8px;padding:6px 8px;border:0;border-radius:4px;background:#24170caa;box-shadow:inset 0 0 0 1px #ffbd6655;color:#ffcf9a;font:700 12px/1.2 ${FONT};text-align:left;letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
 #inventory .lr-sr-more:hover{box-shadow:inset 0 0 0 1px #ffe3a6}
@@ -127,6 +128,12 @@ function ensureStyle() {
   let st = document.getElementById('lr-sr-style');
   if (!st) { st = document.createElement('style'); st.id = 'lr-sr-style'; document.head.append(st); }
   if (st.textContent !== CSS) st.textContent = CSS;
+}
+
+// One-line header over the locked rows: what to study, and where.
+export function studyHead(names) {
+  const what = names.length < 2 ? names.join('') : names.length === 2 ? names.join(' and ') : 'items';
+  return `Study ${what ? what + ' ' : ''}at a Tinker\u2019s Desk to unlock`;
 }
 
 export function createStorageUI(api) {
@@ -284,7 +291,13 @@ export function createStorageUI(api) {
     paint();
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     isOpen = true; document.body.classList.add('lr-sr-open');
-    try { $('.lr-sr-wrap').focus({ preventScroll: true }); } catch {}
+    focusFirst();
+  }
+  // Keyboard focus: the visible, enabled crate/bag slots or study tiles, in DOM order.
+  const navEls = () => [...dlg.querySelectorAll('[data-chest],[data-bag],[data-study]')].filter(el => !el.disabled && !el.closest('[hidden]'));
+  function focusFirst() {
+    const el = navEls()[0] ?? $('.lr-sr-wrap');
+    try { el.focus({ preventScroll: true }); } catch {}
   }
   function close() { if (dlg.open) { try { dlg.close(); } catch { dlg.removeAttribute('open'); } } else onClosed(); }
   function onClosed() {
@@ -294,7 +307,24 @@ export function createStorageUI(api) {
   }
   dlg.addEventListener('close', onClosed, on);
   dlg.addEventListener('cancel', e => { e.preventDefault(); close(); }, on);
-  dlg.addEventListener('keydown', e => { if ((e.code === 'KeyE' || e.code === 'Tab') && !e.repeat) { e.preventDefault(); e.stopPropagation(); close(); } }, on);
+  dlg.addEventListener('keydown', e => { if (e.code === 'KeyE' && !e.repeat) { e.preventDefault(); e.stopPropagation(); close(); } }, on);
+  // Tab / Shift+Tab wrap inside the dialog (so focus never drops to the page behind it and E / Esc keep working).
+  dlg.addEventListener('keydown', e => {
+    if (e.code !== 'Tab' || !isOpen) return;
+    const els = [...dlg.querySelectorAll('button')].filter(el => !el.disabled && !el.closest('[hidden]') && el.offsetParent !== null);
+    if (!els.length) return;
+    const i = els.indexOf(document.activeElement);
+    if (e.shiftKey ? i <= 0 : i < 0 || i === els.length - 1) { e.preventDefault(); try { els[e.shiftKey ? els.length - 1 : 0].focus({ preventScroll: false }); } catch {} }
+  }, on);
+  // Arrow keys move focus across slots / study tiles by layout (like the bag); from the panel itself they enter the first one.
+  dlg.addEventListener('keydown', e => {
+    if (!isOpen || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || !e.code.startsWith('Arrow')) return;
+    const els = navEls(); if (!els.length) return;
+    const i = els.indexOf(e.target.closest?.('[data-chest],[data-bag],[data-study]'));
+    const n = i < 0 ? 0 : arrowNeighbor(els.map(el => el.getBoundingClientRect()), i, e.code);
+    e.preventDefault();
+    if (n >= 0) try { els[n].focus({ preventScroll: false }); } catch {}
+  }, on);
   dlg.addEventListener('wheel', e => e.stopPropagation(), { passive: true, signal: ac.signal });
   dlg.addEventListener('click', e => {
     if (e.target === dlg) { close(); return; }
@@ -337,7 +367,7 @@ export function createStorageUI(api) {
   function annotate() {
     const rows = inv.querySelectorAll('.sv-recipe[data-recipe]'), seen = new Set(api.state.seen), fresh = api.takeFresh();
     const beckon = api.locked().length > 0 && !api.hasTable();
-    let first = null;
+    const firsts = new Map(); // tab (data-cat) -> {el, miss}: each craft tab gets its own header over its first locked row
     lockedRows = [];
     rows.forEach(el => {
       const id = el.dataset.recipe, r = RECIPES[id], locked = !!r && !api.isLearned(id);
@@ -358,9 +388,12 @@ export function createStorageUI(api) {
       if (!el.dataset.locked) { el.dataset.locked = '1'; el.dataset.srAria = el.getAttribute('aria-label') ?? ''; }
       setAttr(el, 'title', 'Needs research: ' + (miss.join(', ') || 'visit a Tinker\u2019s Desk'));
       setAttr(el, 'tabindex', '-1'); setAttr(el, 'aria-label', LOCKED_LABEL); lockedRows.push(el);
-      setClass(el, 'lr-sr-first', !first); first ??= el;
+      const cat = el.dataset.cat ?? '', head = !firsts.has(cat);
+      setClass(el, 'lr-sr-first', head); if (head) firsts.set(cat, { el, miss });
       if (body && body.dataset.needs !== text) body.dataset.needs = text; // shown by .sv-rbody[data-needs]::after, the lock badge by .sv-rart::after
     });
+    const heads = new Map([...firsts.values()].map(f => [f.el, studyHead(f.miss)]));
+    rows.forEach(el => { const h = heads.get(el); if (h) { if (el.dataset.srHead !== h) el.dataset.srHead = h; } else if (el.dataset.srHead) delete el.dataset.srHead; });
     // "N more recipes to discover" at the top of the craft list (outside .sv-rlist, which survival-ui owns)
     const list = inv.querySelector('.sv-rlist'), box = list?.parentElement;
     let more = box?.querySelector(':scope>.lr-sr-more');
@@ -384,7 +417,7 @@ export function createStorageUI(api) {
     host.querySelectorAll('.sv-recipe').forEach(el => {
       if (el.dataset.locked) unlockRow(el);
       const body = el.querySelector('.sv-rbody'); if (body?.dataset.needs != null) delete body.dataset.needs;
-      el.classList.remove('lr-sr-first', 'lr-sr-fresh', 'lr-sr-beckon');
+      el.classList.remove('lr-sr-first', 'lr-sr-fresh', 'lr-sr-beckon'); delete el.dataset.srHead;
     });
     host.querySelectorAll('.lr-sr-more').forEach(el => el.remove());
     lockedRows = [];

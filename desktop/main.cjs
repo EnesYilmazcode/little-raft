@@ -11,7 +11,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
 app.on('second-instance',()=>{if(win){if(win.isMinimized())win.restore();win.show();win.focus();}});
 app.whenReady().then(()=>{
  Menu.setApplicationMenu(null);
- win=new BrowserWindow({title:'Little Raft',width:1366,height:850,minWidth:900,minHeight:620,backgroundColor:'#0b2931',autoHideMenuBar:true,icon:path.join(__dirname,'little-raft.png'),webPreferences:{...(fs.existsSync(preloadPath)?{preload:preloadPath}:{}),nodeIntegration:false,contextIsolation:true,sandbox:true,backgroundThrottling:false}});
+ win=new BrowserWindow({title:'Little Raft',width:1366,height:850,minWidth:900,minHeight:620,backgroundColor:'#0b2931',autoHideMenuBar:true,acceptFirstMouse:true,icon:path.join(__dirname,'little-raft.png'),webPreferences:{...(fs.existsSync(preloadPath)?{preload:preloadPath}:{}),nodeIntegration:false,contextIsolation:true,sandbox:true,backgroundThrottling:false}});
  ipcMain.on('raft:claim-escape',(e,on)=>{if(win&&e.sender===win.webContents)escClaimed=!!on;});
  win.webContents.on('did-start-navigation',d=>{if(d.isMainFrame&&!d.isSameDocument)escClaimed=false;}); // a reload must claim again
  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
