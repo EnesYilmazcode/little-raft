@@ -25,6 +25,6 @@ export function createWoodMaterial(T, color) {
   const g=ctx.createLinearGradient(x0,0,x1,0);g.addColorStop(0,'rgba(38,30,20,.42)');g.addColorStop(1,'rgba(38,30,20,0)');
   ctx.fillStyle=g;ctx.fillRect(Math.min(x0,x1),0,5,512);
  }
- const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=4;
- return new T.MeshStandardMaterial({map:texture,bumpMap:texture,bumpScale:.018,roughness:.95,metalness:0});
+ const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=2;
+ return new T.MeshStandardMaterial({map:texture,roughness:.95,metalness:0});
 }

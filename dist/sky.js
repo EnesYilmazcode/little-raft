@@ -78,11 +78,11 @@ void main() {
 
   // Clouds: project the view ray onto a high flat layer so puffs foreshorten
   // naturally toward the horizon, then fade them into the haze.
-  if (y > 0.0) {
+  if (y > 0.03) {
     vec2 cp = dir.xz / (y + 0.12) * 0.9;
     vec2 drift = vec2(uTime * 0.0035, uTime * 0.0012);
     float n = fbm(cp * vec2(0.55, 1.3) + drift);          // stretched: long wispy streaks
-    float detail = fbm(cp * vec2(1.6, 3.4) - drift * 1.6);
+    float detail = vnoise(cp * vec2(3.2, 6.8) - drift * 3.2); // one octave of fine breakup (perf)
     float shape = n * 0.72 + detail * 0.28;
     float thr = 1.0 - uCoverage;           // higher coverage -> lower threshold
     float density = smoothstep(thr, thr + 0.3, shape);
