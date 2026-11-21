@@ -6,7 +6,7 @@ import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 export const TANK_CAP = 12, MAX_JOINTS = 400, MAX_ARMS = 2000;
 export const JOINT_SCALE = Object.freeze({ cap: .8, straight: .7, elbow: 1, tee: 1.15, cross: 1.25 });
 export const PIPE_Y = .075; // hub / arm centre above the deck top
-const WIN_Y = .24, WIN_H = .6; // level window: bottom and height
+const WIN_Y = .23, WIN_H = .6; // level window: bottom and height
 
 // [geometry, hex, x, y, z, rx, ry, rz] parts -> one indexed geometry with a colour attribute.
 function bake(T, parts) {
@@ -34,14 +34,14 @@ export function createWaterTank(T) {
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) parts.push([new T.BoxGeometry(.06, .12, .06), '#7d5c37', sx * .2, .06, sz * .2]);
   parts.push([new T.CylinderGeometry(.3, .3, .78, 10), '#9c7649', 0, .12 + .39, 0]); // wood-stave body
   for (let i = 0; i < 10; i++) { const a = (i + .5) / 10 * Math.PI * 2; parts.push([new T.BoxGeometry(.012, .76, .012), '#7d5c37', Math.sin(a) * .298, .51, Math.cos(a) * .298, 0, a, 0]); } // stave seams
-  for (const y of [.3, .78]) parts.push([new T.TorusGeometry(.305, .014, 4, 20), '#b87333', 0, y, 0, Math.PI / 2]); // copper hoops
+  for (const y of [.17, .86]) parts.push([new T.TorusGeometry(.305, .014, 4, 20), '#b87333', 0, y, 0, Math.PI / 2]); // copper hoops
   parts.push([new T.ConeGeometry(.33, .15, 10), '#b87333', 0, .9 + .075, 0]); // lid
   parts.push([new T.CylinderGeometry(.03, .03, .03, 6), '#8a5a2b', 0, 1.06, 0]); // lid knob
   parts.push([new T.CylinderGeometry(.03, .03, .1, 6), '#b87333', .34, .15, 0, 0, 0, Math.PI / 2]); // spigot
   parts.push([new T.CylinderGeometry(.04, .04, .03, 6), '#b87333', .4, .15, 0, 0, 0, Math.PI / 2]);
   parts.push([new T.BoxGeometry(.09, WIN_H, .01), '#2b2118', 0, WIN_Y + WIN_H / 2, .302]); // dark window backing
   for (let i = 1; i <= 3; i++) parts.push([new T.BoxGeometry(.035, .012, .012), '#e8d9b8', .075, WIN_Y + WIN_H * i / 4, .305]); // tick marks
-  const body = new T.Mesh(bake(T, parts), new T.MeshStandardMaterial({ vertexColors: true, roughness: .75, metalness: .15, flatShading: true }));
+  const body = new T.Mesh(bake(T, parts), new T.MeshStandardMaterial({ vertexColors: true, roughness: .8, metalness: 0, flatShading: true }));
   body.name = 'tankBody'; body.castShadow = true; body.receiveShadow = true;
   g.add(body);
   const levelGeo = new T.BoxGeometry(.07, WIN_H, .008); levelGeo.translate(0, WIN_H / 2, 0); // base at the origin: y scale fills upward
@@ -115,10 +115,10 @@ export function createPipeMeshes(T) {
 
 /** One translucent joint shown at the aimed tile while a pipe is held. setOk(bool) paints it green / red. */
 export function createPipeGhost(T) {
-  const mat = new T.MeshBasicMaterial({ color: '#9dffc0', transparent: true, opacity: .5, depthWrite: false });
+  const mat = new T.MeshBasicMaterial({ color: '#5dff8f', transparent: true, opacity: .7, depthWrite: false });
   const m = new T.Mesh(jointGeometry(T), mat); m.name = 'pipe_ghost'; m.visible = false; m.renderOrder = 2;
   let ok = null;
-  m.userData.setOk = v => { if (v !== ok) { ok = v; mat.color.set(v ? '#9dffc0' : '#ff8a73'); } };
+  m.userData.setOk = v => { if (v !== ok) { ok = v; mat.color.set(v ? '#5dff8f' : '#ff6a53'); } };
   m.userData.dispose = () => { m.removeFromParent(); m.geometry.dispose(); mat.dispose(); };
   return m;
 }
