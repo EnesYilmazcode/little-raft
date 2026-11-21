@@ -28,9 +28,9 @@ export const CONTENT_ITEMS = Object.freeze({
   nestbox:  item('nestbox', 'Nest Box',        'icon-nest',    false),
   cushion:  item('cushion', 'Feather Cushion', 'icon-cushion', false),
   research: item('research', 'Tinker\u2019s Desk', 'icon-research', false),
-  motor:    item('motor',    'Little Motor',   'icon-repair', true),
-  wheel:    item('wheel',    'Steering Wheel', 'icon-repair', true),
-  bed:      item('bed',      'Bed',            'icon-leaf',   true),
+  motor:    item('motor',    'Little Motor',   'icon-motor',  false),
+  wheel:    item('wheel',    'Steering Wheel', 'icon-wheel',  false),
+  bed:      item('bed',      'Bed',            'icon-bed',    false),
   // paint (dist/paint.js): the brush is not a TOOL_KIND (no durability), pots are plain stacks, not decor
   brush:         item('brush',         'Paint Brush',   'icon-brush',         false, 1),
   paint_seafoam: item('paint_seafoam', 'Seafoam Paint', 'icon-paint-seafoam', false),
