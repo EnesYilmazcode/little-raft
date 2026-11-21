@@ -148,7 +148,7 @@ export function createHands(T, { modelFactory = null } = {}) {
   const G = (g) => { geos.push(g); return g; };
 
   // Tapered capsule along +Y, cap centers at -L/2 (radius r0) and +L/2 (radius r1).
-  const taperGeo = (r0, r1, L, radial = 10, cap = 4) => {
+  const taperGeo = (r0, r1, L, radial = 8, cap = 3) => {
     const pts = [];
     for (let i = 0; i <= cap; i++) { const a = -Math.PI / 2 + (Math.PI / 2) * (i / cap); pts.push(new T.Vector2(Math.max(1e-5, r0 * Math.cos(a)), -L / 2 + r0 * Math.sin(a))); }
     for (let i = 0; i <= cap; i++) { const a = (Math.PI / 2) * (i / cap); pts.push(new T.Vector2(Math.max(1e-5, r1 * Math.cos(a)), L / 2 + r1 * Math.sin(a))); }
@@ -161,7 +161,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     mesh.quaternion.setFromUnitVectors(UP, d.normalize());
     parent.add(mesh); return mesh;
   };
-  const sphereGeo = G(new T.SphereGeometry(1, 16, 12));
+  const sphereGeo = G(new T.SphereGeometry(1, 14, 10));
   const ellipsoid = (parent, m, p, rx, ry, rz, rotY = 0) => {
     const mesh = new T.Mesh(sphereGeo, m);
     mesh.position.copy(p); mesh.scale.set(rx, ry, rz); mesh.rotation.y = rotY;
@@ -194,7 +194,7 @@ export function createHands(T, { modelFactory = null } = {}) {
       seg(curl, skin, pip, tip, f.r * 0.96, f.r * 0.78);
       if (i < 3) {
         const c = P(f.a1 + 3, R + f.r * 0.9, f.y);
-        seg(curl, crease, c.clone().setY(f.y - 0.0052), c.clone().setY(f.y + 0.0052), 0.0013, 0.0013, 6);
+        seg(curl, crease, c.clone().setY(f.y - 0.0052), c.clone().setY(f.y + 0.0052), 0.0013, 0.0013, 4);
       }
       // tight curl into the palm (empty fist, used beside a pointing index)
       const r2 = 0.012 + f.r, k0 = P(-12, r2 + 0.012, f.y), k1 = P(70, r2, f.y), k2 = P(165, r2 * 0.9, f.y);
@@ -207,7 +207,7 @@ export function createHands(T, { modelFactory = null } = {}) {
       seg(ext, skin, mcp, e1, f.r * 1.05, f.r * 0.95);
       seg(ext, skin, e1, e2, f.r * 0.95, f.r * 0.78);
       ellipsoid(ext, nail, e2.clone().add(V(0.0045, 0, 0.004)), 0.0035, f.r * 0.62, 0.008);
-      seg(ext, crease, e1.clone().add(V(f.r * 0.85, -0.0052, 0)), e1.clone().add(V(f.r * 0.85, 0.0052, 0)), 0.0013, 0.0013, 6);
+      seg(ext, crease, e1.clone().add(V(f.r * 0.85, -0.0052, 0)), e1.clone().add(V(f.r * 0.85, 0.0052, 0)), 0.0013, 0.0013, 4);
       parent.add(curl, ext, tight);
       return { curl, ext, tight };
     });
@@ -259,9 +259,9 @@ export function createHands(T, { modelFactory = null } = {}) {
 
     const Fl = toLocal(F).normalize();
     const at = (s) => W.clone().addScaledVector(Fl, s);
-    const forearm = seg(frame, skin, at(0), at(0.24), 0.031, 0.042, 12);
-    const cuff = seg(frame, cuffMat, at(0.19), at(0.225), 0.047, 0.050, 14);    // rolled cuff
-    const sleeve = seg(frame, sleeveMat, at(0.23), at(0.60), 0.051, 0.070, 14); // sleeve (runs off-screen)
+    const forearm = seg(frame, skin, at(0), at(0.24), 0.031, 0.042, 10);
+    const cuff = seg(frame, cuffMat, at(0.19), at(0.225), 0.047, 0.050, 10);    // rolled cuff
+    const sleeve = seg(frame, sleeveMat, at(0.23), at(0.60), 0.051, 0.070, 10); // sleeve (runs off-screen)
     bake(frame, [forearm], skinV); bake(frame, [cuff, sleeve], clothV);
     for (const o of [forearm, cuff, sleeve]) o.removeFromParent();
 
