@@ -99,7 +99,7 @@ export function createStationPanel({ getStation, getBag, items = {}, fuelValue =
     return out;
   }
   const slotHTML = s => s && s.count > 0 ? `<i class="st-ic" data-item-kind="${esc(s.kind)}">${icon(s.kind)}</i>${s.count > 1 ? `<i class="st-n">${s.count}</i>` : ''}` : '';
-  const chipHTML = (role, k, n, ok) => `<button type="button" class="st-chip" data-role="${role}" data-item-kind="${esc(k)}" aria-label="${esc(`${name(k)}, ${n}. Click adds 1, shift-click adds all`)}"${ok ? '' : ' disabled'}><i class="st-ic">${icon(k)}</i><i class="st-n">${n}</i></button>`;
+  const chipHTML = (role, k, n, ok) => `<button type="button" class="st-chip" data-role="${role}" data-item-kind="${esc(k)}" aria-label="${esc(`${name(k)}, ${n}. Click adds 1, shift-click adds all`)}"${ok ? '' : ` disabled title="${role === 'fuel' ? 'The fire is full' : 'Finish or take back what is cooking first'}"`}><i class="st-ic">${icon(k)}</i><i class="st-n">${n}</i></button>`;
 
   function update() {
     if (!isOpen) return;
