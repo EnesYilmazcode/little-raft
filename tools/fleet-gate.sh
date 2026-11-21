@@ -87,7 +87,9 @@ if has visual; then
   run_check visual "$PYTHON" "$here/tools/visual-diff.py" "${vargs[@]}" --out "$out/visual"
 fi
 if has perf; then
-  run_check perf "$PYTHON" "$here/tests/e2e/perf_gate.py" --dist "$head_dist" --out "$out/perf"
+  pargs=()
+  if [ -d "$work/base/dist" ] && "$PYTHON" "$here/tests/e2e/perf_gate.py" "$work/base/dist" --json "$out/perf-base.json" > "$out/perf-base.log" 2>&1; then pargs=(--baseline "$out/perf-base.json"); fi
+  run_check perf "$PYTHON" "$here/tests/e2e/perf_gate.py" "$head_dist" --json "$out/perf.json" "${pargs[@]}"
 fi
 if has electron; then
   run_check electron "$PYTHON" "$here/tests/e2e/electron_check.py" --dist "$head_dist" --out "$out/electron"
