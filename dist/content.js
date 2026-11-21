@@ -14,6 +14,8 @@
 //   load(data, from)          from: 'save' | 'net' | 'restore'. data may be undefined (old save).
 //   action(a, actor, bag)     host only. Return true if a.kind was handled. Guests reach it via ctx.action().
 //   interact(aim)             E key. Return true if consumed (before the inventory opens).
+//   use(aim, kind)            left click holding `kind`, before eating/placing. Return true if consumed (crops, paint).
+//   claims(kind, aim)         true when use(kind, aim) would consume the click (hides the eat/drink tip)
 //   prompt(aim)               -> context prompt HTML (escaped by the module) or null
 //   craftLocked(recipe, actor)-> reason string if the recipe is locked, else null
 //   decorModel(type, d)       -> THREE.Object3D for a CONTENT_DECOR type, or null (d = the world.decor entry, read-only)
@@ -66,6 +68,7 @@ import { createPaint } from './paint.js?build=v3-survival-ae77fa84ac2b'; // cont
 import { createKiln } from './kiln.js?build=v3-survival-ae77fa84ac2b';
 import { createAnimals } from './animals.js?build=v3-survival-ae77fa84ac2b';
 import { createBees } from './bees.js?build=v3-survival-ae77fa84ac2b'; // [bees]
+import { createCrops } from './crops.js?build=v3-survival-ae77fa84ac2b'; // [crops]
 import { createTreasure } from './treasure.js?build=v3-survival-ae77fa84ac2b';
 import { createMapTable } from './maptable.js?build=v3-survival-ae77fa84ac2b';
 import { createGull } from './gull.js?build=v3-survival-ae77fa84ac2b'; // [gull]
@@ -88,10 +91,10 @@ import { createZipline } from './zipline.js?build=v3-survival-ae77fa84ac2b'; // 
 import { createSpyglass } from './spyglass.js?build=v3-survival-ae77fa84ac2b'; // [spyglass]
 import { createStorm } from './storm.js?build=v3-survival-ae77fa84ac2b'; // [storm]
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createStorm, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createSpyglass, createCookpot]; // round 4: game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); // [bees] + createBees; [scarecrow] after wildlife; [sit] + createSitting; [flags] + createFlags; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [storm] after daynight; [spyglass]; [juicer] + createJuicer [gull] + createGull
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createStorm, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createCrops, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createSpyglass, createCookpot]; // round 4: game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); // [bees] + createBees; [scarecrow] after wildlife; [sit] + createSitting; [flags] + createFlags; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [storm] after daynight; [crops] + createCrops; [spyglass]; [juicer] + createJuicer [gull] + createGull
 // [undecor] decor whose module stores items per tile but has no beforeUndecor/undecorLoot/afterUndecor yet:
 // picking it up would lose what it holds, so the host refuses (display, fish trap, cooking pot, gull perch tray).
-const NO_UNDECOR = new Set(['shelf', 'trophystand', 'fishtrap', 'cookpot', 'perch']);
+const NO_UNDECOR = new Set(['shelf', 'trophystand', 'fishtrap', 'cookpot', 'perch', 'cropplot']); // [crops] slots live on the decor entry
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -143,8 +146,9 @@ export function createContent(ctx, features = FEATURES) {
     observe(ev, actor) { for (const m of mods) call(m, 'observe', ev, actor); }, // [tasks] host-side game events
     interact: aim => { const m = seatedMod(); return !!(m && call(m, 'interact', aim)) || !!first('interact', aim); }, // [sit] a seated module gets E first (stand up)
     seated: () => !!first('seated'), // [sit]
+    claims: (kind, aim) => !!first('claims', kind, aim), // [crops]
     prompt: aim => { const m = seatedMod(); return (m && call(m, 'prompt', aim)) || first('prompt', aim); }, // [sit] a seated module's prompt wins (E gets you up)
-    use: (aim, kind) => !!first('use', aim, kind), // content hook (paint)
+    use: (aim, kind) => !!first('use', aim, kind), // content hook (paint, crops)
     alt: (aim, kind) => !!first('alt', aim, kind), // content hook (paint)
     zoom() { const z = first('zoom'); return Number.isFinite(z) && z >= 1 && z <= 8 ? z : 1; }, // [spyglass] view zoom, default 1
     afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)

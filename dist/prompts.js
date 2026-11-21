@@ -128,7 +128,7 @@ export function statePrompt(s, opt = {}) {
 // because game.js mutes its own game-aim providers while a placeable is held.
 export function placePrompt(s) {
   const name = DECOR_NAMES[s.heldKind] ?? String(s.heldKind).replace(/[-_]+/g, ' ');
-  const place = s.build?.hover && s.build.hover.blocked !== 'nofloor' ? {key:'LMB', label:'Place ' + name} : {label:'Aim at the raft floor', muted:true}; // nofloor: red ghost just off the deck
+  const place = s.build?.hover && s.build.hover.blocked !== 'nofloor' ? {key:'LMB', label:'Place ' + name} : {label:s.heldKind === 'net' ? 'Aim at the water by the raft edge' : 'Aim at the raft floor', muted:true}; // [nets]; nofloor: red ghost just off the deck
   const aim = s.aimPrompt ? promptFromHtml(s.aimPrompt) : null;
   return aim ? [place, aim] : place;
 }

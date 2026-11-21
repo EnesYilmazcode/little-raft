@@ -18,6 +18,7 @@ export const BLOCK_TEXT = Object.freeze({
   split: 'That would split the raft in two',
   brother: 'Your brother is in the way',
   nofloor: 'Place it on the raft floor',
+  net: 'A collection net hangs there',
   trapedge: 'Fish traps hang on an edge tile, next to open water', // [fishtrap]
   piece: 'Stairs are in the way',
 });

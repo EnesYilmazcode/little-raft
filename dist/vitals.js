@@ -31,9 +31,13 @@ export const FOOD = {
   saltcup:         {food:0,    water:-5, returns:'cup'},
   sharkmeat:       {food:10,   water:-5},
   cookedsharkmeat: {food:30,   water:0},
+  beet:            {food:10,   water:0},  // [crops] Raft: raw beet +10
+  potato:          {food:10,   water:0},  // [crops] Raft: raw potato +10
+  cookedbeet:      {food:15,   water:0},  // [crops]
+  cookedpotato:    {food:15,   water:0},  // [crops] Raft: cooked potato +15
+  coconut:         {food:5,    water:20}, // chopped from island palms (r1: Raft +5 / +20)
   honeyfish:       {food:45,   water:0},                  // [juicer] bug fix: was not edible
   berries:         {food:4,    water:2},                  // [juicer]
-  coconut:         {food:6,    water:8},                  // [juicer]
   berrycup:        {food:10,   water:35, returns:'cup'},  // [juicer]
   coconutcup:      {food:6,    water:45, returns:'cup'},  // [juicer]
   mixcup:          {food:14,   water:38, returns:'cup'},  // [juicer]

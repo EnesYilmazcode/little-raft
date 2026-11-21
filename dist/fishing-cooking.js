@@ -338,7 +338,7 @@ export function createFishingCooking(T, host) {
     st.slots.forEach((f) => {
       if (!f) return;
       const ct = cookTime(f);
-      const s = f.state === 'burnt' ? 'charred' : f.state === 'cooked' ? (f.t > ct + 12 ? 'burning!' : 'ready!') : `cooking ${Math.max(1, Math.ceil(ct - f.t))}s`;
+      const s = f.state === 'burnt' ? 'charred' : f.state === 'cooked' ? (f.t > ct + COOK_TUNING.burnAfter - 15 ? 'burning!' : 'ready!') : `cooking ${Math.max(1, Math.ceil(ct - f.t))}s`;
       if (!status || s === 'burning!' || s === 'ready!') status = s;
     });
     const tail = status ? ` · ${status}` : '';
@@ -353,7 +353,7 @@ export function createFishingCooking(T, host) {
       const f = journal.basket[ri]; nextAct = { kind: 'fc:cook', id: st.id, basket: ri };
       return `<kbd>E</kbd> Grill ${esc(speciesById(f.species).name)} (${f.cm.toFixed(1)} cm)${tail}`;
     }
-    if (st.fuel < FUEL_CAP - COOK_TUNING.fuelPerWood * 0.5 && wood > 0) { nextAct = { kind: 'fc:fuel', id: st.id }; return `<kbd>E</kbd> Add fuel (wood) · ${Math.round(st.fuel)}s left${tail}`; }
+    if (st.fuel < FUEL_CAP - COOK_TUNING.fuelPerWood * 0.5 && wood > 0) { nextAct = { kind: 'fc:fuel', id: st.id }; return `<kbd>E</kbd> Add plank · ${Math.round(st.fuel)}s left${tail}`; }
     if (status) return `Grill${tail}`;
     if (free >= 0 && ri < 0) return 'Catch a fish to cook here';
     return st.fuel >= FUEL_CAP - COOK_TUNING.fuelPerWood ? 'Fire is roaring (full)' : `Grill · fire ${Math.round(st.fuel)}s`;
@@ -414,7 +414,7 @@ export function createFishingCooking(T, host) {
       g.model.userData.update?.(dt, time);
       if (burning) {
         let dark = false, cooking = false;
-        for (const f of st.slots) if (f) { cooking = true; if (f.state === 'burnt' || (f.state === 'cooked' && f.t > cookTime(f) + 12)) dark = true; }
+        for (const f of st.slots) if (f) { cooking = true; if (f.state === 'burnt' || (f.state === 'cooked' && f.t > cookTime(f) + COOK_TUNING.burnAfter - 15)) dark = true; }
         g.smokeT += dt * (dark ? 6 : cooking ? 3 : 1);
         if (g.smokeT >= 1) {
           g.smokeT -= Math.floor(g.smokeT);

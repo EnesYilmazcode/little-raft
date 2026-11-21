@@ -135,6 +135,10 @@ test('bag knows the farm items and the cup recipe', () => {
   for (const [k, v] of Object.entries(F.FARM_ITEMS)) if (k !== 'cup') assert.equal(ITEM_INFO[k]?.name, v.name, k);
   assert.ok(ITEM_INFO.cup, 'cup is a bag item');
   assert.ok(RECIPES.cup && Object.keys(RECIPES.cup.cost).length > 0, 'cup is craftable');
+  // one Cup: farming.js mirrors the bag's row and recipe (Raft: 4 plastic)
+  assert.equal(F.FARM_ITEMS.cup.name, ITEM_INFO.cup.name);
+  assert.deepEqual({ ...F.FARM_RECIPES.cup }, { ...RECIPES.cup.cost });
+  assert.deepEqual({ ...RECIPES.cup.cost }, { plastic: 4 });
 });
 
 test('farmSignature changes on stage and wet, not on growth seconds', () => {
