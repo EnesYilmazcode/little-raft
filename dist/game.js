@@ -426,6 +426,7 @@ export function mount(transfer = null) {
     play: (ev, s) => play(ev, s), // [treasure-hook] local sound only (finder beeps), never sent
     esc: s => esc(s), mat: c => mat(c), rebuildRaft: () => rebuildRaft(), deckY: () => deckY(), uiOpen: () => uiBlocked(), hasGrill: (x, z) => !!fc?.hasGrill(x, z),
     get building() { return building; }, get brush() { return hands?.itemModel('brush') ?? null; }, woodMat: c => woodMat(c), aim: () => frameAim, // content hook (paint)
+    steering: () => !!sailing?.steering, // [zipline]
     openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
     hurtPlayer: (n, cause) => hurtPlayer(n, cause), get vitals() { return vitals; }, // [vitals] damage the LOCAL player; vitals is read-only for modules
   };

@@ -34,6 +34,7 @@ const PRELOAD = [
   'spear-model.js', 'spear-repair-hooks.js', 'spear.js', 'storage-research-model.js', 'storage-research.js',
   'survival-ui.js', 'textures.js', 'treasure-models.js', 'treasure-rules.js', 'treasure.js', 'underwater-fx.js',
   'vitals-ui.js', 'vitals.js', 'waterfx.js', 'watering.js', 'wildlife-models.js', 'wildlife.js', 'wood.js',
+  'zipline-models.js', 'zipline-rules.js', 'zipline.js', // [zipline]
 ];
 
 const state = {

@@ -19,6 +19,7 @@ const CATEGORY_OF = Object.freeze({
   // progression catalogue (items.js)
   metalhook: 'tools', binoculars: 'tools', spear: 'tools', metalspear: 'tools', finder: 'tools', spade: 'tools',
   drum: 'tools', pipes: 'tools', bells: 'tools', // [instruments]
+  zippost: 'building', // [zipline]
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
@@ -89,6 +90,7 @@ export const ITEM_TEXT = Object.freeze({
   drum:       { desc: 'A wooden hand drum with a palm-leaf head.', use: 'Click to play; look up or down to change the note.' }, // [instruments]
   pipes:      { desc: 'Plastic reed tubes tied in a row.', use: 'Click to play soft breathy notes with your friend.' }, // [instruments]
   bells:      { desc: 'Brass-bright scrap bars on a small frame.', use: 'Click to ring a note that fades out softly.' }, // [instruments]
+  zippost:    { desc: 'A sturdy pole with a pulley wheel on top.', use: 'Click to place on the deck or a floor; hold Rope, E on two posts to tie a line; E by a post to ride.' }, // [zipline]
   cookedfish: { desc: 'A fish grilled golden.', use: 'A hearty snack.' },
   flowerseed: { desc: 'A tiny seed from an island bush.', use: 'Plant it in a flower box.' }, // [bees]
   flowerbox:  { desc: 'A planter full of bright blooms.', use: 'Place near a beehive; bees love it.' }, // [bees]

@@ -190,6 +190,15 @@ export const ITEM_ICONS = Object.freeze({
     <rect x="7" y="7" width="7" height="36" rx="1.5" fill="#c9b26a"/><rect x="16.5" y="10" width="7" height="30" rx="1.5" fill="#d8c27a"/>
     <rect x="26" y="13" width="7" height="24" rx="1.5" fill="#c9b26a"/><rect x="35.5" y="16" width="7" height="18" rx="1.5" fill="#d8c27a"/></g>
     <path d="M9.5 10 V22 M19 13 V22 M28.5 16 V24" stroke="#fff2cc" stroke-width="1.5" stroke-linecap="round"/>`,
+  // [zipline] Zipline Post: pole with a pulley and a rope line running off it
+  zippost: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M6 44 H22" fill="none"/>
+    <rect x="11" y="10" width="6" height="33" rx="2" fill="#a67c4e"/>
+    <rect x="6" y="13" width="16" height="4" rx="1.5" fill="#7a5233"/>
+    <circle cx="14" cy="8" r="5" fill="#9fb1bf"/><circle cx="14" cy="8" r="1.6" fill="${O}"/>
+    <path d="M14 3 C24 8 34 14 44 16" fill="none" stroke="#d9c38c" stroke-width="3"/>
+    <path d="M14 3 C24 8 34 14 44 16" fill="none" stroke-width="1" stroke-opacity=".5"/></g>
+    <path d="M13 22 V38" stroke="#c99560" stroke-width="1.6" stroke-linecap="round"/>`,
   finder: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <path d="M11 43 L27 21" fill="none" stroke-width="7"/><path d="M11 43 L27 21" fill="none" stroke="#c99560" stroke-width="4"/>
     <path d="M12.5 41 L16.5 35.5" fill="none" stroke="#fff2cc" stroke-width="3.5" stroke-linecap="butt"/>

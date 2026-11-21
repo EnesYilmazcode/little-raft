@@ -167,6 +167,9 @@ const LIST = [
     tip: 'Breathy little tubes tied in a row. Look up for high notes, down for low ones.' }),
   item('bells', 'Bell Bars', 'tool', { iconTint: '#c9b26a', stack: 1, recipe: hand({ wood: 2, scrap: 3, nail: 2 }), unlock: research('nail'),
     tip: 'Scrap-metal bars on a little frame. They ring bright and fade out softly.' }),
+  // [zipline] posts live in world.ext.zipline (dist/zipline.js), not decor: not placeable, so a click reaches content.use
+  item('zippost', 'Zipline Post', 'build', { iconTint: '#a67c4e', stack: 4, recipe: hand({ wood: 4, rope: 1 }), unlock: discover('rope'),
+    tip: 'A sturdy pole with a pulley. Build two, then string Rope between them and ride.' }),
   item('finder', 'Seashell Finder', 'tool', { iconTint: '#c99560', stack: 1,
     recipe: hand({ scrap: 4, wood: 2, rope: 2 }), unlock: discover('sand', 'scrap'),
     tip: 'A driftwood wand with a brass coil. It ticks faster near buried bundles. Never wears out.' }),
