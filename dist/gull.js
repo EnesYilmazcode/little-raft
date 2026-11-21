@@ -4,9 +4,8 @@
 // Slice: world.ext.gull, host-authoritative, actions 'gull.*'. Only the clock t is synced; every pose is a
 // closed-form function of (state, t). The top half of this file is pure (no DOM, no THREE, no Date, no Math.random).
 import { cleanName, rnd } from './animals-core.js?build=v3-survival-ae77fa84ac2b';
-import { gullBodyGeometry, gullWingGeometry, GULL_SHOULDER, GULL_HIP } from './wildlife-models.js?build=v3-survival-ae77fa84ac2b';
 import { heartGeometry } from './animals-models.js?build=v3-survival-ae77fa84ac2b';
-import { createPerch, paintPerch, PERCH_Y } from './gull-models.js?build=v3-survival-ae77fa84ac2b';
+import { createPerch, paintPerch, PERCH_Y, companionBodyGeometry, companionWingGeometry, COMPANION_SHOULDER as GULL_SHOULDER, COMPANION_HIP as GULL_HIP } from './gull-models.js?build=v3-survival-ae77fa84ac2b';
 
 export const VISIT = 90, ARRIVE = 20, DESCEND = 4, STAY = 42, LEAVE = 4, TREAT_CD = 15, BOND_CD = 60, MOVE_IN = 3, MAX_HEARTS = 10;
 export const FIND_BASE = 240, FIND_CUT = .04, TRAY_MAX = 3, MAX_TICK = 60, BEAT = 10, BLEND = 1.5, REACH = 3.2, HOST_SLACK = 2;
@@ -27,6 +26,7 @@ const r1 = v => Math.round(v * 10) / 10;
 const clampT = (v, lo, d) => (fin(v) ? r1(Math.min(T_MAX, Math.max(lo, v))) : d);
 const smooth = u => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
 const LOOT_KINDS = new Set(LOOT.map(l => l[0]));
+const treatPts = k => (typeof k === 'string' && Object.hasOwn(TREATS, k) ? TREATS[k] : 0); // never 'constructor'/'toString' from the prototype
 const LOOT_SUM = LOOT.reduce((s, l) => s + l[1], 0);
 
 export const defaults = () => ({ v: 1, r: 0, t: 0, seed: 0, pts: 0, treatAt: FAR, moved: false, home: null, name: '',
@@ -70,12 +70,12 @@ export function cleanGull(v, decor) {
   out.seed = isInt(v.seed) && v.seed >= 0 && v.seed <= 0xffffffff ? v.seed : 0;
   out.moved = v.moved === true;
   out.pts = out.moved ? 0 : clampInt(v.pts, 0, MOVE_IN - 1, 0);
-  out.treatAt = clampT(v.treatAt, FAR, FAR);
+  out.treatAt = Math.min(out.t, clampT(v.treatAt, FAR, FAR)); // a future stamp would lock treats out forever
   out.home = Array.isArray(v.home) && v.home.length === 2 && isInt(v.home[0]) && isInt(v.home[1]) && Math.abs(v.home[0]) <= 1000 && Math.abs(v.home[1]) <= 1000 ? [v.home[0], v.home[1]] : null;
   out.name = cleanName(v.name);
   if (out.moved && !out.name) out.name = defaultName(out.seed);
   out.hearts = clampInt(v.hearts, 0, MAX_HEARTS, 0);
-  out.bondAt = clampT(v.bondAt, FAR, FAR);
+  out.bondAt = Math.min(out.t, clampT(v.bondAt, FAR, FAR));
   out.finds = Array.isArray(v.finds) ? v.finds.filter(k => typeof k === 'string' && LOOT_KINDS.has(k)).slice(0, TRAY_MAX) : [];
   out.fw = out.finds.length >= TRAY_MAX ? 0 : clampInt(v.fw, 0, FIND_BASE, 0);
   out.n = clampInt(v.n, 0, T_MAX, 0);
@@ -110,7 +110,7 @@ const gullName = st => st.name || 'The gull';
 
 /** Offer a treat (host). decor is only used to pick the home perch on move-in. Never touches vitals. */
 export function treat(st, food, bag, decor) {
-  const pts = TREATS[food];
+  const pts = treatPts(food);
   if (!pts) return { ok: false, reason: 'notreat', text: 'Gulls only want grilled fish' };
   if (!st.moved) {
     if (!perchedNow(st)) return { ok: false, reason: 'away', text: 'Wait for a gull to visit the perch' };
@@ -281,7 +281,7 @@ export function createGull(ctx) {
   const bump = () => { st.r++; };
   const emit = (e, to) => { try { ctx.emit?.(e, to); } catch (err) { console.warn('gull emit failed', err); } };
   const esc = s => (ctx.esc ? ctx.esc(s) : String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])));
-  const heldTreat = () => { const k = ctx.localBag?.()?.selected?.kind; return TREATS[k] ? k : null; };
+  const heldTreat = () => { const k = ctx.localBag?.()?.selected?.kind; return treatPts(k) ? k : null; };
   const drawSeed = () => { if (isHost() && st.seed === 0) { st.seed = (Math.floor(Math.random() * 0xfffffffe) + 1) >>> 0; bump(); } };
 
   // raft-local -> world (plain numbers, works without THREE)
@@ -310,11 +310,11 @@ export function createGull(ctx) {
     };
     bodyMat.customProgramCacheKey = () => 'gull-companion-legs';
     wingMat = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: T.DoubleSide });
-    body = new T.Mesh(gullBodyGeometry(T), bodyMat); body.name = 'gullCompanion';
-    const wingGeo = gullWingGeometry(T);
+    body = new T.Mesh(companionBodyGeometry(T), bodyMat); body.name = 'gullCompanion';
+    const wingGeo = companionWingGeometry(T);
     wings = [new T.Mesh(wingGeo, wingMat), new T.Mesh(wingGeo, wingMat)];
     wings[0].name = 'gullWingR'; wings[1].name = 'gullWingL';
-    for (const m of [body, ...wings]) { m.matrixAutoUpdate = false; m.frustumCulled = false; m.castShadow = true; m.visible = false; group.add(m); }
+    for (const m of [body, ...wings]) { m.matrixAutoUpdate = false; m.castShadow = true; /* frustum-culled: matrixWorld follows .matrix */ m.visible = false; group.add(m); }
     heartMat = new T.MeshBasicMaterial({ color: 0xff7d9c, transparent: true, opacity: 0, depthWrite: false });
     const hg = heartGeometry(T);
     hearts = [0, 1, 2].map(i => { const h = new T.Mesh(hg, heartMat); h.name = 'gullHeart' + i; h.visible = false; h.renderOrder = 3; group.add(h); return h; });
@@ -329,10 +329,11 @@ export function createGull(ctx) {
     if (roll) { qX.setFromAxisAngle(FWD, roll); q.multiply(qX); }
     return q;
   }
-  // wildlife setWing math: translate(shoulder) * mirror * Ry(1.55 fold) Rx(1.4 fold) Rz(flap) * x-scale, composed into the wing matrix
+  // wildlife setWing math, tuned for the companion's slim wing: folded, it sits high on the flank, tilted so the grey
+  // top shows from above, and angles in (Ry > pi/2) so the dark tip tapers onto the tail instead of standing off it.
   function setWing(mesh, side, flap, fold) {
-    v3.set(side * (GULL_SHOULDER[0] + .035 * fold), GULL_SHOULDER[1] - .09 * fold, GULL_SHOULDER[2]);
-    eul.set(fold * 1.4, side * fold * 1.55, side * flap * (1 - .8 * fold), 'YXZ'); qX.setFromEuler(eul);
+    v3.set(side * (GULL_SHOULDER[0] + .02 * fold), GULL_SHOULDER[1] - .03 * fold, GULL_SHOULDER[2]);
+    eul.set(fold * 1.25, side * fold * 1.75, side * flap * (1 - .8 * fold), 'YXZ'); qX.setFromEuler(eul);
     sc.set(side * (1 - .3 * fold), 1, 1);
     mA.compose(v3, qX, sc);
     mesh.matrix.multiplyMatrices(m4, mA);
@@ -343,7 +344,7 @@ export function createGull(ctx) {
     const raft = ctx.raft; if (!raft) { perches.clear(); return; }
     const kids = raft.children;
     if (raft === scanRaft && kids.length === scanLen && kids[0] === scanFirst) return;
-    scanRaft = raft; scanLen = kids.length; scanFirst = kids[0];
+    scanRaft = raft; scanLen = kids.length; scanFirst = kids[0]; scanGen++;
     perches.clear();
     for (let i = 0; i < kids.length; i++) {
       const g = kids[i]; if (g.name !== 'craft_perch') continue;
@@ -363,12 +364,18 @@ export function createGull(ctx) {
     return followPt;
   }
 
-  function paintEach(g, k) { paintPerch(g, k === this ? st.finds : null); }
+  // Repaint the trays only when something that shows in them changed (no per-frame key strings or joins).
+  let paintSt = null, paintR = -1, paintHx = NaN, paintHz = NaN, paintScan = -1, scanGen = 0;
+  function paintTrays(tgt) {
+    const hx = tgt && st.moved ? tgt[0] : NaN, hz = tgt && st.moved ? tgt[1] : NaN;
+    if (paintSt === st && paintR === st.r && Object.is(paintHx, hx) && Object.is(paintHz, hz) && paintScan === scanGen) return;
+    paintSt = st; paintR = st.r; paintHx = hx; paintHz = hz; paintScan = scanGen;
+    perches.forEach(g => paintPerch(g, Math.round(g.position.x / 2) === hx && Math.round(g.position.z / 2) === hz ? st.finds : null));
+  }
   function render(dt) {
     scanPerches();
     const tgt = oldHost() ? null : target(st, decor());
-    const homeKey = tgt && st.moved ? tileKey(tgt[0], tgt[1]) : '';
-    perches.forEach(paintEach, homeKey);
+    paintTrays(tgt);
     const t = now();
     let perch = null;
     if (tgt) { perchPt.x = tgt[0] * 2; perchPt.y = DECOR_Y + PERCH_Y; perchPt.z = tgt[1] * 2; perch = perchPt; }
@@ -426,7 +433,7 @@ export function createGull(ctx) {
     } else clock += d;
     if (seenPops >= 0 && st.pops > seenPops) burst();
     seenPops = st.pops;
-    if (!built) { if (!T || !ctx.scene) return; build(); }
+    if (!built) { if (disposed || !T || !ctx.scene) return; build(); } // never rebuild into the scene after dispose
     render(d);
   }
 
@@ -559,7 +566,7 @@ export function createGull(ctx) {
     const w = toWorld(tgt[0] * 2, FLOOR_Y, tgt[1] * 2);
     if (!near(actor, w.x, w.z)) return fail(actor, 'Step a little closer');
     let res;
-    if (verb === 'treat') { if (!TREATS[a.food] || !bag) return true; res = treat(st, a.food, bag, d); }
+    if (verb === 'treat') { if (!treatPts(a.food) || !bag) return true; res = treat(st, a.food, bag, d); }
     else if (verb === 'pet') res = pet(st);
     else if (verb === 'collect') { if (!bag) return true; res = collect(st, bag); }
     else res = rename(st, a.name);

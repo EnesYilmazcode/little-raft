@@ -16,7 +16,7 @@ export const PALETTE = Object.freeze([
 export const PAINT_KINDS = Object.freeze(PALETTE.slice(1).map(p => 'paint_' + p.id));
 export const MAX_ENTRIES = 1000, MAX_REV = 1e9, REACH = 7;
 export const RAW_WOOD = '#c69860', PLANK_AVG = '#ba8a54', TILE_MIX = .8, TINT_CAP = 8; // cap 8 (spec said 4): blue needs ~7.5x over the plank average
-export const PIECE_RE = /^(floor|wall|halfwall|window|door|pillar|stairs|roof|railing|hatch|ladder|gate):(-?\d{1,2}),(-?\d{1,2}),([0-5]),([0-3])$/;
+export const PIECE_RE = /^(floor|wall|halfwall|window|door|pillar|stairs|roof|railing|hatch|ladder|gate):(-?\d{1,2}),(-?\d{1,2}),([0-5]),([0-3])$/; // [buildpack] ids
 export const TILE_RE = /^(-?\d{1,4}),(-?\d{1,4})$/;
 const PIECE_TYPES = Object.assign(Object.create(null), { floor: 1, wall: 1, halfwall: 1, window: 1, door: 1, pillar: 1, stairs: 1, roof: 1, railing: 1, hatch: 1, ladder: 1, gate: 1 }); // [buildpack] the key has no `o`: a tint survives a toggle
 const MAX_IJ = 26;

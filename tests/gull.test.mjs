@@ -250,6 +250,22 @@ test('models: perch has three hidden find slots, fits its tile; paintPerch shows
   assert.equal(mod.decorModel('perch').name, 'craft_perch'); assert.equal(mod.decorModel('crate'), null);
 });
 
+test('review fixes: prototype food keys are not treats; future stamps in a save cannot lock treats out', () => {
+  const st = fresh(), bag = bagWith([{ kind: 'cookedfish', count: 3 }]); st.t = PERCHED;
+  for (const k of ['constructor', 'toString', '__proto__']) assert.equal(treat(st, k, bag, [perch()]).reason, 'notreat');
+  assert.equal(st.pts, 0);
+  const c = cleanGull({ t: 30, treatAt: 1e8, bondAt: 1e8, moved: true, home: [0, 0] }, [perch()]);
+  assert.ok(c.treatAt <= c.t && c.bondAt <= c.t);
+});
+
+test('models: the companion gull has its own body (legW for the tuck) and a slim wing', () => {
+  const b = M.companionBodyGeometry(T), w = M.companionWingGeometry(T);
+  assert.ok(b.attributes.legW && b.attributes.color && w.attributes.color);
+  const lw = b.attributes.legW.array; assert.ok(lw[0] === 0 && lw[lw.length - 1] === 1);
+  w.computeBoundingBox(); const s = w.boundingBox.getSize(new T.Vector3());
+  assert.ok(s.x <= .65 && s.z <= .14, JSON.stringify(s)); // slimmer than the wild gull's 0.22 m chord
+});
+
 test('items: perch is a complete placeable decor with a radius', () => {
   const it = ITEMS.perch;
   assert.equal(it.category, 'decor'); assert.equal(it.placeable, true); assert.ok(PLACEABLE_IDS.includes('perch'));

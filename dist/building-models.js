@@ -272,7 +272,7 @@ function buildHatch(K, T, open) {
     // Leaf-local: a = inward distance from the hinge (0..0.975), n = height offset (top 0), z along the hinge.
     const at = (a, n, z) => open ? [h * (0.985 + n), a, z] : [h * (0.985 - a), n, z];
     const lb = (sa, sn, sz, a, n, z, hex, rz = 0) => { const q = at(a, n, z); return K.box(open ? sn : sa, open ? sa : sn, sz, q[0], q[1], q[2], hex, rz ? [0, 0, rz] : null); };
-    columns(K, 0.005, 0.975, 4).forEach(([a, b], k) => {
+    columns(K, 0.005, 0.99, 4).forEach(([a, b], k) => {
       const t = -(k % 2 ? 0.003 : 0);
       lb(b - a + 0.01, LT, 1.9 - K.rng() * 0.01, (a + b) / 2, t - LT / 2, K.jit(0.004), K.pick(PLANKS));
       for (const z of [-0.6, 0.6]) { const q = at((a + b) / 2 + K.jit(0.05), t + 0.004, z); K.box(open ? 0.01 : 0.022, open ? 0.022 : 0.01, 0.022, q[0], q[1], q[2], NAIL, null, {vary: 0.02}); }

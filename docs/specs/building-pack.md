@@ -162,3 +162,41 @@ New grid method `climb(feel, phys, deckY, inp, dt)`. It is pure, with feel injec
 
   With no controls lane, `feel` is null and ladders are not climbable; they are still solid and the top is still a ledge.
 - Tests: `tests/building-pieces.test.mjs`, `tests/building-physics.test.mjs`, `tests/paint.test.mjs`, `tests/animals.test.mjs`, and the models smoke test in building-pieces.test.mjs.
+
+## Build notes
+All four pieces shipped, including the optional gate. There is no protocol bump, no new module and no npm dependency.
+
+**Files changed**
+- `dist/building-pieces.js`: the 4 piece rows, appended `PIECE_ORDER`, `SLOT_OF`, the exported `STATEFUL`, `RAIL_H`/`GATE_GAP`/`LEAF_H`/`LAD_*`, and `toRec`, used in `load` (both places) and `place`. It also has the canPlace exceptions, the `_rebuild` boxes for hatch, ladder and open gate (plus a `_cellBox` helper), the `_scan`/`_ramps` cases, `preStep(phys, deckY, climbing)`, and the new `toggle`, `occupied`, `_inStrip`, `ladderAt`, `_capH`, `climb` and `_pin`.
+- `dist/building.js`: `toRec`, `VARIANTS`/`meshKey` (one InstancedMesh per variant), and `target`/`prompt`/`promptOf`/`interact`/`toggle`. The return object gains `climb` and a 3-argument `preStep`.
+- `dist/building-models.js`: the railing, hatch, ladder and gate builders, with an `open` flag for the hatch and gate. `createPieceGeometry(T, type, open)` uses the same seed both ways. `BOUNDS` covers the 4 ids plus `hatchOpen`/`gateOpen`.
+- `dist/build-menu.js`: 4 icons. A phone-width wheel was checked with 13 sectors.
+- `dist/paint.js`: `PIECE_RE` and `PIECE_TYPES`.
+- `dist/animals-core.js`: the railing joins WALLS, a closed gate blocks, and a ladder cell at l=0 is removed like stairs.
+- `dist/animals.js`: one tagged line so `worldSig` includes `o`. Without it, toggling a gate at deck level would not re-plan the walk graph. This file was not on the spec's list.
+- `dist/game.js`: the following hooks, all tagged `[buildpack]`.
+  - `bt` is computed once per frame in `updateContext` and drives both the prompt (through `contextHtml`, so the shared prompt bar shows it) and `usable`.
+  - The host `piecetoggle` branch.
+  - E in `interact()`, before content.
+  - A reused `climbIn` object, and `building.climb(...)` → `preStep(..., climb)`.
+- Tests: the new `tests/building-pack.test.mjs` (16 tests), and the `PIECE_ORDER` line in `tests/building-pieces.test.mjs`.
+
+**Deviations and additions (and why)**
+- **Railing and gate collision height is `RAIL_H + 0.25` (1.2 m).** The visible rail stays at 0.95. With the test raft bob of ±0.15 m, a running jump from a deck that is moving down rose more than 0.95 relative to the deck and cleared the rail (z went to 5.4). The taller invisible box fixes this and changes nothing else, since nothing stands on a railing.
+- **A hatch over a ladder takes the ladder's rotation**, in `place` in both orders and also on load. Otherwise a hatch placed with a different yaw would hinge its leaves across the ladder side, and a climber could not step out at the top. The leaves are symmetric, so only the axis matters.
+- **The climb pins the body's along-ladder distance** to `LAD_IN - BODY_R - 0.02`, eased at 2.5 m/s, while `h < LEVEL_H - 0.04`. Without the pin, W and S also drive PlayerPhysics horizontally: S on the ladder walked you out of the strip and dropped you. Strafing stays free, so strafing off still releases. At the top the pin lets go, so forward walks onto the landing.
+- **When the hatch above opens or closes mid-climb**, `capH` is recomputed and `feel.setLadder` is called again with the new `topY`. MoveFeel clamps to the old top otherwise.
+- **A long frame climbs in pieces of 0.1 s or less** (capped at 0.25 s), because MoveFeel clamps dt to 0.1. Without this, the climb crawled at low fps.
+- **`ladderAt` uses `L = floor((feet - deckY + 0.3) / LEVEL_H)`.** On a rising bob the feet sit a hair under the deck, and the plain floor gave L = -1, so the ladder never attached.
+- **Ladder input:** `climb()` reuses one input object, and `game.js` reuses `climbIn`, so climbing allocates nothing per frame apart from MoveFeel's own result object.
+- **The gate opens towards local +z (as in the spec).** On a platform's +z edge it swings out over the drop. It is cosmetic only, because the open leaf has no collision.
+
+**Co-op:** the host-authoritative toggle resends `pieces` by identity. A guest climbs on its own synced grid. Mixed versions are unsupported: an old host ignores `piecetoggle` silently, and an old guest drops the new types.
+
+**Verified:**
+- `npm test` passes, all `node --check` runs pass, and `shoot.py` reports `errors: []`.
+- A Playwright close-up (`scratchpad/r3/build/closeup.py`) runs a seeded save with a 2x2 upper floor on 4 pillars, a ladder up to a hatch, railings and a gate. In it:
+  - E opens the hatch from the ladder and closes and reopens it from the landing.
+  - The climb runs through the hole onto the landing.
+  - E opens the gate.
+  - Closing with yourself in the hole is refused.

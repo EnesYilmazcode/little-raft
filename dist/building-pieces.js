@@ -98,7 +98,7 @@ export class BuildGrid {
     this._prevHead = Infinity; this._px = 0; this._pz = 0; this._pvy = 0;
     this._refused = null; this._rx = 0; this._rz = 0; this._rvy = 0;
     this._pre = {deckY: 0, tiles: this._tileArr};
-    this._cl = null; this._climbing = false; this._clTile = [0, 0]; this._clTiles = [this._clTile];
+    this._cl = null; this._climbing = false; this._lin = {forward: 0, jump: false, y: 0}; this._clTile = [0, 0]; this._clTiles = [this._clTile];
   }
 
   setTiles(tiles) {
@@ -625,16 +625,22 @@ export class BuildGrid {
         const d = DIR[rec.r];
         feel.setLadder({bottomY: 0, topY: cap, x: 2 * rec.i + d[0] * LAD_IN, z: 2 * rec.j + d[1] * LAD_IN, normal: [-d[0], -d[1]]});
       }
-      const r = feel.ladderInput(dt, {forward: fw, jump, y: cl.h});
-      if (r.detach) {
-        this._cl = null;
-        phys.vx += r.pushX; phys.vz += r.pushZ; phys.vy = r.vy; phys.grounded = false;
-        return undefined;
-      }
-      if (r.atBottom && fw < 0) { this._release(feel); return undefined; }
-      cl.dt = dt > 0 && dt < 0.1 ? dt : dt > 0 ? 0.1 : 0;
-      const dy = r.vy * cl.dt;
-      cl.h = clamp(cl.h + dy, 0, cl.cap);
+      // A long frame (low fps) climbs in <= 0.1 s pieces (MoveFeel clamps dt), so the speed holds; capped at 0.25 s.
+      let rem = dt > 0 ? Math.min(dt, 0.25) : 0, dy = 0;
+      cl.dt = rem;
+      do {
+        const st = Math.min(rem, 0.1);
+        const li = this._lin; li.forward = fw; li.jump = jump; li.y = cl.h;
+        const r = feel.ladderInput(st, li);
+        if (r.detach) {
+          this._cl = null;
+          phys.vx += r.pushX; phys.vz += r.pushZ; phys.vy = r.vy; phys.grounded = false;
+          return undefined;
+        }
+        if (r.atBottom && fw < 0) { this._release(feel); return undefined; }
+        const d = r.vy * st, h = clamp(cl.h + d, 0, cl.cap);
+        dy += h - cl.h; cl.h = h; rem -= st;
+      } while (rem > 1e-9);
       return dy;
     }
     if (phys.swimming || !(fw > 0 || fw < 0)) return undefined;

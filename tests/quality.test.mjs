@@ -22,11 +22,12 @@ const run = (q, ms, totalMs) => { let n = 0; for (let t = 0; t < totalMs; t += m
 
 test('ladder per preset, clamped to dpr and cap', () => {
   assert.deepEqual(buildLevels('high', 2).map((l) => [l.pixelRatio, l.shadowMapSize]),
-    [[1.5, 1024], [1.15, 1024], [1, 1024], [1, 512], [0.85, 512], [0.85, 0]]);
+    [[1.5, 1024], [1.15, 1024], [1, 1024], [0.85, 1024], [0.85, 0], [0.7, 0]]);
   assert.deepEqual(buildLevels('medium', 2)[0], { pixelRatio: 1.3, shadows: true, shadowMapSize: 1024 });
-  assert.deepEqual(buildLevels('low', 2).map((l) => [l.pixelRatio, l.shadows]), [[1, false], [0.85, false]]);
+  assert.deepEqual(buildLevels('low', 2).map((l) => [l.pixelRatio, l.shadows]), [[1, false], [0.85, false], [0.7, false]]);
   const one = buildLevels('high', 1);
-  assert.deepEqual(one.map((l) => [l.pixelRatio, l.shadowMapSize]), [[1, 1024], [1, 512], [0.85, 512], [0.85, 0]]);
+  assert.deepEqual(one.map((l) => [l.pixelRatio, l.shadowMapSize]), [[1, 1024], [0.85, 1024], [0.85, 0], [0.7, 0]]);
+  for (const p of ['low', 'medium', 'high']) for (const d of [1, 2, 3]) for (const l of buildLevels(p, d)) assert.ok(l.shadowMapSize === 0 || l.shadowMapSize === C.SHADOW_FULL, 'one shadow map size: no resize hitch');
   for (const p of ['low', 'medium', 'high']) for (const l of buildLevels(p, 3)) assert.ok(l.pixelRatio <= { low: 1, medium: 1.3, high: 1.5 }[p]);
 });
 
@@ -68,13 +69,15 @@ test('very slow frames (>250 ms) are clamped, not dropped, so the scaler still s
   assert.equal(q.level, q.levels.length - 1, 'reaches the floor');
 });
 
-test('shadow map shrink disposes map; bottom level disables castShadow', () => {
+test('stepping down keeps the shadow map; the last two levels disable castShadow', () => {
   const { q, sun, map, renderer } = make();
   run(q, 40, 12100); // steps at 2 s, 7 s, 12 s (sustain counters run through the cooldown)
-  assert.equal(q.level, 3); assert.equal(map.disposed, 1); assert.equal(sun.shadow.map, null);
-  assert.equal(sun.shadow.mapSize.x, 512); assert.equal(renderer.pr, 1); assert.equal(sun.castShadow, true);
-  run(q, 40, 2 * 5000);
-  assert.equal(q.level, 5); assert.equal(sun.castShadow, false); assert.equal(renderer.pr, 0.85);
+  assert.equal(q.level, 3); assert.equal(map.disposed, 0); assert.equal(sun.shadow.map, map);
+  assert.equal(sun.shadow.mapSize.x, 1024); assert.equal(renderer.pr, 0.85); assert.equal(sun.castShadow, true);
+  run(q, 40, 5000);
+  assert.equal(q.level, 4); assert.equal(sun.castShadow, false); assert.equal(renderer.pr, 0.85);
+  run(q, 40, 5000);
+  assert.equal(q.level, 5); assert.equal(sun.castShadow, false); assert.equal(renderer.pr, 0.7); assert.equal(map.disposed, 0);
   run(q, 40, 20000);
   assert.equal(q.level, 5, 'stays at the floor');
 });
@@ -92,7 +95,8 @@ test('respects the preset cap', () => {
   assert.equal(renderer.pr, 1); assert.equal(sun.castShadow, false);
   run(q, 10, 30000); assert.equal(q.level, 0); assert.equal(renderer.pr, 1);
   run(q, 40, 3000); assert.equal(q.level, 1); assert.equal(renderer.pr, 0.85);
-  run(q, 40, 20000); assert.equal(q.level, 1);
+  run(q, 40, 5000); assert.equal(q.level, 2); assert.equal(renderer.pr, 0.7);
+  run(q, 40, 20000); assert.equal(q.level, 2);
   q.setCap('medium');
   assert.equal(q.level, 0); assert.equal(renderer.pr, 1.3); assert.equal(sun.castShadow, true);
   run(q, 10, 60000); assert.equal(renderer.pr, 1.3, 'never above medium cap');
