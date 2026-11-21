@@ -2,7 +2,7 @@
 // createFishingCooking(T, host) -> api. The host adapter (see fcHost() in game.js) is the only engine access:
 //   scene, raft, ocean, camera, signal, rodModel, role(), netReady(), send(o), action(a), notice(s, ms?), beep(f),
 //   selectedKind(), aim(), rodTip(), player(), hasTile(x,z), decorAt(x,z), bagCount(k), running(), uiBlocked(), busy()
-// api: pointerDown() pointerUp() interact() update(dt,time) applyAction(a,actor,bag) onNet(msg,from)
+// api: pointerDown() pointerUp() releaseInput() interact() update(dt,time) applyAction(a,actor,bag) onNet(msg,from)
 //      prompt rodReeling capture() dispose()
 // Keys: G places a grill (4 wood + 2 scrap) on the aimed raft tile, J toggles the journal.
 // Save: localStorage 'little-raft-fc-v1' {v:1, journal, grills}. Grills are the player's own (host world); while a
@@ -259,6 +259,8 @@ export function createFishingCooking(T, host) {
   }
   function pointerDown() {
     if (!canFish()) return false;
+    // a click during the short caught/escaped linger recasts instead of being swallowed
+    if (session && (session.stage === 'caught' || session.stage === 'escaped')) { session.cancel(); session = null; }
     session ??= new FishingSession({ night: false });
     session.press(); downHeld = true; return true;
   }
@@ -270,6 +272,13 @@ export function createFishingCooking(T, host) {
     session.release();
     if (wasCharging && session.stage === 'flying') { camera.getWorldDirection(castDir); clampToWater(); }
     return true;
+  }
+  // Focus or pointer lock lost mid-press: the matching pointerup never arrives, so drop the hold here. A charging cast
+  // is cancelled (a stale release would fire a full-power cast on the relock click); a reel hold just lets go.
+  function releaseInput() {
+    const was = downHeld; downHeld = false;
+    if (session) { if (session.stage === 'charging') session.cancel(); else session.holding = false; }
+    return was;
   }
   let held = null, heldT = 0;
   function dropHeld() { if (!held) return; held.parent?.remove(held); held.userData.dispose?.(); held = null; }
@@ -381,9 +390,9 @@ export function createFishingCooking(T, host) {
     if (out && ud) { if (ud.float) ud.float.visible = false; if (ud.leader) ud.leader.visible = false; }
     if (held) { heldT -= dt; wiggle(held, time, 1.2); if (heldT <= 0) dropHeld(); }
     // grills
-    const sim = !isGuest(role);
+    const sim = !isGuest(role), cookDt = host.running() ? dt : 0; // title screen / paused: food and fuel hold, fire still flickers
     for (const g of grills.values()) {
-      const st = g.st, evs = st.update(dt);
+      const st = g.st, evs = st.update(cookDt);
       if (evs.length) {
         syncFish(g);
         if (sim) {
@@ -454,7 +463,7 @@ export function createFishingCooking(T, host) {
   if (typeof window !== 'undefined') window.raftFC = debug;
 
   return {
-    pointerDown, pointerUp, interact, update, applyAction, onNet, dispose,
+    pointerDown, pointerUp, releaseInput, interact, update, applyAction, onNet, dispose,
     get prompt() { return prompt; },
     hasGrill: (x, z) => !!grillAt(x, z), // game.js keeps decor off grill tiles
     dropTile(x, z) { const g = grillAt(x, z); if (!g || isGuest(host.role())) return false; removeGrill(g); markChanged(); return true; }, // shark lane: a destroyed foundation takes its grill with it
