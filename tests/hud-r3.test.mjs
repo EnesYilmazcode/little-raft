@@ -75,3 +75,12 @@ test('HUD-5: hovering a pause item moves focus to it, and :hover is no longer a 
   assert.doesNotMatch(s, /\.rs-menu button:hover/, 'the selected look follows focus only');
   assert.match(s, /#options \.rs-menu button:focus,#options \.rs-menu button\[aria-expanded=true\]\{/);
 });
+
+// ---------------------------------------------------------------- HUD-6 shader warm-up page error
+
+test('HUD-6: shader warm-ups use the synchronous compile, so no timer poll can trip over a disposed material', () => {
+  const g = src('game.js');
+  assert.doesNotMatch(g.replace(/\/\/[^\n]*/g, ''), /compileAsync\(/, 'no async warm-up left in game.js');
+  assert.match(g, /function warmKinds\(\) \{[\s\S]*?if \(fresh\) \{ try \{ renderer\.compile\(scene, camera\); \}/);
+  assert.match(g, /function warmShaders\(\) \{\s*if \(typeof renderer\.compile !== 'function'\) return;[\s\S]*?renderer\.compile\(scene, camera\);/);
+});

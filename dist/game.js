@@ -483,7 +483,10 @@ export function mount(transfer = null) {
       warmedKinds.add(k); fresh = true; hands.preload([k]);
       if (k === 'hammer') ghosts.preload(['floor']); else if (DECOR_TYPES.includes(k)) ghosts.preload([k]);
     }
-    if (fresh) { try { renderer.compileAsync(scene, camera).catch(() => {}); } catch (e) { console.warn('shader warm-up failed', e); } }
+    // Synchronous compile: compileAsync polls every scene material on a timer, and a material disposed mid-poll
+    // (a caught fish, collected debris) threw an uncaught 'reading isReady' error. Without
+    // KHR_parallel_shader_compile the async path compiled synchronously anyway.
+    if (fresh) { try { renderer.compile(scene, camera); } catch (e) { console.warn('shader warm-up failed', e); } }
   }
 
   // Fits the sun's shadow box to the raft (plus a margin for props, avatars and nearby supplies). Call after tiles change.
@@ -523,9 +526,9 @@ export function mount(transfer = null) {
   // Compile every scene program up front (hidden viewmodels, hook, rope, ghost) so the first frame after #solo doesn't.
   // compile() walks the scene graph, so all viewmodels are attached just for the synchronous part of the call.
   function warmShaders() {
-    if (typeof renderer.compileAsync !== 'function') return;
+    if (typeof renderer.compile !== 'function') return;
     hands?.preload(['hammer', 'fishingrod']);
-    try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
+    try { renderer.compile(scene, camera); } // synchronous: no timer poll that can trip over a disposed material (see warmKinds)
     catch (e) { console.warn('shader warm-up failed', e); }
   }
   function palm(parent, x, y, z, s = 1) {
