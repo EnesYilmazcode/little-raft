@@ -321,6 +321,7 @@ export function mount(transfer = null) {
   const actorBag = actor => (actor === 'guest' ? guestBag : hostBag);
   const selectedKind = () => toolRole(localBag().slots[localBag().selectedIndex]?.kind ?? null); // [progression-hook] metalhook acts as 'hook'
   const heldKind = () => (hook?.fishing ? 'fishingrod' : hook ? 'hook' : selectedKind());
+  const toolMode = kind => (kind === 'hammer' ? 'build' : kind === 'fishingrod' ? 'fish' : kind === 'hook' ? 'hook' : DECOR_TYPES.includes(kind) ? 'place' : 'none');
   const caughtList = h => (Array.isArray(h?.caughtItems) ? h.caughtItems : h?.caught ? [h.caught] : []);
   const deckY = () => (raft ? raft.position.y : raftPose.y) + FLOOR_Y;
   const heldSet = new Set(); // reused every frame: tokens our cast hook is carrying
@@ -1691,8 +1692,7 @@ export function mount(transfer = null) {
     },
     audio:sfx, // volume buses (setBus/getBus master|effects|ambience|music) and setMusic for the menus
     get state() {
-      const hc = castOut(), bag = localBag(), counts = bag.counts(), kind = heldKind();
-      const mode = kind === 'hammer' ? 'build' : kind === 'fishingrod' ? 'fish' : kind === 'hook' ? 'hook' : DECOR_TYPES.includes(kind) ? 'place' : 'none';
+      const hc = castOut(), bag = localBag(), counts = bag.counts(), kind = heldKind(), mode = toolMode(kind);
       return {
         running, tool:mode, recipe:kind === 'hammer' ? 'floor' : DECOR_TYPES.includes(kind) ? kind : null, role, networkReady, pointerLocked:isLocked(), lockSupported, lockFallback, active, disposed,
         tiles:world.tiles.length, tileList:world.tiles.map(t => [...t]), decor:world.decor.map(d => ({...d})),
@@ -1717,6 +1717,22 @@ export function mount(transfer = null) {
         rain:{...copyRain(world), rain:content?.rain() ?? 0}, // rain-sprinkler
         watering:{...copyWatering(world), target:waterAim ? {prompt:waterAim.prompt, click:waterAim.click?.kind ?? null, e:waterAim.e?.kind ?? null} : null},
         signal:world.signal ? cleanSignal(world.signal) : null, antennas:countAntennas(world.decor), signalReadout:lastReadout ? {...lastReadout} : null,
+      };
+    },
+    // Cheap subset of `state` (same field meanings) for the HUD pollers: onboarding (4 Hz) and prompts (10 Hz).
+    // Skips the costly parts (physics/world copies, placement candidates, sailing, signal...); bulky fields are lazy.
+    get hud() {
+      const hc = castOut(), bag = localBag(), counts = bag.counts(), kind = heldKind(), mode = toolMode(kind), ph = physics;
+      return {
+        running, tool:mode, role, networkReady, pointerLocked:isLocked(), lockFallback, disposed,
+        tiles:world.tiles.length, get tileList() { return world.tiles.map(t => [...t]); }, get decor() { return world.decor.map(d => ({...d})); },
+        stock:counts, fish:world.fish, collected:world.collected, get inventory() { return bag.snapshot(); }, selectedIndex:bag.selectedIndex, heldKind:kind,
+        ownedTools:['hook', 'hammer', 'fishingrod'].filter(k => counts[k] > 0), inventoryOpen:!!survivalUI?.isOpen,
+        physics:ph.capture(), grounded:ph.grounded, swimming:ph.swimming,
+        fishWait, hookStage:hook ? (hook.fishing ? 'fishing' : hook.stage) : 'idle', hookCaughtItems:caughtList(hc).map(c => ({...c})), hookHealth:hookDurability(bag),
+        build:{active:mode === 'build' || mode === 'place', recipe:kind, hover:hover ? {...hover} : null, affordable:mode === 'build' ? canAfford(bag, FLOOR_COST) : mode === 'place'},
+        pickup:pickTarget ? {id:pickTarget.id, token:pickTarget.token, type:pickTarget.type} : null,
+        me:{x:ph.x, y:ph.y, z:ph.z, yaw, pitch}, hover:hover ? {...hover} : null,
       };
     },
     get content() { return content?.debug ?? {}; }, // content hook: per-module QA helpers

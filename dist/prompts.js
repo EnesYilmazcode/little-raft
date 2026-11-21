@@ -3,7 +3,7 @@
 // API (window.raftPrompts): register({id, object?, test?, range, priority, prompt}) -> unregister,
 //   provide({id, priority, prompt}) -> unregister, current(), refresh(), feed(text).
 // prompt(ctx, hit) returns {key:'E', label:'Pick up', hold?, muted?} | up to 2 of them | null.
-// ctx = {state, camera, T, scene}. Highest priority wins; raycast beats provider at equal priority; nearest hit next.
+// ctx = {state, camera, T, scene}; state is raftDebug.hud (a cheap subset of raftDebug.state) when the game provides it. Highest priority wins; raycast beats provider at equal priority; nearest hit next.
 
 const SAMPLE_MS = 100, FEED_MAX = 4, FEED_MS = 4000, DUP_MS = 600;
 const PICK_NAMES = {wood:'plank', leaf:'leaves', plastic:'plastic jug', scrap:'scrap', barrel:'barrel'};
@@ -159,7 +159,7 @@ function createPrompts(win, doc) {
   function tick() {
     safe(() => {
       if (!doc.body) return; ensureEls();
-      const m = mount(), debug = safe(() => win.raftDebug) || m?.debug, state = safe(() => debug?.state);
+      const m = mount(), debug = safe(() => win.raftDebug) || m?.debug, state = safe(() => (debug && 'hud' in debug ? debug.hud : debug?.state)); // hud: cheap subset of state
       const ctx = {state, camera:m?.camera ?? null, T:m?.T ?? null, scene:m?.scene ?? null};
       const stage = state?.hookStage ?? null;
       if (state?.running && lastStage !== undefined && isThrow(lastStage, stage) && throws < 1e6) { throws++; safe(() => win.localStorage.setItem(STORE_KEY, JSON.stringify({throws}))); }

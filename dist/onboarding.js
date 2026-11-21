@@ -228,14 +228,16 @@ function boot() {
     } catch {}
   }
   const feed = t => { try { window.raftPrompts?.feed?.(t); } catch {} };
+  const setText = (el, t) => { if (el.textContent !== t) el.textContent = t; }; // polled 4 Hz: skip identical writes
   function renderHead(ch) {
     const all = ch === null, list = STEPS.filter(s => s.chapter === ch && !s.optional);
     panel.classList.toggle('ob-all', all);
-    head.querySelector('.ob-ch').textContent = all ? 'Notes' : collapsed ? 'Notes' : chName(ch);
-    head.querySelector('.ob-sum').textContent = all ? '' : `${collapsed ? '· ' : ''}${list.filter(s => P.done[s.id]).length}/${list.length}`;
+    setText(head.querySelector('.ob-ch'), all ? 'Notes' : collapsed ? 'Notes' : chName(ch));
+    setText(head.querySelector('.ob-sum'), all ? '' : `${collapsed ? '· ' : ''}${list.filter(s => P.done[s.id]).length}/${list.length}`);
     const open = all ? logOpen : !collapsed;
     panel.classList.toggle('ob-collapsed', !all && collapsed); panel.classList.toggle('ob-logopen', all && logOpen);
-    head.setAttribute('aria-expanded', String(open)); logEl.hidden = !(all && logOpen);
+    if (head.getAttribute('aria-expanded') !== String(open)) head.setAttribute('aria-expanded', String(open));
+    if (logEl.hidden !== !(all && logOpen)) logEl.hidden = !(all && logOpen);
     if (all && logOpen) logEl.innerHTML = [...new Set(STEPS.map(s => s.chapter))].map(c => `<section><h3>${hintHTML(chName(c))}</h3><ul>${STEPS.filter(s => s.chapter === c && (!s.optional || P.done[s.id])).map(s => `<li class="${P.done[s.id] ? 'ob-tick' : ''}">${hintHTML(s.title)}</li>`).join('')}</ul></section>`).join('');
   }
   function toggle() {
@@ -264,13 +266,13 @@ function boot() {
     for (const [id, li] of rows) if (!vis.has(id) && !li.classList.contains('ob-done')) { li.remove(); rows.delete(id); }
     for (const id of r.visible) {
       const li = rows.get(id) ?? rowFor(id, animate), c = r.counts[id], h = r.hints[id] ?? '';
-      li.querySelector('.ob-count').textContent = c ? `${c[0]}/${c[1]}${c[2] ?? ''}` : '';
+      setText(li.querySelector('.ob-count'), c ? `${c[0]}/${c[1]}${c[2] ?? ''}` : '');
       if (li.dataset.hint !== h) { li.dataset.hint = h; li.querySelector('.ob-hint').innerHTML = hintHTML(h); }
     }
     renderHead(shownCh);
   }
   function tick() {
-    let S = null; try { S = window.raftDebug?.state; } catch {}
+    let S = null; try { const d = window.raftDebug; S = d && 'hud' in d ? d.hud : d?.state; } catch {} // hud: cheap subset of state
     const playing = !!S?.running;
     if (!playing) return;
     lastS = S;
@@ -288,8 +290,10 @@ function boot() {
   // no gutter that wide (phones, small windows) -> .ob-covered hides them rather than peeking out over the bag.
   function placeBesideBag(bag) {
     const st = panel.style; let tx = 0, aside = false, covered = false;
-    st.removeProperty('max-width'); // max-width is not transitioned, so the natural box is measurable right away
-    if (bag && bag.width) {
+    const open = !!(bag && bag.width);
+    if (!open && !bagLayout) return; // bag closed and nothing applied: no style writes, no layout
+    if (st.maxWidth) st.removeProperty('max-width'); // max-width is not transitioned, so the natural box is measurable right away
+    if (open) {
       const r = parseFloat(getComputedStyle(panel).right) || 0, w = panel.offsetWidth, right = innerWidth - r, left = right - w;
       const top = panel.offsetTop, bottom = top + panel.offsetHeight;
       if (right > bag.left && left < bag.right && top < bag.bottom && bottom > bag.top) {
@@ -300,9 +304,12 @@ function boot() {
         } else covered = true;
       }
     }
-    st.setProperty('--ob-shift', `${Math.round(tx)}px`);
+    const shift = `${Math.round(tx)}px`;
+    if (st.getPropertyValue('--ob-shift') !== shift) st.setProperty('--ob-shift', shift);
     panel.classList.toggle('ob-aside', aside); panel.classList.toggle('ob-covered', covered);
+    bagLayout = open;
   }
+  let bagLayout = true; // a bag layout may be applied (true at boot: the first call writes the resting state)
   setInterval(tick, POLL_MS);
 
   // ----- title screen -----
