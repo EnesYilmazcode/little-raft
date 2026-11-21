@@ -16,9 +16,10 @@ srv = socketserver.ThreadingTCPServer(('127.0.0.1', 0), functools.partial(Quiet,
 port = srv.server_address[1]
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 report = {'errors': [], 'runs': []}
-cases = [(t, v, 1) for t in 'abc' for v in ('fp', 'over', 'sun')] + [('a', 'fp', 2.6), ('c', 'over', 2.6)]
+tiers = sys.argv[2].split(',') if len(sys.argv) > 2 else ['cur', 'a', 'b', 'c']
+cases = [(t, v, 1) for t in tiers for v in ('fp', 'over', 'sun')] + [(t, 'fp', 2.6) for t in tiers if t in ('a', 'c')]
 with sync_playwright() as p:
-    b = p.chromium.launch(channel='chrome', headless=True,
+    b = p.chromium.launch(executable_path='/opt/pw-browsers/chromium-1243/chrome-linux64/chrome', headless=True,
                           args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'])
     page = b.new_page(viewport={'width': 1280, 'height': 720})
     page.on('pageerror', lambda e: report['errors'].append(str(e)))
@@ -29,7 +30,8 @@ with sync_playwright() as p:
         ms = page.evaluate('lab.probe()')
         name = f'{t}-{v}-amp{a}.png'
         page.screenshot(path=str(out / name))
-        report['runs'].append({'tier': t, 'view': v, 'amp': a, 'ms': round(ms, 1), 'shot': name})
+        report['runs'].append({'tier': t, 'view': v, 'amp': a, 'avgMs': round(ms['avg'], 1), 'worstMs': round(ms['worst'], 1),
+                               **{k: ms[k] for k in ('calls', 'triangles', 'geometries', 'textures', 'programs')}, 'shot': name})
     b.close()
 srv.shutdown()
 print(json.dumps(report, indent=1))

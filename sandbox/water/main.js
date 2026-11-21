@@ -1,5 +1,6 @@
 import * as T from '../../dist/vendor/three.module.js';
 import { createWater } from './water.js';
+import { createOcean } from '../../dist/ocean.js';
 
 const q = new URLSearchParams(location.search);
 const tier = q.get('tier') ?? 'a';
@@ -53,7 +54,16 @@ sun.shadow.mapSize.set(1024, 1024);
 Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12 });
 scene.add(sun, new T.HemisphereLight('#dfe8e4', '#2a4a48', 1.1));
 
-const water = createWater(T, { tier, amp, debug: Number(q.get('debug') ?? 0), sunDirection: sun.position, skyColor: HORIZON, zenithColor: ZENITH });
+// tier 'cur' = the shipping dist/ocean.js with the exact uniform overrides from dist/game.js init(), for A/B shots.
+let water;
+if (tier === 'cur') {
+  const o = createOcean(T, { sunDirection: sun.position.clone(), skyColor: HORIZON, fadeNear: 28, fadeFar: 125 });
+  o.uniforms.uDeep.value.set('#14505a'); o.uniforms.uShallow.value.set('#3f8c88'); o.uniforms.uZenith.value.set('#a9c1c0');
+  o.mesh.receiveShadow = true;
+  water = Object.assign(o, { setRaft() {}, setFloaters() {}, render: (r, s, c) => { r.setRenderTarget(null); r.render(s, c); } });
+} else {
+  water = createWater(T, { tier, amp, debug: Number(q.get('debug') ?? 0), sunDirection: sun.position, skyColor: HORIZON, zenithColor: ZENITH });
+}
 scene.add(water.mesh);
 
 // 3x2 raft of 2 m tiles plus a few half-sunk barrels and planks.
@@ -132,5 +142,19 @@ addEventListener('resize', () => {
 window.lab = {
   tier,
   ready: true,
-  probe: () => new Promise((r) => { let n = 0; const s = performance.now(); const f = () => (++n < 60 ? requestAnimationFrame(f) : r((performance.now() - s) / n)); requestAnimationFrame(f); }),
+  // Average / worst frame over 60 frames, plus renderer.info for the final (visible) pass and all passes of one frame.
+  probe: () => new Promise((r) => {
+    let n = 0, worst = 0; const s = performance.now(); let prev = s;
+    const f = (now) => {
+      worst = Math.max(worst, now - prev); prev = now;
+      if (++n < 60) return requestAnimationFrame(f);
+      renderer.info.autoReset = false; renderer.info.reset();
+      requestAnimationFrame(() => {
+        const i = renderer.info; renderer.info.autoReset = true;
+        r({ avg: (performance.now() - s) / (n + 1), worst, calls: i.render.calls, triangles: i.render.triangles,
+          geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs.length });
+      });
+    };
+    requestAnimationFrame(f);
+  }),
 };
