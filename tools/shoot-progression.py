@@ -190,6 +190,8 @@ with sync_playwright() as p:
     ev(f"{P}.advance(120)"); page.wait_for_timeout(200)
     ev(f"{P}.open({json.dumps(keys['smelter'])})"); page.wait_for_timeout(500)
     LOG['steps']['done'] = ev(f"{P}.state().stations")
+    if page.locator('#stationPanel [data-slot=output] [data-item-kind]').count():
+        hover(page, '#stationPanel [data-slot=output] [data-item-kind]')  # tooltip must sit above the modal
     shot(page, '07-smelter-done.png')
     take = page.locator('#stationPanel [data-act=take]')
     if take.count():
