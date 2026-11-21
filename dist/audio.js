@@ -1,37 +1,48 @@
 // audio.js - original procedural sound for Little Raft (Web Audio only, no files).
 // Usage:
-//   import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 //   const audio = createOceanAudio({ context: previous?.context ?? null, volume: 0.5 });
-//   button.addEventListener('pointerdown', () => audio.resume());   // user gesture
-//   audio.play('build', 1);
+//   addEventListener('pointerdown', () => audio.resume());   // user gesture
+//   audio.play('build', 1);  audio.tick(dt, {swimming});   // tick once per frame
 //
-// API: createOceanAudio({context=null, volume=.5, ambience=true}={}) ->
+// API: createOceanAudio({context=null, volume=.5, ambience=true, music=false}={}) ->
 //   context          getter, latest AudioContext (null until resume() creates one)
-//   resume()         creates (lazily) / resumes the context, starts quiet surf; Promise<boolean>
-//   setVolume(v)     master volume, clamped 0..1; returns the clamped value
-//   play(ev, s=1)    ev in EVENTS; s clamped 0..1; returns true if scheduled, else false (never throws)
+//   resume()         creates (lazily) / resumes the context, starts ambience; Promise<boolean>
+//   setVolume(v)     master volume 0..1 (same as setBus('master', v)); returns the clamped value
+//   setBus(n, v)     n in BUSES: master | effects | ambience | music; getBus(n) reads it back
+//   setMusic(on)     toggles the calm music bed (fades); music getter reports it
+//   play(ev, s=1)    ev in EVENTS; s clamped 0..1; true if scheduled (never throws). Repeat calls
+//                    inside MIN_GAP are dropped, so 'reel' can be called every frame while reeling.
+//   tick(dt, st)     drives ambient one-shots (lapping, plank creaks) and music chord changes;
+//                    st.swimming muffles the wind and drops creaks. Allocation-free when idle.
 //   destroy()        stops + disconnects only this instance's nodes; never closes the context
 //
-// Notes: no DOM timers; cleanup is driven by AudioScheduledSourceNode 'ended'.
-// All sound passes one master gain (volume * OUTPUT_SCALE) and a gentle limiter.
+// Notes: no DOM timers. Voices clean themselves up on the sources' 'ended' event.
 
-export const EVENTS = Object.freeze(['throw', 'splash', 'collect', 'build', 'repair', 'jump', 'swim', 'ui']);
+export const EVENTS = Object.freeze(['throw', 'splash', 'collect', 'build', 'craft', 'repair', 'jump', 'land', 'step', 'swim',
+  'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny']);
+export const BUSES = Object.freeze(['master', 'effects', 'ambience', 'music']);
 
 const OUTPUT_SCALE = 0.5;       // keeps full volume comfortable
-const AMBIENCE_MAX = 0.025;     // peak surf gain before master
-const MAX_VOICES = 18;
-const MIN_GAP = { throw: 0.08, splash: 0.06, collect: 0.03, build: 0.05, repair: 0.12, jump: 0.1, swim: 0.11, ui: 0.025 };
+const MAX_VOICES = 24;
+const MIN_GAP = { throw: 0.08, splash: 0.06, collect: 0.04, build: 0.05, craft: 0.1, repair: 0.12, jump: 0.1, land: 0.12,
+  step: 0.16, swim: 0.3, reel: 0.075, catch: 0.06, bite: 0.2, ui: 0.03, open: 0.08, close: 0.08, deny: 0.15 };
 const SILENT = 0.0001;
+// calm D-major-ish pad: Dadd9, Bm7, Gmaj7, A6 (low register so it sits under the sea)
+const CHORDS = [[146.83, 220, 329.63], [123.47, 185, 293.66], [98, 196, 246.94], [110, 164.81, 277.18]];
+const SCALE = [587.33, 659.25, 739.99, 880, 987.77, 1174.66]; // D pentatonic for soft plucks
 
 const clamp01 = (v, d = 0) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
 const rand = (a, b) => a + Math.random() * (b - a);
 
-export function createOceanAudio({ context = null, volume = 0.5, ambience = true } = {}) {
+export function createOceanAudio({ context = null, volume = 0.5, ambience = true, music = false } = {}) {
   let ctx = context && typeof context.createGain === 'function' ? context : null;
-  let vol = clamp01(volume, 0.5);
+  const level = { master: clamp01(volume, 0.5), effects: 1, ambience: 1, music: 0.7 };
+  let musicOn = !!music;
   let destroyed = false;
-  let graph = null;          // { master, limiter, tone, noise, brown }
-  let amb = null;            // { nodes, sources }
+  let graph = null;          // { master, limiter, tone, fx, amb, mus, noise, brown }
+  let amb = null;            // { nodes, sources, wind }
+  let bed = null;            // music pad { nodes, sources, oscs, gain }
+  let lapIn = 1.5, creakIn = 7, chordIn = 0, pluckIn = 3, chord = 0, stepSide = 1, swimming = false;
   const voices = new Set();
   const lastPlay = Object.create(null);
 
@@ -59,59 +70,97 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     return buf;
   }
 
+  function busGain(name) { return name === 'master' ? level.master * OUTPUT_SCALE : name === 'music' ? level.music * 0.6 : level[name]; }
   function buildGraph() {
     if (graph || !ctx) return !!graph;
     try {
       const master = ctx.createGain();
-      master.gain.value = vol * OUTPUT_SCALE;
+      master.gain.value = busGain('master');
       const tone = ctx.createBiquadFilter();       // gentle top cut: muted, tactile palette
-      tone.type = 'lowpass'; tone.frequency.value = 6000; tone.Q.value = 0.5;
+      tone.type = 'lowpass'; tone.frequency.value = 6500; tone.Q.value = 0.5;
       const limiter = ctx.createDynamicsCompressor();
       limiter.threshold.value = -14; limiter.knee.value = 8; limiter.ratio.value = 6;
       limiter.attack.value = 0.004; limiter.release.value = 0.2;
       tone.connect(master); master.connect(limiter); limiter.connect(ctx.destination);
-      graph = { master, tone, limiter, noise: makeNoise(1.5, false), brown: makeNoise(6, true) };
+      const fx = ctx.createGain(), am = ctx.createGain(), mu = ctx.createGain();
+      fx.gain.value = busGain('effects'); am.gain.value = busGain('ambience'); mu.gain.value = busGain('music');
+      fx.connect(tone); am.connect(tone); mu.connect(tone);
+      graph = { master, tone, limiter, effects: fx, ambience: am, music: mu, noise: makeNoise(1.5, false), brown: makeNoise(6, true) };
       return true;
     } catch (_) { graph = null; return false; }
   }
 
+  // ---- ambience: surf bed + wind, both looping noise with slow LFOs ---------
   function startAmbience() {
     if (!ambience || amb || !graph || destroyed) return;
     try {
-      const t = ctx.currentTime;
-      const src = ctx.createBufferSource();
-      src.buffer = graph.brown; src.loop = true;
-      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 70;
-      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420; lp.Q.value = 0.3;
-      const swell = ctx.createGain();
-      // base + two slow swells; max = .015 + .005 + .004 = .024 <= AMBIENCE_MAX
-      const base = Math.min(0.015, AMBIENCE_MAX);
-      swell.gain.setValueAtTime(0, t);
-      swell.gain.linearRampToValueAtTime(base, t + 3);   // fade in, no pop
-      const lfo1 = ctx.createOscillator(); lfo1.frequency.value = 0.071;
-      const lfo2 = ctx.createOscillator(); lfo2.frequency.value = 0.127;
-      const d1 = ctx.createGain(); d1.gain.value = 0.005;
-      const d2 = ctx.createGain(); d2.gain.value = 0.004;
-      const lfoF = ctx.createGain(); lfoF.gain.value = 120;  // filter breathes with the swell
-      lfo1.connect(d1); lfo2.connect(d2); d1.connect(swell.gain); d2.connect(swell.gain);
-      lfo1.connect(lfoF); lfoF.connect(lp.frequency);
-      src.connect(hp); hp.connect(lp); lp.connect(swell); swell.connect(graph.tone);
-      src.start(t, Math.random() * 5); lfo1.start(t); lfo2.start(t);
-      amb = { sources: [src, lfo1, lfo2], nodes: [src, lfo1, lfo2, hp, lp, swell, d1, d2, lfoF] };
+      const t = ctx.currentTime, nodes = [], sources = [];
+      const node = (n) => { nodes.push(n); return n; };
+      const lfo = (f, depth, target) => {
+        const o = node(ctx.createOscillator()); o.frequency.value = f;
+        const g = node(ctx.createGain()); g.gain.value = depth;
+        o.connect(g); g.connect(target); sources.push(o); return o;
+      };
+      // surf: brown noise, low-passed, breathing with two slow swells
+      const surf = node(ctx.createBufferSource()); surf.buffer = graph.brown; surf.loop = true; sources.push(surf);
+      const hp = node(ctx.createBiquadFilter()); hp.type = 'highpass'; hp.frequency.value = 60;
+      const lp = node(ctx.createBiquadFilter()); lp.type = 'lowpass'; lp.frequency.value = 460; lp.Q.value = 0.3;
+      const swell = node(ctx.createGain());
+      swell.gain.setValueAtTime(0, t); swell.gain.linearRampToValueAtTime(0.022, t + 3);   // fade in, no pop
+      lfo(0.071, 0.007, swell.gain); lfo(0.127, 0.005, swell.gain); lfo(0.071, 140, lp.frequency);
+      surf.connect(hp); hp.connect(lp); lp.connect(swell); swell.connect(graph.ambience);
+      // wind: white noise through a wandering band, gusting slowly
+      const wn = node(ctx.createBufferSource()); wn.buffer = graph.noise; wn.loop = true; sources.push(wn);
+      const band = node(ctx.createBiquadFilter()); band.type = 'bandpass'; band.frequency.value = 720; band.Q.value = 0.8;
+      const wind = node(ctx.createGain());
+      wind.gain.setValueAtTime(0, t); wind.gain.linearRampToValueAtTime(0.007, t + 5);
+      lfo(0.043, 0.004, wind.gain); lfo(0.031, 260, band.frequency); lfo(0.19, 60, band.frequency);
+      wn.connect(band); band.connect(wind); wind.connect(graph.ambience);
+      for (const s of sources) s.start(t, s.buffer ? Math.random() * s.buffer.duration * 0.8 : 0);
+      amb = { nodes, sources, wind, lp };
     } catch (_) { amb = null; }
   }
+  function stopNodes(set) {
+    if (!set) return;
+    for (const s of set.sources) { try { s.stop(); } catch (_) {} }
+    for (const n of set.nodes) { try { n.disconnect(); } catch (_) {} }
+  }
 
-  function stopAmbience() {
-    if (!amb) return;
-    for (const s of amb.sources) { try { s.stop(); } catch (_) {} }
-    for (const n of amb.nodes) { try { n.disconnect(); } catch (_) {} }
-    amb = null;
+  // ---- music bed: three detuned pad voices + rare soft plucks ---------------
+  function startMusic() {
+    if (bed || !graph || destroyed) return;
+    try {
+      const t = ctx.currentTime, nodes = [], sources = [], oscs = [];
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 0.4;
+      const g = ctx.createGain(); g.gain.setValueAtTime(SILENT, t); g.gain.exponentialRampToValueAtTime(0.05, t + 4);
+      lp.connect(g); g.connect(graph.music); nodes.push(lp, g);
+      for (const f of CHORDS[chord]) {
+        const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = f; o.detune.value = rand(-6, 6);
+        const vg = ctx.createGain(); vg.gain.value = 0.33;
+        o.connect(vg); vg.connect(lp); nodes.push(o, vg); sources.push(o); oscs.push(o); o.start(t);
+      }
+      bed = { nodes, sources, oscs, gain: g };
+    } catch (_) { bed = null; }
+  }
+  function stopMusic(fade) {
+    if (!bed) return;
+    const b = bed; bed = null;
+    if (fade && ctx) {
+      try {
+        const t = ctx.currentTime;
+        b.gain.gain.cancelScheduledValues(t); b.gain.gain.setTargetAtTime(SILENT, t, 0.6);
+        for (const s of b.sources) s.stop(t + 3);
+        b.sources[0].onended = () => { for (const n of b.nodes) { try { n.disconnect(); } catch (_) {} } };
+        return;
+      } catch (_) {}
+    }
+    stopNodes(b);
   }
 
   // ---- voice helpers -------------------------------------------------------
-  function newVoice() {
+  function newVoice(dest) {
     const bus = ctx.createGain();
-    bus.connect(graph.tone);
+    bus.connect(dest);
     return { bus, nodes: [bus], sources: [], live: 0, done: false };
   }
   function finishVoice(v) {
@@ -144,7 +193,8 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     const src = track(v, ctx.createBufferSource());
     src.buffer = graph.noise;
     src.connect(dest);
-    startSource(v, src, t, t + dur + 0.02, Math.random() * (graph.noise.duration - dur - 0.05 > 0 ? graph.noise.duration - dur - 0.05 : 0));
+    const room = graph.noise.duration - dur - 0.05;
+    startSource(v, src, t, t + dur + 0.02, room > 0 ? Math.random() * room : 0);
     return src;
   }
   function osc(v, type, freq, t, dur, dest) {
@@ -154,76 +204,126 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     startSource(v, o, t, t + dur + 0.02);
     return o;
   }
+  function burst(v, t, type, freq, q, peak, attack, decay, dest = v.bus) {
+    const g = gain(v, dest);
+    const f = filter(v, type, freq, q, g);
+    noise(v, t, env(g, t, attack, peak, decay) - t, f);
+    return f;
+  }
+  function tone(v, t, type, freq, peak, attack, decay, toFreq, dest = v.bus) {
+    const g = gain(v, dest);
+    const o = osc(v, type, freq, t, env(g, t, attack, peak, decay) - t, g);
+    if (toFreq) o.frequency.exponentialRampToValueAtTime(toFreq, t + attack + decay * 0.8);
+    return o;
+  }
 
   // ---- sound recipes -------------------------------------------------------
+  // muted plank knock: resonant noise tick + short falling body tone
   function knock(v, t, s, f) {
-    // muted plank knock: resonant noise tick + short falling body tone
-    const g1 = gain(v, v.bus);
-    const bp = filter(v, 'bandpass', f * 2.3, 3.5, g1);
-    noise(v, t, env(g1, t, 0.001, 0.55 * s, 0.055) - t, bp);
-    const g2 = gain(v, v.bus);
-    const o = osc(v, 'sine', f, t, env(g2, t, 0.002, 0.38 * s, 0.11) - t, g2);
-    o.frequency.exponentialRampToValueAtTime(f * 0.68, t + 0.1);
+    burst(v, t, 'bandpass', f * 2.3, 3.5, 0.55 * s, 0.001, 0.055);
+    tone(v, t, 'sine', f, 0.38 * s, 0.002, 0.11, f * 0.68);
+  }
+  // hammer on a nail: knock plus a short bright metallic ping
+  function nailHit(v, t, s, f) {
+    knock(v, t, s, f);
+    tone(v, t, 'triangle', rand(2300, 2600), 0.05 * s, 0.001, 0.07);
+  }
+  function water(v, t, s, dur, from, to) {
+    const f = burst(v, t, 'lowpass', from, 0.8, 0.45 * s, 0.006, dur);
+    f.frequency.setValueAtTime(from, t);
+    f.frequency.exponentialRampToValueAtTime(to, t + dur);
+  }
+  function drops(v, t, s, n) {
+    for (let i = 0; i < n; i++) {
+      const dt = t + rand(0.04, 0.26), f = rand(800, 1500);
+      tone(v, dt, 'sine', f, 0.05 * s, 0.002, 0.05, f * 1.7);
+    }
   }
 
   const recipes = {
     build(v, t, s) {
-      const lp = filter(v, 'lowpass', 2600, 0.7, v.bus); v.bus = lp; // muffle wood
-      const f = rand(150, 185);
-      knock(v, t, s, f);
-      knock(v, t + rand(0.1, 0.13), s * 0.75, f * 0.88);
+      // Raft-style placement: three quick hammer knocks, then the plank settles
+      const lp = filter(v, 'lowpass', 2800, 0.7, v.bus); v.bus = lp;
+      const f = rand(150, 175);
+      nailHit(v, t, s, f);
+      nailHit(v, t + 0.14, s * 0.85, f * 1.04);
+      nailHit(v, t + 0.27, s * 0.95, f * 0.96);
+      knock(v, t + 0.36, s * 0.6, f * 0.62);
+    },
+    craft(v, t, s) {
+      // rustle of materials + two light taps
+      const f = burst(v, t, 'bandpass', 1800, 0.9, 0.16 * s, 0.03, 0.22);
+      f.frequency.linearRampToValueAtTime(900, t + 0.24);
+      knock(v, t + 0.2, s * 0.55, rand(200, 230));
+      knock(v, t + 0.32, s * 0.45, rand(240, 270));
     },
     throw(v, t, s) {
-      // rope swish: band of noise sweeping up then settling
+      // rope swish: band of noise sweeping up then settling, plus the line hissing out
       const g = gain(v, v.bus);
       const bp = filter(v, 'bandpass', 500, 2.2, g);
-      const dur = 0.34;
-      bp.frequency.setValueAtTime(rand(420, 520), t);
-      bp.frequency.exponentialRampToValueAtTime(rand(2100, 2600), t + 0.19);
-      bp.frequency.exponentialRampToValueAtTime(1100, t + dur);
+      const dur = 0.3 + 0.12 * s;
+      bp.frequency.setValueAtTime(rand(380, 480), t);
+      bp.frequency.exponentialRampToValueAtTime(rand(1900, 2500), t + dur * 0.55);
+      bp.frequency.exponentialRampToValueAtTime(1000, t + dur);
       g.gain.setValueAtTime(SILENT, t);
-      g.gain.linearRampToValueAtTime(0.4 * s, t + 0.13);
+      g.gain.linearRampToValueAtTime(0.25 + 0.2 * s, t + dur * 0.4);
       g.gain.exponentialRampToValueAtTime(SILENT, t + dur);
       noise(v, t, dur, bp);
+      burst(v, t + dur * 0.5, 'highpass', 4200, 0.6, 0.05 * s, 0.05, 0.35 + 0.3 * s);
     },
     splash(v, t, s) {
-      // small splash: bright noise burst closing down, plus a few droplets
-      const g = gain(v, v.bus);
-      const lp = filter(v, 'lowpass', 3600, 0.8, g);
-      const hp = filter(v, 'highpass', 260, 0.7, lp);
-      lp.frequency.setValueAtTime(rand(3200, 4000), t);
-      lp.frequency.exponentialRampToValueAtTime(480, t + 0.4);
-      noise(v, t, env(g, t, 0.006, 0.45 * s, 0.4) - t, hp);
-      const drops = 2 + Math.floor(Math.random() * 2);
-      for (let i = 0; i < drops; i++) {
-        const dt = t + rand(0.05, 0.24), f = rand(850, 1500);
-        const dg = gain(v, v.bus);
-        const o = osc(v, 'sine', f, dt, env(dg, dt, 0.002, 0.05 * s, 0.05) - dt, dg);
-        o.frequency.exponentialRampToValueAtTime(f * 1.7, dt + 0.04);
-      }
+      // bright noise burst closing down, plus a few droplets
+      water(v, t, s, 0.4, rand(3200, 4000), 460);
+      drops(v, t, s, 2 + Math.floor(Math.random() * 2));
+    },
+    bite(v, t, s) {
+      // bobber plop: hollow falling tone + small splash
+      tone(v, t, 'sine', rand(520, 600), 0.18 * s, 0.002, 0.09, 180);
+      water(v, t + 0.02, s * 0.5, 0.22, 2400, 500);
     },
     swim(v, t, s) {
-      // soft paddle stroke: wet swirl falling in pitch, faint second wash
+      // paddle stroke: wet swirl falling in pitch, faint second wash
       for (let i = 0; i < 2; i++) {
         const st = t + i * rand(0.1, 0.14), k = i ? 0.5 : 1;
-        const g = gain(v, v.bus);
-        const bp = filter(v, 'bandpass', 1400, 1.1, g);
-        bp.frequency.setValueAtTime(rand(1200, 1600) * (i ? 0.8 : 1), st);
-        bp.frequency.exponentialRampToValueAtTime(rand(420, 560), st + 0.26);
-        noise(v, st, env(g, st, 0.035, 0.24 * s * k, 0.24) - st, bp);
+        const f = burst(v, st, 'bandpass', 1400, 1.1, 0.24 * s * k, 0.035, 0.24);
+        f.frequency.setValueAtTime(rand(1200, 1600) * (i ? 0.8 : 1), st);
+        f.frequency.exponentialRampToValueAtTime(rand(420, 560), st + 0.26);
       }
     },
+    step(v, t, s) {
+      // bare foot on a plank: soft low thud, a little grit, alternating feet
+      stepSide = -stepSide;
+      const f = rand(95, 115) * (stepSide > 0 ? 1 : 0.92);
+      tone(v, t, 'sine', f, 0.22 * s, 0.003, 0.07, f * 0.7);
+      burst(v, t, 'bandpass', rand(700, 900), 1.4, 0.1 * s, 0.002, 0.045);
+      if (Math.random() < 0.12) recipes.creak(v, t + 0.03, s * 0.35);
+    },
+    land(v, t, s) {
+      tone(v, t, 'sine', 90, 0.4 * s, 0.003, 0.14, 50);
+      burst(v, t, 'lowpass', 500, 0.7, 0.3 * s, 0.002, 0.1);
+      knock(v, t + 0.01, s * 0.4, 130);
+    },
+    jump(v, t, s) {
+      tone(v, t, 'sine', 120, 0.28 * s, 0.004, 0.14, 60);
+      burst(v, t, 'lowpass', 320, 0.7, 0.18 * s, 0.002, 0.08);
+    },
+    reel(v, t, s) {
+      // ratchet click: tight resonant tick with a tiny tonal edge
+      burst(v, t, 'bandpass', rand(2900, 3400), 6, 0.6 * s, 0.0008, 0.02);
+      tone(v, t, 'square', rand(1500, 1650), 0.04 * s, 0.0008, 0.014);
+    },
+    catch(v, t, s) {
+      // hook bites into debris: wet wooden thunk + slap
+      knock(v, t, s * 0.8, rand(200, 240));
+      water(v, t, s * 0.55, 0.16, 1800, 400);
+    },
     collect(v, t, s) {
-      // light click + two soft rising notes
-      const cg = gain(v, v.bus);
-      const hp = filter(v, 'highpass', 2600, 0.7, cg);
-      noise(v, t, env(cg, t, 0.001, 0.18 * s, 0.014) - t, hp);
-      const lp = filter(v, 'lowpass', 3000, 0.5, v.bus);
-      const base = rand(840, 900);
-      [[0, 1], [0.07, 1.5]].forEach(([dt, r]) => {
-        const g = gain(v, lp);
-        osc(v, 'triangle', base * r, t + dt, env(g, t + dt, 0.004, 0.12 * s, 0.13) - (t + dt), g);
-      });
+      // pickup pop for the bottom-left feed: bubble pop + two soft rising notes
+      tone(v, t, 'sine', 380, 0.16 * s, 0.002, 0.06, 980);
+      const lp = filter(v, 'lowpass', 3200, 0.5, v.bus);
+      const base = rand(840, 880);
+      tone(v, t + 0.04, 'triangle', base, 0.1 * s, 0.004, 0.12, 0, lp);
+      tone(v, t + 0.1, 'triangle', base * 1.5, 0.09 * s, 0.004, 0.16, 0, lp);
     },
     repair(v, t, s) {
       // scrape: grainy band noise with fast tremolo, ending on a soft knock
@@ -242,23 +342,63 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
       noise(v, t, 0.34, bp);
       knock(v, t + 0.36, s * 0.5, rand(165, 185));
     },
-    jump(v, t, s) {
-      // soft push-off thump
-      const g = gain(v, v.bus);
-      const o = osc(v, 'sine', 120, t, env(g, t, 0.004, 0.32 * s, 0.16) - t, g);
-      o.frequency.exponentialRampToValueAtTime(55, t + 0.15);
-      const ng = gain(v, v.bus);
-      const lp = filter(v, 'lowpass', 320, 0.7, ng);
-      noise(v, t, env(ng, t, 0.002, 0.22 * s, 0.09) - t, lp);
-    },
     ui(v, t, s) {
-      const cg = gain(v, v.bus);
-      const hp = filter(v, 'highpass', 3000, 0.7, cg);
-      noise(v, t, env(cg, t, 0.001, 0.1 * s, 0.01) - t, hp);
+      burst(v, t, 'highpass', 3000, 0.7, 0.16 * s, 0.001, 0.012);
+      tone(v, t, 'sine', 1250, 0.05 * s, 0.002, 0.04);
+    },
+    open(v, t, s) {
+      // canvas bag opening: short rising rustle + soft click
+      const f = burst(v, t, 'bandpass', 700, 1.2, 0.14 * s, 0.04, 0.12);
+      f.frequency.exponentialRampToValueAtTime(2200, t + 0.15);
+      tone(v, t + 0.1, 'sine', 900, 0.04 * s, 0.002, 0.05, 1300);
+    },
+    close(v, t, s) {
+      const f = burst(v, t, 'bandpass', 2000, 1.2, 0.12 * s, 0.02, 0.12);
+      f.frequency.exponentialRampToValueAtTime(650, t + 0.14);
+      knock(v, t + 0.09, s * 0.25, 220);
+    },
+    deny(v, t, s) {
+      tone(v, t, 'triangle', 330, 0.07 * s, 0.003, 0.08, 300);
+      tone(v, t + 0.09, 'triangle', 247, 0.07 * s, 0.003, 0.12, 220);
+    },
+    // ambience one-shots (played from tick on the ambience bus)
+    lap(v, t, s) {
+      // wave slapping the raft's underside: slow low swish with a hollow tail
+      const f = burst(v, t, 'lowpass', 300, 1.1, 0.07 * s, 0.09, 0.45);
+      f.frequency.setValueAtTime(rand(250, 350), t);
+      f.frequency.linearRampToValueAtTime(rand(700, 1000), t + 0.12);
+      f.frequency.exponentialRampToValueAtTime(220, t + 0.55);
+      if (Math.random() < 0.5) drops(v, t + 0.1, s * 0.4, 1);
+    },
+    creak(v, t, s) {
+      // rope lashing / plank creak: buzzy pulse train dragged in pitch
+      const dur = rand(0.25, 0.5);
       const g = gain(v, v.bus);
-      osc(v, 'sine', 1250, t, env(g, t, 0.002, 0.05 * s, 0.04) - t, g);
+      const bp = filter(v, 'bandpass', rand(600, 900), 4, g);
+      const o = osc(v, 'sawtooth', rand(55, 75), t, dur, bp);
+      o.frequency.linearRampToValueAtTime(rand(85, 120), t + dur);
+      g.gain.setValueAtTime(SILENT, t);
+      g.gain.linearRampToValueAtTime(0.06 * s, t + dur * 0.3);
+      g.gain.exponentialRampToValueAtTime(SILENT, t + dur);
+    },
+    pluck(v, t, s) {
+      const f = SCALE[Math.floor(Math.random() * SCALE.length)];
+      const lp = filter(v, 'lowpass', 1800, 0.5, v.bus);
+      tone(v, t, 'triangle', f, 0.05 * s, 0.01, 1.6, 0, lp);
+      tone(v, t, 'sine', f * 2, 0.012 * s, 0.01, 0.9, 0, lp);
     },
   };
+  const AMBIENT = new Set(['lap', 'creak']);
+
+  function voice(name, s, bus) {
+    if (voices.size >= MAX_VOICES) return false;
+    const v = newVoice(bus);
+    voices.add(v);
+    try { recipes[name](v, ctx.currentTime + 0.005, s); }
+    catch (_) { killVoice(v); return false; }
+    if (v.live === 0) finishVoice(v);
+    return true;
+  }
 
   // ---- public API ----------------------------------------------------------
   async function resume() {
@@ -274,36 +414,71 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
       if (ctx.state === 'suspended' && typeof ctx.resume === 'function') await ctx.resume();
       if (destroyed) return false;
       startAmbience();
+      if (musicOn) startMusic();
       return ctx.state === 'running';
     } catch (_) { return false; }
   }
 
-  function setVolume(v) {
-    vol = clamp01(v, vol);
-    if (graph && ctx) {
-      try { graph.master.gain.setTargetAtTime(vol * OUTPUT_SCALE, ctx.currentTime, 0.03); }
-      catch (_) { try { graph.master.gain.value = vol * OUTPUT_SCALE; } catch (__) {} }
+  function setBus(name, v) {
+    if (!Object.prototype.hasOwnProperty.call(level, name)) return null;
+    level[name] = clamp01(v, level[name]);
+    const node = graph && graph[name];
+    if (node && ctx) {
+      try { node.gain.setTargetAtTime(busGain(name), ctx.currentTime, 0.03); }
+      catch (_) { try { node.gain.value = busGain(name); } catch (__) {} }
     }
-    return vol;
+    return level[name];
   }
+  const getBus = (name) => (Object.prototype.hasOwnProperty.call(level, name) ? level[name] : null);
+  const setVolume = (v) => setBus('master', v);
+
+  function setMusic(on) {
+    musicOn = !!on;
+    if (destroyed) return musicOn;
+    if (musicOn && graph && ctx?.state === 'running') startMusic();
+    else if (!musicOn) stopMusic(true);
+    return musicOn;
+  }
+
+  function ready() { return !destroyed && graph && ctx && ctx.state === 'running' && level.master > 0; }
 
   function play(event, strength = 1) {
     try {
-      if (destroyed || !graph || !ctx || ctx.state !== 'running' || vol <= 0) return false;
-      const recipe = Object.prototype.hasOwnProperty.call(recipes, event) ? recipes[event] : null;
-      if (!recipe) return false;
+      if (!ready()) return false;
+      if (AMBIENT.has(event) || !Object.prototype.hasOwnProperty.call(recipes, event)) return false;
       const s = clamp01(strength, 1);
-      if (s <= 0.001 || voices.size >= MAX_VOICES) return false;
+      if (s <= 0.001) return false;
       const now = ctx.currentTime;
       if (now - (lastPlay[event] ?? -1) < MIN_GAP[event]) return false;
       lastPlay[event] = now;
-      const v = newVoice();
-      voices.add(v);
-      try { recipe(v, now + 0.005, s); }
-      catch (_) { killVoice(v); return false; }
-      if (v.live === 0) finishVoice(v);
-      return true;
+      return voice(event, s, graph.effects);
     } catch (_) { return false; }
+  }
+
+  function tick(dt, st) {
+    if (!(dt > 0) || !ready()) return;
+    try {
+      const sw = !!st?.swimming;
+      if (sw !== swimming && amb) { // head at water level: less wind, darker surf
+        swimming = sw;
+        const t = ctx.currentTime;
+        amb.wind.gain.setTargetAtTime(sw ? 0.002 : 0.007, t, 0.4);
+        amb.lp.frequency.setTargetAtTime(sw ? 300 : 460, t, 0.4);
+      }
+      if (amb && level.ambience > 0) {
+        if ((lapIn -= dt) <= 0) { lapIn = rand(1.4, 3.8); voice('lap', rand(0.5, 1), graph.ambience); }
+        if ((creakIn -= dt) <= 0) { creakIn = rand(6, 15); if (!sw) voice('creak', rand(0.4, 0.9), graph.ambience); }
+      }
+      if (bed) {
+        if ((chordIn -= dt) <= 0) {
+          chordIn = 10;
+          chord = (chord + 1) % CHORDS.length;
+          const t = ctx.currentTime, c = CHORDS[chord];
+          for (let i = 0; i < bed.oscs.length; i++) bed.oscs[i].frequency.setTargetAtTime(c[i], t, 0.8);
+        }
+        if ((pluckIn -= dt) <= 0) { pluckIn = rand(2.5, 6); if (level.music > 0) voice('pluck', rand(0.5, 1), graph.music); }
+      }
+    } catch (_) {}
   }
 
   function killVoice(v) {
@@ -316,9 +491,10 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     destroyed = true;
     for (const v of [...voices]) killVoice(v);
     voices.clear();
-    stopAmbience();
+    stopNodes(amb); amb = null;
+    stopMusic(false);
     if (graph) {
-      for (const n of [graph.tone, graph.master, graph.limiter]) { try { n.disconnect(); } catch (_) {} }
+      for (const n of [graph.effects, graph.ambience, graph.music, graph.tone, graph.master, graph.limiter]) { try { n.disconnect(); } catch (_) {} }
       graph = null;
     }
     // The AudioContext (supplied or lazily created) is intentionally left open so a
@@ -327,9 +503,14 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
 
   return {
     get context() { return ctx; },
+    get music() { return musicOn; },
     resume,
     setVolume,
+    setBus,
+    getBus,
+    setMusic,
     play,
+    tick,
     destroy,
   };
 }
