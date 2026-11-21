@@ -57,7 +57,8 @@ void main() {
 }
 `;
 
-const MAX_FOAM = 32;     // floating items that leave a foam collar
+const MAX_FOAM = 8;      // nearest floating items that leave a foam collar
+const FOAM_NEAR = 12, FOAM_FAR = 15; // collars fade out over this camera distance (only readable up close)
 const GRID = 128;        // raft foam field: 0.5 m texels covering 64 m, centred on the origin
 const TEXEL = 0.5;
 const COLLAR = 1.4;      // metres of foam beyond the deck edge
@@ -164,12 +165,14 @@ void main() {
     float k = 1.0 / ${GRID.toFixed(1)};
     float m = mix(mix(texture2D(uRaftMask, i0).r, texture2D(uRaftMask, i0 + vec2(k, 0.0)).r, fr.x),
                   mix(texture2D(uRaftMask, i0 + vec2(0.0, k)).r, texture2D(uRaftMask, i0 + vec2(k)).r, fr.x), fr.y);
-    float edge = m * (0.85 + 0.15 * sin(uTime * 1.7 + p.x * 2.0 + p.y * 1.3));
+    float edge = m * (0.85 + 0.15 * sin(uTime * 1.7 + wp.x * 2.0 + wp.y * 1.3));
     for (int i = 0; i < ${MAX_FOAM}; i++) {
       vec4 f = uFoamPts[i];
       if (f.z <= 0.0) break;  // live points are packed first
-      float d = length(wp - f.xy) / f.z;  // thin broken ring hugging the item's waterline
-      edge = max(edge, smoothstep(0.35, 0.7, d) * (1.0 - smoothstep(0.7, 1.0, d)) * 0.35);
+      vec2 dv = wp - f.xy;
+      if (dot(dv, dv) >= f.z * f.z) continue;  // outside this ring: skip the sqrt and smoothsteps
+      float d = length(dv) / f.z;  // thin broken ring hugging the item's waterline
+      edge = max(edge, smoothstep(0.35, 0.7, d) * (1.0 - smoothstep(0.7, 1.0, d)) * 0.35 * f.w);
     }
     float cl = vnoise(fp * 1.7) * 0.6 + vnoise(fp * 4.3 - uTime * 0.25) * 0.4;
     float collar = smoothstep(1.0 - edge, 1.0 - edge * 0.55, cl) * min(1.0, edge * 1.4) * 0.85;
@@ -194,6 +197,7 @@ export function createOcean(T, options = {}) {
   const maskData = new Uint8Array(GRID * GRID);
   const mask = new T.DataTexture(maskData, GRID, GRID, T.RedFormat, T.UnsignedByteType);
   const foamPts = Array.from({ length: MAX_FOAM }, () => new T.Vector4());
+  const foamD2 = new Float64Array(MAX_FOAM); // squared camera distance per packed point, kept sorted
   const uniforms = {
     uTime: { value: 0 },
     uFlow: { value: new T.Vector2() }, // [sailing] wave-field offset written by sailing-world.js
@@ -259,15 +263,19 @@ export function createOcean(T, options = {}) {
   function syncFoam() {
     const kids = foamGroup ? foamGroup.children : null, cam = camPos;
     let n = 0;
-    if (kids) for (let i = 0; i < kids.length && n < MAX_FOAM; i++) {
+    // Keep the MAX_FOAM nearest within FOAM_FAR by insertion (no allocation): the shader loops only over these.
+    if (kids) for (let i = 0; i < kids.length; i++) {
       const c = kids[i];
       if (!c.visible) continue;
-      const cx = c.position.x - cam.x, cz = c.position.z - cam.z;
-      if (cx * cx + cz * cz > 2304) continue; // the shader only draws collars within 45 m
-      const r = c.userData.foamRadius ?? 0.7;
-      foamPts[n++].set(c.position.x, c.position.z, r * c.scale.x, 0);
+      const cx = c.position.x - cam.x, cz = c.position.z - cam.z, d2 = cx * cx + cz * cz;
+      if (d2 >= FOAM_FAR * FOAM_FAR || (n === MAX_FOAM && d2 >= foamD2[n - 1])) continue;
+      let j = n < MAX_FOAM ? n++ : n - 1;
+      const spare = foamPts[j]; // the slot that falls off (or the next free one) is reused
+      for (; j > 0 && foamD2[j - 1] > d2; j--) { foamD2[j] = foamD2[j - 1]; foamPts[j] = foamPts[j - 1]; }
+      const r = c.userData.foamRadius ?? 0.7, fade = 1 - Math.max(0, Math.min(1, (Math.sqrt(d2) - FOAM_NEAR) / (FOAM_FAR - FOAM_NEAR)));
+      foamD2[j] = d2; foamPts[j] = spare.set(c.position.x, c.position.z, r * c.scale.x, fade);
     }
-    for (; n < MAX_FOAM; n++) foamPts[n].z = 0;
+    for (let k = n; k < MAX_FOAM; k++) foamPts[k].z = 0;
   }
 
   function update(t, camera) {

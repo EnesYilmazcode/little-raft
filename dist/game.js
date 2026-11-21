@@ -77,7 +77,7 @@ const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
 const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12, receiver:.35, antenna:.1, purifier:.3, rainbarrel:.3, sprinkler:.12, ...CONTENT_BLOCK_RADIUS, ...BLOCK_RADII}); // content hook, [progression-hook]
 const SAVE = 'little-raft-v1';
-const THROW_LOFT = .2, FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 10, PICKUP_REACH = 2.5;
+const THROW_LOFT = .12, FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 10, PICKUP_REACH = 2.5;
 const LOOK_SENSITIVITY = .0022, DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
 const FISH_REACH = 26, PENDING_MS = 2500, JOIN_TIMEOUT = 15000, ACK_TIMEOUT = 2000;
 const CHARGE_MS = 900, MIN_CHARGE = .15, WEAR_PER_CATCH = 2, MAX_HEALTH = 100;
@@ -256,6 +256,7 @@ export function mount(transfer = null) {
   let yaw = Number.isFinite(X?.yaw) ? X.yaw : 0, pitch = Number.isFinite(X?.pitch) ? X.pitch : 0;
   let walking = false, walkPhase = Number.isFinite(X?.walkPhase) ? X.walkPhase : 0, swing = 0;
   const pointer = new T.Vector2(), ray = new T.Raycaster(), plane = new T.Plane(new T.Vector3(0, 1, 0), -.22);
+  let ghostHold = null; // just-placed spot: the ghost stays hidden there until the aim moves off it
   let hover = null, mouse = {x:0, y:0, inside:false}, frameAim = null, pickTarget = null;
   const raftPose = {y:X?.raftPose?.y ?? 0, rx:X?.raftPose?.rx ?? 0, rz:X?.raftPose?.rz ?? 0};
   let physics = makePhysics(X);
@@ -479,18 +480,6 @@ export function mount(transfer = null) {
     camera.add(depthClear);
     camera.add(hands.group);
   }
-  // Held models and build ghosts for every kind in the bag are built ahead and their shaders compiled
-  // (renderer.compile covers hidden meshes), so the first switch to an item never links programs mid-play.
-  const warmedKinds = new Set();
-  function warmKinds() {
-    const slots = localBag().slots; let fresh = false;
-    for (let i = 0; i < slots.length; i++) {
-      const k = slots[i]?.kind; if (!k || warmedKinds.has(k)) continue;
-      warmedKinds.add(k); fresh = true; hands.preload([k]);
-      if (k === 'hammer') ghosts.preload(['floor']); else if (DECOR_TYPES.includes(k)) ghosts.preload([k]);
-    }
-    if (fresh) { try { renderer.compileAsync(scene, camera).catch(() => {}); } catch (e) { console.warn('shader warm-up failed', e); } }
-  }
 
   // Fits the sun's shadow box to the raft (plus a margin for props, avatars and nearby supplies). Call after tiles change.
   // The box never grows past the old fixed ±25 m, so texels are never coarser than before.
@@ -533,6 +522,19 @@ export function mount(transfer = null) {
     hands?.preload(['hammer', 'fishingrod']);
     try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
     catch (e) { console.warn('shader warm-up failed', e); }
+  }
+  // Held models and build ghosts for every kind in the bag are built ahead and their shaders compiled
+  // (ghosts are shown for the call: renderer.compile skips hidden meshes), so the first switch never links programs mid-play.
+  const warmedKinds = new Set();
+  function warmKinds() {
+    if (!hands || !ghosts || typeof renderer?.compileAsync !== 'function') return;
+    const slots = localBag().slots; let fresh = false;
+    for (let i = 0; i < slots.length; i++) {
+      const k = slots[i]?.kind; if (!k || warmedKinds.has(k)) continue;
+      warmedKinds.add(k); fresh = true; hands.preload([k]);
+      if (k === 'hammer') ghosts.preload(['floor']); else if (DECOR_TYPES.includes(k)) ghosts.preload([k]);
+    }
+    if (fresh) { try { ghosts.warm(() => renderer.compileAsync(scene, camera).catch(() => {})); } catch (e) { console.warn('shader warm-up failed', e); } }
   }
   function palm(parent, x, y, z, s = 1) {
     const g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); cylinder(.09, .17, 1.6, '#ad8153', 0, .8, 0, g);
@@ -789,17 +791,21 @@ export function mount(transfer = null) {
       else paintPlanter(g, plantStage(world.garden?.[k]), world.garden?.[k]?.water === 1);
     }
   }
-  // Returns null when the cell is not a build spot at all, else {x, z} plus `blocked` ('bound' | 'cap' | 'reach') when refused.
+  // Returns null when the cell is not a build spot at all, else {x, z, blocked} with `blocked` ('bound' | 'cap' | 'reach' |
+  // 'nofloor') when refused, null when it can be built. Runs every frame, so it fills one reused result (read it right away).
+  const placed = {x:0, z:0, blocked:null};
   function placementFor(kind, p) {
     if (!p) return null; const x = Math.round(p.x / 2), z = Math.round(p.z / 2);
     let why;
     if (kind === 'hammer') why = floorBlock(world.tiles, x, z);
     else if (DECOR_TYPES.includes(kind)) { if (fc?.hasGrill(x, z)) return null; why = decorBlock(world.tiles, world.decor, x, z); } // [fishing-cooking] grill tiles
     else return null;
+    if (why === 'nofloor' && !nearDeck(x, z)) return null; // just off the deck edge still shows a red ghost instead of nothing
     if (why && !BLOCK_TEXT[why]) return null;
     if (!why && !inReach(physics.x, physics.z, x, z)) why = 'reach';
-    return why ? {x, z, blocked:why} : {x, z};
+    placed.x = x; placed.z = z; placed.blocked = why || null; return placed;
   }
+  function nearDeck(x, z) { for (const [a, b] of NEIGHBOURS) if (hasTile(x + a, z + b)) return true; return false; }
   function placementCandidates(kind) {
     const out = [], ok = (x, z) => inReach(physics.x, physics.z, x, z);
     if (kind === 'hammer') { const seen = new Set(); for (const [tx, tz] of world.tiles) for (const [a, b] of NEIGHBOURS) { const x = tx + a, z = tz + b, k = x + ',' + z; if (!seen.has(k) && !floorBlock(world.tiles, x, z) && ok(x, z)) { seen.add(k); out.push({x, z}); } } }
@@ -1030,7 +1036,7 @@ export function mount(transfer = null) {
       if (!v) { notice(kind === 'hammer' ? 'Point at an empty space beside the raft' : 'Point at an empty raft floor'); return; }
       if (v.blocked) { notice(BLOCK_TEXT[v.blocked]); return; }
       if (kind === 'hammer' && !canAfford(bag, FLOOR_COST)) { notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
-      swing = 1; action({kind:'build', recipe:kind === 'hammer' ? 'floor' : kind, ...v, ...(kind !== 'hammer' && placeRot ? {rot:placeRot} : {})}); return;
+      swing = 1; ghostHold = {kind, x:v.x, z:v.z}; action({kind:'build', recipe:kind === 'hammer' ? 'floor' : kind, x:v.x, z:v.z, ...(kind !== 'hammer' && placeRot ? {rot:placeRot} : {})}); return;
     }
     if (kind === 'fishingrod') {
       if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2))) { notice('Point at the water to fish'); return; }
@@ -1183,7 +1189,7 @@ export function mount(transfer = null) {
     const kind = heldKind(), motion = options.cameraMotion;
     const ch = charging ? clamp((performance.now() - charging.start) / CHARGE_MS, 0, 1) : 0;
     hands.setHeld(running ? kind : null);
-    pointing = running && isPlaceable(kind) && (kind !== 'seed' || !!farmPlot(frameAim)); // the one place the pointing-finger pose is decided; seeds point only at a planter
+    pointing = running && isPlaceable(kind);           // the one place the pointing-finger pose is decided
     hands.setPose(pointing ? 'point' : null);
     const rod = kind === 'fishingrod' ? hands.itemModel('fishingrod') : null, out = !!hook?.fishing;
     if (rod?.userData.float) { rod.userData.float.visible = !out; rod.userData.leader.visible = !out; }
@@ -1285,7 +1291,8 @@ export function mount(transfer = null) {
     const pieces = kind === 'hammer' && !hook && building && building.piece !== 'foundation'; // building-pieces lane hook
     building?.update(raft, frameAim, camera.position, running && kind === 'hammer' && !hook && !uiBlocked(), localBag(), yaw, deckY());
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing ? placementFor(kind, frameAim.point) : null;
-    if (!hover) { ghosts.hide(); return; }
+    if (!hover || ghostHold && (ghostHold.kind !== kind || ghostHold.x !== hover.x || ghostHold.z !== hover.z)) ghostHold = null;
+    if (!hover || ghostHold) { ghosts.hide(); return; } // just-placed spot: no ghost over the new piece until the aim moves off
     const floor = kind === 'hammer';
     ghosts.show(floor ? 'floor' : kind, hover.x * 2, floor ? .015 : .22, hover.z * 2, floor ? 0 : placeRot, !hover.blocked && !(floor && !canAfford(localBag(), FLOOR_COST)), elapsed);
   }

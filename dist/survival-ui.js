@@ -171,7 +171,7 @@ function recipeList() {
 // ---- styles ----
 const FONT = "var(--ui-font,'Segoe UI',system-ui,sans-serif)";
 const CSS = `
-.tools.sv-hotbar{--s:52px;--g:4px;--px:5px;--py:5px;position:relative;display:flex;flex-wrap:nowrap;gap:var(--g);padding:5px;border-radius:4px;max-width:96vw;overflow:visible;
+.tools.sv-hotbar{--s:clamp(52px,3.2vw,68px);--g:4px;--px:5px;--py:5px;position:relative;display:flex;flex-wrap:nowrap;gap:var(--g);padding:5px;border-radius:4px;max-width:96vw;overflow:visible;
   background:repeating-linear-gradient(90deg,#00000010 0 1px,transparent 1px 17px),linear-gradient(#a8844f,#9a7748 45%,#8a6a3e);
   border:2px solid #5e4426;box-shadow:inset 0 1px 0 #c9a76f88,0 3px 10px #0004}
 .tools.sv-hotbar::before,.tools.sv-hotbar::after{content:none;display:none}
@@ -209,7 +209,7 @@ const CSS = `
   transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),5px);transition:opacity .25s,transform .22s cubic-bezier(.3,1.3,.5,1)}
 .tools.sv-hotbar>.sv-label.sv-show{opacity:1;transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),0)}
 @media(max-width:760px){.tools.sv-hotbar{--s:min(42px,calc((96vw - 41px) / 10));--g:3px}.tools.sv-hotbar .sv-art{inset:3px}.tools.sv-hotbar .sv-count{font-size:12px}}
-#inventory.sv-inv{--s:56px;--g:6px;padding:0;margin:auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#3e2a17;
+#inventory.sv-inv{--s:min(56px,calc((96vw - 380px) / 10 - 6px));--g:6px;padding:0;margin:auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#3e2a17;
   width:max-content;min-width:0;max-width:96vw;max-height:94vh;overflow:visible;font:500 14px/1.35 ${FONT}}
 #inventory.sv-inv::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
 #inventory .sv-wrap{display:flex;gap:14px;align-items:stretch;padding:14px;outline:none;border-radius:6px;

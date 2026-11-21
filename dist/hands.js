@@ -259,12 +259,19 @@ export function createHands(T, { modelFactory = null } = {}) {
   // Pointing frames: hand half-prone, index aimed just below the crosshair. The left one is the mirror
   // image (x -> -x of the same grip axis / forearm direction; the arm frame itself is already mirrored).
   const pointFrame = (A, sx) => {
-    const u = V(-0.65 * sx, 0.70, -0.20).normalize(), F = V(0.40 * sx, -0.42, 1.0).normalize();
+    const u = V(-0.85 * sx, 0.45, -0.10).normalize(), F = V(0.80 * sx, -0.50, 0.55).normalize();
     const f = F.clone().addScaledVector(u, -F.dot(u)).normalize(), r = V().crossVectors(u, f).normalize();
     A.qPoint = new T.Quaternion().setFromRotationMatrix(new T.Matrix4().makeBasis(r, u, f));
-    A.pointPos = V(0.27 * sx, -0.30, -0.64);
+    A.pointPos = V(0.25 * sx, -0.25, -0.62);
   };
   pointFrame(R, 1); pointFrame(L, -1);
+  // Left rope grip while reeling: the left fist closes on the line just ahead of the right one (hand over hand).
+  {
+    const u = V(-0.30, 0.25, -1.0).normalize(), F = V(-0.45, -0.75, 0.55).normalize();
+    const f = F.clone().addScaledVector(u, -F.dot(u)).normalize(), r = V().crossVectors(u, f).normalize();
+    L.qRope = new T.Quaternion().setFromRotationMatrix(new T.Matrix4().makeBasis(r, u, f));
+    L.ropePos = V(0.28, -0.235, -0.85);
+  }
 
   // ---------------- held items (right fist; decorations ride on the left fist) ----------------
   const toolHolder = new T.Group(); toolHolder.name = 'toolHolder';
@@ -356,9 +363,9 @@ export function createHands(T, { modelFactory = null } = {}) {
   const poseOf = (kind) => st.poseOverride || (kind ? holdFor(kind).pose : 'grip');
   const usesLeft = (kind) => kind === 'hook' || holdFor(kind).hand === 'left';
   const handPoses = { R: '', L: '' };
-  function applyFingers(pose, ropeGrip) {
+  function applyFingers(pose, ropeGrip, leftRope) {
     const pointer = pose !== 'point' || !st.shown ? null : holdFor(st.shown).hand === 'left' ? 'R' : 'L';
-    const r = pointer === 'R' ? 'point' : ropeGrip ? 'fist' : pose === 'open' ? 'open' : 'grip', l = pointer === 'L' ? 'point' : 'grip';
+    const r = pointer === 'R' ? 'point' : ropeGrip ? 'fist' : pose === 'open' ? 'open' : 'grip', l = pointer === 'L' ? 'point' : leftRope ? 'fist' : 'grip';
     if (handPoses.R !== r) setPose(R.H, handPoses.R = r);
     if (handPoses.L !== l) setPose(L.H, handPoses.L = l);
     return pointer;
@@ -373,11 +380,14 @@ export function createHands(T, { modelFactory = null } = {}) {
   }
 
   const qA = new T.Quaternion(), pA = V();
-  function applyArm(A, px, py, pz, rx, ry, rz, wx, wy, wz, w = 0) {
+  const qB = new T.Quaternion();
+  function applyArm(A, px, py, pz, rx, ry, rz, wx, wy, wz, w = 0, wRope = 0) {
     pA.lerpVectors(A.basePos, A.pointPos, w);
+    qB.slerpQuaternions(A.qBase, A.qPoint, w);
+    if (wRope > 0) { pA.lerp(A.ropePos, wRope); qB.slerp(A.qRope, wRope); }
     A.pose.position.set(pA.x + px, pA.y + py, pA.z + pz);
     eul.set(rx, ry, rz); qOff.setFromEuler(eul);
-    A.pose.quaternion.copy(qOff).multiply(qA.slerpQuaternions(A.qBase, A.qPoint, w));
+    A.pose.quaternion.copy(qOff).multiply(qB);
     A.wrist.rotation.set(wx, wy, wz);
   }
 
@@ -403,7 +413,8 @@ export function createHands(T, { modelFactory = null } = {}) {
     // the FOV setting never resizes the hands and they frame the same on every setting.
     if (Number.isFinite(params.fov) && params.fov > 0) { const s = Math.tan(params.fov * DEG / 2) / VM_TAN; root.scale.set(s, s, 1); }
     const isHook = st.shown === 'hook', hasHookOut = st.hookOut = isHook && !!params.hasHookOut;
-    const pose = poseOf(st.shown), pointer = applyFingers(pose, hasHookOut);
+    const leftRope = hasHookOut && st.reelW > 0.35;              // both fists on the line while reeling
+    const pose = poseOf(st.shown), pointer = applyFingers(pose, hasHookOut, leftRope);
     const charge = pose === 'throw' ? 1 : isHook ? charge0 : 0;
     // pointing blends in; a left hand that only shows up to point slides in from below
     st.ptR += ((pointer === 'R' ? 1 : 0) - st.ptR) * k(12);
@@ -412,7 +423,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     L.pose.visible = st.shown !== null && (leftNeeded || st.ptL > 0.02);
     const rightIdle = !!st.shown && holdFor(st.shown).hand === 'left', rIn = rightIdle ? st.ptR : 1;   // empty right hand stays down
     R.pose.visible = st.shown !== null && (!rightIdle || st.ptR > 0.02);
-    coil.visible = lead.visible = isHook && pointer !== 'L';
+    coil.visible = lead.visible = isHook && pointer !== 'L' && !leftRope;
 
     // ---- look lag: hands trail camera turns a little, then settle
     if (Number.isFinite(params.yaw) && Number.isFinite(params.pitch)) {
@@ -456,6 +467,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     const pullR = stroke(t * REEL_HZ / 2), pull = stroke(t * REEL_HZ / 2 + 0.5);
     const rW = st.reelW, oW = st.outW, tw = st.toolW;
     const catchDip = hasHookOut ? 0 : (1 - tw);
+    const hold = st.shown ? holdFor(st.shown) : {}, nW = (1 - oW) * (1 - st.ptR), arm = hold.arm || [0, 0, 0];
 
     // ---- right arm
     // hook out: the fist closes on the line and comes in toward the middle; reeling pulls it back and down
@@ -465,18 +477,20 @@ export function createHands(T, { modelFactory = null } = {}) {
     const rrx = 0.35 * ce - 0.65 * a + 0.010 * amp * br - 0.15 * oW + 0.30 * pullR * rW + 0.12 * catchDip - 0.5 * down;
     const rry = 0.20 * ce - 0.15 * a;
     const rrz = -0.20 * ce + 0.25 * a + 0.03 * wA * Math.sin(ph) + 0.15 * pullR * rW + 0.25 * down;
-    const rwx = 0.30 * ce - 0.45 * a - 0.10 * oW + 0.22 * pullR * rW;
+    const rwx = 0.30 * ce - 0.45 * a - 0.10 * oW + 0.22 * pullR * rW - (hold.tilt || 0) * nW;
     const rwz = -0.15 * ce + 0.12 * a;
-    applyArm(R, rpx, rpy, rpz, rrx, rry, rrz, rwx, 0, rwz, smooth(0, 1, st.ptR));
+    applyArm(R, rpx + arm[0] * nW, rpy + arm[1] * nW, rpz + arm[2] * nW, rrx, rry, rrz, rwx, 0, rwz, smooth(0, 1, st.ptR));
 
     // ---- left arm
-    const lpx = 0.02 * ce + 0.02 * a + (0.015 * pull + 0.03 * oW) * rW - 0.010 * wA * Math.sin(ph) + 0.002 * amp * Math.sin(t * 0.63 + 1);
-    const lpy = 0.03 * ce + 0.02 * a + (0.010 - 0.035 * pull) * rW - 0.012 * wA * (0.5 - 0.5 * Math.cos(2 * ph + Math.PI)) + 0.004 * amp * brL - 0.45 * down - 0.45 * (1 - lIn);
-    const lpz = -0.03 * ce - 0.06 * a + (0.09 * pull - 0.03) * rW;
+    const lw = rW * oW;                                          // left fist on the line, reaching and pulling in turn
+    const lpx = 0.02 * ce + 0.02 * a + (0.015 * pull + 0.03 * oW) * rW * (1 - lw) - 0.010 * wA * Math.sin(ph) + 0.002 * amp * Math.sin(t * 0.63 + 1);
+    const lpy = 0.03 * ce + 0.02 * a + (0.010 - 0.035 * pull) * rW * (1 - lw) - 0.012 * wA * (0.5 - 0.5 * Math.cos(2 * ph + Math.PI)) + 0.004 * amp * brL - 0.45 * down - 0.45 * (1 - lIn);
+    const lpz = -0.03 * ce - 0.06 * a + (0.09 * pull - 0.03) * rW * (1 - lw);
     const lrx = -0.10 * ce + 0.30 * pull * rW + 0.008 * amp * brL - 0.4 * down;
     const lry = 0.08 * ce;
     const lrz = -0.15 * pull * rW - 0.03 * wA * Math.sin(ph) - 0.2 * down;
-    applyArm(L, lpx, lpy, lpz, lrx, lry, lrz, 0.22 * pull * rW - 0.08 * ce, 0, -0.10 * ce + 0.12 * a, smooth(0, 1, st.ptL));
+    applyArm(L, lpx + lw * 0.03 * pull, lpy - lw * 0.04 * pull, lpz + lw * 0.08 * pull, lrx - lw * 0.25 * pull, lry, lrz + lw * 0.10 * pull,
+      0.22 * pull * rW * (1 - lw) - 0.08 * ce, 0, -0.10 * ce + 0.12 * a, smooth(0, 1, st.ptL), lw);
 
     // ---- coil: spool turns while reeling (in) / casting (out); pendulum swing about grip axis
     if (isHook) {
@@ -491,7 +505,7 @@ export function createHands(T, { modelFactory = null } = {}) {
 
     last.lag[0] = st.lagX; last.lag[1] = st.lagY;
     Object.assign(last, { held: st.shown, target: st.target, pose, pointHand: pointer, dip: down, charge: chargeEff, chargeEased: ce, throw: a,
-      pull: pull * rW, pullR: pullR * rW, rightHand: handPoses.R, walkW: st.walkW, reelW: rW, hookOutW: oW, toolW: tw, spool: st.spool, models: mounts.size });
+      pull: pull * rW, pullR: pullR * rW, rightHand: handPoses.R, leftHand: handPoses.L, ropeW: rW * oW, walkW: st.walkW, reelW: rW, hookOutW: oW, toolW: tw, spool: st.spool, models: mounts.size });
     return last;
   }
 

@@ -30,7 +30,7 @@ const DEFAULTS = Object.freeze(Object.fromEntries(Object.entries(SPEC).map(([k, 
 const KEYS = Object.keys(SPEC);
 const TABS = [['controls', 'Controls'], ['graphics', 'Graphics'], ['audio', 'Audio']];
 const KEYMAP = [['W A S D', 'Walk'], ['Space', 'Jump'], ['Shift', 'Sprint'], ['Click', 'Use tool / charge throw'], ['Hold click', 'Reel in'],
-  ['1 - 8 / Wheel', 'Pick hotbar slot'], ['Tab / I', 'Inventory'], ['E', 'Interact'], ['R', 'Repair hook'], ['L', 'Logbook'], ['Esc', 'Back / pause']];
+  ['1 - 0 / Wheel', 'Pick hotbar slot'], ['Tab / I', 'Inventory'], ['E', 'Interact'], ['R', 'Repair hook'], ['L', 'Logbook'], ['Esc', 'Back / pause']];
 
 export function validateSettings(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
@@ -327,7 +327,8 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   document.addEventListener('close', guard((event) => {
     const d = event.target;
     if (!(d instanceof HTMLDialogElement)) return;
-    if (d !== dialog && d === returnToPause) { returnToPause = null; delete d.dataset.fromPause; if (gameActive()) { open(); return; } }
+    // Help returns to the menu on the title too; crew may close because a game is starting.
+    if (d !== dialog && d === returnToPause) { delete d.dataset.fromPause; returnToPause = null; if (gameActive() || d.id === 'help') { open(); return; } }
     if (d.id !== 'inventory' && d !== dialog) return;
     setTimeout(guard(() => {
       if (gameActive() && !document.pointerLockElement && !document.querySelector('dialog[open]')) document.body.classList.add('relock');
