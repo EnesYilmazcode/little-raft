@@ -61,3 +61,55 @@ test('K5: the stairs you stand on can be picked, but never steal an aim at a pie
   const out = g2.aim(eye[0], eye[1], eye[2], 0, 0.3, -1, 'floor', 0, DECK, 7, {});
   assert.ok(out && out.t === 'floor' && out.l === 1, 'aiming a floor above from the stairs finds a slot');
 });
+
+// ============================================================ K4 / K3: host checks in building.apply
+
+const { Bag } = await import(new URL('inventory-state.js', base));
+const { cleanPieces } = await import(new URL('building.js', base));
+function builderBag(wood = 30) { const b = new Bag(); b.add('hammer', 1); b.add('wood', wood); b.add('leaf', 10); return b; }
+
+test('K4: the host refuses a guest piece / unpiece past REACH + slack from the guest, and allows it close by', () => {
+  const b = createBuilding(T, new T.Scene()), world = { tiles: tiles3(), decor: [], pieces: [] };
+  b.sync(world);
+  const bag = builderBag(), far = { x: 40, z: 0 }, near = { x: 0, z: 0 };
+  const wall = { kind: 'piece', t: 'wall', i: 1, j: 0, l: 0, r: 1 };
+  let r = b.apply(wall, bag, world, far, true);
+  assert.equal(r.ok, false); assert.match(r.text, /Too far/);
+  assert.equal(world.pieces.length, 0, 'nothing built from across the sea');
+  assert.equal(bag.count('wood'), 30, 'nothing charged');
+  r = b.apply(wall, bag, world, { x: 1 + 7 + 1.9, z: 0 }, true); // edge centre (1, 0): 8.9 m away, inside 7 + 2 slack
+  assert.equal(r.ok, true, r.text);
+  r = b.apply({ ...wall, kind: 'unpiece' }, bag, world, far, true);
+  assert.equal(r.ok, false, 'no removal from afar either'); assert.equal(world.pieces.length, 1);
+  r = b.apply({ ...wall, kind: 'unpiece' }, bag, world, { x: 1 + 7.5, z: 0 }, false);
+  assert.equal(r.ok, false, 'the host gets no slack');
+  r = b.apply({ ...wall, kind: 'unpiece' }, bag, world, near, true);
+  assert.equal(r.ok, true); assert.equal(world.pieces.length, 0);
+  assert.match(gameSrc, /building\.apply\(a, bag, world, actor === 'guest' \? other : physics, actor === 'guest'\)/, 'game.js passes the actor pose');
+  b.dispose();
+});
+
+test('K3: stairs refuse a decorated tile; decor refuses a tile under stairs; old overlapping saves still load', () => {
+  const b = createBuilding(T, new T.Scene()), world = { tiles: tiles3(), decor: [{ type: 'crate', x: 1, z: 1 }], pieces: [] };
+  b.sync(world);
+  const bag = builderBag();
+  let r = b.apply({ kind: 'piece', t: 'stairs', i: 1, j: 1, l: 0, r: 0 }, bag, world, { x: 0, z: 0 });
+  assert.equal(r.ok, false); assert.equal(r.text, 'Something is in the way');
+  assert.equal(bag.count('wood'), 30);
+  r = b.apply({ kind: 'piece', t: 'stairs', i: 0, j: 1, l: 0, r: 0 }, bag, world, { x: 0, z: 0 });
+  assert.equal(r.ok, true, 'a free tile is fine');
+  assert.equal(b.cellTaken(0, 1), true, 'decor on (0,1) would stand in the stairs');
+  assert.equal(b.cellTaken(1, 0), false);
+  assert.ok(b.apply({ kind: 'piece', t: 'wall', i: 1, j: 1, l: 0, r: 0 }, bag, world, { x: 0, z: 0 }).ok, 'walls on a decorated tile border are fine');
+  assert.equal(b.cellTaken(1, 1), false, 'edge pieces do not take the cell');
+  // an old save with both on one tile keeps both
+  const old = [{ t: 'stairs', i: 1, j: 1, l: 0, r: 0 }];
+  assert.deepEqual(cleanPieces(old, tiles3()), old);
+  const w2 = { tiles: tiles3(), decor: [{ type: 'crate', x: 1, z: 1 }], pieces: old };
+  b.sync(w2); assert.equal(w2.pieces.length, 1); assert.equal(w2.decor.length, 1);
+  // game.js: the decor ghost, candidates and the host build branch all ask cellTaken
+  assert.equal((gameSrc.match(/building\?\.cellTaken\(/g) || []).length, 3);
+  const host = gameSrc.slice(gameSrc.indexOf('} else if (DECOR_TYPES.includes(a.recipe)) {'), gameSrc.indexOf('world.decor.push(rot ?'));
+  assert.match(host, /if \(building\?\.cellTaken\(a\.x, a\.z\)\) \{ emit\(\{kind:'notice', text:BLOCK_TEXT\.overlap\}, actor\); return; \}/);
+  b.dispose();
+});

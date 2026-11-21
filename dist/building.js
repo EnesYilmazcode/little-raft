@@ -6,9 +6,11 @@ import { BuildGrid, PIECES, PIECE_ORDER, LEVEL_H, cleanPieces } from './building
 import { createPieceGeometry, createPieceMaterial } from './building-models.js?build=v3-survival-ae77fa84ac2b';
 import { createBuildMenu } from './build-menu.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 
 export { cleanPieces };
-const FLOOR_Y = .2, REACH = 7, GHOST_OK = '#9dffc0', GHOST_BAD = '#ff8a73';
+export const REACH = 7;
+const FLOOR_Y = .2, GHOST_OK = '#9dffc0', GHOST_BAD = '#ff8a73';
 const STORED = PIECE_ORDER.filter(id => PIECES[id].slot !== 'tile');
 
 export function createBuilding(T, scene) {
@@ -59,8 +61,9 @@ export function createBuilding(T, scene) {
 
   // Engine world -> grid. Cheap when nothing changed (tiles count + pieces identity).
   // Tiles: identity too (a guest's new host world / restored own raft can have the same tile count but other cells).
-  let lastTiles = -1, lastTilesRef = null, lastPieces = null;
+  let lastTiles = -1, lastTilesRef = null, lastPieces = null, decorRef = null;
   function sync(world) {
+    decorRef = Array.isArray(world.decor) ? world.decor : null;
     if (world.tiles !== lastTilesRef || world.tiles.length !== lastTiles) { grid.setTiles(world.tiles); lastTilesRef = world.tiles; lastTiles = world.tiles.length; }
     if (world.pieces !== lastPieces) { world.pieces = grid.load(Array.isArray(world.pieces) ? world.pieces : []); lastPieces = world.pieces; }
     if (grid.version !== version) rebuild();
@@ -95,6 +98,7 @@ export function createBuilding(T, scene) {
         else text = 'Point at a piece to remove';
       } else if (freePiece()) {
         const r = grid.aim(origin.x, origin.y, origin.z, d.x, d.y, d.z, piece(), (yawDir(yaw) + rot) % 4, deckY, REACH, aimOut);
+        if (r && r.ok && onDecor(r)) { r.ok = false; r.reason = BLOCK_TEXT.overlap; }
         if (r) { showGhost(r, r.ok && afford(PIECES[r.t].cost) ? okColor : badColor); text = r.ok ? (afford(PIECES[r.t].cost) ? '' : 'Not enough materials') : r.reason; }
       }
     }
@@ -123,15 +127,34 @@ export function createBuilding(T, scene) {
     return p ? {kind:'unpiece', t:p.t, i:p.i, j:p.j, l:p.l, r:p.r} : null;
   }
 
+  // A level-0 cell piece (stairs) would stand inside a decoration on that tile.
+  const onDecor = p => p.l === 0 && PIECES[p.t]?.slot === 'cell' && !!decorRef && decorRef.some(d => d.x === p.i && d.z === p.j);
+  // Decor can't go on a tile whose level-0 cell holds a piece (stairs). Edge pieces sit on the tile border, 1 m
+  // from the centre, which no decor footprint reaches.
+  const cellTaken = (x, z) => grid.list.some(q => q.l === 0 && q.i === x && q.j === z && PIECES[q.t].slot === 'cell');
+  // XZ centre of a piece record (cells at 2i,2j; edges and corners on the cell's -x / -z border).
+  const centreOf = p => {
+    const s = PIECES[p.t].slot;
+    if (s === 'edge') return p.r ? [p.i * 2 - 1, p.j * 2] : [p.i * 2, p.j * 2 - 1];
+    if (s === 'corner') return [p.i * 2 - 1, p.j * 2 - 1];
+    return [p.i * 2, p.j * 2];
+  };
+
   // Host-authoritative: validate, charge or refund the actor's bag, mutate world.pieces. Returns {ok, text}.
-  function apply(a, bag, world) {
+  // who: the actor's pose {x, z} (null = unknown, as for a guest before its first move); guest adds the pose-lag slack.
+  function apply(a, bag, world, who = null, guest = false) {
     sync(world);
     const p = {t:a.t, i:a.i, j:a.j, l:a.l, r:a.r}, def = typeof p.t === 'string' && Object.hasOwn(PIECES, p.t) ? PIECES[p.t] : null;
     if (!def || def.slot === 'tile' || ![p.i, p.j, p.l, p.r].every(Number.isInteger)) return {ok:false, text:''};
     if (bag.count('hammer') < 1) return {ok:false, text:'Craft a hammer first'};
+    if (who && Number.isFinite(who.x) && Number.isFinite(who.z)) {
+      const [cx, cz] = centreOf(p);
+      if (Math.hypot(cx - who.x, cz - who.z) > REACH + (guest ? GUEST_REACH_SLACK : .01)) return {ok:false, text:BLOCK_TEXT.reach};
+    }
     const scratch = new Bag(bag.snapshot());
     if (a.kind === 'piece') {
       const why = grid.canPlace(p); if (why) return {ok:false, text:why};
+      if (onDecor(p)) return {ok:false, text:BLOCK_TEXT.overlap};
       for (const k in def.cost) if (!scratch.remove(k, def.cost[k])) return {ok:false, text:def.name + ' needs ' + costText(def.cost)};
       grid.place(p);
     } else {
@@ -166,7 +189,7 @@ export function createBuilding(T, scene) {
     ghostMat.dispose(); material.map?.dispose(); material.dispose();
   }
 
-  return {grid, menu, group, sync, update, use, removeAction, apply, key, dispose, setTint, retint, preview, // setTint/retint/preview: content hook (paint)
+  return {grid, menu, group, sync, update, use, removeAction, apply, key, cellTaken, dispose, setTint, retint, preview, // setTint/retint/preview: content hook (paint)
     get removing() { return removing; }, get piece() { return piece(); }, get rotation() { return rot; },
     preStep:(phys, deckY) => grid.preStep(phys, deckY), postStep:(phys, deckY) => grid.postStep(phys, deckY)};
 }

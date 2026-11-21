@@ -980,7 +980,7 @@ export function mount(transfer = null) {
     if (!p) return null; const x = Math.round(p.x / 2), z = Math.round(p.z / 2);
     let why;
     if (kind === 'hammer') why = floorBlock(world.tiles, x, z);
-    else if (DECOR_TYPES.includes(kind)) { if (fc?.hasGrill(x, z)) return null; why = decorBlock(world.tiles, world.decor, x, z); } // [fishing-cooking] grill tiles
+    else if (DECOR_TYPES.includes(kind)) { if (fc?.hasGrill(x, z)) return null; why = decorBlock(world.tiles, world.decor, x, z) || (building?.cellTaken(x, z) ? 'overlap' : null); } // [fishing-cooking] grill tiles; stairs on the tile
     else return null;
     if (why === 'nofloor' && !nearDeck(x, z)) return null; // just off the deck edge still shows a red ghost instead of nothing
     if (why && !BLOCK_TEXT[why]) return null;
@@ -995,7 +995,7 @@ export function mount(transfer = null) {
   function placementCandidates(kind) {
     const out = [], ok = (x, z) => inReach(physics.x, physics.z, x, z);
     if (kind === 'hammer') { const seen = new Set(); for (const [tx, tz] of world.tiles) for (const [a, b] of NEIGHBOURS) { const x = tx + a, z = tz + b, k = x + ',' + z; if (!seen.has(k) && !floorBlock(world.tiles, x, z) && ok(x, z)) { seen.add(k); out.push({x, z}); } } }
-    else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (!decorBlock(world.tiles, world.decor, x, z) && !fc?.hasGrill(x, z) && ok(x, z)) out.push({x, z});
+    else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (!decorBlock(world.tiles, world.decor, x, z) && !fc?.hasGrill(x, z) && !building?.cellTaken(x, z) && ok(x, z)) out.push({x, z});
     return out;
   }
   let placeRot = 0, pointing = false; // decor placement rotation (radians) and the pointing-hand pose
@@ -1132,6 +1132,7 @@ export function mount(transfer = null) {
         world.tiles.push([a.x, a.z]);
       } else if (DECOR_TYPES.includes(a.recipe)) {
         if (decorBlock(world.tiles, world.decor, a.x, a.z)) return; if (fc?.hasGrill(a.x, a.z)) return; // [fishing-cooking] grill tiles
+        if (building?.cellTaken(a.x, a.z)) { emit({kind:'notice', text:BLOCK_TEXT.overlap}, actor); return; } // stairs stand on this tile
         const inWay = playerInWay(decorBlockers({type:a.recipe, x:a.x, z:a.z, rot:a.rot}, BLOCK_RADIUS), [physics, other], PLAYER_CONSTANTS.BODY_RADIUS); // host pose, guest pose
         if (inWay >= 0) { emit({kind:'notice', text:BLOCK_TEXT[(inWay === 0) === (actor === 'host') ? 'self' : 'brother']}, actor); return; }
         if (a.recipe === 'receiver' && world.decor.some(d => d.type === 'receiver')) { emit({kind:'notice', text:'Your raft already has a receiver'}, actor); return; }
@@ -1148,7 +1149,7 @@ export function mount(transfer = null) {
       return;
     }
     if ((a.kind === 'piece' || a.kind === 'unpiece') && building) { // building-pieces lane hook
-      const r = building.apply(a, bag, world);
+      const r = building.apply(a, bag, world, actor === 'guest' ? other : physics, actor === 'guest'); // host reach check, like 'build'
       if (r.ok) emit({kind:'build', text:r.text}, 'all'); else if (r.text) emit({kind:'notice', text:r.text}, actor);
       return;
     }
