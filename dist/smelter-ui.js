@@ -8,17 +8,16 @@ let ICONS = {};
 const iconsReady = import('./item-svg.js').then(m => { ICONS = m.ITEM_ICONS || m.default || {}; }).catch(() => {});
 
 const CSS = `
-#stationPanel.st-dlg{padding:0;margin:auto;border:0;background:transparent;box-shadow:none;width:max-content;max-width:96vw;color:#fff2cc;font:500 14px/1.35 ${FONT};overflow:visible}
-#stationPanel.st-dlg::backdrop{background:rgba(12,9,5,.42);backdrop-filter:none}
-#stationPanel .st-wrap{position:relative;padding:12px;border-radius:6px;outline:none;
-  background:repeating-linear-gradient(90deg,#00000012 0 2px,transparent 2px 23px),linear-gradient(#b48d55,#8a663a);border:3px solid #3e2a17;box-shadow:0 0 0 2px #d6b67e,0 18px 50px #000a}
+#stationPanel.st-dlg{color:#fff2cc;font:500 14px/1.35 ${FONT}} /* layout: dialog.lr-sheet (graphics.css) */
+#stationPanel .st-wrap{position:relative;outline:none;
+  background:repeating-linear-gradient(90deg,#00000012 0 2px,transparent 2px 23px),linear-gradient(#b48d55,#8a663a);box-shadow:inset 3px 0 0 #3e2a17,inset 5px 0 0 #d6b67e}
 #stationPanel .st-head{display:flex;align-items:center;justify-content:space-between;margin:-2px 2px 10px}
 #stationPanel h2{margin:0;font:800 19px/1.1 ${FONT};color:#2a1b0e;letter-spacing:.3px;text-shadow:0 1px 0 #e7cd98}
 #stationPanel .st-x{width:30px;height:30px;padding:0;border:0;border-radius:4px;background:#3a2716;color:#fff2cc;font:700 18px/1 ${FONT};cursor:pointer;transform:none}
 #stationPanel .st-x:hover{background:#5d4129}
-#stationPanel .st-body{display:flex;gap:12px;align-items:stretch}
+#stationPanel .st-body{display:flex;flex-direction:column;gap:12px;align-items:stretch}
 #stationPanel .st-bag,#stationPanel .st-main{background:#3a2716eb;border-radius:4px;box-shadow:inset 0 0 0 2px #24170c,inset 0 0 0 3px #b48d5544;padding:10px}
-#stationPanel .st-bag{user-select:none;-webkit-user-select:none;width:190px;max-height:300px;overflow:auto;box-sizing:border-box;scrollbar-color:#b48d55 #2a1b0e}
+#stationPanel .st-bag{user-select:none;-webkit-user-select:none;max-height:min(260px,34dvh);overflow:auto;box-sizing:border-box;scrollbar-color:#b48d55 #2a1b0e}
 #stationPanel .st-sub{margin:0 0 6px;font:700 11px/1 ${FONT};letter-spacing:1.4px;text-transform:uppercase;color:#d9c9a6}
 #stationPanel .st-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
 #stationPanel .st-none{margin:0 0 12px;font-size:12px;color:#bfae8a}
@@ -28,7 +27,7 @@ const CSS = `
 #stationPanel .st-chip .st-ic{position:absolute;inset:7px}
 #stationPanel .st-n{position:absolute;right:3px;bottom:2px;font:700 13px/1 ${FONT};color:#fff2cc;text-shadow:0 1px 0 #000,0 0 3px #000}
 #stationPanel .st-ic svg{display:block;width:100%;height:100%;filter:drop-shadow(0 1px 1px #0008)}
-#stationPanel .st-main{display:flex;flex-direction:column;gap:10px;width:370px;box-sizing:border-box}
+#stationPanel .st-main{display:flex;flex-direction:column;gap:10px;box-sizing:border-box}
 #stationPanel .st-row{display:grid;grid-template-columns:72px 1fr 72px;gap:10px;align-items:center}
 #stationPanel .st-col{display:flex;flex-direction:column;align-items:center;gap:6px}
 #stationPanel .st-slot{position:relative;width:60px;height:60px;border-radius:4px;background:#24170c;box-shadow:inset 0 0 0 2px #6b4a2b,inset 0 3px 8px #000a}
@@ -50,7 +49,7 @@ const CSS = `
 @keyframes st-fl{from{transform:scale(1,1)}to{transform:scale(.92,1.09)}}
 #stationPanel .st-hint{margin:0;padding:7px 9px;border-radius:3px;background:#24170caa;font:600 13px/1.3 ${FONT};color:#d9c9a6;text-align:center}
 #stationPanel .st-hint.st-warn{color:#ffcf9a;box-shadow:inset 0 0 0 1px #ffbd6655}
-@media(max-width:620px){#stationPanel .st-body{flex-direction:column}#stationPanel .st-bag{width:auto;max-height:160px}#stationPanel .st-main{width:auto}}
+@media(max-width:760px){#stationPanel .st-bag{max-height:170px}}
 @media(prefers-reduced-motion:reduce){#stationPanel .st-on .st-flame{animation:none}}`;
 const FLAME = `<svg class="st-flame" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 4C27 13 37 18 37 30A13 13 0 0 1 11 30C11 22 16 19 18 12C20 17 22 18 23 19C25 14 25 9 24 4Z" fill="#e0603a" stroke="#153e49" stroke-width="2" stroke-linejoin="round"/><path d="M24 22C26 27 31 29 31 34A7 7 0 0 1 17 34C17 30 20 29 21 25C22 27 23 27 24 22Z" fill="#ffd27a"/></svg>`;
 
@@ -70,7 +69,7 @@ export function createStationPanel({ getStation, getBag, items = {}, fuelValue =
   }
   let dlg = document.getElementById('stationPanel');
   if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'stationPanel'; document.body.append(dlg); }
-  dlg.className = 'st-dlg';
+  dlg.className = 'st-dlg lr-sheet';
   dlg.innerHTML = `<div class="st-wrap" tabindex="-1">
     <div class="st-head"><h2></h2><button type="button" class="st-x" aria-label="Close">×</button></div>
     <div class="st-body">

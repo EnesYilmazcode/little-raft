@@ -79,7 +79,7 @@ const CSS = `
 #options .rs-menu button:focus::before,#options .rs-menu button[aria-expanded=true]::before{opacity:1;transform:translateY(-50%) scaleX(1)}
 #options .rs-title [data-act=resume],#options .rs-title [data-act=quit]{display:none}
 #options .rs-menu .rs-quit{margin-top:22px;border-top:1px solid rgba(201,164,107,.18);padding-top:20px;font-size:clamp(16px,1.5vw,19px);color:var(--muted,#8f9aa0)}
-#options .rs-panel{width:min(520px,100%);max-height:calc(100vh - 80px);overflow:auto;padding:22px 24px 24px;border-radius:6px;background:var(--plate-strong,rgba(8,17,26,.92));
+#options .rs-panel{width:min(520px,100%);max-height:calc(100vh - max(24px,calc(50vh - 236px)) - 24px);overflow:auto;padding:22px 24px 24px;border-radius:6px;background:var(--plate-strong,rgba(8,17,26,.92));
   box-shadow:0 0 0 1px var(--bronze-lt,#c9a46b),0 0 0 4px var(--navy-0,#070f17),0 24px 70px rgba(0,0,0,.55)}
 #options .rs-tabs{display:flex;gap:4px;margin:0 0 18px;border-bottom:1px solid rgba(201,164,107,.3)}
 #options .rs-tabs button{cursor:pointer;background:none;border:0;border-radius:0;box-shadow:none;padding:10px 14px;margin-bottom:-1px;color:var(--muted,#8f9aa0);
@@ -137,31 +137,35 @@ function markup() {
   const pages = TABS.map(([id]) => `<div class="rs-page" role="tabpanel" data-page="${id}" hidden>` +
     (id === 'controls' ? `<div class="rs-keys">${keys}</div>` : '') + page(id) +
     (id === 'graphics' ? '<button type="button" class="rs-wide" data-act="fullscreen">Enter fullscreen</button>' : '') + '</div>').join('');
-  return `<form class="rs-form" method="dialog" data-raft-settings="3">
+  return `<form class="rs-form" method="dialog" data-raft-settings="4">
 <nav class="rs-menu"><div class="rs-eyebrow">PAUSED</div><h2>Little Raft</h2>
 <button type="button" data-act="resume">Resume</button>
 <button type="button" data-act="settings" aria-expanded="false">Settings</button>
-<button type="button" data-act="help">How to play</button>
+<button type="button" data-act="help" aria-expanded="false">How to play</button>
 <button type="button" data-act="crew">Play together</button>
 <button type="button" data-act="logbook">Raft logbook</button>
 <button type="button" class="rs-quit" data-act="quit">Save and quit to title</button>
 <div class="rs-foot"><kbd>Esc</kbd>Back</div></nav>
-<section class="rs-panel" aria-label="Settings" hidden><div class="rs-tabs" role="tablist">${tabs}</div>${pages}</section></form>`;
+<section class="rs-panel" data-panel="settings" aria-label="Settings" hidden><div class="rs-tabs" role="tablist">${tabs}</div>${pages}</section>
+<section class="rs-panel" data-panel="help" aria-label="How to play" hidden></section></form>`;
 }
 
 function ensureDialog() {
   let dialog = document.getElementById(DIALOG_ID);
   let reused = !!dialog;
+  const help = document.getElementById('help'); // How to play guide (index.html): becomes the menu's help page
   if (!dialog) {
     dialog = document.createElement('dialog');
     dialog.id = DIALOG_ID;
     document.body.appendChild(dialog);
   }
-  if (dialog.querySelector('[data-raft-settings]')?.dataset.raftSettings !== '3') { // missing or an older layout
+  if (dialog.querySelector('[data-raft-settings]')?.dataset.raftSettings !== '4') { // missing or an older layout
     reused = false;
     dialog.replaceChildren();
     dialog.insertAdjacentHTML('beforeend', markup());
   }
+  const slot = dialog.querySelector('[data-panel="help"]');
+  if (help && slot && help.parentNode !== slot && help.tagName !== 'DIALOG') { slot.append(help); help.hidden = false; }
   dialog.setAttribute('aria-label', 'Paused');
   return { dialog, reused };
 }
@@ -181,7 +185,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   ensureStyle();
   const { dialog, reused } = ensureDialog();
   const form = dialog.querySelector('[data-raft-settings]');
-  const panel = form.querySelector('.rs-panel');
+  const panels = [...form.querySelectorAll('.rs-panel[data-panel]')];
   const ac = new AbortController();
   // Ownership token: only the newest instance reacts, even if an older one is not destroyed yet.
   const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -228,14 +232,20 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     for (const b of form.querySelectorAll('[data-tab]')) b.setAttribute('aria-selected', String(b.dataset.tab === id));
     for (const p of form.querySelectorAll('[data-page]')) p.hidden = p.dataset.page !== id;
   }
-  const panelOpen = () => !panel.hidden;
-  function setPanel(open) {
-    panel.hidden = !open;
-    const btn = form.querySelector('[data-act="settings"]');
-    btn?.setAttribute('aria-expanded', String(open));
-    if (open && dialog.contains(document.activeElement) && document.activeElement !== btn) btn?.focus({ preventScroll: true }); // one highlight, not two
-    if (open && !form.querySelector('[data-tab][aria-selected=true]')) showTab('controls');
+  // One page beside the rail at a time: 'settings', 'help' (How to play) or none.
+  const openPage = () => panels.find((p) => !p.hidden)?.dataset.panel || null;
+  const panelOpen = () => !!openPage();
+  function setPage(name) {
+    for (const p of panels) {
+      const on = p.dataset.panel === name;
+      p.hidden = !on;
+      const btn = form.querySelector(`[data-act="${p.dataset.panel}"]`);
+      btn?.setAttribute('aria-expanded', String(on));
+      if (on && dialog.contains(document.activeElement) && document.activeElement !== btn) btn?.focus({ preventScroll: true }); // one highlight, not two
+    }
+    if (name === 'settings' && !form.querySelector('[data-tab][aria-selected=true]')) showTab('controls');
   }
+  const setPanel = (open) => setPage(open ? 'settings' : null);
 
   const gameActive = () => document.body.classList.contains('playing') || document.body.classList.contains('first-person');
   const otherDialogs = () => [...document.querySelectorAll('dialog[open]')].filter((d) => d !== dialog);
@@ -277,7 +287,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     esc.keydown(performance.now(), { handled: true });
     const inv = document.getElementById('inventory');
     if (inv?.open) { inv.dispatchEvent(new Event('cancel', { cancelable: true })); return true; } // survival UI closes and relocks
-    if (dialog.open) { if (panelOpen()) { setPanel(false); form.querySelector('[data-act="settings"]')?.focus({ preventScroll: true }); } else close(true); return true; }
+    if (dialog.open) { const page = openPage(); if (page) { setPage(null); form.querySelector(`[data-act="${page}"]`)?.focus({ preventScroll: true }); } else close(true); return true; }
     const others = otherDialogs();
     if (others.length) { others[others.length - 1].close(); return true; }
     if (buildWheelOpen()) return false; // the game's own key handler closes the wheel
@@ -383,7 +393,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     if (!btn || !dialog.contains(btn)) return;
     const act = btn.dataset.act;
     if (act === 'resume') { close(true); return; }
-    if (act === 'settings') { setPanel(!panelOpen()); return; }
+    if (act === 'settings' || act === 'help') { setPage(openPage() === act ? null : act); return; }
     if (act === 'quit') { setPanel(false); close(false); call(onQuit); return; }
     if (act === 'fullscreen') {
       const req = document.fullscreenElement ? document.exitFullscreen?.() : document.documentElement.requestFullscreen?.();
@@ -391,7 +401,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
       return;
     }
     if (act === 'logbook') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-logbook')); return; }
-    if (act === 'help' || act === 'crew') {
+    if (act === 'crew') {
       const target = document.getElementById(act);
       if (!(target instanceof HTMLDialogElement)) return;
       close(false); // stay paused; Escape or close returns to this menu

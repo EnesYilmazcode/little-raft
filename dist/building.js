@@ -6,6 +6,7 @@ import { BuildGrid, PIECES, PIECE_ORDER, LEVEL_H, cleanPieces } from './building
 import { createPieceGeometry, createPieceMaterial } from './building-models.js?build=v3-survival-ae77fa84ac2b';
 import { createBuildMenu } from './build-menu.js?build=v3-survival-ae77fa84ac2b';
 import { Bag } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { amountText } from './items.js';
 
 export { cleanPieces };
 const FLOOR_Y = .2, REACH = 7, GHOST_OK = '#9dffc0', GHOST_BAD = '#ff8a73';
@@ -126,7 +127,7 @@ export function createBuilding(T, scene) {
     rebuild();
     return {ok:true, text:a.kind === 'piece' ? def.name + ' built' : def.name + ' removed (materials back)'};
   }
-  const costText = c => Object.entries(c).map(([k, n]) => n + ' ' + k).join(' + ');
+  const costText = c => Object.entries(c).map(([k, n]) => amountText(k, n)).join(' + ');
 
   // Input from game.js. Returns true when the event was consumed.
   function key(code, down, hammer, repeat = false) {

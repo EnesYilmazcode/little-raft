@@ -175,9 +175,8 @@ export function attachProgression(ctx) {
     panel.open(key);
   }
 
-  const RCSS = `#researchPanel{padding:0;margin:auto;border:0;background:transparent;width:min(420px,94vw);color:#fff2cc;font:500 14px/1.35 'Segoe UI',system-ui,sans-serif}
-#researchPanel::backdrop{background:rgba(12,9,5,.42)}
-#researchPanel .rp-wrap{padding:12px;border-radius:6px;background:linear-gradient(#b48d55,#8a663a);border:3px solid #3e2a17;box-shadow:0 0 0 2px #d6b67e,0 18px 50px #000a;outline:none}
+  const RCSS = `#researchPanel{color:#fff2cc;font:500 14px/1.35 'Segoe UI',system-ui,sans-serif} /* layout: dialog.lr-sheet (graphics.css) */
+#researchPanel .rp-wrap{background:linear-gradient(#b48d55,#8a663a);box-shadow:inset 3px 0 0 #3e2a17,inset 5px 0 0 #d6b67e;outline:none}
 #researchPanel .rp-head{display:flex;justify-content:space-between;align-items:center;margin:-2px 2px 10px}
 #researchPanel h2{margin:0;font:800 19px/1.1 system-ui,sans-serif;font-family:inherit;color:#2a1b0e}
 #researchPanel .rp-x{width:30px;height:30px;border:0;border-radius:4px;background:#3a2716;color:#fff2cc;font:700 18px/1 sans-serif;cursor:pointer}
@@ -210,7 +209,7 @@ export function attachProgression(ctx) {
   function openResearch() {
     if (!research) {
       if (!document.getElementById('research-style')) { const st = document.createElement('style'); st.id = 'research-style'; st.textContent = RCSS; document.head.append(st); }
-      research = document.createElement('dialog'); research.id = 'researchPanel';
+      research = document.createElement('dialog'); research.id = 'researchPanel'; research.className = 'lr-sheet';
       research.innerHTML = `<div class="rp-wrap" tabindex="-1"><div class="rp-head"><h2>${esc(nameOf('researchtable'))}</h2><button type="button" class="rp-x" aria-label="Close">×</button></div><div class="rp-body"></div></div>`;
       research.addEventListener('click', (e) => {
         if (e.target === research || e.target.closest('.rp-x')) { research.close(); return; }

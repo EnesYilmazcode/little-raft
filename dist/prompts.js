@@ -5,8 +5,10 @@
 // prompt(ctx, hit) returns {key:'E', label:'Pick up', hold?, muted?} | up to 2 of them | null.
 // ctx = {state, camera, T, scene}. Highest priority wins; raycast beats provider at equal priority; nearest hit next.
 
+import { amountText } from './items.js';
+
 const SAMPLE_MS = 100, FEED_MAX = 4, FEED_MS = 4000, DUP_MS = 600;
-const PICK_NAMES = {wood:'plank', leaf:'leaves', plastic:'plastic jug', scrap:'scrap', barrel:'barrel'};
+const PICK_NAMES = {wood:'plank', leaf:'palm leaf', plastic:'plastic jug', scrap:'scrap', barrel:'barrel'};
 const DECOR_NAMES = {sail:'sail', palm:'palm planter', lantern:'lantern', net:'net', bench:'bench', crate:'crate'};
 const FLOOR_COST = {wood:2, plastic:2};
 const SLOT_X = 34, SLOT_Y = 26; // prompt offset from the aim point (keep in sync with #lrPrompt in prompts.css)
@@ -64,8 +66,8 @@ export function parseContextPrompt(html) {
 }
 export function shouldPost(last, text, now) { return !(last && last.text === text && now - last.at < DUP_MS); }
 const have = (stock, k) => { const n = Number(stock?.[k]); return Number.isFinite(n) && n > 0 ? n : 0; };
-export const costText = cost => Object.entries(cost).map(([k, n]) => `${n} ${k}`).join(' · ');
-export const missingText = (stock, cost) => Object.entries(cost).filter(([k, n]) => have(stock, k) < n).map(([k, n]) => `${n - have(stock, k)} ${k}`).join(' · ');
+export const costText = cost => Object.entries(cost).map(([k, n]) => amountText(k, n)).join(' · ');
+export const missingText = (stock, cost) => Object.entries(cost).filter(([k, n]) => have(stock, k) < n).map(([k, n]) => amountText(k, n - have(stock, k))).join(' · ');
 // Horizontal distance (m) from (x, z) to the nearest raft tile's edge; 0 when over a tile, Infinity with no tiles.
 export function raftDistance(x, z, tiles) {
   let best = Infinity; if (!Number.isFinite(x) || !Number.isFinite(z)) return best;

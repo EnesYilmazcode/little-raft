@@ -33,11 +33,11 @@ export const ITEM_TEXT = Object.freeze({
   scrap:      { desc: 'Bent bits of salvaged metal.', use: 'Lanterns, crates and hook repairs.' },
   rope:       { desc: 'Palm fibre twisted into a sturdy cord.', use: 'Binds hammers, rods, nets and sails.' },
   fish:       { desc: 'A fresh catch from the open water.', use: 'Proof of a good day out on the waves.' },
-  hook:       { desc: 'A scrap hook on a rope. Throw it at floating supplies.', use: 'Pulls in floating wood, leaves, plastic and barrels.' },
-  hammer:     { desc: 'A rope-bound building hammer.', use: 'Adds raft floor tiles (2 wood + 2 plastic each).' },
+  hook:       { desc: 'A scrap hook on a rope. Throw it at floating supplies.', use: 'Pulls in floating planks, palm leaves, plastic and barrels.' },
+  hammer:     { desc: 'A rope-bound building hammer.', use: 'Adds raft floor tiles (2 planks + 2 plastic each).' },
   fishingrod: { desc: 'A bamboo rod with a float and line.', use: 'Cast into the sea and wait for a bite to catch fish.' },
   sail:       { desc: 'A tall mast with a woven sail.', use: 'Decorates the raft; place it on a floor tile.' },
-  palm:       { desc: 'A clay planter with a young palm.', use: 'Place it on the raft, water it with fresh water and harvest leaves.' },
+  palm:       { desc: 'A clay planter with a young palm.', use: 'Place it on the raft, water it with fresh water and harvest palm leaves.' },
   lantern:    { desc: 'A post lantern with a warm glow.', use: 'Lights the raft at night; place on a tile.' },
   net:        { desc: 'A rope net stretched over the water.', use: 'Catches nearby floating supplies for you.' },
   bench:      { desc: 'A simple plank bench.', use: 'Somewhere to sit; place it on a floor tile.' },
@@ -53,7 +53,7 @@ export const ITEM_TEXT = Object.freeze({
   saltcup:    { desc: 'A cup of salty sea water.', use: 'Pour it into a water purifier.' },
   freshcup:   { desc: 'A cup of clean fresh water.', use: 'Water a palm planter.' },
   seed:       { desc: 'An old palm seed.', use: 'Planters grow from fresh water alone, so this seed isn\u2019t needed.' },
-  rainbarrel: { desc: 'A tub with a leaf funnel that catches the rain.', use: 'Fills by itself in the rain. Hold an empty cup and press E.' },
+  rainbarrel: { desc: 'A tub with a palm leaf funnel that catches the rain.', use: 'Fills by itself in the rain. Hold an empty cup and press E.' },
   sprinkler:  { desc: 'A little spinning head with its own tank.', use: 'Waters nearby palm planters for you. Fill it with fresh water, or put it next to a rain barrel.' },
   water:      { desc: 'A filtered cup of fresh water.', use: 'Water a palm planter.' },
   purifier:   { desc: 'A small still that boils off the salt.', use: 'Turns sea water into fresh water.' },
@@ -81,7 +81,7 @@ export const ITEM_TEXT = Object.freeze({
   candle:     { desc: 'A little jar candle.', use: 'Glows warmly at night; place on a tile.' }, // [bees]
   honeyfish:  { desc: 'Grilled fish with a honey glaze.', use: 'A sweet treat.' }, // [bees]
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
-  grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
+  grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or palm leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },
 });
 
@@ -279,6 +279,16 @@ export function sortCraftableFirst(views) {
     .sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1] || a.k[2] - b.k[2] || a.i - b.i)
     .map(x => x.v);
 }
+
+/** Recipe row order for the bag. Sorted (craftable first, per tab) only when the bag opens;
+ *  while it stays open the order is frozen, so a row never moves out from under the cursor. */
+export function recipeOrder(views, cats, { resort = false } = {}) {
+  if (!resort) return views || [];
+  return (cats || []).flatMap(c => sortCraftableFirst((views || []).filter(v => v.cat === c)));
+}
+
+/** True when a scroll box hides rows below its bottom edge (shows the fade cue). */
+export const moreBelow = (scrollHeight, scrollTop, clientHeight) => scrollHeight - scrollTop - clientHeight > 2;
 
 // ---- where items come from ----
 // `tag` is the short text beside a missing ingredient; `how` is the tooltip line.

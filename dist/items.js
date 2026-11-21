@@ -202,7 +202,7 @@ const LIST = [
     tip: 'Show it something new and learn what you can make. Your items stay safe in your bag.' }),
   item('grill', 'Simple Grill', 'station', { iconTint: '#6b5a4c', stack: 5, placeable: true,
     recipe: hand({ wood: 6, scrap: 1, rope: 3 }), unlock: discover('fish'),
-    tip: 'Grills fish into snacks and fires clay into bricks. Feed it planks or leaves.' }),
+    tip: 'Grills fish into snacks and fires clay into bricks. Feed it planks or palm leaves.' }),
   item('smelter', 'Smelter', 'station', { iconTint: '#b5533c', stack: 5, placeable: true,
     recipe: hand({ wood: 6, brick: 10, stone: 7, nail: 6 }), unlock: research('clay', 'stone'),
     tip: 'A toasty brick furnace. Melts ore into ingots and sand into glass, one at a time.' }),
@@ -210,6 +210,17 @@ const LIST = [
 
 export const ITEMS = deepFreeze(Object.fromEntries(LIST.map((e) => [e.id, e])));
 export const ITEM_IDS = Object.freeze(LIST.map((e) => e.id));
+
+// One name per material, everywhere: the bag's name (ITEMS[k].name), lower-cased and plural-aware in
+// running text ('2 planks · 2 plastic'), never the raw kind id ('wood', 'leaf').
+const MASS_NOUNS = new Set(['plastic', 'scrap', 'rope', 'sand', 'clay', 'seaweed', 'honey', 'beeswax', 'glass', 'fish']);
+const PLURALS = { leaf: 'palm leaves' };
+export function itemNoun(kind, n = 2) {
+  const base = (hasOwn(ITEMS, kind) ? ITEMS[kind].name : String(kind ?? '')).toLowerCase();
+  if (n === 1 || MASS_NOUNS.has(kind) || /(ore|s)$/.test(base)) return base;
+  return PLURALS[kind] || base + 's';
+}
+export const amountText = (kind, n) => `${n} ${itemNoun(kind, n)}`;
 export const TOOL_IDS = Object.freeze(ITEM_IDS.filter((id) => ITEMS[id].tool));
 export const STATION_IDS = Object.freeze(ITEM_IDS.filter((id) => ITEMS[id].category === 'station'));
 export const PLACEABLE_IDS = Object.freeze(ITEM_IDS.filter((id) => ITEMS[id].placeable));
@@ -224,7 +235,7 @@ export const BLOCK_RADII = deepFreeze({
 /** Fuel units per item put into a station. Plastic is never burned (friendly seas). */
 export const FUEL_VALUE = deepFreeze({ wood: 1, leaf: 0.5, seaweed: 0.5 });
 
-/** Repair costs (restore a tool to 100%). Hook keeps the legacy 2 wood + 1 scrap. */
+/** Repair costs (restore a tool to 100%). Hook keeps the legacy 2 planks + 1 scrap. */
 const REPAIRS = deepFreeze({
   hook: { wood: 2, scrap: 1 },
   metalhook: { scrap: 2, nail: 2 },
@@ -257,7 +268,7 @@ export const LEGACY_ALIASES = deepFreeze({
  * `ids` lists the items whose first craft/place marks the goal.
  */
 export const PROGRESSION_PLAN = deepFreeze([
-  { minute: 0, goal: 'Hook the first planks, leaves and plastic', ids: ['hook'] },
+  { minute: 0, goal: 'Hook the first planks, palm leaves and plastic', ids: ['hook'] },
   { minute: 2, goal: 'Twist rope from palm leaves', ids: ['rope'] },
   { minute: 4, goal: 'Craft a hammer and add the first floor tiles', ids: ['hammer'] },
   { minute: 6, goal: 'A bench and a palm planter make it home', ids: ['bench', 'palm'] },
