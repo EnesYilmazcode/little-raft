@@ -39,7 +39,8 @@ export function createRainBarrel(T) {
   const g = new T.Group(); g.name = 'craft_rainbarrel';
   const {std, add, pips} = kit(T, g);
   add(g, new T.CylinderGeometry(.26, .23, .52, 12, 1, true), std(0x9c7649, .9, 0, {side:T.DoubleSide}), 'barrelBody', 0, .28, 0);
-  add(g, new T.CircleGeometry(.23, 12), std(0x7d5d38, .95), 'barrelFloor', 0, .03, 0).rotation.x = -Math.PI / 2;
+  const floor = add(g, new T.CircleGeometry(.23, 12), std(0x7d5d38, .95), 'barrelFloor', 0, .03, 0); floor.rotation.x = -Math.PI / 2;
+  floor.castShadow = false; // inside the tub: its shadow is always under the body's own
   const hoops = new T.Group(); hoops.name = 'barrelHoops'; g.add(hoops);
   const steel = std(0x76838a, .45, .7);
   for (const y of [.12, .44]) add(hoops, new T.TorusGeometry(.25, .012, 6, 24), steel, null, 0, y, 0).rotation.x = Math.PI / 2;
@@ -85,7 +86,7 @@ export function createSprinkler(T) {
   for (let i = 0; i < 2; i++) {
     const arm = new T.Group(); arm.rotation.y = i * Math.PI / 2; head.add(arm);
     add(arm, new T.BoxGeometry(.26, .018, .018), steel, 'sprinklerArm' + i);
-    for (const s of [-1, 1]) { const tip = add(arm, new T.BoxGeometry(.018, .04, .018), steel, null, s * .13, .012, s * .01); tip.rotation.z = -s * .6; }
+    for (const s of [-1, 1]) { const tip = add(arm, new T.BoxGeometry(.018, .04, .018), steel, null, s * .13, .012, s * .01); tip.rotation.z = -s * .6; tip.castShadow = false; } // 2 cm nozzle: about one shadow texel
   }
   const pos = new Float32Array(SPRAY_N * 3);
   for (let i = 0; i < SPRAY_N; i++) pos[i * 3 + 1] = .56;

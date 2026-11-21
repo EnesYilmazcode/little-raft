@@ -19,7 +19,7 @@ export function createCraft(T, type) {
   g.traverse(o => {
     if (!o.isMesh) return;
     const glass = !!o.userData.glass;
-    o.castShadow = !glass && !THIN.test(o.name);
+    o.castShadow = !glass && !THIN.test(o.name) && !NO_CAST.test(o.name);
     o.receiveShadow = !glass;
   });
   g.updateMatrixWorld(true);
@@ -33,6 +33,9 @@ export function createCraft(T, type) {
 
 // Thin or flush parts whose shadow is below shadow-map resolution: they only receive.
 const THIN = /Rope|Lashing|Knots|Nails|Stitches|Seams|Patch|pennant|frondRibs|^(sail|net|crate)Steel$/;
+// Light sources and parts a few centimetres across (lantern candle 4 cm, flame 3 cm: 2-3 shadow texels) cast
+// nothing worth a shadow draw each; they still receive.
+const NO_CAST = /^(candle|flame)$/;
 
 // ---------------------------------------------------------------- shared kit (per instance)
 function makeKit(T) {
