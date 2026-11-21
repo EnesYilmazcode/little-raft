@@ -260,7 +260,10 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
         try { fx.update(0, { underwater: false, depth: 0, time, lowOxygen: false, breath01: 1 }); } catch {}
       }
     }
-    const show = underwater || p.y < surf + 0.5;
+    // The ocean is opaque from above, so the floor only matters once the eye nears the surface: the margin covers the
+    // near plane (0.05 m) and mesh-vs-getHeight error, and stays under the 0.45 m swim eye height, so surface
+    // swimmers skip the floor's draw calls and recentre rebuilds.
+    const show = underwater || p.y < surf + 0.25;
     if (show !== floorShown) { floorShown = show; seafloor.group.visible = show; }
     if (show && !failed.has('seafloor')) { try { seafloor.update(dt, camera, time); } catch (e) { fail('seafloor', e); } }
     if (ui && !failed.has('ui')) {
