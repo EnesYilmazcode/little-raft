@@ -2,7 +2,7 @@
 // Hold a kite on deck: click to launch, look to steer, right click for line length, click to tug, E to tie it
 // to a railing or pillar so it keeps flying on its own. Host-authoritative; cosy, nothing can fail.
 import { LINES, MAX_TIED, TUG, PULL_T, PULL_MPS, SPOT_S, TIE_TYPES, KINDS, windOf, kitePose, easeInputs, steerFromYaw,
-  anchorOf, pieceKey, cleanKite, spotDue, pickDebris, linePoints, tailPoints, qSteer } from './kite-core.js?build=v3-survival-ae77fa84ac2b';
+  anchorOf, pieceKey, cleanKite, spotDue, pickDebris, linePoints, tailPoints, qSteer, angDiff } from './kite-core.js?build=v3-survival-ae77fa84ac2b';
 import { createKiteKit, TAIL_Y } from './kite-model.js?build=v3-survival-ae77fa84ac2b';
 
 const REACH = 4, SEND_MS = 250, SPOT_SEED = 7.31, WATER_Y = 0;
@@ -14,10 +14,10 @@ export function createKite(ctx) {
   let st = null;                 // my hand kite: eased inputs, or null when stowed
   const remote = { on: false, p: 0, L: 6, Lt: 16, steer: 0, steerT: 0, dSteer: 0, launch: 0, tug: 0, landing: 0 };
   let dn = null, windOverride = null, kit = null, sendClock = 0, sentL = 0, sentS = 0, sailHidden = null;
-  let spotClock = 0, spotN = 0, pull = null, seenPieces = null;
+  let spotClock = 0, spotN = 0, pull = null, seenPieces = null, prunedFor = null, flyClock = 0;
   const pieceMap = new Map();
   const slots = [];              // pooled meshes: 0 = mine, 1 = partner, 2.. = tied
-  const W = { az: 0, s: 0.5 }, pose = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, e: 0, dSteer: 0 };
+  const W = { az: 0, s: 0.5 }, Wt = { az: 0, s: 0.5 }, pose = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, e: 0, dSteer: 0 };
   const last = { x: 0, y: 0, z: 0, e: 0, ok: false };
   const A = { x: 0, y: 0, z: 0 }, K = { x: 0, y: 0, z: 0 }, B = { x: 0, y: 0, z: 0 };
   const v = T ? new T.Vector3() : null, bottom = T ? new T.Vector3() : null;
@@ -34,9 +34,13 @@ export function createKite(ctx) {
     if (!dn || dn.dead) { const m = ctx.content?.mods; dn = Array.isArray(m) ? m.find(x => x.name === 'daynight' && !x.dead) ?? null : null; }
     const w = dn?.wind; return Number.isFinite(w) ? w : 0.5;
   }
-  function wind() {
-    windOf(ctx.world?.sailing, weather(), W);
-    if (windOverride !== null) W.s = windOverride;
+  let windInit = false;
+  function wind(dt) { // eased: a sailing raft can outrun a light wind and flip the apparent wind; the kites swing round, never jump
+    windOf(ctx.world?.sailing, weather(), Wt);
+    if (windOverride !== null) Wt.s = windOverride;
+    if (!windInit) { W.az = Wt.az; W.s = Wt.s; windInit = true; return W; }
+    const k = 1 - Math.exp(-0.8 * dt);
+    W.az = angDiff(0, W.az + angDiff(W.az, Wt.az) * k); W.s += (Wt.s - W.s) * k;
     return W;
   }
   function pieces() {
@@ -55,7 +59,7 @@ export function createKite(ctx) {
     const b = ctx.building; if (!b?.grid || typeof b.grid.pick !== 'function') return null;
     const c = ctx.camera.position, d = aim.dir;
     const rec = b.grid.pick(c.x, c.y, c.z, d.x, d.y, d.z, ctx.deckY(), REACH);
-    if (!rec || TIE_TYPES[rec.t] !== 1) return null;
+    if (!rec || TIE_TYPES[rec.t] !== 1 || rec.t === 'gate') return null; // E on a gate opens it (building.interact runs first)
     tgt.rec = rec; tgt.key = pieceKey(rec); return tgt;
   }
 
@@ -90,7 +94,7 @@ export function createKite(ctx) {
     if (sailHidden && sailHidden !== want) { const m = ctx.heldModel?.(sailHidden); if (m?.userData?.sail) m.userData.sail.visible = true; sailHidden = null; }
     if (want && sailHidden !== want) { const m = ctx.heldModel?.(want); if (m?.userData?.sail) { m.userData.sail.visible = false; sailHidden = want; } }
   }
-  const startLanding = () => { if (st && !st.landing) { st.landing = 1; st.tug = 0; } };
+  const startLanding = () => { if (st && !st.landing) { st.landing = 1; st.tug = 0; ctx.action({ kind: 'kite.land' }); } };
   function landNow() { if (!st) return; st = null; setSail(); }
 
   // ---------------------------------------------------------------- local input
@@ -144,11 +148,12 @@ export function createKite(ctx) {
     return true;
   }
   function prune() {
+    prunedFor = seenPieces;
     let n = 0;
     for (let i = ext.tied.length - 1; i >= 0; i--) {
       const e = ext.tied[i]; if (pieceMap.has(e.k)) continue;
       ext.tied.splice(i, 1); n++;
-      try { ctx.localBag()?.add(KINDS[e.p], 1); } catch { /* the kite just vanishes */ }
+      try { if ((ctx.localBag()?.add(KINDS[e.p], 1) ?? 1) > 0 && ctx.other) ctx.actorBag?.('guest')?.add(KINDS[e.p], 1); } catch { /* the kite just vanishes */ }
     }
     if (n) bump();
   }
@@ -190,14 +195,14 @@ export function createKite(ctx) {
   function update(dt) {
     if (!T || !ctx.scene) return;
     dt = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.25) : 0;
-    wind();
+    wind(dt);
     if (!unprovide) provide();
-    const changed = pieces();
+    pieces();
     // 1. my hand kite
     if (st) {
       const k = heldKind(), ph = ctx.physics;
       if (k !== KINDS[st.p] || ph?.swimming || ctx.content?.riding?.() || (ctx.localBag()?.count(KINDS[st.p]) ?? 0) < 1) startLanding();
-      ctx.camera.localToWorld(v.set(0.36, -0.30, -0.72));
+      ctx.camera.updateMatrixWorld(); ctx.camera.localToWorld(v.set(0.36, -0.30, -0.72)); // this frame's camera, not last render's
       A.x = v.x; A.y = v.y; A.z = v.z;
       if (!st.landing && !ctx.uiOpen()) st.steerT = steerFromYaw(ctx.camera.rotation.y, W.az, st.steerT);
       if (easeInputs(st, dt)) { st = null; setSail(); ctx.action({ kind: 'kite.land' }); }
@@ -210,16 +215,21 @@ export function createKite(ctx) {
           sendClock = 0; sentL = st.Lt; sentS = s;
           ctx.action({ kind: 'kite.fly', p: st.p, L: st.Lt, s });
         }
+        const mine = ext.fly[mySlot()];
+        flyClock = !st.landing && (!mine || mine.p !== st.p || mine.L !== st.Lt) ? flyClock + dt : 0;
+        if (flyClock > 2) { flyClock = 0; sendClock = 0; sentL = st.Lt; sentS = s; ctx.action({ kind: 'kite.fly', p: st.p, L: st.Lt, s }); }
       }
     }
     if (!st) { const s = slots[0]; if (s) s.kite.visible = s.line.visible = s.tail.visible = false; }
     setSail();
     // 2. partner's hand kite
     const f = ext.fly[host() ? 'g' : 'h'], o = ctx.other;
-    if (f && o && Number.isFinite(o.x)) {
-      if (!remote.on) { remote.on = true; remote.L = 6; remote.launch = 0; remote.steer = f.s; }
-      remote.p = f.p; remote.Lt = f.L; remote.steerT = f.s; remote.landing = 0;
-      easeInputs(remote, dt);
+    if (o && Number.isFinite(o.x) && (f || (remote.on && remote.launch > 0))) {
+      if (f) {
+        if (!remote.on) { remote.on = true; remote.L = 6; remote.launch = 0; remote.steer = f.s; }
+        remote.p = f.p; remote.Lt = f.L; remote.steerT = f.s; remote.landing = 0;
+      } else remote.landing = 1;
+      if (easeInputs(remote, dt)) remote.on = false;
       const yaw = Number.isFinite(o.yaw) ? o.yaw : 0, sy = Math.sin(yaw), cy = Math.cos(yaw);
       A.x = o.x + cy * 0.3 - sy * 0.35; A.y = (Number.isFinite(o.y) ? o.y : ctx.deckY() + 1.6) - 0.25; A.z = o.z - sy * 0.3 - cy * 0.35;
       draw(1, remote.p, remote, 2.1);
@@ -240,7 +250,7 @@ export function createKite(ctx) {
     // 4. host housekeeping and the small reward
     if (host()) {
       if (!o && ext.fly.g) ext.fly.g = null;
-      if (changed && seenPieces) prune();
+      if (seenPieces && seenPieces !== prunedFor) prune();
       spotTick(dt);
     }
   }
@@ -278,7 +288,7 @@ export function createKite(ctx) {
         ext = cleanKite(d, 'net'); netRev = r;
         return;
       }
-      ext = cleanKite(d); netRev = -1; seenPieces = null; pull = null;
+      ext = cleanKite(d); netRev = -1; seenPieces = null; prunedFor = null; pull = null; flyClock = 0;
     },
     update,
     action,
