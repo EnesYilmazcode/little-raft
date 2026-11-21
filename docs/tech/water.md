@@ -280,10 +280,11 @@ Numbers (same box, load average 35 to 50, SwiftShader, GPU-process CPU ms per fr
 
 | | cur (dist/ocean.js) | new | x |
 |---|---:|---:|---:|
-| lab `fp`, interleaved (cur / a before retarget / a / a + `WATER_LOW`) | 335 | 253 (prev 258, low 224) | 0.75 (low 0.67) |
-| game, `down` (deck, raft edge and items), 40 frames | 1189 | 1134 | 0.95 |
-| game, night, 20 frames | 1066 | 1066 | 1.00 |
-| game, underwater, 20 frames (ocean hidden) | 323 | 309 | 0.96 |
+| lab `fp`, interleaved, run 1 (tier A before the retarget: 258) | 335 | 253; `WATER_LOW` 224 | 0.75; low 0.67 |
+| lab `fp`, interleaved, run 2 (final shader) | 340 (347 / 332) | 290 (251 / 328); `WATER_LOW` 230 | 0.75 to 0.95; low 0.69 |
+| game, `down` (deck, raft edge and items), 40 frames, two runs | 1189 / 1235 | 1134 / 1194 | 0.95 / 0.97 |
+| game, night, 20 frames, two runs | 1066 / 1129 | 1066 / 996 | 1.00 / 0.88 |
+| game, underwater, 20 frames (ocean hidden), two runs | 323 / 328 | 309 / 347 | noise |
 
 The current dist ocean got slower in the lab than when tier A was first measured (236 then, 335 now
 against tier A's ~250): its new early `return` past `uFadeFar` and the `if` around the ripples and lace
