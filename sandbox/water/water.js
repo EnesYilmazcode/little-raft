@@ -27,7 +27,9 @@ const SPEED = 0.6;
 const BASE_Y = -0.24;
 const SDF_RES = 128;      // texels per side; the covered square fits the raft's bounding box + SDF_MAX margin
 const SDF_MAX = 8;        // distance encoded in [-2, SDF_MAX] metres
-const MAX_FLOATERS = 16;
+const FLOAT_RES = 256;    // floater distance map: texels per side, camera-centred
+const FLOAT_SPAN = 64;    // metres covered (0.25 m texels); items further than ~32 m get no foam (it fades by 30-90 m)
+const FLOAT_LO = -0.3, FLOAT_HI = 0.9;   // encoded distance range (m)
 const RAFT_REACH = 1.1;   // furthest raft effect (lace rings); shadow and occlusion stay inside it
 const FLOAT_REACH = 0.55; // furthest item lace
 
@@ -43,8 +45,8 @@ uniform float uAmp;
 uniform sampler2D tRaftSdf;
 uniform vec4 uRaft;          // x, z, cos(yaw), sin(yaw)
 uniform vec3 uSdfBox;        // raft-local centre x, z and side length (m) of the baked square
-uniform vec4 uFloatA[${MAX_FLOATERS}];   // x, z, half-axis x, half-axis z (capsule segment)
-uniform vec3 uFloatB[${MAX_FLOATERS}];   // half-axis / |half-axis|^2 (x, z), radius
+uniform sampler2D tFloatMap; // distance to the nearest floating item, CPU-stamped capsules (setFloaters)
+uniform vec3 uFloatBox;      // world centre x, z and side length of the floater map
 float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float vnoise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
@@ -59,11 +61,11 @@ float raftDist(vec2 world) {
   if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return ${SDF_MAX.toFixed(1)};
   return texture2D(tRaftSdf, uv).r * ${(SDF_MAX + 2).toFixed(1)} - 2.0;
 }
-// Distance to floater i's capsule (a circle when the half-axis is zero). Unused slots sit 1e4 m away.
-float floatDist(int i, vec2 p) {
-  vec2 pa = p - uFloatA[i].xy;
-  float t = clamp(dot(pa, uFloatB[i].xy), -1.0, 1.0);
-  return length(pa - uFloatA[i].zw * t) - uFloatB[i].z;
+// Distance (metres) to the nearest floating item, from the per-frame map: one fetch instead of a loop.
+// The map's border texels are never stamped, so clamped lookups outside it read 'far'.
+float floatDist(vec2 p) {
+  vec2 uv = (p - uFloatBox.xy) / uFloatBox.z + 0.5;
+  return texture2D(tFloatMap, uv).r * ${(FLOAT_HI - FLOAT_LO).toFixed(2)} + ${FLOAT_LO.toFixed(2)};
 }
 `;
 
@@ -75,7 +77,7 @@ varying float vHeight;
 varying float vViewZ;
 varying float vPinch;
 varying float vPatch;
-varying vec2 vGate;          // raft SDF and nearest capsule distance at the vertex (cheap per-pixel early-outs)
+varying float vGate;         // raft SDF at the vertex (per-pixel early-out on GPUs that skip untaken branches)
 
 // Also accumulates jac = (dDx/dx, dDz/dz, dDx/dz) of the horizontal displacement for crest foam (free: reuses sin).
 vec3 jac = vec3(0.0);
@@ -105,9 +107,7 @@ void main() {
   vPinch = 1.0 - ((1.0 + jac.x) * (1.0 + jac.y) - jac.z * jac.z);   // 1 - Jacobian: > 0 where crests bunch up
   // Slow body-colour patches (7-22 m features) are smooth enough to interpolate across the 2.8 m grid.
   vPatch = vnoise(wp.xz * 0.045 + uTime * 0.01) * 0.6 + vnoise(wp.xz * 0.13 - uTime * 0.02) * 0.4;
-  float fd = 1e4;
-  for (int i = 0; i < ${MAX_FLOATERS}; i++) fd = min(fd, floatDist(i, wp.xz));
-  vGate = vec2(raftDist(wp.xz), fd);
+  vGate = raftDist(wp.xz);
   vec4 mv = viewMatrix * wp;
   vViewZ = mv.z;
   gl_Position = projectionMatrix * mv;
@@ -147,7 +147,7 @@ varying float vHeight;
 varying float vViewZ;
 varying float vPinch;
 varying float vPatch;
-varying vec2 vGate;
+varying float vGate;
 
 void ripple(vec2 d, float a, float k, float w, vec2 p, inout vec2 g) { g += d * (a * k * cos(k * dot(d, p) - w * uTime)); }
 
@@ -210,7 +210,7 @@ void main() {
 
   // Raft: SDF, fake deck shadow (SDF sampled toward the sun at deck height). Skipped where the vertex says far.
   float rd = ${SDF_MAX.toFixed(1)}, shadow = 1.0;
-  if (vGate.x < ${RAFT_REACH.toFixed(2)} + GATE_SLACK) {
+  if (vGate < ${RAFT_REACH.toFixed(2)} + GATE_SLACK) {
     rd = raftDist(p);
     float sd = raftDist(p + L.xz / max(L.y, 0.2) * uDeckLift);
     shadow = 1.0 - (1.0 - smoothstep(-0.15, 0.35, sd)) * 0.45;
@@ -252,12 +252,7 @@ void main() {
   float raftLace = 0.0;
   if (rd < ${RAFT_REACH.toFixed(2)}) raftLace = (1.0 - smoothstep(0.0, ${RAFT_REACH.toFixed(2)}, rd)) * (0.35 + 0.65 * (0.5 + 0.5 * sin(rd * 5.0 - uTime * 1.8 + vPatch * 6.0)));
   // 3: items, as capsules shaped by their footprint.
-  float floatLace = 0.0;
-  if (vGate.y < ${FLOAT_REACH.toFixed(2)} + GATE_SLACK) {
-    float fd = 1e4;
-    for (int i = 0; i < ${MAX_FLOATERS}; i++) fd = min(fd, floatDist(i, p));
-    floatLace = 1.0 - smoothstep(-0.1, ${FLOAT_REACH.toFixed(2)}, fd);
-  }
+  float floatLace = 1.0 - smoothstep(-0.1, ${FLOAT_REACH.toFixed(2)}, floatDist(p));
   // 4: hook bobber: a tight collar, bobbing ripple rings, and one splash ring when it lands.
   float bobLace = 0.0, bobCore = 0.0;
   float bd = length(p - uBobber.xy);
@@ -291,7 +286,7 @@ void main() {
   gl_FragColor = vec4(col, 1.0);
   if (uDebug == 3) gl_FragColor = vec4(vec3(clamp(vPinch * 8.0, 0.0, 1.0)), 1.0);
   if (uDebug == 4) gl_FragColor = vec4(vec3(clamp(raftDist(p) / 4.0, 0.0, 1.0)), 1.0);
-  if (uDebug == 5) gl_FragColor = vec4(step(0.02, laceMask) + step(0.0001, crestMask), step(${RAFT_REACH.toFixed(2)} + GATE_SLACK, vGate.x), step(${FLOAT_REACH.toFixed(2)} + GATE_SLACK, vGate.y), 1.0);
+  if (uDebug == 5) gl_FragColor = vec4(step(0.02, laceMask) + step(0.0001, crestMask), step(${RAFT_REACH.toFixed(2)} + GATE_SLACK, vGate), 0.0, 1.0);
 #ifdef USE_PREPASS
   if (uDebug == 2) gl_FragColor = vec4(vec3(clamp(thick / 3.0, 0.0, 1.0)), 1.0);
 #endif
@@ -317,6 +312,10 @@ export function createWater(T, options = {}) {
   const sdfTex = new T.DataTexture(sdfData, SDF_RES, SDF_RES, T.RedFormat, T.UnsignedByteType);
   sdfTex.magFilter = sdfTex.minFilter = T.LinearFilter;
   sdfTex.needsUpdate = true;
+  const floatData = new Uint8Array(FLOAT_RES * FLOAT_RES).fill(255);
+  const floatTex = new T.DataTexture(floatData, FLOAT_RES, FLOAT_RES, T.RedFormat, T.UnsignedByteType);
+  floatTex.magFilter = floatTex.minFilter = T.LinearFilter;
+  floatTex.needsUpdate = true;
 
   const amp = options.amp ?? 1;
   const uniforms = {
@@ -337,8 +336,8 @@ export function createWater(T, options = {}) {
     uRaft: { value: new T.Vector4(0, 0, 1, 0) },
     uSdfBox: { value: new T.Vector3(0, 0, 32) },
     uDeckLift: { value: options.deckLift ?? 0.45 },
-    uFloatA: { value: Array.from({ length: MAX_FLOATERS }, () => new T.Vector4(1e4, 1e4, 0, 0)) },
-    uFloatB: { value: Array.from({ length: MAX_FLOATERS }, () => new T.Vector3(0, 0, 0)) },
+    tFloatMap: { value: floatTex },
+    uFloatBox: { value: new T.Vector3(0, 0, FLOAT_SPAN) },
     uBobber: { value: new T.Vector4(1e4, 1e4, 0, -100) },
     tScene: { value: null },
     tDepth: { value: null },
@@ -470,25 +469,36 @@ export function createWater(T, options = {}) {
   }
   function setRaftPose(x, z, yaw) { uniforms.uRaft.value.set(x, z, Math.cos(yaw), Math.sin(yaw)); }
   // list: [[x, z, radius, hx, hz], ...]: a capsule around the segment centre +- (hx, hz), or a circle when hx/hz
-  // are left out. footprint(object) builds one from a mesh. With (cx, cz) only the MAX_FLOATERS closest to that
-  // point get foam.
-  const pick = [];
+  // are left out (footprint(object) builds one from a mesh). Every item is stamped into a camera-centred
+  // distance map (FLOAT_SPAN m, FLOAT_RES texels), so the shader does one fetch however many items float.
+  // (cx, cz) centres the map, normally the camera; without it the map stays where it was.
+  let floatDirty = [];   // texel rects stamped last time, reset to 'far' before the next stamp
   function setFloaters(list, cx, cz) {
-    let src = list;
-    if (cx !== undefined && list.length > MAX_FLOATERS) {
-      pick.length = 0;
-      for (const f of list) pick.push(f);
-      pick.sort((a, b) => (a[0] - cx) ** 2 + (a[1] - cz) ** 2 - (b[0] - cx) ** 2 - (b[1] - cz) ** 2);
-      src = pick;
+    const box = uniforms.uFloatBox.value, texel = FLOAT_SPAN / FLOAT_RES;
+    if (cx !== undefined) box.set(Math.round(cx / texel) * texel, Math.round(cz / texel) * texel, FLOAT_SPAN);
+    for (const [i0, i1, j0, j1] of floatDirty) for (let j = j0; j <= j1; j++) floatData.fill(255, j * FLOAT_RES + i0, j * FLOAT_RES + i1 + 1);
+    floatDirty = [];
+    const ox = box.x - FLOAT_SPAN / 2, oz = box.y - FLOAT_SPAN / 2, scale = 255 / (FLOAT_HI - FLOAT_LO);
+    for (const f of list) {
+      const x = f[0], z = f[1], r = f[2], hx = f[3] ?? 0, hz = f[4] ?? 0, l2 = hx * hx + hz * hz, il2 = l2 > 1e-6 ? 1 / l2 : 0;
+      const ex = Math.abs(hx) + r + FLOAT_HI, ez = Math.abs(hz) + r + FLOAT_HI;
+      // One texel ring at the border is never stamped, so clamped lookups outside the map read 'far'.
+      const i0 = Math.max(1, Math.floor((x - ex - ox) / texel)), i1 = Math.min(FLOAT_RES - 2, Math.ceil((x + ex - ox) / texel));
+      const j0 = Math.max(1, Math.floor((z - ez - oz) / texel)), j1 = Math.min(FLOAT_RES - 2, Math.ceil((z + ez - oz) / texel));
+      if (i0 > i1 || j0 > j1) continue;
+      floatDirty.push([i0, i1, j0, j1]);
+      for (let j = j0; j <= j1; j++) {
+        const pz = oz + (j + 0.5) * texel - z;
+        for (let i = i0; i <= i1; i++) {
+          const px = ox + (i + 0.5) * texel - x;
+          let t = (px * hx + pz * hz) * il2; t = t < -1 ? -1 : t > 1 ? 1 : t;
+          const dx = px - hx * t, dz = pz - hz * t;
+          const v = Math.round((Math.sqrt(dx * dx + dz * dz) - r - FLOAT_LO) * scale), k = j * FLOAT_RES + i;
+          if (v < floatData[k]) floatData[k] = v < 0 ? 0 : v;
+        }
+      }
     }
-    const A = uniforms.uFloatA.value, B = uniforms.uFloatB.value;
-    for (let i = 0; i < MAX_FLOATERS; i++) {
-      const f = src[i];
-      if (!f) { A[i].set(1e4, 1e4, 0, 0); B[i].set(0, 0, 0); continue; }
-      const hx = f[3] ?? 0, hz = f[4] ?? 0, l2 = hx * hx + hz * hz;
-      A[i].set(f[0], f[1], hx, hz);
-      B[i].set(l2 > 1e-6 ? hx / l2 : 0, l2 > 1e-6 ? hz / l2 : 0, f[2]);
-    }
+    floatTex.needsUpdate = true;
   }
   // Capsule footprint of a floating object (Object3D in world space or under an untransformed group), for
   // setFloaters: the local bounding box is measured once and cached, then the current position, heading and
@@ -560,7 +570,7 @@ export function createWater(T, options = {}) {
     };
   }
   function dispose() {
-    geometry.dispose(); material.dispose(); sdfTex.dispose();
+    geometry.dispose(); material.dispose(); sdfTex.dispose(); floatTex.dispose();
     prepRT?.depthTexture?.dispose(); prepRT?.dispose(); reflRT?.dispose();
   }
 

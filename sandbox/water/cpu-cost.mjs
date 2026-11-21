@@ -15,7 +15,7 @@ for (const n of [7, 50, 400, 7, 50, 400]) {   // second pass = JIT-warm numbers
 const fl = Array.from({ length: 30 }, (_, i) => [i, i * 2, 0.35]);
 let t = performance.now();
 for (let k = 0; k < 1000; k++) o.setFloaters(fl, 0, 0);
-console.log(`setFloaters(30 items, nearest 16) ${((performance.now() - t) / 1000).toFixed(4)} ms`);
+console.log(`setFloaters(30 circles, stamped into the map) ${((performance.now() - t) / 1000).toFixed(4)} ms`);
 t = performance.now();
 for (let k = 0; k < 100000; k++) o.getHeight(k % 50, k % 37);
 console.log(`getHeight ${((performance.now() - t) * 10).toFixed(2)} ns/call`);
@@ -26,4 +26,4 @@ const meshes = Array.from({ length: 30 }, (_, i) => {
 for (const m of meshes) o.footprint(m);   // first call measures and caches the bounding box
 t = performance.now();
 for (let k = 0; k < 1000; k++) { const l = []; for (const m of meshes) l.push(o.footprint(m)); o.setFloaters(l, 0, 0); }
-console.log(`footprint x30 + setFloaters ${((performance.now() - t) / 1000).toFixed(4)} ms`);
+console.log(`footprint x30 + setFloaters (capsules) ${((performance.now() - t) / 1000).toFixed(4)} ms`);
