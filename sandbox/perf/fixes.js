@@ -1,75 +1,57 @@
-// Runtime prototypes of each perf fix, applied to the LIVE game scene from outside (no dist edits).
-// Used by shoot.py to A/B each fix in isolation. The dist-ready versions are in merge.js / perf-ADOPT.md.
-// P = window.__perf (probe.js): P.R = {renderer, scene, camera}, P.T = three namespace.
-import { mergeMeshesByMaterial } from './merge.js';
+// Runtime prototypes of perf fixes and diagnostics, applied to the LIVE game scene from outside (no dist edits).
+// Used by shoot.py to A/B each one on the same frozen scene. Every function returns an undo list for undo(), so
+// `shoot.py --multi` can measure them one after another in one page. The dist-ready versions are in
+// sandbox/perf/adopt.patch / docs/tech/perf-ADOPT.md.
+// P = window.__perf (probe.js): P.R = {renderer, scene, camera}, P.T = three namespace, P.raft, P.labels.
 
-const findGroups = (scene, test) => scene.children.filter(o => o.isGroup && test(o));
-const isRaft = g => g.children.some(c => c.name === 'raft-floor' || c.name === 'raft-deck');
-const isItems = g => g.children.some(c => /^debris-|^plastic$/.test(c.name) || c.userData?.token);
-const isCloud = g => g.children.length === 3 && g.children.every(c => c.isMesh && c.geometry.type === 'IcosahedronGeometry');
-const isIsland = g => !isRaft(g) && !isItems(g) && g.children.some(c => c.isGroup) && g.children.some(c => c.geometry?.type === 'CylinderGeometry');
+const top = (P, label) => P.R.scene.children.filter(o => (o.name || P.labels?.get(o)) === label);
+export const undo = list => { for (const f of (list || []).reverse()) f(); };
 
-// 1. Floating items never cast a visible shadow: the ocean is a lights:false ShaderMaterial and does not
-//    sample the shadow map, and items never sit on the deck. So their shadow-pass draws are pure cost.
-export function itemsNoShadow(P) {
-  const items = findGroups(P.R.scene, isItems)[0];
-  const off = () => items?.traverse(o => { if (o.isMesh) o.castShadow = false; });
-  off(); setInterval(off, 200); // respawned items arrive with castShadow=true; the adopt version sets it at creation
+// Bisection (diagnostic only, changes looks): hide one owner. The game may set .visible itself every frame
+// (viewmodels), so visibility is pinned with an accessor and restored as a plain property.
+export function hide(P, label) {
+  const list = label === 'raft' ? [P.raft] : label === 'viewmodels' ? [...P.R.camera.children] : top(P, label);
+  return list.map(o => {
+    const was = o.visible;
+    Object.defineProperty(o, 'visible', { get: () => false, set() {}, configurable: true });
+    return () => Object.defineProperty(o, 'visible', { value: was, writable: true, configurable: true, enumerable: true });
+  });
+}
+// Skip every render pass other than the main scene (diving's underwater overlay: underwater-fx.js render()).
+export function hideExtraPass(P) {
+  const r = P.R.renderer, orig = r.render;
+  r.render = function (s, c) { if (s === P.R.scene) return orig.call(this, s, c); };
+  return [() => { r.render = orig; }];
 }
 
-// 2. Fit the sun's shadow camera to the raft instead of a fixed 50 x 50 m box. Everything that can RECEIVE a
-//    visible shadow (deck, decor, avatars on deck) is inside the raft bounds, so casters outside are skipped
-//    by three's shadow-frustum culling, and the same 1024 map gets ~3x the texel density.
-export function shadowFit(P, margin = 4) {
-  const { scene } = P.R, T = P.T, raft = findGroups(scene, isRaft)[0];
-  const sun = scene.children.find(o => o.isDirectionalLight);
-  const box = new T.Box3().setFromObject(raft), c = box.getCenter(new T.Vector3());
-  const r = Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2 + margin;
-  Object.assign(sun.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 1, far: 70 });
-  sun.shadow.camera.updateProjectionMatrix();
-  sun.target.position.set(c.x, 0, c.z); sun.position.set(c.x - 15, 28, c.z + 12);
-  if (!sun.target.parent) scene.add(sun.target);
-  return r;
+// Wood materials from dist/wood.js: colour map + bump map over the same canvas (an isotropic twin since 892db6d).
+export const woodMaterials = P => {
+  const s = new Set();
+  P.R.scene.traverse(o => { for (const m of [].concat(o.material || [])) if (m.bumpMap && m.map && m.bumpMap.source === m.map.source) s.add(m); });
+  return [...s];
+};
+// Drop the plank bump map altogether (main keeps it, sampled through an anisotropy-1 twin).
+export function woodNoBump(P) {
+  return woodMaterials(P).map(m => { const b = m.bumpMap; m.bumpMap = null; m.needsUpdate = true; return () => { m.bumpMap = b; m.needsUpdate = true; }; });
 }
 
-// 3. Shadow map re-rendered at a fixed rate instead of every frame (looks: deck shadows step at `hz`).
-export function shadowCadence(P, hz = 10) {
-  const r = P.R.renderer; r.shadowMap.autoUpdate = false; r.shadowMap.needsUpdate = true;
-  setInterval(() => { r.shadowMap.needsUpdate = true; }, 1000 / hz);
+// Lantern pool lights (daynight.js): once a lantern exists they stay in the scene day and night (intensity 0 by
+// day), so every lit material evaluates 2-4 point lights per pixel in daylight too. Take them out of the scene.
+export function poolLightsOff(P) {
+  const ls = []; P.R.scene.traverse(o => { if (o.isPointLight && o.name === 'daynight-lantern-light') ls.push(o); });
+  return ls.map(l => { const p = l.parent; p.remove(l); return () => p.add(l); });
 }
 
-// 4. Static scenery (12 islands, 24 clouds): ~190 meshes that never move -> one mesh per material.
-export function mergeScenery(P) {
-  const { scene } = P.R, T = P.T;
-  const groups = findGroups(scene, g => isCloud(g) || isIsland(g));
-  const merged = mergeMeshesByMaterial(T, groups, { name: 'scenery' });
-  for (const g of groups) scene.remove(g);
-  for (const m of merged) scene.add(m);
-  return { groups: groups.length, meshes: merged.length };
+// Shadow map resolution (quality.js ladder: 1024 on the top levels, 512 lower down).
+export function shadowMap(P, size) {
+  const sun = P.R.scene.children.find(o => o.isDirectionalLight), was = sun.shadow.mapSize.x;
+  const set = v => { sun.shadow.mapSize.set(v, v); sun.shadow.map?.dispose(); sun.shadow.map = null; };
+  set(size); return [() => set(was)];
 }
 
-// 5. Raft deck tiles: every createFloor tile is 5-7 meshes (3 plank colours, logs, ends, lashings, nails).
-//    Merge all tiles into one mesh per material (decor stays separate). Rebuilt whenever the raft changes.
-export function mergeRaft(P) {
-  const { T } = P, raft = findGroups(P.R.scene, isRaft)[0];
-  const floors = raft.children.filter(c => c.name === 'raft-floor');
-  const merged = mergeMeshesByMaterial(T, floors, { name: 'raft-deck', relativeTo: raft });
-  for (const f of floors) raft.remove(f);
-  for (const m of merged) raft.add(m);
-  return { tiles: floors.length, meshes: merged.length };
-}
-
-// Wood materials from dist/wood.js (map + bumpMap of the same canvas texture).
-export const woodMaterials = P => { const s = new Set(); P.R.scene.traverse(o => { for (const m of [].concat(o.material || [])) if (m.bumpMap && m.map === m.bumpMap) s.add(m); }); return [...s]; };
-
-// 6. Keep the colour map's anisotropic filtering but sample the bump map (3 extra fetches per pixel for the
-//    derivative) with plain trilinear: a second texture object over the SAME canvas, anisotropy 1.
-export function woodBumpCheap(P) {
-  const seen = new Map();
-  for (const m of woodMaterials(P)) {
-    let b = seen.get(m.map);
-    if (!b) { b = m.map.clone(); b.anisotropy = 1; b.needsUpdate = true; seen.set(m.map, b); }
-    m.bumpMap = b; m.needsUpdate = true;
-  }
-  return seen.size;
+// Which meshes cast shadows, by owner (diagnostic).
+export function shadowCasters(P) {
+  const out = {};
+  P.R.scene.traverse(o => { if (o.isMesh && o.castShadow && o.visible) { let p = o; while (p.parent && p.parent !== P.R.scene) p = p.parent; const k = p.name || P.labels?.get(p) || p.type; out[k] = (out[k] || 0) + 1; } });
+  return out;
 }
