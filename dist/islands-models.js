@@ -1,6 +1,6 @@
 // Islands: cached geometries and materials (built once per game, shared by every island).
 // Everything uses vertex colours so instance colours (setColorAt) can tint a node when it drains.
-import { ISLAND, SHORE_U, shape, hash3 } from './islands-layout.js';
+import { ISLAND, SHORE_U, shape, hash3, heightU } from './islands-layout.js';
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -70,21 +70,24 @@ function polar(T, rings, segs, fn) { // rings: radii list (first may be 0). fn(u
 function domeGeometry(T) {
   const rings = [0, .08, .16, .25, .34, .43, .51, .58, .64, .69, .73, .77, .8, .83, .86, .9, .95, 1.0, 1.07, ISLAND.RIM];
   const g = polar(T, rings, 56, (u, th) => {
-    const k = u * shape(th), u2 = u * u;
-    return [Math.cos(th) * k, ISLAND.TOP - ISLAND.FALL * u2 * u2, Math.sin(th) * k];
+    const k = u * shape(th);
+    return [Math.cos(th) * k, heightU(u, th), Math.sin(th) * k];
   });
-  const dry = new T.Color('#f6e2b3'), warm = new T.Color('#efcf95'), wet = new T.Color('#cfae78'), deep = new T.Color('#b89a6a'), tmp = new T.Color();
+  g.computeVertexNormals();
+  const dry = new T.Color('#f6e2b3'), warm = new T.Color('#efcf95'), wet = new T.Color('#bf9358'), deep = new T.Color('#9c7a4c'), tmp = new T.Color();
   return paint(T, g, (x, y, z, c) => {
     const u = Math.hypot(x, z), n = noise(x * 3, 0, z * 3);
-    c.copy(dry).lerp(warm, smooth(.15, .7, u)).lerp(wet, smooth(SHORE_U - .1, SHORE_U, u)).lerp(deep, smooth(SHORE_U + .02, 1.05, u));
+    c.copy(dry).lerp(warm, smooth(.15, .7, u)).lerp(wet, smooth(SHORE_U - .12, SHORE_U - .01, u)).lerp(deep, smooth(SHORE_U + .02, 1.05, u));
     const b = 0.96 + n * 0.08; c.r *= b; c.g *= b; c.b *= b;
     if (u > SHORE_U - .16 && u < SHORE_U - .1) c.lerp(tmp.set('#d9bb86'), .35); // faint tide line
   });
 }
 
-// Palm: curved segmented trunk + crown of drooping fronds + coconuts, one geometry in one frame.
-function palmGeometry(T) {
-  const H = 3.5, BEND = 0.85, SEG = 16, RAD = 7, parts = [];
+// Palm: curved segmented trunk + crown of drooping fronds, one geometry in one frame. The spent
+// variant has straw-yellow fronds drooped ~18 degrees further. Coconuts are their own mesh.
+export const PALM_H = 3.5, PALM_BEND = 0.85;
+function palmGeometry(T, spent = false) {
+  const H = PALM_H, BEND = PALM_BEND, SEG = 16, RAD = 7, parts = [];
   { // trunk
     const pos = [], idx = [];
     for (let i = 0; i <= SEG; i++) {
@@ -96,17 +99,21 @@ function palmGeometry(T) {
       idx.push(a, c, b, b, c, d);
     }
     const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
-    const light = new T.Color('#b88a5a'), dark = new T.Color('#8a6440');
+    const light = new T.Color(spent ? '#a89070' : '#b88a5a'), dark = new T.Color(spent ? '#806a50' : '#8a6440');
     parts.push(paint(T, g, (x, y, z, c) => { const band = Math.round(y / H * SEG) % 2; c.copy(band ? dark : light).lerp(dark, y / H * .25); }));
   }
   const top = new T.Vector3(BEND, H, 0);
-  const stem = new T.Color('#4c8f3c'), mid = new T.Color('#6cb84c'), tip = new T.Color('#acd96c');
+  const stem = new T.Color(spent ? '#9c8a40' : '#4c8f3c'), mid = new T.Color(spent ? '#c9b25a' : '#6cb84c'), tip = new T.Color(spent ? '#dccb86' : '#acd96c');
+  const sag = spent ? 0.32 : 0; // extra droop (radians) of a spent crown
   const frond = (phi, L, lift, droop, width) => {
     const N = 12, pos = [], cols = [], idx = [];
     const dx = Math.cos(phi), dz = Math.sin(phi), sx = -dz, sz = dx;
     for (let k = 0; k <= N; k++) {
       const t = k / N, w = width * Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.08 + .04)), .7) * (k % 2 ? .6 : 1);
-      const px = top.x + dx * L * t, py = top.y + lift * t - droop * t * t, pz = top.z + dz * L * t;
+      // Rotate the frond's (along, up) profile down by sag about its base.
+      const al = L * t, upv = lift * t - droop * t * t, cs = Math.cos(sag), sn = Math.sin(sag);
+      const al2 = al * cs + upv * sn, up2 = upv * cs - al * sn;
+      const px = top.x + dx * al2, py = top.y + up2, pz = top.z + dz * al2;
       const fold = w * 0.38;
       pos.push(px + sx * w, py - fold, pz + sz * w, px, py + 0.02, pz, px - sx * w, py - fold, pz - sz * w);
       const c = new T.Color().copy(stem).lerp(mid, smooth(0, .35, t)).lerp(tip, smooth(.55, 1, t));
@@ -128,25 +135,29 @@ function palmGeometry(T) {
     parts.push(frond(phi, L, .7, 1.75 + (i % 2) * .3, .44));
   }
   for (let i = 0; i < 4; i++) parts.push(frond(i / 4 * Math.PI * 2 + .6, 1.2, 1.0, .9, .3)); // young upright fronds
-  const nut = new T.Color('#6e4a2a');
+  return merge(T, parts);
+}
+// Coconut cluster under the crown, in the palm's frame (hidden once the palm is spent).
+function nutsGeometry(T) {
+  const parts = [], nut = new T.Color('#6b6233'), dark = new T.Color('#4f4626');
   for (let i = 0; i < 4; i++) {
-    const a = i / 4 * Math.PI * 2 + .3, g = new T.IcosahedronGeometry(.14, 1);
-    g.translate(top.x + Math.cos(a) * .17, top.y - .16 - (i % 2) * .06, top.z + Math.sin(a) * .17);
-    parts.push(paint(T, g, (x, y, z, c) => c.copy(nut)));
+    const a = i / 4 * Math.PI * 2 + .3, g = new T.IcosahedronGeometry(.11, 1);
+    g.translate(PALM_BEND + Math.cos(a) * .14, PALM_H - .14 - (i % 2) * .05, Math.sin(a) * .14);
+    parts.push(paint(T, g, (x, y, z, c) => c.copy(nut).lerp(dark, smooth(PALM_H - .05, PALM_H - .3, y))));
   }
   return merge(T, parts);
 }
 
 // Round bush: three lumpy spheres and a few red berries.
 function bushGeometry(T) {
-  const parts = [], lo = new T.Color('#2f6a34'), hi = new T.Color('#6cae4a'), berry = new T.Color('#e0473f');
+  const parts = [], lo = new T.Color('#2f6a34'), hi = new T.Color('#6cae4a'), berry = new T.Color('#b3242a');
   const blob = (r, x, y, z) => {
     const g = lumpy(T, new T.IcosahedronGeometry(r, 1), .14); g.translate(x, y, z);
     return paint(T, g, (px, py, pz, c) => c.copy(lo).lerp(hi, smooth(-.05, .95, py)).multiplyScalar(.92 + noise(px, py, pz) * .16));
   };
   parts.push(blob(.55, 0, .42, 0), blob(.42, .45, .3, .15), blob(.4, -.32, .3, .34), blob(.36, -.1, .32, -.42));
   const spots = [[.3, .7, .3], [-.35, .55, .5], [.1, .9, -.2], [.65, .42, .1], [-.25, .78, -.3], [.0, .5, .58], [.45, .62, -.3]];
-  for (const [x, y, z] of spots) { const g = new T.IcosahedronGeometry(.045, 0); g.translate(x, y, z); parts.push(paint(T, g, (a, b, c2, c) => c.copy(berry))); }
+  for (const [x, y, z] of spots) { const g = new T.IcosahedronGeometry(.032, 1); g.translate(x * 1.04, y, z * 1.04); parts.push(paint(T, g, (a, b, c2, c) => c.copy(berry))); }
   return merge(T, parts);
 }
 
@@ -161,13 +172,13 @@ function rockGeometry(T) {
 // Soft mound of pale sand with a couple of shells.
 function sandGeometry(T) {
   const rings = [0, .15, .3, .45, .6, .75, .9, 1];
-  const g = polar(T, rings, 20, (u, th) => { const w = 1 + .08 * Math.sin(th * 3 + 1); return [Math.cos(th) * u * .7 * w, .2 * Math.pow(1 - u * u, 1.5) - .03, Math.sin(th) * u * .7 * w]; });
-  const pale = new T.Color('#fff1cf'), edge = new T.Color('#f2dba8');
+  const g = polar(T, rings, 20, (u, th) => { const w = 1 + .08 * Math.sin(th * 3 + 1); return [Math.cos(th) * u * .8 * w, .26 * Math.pow(1 - u * u, 2) - .03, Math.sin(th) * u * .8 * w]; });
+  const pale = new T.Color('#fbeac2'), edge = new T.Color('#f0d6a0');
   paint(T, g, (x, y, z, c) => c.copy(pale).lerp(edge, smooth(.3, .7, Math.hypot(x, z))).multiplyScalar(.97 + noise(x * 5, 0, z * 5) * .06));
   const parts = [g];
   const shells = [[.18, .1, '#f7d3c6'], [-.25, -.15, '#fbf4ea'], [.05, -.3, '#f3c2a9']];
   for (const [x, z, col] of shells) {
-    const s = new T.IcosahedronGeometry(.07, 0); s.scale(1, .45, 1.3); s.rotateY(x * 7); s.translate(x, .2 * Math.pow(1 - (x * x + z * z) / .49, 1.5) - .01, z);
+    const s = new T.IcosahedronGeometry(.07, 0); s.scale(1, .45, 1.3); s.rotateY(x * 7); s.translate(x, .26 * Math.pow(1 - (x * x + z * z) / .64, 2) - .01, z);
     const cc = new T.Color(col); parts.push(paint(T, s, (a, b, c2, c) => c.copy(cc)));
   }
   return merge(T, parts);
@@ -187,6 +198,9 @@ const LAGOON_FRAG = /* glsl */`
 uniform float uTime; uniform vec2 uCentre; uniform float uR; uniform float uRot; uniform float uShore;
 uniform vec3 uSky; uniform vec3 uSunDir; uniform float uFadeNear; uniform float uFadeFar; uniform float uOpacity;
 uniform vec3 uSand; uniform vec3 uTurq; uniform vec3 uTeal; uniform vec3 uFoam;
+// Shared with the ocean (day/night retints them) and their day values: the lagoon dims with the sea.
+uniform vec3 uShallow; uniform vec3 uDeep; uniform vec3 uSunColor; uniform vec3 uShallow0; uniform vec3 uDeep0;
+uniform vec3 uSeaFoam; uniform vec3 uSeaFoam0;
 varying vec3 vWorld; varying vec3 vNormalW; varying float vHeight;
 void main() {
   vec2 d = vWorld.xz - uCentre;
@@ -194,22 +208,29 @@ void main() {
   float u = length(d) / (uR * (1.0 + 0.05 * sin(3.0 * th + 0.7) + 0.035 * sin(5.0 * th + 2.1)));
   float t = clamp((u - uShore) / (2.4 - uShore), 0.0, 1.0);
   float h = clamp(vHeight / 0.2 * 0.5 + 0.5, 0.0, 1.0);
-  vec3 col = mix(uSand, uTurq, smoothstep(0.0, 0.16, t));
-  col = mix(col, uTeal, smoothstep(0.22, 0.75, t));
+  vec3 kS = clamp(uShallow / max(uShallow0, vec3(1e-3)), 0.0, 1.5);
+  vec3 kD = clamp(uDeep / max(uDeep0, vec3(1e-3)), 0.0, 1.5);
+  vec3 kF = clamp(uSeaFoam / max(uSeaFoam0, vec3(1e-3)), 0.0, 1.5);
+  // Sand under the water only gets darker (a luminance ratio), so it never turns orange or blue.
+  const vec3 LUM = vec3(0.2126, 0.7152, 0.0722);
+  float kL = clamp(dot(uShallow, LUM) / max(dot(uShallow0, LUM), 1e-3), 0.0, 1.2);
+  vec3 col = mix(uSand * kL, uTurq * kS, smoothstep(0.0, 0.16, t));
+  col = mix(col, uTeal * kD, smoothstep(0.22, 0.75, t));
   col *= 0.92 + 0.16 * h;
   float alpha = (1.0 - smoothstep(0.08, 1.0, t)) * 0.9;
   // foam: a wobbling line at the shore and soft rings rolling in
   float f0 = uShore + 0.02 + 0.018 * sin(uTime * 1.3 + th * 4.0);
-  float foam = 1.0 - smoothstep(0.0, 0.03, abs(u - f0));
+  float brk = smoothstep(0.25, 0.65, 0.5 + 0.5 * sin(th * 19.0 + uTime * 0.35 + 2.0 * sin(th * 5.0 - uTime * 0.2)));
+  float foam = (1.0 - smoothstep(0.0, 0.012, abs(u - f0))) * (0.35 + 0.65 * brk);
   float roll = fract(uTime * 0.12 + sin(th * 3.0) * 0.04);
   float f1 = uShore + 0.32 * (1.0 - roll);
-  foam += (1.0 - smoothstep(0.0, 0.025, abs(u - f1))) * 0.45 * roll;
-  col = mix(col, uFoam, clamp(foam, 0.0, 0.85));
+  foam += (1.0 - smoothstep(0.0, 0.012, abs(u - f1))) * 0.4 * roll * brk;
+  col = mix(col, uFoam * kF, clamp(foam, 0.0, 0.85));
   alpha = max(alpha, clamp(foam, 0.0, 0.85) * (1.0 - t));
   vec3 V = normalize(cameraPosition - vWorld);
   vec3 n = normalize(vNormalW);
   float spec = pow(max(dot(reflect(-V, n), normalize(uSunDir)), 0.0), 90.0);
-  col += vec3(1.0, 0.96, 0.85) * spec * 0.6;
+  col += uSunColor * spec * 0.6;
   gl_FragColor = vec4(col, alpha * uOpacity);
   #include <tonemapping_fragment>
   float fade = smoothstep(uFadeNear, uFadeFar, length(cameraPosition.xz - vWorld.xz));
@@ -220,19 +241,26 @@ void main() {
 export function createIslandModels(T, ocean) {
   const ou = ocean && ocean.uniforms ? ocean.uniforms : null;
   const shared = (name, fallback) => (ou && ou[name] ? ou[name] : { value: fallback });
+  const day = (u) => ({ value: u.value.clone() }); // the ocean's day colour, captured at start
   const lagoonUniforms = {
     uTime: shared('uTime', 0), uSky: shared('uSky', new T.Color('#cbd2c0')), uSunDir: shared('uSunDir', new T.Vector3(-.4, .8, .35)),
     uFadeNear: shared('uFadeNear', 28), uFadeFar: shared('uFadeFar', 125),
     uCentre: { value: new T.Vector2() }, uR: { value: 7 }, uRot: { value: 0 }, uShore: { value: SHORE_U }, uOpacity: { value: 1 },
-    uSand: { value: new T.Color('#e6cd98') }, uTurq: { value: new T.Color('#5fd3c2') }, uTeal: { value: new T.Color('#2f9a9a') }, uFoam: { value: new T.Color('#f4fbf6') },
+    uShallow: shared('uShallow', new T.Color('#1fa9a8')), uDeep: shared('uDeep', new T.Color('#0a4a5a')),
+    uSunColor: shared('uSunColor', new T.Color('#fff3d6')), uSeaFoam: shared('uFoam', new T.Color('#eefbf8')),
+    uSand: { value: new T.Color('#cfa86c') }, uTurq: { value: new T.Color('#5fd3c2') }, uTeal: { value: new T.Color('#2f9a9a') }, uFoam: { value: new T.Color('#f4fbf6') },
   };
+  lagoonUniforms.uShallow0 = day(lagoonUniforms.uShallow); lagoonUniforms.uDeep0 = day(lagoonUniforms.uDeep);
+  lagoonUniforms.uSeaFoam0 = day(lagoonUniforms.uSeaFoam);
   const vert = ocean && ocean.material && typeof ocean.material.vertexShader === 'string' ? ocean.material.vertexShader : FALLBACK_VERT;
   const geos = {
-    dome: domeGeometry(T), palm: palmGeometry(T), bush: bushGeometry(T), rock: rockGeometry(T), sand: sandGeometry(T), lagoon: lagoonGeometry(T),
+    dome: domeGeometry(T), palm: palmGeometry(T), palmSpent: palmGeometry(T, true), nuts: nutsGeometry(T), bush: bushGeometry(T), rock: rockGeometry(T), sand: sandGeometry(T), lagoon: lagoonGeometry(T),
   };
   const mats = {
     dome: new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 }),
     palm: new T.MeshStandardMaterial({ vertexColors: true, roughness: .85 }),
+    palmSpent: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9 }),
+    nuts: new T.MeshStandardMaterial({ vertexColors: true, roughness: .7 }),
     bush: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9, flatShading: true }),
     rock: new T.MeshStandardMaterial({ vertexColors: true, roughness: .95, flatShading: true }),
     sand: new T.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),

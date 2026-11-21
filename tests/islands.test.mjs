@@ -36,7 +36,7 @@ test('layoutFor is deterministic and well formed', () => {
     for (const n of lay.nodes) {
       assert.ok(Math.hypot(n.x, n.z) <= 0.8 * lay.R, 'node inside 0.8 R');
       // on dry sand a player can stand on (above the wave margin)
-      assert.ok(n.y > 0.25 + 0.26 - 0.05, `node on dry sand y=${n.y.toFixed(2)}`);
+      assert.ok(n.y > 0.25 + 0.26 - 0.1, `node on dry sand y=${n.y.toFixed(2)}`);
     }
     for (let i = 0; i < lay.nodes.length; i++) for (let j = i + 1; j < lay.nodes.length; j++) {
       const a = lay.nodes[i], b = lay.nodes[j];
@@ -47,11 +47,12 @@ test('layoutFor is deterministic and well formed', () => {
 
 test('groundHeight: dome top, shoreline, rim', () => {
   assert.equal(groundHeight(0, 7), ISLAND.TOP);
-  assert.ok(Math.abs(groundHeight(SHORE_U * 7 * L.shape(0), 7, 0)) < 1e-9, 'shoreline at SHORE_U');
+  assert.ok(Math.abs(groundHeight(SHORE_U * 7 * L.shape(0), 7, 0)) < 0.01, 'shoreline at SHORE_U (dunes fade out)');
   assert.ok(Number.isNaN(groundHeight(7 * 2, 7)));
   assert.ok(Number.isNaN(groundHeight(NaN, 7)));
   let prev = Infinity;
-  for (let r = 0; r <= 7; r += 0.25) { const g = groundHeight(r, 7, 1); assert.ok(g <= prev); prev = g; }
+  for (let r = 3.5; r <= 7; r += 0.25) { const g = groundHeight(r, 7, 1); assert.ok(g <= prev); prev = g; }
+  for (let th = 0; th < 6.3; th += 0.3) for (let r = 0; r <= 4; r += 0.25) assert.ok(Math.abs(groundHeight(r, 7, th) - (ISLAND.TOP - ISLAND.FALL * (r / 7 / L.shape(th)) ** 4)) < 0.17, 'dunes stay low');
 });
 
 // ---------------------------------------------------------------- timeline
@@ -355,4 +356,195 @@ test('E on a node gathers through ctx.action; guests only send', () => {
   assert.equal(g.mod.debug.spawnNear(), false);
   assert.equal(g.mod.action({ kind: 'islands.gather', seed: 1234, node: k }, 'guest', g.bag), true);
   assert.equal(g.bag.count('stone'), 0);
+});
+
+// ---------------------------------------------------------------- review fixes
+
+const { createOcean } = await import(new URL('ocean.js', base));
+function oceanWorld(seed = 1234) {
+  const ocean = createOcean(T, {});
+  let t = 0;
+  const w = stubWorld();
+  w.ctx.ocean = ocean;
+  const frame = (input = {}) => {
+    t += 1 / 60; ocean.update(t);
+    const ev = w.physics.update(1 / 60, { tiles: RAFT3, deckY: 0.2, waterY: ocean.getHeight(w.physics.x, w.physics.z), ...input });
+    w.mod.afterMove(w.physics, 1 / 60); w.mod.update(1 / 60);
+    return ev;
+  };
+  w.mod.debug.spawnNear(seed, ISLAND.APPROACH + 1); frame();
+  return { ...w, frame, lay: layoutFor(seed) };
+}
+
+test('shoreline with real waves: standing at u = 0.75 for 20 s never splashes or flips', () => {
+  const w = oceanWorld(1234);
+  for (const a of [0, Math.PI / 2, Math.PI, 4.2]) {
+    const r = 0.75 * w.lay.R * L.shape(a - w.lay.rot);
+    assert.equal(w.mod.debug.teleportAshore(Math.cos(a) * r, Math.sin(a) * r), true);
+    let splashes = 0, flips = 0, prev = w.physics.swimming;
+    for (let i = 0; i < 60 * 20; i++) {
+      if (w.frame().splashed) splashes++;
+      if (w.physics.swimming !== prev) flips++; prev = w.physics.swimming;
+    }
+    assert.equal(splashes, 0, `splashes at angle ${a}`); assert.equal(flips, 0, `swim flips at angle ${a}`);
+    assert.equal(w.mod.debug.state().onSand, true);
+  }
+});
+
+test('shoreline with real waves: walking along the beach for 20 s stays dry', () => {
+  const w = oceanWorld(99), U = 0.72;
+  w.mod.debug.teleportAshore(U * w.lay.R * L.shape(-w.lay.rot), 0);
+  let splashes = 0, flips = 0, prev = w.physics.swimming, lap = 0, lastTh = 0;
+  for (let i = 0; i < 60 * 20; i++) {
+    const s = w.mod.debug.state(), dx = w.physics.x - s.cx, dz = w.physics.z - s.cz, th = Math.atan2(dz, dx);
+    const err = U * w.lay.R * L.shape(th - w.lay.rot) - Math.hypot(dx, dz);
+    const mx = -Math.sin(th) + 2 * err * Math.cos(th), mz = Math.cos(th) + 2 * err * Math.sin(th);
+    if (w.frame({ forward: 1, yaw: Math.atan2(-mx, -mz) }).splashed) splashes++;
+    if (w.physics.swimming !== prev) flips++; prev = w.physics.swimming;
+    if (i) lap += Math.abs(Math.atan2(Math.sin(th - lastTh), Math.cos(th - lastTh)));
+    lastTh = th;
+  }
+  assert.ok(lap > Math.PI, `walked ${lap.toFixed(1)} rad round the beach`);
+  assert.equal(splashes, 0); assert.equal(flips, 0);
+});
+
+test('stand on sand: hysteresis, a lapping wave does not knock you off', () => {
+  const p = { x: 0, y: 0.3 + PC.EYE_OFFSET, z: 0, vy: 0, grounded: true, swimming: false, verticalSpeed: 0, climbing: false };
+  const s = { onSand: false, lastJump: false };
+  assert.equal(standOnSand(p, 0.3, 0.2, s), false, 'too wet to step onto');
+  assert.equal(standOnSand(p, 0.3, 0.0, s), true);
+  assert.equal(standOnSand(p, 0.3, 0.35, s), true, 'stays on once standing');
+  assert.ok(p.y - PC.EYE_OFFSET >= 0.35 + PC.WATER_ENTER, 'feet kept dry above the wave');
+  assert.equal(standOnSand(p, 0.3, 0.45, s), false, 'a deep wave lets go');
+});
+
+test('departing island slides out from under the player (no 50 m ride)', () => {
+  const w = oceanWorld(1234);
+  const dock = w.mod.debug.phase();
+  w.mod.debug.teleportAshore(0, 0);
+  let maxFromDock = 0;
+  for (let i = 0; i < 60 * 700; i++) {
+    w.frame();
+    maxFromDock = Math.max(maxFromDock, Math.hypot(w.physics.x - dock.x, w.physics.z - dock.z));
+  }
+  assert.equal(w.mod.debug.phase().phase, 'calm');
+  assert.ok(maxFromDock < dock.R + 3, `stayed near the dock spot (${maxFromDock.toFixed(1)} m)`);
+  assert.equal(w.physics.swimming, true);
+});
+
+test('rider moves with the approaching island in the same frame', () => {
+  const w = stubWorld();
+  w.mod.debug.spawnNear(1234, 5); w.mod.update(0);
+  assert.equal(w.mod.debug.teleportAshore(1, 1), true);
+  const off = () => w.physics.z - w.mod.debug.state().cz;
+  step(w, 1); // settle (a palm or rock may nudge us on the first frame)
+  const o0 = off(), z0 = w.mod.debug.state().cz;
+  for (let i = 0; i < 60; i++) {
+    w.physics.update(1 / 60, { tiles: RAFT3, deckY: 0.2, waterY: -0.24 });
+    w.mod.afterMove(w.physics, 1 / 60); // game.js sets the camera here...
+    w.mod.update(1 / 60);               // ...and the island is drawn where update leaves it
+    assert.ok(Math.abs(off() - o0) < 1e-6, 'no lag between the camera and the island');
+  }
+  assert.equal(w.mod.debug.phase().phase, 'approach');
+  assert.ok(w.mod.debug.state().cz - z0 > 1, 'the island did move');
+});
+
+test('guest clock eases small corrections and snaps big ones', () => {
+  const h = stubWorld(); h.mod.debug.spawnNear(1234); h.mod.update(1);
+  const g = stubWorld({ role: 'guest' });
+  const snap = () => JSON.parse(JSON.stringify(h.mod.serialize()));
+  g.mod.load(snap(), 'net');
+  const c0 = g.mod.debug.phase().clock;
+  const s = snap(); s.clock += 0.5;
+  g.mod.load(s, 'net');
+  assert.ok(Math.abs(g.mod.debug.phase().clock - c0) < 1e-9, 'no pop on load');
+  g.mod.update(1 / 60);
+  assert.ok(g.mod.debug.phase().clock - c0 < 0.1, 'eases, does not jump');
+  for (let i = 0; i < 119; i++) g.mod.update(1 / 60);
+  assert.ok(Math.abs(g.mod.debug.phase().clock - (s.clock + 2)) < 0.01, 'caught up');
+  const far = snap(); far.clock += 5;
+  g.mod.load(far, 'net');
+  assert.equal(g.mod.debug.phase().clock, far.clock, 'over 1 s off: snap');
+  const back = snap(); back.clock += 0.3;
+  g.mod.load(back, 'save');
+  assert.equal(g.mod.debug.phase().clock, back.clock, 'saves snap');
+});
+
+test('guest gets reach slack and a friendly notice when too far', () => {
+  const { st, k, n } = gatherSetup(), bag = emptyBag();
+  const at = d => ({ x: st.cx + n.x + d, z: st.cz + n.z });
+  const a = { kind: 'islands.gather', seed: 1234, node: k };
+  assert.equal(applyGather(st, a, 'host', at(ISLAND.REACH + 0.5), bag).reason, 'reach');
+  assert.equal(applyGather(st, a, 'guest', at(ISLAND.REACH + 0.5), bag).ok, true);
+  st.clock += 1;
+  assert.equal(applyGather(st, a, 'guest', at(ISLAND.REACH + 1.5), bag).reason, 'reach');
+
+  const w = stubWorld(); w.mod.debug.spawnNear(1234); w.mod.update(0);
+  w.ctx.other = { x: 1e3, z: 1e3 };
+  w.mod.action({ kind: 'islands.gather', seed: 1234, node: 0 }, 'guest', w.bag);
+  assert.ok(w.emits.some(x => x.to === 'guest' && x.e.kind === 'notice' && /closer/.test(x.e.text)));
+});
+
+test('E that could not be sent starts no cooldown or bounce', () => {
+  const w = stubWorld();
+  w.mod.debug.spawnNear(1234); w.mod.update(0);
+  const k = w.mod.debug.nodes().findIndex(n => n.kind === 'rock');
+  const n = w.mod.debug.aimAt(k); w.mod.update(0);
+  w.ctx.camera.position.set(w.physics.x, w.physics.y, w.physics.z);
+  w.ctx.camera.lookAt(n.x, n.cy, n.z); w.ctx.camera.updateMatrixWorld();
+  let sent = 0;
+  w.ctx.action = () => { sent++; return false; };
+  assert.equal(w.mod.interact(null), true);
+  assert.equal(w.mod.interact(null), true);
+  assert.equal(sent, 2, 'no local cooldown after an unsent action');
+});
+
+test('serialize returns a copy; clean clamps a huge clock', () => {
+  const w = stubWorld(); w.mod.debug.spawnNear(1234); w.mod.update(0);
+  const s = w.mod.serialize();
+  s.isl.used[0] = 99; s.isl.seed = 1;
+  assert.equal(w.mod.serialize().isl.used[0], 0);
+  assert.equal(w.mod.debug.phase().seed, 1234);
+  assert.equal(clean({ v: 1, clock: 1e300 }).clock, 1e9);
+});
+
+test('palm pick: trunk and coconuts count, sky above the crown does not', () => {
+  const w = stubWorld();
+  w.mod.debug.spawnNear(1234); w.mod.update(0);
+  const k = w.mod.debug.nodes().findIndex(n => n.kind === 'palm');
+  const n = w.mod.debug.aimAt(k, 2.2); w.mod.update(0);
+  const cam = w.ctx.camera, look = (x, y, z) => { cam.position.set(w.physics.x, w.physics.y, w.physics.z); cam.lookAt(x, y, z); cam.updateMatrixWorld(); };
+  look(n.ax, n.cy, n.az);
+  assert.equal(w.mod.debug.pick(), k, 'aiming at the trunk');
+  // a hand's width beside the bark (0.35 m off the axis) is not the palm
+  { const vx = n.ax - w.physics.x, vz = n.az - w.physics.z, vl = Math.hypot(vx, vz);
+    look(n.ax - vz / vl * 0.35, n.cy, n.az + vx / vl * 0.35); assert.equal(w.mod.debug.pick(), -1, 'just beside the trunk'); }
+  look(n.x, n.y + 20, n.z);
+  assert.equal(w.mod.debug.pick(), -1, 'sky above the palm');
+  // beside the trunk, between the fronds: sky, not palm
+  const vx = n.x - w.physics.x, vz = n.z - w.physics.z, vl = Math.hypot(vx, vz);
+  look(n.x - vz / vl * 0.9, n.y + 2.2, n.z + vx / vl * 0.9);
+  assert.equal(w.mod.debug.pick(), -1, 'beside the trunk');
+  look(w.physics.x * 2 - n.x, w.physics.y, w.physics.z * 2 - n.z);
+  assert.equal(w.mod.debug.pick(), -1, 'facing away');
+});
+
+test('pick prefers sand, bush or rock over an overlapping palm', () => {
+  // Find a seed with a sand/bush/rock node close to a palm, stand so both are in line, aim between.
+  for (let seed = 1; seed < 400; seed++) {
+    const lay = layoutFor(seed);
+    const p = lay.nodes.findIndex(n => n.kind === 'palm');
+    const o = lay.nodes.findIndex(n => n.kind !== 'palm' && Math.hypot(n.x - lay.nodes[p].x, n.z - lay.nodes[p].z) < 2);
+    if (o < 0) continue;
+    const w = stubWorld(); w.mod.debug.spawnNear(seed); w.mod.update(0);
+    const nodes = w.mod.debug.nodes(), np = nodes[p], no = nodes[o];
+    // stand just behind the palm and look past it at the other node
+    const dx = np.x - no.x, dz = np.z - no.z, d = Math.hypot(dx, dz) || 1;
+    if (!w.mod.debug.teleportAshore(np.x - w.mod.debug.state().cx + dx / d * 1.1, np.z - w.mod.debug.state().cz + dz / d * 1.1)) continue;
+    w.mod.update(0);
+    const cam = w.ctx.camera; cam.position.set(w.physics.x, w.physics.y, w.physics.z); cam.lookAt(no.x, no.cy, no.z); cam.updateMatrixWorld();
+    assert.equal(w.mod.debug.pick(), o, `seed ${seed}: ${no.kind} beats the palm behind it`);
+    return;
+  }
+  assert.fail('no seed with a node next to a palm');
 });
