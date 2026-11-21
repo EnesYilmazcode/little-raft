@@ -398,20 +398,25 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
 9. **#9 Night sky: a moon disc and sparse stars.** (dist/sky.js: a hard-edged moon about 5 to 6 %
    W with a faint halo (C5), in our own flat style with no copied craters. Stars: about 50 to 150
    1 to 2 px points across the whole sky, dimmed to near-zero within about 40 deg of the moon, so a
-   moonlit view shows a handful (C8).) Impact M, effort M.
+   moonlit view shows a handful (C8).) Impact M, effort M. **[CORRECTED: moon "4 to 5 % W" -> "5 to
+   6 % W"; C5's limb-to-limb re-measure gives 4.8 to 6.8 % W. Originality guardrail is respected
+   (own style, no copied craters).]**
 10. **#10 Add a low-sun or moon glint path.** (dist/ocean.js:127-132: raise the specular exponent
     and add a stretched anisotropic term so a low sun or the moon gives a broken column 2 to 3 % W
     wide from the horizon to the near water (C7). This only matters once #8 lowers the sun.)
-    Impact M, effort S.
+    Impact M, effort S. **[CORRECTED: column width "2 to 3 % W" -> "2 to 4 % W" per C7.]**
 11. **#11 Wire in the splash effects.** (dist/waterfx.js is unused: in dist/game.js, create it
     once, add `group`, call `update(dt)` in `frame()` at :820, and call `splash()` when the hook
-    lands and when a player enters or leaves the water.) Impact M, effort S.
+    lands and when a player enters or leaves the water.) Impact M, effort S. **[CORRECTED (minor):
+    the export is `createWaterEffects(T)` (waterfx.js:16); `frame()` is at game.js:820 as stated.]**
 12. **#12 Make wave amplitude a runtime uniform, then add a rare rain shower.**
     (dist/ocean.js:11-24, :206-222: move the amplitudes to a uniform `uWaveScale` that is mirrored
     on the CPU so `getHeight` stays in sync. A shower scales the waves about 3 to 5x, pulls the fog
     in to about 15 to 80 m, adds faint 1 to 2 px streaks (about 25 on screen) and keeps the sky
     bright teal rather than grey (C11). Check deck clearance, since the raft floor is at 0.2 m and
-    calm crests reach about 0.015 m.) Impact M, effort M.
+    calm crests reach about 0.015 m.) Impact M, effort M. **[UNSURE: storm amplitude rests on one
+    frame (C11, crest spacing not reproducible); 0.015 m crest height matches the ocean.js:10
+    comment (base y -0.24 + 0.255).]**
 13. **#13 Add occasional open-sea haze or fog banks.** (dist/game.js:283 fog: tween the fog near
     and far distances to about 10 and 70 m for a minute or two, so islands read as silhouettes at a
     contrast ratio of about 0.9 (C15). This is a cheap, original atmosphere beat with no Raft image
