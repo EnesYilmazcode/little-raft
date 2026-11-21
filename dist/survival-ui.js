@@ -168,7 +168,7 @@ const CSS = `
   transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),5px);transition:opacity .25s,transform .22s cubic-bezier(.3,1.3,.5,1)}
 .tools.sv-hotbar>.sv-label.sv-show{opacity:1;transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),0)}
 @media(max-width:760px){.tools.sv-hotbar{--s:42px;--g:4px}.tools.sv-hotbar .sv-art{inset:3px}.tools.sv-hotbar .sv-count{font-size:12px}}
-#inventory.sv-inv{--s:56px;--g:6px;padding:0;margin:auto;border:0;border-radius:12px;background:transparent;box-shadow:none;color:#f4efe2;
+#inventory.sv-inv{--s:56px;--g:6px;padding:0;margin:max(16px,calc(50vh - 300px)) auto auto;border:0;border-radius:12px;background:transparent;box-shadow:none;color:#f4efe2;
   width:max-content;min-width:0;max-width:96vw;max-height:94vh;overflow:visible;font:500 14px/1.35 ${FONT}}
 #inventory.sv-inv::backdrop{background:radial-gradient(ellipse at center,#0610144d,#061014a6);-webkit-backdrop-filter:none;backdrop-filter:none}
 #inventory .sv-wrap{display:flex;gap:14px;align-items:stretch;padding:14px;outline:none;border-radius:12px;
@@ -226,7 +226,7 @@ const CSS = `
 @media(prefers-reduced-motion:reduce){.sv-slot,.sv-recipe,.sv-art,.sv-cursor,.sv-label{transition:none!important;animation:none!important}}
 /* crafting book: category tabs, recipe rows, detail card with hold-to-craft (craft-book.js) */
 #inventory .sv-wrap{user-select:none;-webkit-user-select:none}
-#inventory .sv-craft{flex:0 0 324px;width:324px;min-width:324px;contain:none;max-height:min(560px,calc(94vh - 30px));display:flex;flex-direction:column;gap:8px;overflow:hidden}
+#inventory .sv-craft{flex:0 0 324px;width:324px;min-width:324px;contain:none;height:min(560px,calc(94vh - 30px));max-height:none;display:flex;flex-direction:column;gap:8px;overflow:hidden}
 #inventory .sv-craft>.sv-h{margin:4px 2px 2px}
 #inventory .sv-hint.sv-warn{color:#ffb39a}
 #inventory .sv-tabs{display:grid;grid-template-columns:repeat(var(--tabs,4),1fr);gap:4px;flex:none}
@@ -300,7 +300,7 @@ const CSS = `
 #inventory .sv-tip{box-sizing:border-box;width:max-content;max-width:250px;padding:7px 10px;white-space:normal}
 #inventory .sv-tip small{margin-top:2px;line-height:1.35}
 #inventory .sv-tip small em{font-style:normal;font-weight:700;color:#ffc98f}
-@media(max-width:860px),(max-height:520px){#inventory .sv-craft{flex:none;width:auto;min-width:0;max-height:none;overflow:visible;contain:none}#inventory .sv-rlist{max-height:30vh}}
+@media(max-width:860px),(max-height:520px){#inventory .sv-craft{flex:none;width:auto;min-width:0;height:auto;max-height:none;overflow:visible;contain:none}#inventory .sv-rlist{max-height:30vh}}
 @media(prefers-reduced-motion:reduce){#inventory .sv-recipe,#inventory .sv-craftbtn .sv-fill{transition:none!important}}
 /* pin a recipe to the HUD edge (craft-book.js trackerView) */
 #inventory button.sv-pinbtn{align-self:start;width:auto;height:auto;margin:0;padding:4px 8px;border:0;border-radius:5px;background:#ffffff0f;box-shadow:inset 0 0 0 1px #ffffff26;color:#f4efe2b3;

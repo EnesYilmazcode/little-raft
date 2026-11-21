@@ -85,3 +85,11 @@ export function liveDecision(running, manifest, hasEngine = true) {
   if (p == null || !Number.isFinite(manifest.protocol) || manifest.protocol !== p) return 'next-session';
   return 'swap';
 }
+
+// Live-update notices go to the running engine's bottom-left feed, never a centred pill. live.js fires a
+// cancelable 'raftlive:status' event; the engine notes it and cancels. Returns true when someone took it.
+export const LIVE_STATUS_EVENT = 'raftlive:status';
+export function routeStatus(target, text) {
+  if (!target?.dispatchEvent || typeof CustomEvent !== 'function') return false;
+  return !target.dispatchEvent(new CustomEvent(LIVE_STATUS_EVENT, {detail:{text:String(text)}, cancelable:true}));
+}

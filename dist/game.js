@@ -21,11 +21,11 @@ import { createFarmView } from './farming-view.js?build=v3-survival-ae77fa84ac2b
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { floorBlock, GUEST_REACH_SLACK, BLOCK_TEXT, placePrompt } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, hookableItems, decorBlockers, playerInWay, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
-import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
+import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan, LIVE_STATUS_EVENT } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
-import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints } from './hud.js?build=v3-survival-ae77fa84ac2b';
+import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints, feedPlacement } from './hud.js?build=v3-survival-ae77fa84ac2b';
 import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 
@@ -63,10 +63,20 @@ body.playing #hud .controls,body.playing #recipes,body.playing [data-quick-recip
   background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:none;z-index:30;white-space:nowrap}
 #contextPrompt[hidden]{display:none}
 #contextPrompt kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:0 4px;border:1px solid rgba(246,236,214,.6);border-radius:4px;font:inherit;text-align:center}
-/* The pickup feed is a manual popover so notices stay visible above the open bag or pause menu. */
+/* The pickup feed is a manual popover during play; with the bag or pause menu open it docks into a lane inside that panel. */
 #pickupFeed[popover]{position:fixed;inset:auto auto 26px 22px;margin:0;padding:0;border:0;background:none;overflow:visible;width:auto;height:auto;max-width:none;max-height:none;color:#f6ecd6}
+/* Rows wrap inside the gutter left of the hotbar (its left edge is 50vw - 253px); below 1000px wide that gutter is too narrow, so the feed lifts above the hotbar. */
+#pickupFeed .pf-row{max-width:max(200px,calc(50vw - 287px));white-space:normal;line-height:1.25}
+@media(max-width:1000px){#pickupFeed[popover]{inset:auto auto 96px 10px}#pickupFeed .pf-row{max-width:calc(50vw - 120px)}}
 #pickupFeed .pf-hint{white-space:normal;max-width:max(180px,min(340px,calc(50vw - 300px)));line-height:1.3}#pickupFeed .pf-hint span{color:#ffd98f}
-@media(max-width:760px){#contextPrompt{bottom:96px}#pickupFeed[popover]{inset:auto auto 96px 10px}}
+.feed-lane{display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(transparent,#000 22px);mask-image:linear-gradient(transparent,#000 22px)}
+#inventory .sv-bag>.feed-lane{flex:1 1 0;min-height:88px;align-self:stretch}
+/* Pause rail: the lane fills the space under "Esc Back"; an equal spacer on top keeps the menu centred. */
+#options .rs-menu::before,#options .rs-menu>.feed-lane{content:"";flex:1 1 0;min-height:0;margin:0;padding:0}
+#options .rs-menu>.feed-lane{margin-top:18px;padding:0 16px 16px 0}#options .rs-menu::before{margin-bottom:18px;padding-bottom:16px}
+#pickupFeed.docked{position:static;inset:auto;z-index:auto;max-width:100%}
+#pickupFeed.docked .pf-row{max-width:100%;white-space:normal;line-height:1.25}
+@media(max-width:760px){#contextPrompt{bottom:96px}#pickupFeed[popover]{inset:auto auto 96px 10px}#options .rs-menu::before,#options .rs-menu>.feed-lane{display:none}}
 `;
 
 export function mount(transfer = null) {
@@ -424,12 +434,21 @@ export function mount(transfer = null) {
     const el = $('#contextPrompt'); if (!el) return; el.innerHTML = html; el.hidden = !html;
   }
   function hintDone(id) { if (hintsDone.has(id)) return; hintsDone.add(id); saveHints(window.localStorage, hintsDone); }
-  // First-run hints sit at the top of the bottom-left pickup feed. The feed is re-raised whenever a
-  // panel opens so notices stay visible over the open bag (a modal dialog would otherwise cover it).
+  // A lane inside the open bag or pause rail that the feed docks into, so its rows never cover panel controls.
+  function feedLane(place) {
+    const host = place === 'inventory' ? $('#inventory .sv-bag') : place === 'options' ? $('#options .rs-menu') : null;
+    if (!host) return null;
+    let lane = host.querySelector(':scope>.feed-lane');
+    if (!lane) { lane = document.createElement('div'); lane.className = 'feed-lane'; host.appendChild(lane); }
+    return lane;
+  }
+  // First-run hints sit at the top of the bottom-left pickup feed. While the bag or pause menu is open the
+  // feed moves into that panel's lane; for other dialogs it stays hidden under their backdrop.
   function updateNotices(dialog) {
     if (survivalUI?.isOpen) hintDone('bag');
     const hint = running && !dialog && !guestWaiting() ? nextHint(hintsDone, {heldKind:heldKind(), castOut:!!hook, hasLoot:hintsDone.has('loot')}) : null;
-    const sig = (hint?.id ?? '') + '|' + dialog;
+    const place = feedPlacement({inventoryOpen:!!survivalUI?.isOpen, optionsOpen:!!$('#options')?.open, dialog:!!dialog});
+    const sig = (hint?.id ?? '') + '|' + place;
     if (sig === noticeCache) return; noticeCache = sig;
     let el = $('#pickupFeed');
     if (!el) { el = document.createElement('div'); el.id = 'pickupFeed'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite'); document.body.appendChild(el); }
@@ -438,9 +457,18 @@ export function mount(transfer = null) {
       if (!row) { row = document.createElement('div'); row.className = 'pf-row pf-note pf-hint'; row.append(document.createElement('i'), document.createElement('span')); }
       row.lastChild.textContent = hint.text; if (el.firstChild !== row) el.prepend(row);
     } else row?.remove();
+    const lane = feedLane(place);
+    if (lane) { // docked: an ordinary in-flow box inside the panel, not a top-layer popover over it
+      try { if (el.matches(':popover-open')) el.hidePopover(); } catch {}
+      el.removeAttribute('popover'); el.classList.add('docked');
+      if (el.parentNode !== lane) lane.appendChild(el);
+      return;
+    }
+    el.classList.remove('docked');
+    if (el.parentNode !== document.body) document.body.appendChild(el);
     if (typeof el.showPopover !== 'function') return;
     if (!el.hasAttribute('popover')) el.setAttribute('popover', 'manual');
-    try { if (el.matches(':popover-open')) el.hidePopover(); el.showPopover(); } catch {} // re-show so it sits above the newest modal
+    try { if (el.matches(':popover-open')) el.hidePopover(); if (place === 'hud') el.showPopover(); } catch {} // re-show so it sits above the HUD
   }
   const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;'}[c]));
   function updateCharge() {
@@ -1131,6 +1159,7 @@ export function mount(transfer = null) {
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
   on(window, 'keyup', e => { keys[e.code] = false; });
+  on(window, LIVE_STATUS_EVENT, e => { if (!running || !e.detail?.text) return; notice(e.detail.text); e.preventDefault(); }); // live.js update notices -> feed
   on(window, 'keydown', e => { if (e.key === 'Escape' && !e.repeat) { escHeld = true; relockOnEscUp = false; } }, {capture:true});
   on(window, 'keyup', e => { if (e.key === 'Escape') escReleased(); }, {capture:true});
   on(window, 'pointerdown', () => { escHeld = relockOnEscUp = false; }, {capture:true}); // a click relocks on its own
