@@ -17,6 +17,7 @@
 //   prompt(aim)               -> context prompt HTML (escaped by the module) or null
 //   craftLocked(recipe, actor)-> reason string if the recipe is locked, else null
 //   decorModel(type)          -> THREE.Object3D for a CONTENT_DECOR type, or null
+//   bindRain(fn)              called once at start with fn() -> live 0..1 rain
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   dispose()
 //
@@ -48,6 +49,8 @@ export function createContent(ctx, features = FEATURES) {
   const off = m => { if (m.dead) return; m.dead = true; console.error('content module disabled:', m.name); try { m.dispose?.(); } catch (e) { console.error(`content ${m.name}.dispose failed`, e); } };
   const call = (m, fn, ...a) => { if (m.dead || typeof m[fn] !== 'function') return undefined; try { return m[fn](...a); } catch (e) { console.error(`content ${m.name}.${fn} failed`, e); off(m); return undefined; } };
   const first = (fn, ...a) => { for (const m of mods) { const r = call(m, fn, ...a); if (r) return r; } return null; };
+  const rain = () => { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }; // rain-sprinkler: live 0..1 rain
+  for (const m of mods) call(m, 'bindRain', rain); // [crops] rain waters crop plots
   const debug = {};
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
   return {
@@ -63,7 +66,7 @@ export function createContent(ctx, features = FEATURES) {
     prompt: aim => first('prompt', aim),
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
     decorModel: type => first('decorModel', type),
-    rain() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }, // rain-sprinkler: live 0..1 rain
+    rain, // rain-sprinkler: live 0..1 rain
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };
 }

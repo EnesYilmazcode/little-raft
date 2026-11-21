@@ -57,7 +57,7 @@ export const ITEM_TEXT = Object.freeze({
   freshcup:   { desc: 'A cup of clean fresh water.', use: 'Water a palm planter.' },
   seed:       { desc: 'A palm seed.', use: 'Plant it in an empty palm planter.' },
   rainbarrel: { desc: 'A tub with a leaf funnel that catches the rain.', use: 'Fills by itself in the rain. Hold an empty cup and press E.' },
-  sprinkler:  { desc: 'A little spinning head with its own tank.', use: 'Waters nearby palm planters for you. Fill it with fresh water, or put it next to a rain barrel.' },
+  sprinkler:  { desc: 'A little spinning head with its own tank.', use: 'Waters nearby palm planters and crop plots for you. Fill it with fresh water, or put it next to a rain barrel.' },
   water:      { desc: 'A filtered cup of fresh water.', use: 'Water a palm planter.' },
   purifier:   { desc: 'A small still that boils off the salt.', use: 'Turns sea water into fresh water.' },
   // progression catalogue (items.js; its tooltips also show the item's own tip)
@@ -90,7 +90,7 @@ export const ITEM_TEXT = Object.freeze({
   potato:     { desc: 'A knobbly brown potato.', use: 'Eat raw (+10 food), grill it, or plant it in a crop plot.' }, // [crops]
   cookedbeet: { desc: 'A beet grilled sweet and soft.', use: 'A tasty snack (+15 food).' }, // [crops]
   cookedpotato: { desc: 'A potato baked on the grill.', use: 'A warm, filling snack (+15 food).' }, // [crops]
-  cropplot:   { desc: 'A three-slot box of dark soil.', use: 'Plant beets or potatoes; water each slot with fresh water.' }, // [crops]
+  cropplot:   { desc: 'A three-slot box of dark soil.', use: 'Plant beets or potatoes; water each slot with fresh water. Rain and a sprinkler next to it water it too.' }, // [crops]
   cookedsharkmeat: { desc: 'A shark steak grilled through.', use: 'A filling meal (+30 food).' },
   sharkmeat:  { desc: 'A raw slab of shark meat.', use: 'Grill it for a proper meal; four come from every shark.' },
   sharkhead:  { desc: 'The head of a shark you beat.', use: 'A trophy, and proof the raft is safe for a while.' },

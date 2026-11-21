@@ -151,3 +151,40 @@ test('content registry exposes use/claims and lists the crops module', () => {
   const reg = createContent({ T: null, world: { decor: [] } }, [createCrops]);
   assert.ok(reg.debug.crops); assert.equal(reg.use('beet', null), false); assert.equal(reg.claims('beet', null), false);
 });
+
+test('soakCrops: rain wets every planted unripe slot; sprinklers soak one thirsty plot each for one unit', () => {
+  const { soakCrops, RAIN_WET } = C;
+  const ripe = { c: 'beet', g: CROPS.beet.grow, w: 0 };
+  const world = { decor: [plot(0, 0, [{ c: 'beet', g: 5, w: 0 }, null, ripe]), plot(5, 5, [{ c: 'potato', g: 0, w: 80 }])], sprinklers: {}, collectors: {} };
+  assert.deepEqual(soakCrops(world, RAIN_WET), { rain: 0, sprinkled: [] }, 'drizzle at the cut is not rain');
+  assert.equal(soakCrops(world, .8).rain, 2);
+  assert.deepEqual(world.decor[0].crop.map(s => s.w), [WATER_SECONDS, 0, 0], 'empty and ripe slots stay dry');
+  assert.equal(world.decor[1].crop[0].w, WATER_SECONDS);
+  // sprinkler at (1,0) with 2 units: the plot at (0,0) is a neighbour, (5,5) is not
+  world.decor.push({ type: 'sprinkler', x: 1, z: 0 }); world.sprinklers['1,0'] = { w: 2, s: 0 };
+  world.decor[0].crop[0].w = 0; world.decor[0].crop[1] = { c: 'potato', g: 0, w: 74 }; world.decor[1].crop[0].w = 0;
+  assert.deepEqual(soakCrops(world, 0).sprinkled, ['0,0']);
+  assert.deepEqual(world.decor[0].crop.map(s => s.w), [WATER_SECONDS, WATER_SECONDS, 0]);
+  assert.equal(world.decor[1].crop[0].w, 0, 'out of range');
+  assert.deepEqual(world.sprinklers['1,0'], { w: 1, s: 3 });
+  assert.deepEqual(soakCrops(world, 0).sprinkled, [], 'nothing thirsty: no water spent');
+  assert.equal(world.sprinklers['1,0'].w, 1);
+  // empty tank: a neighbouring rain barrel feeds it
+  world.sprinklers = {}; world.decor.push({ type: 'rainbarrel', x: 2, z: 0 }); world.collectors['2,0'] = { w: 1, f: 0 };
+  world.decor[0].crop[0].w = 10;
+  assert.deepEqual(soakCrops(world, 0).sprinkled, ['0,0']);
+  assert.equal(world.collectors['2,0'], undefined, 'barrel drained and tidied');
+  world.decor[0].crop[0].w = 10;
+  assert.deepEqual(soakCrops(world, 0).sprinkled, [], 'dry sprinkler does nothing');
+  assert.deepEqual(soakCrops(null, 1), { rain: 0, sprinkled: [] });
+});
+
+test('content registry binds live rain into the crops module: rain grows a crop with no cup', () => {
+  let rain = 0;
+  const world = { decor: [plot(0, 0, [{ c: 'beet', g: 0, w: 0 }])] };
+  const daynight = () => ({ name: 'daynight', get rain() { return rain; } });
+  const reg = createContent({ T: null, world, role: 'host', running: true }, [daynight, createCrops]);
+  reg.update(1); assert.deepEqual(world.decor[0].crop[0], { c: 'beet', g: 0, w: 0 }, 'dry weather: nothing');
+  rain = 1; reg.update(1); reg.update(1);
+  assert.equal(world.decor[0].crop[0].g, 2); assert.equal(world.decor[0].crop[0].w, WATER_SECONDS - 1);
+});
