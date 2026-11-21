@@ -121,10 +121,10 @@ function gullBlend(v, t, scareAt) { // 0 = in the sky, 1 = on the perch
 }
 
 // out: {state, x,y,z (raft frame), yaw, pitch, roll, flap, fold, blend, sx,sy,sz, px,py,pz, perch}
-// scareAt: clock time a player spooked this gull (or -1). visit: a visit to use instead of the schedule, or null.
+// scareAt: clock time a player spooked this gull (or -Infinity: clock time can be negative). visit: a visit to use instead of the schedule, or null.
 // perch: omitted = perches[visit.perch]; an {x,y,z} = that perch (the module latches one per visit); null = none.
 // ext: raft half-size (raftExtent), pushes the sky circle out on big rafts.
-export function gullPlan(seed, i, t, perches, out, scareAt = -1, visit = null, perch = undefined, ext = 0) {
+export function gullPlan(seed, i, t, perches, out, scareAt = -Infinity, visit = null, perch = undefined, ext = 0) {
   const n = Array.isArray(perches) ? perches.length : 0;
   const v = visit && visit.on ? visit : gullVisit(seed, i, Math.floor(t / GULL_SLOT), n, _visit);
   gullSky(seed, i, t, _sky, ext);
@@ -236,7 +236,7 @@ export function createWildlife(ctx) {
   let offset = 0, target = 0, synced = false, clock = 0;
   const net = { t: 0 };
   let perches = [], perchMap = new Map(), ext = 0, tilesRef = null, decorRef = null, tilesLen = -1, decorLen = -1, hash = 0, rebuilds = 0, changed = false;
-  const scareAt = new Float64Array(GULL_MAX).fill(-1), scareSlot = new Int32Array(GULL_MAX).fill(-1);
+  const scareAt = new Float64Array(GULL_MAX).fill(-Infinity), scareSlot = new Int32Array(GULL_MAX).fill(-1);
   // Per gull: the scheduled visit of the current slot and the perch latched when it began (kept for the visit).
   const vis = [], lat = [];
   for (let i = 0; i < GULL_MAX; i++) { vis.push({ on: false, start: 0, stay: 0, perch: -1, yaw: 0 }); lat.push({ slot: -1, done: false, on: false, key: '', x: 0, y: 0, z: 0 }); }
@@ -342,7 +342,7 @@ export function createWildlife(ctx) {
         const q = perchMap.get(P.key);
         if (!q || q.y !== P.y) { scareAt[i] = t; scareSlot[i] = slot; if (f.on) f.scare = true; }
       }
-      const sAt = f.on ? (f.scare ? scareAt[i] : -1) : scareSlot[i] === slot ? scareAt[i] : -1;
+      const sAt = f.on ? (f.scare ? scareAt[i] : -Infinity) : scareSlot[i] === slot ? scareAt[i] : -Infinity;
       gullPlan(seed, i, t, perches, plan, sAt, f.on ? f : vis[i], P, ext);
       // where the perch is in the world (raft bob and tilt)
       v3.set(plan.px, plan.state === 'perched' ? plan.y : plan.py, plan.pz); if (raft) v3.applyMatrix4(raft.matrixWorld);
@@ -489,7 +489,7 @@ export function createWildlife(ctx) {
       if (Number.isInteger(opts.perch) && opts.perch >= 0 && opts.perch < perches.length) best = opts.perch;
       const p = perches[best];
       Object.assign(forced[i], { key: p.key, x: p.x, y: p.y, z: p.z, on: true, start: now() - (opts.instant ? GULL_DESCEND : 0), stay: fin(opts.stay) ? opts.stay : 15, perch: best, yaw: fin(opts.yaw) ? opts.yaw : TAU * Math.random(), scare: !!opts.scare });
-      scareAt[i] = -1;
+      scareAt[i] = -Infinity;
       return { ...perches[best] };
     },
     schoolHere(i = 0, dist = 5) {
