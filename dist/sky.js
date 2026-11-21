@@ -23,6 +23,7 @@ void main() {
 
 const fragmentShader = /* glsl */ `
 uniform vec3 uHorizon;
+uniform vec3 uFarSea;
 uniform vec3 uZenith;
 uniform vec3 uMid;
 uniform vec3 uSunColor;
@@ -74,8 +75,8 @@ void main() {
     col = mix(col, cloudCol, density * 0.85);
   }
 
-  // Below the horizon (rarely visible behind the ocean fade) stay hazy.
-  col = mix(col, uHorizon * 0.96, smoothstep(0.0, -0.08, y));
+  // Below the horizon (the sliver past the ocean plane's edge) is far sea, so the horizon stays a crisp line.
+  col = mix(col, uFarSea, smoothstep(0.0, -0.004, y));
 
   // Tiny dither against gradient banding.
   col += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
@@ -122,7 +123,8 @@ export function createSky(T, options = {}) {
   const sunDirection = (options.sunDirection ?? new T.Vector3(-15, 28, 12)).clone().normalize();
 
   const uniforms = {
-    uHorizon: { value: new T.Color(options.horizon ?? '#a6e9f2') },
+    uHorizon: { value: new T.Color(options.horizon ?? '#86dcef') },
+    uFarSea: { value: new T.Color(options.farSea ?? '#3d97c8') },
     uMid: { value: new T.Color(options.mid ?? '#4fb8e6') },
     uZenith: { value: new T.Color(options.zenith ?? '#1e86d2') },
     uSunColor: { value: new T.Color(options.sunColor ?? '#fff6dc') },
@@ -179,6 +181,7 @@ export function createSky(T, options = {}) {
     if (background?.isColor) u.uHorizon.value.copy(background);
     const zen = oceanUniforms?.uZenith?.value;
     if (zen) { u.uZenith.value.copy(zen); u.uMid.value.copy(u.uHorizon.value).lerp(zen, .45).lerp(MID_DAY, Math.min(1, lum(u.uHorizon.value) / DAY_LUM) * .5); }
+    if (oceanUniforms?.uFarSea) u.uFarSea.value.copy(oceanUniforms.uFarSea.value);
     if (oceanUniforms?.uSunDir) u.uSunDir.value.copy(oceanUniforms.uSunDir.value).normalize();
     if (oceanUniforms?.uSunColor) u.uSunColor.value.copy(oceanUniforms.uSunColor.value);
     const k = Math.min(1, lum(u.uHorizon.value) / DAY_LUM);
