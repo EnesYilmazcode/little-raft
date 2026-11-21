@@ -589,3 +589,18 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
 - Fixed after the merges: honey/wax/flower-seed sources, context prompt moved beside the crosshair, held-item and sprite-list conflicts with the beehive/instrument lanes.
 - Perf probe now compares against the current main (144c94a): 216 vs 322 ms, 96 vs 152 draw calls.
 - PR #2 merged into main (3031d67). Review fixes: inventory width at 900px, recipe tracker overlap, Pin button contrast. Reviewer low-priority notes left open: per-frame allocations in rain.js rainTarget and the physics substep input, sky.dispose() missing on hot swap, passive wheel listener.
+## 2026-11-21 · integrator C, round 2
+- Merged into raft-master: content-islands, fishing-cooking, building-pieces, content (+wildlife, storage, daynight), sailing,
+  onboarding (tracker and left-aligned title menu now loaded from index.html), loop-features-0451 (logbook, signal caches,
+  purifier), coop, diving, loop-ux-0451, loop-perf-0451, then raft-progression and raft-art (subagent). All kept both intents:
+  sailing drift + diving hide-above survive the merged scenery (each island/cloud group is baked on its own), the coop rejoin
+  path survives the heartbeat rewrite, fishing-cooking grills block placement, day/night offsets the sun from the shadow-fitted target.
+- Progression and the content "Research Table" both gated recipes: progression owns its catalogue, the content table
+  (renamed Tinker's Desk) teaches the rest. raft-art stays opt-in behind ?art=1 (doubles frame time under SwiftShader).
+- QA (bugs, detail, perf reviewers read the screenshots): Notes panel no longer covers the compass or dialogs; journal close relocks;
+  fish toasts, piece chip and sail prompt no longer centred; Esc on the piece wheel no longer pauses; wood bump map dropped (no visible change, ~-20% CPU).
+- Gate fixes: Tab closes the bag again (playbot), item icons render through the game's WebGL context (budget: 1 context),
+  recipe lock badges are built before the first bag open (DOM growth 109 -> 4), desktop shell opens pause on the Esc keyUp
+  when Chromium ate the keyDown that ended pointer lock (electron check), icon encode is synchronous under the deterministic clock (visual check).
+- Full fleet gate PASS at c7a8293 (unit, playbot, visual, perf, electron). Electron is now installed in node_modules.
+- PR #3 (round 4) is the open PR from raft-master; integrator B merged #2 at 1636dfe meanwhile.
