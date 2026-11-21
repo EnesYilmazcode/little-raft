@@ -1,6 +1,6 @@
 // Held scrap hook model (first-person). ES module.
 // Usage: import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b'; const g = createHook(THREE);
-import { mergeChildMeshes } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
+import { mergeChildMeshesPBR } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 // Group is re-centered on its bounding box: ~0.70 wide (X), ~0.84 tall (Y), ~0.40 deep (Z).
 // Handle at bottom (-Y), curved hook with point at top (+Y), hook bend leans toward -Z (front).
 export function createHook(T) {
@@ -146,7 +146,7 @@ export function createHook(T) {
   lash.rotation.x = Math.PI / 2;
 
   // Built as 18 parts (hook, tip, barb, ferrule, 4 rivets, handle, pommel, wrap, 2 bands, knot, cord, coil, bind, lash),
-  // merged below into one mesh per material.
+  // merged below into one mesh.
 
   inner.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
 
@@ -156,9 +156,10 @@ export function createHook(T) {
   const center = box.getCenter(new T.Vector3());
   inner.position.sub(center);
   const size = box.getSize(new T.Vector3());
-  // Static parts never move relative to each other: one draw call per material (6), merged after the
+  // Static parts never move relative to each other: all 18 merged into one draw (per-vertex colour, roughness
+  // and metalness keep each part's material look), merged after the
   // re-center so the bounds/grip math above sees the original parts.
-  mergeChildMeshes(T, inner);
+  mergeChildMeshesPBR(T, inner);
   root.userData.size = { x: size.x, y: size.y, z: size.z };
   root.userData.orientation = 'handle -Y, hook point +Y, hook bend leans toward -Z (front), bend opens to -X';
   return root;
