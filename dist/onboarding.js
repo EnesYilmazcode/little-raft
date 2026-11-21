@@ -4,6 +4,7 @@
 //        optional?:bool (never blocks its chapter), show?(S) -> bool (visibility gate), every?:bool (shown in any chapter)}.
 // count may add a unit: [n, of, '°']. ctx = {S0, gained(k), yawTravel, walked (path metres), prev, mem, silent}. Completion reads only window.raftDebug.hud (a light live view; .state if absent), polled 250 ms.
 export const SAVE_KEY = 'little-raft-v1', KEY = 'little-raft-onboarding-v1', AUTOSTART = 'little-raft-autostart';
+const FC_KEY = 'little-raft-fc-v1', PROGRESSION_KEY = 'littleRaft.progression.v1'; // = FC_SAVE_KEY (fishing-cooking.js), PROGRESSION_KEY (progression-hooks.js)
 const POLL_MS = 250, MAX_ROWS = 3, DIM_MS = 20000, HOLD_MS = 2000, ASIDE_MIN = 190, GUTTER = 8;
 // the crosshair-side prompt column (prompts.css #lrPrompt and the tool readouts that sit above / below the crosshair)
 export const PROMPT_COL = ['#lrPrompt.lr-on', '#binocularsHud', '#treasureHud', '#fcReelHud.show', '#sailPrompt', '#resumeHint'];
@@ -420,7 +421,10 @@ function boot() {
     const disarm = () => { clearTimeout(armed); armed = 0; newBtn.textContent = newLabel; newBtn.classList.remove('ob-confirm'); };
     function wipe() {
       wiping = true;
-      const clear = () => { store.del(SAVE_KEY); store.del(KEY); };
+      const clear = () => { // the world save plus the other per-raft stores (grills, stations/research); the fish journal is per browser
+        store.del(SAVE_KEY); store.del(KEY); store.del(PROGRESSION_KEY);
+        try { const fc = JSON.parse(store.get(FC_KEY)); if (fc && typeof fc === 'object') { fc.grills = []; if (fc.journal && typeof fc.journal === 'object') fc.journal.basket = []; store.set(FC_KEY, JSON.stringify(fc)); } } catch {}
+      };
       clear(); addEventListener('beforeunload', clear); addEventListener('pagehide', clear); // game.js saves on beforeunload; run after it
       store.set(AUTOSTART, '1', true); location.reload();
     }

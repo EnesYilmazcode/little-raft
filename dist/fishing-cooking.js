@@ -471,6 +471,7 @@ export function createFishingCooking(T, host) {
     hasGrill: (x, z) => !!grillAt(x, z), // game.js keeps decor off grill tiles
     dropTile(x, z) { const g = grillAt(x, z); if (!g || isGuest(host.role())) return false; removeGrill(g); markChanged(); return true; }, // shark lane: a destroyed foundation takes its grill with it
     get rodReeling() { return !!session && session.stage === 'reeling' && session.holding; },
+    resetWorld() { syncRole(); clearGrills(); stash = isGuest(lastRole) ? [] : null; journal.basket.length = 0; markChanged(); save(); }, // game.js newGame(): grills and basket belong to the old raft; species/cookbook stay
     capture() { save(); return { v: 1, journal: journal.snapshot(), grills: isGuest(lastRole) ? (stash || []) : snapshots() }; },
     // test/QA helpers
     journal, grills, save,

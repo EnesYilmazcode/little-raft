@@ -390,7 +390,17 @@ export function mount(transfer = null) {
   // three r170 draws transparent DoubleSide materials as two passes and flips material.side (a full program-parameter
   // rebuild) around each; these thin, depth-tested parts look the same in one pass.
   function singlePass(o) { o.traverse(c => { for (const m of [].concat(c.material || [])) if (m.transparent && m.side === T.DoubleSide) m.forceSinglePass = true; }); return o; }
-  function disposeGeometry(o) { const cached = new Set(materialCache.values()), materials = new Set(); o.traverse(c => { if (!c.geometry?.userData.shared) c.geometry?.dispose(); for (const m of [].concat(c.material || [])) if (!cached.has(m) && m !== clothMat && !m.userData.shared) materials.add(m); }); for (const m of materials) { m.map?.dispose(); m.dispose(); } }
+  function disposeGeometry(o) { const cached = new Set(materialCache.values()), materials = new Set(); o.traverse(c => { if (!c.geometry?.userData.shared) c.geometry?.dispose(); for (const m of [].concat(c.material || [])) if (!cached.has(m) && m !== clothMat && !m.userData.shared) materials.add(m); }); for (const m of materials) disposeMaterial(m); }
+  // three.js compileAsync polls every material it compiled until its program is ready; a material disposed meanwhile has
+  // no program and the poll throws (uncaught, from a timer). So while any warm-up is pending, material disposal waits.
+  let warming = 0; const deferredMaterials = new Set();
+  function disposeMaterial(m) { if (warming > 0) { deferredMaterials.add(m); return; } m.map?.dispose(); m.dispose(); }
+  function warmCompile() { // compileAsync of the whole scene, counted; the cap releases disposal if a poll ever dies without settling
+    warming++; let open = true, cap = 0;
+    const settle = () => { if (!open) return; open = false; clearTimeout(cap); if (--warming > 0) return; const ms = [...deferredMaterials]; deferredMaterials.clear(); for (const m of ms) disposeMaterial(m); };
+    cap = setTimeout(settle, 30000);
+    try { return renderer.compileAsync(scene, camera).finally(settle); } catch (e) { settle(); throw e; }
+  }
   function woodMat(hex) { // content hook (paint): tinted plank materials, cached forever (disposeGeometry skips them)
     const k = 'wood:' + hex;
     if (!materialCache.has(k)) { let m = null; try { m = createWoodMaterial(T, hex); } catch (e) { console.warn('wood material failed', e); } materialCache.set(k, m ?? new T.MeshStandardMaterial({color:hex, roughness:.85, metalness:0})); }
@@ -582,7 +592,7 @@ export function mount(transfer = null) {
   function warmShaders() {
     if (typeof renderer.compileAsync !== 'function') return;
     hands?.preload(['hammer', 'fishingrod', 'spear']);
-    try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
+    try { warmCompile().catch(e => console.warn('shader warm-up failed', e)); }
     catch (e) { console.warn('shader warm-up failed', e); }
   }
   // Also build the no-shadow variant (adaptive floor / Shadows off), else that switch relinks every lit program mid-game.
@@ -591,7 +601,7 @@ export function mount(transfer = null) {
   function warmNoShadow() {
     if (!sun?.castShadow || typeof renderer?.compileAsync !== 'function') return;
     sun.castShadow = false;
-    try { renderer.compileAsync(scene, camera).catch(() => {}); } catch {}
+    try { warmCompile().catch(() => {}); } catch {}
     sun.castShadow = true;
   }
   // Held models and build ghosts for every kind in the bag are built ahead and their shaders compiled
@@ -605,7 +615,7 @@ export function mount(transfer = null) {
       warmedKinds.add(k); fresh = true; hands.preload([k]);
       if (k === 'hammer') ghosts.preload(['floor']); else if (DECOR_TYPES.includes(k)) ghosts.preload([k]);
     }
-    if (fresh) { try { ghosts.warm(() => renderer.compileAsync(scene, camera).catch(() => {})); } catch (e) { console.warn('shader warm-up failed', e); } }
+    if (fresh) { try { ghosts.warm(() => warmCompile().catch(() => {})); } catch (e) { console.warn('shader warm-up failed', e); } }
   }
   function palm(parent, x, y, z, s = 1) {
     const g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); cylinder(.09, .17, 1.6, '#ad8153', 0, .8, 0, g);
@@ -1358,7 +1368,7 @@ export function mount(transfer = null) {
   }
   // Pause menu "quit to title": save, leave any crew, show the title. The world stays loaded for Continue.
   function quitToTitle() {
-    save(); if (role !== 'solo') closeConnection();
+    save(); if (role !== 'solo') { send({type:'leaving'}); closeConnection(); } // tell the peer first: the guest goes home now, not after a timeout
     hook = null; fishWait = 0; clearInput(); releaseLock();
     running = false; const w = $('#welcome'); if (w) w.hidden = false; const h = $('#hud'); if (h) h.hidden = true;
     refreshTitle(); refreshPointerUI(true);
@@ -1368,7 +1378,8 @@ export function mount(transfer = null) {
     if (role !== 'solo') closeConnection();
     resetHints(window.localStorage, hintsDone); // first-run hints are once per save, and this is a fresh one
     const w = newWorld(), b = bagsFromWorld(w);
-    loadRaft({world:w, host:b.host.snapshot(), guest:b.guest.snapshot(), physics:null}); yaw = 0; pitch = -.28; // lanes reload from the fresh world too
+    try { fc?.resetWorld?.(); } catch (e) { console.warn('fishing reset failed', e); } try { prog?.reset?.(); } catch (e) { console.warn('progression reset failed', e); } // per-raft stores outside world
+    loadRaft({world:w, host:b.host.snapshot(), guest:b.guest.snapshot(), physics:null}); resetVitals(); yaw = 0; pitch = -.28; // lanes reload from the fresh world too
     saveRev = newGameBaseRev(storedRev(), saveRev); unblockSave(); // the player chose to overwrite the stored save
     save(); start();
   }
@@ -1394,7 +1405,8 @@ export function mount(transfer = null) {
   }
   function unblockSave() { if (!saveBlocked) return; saveBlocked = false; setText('#saveStatus', SAVE_STATUS); }
   // Leaving the title for play while another tab has saved since: continue from that newer save, not our stale copy.
-  function adoptStoredSave() { loadRaft(savedOwnRaft()); saveRev = storedRev(); unblockSave(); }
+  function adoptStoredSave() { loadRaft(savedOwnRaft()); resetVitals(); saveRev = storedRev(); unblockSave(); }
+  function resetVitals() { Object.assign(vitals, newVitals(world.vitals)); fainted = -1; eating = null; } // [vitals] loadRaft keeps the body; a different world brings its own
   function save() {
     if (role === 'guest' || disposed || saveBlocked) return;
     syncWorldInventories();
@@ -1828,7 +1840,7 @@ export function mount(transfer = null) {
     signal.addEventListener('abort', () => controls?.dispose());
   } catch (e) { console.error('controls lane failed to start', e); controls = null; }
   on(document, 'visibilitychange', () => { quality?.reset(); });
-  on(window, 'beforeunload', () => { save(); send({type:'leaving'}); try { conn?.close(); peer?.destroy(); } catch {} });
+  on(window, 'beforeunload', () => { if (running) save(); send({type:'leaving'}); try { conn?.close(); peer?.destroy(); } catch {} }); // on the title the world is already saved (or was never played)
   on(document, 'visibilitychange', () => {
     send({type:document.hidden ? 'hidden' : 'visible'}); lastNetSendAt = performance.now();
     if (document.hidden && running) save(); // a hidden tab may be discarded without beforeunload
