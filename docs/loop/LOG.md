@@ -728,3 +728,37 @@ QA found that every content-module and watering prompt (round 1 purifier, storag
 Checks: `npm test` 568/568 (was 533); shoot.py `errors: []`.
 Known limits: live two-peer co-op not run (co-op reviewed by code and unit tests). Mixed-version co-op unsupported (older builds drop the new decor and reset bags holding new kinds). Removing a barrel, sprinkler or hive with the hammer discards its contents. Fishing labels over 48 characters get cut off.
 Next ideas: hammer pickup that refunds contents, a placeable music stand, flower variety, sprinkler range ring while aiming.
+
+## claude/loop-visuals-202611210648 (visuals, round 2)
+Base: origin/claude/raft-master (d56c3ef). Fleet: critic, 6 builders (sky, water, materials, hands-and-items, UI, models), art judge, perf checker (10 agents).
+- Accepted (judge: all 6 clearly better):
+  - sky.js dome wired in and driven by a new 9th daynight palette column (blue zenith, pale cyan horizon, white wispy clouds); mesh clouds hidden.
+  - ocean shader: saturated blue, crisp horizon with a pale far band, sharp glints, foam only near the raft.
+  - deck: weathered grey-tan per-board tones, dark gap underlay, worn wood texture; deck meshes 7 -> 5.
+  - held hook rebuilt as a stick with a white bottle grip and orange plastic claws; fingers wrap the grip.
+  - warm wood-and-parchment HUD, inventory, pause menu and quest card.
+  - scenery islands: sand shelf, rocks, lumpy canopy, leaning palms (same draw calls).
+- Judge fixes: solid slot numbers, outlined slot icons, warmer sand and boards.
+- Perf: first A/B FAILED (deck +78%, horizon +36%). Cause: the plank texture's bump map and 4x aniso after the new board UVs, plus the sky's second fbm. Fixed (no bump, 2x aniso, one-octave detail).
+- Re-measured ABAB with the seeded probe:
+  - horizon 236 -> 232 ms
+  - deck 433 -> 410 ms
+  - draw calls 154 -> 140
+  - PASS
+- npm test 532/532.
+- Next:
+  - hotbar/inventory hook icon still shows the old steel gaff; icons need painted look with dark outlines
+  - square foundation tiles instead of long planks
+  - contact foam ring around the raft, more cyan near water
+  - bigger islands with cliffs
+  - coop-fx.js remote hook still steel
+  - thumb blob on the hook grip
+  - faint banding in the pause panel
+- Integrator merge into raft-master: only the orange-claw hook (hook.js) was taken; sky, daynight, ocean, deck, wood, islands, hands and HUD were stale parallel copies of work already on raft-master, so raft-master kept its versions (sky stays driven by daynight via sky.follow).
+
+## 2026-11-21 · integrator round 5 (integrator A)
+- Merged into raft-master: fleet-tech procedural-models/foliage/audio/perf/water/icons, loop-perf-0708, loop-features-0648, raft-tech, raft-content, raft-tests, lane-models, loop-perf-0648 (daynight refresh at 10 Hz, late no-shadow warm, idle dive warm), loop-perf-0720 (ghost hold after place, Shift+R 15° steps; Alt+R now turns backwards), loop-features-0703, loop-ux-0603/0648 remainders (bee item sources, title save line), loop-features-0831 (juicer, gull, building pack; restored after the earlier revert once the branch was finished).
+- Skipped: lane-placement (old placement model, superseded), raft-reference (third-party reference frames, not game code).
+- PR #2 review (2 reviewers, comments on the PR). Fixed: items.js still had an 8-slot hotbar, so slots 9/0 reset on load and for co-op guests; red off-deck ghost said "Place"; slot 9/0 onboarding hint; pickup feed covered the vitals panel; vitals panel overlapped the 10-slot hotbar below 1100px; resume hint forced next to the crosshair by an !important rule; sky noise texture leaked on hot swap.
+- Gate at dbf2ca9: 983/983, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text. Perf vs main (pinned, median of 3, interleaved): 185/191 vs 195/192 ms, 49-52 vs 51-55 draw calls.
+- Merged PR #4 into main (912d941).

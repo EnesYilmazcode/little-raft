@@ -23,11 +23,25 @@ export const PIECES = Object.freeze({
   pillar: piece('pillar', 'Pillar', 'corner', {wood: 1}, false, LEVEL_H),
   stairs: piece('stairs', 'Stairs', 'cell', {wood: 3}, false, LEVEL_H),
   roof: piece('roof', 'Roof', 'cell', {wood: 1, leaf: 2}, false, ROOF_RISE),
+  railing: piece('railing', 'Railing', 'edge', {wood: 1, rope: 1}, false, 0.95),
+  hatch: piece('hatch', 'Hatch', 'cell', {wood: 3, rope: 1}, false, FLOOR_THICK),
+  ladder: piece('ladder', 'Ladder', 'cell', {wood: 3, rope: 1}, false, LEVEL_H),
+  gate: piece('gate', 'Gate', 'edge', {wood: 2, rope: 1}, false, 0.95),
 });
-export const PIECE_ORDER = Object.freeze(['foundation', 'floor', 'wall', 'halfwall', 'window', 'door', 'pillar', 'stairs', 'roof']);
+// New ids are appended: ORDER_OF only sets the load order, so old saves load exactly as before.
+export const PIECE_ORDER = Object.freeze(['foundation', 'floor', 'wall', 'halfwall', 'window', 'door', 'pillar', 'stairs', 'roof', 'railing', 'hatch', 'ladder', 'gate']);
+// Stateful pieces carry `o: 1` only while open; a closed record is the plain {t,i,j,l,r}.
+export const STATEFUL = Object.freeze(Object.assign(Object.create(null), {hatch: 1, gate: 1}));
+// Railing/gate height (above the 0.88 m jump), gate opening, open hatch leaf height, ladder box (u from the
+// cell centre along DIR[r], metres) and its half width.
+export const RAIL_H = 0.95, GATE_GAP = 1.2, LEAF_H = 1.0, LAD_IN = 0.86, LAD_OUT = 0.96, LAD_HALF = 0.45;
+// RAIL_GUARD: railing / gate collision height. A jump from a deck that is bobbing down rises up to ~0.25 m more
+// relative to the deck than the 0.88 m still-deck jump, so the solid box reaches above the visible rail.
+const RAIL_GUARD = RAIL_H + 0.25, LEAF_T = 0.06, LAD_PIN = LAD_IN - BODY_R - 0.02;
 
 // Null-prototype lookups: `t in SLOT_OF` must not accept 'constructor' / '__proto__' / 'toString' from saves or guests.
-const SLOT_OF = Object.assign(Object.create(null), {floor: 0, roof: 0, stairs: 1, wall: 2, halfwall: 2, window: 2, door: 2, pillar: 3});
+const SLOT_OF = Object.assign(Object.create(null), {floor: 0, roof: 0, stairs: 1, wall: 2, halfwall: 2, window: 2, door: 2, pillar: 3,
+  railing: 2, hatch: 0, ladder: 1, gate: 2});
 const ORDER_OF = Object.create(null);
 PIECE_ORDER.forEach((t, k) => { ORDER_OF[t] = k; });
 
@@ -40,6 +54,13 @@ const tileKey = (i, j) => (i + 4096) * 8192 + (j + 4096);
 const isInt = v => Number.isInteger(v);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const inside = u => u < 0.98 && u > -0.98;
+
+// Canonical record: {t,i,j,l,r}, plus o:1 only for an open stateful piece (never `o: undefined`).
+export function toRec(p) {
+  const rec = {t: p.t, i: p.i, j: p.j, l: p.l, r: p.t === 'pillar' || p.r === undefined ? 0 : p.r};
+  if (STATEFUL[p.t] && p.o === 1) rec.o = 1;
+  return rec;
+}
 
 // Slab test scratch: a Float64Array, not module-level `let`s (a double stored to a context slot allocates a HeapNumber).
 const TT = new Float64Array(2); // [near, far]
@@ -77,6 +98,7 @@ export class BuildGrid {
     this._prevHead = Infinity; this._px = 0; this._pz = 0; this._pvy = 0;
     this._refused = null; this._rx = 0; this._rz = 0; this._rvy = 0;
     this._pre = {deckY: 0, tiles: this._tileArr};
+    this._cl = null; this._climbing = false; this._lin = {forward: 0, jump: false, y: 0}; this._clTile = [0, 0]; this._clTiles = [this._clTile];
   }
 
   setTiles(tiles) {
@@ -94,7 +116,7 @@ export class BuildGrid {
         if (!p || typeof p !== 'object' || typeof p.t !== 'string' || !(p.t in SLOT_OF)) continue;
         const r = p.t === 'pillar' ? 0 : p.r === undefined ? 0 : p.r;
         if (!isInt(p.i) || !isInt(p.j) || !isInt(p.l) || !isInt(r)) continue;
-        cand.push({t: p.t, i: p.i, j: p.j, l: p.l, r});
+        cand.push(toRec({t: p.t, i: p.i, j: p.j, l: p.l, r, o: p.o}));
       }
     }
     // Canonical order so the result does not depend on input order; then place until stable.
@@ -104,7 +126,7 @@ export class BuildGrid {
       progress = false;
       for (let k = 0; k < cand.length; k++) if (!done[k] && this.canPlace(cand[k]) === '') { this.place(cand[k]); done[k] = 1; progress = true; }
     }
-    return this.list.map(p => ({t: p.t, i: p.i, j: p.j, l: p.l, r: p.r}));
+    return this.list.map(toRec);
   }
 
   // ---------- lookups ----------
@@ -166,15 +188,19 @@ export class BuildGrid {
     if (s === 0 && l < 1) return 'Build this above the deck';
     if (this._get(s, i, j, l, r)) return 'Something is already here';
     if (this.list.length >= MAX_PIECES) return 'Too many pieces';
-    if (s === 1 && this._get(0, i, j, l + 1, 0)) return 'Floor above is in the way';
-    if (s === 0 && this._get(1, i, j, l - 1, 0)) return 'Stairs are in the way';
+    const above = s === 1 ? this._get(0, i, j, l + 1, 0) : null, below = s === 0 ? this._get(1, i, j, l - 1, 0) : null;
+    if (above && !(t === 'ladder' && above.t === 'hatch')) return 'Floor above is in the way';
+    if (below && !(t === 'hatch' && below.t === 'ladder')) return 'Stairs are in the way';
     if (!this._supported(t, i, j, l, r)) return 'Needs support below';
     return '';
   }
 
   place(p) {
     if (this.canPlace(p) !== '') return false;
-    const rec = {t: p.t, i: p.i, j: p.j, l: p.l, r: p.t === 'pillar' || p.r === undefined ? 0 : p.r};
+    const rec = toRec(p);
+    // A hatch over a ladder hinges on the sides parallel to it, so the ladder side opens: share its rotation.
+    if (rec.t === 'hatch') { const b = this._get(1, rec.i, rec.j, rec.l - 1, 0); if (b && b.t === 'ladder') rec.r = b.r; }
+    else if (rec.t === 'ladder') { const a = this._get(0, rec.i, rec.j, rec.l + 1, 0); if (a && a.t === 'hatch') a.r = rec.r; }
     this.list.push(rec);
     this._map.set(pieceKey(rec.t, rec.i, rec.j, rec.l, rec.r), rec);
     this.version++;
@@ -193,6 +219,30 @@ export class BuildGrid {
     }
     this._map.set(key, rec);
     return ok ? '' : 'Something rests on this';
+  }
+
+  // Open/close a stateful piece in place. Support never reads `o`, so removal answers are unchanged.
+  toggle(rec) {
+    if (!rec || !STATEFUL[rec.t] || this.find(rec) !== rec) return false;
+    if (rec.o === 1) delete rec.o; else rec.o = 1;
+    this.version++;
+    return true;
+  }
+
+  // Does a body (eye position x,y,z) overlap the closed box of a hatch or gate? Used to refuse closing on someone.
+  occupied(rec, x, y, z, deckY) {
+    if (!rec || !STATEFUL[rec.t] || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return false;
+    const y0 = deckY + rec.l * LEVEL_H, cx = 2 * rec.i, cz = 2 * rec.j;
+    let x0, x1, z0, z1, lo, hi;
+    if (rec.t === 'hatch') { x0 = cx - 1; x1 = cx + 1; z0 = cz - 1; z1 = cz + 1; lo = y0 - FLOOR_THICK - 0.05; hi = y0 + 0.05; }
+    else {
+      const a = rec.r, u = a ? cz - 1 : cx - 1, c = a ? cx - 1 : cz - 1;
+      if (a) { x0 = c - WALL_HALF; x1 = c + WALL_HALF; z0 = u; z1 = u + 2; } else { x0 = u; x1 = u + 2; z0 = c - WALL_HALF; z1 = c + WALL_HALF; }
+      lo = y0; hi = y0 + RAIL_H;
+    }
+    if (y - EYE > hi || y + HEAD < lo) return false;
+    const px = clamp(x, x0, x1) - x, pz = clamp(z, z0, z1) - z;
+    return px * px + pz * pz < BODY_R * BODY_R;
   }
 
   remove(p) {
@@ -216,7 +266,22 @@ export class BuildGrid {
     for (const p of this.list) {
       const y0 = p.l * LEVEL_H, cx = 2 * p.i, cz = 2 * p.j, s = SLOT_OF[p.t];
       this._pickRec[this._pickN] = p;
-      if (s === 0 || s === 1) {
+      if (p.t === 'hatch') {
+        this._box(this._pick, this._pickN++, cx - 1, cx + 1, y0 - FLOOR_THICK, y0, cz - 1, cz + 1, 0);
+        if (!p.o) this._box(this._slabs, this._slabN++, cx - 1, cx + 1, y0 - FLOOR_THICK, y0, cz - 1, cz + 1, 0);
+        else { // two leaves standing on the hinge edges parallel to DIR[r]; the r side stays open
+          const a = p.r & 1; // r 0/2: u runs along z, leaves at x = cx +- (1 - LEAF_T/2)
+          for (const sd of [-1, 1]) {
+            const w = sd * (1 - LEAF_T / 2);
+            if (a) this._box(this._solid, this._solidN++, cx - 1, cx + 1, y0, y0 + LEAF_H, cz + w - LEAF_T / 2, cz + w + LEAF_T / 2, 0);
+            else this._box(this._solid, this._solidN++, cx + w - LEAF_T / 2, cx + w + LEAF_T / 2, y0, y0 + LEAF_H, cz - 1, cz + 1, 0);
+          }
+        }
+      } else if (p.t === 'ladder') {
+        const dx = DIR[p.r][0], dz = DIR[p.r][1];
+        this._cellBox(this._pick, this._pickN++, cx, cz, dx, dz, 0.75, 1, 0.5, y0, y0 + LEVEL_H);
+        this._cellBox(this._solid, this._solidN++, cx, cz, dx, dz, LAD_IN, LAD_OUT, LAD_HALF, y0, y0 + LEVEL_H);
+      } else if (s === 0 || s === 1) {
         const top = s === 1 ? LEVEL_H : p.t === 'roof' ? ROOF_RISE : 0;
         this._box(this._pick, this._pickN++, cx - 1, cx + 1, y0 - (s === 1 ? 0 : FLOOR_THICK), y0 + top, cz - 1, cz + 1, 0);
         if (s === 0) this._box(this._slabs, this._slabN++, cx - 1, cx + 1, y0 - FLOOR_THICK, y0, cz - 1, cz + 1, 0);
@@ -227,14 +292,25 @@ export class BuildGrid {
       } else {
         const a = p.r, u = a ? cz - 1 : cx - 1, c = a ? cx - 1 : cz - 1, h = PIECES[p.t].height;
         this._box(this._pick, this._pickN++, u, u + 2, y0, y0 + h, c - WALL_HALF, c + WALL_HALF, a);
-        if (p.t === 'door') {
+        if (p.t === 'gate' && p.o) {
+          const side = (2 - GATE_GAP) / 2;
+          this._box(this._solid, this._solidN++, u, u + side, y0, y0 + RAIL_GUARD, c - WALL_HALF, c + WALL_HALF, a);
+          this._box(this._solid, this._solidN++, u + 2 - side, u + 2, y0, y0 + RAIL_GUARD, c - WALL_HALF, c + WALL_HALF, a);
+        } else if (p.t === 'door') {
           const side = (2 - DOOR_W) / 2;
           this._box(this._solid, this._solidN++, u, u + side, y0, y0 + h, c - WALL_HALF, c + WALL_HALF, a);
           this._box(this._solid, this._solidN++, u + 2 - side, u + 2, y0, y0 + h, c - WALL_HALF, c + WALL_HALF, a);
           this._box(this._solid, this._solidN++, u + side, u + 2 - side, y0 + DOOR_H, y0 + h, c - WALL_HALF, c + WALL_HALF, a);
-        } else this._box(this._solid, this._solidN++, u, u + 2, y0, y0 + h, c - WALL_HALF, c + WALL_HALF, a);
+        } else this._box(this._solid, this._solidN++, u, u + 2, y0, y0 + (p.t === 'railing' || p.t === 'gate' ? RAIL_GUARD : h), c - WALL_HALF, c + WALL_HALF, a);
       }
     }
+  }
+  // Box in a cell's local frame: u in [u0,u1] along (dx,dz) from the centre, |w| <= half across.
+  _cellBox(arr, n, cx, cz, dx, dz, u0, u1, half, y0, y1) {
+    const k = n * 6;
+    if (dx) { const a = cx + dx * u0, b = cx + dx * u1; arr[k] = Math.min(a, b); arr[k + 3] = Math.max(a, b); arr[k + 2] = cz - half; arr[k + 5] = cz + half; }
+    else { const a = cz + dz * u0, b = cz + dz * u1; arr[k + 2] = Math.min(a, b); arr[k + 5] = Math.max(a, b); arr[k] = cx - half; arr[k + 3] = cx + half; }
+    arr[k + 1] = y0; arr[k + 4] = y1;
   }
   // Box given as (along u, height, across c); swap = edge axis 1 (runs along Z).
   _box(arr, n, u0, u1, y0, y1, c0, c1, swap) {
@@ -335,7 +411,11 @@ export class BuildGrid {
             const p = this._get(s, i, j, l, 0);
             if (!p) continue;
             let h = y;
-            if (p.t !== 'floor') {
+            if (p.t === 'hatch') { if (p.o) continue; } // closed: flat like a floor; open: a hole
+            else if (p.t === 'ladder') { // only the top of the climbing strip is a ledge (landing height)
+              if (!this._inStrip(p, x, z) || feet < y + LEVEL_H - 0.04) continue;
+              h = y + LEVEL_H;
+            } else if (p.t !== 'floor') {
               const u = clamp((ux * DIR[p.r][0] + uz * DIR[p.r][1] + 1) / 2, 0, 1);
               h += u * (p.t === 'stairs' ? LEVEL_H : ROOF_RISE);
             }
@@ -354,9 +434,21 @@ export class BuildGrid {
   }
 
   // Highest walkable surface under the feet, fed to PlayerPhysics.update as {deckY, tiles}.
-  preStep(phys, deckY) {
+  // climbing: the result of climb() this frame (undefined = not climbing); while attached the body is held
+  // at the ladder height as a grounded body over the ladder cell.
+  preStep(phys, deckY, climbing) {
     const feet = phys.y - EYE;
     this._prevHead = phys.y + HEAD; this._px = phys.x; this._pz = phys.z; this._pvy = phys.vy;
+    this._climbing = false;
+    const cl = this._cl;
+    if (cl && climbing !== undefined && cl.phys === phys) {
+      const ground = deckY + cl.rec.l * LEVEL_H + cl.h, pre = this._pre, t = this._clTile;
+      t[0] = cl.rec.i; t[1] = cl.rec.j; this._clTiles[0] = t;
+      pre.deckY = ground; pre.tiles = this._clTiles;
+      phys.grounded = true; phys.vy = 0; phys.y = ground + EYE;
+      this._climbing = true;
+      return pre;
+    }
     this._deck = false; this._grounded = phys.grounded;
     const best = this._scan(phys.x, phys.z, feet, deckY, -Infinity);
     const pre = this._pre;
@@ -410,7 +502,7 @@ export class BuildGrid {
           if (feet < base - 0.5) continue; // a storey above: its slab is a ceiling, not a wall
           for (let s = 0; s < 2; s++) {
             const p = this._get(s, i, j, l, 0);
-            if (!p || p.t === 'floor') continue;
+            if (!p || p.t === 'floor' || p.t === 'hatch' || p.t === 'ladder') continue;
             const rise = s === 1 ? LEVEL_H : ROOF_RISE;
             const u1 = Math.max(0, (feet + STEP_UP - base) / rise), u2 = Math.min(1, (head - base) / rise);
             if (u1 >= u2) continue;
@@ -483,6 +575,96 @@ export class BuildGrid {
       this._ramps(phys, deckY);
     }
     this._clamber(phys, deckY);
+    if (this._climbing) this._pin(phys);
+  }
+
+  // ---------- ladders ----------
+  // Body centre inside a ladder's climbing strip: u in [0.35, 1] along DIR[r] from the cell centre, |w| <= 0.6.
+  _inStrip(p, x, z) {
+    const dx = DIR[p.r][0], dz = DIR[p.r][1], ox = x - 2 * p.i, oz = z - 2 * p.j;
+    const u = ox * dx + oz * dz, w = ox * dz - oz * dx;
+    return u >= 0.35 && u <= 1.0 && w <= 0.6 && w >= -0.6;
+  }
+
+  // A ladder whose strip holds the body with the feet between just below its foot and its top, or null.
+  ladderAt(x, z, feet, deckY) {
+    if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(feet)) return null;
+    const ci = Math.round(x / 2), cj = Math.round(z / 2), L = Math.floor((feet - deckY + 0.3) / LEVEL_H);
+    for (let l = L; l >= L - 1; l--) {
+      if (l < 0 || l > MAX_L) continue;
+      const base = deckY + l * LEVEL_H;
+      if (feet < base - 0.3 || feet > base + LEVEL_H + 0.05) continue;
+      for (let i = ci - 1; i <= ci + 1; i++) for (let j = cj - 1; j <= cj + 1; j++) {
+        const p = this._get(1, i, j, l, 0);
+        if (p && p.t === 'ladder' && this._inStrip(p, x, z)) return p;
+      }
+    }
+    return null;
+  }
+
+  // Climb height limit: a closed hatch right above stops the head just under its slab.
+  _capH(rec) {
+    const a = this._get(0, rec.i, rec.j, rec.l + 1, 0);
+    return a && !(a.t === 'hatch' && a.o) ? LEVEL_H - FLOOR_THICK - EYE - HEAD - 0.02 : LEVEL_H;
+  }
+
+  _release(feel) { if (feel && this._cl) feel.setLadder(null); this._cl = null; }
+
+  // Ladder climbing with MoveFeel (feel injected: pure). inp = {forward, jump, yaw}. Returns this frame's climb dy
+  // or undefined when not climbing; pass the result to preStep as its 3rd argument.
+  climb(feel, phys, deckY, inp, dt) {
+    const fw = inp && Number.isFinite(inp.forward) ? inp.forward : 0, jump = !!(inp && inp.jump);
+    let cl = this._cl;
+    if (!feel || !phys) { this._cl = null; return undefined; }
+    if (cl) {
+      const rec = cl.rec;
+      if (this.find(rec) !== rec || phys !== cl.phys || phys.swimming || !feel.isOnLadder() || !this._inStrip(rec, phys.x, phys.z)) { this._release(feel); return undefined; }
+      const cap = this._capH(rec);
+      if (cap !== cl.cap) { // the hatch above was opened / closed mid-climb: new top for MoveFeel
+        cl.cap = cap; cl.h = clamp(cl.h, 0, cap);
+        const d = DIR[rec.r];
+        feel.setLadder({bottomY: 0, topY: cap, x: 2 * rec.i + d[0] * LAD_IN, z: 2 * rec.j + d[1] * LAD_IN, normal: [-d[0], -d[1]]});
+      }
+      // A long frame (low fps) climbs in <= 0.1 s pieces (MoveFeel clamps dt), so the speed holds; capped at 0.25 s.
+      let rem = dt > 0 ? Math.min(dt, 0.25) : 0, dy = 0;
+      cl.dt = rem;
+      do {
+        const st = Math.min(rem, 0.1);
+        const li = this._lin; li.forward = fw; li.jump = jump; li.y = cl.h;
+        const r = feel.ladderInput(st, li);
+        if (r.detach) {
+          this._cl = null;
+          phys.vx += r.pushX; phys.vz += r.pushZ; phys.vy = r.vy; phys.grounded = false;
+          return undefined;
+        }
+        if (r.atBottom && fw < 0) { this._release(feel); return undefined; }
+        const d = r.vy * st, h = clamp(cl.h + d, 0, cl.cap);
+        dy += h - cl.h; cl.h = h; rem -= st;
+      } while (rem > 1e-9);
+      return dy;
+    }
+    if (phys.swimming || !(fw > 0 || fw < 0)) return undefined;
+    const feet = phys.y - EYE, rec = this.ladderAt(phys.x, phys.z, feet, deckY);
+    if (!rec) return undefined;
+    const yaw = inp && Number.isFinite(inp.yaw) ? inp.yaw : 0, d = DIR[rec.r];
+    if (-Math.sin(yaw) * d[0] - Math.cos(yaw) * d[1] < 0.5) return undefined;
+    const base = deckY + rec.l * LEVEL_H, cap = this._capH(rec);
+    if (fw < 0 && Math.abs(feet - (base + LEVEL_H)) > 0.04) return undefined;
+    if (fw > 0 && feet > base + cap - 0.04) return undefined; // at (or above) the top: walking forward steps off
+    const x = 2 * rec.i + d[0] * LAD_IN, z = 2 * rec.j + d[1] * LAD_IN;
+    if (!feel.setLadder({bottomY: 0, topY: cap, x, z, normal: [-d[0], -d[1]]})) return undefined;
+    this._cl = cl = {rec, phys, h: clamp(feet - base, 0, cap), cap, dt: 0};
+    return 0;
+  }
+
+  // While climbing below the top, hold the body at the pin distance in front of the ladder (strafing stays free).
+  _pin(phys) {
+    const cl = this._cl; if (!cl) return;
+    if (cl.h >= LEVEL_H - 0.04) return; // at the top: free to walk onto the landing
+    const p = cl.rec, dx = DIR[p.r][0], dz = DIR[p.r][1], ox = phys.x - 2 * p.i, oz = phys.z - 2 * p.j;
+    const u = ox * dx + oz * dz, step = 2.5 * cl.dt, du = clamp(LAD_PIN - u, -step, step); // eased in (getting on from the top)
+    if (du > 1e-9 || du < -1e-9) { phys.x += dx * du; phys.z += dz * du; }
+    const vu = phys.vx * dx + phys.vz * dz; phys.vx -= vu * dx; phys.vz -= vu * dz;
   }
 }
 

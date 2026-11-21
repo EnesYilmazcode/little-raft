@@ -5,7 +5,7 @@
 //   opts (optional): { seed:number, tilt:number (barrel axis tilt, radians; default ~0.2),
 //                      pool:number (share one of `pool` cached, pre-transformed geometry variants picked by seed;
 //                      the geometry is marked userData.shared and must not be disposed per item) }
-// export createItemBatch(T) -> THREE.Group: draws pooled items instanced (see below).
+// export createItemBatch(T, opts?) -> THREE.Group: draws pooled items instanced (see below).
 // Root is untransformed (engine positions/rotates it). Content is centered on the origin.
 // Without opts.pool all geometry is created per call and owned by the returned group's meshes.
 // Materials created here are cached per T and shared by every item (material.userData.shared = true);
@@ -210,11 +210,11 @@ function buildWood(T, getMaterial, root, inner, r) {
 }
 
 // ---------------------------------------------------------------- palm leaves
-function leafletGeo(T, base, dir, len, wid, droop, out) {
+function leafletGeo(T, base, dir, len, wid, droop, out, rows = 3) {
   // out = {pos:[], idx:[]} single sheet, rendered with side: DoubleSide
   const up = new T.Vector3(0, 1, 0);
   const perp = new T.Vector3().crossVectors(up, dir).normalize();
-  const rows = 3, start = out.pos.length / 3;
+  const start = out.pos.length / 3;
   for (let i = 0; i <= rows; i++) {
     const t = i / rows;
     const prof = Math.pow(Math.sin(Math.PI * Math.min(1, t * 0.92 + 0.08)), 0.8) * (1 - 0.35 * t);
@@ -233,7 +233,9 @@ function leafletGeo(T, base, dir, len, wid, droop, out) {
   }
 }
 
-function frondGeo(T, r, length, count) {
+// lod: far view keeps 6 of the 9 leaflet pairs (wider, 2 rows each) and a coarser rachis; it draws the same
+// random numbers, so the frond is shaped like the full-detail one.
+function frondGeo(T, r, length, count, lod = false) {
   const out = { pos: [], uv: [], idx: [] };
   const arch = 0.05 + r() * 0.04, sag = 0.06 + r() * 0.04;
   const P = (s) => new T.Vector3(s * length, arch * Math.sin(Math.PI * s) - sag * s * s, 0);
@@ -244,7 +246,9 @@ function frondGeo(T, r, length, count) {
     for (const side of [1, -1]) {
       const spread = 0.75 + (r() - 0.5) * 0.25;
       const dir = new T.Vector3(Math.cos(spread), 0, side * Math.sin(spread)).normalize();
-      leafletGeo(T, base.clone().add(new T.Vector3(0, 0, side * 0.006)), dir, len, 0.022 + 0.018 * (len / 0.34), 0.35 + r() * 0.2, out);
+      const droop = 0.35 + r() * 0.2;
+      if (lod && i % 3 === 1) continue;
+      leafletGeo(T, base.clone().add(new T.Vector3(0, 0, side * 0.006)), dir, len, (0.022 + 0.018 * (len / 0.34)) * (lod ? 1.25 : 1), droop, out, lod ? 2 : 3);
     }
   }
   // single-sided indexed sheet; the material is DoubleSide so no mirrored copy is needed
@@ -255,27 +259,29 @@ function frondGeo(T, r, length, count) {
   blades.computeVertexNormals();
   // rachis (midrib of the frond)
   const curve = new T.CatmullRomCurve3([0, 0.25, 0.5, 0.75, 1].map(P));
-  const rib = new T.TubeGeometry(curve, 8, 0.009, 3, false);
+  const rib = new T.TubeGeometry(curve, lod ? 4 : 8, 0.009, 3, false);
   return merge(T, [blades, rib]);
 }
 
-function buildLeaf(T, getMaterial, root, inner, r) {
+function buildLeaf(T, getMaterial, root, inner, r, opts) {
+  const lod = !!opts.lod;
   const greens = ['#4f9a3a', '#5fae45', '#46893a', '#6bb84c'];
   const fronds = 4;
   const sx = -0.42;
   const parts = [];
   for (let f = 0; f < fronds; f++) {
-    const g = frondGeo(T, r, 0.78 + r() * 0.12, 9);
+    const g = frondGeo(T, r, 0.78 + r() * 0.12, 9, lod);
     const yaw = -0.5 + (f / (fronds - 1)) * 1.0 + (r() - 0.5) * 0.15;
     place(T, g, sx, 0.015 * f, 0, (r() - 0.5) * 0.35, yaw, 0.05 + r() * 0.06);
     parts.push(tint(T, g, greens[f % greens.length]));
   }
   // central stem the fronds sprout from
-  const stem = new T.CylinderGeometry(0.022, 0.034, 0.36, 8);
+  const stem = new T.CylinderGeometry(0.022, 0.034, 0.36, lod ? 5 : 8);
   place(T, stem, sx - 0.12, 0.01, 0, 0, 0, Math.PI / 2 - 0.08);
   parts.push(tint(T, stem, '#7d8a3d'));
   // twine tie binding the bundle
-  parts.push(
+  if (lod) parts.push(tint(T, place(T, new T.TorusGeometry(0.036, 0.012, 3, 8), sx - 0.062, 0.013, 0, 0, Math.PI / 2, 0), '#b89a64'));
+  else parts.push(
     tint(T, place(T, new T.TorusGeometry(0.037, 0.008, 4, 12), sx - 0.08, 0.012, 0, 0, Math.PI / 2, 0), '#b89a64'),
     tint(T, place(T, new T.TorusGeometry(0.035, 0.008, 4, 12), sx - 0.045, 0.014, 0, 0, Math.PI / 2, 0), '#b89a64'),
   );
@@ -284,7 +290,9 @@ function buildLeaf(T, getMaterial, root, inner, r) {
 }
 
 // ---------------------------------------------------------------- scrap metal
-function buildScrap(T, getMaterial, root, inner, r) {
+// lod: far view halves the sheet grid and drops the bolts.
+function buildScrap(T, getMaterial, root, inner, r, opts) {
+  const lod = !!opts.lod;
   const W = 0.95, D = 0.65, hx = W / 2, hz = D / 2;
   const foldX = 0.1 + (r() - 0.5) * 0.06, foldK = 0.42 + r() * 0.15;
   const dentX = (r() - 0.5) * 0.3, dentZ = (r() - 0.5) * 0.25;
@@ -298,7 +306,7 @@ function buildScrap(T, getMaterial, root, inner, r) {
     y -= 0.03 * Math.exp(-((x - dentX) ** 2 + (z - dentZ) ** 2) / 0.012);
     return y;
   };
-  const g = new T.PlaneGeometry(W, D, 22, 14);
+  const g = lod ? new T.PlaneGeometry(W, D, 11, 7) : new T.PlaneGeometry(W, D, 22, 14);
   g.rotateX(-Math.PI / 2);
   const p = g.attributes.position, n = p.count;
   const col = new Float32Array(n * 3);
@@ -328,7 +336,7 @@ function buildScrap(T, getMaterial, root, inner, r) {
 
   // bolts/rivets along the crease and the near edge
   const spots = [[foldX - 0.03, -0.2], [foldX - 0.03, -0.04], [foldX - 0.03, 0.12], [-0.33, -0.05], [-0.33, 0.1], [0.32, 0.02]];
-  const bolts = spots.map(([x, z]) => {
+  const bolts = lod ? [] : spots.map(([x, z]) => {
     const b = new T.CylinderGeometry(0.017, 0.019, 0.014, 6);
     return slot(T, place(T, b, x, height(x, z) + 0.008, z, 0, r() * 1.0, x > foldX ? foldK * 0.8 : 0), 'bolt', '#8e9aa2');
   });
@@ -345,10 +353,12 @@ function buildScrap(T, getMaterial, root, inner, r) {
 }
 
 // ---------------------------------------------------------------- barrel
+// lod: far view uses flat staves with 3 rows, coarser caps and hoops, and no rivets or bung ring.
 function buildBarrel(T, getMaterial, root, inner, r, opts) {
+  const lod = !!opts.lod;
   const H = 1, hh = H / 2, rMid = 0.435, rEnd = 0.372;
   const rad = (y) => rEnd + (rMid - rEnd) * (1 - (y / hh) ** 2);
-  const staves = 14, gap = 0.014, thick = 0.03, rows = 6;
+  const staves = 14, gap = 0.014, thick = 0.03, rows = lod ? 3 : 6;
   const body = new T.Group();
   const wood = [], metal = []; // merged into one vertex-colored mesh each
   for (let s = 0; s < staves; s++) {
@@ -358,14 +368,14 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
     for (let i = rows; i >= 0; i--) { const y = -hh + (H * i) / rows; prof.push(new T.Vector2(rad(y) + dr - thick, y + (i === 0 || i === rows ? dy : 0))); }
     prof.push(prof[0].clone());
     const phi = (s / staves) * Math.PI * 2;
-    wood.push(tint(T, new T.LatheGeometry(prof, 3, phi + gap / 2, (Math.PI * 2) / staves - gap), s % 2 ? '#b98148' : '#a8703f'));
+    wood.push(tint(T, new T.LatheGeometry(prof, lod ? 1 : 3, phi + gap / 2, (Math.PI * 2) / staves - gap), s % 2 ? '#b98148' : '#a8703f'));
   }
 
   // recessed end caps (chime)
   const capR = rEnd - thick + 0.004, capY = hh - 0.045;
   wood.push(
-    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, capY, 0), '#9a6538'),
-    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, -capY, 0), '#9a6538'),
+    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, lod ? 14 : 28), 0, capY, 0), '#9a6538'),
+    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, lod ? 14 : 28), 0, -capY, 0), '#9a6538'),
   );
   // board seams on top cap
   for (const z of [-0.18, -0.06, 0.06, 0.18]) {
@@ -377,14 +387,17 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
   const hoopYs = [-0.3, 0.3];
   for (const y of hoopYs) {
     const R = rad(y), w = 0.038;
-    const prof = [
+    const prof = lod ? [
+      new T.Vector2(R - 0.004, y - w), new T.Vector2(R + 0.014, y - w + 0.004),
+      new T.Vector2(R + 0.014, y + w - 0.004), new T.Vector2(R - 0.004, y + w),
+    ] : [
       new T.Vector2(R - 0.004, y - w), new T.Vector2(R + 0.012, y - w + 0.004),
       new T.Vector2(R + 0.015, y), new T.Vector2(R + 0.012, y + w - 0.004),
       new T.Vector2(R - 0.004, y + w), new T.Vector2(R - 0.004, y - w),
     ];
-    metal.push(tint(T, new T.LatheGeometry(prof, 32), '#3a3f44'));
+    metal.push(tint(T, new T.LatheGeometry(prof, lod ? 14 : 32), '#3a3f44'));
   }
-  for (const y of hoopYs) {
+  if (!lod) for (const y of hoopYs) {
     const R = rad(y) + 0.014;
     for (let k = 0; k < 10; k++) {
       const a = (k / 10) * Math.PI * 2 + 0.2;
@@ -394,9 +407,9 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
 
   // bung plug on top
   const bx = 0.17, bz = 0;
-  metal.push(tint(T, place(T, new T.TorusGeometry(0.045, 0.01, 4, 12), bx, capY + 0.017, bz, Math.PI / 2, 0, 0), '#3a3f44'));
+  if (!lod) metal.push(tint(T, place(T, new T.TorusGeometry(0.045, 0.01, 4, 12), bx, capY + 0.017, bz, Math.PI / 2, 0, 0), '#3a3f44'));
   wood.push(
-    tint(T, place(T, new T.CylinderGeometry(0.036, 0.04, 0.035, 12), bx, capY + 0.03, bz), '#6b4426'),
+    tint(T, place(T, new T.CylinderGeometry(0.036, 0.04, 0.035, lod ? 6 : 12), bx, capY + 0.03, bz), '#6b4426'),
     tint(T, place(T, new T.BoxGeometry(0.05, 0.012, 0.012), bx, capY + 0.052, bz), '#6b4426'),
   );
   mesh(T, merge(T, [...wood.map((g) => slot(T, g, 'paint')), ...metal.map((g) => slot(T, g, 'metal'))], true), pbrMat(T, T.FrontSide), body);
@@ -420,8 +433,8 @@ function build(T, type, getMaterial, opts) {
   inner.name = `debris-${type}-model`;
   root.add(inner);
   if (type === 'wood') { buildWood(T, getMaterial, root, inner, r); fit(T, inner, 1.6); }
-  else if (type === 'leaf') { buildLeaf(T, getMaterial, root, inner, r); fit(T, inner, 1.75); }
-  else if (type === 'scrap') { buildScrap(T, getMaterial, root, inner, r); fit(T, inner, 1.2); }
+  else if (type === 'leaf') { buildLeaf(T, getMaterial, root, inner, r, opts); fit(T, inner, 1.75); }
+  else if (type === 'scrap') { buildScrap(T, getMaterial, root, inner, r, opts); fit(T, inner, 1.2); }
   else { buildBarrel(T, getMaterial, root, inner, r, opts); fit(T, inner, 1.25); }
   inner.updateMatrixWorld(true);
   const size = new T.Box3().setFromObject(inner).getSize(new T.Vector3());
@@ -429,23 +442,37 @@ function build(T, type, getMaterial, opts) {
   return root;
 }
 
-// One baked variant: every mesh's transform folded into its geometry, which is then shared (userData.shared).
+// Every mesh's transform folded into its geometry, which is then shared (userData.shared).
+function bake(T, src) {
+  src.updateMatrixWorld(true);
+  const parts = [];
+  src.traverse((o) => {
+    if (!o.isMesh) return;
+    o.geometry.applyMatrix4(o.matrixWorld);
+    o.geometry.computeBoundingSphere();
+    o.geometry.userData.shared = true;
+    parts.push({ geometry: o.geometry, material: o.material, castShadow: o.castShadow });
+  });
+  return parts;
+}
+// Types with a far-view geometry: each pooled variant gets a coarse twin built from the same seed (same shape,
+// tilt and colours), which it hands to the item batch through geometry.userData.lod.
+const LOD_TYPES = ['leaf', 'scrap', 'barrel'];
+// One baked variant.
 function variant(T, type, getMaterial, opts, v) {
   const key = `pool|${type}|${opts.pool}|${v}|${opts.tilt}|${type === 'wood' ? getMaterial('#d5a265').uuid : ''}`;
   const cache = cacheFor(T);
   let entry = cache.get(key);
   if (!entry) {
     const src = build(T, type, getMaterial, { tilt: opts.tilt, seed: 0x5eed + v * 7919 });
-    src.updateMatrixWorld(true);
-    const parts = [];
-    src.traverse((o) => {
-      if (!o.isMesh) return;
-      o.geometry.applyMatrix4(o.matrixWorld);
-      o.geometry.computeBoundingSphere();
-      o.geometry.userData.shared = true;
-      parts.push({ geometry: o.geometry, material: o.material, castShadow: o.castShadow });
-    });
-    cache.set(key, (entry = { parts, size: src.userData.size }));
+    entry = { parts: bake(T, src), size: src.userData.size };
+    if (LOD_TYPES.includes(type)) {
+      const far = bake(T, build(T, type, getMaterial, { tilt: opts.tilt, seed: 0x5eed + v * 7919, lod: true }));
+      if (far.length === entry.parts.length) entry.parts.forEach((p, i) => {
+        if (far[i].material === p.material) Object.defineProperty(p.geometry.userData, 'lod', { value: far[i].geometry }); // non-enumerable: geometry toJSON skips it
+      });
+    }
+    cache.set(key, entry);
   }
   return entry;
 }
@@ -478,11 +505,15 @@ export function createDebris(T, type, getMaterial, opts = {}) {
 // their own position/rotation/scale/visible, which the instances follow. Remove an item root as usual.
 // Instances inside a shadow-casting light's frustum go to a shadow-casting InstancedMesh and the rest to one
 // that casts none, so the shadow pass draws no more items than per-item culling did.
-export function createItemBatch(T) {
+// opts.camera (a camera, or a function returning one): the view camera. With it, instances that cast no shadow
+// and lie outside its frustum are skipped (the batch's bounding sphere spans every item, so three would draw
+// them all), and ones farther than LOD_DIST draw geometry.userData.lod (same material) when the geometry has one.
+const LOD_DIST = 12;
+export function createItemBatch(T, opts = {}) {
   const holder = new T.Group();
   holder.name = 'item-batch';
-  const adopted = new WeakMap(), slots = new Map(), slotList = [], local = new T.Matrix4(), world = new T.Matrix4(), sphere = new T.Sphere();
-  const frustums = [];
+  const adopted = new WeakMap(), buckets = new Map(), bucketList = [], local = new T.Matrix4(), world = new T.Matrix4(), sphere = new T.Sphere();
+  const frustums = [], view = new T.Frustum(), viewProj = new T.Matrix4(), eye = new T.Vector3();
   const noRaycast = () => {};
   // Shadow pass: a depth material only ever used instanced, so sharing three's default one with plain meshes
   // doesn't force a program re-lookup on every switch between instanced and non-instanced casters.
@@ -491,6 +522,11 @@ export function createItemBatch(T) {
     depthMat = new T.MeshDepthMaterial({ depthPacking: T.RGBADepthPacking });
     depthMat.userData.shared = true;
     cacheFor(T).set('mat|itemDepth', depthMat);
+  }
+  function bucket(key, geometry, material, cast, receive) {
+    let b = buckets.get(key);
+    if (!b) { buckets.set(key, (b = { im: null, cap: 0, n: 0, geometry, material, cast, receive })); bucketList.push(b); }
+    return b;
   }
   function entries(item) {
     let list = adopted.get(item);
@@ -501,29 +537,36 @@ export function createItemBatch(T) {
       const m = new T.Matrix4();
       for (let p = o; p && p !== item; p = p.parent) { if (p.matrixAutoUpdate) p.updateMatrix(); m.premultiply(p.matrix); }
       o.visible = false; // drawn by the batch; Raycaster ignores visibility, so picking still hits it
-      if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
-      list.push({ key: `${o.geometry.id}:${o.material.id}`, mesh: o, local: m });
+      const g = o.geometry, mat = o.material, lod = g.userData.lod;
+      if (!g.boundingSphere) g.computeBoundingSphere();
+      const key = `${g.id}:${mat.id}`;
+      list.push({
+        mesh: o, local: m,
+        near: bucket(key + ':near', g, mat, o.castShadow, o.receiveShadow),
+        far: bucket(key + ':far', g, mat, false, o.receiveShadow),
+        lod: lod && lod.isBufferGeometry ? bucket(`${lod.id}:${mat.id}:lod`, lod, mat, false, o.receiveShadow) : null,
+      });
     });
     adopted.set(item, list);
     return list;
   }
-  function grow(s, src, cap) {
-    const im = new T.InstancedMesh(src.geometry, src.material, cap);
+  function grow(b, cap) {
+    const im = new T.InstancedMesh(b.geometry, b.material, cap);
     im.name = 'item-batch-instances';
-    im.castShadow = s.cast;
+    im.castShadow = b.cast;
     im.customDepthMaterial = depthMat;
-    im.receiveShadow = src.receiveShadow;
+    im.receiveShadow = b.receive;
     im.raycast = noRaycast; // picking resolves through the hidden per-item meshes
     im.instanceMatrix.setUsage(T.DynamicDrawUsage);
-    if (s.im) { im.instanceMatrix.array.set(s.im.instanceMatrix.array); holder.remove(s.im); s.im.dispose(); }
-    s.im = im; s.cap = cap;
+    if (b.im) { im.instanceMatrix.array.set(b.im.instanceMatrix.array); holder.remove(b.im); b.im.dispose(); }
+    b.im = im; b.cap = cap;
     holder.add(im);
     im.updateMatrixWorld(true);
   }
-  function put(s, src, m) {
-    if (!s.im) grow(s, src, 16);
-    else if (s.n >= s.cap) grow(s, src, s.cap * 2);
-    s.im.setMatrixAt(s.n++, m);
+  function put(b, m) {
+    if (!b.im) grow(b, 16);
+    else if (b.n >= b.cap) grow(b, b.cap * 2);
+    b.im.setMatrixAt(b.n++, m);
   }
   // Shadow frustums of the scene's top-level shadow-casting lights (as of their last shadow render).
   function lights() {
@@ -538,17 +581,31 @@ export function createItemBatch(T) {
     }
     return true;
   }
-  function casts(m, geo) {
+  // The view camera's frustum and position for this frame, or false when there is no camera to cull against.
+  function camera() {
+    const cam = typeof opts.camera === 'function' ? opts.camera() : opts.camera;
+    if (!cam || !cam.isCamera) return false;
+    cam.updateWorldMatrix(true, false); // also refreshes matrixWorldInverse
+    view.setFromProjectionMatrix(viewProj.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+    eye.setFromMatrixPosition(cam.matrixWorld);
+    return true;
+  }
+  // World bounding sphere of geometry `geo` placed at item-group-space matrix `m`, padded by `pad`.
+  function bounds(m, geo, pad) {
     sphere.copy(geo.boundingSphere).applyMatrix4(world.multiplyMatrices(holder.parent.matrixWorld, m));
-    sphere.radius += 0.5;
+    sphere.radius += pad;
+    return sphere;
+  }
+  function casts(m, geo) {
+    bounds(m, geo, 0.5);
     for (let i = 0; i < frustums.length; i++) if (frustums[i].intersectsSphere(sphere)) return true;
     return false;
   }
   function sync() {
     const parent = holder.parent;
     if (!parent) return;
-    const known = lights();
-    for (let i = 0; i < slotList.length; i++) slotList[i].near.n = slotList[i].far.n = 0;
+    const known = lights(), seen = camera();
+    for (let i = 0; i < bucketList.length; i++) bucketList[i].n = 0;
     for (let i = 0; i < parent.children.length; i++) {
       const item = parent.children[i];
       if (item === holder) continue;
@@ -556,17 +613,17 @@ export function createItemBatch(T) {
       if (!parts.length || !item.visible) continue;
       if (item.matrixAutoUpdate) item.updateMatrix();
       for (let j = 0; j < parts.length; j++) {
-        const e = parts[j];
-        let s = slots.get(e.key);
-        if (!s) {
-          s = { near: { im: null, cap: 0, n: 0, cast: e.mesh.castShadow }, far: { im: null, cap: 0, n: 0, cast: false } };
-          slots.set(e.key, s); slotList.push(s);
-        }
+        const e = parts[j], geo = e.mesh.geometry;
         local.multiplyMatrices(item.matrix, e.local);
-        put(e.mesh.castShadow && (!known || casts(local, e.mesh.geometry)) ? s.near : s.far, e.mesh, local);
+        if (e.mesh.castShadow && (!known || casts(local, geo))) { put(e.near, local); continue; }
+        if (seen) {
+          if (!view.intersectsSphere(bounds(local, geo, 0.25))) continue; // off screen and casts no shadow
+          if (e.lod && sphere.center.distanceToSquared(eye) > LOD_DIST * LOD_DIST) { put(e.lod, local); continue; }
+        }
+        put(e.far, local);
       }
     }
-    for (let i = 0; i < slotList.length; i++) { finish(slotList[i].near); finish(slotList[i].far); }
+    for (let i = 0; i < bucketList.length; i++) finish(bucketList[i]);
   }
   function finish(b) {
     if (!b.im) return;

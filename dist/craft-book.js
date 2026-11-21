@@ -21,6 +21,8 @@ const CATEGORY_OF = Object.freeze({
   drum: 'tools', pipes: 'tools', bells: 'tools', // [instruments]
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
+  juicer: 'survival', berrycup: 'survival', coconutcup: 'survival', mixcup: 'survival', // [juicer]
+  perch: 'survival', // [gull]
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
   researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
   rug: 'building', pennant: 'building', fern: 'building', chime: 'building', hammock: 'building', pots: 'building', sign: 'building', // decor pack
@@ -43,7 +45,7 @@ export const ITEM_TEXT = Object.freeze({
   rope:       { desc: 'Palm fibre twisted into a sturdy cord.', use: 'Binds hammers, rods, nets and sails.' },
   fish:       { desc: 'A fresh catch from the open water.', use: 'Proof of a good day out on the waves.' },
   hook:       { desc: 'A scrap hook on a rope. Throw it at floating supplies.', use: 'Pulls in floating wood, leaves, plastic and barrels.' },
-  hammer:     { desc: 'A rope-bound building hammer.', use: 'Adds raft floor tiles (2 wood + 2 plastic each).' },
+  hammer:     { desc: 'A rope-bound building hammer.', use: 'Adds raft floor tiles (2 plank + 2 plastic each).' },
   fishingrod: { desc: 'A bamboo rod with a float and line.', use: 'Cast into the sea and wait for a bite to catch fish.' },
   sail:       { desc: 'A tall mast with a woven sail.', use: 'Decorates the raft; place it on a floor tile.' },
   palm:       { desc: 'A clay pot with a small palm tree.', use: 'A bit of island on your raft; place on a tile.' },
@@ -100,6 +102,13 @@ export const ITEM_TEXT = Object.freeze({
   wax:        { desc: 'Soft beeswax from the comb.', use: 'Make beeswax candles.' }, // [bees]
   candle:     { desc: 'A little jar candle.', use: 'Glows warmly at night; place on a tile.' }, // [bees]
   honeyfish:  { desc: 'Grilled fish with a honey glaze.', use: 'A sweet treat.' }, // [bees]
+  berries:    { desc: 'Tart little island berries.', use: 'Blend in a juicer, or eat as a snack.' }, // [juicer]
+  coconut:    { desc: 'A hairy brown coconut.', use: 'Blend in a juicer, or eat as a snack.' }, // [juicer]
+  juicer:     { desc: 'A hand-crank fruit juicer.', use: 'Press E with a cup of fresh water and 2 fruit.' }, // [juicer]
+  berrycup:   { desc: 'A pink berry smoothie in a cup.', use: 'Drink it for water and a little food; keep the cup.' }, // [juicer]
+  coconutcup: { desc: 'A cool coconut smoothie in a cup.', use: 'Drink it for lots of water; keep the cup.' }, // [juicer]
+  mixcup:     { desc: 'Berries and coconut, blended.', use: 'Drink it for water and food; keep the cup.' }, // [juicer]
+  perch:      { desc: 'A tall perch with a woven tray.', use: 'Offer grilled fish to a visiting gull; it may move in.' }, // [gull]
   finder:     { desc: 'A driftwood wand with a brass coil.', use: 'Hold it on island sand: it ticks faster near buried bundles.' },
   spade:      { desc: 'A little wooden spade with a metal blade.', use: 'E on island sand digs up bundles (or a pinch of sand).' },
   maptable:   { desc: 'A little driftwood chart table with brass fittings.', use: 'Place it, press E: see charted islands, drop pins, set a course.' },
@@ -336,6 +345,11 @@ export const ITEM_SOURCE = Object.freeze({
   flowerseed: Object.freeze({ tag: 'island bushes', how: 'Pick bushes on islands; some drop flower seeds.' }),
   honey:   Object.freeze({ tag: 'beehive', how: 'Put a beehive near flower boxes, then press E on it to collect honeycomb.' }),
   wax:     Object.freeze({ tag: 'beehive', how: 'Collected with honey from a full beehive (E).' }),
+  berries:    Object.freeze({ tag: 'island bushes', how: 'Pick bushes on islands; some drop berries.' }), // [juicer]
+  coconut:    Object.freeze({ tag: 'palm planter', how: 'Harvest a ripe palm planter.' }), // [juicer]
+  berrycup:   Object.freeze({ tag: 'juicer', how: 'Press E on a juicer with a cup of fresh water and 2 fruit.' }), // [juicer]
+  coconutcup: Object.freeze({ tag: 'juicer', how: 'Press E on a juicer with a cup of fresh water and 2 fruit.' }), // [juicer]
+  mixcup:     Object.freeze({ tag: 'juicer', how: 'Press E on a juicer with a cup of fresh water and 2 fruit.' }), // [juicer]
   wood:    Object.freeze({ tag: 'found floating', how: 'Hook floating planks. Barrels hold more.' }),
   leaf:    Object.freeze({ tag: 'floating, palm', how: 'Hook floating leaf bundles, or harvest a grown palm.' }),
   plastic: Object.freeze({ tag: 'found floating', how: 'Hook floating plastic jugs. Barrels hold some too.' }),

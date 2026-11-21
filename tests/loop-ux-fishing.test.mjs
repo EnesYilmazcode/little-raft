@@ -80,7 +80,7 @@ test('D2: E runs the water action (purifier / planter) before the grill, matchin
   const ctx = fnBody('updateContext'), act = fnBody('interact');
   // prompt: pick-up, water, content, grill
   const order = (src, marks) => marks.map((m) => { const i = src.indexOf(m); assert.ok(i >= 0, m); return i; });
-  const p = order(ctx, ['pickTarget)', 'waterAim?.prompt', 'content?.prompt', 'fc?.prompt']);
+  const p = order(ctx, ['pickTarget)', 'waterAim?.prompt', '||(contextHtml = content?.prompt', 'fc?.prompt']);
   assert.deepEqual([...p].sort((a, b) => a - b), p, 'updateContext prompt order');
   const a = order(act, ['pickupFrom(currentAim());\n', 'wateringTarget(currentAim())', 'content?.interact', 'fc?.interact()', 'prog?.interact']);
   assert.deepEqual([...a].sort((x, y) => x - y), a, 'interact() must try water right after pick-up, before content and the grill');
