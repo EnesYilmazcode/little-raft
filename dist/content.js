@@ -20,6 +20,7 @@
 //   steerTargets()            -> array of raft-local {x,z} extra hold-R steering grab points (engine: wheels)
 //   use(aim, kind)            left click with a bag item `kind` that no engine tool handles. Return true if consumed.
 //   alt(aim, kind)            right click while holding `kind`. Return true if consumed (paint: brush colour).
+//   zoom()                    -> view zoom factor 1..8 this frame (spyglass); game.js divides the FOV, look speed and camera motion by it
 //   afterRebuild()            after rebuildRaft() recreated the deck/decor meshes (paint: re-tint planks)
 //   tileTint(x, z, base)      plank colour for deck tile x,z (base = the plank's own colour) or null (paint)
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
@@ -43,8 +44,9 @@ import { createAnimals } from './animals.js?build=v3-survival-ae77fa84ac2b';
 import { createBees } from './bees.js?build=v3-survival-ae77fa84ac2b'; // [bees]
 import { createTreasure } from './treasure.js?build=v3-survival-ae77fa84ac2b';
 import { createMapTable } from './maptable.js?build=v3-survival-ae77fa84ac2b';
+import { createSpyglass } from './spyglass.js?build=v3-survival-ae77fa84ac2b'; // [spyglass]
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees]; // [bees] + createBees
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createSpyglass]; // [bees] + createBees, [spyglass] last
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -90,6 +92,7 @@ export function createContent(ctx, features = FEATURES) {
     prompt: aim => first('prompt', aim),
     use: (aim, kind) => !!first('use', aim, kind), // content hook (paint)
     alt: (aim, kind) => !!first('alt', aim, kind), // content hook (paint)
+    zoom() { const z = first('zoom'); return Number.isFinite(z) && z >= 1 && z <= 8 ? z : 1; }, // [spyglass] view zoom, default 1
     afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)
     tileTint: (x, z, base) => first('tileTint', x, z, base), // content hook (paint): plank hex for a painted deck tile, else null
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),

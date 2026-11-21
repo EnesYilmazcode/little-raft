@@ -92,6 +92,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', loo
       part(g, new T.ConeGeometry(0.026, 0.14, 4), K.steel, 0, 0.77);
       return [0, 0.77, 0];
     },
+    spyglass(g, K) { part(g, Cyl(0.022, 0.026, 0.3, 8), K.woodDark, 0, 0.15); part(g, Cyl(0.03, 0.03, 0.04, 8), K.glow, 0, 0.3); return [0, 0.32, 0]; }, // [spyglass]
     wood(g, K) { part(g, Box(0.13, 0.5, 0.035), K.wood, 0, 0.12); part(g, Box(0.135, 0.03, 0.04), K.woodDark, 0, 0.3); return [0, 0.12, 0]; },
     leaf(g, K) {
       part(g, Cyl(0.006, 0.008, 0.16, 4), K.leafDark, 0, 0.04);
@@ -124,7 +125,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', loo
   const holder = new T.Group();
   holder.position.set(0, -0.5, 0.03);
   P.rightArm.add(holder);
-  const TOOL_TILT = { hook: 1.25, hammer: 1.35, fishingrod: 0.95, lantern: 1.45, drum: 1.5, pipes: 0.4, bells: 1.2, spade: 1.1, finder: 0.9, spear: 1.0, metalspear: 1.0 }; // [instruments] [treasure]
+  const TOOL_TILT = { hook: 1.25, hammer: 1.35, fishingrod: 0.95, lantern: 1.45, drum: 1.5, pipes: 0.4, bells: 1.2, spade: 1.1, finder: 0.9, spear: 1.0, metalspear: 1.0, spyglass: 1.3 }; // [instruments] [treasure] [spyglass]
   const cache = new Map();
   let curKind, cur = null;
   const getModel = (kind) => {

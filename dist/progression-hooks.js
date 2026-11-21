@@ -252,7 +252,7 @@ export function attachProgression(ctx) {
   // ---------- binoculars HUD ----------
   function updateHud() {
     const kind = ctx.localBag()?.selected?.kind ?? null;
-    const show = !!ctx.running() && toolRole(kind) === 'binoculars';
+    const show = !!ctx.running() && toolRole(kind) === 'binoculars' && !globalThis.raftSpyglass?.zoomed; // [spyglass] hide while zoomed
     if (!show) { if (hud) hud.hidden = true; return; }
     if (!hud) {
       hud = document.createElement('div'); hud.id = 'binocularsHud'; hud.setAttribute('role', 'status');
