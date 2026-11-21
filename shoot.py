@@ -25,7 +25,7 @@ with sync_playwright() as p:
     page = ctx.new_page()
     page.on('pageerror', lambda e: report['errors'].append(str(e)))
     page.on('console', lambda m: m.type in ('error', 'warning') and report['console'].append(m.text[:300]))
-    page.goto(url); page.wait_for_function('!!window.raftDebug', timeout=20000)
+    page.goto(url); page.wait_for_function('!!window.raftDebug', timeout=60000)
     page.wait_for_timeout(800); shot(page, '01-title')
     page.locator('.ob-item[data-act="new"]:visible, #solo:visible').first.click(); page.wait_for_function('raftDebug.state.running', timeout=15000)
     page.wait_for_timeout(1500); shot(page, '02-spawn')
