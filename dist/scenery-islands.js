@@ -136,7 +136,7 @@ export function createIsland(T, {seed = 1, radius = 10} = {}) {
   for (let l = 0; l < lumps; l++) {
     const main = l === 0, a = r() * Math.PI * 2, d = main ? r() * radius * .2 : radius * (.3 + r() * .3);
     const R = radius * (main ? .42 + r() * .12 : .2 + r() * .13), H = R * (main ? 1.05 + r() * .6 : .8 + r() * .5);
-    const cx = Math.sin(a) * d, cz = Math.cos(a) * d, k = seed * 31 + l, g = new T.IcosahedronGeometry(1, 3), p = g.attributes.position;
+    const cx = Math.sin(a) * d, cz = Math.cos(a) * d, k = seed * 31 + l, g = new T.IcosahedronGeometry(1, 2), p = g.attributes.position;
     for (let i = 0; i < p.count; i++) {
       let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
       const f = 1 + .32 * fbm(x * 1.3, y * 1.3, z * 1.3, k);
@@ -177,7 +177,7 @@ export function createIsland(T, {seed = 1, radius = 10} = {}) {
   for (const [x, y, z, s] of bushes) {
     const k = Math.floor(r() * 1000);
     for (let j = 0; j < 3; j++) {
-      const g = new T.IcosahedronGeometry(1, 1), p = g.attributes.position;
+      const g = new T.IcosahedronGeometry(1, 0), p = g.attributes.position;
       for (let i = 0; i < p.count; i++) { const f = 1 + .25 * noise3(p.getX(i) * 2, p.getY(i) * 2, p.getZ(i) * 2, k + j); p.setXYZ(i, p.getX(i) * f, p.getY(i) * f, p.getZ(i) * f); }
       const sc = s * (.6 + r() * .5);
       m.compose(new T.Vector3(x + (r() - .5) * s * 1.4, y + sc * .3, z + (r() - .5) * s * 1.4), q.identity(), new T.Vector3(sc * 1.25, sc * .75, sc * 1.25));
