@@ -160,7 +160,7 @@ export function mount(transfer = null) {
   function copyWorld(w) { // isolation from the previous engine's live object (rollback safety)
     return {...w, tiles:w.tiles.map(t => [t[0], t[1]]), decor:Array.isArray(w.decor) ? w.decor.map(d => ({...d})) : [], items:Array.isArray(w.items) ? w.items.map(i => ({...i})) : [], stock:{...(w.stock || {})},
       fish:isInt(w.fish) ? w.fish : 0, collected:isInt(w.collected) ? w.collected : 0, signal:cleanSignal(w.signal),
-      notes:Array.isArray(w.notes) ? w.notes.slice() : [], achievements:Array.isArray(w.achievements) ? w.achievements.slice() : [],
+      ...cleanProgress(w), // fresh, validated notes/achievements arrays
       ...copyWatering(w)};
   }
   const liveWorld = w => cleanWorld(w, true) ?? copyWorld(w);
@@ -441,7 +441,7 @@ export function mount(transfer = null) {
     if (html === contextCache) return; contextCache = html;
     const el = $('#contextPrompt'); if (!el) return; el.innerHTML = html; el.hidden = !html;
   }
-  let lastReadout = null, signalHtml = null;
+  let lastReadout = null, signalHtml = null, markerCss = null;
   function updateSignalHud() { // receiver pill + cache marker (see signal.js)
     const n = countAntennas(world.decor), r = signalReadout(world.signal, {x:physics.x, z:physics.z, yaw}, n, elapsed); lastReadout = r;
     const el = document.getElementById('signalReadout'), mk = document.getElementById('signalMarker');
@@ -458,7 +458,8 @@ export function mount(transfer = null) {
     if (!showMarker) return;
     const p = m ? m.position : {x:c.x, y:ITEM_FLOAT + .6, z:c.z}, s = project(p.x, p.y, p.z); if (!s) return;
     const e = edgePoint(s.x, s.y, s.inFront, innerWidth, innerHeight);
-    mk.style.transform = `translate(${Math.round(e.x)}px,${Math.round(e.y)}px)`; mk.classList.toggle('edge', e.edge);
+    const css = `translate(${Math.round(e.x)}px,${Math.round(e.y)}px)` + (e.edge ? ' e' : ''); if (css === markerCss && mk.style.transform) return; markerCss = css; // write only on change
+    mk.style.transform = css.replace(' e', ''); mk.classList.toggle('edge', e.edge);
   }
   const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;'}[c]));
   function updateCharge() {
@@ -630,11 +631,10 @@ export function mount(transfer = null) {
     beep(e.kind === 'signal' ? 760 : e.kind === 'build' ? 640 : e.kind === 'craft' ? 560 : e.kind === 'full' ? 220 : 440);
   }
   function collectBottle(i, a, bag, actor) { // no bag space needed; does not count toward world.collected
+    const n = nextNote(world.notes); if (n >= 0) world.notes.push(n); // before makeItem: the 12th note must not respawn a (now empty) bottle
     world.items.splice(i, 1); world.items.push(makeItem(a.id)); syncItems();
     if (typeof a.cast === 'string' && a.cast && wornCasts[actor] !== a.cast) { wornCasts[actor] = a.cast; wearHook(bag, a.slot, actor); }
-    const n = nextNote(world.notes);
     if (n < 0) { emit({kind:'notice', text:'An empty bottle. Someone out there says hi!'}, actor); return; }
-    world.notes.push(n);
     emit({kind:'note', note:n, text:`Message in a bottle! (${world.notes.length}/${NOTE_COUNT}) · L to read`}, 'all');
     award({kind:'note'});
   }
