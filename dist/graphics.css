@@ -1,29 +1,38 @@
 /* Little Raft - nautical HUD skin. Load after style.css. No imports, no external assets. */
 
 :root{
-  --navy-0:#070f17;
-  --navy-1:#0b1824;
-  --navy-2:#112332;
-  --navy-3:#1a3245;
-  --plate:rgba(9,20,30,.80);
-  --plate-strong:rgba(8,17,26,.92);
-  --bronze:#9c7445;
-  --bronze-lt:#c9a46b;
-  --bronze-dk:#5b4127;
+  /* Shared UI tokens. The bag (survival-ui.js) set the look: dark grey glass, hairline white borders, one sans family,
+     cream for selection and a warm accent. Title, pause, settings, help and dialogs use the same tokens. */
+  --ui-font:'Segoe UI',system-ui,-apple-system,sans-serif; /* same stack as survival-ui.js FONT */
+  --display-font:var(--ui-font); /* headings: same family, heavier weight */
+  --glass:linear-gradient(180deg,#1a2226e6,#0e1417ee);
+  --glass-solid:#11181bf2;
+  --line:#ffffff17;
+  --line-strong:#ffffff2e;
+  --cream-hi:#fff6e0;
+  --accent:#ffc66e;
+  --ok:#8fd36a;
+  --navy-0:#0b1012;
+  --navy-1:#141b1e;
+  --navy-2:#1c2529;
+  --navy-3:#2a3438;
+  --plate:rgba(20,27,30,.86);
+  --plate-strong:rgba(14,20,23,.93);
+  --bronze:#8a7a5c;
+  --bronze-lt:#e8d9b8;
+  --bronze-dk:#4d4434;
   --rope:#b8925c;
-  --cream:#f1e7d0;
-  --cream-dim:#c9bfa8;
-  --muted:#8f9aa0;
-  --amber:#e9a640;
-  --amber-lt:#ffc96b;
-  --amber-glow:rgba(233,166,64,.35);
+  --cream:#f4efe2;
+  --cream-dim:#f4efe2b3;
+  --muted:#f4efe280;
+  --amber:#ffc66e;
+  --amber-lt:#ffd98f;
+  --amber-glow:rgba(255,198,110,.35);
   --wood:#b07b4a;
   --leaf:#7fa66a;
   --scrap:#8fa3ad;
-  --edge:inset 0 1px 0 rgba(255,236,200,.10), inset 0 -1px 0 rgba(0,0,0,.45);
-  --frame:0 0 0 1px rgba(201,164,107,.55), 0 0 0 2px rgba(5,10,15,.85), 0 10px 28px rgba(0,0,0,.45);
-  --ui-font:"Bahnschrift","Segoe UI Variable Text","Segoe UI","Helvetica Neue",Arial,sans-serif;
-  --display-font:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+  --edge:inset 0 1px 0 #ffffff12;
+  --frame:inset 0 0 0 1px #ffffff17, 0 10px 28px rgba(0,0,0,.45);
   font-family:var(--ui-font);
   color:var(--cream);
   --ink:var(--cream);
@@ -55,23 +64,23 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--amber-lt);outli
 .header-right button .icon{width:18px;height:18px;margin-right:6px;vertical-align:-3px}
 
 /* ---------- Header ---------- */
-header{inset:20px 28px auto}
-.brand{font:700 18px/1 var(--display-font);letter-spacing:3px;color:var(--cream);text-shadow:0 1px 2px rgba(0,0,0,.6)}
+header{inset:20px 28px auto;z-index:6}
+.brand{font:800 17px/1 var(--display-font);letter-spacing:2.4px;color:var(--cream-hi);text-shadow:0 1px 3px rgba(0,0,0,.8)}
 .brand small{font:500 11px/1.3 var(--ui-font);letter-spacing:.6px;color:var(--cream-dim);margin-top:5px}
 .brand-icon{
   width:42px;height:42px;border-radius:50%;
-  background:radial-gradient(circle at 35% 30%,var(--navy-3),var(--navy-0) 75%);
-  color:var(--bronze-lt);font:24px/1 var(--display-font);
-  box-shadow:0 0 0 1px var(--bronze-lt),0 0 0 3px var(--navy-0),0 0 0 4px rgba(156,116,69,.6),0 6px 16px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,230,190,.15);
+  background:var(--glass);color:var(--cream-hi);font:24px/1 var(--display-font);
+  box-shadow:inset 0 0 0 1px var(--line-strong),0 6px 16px rgba(0,0,0,.45);
 }
 #connection{font:600 11px/1 var(--ui-font);letter-spacing:2px;color:var(--cream-dim);text-shadow:0 1px 2px rgba(0,0,0,.7)}
 .header-right button{
-  background:var(--plate);color:var(--cream);
-  border-radius:5px;padding:11px 15px;font-weight:600;font-size:13px;letter-spacing:.4px;
+  background:var(--glass);color:var(--cream);
+  border-radius:8px;padding:10px 15px;font:700 14px/1 var(--ui-font);letter-spacing:0;
   box-shadow:var(--frame),var(--edge);
 }
 .header-right button:hover{transform:none;background:var(--plate-strong);color:#fff7e4}
-#helpButton{width:40px;font-family:var(--display-font);font-size:16px}
+#helpButton{display:inline-flex;align-items:center;gap:8px;width:auto}
+.help-glyph{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--cream-hi);color:#1d1608;font:800 13px/1 var(--ui-font)}
 body.playing header{opacity:.9}
 
 /* ---------- Inventory ---------- */
@@ -191,60 +200,60 @@ body:not(.playing) #crosshair{opacity:0}
 #durability.low .durability-track>i,.durability-meter.low .durability-track>i{background:linear-gradient(180deg,#f08a6a,#c8492f 60%,#8e2f1d);box-shadow:0 0 6px rgba(200,73,47,.4)}
 
 /* ---------- Welcome overlay ---------- */
-.overlay{background:linear-gradient(90deg,rgba(6,13,20,.86) 0%,rgba(6,13,20,.6) 42%,rgba(6,13,20,0) 72%)}
+.overlay{background:linear-gradient(90deg,rgba(8,12,14,.86) 0%,rgba(8,12,14,.6) 42%,rgba(8,12,14,0) 72%)}
 .welcome-card{color:var(--cream)}
-.eyebrow{font:600 11px/1 var(--ui-font);letter-spacing:3.2px;color:var(--bronze-lt);margin-bottom:18px}
-.eyebrow::before{content:"";display:inline-block;width:22px;height:1px;background:var(--bronze-lt);vertical-align:3px;margin-right:12px}
-h1{font:600 clamp(40px,5vw,68px)/1.04 var(--display-font);letter-spacing:-1px;color:var(--cream);text-shadow:0 2px 12px rgba(0,0,0,.5)}
+.eyebrow{font:800 11px/1 var(--ui-font);letter-spacing:2.4px;color:var(--accent);margin-bottom:18px}
+.eyebrow::before{content:"";display:inline-block;width:22px;height:2px;border-radius:1px;background:var(--accent);vertical-align:3px;margin-right:12px}
+h1{font:800 clamp(38px,4.8vw,64px)/1.04 var(--display-font);letter-spacing:-1.2px;color:var(--cream-hi);text-shadow:0 2px 12px rgba(0,0,0,.5)}
 p{color:var(--cream-dim)}
 .welcome-card p{font-size:15px;line-height:1.7}
 .pills span{
-  font:600 11px/1 var(--ui-font);letter-spacing:1px;text-transform:uppercase;
-  border:0;border-radius:3px;padding:7px 10px;background:rgba(7,15,23,.55);color:var(--cream-dim);
-  box-shadow:inset 0 0 0 1px rgba(201,164,107,.35);
+  font:700 12px/1 var(--ui-font);letter-spacing:.2px;text-transform:none;
+  border:0;border-radius:20px;padding:7px 11px;background:#ffffff0b;color:var(--cream-dim);
+  box-shadow:inset 0 0 0 1px var(--line);
 }
 .primary{
-  background:linear-gradient(180deg,var(--amber-lt),var(--amber) 55%,#c2822f);
-  color:#22170a;border-radius:4px;padding:15px 24px;font:700 14px/1 var(--ui-font);letter-spacing:1.4px;text-transform:uppercase;
-  box-shadow:0 0 0 1px #6f4a1c,inset 0 1px 0 rgba(255,245,215,.6),0 3px 0 #6f4a1c,0 8px 18px rgba(0,0,0,.35);
+  background:linear-gradient(180deg,var(--amber-lt),var(--amber) 60%,#e8a548);
+  color:#1d1608;border-radius:8px;padding:15px 24px;font:800 15px/1 var(--ui-font);letter-spacing:.2px;text-transform:none;
+  box-shadow:inset 0 1px 0 rgba(255,250,235,.7),0 3px 0 #9a6a2a,0 8px 18px rgba(0,0,0,.35);
 }
 .primary:hover{transform:translateY(-1px);filter:brightness(1.05)}
 .secondary{
-  background:rgba(7,15,23,.6);color:var(--cream);border:0;border-radius:4px;padding:15px 22px;
-  font:600 13px/1 var(--ui-font);letter-spacing:1.2px;text-transform:uppercase;
-  box-shadow:inset 0 0 0 1px rgba(201,164,107,.6),inset 0 1px 0 rgba(255,236,200,.08);
+  background:var(--glass);color:var(--cream);border:0;border-radius:8px;padding:15px 22px;
+  font:700 15px/1 var(--ui-font);letter-spacing:.2px;text-transform:none;
+  box-shadow:inset 0 0 0 1px var(--line-strong),inset 0 1px 0 #ffffff12;
 }
-.secondary:hover{transform:translateY(-1px);background:rgba(17,35,50,.8)}
+.secondary:hover{transform:translateY(-1px);background:linear-gradient(180deg,#46545ad0,#1c2529dc);box-shadow:inset 0 0 0 1px #fff6e0a8}
 .save-note{color:var(--muted);font-size:11px}
 .welcome-caption{font:600 11px/1 var(--ui-font);letter-spacing:5px;color:var(--cream-dim);text-shadow:0 1px 3px rgba(0,0,0,.7)}
 #loadError{color:#f0907a}
 
 /* ---------- Dialogs ---------- */
 dialog{
-  border:0;border-radius:6px;padding:32px;
-  background:linear-gradient(180deg,rgba(255,240,210,.04),rgba(255,240,210,0) 30%),var(--navy-1);
+  border:0;border-radius:12px;padding:32px;
+  background:var(--glass);
   color:var(--cream);
-  box-shadow:0 0 0 1px var(--bronze-lt),0 0 0 4px var(--navy-0),0 0 0 5px rgba(156,116,69,.5),0 30px 90px rgba(0,0,0,.6);
+  box-shadow:inset 0 0 0 1px var(--line),inset 0 1px 0 #ffffff12,0 20px 60px #000a;
 }
 dialog::backdrop{background:rgba(4,9,14,.62);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
-dialog h2{font:600 28px/1.15 var(--display-font);letter-spacing:-.3px;color:var(--cream);margin:0 0 4px}
+dialog h2{font:800 28px/1.15 var(--display-font);letter-spacing:-.3px;color:var(--cream-hi);margin:0 0 4px}
 dialog p{font-size:14px;line-height:1.65;color:var(--cream-dim)}
 dialog p b{color:var(--cream)}
 dialog small{font-size:11px;color:var(--muted)}
-.close{color:var(--bronze-lt);font-size:24px;background:none;box-shadow:none}
+.close{color:var(--cream-dim);font-size:24px;background:none;box-shadow:none}
 .close:hover{color:var(--cream);transform:none}
 .divider{color:var(--muted);font-size:11px;letter-spacing:2px;text-transform:uppercase}
-.divider:before,.divider:after{background:rgba(201,164,107,.3)}
+.divider:before,.divider:after{background:var(--line-strong)}
 input{
-  background:var(--navy-0);color:var(--cream);border:0;border-radius:4px;
-  box-shadow:inset 0 0 0 1px rgba(201,164,107,.5),inset 0 2px 4px rgba(0,0,0,.6);
+  background:#0008;color:var(--cream);border:0;border-radius:6px;
+  box-shadow:inset 0 0 0 1px var(--line-strong),inset 0 2px 4px rgba(0,0,0,.6);
   font-family:var(--ui-font);
 }
 input::placeholder{color:#6f7b82;letter-spacing:1.5px}
-#roomDisplay{background:var(--navy-0);border-radius:4px;box-shadow:inset 0 0 0 1px rgba(201,164,107,.4)}
+#roomDisplay{background:#00000038;border-radius:9px;box-shadow:inset 0 0 0 1px var(--line)}
 #roomDisplay small{color:var(--bronze-lt);letter-spacing:2.4px;font-weight:600}
 #roomCode{font:700 28px/1.1 var(--ui-font);letter-spacing:6px;color:var(--amber-lt)}
-#copyRoom{background:rgba(17,35,50,.9);color:var(--cream);border-radius:3px;box-shadow:inset 0 0 0 1px rgba(201,164,107,.55)}
+#copyRoom{background:#ffffff0b;color:var(--cream);border-radius:6px;box-shadow:inset 0 0 0 1px var(--line-strong)}
 #copyRoom:hover{transform:none;background:var(--navy-3)}
 #networkStatus{color:var(--cream-dim)}
 
@@ -254,7 +263,6 @@ input::placeholder{color:#6f7b82;letter-spacing:1.5px}
   .brand{font-size:15px;letter-spacing:2px}
   .brand-icon{width:34px;height:34px;font-size:20px}
   .header-right button{padding:9px 11px;font-size:12px}
-  #helpButton{width:36px}
 
   .inventory{top:64px;left:12px;padding:9px 12px 10px;min-height:0}
   .inventory>div{gap:16px;margin-top:8px}
@@ -289,8 +297,18 @@ input::placeholder{color:#6f7b82;letter-spacing:1.5px}
   .progress i,.durability-track>i,#toast{transition:none}
 }
 
-#chargeMeter{position:fixed;left:50%;bottom:102px;transform:translateX(-50%);width:158px;height:23px;background:#11252ad9;border:1px solid #d3ae70;border-radius:3px;pointer-events:none;overflow:hidden;z-index:4}
-#chargeMeter span{position:absolute;inset:0;display:grid;place-items:center;color:#fff4d6;font-size:10px;font-weight:700;letter-spacing:1.5px;z-index:1;text-shadow:0 1px 3px #000}#chargeMeter i{display:block;height:100%;width:0;background:#b8833e;transition:width .04s linear}
+/* Throw power: a slim bar above the hotbar (edge, never the screen centre). The label sits above the track, the fill
+   warms from sea-blue to hot orange as it grows, and full charge glows with its own label. */
+#chargeMeter{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);width:200px;display:flex;flex-direction:column;align-items:center;gap:5px;pointer-events:none;z-index:4}
+#chargeMeter span{padding:3px 8px;border-radius:4px;background:#0d1215b8;font:700 10px/1 var(--ui-font);letter-spacing:1.6px;text-transform:uppercase;color:#f4efe2;text-shadow:0 1px 2px #000}
+#chargeMeter b{position:relative;display:block;width:100%;height:9px;border-radius:5px;background:#0d1215c4;box-shadow:inset 0 0 0 1px #ffffff2e,0 2px 6px #0006;overflow:hidden}
+#chargeMeter b::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(90deg,transparent 0 calc(25% - 1px),#0d121599 calc(25% - 1px) 25%)}
+#chargeMeter i{display:block;height:100%;width:0;border-radius:5px 0 0 5px;background:linear-gradient(90deg,#7fc4d4,#ffd98f 55%,#ff8a3d) 0 0/200px 100% no-repeat;transition:width .04s linear}
+#chargeMeter.full span{color:#ffd98f}
+#chargeMeter.full b{box-shadow:inset 0 0 0 1px #ffd98f,0 0 12px #ffb35599,0 2px 6px #0006;animation:cmPulse .6s ease-in-out infinite alternate}
+#chargeMeter.full i{border-radius:5px}
+@keyframes cmPulse{to{box-shadow:inset 0 0 0 1px #fff6e0,0 0 18px #ffb355cc,0 2px 6px #0006}}
+@media(prefers-reduced-motion:reduce){#chargeMeter.full b{animation:none}}
 .close .icon{width:20px;height:20px}.guide-note{font-size:12px}#resumeHint{max-width:90vw;white-space:normal;text-align:center}
 
 body.playing header{justify-content:flex-end}body.playing .brand,body.playing .goal{display:none}
@@ -308,6 +326,16 @@ body.playing header,body.playing .goal,body.playing #toast,body.playing .control
 
 /* live-qa */
 /* Throw power sits just above the hotbar; the guide reads cream on navy */
-@media(max-width:760px){#chargeMeter{bottom:66px}}
+@media(max-width:760px){#chargeMeter{bottom:66px;width:160px}#chargeMeter i{background-size:160px 100%}}
 .guide li{color:var(--cream-dim)}.guide b{color:var(--cream)}.guide-note{color:var(--cream-dim)}
-.guide kbd{background:linear-gradient(180deg,#2a3a47,#16232e);color:var(--cream);border-color:rgba(201,164,107,.45)}
+.guide kbd{background:#0008;color:var(--cream-hi);border:0;border-radius:5px;box-shadow:inset 0 0 0 1px var(--line-strong)}
+.guide span kbd{display:inline;padding:0 4px;line-height:1;vertical-align:baseline;font-size:12px}
+
+/* Title at medium widths: keep the card compact and clear of the hero raft */
+@media(max-width:1000px) and (min-width:761px){
+  .welcome-card{margin-left:6vw;max-width:430px}
+  h1{font-size:clamp(34px,4.6vw,46px)}
+  .welcome-card p{font-size:14px}
+  .welcome-card p br{display:none}
+  .pills{flex-wrap:wrap}
+}
