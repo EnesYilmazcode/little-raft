@@ -16,6 +16,8 @@ Code: `dist/nets.js` (rules, model, view), hooks in `dist/game.js` tagged `[nets
   The host rolls each piece's loot (`LOOT`, barrels via `rollBarrel`) into the actor's bag, one piece at a
   time and all-or-nothing per piece; whatever does not fit stays in the net. The prompt reads
   "Empty net (n)" (from the `game-context` prompt provider).
+- **Shark**: when the shark tears off a foundation, the nets hanging from it sink with it, catch and all
+  (`removeTile` in dist/shark.js). The shark bites from a side without a net when the tile has one.
 - **Co-op**: the host snapshot carries `world.nets`; the guest rebuilds the net view when it changes.
 - **Old saves**: a net used to be deck decor that pulled debris within 4 m into the host's bag every 0.8 s.
   On load each old deck net moves to the nearest free edge spot (closest edge midpoint to its old tile).
