@@ -24,10 +24,12 @@ const SVG = '<circle cx="0" cy="0" r="38" fill="none" stroke="rgba(246,236,214,.
 
 export function createSailingUI({ signal } = {}) {
   if (typeof document === 'undefined') return { update() {}, setPrompt() {}, dispose() {} };
-  let style = document.getElementById('sailing-ui-style');
-  if (!style) { style = document.createElement('style'); style.id = 'sailing-ui-style'; document.head.appendChild(style); }
-  if (style.textContent !== CSS) style.textContent = CSS;
-  for (const id of ['sailBadge', 'sailPrompt']) document.getElementById(id)?.remove(); // hot reload leftovers
+  // Hot reload mounts the new engine before disposing the old one, so every instance owns its own <style> and
+  // elements, removes only those (by reference) on dispose, and clears stale ids at creation.
+  const uid = Math.random().toString(36).slice(2, 10);
+  const style = document.createElement('style'); style.dataset.sailingUi = uid; style.textContent = CSS;
+  document.head.appendChild(style);
+  for (const id of ['sailBadge', 'sailPrompt']) document.getElementById(id)?.remove(); // previous instance's elements
 
   const badge = document.createElement('div');
   badge.id = 'sailBadge'; badge.hidden = true;
@@ -89,8 +91,7 @@ export function createSailingUI({ signal } = {}) {
   let disposed = false;
   function dispose() {
     if (disposed) return; disposed = true;
-    badge.remove(); prompt.remove();
-    style.remove();
+    badge.remove(); prompt.remove(); style.remove(); // own references only: never a newer instance's nodes
   }
   if (signal) { if (signal.aborted) dispose(); else signal.addEventListener('abort', dispose, { once: true }); }
   return { update, setPrompt, dispose };
