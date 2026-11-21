@@ -36,6 +36,8 @@ const POSE = {
   wood: [0, -0.35, 0.12], leaf: [0.5, 0.4, 0], scrap: [0.3, 0.4, 0],
   net: [0.55, 0.5, 0], bench: [0, 0.5, 0], crate: [0, 0.5, 0],
 };
+// Thin, dark tools get a brighter exposure so they read on the dark slot tiles.
+const EXPOSURE = { hammer: 1.75, fishingrod: 1.75, hook: 1.35 };
 // models.js tools stand upright (grip at origin, working end +Y): tilt them onto the diagonal.
 const PROVIDER_POSE = { hook: [0, 0.5, -0.75] };
 
@@ -177,6 +179,7 @@ function renderKind(kind) {
   camera.near = r; camera.far = r * 7;
   camera.updateProjectionMatrix();
   scene.add(pivot);
+  gl.toneMappingExposure = EXPOSURE[kind] || 1.1;
   let url = '';
   try { gl.render(scene, camera); url = gl.domElement.toDataURL('image/png'); }
   catch (e) { console.warn('item icon render failed', kind, e); }

@@ -9,7 +9,7 @@ import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
-import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { Bag, ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { PlayerPhysics } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 import { floorBlock, decorBlock, inReach, BUILD_REACH, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
@@ -155,7 +155,8 @@ export function mount(transfer = null) {
         items.push({id:it.id, token:it.token, type:it.type, x:it.x, z:it.z, phase:Number.isFinite(it.phase) ? it.phase : 0});
     }
     return {tiles, decor, stock, fish:count(v.fish), collected:count(v.collected), hookHealth:Number.isFinite(v.hookHealth) ? clamp(Math.round(v.hookHealth), 0, MAX_HEALTH) : MAX_HEALTH, items,
-      hostInventory:validSnapshot(v.hostInventory), guestInventory:validSnapshot(v.guestInventory)};
+      hostInventory:validSnapshot(v.hostInventory), guestInventory:validSnapshot(v.guestInventory),
+      craftPin:typeof v.craftPin === 'string' && Object.prototype.hasOwnProperty.call(RECIPES, v.craftPin) ? v.craftPin : null};
   }
   function copyWorld(w) { // isolation from the previous engine's live object (rollback safety)
     return {...w, tiles:w.tiles.map(t => [t[0], t[1]]), decor:Array.isArray(w.decor) ? w.decor.map(d => ({...d})) : [], items:Array.isArray(w.items) ? w.items.map(i => ({...i})) : [], stock:{...(w.stock || {})},
@@ -204,7 +205,7 @@ export function mount(transfer = null) {
   let saveBlocked = !!X?.saveBlocked;
   let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghost, rope, ropeAttr, hookMesh, bobber, friend, player, sun;
   let hands = null, clothMat;
-  let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
+  let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS}, guestPin = typeof X?.guestPin === 'string' ? X.guestPin : null;
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
   let yaw = Number.isFinite(X?.yaw) ? X.yaw : 0, pitch = Number.isFinite(X?.pitch) ? X.pitch : -.28;
@@ -1297,7 +1298,7 @@ export function mount(transfer = null) {
     return {
       version:3, world, bags:{host:hostBag.snapshot(), guest:guestBag.snapshot(), remote:remoteBag ? remoteBag.snapshot() : null},
       physics:physics.capture(), me:{x:physics.x, y:physics.y, z:physics.z}, other:other ? {...other} : null, yaw, pitch, running, elapsed, walkPhase,
-      hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio:oceanAudio?.context ?? audio, hintsDone, peer, conn, role, networkReady, room, ownWorldBackup, pending:new Map(pending),
+      hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio:oceanAudio?.context ?? audio, hintsDone, guestPin, peer, conn, role, networkReady, room, ownWorldBackup, pending:new Map(pending),
       wornCasts:{...wornCasts}, seq, lastSeqSent, guestAck,
       joinDeadline:joinTimer ? joinDeadline : 0, saveAvailable, lockFallback, keys:{...keys},
       charging:charging ? {...charging} : null, reeling, down:down ? {...down} : null,
@@ -1357,6 +1358,10 @@ export function mount(transfer = null) {
       onResume:guard(() => requestLock()),
       onPause:guard(clearInput),
       getModel:sharedModel,
+      onSfx:() => sfx('ui', .3), // soft tick per crafted item while holding Craft
+      // Pinned recipe lives in the save (solo / host); a guest keeps its own for the session.
+      getPin:() => (role === 'guest' ? guestPin : world.craftPin ?? null),
+      setPin:guard(id => { if (role === 'guest') guestPin = id; else { world.craftPin = id; save(); } }),
     });
     // Pickup feed rows use the same cached 3D item icons as the bag; a late render swaps into a live row.
     pickupFeed.setIconProvider(kind => getItemIcon(kind));
