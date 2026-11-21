@@ -3,9 +3,9 @@
 // frame before reading anything; edges (pressed/released), look delta, hotbar step and slot
 // are all consumed per frame.
 import { ACTIONS, SETTINGS_DEFAULTS, shapeStick, smoothLook } from './input-map.js';
+import { createLookFilter } from './input-rules.js';
 
 const MOUSE_LOOK = 0.0022;          // radians per pixel at sensitivity 1
-const SPIKE = 300;                  // |movementX/Y| above this is a Chrome pointer-lock glitch: drop it
 const WHEEL_STEP = 40;              // pixel-mode wheel delta per hotbar notch
 const TRIGGER_ON = 0.5, TRIGGER_OFF = 0.4; // analog -> digital hysteresis (triggers, axis codes)
 const ACTIVE_AXIS = 0.3;            // stick deflection that marks a pad as "in use"
@@ -33,7 +33,8 @@ export function createInput({
   let padHeld = new Set();            // pad codes active this frame
   const padSuppressed = new Set();    // pad codes held through a clear(): ignored until released
   const state = new Map(ids.map(id => [id, { down: false, pressed: false, released: false }]));
-  let mouseX = 0, mouseY = 0, skipMove = false, wheelAcc = 0, wasBlocked = false;
+  let mouseX = 0, mouseY = 0, wheelAcc = 0, wasBlocked = false;
+  const lookFilter = createLookFilter();
   const smooth = {};
   let look = { dx: 0, dy: 0 }, step = 0, slot = -1, moveVec = { forward: 0, strafe: 0 };
   let leftStick = [0, 0], trig = { throw: 0, reel: 0 };
@@ -55,7 +56,7 @@ export function createInput({
     taps.clear(); releaseMouse();
     for (const c of padHeld) padSuppressed.add(c);
     padHeld = new Set();
-    mouseX = mouseY = wheelAcc = 0; for (const k in smooth) delete smooth[k];
+    mouseX = mouseY = wheelAcc = 0; for (const k in smooth) delete smooth[k]; lookFilter.reset();
     leftStick = [0, 0]; trig = { throw: 0, reel: 0 }; sprintOn = false; crouchOn = false;
   }
   function clear() { held.clear(); quiet(); }
@@ -85,9 +86,9 @@ export function createInput({
   on(target, 'mouseup', e => { held.delete('Mouse' + e.button); });
   on(doc, 'mousemove', e => {
     if (!locked() || isBlocked()) return;
-    if (skipMove) { skipMove = false; return; }  // first sample after lock carries the jump to centre
-    const x = e.movementX || 0, y = e.movementY || 0;
-    if (Math.abs(x) > SPIKE || Math.abs(y) > SPIKE) return;
+    // spike filter: drops the first sample after lock (the jump to centre) and isolated pointer-lock
+    // glitches, but a big fast flick that continues the motion still turns the camera
+    const [x, y] = lookFilter.filter(e.movementX || 0, e.movementY || 0);
     mouseX += x; mouseY += y; api.activeDevice = 'kbm';
   });
   on(element || target, 'wheel', e => {
@@ -99,8 +100,8 @@ export function createInput({
     api.activeDevice = 'kbm';
   }, { passive: false });
   on(doc, 'pointerlockchange', () => {
-    if (doc.pointerLockElement && (!element || doc.pointerLockElement === element)) skipMove = true;
-    else { releaseMouse(); mouseX = mouseY = 0; }
+    if (doc.pointerLockElement && (!element || doc.pointerLockElement === element)) lookFilter.reset({ dropFirst: true });
+    else { releaseMouse(); mouseX = mouseY = 0; lookFilter.reset(); }
   });
 
   // ---------- focus ----------

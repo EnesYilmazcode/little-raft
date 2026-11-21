@@ -117,3 +117,17 @@ test('a quick Space tap inside one (slow) frame still jumps', () => {
   c.dispose?.();
 });
 
+// ---------------------------------------------------------------- A3: big mouse flicks
+test('a >300px mouse move in one event turns the camera', () => {
+  const s = setupInput();
+  s.lock();
+  fire(s.d, 'mousemove', { movementX: 5, movementY: 0 }); // first after lock: dropped
+  fire(s.d, 'mousemove', { movementX: 350, movementY: 0 }); s.tick();
+  assert.ok(Math.abs(s.input.lookDelta().dx - 350 * 0.0022) < 1e-12, 'a single 350px flick event used to be dropped');
+  // a bigger diagonal flick is held for one event and applied once the motion continues
+  fire(s.d, 'mousemove', { movementX: 500, movementY: -400 }); s.tick();
+  fire(s.d, 'mousemove', { movementX: 300, movementY: -200 }); s.tick();
+  const l = s.input.lookDelta();
+  assert.ok(Math.abs(l.dx - 800 * 0.0022) < 1e-9 && Math.abs(l.dy + 600 * 0.0022) < 1e-9, JSON.stringify(l));
+});
+

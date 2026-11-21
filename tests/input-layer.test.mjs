@@ -175,7 +175,7 @@ test('digit keys select hotbar slots (consumed)', () => {
 
 // ---------------------------------------------------------------- mouse
 
-test('mouse look: radians, first-after-lock dropped, spikes dropped, invertY, consumed', () => {
+test('mouse look: radians, first-after-lock dropped, isolated spikes dropped, invertY, consumed', () => {
   const s = setup();
   fire(s.doc, 'mousemove', { movementX: 10, movementY: 0 }); s.tick();
   assert.deepEqual(s.input.lookDelta(), { dx: 0, dy: 0 }, 'ignored while unlocked');
@@ -189,7 +189,26 @@ test('mouse look: radians, first-after-lock dropped, spikes dropped, invertY, co
   assert.deepEqual(s.input.lookDelta(), { dx: 0, dy: 0 });
   s.map.setSetting('invertY', true);
   fire(s.doc, 'mousemove', { movementX: 0, movementY: 10 }); s.tick();
-  assert.ok(s.input.lookDelta().dy < 0);
+  assert.ok(s.input.lookDelta().dy < 0, 'the held 900px spike was not continued, so it is dropped');
+});
+
+test('mouse look: big flicks turn the camera; an isolated spike is still filtered', () => {
+  const s = setup();
+  s.lock();
+  fire(s.doc, 'mousemove', { movementX: 1, movementY: 0 }); // first after lock: dropped
+  fire(s.doc, 'mousemove', { movementX: 350, movementY: 0 }); s.tick();
+  assert.ok(Math.abs(s.input.lookDelta().dx - 350 * 0.0022) < 1e-12, 'a 350px flick in one event turns the camera');
+  s.unlock(); s.lock();
+  fire(s.doc, 'mousemove', { movementX: 1, movementY: 0 });
+  fire(s.doc, 'mousemove', { movementX: 900, movementY: 0 });
+  fire(s.doc, 'mousemove', { movementX: 700, movementY: 0 }); s.tick();
+  assert.ok(Math.abs(s.input.lookDelta().dx - 1600 * 0.0022) < 1e-9, 'a huge flick that continues is applied in full');
+  s.unlock(); s.lock();
+  fire(s.doc, 'mousemove', { movementX: 1, movementY: 0 });
+  fire(s.doc, 'mousemove', { movementX: 3000, movementY: 0 });
+  fire(s.doc, 'mousemove', { movementX: -2, movementY: 1 }); s.tick();
+  const l = s.input.lookDelta();
+  assert.ok(Math.abs(l.dx + 2 * 0.0022) < 1e-12 && Math.abs(l.dy - 0.0022) < 1e-12, 'isolated spike dropped: ' + JSON.stringify(l));
 });
 
 test('mouse buttons need lock; lock loss releases them; wheel steps hotbar', () => {
