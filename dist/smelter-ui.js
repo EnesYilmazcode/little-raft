@@ -1,7 +1,7 @@
 // Little Raft cooking-station panel (smelter, grill, ...). Pure view: reads the StationModel and
 // the Bag, and routes every change through the callbacks. Styled to match survival-ui.js.
 import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
-const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
+const FONT = "var(--ui-font,'Segoe UI',system-ui,-apple-system,sans-serif)"; // shared HUD font (graphics.css)
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SPRITE_URL = (() => { try { return new URL('icons.svg', import.meta.url).href; } catch { return 'icons.svg'; } })();
 const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'repair', 'hammer', 'compass']);
@@ -9,47 +9,47 @@ let ICONS = {};
 const iconsReady = import('./item-svg.js').then(m => { ICONS = m.ITEM_ICONS || m.default || {}; }).catch(() => {});
 
 const CSS = `
-#stationPanel.st-dlg{padding:0;margin:auto;border:0;background:transparent;box-shadow:none;width:max-content;max-width:96vw;color:#fff2cc;font:500 14px/1.35 ${FONT};overflow:visible}
-#stationPanel.st-dlg::backdrop{background:rgba(12,9,5,.42);backdrop-filter:none}
+#stationPanel.st-dlg{padding:0;margin:auto;border:0;background:transparent;box-shadow:none;width:max-content;max-width:96vw;color:#f4efe2;font:500 14px/1.35 ${FONT};overflow:visible}
+#stationPanel.st-dlg::backdrop{background:rgba(6,10,12,.42);backdrop-filter:none}
 #stationPanel .st-wrap{position:relative;padding:12px;border-radius:6px;outline:none;
-  background:repeating-linear-gradient(90deg,#00000012 0 2px,transparent 2px 23px),linear-gradient(#b48d55,#8a663a);border:3px solid #3e2a17;box-shadow:0 0 0 2px #d6b67e,0 18px 50px #000a}
+  border-radius:9px;background:var(--glass,#11181bf2);box-shadow:var(--frame,0 10px 28px rgba(0,0,0,.45))}
 #stationPanel .st-head{display:flex;align-items:center;justify-content:space-between;margin:-2px 2px 10px}
-#stationPanel h2{margin:0;font:800 19px/1.1 ${FONT};color:#2a1b0e;letter-spacing:.3px;text-shadow:0 1px 0 #e7cd98}
-#stationPanel .st-x{width:30px;height:30px;padding:0;border:0;border-radius:4px;background:#3a2716;color:#fff2cc;font:700 18px/1 ${FONT};cursor:pointer;transform:none}
-#stationPanel .st-x:hover{background:#5d4129}
+#stationPanel h2{margin:0;font:700 19px/1.1 ${FONT};color:var(--cream-hi,#fff6e0);letter-spacing:.3px}
+#stationPanel .st-x{width:30px;height:30px;padding:0;border:0;border-radius:5px;background:#ffffff0d;color:#f4efe2;font:700 18px/1 ${FONT};cursor:pointer;transform:none}
+#stationPanel .st-x:hover{background:#ffffff22}
 #stationPanel .st-body{display:flex;gap:12px;align-items:stretch}
-#stationPanel .st-bag,#stationPanel .st-main{background:#3a2716eb;border-radius:4px;box-shadow:inset 0 0 0 2px #24170c,inset 0 0 0 3px #b48d5544;padding:10px}
-#stationPanel .st-bag{user-select:none;-webkit-user-select:none;width:190px;max-height:300px;overflow:auto;box-sizing:border-box;scrollbar-color:#b48d55 #2a1b0e}
-#stationPanel .st-sub{margin:0 0 6px;font:700 11px/1 ${FONT};letter-spacing:1.4px;text-transform:uppercase;color:#d9c9a6}
+#stationPanel .st-bag,#stationPanel .st-main{background:#ffffff0a;border-radius:6px;box-shadow:inset 0 0 0 1px var(--line,#ffffff17);padding:10px}
+#stationPanel .st-bag{user-select:none;-webkit-user-select:none;width:190px;max-height:300px;overflow:auto;box-sizing:border-box;scrollbar-color:#ffffff40 transparent}
+#stationPanel .st-sub{margin:0 0 6px;font:700 11px/1 ${FONT};letter-spacing:1.4px;text-transform:uppercase;color:#f4efe2b3}
 #stationPanel .st-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
-#stationPanel .st-none{margin:0 0 12px;font-size:12px;color:#bfae8a}
-#stationPanel .st-chip{position:relative;width:48px;height:48px;padding:0;border:0;border-radius:3px;cursor:pointer;transform:none;background:linear-gradient(180deg,#5a3f28,#3d2a19);box-shadow:inset 0 0 0 1px #d4b07a55,inset 0 2px 6px #0006}
+#stationPanel .st-none{margin:0 0 12px;font-size:12px;color:#f4efe299}
+#stationPanel .st-chip{position:relative;width:48px;height:48px;padding:0;border:0;border-radius:3px;cursor:pointer;transform:none;background:linear-gradient(180deg,#2a3438,#1a2225);box-shadow:inset 0 0 0 1px #ffffff26,inset 0 2px 6px #0006}
 #stationPanel .st-chip:hover:not(:disabled){box-shadow:inset 0 0 0 1px #ffe3a6,0 0 8px #ffbd6655}
 #stationPanel .st-chip:disabled{opacity:.4;cursor:not-allowed}
 #stationPanel .st-chip .st-ic{position:absolute;inset:7px}
-#stationPanel .st-n{position:absolute;right:3px;bottom:2px;font:700 13px/1 ${FONT};color:#fff2cc;text-shadow:0 1px 0 #000,0 0 3px #000}
+#stationPanel .st-n{position:absolute;right:3px;bottom:2px;font:700 13px/1 ${FONT};color:#f4efe2;text-shadow:0 1px 0 #000,0 0 3px #000}
 #stationPanel .st-ic svg{display:block;width:100%;height:100%;filter:drop-shadow(0 1px 1px #0008)}
 #stationPanel .st-main{display:flex;flex-direction:column;gap:10px;width:370px;box-sizing:border-box}
 #stationPanel .st-row{display:grid;grid-template-columns:72px 1fr 72px;gap:10px;align-items:center}
 #stationPanel .st-col{display:flex;flex-direction:column;align-items:center;gap:6px}
-#stationPanel .st-slot{position:relative;width:60px;height:60px;border-radius:4px;background:#24170c;box-shadow:inset 0 0 0 2px #6b4a2b,inset 0 3px 8px #000a}
+#stationPanel .st-slot{position:relative;width:60px;height:60px;border-radius:4px;background:#0b1012;box-shadow:inset 0 0 0 2px #ffffff26,inset 0 3px 8px #000a}
 #stationPanel .st-slot .st-ic{position:absolute;inset:9px}
 #stationPanel .st-slot.st-ready{box-shadow:inset 0 0 0 2px #ffbd66,0 0 12px #ffbd6688}
-#stationPanel .st-lbl{font:700 10px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#d9c9a6}
+#stationPanel .st-lbl{font:700 10px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#f4efe2b3}
 #stationPanel .st-btn{min-width:60px;white-space:nowrap;padding:5px 8px;border:0;border-radius:3px;cursor:pointer;transform:none;background:linear-gradient(#ffcf7d,#e9a24a);color:#2a1b0e;font:800 12px/1 ${FONT};box-shadow:0 2px 0 #8a5a26}
-#stationPanel .st-btn.st-ghost{background:#5d4129;color:#f3e4c2;box-shadow:0 2px 0 #24170c;font-weight:700}
+#stationPanel .st-btn.st-ghost{background:#ffffff1a;color:#f4efe2;box-shadow:0 2px 0 #0b1012;font-weight:700}
 #stationPanel .st-btn:disabled{opacity:.35;cursor:default}
 #stationPanel .st-mid{display:flex;flex-direction:column;gap:6px}
-#stationPanel .st-bar{height:12px;border-radius:6px;background:#24170c;box-shadow:inset 0 0 0 1px #6b4a2b;overflow:hidden}
+#stationPanel .st-bar{height:12px;border-radius:6px;background:#0b1012;box-shadow:inset 0 0 0 1px #ffffff26;overflow:hidden}
 #stationPanel .st-bar>i{display:block;height:100%;width:0;border-radius:6px;transition:width .15s linear}
 #stationPanel .st-prog>i{background:linear-gradient(90deg,#ffbd66,#fff2cc)}
 #stationPanel .st-fuel{height:7px;width:60px}
 #stationPanel .st-fuel>i{background:linear-gradient(90deg,#e0603a,#ffbd66)}
-#stationPanel .st-cap{font:600 12px/1.3 ${FONT};color:#eadcbe;text-align:center;white-space:nowrap;min-height:16px;font-variant-numeric:tabular-nums}
+#stationPanel .st-cap{font:600 12px/1.3 ${FONT};color:#f4efe2;text-align:center;white-space:nowrap;min-height:16px;font-variant-numeric:tabular-nums}
 #stationPanel .st-flame{width:42px;height:42px;filter:grayscale(1) brightness(.5);transition:filter .3s}
 #stationPanel .st-on .st-flame{filter:drop-shadow(0 0 6px #ffbd66aa);animation:st-fl .5s ease-in-out infinite alternate;transform-origin:50% 90%}
 @keyframes st-fl{from{transform:scale(1,1)}to{transform:scale(.92,1.09)}}
-#stationPanel .st-hint{margin:0;padding:7px 9px;border-radius:3px;background:#24170caa;font:600 13px/1.3 ${FONT};color:#d9c9a6;text-align:center}
+#stationPanel .st-hint{margin:0;padding:7px 9px;border-radius:3px;background:#0b1012aa;font:600 13px/1.3 ${FONT};color:#f4efe2b3;text-align:center}
 #stationPanel .st-hint.st-warn{color:#ffcf9a;box-shadow:inset 0 0 0 1px #ffbd6655}
 @media(max-width:620px){#stationPanel .st-body{flex-direction:column}#stationPanel .st-bag{width:auto;max-height:160px}#stationPanel .st-main{width:auto}}
 @media(prefers-reduced-motion:reduce){#stationPanel .st-on .st-flame{animation:none}}`;
@@ -156,6 +156,8 @@ export function createStationPanel({ getStation, getBag, items = {}, fuelValue =
     safe(onClose, sid);
   }
   dlg.addEventListener('cancel', e => { e.preventDefault(); close(); }, opt);
+  // E / Tab close the panel too, as they close the bag and the storage panel.
+  dlg.addEventListener('keydown', e => { if ((e.code === 'KeyE' || e.code === 'Tab') && !e.repeat) { e.preventDefault(); e.stopPropagation(); close(); } }, opt);
   dlg.addEventListener('close', () => { if (isOpen) { isOpen = false; safe(onClose, sid); } }, opt);
   dlg.addEventListener('click', e => {
     if (e.target === dlg || e.target.closest('.st-x')) { close(); return; }
