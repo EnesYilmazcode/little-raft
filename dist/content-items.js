@@ -35,6 +35,12 @@ export const CONTENT_ITEMS = Object.freeze({
   goatpen:  item('goatpen', 'Hay Corner',      'icon-hay',     false),
   bucket:   item('bucket',  'Wooden Pail',     'icon-pail',    false, 5),
   milk:     item('milk',    'Pail of Milk',    'icon-milk',    false, 5),
+  // tufflets (animals.js, docs/specs/tufflet.md); the shears never wear out (no durability, not a TOOL_KIND)
+  tuftnook: item('tuftnook', 'Tuft Nook',    'icon-tuftnook', false),
+  wool:     item('wool',     'Tuft Wool',    'icon-wool',     false),
+  tuftrug:  item('tuftrug',  'Tuft Rug',     'icon-tuftrug',  false),
+  blanket:  item('blanket',  'Cosy Blanket', 'icon-blanket',  false),
+  shears:   Object.freeze({ kind: 'shears', name: 'Shell Shears', icon: 'icon-shears', maxStack: 1, tool: false, placeholder: false }),
   research: item('research', 'Tinker\u2019s Desk', 'icon-research', false),
   motor:    item('motor',    'Little Motor',   'icon-motor',  false),
   wheel:    item('wheel',    'Steering Wheel', 'icon-wheel',  false),
@@ -110,6 +116,12 @@ export const CONTENT_RECIPES = Object.freeze({
   egglamp: Object.freeze({ id: 'egglamp', name: 'Egg Lantern', output: Object.freeze({ kind: 'lantern', count: 1 }), cost: Object.freeze({ puffegg: 1, wood: 2 }) }),
   goatpen: recipe('goatpen', 'Hay Corner',      1, { wood: 4, leaf: 3, rope: 1 }),
   bucket:  recipe('bucket',  'Wooden Pail',     1, { wood: 3, rope: 1 }),
+  // tufflets (animals.js); Wool Rope is a second way to make rope, after the base leaf recipe
+  tuftnook: recipe('tuftnook', 'Tuft Nook',    1, { wood: 3, leaf: 3, rope: 2 }),
+  shears:   recipe('shears',   'Shell Shears', 1, { scrap: 2, shell: 1, rope: 1 }),
+  woolrope: Object.freeze({ id: 'woolrope', name: 'Wool Rope', output: Object.freeze({ kind: 'rope', count: 2 }), cost: Object.freeze({ wool: 1 }) }),
+  tuftrug:  recipe('tuftrug',  'Tuft Rug',     1, { wool: 3, rope: 1 }),
+  blanket:  recipe('blanket',  'Cosy Blanket', 1, { wool: 4, leaf: 1 }),
   motor:    recipe('motor', 'Little Motor', 1, { wood: 6, scrap: 4, rope: 2 }),
   wheel:    recipe('wheel', 'Steering Wheel', 1, { wood: 5, rope: 2 }),
   bed:      recipe('bed', 'Simple Bed', 1, { leaf: 10, wood: 6, plastic: 4, nail: 3 }), // [bed]
@@ -140,5 +152,5 @@ export const CONTENT_RECIPES = Object.freeze({
 });
 
 // Placeable decor added by content modules (models come from content.decorModel()).
-export const CONTENT_DECOR = Object.freeze(['research', 'bed', 'motor', 'wheel', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign', 'kiln', 'glasslamp', 'nestbox', 'cushion', 'cookpot', 'shellwreath', 'glassfloat', 'flagpole', 'gametable', 'courseflag', 'scoreboard', 'goatpen', 'stormrod', 'stormlamp', 'stormglass']);
-export const CONTENT_BLOCK_RADIUS = Object.freeze({ research: .5, bed: .55, motor: .45, wheel: .4, pennant: .1, fern: .12, chime: .12, hammock: .45, pots: .3, sign: .1, kiln: .45, glasslamp: .12, nestbox: .35, cushion: .3, cookpot: .35, shellwreath: .12, glassfloat: .2, flagpole: .1, gametable: .45, courseflag: .15, scoreboard: .3, goatpen: .4, stormrod: .15, stormlamp: .12, stormglass: .1 });
+export const CONTENT_DECOR = Object.freeze(['research', 'bed', 'motor', 'wheel', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign', 'kiln', 'glasslamp', 'nestbox', 'cushion', 'cookpot', 'shellwreath', 'glassfloat', 'flagpole', 'gametable', 'courseflag', 'scoreboard', 'goatpen', 'stormrod', 'stormlamp', 'stormglass', 'tuftnook', 'tuftrug', 'blanket']);
+export const CONTENT_BLOCK_RADIUS = Object.freeze({ research: .5, bed: .55, motor: .45, wheel: .4, pennant: .1, fern: .12, chime: .12, hammock: .45, pots: .3, sign: .1, kiln: .45, glasslamp: .12, nestbox: .35, cushion: .3, cookpot: .35, shellwreath: .12, glassfloat: .2, flagpole: .1, gametable: .45, courseflag: .15, scoreboard: .3, goatpen: .4, stormrod: .15, stormlamp: .12, stormglass: .1, tuftnook: .35, blanket: .25 });

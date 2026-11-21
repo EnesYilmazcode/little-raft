@@ -41,6 +41,7 @@ const CATEGORY_OF = Object.freeze({
   kiln: 'building', glasslamp: 'survival', sinker: 'survival', // kiln
   nestbox: 'survival', cushion: 'building', // raft animals
   goatpen: 'survival', bucket: 'survival', // raft goats
+  tuftnook: 'survival', shears: 'tools', tuftrug: 'building', blanket: 'building', // tufflets (woolrope files under its output, rope)
   stormrod: 'building', stormlamp: 'survival', stormglass: 'building', // storm
   // content (engine, sleep, paint)
   motor: 'building', wheel: 'building', bed: 'building', brush: 'tools', driftboard: 'tools', // [paddleboard]
@@ -165,6 +166,11 @@ export const ITEM_TEXT = Object.freeze({
   goatpen:    { desc: 'A cosy fenced corner with a pile of hay.', use: 'Place it on the raft and set out greens; a bramblegoat may come to stay.' },
   bucket:     { desc: 'A little wooden pail with a rope handle.', use: 'Hold it and press E on a bramblegoat with milk.' },
   milk:       { desc: 'A pail of fresh, creamy goat milk.', use: 'Drink it (+10 food, +25 water); the pail comes back.' },
+  tuftnook:   { desc: 'A woven basket bed with a kelp pillow.', use: 'Place it on the raft and set out berries; a tufflet may come to stay.' },
+  shears:     { desc: 'Little shears with shell blades.', use: 'Hold them and press E on a fluffy tufflet.' },
+  wool:       { desc: 'A soft lavender tuft.', use: 'Twist it into rope, or make a Tuft Rug or a Cosy Blanket.' },
+  tuftrug:    { desc: 'A round rug of soft wool.', use: 'Place it on a deck tile.' },
+  blanket:    { desc: 'A folded wool blanket.', use: 'Place it on the raft for a cosy corner.' },
   driftboard: { desc: 'A plank board on two plastic floats, with a paddle.', use: 'Click the water by the raft to launch it, E to climb on.' },
   cookedsharkmeat: { desc: 'A shark steak grilled through.', use: 'A filling meal (+30 food).' },
   sharkmeat:  { desc: 'A raw slab of shark meat.', use: 'Grill it for a proper meal; four come from every shark.' },
@@ -473,6 +479,7 @@ export const ITEM_SOURCE = Object.freeze({
   puffegg:     Object.freeze({ tag: 'puffhen', how: 'Place a Nest Box; a puffhen moves in and lays eggs. Press E on the nest to collect.' }),
   feather:     Object.freeze({ tag: 'puffhen', how: 'Sometimes left with the eggs in a puffhen nest box; collect with E.' }),
   milk:        Object.freeze({ tag: 'goat', how: 'Place a Hay Corner; a goat moves in. Hold a Wooden Pail and press E on it.' }),
+  wool:        Object.freeze({ tag: 'tufflet', how: 'Place a Tuft Nook; a tufflet moves in. Hold Shell Shears and press E when it is fluffy.' }),
   // shark lane (shark.js): harvest the beaten shark with E
   sharkmeat:   Object.freeze({ tag: 'beaten shark', how: 'Fight off the shark with a spear, then press E on its body.' }),
   sharkhead:   Object.freeze({ tag: 'beaten shark', how: 'Harvested with the meat from a beaten shark (E).' }),

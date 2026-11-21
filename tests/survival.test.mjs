@@ -539,8 +539,8 @@ test('CraftBook: every recipe lands in exactly one known tab, in CATEGORIES orde
   assert.equal(seen.length, recipes.length);
   assert.deepEqual([...seen].sort(), recipes.map(r => r.id).sort());
   for (const g of groups) assert.ok(g.recipes.length > 0, `${g.id} not empty`);
-  assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod', 'brush', 'fins', 'airjug', 'goggles', 'scraper', 'driftboard', 'metalhook', 'spear', 'metalspear', 'paddle', 'axe', 'binoculars', 'spyglass', 'drum', 'pipes', 'bells', 'finder', 'spade', 'camera', 'glidehandle']); // [instruments] [treasure] [camera] [zipline] [spyglass]
-  assert.deepEqual(groups.find(g => g.id === 'materials').recipes.map(r => r.id), ['rope', 'paint_seafoam', 'paint_coral', 'paint_sunshell', 'paint_lagoon', 'paint_pebble', 'nail', 'bolt', 'hinge']);
+  assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod', 'brush', 'shears', 'fins', 'airjug', 'goggles', 'scraper', 'driftboard', 'metalhook', 'spear', 'metalspear', 'paddle', 'axe', 'binoculars', 'spyglass', 'drum', 'pipes', 'bells', 'finder', 'spade', 'camera', 'glidehandle']); // [instruments] [treasure] [camera] [zipline] [spyglass]
+  assert.deepEqual(groups.find(g => g.id === 'materials').recipes.map(r => r.id), ['rope', 'paint_seafoam', 'paint_coral', 'paint_sunshell', 'paint_lagoon', 'paint_pebble', 'woolrope', 'nail', 'bolt', 'hinge']);
 });
 
 test('CraftBook: unknown outputs fall back to tools (tool flag) or building', () => {
