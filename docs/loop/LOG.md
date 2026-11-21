@@ -1230,3 +1230,14 @@ No regressions. Intended differences:
 - Gate at fd3724d: 1402/1402, no page errors, hook-only spawn, Esc OK, 135 vs 225 ms, 50.8 vs 53.0 calls. Merged as c3a29df.
 - Open, pre-existing: in the browser, Esc with the hammer build wheel open closes the wheel but leaves the cursor free (Chrome needs a click
   to relock after a user exit). Fix idea: have the wheel release the lock itself, like the inventory does.
+
+## 2026-11-21 · integrator H (the scheduled :00/:30 second integrator; logged as B in rounds 3-5 before the name clash)
+- Round 5 merged and pushed: loop-fidelity-0804, -0821 (nets, crop plot, armor, paddle, stone axe + coconut, debris budget, purifier fuel; 0747 skipped as a duplicate shark/needs build); fleet-tech/perf; icons.svg fetched once (from loop-perf-0720); place-mode prompt wiring from loop-features-0735.
+  Co-op HELD: paddle 23, axe 24 (after glidehandle 21, spyglass 22). Sail chip/lock text follow the new sail recipe.
+- Reverted the loop-features-0831 merge at 7190097 (its WIP juicer commit broke 5 tests); the branch was later finished and merged by integrator C.
+- PR #5 review (2 reviewers, comments on #5). Fixed in 99a2d3e, which landed on raft-master after #5 merged, so it ships with PR #6:
+  floor1 achievement and START_TILES/onboarding reset assumed the old 3x3 start; net view resync when the shark breaks a tile;
+  blocked placement showed "LMB Place X" (now shows the reason, like the hammer); the Place row lost to the keyed aim prompt in place mode;
+  build chip overlapped the vitals panel under 1100px; Lightning Rod pickup lost its shards (now not pick-up-able); duplicate motor/wheel/bed/brush/paint recipes; duplicate `play` hook.
+- Perf at 99a2d3e vs main c3a29df (pinned quality, median of 3, quiet box): 137 vs 138 ms idle, 122 vs 124 ms walking, ~50 draw calls both.
+- Process note: three or more integrators merged the same branches in parallel this round; much worker-merge work was thrown away. Claims in STATUS.md are now the coordination point.
