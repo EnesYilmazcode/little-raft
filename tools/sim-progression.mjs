@@ -17,6 +17,7 @@
 //   --skill S     1 = attentive player; scales per-cast overhead (--overhead 7 s / S) and aim
 //   --overhead S  human time per cast at skill 1 (7 s calibrates to ~4.5-5 hooked items/min)
 //   --dist DIR    module directory (default ../dist); use a patched copy to try numbers
+//   --max-tiles N stop building surplus floor tiles at N (default 400 = game cap)
 //   --strict      craft goals strictly in PROGRESSION_PLAN order (no look-ahead)
 //   --nearest-only  always hook the nearest item, even if it cannot fit (default: skip debris
 //                 that cannot fit or is already >= --plenty (40) in the bag, skip barrels when no slot is free)
@@ -48,6 +49,7 @@ const OPT = {
   nearestOnly: !!flag('nearest-only', false),
   json: !!flag('json', false),
   plenty: Number(flag('plenty', 40)),
+  maxTiles: Number(flag('max-tiles', 400)),
   dist: resolve(flag('dist', resolve(dirname(fileURLToPath(import.meta.url)), '../dist'))),
 };
 
@@ -436,7 +438,7 @@ function simulate(seed) {
     const spare = (k) => bag.count(k) - (P.reserved[k] || 0);
     const tight = freeSlots() <= 3;
     let floors = 0;
-    while (floors < 3 && spare('wood') >= G.FLOOR_COST.wood + (tight ? 0 : 4) && spare('plastic') >= G.FLOOR_COST.plastic && tiles.length < 400 && buildFloor()) floors++;
+    while (floors < 3 && spare('wood') >= G.FLOOR_COST.wood + (tight ? 0 : 4) && spare('plastic') >= G.FLOOR_COST.plastic && tiles.length < OPT.maxTiles && buildFloor()) floors++;
     if (spare('leaf') >= (tight ? 2 : 8) && bag.count('rope') < (tight ? 40 : 12)) { const res = craft(bag, 'rope', prog); if (res.ok) { busy += T.craft; markMade('rope', 1); } }
     if (prog.isUnlocked('nail') && spare('scrap') >= 8 && bag.count('nail') < 12) { const res = craft(bag, 'nail', prog); if (res.ok) { busy += T.craft; markMade('nail', 3); } }
     if (tight) { // burn spare leaves / seaweed in any station with fuel room
@@ -458,12 +460,14 @@ function simulate(seed) {
     const p = player();
     let best = null, bd = Infinity;
     const free = freeSlots();
+    const fitCache = {};
+    const fitsType = (type) => (fitCache[type] ??= fits(G.LOOT[type]));
     for (const it of items) {
       if (it.held) continue;
       const d = Math.hypot(it.x - p.x, it.z - p.z);
       if (d > range || d < 1.5) continue;
       if (!OPT.nearestOnly) { // a sensible player skips what cannot fit or is already plentiful
-        if (it.type === 'barrel' ? free === 0 : (!fits(G.LOOT[it.type]) || bag.count(it.type) >= OPT.plenty)) continue;
+        if (it.type === 'barrel' ? free === 0 : (bag.count(it.type) >= OPT.plenty || !fitsType(it.type))) continue;
       }
       if (d < bd) { bd = d; best = it; }
     }
@@ -629,6 +633,7 @@ console.log('\nBarrels opened (hook+net) when goal done, median: ' + ['net', 'br
 const rt = (k) => f1(med((r) => r.rates[k]));
 console.log(`\nIncome: hooked items/min ${rt('hookedPerMin')}, casts/min ${rt('castsPerMin')}, barrels/min (hook+net) ${rt('barrelsPerMin')}, net items (median) ${f1(med((r) => r.rates.netItems))}, fish ${f1(med((r) => r.fishCaught))}`);
 console.log(`First 30 min: hooked items/min ${rt('early30ItemsPerMin')}, barrels/min ${rt('early30BarrelsPerMin')}; bag first full at min ${f1(med((r) => r.firstFullMin))} (p10 ${f1(q(runs.map((r) => r.firstFullMin), 0.1))})`);
+console.log(`Barrels hooked vs netted (median): ${f1(med((r) => r.rates.barrelsHooked))} / ${f1(med((r) => r.rates.barrelsNet))}`);
 console.log(`Raft tiles (median) ${f1(med((r) => r.tiles))}; slots used at end ${f1(med((r) => r.slotsUsed))}/28 (p90 ${f1(p90((r) => r.slotsUsed))})`);
 console.log(`Bag full: median ${f1(med((r) => r.fullMin))} min (p90 ${f1(p90((r) => r.fullMin))}); rejected catches median ${f1(med((r) => r.spillEvents))} (p90 ${f1(p90((r) => r.spillEvents))}), barrels lost median ${f1(med((r) => r.barrelsLost))}`);
 console.log(`Idle (every open goal waiting on raw income): median ${f1(med((r) => r.idleMin))} min (p90 ${f1(p90((r) => r.idleMin))}); no item in reach: ${f1(med((r) => r.hookIdleMin))} min`);

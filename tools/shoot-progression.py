@@ -59,6 +59,7 @@ def close_dialogs(page):
     for _ in range(3):
         if page.evaluate("!!document.querySelector('dialog[open]')"):
             page.keyboard.press('Escape'); page.wait_for_timeout(250)
+    page.evaluate("document.pointerLockElement && document.exitPointerLock()"); page.wait_for_timeout(150)
     page.mouse.move(5, 5)
 
 
@@ -74,6 +75,8 @@ def hover(page, sel):
 def drag_look(page, dx, dy):
     """Rotate the camera by dragging on the canvas (non-locked look: 0.005 rad per px)."""
     x0, y0 = 640, 360
+    if page.evaluate("raftDebug.state.pointerLocked"):
+        page.evaluate("document.exitPointerLock()"); page.wait_for_timeout(150)
     page.mouse.move(x0, y0); page.mouse.down()
     steps = max(4, int(max(abs(dx), abs(dy)) / 20))
     for i in range(1, steps + 1):
@@ -87,6 +90,8 @@ def aim_at(page, wx, wz, wy=None, target_pitch=None):
     want = math.atan2(-(wx - cam['x']), -(wz - cam['z']))
     d = (want - cam['yaw'] + math.pi) % (2 * math.pi) - math.pi
     drag_look(page, -d / .005, 0)
+    if wy is not None:
+        target_pitch = math.atan2(wy - cam['y'], math.hypot(wx - cam['x'], wz - cam['z']))
     if target_pitch is not None:
         cam = page.evaluate("raftDebug.state.camera")
         drag_look(page, 0, -(target_pitch - cam['pitch']) / .005)
@@ -140,14 +145,19 @@ with sync_playwright() as p:
     shot(page, '03-tooltip-locked-recipe.png')
     close_dialogs(page)
 
-    # stage stations around the spawn point: research table on the nearest tile so E/interact picks it
+    # Stage a row of stations along the back edge (z = -2, mouths facing +z, toward spawn).
+    # place() picks the free tile nearest the player, so walk to a spot before each placement.
     ev(f"""(()=>{{const P={P};P.grant('metalore',4);P.grant('wood',10);P.grant('nail',4);P.grant('stone',2);P.grant('clay',2)}})()""")
+    page.keyboard.press('8'); page.wait_for_timeout(200)  # empty hand so canvas drags only look
     keys = {}
-    for t in ('researchtable', 'smelter', 'grill'):
+    for t, spot in (('smelter', (0, -1.15)), ('researchtable', (-1.3, -1.25)), ('grill', (1.3, -1.25))):
+        walk_to(page, *spot)
         keys[t] = ev(f"{P}.place('{t}')"); page.wait_for_timeout(300)
+    page.keyboard.press('8'); page.wait_for_timeout(200)
     LOG['steps']['stationKeys'] = keys
     LOG['steps']['decor'] = ev("raftDebug.state.decor")
-    page.wait_for_timeout(1500)  # let the progression tick notice the new kinds (discovery)
+    walk_to(page, 1.3, -0.4); walk_to(page, -1.3, -0.4)
+    page.wait_for_timeout(1200)  # let the progression tick notice the new kinds (discovery)
 
     # 04: research dialog via the real interact path
     ev(f"{P}.interact()"); page.wait_for_timeout(500)
@@ -165,18 +175,16 @@ with sync_playwright() as p:
     shot(page, '06-smelter-cooking.png')
     close_dialogs(page)
 
-    # 05: walk to the far corner and look back at the stations (smelter is lit while cooking)
-    page.keyboard.press('8'); page.wait_for_timeout(200)  # empty hand so drags only look
-    walk_to(page, 1.9, 1.0)
-    walk_to(page, 1.9, -2.3)
+    # 05: walk to the front edge and look back at the row of stations (smelter lit while cooking)
+    walk_to(page, 0, 2.4)
+    aim_at(page, 0, -2, target_pitch=-.33)
+    page.mouse.click(640, 360); page.wait_for_timeout(400)  # first click only takes pointer lock (hides the look hint)
+    page.wait_for_timeout(1200)
     dec = [d for d in ev("raftDebug.state.decor") if d['type'] in ('smelter', 'researchtable', 'grill')]
-    cx = sum(d['x'] for d in dec) / len(dec) * 2
-    cz = sum(d['z'] for d in dec) / len(dec) * 2
-    aim_at(page, cx, cz, target_pitch=-.38)
-    page.wait_for_timeout(1500)
     LOG['steps']['worldCam'] = ev("raftDebug.state.camera")
     LOG['steps']['stationScreens'] = [dict(d, screen=ev(f"raftDebug.project({d['x']*2},0.6,{d['z']*2})")) for d in dec]
     shot(page, '05-raft-stations.png')
+    page.evaluate("document.exitPointerLock()"); page.wait_for_timeout(200)
 
     # 07: ingot ready
     ev(f"{P}.advance(120)"); page.wait_for_timeout(200)
@@ -208,7 +216,8 @@ with sync_playwright() as p:
         page.keyboard.press(str(s + 1))
     else:
         LOG['steps']['binoNote'] = 'binoculars not on hotbar'
-    page.wait_for_timeout(700)
+    page.mouse.click(640, 360)  # take pointer lock (first click never acts)
+    page.wait_for_timeout(900)
     LOG['steps']['hud'] = ev(f"{P}.state().hud")
     shot(page, '09-binoculars-hud.png')
     LOG['steps']['savedProgression'] = bool(ev("localStorage.getItem('littleRaft.progression.v1')"))
