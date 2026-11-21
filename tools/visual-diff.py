@@ -18,7 +18,7 @@ are removed (the game falls back to drag-to-look); any request that is not to th
 Last stdout line is one JSON object {tool, pass, failures, metrics, artifacts}. Exit 0 pass, 1 failure
 (nondeterminism, page error, scene unreachable, or --fail-on-diff diff), 2 harness/infra error.
 """
-import argparse, html, json, sys, time, traceback
+import argparse, html, json, sys, threading, time, traceback
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -148,7 +148,9 @@ def capture(browser, dist, out, names, seed, label):
                 if not wait_js(page, '!!window.__det && !!window.__det.step', 10):
                     raise RuntimeError('determinism shim did not install (window.__det missing)')
                 if not wait_js(page, '!!window.raftDebug', 45):
+                    info['booted'] = bool(info['errors'])  # page errors during boot: the game is broken, not the harness
                     raise RuntimeError('window.raftDebug never appeared (game did not boot)')
+                info['booted'] = True
                 run_steps(page, SCENES[name])
                 page.screenshot(path=str(out / f'{name}.png'), caret='hide', timeout=60000)
                 try: info['state'] = page.evaluate(STATE_JS)
@@ -284,6 +286,7 @@ def main():
     ap.add_argument('--self-fail-over', type=float, default=0.05, help='self-check: percent of changed pixels that counts as nondeterminism (default 0.05)')
     ap.add_argument('--fail-on-diff', action='store_true', help='base/head: fail (exit 1) when a scene differs over --fail-over')
     ap.add_argument('--check-determinism', action='store_true', help='base/head: also render head twice and gate on its noise')
+    ap.add_argument('--jobs', type=int, default=2, help='browsers rendering runs side by side (default 2; 1 = sequential)')
     ap.add_argument('--only', default='', help='comma list of scene names')
     ap.add_argument('--list', action='store_true', help='print scene names and exit')
     args = ap.parse_args()
@@ -316,26 +319,35 @@ def main():
     base, head = base.resolve(), head.resolve()
     out.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
-    try:
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as p:
-            browser = launch_chromium(p)
-            try:
-                if mode == 'self':
-                    ma = capture(browser, head, out / 'A', names, args.seed, 'run1')
-                    mb = capture(browser, head, out / 'B', names, args.seed, 'run2')
-                    mc = None
-                else:
-                    ma = capture(browser, base, out / 'A', names, args.seed, 'base')
-                    mb = capture(browser, head, out / 'B', names, args.seed, 'head')
-                    mc = capture(browser, head, out / 'C', names, args.seed, 'head2') if args.check_determinism else None
-            finally:
-                browser.close()
-    except Exception as e:
-        traceback.print_exc(file=sys.stderr)
-        return infra(f'browser run failed: {str(e).splitlines()[0][:300]}')
+    jobs = [(head, 'A', 'run1'), (head, 'B', 'run2')] if mode == 'self' else \
+        [(base, 'A', 'base'), (head, 'B', 'head')] + ([(head, 'C', 'head2')] if args.check_determinism else [])
+    metas, errors = {}, []
 
-    if not any(m['ok'] for m in list(ma.values()) + list(mb.values())):
+    def worker(batch):
+        # One Playwright driver + browser per thread (the sync API is per-thread). Runs are independent, and
+        # frames are a pure function of seed + steps, so running them side by side cannot change pixels.
+        try:
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as p:
+                browser = launch_chromium(p)
+                try:
+                    for dist, sub, label in batch:
+                        metas[sub] = capture(browser, dist, out / sub, names, args.seed, label)
+                finally:
+                    browser.close()
+        except Exception as e:
+            traceback.print_exc(file=sys.stderr)
+            errors.append(str(e).splitlines()[0][:300] if str(e) else repr(e))
+
+    n_threads = max(1, min(args.jobs, len(jobs)))
+    threads = [threading.Thread(target=worker, args=(jobs[i::n_threads],)) for i in range(n_threads)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    if errors: return infra(f'browser run failed: {errors[0]}')
+    ma, mb, mc = metas['A'], metas['B'], metas.get('C')
+
+    allinfo = [i for m in (ma, mb) for i in m.values()]
+    if not any(i['ok'] or i.get('booted') for i in allinfo):
         first = next(iter(mb.values()))
         return infra(f'no scene could be captured in either run; first error: {first.get("exception")}')
 
