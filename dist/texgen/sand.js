@@ -12,8 +12,8 @@ export default function generate(S, N) {
     for (let x = 0; x < S; x++) {
       const u = x / S, i = y * S + x;
       // periodic warp bends the ripple crests; integer u coefficient adds a slight diagonal
-      const w = N.fbm(u * 3, v * 3, 3, 3, 3, 11) - 0.5, w2 = N.vnoise(u * 2, v * 2, 2, 2, 5) - 0.5;
-      let ph = RIP * v + u + 2.2 * w + 0.8 * w2; ph -= Math.floor(ph);
+      const w = N.fbm(u * 2, v * 3, 2, 3, 2, 11) - 0.5, w2 = N.vnoise(u * 2, v * 2, 2, 2, 5) - 0.5;
+      let ph = RIP * v + u + 2.2 * w + 0.5 * w2; ph -= Math.floor(ph);
       // asymmetric profile: long windward slope (0..0.72), short steep lee face
       const r = ph < 0.72 ? N.smooth(0, 0.72, ph) : 1 - N.smooth(0.72, 1, ph);
       const amp = 0.4 + 0.6 * N.smooth(0.3, 0.7, N.fbm(u * 3, v * 3, 3, 3, 2, 21)); // ripples fade in and out
@@ -23,11 +23,11 @@ export default function generate(S, N) {
       const tone = N.fbm(u * 2, v * 2, 2, 2, 3, 31); // very low-frequency drift
       height[i] = 0.25 + 0.55 * r * amp + 0.12 * clump + 0.08 * g;
       // base colour between pale #F0DFB0 and warm #E8D3A0 (sRGB)
-      const t = N.clamp01(tone * 1.4 - 0.2);
+      const t = N.clamp01(tone * 1.1 - 0.05);
       let R = N.mix(0.910, 0.941, t), G = N.mix(0.827, 0.875, t), B = N.mix(0.627, 0.690, t);
-      let k = 1 - 0.12 * trough - 0.05 * (1 - clump) + 0.05 * (g - 0.5); // trough + grain shading
-      if (g2 > 0.985) k *= 0.72;          // dark mineral grains
-      else if (g2 > 0.965) k *= 0.86;
+      let k = 1 - 0.09 * trough - 0.05 * (1 - clump) + 0.05 * (g - 0.5); // trough + grain shading
+      if (g2 > 0.99) k *= 0.78;           // dark mineral grains
+      else if (g2 > 0.97) k *= 0.9; 
       else if (g2 < 0.02) k *= 1.08;      // light quartz grains
       R *= k; G *= k; B *= k * (1 - 0.03 * trough); // troughs slightly warmer
       if (g2 < 0.006 && clump > 0.4) { R = 0.98; G = 0.96; B = 0.92; } // shell-white specks
