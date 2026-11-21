@@ -688,8 +688,8 @@ class Bot:
                ('inventory', 2), ('pause', 1), ('build', 2), ('fish', 1)]
 
     # Every action once first, highest-value checks first (a 90 s gate on a ~1 fps box only fits ~10 actions):
-    # inventory+Esc, pause, build, throw, then inventory+Tab and the rest.
-    FIRST_PASS = ['inventory', 'pause', 'build', 'throw', 'inventory', 'hotbar', 'look', 'walk', 'jump', 'fish', 'collect']
+    # inventory+Esc, pause, inventory+Tab, build, throw (throw is the slowest: flight + reel), then the rest.
+    FIRST_PASS = ['inventory', 'pause', 'inventory', 'build', 'throw', 'hotbar', 'look', 'walk', 'jump', 'fish', 'collect']
 
     def plan(self):
         names = [n for n, w in self.ACTIONS for _ in range(w)]
