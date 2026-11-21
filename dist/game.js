@@ -179,7 +179,7 @@ export function mount(transfer = null) {
     const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
   }
   let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghosts, rope, ropeAttr, hookMesh, friend, player, sun;
-  let hands = null, clothMat;
+  let hands = null;
   let farmView = null, farmSeen = null, farmLast = 0; // farming
   let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
   let running = !!X?.running;
@@ -204,6 +204,17 @@ export function mount(transfer = null) {
   let seq = isInt(X?.seq) ? X.seq : 0, lastSeqSent = Number.isFinite(X?.lastSeqSent) ? X.lastSeqSent : 0, guestAck = isInt(X?.guestAck) ? X.guestAck : 0;
   let lastHostMessage = X?.lastHostMessage || performance.now(), lastGuestMessage = X?.lastGuestMessage || performance.now();
   let joinTimer = 0, joinDeadline = Number.isFinite(X?.joinDeadline) ? X.joinDeadline : 0;
+  let frameMsAvg = 16.7, cpuMsAvg = 0;
+  // Adaptive resolution: render scale drops in steps while frames are slow, climbs back slowly once they are fast.
+  // ?fixedres pins it (headless QA screenshots).
+  const RES_MIN = .7, fixedRes = new URLSearchParams(location.search).has('fixedres');
+  let baseRatio = Math.min(devicePixelRatio, 1.3), resScale = 1, resCheckAt = performance.now() + 3000;
+  function adaptResolution(now) {
+    if (fixedRes || now < resCheckAt) return;
+    const next = frameMsAvg > 26 ? Math.max(RES_MIN, resScale - .1) : frameMsAvg < 18 ? Math.min(1, resScale + .05) : resScale;
+    resCheckAt = now + (next < resScale ? 1000 : 3000);
+    if (next !== resScale) { resScale = +next.toFixed(2); renderer.setPixelRatio(baseRatio * resScale); }
+  }
   let netClock = 0, saveClock = 0, networkTick = 0, wheelAcc = 0;
   let contextCache = null, uiFailed = false;
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
@@ -253,6 +264,44 @@ export function mount(transfer = null) {
   function box(w, h, d, c, x = 0, y = 0, z = 0, parent) { const m = new T.Mesh(new T.BoxGeometry(w, h, d), mat(c)); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; parent?.add(m); return m; }
   function cylinder(rt, rb, h, c, x, y, z, parent, n = 8) { const m = new T.Mesh(new T.CylinderGeometry(rt, rb, h, n), mat(c)); m.position.set(x, y, z); m.castShadow = true; parent?.add(m); return m; }
   function sphere(r, c, x, y, z, parent) { const m = new T.Mesh(new T.IcosahedronGeometry(r, 1), mat(c)); m.position.set(x, y, z); parent?.add(m); return m; }
+  // Static meshes under root collapse into one mesh per material (and shadow flags): hundreds of draw calls become a few.
+  // Built once at scene/raft build time, never per frame. Geometries are disposed; cached materials are reused.
+  const bakeMatrix = new T.Matrix4(), BAKE_ATTRS = ['position', 'normal', 'uv', 'color'];
+  function bakeStatic(root, {castShadow} = {}) {
+    root.updateMatrixWorld(true);
+    const inv = new T.Matrix4().copy(root.matrixWorld).invert(), buckets = new Map();
+    root.traverse(o => {
+      if (!o.isMesh || o.isInstancedMesh || Array.isArray(o.material) || o.morphTargetInfluences || !o.visible) return;
+      const key = o.material.uuid + (o.castShadow ? 'c' : '') + (o.receiveShadow ? 'r' : '');
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(o);
+    });
+    const out = [];
+    for (const list of buckets.values()) {
+      if (list.length < 2) continue;
+      const attrs = g => BAKE_ATTRS.filter(n => g.attributes[n]).map(n => n + g.attributes[n].itemSize).join(), sig = attrs(list[0].geometry);
+      if (!list.every(m => attrs(m.geometry) === sig)) continue; // all parts must carry the same attributes (vertex colours too)
+      const names = BAKE_ATTRS.filter(n => list[0].geometry.attributes[n]);
+      const parts = list.map(m => { const g = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()); g.applyMatrix4(bakeMatrix.multiplyMatrices(inv, m.matrixWorld)); return g; });
+      const total = parts.reduce((n, g) => n + g.attributes.position.count, 0), merged = new T.BufferGeometry();
+      for (const n of names) {
+        const size = parts[0].attributes[n].itemSize, arr = new Float32Array(total * size); let o = 0;
+        for (const g of parts) { const a = g.attributes[n]; arr.set(a.array.subarray(0, a.count * size), o); o += a.count * size; }
+        merged.setAttribute(n, new T.BufferAttribute(arr, size));
+      }
+      for (const g of parts) g.dispose();
+      merged.computeBoundingSphere();
+      const mesh = new T.Mesh(merged, list[0].material); mesh.castShadow = castShadow ?? list[0].castShadow; mesh.receiveShadow = list[0].receiveShadow;
+      for (const m of list) { m.parent.remove(m); m.geometry.dispose(); }
+      root.add(mesh); out.push(mesh);
+    }
+    const prune = o => { for (const c of [...o.children]) { prune(c); if (c.type === 'Group' && !c.children.length) o.remove(c); } }; // emptied wrappers
+    prune(root);
+    return out;
+  }
+  // three renders transparent DoubleSide materials as two passes by flipping side + needsUpdate every frame, which
+  // re-resolves the shader program per object per frame. One pass looks the same on these small props.
+  const singlePass = root => root.traverse(o => { for (const m of [].concat(o.material || [])) if (m.transparent && m.side === T.DoubleSide) m.forceSinglePass = true; });
   function disposeGeometry(o) { const cached = new Set(materialCache.values()), materials = new Set(); o.traverse(c => { c.geometry?.dispose(); for (const m of [].concat(c.material || [])) if (!cached.has(m)) materials.add(m); }); for (const m of materials) { m.map?.dispose(); m.dispose(); } }
 
   // ---------- DOM adoption (stable nodes shared across hot swaps) ----------
@@ -284,7 +333,7 @@ export function mount(transfer = null) {
     scene = new T.Scene(); scene.background = new T.Color('#cbd2c0'); scene.fog = new T.Fog('#cbd2c0', 25, 125);
     camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 200); camera.rotation.order = 'YXZ'; scene.add(camera);
     renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:true});
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7)); renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(baseRatio * resScale); renderer.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
     scene.add(new T.HemisphereLight('#f2ead4', '#3d6b6a', 1.8));
     sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(-15, 28, 12); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, {left:-25, right:25, top:25, bottom:-25}); sun.shadow.bias = -.001; scene.add(sun);
@@ -298,11 +347,13 @@ export function mount(transfer = null) {
     rope = new T.Line(ropeGeo, new T.LineBasicMaterial({color:'#e9d39a'})); rope.visible = false; rope.frustumCulled = false; scene.add(rope);
     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
     buildViewmodels();
-    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scene.add(g); }
-    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; scene.add(g); }
+    const scenery = new T.Group(); scenery.name = 'scenery'; // far islands and clouds, baked to a handful of draw calls
+    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scenery.add(g); }
+    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; scenery.add(g); }
+    scene.add(scenery); bakeStatic(scenery, {castShadow:false}); // islands sit far outside the shadow camera anyway
     rebuildRaft();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
-    syncItems(); refreshPointerUI(true);
+    syncItems(); singlePass(scene); refreshPointerUI(true);
   }
 
   function fallbackAvatar(color) {
@@ -339,7 +390,7 @@ export function mount(transfer = null) {
   const raftParts = new Map();
   function rebuildRaft() {
     const want = new Map();
-    for (const [x, z] of world.tiles) want.set('t' + x + ',' + z, [x, z]);
+    if (world.tiles.length) want.set('deck:' + world.tiles.join(';'), world.tiles); // all tiles bake into one deck part
     farmSeen = null; // farming
     for (const d of world.decor) if (!(farmView && Farm.isPlot(d))) want.set(d.type + ':' + d.x + ',' + d.z + ',' + d.rot, d);
     for (const [k, o] of raftParts) if (!want.has(k) || o.parent !== raft) { o.removeFromParent(); disposeGeometry(o); raftParts.delete(k); }
@@ -347,9 +398,9 @@ export function mount(transfer = null) {
     for (const [k, v] of want) {
       if (raftParts.has(k)) continue;
       let g = null;
-      if (Array.isArray(v)) { g = createFloor(T, v[0] * 719 + v[1] * 311, mat); g.position.set(v[0] * 2, 0, v[1] * 2); }
+      if (Array.isArray(v)) { g = new T.Group(); g.name = 'raft-deck'; for (const [x, z] of v) { const t = createFloor(T, x * 719 + z * 311, mat); t.position.set(x * 2, 0, z * 2); g.add(t); } raft.add(g); bakeStatic(g); }
       else { try { g = createCraft(T, v.type); } catch (e) { console.warn('craft model failed', e); } if (!g) continue; g.position.set(v.x, .22, v.z); g.rotation.y = v.rot; }
-      g.userData.partKey = k; raft.add(g); raftParts.set(k, g);
+      g.userData.partKey = k; raft.add(g); singlePass(g); raftParts.set(k, g);
     }
     blockList = world.decor.filter(d => BLOCK_RADIUS[d.type]).map(d => ({x:d.x, z:d.z, r:BLOCK_RADIUS[d.type]}));
   }
@@ -369,7 +420,8 @@ export function mount(transfer = null) {
     for (const token of pending.keys()) if (!live.has(token)) pending.delete(token);
     for (const item of world.items) {
       if (itemMeshes.has(item.token)) continue;
-      const g = itemModel(item); g.userData.token = item.token;
+      const g = itemModel(item); g.userData.token = item.token; bakeStatic(g); singlePass(g);
+      g.traverse(o => { o.castShadow = false; }); // the ocean takes no shadows, so floating supplies skip the shadow pass
       g.position.set(item.x, ITEM_FLOAT, item.z);
       itemsGroup.add(g); itemMeshes.set(item.token, g);
     }
@@ -398,7 +450,8 @@ export function mount(transfer = null) {
     if (!chargeMeter) return;
     const show = !!charging && running;
     if (chargeMeter.hidden === show) chargeMeter.hidden = !show;
-    if (show && chargeFill) chargeFill.style.width = (chargeValue() * 100).toFixed(1) + '%';
+    const w = show ? (chargeValue() * 100).toFixed(1) + '%' : '';
+    if (show && chargeFill && w !== chargeWidth) chargeFill.style.width = chargeWidth = w; // only write the DOM on change
   }
   // Body classes, crosshair and resume hint follow running and pointer-lock state.
   function refreshPointerUI(force = false) {
@@ -452,7 +505,7 @@ export function mount(transfer = null) {
   function pickNdc(nx, ny) {
     pointer.set(nx, ny); ray.setFromCamera(pointer, camera);
     plane.constant = -deckY() - .02;
-    const held = new Set(caughtList(castOut()).map(c => c.token));
+    const held = heldTokenSet();
     let item = null;
     for (const hit of ray.intersectObjects(itemsGroup.children, true)) {
       let o = hit.object; while (o && !o.userData.token) o = o.parent;
@@ -463,11 +516,11 @@ export function mount(transfer = null) {
       let best = Infinity;
       for (const it of world.items) {
         if (isPending(it) || held.has(it.token)) continue; const m = itemMeshes.get(it.token); if (!m) continue;
-        const along = m.position.clone().sub(ray.ray.origin).dot(ray.ray.direction);
+        const along = tmpV.copy(m.position).sub(ray.ray.origin).dot(ray.ray.direction);
         if (along > 0 && along < 5 && along < best && ray.ray.distanceSqToPoint(m.position) < .2) { best = along; item = it; }
       }
     }
-    return {point:ray.ray.intersectPlane(plane, new T.Vector3()), item, dir:ray.ray.direction.clone(), local:deckHit()};
+    return {point:ray.ray.intersectPlane(plane, aimPoint), item, dir:ray.ray.direction.clone(), local:deckHit()}; // point is reused: read it, don't keep it
   }
   function pickScreen(x, y) { const r = canvas.getBoundingClientRect(); return pickNdc((x - r.left) / r.width * 2 - 1, -(y - r.top) / r.height * 2 + 1); }
   const pickCenter = () => pickNdc(0, 0);
@@ -693,7 +746,8 @@ export function mount(transfer = null) {
     const shadowsChanged = options.shadows !== next.shadows; options = next;
     if (!renderer) return;
     const cap = next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3;
-    renderer.setPixelRatio(Math.max(.5, Math.min(devicePixelRatio, cap) * (next.renderScale ?? 1)));
+    baseRatio = Math.max(.5, Math.min(devicePixelRatio, cap) * (next.renderScale ?? 1)); // adaptive resScale multiplies on top
+    renderer.setPixelRatio(baseRatio * resScale);
     renderer.shadowMap.enabled = next.shadows !== false;
     if (shadowsChanged) scene?.traverse(o => { const m = o.material; if (m) for (const x of Array.isArray(m) ? m : [m]) x.needsUpdate = true; });
   }
@@ -746,6 +800,10 @@ export function mount(transfer = null) {
 
   // ---------- Frame ----------
   const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3();
+  let chargeWidth = '';
+  const aimPoint = new T.Vector3(), hookPos = new T.Vector3(), titleFocus = new T.Vector3(-5, 0, 2), heldScratch = new Set(), freeItems = [], fishPts = [];
+  for (let i = 0; i <= ROPE_SEGMENTS; i++) fishPts.push(new T.Vector3());
+  function heldTokenSet() { heldScratch.clear(); for (const c of caughtList(castOut())) heldScratch.add(c.token); return heldScratch; } // reused every frame
   // Hook physics floats at a flat WATER_Y; map heights near the water onto the visible waves.
   function surfaceY(x, z, y) {
     const k = clamp((y - WATER_Y) / .6, 0, 1), w = ocean.getHeight(x, z) + .04 + (y - WATER_Y);
@@ -770,7 +828,7 @@ export function mount(transfer = null) {
       camera.position.set(physics.x, physics.y + bob, physics.z);
       camera.rotation.set(pitch, yaw, physics.grounded ? raft.rotation.z * CAMERA_ROLL * options.cameraMotion : 0, 'YXZ');
     } else { // gentle cinematic view for the welcome screen
-      const focus = new T.Vector3(-5, 0, 2), d = 23, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .77;
+      const focus = titleFocus, d = 23, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .77;
       camera.position.set(focus.x + Math.sin(cy) * d * Math.cos(cp), d * Math.sin(cp), focus.z + Math.cos(cy) * d * Math.cos(cp)); camera.lookAt(focus);
     }
     swing = Math.max(0, swing - dt * 3);
@@ -796,9 +854,11 @@ export function mount(transfer = null) {
     }
   }
   function updateItems(dt) {
-    const heldTokens = new Set(caughtList(castOut()).map(c => c.token));
+    const heldTokens = heldTokenSet();
     if (role !== 'guest') {
-      let respawned = false; const end = Math.max(...world.tiles.map(t => t[1])) * 2 + 24, side = Math.max(...world.tiles.map(t => Math.abs(t[0]))) * 2 + 24;
+      let respawned = false, maxZ = -Infinity, maxX = -Infinity;
+      for (const t of world.tiles) { if (t[1] > maxZ) maxZ = t[1]; if (Math.abs(t[0]) > maxX) maxX = Math.abs(t[0]); }
+      const end = maxZ * 2 + 24, side = maxX * 2 + 24;
       for (const it of world.items) {
         if (heldTokens.has(it.token)) continue; // our hook holds it; don't let it drift away or respawn
         it.z += dt * .22; it.x += Math.sin(elapsed * .13 + it.phase) * dt * .04;
@@ -822,15 +882,16 @@ export function mount(transfer = null) {
     if (!hook) { rope.visible = false; hookMesh.visible = false; return; }
     if (hook.fishing) { // simple bobber animation, separate from HookCast
       hook.t += dt; const f = hook.t / hook.duration, u = Math.min(1, f * 5);
-      const pos = handPos.clone().lerp(hook.end, u);
+      const pos = hookPos.copy(handPos).lerp(hook.end, u);
       if (u >= 1) pos.y = ocean.getHeight(pos.x, pos.z) + .05 + Math.sin(elapsed * 5) * .03 - (hook.t > fishWait ? .12 : 0); else pos.y += Math.sin(u * Math.PI) * 1.2;
-      const pts = []; for (let i = 0; i <= ROPE_SEGMENTS; i++) pts.push(handPos.clone().lerp(pos, i / ROPE_SEGMENTS));
-      setRope(pts); hookMesh.visible = true; hookMesh.position.copy(pos); hookMesh.rotation.set(0, yaw, 1.1);
+      for (let i = 0; i <= ROPE_SEGMENTS; i++) fishPts[i].copy(handPos).lerp(pos, i / ROPE_SEGMENTS);
+      setRope(fishPts); hookMesh.visible = true; hookMesh.position.copy(pos); hookMesh.rotation.set(0, yaw, 1.1);
       if (f >= 1) { action({kind:'fish'}); fishWait = 0; endHook(); }
       return;
     }
-    const ev = hook.update(dt, {hand:handPos, items:world.items.filter(it => !isPending(it)), reeling, time:elapsed});
-    const hp = hook.position, pos = new T.Vector3(hp.x, surfaceY(hp.x, hp.z, hp.y), hp.z);
+    freeItems.length = 0; for (const it of world.items) if (!isPending(it)) freeItems.push(it);
+    const ev = hook.update(dt, {hand:handPos, items:freeItems, reeling, time:elapsed});
+    const hp = hook.position, pos = hookPos.set(hp.x, surfaceY(hp.x, hp.z, hp.y), hp.z);
     hookMesh.visible = true; hookMesh.position.copy(pos);
     if (hook.stage === 'flying') hookMesh.rotation.set(-hook.flightT * Math.PI * 2, yaw, 0);
     else if (hook.stage === 'reeling') hookMesh.rotation.set(-.6, yaw, 0);
@@ -867,7 +928,7 @@ export function mount(transfer = null) {
   }
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, swimming:physics.swimming});
   function frame() {
-    const now = performance.now(), dt = Math.min((now - last) / 1000, .05); last = now; elapsed += dt;
+    const now = performance.now(), dt = Math.min((now - last) / 1000, .05); frameMsAvg += (Math.min(now - last, 100) - frameMsAvg) * .05; last = now; elapsed += dt;
     const dialog = uiBlocked();
     if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { closeConnection(); notice('Host disconnected. You are back on your own raft.'); }
     if (role === 'host' && conn?.open && now - lastGuestMessage > 8000) { const stale = conn; conn = null; unbindTarget(stale); stale.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); }
@@ -882,7 +943,7 @@ export function mount(transfer = null) {
     if (running && role !== 'guest') {
       netClock += dt;
       if (netClock > .8) { // nets gather into the host's bag (trusted shared machine) and never consume when full
-        netClock = 0; const heldTokens = new Set(caughtList(castOut()).map(c => c.token));
+        netClock = 0; const heldTokens = heldTokenSet();
         for (const net of world.decor.filter(d => d.type === 'net')) { const it = world.items.find(it => !heldTokens.has(it.token) && !isPending(it) && Math.hypot(it.x - net.x, it.z - net.z) < 4); if (it) applyAction({kind:'collect', id:it.id, token:it.token, net:true}, 'host'); }
       }
     }
@@ -891,6 +952,8 @@ export function mount(transfer = null) {
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     refreshPointerUI(); updateCharge(); updateContext(dialog);
     renderer.render(scene, camera);
+    cpuMsAvg += (performance.now() - now - cpuMsAvg) * .05;
+    adaptResolution(now);
   }
   function animate() {
     if (!active || disposed) return;
@@ -1174,6 +1237,10 @@ export function mount(transfer = null) {
       };
     },
     project,
+    get renderInfo() {
+      const r = renderer?.info; if (!r) return null;
+      return {calls:r.render.calls, triangles:r.render.triangles, geometries:r.memory.geometries, textures:r.memory.textures, programs:r.programs?.length ?? 0, frameMsAvg:+frameMsAvg.toFixed(2), cpuMsAvg:+cpuMsAvg.toFixed(2), pixelRatio:renderer.getPixelRatio(), resScale};
+    },
     get targets() {
       return world.items.map(it => {
         const m = itemMeshes.get(it.token), p = m ? m.position : {x:it.x, y:ITEM_FLOAT, z:it.z};
