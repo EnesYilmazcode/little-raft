@@ -84,7 +84,7 @@ Other shared-file lines, each marked `// content hook`:
 
 ## How it was made
 
-A fleet of 27 subagents worked in parallel git worktrees, one branch per feature (`claude/raft-content-<name>`):
+A fleet of 22 subagents worked in parallel git worktrees, one branch per feature (`claude/raft-content-<name>`):
 - **Designers (4).** They rewrote the earlier fleet's design docs for the hook API. raft.wiki.gg cannot be reached from the sandbox (401 or DNS block), so the Raft facts come from search snippets, fandom and Steam threads, and each doc cites them.
 - **Builders (4).** Each implemented one feature, with tests and screenshots.
 - **Reviewers (4).** Fresh agents reviewed each diff without seeing the builder's conclusions.
