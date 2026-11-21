@@ -25,7 +25,7 @@ export function createCookpot(ctx) {
   let st = { k: {}, b: { host: null, guest: null }, r: 0, br: 0 };
   let cache = null, cacheSt = null, cacheR = -1, cacheBr = -1, cacheS = -1;
   let netR = -1, netBr = -1, gotNet = false;
-  let model = null, dirty = false, childCount = -1, shownR = -1, shownSt = null, anyActive = false;
+  let model = null, dirty = false, childCount = -1, childRev, shownR = -1, shownSt = null, anyActive = false;
   let clock = 0, pruneClock = 0;
   let nightE = NaN, nightH = NaN, baseE = 1, baseH = 1; // night floor: what we wrote and what it replaced
   let pKey = null, pR = -1, pSel = null, pPct = -1, pSt = null, pBowl = false, pOut = null;
@@ -118,7 +118,7 @@ export function createCookpot(ctx) {
   function visuals(dt) {
     const raft = ctx.raft; if (!raft || !model) return;
     let again = false;
-    if (dirty || raft.children.length !== childCount) { rescan(); childCount = raft.children.length; dirty = false; again = true; }
+    if (dirty || raft.children.length !== childCount || raft.userData?.rev !== childRev) { rescan(); childCount = raft.children.length; childRev = raft.userData?.rev; dirty = false; again = true; } // rev: game.js rebuildRaft bumps it on every change
     if (again || st.r !== shownR || st !== shownSt) { apply(); shownR = st.r; shownSt = st; }
     if (!anyActive) return;
     clock += dt > 0 ? dt : 0;

@@ -7,7 +7,7 @@ import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
 import { HookCast, WATER_Y, catchLoot, holdForFullBag, throwOrigin } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-survival-ae77fa84ac2b';
-import { createRaftMesh, createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
+import { createRaftMesh, createFloor, PLANK_BASE } from './deck.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris, createItemBatch } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
@@ -608,27 +608,58 @@ export function mount(transfer = null) {
     for (let i = 0; i < 7; i++) { const l = new T.Mesh(new T.ConeGeometry(.28, 1.5, 4), mat(i % 2 ? '#519b55' : '#72ae59')); l.rotation.z = 1.2; l.rotation.y = i * Math.PI * 2 / 7; l.position.set(Math.sin(i * Math.PI * 2 / 7) * .5, 1.65, Math.cos(i * Math.PI * 2 / 7) * .5); g.add(l); }
     parent.add(g);
   }
-  function rebuildRaft() {
+  // Raft children: the 'raft-floors' group first, then one group per world.decor entry (userData.decorKey).
+  // Only what changed is rebuilt: the floor when the tile list or a tile's paint changed, and the decor groups
+  // whose type|x|z|rot left or joined world.decor (kept groups keep their watering / station / lantern state).
+  // raft.userData.rev bumps on every change, so child scanners (lanterns, stations) notice same-count swaps.
+  const decorKey = d => d.type + '|' + d.x + '|' + d.z + '|' + (d.rot || 0);
+  const WATERING = new Set(['palm', 'purifier', 'rainbarrel', 'sprinkler']);
+  function rebuildRaft(full = false) {
     ocean.setRaftTiles(world.tiles);
-    for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
-    wateringGroups.clear();
-    raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat, content ? (t, c) => content.tileTint(t.x / 2, t.z / 2, c) : null, woodMat)); // content hook (paint): painted deck tiles
-    for (const d of world.decor) {
-      let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'rainbarrel' ? createRainBarrel(T) : d.type === 'sprinkler' ? createSprinkler(T) : d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type, d) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
-      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); if (d.rot) detailed.rotation.y = d.rot; raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier' || d.type === 'rainbarrel' || d.type === 'sprinkler') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; } // decor-pack models keep their own quarter-turn unless placement rotated them
-      const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2); g.rotation.y = d.rot || 0;
-      if (d.type === 'sail') { cylinder(.065, .08, 3.8, '#906f48', 0, 1.9, 0, g); box(2.5, .07, .07, '#906f48', 0, 3.2, 0, g); const s = new T.Mesh(new T.PlaneGeometry(2.35, 2.1), clothMat); s.position.set(0, 2.15, .06); g.add(s); }
-      if (d.type === 'palm') { cylinder(.38, .28, .5, '#db8764', 0, .25, 0, g); palm(g, 0, .5, 0); }
-      if (d.type === 'lantern') { cylinder(.055, .075, 1.8, '#725942', 0, .9, 0, g); box(.32, .42, .32, '#ffe197', .43, 1.5, 0, g); }
-      if (d.type === 'net') { for (let k = 0; k < 6; k++) { box(.025, .05, 1.7, '#ebe1bd', -.8 + k * .32, .05, 0, g); box(1.7, .05, .025, '#ebe1bd', 0, .05, -.8 + k * .32, g); } }
-      if (d.type === 'bench') { box(1.4, .08, .42, '#b4824b', 0, .45, 0, g); for (const a of [-.6, .6]) box(.08, .45, .38, '#906f48', a, .22, 0, g); }
-      if (d.type === 'crate') { box(.8, .8, .8, '#a97d4c', 0, .4, 0, g); }
-      raft.add(g);
+    let changed = false;
+    if (full) { for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); } wateringGroups.clear(); changed = true; }
+    // floors
+    const tint = content ? (t, c) => content.tileTint(t.x / 2, t.z / 2, c) : null; // content hook (paint): painted deck tiles
+    let sig = world.tiles.join(';');
+    if (tint) for (const [x, z] of world.tiles) { const h = tint({x:x * 2, z:z * 2}, PLANK_BASE); if (h) sig += '|' + x + ',' + z + '=' + h; }
+    const oldFloors = raft.children.find(c => c.name === 'raft-floors') ?? null;
+    if (!oldFloors || oldFloors.userData.sig !== sig) {
+      const floors = createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat, tint, woodMat);
+      floors.userData.sig = sig;
+      if (oldFloors) { raft.remove(oldFloors); disposeGeometry(oldFloors); }
+      raft.add(floors); raft.children.pop(); raft.children.unshift(floors); // floors stay the first child
+      changed = true;
     }
+    // decor, diffed by type|x|z|rot
+    const have = new Map();
+    for (const c of raft.children) { const k = c.userData.decorKey; if (k === undefined) continue; const list = have.get(k); if (list) list.push(c); else have.set(k, [c]); }
+    for (const d of world.decor) {
+      const k = decorKey(d), pool = have.get(k);
+      if (pool?.length) { pool.shift(); continue; }
+      const g = decorModel(d); g.userData.decorKey = k; raft.add(g); changed = true;
+      if (g.userData.watering) wateringGroups.set(g.userData.tileKey, g);
+    }
+    for (const list of have.values()) for (const c of list) {
+      raft.remove(c); disposeGeometry(c); changed = true;
+      if (c.userData.watering && wateringGroups.get(c.userData.tileKey) === c) wateringGroups.delete(c.userData.tileKey);
+    }
+    if (changed) raft.userData.rev = (raft.userData.rev | 0) + 1;
     blockList = world.decor.flatMap(d => decorBlockers(d, BLOCK_RADIUS));
     building?.sync(world); // building-pieces lane hook
     content?.afterRebuild(); // content hook (paint): re-tint the new deck planks
     sailing?.onRaftBuilt(); // [sailing] re-find sail models
+  }
+  function decorModel(d) {
+    let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'rainbarrel' ? createRainBarrel(T) : d.type === 'sprinkler' ? createSprinkler(T) : d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type, d) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
+    if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); if (d.rot) detailed.rotation.y = d.rot; if (WATERING.has(d.type)) { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); detailed.userData.watering = true; } return detailed; } // decor-pack models keep their own quarter-turn unless placement rotated them
+    const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2); g.rotation.y = d.rot || 0;
+    if (d.type === 'sail') { cylinder(.065, .08, 3.8, '#906f48', 0, 1.9, 0, g); box(2.5, .07, .07, '#906f48', 0, 3.2, 0, g); const s = new T.Mesh(new T.PlaneGeometry(2.35, 2.1), clothMat); s.position.set(0, 2.15, .06); g.add(s); }
+    if (d.type === 'palm') { cylinder(.38, .28, .5, '#db8764', 0, .25, 0, g); palm(g, 0, .5, 0); }
+    if (d.type === 'lantern') { cylinder(.055, .075, 1.8, '#725942', 0, .9, 0, g); box(.32, .42, .32, '#ffe197', .43, 1.5, 0, g); }
+    if (d.type === 'net') { for (let k = 0; k < 6; k++) { box(.025, .05, 1.7, '#ebe1bd', -.8 + k * .32, .05, 0, g); box(1.7, .05, .025, '#ebe1bd', 0, .05, -.8 + k * .32, g); } }
+    if (d.type === 'bench') { box(1.4, .08, .42, '#b4824b', 0, .45, 0, g); for (const a of [-.6, .6]) box(.08, .45, .38, '#906f48', a, .22, 0, g); }
+    if (d.type === 'crate') { box(.8, .8, .8, '#a97d4c', 0, .4, 0, g); }
+    return g;
   }
 
   // ---------- Floating supplies ----------
@@ -1833,7 +1864,7 @@ export function mount(transfer = null) {
     if (!world.items.length) for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     content?.load(world.ext, 'restore'); // content hook
     shark?.clearNet(); shark?.load(world.shark); // shark lane: our own shark again
-    if (scene) { syncItems(); rebuildRaft(); fitShadow(); }
+    if (scene) { syncItems(); rebuildRaft(true); fitShadow(); } // a new world: start the raft children afresh
     queueMicrotask(guard(retroAward)); // callers set role = 'solo' right after this returns
   }
   function closeConnection() {

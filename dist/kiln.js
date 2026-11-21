@@ -9,7 +9,7 @@ export function createKiln(ctx) {
   const T = ctx.T;
   let st = { k: {}, r: 0 };
   let cache = null, cacheSt = null, cacheR = -1, netR = -1;
-  let model = null, lamp = null, dirty = false, childCount = -1, shownR = -1, shownSt = null, anyBurning = false;
+  let model = null, lamp = null, dirty = false, childCount = -1, childRev, shownR = -1, shownSt = null, anyBurning = false;
   let clock = 0, pruneClock = 0;
   let pKey = null, pR = -1, pSel = null, pPct = -1, pSt = null, pOut = null;
   const groups = new Array(MAX_SHOWN).fill(null), gKeys = new Array(MAX_SHOWN).fill(null);
@@ -85,7 +85,7 @@ export function createKiln(ctx) {
   function visuals(dt) {
     const raft = ctx.raft; if (!raft || !model) return;
     let again = false;
-    if (dirty || raft.children.length !== childCount) { rescan(); childCount = raft.children.length; dirty = false; again = true; }
+    if (dirty || raft.children.length !== childCount || raft.userData?.rev !== childRev) { rescan(); childCount = raft.children.length; childRev = raft.userData?.rev; dirty = false; again = true; } // rev: game.js rebuildRaft bumps it on every change
     if (again || st.r !== shownR || st !== shownSt) { apply(); shownR = st.r; shownSt = st; }
     if (!anyBurning) return;
     clock += dt;

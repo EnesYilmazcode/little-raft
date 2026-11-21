@@ -106,7 +106,7 @@ export function createBees(ctx) {
   let cache = null, cacheSt = null, cacheR = -1, netR = -1, netS = null, netUndef = false, hostHasBees = true;
   let clock = 0;
   const hives = []; // {g, k, x, z} for each craft_beehive group in ctx.raft
-  let scanLen = -1, scanFirst = null, scanRaft = null;
+  let scanLen = -1, scanFirst = null, scanRaft = null, scanRev; // scanRev: game.js raft.userData.rev (bumps when rebuildRaft adds or removes a child)
   const scratch = T ? new T.Vector3() : null, camPos = T ? new T.Vector3() : null;
 
   const oldHost = () => ctx.role === 'guest' && !hostHasBees;
@@ -138,8 +138,8 @@ export function createBees(ctx) {
   function scanHives() {
     const raft = ctx.raft; if (!raft) { hives.length = 0; return; }
     const kids = raft.children;
-    if (raft === scanRaft && kids.length === scanLen && kids[0] === scanFirst) return;
-    scanRaft = raft; scanLen = kids.length; scanFirst = kids[0];
+    if (raft === scanRaft && kids.length === scanLen && kids[0] === scanFirst && raft.userData?.rev === scanRev) return;
+    scanRaft = raft; scanLen = kids.length; scanFirst = kids[0]; scanRev = raft.userData?.rev;
     hives.length = 0;
     for (let i = 0; i < kids.length; i++) {
       const g = kids[i]; if (g.name !== 'craft_beehive') continue;

@@ -267,7 +267,7 @@ export function createGull(ctx) {
   const pose = newPose(), perchPt = { x: 0, y: 0, z: 0 }, followPt = { x: 0, y: 0, z: 0 };
   const last = { x: 0, y: 0, z: 0, vis: false };
   const perches = new Map(); // tileKey -> craft_perch group
-  let scanLen = -1, scanFirst = null, scanRaft = null;
+  let scanLen = -1, scanFirst = null, scanRaft = null, scanRev; // scanRev: game.js raft.userData.rev (bumps when rebuildRaft adds or removes a child)
   // scratch (preallocated in build)
   let v3 = null, sc = null, q = null, qY = null, qX = null, m4 = null, mA = null, inv = null, eul = null, camR = null, UP = null, RIGHT = null, FWD = null;
   const hit = { type: null, x: 0, z: 0 };
@@ -342,8 +342,8 @@ export function createGull(ctx) {
   function scanPerches() {
     const raft = ctx.raft; if (!raft) { perches.clear(); return; }
     const kids = raft.children;
-    if (raft === scanRaft && kids.length === scanLen && kids[0] === scanFirst) return;
-    scanRaft = raft; scanLen = kids.length; scanFirst = kids[0];
+    if (raft === scanRaft && kids.length === scanLen && kids[0] === scanFirst && raft.userData?.rev === scanRev) return;
+    scanRaft = raft; scanLen = kids.length; scanFirst = kids[0]; scanRev = raft.userData?.rev;
     perches.clear();
     for (let i = 0; i < kids.length; i++) {
       const g = kids[i]; if (g.name !== 'craft_perch') continue;
