@@ -1739,10 +1739,11 @@ export function mount(transfer = null) {
     // Skips the costly parts (physics/world copies, placement candidates, sailing, signal...); bulky fields are lazy.
     get hud() {
       const hc = castOut(), bag = localBag(), counts = bag.counts(), kind = heldKind(), mode = toolMode(kind), ph = physics;
+      let tileList, decor, inventory; // built on first read, then kept: onboarding reads decor once per step and type
       return {
         running, tool:mode, role, networkReady, pointerLocked:isLocked(), lockFallback, disposed,
-        tiles:world.tiles.length, get tileList() { return world.tiles.map(t => [...t]); }, get decor() { return world.decor.map(d => ({...d})); },
-        stock:counts, fish:world.fish, collected:world.collected, get inventory() { return bag.snapshot(); }, selectedIndex:bag.selectedIndex, heldKind:kind,
+        tiles:world.tiles.length, get tileList() { return (tileList ??= world.tiles.map(t => [...t])); }, get decor() { return (decor ??= world.decor.map(d => ({...d}))); },
+        stock:counts, fish:world.fish, collected:world.collected, get inventory() { return (inventory ??= bag.snapshot()); }, selectedIndex:bag.selectedIndex, heldKind:kind,
         ownedTools:['hook', 'hammer', 'fishingrod'].filter(k => counts[k] > 0), inventoryOpen:!!survivalUI?.isOpen,
         physics:ph.capture(), grounded:ph.grounded, swimming:ph.swimming,
         fishWait, hookStage:hook ? (hook.fishing ? 'fishing' : hook.stage) : 'idle', hookCaughtItems:caughtList(hc).map(c => ({...c})), hookHealth:hookDurability(bag),
