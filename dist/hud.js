@@ -43,7 +43,7 @@ export const HINTS = Object.freeze([
   // Loot -> rope -> hammer -> first floor. Each is also marked done from bag/world state (hintsFromState),
   // so a player who already has rope or a hammer, or has built, never gets stuck on an earlier step.
   {id:'rope', text:'Open your bag (Tab) → Materials → craft Rope from palm leaves', when:c => c.hasLeaf},
-  {id:'hammer', text:'Craft a Hammer in Tools: 4 wood, 2 rope', when:() => true},
+  {id:'hammer', text:'Craft a Hammer in Tools: 4 planks, 2 rope', when:() => true},
   {id:'build', text:'With the Hammer, click the water beside the raft to add floor', when:c => c.heldKind === 'hammer'},
 ]);
 // Hint ids already satisfied by what the player owns or has built (c: {hasRope, hasHammer, built}).

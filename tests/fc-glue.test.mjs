@@ -76,7 +76,7 @@ test('placing a grill without enough materials is atomic', () => {
   h.action({ kind: 'fc:placeGrill', x: 0, z: 0 });
   assert.equal(h.api.grills.size, 0);
   assert.equal(h.counts.wood, 4); assert.equal(h.counts.scrap, 1);
-  assert.ok(h.notices.some((t) => /Need 4 wood and 2 scrap/.test(t)));
+  assert.ok(h.notices.some((t) => /Need 4 planks and 2 scrap/.test(t)));
   h.api.dispose();
 });
 

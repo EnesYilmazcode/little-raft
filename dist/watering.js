@@ -11,7 +11,7 @@ export const tileKey = (x, z) => x + ',' + z;
 const KEY_RE = /^-?\d+,-?\d+$/;
 const TEXT = Object.freeze({
   fillCup:'Scooped a cup of sea water', loadPurifier:'The purifier is bubbling away', takeWater:'+ 1 cup of fresh water',
-  water:'The planter drinks it up', harvest:'+ 2 palm leaf', harvestBonus:'+ 2 palm leaf · 1 wood',
+  water:'The planter drinks it up', harvest:'+ 2 palm leaves', harvestBonus:'+ 2 palm leaves · 1 plank',
   full:'Your bag is full', nocup:'You need a cup', busy:'It is already purifying', notready:'Almost ready…',
   watered:'Already watered', ripe:'Harvest it first', notripe:'Still growing', notarget:'Nothing to use that on',
 });

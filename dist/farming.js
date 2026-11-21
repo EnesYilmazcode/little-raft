@@ -166,7 +166,7 @@ export function applyFarmAction(world, bag, a) {
     if (p.s < MATURE) return fail(p.s === EMPTY ? 'Nothing to harvest' : 'Not ready yet');
     if (!giveAll(bag, HARVEST)) return fail('Your bag is full', 'full');
     p.s = EMPTY; p.g = 0; p.h++;
-    return { ok: true, text: `+${HARVEST.leaf} Leaves · +${HARVEST.seed} Palm Seed`, effect: 'loot', changed: true, items: { ...HARVEST } };
+    return { ok: true, text: `+${HARVEST.leaf} Palm Leaves · +${HARVEST.seed} Palm Seed`, effect: 'loot', changed: true, items: { ...HARVEST } };
   }
   return fail('');
 }

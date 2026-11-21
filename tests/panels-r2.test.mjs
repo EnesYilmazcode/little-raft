@@ -100,3 +100,39 @@ test('UX3-5: bag icons are rendered before play starts, and a provider swap neve
   assert.match(ui, /primeIcons\(\) \{[\s\S]{0,300}renderIconsNow\(kinds\)/, 'survival UI primes the bag kinds');
   assert.match(game, /function start\(\) \{[\s\S]{0,300}survivalUI\?\.primeIcons\?\.\(\);[^\n]*\n\s*running = true;/, 'before the first play frame');
 });
+
+// ---------------------------------------------------------------- UX3-6 one name per material
+
+const RAW = /(?<!palm[ -])\b(wood|leaf|leaves)\b/i; // raw kind ids; the bag says Plank and Palm Leaf
+
+test('UX3-6: amountText uses the bag name, plural-aware', async () => {
+  const I = await import(new URL('items.js', base));
+  assert.equal(I.ITEMS.wood.name, 'Plank');
+  assert.equal(I.amountText('wood', 2), '2 planks');
+  assert.equal(I.amountText('wood', 1), '1 plank');
+  assert.equal(I.amountText('leaf', 3), '3 palm leaves');
+  assert.equal(I.amountText('plastic', 2), '2 plastic');
+  assert.equal(I.amountText('scrap', 1), '1 scrap');
+  assert.equal(I.amountText('metalore', 2), '2 metal ore');
+});
+
+test('UX3-6: notes, prompts, item text and the guide never show the raw ids wood or leaf', async () => {
+  const O = await import(new URL('onboarding.js', base));
+  const P = await import(new URL('prompts.js', base));
+  const C = await import(new URL('craft-book.js', base));
+  const S = { running: true, role: 'solo', tiles: 9, stock: { hook: 1 }, ownedTools: ['hook'], inventory: { slots: [{ kind: 'hammer', count: 1 }], selectedIndex: 0 } };
+  for (const step of O.STEPS) {
+    assert.doesNotMatch(String(step.title ?? ''), RAW, `step ${step.id} title`);
+    assert.doesNotMatch(O.hintOf(step, S), RAW, `step ${step.id} hint`);
+  }
+  for (const type of ['wood', 'leaf', 'plastic', 'scrap', 'barrel']) {
+    assert.doesNotMatch(P.statePrompt({ running: true, pickup: { id: 1, type } }, { throws: 99 }).label, RAW, `pickup ${type}`);
+  }
+  assert.doesNotMatch(P.costText({ wood: 2, leaf: 2, plastic: 2 }), RAW);
+  assert.doesNotMatch(P.missingText({}, { wood: 2, leaf: 1 }), RAW);
+  for (const [id, t] of Object.entries(C.ITEM_TEXT)) {
+    assert.doesNotMatch(`${t.desc ?? ''} ${t.use ?? ''}`, RAW, `ITEM_TEXT.${id}`);
+  }
+  const guide = src('game.js').match(/guide\.innerHTML = ([\s\S]*?);\n/)[1] + src('index.html').match(/<ul class="guide">[\s\S]*?<\/ul>/)[0];
+  assert.doesNotMatch(guide, RAW, 'How to play');
+});

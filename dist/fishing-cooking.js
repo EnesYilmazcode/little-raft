@@ -136,9 +136,9 @@ export function createFishingCooking(T, host) {
       const x = Math.round(Number(a.x)), z = Math.round(Number(a.z));
       if (!Number.isFinite(x) || !Number.isFinite(z) || !host.hasTile(x, z) || host.decorAt(x, z) || grillAt(x, z)) return say('Grills go on an empty raft tile');
       if (grills.size >= MAX_GRILLS) return say(`That's plenty of grills (max ${MAX_GRILLS})`);
-      if (bag.count('wood') < GRILL_COST.wood || bag.count('scrap') < GRILL_COST.scrap) return say('Need 4 wood and 2 scrap for a grill');
-      if (!bag.remove('wood', GRILL_COST.wood)) return say('Need 4 wood and 2 scrap for a grill');
-      if (!bag.remove('scrap', GRILL_COST.scrap)) { bag.add('wood', GRILL_COST.wood); return say('Need 4 wood and 2 scrap for a grill'); }
+      if (bag.count('wood') < GRILL_COST.wood || bag.count('scrap') < GRILL_COST.scrap) return say('Need 4 planks and 2 scrap for a grill');
+      if (!bag.remove('wood', GRILL_COST.wood)) return say('Need 4 planks and 2 scrap for a grill');
+      if (!bag.remove('scrap', GRILL_COST.scrap)) { bag.add('wood', GRILL_COST.wood); return say('Need 4 planks and 2 scrap for a grill'); }
       addGrill({ x, z }); markChanged(); return say('Grill placed');
     }
     const g = grills.get(a.id); if (!g) return;
@@ -147,7 +147,7 @@ export function createFishingCooking(T, host) {
       if (st.fuel >= FUEL_CAP - 1e-6) return say('Fuel is full');
       if (bag.count('wood') < 1 || !bag.remove('wood', 1)) return say('Grill needs wood to light');
       const was = st.lit; st.addFuel(1); markChanged();
-      return say(was ? `Added wood · fire ${Math.round(st.fuel)}s` : 'Fire lit');
+      return say(was ? `Added a plank · fire ${Math.round(st.fuel)}s` : 'Fire lit');
     }
     if (a.kind === 'fc:cook') {
       const f = cleanFish(a.fish); if (!f) return;
@@ -230,7 +230,7 @@ export function createFishingCooking(T, host) {
     const x = Math.round(tmp.x / 2), z = Math.round(tmp.z / 2);
     if (!host.hasTile(x, z) || host.decorAt(x, z) || grillAt(x, z)) return host.notice('Grills go on an empty raft tile');
     if (grills.size >= MAX_GRILLS) return host.notice(`That's plenty of grills (max ${MAX_GRILLS})`);
-    if (host.bagCount('wood') < GRILL_COST.wood || host.bagCount('scrap') < GRILL_COST.scrap) return host.notice('Need 4 wood and 2 scrap for a grill');
+    if (host.bagCount('wood') < GRILL_COST.wood || host.bagCount('scrap') < GRILL_COST.scrap) return host.notice('Need 4 planks and 2 scrap for a grill');
     host.action({ kind: 'fc:placeGrill', x, z });
   }
   if (typeof window !== 'undefined' && window.addEventListener) {
@@ -333,14 +333,14 @@ export function createFishingCooking(T, host) {
     if (done >= 0 && journal.basket.length >= BASKET_MAX && journal.basket.every((b) => b.state === 'raw')) return 'Basket full of raw fish · cook some first' + tail;
     if (done >= 0) { nextAct = { kind: 'fc:take', id: st.id, slot: done }; return `<kbd>E</kbd> Take ${esc(dishName(st.slots[done].species, st.slots[done].state))}${tail}`; }
     if (!st.lit) {
-      if (wood > 0) { nextAct = { kind: 'fc:fuel', id: st.id }; return `<kbd>E</kbd> Add fuel (wood)${tail}`; }
-      return 'Grill needs wood to light' + tail;
+      if (wood > 0) { nextAct = { kind: 'fc:fuel', id: st.id }; return `<kbd>E</kbd> Add fuel (plank)${tail}`; }
+      return 'Grill needs a plank to light' + tail;
     }
     if (free >= 0 && ri >= 0) {
       const f = journal.basket[ri]; nextAct = { kind: 'fc:cook', id: st.id, basket: ri };
       return `<kbd>E</kbd> Grill ${esc(speciesById(f.species).name)} (${f.cm.toFixed(1)} cm)${tail}`;
     }
-    if (st.fuel < FUEL_CAP - COOK_TUNING.fuelPerWood * 0.5 && wood > 0) { nextAct = { kind: 'fc:fuel', id: st.id }; return `<kbd>E</kbd> Add fuel (wood) · ${Math.round(st.fuel)}s left${tail}`; }
+    if (st.fuel < FUEL_CAP - COOK_TUNING.fuelPerWood * 0.5 && wood > 0) { nextAct = { kind: 'fc:fuel', id: st.id }; return `<kbd>E</kbd> Add fuel (plank) · ${Math.round(st.fuel)}s left${tail}`; }
     if (status) return `Grill${tail}`;
     if (free >= 0 && ri < 0) return 'Catch a fish to cook here';
     return st.fuel >= FUEL_CAP - COOK_TUNING.fuelPerWood ? 'Fire is roaring (full)' : `Grill · fire ${Math.round(st.fuel)}s`;
