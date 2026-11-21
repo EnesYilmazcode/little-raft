@@ -394,10 +394,24 @@ export function createSeafloor(T, { islands = [] } = {}) {
     refreshNodes();
   }
 
+  // Build the raft-centred patch now, at load, rather than lazily on the first frame the floor shows (the player's
+  // first fall into the sea: ~20 ms + 5 MB of garbage, all cold code). Six rebuilds on the surrounding recentre
+  // ring first let the JIT optimise rebuild and the noise loops before gameplay. This also creates
+  // weed.instanceColor before the host's shader warm-up, so that program variant is compiled up front.
+  for (let i = 0; i < 6; i++) rebuild(RECENTER * Math.cos(i * Math.PI / 3), RECENTER * Math.sin(i * Math.PI / 3));
+  rebuild(0, 0);
+  centreX = centreZ = 0;
+
   return {
     group,
     uniforms,
     heightAt,
+    /** Compile this floor's programs against `scene`'s lights/fog (synchronous part only; nothing is drawn). */
+    warm(renderer, camera, scene = group.parent) {
+      if (!renderer || !camera) return;
+      const done = typeof renderer.compileAsync === 'function' ? renderer.compileAsync(group, camera, scene ?? null) : renderer.compile?.(group, camera, scene ?? null);
+      done?.catch?.((e) => console.warn('seafloor shader warm-up failed', e));
+    },
     update(dt, camera, time) {
       if (Number.isFinite(time)) uniforms.uTime.value = time;
       if (hlType) {   // gentle emissive pulse on the targeted node
