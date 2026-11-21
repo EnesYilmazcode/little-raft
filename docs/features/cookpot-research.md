@@ -1,5 +1,7 @@
 # Cooking Pot and bowl soups: research
 
+> Status (round 202611210849): not built here. A cookpot is already implemented on origin/claude/loop-features-202611210722 and -0814; merge that instead.
+
 Status: research only, no code. Line numbers are from 2026-11-21 on `claude/loop-features-202611210849`. Re-grep the anchors before you edit.
 
 ## 1. How Raft's Cooking Pot works (web search, 2026-11-21)
