@@ -40,7 +40,7 @@ export function createHook(T) {
   ].map(p => new T.Vector3(p[0], p[1], p[2]));
   const curve = new T.CatmullRomCurve3(pts, false, 'centripetal');
   const R = 0.022;
-  add(new T.TubeGeometry(curve, 96, R, 12, false), steel);
+  add(new T.TubeGeometry(curve, 48, R, 8, false), steel);
 
   // ---------- 2. tapered point (aimed along curve end tangent) ----------
   const up = new T.Vector3(0, 1, 0);
@@ -114,7 +114,7 @@ export function createHook(T) {
     }
   }
   const wrapTop = -0.17, wrapBot = -0.33;
-  add(new T.TubeGeometry(new Helix(wrapBot, wrapTop, 0.048, 9), 360, 0.0075, 6, false), rope);
+  add(new T.TubeGeometry(new Helix(wrapBot, wrapTop, 0.048, 9), 140, 0.0075, 4, false), rope);
 
   // ---------- 12-13. tied rope bands at wrap ends ----------
   const band = new T.TorusGeometry(0.05, 0.009, 6, 20);
@@ -144,9 +144,8 @@ export function createHook(T) {
   const lash = add(new T.TorusGeometry(R + 0.006, 0.006, 6, 16), darkSteel, HX, 0.05, -0.006);
   lash.rotation.x = Math.PI / 2;
 
-  // Meshes: hook, tip, barb, ferrule, 4 rivets, handle, pommel, wrap, 2 bands, knot, cord, coil, bind, lash = 19
-
-  inner.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
+  // Built as 18 parts (hook, tip, barb, ferrule, 4 rivets, handle, pommel, wrap, 2 bands, knot, cord, coil, bind, lash),
+  // merged below into two vertex-coloured meshes (metal, wood + rope).
 
   // ---------- recenter on bounding box ----------
   inner.updateMatrixWorld(true);
@@ -154,7 +153,55 @@ export function createHook(T) {
   const center = box.getCenter(new T.Vector3());
   inner.position.sub(center);
   const size = box.getSize(new T.Vector3());
+  // Static parts never move relative to each other: bake them into one metal and one wood/rope mesh (2 draws),
+  // each part's colour (times any vertex colour) written per vertex. No shadows: it flies over the ocean,
+  // which receives none. Merged after the re-center so the bounds/grip math above sees the original parts.
+  const metal = new T.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, metalness: 0.72, roughness: 0.38 });
+  const fibre = new T.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, metalness: 0.0, roughness: 0.93 });
+  const groups = new Map([[metal, []], [fibre, []]]);
+  for (const m of inner.children) groups.get(m.material.metalness > 0.5 ? metal : fibre).push(m);
+  for (const [material, list] of groups) {
+    const mesh = new T.Mesh(bake(T, list), material);
+    mesh.name = material === metal ? 'hookMetal' : 'hookWood';
+    mesh.castShadow = false; mesh.receiveShadow = false;
+    inner.add(mesh);
+  }
+  for (const m of [...inner.children]) if (!groups.has(m.material)) m.removeFromParent();
+  for (const g of new Set([...groups.values()].flat().map(m => m.geometry))) g.dispose();
+  for (const m of [steel, darkSteel, rivetMat, wood, rope, ropeDark]) m.dispose();
   root.userData.size = { x: size.x, y: size.y, z: size.z };
   root.userData.orientation = 'handle -Y, hook point +Y, hook bend leans toward -Z (front), bend opens to -X';
   return root;
+}
+
+// Parts (children of one group) -> one indexed geometry in that group's space with position/normal/color.
+function bake(T, meshes) {
+  let verts = 0, idx = 0;
+  const parts = meshes.map(m => {
+    m.updateMatrix();
+    const g = m.geometry.clone().applyMatrix4(m.matrix), n = g.attributes.position.count;
+    const index = g.index ? Array.from(g.index.array) : Array.from({ length: n }, (_, i) => i);
+    const part = { g, index, base: verts, tint: m.material.color }; verts += n; idx += index.length; return part;
+  });
+  const pos = new Float32Array(verts * 3), nor = new Float32Array(verts * 3), col = new Float32Array(verts * 3);
+  const index = new (verts > 65535 ? Uint32Array : Uint16Array)(idx);
+  let o = 0;
+  for (const { g, index: ix, base, tint } of parts) {
+    const p = g.attributes.position, nn = g.attributes.normal, c = g.attributes.color;
+    for (let i = 0; i < p.count; i++) {
+      const k = (base + i) * 3;
+      pos[k] = p.getX(i); pos[k + 1] = p.getY(i); pos[k + 2] = p.getZ(i);
+      nor[k] = nn.getX(i); nor[k + 1] = nn.getY(i); nor[k + 2] = nn.getZ(i);
+      col[k] = tint.r * (c ? c.getX(i) : 1); col[k + 1] = tint.g * (c ? c.getY(i) : 1); col[k + 2] = tint.b * (c ? c.getZ(i) : 1);
+    }
+    for (const i of ix) index[o++] = i + base;
+    g.dispose();
+  }
+  const out = new T.BufferGeometry();
+  out.setAttribute('position', new T.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new T.BufferAttribute(nor, 3));
+  out.setAttribute('color', new T.BufferAttribute(col, 3));
+  out.setIndex(new T.BufferAttribute(index, 1));
+  out.computeBoundingSphere();
+  return out;
 }
