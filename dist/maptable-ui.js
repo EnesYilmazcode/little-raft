@@ -77,7 +77,7 @@ const MARKUP = `<div class="lrm-wrap">
     <button type="button" class="lrm-go" disabled>Set course</button>
     <button type="button" class="lrm-close">Close</button>
   </div>
-  <p class="lrm-hint">Tap the chart to drop a pin · tap a pin to lift it · tap an island to pick it</p>
+  <p class="lrm-hint" aria-live="polite">Tap the chart to drop a pin · tap a pin to lift it · tap an island to pick it</p>
   <details class="lrm-list"><summary>Charted islands</summary><p class="lrm-empty" hidden>Sail a while. Islands you meet are inked here.</p><ul></ul></details>
 </div>`;
 
@@ -96,7 +96,7 @@ export function createMapTableUI(api) {
   dlg.innerHTML = MARKUP; document.body.append(dlg);
   const q = s => dlg.querySelector(s);
   const canvas = q('canvas'), g = canvas.getContext('2d');
-  const scaleEl = q('.lrm-scale'), goBtn = q('.lrm-go'), list = q('ul'), empty = q('.lrm-empty'), details = q('details'), summary = q('summary');
+  const scaleEl = q('.lrm-scale'), goBtn = q('.lrm-go'), list = q('ul'), empty = q('.lrm-empty'), details = q('details'), summary = q('summary'), hint = q('.lrm-hint'), HINT = hint.textContent;
   const iconBtns = [...dlg.querySelectorAll('.lrm-icons button')];
   const phone = () => { try { return matchMedia('(max-width:520px)').matches; } catch { return false; } };
 
@@ -310,7 +310,7 @@ export function createMapTableUI(api) {
   }
   for (const b of dlg.querySelectorAll('.lrm-zoom')) b.addEventListener('click', () => zoom(+b.dataset.z), opt);
   iconBtns.forEach((b, i) => b.addEventListener('click', () => { icon = i; iconBtns.forEach((x, j) => x.setAttribute('aria-pressed', String(j === i))); }, opt));
-  goBtn.addEventListener('click', () => { const t = target(); if (t) api.course(t.x, t.z); }, opt);
+  goBtn.addEventListener('click', () => { const t = target(), c = t && api.course(t.x, t.z); if (c?.text) hint.textContent = c.text; }, opt);
   q('.lrm-close').addEventListener('click', () => close(), opt);
   q('.lrm-x').addEventListener('click', () => close(), opt);
   list.addEventListener('click', e => { const b = e.target.closest('button[data-s]'); if (!b) return; sel = { t: 'isl', s: +b.dataset.s }; listSig = ''; draw(); }, opt);
@@ -322,6 +322,7 @@ export function createMapTableUI(api) {
     if (isOpen() || document.querySelector('dialog[open]')) return false;
     api.releaseLock();
     if (phone()) details.open = true;
+    hint.textContent = HINT;
     dlg.showModal();
     listSig = ''; draw();
     return true;

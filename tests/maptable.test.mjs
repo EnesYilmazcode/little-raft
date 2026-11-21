@@ -245,6 +245,13 @@ test('course: sends the shared sail heading action and a notice', () => {
   assert.ok(Math.abs(Math.abs(actions[0].heading) - Math.PI) < 1e-9);
   assert.equal(c.bearing, 0);
   assert.match(notices.at(-1), /^Course set: N · 340 m \(wind still decides the speed\) · Anchor is down$/);
+  assert.equal(c.text, notices.at(-1), 'the dialog shows the same text (the feed is hidden under the modal backdrop)');
+});
+
+test('distText: no "1000 m" or "10.0 km" at the unit edges', () => {
+  const { distText } = M;
+  assert.equal(distText(340), '340 m'); assert.equal(distText(994), '990 m'); assert.equal(distText(996), '1.0 km');
+  assert.equal(distText(2500), '2.5 km'); assert.equal(distText(9960), '10 km'); assert.equal(distText(10000), '10 km');
 });
 
 // ---------------------------------------------------------------- 7. load + items

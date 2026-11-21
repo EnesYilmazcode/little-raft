@@ -117,7 +117,7 @@ export function courseTo(gx, gz, tx, tz) {
   const dx = wrapAxis(tx - gx, HG), dz = wrapAxis(tz - gz, HG);
   return { heading: Math.atan2(dx, dz), bearing: ((Math.atan2(dx, -dz) * 180 / Math.PI) + 360) % 360, dist: Math.hypot(dx, dz), dx, dz };
 }
-export const distText = d => (d < 1000 ? Math.round(d / 10) * 10 + ' m' : (d < 10000 ? (Math.round(d / 100) / 10).toFixed(1) : Math.round(d / 1000)) + ' km');
+export const distText = d => (d < 995 ? Math.round(d / 10) * 10 + ' m' : (d < 9950 ? (Math.round(d / 100) / 10).toFixed(1) : Math.round(d / 1000)) + ' km');
 
 // ------------------------------------------------------------------ the content module
 
@@ -220,7 +220,9 @@ export function createMapTable(ctx, opts = {}) {
     const g = sailing(); if (!g || !fin(tx) || !fin(tz)) { ctx.notice?.('The chart cannot find the raft right now'); return null; }
     const c = courseTo(g.gx, g.gz, tx, tz);
     ctx.action?.({ kind: 'sail', op: 'heading', heading: c.heading });
-    ctx.notice?.(`Course set: ${compassPoint(c.bearing)} · ${distText(c.dist)} (wind still decides the speed)${g.anchored ? ' · Anchor is down' : ''}`, 3200);
+    // The feed sits under the modal chart's backdrop, so the dialog also shows c.text in its hint line.
+    c.text = `Course set: ${compassPoint(c.bearing)} · ${distText(c.dist)} (wind still decides the speed)${g.anchored ? ' · Anchor is down' : ''}`;
+    ctx.notice?.(c.text, 3200);
     return c;
   }
 
