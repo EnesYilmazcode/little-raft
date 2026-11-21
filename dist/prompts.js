@@ -41,7 +41,9 @@ export function formatFeed(text) { return String(text ?? '').replace(/\s+/g, ' '
 export function isNotice(text, hasKbd) {
   const t = formatFeed(text);
   // "Floor needs" doubles as game.js's hover prompt; the muted "Needs …" prompt already covers it.
-  return !!t && !hasKbd && !/^(Hold click to reel|Waiting for your brother|Floor needs)/i.test(t);
+  // Purifier status lines are hover prompts (game.js promptTip) whose fuel/boil clock ticks every second: feeding them
+  // stacked a new feed line per second.
+  return !!t && !hasKbd && !/^(Hold click to reel|Waiting for your brother|Floor needs|Purifying|Purifier:|Fire is full)/i.test(t);
 }
 export function shouldPost(last, text, now) { return !(last && last.text === text && now - last.at < DUP_MS); }
 const have = (stock, k) => { const n = Number(stock?.[k]); return Number.isFinite(n) && n > 0 ? n : 0; };

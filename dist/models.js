@@ -419,6 +419,12 @@ const B = {
     K.add(new T.SphereGeometry(0.012, 6, 4), 0xe8dcc0, { m: 'base', p: [0.03, 0.09, 0.02] });
     K.ud.iconRot = [0.3, 0, 0];
   },
+  coconut(K) {
+    // island coconut (chopped from palms): a slightly squashed husk with three dark eyes on top
+    coconut(K, [0, 0.062, 0], 0.075);
+    for (let i = 0; i < 3; i++) K.add(new T.SphereGeometry(0.013, 6, 4), 0x24160b, { m: 'base', p: [Math.cos(i * 2.1 + 0.5) * 0.024, 0.12, Math.sin(i * 2.1 + 0.5) * 0.024], s: [1, 0.6, 1] });
+    K.ud.iconRot = [0.45, 0, 0];
+  },
   sprout(K) {
     mound(K, 0.07);
     K.add(cyl(0.005, 0.007, 0.06, 5), C.stem, { p: [0, 0.04, 0] });

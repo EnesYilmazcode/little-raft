@@ -738,3 +738,42 @@ Base: origin/claude/raft-master (d56c3ef). Fleet: critic, 6 builders (sky, water
   - thumb blob on the hook grip
   - faint banding in the pause panel
 - Integrator merge into raft-master: only the orange-claw hook (hook.js) was taken; sky, daynight, ocean, deck, wood, islands, hands and HUD were stale parallel copies of work already on raft-master, so raft-master kept its versions (sky stays driven by daynight via sky.follow).
+## 2026-11-21 · loop-fidelity-202611210821 (raft fidelity, round 2b)
+Base: raft-master 77b1cb6. Research: docs/loop/research/fidelity-r2b-stations.md and fidelity-r2b-world.md (the wiki hosts were DNS-blocked, so the numbers come from search snippets).
+Skipped because the parallel fidelity run (loop-fidelity-202611210804) already claims them: crop plots, collection net, foundation armor, 2x2 start, Raft recipe costs.
+Claimed and landed:
+- **Station fuel and timings.** The purifier burns fuel: a plank gives 50 s and a leaf 25 s, capped at 150 s. A cup takes 60 s and only advances while lit. It has a flame and a plank-tray visual, and its prompts show the time and fuel. The grill burns 50 s per plank, holds 2 planks, cooks in 28 + 0.4*cm s, and chars only after 120 s. The cook times in items.js now match cooking.js.
+- **Drowning.** You get 33 s of air, or 17 s when food or water is at 0. Out of air you float up and take 3.5 HP/s through hurtPlayer. The air bar turns red below 25%.
+- **Stone Axe and palm chopping** (axe-model.js, islands-layout.js chop action):
+  - Recipe 6 planks + 3 stone + 2 rope, 50 chops.
+  - A palm takes 5 chops and drops 5 planks + 2 leaves. Each chop rolls 17.6% for a coconut and 11.8% for a palm seed.
+  - Bare hands can no longer gather wood from palms. A felled palm leaves a stump.
+  - New coconut food: +5 food, +20 water.
+- **Paddle** (paddle.js, paddle-model.js):
+  - Recipe 4 planks + 2 rope + 2 plastic, 60 strokes.
+  - LMB from an edge tile pushes the raft the way you face. Host checks: the stroke's slot holds a paddle, you stand on an edge tile, the raft is not anchored, and the 0.8 s cooldown has passed (the local cooldown is 0.85 s).
+  - PADDLE_CAP raised to 1.1.
+- **Debris follows raft motion** (debris-budget.js). It spawns at 0.6 items per metre travelled plus 0.05/s, with at most 3 banked. Anchoring stops the water flow and the item drift.
+- **Fix:** items.js HOTBAR_SIZE is now 10 (it was 8), so a saved selection of slot 9 or 0 no longer resets.
+Fleet: 2 researchers, 3 builders (worktrees), 2 reviewers.
+Review fixes:
+- the host no longer finds a paddle anywhere in the bag; it uses the stroke's slot
+- a NaN angle wore the paddle
+- held paddle and coconut poses
+- the coconut icon
+- the purifier countdown spammed the pickup feed
+- the felled-palm fronds
+- the axe head tones
+Checks:
+- npm test 753/753 (base 724).
+- shoot.py `errors: []`.
+- Frame time 154 ms (base 159 ms on the same machine).
+Open:
+- In old saves a boiling cup waits for fuel.
+- Islands still sail in, dock and leave, while Raft's islands stay fixed and you sail to them (the top world gap for next round).
+- The axe uses the generic tool swing.
+- The paddle can't be repaired with R.
+- coop.js's held-item list lacks paddle, axe and spear.
+- Rope never drops from barrels (Raft about 7%).
+- Raft wind never changes direction; ours shifts every 70-140 s.
+Next gaps: fixed-position islands, crafting tabs (Navigation, Food/Water), bed as a respawn point, tool durability (hook 40, rod 10), Tinker's Desk cost 14 planks + 2 scrap.

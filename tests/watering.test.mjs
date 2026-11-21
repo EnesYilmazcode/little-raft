@@ -37,16 +37,20 @@ test('cleanWatering: bad keys, bad fields, clamping and decor checks', () => {
     purifiers: { '1,0': { t: 99, ready: 0 }, '0,0': { t: 3, ready: 0 }, ' 1,0': { t: 1, ready: 0 } },
   }, decor);
   assert.deepEqual(r.garden, { '0,0': { water: 1, grow: 30 } });
-  assert.deepEqual(r.purifiers, { '1,0': { t: 15, ready: 0 } });
+  assert.deepEqual(r.purifiers, { '1,0': { t: 60, ready: 0, fuel: 0, cup: 1 } });
   const neg = W.cleanWatering({ garden: { '0,0': { water: 1, grow: -20 } }, purifiers: { '1,0': { t: 'x', ready: 0 } } }, decor);
   assert.deepEqual(neg.garden, { '0,0': { water: 1, grow: 0 } });
-  assert.deepEqual(neg.purifiers, { '1,0': { t: 0, ready: 0 } });
+  assert.deepEqual(neg.purifiers, { '1,0': { t: 0, ready: 0, fuel: 0, cup: 1 } });
 });
 
 test('cleanWatering: normalises ripe / ready / empty entries', () => {
   const decor = mkWorld().decor;
   assert.deepEqual(W.cleanWatering({ garden: { '0,0': { water: 1, grow: 500 } } }, decor).garden, { '0,0': { water: 0, grow: 90 } });
-  assert.deepEqual(W.cleanWatering({ purifiers: { '1,0': { t: 2, ready: 1 } } }, decor).purifiers, { '1,0': { t: 15, ready: 1 } });
+  assert.deepEqual(W.cleanWatering({ purifiers: { '1,0': { t: 2, ready: 1 } } }, decor).purifiers, { '1,0': { t: 60, ready: 1, fuel: 0, cup: 1 } });
+  // fuel without a cup is kept (fire waiting); an empty, unfuelled entry is dropped; fuel is clamped to FUEL_CAP
+  assert.deepEqual(W.cleanWatering({ purifiers: { '1,0': { t: 30, ready: 1, fuel: 40.6, cup: 0 } } }, decor).purifiers, { '1,0': { t: 0, ready: 0, fuel: 40, cup: 0 } });
+  assert.deepEqual(W.cleanWatering({ purifiers: { '1,0': { fuel: 0, cup: 0 } } }, decor).purifiers, {});
+  assert.deepEqual(W.cleanWatering({ purifiers: { '1,0': { t: 1, ready: 0, fuel: 9999, cup: 1 } } }, decor).purifiers, { '1,0': { t: 1, ready: 0, fuel: W.FUEL_CAP, cup: 1 } });
   assert.deepEqual(W.cleanWatering({ garden: { '0,0': { water: 0, grow: 0 } } }, decor).garden, {});
 });
 
@@ -84,17 +88,55 @@ test('tick prunes entries whose decor was removed', () => {
   assert.deepEqual(w.garden, {}); assert.deepEqual(w.purifiers, {});
 });
 
-test('purifier: load, 15 ticks to ready, take fresh water', () => {
-  const w = mkWorld(), bag = bagFrom([{ kind: 'saltcup', count: 1 }]);
+test('purifier: load, 60 s on fuel to ready, take fresh water (fire keeps its leftover fuel)', () => {
+  const w = mkWorld(), bag = bagFrom([{ kind: 'saltcup', count: 1 }, { kind: 'wood', count: 2 }]);
+  assert.equal(W.PURIFY_SECONDS, 60);
   assert.equal(W.loadPurifier(w, U, bag).ok, true);
   assert.equal(bag.count('saltcup'), 0);
-  assert.deepEqual(w.purifiers[U], { t: 0, ready: 0 });
-  for (let i = 0; i < 14; i++) assert.deepEqual(W.tick(w, 1).done, []);
-  assert.equal(w.purifiers[U].ready, 0);
+  assert.deepEqual(w.purifiers[U], { t: 0, ready: 0, fuel: 0, cup: 1 });
+  assert.equal(W.purifierLit(w.purifiers[U]), false);
+  assert.equal(W.fuelPurifier(w, U, bag, 'wood').ok, true);
+  assert.equal(W.fuelPurifier(w, U, bag, 'wood').ok, true);
+  assert.equal(bag.count('wood'), 0); assert.equal(w.purifiers[U].fuel, 100);
+  for (let i = 0; i < 59; i++) assert.deepEqual(W.tick(w, 1).done, []);
+  assert.equal(w.purifiers[U].ready, 0); assert.equal(w.purifiers[U].fuel, 41);
   assert.deepEqual(W.tick(w, 1).done, [U]);
+  assert.equal(w.purifiers[U].fuel, 40);
+  W.tick(w, 30); assert.equal(w.purifiers[U].fuel, 40, 'a finished cup does not burn fuel');
   const r = W.takeWater(w, U, bag);
   assert.equal(r.ok, true); assert.equal(r.text, '+ 1 cup of fresh water');
-  assert.equal(bag.count('freshcup'), 1); assert.equal(w.purifiers[U], undefined);
+  assert.equal(bag.count('freshcup'), 1); assert.deepEqual(w.purifiers[U], { t: 0, ready: 0, fuel: 40, cup: 0 });
+  W.tick(w, 30); assert.equal(w.purifiers[U].fuel, 40, 'an empty purifier does not burn fuel');
+});
+
+test('purifier fuel: plank 50 s, leaf 25 s, cap 150 s, pauses with no fuel, one plank is not quite one cup', () => {
+  assert.equal(W.purifierFuel('wood'), 50); assert.equal(W.purifierFuel('leaf'), 25);
+  assert.equal(W.purifierFuel('scrap'), 0); assert.equal(W.purifierFuel(undefined), 0);
+  const w = mkWorld(), bag = bagFrom([{ kind: 'wood', count: 5 }, { kind: 'leaf', count: 2 }, { kind: 'scrap', count: 1 }, { kind: 'saltcup', count: 1 }]);
+  assert.equal(W.fuelPurifier(w, U, bag, 'scrap').reason, 'nofuel');
+  assert.equal(W.fuelPurifier(w, P, bag, 'wood').reason, 'notarget');
+  assert.equal(W.fuelPurifier(w, U, bag, 'leaf').ok, true);
+  assert.deepEqual(w.purifiers[U], { t: 0, ready: 0, fuel: 25, cup: 0 });
+  for (let i = 0; i < 2; i++) assert.equal(W.fuelPurifier(w, U, bag, 'wood').ok, true);
+  assert.equal(w.purifiers[U].fuel, 125);
+  const before = JSON.stringify(bag.snapshot());
+  const full = W.fuelPurifier(w, U, bag, 'wood');
+  assert.equal(full.ok, false); assert.equal(full.reason, 'fuelfull'); assert.equal(JSON.stringify(bag.snapshot()), before);
+  assert.equal(W.fuelPurifier(w, U, bag, 'leaf').ok, true); assert.equal(w.purifiers[U].fuel, W.FUEL_CAP);
+  assert.equal(W.loadPurifier(w, U, bag).ok, true);
+  assert.deepEqual(w.purifiers[U], { t: 0, ready: 0, fuel: 150, cup: 1 });
+  // one plank only: 50 s of boiling, then it pauses at 50/60 until more fuel goes in
+  w.purifiers[U].fuel = 50;
+  W.tick(w, 45); W.tick(w, 45);
+  assert.deepEqual(w.purifiers[U], { t: 50, ready: 0, fuel: 0, cup: 1 });
+  assert.equal(W.purifierLit(w.purifiers[U]), false);
+  W.tick(w, 60); assert.equal(w.purifiers[U].t, 50);
+  assert.equal(W.fuelPurifier(w, U, bag, 'wood').ok, true);
+  W.tick(w, 9); assert.equal(w.purifiers[U].ready, 0);
+  assert.deepEqual(W.tick(w, 5).done, [U]);
+  assert.deepEqual(w.purifiers[U], { t: 60, ready: 1, fuel: 40, cup: 1 });
+  assert.equal(W.loadPurifier(w, U, bagFrom([{ kind: 'saltcup', count: 1 }])).reason, 'busy');
+  assert.equal(W.clockText(45), '0:45'); assert.equal(W.clockText(150), '2:30'); assert.equal(W.clockText(-3), '0:00');
 });
 
 test('refusals leave the bag and world unchanged', () => {
@@ -191,10 +233,17 @@ test('purifier-model: named meshes and state painting', () => {
   const get = n => g.getObjectByName(n);
   paintPurifier(g, null, 0);
   assert.equal(get('embers').visible, false); assert.equal(get('cup').visible, false); assert.equal(get('potWater').visible, false);
-  paintPurifier(g, { t: 3, ready: 0 }, 1.2);
-  assert.equal(get('embers').visible, true); assert.equal(get('cupWater').visible, false); assert.equal(get('steam0').visible, true);
-  paintPurifier(g, { t: 15, ready: 1 }, 2);
-  assert.equal(get('embers').visible, false); assert.equal(get('cupWater').visible, true); assert.equal(get('cup').visible, true); assert.equal(get('steam1').visible, false);
+  for (const n of ['fuelLogs', 'flame']) assert.ok(get(n), n);
+  assert.equal(get('flame').visible, false);
+  paintPurifier(g, { t: 3, ready: 0, fuel: 0, cup: 1 }, 1);
+  assert.equal(get('embers').visible, false, 'no fuel: paused, no fire'); assert.equal(get('flame').visible, false); assert.equal(get('potWater').visible, true); assert.equal(get('steam0').visible, false);
+  paintPurifier(g, { t: 3, ready: 0, fuel: 70, cup: 1 }, 1.2);
+  assert.equal(get('embers').visible, true); assert.equal(get('flame').visible, true); assert.equal(get('cupWater').visible, false); assert.equal(get('steam0').visible, true);
+  assert.deepEqual(get('fuelLogs').children.map(m => m.visible), [true, true, false]);
+  paintPurifier(g, { t: 0, ready: 0, fuel: 25, cup: 0 }, 1.5);
+  assert.equal(get('flame').visible, false); assert.equal(get('cup').visible, false); assert.deepEqual(get('fuelLogs').children.map(m => m.visible), [true, false, false]);
+  paintPurifier(g, { t: 60, ready: 1, fuel: 0, cup: 1 }, 2);
+  assert.equal(get('embers').visible, false); assert.equal(get('flame').visible, false); assert.equal(get('cupWater').visible, true); assert.equal(get('cup').visible, true); assert.equal(get('steam1').visible, false);
 });
 
 test('purifier-model: planter stages', () => {

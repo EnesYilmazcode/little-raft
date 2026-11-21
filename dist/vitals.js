@@ -32,7 +32,7 @@ export const FOOD = {
   cookedsharkmeat: {food:30,   water:0},
   honeyfish:       {food:45,   water:0},                  // [juicer] bug fix: was not edible
   berries:         {food:4,    water:2},                  // [juicer]
-  coconut:         {food:6,    water:8},                  // [juicer]
+  coconut:         {food:5,    water:20},                 // island palms (axe) or palm planter; Raft +5 / +20; juicer fruit
   berrycup:        {food:10,   water:35, returns:'cup'},  // [juicer]
   coconutcup:      {food:6,    water:45, returns:'cup'},  // [juicer]
   mixcup:          {food:14,   water:38, returns:'cup'},  // [juicer]
