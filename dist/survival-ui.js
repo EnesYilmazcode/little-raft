@@ -3,7 +3,7 @@
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, HOLD, anchorTip } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_ICONS } from './item-svg.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
-import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { iconURL, peekIcon, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
 const VERSION = 'sv3';
 const HB = Number(HOTBAR_SIZE) || 8;
@@ -91,8 +91,11 @@ function durFrac(s) {
   return d <= 1 ? clamp01(d) : 1;
 }
 // Rendered 3D icon when ready, flat sprite until then. data-icon lets a late render swap it in place.
+// 3D renders start only once play has settled (iconsLive), so they never compete with loading.
+let iconsLive = false;
+const ICONS_AFTER_MS = 2000;
 function iconHTML(kind) {
-  const url = iconURL(kind);
+  const url = iconsLive ? iconURL(kind) : peekIcon(kind);
   if (url) return `<img class="sv-icon sv-3d" data-icon="${esc(kind)}" src="${url}" alt="" draggable="false">`;
   return iconSVG(kind).replace('<svg ', `<svg data-icon="${esc(kind)}" `);
 }
@@ -817,11 +820,26 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function hideTip() { if (tip) tip.hidden = true; tipAnchor = null; }
 
   // ---------- render ----------
+  // Hotbar + bag icons render ~2 s into play (or when the inventory opens); the rest on demand.
+  let playSince = 0;
+  function warmShown() { // queue a render for every flat placeholder showing in the hotbar / bag
+    iconsLive = true;
+    const kinds = new Set();
+    for (const root of [tools, dlg]) root?.querySelectorAll('svg[data-icon]').forEach(n => kinds.add(n.dataset.icon));
+    warmIcons(kinds);
+  }
+  function liveIcons() {
+    if (!document.body?.classList.contains('playing')) { playSince = 0; return; }
+    const now = performance.now();
+    if (!playSince) playSince = now;
+    if (now - playSince >= ICONS_AFTER_MS) warmShown();
+  }
   function render(force) {
     if (!alive) return;
     const bag = bagNow();
     ensureTools();
     if (!bag) return;
+    if (!iconsLive) liveIcons(); // before the unchanged early return, or an idle hotbar never goes live
     const mode = (isOpen ? 1 : 0) | (dragging ? 2 : 0);
     const ver = bag.version, sel0 = bag.selectedIndex;
     if (!force && bag === fastBag && typeof ver === 'number' && ver === fastVer && sel0 === fastSel
@@ -853,6 +871,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function open() {
     if (!alive || isOpen) return;
     isOpen = true;
+    iconsLive = true; // the open render below queues the bag + recipe icons it shows
     clearSrc();
     safe(onPause);
     if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
@@ -862,6 +881,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     invEls.forEach(el => { el._svCount = undefined; }); // no pop for changes made while closed
     recipeEls.forEach(v => { v.sig = null; });
     render(true);
+    warmShown();
     applyTab();
     try { wrap.focus({ preventScroll: true }); } catch {}
   }
@@ -1040,7 +1060,6 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
 
   buildRecipes();
   if (isOpen) render(true);
-  warmIcons(Object.keys(ITEM_INFO || {}));
 
   const api = {
     update() { render(false); },

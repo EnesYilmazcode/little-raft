@@ -2,8 +2,9 @@
 // API (window.raftOnboarding): register({chapter, title?, after?, steps}), complete(id), reset(), state().
 // Step: {id, title, hint (string or S -> string), done(S, base, ctx) -> bool, count?(S, base, ctx) -> [n, of], start?(S) -> base, needs?:[ids],
 //        optional?:bool (never blocks its chapter), show?(S) -> bool (visibility gate), every?:bool (shown in any chapter)}.
-// count may add a unit: [n, of, '°']. ctx = {S0, gained(k), yawTravel, walked (path metres), prev, mem, silent}. Completion reads only window.raftDebug.state (polled 250 ms).
+// count may add a unit: [n, of, '°']. ctx = {S0, gained(k), yawTravel, walked (path metres), prev, mem, silent}. Completion reads only window.raftDebug (polled 250 ms): the slim .hud snapshot for the built-in steps, the full .state once register() adds steps.
 export const SAVE_KEY = 'little-raft-v1', KEY = 'little-raft-onboarding-v1', AUTOSTART = 'little-raft-autostart';
+let extraSteps = false; // set by raftOnboarding.register
 const POLL_MS = 250, MAX_ROWS = 3, DIM_MS = 20000, HOLD_MS = 2000, ASIDE_MIN = 190, GUTTER = 8;
 
 const num = v => (Number.isFinite(v) ? v : 0);
@@ -228,15 +229,18 @@ function boot() {
     } catch {}
   }
   const feed = t => { try { window.raftPrompts?.feed?.(t); } catch {} };
+  const setText = (el, t) => { if (el && el.textContent !== t) el.textContent = t; }; // polled 4x/s: write only on change
+  const setHTML = (el, h) => { if (el._obHTML !== h) { el._obHTML = h; el.innerHTML = h; } };
   function renderHead(ch) {
     const all = ch === null, list = STEPS.filter(s => s.chapter === ch && !s.optional);
     panel.classList.toggle('ob-all', all);
-    head.querySelector('.ob-ch').textContent = all ? 'Notes' : collapsed ? 'Notes' : chName(ch);
-    head.querySelector('.ob-sum').textContent = all ? '' : `${collapsed ? '· ' : ''}${list.filter(s => P.done[s.id]).length}/${list.length}`;
+    setText(head.querySelector('.ob-ch'), all ? 'Notes' : collapsed ? 'Notes' : chName(ch));
+    setText(head.querySelector('.ob-sum'), all ? '' : `${collapsed ? '· ' : ''}${list.filter(s => P.done[s.id]).length}/${list.length}`);
     const open = all ? logOpen : !collapsed;
     panel.classList.toggle('ob-collapsed', !all && collapsed); panel.classList.toggle('ob-logopen', all && logOpen);
-    head.setAttribute('aria-expanded', String(open)); logEl.hidden = !(all && logOpen);
-    if (all && logOpen) logEl.innerHTML = [...new Set(STEPS.map(s => s.chapter))].map(c => `<section><h3>${hintHTML(chName(c))}</h3><ul>${STEPS.filter(s => s.chapter === c && (!s.optional || P.done[s.id])).map(s => `<li class="${P.done[s.id] ? 'ob-tick' : ''}">${hintHTML(s.title)}</li>`).join('')}</ul></section>`).join('');
+    if (head.getAttribute('aria-expanded') !== String(open)) head.setAttribute('aria-expanded', String(open));
+    if (logEl.hidden !== !(all && logOpen)) logEl.hidden = !(all && logOpen);
+    if (all && logOpen) setHTML(logEl, [...new Set(STEPS.map(s => s.chapter))].map(c => `<section><h3>${hintHTML(chName(c))}</h3><ul>${STEPS.filter(s => s.chapter === c && (!s.optional || P.done[s.id])).map(s => `<li class="${P.done[s.id] ? 'ob-tick' : ''}">${hintHTML(s.title)}</li>`).join('')}</ul></section>`).join(''));
   }
   function toggle() {
     if (panel.classList.contains('ob-all')) logOpen = !logOpen; else collapsed = !collapsed;
@@ -264,13 +268,13 @@ function boot() {
     for (const [id, li] of rows) if (!vis.has(id) && !li.classList.contains('ob-done')) { li.remove(); rows.delete(id); }
     for (const id of r.visible) {
       const li = rows.get(id) ?? rowFor(id, animate), c = r.counts[id], h = r.hints[id] ?? '';
-      li.querySelector('.ob-count').textContent = c ? `${c[0]}/${c[1]}${c[2] ?? ''}` : '';
+      setText(li.querySelector('.ob-count'), c ? `${c[0]}/${c[1]}${c[2] ?? ''}` : '');
       if (li.dataset.hint !== h) { li.dataset.hint = h; li.querySelector('.ob-hint').innerHTML = hintHTML(h); }
     }
     renderHead(shownCh);
   }
   function tick() {
-    let S = null; try { S = window.raftDebug?.state; } catch {}
+    let S = null; try { const d = window.raftDebug; S = (!extraSteps && d?.hud) || d?.state; } catch {}
     const playing = !!S?.running;
     if (!playing) return;
     lastS = S;
@@ -288,7 +292,7 @@ function boot() {
   // no gutter that wide (phones, small windows) -> .ob-covered hides them rather than peeking out over the bag.
   function placeBesideBag(bag) {
     const st = panel.style; let tx = 0, aside = false, covered = false;
-    st.removeProperty('max-width'); // max-width is not transitioned, so the natural box is measurable right away
+    if (st.maxWidth) st.removeProperty('max-width'); // max-width is not transitioned, so the natural box is measurable right away
     if (bag && bag.width) {
       const r = parseFloat(getComputedStyle(panel).right) || 0, w = panel.offsetWidth, right = innerWidth - r, left = right - w;
       const top = panel.offsetTop, bottom = top + panel.offsetHeight;
@@ -300,7 +304,7 @@ function boot() {
         } else covered = true;
       }
     }
-    st.setProperty('--ob-shift', `${Math.round(tx)}px`);
+    const shift = `${Math.round(tx)}px`; if (st.getPropertyValue('--ob-shift') !== shift) st.setProperty('--ob-shift', shift);
     panel.classList.toggle('ob-aside', aside); panel.classList.toggle('ob-covered', covered);
   }
   setInterval(tick, POLL_MS);
@@ -365,7 +369,7 @@ function boot() {
 if (typeof window !== 'undefined' && typeof document !== 'undefined' && !window.raftOnboarding) {
   let rt = null;
   window.raftOnboarding = {
-    register: opts => { insertSteps(STEPS, CHAPTERS, opts); return true; },
+    register: opts => { insertSteps(STEPS, CHAPTERS, opts); extraSteps = true; return true; }, // their checks may read any state field
     complete: id => rt?.complete(id) ?? false,
     reset: () => rt?.reset(),
     state: () => rt?.state() ?? null,
