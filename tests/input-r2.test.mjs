@@ -121,3 +121,19 @@ test('INPUT-3: holding jump through a slow multi-substep frame jumps once, on th
   assert.match(gameSrc, /splitSteps\(dt\)/);
   assert.match(gameSrc, /movePlayer\(realDt,/);
 });
+
+// ---------------------------------------------------------------- INPUT-4 wheel over the hotbar
+
+const el = (...inside) => ({closest: sel => inside.some(s => sel.split(',').map(x => x.trim()).includes(s)) ? {} : null});
+
+test('INPUT-4: the wheel picks slots over the canvas and the hotbar, never inside panels or scrollers', () => {
+  assert.equal(R.wheelForGame(el()), true);              // canvas
+  assert.equal(R.wheelForGame(el('.tools')), true);      // hotbar button
+  assert.equal(R.wheelForGame(null), true);
+  assert.equal(R.wheelForGame(el('dialog')), false);
+  assert.equal(R.wheelForGame(el('#recipes')), false);
+  assert.equal(R.wheelForGame(el('input')), false);
+  assert.match(gameSrc, /on\(window, 'wheel', e => \{/);
+  assert.doesNotMatch(gameSrc, /on\(canvas, 'wheel'/);
+  assert.match(gameSrc, /!wheelForGame\(e\.target\)/);
+});

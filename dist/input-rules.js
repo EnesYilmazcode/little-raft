@@ -34,3 +34,10 @@ export function splitSteps(dt, maxStep = .05, cap = .25) {
   const n = Math.ceil(dt / maxStep - 1e-9);
   return {n, step: dt / n};
 }
+
+// Wheel: the hotbar wheel listens on window; ignore wheel events aimed at a dialog or at a
+// scrollable element so panels and settings keep scrolling normally.
+export function wheelForGame(target) {
+  if (!target || typeof target.closest !== 'function') return true;
+  return !target.closest('dialog, [role="dialog"], #recipes, [data-scroll], input, textarea, select');
+}

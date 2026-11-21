@@ -27,7 +27,7 @@ import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?bui
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint } from './hud.js?build=v3-survival-ae77fa84ac2b';
 import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
-import { keyDecision, createLookFilter, splitSteps } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
+import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -1043,8 +1043,8 @@ export function mount(transfer = null) {
   on(canvas, 'pointerleave', () => { mouse.inside = false; });
   on(canvas, 'pointercancel', () => { down = null; reeling = false; if (charging && charging.x !== null) charging = null; });
   on(canvas, 'contextmenu', e => e.preventDefault());
-  on(canvas, 'wheel', e => {
-    if (!running || uiBlocked() || (!isLocked() && !lockFallback)) return;
+  on(window, 'wheel', e => { // window, not canvas: in drag-look the hotbar sits over the canvas and must scroll slots too
+    if (!running || uiBlocked() || (!isLocked() && !lockFallback) || !wheelForGame(e.target)) return;
     e.preventDefault();
     wheelAcc += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
     if (Math.abs(wheelAcc) < 40) return;
