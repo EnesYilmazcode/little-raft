@@ -53,7 +53,7 @@ import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
-import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+import { createSurvivalUI, iconSVG } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { createGhosts, wrapRot, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
@@ -67,6 +67,12 @@ import { createIsland } from './scenery-islands.js?build=v3-survival-ae77fa84ac2
 // fish counter are shared. The host is authoritative: it keeps hostBag (its own) and guestBag
 // (the brother's, persisted in the save) and applies every action against the actor's bag.
 
+// Pickup feed icon: the cached 3D render, else the same flat drawing the hotbar shows (placeholder kinds such
+// as plastic or junk have no sprite, and the 3D icon can take seconds on slow GPUs; refresh() swaps it in later).
+function feedIcon(kind) {
+  const url = getItemIcon(kind); if (url) return url;
+  const t = document.createElement('template'); t.innerHTML = iconSVG(kind).trim(); return t.content.firstElementChild;
+}
 // ---------- Immutable configuration ----------
 const DECOR_TYPES = Object.freeze([...new Set(['sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'receiver', 'antenna', 'purifier', 'rainbarrel', 'sprinkler', ...CONTENT_DECOR, ...PLACEABLE_IDS])]); // [progression-hook] + PLACEABLE_IDS; // content hook: + CONTENT_DECOR // placeable bag items
 const ITEM_TYPES = Object.freeze(['wood', 'leaf', 'scrap', 'barrel', 'plastic', 'cache', 'oldboot', 'tincan', 'seajar']); // [recycler] + junk // floating debris kinds ('cache' = signal cache, never spawned by SPAWN_TABLE)
@@ -1859,7 +1865,7 @@ export function mount(transfer = null) {
     logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock()), tasks:{view:() => content?.tasksView?.() ?? null, claim:id => action({kind:'tasks.claim', i:id})}}); // [tasks] Tasks tab
     try { albumUI = createPhotoAlbumUI({store:sharedPhotoStore({notice:s => notice(s, 3200)}), onPause:guard(pauseInput), onResume:guard(() => requestLock())}); } catch (e) { console.error('photo album failed', e); albumUI = null; } // [camera]
     if (role !== 'guest') retroAward();
-    pickupFeed.setIconProvider(getItemIcon); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
+    pickupFeed.setIconProvider(feedIcon); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
     if ($('#toast')?.classList.contains('show')) toastTimer = later(() => { toastTimer = 0; $('#toast')?.classList.remove('show'); }, 2600);
     warmShaders(); // after settings: the saved graphics preset decides the light/shadow program variants

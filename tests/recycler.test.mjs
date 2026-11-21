@@ -159,3 +159,8 @@ test('recycler: progression wiring and panel copy hooks', () => {
   assert.ok(ui.includes('st-nofuel'));
   assert.ok(ui.includes("'Pick something from your bag to cook, then add fuel.'"), 'smelter copy unchanged');
 });
+
+test('recycler: pickup feed rows fall back to the hotbar drawing while the 3D icon renders', () => {
+  assert.match(GAME, /pickupFeed\.setIconProvider\(feedIcon\)/);
+  assert.match(GAME, /function feedIcon\(kind\) \{[^}]*getItemIcon\(kind\)[\s\S]{0,200}iconSVG\(kind\)/);
+});
