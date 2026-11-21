@@ -25,6 +25,8 @@ an unchanged build never swaps. Scene renders are spread over --jobs browsers (o
 per render) from one queue, longest scenes first. A render that fails without any page error (a timeout on a
 busy box) is retried once and listed in metrics.retried. Same build twice is byte-identical under swiftshader,
 across runs, browsers and processes, also with other instances and a CPU burner running.
+Timing on the 4-core box at load 15-30, default --jobs 4: compare mode 1.5-2.5 min with a cached base, 3-5 min
+cold (also with two instances side by side plus a 2-core CPU burner); --dist about 1.5-2.5 min.
 
 Last stdout line is one JSON object {tool, pass, failures, metrics, artifacts}. Exit 0 pass, 1 failure
 (nondeterminism, page error, scene unreachable, or --fail-on-diff diff), 2 harness/infra error.
