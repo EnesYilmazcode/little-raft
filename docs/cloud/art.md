@@ -43,9 +43,9 @@ All generators are deterministic and seamless, and each takes 6–26 ms.
 ### `dist/materials.js` (shared material registry and lighting rig)
 
 - **`PRESETS`:** 12 `MeshStandardMaterial` presets: planks, plank, bark, plastic, foliage, leaf, rope, scrap, sand, rock, foam, cloth. Each preset sets the roughness scale, metalness, normalScale, repeat, transparency, cutout and side.
-- **Shader patch:** a single patch makes every map read its own atlas cell with `fract()` + `textureGrad`, so cells repeat like ordinary textures with no mip seams. It also adds a per-material UV phase, reads roughness from the normal-atlas alpha, reads metalness from the albedo alpha (scrap), and applies an alpha cutout via the `lrCut` uniform.
+- **Shader patch:** a single patch makes every map read its own atlas cell with `fract()` + `textureGrad`, so cells repeat like ordinary textures with no mip seams. It also adds a per-material UV phase, reads roughness from the normal-atlas alpha (one texel fetch serves both normal and roughness), reads metalness from the albedo alpha (scrap), and applies an alpha cutout via the `lrCut` uniform.
   - Leaf cutout deliberately avoids `material.alphaTest`. With alphaTest, three's shadow depth material would copy the map and sample the whole atlas with leaf UVs.
-- **Programs:** all materials share programs under the key `lr-atlas-2`. Measured: 6 programs serve 13 materials. `onBeforeCompile` runs once per material, so each material keeps its own uniforms. **Bump the key whenever `patch()` changes.**
+- **Programs:** all materials share programs under the key `lr-atlas-3`. Measured: 6 programs serve 13 materials. `onBeforeCompile` runs once per material, so each material keeps its own uniforms. **Bump the key whenever `patch()` changes.**
 - **`getMaterial(T, name, {color, repeat})`:** cached. With a game palette colour the texture is tinted: the texture's own average moves 80% of the way to the colour, with a clamped per-channel gain, so dark palette colours don't turn the texture to mud.
 - **`materialForColor(T, hex)`:** maps the game's palette hexes (`COLOR_PRESETS`) to presets. It also returns a soft self-lit white for the mesh clouds, and `null` for anything unknown (avatars, hook, UI ghosts).
 - **`LIGHTING` + `applyLighting(scene, renderer, L, {ocean, T})`:** the recommended rig:
@@ -53,20 +53,21 @@ All generators are deterministic and seamless, and each takes 6–26 ms.
   - Warm sun `#ffe7c2` ×2.8, about 2.5x the fill.
   - Horizon-matched fog `#c6e3f0` from 38 to 150 m.
   - ACES tone mapping at exposure 1.0.
-  - A sky dome from `sky.js` (zenith `#6fb4e6`, white cumulus wisps).
+  - A cheap gradient sky dome from the fog colour to a zenith of `#5aa6e0`. It is untonemapped like the background and has no clouds of its own, so the game's mesh clouds stay the only cloud style. It replaced an earlier `sky.js` dome, whose per-pixel fbm clouds cost frame time and clashed with the mesh clouds.
   - `applyOceanLook` retints `ocean.js`: deep `#05497a`, shallow `#13a0b0`, and a fade into the fog colour so there is no horizon band.
 - **Also exports:** `artEnabled()` and `artStats(T)`.
 
 ## Hooks into existing files (all tiny, commented `art lane hook`)
 
-- **`dist/game.js`** (4 changes, all gated on `ART.artEnabled()`, i.e. `?art=1` in the page URL):
+- **`dist/game.js`** (5 changes, all gated on `ART.artEnabled()`, i.e. `?art=1` in the page URL):
   1. Import: `import * as ART from './materials.js?...'`.
   2. `mat(color)`: `let m = ART.artEnabled() ? ART.materialForColor(T, color) : null;` runs first; the old wood or flat material is the fallback.
   3. After the ocean is created: `ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T})`.
   4. Plastic jug: the jug body's own material is swapped for `mat('#f2f0e6')`, the cached plastic preset. Because it comes from `mat()`, `disposeGeometry` never disposes the shared atlas.
+  5. Scrap debris: the vertex-coloured sheet from `debris.js` is swapped for `mat('#8e9aa2')`, the cached scrap preset.
 - **`package.json`:** `npm test` also runs `tests/art.test.mjs`.
 
-To make the art permanent, replace `ART.artEnabled()` with `true` at those 3 call sites. Recommended at that point: call `await ART.getAtlasAsync(T)` before the scene is built, so the ~0.6 s cold build happens off the main thread.
+To make the art permanent, replace `ART.artEnabled()` with `true` at those 4 call sites. Recommended at that point: call `await ART.getAtlasAsync(T)` before the scene is built, so the ~0.6 s cold build happens off the main thread.
 
 ## Demo and tools (`sandbox/art/`)
 
@@ -94,8 +95,8 @@ To make the art permanent, replace `ART.artEnabled()` with `true` at those 3 cal
 
 ## Screenshots (`docs/cloud/shots/art/`)
 
-- **`before-spawn.png`, `before-walked.png`:** the game on `main` (no `?art`).
-- **`after-*.png`:** the same frames with `?art=1`.
+- **`before-{title,spawn,thrown,walked}.png`:** the game without `?art`, which looks the same as `main`.
+- **`after-{title,spawn,thrown,walked}.png`:** the same frames with `?art=1`. Debris positions are random per run.
 - **`demo.png`, `demo-flat.png`, `demo-atlas.png`:** the material demo, textured vs flat, and the atlas.
 
 ## Process
@@ -108,9 +109,22 @@ The lead plus about 15 subagents:
 - 2 critic rounds and 3 round-2 fixers.
 - Visual QA that read the screenshots.
 
-Critic scores rose from 4–8 (round 1: bark and rope at 4, sand at 8) after the round-2 fixes. See `sandbox/art/notes/critique-1.md`.
+Critic scores per material:
+- **Round 1:** 4–8 (bark and rope at 4).
+- **Round 2 (fresh critic):** 6–8 (planks, leaf and sand at 8).
+- **Whole scene:** 7.5/10, against about 5/10 for the baseline.
+
+After that review the deck washout was fixed: the sun went to 2.8, exposure to 1.0, and the tint to 80%. Bark, rope and scrap colours were also corrected. See `sandbox/art/notes/critique-1.md`.
+
+Visual QA read all the before/after frames:
+- No shader errors, black or misassigned cells, seams or HUD changes.
+- The game without `?art` is unchanged.
+- QA's follow-ups were fixed: two cloud styles, pale scrap debris, and the island canopy look.
 
 ## Known limits and follow-ups
+
+- **Frame time:** under headless SwiftShader (CPU rasteriser, 1280x720), the game frame went from about 207 ms to about 406 ms with `?art=1`, measured back to back. Each patched pixel does 2–3 atlas fetches with `textureGrad` plus normal mapping, and the deck fills half the screen. This is expected to be minor on a real GPU, but it has not been measured there yet. Profile on real hardware before making the art the default. If needed, the next cheap savings are dropping the normal map on distant or small meshes, or using plain `texture()` where the repeat is 1.
+- **Startup:** the sync atlas build is about 0.6 s cold. Use `getAtlasAsync` when making the art permanent (see Hooks).
 
 - **Repeat phase is per material, not per mesh.** Moving objects would make a per-mesh world-space phase swim, so identical meshes with the same tint line up.
 - **`material.clone()` drops the patch.** `onBeforeCompile` is not copied, so the clone samples the whole atlas. Always get materials from `getMaterial` instead.
