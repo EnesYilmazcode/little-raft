@@ -127,3 +127,15 @@ test('SURV-3 r3: the floor under a grill cannot be removed (client and host shar
   assert.equal(h.api.hasGrill(2, 0), true); assert.equal(h.api.hasGrill(1, 0), false);
   h.api.dispose();
 });
+
+test('SURV-4 r3: a legacy water cup loads as a usable Cup of Fresh Water', async () => {
+  const { migrateSnapshot } = await import(new URL('items.js', base));
+  const m = migrateSnapshot({ slots: [{ kind: 'water', count: 2 }, { kind: 'freshcup', count: 1 }, { kind: 'seed', count: 3 }], selected: 0 });
+  assert.deepEqual(m.slots[0], { kind: 'freshcup', count: 2 });
+  assert.deepEqual(m.slots[1], { kind: 'freshcup', count: 1 });
+  assert.deepEqual(m.slots[2], { kind: 'seed', count: 3 });
+  const bag = new Bag(m);
+  assert.equal(bag.count('freshcup'), 3); assert.equal(bag.count('water'), 0);
+  const snapBag = gameSrc.match(/const snapBag = [^\n]*/)?.[0] ?? '';
+  assert.match(snapBag, /migrateSnapshot\(s\)/, 'world load runs every bag through migrateSnapshot');
+});
