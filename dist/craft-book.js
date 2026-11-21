@@ -24,7 +24,7 @@ const CATEGORY_OF = Object.freeze({
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
   juicer: 'survival', berrycup: 'survival', coconutcup: 'survival', mixcup: 'survival', // [juicer]
   perch: 'survival', // [gull]
-  shelf: 'survival', trophystand: 'survival', // [display]
+  shelf: 'survival', trophystand: 'survival', aquarium: 'survival', // [display] [aquarium]
   turbine: 'survival', battery: 'survival', stringlights: 'survival', lamppost: 'survival', // [power]
   fishtrap: 'survival', // [fishtrap]
 
@@ -170,6 +170,7 @@ export const ITEM_TEXT = Object.freeze({
   sharkhead:  { desc: 'The head of a shark you beat.', use: 'A trophy, and proof the raft is safe for a while.' },
   shelf:      { desc: 'A little wooden display shelf.', use: 'Shows 3 items; E to put or take.' }, // [display]
   trophystand: { desc: 'A small pedestal with a brass plaque.', use: 'Shows 1 item or a fish trophy.' }, // [display]
+  aquarium:   { desc: 'A wood-framed glass tank with sand and a little plant.', use: 'Hold a raw fish and press E to add it (up to 4); E with an empty hand lets one out.' }, // [aquarium]
   turbine:    { desc: 'A little three-blade wind turbine on a mast.', use: 'Place next to a battery; it charges in the wind.' }, // [power]
   battery:    { desc: 'A sturdy box that stores wind power.', use: 'Powers lights within 3 tiles at night. Check it with E.' }, // [power]
   stringlights: { desc: 'A post with a wire of warm little bulbs.', use: 'Glows at night near a charged battery.' }, // [power]

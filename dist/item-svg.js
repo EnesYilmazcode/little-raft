@@ -505,6 +505,19 @@ export const ITEM_ICONS = Object.freeze({
     <circle cx="13" cy="10" r="1.2" fill="${O}"/>
     <path d="M15 8 C18 6.5 21 6.5 24 7" fill="none" stroke="#c8f0ea" stroke-width="1.4" stroke-linecap="round"/>`, // [display]
 
+  // [aquarium] wood-rimmed glass tank: water band, a little orange fish, two bubbles, a sand strip
+  aquarium: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="7" y="11" width="34" height="28" rx="1.5" fill="#e3f4f8"/>
+    <rect x="8" y="17" width="32" height="21" fill="#7fc4d4" stroke="none"/>
+    <rect x="8" y="33" width="32" height="5" fill="#e8d3a0" stroke="none"/>
+    <path d="M17 25 C20 21 27 21 29 25 L33 22 V28 L29 25 C27 29 20 29 17 25 Z" fill="#f39a24" stroke-width="1.5"/>
+    <rect x="5" y="8" width="38" height="4" rx="1" fill="#a8763f"/>
+    <rect x="5" y="38" width="38" height="5" rx="1" fill="#8a6136"/></g>
+    <circle cx="20" cy="24.6" r="1" fill="${O}"/>
+    <circle cx="35" cy="17" r="1.6" fill="none" stroke="#fff" stroke-width="1.1"/>
+    <circle cx="32.5" cy="13.8" r="1.1" fill="none" stroke="#fff" stroke-width="1"/>
+    <path d="M11 30 C10 26 12 23 11 20" fill="none" stroke="#4f9e5a" stroke-width="1.6" stroke-linecap="round"/>`, // [aquarium]
+
   // [fishtrap] woven basket with a crosshatch, a funnel mouth, a rope loop and a little fish tail at the mouth
   fishtrap: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <path d="M24 3 C20 3 19 8 24 9 C29 8 28 3 24 3 Z" fill="none" stroke="#d8c39a" stroke-width="2.2"/>

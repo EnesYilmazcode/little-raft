@@ -282,6 +282,7 @@ const LIST = [
     tip: 'Pin up the crew tasks for the day.' }),
   item('photoframe', 'Photo Frame', 'decor', { placeable: true, iconTint: '#c69860', recipe: hand({ wood: 3, glass: 1, nail: 1 }), unlock: research('glass', 'nail'), // [camera]
     tip: 'Hang a favourite photo on your raft. Press E on it to choose one.' }),
+  item('aquarium', 'Fish Tank', 'decor', { placeable: true, iconTint: '#7fc4d4', recipe: hand({ glass: 3, wood: 4 }), unlock: research('glass', 'nail'), tip: 'A little glass tank. Hold a fish and press E to let it swim.' }), // [aquarium] see dist/aquarium.js
   // [fireworks] sky rocket (model in dist/fireworks-model.js, logic in dist/fireworks.js)
   item('skyrocket', 'Sky Rocket', 'decor', { placeable: true, stack: 20, iconTint: '#e9a08c',
     recipe: hand({ plastic: 2, leaf: 1, scrap: 1 }, 3), unlock: discover('plastic', 'scrap'),
@@ -350,6 +351,7 @@ export const BLOCK_RADII = deepFreeze({
   fishtrap: 0.2, // [fishtrap] only the post stands on the deck
   taskboard: 0.3, // [tasks]
   photoframe: 0.15, // [camera]
+  aquarium: 0.4, // [aquarium]
   recycler: 0.45, // [recycler]
   scarecrow: 0.25, // [scarecrow]
   skyrocket: 0.1, // [fireworks]
