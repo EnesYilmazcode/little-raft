@@ -7,7 +7,7 @@ import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84a
 import { createSettings } from './settings.js?build=v3-survival-ae77fa84ac2b';
 import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
-import { createHands } from './hands.js?build=v3-survival-ae77fa84ac2b';
+import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { PlayerPhysics } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
@@ -708,6 +708,7 @@ export function mount(transfer = null) {
     const kind = heldKind(), motion = options.cameraMotion;
     const ch = charging ? clamp((performance.now() - charging.start) / CHARGE_MS, 0, 1) : 0;
     hands.setHeld(running ? kind : null);
+    hands.setPose(isPlaceable(kind) ? 'point' : null);   // free hand points at the build / placement spot
     const rod = kind === 'fishingrod' ? hands.itemModel('fishingrod') : null, out = !!hook?.fishing;
     if (rod?.userData.float) { rod.userData.float.visible = !out; rod.userData.leader.visible = !out; }
     hands.update({dt, time:elapsed, charge:ch, reeling:rod ? out && hook.t > fishWait : reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch});
