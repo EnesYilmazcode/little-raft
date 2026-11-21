@@ -181,6 +181,12 @@ test('createInstruments: local play, send gate, remote falloff, dispose', () => 
   assert.ok(h.scene.children.length <= 6, 'at most 6 live FX');
   assert.deepEqual(ins.prompt({ state: { heldKind: 'bells' } }), [{ key: 'LMB', label: 'Play' }], 'teach line gone after 10 notes');
   assert.equal(ins.prompt({ state: { heldKind: 'hook' } }), null);
+  assert.equal(ins.prompt({ state: { heldKind: 'drum', pickup: { type: 'wood' } } }), null, 'yields to the pick-up prompt');
+  assert.equal(ins.prompt({ state: { heldKind: 'drum', swimming: true } }), null, 'yields to climb / swim prompts');
+  for (let k = 0; k < 60; k++) ins.update(1 / 60);
+  assert.equal(h.scene.children.length, 0, 'faded FX leave the scene');
+  h.tick(100); ins.use('drum');
+  assert.equal(h.scene.children.length, 1, 'a pooled sprite comes back');
 
   // remote
   const friend = new T.Vector3(45, 0, 0);
@@ -194,6 +200,8 @@ test('createInstruments: local play, send gate, remote falloff, dispose', () => 
   assert.equal(r.notes.length, 1); assert.equal(r.notes[0][0], 'pipes'); assert.equal(r.notes[0][1], 2);
   assert.ok(r.notes[0][2] > 0 && r.notes[0][2] < 1, 'quieter with distance');
   assert.equal(ins2.onNet({ type: 'inst', i: 'hook', n: 2 }), false);
+  for (let k = 0; k < 40; k++) ins2.onNet({ type: 'inst', i: 'hook', n: 2 });
+  r.tick(1); assert.equal(ins2.onNet({ type: 'inst', i: 'bells', n: 3 }), true, 'junk does not use up the receive window');
   for (let k = 0; k < 30; k++) ins2.onNet({ type: 'inst', i: 'bells', n: 1 });
   assert.ok(r.notes.length <= 16, 'receive window caps notes per second');
   const noFriend = stubHost();
