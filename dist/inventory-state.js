@@ -44,7 +44,8 @@ export const ITEM_INFO = Object.freeze({
   rainbarrel: Object.freeze({ kind: 'rainbarrel', name: 'Rain Barrel',  icon: 'icon-rainbarrel', maxStack: STACK_SIZE, tool: false, placeholder: false }), // rain-sprinkler
   sprinkler:  Object.freeze({ kind: 'sprinkler',  name: 'Sprinkler',    icon: 'icon-sprinkler', maxStack: STACK_SIZE, tool: false, placeholder: false }), // rain-sprinkler
   // farming.js (raft-integration) kinds. Palm planters run on the watering lane above (cup -> saltcup -> purifier ->
-  // freshcup), so the farming rules' 'cup' is this Cup; seed/water are known to the bag but not dropped in play yet.
+  // freshcup), so the farming rules' 'cup' is this Cup; seed/water are known to the bag but not dropped
+  // in play (old water cups load as freshcup, items.js LOAD_RENAMES).
   seed:       Object.freeze({ kind: 'seed',       name: 'Palm Seed',    icon: 'icon-leaf',    maxStack: STACK_SIZE, tool: false, placeholder: true }),
   water:      Object.freeze({ kind: 'water',      name: 'Cup of Fresh Water', icon: 'icon-freshcup', maxStack: 5, tool: false, placeholder: true }),
 

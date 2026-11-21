@@ -182,8 +182,8 @@ export function clean(data, layoutOf = layoutFor) {
 
 // What one gather gives: [[kind, count], ...].
 export function lootFor(kind, seed, node, used) {
-  if (kind === 'palm') return used === NODE_MAX.palm - 1 ? [['wood', 1], ['leaf', 1], ['seed', 1]] : [['wood', 1], ['leaf', 1]];
-  if (kind === 'bush') { const h = hash3(seed, node, used); return h < 0.2 ? [['leaf', 1], ['flowerseed', 1]] : h < 0.5 ? [['leaf', 1], ['seed', 1]] : [['leaf', 1]]; } // [bees] flower seeds
+  if (kind === 'palm') return [['wood', 1], ['leaf', 1]]; // no palm seed: planters grow from fresh water alone (docs/specs/purifier-watering.md)
+  if (kind === 'bush') { const h = hash3(seed, node, used); return h < 0.2 ? [['leaf', 1], ['flowerseed', 1]] : [['leaf', 1]]; } // [bees] flower seeds
   if (kind === 'rock') return [['stone', 1]];
   if (kind === 'sand') return [['sand', 1]];
   return [];

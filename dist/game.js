@@ -263,7 +263,6 @@ export function mount(transfer = null) {
   let fc = null; // [fishing-cooking] rod fishing v2 + grills + journal (dist/fishing-cooking.js)
   let instruments = null; // [instruments]
   let logbookUI = null;
-  const farmPlot = () => null; // planters run on the watering lane (watering.js), not farming.js plots: seeds never point at one
   let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
@@ -876,6 +875,7 @@ export function mount(transfer = null) {
   }
   function floorRemoveWhy(tx, tz) { // placement.js rules on metres, plus building-lane pieces standing on the tile
     if (Array.isArray(world.pieces) && world.pieces.some(q => q && q.i === tx && q.j === tz)) return 'decor';
+    if (fc?.hasGrill(tx, tz)) return 'decor'; // a grill would hover over the sea and be dropped on load
     return floorRemoveBlock(world.tiles, decorInMetres(), tx, tz);
   }
   function removePiece() {
@@ -1145,6 +1145,7 @@ export function mount(transfer = null) {
       fishWait = 3 + Math.random() * 2; hook = {end:new T.Vector3(p.x, .1, p.z), t:0, duration:fishWait + .8, fishing:true};
       swing = 1; noticeUntil = 0; play('throw', .5); // the context prompt shows the wait
     }
+    if (kind === 'seed') { notice('Planters grow from fresh water; seeds aren\u2019t needed'); return; } // old saves: palm seeds no longer drop
     if (kind === 'cup' || kind === 'saltcup' || kind === 'freshcup') { const w = wateringTarget(aim); if (w?.click) { swing = 1; action(w.click); } else notice(w?.why ?? WATER_WHY[kind]); return; }
   }
   function beginCharge(at) {
@@ -1205,6 +1206,7 @@ export function mount(transfer = null) {
     const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); yaw = 0; pitch = -.28;
     for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     if (scene) { syncItems(); rebuildRaft(); }
+    try { fc?.reset(); } catch (e) { console.error('fishing-cooking reset failed', e); } // grills live in their own save key
     saveRev = newGameBaseRev(storedRev(), saveRev); unblockSave(); // the player chose to overwrite the stored save
     save(); start();
   }
@@ -1315,7 +1317,7 @@ export function mount(transfer = null) {
     const kind = heldKind(), motion = options.cameraMotion;
     const ch = charging ? clamp((performance.now() - charging.start) / CHARGE_MS, 0, 1) : 0;
     hands.setHeld(running ? kind : null);
-    pointing = running && isPlaceable(kind) && (kind !== 'seed' || !!farmPlot(frameAim)); // the one place the pointing-finger pose is decided; seeds point only at a planter
+    pointing = running && isPlaceable(kind) && kind !== 'seed' && kind !== 'seeds'; // the one place the pointing-finger pose is decided; old palm seeds have no target
     hands.setPose(pointing ? 'point' : null);
     const rod = kind === 'fishingrod' ? hands.itemModel('fishingrod') : null, out = !!hook?.fishing;
     if (rod?.userData.float) { rod.userData.float.visible = !out; rod.userData.leader.visible = !out; }
@@ -1445,8 +1447,9 @@ export function mount(transfer = null) {
     pickTarget = pickupFrom(frameAim);
     waterAim = pickTarget ? null : wateringTarget(frameAim);
     updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost();
-    content?.update(dt); // content hook
-    if (fc) { try { fc.update(dt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
+    const simDt = running ? dt : 0; // the title screen freezes the world: no day clock, no grill fuel or cooking
+    content?.update(simDt); // content hook
+    if (fc) { try { fc.update(simDt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
     if (instruments) { try { instruments.update(dt); } catch (e) { console.error('instruments update failed', e); try { instruments.dispose(); } catch {} instruments = null; } } // [instruments]
     if (running && role !== 'guest') {
       const itemCount = world.items.length, sigEvents = signalTick(world, dt, {token:newToken, held:new Set(caughtList(castOut()).map(c => c.token))});
