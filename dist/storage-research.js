@@ -72,6 +72,7 @@ export function cleanChest(raw) {
   return out;
 }
 const chestEmpty = c => c.every(s => !s);
+export const chestCount = c => (Array.isArray(c) ? c.reduce((n, s) => n + (s && s.count > 0 ? s.count : 0), 0) : 0);
 const kindList = v => (Array.isArray(v) && v.every(k => typeof k === 'string' && k.length > 0 && k.length < 40) ? sortedUnique(v) : null);
 
 /** Validate a world.ext.storage slice field by field. Never throws. Bad fields come back as null. */
@@ -381,7 +382,8 @@ export function createStorage(ctx) {
       return true;
     },
     // A foundation the shark tore off takes its crate's contents with it (game.js calls this on the host).
-    dropTile(x, z) { const k = keyOf(x, z); if (ctx.role === 'guest' || !st.chests[k]) return false; delete st.chests[k]; bump(); return true; },
+    // Returns the number of items that sank with it (0 = no crate contents there).
+    dropTile(x, z) { const k = keyOf(x, z), c = st.chests[k]; if (ctx.role === 'guest' || !c) return 0; delete st.chests[k]; bump(); return chestCount(c); },
     craftLocked(recipe) {
       if (typeof recipe !== 'string' || !hasOwn(RECIPES, recipe)) return null;
       return isLearned(st, recipe) ? null : LOCK_REASON;

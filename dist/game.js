@@ -356,6 +356,7 @@ export function mount(transfer = null) {
   function hasTile(x, z) { const ts = world.tiles; for (let i = 0; i < ts.length; i++) if (ts[i][0] === x && ts[i][1] === z) return true; return false; }
   const isLocked = () => !!canvas && document.pointerLockElement === canvas;
   const dialogOpen = () => !!document.querySelector('dialog[open]');
+  const soloPaused = () => role === 'solo' && dialogOpen(); // the solo pause menu stops the clock: no shark, no damage, no faint countdown (co-op keeps running)
   const uiBlocked = () => dialogOpen() || !!survivalUI?.isOpen;
   const castOut = () => (hook && !hook.fishing ? hook : null);
   const guestWaiting = () => role === 'guest' && !networkReady;
@@ -492,13 +493,15 @@ export function mount(transfer = null) {
         },
         circler:() => wildlifeMod?.circler ?? null,
         onBite:(x, z) => emit({kind:'shark', fx:'bite', x, z}, 'all'),
-        onBroke:(x, z) => { fc?.dropTile?.(x, z); content?.mods?.find(m => m.name === 'storage')?.dropTile?.(x, z); rebuildRaft(); fitShadow(); emit({kind:'shark', fx:'broke', x, z, text:'The shark tore a foundation off the raft!'}, 'all'); },
+        onBroke:(x, z) => { fc?.dropTile?.(x, z); const sank = Number(content?.mods?.find(m => m.name === 'storage')?.dropTile?.(x, z)) || 0; rebuildRaft(); fitShadow(); emit({kind:'shark', fx:'broke', x, z, text:sharkBrokeText(sank)}, 'all'); },
         onHurt:(i, n) => { if (i === 0) hurtLocal(n); else emit({kind:'shark', hurt:n}, 'guest'); },
         onWarn:() => emit({kind:'shark', text:'The shark is biting the raft!'}, 'all'),
         sendHit:dmg => action({kind:'shark:hit', dmg}),
       }, world.shark);
     } catch (e) { console.error('shark failed', e); shark = null; }
   }
+  // The loss is named: a crate's contents sink with the foundation it stood on.
+  const sharkBrokeText = sank => sank > 0 ? `The shark tore a foundation off \u2014 the crate on it sank with ${sank} item${sank === 1 ? '' : 's'}` : 'The shark tore a foundation off the raft!';
   function hurtLocal(n) {
     shakeAmp = Math.max(shakeAmp, .2); beep(140); notice('The shark bit you!', 1400);
     if (typeof hurtPlayer === 'function') hurtPlayer(n, 'shark'); else window.raftDebug?.hurt?.(n, 'shark');
@@ -677,7 +680,7 @@ export function mount(transfer = null) {
   // Game-internal damage hook for other systems (sharks, falls…). Hurts the LOCAL player only; on a host, a hit on the
   // guest must be sent to the guest (e.g. as an effect) and applied there with its own hurtPlayer. Returns HP lost.
   function hurtPlayer(n, cause = 'hit') {
-    if (!running || fainted >= 0) return 0;
+    if (!running || fainted >= 0 || soloPaused()) return 0;
     const lost = damageVitals(vitals, Number(n), String(cause ?? 'hit'));
     if (lost > 0) vitalsUI?.flash();
     return lost;
@@ -691,6 +694,7 @@ export function mount(transfer = null) {
   function updateVitals(dt, dialog) {
     if (!running) { eating = null; return; }
     if (fainted >= 0) { // passed out: a short dark beat, then wake up on the raft
+      if (dialog && soloPaused()) return; // paused mid-faint: the countdown waits
       fainted += dt; vitalsUI?.faint(true);
       if (fainted >= 2.6) {
         fainted = -1; const c = cleanVitals(RESPAWN); vitals.hp = c.hp; vitals.food = c.food; vitals.water = c.water; vitals.hurtAt = -Infinity; vitals.starving = false;
@@ -705,7 +709,7 @@ export function mount(transfer = null) {
       else if (bag.selectedIndex !== eating.slot || bag.slots[eating.slot]?.kind !== eating.item) eating = null; // switched slot or item gone
       else if ((eating.t += dt) >= EAT_SECONDS) { const item = eating.item; eating = null; action({kind:'eat', item}); }
     }
-    if (role === 'solo' && dialog && dialogOpen()) return; // the solo pause menu stops the clock
+    if (dialog && soloPaused()) return; // the solo pause menu stops the clock
     vitalsOpts.mult = exertion; tickVitals(vitals, dt, vitalsOpts);
     if (vitals.hp <= 0) { fainted = 0; eating = null; charging = null; reeling = false; if (hook) { fishWait = 0; endHook(); } clearInput(); } // drop the line: it must not stay out from the old spot
   }
@@ -719,7 +723,7 @@ export function mount(transfer = null) {
     if (tipCache.size > 200) tipCache.clear(); tipCache.set(html, t); return t;
   }
   function updateEatTip(dialog) {
-    const k = running && !dialog && fainted < 0 && !hook && !fishWait && !pickTarget && !waterAim?.click ? eatKind() : null;
+    const k = running && !dialog && fainted < 0 && !hook && !fishWait && !pickTarget && !waterAim?.click && !(waterAim?.why && CUP_KINDS.includes(selectedKind())) ? eatKind() : null; // a cup aimed at a watering target with a why shows that instead
     if (!k) { eatTip = null; return; }
     if (eating) { EATING_TIP.label = FOOD[k].food > 0 ? 'Eating…' : 'Drinking…'; eatTip = EATING_TIP; return; }
     eatTip = eatTips.get(k); if (!eatTip) { eatTip = {key:'LMB', label:eatLabel(k)}; eatTips.set(k, eatTip); }
@@ -1269,7 +1273,7 @@ export function mount(transfer = null) {
     if (kind === 'spear' ? spearRep?.use() : kind === 'hammer' && spearRep?.useHammer()) return; // [spear-repair] thrust / repair a damaged tile
     if (isEdible(kind)) { // [vitals] a fresh cup on a planter still waters it, a salt cup at a purifier still loads it
       const w = CUP_KINDS.includes(kind) ? wateringTarget(aim) : null;
-      if (w?.click) { swing = 1; action(w.click); } else startEat(kind);
+      if (w?.click) { swing = 1; action(w.click); } else if (w?.why) notice(w.why); else startEat(kind); // aimed at a busy purifier / planter: say why, never drink by accident
       return;
     }
     if (kind === 'hammer' && building && building.piece !== 'foundation') { // building-pieces lane hook
@@ -1619,7 +1623,7 @@ export function mount(transfer = null) {
     if (!promptOff && window.raftPrompts?.provide) { try { promptOff = window.raftPrompts.provide({id:'game-context', priority:0, prompt:promptTip}); } catch { promptOff = () => {}; } } // [vitals] eat/drink + watering prompts
     updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost();
     content?.update(dt); // content hook
-    if (shark) { try { shark.update(dt, elapsed, running); } catch (e) { console.error('shark update failed', e); try { shark.dispose(); } catch {} shark = null; } } // shark lane
+    if (shark) { try { shark.update(dialog && soloPaused() ? 0 : dt, elapsed, running); } catch (e) { console.error('shark update failed', e); try { shark.dispose(); } catch {} shark = null; } } // shark lane
     sky?.follow(ocean.uniforms, scene.background); sky?.update(elapsed, camera); // sky dome tracks day/night's horizon, zenith and sun
     if (fc) { try { fc.update(dt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
     if (instruments) { try { instruments.update(dt); } catch (e) { console.error('instruments update failed', e); try { instruments.dispose(); } catch {} instruments = null; } } // [instruments]
@@ -1858,16 +1862,22 @@ export function mount(transfer = null) {
   function restoreOwnRaft() {
     const plan = guestLeavePlan(storedRev(), saveRev); // another tab (e.g. the host in this browser) saved since we joined: never restore over it
     const b = (plan.useBackup ? normaliseBackup(ownWorldBackup) : null) ?? savedOwnRaft(); ownWorldBackup = null; remoteBag = null;
-    loadRaft(b);
+    loadRaft(b, true); // the guest's own body (bars) came home with it
     if (plan.block) blockSave(); // keep our old rev: that tab keeps saving; Continue from the title adopts its save
   }
-  function loadRaft(b) { // b: {world, host, guest, physics|null}
+  // [vitals] Bars from a raft's save (missing -> full), awake, not mid-bite, overlay and vignette cleared.
+  function resetVitals(saved) {
+    Object.assign(vitals, newVitals(saved)); fainted = -1; eating = null;
+    vitalsUI?.faint(false); vitalsUI?.update(vitals, false); if (running && !disposed) vitalsUI?.update(vitals, true);
+  }
+  function loadRaft(b, keepVitals = false) { // b: {world, host, guest, physics|null}; keepVitals: a guest restoring its own raft
     hook = null; fishWait = 0; charging = null; reeling = false; lastCaughtCount = 0; pending.clear();
     world = b.world; hostBag = snapBag(b.host) ?? new Bag(); guestBag = snapBag(b.guest) ?? new Bag();
     if (b.physics) physics = new PlayerPhysics(b.physics); else { const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); }
     if (!world.items.length) for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     content?.load(world.ext, 'restore'); // content hook
     shark?.clearNet(); shark?.load(world.shark); // shark lane: our own shark again
+    if (!keepVitals) resetVitals(world.vitals); // [vitals] a new / loaded raft brings its own bars (a guest going home keeps its body)
     if (scene) { syncItems(); rebuildRaft(); fitShadow(); }
     queueMicrotask(guard(retroAward)); // callers set role = 'solo' right after this returns
   }

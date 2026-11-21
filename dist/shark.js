@@ -43,7 +43,27 @@ export function isArmored(armor, x, z) {
   return typeof armor === 'object' && !!armor[k];
 }
 export function tileHpOf(hp, x, z) { const v = hp ? hp[tileKey(x, z)] : undefined; return fin(v) ? clamp(v, 0, SHARK.TILE_HP) : SHARK.TILE_HP; }
+// Number of 4-connected pieces the tiles form, leaving out the tile (skipX, skipZ) when given.
+function pieceCount(tiles, skipX, skipZ) {
+  const left = new Set();
+  for (const t of tiles) if (Array.isArray(t) && !(t[0] === skipX && t[1] === skipZ)) left.add(tileKey(t[0], t[1]));
+  let n = 0;
+  for (const k0 of left) {
+    n++; const stack = [k0]; left.delete(k0);
+    while (stack.length) {
+      const k = stack.pop(), c = k.indexOf(','), x = +k.slice(0, c), z = +k.slice(c + 1);
+      for (const [a, b] of N4) { const nk = tileKey(x + a, z + b); if (left.has(nk)) { left.delete(nk); stack.push(nk); } }
+    }
+  }
+  return n;
+}
+// True when removing (x, z) would cut the raft into more pieces than it has now (a 1-wide bridge tile).
+export function splitsRaft(tiles, x, z) {
+  if (!Array.isArray(tiles) || !hasTile(tiles, x, z)) return false;
+  return pieceCount(tiles, x, z) > pieceCount(tiles);
+}
 // Edge tiles: at least one of the 4 neighbours missing, and not armored. Sorted for determinism.
+// Bridge tiles (whose loss would split the raft) are left out, unless every edge tile is one.
 export function edgeTiles(tiles, armor) {
   const out = [];
   if (!Array.isArray(tiles)) return out;
@@ -54,6 +74,10 @@ export function edgeTiles(tiles, armor) {
     if (edge && !isArmored(armor, t[0], t[1])) out.push([t[0], t[1]]);
   }
   out.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+  if (out.length > 1) {
+    const whole = pieceCount(tiles), safe = out.filter(([x, z]) => pieceCount(tiles, x, z) <= whole);
+    if (safe.length) return safe;
+  }
   return out;
 }
 // A random edge tile and one of its open sides (the side the shark bites from): {x, z, nx, nz} or null.
@@ -134,6 +158,8 @@ const attacking = s => s.state === 'approach' || s.state === 'bite' || (s.state 
 function setState(s, st) { s.state = st; s.stateT = 0; }
 function endAttack(s) { s.hasTarget = false; s.attackDmg = 0; s.warned = false; s.timer = SHARK.ATTACK_EVERY; }
 function flee(s) { endAttack(s); setState(s, 'flee'); }
+// Repelled by spear hits: only a raft attack restarts the attack timer, so spearing a circling/hunting shark never postpones the next one.
+function repel(s) { const t = s.timer, raid = attacking(s); flee(s); if (!raid) s.timer = t; }
 // Starts an attack now: picks a target, or skips this round (every edge armored). Returns true if it attacks.
 export function startAttack(s, world, rnd = Math.random) {
   if (s.state === 'dead') return false;
@@ -153,7 +179,7 @@ export function hit(s, dmg) {
   s.hp = Math.max(0, s.hp - dmg); s.hurtT = 0.35;
   if (s.hp <= 0) { kill(s); return true; }
   s.attackDmg += dmg;
-  if (s.attackDmg >= SHARK.REPEL) flee(s);
+  if (s.attackDmg >= SHARK.REPEL) repel(s);
   return true;
 }
 export function kill(s) {
@@ -263,7 +289,8 @@ export function step(s, dt, world, env = NOOP) {
       s.biteClock -= dt;
       if (s.biteClock > 0) break;
       s.biteClock += SHARK.BITE_EVERY;
-      if (!hasTile(tiles, s.tx, s.tz) || hasTile(tiles, s.tx + s.nx, s.tz + s.nz) || isArmored(world.tileArmor, s.tx, s.tz)) { startAttack(s, world, rnd); break; }
+      if (!hasTile(tiles, s.tx, s.tz) || hasTile(tiles, s.tx + s.nx, s.tz + s.nz) || isArmored(world.tileArmor, s.tx, s.tz)
+        || !edgeTiles(tiles, world.tileArmor).some(t => t[0] === s.tx && t[1] === s.tz)) { startAttack(s, world, rnd); break; } // the raft changed: it became a bridge tile
       if (!s.warned) { s.warned = true; if (hooks.warn) hooks.warn(s.tx, s.tz); }
       const hp = damageTile(world, s.tx, s.tz, SHARK.BITE_DMG);
       s.anim = 1;
