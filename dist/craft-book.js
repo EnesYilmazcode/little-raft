@@ -24,6 +24,7 @@ const CATEGORY_OF = Object.freeze({
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
   researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
   rug: 'building', pennant: 'building', fern: 'building', chime: 'building', hammock: 'building', pots: 'building', sign: 'building', // decor pack
+  flagpole: 'building', // [flags]
   kiln: 'building', glasslamp: 'survival', sinker: 'survival', // kiln
   nestbox: 'survival', cushion: 'building', // raft animals
   // content (engine, sleep, paint)
@@ -107,6 +108,7 @@ export const ITEM_TEXT = Object.freeze({
   hammock:    { desc: 'A rope hammock between two posts.', use: 'Place it on the raft for a cosy corner.' },
   pots:       { desc: 'Three clay pots with little flowers.', use: 'Place it on the raft; E turns it.' },
   sign:       { desc: 'A wooden board you can write on.', use: 'Place it, then press E to write up to three lines.' },
+  flagpole:   { desc: 'A tall pole with a cloth flag that flies in the wind.', use: 'Place it, then press E to design your flag.' }, // [flags]
   kiln:       { desc: 'A stone and clay kiln with a wood fire.', use: 'Place it, load ore, sand or clay and some wood; collect ingots, glass and bricks.' },
   glasslamp:  { desc: 'A lantern with clear glass panes.', use: 'Place it for a warm light on the raft.' },
   sinker:     { desc: 'A small metal weight for the hook line.', use: 'Keep it in your bag: the hook wears half as fast.' },

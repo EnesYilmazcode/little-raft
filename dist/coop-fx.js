@@ -6,7 +6,7 @@
 
 const MINE = '#efae55', THEIRS = '#70a7e4';
 const ROPE = '#e9d39a', GHOST_REMOTE = '#3d8ff0', GHOST_BAD = '#ee8e75';
-const DECOR = new Set(['sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign']);
+const DECOR = new Set(['sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign', 'flagpole']); // [flags] + flagpole
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const fin = Number.isFinite;   // fixed-arity checks below: no rest-arg arrays in per-frame paths
 const fin2 = (a, b) => fin(a) && fin(b);

@@ -198,3 +198,15 @@ It returns `{ open(x,z), close(), destroy(), get isOpen }`.
 
 ## 9. Out of scope
 Free pixel painting, flags on sails or islands, raising and lowering animation, and per-player private designs. Picking a pole up drops its design. The last-design memory makes re-raising it one click.
+
+## Build notes
+- **Files**: new `dist/flags.js`, `dist/flags-core.js`, `dist/flags-model.js`, `dist/flags-ui.js`, `tests/flags.test.mjs`. Small edits: `content-items.js` (item, recipe, decor, radius), `item-svg.js` (`flagpole` icon), `craft-book.js` (category + text), `coop-fx.js` (`DECOR`), `live.js` (`PRELOAD`), `content.js` (import + end of `FEATURES`, tagged `[flags]`), `tests/storage-research.test.mjs:478` (`'flagpole'` between fern and hammock).
+- **Deviation: `placeholder: true`** on the `flagpole` item. With `false`, `tests/item-icons.test.mjs` requires an `icon-flag` symbol in `icons.svg`; `survival-ui.js` prefers the `item-svg.js` drawing for placeholder kinds, so the drawing is what the bag shows either way.
+- **Deviation: `flags-model.js` imports `flags-core.js`** (PALETTE, PATTERNS, EMBLEMS, EMBLEM_PATHS) so `paintFlag` lives where section 4 puts it and the art has one source. flags-core stays import-free. `buildFlagModel` also returns `waveMaterial`, which flags.js uses for its texture cache.
+- **`load()` from save/restore** sets `r = prev.r + saved.r + 1` instead of `saved.r + 1`, so `r` never repeats within one session and a guest's `r/s` short-circuit can never skip a real change.
+- **Cloth**: `MeshLambertMaterial` also uses the flag texture as an `emissiveMap` at intensity .2, so the lee side of the cloth does not go muddy. The cloth sits .05 m off the mast axis (on the halyard).
+- **Aim**: ray vs the mast segment (y .2..3.5 above the tile top, within .4 m) or the cloth centre (.65 m downwind, within .55 m), and the player must be within `REACH` of the tile.
+- **Pick-up**: `afterUndecor(d)` is implemented (decor-pickup landed this round). It deletes `f[key]`, bumps `r` and closes the dialog if it shows that pole. The host rescan (decor identity/length change, every 2 s, and before each `serialize`) also prunes, which covers shark breaks.
+- **UI extras**: the dialog exposes `get tile()` (the open pole's key) for `afterUndecor`. Random never picks the background colour for the pattern or emblem colour. Width is `min(452px, 94vw)`, and at 360 px the rows wrap and the panel scrolls.
+- **Tests**: `node --test tests/flags.test.mjs` covers 12 cases (core, painter with fakes, the module with a fake ctx, and a THREE run for decorModel, material swap and wind). `npm test` passes in full (946).
+- **Smoke** (headless Chrome, swiftshader): two poles with different designs wave downwind. E on a pole in reach opens the dialog with focus on Save. Save sends one action and remembers the design in localStorage. There were no page errors.
