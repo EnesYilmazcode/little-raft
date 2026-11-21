@@ -387,7 +387,8 @@ test('migrate: aliases, unknown kinds, durability, selected', () => {
   assert.deepEqual(m.slots[8], { kind: 'metalhook', count: 1, durability: 100 });
   for (let i = 9; i < SLOT_COUNT; i++) assert.equal(m.slots[i], null);
   assert.equal(m.selected, 6);
-  for (const sel of [8, -1, 2.5, '3', NaN, null]) assert.equal(migrateSnapshot({ slots: [], selected: sel }).selected, 0);
+  for (const sel of [10, -1, 2.5, '3', NaN, null]) assert.equal(migrateSnapshot({ slots: [], selected: sel }).selected, 0);
+  for (const sel of [8, 9]) assert.equal(migrateSnapshot({ slots: [], selected: sel }).selected, sel); // 10-slot hotbar
   for (const junk of [null, undefined, 0, 'x', [], true]) assert.equal(migrateSnapshot(junk), null);
 });
 

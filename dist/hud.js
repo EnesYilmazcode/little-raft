@@ -39,7 +39,7 @@ export const HINT_KEY = 'little-raft-hints';
 export const HINTS = Object.freeze([
   {id:'throw', text:'Hold click to charge, release to throw at floating supplies', when:c => c.heldKind === 'hook' && !c.castOut},
   {id:'bag', text:'Press Tab or E to open your bag and craft', when:c => c.hasLoot},
-  {id:'slots', text:'Press 1–8 to choose what you hold', when:() => true},
+  {id:'slots', text:'Press 1–9 or 0 to choose what you hold', when:() => true},
 ]);
 export function loadHints(storage) {
   try { const v = JSON.parse(storage?.getItem(HINT_KEY) ?? '[]'); return new Set(Array.isArray(v) ? v.filter(x => typeof x === 'string') : []); } catch { return new Set(); }
