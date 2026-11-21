@@ -979,8 +979,8 @@ export function mount(transfer = null) {
     if (!running || hook || fishWait) return;
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
     const kind = selectedKind(), bag = localBag(), p = aim?.point ?? null;
+    if (kind === 'hammer' && building?.removing) return; // X held: remove mode never builds (not even a foundation floor)
     if (kind === 'hammer' && building && building.piece !== 'foundation') { // building-pieces lane hook
-      if (building.removing) return;
       const a = building.use(); if (a) { swing = 1; action(a); } else notice('Point at a green spot'); return;
     }
     if (kind === 'hammer' || DECOR_TYPES.includes(kind)) {
