@@ -37,6 +37,7 @@ export const FOOD = {
   berrycup:        {food:10,   water:35, returns:'cup'},  // [juicer]
   coconutcup:      {food:6,    water:45, returns:'cup'},  // [juicer]
   mixcup:          {food:14,   water:38, returns:'cup'},  // [juicer]
+  milk:            {food:10,   water:25, returns:'bucket', drink:true}, // Bramblegoat milk; the pail comes back
 };
 
 const num = (x, d = 0) => (typeof x === 'number' && Number.isFinite(x) ? x : d);
@@ -94,7 +95,7 @@ export function consume(v, kind) {
 }
 
 /** True for drinks: water-only items, anything that hands a cup back, and *cup kinds. [juicer] */
-export const isDrink = kind => { const e = isEdible(kind) ? FOOD[kind] : null; return !!e && (!e.food && e.water !== 0 || !!e.returns || kind.endsWith('cup')); };
+export const isDrink = kind => { const e = isEdible(kind) ? FOOD[kind] : null; return !!e && (!!e.drink || !e.food && e.water !== 0 || !!e.returns || kind.endsWith('cup')); };
 
 /** Short prompt label, e.g. "Eat (+35 food)" / "Drink (+40 water)". */
 export function eatLabel(kind) {

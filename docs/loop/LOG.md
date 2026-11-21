@@ -1043,6 +1043,14 @@ Open for next round:
 - Merged claude/loop-ux-202611210852 with no content change: its only new commit merges loop-ux-202611210748, which raft-master already has; kept raft-master's side.
 - Gate after merging raft-master: 1138/1138 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text; 166 ms/frame, 37 draw calls.
 
+## 2026-11-21 · integrator F (scheduled run, 09:34 UTC)
+- Merged loop-features-202611210926 (biofuel and power-hookup specs, research notes; docs only). npm test 1270/1270.
+- Skipped loop-visuals-202611210548: 1624 commits behind, conflicts in sky.js and hands.js, and baking the sky once would freeze
+  the daynight-driven sky on raft-master.
+- Still skipped: loop-perf-0720, loop-fidelity-0747 (large stale branches, need worker rebases). Everything else with new commits
+  is claimed by integrators B-E in STATUS.md, so this run left those and PR #5 (gated by B) alone.
+- Screenshot gate tool unavailable here (no Python playwright); not a blocker for a docs-only merge.
+
 ## 2026-11-21 · integrator D: loop-fidelity-202611210900, -0910, -0914; loop-features-202611210855
 - Merged loop-fidelity-202611210914: Simple Bed (Raft recipe, sleep effect on vitals, home-bed respawn) and Raft breath (33 s, halved when starving) with drowning damage.
 - Merged loop-features-202611210855: docs only, research notes and specs for zipline, night light (hand lantern, firefly jar) and crops.

@@ -23,6 +23,7 @@
 //   steerTargets()            -> array of raft-local {x,z} extra hold-R steering grab points (engine: wheels)
 //   use(aim, kind)            left click with a bag item `kind` that no engine tool handles. Return true if consumed.
 //   alt(aim, kind)            right click while holding `kind`. Return true if consumed (paint: brush colour).
+//   zoom()                    -> view zoom factor 1..8 this frame (spyglass); game.js divides the FOV, look speed and camera motion by it
 //   afterRebuild()            after rebuildRaft() recreated the deck/decor meshes (paint: re-tint planks)
 //   tileTint(x, z, base)      plank colour for deck tile x,z (base = the plank's own colour) or null (paint)
 //   placed(type, x, z, actor) host, after a decor piece was built on tile x,z ([bed]: a new bed is its placer's home)
@@ -84,8 +85,10 @@ import { createFlags } from './flags.js?build=v3-survival-ae77fa84ac2b'; // [fla
 import { createScarecrow } from './scarecrow.js?build=v3-survival-ae77fa84ac2b'; // [scarecrow]
 import { createFireworks } from './fireworks.js?build=v3-survival-ae77fa84ac2b'; // [fireworks]
 import { createZipline } from './zipline.js?build=v3-survival-ae77fa84ac2b'; // [zipline]
+import { createSpyglass } from './spyglass.js?build=v3-survival-ae77fa84ac2b'; // [spyglass]
+import { createStorm } from './storm.js?build=v3-survival-ae77fa84ac2b'; // [storm]
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createCookpot]; // round 4: game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); // [bees] + createBees; [scarecrow] after wildlife; [sit] + createSitting; [flags] + createFlags; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [juicer] + createJuicer [gull] + createGull
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createStorm, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createSpyglass, createCookpot]; // round 4: game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); // [bees] + createBees; [scarecrow] after wildlife; [sit] + createSitting; [flags] + createFlags; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [storm] after daynight; [spyglass]; [juicer] + createJuicer [gull] + createGull
 // [undecor] decor whose module stores items per tile but has no beforeUndecor/undecorLoot/afterUndecor yet:
 // picking it up would lose what it holds, so the host refuses (display, fish trap, cooking pot, gull perch tray).
 const NO_UNDECOR = new Set(['shelf', 'trophystand', 'fishtrap', 'cookpot', 'perch']);
@@ -142,6 +145,7 @@ export function createContent(ctx, features = FEATURES) {
     prompt: aim => { const m = seatedMod(); return (m && call(m, 'prompt', aim)) || first('prompt', aim); }, // [sit] a seated module's prompt wins (E gets you up)
     use: (aim, kind) => !!first('use', aim, kind), // content hook (paint)
     alt: (aim, kind) => !!first('alt', aim, kind), // content hook (paint)
+    zoom() { const z = first('zoom'); return Number.isFinite(z) && z >= 1 && z <= 8 ? z : 1; }, // [spyglass] view zoom, default 1
     afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)
     tileTint: (x, z, base) => first('tileTint', x, z, base), // content hook (paint): plank hex for a painted deck tile, else null
     placed(type, x, z, actor) { for (const m of mods) call(m, 'placed', type, x, z, actor); }, // [bed]
