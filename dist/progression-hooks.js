@@ -8,18 +8,20 @@
 // guest only renders the snapshots the host sends ({kind:'prog:sync'} effects) and sends
 // 'prog:*' actions. Limits: guest progression is tied to the host's save (a guest starts fresh on
 // another host's raft), and guest station/research views lag by one sync (~0.3 s).
-import { ITEMS, FUEL_VALUE, toolRole } from './items.js';
+import { ITEMS, FUEL_VALUE, toolRole, stationExtraRecipes } from './items.js';
 import { Progression } from './progression.js';
 import { StationModel } from './smelter.js';
 import { createStationPanel } from './smelter-ui.js';
 import { createSmelterModel, createResearchTableModel, createGrillModel, setSmelterGlow } from './smelter-model.js';
 import { installItemTooltips } from './item-tooltips.js';
+import { createRecyclerModel } from './recycler-model.js'; // [recycler]
 
 export const PROGRESSION_KEY = 'littleRaft.progression.v1';
 const REACH = 2.2, NOTE_EVERY = 0.5, SAVE_EVERY = 2, SYNC_EVERY = 0.3;
-const COOKERS = new Set(Object.values(ITEMS).map((it) => it.recipe?.station).filter(Boolean));
+const COOKERS = new Set([...Object.values(ITEMS).map((it) => it.recipe?.station).filter(Boolean),
+  ...Object.keys(ITEMS).filter((id) => stationExtraRecipes(id))]); // [recycler] + fuel-free stations
 const STATIONS = new Set(Object.keys(ITEMS).filter((id) => ITEMS[id].category === 'station'));
-const MODELS = { smelter: createSmelterModel, researchtable: createResearchTableModel, grill: createGrillModel };
+const MODELS = { smelter: createSmelterModel, researchtable: createResearchTableModel, grill: createGrillModel, recycler: createRecyclerModel };
 const nameOf = (k) => ITEMS[k]?.name ?? k;
 const isHand = (id) => !!ITEMS[id]?.recipe && ITEMS[id].recipe.station == null;
 const keyOf = (d) => d.x + ',' + d.z;
@@ -28,6 +30,10 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const posInt = (n) => (Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0);
 // Hand recipes every pre-progression build offered; old raft saves keep them learned.
 const LEGACY_RECIPES = ['rope', 'hook', 'hammer', 'fishingrod', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate'];
+// [recycler] station panel wording; stations not listed keep the cooking copy.
+const PANEL_COPY = Object.freeze({
+  recycler: Object.freeze({ input: 'To sort', none: 'No junk in your bag to sort.', busy: 'Sorting', idle: 'Pick some junk from your bag to sort.', nothing: 'Nothing here to sort.' }),
+});
 // The live instance that may write PROGRESSION_KEY (hot reload mounts the new engine before disposing the old one).
 const OWNER = Symbol.for('littleRaft.progression.owner');
 
@@ -131,6 +137,7 @@ export function attachProgression(ctx) {
       const left = bag.add(out.kind, out.count);
       if (left === out.count) { ctx.emit({ kind: 'full', text: 'Your bag is full' }, actor); return true; }
       if (a.kind === 'prog:take') st.output = left > 0 ? { kind: out.kind, count: left } : null;
+      if (a.kind === 'prog:take' && st.stationId === 'recycler') ctx.emit({ kind: 'loot', text: 'The sea looks a little cleaner.' }, actor); // [recycler]
       else { st.takeInput(); if (left > 0) st.input = { kind: out.kind, count: left }; }
     }
     dirty = true; syncClock = SYNC_EVERY; return true;
@@ -150,7 +157,7 @@ export function attachProgression(ctx) {
   const later = () => setTimeout(() => { panel?.update(); renderResearch(true); }, isRemote() ? 350 : 0);
   function openStation(key) {
     panel ??= createStationPanel({
-      getStation: (k) => stationView(k), getBag: () => ctx.localBag(), items: ITEMS, fuelValue: FUEL_VALUE,
+      getStation: (k) => stationView(k), getBag: () => ctx.localBag(), items: ITEMS, fuelValue: FUEL_VALUE, copy: PANEL_COPY,
       onInsert: (k, n) => act({ kind: 'prog:insert', key: panel.stationId, item: k, n }),
       onFuel: (k, n) => act({ kind: 'prog:fuel', key: panel.stationId, item: k, n }),
       onTake: () => act({ kind: 'prog:take', key: panel.stationId }),
@@ -285,6 +292,8 @@ export function attachProgression(ctx) {
       const a = (glow.get(key) ?? 0) + (target - (glow.get(key) ?? 0)) * Math.min(1, dt * 2);
       glow.set(key, a); setSmelterGlow(g, a, time);
       const ingot = g.getObjectByName('ingot'); if (ingot) ingot.visible = !!st?.output;
+      const crank = g.getObjectByName('recyclerCrank'); if (crank && st?.cooking) crank.rotation.z += dt * 4; // [recycler]
+      const pile = g.getObjectByName('recyclerPile'); if (pile) pile.visible = !!st?.output;
     }
     if (panel?.isOpen) { if (!stationView(panel.stationId)) panel.close(); else panel.update(); }
     renderResearch(false);
