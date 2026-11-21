@@ -369,14 +369,14 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
     for (let i = rows; i >= 0; i--) { const y = -hh + (H * i) / rows; prof.push(new T.Vector2(rad(y) + dr - thick, y + (i === 0 || i === rows ? dy : 0))); }
     prof.push(prof[0].clone());
     const phi = (s / staves) * Math.PI * 2;
-    wood.push(tint(T, new T.LatheGeometry(prof, lod ? 1 : 3, phi + gap / 2, (Math.PI * 2) / staves - gap), s % 2 ? '#b98148' : '#a8703f'));
+    wood.push(tint(T, new T.LatheGeometry(prof, lod ? 1 : 3, phi + gap / 2, (Math.PI * 2) / staves - gap), s % 2 ? '#a87d51' : '#9c714b'));
   }
 
   // recessed end caps (chime)
   const capR = rEnd - thick + 0.004, capY = hh - 0.045;
   wood.push(
-    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, lod ? 14 : 28), 0, capY, 0), '#9a6538'),
-    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, lod ? 14 : 28), 0, -capY, 0), '#9a6538'),
+    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, lod ? 14 : 28), 0, capY, 0), '#926946'),
+    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, lod ? 14 : 28), 0, -capY, 0), '#926946'),
   );
   // board seams on top cap
   for (const z of [-0.18, -0.06, 0.06, 0.18]) {
