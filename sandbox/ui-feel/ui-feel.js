@@ -2,16 +2,22 @@
 // Drop-in module: copy to dist/ui-feel.js. No imports, injects its own <style id="ui-feel-style">.
 //
 // What it adds on top of dist/survival-ui.js (which it never edits):
-//   - hotbar: a sliding selection cursor + icon bounce, count bumps (watches .tools via MutationObserver)
-//   - pickup: item icons fly from the crosshair (or a given point) into the slot that received them
-//   - toasts: pooled stack with merging ("Wood +2" -> "Wood +6") and per-kind accents
+//   - pickup: item icons fly from the crosshair (or a given point) into the slot that received them; the slot
+//     keeps showing its old count (and, if it was empty, no icon) until the icon lands, then bumps
+//   - hotbar: a sliding selection cursor + icon hop and paint-time count bumps, ONLY when the hotbar has no
+//     cursor of its own (survival-ui sv3 ships .sv-cursor and sv-bumpA/B: then ui-feel leaves both to it)
+//   - toasts (optional, `toasts:false` turns them off): pooled stack with merging ("Wood +2" -> "Wood +6")
 //   - stat bars: transform-only fill with a delayed lag trail on damage and a lead ghost on heal
 //   - crosshair: hover / charge ring / hit markers, built inside the existing #crosshair
 //   - inventory dialog open/close and button press states (pure CSS, see CSS below)
 //
-// Rules: motion is transform/opacity only (stroke-dashoffset for the charge arc, which paints a 40px box);
-// layout is read only in ResizeObserver callbacks or once per explicit action, never in a per-frame path;
+// Rules: anything that MOVES (fly, bounce, slide, shake, fill, trail) animates transform/opacity only.
+// Exceptions, all on small boxes and on discrete state changes rather than continuous motion:
+// stroke-dashoffset on the 40px charge arc; box-shadow/background/filter transitions on hover/press of
+// slots, recipes and buttons and on the reticle ring/dot; the inventory ::backdrop background-color fade.
+// Layout is read only in ResizeObserver callbacks or once per explicit action, never in a per-frame path;
 // nodes are pooled; prefers-reduced-motion swaps every movement for a short fade.
+// Every public method is guarded: it logs and returns false instead of throwing into the caller.
 
 const INST_KEY = '__littleRaftUIFeel';
 const BACK = 'cubic-bezier(.34,1.56,.64,1)';
@@ -19,9 +25,10 @@ const OUT = 'cubic-bezier(.22,1,.36,1)';
 const IN_OUT = 'cubic-bezier(.65,0,.35,1)';
 const PSEUDO = typeof KeyframeEffect !== 'undefined' && 'pseudoElement' in KeyframeEffect.prototype;
 
-const CSS = `
+const STYLE = `
 :root{--uf-cream:#fff2cc;--uf-gold:#ffe3a6;--uf-amber:#ffbd66;--uf-wood:#3a2716;--uf-wood-lt:#c9a66b;--uf-ink:#24170c;
-  --uf-teal:#9fe0d6;--uf-red:#e06a4a;--uf-green:#8fd36a;--uf-back:${BACK};--uf-out:${OUT}}
+  --uf-teal:#9fe0d6;--uf-red:#e06a4a;--uf-green:#8fd36a;--uf-back:${BACK};--uf-out:${OUT};
+  --uf-font:var(--ui-font,"Bahnschrift","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif)}
 #uf-layer{position:fixed;inset:0;pointer-events:none;z-index:6;contain:strict}
 #uf-layer>*{position:absolute;left:0;top:0}
 
@@ -41,6 +48,12 @@ const CSS = `
 .sv-slot .sv-art,.sv-slot .sv-count,.uf-fly,.uf-ring>i,.uf-cursor>i,.uf-x-hit,.uf-toast>.uf-tn,.uf-stat>.uf-si,
 #inventory .sv-recipe .sv-rart{transform:translate(0)}
 
+/* ---- a slot waiting for its flying icon: show the old count (and no icon if it was empty) until it lands ---- */
+.sv-slot.uf-wait .sv-count[data-uf-old]{visibility:hidden}
+.sv-slot.uf-wait .sv-count[data-uf-old]::after{content:attr(data-uf-old);visibility:visible;position:absolute;right:0;bottom:0}
+.sv-slot.uf-wait.uf-fresh .sv-art{opacity:0}
+.sv-slot.uf-wait.sv-bumpA .sv-art,.sv-slot.uf-wait.sv-bumpB .sv-art{animation:none}
+
 /* ---- slot landing ring / flash ---- */
 .uf-ring{width:var(--uf-cw,64px);height:var(--uf-ch,64px)}
 .uf-ring>i{position:absolute;inset:0;opacity:0;border-radius:6px;box-shadow:0 0 0 2px var(--uf-gold),0 0 14px 2px #ffd58acc,inset 0 0 14px #ffe3a688}
@@ -48,17 +61,18 @@ const CSS = `
 /* ---- flying pickup icon ---- */
 .uf-fly{width:44px;height:44px;margin:-22px 0 0 -22px;opacity:0}
 .uf-fly>.uf-art{position:absolute;inset:0;display:block;filter:drop-shadow(0 2px 2px #0009) drop-shadow(0 0 6px #fff2cc66)}
-.uf-fly>.uf-art svg{display:block;width:100%;height:100%}
-.uf-fly>b{position:absolute;left:34px;top:-4px;font:800 15px/1 'Segoe UI',system-ui,sans-serif;color:var(--uf-gold);
+.uf-fly>.uf-art>svg,.uf-fly>.uf-art>img{display:block;width:100%;height:100%;object-fit:contain;scale:none;filter:none}
+.uf-fly.uf-gen>.uf-art{filter:drop-shadow(0 0 1px #fff) drop-shadow(0 0 5px #fff2cc) drop-shadow(0 2px 3px #000b)}
+.uf-fly>b{position:absolute;left:34px;top:-4px;font:800 15px/1 var(--uf-font);color:var(--uf-gold);
   text-shadow:0 1px 0 #3e2a17,0 0 3px #000,0 0 6px #000a;white-space:nowrap}
 
 /* ---- toast stack ---- */
-#uf-toasts{position:fixed;inset:auto 20px 104px auto;width:230px;height:0;margin:0;padding:0;border:0;background:none;overflow:visible;color:inherit;pointer-events:none;z-index:5}
+#uf-toasts{position:fixed;inset:auto 20px 132px auto;width:230px;height:0;margin:0;padding:0;border:0;background:none;overflow:visible;color:inherit;pointer-events:none;z-index:5}
 #uf-toasts::backdrop{display:none}
 .uf-toast{position:absolute;right:0;bottom:0;display:flex;align-items:center;gap:8px;height:34px;min-width:180px;max-width:230px;padding:0 12px 0 8px;
-  border-radius:4px;background:linear-gradient(90deg,#3a2716f2,#2a1b0ee6);color:var(--uf-cream);
-  box-shadow:inset 0 0 0 1px #c9a66b55,0 0 0 1px #24170c,0 4px 10px #0006;
-  font:600 13px/1 'Segoe UI',system-ui,sans-serif;white-space:nowrap;opacity:0}
+  border-radius:5px;background:linear-gradient(90deg,#1a2226f2,#0e1417e6);color:#f4efe2;
+  box-shadow:inset 0 0 0 1px #ffffff1c,0 4px 10px #0006;
+  font:600 13px/1 var(--uf-font);white-space:nowrap;opacity:0}
 .uf-toast::before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:3px;border-radius:0 2px 2px 0;background:var(--uf-acc,var(--uf-wood-lt))}
 .uf-toast>.uf-ti{flex:none;width:24px;height:24px;display:grid;place-items:center;filter:drop-shadow(0 1px 1px #0008)}
 .uf-toast>.uf-ti svg{width:24px;height:24px;display:block}
@@ -74,8 +88,8 @@ const CSS = `
 .uf-toast[data-kind=full]>.uf-tt,.uf-toast[data-kind=warn]>.uf-tt{color:#ffc2ad}
 
 /* ---- stat bars ---- */
-.uf-stats{position:fixed;left:20px;bottom:22px;display:grid;gap:7px;padding:9px 11px 10px;border-radius:5px;z-index:2;pointer-events:none;
-  background:linear-gradient(#3a2716e6,#2a1b0ee0);box-shadow:inset 0 0 0 1px #c9a66b44,0 0 0 1px #24170c,0 4px 12px #0005}
+.uf-stats{position:fixed;right:20px;bottom:22px;display:grid;gap:7px;padding:9px 11px 10px;border-radius:6px;z-index:2;pointer-events:none;
+  background:linear-gradient(180deg,#1a2226e6,#0e1417ee);box-shadow:inset 0 0 0 1px #ffffff17,0 4px 12px #0005}
 .uf-stat{display:grid;grid-template-columns:20px 150px;align-items:center;gap:8px}
 .uf-stat>.uf-si{width:20px;height:20px;display:grid;place-items:center;color:var(--uf-tone);filter:drop-shadow(0 1px 0 #000a)}
 .uf-stat>.uf-si svg{width:18px;height:18px;display:block}
@@ -141,13 +155,15 @@ const CSS = `
 
 /* ---- press states ---- */
 .tools.sv-hotbar>button.sv-slot,#inventory.sv-inv button.sv-slot{transition:transform .18s var(--uf-back),box-shadow .08s,background .08s}
-.tools.sv-hotbar>button.sv-slot:active,#inventory.sv-inv button.sv-slot:active{transform:translateY(2px) scale(.88);filter:brightness(.7);transition-duration:.05s;
-  box-shadow:inset 0 0 0 2px #ffe3a6b0,inset 0 5px 10px #000c,0 0 0 1px #24170c}
+.tools.sv-hotbar>button.sv-slot:active,#inventory.sv-inv button.sv-slot:active:not(.sv-dragging,.sv-src,.sv-over){transform:translateY(2px) scale(.88);filter:brightness(.7);transition-duration:.05s;
+  box-shadow:inset 0 0 0 2px #ffe3a6b0,inset 0 5px 10px #000c,0 0 0 1px #0009}
 #inventory .sv-recipe{position:relative;transition:transform .16s var(--uf-back),background .08s,box-shadow .08s}
 #inventory .sv-recipe::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;box-shadow:inset 0 0 0 2px #ffe3a6,0 0 16px #ffd58aaa;background:#ffe3a61a}
 #inventory .sv-recipe .sv-rart{transition:transform .18s var(--uf-back)}
 #inventory .sv-recipe:hover:not(:disabled) .sv-rart{transform:scale(1.08) rotate(-3deg)}
-#inventory .sv-recipe:active:not(:disabled){transform:translateY(1px) scale(.98);background:linear-gradient(#4a3220,#5d4129);box-shadow:inset 0 0 0 1px #ffe3a6,inset 0 2px 6px #000a;transition-duration:.04s}
+#inventory .sv-recipe:active:not(:disabled){transform:translateY(1px) scale(.98);filter:brightness(.85);box-shadow:inset 0 0 0 1px #ffe3a6,inset 0 2px 6px #000a;transition-duration:.04s}
+#inventory .sv-craftbtn{transition:transform .14s var(--uf-back),filter .1s}
+#inventory .sv-craftbtn:active:not([aria-disabled="true"]){transform:translateY(1px) scale(.98);filter:brightness(.9);transition-duration:.04s}
 .primary,.secondary,.header-right button,#repairButton,#copyRoom,.close{transition:transform .14s var(--uf-back),filter .1s,box-shadow .1s}
 .primary:active{transform:translateY(2px);filter:brightness(.95);box-shadow:0 0 0 1px #6f4a1c,inset 0 1px 0 rgba(255,245,215,.5),0 1px 0 #6f4a1c,0 3px 8px rgba(0,0,0,.3);transition-duration:.04s}
 .secondary:active,.header-right button:active,#repairButton:active,#copyRoom:active{transform:translateY(1px) scale(.98);filter:brightness(.9);transition-duration:.04s}
@@ -157,18 +173,22 @@ const CSS = `
 html.uf-rm .uf-cursor,html.uf-rm .uf-x-ring,html.uf-rm .uf-x-dot{transition-duration:0s}
 html.uf-rm #inventory.sv-inv,html.uf-rm #inventory.sv-inv:not([open]){transform:none;transition-property:opacity,overlay,display;transition-duration:.1s}
 html.uf-rm #inventory.sv-inv .sv-craft,html.uf-rm #inventory.sv-inv .sv-bag{transition:none}
-html.uf-rm .tools.sv-hotbar>button.sv-slot:active,html.uf-rm #inventory.sv-inv button.sv-slot:active,html.uf-rm #inventory .sv-recipe:active:not(:disabled){transform:none}
+html.uf-rm .tools.sv-hotbar>button.sv-slot:active,html.uf-rm #inventory.sv-inv button.sv-slot:active,html.uf-rm #inventory .sv-recipe:active:not(:disabled),html.uf-rm #inventory .sv-craftbtn:active{transform:none}
 html.uf-rm #inventory .sv-recipe:hover:not(:disabled) .sv-rart{transform:none}
 html.uf-rm .uf-stat.uf-low>.uf-track>.uf-fill,html.uf-rm .uf-stat.uf-low>.uf-si{animation:none}
 @starting-style{html.uf-rm #inventory.sv-inv[open]{transform:none}html.uf-rm #inventory.sv-inv[open] .sv-craft,html.uf-rm #inventory.sv-inv[open] .sv-bag{transform:none;opacity:1}}
 
+/* Toast placement is chosen in JS (phone width, or where an open modal dialog leaves room):
+   uf-top = top centre, newest on top; uf-bot = bottom centre, newest at the bottom; neither = bottom right. */
+#uf-toasts.uf-top{inset:calc(env(safe-area-inset-top,0px) + var(--uf-ty,12px)) auto auto 50%;width:0}
+#uf-toasts.uf-bot{inset:auto auto var(--uf-ty,12px) 50%;width:0}
+#uf-toasts:is(.uf-top,.uf-bot)>.uf-toast{left:0;right:auto;translate:-50% 0;height:30px;min-width:0;width:min(64vw,250px);max-width:none;
+  padding:0 11px 0 7px;gap:6px;border-radius:6px;font-size:12px}
+#uf-toasts.uf-top>.uf-toast{top:0;bottom:auto}
+#uf-toasts:is(.uf-top,.uf-bot)>.uf-toast>.uf-ti,#uf-toasts:is(.uf-top,.uf-bot)>.uf-toast>.uf-ti svg{width:20px;height:20px}
+#uf-toasts:is(.uf-top,.uf-bot)>.uf-toast>.uf-tn{padding-left:8px}
 @media(max-width:760px){
-  /* phone: toasts drop from the top centre (newest on top, 3 max), stats become one strip sitting on the hotbar */
-  #uf-toasts{inset:calc(env(safe-area-inset-top,0px) + 12px) auto auto 50%;width:0}
-  .uf-toast{left:0;right:auto;top:0;bottom:auto;translate:-50% 0;height:30px;min-width:0;width:min(64vw,250px);max-width:none;
-    padding:0 11px 0 7px;gap:6px;border-radius:6px;font-size:12px}
-  .uf-toast>.uf-ti,.uf-toast>.uf-ti svg{width:20px;height:20px}
-  .uf-toast>.uf-tn{padding-left:8px}
+  /* phone: the stats become one strip sitting on the hotbar */
   .uf-stats{left:var(--uf-hbx,10px);right:auto;width:var(--uf-hbw,auto);top:auto;bottom:calc(var(--uf-hbt,84px) + 12px);box-sizing:border-box;
     grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:10px;padding:5px 9px;border-radius:6px}
   .uf-stat{grid-template-columns:14px minmax(0,1fr);gap:5px}
@@ -191,6 +211,8 @@ export function createUIFeel({
   iconHTML = null,          // kind => '<svg ...>' (survival-ui's iconSVG); falls back to cloning the slot art
   hotbarSize = 8,
   reducedMotion = 'auto',   // 'auto' | true | false
+  toasts = true,            // false: no toast stack at all (the host game has its own feed); toast() is then a no-op
+  hotbarCursor = 'auto',    // 'auto': own selection cursor + paint bumps only if the hotbar has no .sv-cursor | true | false
 } = {}) {
   const prev = window[INST_KEY];
   if (prev && typeof prev.destroy === 'function') { try { prev.destroy(); } catch (e) { console.error(e); } }
@@ -202,7 +224,7 @@ export function createUIFeel({
   // ---------- style + layer ----------
   let st = document.getElementById('ui-feel-style');
   if (!st) { st = document.createElement('style'); st.id = 'ui-feel-style'; document.head.append(st); }
-  if (st.textContent !== CSS) st.textContent = CSS;
+  if (st.textContent !== STYLE) st.textContent = STYLE;
 
   const layer = document.getElementById('uf-layer') || Object.assign(document.createElement('div'), { id: 'uf-layer' });
   layer.setAttribute('aria-hidden', 'true');
@@ -226,7 +248,7 @@ export function createUIFeel({
   mq.addEventListener?.('change', applyRM, opt);
 
   // ---------- geometry cache (the only layout reads) ----------
-  let tools = null, hotEls = [], slotRects = [], toolsVisible = false;
+  let tools = null, hotEls = [], slotRects = [], toolsVisible = false, ownCursor = hotbarCursor === true;
   let selIndex = -1;
   let ro = null, mo = null;
   const counts = new WeakMap();
@@ -246,7 +268,7 @@ export function createUIFeel({
   }
   function placeCursor(animate) {
     const r = slotRects[selIndex];
-    const on = toolsVisible && !!r;
+    const on = ownCursor && toolsVisible && !!r;
     cursor.classList.toggle('on', on);
     if (!on) return;
     // Non-animated moves (resize, first show) drop the transform transition for one frame; no style flush needed.
@@ -265,7 +287,9 @@ export function createUIFeel({
     const els = [...t.querySelectorAll(':scope>.sv-slot')];
     if (t === tools && els.length === hotEls.length && els.every((e, i) => e === hotEls[i])) return true;
     tools = t; hotEls = els;
-    t.classList.add('uf-has-cursor');
+    // survival-ui sv3 draws its own cursor + name tag and bumps slots on paint: do not double them.
+    ownCursor = hotbarCursor === 'auto' ? !t.querySelector(':scope>.sv-cursor') : !!hotbarCursor;
+    t.classList.toggle('uf-has-cursor', ownCursor);
     hotEls.forEach(e => counts.set(e, readCount(e)));
     selIndex = hotEls.findIndex(e => e.classList.contains('sv-sel'));
     ro?.disconnect();
@@ -284,13 +308,12 @@ export function createUIFeel({
     d.querySelectorAll('.sv-slot').forEach(e => counts.set(e, readCount(e)));
     mo2?.disconnect();
     mo2 = new MutationObserver(onMutations);
-    mo2.observe(d, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['open'] });
+    mo2.observe(d, { subtree: true, childList: true, characterData: true });
     return true;
   }
 
   function onMutations(list) {
     if (!alive) return;
-    if (list.some(m => m.attributeName === 'open' && m.target === invEl && invEl.open)) raiseToasts();
     let rebuilt = false, newSel = -1;
     const touched = new Set();
     for (const m of list) {
@@ -309,6 +332,7 @@ export function createUIFeel({
       if (now === before) continue;
       counts.set(slot, now);
       if (pendingLand.get(slot)) continue; // the flying icon will bump it on arrival
+      if (!ownCursor) continue; // survival-ui bumps its own slots on paint
       if (now > before) bumpSlot(slot, before === 0); else dipSlot(slot);
     }
   }
@@ -318,7 +342,7 @@ export function createUIFeel({
     if (!hotEls[i]) return;
     const from = selIndex; selIndex = i;
     placeCursor(!rm);
-    if (rm || from === i) return;
+    if (rm || from === i || !ownCursor) return;
     const dir = from < 0 ? 0 : Math.sign(i - from);
     cursorInner.animate([
       { transform: `scale(1.08,.9) translateX(${dir * -3}px)` },
@@ -359,11 +383,15 @@ export function createUIFeel({
   }
 
   // Recipe row celebrates a successful craft (the output slot bumps via the observer).
+  // id: a recipe id, or the crafted item kind (matched against survival-ui's data-tip-kind). Strings only.
   function crafted(id) {
-    const b = invEl?.querySelector(`.sv-recipe[data-recipe="${String(id).replace(/["\\]/g, '')}"]`);
-    if (!b) return;
+    if (typeof id !== 'string' || !id || !invEl) return false;
+    const q = CSS.escape(id);
+    const b = invEl.querySelector(`.sv-recipe[data-recipe="${q}"]`) || invEl.querySelector(`.sv-recipe[data-tip-kind="${q}"]`);
+    if (!b) return false;
     if (PSEUDO) b.animate([{ opacity: 1 }, { opacity: 0 }], { duration: rm ? 250 : 520, easing: 'ease-out', pseudoElement: '::after' });
     if (!rm) b.querySelector('.sv-rart')?.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.28) rotate(-6deg)', offset: .35 }, { transform: 'scale(1)' }], { duration: 380, easing: 'ease-out' });
+    return true;
   }
 
   // ---------- pickup: icon flies into its slot ----------
@@ -386,15 +414,30 @@ export function createUIFeel({
     return i >= 0 ? hotEls[i] : hotEls.find(e => (e.dataset.kind || e._svKind) === kind) || null;
   }
   function artFor(kind, slot) {
-    const h = safe(iconHTML, kind);
-    if (h) return h;
+    // The slot's own art first (same 3D icon the player sees in the bar), else the host's renderer.
     const a = slot?.querySelector('.sv-art');
-    return a && (slot.dataset.kind || slot._svKind) === kind ? a.innerHTML : '';
+    if (a && a.firstElementChild && (slot.dataset.kind || slot._svKind) === kind) return a.innerHTML;
+    const h = safe(iconHTML, kind);
+    return typeof h === 'string' ? h : '';
   }
 
   // items: [{kind, count}] ; from: {x, y} in CSS px (default: viewport center = crosshair)
+  function hold(slot) { // keep the painted count (and an empty slot's blank) until the icon lands
+    if (slot.classList.contains('uf-wait')) return;
+    // The last count the observer saw is the one on screen (a repaint in this same task is not observed yet).
+    const old = counts.has(slot) ? counts.get(slot) : readCount(slot);
+    const cnt = slot.querySelector('.sv-count');
+    if (cnt) cnt.dataset.ufOld = old > 1 ? String(old) : '';
+    slot.classList.add('uf-wait');
+    slot.classList.toggle('uf-fresh', old === 0);
+  }
+  function release(slot) {
+    slot.classList.remove('uf-wait', 'uf-fresh');
+    const cnt = slot.querySelector('.sv-count');
+    if (cnt) delete cnt.dataset.ufOld;
+  }
   function pickup(items, from = null) {
-    if (!alive || !Array.isArray(items)) return;
+    if (!alive || !Array.isArray(items)) return false;
     const fx = from?.x ?? innerWidth / 2, fy = from?.y ?? innerHeight / 2;
     items.slice(0, flyPool.length).forEach((it, k) => {
       if (!it || !it.kind) return;
@@ -403,15 +446,18 @@ export function createUIFeel({
       if (rm || !toolsVisible) { if (slot) flashRing(slot, true); return; }
       const fly = flyPool.find(f => !f.anim) || flyPool[k % flyPool.length];
       fly.anim?.cancel();
-      if (fly.kind !== it.kind) { fly.art.innerHTML = artFor(it.kind, slot || slotOfKind(it.kind)); fly.kind = it.kind; }
+      const art = artFor(it.kind, slot || slotOfKind(it.kind));
+      if (fly.kind !== it.kind || fly.artHTML !== art) { fly.art.innerHTML = art; fly.kind = it.kind; fly.artHTML = art; }
+      fly.node.classList.toggle('uf-gen', !r);
       fly.label.textContent = it.count > 1 ? '+' + it.count : '';
       // Destination: the slot centre, or (backpack / not in the bag yet) the middle of the hotbar's top edge,
       // where it shrinks into the bar. A slot that changes later bumps through the observer when it is painted.
       const first = slotRects[0], last = slotRects[slotRects.length - 1];
       const tx = r ? r.left + r.width / 2 : (first.left + last.right) / 2, ty = r ? r.top + r.height / 2 : first.top + 6;
-      const sx = fx + (k - (items.length - 1) / 2) * 30, sy = fy - 8;
-      const keys = arc(sx, sy, tx, ty, r ? .62 : .4);
-      if (slot) pendingLand.set(slot, (pendingLand.get(slot) || 0) + 1);
+      const n = Math.min(items.length, flyPool.length), spread = n > 3 ? 46 : 52; // 44px icons: fan wide enough not to overlap
+      const sx = fx + (k - (n - 1) / 2) * spread, sy = fy - 8 - (n > 2 && k % 2 ? 14 : 0);
+      const keys = arc(sx, sy, tx, ty, r ? .62 : .6);
+      if (slot) { pendingLand.set(slot, (pendingLand.get(slot) || 0) + 1); hold(slot); }
       fly.anim = fly.node.animate(keys, { duration: 640, delay: k * 70, easing: 'linear', fill: 'backwards' });
       const a = fly.anim;
       const done = landed => {
@@ -419,13 +465,14 @@ export function createUIFeel({
         fly.anim = null;
         if (slot) {
           const n = (pendingLand.get(slot) || 1) - 1;
-          if (n > 0) pendingLand.set(slot, n); else pendingLand.delete(slot);
+          if (n > 0) pendingLand.set(slot, n); else { pendingLand.delete(slot); release(slot); }
           if (landed) { counts.set(slot, readCount(slot)); bumpSlot(slot, false); }
         }
       };
       a.onfinish = () => done(true);
       a.oncancel = () => done(false);
     });
+    return true;
   }
   // Pop out of the crosshair, hang for a beat, then accelerate along a curve into the slot.
   function arc(sx, sy, tx, ty, endScale) {
@@ -448,39 +495,77 @@ export function createUIFeel({
   }
 
   // ---------- toasts ----------
-  // Desktop: bottom right, newest at the bottom, 5 rows. Phone (<=760px): top centre, newest on top, 3 rows.
+  // Placement: desktop bottom right (newest at the bottom, 5 rows); phone (<=760px) top centre (newest on top,
+  // 3 rows). While a modal dialog is open the stack goes where the dialog leaves room: beside it if the right
+  // gap fits the 230px column, else the larger of the top/bottom gaps, capped at the rows that fit (1-2).
   const LIFE = 3200; // a row merges repeats for as long as it is on screen
   const narrowMQ = matchMedia('(max-width:760px)');
-  let narrow = narrowMQ.matches;
-  const maxRows = () => narrow ? 3 : 5;
-  const rowY = i => narrow ? i * 34 : -i * 40;
-  const stack = document.getElementById('uf-toasts') || Object.assign(document.createElement('div'), { id: 'uf-toasts' });
-  stack.textContent = '';
-  stack.setAttribute('role', 'status'); stack.setAttribute('aria-live', 'polite');
-  document.body.append(stack);
-  // The stack lives in the top layer (popover=manual), so it can be raised above the modal inventory and its
-  // ::backdrop: a craft toast is then readable over the open panel. Without popover support it stays at z-index 5.
-  const canPop = typeof stack.showPopover === 'function';
+  let narrow = narrowMQ.matches, mode = 'br', rowCap = 5;
+  const rowY = i => mode === 'top' ? i * 34 : mode === 'bot' ? -i * 34 : -i * 40;
+  let stack = null;
+  if (toasts) {
+    stack = document.getElementById('uf-toasts') || Object.assign(document.createElement('div'), { id: 'uf-toasts' });
+    stack.textContent = '';
+    stack.setAttribute('role', 'status'); stack.setAttribute('aria-live', 'polite');
+    document.body.append(stack);
+  }
+  // The stack lives in the top layer (popover=manual), so it can be raised above a modal dialog and its
+  // ::backdrop, and above a fullscreen <html>. Top-layer order is the order shown, so it is re-shown after any
+  // dialog opens and after every fullscreen change. Without popover support it stays at z-index 5.
+  const canPop = !!stack && typeof stack.showPopover === 'function';
   if (canPop) { stack.popover = 'manual'; try { if (!stack.matches(':popover-open')) stack.showPopover(); } catch {} }
-  function raiseToasts() { // top layer order = order shown: re-show after a modal opens to sit above it
+  function raiseToasts() {
     if (!canPop || !stack.isConnected) return;
     try { if (stack.matches(':popover-open')) stack.hidePopover(); stack.showPopover(); } catch {}
   }
-  const tpool = Array.from({ length: 6 }, () => {
+  function openModal() {
+    for (const d of document.querySelectorAll('dialog[open]')) { try { if (d.matches(':modal')) return d; } catch { return d; } }
+    return null;
+  }
+  // One layout read per dialog open/close or viewport change; never per frame.
+  function relayout() {
+    if (!stack) return;
+    let m = narrow ? 'top' : 'br', cap = narrow ? 3 : 5, ty = 12;
+    const d = openModal();
+    if (d) {
+      const L = d.offsetLeft, T = d.offsetTop, R = innerWidth - L - d.offsetWidth, B = innerHeight - T - d.offsetHeight;
+      if (narrow || R < 250) {
+        const gap = Math.max(T, B);
+        m = T >= B ? 'top' : 'bot';
+        cap = Math.max(1, Math.min(2, Math.floor((gap - 4) / 34)));
+        ty = Math.max(4, (gap - cap * 34 + 4) / 2);
+      }
+    }
+    stack.classList.toggle('uf-top', m === 'top'); stack.classList.toggle('uf-bot', m === 'bot');
+    stack.style.setProperty('--uf-ty', ty.toFixed(0) + 'px');
+    if (m === mode && cap === rowCap) return;
+    mode = m; rowCap = cap;
+    while (shown.length > rowCap) expire(shown[shown.length - 1], true);
+    shown.forEach(r => { r.slot = -1; }); restack(); // re-place without animating
+  }
+  const tpool = stack ? Array.from({ length: 6 }, () => {
     const n = el('div', 'uf-toast', '<i class="uf-tg"></i><i class="uf-ti"></i><span class="uf-tt"></span><b class="uf-tn"></b>', stack);
     return { n, tg: n.children[0], ti: n.children[1], tt: n.children[2], tn: n.children[3], key: '', amount: 0, born: 0, slot: -1, dying: false, gen: 0 };
-  });
+  }) : [];
   const shown = []; // index 0 = newest
-  let tickTimer = 0;
-  narrowMQ.addEventListener?.('change', () => {
-    narrow = narrowMQ.matches;
-    while (shown.length > maxRows()) expire(shown[shown.length - 1], true);
-    shown.forEach(r => { r.slot = -1; }); restack(); // re-place without animating
-  }, opt);
+  let tickTimer = 0, mo3 = null;
+  if (stack) {
+    narrowMQ.addEventListener?.('change', () => { narrow = narrowMQ.matches; relayout(); }, opt);
+    document.addEventListener('fullscreenchange', raiseToasts, opt);
+    document.addEventListener('webkitfullscreenchange', raiseToasts, opt);
+    // Any dialog opening or closing (inventory, pause/settings, crew, help, logbook...): re-place, then re-raise.
+    mo3 = new MutationObserver(list => {
+      if (!alive || !list.some(m => m.target.tagName === 'DIALOG')) return;
+      relayout();
+      if (list.some(m => m.target.tagName === 'DIALOG' && m.target.open)) raiseToasts();
+    });
+    mo3.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
+    relayout();
+  }
 
   // toast(text, {kind:'loot'|'craft'|'build'|'full'|'warn'|'info', icon:'<svg>', amount:n, key:'merge-key'})
   function toast(text, o = {}) {
-    if (!alive || !text) return;
+    if (!alive || !stack || !text) return false;
     const now = performance.now(), kind = o.kind || 'info', key = o.key ?? (kind + ':' + text);
     const amount = Number(o.amount) || 0;
     const hit = shown.find(r => r.key === key && !r.dying);
@@ -488,13 +573,13 @@ export function createUIFeel({
       hit.born = now;
       if (amount) {
         hit.amount += amount; hit.tn.textContent = '+' + hit.amount;
-        if (!rm) hit.tn.animate([{ transform: 'scale(1.6)', color: '#fff' }, { transform: 'scale(1)' }], { duration: 260, easing: BACK });
+        if (!rm) hit.tn.animate([{ transform: 'scale(1.6)' }, { transform: 'scale(1)' }], { duration: 260, easing: BACK });
       }
       if (!rm) hit.tg.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, easing: 'ease-out' });
       armTick();
-      return;
+      return true;
     }
-    if (shown.length >= maxRows()) expire(shown[shown.length - 1], true);
+    if (shown.length >= rowCap) expire(shown[shown.length - 1], true);
     const row = tpool.find(r => !shown.includes(r) && !r.dying) || tpool.find(r => !shown.includes(r));
     row.gen++; row.dying = false; row.key = key; row.amount = amount; row.born = now;
     row.n.dataset.kind = kind;
@@ -507,12 +592,13 @@ export function createUIFeel({
     const g = row.gen;
     row.n.animate(rm
       ? [{ opacity: 0 }, { opacity: 1 }]
-      : narrow
-        ? [{ opacity: 0, transform: 'translate3d(0,-18px,0) scale(.94)' }, { opacity: 1, transform: 'translate3d(0,2px,0)', offset: .7 }, { opacity: 1, transform: 'translate3d(0,0,0)' }]
+      : mode !== 'br'
+        ? [{ opacity: 0, transform: `translate3d(0,${mode === 'top' ? -18 : 18}px,0) scale(.94)` }, { opacity: 1, transform: 'translate3d(0,2px,0)', offset: .7 }, { opacity: 1, transform: 'translate3d(0,0,0)' }]
         : [{ opacity: 0, transform: 'translate3d(24px,0,0) scale(.96)' }, { opacity: 1, transform: 'translate3d(-4px,0,0)', offset: .7 }, { opacity: 1, transform: 'translate3d(0,0,0)' }],
     { duration: rm ? 120 : 260, easing: OUT })
       .ready.then(() => { if (row.gen === g && !row.dying) row.born = performance.now(); }, () => {}); // life starts when it is on screen (stalled frames)
     armTick();
+    return true;
   }
   function restack() {
     shown.forEach((r, i) => {
@@ -531,7 +617,7 @@ export function createUIFeel({
     const gen = row.gen, i = shown.indexOf(row);
     if (i >= 0) shown.splice(i, 1);
     const y = rowY(row.slot);
-    const a = row.n.animate(rm ? [{ opacity: 0 }] : [{ opacity: 0, transform: narrow ? `translate3d(0,${y - 12}px,0)` : `translate3d(28px,${y}px,0)` }], { duration: fast ? 120 : 220, easing: 'ease-in', fill: 'forwards' });
+    const a = row.n.animate(rm ? [{ opacity: 0 }] : [{ opacity: 0, transform: mode !== 'br' ? `translate3d(0,${y + (mode === 'top' ? -12 : 12)}px,0)` : `translate3d(28px,${y}px,0)` }], { duration: fast ? 120 : 220, easing: 'ease-in', fill: 'forwards' });
     a.onfinish = () => { if (row.gen !== gen) return; row.dying = false; row.slot = -1; row.n.style.opacity = '0'; a.cancel(); };
     restack();
   }
@@ -597,7 +683,7 @@ export function createUIFeel({
       }
     }
     set(v); wrap.classList.toggle('uf-low', v <= .25);
-    return { el: wrap, set, get value() { return v; } };
+    return { el: wrap, set(nv) { try { set(nv); return true; } catch (e) { console.error('ui-feel statBar failed', e); return false; } }, get value() { return v; } };
   }
 
   // ---------- crosshair ----------
@@ -614,7 +700,7 @@ export function createUIFeel({
     xhHit = c.querySelector('.uf-x-hit');
     return true;
   }
-  const crosshair = {
+  const crosshairRaw = {
     hover(on) { on = !!on; if (!xh || on === xhHover) return; xhHover = on; xh.classList.toggle('uf-hover', on); },
     // v in 0..1 while charging, null/negative when not
     charge(v) {
@@ -649,22 +735,40 @@ export function createUIFeel({
   function clamp01(x) { return x > 1 ? 1 : x > 0 ? x : 0; }
   function safe(fn, ...a) { try { return fn?.(...a); } catch (e) { console.error(e); return null; } }
 
-  addEventListener('resize', () => { if (alive) measure(); }, opt);
+  // Public entry points never throw into the game loop: errors are logged and the call returns false.
+  function guard(fn, name) {
+    return (...a) => {
+      if (!alive) return false;
+      try { const r = fn(...a); return r === undefined ? true : r; }
+      catch (e) { console.error('ui-feel ' + name + ' failed', e); return false; }
+    };
+  }
+  const crosshair = {
+    hover: guard(crosshairRaw.hover, 'crosshair.hover'),
+    charge: guard(crosshairRaw.charge, 'crosshair.charge'),
+    hit: guard(crosshairRaw.hit, 'crosshair.hit'),
+  };
+
+  addEventListener('resize', () => { if (alive) { measure(); relayout(); } }, opt);
   attachHotbar();
   attachInventory();
   attachCrosshair();
 
   const api = {
-    attachHotbar, attachInventory, attachCrosshair, measure, select, pickup, crafted, toast, statBar, crosshair,
-    iconFor: kind => artFor(kind, slotOfKind(kind)),
+    attachHotbar: guard(attachHotbar, 'attachHotbar'), attachInventory: guard(attachInventory, 'attachInventory'),
+    attachCrosshair: guard(attachCrosshair, 'attachCrosshair'), measure: guard(measure, 'measure'),
+    select: guard(select, 'select'), pickup: guard(pickup, 'pickup'), crafted: guard(crafted, 'crafted'), toast: guard(toast, 'toast'),
+    statBar, crosshair,
+    iconFor: kind => { try { return artFor(kind, slotOfKind(kind)); } catch (e) { console.error(e); return ''; } },
     get reducedMotion() { return rm; },
-    setReducedMotion(v) { reducedMotion = v; applyRM(); },
+    setReducedMotion: guard(v => { reducedMotion = v; applyRM(); }, 'setReducedMotion'),
     destroy() {
       if (!alive) return;
-      alive = false; ac.abort(); ro?.disconnect(); mo?.disconnect(); mo2?.disconnect();
+      alive = false; ac.abort(); ro?.disconnect(); mo?.disconnect(); mo2?.disconnect(); mo3?.disconnect();
       clearTimeout(tickTimer);
       try { if (canPop && stack.matches(':popover-open')) stack.hidePopover(); } catch {}
-      layer.remove(); stack.remove();
+      for (const f of flyPool) f.anim?.cancel(); // releases held slots
+      layer.remove(); stack?.remove(); st.remove();
       for (const k of ['--uf-hbx', '--uf-hbw', '--uf-hbt']) document.documentElement.style.removeProperty(k);
       tools?.classList.remove('uf-has-cursor');
       if (xh) { xh.classList.remove('uf-xh', 'uf-hover', 'uf-charging', 'uf-full'); xh.querySelectorAll(':scope>.uf-x').forEach(n => n.remove()); }
