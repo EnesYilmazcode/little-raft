@@ -123,6 +123,19 @@ test('UX3-1: looking at a station in reach shows "E Use …"; just out of reach 
   assert.equal(p.prompt(null), null);
   p.dispose();
 });
+// ---------------------------------------------------------------- UX3-3 selected crafting tab contrast
+
+const lum = hex => { const c = hex.match(/[0-9a-f]{2}/gi).slice(0, 3).map(h => parseInt(h, 16) / 255).map(v => (v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4)); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; };
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + .05) / (y + .05); };
+
+test('UX3-3: the selected crafting tab reads as light, bold text at >= 4.5:1 over its whole gradient', () => {
+  const rule = src('survival-ui.js').match(/#inventory \.sv-tab\[aria-selected="true"\]\{[^}]*\}/)[0];
+  const [, top, bottom] = rule.match(/background:linear-gradient\((#[0-9a-f]{6}),(#[0-9a-f]{6})\)/i);
+  const color = rule.match(/;color:(#[0-9a-f]{6})/i)[1];
+  for (const bg of [top, bottom]) assert.ok(contrast(color, bg) >= 4.5, `${color} on ${bg}: ${contrast(color, bg).toFixed(2)}:1`);
+  assert.match(rule, /font-weight:800/);
+});
+
 // ---------------------------------------------------------------- HUD-6 shader warm-up page error
 
 test('HUD-6: shader warm-ups use the synchronous compile, so no timer poll can trip over a disposed material', () => {

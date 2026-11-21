@@ -206,7 +206,7 @@ const CSS = `
   background:linear-gradient(#1c2427,#141b1e);box-shadow:inset 0 0 0 1px #ffffff33;color:#c9cfd0;font:700 11px/1.1 ${FONT};letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
 #inventory .sv-tab .sv-icon{width:22px;height:22px;opacity:.8}
 #inventory .sv-tab:hover{color:#f8f3e6;box-shadow:inset 0 0 0 1px #fff6e0aa}
-#inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#46545a,#1c2529);color:#0b1013;box-shadow:inset 0 0 0 1px #fff6e0,0 2px 0 #fff6e0}
+#inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#46545a,#1c2529);color:#fff6e0;font-weight:800;box-shadow:inset 0 0 0 1px #fff6e0,0 2px 0 #fff6e0}
 #inventory .sv-tab[aria-selected="true"] .sv-icon{opacity:1}
 #inventory .sv-tab:focus-visible{outline:2px solid #fff6e0;outline-offset:1px}
 #inventory .sv-tbadge{position:absolute;right:3px;top:3px;min-width:15px;padding:2px 3px;border-radius:8px;background:#6fbf4a;color:#14270b;font:800 10px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
