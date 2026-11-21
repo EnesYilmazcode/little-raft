@@ -402,6 +402,8 @@ export function createDayNight(ctx) {
   const lanternGroups = new Array(MAX_LANTERNS).fill(null), lanternLocal = new Float32Array(MAX_LANTERNS * 3), lanternDist = new Float32Array(MAX_LANTERNS);
   const poolPick = new Int32Array(POOL_LIGHTS).fill(-1);
   let partCount = 0, lanternCount = 0, signature = -1, scanClock = 0, rankClock = 0, poolLit = 0, lastNf = -1, lastGrow = -1;
+  const PAL_STEP = 0.1; // game seconds between palette refreshes
+  let palClock = NaN, palPin = NaN, palPinW = -1, palSeed = -1;
   let scanRaft = null, scanFirst = null, scanLen = -1; // what raft.children looked like at the last scan
   function lanternSignature(raft, world) {
     let n = raft.children.length * 131;
@@ -471,12 +473,17 @@ export function createDayNight(ctx) {
     lightAt(phase, L);
     if (pinWeather >= 0) { W.weather = W.weatherNext = WEATHERS[pinWeather]; W.blend = 0; weatherParams(pinWeather, pinWeather, 0, W); }
     else weatherAt(seed, clock, W);
-    paletteAt(phase, W.rain, PAL);
     const nf = L.nightFactor, wet = W.rain;
-    setSRGB(cHorizon, 0); setSRGB(cZenith, 3); setSRGB(cDeep, 6); setSRGB(cShallow, 9);
-    setSRGB(cSun, 12); setSRGB(cHemiSky, 15); setSRGB(cHemiGround, 18); setSRGB(cCloud, 21);
-    const cool = Math.max(0, W.wind - 0.15) * (1 - wet) * 0.15 / 0.55; // breezy: cooler (0.15 at full breeze)
-    cHorizon.r *= 1 - cool; cHorizon.g *= 1 - cool * 0.4; cCloud.r *= 1 - cool;
+    // The palette drifts slowly with the clock: refresh it at ~10 Hz of game time, and at once on any jump
+    // (sleep, load, net snap, clock wrap), a pin change or a new seed.
+    if (!(Math.abs(clock - palClock) < PAL_STEP) || !Object.is(pinPhase, palPin) || pinWeather !== palPinW || seed !== palSeed) {
+      palClock = clock; palPin = pinPhase; palPinW = pinWeather; palSeed = seed;
+      paletteAt(phase, W.rain, PAL);
+      setSRGB(cHorizon, 0); setSRGB(cZenith, 3); setSRGB(cDeep, 6); setSRGB(cShallow, 9);
+      setSRGB(cSun, 12); setSRGB(cHemiSky, 15); setSRGB(cHemiGround, 18); setSRGB(cCloud, 21);
+      const cool = Math.max(0, W.wind - 0.15) * (1 - wet) * 0.15 / 0.55; // breezy: cooler (0.15 at full breeze)
+      cHorizon.r *= 1 - cool; cHorizon.g *= 1 - cool * 0.4; cCloud.r *= 1 - cool;
+    }
 
     // sky, fog
     if (scene) {
