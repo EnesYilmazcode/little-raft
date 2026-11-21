@@ -64,6 +64,9 @@ body.playing #hud .controls,body.playing #recipes,body.playing [data-quick-recip
 #contextPrompt kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:0 4px;border:1px solid rgba(246,236,214,.6);border-radius:4px;font:inherit;text-align:center}
 /* The pickup feed is a manual popover during play; with the bag or pause menu open it docks into a lane inside that panel. */
 #pickupFeed[popover]{position:fixed;inset:auto auto 26px 22px;margin:0;padding:0;border:0;background:none;overflow:visible;width:auto;height:auto;max-width:none;max-height:none;color:#f6ecd6}
+/* Rows wrap inside the gutter left of the hotbar (its left edge is 50vw - 253px); below 1000px wide that gutter is too narrow, so the feed lifts above the hotbar. */
+#pickupFeed .pf-row{max-width:max(200px,calc(50vw - 287px));white-space:normal;line-height:1.25}
+@media(max-width:1000px){#pickupFeed[popover]{inset:auto auto 96px 10px}#pickupFeed .pf-row{max-width:calc(50vw - 120px)}}
 #pickupFeed .pf-hint{white-space:normal;max-width:max(180px,min(340px,calc(50vw - 300px)));line-height:1.3}#pickupFeed .pf-hint span{color:#ffd98f}
 .feed-lane{display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(transparent,#000 22px);mask-image:linear-gradient(transparent,#000 22px)}
 #inventory .sv-bag>.feed-lane{flex:1 1 0;min-height:88px;align-self:stretch}
