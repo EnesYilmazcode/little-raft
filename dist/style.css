@@ -29,6 +29,8 @@ dialog{max-height:calc(100dvh - 30px);overflow:auto;overscroll-behavior:contain}
 .pf-note i{flex:none;width:6px;height:6px;transform:rotate(45deg);background:var(--amber,#e9a640)}
 @keyframes pf-in{from{opacity:0;transform:translateX(-22px)}to{opacity:1;transform:none}}
 @keyframes pf-bump{40%{transform:scale(1.18)}}
+/* Below ~1100px the 10-slot hotbar reaches the feed's column: stack the feed above it (and its slot label) */
+@media(max-width:1100px){#pickupFeed{bottom:112px}}
 @media(max-width:760px){#pickupFeed{left:10px;bottom:96px;font-size:13px}.pf-icon,.pf-icon>*{width:32px;height:32px}}
 @media(prefers-reduced-motion:reduce){.pf-row,.pf-row.bump .pf-icon{animation:none;transition:opacity .2s}}
 /* Interaction prompt sits just above the hotbar, never on the reticle */
