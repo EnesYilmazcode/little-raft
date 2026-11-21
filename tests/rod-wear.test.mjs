@@ -39,6 +39,7 @@ test('wearRod: ten catches break a fresh rod, a warning lands at 25%', () => {
   assert.equal(wearRod({ kind: 'fishingrod', count: 1 }, 10).after, 90); // missing durability = fresh
   assert.equal(wearRod({ kind: 'hook', count: 1, durability: 100 }, 10), null);
   assert.equal(wearRod(null, 10), null);
+  assert.equal(wearRod({ kind: 'fishingrod', count: 1, durability: 0 }, 10).broke, true, 'a rod already at 0 snaps instead of fishing forever');
 });
 
 test('game.js wears the rod on every catch and removes it when it breaks', () => {

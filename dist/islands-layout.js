@@ -12,6 +12,7 @@ export const ISLAND = Object.freeze({
   // Islands stay put on the seabed (Raft): they spawn ahead of the raft's travel, and the world moving
   // past the raft (the sailing seabed offset) is what brings them closer. Anchor or steer, or drift past.
   SPAWN_MIN: 120, SPAWN_MAX: 160, // metres ahead along the travel direction at spawn
+  FIRST_MIN: 60, FIRST_MAX: 80,   // ...but the first island of a fresh world comes closer (Raft shows land early)
   LAT_MIN: 20, LAT_MAX: 40,       // metres to the side (side and size seeded)
   DESPAWN: 150,         // gone once this far away and behind the raft's travel...
   FAR: 220,             // ...or this far away in any direction
@@ -133,13 +134,15 @@ export const wrapGround = v => wrapAxis(v, HG);
 
 // Where a new island goes relative to the raft: `ahead` metres along the travel direction (dx, dz) and
 // `lat` metres to its side, both seeded. (dx, dz) need not be unit length; zero falls back to +z (the
-// current). Writes out.x, out.z (raft-relative, metres). No allocation.
-export function spawnRel(seed, dx, dz, out) {
+// current). first: the first island of a fresh world (FIRST_MIN..FIRST_MAX ahead instead of
+// SPAWN_MIN..SPAWN_MAX). Writes out.x, out.z (raft-relative, metres). No allocation.
+export function spawnRel(seed, dx, dz, out, first = false) {
   let m = fin(dx) && fin(dz) ? Math.sqrt(dx * dx + dz * dz) : 0;
   if (!(m > 1e-6)) { dx = 0; dz = 1; m = 1; }
   dx /= m; dz /= m;
   seed = seed >>> 0;
-  const ahead = ISLAND.SPAWN_MIN + (ISLAND.SPAWN_MAX - ISLAND.SPAWN_MIN) * hash3(seed, 11, 1);
+  const lo = first ? ISLAND.FIRST_MIN : ISLAND.SPAWN_MIN, hi = first ? ISLAND.FIRST_MAX : ISLAND.SPAWN_MAX;
+  const ahead = lo + (hi - lo) * hash3(seed, 11, 1);
   const lat = (hash3(seed, 11, 3) < 0.5 ? -1 : 1) * (ISLAND.LAT_MIN + (ISLAND.LAT_MAX - ISLAND.LAT_MIN) * hash3(seed, 11, 2));
   out.x = dx * ahead + dz * lat; out.z = dz * ahead - dx * lat;
   return out;

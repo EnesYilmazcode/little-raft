@@ -232,12 +232,13 @@ export function createIslands(ctx) {
   }
   const pickSeed = seed => ((Number.isInteger(seed) && seed >= 0 && seed < 4294967296) ? seed : (Math.random() * 4294967296) >>> 0);
   // The real spawn: SPAWN_MIN..SPAWN_MAX m ahead of the raft's travel over the seabed (sail + current), a
-  // seeded 20-40 m to one side.
+  // seeded 20-40 m to one side. The first island of a fresh world comes FIRST_MIN..FIRST_MAX ahead: that is
+  // the one whose countdown is still the fresh-world ISLAND.FIRST (later countdowns are clock + >= CALM_MIN).
   function spawn(seed) {
     seed = pickSeed(seed);
     const s = ctx.world && ctx.world.sailing;
     const vx = s && Number.isFinite(s.vx) ? s.vx : 0, vz = s && Number.isFinite(s.vz) ? s.vz : 0;
-    spawnRel(seed, vx + SAIL.CURRENT_X, vz + SAIL.CURRENT_Z, ahead);
+    spawnRel(seed, vx + SAIL.CURRENT_X, vz + SAIL.CURRENT_Z, ahead, st.next === ISLAND.FIRST);
     spawnAt(seed, ahead.x, ahead.z, 0);
     emitAll('Land ahead! Steer for it and drop anchor to stay');
   }
@@ -490,6 +491,7 @@ export function createIslands(ctx) {
 
   function dispose() {
     if (live === mine) live = null;
+    blocker.r = 0; try { blockerOwner?.markIsland?.(NaN, NaN); } catch {} // no stale grounding blocker or compass marker
     if (group.parent) group.parent.remove(group);
     if (lagoon.parent) lagoon.parent.remove(lagoon);
     for (const m of veg) m.dispose?.();

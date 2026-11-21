@@ -36,5 +36,5 @@ export function wearRod(slot, wear) {
   const before = Math.min(100, Math.max(0, Number.isFinite(slot.durability) ? slot.durability : 100));
   const after = Math.max(0, before - wear);
   slot.durability = after < 1e-9 ? 0 : after;
-  return { before, after: slot.durability, broke: before > 0 && slot.durability === 0 };
+  return { before, after: slot.durability, broke: slot.durability === 0 }; // a rod already at 0 (old save) snaps on its next catch too
 }

@@ -74,6 +74,13 @@ test('spawnRel: 120-160 m ahead of the travel direction, 20-40 m to a seeded sid
   }
   assert.equal(sides.size, 2, 'both sides occur');
   assert.equal(ISLAND.SPAWN_MIN, 120); assert.equal(ISLAND.SPAWN_MAX, 160);
+  // the first island of a fresh world comes closer: 60-80 m ahead, same seeded side
+  assert.equal(ISLAND.FIRST_MIN, 60); assert.equal(ISLAND.FIRST_MAX, 80);
+  for (const seed of SEEDS) {
+    const f = spawnRel(seed, 0, 1, {}, true), later = spawnRel(seed, 0, 1, {});
+    assert.ok(f.z >= 60 - 1e-9 && f.z <= 80 + 1e-9, `first ahead ${f.z}`);
+    assert.equal(f.x, later.x, 'same lateral offset');
+  }
   // the spawn is never already past the despawn line
   for (const seed of SEEDS) { spawnRel(seed, 0, 0.3, o); assert.equal(L.shouldDespawn(o.x, o.z, 0, 0.3 / 60), false); }
 });
@@ -430,7 +437,7 @@ test('full cycle: calm, first island at 90 s ahead with a notice, it drifts by, 
   for (let i = 0; i < 2 * 10; i++) { drift(w, 0.1); w.mod.update(0.1); }
   const p0 = w.mod.debug.phase();
   assert.equal(p0.phase, 'rise');
-  assert.ok(p0.z > ISLAND.SPAWN_MIN - 2 && p0.z <= ISLAND.SPAWN_MAX, `ahead along the current (+z): ${p0.z}`);
+  assert.ok(p0.z > ISLAND.FIRST_MIN - 2 && p0.z <= ISLAND.FIRST_MAX, `first island close ahead along the current (+z): ${p0.z}`);
   assert.ok(Math.abs(p0.x) >= ISLAND.LAT_MIN && Math.abs(p0.x) <= ISLAND.LAT_MAX, `to the side: ${p0.x}`);
   assert.ok(w.emits.some(x => x.to === 'all' && /Land ahead/.test(x.e.text)));
   const seen = new Set();
@@ -445,13 +452,21 @@ test('full cycle: calm, first island at 90 s ahead with a notice, it drifts by, 
   assert.ok(closest <= ISLAND.LAT_MAX + 0.5, `passes by ${closest.toFixed(1)} m off`);
   const ph = w.mod.debug.phase();
   assert.ok(ph.next - ph.clock >= 0 && ph.next - ph.clock <= 240);
+  // the next island keeps the usual 120-160 m
+  for (let i = 0; i < 241 * 10 && w.mod.debug.phase().phase === 'calm'; i++) { drift(w, 0.1); w.mod.update(0.1); }
+  const p1 = w.mod.debug.phase();
+  assert.equal(p1.phase, 'rise');
+  assert.ok(p1.z > ISLAND.SPAWN_MIN - 2 && p1.z <= ISLAND.SPAWN_MAX, `second island ahead: ${p1.z}`);
 });
 
 test('spawnAhead follows the raft travel (sail + current)', () => {
   const w = stubWorld();
   w.ctx.world.sailing.vx = 1.2; w.ctx.world.sailing.vz = -0.3; // sailing toward +x, against the current
-  const p = w.mod.debug.spawnAhead(77);
-  assert.ok(p.x > ISLAND.SPAWN_MIN * 0.9, `ahead toward +x: ${p.x}`);
+  const p = w.mod.debug.spawnAhead(77); // a fresh world: the first island comes close
+  assert.ok(p.x > ISLAND.FIRST_MIN * 0.9 && p.x <= ISLAND.FIRST_MAX + 1, `ahead toward +x: ${p.x}`);
+  w.mod.load({ v: 2, clock: 500, next: 400, isl: null }, 'save'); // later in the game: the usual distance
+  const q = w.mod.debug.spawnAhead(77);
+  assert.ok(q.x > ISLAND.SPAWN_MIN * 0.9, `later island ahead toward +x: ${q.x}`);
   assert.ok(Math.abs(p.z) <= ISLAND.LAT_MAX + 1);
 });
 
