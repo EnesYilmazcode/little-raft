@@ -2199,6 +2199,7 @@ export function mount(transfer = null) {
     try { building?.dispose(); } catch {} building = null; // building-pieces lane hook
     if (diveWarmAt && typeof cancelIdleCallback === 'function') { try { cancelIdleCallback(diveWarmAt); } catch {} } diveWarmAt = 0; // a later() fallback is cleared with the other timers
     try { diving?.dispose(); } catch {} diving = null; // diving lane hook
+    try { sky?.dispose(); } catch {} sky = null; // frees the sky noise texture on hot swap
     try { shark?.dispose(); } catch {} shark = null; try { sharkFx?.dispose(); } catch {} sharkFx = null; // shark lane
     const mats = new Set(), geos = new Set();
     scene.traverse(o => {
