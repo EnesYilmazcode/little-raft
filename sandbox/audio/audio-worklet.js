@@ -5,6 +5,8 @@
 //   bed    brown noise, low-pass breathing with swell height (decorrelated L/R)
 //   wash   pink noise band-pass, one envelope per swell crest, panned per wave
 //   slap   short low-mid bursts near each trough (water lapping the logs)
+//   surge  broad 500-750 Hz churn of broken water, only in heavy seas (swell^2), bridging
+//          the bed (<=420 Hz) and the wind band (~0.9-1.3 kHz) so rough seas are one sound
 //   wind   white noise through two drifting band-passes + faint whistle, gusts
 //   creak  stick-slip impulse trains into three wood resonators, fired on the
 //          steepest part of the swell (when the raft tilts), panned per creak
@@ -28,6 +30,7 @@ class SVF { // Zavalishin TPT state-variable filter: stable at any tuning
 }
 
 const CREAKS = 3;
+const SURGE = 0.5;    // surge level at swell 1
 
 class RaftOcean extends AudioWorkletProcessor {
   static get parameterDescriptors() {
@@ -55,6 +58,8 @@ class RaftOcean extends AudioWorkletProcessor {
     this.slap = new SVF(); this.slapEnv = 0; this.slapAt = -1; this.slapN = 0; this.slapL = 0.7; this.slapR = 0.7;
     // wind
     this.wL = new SVF(); this.wR = new SVF(); this.whistle = new SVF();
+    // surge (decorrelated L/R)
+    this.sgL = new SVF(); this.sgR = new SVF(); this.seed2 = (this.seed ^ 0x5bd1e995) | 0 || 7;  // own noise stream
     this.gust = 0.5; this.gustT = 0.5; this.gustNext = 0;
     // creak pool
     this.cv = Array.from({ length: CREAKS }, () => ({
@@ -128,6 +133,9 @@ class RaftOcean extends AudioWorkletProcessor {
     const whistleG = 0.25 * wind * wind * Math.max(0, this.gust - 0.55);
     const washA = Math.exp(-dt / 0.45), washD = Math.exp(-dt / 1.2);
     const slapD = Math.exp(-dt / 0.07);
+    const sgF = 420 + 260 * (0.5 + 0.5 * h);
+    this.sgL.tune(sgF, 0.9, sr); this.sgR.tune(sgF * 1.08, 0.9, sr);
+    const surgeG = SURGE * swell * swell * (0.5 + 0.5 * (0.5 + 0.5 * h));
 
     // ---- per sample ----------------------------------------------------------
     for (let i = 0; i < N; i++) {
@@ -165,6 +173,11 @@ class RaftOcean extends AudioWorkletProcessor {
 
       let yl = this.bedL * bedG + wash * this.washL + slap * this.slapL + wnL + wh;
       let yr = this.bedR * bedG + wash * this.washR + slap * this.slapR + wnR + wh;
+      if (surgeG > 1e-4) {             // own xorshift: sharing the wind's noise would make them add coherently
+        let x = this.seed2; x ^= x << 13; x ^= x >>> 17; x ^= x << 5; const n1 = x / 2147483648;
+        x ^= x << 13; x ^= x >>> 17; x ^= x << 5; this.seed2 = x;
+        yl += this.sgL.bp(n1) * surgeG; yr += this.sgR.bp(x / 2147483648) * surgeG;
+      }
 
       // creaks
       for (let c = 0; c < CREAKS; c++) {

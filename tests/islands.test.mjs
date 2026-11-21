@@ -127,6 +127,8 @@ test('lootFor table', () => {
   for (let s = 0; s < 50; s++) assert.deepEqual(lootFor('bush', s, 2, 1), lootFor('bush', s, 2, 1));
   const seeds = Array.from({ length: 400 }, (_, s) => lootFor('bush', s, 0, 0).length - 1).reduce((a, b) => a + b);
   assert.ok(seeds > 120 && seeds < 280, `bush seed rate ${seeds}/400`);
+  const flowers = Array.from({ length: 400 }, (_, s) => lootFor('bush', s, 0, 0).some(([k]) => k === 'flowerseed') ? 1 : 0).reduce((a, b) => a + b); // [bees]
+  assert.ok(flowers > 40 && flowers < 130, `bush flower seed rate ${flowers}/400`);
 });
 
 function gatherSetup() {

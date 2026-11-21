@@ -16,7 +16,14 @@ Checks:
 - `python sandbox/water/shoot_game.py <dist_dir> <out> <prefix>`: the real game (title, spawn,
   looking at the raft edge). Use it for an A/B of `dist/` against a patched copy.
 - `node sandbox/water/parity.mjs`: physics parity with `dist/ocean.js` (heights and slopes).
-- `node sandbox/water/cpu-cost.mjs`: JS cost of the raft SDF bake, floater pick and `getHeight`.
+- `node sandbox/water/parity.mjs` also checks that `setAmp(a)` moves the CPU heights with the shader.
+- `node sandbox/water/cpu-cost.mjs`: JS cost of the raft SDF bake, floater stamping, `footprint` and
+  `getHeight`.
+- `python sandbox/water/profile.py 'tier=cur' 'tier=a' ...`: interleaved A/B of lab variants. Besides wall
+  ms it reports `cpuMs`, the CPU time the browser's GPU process spends per frame. SwiftShader rasterises
+  there, so it is the shader work itself and moves only a few % with the load from other agents, while
+  wall ms swings 2 to 4x. Use `cpuMs`. `prof=NO_X` passes shader `#define`s for knock-outs, `src=` loads
+  another copy of the module (a saved older version for before/after), `nowater=1` hides the ocean.
 
 ## What the game has today
 
@@ -44,8 +51,9 @@ Checks:
 - **Waves.** Keep the exact Gerstner set. The CPU `getHeight` inverts the horizontal shift with 2
   fixed-point iterations, and the raft, player and items depend on it. `water.js` uses the same
   constants and code path, and `parity.mjs` reports `worstDiff: 0` over 25,200 samples and 36
-  time steps. A runtime `uAmp` (default 1) scales the GPU and CPU sides together for rough
-  weather later.
+  time steps. `setAmp(a)` (default 1) scales the GPU waves and the CPU wave table together for
+  rough weather; `parity.mjs` checks that runtime `setAmp(2.6)` equals creating with `amp: 2.6`
+  and that `setAmp(1)` returns to the shipping heights exactly. Never set `uAmp` alone.
 - **Crest foam from the Jacobian.** For Gerstner waves, `J = (1+dDx/dx)(1+dDz/dz) - (dDx/dz)^2`
   drops where crests bunch together. That is where real whitecaps sit, and it beats a height
   threshold, which also lights up broad, gentle swells. The terms reuse the `sin` that `wave()`
@@ -57,24 +65,38 @@ Checks:
   is the one stylized element worth keeping. The problem was where it went (everywhere) and
   that it aliased (specks at distance). Now a mask chooses where it goes (crests, raft, items),
   the mask also sets line width (thin lace becomes a patch near contact), and coverage is
-  anti-aliased with `fwidth(noise)`, so far lines thin out instead of sparkling.
+  anti-aliased by the pixel's footprint on the water (distance and grazing angle, so no `fwidth`),
+  with lines thinner than a pixel dimmed, so far lines thin out instead of sparkling or blurring.
+  The noise is a baked 512x512 R8 tiling value-noise texture (one fetch per octave instead of four
+  hashes).
 - **Contact foam without a depth prepass.** The raft is grid tiles (2 m, at `tile*2`), so its
-  footprint is known exactly. `setRaft(tiles)` bakes a 128x128 R8 signed distance texture fitted
+  footprint is known exactly. `setRaft(tiles)` bakes a 128x128 RG8 signed distance texture fitted
   to the raft's bounding box plus an 8 m margin. It stamps each tile into the texels within
-  reach, about 2 to 9 ms for 7 to 400 tiles, and only runs when tiles change. The shader reads
-  it for:
+  reach, a few ms for 7 to 400 tiles, and only runs when tiles change. R is the raft SDF, G the
+  same footprint shifted by the deck shadow offset (sun direction x deck height), so one fetch
+  gives:
   - a thin, noise-ragged white collar on the logs
-  - lace rings that pulse outward to about 1.1 m
-  - a fake deck shadow: the SDF sampled once more, offset toward the sun by the deck height
+  - thin lace rings that pulse outward to about 1.1 m
+  - a fake deck shadow
   - darker, foam-free water under the deck, so plank gaps show shaded water, not foam
 
-  Floating items are passed as up to 16 circles (`setFloaters`, nearest to the camera) and get
-  lace rings only. A solid collar was tried and dropped, because a circle never matches a
-  plank or a palm leaf and showed as a white disc.
+  Floating items are capsules: `footprint(mesh)` measures the model's local bounding box once and
+  returns `[x, z, r, hx, hz]`, the long horizontal side turned by the mesh's current rotation and
+  scale, so a plank gets a band of lace along its length and a barrel or jug a small round one.
+  `setFloaters` stamps every capsule into a 256x256 R8 distance map (64 m, 0.25 m texels) centred
+  on the camera, about 0.02 to 0.1 ms a frame for 30 items, so the shader does one fetch however
+  many items float. (The first pass looped over 16 circles per pixel, the single most expensive
+  term; the nearest-16 limit is gone too.) Items get lace only: a solid collar showed as a white
+  disc that never matches the model.
+- **Hook bobber.** `setBobber(position | null)` while the hook floats (within .25 m of
+  `getHeight`): a small white collar plus ripple rings running outward to about .75 m. A landing
+  splash ring was tried and cut for cost (it is visible for one second per cast).
 - **Sun glint.** The old pow-260 lobe on nearly flat water made a large blown-out white patch
-  in the 3/4 view. It is now a tight lobe (pow 700) multiplied by a fine noise "glitter" cell
-  mask, so the sun path breaks into points, plus a low broad sheen (pow 70 x .1). Past about
-  20 to 70 m the mask blends to a constant, so the far path stays continuous.
+  in the 3/4 view. It is now a tight lobe (pow 700, computed as pow 70 to the 10th by squaring)
+  times a glitter mask, plus a low broad sheen (pow 70 x .1). The glitter is one random point per
+  ~11 cm cell with its own flash cycle (on at once, fades over 40% of the cycle, then dark), so
+  the sun path twinkles point by point over time instead of showing a frozen pattern. One hash
+  per pixel. Past about 14 to 55 m it blends to a constant, so the far path stays continuous.
 - **Body colour.** The existing deep/shallow teal by height and slow noise patches is kept.
   Subsurface is now backlit: crest mask x view-against-sun x grazing view, in the Sea of
   Thieves style. Fresnel is capped at .75 so the low-poly sky never turns the sea into a

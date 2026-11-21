@@ -239,10 +239,10 @@ index 0000000..6d35adf
 +}
 diff --git a/dist/perf-overlay.js b/dist/perf-overlay.js
 new file mode 100644
-index 0000000..9287461
+index 0000000..752f14b
 --- /dev/null
 +++ b/dist/perf-overlay.js
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,69 @@
 +// Lightweight in-game perf overlay + optional dynamic resolution. Proposal for dist/perf-overlay.js.
 +//   import { createPerfOverlay } from './perf-overlay.js?build=...';
 +//   const perf = createPerfOverlay({renderer, maxPixelRatio:1.7, dynamic:false});
@@ -259,11 +259,11 @@ index 0000000..9287461
 +//              about half of the real draw calls); we switch info.autoReset off and reset in begin().
 +//   geo/tex/prog: live GPU resources (leak watch: these should be flat while playing)
 +//   dpr: current pixel ratio (moves when dynamic resolution is on)
-+export function createPerfOverlay({ renderer, maxPixelRatio = 1.7, minPixelRatio = 0.6, dynamic = false, key = 'F3', parent = document.body } = {}) {
++export function createPerfOverlay({ renderer, maxPixelRatio = 1.7, minPixelRatio = 0.6, dynamic = false, key = 'F3', visible = false, parent = document.body } = {}) {
 +  const el = document.createElement('div');
 +  el.id = 'perfOverlay';
 +  el.style.cssText = 'position:fixed;right:8px;top:8px;z-index:50;pointer-events:none;white-space:pre;font:11px/1.35 ui-monospace,Menlo,monospace;color:#eaf2ee;background:rgba(14,26,28,.72);padding:6px 8px;border-radius:6px';
-+  let shown = /[?&]perf\b/.test(location.search);
++  let shown = visible || /[?&]perf\b/.test(location.search);
 +  el.hidden = !shown; parent.appendChild(el);
 +  const onKey = e => { if (e.code === key) { shown = !shown; el.hidden = !shown; e.preventDefault(); } };
 +  addEventListener('keydown', onKey);
@@ -304,6 +304,7 @@ index 0000000..9287461
 +  }
 +  return {
 +    begin, end, el,
++    show(v = true) { shown = !!v; el.hidden = !shown; },
 +    setDynamic(v) { dynamic = !!v; if (!v) { dpr = Math.min(devicePixelRatio, maxPixelRatio); renderer.setPixelRatio(dpr); } },
 +    // call after the game applies its own pixel-ratio cap (settings change); dynamic mode then works under the new cap
 +    setMaxPixelRatio(v) { maxPixelRatio = v; if (dynamic) { dpr = Math.min(dpr, v, devicePixelRatio); renderer.setPixelRatio(dpr); } else dpr = Math.min(devicePixelRatio, v); },
@@ -312,7 +313,7 @@ index 0000000..9287461
 +  };
 +}
 diff --git a/dist/wood.js b/dist/wood.js
-index 4a15e07..528a479 100644
+index 4a15e07..de71c2c 100644
 --- a/dist/wood.js
 +++ b/dist/wood.js
 @@ -13,5 +13,7 @@ export function createWoodMaterial(T, color) {
@@ -320,7 +321,7 @@ index 4a15e07..528a479 100644
   }
   const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=4;
 - return new T.MeshStandardMaterial({map:texture,bumpMap:texture,bumpScale:.018,roughness:.86,metalness:0});
-+ // Bump reads 3 taps per pixel for its derivative: give it its own sampler without anisotropic filtering (perf).
-+ const bump=texture.clone();bump.anisotropy=1;
-+ return new T.MeshStandardMaterial({map:texture,bumpMap:bump,bumpScale:.018,roughness:.86,metalness:0});
++ // No bumpMap: at bumpScale .018 it changed no pixel by more than 8/255 even looking straight down at the deck, but its
++ // 3 extra taps per pixel were ~1/3 of the deck's shading cost (docs/tech/perf.md).
++ return new T.MeshStandardMaterial({map:texture,roughness:.86,metalness:0});
  }

@@ -19,7 +19,7 @@ const SPRITE_URL = (() => {
 })();
 
 // Symbols that actually exist in icons.svg.
-const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'crew', 'help', 'sound', 'close', 'repair', 'hammer', 'compass', 'antenna', 'cup', 'saltcup', 'freshcup', 'purifier']);
+const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'crew', 'help', 'sound', 'close', 'repair', 'hammer', 'compass', 'antenna', 'cup', 'saltcup', 'freshcup', 'purifier', 'rainbarrel', 'sprinkler', 'research']); // + rain-sprinkler, research (storage-research)
 // Item kind (normalised) -> sprite symbol.
 const SPRITE_FOR = {
   hook: 'hook', plastichook: 'hook', grapplinghook: 'hook',
@@ -101,6 +101,8 @@ function iconSVG(kind) {
   const meta = info(kind);
   // Placeholder (borrowed) sprite + a dedicated inline drawing -> prefer the drawing.
   const custom = meta?.placeholder && CUSTOM[n];
+  // A borrowed sprite would show the wrong item (water as a barrel), so wait on a blank tile instead.
+  if (meta?.placeholder && !custom) return '<svg class="sv-icon sv-blank" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><circle cx="24" cy="24" r="8" fill="#ffffff12"/></svg>';
   let id = custom ? null : meta?.icon;
   if (typeof id === 'string') id = id.replace(/^icon-/, ''); else id = null;
   if (!custom && (!id || !SPRITES.has(id))) id = SPRITE_FOR[n];
@@ -133,9 +135,9 @@ function recipeList() {
 }
 
 // ---- styles ----
-const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
+const FONT = "var(--ui-font,'Segoe UI',system-ui,sans-serif)";
 const CSS = `
-.tools.sv-hotbar{--s:58px;--g:4px;--px:5px;--py:5px;position:relative;display:flex;flex-wrap:nowrap;gap:var(--g);padding:5px;border-radius:4px;max-width:96vw;overflow:visible;
+.tools.sv-hotbar{--s:52px;--g:4px;--px:5px;--py:5px;position:relative;display:flex;flex-wrap:nowrap;gap:var(--g);padding:5px;border-radius:4px;max-width:96vw;overflow:visible;
   background:repeating-linear-gradient(90deg,#00000010 0 1px,transparent 1px 17px),linear-gradient(#a8844f,#9a7748 45%,#8a6a3e);
   border:2px solid #5e4426;box-shadow:inset 0 1px 0 #c9a76f88,0 3px 10px #0004}
 .tools.sv-hotbar::before,.tools.sv-hotbar::after{content:none;display:none}
@@ -160,19 +162,19 @@ const CSS = `
 .sv-slot.sv-bumpA .sv-art{animation:svBumpA .34s ease-out}.sv-slot.sv-bumpB .sv-art{animation:svBumpB .34s ease-out}
 @keyframes svBumpA{35%{transform:scale(1.22) rotate(-6deg)}}@keyframes svBumpB{35%{transform:scale(1.22) rotate(-6deg)}}
 .tools.sv-hotbar>button.sv-slot:hover,#inventory.sv-inv button.sv-slot:hover{background:linear-gradient(180deg,#ddcca2,#cbb688);box-shadow:inset 0 0 0 1px #5e4426,inset 0 1px 3px #5e442633}
-.tools.sv-hotbar>button.sv-slot.sv-sel{transform:translateY(-4px);background:linear-gradient(180deg,#bea676,#b2996a);box-shadow:inset 0 0 0 2px #4a3520,inset 0 2px 4px #4a352055,0 6px 14px #0005}
+.tools.sv-hotbar>button.sv-slot.sv-sel{transform:scale(1.06);background:linear-gradient(180deg,#bea676,#b2996a);box-shadow:inset 0 0 0 2px #4a3520,inset 0 2px 4px #4a352055,0 6px 14px #0005}
 .tools.sv-hotbar>button.sv-slot.sv-sel .sv-art{scale:1.1}
 .tools.sv-hotbar>button.sv-slot.sv-sel .sv-num{opacity:.95}
 .tools.sv-hotbar>button.sv-slot:focus-visible,#inventory.sv-inv button.sv-slot:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
 .tools.sv-hotbar>.sv-cursor{position:absolute;left:var(--px);top:var(--py);z-index:2;width:var(--s);height:var(--s);border-radius:3px;pointer-events:none;
-  transform:translate(calc(var(--i,0) * (var(--s) + var(--g))),-4px);transition:transform .2s cubic-bezier(.3,1.3,.5,1),opacity .2s;
+  transform:translate(calc(var(--i,0) * (var(--s) + var(--g))),0) scale(1.06);transition:transform .2s cubic-bezier(.3,1.3,.5,1),opacity .2s;
   box-shadow:inset 0 0 0 2px #4a3520,0 0 0 1px #f6e8c6aa,0 0 10px #fff3d64d}
 .tools.sv-hotbar>.sv-cursor.sv-off{opacity:0}
 .tools.sv-hotbar>.sv-label{position:absolute;left:calc(var(--px) + var(--s) / 2);bottom:calc(100% + 12px);z-index:2;padding:5px 11px;border-radius:5px;white-space:nowrap;pointer-events:none;
   background:#e6d6adf2;color:#3e2a17;font:700 13px/1.2 ${FONT};box-shadow:inset 0 0 0 1px #5e4426,0 4px 10px #0005;opacity:0;
   transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),5px);transition:opacity .25s,transform .22s cubic-bezier(.3,1.3,.5,1)}
 .tools.sv-hotbar>.sv-label.sv-show{opacity:1;transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),0)}
-@media(max-width:760px){.tools.sv-hotbar{--s:42px;--g:4px}.tools.sv-hotbar .sv-art{inset:3px}.tools.sv-hotbar .sv-count{font-size:12px}}
+@media(max-width:760px){.tools.sv-hotbar{--s:min(42px,calc((96vw - 41px) / 10));--g:3px}.tools.sv-hotbar .sv-art{inset:3px}.tools.sv-hotbar .sv-count{font-size:12px}}
 #inventory.sv-inv{--s:56px;--g:6px;padding:0;margin:auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#3e2a17;
   width:max-content;min-width:0;max-width:96vw;max-height:94vh;overflow:visible;font:500 14px/1.35 ${FONT}}
 #inventory.sv-inv::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
@@ -294,7 +296,7 @@ function mountDialog() {
   if (d.dataset.sv !== VERSION || d.querySelectorAll('.sv-slot[data-index]').length !== TOTAL) {
     let grid = '', hot = '';
     for (let i = HB; i < TOTAL; i++) grid += `<button type="button" class="sv-slot" data-index="${i}">${slotInner('')}</button>`;
-    for (let i = 0; i < HB; i++) hot += `<button type="button" class="sv-slot sv-hot" data-index="${i}">${slotInner(i + 1)}</button>`;
+    for (let i = 0; i < HB; i++) hot += `<button type="button" class="sv-slot sv-hot" data-index="${i}">${slotInner(String((i + 1) % 10))}</button>`;
     d.innerHTML = `<div class="sv-wrap" tabindex="-1">
       <section class="sv-craft" aria-label="Crafting">
         <h3 class="sv-h">Crafting</h3>
@@ -657,7 +659,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     invalidate();
     if (t.dataset.sv !== VERSION || t.querySelectorAll(':scope>.sv-slot').length !== HB || !t.querySelector(':scope>.sv-cursor')) {
       let html = '';
-      for (let i = 0; i < HB; i++) html += `<button type="button" class="sv-slot" data-slot="${i}">${slotInner(i + 1)}</button>`;
+      for (let i = 0; i < HB; i++) html += `<button type="button" class="sv-slot" data-slot="${i}">${slotInner(String((i + 1) % 10))}</button>`;
       t.innerHTML = html + '<i class="sv-cursor sv-off" aria-hidden="true"></i><b class="sv-label" aria-hidden="true"></b>';
       t.dataset.sv = VERSION;
     }
@@ -1029,10 +1031,10 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (e.detail > 0) b.blur();
   }, opt);
 
-  // Tab / I toggle while playing.
+  // Tab / I toggle while playing; E (which opens the bag from the game) also closes it.
   document.addEventListener('keydown', e => {
     if (!alive || e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
-    if (e.code !== 'Tab' && e.code !== 'KeyI') return;
+    if (e.code !== 'Tab' && e.code !== 'KeyI' && !(e.code === 'KeyE' && isOpen)) return;
     const t = e.target;
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
     if (isOpen) { e.preventDefault(); e.stopPropagation(); close(); return; }
