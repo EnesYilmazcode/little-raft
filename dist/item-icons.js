@@ -16,6 +16,7 @@ import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { getModel as getLibraryModel } from './models.js?build=v3-survival-ae77fa84ac2b';
+import { buildIconModel } from './icon-models.js?build=v3-survival-ae77fa84ac2b';
 
 const SIZE = 128;
 // Every bag item kind; warmIcons(ICON_KINDS) renders the full set ahead of the first bag open.
@@ -148,13 +149,15 @@ function freeModel(root) {
   });
 }
 
-/** Model for an icon: the provider, then the procedural fallback, then models.js for kinds the
- *  fallback lacks (cup, seed, water). own = true when the caller must free it. */
+/** Model for an icon: the provider, then the procedural fallback, then icon-models.js (progression
+ *  and content items), then models.js for kinds the fallback lacks (cup, seed, water). own = true when the caller must free it. */
 export function resolveIconModel(kind) {
   let model = null;
   if (provider && !FRAME[kind]?.own) { try { model = provider(MODEL_ALIAS[kind] || kind) || provider(kind) || null; } catch (e) { console.warn('item icon provider failed', kind, e); } }
   if (model) return { model, own: false };
   try { model = buildFallbackModel(kind); } catch (e) { console.warn('item icon model failed', kind, e); }
+  if (model) return { model, own: true };
+  model = buildIconModel(T, kind); // progression and content items: ores, ingots, parts, stations, gear
   if (model) return { model, own: true };
   try { model = getLibraryModel(kind); } catch (e) { console.warn('item icon library model failed', kind, e); }
   return { model: model || null, own: false };   // getModel clones share cached geometry: never free

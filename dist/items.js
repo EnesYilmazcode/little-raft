@@ -482,6 +482,10 @@ export function registerBagKinds(info) {
 }
 const known = (k) => isItem(k) || EXTRA_KINDS.has(k);
 
+// Registered kinds that saves must not keep: renamed on load, before alias lookup. The old farming.js build minted
+// {kind:'water'} cups that look like freshcup but no watering action accepts ('water' stays registered for farming.js).
+export const LOAD_RENAMES = deepFreeze({ water: 'freshcup' });
+
 function resolveKind(kind) {
   if (typeof kind !== 'string') return null;
   if (known(kind)) return kind;
@@ -515,7 +519,8 @@ export function migrateSnapshot(snap, extraStack = null) {
   for (let i = 0; i < src.length; i++) {
     const raw = src[i];
     if (!raw || typeof raw !== 'object') continue;
-    const kind = resolveKind(raw.kind) ?? (extra(raw.kind) ? raw.kind : null);
+    const rk = typeof raw.kind === 'string' && hasOwn(LOAD_RENAMES, raw.kind) ? LOAD_RENAMES[raw.kind] : raw.kind; // legacy kinds load renamed
+    const kind = resolveKind(rk) ?? (extra(rk) ? rk : null);
     let count = toCount(raw.count);
     if (!kind || count === 0) continue;
     const base = { kind };
