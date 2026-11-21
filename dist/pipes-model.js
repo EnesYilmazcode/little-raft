@@ -32,8 +32,8 @@ export function createWaterTank(T) {
   g.userData.craftType = 'watertank'; g.userData.height = 1.05;
   const parts = [];
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) parts.push([new T.BoxGeometry(.06, .12, .06), '#7d5c37', sx * .2, .06, sz * .2]);
-  parts.push([new T.CylinderGeometry(.3, .3, .78, 10), '#9c7649', 0, .12 + .39, 0]); // wood-stave body
-  for (let i = 0; i < 10; i++) { const a = (i + .5) / 10 * Math.PI * 2; parts.push([new T.BoxGeometry(.012, .76, .012), '#7d5c37', Math.sin(a) * .298, .51, Math.cos(a) * .298, 0, a, 0]); } // stave seams
+  parts.push([new T.CylinderGeometry(.3, .3, .78, 10), '#d6ae76', 0, .12 + .39, 0]); // wood-stave body (light enough to read as wood on the shaded side in daylight)
+  for (let i = 0; i < 10; i++) { const a = (i + .5) / 10 * Math.PI * 2; parts.push([new T.BoxGeometry(.012, .76, .012), '#9a7448', Math.sin(a) * .298, .51, Math.cos(a) * .298, 0, a, 0]); } // stave seams
   for (const y of [.17, .86]) parts.push([new T.TorusGeometry(.305, .014, 4, 20), '#b87333', 0, y, 0, Math.PI / 2]); // copper hoops
   parts.push([new T.ConeGeometry(.33, .15, 10), '#b87333', 0, .9 + .075, 0]); // lid
   parts.push([new T.CylinderGeometry(.03, .03, .03, 6), '#8a5a2b', 0, 1.06, 0]); // lid knob

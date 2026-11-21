@@ -73,7 +73,12 @@ export function cleanPipes(v, tiles, decor) {
 
 /** Host prune against the live world: pipes off a tile (g++) and cups off a tank. -> true if anything changed. */
 export function prunePipes(st, world, cache) {
-  const ts = cache ? cachedTiles(cache, world?.tiles) : tileSet(world?.tiles), types = cache ? cachedNets(cache, st, world).types : typeMap(world?.decor);
+  // tiles: a fresh set every call (once a second). A cache keyed on identity + length went stale when the shark ate one
+  // tile and the player built another in the same second (same array, same length), leaving a pipe over open water.
+  // The same goes for decor (a pick-up splice and a placement push in one tick keep identity + length): the host tick
+  // re-checks the decor signature once a second; nets still rebuild only when the signature really changed.
+  if (cache) cache.len = -2;
+  const ts = tileSet(world?.tiles), types = cache ? cachedNets(cache, st, world).types : typeMap(world?.decor);
   let gp = false, ch = false;
   for (const k of Object.keys(st.p)) if (!ts.has(k)) { delete st.p[k]; gp = true; }
   for (const k of Object.keys(st.t)) if (types.get(k) !== 'watertank' || !(st.t[k] > 0)) { delete st.t[k]; ch = true; }
@@ -126,16 +131,12 @@ export function decorSig(decor, tables = TABLES) {
 }
 
 /** Cache: {tables}. Rebuilds only when g, the decor signature (recomputed when decor identity/length changes) or the slice changes. */
-export function newNetCache(tables = TABLES) { return { tables, decor: null, len: -1, sig: '', g: -1, st: null, nets: null, tiles: null, tlen: -1, tset: null }; }
+export function newNetCache(tables = TABLES) { return { tables, decor: null, len: -1, sig: '', g: -1, st: null, nets: null }; }
 function cachedNets(c, st, world) {
   const d = world?.decor;
   if (d !== c.decor || (Array.isArray(d) ? d.length : -1) !== c.len) { c.decor = d; c.len = Array.isArray(d) ? d.length : -1; const s = decorSig(d, c.tables); if (s !== c.sig) { c.sig = s; c.nets = null; } }
   if (!c.nets || c.g !== st.g || c.st !== st) { c.nets = buildNets(st, world, c.tables); c.g = st.g; c.st = st; }
   return c.nets;
-}
-function cachedTiles(c, tiles) {
-  if (tiles !== c.tiles || (Array.isArray(tiles) ? tiles.length : -1) !== c.tlen || !c.tset) { c.tiles = tiles; c.tlen = Array.isArray(tiles) ? tiles.length : -1; c.tset = tileSet(tiles); }
-  return c.tset;
 }
 export const netsFor = (cache, st, world) => cachedNets(cache, st, world);
 
@@ -301,7 +302,8 @@ export function createPipes(ctx) {
   const nets = () => cachedNets(nc, st, ctx.world);
   const bag = () => ctx.localBag?.() ?? null;
   const heldKind = () => { if (ctx.heldKind) return ctx.heldKind(); const b = bag(); return b?.slots?.[b.selectedIndex]?.kind ?? null; };
-  const tileOf = aim => (aim?.point && Number.isFinite(aim.point.x) && Number.isFinite(aim.point.z) ? [Math.round(aim.point.x / 2), Math.round(aim.point.z / 2)] : null);
+  const tileXZ = [0, 0]; // reused: prompt() and paint() call tileOf every frame while a pipe is held; callers read it at once
+  const tileOf = aim => { if (!(aim?.point && Number.isFinite(aim.point.x) && Number.isFinite(aim.point.z))) return null; tileXZ[0] = Math.round(aim.point.x / 2); tileXZ[1] = Math.round(aim.point.z / 2); return tileXZ; };
   const deckY = () => (ctx.deckY ? ctx.deckY() : (ctx.raft?.position.y ?? 0) + .2);
 
   // Nearest water tank along the view ray (or the camera forward when no aim), within reach (as bees target()).
