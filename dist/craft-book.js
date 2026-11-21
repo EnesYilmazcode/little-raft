@@ -2,38 +2,42 @@
 // Category grouping, item descriptions, needed-vs-owned rows, the hold-to-craft repeat schedule
 // and tooltip anchoring maths all live here so they can be unit-tested in node.
 
-// Tabs, in display order. `icon` is a symbol id in icons.svg.
+// Tabs, in display order (Raft-like: tools, navigation, food & water, materials, building, other).
+// `icon` is a symbol id in icons.svg; `name` is the short tab label, `title` the full name
+// (tooltip / aria-label, and what shows when the label is hidden on narrow screens).
 export const CATEGORIES = Object.freeze([
-  Object.freeze({ id: 'tools',     name: 'Tools',     icon: 'hammer' }),
-  Object.freeze({ id: 'materials', name: 'Materials', icon: 'wood' }),
-  Object.freeze({ id: 'survival',  name: 'Survival',  icon: 'net' }),
-  Object.freeze({ id: 'building',  name: 'Building',  icon: 'floor' }),
+  Object.freeze({ id: 'tools',      name: 'Tools',   title: 'Tools',        icon: 'hammer' }),
+  Object.freeze({ id: 'navigation', name: 'Sailing', title: 'Navigation',   icon: 'wheel' }),
+  Object.freeze({ id: 'food',       name: 'Food',    title: 'Food & Water', icon: 'cup' }),
+  Object.freeze({ id: 'materials',  name: 'Parts',   title: 'Materials',    icon: 'wood' }),
+  Object.freeze({ id: 'building',   name: 'Build',   title: 'Building',     icon: 'floor' }),
+  Object.freeze({ id: 'other',      name: 'Other',   title: 'Other & Decor', icon: 'lantern' }),
 ]);
 
 // Recipe output kind -> category id. Unknown kinds fall back by shape (see categoryOf).
 const CATEGORY_OF = Object.freeze({
-  hook: 'tools', hammer: 'tools', fishingrod: 'tools',
-  rope: 'materials',
-  net: 'survival', palm: 'survival', lantern: 'survival',
-  sail: 'building', bench: 'building', crate: 'building',
-  // progression catalogue (items.js)
+  // tools: things you hold or carry to work with
+  hook: 'tools', hammer: 'tools', fishingrod: 'tools', brush: 'tools',
   metalhook: 'tools', binoculars: 'tools', spear: 'tools', metalspear: 'tools', finder: 'tools', spade: 'tools', paddle: 'tools', axe: 'tools',
-  drum: 'tools', pipes: 'tools', bells: 'tools', // [instruments]
-  nail: 'materials', bolt: 'materials', hinge: 'materials',
-  flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
-  juicer: 'survival', berrycup: 'survival', coconutcup: 'survival', mixcup: 'survival', // [juicer]
-  perch: 'survival', // [gull]
-  rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
-  researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
-  rug: 'building', pennant: 'building', fern: 'building', chime: 'building', hammock: 'building', pots: 'building', sign: 'building', // decor pack
-  kiln: 'building', glasslamp: 'survival', sinker: 'survival', // kiln
-  nestbox: 'survival', cushion: 'building', // raft animals
-  // content (engine, sleep, paint)
-  motor: 'building', wheel: 'building', bed: 'building', brush: 'tools',
+  fins: 'tools', airjug: 'tools', goggles: 'tools', scraper: 'tools', sinker: 'tools',
+  // navigation: moving and steering the raft, finding the way
+  sail: 'navigation', motor: 'navigation', wheel: 'navigation', receiver: 'navigation', antenna: 'navigation', maptable: 'navigation',
+  // food & water: drink, cooking, growing
+  cup: 'food', purifier: 'food', grill: 'food', cookpot: 'food', bowl: 'food', palm: 'food',
+  rainbarrel: 'food', sprinkler: 'food', // [rain-sprinkler]
+  juicer: 'food', berrycup: 'food', coconutcup: 'food', mixcup: 'food', // [juicer]
+  flowerbox: 'food', beehive: 'food', honeyfish: 'food', // [bees]
+  nestbox: 'food', // raft animals (puff eggs)
+  // materials: crafted parts that go into other recipes
+  rope: 'materials', nail: 'materials', bolt: 'materials', hinge: 'materials',
   paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
-  fins: 'tools', airjug: 'tools', goggles: 'tools', scraper: 'tools',
-  cookpot: 'building', bowl: 'survival',
-  shellwreath: 'building',
+  // building: furniture and work stations
+  bench: 'building', crate: 'building', research: 'building', researchtable: 'building', smelter: 'building', kiln: 'building', bed: 'building',
+  // other: lights, music, decor and odds and ends
+  lantern: 'other', glasslamp: 'other', candle: 'other', net: 'other', perch: 'other', // [gull]
+  drum: 'other', pipes: 'other', bells: 'other', // [instruments]
+  rug: 'other', pennant: 'other', fern: 'other', chime: 'other', hammock: 'other', pots: 'other', sign: 'other', // decor pack
+  cushion: 'other', shellwreath: 'other',
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).

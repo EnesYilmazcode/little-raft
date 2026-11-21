@@ -242,9 +242,10 @@ const CSS = `
 #inventory .sv-hint{margin:0;width:calc(${HB} * (var(--s) + var(--g)) - var(--g));max-width:100%;font:500 12px/1.35 ${FONT};color:#f6e8c6;text-align:left;text-shadow:0 1px 0 #3e2a1799}
 #inventory .sv-craft{flex:0 0 324px;width:324px;min-width:324px;box-sizing:border-box;height:min(560px,calc(94vh - 30px));max-height:none;display:flex;flex-direction:column;gap:8px;padding:9px;overflow:hidden}
 #inventory .sv-hint.sv-warn{color:#ffb39a}
-#inventory .sv-tabs{display:grid;grid-template-columns:repeat(var(--tabs,4),1fr);gap:4px;flex:none}
+#inventory .sv-tabs{display:grid;grid-template-columns:repeat(var(--tabs,6),minmax(0,1fr));gap:3px;flex:none}
 #inventory .sv-tab{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;height:auto;margin:0;padding:6px 2px 5px;border:0;border-radius:4px 4px 2px 2px;
-  background:linear-gradient(#c4ae80,#b39b6d);box-shadow:inset 0 0 0 1px #7a5a34;color:#4e3720;font:700 11px/1.1 ${FONT};letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
+  background:linear-gradient(#c4ae80,#b39b6d);box-shadow:inset 0 0 0 1px #7a5a34;color:#4e3720;font:700 11px/1.1 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none}
+#inventory .sv-tlabel{display:block;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:clip}
 #inventory .sv-tab .sv-icon{width:22px;height:22px;opacity:.8}
 #inventory .sv-tab:hover{color:#3e2a17;box-shadow:inset 0 0 0 1px #4a3520}
 #inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#e0cfa5,#d6c397);color:#3e2a17;box-shadow:inset 0 0 0 2px #4a3520,0 2px 0 #4a3520}
@@ -324,6 +325,7 @@ const CSS = `
 #inventory .sv-tip small em{font-style:normal;font-weight:700;color:#8a3a12}
 @media(max-width:860px),(max-height:520px){#inventory .sv-craft{flex:none;width:auto;min-width:0;height:auto;max-height:none;overflow:visible}#inventory.sv-inv{width:auto}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}#inventory .sv-rlist{max-height:30vh}#inventory .sv-bag{min-width:0}
   #inventory.sv-inv{--s:44px;--g:5px}#inventory .sv-slot .sv-art{inset:3px}}
+@media(max-width:440px){#inventory .sv-tlabel{display:none}#inventory .sv-tab{padding:7px 2px}}
 @media(max-width:440px){#inventory.sv-inv{--s:36px;--g:4px}#inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.sv-slot,.sv-art,.sv-cursor,.sv-label,#inventory .sv-recipe,#inventory .sv-craftbtn .sv-fill{transition:none!important;animation:none!important}}
 /* pin a recipe to the HUD edge (craft-book.js trackerView) */
@@ -552,7 +554,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const key = recipes.map(r => r.id).join(',') + '|' + (iconFor ? 3 : 2);
     if (dlg.dataset.svRecipes !== key || rlist.childElementCount !== recipes.length || !recipes.length) {
       tabsEl.style.setProperty('--tabs', String(Math.max(1, groups.length)));
-      tabsEl.innerHTML = groups.map(g => `<button type="button" class="sv-tab" role="tab" data-cat="${esc(g.id)}" aria-selected="false" tabindex="-1">${iconSVG(g.icon)}<span>${esc(g.name)}</span><i class="sv-tbadge"></i></button>`).join('');
+      tabsEl.innerHTML = groups.map(g => `<button type="button" class="sv-tab" role="tab" data-cat="${esc(g.id)}" data-title="${esc(g.title || g.name)}" title="${esc(g.title || g.name)}" aria-selected="false" tabindex="-1">${iconSVG(g.icon)}<span class="sv-tlabel">${esc(g.name)}</span><i class="sv-tbadge"></i></button>`).join('');
       // Rows in tab order so the list reads naturally inside each category.
       const ordered = groups.flatMap(g => g.recipes);
       rlist.innerHTML = ordered.length ? ordered.map(r => `<button type="button" class="sv-recipe sv-locked" data-recipe="${esc(r.id)}" data-cat="${esc(catOf.get(r.id))}" data-tip-kind="${esc(r.out.kind)}">
@@ -579,7 +581,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!inTab.some(v => v.r.id === pickId)) pickId = (inTab.find(v => v.state === 'ready') || inTab[0])?.r.id ?? null;
     if (activeTab) dlg.dataset.svTab = activeTab;
     const tabEl = tabsEl.querySelector(`.sv-tab[data-cat="${activeTab}"]`);
-    if (tabEl) rlist.setAttribute('aria-label', tabEl.textContent.trim() + ' recipes');
+    if (tabEl) rlist.setAttribute('aria-label', (tabEl.dataset.title || tabEl.textContent.trim()) + ' recipes');
     applyPick();
   }
   function setTab(id, focus = false) {
@@ -684,7 +686,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     tabsEl.querySelectorAll('.sv-tab').forEach(t => {
       const n = readyPer.get(t.dataset.cat) || 0, b = t.querySelector('.sv-tbadge');
       if (b && b.textContent !== (n ? String(n) : '')) b.textContent = n ? String(n) : '';
-      t.setAttribute('aria-label', `${t.querySelector('span')?.textContent || ''}${n ? `, ${n} ready` : ''}`);
+      t.setAttribute('aria-label', `${t.dataset.title || t.querySelector('span')?.textContent || ''}${n ? `, ${n} ready` : ''}`);
     });
     paintDetail();
   }
