@@ -118,3 +118,88 @@ Next ideas:
 - shared plank geometry for startup
 - test the adaptive step-down visuals
 - in-page timing for `toDebugMs`
+
+## Perf round 2, 2026-11-21 (branch `claude/loop-perf-202611210540`, base `origin/claude/raft-master` 7555d67 + round-1 merge)
+
+BEFORE = 9eae7d7: raft-master with the rest of round 1 merged in. That merge also fixed the islands and clouds so
+they still drift while sailing and kept their day/night tint, and it made the sun follow the fitted shadow target.
+AFTER = c5f3e69. Probe = `tests/e2e/perf_gate.py` from c5f3e69: `?pinQuality`, 600-frame JIT warm-up at a tiny
+viewport, a deck walk alternating W/S, and `--swim`. Figures are medians of 2 alternating runs. Draw calls and
+triangles count main + shadow passes.
+
+| phase | metric | before | after | Δ |
+|---|---|---|---|---|
+| idle | draw calls | 136 | 51.5 | -62.1% |
+| idle | triangles | 127,304 | 129,318 | +1.6% |
+| idle | shadow casters | 169 | 128 | -24.3% |
+| idle | geometries | 128 | 63.5 | -50.4% |
+| idle | lights | 6 | 2 | -66.7% |
+| idle | shader programs | 37 | 36 | -2.7% |
+| idle | JS alloc KB/frame | 68.7 | 28.4 | -58.6% |
+| idle | avg / p95 frame ms* | 389 / 458 | 262 / 317 | -32.5% / -30.9% |
+| walk (deck) | draw calls | 138 | 51.5 | -62.5% |
+| walk (deck) | JS alloc KB/frame | 65.7 | 29.3 | -55.4% |
+| walk (deck) | avg / p95 frame ms* | 599 / 800 | 261 / 300 | -56.4% / -62.5% |
+| hook | draw calls | 146 | 62 | -57.7% |
+| hook | JS alloc KB/frame | 87.1 | 51.8 | -40.6% |
+| swim | draw calls | 99.5 | 41 | -58.8% |
+| swim | JS alloc KB/frame | 111 | 30.8 | -72.3% |
+| swim | avg frame ms* | 349 | 136 | -60.9% |
+| startup | DOMContentLoaded ms (in-page, 3 runs) | 303 | 87 | -71.3% |
+| startup | first contentful paint ms | 328 | 120 | -63.4% |
+| startup | raftDebug ready ms (in-page, 3 runs) | 2000 | 1944 | -2.8% |
+| startup | transfer KB | 2367 | 2242 | -5.3% |
+
+\*Software GL on a shared box (load 2-21). Treat frame times as direction, not magnitude. Retained heap growth
+was under 0.1 MB in every phase. The perf gate on AFTER against BEFORE gives **PASS**, with no page errors.
+
+What landed:
+- **Floating items:** one mesh per item, with per-part roughness and metalness from a tiny lookup texture.
+  Geometry is pooled as 4 variants per type, and the pools are drawn as InstancedMesh batches split by whether
+  they fall inside the shadow box (63 → 18 item draws).
+- **Islands and clouds:** two InstancedMeshes driven by proxy groups, so sailing drift and day/night tint still
+  work (23 → 2 draws).
+- **Merged meshes:**
+  - the sail fixture and anchor
+  - the deck planks, now one vertex-coloured mesh
+  - the hook viewmodel, from 6 materials to 2
+- **Day/night:**
+  - lantern point lights join the scene only once the first lantern exists, so 4 fewer lights in every lit
+    shader at noon
+  - visuals are recomputed every 0.1 s of game clock
+- **Shader programs:**
+  - island models share one program
+  - the co-op ping uses 1 program instead of 4
+  - a single pass for every transparent DoubleSide material, enforced by `tests/perf-lint.test.mjs`. The fish
+    material was re-running program checks every frame.
+- **Allocation fixes:**
+  - input bindings: 12.9 KB → 0.2 KB per frame
+  - gull flight plans are precomputed
+  - prompts read a light `raftDebug.hud` getter instead of the 48-key state object
+  - the open-dialog check is cached through a MutationObserver
+- **Seafloor:**
+  - built and JIT-warmed at load; the first dive used to cost a 20 ms, 5 MB hitch
+  - the noise is hand-inlined, giving bit-identical heights at 122 KB instead of 1.1 MB per rebuild
+  - its shaders are compiled with the scene
+- **Startup:**
+  - every module now uses one `?build=` specifier; 8 modules had been loading twice as separate instances
+  - fonts load without blocking
+  - live.js preloads the static module graph, and a test keeps that list in sync
+  - the co-op hub, controls tab, underwater fx and diving HUD load lazily
+- **Perf gate:**
+  - JIT warm-up, so unoptimized code no longer reports false hotspots
+  - the walk phase stays on the deck, plus an optional swim phase
+  - the debug hook is polled every 20 ms, not once per frame
+
+Regression check (every PNG pair read, plus scripted views of items, islands and clouds by day and night, a
+lantern at night, sailing drift, a dive, inventory, pause and hooking): no regressions. A suspected darker leaf
+was traced to a different leaf at a different yaw; a fixed-pose grid matches the old build.
+
+Rust/WASM: none again; see `docs/loop/rust-wasm.md`.
+
+Next ideas:
+- lazy-load the fishing-cooking subtree (needs a refactor)
+- trim the warm-up programs (36)
+- shadow casters (128) on small decor
+- fewer seafloor instanced draws when diving
+- let quality.js also lower the shadow-pass frequency on low-end machines
