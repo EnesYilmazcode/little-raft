@@ -42,13 +42,27 @@ void wave(vec2 d, float a, float L, float Q, vec2 p, inout vec3 disp, inout vec3
   bin += vec3(-d.x * d.y * kqa * s, d.y * ka * co, -d.y * d.y * kqa * s);
 }
 
+// Sum of the Gerstner waves at world xz p: displacement, plus tangent/binormal for the normal.
+vec3 gerstner(vec2 p, out vec3 tng, out vec3 bin) {
+  vec3 disp = vec3(0.0);
+  tng = vec3(1.0, 0.0, 0.0);
+  bin = vec3(0.0, 0.0, 1.0);
+  ${glslWaves}
+  return disp;
+}
+
+attribute vec2 aStitch; // LOD seam vertex: average the waves at p +/- aStitch so it lies on the coarse edge
+
 void main() {
   vec4 wp = modelMatrix * vec4(position, 1.0);
   vec2 p = wp.xz + uFlow; // [sailing]
-  vec3 disp = vec3(0.0);
-  vec3 tng = vec3(1.0, 0.0, 0.0);
-  vec3 bin = vec3(0.0, 0.0, 1.0);
-  ${glslWaves}
+  vec3 tng, bin;
+  vec3 disp = gerstner(p, tng, bin);
+  if (aStitch.x != 0.0 || aStitch.y != 0.0) {
+    vec3 t0, b0, t1, b1;
+    disp = 0.5 * (gerstner(p - aStitch, t0, b0) + gerstner(p + aStitch, t1, b1));
+    tng = t0 + t1; bin = b0 + b1;
+  }
   wp.xyz += disp;
   vWorld = wp.xyz;
   vHeight = disp.y;
@@ -187,11 +201,55 @@ void main() {
 }
 `;
 
+// Nested square LOD rings centred on the mesh origin: level 0 is a full (2*n0)^2 grid at spacing s0,
+// each further level doubles the spacing and fills the square out to its own half-extent, leaving a
+// hole for the finer level. Every level boundary is a multiple of the next level's spacing, so the
+// coarse ring's inner edge lands on every other fine-edge vertex; the fine in-between vertices get
+// an aStitch offset (half a coarse cell along the edge) so the shader averages their two coarse
+// neighbours and the seam stays watertight. Offsets are multiples of each level's spacing, so with
+// the mesh snapped to the coarsest spacing every vertex stays fixed in world space.
+export const OCEAN_LOD = { s0: 2.8, rings: [18, 18, 13] }; // half-extent per level in that level's cells
+function buildLodGeometry(T, { s0, rings }) {
+  const pos = [], stitch = [], index = [];
+  let s = s0, inner = 0; // inner: half-extent of the finer level, in world units
+  for (let L = 0; L < rings.length; L++) {
+    const n = rings[L], R = n * s, side = 2 * n + 1, base = pos.length / 3;
+    const outerSeam = L < rings.length - 1; // this level's outer edge meets a coarser ring
+    for (let j = 0; j < side; j++) for (let i = 0; i < side; i++) {
+      pos.push((i - n) * s, 0, (j - n) * s);
+      let sx = 0, sz = 0;
+      if (outerSeam) { // odd vertices along an outer edge sit midway between two coarse vertices
+        if ((j === 0 || j === side - 1) && (i - n) % 2 !== 0) sx = s;
+        else if ((i === 0 || i === side - 1) && (j - n) % 2 !== 0) sz = s;
+      }
+      stitch.push(sx, sz);
+    }
+    for (let j = 0; j < 2 * n; j++) for (let i = 0; i < 2 * n; i++) {
+      const cx = (i - n + 0.5) * s, cz = (j - n + 0.5) * s;
+      if (Math.abs(cx) < inner && Math.abs(cz) < inner) continue; // covered by the finer level
+      const a = base + j * side + i, b = a + side, c = a + 1, d = b + 1;
+      index.push(a, b, c, b, d, c);
+    }
+    inner = R; s *= 2;
+  }
+  // unused vertices inside each hole would still cost a vertex-shader run apiece: compact them out
+  const remap = new Int32Array(pos.length / 3).fill(-1), P = [], S = [];
+  for (let k = 0; k < index.length; k++) {
+    const v = index[k];
+    if (remap[v] < 0) { remap[v] = P.length / 3; P.push(pos[v * 3], 0, pos[v * 3 + 2]); S.push(stitch[v * 2], stitch[v * 2 + 1]); }
+    index[k] = remap[v];
+  }
+  const g = new T.BufferGeometry();
+  g.setAttribute('position', new T.Float32BufferAttribute(P, 3));
+  g.setAttribute('aStitch', new T.Float32BufferAttribute(S, 2));
+  g.setIndex(index);
+  const ext = rings[rings.length - 1] * s / 2;
+  g.boundingSphere = new T.Sphere(new T.Vector3(), Math.SQRT2 * ext + 1);
+  return { geometry: g, snap: s / 2 }; // snap = coarsest spacing
+}
+
 export function createOcean(T, options = {}) {
-  const size = options.size ?? 280;
-  const segments = options.segments ?? 100;
-  const geometry = new T.PlaneGeometry(size, size, segments, segments);
-  geometry.rotateX(-Math.PI / 2);
+  const { geometry, snap: step } = buildLodGeometry(T, options.lod ?? OCEAN_LOD);
 
   const sun = options.sunDirection ?? new T.Vector3(-15, 28, 12);
   const maskData = new Uint8Array(GRID * GRID);
@@ -226,9 +284,8 @@ export function createOcean(T, options = {}) {
   const mesh = new T.Mesh(geometry, material);
   mesh.name = 'ocean';
   mesh.position.y = BASE_Y;
-  mesh.frustumCulled = false; // displaced vertices; plane always surrounds the player
+  mesh.frustumCulled = false; // displaced vertices; grid always surrounds the player
 
-  const step = size / segments;
   let time = 0;
   let foamGroup = null;
   const camPos = new T.Vector3(); // last camera passed to update(); collars beyond 48 m are skipped
@@ -282,8 +339,9 @@ export function createOcean(T, options = {}) {
     time = t;
     uniforms.uTime.value = t;
     if (camera) camPos.copy(camera.position);
-    if (camera && options.followCamera) {
-      // Snap to grid spacing so vertices never swim (waves use world coords).
+    if (camera && options.followCamera !== false) {
+      // Keep the dense ring under the camera. Snap to the coarsest ring spacing (a multiple of every
+      // finer one) so vertices never swim (waves use world coords).
       mesh.position.x = Math.round(camera.position.x / step) * step;
       mesh.position.z = Math.round(camera.position.z / step) * step;
     }
