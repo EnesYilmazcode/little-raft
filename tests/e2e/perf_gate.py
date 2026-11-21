@@ -327,7 +327,8 @@ def boot(page, url, report, repro):
     steps = [
         ('load page', lambda: page.goto(url, timeout=120000)),
         ('wait for window.raftDebug', lambda: page.wait_for_function('!!window.raftDebug && !!window.__perf', timeout=120000)),
-        ('click #solo', lambda: page.locator('#solo').click(timeout=60000)),
+        # The onboarding title menu hides #solo and forwards its "new" item to #solo.click() synchronously.
+        ('click New Game', lambda: page.locator('.ob-menu .ob-item[data-act="new"]:visible, #newGame:visible, #solo:visible').first.click(timeout=60000)),
         ('wait for raftDebug.state.running', lambda: page.wait_for_function('!!(window.raftDebug && raftDebug.state && raftDebug.state.running)', timeout=120000)),
     ]
     for name, fn in steps:

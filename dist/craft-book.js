@@ -128,6 +128,17 @@ export function craftableTimes(rows) {
   return n;
 }
 
+/** How many crafts of `id` in a row succeed with this bag's materials AND space, up to cap.
+ *  Simulated on a copy (consuming ingredients can free slots). null if the bag cannot be copied. */
+export function fittingTimes(bag, id, cap = 99) {
+  let scratch;
+  try { scratch = new bag.constructor(bag.snapshot()); } catch { return null; }
+  if (typeof scratch.craft !== 'function') return null;
+  let n = 0;
+  try { while (n < cap && scratch.craft(id)?.ok) n++; } catch { return null; }
+  return n;
+}
+
 /** 'ready' | 'missing' | 'full' given the rows and an optional Bag.canCraft() result. */
 export function recipeState(rows, check = null) {
   if (rows.some(r => !r.enough)) return 'missing';
@@ -186,4 +197,155 @@ export function anchorTip(rect, w, h, vw, vh, gap = 8, pad = 6) {
   if (rect.left - gap - w >= pad) return { x: rect.left - gap - w, y: yAligned, side: 'left' };
   if (rect.bottom + gap + h <= vh - pad) return { x: xAligned, y: rect.bottom + gap, side: 'below' };
   return { x: xAligned, y: clampV(rect.top - gap - h, pad, vh - h - pad), side: 'above' };
+}
+
+// ---- bag open/close and keyboard ----
+/** A backdrop click closes the bag only when the press both started and ended on the backdrop. */
+export const backdropCloses = (downOnBackdrop, upOnBackdrop) => !!downOnBackdrop && !!upOnBackdrop;
+
+/**
+ * What a key press does to the bag: 'open', 'close' or null (leave it alone).
+ * Tab / I open it from play. While open, I / E close it and Tab is left to move focus.
+ * E never opens here: in play it is the pick-up key and the game opens the bag itself.
+ */
+export function bagKeyAction(code, isOpen) {
+  if (isOpen) return code === 'KeyI' || code === 'KeyE' ? 'close' : null;
+  return code === 'Tab' || code === 'KeyI' ? 'open' : null;
+}
+
+const ARROWS = { ArrowRight: [1, 0], ArrowLeft: [-1, 0], ArrowDown: [0, 1], ArrowUp: [0, -1] };
+/**
+ * Arrow-key focus move across laid-out buttons. rects[i] = {left, top, width, height} (null = skip).
+ * Returns the index of the nearest rect whose centre lies within 45° of the arrow's direction, or -1.
+ */
+export function arrowNeighbor(rects, from, code) {
+  const d = ARROWS[code], a = rects[from];
+  if (!d || !a) return -1;
+  const cx = r => r.left + r.width / 2, cy = r => r.top + r.height / 2;
+  const ax = cx(a), ay = cy(a), tol = Math.min(a.width, a.height) / 4;
+  let best = -1, bestScore = Infinity;
+  rects.forEach((r, i) => {
+    if (!r || i === from) return;
+    const dx = cx(r) - ax, dy = cy(r) - ay;
+    const along = dx * d[0] + dy * d[1], across = Math.abs(dx * d[1] - dy * d[0]);
+    if (along <= tol || across > along) return; // only within a 45° cone
+    const score = along + across * 2;
+    if (score < bestScore) { bestScore = score; best = i; }
+  });
+  return best;
+}
+
+/**
+ * Why a held stack of `kind` cannot go onto target slot t, or '' when it can.
+ * max = stack limit of the held kind (1 = does not stack).
+ */
+export function placeRefusal(kind, t, max) {
+  if (!t || !t.kind || !(t.count > 0)) return '';
+  if (t.kind !== kind) return 'Different item there';
+  if (!(max > 1)) return 'Doesn’t stack';
+  if (t.count >= max) return 'That stack is full';
+  return '';
+}
+
+// ---- recipe order ----
+// Inside a tab, recipes you can make right now come first, then ones blocked only by bag space,
+// then the rest, closest-to-done first (fewest ingredients short, then fewest units short).
+// The sort is stable, so recipes keep their book order within each group.
+const STATE_RANK = Object.freeze({ ready: 0, full: 1, missing: 2 });
+
+/** views: [{state, rows}] (rows from ingredientRows). Returns a new, sorted array. */
+export function sortCraftableFirst(views) {
+  const key = v => {
+    let kinds = 0, units = 0;
+    for (const r of v?.rows || []) if (!r.enough) { kinds++; units += r.short; }
+    return [STATE_RANK[v?.state] ?? 3, kinds, units];
+  };
+  return (views || []).map((v, i) => ({ v, i, k: key(v) }))
+    .sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1] || a.k[2] - b.k[2] || a.i - b.i)
+    .map(x => x.v);
+}
+
+// ---- where items come from ----
+// `tag` is the short text beside a missing ingredient; `how` is the tooltip line.
+export const ITEM_SOURCE = Object.freeze({
+  flowerseed: Object.freeze({ tag: 'island bushes', how: 'Pick bushes on islands; some drop flower seeds.' }),
+  honey:   Object.freeze({ tag: 'beehive', how: 'Put a beehive near flower boxes, then press E on it to collect honeycomb.' }),
+  wax:     Object.freeze({ tag: 'beehive', how: 'Collected with honey from a full beehive (E).' }),
+  wood:    Object.freeze({ tag: 'found floating', how: 'Hook floating planks. Barrels hold more.' }),
+  leaf:    Object.freeze({ tag: 'floating, palm', how: 'Hook floating leaf bundles, or harvest a grown palm.' }),
+  plastic: Object.freeze({ tag: 'found floating', how: 'Hook floating plastic jugs. Barrels hold some too.' }),
+  scrap:   Object.freeze({ tag: 'found floating', how: 'Hook floating scrap. Barrels hold some too.' }),
+  seed:    Object.freeze({ tag: 'barrels, palm', how: 'Hook floating barrels, or harvest a grown palm.' }),
+  fish:    Object.freeze({ tag: 'fishing rod', how: 'Cast the Fishing Rod into the sea and wait for a bite.' }),
+  water:   Object.freeze({ tag: 'fill a cup', how: 'Fill a Filter Cup at the sea.' }),
+  // raft-master materials (items.js): barrels, islands, the seafloor and the stations
+  sand:        Object.freeze({ tag: 'barrels, islands', how: 'Hook floating barrels, scoop it on an island or dive for it.' }),
+  clay:        Object.freeze({ tag: 'barrels, seafloor', how: 'Hook floating barrels or dive to the seafloor.' }),
+  stone:       Object.freeze({ tag: 'barrels, islands', how: 'Hook floating barrels or gather rocks on an island.' }),
+  metalore:    Object.freeze({ tag: 'barrels, seafloor', how: 'Hook floating barrels or dive to the seafloor.' }),
+  copperore:   Object.freeze({ tag: 'barrels', how: 'Hook floating barrels; copper ore is rare.' }),
+  seaweed:     Object.freeze({ tag: 'barrels', how: 'Hook floating barrels.' }),
+  brick:       Object.freeze({ tag: 'grill', how: 'Fire clay on a grill.' }),
+  metalingot:  Object.freeze({ tag: 'smelter', how: 'Smelt metal ore in a smelter.' }),
+  copperingot: Object.freeze({ tag: 'smelter', how: 'Smelt copper ore in a smelter.' }),
+  glass:       Object.freeze({ tag: 'smelter', how: 'Melt sand in a smelter.' }),
+  saltcup:     Object.freeze({ tag: 'fill a cup', how: 'Hold an empty cup and click the sea.' }),
+  freshcup:    Object.freeze({ tag: 'purifier', how: 'Pour sea water into a purifier and wait.' }),
+  cookedfish:  Object.freeze({ tag: 'grill', how: 'Cook a fish on a grill.' }),
+});
+
+/**
+ * Where to get `kind`: {tag, how, recipe}. `recipe` is the id of a recipe that makes it, or null.
+ * Gathered items use ITEM_SOURCE; crafted ones describe their own recipe. Otherwise null.
+ * @param {string} kind @param {Array} recipes normalised recipes @param {(k:string)=>string} [nameOf]
+ */
+export function sourceOf(kind, recipes, nameOf = k => k) {
+  const made = (recipes || []).find(r => r && (r.out?.kind ?? r.id) === kind) || null;
+  const known = ITEM_SOURCE[kind];
+  if (known) return { tag: known.tag, how: known.how, recipe: made ? made.id : null };
+  if (!made) return null;
+  const cost = (made.reqs || []).map(q => `${q.count} ${nameOf(q.kind)}`).join(' + ');
+  return { tag: 'craft it', how: cost ? `Craft it from ${cost}.` : 'Craft it.', recipe: made.id };
+}
+
+// ---- pinned recipe tracker (HUD edge) ----
+export const PIN_KEY = 'little-raft-pinned-recipe';
+
+/** The pinned recipe id from storage, or null when unset, not in validIds, or storage throws. */
+export function loadPin(storage, validIds = null) {
+  let v = null;
+  try { v = storage?.getItem(PIN_KEY) ?? null; } catch { return null; }
+  if (typeof v !== 'string' || !v) return null;
+  if (validIds && !validIds.includes(v)) return null;
+  return v;
+}
+/** Store the pinned recipe id, or clear it with null. Returns false when storage refuses. */
+export function savePin(storage, id) {
+  try {
+    if (!storage) return false;
+    if (id) storage.setItem(PIN_KEY, String(id)); else storage.removeItem(PIN_KEY);
+    return true;
+  } catch { return false; }
+}
+
+/**
+ * What the HUD tracker shows for a normalised recipe: its owned/needed rows, state, how many
+ * crafts the materials cover, and how many ingredient lines are complete.
+ * `check` is an optional Bag.canCraft() result. Returns null without a recipe.
+ */
+export function trackerView(recipe, countOf, check = null) {
+  if (!recipe) return null;
+  const rows = ingredientRows(recipe.reqs, countOf);
+  const times = craftableTimes(rows);
+  return {
+    id: recipe.id, name: recipe.name, kind: recipe.out?.kind ?? recipe.id, rows,
+    state: recipeState(rows, check), times: Number.isFinite(times) ? times : 0,
+    met: rows.filter(r => r.enough).length, total: rows.length,
+  };
+}
+
+/** Craft button hint: how many a hold would make right now ('' when one or none). */
+export function holdHint(times, cap = HOLD.max) {
+  const n = Math.min(Number.isFinite(times) ? Math.floor(times) : cap, cap);
+  return n > 1 ? `hold: up to ${n}` : '';
 }
