@@ -6,6 +6,7 @@ feed rows, keeps the onboarding checklist up, then measures pairwise overlaps am
 Exit 1 on bug. Usage: python tests/audit/hud5_overlaps.py [outdir-for-screenshots]"""
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+if os.path.exists('/usr/bin/google-chrome'): os.environ.setdefault('CHROMIUM', '/usr/bin/google-chrome')
 from _harness import serve, launch
 
 SIZES = [(800, 600), (1024, 768), (1280, 720), (1920, 1080)]
