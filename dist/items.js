@@ -131,7 +131,7 @@ const LIST = [
     tip: 'Throw it, reel it, grab the goodies. Gets tired after about 50 catches; R fixes it up.' }),
   item('metalhook', 'Metal Hook', 'tool', { icon: 'icon-hook', placeholder: true, iconTint: '#a9b4c2',
     tool: true, durability: 150, actsAs: 'hook',
-    recipe: hand({ metalingot: 2, bolt: 2, rope: 2, wood: 2 }), unlock: research('metalingot', 'bolt'),
+    recipe: hand({ metalingot: 6, bolt: 2, rope: 2, wood: 2 }), unlock: research('metalingot', 'bolt'),
     tip: 'A shiny metal hook that lasts three times longer. Your arm will thank you.' }),
   item('hammer', 'Hammer', 'tool', { icon: 'icon-hammer', placeholder: false, tool: true, durability: 120,
     recipe: hand({ wood: 4, rope: 2 }), unlock: START,
@@ -141,7 +141,7 @@ const LIST = [
     recipe: hand({ wood: 6, rope: 8 }), unlock: discover('rope'),
     tip: 'Cast, wait for a nibble, and reel in a fish. Good for about 40 catches between repairs.' }),
   item('binoculars', 'Binoculars', 'tool', { iconTint: '#5d6b78', stack: 1,
-    recipe: hand({ glass: 2, copperingot: 1, hinge: 1, bolt: 1 }), unlock: research('glass', 'copperingot'),
+    recipe: hand({ glass: 2, copperingot: 1, hinge: 2, bolt: 1 }), unlock: research('glass', 'copperingot'),
     tip: 'Hold them to spot the nearest barrel: bearing and distance. They never wear out.' }),
 
   // ----- food -----
@@ -177,7 +177,7 @@ const LIST = [
     recipe: hand({ wood: 6, scrap: 1, rope: 3 }), unlock: discover('fish'),
     tip: 'Grills fish into snacks and fires clay into bricks. Feed it planks or leaves.' }),
   item('smelter', 'Smelter', 'station', { iconTint: '#b5533c', stack: 5, placeable: true,
-    recipe: hand({ wood: 6, brick: 6, stone: 4, nail: 6 }), unlock: research('clay', 'stone'),
+    recipe: hand({ wood: 6, brick: 10, stone: 6, nail: 6 }), unlock: research('clay', 'stone'),
     tip: 'A toasty brick furnace. Melts ore into ingots and sand into glass, one at a time.' }),
 ];
 
@@ -263,13 +263,13 @@ export const BARREL_LOOT = deepFreeze([
   { kind: 'leaf', min: 1, max: 3, weight: 22, pool: 'basic' },
   { kind: 'plastic', min: 1, max: 2, weight: 22, pool: 'basic' },
   { kind: 'scrap', min: 1, max: 2, weight: 16, pool: 'basic' },
-  { kind: 'clay', min: 1, max: 1, weight: 28, pool: 'treasure' },
-  { kind: 'stone', min: 1, max: 1, weight: 20, pool: 'treasure' },
-  { kind: 'metalore', min: 1, max: 1, weight: 13, pool: 'treasure' },
+  { kind: 'clay', min: 1, max: 1, weight: 12, pool: 'treasure' },
+  { kind: 'stone', min: 1, max: 1, weight: 8, pool: 'treasure' },
+  { kind: 'metalore', min: 1, max: 1, weight: 8, pool: 'treasure' },
   { kind: 'sand', min: 1, max: 1, weight: 12, pool: 'treasure' },
   { kind: 'seaweed', min: 1, max: 2, weight: 8, pool: 'treasure' },
   { kind: 'copperore', min: 1, max: 1, weight: 6, pool: 'treasure' },
-  { kind: 'scrap', min: 1, max: 1, weight: 13, pool: 'treasure' },
+  { kind: 'scrap', min: 1, max: 1, weight: 30, pool: 'treasure' },
 ]);
 const POOLS = Object.freeze(Object.fromEntries(['basic', 'treasure'].map((p) => {
   const rows = BARREL_LOOT.filter((e) => e.pool === p);
@@ -288,11 +288,41 @@ function pickFrom(pool, rand, out) {
   out[e.kind] = (out[e.kind] || 0) + e.min + Math.floor(unit(rand) * (e.max - e.min + 1));
 }
 
-/** @returns {{[kind:string]: number}} loot for one opened barrel. Deterministic for a given rand. */
-export function rollBarrel(rand = Math.random) {
+/**
+ * Bad-luck protection for the treasure pick: after BARREL_PITY[kind] barrels in a row
+ * without `kind`, the next treasure pick is that kind. Kinds not listed are never forced.
+ */
+export const BARREL_PITY = deepFreeze({ clay: 4, stone: 5, metalore: 5, sand: 8, copperore: 12 });
+const PITY_KINDS = Object.keys(BARREL_PITY);
+const TREASURE_ROW = Object.freeze(Object.fromEntries(POOLS.treasure.rows.map((e) => [e.kind, e])));
+
+// The luck state's miss counters (created/sanitised in place), or null when luck is unusable.
+function luckMisses(luck) {
+  if (!luck || typeof luck !== 'object' || Object.isFrozen(luck)) return null;
+  let m = luck.misses;
+  if (!m || typeof m !== 'object' || Array.isArray(m) || Object.isFrozen(m)) { m = {}; try { luck.misses = m; } catch { return null; } }
+  for (const k of PITY_KINDS) { const n = num(m[k]); m[k] = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 1e6) : 0; }
+  return m;
+}
+
+/**
+ * Loot for one opened barrel, as {kind: n}. Deterministic for a given rand (and luck state).
+ * luck: optional plain mutable object {misses: {kind: n}} owned by the caller (one per world).
+ * Each roll counts, per BARREL_PITY kind, the barrels in a row that did not give it; when a
+ * count reaches its limit the treasure pick is forced to that kind (the most overdue one first).
+ * The only side effect is updating luck.misses; luck = null keeps the plain weighted roll.
+ */
+export function rollBarrel(rand = Math.random, luck = null) {
   const out = {};
+  const misses = luckMisses(luck);
   for (let i = 0; i < BARREL_ROLLS.basic; i++) pickFrom(POOLS.basic, rand, out);
-  for (let i = 0; i < BARREL_ROLLS.treasure; i++) pickFrom(POOLS.treasure, rand, out);
+  for (let i = 0; i < BARREL_ROLLS.treasure; i++) {
+    let forced = null, worst = 1;
+    if (misses) for (const k of PITY_KINDS) { const due = misses[k] / BARREL_PITY[k]; if (due >= worst && (!forced || due > worst)) { forced = k; worst = due; } }
+    if (forced) { const e = TREASURE_ROW[forced]; out[forced] = (out[forced] || 0) + e.min + Math.floor(unit(rand) * (e.max - e.min + 1)); }
+    else pickFrom(POOLS.treasure, rand, out);
+  }
+  if (misses) for (const k of PITY_KINDS) misses[k] = out[k] > 0 ? 0 : misses[k] + 1;
   return out;
 }
 

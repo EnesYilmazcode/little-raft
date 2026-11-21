@@ -11,13 +11,14 @@
 //
 // Usage:
 //   node tools/sim-progression.mjs [--seed 1] [--runs 200] [--skill 1] [--minutes 120]
-//        [--dist path/to/dist] [--strict] [--nearest-only] [--overhead 7] [--json]
+//        [--dist path/to/dist] [--no-luck] [--strict] [--nearest-only] [--overhead 7] [--json]
 //
 //   --runs N      run seeds seed..seed+N-1 and report p10 / median / p90
 //   --skill S     1 = attentive player; scales per-cast overhead (--overhead 7 s / S) and aim
 //   --overhead S  human time per cast at skill 1 (7 s calibrates to ~4.5-5 hooked items/min)
 //   --dist DIR    module directory (default ../dist); use a patched copy to try numbers
 //   --max-tiles N stop building surplus floor tiles at N (default 400 = game cap)
+//   --no-luck     roll barrels without the bad-luck state (rollBarrel(rand, null))
 //   --strict      craft goals strictly in PROGRESSION_PLAN order (no look-ahead)
 //   --nearest-only  always hook the nearest item, even if it cannot fit (default: skip debris
 //                 that cannot fit or is already >= --plenty (40) in the bag, skip barrels when no slot is free)
@@ -50,6 +51,7 @@ const OPT = {
   json: !!flag('json', false),
   plenty: Number(flag('plenty', 40)),
   maxTiles: Number(flag('max-tiles', 400)),
+  noLuck: !!flag('no-luck', false),
   dist: resolve(flag('dist', resolve(dirname(fileURLToPath(import.meta.url)), '../dist'))),
 };
 
@@ -195,7 +197,8 @@ function simulate(seed) {
   for (let i = 0; i < G.ITEM_COUNT; i++) items.push(makeItem());
   const respawn = (it) => Object.assign(it, makeItem());
 
-  const lootOf = (type) => (type === 'barrel' ? rollBarrel(rand) : G.LOOT[type]);
+  const barrelLuck = OPT.noLuck ? null : { misses: {} }; // per-world bad-luck state, as progression-hooks.js owns it
+  const lootOf = (type) => (type === 'barrel' ? rollBarrel(rand, barrelLuck) : G.LOOT[type]);
   // atomic collect exactly as game.js: everything fits or nothing changes
   const collect = (it, viaNet) => {
     const loot = lootOf(it.type);
@@ -618,7 +621,7 @@ if (OPT.json) {
   process.exit(0);
 }
 
-console.log(`Little Raft progression sim: ${OPT.runs} run(s) from seed ${OPT.seed}, skill ${OPT.skill}, ${OPT.minutes} min, dist=${OPT.dist}${OPT.strict ? ', strict order' : ''}`);
+console.log(`Little Raft progression sim: ${OPT.runs} run(s) from seed ${OPT.seed}, skill ${OPT.skill}, ${OPT.minutes} min, dist=${OPT.dist}${OPT.strict ? ', strict order' : ''}${OPT.noLuck ? ', no luck' : ''}`);
 if (BAG_SHIM) console.log('NOTE: dist Bag does not know the new item kinds; using the same Bag code with ITEM_INFO from items.js infoTable().');
 console.log('\nMilestone (PROGRESSION_PLAN)                              target   p10  median   p90  missed');
 for (const r of table) console.log(`${r.goal.padEnd(56).slice(0, 56)} ${String(r.target).padStart(5)} ${f1(r.p10).padStart(6)} ${f1(r.median).padStart(6)} ${f1(r.p90).padStart(6)} ${String(r.missed).padStart(6)}`);

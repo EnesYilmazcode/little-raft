@@ -44,6 +44,11 @@ export function attachProgression(ctx) {
   try { prevOwner?.flush?.(); } catch {} // hot reload: the old engine's latest state, not its last autosave
   const saved = load();
   const progs = { host: new Progression(saved.host), guest: new Progression(saved.guest) };
+  // Per-world barrel bad-luck counters; rollBarrel(rand, barrelLuck) mutates them in place.
+  const barrelLuck = { misses: {} };
+  if (saved.barrelLuck?.misses && typeof saved.barrelLuck.misses === 'object') {
+    for (const [k, n] of Object.entries(saved.barrelLuck.misses)) if (Number.isFinite(n) && n > 0) barrelLuck.misses[k] = Math.floor(n);
+  }
   const self = { flush: () => save() };
   globalThis[OWNER] = self;
   const stations = new Map(); // key -> StationModel (host only)
@@ -52,6 +57,7 @@ export function attachProgression(ctx) {
   const models = new Map(); // key -> THREE.Group (glowing stations), pruned when detached
   const glow = new Map();
   let noteClock = NOTE_EVERY, saveClock = 0, syncClock = 0, time = 0, dirty = false, nearKey = null;
+  let savedLuckSig = JSON.stringify(barrelLuck.misses);
   let panel = null, research = null, tooltips = null, hud = null, gateCache = null;
 
   const isRemote = () => ctx.role() === 'guest' && !!ctx.ready();
@@ -86,7 +92,7 @@ export function attachProgression(ctx) {
     if (!isHost() || globalThis[OWNER] !== self) return;
     dirty = false;
     try {
-      localStorage.setItem(PROGRESSION_KEY, JSON.stringify({ v: 1, host: progs.host.snapshot(), guest: progs.guest.snapshot(), stations: { ...pendingStations, ...stationSnaps() } }));
+      localStorage.setItem(PROGRESSION_KEY, JSON.stringify({ v: 1, host: progs.host.snapshot(), guest: progs.guest.snapshot(), stations: { ...pendingStations, ...stationSnaps() }, barrelLuck }));
     } catch {}
   }
 
@@ -264,7 +270,11 @@ export function attachProgression(ctx) {
         noteClock = 0;
         for (const actor of ['host', 'guest']) { const bag = ctx.bag(actor); if (bag) announce(progs[actor].noteItems(bag), actor); }
       }
-      if ((saveClock += dt) >= SAVE_EVERY) { saveClock = 0; if (dirty) save(); }
+      if ((saveClock += dt) >= SAVE_EVERY) {
+        saveClock = 0;
+        const luckSig = JSON.stringify(barrelLuck.misses); if (luckSig !== savedLuckSig) { savedLuckSig = luckSig; dirty = true; }
+        if (dirty) save();
+      }
       if (ctx.role() === 'host' && ctx.ready() && (syncClock += dt) >= SYNC_EVERY) {
         syncClock = 0; ctx.emit({ kind: 'prog:sync', prog: progs.guest.snapshot(), stations: stationSnaps() }, 'guest');
       }
@@ -335,7 +345,7 @@ export function attachProgression(ctx) {
     save();
   }
 
-  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, dispose, debug, progression: (actor) => (actor ? progs[actor] : myProg()) };
+  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, dispose, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()) };
 }
 
 export default attachProgression;
