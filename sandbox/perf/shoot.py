@@ -23,6 +23,7 @@ ap.add_argument('--no-cdp', action='store_true')
 ap.add_argument('--out', default=str(HERE / 'shots'))
 ap.add_argument('--json', default=str(HERE / 'results.json'))
 ap.add_argument('--tag', default='')
+ap.add_argument('--freeze', type=int, default=40, help='game clock stops this many frames after Play (deterministic scene); -1 = live clock')
 ap.add_argument('--big', action='store_true', help='late-game save: 7x7 deck (49 tiles) with 12 decorations')
 args = ap.parse_args()
 dist = Path(args.dist).resolve(); out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
@@ -99,19 +100,24 @@ def measure(page, n):
 
 def start_game(b):
     ctx = b.new_context(viewport={'width': 1280, 'height': 720}, device_scale_factor=args.dsf)
+    if args.freeze >= 0: ctx.add_init_script(f'window.__perfFreezeAt = {args.freeze};')
     ctx.add_init_script(PROBE)
     if args.big:
         decor = [{'type': t, 'x': x, 'z': z} for (t, x, z) in [('sail', 0, 2), ('palm', -2, -2), ('lantern', 2, -2), ('net', 3, 3), ('bench', -3, 1), ('crate', 2, 1),
                  ('crate', -1, 3), ('lantern', -3, -3), ('palm', 3, -1), ('bench', 1, -3), ('net', -3, 3), ('sail', -2, 0)]]
         world = {'tiles': [[x, z] for x in range(-3, 4) for z in range(-3, 4)], 'decor': decor, 'stock': {}, 'fish': 0, 'collected': 0}
         ctx.add_init_script("try { localStorage.setItem('little-raft-v1', %s) } catch (e) {}" % json.dumps(json.dumps(world)))
-    page = ctx.new_page()
+    page = ctx.new_page(); page.set_default_timeout(180000)
     errs = []
     page.on('pageerror', lambda e: errs.append(str(e)[:300]))
     page.on('console', lambda m: m.type == 'error' and errs.append(m.text[:300]))
-    page.goto(BASE + '/game/index.html'); page.wait_for_function('!!window.raftDebug', timeout=30000)
-    page.locator('#solo').click(); page.wait_for_function('raftDebug.state.running', timeout=20000)
-    page.wait_for_timeout(1200)
+    page.goto(BASE + '/game/index.html'); page.wait_for_function('!!window.raftDebug', timeout=180000)
+    page.locator('#solo').click(timeout=180000, no_wait_after=True)
+    if args.freeze >= 0: page.evaluate('__perf.startClock()')
+    page.wait_for_function('raftDebug.state.running', timeout=180000)
+    if args.freeze < 0: page.wait_for_timeout(1200)
+    else:
+        page.wait_for_function('__perf.frozen()', timeout=600000, polling=500)
     page.evaluate("__perf.install(new URL('vendor/three.module.js', location.href).href)")
     return ctx, page, errs
 
@@ -168,7 +174,7 @@ with sync_playwright() as p:
         # freeze the scene for comparable stills: pause via raftDebug is not exposed, so shoot immediately
         shotp = out / f"game-{args.tag + '-' if args.tag else ''}{'big-' if args.big else ''}{name}{'-dsf' + str(args.dsf) if args.dsf != 1 else ''}.png"
         page.screenshot(path=str(shotp)); r['shot'] = str(shotp.relative_to(ROOT)) if shotp.is_relative_to(ROOT) else str(shotp)
-        r['errors'] = errs
+        r['errors'] = errs; r['freezeFrame'] = args.freeze
         report['scenarios'][name] = r
         print(name, json.dumps({k: r[k] for k in ('cpuMsPerFrame', 'submitMs', 'submitMin', 'logicMs', 'calls', 'triangles', 'programs', 'pixelRatio')}), file=sys.stderr, flush=True)
         ctx.close()

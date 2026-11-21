@@ -16,13 +16,23 @@
     Math.random = () => (/generateUUID/.test(new Error().stack) ? other() : game());
   }
   const px = new Uint8Array(4);
-  const P = window.__perf = { frames: [], recording: false, finish: true, R: null };
+  const P = window.__perf = { frames: [], recording: false, finish: true, R: null, frame: 0 };
   const raf = window.requestAnimationFrame.bind(window);
+  // Deterministic clock: the game reads performance.now() for dt, so it sees exactly 1/60 s per frame, and time stops
+  // window.__perfFreezeAt frames after __perf.startClock() (called by shoot.py right after clicking Play; before that
+  // time stands at 0). Every scenario then measures and screenshots the SAME scene state. The renderer still redraws
+  // everything each frame, so frozen frames cost the same as live ones.
+  const realNow = performance.now.bind(performance);
+  let clock0 = null;
+  P.startClock = () => { clock0 = P.frame; };
+  if (window.__perfFreezeAt !== undefined) performance.now = () => (clock0 === null ? 0 : Math.min(P.frame - clock0, window.__perfFreezeAt) * 1000 / 60);
+  let lastT = -1;
   window.requestAnimationFrame = cb => raf(t => {
+    if (t !== lastT) { lastT = t; P.frame++; }
     if (!P.recording) return cb(t);
-    const t0 = performance.now(); P.cur = { render: 0 };
+    const t0 = realNow(); P.cur = { render: 0 };
     cb(t);
-    const f = P.cur; f.total = performance.now() - t0; f.t = t; P.frames.push(f); P.cur = null;
+    const f = P.cur; f.total = realNow() - t0; f.t = t; P.frames.push(f); P.cur = null;
   });
 
   function wrap(r, scene, camera) {
@@ -32,11 +42,11 @@
     r.info.autoReset = false;
     r.render = function (s, c) {
       r.info.reset();
-      const t0 = performance.now();
+      const t0 = realNow();
       orig.call(r, s, c);
-      if (P.cur) P.cur.submit = (P.cur.submit || 0) + performance.now() - t0; // JS + WebGL command encoding only
+      if (P.cur) P.cur.submit = (P.cur.submit || 0) + realNow() - t0; // JS + WebGL command encoding only
       if (P.recording && P.finish) { const gl = P.R.gl; gl.finish(); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); } // 1px readback blocks until the GPU (SwiftShader) is done
-      const dt = performance.now() - t0;
+      const dt = realNow() - t0;
       if (P.cur) {
         P.cur.render += dt;
         P.cur.calls = r.info.render.calls; P.cur.triangles = r.info.render.triangles;
@@ -110,4 +120,5 @@
     return { meshes, casters, verts, materials: mats.size, geometries: geos.size, textures: tex.size, byOwner: out };
   };
   P.setFinish = v => { P.finish = v; };
+  P.frozen = () => window.__perfFreezeAt !== undefined && clock0 !== null && P.frame - clock0 >= window.__perfFreezeAt;
 })();

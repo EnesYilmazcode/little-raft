@@ -3,18 +3,18 @@
  "scenarios": {
   "stock dist": {
    "frames": 12,
-   "frameMs": 3530.43,
-   "frameP95": 4909.9,
-   "frameWorst": 4909.9,
-   "renderMs": 3529.71,
-   "submitMs": 10.6,
-   "submitMin": 5.4,
-   "logicMs": 0.72,
-   "logicP95": 0.9,
-   "rafGapMs": 3555.93,
-   "calls": 524,
-   "triangles": 241586,
-   "geometries": 348,
+   "frameMs": 2394.32,
+   "frameP95": 3399.9,
+   "frameWorst": 3399.9,
+   "renderMs": 2393.22,
+   "submitMs": 8.3,
+   "submitMin": 3.6,
+   "logicMs": 1.1,
+   "logicP95": 2.6,
+   "rafGapMs": 2498.39,
+   "calls": 541,
+   "triangles": 258546,
+   "geometries": 356,
    "textures": 8,
    "programs": 10,
    "pixelRatio": 1,
@@ -22,21 +22,20 @@
     1280,
     720
    ],
-   "heapDeltaKB": -6861,
+   "heapDeltaKB": 54,
    "shadow": "every frame",
    "cpuMsPerFrame": {
-    "browser": 2.3,
-    "utility": 0.5,
-    "renderer": 26.4,
-    "gpu-process": 1515.0,
-    "total": 1544.2
+    "browser": 1.4,
+    "renderer": 25.9,
+    "gpu-process": 1405.9,
+    "total": 1433.2
    },
    "census": {
-    "meshes": 470,
-    "casters": 232,
-    "verts": 470502,
-    "materials": 113,
-    "geometries": 463,
+    "meshes": 478,
+    "casters": 240,
+    "verts": 495822,
+    "materials": 111,
+    "geometries": 471,
     "textures": 7,
     "byOwner": {
      "camera(viewmodels)": {
@@ -62,10 +61,10 @@
      },
      "floating items": {
       "objects": 1,
-      "meshes": 155,
-      "casters": 155,
-      "verts": 207264,
-      "materials": 85
+      "meshes": 163,
+      "casters": 163,
+      "verts": 232584,
+      "materials": 83
      },
      "islands": {
       "objects": 12,
@@ -95,18 +94,18 @@
   },
   "patched dist": {
    "frames": 12,
-   "frameMs": 1098.46,
-   "frameP95": 1367.4,
-   "frameWorst": 1367.4,
-   "renderMs": 1096.91,
+   "frameMs": 2173.77,
+   "frameP95": 4405.9,
+   "frameWorst": 4405.9,
+   "renderMs": 2172.78,
    "submitMs": 5.1,
    "submitMin": 2.7,
-   "logicMs": 1.55,
-   "logicP95": 5.3,
-   "rafGapMs": 1086.33,
-   "calls": 250,
-   "triangles": 194448,
-   "geometries": 249,
+   "logicMs": 0.98,
+   "logicP95": 3.5,
+   "rafGapMs": 2140.82,
+   "calls": 253,
+   "triangles": 201542,
+   "geometries": 255,
    "textures": 15,
    "programs": 10,
    "pixelRatio": 1,
@@ -114,20 +113,21 @@
     1280,
     720
    ],
-   "heapDeltaKB": 280,
+   "heapDeltaKB": -12264,
    "shadow": "every frame",
    "cpuMsPerFrame": {
-    "browser": 1.8,
-    "renderer": 18.2,
-    "gpu-process": 1127.7,
-    "total": 1147.7
+    "browser": 2.3,
+    "utility": 0.5,
+    "renderer": 17.7,
+    "gpu-process": 1090.9,
+    "total": 1111.4
    },
    "census": {
-    "meshes": 231,
+    "meshes": 237,
     "casters": 8,
-    "verts": 474495,
-    "materials": 126,
-    "geometries": 224,
+    "verts": 495822,
+    "materials": 111,
+    "geometries": 230,
     "textures": 14,
     "byOwner": {
      "camera(viewmodels)": {
@@ -144,7 +144,7 @@
       "verts": 60000,
       "materials": 1
      },
-     "group": {
+     "raft (deck tiles + decor)": {
       "objects": 1,
       "meshes": 7,
       "casters": 6,
@@ -153,10 +153,10 @@
      },
      "floating items": {
       "objects": 1,
-      "meshes": 157,
+      "meshes": 163,
       "casters": 0,
-      "verts": 211257,
-      "materials": 98
+      "verts": 232584,
+      "materials": 83
      },
      "scenery": {
       "objects": 6,
