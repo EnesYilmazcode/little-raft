@@ -691,7 +691,7 @@ export function mount(transfer = null) {
     }
   }
   const isPending = it => (pending.get(it.token) ?? 0) > performance.now();
-  function catchLootOf(c) { const out = catchLoot(c, LOOT); for (const it of c) { const d = dropLoot(it); if (d) for (const k in d) out[k] = (out[k] || 0) + d[k]; } return out; } // [drop] dropped items on the hook
+  function catchLootOf(c) { const out = catchLoot(c, LOOT); for (const it of c) { const d = it.type === 'drop' ? dropLoot(itemByToken(it.token)) : null; if (d) for (const k in d) out[k] = (out[k] || 0) + d[k]; } return out; } // [drop] dropped items on the hook (caught entries are {id, token, type}: kind/count live on the world item)
 
   // ---------- Feedback: pickups and notes go to the bottom-left feed, never the screen centre ----------
   const setText = (sel, v) => { const el = $(sel); if (el) el.textContent = v; };
