@@ -74,6 +74,7 @@ const CSS = `
 #options .rs-menu button:hover,#options .rs-menu button:focus-visible,#options .rs-menu button[aria-expanded=true]{color:var(--amber-lt,#ffc96b);padding-left:28px;transform:none;outline:0;
   background:linear-gradient(90deg,rgba(233,166,64,.14),rgba(233,166,64,0) 85%)}
 #options .rs-menu button:hover::before,#options .rs-menu button:focus-visible::before,#options .rs-menu button[aria-expanded=true]::before{opacity:1;transform:translateY(-50%) scaleX(1)}
+#options .rs-title [data-act=resume],#options .rs-title [data-act=quit]{display:none}
 #options .rs-menu .rs-quit{margin-top:22px;border-top:1px solid rgba(201,164,107,.18);padding-top:20px;font-size:clamp(16px,1.5vw,19px);color:var(--muted,#8f9aa0)}
 #options .rs-panel{width:min(520px,100%);max-height:calc(100vh - 80px);overflow:auto;padding:22px 24px 24px;border-radius:6px;background:var(--plate-strong,rgba(8,17,26,.92));
   box-shadow:0 0 0 1px var(--bronze-lt,#c9a46b),0 0 0 4px var(--navy-0,#070f17),0 24px 70px rgba(0,0,0,.55)}
@@ -228,7 +229,9 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   const panelOpen = () => !panel.hidden;
   function setPanel(open) {
     panel.hidden = !open;
-    form.querySelector('[data-act="settings"]')?.setAttribute('aria-expanded', String(open));
+    const btn = form.querySelector('[data-act="settings"]');
+    btn?.setAttribute('aria-expanded', String(open));
+    if (open && dialog.contains(document.activeElement) && document.activeElement !== btn) btn?.focus({ preventScroll: true }); // one highlight, not two
     if (open && !form.querySelector('[data-tab][aria-selected=true]')) showTab('controls');
   }
 
@@ -247,8 +250,14 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     syncControls(); syncFullscreen();
     if (!dialog.open) {
       setPanel(false);
+      // From the title screen there is no game to resume or quit: show a plain menu.
+      const title = !gameActive();
+      form.classList.toggle('rs-title', title);
+      const eyebrow = form.querySelector('.rs-eyebrow');
+      if (eyebrow) eyebrow.textContent = title ? 'MENU' : 'PAUSED';
+      dialog.setAttribute('aria-label', title ? 'Menu' : 'Paused');
       try { dialog.showModal(); } catch { dialog.setAttribute('open', ''); }
-      form.querySelector('[data-act="resume"]')?.focus({ preventScroll: true });
+      form.querySelector(title ? '[data-act="settings"]' : '[data-act="resume"]')?.focus({ preventScroll: true });
     }
     call(onPause);
   }

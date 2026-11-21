@@ -19,6 +19,11 @@ export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'ben
 export const PLACEABLE_KINDS = Object.freeze(['hammer', ...DECOR_KINDS, 'planter', 'seed', 'seeds']);
 export const isPlaceable = (kind) => PLACEABLE_KINDS.includes(kind);
 const TOOL_KINDS = ['hook', 'hammer', 'fishingrod'];
+const HOOK_SCALE = 0.4;                     // compact: the held hook stays in the lower-right corner
+// Right-hand kinds that still prefer the shared models.js mesh (so the held cup matches its icon and the world).
+const FACTORY_FIRST = ['cup', 'water'];
+// Seeds ride the left fist without pointing; game.js asks for 'point' only while a planter is aimed at.
+const SEED_KINDS = ['seed', 'seeds'];
 
 export const HOLD = Object.freeze({
   hook:       { hand: 'right', pose: 'grip' },
@@ -32,7 +37,7 @@ export const HOLD = Object.freeze({
   fish:       { hand: 'right', pose: 'grip', rx: 0.15, ry: -0.5, rz: 0.15 },
   cup:        { hand: 'right', pose: 'grip', ry: 0.3 },
   water:      { hand: 'right', pose: 'grip', ry: 0.3 },
-  ...Object.fromEntries(PLACEABLE_KINDS.filter((k) => k !== 'hammer').map((k) => [k, { hand: 'left', pose: 'point' }])),
+  ...Object.fromEntries(PLACEABLE_KINDS.filter((k) => k !== 'hammer').map((k) => [k, { hand: 'left', pose: SEED_KINDS.includes(k) ? 'grip' : 'point' }])),
 });
 // Unknown kinds (other lanes may add items): carried on the left fist if placeable, else gripped.
 export const holdFor = (kind) => HOLD[kind] || (isPlaceable(kind) ? HOLD.crate : { hand: 'right', pose: 'grip' });
@@ -136,7 +141,7 @@ export function buildItemModel(T, kind, factory = null) {
   if (!kind) return null;
   let root = null;
   const left = holdFor(kind).hand === 'left';
-  if (factory && !TOOL_KINDS.includes(kind) && (left || !HOLD[kind])) {
+  if (factory && !TOOL_KINDS.includes(kind) && (left || !HOLD[kind] || FACTORY_FIRST.includes(kind))) {
     let m = null;
     try { m = factory(kind); } catch { m = null; }
     if (m?.isObject3D) {
@@ -145,11 +150,11 @@ export function buildItemModel(T, kind, factory = null) {
     }
   }
   if (root) { /* factory model */ } else if (kind === 'hook') {
-    const m = createHook(T); m.scale.setScalar(0.55);
+    const k = HOOK_SCALE, m = createHook(T); m.scale.setScalar(k);
     // handle axis sits at x=.2, y≈-.27 in createHook's inner group (inner is re-centred)
-    const inner = m.children[0], gp = new T.Vector3(0.2, -0.272, 0).add(inner.position).multiplyScalar(0.55);
+    const inner = m.children[0], gp = new T.Vector3(0.2, -0.272, 0).add(inner.position).multiplyScalar(k);
     root = new T.Group(); root.add(m);
-    root.userData.size = { x: m.userData.size.x * 0.55, y: m.userData.size.y * 0.55, z: m.userData.size.z * 0.55 };
+    root.userData.size = { x: m.userData.size.x * k, y: m.userData.size.y * k, z: m.userData.size.z * k };
     root.userData.grip = [gp.x, gp.y, gp.z];
   } else if (kind === 'hammer' || kind === 'fishingrod') {
     const m = kind === 'hammer' ? createHammer(T) : createFishingTool(T), s = kind === 'hammer' ? 0.6 : 0.55;

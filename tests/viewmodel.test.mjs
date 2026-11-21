@@ -71,3 +71,58 @@ test('pointing blends without a lower/raise; the hammer points with the left han
   h.setModelFactory(() => null); step(); assert.equal(h.state.models, 1);
   h.dispose();
 });
+
+test('hands are baked into a few draw calls and leave shared factory materials alone', () => {
+  const shared = new T.MeshStandardMaterial({ color: 0x996633 });
+  const factory = (k) => (k === 'crate' ? new T.Group().add(new T.Mesh(new T.BoxGeometry(1, 1, 1), shared), new T.Mesh(new T.BoxGeometry(0.2, 1.2, 0.2), shared)) : null);
+  const h = createHands(T, { modelFactory: factory });
+  const visibleMeshes = () => { let n = 0; h.group.traverse((c) => { if (!c.isMesh) return; for (let p = c; p; p = p.parent) if (!p.visible) return; n++; }); return n; };
+  const step = (n = 30) => { for (let i = 0; i < n; i++) h.update({ dt: 1 / 30 }); };
+  h.preload(['hook', 'crate']); h.update({ dt: 0 });
+  assert.equal(h.state.models, 2, 'preload builds held models ahead');
+  h.setHeld('hook'); step();
+  assert.ok(visibleMeshes() <= 16, `hook + hands: ${visibleMeshes()} draws`);
+  h.setHeld('crate'); step();
+  assert.ok(visibleMeshes() <= 8, `crate + pointing hands: ${visibleMeshes()} draws`);
+  assert.equal(shared.transparent, false, 'held copy never edits the cached model material');
+  assert.equal(shared.renderOrder ?? 0, 0);
+  const lag = h.state.lag; step(2); assert.equal(h.state.lag, lag, 'no per-frame lag array');
+  h.dispose();
+});
+
+test('hands keep a fixed 60 degree framing whatever the world FOV', () => {
+  const h = createHands(T);
+  h.setHeld('hook'); h.update({ dt: 1 / 30, fov: 60 });
+  assert.ok(Math.abs(h.group.scale.x - 1) < 1e-9);
+  h.update({ dt: 1 / 30, fov: 90 });
+  const s = Math.tan(Math.PI / 4) / Math.tan(Math.PI / 6);
+  assert.ok(Math.abs(h.group.scale.x - s) < 1e-9 && Math.abs(h.group.scale.y - s) < 1e-9 && h.group.scale.z === 1);
+  h.dispose();
+});
+
+test('the right hand grips the line while the hook is out and pulls hand over hand while reeling', () => {
+  const h = createHands(T);
+  const step = (n, p = {}) => { for (let i = 0; i < n; i++) h.update({ dt: 1 / 60, ...p }); };
+  h.setHeld('hook'); step(40);
+  assert.equal(h.state.rightHand, 'grip');
+  const left = h.ropeAnchor();
+  step(5, { hasHookOut: true });
+  assert.equal(h.state.rightHand, 'fist', 'rope grip, not an open palm');
+  assert.notEqual(h.ropeAnchor(), left, 'line leaves the right fist');
+  const strokes = [];
+  for (let i = 0; i < 120; i++) { h.update({ dt: 1 / 60, time: 1 + i / 60, hasHookOut: true, reeling: true }); strokes.push([h.state.pullR, h.state.pull]); }
+  const late = strokes.slice(60);
+  assert.ok(late.some(([r, l]) => r - l > 0.5) && late.some(([r, l]) => l - r > 0.5), 'hands alternate');
+  h.dispose();
+});
+
+test('seeds rest in the hand and point only on request; cups use the shared model', () => {
+  const h = createHands(T);
+  const step = (n = 30) => { for (let i = 0; i < n; i++) h.update({ dt: 1 / 30 }); };
+  h.setHeld('seed'); step();
+  assert.equal(h.state.pose, 'grip'); assert.equal(h.state.pointHand, null);
+  h.setPose('point'); step(); assert.equal(h.state.pointHand, 'R');
+  h.dispose();
+  const factory = (k) => (k === 'water' ? new T.Mesh(new T.CylinderGeometry(1, 1, 2)) : null);
+  assert.equal(buildItemModel(T, 'water', factory).userData.shared, true);
+});
