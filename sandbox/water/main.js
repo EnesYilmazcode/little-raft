@@ -68,6 +68,7 @@ if (tier === 'cur') {
   water = createWater(T, { tier, amp, defines: profDefines, debug: Number(q.get('debug') ?? 0), sunDirection: sun.position, skyColor: HORIZON, zenithColor: ZENITH });
 }
 scene.add(water.mesh);
+if (q.has('nowater')) water.mesh.visible = false;   // profile.py baseline: everything but the water
 
 // 3x2 raft of 2 m tiles plus a few half-sunk barrels and planks.
 const TILES = [[-1, 0], [0, 0], [1, 0], [-1, 1], [0, 1], [1, 1], [0, -1]];
