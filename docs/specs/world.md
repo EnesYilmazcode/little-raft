@@ -93,12 +93,19 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
   and at L>=200 it is 228 px (25.1 % W). community_103 (low sun) gives 8.0 % W at L>=240 and
   31 % W at L>=200. The sunset in store_24 is a pale disc of about 93 px (7.3 % W) half-max, with no
   hard edge. So the moon has a hard edge and a small halo, while the sun has a soft edge and a huge
-  halo.
+  halo. **[VERIFIED: 2021-04-01 core re-measured at 46 px (5.1 % W) at L>=250 and 72 px (7.9 % W) at
+  L>=240; the L>=200 width is ill-defined because that contour merges with the bright horizon band
+  (20 to 33 % W depending on row), so treat "25 % W" as approximate. community_103 at L>=240 is
+  107 to 113 px (8.4 to 8.8 % W, not 8.0). store_24 has a soft ramp about 30 px wide on each side,
+  half-max about 7.3 to 7.8 % W.]**
 - **C7 The glint path is a narrow broken column.** Under the moon or a low sun, the glints are
   2 to 3 % W wide: community_094 x 667 to 693 (2.0 % W), community_146 2.9 % W, community_121
   2.0 % W. Only 24 to 70 % of the rows in the column are lit, which gives a dashed look. The column
   runs from the horizon to 84 to 98 % H. community_068, community_020 and community_025 show the
-  same thing at dusk.
+  same thing at dusk. **[CORRECTED: 2 to 4 % W, not 2 to 3. Re-measured (L>150, 5th to 95th
+  percentile of lit columns): community_094 x 663 to 697 (2.7 % W), lit rows 63 %, lowest lit row
+  98 % H; community_146 3.6 % W, 39 % lit, down to 84 % H. community_121 not re-measured (my mask
+  caught non-glint highlights).]**
 - **C8 Star density varies a lot, and in moonlit frames stars are almost absent.** Counting local
   maxima at least 25 L above a 9x9 background mean: community_094 has 2 stars in a 1280x280 sky
   band (0.06 per 100x100 px), community_146 has 0, and community_007 has 1. The 45 that
@@ -106,10 +113,18 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
   community_102 is starry: about 8 per 100x100 px (43 in 270x200 and 57 in 320x210), mostly 1 to
   2 px points with a few brighter 3 to 4 px points. Its frame has a full moon too, which suggests a
   mod or photo mode. The press shot 2018-07-09-*-04 has 8 faint stars in a 1280x300 band.
+  **[CORRECTED (minor): community_146 has 1 star (175,122), visible by eye, not 0. community_094 = 2
+  reproduced. community_102 gives 83 in the 320x210 corner with a 5x5 local-max detector, so the
+  "about 8 per 100x100" density is detector-dependent (8 to 12). The conclusion stands.
+  2018-07-09-*-04 and community_007 not recounted.]**
 - **C9 Night is navy, not black, and stays readable.** In community_094 the sky near the horizon is
   L42, the sea L18 to L44 and the moon L250. community_140 has an island at L31 against sky at L59.
   Large raft silhouettes stay legible against the sky (community_053, community_007). The green
-  aurora appears only in the late-game cold biome (2022-01-13-dev-blog-47-07).
+  aurora appears only in the late-game cold biome (2022-01-13-dev-blog-47-07). **[CORRECTED: in
+  community_094 the sea runs from L49 near the horizon (300,480) to L27 at y 560 and L9 (#00082f) at
+  the bottom edge, so the near sea does go almost black; "L18 to L44" understates the range. The sky
+  near the horizon is L49 to L82 (moon side), not L42. community_140 sky sample (200,400) L39
+  matches. Sky stays navy; near sea can reach L10.]**
 
 ### Waves and foam
 
