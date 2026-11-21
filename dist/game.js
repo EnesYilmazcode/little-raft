@@ -44,6 +44,7 @@ import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
+import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -309,8 +310,8 @@ export function mount(transfer = null) {
   let diving = null; const islands = [], aboveWater = [], gatheredIds = new Set(); // gatheredIds: host-side guard against re-gathering; // diving lane hook
   function mat(color) {
     if (!materialCache.has(color)) {
-      let m = null;
-      if (TIMBER.has(color)) { try { m = createWoodMaterial(T, color); } catch (e) { console.warn('wood material failed', e); } }
+      let m = ART.artEnabled() ? ART.materialForColor(T, color) : null; // art lane hook
+      if (!m && TIMBER.has(color)) { try { m = createWoodMaterial(T, color); } catch (e) { console.warn('wood material failed', e); } }
       materialCache.set(color, m ?? new T.MeshStandardMaterial({color, roughness:.85, metalness:0}));
     }
     return materialCache.get(color);
@@ -371,6 +372,7 @@ export function mount(transfer = null) {
     sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.001; scene.add(sun, sun.target);
     quality = createQuality({renderer, sun, preset:options.graphics}); // owns pixel ratio, shadow map size and sun.castShadow
     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
+    if (ART.artEnabled()) ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T}); // art lane hook
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
     itemsGroup = new T.Group(); scene.add(itemsGroup);
     player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
@@ -527,8 +529,8 @@ export function mount(transfer = null) {
   function itemModel(item) {
     if (item.type === 'cache') return createSignalModel(T, 'cache');
     if (item.type === 'bottle') { const g = new T.Group(), b = createBottle(T); b.position.y = .04; b.rotation.y = (item.id % 7) * .9; g.add(b); return singlePass(g); }
-    if (item.type !== 'plastic') return singlePass(createDebris(T, item.type, mat, {seed:item.id}));
-    const g = new T.Group(), jug = singlePass(createPlastic(T)); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
+    if (item.type !== 'plastic') { const d = createDebris(T, item.type, mat, {seed:item.id}); if (ART.artEnabled() && item.type === 'scrap') d.traverse(o => { if (o.isMesh && o.material.vertexColors) { o.material.dispose(); o.material = mat('#8e9aa2'); } }); /* art lane hook */ return singlePass(d); }
+    const g = new T.Group(), jug = createPlastic(T); if (ART.artEnabled()) { const b = jug.getObjectByName('jugBody'); if (b) { b.material.dispose(); b.material = mat('#f2f0e6'); } } /* art lane hook */ singlePass(jug); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
   }
   // Meshes are keyed by token, not id: a respawned item keeps its id but may change type.
   const itemMeshes = new Map();
