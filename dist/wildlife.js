@@ -2,7 +2,7 @@
 // friendly dolphin or sea turtle circling at a distance. Pure scenery, see docs/features/wildlife.md.
 // Everything is a closed-form plan of a shared clock t, so host and guest see the same animals.
 // Rendering: 4 draw calls (gull bodies, gull wings, fish, the visible circler). No per-frame allocations.
-import { gullBodyGeometry, gullWingGeometry, dolphinGeometry, turtleGeometry, fishGeometry, GULL_SHOULDER, GULL_HIP } from './wildlife-models.js';
+import { gullBodyGeometry, gullWingGeometry, dolphinGeometry, turtleGeometry, fishGeometry, GULL_SHOULDER, GULL_HIP } from './wildlife-models.js?build=v3-survival-ae77fa84ac2b';
 
 export const WILDLIFE_SEED = 0x5eaf00d;
 export const GULL_MAX = 6, SCHOOL_MAX = 2, FISH_PER_SCHOOL = 12;

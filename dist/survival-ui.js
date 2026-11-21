@@ -2,7 +2,7 @@
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, HOLD, anchorTip } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
-import { ITEM_ICONS } from './item-svg.js'; // [progression-hook]
+import { ITEM_ICONS } from './item-svg.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
 const VERSION = 'sv3';

@@ -8,7 +8,7 @@
 // Draw calls: createAvatar's 36 meshes are baked into one mesh per rigid pivot (body, legs, arms, head+hat)
 // with per-vertex colour + roughness on one shared material (exact same shading), plus the emissive eye shine
 // and the flat-shaded straw: 8 meshes instead of 36. Pivots in body.userData.parts stay animatable.
-import { createAvatar } from './avatar.js';
+import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
