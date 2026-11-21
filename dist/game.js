@@ -667,7 +667,7 @@ export function mount(transfer = null) {
   }
   function releaseLock() { if (isLocked()) document.exitPointerLock?.(); }
   function look(dx, dy, k) { yaw -= dx * k; pitch = clamp(pitch - (options.invertY ? -dy : dy) * k, -PITCH_LIMIT, PITCH_LIMIT); }
-  function clearInput() { keys = {}; charging = null; reeling = false; down = null; lookFilter.reset(); controls?.clear(); } // controls lane: also release the input layer
+  function clearInput() { keys = {}; charging = null; reeling = false; down = null; lookFilter.reset(); controls?.clear(); fc?.releaseInput(); } // controls lane: also release the input layer
   // A panel opening keeps held keys (keyup still arrives); only window blur really loses keyups. The controls lane drops its own while blocked.
   function pauseInput() { charging = null; reeling = false; down = null; lookFilter.reset(); }
 
@@ -1336,7 +1336,7 @@ export function mount(transfer = null) {
   on(document, 'pointerlockchange', () => {
     lookFilter.reset({dropFirst:isLocked()}); // the first move after lock is often a bogus jump
     if (isLocked()) { lockFallback = false; lockFailures = 0; }
-    else { if (charging && charging.x === null) charging = null; reeling = false; }
+    else { if (charging && charging.x === null) charging = null; reeling = false; if (!lockFallback) fc?.releaseInput(); } // [fishing-cooking] its pointerup may never come
     if (!isLocked() && !lockFallback && building?.menu.isOpen) building.menu.close(false); // building-pieces lane hook
     down = null; refreshPointerUI(true);
   });
@@ -1435,7 +1435,7 @@ export function mount(transfer = null) {
       interact, inventory:openInventory, repair:() => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(ROT_STEP); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
       pause:() => settingsController?.open(),
       useDown:() => { if (castOut()) reeling = true; else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); } },
-      useUp:() => { reeling = false; if (charging) releaseCharge(pickCenter()); }, useCancel:() => { reeling = false; if (charging?.x === null) charging = null; }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});
+      useUp:() => { reeling = false; if (charging) releaseCharge(pickCenter()); }, useCancel:() => { reeling = false; if (charging?.x === null) charging = null; fc?.releaseInput(); }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});
     signal.addEventListener('abort', () => controls?.dispose());
   } catch (e) { console.error('controls lane failed to start', e); controls = null; }
   on(document, 'visibilitychange', () => { quality?.reset(); });
