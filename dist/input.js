@@ -33,7 +33,7 @@ export function createInput({
   let padHeld = new Set();            // pad codes active this frame
   const padSuppressed = new Set();    // pad codes held through a clear(): ignored until released
   const state = new Map(ids.map(id => [id, { down: false, pressed: false, released: false }]));
-  let mouseX = 0, mouseY = 0, skipMove = false, wheelAcc = 0;
+  let mouseX = 0, mouseY = 0, skipMove = false, wheelAcc = 0, wasBlocked = false;
   const smooth = {};
   let look = { dx: 0, dy: 0 }, step = 0, slot = -1, moveVec = { forward: 0, strafe: 0 };
   let leftStick = [0, 0], trig = { throw: 0, reel: 0 };
@@ -49,19 +49,23 @@ export function createInput({
 
   function press(code) { if (!held.has(code)) { held.add(code); tap(code); } api.activeDevice = 'kbm'; }
   function releaseMouse() { for (const c of MOUSE_CODES) held.delete(c); }
-  function clear() {
-    held.clear(); taps.clear(); releaseMouse();
+  // quiet(): drop everything transient (taps, mouse, wheel, pad, smoothing) but keep held keys, so keys
+  // held through a panel still count when it closes (input-rules.js keyDecision). clear() also forgets held keys.
+  function quiet() {
+    taps.clear(); releaseMouse();
     for (const c of padHeld) padSuppressed.add(c);
     padHeld = new Set();
     mouseX = mouseY = wheelAcc = 0; for (const k in smooth) delete smooth[k];
     leftStick = [0, 0]; trig = { throw: 0, reel: 0 }; sprintOn = false; crouchOn = false;
   }
+  function clear() { held.clear(); quiet(); }
 
   // ---------- keyboard ----------
   on(target, 'keydown', e => {
-    if (isField(e.target) || isBlocked()) return;
+    if (isField(e.target)) return;
     if (e.repeat) return;                       // never an edge; also keeps a cleared key released until re-pressed
     if (e.metaKey && !/^Meta/.test(e.code)) return; // Cmd+X: macOS swallows the keyup, so never record it
+    if (isBlocked()) { held.add(e.code); return; } // tracked (no tap, no preventDefault) so it counts once the panel closes
     press(e.code);
     // Ctrl chords pass through (Ctrl+R, devtools) unless Ctrl is itself a held binding (crouch): then crouch+S/D/A
     // must not open the browser's save/bookmark/select-all, which also blurs the window mid-move.
@@ -158,16 +162,20 @@ export function createInput({
   // ---------- frame ----------
   function update(dt = 0) {
     const s = settings(), blocked = isBlocked();
-    if (blocked) clear();
+    // resuming from a panel: keys still held become down without a pressed edge, so the key that
+    // closed the panel (Tab/E/Esc) does not re-fire its action
+    const resume = !blocked && wasBlocked;
+    wasBlocked = blocked;
+    if (blocked) quiet();
     const padLook = !blocked && connected.size ? pollPad(dt, s) : [0, 0];
     const isOn = c => held.has(c) || padHeld.has(c);
     const tapsOf = list => list.reduce((n, c) => n + (taps.get(c) || 0), 0);
     let stepNow = 0;
     for (const id of ids) {
       const b = map.bindingsFor(id) || {}, codes = [...(b.keys || []), ...(b.pad || [])];
-      const st = state.get(id), was = st.down, n = blocked ? 0 : tapsOf(codes);
+      const st = state.get(id), was = st.down, n = blocked || resume ? 0 : tapsOf(codes);
       st.down = !blocked && codes.some(isOn);
-      st.pressed = !was && (st.down || n > 0);
+      st.pressed = !resume && !was && (st.down || n > 0);
       st.released = (was && !st.down) || (!was && !st.down && n > 0); // a sub-frame tap is pressed+released
       if (id === 'hotbarNext') stepNow += Math.max(st.pressed ? 1 : 0, n);
       if (id === 'hotbarPrev') stepNow -= Math.max(st.pressed ? 1 : 0, n);
