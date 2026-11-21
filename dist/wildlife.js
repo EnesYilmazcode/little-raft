@@ -322,7 +322,7 @@ export function createWildlife(ctx) {
     v3 = new T.Vector3(); v3b = new T.Vector3(); sc3 = new T.Vector3(1, 1, 1); q4 = new T.Quaternion(); qR = new T.Quaternion();
     eul = new T.Euler(0, 0, 0, 'YXZ'); col = new T.Color(); zero = new T.Matrix4().makeScale(0, 0, 0); UP = new T.Vector3(0, 1, 0);
     fishDark = new T.Color('#0b2f36'); fishWater = new T.Color('#3f8c88');
-    material = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: T.DoubleSide });
+    material = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true }); // FrontSide like the shark's (one program): thin sheets carry real back faces (tri())
     // Gull bodies get their own copy with a tiny vertex tweak: leg vertices (legW = 1) swing back under the belly
     // by the per-instance `tuck` (0 standing, 1 in flight). One extra program, compiled once at startup.
     gullMat = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: T.DoubleSide });
