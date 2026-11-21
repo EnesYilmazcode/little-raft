@@ -1,8 +1,8 @@
 // Little Raft onboarding: top-right "Notes" objective tracker + left-aligned title menu. No centred text, ever.
 // API (window.raftOnboarding): register({chapter, title?, after?, steps}), complete(id), reset(), state().
-// Step: {id, title, hint, done(S, base, ctx) -> bool, count?(S, base, ctx) -> [n, of], start?(S) -> base, needs?:[ids],
-//        optional?:bool (never blocks its chapter), show?(S) -> bool (visibility gate)}.
-// ctx = {S0, gained(k), yawTravel, walked, prev, mem, silent}. Completion reads only window.raftDebug.state (polled 250 ms).
+// Step: {id, title, hint (string or S -> string), done(S, base, ctx) -> bool, count?(S, base, ctx) -> [n, of], start?(S) -> base, needs?:[ids],
+//        optional?:bool (never blocks its chapter), show?(S) -> bool (visibility gate), every?:bool (shown in any chapter)}.
+// count may add a unit: [n, of, '°']. ctx = {S0, gained(k), yawTravel, walked (path metres), prev, mem, silent}. Completion reads only window.raftDebug.state (polled 250 ms).
 export const SAVE_KEY = 'little-raft-v1', KEY = 'little-raft-onboarding-v1', AUTOSTART = 'little-raft-autostart';
 const POLL_MS = 250, MAX_ROWS = 3, DIM_MS = 20000, HOLD_MS = 2000, ASIDE_MIN = 190, GUTTER = 8;
 
@@ -22,42 +22,57 @@ const handGrab = (S, c, type) => !!(c.prev?.pickup && c.prev.hookStage === 'idle
 const wrapPi = a => Math.atan2(Math.sin(a), Math.cos(a));
 const FRESH = Object.freeze({tiles:9, fish:0, collected:0, stock:{}, me:null, hookHealth:100});
 const played = (S, c) => c.silent && num(S.collected) > 0; // returning players skip the very first lessons
-// or: a later milestone that proves the step (gains made before the step was on screen are not counted).
-const gainStep = (id, title, hint, k, n, needs, or) => ({id, title, hint, needs, count:(S, b, c) => [c.gained(k), n],
-  ...(or && {done:(S, b, c) => c.gained(k) >= n || or(S)})});
-const hasHammer = S => owns(S, 'hammer');
+// Gather count = the most ever seen of max(gained since the step showed, held now): what you already carry counts, and
+// spending never lowers it. or: a later milestone that proves the step.
+const most = (c, v) => (c.mem.hi = Math.max(num(c.mem.hi), v));
+const gainStep = (id, title, hint, k, n, needs, or) => ({id, title, hint, needs, count:(S, b, c) => [most(c, Math.max(c.gained(k), inv(S, k))), n],
+  ...(or && {done:(S, b, c) => most(c, Math.max(c.gained(k), inv(S, k))) >= n || or(S)})});
+const hasHammer = S => owns(S, 'hammer'), hasRod = S => owns(S, 'fishingrod');
+// Hotbar key for an item: 'Press [6] to hold your hammer, then ' ('' when it is already in hand, null when not in the bag).
+const slotOf = (S, k) => arr(S?.inventory?.slots).findIndex(x => x?.kind === k);
+const hold = (S, k, what) => { const i = slotOf(S, k); return i < 0 ? null : i === S.selectedIndex ? '' : i >= 8 ? `[Tab], drag ${what} to the hotbar, then ` : `Press [${i + 1}] to hold ${what}, then `; };
+const use = (S, k, what, rest, fallback) => { const h = hold(S, k, what); return h === null ? fallback : h ? h + rest : rest[0].toUpperCase() + rest.slice(1); };
+const LOOK = 1.4, WALK = 4; // rad of yaw sweep (~80°), metres walked
 
 export const CHAPTERS = [{id:'ch1', title:'First Ten Minutes'}, {id:'ch2', title:'Make Yourself at Home'}, {id:'ch3', title:'A Home on the Water'}];
 export const STEPS = [
-  {chapter:'ch1', id:'look', title:'Look out to sea', hint:'Move the [Mouse] to look around', done:(S, b, c) => c.yawTravel >= 1.6 || played(S, c)},
-  {chapter:'ch1', id:'walk', title:'Stretch your legs', hint:'[W][A][S][D] to walk, [Space] hops', done:(S, b, c) => c.walked >= 1.5 || played(S, c)},
-  {chapter:'ch1', id:'throw', title:'Toss your hook', hint:'Hold [LMB] to wind up, let go to throw', done:(S, b, c) => ['flying', 'floating', 'reeling'].includes(S.hookStage) || played(S, c)},
+  {chapter:'ch1', id:'look', title:'Look out to sea', hint:'Move the [Mouse] to look around', done:(S, b, c) => c.yawTravel >= LOOK || played(S, c),
+    count:(S, b, c) => [Math.round(c.yawTravel * 180 / Math.PI), Math.round(LOOK * 180 / Math.PI), '°']},
+  {chapter:'ch1', id:'walk', title:'Stretch your legs', hint:'[W][A][S][D] to walk, [Space] hops', done:(S, b, c) => c.walked >= WALK || played(S, c),
+    count:(S, b, c) => [Math.floor(c.walked), WALK, ' m']},
+  {chapter:'ch1', id:'throw', title:'Toss your hook', hint:'Hold [LMB] to wind up, let go. Aim above far debris, it arcs', done:(S, b, c) => ['flying', 'floating', 'reeling'].includes(S.hookStage) || played(S, c)},
   {chapter:'ch1', id:'reel', title:'Reel in a treasure', hint:'Hold [LMB] while the hook floats', needs:['throw'],
     done:(S, b, c) => (c.hostWorld ? MATS.some(k => c.gained(k) > 0) : num(S.collected) - num(b.collected) >= 1)},
   {chapter:'ch1', ...gainStep('wood', 'Gather 6 wood', 'Planks and barrels give wood', 'wood', 6, ['reel'], hasHammer)},
   {chapter:'ch1', ...gainStep('leaves', 'Gather 4 palm leaves', 'Leafy bundles drift by now and then', 'leaf', 4, ['reel'], hasHammer)},
   {chapter:'ch1', id:'bag', title:'Peek in your bag', hint:'[Tab] opens your bag', needs:['reel'], done:S => S.inventoryOpen === true},
   {chapter:'ch1', ...gainStep('rope', 'Twist 2 rope', 'In your bag: Rope, 2 leaves each', 'rope', 2, ['bag', 'leaves'], hasHammer)},
+  {chapter:'ch1', id:'swim', title:'Climb back aboard', hint:'Fell in? [Space]+[W] at the edge climbs up', optional:true, every:true, show:S => S.swimming === true,
+    done:(S, b, c) => { if (S.swimming) c.mem.wet = true; return !!c.mem.wet && !S.swimming && !!S.grounded; }},
   {chapter:'ch1', id:'hammer', title:'Make a hammer', hint:'Bag: 4 wood + 2 rope', needs:['rope', 'wood'], done:S => owns(S, 'hammer')},
   {chapter:'ch1', ...gainStep('plastic', 'Fish out 2 plastic', 'Hook the bobbing jugs', 'plastic', 2, ['hammer'])},
-  {chapter:'ch1', id:'floor', title:'Add a floor tile', hint:'Hammer [1]–[8], aim beside the raft, [LMB]', needs:['hammer'], done:(S, b) => num(S.tiles) - num(b.tiles) >= 1},
+  {chapter:'ch1', id:'floor', title:'Build a floor tile', hint:S => '2 wood + 2 plastic. ' + use(S, 'hammer', 'your hammer', 'aim beside the raft, [LMB]', 'Hammer in hand, aim beside the raft, [LMB]'), needs:['hammer'], done:(S, b) => num(S.tiles) - num(b.tiles) >= 1},
   {chapter:'ch2', id:'grow3', title:'Grow your raft by 3', hint:'Each tile: 2 wood + 2 plastic', count:(S, b) => [num(S.tiles) - num(b.tiles), 3]},
-  {chapter:'ch2', id:'grab', title:'Grab one by hand', hint:'Walk close, [E] picks it up',
+  {chapter:'ch2', id:'grab', title:'Grab one by hand', hint:'Wait for debris to drift close, then [E]',
     done:(S, b, c) => handGrab(S, c)},
   {chapter:'ch2', id:'barrel', title:'Hook a barrel', hint:'Barrels hold a bit of everything', done:(S, b, c) => arr(S.hookCaughtItems).some(i => i?.type === 'barrel') || handGrab(S, c, 'barrel')},
   {chapter:'ch2', id:'palm-craft', title:'Make a palm planter', hint:'Bag: 2 wood + 3 leaves', done:(S, b, c) => c.gained('palm') >= 1 || placedNow(S, b, c, 'palm')},
-  {chapter:'ch2', id:'plant', title:'Plant your first palm', hint:'Hold it, aim at the deck, [LMB]', done:(S, b, c) => placedNow(S, b, c, 'palm')},
-  {chapter:'ch2', id:'lantern', title:'Hang a lantern', hint:'Bag: 2 wood + 2 scrap, then place it', done:(S, b, c) => placedNow(S, b, c, 'lantern')},
+  {chapter:'ch2', id:'plant', title:'Plant your first palm', hint:S => use(S, 'palm', 'the planter', '[LMB] on the raft', 'Hold it, [LMB] on the raft'), done:(S, b, c) => placedNow(S, b, c, 'palm')},
+  {chapter:'ch2', id:'lantern', title:'Hang a lantern', hint:S => use(S, 'lantern', 'the lantern', '[LMB] on the raft', 'Bag: 2 wood + 2 scrap, then place it'), done:(S, b, c) => placedNow(S, b, c, 'lantern')},
   {chapter:'ch2', id:'repair', title:'Mend your hook', hint:'[R] repairs: 2 wood + 1 scrap', optional:true, show:S => owns(S, 'hook') && Number.isFinite(S.hookHealth) && S.hookHealth <= 50,
     done:(S, b, c) => { if (num(S.hookHealth) < 100 && Number.isFinite(S.hookHealth)) c.mem.low = true; return !!c.mem.low && S.hookHealth === 100; }},
-  {chapter:'ch3', id:'rope8', title:'Stock up on rope', hint:'A rod needs 8 rope (16 leaves)', done:S => inv(S, 'rope') >= 8 || owns(S, 'fishingrod'), count:S => [inv(S, 'rope'), 8]},
-  {chapter:'ch3', id:'rod', title:'Make a fishing rod', hint:'Bag: 6 wood + 8 rope', done:S => owns(S, 'fishingrod')},
-  {chapter:'ch3', id:'fish1', title:'Catch a fish', hint:'Rod in hand, aim at water, [LMB]', done:(S, b, c) => fishSince(S, b, c) >= 1},
-  {chapter:'ch3', id:'fish3', title:'Catch two more', hint:'Patience. Watch the bobber dip', needs:['fish1'],
+  // The rod (6 wood + 8 rope) comes after a short wood top-up; rope already twisted (or spent on the rod) counts.
+  {chapter:'ch3', ...gainStep('rodwood', 'Gather 6 wood', 'For the rod. A bench is 3 wood', 'wood', 6, [], hasRod)},
+  {chapter:'ch3', id:'rope8', title:'Twist 8 rope', hint:'16 leaves. Barrels give leaves too',
+    count:(S, b, c) => [most(c, hasRod(S) ? 8 : inv(S, 'rope')), 8]},
+  {chapter:'ch3', id:'rod', title:'Make a fishing rod', hint:'Bag: 6 wood + 8 rope', needs:['rodwood', 'rope8'], done:hasRod},
+  {chapter:'ch3', id:'fish1', title:'Catch a fish', hint:S => use(S, 'fishingrod', 'the rod', 'aim at water, [LMB]', 'Rod in hand, aim at water, [LMB]'), needs:['rod'],
+    done:(S, b, c) => fishSince(S, b, c) >= 1},
+  {chapter:'ch3', id:'fish3', title:'Catch two more', hint:'Cast and wait, the fish comes to you', needs:['fish1'],
     count:(S, b, c) => [fishSince(S, b, c) - (c.silent ? 1 : 0), 2]},
-  {chapter:'ch3', id:'sail', title:'Raise a sail', hint:'Bag: 4 wood, 3 rope, 3 leaves', done:(S, b, c) => placedNow(S, b, c, 'sail')},
+  {chapter:'ch3', id:'sail', title:'Raise a sail', hint:'Bag: 4 wood, 3 rope, 3 leaves', needs:['rod'], done:(S, b, c) => placedNow(S, b, c, 'sail')},
   {chapter:'ch3', id:'seat', title:'Build a bench', hint:'Somewhere to watch the waves', done:(S, b, c) => placedNow(S, b, c, 'bench')},
-  {chapter:'ch3', id:'crate', title:'Make a storage crate', hint:'Bag: 4 wood + 1 scrap, then place it', done:(S, b, c) => placedNow(S, b, c, 'crate')},
+  {chapter:'ch3', id:'crate', title:'Make a storage crate', hint:S => use(S, 'crate', 'the crate', '[LMB] on the raft', 'Bag: 4 wood + 1 scrap, then place it'), done:(S, b, c) => placedNow(S, b, c, 'crate')},
   {chapter:'ch3', id:'home', title:'Reach 16 tiles', hint:'A proper little home', count:S => [num(S.tiles), 16], done:(S, b, c) => !c.hostWorld && num(S.tiles) >= 16},
 ];
 
@@ -80,8 +95,8 @@ const snap = S => ({tiles:num(S.tiles), fish:num(S.fish), collected:num(S.collec
   decor:Object.fromEntries(arr(S.decor).filter(d => typeof d?.type === 'string').map(d => [d.type, decorCount(S, d.type)])),
   stock:{...(S.stock && typeof S.stock === 'object' ? S.stock : {})}, me:S.me ? {x:num(S.me.x), z:num(S.me.z), yaw:num(S.me.yaw)} : null});
 function ctxFor(rec, S, prev, silent) {
-  const base = rec?.base ?? FRESH, me = S.me && base.me ? Math.hypot(num(S.me.x) - base.me.x, num(S.me.z) - base.me.z) : 0;
-  return {S0:base, prev, silent, hostWorld:hostWorld(S), mem:rec?.mem ?? {}, yawTravel:silent ? 0 : rec?.yaw ?? 0, walked:silent ? 0 : me,
+  const base = rec?.base ?? FRESH;
+  return {S0:base, prev, silent, hostWorld:hostWorld(S), mem:rec?.mem ?? {}, yawTravel:silent ? 0 : rec?.yaw ?? 0, walked:silent ? 0 : rec?.walk ?? 0,
     gained:k => (silent ? inv(S, k) : num(rec?.gained[k]))};
 }
 function check(step, S, base, ctx) {
@@ -91,8 +106,9 @@ function check(step, S, base, ctx) {
   } catch { return false; }
 }
 export function countOf(step, S, rec, prev) {
-  try { const c = step.count?.(S, rec?.base ?? FRESH, ctxFor(rec, S, prev, false)); return c ? [Math.max(0, Math.min(num(c[0]), num(c[1]))), num(c[1])] : null; } catch { return null; }
+  try { const c = step.count?.(S, rec?.base ?? FRESH, ctxFor(rec, S, prev, false)); return c ? [Math.max(0, Math.min(num(c[0]), num(c[1]))), num(c[1]), ...(typeof c[2] === 'string' ? [c[2]] : [])] : null; } catch { return null; }
 }
+export const hintOf = (step, S) => { try { return String((typeof step.hint === 'function' ? step.hint(S ?? {}) : step.hint) ?? ''); } catch { return ''; } };
 const chapterOrder = steps => [...new Set(steps.map(s => s.chapter))];
 export function currentChapter(steps, done) {
   return chapterOrder(steps).find(ch => steps.some(s => s.chapter === ch && !s.optional && !done[s.id])) ?? null;
@@ -100,7 +116,7 @@ export function currentChapter(steps, done) {
 export function visibleSteps(steps, P, S) {
   const ch = currentChapter(steps, P.done), ids = new Set(steps.map(s => s.id));
   const gate = s => { try { return !s.show || P.track[s.id] || s.show(S); } catch { return false; } };
-  const open = steps.filter(s => s.chapter === ch && !P.done[s.id] && arr(s.needs).every(n => P.done[n] || !ids.has(n)) && gate(s));
+  const open = steps.filter(s => (s.chapter === ch || s.every) && !P.done[s.id] && arr(s.needs).every(n => P.done[n] || !ids.has(n)) && gate(s));
   return [...open.filter(s => s.show), ...open.filter(s => !s.show)].slice(0, MAX_ROWS); // gated (urgent) steps first
 }
 export const createProgress = (done = []) => ({done:Object.fromEntries(arr(done).filter(x => typeof x === 'string').map(id => [id, true])), track:{}, prev:null});
@@ -124,16 +140,19 @@ export function evaluate(steps, P, rawS, {silent = false} = {}) {
   for (const s of swapped ? [] : vis) {
     const rec = P.track[s.id] ?? track(s, S), now = snap(S);
     for (const k of Object.keys(now.stock)) { const d = inv(now, k) - inv(rec.last, k); if (d > 0) rec.gained[k] = num(rec.gained[k]) + d; }
-    if (now.me && rec.last.me) rec.yaw += Math.abs(wrapPi(now.me.yaw - rec.last.me.yaw));
+    if (now.me && rec.last.me) {
+      rec.yaw += Math.abs(wrapPi(now.me.yaw - rec.last.me.yaw));
+      const d = Math.hypot(now.me.x - rec.last.me.x, now.me.z - rec.last.me.z); if (d < 3) rec.walk += d; // >3 m in 250 ms: a teleport
+    }
     rec.last = now; keep[s.id] = rec;
     if (check(s, S, rec.base, ctxFor(rec, S, prev, false))) { P.done[s.id] = true; newly.push(s.id); }
   }
   P.track = keep; P.prev = snapPrev(S);
-  const after = visibleSteps(steps, P, S), counts = {};
-  for (const s of after) { P.track[s.id] ??= track(s, S); counts[s.id] = countOf(s, S, P.track[s.id], P.prev); }
-  return {newly, silentDone, visible:after.map(s => s.id), chapter:currentChapter(steps, P.done), counts, reset};
+  const after = visibleSteps(steps, P, S), counts = {}, hints = {};
+  for (const s of after) { P.track[s.id] ??= track(s, S); counts[s.id] = countOf(s, S, P.track[s.id], P.prev); hints[s.id] = hintOf(s, S); }
+  return {newly, silentDone, visible:after.map(s => s.id), chapter:currentChapter(steps, P.done), counts, hints, reset};
 }
-function track(s, S) { let base; try { base = s.start ? s.start(S) : null; } catch {} return {base:base ?? snap(S), gained:{}, yaw:0, mem:{}, last:snap(S)}; }
+function track(s, S) { let base; try { base = s.start ? s.start(S) : null; } catch {} return {base:base ?? snap(S), gained:{}, yaw:0, walk:0, mem:{}, last:snap(S)}; }
 const snapPrev = S => ({...snap(S), role:S.role, hostWorld:hostWorld(S), pickup:S.pickup ?? null, hookStage:S.hookStage});
 
 export function saveSummary(raw) {
@@ -186,7 +205,7 @@ function boot() {
   function rowFor(id, animate) {
     const s = STEPS.find(x => x.id === id), li = document.createElement('li');
     li.className = 'ob-row' + (animate && !reduced() ? ' ob-in' : ''); li.dataset.id = id;
-    li.innerHTML = `<i class="ob-box" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M2.5 6.4 5 8.8 9.6 3.4"/></svg></i><div class="ob-text"><b class="ob-title">${hintHTML(s.title)}</b><span class="ob-hint">${hintHTML(s.hint)}</span></div><em class="ob-count"></em>`;
+    li.innerHTML = `<i class="ob-box" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M2.5 6.4 5 8.8 9.6 3.4"/></svg></i><div class="ob-text"><b class="ob-title">${hintHTML(s.title)}</b><span class="ob-hint"></span></div><em class="ob-count"></em>`;
     const idx = STEPS.indexOf(s), before = [...rowsEl.children].find(r => STEPS.findIndex(x => x.id === r.dataset.id) > idx);
     rowsEl.insertBefore(li, before ?? null); rows.set(id, li);
     if (animate) setTimeout(() => li.classList.remove('ob-in'), 260);
@@ -244,8 +263,9 @@ function boot() {
     const vis = new Set(r.visible);
     for (const [id, li] of rows) if (!vis.has(id) && !li.classList.contains('ob-done')) { li.remove(); rows.delete(id); }
     for (const id of r.visible) {
-      const li = rows.get(id) ?? rowFor(id, animate), c = r.counts[id];
-      li.querySelector('.ob-count').textContent = c ? `${c[0]}/${c[1]}` : '';
+      const li = rows.get(id) ?? rowFor(id, animate), c = r.counts[id], h = r.hints[id] ?? '';
+      li.querySelector('.ob-count').textContent = c ? `${c[0]}/${c[1]}${c[2] ?? ''}` : '';
+      if (li.dataset.hint !== h) { li.dataset.hint = h; li.querySelector('.ob-hint').innerHTML = hintHTML(h); }
     }
     renderHead(shownCh);
   }
