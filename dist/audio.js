@@ -27,7 +27,7 @@ export const BUSES = Object.freeze(['master', 'effects', 'ambience', 'music']);
 const OUTPUT_SCALE = 0.5;       // keeps full volume comfortable
 const MAX_VOICES = 24;
 const MIN_GAP = { throw: 0.08, splash: 0.06, collect: 0.04, build: 0.05, place: 0.06, plant: 0.12, water: 0.25, craft: 0.1, repair: 0.12, jump: 0.1, land: 0.12,
-  step: 0.16, swim: 0.3, reel: 0.075, catch: 0.06, bite: 0.2, ui: 0.03, open: 0.08, close: 0.08, deny: 0.15 };
+  step: 0.16, swim: 0.3, reel: 0.4, catch: 0.06, bite: 0.2, ui: 0.03, open: 0.08, close: 0.08, deny: 0.15 };
 const SILENT = 0.0001;
 // calm D-major-ish pad: Dadd9, Bm7, Gmaj7, A6 (low register so it sits under the sea)
 const CHORDS = [[146.83, 220, 329.63], [123.47, 185, 293.66], [98, 196, 246.94], [110, 164.81, 277.18]];

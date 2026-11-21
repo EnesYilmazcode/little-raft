@@ -68,7 +68,7 @@ const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
 const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12, receiver:.35, antenna:.1, purifier:.3, ...CONTENT_BLOCK_RADIUS, ...BLOCK_RADII}); // content hook, [progression-hook]
 const SAVE = 'little-raft-v1';
-const FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 8, PICKUP_REACH = 2.5;
+const THROW_LOFT = .2, FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 10, PICKUP_REACH = 2.5;
 const LOOK_SENSITIVITY = .0022, DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
 const FISH_REACH = 26, PENDING_MS = 2500, JOIN_TIMEOUT = 15000, ACK_TIMEOUT = 2000;
 const CHARGE_MS = 900, MIN_CHARGE = .15, WEAR_PER_CATCH = 2, MAX_HEALTH = 100;
@@ -81,7 +81,7 @@ const HUD_CSS = `
 body.playing header,body.playing #hud .inventory,body.playing #hud .goal,body.playing #toast,
 body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.playing [data-quick-recipe]{display:none!important}
 #contextPrompt{position:fixed;left:50%;top:calc(50% + 26px);transform:translateX(-50%);padding:3px 10px;border-radius:8px;
-  background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:none;z-index:30;white-space:nowrap}
+  background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 var(--ui-font,system-ui,sans-serif);pointer-events:none;z-index:30;white-space:nowrap}
 #contextPrompt[hidden]{display:none}
 #contextPrompt kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:0 4px;border:1px solid rgba(246,236,214,.6);border-radius:4px;font:inherit;text-align:center}
 #signalReadout{position:fixed;top:14px;left:50%;transform:translateX(-50%);padding:4px 12px;border-radius:999px;
@@ -242,7 +242,7 @@ export function mount(transfer = null) {
   let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
-  let yaw = Number.isFinite(X?.yaw) ? X.yaw : 0, pitch = Number.isFinite(X?.pitch) ? X.pitch : -.28;
+  let yaw = Number.isFinite(X?.yaw) ? X.yaw : 0, pitch = Number.isFinite(X?.pitch) ? X.pitch : 0;
   let walking = false, walkPhase = Number.isFinite(X?.walkPhase) ? X.walkPhase : 0, swing = 0;
   const pointer = new T.Vector2(), ray = new T.Raycaster(), plane = new T.Plane(new T.Vector3(0, 1, 0), -.22);
   let hover = null, mouse = {x:0, y:0, inside:false}, frameAim = null, pickTarget = null;
@@ -273,7 +273,8 @@ export function mount(transfer = null) {
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
   let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = -1;
-  const chargeMeter = $('#chargeMeter'), chargeFill = chargeMeter?.querySelector('i');
+  const chargeMeter = $('#chargeMeter'); // thin ring around the crosshair, filled by --c
+  let crossUsable = false, lastDraw = 0;
   let blockList = [];
   let controls = null; // controls lane: set in the Input section
   let sailing = null; const scenery = [], sailFlow = {x:0, z:0}, aimNdc = {x:0, y:0}; // [sailing]
@@ -345,11 +346,11 @@ export function mount(transfer = null) {
     document.querySelectorAll('[data-quick-recipe]').forEach(b => b.remove()); // old pseudo-inventory buttons
     document.body.classList.remove('build');
     const recipes = $('#recipes'); if (recipes) { recipes.hidden = true; recipes.innerHTML = ''; }
-    const controls = $('.controls'); if (controls) controls.innerHTML = '<span><kbd>W A S D</kbd> Walk</span><span><kbd>Space</kbd> Jump</span><span><kbd>1–8</kbd> Hotbar</span><span><kbd>E</kbd> Pick up / bag</span><span><kbd>Esc</kbd> Menu</span><span id="fishCount"></span>';
+    const controls = $('.controls'); if (controls) controls.innerHTML = '<span><kbd>W A S D</kbd> Walk</span><span><kbd>Space</kbd> Jump</span><span><kbd>1–0</kbd> Hotbar</span><span><kbd>E</kbd> Pick up / bag</span><span><kbd>Esc</kbd> Menu</span><span id="fishCount"></span>';
     const guide = $('#help .guide');
     if (guide) guide.innerHTML = '<li><kbd>Mouse</kbd><span><b>Look around.</b> Click the sea to capture your mouse.</span></li>'
       + '<li><kbd>W A S D</kbd><span><b>Walk</b>, hold <kbd>Shift</kbd> to run, <kbd>Space</kbd> to jump. Fell in? Swim to the raft and hold <kbd>Space</kbd> to climb aboard.</span></li>'
-      + '<li><kbd>1–8</kbd><span><b>Hotbar.</b> Number keys or the mouse wheel choose a slot. Click uses what you are holding.</span></li>'
+      + '<li><kbd>1–0</kbd><span><b>Hotbar.</b> Number keys or the mouse wheel choose a slot. Click uses what you are holding.</span></li>'
       + '<li><kbd>Hook</kbd><span><b>Throw.</b> Hold click to power up, aim higher to throw farther, release. Hold again to reel in everything it touches.</span></li>'
       + '<li><kbd>E</kbd><span><b>Pick up</b> a supply right beside you, or open your bag to craft. <kbd>Tab</kbd> / <kbd>I</kbd> open the bag too.</span></li>'
       + '<li><kbd>E</kbd><span><b>Sail.</b> Look at a sail and press E to raise or lower it; hold <kbd>R</kbd> and turn to steer it. The pennant shows the wind. E at the anchor post stops the raft.</span></li>' // [sailing]
@@ -384,7 +385,7 @@ export function mount(transfer = null) {
     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
     if (ART.artEnabled()) ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T}); // art lane hook
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
-    itemsGroup = new T.Group(); scene.add(itemsGroup);
+    itemsGroup = new T.Group(); scene.add(itemsGroup); ocean.trackFoam(itemsGroup);
     player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
     ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => { try { return prog?.modelFor(k, {type:k}) ?? (k === 'purifier' ? createPurifier(T) : createCraft(T, k) ?? createSignalModel(T, k) ?? content?.decorModel(k) ?? null); } catch { return null; } }}); // see-through real models, red when blocked
     const ropeGeo = new T.BufferGeometry(); ropeAttr = new T.BufferAttribute(new Float32Array((ROPE_SEGMENTS + 1) * 3), 3); ropeAttr.setUsage(T.DynamicDrawUsage); ropeGeo.setAttribute('position', ropeAttr);
@@ -440,6 +441,18 @@ export function mount(transfer = null) {
     camera.add(depthClear);
     camera.add(hands.group);
   }
+  // Held models and build ghosts for every kind in the bag are built ahead and their shaders compiled
+  // (renderer.compile covers hidden meshes), so the first switch to an item never links programs mid-play.
+  const warmedKinds = new Set();
+  function warmKinds() {
+    const slots = localBag().slots; let fresh = false;
+    for (let i = 0; i < slots.length; i++) {
+      const k = slots[i]?.kind; if (!k || warmedKinds.has(k)) continue;
+      warmedKinds.add(k); fresh = true; hands.preload([k]);
+      if (k === 'hammer') ghosts.preload(['floor']); else if (DECOR_TYPES.includes(k)) ghosts.preload([k]);
+    }
+    if (fresh) { try { renderer.compileAsync(scene, camera).catch(() => {}); } catch (e) { console.warn('shader warm-up failed', e); } }
+  }
 
   // Fits the sun's shadow box to the raft (plus a margin for props, avatars and nearby supplies). Call after tiles change.
   // The box never grows past the old fixed ±25 m, so texels are never coarser than before.
@@ -489,6 +502,7 @@ export function mount(transfer = null) {
     parent.add(g);
   }
   function rebuildRaft() {
+    ocean.setRaftTiles(world.tiles);
     for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
     wateringGroups.clear();
     raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat));
@@ -561,8 +575,9 @@ export function mount(transfer = null) {
       else if (fc?.prompt) html = fc.prompt; // [fishing-cooking] trusted static markup from the lane module
       else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
       else if (hook?.fishing) html = esc(castPrompt(hook, fishWait));
-      else if (castOut() && castOut().stage === 'floating') html = caughtList(castOut()).length ? 'Hold click to reel it in' : 'Hold click to reel';
     }
+    const usable = !!(running && !dialog && (pickTarget || waterAim?.click || waterAim?.e));
+    if (usable !== crossUsable) { crossUsable = usable; $('#crosshair')?.classList.toggle('usable', usable); } // dot grows over interactables
     if (html === contextCache) return; contextCache = html;
     const el = $('#contextPrompt'); if (!el) return; el.innerHTML = html; el.hidden = !html;
   }
@@ -591,8 +606,8 @@ export function mount(transfer = null) {
     if (!chargeMeter) return;
     const show = !!charging && running;
     if (chargeMeter.hidden === show) chargeMeter.hidden = !show;
-    const w = show ? (chargeValue() * 100).toFixed(1) + '%' : '';
-    if (show && chargeFill && w !== chargeWidth) chargeFill.style.width = chargeWidth = w; // only write the DOM on change
+    const w = show ? chargeValue().toFixed(3) : '';
+    if (show && w !== chargeWidth) chargeMeter.style.setProperty('--c', chargeWidth = w); // only write the DOM on change
   }
   // Body classes, crosshair and resume hint follow running and pointer-lock state.
   function refreshPointerUI(force = false) {
@@ -986,7 +1001,8 @@ export function mount(transfer = null) {
     const bag = localBag(), idx = bag.selectedIndex, slot = bag.slots[idx];
     if (toolRole(slot?.kind) !== 'hook') return; // [progression-hook] metalhook throws too
     const durability = clamp(slot.durability ?? MAX_HEALTH, 0, MAX_HEALTH), maxRange = 16 + durability * .16;
-    const direction = aim?.dir ?? camera.getWorldDirection(new T.Vector3());
+    const direction = (aim?.dir ?? camera.getWorldDirection(new T.Vector3())).clone();
+    direction.y += THROW_LOFT; direction.normalize(); // a little loft so a level throw carries
     hook = new HookCast(T, {origin:handPos.clone(), direction, maxRange, charge, deck:deckAt});
     castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; play('throw', charge);
     if (durability <= 0) notice('Worn hook: shorter throws. R to repair');
@@ -1102,11 +1118,11 @@ export function mount(transfer = null) {
     const kind = heldKind(), motion = options.cameraMotion;
     const ch = charging ? clamp((performance.now() - charging.start) / CHARGE_MS, 0, 1) : 0;
     hands.setHeld(running ? kind : null);
-    pointing = running && isPlaceable(kind);           // the one place the pointing-finger pose is decided
+    pointing = running && isPlaceable(kind) && (kind !== 'seed' || !!farmPlot(frameAim)); // the one place the pointing-finger pose is decided; seeds point only at a planter
     hands.setPose(pointing ? 'point' : null);
     const rod = kind === 'fishingrod' ? hands.itemModel('fishingrod') : null, out = !!hook?.fishing;
     if (rod?.userData.float) { rod.userData.float.visible = !out; rod.userData.leader.visible = !out; }
-    hands.update({dt, time:elapsed, charge:ch, reeling:rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch}); // [fishing-cooking] rod reel pose from the lane
+    hands.update({dt, time:elapsed, charge:ch, reeling:rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch, fov:camera.fov}); // [fishing-cooking] rod reel pose from the lane
     camera.updateMatrixWorld(true);
     hands.ropeAnchor().getWorldPosition(handPos);
   }
@@ -1246,8 +1262,12 @@ export function mount(transfer = null) {
     try { prog?.tick(dt); } catch (e) { console.error('progression tick failed', e); } // [progression-hook]
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     try { logbookUI?.update?.(); } catch (e) { console.error('logbook update failed', e); logbookUI = null; }
-    refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud();
+    refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud(); warmKinds();
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
+    // Behind a blurred pause/settings backdrop the world only redraws at ~10 fps (the inventory has no blur).
+    const veiled = dialog && !!document.querySelector('dialog[open]:not(#inventory)');
+    if (veiled && now - lastDraw < 100) return;
+    lastDraw = now;
     renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
   }
   // Peer liveness. rAF stops in hidden tabs, so a timer keeps the channel warm and each side says when it is
@@ -1348,8 +1368,8 @@ export function mount(transfer = null) {
     if (running && building?.key(e.code, true, heldKind() === 'hammer', e.repeat)) { e.stopImmediatePropagation(); if (e.code === 'KeyX' || e.code === 'KeyR') e.preventDefault(); return; } // building-pieces lane hook
     if (controls) { if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault(); return; } // controls lane: actions come from the action map
     keys[e.code] = true;
-    const m = /^(?:Digit|Numpad)([1-8])$/.exec(e.code);
-    if (m && running) selectSlot(+m[1] - 1);
+    const m = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
+    if (m && running) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
     if (e.code === 'KeyE' && !e.repeat) interact();
     if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
