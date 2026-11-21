@@ -291,6 +291,27 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let dragging = false, dragFrom = null, dragAmt = 0, overEl = null;
   let hoverIdx = null;
   let lastSig = null;
+  // Per-frame fast path: skip snapshot + string signatures when nothing visible changed.
+  // Bag.version catches method mutations; the typed-array shadow catches direct .slots writes
+  // (game.js edits counts/durability in place), so the HUD never goes stale.
+  let fastBag = null, fastVer = NaN, fastSel = -2, fastMode = -1, fastTools = null;
+  const shKind = new Int32Array(TOTAL), shCount = new Float64Array(TOTAL), shDur = new Float64Array(TOTAL);
+  const kindIds = new Map();
+  const kindId = k => { let id = kindIds.get(k); if (id === undefined) { id = kindIds.size + 1; kindIds.set(k, id); } return id; };
+  const invalidate = () => { lastSig = null; fastBag = null; };
+  function shadowSame(slots, write) {
+    if (!Array.isArray(slots) || slots.length !== TOTAL) return false;
+    let same = true;
+    for (let i = 0; i < TOTAL; i++) {
+      const s = slots[i];
+      const k = s ? kindId(s.kind) : 0, c = s ? +s.count : 0, d = s && s.durability != null ? +s.durability : -1;
+      if (shKind[i] !== k || shCount[i] !== c || shDur[i] !== d) {
+        if (!write) return false;
+        same = false; shKind[i] = k; shCount[i] = c; shDur[i] = d;
+      }
+    }
+    return same;
+  }
   let curSlots = [];
   let curSelected = -1;
   let tools = null, hotEls = [];
@@ -345,6 +366,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (tools && tools.isConnected && tools.dataset.sv === VERSION && tools.childElementCount === HB) return tools;
     const t = document.querySelector('.tools');
     if (!t) { tools = null; hotEls = []; return null; }
+    invalidate();
     if (t.dataset.sv !== VERSION || t.childElementCount !== HB || !t.querySelector(':scope>.sv-slot')) {
       let html = '';
       for (let i = 0; i < HB; i++) html += `<button type="button" class="sv-slot" data-slot="${i}">${slotInner(i + 1)}</button>`;
@@ -420,7 +442,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function sendMove(from, to, amt, el) {
     let r;
     try { r = onMove?.(from, to, amt); } catch (e) { console.error(e); r = false; }
-    lastSig = null;
+    invalidate();
     if (r === false) { deny(el); return false; }
     if (r && typeof r.then === 'function') r.then(v => { if (v === false) deny(el); }, e => console.error(e));
     return true;
@@ -462,7 +484,12 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!alive) return;
     const bag = bagNow();
     ensureTools();
-    const snap = bag && readSnap(bag);
+    if (!bag) return;
+    const mode = (isOpen ? 1 : 0) | (dragging ? 2 : 0);
+    const ver = bag.version, sel0 = bag.selectedIndex;
+    if (!force && bag === fastBag && typeof ver === 'number' && ver === fastVer && sel0 === fastSel
+      && mode === fastMode && tools === fastTools && shadowSame(bag.slots, false)) return;
+    const snap = readSnap(bag);
     if (!snap) return;
     const slots = snap.slots;
     const selected = Number.isInteger(snap.selected) ? snap.selected : -1;
@@ -477,6 +504,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       paintInventory(slots, sigs, selected);
       paintRecipes(bag);
     }
+    fastBag = bag; fastVer = ver; fastSel = sel0; fastMode = mode; fastTools = tools;
+    shadowSame(bag.slots, true);
   }
 
   // ---------- open / close ----------
@@ -492,7 +521,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     buildRecipes();
-    lastSig = null;
+    invalidate();
     recipeEls.forEach(v => { v.sig = null; });
     render(true);
     try { wrap.focus({ preventScroll: true }); } catch {}
@@ -512,7 +541,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (overEl) { overEl.classList.remove('sv-over'); overEl = null; }
     if (dragFrom != null && invEls[dragFrom]) invEls[dragFrom].classList.remove('sv-dragging');
     dragging = false; dragFrom = null; dragAmt = 0;
-    if (refresh) lastSig = null;
+    if (refresh) invalidate();
   }
   const slotFrom = e => e.target?.closest?.('#inventory .sv-slot[data-index]') || null;
 
@@ -525,7 +554,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   dlg.addEventListener('click', e => {
     if (e.target === dlg) { close(); return; } // backdrop
     const rb = e.target.closest?.('.sv-recipe');
-    if (rb) { if (!rb.disabled) { safe(onCraft, rb.dataset.recipe); lastSig = null; } return; }
+    if (rb) { if (!rb.disabled) { safe(onCraft, rb.dataset.recipe); invalidate(); } return; }
     const el = slotFrom(e); if (!el) return;
     const i = +el.dataset.index, s = curSlots[i], has = !!slotSig(s);
     if (src == null) { if (has) setSrc(i, s.count); return; }

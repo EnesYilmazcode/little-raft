@@ -444,7 +444,7 @@ export function createDayNight(ctx) {
     const dayI = 2.5 * (1 - 0.15 * wet) * smooth(-0.02, 0.2, L.sunHeight);
     const moonI = 0.6 * (1 - 0.3 * wet) * smooth(-0.02, 0.2, -L.sunHeight);
     if (sun) {
-      sun.position.set(vDir.x * SUN_RADIUS, Math.max(vDir.y, 0.42) * SUN_RADIUS, vDir.z * SUN_RADIUS);
+      sun.position.set(vDir.x * SUN_RADIUS, Math.max(vDir.y, 0.42) * SUN_RADIUS, vDir.z * SUN_RADIUS).add(sun.target.position); // game.js fits the shadow box around sun.target
       sun.color.copy(cSun); sun.intensity = Math.max(dayI + moonI, nf > 0.5 ? 0.55 : 0);
     }
     if (hemi) {

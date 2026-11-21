@@ -17,7 +17,7 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
 socketserver.TCPServer.allow_reuse_address = True
 srv = socketserver.ThreadingTCPServer(('127.0.0.1', 0), functools.partial(Quiet, directory=str(Path(a.dist).resolve())))
 threading.Thread(target=srv.serve_forever, daemon=True).start()
-url = f'http://127.0.0.1:{srv.server_address[1]}/'
+url = f'http://127.0.0.1:{srv.server_address[1]}/?pinQuality'
 
 FRAMES = """n=>new Promise(r=>{const d=[];let last=performance.now();function f(t){d.push(t-last);last=t;if(d.length<n)requestAnimationFrame(f);else{d.sort((x,y)=>x-y);r({avg:d.reduce((s,x)=>s+x,0)/d.length,p50:d[d.length>>1],p95:d[Math.floor(d.length*.95)],worst:d[d.length-1]})}}requestAnimationFrame(f)})"""
 COUNT = "n=>new Promise(r=>{let k=0;function f(){if(++k<n)requestAnimationFrame(f);else r(k)}requestAnimationFrame(f)})"

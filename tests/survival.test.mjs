@@ -44,6 +44,30 @@ test('Bag: a fresh bag holds only one full-durability hook in hotbar slot 0', ()
   for (const k of ITEM_KINDS) assert.equal(counts[k], k === 'hook' ? 1 : 0, k);
 });
 
+test('Bag.version increases on every mutation and never on reads', () => {
+  const bag = new Bag();
+  let v = bag.version;
+  const bumped = (label) => { assert.ok(bag.version > v, `${label} bumps version`); v = bag.version; };
+  const same = (label) => { assert.equal(bag.version, v, `${label} leaves version`); };
+  bag.count('wood'); bag.counts(); bag.snapshot(); void bag.selected; bag.canCraft('hook'); bag.canCraft('rope');
+  same('reads');
+  bag.add('wood', 5); bumped('add');
+  bag.add('plastic', 4); bumped('add');
+  bag.add('nope', 3); bag.add('wood', 0); same('rejected add');
+  bag.remove('wood', 1); bumped('remove');
+  bag.remove('wood', 999); same('refused remove');
+  bag.move(1, 9); bumped('move');
+  bag.move(1, 9); same('refused move');
+  bag.select(3); bumped('select');
+  bag.select(3); bag.select(99); same('no-op select');
+  bag.cycle(1); bumped('cycle');
+  bag.cycle(0); same('no-op cycle');
+  assert.equal(bag.craft('hook').ok, true); bumped('craft');
+  assert.equal(bag.craft('fishingrod').ok, false); same('failed craft');
+  bag.count('hook'); bag.snapshot(); same('reads after mutations');
+  assert.equal('version' in bag.snapshot(), false, 'snapshot stays version-free');
+});
+
 test('Bag.fromCounts migrates legacy stock without granting an extra hook', () => {
   const none = Bag.fromCounts({ wood: 3 }, { tools: [] });
   assert.equal(none.count('hook'), 0);
@@ -501,4 +525,107 @@ test('HookCast: caught items that vanish from the world are not paid out', () =>
   const events = run(c, 5, remaining, true);
   assert.equal(events.length, 1);
   assert.deepEqual(events[0].items, [{ id: 'b', token: 'tb', type: 'plastic' }]);
+});
+
+test('HookCast: skip(item) behaves exactly like filtering items out of the list', () => {
+  const items = reelItems();
+  const skipA = (it) => it.id === 'a';
+  const filtered = items.filter(it => !skipA(it));
+  const a = cast({ direction: elevDir(0), charge: 1 }), b = cast({ direction: elevDir(0), charge: 1 });
+  const evA = [], evB = [];
+  for (let i = 0; i < 600; i++) {
+    const reeling = i > 150;
+    const ea = a.update(0.02, { hand: hand(), items: filtered, reeling });
+    const eb = b.update(0.02, { hand: hand(), items, skip: skipA, reeling });
+    if (ea) evA.push(ea);
+    if (eb) evB.push(eb);
+    assert.deepEqual(b.position, a.position);
+    assert.deepEqual(b.caughtItems, a.caughtItems);
+  }
+  assert.equal(evB.length, 1);
+  assert.deepEqual(evB, evA);
+  assert.deepEqual(evB[0].items, [{ id: 'b', token: 'tb', type: 'plastic' }]);
+
+  // A caught item that becomes skipped is dropped, as if it vanished; a non-function skip is ignored.
+  const c = cast({ direction: elevDir(0), charge: 1 });
+  flyOut(c, items);
+  for (let i = 0; i < 500 && c.caughtItems.length < 2; i++) c.update(0.02, { hand: hand(), items, reeling: true, skip: 'nope' });
+  assert.equal(c.caughtItems.length, 2);
+  c.update(0.02, { hand: hand(), items, reeling: true, skip: skipA });
+  assert.deepEqual(c.caughtItems.map(it => it.id), ['b']);
+});
+
+test('HookCast: ropePoints(hand, n, out) fills and returns the caller array', () => {
+  const c = cast({ direction: elevDir(20), charge: 0.5 });
+  flyOut(c);
+  run(c, 0.3, [], false);
+  const h = new T.Vector3(0.3, 1.2, -0.2);
+  const ref = c.ropePoints(h, 8).map(v => v.clone());
+  const internal = c.ropePoints(h, 8);
+
+  const kept = new T.Vector3();
+  const out = [kept, null, 5];
+  assert.equal(c.ropePoints(h, 8, out), out);
+  assert.equal(out.length, 9);
+  assert.equal(out[0], kept, 'existing vectors are reused');
+  for (let i = 0; i < 9; i++) {
+    assert.ok(out[i] instanceof T.Vector3);
+    assert.deepEqual(out[i], ref[i]);
+  }
+  // Shrinks to fit, never touches the hook's own array.
+  const first = out[0];
+  assert.equal(c.ropePoints(h, 4, out), out);
+  assert.equal(out.length, 5);
+  assert.equal(out[0], first);
+  assert.equal(c.ropePoints(h, 8), internal);
+  assert.deepEqual(internal, ref);
+  // Non-array out falls back to the internal array.
+  assert.equal(c.ropePoints(h, 8, {}), internal);
+});
+
+// ================================================================= Ocean
+
+test('Ocean: allocation-free getHeight/getSlope/sample match the reference Gerstner sampler exactly', async () => {
+  const { createOcean } = await import(new URL('ocean.js', base));
+  const ocean = createOcean(T);
+  // Reference copy of the original object-based CPU sampler.
+  const WAVES = [[1.0, 0.35, 0.10, 31.0, 0.50], [0.7, 0.90, 0.065, 19.0, 0.60],
+    [-0.45, 1.0, 0.05, 12.5, 0.60], [0.95, -0.55, 0.04, 9.2, 0.50]];
+  const pre = WAVES.map(([dx, dz, a, l, q]) => {
+    const len = Math.hypot(dx, dz), k = (Math.PI * 2) / l;
+    return { dx: dx / len, dz: dz / len, a, k, c: Math.sqrt(9.8 / k) * 0.6, q };
+  });
+  const displace = (x, z, t, out) => {
+    let ox = 0, oy = 0, oz = 0;
+    for (const w of pre) {
+      const f = w.k * (w.dx * x + w.dz * z - w.c * t), co = Math.cos(f);
+      ox += w.dx * w.q * w.a * co; oz += w.dz * w.q * w.a * co; oy += w.a * Math.sin(f);
+    }
+    out[0] = ox; out[1] = oy; out[2] = oz;
+  };
+  const tmp = [0, 0, 0];
+  const refH = (x, z, t) => {
+    let px = x, pz = z;
+    for (let i = 0; i < 2; i++) { displace(px, pz, t, tmp); px = x - tmp[0]; pz = z - tmp[2]; }
+    displace(px, pz, t, tmp);
+    return ocean.mesh.position.y + tmp[1];
+  };
+  const refS = (x, z, t, e = 0.6) => ({
+    x: (refH(x + e, z, t) - refH(x - e, z, t)) / (2 * e), z: (refH(x, z + e, t) - refH(x, z - e, t)) / (2 * e),
+  });
+  let seed = 12345;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const out = { h: 0, sx: 0, sz: 0 }, so = { x: 0, z: 0 };
+  for (let i = 0; i < 2000; i++) {
+    const x = (rnd() - 0.5) * 400, z = (rnd() - 0.5) * 400, t = rnd() * 3000;
+    ocean.update(t);
+    const h = refH(x, z, t), s = refS(x, z, t), s2 = refS(x, z, t, 2.2);
+    assert.ok(Math.abs(ocean.getHeight(x, z) - h) <= 1e-9);
+    const g = ocean.getSlope(x, z);
+    assert.ok(Math.abs(g.x - s.x) <= 1e-9 && Math.abs(g.z - s.z) <= 1e-9);
+    assert.equal(ocean.getSlope(x, z, undefined, 2.2, so), so);
+    assert.ok(Math.abs(so.x - s2.x) <= 1e-9 && Math.abs(so.z - s2.z) <= 1e-9);
+    assert.equal(ocean.sample(x, z, out), out);
+    assert.ok(Math.abs(out.h - h) <= 1e-9 && Math.abs(out.sx - s.x) <= 1e-9 && Math.abs(out.sz - s.z) <= 1e-9);
+  }
 });

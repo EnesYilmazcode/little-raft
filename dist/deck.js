@@ -120,7 +120,7 @@ function lashing(T, rng, x, zb, surf, out) {
   const Ry = (topC - bottomC) / 2, yc = (topC + bottomC) / 2, ky = Ry / R;
   const wraps = 3;
   for (let w = 0; w < wraps; w++) {
-    const t = new T.TorusGeometry(R, tube, 4, 14);
+    const t = new T.TorusGeometry(R, tube, 3, 8);
     t.rotateY(Math.PI / 2); t.scale(1, ky, 1);
     t.rotateZ((rng() - 0.5) * 0.12);
     t.translate(x + (w - (wraps - 1) / 2) * 0.016, yc, zb);
@@ -132,10 +132,9 @@ function lashing(T, rng, x, zb, surf, out) {
   out.push(k);
 }
 
-export function createFloor(T, index = 0, getMaterial) {
+// Builds one tile's merged parts: [{name, color, geometry, castShadow}] in tile-local space.
+function floorParts(T, index) {
   const rng = makeRng(index);
-  const mat = c => getMaterial ? getMaterial(c) : new T.MeshStandardMaterial({color:c, roughness:0.86});
-  const g = new T.Group(); g.name = 'raft-floor';
 
   // Plank layout: 7 or 8 planks running along Z, uneven widths, gaps <= ~0.022.
   const n = rng() < 0.3 ? 7 : 8, pitch = 2 / n;
@@ -194,23 +193,63 @@ export function createFloor(T, index = 0, getMaterial) {
       for (const x of xs) {
         const z = z0 + (rng() - 0.5) * 0.03;
         const h = new T.CylinderGeometry(0.0105, 0.012, 0.008, 6);
+        h.setIndex(Array.from(h.index.array.slice(0, h.groups[2].start))); // bottom cap is buried in the plank
         h.rotateY(rng() * 1.05); h.translate(x, plankSurface(p, x, z) + 0.0005, z);
         nails.push(h);
       }
     }
   }
 
-  const add = (geo, m, name) => { const mesh = new T.Mesh(geo, m); mesh.name = name; mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh); return mesh; };
-  for (const [color, list] of byColor) add(merge(T, list), mat(color), 'floor-planks');
-  add(merge(T, beams), mat(BEAM_COLOR), 'floor-logs');
-  add(merge(T, caps), mat(BEAM_END_COLOR), 'floor-log-ends');
-  if (ropes.length) add(merge(T, ropes), mat(ROPE_COLOR), 'floor-lashings');
-  if (nails.length) add(merge(T, nails), mat(NAIL_COLOR), 'floor-nails').castShadow = false;
+  const parts = [];
+  const add = (geos, color, name, castShadow = true) => parts.push({name, color, geometry:merge(T, geos), castShadow});
+  for (const [color, list] of byColor) add(list, color, 'floor-planks');
+  add(beams, BEAM_COLOR, 'floor-logs');
+  add(caps, BEAM_END_COLOR, 'floor-log-ends');
+  if (ropes.length) add(ropes, ROPE_COLOR, 'floor-lashings', false); // thin rope: shadow is invisible, skip the shadow pass
+  if (nails.length) add(nails, NAIL_COLOR, 'floor-nails', false);
+  return parts;
+}
 
+const defaultMat = T => c => new T.MeshStandardMaterial({color:c, roughness:0.86});
+
+export function createFloor(T, index = 0, getMaterial) {
+  const mat = getMaterial || defaultMat(T);
+  const g = new T.Group(); g.name = 'raft-floor';
+  for (const p of floorParts(T, index)) {
+    const mesh = new T.Mesh(p.geometry, mat(p.color)); mesh.name = p.name;
+    mesh.castShadow = p.castShadow; mesh.receiveShadow = true; g.add(mesh);
+  }
   g.userData.kind = 'floor';
   g.userData.index = index;
   g.userData.topY = FLOOR_TOP;
   g.userData.bounds = FLOOR_BOUNDS;
+  g.userData.dispose = () => g.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
+  return g;
+}
+
+// Whole raft floor in as few draw calls as possible: every tile is built, its transform baked in,
+// and all parts sharing a material and shadow mode are merged into one mesh.
+// tiles: [{index, x, z}] (x,z = tile origin in raft-local units). Returns a Group; dispose via userData.dispose().
+export function createRaftMesh(T, tiles, getMaterial) {
+  const mat = getMaterial || defaultMat(T);
+  const buckets = new Map(), m4 = new T.Matrix4();
+  for (const t of tiles) {
+    m4.makeTranslation(t.x, 0, t.z);
+    for (const p of floorParts(T, t.index)) {
+      p.geometry.applyMatrix4(m4);
+      const key = p.color + '|' + p.castShadow;
+      if (!buckets.has(key)) buckets.set(key, {name:p.name, color:p.color, castShadow:p.castShadow, list:[]});
+      buckets.get(key).list.push(p.geometry);
+    }
+  }
+  const g = new T.Group(); g.name = 'raft-floors';
+  for (const b of buckets.values()) {
+    const mesh = new T.Mesh(merge(T, b.list), mat(b.color)); mesh.name = b.name;
+    mesh.castShadow = b.castShadow; mesh.receiveShadow = true; g.add(mesh);
+  }
+  g.userData.kind = 'floors';
+  g.userData.topY = FLOOR_TOP;
+  g.userData.tiles = tiles.map(t => ({...t}));
   g.userData.dispose = () => g.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
   return g;
 }
