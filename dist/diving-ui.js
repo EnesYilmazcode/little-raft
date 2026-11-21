@@ -25,9 +25,11 @@ const CSS = `
 #diveRing{position:fixed;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;z-index:3;pointer-events:none;display:none}
 #diveRing.on,#diveRingLabel.on{display:block}
 #diveRing circle{fill:none;stroke-width:3.5}
-#diveRingBg{stroke:rgba(9,20,30,.45)}
+#diveRingBg{stroke:rgba(255,243,207,.25)}
 #diveRingFg{stroke:#7ff0e6;stroke-linecap:round;transform:rotate(-90deg);transform-origin:23px 23px;
   filter:drop-shadow(0 0 2px rgba(9,107,130,.9))}
+#diveRing.flash{display:block}
+#diveRing.flash circle{stroke:#bff3ea;stroke-dashoffset:0}
 #diveRingLabel{position:fixed;left:50%;top:calc(50% + 30px);transform:translateX(-50%);z-index:3;pointer-events:none;display:none;
   padding:4px 11px;border-radius:12px;background:rgba(9,20,30,.62);color:#fff3cf;white-space:nowrap;
   font:600 12px/1.2 var(--ui-font,'Segoe UI',system-ui,sans-serif);box-shadow:0 0 0 1px rgba(201,164,107,.3)}
@@ -65,7 +67,21 @@ export function createDivingUI(doc = document) {
   const pill = o2.querySelector('#diveO2Pill');
   const fill = o2.querySelector('#diveO2Fill');
   const fg = ring.querySelector('#diveRingFg');
-  const last = { show: false, o2: -1, low: false, rising: false, gather: -1, label: '' };
+  const last = { show: false, o2: -1, low: false, rising: false, gather: -1, label: '', raw: 0 };
+  const win = doc.defaultView;
+  let flashTimer = 0;
+
+  // Centre ring + label on the real crosshair (its CSS may be offset); fall back to 50%/50%.
+  function place() {
+    const r = doc.querySelector('#crosshair')?.getBoundingClientRect();
+    const ok = r && r.width > 0;
+    const x = ok ? `${r.left + r.width / 2}px` : '50%', y = ok ? `${r.top + r.height / 2}px` : '50%';
+    ring.style.left = label.style.left = x;
+    ring.style.top = y;
+    label.style.top = `calc(${y} + 30px)`;
+  }
+  const onResize = () => { if (last.label) place(); };
+  win?.addEventListener('resize', onResize);
   const pct = (v) => Math.round(Math.min(1, Math.max(0, Number(v) || 0)) * 100);
   const flag = (el, cls, key, on) => { if (last[key] !== on) { last[key] = on; el.classList.toggle(cls, on); } };
 
@@ -84,9 +100,17 @@ export function createDivingUI(doc = document) {
     if (text !== last.label) {
       last.label = text;
       label.textContent = text;
+      if (text) place();
       ring.classList.toggle('on', !!text);
       label.classList.toggle('on', !!text);
     }
+    const raw = Number(gather01) || 0;
+    if (last.raw > 0.9 && raw <= 0) {   // gather completed: brief flash
+      ring.classList.add('flash');
+      clearTimeout(flashTimer);
+      flashTimer = setTimeout(() => ring.classList.remove('flash'), 150);
+    }
+    last.raw = raw;
     const g = text ? pct(gather01) : 0;
     if (g !== last.gather) {
       last.gather = g;
@@ -95,6 +119,8 @@ export function createDivingUI(doc = document) {
   }
 
   function dispose() {
+    clearTimeout(flashTimer);
+    win?.removeEventListener('resize', onResize);
     for (const el of [style, o2, ring, label]) el.remove();
   }
 
