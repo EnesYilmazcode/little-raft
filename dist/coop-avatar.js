@@ -9,8 +9,8 @@
 // first-person hook/hammer/rod factories are 6-13k tris, too heavy for a third-person prop), built lazily
 // and cached per kind. update() allocates nothing. Name tag needs a DOM (or OffscreenCanvas); skipped in Node.
 // Draw calls: createAvatar's 36 meshes are baked into one mesh per rigid pivot (body, legs, arms, head+hat)
-// with per-vertex colour + roughness on one shared material (exact same shading), plus the emissive eye shine
-// and the flat-shaded straw: 8 meshes instead of 36. Pivots in body.userData.parts stay animatable.
+// with per-vertex colour + roughness on one shared material (exact same shading; the straw hat is faceted by its
+// geometry, so it bakes in too), plus the emissive eye shine: 7 meshes instead of 36. Pivots in body.userData.parts stay animatable.
 import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
 import { lookColors, lookKey } from './look.js?build=v3-survival-ae77fa84ac2b';
 

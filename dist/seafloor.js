@@ -318,9 +318,11 @@ export function createSeafloor(T, { islands = [] } = {}) {
     nodeMeshes[type] = [];
     group.add(hl[type] = Object.assign(new T.Group(), { name: `SeafloorHighlight_${type}`, visible: false }));
     for (const part of nodeParts(T, type)) {
-      const mk = () => std({ flatShading: true, emissive: new T.Color(part.glow).multiplyScalar(part.gi ?? 0.1), ...part.mat });
-      nodeMeshes[type].push(inst(part.geo, mk(), CAP.node, `SeafloorNode_${type}`));
-      hl[type].add(new T.Mesh(part.geo, mk()));
+      // part.geo already has per-face normals (lump/merge: non-indexed + computeVertexNormals), so flatShading is a
+      // visual no-op; the plain highlight copy drops it to share the floor patch's program instead of compiling its own.
+      const mk = (flat) => std({ flatShading: flat, emissive: new T.Color(part.glow).multiplyScalar(part.gi ?? 0.1), ...part.mat });
+      nodeMeshes[type].push(inst(part.geo, mk(true), CAP.node, `SeafloorNode_${type}`));
+      hl[type].add(new T.Mesh(part.geo, mk(false)));
     }
   }
 
