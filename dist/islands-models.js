@@ -154,7 +154,9 @@ function stumpGeometry(T) {
   const wood = new T.Color('#e8cf9a'), ring = new T.Color('#c9a66b');
   parts.push(paint(T, top, (x, y, z, c) => { const r = Math.hypot(x, z) / R1; c.copy(r > .55 && r < .75 ? ring : wood); }));
   for (let i = 0; i < 2; i++) { // two dry fronds lying in the sand
-    const g = new T.PlaneGeometry(.9, .22, 3, 1); g.rotateX(-Math.PI / 2); g.translate(.65, .03, 0); g.rotateY(i * 2.4 + .7);
+    const g = new T.PlaneGeometry(.9, .26, 6, 1), gp = g.attributes.position;
+    for (let j = 0; j < gp.count; j++) { const t = (gp.getX(j) + .45) / .9; gp.setY(j, gp.getY(j) * Math.sin(Math.PI * Math.min(1, t * .9 + .1)) * (j % 2 ? .55 : 1)); } // leaf taper, ragged edge
+    g.rotateX(-Math.PI / 2); g.translate(.62, .12, 0); g.rotateY(i * 2.4 + .7); // lifted clear of the sand (palms sit 0.1 m low)
     g.deleteAttribute('uv'); g.computeVertexNormals();
     const st = new T.Color('#9c8a40'), tip = new T.Color('#c9b25a');
     parts.push(paint(T, g, (x, y, z, c) => { c.copy(st).lerp(tip, Math.min(1, Math.hypot(x, z) / 1.1)); }));
