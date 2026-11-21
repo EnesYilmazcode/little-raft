@@ -27,7 +27,7 @@ Exit 0 = pass, 1 = game/shell behaviour failure, 2 = harness/infra error.
 """
 from __future__ import annotations
 
-import argparse, base64, json, os, shutil, socket, subprocess, sys, tempfile, threading, time, urllib.request
+import argparse, base64, json, os, shutil, signal, socket, subprocess, sys, tempfile, threading, time, urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve()
@@ -89,6 +89,17 @@ SNAP = r"""(() => {
 LOCK_OR_FALLBACK = 'document.pointerLockElement || raftDebug.state.lockFallback'
 
 
+def _die_with_parent():
+    """Linux: children get SIGKILL if this driver dies (even by SIGKILL), so a killed run never leaks Xvfb/Electron/server."""
+    try:
+        import ctypes
+        ctypes.CDLL('libc.so.6', use_errno=True).prctl(1, signal.SIGKILL)  # PR_SET_PDEATHSIG
+    except Exception: pass
+
+
+CHILD = {'preexec_fn': _die_with_parent} if sys.platform.startswith('linux') else {}
+
+
 class Infra(Exception):
     """The harness could not run (exit 2)."""
 
@@ -117,7 +128,7 @@ def start_xvfb(work: Path):
     if not xvfb: raise Infra('no $DISPLAY and Xvfb not installed (apt install xvfb)')
     r, w = os.pipe()
     proc = subprocess.Popen([xvfb, '-displayfd', str(w), '-screen', '0', '1600x1000x24', '-nolisten', 'tcp', '-ac'],
-                            pass_fds=(w,), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=open(work / 'xvfb.log', 'wb'))
+                            pass_fds=(w,), **CHILD, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=open(work / 'xvfb.log', 'wb'))
     os.close(w)
     data = b''
     while not data.endswith(b'\n'):
@@ -177,7 +188,7 @@ class Run:
         self.metrics['input'] = 'xtest (xdotool on the private Xvfb)' if self.input == 'xtest' else 'webContents.sendInputEvent'
         if self.input == 'xtest' and not (self.xvfb and shutil.which('xdotool')): raise Infra('--input xtest needs Xvfb and xdotool (apt install xdotool)')
         self.metrics['xvfb'] = bool(self.xvfb)
-        self.electron = subprocess.Popen([str(find_electron()), *ELECTRON_FLAGS, str(HARNESS)], cwd=str(self.app), env=env,
+        self.electron = subprocess.Popen([str(find_electron()), *ELECTRON_FLAGS, str(HARNESS)], cwd=str(self.app), env=env, **CHILD,
                                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=open(self.work / 'electron.err', 'wb'),
                                          text=True, bufsize=1)
         threading.Thread(target=self._pump, daemon=True).start()
@@ -196,7 +207,7 @@ class Run:
         for attempt in range(5):
             self.port = free_port(); self.origin = f'http://127.0.0.1:{self.port}'
             env = {**os.environ, 'RAFT_DIST': str(self.dist), 'RAFT_PORT': str(self.port), 'RAFT_RELEASE_MODE': '1', 'PYTHONDONTWRITEBYTECODE': '1'}
-            self.server = subprocess.Popen([sys.executable, str(ROOT / 'desktop' / 'server.py')], env=env, stdin=subprocess.DEVNULL,
+            self.server = subprocess.Popen([sys.executable, str(ROOT / 'desktop' / 'server.py')], env=env, **CHILD, stdin=subprocess.DEVNULL,
                                            stdout=subprocess.DEVNULL, stderr=open(self.work / 'server.log', 'ab'))
             for _ in range(150):
                 if self.server.poll() is not None: break
@@ -572,10 +583,14 @@ def main():
         report['failures'] = [{'id': 'infra', 'detail': f'not a dist dir: {candidate}', 'repro': f'ls {candidate}/index.html'}]
         print(json.dumps(report)); sys.exit(2)
     run = Run(candidate, a.window, a.keep, a.xvfb, not a.no_hot_swap, a.input)
+    def on_term(signum, _frame): raise KeyboardInterrupt(f'signal {signum}')
+    signal.signal(signal.SIGTERM, on_term)
     infra = None
     try:
         run.start()
         run.run()
+    except KeyboardInterrupt as e:  # killed by the caller (e.g. a gate timeout): still tear everything down
+        run.stop(); print(json.dumps({**report, 'failures': [{'id': 'infra', 'detail': f'interrupted ({e})', 'repro': 'n/a'}]})); sys.exit(2)
     except Exception as e:
         infra = str(e) if isinstance(e, Infra) else f'{type(e).__name__}: {e}'
     if run.frame_waits:
