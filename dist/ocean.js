@@ -99,7 +99,7 @@ void main() {
   // Detail ripples fade with distance to avoid shimmering / aliasing.
   float near = 1.0 - smoothstep(8.0, 60.0, dist);
   vec2 g = vec2(0.0);
-  vec2 p = vWorld.xz + uFlow; // [sailing]
+  vec2 p = vWorld.xz + mod(uFlow, 512.0); // [sailing] fine detail only; mod keeps hash noise precise
   ripple(normalize(vec2(0.8, 0.6)), 0.010, 2.10, 1.30, p, g);
   ripple(normalize(vec2(-0.5, 0.9)), 0.008, 2.90, 1.70, p, g);
   ripple(normalize(vec2(0.95, -0.3)), 0.006, 4.30, 2.10, p, g);

@@ -213,7 +213,12 @@ export function mount(transfer = null) {
   let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = '';
   const chargeMeter = $('#chargeMeter'), chargeFill = chargeMeter?.querySelector('i');
   let blockList = [];
-  let sailing = null; const scenery = [], sailFlow = {x:0, z:0}; // [sailing]
+  let sailing = null; const scenery = [], sailFlow = {x:0, z:0}, aimNdc = {x:0, y:0}; // [sailing]
+  function getAimNdc() { // [sailing] same aim point as currentAim(): screen centre when locked, else the drag-mode mouse
+    if (isLocked()) { aimNdc.x = 0; aimNdc.y = 0; return aimNdc; }
+    if (!lockFallback || !mouse.inside) return null;
+    const r = canvas.getBoundingClientRect(); aimNdc.x = (mouse.x - r.left) / r.width * 2 - 1; aimNdc.y = -(mouse.y - r.top) / r.height * 2 + 1; return aimNdc;
+  }
 
   function makePhysics(src) {
     const deck = raftPose.y + FLOOR_Y + EYE_OFFSET;
@@ -273,6 +278,7 @@ export function mount(transfer = null) {
       + '<li><kbd>1–8</kbd><span><b>Hotbar.</b> Number keys or the mouse wheel choose a slot. Click uses what you are holding.</span></li>'
       + '<li><kbd>Hook</kbd><span><b>Throw.</b> Hold click to power up, aim higher to throw farther, release. Hold again to reel in everything it touches.</span></li>'
       + '<li><kbd>E</kbd><span><b>Pick up</b> a supply right beside you, or open your bag to craft. <kbd>Tab</kbd> / <kbd>I</kbd> open the bag too.</span></li>'
+      + '<li><kbd>E</kbd><span><b>Sail.</b> Look at a sail and press E to raise or lower it; hold <kbd>R</kbd> and turn to steer it. The pennant shows the wind. E at the anchor post stops the raft.</span></li>' // [sailing]
       + '<li><kbd>Craft</kbd><span><b>Make tools.</b> A Hammer builds raft floors (2 wood, 2 plastic each). A Fishing Rod catches fish. Crafted decorations are placed one at a time.</span></li>'
       + '<li><kbd>R</kbd><span><b>Repair</b> a worn hook for 2 wood and 1 scrap.</span></li>'
       + '<li><kbd>Esc</kbd><span><b>Menu.</b> Settings, Play together and this guide.</span></li>';
@@ -304,7 +310,7 @@ export function mount(transfer = null) {
     for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; scene.add(g); scenery.push([g, 0]); } // [sailing] clouds drift past
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
-      action:a => action(a), notice, canInput:() => running && !uiBlocked()}); for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
+      action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc}); for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
     rebuildRaft();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     syncItems(); refreshPointerUI(true);
@@ -547,7 +553,7 @@ export function mount(transfer = null) {
     if (!a || typeof a !== 'object' || role === 'guest') return;
     const bag = actorBag(actor);
     if (a.kind === 'selectSlot') { bag.select(a.index); return; }
-    if (a.kind === 'sail') { sailing?.apply(a, actor); return; } // [sailing]
+    if (a.kind === 'sail') { const t = sailing?.apply(a, actor); if (t) emit({kind:'notice', text:t}, actor); return; } // [sailing]
     if (a.kind === 'moveSlot') { bag.move(a.from, a.to, a.amount ?? undefined); return; }
     if (a.kind === 'craft') {
       const r = bag.craft(a.recipe);
@@ -620,7 +626,7 @@ export function mount(transfer = null) {
   function openInventory() { if (!running || !survivalUI) return; clearInput(); releaseLock(); survivalUI.open?.(); }
   function interact() {
     if (!running || uiBlocked()) return;
-    if (sailing?.interact()) return; // [sailing] E on a sail / anchor
+    if (!pickupFrom(currentAim()) && sailing?.interact()) return; // [sailing] E on a sail / anchor (pick-up wins)
     const target = pickupFrom(currentAim());
     if (target) {
       if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
@@ -763,10 +769,10 @@ export function mount(transfer = null) {
         if (heldTokens.has(it.token)) continue; // our hook holds it; don't let it drift away or respawn
         it.z += dt * .22; it.x += Math.sin(elapsed * .13 + it.phase) * dt * .04;
         it.x += sailFlow.x * dt; it.z += sailFlow.z * dt; // [sailing] water flows past a sailing/anchored raft
-        if (it.z > end || Math.abs(it.x) > side || sailing?.outOfRange(it) || hasTile(Math.round(it.x / 2), Math.round(it.z / 2))) { Object.assign(it, makeItem(it.id)); sailing?.respawned(it); respawned = true; }
+        if ((sailing ? sailing.outOfRange(it) : it.z > end || Math.abs(it.x) > side) || hasTile(Math.round(it.x / 2), Math.round(it.z / 2))) { Object.assign(it, makeItem(it.id)); sailing?.respawned(it); respawned = true; } // [sailing] flow-aware despawn replaces the +z box
       }
       if (respawned) syncItems();
-    }
+    } else for (const it of world.items) if (!heldTokens.has(it.token)) { it.x += sailFlow.x * dt; it.z += (sailFlow.z + .22) * dt; } // [sailing] guest dead-reckons debris between host snapshots
     for (const it of world.items) {
       const m = itemMeshes.get(it.token); if (!m) continue;
       m.visible = !isPending(it); m.scale.setScalar(1);
@@ -781,6 +787,7 @@ export function mount(transfer = null) {
   function endHook() { hook = null; lastCaughtCount = 0; reeling = false; rope.visible = false; hookMesh.visible = false; }
   function updateHook(dt) {
     if (!hook) { rope.visible = false; hookMesh.visible = false; return; }
+    if (hook.stage === 'floating' && hook.base) { hook.base.x += sailFlow.x * dt; hook.base.z += sailFlow.z * dt; } // [sailing] a floating hook drifts with the water
     if (hook.fishing) { // simple bobber animation, separate from HookCast
       hook.t += dt; const f = hook.t / hook.duration, u = Math.min(1, f * 5);
       const pos = handPos.clone().lerp(hook.end, u);
