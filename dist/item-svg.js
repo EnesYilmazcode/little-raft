@@ -299,11 +299,13 @@ export const ITEM_ICONS = Object.freeze({
     <ellipse cx="24" cy="8" rx="8" ry="3.5" fill="#6b5a4c"/><ellipse cx="24" cy="7.5" rx="3" ry="1.4" fill="#c9a66b"/></g>
     <path d="M2 9 C10 8 15 8 16 8" fill="none" stroke="#c9a66b" stroke-width="1.6" stroke-linecap="round"/>`,
   glidestep: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
-    <rect x="14" y="40" width="20" height="4" rx="1" fill="#8b6a43"/>
-    <path d="M22 41 L22.8 21 H25.2 L26 41 Z" fill="#c99560"/>
-    <path d="M18 40 L23 33 M30 40 L25 33" fill="none" stroke="#8b6a43"/>
-    <ellipse cx="24" cy="18" rx="8" ry="3.5" fill="#6b5a4c"/><ellipse cx="24" cy="17.5" rx="3" ry="1.4" fill="#c9a66b"/></g>
-    <path d="M2 10 C10 13 14 16 16 18" fill="none" stroke="#c9a66b" stroke-width="1.6" stroke-linecap="round"/>`,
+    <rect x="12" y="39" width="24" height="5" rx="1" fill="#8b6a43"/>
+    <path d="M19.5 40 L21 27 H27 L28.5 40 Z" fill="#c99560"/>
+    <rect x="20" y="32" width="8" height="3" rx="1" fill="#c9a66b"/>
+    <ellipse cx="24" cy="24" rx="9" ry="4" fill="#2fa39a"/><ellipse cx="24" cy="23.5" rx="3.2" ry="1.5" fill="#c9a66b"/></g>
+    <path d="M2 8 C9 12 13 18 15 23" fill="none" stroke="#c9a66b" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M38 4 V15 M33.5 11 L38 15.5 L42.5 11" fill="none" stroke="${O}" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M38 4 V15 M33.5 11 L38 15.5 L42.5 11" fill="none" stroke="#2fa39a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
   glidehandle: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <circle cx="24" cy="10" r="6" fill="#6b5a4c"/><circle cx="24" cy="10" r="2" fill="#c9a66b"/>
     <rect x="22" y="15" width="4" height="16" rx="1" fill="#c9a66b"/>

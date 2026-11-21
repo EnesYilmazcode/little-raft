@@ -236,7 +236,7 @@ test('model: craft_scarecrow has rags, fits its box, and the rags sway', () => {
   assert.ok(L && R);
   g.updateMatrixWorld(true);
   const s = new T.Box3().setFromObject(g).getSize(new T.Vector3());
-  assert.ok(s.x <= 1 && s.y <= 1.9 && s.z <= 0.6, `${s.x.toFixed(2)} x ${s.y.toFixed(2)} x ${s.z.toFixed(2)}`);
+  assert.ok(s.x <= 1 && s.y <= 2.1 && s.z <= 0.6, `${s.x.toFixed(2)} x ${s.y.toFixed(2)} x ${s.z.toFixed(2)}`);
   const top = new T.Box3().setFromObject(g).max.y;
   assert.ok(Math.abs(top - HAT_TOP) < 0.03, `hat top ${top}`);
   const meshes = []; g.traverse(o => { if (o.isMesh) meshes.push(o); });

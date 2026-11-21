@@ -23,7 +23,7 @@ test('perchesFrom: free tiles plus raised sail/crate/bench tops and palm rims, s
   assert.equal(p.length, 9); // [scarecrow] the palm tile is a pot-rim perch now
   const palm = p.find(q => q.key === '0,1');
   assert.equal(palm.kind, 'palm'); assert.ok(Math.abs(palm.y - 0.72) < 1e-9);
-  assert.ok(Math.abs(Math.hypot(palm.x - 0, palm.z - 2) - 0.3) < 1e-9, 'rim offset');
+  assert.ok(Math.abs(Math.hypot(palm.x - 0, palm.z - 2) - 0.4) < 1e-9, 'rim offset (RIM_OFFSET)');
   const sail = p.find(q => q.key === '1,0'), crate = p.find(q => q.key === '1,1'), free = p.find(q => q.key === '0,0');
   assert.ok(sail.y > 3.5 && crate.y > 0.9 && crate.y < 1.2 && free.y === 0.2);
   assert.equal(free.kind, 'deck'); assert.equal(sail.kind, 'sail'); assert.equal(crate.kind, 'crate');
@@ -32,7 +32,7 @@ test('perchesFrom: free tiles plus raised sail/crate/bench tops and palm rims, s
   const q = perchesFrom(TILES, [...DECOR, { type: 'scarecrow', x: 0, z: 0 }]);
   assert.ok(!q.some(e => e.key === '0,1'));
   const hat = q.find(e => e.key === '0,0');
-  assert.equal(hat.kind, 'scarecrow'); assert.ok(Math.abs(hat.y - (0.22 + 1.75)) < 1e-9);
+  assert.equal(hat.kind, 'scarecrow'); assert.ok(Math.abs(hat.y - (0.22 + 1.75 * 1.15)) < 1e-6); // HAT_TOP: the 1.75 m design scaled 1.15x
   const shuffled = [...TILES].reverse(), d2 = [...DECOR].reverse();
   assert.deepEqual(perchesFrom(shuffled, d2), p);
   assert.deepEqual(perchesFrom([], []), []);

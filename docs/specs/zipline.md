@@ -21,12 +21,12 @@ Line numbers are from the current branch. Builders: find each hook by its functi
 export const POSTS = Object.freeze({glidepost: 3.4, glidestep: 2.4}); // wheel height above deckY()
 export const MIN_LEN = 4, MAX_LEN = 16, ROPE_PER = 4, MAX_PER_POST = 2, MAX_LINES = 64; // horizontal metres (tile = 2 m)
 export const G = 9.8, DRAG = 0.35, PUSH = 1.0, V_MIN = 1.2, V_MAX = 9, V_START = 2;
-export const HANG = 0.55, ENDPAD = 0.6, HOP_VY = 2.2, DROP_VY = 0.3, END_CARRY = 0.5, REACH = 2.6, LINE_REACH = 3, HOST_SLACK = 2;
+export const HANG = 0.55, ENDPAD = 0.6, HOP_VY = 2.2, DROP_VY = 0.3, END_CARRY = 0.25, REACH = 2.6, LINE_REACH = 3, HOST_SLACK = 2;
 export const OLD_HOST = 'Your friend’s raft doesn’t have glide lines yet';
 ```
 - The wheel of the post at tile (x,z) is at world `(x*2, deckY() + POSTS[type], z*2)`. Raft-local XZ equals world XZ (`building-pieces.js:2`). Recompute both ends from `ctx.deckY()` **every frame**, so the line and the rider bob with the raft.
 - Rider eye = wheel point − `HANG` (hands on the bar just under the rope) and feet = eye − 1.6. At the low post the feet clear the deck by about 0.25 m. The heights are chosen so that no ride ever clips the deck.
-- The usable span is `[ENDPAD, L3 − ENDPAD]` metres along the 3D length `L3`, so the rider never passes through a mast.
+- The usable span is `[ENDPAD, L3 − ENDPAD]` metres along the 3D length `L3`, so the rider never passes through a mast. The ride ends `END_STOP` (1.3 m) before the wheel it is heading to, so the rider's face stops short of the mast ahead (QA round zfs).
 - `ropeCost(len) = Math.ceil(len / ROPE_PER)`, which gives 1 to 4 rope.
 
 ## 3. State: `world.ext.zipline`
@@ -62,7 +62,7 @@ export function nearestOnLine(ln, ox,oy,oz, dx,dy,dz)       // -> {s (metres fro
   2. `a = −G*uy − DRAG*v + PUSH*clamp(inp.forward, −1, 1)`
   3. `v = clamp(v + a*h, V_MIN, V_MAX)`
   4. `t += dir*v*h`
-  5. If `t` leaves `[ENDPAD, L3 − ENDPAD]`, clamp it and return `'end'`.
+  5. If `t` leaves the span (`END_STOP` on the end ahead, `ENDPAD` on the end behind), clamp it and return `'end'`.
 
   Because of `V_MIN`, a flat or uphill line always keeps moving in the mount direction ("the little wheel winds you along"). Holding S slows you, but never below `V_MIN`.
 - **`riderPose`**: the point `P = A + (B−A)*t/L3`, so `x=P.x, y=P.y−HANG, z=P.z`. The velocity is the unit line vector × `dir*v`.
@@ -173,7 +173,7 @@ export function nearestOnLine(ln, ox,oy,oz, dx,dy,dz)       // -> {s (metres fro
 Screenshot recipe: `place('glidepost',0,0)`, `place('glidestep',3,0)` (6 m), `link(0,0,3,0)`, `ride(0,.4)`, then shoot first person; in co-op e2e, shoot the guest view of the host riding (arms up).
 
 ## 11. tests/zipline.test.mjs (node:test, assert/strict, `RAFT_DIST` base, `bagWith` as in bees.test.mjs)
-1. **Motion**: a 3.4→2.4 line of 6 m speeds up from `V_START` and stays ≤ `V_MAX`; a steep synthetic line (ay−by = 10, 12 m) clamps at `V_MAX`; a flat line holds `v === V_MIN` from 0.5 after one step; uphill and `forward = −1` never go below `V_MIN` and uphill still reaches `'end'`; `dt = 1e6` is clamped (one call advances at most `.25*V_MAX`); `'end'` clamps `t` to `L3 − ENDPAD`, and `dir = −1` ends at `ENDPAD`; two identical step sequences are `deepEqual`.
+1. **Motion**: a 3.4→2.4 line of 6 m speeds up from `V_START` and stays ≤ `V_MAX`; a steep synthetic line (ay−by = 10, 12 m) clamps at `V_MAX`; a flat line holds `v === V_MIN` from 0.5 after one step; uphill and `forward = −1` never go below `V_MIN` and uphill still reaches `'end'`; `dt = 1e6` is clamped (one call advances at most `.25*V_MAX`); `'end'` clamps `t` to `L3 − END_STOP`, and `dir = −1` ends at `END_STOP`; two identical step sequences are `deepEqual`.
 2. **`riderPose`**: the eye is `HANG` below the wheel point, the velocity magnitude equals `v`, and the direction follows `dir`.
 3. **`cleanZip`**: undefined, null, an array or a string → defaults; floats, short or long lines, self lines, a third line on a post, duplicates or reversed duplicates, and lines on missing or non-post tiles are dropped; pairs are canonicalised; removing a post from decor prunes its lines.
 4. **`canLink` / `lineBlocked`**: each reason in order. A wall edge between the posts gives `blocked`, a roof at level 0 over the span gives `blocked`, a foundation does not, and a wall beside the line (1 tile off) does not. Rope costs are 1, 2 and 4 for 4, 6 and 16 m.

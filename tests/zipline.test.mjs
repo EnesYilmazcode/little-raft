@@ -13,7 +13,7 @@ const { ITEMS, PLACEABLE_IDS, BLOCK_RADII } = await import(new URL('items.js', b
 const { HELD, poseFlags, readFlags } = await import(new URL('coop.js', base));
 const { buildItemModel } = await import(new URL('held-items.js', base));
 const { cleanZip, postAt, linesAt, canLink, lineBlocked, lineWorld, stepRide, riderPose, nearestOnLine, ropeCost, TEXT,
-  POSTS, MIN_LEN, MAX_LEN, V_MIN, V_MAX, V_START, HANG, ENDPAD, HOP_VY, DROP_VY, OLD_HOST } = Z;
+  POSTS, MIN_LEN, MAX_LEN, V_MIN, V_MAX, V_START, HANG, ENDPAD, END_STOP, HOP_VY, DROP_VY, OLD_HOST } = Z;
 
 const bagWith = (slots, selected = 0) => {
   const s = new Array(SLOT_COUNT).fill(null);
@@ -48,11 +48,12 @@ test('stepRide: flat holds V_MIN; uphill and braking never drop below V_MIN and 
   const b = { t: ENDPAD, v: V_START, dir: 1 }; stepRide(b, flat, .25, { forward: -5 }); assert.ok(b.v >= V_MIN);
 });
 
-test('stepRide: dt is clamped; end clamps t to the padded span in both directions; deterministic', () => {
+test('stepRide: dt is clamped; end clamps t END_STOP before the wheel ahead in both directions; deterministic', () => {
   const l = ln(3.4, 2.4, 12), r = { t: 3, v: V_MAX, dir: 1 };
   stepRide(r, l, 1e6, {}); assert.ok(r.t - 3 <= .25 * V_MAX + 1e-9);
-  const e = { t: ENDPAD, v: V_START, dir: 1 }; assert.equal(run(e, l, .05), 'end'); close(e.t, L3(l) - ENDPAD);
-  const w = { t: L3(l) - ENDPAD, v: V_START, dir: -1 }; assert.equal(run(w, l, .05), 'end'); close(w.t, ENDPAD);
+  const e = { t: ENDPAD, v: V_START, dir: 1 }; assert.equal(run(e, l, .05), 'end'); close(e.t, L3(l) - END_STOP);
+  const w = { t: L3(l) - ENDPAD, v: V_START, dir: -1 }; assert.equal(run(w, l, .05), 'end'); close(w.t, END_STOP);
+  assert.ok(END_STOP > ENDPAD + .5, 'the face stops well short of the mast ahead');
   const a = { t: 1, v: 2, dir: 1 }, b = { t: 1, v: 2, dir: 1 }, seq = [.016, .033, .25, 0, .1, 1, .05];
   for (let k = 0; k < 4; k++) for (const dt of seq) { stepRide(a, l, dt, { forward: .5 }); stepRide(b, l, dt, { forward: .5 }); }
   assert.deepEqual(a, b);

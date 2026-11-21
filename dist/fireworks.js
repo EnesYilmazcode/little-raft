@@ -185,7 +185,7 @@ export function createFireworks(ctx) {
     if (r && typeof r.getDrawingBufferSize === 'function' && cam && cam.fov) {
       r.getDrawingBufferSize(size);
       pool.uniforms.uPx.value = size.y / 2 / Math.tan((cam.fov * Math.PI) / 360);
-      pool.uniforms.uMaxPx.value = 24 * (r.getPixelRatio?.() ?? 1);
+      pool.uniforms.uMaxPx.value = 40 * (r.getPixelRatio?.() ?? 1);
     }
     // sky flash on the existing hemisphere light, after day/night wrote it this frame (FEATURES order)
     owed = 0;

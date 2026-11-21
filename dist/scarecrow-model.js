@@ -4,8 +4,11 @@
 // skirt, a burlap sack head with a painted shell smile, and a floppy bucket hat made from the plastic.
 // The static parts are one merged vertex-coloured mesh; only the rag groups (ragL, ragR) move.
 
-export const HAT_TOP_Y = 1.75; // keep in sync with HAT_TOP in scarecrow.js (gulls sit here)
-const ARM_Y = 1.25, ARM_LEN = .85, HEAD_Y = 1.4, HEAD_R = .16;
+// The parts below are laid out at the original 1.75 m design height, then the whole model is scaled by SCALE
+// (so a perched gull reads as a gull on a hat, not a hat under a gull).
+export const SCALE = 1.15;
+const HAT_Y = 1.75, ARM_Y = 1.25, ARM_LEN = .85, HEAD_Y = 1.4, HEAD_R = .16;
+export const HAT_TOP_Y = HAT_Y * SCALE; // 2.0125: keep in sync with HAT_TOP in scarecrow.js (gulls sit here)
 
 // Merge a list of [geometry, hex, matrix] into one non-indexed geometry with a colour attribute.
 function bake(T, parts) {
@@ -64,9 +67,9 @@ export function createScarecrow3D(T) {
   add(new T.BoxGeometry(.08, .46, .075), '#c8b593', -.012, .83, 0, 0, 0, -.03);
   add(new T.BoxGeometry(.07, .26, .07), '#9e8e73', .002, 1.18, 0, 0, 0, .02);
   // crossbar, with a little lashing of rope
-  add(new T.BoxGeometry(ARM_LEN, .06, .06), '#cdbb9a', 0, ARM_Y, 0, 0, 0, .02);
+  add(new T.BoxGeometry(ARM_LEN, .075, .075), '#cdbb9a', 0, ARM_Y, 0, 0, 0, .02);
   add(new T.BoxGeometry(.1, .075, .075), '#b89b6a', 0, ARM_Y, 0, 0, Math.PI / 4, 0);
-  for (const sx of [-1, 1]) add(new T.BoxGeometry(.035, .07, .07), '#9e8e73', sx * (ARM_LEN / 2 - .02), ARM_Y + sx * .008, 0);
+  for (const sx of [-1, 1]) add(new T.BoxGeometry(.05, .09, .09), '#9e8e73', sx * (ARM_LEN / 2 - .02), ARM_Y + sx * .008, 0);
   // palm-leaf skirt: 8 tapered leaves from 1.0 down to .45, tilted out 15 degrees
   add(new T.CylinderGeometry(.07, .07, .05, 8), '#5a9a40', 0, 1.0, 0);
   for (let k = 0; k < 8; k++) {
@@ -83,19 +86,20 @@ export function createScarecrow3D(T) {
     add(new T.CylinderGeometry(.012, .012, .012, 6), '#fbf6ea', x, y, z, Math.PI / 2 - (y - HEAD_Y) * 4, Math.atan2(x, z), 0);
   }
   // floppy bucket hat: wide thin brim, slightly squashed crown, top at HAT_TOP_Y
-  add(new T.CylinderGeometry(.25, .26, .025, 14), '#e07a4f', 0, 1.545, 0, .07, 0, .03);
-  add(new T.CylinderGeometry(.125, .15, .17, 12), '#e07a4f', 0, HAT_TOP_Y - .085, 0, 0, 0, 0, 1, 1, .9);
+  add(new T.CylinderGeometry(.25, .26, .03, 14), '#e07a4f', 0, 1.545, 0, .07, 0, .03);
+  add(new T.CylinderGeometry(.125, .15, .17, 12), '#e07a4f', 0, HAT_Y - .085, 0, 0, 0, 0, 1, 1, .9);
   add(new T.CylinderGeometry(.152, .152, .03, 12), '#c4623a', 0, 1.585, 0, 0, 0, 0, 1, 1, .9); // hat band
   const mat = new T.MeshStandardMaterial({ vertexColors: true, roughness: .9, metalness: 0, flatShading: true, side: T.DoubleSide });
-  const body = new T.Mesh(bake(T, parts), mat); body.name = 'scarecrowBody'; body.castShadow = true; body.receiveShadow = true;
+  const geo = bake(T, parts); geo.scale(SCALE, SCALE, SCALE); geo.computeBoundingSphere();
+  const body = new T.Mesh(geo, mat); body.name = 'scarecrowBody'; body.castShadow = true; body.receiveShadow = true;
   g.add(body);
   // rags: two thin strips per arm end, pivoting at the crossbar
   const rags = [];
   for (const [name, sx] of [['ragL', -1], ['ragR', 1]]) {
-    const r = new T.Group(); r.name = name; r.position.set(sx * (ARM_LEN / 2 - .05), ARM_Y - .02, 0);
+    const r = new T.Group(); r.name = name; r.position.set(sx * (ARM_LEN / 2 - .05) * SCALE, (ARM_Y - .02) * SCALE, 0); r.scale.setScalar(SCALE);
     const k2 = kit(T);
-    k2.add(strip(T, .06, .3, .6), sx < 0 ? '#8fb8d8' : '#e8d6a8', -.025, 0, .035, 0, 0, .05);
-    k2.add(strip(T, .05, .24, .5), sx < 0 ? '#e8d6a8' : '#8fb8d8', .03, 0, .035, 0, 0, -.06);
+    k2.add(strip(T, .09, .3, .6), sx < 0 ? '#8fb8d8' : '#e8d6a8', -.01 * sx, 0, .035, 0, 0, .05);
+    k2.add(strip(T, .075, .24, .5), sx < 0 ? '#e8d6a8' : '#8fb8d8', .015 * sx, 0, .035, 0, 0, -.06);
     const m = new T.Mesh(bake(T, k2.parts), mat); m.castShadow = true; r.add(m);
     g.add(r); rags.push(r);
   }

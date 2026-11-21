@@ -10,7 +10,10 @@ import { LEVEL_H, FLOOR_THICK, PIECES } from './building-pieces.js?build=v3-surv
 export const POSTS = Object.freeze({ glidepost: 3.4, glidestep: 2.4 }); // wheel height above deckY()
 export const MIN_LEN = 4, MAX_LEN = 16, ROPE_PER = 4, MAX_PER_POST = 2, MAX_LINES = 64; // horizontal metres (tile = 2 m)
 export const G = 9.8, DRAG = 0.35, PUSH = 1.0, V_MIN = 1.2, V_MAX = 9, V_START = 2;
-export const HANG = 0.55, ENDPAD = 0.6, HOP_VY = 2.2, DROP_VY = 0.3, END_CARRY = 0.5, REACH = 2.6, LINE_REACH = 3, HOST_SLACK = 2;
+// ENDPAD: how close to a wheel a ride may start; END_STOP: the ride ends (hop) this far before the wheel it heads to,
+// so the rider's face never slides into the mast.
+export const END_STOP = 1.3;
+export const HANG = 0.55, ENDPAD = 0.6, HOP_VY = 2.2, DROP_VY = 0.3, END_CARRY = 0.25, REACH = 2.6, LINE_REACH = 3, HOST_SLACK = 2;
 export const OLD_HOST = 'Your friend’s raft doesn’t have glide lines yet';
 export const TEXT = Object.freeze({
   same: 'Pick a different post', post: 'That needs two glide posts', short: 'Too close: posts must be 2 tiles apart',
@@ -139,13 +142,14 @@ export function lineWorld(st, i, decor, deckY, out) {
 }
 const l3Of = ln => (Number.isFinite(ln.l3) ? ln.l3 : Math.sqrt((ln.bx - ln.ax) ** 2 + (ln.by - ln.ay) ** 2 + (ln.bz - ln.az) ** 2));
 
-/** Advance the rider r = {t, v, dir} along ln by dt (clamped to .25, substeps <= .05). -> 'ride' | 'end'. */
+/** Advance the rider r = {t, v, dir} along ln by dt (clamped to .25, substeps <= .05). -> 'ride' | 'end'.
+ *  The ride ends END_STOP before the wheel ahead (ENDPAD before the one behind). */
 export function stepRide(r, ln, dt, inp) {
-  const L3 = l3Of(ln), lo = ENDPAD, hi = L3 - ENDPAD;
+  const dir = r.dir < 0 ? -1 : 1, L3 = l3Of(ln), lo = dir < 0 ? END_STOP : ENDPAD, hi = L3 - (dir > 0 ? END_STOP : ENDPAD);
   if (!(hi > lo)) { r.t = clamp(r.t, 0, L3); return 'end'; }
   const d = Number.isFinite(dt) ? clamp(dt, 0, MAX_DT) : 0;
   const n = Math.max(1, Math.ceil(d / SUB - 1e-9)), h = d / n;
-  const dir = r.dir < 0 ? -1 : 1, uy = (ln.by - ln.ay) / L3 * dir;
+  const uy = (ln.by - ln.ay) / L3 * dir;
   const fw = inp && Number.isFinite(inp.forward) ? clamp(inp.forward, -1, 1) : 0;
   for (let i = 0; i < n; i++) {
     const a = -G * uy - DRAG * r.v + PUSH * fw;
@@ -517,8 +521,8 @@ export function createZipline(ctx) {
       /** Mount the local player on line i at fraction t of its span (screenshots); stop() lets go. */
       ride(i = 0, t = 0.1, dir = 1) {
         const p = ctx.physics; if (!p || !lineWorld(st, i, decor(), deckY(), ln)) return false;
-        const span = Math.max(0, ln.l3 - 2 * ENDPAD);
-        return mount(i, ENDPAD + clamp(Number(t) || 0, 0, 1) * span, dir, p, true);
+        const span = Math.max(0, ln.l3 - ENDPAD - END_STOP);
+        return mount(i, (dir < 0 ? END_STOP : ENDPAD) + clamp(Number(t) || 0, 0, 1) * span, dir, p, true);
       },
       stop() { if (!R.on) return false; dismount(R.phys, false); return true; },
       pose: () => ({ riding: R.on, t: R.t, v: R.v, dir: R.dir, line: R.on ? findRide() : -1 }),

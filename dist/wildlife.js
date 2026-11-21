@@ -15,6 +15,7 @@ const FISH_SCALE = 1.3, FISH_ALPHA = 0.6, AWAY = 5; // AWAY: how far (m) a spook
 const ARRIVE = 10, TAU = Math.PI * 2;
 export const SLEW_RATE = 0.5, SNAP_GAP = 10; // guest clock: ease at <= 0.5 s/s, hard-snap only past 10 s
 const FLOOR_Y = 0.2, DECOR_Y = 0.22;
+const RIM_HEAD = 0.35; // [scarecrow] rim gulls: how far (rad) the head turns in from the rim tangent
 const PERCH_TOP = { sail: 3.62, crate: 0.85, bench: 0.47, scarecrow: HAT_TOP }; // decor that gives a raised perch (local height above its base) [scarecrow] + hat top
 // Keep-out margins past the raft edge (m). On the starter raft these add nothing; bigger rafts push animals out.
 export const GULL_MARGIN = 2.5, FISH_MARGIN = 4, CIRCLER_MARGIN = 5;
@@ -150,16 +151,20 @@ export function gullPlan(seed, i, t, perches, out, scareAt = -Infinity, visit = 
   const dx = _sky2.sx + (out.px - _sky2.sx) * b2 - out.x, dz = _sky2.sz + (out.pz - _sky2.sz) * b2 - out.z;
   const dy = _sky2.sy + (out.py - _sky2.sy) * b2 - out.y;
   const flyYaw = Math.atan2(dx, dz), hz = Math.hypot(dx, dz);
+  // [scarecrow] on a pot rim the body lies along the rim (tangent), the head turned a little toward the trunk,
+  // so neither body nor wings reach into the palm; hops only rock it either way instead of turning it round.
+  const rim = !!p && p.kind === 'palm';
+  const baseYaw = rim ? Math.atan2(p.x - 2 * Math.round(p.x / 2), p.z - 2 * Math.round(p.z / 2)) + Math.PI / 2 + RIM_HEAD : v.yaw;
   if (state === 'perched') {
-    const k = (t - v.start - GULL_DESCEND) / 2.3, f = k - Math.floor(k);
-    out.yaw = v.yaw + Math.floor(k + 0.2) * 0.9; // a little turn with every hop
+    const k = (t - v.start - GULL_DESCEND) / 2.3, f = k - Math.floor(k), hops = Math.floor(k + 0.2);
+    out.yaw = rim ? baseYaw + (hops & 1 ? -0.2 : 0.2) : baseYaw + hops * 0.9; // a little turn with every hop
     const hop = f > 0.7 && f < 0.92 ? Math.sin(Math.PI * (f - 0.7) / 0.22) : 0; // stand still first, then a little hop
     out.y = out.py + 0.09 * hop;
     out.pitch = 0; out.roll = 0; out.fold = 1 - 0.1 * hop; // wings stay tucked, just a twitch
     out.flap = -0.1 + 0.35 * hop;
   } else {
     const landing = state === 'descend' ? smooth(((t - v.start) / GULL_DESCEND - 0.7) / 0.3) : 0;
-    let dyaw = v.yaw - flyYaw; dyaw -= TAU * Math.round(dyaw / TAU);
+    let dyaw = baseYaw - flyYaw; dyaw -= TAU * Math.round(dyaw / TAU);
     out.yaw = flyYaw + dyaw * landing;
     out.pitch = hz > 1e-4 ? Math.max(-0.5, Math.min(0.5, -Math.atan2(dy, hz))) * (1 - landing) : 0;
     out.roll = state === 'circle' ? _sky.bank : _sky.bank * (1 - b);

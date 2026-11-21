@@ -303,7 +303,12 @@ export function createHands(T, { modelFactory = null } = {}) {
       }
       pivot.add(item); prep(pivot); pivot.visible = false;
       (h.hand === 'left' ? leftHolder : toolHolder).add(pivot);
-      m = { pivot, item, own };
+      m = { pivot, item, own, qBase: pivot.quaternion.clone(), rope: null };
+      const hg = kind === 'glidehandle' && item.getObjectByName('glidehandle');
+      if (hg) { // [zipline] a short strap from the wheel up to the line, shown while riding (own geometry + material)
+        const rope = new T.Mesh(new T.CylinderGeometry(0.014, 0.014, 1.1, 6).translate(0, 0.25 + 0.55, 0), ropeMat.clone());
+        rope.name = 'rideStrap'; rope.visible = false; hg.add(rope); prep(rope); m.rope = rope;
+      }
     }
     mounts.set(kind, m);
     return m;
@@ -365,6 +370,7 @@ export function createHands(T, { modelFactory = null } = {}) {
   }
 
   const qA = new T.Quaternion(), pA = V();
+  const qRideA = new T.Quaternion(), qRideB = new T.Quaternion(), vRideUp = V(), vRideStem = V(), Y_UP = V(0, 1, 0), RIDE_UP = V(0, 1, -0.2).normalize(); // [zipline]
   function applyArm(A, px, py, pz, rx, ry, rz, wx, wy, wz, w = 0) {
     pA.lerpVectors(A.basePos, A.pointPos, w);
     A.pose.position.set(pA.x + px, pA.y + py, pA.z + pz);
@@ -460,7 +466,20 @@ export function createHands(T, { modelFactory = null } = {}) {
     const rrz = -0.20 * ce + 0.25 * a + 0.03 * wA * Math.sin(ph) + 0.15 * pullR * rW + 0.25 * down;
     const rwx = 0.30 * ce - 0.45 * a - 0.10 * oW + 0.22 * pullR * rW;
     const rwz = -0.15 * ce + 0.12 * a;
-    applyArm(R, rpx - 0.06 * zW, rpy + 0.24 * zW, rpz - 0.02 * zW, rrx + 0.45 * zW, rry, rrz, rwx, 0, rwz, smooth(0, 1, st.ptR)); // [zipline] zW raises the fist
+    applyArm(R, rpx - 0.10 * zW, rpy + 0.44 * zW, rpz - 0.06 * zW, rrx + 0.75 * zW, rry, rrz, rwx, 0, rwz, smooth(0, 1, st.ptR)); // [zipline] zW raises the fist
+    // [zipline] on the line the handle swings round so its wheel stem points up at the rope (and the strap shows)
+    const gh = st.shown === 'glidehandle' ? mounts.get('glidehandle') : null;
+    if (gh) {
+      if (zW > 0.01) {
+        toolHolder.updateWorldMatrix(true, false);
+        root.getWorldQuaternion(qRideA).invert().multiply(toolHolder.getWorldQuaternion(qRideB)).invert(); // eye space -> holder space
+        vRideUp.copy(RIDE_UP).applyQuaternion(qRideA);
+        vRideStem.copy(Y_UP).applyQuaternion(gh.qBase);
+        qRideB.setFromUnitVectors(vRideStem, vRideUp).multiply(gh.qBase);
+        gh.pivot.quaternion.slerpQuaternions(gh.qBase, qRideB, smooth(0, 1, zW));
+      } else gh.pivot.quaternion.copy(gh.qBase);
+      if (gh.rope) gh.rope.visible = zW > 0.6;
+    }
 
     // ---- left arm
     const lpx = 0.02 * ce + 0.02 * a + (0.015 * pull + 0.03 * oW) * rW - 0.010 * wA * Math.sin(ph) + 0.002 * amp * Math.sin(t * 0.63 + 1);

@@ -4,10 +4,10 @@
 // within SCARECROW_RADIUS free of gulls, and gulls sit on its hat instead. Host-authoritative; the guest
 // only sees ext.scarecrow = {v:1, p:[key]} (net only, never saved). The top half is pure (no DOM, no
 // Date, no Math.random) and exported for tests and for wildlife.js (which this file never imports).
-import { createScarecrow3D, swayRags } from './scarecrow-model.js?build=v3-survival-ae77fa84ac2b';
+import { createScarecrow3D, swayRags, HAT_TOP_Y } from './scarecrow-model.js?build=v3-survival-ae77fa84ac2b';
 
 export const SCARECROW_RADIUS = 4.5, PALM_GULLS = 3, PALM_CHANCE = 0.25, PECK_MAX = 8, COOLDOWN = 90, REACH = 3, HOST_SLACK = 2;
-export const PALM_RIM = 0.5, RIM_OFFSET = 0.3, HAT_TOP = 1.75; // local heights above DECOR_Y; rim offset in metres
+export const PALM_RIM = 0.5, RIM_OFFSET = 0.4, HAT_TOP = HAT_TOP_Y; // local heights above DECOR_Y (hat top 2.0125 m, the model's); rim offset in metres
 export const OLD_HOST = 'Your friend’s gulls are not peckish yet';
 const GROW_SECONDS = 90, SWAY_DIST = 20;
 

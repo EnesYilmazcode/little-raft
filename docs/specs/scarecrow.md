@@ -19,7 +19,7 @@ Import new modules with `?build=v3-survival-ae77fa84ac2b`. Tag every hook line `
 ## 2. Pure API in dist/scarecrow.js (no DOM, no Date, no Math.random)
 ```js
 export const SCARECROW_RADIUS = 4.5, PALM_GULLS = 3, PALM_CHANCE = 0.25, PECK_MAX = 8, COOLDOWN = 90, REACH = 3, HOST_SLACK = 2;
-export const PALM_RIM = 0.5, RIM_OFFSET = 0.3, HAT_TOP = 1.75;   // local heights above DECOR_Y; rim offset in metres
+export const PALM_RIM = 0.5, RIM_OFFSET = 0.4, HAT_TOP = 2.0125; // local heights above DECOR_Y; rim offset in metres
 export const OLD_HOST = 'Your friend’s gulls are not peckish yet';
 export function protectedPalms(decor)         // -> Set of "x,z" palm keys with hypot(dx*2, dz*2) <= SCARECROW_RADIUS to any scarecrow
 export function rimSpot(tx, tz)               // -> {dx, dz}: RIM_OFFSET at angle ((tx*7 + tz*13) mod 8, made non-negative) * PI/4
@@ -90,7 +90,7 @@ Both clients agree, because every rule here depends only on seed, `t`, tiles and
   - **Arms:** a crossbar at 1.25 m, about 0.85 long.
   - **Leaf skirt:** 8 tapered palm-leaf planes (#6fae4f / #5a9a40) hanging from 1.0 m to 0.45 m, tilted out by 15°.
   - **Head:** a burlap sack sphere (r .16, #d8c08e) with a painted-on shell smile (a thin arc of 5 small white discs) and two dark button eyes.
-  - **Hat:** a floppy bucket hat (a slightly squashed cylinder crown on a wide thin brim, #e07a4f). It is taken from the plastic in the recipe, and its top sits at `HAT_TOP` (1.75).
+  - **Hat:** a floppy bucket hat (a slightly squashed cylinder crown on a wide thin brim, #e07a4f). It is taken from the plastic in the recipe, and its top sits at `HAT_TOP` (2.0125: the model is built at 1.75 m and scaled 1.15x).
   - **Rags:** two groups, `ragL` and `ragR`, each 2 thin rag strips (#8fb8d8, #e8d6a8) pivoting at the crossbar ends.
 - Merge the static parts into one vertex-coloured mesh with a small local merge (as bees-model.js does). Keep only `ragL` and `ragR` separate.
 - `swayRags(g, t, k)` sets `ragL.rotation.z = 0.25*k*sin(t*2.1)` and `ragR.rotation.z = -0.25*k*sin(t*2.1 + 1.3)`, and adds a small `.x` flutter at `t*5.3`.
@@ -136,8 +136,8 @@ Both clients agree, because every rule here depends only on seed, `t`, tiles and
 8. Wildlife integration (stub ctx, `createWildlife`):
    - Gulls 3 to 5 never latch a `palm` perch over 200 slots.
    - About 15 to 35 % of gull 0 to 2 visits land on a palm when palms exist.
-   - A palm within 4.5 m of a scarecrow never appears in `perchesFrom`, and a scarecrow tile gives a perch at `y ≈ .22 + 1.75`.
-9. Model: `craft_scarecrow` has `ragL`/`ragR`, its box fits 1 × 1.9 × 0.6, and `swayRags` changes rotation.
+   - A palm within 4.5 m of a scarecrow never appears in `perchesFrom`, and a scarecrow tile gives a perch at `y ≈ .22 + HAT_TOP`.
+9. Model: `craft_scarecrow` has `ragL`/`ragR`, its box fits 1 × 2.1 × 0.6, and `swayRags` changes rotation.
 10. items: `scarecrow` crafts from its cost and `BLOCK_RADII.scarecrow === 0.25`.
 
 **Update `tests/wildlife.test.mjs:21-36`:** palms are now perches. With the `DECOR` fixture, `p.length` becomes 9, `'0,1'` is present with `kind 'palm'`, `y ≈ .72` and an x/z rim offset, and the expected key list gains `'0,1'`. Add a case where adding a scarecrow at (0,0) drops `'0,1'` and makes `'0,0'` a hat perch. Check any `gullVisit` `deepEqual` for the new `palm` field.
