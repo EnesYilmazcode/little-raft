@@ -195,8 +195,8 @@ export const ITEM_ICONS = Object.freeze({
     <g fill="#fff2cc"><circle cx="8" cy="19" r=".9"/><circle cx="30" cy="19" r=".9"/><circle cx="8" cy="40" r=".9"/><circle cx="30" cy="40" r=".9"/></g>`,
 
   seaweed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
-    <path d="M18 44 C11 36 20 29 14 21 C10 15 13 9 15 5 C22 10 19 16 23 22 C27 30 20 36 23 44 Z" fill="#3f8f5a"/>
-    <path d="M25 44 C22 35 31 30 28 20 C27 15 30 10 34 8 C37 15 33 19 35 25 C37 33 30 37 31 44 Z" fill="#5fae6b"/>
+    <path d="M16 44 C8 36 18 29 12 21 C8 15 11 9 14 4 C23 9 21 16 25 22 C29 30 22 36 24 44 Z" fill="#3f8f5a"/>
+    <path d="M25 44 C21 35 30 30 27 20 C26 14 30 9 36 7 C39 15 35 19 37 25 C39 33 32 37 33 44 Z" fill="#5fae6b"/>
     <path d="M8 44 C6 38 10 35 8 29 C11 31 14 35 13 39 C13 41 14 43 15 44 Z" fill="#7cc47f"/>
     <path d="M2 44 H46" fill="none"/></g>
     <g fill="none" stroke="${O}" stroke-width="1.1" stroke-opacity=".55" stroke-linecap="round"><path d="M16 9 C18 16 16 24 20 33"/><path d="M32 12 C31 20 32 28 28 38"/></g>

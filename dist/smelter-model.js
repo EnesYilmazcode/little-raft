@@ -19,7 +19,7 @@ function mats(T) {
     wood: std({ roughness: 0.88 }),
     clay: std({ roughness: 0.96 }),
     stone: std({ roughness: 0.92 }),
-    metal: std({ roughness: 0.45, metalness: 0.7 }),
+    metal: std({ roughness: 0.5, metalness: 0.45 }),
     paper: std({ roughness: 0.95, side: T.DoubleSide }),
     brass: std({ roughness: 0.35, metalness: 0.8 }),
     glass: new T.MeshStandardMaterial({ color: 0xcfe8ff, roughness: 0.08, metalness: 0, transparent: true, opacity: 0.38, depthWrite: false }),
@@ -69,7 +69,7 @@ function kit(T, seed0) {
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
       if (skip && skip(x, y, z)) continue;
-      const k = `${x.toFixed(3)},${y.toFixed(3)},${z.toFixed(3)}`;
+      const k = `${Math.round(x * 1000) + 0},${Math.round(y * 1000) + 0},${Math.round(z * 1000) + 0}`;
       if (!h.has(k)) h.set(k, [(rnd() - 0.5) * amt, (rnd() - 0.5) * amt, (rnd() - 0.5) * amt]);
       const d = h.get(k);
       p.setXYZ(i, x + d[0], y + d[1], z + d[2]);
@@ -124,12 +124,12 @@ export function createSmelterModel(T) {
   const B = 0.13, BZ = -0.12;
 
   // beehive body: rough lathe with coiled-clay colour bands and soot creeping up the top
-  const prof = [[0, 0], [0.47, 0], [0.52, 0.1], [0.53, 0.3], [0.49, 0.5], [0.39, 0.66], [0.24, 0.78], [0.1, 0.83], [0, 0.84]]
+  const prof = [[0, 0], [0.48, 0], [0.53, 0.14], [0.51, 0.4], [0.4, 0.63], [0.2, 0.8], [0, 0.85]]
     .map(([r, y]) => new T.Vector2(r, y));
-  const body = K.roughen(new T.LatheGeometry(prof, 9), 0.05, (x, y, z) => Math.hypot(x, z) < 0.01);
+  const body = K.roughen(new T.LatheGeometry(prof, 8), 0.06, (x, y, z) => Math.hypot(x, z) < 0.01);
   K.paint(body, 0xc0764a, (x, y, z, nx, ny, nz, c) => {
     const band = Math.floor(y / 0.13) % 2;
-    c.multiplyScalar(band ? 1.06 : 0.9);
+    c.multiplyScalar((band ? 1.07 : 0.9) * (0.93 + 0.14 * Math.sin(x * 31 + z * 23 + y * 7)));
     c.lerp(new T.Color(0x4a3428), Math.max(0, (y - 0.5) / 0.34) * 0.45);
     if (y < 0.03) c.multiplyScalar(0.7);
   });
@@ -142,7 +142,7 @@ export function createSmelterModel(T) {
   const hole = new T.Path();
   hole.moveTo(-HW, HS); hole.lineTo(-HW, HC); hole.absarc(0, HC, HW, Math.PI, 0, true); hole.lineTo(HW, HS); hole.lineTo(-HW, HS);
   outer.holes.push(hole);
-  const collar = new T.ExtrudeGeometry(outer, { depth: 0.2, bevelEnabled: false, curveSegments: 4 });
+  const collar = new T.ExtrudeGeometry(outer, { depth: 0.2, bevelEnabled: false, curveSegments: 3 });
   K.roughen(collar, 0.018);
   K.paint(collar, 0xb06a42, (x, y, z, nx, ny, nz, c) => {
     const inHole = Math.abs(x) < HW + 0.03 && y < HC + HW + 0.03 && y > HS - 0.03;
@@ -155,10 +155,9 @@ export function createSmelterModel(T) {
   S.push(K.solid(new T.BoxGeometry(0.44, 0.05, 0.1), 0x8a857c, 0, B + 0.025, BZ + 0.68));
   S.push(K.pebble(0.09, 0x8c877d, -0.47, B + 0.05, 0.42));
   S.push(K.pebble(0.07, 0x7d786f, 0.5, B + 0.04, -0.46));
-  S.push(K.pebble(0.06, 0x938d82, -0.42, B + 0.035, -0.48));
 
   const CX = 0.12, CZ = BZ - 0.1, CY0 = B + 0.62, CY1 = B + 1.12;
-  const chim = K.roughen(new T.CylinderGeometry(0.095, 0.12, CY1 - CY0, 7, 1), 0.015);
+  const chim = K.roughen(new T.CylinderGeometry(0.095, 0.12, CY1 - CY0, 7, 1, true), 0.015);
   K.paint(chim, 0x8f8a80, (x, y, z, nx, ny, nz, c) => { if (ny > 0.9) c.setHex(0x1e1714); else c.lerp(new T.Color(0x3b3430), Math.max(0, y / (CY1 - CY0) + 0.2)); });
   S.push(K.bake(chim, CX, (CY0 + CY1) / 2, CZ));
   const lip = new T.CylinderGeometry(0.135, 0.135, 0.05, 7, 1);
@@ -169,7 +168,7 @@ export function createSmelterModel(T) {
   const glowShape = new T.Shape();
   glowShape.moveTo(-HW, HS); glowShape.lineTo(HW, HS); glowShape.lineTo(HW, HC); glowShape.absarc(0, HC, HW, 0, Math.PI, false); glowShape.lineTo(-HW, HS);
   GL.push(K.bake(new T.ShapeGeometry(glowShape, 4), 0, B, BZ + 0.56));
-  for (const [x, s] of [[-0.07, 0.06], [0.05, 0.07], [0, 0.05]]) GL.push(K.bake(new T.IcosahedronGeometry(s, 0), x, B + HS + 0.02, BZ + 0.6, K.rnd(), K.rnd(), 0, 1, 0.6, 1));
+  for (const [x, s] of [[-0.06, 0.065], [0.06, 0.07]]) GL.push(K.bake(new T.IcosahedronGeometry(s, 0), x, B + HS + 0.02, BZ + 0.6, K.rnd(), K.rnd(), 0, 1, 0.6, 1));
 
   K.add(g, W, M.wood, 'smelterPallet');
   K.add(g, C, M.clay, 'smelterClay');
@@ -180,7 +179,7 @@ export function createSmelterModel(T) {
   // output tray on the front-right of the pallet; 'ingotTray' origin sits on the tray floor
   const tray = new T.Group(); tray.name = 'ingotTray'; tray.position.set(0.46, B + 0.03, 0.43); tray.rotation.y = -0.35;
   const TW = [K.plank(0.28, 0.02, 0.22, 0x7a5636, 0, -0.01, 0)];
-  for (const s of [-1, 1]) { TW.push(K.plank(0.28, 0.04, 0.02, 0x6a4a2e, 0, 0.01, s * 0.1)); TW.push(K.plank(0.02, 0.04, 0.18, 0x6a4a2e, s * 0.13, 0.01, 0)); }
+  for (const s of [-1, 1]) TW.push(K.plank(0.3, 0.045, 0.025, 0x6a4a2e, 0, 0.012, s * 0.1));
   K.add(tray, TW, M.wood, 'ingotTrayWood');
   MT.push(K.solid(new T.CylinderGeometry(0.06, 0.085, 0.045, 4, 1), 0xc3c8cc, 0, 0.0225, 0, 0, Math.PI / 4, 0, 1.5, 1, 0.8));
   const ingot = K.add(tray, MT, M.metal, 'ingot');
@@ -199,9 +198,9 @@ export function setSmelterGlow(group, amount = 0, timeSec = 0) {
   if (!glow || !glow.material) return;
   const a = Math.max(0, Math.min(1, Number(amount) || 0)), t = Number(timeSec) || 0;
   const flicker = 0.82 + 0.1 * Math.sin(t * 7.3) + 0.06 * Math.sin(t * 13.1 + 1.7) + 0.05 * Math.sin(t * 23.7 + 0.4);
-  glow.material.emissiveIntensity = a * 2.2 * flicker;
+  glow.material.emissiveIntensity = a * 1.25 * flicker;
   // hot = orange-yellow, dying = deep red
-  glow.material.emissive.setRGB(1, 0.22 + 0.28 * a * flicker, 0.05 + 0.05 * a);
+  glow.material.emissive.setRGB(1, 0.16 + 0.22 * a * flicker, 0.03 + 0.04 * a);
 }
 
 // ---------------------------------------------------------------- RESEARCH TABLE (~1.12 x 0.7, ~0.95 tall)
@@ -216,7 +215,6 @@ export function createResearchTableModel(T) {
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) W.push(K.plank(0.075, H - 0.05, 0.075, 0x6f4f31, sx * 0.47, (H - 0.05) / 2, sz * 0.26, sx * sz * 0.03, 0, sz * sx * 0.02));
   for (const sx of [-1, 1]) W.push(K.plank(0.05, 0.06, 0.5, 0x765434, sx * 0.47, 0.2, 0));
   W.push(K.plank(0.9, 0.06, 0.05, 0x765434, 0, 0.2, -0.26));
-  W.push(K.plank(0.98, 0.07, 0.04, 0x6a4a2e, 0, H - 0.085, 0.27));
 
   // open blueprint sheet with white draft lines, held by a stone
   const sx0 = -0.12, sz0 = 0.03, sr = 0.18, top = H + 0.003;
@@ -225,28 +223,27 @@ export function createResearchTableModel(T) {
     const c = Math.cos(sr), s = Math.sin(sr);
     P.push(K.bake(K.paint(new T.BoxGeometry(w, 0.004, d), 0xe8f1ff), sx0 + x * c + z * s, top + 0.004, sz0 - x * s + z * c, 0, sr, 0));
   };
-  line(0.3, 0.012, -0.02, -0.08); line(0.012, 0.2, 0.12, 0.01); line(0.2, 0.012, -0.07, 0.06); line(0.012, 0.12, -0.17, 0.0);
+  line(0.3, 0.012, -0.02, -0.08); line(0.012, 0.2, 0.12, 0.01); line(0.2, 0.012, -0.03, 0.08);
   ST.push(K.pebble(0.04, 0x8a857c, sx0 + 0.2, top + 0.02, sz0 - 0.18));
 
   // rolled blueprint lying at the back, with a red tie
   const roll = new T.CylinderGeometry(0.045, 0.045, 0.52, 8, 1);
   K.paint(roll, 0x4a80c0, (x, y, z, nx, ny, nz, c) => { if (Math.abs(ny) > 0.9) c.setHex(Math.hypot(x, z) < 0.02 ? 0x2a4f80 : 0xdbe7f5); });
   P.push(K.bake(roll, 0.06, H + 0.045, -0.24, 0, 0.12, Math.PI / 2));
-  P.push(K.bake(K.paint(new T.CylinderGeometry(0.049, 0.049, 0.025, 8, 1), 0xc0392b), 0.08, H + 0.045, -0.242, 0, 0.12, Math.PI / 2));
+  P.push(K.bake(K.paint(new T.CylinderGeometry(0.049, 0.049, 0.025, 8, 1, true), 0xc0392b), 0.08, H + 0.045, -0.242, 0, 0.12, Math.PI / 2));
 
   // magnifier resting on the sheet
   const MX = 0.08, MZ = 0.12, MR = -0.6;
-  BR.push(K.bake(K.paint(new T.TorusGeometry(0.07, 0.013, 4, 10), 0xc59a45), MX, H + 0.016, MZ, Math.PI / 2, 0, MR));
+  BR.push(K.bake(K.paint(new T.TorusGeometry(0.07, 0.014, 3, 9), 0xc59a45), MX, H + 0.016, MZ, Math.PI / 2, 0, MR));
   const hx = MX + Math.cos(MR) * 0.15, hz = MZ - Math.sin(MR) * 0.15;
-  W.push(K.bake(K.wood(new T.CylinderGeometry(0.014, 0.018, 0.16, 6, 1), 0x5a3b22), hx, H + 0.018, hz, 0, MR, Math.PI / 2));
+  W.push(K.bake(K.wood(new T.CylinderGeometry(0.014, 0.018, 0.16, 5, 1), 0x5a3b22), hx, H + 0.018, hz, 0, MR, Math.PI / 2));
   GS.push(K.bake(new T.CircleGeometry(0.062, 10), MX, H + 0.018, MZ, -Math.PI / 2, 0, 0));
 
   // little specimen jar with a cork
   const jar = new T.CylinderGeometry(0.055, 0.06, 0.13, 8, 1, true);
   GS.push(K.bake(jar, 0.4, H + 0.065, 0.06));
-  W.push(K.bake(K.paint(new T.CylinderGeometry(0.045, 0.04, 0.04, 8, 1), 0xb58a5a), 0.4, H + 0.145, 0.06));
+  W.push(K.bake(K.paint(new T.CylinderGeometry(0.045, 0.04, 0.04, 6, 1), 0xb58a5a), 0.4, H + 0.145, 0.06));
   ST.push(K.pebble(0.03, 0x6fb0a0, 0.39, H + 0.03, 0.07, 0.9));
-  ST.push(K.pebble(0.025, 0xc9b27a, 0.42, H + 0.025, 0.04, 0.9));
 
   K.add(g, W, M.wood, 'tableWood');
   K.add(g, P, M.paper, 'tablePaper');
@@ -257,38 +254,38 @@ export function createResearchTableModel(T) {
   return finish(T, g, 'researchTable');
 }
 
-// ---------------------------------------------------------------- GRILL (~0.8 x 0.8, ~0.75 tall)
+// ---------------------------------------------------------------- GRILL (~0.8 x 0.8, ~0.55 tall)
 export function createGrillModel(T) {
   const M = mats(T), K = kit(T, 0x96111e);
   const g = new T.Group(); g.name = 'grill';
   const MT = [], S = [], GL = [], FS = [];
-  const Y = 0.5;
+  const Y = 0.36;
 
-  // iron bowl on three splayed legs
-  const bowl = new T.LatheGeometry([[0.12, 0], [0.3, 0.06], [0.36, 0.16], [0.34, 0.17]].map(([r, y]) => new T.Vector2(r, y)), 8);
-  K.paint(bowl, 0x4a4f52, (x, y, z, nx, ny, nz, c) => { if (y > 0.15) c.setHex(0x6c7175); });
-  MT.push(K.bake(bowl, 0, Y - 0.12, 0));
-  MT.push(K.bake(K.paint(new T.CircleGeometry(0.12, 8), 0x2a2d2f), 0, Y - 0.118, 0, -Math.PI / 2, 0, 0));
-  for (let i = 0; i < 3; i++) {
-    const a = i * Math.PI * 2 / 3 + 0.3;
-    MT.push(K.bake(K.paint(new T.BoxGeometry(0.04, 0.46, 0.04), 0x3e4245), Math.cos(a) * 0.24, 0.22, Math.sin(a) * 0.24, Math.sin(a) * 0.22, 0, -Math.cos(a) * 0.22));
+  // ring of stones holding a wide iron fire bowl
+  for (let i = 0; i < 6; i++) {
+    const a = i * Math.PI / 3 + 0.2;
+    S.push(K.pebble(0.11, 0x8a857c, Math.cos(a) * 0.32, 0.07, Math.sin(a) * 0.32, 0.75));
   }
-  // grate bars
-  for (let i = -2; i <= 2; i++) MT.push(K.bake(K.paint(new T.BoxGeometry(0.66, 0.018, 0.018), 0x2f3335), 0, Y + 0.06, i * 0.11));
-  for (const s of [-1, 1]) MT.push(K.bake(K.paint(new T.BoxGeometry(0.018, 0.018, 0.5), 0x2f3335), s * 0.24, Y + 0.05, 0));
+  const bowl = new T.LatheGeometry([[0.14, 0], [0.32, 0.07], [0.38, 0.2], [0.35, 0.21]].map(([r, y]) => new T.Vector2(r, y)), 8);
+  K.paint(bowl, 0x55595c, (x, y, z, nx, ny, nz, c) => { if (y > 0.19) c.setHex(0x80868a); });
+  MT.push(K.bake(bowl, 0, Y - 0.22, 0, 0, 0.2, 0));
+  MT.push(K.bake(K.paint(new T.CircleGeometry(0.14, 8), 0x2a2d2f), 0, Y - 0.218, 0, -Math.PI / 2, 0, 0));
+  // grate: four bars across, two rails under
+  for (let i = 0; i < 4; i++) MT.push(K.bake(K.paint(new T.BoxGeometry(0.72, 0.02, 0.022), 0x3c4043), 0, Y + 0.012, -0.18 + i * 0.12));
+  for (const s of [-1, 1]) MT.push(K.bake(K.paint(new T.BoxGeometry(0.03, 0.025, 0.56), 0x3c4043), s * 0.24, Y - 0.01, 0));
 
-  // coals (glow) and a few charred stones
-  for (const [x, z, s] of [[-0.1, 0.05, 0.07], [0.08, -0.06, 0.08], [0.02, 0.1, 0.06], [-0.04, -0.1, 0.06], [0.14, 0.08, 0.05]]) GL.push(K.bake(new T.IcosahedronGeometry(s, 0), x, Y - 0.04, z, K.rnd() * 3, K.rnd() * 3, 0, 1, 0.65, 1));
-  S.push(K.pebble(0.05, 0x3c3633, -0.18, Y - 0.04, -0.03));
+  // coals (glow) sitting in the bowl
+  for (const [x, z, s] of [[-0.1, 0.05, 0.08], [0.09, -0.06, 0.09], [0.02, 0.12, 0.07], [-0.05, -0.11, 0.07]]) GL.push(K.bake(new T.IcosahedronGeometry(s, 0), x, Y - 0.1, z, K.rnd() * 3, K.rnd() * 3, 0, 1, 0.6, 1));
 
-  // fish on the grate
-  const fish = new T.SphereGeometry(0.06, 6, 4);
-  K.paint(fish, 0x8fa3a8, (x, y, z, nx, ny, nz, c) => { if (ny > 0.3) c.setHex(0x9a6a3e); if (ny < -0.3) c.setHex(0xd8d2c0); });
-  FS.push(K.bake(fish, 0, Y + 0.105, 0.0, 0, 0.3, 0, 2.6, 0.7, 1));
-  const tail = new T.ConeGeometry(0.06, 0.1, 3);
-  K.paint(tail, 0x7b6346);
-  FS.push(K.bake(tail, -0.19, Y + 0.105, 0.06, 0, 0.3, Math.PI / 2, 1, 1, 0.35));
-  FS.push(K.bake(K.paint(new T.SphereGeometry(0.012, 4, 3), 0x111111), 0.12, Y + 0.12, -0.02));
+  // a fat fish cooking on the grate
+  const fish = new T.SphereGeometry(0.075, 7, 4);
+  K.paint(fish, 0x9fb2b6, (x, y, z, nx, ny, nz, c) => { if (ny > 0.35) c.setHex(0xa8703c); else if (ny < -0.35) c.setHex(0xe6dfcc); });
+  FS.push(K.bake(fish, 0.03, Y + 0.075, 0.02, 0, 0.35, 0, 2.5, 0.75, 1.05));
+  const tail = new T.ConeGeometry(0.075, 0.12, 3);
+  K.paint(tail, 0x8a6a44);
+  const ca = Math.cos(0.35), sa = Math.sin(0.35);
+  FS.push(K.bake(tail, 0.03 - ca * 0.23, Y + 0.075, 0.02 + sa * 0.23, 0, 0.35, Math.PI / 2, 1, 1, 0.3));
+  for (const s of [-1, 1]) FS.push(K.bake(K.paint(new T.SphereGeometry(0.014, 4, 3), 0x111111), 0.03 + ca * 0.14 + sa * s * 0.0, Y + 0.095, 0.02 - sa * 0.14 + s * 0.055 * ca));
 
   K.add(g, MT, M.metal, 'grillIron');
   K.add(g, S, M.stone, 'grillStones');

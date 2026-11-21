@@ -28,14 +28,14 @@ const CSS = `
 #stationPanel .st-chip .st-ic{position:absolute;inset:7px}
 #stationPanel .st-n{position:absolute;right:3px;bottom:2px;font:700 13px/1 ${FONT};color:#fff2cc;text-shadow:0 1px 0 #000,0 0 3px #000}
 #stationPanel .st-ic svg{display:block;width:100%;height:100%;filter:drop-shadow(0 1px 1px #0008)}
-#stationPanel .st-main{display:flex;flex-direction:column;gap:10px;width:330px;box-sizing:border-box}
-#stationPanel .st-row{display:grid;grid-template-columns:64px 1fr 64px;gap:12px;align-items:center}
+#stationPanel .st-main{display:flex;flex-direction:column;gap:10px;width:370px;box-sizing:border-box}
+#stationPanel .st-row{display:grid;grid-template-columns:72px 1fr 72px;gap:10px;align-items:center}
 #stationPanel .st-col{display:flex;flex-direction:column;align-items:center;gap:6px}
 #stationPanel .st-slot{position:relative;width:60px;height:60px;border-radius:4px;background:#24170c;box-shadow:inset 0 0 0 2px #6b4a2b,inset 0 3px 8px #000a}
 #stationPanel .st-slot .st-ic{position:absolute;inset:9px}
 #stationPanel .st-slot.st-ready{box-shadow:inset 0 0 0 2px #ffbd66,0 0 12px #ffbd6688}
 #stationPanel .st-lbl{font:700 10px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#d9c9a6}
-#stationPanel .st-btn{min-width:60px;padding:5px 8px;border:0;border-radius:3px;cursor:pointer;transform:none;background:linear-gradient(#ffcf7d,#e9a24a);color:#2a1b0e;font:800 12px/1 ${FONT};box-shadow:0 2px 0 #8a5a26}
+#stationPanel .st-btn{min-width:60px;white-space:nowrap;padding:5px 8px;border:0;border-radius:3px;cursor:pointer;transform:none;background:linear-gradient(#ffcf7d,#e9a24a);color:#2a1b0e;font:800 12px/1 ${FONT};box-shadow:0 2px 0 #8a5a26}
 #stationPanel .st-btn.st-ghost{background:#5d4129;color:#f3e4c2;box-shadow:0 2px 0 #24170c;font-weight:700}
 #stationPanel .st-btn:disabled{opacity:.35;cursor:default}
 #stationPanel .st-mid{display:flex;flex-direction:column;gap:6px}
@@ -44,8 +44,8 @@ const CSS = `
 #stationPanel .st-prog>i{background:linear-gradient(90deg,#ffbd66,#fff2cc)}
 #stationPanel .st-fuel{height:7px;width:60px}
 #stationPanel .st-fuel>i{background:linear-gradient(90deg,#e0603a,#ffbd66)}
-#stationPanel .st-cap{font:600 12px/1.3 ${FONT};color:#eadcbe;text-align:center;min-height:16px;font-variant-numeric:tabular-nums}
-#stationPanel .st-flame{width:34px;height:34px;filter:grayscale(1) brightness(.5);transition:filter .3s}
+#stationPanel .st-cap{font:600 12px/1.3 ${FONT};color:#eadcbe;text-align:center;white-space:nowrap;min-height:16px;font-variant-numeric:tabular-nums}
+#stationPanel .st-flame{width:42px;height:42px;filter:grayscale(1) brightness(.5);transition:filter .3s}
 #stationPanel .st-on .st-flame{filter:drop-shadow(0 0 6px #ffbd66aa);animation:st-fl .5s ease-in-out infinite alternate;transform-origin:50% 90%}
 @keyframes st-fl{from{transform:scale(1,1)}to{transform:scale(.92,1.09)}}
 #stationPanel .st-hint{margin:0;padding:7px 9px;border-radius:3px;background:#24170caa;font:600 13px/1.3 ${FONT};color:#d9c9a6;text-align:center}
@@ -57,12 +57,13 @@ const FLAME = `<svg class="st-flame" viewBox="0 0 48 48" aria-hidden="true"><pat
 export function createStationPanel({ getStation, getBag, items = {}, fuelValue = {}, onInsert, onFuel, onTake, onTakeInput, onOpen, onClose } = {}) {
   const safe = (fn, ...a) => { try { return fn?.(...a); } catch (e) { console.error(e); } };
   const name = k => items[k]?.name || String(k ?? '').replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const plural = k => name(k).toLowerCase().replace(/([^s])$/, '$1s');
   const icon = k => {
     const body = ICONS[k];
     if (body) return `<svg viewBox="0 0 48 48" aria-hidden="true">${body}</svg>`;
     const id = String(items[k]?.icon || '').replace(/^icon-/, '');
     if (SPRITES.has(id)) return `<svg viewBox="0 0 48 48" aria-hidden="true"><use href="${SPRITE_URL}#icon-${id}"></use></svg>`;
-    return `<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="9" width="34" height="30" rx="3" fill="${esc(items[k]?.iconTint || '#bb8650')}" stroke="#153e49" stroke-width="2"/><text x="24" y="29" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="13" font-weight="700" fill="#fff2cc" stroke="#153e49" stroke-width=".7">${esc(name(k).replace(/\s+/g, '').slice(0, 2))}</text></svg>`;
+    return `<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="9" width="34" height="30" rx="3" fill="${esc(items[k]?.iconTint || '#bb8650')}" stroke="#153e49" stroke-width="2"/><text x="24" y="30" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="17" font-weight="800" fill="#fff2cc" stroke="#153e49" stroke-width=".7">${esc(name(k).replace(/\s+/g, '').slice(0, 2))}</text></svg>`;
   };
   if (!document.getElementById('station-style')) {
     const st = document.createElement('style'); st.id = 'station-style'; st.textContent = CSS; document.head.append(st);
@@ -125,7 +126,7 @@ export function createStationPanel({ getStation, getBag, items = {}, fuelValue =
     set('cap', r ? `${name(inp.kind)} → ${name(r.kind)} · ${secs} s` : '', v => { el.cap.textContent = v; });
     const blocked = r && out && (out.kind !== r.kind || out.count + (r.count || 1) > (Number(items[out.kind]?.stack) || 1));
     const fuelKind = fuels[0] || Object.keys(fuelValue)[0];
-    const hint = blocked ? [`Take your ${name(out.kind).toLowerCase()}s out to keep going.`, 1]
+    const hint = blocked ? [`Take your ${plural(out.kind)} out to keep going.`, 1]
       : r && !cooking && r.fuel > 0 && fuelN <= 1e-9 ? [`Add ${fuelKind ? 'a ' + name(fuelKind).toLowerCase() : 'some fuel'} to keep the fire going.`, 1]
       : cooking ? [`Cooking ${name(r.kind).toLowerCase()}…${inp.count > 1 ? ` ${inp.count} queued.` : ''}`, 0]
       : out ? [`Your ${name(out.kind).toLowerCase()} is ready. Take it!`, 0]
