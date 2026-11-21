@@ -208,10 +208,10 @@ export class HookCast {
     return true;
   }
 
-  /** Deck surface y at (x,z), or null over water. */
-  _deckAt(x, z) {
+  /** Deck surface y at (v.x, v.z), or null over water. Takes the point object: no boxed double args. */
+  _deckAt(v) {
     if (!this.deck) return null;
-    const y = this.deck(x, z);
+    const y = this.deck(v.x, v.z);
     return fin(y) && y > WATER_Y ? y : null;
   }
 
@@ -235,7 +235,7 @@ export class HookCast {
     if (this._tether(n)) { v.x = 0; v.z = 0; this.tethered = true; } // rope taut: just drop
     this.flightT += h;
     // Only a hook coming down from above the planks can land on them.
-    const dy = this._deckAt(n.x, n.z), floor = dy !== null && py >= dy ? dy : WATER_Y;
+    const dy = this._deckAt(n), floor = dy !== null && py >= dy ? dy : WATER_Y;
     if (ny <= floor || this.flightT >= MAX_FLIGHT_TIME) {
       const f = ny <= floor && py > ny ? clamp((py - floor) / (py - ny), 0, 1) : 1;
       const sx = px + (n.x - px) * f, sz = pz + (n.z - pz) * f;
@@ -254,7 +254,7 @@ export class HookCast {
     const b = this.base, ax = b.x, az = b.z;
     if (this.onDeck) { // resting on the planks: no drift, no bob, only the rope can drag it
       this._tether(b);
-      const dy = this._deckAt(b.x, b.z);
+      const dy = this._deckAt(b);
       if (dy !== null) { this.position.set(b.x, dy, b.z); return; }
       this.onDeck = false; // dragged off the edge: back in the water
     }
@@ -262,7 +262,7 @@ export class HookCast {
     const vz = this.drift ? this.drift.z : 0.22;
     b.x += vx * h; b.z += vz * h;
     const dragged = this._tether(b); // a walking player drags the floating hook along
-    const dy = this._deckAt(b.x, b.z);
+    const dy = this._deckAt(b);
     if (dy !== null) {
       // The rope hauls it up onto the planks; plain drift just bumps it against the hull.
       if (dragged) { this.onDeck = true; this.position.set(b.x, dy, b.z); return; }
@@ -282,7 +282,7 @@ export class HookCast {
     if (items) { const S = this._seg; S[0] = ax; S[1] = az; S[2] = p.x; S[3] = p.z; this._sweep(items, CATCH_RADIUS); }
     const rem = hypot2(hd.x - p.x, hd.z - p.z);
     const rise = clamp(1 - rem / REEL_RISE_DIST, 0, 1);
-    const dy = this._deckAt(p.x, p.z), floor = dy !== null ? dy : WATER_Y;
+    const dy = this._deckAt(p), floor = dy !== null ? dy : WATER_Y;
     this.onDeck = dy !== null;
     p.y = Math.max(floor, floor + REEL_SKIM + (hd.y - floor) * rise);
     this.base.set(p.x, WATER_Y, p.z);
@@ -304,7 +304,7 @@ export class HookCast {
     else if (this.stage === 'reeling' && !reeling) { // let go: float where it is
       this.stage = 'floating';
       this.base.set(this.position.x, WATER_Y, this.position.z);
-      this.onDeck = this._deckAt(this.position.x, this.position.z) !== null;
+      this.onDeck = this._deckAt(this.position) !== null;
     }
 
     let arrived = false;
