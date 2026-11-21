@@ -28,6 +28,13 @@ export function coreUndecorBlock(world, d) {
   return null;
 }
 
+/** Contents of the core per-tile maps: a purifier still purifying holds the sea-water cup loadPurifier took. */
+export function coreUndecorLoot(world, d) {
+  if (!world || !d || d.type !== 'purifier') return null;
+  const e = world.purifiers?.[tileKey(d.x, d.z)];
+  return e && !e.ready ? [['saltcup', 1]] : null; // a ready one is vetoed (water) by coreUndecorBlock
+}
+
 /** Clean loot list: [[kind, n, meta?]...]. Bad kinds and n<1 dropped, n floored, plain duplicates merged in order. */
 export function normLoot(list) {
   const out = [];

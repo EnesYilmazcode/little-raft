@@ -63,7 +63,7 @@ import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input
 import { createShark, cleanShark, cleanTileHp, lootable, SHARK, SHARK_LOOT } from './shark.js?build=v3-survival-ae77fa84ac2b'; // shark lane (dist/shark.js)
 import { createWaterEffects } from './waterfx.js?build=v3-survival-ae77fa84ac2b'; // shark lane: bite splashes
 import { createIsland } from './scenery-islands.js?build=v3-survival-ae77fa84ac2b'; // decorative distant islands (islands.js is the content lane's dockable islands)
-import { UNDECOR_TEXT, decorAt as undecorIndex, coreUndecorBlock, assembleLoot, tryLoot, clearCoreTile, targetFromAim, hostCanUndecor } from './decor-pickup.js?build=v3-survival-ae77fa84ac2b'; // [undecor] pick up placed items (docs/specs/decor-pickup.md)
+import { UNDECOR_TEXT, decorAt as undecorIndex, coreUndecorBlock, coreUndecorLoot, assembleLoot, tryLoot, clearCoreTile, targetFromAim, hostCanUndecor } from './decor-pickup.js?build=v3-survival-ae77fa84ac2b'; // [undecor] pick up placed items (docs/specs/decor-pickup.md)
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -733,7 +733,7 @@ export function mount(transfer = null) {
   function updateContext(dialog) {
     let html = ''; contextHtml = null; // content hook: cleared each frame so a stale content prompt never lingers
     if (!contentPromptOff && window.raftPrompts) contentPromptOff = window.raftPrompts.provide({id:'content', priority:1, prompt:() => promptParts(contextHtml)}); // content hook: #contextPrompt is hidden by prompts.css
-    if (running && !dialog) {
+    if (running && !dialog && !building?.removing) { // [undecor] holding X: the hammer chip is the only prompt
       if (guestWaiting()) html = 'Waiting for your brother’s raft…';
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
       else if (canHarvestShark()) html = '<kbd>E</kbd>Harvest the shark'; // shark lane
@@ -935,7 +935,7 @@ export function mount(transfer = null) {
       d = targetFromAim(world.decor, key, key ? null : frameAim?.point);
     }
     if (!d) { undecorD = null; return null; }
-    if (!undecorD || d.x !== undecorD.x || d.z !== undecorD.z || d.type !== undecorD.type) { undecorText = 'Release X to pick up the ' + (ITEM_INFO[d.type]?.name ?? d.type); undecorAct = {kind:'undecor', x:d.x, z:d.z}; }
+    if (!undecorD || d.x !== undecorD.x || d.z !== undecorD.z || d.type !== undecorD.type) { undecorText = 'Release X to pick up the ' + (ITEM_INFO[d.type]?.name ?? d.type); undecorAct = {kind:'undecor', x:d.x, z:d.z, t:d.type}; }
     undecorD = d;
     const old = role === 'guest' && !hostUndecor;
     undecorOut.d = d; undecorOut.action = old ? null : undecorAct; undecorOut.deny = old ? denyOldHost : null;
@@ -1173,13 +1173,13 @@ export function mount(transfer = null) {
       return;
     }
     if (a.kind === 'undecor') { // [undecor] pick up a placed item: item + contents back, all or nothing (docs/specs/decor-pickup.md §5)
-      if (!isInt(a.x) || !isInt(a.z)) return; const i = undecorIndex(world.decor, a.x, a.z); if (i < 0) return; // second remover: silent
+      if (!isInt(a.x) || !isInt(a.z)) return; const i = undecorIndex(world.decor, a.x, a.z); if (i < 0 || (a.t !== undefined && a.t !== world.decor[i].type)) return; // second remover (or a stale aim at a since re-placed item): silent
       const who = actor === 'guest' ? other : physics;
       if (who && !inReach(who.x, who.z, a.x, a.z, BUILD_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .01))) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
       if (bag.count('hammer') < 1) { emit({kind:'notice', text:UNDECOR_TEXT.hammer}, actor); return; }
       const d = world.decor[i], veto = content?.beforeUndecor(d, actor) || prog?.beforeUndecor?.(d, actor) || coreUndecorBlock(world, d);
       if (veto) { emit({kind:'notice', text:veto}, actor); return; }
-      const loot = assembleLoot(d, content?.undecorLoot(d), prog?.undecorLoot?.(d)), r = tryLoot(bag.snapshot(), loot);
+      const loot = assembleLoot(d, content?.undecorLoot(d), prog?.undecorLoot?.(d), coreUndecorLoot(world, d)), r = tryLoot(bag.snapshot(), loot);
       if (!r.ok) { emit({kind:'full', text:UNDECOR_TEXT.full}, actor); return; } // world unchanged
       commit(bag, r.scratch); world.decor.splice(i, 1); clearCoreTile(world, tileKey(d.x, d.z));
       content?.afterUndecor(d, actor); try { prog?.afterUndecor?.(d, actor); } catch (e) { console.warn('undecor cleanup failed', e); }
@@ -2090,7 +2090,7 @@ export function mount(transfer = null) {
   const hudAffords = () => { const bag = localBag(); for (const k in FLOOR_COST) if (bag.count(k) < FLOOR_COST[k]) return false; return true; };
   const hudPhysics = {get climbing() { return !!physics.climbing; }};
   const hudMe = {get x() { return physics.x; }, get y() { return physics.y; }, get z() { return physics.z; }, get yaw() { return yaw; }, get pitch() { return pitch; }};
-  const hudBuild = {get hover() { return hover || null; }, get affordable() { const m = hudModeOf(heldKind()); return m === 'build' ? hudAffords() : m === 'place'; }};
+  const hudBuild = {get hover() { return hover || null; }, get removing() { return !!building?.removing; }, /* [undecor] prompts.js hides context prompts while X is held */ get affordable() { const m = hudModeOf(heldKind()); return m === 'build' ? hudAffords() : m === 'place'; }};
   const hudView = Object.freeze({
     get running() { return running; }, get disposed() { return disposed; }, get role() { return role; }, get networkReady() { return networkReady; },
     get pointerLocked() { return isLocked(); }, get lockFallback() { return lockFallback; }, get inventoryOpen() { return !!survivalUI?.isOpen; },

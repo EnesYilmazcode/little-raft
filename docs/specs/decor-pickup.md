@@ -194,3 +194,5 @@ Run `npm test` and shoot.py. The `errors` list must be empty.
 - **QA:** `raftDebug.undecor.{target, preview, clear, act, caps}`. `preview` holds X while the hammer is in hand.
   Headless smoke: crate (3 wood inside) + lantern. Both show the red ghost and the "Release X to pick up the …" chip. Afterwards the bag gained 1 crate, 3 wood and 1 lantern, `world.decor` and the storage chests are empty, and there are no page errors.
 - **Known gaps:** there's no gamepad binding (section 9). While X is held, other context prompts (for example "Open crate") still show. Mixed-version co-op (an old guest on a new host) is unsupported.
+
+- Review: `coreUndecorLoot(world, d)` returns the salt cup of a purifier that is still purifying; client actions carry `t` (decor type) so a stale aim never picks up a different item; prompts hide while X is held.

@@ -172,7 +172,7 @@ function createPrompts(win, doc) {
       const blocked = !!doc.querySelector('dialog[open]') || !!state?.inventoryOpen;
       // Unlocked (resume hint up) shows nothing; drag-to-look fallback aims at the cursor, so the prompt follows it.
       const fallback = !!state?.lockFallback && !state?.pointerLocked; aimAt = fallback ? mouse : null;
-      const show = !!state?.running && !state.disposed && (state.pointerLocked || (fallback && !!mouse)) && doc.body.classList.contains('playing') && !blocked;
+      const show = !!state?.running && !state.disposed && (state.pointerLocked || (fallback && !!mouse)) && doc.body.classList.contains('playing') && !blocked && !state?.build?.removing; // [undecor] hammer X: the build chip speaks alone
       const pos = aimAt ? `left:${Math.round(aimAt.x + SLOT_X)}px;top:${Math.round(aimAt.y + SLOT_Y)}px` : '';
       if (pos !== placed) { placed = pos; promptEl.style.cssText = pos; }
       let list = null;

@@ -246,3 +246,26 @@ test('hostCanUndecor reads top-level caps', () => {
   assert.equal(hostCanUndecor(undefined), false);
   assert.equal(hostCanUndecor({ caps: null }), false);
 });
+
+// Review fixes
+test('purifier still purifying: its sea-water cup comes back with the purifier', () => {
+  const d = { type: 'purifier', x: 2, z: 0 };
+  const w = { purifiers: { '2,0': { t: 5, ready: 0 } } };
+  assert.equal(coreUndecorBlock(w, d), null);
+  assert.deepEqual(P.coreUndecorLoot(w, d), [['saltcup', 1]]);
+  assert.deepEqual(assembleLoot(d, P.coreUndecorLoot(w, d)), [['purifier', 1], ['saltcup', 1]]);
+  assert.equal(P.coreUndecorLoot({ purifiers: {} }, d), null, 'empty purifier: just the item');
+  assert.equal(P.coreUndecorLoot({ purifiers: { '2,0': { t: 15, ready: 1 } } }, d), null, 'ready is vetoed instead');
+  assert.equal(P.coreUndecorLoot(w, { type: 'crate', x: 2, z: 0 }), null);
+});
+
+test('game wiring: stale aims at a re-placed item are ignored, and context prompts hide while X is held', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const g = await readFile(new URL('game.js', base), 'utf8'), pr = await readFile(new URL('prompts.js', base), 'utf8');
+  assert.match(g, /undecorAct = \{kind:'undecor', x:d\.x, z:d\.z, t:d\.type\}/);
+  assert.match(g, /a\.t !== undefined && a\.t !== world\.decor\[i\]\.type\)\) return;/);
+  assert.match(g, /coreUndecorLoot\(world, d\)\), r = tryLoot/);
+  assert.match(g, /if \(running && !dialog && !building\?\.removing\)/);
+  assert.match(g, /get removing\(\) \{ return !!building\?\.removing; \}/);
+  assert.match(pr, /!blocked && !state\?\.build\?\.removing/);
+});
