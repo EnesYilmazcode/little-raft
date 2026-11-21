@@ -18,7 +18,7 @@ instead of half-applying if game.js has drifted.
   good hot update -> one context, the ocean handed over (no second worklet node, no module load), level
   holds, the new engine re-routes into the new diving module's low-pass
 """
-import sys, re, json, math, shutil, tempfile, threading, functools, http.server, socketserver
+import sys, re, json, math, time, shutil, tempfile, threading, functools, http.server, socketserver
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -238,7 +238,13 @@ def check():
         page.wait_for_function('raftDebug.state.running', timeout=60000)
         page.mouse.click(640, 360)                       # user gesture -> sfx.resume()
         page.keyboard.press('KeyR')                      # repair attempt -> emit() -> play(...)
-        page.wait_for_timeout(5000)                      # past the 2.5 s first fade-in
+        # the ocean worklet's module load can take well over 5 s on a loaded box: wait for it (up to 30 s),
+        # then stay past the 2.5 s first fade-in
+        t0 = time.monotonic()
+        try: page.wait_for_function('raftDebug.audio.stats?.().worklet', timeout=30000, polling=200)
+        except Exception: pass                        # reported as worklet_built = false below
+        rep['worklet_wait_s'] = round(time.monotonic() - t0, 2)
+        page.wait_for_timeout(3000)
         rep['boot'] = page.evaluate('''async () => {
           const a = raftDebug.audio, s0 = a.stats(); window.__ctx0 = a.context;
           const ev = (await import('./audio.js?build=' + %s)).EVENTS;
