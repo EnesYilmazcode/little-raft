@@ -22,27 +22,34 @@ HANDS = [
    "export function createHands(T, { modelFactory = null, prepare = null, strikeKinds = ['hammer'] } = {}) {\n"),
   ('H3', 'hands.js',
    "  // Viewmodel meshes draw in the transparent queue after the camera's depth-clear marker (see game.js),\n"
-   "  // never cast shadows and are never culled.\n"
+   "  // never cast shadows and are never culled. Solid ones skip blending (opaque cost, transparent-queue order).\n"
    "  const prep = (o) => o.traverse((c) => {\n"
    "    if (!c.isMesh) return;\n"
    "    c.castShadow = false; c.receiveShadow = false; c.frustumCulled = false; c.renderOrder = 1000;\n"
-   "    for (const m of [].concat(c.material)) { m.depthTest = true; m.depthWrite = true; m.transparent = true; }\n"
+   "    for (const m of [].concat(c.material)) {\n"
+   "      if (!m.transparent && m.opacity >= 1) m.blending = T.NoBlending;\n"
+   "      m.depthTest = true; m.depthWrite = true; m.transparent = true;\n"
+   "    }\n"
    "  });\n",
    "  // Default: viewmodel meshes draw in the transparent queue after a camera depth-clear marker, never cast shadows\n"
-   "  // and are never culled. `prepare` (viewmodel.js vm.prepare) replaces this for every mesh, incl. lazily built models.\n"
+   "  // and are never culled; solid ones skip blending. `prepare` (viewmodel.js vm.prepare) replaces this for every\n"
+   "  // mesh, incl. lazily built models.\n"
    "  const prep = prepare || ((o) => o.traverse((c) => {\n"
    "    if (!c.isMesh) return;\n"
    "    c.castShadow = false; c.receiveShadow = false; c.frustumCulled = false; c.renderOrder = 1000;\n"
-   "    for (const m of [].concat(c.material)) { m.depthTest = true; m.depthWrite = true; m.transparent = true; }\n"
+   "    for (const m of [].concat(c.material)) {\n"
+   "      if (!m.transparent && m.opacity >= 1) m.blending = T.NoBlending;\n"
+   "      m.depthTest = true; m.depthWrite = true; m.transparent = true;\n"
+   "    }\n"
    "  }));\n"),
   ('H4', 'hands.js',
-   "    seg(frame, sleeveMat, at(0.23), at(0.60), 0.051, 0.070, 14);   // sleeve (runs off-screen)\n",
+   "    const sleeve = seg(frame, sleeveMat, at(0.23), at(0.60), 0.051, 0.070, 14); // sleeve (runs off-screen)\n",
    "    // sleeve: under the viewmodel layer (prepare) it runs back past the eye, so a swing never shows its open end;\n"
    "    // the default path keeps the short one (a long sleeve would cross the world camera's near plane)\n"
-   "    seg(frame, sleeveMat, at(0.23), at(prepare ? 1.10 : 0.60), 0.051, prepare ? 0.066 : 0.070, 14);\n"),
+   "    const sleeve = seg(frame, sleeveMat, at(0.23), at(prepare ? 1.10 : 0.60), 0.051, prepare ? 0.066 : 0.070, 14);\n"),
   ('H5', 'hands.js',
-   "  const st = { walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0,\n",
-   "  const st = { walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, strikeOn: false, spool: 0, t: 0,\n"),
+   "  const st = { hookOut: false, walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0,\n",
+   "  const st = { hookOut: false, walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, strikeOn: false, spool: 0, t: 0,\n"),
   ('H6', 'hands.js',
    "      if (st.dip >= 1) swapNow();\n"
    "    } else if (st.raise < 1) st.raise = Math.min(1, st.raise + dt / 0.26);\n",
@@ -68,28 +75,28 @@ HANDS = [
    "    const sHit = STRIKE ? smooth(0.2, 0.36, p) * (1 - smooth(0.5, 1, p)) : 0;\n"
    "    const sReb = STRIKE ? Math.sin(Math.PI * clamp01((p - 0.36) / 0.22)) : 0;\n"),
   ('H9', 'hands.js',
-   " + 0.008 * oW - 0.008 * rW + trem;\n",
-   " + 0.008 * oW - 0.008 * rW + trem\n"
+   " * rW + trem;\n",
+   " * rW + trem\n"
    "      + 0.02 * sUp - 0.03 * sHit;\n"),
   ('H10', 'hands.js',
-   " - 0.025 * catchDip + trem * 0.7 - 0.45 * down;\n",
-   " - 0.025 * catchDip + trem * 0.7 - 0.45 * down\n"
+   " + trem * 0.7 - 0.45 * down - 0.45 * (1 - rIn);\n",
+   " + trem * 0.7 - 0.45 * down - 0.45 * (1 - rIn)\n"
    "      + 0.05 * sUp - 0.08 * sHit + 0.012 * sReb;\n"),
   ('H11', 'hands.js',
-   "    const rpz = 0.20 * ce - 0.24 * a + 0.025 * oW - 0.012 * rW * (pull - 0.5);\n",
-   "    const rpz = 0.20 * ce - 0.24 * a + 0.025 * oW - 0.012 * rW * (pull - 0.5) + 0.02 * sUp - 0.04 * sHit;\n"),
+   "    const rpz = 0.04 * ce - 0.20 * a - 0.04 * oW + (0.10 * pullR - 0.05) * rW;\n",
+   "    const rpz = 0.04 * ce - 0.20 * a - 0.04 * oW + (0.10 * pullR - 0.05) * rW + 0.02 * sUp - 0.04 * sHit;\n"),
   ('H12', 'hands.js',
-   "    const rrx = 0.40 * ce - 0.75 * a + 0.010 * amp * br + 0.10 * oW + 0.12 * catchDip - 0.5 * down;\n",
-   "    const rrx = 0.40 * ce - 0.75 * a + 0.010 * amp * br + 0.10 * oW + 0.12 * catchDip - 0.5 * down + 0.20 * sUp - 0.35 * sHit + 0.10 * sReb;\n"),
+   "    const rrx = 0.35 * ce - 0.65 * a + 0.010 * amp * br - 0.15 * oW + 0.30 * pullR * rW + 0.12 * catchDip - 0.5 * down;\n",
+   "    const rrx = 0.35 * ce - 0.65 * a + 0.010 * amp * br - 0.15 * oW + 0.30 * pullR * rW + 0.12 * catchDip - 0.5 * down + 0.20 * sUp - 0.35 * sHit + 0.10 * sReb;\n"),
   ('H13', 'hands.js',
-   "    const rwx = 0.35 * ce - 0.55 * a - 0.10 * oW + 0.06 * rW * Math.sin(t * 18.85);\n",
-   "    const rwx = 0.35 * ce - 0.55 * a - 0.10 * oW + 0.06 * rW * Math.sin(t * 18.85) + 0.30 * sUp - 1.40 * sHit;\n"),
+   "    const rwx = 0.30 * ce - 0.45 * a - 0.10 * oW + 0.22 * pullR * rW - (hold.tilt || 0) * nW;\n",
+   "    const rwx = 0.30 * ce - 0.45 * a - 0.10 * oW + 0.22 * pullR * rW - (hold.tilt || 0) * nW + 0.30 * sUp - 1.40 * sHit;\n"),
   ('H14', 'hands.js',
    " + 0.004 * amp * brL - 0.45 * down - 0.45 * (1 - lIn);\n",
    " + 0.004 * amp * brL - 0.45 * down - 0.45 * (1 - lIn) - 0.010 * sHit;\n"),
   ('H15', 'hands.js',
-   "chargeEased: ce, throw: a,\n",
-   "chargeEased: ce, throw: a, strike: sHit - sUp,\n"),
+   "last.chargeEased = ce; last.throw = a;\n",
+   "last.chargeEased = ce; last.throw = a; last.strike = sHit - sUp;\n"),
 ]
 
 GAME = [
@@ -101,7 +108,11 @@ GAME = [
    "  let hands = null, offIconReady = null, clothMat; // one hands controller swaps the held item model per hotbar kind\n",
    "  let hands = null, vm = null, offIconReady = null, clothMat; // one hands controller swaps the held item model per hotbar kind; vm = viewmodel layer\n"),
   ('G3', 'game.js',
-   "    hands = createHands(T, {modelFactory:modelOf}); hands.preload(['hook']); // 3D models from models.js, built-ins as fallback\n"
+   "    hands = createHands(T, {modelFactory:modelOf}); hands.preload(['hook']); // 3D models from models.js, built-ins as fallback\n",
+   "    // Own-FOV, depth-squashed viewmodel layer (viewmodel.js): one pass, world lighting and shadows, never clips.\n"
+   "    vm = createViewmodel(T, {camera, fov:60});\n"
+   "    hands = createHands(T, {modelFactory:modelOf, prepare:vm.prepare}); hands.preload(['hook']); // 3D models from models.js, built-ins as fallback\n"),
+  ('G3b', 'game.js',
    "    // Viewmodels draw last (transparent queue, renderOrder 1000) after a camera-owned marker clears depth, so the\n"
    "    // world never clips them while fingers and tools still depth-sort correctly against each other.\n"
    "    const depthClear = new T.Mesh(new T.PlaneGeometry(1e-4, 1e-4), new T.MeshBasicMaterial({colorWrite:false, depthWrite:false, depthTest:false, transparent:true}));\n"
@@ -110,18 +121,15 @@ GAME = [
    "    depthClear.onBeforeRender = (r, _s, cam) => { if (cam !== camera) return; r.state?.buffers?.depth?.setMask?.(true); r.clearDepth(); };\n"
    "    camera.add(depthClear);\n"
    "    camera.add(hands.group);\n",
-   "    // Own-FOV, depth-squashed viewmodel layer (viewmodel.js): one pass, world lighting and shadows, never clips.\n"
-   "    vm = createViewmodel(T, {camera, fov:70});\n"
-   "    hands = createHands(T, {modelFactory:modelOf, prepare:vm.prepare}); hands.preload(['hook']); // 3D models from models.js, built-ins as fallback\n"
-   "    vm.attach(hands);\n"),
+   "    vm.attach(hands); // parents hands.group under the layer's rig (a camera child)\n"),
   ('G4', 'game.js',
-   "casting:swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch}); // [fishing-cooking] rod reel pose from the lane\n"
-   "    camera.updateMatrixWorld(true);\n"
-   "    hands.ropeAnchor().getWorldPosition(handPos);\n",
-   "casting:swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch}); // [fishing-cooking] rod reel pose from the lane\n"
+   " hp.yaw = yaw; hp.pitch = pitch; hp.fov = camera.fov;\n"
+   "    hands.update(hp);\n"
+   "    hands.ropeAnchor().getWorldPosition(handPos); // updates the anchor's parent chain (camera included); render refreshes the rest\n",
+   " hp.yaw = yaw; hp.pitch = pitch; hp.fov = vm.projCam.fov; // hands frame for the layer's own FOV, not the world camera's\n"
+   "    hands.update(hp);\n"
    "    vm.update({dt, held:hands.state.held, grounded:physics.grounded, vy:physics.vy, charge:ch, swing, motion});\n"
-   "    camera.updateMatrixWorld(true);\n"
-   "    vm.anchor(hands.ropeAnchor(), handPos); // the hands draw scaled toward the eye: map the anchor to its on-screen world point\n"),
+   "    vm.anchor(hands.ropeAnchor(), handPos); // hands draw scaled toward the eye: the anchor's on-screen world point (updates the camera chain)\n"),
   ('G5', 'game.js',
    "camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });\n",
    "camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); vm?.setAspect(camera.aspect); renderer.setSize(innerWidth, innerHeight); });\n"),
@@ -130,7 +138,14 @@ GAME = [
    "(viewmodels draw in their own front depth slice, viewmodel.js)"),
 ]
 
-EDITS = HANDS + GAME
+# dist/live.js preloads game.js' static import graph (tests/live-preload.test.mjs keeps PRELOAD equal to it)
+LIVE = [
+  ('L1', 'live.js',
+   "'underwater-fx.js',",
+   "'underwater-fx.js', 'viewmodel.js',"),
+]
+
+EDITS = HANDS + GAME + LIVE
 
 
 def line_of(text, old):
