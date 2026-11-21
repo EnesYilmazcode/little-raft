@@ -122,19 +122,22 @@ export const ITEM_ICONS = Object.freeze({
 
   // [puffer] Puffer Goo: a glossy green blob with a drip, a spine stuck in it. Blast Powder: a tied pouch spilling grey grit, a spark.
   goo: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
-    <path d="M7 34 C5 26 11 19 19 19 C22 13 31 12 35 18 C42 19 45 27 41 33 C40 37 36 39 31 39 L31 44 C31 46 27 46 27 44 L27 39 H15 C10 39 8 37 7 34 Z" fill="#7cc243"/>
-    <path d="M11 31 C11 26 15 23 20 23 C23 19 29 18 32 22 C36 23 38 27 37 30 C29 28 19 28 11 31 Z" fill="#b2e273" stroke="none"/>
-    <path d="M35 12 L31 21" stroke="#6e5f2c" stroke-width="2.4"/><path d="M35 12 L33.5 15" stroke="#f4eed8" stroke-width="2"/></g>
-    <ellipse cx="17" cy="26" rx="3" ry="1.8" fill="#fff2cc" fill-opacity=".9"/><circle cx="25" cy="33" r="1.6" fill="#4f8f2a"/><circle cx="33" cy="30" r="1.2" fill="#4f8f2a"/>`,
+    <path d="M6 38 C3 38 3 42 8 43 H40 C45 42 45 38 42 38 Z" fill="#5e9e32"/>
+    <path d="M9 39 C6 30 10 17 22 15 C33 13 42 22 40 33 C40 36 39 38 38 39 C37 43 33 43 33 39 C30 40 27 40 24 39 C24 44 18 45 18 40 C14 41 10 41 9 39 Z" fill="#7cc243"/>
+    <path d="M13 31 C13 24 17 19 23 19 C29 18 35 22 36 28 C29 26 20 27 13 31 Z" fill="#b2e273" stroke="none"/>
+    <path d="M37 6 L32 18" stroke="#6e5f2c" stroke-width="2.4"/><path d="M37 6 L35.5 9.6" stroke="#f4eed8" stroke-width="2"/></g>
+    <ellipse cx="18" cy="23" rx="3.4" ry="2" fill="#fff2cc" fill-opacity=".9" transform="rotate(-25 18 23)"/><circle cx="27" cy="32" r="1.8" fill="#4f8f2a"/><circle cx="33" cy="29" r="1.3" fill="#4f8f2a"/>`,
 
   blastpowder: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
-    <path d="M14 18 C9 24 8 33 11 38 C14 42 30 42 34 38 C37 33 36 24 31 18 Z" fill="#c69860"/>
-    <path d="M15 17 C18 14 27 14 30 17 L28 20 C25 19 20 19 17 20 Z" fill="#a9784a"/>
-    <path d="M16 17 L13 10 M29 17 L32 10" fill="none" stroke-width="2.2"/><path d="M18 19.5 C21 21 25 21 27 19.5" fill="none" stroke="#e9d39a" stroke-width="2"/>
-    <path d="M30 42 C33 37 38 36 43 38 C45 40 44 42 42 42 Z" fill="#6f7a5a"/></g>
-    <g fill="#4d5440"><circle cx="35" cy="40" r=".9"/><circle cx="39" cy="39.5" r=".9"/><circle cx="41.5" cy="41" r=".8"/></g>
-    <path d="M19 30 C21 27 25 27 27 30" fill="none" stroke="#fff2cc" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".7"/>
-    <g stroke="#ffbd66" stroke-width="2" stroke-linecap="round"><path d="M38 9 V15 M35 12 H41 M35.8 9.8 L40.2 14.2 M40.2 9.8 L35.8 14.2"/></g>`,
+    <path d="M13 20 C7 26 7 36 11 40 C15 44 29 44 33 40 C37 36 37 26 31 20 Z" fill="#c69860"/>
+    <path d="M14 20 C17 17 27 17 30 20 C27 22 17 22 14 20 Z" fill="#8e6038"/>
+    <path d="M17 18 C16 14 19 11 22 13 C25 11 28 14 27 18" fill="#c69860"/>
+    <path d="M22 13 C24 8 29 7 32 9" fill="none" stroke-width="2.4"/>
+    <path d="M30 42 C33 37 38 36 43 38 C45 40 44 42 42 42 Z" fill="#555b48"/></g>
+    <g fill="#33382c"><circle cx="35" cy="40" r=".9"/><circle cx="39" cy="39.5" r=".9"/><circle cx="41.5" cy="41" r=".8"/></g>
+    <path d="M22 26 L19 32 H23 L21 37 L27 30 H23 L25 26 Z" fill="#4a3a2a" fill-opacity=".85"/>
+    <circle cx="34" cy="8.5" r="3.6" fill="#ffd36b"/><g stroke="#ff9a3c" stroke-width="2" stroke-linecap="round"><path d="M34 2 V4 M39.5 4 L38 5.5 M41 9 H39 M28.5 4 L30 5.5 M38.5 13.5 L37 12"/></g>`,
+
   // [boar] tusker meat: a raw haunch on the bone, then the same haunch seared with grill marks and steam.
   rawmeat: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <path d="M30 17 L39 8" fill="none" stroke-width="7"/><path d="M30 17 L39 8" fill="none" stroke="#f3ead3" stroke-width="3.6"/>
