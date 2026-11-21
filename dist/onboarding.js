@@ -386,7 +386,7 @@ function boot() {
       const saved = store.get(SAVE_KEY); if (saved == null) return;
       const s = saveSummary(saved);
       menu.insertAdjacentHTML('afterbegin', `<button type="button" class="ob-item" data-act="continue">Continue${s ? `<small>${hintHTML(s)}</small>` : ''}</button>`);
-      if (!menu.contains(document.activeElement)) try { items()[0].focus({preventScroll:true}); } catch {}
+      try { items()[0].focus({preventScroll:true}); } catch {} // Enter resumes, it never starts over
     };
     const syncDisabled = () => { addContinue(); const off = !!solo()?.disabled; for (const b of items()) if (b.dataset.act === 'continue' || b.dataset.act === 'new') b.disabled = off; };
     setInterval(syncDisabled, 500); syncDisabled();
