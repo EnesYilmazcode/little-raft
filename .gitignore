@@ -1,0 +1,8 @@
+.team/
+*.png
+__pycache__/
+.qa/
+node_modules/
+desktop/runtime/
+desktop/*.log
+desktop/*.pid
