@@ -157,9 +157,9 @@ body.playing header{opacity:.9}
 }
 body:not(.playing) #crosshair{opacity:0}
 
-/* Resume hint sits below the reticle, never on it */
+/* Resume hint sits at the top edge, away from the reticle */
 #resumeHint{
-  position:fixed;left:50%;top:calc(50% + 56px);transform:translateX(-50%);z-index:3;
+  position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:3;
   padding:9px 18px;border-radius:4px;white-space:nowrap;
   background:var(--plate-strong);color:var(--cream);
   font:600 12px/1.2 var(--ui-font);letter-spacing:2px;text-transform:uppercase;
@@ -274,7 +274,7 @@ input::placeholder{color:#6f7b82;letter-spacing:1.5px}
   #durability,.durability-meter{left:12px;bottom:178px;width:150px;padding:8px 10px 10px}
   body.build #durability,body.build .durability-meter{bottom:290px}
 
-  #resumeHint{font-size:11px;letter-spacing:1.4px;top:calc(50% + 44px)}
+  #resumeHint{font-size:11px;letter-spacing:1.4px;top:10px}
 
   .welcome-card p{font-size:13px}
   dialog{padding:26px 20px}
@@ -289,19 +289,17 @@ input::placeholder{color:#6f7b82;letter-spacing:1.5px}
   .progress i,.durability-track>i,#toast{transition:none}
 }
 
-#repairButton{margin-top:10px;width:100%;display:flex;align-items:center;justify-content:center;gap:7px;padding:8px;background:#20363de8;color:#fff0ce;border:1px solid #aa85594d;border-radius:3px;font-size:12px;flex-wrap:wrap}
-#repairButton .icon{width:20px;height:20px}#repairButton small{width:100%;font-size:10px;color:#b9c9c4}#repairButton kbd{font:600 10px sans-serif;opacity:.6}#conditionBar{width:100%}
-#chargeMeter{position:fixed;left:50%;top:calc(50% + 44px);transform:translateX(-50%);width:158px;height:23px;background:#11252ad9;border:1px solid #d3ae70;border-radius:3px;pointer-events:none;overflow:hidden;z-index:4}
+#chargeMeter{position:fixed;left:50%;bottom:102px;transform:translateX(-50%);width:158px;height:23px;background:#11252ad9;border:1px solid #d3ae70;border-radius:3px;pointer-events:none;overflow:hidden;z-index:4}
 #chargeMeter span{position:absolute;inset:0;display:grid;place-items:center;color:#fff4d6;font-size:10px;font-weight:700;letter-spacing:1.5px;z-index:1;text-shadow:0 1px 3px #000}#chargeMeter i{display:block;height:100%;width:0;background:#b8833e;transition:width .04s linear}
 .close .icon{width:20px;height:20px}.guide-note{font-size:12px}#resumeHint{max-width:90vw;white-space:normal;text-align:center}
 
 body.playing header{justify-content:flex-end}body.playing .brand,body.playing .goal{display:none}
 .playing .inventory{padding:11px 16px;background:#273732c9}.playing .inventory>span{font-size:10px}.playing .inventory small{font-size:12px}
 .controls{background:#142d30c9!important;color:#f5e9ca!important;border-radius:3px;padding:7px 13px;font-size:12px;gap:19px}.controls kbd{color:#ffdd95;border-color:#e0bd7144;font-size:11px}
-.playing #durability{left:auto;right:28px;width:176px}.playing #aimHint{font-size:14px;letter-spacing:.2px;text-transform:none;bottom:137px}.playing.locked.build #aimHint{bottom:137px}
+.playing #aimHint{font-size:14px;letter-spacing:.2px;text-transform:none;bottom:137px}.playing.locked.build #aimHint{bottom:137px}
 body.locked #recipes{display:none!important}#recipes button.unaffordable{opacity:.52}#recipes button small{font-size:12px}#recipes button{min-width:106px;font-size:13px}
 #resumeHint{font-size:13px;letter-spacing:.4px;text-transform:none;max-width:440px}
-@media(max-width:760px){.playing #durability{right:12px;bottom:160px;width:146px}.controls{font-size:10px;gap:9px}.playing #aimHint{font-size:11px}.playing .inventory{top:65px}}
+@media(max-width:760px){.controls{font-size:10px;gap:9px}.playing #aimHint{font-size:11px}.playing .inventory{top:65px}}
 body.playing header,body.playing .goal,body.playing #toast,body.playing .controls{display:none!important}
 .playing .inventory{top:14px;left:14px}.playing #aimHint{bottom:112px;background:#162e3199;padding:7px 13px;font-size:13px;color:#f4eddd;box-shadow:none}
 #crosshair{width:23px;height:23px;border:1px solid #fff9;border-radius:50%;background:none!important;filter:drop-shadow(0 1px 1px #0005)}#crosshair::after{background:#fff9;border-radius:50%}
@@ -309,3 +307,7 @@ body.playing header,body.playing .goal,body.playing #toast,body.playing .control
 /* live-qa */
 
 /* live-qa */
+/* Throw power sits just above the hotbar; the guide reads cream on navy */
+@media(max-width:760px){#chargeMeter{bottom:66px}}
+.guide li{color:var(--cream-dim)}.guide b{color:var(--cream)}.guide-note{color:var(--cream-dim)}
+.guide kbd{background:linear-gradient(180deg,#2a3a47,#16232e);color:var(--cream);border-color:rgba(201,164,107,.45)}
