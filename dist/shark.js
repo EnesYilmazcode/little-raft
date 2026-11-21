@@ -335,7 +335,8 @@ export function createShark(T, host, saved = null) {
   let extTiles = null, extLen = -1, ext = 0, overlayKey = 0, ovTilesRef = null, bitePulse = 0, biteX = 0, biteZ = 0;
 
   const group = new T.Group(); group.name = 'shark';
-  const material = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  // Faceted via per-face normals already in the geometry (shark-model part/fin); matte Standard shares the plain lit program.
+  const material = new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
   const body = new T.Mesh(sharkBodyGeometry(T), material); body.name = 'sharkBody';
   const tail = new T.Mesh(sharkTailGeometry(T), material); tail.name = 'sharkTail';
   tail.position.set(0, SHARK_TAIL_PIVOT[1], SHARK_TAIL_PIVOT[2]); body.add(tail);

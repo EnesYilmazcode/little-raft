@@ -1,5 +1,5 @@
 // Low-poly shark for dist/shark.js: our own faceted grey shark with a tall dorsal fin, pale belly and a
-// crescent tail. Two merged, vertex-coloured geometries (body, tail) share one Lambert material: 2 draw calls.
+// crescent tail. Two merged, vertex-coloured geometries (body, tail) with per-face normals share one matte material: 2 draw calls.
 // Conventions as in wildlife-models.js: nose +z, up +y, origin at the body centre. Built once, never per frame.
 
 export const SHARK_LENGTH = 3.1;            // nose to tail tip, metres (spear capsule length)

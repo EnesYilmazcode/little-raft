@@ -1,5 +1,5 @@
 // Low-poly raft animal models for dist/animals.js (wildlife-models style). Every creature builder returns ONE
-// merged BufferGeometry with position, normal and color attributes for one vertex-coloured Lambert material.
+// merged BufferGeometry with position, normal and color attributes for one vertex-coloured matte material.
 // Conventions: origin at the feet, nose +z, up +y. Built once, never per frame.
 
 function tri(T, pts) {
@@ -48,7 +48,7 @@ function merge(T, parts) {
 const ball = (T, w = 8, h = 6) => new T.SphereGeometry(1, w, h);
 const hash = (a, b = 0) => { let h = Math.imul(a + 1, 0x9e3779b1) ^ Math.imul(b + 7, 0x85ebca6b); h ^= h >>> 13; return ((Math.imul(h, 0xc2b2ae35) >>> 0) % 1000) / 1000; };
 
-export const vertexMaterial = T => new T.MeshLambertMaterial({ vertexColors: true });
+export const vertexMaterial = T => new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 }); // matte, shares the lit Standard programs
 
 // Puffhen: a round cream hen-puff, ~0.36 m tall. Warm brown back cap, big dark eyes with glints, tiny
 // orange beak, a three-feather crest, stubby wings, a fan tail and orange stub feet.

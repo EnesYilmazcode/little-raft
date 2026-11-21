@@ -322,10 +322,13 @@ export function createWildlife(ctx) {
     v3 = new T.Vector3(); v3b = new T.Vector3(); sc3 = new T.Vector3(1, 1, 1); q4 = new T.Quaternion(); qR = new T.Quaternion();
     eul = new T.Euler(0, 0, 0, 'YXZ'); col = new T.Color(); zero = new T.Matrix4().makeScale(0, 0, 0); UP = new T.Vector3(0, 1, 0);
     fishDark = new T.Color('#0b2f36'); fishWater = new T.Color('#3f8c88');
-    material = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: T.DoubleSide });
+    // Wings, dolphin and turtle: faceted through per-face normals baked by wildlife-models merge(), so this matte
+    // Standard material shares the item-batch programs instead of compiling Lambert/flatShading variants.
+    material = new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, side: T.DoubleSide });
     // Gull bodies get their own copy with a tiny vertex tweak: leg vertices (legW = 1) swing back under the belly
     // by the per-instance `tuck` (0 standing, 1 in flight). One extra program, compiled once at startup.
-    gullMat = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: T.DoubleSide });
+    // flatShading kept here: the leg tuck moves vertices in the shader, so baked normals would go stale.
+    gullMat = new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: true, side: T.DoubleSide });
     const hy = GULL_HIP[0].toFixed(3), hz = GULL_HIP[1].toFixed(3);
     gullMat.onBeforeCompile = sh => {
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float legW;\nattribute float tuck;')
