@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Perf Lab</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #cbd2c0; font: 13px/1.4 system-ui, sans-serif; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #hud { position: fixed; top: 10px; left: 10px; white-space: pre; background: rgba(20, 30, 30, .78); color: #eef; padding: 8px 10px; border-radius: 6px; font-family: ui-monospace, monospace; }
+  #links { position: fixed; bottom: 10px; left: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  #links a { background: rgba(20, 30, 30, .78); color: #eef; padding: 4px 8px; border-radius: 4px; text-decoration: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">loading…</div>
+<nav id="links">
+  <a href="?mode=naive&shadow=every">naive + every-frame shadow</a>
+  <a href="?mode=instanced&shadow=cached">instanced + cached shadow</a>
+  <a href="?mode=batched&shadow=cached">batched + cached shadow</a>
+  <a href="?mode=instanced&shadow=cached&alloc=1">instanced, allocating</a>
+  <a href="?mode=instanced&shadow=off">shadows off</a>
+</nav>
+<script type="module" src="./perf-lab.js"></script>
+</body>
+</html>
