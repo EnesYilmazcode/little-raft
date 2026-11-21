@@ -45,11 +45,16 @@ SHIM = (HERE / 'determinism.js').read_text(encoding='utf-8')
 TOOL = 'visual-diff'
 W, H = 1280, 720
 CX, CY = W // 2, H // 2
+# Chromium re-rasters only the damaged part of a tile by default; where the damage lands depends on how many real
+# compositor frames ran before the screenshot, and under a backdrop-filter blur (the dialog scenes) the two paths
+# differ by 1 LSB on a few pixels: title-help/title-crew came out in two byte variants in ~40% of runs. Full-tile
+# raster made them byte-identical in 51 of 51 renders on a loaded box.
+CHROME_ARGS = ['--disable-partial-raster']
 RAD_PX = 1 / .005  # game.js DRAG_SENSITIVITY: 0.005 rad per dragged pixel
 
 # Each scene is a list of steps:
 #   ('frames', n)  advance the virtual clock n frames (1/60 s each)
-#   ('click', sel) DOM click            ('key', key) press+release      ('hold', key, frames) key held for n frames
+#   ('click', sel) DOM click (element.click())            ('key', key) press+release      ('hold', key, frames) key held for n frames
 #   ('yaw', rad) / ('pitch', rad)  drag-to-look by that many radians    ('down',) / ('up',) left mouse at centre
 START = [('frames', 10), ('click', '#solo'), ('frames', 90)]
 SCENES = {
@@ -86,7 +91,7 @@ def describe(steps, seed):
     out = [f'serve the dist, inject tools/determinism.js as an init script, open /?seed={seed}&freeze=1 at {W}x{H}']
     for s in steps:
         k = s[0]
-        out.append({'frames': lambda: f'step {s[1]} frames', 'click': lambda: f'click {s[1]}',
+        out.append({'frames': lambda: f'step {s[1]} frames', 'click': lambda: f'{s[1]}.click() in the page',
                     'key': lambda: f'press {s[1]}', 'hold': lambda: f'hold {s[1]} for {s[2]} frames',
                     'yaw': lambda: f'drag-look yaw {s[1]:+.2f} rad', 'pitch': lambda: f'drag-look pitch {s[1]:+.2f} rad',
                     'down': lambda: 'mouse down at centre', 'up': lambda: 'mouse up'}[k]())
@@ -109,12 +114,12 @@ def run_steps(page, steps):
         k = s[0]
         if k == 'frames': step(s[1])
         elif k == 'click':
-            # Playwright's actionability wait (visible, stable over two real compositor frames, receives events) can
-            # exceed any timeout on a box at load 30, and the virtual clock means nothing moves anyway. Check the
-            # target is there and visible ourselves, then send the same real mouse click without that wait.
+            # A DOM click (the game's buttons use onclick), not a mouse click: Playwright's mouse click waits for the
+            # element to be stable over two real compositor frames, which timed out at 10 s on a box at load 30, and
+            # a pointer parked over a button adds hover state that depends on when Chromium re-hit-tests.
             loc = page.locator(s[1])
             loc.wait_for(state='visible', timeout=60000)
-            loc.click(force=True, timeout=60000)
+            loc.evaluate('e => e.click()', timeout=60000)
         elif k == 'key': page.keyboard.press(s[1])
         elif k == 'hold':
             page.keyboard.down(s[1]); step(s[2]); page.keyboard.up(s[1])
@@ -406,7 +411,7 @@ def main():
         try:
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
-                browser = launch_chromium(p)
+                browser = launch_chromium(p, extra_args=CHROME_ARGS)
                 with lock: versions.append(browser.version)
                 launched.release()
                 ready.wait()
@@ -416,7 +421,7 @@ def main():
                         if dist not in servers: servers[dist] = StaticServer(dist).__enter__()
                         url = f'{servers[dist].url}?seed={args.seed}&freeze=1'
                         for attempt in (1, 2):
-                            if not browser.is_connected(): browser = launch_chromium(p)
+                            if not browser.is_connected(): browser = launch_chromium(p, extra_args=CHROME_ARGS)
                             try:
                                 info = render_scene(browser, url, name, out / sub / f'{name}.png')
                             except Exception as e:  # context creation failed: the browser itself went away
@@ -548,6 +553,8 @@ def main():
             result['metrics']['baseCaptureFailed'] = base_only
         if noise:
             result['metrics']['headNoisePct'] = {n: r['pct'] for n, r in noise.items()}
+            # Informational: scenes whose two head renders were not byte-identical (any delta, even under tolerance).
+            result['metrics']['headNoiseAnyDelta'] = sorted(n for n, r in noise.items() if r['exactPct'] > 0)
     report = {'mode': mode, 'base': str(base), 'head': str(head), 'seed': args.seed, 'tol': tol,
               'scenes': {n: {'steps': describe(SCENES[n], args.seed), 'diff': results.get(n), 'noise': noise.get(n),
                              'a': ma[n], 'b': mb[n]} for n in names}}
