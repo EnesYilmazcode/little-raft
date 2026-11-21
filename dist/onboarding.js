@@ -96,8 +96,10 @@ function decorCounts(S) {
   for (let i = 0; i < list.length; i++) { const t = list[i]?.type; if (typeof t === 'string') out[t] = (out[t] ?? 0) + 1; }
   return out;
 }
+// A frozen stock (Bag.counts' cached object) never changes under us, so it is kept by reference instead of copied.
+const stockOf = st => (st && typeof st === 'object' ? (Object.isFrozen(st) ? st : {...st}) : {});
 const snap = S => ({tiles:num(S.tiles), fish:num(S.fish), collected:num(S.collected), hookHealth:num(S.hookHealth), decor:decorCounts(S),
-  stock:{...(S.stock && typeof S.stock === 'object' ? S.stock : {})}, me:S.me ? {x:num(S.me.x), z:num(S.me.z), yaw:num(S.me.yaw)} : null});
+  stock:stockOf(S.stock), me:S.me ? {x:num(S.me.x), z:num(S.me.z), yaw:num(S.me.yaw)} : null});
 function ctxFor(rec, S, prev, silent) {
   const base = rec?.base ?? FRESH;
   return {S0:base, prev, silent, hostWorld:hostWorld(S), mem:rec?.mem ?? {}, yawTravel:silent ? 0 : rec?.yaw ?? 0, walked:silent ? 0 : rec?.walk ?? 0,
@@ -113,15 +115,46 @@ export function countOf(step, S, rec, prev) {
   try { const c = step.count?.(S, rec?.base ?? FRESH, ctxFor(rec, S, prev, false)); return c ? [Math.max(0, Math.min(num(c[0]), num(c[1]))), num(c[1]), ...(typeof c[2] === 'string' ? [c[2]] : [])] : null; } catch { return null; }
 }
 export const hintOf = (step, S) => { try { return String((typeof step.hint === 'function' ? step.hint(S ?? {}) : step.hint) ?? ''); } catch { return ''; } };
-const chapterOrder = steps => [...new Set(steps.map(s => s.chapter))];
+// Per-steps-array derived data (chapter order, id set), rebuilt only when the array's members change: the tracker
+// polls 4x/s and must not rebuild Sets/arrays per poll. Checked by reference against a copy of the members.
+const metaCache = new WeakMap();
+function metaOf(steps) {
+  let m = metaCache.get(steps);
+  if (m && m.refs.length === steps.length) {
+    let same = true;
+    for (let i = 0; i < steps.length; i++) if (steps[i] !== m.refs[i]) { same = false; break; }
+    if (same) return m;
+  }
+  m = {refs:steps.slice(), chapters:[...new Set(steps.map(s => s.chapter))], ids:new Set(steps.map(s => s.id))};
+  metaCache.set(steps, m);
+  return m;
+}
 export function currentChapter(steps, done) {
-  return chapterOrder(steps).find(ch => steps.some(s => s.chapter === ch && !s.optional && !done[s.id])) ?? null;
+  const chs = metaOf(steps).chapters;
+  for (let c = 0; c < chs.length; c++) {
+    const ch = chs[c];
+    for (let i = 0; i < steps.length; i++) { const s = steps[i]; if (s.chapter === ch && !s.optional && !done[s.id]) return ch; }
+  }
+  return null;
+}
+function isOpen(s, ch, ids, P, S) {
+  if ((s.chapter !== ch && !s.every) || P.done[s.id]) return false;
+  const needs = s.needs;
+  if (Array.isArray(needs)) for (let i = 0; i < needs.length; i++) { const n = needs[i]; if (!P.done[n] && ids.has(n)) return false; }
+  try { return !s.show || !!P.track[s.id] || !!s.show(S); } catch { return false; }
 }
 export function visibleSteps(steps, P, S) {
-  const ch = currentChapter(steps, P.done), ids = new Set(steps.map(s => s.id));
-  const gate = s => { try { return !s.show || P.track[s.id] || s.show(S); } catch { return false; } };
-  const open = steps.filter(s => (s.chapter === ch || s.every) && !P.done[s.id] && arr(s.needs).every(n => P.done[n] || !ids.has(n)) && gate(s));
-  return [...open.filter(s => s.show), ...open.filter(s => !s.show)].slice(0, MAX_ROWS); // gated (urgent) steps first
+  const ch = currentChapter(steps, P.done), ids = metaOf(steps).ids, out = [];
+  // gated (urgent) steps first, then the rest, in step order; every gate is evaluated as before (show() may be stateful)
+  let rest = null;
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    if (!isOpen(s, ch, ids, P, S)) continue;
+    if (s.show) { if (out.length < MAX_ROWS) out.push(s); }
+    else if (!rest || rest.length < MAX_ROWS) (rest ??= []).push(s);
+  }
+  for (let i = 0; rest && i < rest.length && out.length < MAX_ROWS; i++) out.push(rest[i]);
+  return out;
 }
 export const createProgress = (done = []) => ({done:Object.fromEntries(arr(done).filter(x => typeof x === 'string').map(id => [id, true])), track:{}, prev:null});
 
@@ -236,10 +269,11 @@ function boot() {
   const setText = (el, t) => { if (el.textContent !== t) el.textContent = t; };
   let logHTML = '';
   function renderHead(ch) {
-    const all = ch === null, list = STEPS.filter(s => s.chapter === ch && !s.optional);
+    const all = ch === null; let total = 0, done = 0;
+    for (let i = 0; i < STEPS.length; i++) { const s = STEPS[i]; if (s.chapter === ch && !s.optional) { total++; if (P.done[s.id]) done++; } }
     panel.classList.toggle('ob-all', all);
     setText(head.querySelector('.ob-ch'), all ? 'Notes' : collapsed ? 'Notes' : chName(ch));
-    setText(head.querySelector('.ob-sum'), all ? '' : `${collapsed ? '· ' : ''}${list.filter(s => P.done[s.id]).length}/${list.length}`);
+    setText(head.querySelector('.ob-sum'), all ? '' : `${collapsed ? '· ' : ''}${done}/${total}`);
     const open = String(all ? logOpen : !collapsed), hide = !(all && logOpen);
     panel.classList.toggle('ob-collapsed', !all && collapsed); panel.classList.toggle('ob-logopen', all && logOpen);
     if (head.getAttribute('aria-expanded') !== open) head.setAttribute('aria-expanded', open);
@@ -262,6 +296,8 @@ function boot() {
     toggle();
   });
 
+  let lastVisible = null;
+  const dropHidden = (li, id) => { if (!lastVisible.includes(id) && !li.classList.contains('ob-done')) { li.remove(); rows.delete(id); } };
   function sync(r) {
     const now = Date.now(), animate = booted;
     if (r.reset) { rows.forEach(li => li.remove()); rows.clear(); shownCh = undefined; }
@@ -272,10 +308,9 @@ function boot() {
     if (now < holdUntil) return;
     if (holdUntil) { holdUntil = 0; panel.classList.remove('ob-shimmer'); }
     shownCh = r.chapter;
-    const vis = new Set(r.visible);
-    for (const [id, li] of rows) if (!vis.has(id) && !li.classList.contains('ob-done')) { li.remove(); rows.delete(id); }
-    for (const id of r.visible) {
-      const li = rows.get(id) ?? rowFor(id, animate), c = r.counts[id], h = r.hints[id] ?? '';
+    lastVisible = r.visible; rows.forEach(dropHidden); // r.visible has <= MAX_ROWS ids: includes() beats a Set
+    for (let i = 0; i < r.visible.length; i++) {
+      const id = r.visible[i], li = rows.get(id) ?? rowFor(id, animate), c = r.counts[id], h = r.hints[id] ?? '';
       setText(li.querySelector('.ob-count'), c ? `${c[0]}/${c[1]}${c[2] ?? ''}` : '');
       if (li.dataset.hint !== h) { li.dataset.hint = h; li.querySelector('.ob-hint').innerHTML = hintHTML(h); }
     }
