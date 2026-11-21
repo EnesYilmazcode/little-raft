@@ -5,11 +5,15 @@
 import { BuildGrid, PIECES, PIECE_ORDER, LEVEL_H, cleanPieces } from './building-pieces.js?build=v3-survival-ae77fa84ac2b';
 import { createPieceGeometry, createPieceMaterial } from './building-models.js?build=v3-survival-ae77fa84ac2b';
 import { createBuildMenu } from './build-menu.js?build=v3-survival-ae77fa84ac2b';
-import { Bag } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 export { cleanPieces };
 const FLOOR_Y = .2, REACH = 7, GHOST_OK = '#9dffc0', GHOST_BAD = '#ff8a73';
 const STORED = PIECE_ORDER.filter(id => PIECES[id].slot !== 'tile');
+const ROTATES = new Set(['stairs', 'roof']); // R turns these; walls/windows/doors/pillars/floors take their axis from the aim
+const MATS = [...new Set(PIECE_ORDER.flatMap(id => Object.keys(PIECES[id].cost)))];
+// "2 Plank" / "1 Plank · 2 Palm Leaf": item display names, never save keys.
+export const costText = c => Object.entries(c).map(([k, n]) => n + ' ' + (ITEM_INFO[k]?.name ?? k)).join(' · ');
 
 export function createBuilding(T, scene) {
   const grid = new BuildGrid(), group = new T.Group(), material = createPieceMaterial(T);
@@ -27,8 +31,12 @@ export function createBuilding(T, scene) {
   const okColor = new T.Color(GHOST_OK), badColor = new T.Color(GHOST_BAD);
   const WHITE = new T.Color(1, 1, 1), tmp = new T.Color(), tintCount = {};
   let tintOf = null; // content hook (paint): p -> T.Color instance tint or null (white = untinted)
+  const lastCounts = MATS.map(() => -1); // chip/wheel cost colours follow the bag (refresh only when a material count changes)
+  // Aimed piece slot for prompts: null, or {ok (green ghost), reason, t, name, cost}. One reused object.
+  const info = {ok:false, reason:'', t:'', name:'', cost:''};
+  let aimInfo = null;
 
-  const menu = createBuildMenu({pieces:PIECE_ORDER.map(id => ({id, name:PIECES[id].name, cost:PIECES[id].cost})), onPick:() => { rot = 0; }});
+  const menu = createBuildMenu({pieces:PIECE_ORDER.map(id => ({id, name:PIECES[id].name, cost:PIECES[id].cost, rotates:ROTATES.has(id)})), onPick:() => { rot = 0; }});
   menu.setAfford(afford);
 
   // Instance placement in raft-local space (the group follows the raft transform every frame).
@@ -73,9 +81,10 @@ export function createBuilding(T, scene) {
   function update(raft, aim, camPos, active, bag, yaw, deckY) {
     group.position.copy(raft.position); group.quaternion.copy(raft.quaternion);
     curBag = bag;
+    if (bag) { let changed = false; for (let k = 0; k < MATS.length; k++) { const c = bag.count(MATS[k]); if (c !== lastCounts[k]) { lastCounts[k] = c; changed = true; } } if (changed) menu.refresh(); }
     menu.setVisible(active);
     if (!active) { removing = false; if (menu.isOpen) menu.close(false); } // hammer put away / UI opened: no stuck wheel or X mode
-    ghost.visible = false; removeTarget = null;
+    ghost.visible = false; removeTarget = null; aimInfo = null;
     let text = '';
     if (active && aim?.dir && !menu.isOpen) {
       origin.copy(camPos);
@@ -93,7 +102,12 @@ export function createBuilding(T, scene) {
         else text = 'Point at a piece to remove';
       } else if (freePiece()) {
         const r = grid.aim(origin.x, origin.y, origin.z, d.x, d.y, d.z, piece(), (yawDir(yaw) + rot) % 4, deckY, REACH, aimOut);
-        if (r) { showGhost(r, r.ok && afford(PIECES[r.t].cost) ? okColor : badColor); text = r.ok ? (afford(PIECES[r.t].cost) ? '' : 'Not enough materials') : r.reason; }
+        if (r) {
+          const def = PIECES[r.t], can = afford(def.cost);
+          showGhost(r, r.ok && can ? okColor : badColor); text = r.ok ? (can ? '' : 'Not enough materials') : r.reason;
+          info.ok = r.ok && can; info.t = r.t; info.name = def.name; info.cost = costText(def.cost);
+          info.reason = r.ok ? (can ? '' : def.name + ' needs ' + info.cost) : r.reason; aimInfo = info;
+        }
       }
     }
     if (text !== chipText) { chipText = text; menu.setChip(text); }
@@ -113,7 +127,7 @@ export function createBuilding(T, scene) {
 
   // Click with the hammer: returns an engine action or null (foundation stays with the engine's own flow).
   function use() {
-    if (!freePiece() || !ghost.visible || !aimOut.ok) return null;
+    if (!freePiece() || !ghost.visible || !aimOut.ok || !aimInfo) return null;
     return {kind:'piece', t:aimOut.t, i:aimOut.i, j:aimOut.j, l:aimOut.l, r:aimOut.r};
   }
   function removeAction() {
@@ -143,7 +157,6 @@ export function createBuilding(T, scene) {
     rebuild();
     return {ok:true, text:a.kind === 'piece' ? def.name + ' built' : def.name + ' removed (materials back)'};
   }
-  const costText = c => Object.entries(c).map(([k, n]) => n + ' ' + k).join(' + ');
 
   // Input from game.js. Returns true when the event was consumed.
   function key(code, down, hammer, repeat = false) {
@@ -164,7 +177,14 @@ export function createBuilding(T, scene) {
     ghostMat.dispose(); material.map?.dispose(); material.dispose();
   }
 
-  return {grid, menu, group, sync, update, use, removeAction, apply, key, dispose, setTint, retint, preview, // setTint/retint/preview: content hook (paint)
+  // Line of sight for decor placement: 'wall' / 'floor' when a built piece stands between the eye and the deck point.
+  const occludes = (eye, p, deckY) => (eye && p ? grid.occludes(eye.x, eye.y, eye.z, p.x, p.y, p.z, deckY) : '');
+  // Extra placement rule for the aimed slot (game.js: decor / grill under level-0 stairs): p -> reason text or ''.
+  const setBlock = fn => { grid.block = typeof fn === 'function' ? fn : null; };
+
+  return {grid, menu, group, sync, update, use, removeAction, apply, key, dispose, setTint, retint, preview, occludes, setBlock, // setTint/retint/preview: content hook (paint)
     get removing() { return removing; }, get piece() { return piece(); }, get rotation() { return rot; },
+    get aim() { return aimInfo; }, // aimed piece slot this frame (null: none / foundation / remove mode / wheel open)
+    get ready() { return !!aimInfo?.ok; }, // a green piece ghost: the click builds (it beats tile repair)
     preStep:(phys, deckY) => grid.preStep(phys, deckY), postStep:(phys, deckY) => grid.postStep(phys, deckY)};
 }

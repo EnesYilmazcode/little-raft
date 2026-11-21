@@ -41,7 +41,7 @@ test('copy says Plank and Foundation, not wood and floor tile', () => {
     assert.doesNotMatch(`${s.title} ${hint}`, /\bwood\b|floor tile/i, s.id);
   }
   assert.equal(O.STEPS.find(s => s.id === 'floor').title, 'Build a foundation');
-  assert.match(src('build-menu.js'), /MAT_NAME = \{ wood: 'plank'/);
+  assert.match(src('build-menu.js'), /MAT_NAME = \{ wood: 'plank'/i);
   assert.match(ITEM_TEXT.hammer.use, /Foundation/);
   assert.doesNotMatch(ITEM_TEXT.hammer.use, /wood|floor/);
   const guide = src('game.js').match(/const guide = \$\('#help \.guide'\);[\s\S]*?const note/)[0];
