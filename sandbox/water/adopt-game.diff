@@ -21,8 +21,8 @@
        m.rotation.set(-s.z * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.x * 1.2 + Math.sin(elapsed + it.phase) * .05);
      }
 +    floaters.length = 0; for (const m of itemMeshes.values()) if (m.visible) floaters.push(ocean.footprint?.(m) ?? [m.position.x, m.position.z, .35]);
-+    ocean.setFloaters?.(floaters, camera.position.x, camera.position.z);
 +    ocean.setBobber?.(hookMesh?.visible ? hookMesh.position : null);
++    ocean.setFloaters?.(floaters, camera.position.x, camera.position.z);
    }
    function endHook() { hook = null; lastCaughtCount = 0; reeling = false; rope.visible = false; hookMesh.visible = false; }
    function updateHook(dt) {

@@ -9,7 +9,7 @@
 //   tier 'c' b + quarter-res planar reflection. Same verdict.
 // API = dist/ocean.js { mesh, update(t, camera), getHeight, getSlope, uniforms, material, dispose }
 //   + setRaft(tiles, x, z, yaw), setRaftPose(x, z, yaw), setFloaters([[x, z, r, hx?, hz?], ...], camX, camZ),
-//   + footprint(object3d) -> [x, z, r, hx, hz] capsule for setFloaters, setBobber(position | null),
+//   + footprint(object3d) -> [x, z, r, hx, hz] capsule for setFloaters, setBobber(position | null) (before setFloaters),
 //   + setAmp(a) (GPU waves + CPU getHeight together), render(renderer, scene, camera) (tiers b/c only).
 //   createOcean() = tier 'a' drop-in.
 // Cost notes (SwiftShader, where the fragment shader dominates): work that only matters near the raft or an
@@ -30,6 +30,7 @@ const SDF_MAX = 8;        // distance encoded in [-2, SDF_MAX] metres
 const FLOAT_RES = 256;    // floater distance map: texels per side, camera-centred
 const FLOAT_SPAN = 64;    // metres covered (0.25 m texels); items further than ~32 m get no foam (it fades by 30-90 m)
 const FLOAT_LO = -0.3, FLOAT_HI = 0.9;   // encoded distance range (m)
+const BOBBER_R = 0.16;    // hook bobber footprint radius (m): the scrap hook at scale .5 is ~.35 m across
 const NOISE_CELLS = 64, NOISE_TEXELS = 8;  // baked lace noise: tiling period (lattice cells), texels per cell
 
 // Value noise baked into a tiling R8 texture (smoothstep-interpolated lattice, sampled NOISE_TEXELS times per
@@ -151,7 +152,6 @@ uniform float uFadeNear;
 uniform float uFadeFar;
 uniform float uFoamStart;    // 1 - J where crest foam begins (absolute, so calm seas stay clean)
 uniform int uDebug;          // 1 planar refl, 2 water thickness, 3 crest pinch, 4 raft sdf
-uniform vec4 uBobber;        // x, z, on (0/1), unused
 #ifdef USE_PREPASS
 uniform sampler2D tScene;
 uniform sampler2D tDepth;
@@ -188,11 +188,6 @@ float glitter(vec2 p) {
 void main() {
   vec3 toCam = cameraPosition - vWorld;
   float dist = length(toCam.xz);
-  if (dist > uFadeFar) {   // fully faded: same result as the fade at the end (skips the rest on GPUs that branch)
-    gl_FragColor = vec4(uSky, 1.0);
-    #include <colorspace_fragment>
-    return;
-  }
   vec3 V = normalize(toCam);
   vec3 L = uSunDir;
   vec2 p = vWorld.xz;
@@ -273,12 +268,10 @@ void main() {
   float raftLace = 0.0;
   if (rd < ${RAFT_REACH.toFixed(2)}) raftLace = (1.0 - smoothstep(0.0, ${RAFT_REACH.toFixed(2)}, rd)) * (0.35 + 1.3 * abs(fract(rd * 0.8 - uTime * 0.29 + vPatch) - 0.5));   // triangle wave: sin costs more
   // 3: items, as capsules shaped by their footprint.
-  float floatLace = 1.0 - smoothstep(-0.1, ${FLOAT_REACH.toFixed(2)}, floatDist(p));
-  // 4: hook bobber: a tight collar and ripple rings running outward (uBobber.z is 0 when it is not on the water).
-  float bd = length(p - uBobber.xy) * uBobber.z + (1.0 - uBobber.z) * 9.0;
-  float bobLace = max(1.0 - bd * 1.35, 0.0) * (0.2 + 1.6 * abs(fract(bd * 2.5 - uTime * 0.8) - 0.5));
-  float bobCore = clamp((0.16 - bd) * 16.0, 0.0, 1.0);
-  float laceMask = max(max(raftLace, floatLace * 0.8), max(bobLace, contact));
+  // Ripple rings run outward from every item (and the hook bobber, which is stamped into the same map).
+  float fd = floatDist(p);
+  float floatLace = (1.0 - smoothstep(-0.1, ${FLOAT_REACH.toFixed(2)}, fd)) * (0.45 + 1.1 * abs(fract(fd * 2.5 - uTime * 0.8) - 0.5));
+  float laceMask = max(max(raftLace, floatLace * 0.8), contact);
 
   // Lace: thin contour lines of a two-octave noise (scrolled with the swell) that widen as the mask grows.
   // Coverage is anti-aliased by the noise's screen footprint, so far-away lines thin out instead of sparkling.
@@ -287,7 +280,7 @@ void main() {
   // inside the branch below).
   float foot = uPixelAngle * dot(toCam, toCam) / max(toCam.y, 0.05 * dist);
   float foam = 0.0;
-  if (laceMask > 0.02 || crestMask > 0.0 || rd < 0.3 || bobCore > 0.0) {
+  if (laceMask > 0.02 || crestMask > 0.0 || rd < 0.3) {
     vec2 fp = p + vec2(uTime * 0.35, uTime * 0.12);
     float n1 = tnoise(fp * 2.1), n2 = tnoise(fp * 4.6 + vec2(uTime * -0.2, uTime * 0.15));
     float iso = abs(n1 * 0.6 + n2 * 0.4 - 0.5), isoAA = foot * 1.2 + 1e-4;
@@ -297,7 +290,7 @@ void main() {
     float crest = clamp((wc - iso) / isoAA + 0.5, 0.0, 1.0) * min(wc * 3.0 / isoAA + 0.3, 1.0) * smoothstep(0.0, 0.08, crestMask);
     float lace = clamp((wl - iso) / isoAA + 0.5, 0.0, 1.0) * min(wl * 3.0 / isoAA + 0.3, 1.0) * smoothstep(0.02, 0.12, laceMask);
     float raftCore = 1.0 - smoothstep(0.0, 0.05 + 0.1 * n1, rd);   // thin ragged collar where logs meet water
-    foam = max(max(crest * 0.85, lace * 0.66), max(raftCore * 0.85, bobCore * 0.8));
+    foam = max(max(crest * 0.85, lace * 0.66), raftCore * 0.85);
     foam *= (1.0 - smoothstep(30.0, 90.0, dist)) * smoothstep(-0.7, -0.3, rd);   // none deep under the deck (plank gaps)
   }
   col *= mix(0.55, 1.0, smoothstep(-1.2, 0.1, rd));                               // occluded water under the raft
@@ -369,7 +362,6 @@ export function createWater(T, options = {}) {
     tFloatMap: { value: floatTex },
     tNoise: { value: noiseTex },
     uFloatBox: { value: new T.Vector3(-FLOAT_SPAN / 2, -FLOAT_SPAN / 2, 1 / FLOAT_SPAN) },
-    uBobber: { value: new T.Vector4(1e4, 1e4, 0, -100) },
     tScene: { value: null },
     tDepth: { value: null },
     uResolution: { value: new T.Vector2(1, 1) },
@@ -532,7 +524,9 @@ export function createWater(T, options = {}) {
     for (const [i0, i1, j0, j1] of floatDirty) for (let j = j0; j <= j1; j++) floatData.fill(255, j * FLOAT_RES + i0, j * FLOAT_RES + i1 + 1);
     floatDirty = [];
     const ox = box.x, oz = box.y, scale = 255 / (FLOAT_HI - FLOAT_LO);
-    for (const f of list) {
+    const n = list.length + (bobberOn ? 1 : 0);
+    for (let fi = 0; fi < n; fi++) {
+      const f = fi < list.length ? list[fi] : bobber;
       const x = f[0], z = f[1], r = f[2], hx = f[3] ?? 0, hz = f[4] ?? 0, l2 = hx * hx + hz * hz, il2 = l2 > 1e-6 ? 1 / l2 : 0;
       const ex = Math.abs(hx) + r + FLOAT_HI, ez = Math.abs(hz) + r + FLOAT_HI;
       // One texel ring at the border is never stamped, so clamped lookups outside the map read 'far'.
@@ -581,11 +575,14 @@ export function createWater(T, options = {}) {
     o[3] = fpAxis.x * s; o[4] = fpAxis.z * s;
     return o;
   }
-  // Hook bobber (Vector3-like or null): foam collar and ripple rings while it sits on the water, plus one
-  // splash ring from the moment it lands.
+  // Hook bobber (Vector3-like or null): while it sits on the water (within .25 m of the surface) it is stamped
+  // into the floater map by the next setFloaters, so it gets the same lace and outward ripple rings as items.
+  // Call it before setFloaters each frame.
+  const bobber = [0, 0, BOBBER_R];
+  let bobberOn = false;
   function setBobber(pos) {
-    const b = uniforms.uBobber.value;
-    if (pos && pos.y - getHeight(pos.x, pos.z) < 0.25) b.set(pos.x, pos.z, 1, 0); else b.z = 0;
+    bobberOn = !!pos && pos.y - getHeight(pos.x, pos.z) < 0.25;
+    if (bobberOn) { bobber[0] = pos.x; bobber[1] = pos.z; }
   }
   // Wave amplitude scale for weather. Updates the shader and the CPU wave table together, so the raft, the
   // swimmer and floating items stay on the drawn surface. (Never set uniforms.uAmp alone.)
