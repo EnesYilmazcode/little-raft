@@ -113,6 +113,22 @@ test('INPUT-2: the first move after the lock is gained is discarded', () => {
   assert.deepEqual(f.filter(5, 1), [5, 1]);
 });
 
+test('INPUT3-2: a 20 fps flick with two 714-count frames turns fully through createInput', () => {
+  const s = live(); s.lock(); s.move(1, 1); s.tick(); // first move after lock is dropped
+  let dx = 0;
+  for (const d of [3, 3, 714, 714, 2, 1]) { s.move(d); s.tick(.05); dx += s.input.lookDelta().dx; }
+  assert.ok(Math.abs(dx - 1437 * .0022) < 1e-9, `turned ${dx}`);
+});
+
+test('INPUT3-2: an isolated spike and the first move after lock are still dropped in createInput', () => {
+  const s = live(); s.lock(); s.move(300, 0); s.tick();
+  assert.equal(s.input.lookDelta().dx, 0, 'first move after lock');
+  let dx = 0;
+  for (const d of [2, 2, -1500, 2, 2]) { s.move(d); s.tick(); dx += s.input.lookDelta().dx; }
+  assert.ok(Math.abs(dx - 8 * .0022) < 1e-9, `turned ${dx}`);
+  assert.doesNotMatch(readFileSync(fileURLToPath(new URL('input.js', base)), 'utf8'), /SPIKE/);
+});
+
 test('INPUT-2: game.js no longer clamps movementX and does not ask for unadjustedMovement', () => {
   assert.doesNotMatch(gameSrc, /clamp\(e\.movement[XY]/);
   assert.match(gameSrc, /lookFilter\.filter\(e\.movementX, e\.movementY\)/);
