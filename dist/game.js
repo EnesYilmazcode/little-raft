@@ -1551,14 +1551,16 @@ export function mount(transfer = null) {
   on(canvas, 'pointerleave', () => { mouse.inside = false; });
   on(canvas, 'pointercancel', () => { down = null; reeling = false; if (charging && charging.x !== null) charging = null; });
   on(canvas, 'contextmenu', e => e.preventDefault());
+  const wheelRotates = e => !!(e.shiftKey || e.ctrlKey || e.altKey) && DECOR_TYPES.includes(heldKind());
   on(window, 'wheel', e => { // window, not canvas: in drag-look the hotbar sits over the canvas and must scroll slots too
     if (!running || uiBlocked() || (!isLocked() && !lockFallback) || !wheelForGame(e.target)) return;
     e.preventDefault();
-    if (controls && isLocked()) return; // controls lane: input.js steps the hotbar while locked (was double-stepping)
+    const fine = wheelRotates(e); // decor fine rotate is ours in every mode; input.js skips these events (ownsWheel)
+    if (controls && isLocked() && !fine) return; // controls lane: input.js steps the hotbar while locked (was double-stepping)
     wheelAcc += wheelDelta(e); // Shift+wheel arrives as deltaX in Chromium
     if (Math.abs(wheelAcc) < 40) return;
     const step = wheelAcc > 0 ? 1 : -1; wheelAcc = 0;
-    if ((e.shiftKey || e.ctrlKey || e.altKey) && DECOR_TYPES.includes(heldKind())) { rotatePlacement(step * FINE_STEP); return; }
+    if (fine) { rotatePlacement(step * FINE_STEP); return; }
     selectSlot((localBag().selectedIndex + step + HOTBAR) % HOTBAR);
   }, {passive:false});
   on($('#resumeHint'), 'click', () => requestLock());
@@ -1597,7 +1599,7 @@ export function mount(transfer = null) {
   try {
     controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
       look:(dx, dy) => { if (!building?.menu.isOpen) look(dx, dy, 1); }, hotbarSize:HOTBAR, // building wheel steals mouse look while open
-      slot:() => localBag().selectedIndex, selectSlot:i => running && selectSlot(i),
+      slot:() => localBag().selectedIndex, selectSlot:i => running && selectSlot(i), ownsWheel:e => running && wheelRotates(e), // Shift/Ctrl/Alt+wheel turns a held decoration
       interact, inventory:openInventory, repair:() => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(ROT_STEP); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
       pause:() => settingsController?.open(),
       useDown:() => { if (castOut()) reeling = true; else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); } },

@@ -218,6 +218,33 @@ test('INPUT3-3: a Space tap inside one 15 fps frame jumps once (createControls -
   c.dispose();
 });
 
+// ---------------------------------------------------------------- INPUT3-5 Shift/Ctrl+wheel fine rotate while locked
+
+test('INPUT3-5: a wheel event the game owns never steps the hotbar (createInput ownsWheel)', () => {
+  const s = live({ownsWheel:e => e.shiftKey || e.ctrlKey}); s.lock();
+  s.wheel({deltaX:100, shiftKey:true}); s.tick();
+  assert.equal(s.input.hotbarStep(), 0, 'Shift+wheel (deltaX in Chromium)');
+  s.wheel({deltaY:100, ctrlKey:true}); s.tick();
+  assert.equal(s.input.hotbarStep(), 0, 'Ctrl+wheel keeps deltaY but is still the game\'s');
+  s.wheel({deltaY:100}); s.tick();
+  assert.equal(s.input.hotbarStep(), 1, 'a plain notch still steps the hotbar');
+});
+
+test('INPUT3-5: createControls forwards ownsWheel; game.js rotates before the locked-controls return', () => {
+  const steps = [];
+  const {c, win} = liveControls({ownsWheel:e => e.shiftKey, selectSlot:i => steps.push(i)});
+  const p = {grounded:true, swimming:false, vx:0, vy:0, vz:0};
+  fire(win, 'wheel', {deltaMode:0, deltaX:100, deltaY:0, shiftKey:true}); c.movement(1 / 60, true, p);
+  fire(win, 'wheel', {deltaMode:0, deltaX:0, deltaY:100, shiftKey:true}); c.movement(1 / 60, true, p);
+  assert.deepEqual(steps, [], 'owned by the game: no hotbar step');
+  fire(win, 'wheel', {deltaMode:0, deltaX:0, deltaY:100}); c.movement(1 / 60, true, p);
+  assert.deepEqual(steps, [1]);
+  c.dispose();
+  const w = gameSrc.slice(gameSrc.indexOf("on(window, 'wheel'"));
+  assert.ok(w.indexOf('const fine = wheelRotates(e)') < w.indexOf('if (controls && isLocked() && !fine) return;'));
+  assert.match(gameSrc, /ownsWheel:e => running && wheelRotates\(e\)/);
+});
+
 // ---------------------------------------------------------------- INPUT-4 wheel over the hotbar
 
 const el = (...inside) => ({closest: sel => inside.some(s => sel.split(',').map(x => x.trim()).includes(s)) ? {} : null});

@@ -19,7 +19,7 @@ const STOP_BRAKE = 8; // 1/s, added to physics' ground rate of 14 when no move i
 function storage() { try { return globalThis.localStorage ?? null; } catch { return null; } }
 const emit = (type, detail) => { try { globalThis.dispatchEvent?.(new CustomEvent(type, {detail})); } catch {} };
 
-// g: {canvas, isBlocked, sensitivity, motion, look(dx,dy), hotbarSize, slot(), selectSlot(i), interact(),
+// g: {canvas, isBlocked, sensitivity, motion, look(dx,dy), hotbarSize, slot(), selectSlot(i), ownsWheel(e), interact(),
 //     inventory(), repair(), pause(), useDown(), useUp(), useCancel(), reelDown(), reelUp(), buildPieces?}
 export function createControls(g) {
   const map = new ActionMap({storage:storage()});
@@ -40,7 +40,7 @@ export function createControls(g) {
     } else if (id === 'buildMenu') radial?.confirm();
     else if (id === 'rotate') call('release'); // let go of a steered sail on any device
   };
-  const input = createInput({element:g.canvas, map, onAction, sensitivity:g.sensitivity,
+  const input = createInput({element:g.canvas, map, onAction, sensitivity:g.sensitivity, ownsWheel:e => !!call('ownsWheel', e),
     isBlocked:() => [...tabs].some(t => t.capturing) || (!!g.isBlocked?.() && !radial?.isOpen)});
 
   function openRadial() {

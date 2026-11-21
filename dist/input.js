@@ -18,6 +18,7 @@ const len = (x, y) => Math.hypot(x, y);
 
 export function createInput({
   target = globalThis.window, element = null, map, isBlocked = () => false, onAction = null,
+  ownsWheel = () => false, // e => true when the game uses this wheel event itself (Shift/Ctrl+wheel fine rotate)
   sensitivity = 1, // number or () => number (game's options.sensitivity)
   getGamepads = () => globalThis.navigator?.getGamepads?.() ?? [],
   now = () => globalThis.performance?.now?.() ?? Date.now(),
@@ -97,6 +98,8 @@ export function createInput({
   on(element || target, 'wheel', e => {
     if (isBlocked() || !locked()) return;
     if (element) e.preventDefault?.();
+    let owned = false; try { owned = !!ownsWheel(e); } catch (err) { console.error('ownsWheel', err); }
+    if (owned) return;                            // never also step the hotbar for the same event
     wheelAcc += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
     // at most one slot per event: a mouse notch is deltaY 100 (or 3 lines) and must not skip a slot; trackpads accumulate
     if (Math.abs(wheelAcc) >= WHEEL_STEP) { tap(wheelAcc > 0 ? 'WheelDown' : 'WheelUp'); wheelAcc = 0; }
