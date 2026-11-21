@@ -5,14 +5,16 @@ world FOV, light like the world around them (including shadows), and move with s
 and use animation.
 
 **Decision: single pass, own projection + depth squash in the vertex shader, rig scaled toward the eye
-(candidate C below), plus a spring-driven motion layer.** Module: `sandbox/viewmodel/viewmodel.js` (drop-in as
-`dist/viewmodel.js`). Adoption: [viewmodel-ADOPT.md](viewmodel-ADOPT.md).
+(candidate C below), plus a spring-driven motion layer, a shade fill, and a small `hands.js` update (hammer strike
+pose, sleeve that runs off-screen).** Modules: `sandbox/viewmodel/viewmodel.js` (drop-in as `dist/viewmodel.js`) and
+`sandbox/viewmodel/hands.js` (proposed `dist/hands.js`). Adoption: [viewmodel-ADOPT.md](viewmodel-ADOPT.md).
 
-Lab: `sandbox/viewmodel/index.html?mode=vm|legacy|naive&scene=idle|walk|charge|swap|use|look|wall|shade|rod|hammer|rope`
+Lab: `sandbox/viewmodel/index.html?mode=vm|legacy|naive&scene=idle|walk|charge|throw|swap|use|look|wall|shade|rod|hammer|rope`
 (extra: `fov` world FOV, default 75 = game default; `vmfov` default 70; `motion` = `options.cameraMotion`, default .35;
-`ocean=0`; `t=<s>` freeze at a time). It imports the real `dist/hands.js`, `hook.js`, `hammer.js`,
+`ocean=0`; `fill=0` shade fill off; `t=<s>` freeze at a time). It imports the real `hook.js`, `hammer.js`,
 `fishing-tool.js`, `ocean.js` and `deck.js`, and wraps the hammer and rod with the same `holdable()` as
-`dist/game.js`, so what you see is the game's viewmodel. `legacy` reproduces `buildViewmodels()` as it ships today.
+`dist/game.js`, so what you see is the game's viewmodel. `vm` mode uses the proposed `sandbox/viewmodel/hands.js`;
+`legacy` and `naive` use the shipping `dist/hands.js`, and `legacy` reproduces `buildViewmodels()` as it ships today.
 Headless check: `python sandbox/viewmodel/shoot.py` drives each scene on a fixed 60 Hz clock and writes
 `sandbox/viewmodel/shots/*.png` + `report.json`.
 
@@ -90,11 +92,45 @@ nothing fights. All springs are fixed-step 120 Hz damped springs (same feel at 3
 | Idle breathing | 0.25 Hz, 3 mm + 0.004 rad, muted 70% while walking | on top of hands.js's own 0.22 Hz arm breathing |
 | Jump / land | lift 12 mm while airborne; landing impulse from the last airborne `vy` | spring k 140 c 13 |
 | Equip swap | lower old tool 0.16 s (smoothstep), switch visibility at the bottom, raise new 0.30 s (easeOutBack) | down: y -0.42, z +0.10, pitch -0.85 rad |
-| Charge | brace: hands drop 12 mm and pull 10 mm in; tension shake over the last 30% | on top of hands.js windup + tremble |
-| Use kick | rising edge of the game's `swing` timer (throw, hammer, rod cast, pickup) | spring k 220 c 16 |
+| Charge | reframe + brace: rig shifts 8 cm left and 2.5 cm up (hands.js pulls the hook back and right; without this it left the screen at full charge), pulls 10 mm in; tension shake over the last 30% | not scaled by the motion slider (framing, not motion) |
+| Use kick | rising edge of the game's `swing` timer. Throw tools (hook, rod, pickup): up-and-back recoil at the click. Hammer (`vm.add(..., {use:'strike'})`): downward jolt timed to the hands.js strike impact (p = .36, ~0.12 s after a full swing, immediately for a pickup's .6 swing) | spring k 220 c 16 |
 
 Swapping fast never shows two tools: the shown tool only changes at the bottom of the lower phase. On spawn the tool
 rises from below (shown starts as null).
+
+## Shade fill
+
+The hands are lit only by the world, so under a sail the steel hook went nearly black (metalness .7, no env map)
+and fists lost their outline against the shaded deck. The same `onBeforeCompile` patch adds, for lit materials only
+(those with `normal_fragment_begin` and `vViewPosition`), right before `opaque_fragment` (after lighting, before
+tone mapping):
+
+```glsl
+float vmF = 1.0 - abs(dot(normal, normalize(vViewPosition)));
+outgoingLight += diffuseColor.rgb * (vmLift + vmRim * vmF * vmF * vmF);   // vmLift .14, vmRim .6
+```
+
+It is tinted by each material's own base colour, so skin stays skin and steel stays grey; in sun it is a faint
+silhouette lift (`01-idle`), in shade it keeps the hook grey-blue and the fists readable while they stay clearly
+shadowed (`14-shade-vm` vs `14b-shade-vm-nofill`). Two shared uniforms, no new program (same `vm|` cache key),
+`vm.setFill(rim, lift)` to tune or `setFill(0, 0)` to turn off.
+
+## hands.js: hammer strike and sleeve
+
+`createHands(T, model, {use:'strike'})` (third argument optional; default `'throw'` keeps today's behaviour) swaps the
+throw sweep for a strike driven by the same `casting` value (the game's `swing`, 1 -> 0 over 0.33 s):
+
+| Phase (p = 1 - casting) | Pose |
+|---|---|
+| 0 - .20 cock | fist up 5 cm and back 2 cm, arm pitched back .2 rad, wrist cocks the head back .3 rad (`09a-hammer-cock`) |
+| .20 - .36 hit | fist down 6.5 cm and forward 4 cm, arm pitched forward .7 rad, wrist snaps 1.05 rad: head lands on the deck (`09c-hammer-impact`) |
+| .36 - .58 rebound | small lift (1.2 cm, .1 rad) |
+| .50 - 1 recover | eases back to the rest pose; the coil hand dips 1 cm with the blow |
+
+The sleeve on both arms now runs from 0.24 to 1.10 m along the forearm (was 0.56, end radius .078 instead of .060),
+so in a throw follow-through the right arm leaves the frame as an arm (`19b-throw-follow`) instead of ending in a
+rounded green club (`19c-throw-legacy`, `09b-use-hammer-kick-legacy`). Only safe with the new layer: the depth-clear
+path would let the sleeve pierce the camera near plane. Triangle count is unchanged (same lathe segments).
 
 ## Hand-anchored world effects (rope, hook launch point)
 
@@ -111,14 +147,17 @@ Shots in `sandbox/viewmodel/shots/` (git-ignored PNGs; regenerate with shoot.py)
 |---|---|
 | `01-idle` | Hook + rope coil at FOV 70 framing, lit by the world sun/hemi |
 | `02/03-walk-bob-*` | Opposite ends of the figure-eight bob |
-| `04-charge-full` vs `04b-...-legacy` | Same hands.js windup; vm adds a brace and tension shake |
+| `04-charge-full` vs `04b-...-legacy` | Same hands.js windup; vm reframes so the whole hook stays on screen (legacy: cut by the right edge) |
 | `05/06/07/08-equip-*` | Hook lowering, hammer rising with overshoot, hammer settled, rod settled |
-| `09-use-hammer-kick` vs `09b-...-legacy` | Kick on use. Both show the sleeve end (see weaknesses) |
+| `09a-hammer-cock`, `09-use-hammer-kick`, `09c-hammer-impact`, `09d-hammer-recover` | Hammer strike at p = .21, .24, .39, .66 |
+| `09b-use-hammer-kick-legacy` | Shipping hammer "swing" (the hook's throw sweep) with the sleeve club |
 | `10-look-sway` | 0.9 rad turn in 0.35 s: hands lag and roll |
 | `11-wall-vm`, `12-wall-legacy`, `13-wall-naive` | Wall 0.17 m from the eye (closer than physics allows): vm and legacy draw the hook, naive loses it |
 | `14-shade-vm` vs `15-shade-legacy` | Under a sail: vm hands are shadowed like the deck; legacy hands glow sunlit |
+| `14b-shade-vm-nofill` | Same as 14 with the shade fill off: hook nearly black |
 | `16-fov95-vm` vs `17-fov95-legacy` | World FOV 95: vm hands unchanged; legacy hands tiny with stretched arms |
 | `18-rope-anchor-vm` | Rope leaves the left-hand coil through `vm.anchor` |
+| `19-throw-release`, `19b-throw-follow` vs `19c-throw-legacy` | Hook throw: long sleeve leaves the frame vs the shipping club end |
 
 Perf (`walk` scene, 120 frames after a 30-frame warm-up; `report.json` has the full output). The machine was shared
 with the rest of the fleet while this ran, so the millisecond columns swing 2-5x between runs and the GPU-synced
@@ -139,11 +178,15 @@ regression beyond noise; they are not usable as absolute numbers (SwiftShader, s
 
 ## Weaknesses / open items
 
-- The `hands.js` throw sweep (used for the hammer and rod too) swings the right forearm so far that the open end of
-  the 0.32 m sleeve shows as a green club for ~0.1 s. Pre-existing (legacy shows it too). ADOPT step 7 lengthens the
-  sleeve to run back past the eye, which the new layer clips cleanly; verified in the lab, not shipped.
-- The hammer uses the hook's throw sweep as its "swing"; a real overhead hammer strike needs a hands.js pose, not a
-  rendering change.
+- The hook throw follow-through still swings the right forearm up past horizontal; with the long sleeve it now reads
+  as an arm leaving the top-right corner, but it covers a large wedge of the screen for ~0.1 s (`19b-throw-follow`).
+  A lower, flatter throw arc in hands.js would be the next step.
+- The hammer strike is a 0.33 s animation because the game's `swing` timer is; the cock phase is only ~70 ms, so it
+  reads as a snap rather than a wind-up. The hammer head faces left at impact (it is held with `ry: PI/2`), so the
+  blow reads as a forward chop more than an overhead nail strike. In game the impact pose sits just above the hotbar.
+- The rod still uses the throw sweep for its cast (fine for a flick, no dedicated cast pose).
+- The shade fill also brightens edges slightly in full sun; .14/.6 was chosen by eye on two scenes, not tuned against
+  time of day (there is none yet).
 - Shadows on the hands are effectively one shadow-map sample region (the rig is ~0.25 m wide, the sun shadow map has
   ~5 cm texels over ±25 m), so hands go in/out of shade as a whole with a soft edge, not with a sharp line across the
   fingers.

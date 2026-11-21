@@ -9,8 +9,8 @@
 // shadows the player stands in, even with the face pressed against a wall.
 //
 // Usage:
-//   const vm = createViewmodel(T, {camera, fov:62});
-//   vm.add('hook', hookHands); vm.add('hammer', hammerHands); ...       // createHands() controllers
+//   const vm = createViewmodel(T, {camera, fov:70});
+//   vm.add('hook', hookHands); vm.add('hammer', hammerHands, {use:'strike'}); ...   // createHands() controllers
 //   each frame, after the camera transform is set and before hands.update():
 //   vm.update({dt, kind, yaw, pitch, walking, walkPhase, grounded, vy, charge, swing, motion});
 //   vm.shown                     -> kind whose hands are drawn now (lags `kind` during an equip swap)
