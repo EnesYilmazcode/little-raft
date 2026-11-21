@@ -1,4 +1,4 @@
-// Original procedural raft foundation tile: hand-cut weathered planks lashed onto two round logs.
+// Original procedural raft foundation tile: wide hand-cut weathered boards lashed onto two round logs over a dark underlay.
 // Usage: import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
 //        const g = createFloor(T, index, color => material); g.position.set(x * 2, 0, z * 2);
 // Local bounds: x,z in [-1, 1], y in [0, ~0.2]. Walkable top surface FLOOR_TOP = 0.20 (unevenness <= 0.017).
@@ -7,8 +7,11 @@
 export const FLOOR_TOP = 0.2;
 export const FLOOR_BOUNDS = Object.freeze({minX:-1, maxX:1, minY:0, maxY:0.2, minZ:-1, maxZ:1});
 
-const PLANK_COLORS = ['#bb8a53', '#c69860', '#ad7c4a'];
-const BEAM_COLOR = '#5e4029', BEAM_END_COLOR = '#9c7649', ROPE_COLOR = '#a8946c', NAIL_COLOR = '#4b4844';
+// Timber keys match wood.js DRIFTWOOD (game.js draws them with the driftwood texture). Every board shares one
+// plank material; per-board tone comes from a vertex colour tint (see tinted()).
+const PLANK_COLOR = '#9c8a5e';
+const BEAM_COLOR = '#5b4e38', BEAM_END_COLOR = '#9a8b64', ROPE_COLOR = '#a8946c', NAIL_COLOR = '#4b4844';
+const UNDER_COLOR = '#2e2519', UNDER_Y = 0.126; // dark lashed underlay: seams between boards read dark brown, not water
 const BEV = 0.011, BEV_T = 0.01, THICK = 0.052;
 const BEAM_R = 0.064, BEAM_Y = 0.072, BEAM_HALF = 0.985;
 
@@ -21,9 +24,10 @@ function makeRng(index) {
 
 // Merge geometries into one non-indexed BufferGeometry (position/normal/uv). Sources are disposed.
 function merge(T, geos) {
-  let count = 0;
-  const parts = geos.map(g => { const n = g.index ? g.toNonIndexed() : g; if (n !== g) g.dispose(); count += n.attributes.position.count; return n; });
+  let count = 0, hasColor = true;
+  const parts = geos.map(g => { const n = g.index ? g.toNonIndexed() : g; if (n !== g) g.dispose(); count += n.attributes.position.count; if (!n.attributes.color) hasColor = false; return n; });
   const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3), uv = new Float32Array(count * 2);
+  const col = hasColor ? new Float32Array(count * 3) : null;
   let o = 0;
   for (const g of parts) {
     const c = g.attributes.position.count;
@@ -32,12 +36,14 @@ function merge(T, geos) {
       if (g.attributes.normal) { nor[(o + i) * 3] = g.attributes.normal.getX(i); nor[(o + i) * 3 + 1] = g.attributes.normal.getY(i); nor[(o + i) * 3 + 2] = g.attributes.normal.getZ(i); }
       if (g.attributes.uv) { uv[(o + i) * 2] = g.attributes.uv.getX(i); uv[(o + i) * 2 + 1] = g.attributes.uv.getY(i); }
     }
+    if (col) col.set(g.attributes.color.array.subarray(0, c * 3), o * 3);
     o += c; g.dispose();
   }
   const out = new T.BufferGeometry();
   out.setAttribute('position', new T.BufferAttribute(pos, 3));
   out.setAttribute('normal', new T.BufferAttribute(nor, 3));
   out.setAttribute('uv', new T.BufferAttribute(uv, 2));
+  if (col) out.setAttribute('color', new T.BufferAttribute(col, 3));
   out.computeBoundingBox(); out.computeBoundingSphere();
   return out;
 }
@@ -83,12 +89,21 @@ function plankGeometry(T, rng, p) {
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i);
     pos.setY(i, pos.getY(i) + p.warp * (1 - z * z));
-    let u = 0.5 + (x - xc) / 0.34 + p.uOff, v = 0.03 + (z + 1) * 0.47;
+    let u = 0.5 + (x - xc) / ((p.x1 - p.x0) * 1.08) + p.uOff, v = 0.03 + (z + 1) * 0.47;
     if (p.flipU) u = 1 - u; if (p.flipV) v = 1 - v;
     uv.setXY(i, u, v);
   }
   g.clearGroups(); g.computeVertexNormals();
+  const c = new Float32Array(pos.count * 3);
+  for (let i = 0; i < c.length; i += 3) { c[i] = p.tint[0]; c[i + 1] = p.tint[1]; c[i + 2] = p.tint[2]; }
+  g.setAttribute('color', new T.BufferAttribute(c, 3));
   return g;
+}
+
+// Per-board tone: brightness +-12% and a slight warm/grey cast, so boards never read as one sheet.
+function boardTint(rng) {
+  const t = 0.88 + rng() * 0.24, w = (rng() - 0.5) * 0.07;
+  return [t * (1 + w), t, t * (1 - w * 1.4)];
 }
 
 const plankSurface = (p, x, z) => p.top + p.roll * (x - (p.x0 + p.x1) / 2) + p.warp * (1 - z * z);
@@ -115,7 +130,7 @@ function beamParts(T, rng, z) {
 }
 
 function lashing(T, rng, x, zb, surf, out) {
-  const R = BEAM_R + 0.008, tube = 0.0055;
+  const R = BEAM_R + 0.008, tube = 0.0075;
   const bottomC = BEAM_Y - BEAM_R - 0.006, topC = surf + 0.007;
   const Ry = (topC - bottomC) / 2, yc = (topC + bottomC) / 2, ky = Ry / R;
   const wraps = 3;
@@ -123,7 +138,7 @@ function lashing(T, rng, x, zb, surf, out) {
     const t = new T.TorusGeometry(R, tube, 3, 8);
     t.rotateY(Math.PI / 2); t.scale(1, ky, 1);
     t.rotateZ((rng() - 0.5) * 0.12);
-    t.translate(x + (w - (wraps - 1) / 2) * 0.016, yc, zb);
+    t.translate(x + (w - (wraps - 1) / 2) * 0.019, yc, zb);
     out.push(t);
   }
   const side = rng() < 0.5 ? -1 : 1;
@@ -136,28 +151,28 @@ function lashing(T, rng, x, zb, surf, out) {
 function floorParts(T, index) {
   const rng = makeRng(index);
 
-  // Plank layout: 7 or 8 planks running along Z, uneven widths, gaps <= ~0.022.
-  const n = rng() < 0.3 ? 7 : 8, pitch = 2 / n;
+  // Plank layout: 3 or 4 wide boards running along Z, uneven widths, tight gaps ~0.004-0.01 (plus bevels).
+  const n = rng() < 0.35 ? 3 : 4, pitch = 2 / n;
   const bounds = [-1];
-  for (let k = 1; k < n; k++) bounds.push(-1 + k * pitch + (rng() - 0.5) * 0.05);
+  for (let k = 1; k < n; k++) bounds.push(-1 + k * pitch + (rng() - 0.5) * 0.12);
   bounds.push(1);
   const beamZ = [-0.78 + (rng() - 0.5) * 0.03, 0.78 + (rng() - 0.5) * 0.03];
   const tileEnd = () => ({slope:0, depth:0.01, chip:false});
-  const splits = new Set(); const splitCount = rng() < 0.5 ? 1 : 2;
+  const splits = new Set(); const splitCount = rng() < 0.6 ? 1 : 2;
   while (splits.size < splitCount) splits.add(Math.floor(rng() * n));
 
   const pieces = [];
   for (let i = 0; i < n; i++) {
-    const x0 = bounds[i] + (i === 0 ? 0.003 : 0.005 + rng() * 0.006);
-    const x1 = bounds[i + 1] - (i === n - 1 ? 0.003 : 0.005 + rng() * 0.006);
+    const x0 = bounds[i] + (i === 0 ? 0.003 : 0.002 + rng() * 0.003);
+    const x1 = bounds[i + 1] - (i === n - 1 ? 0.003 : 0.002 + rng() * 0.003);
     const base = {i, x0, x1, top:0.197 - rng() * 0.011, roll:(rng() - 0.5) * 0.016, warp:(rng() - 0.5) * 0.004,
-      uOff:(rng() - 0.5) * 0.08, flipU:rng() < 0.5, flipV:rng() < 0.5, color:PLANK_COLORS[Math.floor(rng() * PLANK_COLORS.length)]};
+      uOff:(rng() - 0.5) * 0.06, flipU:rng() < 0.5, flipV:rng() < 0.5, color:PLANK_COLOR, tint:boardTint(rng)};
     if (splits.has(i)) {
       const seam = (rng() < 0.5 ? -1 : 1) * (0.15 + rng() * 0.4), slope = (rng() - 0.5) * 0.5;
       const seamEnd = () => ({slope, depth:0.008, chip:true});
       pieces.push({...base, za:-0.997, zb:seam - 0.005, endA:tileEnd(), endB:seamEnd()});
       const other = {...base, top:0.197 - rng() * 0.011, roll:(rng() - 0.5) * 0.016, flipV:!base.flipV,
-        color:PLANK_COLORS[Math.floor(rng() * PLANK_COLORS.length)]};
+        tint:boardTint(rng)};
       pieces.push({...other, za:seam + 0.005, zb:0.997, endA:seamEnd(), endB:tileEnd()});
     } else pieces.push({...base, za:-0.997, zb:0.997, endA:tileEnd(), endB:tileEnd()});
   }
@@ -189,7 +204,7 @@ function floorParts(T, index) {
     for (const [bi, z0] of beamZ.entries()) {
       if (z0 < p.za + 0.06 || z0 > p.zb - 0.06) continue;
       const hw = (p.x1 - p.x0) / 2, xc = (p.x0 + p.x1) / 2;
-      const xs = lashed.has(i + ':' + bi) ? [xc - hw * 0.62, xc + hw * 0.62] : rng() < 0.4 ? [xc + (rng() - 0.5) * hw * 0.5] : [xc - hw * 0.5, xc + hw * 0.5];
+      const xs = lashed.has(i + ':' + bi) ? [xc - hw * 0.7, xc + hw * 0.7] : rng() < 0.5 ? [xc - hw * 0.55, xc + hw * 0.55] : [xc - hw * 0.62, xc + (rng() - 0.5) * hw * 0.2, xc + hw * 0.62];
       for (const x of xs) {
         const z = z0 + (rng() - 0.5) * 0.03;
         const h = new T.CylinderGeometry(0.0105, 0.012, 0.008, 4);
@@ -202,7 +217,10 @@ function floorParts(T, index) {
 
   const parts = [];
   const add = (geos, color, name, castShadow = true) => parts.push({name, color, geometry:merge(T, geos), castShadow});
-  for (const [color, list] of byColor) add(list, color, 'floor-planks');
+  for (const [color, list] of byColor) parts.push({name:'floor-planks', color, geometry:merge(T, list), castShadow:true, tinted:true});
+  // Underlay: one upward-facing dark quad under the boards (hidden except through the seams).
+  const under = new T.PlaneGeometry(2, 2); under.rotateX(-Math.PI / 2); under.translate(0, UNDER_Y, 0);
+  add([under], UNDER_COLOR, 'floor-underlay', false);
   add(beams, BEAM_COLOR, 'floor-logs');
   add(caps, BEAM_END_COLOR, 'floor-log-ends');
   if (ropes.length) add(ropes, ROPE_COLOR, 'floor-lashings', false); // thin rope: shadow is invisible, skip the shadow pass
@@ -210,13 +228,22 @@ function floorParts(T, index) {
   return parts;
 }
 
-const defaultMat = T => c => new T.MeshStandardMaterial({color:c, roughness:0.86});
+const defaultMat = T => c => new T.MeshStandardMaterial({color:c, roughness:0.95});
+
+// Vertex-coloured twin of a supplied material (shares its texture). Cached per source material and flagged
+// shared so callers' dispose sweeps leave it alone, like the source.
+const tintedCache = new WeakMap();
+function tinted(m) {
+  if (!tintedCache.has(m)) { const t = m.clone(); t.vertexColors = true; t.userData.shared = true; t.name = (m.name || 'wood') + '-tinted'; tintedCache.set(m, t); }
+  return tintedCache.get(m);
+}
+const partMat = (mat, p) => p.tinted ? tinted(mat(p.color)) : mat(p.color);
 
 export function createFloor(T, index = 0, getMaterial) {
   const mat = getMaterial || defaultMat(T);
   const g = new T.Group(); g.name = 'raft-floor';
   for (const p of floorParts(T, index)) {
-    const mesh = new T.Mesh(p.geometry, mat(p.color)); mesh.name = p.name;
+    const mesh = new T.Mesh(p.geometry, partMat(mat, p)); mesh.name = p.name;
     mesh.castShadow = p.castShadow; mesh.receiveShadow = true; g.add(mesh);
   }
   g.userData.kind = 'floor';
@@ -238,13 +265,13 @@ export function createRaftMesh(T, tiles, getMaterial) {
     for (const p of floorParts(T, t.index)) {
       p.geometry.applyMatrix4(m4);
       const key = p.color + '|' + p.castShadow;
-      if (!buckets.has(key)) buckets.set(key, {name:p.name, color:p.color, castShadow:p.castShadow, list:[]});
+      if (!buckets.has(key)) buckets.set(key, {name:p.name, color:p.color, castShadow:p.castShadow, tinted:p.tinted, list:[]});
       buckets.get(key).list.push(p.geometry);
     }
   }
   const g = new T.Group(); g.name = 'raft-floors';
   for (const b of buckets.values()) {
-    const mesh = new T.Mesh(merge(T, b.list), mat(b.color)); mesh.name = b.name;
+    const mesh = new T.Mesh(merge(T, b.list), partMat(mat, b)); mesh.name = b.name;
     mesh.castShadow = b.castShadow; mesh.receiveShadow = true; g.add(mesh);
   }
   g.userData.kind = 'floors';

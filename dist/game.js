@@ -2,7 +2,7 @@ import * as T from './vendor/three.module.js';
 import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
 import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
-import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
+import { createWoodMaterial, DRIFTWOOD } from './wood.js?build=v3-survival-ae77fa84ac2b';
 import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings } from './settings.js?build=v3-survival-ae77fa84ac2b';
 import { createRaftMesh } from './deck.js?build=v3-survival-ae77fa84ac2b';
@@ -71,7 +71,7 @@ const CHARGE_MS = 900, MIN_CHARGE = .15, WEAR_PER_CATCH = 2, MAX_HEALTH = 100;
 const ROPE_SEGMENTS = 16, ITEM_FLOAT = .05, CAMERA_ROLL = .2;
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const SUN_OFFSET = Object.freeze([-15, 28, 12]), SHADOW_MARGIN = 4, SHADOW_MIN = 8, SHADOW_MAX = 25; // sun light offset from its target; shadow box half-size limits (m)
-const TIMBER = new Set(['#bb8a53','#c69860','#ad7c4a','#5e4029','#9c7649', '#c8995f', '#d3a368', '#8c6745', '#d5a265', '#a97d4c', '#b4824b', '#906f48', '#725942', '#756a49', '#ad8153']);
+const TIMBER = new Set([...Object.values(DRIFTWOOD), '#bb8a53','#c69860','#ad7c4a','#5e4029','#9c7649', '#c8995f', '#d3a368', '#8c6745', '#d5a265', '#a97d4c', '#b4824b', '#906f48', '#725942', '#756a49', '#ad8153']);
 const STYLE_ID = 'little-raft-engine-style';
 const HUD_CSS = `
 body.playing header,body.playing #hud .inventory,body.playing #hud .goal,body.playing #toast,

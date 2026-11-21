@@ -7,11 +7,12 @@
 //  edge pieces (wall/halfwall/window/door): x in [-1,1], centred on z=0 (~0.14 thick), bottom y=0
 //  floor: x,z in [-1,1], top y=0, bottom -0.12   pillar: centred at origin, 0.22 square, 2.2 tall
 //  stairs: y=0 at z=-1 rising to 2.2 at z=+1     roof: y=0 at z=-1 (eave -1.1) rising to 1.0 at z=+1
-import { createWoodMaterial } from './wood.js';
+import { createWoodMaterial, DRIFTWOOD } from './wood.js';
 
 export const LEVEL_H = 2.2;
-const PLANKS = ['#bb8a53', '#c69860', '#ad7c4a'];
-const BEAM = '#5e4029', POST = '#6e4a2e', BATTEN = '#946640', ROPE = '#a8946c', NAIL = '#4b4844';
+// Same weathered driftwood palette as the raft deck (wood.js DRIFTWOOD); posts/battens are the sun-bleached old browns.
+const PLANKS = [DRIFTWOOD.plank, DRIFTWOOD.plankLight, DRIFTWOOD.plankDark];
+const BEAM = DRIFTWOOD.log, POST = '#685239', BATTEN = '#8d6f4f', ROPE = '#a8946c', NAIL = '#4b4844';
 const STRAW = ['#c9a85a', '#b8954a', '#d4b46a'], LEAF = ['#6f8f3a', '#5c7a30', '#86a04a'];
 const WALL_T = 0.07, POST_X = 0.15, POST_Z = 0.145, EDGE_IN = 0.925;
 
