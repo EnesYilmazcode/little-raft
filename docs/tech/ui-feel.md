@@ -62,7 +62,7 @@ Adoption steps are in `docs/tech/ui-feel-ADOPT.md`.
 
 ## Measurements
 
-`python sandbox/ui-feel/shoot.py [--cost-only] [--reps N]`
+`python sandbox/ui-feel/shoot.py [--cost-only | --shots-only] [--reps N]`
 
 Each scenario drives ~120 frames of input on a fresh page, plus 30 frames of tail. It runs once to warm up
 and is then measured with Chrome's `Performance.getMetrics` (main-thread `RecalcStyle`/`Layout`/`Script`
@@ -74,54 +74,65 @@ transitions, toasts inserted into the DOM with `top`, and reflow-restarted keyfr
 Median of 3. Each run is ~150 frames (120 driven plus 30 tail). Headless Chromium 1243, `--use-angle=swiftshader`.
 Raw data: `sandbox/ui-feel/shots/report.json`.
 
+Each cell is *first prototype -> current*. The first prototype's numbers are from the commit that added this
+doc (70cd56d).
+
 | Scenario (input over 120 frames) | style ms / recalcs | layout ms / layouts | script ms | long tasks |
 |---|---|---|---|---|
-| idle | 0 / 0 | 0 / 0 | 3.98 | 0 |
-| select: 40 hotbar selects | 33.8 / 132 | 0.18 / 2 | 12.3 | 1* |
-| select-nofeel | 7.6 / 40 | 0 / 0 | 2.9 | 0 |
-| pickup: 12 pickups, 21 flying icons, toasts | 47.0 / 150 | 6.6 / 31 | 8.5 | 2* |
-| pickup-nofeel | 0.8 / 11 | 1.6 / 11 | 3.5 | 0 |
-| toast: 30 toasts, merges | 19.0 / 133 | 3.4 / 23 | 3.7 | 0 |
-| stats: 20 damage/heal sets | 23.7 / 150 | **0 / 0** | 3.0 | 1* |
-| crosshair: charge every frame, 2 hits, 6 hover flips | 13.4 / 119 | 1.7 / 16 | 3.3 | 1* |
-| inventory: 4 open/close | 38.1 / 72 | 8.7 / 16 | 3.6 | 6* |
-| inventory-nofeel | 17.4 / 20 | 8.5 / 12 | 3.3 | 1 |
-| naive-select (reflow-restart pop) | 27.5 / 189 | 0 / 0 | 4.0 | 1 |
-| naive-toast (DOM insert + `top`) | 12.1 / 116 | **9.5 / 116** | 3.5 | 0 |
-| naive-stats (width transitions) | 7.6 / 110 | **8.0 / 105** | 3.7 | 0 |
+| idle | 0 / 0 -> **0 / 0** | 0 / 0 -> **0 / 0** | 3.98 -> 3.32 | 0 |
+| select: 40 hotbar selects | 33.8 / 132 -> **32.2 / 135** | 0.18 / 2 -> **0 / 0** | 12.3 -> 10.4 | 2* |
+| select-nofeel | 7.6 / 40 -> 6.9 / 40 | 0 / 0 -> 0 / 0 | 2.9 -> 2.8 | 0 |
+| pickup: 12 pickups, 21 flying icons, toasts | 47.0 / 150 -> **39.0 / 151** | 6.6 / 31 -> **4.5 / 24** | 8.5 -> 7.4 | 5* |
+| pickup-nofeel | 0.8 / 11 -> 0.8 / 11 | 1.6 / 11 -> 1.4 / 11 | 3.5 -> 2.7 | 0 |
+| toast: 30 toasts, merges | 19.0 / 133 -> **16.4 / 130** | 3.4 / 23 -> **2.7 / 16** | 3.7 -> 3.1 | 1* |
+| stats: 20 damage/heal sets | 23.7 / 150 -> **21.7 / 150** | 0 / 0 -> **0 / 0** | 3.0 -> 3.0 | 1* |
+| crosshair: charge every frame, 2 hits, 6 hover flips | 13.4 / 119 -> **11.9 / 123** | 1.7 / 16 -> **1.5 / 14** | 3.3 -> 2.7 | 1* |
+| inventory: 4 open/close | 38.1 / 72 -> **35.5 / 85** | 8.7 / 16 -> **8.7 / 16** | 3.6 -> 3.1 | 4* |
+| inventory-nofeel | 17.4 / 20 -> 14.4 / 20 | 8.5 / 12 -> 7.1 / 12 | 3.3 -> 2.7 | 0 |
+| naive-select (reflow-restart pop) | 27.5 / 189 -> 20.9 / 184 | 0 / 0 -> 0 / 0 | 4.0 -> 3.2 | 1 |
+| naive-toast (DOM insert + `top`) | 12.1 / 116 -> 10.9 / 117 | **9.5 / 116 -> 8.4 / 117** | 3.5 -> 2.9 | 0 |
+| naive-stats (width transitions) | 7.6 / 110 -> 7.3 / 112 | **8.0 / 105 -> 7.6 / 109** | 3.7 -> 3.2 | 1 |
 
 \* Long tasks also appear in `idle`/`nofeel` runs on other repetitions. The machine is shared with other
-headless jobs, so long-task counts and frame times (not shown; avg rAF delta 21-44 ms, including idle) are
-noise here.
+headless jobs, so long-task counts and frame times (not shown) are noise here. Unchanged rows (`*-nofeel`,
+`naive-*`) also came out 5-20% faster in ms on this second pass, from machine load. Compare ms *relative to
+the nofeel row*, and trust the counts most.
 
-Read this as:
+What changed in this pass, and what it bought:
 
-- **Layout: none on the animation path.** Stat bars cause 0 layouts against 105 for width transitions. The
-  toast stack causes 23 layouts for 30 toasts, against 116 for the naive version. The remaining ones are
-  real text changes: the row label, the count, and the fly `+N` label. Each is about 0.15 ms and contained
-  to the element. The select path causes 2 layouts in total: the ResizeObserver at start-up.
-- **Cost moves to style recalcs while something is animating: about 0.2-0.3 ms per animated frame.** For
-  example, select is +26 ms style over ~45 animated frames, and pickup is +46 ms over ~140 frames. In this
-  headless/SwiftShader build, WAAPI transform/opacity animations still tick style on the main thread every
-  frame. On a GPU Chrome, most of them (cursor, fly, toasts, bars) run on the compositor and this drops. The
-  `color`, `box-shadow` and `filter` one-shots (count pop, craft flash, toast merge flash) always tick on the
-  main thread, but they last 260-520 ms. When nothing animates, the cost is zero: compare idle against the
-  quiet tails.
-- **Per event:** a select costs about 0.65 ms style plus 0.24 ms script, the latter including the observer
-  callback. A pickup with flies and toasts costs about 3.9 ms style plus 0.4 ms script, spread over ~45
-  frames. A craft-free inventory open/close pair costs +5 ms style over survival-ui alone (the
-  `@starting-style` transitions).
-- **The stat bar honestly trades layout for style.** Its style time (23.7 ms) is higher than the naive width
-  bar (7.6 ms + 8.0 ms layout), so the totals are similar *on this headless build*. The scaleX version
-  wins on real GPUs, where the transform is composited. It also scales: layout cost grows with the
-  document, while a composited transform does not.
-- The naive reflow-restart (`naive-select`) causes no extra *layout* (style-only dirtiness), but it forces
-  57 more style recalcs than the WAAPI version for the same 40 pops.
+- **Layout counts on the animation path went down: select 2 -> 0, pickup 31 -> 24, toast 23 -> 16, crosshair
+  16 -> 14.** The cause is rule 1b. Every animated node now carries a static 2D transform, so starting or
+  ending a WAAPI transform no longer changes its containing block. The first attempt simply dropped the
+  blanket `will-change`, and that *raised* select to 64 layouts. The static transform is what made removing
+  it free.
+- **About 45 permanent compositor layers removed.** Before, there were `will-change: transform` hints on 16
+  hotbar art/count nodes, 13 overlay children, 6 toast rows and 9 bar layers. Now only the cursor keeps one.
+  This saves GPU memory and layer-tree work on every frame, including idle ones. The headless metrics do
+  not show it.
+- **Main-thread-only animations replaced:** the count pop no longer animates `color`, the toast merge
+  flash animates an overlay's `opacity` instead of `filter`, and the craft flash animates a `::after`
+  overlay's `opacity` instead of `box-shadow`. A select now runs 2 WAAPI animations instead of 3 (the old icon's
+  dip is gone). Pickup style relative to nofeel: +46.1 ms -> +38.2 ms (-17%). Toast: 30 toasts, 7 fewer layouts.
+- **Inventory: +13 style recalcs, the same layout.** This is the price of the top-layer toast stack. The
+  attribute observer sees `open`, and `hidePopover()`/`showPopover()` restyles the stack once per open.
+  It is about 0.4 ms per open/close pair.
+
+Read the rest as before:
+
+- **Layout: none on the animation path.** Stat bars and select cause 0 layouts. Width transitions cause 109.
+  The remaining toast/pickup layouts are real text changes (row label, count, fly `+N` label), each about
+  0.15 ms and contained to the element.
+- **Cost moves to style recalcs while something animates: about 0.2-0.3 ms per animated frame** in this
+  headless/SwiftShader build, where WAAPI transform/opacity still ticks style on the main thread. On a GPU
+  Chrome they run on the compositor. When nothing animates, the cost is zero (idle row).
+- **The stat bar trades layout for style.** Its style time is higher than the naive width bar's, so the
+  totals are similar *on this headless build*. The scaleX version wins where the transform is composited,
+  and its cost does not grow with the document.
 
 Headless-on-shared-CPU frame times (avg and worst rAF delta) and long-task counts are too noisy here to rank
 anything. They swing by 100s of ms between identical runs, including the `idle` and `*-nofeel` rows. The
-style, layout and script times and counts are stable from run to run, and those are what the conclusions
-rest on.
+style, layout and script counts are stable from run to run, and the times drift only with machine load. The conclusions
+rest on the counts first.
 
 ## Key frames (`sandbox/ui-feel/shots/`)
 
