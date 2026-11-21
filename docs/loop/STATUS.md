@@ -1,18 +1,23 @@
 # Integration status
 
-Updated: 2026-11-21, round 1.
-PR: #1 (claude/raft-master -> main), open, not auto-merged.
+Updated: 2026-11-21, round 2 (integrator B, working alongside a parallel integrator on raft-master).
+PR #1 (claude/raft-master -> main): gate passed, merged with a merge commit. A fresh PR is open for the next round.
 
 | Check | State |
 |---|---|
-| npm test | 263/263 pass |
+| npm test | 533/533 pass |
 | Page errors (shoot.py) | none |
 | Fresh spawn: hook only | yes |
 | Esc from inventory: no pause, no cursor | yes |
-| Centred text on play screen | none (the prompt sits 22px right of the crosshair) |
-| fleet-gate | unit passes; playbot/visual/electron tools missing (infra) |
-| Perf vs main | shoot.py 361 vs 243 ms, but its final camera pose differs per branch. At the same pose, master matches main (perf QA) |
+| Esc from the hammer build wheel | closes the wheel only (fixed this round) |
+| Centred text on play screen | none |
+| Perf vs main (fair probe, same pose, median of 3) | 372 vs 369 ms/frame (+0.8%); 148 vs 539 GL draw calls |
 
-Skipped branches: raft-art (own test fails), raft-progression (syntax error), raft-reference (not game code).
+Perf method: the shoot.py camera pose differs per branch, so the gate now uses a probe that starts a fresh solo game,
+touches no input, waits 3 s, and counts WebGL draw calls per frame with an init-script hook (works on main, which has no renderInfo).
 
-Next: pin the camera pose in the perf probe so branches compare fairly, rerun the gate, retry art/progression.
+Still unmerged (conflicts with raft-master; for the next round): loop-ux-*, loop-features-*, loop-perf-*, loop-visuals-202611210451,
+raft-integration (37 newer commits), lane-models, lane-placement, lane-world, raft-reference (docs only).
+
+Open nits from review: Notes panel sits 5px from the bag edge; islands cast shadows (consider off at low/medium);
+"Stretch your legs" hint wraps one word; host allocates a Set per frame at game.js heldTokens path.

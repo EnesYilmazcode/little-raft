@@ -139,3 +139,12 @@ Next ideas:
 - shared plank geometry for startup
 - test the adaptive step-down visuals
 - in-page timing for `toDebugMs`
+
+## 2026-11-21 · integrator round 2
+- Merged fleet-tech/procedural-models, water, perf (clean). Another integrator merged the rest of the clean branches in parallel.
+- PR #1 review (2 reviewers, comments on the PR). Fixed both must-fix findings:
+  - Crafted cup/saltcup/freshcup/purifier/receiver/antenna/seed/research items were dropped by migrateSnapshot on every load, hot-swap and co-op update. items.js now accepts kinds registered from ITEM_INFO; new test round-trips every kind.
+  - Pickup feed overlapped the journal chip and the notice feed; it now stacks above the chip, with the notice feed above five rows.
+- Also fixed: Escape with the hammer build wheel open opened the pause menu.
+- Gate: 533/533, no page errors, hook-only spawn, Esc from inventory OK, perf +0.8% vs main (fair probe), draw calls 148 vs 539.
+- Merged PR #1 into main.
