@@ -299,8 +299,11 @@ export function mount(transfer = null) {
     rope = new T.Line(ropeGeo, new T.LineBasicMaterial({color:'#e9d39a'})); rope.visible = false; rope.frustumCulled = false; scene.add(rope);
     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
     buildViewmodels();
-    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scene.add(g); }
-    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; scene.add(g); }
+    const islands = [], clouds = []; // static distant scenery, baked into a few world-space meshes below
+    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); islands.push(g); }
+    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; clouds.push(g); }
+    for (const m of bakeScenery(islands, true)) { m.name = 'islands'; scene.add(m); }
+    for (const m of bakeScenery(clouds)) { m.name = 'clouds'; scene.add(m); }
     rebuildRaft();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     syncItems(); refreshPointerUI(true);
@@ -331,6 +334,39 @@ export function mount(transfer = null) {
     camera.add(hands.group);
   }
 
+  // Bakes static groups into one world-space mesh per material (3 draw calls instead of ~190 meshes).
+  // With colorize, every untextured part shares one vertex-coloured material (same roughness/metalness as mat()).
+  // Distant scenery sits outside the shadow frustum, so it neither casts nor receives shadows.
+  function bakeScenery(groups, colorize = false) {
+    const buckets = new Map(), tint = new T.Color();
+    for (const g of groups) {
+      g.updateMatrixWorld(true);
+      g.traverse(c => {
+        if (!c.isMesh) return;
+        const plain = colorize && !c.material.map, key = plain ? 'plain' : c.material;
+        if (!buckets.has(key)) buckets.set(key, []);
+        const geo = c.geometry.index ? c.geometry.toNonIndexed() : c.geometry.clone(); c.geometry.dispose();
+        geo.applyMatrix4(c.matrixWorld);
+        if (plain) { tint.copy(c.material.color); const n = geo.attributes.position.count, col = new Float32Array(n * 3); for (let i = 0; i < n; i++) { col[i * 3] = tint.r; col[i * 3 + 1] = tint.g; col[i * 3 + 2] = tint.b; } geo.setAttribute('color', new T.BufferAttribute(col, 3)); }
+        buckets.get(key).push(geo);
+      });
+    }
+    const out = [];
+    for (const [key, parts] of buckets) {
+      const merged = new T.BufferGeometry();
+      for (const name of Object.keys(parts[0].attributes)) {
+        const size = parts[0].attributes[name].itemSize, total = parts.reduce((n, p) => n + p.attributes[name].array.length, 0), arr = new Float32Array(total);
+        let off = 0; for (const p of parts) { arr.set(p.attributes[name].array, off); off += p.attributes[name].array.length; }
+        merged.setAttribute(name, new T.BufferAttribute(arr, size));
+      }
+      for (const p of parts) p.dispose();
+      merged.computeBoundingSphere();
+      const material = key === 'plain' ? new T.MeshStandardMaterial({vertexColors:true, roughness:.85, metalness:0}) : key;
+      const m = new T.Mesh(merged, material); m.castShadow = false; m.receiveShadow = false; m.matrixAutoUpdate = false;
+      out.push(m);
+    }
+    return out;
+  }
   function palm(parent, x, y, z, s = 1) {
     const g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); cylinder(.09, .17, 1.6, '#ad8153', 0, .8, 0, g);
     for (let i = 0; i < 7; i++) { const l = new T.Mesh(new T.ConeGeometry(.28, 1.5, 4), mat(i % 2 ? '#519b55' : '#72ae59')); l.rotation.z = 1.2; l.rotation.y = i * Math.PI * 2 / 7; l.position.set(Math.sin(i * Math.PI * 2 / 7) * .5, 1.65, Math.cos(i * Math.PI * 2 / 7) * .5); g.add(l); }
