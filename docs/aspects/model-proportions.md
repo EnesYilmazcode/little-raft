@@ -73,13 +73,13 @@ Little Raft values are below. The "Raft-equivalent" column uses E_LR = 1.6 and h
 
 | Quantity | Little Raft now | Ratio | Raft (Section 2) |
 |---|---|---|---|
-| Tile | `player-physics.js:15` TILE_SIZE 2; `deck.js:8` bounds ±1; `game.js:350` `x*2` | E/T = 1.6/2 = **0.80** | E/T ≈ **1.0** (C1) |
+| Tile | `player-physics.js:15` TILE_SIZE 2; `deck.js:8` bounds ±1; `game.js:353` `x*2` | E/T = 1.6/2 = **0.80** | E/T ≈ **1.0** (C1) |
 | Eye | `player-physics.js:13` EYE_OFFSET 1.6; `game.js:37` EYE_OFFSET 1.6; `avatar.js:158` eyeHeight 1.65 | eye/C = 0.92 (avatar head top ≈1.79, 1.895 with hat) | 0.92-0.93 (C2) ✓ |
 | Character | about 1.8 m (measured bbox 0.75 x 1.895 x 0.70 with hat) | C/T = 0.90 | C/T ≈ 1.05-1.1 |
 | Deck height | `deck.js:7` FLOOR_TOP 0.2, planks THICK 0.052 (`deck.js:12`), beams r 0.064 (`deck.js:13`) | 0.10 T, 0.125 E | 0.07-0.13 T, about 0.1 E ✓ |
 | Planks per tile | `deck.js:141`: 7-8 planks per 2 m (0.25-0.29 m wide) | 0.17 E per plank | 5 per tile (0.2 E) ✓ |
 | Build ghost | `game.js:294` BoxGeometry(1.9, .13, 1.9) | n/a | n/a |
-| Wall | none. Tallest decor: sail mast 3.8 (`game.js:355`), lantern pole 1.8 | n/a | 1.56 T = 1.6 E (C4) |
+| Wall | none. Tallest decor: sail mast 3.8 (`game.js:358`), lantern pole 1.8 | n/a | 1.56 T = 1.6 E (C4) |
 | Plank debris | `debris.js:357` fit 1.6; measured 1.53 x 0.16 x 0.30 | 0.87 h | 0.77-0.81 h (C5), slightly large |
 | Leaf | `debris.js:358` fit 1.75; measured 1.25 x 0.26 x 1.10 | 0.71 h | 0.70 h ✓ |
 | Scrap | `debris.js:359` fit 1.2; measured 0.93 x 0.32 x 0.60 | 0.53 h | not measured |
@@ -87,7 +87,7 @@ Little Raft values are below. The "Raft-equivalent" column uses E_LR = 1.6 and h
 | Plastic | `game.js:373` createPlastic x 0.85; measured 0.52 x 0.60 x 0.35 | 0.30-0.34 h | 0.42-0.46 h (C8), 25-30% small |
 | Hook in world | `game.js:297` `hookMesh.scale.setScalar(.5)`; measured 0.36 x 0.42 x 0.20 | 0.22 C | 0.10-0.12 C (C10), about 2x large |
 | Rope | `game.js:296` `T.Line` with LineBasicMaterial, a 1 px hairline at any distance. `rope.js:19` createRope (tube, radius 0.012, `MAX_RADIUS 0.02` at `rope.js:8`) is not imported anywhere | n/a | 0.012 C, about 2 cm solid tube (C11) |
-| Crop plot | none. Nearest is the "palm" planter (`game.js:356`), cylinder r 0.38/0.28 x 0.5 tall | 0.42 C wide, 0.28 C tall | 0.6 C wide, 0.17 C rim (C12) |
+| Crop plot | none. Nearest is the "palm" planter (`game.js:359`), cylinder r 0.38/0.28 x 0.5 tall | 0.42 C wide, 0.28 C tall | 0.6 C wide, 0.17 C rim (C12) |
 | Islands | `game.js:300`: 12 islands at 65-90 m; cylinder r 3-5 x 0.8 + sphere r 3.4 + palm x 1.4 (about 2.9 m) | width about 10 m = 5.7 h; height about 4.8 m = 2.7 h | 16-28 h wide, 5-9 h tall (C13) |
 | Fog | `game.js:290` ocean fadeFar 125 | n/a | n/a |
 
@@ -97,7 +97,7 @@ Summary: the player and small props are internally consistent. The tile is about
 
 1. **#1 Tighten the tile to player ratio to about E/T = 1.0.** Change TILE_SIZE 2 → 1.6 in `player-physics.js:15` and carry it through everywhere a tile is assumed:
    - `deck.js`: FLOOR_BOUNDS ±0.8, `pitch = 1.6/n` with n = 5-6, beam half-length and beamZ scaled by 0.8.
-   - `game.js`: every `x * 2` / `z * 2` (about 17 sites, e.g. `game.js:350`, `game.js:366`, `game.js:370`), the ghost box 1.9 → 1.52 (`game.js:294`), and `* 2` in spawnPoint and makeItem.
+   - `game.js`: every `x * 2` / `z * 2` (about 17 sites, e.g. `game.js:353`, `game.js:356-357`, `game.js:366`, `game.js:370`), the ghost box 1.9 → 1.52 (`game.js:294`), and `* 2` in spawnPoint and makeItem.
 
    Keep the eye at 1.6. This change is what makes the deck feel like a crowded raft and gives every other prop its intended scale. As an interim step, 1.75 m (E/T 0.91). Impact H, effort L.
 2. **#2 Give the hook rope physical thickness.** Replace the `T.Line` at `game.js:295-296` with `createRope` from `rope.js`, radius 0.010-0.012 (about 0.012 C), and feed `hook.ropePoints` to it. A world-space tube thins naturally with distance and catches light. Keep a minimum on-screen width so it never disappears. Impact H, effort S-M.
@@ -115,7 +115,7 @@ Summary: the player and small props are internally consistent. The tile is about
 7. **#7 Unify the eye constants.** `avatar.js:158` eyeHeight 1.65 vs `player-physics.js:13` and `game.js:37` 1.6: choose one (1.6) and import it, so the remote avatar's head lines up with where the local camera is. Impact L, effort S.
 8. **#8 Crop plot proportions when farming lands.**
    - Footprint about 0.6 C ≈ 1.1 m square (about 0.7 T after #1), with a low rim of 0.17 C ≈ 0.3 m.
-   - The existing palm planter (`game.js:356`, 0.5 m tall) is taller than this rim. Keep tall pots for decor and use low wide boxes for crops so crops read at deck level.
+   - The existing palm planter (`game.js:359`, 0.5 m tall) is taller than this rim. Keep tall pots for decor and use low wide boxes for crops so crops read at deck level.
 
    Impact L-M, effort S.
 9. **#9 Plank count per tile after #1.** With a 1.6 m tile, use 5-6 planks (`deck.js:141`, n = 7|8 → 5|6) so each board stays about 0.27-0.32 m wide (Raft: 0.2 T). This keeps the grain scale and the "few big boards per tile" readability. Impact L, effort S.
