@@ -150,11 +150,29 @@ async function main() {
 
   // ---------- (4) middle-click ping ----------
   const pingBefore = (await feedLog(host)).filter(t => /look here/i.test(t)).length;
+  await guest.evaluate(() => { window.__pd = []; document.addEventListener('pointerdown', e => window.__pd.push([e.button, e.target.id || e.target.tagName]), true); });
   await guest.mouse.move(CX, CY + 60); await guest.waitForTimeout(100);
   await guest.mouse.click(CX, CY + 60, {button:'middle'});
   const pinged = await waitFor(host, n => window.__feedLog.filter(t => /look here/i.test(t)).length > n, pingBefore, 3000);
-  check('4 middle-click ping reaches host', pinged, {hostFeed:(await feedLog(host)).slice(-3), guestAimNull:await guest.evaluate(() => !window.raftDebug.state.running)});
+  check('4 middle-click ping reaches host', pinged, {hostFeed:(await feedLog(host)).slice(-3), guest:await guest.evaluate(([x, y]) => ({running:window.raftDebug.state.running, under:document.elementFromPoint(x, y)?.id || document.elementFromPoint(x, y)?.tagName, pd:window.__pd, me:window.raftDebug.state.me, sent:JSON.parse(JSON.stringify(coopChaos.bytes.sent))}), [CX, CY + 60])});
 
+  if (process.env.PROBE) console.error('PROBE', JSON.stringify(await guest.evaluate(async () => {
+    const c = document.getElementById('world'), b0 = coopChaos.bytes.sent.coop;
+    c.dispatchEvent(new PointerEvent('pointermove', {clientX:480, clientY:330, bubbles:true}));
+    await new Promise(r => setTimeout(r, 100));
+    c.dispatchEvent(new PointerEvent('pointerdown', {clientX:480, clientY:330, button:1, buttons:4, bubbles:true, cancelable:true}));
+    await new Promise(r => setTimeout(r, 100));
+    return {delta:coopChaos.bytes.sent.coop - b0, peer:coopDebug.peer};
+  })));
+  if (process.env.PROBE) {
+    const b = () => guest.evaluate(() => coopChaos.bytes.sent.coop);
+    let b0 = await b(); await guest.mouse.move(CX + 20, CY + 50); await guest.waitForTimeout(100); await guest.mouse.click(CX + 20, CY + 50, {button:'middle'}); await guest.waitForTimeout(200);
+    console.error('PROBE pw move+pw click', await b() - b0);
+    b0 = await b(); await guest.mouse.down({button:'middle'}); await guest.waitForTimeout(200); await guest.mouse.up({button:'middle'}); await guest.waitForTimeout(200);
+    console.error('PROBE pw down/up', await b() - b0);
+    b0 = await b(); await guest.evaluate(() => document.getElementById('world').dispatchEvent(new PointerEvent('pointerdown', {clientX:500, clientY:320, button:1, buttons:4, bubbles:true, cancelable:true}))); await guest.waitForTimeout(200);
+    console.error('PROBE synthetic down only', await b() - b0);
+  }
   // ---------- (5) emote Z ----------
   await guest.keyboard.press('KeyZ');
   const waved = await waitFor(host, () => window.__feedLog.some(t => /waves/i.test(t)), null, 3000);

@@ -3,13 +3,15 @@
 // createRemoteRope:  the brother's hook + rope line, same look as the local one, tinted toward his blue.
 // createRemoteGhost: the brother's build preview tile with a pulsing outline.
 // Nothing touches the DOM; all geometry/materials are created once and reused (no per-frame allocation).
-import { createHook } from './hook.js';
 
 const MINE = '#efae55', THEIRS = '#70a7e4';
 const ROPE = '#e9d39a', GHOST_OK = '#b6ffd0', GHOST_BAD = '#ee8e75';
 const DECOR = new Set(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
-const fin = (...v) => v.every(Number.isFinite);
+const fin = Number.isFinite;   // fixed-arity checks below: no rest-arg arrays in per-frame paths
+const fin2 = (a, b) => fin(a) && fin(b);
+const fin3 = (a, b, c) => fin(a) && fin(b) && fin(c);
+const groundY = (ocean, x, z) => (ocean ? ocean.getHeight(x, z) + 0.03 : -Infinity);
 
 function disposeTree(root) {
   root.traverse(o => {
@@ -49,7 +51,7 @@ export function createPings(T, scene) {
   }
 
   function add({ x, y, z, mine = false, label = '' } = {}) {
-    if (!fin(x, y, z)) return null;
+    if (!fin3(x, y, z)) return null;
     // reuse a free slot of this owner, else the oldest one
     let s = null;
     for (const c of slots) {
@@ -101,6 +103,32 @@ export function createPings(T, scene) {
 // ---------------------------------------------------------------- remote rope + hook
 const SEGS = 16, FLAT_Y = 0.05;   // FLAT_Y = hook-physics WATER_Y
 
+// Low-poly third-person stand-in for hook.js's scrap hook (~270 tris / 6 meshes instead of 8.8k / 18):
+// same frame and proportions (wooden handle down -Y with rope wrap + dangling rope eye, iron shank
+// curving up and over toward -Z, cone point), re-centred on its bounding box like createHook.
+function createFlyingHook(T, tint) {
+  const root = new T.Group(), inner = new T.Group(); root.add(inner);
+  const M = (c, metalness, roughness) => new T.MeshStandardMaterial({ color: new T.Color(c).lerp(tint, 0.3), metalness, roughness, flatShading: true });
+  const steel = M(0x8ca8ac, 0.7, 0.3), iron = M(0x5f7376, 0.75, 0.45), wood = M(0x8a6a45, 0, 0.9), rope = M(0xb89a64, 0, 0.95);
+  const add = (g, m, x = 0, y = 0, z = 0) => { const o = new T.Mesh(g, m); o.position.set(x, y, z); o.castShadow = false; inner.add(o); return o; };
+  const HX = 0.2, R = 0.022;
+  const curve = new T.CatmullRomCurve3([[HX, -0.08, 0], [HX, 0.12, -0.01], [0.17, 0.27, -0.05], [0.06, 0.38, -0.12], [-0.1, 0.4, -0.2],
+    [-0.25, 0.34, -0.26], [-0.34, 0.2, -0.28], [-0.33, 0.06, -0.25], [-0.24, 0, -0.2], [-0.15, 0.04, -0.16], [-0.11, 0.11, -0.13]]
+    .map(p => new T.Vector3(p[0], p[1], p[2])), false, 'centripetal');
+  add(new T.TubeGeometry(curve, 12, R, 5, false), steel);                       // 120 tris
+  const end = curve.getPoint(1), dir = curve.getTangent(1).normalize();
+  const tip = add(new T.ConeGeometry(R, 0.075, 5), steel);                      // 10
+  tip.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), dir); tip.position.copy(end).addScaledVector(dir, 0.0375);
+  add(new T.CylinderGeometry(0.05, 0.053, 0.075, 6), iron, HX, -0.09, 0);       // ferrule, 24
+  add(new T.CylinderGeometry(0.042, 0.046, 0.265, 6), wood, HX, -0.2575, 0);   // handle, 24
+  add(new T.CylinderGeometry(0.05, 0.05, 0.16, 6), rope, HX, -0.25, 0);         // rope wrap, 24
+  const eye = add(new T.TorusGeometry(0.04, 0.01, 4, 8), rope, HX + 0.13, -0.305, 0.03); // rope eye, 64
+  eye.rotation.set(0.2, 0.3, 0.5);
+  const box = new T.Box3().setFromObject(inner), c = new T.Vector3();
+  inner.position.sub(box.getCenter(c));
+  return root;
+}
+
 export function createRemoteRope(T, scene) {
   const tint = new T.Color(THEIRS);
   const attr = new T.BufferAttribute(new Float32Array((SEGS + 1) * 3), 3);
@@ -110,25 +138,23 @@ export function createRemoteRope(T, scene) {
   line.frustumCulled = false; line.visible = false; line.name = 'coopRope';
   scene.add(line);
 
-  const hook = createHook(T); hook.scale.setScalar(0.5); hook.visible = false; hook.name = 'coopHook';
-  hook.traverse(o => { if (o.isMesh) { o.material.color.lerp(tint, 0.3); o.castShadow = false; } });
+  const hook = createFlyingHook(T, tint); hook.scale.setScalar(0.5); hook.visible = false; hook.name = 'coopHook';
   scene.add(hook);
 
   let sag = 0, lift = 0, spin = 0;   // smoothed shape params so stage changes ease instead of popping
   function hide() { line.visible = false; hook.visible = false; }
 
   function update(dt, hand, h, ocean, time = 0) {
-    if (!hand || !h || h.stage === 'done' || !fin(hand.x, hand.y, hand.z, h.x, h.y, h.z)) { hide(); sag = lift = 0; return; }
+    if (!hand || !h || h.stage === 'done' || !fin3(hand.x, hand.y, hand.z) || !fin3(h.x, h.y, h.z)) { hide(); sag = lift = 0; return; }
     const st = h.stage, water = st === 'floating' || st === 'fishing';
     const dx = h.x - hand.x, dy = h.y - hand.y, dz = h.z - hand.z, d = Math.hypot(dx, dy, dz);
     const k = Math.min(1, dt * 6);
     sag += ((water ? Math.min(2.4, 0.4 + d * 0.16) : st === 'reeling' ? d * 0.015 : 0) - sag) * k;
     lift += ((st === 'flying' ? Math.min(1.4, d * 0.12) : 0) - lift) * k;
-    const ground = (x, z) => (ocean ? ocean.getHeight(x, z) + 0.03 : -Infinity);
 
     // sender reports flat physics water (y≈.05); map near-water heights onto the visible waves like game.js surfaceY
     let hy = h.y;
-    if (ocean) { const w = ground(h.x, h.z) + 0.01 + (h.y - FLAT_Y); hy = w + (h.y - w) * clamp((h.y - FLAT_Y) / 0.6, 0, 1); }
+    if (ocean) { const w = groundY(ocean, h.x, h.z) + 0.01 + (h.y - FLAT_Y); hy = w + (h.y - w) * clamp((h.y - FLAT_Y) / 0.6, 0, 1); }
     if (water) hy += Math.sin(time * 2.2) * 0.015;
 
     const a = attr.array;
@@ -137,7 +163,7 @@ export function createRemoteRope(T, scene) {
       // skewed sag: slack rope hangs lowest nearer the hook end, like a catenary from a raised hand
       const x = hand.x + dx * t, z = hand.z + dz * t;
       let y = hand.y + (hy - hand.y) * t + lift * bow - sag * bow * (0.7 + 0.6 * t) * 0.8;
-      if (water && i > 0) y = Math.max(y, ground(x, z));
+      if (water && i > 0) y = Math.max(y, groundY(ocean, x, z));
       a[i * 3] = x; a[i * 3 + 1] = y; a[i * 3 + 2] = z;
     }
     attr.needsUpdate = true; line.visible = true;
@@ -170,7 +196,7 @@ export function createRemoteGhost(T, scene) {
 
   function update(ghost, deckY = 0.2, time = 0) {
     const dt = Number.isFinite(last) && time > last ? Math.min(0.1, time - last) : 1 / 60; last = time;
-    const on = !!ghost && fin(ghost.x, ghost.z);
+    const on = !!ghost && fin2(ghost.x, ghost.z);
     if (on) {
       target.set(ghost.x * 2, (Number.isFinite(deckY) ? deckY : 0.2) + 0.09, ghost.z * 2);
       if (!have || g.position.distanceTo(target) > 2.5) g.position.copy(target);   // snap on jumps, glide on neighbours

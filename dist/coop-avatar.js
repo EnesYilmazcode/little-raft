@@ -5,6 +5,9 @@
 // Built on createAvatar (./avatar.js). Held items are tiny own low-poly models (~40-250 tris each; the
 // first-person hook/hammer/rod factories are 6-13k tris, too heavy for a third-person prop), built lazily
 // and cached per kind. update() allocates nothing. Name tag needs a DOM (or OffscreenCanvas); skipped in Node.
+// Draw calls: createAvatar's 36 meshes are baked into one mesh per rigid pivot (body, legs, arms, head+hat)
+// with per-vertex colour + roughness on one shared material (exact same shading), plus the emissive eye shine
+// and the flat-shaded straw: 8 meshes instead of 36. Pivots in body.userData.parts stay animatable.
 import { createAvatar } from './avatar.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -19,6 +22,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother' } = 
   const body = createAvatar(T, color);          // bob / lean happen on body, world pose on group
   group.add(body);
   const P = body.userData.parts;
+  const baked = bakeAvatar(T, body);
 
   // ---------------------------------------------------------------- held item models (own art)
   const geos = [], mats = [];
@@ -33,7 +37,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother' } = 
   });
   // part(parent, geometry, material, x,y,z, rx,ry,rz)
   const part = (p, g, m, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => {
-    const o = new T.Mesh(G(g), m); o.position.set(x, y, z); o.rotation.set(rx, ry, rz); o.castShadow = true; p.add(o); return o;
+    const o = new T.Mesh(G(g), m); o.position.set(x, y, z); o.rotation.set(rx, ry, rz); p.add(o); return o;   // tiny props: no shadow pass
   };
   const Cyl = (r0, r1, h, n = 6) => new T.CylinderGeometry(r0, r1, h, n);
   const Box = (x, y, z) => new T.BoxGeometry(x, y, z);
@@ -238,7 +242,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother' } = 
 
   function dispose() {
     if (group.parent) group.parent.remove(group);
-    body.userData.dispose();
+    body.userData.dispose(); baked.dispose();
     for (const g of geos) g.dispose();
     for (const m of mats) m.dispose();
     geos.length = mats.length = 0; cache.clear(); cur = null;
@@ -247,4 +251,81 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother' } = 
   }
 
   return { group, update, handWorld, setName, dispose };
+}
+
+// ---------------------------------------------------------------- avatar draw-call baking
+// Merge every mesh that hangs (directly, or via a rigid sub-group such as the hat) off one pivot into one
+// geometry per material class. Plain MeshStandardMaterials that differ only in colour/roughness share one
+// material driven by vertex colour + a per-vertex roughness attribute; anything else (emissive, flat
+// shading, ...) merges per original material. Bakes positions/normals with the local matrices.
+const PLAIN = (m) => m.isMeshStandardMaterial && !m.flatShading && !m.map && !m.transparent && m.metalness === 0 &&
+  m.emissive.r === 0 && m.emissive.g === 0 && m.emissive.b === 0;
+
+function bakeAvatar(T, body) {
+  const P = body.userData.parts;
+  const pivots = [body, P.head, P.leftArm, P.rightArm, P.leftLeg, P.rightLeg];
+  const owned = [];
+  const shared = new T.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 1, metalness: 0 });
+  shared.onBeforeCompile = (sh) => {
+    sh.vertexShader = 'attribute float rough;\nvarying float vRough;\n' +
+      sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvRough = rough;');
+    sh.fragmentShader = 'varying float vRough;\n' +
+      sh.fragmentShader.replace('#include <roughnessmap_fragment>', 'float roughnessFactor = vRough;');
+  };
+  shared.customProgramCacheKey = () => 'coopAvatarVertexRough';
+  owned.push(shared);
+  const m4 = new T.Matrix4(), n3 = new T.Matrix3(), v = new T.Vector3();
+
+  for (const pivot of pivots) {
+    const buckets = new Map();   // material -> [{mesh, matrix}]
+    const collect = (node, parentM) => {
+      for (const c of node.children.slice()) {
+        if (pivots.includes(c)) continue;
+        c.updateMatrix();
+        const m = parentM ? parentM.clone().multiply(c.matrix) : c.matrix.clone();
+        if (c.isMesh) {
+          const key = PLAIN(c.material) ? shared : c.material;
+          if (!buckets.has(key)) buckets.set(key, []);
+          buckets.get(key).push({ mesh: c, m });
+          node.remove(c);
+        } else if (c.children.length) collect(c, m);   // rigid sub-group (hat): its meshes bake into the pivot
+      }
+    };
+    collect(pivot, null);
+    for (const [mat, list] of buckets) {
+      let nv = 0, ni = 0;
+      for (const { mesh } of list) { const g = mesh.geometry; nv += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; }
+      const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), uv = new Float32Array(nv * 2);
+      const col = mat === shared ? new Float32Array(nv * 3) : null, rough = mat === shared ? new Float32Array(nv) : null;
+      const idx = new (nv > 65535 ? Uint32Array : Uint16Array)(ni);
+      let vo = 0, io = 0;
+      for (const { mesh, m } of list) {
+        const g = mesh.geometry, gp = g.attributes.position, gn = g.attributes.normal, gu = g.attributes.uv, n = gp.count;
+        n3.getNormalMatrix(m);
+        for (let i = 0; i < n; i++) {
+          v.fromBufferAttribute(gp, i).applyMatrix4(m); v.toArray(pos, (vo + i) * 3);
+          v.fromBufferAttribute(gn, i).applyMatrix3(n3).normalize(); v.toArray(nor, (vo + i) * 3);
+          if (gu) { uv[(vo + i) * 2] = gu.getX(i); uv[(vo + i) * 2 + 1] = gu.getY(i); }
+          if (col) { const c = mesh.material.color; col[(vo + i) * 3] = c.r; col[(vo + i) * 3 + 1] = c.g; col[(vo + i) * 3 + 2] = c.b; rough[vo + i] = mesh.material.roughness; }
+        }
+        if (g.index) for (let i = 0; i < g.index.count; i++) idx[io++] = g.index.getX(i) + vo;
+        else for (let i = 0; i < n; i++) idx[io++] = i + vo;
+        vo += n;
+      }
+      const geo = new T.BufferGeometry();
+      geo.setIndex(new T.BufferAttribute(idx, 1));
+      geo.setAttribute('position', new T.BufferAttribute(pos, 3));
+      geo.setAttribute('normal', new T.BufferAttribute(nor, 3));
+      geo.setAttribute('uv', new T.BufferAttribute(uv, 2));
+      if (col) { geo.setAttribute('color', new T.BufferAttribute(col, 3)); geo.setAttribute('rough', new T.BufferAttribute(rough, 1)); }
+      geo.computeBoundingSphere();
+      owned.push(geo);
+      const merged = new T.Mesh(geo, mat);
+      merged.name = 'baked_' + (pivot.name || 'part') + (mat === shared ? '' : '_' + list.length);
+      merged.castShadow = mat === shared || !!mat.flatShading;   // body/limbs/head + straw hat; not the eye shine
+      merged.receiveShadow = true;
+      pivot.add(merged);
+    }
+  }
+  return { dispose() { for (const o of owned) o.dispose(); owned.length = 0; } };
 }

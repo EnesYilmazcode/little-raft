@@ -9,6 +9,8 @@
 //          interval = median spacing of *moving* snaps (idle repeats are ignored, and it is capped),
 //          so a 4 Hz idle stretch never inflates the delay.
 // Both offset and delay are slewed slowly (<= 15 % of real time combined) so renderT stays monotone.
+// Targets are recomputed once per accepted snapshot (push); sample() allocates nothing and reuses one
+// hook object per buffer (out.hook is only valid until the next sample()).
 
 const TAU_EXTRAP = 70;     // ms, extrapolated velocity decays with this time constant (bounded overshoot)
 const TAU_ERR = 100;       // ms, decay of the visual correction applied when extrapolation was wrong
@@ -59,6 +61,8 @@ export class SnapshotBuffer {
     this.offset = null; this.delay = this.delayMs0;
     this.lastNow = null; this.lastR = -Infinity; this.tpT = -Infinity; this.pending = null;
     this.prevExtrap = false; this.px = this.py = this.pz = 0; this.ex = this.ey = this.ez = 0;
+    this.tLo = 0; this.tJitter = 0; this.tDelay = this.delayMs0;   // cached targets (see _targets)
+    if (!this.hk) this.hk = { x: 0, y: 0, z: 0 };                   // reusable sample hook
   }
 
   /** Add a snapshot received at recvMs (local clock). Returns false for stale/duplicate/invalid snaps. */
@@ -81,9 +85,11 @@ export class SnapshotBuffer {
     if (s.length > this.size) s.shift();
     this.lat.push(recvMs - snap.t); if (this.lat.length > this.size) this.lat.shift();
     if (this.offset === null) this.offset = recvMs - snap.t;
+    this._targets();
     return true;
   }
 
+  // Recompute offset/delay targets from lat + snaps (only changed by push/reset) into tLo/tJitter/tDelay.
   _targets() {
     const lo = Math.min(...this.lat);
     const jitter = this.lat.length > 1 ? (pct(this.lat, 0.95) - lo) / 2 : 0;
@@ -94,13 +100,15 @@ export class SnapshotBuffer {
     if (gaps.length >= 3) this.interval = Math.min(MAX_INTERVAL, pct(gaps, 0.5));
     const interval = this.interval;
     const delay = Math.min(this.maxDelayMs, Math.max(this.minDelayMs, interval * 1.2 + 2 * jitter));
-    return { lo, jitter, interval, delay };
+    this.tLo = lo; this.tJitter = jitter; this.tDelay = delay;
   }
 
   get stats() {
-    const t = this.snaps.length ? this._targets() : { jitter: 0, interval: 0 };
-    return { delayMs: this.delay, jitterMs: t.jitter, offsetMs: this.offset ?? 0, count: this.snaps.length, intervalMs: t.interval };
+    const n = this.snaps.length;
+    return { delayMs: this.delay, jitterMs: n ? this.tJitter : 0, offsetMs: this.offset ?? 0, count: n, intervalMs: n ? this.interval : 0 };
   }
+
+  _hook(src) { const h = this.hk; h.x = src.x; h.y = src.y; h.z = src.z; return h; }
 
   /** Sample the interpolated state at local time nowMs into `out`. Returns null with no data. */
   sample(nowMs, out = {}) {
@@ -109,10 +117,10 @@ export class SnapshotBuffer {
     const dt = this.lastNow === null ? 0 : Math.min(250, Math.max(0, nowMs - this.lastNow));
     this.lastNow = nowMs;
     // Slew offset and delay toward their targets (fast up, slow down for delay).
-    const tg = this._targets();
-    if (Math.abs(tg.lo - this.offset) > 500) this.offset = tg.lo;
-    else this.offset += Math.max(-0.05 * dt, Math.min(0.05 * dt, tg.lo - this.offset));
-    this.delay += Math.max(-0.02 * dt, Math.min(0.1 * dt, tg.delay - this.delay));
+    const lo = this.tLo;
+    if (Math.abs(lo - this.offset) > 500) this.offset = lo;
+    else this.offset += Math.max(-0.05 * dt, Math.min(0.05 * dt, lo - this.offset));
+    this.delay += Math.max(-0.02 * dt, Math.min(0.1 * dt, this.tDelay - this.delay));
     const r = Math.max(this.lastR, nowMs - this.offset - this.delay);
 
     const L = s[s.length - 1], snapD = this.snapDistance;
@@ -134,30 +142,32 @@ export class SnapshotBuffer {
       const f = TAU_EXTRAP * (1 - Math.exp(-e / TAU_EXTRAP)), g = e >= this.maxExtrapolateMs ? 0 : Math.exp(-e / TAU_EXTRAP);
       x = L.x + wx * f; y = L.y + wy * f; z = L.z + wz * f; vx = wx * g * 1000; vz = wz * g * 1000;
       yaw = L.yaw; pitch = L.pitch; extrap = r > L.t;
-      if (L.hook) hook = { x: L.hook.x, y: L.hook.y, z: L.hook.z };
+      if (L.hook) hook = this._hook(L.hook);
     } else if (r < s[0].t) {
-      ({ x, y, z, yaw, pitch } = s[0]); if (s[0].hook) hook = { ...s[0].hook };
+      ({ x, y, z, yaw, pitch } = s[0]); if (s[0].hook) hook = this._hook(s[0].hook);
     } else {
       let i = 0; while (s[i + 1].t <= r) i++;
       const a = s[i], b = s[i + 1], u = (r - a.t) / (b.t - a.t);
       if (dist(a, b) > snapD) {                      // teleport: snap, never slide
-        ({ x, y, z, yaw, pitch } = b); if (b.hook) hook = { ...b.hook };
+        ({ x, y, z, yaw, pitch } = b); if (b.hook) hook = this._hook(b.hook);
         this.ex = this.ey = this.ez = 0;
       } else {
         let p0 = s[i - 1], p3 = s[i + 2];
         if (p0 && dist(p0, a) > snapD) p0 = null;
         if (p3 && dist(b, p3) > snapD) p3 = null;
-        const ax = (k, o0, oa, ob, o3) => hermite(oa[k], ob[k], o0 ? o0[k] : null, o3 ? o3[k] : null,
-          a.t, b.t, p0 ? p0.t : 0, p3 ? p3.t : 0, u);
-        x = ax('x', p0, a, b, p3).v; vx = H.d * 1000;
-        y = ax('y', p0, a, b, p3).v;
-        z = ax('z', p0, a, b, p3).v; vz = H.d * 1000;
+        const t0 = p0 ? p0.t : 0, t3 = p3 ? p3.t : 0;
+        x = hermite(a.x, b.x, p0 ? p0.x : null, p3 ? p3.x : null, a.t, b.t, t0, t3, u).v; vx = H.d * 1000;
+        y = hermite(a.y, b.y, p0 ? p0.y : null, p3 ? p3.y : null, a.t, b.t, t0, t3, u).v;
+        z = hermite(a.z, b.z, p0 ? p0.z : null, p3 ? p3.z : null, a.t, b.t, t0, t3, u).v; vz = H.d * 1000;
         yaw = lerpAngle(a.yaw ?? 0, b.yaw ?? 0, u);
         pitch = (a.pitch ?? 0) + ((b.pitch ?? 0) - (a.pitch ?? 0)) * u;
         if (a.hook && b.hook) {
-          const h0 = (p0 && p0.hook) || null, h3 = (p3 && p3.hook) || null;
-          hook = { x: ax('x', h0, a.hook, b.hook, h3).v, y: ax('y', h0, a.hook, b.hook, h3).v, z: ax('z', h0, a.hook, b.hook, h3).v };
-        } else if (b.hook) hook = { ...b.hook };
+          const h0 = (p0 && p0.hook) || null, h3 = (p3 && p3.hook) || null, ha = a.hook, hb = b.hook;
+          hook = this.hk;
+          hook.x = hermite(ha.x, hb.x, h0 ? h0.x : null, h3 ? h3.x : null, a.t, b.t, t0, t3, u).v;
+          hook.y = hermite(ha.y, hb.y, h0 ? h0.y : null, h3 ? h3.y : null, a.t, b.t, t0, t3, u).v;
+          hook.z = hermite(ha.z, hb.z, h0 ? h0.z : null, h3 ? h3.z : null, a.t, b.t, t0, t3, u).v;
+        } else if (b.hook) hook = this._hook(b.hook);
       }
     }
     // Hide the error of a wrong extrapolation by blending it out instead of popping.

@@ -138,8 +138,10 @@ export class DeltaEncoder {
     if (k === undefined) for (const st of this.st.values()) st.force = true;
     else if (this.st.has(k)) this.st.get(k).force = true;
   }
-  encode(msg) {
-    const k = msg.type, cur = clone(msg); // own copy: callers mutate their objects
+  // opts.owned = true: msg is a fresh JSON-safe object the caller hands over and never mutates again,
+  // so the defensive deep copy is skipped (the encoder keeps it as the next diff base).
+  encode(msg, {owned = false} = {}) {
+    const k = msg.type, cur = owned ? msg : clone(msg); // own copy: callers mutate their objects
     let st = this.st.get(k);
     if (!st) this.st.set(k, st = {seq: 0, last: undefined, since: 0, force: true});
     const s = ++st.seq, last = st.last;
