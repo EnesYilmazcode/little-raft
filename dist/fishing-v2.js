@@ -160,6 +160,21 @@ function createHud() {
   };
 }
 
+// A flat indexed geometry plus a reversed-winding, flipped-normal copy: looks the same as side: DoubleSide
+// but lets the material use the plain front-sided program.
+function twoSided(T, g) {
+  const n = g.attributes.position.count, idx = g.index ? Array.from(g.index.array) : Array.from({ length: n }, (_, i) => i);
+  const out = new T.BufferGeometry();
+  for (const [name, a] of Object.entries(g.attributes)) {
+    const arr = new Float32Array(n * 2 * a.itemSize); arr.set(a.array); arr.set(a.array, n * a.itemSize);
+    if (name === 'normal') for (let i = n * 3; i < arr.length; i++) arr[i] = -arr[i];
+    out.setAttribute(name, new T.BufferAttribute(arr, a.itemSize));
+  }
+  const back = []; for (let i = 0; i < idx.length; i += 3) back.push(idx[i] + n, idx[i + 2] + n, idx[i + 1] + n);
+  out.setIndex(idx.concat(back)); g.dispose();
+  return out;
+}
+
 export function createFishingV2(T, { scene, ocean } = {}) {
   const geos = [], mats = [];
   const G = (g) => (geos.push(g), g), M = (m) => (mats.push(m), m);
@@ -167,7 +182,7 @@ export function createFishingV2(T, { scene, ocean } = {}) {
   const tealMat = M(new T.MeshStandardMaterial({ color: 0x1f9e9a, roughness: 0.5 }));
   const whiteMat = M(new T.MeshStandardMaterial({ color: 0xe8452c, roughness: 0.45 })); // red cap: reads against teal water, matches the rod's hanging float
   const pinMat = M(new T.MeshStandardMaterial({ color: 0x3a3430, roughness: 0.6 }));
-  const flagMat = M(new T.MeshStandardMaterial({ color: 0xf2a83b, roughness: 0.6, side: T.DoubleSide }));
+  const flagMat = M(new T.MeshStandardMaterial({ color: 0xf2a83b, roughness: 0.6 })); // front-sided: the flag geometry carries its own back face
   const bobber = new T.Group(); bobber.name = 'fcBobber';
   const part = (geo, mat, y, sy = 1) => { const m = new T.Mesh(G(geo), mat); m.position.y = y; m.scale.y = sy; bobber.add(m); return m; };
   part(new T.SphereGeometry(0.032, 14, 7, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), corkMat, 0, 1.15);   // cork belly
@@ -175,7 +190,7 @@ export function createFishingV2(T, { scene, ocean } = {}) {
   part(new T.SphereGeometry(0.032, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2), whiteMat, 0.013, 0.8);        // white cap
   part(new T.CylinderGeometry(0.0022, 0.0018, 0.06, 5), pinMat, 0.06);                                   // pin
   const flagShape = new T.Shape(); flagShape.moveTo(0, 0); flagShape.lineTo(0.026, -0.008); flagShape.lineTo(0, -0.017);
-  const flag = new T.Mesh(G(new T.ShapeGeometry(flagShape)), flagMat); flag.position.set(0.001, 0.088, 0); bobber.add(flag);
+  const flag = new T.Mesh(G(twoSided(T, new T.ShapeGeometry(flagShape))), flagMat); flag.position.set(0.001, 0.088, 0); bobber.add(flag);
   bobber.visible = false;
 
   const N = 24, pos = new Float32Array(N * 3), lineGeo = G(new T.BufferGeometry());
