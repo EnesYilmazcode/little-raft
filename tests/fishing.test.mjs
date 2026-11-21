@@ -49,7 +49,7 @@ test('castPrompt: a click while waiting cancels; a bite reels in by itself', () 
 });
 
 test('fishing rod has its own drawn icon, not the hook or fish sprite', () => {
-  const src = readFileSync(fileURLToPath(new URL('survival-ui.js', base)), 'utf8');
+  const src = readFileSync(fileURLToPath(new URL('item-sprites.js', base)), 'utf8');
   const custom = src.slice(src.indexOf('const CUSTOM = {'), src.indexOf('\n};', src.indexOf('const CUSTOM = {')));
   assert.match(custom, /\n {2}fishingrod: `/);
   assert.equal(ITEM_INFO.fishingrod.placeholder, true); // placeholder makes iconSVG prefer the CUSTOM drawing

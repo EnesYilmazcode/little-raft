@@ -149,3 +149,17 @@ test('CRA2-1: the crafting column has a fixed height so tab switches do not move
   const src = readFileSync(new URL('survival-ui.js', base), 'utf8');
   assert.match(src, /#inventory \.sv-craft\{[^}]*;height:min\(/);
 });
+
+test('CRA2-5: bag and pickup feed share one flat fallback; placeholder items get their own drawing', async () => {
+  const S = await import(new URL('item-sprites.js', base));
+  for (const k of ['plastic', 'rope', 'fishingrod', 'bench', 'crate']) {
+    const p = S.iconParts(k);
+    assert.ok(p.body && !p.href, `${k} uses a hand-drawn icon, not a borrowed sprite`);
+  }
+  for (const k of ['wood', 'leaf', 'hook', 'hammer', 'sail']) assert.match(S.iconParts(k).href, /icons\.svg\?build=[^#]+#icon-/, k);
+  assert.ok(S.iconParts('mystery').body.includes('<text'), 'unknown kinds still get a label, never blank');
+  assert.match(S.iconSVG('floor'), /#icon-floor/);
+  const feed = readFileSync(new URL('pickup-feed.js', base), 'utf8');
+  assert.match(feed, /iconParts\(kind\)/);
+  assert.doesNotMatch(feed, /`icons\.svg#/);
+});
