@@ -1,13 +1,16 @@
 // Scarecrow and peckish gulls (see docs/specs/scarecrow.md).
-// Now and then a gull lands on the rim of a watered, still-growing palm planter and pecks: that planter's
+// Now and then a gull lands on the rim of a watered, still-growing palm planter (or crop plot [fruit]) and pecks: that planter's
 // growth pauses (never goes back) until the gull leaves or is shooed with E. A scarecrow keeps planters
 // within SCARECROW_RADIUS free of gulls, and gulls sit on its hat instead. Host-authoritative; the guest
 // only sees ext.scarecrow = {v:1, p:[key]} (net only, never saved). The top half is pure (no DOM, no
 // Date, no Math.random) and exported for tests and for wildlife.js (which this file never imports).
 import { createScarecrow3D, swayRags, HAT_TOP_Y } from './scarecrow-model.js?build=v3-survival-ae77fa84ac2b';
+import { isPlot, plotGrowing } from './crops.js?build=v3-survival-ae77fa84ac2b'; // [fruit] crop plots are planters too
+import { MEDIUM } from './crops-model.js?build=v3-survival-ae77fa84ac2b';
 
 export const SCARECROW_RADIUS = 4.5, PALM_GULLS = 3, PALM_CHANCE = 0.25, PECK_MAX = 8, COOLDOWN = 90, REACH = 3, HOST_SLACK = 2;
-export const PALM_RIM = 0.5, RIM_OFFSET = 0.4, HAT_TOP = HAT_TOP_Y; // local heights above DECOR_Y (hat top 2.0125 m, the model's); rim offset in metres
+export const PALM_RIM = 0.5, RIM_OFFSET = 0.4, HAT_TOP = HAT_TOP_Y;
+export const PLOT_RIM = 0.34; // [fruit] crop plot box rim height above DECOR_Y (both plot models are 0.3 m boxes plus a cap) // local heights above DECOR_Y (hat top 2.0125 m, the model's); rim offset in metres
 export const OLD_HOST = 'Your friend’s gulls are not peckish yet';
 const GROW_SECONDS = 90, SWAY_DIST = 20;
 
@@ -16,7 +19,10 @@ const isInt = Number.isInteger;
 export const tileKey = (x, z) => x + ',' + z;
 const isKey = k => typeof k === 'string' && k.length <= 24 && KEY_RE.test(k) && (() => { const [x, z] = k.split(',').map(Number); return tileKey(x, z) === k; })();
 
-/** Set of "x,z" palm keys within SCARECROW_RADIUS (tile centres, metres) of any scarecrow. */
+/** Palm planters and crop plots (both plot sizes): the decor a peckish gull lands on. [fruit] */
+export const isPlanter = d => !!d && (d.type === 'palm' || isPlot(d));
+
+/** Set of "x,z" planter keys (palms and crop plots) within SCARECROW_RADIUS (tile centres, metres) of any scarecrow. */
 export function protectedPalms(decor) {
   const out = new Set();
   if (!Array.isArray(decor)) return out;
@@ -24,7 +30,7 @@ export function protectedPalms(decor) {
   for (const d of decor) if (d && d.type === 'scarecrow' && isInt(d.x) && isInt(d.z)) { any = true; break; }
   if (!any) return out;
   for (const p of decor) {
-    if (!p || p.type !== 'palm' || !isInt(p.x) || !isInt(p.z)) continue;
+    if (!isPlanter(p) || !isInt(p.x) || !isInt(p.z)) continue;
     for (const s of decor) {
       if (!s || s.type !== 'scarecrow' || !isInt(s.x) || !isInt(s.z)) continue;
       if (Math.hypot((p.x - s.x) * 2, (p.z - s.z) * 2) <= SCARECROW_RADIUS) { out.add(tileKey(p.x, p.z)); break; }
@@ -39,11 +45,21 @@ export function rimSpot(tx, tz) {
   return { dx: RIM_OFFSET * Math.cos(a), dz: RIM_OFFSET * Math.sin(a) };
 }
 
-const palmCount = decor => { let n = 0; if (Array.isArray(decor)) for (const d of decor) if (d && d.type === 'palm') n++; return n; };
+/** Where on a crop plot's long rim a gull stands, in raft metres from the tile centre (plot rotation applied). [fruit] */
+export function plotRimSpot(d) {
+  const k = ((((d.x | 0) * 7 + (d.z | 0) * 13) % 4) + 4) % 4, half = d.type === 'cropplot2' ? MEDIUM.D / 2 - .04 : .3;
+  const lx = (k & 1 ? -1 : 1) * (d.type === 'cropplot2' ? .62 : .5), lz = (k & 2 ? -1 : 1) * half, r = Number.isFinite(d.rot) ? d.rot : 0;
+  return { dx: lx * Math.cos(r) + lz * Math.sin(r), dz: -lx * Math.sin(r) + lz * Math.cos(r) }; // three.js yaw: local +x -> (cos r, -sin r)
+}
 
-/** A pecking gull only pauses a watered, still-growing planter, and never the only planter on the raft. */
+const palmCount = decor => { let n = 0; if (Array.isArray(decor)) for (const d of decor) if (isPlanter(d)) n++; return n; };
+const plotAtKey = (decor, key) => { if (Array.isArray(decor)) for (const d of decor) if (isPlot(d) && tileKey(d.x, d.z) === key) return d; return null; };
+
+/** A pecking gull only pauses a watered, still-growing planter (palm or crop plot), and never the only planter on the raft. */
 export function canPeck(garden, key, decor) {
   if (palmCount(decor) < 2) return false;
+  const plot = plotAtKey(decor, key);
+  if (plot) return plotGrowing(plot); // [fruit] crop plots: some slot wet and still growing
   const e = garden && typeof garden === 'object' ? garden[key] : undefined;
   if (!e || typeof e !== 'object' || e.water !== 1) return false;
   return typeof e.grow === 'number' && e.grow >= 0 && e.grow < GROW_SECONDS;
@@ -189,6 +205,8 @@ export function createScarecrow(ctx, peer) {
   const mod = {
     name: 'scarecrow',
     get pecked() { return pecked; },
+    isPecked: key => !oldHost() && isPecked(key), // [fruit] crops.js asks for its plots (host set or guest net set)
+    shoo(x, z) { if (oldHost() || !isInt(x) || !isInt(z)) return false; const k = tileKey(x, z); if (!isPecked(k)) return false; shooKey(k); return true; }, // [fruit] E on a pecked crop plot
     update(dt) {
       aimKey = null; // set again by this frame's palmPrompt
       if (T) animate();

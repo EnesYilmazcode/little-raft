@@ -3,7 +3,8 @@
 // Everything is a closed-form plan of a shared clock t, so host and guest see the same animals.
 // Rendering: 4 draw calls (gull bodies, gull wings, fish, the visible circler). No per-frame allocations.
 import { gullBodyGeometry, gullWingGeometry, dolphinGeometry, turtleGeometry, fishGeometry, GULL_SHOULDER, GULL_HIP } from './wildlife-models.js?build=v3-survival-ae77fa84ac2b';
-import { protectedPalms, rimSpot, PALM_RIM, HAT_TOP, PALM_GULLS, PALM_CHANCE } from './scarecrow.js?build=v3-survival-ae77fa84ac2b'; // [scarecrow]
+import { protectedPalms, rimSpot, plotRimSpot, PALM_RIM, PLOT_RIM, HAT_TOP, PALM_GULLS, PALM_CHANCE } from './scarecrow.js?build=v3-survival-ae77fa84ac2b'; // [scarecrow] [fruit] + crop plot rims
+import { isPlot } from './crops.js?build=v3-survival-ae77fa84ac2b'; // [fruit]
 
 export const WILDLIFE_SEED = 0x5eaf00d;
 export const GULL_MAX = 6, SCHOOL_MAX = 2, FISH_PER_SCHOOL = 12;
@@ -72,15 +73,16 @@ export function perchesFrom(tiles, decor) {
   const out = [];
   if (!Array.isArray(tiles)) return out;
   const held = new Map();
-  if (Array.isArray(decor)) for (const d of decor) if (d && fin(d.x) && fin(d.z)) held.set(d.x + ',' + d.z, d.type);
+  if (Array.isArray(decor)) for (const d of decor) if (d && fin(d.x) && fin(d.z)) held.set(d.x + ',' + d.z, d);
   const seen = new Set(), guarded = protectedPalms(decor); // [scarecrow] palms near a scarecrow give no perch
   for (const t of tiles) {
     if (!Array.isArray(t) || !fin(t[0]) || !fin(t[1])) continue;
     const key = t[0] + ',' + t[1];
     if (seen.has(key)) continue; seen.add(key);
-    const type = held.get(key);
+    const dd = held.get(key), type = dd === undefined ? undefined : dd.type;
     if (type === undefined) out.push({ x: t[0] * 2, y: FLOOR_Y, z: t[1] * 2, key, tx: t[0], tz: t[1], kind: 'deck' });
     else if (type === 'palm') { if (!guarded.has(key)) { const r = rimSpot(t[0], t[1]); out.push({ x: t[0] * 2 + r.dx, y: DECOR_Y + PALM_RIM, z: t[1] * 2 + r.dz, key, tx: t[0], tz: t[1], kind: 'palm' }); } } // [scarecrow] pot rim
+    else if (isPlot(dd)) { if (!guarded.has(key)) { const r = plotRimSpot(dd); out.push({ x: t[0] * 2 + r.dx, y: DECOR_Y + PLOT_RIM, z: t[1] * 2 + r.dz, key, tx: t[0], tz: t[1], kind: 'palm' }); } } // [fruit] crop plot rim: a 'palm' (planter) perch
     else if (PERCH_TOP[type] !== undefined) out.push({ x: t[0] * 2, y: DECOR_Y + PERCH_TOP[type], z: t[1] * 2, key, tx: t[0], tz: t[1], kind: type });
   }
   out.sort((a, b) => a.tx - b.tx || a.tz - b.tz);
