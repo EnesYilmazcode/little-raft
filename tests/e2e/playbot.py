@@ -153,6 +153,8 @@ class Bot:
         self.failures = []
         self.fail_ids = {}
         self.page_errors, self.console_errors, self.console_warnings = [], [], 0
+        self.warning_texts = []
+        self.seen_err = {}
         self.prev = None
         self.samples = 0
         self.next_check = 0
@@ -184,7 +186,7 @@ class Bot:
     def repro(self):
         ft = self.ft()
         tail = '; '.join(f'{t:.1f}s {a}' for t, a in [x for x in self.log if x[0] <= ft + .5][-12:])
-        return (f'python3.13 tests/e2e/playbot.py --dist <dist> --seed {self.args.seed} --duration {self.args.duration:g} '
+        return (f'python3.13 tests/e2e/playbot.py --dist {self.args.dist} --seed {self.args.seed} --duration {self.args.duration:g} '
                 f'--kit {self.args.kit}  (failed at t={self.ft():.1f}s; last actions: {tail})')
 
     def fail(self, fid, detail, shot=True):
@@ -236,6 +238,13 @@ class Bot:
             self.fail('sample_failed', f'sample buffer could not be read: {e}')
             return
         now = self.el()
+        for kind, lst in (('pageerror', self.page_errors), ('console_error', self.console_errors)):
+            seen = self.seen_err.get(kind, 0)
+            for at, msg in lst[seen:]:
+                self.sample_t = at
+                self.fail(kind, msg[:400], shot=False)
+            self.seen_err[kind] = len(lst)
+        self.sample_t = None
         self.m['drain_s'] = round(self.m.get('drain_s', 0) + time.monotonic() - t, 2)
         self.m['drain_ms_max'] = max(self.m.get('drain_ms_max', 0), round((time.monotonic() - t) * 1000))
         for s in d['samples']:
@@ -251,12 +260,6 @@ class Bot:
     def check_sample(self, s, el):
         self.samples += 1
         p = self.prev
-        for msg in self.page_errors[len(self._seen_pe):] if hasattr(self, '_seen_pe') else self.page_errors:
-            self.fail('pageerror', msg[:400])
-        self._seen_pe = list(self.page_errors)
-        for msg in self.console_errors[len(self._seen_ce):] if hasattr(self, '_seen_ce') else self.console_errors:
-            self.fail('console_error', msg[:400])
-        self._seen_ce = list(self.console_errors)
 
         if not s['running']:
             self.fail('not_running', 'raftDebug.state.running became false during Solo play')
@@ -335,12 +338,13 @@ class Bot:
         tiles = s['tiles']
         if self.max_tiles is not None:
             if tiles < self.max_tiles:
-                self.fail('tiles_decreased', f'raft tiles went {self.max_tiles} -> {tiles} with no removal action')
+                lost = [t for t in p['tileList'] if t not in s['tileList']] if p else '?'
+                self.fail('tiles_decreased', f'raft tiles went {self.max_tiles} -> {tiles} with no removal action (lost {lost})')
             elif tiles > self.max_tiles:
                 if el > self.expect_tiles_until:
                     self.fail('tiles_unexpected_growth', f'raft tiles went {self.max_tiles} -> {tiles} without a recent build click')
                 self.m['tiles_built'] += tiles - self.max_tiles
-        self.max_tiles = max(tiles, self.max_tiles or 0)
+        self.max_tiles = tiles   # report each change once
         if len({tuple(t) for t in s['tileList']}) != len(s['tileList']):
             self.fail('tiles_duplicate', f'duplicate tile coords in {s["tileList"]}')
 
@@ -736,13 +740,15 @@ def main():
                 page.set_default_timeout(60000)
                 page.add_init_script(PAGE_INIT % {'seed': args.seed, 'save': save, 'interval': max(50, int(args.check_interval * 1000))})
                 bot = Bot(page, args, out)
-                page.on('pageerror', lambda e: bot.page_errors.append(str(e)))
+                page.on('pageerror', lambda e: bot.page_errors.append((round(bot.el(), 2), f'{e}\n{(getattr(e, "stack", None) or "")[:300]}'.strip())))
 
                 def on_console(m):
                     if m.type == 'error':
-                        bot.console_errors.append(m.text[:400])
+                        bot.console_errors.append((round(bot.el(), 2), m.text[:400]))
                     elif m.type == 'warning':
                         bot.console_warnings += 1
+                        if len(bot.warning_texts) < 5:
+                            bot.warning_texts.append(m.text[:200])
                 page.on('console', on_console)
                 try:
                     page.goto(srv.url, timeout=60000)
@@ -787,7 +793,7 @@ def main():
         m = bot.m
         m.update(seed=args.seed, kit=args.kit, duration_s=round(bot.el(), 1), requested_duration_s=args.duration,
                  samples=bot.samples, page_errors=len(bot.page_errors), console_errors=len(bot.console_errors),
-                 console_warnings=bot.console_warnings, failure_counts=bot.fail_ids,
+                 console_warnings=bot.console_warnings, warning_samples=bot.warning_texts, failure_counts=bot.fail_ids,
                  min_y=None if m['min_y'] is None else round(m['min_y'], 3), max_dist=round(m['max_dist'], 2),
                  avg_fps=round(m['raf_frames'] / max(bot.el(), 1e-6), 2),
                  io={k: [c, round(t, 1)] for k, (c, t) in sorted(bot.io.items(), key=lambda kv: -kv[1][1])},
