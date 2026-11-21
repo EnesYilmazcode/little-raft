@@ -143,11 +143,11 @@ window.lab = {
   tier,
   ready: true,
   // Average / worst frame over 60 frames, plus renderer.info for the final (visible) pass and all passes of one frame.
-  probe: () => new Promise((r) => {
+  probe: (frames = 60) => new Promise((r) => {
     let n = 0, worst = 0; const s = performance.now(); let prev = s;
     const f = (now) => {
       worst = Math.max(worst, now - prev); prev = now;
-      if (++n < 60) return requestAnimationFrame(f);
+      if (++n < frames) return requestAnimationFrame(f);
       renderer.info.autoReset = false; renderer.info.reset();
       requestAnimationFrame(() => {
         const i = renderer.info; renderer.info.autoReset = true;

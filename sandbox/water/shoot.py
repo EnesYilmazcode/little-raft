@@ -1,10 +1,12 @@
-"""Headless check for the water lab. Usage: python sandbox/water/shoot.py [out_dir]
+"""Headless check for the water lab. Usage: [FRAMES=60] python sandbox/water/shoot.py [out_dir] [tiers, e.g. cur,a,b,c]
 Serves the repo root, renders every tier x view at a frozen time, prints frame ms + errors.
 SwiftShader timings are only useful relative to each other."""
 import sys, json, threading, functools, http.server, socketserver
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
+import os
+FRAMES = int(os.environ.get('FRAMES', '60'))   # FRAMES=4 for quick visual iteration
 root = Path(__file__).resolve().parents[2]
 out = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).parent / 'shots').resolve()
 out.mkdir(parents=True, exist_ok=True)
@@ -27,7 +29,7 @@ with sync_playwright() as p:
     for t, v, a in cases:
         page.goto(f'http://127.0.0.1:{port}/sandbox/water/index.html?tier={t}&view={v}&amp={a}&t=12.5')
         page.wait_for_function('window.lab && window.lab.ready', timeout=20000)
-        ms = page.evaluate('lab.probe()')
+        ms = page.evaluate(f'lab.probe({FRAMES})')
         name = f'{t}-{v}-amp{a}.png'
         page.screenshot(path=str(out / name))
         report['runs'].append({'tier': t, 'view': v, 'amp': a, 'avgMs': round(ms['avg'], 1), 'worstMs': round(ms['worst'], 1),

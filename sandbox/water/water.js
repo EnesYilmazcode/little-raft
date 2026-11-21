@@ -111,8 +111,6 @@ void jacobian(vec2 d, float a, float L, float Q, vec2 p, inout vec3 jac) {
   float f = k * (dot(d, p) - sqrt(9.8 / k) * ${SPEED.toFixed(3)} * uTime);
   jac += vec3(-d.x * d.x, -d.y * d.y, -d.x * d.y) * (k * Q * a * sin(f));
 }
-// Noise-threshold foam: the mask lowers the cutoff, so foam grows from lacy specks to solid.
-float foamCut(float mask, float noise) { return smoothstep(1.0 - mask, 1.0 - mask + 0.12, noise) * step(0.001, mask); }
 
 float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float vnoise(vec2 p) {
@@ -193,36 +191,46 @@ void main() {
 
   vec3 col = mix(body, refl, fresnel) * shadow;
 
-  vec3 H = normalize(L + V);
-  float ndh = max(dot(n, H), 0.0);
-  float spec = min(pow(ndh, 260.0) * 1.6 + pow(ndh, 36.0) * 0.12, 1.4) * (1.0 - smoothstep(40.0, 120.0, dist) * 0.7);
-  col += uSunColor * spec * shadow;
-
+  // Foam / sparkle noise, scrolled with the swell. Two octaves, shared by everything below.
   vec2 fp = p + vec2(uTime * 0.35, uTime * 0.12);
-  float n1 = vnoise(fp * 1.7), n2 = vnoise(fp * 4.3 + vec2(uTime * -0.2, uTime * 0.15));
+  float n1 = vnoise(fp * 2.1), n2 = vnoise(fp * 4.6 + vec2(uTime * -0.2, uTime * 0.15));
   float fnoise = n1 * 0.6 + n2 * 0.4;
 
-  // Foam 1: crests where the Gerstner map compresses (1 - J > threshold).
+  // Sun: tight lobe broken into sparkles by the noise, plus a soft sheen that draws the sun path.
+  vec3 H = normalize(L + V);
+  float ndh = max(dot(n, H), 0.0);
+  // Glitter: a fine noise cell must line up with the tight lobe, so the glint breaks into points.
+  float glit = smoothstep(0.72, 0.9, vnoise(fp * 11.0 + n1 * 3.0));
+  float sparkle = mix(glit * 2.5, 0.6, smoothstep(20.0, 70.0, dist));
+  float spec = pow(ndh, 700.0) * sparkle + pow(ndh, 70.0) * 0.10;
+  col += uSunColor * min(spec, 1.2) * shadow * (1.0 - smoothstep(60.0, 125.0, dist) * 0.6);
+
+  // Lace: thin contour lines of the noise that thicken into patches as a mask grows.
+  // Coverage is anti-aliased with fwidth, so far-away lines thin out instead of sparkling.
+  float iso = abs(fnoise - 0.5), isoAA = fwidth(fnoise) + 1e-4;
+
+  // Foam 1: crests where the Gerstner map compresses (1 - J), plus the very top of tall crests.
   vec3 jac = vec3(0.0);
   { vec2 p = vBase; ${glslJac} }
   float pinch = 1.0 - ((1.0 + jac.x) * (1.0 + jac.y) - jac.z * jac.z);
-  float crest = foamCut(clamp((pinch - uFoamStart) * 9.0, 0.0, 0.9), fnoise);
-  // Foam 2: contact band around the raft and floaters, with rings pulsing outward.
-  float ring = 0.5 + 0.5 * sin(rd * 6.0 - uTime * 2.0 + n1 * 2.5);
-  float raftMask = (1.0 - smoothstep(0.0, 1.1, rd)) * (0.55 + 0.45 * ring);
-  float floatMask = 0.0;
+  float crestMask = clamp((pinch - uFoamStart) * 7.0 + smoothstep(0.09, 0.2, vHeight / uAmp) * 0.35, 0.0, 1.0);
+  float crest = clamp((0.012 + crestMask * 0.09 - iso) / isoAA + 0.5, 0.0, 1.0) * step(0.02, crestMask);
+
+  // Foam 2: hugging band on the logs + lacy wake rings that pulse outward and fade by ~1.3 m.
+  float ring = 0.5 + 0.5 * sin(rd * 5.0 - uTime * 1.8 + n1 * 3.0);
+  float raftCore = 1.0 - smoothstep(0.04, 0.2 + 0.18 * n1, rd);
+  float raftLace = (1.0 - smoothstep(0.0, 1.1, rd)) * (0.35 + 0.65 * ring);
+  float floatLace = 0.0;
   for (int i = 0; i < ${MAX_FLOATERS}; i++) {
-    vec3 fl = uFloaters[i];
-    if (fl.z <= 0.0) continue;
+    vec3 fl = uFloaters[i];                       // unused slots sit 1e4 m away: no branch
     float d = length(p - fl.xy) - fl.z;
-    floatMask = max(floatMask, 1.0 - smoothstep(0.0, 0.45, d));
+    floatLace = max(floatLace, 1.0 - smoothstep(-0.1, 0.55, d));   // circles never match plank shapes: lace only, no solid collar
   }
-  float mask = max(raftMask, floatMask * 0.85);
-  mask = max(mask, contact);
-  float foam = max(crest, foamCut(mask * 0.95, fnoise));
-  foam = max(foam, (1.0 - smoothstep(0.0, 0.1, rd)) * 0.9);   // hard waterline on the logs
+  float laceMask = max(max(raftLace, floatLace * 0.8), contact);
+  float lace = clamp((0.01 + laceMask * 0.055 - iso) / isoAA + 0.5, 0.0, 1.0) * step(0.02, laceMask);
+  float foam = max(max(crest * 0.85, lace * 0.9), raftCore * 0.92);
   foam *= 1.0 - smoothstep(30.0, 90.0, dist);
-  col = mix(col, uFoam * (0.8 + 0.2 * shadow), foam * 0.9);
+  col = mix(col, uFoam * (0.8 + 0.2 * shadow), foam);
 
   gl_FragColor = vec4(col, 1.0);
   if (uDebug == 3) gl_FragColor = vec4(vec3(clamp(pinch * 8.0, 0.0, 1.0)), 1.0);
@@ -271,7 +279,7 @@ export function createWater(T, options = {}) {
     tRaftSdf: { value: sdfTex },
     uRaft: { value: new T.Vector3() },
     uDeckLift: { value: options.deckLift ?? 0.45 },
-    uFloaters: { value: Array.from({ length: MAX_FLOATERS }, () => new T.Vector3()) },
+    uFloaters: { value: Array.from({ length: MAX_FLOATERS }, () => new T.Vector3(1e4, 1e4, 0)) },
     tScene: { value: null },
     tDepth: { value: null },
     uResolution: { value: new T.Vector2(1, 1) },
@@ -386,7 +394,7 @@ export function createWater(T, options = {}) {
   }
   function setRaftPose(x, z, yaw) { uniforms.uRaft.value.set(x, z, yaw); }
   function setFloaters(list) {
-    uniforms.uFloaters.value.forEach((v, i) => (list[i] ? v.set(list[i][0], list[i][1], list[i][2]) : v.set(0, 0, 0)));
+    uniforms.uFloaters.value.forEach((v, i) => (list[i] ? v.set(list[i][0], list[i][1], list[i][2]) : v.set(1e4, 1e4, 0)));
   }
 
   const pre = WAVES.map(([dx, dz, a, l, q]) => {
