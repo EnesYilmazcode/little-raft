@@ -1,150 +1,228 @@
 # Day, night and weather
 
-Status: design. Branch `feature/daynight`. Code goes in a new `dist/daynight.js`, with a small delimited hook in `dist/game.js`.
+Status: design, revised for the content registry. Branch `claude/raft-content-daynight`.
+Code lives only in `dist/daynight.js` (plus `dist/daynight-*.js` helpers if it grows) and
+`tests/daynight.test.mjs`. **No game.js edits are needed**: everything goes through the module
+shape in `dist/content.js` and the ctx getters listed in `docs/features/content-hooks.md`.
 
 ## 1. What Raft does
 
-The brief said to confirm against raft.wiki.gg. Every fetch of raft.wiki.gg (`/wiki/Weather`, `/wiki/Lantern`, `/wiki/Bed`, plus `?action=raw`) returned a wiki.gg "Blocked" page or HTTP 401 to automated clients. raft.fandom.com returned HTTP 402. The facts below come from the sources that could be read. Lines marked *unverified* are common player knowledge that no fetched page confirmed.
+raft.wiki.gg could not be read. In this pass `/wiki/Weather` failed DNS resolution from the
+session sandbox (host not in the allowed network list). Earlier passes got HTTP 401 or a "Blocked"
+page, and raft.fandom.com returned 402. The facts below come from pages that could be read. Lines
+marked *unverified* are common player knowledge.
 
 | Topic | What Raft does | Source |
 |---|---|---|
-| Day length | Players time a full cycle at roughly 13 to 20 real minutes. One thread estimates "24 game hours is around 20 real minutes", split about 13 to 15 min of day and about 7 min of night. Another player timed waking up to the next chance to sleep at "13 minutes and 15 seconds". No official number exists. | [Steam thread (2021)](https://steamcommunity.com/app/648800/discussions/0/5673948479042064974), [Steam thread (2023)](https://steamcommunity.com/app/648800/discussions/0/3819662797149669011) |
-| Night | Night is dark enough that the raft is hard to see. Beds and hammocks let players skip it. | [Raft fandom, Lantern (old revision)](https://raft.fandom.com/wiki/Lantern?oldid=5114) (search snippet) |
-| Lanterns | The lantern is researched, then crafted. It lights a small area so the raft is easier to see at night. It can be hung on a wall, hung under a floor, or set anywhere on the raft. The wiki notes it is "useless" if you own a bed, because you skip the night. | same |
-| Weather | *Unverified:* calm weather alternates with rain and storms. Storms bring rougher waves, a darker sky and sea, rain, and lightning (which lightning rods catch). Rain fills rain collectors. | [Wikipedia, Raft](https://en.wikipedia.org/wiki/Raft_(video_game)) covers the general premise only |
-| Danger | Sharks circle the raft and bite off parts of it. Survival needs hunger and thirst. Early storms are something players mostly ride out. | [Wikipedia, Raft](https://en.wikipedia.org/wiki/Raft_(video_game)), [NME feature](https://www.nme.com/features/raft-is-a-brilliant-castaway-from-traditional-survival-games-3377275) |
+| Day length | Players time a full cycle at 13 to 20 real minutes, about two thirds day. No official number. | [Steam (2021)](https://steamcommunity.com/app/648800/discussions/0/5673948479042064974), [Steam (2023)](https://steamcommunity.com/app/648800/discussions/0/3819662797149669011) |
+| Night | Dark enough that the raft is hard to see. Beds skip it. | [Raft fandom, Lantern (old rev.)](https://raft.fandom.com/wiki/Lantern?oldid=5114) (snippet) |
+| Lanterns | Researched, then crafted. Lights a small area at night. | same |
+| Weather | *Unverified:* calm alternates with rain and storms (rough waves, dark sea, lightning). | [Wikipedia](https://en.wikipedia.org/wiki/Raft_(video_game)) (premise only) |
 
-What we take from Raft: a cycle of about 20 minutes with roughly two thirds day, a night that changes the mood of the raft, lanterns that matter at night, and weather that changes how the sea looks.
+We keep a ~20 min cycle, a moody but readable night, lanterns that matter, and weather that
+changes the look of the sea. We leave out darkness you cannot see in, a night you must skip,
+lightning, storm damage and any survival pressure.
 
-What we leave out: being unable to see at night, a night you have to skip, lightning, storm damage, and any survival pressure.
+## 2. Our version
 
-## 2. Our version, friendlier and lean
+- **Cycle.** `DAY_SECONDS = 1200`. Phase `p` in [0,1), `p = 0` at sunrise. Day 0 to 0.62, dusk
+  0.62 to 0.70, night 0.70 to 0.94 (4.8 min), dawn 0.94 to 1.
+- **Readable night (brightness floor).** `light = max(NIGHT_FLOOR, curve(p))` with
+  `NIGHT_FLOOR = 0.38`. Concretely, at deep night: `hemi.intensity >= 0.75` (day 1.8),
+  `sun.intensity >= 0.55` as a blue moon light (day 2.5), and
+  `renderer.toneMappingExposure >= 0.85` (day 1.0). Nothing in gameplay depends on time of day.
+- **Sky.** Keyframed palette (dawn peach, day sage `#cbd2c0`, dusk coral, night indigo). The
+  horizon colour drives `scene.background`, `scene.fog.color` **and** `ocean.uniforms.uSky`
+  together (see 4.2), so the sea's distance fade keeps blending into the sky.
+- **Stars.** One `THREE.Points`, 450 points on a radius-140 sphere, follows the camera position.
+  `opacity = nightFactor * (1 - cloud)`, twinkle in the vertex shader. Moon: one billboard disc
+  opposite the sun direction.
+- **Weather.** `calm` (today's look), `breezy` (more cloud, cooler tint, `wind` 0.7 for other
+  modules), `rain` (grey-green sky, darker sea, fog far 125 to 80, sun -15%, rain streaks).
+  Waves never change, so `ocean.getHeight`, physics, hook and debris are untouched.
+- **Schedule.** Segments of 180 to 360 s. Segment `i`'s state and length are a pure hash of
+  `(seed, i)`. Weights calm 0.5, breezy 0.3, rain 0.2, and rain never follows rain. 25 s blends.
+  Co-op only needs `clock` and `seed`.
+- **Lanterns.** Glow and pool lights scale with `nightFactor` (section 5).
+- **Opt out.** `?daynight=off` or localStorage `little-raft.daynight = "day"` (try/catch) pins
+  mid-morning calm.
 
-- **Cycle.** One full day is `DAY_SECONDS = 1200` (20 min). Phase `p` runs from 0 to 1, with `p = 0` at sunrise. Day covers 0 to 0.62 (12.4 min), dusk 0.62 to 0.70, night 0.70 to 0.94 (4.8 min), and dawn 0.94 to 1.0. The night is shorter than Raft's, so nobody needs a bed.
-- **Never too dark.** A moon (a directional light reusing the sun light, tinted blue) and a hemisphere floor keep the scene at least `NIGHT_FLOOR = 0.38` as bright as noon. Deck, items and the hook all stay readable. No mechanic depends on the time of day.
-- **Sky.** Key colours are lerped along the cycle (dawn peach, day sage, dusk coral, night indigo): horizon, zenith, sun colour and cloud colours. `scene.background` and `scene.fog` follow the horizon, so the sea's distance fade still blends in.
-- **Stars.** One static `THREE.Points` with 450 points on a sphere of radius 140 that follows the camera. Opacity is `nightFactor * (1 - cloudiness)`, and twinkle runs in the vertex shader. The moon is one billboard disc opposite the sun.
-- **Weather.** Three gentle states:
-  - `calm`: the current look.
-  - `breezy`: more cloud cover, slightly cooler colours, sails and cloth flutter harder (exposed as `wind` 0 to 1 for other modules), and a stronger wind bed in the audio if audio exposes it.
-  - `rain`: light rain. Grey-green sky, deeper and darker sea, fog pulled in from 125 to about 80, and about 15% less sun. Rain streaks fall around the player. There is no lightning, no damage and no bigger waves, so `ocean.getHeight` stays exactly as it is and physics, hook and floating debris behave the same.
-- **Schedule.** Weather comes in segments of 180 to 360 s. Each segment's state is a pure function of `(seed, segmentIndex)` with weights calm 0.5, breezy 0.3 and rain 0.2. Rain never follows rain. Transitions blend over 25 s. Because it is deterministic, co-op only has to sync `clock` and `seed`.
-- **Lanterns.** When `nightFactor > 0.15`, lanterns warm up. Emissive intensity on the `lanternGlow`, `flame` and `lanternGlass` meshes from `crafts.js` scales from 0.4x by day to 2.2x by night. A fixed pool of 4 `PointLight`s (warm `#ffb35c`, distance 7, decay 2, no shadows) is always in the scene. By day they sit at intensity 0. Every 0.5 s they move to the 4 lanterns nearest the camera. The light count never changes, so three.js never recompiles shaders.
-- **Opt out.** `?daynight=off`, or the per-viewer localStorage key `little-raft.daynight` set to `"day"` (in try/catch), pins the scene at mid-morning calm. A Settings toggle can come later, because `settings.js` is being edited on another branch.
+## 3. Module shape (`createDayNight(ctx)` in `dist/daynight.js`)
 
-## 3. Data model
+| Hook | Behaviour |
+|---|---|
+| `name` | `'daynight'` (slice `world.ext.daynight`) |
+| `update(dt)` | host/solo: `clock += dt`. Guest: `clock += dt + drift correction` (section 6). Then derive state and write visuals. Zero allocations. |
+| `serialize()` | returns one reused object `{v:1, clock, seed}` (clock rounded to 0.01 s). The registry JSONs it. |
+| `load(data, from)` | `cleanDayNight(data)`. `null` keeps current/default state. `'save'`/`'restore'` snap; `'net'` feeds the drift filter. |
+| `debug` | section 8 |
+| `dispose()` | remove stars, moon, rain, 4 point lights; restore cloud materials, fog, exposure, ocean uniforms; dispose own geometries/materials |
+| others | not used (`action`, `interact`, `prompt`, `craftLocked`, `decorModel`, `afterMove`) |
 
-```js
-// persistent (saved + synced)
-{ v: 1, clock: 431.7, seed: 2654435761 }   // clock = seconds since world start (float), seed = uint32
-
-// derived each frame, never saved (one preallocated object, mutated in place)
-state = {
-  phase,        // 0..1, (clock / DAY_SECONDS) % 1
-  day,          // integer day count, floor(clock / DAY_SECONDS)
-  sunHeight,    // -1..1
-  nightFactor,  // 0 day .. 1 deep night, smooth
-  light,        // NIGHT_FLOOR..1 overall brightness
-  weather,      // 'calm' | 'breezy' | 'rain' (current segment)
-  weatherNext,  // state being blended toward
-  blend,        // 0..1 within the 25 s transition
-  rain,         // 0..1 rain intensity (blended)
-  wind,         // 0..1 (calm .15, breezy .7, rain .45)
-  cloud,        // 0..1 cloud coverage
-}
-```
-
-Palettes are module-level `Float32Array` keyframes: 5 time keys, each with horizon, zenith, sun, hemiSky, hemiGround, deep, shallow and cloud, plus a rain tint table. Lerps write into preallocated `T.Color` targets. Nothing is allocated per frame.
-
-## 4. Save format
-
-- It lives at `world.daynight = { v: 1, clock, seed }`, saved with the rest of `world` by the existing `save()`.
-- `cleanWorld()` in game.js copies only the keys it knows, so the hook adds `daynight: cleanDayNight(v.daynight)` to its return object.
-- `cleanDayNight(v)` returns a fresh object or `null`. It checks that `clock` is finite, at least 0 and at most `DAY_SECONDS * 1e6`, and that `seed` is an integer from 0 to 2^32 - 1.
-- **Backward compatible.** An older save has no `daynight`, so `cleanDayNight` returns `null`. `createDayNight` then starts at `clock = 0.10 * DAY_SECONDS` (morning) with a random seed. The first save writes the field. Older builds that load a new save simply drop the field, because their `cleanWorld` ignores unknown keys. Nothing breaks in either direction.
-- Guest backups (`normaliseBackup`) go through `liveWorld` → `cleanWorld`, so a guest's own raft keeps its time when the guest returns from a visit.
-
-## 5. Co-op sync
-
-- The host is authoritative. `hostState().world` gains `daynight: dayNight.snapshot()`. That adds about 40 bytes to a message that already goes out every 0.12 s.
-- The guest calls `dayNight.applySnapshot(msg.world.daynight)`. If `|clock - local| > 2 s`, or the seed differs, the guest snaps to the host's values. Otherwise it keeps advancing locally with no jitter. Weather is derived from `seed` and `clock`, so both players see the same rain at the same moment.
-- An older host sends no `daynight`, and the guest keeps its own cycle. An older guest ignores the field.
-
-## 6. API (`dist/daynight.js`)
+Pure exports (no WebGL, used by tests):
 
 ```js
 export const DAY_SECONDS = 1200, NIGHT_FLOOR = 0.38, WEATHERS = ['calm', 'breezy', 'rain'];
-
-// pure, testable without WebGL
-export function phaseAt(clock)                       // -> 0..1
-export function lightAt(phase, out)                   // fills out {sunHeight, nightFactor, light}; returns out
-export function weatherAt(seed, clock, out)           // fills out {weather, weatherNext, blend, rain, wind, cloud}
-export function cleanDayNight(v)                      // -> {v:1, clock, seed} | null
-
-// runtime
-export function createDayNight(T, {
-  scene, camera, sun, hemi,          // required: existing DirectionalLight + HemisphereLight
-  ocean,                             // optional: uses ocean.setPalette?.() else ocean.uniforms.*
-  sky,                               // optional: uses sky.setPalette?.()/setCoverage?.() if present
-  lanterns,                          // optional: () => iterable of lantern Object3D (cached by game.js)
-  saved,                             // cleanDayNight() result or null
-  enabled,                           // default true; false pins mid-morning calm
-}) -> {
-  update(dt),                        // advance clock, apply visuals; call once per frame after ocean.update
-  state,                             // the live derived-state object (read only)
-  snapshot(),                        // -> {v:1, clock, seed} (returns a reused object; callers JSON it)
-  applySnapshot(s),                  // guest sync, tolerant of null/garbage
-  setDebug({phase, weather}),        // pins phase and/or weather for QA shots; null clears
-  dispose(),                         // removes stars, moon, rain, point lights; disposes geometry/material
-}
+export function phaseAt(clock)                 // -> [0,1); NaN/negative -> 0
+export function lightAt(phase, out)            // fills {sunHeight, nightFactor, light}
+export function segmentAt(seed, index, out)    // fills {weather, start, length}
+export function weatherAt(seed, clock, out)    // fills {weather, weatherNext, blend, rain, wind, cloud}
+export function paletteAt(phase, rain, out)    // fills preallocated Float32Array(3 * N_COLORS)
+export function cleanDayNight(v)               // -> {v:1, clock, seed} | null
+export function driftStep(local, target, dt)   // -> corrected local clock (section 6)
 ```
 
-**Hooks for sky and ocean.** Both are optional, and every call is guarded:
+## 4. What ctx gives us, and what we touch
 
-- `ocean.setPalette({deep, shallow, sky, zenith, sunColor})` and `ocean.setSunDirection(v3)`. When missing, daynight writes straight into `ocean.uniforms.uDeep`, `uShallow`, `uSky`, `uZenith`, `uSunColor` and `uSunDir`, which already exist.
-- `sky.setPalette({horizon, zenith, sunColor, cloudLit, cloudShade})`, `sky.setCoverage(c)` and `sky.setSunDirection(v3)`. When missing, it falls back to `sky.uniforms.*`. game.js does not currently mount `sky.js`, so `sky` may be undefined, and then only `scene.background`, fog and lights change.
+All read through ctx getters every frame (they are live; `scene` is replaced on rejoin).
 
-**Debug.** If `window.raftDebug` exists, `raftDebug.daynight = {set: setDebug, state}` is attached so `shoot.py` and the console can force a look.
+### 4.1 Scene and lights
+- `ctx.scene.background` (a `T.Color`) and `ctx.scene.fog` (`T.Fog('#cbd2c0', 25, 125)`): write
+  `.color` / `.near` / `.far` in place. Never replace the objects.
+- `ctx.sun` DirectionalLight (`#fff0c7`, 2.5, position (-15,28,12), shadow camera +-25): move
+  `position` on an arc around the raft at the same radius, set `color` / `intensity`. By night it
+  becomes the moon light (from the opposite side, cool `#9fb4e6`). It keeps casting shadows, so the
+  light count and shadow setup never change.
+- `ctx.hemi` HemisphereLight (`#f2ead4` / `#3d6b6a`, 1.8): `color`, `groundColor`, `intensity`.
+- `ctx.renderer.toneMappingExposure` (1.0 by day, floor 0.85). The getter is already in
+  `contentCtx` even though content.js's header comment does not list it.
+- `ctx.camera`: position for stars, moon, rain and lantern ranking.
 
-**Rain particles.** One `THREE.LineSegments` with 700 streaks in a box 30 x 18 x 30 around the camera. The positions are a static `Float32Array` built once. A ShaderMaterial computes `y = mod(baseY - uTime * 9.0, 18.0)` and sets alpha from `uRain`. `visible = rain > 0.01`. No CPU writes happen per frame.
+### 4.2 Ocean (`dist/ocean.js`)
+The ocean fragment shader ends with `mix(col, uSky, smoothstep(uFadeNear, uFadeFar, dist))`, and
+reflections use `mix(uSky, uZenith, R.y)`. To keep the horizon seamless:
+- `uSky` **must equal** the fog/background colour every frame (game.js sets all three to `#cbd2c0`).
+- `uFadeFar` follows `fog.far` (125 by default, 80 in rain). `uFadeNear` stays at 28.
+- `uZenith` (`#a9c1c0`), `uDeep` (`#14505a`), `uShallow` (`#3f8c88`) come from the palette.
+  Night darkens deep and shallow by about 55%, not to black.
+- `uSunDir` = normalised sun/moon position, `uSunColor` = sun colour times a specular factor
+  (0.25 at night so the moon glint stays soft).
+- Capture the starting values at create time and restore them in `dispose()`.
 
-## 7. Hook in `dist/game.js` (keep it this small)
+### 4.3 Clouds
+`ctx.clouds` is 24 Groups of icosahedron spheres whose material comes from game.js's shared
+`mat('#e7f9eb')` cache. **Do not tint the shared material**, because other meshes may use the same
+colour. At create time, give every cloud mesh one module-owned `MeshStandardMaterial` (built once),
+remember the original material, and put it back in `dispose()`. Per frame, tint that one material
+(dusk pink, night slate, rain grey) and, in `breezy`/`rain`, nudge group `x` with the wind
+(wrapping at +-85).
 
-Every change sits between `// >>> daynight` and `// <<< daynight` markers:
+### 4.4 Sky dome
+`dist/sky.js` (`createSky`) is **not imported anywhere** (grep for `createSky` and `sky.js` in
+dist finds only the file itself). We do not mount it: it would add a draw call and a full-screen
+shader for little gain over background plus fog. If it is mounted later, daynight drives its
+`uHorizon/uZenith/uSunColor/uSunDir/uCloudLit/uCloudShade/uCoverage` from the same palette.
 
-1. Import: `import { createDayNight, cleanDayNight } from './daynight.js?build=...';`
-2. In `init()`, name the hemisphere light (`hemi = new T.HemisphereLight(...)`). After the ocean is created, add `dayNight = createDayNight(T, {scene, camera, sun, hemi, ocean, lanterns: () => lanternGroups, saved: world.daynight, enabled: !/daynight=off/.test(location.search)});`.
-3. In `cleanWorld()`'s return object, add `daynight: cleanDayNight(v.daynight)`.
-4. In `syncWorldInventories()`, add `world.daynight = dayNight ? {...dayNight.snapshot()} : world.daynight;`.
-5. In `frame()`, add `dayNight?.update(dt);` right after `ocean.update(elapsed, camera);`.
-6. In `hostState()`, add `daynight: dayNight?.snapshot()` to `world`. In the guest `'state'` handler, add `dayNight?.applySnapshot(data.world?.daynight);`.
-7. In the decor build at line 355 (`createCraft(T, d.type)`), push lantern groups into a cached `lanternGroups` array (cleared on rebuild).
-8. In `disposeScene()`, add `dayNight?.dispose(); dayNight = null;`.
+### 4.5 Lanterns (`ctx.raft`)
+Lanterns are decor built by `createCraft(T, 'lantern')` in `rebuildRaft()`, which places each group
+at `(d.x*2, .22, d.z*2)` in raft-local space. Each call creates **its own** materials, so every
+lantern is tinted separately. Mesh names to drive:
 
-`package.json` `test` becomes `node --test tests/` so the new test file runs. That is one line, and it is noted for the integrator.
+| Mesh name | Base `emissiveIntensity` | Night |
+|---|---|---|
+| `lanternGlow` | 1.6 | x2.0 |
+| `flame` | 3.0 | x1.6 |
+| `lanternGlass` | 0.6 | x2.5 |
+| `candle` | 0.25 | x2.0 |
 
-## 8. Performance budget
+(`lanternTimber`, `lanternSteel`, `lanternBrass`, `lanternRope` stay as they are.) There is no
+"raft rebuilt" hook, so: every 0.5 s compare a cheap signature (`raft.children.length` plus the
+number of `'lantern'` entries in `world.decor`). When it changes, walk `raft.children` once and fill
+preallocated arrays (cap 64 lanterns): material refs, base intensities, and the lantern's local
+position. Emissive = `base * (1 + (mult - 1) * nightFactor)`. The fallback lantern box (built when
+crafts.js fails) has no named meshes and is ignored.
 
-- Draw calls added: stars 1, moon 1, rain 1 (hidden when dry), so +2 to +3. Point lights: a fixed 4.
-- Per frame: about 40 float lerps, about 12 `Color.setRGB` calls on preallocated objects, and uniform writes. No `new`, no closures, no array building. Lantern reassignment runs every 0.5 s with a preallocated distance buffer and partial selection.
-- Shader recompiles: none after the first frame, because the light count is fixed and the materials are built once.
+## 5. Lantern pool lights (fixed count)
 
-## 9. Test plan
+- `POOL_LIGHTS = 4` `T.PointLight('#ffb35c', 0, 7, 2)`, `castShadow = false`, added to the scene
+  in `createDayNight` **before the first render** and never removed until `dispose()`. The count
+  never changes, so no shader recompiles.
+- By day (`nightFactor < 0.15`) intensity is exactly 0. Above that it eases to 2.2 at full night.
+- Every 0.5 s, rank lanterns by distance to the camera (preallocated Float32Array, partial
+  selection of 4) and copy `raft.localToWorld(scratch)` + (0, 1.25, 0) into the lights. Between
+  ranks, positions follow the raft each frame via the cached local positions. Unused lights get
+  intensity 0.
 
-**Unit tests (`tests/daynight.test.mjs`, node --test, no WebGL needed except the module import):**
+## 6. Save and co-op sync
 
-1. `phaseAt` wraps: `phaseAt(0) === 0`, `phaseAt(DAY_SECONDS * 3 + 300) ≈ 0.25`, and negative or NaN input gives 0.
-2. `lightAt` is continuous: stepping the phase by 0.001 never changes `light` or `nightFactor` by more than 0.02, including across the 1 to 0 wrap.
-3. The night floor holds: `light >= NIGHT_FLOOR` for every phase, `nightFactor ≈ 0` at noon (0.31), and `nightFactor ≈ 1` at midnight (0.82).
-4. `weatherAt` is deterministic: the same `(seed, clock)` gives identical output, and different seeds give different schedules.
-5. The schedule holds: no rain segment follows another, segment lengths are 180 to 360 s, calm/breezy/rain shares are about 0.5/0.3/0.2 (within ±0.05 over 2000 segments), and `blend` is monotonic inside a transition.
-6. `cleanDayNight` rejects `null`, strings, NaN, negative clock, clock above 1.2e9 and fractional or negative seeds. It accepts a valid object and returns a fresh copy.
-7. Backward compatibility: run an existing v3 save fixture (no `daynight`) through the same path as `cleanWorld`. It gets `null`, and `createDayNight` with `saved: null` starts at phase 0.10.
-8. Round trip: `snapshot()`, then `JSON`, then `cleanDayNight`, then `applySnapshot` reproduces the clock and seed exactly.
-9. No allocations: `createDayNight` against a stub scene (plain T objects, no renderer) runs `update(1/60)` 10,000 times. `state` keeps its identity, and the child counts of the scene and lights stay constant.
+- Slice: `world.ext.daynight = {v:1, clock, seed}`. `clock` is seconds since world start
+  (finite, 0 to 1.2e9). `seed` is a uint32.
+- An old save gives `load(undefined, 'save')`, so the module keeps its default: `clock = 0.10 *
+  DAY_SECONDS` (morning) and a random seed. The first save writes the slice.
+- **Host** serializes about 8 times a second. That is ~40 bytes and one reused object, no
+  allocations beyond what the registry does.
+- **Guest `load(data, 'net')`** must not snap on every message (that would stutter 8 times a
+  second, since messages arrive with jitter):
+  - store `target = data.clock` and the local time it arrived. Between messages the target advances
+    by dt too, so `err = target - clock`.
+  - `|err| > 5 s` or a seed change (join, host debug jump): snap `clock = target`, `seed = data.seed`.
+  - otherwise, `driftStep` slews: `clock += dt + clamp(err * 0.5 * dt, -0.1 * dt, 0.1 * dt)`, so
+    time never runs backwards and never more than 10% fast or slow. A 1 s drift closes in ~10 s,
+    which no one can see.
+  - Same data twice is a no-op (idempotent). No meshes are ever rebuilt on load.
+- `'restore'` (guest back on its own raft) snaps to the saved slice. Weather follows from
+  `(seed, clock)` on both peers, so rain starts at the same moment for both.
 
-**Headless shots (`python shoot.py <worktree>/dist .qa/daynight-*`):** extend the probe, or run a side script, so that after spawn it calls `raftDebug.daynight.set(...)` and captures:
-`dn-01-dawn` (0.97), `dn-02-noon` (0.31), `dn-03-dusk` (0.66), `dn-04-night` (0.82, with a placed lantern), `dn-05-rain-day` (0.3, rain), `dn-06-rain-night`.
-Check each one by eye. The night shot must show the deck clearly, with stars and a warm pool around the lantern. The rain shots must show visible streaks and a darker sea. `report.errors` and `console` errors must be empty. The frame-time probe should stay within 5% of the baseline.
+## 7. Rain budget
 
-**Manual co-op check:** host and guest through `check_multiplayer.py`. Force dusk on the host, and the guest snaps within one state message. Leave and rejoin, and the guest's own raft time comes back.
+- One `THREE.LineSegments`: **600 streaks = 1,200 vertices**, one draw call, `frustumCulled =
+  false`, `depthWrite = false`, transparent. Hidden (`visible = false`) when `rain < 0.01`, so
+  0 draw calls in dry weather.
+- The positions are a static `Float32Array` built once: random (x, y, z) in a 30 x 18 x 30 box,
+  plus a per-vertex `aTop` attribute (0/1) for the streak end. Nothing is written on the CPU per
+  frame. Only 3 uniforms change: `uTime`, `uRain`, `uCam` (vec3, copied from camera position).
+- The vertex shader wraps each streak into a box anchored to world space around the camera:
+  `p = uCam + mod(base - uCam + vec3(0, -uTime*9, 0) + wind*uTime, box) - box*0.5`. Streak length
+  is 0.5 m with a slight wind slant. Alpha is `uRain * 0.35`, fading with distance.
+  Thinning: streaks with `index/1200 > uRain` collapse to zero length, so
+  light rain draws fewer visible streaks at the same cost.
+- Cost: about 1.2k vertices and a few thousand fragments of thin lines. That is negligible next to
+  the ocean mesh.
+
+**Total added cost:** stars 1 draw, moon 1, rain 0 or 1, and 4 point lights (fixed). Per frame:
+about 60 float lerps into preallocated `T.Color`/`Float32Array`, about 15 uniform/colour writes,
+and N lantern material writes (N <= 64). There is no `new`, closure, array literal or `.clone()`
+in `update`.
+
+## 8. Debug (`raftDebug.content.daynight`)
+
+- `setPhase(p)`: host/solo sets `clock = day * DAY_SECONDS + p * DAY_SECONDS` (guests see it on
+  the next message as a > 5 s jump, so they snap). On a guest it is a local pin.
+  `setPhase(null)` clears a pin.
+- `setWeather('calm' | 'breezy' | 'rain')`: pins the weather with no blend, local only, for
+  screenshots. `setWeather(null)` returns to the schedule. Invalid names are ignored.
+- `state()`: returns a plain copy `{phase, day, clock, seed, nightFactor, light, weather,
+  weatherNext, blend, rain, wind, cloud, lanterns, poolLit, pinned}`. Allocating here is fine,
+  because it is debug only.
+
+## 9. Test plan (`tests/daynight.test.mjs`, pure functions only)
+
+Imports use the same `base` pattern as `tests/survival.test.mjs`. The suite is picked up by the
+existing `tests/*.test.mjs` glob.
+
+1. **phaseAt:** `phaseAt(0) === 0`; `phaseAt(3 * DAY + 300) ≈ 0.25`; never returns 1; NaN,
+   negative and Infinity give 0.
+2. **lightAt:** `light >= NIGHT_FLOOR` for 10,000 phases; nightFactor ≈ 0 at 0.31 and ≈ 1 at
+   0.82; a step of 0.001 changes `light`/`nightFactor` by < 0.02, including the 0.999 to 0 wrap;
+   it returns the same `out` object.
+3. **Weather schedule determinism:** the same `(seed, clock)` gives deep-equal output across calls
+   and across fresh imports; different seeds diverge within 20 segments; segment lengths are 180
+   to 360; rain never follows rain; shares over 2,000 segments are 0.5/0.3/0.2 +- 0.05; `blend`
+   is monotonic inside a transition and `rain`/`wind`/`cloud` stay in [0,1].
+4. **Palette lerp:** at each key phase the output equals the key colour (within 1e-6); midway
+   between keys it is the average; all channels are in [0,1]; continuous across the wrap; with rain
+   1 the horizon equals the rain tint blend; it writes into the passed buffer (same identity).
+5. **cleanDayNight / validate:** it rejects undefined, null, strings, arrays, `{}`, NaN/Infinity/
+   negative/over-1.2e9 clock, and fractional, negative or >= 2^32 seeds, returning null and never
+   throwing. It accepts a valid object, returns a fresh copy with unknown keys stripped, and
+   tolerates `v` missing or 0 by migrating to v1.
+6. **Round trip:** `cleanDayNight(JSON.parse(JSON.stringify(serialize())))` equals the slice.
+7. **driftStep:** a large error snaps; a small error converges in < 15 simulated s; the clock is
+   strictly increasing for any dt > 0; it is idempotent when `target === local`.
+8. **Module without WebGL:** `createDayNight` with a stub ctx (plain T objects, `raft = new T.Group()`)
+   runs `load(undefined, 'save')`, `load('garbage', 'net')` and `update(1/60)` x 10,000 without
+   throwing; light count and scene child count stay constant; pool light intensity is 0 at noon.
+
+Screenshots (separate playwright script, after the code lands): dawn 0.97, noon 0.31, dusk 0.66,
+night 0.82 with a lantern placed, rain day, rain night. The night shot must show the deck clearly,
+the stars and a warm pool around the lantern.
