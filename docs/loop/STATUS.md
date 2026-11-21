@@ -4,6 +4,9 @@ Updated: 2026-11-21 08:10 UTC, round 3 (integrator B, alongside a parallel integ
 PR #2 merged into main at 1636dfe (merge 3031d67). Gate: 816/816, no page errors, hook-only spawn, Esc OK, perf 229 vs 311 ms and 44 vs 148 draw calls.
 Review fixes in the round: inventory fits 900px, recipe tracker moved to the bottom-right (it overlapped the compass/Notes), readable Pin button.
 
+Gate update 2026-11-21 (integrator C): full fleet-gate PASS at c7a8293 — unit, playbot, visual, perf and electron all green
+(Tab closes the bag, one WebGL context, no DOM growth, deterministic icons, desktop Esc opens pause). Open PR: #3 (round 4).
+
 | Check | State |
 |---|---|
 | npm test | 688/688 pass (art atlas build-time test flakes under heavy machine load; passes alone) |
