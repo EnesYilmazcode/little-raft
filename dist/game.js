@@ -113,7 +113,7 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
 #signalReadout[hidden],#signalMarker[hidden]{display:none}
 /* Rows wrap inside the gutter left of the hotbar (its left edge is 50vw - 253px); below 1000px wide that gutter is too narrow, so the feed lifts above the hotbar. */
 #pickupFeed .pf-row{max-width:max(200px,calc(50vw - 287px));white-space:normal;line-height:1.25}
-@media(max-width:1000px){#pickupFeed[popover]{inset:auto auto calc(132px + var(--coop-feed-h, 0px)) 10px}#pickupFeed .pf-row{max-width:calc(50vw - 120px)}}
+@media(max-width:1000px){#pickupFeed[popover]{inset:auto auto calc(182px + var(--coop-feed-h, 0px)) 10px}#pickupFeed .pf-row{max-width:calc(50vw - 120px)}}
 .feed-lane{display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(transparent,#000 22px);mask-image:linear-gradient(transparent,#000 22px)}
 #inventory .sv-bag>.feed-lane{flex:1 1 0;min-height:88px;align-self:stretch}
 /* Pause rail: the lane fills the space under "Esc Back"; an equal spacer on top keeps the menu centred. */
@@ -121,7 +121,7 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
 #options .rs-menu>.feed-lane{margin-top:18px;padding:0 16px 16px 0}#options .rs-menu::before{margin-bottom:18px;padding-bottom:16px}
 #pickupFeed.docked{position:static;inset:auto;z-index:auto;max-width:100%}
 #pickupFeed.docked .pf-row{max-width:100%;white-space:normal;line-height:1.25}
-@media(max-width:760px){#contextPrompt{bottom:96px}#pickupFeed[popover]{inset:auto auto calc(184px + var(--coop-feed-h, 0px)) 10px}#options .rs-menu::before,#options .rs-menu>.feed-lane{display:none}}
+@media(max-width:760px){#contextPrompt{bottom:96px}#pickupFeed[popover]{inset:auto auto calc(232px + var(--coop-feed-h, 0px)) 10px}#options .rs-menu::before,#options .rs-menu>.feed-lane{display:none}}
 `;
 
 export function mount(transfer = null) {
@@ -2197,6 +2197,7 @@ export function mount(transfer = null) {
   function disposeScene() {
     if (!scene) return;
     try { building?.dispose(); } catch {} building = null; // building-pieces lane hook
+    try { sky?.dispose(); } catch {} sky = null; // sky noise texture is a uniform the material sweep misses
     if (diveWarmAt && typeof cancelIdleCallback === 'function') { try { cancelIdleCallback(diveWarmAt); } catch {} } diveWarmAt = 0; // a later() fallback is cleared with the other timers
     try { diving?.dispose(); } catch {} diving = null; // diving lane hook
     try { shark?.dispose(); } catch {} shark = null; try { sharkFx?.dispose(); } catch {} sharkFx = null; // shark lane
