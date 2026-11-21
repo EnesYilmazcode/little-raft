@@ -4,7 +4,7 @@ const KINDS = {info:'#8fd3e8', join:'#7ee08a', leave:'#f0a868', ping:'#ffd75e', 
 const MAX = 5, LIFE = 6000, FADE = 600;
 
 const CSS = `
-#coopFeed{position:fixed;left:20px;bottom:132px;z-index:3;display:flex;flex-direction:column;align-items:flex-start;gap:5px;
+#coopFeed{position:fixed;left:20px;bottom:108px;z-index:3;display:flex;flex-direction:column;align-items:flex-start;gap:5px;
   max-width:min(320px,calc(50vw - 40px));pointer-events:none;font:600 13px/1.3 system-ui,-apple-system,'Segoe UI',sans-serif}
 #coopFeed .cf-line{display:flex;align-items:center;gap:8px;max-width:100%;padding:6px 12px 6px 10px;border-radius:999px;
   background:#081624cc;color:#f6ecd6;box-shadow:0 2px 10px #0006;backdrop-filter:blur(4px);
