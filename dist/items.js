@@ -125,7 +125,7 @@ const LIST = [
     recipe: hand({ scrap: 2 }, 3), unlock: discover('scrap'),
     tip: 'Hammered from scrap, three at a time. Nets and tables need a few.' }),
   item('brick', 'Brick', 'refined', { iconTint: '#b5533c',
-    recipe: cook('grill', 'clay', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
+    recipe: cook('grill', 'clay', { time: 20, fuel: 0.4 }), unlock: atStation('grill'),
     tip: 'Clay fired on the grill until it is warm and solid. Stack them into a smelter.' }),
   item('metalingot', 'Metal Ingot', 'refined', { iconTint: '#a9b4c2',
     recipe: cook('smelter', 'metalore', { time: 30, fuel: 1 }), unlock: atStation('smelter'),
@@ -183,22 +183,22 @@ const LIST = [
 
   // ----- food -----
   item('cookedfish', 'Grilled Fish', 'food', { iconTint: '#e0a060', stack: 10,
-    recipe: cook('grill', 'fish', { time: 15, fuel: 0.5 }), unlock: atStation('grill'),
+    recipe: cook('grill', 'fish', { time: 15, fuel: 0.3 }), unlock: atStation('grill'),
     tip: 'A cosy, smoky meal. Click with it in hand to eat (+35 food).' }),
   item('cookedbeet', 'Grilled Beet', 'food', { iconTint: '#7e2438', stack: 10, // [crops]
-    recipe: cook('grill', 'beet', { time: 15, fuel: 0.5 }), unlock: atStation('grill'),
+    recipe: cook('grill', 'beet', { time: 15, fuel: 0.3 }), unlock: atStation('grill'),
     tip: 'A sweet, smoky beet. Click with it in hand to eat (+15 food).' }),
   item('cookedpotato', 'Baked Potato', 'food', { iconTint: '#b77a3a', stack: 10, // [crops]
-    recipe: cook('grill', 'potato', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
+    recipe: cook('grill', 'potato', { time: 20, fuel: 0.4 }), unlock: atStation('grill'),
     tip: 'Fluffy inside, crispy outside. Click with it in hand to eat (+15 food).' }),
   item('cookeddrumstick', 'Grilled Drumstick', 'food', { iconTint: '#c07a3e', stack: 10, // [raiders]
-    recipe: cook('grill', 'drumstick', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
+    recipe: cook('grill', 'drumstick', { time: 20, fuel: 0.4 }), unlock: atStation('grill'),
     tip: 'Crispy, smoky and well earned. Click with it in hand to eat (+20 food).' }),
   item('honeyfish', 'Honey Glazed Fish', 'food', { iconTint: '#e8a83a', stack: 10, // [bees]
     recipe: hand({ cookedfish: 1, honey: 1 }), unlock: discover('honey'),
     tip: 'Grilled fish with a honey glaze. The seagull is very jealous.' }),
   item('cookedsharkmeat', 'Grilled Shark Meat', 'food', { iconTint: '#c7764a', stack: 10,
-    recipe: cook('grill', 'sharkmeat', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
+    recipe: cook('grill', 'sharkmeat', { time: 20, fuel: 0.4 }), unlock: atStation('grill'),
     tip: 'A thick, smoky steak. Click with it in hand to eat (+30 food).' }),
 
   // ----- build / decor (placeable on raft tiles) -----

@@ -5,6 +5,10 @@
 import { ITEMS, FUEL_VALUE } from './items.js?build=v3-survival-ae77fa84ac2b';
 
 export const FUEL_CAP = 10;
+// Per-station fuel rules. The grill follows Raft (and the driftwood grill, cooking.js): planks only, it holds 2,
+// and grill recipes burn time / 50 planks per item, so 1 plank = 50 s of cooking.
+export const STATION_FUEL = Object.freeze({ grill: Object.freeze({ cap: 2, value: Object.freeze({ wood: 1 }) }) });
+export const PLANK_SECONDS = 50;
 const EPS = 1e-9;
 
 const posInt = (n) => (Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0);
@@ -13,8 +17,9 @@ export class StationModel {
   constructor(stationId, snapshot = null, opts = {}) {
     this.stationId = String(stationId);
     this.items = opts.items || ITEMS;
-    this.fuelValue = opts.fuelValue || FUEL_VALUE;
-    this.fuelCap = opts.fuelCap ?? FUEL_CAP;
+    const rule = Object.hasOwn(STATION_FUEL, this.stationId) ? STATION_FUEL[this.stationId] : null;
+    this.fuelValue = opts.fuelValue || rule?.value || FUEL_VALUE;
+    this.fuelCap = opts.fuelCap ?? rule?.cap ?? FUEL_CAP;
     this.input = null;
     this.output = null;
     this.fuelUnits = 0;

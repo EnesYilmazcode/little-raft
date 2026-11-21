@@ -565,9 +565,11 @@ test('progression: full unlock chain with the real catalogue (start -> metal hoo
     assert.ok(bag.remove(input, n));
     assert.equal(s.insert(input, n), n);
     assert.ok(bag.remove(fuelKind, fuelN));
-    assert.equal(s.addFuel(fuelKind, fuelN), fuelN);
-    let done = 0;
-    for (let t = 0; t < 2000 && s.input; t++) for (const e of s.tick(1)) if (e.type === 'done') done += e.count;
+    let fuel = fuelN, done = 0;
+    for (let t = 0; t < 2000 && s.input; t++) {
+      if (fuel > 0) fuel -= s.addFuel(fuelKind, fuel); // the fire holds only a few planks: top it up as it burns
+      for (const e of s.tick(1)) if (e.type === 'done') done += e.count;
+    }
     assert.equal(done, n, `${id} cooked ${done}/${n}`);
     const out = s.takeOutput();
     assert.equal(bag.add(out.kind, out.count), 0);

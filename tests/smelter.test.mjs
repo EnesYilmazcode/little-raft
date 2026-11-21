@@ -172,3 +172,17 @@ test('grill works with the same model', () => {
   assert.equal(g.input.count, 1);
   assert.equal(g.output.count, 2);
 });
+
+test('the real grill burns planks only, holds 2, and 1 plank cooks 50 s (Raft)', () => {
+  const g = new StationModel('grill');
+  assert.equal(g.fuelCap, 2);
+  assert.equal(g.addFuel('leaf', 1), 0);
+  assert.equal(g.addFuel('wood', 5), 2);
+  assert.equal(g.insert('drumstick', 5), 5);
+  const r = g.recipeFor('drumstick');
+  assert.ok(Math.abs(r.fuel / r.time * 50 - 1) < 1e-9, '1 plank = 50 s');
+  g.tick(100); // two planks = 100 s = five 20 s drumsticks
+  assert.equal(g.output.count, 5);
+  assert.ok(g.fuelUnits < 1e-6);
+  assert.equal(new StationModel('smelter').fuelCap, 10);
+});

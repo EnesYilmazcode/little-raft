@@ -108,11 +108,12 @@ export function createStationPanel({ getStation, getBag, items = {}, fuelValue =
     const have = counts(), kinds = Object.keys(have);
     const fuelN = Number(st.fuelUnits ?? st.fuel) || 0, cap = Number(st.fuelCap) || 10;
     const inputs = kinds.filter(k => safe(() => st.recipeFor(k)));
-    const fuels = kinds.filter(k => Number(fuelValue[k]) > 0);
+    const fv = st.fuelValue || fuelValue; // per-station fuel (the grill burns planks only)
+    const fuels = kinds.filter(k => Number(fv[k]) > 0);
     const inSig = inputs.map(k => `${k}:${have[k]}:${safe(() => st.accepts(k)) ? 1 : 0}`).join(',');
-    const fuelSig = fuels.map(k => `${k}:${have[k]}:${fuelN + Number(fuelValue[k]) <= cap + 1e-9 ? 1 : 0}`).join(',');
+    const fuelSig = fuels.map(k => `${k}:${have[k]}:${fuelN + Number(fv[k]) <= cap + 1e-9 ? 1 : 0}`).join(',');
     set('inChips', inSig, () => { el.inChips.innerHTML = inputs.map(k => chipHTML('input', k, have[k], safe(() => st.accepts(k)))).join('') || '<p class="st-none">Nothing in your bag cooks here yet.</p>'; });
-    set('fuelChips', fuelSig, () => { el.fuelChips.innerHTML = fuels.map(k => chipHTML('fuel', k, have[k], fuelN + Number(fuelValue[k]) <= cap + 1e-9)).join('') || '<p class="st-none">No fuel in your bag. Planks burn well.</p>'; });
+    set('fuelChips', fuelSig, () => { el.fuelChips.innerHTML = fuels.map(k => chipHTML('fuel', k, have[k], fuelN + Number(fv[k]) <= cap + 1e-9)).join('') || '<p class="st-none">No fuel in your bag. Planks burn well.</p>'; });
     const inp = st.input, out = st.output;
     set('in', inp ? `${inp.kind}:${inp.count}` : '', () => { el.inSlot.innerHTML = slotHTML(inp); el.back.disabled = !inp; });
     set('out', out ? `${out.kind}:${out.count}` : '', () => { el.outSlot.innerHTML = slotHTML(out); el.take.disabled = !out; el.outSlot.classList.toggle('st-ready', !!out); });
@@ -125,7 +126,7 @@ export function createStationPanel({ getStation, getBag, items = {}, fuelValue =
     const secs = r ? Math.ceil(r.time * (cooking || frac > 0 ? 1 - frac : 1)) : 0;
     set('cap', r ? `${name(inp.kind)} → ${name(r.kind)} · ${secs} s` : '', v => { el.cap.textContent = v; });
     const blocked = r && out && (out.kind !== r.kind || out.count + (r.count || 1) > (Number(items[out.kind]?.stack) || 1));
-    const fuelKind = fuels[0] || Object.keys(fuelValue)[0];
+    const fuelKind = fuels[0] || Object.keys(fv)[0];
     const hint = blocked ? [`Take your ${plural(out.kind)} out to keep going.`, 1]
       : r && !cooking && r.fuel > 0 && fuelN <= 1e-9 ? [`Add ${fuelKind ? 'a ' + name(fuelKind).toLowerCase() : 'some fuel'} to keep the fire going.`, 1]
       : cooking ? [`Cooking ${name(r.kind).toLowerCase()}…${inp.count > 1 ? ` ${inp.count} queued.` : ''}`, 0]
