@@ -64,8 +64,8 @@ function stone(T) {
 }
 function sand(T) {
   const { g, mat, add } = kit(T);
-  add(new T.ConeGeometry(0.55, 0.42, 14, 1), mat('#e2c27e'), [0, 0.21, 0]);
-  add(new T.ConeGeometry(0.3, 0.26, 10, 1), mat('#efd59a'), [0.4, 0.13, 0.25]);
+  add(new T.ConeGeometry(0.55, 0.42, 14, 1), mat('#dcae55'), [0, 0.21, 0]);
+  add(new T.ConeGeometry(0.3, 0.26, 10, 1), mat('#e9c06a'), [0.4, 0.13, 0.25]);
   return g;
 }
 function clay(T) {
@@ -114,14 +114,14 @@ function brick(T) {
 function ingot(T, color) {
   const { g, mat, add } = kit(T);
   const m = mat(color, { metalness: 0.65, roughness: 0.35 });
-  const bar = () => { const geo = new T.CylinderGeometry(0.2, 0.28, 0.2, 4, 1); geo.rotateY(Math.PI / 4); geo.scale(2.2, 1, 1); return geo; };
+  const bar = () => { const geo = new T.CylinderGeometry(0.2, 0.28, 0.26, 4, 1); geo.rotateY(Math.PI / 4); geo.scale(2.2, 1, 1); return geo; };
   add(bar(), m, [0, 0, 0]);
-  add(bar(), m, [0.1, 0.21, 0.08], [0, 0.35, 0]);
+  add(bar(), m, [0.08, 0.27, 0.06], [0, 0.35, 0]);
   return g;
 }
 function glass(T) {
   const { g, mat, add } = kit(T);
-  add(new T.BoxGeometry(0.8, 0.8, 0.06), mat('#bfe8f0', { transparent: true, opacity: 0.6, roughness: 0.05, metalness: 0.1 }), [0, 0, 0], [0, 0.2, 0.1]);
+  add(new T.BoxGeometry(0.8, 0.8, 0.06), mat('#8fd3e6', { transparent: true, opacity: 0.8, roughness: 0.05, metalness: 0.1 }), [0, 0, 0], [0, 0.2, 0.1]);
   add(new T.BoxGeometry(0.06, 0.6, 0.07), mat('#ffffff', { transparent: true, opacity: 0.8 }), [-0.18, 0.02, 0.02], [0, 0.2, 0.55]);
   return g;
 }
@@ -192,7 +192,7 @@ const SMALL = {
   metalingot: T => ingot(T, '#a8b6c2'),
   copperingot: T => ingot(T, '#d07a45'),
   cookedfish: T => grilledFish(T, '#c98a4a'),
-  honeyfish: T => grilledFish(T, '#c98a4a', '#f0b43a'),
+  honeyfish: T => grilledFish(T, '#d9952e', '#ffcf4a'),
   saltcup: T => cup(T, '#4f93b8', true),
   freshcup: T => cup(T, '#8fd8f2', false),
 };
