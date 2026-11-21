@@ -50,7 +50,7 @@ export const ICON_POSES = {
   rope:       { yaw: 0,   pitch: 55,  roll: 0 },
   fish:       { yaw: -15, pitch: 10,  roll: 35 },
   hook:       { yaw: -12, pitch: 6,   roll: 16, pad: 1.1,  look: THIN },
-  hammer:     { yaw: -60, pitch: 15,  roll: -40, pad: 1.1,  look: { ...THIN, exposure: 1.15 } },
+  hammer:     { yaw: -60, pitch: 15,  roll: -40, pad: 1.16, look: { ...THIN, exposure: 1.15 } },
   fishingrod: { yaw: 0,   pitch: 0,   roll: -45, pad: 1.08, look: THIN },
   sail:       { yaw: -40, pitch: 10,  roll: -18, pad: 1.0 },
   palm:       { yaw: -35, pitch: 20 },
@@ -281,7 +281,7 @@ function createScrapIcon(T) {
   const g = new T.Group(); g.name = 'scrapIcon';
   const W = 0.9, H = 0.62, geo = new T.PlaneGeometry(W, H, 40, 28);
   const p = geo.attributes.position;
-  const corr = x => 0.022 * Math.sin(x / 0.075 * Math.PI);
+  const corr = x => 0.034 * Math.sin(x / 0.13 * Math.PI);
   const surf = (x, y) => corr(x) + 0.06 * (vnoise(x * 4 + 3, y * 4) - 0.5) + 0.54 * Math.max(0, -x - 0.1) ** 2;
   const fold0 = new T.Vector3(0.18, H / 2, 0), foldDir = new T.Vector3(1, -1.25, 0).normalize();
   const q = new T.Quaternion().setFromAxisAngle(foldDir, -2.4), lift = new T.Vector3(0, 0, 0.012), tmp = new T.Vector3();
@@ -302,8 +302,8 @@ function createScrapIcon(T) {
   vcol(T, geo, (v, c, i) => {
     const u = uv.getX(i) - 0.5, w = uv.getY(i) - 0.5, edge = Math.max(Math.abs(u) * 2, Math.abs(w) * 2);
     const n = vnoise(u * 9 + 11, w * 9), n2 = vnoise(u * 26, w * 26 + 4);
-    c.copy(zinc).lerp(zinc2, 0.5 + 0.5 * Math.sin(u * W / 0.075 * Math.PI));   // corrugation shading in the albedo
-    const r = Math.min(1, Math.max(0, (n * 0.6 + edge * 0.8 - 0.82) * 3.5));
+    c.copy(zinc).lerp(zinc2, 0.5 + 0.5 * Math.sin(u * W / 0.13 * Math.PI));   // corrugation shading in the albedo
+    const r = Math.min(1, Math.max(0, (n * 0.7 + edge * 0.8 - 0.75) * 3.5));
     c.lerp(r > 0.5 ? rust : rust2, r * (0.65 + 0.35 * n2));
   });
   addMesh(T, g, geo, stdv(T, { roughness: 0.4, metalness: 0.15 }));
