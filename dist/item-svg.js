@@ -105,6 +105,30 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M35 25.5 l3 3 M38 25.5 l-3 3" fill="none" stroke-width="1.6"/></g>
     <g fill="none" stroke="#fff2cc" stroke-width="2" stroke-linecap="round" stroke-opacity=".9"><path d="M18 15 C16 12 20 10 18 6"/><path d="M26 14 C24 11 28 9 26 4"/><path d="M34 15 C32 12 36 10 34 6"/></g>`,
 
+  sharkmeat: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M6 30 C5 21 13 14 24 14 C35 14 43 20 42 29 C41 37 33 41 23 40 C13 39 7 36 6 30 Z" fill="#d9767a"/>
+    <path d="M10 28 C11 22 17 18 24 18 C31 18 37 22 38 27 C31 25 18 25 10 28 Z" fill="#f0a3a0" stroke="none"/>
+    <path d="M6 30 C7 36 13 39 23 40 C33 41 41 37 42 29 C38 33 30 35 23 35 C15 35 9 33 6 30 Z" fill="#8a9ba6"/></g>
+    <path d="M14 27 C18 24 24 23 30 24.5" fill="none" stroke="#fff2cc" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M18 31 C22 29 28 29 33 30.5" fill="none" stroke="#b5565c" stroke-width="1.4" stroke-linecap="round"/>`,
+
+  // Grilled shark meat: the same slab seared brown with grill marks and steam.
+  cookedsharkmeat: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M6 32 C5 23 13 17 24 17 C35 17 43 23 42 31 C41 39 33 43 23 42 C13 41 7 38 6 32 Z" fill="#b8693c"/>
+    <path d="M10 30 C11 24 17 21 24 21 C31 21 37 24 38 29 C31 27 18 27 10 30 Z" fill="#d98e56" stroke="none"/>
+    <path d="M6 32 C7 38 13 41 23 42 C33 43 41 39 42 31 C38 35 30 37 23 37 C15 37 9 35 6 32 Z" fill="#6d7880"/></g>
+    <path d="M15 33 L19 23 M22 35 L26 22 M29 35 L33 23" fill="none" stroke="#4a2410" stroke-width="2.4" stroke-linecap="round"/>
+    <g fill="none" stroke="#fff2cc" stroke-width="2" stroke-linecap="round" stroke-opacity=".9"><path d="M18 14 C16 11 20 9 18 5"/><path d="M26 13 C24 10 28 8 26 3"/><path d="M34 14 C32 11 36 9 34 5"/></g>`,
+
+  sharkhead: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M4 30 C6 20 16 12 30 12 C38 12 44 18 44 26 L44 38 C36 40 26 40 18 38 C10 37 5 34 4 30 Z" fill="#7f8f99"/>
+    <path d="M4 30 C10 34 20 36 30 35 C36 35 41 36 44 38 C36 40 26 40 18 38 C10 37 5 34 4 30 Z" fill="#eef2f0"/>
+    <path d="M24 12 L30 3 L33 12 Z" fill="#6d7d87"/>
+    <path d="M8 31 L12 34 L15 31.5 L18 34.5 L21 32 L24 35 L27 32.5" fill="#fff" stroke-width="1.3"/>
+    <circle cx="16" cy="22.5" r="2.4" fill="${O}" stroke="none"/></g>
+    <path d="M30 20 V30 M34 19.5 V30.5 M38 20 V30" stroke="${O}" stroke-width="1.4" stroke-linecap="round" stroke-opacity=".6"/>
+    <path d="M12 17.5 C16 14.5 21 13.2 26 13.2" fill="none" stroke="#c6d6e0" stroke-width="1.8" stroke-linecap="round"/>`,
+
   metalhook: `<g fill="none" stroke-linecap="round" stroke-linejoin="round">
     <path d="M24 8 C20 4 13 3 7 6" stroke="${O}" stroke-width="6"/><path d="M24 8 C20 4 13 3 7 6" stroke="#bb8650" stroke-width="3"/>
     <path d="M24 12 V37 M24 37 C17 39 11 35 10 26 M24 37 C31 39 37 35 38 26" stroke="${O}" stroke-width="8"/>
@@ -113,7 +137,18 @@ export const ITEM_ICONS = Object.freeze({
     <circle cx="24" cy="9" r="3.6" stroke="${O}" stroke-width="5"/><circle cx="24" cy="9" r="3.6" stroke="#9fb1bf" stroke-width="2"/></g>
     <g fill="#c6d6e0" stroke="${O}" stroke-width="2" stroke-linejoin="round"><path d="M6.5 28 L10 18 L13.5 28 L10 26 Z"/><path d="M34.5 28 L38 18 L41.5 28 L38 26 Z"/><path d="M20.5 38 L24 46 L27.5 38 Z"/></g>`,
 
+  // Wooden spear: driftwood shaft, chipped flint point lashed on with rope.
   spear: `<g transform="rotate(45 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M22 14 L21.4 51 Q24 53 26.6 51 L26 14 Z" fill="#bb8650"/>
+    <path d="M24 -5 L29 4 L27.5 12 L26 15 H22 L20.5 12 L19 4 Z" fill="#7d7a73"/>
+    <path d="M24 -5 L26.5 4 L24 13 L21.5 4 Z" fill="#a6a29a" stroke-width="1.1" stroke-opacity=".6"/>
+    <path d="M22.3 0 L21 5" fill="none" stroke="#fff2cc" stroke-width="1.3" stroke-linecap="round"/>
+    <g fill="#d9c38c" stroke-width="1.4"><path d="M19.8 13 L28.2 15.5 V18 L19.8 15.5 Z"/><path d="M19.8 17 L28.2 19.5 V22 L19.8 19.5 Z"/></g>
+    <path d="M23 26 V33 M25 38 V45" fill="none" stroke-width="1" stroke-opacity=".45"/>
+    <path d="M22.8 24 V48" fill="none" stroke="#c99560" stroke-width="1.2" stroke-linecap="round"/></g>`,
+
+  // Metal spear: leaf-shaped steel point on a bolted collar.
+  metalspear: `<g transform="rotate(45 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <rect x="21.5" y="13" width="5" height="39" rx="2.5" fill="#c99560"/>
     <path d="M24 -6 C29.5 0 29.5 7 24 14 C18.5 7 18.5 0 24 -6 Z" fill="#9fb1bf"/>
     <path d="M24 -3 V11" fill="none" stroke-width="1.2" stroke-opacity=".6"/>

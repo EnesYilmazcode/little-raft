@@ -13,18 +13,21 @@ import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84a
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
+import { createSpear } from './spear-model.js'; // [spear-repair]
 import { buildInstrument } from './instrument-models.js?build=v3-survival-ae77fa84ac2b'; // [instruments]
 
 export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 // Items you aim at the raft to place: the free hand points at the spot while one of these is held.
 export const PLACEABLE_KINDS = Object.freeze(['hammer', ...DECOR_KINDS, 'planter', 'seed', 'seeds']);
 export const isPlaceable = (kind) => PLACEABLE_KINDS.includes(kind);
-const TOOL_KINDS = ['hook', 'hammer', 'fishingrod'];
+const TOOL_KINDS = ['hook', 'hammer', 'fishingrod', 'spear', 'metalspear'];
 
 export const HOLD = Object.freeze({
   hook:       { hand: 'right', pose: 'grip' },
   hammer:     { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2 },
   fishingrod: { hand: 'right', pose: 'grip', rx: -0.15, rz: 0.6 },
+  spear:      { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 }, // [spear-repair] point forward, a ready jab
+  metalspear: { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 },
   wood:       { hand: 'right', pose: 'grip', rx: 0.25, ry: 0.5, rz: 0.15 },
   leaf:       { hand: 'right', pose: 'grip', rx: -0.35, ry: 0.4, rz: 0.35 },
   scrap:      { hand: 'right', pose: 'grip', rx: 1.1, ry: 0.3, rz: -0.3 },
@@ -154,8 +157,9 @@ export function buildItemModel(T, kind, factory = null) {
     root = new T.Group(); root.add(m);
     root.userData.size = { x: m.userData.size.x * 0.55, y: m.userData.size.y * 0.55, z: m.userData.size.z * 0.55 };
     root.userData.grip = [gp.x, gp.y, gp.z];
-  } else if (kind === 'hammer' || kind === 'fishingrod') {
-    const m = kind === 'hammer' ? createHammer(T) : createFishingTool(T), s = kind === 'hammer' ? 0.6 : 0.55;
+  } else if (kind === 'hammer' || kind === 'fishingrod' || kind === 'spear' || kind === 'metalspear') {
+    const spear = kind === 'spear' || kind === 'metalspear'; // [spear-repair] spear-repair-hooks.js slides userData.model along +Y to jab
+    const m = kind === 'hammer' ? createHammer(T) : spear ? createSpear(T, { metal: kind === 'metalspear' }) : createFishingTool(T), s = kind === 'hammer' ? 0.6 : spear ? 0.62 : 0.55;
     m.scale.setScalar(s);
     root = new T.Group(); root.add(m);
     const gp = m.userData.grip.clone().multiplyScalar(s), sz = m.userData.size || { x: 0.1, y: 0.8, z: 0.1 };
