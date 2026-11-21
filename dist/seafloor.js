@@ -10,13 +10,15 @@
 //   scene.add(floor.group);
 //   // every frame: floor.update(dt, camera, time);  floor.uniforms.uCaustic.value = 0..1
 //   floor.nodesNear(x, y, z, 2.8)  -> [{id, type, x, y, z}]  (gathered ones skipped)
-//   floor.setGathered(id) / floor.setGathered(id, false); floor.dispose();
+//   floor.setGathered(id) / floor.setGathered(id, false); floor.isGathered(id);
+//   floor.highlight(id | null)  // targeted node: 1.06 scale + gentle emissive pulse
+//   floor.dispose();
 //
 // Art: one camera-following floor patch (vertex-coloured sand, darker patches),
-// instanced rocks, instanced swaying seaweed and one InstancedMesh per node type.
+// instanced rocks, instanced swaying seaweed and InstancedMesh(es) per node type.
 // Animated caustics are added to emissive in onBeforeCompile (world xz + uTime).
-// The patch, decor and node instances are rebuilt only when the CELL-snapped
-// camera xz changes; capacities are fixed.
+// The patch, decor and node instances are rebuilt only when the RECENTER-snapped
+// camera xz changes (patch vertices stay on a fixed world lattice); capacities are fixed.
 
 export const FLOOR = { BASE: -11, MIN_DEPTH_UNDER_RAFT: -7, SHALLOWEST: -0.9, CELL: 4, PATCH: 96, SEGMENTS: 64 };
 export const NODE_TYPES = ['sand', 'clay', 'scrap', 'metalore'];
@@ -26,6 +28,7 @@ const NODE_MAX_Y = -1.5;          // no nodes where the floor is shallower than 
 const NODE_CHANCE = 0.22;         // per CELL
 const NODE_WEIGHTS = [0.35, 0.25, 0.22, 0.18];
 const CELL_LIMIT = 100000;        // reject absurd ids
+const RECENTER = 16;              // patch recentre grid (m); 96 m patch keeps >= 40 m around the camera (fog far <= 34 m)
 
 // ---------- deterministic noise ----------
 function hash(ix, iz, seed) {
@@ -43,19 +46,22 @@ function vnoise(x, z, seed) {
   const c = hash(ix, iz + 1, seed), d = hash(ix + 1, iz + 1, seed);
   return a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz;
 }
+const CAP_FAR = FLOOR.MIN_DEPTH_UNDER_RAFT + (FLOOR.SHALLOWEST - FLOOR.MIN_DEPTH_UNDER_RAFT) * smoothstep(9, 20, 20);
 
 /** Deterministic world y of the seafloor. Always <= FLOOR.SHALLOWEST. */
 export function seafloorHeight(x, z, islands = []) {
   const n = 0.6 * vnoise(x / 23, z / 23, 11) + 0.3 * vnoise(x / 9, z / 9, 12) + 0.1 * vnoise(x / 3.5, z / 3.5, 13);
   let h = FLOOR.BASE + (n - 0.5) * 5;                    // about -13.5 .. -8.5
   let t = 0;                                             // island shelf influence
-  for (const isl of islands) {
-    const r = isl.r ?? 5;
-    t = Math.max(t, 1 - smoothstep(r, r + 40, Math.hypot(x - isl.x, z - isl.z)));
+  for (let i = 0; i < islands.length; i++) {
+    const isl = islands[i], r = isl.r ?? 5, dx = x - isl.x, dz = z - isl.z;
+    if (dx * dx + dz * dz >= (r + 40) * (r + 40)) continue;   // outside the shelf: contributes 0
+    t = Math.max(t, 1 - smoothstep(r, r + 40, Math.hypot(dx, dz)));
   }
   h += (FLOOR.SHALLOWEST - h) * t;
   // keep the raft area deep: cap rises smoothly from -7 (<= 9 m) to SHALLOWEST (>= 20 m)
-  const cap = FLOOR.MIN_DEPTH_UNDER_RAFT + (FLOOR.SHALLOWEST - FLOOR.MIN_DEPTH_UNDER_RAFT) * smoothstep(9, 20, Math.hypot(x, z));
+  const cap = x * x + z * z >= 400 ? CAP_FAR
+    : FLOOR.MIN_DEPTH_UNDER_RAFT + (FLOOR.SHALLOWEST - FLOOR.MIN_DEPTH_UNDER_RAFT) * smoothstep(9, 20, Math.hypot(x, z));
   return Math.min(h, cap, FLOOR.SHALLOWEST);
 }
 
@@ -83,6 +89,11 @@ export function nodeById(id, islands = []) {
 
 // ---------- THREE builder ----------
 const CAP = { rocks: 140, weed: 420, node: 128 };
+const PAL = {
+  sand: 0xd8c28f, sandLight: 0xe6d6a8, sandDark: 0xb39a6a,
+  rock: 0x6f7f7a, rockShade: 0x55635f, moss: 0x6f8d5e,
+  weed: 0x3f9a5a, weedTip: 0x8fcf6a, kelp: 0x2f7d64,
+};
 
 const CAUSTIC_GLSL = /* glsl */`
 uniform float uTime;
@@ -119,9 +130,10 @@ function addCaustics(mat, uniforms, sway) {
         lrW = instanceMatrix * lrW;
       #endif
       vCausticPos = (modelMatrix * lrW).xyz;`);
+    // caustic colour #d9fff0 (linear ~0.69, 1.0, 0.87)
     shader.fragmentShader = CAUSTIC_GLSL + shader.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
       float lrFade = uCaustic * clamp(1.0 + vCausticPos.y / 18.0, 0.2, 1.0);
-      totalEmissiveRadiance += vec3(0.5, 0.85, 0.8) * (lrCaustic(vCausticPos.xz, uTime) * 0.55 * lrFade);`);
+      totalEmissiveRadiance += vec3(0.69, 1.0, 0.87) * (lrCaustic(vCausticPos.xz, uTime) * 0.5 * lrFade);`);
   };
   mat.customProgramCacheKey = () => (sway ? 'lr-caustic-sway' : 'lr-caustic');
   return mat;
@@ -145,17 +157,19 @@ function merge(T, geos) {
   return out;
 }
 
-// Jitter a polyhedron by vertex position (keeps faces welded) and colour per face.
+// Jitter a polyhedron by vertex position (keeps faces welded) and colour per face
+// via faceColor(color, faceIndex, centroidX, centroidY, centroidZ).
 function lump(T, geo, jitter, faceColor) {
   const g = geo.index ? geo.toNonIndexed() : geo, p = g.attributes.position;
   const col = new Float32Array(p.count * 3), c = new T.Color();
-  for (let i = 0; i < p.count; i++) {
+  for (let i = 0; jitter && i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
     const k = 1 + jitter * (hash(Math.round(x * 97), Math.round(y * 97) * 31 + Math.round(z * 97), 5) - 0.5);
     p.setXYZ(i, x * k, y * k, z * k);
   }
   for (let f = 0; f < p.count; f += 3) {
-    faceColor(c, f / 3, p.getY(f));
+    const cx = (p.getX(f) + p.getX(f + 1) + p.getX(f + 2)) / 3, cy = (p.getY(f) + p.getY(f + 1) + p.getY(f + 2)) / 3;
+    faceColor(c, f / 3, cx, cy, (p.getZ(f) + p.getZ(f + 1) + p.getZ(f + 2)) / 3);
     for (let j = 0; j < 3; j++) c.toArray(col, (f + j) * 3);
   }
   g.setAttribute('color', new T.BufferAttribute(col, 3));
@@ -163,43 +177,53 @@ function lump(T, geo, jitter, faceColor) {
   return g;
 }
 
-function nodeGeometry(T, type) {
+// Node art: list of parts { geo, glow (emissive hex), gi (emissive scale), mat (extra material opts) }.
+function nodeParts(T, type) {
   const c0 = new T.Color();
-  if (type === 'sand') {   // pale low mound with a lighter crown
+  if (type === 'sand') {   // pale mound: sparkles, a few shells, darker base ring
     const g = new T.SphereGeometry(0.6, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.45, 1);
-    return lump(T, g, 0.12, (c, f, y) => c.set(0xe9dcb0).lerp(c0.set(0xfff6d8), Math.min(1, y * 3)));
+    return [{ glow: 0xf3e6bf, geo: lump(T, g, 0.12, (c, f, x, y) => {
+      const r = hash(f, 9, 6);
+      c.set(y < 0.07 ? 0xb89f6e : r < 0.1 ? 0xf7d9c9 : r < 0.2 ? 0xfffaf0 : 0xf3e6bf);
+    }) }];
   }
-  if (type === 'clay') {   // squat orange-brown lump
+  if (type === 'clay') {   // squat orange lump, lit top, dark undersides
     const g = new T.DodecahedronGeometry(0.42, 0).scale(1.15, 0.7, 1).translate(0, 0.18, 0);
-    return lump(T, g, 0.25, (c, f) => c.set(0xb8663a).lerp(c0.set(0x8a4a2a), hash(f, 1, 6) * 0.6));
+    return [{ glow: 0xc8703e, geo: lump(T, g, 0.25, (c, f, x, y) =>
+      c.set(y > 0.3 ? 0xe08e55 : y < 0.12 ? 0x8f4a2a : 0xc8703e).lerp(c0.set(0x8f4a2a), hash(f, 1, 6) * 0.25)) }];
   }
-  if (type === 'scrap') {  // three bent grey plates leaning together
+  if (type === 'scrap') {  // three bent plates leaning together: rusty edges, one painted stripe
     const plates = [];
     for (let k = 0; k < 3; k++) {
-      const g = new T.BoxGeometry(0.85, 0.04, 0.45, 6, 1, 1);
+      const g = new T.BoxGeometry(0.85, 0.04, 0.45, 6, 1, 2);
       const p = g.attributes.position;
       for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + 0.18 * Math.sin(p.getX(i) * 3.2 + k));
-      g.rotateZ(0.35 + k * 0.4).rotateY(k * 2.1).translate(0.12 * (k - 1), 0.22, 0.08 * k);
-      const cols = new Float32Array(p.count * 3), c = new T.Color(k === 1 ? 0x9a8170 : 0x8f989d);
-      for (let i = 0; i < p.count; i++) c.toArray(cols, i * 3);
-      g.setAttribute('color', new T.BufferAttribute(cols, 3));
-      plates.push(g);
+      plates.push(lump(T, g, 0, (c, f, x, y, z) => c.set(
+        Math.abs(x) > 0.3 || Math.abs(z) > 0.16 ? 0xb0714a : k === 1 && Math.abs(x) < 0.1 ? 0xd9a441 : 0x9fb2bb))
+        .rotateZ(0.35 + k * 0.4).rotateY(k * 2.1).translate(0.12 * (k - 1), 0.22, 0.08 * k));
     }
-    return merge(T, plates);
+    return [{ glow: 0x9fb2bb, geo: merge(T, plates), mat: { metalness: 0.45, roughness: 0.55 } }];
   }
-  // metalore: dark rock with silvery-blue flecks
+  // metalore: dark rock + glowing pale-blue crystal shards (separate part, brighter emissive)
   const g = new T.IcosahedronGeometry(0.45, 1).scale(1.1, 0.75, 1).translate(0, 0.2, 0);
-  return lump(T, g, 0.3, (c, f) => (hash(f, 2, 7) < 0.22 ? c.set(0xa8cdf0) : c.set(0x3a3f47).lerp(c0.set(0x2a2e35), hash(f, 3, 7))));
+  const rock = lump(T, g, 0.3, (c, f) => c.set(0x3e4650).lerp(c0.set(0x2c323a), hash(f, 3, 7) * 0.6));
+  const shards = [[0.22, 0.42, 0.08, 0.5, 0.3], [-0.2, 0.4, -0.12, -0.45, 1.9], [0.02, 0.48, -0.26, 0.2, 4.1], [-0.08, 0.44, 0.24, -0.3, 2.8]]
+    .map(([x, y, z, tilt, yaw]) => lump(T, new T.OctahedronGeometry(0.1, 0).scale(0.8, 2.2, 0.8)
+      .rotateZ(tilt).rotateY(yaw).translate(x, y, z), 0, (c) => c.set(0x9fd4ff)));
+  return [
+    { glow: 0x3e4650, geo: rock, mat: { metalness: 0.35, roughness: 0.5 } },
+    { glow: 0x9fd4ff, gi: 0.4, geo: merge(T, shards), mat: { metalness: 0.2, roughness: 0.3 } },
+  ];
 }
 
 function seaweedGeometry(T) {
   const blades = [0, Math.PI / 2].map((rot) => {
     const g = new T.PlaneGeometry(0.5, 1.6, 1, 4).translate(0, 0.8, 0);
-    const p = g.attributes.position, cols = new Float32Array(p.count * 3), c = new T.Color(), tip = new T.Color(0x7fb85a);
+    const p = g.attributes.position, cols = new Float32Array(p.count * 3), c = new T.Color(), tip = new T.Color(PAL.weedTip);
     for (let i = 0; i < p.count; i++) {
       const h = p.getY(i) / 1.6;
       p.setX(i, p.getX(i) * (1 - 0.75 * h));
-      c.set(0x2f6b3a).lerp(tip, h).toArray(cols, i * 3);
+      c.set(PAL.weed).lerp(tip, h).toArray(cols, i * 3);
     }
     g.setAttribute('color', new T.BufferAttribute(cols, 3));
     return g.rotateY(rot);
@@ -209,16 +233,19 @@ function seaweedGeometry(T) {
 
 export function createSeafloor(T, { islands = [] } = {}) {
   const { CELL, PATCH, SEGMENTS } = FLOOR;
-  const STEP = PATCH / SEGMENTS;
+  const STEP = PATCH / SEGMENTS, ROW = SEGMENTS + 1;
   const heightAt = (x, z) => seafloorHeight(x, z, islands);
   const uniforms = { uTime: { value: 0 }, uCaustic: { value: 0 } };
   const group = new T.Group();
   group.name = 'Seafloor';
   const std = (o, sway = false) => addCaustics(new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0, ...o }), uniforms, sway);
+  const lin = (hex) => new T.Color(hex).toArray();   // linear rgb (vertex colours are linear)
+  const SAND = lin(PAL.sand), LIGHT = lin(PAL.sandLight), DARK = lin(PAL.sandDark);
 
-  // floor patch (positions written in world space on rebuild)
+  // floor patch: rows along +z, columns along +x (PlaneGeometry rotated -90 deg about x)
   const floorGeo = new T.PlaneGeometry(PATCH, PATCH, SEGMENTS, SEGMENTS).rotateX(-Math.PI / 2);
   const baseXZ = Float32Array.from(floorGeo.attributes.position.array);
+  const heights = new Float32Array(ROW * ROW);
   floorGeo.setAttribute('color', new T.BufferAttribute(new Float32Array(baseXZ.length), 3));
   const floor = new T.Mesh(floorGeo, std({}));
   floor.name = 'SeafloorPatch';
@@ -232,49 +259,90 @@ export function createSeafloor(T, { islands = [] } = {}) {
     group.add(m);
     return m;
   };
-  const rockGeo = lump(T, new T.IcosahedronGeometry(1, 0), 0.45, (c, f) => c.set(0x6f7a78).lerp(new T.Color(0x4c5a5c), hash(f, 4, 8)));
+  const shade = new T.Color(PAL.rockShade), moss = new T.Color(PAL.moss);
+  const rockGeo = lump(T, new T.IcosahedronGeometry(1, 0), 0.45, (c, f, x, y) =>
+    (y > 0.35 && hash(f, 5, 8) < 0.7 ? c.copy(moss) : c.set(PAL.rock).lerp(shade, hash(f, 4, 8))));
   const rocks = inst(rockGeo, std({ flatShading: true }), CAP.rocks, 'SeafloorRocks');
   const weed = inst(seaweedGeometry(T), std({ side: T.DoubleSide, roughness: 0.8 }, true), CAP.weed, 'SeafloorWeed');
-  const nodeMeshes = {};
+  const white = new T.Color(1, 1, 1), kelpTint = new T.Color(PAL.kelp);
+  const wb = new T.Color(PAL.weed);
+  kelpTint.setRGB(kelpTint.r / wb.r, kelpTint.g / wb.g, kelpTint.b / wb.b);   // instanceColor x base = kelp
+
+  // node meshes (instanced) + one plain highlight copy per type with its own pulsing material
+  const nodeMeshes = {}, hl = {};
   for (const type of NODE_TYPES) {
-    const extra = type === 'scrap' ? { metalness: 0.45, roughness: 0.55 } : type === 'metalore' ? { metalness: 0.35, roughness: 0.5 } : {};
-    nodeMeshes[type] = inst(nodeGeometry(T, type), std({ flatShading: true, ...extra }), CAP.node, `SeafloorNode_${type}`);
+    nodeMeshes[type] = [];
+    hl[type] = new T.Group();
+    hl[type].visible = false;
+    hl[type].name = `SeafloorHighlight_${type}`;
+    group.add(hl[type]);
+    for (const part of nodeParts(T, type)) {
+      const mk = () => std({ flatShading: true, emissive: new T.Color(part.glow).multiplyScalar(part.gi ?? 0.1), ...part.mat });
+      nodeMeshes[type].push(inst(part.geo, mk(), CAP.node, `SeafloorNode_${type}`));
+      hl[type].add(new T.Mesh(part.geo, mk()));
+    }
   }
 
   const gathered = new Set();
-  let patchNodes = [];
+  let patchNodes = [], hlId = null, hlType = null;
   let centreX = NaN, centreZ = NaN;
   const m4 = new T.Matrix4(), q = new T.Quaternion(), v = new T.Vector3(), s = new T.Vector3(), up = new T.Vector3(0, 1, 0);
   const place = (mesh, x, y, z, yaw, sx, sy = sx, sz = sx) => {
-    if (mesh.count >= mesh.instanceMatrix.count) return;
-    mesh.setMatrixAt(mesh.count++, m4.compose(v.set(x, y, z), q.setFromAxisAngle(up, yaw), s.set(sx, sy, sz)));
+    if (mesh.count >= mesh.instanceMatrix.count) return -1;
+    mesh.setMatrixAt(mesh.count, m4.compose(v.set(x, y, z), q.setFromAxisAngle(up, yaw), s.set(sx, sy, sz)));
+    return mesh.count++;
   };
+  const nodeYaw = (n) => hash(Math.round(n.x * 10), Math.round(n.z * 10), 90) * 6.283;
+  const nodeScale = (n) => 0.95 + 0.25 * hash(Math.round(n.x * 10), Math.round(n.z * 10), 91);
 
   function refreshNodes() {
-    for (const type of NODE_TYPES) nodeMeshes[type].count = 0;
+    for (const type of NODE_TYPES) for (const m of nodeMeshes[type]) m.count = 0;
+    hlType = null;
     for (const n of patchNodes) {
       if (gathered.has(n.id)) continue;
-      const kx = Math.round(n.x * 10), kz = Math.round(n.z * 10);
-      place(nodeMeshes[n.type], n.x, n.y - 0.04, n.z, hash(kx, kz, 90) * 6.283, 0.95 + 0.25 * hash(kx, kz, 91));
+      if (n.id === hlId) {   // drawn by the highlight copy instead
+        hlType = n.type;
+        hl[n.type].position.set(n.x, n.y - 0.04, n.z);
+        hl[n.type].rotation.set(0, nodeYaw(n), 0);
+        hl[n.type].scale.setScalar(nodeScale(n) * 1.06);
+        continue;
+      }
+      for (const m of nodeMeshes[n.type]) place(m, n.x, n.y - 0.04, n.z, nodeYaw(n), nodeScale(n));
     }
-    for (const type of NODE_TYPES) nodeMeshes[type].instanceMatrix.needsUpdate = true;
+    for (const type of NODE_TYPES) {
+      hl[type].visible = type === hlType;
+      for (const m of nodeMeshes[type]) m.instanceMatrix.needsUpdate = true;
+    }
   }
 
   function rebuild(cx, cz) {
-    // floor vertices on a world-aligned STEP lattice so recentring never pops
+    // floor vertices on a world-aligned STEP lattice so recentring never shifts the floor
     const ox = Math.round(cx / STEP) * STEP, oz = Math.round(cz / STEP) * STEP;
-    const pos = floorGeo.attributes.position, col = floorGeo.attributes.color.array;
-    for (let i = 0; i < pos.count; i++) {
+    const pos = floorGeo.attributes.position.array, col = floorGeo.attributes.color.array, nor = floorGeo.attributes.normal.array;
+    for (let i = 0; i < heights.length; i++) {
       const x = ox + baseXZ[i * 3], z = oz + baseXZ[i * 3 + 2], y = heightAt(x, z);
-      pos.setXYZ(i, x, y, z);
-      const dark = smoothstep(0.55, 0.75, vnoise(x / 14, z / 14, 31)) * 0.3 + hash(Math.round(x / STEP), Math.round(z / STEP), 32) * 0.06;
-      const deep = Math.min(1, Math.max(0, (-y - 2) / 12)) * 0.15;
-      const k = 1 - dark - deep;
-      col[i * 3] = 0.84 * k; col[i * 3 + 1] = 0.76 * k; col[i * 3 + 2] = 0.56 * k + deep * 0.3;
+      heights[i] = y;
+      pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
+      const n = vnoise(x / 14, z / 14, 31);
+      const light = smoothstep(0.42, 0.2, n) * 0.7, dark = smoothstep(0.55, 0.78, n) * 0.85;
+      const k = 1 - hash(Math.round(x / STEP), Math.round(z / STEP), 32) * 0.06 - Math.min(1, Math.max(0, (-y - 2) / 12)) * 0.15;
+      for (let j = 0; j < 3; j++) {
+        const base = SAND[j] + (LIGHT[j] - SAND[j]) * light;
+        col[i * 3 + j] = (base + (DARK[j] - base) * dark) * k;
+      }
     }
-    pos.needsUpdate = true;
-    floorGeo.attributes.color.needsUpdate = true;
-    floorGeo.computeVertexNormals();
+    // analytic normals from central differences on the height grid (one-sided at the rim)
+    for (let r = 0; r < ROW; r++) {
+      const r0 = r > 0 ? r - 1 : r, r1 = r < SEGMENTS ? r + 1 : r;
+      for (let c = 0; c < ROW; c++) {
+        const c0 = c > 0 ? c - 1 : c, c1 = c < SEGMENTS ? c + 1 : c, i = (r * ROW + c) * 3;
+        const gx = (heights[r * ROW + c1] - heights[r * ROW + c0]) / ((c1 - c0) * STEP);
+        const gz = (heights[r1 * ROW + c] - heights[r0 * ROW + c]) / ((r1 - r0) * STEP);
+        const inv = 1 / Math.sqrt(gx * gx + 1 + gz * gz);
+        nor[i] = -gx * inv; nor[i + 1] = inv; nor[i + 2] = -gz * inv;
+      }
+    }
+    floorGeo.attributes.position.needsUpdate = floorGeo.attributes.color.needsUpdate = floorGeo.attributes.normal.needsUpdate = true;
     floorGeo.computeBoundingSphere();
 
     // decor + nodes per CELL inside the patch
@@ -291,15 +359,17 @@ export function createSeafloor(T, { islands = [] } = {}) {
           const sc = 0.35 + 0.9 * hash(ix, iz, 44);
           place(rocks, x, y - 0.15 * sc, z, r * 60, sc * 1.2, sc * (0.6 + 0.4 * hash(ix, iz, 45)), sc);
         } else if (r < 0.42 && y < -2.6) {
-          const tufts = 1 + Math.floor(hash(ix, iz, 46) * 3);
+          const tufts = 1 + Math.floor(hash(ix, iz, 46) * 3), tint = hash(ix, iz, 47) < 0.3 ? kelpTint : white;
           for (let t = 0; t < tufts; t++) {
             const wx = x + (hash(ix, iz, 50 + t) - 0.5) * 1.6, wz = z + (hash(ix, iz, 60 + t) - 0.5) * 1.6;
-            place(weed, wx, heightAt(wx, wz) - 0.05, wz, hash(ix, iz, 70 + t) * 6.283, 0.7 + 0.8 * hash(ix, iz, 80 + t));
+            const k = place(weed, wx, heightAt(wx, wz) - 0.05, wz, hash(ix, iz, 70 + t) * 6.283, 0.7 + 0.8 * hash(ix, iz, 80 + t));
+            if (k >= 0) weed.setColorAt(k, tint);
           }
         }
       }
     }
     rocks.instanceMatrix.needsUpdate = weed.instanceMatrix.needsUpdate = true;
+    if (weed.instanceColor) weed.instanceColor.needsUpdate = true;
     refreshNodes();
   }
 
@@ -309,9 +379,13 @@ export function createSeafloor(T, { islands = [] } = {}) {
     heightAt,
     update(dt, camera, time) {
       if (Number.isFinite(time)) uniforms.uTime.value = time;
+      if (hlType) {   // gentle emissive pulse on the targeted node
+        const pulse = 1 + 1.6 * (0.5 + 0.5 * Math.sin(uniforms.uTime.value * 4));
+        for (const m of hl[hlType].children) m.material.emissiveIntensity = pulse;
+      }
       const p = camera && camera.position;
       if (!p) return;
-      const cx = Math.round(p.x / CELL) * CELL, cz = Math.round(p.z / CELL) * CELL;
+      const cx = Math.round(p.x / RECENTER) * RECENTER, cz = Math.round(p.z / RECENTER) * RECENTER;
       if (cx !== centreX || cz !== centreZ) { centreX = cx; centreZ = cz; rebuild(cx, cz); }
     },
     nodesNear(x, y, z, radius) {
@@ -331,6 +405,13 @@ export function createSeafloor(T, { islands = [] } = {}) {
       const had = gathered.has(id);
       if (on) gathered.add(id); else gathered.delete(id);
       if (had !== !!on && patchNodes.some((n) => n.id === id)) refreshNodes();
+    },
+    isGathered: (id) => gathered.has(id),
+    /** Mark the targeted node (or null). Cheap to call every frame: no-op when unchanged. */
+    highlight(id = null) {
+      if (id === hlId) return;
+      hlId = typeof id === 'string' ? id : null;
+      refreshNodes();
     },
     dispose() {
       group.parent?.remove(group);
