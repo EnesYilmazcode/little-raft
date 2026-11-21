@@ -333,6 +333,5 @@ body.playing header,body.playing .goal,body.playing #toast,body.playing .control
 
 /* live-qa */
 /* Throw power sits just above the hotbar; the guide reads cream on navy */
-@media(max-width:760px){#chargeMeter{bottom:66px}}
 .guide li{color:var(--cream-dim)}.guide b{color:var(--cream)}.guide-note{color:var(--cream-dim)}
 .guide kbd{background:linear-gradient(180deg,#2a3a47,#16232e);color:var(--cream);border-color:rgba(201,164,107,.45)}
