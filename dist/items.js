@@ -158,6 +158,9 @@ const LIST = [
   item('cookedfish', 'Grilled Fish', 'food', { iconTint: '#e0a060', stack: 10,
     recipe: cook('grill', 'fish', { time: 15, fuel: 0.5 }), unlock: atStation('grill'),
     tip: 'A cosy, smoky meal. Click with it in hand to eat (+35 food).' }),
+  item('cookedsharkmeat', 'Grilled Shark Meat', 'food', { iconTint: '#c7764a', stack: 10,
+    recipe: cook('grill', 'sharkmeat', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
+    tip: 'A thick, smoky steak. Click with it in hand to eat (+30 food).' }),
 
   // ----- build / decor (placeable on raft tiles) -----
   item('bench', 'Bench', 'decor', { icon: 'icon-repair', placeholder: true, placeable: true,

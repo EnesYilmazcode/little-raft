@@ -112,6 +112,14 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M14 27 C18 24 24 23 30 24.5" fill="none" stroke="#fff2cc" stroke-width="1.8" stroke-linecap="round"/>
     <path d="M18 31 C22 29 28 29 33 30.5" fill="none" stroke="#b5565c" stroke-width="1.4" stroke-linecap="round"/>`,
 
+  // Grilled shark meat: the same slab seared brown with grill marks and steam.
+  cookedsharkmeat: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M6 32 C5 23 13 17 24 17 C35 17 43 23 42 31 C41 39 33 43 23 42 C13 41 7 38 6 32 Z" fill="#b8693c"/>
+    <path d="M10 30 C11 24 17 21 24 21 C31 21 37 24 38 29 C31 27 18 27 10 30 Z" fill="#d98e56" stroke="none"/>
+    <path d="M6 32 C7 38 13 41 23 42 C33 43 41 39 42 31 C38 35 30 37 23 37 C15 37 9 35 6 32 Z" fill="#6d7880"/></g>
+    <path d="M15 33 L19 23 M22 35 L26 22 M29 35 L33 23" fill="none" stroke="#4a2410" stroke-width="2.4" stroke-linecap="round"/>
+    <g fill="none" stroke="#fff2cc" stroke-width="2" stroke-linecap="round" stroke-opacity=".9"><path d="M18 14 C16 11 20 9 18 5"/><path d="M26 13 C24 10 28 8 26 3"/><path d="M34 14 C32 11 36 9 34 5"/></g>`,
+
   sharkhead: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <path d="M4 30 C6 20 16 12 30 12 C38 12 44 18 44 26 L44 38 C36 40 26 40 18 38 C10 37 5 34 4 30 Z" fill="#7f8f99"/>
     <path d="M4 30 C10 34 20 36 30 35 C36 35 41 36 44 38 C36 40 26 40 18 38 C10 37 5 34 4 30 Z" fill="#eef2f0"/>
