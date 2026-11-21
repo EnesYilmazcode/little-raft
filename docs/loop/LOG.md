@@ -221,3 +221,76 @@ Fleet: 8 subsystem bug hunters, 2 independent adversarial verifiers per bug repo
 - In plain Chrome, Esc from the pause menu still needs one click to relock. The Electron shell covers it.
 - The inventory and pause panels are still centred modals (UX-2/UX-8). Consider docked or side-sheet layouts.
 - Title screen copy and the pause menu styling (UX-7/UX-8).
+
+## Round 2: claude/loop-ux-202611210603 (base: origin/claude/raft-integration 8cff3ec + round 1 merged)
+
+The round-1 branch had never landed in integration, so it was merged first (399253e). A parallel session had pushed a different merge to claude/loop-ux-202611210547, so this round uses its own branch name.
+
+Fleet: 8 subsystem hunters (lock, craft, build, hook, survival, net, input, hud), 1 new-player UX reviewer reading screenshots, and 1 crafting UX builder. Every findings file went to 2 adversarial verifiers (18 in all), and 8 fixers each added regression tests.
+
+### Fixed (confirmed by both verifiers)
+- **Cursor and lock (LOCK-1..4):**
+  - In real Chrome, Esc from the inventory, pause or crew granted the lock and then lost it. Playwright's key events hid this because they carry no native key code.
+  - The Escape keyup now calls preventDefault, and the relock is deferred.
+  - A failed relock no longer leaves a hidden cursor with no prompt.
+  - Holding Esc opens pause.
+  - Drag-look mode keeps its cursor.
+  - New e2e test `tests/e2e/esc-relock.py` uses raw CDP Esc with native code 27. It fails before the fix and passes after.
+- **Crafting:**
+  - Craftable recipes sort first.
+  - Ingredient sources are shown ("found floating", "craft it ›" jumps to the recipe).
+  - A pinned recipe tracker on the HUD edge.
+  - Owned/needed chips on every recipe row and in the tooltips; the slot tooltip says "stack".
+  - Readable hammer and rod icons, and 3D icons for cup, seed and water.
+  - The ×N count and "hold: up to N" respect free bag space.
+  - The first open picks a ready recipe.
+  - Holding to craft ends on "Crafted N" instead of grey "Missing materials".
+  - Feed rows use the same 3D icons.
+- **No centred popups (HUD-1..6, UX-2, UX-7):**
+  - The live-update toast goes to the feed; before play it sits bottom-left.
+  - The feed docks into lanes inside the open bag and the pause rail, so it never covers buttons.
+  - Feed width is capped left of the hotbar.
+  - The bag's top edge is pinned, so tabs no longer jump.
+  - Guide keycaps and the title brand are readable.
+- **Controls (INPUT-1..4):**
+  - Held W/Shift survive opening and closing a panel.
+  - A spike filter replaces the ±200 look clamp, so fast flicks are kept.
+  - Physics substeps, giving the same speed and jump at any fps.
+  - The wheel works over the hotbar in drag-look.
+- **Building (BUILD-1..5, UX-1):**
+  - Pieces can't be placed on a player.
+  - The planter ghost shows the empty pot.
+  - Sail and lantern footprints and colliders match the models.
+  - Shift+wheel fine rotation works, and R rotate appears in the prompt and the guide.
+  - X with the hammer removes a piece for about half its cost back.
+  - The edge prompt shows cost and refusal reasons.
+- **Hook and farming (HOOK-1/2/5, SURV-2/3/4):**
+  - With a full bag the catch stays on the hook in the water, instead of teleporting back out to sea.
+  - The hook can be thrown while swimming.
+  - A catch survives a deck landing.
+  - Empty planters dry out.
+  - Harvest loot shows in the feed with icons.
+  - Clear notes when a farm action fails.
+- **Save and co-op (NET-1..5):**
+  - A tab idle on the title no longer gets save-blocked; save status shows inline on the title.
+  - A failed hot-swap keeps the desktop Esc hooks.
+  - The first hook to claim an item keeps it.
+  - A guest leaving no longer races the host's autosave.
+  - New game resets the hints.
+
+### Not fixed or refuted
+- HOOK-4 (the rod lands a fish on its own after a bite): refuted, because it is intended.
+- SURV-1 (solo pause doesn't freeze farming or drift): design question. Verifier B says freezing would have to cover the whole simulation.
+- HOOK-3: a duplicate of NET-3.
+
+### Checks
+- `npm test`: 216 pass, 0 fail.
+- `python shoot.py dist <out>`: no errors. After Esc from the inventory the game is locked, with no pause and no relock class.
+- `tests/e2e/esc-relock.py`: PASS.
+
+### Open for next round
+- Removing a floor tile someone stands on drops them into the sea; it should be blocked.
+- Pause-menu buttons don't respond to normal Playwright clicks (only JS clicks), and "Save and quit" shows a hover highlight while Resume has focus. Confirm whether real mouse clicks work.
+- The hold-to-craft progress is still a bar, not a ring.
+- Electron was not run here. The desktop Esc path was checked only by reading the code.
+- The machine was heavily loaded, so shoot.py frame times are not comparable between runs.
