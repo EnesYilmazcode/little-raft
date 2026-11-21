@@ -139,3 +139,17 @@ test('SURV-4 r3: a legacy water cup loads as a usable Cup of Fresh Water', async
   const snapBag = gameSrc.match(/const snapBag = [^\n]*/)?.[0] ?? '';
   assert.match(snapBag, /migrateSnapshot\(s\)/, 'world load runs every bag through migrateSnapshot');
 });
+
+test('SURV-5 r3: grills and the day clock get a zero dt while no game is running', () => {
+  assert.match(gameSrc, /const simDt = running \? dt : 0;[^\n]*\n\s*content\?\.update\(simDt\);[^\n]*\n\s*if \(fc\) \{ try \{ fc\.update\(simDt, elapsed\)/);
+  mem.clear();
+  const h = fcMount();
+  h.action({ kind: 'fc:placeGrill', x: 0, z: 0 });
+  const g = [...h.api.grills.values()][0];
+  g.st.addFuel(3); g.st.place({ species: 'pomfret', cm: 30 }); const fuel0 = g.st.fuel, before = JSON.stringify(g.st.snapshot());
+  for (let i = 0; i < 100; i++) h.api.update(0, i * 0.05); // what the title screen now passes
+  assert.equal(JSON.stringify(g.st.snapshot()), before, 'a zero dt leaves fuel and fish untouched');
+  h.api.update(0.1, 6);
+  assert.ok(g.st.fuel < fuel0, 'control: a running frame does burn fuel');
+  h.api.dispose();
+});

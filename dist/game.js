@@ -1447,8 +1447,9 @@ export function mount(transfer = null) {
     pickTarget = pickupFrom(frameAim);
     waterAim = pickTarget ? null : wateringTarget(frameAim);
     updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost();
-    content?.update(dt); // content hook
-    if (fc) { try { fc.update(dt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
+    const simDt = running ? dt : 0; // the title screen freezes the world: no day clock, no grill fuel or cooking
+    content?.update(simDt); // content hook
+    if (fc) { try { fc.update(simDt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
     if (instruments) { try { instruments.update(dt); } catch (e) { console.error('instruments update failed', e); try { instruments.dispose(); } catch {} instruments = null; } } // [instruments]
     if (running && role !== 'guest') {
       const itemCount = world.items.length, sigEvents = signalTick(world, dt, {token:newToken, held:new Set(caughtList(castOut()).map(c => c.token))});
