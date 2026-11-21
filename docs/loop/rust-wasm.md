@@ -75,3 +75,21 @@ Profile (headless Chrome, SwiftShader, CDP CPU profile of 10 s steady solo play,
 
 Conclusion: still no WASM. No JS function exceeds 1 ms/frame. The remaining costs are draw calls, shader programs and the GPU,
 plus one-time startup work (icons, co-op avatar, shader warm-up), and those were moved off the critical path in JS.
+
+## Round 4 (2026-11-21, branch claude/loop-perf-202611210823)
+
+Profile: CDP CPU profile, 10 s of steady play on a built raft (about 85 draws), SwiftShader, 3.3 fps, GPU-bound.
+
+| Hot spot | Measured cost | Verdict |
+|---|---|---|
+| Frame callback, all JS | mean 4.7 ms (p50 3.7) on a built raft; 3.2 ms right after spawn | **No.** Under 1 ms per function. |
+| three `WebGLUniforms.upload` | 1.17 ms/frame | **No.** Vendor code; fewer programs, fewer materials and no idle point lights reduce it (done this round). |
+| three `updateMatrixWorld` / `updateMatrix` | 0.32 / 0.26 ms/frame | **No.** Scene-graph size; merging and culling help. |
+| content.update, prompts tick, storage-research | 0.30 / 0.27 / 0.35 ms/frame | **No.** |
+| hands.js update allocation (~5 KB/frame in the probe) | unoptimized-tier HeapNumber boxing at 1-3 fps; 0.15-1 KB/frame once optimized | **No.** Measurement artefact, not a hot spot. |
+
+Conclusion: still no WASM. The real costs were mid-game shader relinks (the first lantern relinked 54 programs), triangles
+(ocean grid, debris) and leaked memory on hot swap, and none of them is a compute problem.
+
+Note for future rounds: alloc_probe.py at SwiftShader frame rates measures interpreter-tier boxing. Warm up for thousands
+of frames before trusting a per-function KB/frame figure.
