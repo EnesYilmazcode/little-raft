@@ -326,7 +326,7 @@ void main() {
     float lace = clamp((wl - iso) / isoAA + 0.5, 0.0, 1.0) * min(wl * 3.0 / isoAA + floorAA, 1.0) * smoothstep(0.02, 0.12, laceMask);
     float raftCore = 1.0 - smoothstep(0.0, 0.06 + 0.12 * n1, rd);   // thin ragged collar where logs meet water
     foam = max(max(crest * 0.85, lace * 0.75), raftCore * 0.85);
-    foam *= (1.0 - smoothstep(30.0, 90.0, dist)) * smoothstep(-0.7, -0.3, rd);   // none deep under the deck (plank gaps)
+    foam *= (1.0 - smoothstep(30.0, 90.0, dist)) * smoothstep(-0.3, -0.05, rd);   // none under the deck (seen through plank gaps)
   }
   col *= mix(0.55, 1.0, smoothstep(-1.2, 0.1, rd));                               // occluded water under the raft
   col = mix(col, uFoam * (0.8 + 0.2 * shadow), foam);
@@ -511,23 +511,37 @@ export function createWater(T, options = {}) {
   // Channel R is the raft SDF; channel G is the same footprint shifted by the deck's shadow offset (sun direction x
   // deck height, turned into raft space), so the shader gets the fake deck shadow from the same fetch.
   let raftTiles = [], raftYaw = 0;
-  function stampTiles(tiles, dist, ox, oz, texel, shiftX, shiftZ, reach = 1 + SDF_MAX) {
-    dist.fill(SDF_MAX);
-    for (const [tx, tz] of tiles) {   // stamp each tile into the texels within its reach (min-combine)
-      const wx = tx * 2 - shiftX, wz = tz * 2 - shiftZ;
-      const i0 = Math.max(0, Math.floor((wx - reach - ox) / texel)), i1 = Math.min(SDF_RES - 1, Math.ceil((wx + reach - ox) / texel));
-      const j0 = Math.max(0, Math.floor((wz - reach - oz) / texel)), j1 = Math.min(SDF_RES - 1, Math.ceil((wz + reach - oz) / texel));
-      for (let j = j0; j <= j1; j++) {
-        const qz = Math.abs(oz + (j + 0.5) * texel - wz) - 1, mz = qz > 0 ? qz : 0;
-        for (let i = i0; i <= i1; i++) {
-          const qx = Math.abs(ox + (i + 0.5) * texel - wx) - 1, mx = qx > 0 ? qx : 0;
-          const inside = qx > qz ? qx : qz;
-          const d = Math.sqrt(mx * mx + mz * mz) + (inside < 0 ? inside : 0);
-          const k = j * SDF_RES + i;
-          if (d < dist[k]) dist[k] = d;
-        }
+  // Distance to a 2 m tile box centred at (wx, wz), min-combined into dist within reach. outsideOnly: the box's
+  // outside distance (0 inside), for the empty cells that bound the raft from inside.
+  function stampBox(dist, wx, wz, ox, oz, texel, reach, outsideOnly) {
+    const i0 = Math.max(0, Math.floor((wx - reach - ox) / texel)), i1 = Math.min(SDF_RES - 1, Math.ceil((wx + reach - ox) / texel));
+    const j0 = Math.max(0, Math.floor((wz - reach - oz) / texel)), j1 = Math.min(SDF_RES - 1, Math.ceil((wz + reach - oz) / texel));
+    for (let j = j0; j <= j1; j++) {
+      const qz = Math.abs(oz + (j + 0.5) * texel - wz) - 1, mz = qz > 0 ? qz : 0;
+      for (let i = i0; i <= i1; i++) {
+        const qx = Math.abs(ox + (i + 0.5) * texel - wx) - 1, mx = qx > 0 ? qx : 0;
+        const inside = qx > qz ? qx : qz;
+        const d = Math.sqrt(mx * mx + mz * mz) + (!outsideOnly && inside < 0 ? inside : 0);
+        const k = j * SDF_RES + i;
+        if (d < dist[k]) dist[k] = d;
       }
     }
+  }
+  // Signed distance to the union of the tiles. Outside, the min over tiles is exact. Inside it is not (it would be
+  // ~0 along every internal tile seam, which showed as foam lines in the plank gaps), so inside texels take minus
+  // the distance to the nearest empty cell around the raft (capped at 2 m, the encoded range).
+  const inner = new Float32Array(SDF_RES * SDF_RES);
+  function stampTiles(tiles, dist, ox, oz, texel, shiftX, shiftZ, reach = 1 + SDF_MAX) {
+    dist.fill(SDF_MAX); inner.fill(2);
+    const have = new Set(tiles.map(([x, z]) => x + ',' + z)), seen = new Set();
+    for (const [tx, tz] of tiles) stampBox(dist, tx * 2 - shiftX, tz * 2 - shiftZ, ox, oz, texel, reach, false);
+    for (const [tx, tz] of tiles) for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const key = (tx + dx) + ',' + (tz + dz);
+      if (have.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      stampBox(inner, (tx + dx) * 2 - shiftX, (tz + dz) * 2 - shiftZ, ox, oz, texel, 3, true);
+    }
+    for (let k = 0; k < dist.length; k++) if (dist[k] < 0) dist[k] = -Math.min(inner[k], 2);
   }
   const bake = { ox: 0, oz: 0, texel: 1, yaw: 0, sun: new T.Vector3() };   // what the shadow channel was baked with
   const enc = (d) => Math.round(Math.min(Math.max((d + 2) / (SDF_MAX + 2), 0), 1) * 255);
