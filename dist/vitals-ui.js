@@ -15,7 +15,7 @@ const CSS = `
   background:repeating-linear-gradient(90deg,#0000000d 0 2px,transparent 2px 19px),linear-gradient(#9a7643,#6a4a2a);
   border:2px solid #c9a66b;box-shadow:0 0 0 2px #3e2a17,0 4px 14px #0006;font:700 11px/1 ${FONT};color:#fff2cc}
 #lrVitals[hidden]{display:none}
-@media(max-width:1100px){#lrVitals{bottom:96px}}
+@media(max-width:1100px){#lrVitals{bottom:96px}} /* keep in sync with the feed lift: style.css, game.js, prompts.css */
 #lrVitals .lv-row{display:grid;grid-template-columns:16px 1fr 24px;align-items:center;gap:6px}
 #lrVitals svg{display:block;width:16px;height:16px;filter:drop-shadow(0 1px 1px #0008)}
 #lrVitals .lv-track{position:relative;height:9px;border-radius:2px;overflow:hidden;background:linear-gradient(180deg,#2b1c10,#3d2a19);
@@ -37,13 +37,13 @@ const CSS = `
 #lrVitalsFlash{background:radial-gradient(ellipse at center,rgba(200,20,0,.12) 30%,rgba(190,15,0,.6) 100%)}
 #lrVitalsFlash.hit{animation:lvHit .45s ease-out}
 @keyframes lvHit{from{opacity:1}to{opacity:0}}
-#lrFaint{position:fixed;inset:0;z-index:2147482000;pointer-events:none;display:grid;place-items:center;background:#0b0604e6;opacity:0;transition:opacity .5s ease;
-  margin:0;border:0;padding:0;width:auto;height:auto;max-width:none;max-height:none;overflow:hidden;color:inherit}
+#lrFaint{position:fixed;inset:0;z-index:2147482000;pointer-events:none;display:grid;place-items:end start;background:#0b0604e6;opacity:0;transition:opacity .5s ease;
+  margin:0;border:0;padding:0 0 18vh 8vw;box-sizing:border-box;width:auto;height:auto;max-width:none;max-height:none;overflow:hidden;color:inherit}
 #lrFaint[popover]:not(:popover-open){display:none}
 #lrFaint.on{opacity:1;animation:lvFaintIn .5s ease}
 @keyframes lvFaintIn{from{opacity:0}}
 #lrFaint div{font:700 30px/1.2 ${FONT};color:#f6ecd6;letter-spacing:.04em;text-shadow:0 2px 6px #000}
-#lrFaint small{display:block;margin-top:8px;font:500 14px/1.3 ${FONT};letter-spacing:0;opacity:.8;text-align:center}
+#lrFaint small{display:block;margin-top:8px;font:500 14px/1.3 ${FONT};letter-spacing:0;opacity:.8;text-align:left}
 @media(max-width:760px){#lrVitals{bottom:108px;width:132px;padding:5px 7px 6px 5px;gap:4px}#lrVitals .lv-row{grid-template-columns:14px 1fr 22px;gap:4px}
   #lrVitals svg{width:14px;height:14px}#lrVitals .lv-track{height:7px}}
 @media(prefers-reduced-motion:reduce){#lrVitals .lv-fill{transition:none}#lrVitals .lv-low .lv-track,#lrVitalsVignette.on{animation:none}#lrVitalsFlash.hit{animation-duration:.2s}}
