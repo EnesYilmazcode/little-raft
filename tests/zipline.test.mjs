@@ -208,3 +208,59 @@ test('module: ride pins under the rope, clamps over the deck, lets go on Space, 
   assert.ok(notes.includes('A zipline post lost its floor'));
   mod.dispose();
 });
+
+test('riderPose: eye stays clear of the rope, no pop onto an upper floor', () => {
+  const pieces = [floor(4, 0, 1), floor(5, 0, 1)];
+  const A = topOf({ i: 0, j: 0, l: 0 }), B = topOf({ i: 4, j: 0, l: 1 }), len = span(A, B);
+  const o = {}, q = {};
+  let prev = null, maxJump = 0;
+  for (let t = .03; t <= .999; t += 4 / 60 / len) { // ~4 m/s at 60 fps
+    R.riderPose(pieces, A, B, t, 1, o); ropePoint(A, B, t, q);
+    assert.ok(Math.hypot(o.x - q.x, o.y - q.y, o.z - q.z) >= ZIP.SIDE - 1e-9, 'eye too close to the rope at t=' + t);
+    assert.ok(o.y - ZIP.EYE >= R.surfAt(pieces, o.x, o.z, q.y) - 1e-9 || Math.round(o.x / 2) !== Math.round(q.x / 2));
+    if (prev !== null) maxJump = Math.max(maxJump, Math.abs(o.y - prev));
+    prev = o.y;
+  }
+  assert.ok(maxJump < .06, 'eye jumped ' + maxJump);
+  // level 8 m deck line: the clamp would put the eye inside the rope; the body slides aside instead
+  const C = topOf({ i: 0, j: 0, l: 0 }), D = topOf({ i: 4, j: 0, l: 0 }), m = R.riderPose([], C, D, .5, 1, {}), r = ropePoint(C, D, .5);
+  assert.ok(Math.hypot(m.x - r.x, m.y - r.y, m.z - r.z) >= ZIP.SIDE - 1e-9 && m.y - ZIP.EYE >= ZIP.FLOOR_Y);
+});
+
+test('applyZip: unlink / remove refuse when the refund does not fit the bag', () => {
+  const world = { tiles: tiles([0, 0], [3, 0]), pieces: [], decor: [] };
+  const s = st([{ id: 1, i: 0, j: 0, l: 0 }, { id: 2, i: 3, j: 0, l: 0 }], [[1, 2]]), bag = new Bag();
+  while (bag.add('plank', 1) === 0) { /* fill every slot */ }
+  if (!bag.count('plank')) for (let k = 0; k < 40 && bag.add('wood', 99) === 0; k++);
+  const full = bag.snapshot();
+  assert.equal(applyZip(s, { kind: 'zipline.unlink', a: 1, b: 2 }, bag, world).text, 'Your bag is full');
+  assert.equal(applyZip(s, { kind: 'zipline.remove', id: 1 }, bag, world).text, 'Your bag is full');
+  assert.equal(s.posts.length, 2); assert.equal(s.lines.length, 1); assert.deepEqual(bag.snapshot(), full);
+  assert.ok(R.inReach({ x: 0, z: 0 }, 6, 0, 6) && !R.inReach({ x: 0, z: 0 }, 8, 0, 6) && !R.inReach(null, 0, 0, 6));
+});
+
+test('module: guest reach check, host rev never reused after a load, sleep drops the rider', () => {
+  const world = { tiles: tiles([0, 0], [1, 0], [2, 0], [3, 0], [4, 0]), pieces: [], decor: [], ext: {} };
+  const bag = new Bag(); bag.add('zippost', 3); bag.add('rope', 2);
+  const physics = { x: 0, y: 1.8, z: 0, vx: 0, vy: 0, vz: 0, grounded: true, swimming: false, _jumpBuffer: 0 };
+  const notes = []; let asleep = false;
+  const ctx = { T, scene: new T.Scene(), raft: new T.Group(), world, role: 'host', running: true, physics, other: { x: 30, z: 0 },
+    camera: new T.PerspectiveCamera(), localBag: () => bag, actorBag: () => bag, action: a => mod.action(a, 'host', bag),
+    emit: e => notes.push(e.text), notice: s => notes.push(s), deckY: () => .2, uiOpen: () => false, aim: () => null, steering: () => false, play: () => {} };
+  const mod = createZipline(ctx, { peek: n => (n === 'sleep' ? { in: { host: asleep } } : undefined) });
+  mod.load(undefined, 'save');
+  mod.action({ kind: 'zipline.post', i: 0, j: 0, l: 0 }, 'guest', bag); // guest 30 m away
+  assert.equal(mod.serialize().posts.length, 0); assert.ok(notes.includes('Move a little closer'));
+  mod.action({ kind: 'zipline.post', i: 0, j: 0, l: 0 }, 'host', bag); mod.action({ kind: 'zipline.post', i: 3, j: 0, l: 0 }, 'host', bag);
+  mod.action({ kind: 'zipline.link', a: 2, b: 1 }, 'host', bag); // b is the aimed post, in reach
+  assert.equal(mod.serialize().lines.length, 1);
+  mod.action({ kind: 'zipline.remove', id: 2 }, 'guest', bag); assert.equal(mod.serialize().posts.length, 2);
+  const saved = JSON.parse(JSON.stringify(mod.serialize())), rev = saved.rev;
+  mod.debug.place(4, 0, 0); assert.equal(mod.serialize().rev, rev + 1);
+  mod.load(saved, 'save'); // an older save: the rev must still move forward so a guest refreshes
+  assert.ok(mod.serialize().rev > rev + 1); assert.equal(mod.serialize().posts.length, 2);
+  mod.update(1 / 60);
+  assert.ok(mod.interact(null) && mod.debug.ride); mod.afterMove(physics, 1 / 60); assert.ok(mod.debug.ride);
+  asleep = true; mod.afterMove(physics, 1 / 60); assert.equal(mod.debug.ride, null);
+  mod.dispose();
+});

@@ -2,7 +2,7 @@
 // between two of them, and a local ride along it with E (Space lets go). Posts and lines are host-owned in
 // world.ext.zipline; riding is local only (the remote avatar just shows the airborne pose).
 import { ZIP, ZIP_TEXT, blankZip, cleanZip, applyZip, canPost, canLink, supported, postById, linesOf, hasLine,
-  topOf, ropePoint, linePoints, rideStep, riderEye, landSpot, prune } from './zipline-rules.js?build=v3-survival-ae77fa84ac2b';
+  topOf, ropePoint, linePoints, rideStep, riderPose, landSpot, prune, bumpZip, inReach } from './zipline-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createZipKit } from './zipline-models.js?build=v3-survival-ae77fa84ac2b';
 
 const AIM_POST = 4, POST_R = .4, PENDING_S = 20;
@@ -62,8 +62,15 @@ export function createZipline(ctx, { peek } = {}) {
     const n = prune(state, w);
     if (!n.posts && !n.lines) return;
     state.rev = state.rev >= ZIP.MAX_REV ? 1 : state.rev + 1; dirty = true;
-    const bag = ctx.localBag?.(); bag?.add('zippost', n.posts); if (n.lines) bag?.add('rope', n.lines);
-    ctx.notice?.('A zipline post lost its floor');
+    // Refund the host; what does not fit goes to the partner's bag, and only then is it lost.
+    const bag = ctx.localBag?.(), alt = ctx.other ? ctx.actorBag?.('guest') : null;
+    let lost = 0;
+    for (const [k, c] of [['zippost', n.posts], ['rope', n.lines]]) {
+      let left = c ? (bag ? bag.add(k, c) : c) : 0;
+      if (left && alt) left = alt.add(k, left);
+      lost += left;
+    }
+    ctx.notice?.(lost ? 'A zipline post lost its floor (your bag was too full for all of it)' : 'A zipline post lost its floor');
   }
 
   // ---------- aiming ----------
@@ -99,14 +106,15 @@ export function createZipline(ctx, { peek } = {}) {
     place = null;
     const d = aim?.dir, cam = ctx.camera?.position; if (!d || !cam || d.y > -1e-4) return null;
     const oy = cam.y - yOff(); let fallback = null;
+    let fi = 0, fj = 0, ft = 0;
     for (let l = 0; l <= ZIP.MAX_L; l++) {
       const h = ZIP.FLOOR_Y + l * ZIP.LEVEL_H; if (oy <= h) break;
       const t = (h - oy) / d.y; if (t > ZIP.PLACE_REACH) continue;
       const i = Math.round((cam.x + d.x * t) / 2), j = Math.round((cam.z + d.z * t) / 2);
       if (supported(ctx.world, i, j, l)) { if (!place || t < place.t) { placeTgt.i = i; placeTgt.j = j; placeTgt.l = l; placeTgt.t = t; place = placeTgt; } }
-      else if (l === 0) fallback = { i, j, l: 0, t };
+      else if (l === 0) { fallback = true; fi = i; fj = j; ft = t; }
     }
-    if (!place && fallback) { Object.assign(placeTgt, fallback); place = placeTgt; }
+    if (!place && fallback) { placeTgt.i = fi; placeTgt.j = fj; placeTgt.l = 0; placeTgt.t = ft; place = placeTgt; }
     if (place) place.why = canPost(state, ctx.world, place.i, place.j, place.l);
     return place;
   }
@@ -158,14 +166,13 @@ export function createZipline(ctx, { peek } = {}) {
     ph.vy = vy; ph.vx = 0; ph.vz = 0; ph.grounded = false; ph._jumpBuffer = 0;
   }
   function pin(ph) {
-    ropePoint(tA, tB, ride.t, rp);
-    const eye = riderEye(ctx.world?.pieces, rp.x, rp.z, rp.y);
-    ph.x = rp.x; ph.z = rp.z; ph.y = yOff() + eye;
+    riderPose(ctx.world?.pieces, tA, tB, ride.t, ride.dir, rp); // eye beside and below the rope, feet above the floor
+    ph.x = rp.x; ph.z = rp.z; ph.y = yOff() + rp.y;
     ph.vx = 0; ph.vz = 0; ph.vy = -.01; ph.grounded = false; ph.swimming = false;
   }
   function afterMove(ph, dt) {
     if (!ride || !ph) return;
-    if (!lineEnds(ride) || !ctx.running || ctx.uiOpen?.() || ctx.steering?.()) { drop(ph, 0); return; }
+    if (!lineEnds(ride) || !ctx.running || ctx.uiOpen?.() || ctx.steering?.() || peek?.('sleep')?.in?.[myRole()]) { drop(ph, 0); return; }
     // Space: let go (gravity + floor snap land us). The jump buffer alone is not enough: at low fps the
     // frame's substeps use it up before this hook runs, so also watch the jump key's rising edge.
     const jumpNow = !!ph._prevJump, jumpEdge = jumpNow && !ride.jumpWas; ride.jumpWas = jumpNow;
@@ -250,6 +257,22 @@ export function createZipline(ctx, { peek } = {}) {
     return null;
   }
 
+  // Host reach check: the actor must stand near what they place, tie, untie or pick up (the guest pose lags,
+  // so inReach adds slack). The first post of a new line may be far away; the second one was aimed at.
+  function farFrom(a, actor) {
+    const pose = actor === 'guest' ? ctx.other : ctx.physics;
+    if (a.kind === 'zipline.post') return Number.isInteger(a.i) && Number.isInteger(a.j) && !inReach(pose, 2 * a.i, 2 * a.j, ZIP.PLACE_REACH) ? 'far' : '';
+    const p = postById(state, a.kind === 'zipline.remove' ? a.id : a.b);
+    return p && !inReach(pose, 2 * p.i, 2 * p.j, AIM_POST) ? 'far' : '';
+  }
+  // QA helpers on the host skip the reach check (the actions still go through the same rules).
+  function hostDo(a) {
+    if (isGuest()) return send(a);
+    const r = applyZip(state, a, ctx.localBag?.(), ctx.world); if (r?.ok) dirty = true;
+    if (r?.text) ctx.notice?.(r.text);
+    return r;
+  }
+
   return {
     name: 'zipline',
     serialize: () => state,
@@ -261,13 +284,18 @@ export function createZipline(ctx, { peek } = {}) {
         if (ride && !lineEnds(ride)) drop(ctx.physics, 0);
         return;
       }
+      const prevRev = state.rev;
       state = cleanZip(d); netRev = -1; dirty = true; pending = null;
+      // Host: never reuse a rev a guest may already hold (it skips same-rev snapshots), e.g. loading an older save.
+      if (!isGuest() && state.rev <= prevRev) { state.rev = prevRev; bumpZip(state); }
       if (ride) drop(ctx.physics, 0); // a whole new world (restore / save load)
       seenPieces = null; seenTiles = null; seenTilesN = -1;
       if (!isGuest()) doPrune();
     },
     action(a, actor, bag) {
       if (typeof a?.kind !== 'string' || !a.kind.startsWith('zipline.')) return false;
+      const why = farFrom(a, actor);
+      if (why) { ctx.emit({ kind: 'notice', text: ZIP_TEXT[why] }, actor); return true; }
       const r = applyZip(state, a, bag, ctx.world);
       if (!r) return true;
       if (r.ok) dirty = true;
@@ -300,9 +328,9 @@ export function createZipline(ctx, { peek } = {}) {
       get aimPost() { return aimPost ? { ...aimPost } : null; },
       get target() { return place ? { ...place } : null; },
       get pending() { return pending ? { ...pending } : null; },
-      place: (i, j, l = 0) => send({ kind: 'zipline.post', i, j, l }),
-      link: (a, b) => send({ kind: 'zipline.link', a, b }),
-      remove: id => send({ kind: 'zipline.remove', id }),
+      place: (i, j, l = 0) => hostDo({ kind: 'zipline.post', i, j, l }),
+      link: (a, b) => hostDo({ kind: 'zipline.link', a, b }),
+      remove: id => hostDo({ kind: 'zipline.remove', id }),
       grab(id) { const p = postById(state, id); return p ? startRide(p, true) : false; },
       seek(t) { if (ride && Number.isFinite(t)) { ride.t = Math.max(0, Math.min(1, t)); ride.lastT = -1; } return ride ? ride.t : null; },
       hold(v = true) { hold = !!v; return hold; },
@@ -322,8 +350,8 @@ export function createZipline(ctx, { peek } = {}) {
         w.pieces = pieces; ctx.building.sync(w); ctx.rebuildRaft?.();
         const b = ctx.localBag(); b.add('zippost', 3); b.add('rope', 3);
         const n = state.posts.length;
-        send({ kind: 'zipline.post', i: 0, j: 0, l: 0 }); send({ kind: 'zipline.post', i: 4, j: 0, l: 1 });
-        const ids = state.posts.slice(n).map(p => p.id); if (ids.length === 2) send({ kind: 'zipline.link', a: ids[0], b: ids[1] });
+        hostDo({ kind: 'zipline.post', i: 0, j: 0, l: 0 }); hostDo({ kind: 'zipline.post', i: 4, j: 0, l: 1 });
+        const ids = state.posts.slice(n).map(p => p.id); if (ids.length === 2) hostDo({ kind: 'zipline.link', a: ids[0], b: ids[1] });
         return { ids, state: JSON.parse(JSON.stringify(state)) };
       },
       standAt(x, y, z) { const p = ctx.physics; if (!p) return false; p.x = x; p.y = yOff() + y; p.z = z; p.vx = p.vy = p.vz = 0; p.grounded = false; return true; },

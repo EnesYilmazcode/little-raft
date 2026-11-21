@@ -7,6 +7,7 @@ export const ZIP = Object.freeze({
   MAX_POSTS: 16, MAX_LINES: 12, MAX_PER_POST: 2, SPAN_MIN: 2, SPAN_MAX: 14, POST_H: 2.0, LEVEL_H, FLOOR_Y: .2,
   SAG_K: .04, HANG: .3, SPEED: 4, DOWN_BONUS: 1.2, SPEED_MAX: 5.2, REACH: 2.2, PLACE_REACH: 6, START_S: .5,
   EYE: 1.6, FOOT_CLEAR: .05, MAX_IJ: 27, MAX_L: 5, MAX_REV: 1e9,
+  SIDE: .45, RAMP: .6, LOOK: 3, ACT_SLACK: 1.5,
 });
 
 export const ZIP_TEXT = Object.freeze({
@@ -14,7 +15,7 @@ export const ZIP_TEXT = Object.freeze({
   decor: 'Clear this tile first', linked: 'These two are already linked', busy: 'A post holds two lines',
   lines: 'Twelve lines is plenty', short: 'Too close for a line', long: 'Too far for one rope',
   blocked: 'Something is in the way', norope: 'You need Rope', nopost: 'Build a Zipline Post first',
-  missing: 'That post is gone', same: 'Pick a different post',
+  missing: 'That post is gone', same: 'Pick a different post', far: 'Move a little closer', full_bag: 'Your bag is full',
 });
 
 const isInt = v => Number.isInteger(v);
@@ -150,7 +151,7 @@ export function rideStep(r, A, B, dt) {
  * never go below the walk surface under them (the deck plane, or a floor slab below the rope) plus a small
  * clearance. Build note: a long level line sags up to ~.56 m, which put the feet .46 m into the deck.
  */
-export function riderEye(pieces, x, z, ropeY) {
+export function surfAt(pieces, x, z, ropeY) {
   let surf = ZIP.FLOOR_Y;
   if (Array.isArray(pieces) && pieces.length) {
     const ci = Math.round(x / 2), cj = Math.round(z / 2);
@@ -160,7 +161,57 @@ export function riderEye(pieces, x, z, ropeY) {
       if (h < ropeY && h > surf) surf = h;
     }
   }
-  return Math.max(ropeY - ZIP.HANG, surf + ZIP.EYE + ZIP.FOOT_CLEAR);
+  return surf;
+}
+export function riderEye(pieces, x, z, ropeY) {
+  return Math.max(ropeY - ZIP.HANG, surfAt(pieces, x, z, ropeY) + ZIP.EYE + ZIP.FOOT_CLEAR);
+}
+
+const _Q = {};
+const surfAhead = (pieces, A, B, t) => { ropePoint(A, B, t, _Q); return surfAt(pieces, _Q.x, _Q.z, _Q.y); };
+/**
+ * Rider pose (raft-local) at t on A->B riding in dir: {x, y (eye), z}. The eye is riderEye, plus a ramp that
+ * eases the eye up before a higher slab ahead and down after leaving one (no pop at an upper-floor cell), and the body
+ * slides sideways off the rope until the eye is at least SIDE from it (the rope never fills the view, even
+ * where the clamp lifts the eye up to the rope).
+ */
+export function riderPose(pieces, A, B, t, dir, out = {}) {
+  ropePoint(A, B, t, out);
+  const rx = out.x, ry = out.y, rz = out.z, len = span(A, B) || 1;
+  let eye = riderEye(pieces, rx, rz, ry);
+  const base = surfAt(pieces, rx, rz, ry), n = Math.round(ZIP.LOOK / .25);
+  for (let q = 0; q < 2; q++) { // ahead and behind: ease up before a higher slab and down after leaving one
+    const d = q ? -dir : dir; let lastS = 0, lastSurf = base;
+    for (let k = 1; k <= n; k++) {
+      const s = k * .25; if (t + d * s / len < 0 || t + d * s / len > 1) break;
+      const sf = surfAhead(pieces, A, B, t + d * s / len);
+      if (sf > lastSurf) { // a higher slab starts between lastS and s: find its edge so the ramp has no step
+        let lo = lastS, hi = s;
+        for (let m = 0; m < 8; m++) { const mid = (lo + hi) / 2; if (surfAhead(pieces, A, B, t + d * mid / len) >= sf) hi = mid; else lo = mid; }
+        const e = sf + ZIP.EYE + ZIP.FOOT_CLEAR - hi * ZIP.RAMP; if (e > eye) eye = e;
+      }
+      lastS = s; lastSurf = sf;
+    }
+  }
+  const dy = ry - eye, hx = B.x - A.x, hz = B.z - A.z, h = Math.hypot(hx, hz);
+  const side = h > 1e-6 && Math.abs(dy) < ZIP.SIDE ? Math.sqrt(ZIP.SIDE * ZIP.SIDE - dy * dy) / h : 0;
+  out.x = rx - hz * side; out.z = rz + hx * side; out.y = eye;
+  return out;
+}
+
+/** True if a pose {x, z} is within r (+ host slack for the guest's lagging pose) of raft-local (x, z). */
+export const inReach = (pose, x, z, r) => !!pose && Number.isFinite(pose.x) && Number.isFinite(pose.z)
+  && Math.hypot(pose.x - x, pose.z - z) <= r + ZIP.ACT_SLACK;
+
+/** Adds every refund to a copy of bag; commits only if all of it fits. */
+function refund(bag, items) {
+  if (!bag) return true;
+  if (typeof bag.snapshot !== 'function') { for (const [k, n] of items) if (n) bag.add(k, n); return true; }
+  const s = new bag.constructor(bag.snapshot());
+  for (const [k, n] of items) if (n && s.add(k, n) > 0) return false;
+  for (let i = 0; i < s.slots.length; i++) bag.slots[i] = s.slots[i];
+  if (typeof bag.version === 'number') bag.version++;
+  return true;
 }
 
 /** Where to set the rider down beside `post` after riding in direction (dirX, dirZ). Raft-local {x, z, footY}. */
@@ -210,16 +261,16 @@ export function applyZip(state, a, bag, world) {
   if (k === 'zipline.unlink') {
     if (!isInt(a.a) || !isInt(a.b) || !hasLine(state, a.a, a.b)) return fail('');
     const x = Math.min(a.a, a.b), y = Math.max(a.a, a.b);
+    if (!refund(bag, [['rope', 1]])) return fail('full_bag');
     state.lines = state.lines.filter(l => !(l[0] === x && l[1] === y)); bumpZip(state);
-    bag?.add('rope', 1);
     return { ok: true, text: 'Line untied' };
   }
   if (k === 'zipline.remove') {
     if (!postById(state, a.id)) return fail('');
     const n = linesOf(state, a.id);
+    if (!refund(bag, [['zippost', 1], ['rope', n]])) return fail('full_bag');
     state.posts = state.posts.filter(p => p.id !== a.id);
     state.lines = state.lines.filter(l => l[0] !== a.id && l[1] !== a.id); bumpZip(state);
-    bag?.add('zippost', 1); if (n) bag?.add('rope', n);
     return { ok: true, text: 'Post picked up' };
   }
   return null;

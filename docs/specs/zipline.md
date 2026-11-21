@@ -185,3 +185,11 @@ Constants: `MAX_POSTS 16`, `MAX_LINES 12`, `MAX_PER_POST 2`, `SPAN_MIN 2`, `SPAN
 - Extra boilerplate: craft-book category and text, an item-svg icon, and live.js PRELOAD entries.
 - QA helpers: `raftDebug.content.zipline.demo()` (deck strip, l=1 floor on pillars at cells 4..5, linked posts),
   `standAt(x, y, z)`, `seek(t)`, `hold(bool)`, `grant()`, plus the spec's `place/link/grab/ropeAt`.
+- Review fixes: the host checks reach for all four actions (`ACT_SLACK` 1.5 m for the guest's lagging pose; the
+  first post of a new line may be far, the aimed one may not); debug `place/link/remove/demo` skip it on the host.
+  Untie and pick-up refuse with "Your bag is full" when the refund does not fit; a prune refund that does not
+  fit the host bag goes to the partner's bag, and only the rest is lost (with a notice). `riderPose` eases the eye
+  up 0.6 m per metre before a higher slab and down after leaving one (no pop onto an upper floor) and slides the
+  body sideways until the eye is `SIDE` (.45 m) from the rope, so the rope never fills the top of the view. The
+  host bumps rev past its previous value on every save/restore load (a guest skips same-rev snapshots). Sleeping
+  mid-ride drops the rider.
