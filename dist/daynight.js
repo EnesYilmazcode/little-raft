@@ -110,14 +110,15 @@ const hex = s => [parseInt(s.slice(1, 3), 16) / 255, parseInt(s.slice(3, 5), 16)
 const key = (phase, ...colors) => ({ phase, c: new Float32Array(colors.flatMap(hex)) });
 export const PALETTE_KEYS = Object.freeze([
   //   phase  horizon    zenith     deep       shallow    sun        hemi sky   hemi gnd   cloud
-  key(0.00, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#f6d3c2'), // sunrise peach
+  key(0.00, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#ffdcc8'), // sunrise peach
+  key(0.04, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#ffdcc8'), // ... held a little
   key(0.13, '#cbd2c0', '#a9c1c0', '#14505a', '#3f8c88', '#fff0c7', '#f2ead4', '#3d6b6a', '#e7f9eb'), // day sage
   key(0.54, '#cbd2c0', '#a9c1c0', '#14505a', '#3f8c88', '#fff0c7', '#f2ead4', '#3d6b6a', '#e7f9eb'),
-  key(0.635, '#eaa98e', '#b79fb0', '#1d4a5e', '#4d7f88', '#ffb27e', '#f4c3a6', '#4b5a68', '#f2b8aa'), // dusk coral
-  key(0.70, '#6f6f9e', '#58679a', '#173c54', '#2f6276', '#c3b0dc', '#a9a6d2', '#3a4c66', '#8e88b2'), // blue hour
-  key(0.77, '#34486f', '#2e4170', '#0f3046', '#1f5066', '#a8bff0', '#9bb4e6', '#2f4762', '#5e6f98'), // cosy blue night
-  key(0.91, '#34486f', '#2e4170', '#0f3046', '#1f5066', '#a8bff0', '#9bb4e6', '#2f4762', '#5e6f98'),
-  key(0.965, '#6c7299', '#536392', '#163a50', '#2d5e70', '#c6b8da', '#aaaed2', '#37495e', '#9490b0'), // predawn
+  key(0.635, '#eaa98e', '#b79fb0', '#1d4a5e', '#4d7f88', '#ffb27e', '#f4c3a6', '#4b5a68', '#ffc9b0'), // dusk coral
+  key(0.70, '#6f6f9e', '#58679a', '#173c54', '#2f6276', '#c3b0dc', '#a9a6d2', '#2c3b55', '#8e88b2'), // blue hour
+  key(0.77, '#34486f', '#2e4170', '#0f3046', '#1f5066', '#a8bff0', '#9bb4e6', '#1f3044', '#5e6f98'), // cosy blue night
+  key(0.91, '#34486f', '#2e4170', '#0f3046', '#1f5066', '#a8bff0', '#9bb4e6', '#1f3044', '#5e6f98'),
+  key(0.94, '#6c7299', '#536392', '#163a50', '#2d5e70', '#c6b8da', '#aaaed2', '#2c3c52', '#aaa4c6'), // predawn
 ]);
 // Rain pulls every colour toward a cool grey-green of similar brightness.
 export const RAIN_MIX = 0.65;
@@ -180,7 +181,7 @@ void main() {
   float tw = 0.65 + 0.35 * sin(uTime * (1.3 + aSeed * 2.7) + aSeed * 40.0);
   float h = smoothstep(-0.02, 0.28, normalize(position).y);
   vAlpha = uOpacity * tw * h * (0.55 + 0.45 * fract(aSeed * 7.13));
-  gl_PointSize = 1.6 + 2.2 * fract(aSeed * 3.71);
+  gl_PointSize = 2.0 + 2.6 * fract(aSeed * 3.71);
   gl_Position = projectionMatrix * mv;
 }`;
 const STAR_FS = /* glsl */`
@@ -203,7 +204,7 @@ void main() {
   float disc = smoothstep(0.30, 0.28, r);
   float spots = 0.08 * smoothstep(0.12, 0.0, length(p - vec2(0.08, 0.07))) + 0.06 * smoothstep(0.08, 0.0, length(p - vec2(-0.1, -0.06)));
   vec3 moon = vec3(1.0, 0.97, 0.88) - spots;
-  float halo = 0.35 * pow(clamp(1.0 - r, 0.0, 1.0), 3.0);
+  float halo = 0.6 * pow(clamp(1.0 - r, 0.0, 1.0), 2.0);
   vec3 col = moon * disc + vec3(0.75, 0.82, 1.0) * halo * (1.0 - disc);
   float a = (disc + halo * (1.0 - disc)) * uOpacity;
   if (a < 0.003) discard;
@@ -240,14 +241,16 @@ void main() {
 
 // Lantern mesh names and their night multipliers (base intensities are read from the model).
 const LANTERN_PARTS = ['lanternGlow', 'flame', 'lanternGlass', 'candle'];
-const LANTERN_MULT = [2.4, 1.6, 1.6, 2.0];
+const LANTERN_MULT = [2.4, 2.2, 1.1, 3.0];
+const GLASS_NIGHT = '#ffb35c'; // glass emissive is tinted toward this at night so it reads amber, not cream
 const MAX_LANTERNS = 64, MAX_PARTS = MAX_LANTERNS * 4;
-const STAR_COUNT = 450, STAR_RADIUS = 140, MOON_DIST = 120, RAIN_STREAKS = 600;
+const STAR_COUNT = 700, STAR_RADIUS = 140, MOON_DIST = 120, RAIN_STREAKS = 600;
 const SUN_RADIUS = Math.hypot(-15, 28, 12);
 // The one shadow-casting light is the sun by day and the moon by night. Its direction swaps when the
 // sun crosses the horizon, so its intensity fades to 0 over this band of |sunHeight| around the swap.
 export const SWAP_FADE = 0.12;
-const POOL_PEAK = 5, POOL_RANGE = 8;
+export const POOL_PEAK = 2.8, POOL_RANGE = 4.5;
+export const HEMI_NIGHT = 0.5, MOON_I = 0.4; // night floors: hemi intensity and moon (directional) intensity
 
 // ---------------------------------------------------------------- opt out
 export function dayNightOptedOut() {
@@ -290,7 +293,7 @@ export function createDayNight(ctx) {
   // ---- scratch
   const cHorizon = new T.Color(), cZenith = new T.Color(), cDeep = new T.Color(), cShallow = new T.Color();
   const cSun = new T.Color(), cHemiSky = new T.Color(), cHemiGround = new T.Color(), cCloud = new T.Color();
-  const cRain = new T.Color();
+  const cRain = new T.Color(), cRainCool = new T.Color('#a9c4e8'), cGlassNight = new T.Color(GLASS_NIGHT);
   const vDir = new T.Vector3(), vMoon = new T.Vector3(), vTmp = new T.Vector3();
   const AXIS = new T.Vector3(-0.78, 0, 0.62).normalize(), SIDE = new T.Vector3(0.62, 0, 0.78).normalize();
   const setSRGB = (c, o) => c.setRGB(PAL[o], PAL[o + 1], PAL[o + 2], T.SRGBColorSpace);
@@ -305,11 +308,12 @@ export function createDayNight(ctx) {
     hemiColor: hemi ? hemi.color.clone() : null, hemiGround: hemi ? hemi.groundColor.clone() : null, hemiI: hemi ? hemi.intensity : 0,
     ocean: {},
   };
-  const OCEAN_KEYS = ['uSky', 'uZenith', 'uDeep', 'uShallow', 'uSunDir', 'uSunColor', 'uFadeFar', 'uFoam'];
+  const OCEAN_KEYS = ['uSky', 'uZenith', 'uDeep', 'uShallow', 'uSunDir', 'uSunColor', 'uFadeNear', 'uFadeFar', 'uFoam'];
   const ou = ocean?.uniforms ?? null;
   if (ou) for (const k of OCEAN_KEYS) if (ou[k]) orig.ocean[k] = ou[k].value?.clone ? ou[k].value.clone() : ou[k].value;
   const oceanSunColor = ou?.uSunColor?.value?.clone ? ou.uSunColor.value.clone() : new T.Color('#fff3d6');
   const oceanFoam = ou?.uFoam?.value?.clone ? ou.uFoam.value.clone() : new T.Color('#eefbf8');
+  const fadeNear0 = typeof ou?.uFadeNear?.value === 'number' ? ou.uFadeNear.value : 28;
 
   // ---- clouds: one module-owned material, original materials restored on dispose
   const cloudMat = new T.MeshStandardMaterial({ color: '#e7f9eb', roughness: 0.85, metalness: 0 });
@@ -340,7 +344,7 @@ export function createDayNight(ctx) {
   stars.name = 'daynight-stars'; stars.frustumCulled = false; stars.renderOrder = -5; stars.visible = false;
 
   // ---- moon
-  const moonGeo = new T.PlaneGeometry(26, 26);
+  const moonGeo = new T.PlaneGeometry(34, 34);
   const moonUniforms = { uOpacity: { value: 0 } };
   const moonMat = new T.ShaderMaterial({ uniforms: moonUniforms, vertexShader: MOON_VS, fragmentShader: MOON_FS, transparent: true, depthWrite: false, fog: false, toneMapped: false });
   const moon = new T.Mesh(moonGeo, moonMat);
@@ -393,7 +397,8 @@ export function createDayNight(ctx) {
   attach(scene0);
 
   // ---- lantern cache
-  const partMat = new Array(MAX_PARTS).fill(null), partBase = new Float32Array(MAX_PARTS), partMult = new Float32Array(MAX_PARTS);
+  const partMat = new Array(MAX_PARTS).fill(null), partBase = new Float64Array(MAX_PARTS), partMult = new Float64Array(MAX_PARTS);
+  const partColor = new Float64Array(MAX_PARTS * 3), partTint = new Uint8Array(MAX_PARTS); // base emissive rgb, 1 = glass (tinted at night)
   const lanternGroups = new Array(MAX_LANTERNS).fill(null), lanternLocal = new Float32Array(MAX_LANTERNS * 3), lanternDist = new Float32Array(MAX_LANTERNS);
   const poolPick = new Int32Array(POOL_LIGHTS).fill(-1);
   let partCount = 0, lanternCount = 0, signature = -1, scanClock = 0, rankClock = 0, poolLit = 0, lastNf = -1, lastGrow = -1;
@@ -404,7 +409,13 @@ export function createDayNight(ctx) {
     if (Array.isArray(decor)) for (let i = 0; i < decor.length; i++) if (decor[i]?.type === 'lantern' || decor[i]?.type === 'candle') n++; // [bees] candles glow too
     return n;
   }
-  function restoreParts() { for (let i = 0; i < partCount; i++) if (partMat[i]) partMat[i].emissiveIntensity = partBase[i]; }
+  function restoreParts() {
+    for (let i = 0; i < partCount; i++) {
+      const m = partMat[i]; if (!m) continue;
+      m.emissiveIntensity = partBase[i];
+      if (partTint[i]) m.emissive.setRGB(partColor[i * 3], partColor[i * 3 + 1], partColor[i * 3 + 2]);
+    }
+  }
   function scanLanterns(raft) {
     restoreParts();
     partCount = 0; lanternCount = 0;
@@ -417,7 +428,11 @@ export function createDayNight(ctx) {
         if (!m.isMesh || !m.material || !('emissiveIntensity' in m.material)) continue;
         const pi = LANTERN_PARTS.indexOf(m.name);
         if (pi < 0 || partCount >= MAX_PARTS) continue;
-        partMat[partCount] = m.material; partBase[partCount] = m.material.emissiveIntensity; partMult[partCount] = LANTERN_MULT[pi]; partCount++;
+        const e = m.material.emissive;
+        partMat[partCount] = m.material; partBase[partCount] = m.material.emissiveIntensity; partMult[partCount] = LANTERN_MULT[pi];
+        partTint[partCount] = pi === 2 && e?.isColor ? 1 : 0;
+        if (e?.isColor) { partColor[partCount * 3] = e.r; partColor[partCount * 3 + 1] = e.g; partColor[partCount * 3 + 2] = e.b; }
+        partCount++;
         if (pi === 0 && m.geometry) {
           if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
           const s = m.geometry.boundingSphere.center;
@@ -460,7 +475,7 @@ export function createDayNight(ctx) {
     const nf = L.nightFactor, wet = W.rain;
     setSRGB(cHorizon, 0); setSRGB(cZenith, 3); setSRGB(cDeep, 6); setSRGB(cShallow, 9);
     setSRGB(cSun, 12); setSRGB(cHemiSky, 15); setSRGB(cHemiGround, 18); setSRGB(cCloud, 21);
-    const cool = Math.max(0, W.wind - 0.15) * (1 - wet) * 0.08; // breezy: a touch cooler
+    const cool = Math.max(0, W.wind - 0.15) * (1 - wet) * 0.15 / 0.55; // breezy: cooler (0.15 at full breeze)
     cHorizon.r *= 1 - cool; cHorizon.g *= 1 - cool * 0.4; cCloud.r *= 1 - cool;
 
     // sky, fog
@@ -476,32 +491,36 @@ export function createDayNight(ctx) {
     if (up) vDir.set(AXIS.x * ct - SIDE.x * 0.32, st, AXIS.z * ct - SIDE.z * 0.32).normalize();
     else vDir.copy(vMoon);
     const dayI = 2.5 * (1 - 0.15 * wet) * smooth(-0.02, 0.2, L.sunHeight);
-    const moonI = 0.6 * (1 - 0.3 * wet) * smooth(-0.02, 0.2, -L.sunHeight);
+    const moonI = MOON_I * (1 - 0.3 * wet) * smooth(-0.02, 0.2, -L.sunHeight);
     const swap = smooth(0, SWAP_FADE, Math.abs(L.sunHeight)); // 0 exactly where sun and moon trade places
     if (sun) {
       sun.position.set(vDir.x * SUN_RADIUS, Math.max(vDir.y, 0.42) * SUN_RADIUS, vDir.z * SUN_RADIUS).add(sun.target.position); // offset from the shadow-fitted target
-      sun.color.copy(cSun); sun.intensity = Math.max(dayI + moonI, 0.55 * smooth(0.3, 0.7, nf)) * swap;
+      sun.color.copy(cSun); sun.intensity = Math.max(dayI + moonI, MOON_I * smooth(0.3, 0.7, nf)) * swap;
     }
     if (hemi) {
       hemi.color.copy(cHemiSky); hemi.groundColor.copy(cHemiGround);
-      hemi.intensity = 0.75 + 1.05 * (L.light - NIGHT_FLOOR) / (1 - NIGHT_FLOOR) * (1 - 0.08 * wet);
+      hemi.intensity = HEMI_NIGHT + (1.8 - HEMI_NIGHT) * (L.light - NIGHT_FLOOR) / (1 - NIGHT_FLOOR) * (1 - 0.08 * wet);
     }
     if (renderer) renderer.toneMappingExposure = 1 - 0.15 * nf;
     // ocean
     const u = ctx.ocean?.uniforms;
     if (u) {
-      u.uSky?.value.copy(cHorizon); u.uZenith?.value.copy(cZenith); u.uDeep?.value.copy(cDeep); u.uShallow?.value.copy(cShallow);
+      u.uSky?.value.copy(cHorizon); u.uZenith?.value.copy(cZenith);
+      u.uDeep?.value.copy(cDeep).multiplyScalar(1 - 0.3 * wet); u.uShallow?.value.copy(cShallow).multiplyScalar(1 - 0.3 * wet);
       if (u.uFadeFar && scene?.fog) u.uFadeFar.value = scene.fog.far;
+      if (u.uFadeNear) u.uFadeNear.value = fadeNear0 * (1 - 0.55 * Math.max(nf, smooth(0.2, 0, L.sunHeight))); // no light band at the horizon after sunset
       u.uSunDir?.value.copy(vDir);
       if (u.uSunColor) {
-        const spec = (up ? smooth(-0.02, 0.15, L.sunHeight) : 0.18 * smooth(-0.02, 0.2, -L.sunHeight)) * (1 - 0.7 * wet) * swap;
+        const spec = (up ? smooth(-0.02, 0.15, L.sunHeight) : 0.1 * smooth(-0.02, 0.2, -L.sunHeight)) * (1 - 0.7 * wet) * swap;
         u.uSunColor.value.copy(oceanSunColor).multiply(cSun).multiplyScalar(spec);
       }
-      if (u.uFoam) u.uFoam.value.copy(oceanFoam).lerp(cHemiSky, 0.35 * nf).multiplyScalar(1 - 0.5 * nf); // soft moonlit foam
+      if (u.uFoam) u.uFoam.value.copy(oceanFoam).lerp(cHemiSky, 0.35 * nf).multiplyScalar((1 - 0.6 * nf) * (1 - 0.35 * wet)); // soft moonlit foam
     }
     // clouds
-    cloudMat.color.copy(cCloud); cloudMat.emissive.copy(cCloud).multiplyScalar(0.32 + 0.18 * nf); // soft self-lit undersides
-    const drift = (W.wind - 0.15) * 0.9 * dt, grow = 1 + (W.cloud - 0.25) * 0.5;
+    const low = 1 - smooth(0.1, 0.5, Math.abs(L.sunHeight)); // sun near the horizon: lit from below, not dark
+    cloudMat.color.copy(cCloud).multiplyScalar(1 - 0.35 * wet); // rain: darker grey
+    cloudMat.emissive.copy(cCloud).multiplyScalar((0.32 + 0.18 * nf + 0.3 * low) * (1 - 0.5 * wet)); // soft self-lit undersides
+    const drift = (W.wind - 0.15) * 0.9 * dt, grow = 1 + (W.cloud - 0.25) * 0.8;
     for (let i = 0; i < cloudGroups.length; i++) {
       const g = cloudGroups[i];
       if (drift > 0) { g.position.x += drift; if (g.position.x > 85) g.position.x -= 170; }
@@ -509,7 +528,7 @@ export function createDayNight(ctx) {
     }
     lastGrow = grow;
     // stars and moon
-    const starA = nf * (1 - 0.85 * W.cloud * W.cloud);
+    const starA = nf * (1 - 0.85 * W.cloud * W.cloud) * (1 - wet);
     starUniforms.uTime.value = time; starUniforms.uOpacity.value = starA;
     stars.visible = starA > 0.01;
     const moonA = smooth(0.1, 0.7, nf) * smooth(-0.02, 0.1, vMoon.y) * (1 - 0.75 * wet);
@@ -525,8 +544,8 @@ export function createDayNight(ctx) {
     if (rain.visible) {
       rainUniforms.uTime.value = time; rainUniforms.uRain.value = wet; rainUniforms.uWind.value = W.wind;
       if (cam) rainUniforms.uCam.value.copy(cam.position);
-      cRain.copy(cHemiSky).lerp(cHorizon, 0.3).multiplyScalar(0.8 + 0.6 * L.light);
-      rainUniforms.uColor.value.copy(cRain); rainUniforms.uAlpha.value = 0.85 * Math.min(1, wet * 1.5);
+      cRain.copy(cHemiSky).lerp(cHorizon, 0.3).lerp(cRainCool, 0.5 * nf).multiplyScalar(0.8 + 0.6 * L.light);
+      rainUniforms.uColor.value.copy(cRain); rainUniforms.uAlpha.value = (0.85 + 0.15 * nf) * Math.min(1, wet * 1.5);
     }
     // lanterns
     if (raft) {
@@ -544,7 +563,14 @@ export function createDayNight(ctx) {
         const sig = lanternSignature(raft, ctx.world);
         if (stale || sig !== signature) { signature = sig; scanLanterns(raft); lastNf = -1; }
       }
-      if (nf !== lastNf) { lastNf = nf; for (let i = 0; i < partCount; i++) partMat[i].emissiveIntensity = partBase[i] * (1 + (partMult[i] - 1) * nf); }
+      if (nf !== lastNf) {
+        lastNf = nf;
+        for (let i = 0; i < partCount; i++) {
+          const m = partMat[i];
+          m.emissiveIntensity = partBase[i] * (1 + (partMult[i] - 1) * nf);
+          if (partTint[i]) m.emissive.setRGB(partColor[i * 3], partColor[i * 3 + 1], partColor[i * 3 + 2]).lerp(cGlassNight, 0.7 * nf);
+        }
+      }
       rankClock += dt;
       if (rankClock >= 0.5) { rankClock = 0; rankLanterns(raft, cam); }
     }

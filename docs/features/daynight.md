@@ -28,13 +28,14 @@ lightning, storm damage and any survival pressure.
 - **Cycle.** `DAY_SECONDS = 1200`. Phase `p` in [0,1), `p = 0` at sunrise. Day 0 to 0.62, dusk
   0.62 to 0.70, night 0.70 to 0.94 (4.8 min), dawn 0.94 to 1.
 - **Readable night (brightness floor).** `light = max(NIGHT_FLOOR, curve(p))` with
-  `NIGHT_FLOOR = 0.38`. Concretely, at deep night: `hemi.intensity >= 0.75` (day 1.8),
-  `sun.intensity >= 0.55` as a blue moon light (day 2.5), and
+  `NIGHT_FLOOR = 0.38`. Concretely, at deep night: `hemi.intensity >= HEMI_NIGHT = 0.5` (day 1.8)
+  with a dark blue ground colour `#1f3044`, `sun.intensity >= MOON_I = 0.4` as a blue moon light
+  (day 2.5), and
   `renderer.toneMappingExposure >= 0.85` (day 1.0). Nothing in gameplay depends on time of day.
 - **Sky.** Keyframed palette (dawn peach, day sage `#cbd2c0`, dusk coral, night indigo). The
   horizon colour drives `scene.background`, `scene.fog.color` **and** `ocean.uniforms.uSky`
   together (see 4.2), so the sea's distance fade keeps blending into the sky.
-- **Stars.** One `THREE.Points`, 450 points on a radius-140 sphere, follows the camera position.
+- **Stars.** One `THREE.Points`, 700 points on a radius-140 sphere, follows the camera position.
   `opacity = nightFactor * (1 - cloud)`, twinkle in the vertex shader. Moon: one billboard disc
   opposite the sun direction.
 - **Weather.** `calm` (today's look), `breezy` (more cloud, cooler tint, `wind` 0.7 for other
@@ -98,7 +99,13 @@ reflections use `mix(uSky, uZenith, R.y)`. To keep the horizon seamless:
 - `uZenith` (`#a9c1c0`), `uDeep` (`#14505a`), `uShallow` (`#3f8c88`) come from the palette.
   Night darkens deep and shallow by about 55%, not to black.
 - `uSunDir` = normalised sun/moon position, `uSunColor` = sun colour times a specular factor
-  (0.18 at night so the moon glint stays soft).
+  (0.1 at night so the moon glint stays soft).
+- `uFadeNear` (28) drops to about 12.6 after sunset and at night (`28 * (1 - 0.55 * k)`), so the
+  sea fades into the sky sooner and there is no light band at the horizon. It is restored on dispose.
+- Rain darkens `uDeep`/`uShallow` by `(1 - 0.3 * rain)` and dims the foam by `(1 - 0.35 * rain)`.
+- The foam's own distance fade (30 to 90 m) is hard-coded in `dist/ocean.js`'s shader. QA asked for
+  25 to 60 m, but that would mean editing a shared file, so instead the night foam is dimmed harder
+  (`1 - 0.6 * nightFactor`).
 - Capture the starting values at create time and restore them in `dispose()`.
 
 ### 4.3 Clouds
@@ -123,9 +130,9 @@ lantern is tinted separately. Mesh names to drive:
 | Mesh name | Base `emissiveIntensity` | Night |
 |---|---|---|
 | `lanternGlow` | 1.6 | x2.4 |
-| `flame` | 3.0 | x1.6 |
-| `lanternGlass` | 0.6 | x1.6 |
-| `candle` | 0.25 | x2.0 |
+| `flame` | 3.0 | x2.2 |
+| `lanternGlass` | 0.6 | x1.1, emissive colour lerped 70% toward `#ffb35c` |
+| `candle` | 0.25 | x3.0 |
 
 (`lanternTimber`, `lanternSteel`, `lanternBrass`, `lanternRope` stay as they are.) There is no
 "raft rebuilt" hook, so every frame does an O(1) staleness check: `rebuildRaft()` replaces every
@@ -140,7 +147,7 @@ crafts.js fails) has no named meshes and is ignored.
 
 ## 5. Lantern pool lights (fixed count)
 
-- Up to `POOL_LIGHTS = 4` `T.PointLight('#ffb35c', 0, POOL_RANGE = 8, 2)`, `castShadow = false`,
+- Up to `POOL_LIGHTS = 4` `T.PointLight('#ffb35c', 0, POOL_RANGE = 4.5, 2)`, `castShadow = false`,
   built once in `createDayNight` but **not added to the scene until the first scan finds a
   lantern**. A raft without lanterns pays nothing for them. Once added they stay until `dispose()`,
   even if every lantern is removed later.
@@ -151,7 +158,7 @@ crafts.js fails) has no named meshes and is ignored.
 - The first scan runs in the first `update()`, which game.js calls before the first
   `renderer.render`, so a world that loads with lanterns compiles its materials once, with the
   lights already in place.
-- By day (`nightFactor < 0.15`) intensity is exactly 0. Above that it eases to `POOL_PEAK = 5` at
+- By day (`nightFactor < 0.15`) intensity is exactly 0. Above that it eases to `POOL_PEAK = 2.8` at
   full night, with a gentle flicker.
 - Every 0.5 s, rank lanterns by distance to the camera (preallocated Float32Array, partial
   selection of 4) and copy `raft.localToWorld(lanternLocal)` into the first `cap` lights. Between
@@ -258,10 +265,11 @@ the exposure; it is already a getter in `contentCtx`.
 **What shipped**
 
 - 20 minute cycle with the phases of section 2. `lightAt` gives `nightFactor` (0 by day, 1 from
-  0.72 to 0.92) and `light = max(0.38, ...)`. At deep night hemi is 0.75, the directional light is a
-  cool moon at 0.6 (0.55 floor) and exposure is 0.85.
-- Eight palette keys (sunrise peach, day sage x2, dusk coral, blue hour, cosy blue night x2,
-  predawn) for horizon, ocean zenith/deep/shallow, sun/moon colour, hemi sky/ground and clouds.
+  0.72 to 0.92) and `light = max(0.38, ...)`. At deep night hemi is 0.5, the directional light is a
+  cool moon at 0.4 (also the floor) and exposure is 0.85. (The first build used 0.75 and 0.6; visual
+  QA found the deck an even orange at night with no visible lantern pools, so both were lowered.)
+- Nine palette keys (sunrise peach held from 0 to 0.04, day sage x2, dusk coral, blue hour, cosy
+  blue night x2, predawn at 0.94, so the sunrise is not abrupt) for horizon, ocean zenith/deep/shallow, sun/moon colour, hemi sky/ground and clouds.
   The horizon colour drives `scene.background`, `scene.fog.color` and `ocean.uSky` together, so the
   sea still fades seamlessly into the sky. Rain pulls every colour toward a cool grey-green of the
   same brightness (`rainBlend`, 65%).
@@ -272,25 +280,31 @@ the exposure; it is already a getter in `contentCtx`.
   the light's intensity (and the ocean glint) is multiplied by `smoothstep(0, SWAP_FADE = 0.12,
   |sunHeight|)`. It reaches exactly 0 at the swap and is back to full about 30 s later at sunset
   and 14 s later at sunrise; the hemisphere light keeps the deck readable meanwhile. The moon floor
-  (0.55) also eases in with `smoothstep(0.3, 0.7, nightFactor)` instead of switching on at 0.5.
+  (`MOON_I`) also eases in with `smoothstep(0.3, 0.7, nightFactor)` instead of switching on at 0.5.
 - Ocean: `uSky`, `uZenith`, `uDeep`, `uShallow`, `uSunDir`, `uSunColor` (glint fades at the horizon,
-  soft 0.18 moon glint) and `uFadeFar` (follows fog: 125 dry, 80 in rain). **Addition:** `uFoam` is
+  soft 0.1 moon glint) and `uFadeFar` (follows fog: 125 dry, 80 in rain). **Addition:** `uFoam` is
   also dimmed and tinted at night, because white foam glared on a dark sea in the first night shots.
 - Clouds get one module-owned material (originals restored on dispose) with a soft emissive term,
   so their undersides read as lit puffs instead of dark slabs (they were dark in the old look too).
-  Wind drifts them in breezy/rain; cloud cover scales them up to 1.35x.
-- Stars: one `Points` (450, additive, twinkle in the vertex shader, fade toward the horizon).
-  Moon: one billboard quad with a shader disc and halo. Both are hidden when invisible.
+  The emissive rises by up to 0.3 while the sun is near the horizon, and the dawn, dusk and predawn
+  cloud keys are lighter (`#ffdcc8`, `#ffc9b0`, `#aaa4c6`), so clouds are never darker than the sky
+  at sunrise or sunset. Rain makes them a darker grey (colour x(1 - 0.35 rain), emissive
+  x(1 - 0.5 rain)). Wind drifts them in breezy/rain; cloud cover scales them up to 1.28x (breezy)
+  and 1.56x (rain). Breezy also cools the horizon and clouds by up to 15%.
+- Stars: one `Points` (700, 2 to 4.6 px, additive, twinkle in the vertex shader, fade toward the
+  horizon, hidden by cloud and rain: `x (1 - rain)`). Moon: one 34 m billboard quad with a shader
+  disc and a soft halo (`0.6 * (1 - r)^2`). Both are hidden when invisible.
 - Weather schedule exactly as section 2. Segment `i` starts at `i*270 + jitter(+-45)`, so lengths
   are 180 to 360 s and the segment for any clock is found in O(1). Raw weights calm .4236 / breezy .3
   / rain .2764 give the 0.5 / 0.3 / 0.2 shares after the "no rain after rain" rule.
-- Rain: one `LineSegments`, 600 streaks (1,200 vertices) in a 14 x 10 x 14 m box around the camera,
+- Rain: one `LineSegments`, 600 streaks (alpha 0.85 by day and 1.0 at night, a cooler blue colour
+  at night) (1,200 vertices) in a 14 x 10 x 14 m box around the camera,
   all motion in the vertex shader, hidden when dry.
-- Lanterns: emissive boost on `lanternGlow` x2.4, `flame` x1.6, `lanternGlass` x1.6, `candle` x2.0
-  (glass was lowered from the first design's 2.5, which washed the amber out to white). Up to four
-  `PointLight('#ffb35c', 0 to 5, range 8, decay 2)` (1/2/4 by graphics, added with the first
-  lantern) follow the nearest lanterns with a gentle flicker. Peak raised from the first design's
-  2.2 to 5 so the warm pool on the deck is clearly visible.
+- Lanterns: emissive boost on `lanternGlow` x2.4, `flame` x2.2, `lanternGlass` x1.1 tinted toward
+  `#ffb35c`, `candle` x3.0 (QA found the glass washed out to cream white at higher values; the
+  original colour is put back on dispose). Up to four `PointLight('#ffb35c', 0 to 2.8, range 4.5,
+  decay 2)` (1/2/4 by graphics, added with the first lantern) follow the nearest lanterns with a
+  gentle flicker. With a short range, each lantern gets its own amber pool on a blue-grey deck.
 - Co-op: as section 6. One detail changed: `driftStep(local, target, dt)` takes both clocks at the
   start of the frame and the caller then advances `target += dt`, which removes a one-frame bias.
   `load(data,'net')` with the same clock twice is a no-op.
@@ -304,11 +318,11 @@ the exposure; it is already a getter in `contentCtx`.
 
 **How to verify**
 
-1. `npm test`: 19 day/night tests (pure functions, headless module with a stub ctx, save round
+1. `npm test`: 21 day/night tests (pure functions, headless module with a stub ctx, save round
    trip, driftStep, a two-minute co-op simulation with jittery, lossy, duplicated messages, and the
    review fixes: no dim lantern frame after a rebuild, a smooth light vector across phases 0.70 and
    0.94 to 0.04, lazy and capped pool lights, the opt-out pass-through, restore reset, and a guest
-   holding still while the host clock is frozen).
+   holding still while the host clock is frozen, and the night glass tint being restored on dispose).
 2. In the browser console after clicking Play solo:
    `d = raftDebug.content.daynight; d.freeze(true); d.placeLantern(1, 0); d.setPhase(0.82)`. You
    should see a blue night with stars, a moon up and to the left of the start view, readable deck
@@ -319,7 +333,9 @@ the exposure; it is already a getter in `contentCtx`.
    `decor: [{type:'lantern',x:1,z:-1}, {type:'lantern',x:-1,z:-1}, {type:'bench',x:0,z:-1},
    {type:'lantern',x:1,z:0}]`, clicks `#solo`, presses `3` (empty hotbar slot so a drag does not
    throw the hook), calls `freeze(true)`, then for each shot `setPhase(p); setWeather(w)`, waits
-   2.5 s (software GL runs at ~1 fps) and screenshots. Mouse drags on the canvas turn the view.
+   2.5 s (software GL runs at ~1 fps) and screenshots. Headless Chromium keeps pointer lock after
+   Play, so the view is turned by dispatching `mousemove` events with `movementX`/`movementY` on
+   `document` (about 0.0022 rad per pixel), not by mouse drags on the canvas.
    Phases used: morning 0.05, dusk 0.655, night 0.82, rain 0.30.
 
 Screenshots: `docs/cloud/shots/content/daynight-morning.png`, `daynight-dusk.png`,
@@ -327,7 +343,7 @@ Screenshots: `docs/cloud/shots/content/daynight-morning.png`, `daynight-dusk.png
 
 **Cost.** Draw calls from `renderInfo()` in the same view: day 272, dusk 274 (+stars, +moon),
 rain 215 vs 214 in the same view (+1 line draw), rain at night 217. So it is +0 by day, +2 at
-night and +1 more while raining. Stars add 450 points and rain adds 600 lines. The pool lights are
+night and +1 more while raining. Stars add 700 points and rain adds 600 lines. The pool lights are
 the main frame-time cost: every lit material evaluates them, even by day at intensity 0. They now
 exist only once a lantern does, and only 1/2/4 of them by graphics setting. (The measurements
 below were taken with the earlier fixed four lights.) Frame time under headless SwiftShader

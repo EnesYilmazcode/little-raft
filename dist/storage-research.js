@@ -340,6 +340,11 @@ export function createStorage(ctx) {
     researchable: () => researchableKinds(st),
     locked: () => lockedRecipes(st),
     isLearned: id => isLearned(st, id),
+    hasTable: () => { // a Research Table placed on the raft or carried in the local bag (no allocations)
+      const d = ctx.world?.decor; if (Array.isArray(d)) for (let i = 0; i < d.length; i++) if (d[i].type === 'research') return true;
+      const s = ctx.localBag()?.slots; if (s) for (let i = 0; i < s.length; i++) if (s[i] && s[i].kind === 'research') return true;
+      return false;
+    },
     takeFresh: () => { const out = [...fresh]; fresh.clear(); return out; },
     nameOf,
     reach: REACH,
@@ -387,7 +392,7 @@ export function createStorage(ctx) {
     prompt(aim) {
       const d = target(aim); if (!d) return null;
       if (oldHost()) return OLD_HOST;
-      return d.type === 'crate' ? '<kbd>E</kbd>Open crate' : '<kbd>E</kbd>Use research table';
+      return d.type === 'crate' ? '<kbd>E</kbd>Open crate' : '<kbd>E</kbd>Use tinker\u2019s desk';
     },
     decorModel(type) {
       if (type !== 'research' || !T) return null;
