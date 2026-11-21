@@ -124,3 +124,43 @@ test('E2 binoculars readout and reel HUD join the prompt column (no centred boxe
   assert.match(reel, /left:calc\(50% \+ 34px\)/); assert.match(reel, /transform:none/); assert.match(reel, /text-align:left/);
   assert.doesNotMatch(reel, /left:50%;|translateX\(-50%\)/);
 });
+
+// ---------------------------------------------------------------- E3 one bottom-left feed stack
+test('E3 coop lines (solo "You wave." too) join the pickup feed stack instead of a second overlapping box', async () => {
+  const PF = await import(new URL('pickup-feed.js', base));
+  const CF = await import(new URL('coop-feed.js', base));
+  const doc = fakeDoc(), pickup = PF.createFeed({doc, now:() => 0, timer:() => 0, clear() {}});
+  doc.defaultView.raftPickupFeed = pickup;
+  const coop = CF.createFeed({doc});
+  for (const k of ['wood', 'leaf', 'plastic', 'scrap']) pickup.add(k, 2);
+  coop.push('You wave.', 'emote');
+  coop.push('Your brother joined!', 'join');
+  const host = doc.getElementById('pickupFeed');
+  assert.equal(doc.getElementById('coopFeed'), null, 'no separate #coopFeed box');
+  assert.equal(doc.getElementById('coopFeedStyle'), null);
+  const live = host.children.filter(r => !r.classList.contains('out'));
+  assert.equal(live.length, PF.MAX_ROWS, 'one shared cap for pickups + coop lines');
+  const wave = host.children.find(r => r.textContent === 'You wave.');
+  assert.ok(wave.classList.contains('pf-note') && wave.classList.contains('pf-emote'));
+  assert.ok(host.children.find(r => r.textContent === 'Your brother joined!').classList.contains('pf-join'));
+  assert.equal(live.at(-1).textContent, 'Your brother joined!'); // newest at the bottom
+  coop.dispose();
+});
+
+test('E3 coop feed still works standalone (no shared stack): own box', async () => {
+  const CF = await import(new URL('coop-feed.js', base));
+  const doc = fakeDoc(); doc.defaultView.requestAnimationFrame = f => f();
+  const coop = CF.createFeed({doc});
+  assert.equal(doc.getElementById('coopFeed'), null); // lazy
+  coop.push('You point.', 'emote');
+  assert.equal(doc.getElementById('coopFeed').textContent, 'You point.');
+  coop.dispose();
+  assert.equal(doc.getElementById('coopFeed'), null);
+});
+
+test('E3 the shared stack is published and the prompt feed posts into it', () => {
+  assert.match(src('pickup-feed.js'), /window\.raftPickupFeed = pickupFeed/);
+  const p = src('prompts.js');
+  assert.match(p, /win\.raftPickupFeed/); assert.match(p, /sink\.note\(t\)/);
+  assert.match(src('style.css'), /\.pf-emote i\{/);
+});
