@@ -29,6 +29,7 @@
 //   setReel(on, speed=.5, pos?)    looping ratchet + line hiss while reeling
 //   duck(amount, hold) | creak(force=.7) | stats()   (stats().nodesCreated: AudioNodes this engine created, cumulative)
 //   setBus also takes the round-1 names 'sfx' and 'ui' (sub-buses under 'effects').
+//   option mix: 'main' (default, dist/audio.js's in-game levels) | 'engine' (the sandbox balance); see MIX
 //
 // Graph: voices -> [air lp -> panner -> crossfeed] -> sfx bus ─┐
 //        sfx bus -> air send -> convolver ─────────────────────┤
@@ -61,6 +62,25 @@ const OUTPUT_SCALE = 0.8;
 // hierarchy was tuned at (one-shots 6-10 dB over the sea, momentary loudness: calm sea about -30, hammer
 // -25, catch -18), so the ambience bus is a plain 0..1 control whose default is 0.7.
 const AMB_LEVEL = 1, AMB_DEFAULT = 0.7;
+// In-game mix presets (option `mix`), trims in dB on top of the buses.
+// 'main' (default): the levels of the dist/audio.js engine this replaces, so an update changes the sound
+//   but not the balance players are used to. Measured in the game (same settings, same recorder: the
+//   100 ms RMS peak of each of dist/audio.js's 20 events with the sea muted, and the sea bed's median):
+//   every one of the 20 lands within 2 dB of main's, and the bed within 1 dB. Events main does not have
+//   (stations, sailing, diving, hammer, ...) get `other`, the median shift of main's events, so they keep
+//   their place among the ones they sit next to.
+// 'engine': no trims, the balance the sandbox's loudness hierarchy was tuned at (sea about 24 dB louder,
+//   one-shots 6-10 dB over it, the catch the loudest cue).
+const MIX = {
+  main: {
+    ambience: -24, other: -3,
+    events: { splash: -6.5, collect: -4.5, build: -3, place: -2, craft: -3, plant: -2.5, water: 2, jump: -5, land: -2,
+      swim: -4, reel: -3.5, catch: -7.5, open: 3.5, deny: -4.5 },
+  },
+  engine: { ambience: 0, other: 0, events: {} },
+};
+const MAIN_EVENTS = new Set(EVENTS.slice(0, 20));
+const fromDb = (d) => Math.pow(10, d / 20);
 const MAX_VOICES = 24;
 const SILENT = 0.0001;
 const MIN_GAP = {
@@ -104,7 +124,7 @@ const AMB_FADE_IN = 2.5, AMB_FADE_SWAP = 0.15, DESTROY_FADE = 0.08;
 
 export function createOceanAudio({
   context = null, volume = 0.5, ambience = true, worklet = true, workletUrl = workletDefault,
-  hrtf = false, gulls = true, reverb = true, seed = null, music = false, output = null,
+  hrtf = false, gulls = true, reverb = true, seed = null, music = false, output = null, mix = 'main',
 } = {}) {
   let ctx = context && typeof context.createGain === 'function' ? context : null;
   // seeded randomness (render cases are reproducible with a seed); Math.random otherwise
@@ -113,6 +133,9 @@ export function createOceanAudio({
   // handed a context that is already playing (hot update): the previous build's ocean is fading out
   // under us, so ours fades in quickly instead of over 2.5 s
   const handover = !!ctx && ctx.state === 'running';
+  const mixName = Object.prototype.hasOwnProperty.call(MIX, mix) ? mix : 'main', MIXP = MIX[mixName];
+  const ambTrim = fromDb(MIXP.ambience), otherTrim = fromDb(MIXP.other);
+  const evTrim = (ev) => (Object.prototype.hasOwnProperty.call(MIXP.events, ev) ? fromDb(MIXP.events[ev]) : MAIN_EVENTS.has(ev) ? 1 : otherTrim);
   let vol = clamp01(volume, 0.5);
   // bus levels as the user sets them (0..1); 'effects' scales the sfx and ui sub-buses together
   const level = { effects: 1, ambience: AMB_DEFAULT, music: 0.7, sfx: 1, ui: 1 };
@@ -202,7 +225,7 @@ export function createOceanAudio({
     if (name === 'sfx') return level.effects * level.sfx;
     if (name === 'ui') return 0.8 * level.effects * level.ui;
     if (name === 'music') return level.music * 0.6;
-    if (name === 'ambience') return level.ambience;
+    if (name === 'ambience') return level.ambience * ambTrim;
     return 1;
   }
 
@@ -1113,7 +1136,7 @@ export function createOceanAudio({
         // re-target only when the wind moved (tick() calls this every frame while the sail is up)
         if (Math.abs(w - luff.w) <= 0.02) return;
         luff.w = w;
-        luff.out.gain.setTargetAtTime(0.012 + 0.05 * w * w, t, 0.4);
+        luff.out.gain.setTargetAtTime((0.012 + 0.05 * w * w) * otherTrim, t, 0.4);
         luff.lfo.frequency.setTargetAtTime(3 + 5 * w, t, 0.5);
         luff.bp.frequency.setTargetAtTime(380 + 420 * w, t, 0.5);
       } else {
@@ -1254,6 +1277,7 @@ export function createOceanAudio({
     if (now - (lastPlay[event] ?? -1) < MIN_GAP[event]) return false;
     lastPlay[event] = now;
     const v = newVoice(bus || (UI_EVENTS.has(event) ? graph.uiBus : graph.sfxBus));
+    if (!bus) { const tr = evTrim(event); if (tr !== 1) v.bus.gain.value = tr; }   // mix preset
     if (opts && Number.isFinite(opts.x) && Number.isFinite(opts.z) && typeof ctx.createPanner === 'function') {
       // re-route: voice bus -> panner -> sfx bus
       v.bus.disconnect();
@@ -1378,7 +1402,7 @@ export function createOceanAudio({
   function stats() {
     return { voices: voices.size, worklet: amb?.kind === 'worklet' && !amb.handedOff, ambience: amb && !amb.handedOff ? amb.kind : null,
       nodesCreated: nodeCount, state: ctx?.state ?? null, reel: !!reel, music: !!bed, luff: !!luff, underwater: !!scene.underwater,
-      routed: !!graph?.out, version: SHARED_VERSION };
+      routed: !!graph?.out, version: SHARED_VERSION, mix: mixName };
   }
 
   return {

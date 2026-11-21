@@ -100,6 +100,8 @@ export const CASES = {
     seconds: 8, ambience: true, windows: [[3.6, 4.9, 500, 1500], [5.0, 6.2, 500, 1500]],
     run: (e, ctx) => { e.setOcean({ swell: 0.3, wind: 0.15, speed: 0.1, creak: 0 }); ctx.suspend(5.0).then(() => { e.creak(0.6); ctx.resume(); }); },
   },
+  // the shipping default mix ('main', dist/audio.js's in-game levels): mid sea, then a pickup, a splash and a catch
+  'mix-main': { seconds: 8, ambience: true, mix: 'main', run: (e) => { e.setOcean({ swell: 0.5, wind: 0.3, speed: 0.2, creak: 0.5 }); e.play('collect', 1, { at: 4 }); e.play('splash', 1, { at: 5 }); e.play('catch', 1, { at: 6 }); } },
   'ambience-mid': { seconds: 16, ambience: true, run: (e) => e.setOcean({ swell: 0.5, wind: 0.3, speed: 0.2, creak: 0.5 }) },
   'gull-left': { seconds: 4, run: (e) => { e.setListener(0, 1.6, 0, 0, 0, -1); e.play('gull', 1, { at: 0.05, x: -12, y: 8, z: -3 }); } },
   'ambience-fallback': { seconds: 12, ambience: true, worklet: false, run: (e) => e.setOcean({ swell: 0.5, wind: 0.4 }) },
@@ -135,7 +137,8 @@ async function renderOnce(name, sampleRate) {
   if (!c) throw new Error('unknown case ' + name);
   const len = Math.ceil(c.seconds * sampleRate);
   const ctx = new OfflineAudioContext({ numberOfChannels: 2, length: len, sampleRate });
-  const e = createOceanAudio({ context: ctx, volume: 1, ambience: !!c.ambience, worklet: c.worklet !== false, gulls: false, seed: 1234 });
+  // sound-design renders use the untrimmed 'engine' mix; the 'mix-main' case renders the shipping default
+  const e = createOceanAudio({ context: ctx, volume: 1, ambience: !!c.ambience, worklet: c.worklet !== false, gulls: false, seed: 1234, mix: c.mix ?? 'engine' });
   const tr0 = performance.now();
   await e.resume();
   const setupMs = performance.now() - tr0;
