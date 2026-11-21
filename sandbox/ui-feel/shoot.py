@@ -1,5 +1,5 @@
 """Headless check of the ui-feel sandbox.
-Usage: python sandbox/ui-feel/shoot.py [out_dir]   (default: sandbox/ui-feel/shots)
+Usage: python sandbox/ui-feel/shoot.py [out_dir] [--cost-only] [--reps N]   (default: sandbox/ui-feel/shots, 3 reps)
 
 1. Key frames, frozen mid-animation: every running animation (WAAPI, CSS transition, CSS animation) is paused
    and its currentTime set, so a PNG shows e.g. the select cursor 90 ms into its slide.
@@ -13,7 +13,11 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 root = Path(__file__).resolve().parents[2]
-out = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parent / 'shots'
+argv = sys.argv[1:]
+COST_ONLY = '--cost-only' in argv
+REPS = int(argv[argv.index('--reps') + 1]) if '--reps' in argv else 3
+pos = [a for i, a in enumerate(argv) if not a.startswith('--') and (i == 0 or argv[i - 1] != '--reps')]
+out = Path(pos[0]).resolve() if pos else Path(__file__).resolve().parent / 'shots'
 out.mkdir(parents=True, exist_ok=True)
 
 class Quiet(http.server.SimpleHTTPRequestHandler):
@@ -53,9 +57,8 @@ def unfreeze(pg):
     pg.wait_for_timeout(80)
 
 report = {'shots': [], 'cost': {}, 'errors': errors}
-with sync_playwright() as p:
-    b = p.chromium.launch(executable_path=CHROME, args=ARGS)
 
+def key_frames(b):
     # ---------- key frames, desktop ----------
     pg = open_page(b)
     pg.evaluate("feelDemo.select(1); feelDemo.feel.toast('Your brother joined the raft!', {kind:'build'}); feelDemo.pickup('wood')")
@@ -159,6 +162,7 @@ with sync_playwright() as p:
     shot(pg, '21-phone-pickup-300ms')
     pg.context.close()
 
+def cost(b):
     # ---------- cost ----------
     # (label, scenario, query). '*-nofeel' = same input on the same real survival UI without ui-feel: the delta is
     # what the feel layer itself costs. Each scenario runs once to warm up (JIT, first WAAPI/style), then is measured.
@@ -167,7 +171,8 @@ with sync_playwright() as p:
             ('crosshair', 'crosshair', ''), ('inventory', 'inventory', ''), ('inventory-nofeel', 'inventory', 'nofeel=1'),
             ('naive-select', 'naive-select', ''), ('naive-toast', 'naive-toast', ''), ('naive-stats', 'naive-stats', '')]
     keys = ['RecalcStyleCount', 'RecalcStyleDuration', 'LayoutCount', 'LayoutDuration', 'ScriptDuration', 'TaskDuration']
-    for label, n, q in runs:
+    samples = {}
+    for rep, (label, n, q) in [(r, x) for r in range(REPS) for x in runs]:
         pg = open_page(b, q=q)
         cold = pg.evaluate(f'feelDemo.run({json.dumps(n)}).then(() => Math.max(0, ...__long))')
         cdp = pg.context.new_cdp_session(pg)
@@ -179,19 +184,29 @@ with sync_playwright() as p:
         m1 = {m['name']: m['value'] for m in cdp.send('Performance.getMetrics')['metrics']}
         lt = pg.evaluate('__long.slice()')
         d = {k: m1.get(k, 0) - m0.get(k, 0) for k in keys}
-        report['cost'][label] = {'coldLongestTaskMs': round(cold, 1),
+        samples.setdefault(label, []).append({'coldLongestTaskMs': round(cold, 1),
             'frames': r['frames'], 'avgFrameMs': r['avgFrame'], 'worstFrameMs': r['worstFrame'],
             'styleMs': round(d['RecalcStyleDuration'] * 1000, 2), 'styleCount': int(d['RecalcStyleCount']),
             'layoutMs': round(d['LayoutDuration'] * 1000, 2), 'layoutCount': int(d['LayoutCount']),
             'scriptMs': round(d['ScriptDuration'] * 1000, 2), 'taskMs': round(d['TaskDuration'] * 1000, 2),
             'longTasks': len(lt), 'longestTaskMs': round(max(lt), 1) if lt else 0,
-        }
+        })
         pg.context.close()
+    med = lambda xs: sorted(xs)[len(xs) // 2]
+    for label, ss in samples.items():  # per-metric median over REPS fresh pages
+        report['cost'][label] = {k: med([x[k] for x in ss]) for k in ss[0]}
+    report['cost_reps'] = REPS
     idle = report['cost']['idle']
     for n, c in report['cost'].items():
         f = max(1, c['frames'])
         c['perFrame'] = {k: round((c[k] - idle[k]) / f, 3) for k in ('styleMs', 'layoutMs', 'scriptMs')}
         c['extraLayouts'] = c['layoutCount'] - idle['layoutCount']
+
+with sync_playwright() as p:
+    b = p.chromium.launch(executable_path=CHROME, args=ARGS)
+    if not COST_ONLY:
+        key_frames(b)
+    cost(b)
     b.close()
 srv.shutdown()
 report['shots'] = sorted(x.name for x in out.glob('*.png'))
