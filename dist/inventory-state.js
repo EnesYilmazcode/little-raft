@@ -73,7 +73,7 @@ export const RECIPES = Object.freeze({
   hook:       recipe('hook',       'Hook',         1, { wood: 1, plastic: 2 }),
   hammer:     recipe('hammer',     'Hammer',       1, { wood: 4, rope: 2 }),
   fishingrod: recipe('fishingrod', 'Fishing Rod',  1, { wood: 6, rope: 8 }),
-  sail:       recipe('sail',       'Sail',         1, { wood: 4, rope: 3, leaf: 3 }),
+  sail:       recipe('sail',       'Sail',         1, { wood: 10, leaf: 20, scrap: 3 }), // Raft costs (items.js wins anyway)
   palm:       recipe('palm',       'Palm Planter', 1, { wood: 2, leaf: 3 }),
   lantern:    recipe('lantern',    'Lantern',      1, { wood: 2, scrap: 2 }),
   net:        recipe('net',        'Net',          1, { wood: 3, rope: 3 }),
@@ -82,8 +82,8 @@ export const RECIPES = Object.freeze({
   ...CONTENT_RECIPES, // content hook
   receiver:   recipe('receiver',   'Receiver',     1, { wood: 3, scrap: 4, plastic: 3, rope: 2 }),
   antenna:    recipe('antenna',    'Antenna',      1, { wood: 2, scrap: 1, rope: 1 }),
-  cup:        recipe('cup',        'Cup',          1, { plastic: 1 }),
-  purifier:   recipe('purifier',   'Water Purifier', 1, { wood: 2, scrap: 2, plastic: 1 }),
+  cup:        recipe('cup',        'Cup',          1, { plastic: 4 }), // Raft: 4 plastic (farming.js FARM_RECIPES.cup mirrors this)
+  purifier:   recipe('purifier',   'Water Purifier', 1, { wood: 6, leaf: 6, plastic: 4 }), // Raft: 6 planks + 6 leaves + 4 plastic
   rainbarrel: recipe('rainbarrel', 'Rain Barrel',  1, { wood: 3, leaf: 2, plastic: 1 }), // rain-sprinkler
   sprinkler:  recipe('sprinkler',  'Sprinkler',    1, { scrap: 2, plastic: 2, rope: 1 }), // rain-sprinkler
 

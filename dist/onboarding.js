@@ -70,7 +70,7 @@ export const STEPS = [
     done:(S, b, c) => fishSince(S, b, c) >= 1},
   {chapter:'ch3', id:'fish3', title:'Catch two more', hint:'Cast and wait, the fish comes to you', needs:['fish1'],
     count:(S, b, c) => [fishSince(S, b, c) - (c.silent ? 1 : 0), 2]},
-  {chapter:'ch3', id:'sail', title:'Raise a sail', hint:'Bag: 4 wood, 3 rope, 3 leaves', needs:['rod'], done:(S, b, c) => placedNow(S, b, c, 'sail')},
+  {chapter:'ch3', id:'sail', title:'Raise a sail', hint:'Bag: 10 wood, 20 leaves, 3 scrap', needs:['rod'], done:(S, b, c) => placedNow(S, b, c, 'sail')},
   {chapter:'ch3', id:'seat', title:'Build a bench', hint:'Somewhere to watch the waves', done:(S, b, c) => placedNow(S, b, c, 'bench')},
   {chapter:'ch3', id:'crate', title:'Make a storage crate', hint:S => use(S, 'crate', 'the crate', '[LMB] on the raft', 'Bag: 4 wood + 1 scrap, then place it'), done:(S, b, c) => placedNow(S, b, c, 'crate')},
   {chapter:'ch3', id:'home', title:'Reach 16 tiles', hint:'A proper little home', count:S => [num(S.tiles), 16], done:(S, b, c) => !c.hostWorld && num(S.tiles) >= 16},

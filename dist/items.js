@@ -137,9 +137,9 @@ const LIST = [
     tip: 'A tiny hinge that swings just right. Binoculars fold up thanks to these.' }),
 
   // ----- tools -----
-  item('hook', 'Hook', 'tool', { icon: 'icon-hook', placeholder: false, tool: true, durability: 50,
+  item('hook', 'Hook', 'tool', { icon: 'icon-hook', placeholder: false, tool: true, durability: 40, // Raft's plastic hook: 40 uses
     recipe: hand({ wood: 1, plastic: 2 }), unlock: START,
-    tip: 'Throw it, reel it, grab the goodies. Gets tired after about 50 catches; R fixes it up.' }),
+    tip: 'Throw it, reel it, grab the goodies. Gets tired after about 40 catches; R fixes it up.' }),
   item('metalhook', 'Metal Hook', 'tool', { icon: 'icon-hook', placeholder: true, iconTint: '#a9b4c2',
     tool: true, durability: 150, actsAs: 'hook',
     recipe: hand({ metalingot: 6, bolt: 2, rope: 2, wood: 2 }), unlock: research('metalingot', 'bolt'),
@@ -197,7 +197,7 @@ const LIST = [
     recipe: hand({ wax: 2, rope: 1 }), unlock: discover('wax'),
     tip: 'A little jar candle that glows warmly at night.' }),
   item('sail', 'Sail', 'build', { icon: 'icon-sail', placeholder: false, placeable: true,
-    recipe: hand({ wood: 4, rope: 3, leaf: 3 }), unlock: discover('rope', 'plastic'),
+    recipe: hand({ wood: 10, leaf: 20, scrap: 3 }), unlock: discover('leaf', 'scrap'), // Raft: 10 planks + 20 leaves + 3 scrap
     tip: 'Catch the breeze and look the part of a proper sea captain.' }),
   item('lantern', 'Lantern', 'decor', { icon: 'icon-lantern', placeholder: false, placeable: true,
     recipe: hand({ wood: 2, scrap: 2 }), unlock: discover('scrap'),
