@@ -82,7 +82,7 @@ function flatMaterial(name) {
   const p = PRESETS[name], c = new T.Color();
   const pal = COLOR_PRESETS[name]?.[0];
   if (pal) c.set(pal); else { const m = getAtlas(T).cells[p.cell].mean; c.setRGB(m[0], m[1], m[2], T.LinearSRGBColorSpace); }
-  const m = new T.MeshStandardMaterial({ color: c, roughness: 0.8, metalness: p.metalness,
+  const m = new T.MeshStandardMaterial({ color: c, roughness: 0.8, metalness: p.metalMap ? 0.3 : p.metalness, // no envmap: full metal would read black
     transparent: !!p.transparent, opacity: p.opacity ?? 1, side: p.side === 'double' ? T.DoubleSide : T.FrontSide });
   flatCache.set(name, m); return m;
 }
@@ -101,7 +101,7 @@ names.forEach((name, i) => {
   mk(plankGeo, 1.3, 0.32);
   cube.rotation.y = 0.6;
   const el = document.createElement('div'); el.className = 'lbl';
-  const p = PRESETS[name]; el.innerHTML = `${name}<small>${p.repeat.join('x')}${p.metalness ? ' m' + p.metalness : ''}${p.transparent ? ' a' + (p.opacity ?? 1) : ''}${p.alphaTest ? ' cut' : ''}</small>`;
+  const p = PRESETS[name]; el.innerHTML = `${name}<small>${p.repeat.join('x')}${p.metalMap ? ' metal mask' : p.metalness ? ' m' + p.metalness : ''}${p.transparent ? ' a' + (p.opacity ?? 1) : ''}${p.alphaTest ? ' cut' : ''}</small>`;
   labelsEl.append(el); items.push({ el, anchor: new T.Vector3(0, 0, 0.95), g });
 });
 
@@ -142,14 +142,14 @@ function layout() {
   const vfov = T.MathUtils.degToRad(camera.fov), hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
   const dist = Math.max(fitW / 2 / Math.tan(hfov / 2), fitD / 2 / Math.tan(vfov / 2) * 0.95) * 1.02;
   const dir = new T.Vector3(0, 1.15, 1).normalize();
-  camera.position.copy(dir.multiplyScalar(dist)).add(new T.Vector3(0, 0, 0.6)); camera.lookAt(0, 0.0, 0.6);
+  camera.position.copy(dir.multiplyScalar(dist)).add(new T.Vector3(0, 0, -0.5)); camera.lookAt(0, 0, -0.5);
   camera.updateProjectionMatrix();
   // Atlas quads: two squares side by side with margins.
   atlasCam.left = 0; atlasCam.right = w; atlasCam.top = h; atlasCam.bottom = 0; atlasCam.updateProjectionMatrix();
-  const s = Math.min((w - 72) / 2, h - 150), y = h - 110 - s / 2;
+  const s = Math.min((w - 72) / 2, h - 200), y = h - 150 - s / 2;
   atlasLabels.forEach(({ el, g }, k) => {
     const x = w / 2 + (k ? 1 : -1) * (s / 2 + 12); g.position.set(x, y, 0); g.scale.set(s, s, 1);
-    el.style.left = x + 'px'; el.style.top = (h - (y + s / 2) - 18) + 'px';
+    el.style.left = x + 'px'; el.style.top = (h - (y - s / 2) + 20) + 'px';
   });
 }
 addEventListener('resize', layout); layout();

@@ -1,13 +1,13 @@
 // Rope: three-strand twisted rope for torus lashings (and tube-shaped lines), preset repeat [1,3].
 // UV: Torus/TubeGeometry, u runs along the rope path, v around the rope (x3 repeats around).
 // Strands are helical stripes ph = fract(A*u + B*v) with integer A, B (seamless); B = 1 per tile
-// gives 3 strands around the rope with repeat [1,3], A = 18 twists along the lashing ring.
+// gives 3 strands around the rope with repeat [1,3], A = 27 stripes along the ring (lay ~55 mm, ~30 deg on the deck lashings).
 // Each strand: rounded profile, dark grooves #8E7448, fibres along the strand, a few loose flecks.
 export const normalStrength = 5;
 
 export default function generate(S, N) {
   const n = S * S, albedo = new Float32Array(n * 3), height = new Float32Array(n), rough = new Float32Array(n);
-  const A = 18, B = 1;
+  const A = 27, B = 1;
   const groove = [0.56, 0.45, 0.28], lo = [0.72, 0.61, 0.41], hi = [0.8, 0.7, 0.51], fleck = [0.9, 0.83, 0.66];
   for (let y = 0; y < S; y++) {
     const v = y / S;

@@ -54,7 +54,7 @@ export default function generate(S, N) {
       if (kd < 2.2) { ring = 0.5 + 0.5 * Math.cos(kd * 7); val *= N.mix(0.62, 1 - ring * 0.12, N.smooth(0.55, 1.6, kd)); }
       let R = c[0] * val, G = c[1] * val, B = c[2] * val;
       // bevel height + gap
-      let H = 0.82 + (g - 0.5) * 0.06 - lines * 0.03 - (kd < 1 ? 0.05 * (1 - kd) : 0);
+      let H = 0.82 + (g - 0.5) * 0.06 - lines * 0.06 - (kd < 1 ? 0.05 * (1 - kd) : 0);
       const bev = N.smooth(0.6, 3.2, edge); H *= bev; let rr = 0.82 + lines * 0.06 - worn * 0.05;
       if (edge < 3) {
         const t = 1 - N.smooth(0.3, 1.7, edge), gr = 1 - N.smooth(1, 4, edge);
