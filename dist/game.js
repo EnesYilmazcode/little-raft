@@ -160,7 +160,7 @@ export function mount(transfer = null) {
     return bag.slots.findIndex(s => toolRole(s?.kind) === 'hook'); // [progression-hook]
   }
   const hookDurability = (bag, prefer) => { const i = hookIndex(bag, prefer); return i < 0 ? 0 : clamp(bag.slots[i].durability ?? MAX_HEALTH, 0, MAX_HEALTH); };
-  const legacyStock = bag => { const c = bag.counts(); return Object.fromEntries(STOCK_KEYS.map(k => [k, c[k] ?? 0])); };
+  const legacyStock = bag => { const c = bag.counts(), out = {}; for (let i = 0; i < STOCK_KEYS.length; i++) { const k = STOCK_KEYS[i]; out[k] = c[k] ?? 0; } return out; };
 
   // Builds host/guest bags for a cleaned world. New saves carry snapshots; older saves only carry shared stock.
   function bagsFromWorld(w) {
@@ -2015,11 +2015,11 @@ export function mount(transfer = null) {
   // never mutated after the fact, so a reader may keep them (onboarding keeps the last pickup).
   let hudAt = -1, hudBuilt = 0, hudBag = null, hudStock = null, hudOwned = null, hudInv = null, hudPick = null, hudPickSrc = null, hudPickType = null;
   const hudModeOf = kind => (kind === 'hammer' ? 'build' : kind === 'fishingrod' ? 'fish' : kind === 'hook' ? 'hook' : DECOR_TYPES.includes(kind) ? 'place' : 'none');
-  const hudCounts = () => {
-    const bag = localBag(), now = performance.now();
-    if (bag !== hudBag || hudAt !== last || now - hudBuilt > 100) {
-      hudBag = bag; hudAt = last; hudBuilt = now; hudStock = bag.counts();
-      hudOwned = []; if (hudStock.hook > 0) hudOwned.push('hook'); if (hudStock.hammer > 0) hudOwned.push('hammer'); if (hudStock.fishingrod > 0) hudOwned.push('fishingrod');
+  const hudCounts = () => { // bag.counts() hands back one cached frozen object until the bag changes; rebuild ownedTools only then
+    const c = localBag().counts();
+    if (c !== hudStock) {
+      hudStock = c;
+      hudOwned = []; if (c.hook > 0) hudOwned.push('hook'); if (c.hammer > 0) hudOwned.push('hammer'); if (c.fishingrod > 0) hudOwned.push('fishingrod');
     }
     return hudStock;
   };

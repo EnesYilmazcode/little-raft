@@ -234,15 +234,31 @@ export class Bag {
   count(kind) {
     if (!isKind(kind)) return 0;
     let n = 0;
-    for (const s of this.slots) if (s && s.kind === kind) n += s.count;
+    const slots = this.slots;
+    for (let i = 0; i < slots.length; i++) { const s = slots[i]; if (s && s.kind === kind) n += s.count; }
     return n;
   }
 
+  // Cached: the same frozen object comes back until a slot's object, kind or count changes. Checked by a
+  // per-slot scan rather than .version, since lane code writes bag.slots[i] / s.count directly.
+  #cObj = null; #cRef = new Array(SLOT_COUNT).fill(null); #cKind = new Array(SLOT_COUNT).fill(null); #cN = new Array(SLOT_COUNT).fill(0);
   counts() {
+    const slots = this.slots, ref = this.#cRef, kd = this.#cKind, nn = this.#cN, n = slots.length;
+    let same = this.#cObj !== null && n === ref.length;
+    for (let i = 0; same && i < n; i++) {
+      const s = slots[i];
+      if (s !== ref[i] || (s !== null && s !== undefined && (s.kind !== kd[i] || s.count !== nn[i]))) same = false;
+    }
+    if (same) return this.#cObj;
     const out = {};
-    for (const k of ITEM_KINDS) out[k] = 0;
-    for (const s of this.slots) if (s && isKind(s.kind)) out[s.kind] += s.count;
-    return out;
+    for (let i = 0; i < ITEM_KINDS.length; i++) out[ITEM_KINDS[i]] = 0;
+    ref.length = kd.length = nn.length = n;
+    for (let i = 0; i < n; i++) {
+      const s = slots[i];
+      ref[i] = s; kd[i] = s ? s.kind : null; nn[i] = s ? s.count : 0;
+      if (s && isKind(s.kind)) out[s.kind] += s.count;
+    }
+    return (this.#cObj = Object.freeze(out));
   }
 
   /**
