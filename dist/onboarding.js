@@ -4,6 +4,16 @@
 //        optional?:bool (never blocks its chapter), show?(S) -> bool (visibility gate), every?:bool (shown in any chapter)}.
 // count may add a unit: [n, of, '°']. ctx = {S0, gained(k), yawTravel, walked (path metres), prev, mem, silent}. Completion reads only window.raftDebug.hud (a light live view; .state if absent), polled 250 ms.
 export const SAVE_KEY = 'little-raft-v1', KEY = 'little-raft-onboarding-v1', AUTOSTART = 'little-raft-autostart';
+// Run state the lanes keep beside the raft save (progression-hooks.js, fishing-cooking.js, logbook-ui.js).
+export const PROGRESSION_KEY = 'littleRaft.progression.v1', FC_KEY = 'little-raft-fc-v1', LOGBOOK_SEEN_KEY = 'little-raft-logbook-seen';
+// New Game: the run's raft, onboarding, research/stations/barrel luck, grills, the carried fish basket and the
+// logbook's read mark all go. The fisher's journal (species, dishes) is a collection that outlives a run: kept.
+export function wipeRun(st) {
+  for (const k of [SAVE_KEY, KEY, PROGRESSION_KEY, LOGBOOK_SEEN_KEY]) st.del(k);
+  let fc = null; try { fc = JSON.parse(st.get(FC_KEY)); } catch {}
+  const j = fc && typeof fc === 'object' && fc.journal && typeof fc.journal === 'object' ? fc.journal : {};
+  st.set(FC_KEY, JSON.stringify({v:1, journal:{species:j.species ?? {}, dishes:j.dishes ?? {}, basket:[]}, grills:[]}));
+}
 const POLL_MS = 250, MAX_ROWS = 3, DIM_MS = 20000, HOLD_MS = 2000, ASIDE_MIN = 190, GUTTER = 8;
 
 const num = v => (Number.isFinite(v) ? v : 0);
@@ -358,7 +368,7 @@ function boot() {
     const disarm = () => { clearTimeout(armed); armed = 0; newBtn.textContent = newLabel; newBtn.classList.remove('ob-confirm'); };
     function wipe() {
       wiping = true;
-      const clear = () => { store.del(SAVE_KEY); store.del(KEY); };
+      const clear = () => wipeRun(store);
       clear(); addEventListener('beforeunload', clear); addEventListener('pagehide', clear); // game.js saves on beforeunload; run after it
       store.set(AUTOSTART, '1', true); location.reload();
     }

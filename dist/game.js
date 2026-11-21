@@ -520,7 +520,7 @@ export function mount(transfer = null) {
     return {scene, raft, ocean, camera, signal, get rodModel() { return hands?.itemModel('fishingrod') ?? null; }, role:() => role, netReady:() => networkReady, send, action, notice, beep,
       selectedKind, aim:() => currentAim(), rodTip:() => handPos, player:() => ({x:physics.x, y:physics.y, z:physics.z, yaw}),
       hasTile, decorAt:(x, z) => world.decor.some(d => d.x === x && d.z === z), bagCount:k => localBag().count(k),
-      running:() => running, uiBlocked, resume:() => requestLock(), busy:() => !!hook || !!fishWait || !!charging};
+      running:() => running, uiBlocked, resume:() => requestLock(), busy:() => !!hook || !!fishWait || !!charging, saveBlocked:() => saveBlocked};
   }
   function fallbackAvatar(color) {
     if (color && typeof color === 'object') color = lookColors(color).shirt; // [look]
@@ -1341,6 +1341,9 @@ export function mount(transfer = null) {
     resetHints(window.localStorage, hintsDone); // first-run hints are once per save, and this is a fresh one
     const w = newWorld(), b = bagsFromWorld(w);
     loadRaft({world:w, host:b.host.snapshot(), guest:b.guest.snapshot(), physics:null}); yaw = 0; pitch = -.28; // lanes reload from the fresh world too
+    Object.assign(vitals, newVitals()); fainted = -1; eating = null; // [vitals] a fresh run starts fed and awake
+    try { prog?.reset(); } catch (e) { console.warn('progression reset failed', e); } try { fc?.reset(); } catch (e) { console.warn('fishing-cooking reset failed', e); } // grills, research, stations, barrel luck: the old run's
+    try { localStorage.removeItem('little-raft-logbook-seen'); } catch {} // logbook-ui.js SEEN_KEY: the new run's notes are unread
     saveRev = newGameBaseRev(storedRev(), saveRev); unblockSave(); // the player chose to overwrite the stored save
     save(); start();
   }
@@ -1366,7 +1369,11 @@ export function mount(transfer = null) {
   }
   function unblockSave() { if (!saveBlocked) return; saveBlocked = false; setText('#saveStatus', SAVE_STATUS); }
   // Leaving the title for play while another tab has saved since: continue from that newer save, not our stale copy.
-  function adoptStoredSave() { loadRaft(savedOwnRaft()); saveRev = storedRev(); unblockSave(); }
+  function adoptStoredSave() {
+    loadRaft(savedOwnRaft()); saveRev = storedRev(); unblockSave();
+    Object.assign(vitals, newVitals(world.vitals)); fainted = -1; eating = null; // [vitals] the adopted world's
+    try { prog?.reload(); } catch (e) { console.warn('progression reload failed', e); } try { fc?.reload(); } catch (e) { console.warn('fishing-cooking reload failed', e); } // their saves are that tab's too
+  }
   function save() {
     if (role === 'guest' || disposed || saveBlocked) return;
     syncWorldInventories();
@@ -1376,6 +1383,7 @@ export function mount(transfer = null) {
       localStorage.setItem(SAVE, JSON.stringify({...world, items:[], rev:plan.rev, savedAt:Date.now()})); saveRev = plan.rev;
     }
     catch { saveAvailable = false; setText('#saveStatus', 'Browser storage is full or unavailable. This session will not be saved.'); }
+    try { prog?.save(); } catch {} try { fc?.save(); } catch {} // lane saves: unload / hidden tab must not lose research, grills or cook progress
   }
 
   // ---------- Movement ----------
@@ -2269,7 +2277,7 @@ export function mount(transfer = null) {
   const optionsDialog = document.getElementById('options'), previousSettingsOwner = optionsDialog?.dataset.owner;
   try {
     if (!canvas) throw new Error('#world canvas missing');
-    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), aim:() => frameAim, resume:() => requestLock(), pause:clearInput}); // [progression-hook]
+    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), aim:() => frameAim, resume:() => requestLock(), pause:clearInput, saveBlocked:() => saveBlocked}); // [progression-hook]
     init();
     try { coop = createCoop(coopContext(), X?.coop); } catch (e) { console.warn('co-op layer unavailable', e); coop = null; } // coop
     settingsController = createSettings({onChange:next => { applyOptions(next); soundLabel(); }, onPause:pauseInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});
