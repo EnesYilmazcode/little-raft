@@ -480,12 +480,11 @@ export function mount(transfer = null) {
   function warmShaders() {
     if (typeof renderer.compileAsync !== 'function') return;
     hands?.preload(['hammer', 'fishingrod']);
-    warmNoShadow();
     try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
     catch (e) { console.warn('shader warm-up failed', e); }
   }
   // Also build the no-shadow variant (adaptive floor / Shadows off), else that switch relinks every lit program mid-game.
-  // Runs at boot and once more after the first running frame, for materials built lazily (wildlife).
+  // Runs once, a few seconds into play (after lazily built materials such as wildlife exist), so boot compiles only what the first frame draws.
   let lateNoShadowWarm = true;
   function warmNoShadow() {
     if (!sun?.castShadow || typeof renderer?.compileAsync !== 'function') return;
@@ -1270,7 +1269,7 @@ export function mount(transfer = null) {
     refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud();
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
     renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
-    if (lateNoShadowWarm && running) { lateNoShadowWarm = false; warmNoShadow(); }
+    if (lateNoShadowWarm && running) { lateNoShadowWarm = false; later(warmNoShadow, 4000); }
   }
   // Peer liveness. rAF stops in hidden tabs, so a timer keeps the channel warm and each side says when it is
   // hidden; a hidden peer is never timed out (the data channel's 'close' still ends the session).
