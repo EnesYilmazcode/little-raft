@@ -1,10 +1,16 @@
 # Integration status
 
-Updated: 2026-11-21 10:05 UTC, round 6 (integrator A). PR #5 merged into main at c3a29df (raft-master fd3724d).
+Updated: 2026-11-21 10:10 UTC, round 6. PR #5 merged into main at c3a29df (raft-master fd3724d, gated and merged by the :00 integrator).
 Gate: 1398/1398 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text.
 Perf vs main 912d941 (median of 3): 99-103 vs 185-197 ms, 45-49 vs 46-52 draw calls.
 Open review nits (not blocking): display items all cast shadows; zipline re-uploads rope matrices with no lines; photoframe:set has no reach check; HELD lacks camera and new placeables; shelves/stands have no pickup hook yet.
 Needs a worker rebase: loop-ux-0743, loop-fidelity-0747, loop-perf-0720.
+
+Integrator B round 6 (10:00 UTC): independently gated fd3724d (the sha A merged): 1402/1402 tests, no page errors, hook-only spawn,
+Esc from the bag keeps the lock with no pause (escape_lock 3/3), prompts beside the crosshair; perf 126/96 ms vs main 255/159 ms, 51/45 vs 50/50 draw calls.
+B merged: loop-fidelity-0804 (7 missing commits), -0821 (2), loop-ux-0648/-0833 (new pieces only), loop-visuals-0805 (hook tines, sky/sea, foam rings, deck underlay; warm-wood menu restyle dropped: clashes with the glass UI and brings back backdrop blur), loop-perf-0708 (docs).
+B also needs a worker rebase: loop-ux-0742 (851 behind, 23 conflicting files; its input/hammer/save fixes are worth having).
+Open PR: #6 (round 7).
 
 Previous:
 Updated: 2026-11-21 09:25 UTC, integrator B round 4. PR #5 (round 6) open at 9b3ba49, under review.
@@ -16,6 +22,11 @@ Known flake: art atlas build-time test under heavy machine load.
 
 
 ## Claims (to avoid double merges between integrators)
+Integrator G (gate + PR review, formerly logged as B in rounds 2-4 and PR #5; from 10:20 UTC): not claiming worker branches. Gates each raft-master PR with a seeded perf probe (scratchpad gate.sh), runs 2 reviewers, fixes findings, merges. Fixing the build-wheel Esc cursor relock in fix/wheel-esc.
+:00 integrator, round 7 (from 10:15 UTC): loop-features-202611210847-r2, -0849, -0855, -0911; loop-fidelity-202611210900, -0910; loop-perf-202611210748, -0823, -0847, -0859; loop-ux-202611210848, -0852.
+Integrator B, round 7 (from 10:05 UTC), in worktrees: loop-features-202611210926, -0943-r3, -0949, -0952, -0953; loop-ux-202611210742, -0743, -0833, -0947;
+loop-fidelity-202611210946, -0947, -0954; loop-visuals-202611210926, -0927, -0953; raft-tech. Round 6 list above is done.
+Integrator A, round 7 (from 10:10 UTC): merged loop-ux-202611210947, loop-features-202611210949, -0952, -0953, raft-tech. Claiming: loop-fidelity-202611210946, -0947, -0954; loop-visuals-202611210927, -0953; loop-features-202611210943-r3.
 Integrator F (09:34 UTC): merged loop-features-202611210926 (docs); skipped loop-visuals-202611210548 (stale, freezes sky).
 Integrator B, round 6 (from 09:30 UTC), in worktrees: loop-fidelity-202611210804, -0821; loop-features-202611210814; loop-perf-202611210708;
 loop-ux-202611210648, -0742, -0743, -0833; loop-visuals-202611210805. Also gating and merging PR #5.

@@ -13,10 +13,10 @@
 // use kick (timed to the hammer's strike impact), and a charge brace that keeps the hook on screen.
 //
 // Usage:
-//   const vm = createViewmodel(T, { camera, fov: 70 });
+//   const vm = createViewmodel(T, { camera, fov: 60 });   // 60 = the framing dist/hands.js is built for
 //   const hands = createHands(T, { modelFactory, prepare: vm.prepare });   // every mesh, incl. lazily built models
 //   vm.attach(hands);                                                      // parents hands.group under the rig
-//   each frame, before camera.updateMatrixWorld():
+//   each frame: hands.update({ ..., fov: vm.projCam.fov }) (hands.js undoes that FOV in x/y, so the layer's own FOV wins), then
 //   vm.update({ dt, held: hands.state.held, grounded, vy, charge, swing, motion });
 //   vm.anchor(hands.ropeAnchor(), out)  -> world point that renders under the anchor's on-screen position
 //   vm.setAspect(a); vm.setFov(f); vm.setFill(rim, lift)   // shade fill, 0,0 = off
@@ -42,7 +42,7 @@ export class Spring3 {
   }
 }
 
-export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange = 0.02, near = 0.01, rim = 0.6, lift = 0.14, strikeKinds = ['hammer'] } = {}) {
+export function createViewmodel(T, { camera, fov = 60, shrink = 0.15, depthRange = 0.02, near = 0.01, rim = 0.6, lift = 0.14, strikeKinds = ['hammer'] } = {}) {
   const projCam = new T.PerspectiveCamera(fov, camera.aspect, near, 100);
   const uniforms = { vmProj: { value: projCam.projectionMatrix }, vmDepth: { value: depthRange }, vmRim: { value: rim }, vmLift: { value: lift } };
   const own = new Map(), copies = new WeakSet();   // source material -> patched viewmodel copy
@@ -55,6 +55,10 @@ export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange
     if (own.has(src)) return own.get(src);
     if (copies.has(src)) return src;                           // already a viewmodel copy
     const m = src.clone(); own.set(src, m); copies.add(m);
+    // The copy reads the source's colours (same Color objects), so recolouring the source still shows:
+    // hands.setLook() sets skin/shirt on hands.js' own materials after they are patched.
+    if (src.color?.isColor) m.color = src.color;
+    if (src.emissive?.isColor) m.emissive = src.emissive;
     const prevCompile = src.onBeforeCompile, prevKey = src.customProgramCacheKey;
     const prevTag = prevCompile && prevCompile !== T.Material.prototype.onBeforeCompile ? prevCompile.toString() : '';
     m.onBeforeCompile = (sh, r) => {
