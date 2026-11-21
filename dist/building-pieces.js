@@ -98,7 +98,7 @@ export class BuildGrid {
     this._prevHead = Infinity; this._px = 0; this._pz = 0; this._pvy = 0;
     this._refused = null; this._rx = 0; this._rz = 0; this._rvy = 0;
     this._pre = {deckY: 0, tiles: this._tileArr};
-    this._cl = null; this._climbing = false; this._clTile = [0, 0]; this._clTiles = [this._clTile];
+    this._cl = null; this._climbing = false; this._lin = {forward: 0, jump: false, y: 0}; this._clTile = [0, 0]; this._clTiles = [this._clTile];
   }
 
   setTiles(tiles) {
@@ -630,7 +630,8 @@ export class BuildGrid {
       cl.dt = rem;
       do {
         const st = Math.min(rem, 0.1);
-        const r = feel.ladderInput(st, {forward: fw, jump, y: cl.h});
+        const li = this._lin; li.forward = fw; li.jump = jump; li.y = cl.h;
+        const r = feel.ladderInput(st, li);
         if (r.detach) {
           this._cl = null;
           phys.vx += r.pushX; phys.vz += r.pushZ; phys.vy = r.vy; phys.grounded = false;
