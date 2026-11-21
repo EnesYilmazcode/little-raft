@@ -527,6 +527,62 @@ test('HookCast: caught items that vanish from the world are not paid out', () =>
   assert.deepEqual(events[0].items, [{ id: 'b', token: 'tb', type: 'plastic' }]);
 });
 
+test('HookCast: skip(item) behaves exactly like filtering items out of the list', () => {
+  const items = reelItems();
+  const skipA = (it) => it.id === 'a';
+  const filtered = items.filter(it => !skipA(it));
+  const a = cast({ direction: elevDir(0), charge: 1 }), b = cast({ direction: elevDir(0), charge: 1 });
+  const evA = [], evB = [];
+  for (let i = 0; i < 600; i++) {
+    const reeling = i > 150;
+    const ea = a.update(0.02, { hand: hand(), items: filtered, reeling });
+    const eb = b.update(0.02, { hand: hand(), items, skip: skipA, reeling });
+    if (ea) evA.push(ea);
+    if (eb) evB.push(eb);
+    assert.deepEqual(b.position, a.position);
+    assert.deepEqual(b.caughtItems, a.caughtItems);
+  }
+  assert.equal(evB.length, 1);
+  assert.deepEqual(evB, evA);
+  assert.deepEqual(evB[0].items, [{ id: 'b', token: 'tb', type: 'plastic' }]);
+
+  // A caught item that becomes skipped is dropped, as if it vanished; a non-function skip is ignored.
+  const c = cast({ direction: elevDir(0), charge: 1 });
+  flyOut(c, items);
+  for (let i = 0; i < 500 && c.caughtItems.length < 2; i++) c.update(0.02, { hand: hand(), items, reeling: true, skip: 'nope' });
+  assert.equal(c.caughtItems.length, 2);
+  c.update(0.02, { hand: hand(), items, reeling: true, skip: skipA });
+  assert.deepEqual(c.caughtItems.map(it => it.id), ['b']);
+});
+
+test('HookCast: ropePoints(hand, n, out) fills and returns the caller array', () => {
+  const c = cast({ direction: elevDir(20), charge: 0.5 });
+  flyOut(c);
+  run(c, 0.3, [], false);
+  const h = new T.Vector3(0.3, 1.2, -0.2);
+  const ref = c.ropePoints(h, 8).map(v => v.clone());
+  const internal = c.ropePoints(h, 8);
+
+  const kept = new T.Vector3();
+  const out = [kept, null, 5];
+  assert.equal(c.ropePoints(h, 8, out), out);
+  assert.equal(out.length, 9);
+  assert.equal(out[0], kept, 'existing vectors are reused');
+  for (let i = 0; i < 9; i++) {
+    assert.ok(out[i] instanceof T.Vector3);
+    assert.deepEqual(out[i], ref[i]);
+  }
+  // Shrinks to fit, never touches the hook's own array.
+  const first = out[0];
+  assert.equal(c.ropePoints(h, 4, out), out);
+  assert.equal(out.length, 5);
+  assert.equal(out[0], first);
+  assert.equal(c.ropePoints(h, 8), internal);
+  assert.deepEqual(internal, ref);
+  // Non-array out falls back to the internal array.
+  assert.equal(c.ropePoints(h, 8, {}), internal);
+});
+
 // ================================================================= Ocean
 
 test('Ocean: allocation-free getHeight/getSlope/sample match the reference Gerstner sampler exactly', async () => {
