@@ -19,8 +19,10 @@
 //   rodLine     Mesh     reel -> guides -> tip line (always visible)
 //   reelSpool   Mesh     spool (rotate .rotation.x to animate reeling; axis is model X)
 //   size        {x,y,z}  approximate bounds
-//   meshCount   number   (17)
+//   meshCount   number   (15: static brass / steel parts on the root are merged per material)
 //   dispose()   frees all owned geometries and materials
+import { mergeChildMeshes } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
+
 export function createFishingTool(T) {
   const root = new T.Group();
   root.name = 'fishingRod';
@@ -91,7 +93,7 @@ export function createFishingTool(T) {
     let last = -1;
     for (const y of ys) { if (y - last < 0.0006) continue; last = y; pts.push(V2(rAt(y) * nodeBulge(y), y)); }
     pts.push(V2(0, Y1));
-    const geo = new T.LatheGeometry(pts, 12);
+    const geo = new T.LatheGeometry(pts, 10);
     const base = new T.Color(0xd8ae62), gold = new T.Color(0xe6c47c), dark = new T.Color(0x7a5528), burn = new T.Color(0xa5763a);
     colorize(geo, (x, y, z, a, c) => {
       // section index -> slight tone shift per internode
@@ -261,6 +263,10 @@ export function createFishingTool(T) {
     leader = add(new T.TubeGeometry(curve, 24, 0.0011, 4, false), lineMat);
     leader.name = 'leader';
   }
+
+  // ---------- merge static unnamed parts sharing a material (brass caps, steel tip top + reel plate) ----------
+  for (const m of mergeChildMeshes(T, root, { skip: (c) => !!c.name })) G(m.geometry);
+  meshCount = 0; root.traverse((o) => { if (o.isMesh) meshCount++; });
 
   // ---------- reference nodes ----------
   const grip = V3(0, -0.56, 0);
