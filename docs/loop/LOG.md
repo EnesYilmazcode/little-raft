@@ -604,3 +604,14 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
   when Chromium ate the keyDown that ended pointer lock (electron check), icon encode is synchronous under the deterministic clock (visual check).
 - Full fleet gate PASS at c7a8293 (unit, playbot, visual, perf, electron). Electron is now installed in node_modules.
 - PR #3 (round 4) is the open PR from raft-master; integrator B merged #2 at 1636dfe meanwhile.
+
+## claude/loop-visuals-202611210847 (visuals, round 3)
+Base: origin/claude/raft-master (4ee6b16). Fleet: 1 critic, 6 builders (worktrees), 2 art judges, 1 perf checker.
+- Rope: the hook rope is now the braided tube from rope.js (it used to be a 1px line). It floats on the waves and lies on the deck. The rod line is a thin separate tube. There are 32 path points.
+- HUD: the key prompt moved above the hotbar, so the centre box is empty (R3.0). Notices now go into the pickup feed and the hint pills are gone. Vitals are slim bars with no frame. The Notes card is dark and 240px wide.
+- Icons: each icon is fitted to 86% of its slot, with a dark rim, a drop shadow and a stronger key light. Hook, hammer and rod get thicker icon-only versions. The Hammer recipe icon was empty because 3D icons were never requested for it; they are now requested when the bag opens.
+- Lighting: warmer sun (#ffe1b3, 3.4), lit from 25-41° so shadows are longer. The day fill is cool sky over sand-neutral ground at 0.8, which removes the olive cast. One additive sun-glare sprite.
+- Crafts: every craft uses one shared driftwood grain material in the deck palette. The crate gets rope lashings and a small rust hasp in place of black steel corners. Held items now copy shared materials before prep changes them.
+- Rejected: vis/splash (hook landing splash and reel ripples). The ring was barely visible and the drops read as white balls. To retry: base drop size, drop opacity .6, and a clear-weather landing shot.
+Checks: npm test 910/910; shoot.py errors []. Perf A/B (3 interleaved pairs, quality pinned): sea +3.8%, sun +1.5%, hook +3.8% (pairwise +0.2%). shoot.py median 163.8 vs 169.0 ms.
+Open: the held crate and hotbar crate still use the old brown models.js look; the rod recipe icon reads as a stick; the hotbar hook icon is white plastic but the held hook is dark; the hotbar keeps its tan skin.
