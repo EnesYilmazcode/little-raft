@@ -27,7 +27,7 @@ with sync_playwright() as p:
     page.on('console', lambda m: m.type in ('error', 'warning') and report['console'].append(m.text[:300]))
     page.goto(url); page.wait_for_function('!!window.raftDebug', timeout=20000)
     page.wait_for_timeout(800); shot(page, '01-title')
-    page.locator('#solo').click(); page.wait_for_function('raftDebug.state.running', timeout=15000)
+    page.locator('#newGame' if page.locator('#newGame').count() else '#solo').click(); page.wait_for_function('raftDebug.state.running', timeout=15000)
     page.wait_for_timeout(1500); shot(page, '02-spawn')
     try: report['spawnState'] = {k: v for k, v in page.evaluate('raftDebug.state').items() if k in ('ownedTools', 'inventory', 'stock', 'heldKind')}
     except Exception as e: report['errors'].append('state: ' + str(e))
@@ -35,12 +35,20 @@ with sync_playwright() as p:
     page.wait_for_timeout(900); shot(page, '04-thrown')
     page.keyboard.press('Tab'); page.wait_for_timeout(500); shot(page, '05-inventory')
     page.keyboard.press('Escape'); page.wait_for_timeout(500); shot(page, '06-after-esc-from-inventory')
-    report['pauseOpenAfterInvEsc'] = page.evaluate("(()=>{const d=document.querySelector('#options');return !!(d&&d.open)})()")
+    report['afterInvEsc'] = page.evaluate("({pause:!!document.querySelector('#options')?.open,inv:!!document.querySelector('#inventory')?.open,locked:!!document.pointerLockElement,relock:document.body.classList.contains('relock')})")
     page.keyboard.press('Escape'); page.wait_for_timeout(500); shot(page, '07-pause')
+    if page.locator('#options [data-act=settings]').count():
+        page.locator('#options [data-act=settings]').click(); page.wait_for_timeout(200); shot(page, '07b-settings')
+        page.locator('#options [data-tab=graphics]').click(); page.wait_for_timeout(200); shot(page, '07c-graphics')
+        page.keyboard.press('Escape'); page.wait_for_timeout(200)  # closes the panel, pause stays
+        report['escClosesPanelFirst'] = page.evaluate("!!document.querySelector('#options')?.open")
     page.keyboard.press('Escape'); page.wait_for_timeout(300)
     for k in '2345': page.keyboard.press(k); page.wait_for_timeout(250)
     page.keyboard.press('1')
     page.keyboard.down('w'); page.wait_for_timeout(900); page.keyboard.up('w'); shot(page, '08-walked')
+    if page.locator('#options [data-act=quit]').count():
+        page.keyboard.press('Escape'); page.wait_for_timeout(300); page.locator('#options [data-act=quit]').click(); page.wait_for_timeout(800)
+        shot(page, '09-quit-title'); page.locator('#solo').click(); page.wait_for_timeout(500)
     # frame time probe (software GL, so relative numbers only)
     report['frameMs'] = page.evaluate("""new Promise(r=>{let n=0,t0=performance.now(),worst=0,last=t0;function f(t){worst=Math.max(worst,t-last);last=t;if(++n<120)requestAnimationFrame(f);else r({avg:(t-t0)/n,worst})}requestAnimationFrame(f)})""")
     report['heapMB'] = page.evaluate('performance.memory ? performance.memory.usedJSHeapSize/1048576 : null')
