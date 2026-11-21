@@ -230,7 +230,8 @@ def breakdown(snap):
 SESSION = ('open {url}, click #solo, wait {warmup:g}s warmup, then for {duration:g}s repeat a ~8s cycle: '
            'press 1 (hook), hold W 0.9s, hold A/D 0.5s, right-drag to look, hold LMB 0.7s to throw the hook, wait 1.4s, '
            'hold LMB 1.2s to reel, press 2,3,4,1, every 3rd cycle Tab (inventory) then Tab to close, hold S 0.5s, Space; '
-           'viewport {width}x{height}, SwiftShader Chromium')
+           'viewport {width}x{height}, SwiftShader Chromium. '
+           'Rerun: python3.13 tests/e2e/perf_gate.py --dist {dist} --out <dir> (full samples in <dir>/perf_gate.json)')
 
 
 def get(d, path):
@@ -269,7 +270,10 @@ def check(metrics, budget, repro):
                 extra = ' heap samples (t s: MB): ' + ', '.join(f"{x['t']}:{x['usedMB']}{'*' if x['gc'] else ''}" for x in metrics['heap']['samples']) + ' (* = after forced GC)'
             if mpath.startswith('longTasks'):
                 extra = ' worst tasks (start s after warmup, ms): ' + ', '.join(f'{t}:{d}' for t, d in metrics['longTasks']['worst'])
-            if mpath == 'growth.glObjects':
+            if mpath.startswith(('drawCalls', 'triangles')) and metrics.get('drawBreakdown'):
+                bd = metrics['drawBreakdown']
+                extra = f" last-frame split: {bd['mainPass']} main-pass + {bd['offscreenPass']} offscreen-pass draws, {bd['tinyDraws(<=12 tris)']} draws of <=12 tris."
+            if mpath.startswith('growth.glObjects'):
                 extra = ' by kind: ' + json.dumps(metrics['growth']['glByKind'])
             fails.append({'id': fid, 'detail': f'{what}: {val} > budget {lim}.{extra}', 'repro': repro})
     mf = budget.get('minFrames')
@@ -286,7 +290,7 @@ def run(args, budget):
     if not (dist / 'index.html').is_file(): raise RuntimeError(f'no index.html in {dist}')
     report = {'errors': [], 'console': []}
     with StaticServer(dist) as srv, sync_playwright() as p:
-        repro = SESSION.format(url=f'{dist}/index.html (served over http)', warmup=args.warmup, duration=args.duration, width=args.width, height=args.height)
+        repro = SESSION.format(dist=dist, url=f'{dist}/index.html (served over http)', warmup=args.warmup, duration=args.duration, width=args.width, height=args.height)
         b = launch_chromium(p, extra_args=['--enable-precise-memory-info'])
         try:
             ctx = b.new_context(viewport={'width': args.width, 'height': args.height})
