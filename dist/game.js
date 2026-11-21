@@ -40,7 +40,7 @@ const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
 const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12});
 const SAVE = 'little-raft-v1';
-const FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 8, PICKUP_REACH = 2.5;
+const THROW_LOFT = .2, FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 10, PICKUP_REACH = 2.5;
 const LOOK_SENSITIVITY = .0022, DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
 const FISH_REACH = 26, PENDING_MS = 2500, JOIN_TIMEOUT = 15000, ACK_TIMEOUT = 2000;
 const CHARGE_MS = 900, MIN_CHARGE = .15, WEAR_PER_CATCH = 2, MAX_HEALTH = 100;
@@ -188,7 +188,7 @@ export function mount(transfer = null) {
   let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
-  let yaw = Number.isFinite(X?.yaw) ? X.yaw : 0, pitch = Number.isFinite(X?.pitch) ? X.pitch : -.28;
+  let yaw = Number.isFinite(X?.yaw) ? X.yaw : 0, pitch = Number.isFinite(X?.pitch) ? X.pitch : 0;
   let walking = false, walkPhase = Number.isFinite(X?.walkPhase) ? X.walkPhase : 0, swing = 0;
   const pointer = new T.Vector2(), ray = new T.Raycaster(), plane = new T.Plane(new T.Vector3(0, 1, 0), -.22);
   let hover = null, mouse = {x:0, y:0, inside:false}, frameAim = null, pickTarget = null;
@@ -224,11 +224,11 @@ export function mount(transfer = null) {
     if (next !== resScale) { resScale = +next.toFixed(2); renderer.setPixelRatio(baseRatio * resScale); }
   }
   let netClock = 0, saveClock = 0, networkTick = 0, wheelAcc = 0;
-  let contextCache = null, uiFailed = false;
+  let contextCache = null, uiFailed = false, crossUsable = false;
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
   let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = '';
-  const chargeMeter = $('#chargeMeter'), chargeFill = chargeMeter?.querySelector('i');
+  const chargeMeter = $('#chargeMeter'); // thin ring around the crosshair, filled by --c
   let blockList = [];
 
   function makePhysics(src) {
@@ -321,11 +321,11 @@ export function mount(transfer = null) {
     document.querySelectorAll('[data-quick-recipe]').forEach(b => b.remove()); // old pseudo-inventory buttons
     document.body.classList.remove('build');
     const recipes = $('#recipes'); if (recipes) { recipes.hidden = true; recipes.innerHTML = ''; }
-    const controls = $('.controls'); if (controls) controls.innerHTML = '<span><kbd>W A S D</kbd> Walk</span><span><kbd>Space</kbd> Jump</span><span><kbd>1–8</kbd> Hotbar</span><span><kbd>E</kbd> Pick up / bag</span><span><kbd>Esc</kbd> Menu</span><span id="fishCount"></span>';
+    const controls = $('.controls'); if (controls) controls.innerHTML = '<span><kbd>W A S D</kbd> Walk</span><span><kbd>Space</kbd> Jump</span><span><kbd>1–0</kbd> Hotbar</span><span><kbd>E</kbd> Pick up / bag</span><span><kbd>Esc</kbd> Menu</span><span id="fishCount"></span>';
     const guide = $('#help .guide');
     if (guide) guide.innerHTML = '<li><kbd>Mouse</kbd><span><b>Look around.</b> Click the sea to capture your mouse.</span></li>'
       + '<li><kbd>W A S D</kbd><span><b>Walk</b>, hold <kbd>Shift</kbd> to run, <kbd>Space</kbd> to jump. Fell in? Swim to the raft and hold <kbd>Space</kbd> to climb aboard.</span></li>'
-      + '<li><kbd>1–8</kbd><span><b>Hotbar.</b> Number keys or the mouse wheel choose a slot. Click uses what you are holding.</span></li>'
+      + '<li><kbd>1–0</kbd><span><b>Hotbar.</b> Number keys or the mouse wheel choose a slot. Click uses what you are holding.</span></li>'
       + '<li><kbd>Hook</kbd><span><b>Throw.</b> Hold click to power up, aim higher to throw farther, release. Hold again to reel in everything it touches.</span></li>'
       + '<li><kbd>E</kbd><span><b>Pick up</b> a supply right beside you, or open your bag to craft. <kbd>Tab</kbd> / <kbd>I</kbd> open the bag too.</span></li>'
       + '<li><kbd>Craft</kbd><span><b>Make tools.</b> A Hammer builds raft floors (2 wood, 2 plastic each). A Fishing Rod catches fish. Crafted decorations are placed one at a time.</span></li>'
@@ -447,8 +447,9 @@ export function mount(transfer = null) {
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
       else if (farmPlot(frameAim)) { const t = Farm.promptFor(farmPlot(frameAim).farm, heldKind()); html = t.startsWith('E  ') ? '<kbd>E</kbd>' + esc(t.slice(3)) : esc(t); } // farming
       else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
-      else if (castOut() && castOut().stage === 'floating') html = caughtList(castOut()).length ? 'Hold click to reel it in' : 'Hold click to reel';
     }
+    const usable = !!(running && !dialog && (pickTarget || farmPlot(frameAim)));
+    if (usable !== crossUsable) { crossUsable = usable; $('#crosshair')?.classList.toggle('usable', usable); } // dot grows over interactables
     if (html === contextCache) return; contextCache = html;
     const el = $('#contextPrompt'); if (!el) return; el.innerHTML = html; el.hidden = !html;
   }
@@ -457,8 +458,8 @@ export function mount(transfer = null) {
     if (!chargeMeter) return;
     const show = !!charging && running;
     if (chargeMeter.hidden === show) chargeMeter.hidden = !show;
-    const w = show ? (chargeValue() * 100).toFixed(1) + '%' : '';
-    if (show && chargeFill && w !== chargeWidth) chargeFill.style.width = chargeWidth = w; // only write the DOM on change
+    const w = show ? chargeValue().toFixed(3) : '';
+    if (show && w !== chargeWidth) chargeMeter.style.setProperty('--c', chargeWidth = w); // only write the DOM on change
   }
   // Body classes, crosshair and resume hint follow running and pointer-lock state.
   function refreshPointerUI(force = false) {
@@ -739,7 +740,8 @@ export function mount(transfer = null) {
     const bag = localBag(), idx = bag.selectedIndex, slot = bag.slots[idx];
     if (slot?.kind !== 'hook') return;
     const durability = clamp(slot.durability ?? MAX_HEALTH, 0, MAX_HEALTH), maxRange = 16 + durability * .16;
-    const direction = aim?.dir ?? camera.getWorldDirection(new T.Vector3());
+    const direction = (aim?.dir ?? camera.getWorldDirection(new T.Vector3())).clone();
+    direction.y += THROW_LOFT; direction.normalize(); // a little loft so a level throw carries
     hook = new HookCast(T, {origin:handPos.clone(), direction, maxRange, charge, deck:deckAt});
     castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; play('throw', charge);
     if (durability <= 0) notice('Worn hook: shorter throws. R to repair');
@@ -771,7 +773,7 @@ export function mount(transfer = null) {
     if (role !== 'solo') closeConnection();
     hook = null; fishWait = 0; charging = null; reeling = false; lastCaughtCount = 0; pending.clear();
     world = newWorld(); const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
-    const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); yaw = 0; pitch = -.28;
+    const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); yaw = 0; pitch = 0;
     for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     if (scene) { syncItems(); rebuildRaft(); }
     save(); start();
@@ -1048,8 +1050,8 @@ export function mount(transfer = null) {
   on(window, 'keydown', e => {
     if (e.target?.matches?.('input, textarea, select') || uiBlocked()) return;
     keys[e.code] = true;
-    const m = /^(?:Digit|Numpad)([1-8])$/.exec(e.code);
-    if (m && running) selectSlot(+m[1] - 1);
+    const m = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
+    if (m && running) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
     if (e.code === 'KeyE' && !e.repeat) interact();
     if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? -ROT_STEP : ROT_STEP); else repair(); }
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();

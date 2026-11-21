@@ -220,6 +220,15 @@ test('Bag.craft succeeds when consuming the cost frees a slot, or output merges 
   assertStacksValid(b2);
 });
 
+test('Bag: hotbar has 10 slots and an 8-slot era save still loads', () => {
+  assert.equal(HOTBAR_SIZE, 10);
+  const old = new Bag(); old.select(7);
+  const copy = new Bag(old.snapshot());
+  assert.equal(copy.selectedIndex, 7);
+  assert.equal(Bag.salvage({ slots: old.snapshot().slots, selected: 7 }).selectedIndex, 7);
+  assert.equal(copy.select(9), true);
+});
+
 test('Bag: selection, cycling and snapshot round-trips', () => {
   const bag = new Bag();
   bag.add('wood', 25);
@@ -236,7 +245,7 @@ test('Bag: selection, cycling and snapshot round-trips', () => {
   assert.equal(bag.slots[3].count, 1);
 
   assert.equal(bag.cycle(-1), 2);
-  assert.equal(bag.cycle(-3), 7);
+  assert.equal(bag.cycle(-3), HOTBAR_SIZE - 1);
   assert.equal(bag.cycle(1), 0);
   assert.equal(bag.cycle(HOTBAR_SIZE * 2 + 1), 1);
   bag.select(5);
@@ -578,6 +587,13 @@ test('pickup feed: icon provider wins, svg sprite is the fallback', () => {
   feed.setIconProvider(k => k === 'scrap' ? 'data:image/png;base64,AA' : null);
   feed.add('scrap', 1);
   assert.equal(icon(1).tagName, 'IMG'); assert.equal(icon(1).src, 'data:image/png;base64,AA');
+});
+
+test('pickup feed: no borrowed sprite for placeholder items (water is not a barrel)', () => {
+  const doc = fakeDoc(), c = fakeClock(), feed = createFeed({ doc, ...c });
+  feed.add('water', 1); feed.add('seed', 1);
+  const box = r => doc.getElementById('pickupFeed').children[r].children[0];
+  assert.equal(box(0).children.length, 0); assert.equal(box(1).children.length, 0);
 });
 
 test('pickup feed: refresh swaps in an icon that finished rendering late', () => {
