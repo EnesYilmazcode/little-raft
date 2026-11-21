@@ -55,13 +55,18 @@ export function createJuicerModel(T) {
   // squat tin body with a rim band, the hopper funnel on top and a spout over the jar
   add(new T.CylinderGeometry(BODY_R, BODY_R * 1.05, BODY_H, 8), '#a9b4c2', 0, BODY_Y, BODY_Z);
   add(new T.CylinderGeometry(BODY_R * 1.08, BODY_R * 1.08, .02, 8), '#8d97a3', 0, TOP_Y + BODY_H - .01, BODY_Z);
-  add(new T.CylinderGeometry(.13, .045, .11, 8, 1, true), '#8d97a3', 0, TOP_Y + BODY_H + .055, BODY_Z);
   add(new T.CylinderGeometry(.135, .135, .012, 8, 1, true), '#5d6b78', 0, TOP_Y + BODY_H + .11, BODY_Z); // hopper lip
   add(new T.BoxGeometry(.035, .03, .1), '#8d97a3', 0, TOP_Y + .125, .06);
   add(new T.CylinderGeometry(.012, .014, .025, 6), '#5d6b78', 0, TOP_Y + .1, JAR_Z);
   add(new T.CylinderGeometry(.085, .085, .008, 12), '#7d5a36', 0, TOP_Y + .004, JAR_Z); // jar coaster
   const body = new T.Mesh(bake(T, parts), new T.MeshStandardMaterial({ vertexColors: true, roughness: .7, metalness: .1, flatShading: true }));
   body.name = 'juicerBody'; body.castShadow = true; body.receiveShadow = true; g.add(body);
+  // hopper: an open funnel, double-sided so its inside shows from above, with a dark throat at the bottom
+  const hopper = new T.Mesh(new T.CylinderGeometry(.13, .045, .11, 8, 1, true).translate(0, TOP_Y + BODY_H + .055, BODY_Z),
+    new T.MeshStandardMaterial({ color: '#8d97a3', roughness: .7, metalness: .1, flatShading: true, side: T.DoubleSide }));
+  hopper.name = 'hopper'; hopper.castShadow = true; g.add(hopper);
+  const throat = new T.Mesh(new T.CircleGeometry(.046, 8).rotateX(-Math.PI / 2).translate(0, TOP_Y + BODY_H + .003, BODY_Z), new T.MeshLambertMaterial({ color: '#2b3036' }));
+  throat.name = 'hopperThroat'; g.add(throat);
 
   // crank: pivots on the x axis at the body centre, on the +x side
   const crank = new T.Group(); crank.name = 'crank'; crank.position.set(BODY_R, BODY_Y, BODY_Z);
