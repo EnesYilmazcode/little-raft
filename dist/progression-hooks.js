@@ -38,6 +38,10 @@ const nameOf = (k) => ITEMS[k]?.name ?? k;
 const isHand = (id) => !!ITEMS[id]?.recipe && ITEMS[id].recipe.station == null;
 const keyOf = (d) => d.x + ',' + d.z;
 const joinAnd = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+// Unlock note: up to 3 names, then '+N more · Tab to craft' so the feed never cuts a name in half.
+export const unlockText = (names) => names.length <= 3
+  ? `New recipe${names.length > 1 ? 's' : ''}: ${joinAnd(names)}!`
+  : `New recipes: ${names.slice(0, 3).join(', ')} +${names.length - 3} more · Tab to craft`;
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const posInt = (n) => (Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0);
 // Hand recipes every pre-progression build offered; old raft saves keep them learned.
@@ -85,7 +89,7 @@ export function attachProgression(ctx) {
   const say = (text, actor) => ctx.emit({ kind: 'notice', text }, actor);
   const announce = (ids, actor) => {
     const names = ids.filter((id) => ITEMS[id]).map(nameOf);
-    if (names.length) { ctx.emit({ kind: 'unlock', text: `New recipe${names.length > 1 ? 's' : ''}: ${joinAnd(names)}!` }, actor); gateCache = null; dirty = true; }
+    if (names.length) { ctx.emit({ kind: 'unlock', text: unlockText(names) }, actor); gateCache = null; dirty = true; }
   };
 
   // ---------- host: stations follow the decor ----------

@@ -6,6 +6,13 @@ export const HOLD_MS = 3000, MERGE_MS = 2000, FADE_MS = 450, MAX_ROWS = 5;
 const SVG = 'http://www.w3.org/2000/svg';
 
 // doc and clock are injectable so the merge/cap logic runs under node tests.
+// Long notes end at a word boundary with an ellipsis, never mid-word.
+export function clipWords(s, max) {
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max - 1), sp = cut.lastIndexOf(' ');
+  return (sp > max * .5 ? cut.slice(0, sp) : cut).replace(/[\s,.;:·-]+$/, '') + '…';
+}
+
 export function createFeed({ doc = globalThis.document, now = () => performance.now(), timer = setTimeout, clear = clearTimeout } = {}) {
   let iconProvider = null, host = null;
   const rows = new Map(); // key -> row, insertion order = oldest first
@@ -88,7 +95,7 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
     },
     /** A short text line in the same corner (replaces centred toasts). Same text merges. kind tints the dot (coop: join/leave/emote...). */
     note(text, kind) {
-      const s = String(text ?? '').trim().slice(0, 90); if (!s) return null;
+      const s = clipWords(String(text ?? '').trim(), 90); if (!s) return null;
       return push('t:' + s, row => {
         row.el.classList.add('pf-note');
         if (typeof kind === 'string' && /^[a-z]{1,12}$/.test(kind)) row.el.classList.add('pf-' + kind);
