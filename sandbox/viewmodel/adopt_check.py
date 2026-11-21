@@ -94,7 +94,7 @@ def play(browser, d, tag, fov=None, short=False):
         p = out / f'{tag}-{name}.png'; page.screenshot(path=str(p)); run['shots'].append(p.name)
     def frames(n=6):  # let the game render a few frames (software GL is slow; wait on rAF, not the clock)
         page.evaluate(f'() => new Promise(r => {{ let n = {n}; const f = () => (--n ? requestAnimationFrame(f) : r()); requestAnimationFrame(f); }})')
-    page.goto(f'http://127.0.0.1:{srv.server_address[1]}/')
+    page.goto(f'http://127.0.0.1:{srv.server_address[1]}/', timeout=180000)  # software GL on a loaded box: slow first load
     if not wait_js(page, '!!window.raftDebug', 30000): run['errors'].append('no raftDebug'); return run
     page.evaluate("document.querySelector('#solo').click()")
     run['checks']['running'] = wait_js(page, 'raftDebug.state.running', 20000)
