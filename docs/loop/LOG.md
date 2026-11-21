@@ -604,3 +604,23 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
   when Chromium ate the keyDown that ended pointer lock (electron check), icon encode is synchronous under the deterministic clock (visual check).
 - Full fleet gate PASS at c7a8293 (unit, playbot, visual, perf, electron). Electron is now installed in node_modules.
 - PR #3 (round 4) is the open PR from raft-master; integrator B merged #2 at 1636dfe meanwhile.
+
+## 2026-11-21 · integrator B, round 3/4
+- Clean merges into raft-master: loop-perf-0708, raft-tech, raft-tests, fleet-tech audio/foliage/icons/perf/procedural-models/water.
+- Five lane merges in separate worktrees, each rebased onto the parallel integrator's pushes before landing:
+  - integration: raft-integration + lane-placement (10-slot hotbar 1-0, ring charge crosshair, foam collars, red "nofloor" ghost, offline fonts).
+  - content: raft-content, loop-fidelity-0714 (spear, shark meat, vitals), loop-visuals-0548. debris.js kept as the single-mesh version.
+  - features: loop-features-0703 (finder, spade, map table), 0534 (kiln makes progression metalingot/glass/brick, decor pack, puffhens), 0548.
+  - perf: loop-perf-0648, 0540 and 0548 hand-ported by cherry-pick; 0720 skipped (old base, rewrites sky/islands/title).
+  - ux: loop-ux-0648, 0603 (hand port), 0748; 0547 and 0743 skipped (stale, 0743 would pause on any lock loss).
+- Fixes during merges: undefined farmPlot call (game crashed holding a seed), 21 unstamped imports, spear/metalspear appended to co-op HELD (19-20) with avatar models, lazy co-op avatar unioned with partner Look.
+- PR #2 reviews (2 reviewers, comments on #2). Fixed: Esc that ends pointer lock with the build wheel open no longer pauses
+  (window-capture pointerlockchange marks the press handled); hand skin back to warm tan (pink came from b > g tone factors);
+  treasure and binocular readouts moved off screen centre; duplicate craft-book keys; treasure debug select uses 10 slots; dead charge-bar CSS.
+  HOTBAR_SIZE in items.js and the onboarding slot hint were already fixed by the parallel integrator.
+- Perf: the unpinned probe looked +16% because the adaptive quality controller steps down later (still at pixel ratio 1 vs 0.85 at sample time);
+  with ?pinQuality: 242 vs 226 ms idle (+7%), 183 vs 180 ms walking (+2%), draw calls equal (~52). JS self time is ~2% of the frame; the rest is SwiftShader raster.
+- Gate passed; PR #3 merged into main (8d21618).
+- Open nits: "Discover at a Tinker's Desk" ::before header shows above the detail card when locked rows are scrolled out of view;
+  co-op HELD lacks metalhook/sharkmeat/brush/decor kinds; content.js EXT_MAX drops all world.ext at once when exceeded;
+  per-frame stroke closure in hands.update; adaptive quality starts later after New game (check for an extra reset on that path).
