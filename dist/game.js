@@ -881,7 +881,7 @@ export function mount(transfer = null) {
   on(canvas, 'pointerdown', e => {
     if (e.button === 2 && running && building && heldKind() === 'hammer' && !uiBlocked()) { building.menu.open(); return; } // building-pieces lane hook
     if (!running || !scene || e.button !== 0 || uiBlocked()) return;
-    if (building?.menu.isOpen) { if (isLocked()) building.menu.close(true); return; } // building-pieces lane hook
+    if (building?.menu.isOpen) { building.menu.close(isLocked()); return; } // building-pieces lane hook (unlocked: a click off the wheel cancels)
     if (isLocked()) {
       if (castOut()) reeling = true;
       else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); }
@@ -925,7 +925,7 @@ export function mount(transfer = null) {
   on(window, 'keydown', e => {
     if (e.target?.matches?.('input, textarea, select') || uiBlocked()) return;
     keys[e.code] = true;
-    if (running && building?.key(e.code, true, heldKind() === 'hammer')) { if (e.code === 'KeyX' || e.code === 'KeyR') e.preventDefault(); return; } // building-pieces lane hook
+    if (running && building?.key(e.code, true, heldKind() === 'hammer', e.repeat)) { if (e.code === 'KeyX' || e.code === 'KeyR') e.preventDefault(); return; } // building-pieces lane hook
     const m = /^(?:Digit|Numpad)([1-8])$/.exec(e.code);
     if (m && running) selectSlot(+m[1] - 1);
     if (e.code === 'KeyE' && !e.repeat) interact();

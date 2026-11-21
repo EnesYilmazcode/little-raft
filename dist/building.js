@@ -21,10 +21,13 @@ export function createBuilding(T, scene) {
   const ghost = new T.Mesh(geos.wall, ghostMat); ghost.visible = false; ghost.renderOrder = 2; group.add(ghost);
   const dummy = new T.Object3D(), aimOut = {}, origin = new T.Vector3();
   let rot = 0, version = -1, removing = false, removeTarget = null, chipText = '';
-  let afford = () => true;
+  let remRec = null, remVer = -1, remText = '';
+  let curBag = null; // the local bag of the last update(); afford() is one function, not a per-frame closure
+  const afford = cost => { if (!curBag) return true; for (const k in cost) if (curBag.count(k) < cost[k]) return false; return true; };
+  const okColor = new T.Color(GHOST_OK), badColor = new T.Color(GHOST_BAD);
 
   const menu = createBuildMenu({pieces:PIECE_ORDER.map(id => ({id, name:PIECES[id].name, cost:PIECES[id].cost})), onPick:() => { rot = 0; }});
-  menu.setAfford(cost => afford(cost));
+  menu.setAfford(afford);
 
   // Instance placement in raft-local space (the group follows the raft transform every frame).
   function place(o, p) {
@@ -52,9 +55,10 @@ export function createBuilding(T, scene) {
   }
 
   // Engine world -> grid. Cheap when nothing changed (tiles count + pieces identity).
-  let lastTiles = -1, lastPieces = null;
+  // Tiles: identity too (a guest's new host world / restored own raft can have the same tile count but other cells).
+  let lastTiles = -1, lastTilesRef = null, lastPieces = null;
   function sync(world) {
-    if (world.tiles.length !== lastTiles) { grid.setTiles(world.tiles); lastTiles = world.tiles.length; }
+    if (world.tiles !== lastTilesRef || world.tiles.length !== lastTiles) { grid.setTiles(world.tiles); lastTilesRef = world.tiles; lastTiles = world.tiles.length; }
     if (world.pieces !== lastPieces) { world.pieces = grid.load(Array.isArray(world.pieces) ? world.pieces : []); lastPieces = world.pieces; }
     if (grid.version !== version) rebuild();
   }
@@ -66,8 +70,9 @@ export function createBuilding(T, scene) {
   // Per frame. aim = engine aim ({dir}) or null; active = hammer held and nothing else going on.
   function update(raft, aim, camPos, active, bag, yaw, deckY) {
     group.position.copy(raft.position); group.quaternion.copy(raft.quaternion);
-    afford = cost => { for (const k in cost) if (bag.count(k) < cost[k]) return false; return true; };
+    curBag = bag;
     menu.setVisible(active);
+    if (!active) { removing = false; if (menu.isOpen) menu.close(false); } // hammer put away / UI opened: no stuck wheel or X mode
     ghost.visible = false; removeTarget = null;
     let text = '';
     if (active && aim?.dir && !menu.isOpen) {
@@ -75,17 +80,24 @@ export function createBuilding(T, scene) {
       const d = aim.dir;
       if (removing) {
         removeTarget = grid.pick(origin.x, origin.y, origin.z, d.x, d.y, d.z, deckY, REACH);
-        if (removeTarget) { showGhost(removeTarget, GHOST_BAD); text = grid.canRemove(removeTarget) || 'Release X to remove ' + PIECES[removeTarget.t].name.toLowerCase(); }
+        if (removeTarget) {
+          showGhost(removeTarget, badColor);
+          if (removeTarget !== remRec || grid.version !== remVer) { // canRemove re-validates every piece: once per target/change, not per frame
+            remRec = removeTarget; remVer = grid.version;
+            remText = grid.canRemove(removeTarget) || 'Release X to remove ' + PIECES[removeTarget.t].name.toLowerCase();
+          }
+          text = remText;
+        }
         else text = 'Point at a piece to remove';
       } else if (freePiece()) {
         const r = grid.aim(origin.x, origin.y, origin.z, d.x, d.y, d.z, piece(), (yawDir(yaw) + rot) % 4, deckY, REACH, aimOut);
-        if (r) { showGhost(r, r.ok && afford(PIECES[r.t].cost) ? GHOST_OK : GHOST_BAD); text = r.ok ? (afford(PIECES[r.t].cost) ? '' : 'Not enough materials') : r.reason; }
+        if (r) { showGhost(r, r.ok && afford(PIECES[r.t].cost) ? okColor : badColor); text = r.ok ? (afford(PIECES[r.t].cost) ? '' : 'Not enough materials') : r.reason; }
       }
     }
     if (text !== chipText) { chipText = text; menu.setChip(text); }
   }
   function showGhost(p, color) {
-    ghost.geometry = geos[p.t]; place(ghost, p); ghost.scale.setScalar(1.015); ghostMat.color.set(color); ghost.visible = true;
+    ghost.geometry = geos[p.t]; place(ghost, p); ghost.scale.setScalar(1.015); ghostMat.color.copy(color); ghost.visible = true;
   }
 
   // Click with the hammer: returns an engine action or null (foundation stays with the engine's own flow).
@@ -101,7 +113,7 @@ export function createBuilding(T, scene) {
   // Host-authoritative: validate, charge or refund the actor's bag, mutate world.pieces. Returns {ok, text}.
   function apply(a, bag, world) {
     sync(world);
-    const p = {t:a.t, i:a.i, j:a.j, l:a.l, r:a.r}, def = PIECES[p.t];
+    const p = {t:a.t, i:a.i, j:a.j, l:a.l, r:a.r}, def = typeof p.t === 'string' && Object.hasOwn(PIECES, p.t) ? PIECES[p.t] : null;
     if (!def || def.slot === 'tile' || ![p.i, p.j, p.l, p.r].every(Number.isInteger)) return {ok:false, text:''};
     if (bag.count('hammer') < 1) return {ok:false, text:'Craft a hammer first'};
     const scratch = new Bag(bag.snapshot());
@@ -110,7 +122,7 @@ export function createBuilding(T, scene) {
       for (const k in def.cost) if (!scratch.remove(k, def.cost[k])) return {ok:false, text:def.name + ' needs ' + costText(def.cost)};
       grid.place(p);
     } else {
-      const found = grid.find(p); if (!found) return {ok:false, text:''};
+      const found = grid.find(p); if (!found || found.t !== p.t) return {ok:false, text:''}; // refund what is really there (halfwall slot != door refund)
       const why = grid.canRemove(found); if (why) return {ok:false, text:why};
       for (const k in def.cost) if (scratch.add(k, def.cost[k]) > 0) return {ok:false, text:'Your bag is full'};
       grid.remove(found);
@@ -123,16 +135,20 @@ export function createBuilding(T, scene) {
   const costText = c => Object.entries(c).map(([k, n]) => n + ' ' + k).join(' + ');
 
   // Input from game.js. Returns true when the event was consumed.
-  function key(code, down, hammer) {
+  function key(code, down, hammer, repeat = false) {
     if (!hammer) { removing = false; return false; }
-    if (code === 'KeyR' && down) { rot = (rot + 1) % 4; return true; }
+    if (code === 'KeyR' && down && freePiece()) { if (!repeat) rot = (rot + 1) % 4; return true; } // foundation: R stays hook repair
+    if (code === 'Escape' && down && menu.isOpen) { menu.close(false); return true; }
     if (code === 'KeyQ' && down) { menu.isOpen ? menu.close(true) : menu.open(); return true; }
     if (code === 'KeyX') { if (down) removing = true; return true; }
     return false;
   }
 
+  const blur = new AbortController(); // a lost keyup (alt-tab while holding X) must not leave remove mode stuck on
+  addEventListener('blur', () => { removing = false; }, {signal:blur.signal});
+
   function dispose() {
-    menu.dispose(); scene.remove(group);
+    blur.abort(); menu.dispose(); scene.remove(group);
     for (const id of STORED) { meshes[id]?.dispose(); geos[id].dispose(); }
     ghostMat.dispose(); material.map?.dispose(); material.dispose();
   }
