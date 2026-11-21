@@ -391,6 +391,11 @@ export function createStorage(ctx) {
       if (oldHost()) { ctx.notice?.(OLD_HOST, 2400); return true; }
       return open(d.type, d.x, d.z);
     },
+    removeBlock(d) { // hammer + X: a crate keeps its items, so it must be emptied first
+      if (d?.type !== 'crate') return null;
+      const c = st.chests[keyOf(d.x, d.z)];
+      return c && !chestEmpty(c) ? 'Empty the crate first' : null;
+    },
     prompt(aim) {
       const d = target(aim); if (!d) return null;
       if (oldHost()) return OLD_HOST;

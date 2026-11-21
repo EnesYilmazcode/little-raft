@@ -228,3 +228,94 @@ test('P2: remove has its own unused pad button; game.js rotates a held build pie
   assert.equal(b.key('KeyR', true, true, false), true); assert.equal(b.rotation, (r0 + 1) % 4);
   b.dispose();
 });
+
+// ============================================================ K6: X removes decor and bare floor tiles
+
+const { decorOnRay, floorRemoveBlock, refundOf } = await import(new URL('placement.js', base));
+const { createStorage } = await import(new URL('storage-research.js', base));
+const { createKiln } = await import(new URL('kiln.js', base));
+const { createContent } = await import(new URL('content.js', base));
+const norm = (x, y, z) => { const l = Math.hypot(x, y, z); return { x: x / l, y: y / l, z: z / l }; };
+
+test('K6: decorOnRay finds tile-cell decor (game.js world.decor) including types without a footprint', () => {
+  const eye = { x: 0, y: 1.8, z: 0 }, crate = { type: 'crate', x: 1, z: 0 }, kiln = { type: 'kiln', x: 0, z: -2 };
+  assert.equal(decorOnRay([crate, kiln], eye, norm(2, 0.6 - 1.8, 0), 8, 2), crate, 'crate on tile (1, 0) = 2 m out');
+  assert.equal(decorOnRay([crate, kiln], eye, norm(0, 0.6 - 1.8, -4), 8, 2), kiln, 'a kiln has no FOOTPRINT but still picks');
+  assert.equal(decorOnRay([crate], eye, norm(2, 0.6 - 1.8, 1.4), 8, 2), null, 'aiming beside it');
+  assert.equal(decorOnRay([{ type: 'crate', x: 3, z: 0 }], eye, norm(6, 0.6 - 1.8, 0), 8, 2)?.x, 3, 'tile 3 = 6 m out');
+  assert.equal(decorOnRay([{ type: 'crate', x: 3, z: 0 }], eye, norm(6, 0.6 - 1.8, 0), 8), null, 'unit 1 would put it at 3 m: missed');
+});
+
+test('K6: a bare floor tile is removable unless decor stands on it, the raft would split, or it is the last tile', () => {
+  const line = [[0, 0], [1, 0], [2, 0]];
+  assert.equal(floorRemoveBlock(line, [{ type: 'crate', x: 2, z: 0 }], 2, 0, 2), 'decor', 'tile-cell decor on it');
+  assert.equal(floorRemoveBlock(line, [{ type: 'crate', x: 1, z: 0 }], 2, 0, 2), null, 'decor next door is fine');
+  assert.equal(floorRemoveBlock(line, [], 1, 0, 2), 'split');
+  assert.deepEqual(refundOf({ wood: 2, plastic: 2 }), { wood: 1, plastic: 1 });
+  // building pieces standing on a tile hold it
+  const g = new BuildGrid(); g.setTiles(tiles3());
+  assert.equal(g.tileNeeded(1, 1), false);
+  g.place({ t: 'wall', i: 1, j: 1, l: 0, r: 1 }); // the -x edge of cell (1,1): also rests on (0,1)
+  assert.equal(g.tileNeeded(1, 1), false, 'the other side still carries it');
+  g.place({ t: 'stairs', i: 1, j: 0, l: 0, r: 0 });
+  assert.equal(g.tileNeeded(1, 0), true, 'stairs stand on it');
+  assert.equal(g.list.length, 2, 'the check changes nothing');
+  assert.equal(g.tileNeeded(5, 5), false);
+});
+
+test('K6: hammer + X over no piece shows and returns what game.js names (decor / floor)', () => {
+  const b = createBuilding(T, new T.Scene()), world = { tiles: tiles3(), decor: [], pieces: [] };
+  b.sync(world);
+  const res = { text: 'Release X to remove crate', action: { kind: 'remove', what: 'decor', x: 1, z: 0 } };
+  let miss = res;
+  b.setRemoveMiss(() => miss);
+  const raft = new T.Object3D(), bag = builderBag(), dir = new T.Vector3(1, -0.5, 0).normalize(), eye = new T.Vector3(0, 1.8, 0);
+  b.key('KeyX', true, true, false);
+  b.update(raft, { dir }, eye, true, bag, 0, DECK);
+  const a = b.removeAction();
+  assert.deepEqual(a, res.action); assert.notEqual(a, res.action, 'a copy: action() may stamp a seq on it');
+  assert.equal(b.removing, false);
+  b.key('KeyX', true, true, false); miss = null;
+  b.update(raft, { dir }, eye, true, bag, 0, DECK);
+  assert.equal(b.removeAction(), null, 'nothing named: nothing removed');
+  // a piece under the crosshair still wins
+  world.pieces = [{ t: 'stairs', i: 1, j: 0, l: 0, r: 0 }]; b.sync(world); miss = res;
+  b.key('KeyX', true, true, false);
+  b.update(raft, { dir }, eye, true, bag, 0, DECK);
+  assert.equal(b.removeAction()?.kind, 'unpiece');
+  b.dispose();
+});
+
+test('K6: a crate with items, or a kiln still working, must be emptied first (content removeBlock hook)', () => {
+  const world = { decor: [{ type: 'crate', x: 1, z: 0 }, { type: 'kiln', x: 0, z: 1 }, { type: 'bench', x: -1, z: 0 }], tiles: tiles3() };
+  const ctx = { T: null, world, role: 'host', physics: { x: 0, z: 0 }, emit: noop, notice: noop, localBag: () => null };
+  const st = createStorage(ctx), kl = createKiln(ctx);
+  assert.equal(st.removeBlock(world.decor[0]), null, 'an empty crate can go');
+  st.load({ v: 1, chests: { '1,0': [{ kind: 'wood', count: 3 }, ...Array(11).fill(null)] } }, 'save');
+  assert.equal(st.removeBlock(world.decor[0]), 'Empty the crate first');
+  assert.equal(kl.removeBlock(world.decor[1]), null);
+  kl.load({ k: { '0,1': { r: 'clay', q: 2, t: 0, h: 0, f: 1, o: null, n: 0 } } }, 'save');
+  assert.equal(kl.removeBlock(world.decor[1]), 'Empty the kiln first');
+  const c = createContent(ctx, [() => ({ name: 'a', removeBlock: () => null }), () => ({ name: 'b', removeBlock: d => (d.type === 'bench' ? 'nope' : null) })]);
+  assert.equal(c.removeBlock(world.decor[2]), 'nope'); assert.equal(c.removeBlock(world.decor[0]), null);
+  st.dispose?.(); kl.dispose?.();
+});
+
+test('K6: game.js wires X / the host remove action (reach, blocks, refund, state clean-up) and the help line', () => {
+  assert.match(gameSrc, /building\.setRemoveMiss\(removeMiss\);/);
+  const host = gameSrc.slice(gameSrc.indexOf("if (a.kind === 'remove') {"), gameSrc.indexOf("if ((a.kind === 'piece' || a.kind === 'unpiece') && building)"));
+  assert.ok(host.length > 100, 'host branch present');
+  assert.match(host, /bag\.count\('hammer'\) < 1/);
+  assert.match(host, /inReach\(who\.x, who\.z, a\.x, a\.z, BUILD_REACH \+ \(actor === 'guest' \? GUEST_REACH_SLACK : \.01\)\)/, 'host reach check');
+  assert.match(host, /const why = removeBlock\(a\.what, a\.x, a\.z\); if \(why\)/, 'same rules as the chip');
+  assert.match(host, /refund = decor \? \{\[type\]:1\} : refundOf\(FLOOR_COST\)/, 'decor back in the bag, about half a floor');
+  assert.match(host, /scratch\.add\(k, n\) > 0\) \{ emit\(\{kind:'full'/, 'a full bag refuses, nothing lost');
+  assert.match(host, /for \(const f of \['garden', 'purifiers', 'collectors', 'sprinklers'\]\) if \(world\[f\]\) delete world\[f\]\[key\]/);
+  assert.match(host, /delete world\.tileHp\[key\]/);
+  assert.match(host, /rebuildRaft\(\);/);
+  const rb = gameSrc.slice(gameSrc.indexOf('function removeBlock(what, x, z)'), gameSrc.indexOf('const removeEye'));
+  assert.match(rb, /content\?\.removeBlock\(d\) \|\| prog\?\.removeBlock\?\.\(d\)/, 'chests / kilns / stations holding items stay');
+  assert.match(rb, /floorRemoveBlock\(world\.tiles, world\.decor, x, z, 2\)/);
+  assert.match(rb, /fc\?\.hasGrill\(x, z\) \|\| building\?\.tileHolds\(x, z\)/, 'grills and pieces hold their tile');
+  assert.match(gameSrc, /<kbd>X<\/kbd><span><b>Remove<\/b> with the Hammer[^']*decoration[^']*bare floor/);
+});

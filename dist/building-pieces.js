@@ -198,6 +198,17 @@ export class BuildGrid {
     return ok ? '' : 'Something rests on this';
   }
 
+  // Would some piece lose its support if deck tile (i, j) went away? (hammer + X on a bare floor tile)
+  tileNeeded(i, j) {
+    const k = tileKey(i, j);
+    if (!this._tiles.has(k)) return false;
+    this._tiles.delete(k);
+    let need = false;
+    for (let n = 0; n < this.list.length && !need; n++) { const q = this.list[n]; if (!this._supported(q.t, q.i, q.j, q.l, q.r)) need = true; }
+    this._tiles.add(k);
+    return need;
+  }
+
   remove(p) {
     if (this.canRemove(p) !== '') return false;
     const rec = this.find(p);

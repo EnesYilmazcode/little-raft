@@ -23,6 +23,8 @@ export function createBuilding(T, scene) {
   const ghost = new T.Mesh(geos.wall, ghostMat); ghost.visible = false; ghost.renderOrder = 2; group.add(ghost);
   const dummy = new T.Object3D(), aimOut = {}, origin = new T.Vector3();
   let rot = 0, version = -1, removing = false, removeTarget = null, chipText = '';
+  // Hammer + X on no piece: game.js names the decor or bare floor tile instead -> {text, action} or null.
+  let removeMiss = null, missHit = null;
   let remRec = null, remVer = -1, remText = '';
   let curBag = null; // the local bag of the last update(); afford() is one function, not a per-frame closure
   const afford = cost => { if (!curBag) return true; for (const k in cost) if (curBag.count(k) < cost[k]) return false; return true; };
@@ -80,7 +82,7 @@ export function createBuilding(T, scene) {
     menu.setVisible(active);
     if (active) menu.refresh(); // cost lines follow the bag (only repaints when a count changed)
     if (!active) { removing = false; if (menu.isOpen) menu.close(false); } // hammer put away / UI opened: no stuck wheel or X mode
-    ghost.visible = false; removeTarget = null;
+    ghost.visible = false; removeTarget = null; missHit = null;
     let text = '';
     if (active && aim?.dir && !menu.isOpen) {
       origin.copy(camPos);
@@ -95,7 +97,7 @@ export function createBuilding(T, scene) {
           }
           text = remText;
         }
-        else text = 'Point at a piece to remove';
+        else { missHit = removeMiss?.() ?? null; text = missHit ? missHit.text : 'Point at a piece, decoration or floor to remove'; }
       } else if (freePiece()) {
         const r = grid.aim(origin.x, origin.y, origin.z, d.x, d.y, d.z, piece(), (yawDir(yaw) + rot) % 4, deckY, REACH, aimOut);
         if (r && r.ok && onDecor(r)) { r.ok = false; r.reason = BLOCK_TEXT.overlap; }
@@ -123,8 +125,8 @@ export function createBuilding(T, scene) {
     return {kind:'piece', t:aimOut.t, i:aimOut.i, j:aimOut.j, l:aimOut.l, r:aimOut.r};
   }
   function removeAction() {
-    const p = removeTarget; removing = false;
-    return p ? {kind:'unpiece', t:p.t, i:p.i, j:p.j, l:p.l, r:p.r} : null;
+    const p = removeTarget, m = missHit; removing = false; missHit = null;
+    return p ? {kind:'unpiece', t:p.t, i:p.i, j:p.j, l:p.l, r:p.r} : m?.action ? {...m.action} : null;
   }
 
   // A level-0 cell piece (stairs) would stand inside a decoration on that tile.
@@ -189,7 +191,8 @@ export function createBuilding(T, scene) {
     ghostMat.dispose(); material.map?.dispose(); material.dispose();
   }
 
-  return {grid, menu, group, sync, update, use, removeAction, apply, key, cellTaken, dispose, setTint, retint, preview, // setTint/retint/preview: content hook (paint)
+  return {grid, menu, group, sync, update, use, removeAction, apply, key, cellTaken,
+    tileHolds:(x, z) => grid.tileNeeded(x, z), setRemoveMiss:fn => { removeMiss = typeof fn === 'function' ? fn : null; }, dispose, setTint, retint, preview, // setTint/retint/preview: content hook (paint)
     get removing() { return removing; }, get piece() { return piece(); }, get rotation() { return rot; },
     preStep:(phys, deckY) => grid.preStep(phys, deckY), postStep:(phys, deckY) => grid.postStep(phys, deckY)};
 }

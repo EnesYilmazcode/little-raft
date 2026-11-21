@@ -365,7 +365,9 @@ export function attachProgression(ctx) {
   const stationPrompt = () => { const d = ctx.running() && ctx.aim ? stationNear(ctx.aim(), true) : null; return d ? { key: 'E', label: 'Use the ' + nameOf(d.type) } : null; };
   const disposeAll = () => { try { promptOff?.(); } catch {} dispose(); }; // content hook
 
-  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, dispose: disposeAll, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()) };
+  // Hammer + X on a station decor: its input / output would be lost, so it must be emptied first.
+  const removeBlock = (d) => { if (!d || !COOKERS.has(d.type)) return null; const s = stationView(keyOf(d)); return s && (s.input || s.output) ? `Empty the ${nameOf(d.type).toLowerCase()} first` : null; };
+  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, removeBlock, dispose: disposeAll, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()) };
 }
 
 export default attachProgression;

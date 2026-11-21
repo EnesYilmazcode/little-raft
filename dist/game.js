@@ -55,7 +55,7 @@ import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI, iconSVG } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { mergeGate } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
-import { createGhosts, wrapRot, snapRot, wheelDelta, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
+import { createGhosts, wrapRot, snapRot, wheelDelta, decorOnRay, floorRemoveBlock, refundOf, ROT_STEP, FINE_STEP, DECOR_REACH } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, onIconReady, setIconRenderer } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints, feedPlacement, hintsFromState } from './hud.js?build=v3-survival-ae77fa84ac2b'; // loop-ux: saved sound toggle, drag-look sensitivity, first-run hints
@@ -412,7 +412,7 @@ export function mount(transfer = null) {
       + '<li><kbd>E</kbd><span><b>Pick up</b> a supply right beside you, or open your bag to craft. <kbd>Tab</kbd> / <kbd>I</kbd> open the bag too; <kbd>E</kbd>, <kbd>I</kbd> or <kbd>Esc</kbd> close it. Inside, <kbd>Tab</kbd> and the arrow keys move between slots.</span></li>'
       + '<li><kbd>E</kbd><span><b>Sail.</b> Look at a sail and press E to raise or lower it; hold <kbd>R</kbd> and turn to steer it. The pennant shows the wind. E at the anchor post stops the raft.</span></li>' // [sailing]
       + '<li><kbd>Craft</kbd><span><b>Make tools.</b> A Hammer builds raft floors (2 wood, 2 plastic each). A Fishing Rod catches fish. Crafted decorations are placed one at a time.</span></li>'
-      + '<li><kbd>X</kbd><span><b>Remove</b> the floor or piece you aim at while holding the Hammer. You get about half its materials back.</span></li>'
+      + '<li><kbd>X</kbd><span><b>Remove</b> with the Hammer: hold <kbd>X</kbd>, aim at a piece, a decoration or a bare floor, and let go. Pieces give their materials back, decorations go back in your bag, a floor returns about half.</span></li>'
       + '<li><kbd>R</kbd><span><b>Rotate</b> what you are placing by 45°: <kbd>Shift</kbd> + <kbd>R</kbd> (or <kbd>Shift</kbd> + wheel) turns it 15°, <kbd>Alt</kbd> + <kbd>R</kbd> turns it back. Otherwise R <b>repairs</b> a worn hook for 2 wood and 1 scrap.</span></li>'
       + '<li><kbd>Esc</kbd><span><b>Menu.</b> Settings, Play together and this guide.</span></li>';
     const note = $('#help .guide-note'); if (note) note.textContent = 'Everyone has their own bag; the raft and the sea are shared. Nothing can hurt you, and your raft never sinks. Mouse won\'t lock? Drag the ocean to look instead.';
@@ -468,6 +468,7 @@ export function mount(transfer = null) {
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
     try { vitalsUI = createVitalsUI(); } catch (e) { console.warn('vitals HUD unavailable', e); vitalsUI = null; } // [vitals]
     building = createBuilding(T, scene); // building-pieces lane hook
+    building.setRemoveMiss(removeMiss); // hammer + X on no piece: a decoration or a bare floor tile
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
@@ -998,6 +999,40 @@ export function mount(transfer = null) {
     else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (!decorBlock(world.tiles, world.decor, x, z) && !fc?.hasGrill(x, z) && !building?.cellTaken(x, z) && ok(x, z)) out.push({x, z});
     return out;
   }
+  // ---------- Hammer + X on decor or a bare floor tile (building pieces go through building.js 'unpiece') ----------
+  // Why (what, x, z) must stay, as feed text, or '' when it can go. Shared by the chip and the host.
+  function removeBlock(what, x, z) {
+    if (what === 'decor') {
+      const d = world.decor.find(d => d.x === x && d.z === z); if (!d) return 'Nothing to remove';
+      return content?.removeBlock(d) || prog?.removeBlock?.(d) || ''; // a crate / kiln / smelter still holding items
+    }
+    const why = floorRemoveBlock(world.tiles, world.decor, x, z, 2) || (fc?.hasGrill(x, z) || building?.tileHolds(x, z) ? 'decor' : null);
+    return why ? BLOCK_TEXT[why] ?? 'Nothing to remove' : '';
+  }
+  const removeEye = {x:0, y:0, z:0};
+  // What X aims at besides a piece: the decor under the crosshair, else the floor tile it points at. {what, x, z, type, rot} or null.
+  function removalFor(aim) {
+    if (!aim?.dir || !camera) return null;
+    removeEye.x = camera.position.x; removeEye.y = camera.position.y - raft.position.y; removeEye.z = camera.position.z; // raft-local (the raft stays at the origin)
+    const d = decorOnRay(world.decor, removeEye, aim.dir, DECOR_REACH + 2, 2);
+    if (d) return inReach(physics.x, physics.z, d.x, d.z) ? {what:'decor', x:d.x, z:d.z, type:d.type, rot:d.rot || 0} : null;
+    const p = aim.point; if (!p) return null;
+    const x = Math.round(p.x / 2), z = Math.round(p.z / 2);
+    return hasTile(x, z) && inReach(physics.x, physics.z, x, z) ? {what:'floor', x, z, type:'floor', rot:0} : null;
+  }
+  // building.js asks this every frame while X is held over no piece; recomputed only when the target or the raft changes.
+  let removeAim = null, removeSig = '', removeRes = null;
+  function removeMiss() {
+    const t = removalFor(frameAim); removeAim = t;
+    if (!t) return null;
+    const sig = t.what + t.x + ',' + t.z + '|' + world.tiles.length + '|' + world.decor.length + '|' + (world.pieces?.length ?? 0);
+    if (sig !== removeSig || !removeRes) {
+      const why = removeBlock(t.what, t.x, t.z), name = t.what === 'floor' ? 'floor' : String(ITEM_INFO[t.type]?.name ?? t.type).toLowerCase();
+      removeSig = sig; removeRes = {text:why || 'Release X to remove ' + name, action:{kind:'remove', what:t.what, x:t.x, z:t.z}};
+    }
+    return removeRes;
+  }
+
   let placeRot = 0, pointing = false; // decor placement rotation (radians) and the pointing-hand pose
   function rotatePlacement(step) { placeRot = snapRot(placeRot + step); play('ui', .6); } // whole 15 degree steps: 8 x 45 is exactly 0 again
   // R on a held decoration: 45 degrees; Shift+R 15 degrees (FINE_STEP); Alt+R 45 degrees back. Same on both input lanes.
@@ -1148,6 +1183,24 @@ export function mount(transfer = null) {
       } else return;
       rebuildRaft(); fitShadow(); emit({kind:'build', text:placedText ?? (a.recipe === 'floor' ? 'A little more room!' : `${ITEM_INFO[a.recipe].name} placed`), sound:a.recipe === 'floor' ? 'build' : 'place'}, 'all');
       award({kind:'build'});
+      return;
+    }
+    if (a.kind === 'remove') { // hammer + X: a decoration back into the bag, or a bare floor tile for about half its cost
+      if (!isInt(a.x) || !isInt(a.z) || (a.what !== 'decor' && a.what !== 'floor')) return;
+      if (bag.count('hammer') < 1) { emit({kind:'notice', text:'Craft a hammer first'}, actor); return; }
+      const who = actor === 'guest' ? other : physics; // guest pose may be missing until its first move
+      if (who && !inReach(who.x, who.z, a.x, a.z, BUILD_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .01))) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
+      const why = removeBlock(a.what, a.x, a.z); if (why) { emit({kind:'notice', text:why}, actor); return; }
+      const decor = a.what === 'decor', i = decor ? world.decor.findIndex(d => d.x === a.x && d.z === a.z) : world.tiles.findIndex(t => t[0] === a.x && t[1] === a.z); if (i < 0) return;
+      const type = decor ? world.decor[i].type : 'floor', refund = decor ? {[type]:1} : refundOf(FLOOR_COST);
+      const scratch = new Bag(bag.snapshot());
+      for (const [k, n] of Object.entries(refund)) if (scratch.add(k, n) > 0) { emit({kind:'full', text:'Your bag is full'}, actor); return; }
+      commit(bag, scratch);
+      const key = tileKey(a.x, a.z);
+      if (decor) { world.decor.splice(i, 1); for (const f of ['garden', 'purifiers', 'collectors', 'sprinklers']) if (world[f]) delete world[f][key]; } // receiver / antennas / stations / chests follow world.decor
+      else { world.tiles.splice(i, 1); if (world.tileHp) delete world.tileHp[key]; }
+      rebuildRaft(); fitShadow();
+      emit({kind:'build', text:`${decor ? ITEM_INFO[type]?.name ?? type : 'Floor'} removed`, loot:refund, sound:'place'}, actor);
       return;
     }
     if ((a.kind === 'piece' || a.kind === 'unpiece') && building) { // building-pieces lane hook
@@ -1575,7 +1628,12 @@ export function mount(transfer = null) {
   function updateGhost() {
     const kind = heldKind();
     const pieces = kind === 'hammer' && !hook && building && building.piece !== 'foundation'; // building-pieces lane hook
+    removeAim = null; // set by removeMiss() while X is held over no piece
     building?.update(raft, frameAim, camera.position, running && kind === 'hammer' && !hook && !uiBlocked(), localBag(), yaw, deckY());
+    if (removeAim && building?.removing) { // red ghost over the decoration / floor tile X would remove
+      const f = removeAim.what === 'floor'; ghostHold = null;
+      ghosts.show(f ? 'floor' : removeAim.type, removeAim.x * 2, f ? .015 : .22, removeAim.z * 2, removeAim.rot, false, elapsed); return;
+    }
     spearRep?.updateAim(hook ? null : kind, frameAim); spearRep?.tick(); // [spear-repair]
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing ? placementFor(kind, frameAim.point) : null;
     const floor = kind === 'hammer';

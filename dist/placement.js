@@ -73,17 +73,18 @@ export function decorCheck(hasTile, decor, d) {
 // ---------- Removal (hammer + X) ----------
 // Height of each piece's pick box above its base, in metres (roughly the model's solid part).
 export const PICK_HEIGHT = Object.freeze({sail:1.9, palm:.6, lantern:1.9, net:.25, bench:.55, crate:.85});
-const DECOR_BASE_Y = .22;
+const DECOR_BASE_Y = .22, OTHER_FOOT = [.45, .45], OTHER_HEIGHT = 1;
 
 // Nearest decor whose footprint box (rotated, PICK_HEIGHT tall) the raft-local ray o + t*d crosses
-// within maxT metres, or null. o and d are {x, y, z}.
-export function decorOnRay(decor, o, d, maxT = DECOR_REACH + 2) {
+// within maxT metres, or null. o and d are {x, y, z}. unit: metres per decor coordinate (2 when the
+// decor list holds tile cells, as game.js world.decor does). Types without a FOOTPRINT use a 0.9 m box.
+export function decorOnRay(decor, o, d, maxT = DECOR_REACH + 2, unit = 1) {
   let best = null, bestT = maxT;
   for (const p of decor) {
-    const f = FOOTPRINT[p.type]; if (!f) continue;
-    const c = Math.cos(p.rot || 0), s = Math.sin(p.rot || 0), ox = o.x - p.x, oz = o.z - p.z;
+    const f = FOOTPRINT[p.type] ?? OTHER_FOOT;
+    const c = Math.cos(p.rot || 0), s = Math.sin(p.rot || 0), ox = o.x - p.x * unit, oz = o.z - p.z * unit;
     const lo = [ox * c - oz * s, o.y - DECOR_BASE_Y, ox * s + oz * c], ld = [d.x * c - d.z * s, d.y, d.x * s + d.z * c];
-    const hi = [f[0], PICK_HEIGHT[p.type] ?? 1, f[1]], low = [-f[0], 0, -f[1]];
+    const hi = [f[0], PICK_HEIGHT[p.type] ?? OTHER_HEIGHT, f[1]], low = [-f[0], 0, -f[1]];
     let t0 = 0, t1 = bestT;
     for (let i = 0; i < 3 && t0 <= t1; i++) {
       if (Math.abs(ld[i]) < 1e-9) { if (lo[i] < low[i] || lo[i] > hi[i]) t0 = Infinity; continue; }
@@ -97,7 +98,9 @@ export function decorOnRay(decor, o, d, maxT = DECOR_REACH + 2) {
 
 // Why floor cell (tx, tz) can't be removed: 'missing' | 'last' (the raft's only tile) | 'decor'
 // (something stands on it) | 'split' (the raft would break in two), or null when it can.
-export function floorRemoveBlock(tiles, decor, tx, tz) {
+// unit: metres per decor coordinate (2 for tile-cell decor, see decorOnRay).
+export function floorRemoveBlock(tiles, decor, tx, tz, unit = 1) {
+  if (unit !== 1) decor = decor.map(d => ({type:d.type, x:d.x * unit, z:d.z * unit, rot:d.rot || 0}));
   const key = (x, z) => x + ',' + z, all = new Set(tiles.map(t => key(t[0], t[1])));
   if (!all.has(key(tx, tz))) return 'missing';
   if (all.size <= 1) return 'last';

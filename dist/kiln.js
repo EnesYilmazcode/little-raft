@@ -190,6 +190,11 @@ export function createKiln(ctx) {
   return {
     name: 'kiln',
     serialize, load, action, interact, prompt, update, debug,
+    removeBlock(d) { // hammer + X: the queued ore and finished bars would be lost with the kiln
+      if (d?.type !== 'kiln') return null;
+      const e = st.k[keyOf(d.x, d.z)];
+      return e && (e.q > 0 || e.n > 0) ? 'Empty the kiln first' : null;
+    },
     decorModel(type) {
       if (!T) return null;
       if (type === 'kiln') { model ??= buildKiln(T); dirty = true; return model.instance(); }

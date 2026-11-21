@@ -14,6 +14,7 @@
 //   interact(aim)             E key. Return true if consumed (before the inventory opens).
 //   prompt(aim)               -> context prompt HTML (escaped by the module) or null
 //   craftLocked(recipe, actor)-> reason string if the recipe is locked, else null
+//   removeBlock(d)            -> reason string if the hammer may not remove world.decor entry d (it holds items), else null
 //   decorModel(type, d)       -> THREE.Object3D for a CONTENT_DECOR type, or null (d = the world.decor entry, read-only)
 //   sailPush(sailing, out)    write an extra water-relative push (m/s) into out.x/out.z; return true if non-zero.
 //                             Host and guest must compute it from synced data (engine: motors).
@@ -93,6 +94,7 @@ export function createContent(ctx, features = FEATURES) {
     afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)
     tileTint: (x, z, base) => first('tileTint', x, z, base), // content hook (paint): plank hex for a painted deck tile, else null
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
+    removeBlock: d => first('removeBlock', d), // hammer + X on a decor entry: reason it must stay (a full chest), else null
     decorModel: (type, d) => first('decorModel', type, d),
     sailPush: (s, out) => !!first('sailPush', s, out),
     steerTargets: () => first('steerTargets'),
