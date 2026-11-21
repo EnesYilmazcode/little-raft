@@ -62,3 +62,16 @@ test('HUD-3: feed rows stay left of the hotbar, and lift above it below 1000px w
     assert.ok(right < hotbarLeft, `row right edge ${right} clears the hotbar at ${hotbarLeft} (width ${w})`);
   }
 });
+
+// ---------------------------------------------------------------- HUD-5 guide key caps
+
+test('HUD-5: keys inside guide sentences are small inline-block caps, not the label-column cap', () => {
+  const css = src('style.css');
+  const rule = css.match(/\.guide span kbd\{([^}]*)\}/);
+  assert.ok(rule, '.guide span kbd rule exists');
+  assert.match(rule[1], /display:inline-block/);
+  assert.match(rule[1], /padding:0 5px/);
+  assert.match(rule[1], /border-bottom-width:2px/);
+  assert.ok(css.indexOf('.guide span kbd{') > css.indexOf('.guide kbd{flex:0 0 74px'), 'declared after the cap style');
+  assert.match(gameSrc, /<span><b>Walk<\/b>, hold <kbd>Shift<\/kbd>/, 'guide still injects inline kbds inside spans');
+});
