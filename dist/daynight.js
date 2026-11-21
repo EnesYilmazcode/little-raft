@@ -26,9 +26,9 @@ export function phaseAt(clock) {
   return p >= 1 || !(p >= 0) ? 0 : p;
 }
 
-// Sun angle along its circle: day half (0 to .66) above the horizon, night half below.
+// Sun angle along its circle: day half (0 to .70, so dusk still has a low golden sun) above the horizon, night half below.
 export function sunAngle(phase) {
-  return phase < 0.66 ? (phase / 0.66) * Math.PI : Math.PI + ((phase - 0.66) / 0.34) * Math.PI;
+  return phase < 0.7 ? (phase / 0.7) * Math.PI : Math.PI + ((phase - 0.7) / 0.3) * Math.PI;
 }
 
 export function lightAt(phase, out) {
@@ -223,7 +223,7 @@ void main() {
   p += vec3(-uWind * 0.25, 0.8, -uWind * 0.1) * aTop;
   vec4 mv = viewMatrix * vec4(p, 1.0);
   float d = length(mv.xyz);
-  vFade = smoothstep(0.5, 1.6, d) * (1.0 - smoothstep(6.0, 9.0, d));
+  vFade = smoothstep(1.4, 3.0, d) * (1.0 - smoothstep(6.0, 9.0, d));
   gl_Position = projectionMatrix * mv;
 }`;
 const RAIN_FS = /* glsl */`
