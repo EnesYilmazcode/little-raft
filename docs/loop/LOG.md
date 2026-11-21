@@ -1314,3 +1314,38 @@ Claimed for round 4 (research: docs/loop/research/fidelity-r4-gaps.md):
 - swimming back to a drifting raft (no 50 m snap), plus constant wind
 - the Receiver chain (circuit board, vine goo, battery power), leading to an original beacon-mast landmark
 - a Medium Crop Plot with watermelon and pineapple
+
+## 2026-11-21 · integrator D: loop-perf-202611210859, loop-perf-202611210748, loop-visuals-202611210843
+- Merged loop-perf-202611210859 (drop backdrop blurs). raft-master already had the blur removals in graphics.css, settings.js and coop-feed.js, so those conflicts keep raft-master. This adds the fish journal, research panel and style.css backdrops.
+- Skipped loop-perf-202611210748: a stale parallel copy of perf work raft-master already has (quality ladder, shadow camera fit, pre-warm, pinned quality). It hit 77 conflict hunks across 28 files. Its every-third-frame shadow redraw and frustum-culled foam need a rebase by their worker.
+- Not merged by D: loop-visuals-202611210843 was already on raft-master (cd51bb0f) from another integrator, so D's own merge of it was dropped.
+- Gate: npm test 1402/1402. shoot.py errors [], hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text.
+- Perf, final vs raft-master, six interleaved pairs, medians: 146 vs 141 ms (+3.5%), 46.5 vs 46.5 draw calls, 97 shadow casters on both.
+## 2026-11-21 · integrator H (the scheduled :00/:30 second integrator; logged as B in rounds 3-5 before the name clash)
+- Round 5 merged and pushed: loop-fidelity-0804, -0821 (nets, crop plot, armor, paddle, stone axe + coconut, debris budget, purifier fuel; 0747 skipped as a duplicate shark/needs build); fleet-tech/perf; icons.svg fetched once (from loop-perf-0720); place-mode prompt wiring from loop-features-0735.
+  Co-op HELD: paddle 23, axe 24 (after glidehandle 21, spyglass 22). Sail chip/lock text follow the new sail recipe.
+- Reverted the loop-features-0831 merge at 7190097 (its WIP juicer commit broke 5 tests); the branch was later finished and merged by integrator C.
+- PR #5 review (2 reviewers, comments on #5). Fixed in 99a2d3e, which landed on raft-master after #5 merged, so it ships with PR #6:
+  floor1 achievement and START_TILES/onboarding reset assumed the old 3x3 start; net view resync when the shark breaks a tile;
+  blocked placement showed "LMB Place X" (now shows the reason, like the hammer); the Place row lost to the keyed aim prompt in place mode;
+  build chip overlapped the vitals panel under 1100px; Lightning Rod pickup lost its shards (now not pick-up-able); duplicate motor/wheel/bed/brush/paint recipes; duplicate `play` hook.
+- Perf at 99a2d3e vs main c3a29df (pinned quality, median of 3, quiet box): 137 vs 138 ms idle, 122 vs 124 ms walking, ~50 draw calls both.
+- Process note: three or more integrators merged the same branches in parallel this round; much worker-merge work was thrown away. Claims in STATUS.md are now the coordination point.
+
+## 2026-11-21 · integrator D summary (09:20–10:05 UTC)
+- Coordinated with integrators A/B/C through the STATUS claims list. Dropped my early duplicate batches (B had claimed the same branches) and did not merge raft-reference: its 53MB of stills are scraped from the commercial game, which doesn't belong in an original game.
+- Merged: loop-ux-0852 (no-op), loop-fidelity-0914 (Simple Bed, breath/drowning), loop-features-0855 (docs), loop-perf-0859 (cheaper menu backdrops).
+- Skipped:
+  - loop-ux-0848 (B's 0833/0648 work)
+  - loop-fidelity-0900 (B's 0821)
+  - loop-fidelity-0910 (replaces the existing nets; needs a rebase)
+  - loop-perf-0748 (stale copy, 77 conflict hunks; its 3-frame shadow refresh and foam culling are worth porting)
+- PR #5 review: code (https://github.com/EnesYilmazcode/little-raft/pull/5#issuecomment-7060592670) and playtest (https://github.com/EnesYilmazcode/little-raft/pull/5#issuecomment-7060667647). Fixed:
+  - junk pickups disposed shared models.js geometry and materials
+  - icons.svg was unstamped on first load (stale sprite after a deploy)
+  - Q was listed twice in Controls
+  - the craft card hid its second ingredient
+  - the 900x600 bag pushed the backpack and hotbar off-screen
+  - the bag covered the compass
+  - the settings panel ran off-screen
+- Note: quality level 3 now renders at a 0.7 pixel ratio (main had 0.85), so part of the frame-time gain is resolution.
