@@ -15,6 +15,8 @@ import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+import { PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
+import { attachProgression } from './progression-hooks.js'; // [progression-hook]
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -24,7 +26,7 @@ import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2
 // (the brother's, persisted in the save) and applies every action against the actor's bag.
 
 // ---------- Immutable configuration ----------
-const DECOR_TYPES = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']); // placeable bag items
+const DECOR_TYPES = Object.freeze([...new Set(['sail', 'palm', 'lantern', 'net', 'bench', 'crate', ...PLACEABLE_IDS])]); // placeable bag items [progression-hook]
 const ITEM_TYPES = Object.freeze(['wood', 'leaf', 'scrap', 'barrel', 'plastic']);         // floating debris kinds
 const ITEM_NAMES = Object.freeze({wood:'plank', leaf:'bundle of leaves', scrap:'piece of scrap', barrel:'barrel', plastic:'plastic jug'});
 const SPAWN_TABLE = Object.freeze(['wood', 'wood', 'wood', 'plastic', 'plastic', 'plastic', 'leaf', 'leaf', 'leaf', 'scrap', 'barrel']);
@@ -32,7 +34,7 @@ const LOOT = Object.freeze({wood:{wood:2}, leaf:{leaf:1}, scrap:{scrap:1}, plast
 const STOCK_KEYS = Object.freeze(['wood', 'leaf', 'scrap', 'plastic']); // legacy world.stock (derived)
 const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
-const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12});
+const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12, ...BLOCK_RADII}); // [progression-hook]
 const SAVE = 'little-raft-v1';
 const FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 8, PICKUP_REACH = 2.5;
 const LOOK_SENSITIVITY = .0022, DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
@@ -69,7 +71,7 @@ export function mount(transfer = null) {
   let seed = 20240917; const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
 
   // ---------- Bags ----------
-  const snapBag = s => { if (!s || typeof s !== 'object') return null; try { return new Bag(s); } catch { return null; } };
+  const snapBag = s => { if (!s || typeof s !== 'object') return null; try { return new Bag(migrateSnapshot(s) ?? s); } catch { return null; } }; // [progression-hook]
   const validSnapshot = s => snapBag(s)?.snapshot() ?? null;
   const commit = (bag, scratch) => { for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i]; };
   const canAfford = (bag, cost) => Object.entries(cost).every(([k, n]) => bag.count(k) >= n);
@@ -81,9 +83,9 @@ export function mount(transfer = null) {
     commit(bag, s); return true;
   }
   function hookIndex(bag, prefer) {
-    if (isInt(prefer) && bag.slots[prefer]?.kind === 'hook') return prefer;
-    if (bag.slots[bag.selectedIndex]?.kind === 'hook') return bag.selectedIndex;
-    return bag.slots.findIndex(s => s?.kind === 'hook');
+    if (isInt(prefer) && toolRole(bag.slots[prefer]?.kind) === 'hook') return prefer; // [progression-hook]
+    if (toolRole(bag.slots[bag.selectedIndex]?.kind) === 'hook') return bag.selectedIndex; // [progression-hook]
+    return bag.slots.findIndex(s => toolRole(s?.kind) === 'hook'); // [progression-hook]
   }
   const hookDurability = (bag, prefer) => { const i = hookIndex(bag, prefer); return i < 0 ? 0 : clamp(bag.slots[i].durability ?? MAX_HEALTH, 0, MAX_HEALTH); };
   const legacyStock = bag => { const c = bag.counts(); return Object.fromEntries(STOCK_KEYS.map(k => [k, c[k] ?? 0])); };
@@ -211,6 +213,7 @@ export function mount(transfer = null) {
   let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = '';
   const chargeMeter = $('#chargeMeter'), chargeFill = chargeMeter?.querySelector('i');
   let blockList = [];
+  let prog = null; // [progression-hook]
 
   function makePhysics(src) {
     const deck = raftPose.y + FLOOR_Y + EYE_OFFSET;
@@ -234,7 +237,7 @@ export function mount(transfer = null) {
   const chargeValue = () => (charging ? clamp((performance.now() - charging.start) / CHARGE_MS, MIN_CHARGE, 1) : 0);
   const localBag = () => (role === 'guest' && networkReady && remoteBag ? remoteBag : hostBag);
   const actorBag = actor => (actor === 'guest' ? guestBag : hostBag);
-  const selectedKind = () => localBag().slots[localBag().selectedIndex]?.kind ?? null;
+  const selectedKind = () => toolRole(localBag().slots[localBag().selectedIndex]?.kind ?? null); // [progression-hook] metalhook acts as 'hook'
   const heldKind = () => (hook?.fishing ? 'fishingrod' : hook ? 'hook' : selectedKind());
   const caughtList = h => (Array.isArray(h?.caughtItems) ? h.caughtItems : h?.caught ? [h.caught] : []);
   const deckY = () => (raft ? raft.position.y : raftPose.y) + FLOOR_Y;
@@ -352,7 +355,7 @@ export function mount(transfer = null) {
     for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
     world.tiles.forEach(([x, z]) => { const g = createFloor(T, x * 719 + z * 311, mat); g.position.set(x * 2, 0, z * 2); raft.add(g); });
     for (const d of world.decor) {
-      let detailed = null; try { detailed = createCraft(T, d.type); } catch (e) { console.warn('craft model failed', e); }
+      let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? createCraft(T, d.type); } // [progression-hook] catch (e) { console.warn('craft model failed', e); }
       if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); raft.add(detailed); continue; }
       const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2);
       if (d.type === 'sail') { cylinder(.065, .08, 3.8, '#906f48', 0, 1.9, 0, g); box(2.5, .07, .07, '#906f48', 0, 3.2, 0, g); const s = new T.Mesh(new T.PlaneGeometry(2.35, 2.1), clothMat); s.position.set(0, 2.15, .06); g.add(s); }
@@ -526,18 +529,20 @@ export function mount(transfer = null) {
   function effect(e) {
     if (!e || typeof e !== 'object') return;
     if (Array.isArray(e.tokens)) for (const t of e.tokens) if (typeof t === 'string') pending.delete(t);
+    if (prog?.effect(e)) return; // [progression-hook]
     if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90));
     beep(e.kind === 'build' ? 640 : e.kind === 'craft' ? 560 : e.kind === 'full' ? 220 : 440);
   }
   function wearHook(bag, slot, actor) {
     const i = hookIndex(bag, slot); if (i < 0) return;
     const s = bag.slots[i], before = clamp(s.durability ?? MAX_HEALTH, 0, MAX_HEALTH);
-    s.durability = Math.max(0, before - WEAR_PER_CATCH);
+    s.durability = Math.max(0, before - (wearPerUse(s.kind) || WEAR_PER_CATCH)); // [progression-hook]
     if (before > 0 && s.durability === 0) emit({kind:'notice', text:'Hook worn out: shorter throws. R to repair'}, actor);
     else if (before > 25 && s.durability <= 25) emit({kind:'notice', text:'Hook getting worn. R repairs: 2 wood, 1 scrap'}, actor);
   }
   function applyAction(a, actor = 'host') {
     if (!a || typeof a !== 'object' || role === 'guest') return;
+    if (prog?.apply(a, actor)) return; // [progression-hook] locked crafts + 'prog:*' actions
     const bag = actorBag(actor);
     if (a.kind === 'selectSlot') { bag.select(a.index); return; }
     if (a.kind === 'moveSlot') { bag.move(a.from, a.to, a.amount ?? undefined); return; }
@@ -550,7 +555,7 @@ export function mount(transfer = null) {
     }
     if (a.kind === 'collect') {
       const i = world.items.findIndex(it => it.id === a.id && it.token === a.token); if (i < 0) return; // token guard: each supply counts once
-      const it = world.items[i], loot = LOOT[it.type]; if (!loot) return;
+      const it = world.items[i], loot = it.type === 'barrel' ? rollBarrel() : LOOT[it.type]; if (!loot) return; // [progression-hook]
       const scratch = new Bag(bag.snapshot());
       for (const [k, n] of Object.entries(loot)) if (scratch.add(k, n) > 0) { // atomic: all loot fits or nothing changes
         if (!a.net) emit({kind:'full', text:'Your bag is full', tokens:[it.token]}, actor);
@@ -588,7 +593,8 @@ export function mount(transfer = null) {
       const i = hookIndex(bag, a.slot);
       if (i < 0) { emit({kind:'notice', text:'No hook to repair'}, actor); return; }
       if ((bag.slots[i].durability ?? MAX_HEALTH) >= MAX_HEALTH) { emit({kind:'notice', text:'Your hook is in great shape'}, actor); return; }
-      if (!spend(bag, REPAIR_COST)) { emit({kind:'notice', text:'Repair needs ' + missingText(bag, REPAIR_COST)}, actor); return; }
+      const cost = repairCost(bag.slots[i].kind) ?? REPAIR_COST; // [progression-hook]
+      if (!spend(bag, cost)) { emit({kind:'notice', text:'Repair needs ' + missingText(bag, cost)}, actor); return; }
       bag.slots[i].durability = MAX_HEALTH; emit({kind:'build', text:'Hook repaired!'}, actor); return;
     }
     // 'wear' (legacy clients wore the hook on every throw) is ignored: wear now happens only on a successful catch.
@@ -619,6 +625,7 @@ export function mount(transfer = null) {
       action({kind:'collect', id:target.id, token:target.token});
       return;
     }
+    if (prog?.interact(currentAim())) return; // [progression-hook] smelter / grill / research table in reach
     openInventory();
   }
 
@@ -837,6 +844,7 @@ export function mount(transfer = null) {
     }
     if (running) { saveClock += dt; if (saveClock > 3) { saveClock = 0; save(); } }
     if (conn?.open) { networkTick += dt; if (networkTick > .12) { networkTick = 0; send(role === 'host' ? hostState() : {type:'move', me:pose()}); } }
+    try { prog?.tick(dt); } catch (e) { console.error('progression tick failed', e); } // [progression-hook]
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     refreshPointerUI(); updateCharge(); updateContext(dialog);
     renderer.render(scene, camera);
@@ -1115,6 +1123,7 @@ export function mount(transfer = null) {
       };
     },
     project,
+    get progression() { return prog?.debug ?? null; }, // [progression-hook]
     get targets() {
       return world.items.map(it => {
         const m = itemMeshes.get(it.token), p = m ? m.position : {x:it.x, y:ITEM_FLOAT, z:it.z};
@@ -1170,6 +1179,7 @@ export function mount(transfer = null) {
     pause(); disposed = true; ac.abort();
     try { settingsController?.destroy(); } catch {}
     try { survivalUI?.destroy?.(); } catch {}
+    try { prog?.dispose(); } catch {} // [progression-hook]
     for (const id of timers) clearTimeout(id); timers.clear();
     unlisten(bindings.splice(0));
     try { if (window.raftDebug === debugApi) delete window.raftDebug; } catch {}
@@ -1179,6 +1189,7 @@ export function mount(transfer = null) {
   const optionsDialog = document.getElementById('options'), previousSettingsOwner = optionsDialog?.dataset.owner;
   try {
     if (!canvas) throw new Error('#world canvas missing');
+    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), resume:() => requestLock(), pause:clearInput}); // [progression-hook]
     init();
     settingsController = createSettings({onChange:next => { options = next; if (renderer) { renderer.setPixelRatio(Math.min(devicePixelRatio, next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3)); renderer.shadowMap.enabled = next.graphics !== 'low'; } }, onPause:clearInput, onResume:() => requestLock()});
     survivalUI = createSurvivalUI({
@@ -1188,7 +1199,9 @@ export function mount(transfer = null) {
       onCraft:guard(id => craft(id)),
       onResume:guard(() => requestLock()),
       onPause:guard(clearInput),
+      recipeGate:id => prog?.recipeGate(id), // [progression-hook]
     });
+    prog.installUI(); // [progression-hook]
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
     if ($('#toast')?.classList.contains('show')) toastTimer = later(() => { toastTimer = 0; $('#toast')?.classList.remove('show'); }, 2600);
     active = true; last = performance.now(); rafId = requestAnimationFrame(animate);

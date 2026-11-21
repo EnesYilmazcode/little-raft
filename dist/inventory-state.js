@@ -1,12 +1,13 @@
 // Authoritative per-player inventory ("bag") for the raft survival game.
 // Pure ES module: no DOM, no THREE, no timers, no randomness.
+import { infoTable, recipeTable, TOOL_IDS } from './items.js'; // [progression-hook]
 
 export const STACK_SIZE = 20;
 export const SLOT_COUNT = 28;
 export const HOTBAR_SIZE = 8;
 export const TOOL_DURABILITY = 100;
 
-const TOOL_KINDS = new Set(['hook', 'hammer', 'fishingrod']);
+const TOOL_KINDS = new Set(['hook', 'hammer', 'fishingrod', ...TOOL_IDS]); // [progression-hook]
 
 // icon = symbol id in dist/icons.svg. placeholder:true means the icon is
 // borrowed from a related item until a dedicated asset exists.
@@ -26,6 +27,8 @@ export const ITEM_INFO = Object.freeze({
   net:        Object.freeze({ kind: 'net',        name: 'Net',          icon: 'icon-net',     maxStack: STACK_SIZE, tool: false, placeholder: false }),
   bench:      Object.freeze({ kind: 'bench',      name: 'Bench',        icon: 'icon-repair',  maxStack: STACK_SIZE, tool: false, placeholder: true }),
   crate:      Object.freeze({ kind: 'crate',      name: 'Crate',        icon: 'icon-barrel',  maxStack: STACK_SIZE, tool: false, placeholder: true }),
+
+  ...infoTable(), // [progression-hook] items.js overrides legacy rows and adds new kinds
 });
 
 export const ITEM_KINDS = Object.freeze(Object.keys(ITEM_INFO));
@@ -52,6 +55,8 @@ export const RECIPES = Object.freeze({
   net:        recipe('net',        'Net',          1, { wood: 3, rope: 3 }),
   bench:      recipe('bench',      'Bench',        1, { wood: 3 }),
   crate:      recipe('crate',      'Crate',        1, { wood: 4, scrap: 1 }),
+
+  ...recipeTable(), // [progression-hook] every hand recipe from items.js (new costs win)
 });
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);

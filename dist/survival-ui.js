@@ -1,6 +1,7 @@
 // Little Raft survival UI: shared-play hotbar (.tools) + inventory/crafting dialog (#inventory).
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { ITEM_ICONS } from './item-icons.js'; // [progression-hook]
 
 const VERSION = 'sv1';
 const HB = Number(HOTBAR_SIZE) || 8;
@@ -49,6 +50,7 @@ const CUSTOM = {
     <path d="M35 35 C38 40 42 42 45 41" stroke="#bb8650" stroke-width="3"/></g>`,
 };
 
+Object.assign(CUSTOM, ITEM_ICONS); // [progression-hook] dedicated drawings for placeholder kinds
 const norm = k => String(k ?? '').toLowerCase().replace(/[\s_\-]/g, '');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clamp01 = v => Math.max(0, Math.min(1, v));
@@ -264,7 +266,8 @@ function readSnap(bag) {
   return s && Array.isArray(s.slots) ? s : null;
 }
 
-export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause } = {}) {
+export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause, recipeGate } = {}) {
+  const gate = id => { try { return recipeGate?.(id) || null; } catch { return null; } }; // [progression-hook] {hidden, locked, reason}
   // Hot reload: DOM is adopted, not rebuilt; the previous instance releases its listeners only once
   // this one is fully built (see below), so an early throw leaves the old UI working.
   const prev = window[INST_KEY];
@@ -301,7 +304,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
 
   // ---------- recipes ----------
   function buildRecipes() {
-    recipes = recipeList();
+    recipes = recipeList().filter(r => !gate(r.id)?.hidden); // [progression-hook]
     const key = recipes.map(r => r.id).join(',');
     if (dlg.dataset.svRecipes !== key || rlist.childElementCount !== recipes.length || !recipes.length) {
       rlist.innerHTML = recipes.length ? recipes.map(r => `<button type="button" class="sv-recipe" data-recipe="${esc(r.id)}">
@@ -324,8 +327,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       if (typeof bag.canCraft === 'function') { try { res = bag.canCraft(r.id); } catch (e) { console.error(e); } }
       const owned = r.reqs.map(q => countOf(bag, q.kind));
       if (!res) res = { ok: r.reqs.every((q, k) => owned[k] >= q.count), missing: [], full: false };
-      const ok = !!res.ok, full = !!res.full;
-      const sig = (ok ? 1 : 0) + (full ? 'f' : '') + owned.join(',');
+      const g = gate(r.id), locked = !!g?.locked; // [progression-hook]
+      const ok = !!res.ok && !locked, full = !!res.full;
+      const sig = (ok ? 1 : 0) + (full ? 'f' : '') + (locked ? 'L' + g.reason : '') + owned.join(','); // [progression-hook]
       if (view.sig === sig) return;
       view.sig = sig;
       r.reqs.forEach((q, k) => {
@@ -335,7 +339,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       });
       view.el.disabled = !ok;
       const lacking = r.reqs.some((q, k) => owned[k] < q.count);
-      view.why.textContent = !ok && !lacking && full ? 'No room in inventory' : '';
+      view.why.textContent = locked ? 'Locked: ' + (g.reason || 'not learned yet') : !ok && !lacking && full ? 'No room in inventory' : ''; // [progression-hook]
       view.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${r.reqs.map((q, k) => `${q.count} ${itemName(q.kind)}, have ${owned[k]}`).join('; ') || 'nothing'}.${ok ? ' Craft.' : full && !lacking ? ' Inventory full.' : ' Missing materials.'}`);
     });
   }
