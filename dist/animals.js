@@ -22,7 +22,7 @@ export function createAnimals(ctx) {
   let st = cleanAnimals(undefined, null);
   let clock = 0, gotNet = false, lastR = -1;
   let cache = null, cacheR = -1, cacheAt = -1e9;
-  let built = false, group = null, birds = null, eggs = null, heart = null, birdMat = null, heartMat = null;
+  let built = false, group = null, birds = null, eggs = null, heart = null, birdMat = null, heartMat = null, depthMat = null;
   let ui = null, uiLoading = null, disposed = false;
   // graph
   let graph = null, tilesRef = null, decorRef = null, piecesRef = null, tilesLen = -1, decorLen = -1, piecesLen = -1, grillSig = 0, grillTimer = 0, pruneDecorRef = null, pruneDecorLen = -1;
@@ -111,9 +111,10 @@ export function createAnimals(ctx) {
   function build() {
     group = new T.Group(); group.name = 'animals';
     birdMat = vertexMaterial(T);
+    depthMat = new T.MeshDepthMaterial({ depthPacking: T.RGBADepthPacking }); // instanced casters: keeps three's shared depth material from flipping `instancing`
     birds = new T.InstancedMesh(puffhenGeometry(T), birdMat, MAX_ANIMALS); birds.name = 'puffhens';
     eggs = new T.InstancedMesh(eggGeometry(T), birdMat, MAX_ANIMALS * 3); eggs.name = 'puffEggs';
-    for (const m of [birds, eggs]) { m.instanceMatrix.setUsage(T.DynamicDrawUsage); m.frustumCulled = false; m.castShadow = true; for (let i = 0; i < m.count; i++) m.setMatrixAt(i, zero); }
+    for (const m of [birds, eggs]) { m.instanceMatrix.setUsage(T.DynamicDrawUsage); m.frustumCulled = false; m.castShadow = true; m.customDepthMaterial = depthMat; for (let i = 0; i < m.count; i++) m.setMatrixAt(i, zero); }
     heartMat = new T.MeshBasicMaterial({ color: 0xff7d9c, transparent: true, opacity: 0, depthWrite: false });
     heart = new T.Mesh(heartGeometry(T), heartMat); heart.name = 'puffHeart'; heart.visible = false; heart.renderOrder = 3;
     group.add(birds, eggs, heart);
@@ -467,7 +468,7 @@ export function createAnimals(ctx) {
       if (!built) return;
       group.removeFromParent();
       for (const m of [birds, eggs, heart]) { m.geometry.dispose(); m.dispose?.(); }
-      birdMat.dispose(); heartMat.dispose();
+      birdMat.dispose(); heartMat.dispose(); depthMat.dispose();
       built = false; group = null;
     },
   };

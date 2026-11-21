@@ -13,6 +13,8 @@ const STORED = PIECE_ORDER.filter(id => PIECES[id].slot !== 'tile');
 
 export function createBuilding(T, scene) {
   const grid = new BuildGrid(), group = new T.Group(), material = createPieceMaterial(T);
+  // Instanced casters get their own depth material so three's shared one does not flip `instancing` per shadow pass.
+  const depthMat = new T.MeshDepthMaterial({depthPacking:T.RGBADepthPacking});
   const geos = {}, meshes = {};
   group.name = 'buildingPieces'; scene.add(group);
   for (const id of STORED) geos[id] = createPieceGeometry(T, id);
@@ -47,7 +49,7 @@ export function createBuilding(T, scene) {
       if (m && m.instanceMatrix.count < n) { group.remove(m); m.dispose(); m = null; }
       if (!m && n) {
         m = new T.InstancedMesh(geos[id], material, Math.max(16, 1 << Math.ceil(Math.log2(n))));
-        m.castShadow = true; m.receiveShadow = true; m.name = 'piece-' + id; group.add(m);
+        m.castShadow = true; m.receiveShadow = true; m.customDepthMaterial = depthMat; m.name = 'piece-' + id; group.add(m);
       }
       meshes[id] = m; if (m) m.count = 0;
     }
@@ -161,7 +163,7 @@ export function createBuilding(T, scene) {
   function dispose() {
     blur.abort(); menu.dispose(); scene.remove(group);
     for (const id of STORED) { meshes[id]?.dispose(); geos[id].dispose(); }
-    ghostMat.dispose(); material.map?.dispose(); material.dispose();
+    ghostMat.dispose(); material.map?.dispose(); material.dispose(); depthMat.dispose();
   }
 
   return {grid, menu, group, sync, update, use, removeAction, apply, key, dispose, setTint, retint, preview, // setTint/retint/preview: content hook (paint)

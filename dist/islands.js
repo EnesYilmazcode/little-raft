@@ -60,12 +60,16 @@ export function createIslands(ctx) {
 
   // ---------- scene (built once) ----------
   const models = createIslandModels(T, ctx.ocean);
+  // Own depth material for the instanced casters: three's shared shadow depth material would otherwise flip its
+  // `instancing` flag between these and plain casters every shadow pass (a getProgram per switch). Same
+  // RGBADepthPacking three uses for the directional shadow; side is copied from the mesh material per draw.
+  const depthMat = new T.MeshDepthMaterial({ depthPacking: T.RGBADepthPacking });
   const group = new T.Group(); group.name = 'islands'; group.visible = false;
   const dome = new T.Mesh(models.geos.dome, models.mats.dome); dome.receiveShadow = true; dome.name = 'islandDome';
   const lagoon = new T.Mesh(models.geos.lagoon, models.mats.lagoon); lagoon.name = 'islandLagoon'; lagoon.frustumCulled = false; lagoon.renderOrder = 1;
   const meshes = KINDS.map((k, i) => {
     const m = new T.InstancedMesh(models.geos[k], models.mats[k], MAX_PER_KIND[i]);
-    m.name = 'island-' + k; m.count = 0; m.castShadow = k !== 'sand'; m.receiveShadow = true;
+    m.name = 'island-' + k; m.count = 0; m.castShadow = k !== 'sand'; m.receiveShadow = true; m.customDepthMaterial = depthMat;
     m.instanceMatrix.setUsage(T.DynamicDrawUsage);
     for (let j = 0; j < MAX_PER_KIND[i]; j++) m.setColorAt(j, new T.Color(1, 1, 1)); // init instanceColor once (no recompiles later)
     return m;
@@ -73,7 +77,7 @@ export function createIslands(ctx) {
   // Palms have two extra instanced meshes: the spent (straw, drooped) palm and the coconut cluster.
   const extra = ['palmSpent', 'nuts'].map(k => {
     const m = new T.InstancedMesh(models.geos[k], models.mats[k], MAX_PER_KIND[0]);
-    m.name = 'island-' + k; m.count = 0; m.castShadow = true; m.receiveShadow = true;
+    m.name = 'island-' + k; m.count = 0; m.castShadow = true; m.receiveShadow = true; m.customDepthMaterial = depthMat;
     m.frustumCulled = false; // instances swap in after relayout, so a cached bounding sphere would be stale
     m.instanceMatrix.setUsage(T.DynamicDrawUsage);
     for (let j = 0; j < MAX_PER_KIND[0]; j++) m.setColorAt(j, new T.Color(1, 1, 1));
@@ -410,7 +414,7 @@ export function createIslands(ctx) {
     if (group.parent) group.parent.remove(group);
     if (lagoon.parent) lagoon.parent.remove(lagoon);
     for (const m of veg) m.dispose?.();
-    models.dispose();
+    models.dispose(); depthMat.dispose();
   }
 
   // ---------- live accessor (islandNow) ----------
