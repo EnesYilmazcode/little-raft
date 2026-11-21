@@ -79,10 +79,10 @@ Ocean-survival raft games tend to add a powered stage after the sail:
 - `DECOR_TYPES` :44 and `BLOCK_RADIUS` :52 spread `CONTENT_DECOR` / `CONTENT_BLOCK_RADIUS` (`dist/content-items.js` :24-25).
   Items and recipes go in `CONTENT_ITEMS` / `CONTENT_RECIPES` :9-21 (`recipe(id,name,count,cost)`).
 - Decor validation in `cleanWorld` :154 drops unknown types. Older builds drop `motor`/`wheel` decor (acceptable).
-- `rebuildRaft` :424-442 picks the model with `createPurifier ?? createCraft ?? createSignalModel ?? content.decorModel(type)` :428.
+- `rebuildRaft` :423-442 picks the model with `createPurifier ?? createCraft ?? createSignalModel ?? content.decorModel(type)` :428.
   It is placed at `(x*2, .22, z*2)` :429. It rebuilds `blockList` :439, then calls `sailing.onRaftBuilt()` :441.
   `dist/crafts.js` :12 holds the builders map (sail/palm/...), and models tag `userData.craftType`.
-- Placement: `placementFor` :656 / candidates :663 allow one decor per tile on an existing tile. Build action :772-779
+- Placement: `placementFor` :653-656 / candidates :663 allow one decor per tile on an existing tile. Build action :772-779
   takes the item from the bag and pushes `{type,x,z}`. **There is no decor removal anywhere**, so placed motors are permanent.
 - `createSailing(...)` ctx :364-365. `applyAction` routes `a.kind==='sail'` :735. `interact()` :834-848 order is
   pickup, then `sailing.interact()` :836, then `content.interact(aim)` :844, then grill and watering, then the inventory.
@@ -91,7 +91,7 @@ Ocean-survival raft games tend to add a powered stage after the sail:
   The controls bridge `repair:()=>{if(!sailing?.grab())repair()}` and `release` :1189. In `dist/controls.js` :36/:41, `rotate`
   calls repair (grab) on down and `release` on up for every device.
 - Per frame: `sailing.update` :1071, then `content.update(dt)` :1079 (an engine module's push lags one frame, which is fine).
-- Net: `hostState()` :1061-1062 sends `world.sailing` and `ext: content.serialize()` about 8 times a second. On the guest, the `state` handler
+- Net: `hostState()` :1059-1062 sends `world.sailing` and `ext: content.serialize()` about 8 times a second. On the guest, the `state` handler
   :1298-1312 runs `cleanWorld` (so `cleanSailing`), then `content.load(w.ext,'net')`.
 - `contentCtx` :328-335 has **no sailing getter**. A content module cannot read `world.sailing` heading or anchor except
   through `ctx.world.sailing` (that works, it is a plain object). It cannot inject a push or claim the R grab without a new hook.
