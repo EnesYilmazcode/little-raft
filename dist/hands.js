@@ -338,7 +338,7 @@ export function createHands(T, { modelFactory = null } = {}) {
   // ---------------- animation state (weights only; transforms are rebuilt every frame) ----------------
   // dip: 0 = arms up, 1 = lowered out of view. A swap lowers, switches model/pose at the bottom, raises.
   const REEL_HZ = 2.5;
-  const st = { hookOut: false, walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0,
+  const st = { hookOut: false, walkW: 0, reelW: 0, rideW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0,
     shown: null, target: null, poseOverride: null, ptR: 0, ptL: 0, lowering: false, dip: 1, down: 1, raise: 1, lagX: 0, lagY: 0, lastYaw: null, lastPitch: 0 };
   const qOff = new T.Quaternion(), eul = new T.Euler(0, 0, 0, 'XYZ'), qSwing = new T.Quaternion(), AX = V(1, 0, 0);
   const last = { lag: [0, 0] };
@@ -420,6 +420,7 @@ export function createHands(T, { modelFactory = null } = {}) {
 
     st.walkW += ((walking ? 1 : 0) - st.walkW) * k(5);
     st.reelW += ((reeling ? 1 : 0) - st.reelW) * k(9);
+    st.rideW += ((params.riding ? 1 : 0) - st.rideW) * k(8); // [zipline] fist up on the glide line
     st.outW += ((hasHookOut ? 1 : 0) - st.outW) * k(7);
     st.toolW = hasHookOut ? 0 : st.toolW + (1 - st.toolW) * k(8);
     if (casting > 0 && (st.lastCasting <= 0 || casting > st.lastCasting + 0.25)) st.releaseCharge = Math.max(st.chargeS, charge, 0.35);
@@ -446,7 +447,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     // stroke 0 = reached forward, 1 = pulled in to the body.
     const stroke = (q) => { q = ((q % 1) + 1) % 1; return q < 0.5 ? smooth(0, 0.5, q) : 1 - smooth(0.5, 1, q); };
     const pullR = stroke(t * REEL_HZ / 2), pull = stroke(t * REEL_HZ / 2 + 0.5);
-    const rW = st.reelW, oW = st.outW, tw = st.toolW;
+    const rW = st.reelW, oW = st.outW, tw = st.toolW, zW = st.rideW;
     const catchDip = hasHookOut ? 0 : (1 - tw);
 
     // ---- right arm
@@ -459,7 +460,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     const rrz = -0.20 * ce + 0.25 * a + 0.03 * wA * Math.sin(ph) + 0.15 * pullR * rW + 0.25 * down;
     const rwx = 0.30 * ce - 0.45 * a - 0.10 * oW + 0.22 * pullR * rW;
     const rwz = -0.15 * ce + 0.12 * a;
-    applyArm(R, rpx, rpy, rpz, rrx, rry, rrz, rwx, 0, rwz, smooth(0, 1, st.ptR));
+    applyArm(R, rpx - 0.06 * zW, rpy + 0.24 * zW, rpz - 0.02 * zW, rrx + 0.45 * zW, rry, rrz, rwx, 0, rwz, smooth(0, 1, st.ptR)); // [zipline] zW raises the fist
 
     // ---- left arm
     const lpx = 0.02 * ce + 0.02 * a + (0.015 * pull + 0.03 * oW) * rW - 0.010 * wA * Math.sin(ph) + 0.002 * amp * Math.sin(t * 0.63 + 1);

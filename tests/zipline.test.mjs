@@ -248,6 +248,29 @@ test('mount from a post with E, then from the line; blocked lines refuse; swimmi
   assert.equal(h.m.interact(up), true); assert.equal(h.m.riding(), true); assert.equal(h.m.debug.pose().dir, -1);
 });
 
+test('ride review: no mount mid-clamber; a wall built across the line lets go; dismount keeps verticalSpeed', () => {
+  const h = harness(); h.m.debug.link(0, 0, 3, 0);
+  const p = h.ctx.physics; p.x = 0; p.z = 2; p.verticalSpeed = 0;
+  p.climbing = true; h.m.interact(AIM_POST); assert.equal(h.m.riding(), false, 'clambering out of the water');
+  p.climbing = false; h.m.interact(AIM_POST); assert.equal(h.m.riding(), true);
+  assert.equal(h.m.ride(.05, p, {}), true);
+  h.ctx.world.pieces = [...h.ctx.world.pieces]; assert.equal(h.m.ride(.05, p, {}), true, 'same pieces, new array: keeps riding');
+  h.ctx.world.pieces.push({ t: 'wall', i: 2, j: 0, l: 0, r: 1 });
+  assert.equal(h.m.ride(.05, p, {}), false); assert.equal(h.m.riding(), false); assert.equal(h.notices.at(-1), TEXT.inway);
+  assert.equal(p.vy, DROP_VY); assert.equal(p.verticalSpeed, DROP_VY); assert.equal(p._jumpBuffer, 0); assert.equal(p.grounded, false);
+});
+
+test('ride review: ropes follow the raft group (bob and tilt) in raft-local space', () => {
+  const h = harness({ three: T }); h.m.debug.link(0, 0, 3, 0);
+  const raft = new T.Group(); raft.position.y = .5; raft.rotation.set(.03, 0, -.02); h.ctx.raft = raft; h.deck = .5 + .2;
+  h.m.update(.016);
+  const lines = h.ctx.scene.getObjectByName('glide_lines');
+  assert.ok(lines.quaternion.equals(raft.quaternion)); close(lines.position.y, .5);
+  const m = new T.Matrix4(); lines.getMatrixAt(0, m); const a = new T.Vector3().setFromMatrixPosition(m);
+  close(a.y, .2 + POSTS.glidepost, 1e-6); // the post's wheel in raft space: decor at .22, wheel at top - .02
+  const b = new T.Vector3(0, 1, 0).applyMatrix4(m); close(b.x, 6, 1e-5); close(b.y, .2 + POSTS.glidestep, 1e-5);
+});
+
 // ------------------------------------------------------------------ 8. pose flag / HELD
 test('coop: HELD keeps 0..16 and appends glidehandle at 17; riding is pose bit 8', () => {
   assert.deepEqual(HELD.slice(0, 17), [null, 'hook', 'hammer', 'fishingrod', 'wood', 'leaf', 'scrap', 'plastic', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'drum', 'pipes', 'bells']);

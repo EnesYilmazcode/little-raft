@@ -134,10 +134,10 @@ export function lineWorld(st, i, decor, deckY, out) {
   const y = Number.isFinite(deckY) ? deckY : 0;
   out.ax = e[0] * 2; out.ay = y + POSTS[ta]; out.az = e[1] * 2;
   out.bx = e[2] * 2; out.by = y + POSTS[tb]; out.bz = e[3] * 2;
-  out.l3 = Math.hypot(out.bx - out.ax, out.by - out.ay, out.bz - out.az);
+  const dx = out.bx - out.ax, dy = out.by - out.ay, dz = out.bz - out.az; out.l3 = Math.sqrt(dx * dx + dy * dy + dz * dz); // no Math.hypot: it allocates per call
   return out;
 }
-const l3Of = ln => (Number.isFinite(ln.l3) ? ln.l3 : Math.hypot(ln.bx - ln.ax, ln.by - ln.ay, ln.bz - ln.az));
+const l3Of = ln => (Number.isFinite(ln.l3) ? ln.l3 : Math.sqrt((ln.bx - ln.ax) ** 2 + (ln.by - ln.ay) ** 2 + (ln.bz - ln.az) ** 2));
 
 /** Advance the rider r = {t, v, dir} along ln by dt (clamped to .25, substeps <= .05). -> 'ride' | 'end'. */
 export function stepRide(r, ln, dt, inp) {
@@ -193,11 +193,10 @@ export function createZipline(ctx) {
   let pruneDecor = null, pruneLen = -1;
   let ropes = null, ropeScene = null, hSt = null, hR = -1, hDecor = null, hLen = -1;
   const hA = new Float32Array(MAX_LINES), hB = new Float32Array(MAX_LINES);
-  const R = { on: false, k0: 0, k1: 0, k2: 0, k3: 0, t: 0, v: 0, dir: 1, prevJump: false, phys: null, lx: 0, ly: 0, lz: 0, fresh: true, debug: false };
+  const R = { on: false, k0: 0, k1: 0, k2: 0, k3: 0, t: 0, v: 0, dir: 1, prevJump: false, phys: null, lx: 0, ly: 0, lz: 0, fresh: true, debug: false, pc: null, pn: -1 };
   const ln = { ax: 0, ay: 0, az: 0, bx: 0, by: 0, bz: 0, l3: 0 }, pose = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
   const inp = { forward: 0, jump: false, crouch: false }, ray = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: -1 }, near = { s: 0, off: 0, along: 0 };
   const scratch = T ? new T.Vector3() : null;
-  let linkMemo = null, memoKey = '';
 
   const oldHost = () => ctx.role === 'guest' && !hostHasZip;
   const decor = () => (Array.isArray(ctx.world?.decor) ? ctx.world.decor : []);
@@ -224,7 +223,7 @@ export function createZipline(ctx) {
     for (let i = 0; i < w.decor.length; i++) {
       const d = w.decor[i]; if (!d || (d.type !== 'glidepost' && d.type !== 'glidestep')) continue;
       const cx = d.x * 2, cz = d.z * 2;
-      if (Math.hypot(p.x - cx, p.z - cz) > REACH) continue;
+      const qx = p.x - cx, qz = p.z - cz; if (qx * qx + qz * qz > REACH * REACH) continue;
       const vx = cx - ray.ox, vy = cy - ray.oy, vz = cz - ray.oz, along = vx * ray.dx + vy * ray.dy + vz * ray.dz;
       if (along <= 0) continue;
       const ex = vx - ray.dx * along, ey = vy - ray.dy * along, ez = vz - ray.dz * along;
@@ -261,6 +260,7 @@ export function createZipline(ctx) {
     if (end) { physics.vx = pose.vx * END_CARRY; physics.vz = pose.vz * END_CARRY; physics.vy = HOP_VY; }
     else { physics.vx = pose.vx; physics.vz = pose.vz; physics.vy = DROP_VY; }
     physics.grounded = false;
+    if ('verticalSpeed' in physics) physics.verticalSpeed = physics.vy;
     if ('_prevJump' in physics) physics._prevJump = inp.jump; // Space that let go must not queue a jump
     if ('_jumpBuffer' in physics) physics._jumpBuffer = 0;
   }
@@ -275,7 +275,7 @@ export function createZipline(ctx) {
     const ux = (ln.bx - ln.ax) / ln.l3, uz = (ln.bz - ln.az) / ln.l3;
     const hv = Math.abs((Number(physics.vx) || 0) * ux + (Number(physics.vz) || 0) * uz);
     R.v = clamp(Math.max(V_START, hv), V_MIN, V_MAX);
-    R.prevJump = inp.jump; R.phys = physics; R.fresh = true; R.debug = !!debug;
+    R.prevJump = inp.jump; R.phys = physics; R.fresh = true; R.debug = !!debug; R.pc = pieces(); R.pn = R.pc.length;
     riderPose(R, ln, pose);
     pending = null;
     say(TEXT.letgo, 2400);
@@ -297,7 +297,7 @@ export function createZipline(ctx) {
   }
 
   function canMount(physics) {
-    return !!physics && !physics.swimming && !ctx.uiOpen?.() && !oldHost();
+    return !!physics && !physics.swimming && !physics.climbing && !physics._climb && !ctx.uiOpen?.() && !oldHost(); // mid-clamber: the climb would resume after dismount
   }
 
   // Per-frame ride hook (game.js movePlayer). Returns true while riding so PlayerPhysics is skipped.
@@ -308,7 +308,13 @@ export function createZipline(ctx) {
     if (!R.debug && !holding()) { dismount(physics, false); return false; }
     const i = findRide();
     if (i < 0 || !lineWorld(st, i, decor(), deckY(), ln)) { dismount(physics, false); return false; }
-    if (!R.fresh && Math.hypot(physics.x - R.lx, physics.y - R.ly, physics.z - R.lz) > 1) { dismount(physics, false); return false; }
+    const mx = physics.x - R.lx, my = physics.y - R.ly, mz = physics.z - R.lz;
+    if (!R.fresh && mx * mx + my * my + mz * mz > 1) { dismount(physics, false); return false; }
+    const pc = pieces();
+    if (pc !== R.pc || pc.length !== R.pn) { // a piece built (or a host state) while riding: a wall across the line lets go
+      R.pc = pc; R.pn = pc.length;
+      if (!R.debug && blockedXYZ(pc, ln.ax, ln.ay - deckY(), ln.az, ln.bx, ln.by - deckY(), ln.bz)) { say(TEXT.inway); dismount(physics, false); return false; }
+    }
     if (inp.jump && !R.prevJump) { R.prevJump = true; dismount(physics, false); return false; }
     R.prevJump = inp.jump;
     const res = stepRide(R, ln, dt, inp);
@@ -336,7 +342,8 @@ export function createZipline(ctx) {
     if (!ropes) ropes = createRopeLines(T, MAX_LINES);
     if (ropeScene !== scene) { ropes.removeFromParent?.(); scene.add(ropes); ropeScene = scene; }
     refreshHeights();
-    const y = deckY();
+    const raft = ctx.raft; let y = deckY();
+    if (raft && raft.position && raft.quaternion) { ropes.position.copy(raft.position); ropes.quaternion.copy(raft.quaternion); y -= raft.position.y; } // posts tilt with the raft: so do the ropes
     let n = 0;
     for (let i = 0; i < st.l.length && i < MAX_LINES; i++) {
       if (!Number.isFinite(hA[i])) continue;
@@ -379,11 +386,12 @@ export function createZipline(ctx) {
   }
 
   // Cached canLink for the prompt (it runs every frame while a link is pending).
+  const memo = { r: null, p: null, pn: -1, d: null, dn: -1, st: null, sr: -1, ax: 0, az: 0, bx: 0, bz: 0 };
   function linkCheck(ax, az, bx, bz) {
-    const p = pieces(), key = ax + ',' + az + ',' + bx + ',' + bz + ',' + st.r + ',' + p.length + ',' + decor().length;
-    if (linkMemo && key === memoKey && linkMemo.p === p) return linkMemo.r;
-    linkMemo = { p, r: canLink(st, decor(), p, ax, az, bx, bz) }; memoKey = key;
-    return linkMemo.r;
+    const p = pieces(), d = decor(), m = memo;
+    if (m.r && m.p === p && m.pn === p.length && m.d === d && m.dn === d.length && m.st === st && m.sr === st.r && m.ax === ax && m.az === az && m.bx === bx && m.bz === bz) return m.r;
+    m.r = canLink(st, d, p, ax, az, bx, bz); m.p = p; m.pn = p.length; m.d = d; m.dn = d.length; m.st = st; m.sr = st.r; m.ax = ax; m.az = az; m.bx = bx; m.bz = bz;
+    return m.r;
   }
 
   function prompt(aim) {
@@ -400,7 +408,7 @@ export function createZipline(ctx) {
       if (have < c.cost) return `Needs ${num(c.cost)} rope`;
       return `<kbd>E</kbd>Link line here (${num(c.cost)} rope)`;
     }
-    if (t) return linesAt(st, t.x, t.z).length ? '<kbd>E</kbd>Glide · <kbd>C</kbd>+<kbd>E</kbd>new line' : '<kbd>E</kbd>Start a glide line';
+    if (t) return countAt(st.l, t.x, t.z) ? '<kbd>E</kbd>Glide · <kbd>C</kbd>+<kbd>E</kbd>new line' : '<kbd>E</kbd>Start a glide line';
     if (!pending && lineTarget(aim) >= 0) return '<kbd>E</kbd>Hook on';
     return null;
   }
@@ -418,7 +426,7 @@ export function createZipline(ctx) {
         ctx.action?.({ kind: 'zip.link', ax: a.x, az: a.z, bx: t.x, bz: t.z });
         return true;
       }
-      if (linesAt(st, t.x, t.z).length && !inp.crouch) {
+      if (countAt(st.l, t.x, t.z) && !inp.crouch) {
         if (canMount(physics)) mountFromPost(t, physics);
         return true;
       }

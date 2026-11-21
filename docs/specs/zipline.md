@@ -205,6 +205,7 @@ These are the places where the build differs from the spec above, or adds to it.
 - **Dismount**: dismounting also sets `physics._prevJump` and clears `_jumpBuffer`, so the Space press that let go does not queue a second jump on landing.
 - **Debug helpers**: `debug.ride` skips the handle-held check (screenshots). `debug.link` on a pair that is already linked returns the `canLink` result without unlinking.
 - **Prompt text**: the unlink prompt has an E key: `<kbd>E</kbd>Unlink (get N rope back)`.
-- **Skipped**: the optional first-person hand raise while riding. No third-person debug camera exists, so the QA screenshot is first person: riding up the line toward the tall post, with the deck view of both posts and the line as a second shot.
+- **First-person hand**: the right fist grips one half of the T-bar (grip off the stem), and while riding `hands.update({riding})` raises the fist toward the line (`rideW` in hands.js). No third-person debug camera exists, so the QA screenshot is first person: riding up the line toward the tall post, with the deck view of both posts and the line as a second shot.
 - **Icons**: there are inline SVG icons for all three items in item-svg.js.
 - **Mixed versions**: mixed-version co-op is unsupported (see §9).
+- **Review fixes**: the rope mesh copies the raft group's position and tilt and is written in raft-local space, so it meets the tilted wheels; a piece built across a line while someone rides it lets them go (`TEXT.inway`); no mount mid-clamber; dismount also sets `verticalSpeed`; per-frame paths avoid `Math.hypot`, `linesAt` arrays and string memo keys.

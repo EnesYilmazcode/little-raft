@@ -126,3 +126,17 @@ test('seeds rest in the hand and point only on request; cups use the shared mode
   const factory = (k) => (k === 'water' ? new T.Mesh(new T.CylinderGeometry(1, 1, 2)) : null);
   assert.equal(buildItemModel(T, 'water', factory).userData.shared, true);
 });
+
+test('[zipline] the Glide Handle sits in the right fist by one half of its bar and riding raises the fist', () => {
+  const m = buildItemModel(T, 'glidehandle');
+  assert.ok(m.userData.grip[0] < -0.03, 'grip off the stem, on one half of the bar');
+  const h = createHands(T), fist = new T.Vector3();
+  const step = (n, p = {}) => { for (let i = 0; i < n; i++) h.update({ dt: 1 / 60, time: i / 60, motion: 0, ...p }); };
+  const handY = () => { h.group.updateMatrixWorld(true); return h.group.getObjectByName('toolHolder').getWorldPosition(fist).y; };
+  h.setHeld('glidehandle'); step(60);
+  assert.equal(h.state.held, 'glidehandle'); assert.equal(h.state.rightHand, 'grip');
+  const rest = handY();
+  step(60, { riding: true }); assert.ok(handY() > rest + 0.15, 'fist up on the line');
+  step(60); assert.ok(Math.abs(handY() - rest) < 0.01, 'and back down');
+  h.dispose();
+});

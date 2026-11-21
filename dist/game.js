@@ -1164,7 +1164,7 @@ export function mount(transfer = null) {
     hands.setPose(pointing ? 'point' : null);
     const rod = kind === 'fishingrod' ? hands.itemModel('fishingrod') : null, out = !!hook?.fishing;
     if (rod?.userData.float) { rod.userData.float.visible = !out; rod.userData.leader.visible = !out; }
-    hands.update({dt, time:elapsed, charge:ch, reeling:rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch, fov:camera.fov}); // [fishing-cooking] rod reel pose from the lane
+    hands.update({dt, time:elapsed, charge:ch, reeling:rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch, fov:camera.fov, riding:!!content?.riding?.()}); // [zipline] riding raises the fist // [fishing-cooking] rod reel pose from the lane
     camera.updateMatrixWorld(true);
     hands.ropeAnchor().getWorldPosition(handPos);
   }

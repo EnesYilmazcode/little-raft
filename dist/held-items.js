@@ -49,7 +49,7 @@ export const holdFor = (kind) => HOLD[kind] || (isPlaceable(kind) ? HOLD.crate :
 const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.15, fish: 0.3, sail: 0.22, palm: 0.2, lantern: 0.2, net: 0.2, bench: 0.16, crate: 0.13,
   planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11,
   drum: 0.24, pipes: 0.2, bells: 0.26, // [instruments]
-  glidehandle: 0.3 }; // [zipline]
+  glidehandle: 0.24 }; // [zipline]
 
 function fit(T, model, maxDim, gripFn) {
   const root = new T.Group();
@@ -190,7 +190,7 @@ export function buildItemModel(T, kind, factory = null) {
   } else if (kind === 'seed' || kind === 'seeds') {
     root = fit(T, buildSeeds(T), SIZE[kind], (s) => new T.Vector3(0, -s.y / 2, 0));
   } else if (kind === 'glidehandle') { // [zipline]
-    root = fit(T, createHandle(T), SIZE.glidehandle, (s) => new T.Vector3(0, -s.y * 0.38, 0)); // grip = the bar
+    root = fit(T, createHandle(T), SIZE.glidehandle, (s) => new T.Vector3(-s.x * 0.24, -s.y * 0.38, 0)); // grip = one half of the bar, stem beside the fist
   } else if (kind === 'planter') {
     root = fit(T, createCraft(T, 'palm'), SIZE.planter, (s) => new T.Vector3(0, -s.y / 2, 0));
   }
