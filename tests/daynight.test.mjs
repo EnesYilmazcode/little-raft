@@ -466,3 +466,37 @@ test('co-op: a guest holds still while the host clock is stopped', () => {
   near(guest.debug.state().clock, host.debug.state().clock, 0.4, 'and follows again');
   host.dispose(); guest.dispose();
 });
+
+test('the sky refreshes every 0.1 s of clock, and at once on load, pins and phase jumps', () => {
+  const ctx = stubCtx();
+  const m = createDayNight(ctx);
+  const fog = () => ctx.scene.fog.color.toArray().join(), sky = new T.Color();
+  // what a fresh module shows for a clock (every first update refreshes)
+  const fresh = (clock, seed, pin) => { const c = stubCtx(), f = createDayNight(c); f.load({ v: 1, clock, seed }, 'save'); if (pin) f.debug.setWeather(pin); f.update(0); const h = c.scene.fog.color.clone(); f.dispose(); return h; };
+  m.load({ v: 1, clock: 0.63 * DAY, seed: 9 }, 'save'); // dusk: the palette moves fast here
+  m.update(0);
+  const c0 = m.debug.state().clock, h0 = fog();
+  for (let i = 0; i < 5; i++) m.update(1 / 60); // under 0.1 s: held
+  assert.equal(fog(), h0, 'held between refreshes');
+  for (let i = 0; i < 2000 && m.debug.state().clock - c0 < 0.1; i++) m.update(1 / 60);
+  assert.notEqual(fog(), h0, 'refreshed after 0.1 s');
+  assert.ok(ctx.scene.fog.color.equals(fresh(m.debug.state().clock, 9)), 'and matches an unthrottled sky');
+  // a load jumps straight to the new sky on the next frame, even a tiny step away
+  m.load({ v: 1, clock: 0.635 * DAY, seed: 9 }, 'save'); m.update(1 / 60);
+  assert.ok(ctx.scene.fog.color.equals(fresh(m.debug.state().clock, 9)), 'load');
+  m.debug.freeze(true);
+  m.debug.setWeather('rain'); m.update(0);
+  assert.ok(ctx.scene.fog.color.equals(fresh(m.debug.state().clock, 9, 'rain')), 'weather pin');
+  m.debug.setWeather(null); m.debug.setPhase(0.82); m.update(0);
+  assert.equal(m.debug.state().nightFactor, 1, 'phase jump');
+  sky.copy(ctx.scene.background); m.debug.setPhase(0.3); m.update(0);
+  assert.ok(!ctx.scene.background.equals(sky) && ctx.scene.background.equals(ctx.scene.fog.color));
+  // the moon faces the camera from wherever it moves, without a per-frame lookAt
+  m.debug.setPhase(0.82); m.update(0);
+  ctx.camera.position.set(7, 3, -4); m.update(1 / 60);
+  const moon = ctx.scene.getObjectByName('daynight-moon');
+  const n = new T.Vector3(0, 0, 1).applyQuaternion(moon.quaternion);
+  const toCam = ctx.camera.position.clone().sub(moon.position).normalize();
+  near(n.dot(toCam), 1, 1e-6, 'moon faces the camera');
+  m.dispose();
+});
