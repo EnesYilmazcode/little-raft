@@ -30,6 +30,8 @@ def wait_js(page, expr, timeout):  # Python-side poll: in-page rAF/timer polling
         except Exception: pass
         if time.monotonic() > end: raise TimeoutError(expr)
         page.wait_for_timeout(200)
+T0 = time.monotonic()
+def step(name): print(f'[{time.monotonic() - T0:6.1f}s] {name}', file=sys.stderr, flush=True)
 def shot(page, name): page.screenshot(path=str(out / f'{name}.png'))
 
 slots = [None] * 28
@@ -47,7 +49,7 @@ with sync_playwright() as p:
         exe = next(iter(sorted(root.glob('chromium-*/chrome-linux64/chrome')) + sorted(root.glob('chromium_headless_shell-*/*/chrome-headless-shell'))), None)
         if not exe: raise
         b = p.chromium.launch(headless=True, args=args, executable_path=str(exe))
-    page = b.new_context(viewport={'width': 960, 'height': 540}).new_page()
+    page = b.new_context(viewport={'width': 640, 'height': 360}).new_page()
     page.on('pageerror', lambda e: R['errors'].append(str(e)))
     page.on('console', lambda m: m.type == 'error' and R['errors'].append(m.text[:300]))
     # Seed before the game boots (a reload would let beforeunload save over it).
@@ -59,13 +61,15 @@ with sync_playwright() as p:
     check(c['wood'] == 67 and c['leaf'] == 40 and c['hook'] == 1, f'save load counts {c}')
 
     # --- crafting every recipe ---
+
+    step('crafting every recipe')
     page.keyboard.press('Tab'); page.wait_for_timeout(300)
     check(st(page)['inventoryOpen'], 'Tab opens inventory')
     for rid in ['rope'] * 16 + ['hammer', 'fishingrod', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'hook']:
         before = counts(page)
         el = page.locator(f'#inventory .sv-recipe[data-recipe="{rid}"]')
         if el.count() == 0: check(False, f'recipe button missing: {rid}'); continue
-        el.scroll_into_view_if_needed(); el.click(); page.wait_for_timeout(60)
+        el.evaluate('e => e.click()'); page.wait_for_timeout(60)  # DOM click: pointer actionability checks crawl at software-GL frame rates
         after = counts(page)
         check(after[rid] == before[rid] + 1, f'craft {rid}: {before[rid]} -> {after[rid]}')
     shot(page, '01-crafted')
@@ -74,6 +78,8 @@ with sync_playwright() as p:
     R['notes']['afterCraft'] = [s and f"{s['kind']}x{s['count']}" for s in inv]
 
     # --- split (right click) then place into an empty slot ---
+
+    step('split (right click) then place into an empty slot')
     def slot_el(i): return page.locator(f'#inventory .sv-slot[data-index="{i}"]')
     inv = st(page)['inventory']['slots']
     full = next(i for i, s in enumerate(inv) if s and s['count'] == 20)
@@ -95,6 +101,8 @@ with sync_playwright() as p:
         check(counts(page)[kind] == counts(page)[kind], 'count stable')
 
     # --- Escape from inventory ---
+
+    step('Escape from inventory')
     page.keyboard.press('Escape'); page.wait_for_timeout(300)
     s = st(page)
     pause_open = page.evaluate("!!document.querySelector('#options')?.open")
@@ -106,6 +114,8 @@ with sync_playwright() as p:
     if st(page)['inventoryOpen']: page.keyboard.press('Escape'); page.wait_for_timeout(200)
 
     # --- hotbar keys and wheel ---
+
+    step('hotbar keys and wheel')
     for k in range(1, 9):
         page.keyboard.press(f'Digit{k}'); page.wait_for_timeout(40)
         if st(page)['selectedIndex'] != k - 1:
@@ -115,6 +125,8 @@ with sync_playwright() as p:
     page.keyboard.press('Digit1'); page.wait_for_timeout(50)
 
     # --- hook: throw, reel, collect ---
+
+    step('hook: throw, reel, collect')
     page.evaluate('raftDebug.state')
     t = sorted(page.evaluate('raftDebug.targets'), key=lambda t: t['distance'])
     target = next((x for x in t if x['screen'] and x['screen']['visible'] and 4 < x['distance'] < 14), None)
@@ -124,16 +136,32 @@ with sync_playwright() as p:
         page.mouse.move(sx, sy); page.mouse.down(); page.wait_for_timeout(450); page.mouse.up()
     else:
         page.mouse.move(640, 300); page.mouse.down(); page.wait_for_timeout(600); page.mouse.up()
-    page.wait_for_timeout(2500); R['notes']['hookAfterThrow'] = st(page)['hook']
-    check(st(page)['hookStage'] in ('floating', 'flying'), f'hook in water: {st(page)["hookStage"]}')
+    # game time runs far slower than wall time here (dt is clamped), so wait on state, not on the clock
+    try: wait_js(page, "raftDebug.state.hookStage === 'floating'", 60000)
+    except TimeoutError: pass
+    R['notes']['hookAfterThrow'] = st(page)['hook']
+    check(st(page)['hookStage'] == 'floating', f'hook lands and floats: {st(page)["hookStage"]}')
     shot(page, '02-hook-floating')
-    page.mouse.down(); page.wait_for_timeout(5000); page.mouse.up(); page.wait_for_timeout(600)
+    page.mouse.down()
+    try: wait_js(page, "raftDebug.state.hookStage === 'idle'", 90000)
+    except TimeoutError: pass
+    page.mouse.up(); page.wait_for_timeout(600)
     s = st(page); R['notes']['afterReel'] = {'stage': s['hookStage'], 'collected': s['collected'] - collected0, 'hookHealth': s['hookHealth']}
     check(s['hookStage'] == 'idle', f'hook returns after reel: {s["hookStage"]}')
+    # switching hotbar slot while the hook is out retracts it (it must never stay stuck out)
+    page.mouse.down(); page.wait_for_timeout(300); page.mouse.up()
+    try: wait_js(page, "raftDebug.state.hookStage !== 'idle'", 20000)
+    except TimeoutError: pass
+    page.keyboard.press('Digit2'); page.wait_for_timeout(300)
+    check(st(page)['hookStage'] == 'idle', f'slot switch retracts hook: {st(page)["hookStage"]}')
+    page.keyboard.press('Digit1'); page.wait_for_timeout(100)
 
     # --- placing decor with a placeable selected ---
+
+    step('placing decor with a placeable selected')
     inv = st(page)['inventory']['slots']
     # --- swim and climb ---
+    step('swim and climb')
     page.keyboard.press('Digit1')
     # headless GL runs ~3 fps with dt clamped, so wait on state instead of wall time
     page.keyboard.down('KeyS')
@@ -151,22 +179,30 @@ with sync_playwright() as p:
     check(not s['swimming'], 'W+Space climbs back aboard')
 
     # --- pause menu: Esc opens, Esc closes ---
+
+    step('pause menu: Esc opens, Esc closes')
     page.keyboard.press('Escape'); page.wait_for_timeout(300)
     R['notes']['escOpensPause'] = page.evaluate("!!document.querySelector('#options')?.open")
     page.keyboard.press('Escape'); page.wait_for_timeout(300)
     check(not page.evaluate("!!document.querySelector('dialog[open]')"), 'Esc closes pause')
 
     # --- repair key ---
+
+    step('repair key')
     hh = st(page)['hookHealth']; page.keyboard.press('KeyR'); page.wait_for_timeout(200)
     check(st(page)['hookHealth'] == 100, f'R repairs hook ({hh} -> {st(page)["hookHealth"]})')
 
     # --- save and reload ---
+
+    step('save and reload')
     snap = st(page)['inventory']; page.wait_for_timeout(3500)
     page.reload(); wait_js(page, '!!window.raftDebug', 20000)
     page.evaluate("document.querySelector('#solo').click()"); wait_js(page, 'raftDebug.state.running', 15000)
     check(st(page)['inventory'] == snap, 'inventory survives reload')
 
     # --- live hot swap ---
+
+    step('live hot swap')
     v = json.loads((dist / 'version.json').read_text()); v['build'] = v['build'] + '-swap'
     (dist / 'version.json').write_text(json.dumps(v))
     page.keyboard.press('Digit3'); snap = st(page)['inventory']
