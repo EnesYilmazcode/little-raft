@@ -33,6 +33,7 @@ const PRELOAD = [
   'signs-core.js', 'sky.js', 'sleep-model.js', 'sleep.js', 'smelter-model.js', 'smelter-ui.js', 'smelter.js',
   'spear-model.js', 'spear-repair-hooks.js', 'spear.js', 'storage-research-model.js', 'storage-research.js',
   'spyglass-model.js', 'spyglass.js', // [spyglass]
+  'storm-model.js', 'storm.js', // [storm]
   'survival-ui.js', 'textures.js', 'treasure-models.js', 'treasure-rules.js', 'treasure.js', 'underwater-fx.js',
   'vitals-ui.js', 'vitals.js', 'waterfx.js', 'watering.js', 'wildlife-models.js', 'wildlife.js', 'wood.js',
 ];

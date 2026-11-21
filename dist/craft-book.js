@@ -27,6 +27,7 @@ const CATEGORY_OF = Object.freeze({
   kiln: 'building', glasslamp: 'survival', sinker: 'survival', // kiln
   nestbox: 'survival', cushion: 'building', // raft animals
   goatpen: 'survival', bucket: 'survival', // raft goats
+  stormrod: 'building', stormlamp: 'survival', stormglass: 'building', // storm
   // content (engine, sleep, paint)
   motor: 'building', wheel: 'building', bed: 'building', brush: 'tools',
   paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
@@ -112,6 +113,10 @@ export const ITEM_TEXT = Object.freeze({
   kiln:       { desc: 'A stone and clay kiln with a wood fire.', use: 'Place it, load ore, sand or clay and some wood; collect ingots, glass and bricks.' },
   glasslamp:  { desc: 'A lantern with clear glass panes.', use: 'Place it for a warm light on the raft.' },
   sinker:     { desc: 'A small metal weight for the hook line.', use: 'Keep it in your bag: the hook wears half as fast.' },
+  stormrod:   { desc: 'A tall metal rod with a copper tip.', use: 'Place it on the raft: in a storm it catches lightning and grows Storm Shards.' },
+  stormshard: { desc: 'Glassy sand fused by lightning.', use: 'Make a Storm Lantern or a Storm Glass.' },
+  stormlamp:  { desc: 'A lantern with a humming blue shard.', use: 'Glows soft blue at night.' },
+  stormglass: { desc: 'A sealed glass of cloudy crystals.', use: 'Look at it to see when the next storm comes.' },
   puffegg:    { desc: 'A speckled egg from a puffhen.', use: 'Make an Egg Lantern.' },
   feather:    { desc: 'A soft puffhen feather.', use: 'Stuff a Feather Cushion.' },
   nestbox:    { desc: 'A cosy box of straw for puffhens.', use: 'Place it on the raft and a puffhen may come to stay.' },
@@ -341,6 +346,7 @@ export const ITEM_SOURCE = Object.freeze({
   metalingot:  Object.freeze({ tag: 'smelter, kiln', how: 'Smelt metal ore in a smelter or a Seaside Kiln.' }),
   copperingot: Object.freeze({ tag: 'smelter', how: 'Smelt copper ore in a smelter.' }),
   glass:       Object.freeze({ tag: 'smelter, kiln', how: 'Melt sand in a smelter or a Seaside Kiln.' }),
+  stormshard:  Object.freeze({ tag: 'lightning rod', how: 'Place a Lightning Rod; storms charge it with shards (E to collect).' }),
   saltcup:     Object.freeze({ tag: 'fill a cup', how: 'Hold an empty cup and click the sea.' }),
   freshcup:    Object.freeze({ tag: 'purifier', how: 'Pour sea water into a purifier and wait.' }),
   cookedfish:  Object.freeze({ tag: 'grill', how: 'Cook a fish on a grill.' }),

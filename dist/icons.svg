@@ -475,6 +475,7 @@
       <path d="M13 33 C13 31.5 14.3 30.5 16 30.5 H32 C33.7 30.5 35 31.5 35 33" fill="#e0a063"/>
     </g>
     <g fill="#9ad7f0" stroke="#153e49" stroke-width="1"><rect x="17" y="37" width="3.6" height="3.6"/><rect x="22.2" y="37" width="3.6" height="3.6"/><rect x="27.4" y="37" width="3.6" height="3.6"/></g>
+  </symbol>
   <symbol id="icon-kiln" viewBox="0 0 48 48">
     <g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
       <rect x="29" y="5" width="6" height="12" rx="1" fill="#bb8650"/>
@@ -615,6 +616,44 @@
       <circle cx="24" cy="24" r="14" fill="none" stroke="#bb8650" stroke-width="3.6"/>
       <circle cx="24" cy="24" r="4.5" fill="#54a6a4"/>
       <circle cx="24" cy="24" r="1.6" fill="#fff2cc" stroke-width="1.2"/>
+    </g>
+  </symbol>
+  <!-- friendly storms (storm.js) -->
+  <symbol id="icon-stormrod" viewBox="0 0 48 48">
+    <g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <rect x="13" y="38" width="22" height="6" rx="1.5" fill="#6b4529"/>
+      <rect x="22" y="12" width="4" height="27" rx="1" fill="#8e989e"/>
+      <rect x="20" y="20" width="8" height="3" rx="1" fill="#d98a4e"/>
+      <rect x="20" y="29" width="8" height="3" rx="1" fill="#d98a4e"/>
+      <path d="M21 13 L24 4 L27 13 Z" fill="#d98a4e"/>
+      <path d="M33 6 L29 14 H33 L30 21" fill="none" stroke="#7fd8ff" stroke-width="2.2"/>
+    </g>
+  </symbol>
+  <symbol id="icon-stormshard" viewBox="0 0 48 48">
+    <g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M17 40 L13 22 L18 10 L23 22 L21 40 Z" fill="#bfefff"/>
+      <path d="M22 41 L22 18 L28 5 L33 19 L29 41 Z" fill="#7fd8ff"/>
+      <path d="M29 41 L31 26 L37 18 L39 28 L35 41 Z" fill="#bfefff"/>
+      <path d="M26 16 L28 10" stroke="#fff2cc" stroke-width="1.6"/>
+      <rect x="10" y="39" width="30" height="4" rx="1.5" fill="#c9b27e"/>
+    </g>
+  </symbol>
+  <symbol id="icon-stormlamp" viewBox="0 0 48 48">
+    <g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <rect x="13" y="38" width="22" height="6" rx="2" fill="#a97d4c"/>
+      <rect x="14" y="13" width="20" height="25" rx="3" fill="#7fd8ff" fill-opacity=".75"/>
+      <path d="M21 34 L20 25 L24 18 L28 25 L27 34 Z" fill="#e8f9ff" stroke-width="1.4"/>
+      <rect x="12" y="8" width="24" height="5" rx="1.5" fill="#8e989e"/>
+      <path d="M20 8 C20 3 28 3 28 8" fill="none"/>
+    </g>
+  </symbol>
+  <symbol id="icon-stormglass" viewBox="0 0 48 48">
+    <g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <rect x="14" y="38" width="20" height="6" rx="2" fill="#a97d4c"/>
+      <rect x="17" y="9" width="14" height="29" rx="4" fill="#dff4f0" fill-opacity=".6"/>
+      <path d="M20 37 L21 28 L24 22 L26 29 L28 25 L28 37 Z" fill="#ffffff" stroke-width="1.4"/>
+      <rect x="16" y="5" width="16" height="5" rx="1.5" fill="#d4a94f"/>
+      <path d="M20 14 V20" stroke="#fff2cc" stroke-width="1.6"/>
     </g>
   </symbol>
 </svg>
