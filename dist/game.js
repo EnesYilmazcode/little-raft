@@ -724,6 +724,7 @@ export function mount(transfer = null) {
     const k = running && !dialog && fainted < 0 && !hook && !fishWait && !pickTarget && !waterAim?.click ? eatKind() : null;
     if (!k) { eatTip = null; return; }
     if (eating) { EATING_TIP.label = FOOD[k].food > 0 ? 'Eating…' : 'Drinking…'; eatTip = EATING_TIP; return; }
+    if (waterAim?.why && CUP_KINDS.includes(k)) { eatTip = null; return; } // a cup at a busy station shows its status (promptTip), not Drink
     eatTip = eatTips.get(k); if (!eatTip) { eatTip = {key:'LMB', label:eatLabel(k)}; eatTips.set(k, eatTip); }
   }
   function promptTip() { // watering hints only when actionable or while holding a cup (never hides the hook's "Throw")
@@ -1272,7 +1273,7 @@ export function mount(transfer = null) {
     if (kind === 'spear' ? spearRep?.use() : kind === 'hammer' && spearRep?.useHammer()) return; // [spear-repair] thrust / repair a damaged tile
     if (isEdible(kind)) { // [vitals] a fresh cup on a planter still waters it, a salt cup at a purifier still loads it
       const w = CUP_KINDS.includes(kind) ? wateringTarget(aim) : null;
-      if (w?.click) { swing = 1; action(w.click); } else startEat(kind);
+      if (w?.click) { swing = 1; action(w.click); } else if (w?.why) notice(w.why); else startEat(kind); // aimed at a busy station: say why instead of drinking the cup
       return;
     }
     if (kind === 'hammer' && building && building.piece !== 'foundation') { // building-pieces lane hook
