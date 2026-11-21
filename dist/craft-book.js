@@ -17,7 +17,7 @@ const CATEGORY_OF = Object.freeze({
   net: 'survival', palm: 'survival', lantern: 'survival',
   sail: 'building', bench: 'building', crate: 'building',
   // progression catalogue (items.js)
-  metalhook: 'tools', binoculars: 'tools',
+  metalhook: 'tools', binoculars: 'tools', spear: 'tools', // [spear]
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   researchtable: 'building', grill: 'building', smelter: 'building',
 });
@@ -66,6 +66,9 @@ export const ITEM_TEXT = Object.freeze({
   metalhook:  { desc: 'A heavy metal hook that lasts much longer.', use: 'Throw it like the hook; wears far slower.' },
   binoculars: { desc: 'Glass lenses in a copper tube.', use: 'Hold to spot barrels and islands far away.' },
   cookedfish: { desc: 'A fish grilled golden.', use: 'A hearty snack.' },
+  spear:      { desc: 'A pale wooden shaft with a lashed, sharpened tip.', use: 'Click to stab sharks that come for your raft.' },
+  sharkmeat:  { desc: 'A raw slab of shark.', use: 'Grill it into a filling meal.' },
+  cookedsharkmeat: { desc: 'A shark steak grilled through.', use: 'A big, filling meal.' },
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
   grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },

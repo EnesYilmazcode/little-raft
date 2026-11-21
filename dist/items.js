@@ -143,11 +143,21 @@ const LIST = [
   item('binoculars', 'Binoculars', 'tool', { iconTint: '#5d6b78', stack: 1,
     recipe: hand({ glass: 2, copperingot: 1, hinge: 2, bolt: 1 }), unlock: research('glass', 'copperingot'),
     tip: 'Hold them to spot the nearest barrel: bearing and distance. They never wear out.' }),
+  // [spear] Raft-style wooden spear: 8 planks + 3 rope, about 20 good stabs before it snaps.
+  item('spear', 'Wooden Spear', 'tool', { iconTint: '#d9c49a', tool: true, durability: 20,
+    recipe: hand({ wood: 8, rope: 3 }), unlock: START,
+    tip: 'A long pale shaft with a lashed, sharpened tip. Click to stab; keeps the shark honest. Snaps after about 20 hits.' }),
 
   // ----- food -----
   item('cookedfish', 'Grilled Fish', 'food', { iconTint: '#e0a060', stack: 10,
     recipe: cook('grill', 'fish', { time: 15, fuel: 0.5 }), unlock: atStation('grill'),
     tip: 'A cosy, smoky snack. Nobody is hungry here, but the seagull would love a treat.' }),
+  // [spear] shark meat: dropped by a defeated shark, grilled like fish (a little longer).
+  item('sharkmeat', 'Raw Shark Meat', 'food', { icon: 'icon-fish', placeholder: true, iconTint: '#d98c86', stack: 10,
+    tip: 'A hefty slab from a shark that picked the wrong raft. Grill it before eating.' }),
+  item('cookedsharkmeat', 'Grilled Shark Meat', 'food', { icon: 'icon-fish', placeholder: true, iconTint: '#a8683a', stack: 10,
+    recipe: cook('grill', 'sharkmeat', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
+    tip: 'Smoky, filling shark steak. A proper sailor\'s dinner.' }),
 
   // ----- build / decor (placeable on raft tiles) -----
   item('bench', 'Bench', 'decor', { icon: 'icon-repair', placeholder: true, placeable: true,
@@ -202,6 +212,7 @@ const REPAIRS = deepFreeze({
   metalhook: { scrap: 2, nail: 2 },
   hammer: { wood: 2, rope: 1 },
   fishingrod: { wood: 1, rope: 2 },
+  spear: { wood: 2, rope: 1 }, // [spear]
 });
 
 /** Alternate / older names that may appear in saves or network messages. */
@@ -214,6 +225,7 @@ export const LEGACY_ALIASES = deepFreeze({
   plastichook: 'hook', plastic_hook: 'hook',
   scraphook: 'metalhook', scrap_hook: 'metalhook', metal_hook: 'metalhook',
   rawfish: 'fish', raw_fish: 'fish',
+  shark_meat: 'sharkmeat', rawsharkmeat: 'sharkmeat', cooked_shark_meat: 'cookedsharkmeat', grilledsharkmeat: 'cookedsharkmeat', // [spear]
   cooked_fish: 'cookedfish', grilledfish: 'cookedfish', grilled_fish: 'cookedfish',
   nails: 'nail', bolts: 'bolt', hinges: 'hinge',
   ingot: 'metalingot', metal_ingot: 'metalingot', copper_ingot: 'copperingot',
