@@ -225,7 +225,13 @@ export class HookCast {
     const vx = this.drift ? this.drift.x : Math.sin(time * 0.13) * 0.04;
     const vz = this.drift ? this.drift.z : 0.22;
     b.x += vx * h; b.z += vz * h;
-    this._tether(b); // a walking player drags the floating hook along
+    const dragged = this._tether(b); // a walking player drags the floating hook along
+    const dy = this._deckAt(b.x, b.z);
+    if (dy !== null) {
+      // The rope hauls it up onto the planks; plain drift just bumps it against the hull.
+      if (dragged) { this.onDeck = true; this.position.set(b.x, dy, b.z); return; }
+      b.x = ax; b.z = az;
+    }
     this.floatTime += h;
     this._sweep(items, ax, az, b.x, b.z, CATCH_RADIUS);
     this.position.set(b.x, WATER_Y + Math.sin(this.floatTime * BOB_FREQ) * BOB_AMP + BOB_LIFT, b.z);

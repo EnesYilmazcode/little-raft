@@ -561,3 +561,41 @@ test('Bag.salvage keeps every valid slot of a slightly malformed save instead of
   const good = bagFrom([{ kind: 'wood', count: 3 }], 2).snapshot();
   assert.deepEqual(Bag.salvage(good).snapshot(), good);
 });
+
+test('HookCast: drifting water never carries a floating hook in under the raft', () => {
+  const deck = (x, z) => (Math.abs(x) <= 3 && Math.abs(z) <= 3 ? 0.26 : null);
+  // Floating just off the -Z edge, the current pushes it toward the hull.
+  const c = cast({ origin: new T.Vector3(0, 1.2, -3.4), direction: elevDir(-80), charge: 0, drift: { x: 0, z: 0.5 }, deck });
+  flyOut(c);
+  assert.equal(c.onDeck, false);
+  for (let i = 0; i < 300; i++) {
+    c.update(0.02, { hand: new T.Vector3(0, 1.2, -3.4), items: [] });
+    assert.equal(deck(c.position.x, c.position.z), null, `hook slid under the deck at z=${c.position.z}`);
+  }
+  assert.equal(c.stage, 'floating');
+});
+
+test('HookCast: a player walking across the raft hauls a floating hook onto the planks', () => {
+  const DECK = 0.26, deck = (x, z) => (Math.abs(x) <= 3 && Math.abs(z) <= 3 ? DECK : null);
+  const c = cast({ origin: new T.Vector3(0, 1.2, -2), direction: elevDir(0), charge: 0, maxRange: 4, deck });
+  flyOut(c);
+  assert.ok(c.landing.z < -3, 'landed in the water off the edge');
+  // Walk to the far side of the raft: the taut rope drags the hook across the deck.
+  for (let i = 0; i < 200; i++) c.update(0.02, { hand: new T.Vector3(0, 1.2, -2 + i * 0.02), items: [] });
+  assert.equal(c.onDeck, true);
+  assert.equal(c.position.y, DECK, 'rests on the deck, not under it');
+  const events = run(c, 3, [], true); // and it still reels home
+  assert.equal(c.stage, 'done');
+  assert.deepEqual(events, [{ kind: 'returned' }]);
+});
+
+test('Bag.salvage repairs a snapshot with the wrong slot count or selection', () => {
+  const short = { slots: [{ kind: 'wood', count: 5 }, { kind: 'hook', count: 1 }], selected: 1 };
+  const bag = Bag.salvage(short);
+  assert.equal(bag.slots.length, SLOT_COUNT);
+  assert.deepEqual(bag.slots[0], { kind: 'wood', count: 5 });
+  assert.equal(bag.slots[1].durability, TOOL_DURABILITY);
+  assert.equal(bag.selectedIndex, 1);
+  assert.throws(() => new Bag(short), TypeError, 'strict constructor still rejects it');
+  assert.equal(Bag.salvage({ slots: [], selected: HOTBAR_SIZE }).selectedIndex, 0);
+});
