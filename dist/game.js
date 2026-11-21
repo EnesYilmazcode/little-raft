@@ -488,22 +488,57 @@ export function mount(transfer = null) {
     for (let i = 0; i < 7; i++) { const l = new T.Mesh(new T.ConeGeometry(.28, 1.5, 4), mat(i % 2 ? '#519b55' : '#72ae59')); l.rotation.z = 1.2; l.rotation.y = i * Math.PI * 2 / 7; l.position.set(Math.sin(i * Math.PI * 2 / 7) * .5, 1.65, Math.cos(i * Math.PI * 2 / 7) * .5); g.add(l); }
     parent.add(g);
   }
-  function rebuildRaft() {
-    for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
-    wateringGroups.clear();
-    raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat));
-    for (const d of world.decor) {
-      let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
-      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); detailed.rotation.y = d.rot || 0; raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; }
-      const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2); g.rotation.y = d.rot || 0;
-      if (d.type === 'sail') { cylinder(.065, .08, 3.8, '#906f48', 0, 1.9, 0, g); box(2.5, .07, .07, '#906f48', 0, 3.2, 0, g); const s = new T.Mesh(new T.PlaneGeometry(2.35, 2.1), clothMat); s.position.set(0, 2.15, .06); g.add(s); }
-      if (d.type === 'palm') { cylinder(.38, .28, .5, '#db8764', 0, .25, 0, g); palm(g, 0, .5, 0); }
-      if (d.type === 'lantern') { cylinder(.055, .075, 1.8, '#725942', 0, .9, 0, g); box(.32, .42, .32, '#ffe197', .43, 1.5, 0, g); }
-      if (d.type === 'net') { for (let k = 0; k < 6; k++) { box(.025, .05, 1.7, '#ebe1bd', -.8 + k * .32, .05, 0, g); box(1.7, .05, .025, '#ebe1bd', 0, .05, -.8 + k * .32, g); } }
-      if (d.type === 'bench') { box(1.4, .08, .42, '#b4824b', 0, .45, 0, g); for (const a of [-.6, .6]) box(.08, .45, .38, '#906f48', a, .22, 0, g); }
-      if (d.type === 'crate') { box(.8, .8, .8, '#a97d4c', 0, .4, 0, g); }
-      raft.add(g);
+  // Raft children: the 'raft-floors' group first, then one group per world.decor entry (userData.decorKey).
+  // Only what changed is rebuilt: the floor when the tile list changed (and then only its changed chunks),
+  // decor groups whose type|x|z|rot left or joined world.decor. raft.userData.rev bumps on every change.
+  const decorKey = d => d.type + '|' + d.x + '|' + d.z + '|' + (d.rot || 0);
+  function deckMaterials() { // vertex-coloured deck materials: timber (planks, logs) and trim (rope, nails); none in the ?art look
+    if (ART.artEnabled()) return {};
+    if (!materialCache.has('deck-timber')) {
+      let m = null; try { m = createWoodMaterial(T, '#ffffff'); m.vertexColors = true; m.name = 'deck-timber'; } catch (e) { console.warn('wood material failed', e); }
+      materialCache.set('deck-timber', m ?? new T.MeshStandardMaterial({color:'#ffffff', roughness:.85, metalness:0, vertexColors:true}));
+      materialCache.set('deck-trim', new T.MeshStandardMaterial({color:'#ffffff', roughness:.85, metalness:0, vertexColors:true, name:'deck-trim'}));
     }
+    return {timberMaterial:materialCache.get('deck-timber'), trimMaterial:materialCache.get('deck-trim')};
+  }
+  function decorModel(d) {
+    let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
+    if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); detailed.rotation.y = d.rot || 0; if (d.type === 'palm' || d.type === 'purifier') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); } return detailed; }
+    const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2); g.rotation.y = d.rot || 0;
+    if (d.type === 'sail') { cylinder(.065, .08, 3.8, '#906f48', 0, 1.9, 0, g); box(2.5, .07, .07, '#906f48', 0, 3.2, 0, g); const s = new T.Mesh(new T.PlaneGeometry(2.35, 2.1), clothMat); s.position.set(0, 2.15, .06); g.add(s); }
+    if (d.type === 'palm') { cylinder(.38, .28, .5, '#db8764', 0, .25, 0, g); palm(g, 0, .5, 0); }
+    if (d.type === 'lantern') { cylinder(.055, .075, 1.8, '#725942', 0, .9, 0, g); box(.32, .42, .32, '#ffe197', .43, 1.5, 0, g); }
+    if (d.type === 'net') { for (let k = 0; k < 6; k++) { box(.025, .05, 1.7, '#ebe1bd', -.8 + k * .32, .05, 0, g); box(1.7, .05, .025, '#ebe1bd', 0, .05, -.8 + k * .32, g); } }
+    if (d.type === 'bench') { box(1.4, .08, .42, '#b4824b', 0, .45, 0, g); for (const a of [-.6, .6]) box(.08, .45, .38, '#906f48', a, .22, 0, g); }
+    if (d.type === 'crate') { box(.8, .8, .8, '#a97d4c', 0, .4, 0, g); }
+    return g;
+  }
+  function rebuildRaft() {
+    let changed = false;
+    // floors
+    const sig = world.tiles.join(';'), oldFloors = raft.children.find(c => c.name === 'raft-floors') ?? null;
+    if (!oldFloors || oldFloors.userData.sig !== sig) {
+      const floors = createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat, {prev:oldFloors, ...deckMaterials()});
+      floors.userData.sig = sig;
+      if (oldFloors) { raft.remove(oldFloors); disposeGeometry(oldFloors); }
+      raft.add(floors); if (raft.children[0] !== floors) { raft.children.splice(raft.children.indexOf(floors), 1); raft.children.unshift(floors); }
+      changed = true;
+    }
+    // decor (diffed by type|x|z|rot; reused groups keep their wateringGroups / station / lantern bookkeeping)
+    const have = new Map();
+    for (const c of raft.children) if (c.userData.decorKey !== undefined) { const k = c.userData.decorKey; if (!have.has(k)) have.set(k, []); have.get(k).push(c); }
+    const next = [];
+    for (const d of world.decor) {
+      const k = decorKey(d), pool = have.get(k);
+      if (pool?.length) { next.push(pool.shift()); continue; }
+      const g = decorModel(d); g.userData.decorKey = k; next.push(g); raft.add(g); changed = true;
+    }
+    for (const list of have.values()) for (const c of list) {
+      raft.remove(c); disposeGeometry(c); changed = true;
+      if (c.userData.tileKey !== undefined && wateringGroups.get(c.userData.tileKey) === c) wateringGroups.delete(c.userData.tileKey);
+    }
+    for (const g of next) if (g.userData.tileKey !== undefined) wateringGroups.set(g.userData.tileKey, g);
+    if (changed) raft.userData.rev = (raft.userData.rev | 0) + 1;
     blockList = world.decor.flatMap(d => decorBlockers(d, BLOCK_RADIUS));
     building?.sync(world); // building-pieces lane hook
     sailing?.onRaftBuilt(); // [sailing] re-find sail models
