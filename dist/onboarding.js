@@ -171,13 +171,13 @@ function boot() {
   panel.id = 'obNotes'; panel.className = 'ob-notes'; panel.setAttribute('aria-label', 'Notes');
   panel.innerHTML = '<button type="button" class="ob-head" aria-expanded="true"><span class="ob-ch"></span><span class="ob-sum"></span><i class="ob-chev" aria-hidden="true"></i></button><ol class="ob-rows" aria-live="polite"></ol><div class="ob-log" hidden></div>';
   document.body.append(panel);
-  // The bag (and other dialogs) open modally in the top layer and would cover the Notes. A manual popover lives in the
-  // top layer too; re-showing it after any dialog opens stacks it above. No popover support: stays a plain fixed panel.
+  // The bag opens modally in the top layer and would cover the Notes. A manual popover lives in the top layer too;
+  // re-showing it after the bag opens stacks it above (other dialogs - pause, journal, logbook - stay on top of it). No popover support: stays a plain fixed panel.
   const lift = () => { try { if (panel.matches(':popover-open')) panel.hidePopover(); panel.showPopover(); } catch {} };
   if (typeof panel.showPopover === 'function') {
     panel.popover = 'manual'; lift();
     if (panel.matches?.(':popover-open')) {
-      try { new MutationObserver(ms => { if (ms.some(m => m.target.localName === 'dialog' && m.target.open)) { panel.style.animation = 'none'; lift(); } }) // no fade replay
+      try { new MutationObserver(ms => { if (ms.some(m => m.target.id === 'inventory' && m.target.open)) { panel.style.animation = 'none'; lift(); } }) // no fade replay
         .observe(document.documentElement, {subtree:true, attributes:true, attributeFilter:['open']}); } catch {}
     }
   }
