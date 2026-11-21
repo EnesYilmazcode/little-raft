@@ -192,7 +192,7 @@ test('refusals leave everything unchanged: expect mismatch, bad slots, bad x, mi
   ];
   for (const [a, reason] of cases) {
     const before = JSON.stringify([st, bag.slots]);
-    const r = applyStorageAction(st, a, 'guest', bag, env(crate));
+    const r = applyStorageAction(st, a, 'guest', bag, env(crate, { x: 1, z: 0.5 }));
     assert.equal(r.ok, false, JSON.stringify(a)); assert.equal(r.reason, reason, JSON.stringify(a));
     assert.equal(JSON.stringify([st, bag.slots]), before);
   }
@@ -208,7 +208,7 @@ test('two players clicking the same stack: exactly one gets it', () => {
   const host = new Bag(), guest = new Bag();
   const a = { kind: 'storage.take', x: 1, z: 0, from: 0, expect: { kind: 'scrap', count: 6 } };
   const r1 = applyStorageAction(st, { ...a }, 'host', host, env(crate));
-  const r2 = applyStorageAction(st, { ...a }, 'guest', guest, env(crate));
+  const r2 = applyStorageAction(st, { ...a }, 'guest', guest, env(crate, { x: 2, z: 0 }));
   assert.equal(r1.ok, true); assert.equal(r2.ok, false);
   assert.equal(host.count('scrap') + guest.count('scrap'), 6);
 });
@@ -246,7 +246,7 @@ test('conservation: 500 random put/take/putAll actions never create or lose an i
       if (rnd(3) === 0) a.to = rnd(verb === 'put' ? CHEST_SLOTS : SLOT_COUNT);
       if (s && rnd(3) === 0) a.amount = 1 + rnd(s.count);
     }
-    applyStorageAction(st, a, actor, bag, env(crates));
+    applyStorageAction(st, a, actor, bag, env(crates, { x: 0, z: 0 }));
     // every stack stays valid by Bag rules
     for (const b of Object.values(bags)) assert.doesNotThrow(() => new Bag(b.snapshot()));
     for (const ch of Object.values(st.chests)) { assert.equal(ch.length, CHEST_SLOTS); for (const s of ch) if (s) assert.deepEqual(cleanSlot(s), s); }
@@ -352,4 +352,95 @@ test('decorModel: research table geometry and materials are built once and share
   assert.ok(ma[0].geometry.attributes.position.count > 100);
   assert.equal(mod.decorModel('crate'), null);
   assert.doesNotThrow(() => mod.dispose());
+});
+
+// ---------------------------------------------------------------- review fixes
+const lookAt = ctx => { ctx.camera = { position: { x: 0, y: 0.65, z: 0 }, getWorldDirection: v => v.set(1, 0, 0) }; };
+
+test('guest aboard an old host (no slice): friendly notice instead of a dead panel, no rebuild per state message', () => {
+  const w = freshWorld(); w.decor.push({ type: 'crate', x: 1, z: 0 });
+  const g = makeCtx(w, 'guest'); lookAt(g.ctx);
+  const notes = []; g.ctx.notice = s => notes.push(s);
+  assert.match(g.mod.prompt(null), /Open crate/); // before any host state: normal prompt
+  g.mod.load(undefined, 'net');
+  const rev = g.mod.debug.rev();
+  for (let i = 0; i < 20; i++) g.mod.load(undefined, 'net'); // 8 Hz state messages
+  assert.equal(g.mod.debug.rev(), rev);
+  assert.equal(g.mod.prompt(null), SR.OLD_HOST);
+  assert.match(SR.OLD_HOST, /doesn.t have chests yet/);
+  assert.equal(g.mod.interact(null), true);
+  assert.deepEqual(notes, [SR.OLD_HOST]);
+  assert.equal(g.mod.debug.state().open, null);
+  assert.equal(g.mod.debug.openChest(2, 0), false); // a guest never pushes decor
+  assert.ok(!w.decor.some(d => d.x === 2));
+  // the host updates: a real slice brings chests back
+  g.mod.load({ v: 1, chests: {}, seen: [], learned: [], r: 1, s: 'abc' }, 'net');
+  assert.ok(g.mod.debug.rev() > rev);
+  assert.match(g.mod.prompt(null), /Open crate/);
+  // the host itself never shows the old-host notice
+  const h = makeCtx(w, 'host'); lookAt(h.ctx); h.mod.load(undefined, 'save');
+  assert.match(h.mod.prompt(null), /Open crate/);
+});
+
+test('guest with no known pose is refused with reach; host without physics is not', () => {
+  const st = emptyState();
+  st.chests['1,0'] = [{ kind: 'wood', count: 4 }, ...new Array(11).fill(null)];
+  const a = { kind: 'storage.take', x: 1, z: 0, from: 0, expect: { kind: 'wood', count: 4 } };
+  const bag = new Bag(), before = JSON.stringify([st, bag.slots]);
+  assert.equal(applyStorageAction(st, { ...a }, 'guest', bag, env(crate)).reason, 'reach');
+  assert.equal(JSON.stringify([st, bag.slots]), before);
+  // through the module: ctx.other is null until the guest's first pose arrives
+  const w = freshWorld(); w.decor.push({ type: 'crate', x: 1, z: 0 });
+  const { ctx, mod, emits, bags } = makeCtx(w, 'host');
+  mod.load({ v: 1, chests: { '1,0': [{ kind: 'wood', count: 4 }] }, seen: [], learned: [], r: 0 }, 'save');
+  emits.length = 0;
+  mod.action({ ...a }, 'guest', bags.guest);
+  assert.equal(bags.guest.count('wood'), 0);
+  assert.equal(emits[0].e.text, 'Step a little closer'); assert.equal(emits[0].to, 'guest');
+  ctx.other = { x: 2, z: 0 };
+  mod.action({ ...a }, 'guest', bags.guest);
+  assert.equal(bags.guest.count('wood'), 4);
+  ctx.physics = null; // the host is never refused for a missing pose
+  assert.equal(applyStorageAction(st, { ...a }, 'host', new Bag(), { decorAt: () => 'crate', pos: () => null }).ok, true);
+});
+
+test('put and putAll are refused when the slice would grow past MAX_SLICE_CHARS; take still works', () => {
+  const chests = {};
+  const full = () => Array.from({ length: CHEST_SLOTS }, () => ({ kind: 'hammer', count: 1, durability: 37 }));
+  for (let x = -20; x <= 20; x++) for (let z = -20; z <= 20; z++) if (Object.keys(chests).length < 330 && !(x === 1 && z === 0)) chests[x + ',' + z] = full();
+  const st = stateFrom({ v: 1, chests, seen: [], learned: [], r: 0 }, 'save', freshWorld());
+  assert.ok(SR.sliceChars(st, '1,0', null) > SR.MAX_SLICE_CHARS);
+  const anyCrate = { decorAt: () => 'crate', pos: () => null };
+  const bag = bagFrom([{ kind: 'wood', count: 3 }]); bag.slots[9] = { kind: 'leaf', count: 2 };
+  const before = JSON.stringify([st, bag.slots]);
+  const r1 = applyStorageAction(st, { kind: 'storage.put', x: 1, z: 0, from: 0, expect: { kind: 'wood', count: 3 } }, 'host', bag, anyCrate);
+  const r2 = applyStorageAction(st, { kind: 'storage.putAll', x: 1, z: 0 }, 'host', bag, anyCrate);
+  assert.equal(r1.reason, 'tooBig'); assert.equal(r2.reason, 'tooBig');
+  assert.equal(JSON.stringify([st, bag.slots]), before);
+  const t = applyStorageAction(st, { kind: 'storage.take', x: -20, z: -20, from: 0, expect: { kind: 'hammer', count: 1 } }, 'host', bag, anyCrate);
+  assert.equal(t.ok, true);
+  // the module shows a friendly notice and keeps the item in the bag
+  const w = freshWorld(); w.decor.push({ type: 'crate', x: 1, z: 0 });
+  const { mod, emits, bags } = makeCtx(w);
+  mod.load(sliceOf(st), 'save');
+  bags.host.slots[9] = { kind: 'wood', count: 2 }; emits.length = 0;
+  mod.action({ kind: 'storage.put', x: 1, z: 0, from: 9, expect: { kind: 'wood', count: 2 } }, 'host', bags.host);
+  assert.equal(bags.host.count('wood'), 2);
+  assert.match(emits[0].e.text, /stuffed/);
+});
+
+test('stale clicks get a soft "someone moved that" notice and a repaint; a different kind in the target slot says so', () => {
+  const w = freshWorld(); w.decor.push({ type: 'crate', x: 1, z: 0 });
+  const { mod, emits, bags } = makeCtx(w);
+  mod.load({ v: 1, chests: { '1,0': [{ kind: 'wood', count: 4 }, { kind: 'leaf', count: 1 }] }, seen: [], learned: [], r: 0 }, 'save');
+  const rev = mod.debug.rev(); emits.length = 0;
+  mod.action({ kind: 'storage.take', x: 1, z: 0, from: 0, expect: { kind: 'wood', count: 9 } }, 'host', bags.host);
+  mod.action({ kind: 'storage.take', x: 1, z: 0, from: 5, expect: { kind: 'wood', count: 4 } }, 'host', bags.host);
+  assert.deepEqual(emits.map(e => e.e.text), ['Someone moved that — try again', 'Someone moved that — try again']);
+  assert.ok(mod.debug.rev() > rev); // the open panel repaints at once
+  emits.length = 0;
+  bags.host.slots[9] = { kind: 'scrap', count: 1 };
+  mod.action({ kind: 'storage.put', x: 1, z: 0, from: 9, to: 1, expect: { kind: 'scrap', count: 1 } }, 'host', bags.host);
+  assert.equal(emits[0].e.text, 'That slot already holds something else');
+  assert.deepEqual(bags.host.slots[9], { kind: 'scrap', count: 1 });
 });
