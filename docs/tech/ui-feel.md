@@ -90,6 +90,32 @@ inventory overlap), and the sandbox exercises it with `?toasts=1`.
 
 ## Measurements
 
+### Round 2, on current main (retarget)
+
+`shoot.py --cost-only --reps 2`, median of 2 fresh pages, on the new mock (survival-ui sv3 + pickup feed, wired
+as ADOPT). Raw data: `sandbox/ui-feel/shots/report.json`. Machine load average was 40+, so trust counts over ms.
+
+| Scenario (120 frames) | style ms / recalcs | layout ms / layouts | script ms |
+|---|---|---|---|
+| idle | 0 / 0 | 0 / 0 | 2.8 |
+| select (40 selects) | 51.2 / 128 | 11.2 / 68 | 3.9 |
+| select-nofeel | 52.3 / 126 | 11.8 / 81 | 2.7 |
+| pickup (12 pickups, flights + held counts) | 46.0 / 173 | 8.9 / 49 | 7.8 |
+| pickup-nofeel (same pickups, feed rows only) | 24.4 / 145 | 7.8 / 46 | 3.1 |
+| stats (20 sets) | 19.0 / 149 | 0 / 0 | 2.5 |
+| crosshair | 14.5 / 122 | 1.3 / 11 | 2.6 |
+| inventory (4 open/close) | 28.0 / 73 | 11.0 / 16 | 2.9 |
+| inventory-nofeel | 11.9 / 20 | 7.8 / 12 | 3.0 |
+
+- **select now costs what main costs**: ui-feel no longer draws a cursor under sv3, so select and
+  select-nofeel are the same (main's own cursor and name tag are the 68-81 layouts).
+- **pickup: +3 layouts, +28 recalcs, +4.7 ms script over 12 pickups** for the flights and the held counts (the
+  `uf-wait` class flip and `data-uf-old` write). The feed rows are in both rows.
+- **inventory: +4 layouts and about +4 ms style per open/close pair** for the CSS open/close transitions.
+- Idle is 0/0: nothing ticks when nothing happens.
+
+### Round 1 (old mock, before main had its own cursor and feed)
+
 `python sandbox/ui-feel/shoot.py [--cost-only | --shots-only] [--reps N]`
 
 Each scenario drives ~120 frames of input on a fresh page, plus 30 frames of tail. It runs once to warm up
