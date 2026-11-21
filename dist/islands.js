@@ -64,8 +64,8 @@ export function createIslands(ctx) {
     for (let j = 0; j < MAX_PER_KIND[i]; j++) m.setColorAt(j, new T.Color(1, 1, 1)); // init instanceColor once (no recompiles later)
     return m;
   });
-  // Palms have two extra instanced meshes: the spent (straw, drooped) palm and the coconut cluster.
-  const extra = ['palmSpent', 'nuts'].map(k => {
+  // Palms have an extra instanced mesh: the spent (straw, drooped) palm. Coconuts are part of the live palm geometry.
+  const extra = ['palmSpent'].map(k => {
     const m = new T.InstancedMesh(models.geos[k], models.mats[k], MAX_PER_KIND[0]);
     m.name = 'island-' + k; m.count = 0; m.castShadow = true; m.receiveShadow = true;
     m.frustumCulled = false; // instances swap in after relayout, so a cached bounding sphere would be stale
@@ -73,7 +73,7 @@ export function createIslands(ctx) {
     for (let j = 0; j < MAX_PER_KIND[0]; j++) m.setColorAt(j, new T.Color(1, 1, 1));
     return m;
   });
-  const [palmSpent, nuts] = extra;
+  const [palmSpent] = extra;
   const veg = [...meshes, ...extra]; // scaled down while the island rises or sinks
   group.add(dome, ...veg);
   if (ctx.scene) { ctx.scene.add(group); ctx.scene.add(lagoon); }
@@ -113,10 +113,10 @@ export function createIslands(ctx) {
     }
     vP.set(n.x, n.y - sink - (ki === 0 ? .1 : .04), n.z); vS.set(sx, sy, sz);
     mtx.compose(vP, qA, vS);
-    if (ki === 0) { // live palm + coconuts, or the spent palm
+    if (ki === 0) { // live palm (with coconuts), or the spent palm
       const j = nodeInst[k], spent = frac >= 1;
-      m.setMatrixAt(j, spent ? ZERO : mtx); nuts.setMatrixAt(j, spent ? ZERO : mtx); palmSpent.setMatrixAt(j, spent ? mtx : ZERO);
-      nuts.instanceMatrix.needsUpdate = true; palmSpent.instanceMatrix.needsUpdate = true;
+      m.setMatrixAt(j, spent ? ZERO : mtx); palmSpent.setMatrixAt(j, spent ? mtx : ZERO);
+      palmSpent.instanceMatrix.needsUpdate = true;
     } else m.setMatrixAt(nodeInst[k], mtx);
     m.instanceMatrix.needsUpdate = true;
     paintNode(k);
@@ -145,7 +145,7 @@ export function createIslands(ctx) {
       nodeKind[k] = ki; nodeInst[k] = counts[ki]++;
     }
     for (let i = 0; i < 4; i++) meshes[i].count = Math.min(counts[i], MAX_PER_KIND[i]);
-    palmSpent.count = nuts.count = meshes[0].count;
+    palmSpent.count = meshes[0].count;
     for (let k = 0; k < nodeCount; k++) writeNode(k);
     for (const m of veg) { m.boundingSphere = null; m.computeBoundingSphere(); }
     // Per-seed sand tint, a few percent either way.
