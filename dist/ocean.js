@@ -125,7 +125,7 @@ void main() {
   vec3 n = normalize(vec3(vNormalW.x - g.x, vNormalW.y, vNormalW.z - g.y));
 
   float ndv = max(dot(n, V), 0.0);
-  float fresnel = min(0.02 + 0.98 * pow(1.0 - ndv, 5.0), 0.3); // capped low: mid-distance sea keeps its own saturated blue
+  float fresnel = min(0.02 + 0.98 * pow(1.0 - ndv, 5.0), 0.4); // capped low: mid-distance sea keeps its own saturated blue
   vec3 R = reflect(-V, n);
   vec3 skyRefl = mix(uSky, uZenith, 0.35 + 0.65 * pow(clamp(R.y, 0.0, 1.0), 0.25)); // reflect mostly the blue sky, not the pale horizon
 
@@ -177,8 +177,8 @@ void main() {
       ring = max(ring, smoothstep(0.25, 0.6, d) * (1.0 - smoothstep(0.6, 1.0, d)) * f.w);
     }
     // Raft edge: lace that thins with distance from the deck. Items: a faint ring broken up by the same noise.
-    float collar = max(smoothstep(1.0 - edge, 1.0 - edge * 0.4, cl) * min(1.0, edge * 1.4),
-                       ring * smoothstep(0.3, 0.75, cl) * 0.8) * 0.5;
+    float collar = max(smoothstep(1.0 - edge, 1.0 - edge * 0.4, cl) * min(1.0, edge * 1.4) * 0.85,
+                       ring * smoothstep(0.3, 0.75, cl) * 0.4);
     col = mix(col, uFoam, max(foam, collar));
   }
 
@@ -210,7 +210,7 @@ export function createOcean(T, options = {}) {
     uZenith: { value: new T.Color(options.zenith ?? '#2a8fd6') },
     uDeep: { value: new T.Color('#08355f') },
     uShallow: { value: new T.Color('#1a78b0') },
-    uFoam: { value: new T.Color('#d8efe9') },
+    uFoam: { value: new T.Color('#eef8f6') },
     uFadeNear: { value: options.fadeNear ?? 75 },
     uFadeFar: { value: options.fadeFar ?? 135 },
     uRaftMask: { value: mask },
