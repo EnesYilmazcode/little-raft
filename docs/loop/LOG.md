@@ -777,3 +777,41 @@ Open:
 - Rope never drops from barrels (Raft about 7%).
 - Raft wind never changes direction; ours shifts every 70-140 s.
 Next gaps: fixed-position islands, crafting tabs (Navigation, Food/Water), bed as a respawn point, tool durability (hook 40, rod 10), Tinker's Desk cost 14 planks + 2 scrap.
+
+## 2026-11-21 · loop-fidelity-202611210900 (raft fidelity, round 3)
+Base: raft-master 0cf1e15 merged with loop-fidelity-202611210821 (db942be7, ported by hand: import build suffixes, juicer coconut unified to Raft's +5/+20, dive gear oxy x drowning air).
+This branch carries round 2b too, so merge it instead of 202611210821.
+Claimed and landed:
+- **Islands stay put** (islands-layout.js, islands.js, sailing-world.js):
+  - An island sits at a fixed seabed position and moves only by the sailing seabed offset. You steer, paddle or anchor to reach it, or drift past it. The old dock timeline is gone.
+  - The first island spawns 60-80 m ahead and later ones 120-160 m, 20-40 m to the side.
+  - It despawns more than 150 m behind or more than 220 m away, but never while a player is on it.
+  - It shows a "Land ahead!" notice and a compass badge, and the raft can beach on it.
+  - Save format v2 (bx, bz); v1 saves migrate. The host owns spawn and despawn.
+- **Bed respawn point** (sleep.js spawn[role], content respawn hook): sleeping in a bed, or E on it by day, sets your respawn. A faint wakes you beside that bed if it still stands.
+- **Crafted anchor** (anchor-rules.js, anchor-model.js):
+  - Costs 2 wood + 4 rope + 4 stone and is placed on an edge tile. E drops or raises it; hammer + X takes it back.
+  - The raft can't drop anchor without one. Old anchored saves get one placed for free.
+- **Fishing rod** lasts 10 catches; it now wears per catch and breaks at 0.
+- **Six crafting tabs**: Tools, Sailing, Food, Parts, Build, Other. Every recipe sits in exactly one tab, and labels hide below 440 px.
+- **Barrel loot** follows Raft's shape: 4-6 items (plank 37.7, leaf 18.9, plastic 14.2, scrap 9.4, rope 7.1, stone 6.1, flower seed and coconut 3.3 each, plus 1 treasure roll).
+- **Tinker's Desk** costs 14 planks + 2 scrap.
+Fleet: 1 porter, 3 builders (worktrees), 2 reviewers.
+Review fixes:
+- a rod already at 0 never broke
+- islands dispose left the compass marker and blocker live
+- the anchor had a floating brace and no rope run
+- the compass island glyph read as "H"; the compass also jumped when its label changed
+- seven recipes had blank icons (rug, pennant, fern, hammock, glass lamp, receiver, sinker)
+- the land notice wrapped
+Checks:
+- npm test 1041/1041.
+- shoot.py `errors: []`; Esc from the inventory: no pause, still locked.
+- Frame time 151 ms vs raft-master 147 ms on the same machine (+3%, within pose noise).
+Open:
+- PlayerPhysics pulls you aboard at 50 m, so a drifting raft yanks you off an island.
+- migrateAnchor ignores grill tiles.
+- The palm planter and lantern onboarding steps may wait on the 14-plank desk in a fresh world; check it in play.
+- The anchor has no held model.
+- The sailing spec and engine docs still mention the anchor post.
+Next gaps: seagull crop raids + scarecrow (after the crops lane lands), swimming back to a drifting raft instead of the 50 m teleport, a hook range and reel speed check against Raft, a Medium Crop Plot, backpack +10 slots, constant wind direction.
