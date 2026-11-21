@@ -424,7 +424,7 @@ export function mount(transfer = null) {
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging}); for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
-    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); diving?.warm(renderer); } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
+    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     rebuildRaft();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     syncItems(); singlePass(scene); refreshPointerUI(true);
@@ -520,6 +520,18 @@ export function mount(transfer = null) {
     try { warm = renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
     catch (e) { console.warn('shader warm-up failed', e); return Promise.resolve(); }
     return Promise.race([warm, new Promise(r => later(r, WARM_TIMEOUT_MS))]);
+  }
+  // The 11 underwater programs compile synchronously, so they wait for an idle moment once the loop is running
+  // (the title screen, or the first seconds of play) instead of stretching mount(); start() asks again in case.
+  let diveWarmed = false;
+  function warmDiving() {
+    if (diveWarmed || disposed || !diving || !renderer) return;
+    diveWarmed = true; diving.warm(renderer);
+  }
+  function warmDivingWhenIdle(ms = 2000) {
+    if (diveWarmed) return;
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(() => warmDiving(), {timeout:ms});
+    else later(warmDiving, ms);
   }
   function palm(parent, x, y, z, s = 1) {
     const g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); cylinder(.09, .17, 1.6, '#ad8153', 0, .8, 0, g);
@@ -1047,7 +1059,7 @@ export function mount(transfer = null) {
   }
 
   function start() {
-    running = true; const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false;
+    running = true; warmDivingWhenIdle(1000); const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false;
     if (!saveAvailable) setText('#saveStatus', 'Browser storage is unavailable. This session will not be saved.');
     refreshPointerUI(true);
   }
@@ -1890,6 +1902,7 @@ export function mount(transfer = null) {
     warmShaders().then(() => { // after settings: the saved graphics preset decides the light/shadow program variants
       if (!loopPending || disposed || active) return;
       loopPending = false; active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
+      later(() => warmDivingWhenIdle(), 500); // let the first frames through first
     });
     // onboarding/prompts hook (docs/cloud/onboarding.md): lets dist/prompts.js raycast with the live camera.
     try { window.raftMount = {T, scene, camera, debug:debugApi}; window.dispatchEvent(new CustomEvent('raft:mount', {detail:window.raftMount})); } catch {}
