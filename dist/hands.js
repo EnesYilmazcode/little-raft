@@ -8,6 +8,7 @@
 //     left hand when the right holds a tool such as the hammer). Blends in, no lower/raise.
 //     'throw': forces the wind-up (full charge) pose.
 //   hands.setModelFactory(fn | null);              // swap the model source later; rebuilds cached models
+//   hands.setLook({skin, shirt});                  // hex strings (dist/look.js lookColors): recolours skin + sleeves, no rebuild
 //   hands.update({ dt, time, charge, reeling, casting, walking, hasHookOut, motion, yaw, pitch, fov });
 //   hands.ropeAnchor().getWorldPosition(v);        // rope start: rod tip, right fist while the hook is out, else left hand
 //   hands.itemModel('fishingrod')                  // the held model (rod userData: float, leader, tipNode)
@@ -110,14 +111,19 @@ export function createHands(T, { modelFactory = null } = {}) {
   const skinPalm = keyShade(mat(0xbb8274, 0.64, { emissive: 0x160805, map: tx.skin }));
   const nail = keyShade(mat(0xd8ae9c, 0.38, { emissive: 0x120806 }));
   const crease = mat(0x7a4a3a, 0.8);
-  const sleeveMat = keyShade(mat(0x5a7462, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
-  const cuffMat = keyShade(mat(0x465c4e, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
+  // Cloth is baked relative to the sleeve colour (sleeve white, cuff ~3/4 shade) and tinted by clothV, so setLook can
+  // recolour both with one material colour.
+  const sleeveMat = keyShade(mat(0xffffff, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
+  const cuffMat = keyShade(mat(0xffffff, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 })); cuffMat.color.multiplyScalar(0.78);
   const ropeMat = mat(0xc4a46c, 1.0, { map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
+  const BODY_SKIN = new T.Color('#f2c29b');           // avatar.js default skin (dist/look.js PALETTE.skin[0])
+  const inv = (c) => new T.Color(1 / c.r, 1 / c.g, 1 / c.b);
+  const BODY_SKIN_INV = inv(BODY_SKIN);
   const ropeDarkMat = mat(0x8a6e44, 1.0, { map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
   // Baked parts: one vertex-coloured material per surface type (the flat ones above only supply the colours;
   // the baked ones carry the surface textures and the key shade).
   const skinV = keyShade(mat(0xffffff, 0.6, { emissive: 0x160805, vertexColors: true, map: tx.skin }));
-  const clothV = keyShade(mat(0xffffff, 1.0, { vertexColors: true, map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
+  const clothV = keyShade(mat(0x5a7462, 1.0, { vertexColors: true, map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 })); // sleeve colour until setLook
   const ropeV = mat(0xffffff, 1.0, { vertexColors: true, map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
   const tint = (m) => m.material.color;
   const meshesOf = (...objs) => { const out = []; for (const o of objs) o.traverse((c) => { if (c.isMesh) out.push(c); }); return out; };
@@ -551,5 +557,13 @@ export function createHands(T, { modelFactory = null } = {}) {
       return st.hookOut ? ropeTip : handTip;                    // line runs out of the right fist while the hook is out
     },
     preload(kinds) { for (const k of kinds) mountFor(k); },
+    setLook(colors) {
+      const { skin: skinHex, shirt } = colors && typeof colors === 'object' ? colors : {};
+      // The viewmodel skin keeps its own darker, warmer shading: the arms are baked into vertex-coloured meshes (the
+      // flat materials' colours at build time, never changed), so the look is a per-channel multiplier on the shared
+      // baked materials, (chosen tone / default body skin): the default look gives exactly the old colours.
+      if (typeof skinHex === 'string') skinV.color.set(skinHex).multiply(BODY_SKIN_INV);
+      if (typeof shirt === 'string') clothV.color.set(shirt); // cuff is baked at 3/4 of this
+    },
   };
 }

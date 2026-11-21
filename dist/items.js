@@ -167,6 +167,12 @@ const LIST = [
     tip: 'Breathy little tubes tied in a row. Look up for high notes, down for low ones.' }),
   item('bells', 'Bell Bars', 'tool', { iconTint: '#c9b26a', stack: 1, recipe: hand({ wood: 2, scrap: 3, nail: 2 }), unlock: research('nail'),
     tip: 'Scrap-metal bars on a little frame. They ring bright and fade out softly.' }),
+  item('finder', 'Seashell Finder', 'tool', { iconTint: '#c99560', stack: 1,
+    recipe: hand({ scrap: 4, wood: 2, rope: 2 }), unlock: discover('sand', 'scrap'),
+    tip: 'A driftwood wand with a brass coil. It ticks faster near buried bundles. Never wears out.' }),
+  item('spade', 'Little Spade', 'tool', { iconTint: '#bb8650', tool: true, durability: 60,
+    recipe: hand({ wood: 3, scrap: 2 }), unlock: discover('sand'),
+    tip: 'Press E on island sand to dig. Finds bundles, or at least a handful of sand. R fixes it.' }),
 
   // ----- food -----
   item('cookedfish', 'Grilled Fish', 'food', { iconTint: '#e0a060', stack: 10,
@@ -208,6 +214,9 @@ const LIST = [
   item('net', 'Collection Net', 'build', { icon: 'icon-net', placeholder: false, placeable: true,
     recipe: hand({ wood: 3, rope: 3, nail: 2 }), unlock: discover('nail'),
     tip: 'Place it near the edge and it scoops up passing debris (even barrels!) for you.' }),
+  item('maptable', 'Map Table', 'decor', { iconTint: '#c9a46a', stack: 5, placeable: true,
+    recipe: hand({ wood: 6, rope: 3, nail: 2, copperingot: 1 }), unlock: research('copperingot'),
+    tip: 'A little chart table. It remembers the islands you meet and points the sail where you like.' }),
 
   // ----- stations -----
   item('researchtable', 'Research Table', 'station', { iconTint: '#c69860', stack: 5, placeable: true,
@@ -230,7 +239,7 @@ export const PLACEABLE_IDS = Object.freeze(ITEM_IDS.filter((id) => ITEMS[id].pla
 /** Collision radius (metres) of each placed item; 0 = walk-through (net lies flat). */
 export const BLOCK_RADII = deepFreeze({
   palm: 0.42, crate: 0.55, bench: 0.45, sail: 0.14, lantern: 0.12, net: 0,
-  smelter: 0.5, researchtable: 0.55, grill: 0.45,
+  smelter: 0.5, researchtable: 0.55, grill: 0.45, maptable: 0.5,
   flowerbox: 0.3, beehive: 0.35, candle: 0.1, // [bees]
 });
 
@@ -248,6 +257,7 @@ const REPAIRS = deepFreeze({
   fishingrod: { wood: 1, rope: 2 },
   spear: { wood: 2, rope: 1 },
   metalspear: { metalingot: 1, rope: 1 },
+  spade: { wood: 2, scrap: 1 },
 });
 
 /** Alternate / older names that may appear in saves or network messages. */
