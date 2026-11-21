@@ -16,7 +16,7 @@
 // by the returned group (dispose freely).
 
 export const PALETTE = Object.freeze({
-  woodPale: '#e8b872', woodLight: '#d99f5c', woodMid: '#bd7e43', woodDark: '#8f5630', woodDeep: '#653d24',
+  woodPale: '#e8b872', woodLight: '#cfa067', woodMid: '#b07e50', woodDark: '#8f5630', woodDeep: '#653d24',
   woodEnd: '#e8c48c', drift: '#c4ad8a', bark: '#7c5a3c', barkDark: '#5d4029', barkLight: '#a07a50',
   rope: '#dcc28a', ropeDark: '#a98c58',
   leafDeep: '#3f7f3a', leaf: '#5fa548', leafLight: '#9cc957', leafTip: '#c4d667', stem: '#8d8a3f',
@@ -237,7 +237,7 @@ export function lowpoly(T) {
           }
         }
         g.setAttribute('color', new T.BufferAttribute(arr, 3));
-        g.userData.alpha = o.alpha ?? 1;
+        g.userData.alpha = o.alpha ?? 1; g.userData.smooth = !!o.smooth;
         if (ob) { ob.inv = ob.m.clone().invert(); ob.wb = new T.Box3(ob.lmin, ob.lmax).applyMatrix4(ob.m); }
         list.push(g); occl.push(ob); id++;
         return api;
@@ -245,11 +245,26 @@ export function lowpoly(T) {
       // ao: {y0, y1, lo} vertical occlusion gradient + darker down-facing faces
       build(ao) {
         if (!list.length) return null;
-        let count = 0; for (const g of list) count += g.attributes.position.count;
+        // drop zero-area triangles (lathe/cone caps collapse onto the axis): invisible, but they cost vertices
+        const keep = list.map(g => {
+          const a = g.attributes.position.array, k = new Uint8Array(a.length / 9);
+          for (let t = 0; t < k.length; t++) {
+            const o = t * 9, ux = a[o + 3] - a[o], uy = a[o + 4] - a[o + 1], uz = a[o + 5] - a[o + 2], vx = a[o + 6] - a[o], vy = a[o + 7] - a[o + 1], vz = a[o + 8] - a[o + 2];
+            const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
+            k[t] = cx * cx + cy * cy + cz * cz > 1e-16 ? 1 : 0;
+          }
+          return k;
+        });
+        let count = 0; for (const k of keep) for (let t = 0; t < k.length; t++) count += k[t] * 3;
         const pos = new Float32Array(count * 3), cl = new Float32Array(count * 3);
         let off = 0;
-        const ranges = [], alphas = list.map(g => g.userData.alpha);
-        for (const g of list) { pos.set(g.attributes.position.array, off * 3); cl.set(g.attributes.color.array, off * 3); ranges.push(off); off += g.attributes.position.count; g.dispose(); }
+        const ranges = [], alphas = list.map(g => g.userData.alpha), smooth = list.map(g => g.userData.smooth);
+        list.forEach((g, gi) => {
+          ranges.push(off);
+          const pa = g.attributes.position.array, ca = g.attributes.color.array, k = keep[gi];
+          for (let t = 0; t < k.length; t++) if (k[t]) { pos.set(pa.subarray(t * 9, t * 9 + 9), off * 3); cl.set(ca.subarray(t * 9, t * 9 + 9), off * 3); off += 3; }
+          g.dispose();
+        });
         ranges.push(off);
         list.length = 0;
         const out = new T.BufferGeometry();
@@ -257,6 +272,12 @@ export function lowpoly(T) {
         out.setAttribute('normal', new T.BufferAttribute(new Float32Array(count * 3), 3));
         out.setAttribute('color', new T.BufferAttribute(cl, 3));
         out.computeVertexNormals();
+        // smooth-shaded parts (sail canvas): average the flat normals of coincident vertices within the part
+        for (let pi = 0; pi < smooth.length; pi++) if (smooth[pi]) {
+          const nor = out.attributes.normal.array, acc = new Map(), key = v => Math.round(pos[v * 3] * 4096) + ',' + Math.round(pos[v * 3 + 1] * 4096) + ',' + Math.round(pos[v * 3 + 2] * 4096);
+          for (let v = ranges[pi]; v < ranges[pi + 1]; v++) { const kk = key(v); let s = acc.get(kk); if (!s) acc.set(kk, s = [0, 0, 0]); s[0] += nor[v * 3]; s[1] += nor[v * 3 + 1]; s[2] += nor[v * 3 + 2]; }
+          for (let v = ranges[pi]; v < ranges[pi + 1]; v++) { const s = acc.get(key(v)), l = Math.hypot(s[0], s[1], s[2]) || 1; nor[v * 3] = s[0] / l; nor[v * 3 + 1] = s[1] / l; nor[v * 3 + 2] = s[2] / l; }
+        }
         if (ao && ao.contact) contactAO(pos, out.attributes.normal.array, cl, ranges, ao.contact, ao.radius ?? 0.07);
         occl.length = 0;
         if (ao) {
@@ -523,14 +544,20 @@ export function createFloor(T, index = 0, getMaterial) {
   for (let i = 0; i < n; i++) {
     const x0 = -1 + i * pitch + 0.009, x1 = -1 + (i + 1) * pitch - 0.009, w = x1 - x0, xc = (x0 + x1) / 2;
     const th = 0.058, top = FLOOR_TOP - r() * 0.007;
-    const tone = mid.clone().lerp(light, 0.2 + 0.55 * r()), kind = r(), ps = seedOf(index) + i * 131;
-    if (kind < 0.1) tone.lerp(drift, 0.22); else if (kind > 0.88) tone.multiplyScalar(0.9);
+    const tone = mid.clone().lerp(light, 0.1 + 0.75 * r()).multiplyScalar(0.9 + 0.14 * r()), kind = r(), ps = seedOf(index) + i * 131;
+    if (kind < 0.12) tone.lerp(drift, 0.28); else if (kind > 0.86) tone.multiplyScalar(0.86);
     const len = 1.985 - r() * 0.02, dz = (r() - 0.5) * 0.01;
-    P.add(K.box(w, th, len, 0.014), tone, { at: [xc, top - th / 2, dz], rot: [0, (r() - 0.5) * 0.012, (r() - 0.5) * 0.02], jitter: 0.006, paint: tp, tint: 0.05,
-      vpaint: (c, v) => c.multiplyScalar(0.93 + 0.14 * hash4(Math.round(v.z * 3), Math.round(v.x * 40), 0, ps)) }); // weathering drift along the board
-    // faint grain streaks (slightly darker slivers on the top face) and the occasional split along the grain
-    for (let k = 0, ns = 1 + Math.floor(r() * 2.5); k < ns; k++) { const sl = 0.5 + r() * 0.9, sz = (r() - 0.5) * (1.8 - sl); P.add(K.box(0.014 + r() * 0.01, 0.003, sl, 0), tone.clone().multiplyScalar(0.94), { at: [xc + (r() - 0.5) * w * 0.7, top + 0.001, sz + dz], tint: 0, occlude: false }); }
-    if (r() < 0.3) { const cx = xc + (r() - 0.5) * w * 0.4, cl = 0.35 + r() * 0.4, cz = (r() - 0.5) * (1.6 - cl); P.add(K.box(0.008, 0.004, cl, 0), 'woodDeep', { at: [cx, top + 0.0012, cz], rot: [0, (r() - 0.5) * 0.04, 0], tint: 0, occlude: false }); }
+    // about half the planks are two narrower boards of different tone (a second strip of value at eye level)
+    const GAP = 0.008, split = r() < 0.5, boards = split ? [[xc - (w + GAP) / 4, (w - GAP) / 2, tone], [xc + (w + GAP) / 4, (w - GAP) / 2, tone.clone().lerp(r() < 0.5 ? drift : mid, 0.25 + 0.2 * r()).multiplyScalar(0.94 + 0.1 * r())]] : [[xc, w, tone]];
+    boards.forEach(([bx, bw, bt], bi) => {
+      const bs = ps + bi * 17;
+      P.add(K.box(bw, th, len, 0.014), bt, { at: [bx, top - th / 2, dz], rot: [0, (r() - 0.5) * 0.012, (r() - 0.5) * 0.02], jitter: 0.006, paint: tp, tint: 0.05,
+        vpaint: (c, v) => c.multiplyScalar(0.92 + 0.16 * hash4(Math.round(v.z * 3), Math.round(v.x * 40), 0, bs)) }); // weathering drift along the board
+      // faint grain streaks (slightly darker slivers on the top face)
+      for (let k = 0, ns = 1 + Math.floor(r() * (split ? 1.6 : 2.5)); k < ns; k++) { const sl = 0.5 + r() * 0.9, sz = (r() - 0.5) * (1.8 - sl); P.add(K.box(0.012 + r() * 0.008, 0.003, sl, 0), bt.clone().multiplyScalar(0.92), { at: [bx + (r() - 0.5) * bw * 0.6, top + 0.001, sz + dz], tint: 0, occlude: false }); }
+    });
+    // and the occasional split along the grain
+    if (r() < 0.3) { const cx = split ? boards[0][0] : xc + (r() - 0.5) * w * 0.4, cl = 0.35 + r() * 0.4, cz = (r() - 0.5) * (1.6 - cl); P.add(K.box(0.008, 0.004, cl, 0), 'woodDeep', { at: [cx, top + 0.0012, cz], rot: [0, (r() - 0.5) * 0.04, 0], tint: 0, occlude: false }); }
     for (const z of logZ) {
       if (lashed.has(i)) {
         for (const oz of [-0.02, 0.02]) {
@@ -554,13 +581,16 @@ function craftCrate(T, K, S) {
   for (const s of [-1, 1]) P.add(K.box(0.1, h, B, 0.014), 'woodDeep', { at: [s * 0.3, h / 2, 0], paint: tz, jitter: 0.006 });
   // corner posts + top/bottom frame
   const F = 0.07, y0 = h, y1 = top, ym = (y0 + y1) / 2, hb = B / 2 - F / 2;
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) P.add(K.box(F, y1 - y0, F, 0.014), 'woodDark', { at: [sx * hb, ym, sz * hb], paint: ty, jitter: 0.005 });
+  const frame = new T.Color(PALETTE.woodDeep).lerp(new T.Color(PALETTE.drift), 0.12);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) P.add(K.box(F, y1 - y0, F, 0.014), frame, { at: [sx * hb, ym, sz * hb], paint: ty, jitter: 0.005 });
   for (const y of [y0 + F / 2, y1 - F / 2]) for (const s of [-1, 1]) {
-    P.add(K.box(B - 2 * F + 0.01, F, F * 0.8, 0.012), 'woodDark', { at: [0, y, s * hb], paint: tp, jitter: 0.005 });
-    P.add(K.box(F * 0.8, F, B - 2 * F + 0.01, 0.012), 'woodDark', { at: [s * hb, y, 0], paint: tz, jitter: 0.005 });
+    P.add(K.box(B - 2 * F + 0.01, F, F * 0.8, 0.012), frame, { at: [0, y, s * hb], paint: tp, jitter: 0.005 });
+    P.add(K.box(F * 0.8, F, B - 2 * F + 0.01, 0.012), frame, { at: [s * hb, y, 0], paint: tz, jitter: 0.005 });
   }
-  // slats on four sides, three each, with a gap
-  const tones = calmTones(T, 4, 11);
+  // slats on four sides, three each, with a gap. Weathered grey-brown (woodDark -> drift), darker than the deck
+  // planks so a crate on the raft separates from the floor.
+  const dk = new T.Color(PALETTE.woodDark), dr = new T.Color(PALETTE.drift);
+  const tones = [0.5, 0.32, 0.6, 0.42].map(k => dk.clone().lerp(dr, k).multiplyScalar(0.86));
   const slatH = (y1 - y0 - 2 * F) / 3 - 0.02;
   for (let k = 0; k < 3; k++) {
     const y = y0 + F + 0.01 + slatH / 2 + k * (slatH + 0.02);
@@ -570,7 +600,7 @@ function craftCrate(T, K, S) {
     }
   }
   // diagonal braces front/back
-  for (const s of [-1, 1]) P.add(K.box(0.07, Math.hypot(B - 2 * F, y1 - y0 - 2 * F) - 0.04, 0.03, 0.01), 'woodMid', { at: [0, ym, s * (hb + 0.028)], rot: [0, 0, s * Math.atan2(B - 2 * F, y1 - y0 - 2 * F)], paint: ty });
+  for (const s of [-1, 1]) P.add(K.box(0.07, Math.hypot(B - 2 * F, y1 - y0 - 2 * F) - 0.04, 0.03, 0.01), dk.clone().lerp(dr, 0.2).multiplyScalar(0.8), { at: [0, ym, s * (hb + 0.028)], rot: [0, 0, s * Math.atan2(B - 2 * F, y1 - y0 - 2 * F)], paint: ty });
   // lid planks
   for (let i = 0; i < 4; i++) P.add(K.box(0.2, 0.035, B - 0.02, 0.01), tones[i], { at: [-0.3 + i * 0.2 + (i - 1.5) * 0.004, top + 0.017, 0], rot: [0, (i - 1.5) * 0.01, 0], paint: tz, jitter: 0.006 });
   for (let i = 0; i < 4; i++) for (const z of [-0.33, 0.33]) nail(K, P, -0.3 + i * 0.2, top + 0.036, z);
@@ -598,30 +628,34 @@ function craftBench(T, K, S) {
 }
 
 function craftNet(T, K, S) {
-  const P = S.solid, ty = timberPaint(T, 'x');
+  const P = S.solid, end = new T.Color(PALETTE.woodEnd);
   const L = 1.62, h = L / 2;
+  // sturdy log frame: barked logs (r 6.5 cm) with light end grain; the z logs lie on top of the x logs
+  const FR = 0.065, IN = FR + 0.005, YX = FR, YZ = FR * 2 - 0.012;
+  const endGrain = ax => (c, m, n) => { if (Math.abs(n[ax]) > 0.8) c.lerp(end, 0.6); };
   for (const s of [-1, 1]) {
-    P.add(K.cyl(0.04, 0.04, L, 6, 0.008), 'woodDark', { at: [0, 0.06, s * (h - 0.04)], rot: [0, 0, Math.PI / 2], jitter: 0.006, paint: ty, occlude: true });
-    P.add(K.cyl(0.04, 0.04, L - 0.1, 6, 0.008), 'woodDark', { at: [s * (h - 0.04), 0.1, 0], rot: [Math.PI / 2, 0, 0], jitter: 0.006, paint: timberPaint(T, 'z'), occlude: true });
+    P.add(K.cyl(FR * 0.95, FR, L, 7, 0.012), s < 0 ? 'bark' : 'barkDark', { at: [0, YX, s * (h - IN)], rot: [0.4 + s, 0, Math.PI / 2], jitter: 0.008, tint: 0.07, paint: endGrain('x'), occlude: true });
+    P.add(K.cyl(FR, FR * 0.95, L - 0.04, 7, 0.012), s < 0 ? 'barkDark' : 'bark', { at: [s * (h - IN), YZ, 0], rot: [Math.PI / 2, 1.1 + s, 0], jitter: 0.008, tint: 0.07, paint: endGrain('z'), occlude: true });
   }
   const netRope = new T.Color(PALETTE.ropeDark).lerp(new T.Color(PALETTE.bark), 0.25);
   // rope mesh: thick laid rope (spiral-shaded), sagging into the middle, knotted at every crossing
-  const n = 6, sagAt = (a, b) => 0.085 - 0.035 * (1 - a * a) * (1 - b * b), span = h - 0.06;
+  const n = 6, sagAt = (a, b) => 0.12 - 0.04 * (1 - a * a) * (1 - b * b), span = h - IN - 0.02;
   for (let k = 1; k < n; k++) {
     const t = -span + 2 * span * k / n, u = t / span;
     const ptsX = [], ptsZ = [];
     // each strand runs over the frame pole and tucks down outside it, so it reads as tied on
-    const fx = h - 0.04, fyX = 0.1, fyZ = 0.06; // poles along z sit at y 0.1, poles along x at 0.06
-    ptsX.push(K.V(-fx - 0.03, fyX - 0.03, t), K.V(-fx, fyX + 0.05, t)); ptsZ.push(K.V(t, fyZ - 0.03, -fx - 0.03), K.V(t, fyZ + 0.05, -fx));
+    const fx = h - IN, fyX = YZ, fyZ = YX, up = FR + 0.016, o = FR * 0.55; // strands along x cross the z logs and vice versa
+    ptsX.push(K.V(-fx - o, fyX + 0.01, t), K.V(-fx, fyX + up, t)); ptsZ.push(K.V(t, fyZ + 0.01, -fx - o), K.V(t, fyZ + up, -fx));
     for (let q = 1; q < n; q++) { const v = -1 + 2 * q / n, sv = v * span; ptsX.push(K.V(sv, sagAt(v, u) + 0.008, t)); ptsZ.push(K.V(t, sagAt(v, u), sv)); } // a point at every knot
-    ptsX.push(K.V(fx, fyX + 0.05, t), K.V(fx + 0.03, fyX - 0.03, t)); ptsZ.push(K.V(t, fyZ + 0.05, fx), K.V(t, fyZ - 0.03, fx + 0.03));
+    ptsX.push(K.V(fx, fyX + up, t), K.V(fx + o, fyX + 0.01, t)); ptsZ.push(K.V(t, fyZ + up, fx), K.V(t, fyZ + 0.01, fx + o));
     P.add(K.tube(ptsX, 0.02, 3, 11), netRope, { tint: 0.04, twist: 3 });
     P.add(K.tube(ptsZ, 0.02, 3, 11), netRope, { tint: 0.04, twist: 3 });
     for (let q = 1; q < n; q++) { const v = -span + 2 * span * q / n; P.add(K.octa(0.042), 'rope', { at: [v, sagAt(v / span, u) + 0.006, t], rot: [0, 0.6 + k + q, 0], scale: [1, 0.7, 1], tint: 0.12 }); }
   }
   // corner lashings binding the frame
-  for (const [x, z] of [[-h + 0.04, -h + 0.04], [h - 0.04, -h + 0.04], [-h + 0.04, h - 0.04], [h - 0.04, h - 0.04]]) P.add(K.torus(0.055, 0.014, 3, 6), 'ropeDark', { at: [x, 0.08, z], rot: [Math.PI / 2, 0, 0.7], scale: [1, 1, 1.3], twist: 6 });
-  for (const [x, z] of [[0, -h + 0.02], [0, h - 0.02], [-h + 0.02, 0.3], [h - 0.02, -0.3]]) P.add(K.cyl(0.085, 0.085, 0.13, 6, 0.025), 'float', { at: [x, 0.06, z], rot: [Math.PI / 2, 0, x ? Math.PI / 2 : 0], paint: (c, m) => { if (Math.abs(m.x - x) + Math.abs(m.z - z) < 0.03) c.set(PALETTE.floatLight); } });
+  for (const [x, z] of [[-h + IN, -h + IN], [h - IN, -h + IN], [-h + IN, h - IN], [h - IN, h - IN]]) P.add(K.torus(0.085, 0.018, 3, 6), 'ropeDark', { at: [x, (YX + YZ) / 2, z], rot: [Math.PI / 2, 0, 0.7], scale: [1, 1, 1.3], twist: 6 });
+  // cork floats sitting on the corner lashings
+  for (const [x, z] of [[-h + IN, -h + IN], [h - IN, -h + IN], [-h + IN, h - IN], [h - IN, h - IN]]) P.add(K.cyl(0.07, 0.078, 0.08, 7, 0.022), 'float', { at: [x, YZ + FR + 0.03, z], paint: (c, m, nn) => { if (nn.y > 0.9) c.set(PALETTE.floatLight); } });
 }
 
 function craftLantern(T, K, S) {
@@ -664,10 +698,13 @@ function craftPalm(T, K, S) {
   const B = 0.05;
   for (const z of [-0.3, 0, 0.3]) P.add(K.box(0.92, 0.05, 0.27, 0.012), z ? 'woodMid' : 'woodLight', { at: [0, 0.025, z], paint: timberPaint(T, 'x'), jitter: 0.006 });
   for (const z of [-0.3, 0, 0.3]) for (const x of [-0.38, 0.38]) nail(K, P, x, 0.052, z);
-  // terracotta pot with rolled rim and a painted band
-  const clayL = new T.Color(PALETTE.clayLight), clayD = new T.Color(PALETTE.clayDark), cream = new T.Color(PALETTE.canvas);
+  // terracotta pot with rolled rim
+  const clayL = new T.Color(PALETTE.clayLight), clayD = new T.Color(PALETTE.clayDark);
   P.add(K.lathe([[0, B], [0.25, B], [0.285, B + 0.03], [0.3, B + 0.1], [0.35, B + 0.4], [0.42, B + 0.42], [0.44, B + 0.47], [0.43, B + 0.53], [0.4, B + 0.55], [0.3, B + 0.55]], 8, 0.5), 'clay', {
-    tint: 0.05, paint: (c, m) => { const y = m.y - B; if (y > 0.4) c.lerp(clayL, 0.45); else if (y > 0.2 && y < 0.27) c.lerp(cream, 0.55); else if (y < 0.1) c.lerp(clayD, 0.4); },
+    // plain terracotta body (no cream band: the body is one lathe row, so a band tinted the whole pot grey),
+    // lighter rolled rim, darkening toward the foot
+    tint: 0.05, paint: (c, m) => { const y = m.y - B; if (y > 0.4) c.lerp(clayL, 0.45); else if (y < 0.1) c.lerp(clayD, 0.4); },
+    vpaint: (c, v) => { const y = v.y - B; if (y > 0.05 && y < 0.41) c.lerp(clayD, 0.3 * (1 - clamp01((y - 0.1) / 0.3))); },
   });
   const soil = K.cyl(0.33, 0.33, 0.06, 8);
   K.warp(soil, v => { if (v.y > 0) v.y += 0.03 * (1 - Math.hypot(v.x, v.z) / 0.33); });
@@ -735,15 +772,15 @@ function craftSail(T, K, S) {
   // canvas: a coarse bowed sheet so the facets catch the light; cream with a red stripe and a patch
   const SW = 1.44, Y0 = 1.09, Y1 = 3.17, SH = Y1 - Y0, BOW = 0.3;
   const bow = (x, y) => { const u = x / (SW / 2), v = clamp01((y - Y0) / SH); return BOW * (1 - 0.55 * u * u) * Math.pow(Math.sin(Math.PI * v), 0.8); };
-  const cloth = K.sheet(SW, SH, 7, 8, (x, z) => { const y = Y0 + SH / 2 - z; return [x, y, CZ + bow(x, y)]; });
+  const cloth = K.sheet(SW, SH, 7, 12, (x, z) => { const y = Y0 + SH / 2 - z; return [x, y, CZ + bow(x, y)]; });
   const stripe = new T.Color(PALETTE.stripe), stain = new T.Color(PALETTE.canvasStain), patch = new T.Color(PALETTE.patch);
   L.add(cloth, 'canvas', {
-    tint: 0.05, facetPos: true,
+    tint: 0, smooth: true, // smooth-shaded, no per-facet tint: reads as one bellied canvas, not grey triangles
     paint: (c, m) => {
       if (Math.abs(m.x) < SW / 14) c.copy(stripe);
       else if (m.x > 0.3 && m.x < 0.52 && m.y > 1.35 && m.y < 1.62) c.copy(patch);
-      c.lerp(stain, 0.35 * Math.pow(1 - clamp01((m.y - Y0) / SH), 3));
     },
+    vpaint: (c, v) => c.lerp(stain, 0.35 * Math.pow(1 - clamp01((v.y - Y0) / SH), 3)),
   });
   // bolt ropes and lashings
   for (const sx of [-SW / 2, SW / 2]) { const pts = []; for (let k = 0; k <= 6; k++) { const y = Y0 + SH * k / 6; pts.push(V(sx, y, CZ + bow(sx, y))); } P.add(K.tube(pts, 0.012, 3, 12), 'rope', { tint: 0.08 }); }

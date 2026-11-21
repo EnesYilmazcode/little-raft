@@ -11,7 +11,7 @@ current builders work. It exports the four game entry points with the same signa
 
 | current function (file) | replacement in `lowpoly-props.js` | contract kept |
 |---|---|---|
-| `createFloor(T, index, getMaterial)` (`dist/deck.js`) | `createFloor(T, index, getMaterial?)` | Returns a `Group` named `raft-floor`. Local x,z are in [-1, 1] and y is in [0, ~0.21]. The walk surface is at `FLOOR_TOP = 0.2`. `userData.{kind:'floor', index, topY, bounds, dispose()}` are set. Output is deterministic per `index`. `getMaterial` is accepted and ignored. `FLOOR_TOP` and `FLOOR_BOUNDS` are exported too. |
+| `createFloor(T, index, getMaterial)` (`dist/deck.js`) | `createFloor(T, index, getMaterial?)` | Returns a `Group` named `raft-floor`. The planks and logs span local x,z [-1, 1]; the rope lashings overhang the tile edge slightly, so the measured box is x ±1.014, z ±1 and y 0 to 0.224–0.227 (lashing tops sit up to about 2.7 cm above `FLOOR_TOP`; neighbouring tiles' lashings overlap by ~28 mm with no visible z-fighting). The walk surface is at `FLOOR_TOP = 0.2`. `FLOOR_BOUNDS` keeps reporting the nominal [-1, 1] × [0, 0.2] walk box, as before. `userData.{kind:'floor', index, topY, bounds, dispose()}` are set. Output is deterministic per `index`. `getMaterial` is accepted and ignored. `FLOOR_TOP` and `FLOOR_BOUNDS` are exported too. |
 | `createDebris(T, type, getMaterial, opts)` (`dist/debris.js`) | same signature, types `wood`/`leaf`/`scrap`/`barrel` | Throws on an unknown type. The root `Group` is untransformed and has one child, `debris-<type>-model`, centred on the origin. The model fits the same xz footprints (1.6/1.75/1.2/1.25). `opts.seed` and `opts.tilt` work as before. The barrel keeps its `barrel-tilt` pivot. `userData.{type, size, localMaterials: []}` are set. |
 | `createPlastic(T)` (`dist/plastic.js`) | `createPlastic(T)` | Returns a `Group` named `plastic`, about 0.6 × 0.71 × 0.38 and centred. `userData.{type:'plastic', size, dispose()}` are set. `dispose()` frees geometry only. |
 | `createCraft(T, type)` (`dist/crafts.js`) | `createCraft(T, type)`, types `sail`/`palm`/`lantern`/`net`/`bench`/`crate` | Returns `null` for an unknown type. The origin is the floor top centre, and the model builds up from y = 0 inside about 1.7 × 1.7 (the crate's rope handles reach 1.05). `userData.{craftType, size, height}` are set. The lantern's lit part (candle, flame, glowing panes) is one mesh on `lp-glow` with `userData.glass = true` and shadows off. |
@@ -57,10 +57,19 @@ call (crafts, plastic, debris metal), and `disposeGeometry()` disposed them. Tha
    `disposeScene()` (line 1152) may keep disposing everything at teardown. That is correct, since the next
    `mount()` re-uploads.
 
-4. **Optional cleanup.** `dist/deck.js`, `dist/debris.js`, `dist/crafts.js` and `dist/plastic.js` are no longer
-   imported by `game.js`. Nothing else in `dist/` imports them (checked with
-   `grep -rn "deck.js\|debris.js\|crafts.js\|plastic.js" dist`). Delete them once the release is accepted, or keep
-   them for one release as a fallback.
+4. **Old modules: do not delete them blindly.** After step 2, `dist/game.js` no longer imports `dist/deck.js`,
+   `dist/debris.js`, `dist/crafts.js` or `dist/plastic.js`, and nothing else in `dist/` does today
+   (`grep -rn "deck.js\|debris.js\|crafts.js\|plastic.js" dist`). But they are still used outside `game.js`:
+   - `sandbox/icons/main.js` imports `../../dist/plastic.js` and `../../dist/crafts.js` (and on
+     `fleet-tech/icons`, `sandbox/icons/item-models.js` also imports `../../dist/debris.js`). Deleting the old
+     files breaks the icons sandbox.
+   - The icons topic's ADOPT adds `dist/item-icons.js`, which imports `./plastic.js`, `./crafts.js` and
+     `./debris.js`. If both topics land, point those three imports at
+     `./lowpoly-props.js?build=...` instead (same names and signatures), so the baked HUD icons match the new
+     world props, and bump `ICON_ATLAS_VERSION` in `icon-atlas.js` so cached icons of the old models are not
+     reused. Coordinate the order with whoever adopts icons.
+   Only once nothing imports them (re-run the grep over `dist/` **and** `sandbox/`), delete them, or keep them
+   for one release as a fallback.
 
 ## Verify
 
@@ -77,7 +86,7 @@ call (crafts, plastic, debris metal), and `disposeGeometry()` disposed them. Tha
   - Hot-swap (`live.js` update) and `dispose()` throw no errors. In devtools, `renderer.info.programs.length`
     stays flat while you pick up items. If it climbs, step 3 is missing.
 - Expected cost (gallery `scene` view, SwiftShader, relative): on the 3×3 raft with all six crafts and 7 floating
-  items, draw calls (main + shadow) drop from 271 to 50 and triangles from 251k to 50k. Materials drop from 78 to 4.
+  items, draw calls (main + shadow) drop from 271 to 50 and triangles from 251k to 52k. Materials drop from 78 to 4 (the 3 shared `lp-*` materials plus the water).
 - I verified these steps on a scratch copy of `dist/` with the root `shoot.py` probe (its launch line was changed to
   the brief's `executable_path`). There were no page or console errors, and the floor, items and HUD were intact. Exact edits used: line 8 replaced by the
   combined import, lines 9, 11 and 16 deleted, and the `!m.userData?.shared` guard added in `disposeGeometry`.
