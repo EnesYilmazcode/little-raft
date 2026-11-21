@@ -126,7 +126,9 @@ export function createSky(T, options = {}) {
   const mesh = new T.Mesh(geometry, material);
   mesh.name = 'sky-dome';
   mesh.frustumCulled = false;
-  mesh.renderOrder = -10;
+  // Depth sits on the far plane, so drawing after the opaques (depth test on) lets early-z skip every pixel the
+  // ocean, raft and islands already cover; transparents still sort after it.
+  mesh.renderOrder = 1;
   const group = new T.Group();
   group.name = 'sky';
   group.add(mesh);
