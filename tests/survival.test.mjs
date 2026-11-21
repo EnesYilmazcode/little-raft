@@ -875,3 +875,47 @@ test('ocean: getSlope(out) and sample() match getHeight/getSlope exactly', () =>
   assert.ok(Math.abs(ocean.getHeight(0, 0) - 0.5) <= 0.256, 'height follows the mesh base');
   ocean.dispose();
 });
+
+test('HookCast: ropePoints(hand, n, out) fills out in place and matches the reused array', () => {
+  const c = cast({ direction: elevDir(20), charge: 0.5 });
+  flyOut(c);
+  const h = new T.Vector3(0.3, 1.2, 0.1);
+  const out = [null, { x: 1 }, new T.Vector3(9, 9, 9)];
+  const keep = out[2];
+  assert.equal(c.ropePoints(h, 8, out), out);
+  assert.equal(out.length, 9);
+  assert.equal(out[2], keep, 'existing Vector3 entries are reused');
+  assert.ok(out.every((v) => v instanceof T.Vector3), 'invalid entries replaced');
+  const ref = c.ropePoints(h, 8);
+  assert.notEqual(ref, out);
+  for (let i = 0; i < ref.length; i++) assert.ok(ref[i].equals(out[i]), `point ${i}`);
+  assert.ok(out[0].equals(h) && out[8].distanceTo(c.position) < 1e-9, 'hand -> hook');
+  c.ropePoints(h, 3, out);
+  assert.equal(out.length, 4, 'shrinks to segments + 1');
+  assert.equal(c.ropePoints(h, 8), ref, 'without out the per-hook array is still reused');
+});
+
+test('HookCast: update skip predicate behaves exactly like a pre-filtered item list', () => {
+  const items = [];
+  for (let i = 0; i < 30; i++) items.push({ id: i, token: 't' + i, type: 'wood', x: (i % 6 - 2.5) * 1.2, z: -2 - Math.floor(i / 6) * 1.5, held: i % 3 === 0 });
+  const skip = (it) => it.held;
+  const a = cast({ direction: elevDir(25), charge: 0.4, maxRange: 12 });
+  const b = cast({ direction: elevDir(25), charge: 0.4, maxRange: 12 });
+  let ea = null, eb = null, dropped = false;
+  for (let f = 0; f < 900 && a.stage !== 'done'; f++) {
+    const reeling = f > 120;
+    // Something already on the hook becomes skipped: it must be dropped from both.
+    if (!dropped && a.caughtItems.length > 1) { items[a.caughtItems[0].id].held = true; dropped = a.caughtItems[0].id; }
+    const hd = hand(); hd.z = -f * 0.004;
+    ea = a.update(0.02, { hand: hd, items: items.filter((it) => !it.held), reeling, time: f * 0.02 }) ?? ea;
+    eb = b.update(0.02, { hand: hd, items, skip, reeling, time: f * 0.02 }) ?? eb;
+    assert.deepEqual(b.caughtItems, a.caughtItems, `frame ${f}`);
+    assert.ok(b.position.equals(a.position));
+  }
+  assert.equal(b.stage, a.stage);
+  assert.deepEqual(eb, ea);
+  assert.ok(ea && ea.kind === 'collected' && ea.items.length > 1, 'scenario catches several items');
+  assert.ok(ea.items.every((it) => !items[it.id].held), 'skipped items are never caught');
+  assert.notEqual(dropped, false);
+  assert.ok(!ea.items.some((it) => it.id === dropped), 'a caught item that becomes skipped is dropped');
+});
