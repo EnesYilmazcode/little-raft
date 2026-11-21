@@ -295,10 +295,10 @@ test('module: research emits one notice per new recipe to everyone; craftLocked 
   bags.host.add('wood', 2); bags.host.add('rope', 1); bags.host.add('leaf', 1);
   const slotOf = k => bags.host.slots.findIndex(s => s?.kind === k);
   assert.equal(mod.action({ kind: 'storage.research', x: 0, z: 1, slot: slotOf('rope'), expect: { kind: 'rope' } }, 'host', bags.host), true);
-  if (!emits.some(e => /^New recipe: /.test(e.e.text) && !ORIG_NAMES.has(e.e.text))) { // a later content recipe may need rope alone
-    assert.equal(emits.length, 1); // "Researched Rope!" only to the actor, nothing new yet
-    assert.equal(emits[0].to, 'host');
-  }
+  const own = emits.filter(e => !/^New recipe: /.test(e.e.text)); // a later content recipe may need rope alone
+  assert.equal(own.length, 1); // "Researched Rope!" only to the actor
+  assert.equal(own[0].to, 'host');
+  assert.ok(!emits.some(e => ORIG_NAMES.has(e.e.text))); // no original recipe needs rope alone
   emits.length = 0;
   mod.action({ kind: 'storage.research', x: 0, z: 1, slot: slotOf('wood'), expect: { kind: 'wood' } }, 'host', bags.host);
   assert.deepEqual(emits.map(e => e.e.text).filter(t => ORIG_NAMES.has(t)).sort(), ['New recipe: Bench!', 'New recipe: Fishing Rod!', 'New recipe: Net!']);

@@ -9,7 +9,8 @@ export const keyOf = (x, z) => x + ',' + z;
 const isInt = Number.isInteger;
 const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
 const KEY = /^(-?\d{1,3}),(-?\d{1,3})$/;
-const STRIP = /[\p{Cc}\p{Cf}\u2028\u2029]/gu;
+const STRIP = /[\p{Cc}\p{Cf}\p{Cs}\u2028\u2029]/gu; // Cs: lone surrogates
+const RAW_MAX = 256; // code units kept before cleaning, so a huge string costs nothing
 
 /** Up to 3 trimmed lines of at most 18 code points, controls/format chars removed. Never throws. */
 export function cleanLines(v) {
@@ -18,6 +19,7 @@ export function cleanLines(v) {
   for (let i = 0; i < MAX_LINES && i < v.length; i++) {
     let s = '';
     try { s = String(v[i] ?? ''); } catch { s = ''; }
+    if (s.length > RAW_MAX) s = s.slice(0, RAW_MAX); // a split pair at the cut becomes a lone surrogate, stripped below
     try { s = s.normalize('NFC'); } catch { /* lone surrogates are fine for normalize; keep s */ }
     s = s.replace(STRIP, '').replace(/\s+/g, ' ').trim();
     out.push(Array.from(s).slice(0, LINE_MAX).join(''));

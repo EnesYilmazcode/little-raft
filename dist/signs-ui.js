@@ -29,6 +29,7 @@ export function createSignUI(api) {
   if (!document.getElementById('lr-sign-css')) {
     const style = document.createElement('style'); style.id = 'lr-sign-css'; style.textContent = CSS; document.head.append(style);
   }
+  document.getElementById('lr-sign')?.remove(); // a stale dialog from an earlier game instance
   const dlg = document.createElement('dialog'); dlg.id = 'lr-sign'; dlg.className = 'lr-sign';
   dlg.setAttribute('aria-labelledby', 'lr-sign-title');
   const wrap = document.createElement('div'); wrap.className = 'lr-sign-wrap'; wrap.tabIndex = -1; wrap.autofocus = true;
@@ -83,6 +84,6 @@ export function createSignUI(api) {
   return {
     open, close,
     get isOpen() { return isOpen; },
-    destroy() { close(); dlg.remove(); },
+    destroy() { isOpen = false; close(); dlg.remove(); }, // isOpen=false: no requestLock while the game goes away
   };
 }

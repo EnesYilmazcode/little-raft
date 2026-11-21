@@ -16,7 +16,7 @@ export function createDecorPack(ctx) {
   const session = Math.random().toString(36).slice(2, 10);
   let st = cleanSlice(undefined); st.s = session;
   let models = null, dirty = false, cache = null, cacheR = -1, cacheSt = null, netR = -1, netS = null;
-  let ui = null, uiLoading = null, seenDecor = null, seenLen = -1; // decor array/length last scanned (removals call no decorModel)
+  let ui = null, uiLoading = null, disposed = false, seenDecor = null, seenLen = -1; // decor array/length last scanned (removals call no decorModel)
   const live = new Map();   // tile key -> group
   let anim = [];            // { g, swing, type, ph }
   const texts = new Map();  // linesKey -> { tex, mat }
@@ -105,7 +105,7 @@ export function createDecorPack(ctx) {
   };
   function loadUI() {
     if (ui || uiLoading || typeof document === 'undefined') return uiLoading;
-    uiLoading = import('./signs-ui.js').then(m => { ui = m.createSignUI(api); return ui; }).catch(e => { console.error('sign ui failed', e); uiLoading = null; return null; });
+    uiLoading = import('./signs-ui.js').then(m => { if (disposed) return null; ui = m.createSignUI(api); return ui; }).catch(e => { console.error('sign ui failed', e); uiLoading = null; return null; });
     return uiLoading;
   }
   function openSign(x, z) {
@@ -246,6 +246,7 @@ export function createDecorPack(ctx) {
       faceAll() { dirty = true; return true; },
     },
     dispose() {
+      disposed = true;
       ui?.destroy(); ui = null; uiLoading = null;
       for (const e of texts.values()) freeText(e);
       texts.clear();

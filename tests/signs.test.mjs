@@ -28,6 +28,8 @@ test('cleanLines: shapes, controls, bidi, length caps, NFC, trailing blanks', ()
   assert.deepEqual(cleanLines(['top', '', 'bottom']), ['top', '', 'bottom']);
   assert.deepEqual(cleanLines(['top', '', '   ']), ['top']);
   assert.deepEqual(cleanLines([42, null, { toString() { throw new Error('no'); } }]), ['42']);
+  assert.deepEqual(cleanLines(['a\uD800b', '\uDC00x']), ['ab', 'x']); // lone surrogates stripped
+  assert.equal(cleanLines(['z'.repeat(1e6)])[0], 'z'.repeat(18));
   assert.deepEqual(cleanLines([1.5, true, undefined]), ['1.5', 'true']);
   assert.equal(linesKey(['a', 'b']), 'a\nb');
   assert.equal(linesKey([]), '');
@@ -181,4 +183,16 @@ test('module: host update faces a new tile toward the player, updates the live g
   w.decor.length = 0; ctx.rebuildRaft(); mod.update(.016);
   assert.deepEqual(mod.serialize().rot, {}); assert.deepEqual(mod.serialize().t, {});
   assert.ok(PACK.includes('sign'));
+});
+
+test('research gating: pack recipes join the tree by cost, none are starters', async () => {
+  const SR = await import(new URL('storage-research.js', base));
+  for (const id of PACK) assert.ok(!SR.STARTER.includes(id));
+  assert.ok(SR.learnedFrom(['wood', 'rope']).includes('sign'));
+  assert.ok(SR.learnedFrom(['leaf', 'rope']).includes('rug'));
+  const wlr = SR.learnedFrom(['wood', 'leaf', 'rope']);
+  for (const id of ['pennant', 'fern', 'hammock']) assert.ok(wlr.includes(id));
+  assert.ok(!wlr.includes('chime') && !wlr.includes('pots'));
+  assert.ok(SR.learnedFrom(['wood', 'scrap', 'rope']).includes('chime'));
+  assert.ok(SR.learnedFrom(['clay', 'leaf']).includes('pots'));
 });
