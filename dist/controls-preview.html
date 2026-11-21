@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Controls Preview</title>
+<style>
+  body{margin:0;min-height:100vh;background:#2a1a0d repeating-linear-gradient(90deg,#3a2414 0 118px,#24160a 118px 122px);
+    display:flex;flex-wrap:wrap;gap:24px;padding:24px;box-sizing:border-box;align-items:flex-start}
+  #tab{flex:1 1 520px;max-width:700px}
+  #radial{position:relative;flex:1 1 380px;height:440px}
+  #radial .lrr{position:absolute}
+</style>
+</head>
+<body>
+<div id="tab"></div>
+<div id="radial"></div>
+<script type="module">
+import { ActionMap } from './input-map.js';
+import { createControlsTab } from './controls-tab.js';
+import { createBuildRadial } from './build-radial.js';
+const map = new ActionMap({ storage: null }); // in-memory only: preview never touches saved controls
+createControlsTab({ map, container: document.getElementById('tab'), onChange: () => console.log('controls changed') });
+const radial = createBuildRadial({
+  container: document.getElementById('radial'),
+  items: [
+    { id: 'floor', label: 'Floor', icon: 'icon-floor' }, { id: 'wall', label: 'Wall', icon: '🧱' },
+    { id: 'stairs', label: 'Stairs', icon: '🪜' }, { id: 'sail', label: 'Sail', icon: 'icon-sail' },
+    { id: 'barrel', label: 'Barrel', icon: 'icon-barrel' }, { id: 'lantern', label: 'Lantern', icon: 'icon-lantern' },
+  ],
+  onPick: (it) => console.log('picked', it.id),
+});
+radial.open();
+radial.update(0.8, -0.5); // fake stick: up-right
+window.radial = radial;
+</script>
+</body>
+</html>
