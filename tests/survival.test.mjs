@@ -735,3 +735,90 @@ test('Bag.salvage repairs a snapshot with the wrong slot count or selection', ()
   assert.throws(() => new Bag(short), TypeError, 'strict constructor still rejects it');
   assert.equal(Bag.salvage({ slots: [], selected: HOTBAR_SIZE }).selectedIndex, 0);
 });
+
+// ---- feel: audio buses + co-op avatar held item ----
+test('audio buses clamp, unknown names are rejected, play is silent without a context', async () => {
+  const { createOceanAudio, BUSES, EVENTS } = await import(new URL('audio.js', base));
+  const a = createOceanAudio({ volume: 2 });
+  assert.deepEqual([...BUSES], ['master', 'effects', 'ambience', 'music']);
+  assert.equal(a.getBus('master'), 1);
+  assert.equal(a.setBus('ambience', -1), 0);
+  assert.equal(a.setBus('nope', 1), null);
+  assert.equal(a.setMusic(true), true);
+  for (const e of EVENTS) assert.equal(a.play(e), false);
+  a.tick(0.016, { swimming: true });
+  a.destroy();
+});
+
+test('avatar shows one held model per kind and animates without NaN', async () => {
+  const { createAvatar } = await import(new URL('avatar.js', base));
+  const g = createAvatar(T, '#70a7e4'), held = g.getObjectByName('held');
+  g.userData.setHeld('hammer'); g.userData.setHeld('hook'); g.userData.setHeld('hammer');
+  assert.equal(held.children.length, 2);
+  assert.equal(held.children.filter(c => c.visible).length, 1);
+  g.userData.setHeld('not-a-thing');
+  assert.equal(held.children.filter(c => c.visible).length, 0);
+  for (let i = 0; i < 20; i++) g.userData.animate(1 / 60, { speed: 3, swimming: i > 10, pitch: 0.4 });
+  const { rightArm, leftLeg } = g.userData.parts;
+  assert.ok(Number.isFinite(rightArm.rotation.x) && Number.isFinite(leftLeg.rotation.x));
+  g.userData.dispose();
+});
+
+// Minimal fake Web Audio graph: counts live connections and lets the test end sources on demand.
+function fakeAudioContext() {
+  const live = new Set(), sources = new Set();
+  const param = v => ({ value: v, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {}, setTargetAtTime() {}, cancelScheduledValues() {} });
+  const node = (extra = {}) => {
+    const n = { connect(d) { live.add(n); return d; }, disconnect() { live.delete(n); }, ...extra };
+    return n;
+  };
+  const source = extra => {
+    const s = node({ stopped: false, onended: null, start() { sources.add(s); }, stop() { s.stopped = true; }, ...extra });
+    return s;
+  };
+  const ctx = {
+    state: 'suspended', currentTime: 0, sampleRate: 8000, destination: node(),
+    resume() { ctx.state = 'running'; return Promise.resolve(); },
+    createGain: () => node({ gain: param(1) }),
+    createBiquadFilter: () => node({ frequency: param(350), Q: param(1), type: 'lowpass' }),
+    createDynamicsCompressor: () => node({ threshold: param(0), knee: param(0), ratio: param(1), attack: param(0), release: param(0) }),
+    createOscillator: () => source({ frequency: param(440), detune: param(0), type: 'sine' }),
+    createBufferSource: () => source({ buffer: null, loop: false }),
+    createBuffer: (c, len, rate) => { const d = new Float32Array(len); return { duration: len / rate, getChannelData: () => d }; },
+    endOneShots() { for (const s of [...sources]) if (!s.loop && s.stopped) { sources.delete(s); s.onended?.(); } },
+  };
+  return { ctx, live, sources };
+}
+
+test('audio waits for a gesture, starts ambience once and frees every one-shot voice', async () => {
+  const { createOceanAudio, EVENTS, ALIASES } = await import(new URL('audio.js', base));
+  const { ctx, live, sources } = fakeAudioContext();
+  const a = createOceanAudio({ context: ctx, volume: 0.5 });
+  assert.equal(a.play('pickup'), false, 'silent before resume()');
+  assert.equal(await a.resume(), true);
+  const base0 = live.size, loops0 = sources.size;
+  assert.ok(loops0 > 0, 'ambience loops started');
+  await a.resume(); await a.resume();
+  assert.equal(sources.size, loops0, 'ambience created once');
+  for (const name of ['pickup', 'throw', 'reel', 'build', 'place', 'plant', 'water', 'catch', 'splash']) {
+    assert.ok(EVENTS.includes(name) || ALIASES[name], name);
+  }
+  for (const e of [...EVENTS, ...Object.keys(ALIASES)]) { ctx.currentTime += 1; assert.equal(a.play(e), true, e); if (e === 'deny') ctx.endOneShots(); }
+  ctx.endOneShots();
+  assert.equal(live.size, base0, 'effect voices disconnected after ending');
+  let capped = 0;
+  for (let i = 0; i < 40; i++) capped += a.play(EVENTS[i % EVENTS.length]) ? 0 : 1, ctx.currentTime += 0.5;
+  assert.ok(capped > 0, 'voice cap drops excess sounds');
+  ctx.endOneShots();
+  a.setMusic(true);
+  for (let i = 0; i < 400; i++) { ctx.currentTime += 0.05; a.tick(0.05, { swimming: i > 200 }); }
+  a.setMusic(false);
+  assert.ok(live.size > base0);
+  ctx.endOneShots();
+  assert.equal(live.size, base0, 'one-shot voices disconnected after ending');
+  assert.equal(a.setBus('effects', 0.3), 0.3);
+  a.setVolume(0);
+  assert.equal(a.play('build'), false, 'muted master skips scheduling');
+  a.destroy();
+  assert.equal(live.size, 0, 'destroy disconnects the whole graph');
+});

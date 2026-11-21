@@ -1,5 +1,6 @@
 import * as T from './vendor/three.module.js';
 import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
+import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
@@ -146,7 +147,7 @@ export function mount(transfer = null) {
   function validPose(p) {
     if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.z) || Math.abs(p.x) >= 120 || Math.abs(p.z) >= 120) return null;
     const y = Number.isFinite(p.y) && p.y >= -10 && p.y <= 30 ? p.y : null;
-    return {x:p.x, y, z:p.z, yaw:Number.isFinite(p.yaw) ? p.yaw : 0, swimming:!!p.swimming};
+    return {x:p.x, y, z:p.z, yaw:Number.isFinite(p.yaw) ? p.yaw : 0, pitch:Number.isFinite(p.pitch) ? p.pitch : 0, swimming:!!p.swimming, held:typeof p.held === 'string' ? p.held.slice(0, 16) : null};
   }
   // Own-raft backup while visiting as a guest. v2 stored a bare world; v3 stores {world, host, guest, physics}.
   function normaliseBackup(b) {
@@ -196,7 +197,11 @@ export function mount(transfer = null) {
   let castId = typeof X?.castId === 'string' ? X.castId : newToken();
   let hookSlot = isInt(X?.hookSlot) ? X.hookSlot : -1;
   let fishWait = Number.isFinite(X?.fishWait) ? X.fishWait : 0;
-  let sound = X ? X.sound !== false : true, audio = X?.audio ?? null;
+  let sound = X ? X.sound !== false : true;
+  const sfx = createOceanAudio({context:X?.audio ?? null, volume:sound ? options.volume : 0});
+  const play = (ev, s) => sfx.play(ev, s);
+  const applyVolume = () => { sfx.setVolume(sound ? options.volume : 0); sfx.setBus('effects', options.effects ?? 1); sfx.setBus('ambience', options.ambience ?? .7); };
+  if (X?.audio) sfx.resume(); // hot swap: the old context is already unlocked
   let charging = X?.charging && Number.isFinite(X.charging.start) ? {...X.charging} : null, reeling = !!X?.reeling && !!hook;
   let lastCaughtCount = isInt(X?.lastCaughtCount) ? X.lastCaughtCount : (hook?.caughtItems?.length ?? (hook?.caught ? 1 : 0));
   const pending = new Map(X?.pending instanceof Map ? X.pending : []); // item token -> expiry; hides supplies we reeled in while the host confirms
@@ -432,7 +437,6 @@ export function mount(transfer = null) {
   const setText = (sel, v) => { const el = $(sel); if (el) el.textContent = v; };
   function setStatus(s) { setText('#networkStatus', s); }
   const notice = s => pickupFeed.note(s);
-  function beep(f = 500) { const vol = (options?.volume ?? 0) * (options?.effects ?? 1); if (!sound || !(vol > 0)) return; try { audio ??= new AudioContext(); audio.resume(); const o = audio.createOscillator(), g = audio.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(f, audio.currentTime); o.frequency.exponentialRampToValueAtTime(f * 1.4, audio.currentTime + .12); g.gain.setValueAtTime(.12 * vol, audio.currentTime); g.gain.exponentialRampToValueAtTime(.001, audio.currentTime + .22); o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + .23); } catch {} }
   function updateContext(dialog) {
     let html = '';
     if (running && !dialog) {
@@ -568,7 +572,7 @@ export function mount(transfer = null) {
     else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (decorCheck(hasTile, world.decor, {type:kind, x:x * 2, z:z * 2, rot:placeRot}) === 'ok') out.push({x:x * 2, z:z * 2, wx:x * 2, wz:z * 2});
     return out;
   }
-  function rotatePlacement(step) { placeRot = Math.round(wrapRot(placeRot + step) * 1000) / 1000; beep(760); }
+  function rotatePlacement(step) { placeRot = Math.round(wrapRot(placeRot + step) * 1000) / 1000; play('ui', .6); }
 
   // ---------- Actions (host is authoritative; actor = 'host' | 'guest') ----------
   function send(data) { if (conn?.open) { try { conn.send(data); } catch {} } }
@@ -588,7 +592,7 @@ export function mount(transfer = null) {
     if (Array.isArray(e.tokens)) for (const t of e.tokens) if (typeof t === 'string') pending.delete(t);
     if (e.loot && typeof e.loot === 'object') { for (const [k, n] of Object.entries(e.loot)) if (ITEM_INFO[k] && isInt(n) && n > 0) pickupFeed.add(k, n); }
     else if (typeof e.text === 'string' && e.text) notice(e.text);
-    beep(e.kind === 'build' ? 640 : e.kind === 'craft' ? 560 : e.kind === 'full' ? 220 : 440);
+    play(typeof e.sound === 'string' ? e.sound : (e.kind === 'build' ? 'build' : e.kind === 'craft' ? 'craft' : e.kind === 'loot' ? 'collect' : 'deny'), e.kind === 'notice' ? .6 : 1);
   }
   function wearHook(bag, slot, actor) {
     const i = hookIndex(bag, slot); if (i < 0) return;
@@ -638,7 +642,7 @@ export function mount(transfer = null) {
         else if (!bag.remove(a.recipe, 1)) { emit({kind:'notice', text:`Craft a ${itemName(a.recipe)} first`}, actor); return; }
         world.decor.push(Farm.isPlot(d) ? {...d, farm:Farm.newPlanter()} : d); // farming: empty planter, plant a seed in it
       } else return;
-      rebuildRaft(); emit({kind:'build'}, 'all'); // the new piece appearing is the feedback; no centre text
+      rebuildRaft(); emit({kind:'build', sound:a.recipe === 'floor' ? 'build' : 'place'}, 'all'); // the new piece appearing is the feedback; no centre text
       return;
     }
     if (a.kind === 'farm') { const r = Farm.applyFarmAction(world, bag, a); if (r.text) emit(r.items ? {kind:r.effect, text:r.text, items:r.items} : {kind:r.effect, text:r.text}, actor); if (r.changed) farmSeen = null; return; } // farming
@@ -652,7 +656,7 @@ export function mount(transfer = null) {
       if (i < 0) { emit({kind:'notice', text:'No hook to repair'}, actor); return; }
       if ((bag.slots[i].durability ?? MAX_HEALTH) >= MAX_HEALTH) { emit({kind:'notice', text:'Your hook is in great shape'}, actor); return; }
       if (!spend(bag, REPAIR_COST)) { emit({kind:'notice', text:'Repair needs ' + missingText(bag, REPAIR_COST)}, actor); return; }
-      bag.slots[i].durability = MAX_HEALTH; emit({kind:'build', text:'Hook repaired!'}, actor); return;
+      bag.slots[i].durability = MAX_HEALTH; emit({kind:'build', text:'Hook repaired!', sound:'repair'}, actor); return;
     }
     // 'wear' (legacy clients wore the hook on every throw) is ignored: wear now happens only on a successful catch.
   }
@@ -661,7 +665,7 @@ export function mount(transfer = null) {
   function selectSlot(i) {
     if (!isInt(i) || i < 0 || i >= HOTBAR) return;
     const bag = localBag(); if (bag.selectedIndex === i) return;
-    charging = null; hover = null;
+    charging = null; hover = null; play('ui', .5);
     if (hook) { hook.cancel?.(); fishWait = 0; endHook(); } // switching away retracts the hook / rod; its catch stays in the sea
     if (role === 'guest') { if (!networkReady) return; bag.select(i); action({kind:'selectSlot', index:i}); }
     else action({kind:'selectSlot', index:i});
@@ -673,13 +677,13 @@ export function mount(transfer = null) {
   }
   function craft(recipe) { if (typeof recipe === 'string') action({kind:'craft', recipe}); }
   function repair() { if (!running) return; const bag = localBag(); action({kind:'repair', slot:hookIndex(bag)}); }
-  function openInventory() { if (!running || !survivalUI) return; clearInput(); releaseLock(); survivalUI.open?.(); }
+  function openInventory() { if (!running || !survivalUI) return; clearInput(); releaseLock(); survivalUI.open?.(); play('open'); }
   function interact() {
     if (!running || uiBlocked()) return;
     const target = pickupFrom(currentAim());
     if (target) {
       if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
-      pending.set(target.token, performance.now() + PENDING_MS); swing = .6; beep(500);
+      pending.set(target.token, performance.now() + PENDING_MS); swing = .6;
       action({kind:'collect', id:target.id, token:target.token});
       return;
     }
@@ -695,7 +699,7 @@ export function mount(transfer = null) {
     if (farmUse(aim, false)) return; // farming
     if (kind === 'hammer' || DECOR_TYPES.includes(kind)) {
       const v = placementFor(kind, aim?.local ?? null);
-      if (!v || (!v.ok && kind !== 'hammer')) { beep(190); return; }
+      if (!v || (!v.ok && kind !== 'hammer')) { play('deny', .6); return; }
       if (!v.ok) { notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
       swing = 1; action({kind:'build', recipe:v.kind, x:v.x, z:v.z, rot:v.rot}); return;
     }
@@ -703,7 +707,7 @@ export function mount(transfer = null) {
       if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2))) { notice('Point at the water to fish'); return; }
       if (Math.hypot(p.x - physics.x, p.z - physics.z) > FISH_REACH) { notice('Try a spot a little closer'); return; }
       fishWait = 3 + Math.random() * 2; hook = {end:new T.Vector3(p.x, .1, p.z), t:0, duration:fishWait + .8, fishing:true};
-      swing = 1; notice('Wait for a bite…', 2500); beep(280);
+      swing = 1; notice('Wait for a bite…', 2500); play('throw', .5);
     }
   }
   // ---------- Farming (rules in farming.js, meshes in farming-view.js) ----------
@@ -734,7 +738,7 @@ export function mount(transfer = null) {
     const durability = clamp(slot.durability ?? MAX_HEALTH, 0, MAX_HEALTH), maxRange = 16 + durability * .16;
     const direction = aim?.dir ?? camera.getWorldDirection(new T.Vector3());
     hook = new HookCast(T, {origin:handPos.clone(), direction, maxRange, charge, deck:deckAt});
-    castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; beep(230);
+    castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; play('throw', charge);
     if (durability <= 0) notice('Worn hook: shorter throws. R to repair');
   }
 
@@ -744,7 +748,7 @@ export function mount(transfer = null) {
     refreshPointerUI(true);
   }
   function applyOptions(next) {
-    const shadowsChanged = options.shadows !== next.shadows; options = next;
+    const shadowsChanged = options.shadows !== next.shadows; options = next; applyVolume();
     if (!renderer) return;
     const cap = next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3;
     baseRatio = Math.max(.5, Math.min(devicePixelRatio, cap) * (next.renderScale ?? 1)); // adaptive resScale multiplies on top
@@ -787,6 +791,7 @@ export function mount(transfer = null) {
   }
 
   // ---------- Movement ----------
+  let swimStroke = 0, bobAmt = 0, sway = 0;
   const held = (...codes) => codes.some(c => keys[c]);
   function movePlayer(dt, input) {
     if (!running) { walking = false; return; }
@@ -794,8 +799,12 @@ export function mount(transfer = null) {
     const ev = physics.update(dt, {forward:fwd, strafe:side, yaw, jump:input && held('Space'), sprint:input && held('ShiftLeft', 'ShiftRight'),
       tiles:world.tiles, deckY:deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList});
     const speed = Math.hypot(physics.vx, physics.vz);
+    const wasGrounded = physics.grounded, stepFrom = Math.floor(walkPhase / Math.PI);
     walking = physics.grounded && speed > .4; if (walking) walkPhase += dt * 9 * Math.min(1.6, speed / 2.6);
-    if (ev?.splashed) beep(180);
+    if (walking && Math.floor(walkPhase / Math.PI) !== stepFrom) play('step', clamp(speed / 4, .45, 1));
+    if (physics.swimming && speed > .5) { swimStroke += dt; if (swimStroke > .75) { swimStroke = 0; play('swim', .7); } }
+    if (ev?.splashed) play('splash'); else if (ev?.landed && !wasGrounded) play('land', .7);
+    else if (wasGrounded && !physics.grounded && physics.vy > 1) play('jump', .8);
     if (![physics.x, physics.y, physics.z].every(Number.isFinite)) { const s = spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); }
   }
 
@@ -826,9 +835,14 @@ export function mount(transfer = null) {
   function updateCamera(dt) {
     const fov = running ? options.fov : 48; if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
     if (running) {
-      const bob = walking ? Math.sin(walkPhase) * .025 * options.cameraMotion : 0;
-      camera.position.set(physics.x, physics.y + bob, physics.z);
-      camera.rotation.set(pitch, yaw, physics.grounded ? raft.rotation.z * CAMERA_ROLL * options.cameraMotion : 0, 'YXZ');
+      // head bob (vertical + a half-rate side sway) and a little of the raft's tilt, eased so jumps never pop
+      const m = options.cameraMotion, k = Math.min(1, dt * 6);
+      bobAmt += ((walking ? 1 : 0) - bobAmt) * k;
+      const bob = Math.sin(walkPhase) * .03 * m * bobAmt, side = Math.cos(walkPhase * .5) * .022 * m * bobAmt;
+      const tilt = physics.grounded ? (raft.rotation.x * Math.sin(yaw) + raft.rotation.z * Math.cos(yaw)) * CAMERA_ROLL * 2.5 : 0;
+      sway += (tilt - sway) * k;
+      camera.position.set(physics.x + Math.cos(yaw) * side, physics.y + bob, physics.z - Math.sin(yaw) * side);
+      camera.rotation.set(pitch, yaw, (sway + side * .25) * m, 'YXZ');
     } else { // gentle cinematic view for the welcome screen
       const focus = titleFocus, d = 23, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .77;
       camera.position.set(focus.x + Math.sin(cy) * d * Math.cos(cp), d * Math.sin(cp), focus.z + Math.cos(cy) * d * Math.cos(cp)); camera.lookAt(focus);
@@ -851,8 +865,11 @@ export function mount(transfer = null) {
     friend.visible = !!other;
     if (other) {
       friendTarget.set(other.x, other.y !== null ? other.y - EYE_OFFSET : deckY(), other.z);
-      if (friend.position.distanceTo(friendTarget) > 3) friend.position.copy(friendTarget); else friend.position.lerp(friendTarget, Math.min(1, dt * 12));
+      const before = tmpV.copy(friend.position);
       friend.rotation.y = (other.yaw ?? 0) + Math.PI;
+      if (friend.position.distanceTo(friendTarget) > 3) friend.position.copy(friendTarget); else friend.position.lerp(friendTarget, Math.min(1, dt * 12));
+      friend.userData.setHeld?.(other.held);
+      friend.userData.animate?.(dt, {speed:Math.min(6, Math.hypot(friend.position.x - before.x, friend.position.z - before.z) / dt), swimming:other.swimming, pitch:other.pitch});
     }
   }
   function updateItems(dt) {
@@ -879,6 +896,7 @@ export function mount(transfer = null) {
       m.rotation.set(-s.z * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.x * 1.2 + Math.sin(elapsed + it.phase) * .05);
     }
   }
+  let hookStage = '';
   function endHook() { hook = null; lastCaughtCount = 0; reeling = false; rope.visible = false; hookMesh.visible = false; }
   function updateHook(dt) {
     if (!hook) { rope.visible = false; hookMesh.visible = false; return; }
@@ -902,7 +920,7 @@ export function mount(transfer = null) {
     for (let i = 1; i < pts.length; i++) pts[i].y = surfaceY(pts[i].x, pts[i].z, pts[i].y);
     pts[pts.length - 1].copy(pos); setRope(pts);
     const caught = caughtList(hook);
-    if (caught.length !== lastCaughtCount) { if (caught.length > lastCaughtCount) beep(520 + caught.length * 30); lastCaughtCount = caught.length; }
+    if (caught.length !== lastCaughtCount) { if (caught.length > lastCaughtCount) play('catch'); lastCaughtCount = caught.length; }
     for (let i = 0; i < caught.length; i++) { // visual only: the whole catch trails the hook as a bundle
       const m = itemMeshes.get(caught[i].token), cp = hook.caughtPosition(i, tmpV);
       if (m && cp) { m.position.set(cp.x, surfaceY(cp.x, cp.z, cp.y) - .02, cp.z); m.scale.setScalar(clamp(hook.distance / 2.5, .35, 1)); }
@@ -914,7 +932,10 @@ export function mount(transfer = null) {
         pending.set(it.token, performance.now() + PENDING_MS);
         action({kind:'collect', id:it.id, token:it.token, cast:castId, slot:hookSlot});
       }
-    } else if (ev?.kind === 'returned') beep(300);
+    } else if (ev?.kind === 'returned') play('catch', .35);
+    if (hook.stage === 'floating' && hookStage === 'flying') play('splash', .8);
+    if (hook.stage === 'reeling') play('reel', .7);
+    hookStage = hook.stage;
     if (hook.stage === 'done') endHook();
   }
   function updateGhost() {
@@ -928,13 +949,13 @@ export function mount(transfer = null) {
     return {type:'state', v:3, ack:guestAck, bag:guestBag.snapshot(), other:pose(),
       world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items}};
   }
-  const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, swimming:physics.swimming});
+  const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, held:heldKind()});
   function frame() {
     const now = performance.now(), dt = Math.min((now - last) / 1000, .05); frameMsAvg += (Math.min(now - last, 100) - frameMsAvg) * .05; last = now; elapsed += dt;
     const dialog = uiBlocked();
     if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { closeConnection(); notice('Host disconnected. You are back on your own raft.'); }
     if (role === 'host' && conn?.open && now - lastGuestMessage > 8000) { const stale = conn; conn = null; unbindTarget(stale); stale.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); }
-    ocean.update(elapsed, camera);
+    ocean.update(elapsed, camera); sfx.tick(dt, {swimming:physics.swimming});
     updateRaft(dt); movePlayer(dt, running && !dialog);
     updateAvatars(dt); updateCamera(dt);
     frameAim = running && !dialog ? currentAim() : null;
@@ -1017,6 +1038,10 @@ export function mount(transfer = null) {
   }, {passive:false});
   on($('#resumeHint'), 'click', () => requestLock());
 
+  // audio unlocks on the first gesture; every menu button gets the same soft click
+  on(window, 'pointerdown', () => { sfx.resume(); }, {capture:true});
+  on(window, 'keydown', () => { sfx.resume(); }, {capture:true});
+  on(document, 'click', e => { if (e.target?.closest?.('button, [role=button], .slot')) play('ui', .8); });
   on(window, 'keydown', e => {
     if (e.target?.matches?.('input, textarea, select') || uiBlocked()) return;
     keys[e.code] = true;
@@ -1048,7 +1073,7 @@ export function mount(transfer = null) {
   setHandler($('#repairButton'), 'onclick', repair);
   document.querySelectorAll('[data-close]').forEach(b => setHandler(b, 'onclick', () => $('#' + b.dataset.close)?.close()));
   const soundLabel = () => setText('#soundButton', 'Sound: ' + (sound ? 'on' : 'off'));
-  setHandler($('#soundButton'), 'onclick', () => { sound = !sound; soundLabel(); });
+  setHandler($('#soundButton'), 'onclick', () => { sound = !sound; applyVolume(); soundLabel(); });
   soundLabel();
 
   // ---------- Networking (PeerJS, host authoritative) ----------
@@ -1215,6 +1240,7 @@ export function mount(transfer = null) {
   }
   const worldPos = o => { if (!o) return null; const p = o.getWorldPosition(new T.Vector3()); return {x:p.x, y:p.y, z:p.z, visible:o.visible}; };
   const debugApi = Object.freeze({
+    audio:sfx, // volume buses (setBus/getBus master|effects|ambience|music) and setMusic for the menus
     get state() {
       const hc = castOut(), bag = localBag(), counts = bag.counts(), kind = heldKind();
       const mode = kind === 'hammer' ? 'build' : kind === 'fishingrod' ? 'fish' : kind === 'hook' ? 'hook' : DECOR_TYPES.includes(kind) ? 'place' : 'none';
@@ -1264,7 +1290,7 @@ export function mount(transfer = null) {
     return {
       version:3, world, bags:{host:hostBag.snapshot(), guest:guestBag.snapshot(), remote:remoteBag ? remoteBag.snapshot() : null},
       physics:physics.capture(), me:{x:physics.x, y:physics.y, z:physics.z}, other:other ? {...other} : null, yaw, pitch, running, elapsed, walkPhase,
-      hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio, peer, conn, role, networkReady, room, ownWorldBackup, pending:new Map(pending),
+      hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio:sfx.context, peer, conn, role, networkReady, room, ownWorldBackup, pending:new Map(pending),
       wornCasts:{...wornCasts}, seq, lastSeqSent, guestAck,
       joinDeadline:joinTimer ? joinDeadline : 0, saveAvailable, lockFallback, keys:{...keys},
       charging:charging ? {...charging} : null, reeling, down:down ? {...down} : null,
@@ -1294,7 +1320,7 @@ export function mount(transfer = null) {
   }
   function dispose() {
     if (disposed) return;
-    pause(); disposed = true; ac.abort();
+    pause(); disposed = true; ac.abort(); sfx.destroy();
     try { settingsController?.destroy(); } catch {}
     try { survivalUI?.destroy?.(); } catch {}
     for (const id of timers) clearTimeout(id); timers.clear();
@@ -1313,7 +1339,7 @@ export function mount(transfer = null) {
       onSelect:guard(i => selectSlot(i)),
       onMove:guard((from, to, amount) => moveSlot(from, to, amount)),
       onCraft:guard(id => craft(id)),
-      onResume:guard(() => requestLock()),
+      onResume:guard(() => { play('close'); requestLock(); }),
       onPause:guard(clearInput),
     });
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
