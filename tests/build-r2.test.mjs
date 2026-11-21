@@ -10,7 +10,7 @@ const { PLAYER_CONSTANTS: PC } = await import(new URL('player-physics.js', base)
 const { BLOCK_TEXT } = await import(new URL('build-rules.js', base));
 const T = await import(new URL('vendor/three.module.js', base));
 const { createFarmView } = await import(new URL('farming-view.js', base));
-const { createGhosts, decorCheck, FOOTPRINT } = await import(new URL('placement.js', base));
+const { createGhosts, decorCheck, FOOTPRINT, wheelDelta } = await import(new URL('placement.js', base));
 const { PlayerPhysics, blockerGap } = await import(new URL('player-physics.js', base));
 const { createCraft } = await import(new URL('crafts.js', base));
 
@@ -87,4 +87,13 @@ test('BUILD-3: rect colliders stop the player at the visible face, and rotate wi
   const p = new PlayerPhysics({x:.1, y:.22 + PC.EYE_OFFSET, z:0});
   for (let i = 0; i < 60; i++) p.update(1 / 60, {forward:1, strafe:0, yaw:-Math.PI / 2, jump:false, sprint:false, tiles, deckY:.22, waterY:0, blocked:b});
   assert.ok(p.x > .9, `walked out to ${p.x.toFixed(2)}`);
+});
+
+// ------------------------------------------------------------- BUILD-4
+test('BUILD-4: Shift+wheel counts the horizontal scroll Chromium turns it into', () => {
+  assert.equal(wheelDelta({deltaY:0, deltaX:100, shiftKey:true, deltaMode:0}), 100);
+  assert.equal(wheelDelta({deltaY:-3, deltaX:0, shiftKey:false, deltaMode:1}), -99);
+  assert.equal(wheelDelta({deltaY:0, deltaX:-2, shiftKey:true, deltaMode:1}), -66);
+  assert.equal(wheelDelta({deltaY:0, deltaX:100, shiftKey:false, deltaMode:0}), 0, 'a plain sideways swipe does not change slot');
+  assert.equal(wheelDelta({deltaY:50, deltaX:0, ctrlKey:true, deltaMode:0}), 50);
 });

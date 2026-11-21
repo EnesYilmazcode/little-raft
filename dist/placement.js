@@ -12,6 +12,13 @@ export const FOOTPRINT = Object.freeze({
   sail:[.8, .76, .8], palm:[.42, .42, .8], lantern:[.59, .37, .8], net:[.84, .84, 0], bench:[.72, .2, .8], crate:[.49, .42, .8],
 });
 
+// Wheel travel in pixels for slot picking and fine rotation. Chromium (and macOS) turn Shift+wheel
+// into a horizontal scroll (deltaY 0, deltaX set), so with Shift held deltaX counts too.
+export function wheelDelta(e) {
+  const d = e.deltaY || (e.shiftKey ? e.deltaX : 0) || 0;
+  return e.deltaMode === 1 ? d * 33 : d;
+}
+
 const TAU = Math.PI * 2;
 export const tileAt = v => Math.round(v / TILE);
 export const wrapRot = r => ((r % TAU) + TAU) % TAU;
