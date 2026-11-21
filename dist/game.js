@@ -2039,7 +2039,7 @@ export function mount(transfer = null) {
       return placementCandidates(heldKind()).map(({x, z}) => ({x, z, world:{x:x * 2, y, z:z * 2}, screen:project(x * 2, y, z * 2)}));
     },
   });
-  const previousDebug = Object.getOwnPropertyDescriptor(window, 'raftDebug'); // restored if this mount fails
+  let previousDebug = Object.getOwnPropertyDescriptor(window, 'raftDebug'); // restored if this mount fails
   // Desktop shell hook (desktop/main.cjs). The shell claims Escape and runs window.raftEscape() (settings.js) with a
   // user gesture; hold() first marks the key as held so a relock waits for released(), sent on the key's release.
   const shellApi = {
@@ -2142,6 +2142,9 @@ export function mount(transfer = null) {
     active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
     // onboarding/prompts hook (docs/cloud/onboarding.md): lets dist/prompts.js raycast with the live camera.
     try { window.raftMount = {T, scene, camera, debug:debugApi}; window.dispatchEvent(new CustomEvent('raft:mount', {detail:window.raftMount})); } catch {}
+    // Mounted: drop the restore-on-failure state. It points at the previous engine's handlers and raftDebug, which
+    // would keep that whole engine (scene, models, closures) alive after its dispose, one more per live swap.
+    previousDebug = null; propertyHandlers.length = 0;
   } catch (e) {
     console.error(e); dispose();
     try { if (previousDebug && !Object.getOwnPropertyDescriptor(window, 'raftDebug')) Object.defineProperty(window, 'raftDebug', previousDebug); } catch {}
