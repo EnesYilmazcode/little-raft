@@ -156,6 +156,7 @@ export function resolveIconModel(kind) {
   return { model: model || null, own: false };   // getModel clones share cached geometry: never free
 }
 
+// Renders kind and returns a 2D canvas copy of the pixels (null when it cannot be drawn).
 function renderKind(kind) {
   if (!ensureGL()) return null;
   const { model, own } = resolveIconModel(kind);
