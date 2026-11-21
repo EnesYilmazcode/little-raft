@@ -270,7 +270,15 @@ export function createWildlife(ctx) {
   const pinned = []; for (let i = 0; i < SCHOOL_MAX; i++) pinned.push({ on: false, x: 0, z: 0, heading: 0 });
   const plan2 = { state: 'circle', x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, flap: 0, fold: 0, blend: 0, sx: 0, sy: 0, sz: 0, px: 0, py: 0, pz: 0, perch: -1 };
   const plan = { state: 'circle', x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, flap: 0, fold: 0, blend: 0, sx: 0, sy: 0, sz: 0, px: 0, py: 0, pz: 0, perch: -1 };
-  const sc = { x: 0, y: 0, z: 0, heading: 0 }, fo = { side: 0, along: 0, ph: 0, size: 1, depth: 0 };
+  const sc = { x: 0, y: 0, z: 0, heading: 0 };
+  // Fish layouts are seeded constants: computed once (side, along, ph, 2ph, 3ph, scaled size, depth per fish), not per frame.
+  const FO_N = 7, foK = new Float64Array(SCHOOL_MAX * FISH_PER_SCHOOL * FO_N);
+  { const fo = { side: 0, along: 0, ph: 0, size: 1, depth: 0 };
+    for (let i = 0; i < SCHOOL_MAX; i++) for (let j = 0; j < FISH_PER_SCHOOL; j++) {
+      fishOffset(seed, i, j, fo); const o = (i * FISH_PER_SCHOOL + j) * FO_N;
+      foK[o] = fo.side; foK[o + 1] = fo.along; foK[o + 2] = fo.ph; foK[o + 3] = fo.ph * 2; foK[o + 4] = fo.ph * 3;
+      foK[o + 5] = fo.size * FISH_SCALE; foK[o + 6] = fo.depth;
+    } }
   const cir = { kind: null, x: 0, y: 0, z: 0, heading: 0, pitch: 0, roll: 0 };
   const last = { gx: new Float32Array(GULL_MAX * 3), gs: new Array(GULL_MAX).fill('hidden'), sx: new Float32Array(SCHOOL_MAX * 2), nG: 0, nS: 0 };
 
@@ -457,13 +465,13 @@ export function createWildlife(ctx) {
       last.sx[i * 2] = sc.x; last.sx[i * 2 + 1] = sc.z;
       for (let j = 0; j < FISH_PER_SCHOOL; j++) {
         const k = i * FISH_PER_SCHOOL + j;
-        fishOffset(seed, i, j, fo);
-        const along = fo.along + 0.35 * Math.sin(t * 0.5 + fo.ph), side = fo.side + 0.25 * Math.sin(t * 0.37 + fo.ph * 2);
+        const o = k * FO_N, ph = foK[o + 2], size = foK[o + 5];
+        const along = foK[o + 1] + 0.35 * Math.sin(t * 0.5 + ph), side = foK[o] + 0.25 * Math.sin(t * 0.37 + foK[o + 3]);
         const x = sc.x + sh * along + ch * side, z = sc.z + ch * along - sh * side;
-        const yaw = sc.heading + 0.18 * Math.sin(t * 0.6 + fo.ph) + (wiggle ? 0.22 * Math.sin(t * 7 + fo.ph * 3) : 0);
-        const depth = sc.y + fo.depth; // plan depth, about -1.15 .. -0.45 m. Drawn on the surface; it only sets the tint
+        const yaw = sc.heading + 0.18 * Math.sin(t * 0.6 + ph) + (wiggle ? 0.22 * Math.sin(t * 7 + foK[o + 4]) : 0);
+        const depth = sc.y + foK[o + 6]; // plan depth, about -1.15 .. -0.45 m. Drawn on the surface; it only sets the tint
         const h = ocean ? ocean.getHeight(x, z) : -0.24;
-        v3.set(x, h + 0.035, z); q4.setFromAxisAngle(UP, yaw); sc3.set(fo.size * FISH_SCALE, 1, fo.size * FISH_SCALE);
+        v3.set(x, h + 0.035, z); q4.setFromAxisAngle(UP, yaw); sc3.set(size, 1, size);
         m4.compose(v3, q4, sc3); fish.setMatrixAt(k, m4);
         col.copy(fishDark).lerp(fishWater, Math.min(0.85, Math.max(0, (-depth - 0.4) / 0.8 * 0.7)));
         fish.setColorAt(k, col);
