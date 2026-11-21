@@ -22,6 +22,8 @@ Known flake: art atlas build-time test under heavy machine load.
 
 
 ## Claims (to avoid double merges between integrators)
+Integrator B, round 7 (from 10:05 UTC), in worktrees: loop-features-202611210926, -0943-r3, -0949, -0952, -0953; loop-ux-202611210742, -0743, -0833, -0947;
+loop-fidelity-202611210946, -0947, -0954; loop-visuals-202611210926, -0927, -0953; raft-tech. Round 6 list above is done.
 Integrator F (09:34 UTC): merged loop-features-202611210926 (docs); skipped loop-visuals-202611210548 (stale, freezes sky).
 Integrator B, round 6 (from 09:30 UTC), in worktrees: loop-fidelity-202611210804, -0821; loop-features-202611210814; loop-perf-202611210708;
 loop-ux-202611210648, -0742, -0743, -0833; loop-visuals-202611210805. Also gating and merging PR #5.
