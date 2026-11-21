@@ -480,12 +480,18 @@ export function mount(transfer = null) {
   function warmShaders() {
     if (typeof renderer.compileAsync !== 'function') return;
     hands?.preload(['hammer', 'fishingrod']);
-    try {
-      // Also build the no-shadow variant (adaptive floor / Shadows off), else that switch relinks every lit program mid-game.
-      if (sun?.castShadow) { sun.castShadow = false; renderer.compileAsync(scene, camera).catch(() => {}); sun.castShadow = true; }
-      renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e));
-    }
+    warmNoShadow();
+    try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
     catch (e) { console.warn('shader warm-up failed', e); }
+  }
+  // Also build the no-shadow variant (adaptive floor / Shadows off), else that switch relinks every lit program mid-game.
+  // Runs at boot and once more after the first running frame, for materials built lazily (wildlife).
+  let lateNoShadowWarm = true;
+  function warmNoShadow() {
+    if (!sun?.castShadow || typeof renderer?.compileAsync !== 'function') return;
+    sun.castShadow = false;
+    try { renderer.compileAsync(scene, camera).catch(() => {}); } catch {}
+    sun.castShadow = true;
   }
   function palm(parent, x, y, z, s = 1) {
     const g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); cylinder(.09, .17, 1.6, '#ad8153', 0, .8, 0, g);
@@ -1264,6 +1270,7 @@ export function mount(transfer = null) {
     refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud();
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
     renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
+    if (lateNoShadowWarm && running) { lateNoShadowWarm = false; warmNoShadow(); }
   }
   // Peer liveness. rAF stops in hidden tabs, so a timer keeps the channel warm and each side says when it is
   // hidden; a hidden peer is never timed out (the data channel's 'close' still ends the session).
