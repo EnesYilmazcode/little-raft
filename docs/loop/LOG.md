@@ -604,3 +604,71 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
   when Chromium ate the keyDown that ended pointer lock (electron check), icon encode is synchronous under the deterministic clock (visual check).
 - Full fleet gate PASS at c7a8293 (unit, playbot, visual, perf, electron). Electron is now installed in node_modules.
 - PR #3 (round 4) is the open PR from raft-master; integrator B merged #2 at 1636dfe meanwhile.
+
+## 2026-11-21 · loop-features-202611210849 (features)
+Base: origin/claude/raft-master (newest at start). Branch: claude/loop-features-202611210849.
+The cooking pot was dropped after research: it is already built on loop-features-0722/0814. Storms took its place.
+- **Spyglass**:
+  - New early `spyglass` item (wood 3, rope 1, plastic 2, scrap 1), stack 1, never wears.
+  - Hold RMB or pad LT to zoom: spyglass x3, the existing binoculars x4.5, with a 0.18 s ease.
+  - While zoomed: a lens vignette, a crosshair dot, and a label to the right of the crosshair with the island name + distance, signal caches or floating items (2° cone, sticky).
+  - New content hook `zoom()`; game.js divides the FOV and look speed by it and damps bob and shake.
+  - Local only. Co-op held prop at HELD index 21, appended at the end.
+  - Files: dist/spyglass.js, spyglass-model.js.
+- **Bramblegoat + Hay Corner + Wooden Pail**:
+  - Added inside the animals module as a species table. world.ext.animals stays v:1 and hen-only saves serialize byte-identical.
+  - `goatpen` lure: 4 leaf or 3 seaweed. The goat wades in from the raft edge.
+  - Caps: 4 hens + 2 goats.
+  - Milking: a host-only `animals.milk` action, one milk every 120 s if fed (300 s otherwise).
+  - Milk: drink it for 10 food / 25 water and get the pail back.
+  - Model: two instanced meshes (body + head bob).
+  - Fixed along the way: `honeyfish` now has a food entry.
+- **Friendly storms + Lightning Rod**:
+  - Storm timing: about 35% of rain segments become storms, worked out from daynight (seed, clock). Strikes are seeded too (salts 4-7), so there are no co-op messages.
+  - Storm look: darker sky, slanted rain, `ocean.setAmp` waves (x1.3, bit-identical at 1), a hemi/exposure flash (no new lights), one pooled bolt, and thunder from the existing noise.
+  - Setting: `stormFlash` Full/Soft/Off, and prefers-reduced-motion turns Full into Soft.
+  - `stormrod`: collects up to 3 Storm Shards, host-paid with a strike-id guard (world.ext.storm {v,r,rods}).
+  - New recipes: Storm Lantern (blue emissive) and Storm Glass (tells you when the next storm is due).
+  - Never damages anything.
+  - Files: dist/storm.js, storm-model.js; small hooks in daynight.js, ocean.js, audio.js and settings.js.
+
+Fleet: 3 researchers (one of them on the dropped cookpot), 3 designers, 3 builders (worktrees), 3 reviewers, 1 visual QA (13 agents).
+Review/QA fixes:
+- **Spyglass**:
+  - Crosshair invisible while zoomed.
+  - Zoom worked during the faint card.
+  - Pad LT needed mouse lock.
+  - Per-frame DOM query.
+- **Goats**:
+  - An empty Hay Corner fed a goat behind it.
+  - The milk prompt was cut off at 48 characters.
+  - The full-bag text said "cup" for the pail.
+- **Storm**:
+  - Prune wiped rods when there was no world.
+  - Junk save keys.
+  - Sea bolts could land on big rafts.
+  - Bolt drawn through the water while diving.
+- **QA**:
+  - Pail held model.
+  - Milk icon.
+  - Notes card compact on short screens.
+  - Spyglass label moved beside the crosshair.
+  - Brighter Storm Glass.
+
+Checks:
+- `npm test` 956/956 (910 at base).
+- shoot.py `errors: []`.
+- Shots in docs/cloud/shots/{spyglass,goats,storm,qa-0849}.
+
+Known limits:
+- tests/coop-e2e.mjs already fails on base: `#welcomeCrew` is hidden by the onboarding title.
+- E picks by module order, not distance.
+- The Storm Lantern gives no light.
+- The flash is weak in SwiftShader.
+- The bag at 640x360 needs scrolling.
+
+Next ideas:
+- Fix the coop-e2e harness for the onboarding title.
+- Merge the 0722/0814 cookpot (milk is a natural ingredient).
+- Cross-module nearest-first E picking.
+- Lightning rod → battery once power.js lands.
