@@ -60,7 +60,7 @@ export const STEPS = [
   {chapter:'ch2', id:'palm-craft', title:'Make a palm planter', hint:'Bag: 2 wood + 3 leaves', done:(S, b, c) => c.gained('palm') >= 1 || placedNow(S, b, c, 'palm')},
   {chapter:'ch2', id:'plant', title:'Plant your first palm', hint:S => use(S, 'palm', 'the planter', '[LMB] on the raft', 'Hold it, [LMB] on the raft'), done:(S, b, c) => placedNow(S, b, c, 'palm')},
   {chapter:'ch2', id:'lantern', title:'Hang a lantern', hint:S => use(S, 'lantern', 'the lantern', '[LMB] on the raft', 'Bag: 2 wood + 2 scrap, then place it'), done:(S, b, c) => placedNow(S, b, c, 'lantern')},
-  {chapter:'ch2', id:'newhook', title:'Craft a new hook', hint:'Hook broke? Bag: 1 wood + 2 plastic. Grab debris with [E]', optional:true, show:S => !hasHook(S),
+  {chapter:'ch2', id:'newhook', title:'Craft a new hook', hint:'Hook broke? Bag: 1 wood + 2 plastic. Grab debris with [E]', optional:true, every:true, show:S => !hasHook(S), // every: a hook can snap before chapter 2
     done:(S, b, c) => { if (!hasHook(S)) c.mem.lost = true; return !!c.mem.lost && hasHook(S); }},
   // The rod (6 wood + 8 rope) comes after a short wood top-up; rope already twisted (or spent on the rod) counts.
   {chapter:'ch3', ...gainStep('rodwood', 'Gather 6 wood', 'For the rod. A bench is 3 wood', 'wood', 6, [], hasRod)},

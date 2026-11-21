@@ -97,6 +97,8 @@ test('newhook appears only once the hook is gone, ticks when a new one is crafte
   assert.ok(O.evaluate(S, P2, fresh({ownedTools:[]})).visible.includes('newhook'));
   O.evaluate(S, P2, fresh({ownedTools:['hook']}));
   assert.ok(P2.done.newhook, 'crafting a new hook ticks it');
+  const P1 = O.createProgress(['look', 'walk', 'throw', 'reel']); // a hook can snap while chapter 1 is still open
+  assert.ok(O.evaluate(S, P1, fresh({ownedTools:[]})).visible.includes('newhook'), 'shown in chapter 1 too');
   const P3 = O.createProgress(S.filter(s => s.chapter === 'ch2' && !s.optional).map(s => s.id).concat(done));
   assert.equal(O.evaluate(S, P3, fresh()).chapter, 'ch3');
 });
