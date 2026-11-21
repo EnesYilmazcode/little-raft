@@ -46,9 +46,10 @@ import { createAnimals } from './animals.js?build=v3-survival-ae77fa84ac2b';
 import { createBees } from './bees.js?build=v3-survival-ae77fa84ac2b'; // [bees]
 import { createTreasure } from './treasure.js?build=v3-survival-ae77fa84ac2b';
 import { createCrops } from './crops.js?build=v3-survival-ae77fa84ac2b'; // [crops]
+import { createRaiders } from './raiders.js?build=v3-survival-ae77fa84ac2b'; // [raiders] seagulls raid crop plots; scarecrow
 import { createMapTable } from './maptable.js?build=v3-survival-ae77fa84ac2b';
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createCrops]; // [bees] + createBees, [crops] + createCrops
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createCrops, createRaiders]; // [bees] + createBees, [crops] + createCrops, [raiders] + createRaiders
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice

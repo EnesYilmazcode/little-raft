@@ -30,6 +30,7 @@ const CATEGORY_OF = Object.freeze({
   motor: 'building', wheel: 'building', bed: 'building', brush: 'tools',
   paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
   cropplot: 'survival', cookedbeet: 'survival', cookedpotato: 'survival', // [crops]
+  scarecrow: 'survival', cookeddrumstick: 'survival', // [raiders]
   armor: 'building', // foundation armor (dist/armor.js)
 });
 
@@ -114,7 +115,7 @@ export const ITEM_TEXT = Object.freeze({
   glasslamp:  { desc: 'A lantern with clear glass panes.', use: 'Place it for a warm light on the raft.' },
   sinker:     { desc: 'A small metal weight for the hook line.', use: 'Keep it in your bag: the hook wears half as fast.' },
   puffegg:    { desc: 'A speckled egg from a puffhen.', use: 'Make an Egg Lantern.' },
-  feather:    { desc: 'A soft puffhen feather.', use: 'Stuff a Feather Cushion.' },
+  feather:    { desc: 'A soft white feather, from a puffhen or a seagull.', use: 'Stuff a Feather Cushion.' },
   nestbox:    { desc: 'A cosy box of straw for puffhens.', use: 'Place it on the raft and a puffhen may come to stay.' },
   cushion:    { desc: 'A plump cushion stuffed with feathers.', use: 'Place it on the raft for a soft seat.' },
   beet:       { desc: 'A crunchy red beet.', use: 'Eat raw (+10 food), grill it, or plant it in a crop plot.' }, // [crops]
@@ -122,6 +123,9 @@ export const ITEM_TEXT = Object.freeze({
   cookedbeet: { desc: 'A beet grilled sweet and soft.', use: 'A tasty snack (+15 food).' }, // [crops]
   cookedpotato: { desc: 'A potato baked on the grill.', use: 'A warm, filling snack (+15 food).' }, // [crops]
   cropplot:   { desc: 'A three-slot box of dark soil.', use: 'Plant beets or potatoes; water each slot with fresh water. Rain and a sprinkler next to it water it too.' }, // [crops]
+  scarecrow:  { desc: 'A straw-headed guard on a pole, in an old plastic coat.', use: 'Seagulls peck at it instead of crops within 6 m. Three pecks and it falls apart.' }, // [raiders]
+  drumstick:  { desc: 'A raw seagull drumstick.', use: 'Grill it (+20 food), or eat it raw in a pinch (+5 food).' }, // [raiders]
+  cookeddrumstick: { desc: 'A drumstick grilled crispy.', use: 'A good meal (+20 food).' }, // [raiders]
   cookedsharkmeat: { desc: 'A shark steak grilled through.', use: 'A filling meal (+30 food).' },
   sharkmeat:  { desc: 'A raw slab of shark meat.', use: 'Grill it for a proper meal; four come from every shark.' },
   sharkhead:  { desc: 'The head of a shark you beat.', use: 'A trophy, and proof the raft is safe for a while.' },
@@ -353,7 +357,9 @@ export const ITEM_SOURCE = Object.freeze({
   wax:         Object.freeze({ tag: 'beehive', how: 'Collected with honey from a beehive (E).' }),
   // raft animals (animals.js)
   puffegg:     Object.freeze({ tag: 'puffhen', how: 'Place a Nest Box; a puffhen moves in and lays eggs. Press E on the nest to collect.' }),
-  feather:     Object.freeze({ tag: 'puffhen', how: 'Sometimes left with the eggs in a puffhen nest box; collect with E.' }),
+  feather:     Object.freeze({ tag: 'puffhen, seagull', how: 'Sometimes left in a puffhen nest box (E), or drops from a seagull you take down with a spear.' }),
+  drumstick:   Object.freeze({ tag: 'seagull', how: 'Spear a seagull that raids your crops.' }), // [raiders]
+  cookeddrumstick: Object.freeze({ tag: 'grill', how: 'Grill a raw drumstick.' }), // [raiders]
   // shark lane (shark.js): harvest the beaten shark with E
   sharkmeat:   Object.freeze({ tag: 'beaten shark', how: 'Fight off the shark with a spear, then press E on its body.' }),
   sharkhead:   Object.freeze({ tag: 'beaten shark', how: 'Harvested with the meat from a beaten shark (E).' }),

@@ -319,7 +319,7 @@ export function collect(state, x, z, bag) {
   a.eggs -= eggs; a.feather -= feathers;
   const parts = [];
   if (eggs) parts.push(`+${eggs} Puff Egg`);
-  if (feathers) parts.push(`+${feathers} Puff Feather`);
+  if (feathers) parts.push(`+${feathers} Feather`);
   return { ok: true, kind: 'loot', eggs, feathers, text: parts.join(', ') };
 }
 

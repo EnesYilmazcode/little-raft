@@ -21,7 +21,7 @@
 // Notes: no DOM timers. Voices clean themselves up on the sources' 'ended' event.
 
 export const EVENTS = Object.freeze(['throw', 'splash', 'collect', 'build', 'place', 'craft', 'repair', 'plant', 'water', 'jump',
-  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny', 'detect', 'chime']);
+  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny', 'detect', 'chime', 'squawk']);
 // friendlier names other modules may use; play() resolves them to a recipe above
 export const ALIASES = Object.freeze({ pickup: 'collect', cast: 'throw', hook: 'throw', pour: 'water', click: 'ui' });
 export const BUSES = Object.freeze(['master', 'effects', 'ambience', 'music']);
@@ -30,7 +30,7 @@ const OUTPUT_SCALE = 0.5;       // keeps full volume comfortable
 const MAX_VOICES = 24;
 const MIN_GAP = { throw: 0.08, splash: 0.06, collect: 0.04, build: 0.05, place: 0.06, plant: 0.12, water: 0.25, craft: 0.1, repair: 0.12, jump: 0.1, land: 0.12,
   step: 0.16, swim: 0.3, reel: 0.4, catch: 0.06, bite: 0.2, ui: 0.03, open: 0.08, close: 0.08, deny: 0.15,
-  detect: 0.05, chime: 0.5 };
+  detect: 0.05, chime: 0.5, squawk: 0.6 };
 const SILENT = 0.0001;
 // calm D-major-ish pad: Dadd9, Bm7, Gmaj7, A6 (low register so it sits under the sea)
 const CHORDS = [[146.83, 220, 329.63], [123.47, 185, 293.66], [98, 196, 246.94], [110, 164.81, 277.18]];
@@ -368,6 +368,15 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     },
     // Seashell Finder tick (pitch and level rise with closeness s) and the soft lock-on chime (treasure.js)
     detect(v, t, s) { const f = 700 + 500 * s; tone(v, t, 'sine', f, 0.05 + 0.04 * s, 0.002, 0.05); tone(v, t, 'triangle', f * 2, 0.015 * s, 0.001, 0.03); },
+    // [raiders] seagull squawk: two nasal yelps that bend down (sawtooth through a band-pass)
+    squawk(v, t, s) {
+      const bp = filter(v, 'bandpass', 1500, 2.5, v.bus);
+      for (let i = 0; i < 2; i++) {
+        const st = t + i * rand(0.13, 0.17), f = rand(980, 1150) * (i ? 0.92 : 1);
+        tone(v, st, 'sawtooth', f, 0.08 * s, 0.01, 0.12, f * 0.62, bp);
+        tone(v, st, 'square', f * 1.5, 0.025 * s, 0.01, 0.08, f * 0.9, bp);
+      }
+    },
     chime(v, t, s) { tone(v, t, 'sine', 880, 0.09 * s, 0.002, 0.4); tone(v, t + 0.07, 'sine', 1318.5, 0.06 * s, 0.002, 0.35); tone(v, t + 0.14, 'sine', 1760, 0.04 * s, 0.002, 0.3); },
     repair(v, t, s) {
       // scrape: grainy band noise with fast tremolo, ending on a soft knock

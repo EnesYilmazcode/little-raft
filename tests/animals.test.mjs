@@ -233,7 +233,7 @@ test('actions: lure, feed, pet, collect, rename; failures change nothing', () =>
   st = stateWith([hen({ eggs: 3, feather: 2 })]);
   bag = bagFrom([]);
   r = C.collect(st, 0, 0, bag);
-  assert.equal(r.text, '+3 Puff Egg, +2 Puff Feather'); assert.equal(bag.count('puffegg'), 3); assert.equal(st.list[0].eggs, 0);
+  assert.equal(r.text, '+3 Puff Egg, +2 Feather'); assert.equal(bag.count('puffegg'), 3); assert.equal(st.list[0].eggs, 0);
   assert.equal(C.collect(st, 0, 0, bag).reason, 'empty');
   st = stateWith([hen({ eggs: 3, feather: 1 })]);
   const slots = Array.from({ length: SLOT_COUNT }, () => ({ kind: 'scrap', count: 20 })); slots[0] = { kind: 'puffegg', count: 19 };

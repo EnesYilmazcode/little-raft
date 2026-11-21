@@ -107,6 +107,8 @@ const LIST = [
     tip: 'A shiny catch from your fishing rod. Edible raw, but salty: grill it to fill up properly.' }),
   item('sharkmeat', 'Raw Shark Meat', 'food', { iconTint: '#d97a7a',
     tip: 'A thick slab cut from a shark you fought off for good. Four come from every shark.' }),
+  item('drumstick', 'Raw Drumstick', 'food', { iconTint: '#e8a08a', // [raiders] from a seagull taken down with a spear
+    tip: 'A raw seagull drumstick. Edible in a pinch (+5 food, a little salty); grill it for a real meal.' }),
   // [crops] Small Crop Plot crops (dist/crops.js): each crop is its own seed, like Raft
   item('beet', 'Beet', 'food', { iconTint: '#a8324a',
     tip: 'A crunchy red beet. Eat it raw (+10 food), grill it, or plant it in a crop plot for two more.' }),
@@ -189,6 +191,9 @@ const LIST = [
   item('cookedpotato', 'Baked Potato', 'food', { iconTint: '#b77a3a', stack: 10, // [crops]
     recipe: cook('grill', 'potato', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
     tip: 'Fluffy inside, crispy outside. Click with it in hand to eat (+15 food).' }),
+  item('cookeddrumstick', 'Grilled Drumstick', 'food', { iconTint: '#c07a3e', stack: 10, // [raiders]
+    recipe: cook('grill', 'drumstick', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
+    tip: 'Crispy, smoky and well earned. Click with it in hand to eat (+20 food).' }),
   item('honeyfish', 'Honey Glazed Fish', 'food', { iconTint: '#e8a83a', stack: 10, // [bees]
     recipe: hand({ cookedfish: 1, honey: 1 }), unlock: discover('honey'),
     tip: 'Grilled fish with a honey glaze. The seagull is very jealous.' }),
@@ -206,6 +211,9 @@ const LIST = [
   item('cropplot', 'Small Crop Plot', 'decor', { placeable: true, iconTint: '#7a5232', // [crops]
     recipe: hand({ wood: 6, rope: 4 }), unlock: discover('rope'),
     tip: 'A long box of dark soil with three slots. Plant beets or potatoes, water them, harvest with E.' }),
+  item('scarecrow', 'Scarecrow', 'decor', { placeable: true, iconTint: '#d8b25a', // [raiders]
+    recipe: hand({ wood: 5, leaf: 3, nail: 3, plastic: 3 }), unlock: discover('nail'),
+    tip: 'Seagulls raid crop plots within 6 m of it no more: they peck at the scarecrow instead. Three pecks and it falls apart.' }),
   // [bees] flower box, beehive and beeswax candle (models in dist/bees-model.js)
   item('flowerbox', 'Flower Box', 'decor', { placeable: true, iconTint: '#ff7aa2',
     recipe: hand({ wood: 2, flowerseed: 1 }), unlock: discover('flowerseed'),
@@ -259,6 +267,7 @@ export const BLOCK_RADII = deepFreeze({
   smelter: 0.5, researchtable: 0.55, grill: 0.45, maptable: 0.5,
   flowerbox: 0.3, beehive: 0.35, candle: 0.1, // [bees]
   cropplot: 0.45, // [crops]
+  scarecrow: 0.2, // [raiders]
 });
 
 /** Damage one landed spear thrust deals (spear lane; see docs/loop/research/fidelity-r1-shark.md). */

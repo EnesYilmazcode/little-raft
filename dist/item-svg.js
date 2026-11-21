@@ -346,6 +346,31 @@ export const ITEM_ICONS = Object.freeze({
     <g fill="none" stroke="${O}" stroke-width="1.1" stroke-opacity=".55" stroke-linecap="round"><path d="M16 9 C18 16 16 24 20 33"/><path d="M32 12 C31 20 32 28 28 38"/></g>
     <g fill="#bdeef0" stroke="${O}" stroke-width="1.2"><circle cx="40" cy="16" r="2.6"/><circle cx="42" cy="26" r="1.6"/><circle cx="8" cy="15" r="1.8"/></g>`,
 
+  // [raiders] seagull drumstick (raw, grilled) and the scarecrow
+  drumstick: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M30 8 C39 8 44 15 42 23 C40 31 32 34 26 31 L18 37 C16 39 13 39 12 37 C9 38 7 35 9 33 C8 31 10 28 13 29 L19 23 C15 16 21 8 30 8 Z" fill="#eaa18f"/>
+    <path d="M18 37 C16 39 13 39 12 37 C9 38 7 35 9 33 C8 31 10 28 13 29 L15 31 L16 35 Z" fill="#fff2cc"/></g>
+    <path d="M26 13 C30 11.5 35 12 38 15" fill="none" stroke="#ffd3c4" stroke-width="1.8" stroke-linecap="round"/>
+    <g fill="#c96f62"><circle cx="31" cy="21" r="1.2"/><circle cx="36" cy="18" r="1"/><circle cx="27" cy="25" r="1"/></g>`,
+
+  cookeddrumstick: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M30 11 C39 11 44 18 42 26 C40 34 32 37 26 34 L18 40 C16 42 13 42 12 40 C9 41 7 38 9 36 C8 34 10 31 13 32 L19 26 C15 19 21 11 30 11 Z" fill="#c07a3e"/>
+    <path d="M18 40 C16 42 13 42 12 40 C9 41 7 38 9 36 C8 34 10 31 13 32 L15 34 L16 38 Z" fill="#fff2cc"/></g>
+    <path d="M25 30 L31 17 M31 31 L37 19" fill="none" stroke="#5a2f14" stroke-width="2.2" stroke-linecap="round"/>
+    <g fill="none" stroke="#fff2cc" stroke-width="2" stroke-linecap="round" stroke-opacity=".9"><path d="M28 9 C26 6 30 4 28 1"/><path d="M37 9 C35 6 39 4 37 1"/></g>`,
+
+  scarecrow: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M24 16 V45" fill="none" stroke="#8d5f36" stroke-width="3.2"/>
+    <path d="M6 22 H42" fill="none" stroke="#8d5f36" stroke-width="3"/>
+    <path d="M15 19 H33 L35 36 H13 Z" fill="#54a6a4"/>
+    <path d="M6 19.5 H15 V25 H8 Z M33 19.5 H42 L40 25 H33 Z" fill="#9fd6d0"/>
+    <path d="M4 20 L6 27 M4 24 L8 27 M44 20 L42 27 M44 24 L40 27" fill="none" stroke="#e0b45a" stroke-width="1.8"/>
+    <circle cx="24" cy="11" r="6.5" fill="#e9c46a"/>
+    <path d="M14 7 H34 L28 5 L26 0.5 H22 L20 5 Z" fill="#c99560"/></g>
+    <g fill="${O}"><circle cx="21.5" cy="11" r="1.1"/><circle cx="26.5" cy="11" r="1.1"/></g>
+    <path d="M20.5 14.2 L22 13.6 L23.5 14.4 L25 13.6 L26.5 14.4 L28 13.8" fill="none" stroke="${O}" stroke-width="1.1"/>
+    <path d="M17 28 L21 30 M27 26 L31 29" fill="none" stroke="#fff2cc" stroke-width="1.3" stroke-opacity=".8"/>`,
+
   // [crops] beet, potato, grilled beet, baked potato, small crop plot
   beet: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <path d="M22 17 C16 11 12 6 14 3 C18 3 22 9 23 16 Z" fill="#5fae6b"/><path d="M26 17 C30 10 35 5 38 7 C38 11 32 15 27 18 Z" fill="#4f9a5c"/>
