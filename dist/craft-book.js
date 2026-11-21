@@ -82,6 +82,17 @@ export function craftableTimes(rows) {
   return n;
 }
 
+/** How many crafts of `id` in a row succeed with this bag's materials AND space, up to cap.
+ *  Simulated on a copy (consuming ingredients can free slots). null if the bag cannot be copied. */
+export function fittingTimes(bag, id, cap = 99) {
+  let scratch;
+  try { scratch = new bag.constructor(bag.snapshot()); } catch { return null; }
+  if (typeof scratch.craft !== 'function') return null;
+  let n = 0;
+  try { while (n < cap && scratch.craft(id)?.ok) n++; } catch { return null; }
+  return n;
+}
+
 /** 'ready' | 'missing' | 'full' given the rows and an optional Bag.canCraft() result. */
 export function recipeState(rows, check = null) {
   if (rows.some(r => !r.enough)) return 'missing';

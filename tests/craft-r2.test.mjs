@@ -18,3 +18,23 @@ test('CRAFT-1: cup, seed and water icons come from models.js; existing procedura
     assert.equal(own, true, k + ' still uses its procedural icon');
   }
 });
+
+const { Bag, SLOT_COUNT } = await import(new URL('inventory-state.js', base));
+const book = await import(new URL('craft-book.js', base));
+
+test('CRAFT-2: craftable count respects bag space, not just materials', () => {
+  const slots = new Array(SLOT_COUNT).fill(null);
+  slots[0] = { kind: 'wood', count: 20 }; slots[1] = { kind: 'plastic', count: 20 };
+  for (let i = 2; i < SLOT_COUNT - 1; i++) slots[i] = { kind: 'fish', count: 20 };
+  const bag = new Bag({ slots, selected: 0 });
+  const rows = book.ingredientRows([{ kind: 'wood', count: 1 }, { kind: 'plastic', count: 2 }], k => bag.count(k));
+  assert.equal(book.craftableTimes(rows), 10, 'materials alone cover 10');
+  assert.equal(book.fittingTimes(bag, 'hook', 99), 1, 'only one non-stacking hook fits');
+  assert.equal(bag.count('hook'), 0, 'simulation leaves the real bag untouched');
+  // Stacking output with room: limited by materials, and by the cap.
+  const leafSlots = new Array(SLOT_COUNT).fill(null); leafSlots[0] = { kind: 'leaf', count: 20 };
+  const roomy = new Bag({ slots: leafSlots, selected: 0 });
+  assert.equal(book.fittingTimes(roomy, 'rope', 99), 10);
+  assert.equal(book.fittingTimes(roomy, 'rope', 3), 3);
+  assert.equal(book.fittingTimes({ snapshot: () => ({}) }, 'rope'), null, 'uncopyable bag falls back');
+});

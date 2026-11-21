@@ -2,7 +2,7 @@
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, holdDelay, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 
 const VERSION = 'sv3';
 const HB = Number(HOTBAR_SIZE) || 8;
@@ -541,7 +541,10 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const rows = ingredientRows(r.reqs, k => countOf(bag, k));
     let check = null;
     if (typeof bag.canCraft === 'function') { try { check = bag.canCraft(r.id); } catch (e) { console.error(e); } }
-    return { rows, state: recipeState(rows, check), times: craftableTimes(rows) };
+    const state = recipeState(rows, check);
+    let times = craftableTimes(rows);
+    if (state === 'ready') { const fit = fittingTimes(bag, r.id, Math.min(HOLD.max, times)); if (fit != null) times = fit; }
+    return { rows, state, times };
   }
   function paintRecipes(bag) {
     const readyPer = new Map();
@@ -550,7 +553,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       const { rows, state, times } = evaluate(bag, r);
       v.rows = rows; v.state = state; v.times = times;
       if (state === 'ready') readyPer.set(v.cat, (readyPer.get(v.cat) || 0) + 1);
-      const sig = state + rows.map(x => x.have).join(',');
+      const sig = state + times + ':' + rows.map(x => x.have).join(',');
       if (v.sig === sig) continue;
       v.sig = sig;
       v.el.classList.toggle('sv-ready', state === 'ready');
