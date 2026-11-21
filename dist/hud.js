@@ -76,3 +76,19 @@ export function feedPlacement({inventoryOpen = false, optionsOpen = false, dialo
   if (optionsOpen) return 'options';
   return dialog ? 'hidden' : 'hud';
 }
+
+// One top-left column for the pinned recipe tracker and the fishing toasts, so the browser stacks them
+// instead of both being pinned to the same corner. `doc` is passed in (node tests use a stub).
+export const TOP_LEFT_ID = 'hudTopLeft';
+export const TOP_LEFT_CSS = `#${TOP_LEFT_ID}{position:fixed;left:16px;top:16px;z-index:5;display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none;max-width:calc(100vw - 32px)}
+#${TOP_LEFT_ID}>*{position:static!important;inset:auto!important;margin:0!important}
+#${TOP_LEFT_ID}>#craftTracker{order:0}#${TOP_LEFT_ID}>#fcToast{order:1}
+@media(max-width:760px){#${TOP_LEFT_ID}{left:10px;top:10px}}`;
+export function topLeftColumn(doc) {
+  let col = doc.getElementById(TOP_LEFT_ID);
+  if (col) return col;
+  if (!doc.getElementById(TOP_LEFT_ID + 'Style')) { const st = doc.createElement('style'); st.id = TOP_LEFT_ID + 'Style'; st.textContent = TOP_LEFT_CSS; doc.head.appendChild(st); }
+  col = doc.createElement('div'); col.id = TOP_LEFT_ID;
+  (doc.getElementById('hud') || doc.body).appendChild(col); // inside #hud: hidden on the title screen with the rest of the HUD
+  return col;
+}

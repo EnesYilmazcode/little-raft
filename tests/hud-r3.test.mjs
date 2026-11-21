@@ -25,3 +25,28 @@ test('HUD-2: the crosshair prompt steps aside while a throw charges, so bar and 
   assert.equal(P.promptQuiet(null), false);
   assert.match(src('prompts.js'), /blocked = [^\n]*promptQuiet\(state\)/);
 });
+
+// ---------------------------------------------------------------- HUD-3 tracker + fish toast
+
+const H = await import(new URL('hud.js', base));
+function stubDoc(withHud = true) {
+  const byId = new Map();
+  const el = tag => ({tagName:tag, id:'', children:[], textContent:'', appendChild(c) { this.children.push(c); if (c.id) byId.set(c.id, c); return c; }});
+  const doc = {head:el('head'), body:el('body'), createElement:el, getElementById:id => byId.get(id) ?? null};
+  if (withHud) { const hud = el('div'); hud.id = 'hud'; doc.body.appendChild(hud); }
+  return doc;
+}
+
+test('HUD-3: the tracker and fishing toasts share one top-left column instead of two pinned corners', () => {
+  const doc = stubDoc(), col = H.topLeftColumn(doc);
+  assert.equal(col.id, H.TOP_LEFT_ID);
+  assert.equal(H.topLeftColumn(doc), col, 'one column, created once');
+  assert.equal(doc.getElementById('hud').children[0], col, 'lives in #hud, so it hides with the HUD');
+  assert.equal(doc.head.children.filter(s => s.id === H.TOP_LEFT_ID + 'Style').length, 1);
+  assert.match(H.TOP_LEFT_CSS, /display:flex;flex-direction:column/);
+  assert.match(H.TOP_LEFT_CSS, />\*\{position:static!important/, 'children flow in the column');
+  assert.match(H.TOP_LEFT_CSS, /#craftTracker\{order:0\}[^\n]*#fcToast\{order:1\}/, 'tracker first, toasts under it');
+  assert.equal(H.topLeftColumn(stubDoc(false)).id, H.TOP_LEFT_ID, 'falls back to body');
+  assert.match(src('fishing-cooking.js'), /topLeftColumn\(document\)\.appendChild\(toastBox\)/);
+  assert.match(src('survival-ui.js'), /topLeftColumn\(document\)\.append\(t\)/);
+});
