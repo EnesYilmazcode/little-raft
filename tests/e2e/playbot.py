@@ -82,12 +82,12 @@ PAGE_INIT = r"""
   const otherDialogs = [...document.querySelectorAll('dialog')].filter(d => d.open && d.id !== 'options' && d.id !== 'inventory').map(d => d.id || '?');
   return {running: s.running, active: s.active, disposed: s.disposed, tool: s.tool, heldKind: s.heldKind,
     selectedIndex: s.selectedIndex, pointerLocked: s.pointerLocked, lockFallback: s.lockFallback,
-    tiles: s.tiles, tileList: s.tileList, decor: s.decor.length, stock: s.stock, inventory: s.inventory, fish: s.fish,
+    tiles: s.tiles, tileList: s.tileList || [], decor: (s.decor || []).length, stock: s.stock, inventory: s.inventory, fish: s.fish,
     collected: s.collected, items: s.items, me: s.me, camera: s.camera, raft: s.raft, physics: s.physics,
     grounded: s.grounded, swimming: s.swimming, hookStage: s.hookStage, hook: s.hook, fishWait: s.fishWait,
     hookHealth: s.hookHealth, charge: s.charge, charging: s.charging, reeling: s.reeling,
     inventoryOpen: s.inventoryOpen, pauseOpen: !!(od && od.open), otherDialogs,
-    build: {active: s.build.active, candidates: s.build.candidates, affordable: s.build.affordable, hover: s.build.hover},
+    build: {active: s.build?.active, candidates: s.build?.candidates, affordable: s.build?.affordable, hover: s.build?.hover},
     probe: pb.read(), now: performance.now()};
   };
   // Aim the camera at a world point / set an absolute view in ONE round-trip (each Playwright call costs ~1 s here).
@@ -125,6 +125,10 @@ def finite(*v):
 
 class InfraError(Exception):
     pass
+
+
+class PageCrashed(Exception):
+    """The game tab's renderer died; already recorded as a page_crashed failure."""
 
 
 class TimeUp(Exception):
@@ -199,7 +203,7 @@ class Bot:
         ft = self.ft()
         tail = '; '.join(f'{t:.1f}s {a}' for t, a in [x for x in self.log if x[0] <= ft + .5][-12:])
         return (f'python3.13 tests/e2e/playbot.py --dist {self.args.dist} --seed {self.args.seed} --duration {self.args.duration:g} '
-                f'--kit {self.args.kit}  (failed at t={self.ft():.1f}s; last actions: {tail})')
+                f'--kit {self.args.kit}{self.args.extra}  (failed at t={self.ft():.1f}s; last actions: {tail})')
 
     def fail(self, fid, detail, shot=True):
         n = self.fail_ids.get(fid, 0)
@@ -247,8 +251,11 @@ class Bot:
         try:
             d = self.page.evaluate('window.__playbot.drain()')
         except Exception as e:
-            self.fail('sample_failed', f'sample buffer could not be read: {e}')
-            return
+            # A renderer crash is the game's doing (e.g. memory blow-up); any other failed round-trip is the harness's.
+            if self.crashed:
+                self.fail('page_crashed', f'the game tab crashed (renderer died): {e}', shot=False)
+                raise PageCrashed()
+            raise InfraError(f'sample buffer could not be read: {type(e).__name__}: {e}')
         now = self.el()
         for kind, lst in (('pageerror', self.page_errors), ('console_error', self.console_errors)):
             seen = self.seen_err.get(kind, 0)
@@ -268,6 +275,7 @@ class Bot:
         self.sample_t = None
 
     sample_t = None
+    crashed = False
 
     def check_sample(self, s, el):
         self.samples += 1
@@ -713,9 +721,20 @@ class Bot:
             except TimeUp:
                 self.act(f'time up during {name}')
                 break
+            except PageCrashed:
+                self.act(f'page crashed during {name}')
+                return
+            except Exception as e:
+                if not self.crashed:
+                    raise
+                self.act(f'page crashed during {name}')
+                self.fail('page_crashed', f'the game tab crashed (renderer died) during {name}: {e}', shot=False)
+                return
             finally:
                 self.m['action_s'][name] = round(self.m['action_s'].get(name, 0) + self.el() - ta, 1)
                 self.stopping = False
+                if self.crashed:
+                    self.held, self.mouse_held = (), False
                 for k in list(self.held):
                     self.key_up(k)
                 if self.mouse_held:
@@ -743,19 +762,26 @@ def main():
     ap.add_argument('--fish-wait-s', type=float, default=None, help='max wait for a bite (default min(15, duration/10))')
     ap.add_argument('--headed', action='store_true')
     args = ap.parse_args()
+    # Non-default tuning flags go into every repro string so the replay uses the same thresholds.
+    args.extra = ''.join(f' --{k.replace("_", "-")} {v:g}' if isinstance(v, float) else f' --{k.replace("_", "-")} {v}'
+                         for k, v in vars(args).items()
+                         if k not in ('dist', 'out', 'duration', 'seed', 'kit', 'headed') and v is not None and v != ap.get_default(k))
     # each screenshot costs ~5 s on swiftshader (it waits for a composited frame), so keep periodic ones sparse
     args.shot_interval = args.shot_interval or max(45.0, args.duration / 10)
     # keep slow hook/fish waits proportional so a short run is not one long wait
     args.hook_wait_s = args.hook_wait_s or min(25.0, max(8.0, args.duration / 6))
     args.fish_wait_s = args.fish_wait_s or min(15.0, max(6.0, args.duration / 10))
     out = Path(args.out).resolve()
-    (out / 'frames').mkdir(parents=True, exist_ok=True)
-    for f in [*(out / 'frames').glob('*.png'), *(out / 'frames').glob('*.jpg')]:
-        f.unlink()
     result = {'tool': TOOL, 'pass': False, 'failures': [], 'metrics': {}, 'artifacts': []}
     code = 2
     bot = None
     try:
+        try:
+            (out / 'frames').mkdir(parents=True, exist_ok=True)
+            for f in [*(out / 'frames').glob('*.png'), *(out / 'frames').glob('*.jpg')]:
+                f.unlink()
+        except OSError as e:
+            raise InfraError(f'cannot use --out {out}: {e}')
         dist = Path(args.dist).resolve()
         if not (dist / 'index.html').is_file():
             raise InfraError(f'no index.html in {dist}')
@@ -785,6 +811,7 @@ def main():
                         if len(bot.warning_texts) < 5:
                             bot.warning_texts.append(m.text[:200])
                 page.on('console', on_console)
+                page.on('crash', lambda *_: setattr(bot, 'crashed', True))
                 try:
                     page.goto(srv.url, timeout=60000)
                     # live.js catches a throwing mount(), logs console.error and shows #raftLiveError: stop waiting then.
@@ -812,9 +839,19 @@ def main():
                     bot.cx, bot.cy = vw // 2, vh // 2
                     page.evaluate('window.__playbot.reset(); window.__playbot.on = true')
                     bot.act('solo start')
+                    if args.kit == 'starter':
+                        # A branch with a different save schema may drop the kit (the game then falls back to a fresh
+                        # bag): not a bug, but build/fish then only notice the missing tool, so say so in the metrics.
+                        kinds = page.evaluate("(raftDebug.state.inventory?.slots || []).filter(Boolean).map(s => s.kind)")
+                        bot.m['kit_loaded'] = all(k in kinds for k in ('hook', 'hammer', 'fishingrod'))
+                        if not bot.m['kit_loaded']:
+                            bot.act(f'starter kit not loaded by this build (inventory: {kinds})')
                     page.wait_for_timeout(1000)
-                    bot.check()
-                    bot.run()
+                    try:
+                        bot.check()
+                        bot.run()
+                    except PageCrashed:
+                        pass
             finally:
                 browser.close()
         from timeline_strip import build_strip
@@ -829,6 +866,9 @@ def main():
         code = 0 if result['pass'] else 1
     except InfraError as e:
         result['failures'] = [{'id': 'infra', 'detail': str(e), 'repro': 'check --dist and the Chromium install'}]
+        if bot and bot.failures:   # game failures found before the harness broke are still real
+            result['failures'] += bot.failures
+            code = 1
     except Exception as e:
         result['failures'] = [{'id': 'infra', 'detail': f'{type(e).__name__}: {e}', 'repro': traceback.format_exc()[-1500:]}]
         if bot:
