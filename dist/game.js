@@ -379,6 +379,15 @@ export function mount(transfer = null) {
     }
     return out;
   }
+  // Compile every scene program up front (hidden viewmodels, hook, rope, ghost) so the first frame after #solo doesn't.
+  // compile() walks the scene graph, so all viewmodels are attached just for the synchronous part of the call.
+  function warmShaders() {
+    if (typeof renderer.compileAsync !== 'function') return;
+    for (const h of [hookHands, hammerHands, rodHands]) if (h.group.parent !== camera) camera.add(h.group);
+    try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
+    catch (e) { console.warn('shader warm-up failed', e); }
+    showViewmodel(null); // the next frame attaches whichever one is held
+  }
   // Only the held viewmodel hangs under the camera, so per-frame matrix updates skip the other two entirely.
   function showViewmodel(held) {
     for (const h of [hookHands, hammerHands, rodHands]) {
@@ -1278,6 +1287,7 @@ export function mount(transfer = null) {
     });
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
     if ($('#toast')?.classList.contains('show')) toastTimer = later(() => { toastTimer = 0; $('#toast')?.classList.remove('show'); }, 2600);
+    warmShaders(); // after settings: the saved graphics preset decides the light/shadow program variants
     active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
   } catch (e) {
     console.error(e); dispose();
