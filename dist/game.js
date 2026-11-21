@@ -494,7 +494,7 @@ export function mount(transfer = null) {
         onBroke:(x, z) => { fc?.dropTile?.(x, z); content?.mods?.find(m => m.name === 'storage')?.dropTile?.(x, z); rebuildRaft(); fitShadow(); emit({kind:'shark', fx:'broke', x, z, text:'The shark tore a foundation off the raft!'}, 'all'); },
         onHurt:(i, n) => { if (i === 0) hurtLocal(n); else emit({kind:'shark', hurt:n}, 'guest'); },
         onWarn:() => emit({kind:'shark', text:'The shark is biting the raft!'}, 'all'),
-        sendHit:dmg => action({kind:'shark:hit', dmg}),
+        sendHit:dmg => action({kind:'shark:hit', dmg, slot:localBag().selectedIndex}), // one action: the host wears this spear only if it accepts the hit
       }, world.shark);
     } catch (e) { console.error('shark failed', e); shark = null; }
   }
@@ -1170,6 +1170,15 @@ export function mount(transfer = null) {
       award({kind:'fish'}); return;
     }
     if (a.kind === 'repair') {
+      const sel = isInt(a.slot) ? bag.slots[a.slot] : null;
+      if (sel && PROG_ITEMS[sel.kind]?.tool && !isHookSlot(sel)) { // the held tool itself (spear, hammer, rod…), never a hook elsewhere
+        const cost = repairCost(sel.kind), name = itemName(sel.kind), title = ITEM_INFO[sel.kind]?.name ?? sel.kind;
+        if (!cost) { emit({kind:'notice', text:title + ' cannot be repaired'}, actor); return; }
+        if ((sel.durability ?? MAX_HEALTH) >= MAX_HEALTH) { emit({kind:'notice', text:'Your ' + name + ' is in great shape'}, actor); return; }
+        if (!spend(bag, cost)) { emit({kind:'notice', text:'Repair needs ' + missingText(bag, cost)}, actor); return; }
+        bag.slots[a.slot].durability = MAX_HEALTH; bag.version++; emit({kind:'build', text:title + ' repaired!', sound:'repair'}, actor);
+        award({kind:'repair'}); return;
+      }
       const i = repairHookSlot(bag.slots, a.slot, MAX_HEALTH, isHookSlot);
       if (i < 0) { emit({kind:'notice', text:'No hook to repair'}, actor); return; }
       if ((bag.slots[i].durability ?? MAX_HEALTH) >= MAX_HEALTH) { emit({kind:'notice', text:'Your hook is in great shape'}, actor); return; }
@@ -1196,7 +1205,7 @@ export function mount(transfer = null) {
     if (a.kind === 'shark:hit') { // shark lane: a guest's spear hit (the host's own hits go straight to the sim)
       const p = actor === 'guest' ? other : physics, now = performance.now();
       if (!shark || !p || !Number.isFinite(a.dmg) || now - sharkHitAt[actor] < 250 || shark.distanceTo(p.x, p.z) > 6) return;
-      sharkHitAt[actor] = now; shark.applyHit(a.dmg); return;
+      sharkHitAt[actor] = now; shark.applyHit(a.dmg); spearRep?.wearHit(bag, a.slot, actor); return; // wear only for an accepted hit
     }
     if (content?.action(a, actor, bag)) return; // content hook: module actions (chest, research, gather…)
     if (WATER_ACTIONS.includes(a.kind)) { applyWatering(a, actor, bag); return; }
@@ -1228,7 +1237,8 @@ export function mount(transfer = null) {
   }
   function repair() { if (!running || fainted >= 0) return; const bag = localBag();
     const sel = bag.slots[bag.selectedIndex]; if (sel?.kind === 'spade') { action({kind:'treasure.repair'}); return; } // [treasure-hook] R on a held spade
-    action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH, isHookSlot)}); }
+    const own = sel && PROG_ITEMS[sel.kind]?.tool && !isHookSlot(sel); // a held spear/hammer/rod repairs itself; the hook search is only for non-tools
+    action({kind:'repair', slot:own ? bag.selectedIndex : repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH, isHookSlot)}); }
   // Pad build radial pick: hold the hammer (from the hotbar) and select that piece on the building wheel.
   function pickBuildPiece(id) {
     if (!running || fainted >= 0 || !building || !Object.hasOwn(PIECES, id)) return;

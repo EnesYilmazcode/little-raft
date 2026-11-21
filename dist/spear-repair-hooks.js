@@ -70,7 +70,8 @@ export function attachSpearRepair(ctx) {
     cam.getWorldPosition(camPos); cam.getWorldDirection(camDir);
     const shark = ctx.shark();
     const r = thrust(slot, (dmg) => shark?.trySpear?.(camPos, camDir, SPEAR_REACH, dmg) === true);
-    if (r.hit) { hitMarker(); ctx.beep(120); ctx.action({ kind: 'spearHit', slot: idx }); }
+    // A guest's hit already went to the host as 'shark:hit' (with this slot); the host wears the spear only if it accepts it.
+    if (r.hit) { hitMarker(); ctx.beep(120); if (ctx.role() !== 'guest') ctx.action({ kind: 'spearHit', slot: idx }); }
     return true;
   }
 
@@ -113,14 +114,19 @@ export function attachSpearRepair(ctx) {
 
   // ---------- host actions ----------
   /** Host side. Returns true when the action was one of ours. */
+  /** Host side: wear the spear in `slot` (else the first spear) for one landed hit. Guests' wear comes from an accepted 'shark:hit'. */
+  function wearHit(bag, slot, actor) {
+    const i = Number.isInteger(slot) && bag.slots[slot] && isSpear(bag.slots[slot].kind) ? slot
+      : bag.slots.findIndex((s) => s && isSpear(s.kind));
+    if (i < 0) return false;
+    const w = wearSpearSlot(bag.slots[i]);
+    if (w?.broke) { bag.slots[i] = null; bag.version++; ctx.emit({ kind: 'notice', text: 'Your spear snapped!' }, actor); }
+    else if (w) bag.version++;
+    return !!w;
+  }
   function apply(a, actor, bag) {
-    if (a.kind === 'spearHit') {
-      const i = Number.isInteger(a.slot) && bag.slots[a.slot] && isSpear(bag.slots[a.slot].kind) ? a.slot
-        : bag.slots.findIndex((s) => s && isSpear(s.kind));
-      if (i < 0) return true;
-      const w = wearSpearSlot(bag.slots[i]);
-      if (w?.broke) { bag.slots[i] = null; bag.version++; ctx.emit({ kind: 'notice', text: 'Your spear snapped!' }, actor); }
-      else if (w) bag.version++;
+    if (a.kind === 'spearHit') { // the host's own landed hit; a guest's standalone 'spearHit' is ignored (it could wear on a rejected hit)
+      if (actor !== 'guest') wearHit(bag, a.slot, actor);
       return true;
     }
     if (a.kind === 'repairTile') {
@@ -154,7 +160,7 @@ export function attachSpearRepair(ctx) {
   function testHit() {
     const bag = ctx.localBag(), idx = bag.selectedIndex;
     if (!isSpear(bag.slots[idx]?.kind)) return false;
-    hitMarker(); ctx.beep(120); ctx.action({ kind: 'spearHit', slot: idx }); return true;
+    hitMarker(); ctx.beep(120); if (ctx.role() !== 'guest') ctx.action({ kind: 'spearHit', slot: idx }); return true;
   }
   /** Test helper: hold the jab at phase p (0..1, 1 = start) for screenshots; null releases it. */
   const pinPoke = (p) => { pinnedPoke = p == null ? -1 : Math.min(1, Math.max(0, Number(p) || 0)); };
@@ -165,5 +171,5 @@ export function attachSpearRepair(ctx) {
     try { unprovide?.(); } catch {} unprovide = null;
   }
 
-  return { viewmodelFor, updateViewmodel, use, updateAim, aimedRepair, prompt, useHammer, apply, tick, give, setTileHp, testHit, pinPoke, debug, dispose };
+  return { viewmodelFor, updateViewmodel, use, updateAim, aimedRepair, prompt, useHammer, apply, wearHit, tick, give, setTileHp, testHit, pinPoke, debug, dispose };
 }
