@@ -44,24 +44,27 @@ const solid = (T, mesh, name, cast = true) => { mesh.name = name; mesh.castShado
 
 // ------------------------------------------------------------------ wind turbine
 
-export const HUB_Y = 2.3, HUB_Z = .17;
+// Review: about 2.4 m to the top blade tip (hub 2.02 + blade .38), a slim wooden mast and warm brass/wood tones.
+export const HUB_Y = 2.02, HUB_Z = .12;
 
 export function createTurbine(T) {
   const g = new T.Group(); g.name = 'craft_turbine';
   const { parts, add } = kit(T);
-  add(new T.CylinderGeometry(.2, .24, .06, 12), '#8d979e', 0, .03, 0);                // foot plate
-  add(new T.CylinderGeometry(.05, .08, HUB_Y - .06, 10), '#b9c2c9', 0, .06 + (HUB_Y - .06) / 2 - .03, 0); // tapered mast
-  add(new T.BoxGeometry(.12, .12, .3), '#e9eef1', 0, HUB_Y, .02);                    // nacelle
-  add(new T.BoxGeometry(.02, .1, .14), '#d6dde2', 0, HUB_Y + .02, -.19);             // tail fin
+  add(new T.CylinderGeometry(.13, .16, .05, 10), '#7d5c37', 0, .025, 0);              // wooden foot
+  add(new T.CylinderGeometry(.03, .048, HUB_Y - .05, 8), '#906f48', 0, .05 + (HUB_Y - .05) / 2 - .03, 0); // slim tapered wooden mast
+  add(new T.CylinderGeometry(.052, .052, .04, 8), '#6e5a3e', 0, .55, 0);              // rope lashing
+  add(new T.CylinderGeometry(.045, .045, .04, 8), '#6e5a3e', 0, 1.45, 0);
+  add(new T.BoxGeometry(.08, .08, .2), '#a48a62', 0, HUB_Y, .01);                    // brass nacelle
+  add(new T.BoxGeometry(.012, .08, .11), '#b4824b', 0, HUB_Y + .02, -.14);           // wooden tail fin
   const body = solid(T, new T.Mesh(bake(T, parts), bodyMat(T)), 'turbineBody');
   g.add(body);
   // rotor: pivot at the hub, spins about its local z
   const r = kit(T);
   for (let i = 0; i < 3; i++) {
     const a = i * Math.PI * 2 / 3 + Math.PI / 2; // first blade points up
-    r.add(new T.BoxGeometry(.5, .07, .015), '#f4f1ea', Math.cos(a) * .23, Math.sin(a) * .23, 0, 0, 0, a);
+    r.add(new T.BoxGeometry(.34, .055, .012), '#d9c09a', Math.cos(a) * .21, Math.sin(a) * .21, 0, 0, 0, a);
   }
-  r.add(new T.ConeGeometry(.05, .1, 10), '#e07a5f', 0, 0, .05, Math.PI / 2, 0, 0);
+  r.add(new T.ConeGeometry(.04, .08, 10), '#c0623f', 0, 0, .04, Math.PI / 2, 0, 0);
   const blades = new T.Mesh(bake(T, r.parts), bodyMat(T, true));
   blades.name = 'blades'; blades.castShadow = false; blades.receiveShadow = false;
   blades.position.set(0, HUB_Y, HUB_Z);
@@ -114,7 +117,10 @@ export function paintBattery(g, n) {
 // ------------------------------------------------------------------ string lights
 
 export const HOOK = [0, 1.05, 0], ANCHOR = [.78, .55, 0];
-const BULBS = ['#ffd27a', '#ffb35a', '#fff1c4'];
+// Review: darker amber glass so an unpowered bulb reads dark; the warm glow comes from the emissive
+// (base BULB_BASE, x2.0 at night in daynight, x UNLIT when unpowered).
+const BULBS = ['#c98d3e', '#b8722f', '#d6a35a'];
+export const BULB_BASE = .9, GLOW_BASE = .9, GLASS_BASE = .5;
 
 function wireCurve(T) {
   const pts = [];
@@ -143,7 +149,7 @@ export function createStringLights(T) {
     b.add(new T.CylinderGeometry(.006, .006, .03, 4), '#2b2b2b', p.x, p.y - .015, 0);
     b.add(new T.SphereGeometry(.035, 8, 6), BULBS[i % 3], p.x, p.y - .055, 0);
   }
-  const bulbs = new T.Mesh(bake(T, b.parts), new T.MeshStandardMaterial({ vertexColors: true, emissive: '#ffc070', emissiveIntensity: .45, roughness: .35 }));
+  const bulbs = new T.Mesh(bake(T, b.parts), new T.MeshStandardMaterial({ vertexColors: true, emissive: '#ff8f2a', emissiveIntensity: BULB_BASE, roughness: .35 }));
   bulbs.name = 'candle'; bulbs.castShadow = false; bulbs.receiveShadow = false; // daynight multiplier 2.0
   g.add(bulbs);
   g.userData.power = { lit: 0 };
@@ -170,11 +176,11 @@ export function createLampPost(T) {
   const body = solid(T, new T.Mesh(bake(T, parts), bodyMat(T, true)), 'lampBody');
   g.add(body);
   const glass = new T.Mesh(new T.BoxGeometry(.16, .21, .16).translate(0, LAMP_Y, 0),
-    new T.MeshStandardMaterial({ color: '#fff4d8', emissive: '#ffe2a8', emissiveIntensity: .3, transparent: true, opacity: .5, roughness: .15, depthWrite: false }));
+    new T.MeshStandardMaterial({ color: '#cfc3a8', emissive: '#ffa850', emissiveIntensity: GLASS_BASE, transparent: true, opacity: .45, roughness: .15, depthWrite: false }));
   glass.name = 'lanternGlass'; glass.userData.glass = true; glass.castShadow = false; glass.receiveShadow = false;
   g.add(glass);
-  const glow = new T.Mesh(new T.SphereGeometry(.055, 10, 8).translate(0, LAMP_Y, 0),
-    new T.MeshStandardMaterial({ color: '#fff0c8', emissive: '#ffd27a', emissiveIntensity: .5, transparent: true, opacity: .6, depthWrite: false }));
+  const glow = new T.Mesh(new T.SphereGeometry(.065, 10, 8).translate(0, LAMP_Y, 0),
+    new T.MeshStandardMaterial({ color: '#b98a4a', emissive: '#ffb850', emissiveIntensity: GLOW_BASE, transparent: true, opacity: .9, depthWrite: false }));
   glow.name = 'lanternGlow'; glow.castShadow = false; glow.receiveShadow = false;
   glow.userData.pool = { color: '#fff1d6', gain: .8 }; // daynight: a lamp post's night pool is a little softer than a lantern's
   g.add(glow);

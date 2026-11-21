@@ -238,9 +238,10 @@ test('module: net load caching, prompts, interact and the OLD_HOST guard', () =>
   const { aimAt, slotPoint, raft } = scene(gm, g.ctx);
   const data = { v: 1, s: 'host1', r: 5, d: { '0,0': [null, { kind: 'hammer', count: 1, durability: 80 }] }, t: { '1,0': { species: 'pomfret', cm: 30 } } };
   gm.load(data, 'net');
-  const ref = gm.debug.state();
+  const ref = gm.debug.state(), ser = gm.serialize();
   gm.load(JSON.parse(JSON.stringify(data)), 'net');
   assert.deepEqual(gm.debug.state(), ref);
+  assert.equal(gm.serialize(), ser, 'an unchanged host slice keeps the same state object');
   const sg = raft.children.find(c => c.name === 'craft_shelf'), tg = raft.children.find(c => c.name === 'craft_trophystand');
   let aim = aimAt(slotPoint(sg, 1));
   assert.equal(gm.prompt(aim), '<kbd>E</kbd>Take Hammer');

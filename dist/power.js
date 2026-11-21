@@ -245,7 +245,8 @@ export function createPower(ctx) {
         for (const o of d) if (o && o.type === 'battery' && cheb(o.x, o.z, t.x, t.z) <= 1) { near = true; break; }
         return near ? `Wind Turbine · spinning (${windWord(wind())})` : 'Wind Turbine · place a battery next to it';
       }
-      const lit = !oldHost() && servingBattery(st, d, t.x, t.z) !== null;
+      if (oldHost()) return OLD_HOST; // review: an old host has no charge data, so "needs a battery" would mislead
+      const lit = servingBattery(st, d, t.x, t.z) !== null;
       return `${LIGHT_NAME[t.type]} · ${lit ? 'powered' : 'needs a charged battery within 3 tiles'}`;
     },
     interact(aim) {

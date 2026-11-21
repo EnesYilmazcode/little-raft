@@ -349,16 +349,16 @@ export function createDisplay(ctx) {
 
   // ---------- net / save ----------
   function load(data, from) {
-    dirty = true;
     if (from === 'net') {
       if (data && typeof data === 'object' && data.r === netR && data.s === netS) return; // unchanged host state
       if (data === undefined && netUndef) return;
+      dirty = true;
       netUndef = data === undefined; hostHasDisplay = data !== undefined;
       st = cleanDisplay(data);
       netR = data && typeof data === 'object' ? data.r : -1; netS = data && typeof data === 'object' ? data.s : null;
       return;
     }
-    netR = -1; netS = null; netUndef = false; hostHasDisplay = true;
+    netR = -1; netS = null; netUndef = false; hostHasDisplay = true; dirty = true;
     st = cleanDisplay(data);
     st.s = session; st.r++;
   }
