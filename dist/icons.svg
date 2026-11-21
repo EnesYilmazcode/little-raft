@@ -475,6 +475,7 @@
       <path d="M13 33 C13 31.5 14.3 30.5 16 30.5 H32 C33.7 30.5 35 31.5 35 33" fill="#e0a063"/>
     </g>
     <g fill="#9ad7f0" stroke="#153e49" stroke-width="1"><rect x="17" y="37" width="3.6" height="3.6"/><rect x="22.2" y="37" width="3.6" height="3.6"/><rect x="27.4" y="37" width="3.6" height="3.6"/></g>
+  </symbol>
   <symbol id="icon-kiln" viewBox="0 0 48 48">
     <g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
       <rect x="29" y="5" width="6" height="12" rx="1" fill="#bb8650"/>
