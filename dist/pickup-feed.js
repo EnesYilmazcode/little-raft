@@ -48,7 +48,7 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
   // Restart the icon pop: Web Animations when available (no forced layout), else re-add the CSS class.
   function bump(el) {
     const icon = el.querySelector?.('.pf-icon');
-    if (!icon?.animate) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); return; }
+    if (!icon?.animate) { const cl = el.classList, b = cl.contains('bump'); cl.remove(b ? 'bump' : 'bump2'); cl.add(b ? 'bump2' : 'bump'); return; } // no forced reflow: alternate twin keyframes
     if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
     icon.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.18)', offset: 0.4 }, { transform: 'scale(1)' }], { duration: 250, easing: 'ease-out' });
   }

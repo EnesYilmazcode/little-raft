@@ -9,7 +9,15 @@ Measured:
     bucketed per requestAnimationFrame. Triangles and offscreen-pass draws come from the wrapper.
   * JS heap growth: Runtime.getHeapUsage (+ performance.memory with --enable-precise-memory-info)
     sampled right after CDP HeapProfiler.collectGarbage at start, middle and end of the session.
-    Also DOM element, listener and live WebGL object (create* minus delete*) growth.
+    Those raw figures include V8 compiled code, which keeps growing for minutes (idle too) with no
+    JS leak, so each of the three points also takes a heap snapshot (~2.5 s) and the late-half
+    budget is on its JS-object total with 'code' and 'native' node types excluded (jsHeapMB*).
+  * DOM element, listener and live WebGL object (create* minus delete*) growth. GL objects are
+    counted per context; a lost context (loseContext()/forceContextLoss(), 'webglcontextlost')
+    drops its objects. Growth sums the contexts live at the later sample (a lost one adds 0) and
+    each post-GC point is the median of 7 reads over ~2 s (floating-item respawns swing VAOs).
+    The late-half GL figure is min(mid->end, 3/4->end scaled to the half): steady growth only.
+    Contexts: total created is reported; the budget is on the most live at once (webglContextsPeak).
   * long tasks (PerformanceObserver 'longtask') after warmup. Budgeted only as "hitches": tasks
     above max(hitchMinMs, hitchFactor x median long task), because on SwiftShader every frame is
     itself a long task and absolute frame times depend entirely on the box.
@@ -57,7 +65,17 @@ INIT_JS = r"""
     off: new Float32Array(CAP), snap: 0, snapList: null, lastSnap: null, vendor: null,
     gl: {buffer: 0, texture: 0, program: 0, shader: 0, framebuffer: 0, renderbuffer: 0, vertexArray: 0},
     longCount: 0, longTotal: 0, longMax: 0, loafCount: 0, loafBlockMax: 0, loafBlockTotal: 0,
-    contexts: 0, contextsLive: 0, contextsPeak: 0, contextsLost: 0, longList: [], riCalls: new Float32Array(CAP), riSeen: 0, curRi: -1,
+    contexts: 0, liveContexts: 0, contextsPeak: 0, lostContexts: 0, ctxList: [], longList: [], riCalls: new Float32Array(CAP), riSeen: 0, curRi: -1,
+  };
+  const ctxs = new WeakMap();
+  const ctxRec = ctx => {
+    let c = ctxs.get(ctx);
+    if (!c) {
+      c = {id: P.ctxList.length, size: ctx.canvas ? ctx.canvas.width + 'x' + ctx.canvas.height : '?', lost: false, gl: {}};
+      for (const k of Object.keys(P.gl)) c.gl[k] = 0;
+      ctxs.set(ctx, c); P.ctxList.push(c);
+    }
+    return c;
   };
   const triCount = (mode, count, inst) => {
     const per = mode === 4 ? Math.floor(count / 3) : (mode === 5 || mode === 6) ? Math.max(0, count - 2) : 0;
@@ -69,7 +87,7 @@ INIT_JS = r"""
   };
   const wrap = (proto, name, fn) => {
     const orig = proto[name]; if (typeof orig !== 'function') return;
-    proto[name] = function (...a) { fn(a); return orig.apply(this, a); };
+    proto[name] = function (...a) { fn.call(this, a); return orig.apply(this, a); };
   };
   for (const C of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) {
     if (!C) continue; const p = C.prototype;
@@ -81,30 +99,49 @@ INIT_JS = r"""
     wrap(p, 'bindFramebuffer', a => { P.fb = a[1] || null; });
     for (const k of Object.keys(P.gl)) {
       const K = k[0].toUpperCase() + k.slice(1);
-      wrap(p, 'create' + K, () => { P.gl[k]++; });
-      wrap(p, 'delete' + K, a => { if (a[0]) P.gl[k]--; });
+      wrap(p, 'create' + K, function () { const c = ctxRec(this); if (c.lost) return; P.gl[k]++; c.gl[k]++; });
+      wrap(p, 'delete' + K, function (a) { const c = ctxRec(this); if (!a[0] || c.lost) return; P.gl[k]--; c.gl[k]--; });
     }
   }
-  const ANGLE = 'ANGLE_instanced_arrays';
-  const origGetExt = WebGLRenderingContext.prototype.getExtension;
-  WebGLRenderingContext.prototype.getExtension = function (name) {
-    const ext = origGetExt.call(this, name);
-    if (ext && name === ANGLE && !ext.__perf) {
-      ext.__perf = 1;
-      const da = ext.drawArraysInstancedANGLE, de = ext.drawElementsInstancedANGLE;
-      ext.drawArraysInstancedANGLE = function (m, f, c, i) { add(m, c, i); return da.call(this, m, f, c, i); };
-      ext.drawElementsInstancedANGLE = function (m, c, t, o, i) { add(m, c, i); return de.call(this, m, c, t, o, i); };
-    }
-    return ext;
+  // Live GL objects are kept per context. A lost context (WEBGL_lose_context.loseContext(), e.g.
+  // three's forceContextLoss() on the item-icon renderer, or a 'webglcontextlost' event) frees all
+  // of its objects without delete* calls, so its remaining count is subtracted from the live total.
+  const lose = ctx => {
+    const c = ctxRec(ctx); if (c.lost) return;
+    c.lost = true; P.liveContexts--; P.lostContexts++;
+    for (const k of Object.keys(c.gl)) { P.gl[k] -= c.gl[k]; c.gl[k] = 0; }
   };
+  const ANGLE = 'ANGLE_instanced_arrays';
+  for (const C of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) {
+    if (!C) continue;
+    const origGetExt = C.prototype.getExtension;
+    C.prototype.getExtension = function (name) {
+      const ext = origGetExt.call(this, name);
+      if (ext && name === ANGLE && !ext.__perf) {
+        ext.__perf = 1;
+        const da = ext.drawArraysInstancedANGLE, de = ext.drawElementsInstancedANGLE;
+        ext.drawArraysInstancedANGLE = function (m, f, c, i) { add(m, c, i); return da.call(this, m, f, c, i); };
+        ext.drawElementsInstancedANGLE = function (m, c, t, o, i) { add(m, c, i); return de.call(this, m, c, t, o, i); };
+      }
+      if (ext && name === 'WEBGL_lose_context' && !ext.__perf) {
+        ext.__perf = 1; const gctx = this;
+        const lc = ext.loseContext;
+        ext.loseContext = function () { const r = lc.call(this); lose(gctx); return r; };
+      }
+      return ext;
+    };
+  }
   const origGetContext = HTMLCanvasElement.prototype.getContext;
   HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
     const ctx = origGetContext.call(this, type, ...rest);
     if (ctx && /webgl/.test(type) && !this.__perfCtx) {
-      this.__perfCtx = 1; P.contexts++; P.contextsLive++; if (P.contextsLive > P.contextsPeak) P.contextsPeak = P.contextsLive;
-      // A context given back (forceContextLoss, e.g. a transient icon renderer) stops counting as live.
-      this.addEventListener('webglcontextlost', () => { P.contextsLost++; P.contextsLive--; });
-      this.addEventListener('webglcontextrestored', () => { P.contextsLive++; if (P.contextsLive > P.contextsPeak) P.contextsPeak = P.contextsLive; });
+      this.__perfCtx = 1; P.contexts++; P.liveContexts++; if (P.liveContexts > P.contextsPeak) P.contextsPeak = P.liveContexts;
+      ctxRec(ctx);
+      this.addEventListener('webglcontextlost', () => lose(ctx));
+      this.addEventListener('webglcontextrestored', () => {
+        const c = ctxRec(ctx); if (!c.lost) return;
+        c.lost = false; P.liveContexts++; if (P.liveContexts > P.contextsPeak) P.contextsPeak = P.liveContexts;
+      });
       if (!P.vendor) try { const e = ctx.getExtension('WEBGL_debug_renderer_info'); P.vendor = e ? ctx.getParameter(e.UNMASKED_RENDERER_WEBGL) : null; } catch (e) {}
     }
     return ctx;
@@ -159,7 +196,8 @@ INIT_JS = r"""
     n: P.n, ts: Array.from(P.ts.subarray(0, P.n)), draws: Array.from(P.draws.subarray(0, P.n)),
     tris: Array.from(P.tris.subarray(0, P.n)), script: Array.from(P.script.subarray(0, P.n)), off: Array.from(P.off.subarray(0, P.n)),
     vendor: P.vendor, snap: P.lastSnap,
-    gl: {...P.gl}, contexts: P.contexts, contextsLive: P.contextsLive, contextsPeak: P.contextsPeak, contextsLost: P.contextsLost,
+    gl: {...P.gl}, contexts: P.contexts, contextsPeak: P.contextsPeak, liveContexts: P.liveContexts, lostContexts: P.lostContexts,
+    glByContext: P.ctxList.map(c => ({id: c.id, size: c.size, lost: c.lost, live: Object.values(c.gl).reduce((a, b) => a + b, 0), gl: {...c.gl}})),
     long: P.longList.slice(), t0: P.t0, now: performance.now(),
     riSeen: P.riSeen, riCalls: P.riSeen ? Array.from(P.riCalls.subarray(0, P.n)) : null,
     loaf: {count: P.loafCount, blockingTotalMs: P.loafBlockTotal, blockingMaxMs: P.loafBlockMax},
@@ -182,9 +220,58 @@ def stats(vals):
             'p95': round(pct(vals, .95), 3), 'p99': round(pct(vals, .99), 3), 'max': round(max(vals), 3)}
 
 
-def heap(page, cdp, gc=True):
+GL_WINDOW = (7, 300)  # live-GL reads per post-GC sample point and ms between them; the median is used
+SNAPSHOT_EXCLUDE = ('code', 'native')
+
+
+def snapshot_sizes(cdp, chunks):
+    """Full V8 heap snapshot (it collects garbage first), summed self_size per node type in MB.
+    ~2 s capture + ~0.5 s parse for the game's ~35 MB snapshot on SwiftShader."""
+    chunks.clear(); t = time.time()
+    cdp.send('HeapProfiler.takeHeapSnapshot', {'reportProgress': False})
+    s = json.loads(''.join(chunks)); chunks.clear()
+    meta = s['snapshot']['meta']; nf = meta['node_fields']; names = meta['node_types'][0]
+    w, ti, si, n = len(nf), nf.index('type'), nf.index('self_size'), s['nodes']
+    sums = [0] * len(names)
+    for i in range(0, len(n), w): sums[n[i + ti]] += n[i + si]
+    out = {names[k]: round(v / 1048576, 3) for k, v in enumerate(sums) if v}
+    return out, round(time.time() - t, 2)
+
+
+GL_READ = '__perf.ctxList.filter(c => !c.lost).map(c => [c.id, {...c.gl}])'
+
+
+def gl_window(page, n=1, ms=0):
+    """Live GL objects per live context {ctxId: {kind: n}}, each the median of n reads ms apart:
+    floating-item respawns swing live buffers/VAOs by tens within seconds, so a single read lands
+    on a random high or low point."""
+    reads = []
+    for j in range(n):
+        if j: page.wait_for_timeout(ms)
+        reads.append({str(i): g for i, g in page.evaluate(GL_READ)})
+    tot = [sum(sum(g.values()) for g in r.values()) for r in reads]
+    last = reads[-1]  # a context lost mid-window is gone
+    med = {i: {k: round(pct([r[i][k] for r in reads if i in r], .5)) for k in g} for i, g in last.items()}
+    return med, [min(tot), max(tot)]
+
+
+def gl_growth(a, b):
+    """Live GL growth from sample a to b, per context: a context lost in between freed its objects
+    with the context, so it adds 0 (not minus its count, which would hide growth elsewhere); a
+    context created in between adds all it holds."""
+    kinds = {}
+    for i, g in b.items():
+        for k, v in g.items(): kinds[k] = kinds.get(k, 0) + v - a.get(i, {}).get(k, 0)
+    return sum(kinds.values()), kinds
+
+
+def heap(page, cdp, gc=True, chunks=None):
     """Heap sample. With gc=True, forces two full GCs over CDP first and returns the page-clock
-    window the GC took so long tasks it caused can be excluded."""
+    window the GC took so long tasks it caused can be excluded; live GL objects are then the
+    median of a short window (gl_window). With chunks (a list receiving
+    HeapProfiler.addHeapSnapshotChunk), also takes a heap snapshot and reports jsObjMB: the heap
+    without V8 compiled code ('code': bytecode, feedback, optimised code, which keeps growing for
+    minutes of play, idle included, with no JS leak) and 'native' (backing stores/embedder)."""
     w0 = page.evaluate('performance.now()')
     if gc:
         # The game keeps rendering between CDP calls, so a frame's garbage can land between the
@@ -196,13 +283,21 @@ def heap(page, cdp, gc=True):
             if h is None or x['usedSize'] < h['usedSize']: h = x
     else:
         h = cdp.send('Runtime.getHeapUsage')
+    snap = snap_s = None
+    if chunks is not None: snap, snap_s = snapshot_sizes(cdp, chunks)
     w1 = page.evaluate('performance.now()')
-    pm, glLive, domNow = page.evaluate('[performance.memory ? performance.memory.usedJSHeapSize : null, Object.values(__perf.gl).reduce((a, b) => a + b, 0), document.getElementsByTagName("*").length]')
+    glCtx, glRange = gl_window(page, *GL_WINDOW) if gc else gl_window(page)
+    pm, domNow = page.evaluate('[performance.memory ? performance.memory.usedJSHeapSize : null, document.getElementsByTagName("*").length]')
     m = {x['name']: x['value'] for x in cdp.send('Performance.getMetrics')['metrics']}
-    return {'usedMB': round(h['usedSize'] / 1048576, 3), 'totalMB': round(h['totalSize'] / 1048576, 3),
-            'perfMemoryMB': round(pm / 1048576, 3) if pm else None,
-            'glLive': glLive, 'domInTree': domNow, 'nodes': m.get('Nodes'), 'listeners': m.get('JSEventListeners'), 'documents': m.get('Documents'),
-            'gc': gc, '_win': (w0, w1 + 50)}
+    r = {'usedMB': round(h['usedSize'] / 1048576, 3), 'totalMB': round(h['totalSize'] / 1048576, 3),
+         'perfMemoryMB': round(pm / 1048576, 3) if pm else None,
+         'glLive': sum(sum(g.values()) for g in glCtx.values()), 'glByCtx': glCtx, 'glLiveRange': glRange if gc else None, 'domInTree': domNow, 'nodes': m.get('Nodes'), 'listeners': m.get('JSEventListeners'), 'documents': m.get('Documents'),
+         'gc': gc, '_win': (w0, w1 + 50)}
+    if snap is not None:
+        r['jsObjMB'] = round(sum(v for k, v in snap.items() if k not in SNAPSHOT_EXCLUDE), 3)
+        r['codeMB'] = snap.get('code', 0); r['nativeMB'] = snap.get('native', 0)
+        r['snapshotMB'] = snap; r['snapshotS'] = snap_s
+    return r
 
 
 def close_overlays(page):
@@ -272,14 +367,16 @@ CHECKS = [
     ('drawCalls.max', 'drawCalls.max', 'worst-frame WebGL draw calls'),
     ('triangles.p95', 'triangles.p95', '95th percentile triangles per frame'),
     ('growth.heapMB', 'growth.heapMB', 'JS heap growth (post-GC end minus post-GC start)'),
-    ('growth.heapMBLateHalf', 'growth.heapMBLateHalf', 'JS heap growth over the second half of the session (post-GC mid to end); steady growth here is a leak'),
+    ('growth.heapMBLateHalf', 'growth.heapMBLateHalf', 'raw JS heap growth over the second half (post-GC mid to end; includes V8 compiled code)'),
+    ('growth.jsHeapMBLateHalf', 'growth.jsHeapMBLateHalf', 'heap-snapshot JS object growth over the second half (V8 code and native excluded); steady growth here is a leak'),
     ('growth.domNodes', 'growth.domNodes', 'growth of elements in the document tree'),
     ('growth.domNodesLateHalf', 'growth.domNodesLateHalf', 'growth of elements in the document over the second half (first-use UI excluded); steady growth is a DOM leak'),
     ('growth.listeners', 'growth.listeners', 'JS event listener growth after GC'),
     ('growth.glObjects', 'growth.glObjects', 'live WebGL object growth (create* minus delete*)'),
-    ('growth.glObjectsLateHalf', 'growth.glObjectsLateHalf', 'live WebGL object growth over the second half (first-use allocations excluded); steady growth is a GPU leak'),
-    ('webglContexts', 'webglContexts', 'WebGL contexts created since page load (main renderer plus transient ones, e.g. an item-icon renderer that is released when idle and recreated on demand); steady growth is context churn'),
-    ('webglContextsPeakLive', 'webglContextsPeakLive', 'most WebGL contexts alive at once (created minus lost)'),
+    ('growth.glObjectsLateHalf', 'growth.glObjectsLateHalf', 'steady live WebGL object growth over the second half: min(mid->end, 3/4->end scaled to the half), so one-off first-use steps are excluded; steady growth is a GPU leak'),
+    ('webglContexts', 'webglContexts', 'WebGL contexts created in total'),
+    ('webglContextsPeak', 'webglContextsPeak', 'most WebGL contexts live at once (lost contexts excluded)'),
+    ('webglContextsPeakLive', 'webglContextsPeakLive', 'most WebGL contexts alive at once (same as webglContextsPeak; name used by older budgets)'),
     ('longTasks.hitches', 'longTasks.hitches', 'main-thread hitches after warmup: tasks longer than max(hitchMinMs, hitchFactor x median long task) (forced-GC windows excluded)'),
 ]
 
@@ -297,13 +394,15 @@ def check(metrics, budget, repro):
             extra = ''
             if mpath.startswith('growth.heap'):
                 extra = ' heap samples (t s: MB): ' + ', '.join(f"{x['t']}:{x['usedMB']}{'*' if x['gc'] else ''}" for x in metrics['heap']['samples']) + ' (* = after forced GC)'
+            if mpath.startswith('growth.jsHeap'):
+                extra = ' snapshot JS objects (t s: MB, code MB): ' + ', '.join(f"{x['t']}:{x['jsObjMB']} ({x['codeMB']})" for x in metrics['heap']['samples'] if 'jsObjMB' in x) + '; by node type in <out>/perf_gate.json heap.samples[].snapshotMB'
             if mpath.startswith('longTasks'):
                 extra = ' worst tasks (start s after warmup, ms): ' + ', '.join(f'{t}:{d}' for t, d in metrics['longTasks']['worst'])
             if mpath.startswith(('drawCalls', 'triangles')) and metrics.get('drawBreakdown'):
                 bd = metrics['drawBreakdown']
                 extra = f" last-frame split: {bd['mainPass']} main-pass + {bd['offscreenPass']} offscreen-pass draws, {bd['tinyDraws(<=12 tris)']} draws of <=12 tris."
             if mpath.startswith('growth.glObjects'):
-                extra = ' by kind: ' + json.dumps(metrics['growth']['glByKind'])
+                extra = ' by kind: ' + json.dumps(metrics['growth']['glByKind']) + ' by context at end: ' + json.dumps([{k: c[k] for k in ('id', 'size', 'lost', 'live')} for c in metrics['glByContext']])
             fails.append({'id': fid, 'detail': f'{what}: {val} > budget {lim}.{extra}', 'repro': repro})
     mf = budget.get('minFrames')
     if mf is not None and metrics['frames'] < mf:
@@ -391,6 +490,7 @@ def run(args, budget):
             page.on('console', lambda m: m.type == 'error' and report['console'].append(m.text[:300]))
             cdp = ctx.new_cdp_session(page)
             cdp.send('Performance.enable'); cdp.send('HeapProfiler.enable')
+            chunks = []; cdp.on('HeapProfiler.addHeapSnapshotChunk', lambda e: chunks.append(e['chunk']))
             # ?pinQuality: builds with adaptive quality (quality.js) hold the preset's top level, so a
             # fast or slow box measures the same scene; older builds ignore the parameter.
             boot(page, srv.url + '?pinQuality', report, repro)
@@ -401,11 +501,10 @@ def run(args, budget):
             while page.evaluate('__perf.total') < warm_frames and time.time() - tw < 90:
                 page.wait_for_timeout(500)
             close_overlays(page)
-            gl0 = page.evaluate('({...__perf.gl})')
             page.evaluate('__perf.start()')
             t0 = time.time()
-            h0 = heap(page, cdp); h0['t'] = 0.0
-            samples = [h0]; i = 0; next_sample = 10; mid = None
+            h0 = heap(page, cdp, chunks=chunks); h0['t'] = 0.0
+            samples = [h0]; i = 0; next_sample = 10; mid = q3 = None
             # Record for --duration, and keep playing (up to maxExtendS more) while fewer than
             # minFrames frames are in, so a slow box yields enough samples instead of a flaky fail.
             min_frames = int(budget.get('minFrames') or 0); extend_s = float(sess.get('maxExtendS', 120))
@@ -414,13 +513,15 @@ def run(args, budget):
                 play_cycle(page, i, args.width, args.height); i += 1
                 el = time.time() - t0
                 if mid is None and el >= args.duration / 2:
-                    close_overlays(page); mid = heap(page, cdp); mid['t'] = round(el, 1); samples.append(mid)
+                    close_overlays(page); mid = heap(page, cdp, chunks=chunks); mid['t'] = round(el, 1); samples.append(mid)
+                elif mid is not None and q3 is None and el >= args.duration * .75:
+                    close_overlays(page); q3 = heap(page, cdp); q3['t'] = round(el, 1); samples.append(q3)
                 elif el >= next_sample:
                     x = heap(page, cdp, gc=False); x['t'] = round(el, 1); samples.append(x)
                 if el >= next_sample: next_sample += 10
             page.evaluate('__perf.snap = 1'); page.wait_for_timeout(1500)
             close_overlays(page); page.wait_for_timeout(500)
-            h1 = heap(page, cdp); h1['t'] = round(time.time() - t0, 1); samples.append(h1)
+            h1 = heap(page, cdp, chunks=chunks); h1['t'] = round(time.time() - t0, 1); samples.append(h1)
             page.evaluate('__perf.stop()')
             d = page.evaluate('__perf.dump()')
             report['renderQuality'] = page.evaluate("(() => { try { const r = window.raftDebug && window.raftDebug.renderInfo; return r ? {shadows: r.shadows, pixelRatio: r.pixelRatio, quality: r.quality, meshes: r.meshes, shadowCasters: r.shadowCasters} : null; } catch (e) { return null; } })()")
@@ -433,7 +534,18 @@ def run(args, budget):
     for x in samples: x.pop('_win', None)
     longs = [(st, du) for st, du in d['long'] if not any(st < w1 and st + du > w0 for w0, w1 in gcwins)]
     ts = d['ts']; intervals = [b - a for a, b in zip(ts, ts[1:])]
-    live0 = sum(gl0.values()); live1 = sum(d['gl'].values())
+    # GL growth from the windowed medians at the post-GC sample points (start, mid, end).
+    gl_all, gl_kinds = gl_growth(h0['glByCtx'], h1['glByCtx'])
+    # Late-half GL growth is meant to catch steady growth (a leak). A one-off first-use step in the
+    # third quarter (first catch of an item kind builds its meshes/shader variant; whether the hook
+    # catches anything depends on box timing) is not one, so it is also measured from the 3/4
+    # point and scaled to the half: a steady leak scores the same both ways, a step only once.
+    gl_late = gl_q3 = gl_q3_scaled = None
+    if mid:
+        gl_late = gl_growth(mid['glByCtx'], h1['glByCtx'])[0]
+        span, tail = h1['t'] - mid['t'], h1['t'] - (q3['t'] if q3 else h1['t'])
+        if q3 and span > 0 and tail >= .3 * span:
+            gl_q3 = gl_growth(q3['glByCtx'], h1['glByCtx'])[0]; gl_q3_scaled = round(gl_q3 * span / tail)
     # SwiftShader rasterises on the CPU and the main thread waits for it, so on a slow box every
     # frame is itself a 200-300 ms "long task". A hitch is a task far above that baseline.
     lt = budget.get('longTasks') or {}
@@ -459,16 +571,23 @@ def run(args, budget):
                       'worst': [[round((st - d['t0']) / 1000, 1), round(du)] for st, du in sorted(longs, key=lambda e: -e[1])[:5]]},
         'longAnimationFrames': {k: round(v, 1) for k, v in d['loaf'].items()},
         'heap': {'startMB': h0['usedMB'], 'midMB': mid['usedMB'] if mid else None, 'endMB': h1['usedMB'],
+                 'jsObjStartMB': h0['jsObjMB'], 'jsObjMidMB': mid['jsObjMB'] if mid else None, 'jsObjEndMB': h1['jsObjMB'],
+                 'codeStartMB': h0['codeMB'], 'codeEndMB': h1['codeMB'], 'nativeStartMB': h0['nativeMB'], 'nativeEndMB': h1['nativeMB'],
+                 'snapshotS': [x['snapshotS'] for x in samples if 'snapshotS' in x],
                  'perfMemoryStartMB': h0['perfMemoryMB'], 'perfMemoryEndMB': h1['perfMemoryMB'], 'samples': samples},
         'growth': {'heapMB': round(h1['usedMB'] - h0['usedMB'], 3),
                    'heapMBLateHalf': round(h1['usedMB'] - mid['usedMB'], 3) if mid else None,
-                   'glObjectsLateHalf': h1['glLive'] - mid['glLive'] if mid else None,
+                   'jsHeapMB': round(h1['jsObjMB'] - h0['jsObjMB'], 3),
+                   'jsHeapMBLateHalf': round(h1['jsObjMB'] - mid['jsObjMB'], 3) if mid else None,
+                   'codeMB': round(h1['codeMB'] - h0['codeMB'], 3), 'nativeMB': round(h1['nativeMB'] - h0['nativeMB'], 3),
+                   'glObjectsLateHalf': min(gl_late, gl_q3_scaled) if gl_q3_scaled is not None else gl_late,
+                   'glObjectsMidToEnd': gl_late, 'glObjectsQ3ToEnd': gl_q3, 'glObjectsQ3ToEndScaled': gl_q3_scaled,
                    'domNodes': h1['domInTree'] - h0['domInTree'],
                    'domNodesLateHalf': h1['domInTree'] - mid['domInTree'] if mid else None,
                    'allNodes': (h1['nodes'] or 0) - (h0['nodes'] or 0), 'documents': (h1['documents'] or 0) - (h0['documents'] or 0),
-                   'listeners': (h1['listeners'] or 0) - (h0['listeners'] or 0), 'glObjects': live1 - live0,
-                   'glByKind': {k: d['gl'][k] - gl0.get(k, 0) for k in d['gl']}},
-        'glLiveObjects': d['gl'], 'webglContexts': d['contexts'], 'webglContextsPeakLive': d['contextsPeak'], 'webglContextsLiveAtEnd': d['contextsLive'], 'webglContextsLost': d['contextsLost'], 'renderQuality': report.get('renderQuality'), 'glRenderer': d['vendor'],
+                   'listeners': (h1['listeners'] or 0) - (h0['listeners'] or 0), 'glObjects': gl_all, 'glByKind': gl_kinds},
+        'glLiveObjects': d['gl'], 'glByContext': d['glByContext'],
+        'webglContexts': d['contexts'], 'webglContextsPeak': d['contextsPeak'], 'webglContextsLost': d['lostContexts'], 'webglContextsPeakLive': d['contextsPeak'], 'webglContextsLiveAtEnd': d['liveContexts'], 'renderQuality': report.get('renderQuality'), 'glRenderer': d['vendor'],
         'endState': report['endState'],
     }
     fails = check(metrics, budget, repro)
@@ -514,7 +633,7 @@ def main():
             f = od / 'perf_gate.json'
             f.write_text(json.dumps({**out, 'metrics': metrics, 'budget': budget, 'errors': report['errors'], 'console': report['console']}, indent=1), 'utf-8')
             out['artifacts'].append(str(f))
-        slim = {k: v for k, v in metrics.items() if k not in ('heap', 'drawBreakdown', 'longAnimationFrames', 'glLiveObjects')}
+        slim = {k: v for k, v in metrics.items() if k not in ('heap', 'drawBreakdown', 'longAnimationFrames', 'glLiveObjects', 'glByContext')}
         slim['heap'] = {k: v for k, v in metrics['heap'].items() if k != 'samples'}
         out['metrics'] = slim
     except GameBootFailure as e:  # the game itself broke before it could be measured
