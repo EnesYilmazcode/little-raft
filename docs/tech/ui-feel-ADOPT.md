@@ -1,25 +1,38 @@
 # Adopting ui-feel in dist/
 
-Checked against the current `dist/` on `claude/raft-tech` (3c62305, = main): `dist/game.js` 1780 lines,
-`dist/survival-ui.js` 1071 lines (sv3), build token `v3-survival-ae77fa84ac2b`. Line numbers are from that
-version; every block below is applied literally by `sandbox/ui-feel/realgame.py`, which fails if any `-`/context
-text does not occur exactly once.
+Checked against the current `dist/` on `claude/raft-tech` (merged main **8d21618**): `dist/game.js` 2284 lines
+(`HOTBAR = 10`), `dist/survival-ui.js` 1309 lines, `dist/live.js` 382 lines, build token
+`v3-survival-ae77fa84ac2b`. Line numbers are from that version. Every block below is applied literally by
+`sandbox/ui-feel/realgame.py`, which fails if any `-`/context text does not occur exactly once, or if
+`dist/game.js` is not the 2284-line base named here (re-check this doc first, then bump the number). The anchors
+were also re-checked against main 912d941 (round 5, which landed while this was written): all 11 blocks match
+there too, since none of them touches a line round 5 changed.
 
 ## What ships and what does not (retarget decisions)
 
-Main grew its own HUD feedback since ui-feel was written. ui-feel now only adds what main does not have, and
+Main grew its own HUD feedback after ui-feel was written. ui-feel now adds only what main does not have, and
 never draws a second version of something main already draws:
 
-| Feature | Main today | ui-feel in the game |
+| Feature | Main today (8d21618) | ui-feel in the game |
 |---|---|---|
 | Text feedback for loot / craft / notices | `pickup-feed.js` (bottom-left rows with 3D icons, merging, `notice()` routes into it), `prompts.js` `#lrFeed`, `coop-feed.js` | **Off** (`toasts:false`). The pickup feed stays the one text feed, unchanged, with its tests. No `#uf-toasts` popover is created. |
-| Hotbar selection cursor + name tag | survival-ui sv3 `.sv-cursor` + `.sv-label` | **Off** automatically (`hotbarCursor:'auto'` sees `.sv-cursor`). |
+| Hotbar selection cursor + name tag | survival-ui `.sv-cursor` + `.sv-label` on the 10-slot bar | **Off** automatically (`hotbarCursor:'auto'` sees `.sv-cursor`). |
 | Slot bump when a count grows | survival-ui `sv-bumpA/B` on paint | Kept as main's. ui-feel only **delays** it for a slot an icon is flying to (see next row). |
-| Loot flying into the slot | none | **On**: icons pop out of the reticle and fly to the slot (or the bar's top edge when the item went to the backpack). The slot keeps its old count, and an empty slot stays blank, until the icon lands; then main's bump plays plus a gold ring. |
-| Reticle hover / charge arc / hit markers | static ring (graphics.css) + `#chargeMeter` bar beside the prompt | **On**: hover grows the ring, charge draws an arc, `gold` on a catch / pickup, `hit` on **your own** build, `deny` on bag full. |
+| Loot flying into the slot | none | **On**: icons pop out of the reticle and fly to the slot (or the bar's top edge when the item went to the backpack). The slot keeps its old count, and an empty slot stays blank, until the icon lands; then main's bump plays plus a gold ring. The icon is the slot's own 3D art, else `iconURL(kind)` (the same cached 3D render the pickup feed uses), else `iconSVG(kind)` while that render is pending: never empty. |
+| Reticle dot, hover growth | `graphics.css:328-330`: a 4 px soft dot; `#crosshair.usable` grows it to 8 px over interactables (`updateContext`, game.js:746) | **Main's, untouched.** ui-feel runs with `reticle:'markers'`: it does not add `.uf-xh`, does not resize, restyle or replace the dot, and has no per-frame hook. |
+| Throw charge | `#chargeMeter`, a 28 px conic ring around the reticle (`graphics.css:315`, `updateCharge`) | **Main's, untouched.** ui-feel's charge arc is not used in the game and `#chargeMeter` is not hidden. |
+| Hit markers | none | **On**, the one reticle feature main lacks: four short ticks around the dot, `gold` on a loot pickup / hook catch, cream `hit` on **your own** build, red `deny` on bag full, plus a 240 ms pop (or shake for deny) of main's dot through the independent `scale`/`translate` properties (main's `transform:translate(-50%,-50%)` centring is never written). |
 | Inventory open / close motion, press states | instant open, hover colours | **On** (pure CSS). Press states skip a slot that is being dragged (`.sv-dragging`, `.sv-src`, `.sv-over`). |
 | Recipe flash on craft | none | **On** (`crafted(kind)` finds the row by `data-recipe` or `data-tip-kind`). |
-| Stat bars | game has no health/hunger/thirst | Available (`statBar`), not wired. |
+| Health / food / water bars | `vitals-ui.js` `#lrVitals`, bottom-left: `.25s` fill transition, `lv-low` pulse, damage flash + vignette | **Main's, not wired** (see §3). |
+
+**Why defer on the reticle.** Main chose a deliberately minimal Raft-style dot with a single conic charge ring,
+and both already answer "can I use this?" and "how hard will I throw?". ui-feel's ring + dot + arc would replace
+that design with a busier one for no new information, and (round 2) its 40 px box picked up main's dot
+`box-shadow` as a grey square. The only thing main's reticle does not say is "that landed": the hit markers.
+The standalone sandbox still shows the full reticle (`reticle:'full'`, the default), and `#crosshair.uf-xh` now
+resets main's `box-shadow`, `background`, `filter`, `transition` and `.usable` size, so even the full mode draws
+no square on this dist.
 
 Nothing is removed from main: `pickupFeed.add/note` still run for every effect exactly as before, so
 `tests/survival.test.mjs` (pickup-feed cases) and `raftDebug.state.feed` are untouched.
@@ -31,50 +44,63 @@ Nothing is removed from main: `pickupFeed.add/note` still run for every effect e
 cp sandbox/ui-feel/ui-feel.js dist/ui-feel.js
 ```
 
-No imports. It injects `<style id="ui-feel-style">` itself (removed again by `destroy()`), so `live.js` hot swaps
-need no `CSS_FILES` edit. It adds `#uf-layer` (fly icons, rings; `position:fixed`, `z-index:6`,
-`pointer-events:none`) and builds four `.uf-x` parts inside `#crosshair`. With `toasts:false` it adds no
-popover and no `<dialog>`, so `dialogOpen()` / `uiBlocked()` / Escape handling are unaffected.
+No imports. It injects `<style id="ui-feel-style">` itself (removed again by `destroy()`), so `live.js` needs no
+`CSS_FILES` edit. It adds `#uf-layer` (fly icons, rings; `position:fixed`, `z-index:6`, `pointer-events:none`)
+and, with `reticle:'markers'`, one `.uf-x-hit` element inside `#crosshair` (shown over main's
+`#crosshair>*{display:none}` by a more specific rule). With `toasts:false` it adds no popover and no
+`<dialog>`, so `dialogOpen()` / `uiBlocked()` / Escape handling are unaffected.
 
-`survival-ui.js` needs no change: it already exports `iconSVG` (line 1071).
+## 2. dist/live.js: preload it
 
-## 2. dist/game.js
+`tests/live-preload.test.mjs` requires `PRELOAD` to equal game.js' static import graph. Add the module on its
+own line (alphabetical position, and a line round 5 did not touch):
 
-### 2a. Imports (line 47)
+<!-- apply: live.js -->
+```diff
++  'ui-feel.js',
+   'vitals-ui.js', 'vitals.js', 'waterfx.js', 'watering.js', 'wildlife-models.js', 'wildlife.js', 'wood.js',
+```
+
+## 3. dist/game.js
+
+### 3a. Import (line 55)
+
+`iconSVG` (survival-ui) and `iconURL` (item-icons, line 59) are already imported; only `createUIFeel` is new:
 
 <!-- apply: game.js -->
 ```diff
--import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
-+import { createSurvivalUI, iconSVG } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+ import { createSurvivalUI, iconSVG } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 +import { createUIFeel } from './ui-feel.js?build=v3-survival-ae77fa84ac2b';
 ```
 
-Same `?build=` token as every other import; the release script rewrites them together. `getItemIcon` is
-already imported (line 51).
+Same `?build=` token as every other import; the release script rewrites them together.
 
-### 2b. State (line 242)
+### 3b. State (line 283)
 
 <!-- apply: game.js -->
 ```diff
 -  let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
-+  let survivalUI = null, uiFeel = null, feelFailed = false, settingsController = null, options = {...SETTINGS_DEFAULTS};
++  let survivalUI = null, uiFeel = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
 ```
 
-### 2c. Create it after the survival UI (line 1757)
+### 3c. Create it after the survival UI (line 2258)
 
 <!-- apply: game.js -->
 ```diff
      prog.installUI(); // [progression-hook]
-+    try { uiFeel = createUIFeel({getBag:() => localBag(), hotbarSize:HOTBAR, toasts:false, // ui-feel: docs/tech/ui-feel-ADOPT.md
-+      iconHTML:k => { const u = getItemIcon(k); return u ? `<img src="${u}" alt="">` : iconSVG(k); }}); }
++    try { uiFeel = createUIFeel({getBag:() => localBag(), hotbarSize:HOTBAR, toasts:false, reticle:'markers', // ui-feel: docs/tech/ui-feel-ADOPT.md
++      iconHTML:k => { const u = iconURL(k); return u ? `<img src="${u}" alt="">` : iconSVG(k); }}); }
 +    catch (e) { uiFeel = null; console.error('ui-feel failed', e); } // purely cosmetic: never block the game
 ```
 
-It must come after `createSurvivalUI` (which fills `.tools` and creates `dialog#inventory`). `getBag` is only
-used to choose the slot a picked-up item lands in before survival-ui repaints. A flying icon uses the slot's own
-art (the 3D icon the bar shows); `iconHTML` is the fallback for an item that is not in the bar yet.
+It must come after `createSurvivalUI` (which fills `.tools` and creates `dialog#inventory`). `getBag` picks the
+slot a picked-up item lands in before survival-ui repaints. A flying icon uses the slot's own art (the 3D icon
+the bar shows); `iconHTML` covers an item that is not in the bar yet (backpack-bound, first of its kind, a
+guest's generic flight). `iconURL` is main's cached 3D icon (`null` while it renders, and it queues the render),
+so the fallback is survival-ui's SVG for that kind. Round 2 called `getItemIcon` here, which game.js no longer
+imports: the ReferenceError was swallowed and every such flight flew as a bare `+N`.
 
-### 2d. Dispose (line 1728)
+### 3d. Dispose (line 2224)
 
 <!-- apply: game.js -->
 ```diff
@@ -85,7 +111,7 @@ art (the 3D icon the bar shows); `iconHTML` is the fallback for an item that is 
 A live hot swap also works without this: a new `createUIFeel` destroys the previous instance through
 `window.__littleRaftUIFeel` (the survival-ui pattern).
 
-### 2e. Effects: `effect(e)` (line 768) and a guarded `feelEffect` (before `collectBottle`, line 774)
+### 3e. Effects: `effect(e)` (line 1016) and a guarded `feelEffect` (before `collectBottle`, line 1024)
 
 <!-- apply: game.js -->
 ```diff
@@ -119,11 +145,11 @@ player as they are. `crafted()` takes only a string (anything else returns false
 `CSS.escape`, so a hostile `kind` from the network cannot throw out of `querySelector`. Every public ui-feel
 method is also guarded inside the module (logs, returns false).
 
-### 2f. Name the builder on the build effects that go to both players
+### 3f. Name the builder on the build effects that go to both players
 
-`build` is emitted to `'all'` for a floor/decor placement (line 877) and a building piece (line 883). Without an
+`build` is emitted to `'all'` for a floor/decor placement (line 1137) and a building piece (line 1143). Without an
 owner the partner's reticle would flash a hit marker for your build. Add `by:actor` (additive: an older peer
-ignores it, and an effect without `by` never marks):
+ignores it, `coop.encode` passes effects through untouched, and an effect without `by` never marks):
 
 <!-- apply: game.js -->
 ```diff
@@ -137,7 +163,7 @@ ignores it, and an effect without `by` never marks):
 +      if (r.ok) emit({kind:'build', text:r.text, by:actor}, 'all'); else if (r.text) emit({kind:'notice', text:r.text}, actor);
 ```
 
-And the hook repair (line 907, actor only):
+And the hook repair (line 1167, actor only):
 
 <!-- apply: game.js -->
 ```diff
@@ -145,22 +171,18 @@ And the hook repair (line 907, actor only):
 +      bag.slots[i].durability = MAX_HEALTH; emit({kind:'build', text:'Hook repaired!', sound:'repair', by:actor}, actor);
 ```
 
-The signal-cache `build` (line 850) goes to the *other* player and has no `by`, so it shows in their feed with no
-marker, as intended.
+The signal-cache `build` (line 1108) goes to the *other* player and has no `by`, so it shows in their feed with
+no marker, as intended. (Main 912d941 adds a hatch/gate `piecetoggle` build emit to `'all'` without `by`: it
+correctly gets no marker on either side; add `by:actor` there too if a marker is wanted for it.)
 
-### 2g. Reticle state every frame (line 1249), gated like `survivalUI.update`
+### 3g. No per-frame hook
 
-<!-- apply: game.js -->
-```diff
-     refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud();
-+    if (uiFeel && !feelFailed) { try { uiFeel.crosshair.hover(!!pickTarget || !!hover); uiFeel.crosshair.charge(charging && running ? chargeValue() : null); } catch (e) { feelFailed = true; console.error('ui-feel update failed', e); } }
-```
+Round 2 added `uiFeel.crosshair.hover(...)` / `.charge(...)` after the context line (now line 1621,
+`refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud(); updateNotices(dialog); warmKinds();`).
+With `reticle:'markers'` both are no-ops (main's `.usable` and `#chargeMeter` do that job), so that line is
+**not** edited and ui-feel has no code in the frame loop at all.
 
-Both calls return early when nothing changed (hover toggles a class only on a change; charge writes
-`stroke-dashoffset` only while charging), so idle frames do no DOM writes. A throw turns the per-frame call off
-for the session (`feelFailed`) and never skips `renderer.render`.
-
-### 2h. Gold marker on a catch (line 1184, `updateHook`)
+### 3h. Gold marker on a catch (line 1535, `updateHook`)
 
 <!-- apply: game.js -->
 ```diff
@@ -170,29 +192,15 @@ for the session (`feelFailed`) and never skips `renderer.render`.
 
 (`crosshair.hit` is guarded inside the module and returns false on error.)
 
-## 3. Optional: retire the throw-power bar
+## 4. Stat bars: not wired (main's vitals bars stay as they are)
 
-The charge arc around the reticle replaces `#chargeMeter`, which `prompts.css` now parks under the key prompt.
-To hide it while ui-feel is attached, append to `dist/prompts.css`:
-
-<!-- append: prompts.css -->
-```css
-html:has(#crosshair.uf-xh) #chargeMeter{display:none!important}
-```
-
-The selector outranks prompts.css's `body #chargeMeter` rules and stops applying if ui-feel is destroyed.
-
-## 4. Optional: stat bars
-
-The game has no health, hunger or thirst. When it does:
-
-```js
-const statsEl = Object.assign(document.createElement('div'), {className:'uf-stats'}); document.body.append(statsEl);
-const hp = uiFeel.statBar(statsEl, {tone:'health', label:'Health', value:1}); // tones: health | food | water | hook
-hp.set(player.health / MAX_HEALTH); // per frame or on change; a no-op when the value did not move
-```
-
-The panel sits bottom-right (the pickup feed owns bottom-left). Add `body:not(.playing) .uf-stats{display:none}`.
+Main now ships health / food / water in `vitals-ui.js` (`#lrVitals`, bottom-left above the feeds). It already has
+the feel ui-feel's `statBar` was written for: a `.25s` transform fill, a pulsing `lv-low` row, a damage flash and
+vignette, and DOM writes only on a rounded change. ui-feel's remaining extra is the delayed lag trail on damage.
+Driving `#lrVitals` with it would mean inserting a trail node into another module's `.lv-track` and fighting its
+`transition` on the same fill, which is not clean, so it is **not** adopted. If it is wanted later, it belongs in
+`vitals-ui.js` itself (one extra `<i>` per track, transformed with a 420 ms delay on a drop). `uiFeel.statBar`
+stays available for a host without bars, and the sandbox still demos it.
 
 ## Standalone toasts (not used by the game)
 
@@ -205,14 +213,17 @@ the top/bottom gaps, capped at the 1-2 rows that fit. The sandbox shows it with 
 ## Verify
 
 0. `python sandbox/ui-feel/realgame.py` copies `dist/` to a temp folder, applies every block above (each must
-   match exactly once), boots the game, lands a real pickup (hook catch, or the same `collect` action through a
-   scratch-only QA hook), freezes the fly mid-air, crafts through the real buttons, opens the inventory at
-   1280 and 1024 px, enters fullscreen through Pause > Graphics, checks the build marker for the partner vs
-   yourself and the guards, and writes `sandbox/ui-feel/shots/rg-*.png` plus JSON.
+   match exactly once; game.js must be the base named at the top), boots the game, lands a real pickup (hook
+   catch, or the same `collect` action through a scratch-only QA hook), freezes the fly mid-air and asserts every
+   flying icon has non-empty art, crafts through the real buttons (topping the bag up with
+   `raftDebug.give('leaf', 2)` if nothing is craftable, and failing if no recipe flashed), opens the inventory at
+   1280 and 1024 px, checks main's reticle is untouched (4 px dot, `#chargeMeter` shown while charging, no
+   `.uf-xh`), enters fullscreen through Pause > Graphics, checks the build marker for the partner vs yourself and
+   the guards, writes `sandbox/ui-feel/shots/rg-*.png` plus JSON, and exits 1 if any check failed.
 1. `python sandbox/ui-feel/shoot.py` prints `"errors": []`.
-2. Tests: `node --test tests/*.test.mjs` with `RAFT_DIST=<patched copy>` (realgame.py `--keep` prints it) and
-   without; the results must match.
+2. Tests: `node --test tests/*.test.mjs` with `RAFT_DIST=<patched copy>/dist` (realgame.py `--patch-only --keep`
+   prints it) and without; the results must match (including `tests/live-preload.test.mjs`).
 3. In the game: hook a barrel. Icons pop out of the reticle and fly into their slots; each slot keeps its old
-   count until its icon lands, then bumps. The bottom-left feed shows `+3 Plank` etc. as before. Hold click:
-   an amber arc fills around the reticle. Point at a supply: the reticle grows and turns gold. Tab: the panel
-   pops in; craft rope and the recipe row flashes. Turn on "Emulate prefers-reduced-motion: reduce": fades only.
+   count until its icon lands, then bumps; four gold ticks flash around the dot. The bottom-left feed shows
+   `+3 Plank` etc. as before. Hold click: main's conic ring fills. Point at a supply: main's dot grows. Tab: the
+   panel pops in; craft rope and the recipe row flashes. Turn on "Emulate prefers-reduced-motion: reduce": fades only.
