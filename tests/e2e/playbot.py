@@ -36,6 +36,8 @@ TOOL = 'playbot'
 LOOK_K = .0022            # game.js LOOK_SENSITIVITY (options.sensitivity defaults to 1)
 PITCH_LIMIT = 1.35        # game.js PITCH_LIMIT
 FOV_RANGE = (60, 95)      # settings.js fov min/max while running
+# Game seconds a hook may legitimately sit in a stage (hook-physics MAX_FLIGHT_TIME = 8; 'done' is ended next frame).
+HOOK_STUCK_SIM_S = {'flying': 12, 'done': 2}
 HOOK_STAGES = {'idle', 'flying', 'floating', 'reeling', 'done', 'fishing'}
 # Stage transitions the bot may observe between two samples (skips allowed when the sim is fast).
 HOOK_NEXT = {
@@ -54,11 +56,14 @@ PAGE_INIT = r"""
   Math.random = function () { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s);
     t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   // Independent rAF probe: worst gap between animation frames since the last read.
-  const pb = window.__playbot = {maxGap: 0, frames: 0, last: 0};
-  const f = t => { if (pb.last) pb.maxGap = Math.max(pb.maxGap, t - pb.last); pb.last = t; pb.frames++; requestAnimationFrame(f);
+  // sim/totalFrames are cumulative: game.js clamps each frame's dt to 50 ms, so on slow software GL game time runs far
+  // slower than wall time and "stuck"/"frozen" checks must be measured in frames / sim seconds, not wall seconds.
+  const pb = window.__playbot = {maxGap: 0, frames: 0, last: 0, sim: 0, totalFrames: 0};
+  const f = t => { if (pb.last) { pb.maxGap = Math.max(pb.maxGap, t - pb.last); pb.sim += Math.min(t - pb.last, 50) / 1000; }
+    pb.last = t; pb.frames++; pb.totalFrames++; requestAnimationFrame(f);
     if (t - pb.lastSample >= %(interval)d - 20) take(); };
   requestAnimationFrame(f);
-  pb.read = () => { const r = {maxGap: pb.maxGap, frames: pb.frames}; pb.maxGap = 0; pb.frames = 0; return r; };
+  pb.read = () => { const r = {maxGap: pb.maxGap, frames: pb.frames, sim: pb.sim, totalFrames: pb.totalFrames}; pb.maxGap = 0; pb.frames = 0; return r; };
   pb.reset = () => { pb.maxGap = 0; pb.last = 0; };
   // In-page sampler: snapshots raftDebug.state every %(interval)d ms into a buffer that Python drains,
   // so the invariant cadence does not depend on (slow) Playwright round-trips.
@@ -163,7 +168,8 @@ class Bot:
         self.shot_windows = []         # (start, end) elapsed of screenshots: rAF gaps there are ours
         self.cx, self.cy = 480, 270
         self.expect_tiles_until = -1   # tiles may grow until this elapsed time (after a build click)
-        self.hook_stage_since = (None, 0)
+        self.hook_stage_since = (None, 0, 0)
+        self.frame_ms = []             # recent per-frame wall ms (for the relative stall threshold)
         self.frozen_since = None
         self.active_bad = 0
         self.max_tiles = None
@@ -271,9 +277,15 @@ class Bot:
         gap = pr.get('maxGap') or 0
         self.m['raf_frames'] += pr.get('frames') or 0
         self.m['max_raf_gap_ms'] = max(self.m['max_raf_gap_ms'], round(gap))
+        if p and pr.get('frames') and (p.get('probe') or {}).get('frames') is not None:
+            self.frame_ms = (self.frame_ms + [(s['now'] - p['now']) / pr['frames']])[-60:]
+        # Relative to this box's own typical frame time, so a slower/more loaded machine does not trip it.
+        typical = sorted(self.frame_ms)[len(self.frame_ms) // 2] if len(self.frame_ms) >= 5 else 0
+        limit = max(self.args.stall_ms, 8 * typical)
+        self.m['stall_limit_ms'] = round(max(self.m.get('stall_limit_ms', 0), limit))
         ours = any(a - 1 <= el and el - gap / 1000 - 1 <= b for a, b in self.shot_windows)  # stall overlapped a screenshot
-        if gap > self.args.stall_ms and not ours:
-            self.fail('frame_stall', f'requestAnimationFrame gap of {gap:.0f} ms (threshold {self.args.stall_ms} ms)')
+        if gap > limit and not ours:
+            self.fail('frame_stall', f'requestAnimationFrame gap of {gap:.0f} ms (threshold {limit:.0f} ms = max(--stall-ms, 8x median frame {typical:.0f} ms))')
 
         # player
         me, ph = s['me'] or {}, s['physics'] or {}
@@ -364,11 +376,16 @@ class Bot:
                 self.fail('hook_tension', f'hook tension {h["tension"]} outside [0,1]')
             elif h['distance'] > 80:
                 self.fail('hook_far', f'hook {h["distance"]:.1f} m away (range is {s["hookRange"] if "hookRange" in s else "~32"})')
+        # Measured in game time: hook-physics forces a splash after MAX_FLIGHT_TIME=8 sim s and 'done' ends the same
+        # frame, but at ~1 fps with the 50 ms dt clamp 8 sim s is ~2 wall minutes, so wall time alone is not "stuck".
+        sim = pr.get('sim') or 0
         if st != self.hook_stage_since[0]:
-            self.hook_stage_since = (st, el)
-        elif st in ('flying', 'done') and el - self.hook_stage_since[1] > self.args.hook_stuck_s:
-            self.fail('hook_stuck', f'hook stuck in stage {st!r} for {el - self.hook_stage_since[1]:.0f}s')
-            self.hook_stage_since = (st, el)
+            self.hook_stage_since = (st, el, sim)
+        elif st in HOOK_STUCK_SIM_S:
+            wall, game = el - self.hook_stage_since[1], sim - self.hook_stage_since[2]
+            if wall > self.args.hook_stuck_s and game > HOOK_STUCK_SIM_S[st]:
+                self.fail('hook_stuck', f'hook stuck in stage {st!r} for {game:.1f} game s ({wall:.0f} wall s; limit {HOOK_STUCK_SIM_S[st]} game s)')
+                self.hook_stage_since = (st, el, sim)
         if not (0 <= (s['charge'] or 0) <= 1):
             self.fail('charge_range', f'charge {s["charge"]}')
 
@@ -385,11 +402,15 @@ class Bot:
 
         # liveness: raft bob or camera must change while unpaused
         sig = ((s['raft'] or {}).get('y'), (s['raft'] or {}).get('roll'))
+        # Needs both wall time and rendered frames: samples taken by the timer fallback while rAF is slow legitimately
+        # repeat the pose; only frames that ran without moving the raft mean the world is frozen.
+        nf = pr.get('totalFrames') or 0
         if not menu and p and sig == self.last_sig:
-            self.frozen_since = self.frozen_since or el
-            if el - self.frozen_since > self.args.stall_ms / 1000 + 2:
-                self.fail('world_frozen', f'raft pose unchanged for {el - self.frozen_since:.1f}s while unpaused')
-                self.frozen_since = el
+            self.frozen_since = self.frozen_since or (el, nf)
+            secs, frames = el - self.frozen_since[0], nf - self.frozen_since[1]
+            if secs > self.args.stall_ms / 1000 + 2 and frames >= 10:
+                self.fail('world_frozen', f'raft pose unchanged for {secs:.1f}s / {frames} rendered frames while unpaused')
+                self.frozen_since = (el, nf)
         else:
             self.frozen_since = None
         self.last_sig = sig
@@ -706,7 +727,8 @@ def main():
     ap.add_argument('--stall-ms', type=float, default=8000, help='max rAF gap before frame_stall (swiftshader-generous)')
     ap.add_argument('--y-floor', type=float, default=-4.0, help='player eye y below this is a failure')
     ap.add_argument('--hook-wait-s', type=float, default=None, help='max wait for hook flight / reel (default min(25, duration/6))')
-    ap.add_argument('--hook-stuck-s', type=float, default=60)
+    ap.add_argument('--hook-stuck-s', type=float, default=20,
+                    help='min wall seconds in flying/done before hook_stuck (game-time limit must also be exceeded)')
     ap.add_argument('--fish-wait-s', type=float, default=None, help='max wait for a bite (default min(15, duration/10))')
     ap.add_argument('--headed', action='store_true')
     args = ap.parse_args()
