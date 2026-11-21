@@ -104,7 +104,7 @@ export function createPlastic(T) {
   creaseGeo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
   creaseGeo.computeVertexNormals();
   const creases = new T.Mesh(creaseGeo, mat({
-    color: 0xa9d2ec, transparent: true, opacity: 0.55, side: T.DoubleSide,
+    color: 0xa9d2ec, transparent: true, opacity: 0.55, side: T.DoubleSide, forceSinglePass: true,
     polygonOffset: true, polygonOffsetFactor: -2, depthWrite: false,
   }));
   root.add(creases);
