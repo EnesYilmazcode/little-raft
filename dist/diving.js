@@ -293,6 +293,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
     }
     const show = underwater || p.y < surf + 0.5;
     if (show !== floorShown) { floorShown = show; seafloor.group.visible = show; }
+    seafloor.setDecor?.(underwater); // the patch shows from just above the surface; its decor only underwater
     if (show && !failed.has('seafloor')) { try { seafloor.update(dt, camera, time); } catch (e) { fail('seafloor', e); } }
     if (ui && !failed.has('ui')) {
       if (labelId !== targetId) { labelId = targetId; label = targetId ? `Hold E · ${NAMES[targetType] ?? targetType}` : ''; }
