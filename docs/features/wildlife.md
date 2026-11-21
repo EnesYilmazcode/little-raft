@@ -15,7 +15,7 @@ raft.wiki.gg could not be reached. An earlier pass got HTTP 401 (Cloudflare). Th
 
 ## Our friendlier version
 
-- **Gulls (3 to 6).** They glide on wide circles 6.5 to 11.5 m above the raft, 7 to 12 m out. Every 20 to 50 s a gull picks a free perch (a raft tile with no decor, or the top of a `sail`, `crate` or `bench`), glides down, folds its wings, and hops around for 6 to 15 s before leaving. If the local player comes within 2.25 m it takes off early. Gulls never touch items, crops or inventory.
+- **Gulls (3 to 6).** They glide on wide circles 6.5 to 11.5 m above the raft, 7 to 12 m out (further on a big raft). Every 20 to 50 s a gull picks a free perch (a raft tile with no decor, or the top of a `sail`, `crate` or `bench`), glides down, folds its wings, and hops around for 6 to 15 s before leaving. If either player comes within 2.25 m it takes off early. Gulls never touch items, crops or inventory.
 - **Fish schools (2 of 12).** Each school swims a loose loop 0.4 to 1.2 m under the surface, 6 to 18 m out, and shows through the shallow water colour.
 - **Friendly circler (one at a time).** This takes the shark's place. Every 90 to 180 s a dolphin (70%) or a turtle (30%) makes one or two slow laps at 9 to 14 m, never closer than 7 m, then leaves.
 - Nothing has collision or any gameplay effect.
@@ -25,8 +25,6 @@ raft.wiki.gg could not be reached. An earlier pass got HTTP 401 (Cloudflare). Th
 Status: implemented in `dist/wildlife.js` (module, plan, debug) and `dist/wildlife-models.js` (merged low-poly
 geometries). No game.js, content.js or inventory-state.js edits; no new hooks.
 
-![Gull perched on the deck](../cloud/shots/content/wildlife-gull.png)
-
 - **Gulls.** White body and head, grey mantle and wings with black, white-spotted tips, orange beak with a red
   spot, orange legs and webbed feet, black eyes (~0.6 m long, 1.4 m span). They bank on their circle and glide
   with bursts of flapping. A visit runs inside a 40 s slot per gull: glide down over 4 s, then perch 6 to 15 s
@@ -34,8 +32,17 @@ geometries). No game.js, content.js or inventory-state.js edits; no new hooks.
   Perches: free tiles (deck y .2), the sail mast top (3.84), a crate lid (1.07) or a bench seat (.69). In
   one slot, gulls take consecutive perch indices from a shared base, so two never share a perch. A gull with
   no free perch (index >= perch count) keeps circling. Perched gulls take the raft's bob and tilt.
-- **Scare.** When the local player is within 2.25 m (horizontal, and within 3 m vertically) of a perched gull,
-  that gull leaves early. This is local only (`scareAt[i]`, kept for the current slot).
+- **Perch latch.** When a visit begins, the module copies that perch as `{key, x, y, z}` and keeps it for the
+  whole visit, so a perch-list rebuild (a tile or decor change shifts the indices) never moves a gull. If the
+  latched key disappears from the new list, or its height changes (a crate or palm placed on it), the gull
+  takes off from where it is, like a scare. A gull that sees no perch at its visit start skips that visit.
+- **Scare.** When either player is within 2.25 m (horizontal, and within 3 m vertically) of a perched gull,
+  that gull leaves early. The local player is `ctx.physics`, the friend is `ctx.other` (`{x, y, z}`; a null `y`
+  counts as `ctx.deckY() + 1.6`). Both clients see both poses, so they agree on the scare without sending
+  anything. A scare during the glide down also works and turns the gull back up from its current height.
+- **Big rafts.** `raftExtent(tiles)` = max |tile coord| * 2 + 1 (shared tiles, so both clients agree). Each
+  path's base radius is pushed out so its closest point stays past the edge: the gull sky circle by
+  `ext + 2.5`, fish schools by `ext + 4`, the circler by `ext + 5`. The starter 3x3 raft (ext 3) is unchanged.
 - **Fish.** Two schools of 12 dark fish silhouettes (one on `low`). The ocean shader is opaque, so fish can't
   be drawn below it: each fish is a flat, transparent silhouette laid 3.5 cm over the CPU wave height
   (`ocean.getHeight` per fish, 24 calls a frame). Its plan depth (-1.15 to -0.45 m) tints it toward the
@@ -59,7 +66,7 @@ geometries). No game.js, content.js or inventory-state.js edits; no new hooks.
 | `serialize()` | Solo or guest: `undefined` (nothing saved). Host: one reused `{t}` object (see Co-op clock). |
 | `load(data, from)` | `'net'`: read the host clock. `'save'` and `'restore'`: reset the offset to 0. Garbage is ignored, and it never throws. |
 | `debug` | QA helpers, below. |
-| `dispose()` | Removes the group, disposes every geometry and material. |
+| `dispose()` | Removes the group, disposes every geometry and material. Later `update` calls do nothing (no rebuild). |
 
 `action`, `interact`, `prompt`, `craftLocked`, `decorModel` and `afterMove` are unused. Meshes are built on the first `update`, when `ctx.scene` and `ctx.ocean` exist, and go into one `T.Group`. The local player is `ctx.physics` (`x, y, z`). Perched gulls take the bob and tilt of `ctx.raft`.
 
@@ -69,14 +76,14 @@ Both clients evaluate the same closed-form plan from a clock `t`, plus `world.ti
 
 **Decision: use the host's elapsed time.**
 
-- Host: `serialize()` sets `net.t = Math.round(ctx.elapsed * 10) / 10` on one preallocated object and returns it. That is about 12 bytes per state message. It also lands in `world.ext.wildlife` on host saves, which is harmless because `load(_, 'save')` ignores it.
-- Guest, `load(d, 'net')`: if `Number.isFinite(d?.t)`, compute `off = d.t - ctx.elapsed`. On the first message, or if `|off - offset| > 2`, set `offset = off`. Small drift is left alone, so nothing jitters at 8 Hz. A big jump (the host reloaded) snaps.
+- Host: `serialize()` sets `net.t = Math.round(now() * 10) / 10` (its own clock, including any `setTime` offset) on one preallocated object and returns it. That is about 12 bytes per state message. It also lands in `world.ext.wildlife` on host saves, which is harmless because `load(_, 'save')` ignores it.
+- Guest, `load(d, 'net')`: if `Number.isFinite(d?.t)`, compute `off = d.t - ctx.elapsed` and store it as the target offset. On the first message, or if `|off - offset| > 10` (the host reloaded), `offset` snaps to it. Otherwise `update(dt)` eases `offset` toward the target at 0.5 s per second or less (dt capped at 0.1 s a step). Drift is normal, because each client's `elapsed` clamps its frame dt at 0.05 s, so a slow machine falls behind. Easing keeps the clock moving forward at 0.5x to 1.5x speed, so nothing pops.
 - Clock: `t = ctx.elapsed + offset`. Solo and host keep `offset = 0`. `load(_, 'restore')` (the guest back on their own raft) resets the offset and the synced flag.
-- The scare reaction stays local (`scaredUntil[i]`). A gull you spook leaves on your screen only, at no network cost.
+- Scares are not sent. Each client checks both players against the perches, so both see the same gull leave (to within a frame or two).
 
 ## Lean rendering
 
-Everything is created once and cached. Per-frame work writes only to scratch `Matrix4`, `Vector3`, `Quaternion` and `Euler` objects and sets `instanceMatrix.needsUpdate`. Hidden instances get a zero-scale matrix, and `count` stays at the maximum.
+Everything is created once and cached. Per-frame work writes only to scratch `Matrix4`, `Vector3`, `Quaternion` and `Euler` objects and sets `instanceMatrix.needsUpdate`. Hidden instances are trimmed with `mesh.count` (gulls and fish fill their first instances), so they are not drawn or computed. `update` calls `raft.updateWorldMatrix(true, false)` once (the raft and its parents, not its deck children), so perched gulls use this frame's bob and tilt.
 
 | Mesh | Geometry | Material | Instances |
 |---|---|---|---|
@@ -104,21 +111,24 @@ The circler takes one `ctx.ocean.getHeight` sample per frame. Fish take one each
 export const WILDLIFE_SEED = 0x5eaf00d;
 export function mulberry32(a)                       // -> () => [0,1)
 export function perchesFrom(tiles, decor)           // -> [{x,y,z,key}] sorted by key: free tiles + sail/crate/bench tops
+export function raftExtent(tiles)                   // -> max |tile coord| * 2 + 1, or 0 with no tiles
+export function layoutHash(tiles, decor)            // -> int32 hash of tile x,z and decor type,x,z (no allocation)
 export function gullVisit(seed, i, slot, n, v)      // fills v {on, start, stay, perch, yaw} for gull i's slot
-export function gullPlan(seed, i, t, perches, out, scareAt = -1, visit = null)
+export function gullPlan(seed, i, t, perches, out, scareAt = -Infinity, visit = null, perch = undefined, ext = 0)
+                                                    // perch: omitted = perches[visit.perch], an {x,y,z} (the latched perch), or null = none
                                                     // fills out {state:'circle'|'descend'|'perched'|'leave', x,y,z, yaw,pitch,roll, flap,fold, blend, sx,sy,sz, px,py,pz, perch}
-export function schoolCenter(seed, i, t, out)       // fills out {x, z, heading}
+export function schoolCenter(seed, i, t, out, ext = 0) // fills out {x, y, z, heading}
 export function fishOffset(seed, i, j, out)         // fills out {side, along, ph, size, depth} for fish j of school i
-export function circlerAt(seed, t, out, force = null) // fills out {kind:null|'dolphin'|'turtle', x,y (above water),z, heading, pitch, roll}
+export function circlerAt(seed, t, out, force = null, ext = 0) // fills out {kind:null|'dolphin'|'turtle', x,y (above water),z, heading, pitch, roll}
 ```
 
-Each function fills an `out` object, so `update` reuses scratch objects. The PRNG is a stateless mulberry32 step (`rnd(s, n)` is the nth output of `mulberry32(s)`), keyed per window as `seed ^ imul(i+1, 0x9e37) ^ imul(slot+1, k)` with `slot = floor(t / SLOT)`, so each result depends only on its inputs and nothing allocates. `perchesFrom` reruns only when the `world.tiles` or `world.decor` reference or length changes.
+Each function fills an `out` object, so `update` reuses scratch objects. The PRNG is a stateless mulberry32 step (`rnd(s, n)` is the nth output of `mulberry32(s)`), keyed per window as `seed ^ imul(i+1, 0x9e37) ^ imul(slot+1, k)` with `slot = floor(t / SLOT)`, so each result depends only on its inputs and nothing allocates. `perchesFrom` reruns only when the layout really changes. A new `world.tiles` or `world.decor` reference or length is checked against `layoutHash(tiles, decor)`, an allocation-free FNV-style hash of tile `x, z` and decor `type, x, z`. The guest gets fresh arrays from `cleanWorld` with every state message (~8 Hz), and without the hash it rebuilt the perch list each time. A real change rebuilds the list, a key map and `raftExtent` (allocation is fine there, it is not per frame).
 
 ## Debug (`raftDebug.content.wildlife`)
 
 | Helper | Effect |
 |---|---|
-| `snapshot()` | `{t, offset, perches, gulls:[{x,y,z,state}], schools:[{x,z}], circler:{kind,x,z}\|null, built}` |
+| `snapshot()` | `{t, offset, perches, gulls:[{x,y,z,state}], schools:[{x,z}], circler:{kind,x,z}\|null, built, ext, rebuilds}` (`rebuilds` counts perch-list rebuilds) |
 | `summonCircler(kind)` | `'dolphin'` or `'turtle'`. That circler is on its circle now, in the direction the camera faces (radius clamped to 9 to 14 m). It swims one lap and leaves, then the schedule resumes. |
 | `landGull(i = 0, {instant, perch, stay, yaw, scare})` | Gull `i` perches for `stay` (15) s on the perch nearest the camera's look point (or perch index `perch`). `instant` skips the glide down. Forced gulls ignore the player unless `scare: true`. |
 | `schoolHere(i = 0, dist = 5)` | Pins school `i` `dist` m ahead of the camera (pushed out past the deck edge), broadside to the view, until `release()`. |
@@ -131,8 +141,12 @@ Overrides are local and are never serialized.
 
 ## How to verify
 
-1. `npm test`: `tests/wildlife.test.mjs` covers determinism, smooth paths, perch rules, scare, fish depth and
-   range, circler distance and dolphin share, and the co-op clock (load garbage, host/guest sync, snap vs jitter).
+1. `npm test`: `tests/wildlife.test.mjs` covers determinism, smooth paths, perch rules, scare (also mid-glide),
+   fish depth and range, circler distance and dolphin share, big-raft clearance, `layoutHash` and the no-rebuild
+   rule, and the co-op clock (load garbage, host/guest sync, slew vs snap, host sends `now()`). With real three
+   and a stub scene it also checks: a smoke run of 300 updates (finite instance matrices, `count` trimming,
+   `dispose` empties the scene), the friend's pose scaring a gull, and a perched gull that does not move when the
+   perch list shifts and takes off smoothly when its own perch is covered.
 2. Play solo and wait about 10 s of game time: gulls drop onto the deck. Walk up to one and it flies off.
    Look out to sea for dark fish shapes. Within a few minutes a dolphin or turtle swims a lap.
 3. In the console: `const w = raftDebug.content.wildlife; w.landGull(0, {instant:true}); w.schoolHere(0);
@@ -140,13 +154,24 @@ Overrides are local and are never serialized.
 4. Draw calls: `w.renderCalls()`, then `w.setVisible(false)`, wait a frame, and `w.renderCalls()` again.
 5. Co-op: host and guest should see the same gulls on the same tiles (the guest's clock follows `ext.wildlife.t`).
 
-Screenshots (headless Chromium, software GL): `docs/cloud/shots/content/wildlife-*.png`.
+Screenshots (headless Chromium, software GL, taken with `landGull`, `schoolHere` and `summonCircler`):
+
+| | |
+|---|---|
+| ![Gulls perched on the deck](../cloud/shots/content/wildlife-gull.png) | ![A school of fish past the deck edge](../cloud/shots/content/wildlife-fish.png) |
+| ![A dolphin leaping](../cloud/shots/content/wildlife-dolphin.png) | ![A sea turtle paddling by](../cloud/shots/content/wildlife-turtle.png) |
+
+**Measured draw calls** (`renderer.info.render.calls`, solo spawn, medium graphics, no circler on screen):
+317 with the wildlife group hidden and 320 with it shown, so +3 (gull bodies, gull wings, fish). A visible
+dolphin or turtle adds 1, for at most +4, as designed. Floating debris makes the total vary by about 1 between
+frames. The fish material sets `forceSinglePass`, because three.js otherwise draws transparent DoubleSide
+meshes twice (an earlier build measured +4 with no circler for that reason). Nothing casts shadows.
 
 ## Save format
 
 Nothing is saved. In solo, `serialize()` returns `undefined`, so `world.ext` gets no `wildlife` key. Host saves may carry `{t}`, which loading ignores. Old saves load unchanged.
 
-## Test plan (`tests/wildlife.test.mjs`, pure, no THREE)
+## Test plan (`tests/wildlife.test.mjs`)
 
 Schedule determinism:
 - `gullPlan`, `schoolCenter` and `circlerAt` give deep-equal output for equal inputs, across repeat calls and fresh `out` objects. A different seed changes at least one of 50 sampled `t`.
@@ -158,10 +183,12 @@ Perch choice:
 - `perchesFrom` drops tiles that hold decor, except sail, crate and bench, which give a raised perch. Shuffled input gives identical output, and empty input gives `[]`.
 - A perched gull sits exactly on a perch, and two gulls never share a perch in the same window.
 - After a tile is removed, the next window picks only from the new list. With no perches, gulls keep circling.
+- A gull mid-visit keeps its latched perch through a rebuild; it leaves when that perch is gone.
 
 Module (stub ctx, no scene):
 - `load(undefined)`, `load('junk')`, `load({t:NaN}, 'net')` and `load({t:1e308}, 'net')` never throw.
 - Solo `serialize()` returns `undefined`, and host `serialize()` returns the same object every call.
-- A big clock jump snaps the offset. A 0.5 s jitter does not.
+- A gap over 10 s snaps the offset. Smaller drift eases at 0.5 s/s.
+- Fresh arrays with the same layout do not rebuild perches; a decor change does.
 
 Headless: screenshot scripts call `setTime`, `landGull`, `schoolHere` and `summonCircler`, then check that `renderer.info.render.calls` grows by at most 4.

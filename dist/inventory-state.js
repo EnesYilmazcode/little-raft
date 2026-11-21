@@ -7,7 +7,7 @@ export const HOTBAR_SIZE = 8;
 export const TOOL_DURABILITY = 100;
 
 // content hook: islands/storage item kinds and recipes live in content-items.js
-import { CONTENT_ITEMS, CONTENT_RECIPES } from './content-items.js';
+import { CONTENT_ITEMS, CONTENT_RECIPES } from './content-items.js?build=v3-survival-ae77fa84ac2b';
 
 const TOOL_KINDS = new Set(['hook', 'hammer', 'fishingrod']);
 
@@ -34,6 +34,12 @@ export const ITEM_INFO = Object.freeze({
   sand:       Object.freeze({ kind: 'sand',       name: 'Sand',         icon: 'icon-scrap' ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
   clay:       Object.freeze({ kind: 'clay',       name: 'Clay',         icon: 'icon-scrap' ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
   metalore:   Object.freeze({ kind: 'metalore',   name: 'Metal Ore',    icon: 'icon-scrap'  ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  receiver:   Object.freeze({ kind: 'receiver',   name: 'Receiver',     icon: 'icon-compass', maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  antenna:    Object.freeze({ kind: 'antenna',    name: 'Antenna',      icon: 'icon-antenna', maxStack: STACK_SIZE, tool: false, placeholder: false }),
+  cup:        Object.freeze({ kind: 'cup',        name: 'Cup',          icon: 'icon-cup',     maxStack: 5,          tool: false, placeholder: false }),
+  saltcup:    Object.freeze({ kind: 'saltcup',    name: 'Cup of Sea Water', icon: 'icon-saltcup', maxStack: 5,      tool: false, placeholder: false }),
+  freshcup:   Object.freeze({ kind: 'freshcup',   name: 'Cup of Fresh Water', icon: 'icon-freshcup', maxStack: 5,   tool: false, placeholder: false }),
+  purifier:   Object.freeze({ kind: 'purifier',   name: 'Water Purifier', icon: 'icon-purifier', maxStack: STACK_SIZE, tool: false, placeholder: false }),
 });
 
 export const ITEM_KINDS = Object.freeze(Object.keys(ITEM_INFO));
@@ -61,6 +67,10 @@ export const RECIPES = Object.freeze({
   bench:      recipe('bench',      'Bench',        1, { wood: 3 }),
   crate:      recipe('crate',      'Crate',        1, { wood: 4, scrap: 1 }),
   ...CONTENT_RECIPES, // content hook
+  receiver:   recipe('receiver',   'Receiver',     1, { wood: 3, scrap: 4, plastic: 3, rope: 2 }),
+  antenna:    recipe('antenna',    'Antenna',      1, { wood: 2, scrap: 1, rope: 1 }),
+  cup:        recipe('cup',        'Cup',          1, { plastic: 1 }),
+  purifier:   recipe('purifier',   'Water Purifier', 1, { wood: 2, scrap: 2, plastic: 1 }),
 });
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -129,6 +139,11 @@ function emptySlots() {
 }
 
 export class Bag {
+  // Monotonic mutation counter: bumped by every mutating method (never by reads),
+  // so observers (the HUD) can skip work when nothing changed. Direct writes to
+  // .slots bypass it; observers must not rely on it alone.
+  version = 0;
+
   /**
    * @param {{slots:Array, selected:number}|null} snapshot
    * Throws TypeError if a provided snapshot is malformed.
@@ -224,6 +239,7 @@ export class Bag {
       if (meta.id !== undefined) meta = { ...meta, id: undefined };
       left -= put;
     }
+    if (left !== toCount(count)) this.version++;
     return left;
   }
 
@@ -241,6 +257,7 @@ export class Bag {
       left -= take;
       if (s.count === 0) this.slots[i] = null;
     }
+    this.version++;
     return true;
   }
 
@@ -272,6 +289,7 @@ export class Bag {
         this.slots[to] = { kind: src.kind, count: amt };
         src.count -= amt;
       }
+      this.version++;
       return true;
     }
 
@@ -283,18 +301,21 @@ export class Bag {
         // Both full stacks of same kind: swapping is a no-op but harmless.
         this.slots[to] = src;
         this.slots[from] = dst;
+        this.version++;
         return true;
       }
       const put = Math.min(space, amt);
       dst.count += put;
       src.count -= put;
       if (src.count === 0) this.slots[from] = null;
+      this.version++;
       return true;
     }
 
     if (!whole) return false;
     this.slots[to] = src;
     this.slots[from] = dst;
+    this.version++;
     return true;
   }
 
@@ -304,13 +325,16 @@ export class Bag {
 
   select(index) {
     if (!isIndex(index, HOTBAR_SIZE)) return false;
+    if (this.selectedIndex !== index) this.version++;
     this.selectedIndex = index;
     return true;
   }
 
   cycle(delta) {
     const d = typeof delta === 'number' && Number.isFinite(delta) ? Math.trunc(delta) : 0;
-    this.selectedIndex = (((this.selectedIndex + d) % HOTBAR_SIZE) + HOTBAR_SIZE) % HOTBAR_SIZE;
+    const next = (((this.selectedIndex + d) % HOTBAR_SIZE) + HOTBAR_SIZE) % HOTBAR_SIZE;
+    if (next !== this.selectedIndex) this.version++;
+    this.selectedIndex = next;
     return this.selectedIndex;
   }
 
@@ -349,6 +373,7 @@ export class Bag {
     // Commit only after every step succeeded on the scratch copy.
     // Keep the same array object so external references to bag.slots stay valid.
     for (let i = 0; i < SLOT_COUNT; i++) this.slots[i] = scratch.slots[i];
+    this.version++;
     return { ok: true, crafted: { kind: r.output.kind, count: r.output.count } };
   }
 }

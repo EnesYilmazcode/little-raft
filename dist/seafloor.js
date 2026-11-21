@@ -90,10 +90,12 @@ export function nodeById(id, islands = []) {
 // ---------- THREE builder ----------
 const CAP = { rocks: 140, weed: 420, node: 128 };
 const PAL = {
-  sand: 0xd8c28f, sandLight: 0xe6d6a8, sandDark: 0xb39a6a,
-  rock: 0x6f7f7a, rockShade: 0x55635f, moss: 0x6f8d5e,
-  weed: 0x3f9a5a, weedTip: 0x8fcf6a, kelp: 0x2f7d64,
+  rock: 0x5a6965, rockShade: 0x44514e, moss: 0x4c6a47,
+  weed: 0x1f5a4a, weedTip: 0x4f8f63, kelp: 0x1b5058,
 };
+// floor sand as linear vertex colours: muted, slightly green-grey so the depth tint reads teal.
+// Kept low because the scene's hemisphere (1.8) + sun (2.5) light is tuned for the surface.
+const SAND = [0.15, 0.18, 0.165], LIGHT = [0.19, 0.215, 0.19], DARK = [0.1, 0.125, 0.12];
 
 const CAUSTIC_GLSL = /* glsl */`
 uniform float uTime;
@@ -130,10 +132,13 @@ function addCaustics(mat, uniforms, sway) {
         lrW = instanceMatrix * lrW;
       #endif
       vCausticPos = (modelMatrix * lrW).xyz;`);
-    // caustic colour #d9fff0 (linear ~0.69, 1.0, 0.87)
-    shader.fragmentShader = CAUSTIC_GLSL + shader.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-      float lrFade = uCaustic * clamp(1.0 + vCausticPos.y / 18.0, 0.2, 1.0);
-      totalEmissiveRadiance += vec3(0.69, 1.0, 0.87) * (lrCaustic(vCausticPos.xz, uTime) * 0.5 * lrFade);`);
+    // depth absorption (red goes first) + caustic colour #d9fff0 (linear ~0.69, 1.0, 0.87)
+    shader.fragmentShader = CAUSTIC_GLSL + shader.fragmentShader
+      .replace('#include <color_fragment>', `#include <color_fragment>
+      diffuseColor.rgb *= mix(vec3(1.0), vec3(0.3, 0.58, 0.66), clamp(-vCausticPos.y / 10.0, 0.0, 1.0));`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      float lrFade = uCaustic * clamp(1.0 + vCausticPos.y / 30.0, 0.45, 1.0);
+      totalEmissiveRadiance += vec3(0.69, 1.0, 0.87) * (lrCaustic(vCausticPos.xz, uTime) * 0.4 * lrFade);`);
   };
   mat.customProgramCacheKey = () => (sway ? 'lr-caustic-sway' : 'lr-caustic');
   return mat;
@@ -180,34 +185,37 @@ function lump(T, geo, jitter, faceColor) {
 // Node art: list of parts { geo, glow (emissive hex), gi (emissive scale), mat (extra material opts) }.
 function nodeParts(T, type) {
   const c0 = new T.Color();
-  if (type === 'sand') {   // pale mound: sparkles, a few shells, darker base ring
-    const g = new T.SphereGeometry(0.6, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.45, 1);
-    return [{ glow: 0xf3e6bf, geo: lump(T, g, 0.12, (c, f, x, y) => {
+  if (type === 'sand') {   // ochre-gold mound, pale crown, shell/pebble specks, dark rim ring on the floor
+    const g = new T.SphereGeometry(0.4, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.8, 1);   // ~0.8 w x 0.32 t
+    const mound = lump(T, g, 0.12, (c, f, x, y) => {
       const r = hash(f, 9, 6);
-      c.set(y < 0.07 ? 0xb89f6e : r < 0.1 ? 0xf7d9c9 : r < 0.2 ? 0xfffaf0 : 0xf3e6bf);
-    }) }];
+      c.set(y < 0.05 ? 0x8a6a3a : r < 0.07 ? 0xf6efe2 : r < 0.12 ? 0x5e574d : y > 0.22 ? 0xe6c98a : 0xc9a560);
+    });
+    const rim = lump(T, new T.RingGeometry(0.34, 0.46, 12, 1).rotateX(-Math.PI / 2).translate(0, 0.02, 0), 0,
+      (c, f) => c.set(0x4f3c22).lerp(c0.set(0x6e5430), hash(f, 2, 6) * 0.5));
+    return [{ glow: 0xc9a560, geo: merge(T, [mound, rim]) }];
   }
   if (type === 'clay') {   // squat orange lump, lit top, dark undersides
-    const g = new T.DodecahedronGeometry(0.42, 0).scale(1.15, 0.7, 1).translate(0, 0.18, 0);
+    const g = new T.DodecahedronGeometry(0.27, 0).scale(1.1, 0.85, 1).translate(0, 0.19, 0);   // ~0.6 w x 0.45 t
     return [{ glow: 0xc8703e, geo: lump(T, g, 0.25, (c, f, x, y) =>
-      c.set(y > 0.3 ? 0xe08e55 : y < 0.12 ? 0x8f4a2a : 0xc8703e).lerp(c0.set(0x8f4a2a), hash(f, 1, 6) * 0.25)) }];
+      c.set(y > 0.3 ? 0xe08e55 : y < 0.1 ? 0x8f4a2a : 0xc8703e).lerp(c0.set(0x8f4a2a), hash(f, 1, 6) * 0.25)) }];
   }
   if (type === 'scrap') {  // three bent plates leaning together: rusty edges, one painted stripe
     const plates = [];
     for (let k = 0; k < 3; k++) {
-      const g = new T.BoxGeometry(0.85, 0.04, 0.45, 6, 1, 2);
+      const g = new T.BoxGeometry(0.6, 0.03, 0.32, 6, 1, 2);   // plates ~0.6 m long, pile ~0.5 m tall
       const p = g.attributes.position;
-      for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + 0.18 * Math.sin(p.getX(i) * 3.2 + k));
+      for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + 0.08 * Math.sin(p.getX(i) * 4.5 + k));
       plates.push(lump(T, g, 0, (c, f, x, y, z) => c.set(
-        Math.abs(x) > 0.3 || Math.abs(z) > 0.16 ? 0xb0714a : k === 1 && Math.abs(x) < 0.1 ? 0xd9a441 : 0x9fb2bb))
-        .rotateZ(0.35 + k * 0.4).rotateY(k * 2.1).translate(0.12 * (k - 1), 0.22, 0.08 * k));
+        Math.abs(x) > 0.21 || Math.abs(z) > 0.11 ? 0xb0714a : k === 1 && Math.abs(x) < 0.07 ? 0xd9a441 : 0x9fb2bb))
+        .rotateZ(0.35 + k * 0.4).rotateY(k * 2.1).translate(0.08 * (k - 1), 0.16, 0.05 * k));
     }
     return [{ glow: 0x9fb2bb, geo: merge(T, plates), mat: { metalness: 0.45, roughness: 0.55 } }];
   }
   // metalore: dark rock + glowing pale-blue crystal shards (separate part, brighter emissive)
-  const g = new T.IcosahedronGeometry(0.45, 1).scale(1.1, 0.75, 1).translate(0, 0.2, 0);
+  const g = new T.IcosahedronGeometry(0.36, 1).scale(1.1, 0.8, 1).translate(0, 0.17, 0);   // rock ~0.8 w; shard tips ~0.7 m
   const rock = lump(T, g, 0.3, (c, f) => c.set(0x3e4650).lerp(c0.set(0x2c323a), hash(f, 3, 7) * 0.6));
-  const shards = [[0.22, 0.42, 0.08, 0.5, 0.3], [-0.2, 0.4, -0.12, -0.45, 1.9], [0.02, 0.48, -0.26, 0.2, 4.1], [-0.08, 0.44, 0.24, -0.3, 2.8]]
+  const shards = [[0.18, 0.38, 0.06, 0.5, 0.3], [-0.16, 0.36, -0.1, -0.45, 1.9], [0.02, 0.44, -0.21, 0.2, 4.1], [-0.06, 0.4, 0.19, -0.3, 2.8]]
     .map(([x, y, z, tilt, yaw]) => lump(T, new T.OctahedronGeometry(0.1, 0).scale(0.8, 2.2, 0.8)
       .rotateZ(tilt).rotateY(yaw).translate(x, y, z), 0, (c) => c.set(0x9fd4ff)));
   return [
@@ -217,12 +225,14 @@ function nodeParts(T, type) {
 }
 
 function seaweedGeometry(T) {
-  const blades = [0, Math.PI / 2].map((rot) => {
-    const g = new T.PlaneGeometry(0.5, 1.6, 1, 4).translate(0, 0.8, 0);
+  // three narrow, gently curved blades per tuft (1.6 m base height; instances scale y 0.75..1.25)
+  const blades = [0, 2.1, 4.2].map((rot) => {
+    const g = new T.PlaneGeometry(0.3, 1.6, 1, 4).translate(0, 0.8, 0);
     const p = g.attributes.position, cols = new Float32Array(p.count * 3), c = new T.Color(), tip = new T.Color(PAL.weedTip);
     for (let i = 0; i < p.count; i++) {
       const h = p.getY(i) / 1.6;
-      p.setX(i, p.getX(i) * (1 - 0.75 * h));
+      p.setX(i, p.getX(i) * (1 - 0.7 * h));
+      p.setZ(i, 0.12 + 0.35 * h * h);   // offset from the stem and curl outward
       c.set(PAL.weed).lerp(tip, h).toArray(cols, i * 3);
     }
     g.setAttribute('color', new T.BufferAttribute(cols, 3));
@@ -239,7 +249,6 @@ export function createSeafloor(T, { islands = [] } = {}) {
   const group = Object.assign(new T.Group(), { name: 'Seafloor' });
   const std = (o, sway = false) => addCaustics(new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0, ...o }), uniforms, sway);
   const lin = (hex) => new T.Color(hex).toArray();   // linear rgb (vertex colours are linear)
-  const SAND = lin(PAL.sand), LIGHT = lin(PAL.sandLight), DARK = lin(PAL.sandDark);
 
   // floor patch: rows along +z, columns along +x (PlaneGeometry rotated -90 deg about x)
   const floorGeo = new T.PlaneGeometry(PATCH, PATCH, SEGMENTS, SEGMENTS).rotateX(-Math.PI / 2);
@@ -279,7 +288,7 @@ export function createSeafloor(T, { islands = [] } = {}) {
     return mesh.count++;
   };
   const nodeYaw = (n) => hash(Math.round(n.x * 10), Math.round(n.z * 10), 90) * 6.283;
-  const nodeScale = (n) => 0.95 + 0.25 * hash(Math.round(n.x * 10), Math.round(n.z * 10), 91);
+  const nodeScale = (n) => 0.9 + 0.2 * hash(Math.round(n.x * 10), Math.round(n.z * 10), 91);
 
   function refreshNodes() {
     for (const type of NODE_TYPES) for (const m of nodeMeshes[type]) m.count = 0;
@@ -348,7 +357,7 @@ export function createSeafloor(T, { islands = [] } = {}) {
           const tufts = 1 + Math.floor(hash(ix, iz, 46) * 3), tint = hash(ix, iz, 47) < 0.3 ? kelpTint : white;
           for (let t = 0; t < tufts; t++) {
             const wx = x + (hash(ix, iz, 50 + t) - 0.5) * 1.6, wz = z + (hash(ix, iz, 60 + t) - 0.5) * 1.6;
-            const k = place(weed, wx, heightAt(wx, wz) - 0.05, wz, hash(ix, iz, 70 + t) * 6.283, 0.7 + 0.8 * hash(ix, iz, 80 + t));
+            const k = place(weed, wx, heightAt(wx, wz) - 0.05, wz, hash(ix, iz, 70 + t) * 6.283, 1, 0.75 + 0.5 * hash(ix, iz, 80 + t), 1);
             if (k >= 0) weed.setColorAt(k, tint);
           }
         }

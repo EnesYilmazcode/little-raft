@@ -18592,6 +18592,9 @@ function setValueM4( gl, v ) {
 
 function setValueV1i( gl, v ) {
 
+	// little-raft patch: store booleans as ints so V8 keeps every uniform cache unboxed (saves ~150 KB/frame of HeapNumbers)
+	if ( typeof v === 'boolean' ) v = v ? 1 : 0;
+
 	const cache = this.cache;
 
 	if ( cache[ 0 ] === v ) return;

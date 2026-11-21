@@ -22,17 +22,17 @@ const run = (q, ms, totalMs) => { let n = 0; for (let t = 0; t < totalMs; t += m
 
 test('ladder per preset, clamped to dpr and cap', () => {
   assert.deepEqual(buildLevels('high', 2).map((l) => [l.pixelRatio, l.shadowMapSize]),
-    [[1.7, 1024], [1.15, 1024], [1, 1024], [1, 512], [0.85, 512], [0.85, 0]]);
+    [[1.5, 1024], [1.15, 1024], [1, 1024], [1, 512], [0.85, 512], [0.85, 0]]);
   assert.deepEqual(buildLevels('medium', 2)[0], { pixelRatio: 1.3, shadows: true, shadowMapSize: 1024 });
   assert.deepEqual(buildLevels('low', 2).map((l) => [l.pixelRatio, l.shadows]), [[1, false], [0.85, false]]);
   const one = buildLevels('high', 1);
   assert.deepEqual(one.map((l) => [l.pixelRatio, l.shadowMapSize]), [[1, 1024], [1, 512], [0.85, 512], [0.85, 0]]);
-  for (const p of ['low', 'medium', 'high']) for (const l of buildLevels(p, 3)) assert.ok(l.pixelRatio <= { low: 1, medium: 1.3, high: 1.7 }[p]);
+  for (const p of ['low', 'medium', 'high']) for (const l of buildLevels(p, 3)) assert.ok(l.pixelRatio <= { low: 1, medium: 1.3, high: 1.5 }[p]);
 });
 
 test('applies top level on create without notifying', () => {
   const { q, renderer, sun, changes } = make();
-  assert.equal(q.level, 0); assert.equal(renderer.pr, 1.7); assert.equal(sun.castShadow, true); assert.equal(changes.length, 0);
+  assert.equal(q.level, 0); assert.equal(renderer.pr, 1.5); assert.equal(sun.castShadow, true); assert.equal(changes.length, 0);
 });
 
 test('steps down one level under sustained slow frames', () => {
@@ -75,7 +75,7 @@ test('steps up with hysteresis (8 s below 17.5 ms)', () => {
   run(q, 30, 2100); assert.equal(q.level, 1);
   run(q, 18.5, 20000); assert.equal(q.level, 1, 'between thresholds: hold');
   run(q, 10, 7000); assert.equal(q.level, 1, 'not before 8 s');
-  run(q, 10, 1500); assert.equal(q.level, 0); assert.equal(renderer.pr, 1.7);
+  run(q, 10, 1500); assert.equal(q.level, 0); assert.equal(renderer.pr, 1.5);
 });
 
 test('respects the preset cap', () => {
@@ -121,6 +121,6 @@ test('reset() clears measurements and restarts cooldown; full reset restores top
   q.reset(); assert.equal(q.ema, null); assert.equal(q.level, 1);
   run(q, 30, 4900); assert.equal(q.level, 1, 'cooldown after reset');
   q.reset({ full: true });
-  assert.equal(q.level, 0); assert.equal(renderer.pr, 1.7); assert.equal(q.upAfter, C.UP_AFTER_MS);
-  assert.match(q.describe(), /^high 1\/6: pr 1.7, shadows 1024/);
+  assert.equal(q.level, 0); assert.equal(renderer.pr, 1.5); assert.equal(q.upAfter, C.UP_AFTER_MS);
+  assert.match(q.describe(), /^high 1\/6: pr 1.5, shadows 1024/);
 });

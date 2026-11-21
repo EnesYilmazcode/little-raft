@@ -28,7 +28,7 @@ with sync_playwright() as p:
     page.on('console', lambda m: m.type in ('error', 'warning') and report['console'].append(m.text[:300]))
     page.goto(url); page.wait_for_function('!!window.raftDebug', timeout=20000)
     page.wait_for_timeout(800); shot(page, '01-title')
-    page.locator('#solo').click(); page.wait_for_function('raftDebug.state.running', timeout=15000)
+    page.locator('.ob-item[data-act="new"]:visible, #solo:visible').first.click(); page.wait_for_function('raftDebug.state.running', timeout=15000)
     page.wait_for_timeout(1500); shot(page, '02-spawn')
     try: report['spawnState'] = {k: v for k, v in page.evaluate('raftDebug.state').items() if k in ('ownedTools', 'inventory', 'stock', 'heldKind')}
     except Exception as e: report['errors'].append('state: ' + str(e))

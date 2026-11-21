@@ -150,10 +150,11 @@ async function main() {
 
   // ---------- (4) middle-click ping ----------
   const pingBefore = (await feedLog(host)).filter(t => /look here/i.test(t)).length;
+  await guest.evaluate(() => { window.__pd = []; document.addEventListener('pointerdown', e => window.__pd.push([e.button, e.target.id || e.target.tagName]), true); });
   await guest.mouse.move(CX, CY + 60); await guest.waitForTimeout(100);
   await guest.mouse.click(CX, CY + 60, {button:'middle'});
   const pinged = await waitFor(host, n => window.__feedLog.filter(t => /look here/i.test(t)).length > n, pingBefore, 3000);
-  check('4 middle-click ping reaches host', pinged, {hostFeed:(await feedLog(host)).slice(-3), guestAimNull:await guest.evaluate(() => !window.raftDebug.state.running)});
+  check('4 middle-click ping reaches host', pinged, {hostFeed:(await feedLog(host)).slice(-3), guest:await guest.evaluate(([x, y]) => ({running:window.raftDebug.state.running, under:document.elementFromPoint(x, y)?.id || document.elementFromPoint(x, y)?.tagName, pd:window.__pd, me:window.raftDebug.state.me, swimming:window.raftDebug.state.swimming, raftY:window.raftDebug.state.raft?.y, sent:JSON.parse(JSON.stringify(coopChaos.bytes.sent))}), [CX, CY + 60])});
 
   // ---------- (5) emote Z ----------
   await guest.keyboard.press('KeyZ');

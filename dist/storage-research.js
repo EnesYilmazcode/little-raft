@@ -2,7 +2,7 @@
 // The placed Crate decor becomes a 12-slot chest; the Research Table decor learns recipes from the
 // ingredient kinds you feed it. Slice: world.ext.storage. Host-authoritative actions 'storage.*'.
 // The top half of this file is pure (no DOM, no THREE) and exported for tests.
-import { Bag, RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js';
+import { Bag, RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { buildResearchTable } from './storage-research-model.js';
 
 export const CHEST_SLOTS = 12;
@@ -10,6 +10,8 @@ export const MAX_CHESTS = 400;
 export const REACH = 3.2;             // metres from the actor to the tile centre
 export const STARTER = Object.freeze(['rope', 'hook', 'hammer', 'crate', 'research']);
 export const LOCK_REASON = 'Research it first at a Research Table';
+export const MAX_SLICE_CHARS = 150000; // a put that would grow the JSON slice past this is refused (content.js caps all of ext at 200k)
+export const OLD_HOST = 'Your friend’s raft doesn’t have chests yet';
 const NOTHING_NEW = 'That doesn’t teach anything new';
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -86,7 +88,7 @@ export function cleanSlice(data) {
     chests,
     seen: kindList(d.seen),
     learned: kindList(d.learned),
-    legacy: d.legacy === true,
+    legacy: d.legacy === true, // set once when an old save was grandfathered; kept so the save remembers why (QA via debug.state)
     r: isInt(d.r) && d.r >= 0 && d.r < Number.MAX_SAFE_INTEGER ? d.r : 0,
     s: typeof d.s === 'string' && d.s.length <= 24 ? d.s : '',
   };
@@ -174,6 +176,14 @@ export function putAll(bagSlots, chest) {
 
 // ------------------------------------------------------------------ actions
 
+const copySlot = s => (s ? { ...s } : null);
+const sameSlot = (a, b) => a === b || (!!a && !!b && a.kind === b.kind && a.count === b.count && a.durability === b.durability);
+/** JSON length of the slice with chest `key` replaced by `chest` (null = removed). */
+export function sliceChars(st, key, chest) {
+  const chests = { ...st.chests };
+  if (chest && !chestEmpty(chest)) chests[key] = chest; else delete chests[key];
+  return JSON.stringify({ v: 1, chests, seen: st.seen, learned: st.learned, r: st.r, s: st.s, legacy: st.legacy }).length;
+}
 const optIndex = (v, n) => v === undefined || v === null || isIndex(v, n);
 const expectOk = (e, s) => !!(e && typeof e === 'object' && s && e.kind === s.kind && e.count === s.count);
 
@@ -192,6 +202,7 @@ export function applyStorageAction(st, a, actor, bag, env) {
   const type = env?.decorAt?.(a.x, a.z) ?? null;
   if (type !== (verb === 'research' ? 'research' : 'crate')) return no('missing');
   const p = env?.pos?.(actor);
+  if (actor === 'guest' && !p) return no('reach'); // no guest pose yet: we cannot tell where they stand
   if (p && Number.isFinite(p.x) && Number.isFinite(p.z) && Math.hypot(p.x - a.x * 2, p.z - a.z * 2) > REACH) return no('reach');
   const key = keyOf(a.x, a.z), slots = bag.slots;
 
@@ -208,21 +219,29 @@ export function applyStorageAction(st, a, actor, bag, env) {
     return { ok: true, kind: s.kind, learned: st.learned.filter(id => !before.includes(id)) };
   }
 
-  const chest = st.chests[key] ?? new Array(CHEST_SLOTS).fill(null);
+  // Work on copies so a refusal (including the size cap below) changes nothing.
+  const old = st.chests[key];
+  const chest = old ? old.map(copySlot) : new Array(CHEST_SLOTS).fill(null), bagCopy = slots.map(copySlot);
   let moved = 0;
   if (verb === 'put' || verb === 'take') {
-    const [srcArr, srcN, dstArr, dstN] = verb === 'put' ? [slots, SLOT_COUNT, chest, CHEST_SLOTS] : [chest, CHEST_SLOTS, slots, SLOT_COUNT];
+    const [srcArr, srcN, dstArr, dstN] = verb === 'put' ? [bagCopy, SLOT_COUNT, chest, CHEST_SLOTS] : [chest, CHEST_SLOTS, bagCopy, SLOT_COUNT];
     if (!isIndex(a.from, srcN) || !optIndex(a.to, dstN)) return no('bad');
     const s = srcArr[a.from];
     if (!s) return no('empty');
     if (!expectOk(a.expect, s)) return no('expect');
     if (!(a.amount === undefined || a.amount === null || (isInt(a.amount) && a.amount >= 1 && a.amount <= s.count))) return no('bad');
+    if (a.to !== undefined && a.to !== null && dstArr[a.to] && dstArr[a.to].kind !== s.kind) return no('slotTaken');
     moved = moveStack(srcArr, a.from, dstArr, a.to, a.amount);
     if (!moved) return no(verb === 'put' ? 'chestFull' : 'bagFull');
   } else {
-    moved = putAll(slots, chest);
+    moved = putAll(bagCopy, chest);
     if (!moved) return no(slots.slice(HOTBAR_SIZE).some(Boolean) ? 'chestFull' : 'nothingToPut');
   }
+  if (verb !== 'take') {
+    const after = sliceChars(st, key, chest);
+    if (after > MAX_SLICE_CHARS && after > sliceChars(st, key, old ?? null)) return no('tooBig');
+  }
+  for (let i = 0; i < SLOT_COUNT; i++) if (!sameSlot(slots[i], bagCopy[i])) slots[i] = bagCopy[i]; // untouched slots keep their objects
   if (chestEmpty(chest)) delete st.chests[key]; else st.chests[key] = chest;
   st.r++;
   return { ok: true, moved };
@@ -231,6 +250,8 @@ export function applyStorageAction(st, a, actor, bag, env) {
 const REFUSALS = {
   missing: 'That spot has nothing to open', reach: 'Step a little closer', nothing: NOTHING_NEW,
   chestFull: 'The crate is full', bagFull: 'Your bag is full', nothingToPut: 'Nothing in your backpack to store',
+  slotTaken: 'That slot already holds something else', expect: 'Someone moved that — try again', empty: 'Someone moved that — try again',
+  tooBig: 'Your crates are stuffed! Try stacking things together first',
 };
 
 // ------------------------------------------------------------------ the content module
@@ -240,7 +261,8 @@ export function createStorage(ctx) {
   const session = Math.random().toString(36).slice(2, 10);
   let st = stateFrom(undefined, 'save', null); st.s = session;
   let cache = null, cacheSt = null, cacheR = -1, netR = -1, netS = null, ver = 0; // ver: local view revision (UI repaint)
-  let ui = null, uiLoading = null, model = null, flicker = 0;
+  let ui = null, uiLoading = null, uiFailed = false, model = null, flicker = 0;
+  let hostHasStorage = true, netUndef = false; // guest aboard an old host: no slice at all
   const fresh = new Set(); // learned this session, glow once in the craft list
   const scratch = T ? new T.Vector3() : null;
 
@@ -272,20 +294,29 @@ export function createStorage(ctx) {
   }
 
   function loadUI() {
-    if (ui || uiLoading || typeof document === 'undefined') return uiLoading;
-    uiLoading = import('./storage-research-ui.js').then(m => { ui = m.createStorageUI(api); return ui; }).catch(e => { console.error('storage ui failed', e); uiLoading = null; return null; });
+    if (ui || uiLoading || uiFailed || typeof document === 'undefined') return uiLoading;
+    uiLoading = import('./storage-research-ui.js').then(m => { ui = m.createStorageUI(api); return ui; })
+      .catch(e => { console.error('storage ui failed', e); uiFailed = true; uiLoading = null; return null; }); // no retry every frame
     return uiLoading;
   }
+  // Still worth opening after an async UI load? (nothing else open, decor still there, still in reach)
+  function stillThere(type, x, z) {
+    if (ctx.uiOpen?.()) return false;
+    if (decorAt(x, z) !== type) return false;
+    const p = ctx.physics;
+    return !p || Math.hypot(p.x - x * 2, p.z - z * 2) <= REACH + .8;
+  }
   function open(type, x, z) {
-    ctx.releaseLock?.();
-    const go = u => u && u.open(type, x, z);
-    if (ui) go(ui); else loadUI()?.then(go);
+    if (ui) { ctx.releaseLock?.(); ui.open(type, x, z); return true; }
+    const p = loadUI(); if (!p) return false;
+    p.then(u => { if (!u || !stillThere(type, x, z)) return; ctx.releaseLock?.(); u.open(type, x, z); });
     return true;
   }
+  const oldHost = () => ctx.role === 'guest' && !hostHasStorage;
 
   function run(a, actor, bag) {
     const res = applyStorageAction(st, a, actor, bag, { decorAt, pos: posOf });
-    if (res.ok) ver++;
+    if (res.ok || res.reason === 'expect' || res.reason === 'empty') ver++; // stale click: repaint the panel at once
     if (res.ok && a.kind === 'storage.research') {
       if (res.learned.length) for (const id of res.learned) { fresh.add(id); ctx.emit({ kind: 'craft', text: `New recipe: ${nameOf(id)}!` }, 'all'); }
       else ctx.emit({ kind: 'notice', text: `Researched ${nameOf(res.kind)}! It helps with something new` }, actor);
@@ -313,12 +344,14 @@ export function createStorage(ctx) {
   function load(data, from) {
     if (from === 'net') {
       if (data && typeof data === 'object' && data.r === netR && data.s === netS) return; // unchanged host state
+      if (data === undefined && netUndef) return; // old host, still no slice: nothing to rebuild
+      netUndef = data === undefined; hostHasStorage = data !== undefined;
       st = stateFrom(data, 'net', ctx.world);
       netR = data && typeof data === 'object' ? data.r : -1; netS = data && typeof data === 'object' ? data.s : null;
       ver++;
       return;
     }
-    netR = -1; netS = null;
+    netR = -1; netS = null; netUndef = false; hostHasStorage = true;
     st = stateFrom(data, from, ctx.world);
     st.s = session; bump();
   }
@@ -344,10 +377,12 @@ export function createStorage(ctx) {
     },
     interact(aim) {
       const d = target(aim); if (!d) return false;
+      if (oldHost()) { ctx.notice?.(OLD_HOST, 2400); return true; }
       return open(d.type, d.x, d.z);
     },
     prompt(aim) {
       const d = target(aim); if (!d) return null;
+      if (oldHost()) return OLD_HOST;
       return d.type === 'crate' ? '<kbd>E</kbd>Open crate' : '<kbd>E</kbd>Use research table';
     },
     decorModel(type) {
@@ -358,14 +393,14 @@ export function createStorage(ctx) {
     update(dt) {
       if (model) { flicker += dt; model.flicker(flicker); }
       if (ui) ui.update(dt);
-      else if (typeof document !== 'undefined' && ctx.running) loadUI(); // craft-list lock badges need the UI module
+      else if (!uiFailed && typeof document !== 'undefined' && ctx.running) loadUI(); // craft-list lock badges need the UI module
     },
     debug: {
       openChest(x = 0, z = 0) {
         if (!isInt(x) || !isInt(z)) return false;
         const w = ctx.world;
         if (decorAt(x, z) !== 'crate') {
-          if (decorAt(x, z) || !w.tiles.some(t => t[0] === x && t[1] === z)) return false;
+          if (ctx.role === 'guest' || decorAt(x, z) || !w.tiles.some(t => t[0] === x && t[1] === z)) return false;
           w.decor.push({ type: 'crate', x, z }); ctx.rebuildRaft();
         }
         return open('crate', x, z);
@@ -382,6 +417,7 @@ export function createStorage(ctx) {
       lockAll() { if (ctx.role === 'guest') return false; st.seen = []; st.learned = []; st.legacy = false; st.all = false; bump(); return true; },
       fill(x, z, slots) { if (ctx.role === 'guest') return false; const c = cleanChest(slots); if (chestEmpty(c)) delete st.chests[keyOf(x, z)]; else st.chests[keyOf(x, z)] = c; bump(); return true; },
       close() { ui?.close(); },
+      rev() { return ver; },
       state() { return { ...JSON.parse(JSON.stringify(sliceOf(st))), all: st.all, open: ui?.openInfo() ?? null, locked: lockedRecipes(st) }; },
     },
     dispose() { ui?.destroy(); ui = null; model?.dispose(); model = null; },

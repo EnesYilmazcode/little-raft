@@ -17,7 +17,7 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
 socketserver.TCPServer.allow_reuse_address = True
 srv = socketserver.ThreadingTCPServer(('127.0.0.1', 0), functools.partial(Quiet, directory=str(Path(a.dist).resolve())))
 threading.Thread(target=srv.serve_forever, daemon=True).start()
-url = f'http://127.0.0.1:{srv.server_address[1]}/'
+url = f'http://127.0.0.1:{srv.server_address[1]}/?pinQuality'
 
 FRAMES = """n=>new Promise(r=>{const d=[];let last=performance.now();function f(t){d.push(t-last);last=t;if(d.length<n)requestAnimationFrame(f);else{d.sort((x,y)=>x-y);r({avg:d.reduce((s,x)=>s+x,0)/d.length,p50:d[d.length>>1],p95:d[Math.floor(d.length*.95)],worst:d[d.length-1]})}}requestAnimationFrame(f)})"""
 COUNT = "n=>new Promise(r=>{let k=0;function f(){if(++k<n)requestAnimationFrame(f);else r(k)}requestAnimationFrame(f)})"
@@ -51,7 +51,7 @@ with sync_playwright() as p:
     cdp = page.context.new_cdp_session(page); cdp.send('Performance.enable'); cdp.send('HeapProfiler.enable')
     t0 = time.time(); page.goto(url); page.wait_for_function('!!window.raftDebug', timeout=30000)
     rep['startup'] = {'toDebugMs': round((time.time() - t0) * 1000), 'nav': page.evaluate("(()=>{const n=performance.getEntriesByType('navigation')[0];return n?{domContentLoaded:Math.round(n.domContentLoadedEventEnd),load:Math.round(n.loadEventEnd),transferKB:Math.round(performance.getEntriesByType('resource').reduce((s,r)=>s+(r.decodedBodySize||0),0)/1024)}:null})()")}
-    page.locator('#solo').wait_for(state='visible')
+    page.wait_for_function("(()=>{const b=document.querySelector('#solo');return b&&!b.disabled})()")
     rep['startup']['soloToFirstFrameMs'] = page.evaluate("new Promise(r=>{const t=performance.now();document.querySelector('#solo').click();requestAnimationFrame(()=>requestAnimationFrame(()=>r(Math.round(performance.now()-t))))})")
     page.wait_for_function('raftDebug.state.running', timeout=30000)
     page.evaluate(COUNT, 30)

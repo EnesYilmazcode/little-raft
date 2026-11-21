@@ -1,5 +1,6 @@
 // Held scrap hook model (first-person). ES module.
 // Usage: import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b'; const g = createHook(THREE);
+import { mergeChildMeshes } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 // Group is re-centered on its bounding box: ~0.70 wide (X), ~0.84 tall (Y), ~0.40 deep (Z).
 // Handle at bottom (-Y), curved hook with point at top (+Y), hook bend leans toward -Z (front).
 export function createHook(T) {
@@ -40,7 +41,7 @@ export function createHook(T) {
   ].map(p => new T.Vector3(p[0], p[1], p[2]));
   const curve = new T.CatmullRomCurve3(pts, false, 'centripetal');
   const R = 0.022;
-  add(new T.TubeGeometry(curve, 96, R, 12, false), steel);
+  add(new T.TubeGeometry(curve, 64, R, 8, false), steel);
 
   // ---------- 2. tapered point (aimed along curve end tangent) ----------
   const up = new T.Vector3(0, 1, 0);
@@ -114,7 +115,7 @@ export function createHook(T) {
     }
   }
   const wrapTop = -0.17, wrapBot = -0.33;
-  add(new T.TubeGeometry(new Helix(wrapBot, wrapTop, 0.048, 9), 360, 0.0075, 6, false), rope);
+  add(new T.TubeGeometry(new Helix(wrapBot, wrapTop, 0.048, 9), 180, 0.0075, 6, false), rope);
 
   // ---------- 12-13. tied rope bands at wrap ends ----------
   const band = new T.TorusGeometry(0.05, 0.009, 6, 20);
@@ -144,7 +145,8 @@ export function createHook(T) {
   const lash = add(new T.TorusGeometry(R + 0.006, 0.006, 6, 16), darkSteel, HX, 0.05, -0.006);
   lash.rotation.x = Math.PI / 2;
 
-  // Meshes: hook, tip, barb, ferrule, 4 rivets, handle, pommel, wrap, 2 bands, knot, cord, coil, bind, lash = 19
+  // Built as 18 parts (hook, tip, barb, ferrule, 4 rivets, handle, pommel, wrap, 2 bands, knot, cord, coil, bind, lash),
+  // merged below into one mesh per material.
 
   inner.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
 
@@ -154,6 +156,9 @@ export function createHook(T) {
   const center = box.getCenter(new T.Vector3());
   inner.position.sub(center);
   const size = box.getSize(new T.Vector3());
+  // Static parts never move relative to each other: one draw call per material (6), merged after the
+  // re-center so the bounds/grip math above sees the original parts.
+  mergeChildMeshes(T, inner);
   root.userData.size = { x: size.x, y: size.y, z: size.z };
   root.userData.orientation = 'handle -Y, hook point +Y, hook bend leans toward -Z (front), bend opens to -X';
   return root;
