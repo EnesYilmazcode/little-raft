@@ -147,7 +147,11 @@ export function createLogbookUI({ getProgress, onPause, onResume, tasks, tabs: e
   const dlg = mountDialog();
   const toast = mountToast();
   const wrap = dlg.querySelector('.lb-wrap');
-  const tabs = [...dlg.querySelectorAll('[role=tab]')];
+  const tabs = [...dlg.querySelectorAll('[role=tab]')].filter(t => { // [lbtabs] a previous instance's extra tabs (same dialog) are not ours
+    const id = t.dataset?.tab;
+    if (typeof id !== 'string' || id === 'notes' || id === 'ach' || id === 'tasks') return true;
+    dlg.querySelector?.(`#lb-panel-${id}`)?.remove?.(); t.remove?.(); return false;
+  });
   const panels = { notes: dlg.querySelector('#lb-panel-notes'), ach: dlg.querySelector('#lb-panel-ach'), tasks: dlg.querySelector('#lb-panel-tasks') };
   const list = dlg.querySelector('.lb-notes');
   const grid = dlg.querySelector('.lb-grid');
