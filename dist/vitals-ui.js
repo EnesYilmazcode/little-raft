@@ -48,6 +48,7 @@ const CSS = `
 @keyframes lvFaintIn{from{opacity:0}}
 #lrFaint div{font:700 30px/1.2 ${FONT};color:#f6ecd6;letter-spacing:.04em;text-shadow:0 2px 6px #000}
 #lrFaint small{display:block;margin-top:8px;font:500 14px/1.3 ${FONT};letter-spacing:0;opacity:.8;text-align:center}
+@media(min-width:761px) and (max-width:1000px){#lrVitals{bottom:96px}} /* the hotbar's left end reaches x<188 below ~946px: stand on it (feed and build chip follow, 761-1000) */
 @media(max-width:760px){#lrVitals{bottom:108px;width:132px;padding:5px 7px 6px 5px;gap:4px}#lrVitals .lv-row{grid-template-columns:14px 1fr 22px;gap:4px}
   #lrVitals svg{width:14px;height:14px}#lrVitals .lv-track{height:7px}}
 @media(prefers-reduced-motion:reduce){#lrVitals .lv-fill{transition:none}#lrVitals .lv-low .lv-track,#lrVitals .lv-low .lv-tag,#lrVitalsVignette.on{animation:none}#lrVitalsFlash.hit{animation-duration:.2s}}

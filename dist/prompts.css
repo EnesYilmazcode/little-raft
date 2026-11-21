@@ -19,6 +19,7 @@
 #lrFeed .lr-line.lr-out{opacity:0;transform:translateX(-6px)}
 @keyframes lrIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @media(max-width:1000px){#lrFeed{max-width:calc(50vw - 134px)}}
+@media(min-width:761px) and (max-width:1000px){#lrFeed{bottom:184px;max-height:calc(50vh - 210px)}}
 @media(max-width:760px){#lrFeed{left:10px;bottom:184px;max-height:calc(50vh - 210px);font-size:13px;max-width:max(150px,calc(50vw - 112px))}#lrPrompt{font-size:13px}}
 @media(prefers-reduced-motion:reduce){#lrPrompt,#lrPrompt.lr-on,#lrFeed .lr-line{transition:none;animation:none;transform:none}}
 /* Keep the screen centre clear: the resume hint joins the prompt column (beats graphics.css). The throw charge is a thin ring on the reticle (graphics.css). */
