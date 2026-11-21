@@ -365,7 +365,7 @@ export function mount(transfer = null) {
   let paddle = null; // [paddle] dist/paddle.js glue
   let spearRep = null; // [spear-repair] spear viewmodels/thrust + hammer foundation repair (dist/spear-repair-hooks.js)
   // The "No sail — craft one" chip waits until a sail can be made: its recipe is unlocked or rope has been in the bag.
-  const sailKnown = () => { const p = prog?.progression?.(); return !p || !!p.isUnlocked?.('sail') || !!p.discovered?.has?.('rope') || localBag().count?.('rope') > 0; };
+  const sailKnown = () => { const p = prog?.progression?.(); return !p || !!p.isUnlocked?.('sail') || !!p.discovered?.has?.('scrap') || localBag().count?.('scrap') > 0; };
 
   function makePhysics(src) {
     const deck = raftPose.y + FLOOR_Y + EYE_OFFSET;

@@ -27,7 +27,7 @@ test('lock reasons say Craft for things made in the bag', () => {
   const p = new Progression();
   assert.equal(p.whyLocked('fishingrod'), 'Craft Rope first');
   assert.equal(p.whyLocked('lantern'), 'Find Scrap first');
-  assert.equal(p.whyLocked('sail'), 'Craft Rope and find Plastic first');
+  assert.equal(p.whyLocked('sail'), 'Find Palm Leaf and Scrap first'); // sail: 10 planks, 20 leaves, 3 scrap (loop-fidelity-0804)
 });
 
 test('build wheel names the hovered piece and hides the aim prompt while open', () => {
@@ -60,10 +60,10 @@ test('logbook shows one hint instead of a row per missing note', () => {
 test('HUD chips: no sail chip waits for a sail to be makeable; fish chip is short', () => {
   assert.match(src('sailing-ui.js'), /m === 'none' && info\.sailKnown === false/);
   assert.match(src('sailing-world.js'), /info\.sailKnown = !!ctx\.sailKnown\(\)/);
-  assert.match(src('game.js'), /const sailKnown = \(\) =>[^\n]*isUnlocked\?\.\('sail'\)[^\n]*'rope'/);
+  assert.match(src('game.js'), /const sailKnown = \(\) =>[^\n]*isUnlocked\?\.\('sail'\)[^\n]*'scrap'/);
   assert.match(src('fishing-cooking.js'), /`🎣 Fish \$\{n\}\/\$\{SPECIES\.length\} · J`/);
   const fresh = new Progression();
   assert.equal(fresh.isUnlocked('sail'), false); // a new player does not see "craft one" yet
-  fresh.noteItems(['rope', 'plastic']);
+  fresh.noteItems(['leaf', 'scrap']);
   assert.equal(fresh.isUnlocked('sail'), true);
 });
