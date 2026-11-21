@@ -2,6 +2,7 @@
 // friendly dolphin or sea turtle circling at a distance. Pure scenery, see docs/features/wildlife.md.
 // Everything is a closed-form plan of a shared clock t, so host and guest see the same animals.
 // Rendering: 4 draw calls (gull bodies, gull wings, fish, the visible circler). No per-frame allocations.
+import { raidersShown } from './raiders.js?build=v3-survival-ae77fa84ac2b'; // [raiders]
 import { gullBodyGeometry, gullWingGeometry, dolphinGeometry, turtleGeometry, fishGeometry, GULL_SHOULDER, GULL_HIP } from './wildlife-models.js?build=v3-survival-ae77fa84ac2b';
 
 export const WILDLIFE_SEED = 0x5eaf00d;
@@ -538,7 +539,7 @@ export function createWildlife(ctx) {
       if (!built) { if (!ctx.scene || !ctx.ocean || !ctx.T) return; build(); }
       const t = now(); clock = t;
       const g = ctx.options ? ctx.options.graphics : 'medium';
-      const nG = g === 'low' ? 3 : g === 'high' ? 6 : 5, nS = g === 'low' ? 1 : 2;
+      const nG = Math.max(1, (g === 'low' ? 3 : g === 'high' ? 6 : 5) - raidersShown()), nS = g === 'low' ? 1 : 2; // [raiders] fewer scenery gulls while raiders fly
       last.nG = nG; last.nS = nS;
       const raft = ctx.raft, ocean = ctx.ocean;
       if (raft) raft.updateWorldMatrix(true, false); // fresh bob and tilt for perched gulls (raft and parents only, not the deck children)

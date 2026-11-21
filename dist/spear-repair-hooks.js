@@ -4,7 +4,7 @@
 // aim with the Foundation Armor selected, LMB fits it ('fitArmor'), and the plates view follows the raft.
 //
 // ctx (all getters so hot swaps and role changes are picked up):
-//   T, camera(), raft(), world(), physics(), other(), localBag(), role(), elapsed(), shark(), scene()
+//   T, camera(), raft(), world(), physics(), other(), localBag(), role(), elapsed(), shark(), scene(), raiders()?
 //   action(a), emit(e, to), notice(text), beep(f), setSwing(v)
 import { isSpear, spearDamage, canThrust, thrust, wearSpearSlot, SPEAR_REACH } from './spear.js?build=v3-survival-ae77fa84ac2b';
 import { hasTileAt, repairTile, hpBarText, tileHpOf, TILE_MAX_HP, TILE_REPAIR_COST } from './repair.js?build=v3-survival-ae77fa84ac2b';
@@ -71,7 +71,8 @@ export function attachSpearRepair(ctx) {
     const cam = ctx.camera();
     cam.getWorldPosition(camPos); cam.getWorldDirection(camDir);
     const shark = ctx.shark();
-    const r = thrust(slot, (dmg) => shark?.trySpear?.(camPos, camDir, SPEAR_REACH, dmg) === true);
+    const r = thrust(slot, (dmg) => shark?.trySpear?.(camPos, camDir, SPEAR_REACH, dmg) === true
+      || ctx.raiders?.()?.trySpear?.(camPos, camDir, SPEAR_REACH, dmg) === true); // [raiders] then crop-raiding seagulls
     if (r.hit) { hitMarker(); ctx.beep(120); ctx.action({ kind: 'spearHit', slot: idx }); }
     return true;
   }
