@@ -43,7 +43,7 @@ test('CRAFT-1: the bag UI gate folds in content (research) locks and craft() rep
   assert.match(s, /if \(g\?\.locked\) return \{ rows, state: 'gated'/, 'evaluate: gated beats ready');
   assert.match(s, /if \(r === false\) return false;/, 'craftNow: a refused craft is not counted');
   assert.match(s, /v\.state !== 'gated' \|\| v\.el === rec/, 'arrow keys skip locked rows');
-  assert.match(s, /inTab\.find\(v => v\.state !== 'gated'\)/, 'auto-pick prefers an unlocked row');
+  assert.match(s, /pickId = defaultPick\(inTab\.map\(/, 'auto-pick goes through defaultPick (prefers an unlocked row)');
 });
 
 test('CRAFT-2: the pinned tracker shows a locked recipe as locked', () => {

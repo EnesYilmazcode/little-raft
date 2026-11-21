@@ -300,16 +300,57 @@ export function placeRefusal(kind, t, max) {
 // The sort is stable, so recipes keep their book order within each group.
 const STATE_RANK = Object.freeze({ ready: 0, full: 1, missing: 2 });
 
-/** views: [{state, rows}] (rows from ingredientRows). Returns a new, sorted array. */
+/** views: [{state, rows, owned?}] (rows from ingredientRows). Returns a new, sorted array.
+ *  A one-off tool you already carry (owned) sinks below everything else: a spare is never the next step. */
 export function sortCraftableFirst(views) {
   const key = v => {
     let kinds = 0, units = 0;
     for (const r of v?.rows || []) if (!r.enough) { kinds++; units += r.short; }
-    return [STATE_RANK[v?.state] ?? 3, kinds, units];
+    return [(STATE_RANK[v?.state] ?? 3) + (v?.owned ? 10 : 0), kinds, units];
   };
   return (views || []).map((v, i) => ({ v, i, k: key(v) }))
     .sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1] || a.k[2] - b.k[2] || a.i - b.i)
     .map(x => x.v);
+}
+
+/** A tool that stacks to one (Hook, Hammer, Rod): crafting a second only makes a spare. */
+export function isOneOff(kind, info = null) {
+  if (!info) return false;
+  const max = Number(info.maxStack ?? info.stack ?? info.stackSize);
+  return !!info.tool && max === 1;
+}
+/** True when the player already carries a one-off tool of this kind (have = count in the bag). */
+export const ownsOneOff = (kind, info, have) => isOneOff(kind, info) && Number(have) > 0;
+
+/** Ready recipes that count toward a tab badge: spares of a carried one-off tool do not. */
+export const badgeCount = views => (views || []).filter(v => v?.state === 'ready' && !v.owned).length;
+
+/**
+ * The recipe a tab selects by default: the first ready one that is not a spare tool, then the
+ * closest-to-done new item, then a spare, then anything. views are in display order.
+ */
+export function defaultPick(views) {
+  const list = views || [];
+  return (list.find(v => v.state === 'ready' && !v.owned)
+    || list.find(v => v.state !== 'gated' && !v.owned)
+    || list.find(v => v.state !== 'gated')
+    || list[0] || null)?.id ?? null;
+}
+
+// ---- docked bag layout ----
+/**
+ * Bottom insets for the docked crafting column and backpack so neither covers the HUD hotbar.
+ * hb: the hotbar's rect (or null); panels: {name: {left, right}}; vh: viewport height.
+ * A panel whose span overlaps the hotbar horizontally (plus gap) stops gap px above it; others reach the edge.
+ */
+export function dockInsets(hb, panels, vh, edge = 12, gap = 8) {
+  const out = {};
+  const clear = hb && hb.width > 0 && hb.top < vh ? Math.max(edge, Math.round(vh - hb.top + gap)) : edge;
+  for (const [name, r] of Object.entries(panels || {})) {
+    const over = !!hb && hb.width > 0 && r && r.right > hb.left - gap && r.left < hb.right + gap;
+    out[name] = over ? clear : edge;
+  }
+  return out;
 }
 
 // ---- where items come from ----

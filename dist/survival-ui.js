@@ -1,9 +1,9 @@
 // Little Raft survival UI: shared-play hotbar (.tools) + inventory/crafting dialog (#inventory).
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, holdDelay, holdHint, holdLabel, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, holdDelay, holdHint, holdLabel, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal, ownsOneOff, defaultPick, dockInsets } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_ICONS } from './item-svg.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
-import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { iconURL, warmIcons, onIconReady, setModelProvider, renderNow } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
 const VERSION = 'sv4';
 const HB = Number(HOTBAR_SIZE) || 8;
@@ -13,6 +13,8 @@ const TRANSIENT = ['sv-src', 'sv-over', 'sv-dragging', 'sv-deny'];
 const INST_KEY = '__littleRaftSurvivalUI';
 /** Fired on document whenever the local bag's contents or selection change (item-tooltips.js listens). */
 export const BAG_EVENT = 'littleraft:bagchange';
+/** Fired on document when the bag opens: hover tooltips wait for a real pointer move (item-tooltips.js). */
+export const BAG_OPEN_EVENT = 'littleraft:bagopen';
 
 const BUILD = (() => { try { return new URL(import.meta.url).searchParams.get('build') || 'dev'; } catch { return 'dev'; } })();
 const SPRITE_URL = (() => {
@@ -127,7 +129,8 @@ function durFrac(s) {
   return d <= 1 ? clamp01(d) : 1;
 }
 // Rendered 3D icon when ready, flat sprite until then. data-icon lets a late render swap it in place.
-// 3D icons need a second WebGL context, so none are requested on the title screen (see liveIcons).
+// Icons render into the game's own WebGL context (item-icons.js setIconRenderer) in idle time, warmed from boot
+// so the bag's first paint already has them (see warmAll / open).
 let iconsLive = false;
 function iconHTML(kind) {
   const url = iconsLive ? iconURL(kind) : null;
@@ -213,14 +216,19 @@ const CSS = `
   transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),5px);transition:opacity .25s,transform .22s cubic-bezier(.3,1.3,.5,1)}
 .tools.sv-hotbar>.sv-label.sv-show{opacity:1;transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),0)}
 @media(max-width:760px){.tools.sv-hotbar{--s:min(42px,calc((96vw - 41px) / 10));--g:3px}.tools.sv-hotbar .sv-art{inset:3px}.tools.sv-hotbar .sv-count{font-size:12px}}
-#inventory.sv-inv{--s:min(56px,calc((96vw - 410px) / 10 - 6px));--g:6px;padding:0;margin:max(16px,calc(50vh - 300px)) auto auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#3e2a17;
-  width:max-content;min-width:0;max-width:96vw;max-height:94vh;overflow:visible;font:500 14px/1.35 ${FONT}}
-#inventory.sv-inv::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
-#inventory .sv-wrap{display:flex;gap:14px;align-items:stretch;padding:14px;outline:none;border-radius:6px;
-  background:repeating-linear-gradient(90deg,#00000010 0 1px,transparent 1px 21px),linear-gradient(#a8844f,#9a7748 45%,#8a6a3e);
-  border:2px solid #5e4426;box-shadow:inset 0 1px 0 #c9a76f88,0 12px 36px #0006}
-#inventory .sv-craft,#inventory .sv-bag{background:#7f6039;border-radius:3px;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1755}
-#inventory .sv-bag{flex:none;min-width:max-content;display:flex;flex-direction:column;align-items:center;gap:9px;padding:10px 12px 12px}
+/* Docked, not centred: the crafting column hugs the left edge, the backpack the bottom-right corner, the world stays
+   visible between them. --dock-cb / --dock-bb (set on open and resize, craft-book.js dockInsets) lift a panel above
+   the HUD hotbar when it would cover it. The dialog itself is a transparent full-screen layer, so a click on the
+   world between the panels still lands on it (backdrop close). */
+#inventory.sv-inv{--s:clamp(40px,calc((100vw - 718px) / 10),56px);--g:6px;--edge:12px;position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;
+  border:0;border-radius:0;background:transparent;box-shadow:none;color:#3e2a17;overflow:hidden;font:500 14px/1.35 ${FONT}}
+#inventory.sv-inv::backdrop{background:linear-gradient(90deg,rgba(12,9,5,.42),rgba(12,9,5,.1) 32%,rgba(12,9,5,0) 45%,rgba(12,9,5,0) 55%,rgba(12,9,5,.1) 68%,rgba(12,9,5,.36));-webkit-backdrop-filter:none;backdrop-filter:none}
+#inventory .sv-wrap{position:absolute;inset:0;padding:0;outline:none;pointer-events:none}
+#inventory .sv-craft,#inventory .sv-bag{position:absolute;pointer-events:auto;box-sizing:border-box;border-radius:5px;border:2px solid #5e4426;
+  background:repeating-linear-gradient(90deg,#00000010 0 1px,transparent 1px 21px),#7f6039;
+  box-shadow:inset 0 0 0 4px #9a7748,inset 0 0 0 5px #5e4426,inset 0 6px 10px #3e2a1755,0 10px 30px #0006}
+#inventory .sv-bag{right:var(--edge);bottom:var(--dock-bb,var(--edge));max-height:calc(100% - var(--edge) - var(--dock-bb,var(--edge)));overflow:hidden;
+  display:flex;flex-direction:column;align-items:center;gap:9px;padding:14px 15px 15px}
 #inventory .sv-grid{display:grid;grid-template-columns:repeat(7,var(--s));gap:var(--g)}
 #inventory .sv-hotrow{display:grid;grid-template-columns:repeat(${HB},var(--s));gap:var(--g)}
 #inventory .sv-h{align-self:stretch;margin:2px 2px 1px;font:800 11px/1 ${FONT};letter-spacing:2.2px;text-transform:uppercase;color:#f6e8c6;text-shadow:0 1px 0 #3e2a1799}
@@ -240,7 +248,7 @@ const CSS = `
   background:#ffc66e;color:#1d1608;font:700 11px/1 ${FONT};text-align:center;box-shadow:0 1px 2px #0008}
 #inventory .sv-rope{width:100%;height:4px;margin:2px 0;border-radius:2px;background:repeating-linear-gradient(115deg,#c99560 0 3px,#6b4a2b 3px 5px);opacity:.85}
 #inventory .sv-hint{margin:0;width:calc(${HB} * (var(--s) + var(--g)) - var(--g));max-width:100%;font:500 12px/1.35 ${FONT};color:#f6e8c6;text-align:left;text-shadow:0 1px 0 #3e2a1799}
-#inventory .sv-craft{flex:0 0 324px;width:324px;min-width:324px;box-sizing:border-box;height:min(560px,calc(94vh - 30px));max-height:none;display:flex;flex-direction:column;gap:8px;padding:9px;overflow:hidden}
+#inventory .sv-craft{left:var(--edge);top:var(--edge);bottom:var(--dock-cb,var(--edge));width:324px;height:auto;max-height:none;display:flex;flex-direction:column;gap:8px;padding:12px;overflow:hidden}
 #inventory .sv-hint.sv-warn{color:#ffb39a}
 #inventory .sv-tabs{display:grid;grid-template-columns:repeat(var(--tabs,4),1fr);gap:4px;flex:none}
 #inventory .sv-tab{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;height:auto;margin:0;padding:6px 2px 5px;border:0;border-radius:4px 4px 2px 2px;
@@ -252,7 +260,14 @@ const CSS = `
 #inventory .sv-tab:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
 #inventory .sv-tbadge{position:absolute;right:3px;top:3px;min-width:15px;padding:2px 3px;border-radius:8px;background:#6fbf4a;color:#14270b;font:800 10px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
 #inventory .sv-tbadge:empty{display:none}
-#inventory .sv-rlist{flex:1 1 auto;min-height:62px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:5px;padding-right:2px;scrollbar-color:#c4ae80 #5e4426}
+#inventory .sv-rlist{flex:1 1 auto;min-height:62px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:5px;padding-right:2px;scrollbar-color:#c4ae80 #5e4426;scroll-padding:6px 0}
+/* Scroll cue: the list fades out at an edge that has more rows past it (classes set by fadeList). */
+#inventory .sv-rlist.sv-more-b{-webkit-mask-image:linear-gradient(#000 calc(100% - 30px),#0000);mask-image:linear-gradient(#000 calc(100% - 30px),#0000)}
+#inventory .sv-rlist.sv-more-t{-webkit-mask-image:linear-gradient(#0000,#000 22px);mask-image:linear-gradient(#0000,#000 22px)}
+#inventory .sv-rlist.sv-more-t.sv-more-b{-webkit-mask-image:linear-gradient(#0000,#000 22px,#000 calc(100% - 30px),#0000);mask-image:linear-gradient(#0000,#000 22px,#000 calc(100% - 30px),#0000)}
+/* Gate headers ("Study X at a Tinker's Desk to unlock") wrap instead of being cut off. */
+#inventory .sv-rlist .sv-recipe.lr-sr-first{margin-top:38px}
+#inventory .sv-rlist .sv-recipe.lr-sr-first::before{top:auto;bottom:calc(100% + 4px);height:auto;max-height:32px;white-space:normal;line-height:16px;text-overflow:clip}
 #inventory .sv-recipe{position:relative;display:grid;grid-template-columns:42px 1fr auto;gap:9px;align-items:center;flex:none;width:100%;height:auto;min-height:0;margin:0;padding:5px 8px 5px 6px;
   border:0;border-radius:4px;text-align:left;background:linear-gradient(180deg,#d6c397,#c4ae80);box-shadow:inset 0 0 0 1px #7a5a34;
   color:#3e2a17;font:600 14px/1.25 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;transition:background .08s,box-shadow .08s}
@@ -260,6 +275,9 @@ const CSS = `
 #inventory .sv-recipe::before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:3px;border-radius:2px;background:transparent}
 #inventory .sv-recipe.sv-ready::before{background:#5f9c3a;box-shadow:0 0 4px #5f9c3a99}
 #inventory .sv-recipe.sv-ready{background:linear-gradient(180deg,#ddcca2,#cbb688)}
+#inventory .sv-recipe.sv-owned:not(:hover):not(.sv-pick){background:linear-gradient(180deg,#c9b68a,#bba57a)}
+#inventory .sv-recipe.sv-owned::before{background:transparent;box-shadow:none}
+#inventory .sv-recipe.sv-owned .sv-rsub{color:#5e4426}
 #inventory .sv-recipe:hover{background:linear-gradient(180deg,#e0cfa5,#cdb88a);box-shadow:inset 0 0 0 2px #4a3520}
 #inventory .sv-recipe.sv-pick{background:linear-gradient(180deg,#bea676,#b2996a);box-shadow:inset 0 0 0 2px #4a3520,0 0 0 1px #3e2a17}
 #inventory .sv-recipe.sv-locked .sv-rart>*{filter:grayscale(.7);opacity:.8}
@@ -322,7 +340,7 @@ const CSS = `
 #inventory .sv-tip[hidden]{display:none}
 #inventory .sv-tip small{display:block;margin-top:2px;font:500 12px/1.35 ${FONT};color:#5e4426}
 #inventory .sv-tip small em{font-style:normal;font-weight:700;color:#8a3a12}
-@media(max-width:860px),(max-height:520px){#inventory .sv-craft{flex:none;width:auto;min-width:0;height:auto;max-height:none;overflow:visible}#inventory.sv-inv{width:auto}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}#inventory .sv-rlist{max-height:30vh}#inventory .sv-bag{min-width:0}
+@media(max-width:860px),(max-height:520px){#inventory .sv-craft{position:relative;inset:auto;width:auto;min-width:0;height:auto;max-height:none;overflow:visible}#inventory .sv-wrap{display:flex;flex-direction:column;gap:8px;padding:8px;overflow:auto;pointer-events:auto;box-sizing:border-box}#inventory .sv-rlist{max-height:30vh}#inventory .sv-bag{position:relative;inset:auto;max-height:none;min-width:0}
   #inventory.sv-inv{--s:44px;--g:5px}#inventory .sv-slot .sv-art{inset:3px}}
 @media(max-width:440px){#inventory.sv-inv{--s:36px;--g:4px}#inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.sv-slot,.sv-art,.sv-cursor,.sv-label,#inventory .sv-recipe,#inventory .sv-craftbtn .sv-fill{transition:none!important;animation:none!important}}
@@ -357,6 +375,10 @@ const CSS = `
 #craftTracker .ct-foot{margin-top:6px;font:600 11px/1.3 ${FONT};color:#f4efe299}
 #craftTracker .ct-foot kbd{font:800 10px/1 ${FONT};padding:1px 4px;border-radius:3px;box-shadow:inset 0 0 0 1px #ffffff40;color:#fff6e0}
 @media(max-width:760px){#craftTracker{bottom:110px;right:10px;width:180px}}
+/* Short screens: compact tabs and detail card so the recipe list keeps room for several rows. */
+@media(max-height:760px){#inventory .sv-craft>.sv-h{display:none}#inventory .sv-tab{gap:1px;padding:4px 2px 3px}#inventory .sv-tab .sv-icon{width:17px;height:17px}#inventory .sv-tab>span{font-size:11px}
+  #inventory .sv-detail{gap:5px;padding:7px 8px}#inventory .sv-dhead{grid-template-columns:44px 1fr auto;gap:8px}#inventory .sv-dart{width:44px;height:44px}#inventory .sv-dart .sv-icon{width:40px;height:40px}
+  #inventory .sv-ddesc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}#inventory .sv-ing{padding:2px 8px 2px 4px}#inventory .sv-craftbtn{height:36px}}
 `;
 
 function ensureStyle() {
@@ -530,6 +552,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let activeTab = dlg.dataset.svTab || null, pickId = dlg.dataset.svPick || null, shownPick = null, ingEls = [];
   let hold = null, btnDenyTimer = 0, countTimer = 0, flashUntil = 0;
   let pickedByUser = false; // false: pickId is an automatic default, re-chosen on open once states are known
+  let tabByUser = false;    // false: the tab is automatic, and opens where something new can be crafted
   let tipAnchor = null;
   let pinId = null, trackEl = null, trackSig = null;
   const store = () => { try { return window.localStorage; } catch { return null; } };
@@ -580,15 +603,22 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     });
     for (const v of recipeEls) v.el.hidden = v.cat !== activeTab;
     const inTab = recipeEls.filter(v => v.cat === activeTab);
-    if (!inTab.some(v => v.r.id === pickId)) pickId = (inTab.find(v => v.state === 'ready') || inTab.find(v => v.state !== 'gated') || inTab[0])?.r.id ?? null;
+    if (!inTab.some(v => v.r.id === pickId)) pickId = defaultPick(inTab.map(v => ({ id: v.r.id, state: v.state, owned: v.owned }))); // a spare of a carried tool is never the default
     if (activeTab) dlg.dataset.svTab = activeTab;
     const tabEl = tabsEl.querySelector(`.sv-tab[data-cat="${activeTab}"]`);
     if (tabEl) rlist.setAttribute('aria-label', tabEl.textContent.trim() + ' recipes');
     applyPick();
+    if (isOpen) fadeList();
+  }
+  // Fade the list edge that has more rows beyond it, so a cut-off row reads as "scroll for more".
+  function fadeList() {
+    const top = rlist.scrollTop > 2, bottom = rlist.scrollTop + rlist.clientHeight < rlist.scrollHeight - 2;
+    if (rlist.classList.contains('sv-more-t') !== top) rlist.classList.toggle('sv-more-t', top);
+    if (rlist.classList.contains('sv-more-b') !== bottom) rlist.classList.toggle('sv-more-b', bottom);
   }
   function setTab(id, focus = false) {
     if (!groups.some(g => g.id === id)) return;
-    if (id !== activeTab) { stopHold(); flashUntil = 0; activeTab = id; pickId = null; pickedByUser = false; reorderRecipes(); applyTab(); }
+    if (id !== activeTab) { tabByUser = true; stopHold(); flashUntil = 0; activeTab = id; pickId = null; pickedByUser = false; reorderRecipes(); flushIcons(); applyTab(); }
     if (focus) tabsEl.querySelector(`.sv-tab[data-cat="${id}"]`)?.focus();
   }
   function setPick(id) {
@@ -656,32 +686,35 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     let check = null;
     if (typeof bag.canCraft === 'function') { try { check = bag.canCraft(r.id); } catch (e) { console.error(e); } }
     const g = gate(r.id); // [progression-hook] research/station lock wins over materials
-    if (g?.locked) return { rows, state: 'gated', reason: g.reason || '', times: 0 };
+    const owned = ownsOneOff(r.out.kind, info(r.out.kind), countOf(bag, r.out.kind)); // already carrying this one-off tool
+    if (g?.locked) return { rows, state: 'gated', reason: g.reason || '', times: 0, owned };
     const state = recipeState(rows, check);
     let times = craftableTimes(rows);
     if (state === 'ready') { const fit = fittingTimes(bag, r.id, Math.min(HOLD.max, times)); if (fit != null) times = fit; } // bag space caps it too
-    return { rows, state, reason: '', times };
+    return { rows, state, reason: '', times, owned };
   }
   function paintRecipes(bag) {
     const readyPer = new Map();
     for (const v of recipeEls) {
       const r = v.r;
-      const { rows, state, times, reason } = evaluate(bag, r);
-      v.rows = rows; v.state = state; v.times = times; v.reason = reason; // [progression-hook] reason
-      if (state === 'ready') readyPer.set(v.cat, (readyPer.get(v.cat) || 0) + 1);
-      const sig = state + times + ':' + (v.reason || '') + rows.map(x => x.have).join(','); // [progression-hook] reason
+      const { rows, state, times, reason, owned } = evaluate(bag, r);
+      v.rows = rows; v.state = state; v.times = times; v.reason = reason; v.owned = owned; // [progression-hook] reason
+      if (state === 'ready' && !owned) readyPer.set(v.cat, (readyPer.get(v.cat) || 0) + 1); // a spare tool is not news (craft-book badgeCount)
+      const sig = state + times + (owned ? 'o' : '') + ':' + (v.reason || '') + rows.map(x => x.have).join(','); // [progression-hook] reason
       if (v.sig === sig) continue;
       v.sig = sig;
       v.el.classList.toggle('sv-ready', state === 'ready');
       v.el.classList.toggle('sv-full', state === 'full');
       v.el.classList.toggle('sv-locked', state === 'missing' || state === 'gated');
       v.el.classList.toggle('sv-gated', state === 'gated'); // [progression-hook]
+      v.el.classList.toggle('sv-owned', owned);
       const lacking = rows.filter(x => !x.enough);
       v.sub.textContent = state === 'gated' ? 'Locked: ' + (v.reason || 'not learned yet') // [progression-hook]
+        : owned ? 'You have one'
         : state === 'ready' ? 'Ready to craft'
         : state === 'full' ? 'No room in your bag'
         : 'Need ' + lacking.map(x => `${x.short} ${itemName(x.kind)}`).join(', ');
-      v.badge.textContent = state === 'ready' && Number.isFinite(times) && times > 0 ? '×' + Math.min(times, 99) : '';
+      v.badge.textContent = state === 'ready' && !owned && Number.isFinite(times) && times > 0 ? '×' + Math.min(times, 99) : '';
       v.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${rows.map(x => `${x.need} ${itemName(x.kind)}, have ${x.have}`).join('; ') || 'nothing'}. ${v.sub.textContent}.`);
       if (tipAnchor === v.el) showTipFor(v.el);
     }
@@ -879,12 +912,18 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     label.classList.add('sv-show');
     labelTimer = setTimeout(() => label.classList.remove('sv-show'), 1400);
   }
-  // A late 3D icon render swaps itself in wherever the flat placeholder is showing.
+  // A late 3D icon render swaps itself in wherever the flat placeholder is showing. Inside the open bag the art
+  // never changes under the player's eyes: late icons wait for the next tab switch or the next open.
+  const lateIcons = new Set();
+  function swapIcons(root, kinds) {
+    for (const kind of kinds) root?.querySelectorAll(`[data-icon="${kind}"]`).forEach(n => { n.outerHTML = iconHTML(kind); });
+  }
+  function flushIcons() { if (lateIcons.size) { swapIcons(dlg, lateIcons); lateIcons.clear(); } }
   const offIcons = onIconReady(kind => {
     if (!alive) return;
-    const sel = `[data-icon="${kind}"]`;
-    if (trackEl?.querySelector(sel)) trackSig = null;
-    for (const root of [tools, dlg]) root?.querySelectorAll(sel).forEach(n => { n.outerHTML = iconHTML(kind); });
+    if (trackEl?.querySelector(`[data-icon="${kind}"]`)) trackSig = null;
+    swapIcons(tools, [kind]);
+    if (isOpen) lateIcons.add(kind); else swapIcons(dlg, [kind]);
   });
 
   // ---------- inventory grid ----------
@@ -1071,20 +1110,33 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (document.querySelector('dialog[open]:not(#inventory)')) return false;
     return !!document.pointerLockElement || !!document.body?.classList.contains('playing');
   }
-  // Hotbar icons on the first play frame, the rest ~5 s later (or on first open), never at the title.
+  // Every item icon is queued at boot (idle-time renders, title screen included), hotbar kinds jump the queue on
+  // the first play frame, and open() renders any still missing synchronously, so the bag never paints a sprite
+  // that turns into a 3D icon a moment later.
   let warmTimer = 0;
   function liveIcons() {
     iconsLive = true;
-    warmIcons(curSlots.slice(0, HB).map(s => s?.kind).filter(Boolean));
-    if (!warmTimer) warmTimer = setTimeout(warmAll, 5000);
+    for (const s of curSlots.slice(0, HB)) if (s?.kind) iconURL(s.kind); // ahead of the boot warm-up queue
+    if (warmTimer >= 0) warmAll();
   }
-  function warmAll() { warmTimer = -1; iconsLive = true; warmIcons(Object.keys(ITEM_INFO || {})); }
+  function warmAll() { if (warmTimer > 0) clearTimeout(warmTimer); warmTimer = -1; iconsLive = true; warmIcons(Object.keys(ITEM_INFO || {})); }
+  // Kinds the open bag shows: carried items, then recipe outputs and their ingredients.
+  function bagKinds() {
+    const out = new Set(curSlots.map(s => s?.kind).filter(Boolean));
+    for (const r of recipeList()) { out.add(r.out.kind); for (const q of r.reqs) out.add(q.kind); }
+    return [...out];
+  }
+  warmTimer = setTimeout(warmAll, 250);
   function open() {
     if (!alive || isOpen) return;
     isOpen = true;
     downOnBackdrop = upOnBackdrop = false;
-    if (warmTimer >= 0) { clearTimeout(warmTimer); warmAll(); }
+    if (warmTimer >= 0) warmAll();
+    try { renderNow(bagKinds(), 80); } catch (e) { console.warn('bag icons', e); } // usually all cached already
+    flushIcons();
     clearSrc(); clearSay();
+    hideTip(); hoverIdx = null; tipArmed = false;
+    try { document.dispatchEvent(new CustomEvent(BAG_OPEN_EVENT)); } catch {}
     safe(onPause);
     if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
@@ -1096,10 +1148,25 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     recipeEls.forEach(v => { v.sig = null; });
     render(true);
     reorderRecipes();
-    if (!pickedByUser && viewOf(pickId)?.state !== 'ready') pickId = null; // default to the first ready recipe
+    dock();
+    if (!tabByUser) { // nothing new to make here, but there is in another tab: open that one
+      const news = cat => recipeEls.filter(v => v.cat === cat && v.state === 'ready' && !v.owned).length;
+      const go = news(activeTab) ? null : groups.find(g => news(g.id));
+      if (go) { activeTab = go.id; pickId = null; pickedByUser = false; }
+    }
+    if (!pickedByUser) pickId = null; // re-choose the default: the first ready recipe that is not a spare tool
     applyTab();
     try { wrap.focus({ preventScroll: true }); } catch {}
   }
+  // Docked panels stop above the HUD hotbar only where they would cover it (craft-book.js dockInsets).
+  const craftEl = dlg.querySelector('.sv-craft'), bagEl = dlg.querySelector('.sv-bag');
+  function dock() {
+    if (!isOpen) return;
+    const hb = tools?.isConnected ? tools.getBoundingClientRect() : null;
+    const ins = dockInsets(hb, { cb: craftEl?.getBoundingClientRect(), bb: bagEl?.getBoundingClientRect() }, innerHeight);
+    for (const k of ['cb', 'bb']) { const v = ins[k] + 'px'; if (dlg.style.getPropertyValue('--dock-' + k) !== v) dlg.style.setProperty('--dock-' + k, v); }
+  }
+  window.addEventListener('resize', () => { dock(); fadeList(); }, opt);
   function close() {
     if (!isOpen) return;
     isOpen = false;
@@ -1215,8 +1282,11 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     }
   }, opt);
   dlg.addEventListener('dragend', () => { if (dragging) endDrag(); if (src != null) held.hidden = false; }, opt);
-  dlg.addEventListener('pointermove', e => { px = e.clientX; py = e.clientY; if (src != null) placeHeld(); }, opt); // picked stack follows the pointer
+  // The panel appearing under a still pointer sends a pointerover: no tooltip until the pointer really moves.
+  let tipArmed = true;
+  dlg.addEventListener('pointermove', e => { px = e.clientX; py = e.clientY; if (src != null) placeHeld(); if (e.movementX || e.movementY) tipArmed = true; }, opt); // picked stack follows the pointer
   dlg.addEventListener('pointerover', e => {
+    if (!tipArmed) return;
     const el = slotFrom(e);
     if (el) {
       const i = +el.dataset.index;
@@ -1229,7 +1299,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (tipAnchor) hideTip();
   }, opt);
   dlg.addEventListener('pointerleave', () => { hoverIdx = null; hideTip(); }, opt);
-  rlist.addEventListener('scroll', () => { if (tipAnchor && rlist.contains(tipAnchor)) placeTipAt(tipAnchor); }, { ...opt, passive: true });
+  rlist.addEventListener('scroll', () => { fadeList(); if (tipAnchor && rlist.contains(tipAnchor)) placeTipAt(tipAnchor); }, { ...opt, passive: true });
   // Hold-to-craft on the craft button (mouse, touch, pen; Enter / Space).
   D.btn.addEventListener('pointerdown', e => {
     if (e.button !== 0 || !e.isPrimary) return;
