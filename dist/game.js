@@ -697,10 +697,10 @@ export function mount(transfer = null) {
     if (eating) { EATING_TIP.label = FOOD[k].food > 0 ? 'Eating…' : 'Drinking…'; eatTip = EATING_TIP; return; }
     eatTip = eatTips.get(k); if (!eatTip) { eatTip = {key:'LMB', label:eatLabel(k)}; eatTips.set(k, eatTip); }
   }
-  function promptTip() { // watering hints only when actionable or while holding a cup (never hides the hook's "Throw")
+  function promptTip() { // watering hints beside the crosshair, status lines muted (the hook's "Throw" only shows when not aiming down at decor)
     if (eatTip) return eatTip;
     if (netAim >= 0) return NET_TIPS[Math.min(NET_CAPACITY, world.nets[netAim]?.items.length ?? 0)]; // [nets] "Empty net (n)"
-    const p = waterAim?.prompt; return p && (p.startsWith('<kbd>') || CUP_KINDS.includes(selectedKind())) ? tipFor(p) : null;
+    const p = waterAim?.prompt; return p ? tipFor(p) : null;
   }
   let contextHtml = null;
   function updateContext(dialog) {
@@ -711,7 +711,7 @@ export function mount(transfer = null) {
       else if (canHarvestShark()) html = '<kbd>E</kbd>Harvest the shark'; // shark lane
       else if (hover?.blocked) html = esc(BLOCK_TEXT[hover.blocked]);
       else if (eatTip) html = '<kbd>Click</kbd>' + esc(eatTip.label); // [vitals] kbd markup: a prompt, not a feed notice
-      else if (waterAim?.prompt) html = waterAim.prompt;
+      else if (waterAim?.prompt?.startsWith('<kbd>')) html = waterAim.prompt; // status lines ("Purifying… 12s") go to the crosshair via promptTip; plain #contextPrompt text is fed as a notice
       else if ((contextHtml = content?.prompt(frameAim) ?? null)) html = contextHtml; // content hook
       else if (fc?.prompt) html = fc.prompt; // [fishing-cooking] trusted static markup from the lane module
       else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
