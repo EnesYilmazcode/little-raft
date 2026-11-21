@@ -1,20 +1,27 @@
-// Islands: pure logic (no THREE, no DOM). Layout from a uint32 seed, the drift timeline, save
-// validation, loot rules, the host gather check and the stand-on-sand step. See docs/features/islands.md.
+// Islands: pure logic (no THREE, no DOM). Layout from a uint32 seed, where an island spawns and how the
+// seabed offset moves it, save validation, loot rules, the host gather check and the stand-on-sand step.
+// See docs/features/islands.md.
 import { PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 import { toolRole, wearPerUse } from './items.js?build=v3-survival-ae77fa84ac2b';
+import { SAIL, wrapAxis } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
 
 export const ISLAND = Object.freeze({
   FIRST: 90,            // first island in a fresh world (s)
   CALM_MIN: 150, CALM_MAX: 240,
-  APPROACH: 25, DOCK: 180, DOCK_CAP: 600, DEPART: 30, WARN: 30,
-  START_Z: -60, END_Z: 60,
+  NEXT_CAP: 600,        // a saved countdown never waits longer than this
+  // Islands stay put on the seabed (Raft): they spawn ahead of the raft's travel, and the world moving
+  // past the raft (the sailing seabed offset) is what brings them closer. Anchor or steer, or drift past.
+  SPAWN_MIN: 120, SPAWN_MAX: 160, // metres ahead along the travel direction at spawn
+  LAT_MIN: 20, LAT_MAX: 40,       // metres to the side (side and size seeded)
+  DESPAWN: 150,         // gone once this far away and behind the raft's travel...
+  FAR: 220,             // ...or this far away in any direction
   RISE: 4, SINK: 3,     // seconds and metres the island rises out of / sinks into the sea at each end
   TOP: 0.9,             // dome top above the group origin (mean water)
   FALL: 1.8,            // TOP - FALL * u^4: shoreline at u ~ 0.84, -0.9 m at the rim
   RIM: 1.15,            // the sand mesh (and ground) stop here, in units of R
   REACH: 3.5,           // gather reach (m)
   COOLDOWN: 0.3,        // host per-actor gather cooldown (s)
-  NEAR: 6,              // departure waits while a player is within R + NEAR
+  NEAR: 6,              // the island never leaves while a player is within R + NEAR
   OFF_MIN: 8, OFF_MAX: 60,
   MAX_NODES: 14,
   WALK_MARGIN: 0.25,    // step onto sand only where it is this far above the local wave...
@@ -121,29 +128,62 @@ export function layoutFor(seed) {
   return out;
 }
 
-const easeOut = u => 1 - (1 - u) * (1 - u) * (1 - u);
-const easeIn = u => u * u * u;
-// Where the island is t seconds after it was born. Writes into out (pass one to avoid allocating).
-// out.left: seconds left in this phase. out.sink: metres below its normal height (rising/sinking).
-export function pathAt(t, dock, dockZ = 0, out = {}) {
-  const A = ISLAND.APPROACH, D = fin(dock) ? Math.max(0, dock) : ISLAND.DOCK, P = ISLAND.DEPART;
-  if (!fin(t) || t < 0) t = 0;
-  out.sink = 0;
-  if (t < A) {
-    out.phase = 'approach'; out.left = A - t;
-    out.z = ISLAND.START_Z + (dockZ - ISLAND.START_Z) * easeOut(t / A);
-    if (t < ISLAND.RISE) { const k = 1 - t / ISLAND.RISE; out.sink = ISLAND.SINK * k * k; }
-  } else if (t < A + D) {
-    out.phase = 'docked'; out.left = A + D - t; out.z = dockZ;
-  } else if (t < A + D + P) {
-    const u = (t - A - D) / P;
-    out.phase = 'depart'; out.left = A + D + P - t;
-    out.z = dockZ + (ISLAND.END_Z - dockZ) * easeIn(u);
-    if (out.left < ISLAND.RISE) { const k = 1 - out.left / ISLAND.RISE; out.sink = ISLAND.SINK * k * k; }
-  } else {
-    out.phase = 'gone'; out.left = 0; out.z = ISLAND.END_Z; out.sink = ISLAND.SINK;
-  }
+const HG = SAIL.GROUND_WRAP / 2;
+export const wrapGround = v => wrapAxis(v, HG);
+
+// Where a new island goes relative to the raft: `ahead` metres along the travel direction (dx, dz) and
+// `lat` metres to its side, both seeded. (dx, dz) need not be unit length; zero falls back to +z (the
+// current). Writes out.x, out.z (raft-relative, metres). No allocation.
+export function spawnRel(seed, dx, dz, out) {
+  let m = fin(dx) && fin(dz) ? Math.sqrt(dx * dx + dz * dz) : 0;
+  if (!(m > 1e-6)) { dx = 0; dz = 1; m = 1; }
+  dx /= m; dz /= m;
+  seed = seed >>> 0;
+  const ahead = ISLAND.SPAWN_MIN + (ISLAND.SPAWN_MAX - ISLAND.SPAWN_MIN) * hash3(seed, 11, 1);
+  const lat = (hash3(seed, 11, 3) < 0.5 ? -1 : 1) * (ISLAND.LAT_MIN + (ISLAND.LAT_MAX - ISLAND.LAT_MIN) * hash3(seed, 11, 2));
+  out.x = dx * ahead + dz * lat; out.z = dz * ahead - dx * lat;
   return out;
+}
+// The island's raft-relative position from its seabed-absolute base (bx, bz) and the sailing seabed
+// offset (gx, gz): the same rule that moves the scenery (sailing-world moveDrifters). Writes out.x, out.z.
+export function islandRel(isl, gx, gz, out) {
+  out.x = wrapGround(isl.bx - gx); out.z = wrapGround(isl.bz - gz);
+  return out;
+}
+// Should an island at raft-relative (rx, rz) go, given this frame's seabed step (dgx, dgz)? It goes once
+// it is DESPAWN metres away and behind the raft's travel, or FAR metres away in any direction. An
+// anchored raft (no seabed step) never leaves a nearby island behind.
+export function shouldDespawn(rx, rz, dgx, dgz) {
+  const d2 = rx * rx + rz * rz;
+  if (d2 > ISLAND.FAR * ISLAND.FAR) return true;
+  return d2 > ISLAND.DESPAWN * ISLAND.DESPAWN && rx * dgx + rz * dgz < 0;
+}
+// Phase of a live island at `clock`: 'rise' (just spawned), 'here', 'sink' (leaving: isl.end is set) or
+// 'gone'. out.sink: metres below its normal height. Writes into out (pass one to avoid allocating).
+export function phaseAt(isl, clock, out = {}) {
+  out.sink = 0;
+  if (!isl) { out.phase = 'gone'; out.sink = ISLAND.SINK; return out; }
+  if (fin(isl.end)) {
+    const u = (clock - isl.end) / ISLAND.RISE;
+    if (u >= 1) { out.phase = 'gone'; out.sink = ISLAND.SINK; }
+    else { const k = u > 0 ? u : 0; out.phase = 'sink'; out.sink = ISLAND.SINK * k * k; }
+    return out;
+  }
+  const age = clock - isl.born;
+  if (age < ISLAND.RISE) { const k = 1 - (age > 0 ? age : 0) / ISLAND.RISE; out.phase = 'rise'; out.sink = ISLAND.SINK * k * k; }
+  else out.phase = 'here';
+  return out;
+}
+
+// Old (v1) saves: the island sailed in for 25 s, docked for `dock` s and sailed out over 30 s. Only used
+// to migrate a saved island to where it was at save time (NaN once it had gone).
+function legacyZ(t, dock, dockZ) {
+  const A = 25, P = 30, S = -60, E = 60;
+  if (!(t >= 0)) t = 0;
+  if (t < A) return S + (dockZ - S) * (1 - (1 - t / A) ** 3);
+  if (t < A + dock) return dockZ;
+  if (t < A + dock + P) return dockZ + (E - dockZ) * ((t - A - dock) / P) ** 3;
+  return NaN;
 }
 
 // Seconds of calm before the next island (seeded so it is reproducible in tests).
@@ -167,25 +207,39 @@ export function dockOffset(tiles, layout) {
   return { side, off };
 }
 
-export const DEFAULTS = () => ({ v: 1, clock: 0, next: ISLAND.FIRST, isl: null });
+export const DEFAULTS = () => ({ v: 2, clock: 0, next: ISLAND.FIRST, isl: null });
 
 // Validate a save / net slice. Never throws; always returns a fresh valid object.
-export function clean(data, layoutOf = layoutFor) {
+// v2 island: {seed, born, bx, bz, used, end?}, with (bx, bz) its seabed-absolute base (see islandRel).
+// ground: the sailing seabed offset {gx, gz} at load time, used to migrate a v1 (docking timeline) save:
+// its island is placed where it was relative to the raft, and stays there on the seabed from then on.
+export function clean(data, layoutOf = layoutFor, ground = null) {
   const out = DEFAULTS();
   try {
-    if (!data || typeof data !== 'object' || Array.isArray(data) || data.v !== 1) return out;
+    if (!data || typeof data !== 'object' || Array.isArray(data) || (data.v !== 1 && data.v !== 2)) return out;
     if (fin(data.clock) && data.clock >= 0) out.clock = Math.min(data.clock, 1e9);
-    if (fin(data.next) && data.next >= 0) out.next = Math.min(data.next, out.clock + ISLAND.DOCK_CAP);
+    if (fin(data.next) && data.next >= 0) out.next = Math.min(data.next, out.clock + ISLAND.NEXT_CAP);
     else out.next = out.clock + ISLAND.FIRST;
     const i = data.isl;
     if (!i || typeof i !== 'object' || Array.isArray(i)) return out;
-    if (!isSeed(i.seed) || !fin(i.born) || !fin(i.dock) || !fin(i.off) || (i.side !== 1 && i.side !== -1) || !Array.isArray(i.used)) return out;
+    if (!isSeed(i.seed) || !fin(i.born) || !Array.isArray(i.used)) return out;
     const lay = layoutOf(i.seed);
-    const born = clamp(i.born, out.clock - (ISLAND.APPROACH + ISLAND.DOCK_CAP + ISLAND.DEPART), out.clock);
-    const dock = clamp(i.dock, 0, ISLAND.DOCK_CAP);
-    if (pathAt(out.clock - born, dock, lay.dockZ, {}).phase === 'gone') return out;
+    let born = clamp(i.born, out.clock - 1e9, out.clock), bx, bz, end;
+    if (data.v === 1) {
+      if (!fin(i.dock) || !fin(i.off) || (i.side !== 1 && i.side !== -1)) return out;
+      const z = legacyZ(out.clock - born, clamp(i.dock, 0, 600), lay.dockZ);
+      if (!fin(z)) return out;
+      const gx = ground && fin(ground.gx) ? ground.gx : 0, gz = ground && fin(ground.gz) ? ground.gz : 0;
+      bx = wrapGround(gx + i.side * clamp(i.off, ISLAND.OFF_MIN, ISLAND.OFF_MAX)); bz = wrapGround(gz + z);
+      born = Math.min(born, out.clock - ISLAND.RISE); // already up: no second rise
+    } else {
+      if (!fin(i.bx) || !fin(i.bz)) return out;
+      bx = wrapGround(i.bx); bz = wrapGround(i.bz);
+      if (fin(i.end)) { end = clamp(i.end, born, out.clock); if (out.clock - end >= ISLAND.RISE) return out; }
+    }
     const used = lay.nodes.map((n, k) => { const v = i.used[k]; return Number.isInteger(v) ? clamp(v, 0, n.max) : 0; });
-    out.isl = { seed: i.seed, born, dock, side: i.side, off: clamp(i.off, ISLAND.OFF_MIN, ISLAND.OFF_MAX), used };
+    out.isl = { seed: i.seed, born, bx, bz, used };
+    if (end !== undefined) out.isl.end = end;
   } catch { return DEFAULTS(); }
   return out;
 }

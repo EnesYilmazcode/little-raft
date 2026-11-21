@@ -27,7 +27,7 @@
 //   dispose()
 //
 // ctx (live getters, set up by game.js): T, scene, camera, raft, ocean, sun, hemi, clouds, world, role,
-// running, physics, elapsed, options, localBag(), actorBag(actor), action(a), emit(e, to), notice(s),
+// running, physics, elapsed, options, sailing (sailing-world, may be null), localBag(), actorBag(actor), action(a), emit(e, to), notice(s),
 // esc(s), mat(color), rebuildRaft(), deckY(), uiOpen(), building (piece grid/tint, may be null early), brush (held
 // brush model), woodMat(hex) (cached procedural wood material), aim() (this frame's aim {point, dir} or null).
 

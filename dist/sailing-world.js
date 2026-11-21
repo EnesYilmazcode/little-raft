@@ -20,7 +20,7 @@ export function createSailing(T, ctx) {
   const abort = new AbortController();
   const ui = createSailingUI({ signal: abort.signal });
   const out = { dwx: 0, dwz: 0, dgx: 0, dgz: 0 };
-  const flow = { x: 0, z: 0 }, info = { running: false, yaw: 0, windDir: 0, windStr: 0, heading: 0, raised: false, anchored: false, nSails: 0, speed: 0, travelDir: 0, motor: 0 };
+  const flow = { x: 0, z: 0 }, info = { running: false, yaw: 0, windDir: 0, windStr: 0, heading: 0, raised: false, anchored: false, nSails: 0, speed: 0, travelDir: 0, motor: 0, islandOn: false, islandDir: 0 };
   const stepOpts = { nSails: 0, host: true, rng: Math.random, blockers: [], push: { x: 0, z: 0 } };
   const localAct = { kind: 'sail', op: 'heading', heading: 0 };
   const drifters = [], sails = [], rolls = [];
@@ -97,6 +97,17 @@ export function createSailing(T, ctx) {
     const d = { obj, bx: obj.position.x, bz: obj.position.z, r: radius > 0 ? radius : 0, b: null };
     if (d.r) { d.b = { x: obj.position.x, z: obj.position.z, r: d.r + GROUND_CLEAR + raftR }; stepOpts.blockers.push(d.b); }
     drifters.push(d); return obj;
+  }
+  // A moving grounding blocker owned by someone else (islands.js): b = {x, z, r}, raft-relative, kept up to date by
+  // the owner each frame (r = 0 switches it off). The raft beaches on it like on the scenery islands.
+  function addBlocker(b) { if (b && !stepOpts.blockers.includes(b)) stepOpts.blockers.push(b); return b; }
+  // Stop distance to add to an obstacle's own radius: the clearance plus the raft's radius about the origin.
+  function blockerClear() { return GROUND_CLEAR + raftR; }
+  // The seabed offset the scenery is drawn with this frame (guest: smoothed). Writes o.x, o.z.
+  function groundOffset(o) { o.x = disp.gx; o.z = disp.gz; return o; }
+  // Compass marker for the live content island (raft-relative x, z), or markIsland(NaN) for none.
+  function markIsland(x, z) {
+    if (Number.isFinite(x) && Number.isFinite(z)) { info.islandOn = true; info.islandDir = Math.atan2(x, z); } else info.islandOn = false;
   }
   function moveDrifters() {
     for (let i = 0; i < drifters.length; i++) {
@@ -357,7 +368,7 @@ export function createSailing(T, ctx) {
     for (const r of rolls) r.parent?.remove(r);
     rolls.length = 0; lastOp.clear(); drifters.length = 0; stepOpts.blockers.length = 0;
   }
-  return { update, onRaftBuilt, addDrifter, itemFlow, respawned, outOfRange, interact, grab, release, apply, paddleReady, debug, dispose,
+  return { update, onRaftBuilt, addDrifter, addBlocker, blockerClear, groundOffset, markIsland, itemFlow, respawned, outOfRange, interact, grab, release, apply, paddleReady, debug, dispose,
     get steering() { return steering; } };
 }
 
