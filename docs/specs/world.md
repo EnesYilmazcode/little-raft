@@ -172,19 +172,27 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
   0.30. community_068 spans x 120 to 695 (45 % W), with trees to y 255 and the waterline at y 450:
   height 27 % H, ratio 0.34. Their silhouettes are layered, with low beach shelves, rock humps,
   one pinnacle and palm tufts on top. Islands arrive one at a time and are never a ring around the
-  player.
+  player. **[VERIFIED: 2018-07-13 (1280x664) re-measured from colour profiles: pinnacle top y 147 to
+  148, waterline y 478 to 479, left tip about x 105 to 113, right x 1216 to 1222; height about 331 px
+  (50 % H), width about 1110 px, ratio 0.30. community_068: x 124 to 691, tree top about y 255,
+  waterline about y 452, ratio 0.35 with the trees; the rock mass alone (top about y 318) is about
+  0.23. "One at a time" is an inference from stills.]**
 - **C15 Distant islands and landmarks are washed into the haze.** On a clear day
   (2018-07-13-development-blog-35-01), the mid-height rock is L137 against sky at L187 on the same
   row (ratio 0.73), and the low rock is L155 against a horizon at L203. In heavy dusk haze
   (community_068), the island is L95 against L105 (0.90). Landmarks such as store_05, community_047
   and community_009 fade toward the sky colour with distance in the same way, and the far towers in
-  store_05 are nearly sky-coloured.
+  store_05 are nearly sky-coloured. **[CORRECTED: the clear-day ratio depends on where you sample. My
+  samples in 2018-07-13: mid rock (880,300) L139 against sky (1100,300) L165, ratio 0.84; low rock
+  (450,440) L173 against horizon (40,440) L203, 0.85. Use "about 0.75 to 0.85" on a clear day.
+  community_068: (260,400) L107 against (60,400) L115, 0.93, which matches about 0.90.]**
 - **C16 The starter raft is tiny against the ocean.** In 2021-04-01-devblog-46-03, the starter raft
   is 46 px wide (5.1 % W) just below the horizon, and about 6 pieces of flotsam are scattered
   between it and the horizon. Big bases (community_102, community_039, store_09) are multi-storey
   rafts that span 40 to 70 % W at close range. Raft scale grows with play, while islands stay
   larger than any early raft (store_20: the island is in the foreground and the raft sits at
-  x 718 to 1028, 24 % W, mid-distance).
+  x 718 to 1028, 24 % W, mid-distance). **[VERIFIED: 2021-04-01 raft at row 402 spans x 426 to 474,
+  48 px (5.3 % W); store_20 raft extent checked by eye.]**
 
 ### Reefs, shallows and underwater
 
@@ -194,14 +202,19 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
   community_134, looking straight down from the raft, open deep water is dark (#023d66, L51), and a
   pale submerged rock shelf plus two green and purple coral heads near the surface (450,310) at L111
   stand out beside the raft. So looking down at open water is dark. Clarity is a property of the
-  shallows, not of the viewing angle.
+  shallows, not of the viewing angle. **[VERIFIED: store_20 L131/L77/L98 reproduced exactly;
+  community_134 open water re-sampled at (300,220) #003c65 L50, (800,200) L48, (1100,300) L49, and
+  coral (450,310) L111.]**
 - **C18 Underwater, the scene sits in a strong blue depth fog with caustics on the sand.** In
   community_119, the sand at the near floor (400,690) is L131 and the sand about 3x further away
   (250,470) is L52. Fog at mid distance (640,200) is L44, and the water toward the surface
   (640,20) is lighter at L68. Rocks at mid distance are L81. Similar fog values appear in store_08
   (L65), community_090 (L39) and 2018-10-11-*-08. Caustic light ripples are visible on the near sand
   in community_119. Visibility reads as roughly 20 to 30 m (from memory, unverified). At night,
-  jellyfish give off their own glow (community_113, community_006).
+  jellyfish give off their own glow (community_113, community_006). **[CORRECTED (minor):
+  community_119 values L131/L52/L44/L68 reproduce exactly. community_090 at (640,200) is L125 (that
+  point is the shark and seabed); its dark fog is near the top-right, so the "L39" needs a stated
+  coordinate. store_08 (640,200) L71, not L65. Visibility in metres is UNSURE (wiki unreachable).]**
 
 ### Day/night and weather timing
 
@@ -210,7 +223,8 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
   memory, unverified): a full cycle of about 20 to 24 min, with night shorter than day. Weather
   (from memory, unverified): rain or storms come occasionally and last a few minutes, the waves
   get bigger and the raft rocks harder. No still shows lightning or open-sea fog, so those are
-  unverified.
+  unverified. **[UNSURE: the dusk/dawn colour bands are visible (community_068, community_103,
+  store_24), but cycle length, night share and weather timing are from memory; wiki unreachable.]**
 
 ## 3. Comparison with Little Raft today (HEAD)
 
@@ -218,18 +232,23 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
 - The sky is a flat colour. `dist/game.js:283` sets `scene.background = #cbd2c0` and
   `scene.fog = Fog(#cbd2c0, 25, 125)`. `dist/sky.js` exists but no module imports it (grep finds
   no `createSky` outside sky.js), so there is no gradient, sun disc or dome clouds (against C3, C4,
-  C6).
+  C6). **[VERIFIED: game.js:283 is exact; sky.js exports `createSky` (:109) and no file in dist/
+  imports sky.js or calls createSky.]**
 - The clouds are 24 groups of 3 icospheres each (`#e7f9eb`, y scale 0.5) at a height of 17 to
   25 m, within +/-85 m (`dist/game.js:301`). They are low, close and solid, so they show parallax
-  when the player moves (against C4).
+  when the player moves (against C4). **[VERIFIED: game.js:301, `sphere()` is an IcosahedronGeometry
+  (:254), radii 1.3 to 2.0, y 17 to 25, x/z (rand-.5)*170.]**
 - The ocean fades fully into the sky colour, using a smoothstep over 28 to 125 m of camera distance
   (`dist/game.js:290` with `fadeNear:28, fadeFar:125`, applied at `dist/ocean.js:148-149`). The
   sea-to-sky step at the horizon is therefore 0 and there is no horizon line (against C1).
+  **[VERIFIED: game.js:290 passes skyColor '#cbd2c0', fadeNear 28, fadeFar 125; ocean.js:148-149
+  mixes to uSky after tone mapping.]**
 - The camera far plane is 200 (`dist/game.js:284`). The default FOV is 75 deg vertical
-  (`dist/settings.js:10`), which is about 107 deg horizontal at 16:9.
+  (`dist/settings.js:10`), which is about 107 deg horizontal at 16:9. **[VERIFIED: the constructor
+  at :284 uses 70/48, but game.js:714 applies options.fov (default 75) while running.]**
 - If `sky.js` were wired in as it is now, its sun would be a soft glow
   (`pow(sd,400)*0.45`, `dist/sky.js:72`) with no crisp edge, and the clouds would be fbm puffs on a
-  flat layer (`dist/sky.js:80-95`).
+  flat layer (`dist/sky.js:80-95`). **[VERIFIED: sky.js:72.]**
 
 **Sun, moon, stars and day/night**
 - The sun is fixed at `(-15,28,12)` (`dist/game.js:289`), an elevation of 55.6 deg. There is no
@@ -255,6 +274,9 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
 - The foam is a thin "lace" iso-line, `smoothstep(0, .035, |n-.5|)` (`dist/ocean.js:138`). It is
   shown only on crests (`vHeight` 0.06 to 0.17), plus sparse specks, capped at 0.6 and faded out
   between 30 and 90 m (`:134-143`). That is hard-edged lines instead of soft patches (against C12).
+  **[CORRECTED (wording): the line at :138 is `lace = 1.0 - smoothstep(0.0, 0.035, abs(n1*0.7 +
+  n2*0.3 - 0.5))`, i.e. the lace is the inverted smoothstep. Crest window 0.06 to 0.17, cap 0.6, fade
+  30 to 90 m (:142) are correct.]**
 - There is no contact foam around the raft hull or floating items (against C13). The wake look
   depends on that foam.
 
