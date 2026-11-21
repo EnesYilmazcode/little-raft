@@ -285,3 +285,14 @@ test('EMBLEM_PATHS: 8 original paths, safe commands, bounded', () => {
   }
   assert.equal(designKey([1, 0, 5, 1, 5]), '1.0.5.1.5');
 });
+
+test('paintFlag: the emblem gets an outline that differs from its own colour (QA r2: cream on cream stripes)', () => {
+  for (const d of [[2, 1, 0, 1, 0], [0, 1, 2, 1, 0], [5, 0, 5, 6, 5]]) {
+    const g = fakeG2d();
+    paintFlag(g, d, 128, 64, FakePath);
+    const i = g.calls.findIndex(c => c[0] === 'stroke'), f = g.calls.findIndex(c => c[0] === 'fill');
+    assert.ok(i >= 0 && i < f, 'stroke under the fill');
+    const stroke = g.calls.slice(0, i).filter(c => c[0] === 'set:strokeStyle').at(-1)[1];
+    assert.notEqual(stroke, PALETTE[d[4]], JSON.stringify(d));
+  }
+});
