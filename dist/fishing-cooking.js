@@ -453,6 +453,7 @@ export function createFishingCooking(T, host) {
   return {
     pointerDown, pointerUp, interact, update, applyAction, onNet, dispose,
     get prompt() { return prompt; },
+    hasGrill: (x, z) => !!grillAt(x, z), // game.js keeps decor off grill tiles
     get rodReeling() { return !!session && session.stage === 'reeling' && session.holding; },
     capture() { save(); return { v: 1, journal: journal.snapshot(), grills: isGuest(lastRole) ? (stash || []) : snapshots() }; },
     // test/QA helpers
