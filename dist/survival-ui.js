@@ -230,9 +230,11 @@ const CSS = `
 #craftPin li{display:grid;grid-template-columns:20px 1fr auto;gap:6px;align-items:center;padding:2px 6px 2px 4px;border-radius:5px;background:#ffffff0a}
 #craftPin li .sv-icon{width:20px;height:20px}
 #craftPin li svg.sv-icon{width:16px;height:16px;margin:2px}
-#craftPin li span{font:600 12px/1.2 ${FONT};color:#e9e3d3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#craftPin li span{min-width:0;font:600 12px/1.2 ${FONT};color:#e9e3d3;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden} /* long names wrap to a second line */
 #craftPin li b{font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums;color:#ff9c84}
 #craftPin li.sv-ok b{color:#9ee07a}
+#craftPin .sv-pwhy{margin:6px 0 0;font:700 11px/1.25 ${FONT};color:#ffcf9a;overflow-wrap:anywhere}
+#craftPin .sv-pwhy[hidden]{display:none}
 @media(max-width:760px){#craftPin{right:8px;width:172px;padding:6px 7px 7px}#craftPin .sv-ph{grid-template-columns:28px 1fr 22px}#craftPin .sv-part{width:28px;height:28px}#craftPin .sv-part .sv-icon{width:24px;height:24px}}
 #inventory .sv-detail{flex:none;display:flex;flex-direction:column;gap:7px;padding:9px;border-radius:9px;background:#00000038;box-shadow:inset 0 0 0 1px #ffffff12}
 #inventory .sv-detail[hidden]{display:none}
@@ -761,17 +763,24 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       pinShown = id; pinSig = '';
       el.innerHTML = `<div class="sv-ph"><span class="sv-part" aria-hidden="true">${art(r.out.kind)}</span><span><b class="sv-pname">${esc(r.name)}</b><small class="sv-pstate"></small></span>`
         + `<button type="button" class="sv-unpin" aria-label="Unpin ${esc(r.name)}" title="Unpin">${X_SVG}</button></div>`
-        + `<ul>${r.reqs.map(q => `<li>${art(q.kind)}<span>${esc(itemName(q.kind))}</span><b></b></li>`).join('')}</ul>`;
+        + `<ul>${r.reqs.map(q => `<li>${art(q.kind)}<span>${esc(itemName(q.kind))}</span><b></b></li>`).join('')}</ul><p class="sv-pwhy" hidden></p>`;
       pinRows = [...el.querySelectorAll('li')].map(li => ({ li, amt: li.querySelector('b') }));
     }
     const m = trackerModel(r.reqs, k => countOf(bag, k));
-    const locked = !!gate(id)?.locked;
-    const sig = m.rows.map(x => x.have).join(',') + (locked ? 'L' : '');
+    const g = gate(id), locked = !!g?.locked;
+    const sig = m.rows.map(x => x.have).join(',') + (locked ? 'L:' + (g.reason || '') : '');
     if (sig !== pinSig) {
       pinSig = sig;
-      m.rows.forEach((x, k) => { const p = pinRows[k]; if (!p) return; p.amt.textContent = haveNeedLabel(x); p.li.classList.toggle('sv-ok', x.enough); });
+      m.rows.forEach((x, k) => { // compact "10/1" beside the name; the full wording is in the label and tooltip
+        const p = pinRows[k]; if (!p) return;
+        p.amt.textContent = chipLabel(x); p.li.classList.toggle('sv-ok', x.enough);
+        const say = `${itemName(r.reqs[k]?.kind)}: ${haveNeedLabel(x)}`; p.li.title = say; p.li.setAttribute('aria-label', say);
+      });
       el.classList.toggle('sv-ready', m.ready && !locked);
+      el.classList.toggle('sv-gated', locked);
       const st = el.querySelector('.sv-pstate'); if (st) st.textContent = locked ? 'Locked' : m.ready ? 'Ready to craft' : 'Pinned';
+      const why = locked ? unlockInfo({ locked: true, reason: g.reason })?.line ?? '' : '';
+      const w = el.querySelector('.sv-pwhy'); if (w) { w.textContent = why; w.hidden = !why; }
     }
     if (pinPulse) { // it just became craftable: one green flash
       pinPulse = false;
