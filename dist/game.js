@@ -26,7 +26,7 @@ export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint } from './hud.js?build=v3-survival-ae77fa84ac2b';
-import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, escReleasePlan } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, escReleasePlan, dragLook } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -450,6 +450,7 @@ export function mount(transfer = null) {
     if (!force && signature === uiSignature) return; uiSignature = signature;
     const b = document.body.classList;
     b.toggle('pointer-locked', locked); b.toggle('locked', locked); b.toggle('first-person', running); b.toggle('playing', running);
+    b.toggle('drag-look', dragLook({running, supported:lockSupported, fallback:lockFallback}));
     const crosshair = $('#crosshair'); if (crosshair) crosshair.hidden = !(running && locked);
     const resume = $('#resumeHint'); if (resume) resume.hidden = !(running && !locked && lockSupported && !dialog);
   }

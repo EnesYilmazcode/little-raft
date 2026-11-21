@@ -45,6 +45,11 @@ export function escReleasePlan({ running, pending, fromShell = false } = {}) {
   return { preventDefault: !fromShell && !!running, relock: !pending ? null : fromShell ? 'now' : 'defer' };
 }
 
+// Drag-look mode (no pointer lock available): the cursor must stay visible, so body.drag-look excludes body.relock.
+export function dragLook({ running, supported = true, fallback = false } = {}) {
+  return !!running && (!supported || !!fallback);
+}
+
 // body.relock (no cursor, no resume hint) is a short pending state after a panel closes unlocked. It ends
 // when the lock arrives, a pointerlockchange leaves the page unlocked, pointerlockerror fires, or after
 // timeout ms, so a refused or revoked relock always shows the resume hint again.

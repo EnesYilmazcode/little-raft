@@ -107,8 +107,8 @@ const CSS = `
   #options .rs-menu{width:auto;padding:20px 0 20px 20px;border-radius:6px}#options .rs-foot{display:none}
   #options h2{margin-bottom:14px}#options .rs-menu button{padding:6px 0 6px 18px}#options .rs-panel{max-height:none;margin-top:0}#options .rs-keys{grid-template-columns:auto 1fr}}
 /* Waiting to relock after a menu closed without a gesture (browser Esc): no cursor, no centred hint. */
-body.relock #world{cursor:none}
-body.relock #resumeHint{display:none!important}
+body.relock:not(.drag-look) #world{cursor:none}
+body.relock:not(.drag-look) #resumeHint{display:none!important}
 `;
 
 function ensureStyle() {
@@ -334,7 +334,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     if (d !== dialog && d === returnToPause) { returnToPause = null; delete d.dataset.fromPause; if (gameActive()) { open(); return; } }
     if (d.id !== 'inventory' && d !== dialog) return;
     setTimeout(guard(() => {
-      if (gameActive() && !document.pointerLockElement && !document.querySelector('dialog[open]')) startRelock();
+      if (gameActive() && !document.body.classList.contains('drag-look') && !document.pointerLockElement && !document.querySelector('dialog[open]')) startRelock();
     }), 150);
   }), { capture: true, signal: ac.signal });
   window.addEventListener('pointerdown', () => document.body.classList.remove('relock'), { capture: true, signal: ac.signal });

@@ -60,3 +60,18 @@ test('LOCK-3: holding Esc after it closed the inventory still never pauses', () 
   for (let t = 230; t < 2600; t += 33) g.keydown(t, { repeat: true });
   assert.equal(g.keyupOpensPause(2600, { locked: true }), false, 'handled press never pauses, even after a relock');
 });
+
+test('LOCK-4: drag-look applies while running without a usable lock', () => {
+  assert.equal(rules.dragLook({ running: true, fallback: true }), true);
+  assert.equal(rules.dragLook({ running: true, supported: false }), true);
+  assert.equal(rules.dragLook({ running: true }), false);
+  assert.equal(rules.dragLook({ running: false, fallback: true }), false);
+});
+
+test('LOCK-4: the relock CSS never hides the cursor or hint in drag-look', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const css = await readFile(new URL('settings.js', base), 'utf8');
+  const rules = css.split('\n').filter(l => /^body\.relock/.test(l));
+  assert.ok(rules.length >= 2);
+  for (const r of rules) assert.match(r, /^body\.relock:not\(\.drag-look\) /, r);
+});
