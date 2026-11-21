@@ -29,7 +29,7 @@ const PRESETS = { low: { renderScale: 0.7, shadows: false }, medium: { renderSca
 const DEFAULTS = Object.freeze(Object.fromEntries(Object.entries(SPEC).map(([k, s]) => [k, s.def])));
 const KEYS = Object.keys(SPEC);
 const TABS = [['controls', 'Controls'], ['graphics', 'Graphics'], ['audio', 'Audio'], ['gameplay', 'Gameplay']];
-const PAGE_NOTE = { gameplay: '<p class="rs-note">Relaxed: no hunger, thirst or danger. Peaceful: needs, no shark. Easy, Normal and Hard add a hungrier sea. Applies when you start a new game.</p>' };
+const PAGE_NOTE = { gameplay: '<p class="rs-note">Relaxed: no hunger, thirst or danger. Peaceful: needs, and a shark that never attacks. Easy, Normal and Hard add a hungrier sea. Applies when you start a new game.</p>' };
 const KEYMAP = [['W A S D', 'Walk'], ['Space', 'Jump'], ['Shift', 'Sprint'], ['Click', 'Use tool / charge throw'], ['Hold click', 'Reel in'],
   ['1 - 8 / Wheel', 'Pick hotbar slot'], ['Tab / I', 'Inventory'], ['E', 'Interact'], ['R', 'Repair hook'], ['L', 'Logbook'], ['Esc', 'Back / pause']];
 
