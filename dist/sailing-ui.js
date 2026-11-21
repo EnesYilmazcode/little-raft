@@ -3,11 +3,11 @@
 const NS = 'http://www.w3.org/2000/svg';
 const DEG = 180 / Math.PI;
 const CSS = `
-#sailBadge{position:fixed;top:64px;right:16px;z-index:30;display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;
+#sailBadge{position:fixed;top:16px;left:16px;z-index:30;display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;
   color:#f6ecd6;font:600 12px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;user-select:none}
 #sailBadge[hidden],#sailPrompt[hidden]{display:none}
-#sailBadge svg{width:84px;height:84px;display:block;border-radius:50%;background:rgba(43,30,18,.7);box-shadow:0 0 0 1.5px rgba(246,236,214,.5),0 4px 14px rgba(43,30,18,.3)}
-#sailBadge .sail-label{padding:2px 8px;border-radius:8px;background:rgba(43,30,18,.7);box-shadow:0 0 0 1px rgba(246,236,214,.5);white-space:nowrap}
+#sailBadge svg{width:84px;height:84px;display:block;border-radius:50%;background:radial-gradient(circle at 50% 40%,rgba(74,53,32,.82),rgba(46,32,18,.86));box-shadow:0 0 0 1px #3e2a17,0 0 0 4px #a8844f,0 0 0 5px #5e4426,inset 0 0 0 1px #c9a76f66,0 4px 12px rgba(30,20,10,.35)}
+#sailBadge .sail-label{margin-top:4px;padding:3px 9px;border-radius:3px;background:linear-gradient(#e9ddbb,#dccb9f);box-shadow:0 0 0 1px #5e4426,0 2px 6px rgba(30,20,10,.3);color:#3e2a17;white-space:nowrap}
 #sailBadge .sail-dim{opacity:.3}
 #sailPrompt{position:fixed;left:50%;top:calc(50% + 54px);transform:translateX(-50%);padding:3px 10px;border-radius:8px;
   background:rgba(43,30,18,.7);box-shadow:0 0 0 1px rgba(246,236,214,.5);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:none;z-index:30;white-space:nowrap}
