@@ -1,5 +1,6 @@
-// Co-op HUD feed: a small bottom-left stack of friendly one-line notices (join/leave/ping/emote/warn).
-// Sits above the hotbar's height on the left so it never overlaps the bottom-centre hotbar.
+// Co-op HUD feed: friendly one-line notices (join/leave/ping/emote/warn).
+// Lines go into the game's one bottom-left stack (window.raftFeed, pickup-feed.js) so the left feeds never overlap;
+// the private #coopFeed box is only a fallback for pages without that stack.
 const KINDS = {info:'#8fd3e8', join:'#7ee08a', leave:'#f0a868', ping:'#ffd75e', emote:'#e79ef0', warn:'#ff7a6b'};
 const MAX = 5, LIFE = 6000, FADE = 600;
 
@@ -16,13 +17,18 @@ const CSS = `
 @media(max-width:760px){#coopFeed{left:12px;bottom:118px;font-size:12px;max-width:calc(100vw - 180px)}}
 @media(prefers-reduced-motion:reduce){#coopFeed .cf-line{transition:none}}`;
 
-export function createFeed({doc = document} = {}) {
-  let style = doc.getElementById('coopFeedStyle');
-  if (!style) { style = doc.createElement('style'); style.id = 'coopFeedStyle'; style.textContent = CSS; doc.head.appendChild(style); }
-  let box = doc.getElementById('coopFeed');
-  if (!box) { box = doc.createElement('div'); box.id = 'coopFeed'; box.setAttribute('aria-live', 'polite'); doc.body.appendChild(box); }
-  const timers = new Set();
+export function createFeed({doc = document, sink} = {}) {
   const win = doc.defaultView ?? globalThis;
+  const shared = () => { try { const f = sink ?? win.raftFeed; return typeof f?.note === 'function' ? f : null; } catch { return null; } };
+  let style = null, box = null;
+  function ensureBox() {
+    style = doc.getElementById('coopFeedStyle');
+    if (!style) { style = doc.createElement('style'); style.id = 'coopFeedStyle'; style.textContent = CSS; doc.head.appendChild(style); }
+    box = doc.getElementById('coopFeed');
+    if (!box) { box = doc.createElement('div'); box.id = 'coopFeed'; box.setAttribute('aria-live', 'polite'); doc.body.appendChild(box); }
+    return box;
+  }
+  const timers = new Set();
   const later = (fn, ms) => { const t = win.setTimeout(() => { timers.delete(t); fn(); }, ms); timers.add(t); return t; };
   let disposed = false;
 
@@ -34,6 +40,9 @@ export function createFeed({doc = document} = {}) {
 
   function push(text, kind = 'info') {
     if (disposed) return;
+    const k = KINDS[kind] ? kind : 'info', f = shared();
+    if (f) { f.note(String(text ?? ''), {cls:'cf-line cf-' + k, color:KINDS[k], life:LIFE}); return; }
+    if (!box?.isConnected) ensureBox();
     const line = doc.createElement('div'); line.className = 'cf-line cf-' + (KINDS[kind] ? kind : 'info');
     const dot = doc.createElement('i'); dot.className = 'cf-dot';
     dot.style.background = dot.style.color = KINDS[kind] ?? KINDS.info;
@@ -48,7 +57,7 @@ export function createFeed({doc = document} = {}) {
   function dispose() {
     disposed = true;
     for (const t of timers) win.clearTimeout(t); timers.clear();
-    box.remove(); style.remove();
+    box?.remove(); style?.remove();
   }
   return {push, dispose};
 }

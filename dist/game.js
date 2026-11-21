@@ -87,8 +87,8 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
 #contextPrompt[hidden]{display:none}
 #contextPrompt kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:0 4px;border:1px solid rgba(246,236,214,.6);border-radius:4px;font:inherit;text-align:center}
 /* The pickup feed is a manual popover so notices stay visible above the open bag or pause menu; it keeps style.css's place. */
-#pickupFeed[popover]{top:auto;right:auto;margin:0;padding:0;border:0;background:none;overflow:visible;width:auto;height:auto;max-width:none;max-height:none;color:#f6ecd6}
-#pickupFeed .pf-hint{white-space:normal;max-width:max(180px,min(340px,calc(50vw - 300px)));line-height:1.3}#pickupFeed .pf-hint span{color:#ffd98f}
+#pickupFeed[popover]{top:auto;right:auto;margin:0;padding:0;border:0;background:none;overflow:hidden;width:auto;height:auto;color:#f6ecd6}
+#pickupFeed .pf-hint{white-space:normal;max-width:100%;line-height:1.3}#pickupFeed .pf-hint span{color:#ffd98f}
 #signalReadout{position:fixed;top:14px;left:50%;transform:translateX(-50%);padding:4px 12px;border-radius:999px;
   background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.05em;
   pointer-events:none;z-index:30;white-space:nowrap}
