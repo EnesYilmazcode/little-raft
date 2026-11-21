@@ -157,7 +157,7 @@ export function goatBodyGeometry(T) {
     P.push(part(T, new T.CylinderGeometry(0.035, 0.035, 0.17, 6), cream, [sx * 0.1, 0.105, sz * 0.15])); // leg
     P.push(part(T, new T.CylinderGeometry(0.039, 0.039, 0.04, 6), hoof, [sx * 0.1, 0.02, sz * 0.15])); // hoof cap
   }
-  P.push(part(T, new T.ConeGeometry(0.035, 0.09, 6), toffee, [0, 0.43, -0.27, -0.7, 0, 0])); // up-flicked tail
+  P.push(part(T, new T.ConeGeometry(0.035, 0.09, 6), toffee, [0, 0.44, -0.27, -0.45, 0, 0])); // up-flicked tail
   P.push(part(T, ball(T, 8, 6), cream, [0, 0.38, 0.17, -0.5, 0, 0, 0.075, 0.1, 0.075])); // neck stub
   return merge(T, P);
 }
@@ -174,11 +174,11 @@ export function goatHeadGeometry(T) {
   for (const s of [-1, 1]) {
     P.push(part(T, ball(T, 6, 5), eye, [s * 0.056, 0.082, 0.15, 0, 0, 0, 0.024, 0.028, 0.018])); // eye
     P.push(part(T, ball(T, 4, 3), 0xffffff, [s * 0.061, 0.093, 0.165, 0, 0, 0, 0.008, 0.008, 0.006])); // glint
-    P.push(part(T, ball(T, 6, 4), (f, x, y, z) => (z > 0.2 ? toffee : cream), [s * 0.115, 0.06, 0.06, 0.1, s * 0.5, s * 1.15, 0.026, 0.065, 0.034])); // floppy ear
-    P.push(part(T, new T.ConeGeometry(0.019, 0.05, 6), horn, [s * 0.04, 0.145, 0.035, -0.35, 0, -s * 0.25])); // nub horn
-    P.push(part(T, ball(T, 4, 3), horn, [s * 0.04 - s * 0.006, 0.168, 0.027, 0, 0, 0, 0.008, 0.006, 0.008])); // blunt tip
+    P.push(part(T, ball(T, 6, 4), (f, x, y, z) => (z > 0.2 ? toffee : cream), [s * 0.112, 0.035, 0.055, 0.15, s * 0.35, s * 0.8, 0.028, 0.068, 0.036])); // floppy ear, hanging down-out
+    P.push(part(T, new T.ConeGeometry(0.03, 0.05, 7), horn, [s * 0.042, 0.158, 0.03, -0.4, 0, -s * 0.3])); // nub horn
+    P.push(part(T, ball(T, 5, 3), horn, [s * 0.049, 0.178, 0.022, 0, 0, 0, 0.014, 0.012, 0.014])); // blunt tip
   }
-  for (let k = -1; k <= 1; k++) P.push(part(T, new T.ConeGeometry(0.012, 0.045, 4), creamSh, [k * 0.012, -0.03, 0.15 - Math.abs(k) * 0.008, Math.PI, 0, k * 0.2])); // beard
+  for (let k = -1; k <= 1; k++) P.push(part(T, new T.ConeGeometry(0.014, 0.055, 4), creamSh, [k * 0.014, -0.035, 0.16 - Math.abs(k) * 0.01, Math.PI - 0.25, 0, k * 0.25])); // beard
   return merge(T, P);
 }
 
