@@ -28,7 +28,8 @@ color:#fffdf4;background:#0d2a3a99;padding:5px 9px;border-radius:10px;text-shado
 #fcToast div{font:600 14px/1.3 system-ui,sans-serif;color:#1a3245;background:#f1e7d0f0;border:1px solid #c9a46b;border-radius:10px;
 padding:7px 14px;box-shadow:0 4px 14px #0005;animation:fcIn .25s ease-out;transition:opacity .4s}
 #fcToast div.soft{background:#d7e8f2f0;border-color:#8fb4c9}#fcToast div.out{opacity:0}
-@keyframes fcIn{from{transform:translateY(-14px);opacity:0}}`;
+@keyframes fcIn{from{transform:translateY(-14px);opacity:0}}
+@media(max-width:900px){#fcChip{bottom:auto;top:12px}}`;
 
 function cleanFish(f) {
   const sp = f && speciesById(f.species);
