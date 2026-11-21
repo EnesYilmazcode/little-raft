@@ -365,11 +365,14 @@ function createLanternIcon(T) {
   return g;
 }
 
+// Skips the game's cached materials (keep) and anything flagged userData.shared (the module-shared
+// lp-* materials of procedural-models' lowpoly-props.js): disposing those would force the world
+// props to re-acquire their programs.
 function disposeTree(o, keep) {
   o.traverse(n => {
-    n.geometry?.dispose();
+    if (!n.geometry?.userData?.shared) n.geometry?.dispose();
     for (const m of [].concat(n.material || [])) {
-      if (keep.has(m)) continue;
+      if (!m || keep.has(m) || m.userData?.shared) continue;
       for (const v of Object.values(m)) if (v?.isTexture) v.dispose();
       m.dispose();
     }

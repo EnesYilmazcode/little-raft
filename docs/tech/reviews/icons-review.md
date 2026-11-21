@@ -1,91 +1,135 @@
-# Review: icons (fleet-tech/icons @ 2e18e3f)
+# Review: icons, round 2 (fleet-tech/icons @ bf13795)
 
-Judge run on 2026-11-21. Box: 4 cores, load average ~35 (other fleet agents), SwiftShader, so all ms are
-relative only.
+Judge run on 2026-11-21. Box: 4 cores, load average 17 to 27 (other fleet agents), SwiftShader, so all ms
+are relative only. dist/ itself is unchanged on the branch; everything was checked on a scratch copy built
+with `adopt_patch.py`.
 
 ## Scores
 
-| | score |
-|---|---|
-| LOOKS | 7 |
-| COST | 7 |
-| ADOPT-CORRECTNESS | 6 |
-| **OVERALL** | **6** |
+| | round 1 | round 2 |
+|---|---|---|
+| LOOKS | 7 | 8 |
+| COST | 7 | 7 |
+| ADOPT-CORRECTNESS | 6 | 7 |
+| **OVERALL** | **6** | **7** |
 
-## What I ran
+## Round 1 summary
 
-- `python sandbox/icons/shoot.py` (9.5 min wall). Read sheet-2x-compare, sheet-2x-native, sheet-2x-chip18,
-  ui-inventory-1x, ui-inventory-2x-panel and ui-hotbar-2x-bar.
-- `adopt_patch.py --check` prints ok. I applied `--apply` to a scratch copy of dist/ and diffed it against
-  the ADOPT doc. All 8 survival-ui edits and both game.js edits match the doc, and the symbols they use
-  (`INST_KEY`, `esc`, `dragging`, `isOpen`, `later`, `mat`, `disposed`, `ITEM_INFO`) all exist in scope.
-- `node --test` on the unpatched and patched dist. `survival.test.mjs` passes 22/22 on both.
-  `legacy_hook.mjs` fails 2/4 on both (tests 1 and 3, a known failure). Neither suite touches survival-ui,
-  so the tests do not exercise the patch.
-- Real game on the patched copy, headless with `executable_path`: a fresh load, a reload, a `setItem` that
-  throws QuotaExceeded, and a hot-swap to a second build id done the way live.js does it (capture,
-  dispose, then mount(transfer) from a module with a different `?build=`), both mid-bake and after the bake.
-  The unpatched baseline ran under the same harness.
+Round 1 scored OVERALL 6. The 8 required fixes were:
+1. a try/finally around the bake;
+2. cancelling the bake on dispose and hot swap, and stopping an orphan bake from wiping the new build's cache;
+3. revoking blob URLs;
+4. validating the cache contents;
+5. fixing stale docs (the missing variants.py, wrong comments, conflicting cache-hit figures, the 100 to 150 KB size claim);
+6. being honest about mid-gameplay rebakes on hot swap;
+7. making the hook icon match the held scrap hook;
+8. making thin tools, and scrap and net at 18 px, readable (plus stack counts sitting on the art).
 
-## Measured (real game, patched copy)
+## What I ran (round 2)
 
-| | value |
-|---|---|
-| bake wall time from mount (fresh LS) | 25.0 / 27.6 / 29.7 s (3 runs) |
-| game frames during bake, worst / avg | 3.35 s / 1.58 s; 2.83 s / 1.71 s |
-| unpatched baseline, same window, worst / avg | 3.05 s / 1.63 s |
-| renderer.info programs / textures / geometries, before -> after bake | 9/7/262 -> 9/7/262 (no leak) |
-| transient during bake (mid-bake sample) | programs 11, textures 9, back to 9/7 after |
-| localStorage | one key `littleRaft.icons.ia4.<build>`, 250,960 chars |
-| cache hit (`bakeItemIcons` with a warm LS) | 63 ms in game under load (docs claim 5.5 to 8.3 ms) |
-| quota throws | icons still bake and apply, no errors, nothing cached (so every load rebakes) |
-| hot-swap mid-bake | the old engine's bake keeps running after `dispose()`. Two bakes run on the shared renderer, 30 blob URLs are created and none are revoked |
-| hot-swap after bake | a full rebake for the new build (expected), and the 15 old blob URLs are never revoked |
+- `adopt_patch.py --check` prints ok (build `v3-survival-ae77fa84ac2b`).
+- `robust.py`: `allPass: true`. The 6 cases are a throw in make(), a throw in a render, cancel after 2
+  tiles, an orphan write, stale-key cleanup and corrupt entries (a missing kind, a non-PNG value, an array,
+  truncated JSON). After each throw and after the cancel, the renderer comes back with autoClear true, a
+  null render target, the shadow map on and autoReset on.
+- `hotswap.py midswap`: the old engine drew 6 tiles, was disposed, and drew 0 old tiles after that.
+  15 blobs were created, all of them for the new build. localStorage ends with only
+  `ia4.v3-test-hotswap`. After the swap the renderer has autoClear true and programs/textures 9/7. No
+  errors. `pass: true`.
+- `hotswap.py postswap`: 30 blobs created, 15 revoked, 15 live. The old key is replaced by the new one.
+  Programs/textures/geometries are 9/7/248 before and 9/7/248 after. `pass: true`.
+- `shoot.py` took 4 m 37 s:
 
-Sandbox shoot.py: 4.7 s total at DPR 1 and 6.6 s at DPR 2. The bake compiles 4 programs and renderer.info
-is unchanged before and after, which matches the docs. In the real game the bake takes about 15 game frames
-because it yields one rAF per tile, so its wall time is 15 times the frame time. The bake's frame hitch
-cannot be told apart from baseline on this box. The docs' "worst 1 s" figure comes from the light sandbox
-scene and not from the game.
+  | | bake total | worst frame during bake | cache hit |
+  |---|---|---|---|
+  | DPR 1 | 4.9 s | 0.95 s | 6.3 ms |
+  | DPR 2 | 5.0 s | 1.15 s | 6.4 ms |
+
+  4 programs are compiled. renderer.info is the same before and after, 25 calls / 41,734 triangles /
+  25 geometries / 2 textures / 6 programs. The data URLs total 259,814 chars. In `lateSwap`, 47 SVG
+  icons go to 0 and 47 baked icons appear while the bag stays open. The only page errors are SwiftShader
+  ReadPixels stall notices and one 404, which is the sandbox page's missing favicon.
+- `game_probe.py` on my own patched copy. A fresh bake shows baked hotbar icons 34.9 s after Solo. There
+  are no page or console errors and one `ia4` key of 260,016 chars. The in-game cache hit took 19.7,
+  9.5, 4.3, 4.8 and 5.3 ms. After a reload the hotbar is baked 3.1 s after Solo.
+- `RAFT_DIST=<patched> node --test tests/survival.test.mjs` passes 22/22.
+- I read sheet-2x-compare, sheet-2x-chip18, ui-inventory-1x and ui-hotbar-2x-bar, plus my own in-game
+  hotbar and bag screenshots.
+
+## The 8 round-1 fixes
+
+| # | fix | status | evidence |
+|---|---|---|---|
+| 1 | try/finally around the bake | done | A per-tile `try/finally` restores RT, clear, shadow, autoClear and autoReset. The outer `finally` disposes the targets, the quad, the unified materials and any prebuilt models. robust.py makeThrows and renderThrows pass and leave the renderer clean. |
+| 2 | cancel and orphan handling | done | `isCancelled` is checked before the bake, before each tile, after the readback and before the cache write. game.js passes `() => disposed`. The orphan rule ("a key appeared during my bake, so write nothing and delete nothing") holds in robust.py and in the midswap run, where 0 old tiles were drawn after dispose. |
+| 3 | revoke blob URLs | done | `setItemIcons` revokes the URLs it replaces and `destroy()` revokes the rest. postswap ends with 30 created, 15 revoked, 15 live. midswap makes no blobs for the cancelled build. |
+| 4 | validate cache contents | done | `readIconCache(key, kinds)` requires every kind to be a `data:image/png;base64,` string. Corrupt entries are misses and get rebaked. |
+| 5 | stale docs | done | `variants.py` is committed. The item-models.js header now matches (5 unchanged, 2 rescaled, 2 procedural, 6 icon-only) and says it returns blob URLs. The cache-hit numbers are reconciled: about 6.8 ms in the sandbox, 10 to 200 ms in game under load. I measured 4 to 20 ms in game, so the claim holds. The 100 to 150 KB figure is now labelled as a first-pass estimate next to the measured 254 KB. |
+| 6 | mid-gameplay rebake on hot swap | done as documentation | A hot swap to a new build still rebakes in the middle of play. This is now stated plainly in icons.md and ADOPT ("Hot swaps"). The orphan is cancelled, and ADOPT suggests a content-hash key as the next step. Acceptable. |
+| 7 | hook icon matches the held tool | done | In the real game the slot 1 icon is the same grey curved scrap hook on a rope-wrapped handle that the right hand holds. |
+| 8 | thin tools, 18 px, stack counts | done | Hammer, hook and rod have a cream rim and read on the dark 34 px recipe rows. At 18 px, scrap is a rust-red corrugated sheet and net is a tan grid with orange floats. Stack counts ("14", "20", "7") sit in the corner, clear of the art. |
+
+## Regressions introduced by the fixes
+
+None found in the icons code itself. Specifically:
+- Removing the -5 px slot expansion did not shrink the icons badly. They still fill the slots.
+- `pointer-events:none` on the baked img leaves drag on the button. The bag drag hint and slot layout
+  are unchanged in the shots.
+- The `ICON_REV` repaint path did not cause per-frame innerHTML churn. The slot signature changes only
+  when the revision bumps.
+- renderer.info has no leak in the sandbox or after the hot swaps.
+
+## Cross-topic: procedural-models (`origin/fleet-tech/procedural-models`)
+
+`docs/tech/icons-ADOPT.md` does not mention procedural-models at all. The coordination note lives only in
+`procedural-models-ADOPT.md` step 4, which says to point `item-icons.js` at `./lowpoly-props.js` and bump
+`ICON_ATLAS_VERSION`. Following that note exposes two problems on the icons side:
+
+1. **The bake disposes the game's shared low-poly materials.** `disposeTree` in `item-models.js` disposes
+   every material except those from `getMaterial`. lowpoly-props materials are module-shared and flagged
+   `userData.shared = true`. I baked the real `item-models.js` with its plastic, crafts and debris imports
+   pointed at `lowpoly-props.js` from the procedural-models branch. The bake fired **8 `dispose` events on
+   `lp-solid` / `lp-cloth`** (sail, palm, bench, crate, plastic, leaf). In game those are the materials of
+   every raft prop, so the bake forces their programs to be re-acquired. This is exactly the hitch that
+   procedural-models step 3 exists to prevent. The fix is one line: also skip `m.userData?.shared` in
+   `disposeTree`, and ideally in `defaultDispose` in icon-atlas.js too.
+2. **A static import makes boot depend on the old files.** The game.js patch imports `item-icons.js`
+   statically, and that file imports `./plastic.js`, `./crafts.js` and `./debris.js`. If procedural-models
+   lands first and someone deletes those files, the game fails to boot. Procedural step 4 warns against
+   this, but `adopt_patch.py --check` does not verify that the modules `item-icons.js` imports exist in
+   dist/.
+
+Neither problem breaks the game when the topics are adopted in either order with the old files kept. It
+is still a gap. It does not block OVERALL 7, but it is the first nice-to-have.
 
 ## Looks
 
-The baked icons are clearly better than the SVGs. All 15 kinds are distinct, where the SVGs reuse sprites
-for 6 kinds (plastic and scrap, rod and hook, rope and net). Lighting direction, the navy outline and the
-shadow are consistent across the set, and placeables (bench, crate, palm, lantern) read at once.
+The 15 kinds are distinct and consistent: same light, navy outline and soft shadow. The hook now matches
+the viewmodel, which matters because it is the first icon the player sees. The rod reads with its reel
+and bobber, the log pile has ringed ends and the net has floats. Remaining weak spots:
+- the white jug is low-contrast on the light strip;
+- the cream rim on three tools gives them a slightly sticker-like edge that the other 12 do not have;
+- the sail is taller than wide;
+- with no env, metal comes out a little flat and dark.
 
-Problems:
-- **The hook icon does not match the held tool.** In game, slot 1 at spawn holds a large curved scrap hook
-  on a rope-wrapped handle. The icon is a thin J fish hook, which reads as fishing gear next to the fishing
-  rod. It is the first icon every player sees.
-- Hammer, rod and hook are thin dark diagonals. On the dark brown slot at 1x (recipe list, 34 px) the
-  hammer is nearly invisible, because a navy outline on dark brown adds no contrast.
-- At 18 px, scrap is a grey smear and net is a dark square. The plastic jug is low contrast and white on
-  white.
-- Expanding baked icons by -5 px puts the stack count on top of the art (wood "20", plastic "7"). It stays
-  readable thanks to the text shadow, but it looks crowded.
+## Cost
 
-## ADOPT correctness issues
+Nothing changed here since round 1, and the numbers are honest. A first bake costs:
+- 4 small programs;
+- about 15 game frames, one tile per frame (35 s from Solo under SwiftShader load, a few ms per tile on a
+  real GPU);
+- 2 MB of transient VRAM, freed afterwards;
+- 255 KB of localStorage per build.
 
-1. No try/finally in the bake loop (`sandbox/icons/icon-atlas.js` lines 230-246 and 258-281). If a render,
-   `make()` or the readback throws after `save()`, `renderer.autoClear` stays `false` and the render target
-   stays set, which corrupts every later game frame. The targets, quad and unified materials also leak.
-2. A bake is not cancelled on dispose or hot-swap (adopt_patch.py game patch; `bakeItemIcons` in
-   item-models.js line 16). The orphan keeps rendering on the transferred renderer and creates blob URLs.
-   It also calls `writeIconCache`, which deletes every `littleRaft.icons.*` key, so an old-build bake that
-   finishes after the new one wipes the new build's cache (`icon-atlas.js` lines 160-166).
-3. Blob URLs are never revoked: `setItemIcons` in the survival-ui patch and `item-models.js` line 25.
-4. The cache does not check its contents: `readIconCache` (`icon-atlas.js` line 153) accepts any `urls`
-   object. It does not check that every requested kind is present or that the values are data URLs.
-5. Stale or wrong documentation:
-   - `icons.md` cites the scratch `variants.py`, which is not in the repo, for its headline table.
-   - Comments in `item-models.js` contradict the code: line 2 says "Twelve use the existing dist builders"
-     where icons.md says 8, and line 14 says it returns dataURL where it returns blob URLs.
-   - The cache-hit figure differs across docs: ADOPT says 5.5 ms, icons.md says 8.3 and 7.5 ms, and the
-     real game measured 63 ms.
-   - The first-pass section of icons.md gives "100 to 150 KB", where the measured size is 250 KB.
-6. On a hot-swap during play, each new build triggers a full bake in the middle of gameplay. This
-   contradicts the note in icons.md: "never in the middle of gameplay".
+A warm load costs 4 to 20 ms in game. Each hot swap to a new build still pays a full bake during play.
 
-The cache-key and version logic is otherwise sound. The key is per build plus `ia4`, `dev` never caches,
-and a throwing or full localStorage is handled.
+## Nice-to-haves (OVERALL >= 7, none required)
+
+1. Add a "procedural-models" section to icons-ADOPT:
+   - skip `userData.shared` materials in `disposeTree` and `defaultDispose`;
+   - give the import swap to `./lowpoly-props.js` together with the `ICON_ATLAS_VERSION` bump;
+   - have `adopt_patch.py --check` assert that every module `item-icons.js` imports exists in dist/.
+2. Key the cache on a content hash of `item-icons.js` and `icon-atlas.js` (plus the builder files)
+   instead of the build id, so a hot swap that does not touch the models does not rebake mid-play.
+3. Darken or tint the plastic jug a little, or give it the rim, so it reads on light strips.
+4. Consider a softer rim colour, or a thinner rim (1.2 px), so the three tools match the rest of the set.

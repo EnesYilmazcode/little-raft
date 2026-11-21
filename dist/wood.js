@@ -13,8 +13,18 @@ export function createWoodMaterial(T, color) {
   for(let r=1;r<6;r++){ctx.beginPath();ctx.ellipse(x,y,r*1.4,r*4.7,.1,0,Math.PI*2);ctx.strokeStyle=`rgba(68,37,19,${.18-r*.02})`;ctx.lineWidth=.7;ctx.stroke();}
  }
  const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=4;
- // The bump term samples its map three times per pixel; anisotropic filtering there is invisible at this bump
- // scale but costly on software GL, so the bump reads the same canvas through an isotropic twin.
+ // The bump reads the same canvas through an isotropic twin (anisotropy is invisible at this bump scale but
+ // costly on software GL), and with one tap instead of three: the height slope comes from screen derivatives.
  const bump=texture.clone();bump.anisotropy=1;
- return new T.MeshStandardMaterial({map:texture,bumpMap:bump,bumpScale:.018,roughness:.86,metalness:0});
+ const m=new T.MeshStandardMaterial({map:texture,bumpMap:bump,bumpScale:.018,roughness:.86,metalness:0});
+ const chunk=oneTapBump(T);
+ if(chunk){m.onBeforeCompile=sh=>{sh.fragmentShader=sh.fragmentShader.replace('#include <bumpmap_pars_fragment>',chunk);};m.customProgramCacheKey=()=>'lr-wood-bump1';}
+ return m;
+}
+// three's bump chunk with the two offset taps replaced by dFdx/dFdy of the centre tap; null if the chunk changed shape.
+let bumpChunk;
+function oneTapBump(T){
+ if(bumpChunk!==undefined)return bumpChunk;
+ const src=T.ShaderChunk?.bumpmap_pars_fragment||'',x=/float dBx = [^;]*;/,y=/float dBy = [^;]*;/;
+ return bumpChunk=x.test(src)&&y.test(src)?src.replace(x,'float dBx = dFdx( Hll );').replace(y,'float dBy = dFdy( Hll );'):null;
 }

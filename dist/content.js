@@ -37,8 +37,9 @@ import { createDayNight } from './daynight.js?build=v3-survival-ae77fa84ac2b';
 import { createEngine } from './engine.js?build=v3-survival-ae77fa84ac2b';
 import { createSleep } from './sleep.js?build=v3-survival-ae77fa84ac2b';
 import { createPaint } from './paint.js?build=v3-survival-ae77fa84ac2b'; // content hook (paint)
+import { createBees } from './bees.js?build=v3-survival-ae77fa84ac2b'; // [bees]
 
-const FEATURES = [createIslands, createWildlife, createStorage, createDayNight, createSleep, createEngine, createPaint];
+const FEATURES = [createIslands, createWildlife, createStorage, createDayNight, createSleep, createEngine, createPaint, createBees]; // [bees] + createBees
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -74,6 +75,7 @@ export function createContent(ctx, features = FEATURES) {
     decorModel: type => first('decorModel', type),
     sailPush: (s, out) => !!first('sailPush', s, out),
     steerTargets: () => first('steerTargets'),
+    rain() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }, // rain-sprinkler: live 0..1 rain
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };
 }

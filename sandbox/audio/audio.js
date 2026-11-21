@@ -22,7 +22,9 @@
 //                                       sfx bus ─> air send -> convolver ───────┤
 //        UI voices -> ui bus ──────────────────────────────────────────────────┤
 //        ocean worklet (or node fallback) -> ambience bus -> duck ─────────────┴> mix -> master(volume) -> limiter -> out
-// No DOM timers: one-shot cleanup and the gull scheduler both run off AudioScheduledSourceNode 'ended'.
+// One-shot cleanup, destroy()'s deferred free and the gull scheduler run off AudioScheduledSourceNode 'ended'
+// (audio clock). DOM timers only back up destroy() and delay the volume-0 suspend.
+// Hot update: a new engine on the same context takes over the playing ocean (see startAmbience).
 
 export const EVENTS = Object.freeze([
   // original events (dist/audio.js v1)
