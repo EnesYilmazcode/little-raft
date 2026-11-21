@@ -20,7 +20,7 @@ const fishSince = (S, b, c) => (c.hostWorld ? c.gained('fish') : num(S.fish) - n
 const handGrab = (S, c, type) => !!(c.prev?.pickup && c.prev.hookStage === 'idle' && num(S.collected) > num(c.prev.collected)
   && (type ? c.prev.pickup.type === type : MATS.some(k => inv(S, k) > inv(c.prev, k))));
 const wrapPi = a => Math.atan2(Math.sin(a), Math.cos(a));
-const FRESH = Object.freeze({tiles:9, fish:0, collected:0, stock:{}, me:null, hookHealth:100});
+const FRESH = Object.freeze({tiles:4, fish:0, collected:0, stock:{}, me:null, hookHealth:100});
 const played = (S, c) => c.silent && num(S.collected) > 0; // returning players skip the very first lessons
 // Gather count = the most ever seen of max(gained since the step showed, held now): what you already carry counts, and
 // spending never lowers it. or: a later milestone that proves the step.

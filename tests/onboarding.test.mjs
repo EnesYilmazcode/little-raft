@@ -7,7 +7,7 @@ const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST
 const O = await import(new URL('onboarding.js', base));
 
 const steps = () => O.STEPS.map(s => ({...s}));
-const fresh = (over = {}) => ({running:true, role:'solo', tiles:9, fish:0, collected:0, decor:[], stock:{hook:1}, ownedTools:['hook'],
+const fresh = (over = {}) => ({running:true, role:'solo', tiles:4, fish:0, collected:0, decor:[], stock:{hook:1}, ownedTools:['hook'],
   hookStage:'idle', inventoryOpen:false, hookHealth:100, pickup:null, hookCaughtItems:[], me:{x:0, y:1.8, z:0, yaw:0, pitch:0}, ...over});
 
 test('fresh state shows the first three steps', () => {
@@ -48,7 +48,7 @@ test('meeting conditions completes steps and advances', () => {
 
 test('returning player with a hammer silently skips the hammer chain', () => {
   const P = O.createProgress();
-  const r = O.evaluate(steps(), P, fresh({collected:40, tiles:9, stock:{hammer:1, wood:2}, ownedTools:['hook', 'hammer']}), {silent:true});
+  const r = O.evaluate(steps(), P, fresh({collected:40, tiles:4, stock:{hammer:1, wood:2}, ownedTools:['hook', 'hammer']}), {silent:true});
   for (const id of ['look', 'walk', 'throw', 'reel', 'wood', 'leaves', 'bag', 'rope', 'hammer']) assert.ok(P.done[id], id);
   assert.deepEqual(r.newly, []);
   assert.deepEqual(r.visible, ['plastic', 'floor']);
