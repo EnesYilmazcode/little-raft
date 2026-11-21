@@ -96,7 +96,7 @@ const CSS = `
 #inventory .sv-recipe .lr-sr-lock{position:absolute;right:-6px;bottom:-6px}
 #inventory .sv-recipe .lr-sr-needs{display:block;margin-top:4px;font:700 12px/1.2 ${FONT};color:#ffcf9a}
 #inventory .sv-recipe.lr-sr-first{position:relative;margin-top:30px}
-#inventory .sv-recipe.lr-sr-first::before{content:'Discover at a Tinker\\2019s Desk';position:absolute;left:2px;top:-22px;font:800 11px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#d9c9a6}
+#inventory .sv-recipe.lr-sr-first::before{content:attr(data-sr-head);position:absolute;left:2px;right:2px;top:-21px;width:auto;height:14px;grid-column:1/-1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:700 12px/14px ${FONT};letter-spacing:.2px;color:#d9c9a6;pointer-events:none}
 #inventory .sv-recipe.lr-sr-fresh{animation:lrSrFresh 2.4s ease-out}
 @keyframes lrSrFresh{0%,30%{box-shadow:inset 0 0 0 2px #ffe3a6,0 0 16px #ffbd66}100%{box-shadow:inset 0 0 0 1px #d4b07a44}}
 @media(max-width:860px),(max-height:560px){#lrStorage .lr-sr-body{flex-direction:column}#lrStorage .lr-sr-next,#lrStorage .lr-sr-study{width:auto;max-height:none}
@@ -109,6 +109,12 @@ function ensureStyle() {
   let st = document.getElementById('lr-sr-style');
   if (!st) { st = document.createElement('style'); st.id = 'lr-sr-style'; document.head.append(st); }
   if (st.textContent !== CSS) st.textContent = CSS;
+}
+
+// One-line header over the locked rows: what to study, and where.
+export function studyHead(names) {
+  const what = names.length === 1 ? names[0] : names.length === 2 ? names.join(' and ') : 'items';
+  return `Study ${what || 'items'} at a Tinker\u2019s Desk to unlock`;
 }
 
 export function createStorageUI(api) {
@@ -294,7 +300,8 @@ export function createStorageUI(api) {
   // ---------- craft list annotation (#inventory) ----------
   function annotate() {
     const rows = inv.querySelectorAll('.sv-recipe[data-recipe]'), seen = new Set(api.state.seen), fresh = api.takeFresh();
-    let first = true;
+    let first = null;
+    const study = new Set();
     lockedRows = [];
     rows.forEach(el => {
       const id = el.dataset.recipe, r = RECIPES[id], locked = !!r && !api.isLearned(id);
@@ -311,15 +318,18 @@ export function createStorageUI(api) {
         return;
       }
       const miss = Object.keys(r.cost).filter(k => !seen.has(k)).map(k => itemName(k));
+      for (const m of miss) study.add(m);
       const text = miss.length ? 'Study ' + miss.join(' + ') : 'Study at a Tinker\u2019s Desk';
       if (!el.dataset.locked) { el.dataset.locked = '1'; el.dataset.srAria = el.getAttribute('aria-label') ?? ''; }
       el.title = 'Needs research: ' + (miss.join(', ') || 'visit a Tinker\u2019s Desk'); el.tabIndex = -1;
       el.setAttribute('aria-label', LOCKED_LABEL); lockedRows.push(el);
-      if (first) { el.classList.add('lr-sr-first'); first = false; }
+      if (!first) { el.classList.add('lr-sr-first'); first = el; }
       if (!badge && art) { badge = document.createElement('span'); badge.className = 'lr-sr-lock'; badge.innerHTML = LOCK; art.append(badge); }
       if (!needs && body) { needs = document.createElement('span'); needs.className = 'lr-sr-needs'; body.append(needs); }
       if (needs && needs.textContent !== text) needs.textContent = text;
     });
+    const head = studyHead([...study]);
+    rows.forEach(el => { if (el === first) { if (el.dataset.srHead !== head) el.dataset.srHead = head; } else if (el.dataset.srHead) delete el.dataset.srHead; });
   }
 
   function unlockRow(el) {
@@ -333,7 +343,7 @@ export function createStorageUI(api) {
     host.querySelectorAll('.sv-recipe').forEach(el => {
       if (el.dataset.locked) unlockRow(el);
       el.querySelector('.lr-sr-lock')?.remove(); el.querySelector('.lr-sr-needs')?.remove();
-      el.classList.remove('lr-sr-first', 'lr-sr-fresh');
+      el.classList.remove('lr-sr-first', 'lr-sr-fresh'); delete el.dataset.srHead;
     });
     lockedRows = [];
   }
