@@ -1115,6 +1115,7 @@ export function mount(transfer = null) {
       };
     },
     project,
+    get renderInfo() { if (!renderer) return null; const {render:r, memory:m, programs:p} = renderer.info; return {calls:r.calls, triangles:r.triangles, geometries:m.geometries, textures:m.textures, programs:p?.length ?? 0}; },
     get targets() {
       return world.items.map(it => {
         const m = itemMeshes.get(it.token), p = m ? m.position : {x:it.x, y:ITEM_FLOAT, z:it.z};
