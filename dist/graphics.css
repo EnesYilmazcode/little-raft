@@ -291,8 +291,8 @@ input::placeholder{color:#6f7b82;letter-spacing:1.5px}
 
 #repairButton{margin-top:10px;width:100%;display:flex;align-items:center;justify-content:center;gap:7px;padding:8px;background:#20363de8;color:#fff0ce;border:1px solid #aa85594d;border-radius:3px;font-size:12px;flex-wrap:wrap}
 #repairButton .icon{width:20px;height:20px}#repairButton small{width:100%;font-size:10px;color:#b9c9c4}#repairButton kbd{font:600 10px sans-serif;opacity:.6}#conditionBar{width:100%}
-#chargeMeter{position:fixed;left:50%;top:calc(50% + 44px);transform:translateX(-50%);width:158px;height:23px;background:#11252ad9;border:1px solid #d3ae70;border-radius:3px;pointer-events:none;overflow:hidden;z-index:4}
-#chargeMeter span{position:absolute;inset:0;display:grid;place-items:center;color:#fff4d6;font-size:10px;font-weight:700;letter-spacing:1.5px;z-index:1;text-shadow:0 1px 3px #000}#chargeMeter i{display:block;height:100%;width:0;background:#b8833e;transition:width .04s linear}
+/* Throw charge: an unlabeled 2px arc around the reticle, filled clockwise by --c (0..1) */
+#chargeMeter{position:fixed;left:50%;top:50%;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;pointer-events:none;z-index:4;background:conic-gradient(#fffe calc(var(--c,0) * 360deg),#ffffff2e 0);-webkit-mask:radial-gradient(closest-side,transparent calc(100% - 2.5px),#000 calc(100% - 2px));mask:radial-gradient(closest-side,transparent calc(100% - 2.5px),#000 calc(100% - 2px));filter:drop-shadow(0 0 1px #0008)}
 .close .icon{width:20px;height:20px}.guide-note{font-size:12px}#resumeHint{max-width:90vw;white-space:normal;text-align:center}
 
 body.playing header{justify-content:flex-end}body.playing .brand,body.playing .goal{display:none}
@@ -304,7 +304,10 @@ body.locked #recipes{display:none!important}#recipes button.unaffordable{opacity
 @media(max-width:760px){.playing #durability{right:12px;bottom:160px;width:146px}.controls{font-size:10px;gap:9px}.playing #aimHint{font-size:11px}.playing .inventory{top:65px}}
 body.playing header,body.playing .goal,body.playing #toast,body.playing .controls{display:none!important}
 .playing .inventory{top:14px;left:14px}.playing #aimHint{bottom:112px;background:#162e3199;padding:7px 13px;font-size:13px;color:#f4eddd;box-shadow:none}
-#crosshair{width:23px;height:23px;border:1px solid #fff9;border-radius:50%;background:none!important;filter:drop-shadow(0 1px 1px #0005)}#crosshair::after{background:#fff9;border-radius:50%}
+/* Raft-style reticle: a small soft dot that grows a little over something usable */
+#crosshair{width:4px;height:4px;margin:0;border:0;border-radius:50%;background:#fffd!important;box-shadow:0 0 0 1px #0003,0 0 3px #0006;filter:none;transition:width .12s,height .12s,background .12s}
+#crosshair::before,#crosshair::after{content:none;display:none}
+#crosshair.usable{width:8px;height:8px;background:#fff!important}
 
 /* live-qa */
 

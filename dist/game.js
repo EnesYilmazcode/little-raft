@@ -224,11 +224,11 @@ export function mount(transfer = null) {
     if (next !== resScale) { resScale = +next.toFixed(2); renderer.setPixelRatio(baseRatio * resScale); }
   }
   let netClock = 0, saveClock = 0, networkTick = 0, wheelAcc = 0;
-  let contextCache = null, uiFailed = false;
+  let contextCache = null, uiFailed = false, crossUsable = false;
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
   let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = '';
-  const chargeMeter = $('#chargeMeter'), chargeFill = chargeMeter?.querySelector('i');
+  const chargeMeter = $('#chargeMeter'); // thin ring around the crosshair, filled by --c
   let blockList = [];
 
   function makePhysics(src) {
@@ -447,8 +447,9 @@ export function mount(transfer = null) {
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
       else if (farmPlot(frameAim)) { const t = Farm.promptFor(farmPlot(frameAim).farm, heldKind()); html = t.startsWith('E  ') ? '<kbd>E</kbd>' + esc(t.slice(3)) : esc(t); } // farming
       else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
-      else if (castOut() && castOut().stage === 'floating') html = caughtList(castOut()).length ? 'Hold click to reel it in' : 'Hold click to reel';
     }
+    const usable = !!(running && !dialog && (pickTarget || farmPlot(frameAim)));
+    if (usable !== crossUsable) { crossUsable = usable; $('#crosshair')?.classList.toggle('usable', usable); } // dot grows over interactables
     if (html === contextCache) return; contextCache = html;
     const el = $('#contextPrompt'); if (!el) return; el.innerHTML = html; el.hidden = !html;
   }
@@ -457,8 +458,8 @@ export function mount(transfer = null) {
     if (!chargeMeter) return;
     const show = !!charging && running;
     if (chargeMeter.hidden === show) chargeMeter.hidden = !show;
-    const w = show ? (chargeValue() * 100).toFixed(1) + '%' : '';
-    if (show && chargeFill && w !== chargeWidth) chargeFill.style.width = chargeWidth = w; // only write the DOM on change
+    const w = show ? chargeValue().toFixed(3) : '';
+    if (show && w !== chargeWidth) chargeMeter.style.setProperty('--c', chargeWidth = w); // only write the DOM on change
   }
   // Body classes, crosshair and resume hint follow running and pointer-lock state.
   function refreshPointerUI(force = false) {
