@@ -128,6 +128,9 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
   border:2px solid #fff3cf;box-shadow:0 0 8px rgba(255,189,102,.7);pointer-events:none;z-index:29}
 #signalMarker.edge{opacity:.7}
 #signalReadout[hidden],#signalMarker[hidden]{display:none}
+/* top-left status pills stack: signal, then treasure finder, then buoy timer */
+body:has(#signalReadout:not([hidden])) #treasureHud{top:48px!important}
+body:has(#signalReadout:not([hidden])):has(#treasureHud:not([style*="display: none"])) #buoyTimer{top:82px}
 /* Rows wrap inside the gutter left of the hotbar (its left edge is 50vw - 253px); below 1000px wide that gutter is too narrow, so the feed lifts above the hotbar. */
 #pickupFeed .pf-row{max-width:max(200px,calc(50vw - 287px));white-space:normal;line-height:1.25}
 @media(max-width:1000px){#pickupFeed[popover]{inset:auto auto calc(182px + var(--coop-feed-h, 0px)) 10px}#pickupFeed .pf-row{max-width:calc(50vw - 120px)}}

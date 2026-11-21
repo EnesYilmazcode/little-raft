@@ -67,7 +67,7 @@ const CSS = `
 /* the hammer's "Aim at the raft edge" prompt sits under the hub: hide it while the wheel is up */
 body.bm-wheel-up #lrPrompt,body.bm-wheel-up #contextPrompt{visibility:hidden}
 .bm-chip{position:fixed;left:max(200px,calc(50% - 253px));bottom:var(--bm-chip-bottom,112px);z-index:3;text-align:left;display:flex;align-items:center;gap:10px;
-  padding:7px 14px 7px 7px;border-radius:12px;pointer-events:none;max-width:calc(100vw - 32px);
+  padding:7px 14px 7px 7px;border-radius:12px;pointer-events:none;max-width:calc(100vw - 16px - max(200px,calc(50% - 253px)));box-sizing:border-box;
   background:repeating-linear-gradient(90deg,#0000000f 0 2px,transparent 2px 21px),linear-gradient(#5d4129f0,#3d2a19f0);
   border:1.5px solid #c9a66b;box-shadow:0 0 0 1.5px #3e2a17,0 4px 14px #0006;color:#fff2cc;font:500 13px/1.25 ${FONT};transition:opacity .12s}
 .bm-chip.bm-dim{opacity:0}
@@ -75,12 +75,12 @@ body.bm-wheel-up #lrPrompt,body.bm-wheel-up #contextPrompt{visibility:hidden}
 .bm-chip>i svg{width:26px;height:26px}
 .bm-chip>div{min-width:0}
 .bm-row{display:flex;align-items:center;gap:10px}
-.bm-row b{font:700 14px/1.1 ${FONT};white-space:nowrap}
+.bm-row b{font:700 14px/1.1 ${FONT};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .bm-hint{display:block;margin-top:3px;font:500 11px/1.2 ${FONT};color:#d9c9a6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bm-hint kbd{font:700 10px/1 ${FONT};color:#ffdd95;border:1px solid #e0bd7155;border-radius:3px;padding:1px 3px}
 .bm-status{display:block;margin-top:3px;font:700 12px/1.2 ${FONT};color:#ffab8f}
 .bm-status:empty{display:none}
-@media(max-width:760px){.bm-chip{--bm-chip-bottom:118px;gap:8px;padding:5px 10px 5px 5px}.bm-chip>i{width:32px;height:32px}.bm-chip>i svg{width:22px;height:22px}
+@media(max-width:760px){.bm-chip{--bm-chip-bottom:118px;left:152px;max-width:calc(100vw - 164px);gap:8px;padding:5px 10px 5px 5px}.bm-chip>i{width:32px;height:32px}.bm-chip>i svg{width:22px;height:22px}
   .bm-mid b{font-size:14px;margin:3px 0 5px}.bm-req{font-size:12px}.bm-req em{display:none}.bm-mid small{font-size:8.5px}}
 @media(prefers-reduced-motion:reduce){.bm-wheel{transition:none}}`;
 
