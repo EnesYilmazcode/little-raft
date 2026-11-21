@@ -30,6 +30,7 @@ dialog{max-height:calc(100dvh - 30px);overflow:auto;overscroll-behavior:contain}
 .pf-info i{background:#8fd3e8}.pf-join i{background:#7ee08a}.pf-leave i{background:#f0a868}.pf-ping i{background:#ffd75e}.pf-emote i{background:#e79ef0}.pf-warn i{background:#ff7a6b} /* coop lines (coop-feed.js) */
 @keyframes pf-in{from{opacity:0;transform:translateX(-22px)}to{opacity:1;transform:none}}
 @keyframes pf-bump{40%{transform:scale(1.18)}}
+@media(max-width:1180px){#pickupFeed{bottom:92px}} /* rows (~235px wide) would reach the centred hotbar (~570px): stack above its top instead */
 @media(max-width:760px){#pickupFeed{left:10px;bottom:96px;font-size:13px}.pf-icon,.pf-icon>*{width:32px;height:32px}}
 @media(prefers-reduced-motion:reduce){.pf-row,.pf-row.bump .pf-icon{animation:none;transition:opacity .2s}}
 /* Interaction prompt sits just above the hotbar, never on the reticle */

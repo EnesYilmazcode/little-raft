@@ -165,6 +165,8 @@ test('E3 the shared stack is published and the prompt feed posts into it', () =>
   const p = src('prompts.js');
   assert.match(p, /win\.raftPickupFeed/); assert.match(p, /sink\.note\(t\)/);
   assert.match(src('style.css'), /\.pf-emote i\{/);
+  // narrower than ~1180px the 5-row stack lifts above the centred hotbar instead of running into its left end
+  assert.match(src('style.css'), /@media\(max-width:1180px\)\{#pickupFeed\{bottom:92px\}\}/);
 });
 
 // ---------------------------------------------------------------- E4 help text matches the bag's keys
