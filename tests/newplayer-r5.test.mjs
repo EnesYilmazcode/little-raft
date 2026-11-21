@@ -69,7 +69,7 @@ test('shark warnings use the danger kind and are not capped to a blink', () => {
   assert.match(s, /function sharkEffect\(e\) \{[^\n]*\n\s*if \(typeof e\.text === 'string' && e\.text\) notice\([^\n]*'danger'\)/); // biting + tile lost
   assert.match(s, /notice\('The shark bit you!', \d+, 'danger'\)/);
   assert.match(s, /text:'The shark is biting the raft!'/);
-  assert.match(s, /text:'The shark tore a foundation off the raft!'/);
+  assert.match(s, /'The shark tore a foundation off the raft!'/); assert.match(s, /text:sharkBrokeText\(sank\)/); // tile lost (names a sunk crate's items)
 });
 
 test('low food / water: one danger hint below 25, re-armed after recovering above 50', async () => {
