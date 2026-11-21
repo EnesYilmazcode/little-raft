@@ -68,7 +68,7 @@ with sync_playwright() as p:
     bp.on('pageerror', lambda e: report['errors'].append('build: ' + str(e)))
     bp.add_init_script('localStorage.getItem("little-raft-v1")||localStorage.setItem("little-raft-v1",%s)' % json.dumps(json.dumps(save)))
     bp.goto(url); bp.wait_for_function('!!window.raftDebug', timeout=20000)
-    bp.locator('#solo').click(); bp.wait_for_function('raftDebug.state.running', timeout=15000); bp.wait_for_timeout(800)
+    bp.locator('#solo').click(force=True, timeout=60000); bp.wait_for_function('raftDebug.state.running', timeout=15000); bp.wait_for_timeout(800)
     look = lambda dx, dy: bp.evaluate(f'document.dispatchEvent(new MouseEvent("mousemove",{{movementX:{dx},movementY:{dy}}}))')  # headless lock gives no movement
     look(0, 55); bp.keyboard.press('2'); bp.wait_for_timeout(400); shot(bp, '09-build-floor-ghost')
     look(-120, 180); bp.keyboard.press('3'); bp.wait_for_timeout(400); shot(bp, '10-place-crate-ghost')
