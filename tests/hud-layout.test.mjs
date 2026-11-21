@@ -21,7 +21,7 @@ test('HUD-1/2: the left feed is one capped stack that stays left of the hotbar a
   assert.match(pf, /bottom:calc\(132px \+ var\(--coop-feed-h, 0px\)\)/); assert.match(pf, /max-height:calc\(50vh - 158px\)/);
   assert.match(pf, /max-width:min\(380px,calc\(50vw - 287px\)\)/); // hotbar is 506px wide, centred
   assert.match(pf, /overflow:hidden/); assert.match(pf, /justify-content:flex-end/);
-  assert.match(css, /@media\(max-width:1000px\)\{#pickupFeed\{max-width:calc\(50vw - 134px\)/);
+  assert.match(css, /@media\(max-width:1100px\)\{#pickupFeed\{bottom:calc\(182px \+ var\(--coop-feed-h, 0px\) \+ var\(--bm-chip-h, 0px\)\);max-width:calc\(50vw - 134px\)/);
   assert.match(css, /\.pf-row>b,\.pf-row>span\{min-width:0;overflow:hidden;text-overflow:ellipsis\}/);
   const pop = rule(src('game.js'), '#pickupFeed[popover]'); // the popover override must not lift the caps
   assert.doesNotMatch(pop, /max-(width|height):none/); assert.match(pop, /overflow:hidden/);
