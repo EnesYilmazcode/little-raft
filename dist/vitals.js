@@ -84,8 +84,9 @@ export function eatLabel(kind) {
   const e = isEdible(kind) ? FOOD[kind] : null; if (!e) return '';
   const drink = !e.food && e.water !== 0 || kind.endsWith('cup');
   const parts = [];
-  if (e.food) parts.push(`${e.food > 0 ? '+' : ''}${e.food} food`);
-  if (e.water) parts.push(`${e.water > 0 ? '+' : ''}${e.water} water`);
+  const n = v => (v > 0 ? '+' : '') + Math.round(v); // whole numbers in the prompt (fish: +13, not +12.5)
+  if (Math.round(e.food)) parts.push(`${n(e.food)} food`);
+  if (Math.round(e.water)) parts.push(`${n(e.water)} water`);
   return `${drink ? 'Drink' : 'Eat'}${parts.length ? ` (${parts.join(', ')})` : ''}`;
 }
 

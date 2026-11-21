@@ -92,7 +92,7 @@ test('addFood lets other lanes register edibles', () => {
 
 test('eatLabel', () => {
   assert.equal(V.eatLabel('cookedfish'), 'Eat (+35 food)');
-  assert.equal(V.eatLabel('fish'), 'Eat (+12.5 food, -10 water)');
+  assert.equal(V.eatLabel('fish'), 'Eat (+13 food, -10 water)');
   assert.equal(V.eatLabel('freshcup'), 'Drink (+40 water)');
   assert.equal(V.eatLabel('saltcup'), 'Drink (-5 water)');
   assert.equal(V.eatLabel('wood'), '');
