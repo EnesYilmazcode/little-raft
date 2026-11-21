@@ -12,7 +12,8 @@ OUT.mkdir(exist_ok=True)
 VIEWS = [
     ("grid_0", "view=grid&page=0", (1560, 780)), ("grid_1", "view=grid&page=1", (1560, 780)),
     ("compare_0", "view=compare&page=0", (1560, 520)), ("compare_1", "view=compare&page=1", (1560, 520)),
-    ("scene", "view=scene", (1600, 620)), ("fp", "view=fp", (1600, 900)), ("stats", "view=stats", (600, 400)),
+    ("scene", "view=scene", (1600, 620)), ("fp", "view=fp", (1600, 900)),
+    ("hero_0", "view=hero&names=lantern,crate,net", (1560, 1040)), ("hero_1", "view=hero&names=plank,scrap,bench", (1560, 1040)), ("stats", "view=stats", (600, 400)),
 ]
 only = set(sys.argv[1:])
 
@@ -31,9 +32,10 @@ with sync_playwright() as p:
             continue
         pg = b.new_page(viewport={"width": w, "height": h + 40})
         pg.on("pageerror", lambda e: errs.append(str(e)))
+        pg.add_init_script("addEventListener('error', () => { window.__failed = true; })")
         pg.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
         pg.goto(f"http://127.0.0.1:{port}/sandbox/procedural-models/index.html?{qs}", wait_until="commit")
-        pg.wait_for_function("window.__ready === true", timeout=900000)
+        pg.wait_for_function("window.__ready === true || window.__failed === true", timeout=900000)
         results[name] = pg.evaluate("window.__stats")
         if name != "stats":
             pg.locator("#wrap").screenshot(path=str(OUT / f"{name}.png"))

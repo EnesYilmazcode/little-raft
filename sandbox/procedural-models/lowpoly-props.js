@@ -41,7 +41,7 @@ function hash4(a, b, c, d) {
   return (h >>> 0) / 4294967296;
 }
 const clamp01 = v => (v < 0 ? 0 : v > 1 ? 1 : v);
-const TWIST = [1.12, 0.97, 0.8];
+const TWIST = [1.16, 0.96, 0.74];
 
 // ================================================================== KIT
 export function lowpoly(T) {
@@ -341,7 +341,7 @@ function buildPlank(T, K, P, r) {
   P.add(K.box(0.12, 0.05, 0.46, 0.012), 'woodDark', { at: [-0.52, H / 2 + 0.022, 0.02], rot: [0, 0.18, 0.02], jitter: 0.01, paint: timberPaint(T, 'z') });
   nail(K, P, -0.51, H / 2 + 0.05, -0.12); nail(K, P, -0.535, H / 2 + 0.05, 0.14);
   // bent nail poking out
-  P.add(K.cyl(0.006, 0.006, 0.09, 4), 'steelDark', { at: [0.05, H / 2 + 0.035, 0.05], rot: [0, 0, 0.55], tint: 0 });
+  P.add(K.cyl(0.007, 0.007, 0.06, 4), 'steel', { at: [0.05, H / 2 + 0.025, 0.05], rot: [0, 0, 0.55], tint: 0 });
 }
 
 function buildLeaf(T, K, P, r) {
@@ -610,13 +610,17 @@ function craftNet(T, K, S) {
   for (let k = 1; k < n; k++) {
     const t = -span + 2 * span * k / n, u = t / span;
     const ptsX = [], ptsZ = [];
-    for (let q = 0; q <= 4; q++) { const v = -1 + 2 * q / 4, sv = v * span; ptsX.push(K.V(sv, sagAt(v, u) + 0.008, t)); ptsZ.push(K.V(t, sagAt(v, u), sv)); }
-    P.add(K.tube(ptsX, 0.021, 3, 8), netRope, { tint: 0.05, twist: 3 });
-    P.add(K.tube(ptsZ, 0.021, 3, 8), netRope, { tint: 0.05, twist: 3 });
-    for (let q = 1; q < n; q++) { const v = -span + 2 * span * q / n; P.add(K.octa(0.036), 'barkLight', { at: [v, sagAt(v / span, u) + 0.006, t], rot: [0, 0.6 + k + q, 0], scale: [1, 0.7, 1], tint: 0.12 }); }
+    // each strand runs over the frame pole and tucks down outside it, so it reads as tied on
+    const fx = h - 0.04, fyX = 0.1, fyZ = 0.06; // poles along z sit at y 0.1, poles along x at 0.06
+    ptsX.push(K.V(-fx - 0.03, fyX - 0.03, t), K.V(-fx, fyX + 0.05, t)); ptsZ.push(K.V(t, fyZ - 0.03, -fx - 0.03), K.V(t, fyZ + 0.05, -fx));
+    for (let q = 1; q < n; q++) { const v = -1 + 2 * q / n, sv = v * span; ptsX.push(K.V(sv, sagAt(v, u) + 0.008, t)); ptsZ.push(K.V(t, sagAt(v, u), sv)); } // a point at every knot
+    ptsX.push(K.V(fx, fyX + 0.05, t), K.V(fx + 0.03, fyX - 0.03, t)); ptsZ.push(K.V(t, fyZ + 0.05, fx), K.V(t, fyZ - 0.03, fx + 0.03));
+    P.add(K.tube(ptsX, 0.02, 3, 11), netRope, { tint: 0.04, twist: 3 });
+    P.add(K.tube(ptsZ, 0.02, 3, 11), netRope, { tint: 0.04, twist: 3 });
+    for (let q = 1; q < n; q++) { const v = -span + 2 * span * q / n; P.add(K.octa(0.042), 'rope', { at: [v, sagAt(v / span, u) + 0.006, t], rot: [0, 0.6 + k + q, 0], scale: [1, 0.7, 1], tint: 0.12 }); }
   }
   // corner lashings binding the frame
-  for (const [x, z] of [[-h + 0.04, -h + 0.04], [h - 0.04, -h + 0.04], [-h + 0.04, h - 0.04], [h - 0.04, h - 0.04]]) P.add(K.torus(0.055, 0.014, 3, 8), 'ropeDark', { at: [x, 0.08, z], rot: [Math.PI / 2, 0, 0.7], scale: [1, 1, 1.3], twist: 8 });
+  for (const [x, z] of [[-h + 0.04, -h + 0.04], [h - 0.04, -h + 0.04], [-h + 0.04, h - 0.04], [h - 0.04, h - 0.04]]) P.add(K.torus(0.055, 0.014, 3, 6), 'ropeDark', { at: [x, 0.08, z], rot: [Math.PI / 2, 0, 0.7], scale: [1, 1, 1.3], twist: 6 });
   for (const [x, z] of [[0, -h + 0.02], [0, h - 0.02], [-h + 0.02, 0.3], [h - 0.02, -0.3]]) P.add(K.cyl(0.085, 0.085, 0.13, 6, 0.025), 'float', { at: [x, 0.06, z], rot: [Math.PI / 2, 0, x ? Math.PI / 2 : 0], paint: (c, m) => { if (Math.abs(m.x - x) + Math.abs(m.z - z) < 0.03) c.set(PALETTE.floatLight); } });
 }
 
@@ -652,7 +656,7 @@ function craftLantern(T, K, S) {
   S.glow.add(K.cyl(0.026, 0.028, 0.08, 6), 'candle', { at: [LX, 1.18, 0], tint: 0 });
   S.glow.add(K.cone(0.022, 0.07, 5), 'flame', { at: [LX, 1.255, 0], tint: 0, paint: (c, m) => { if (m.y < 1.245) c.set(PALETTE.flameCore); } });
   const hot = new T.Color(PALETTE.flame);
-  S.glow.add(K.box(0.15, 0.24, 0.15, 0.01), 'glass', { at: [LX, 1.25, 0], tint: 0, edge: 0, alpha: 0.42, vpaint: (c, v) => c.lerp(hot, clamp01(1.3 - (v.y - 1.13) / 0.24 * 1.4) * 0.6) });
+  S.glow.add(K.box(0.15, 0.24, 0.15, 0.01), 'glass', { at: [LX, 1.25, 0], tint: 0, edge: 0, alpha: 0.55, vpaint: (c, v) => c.lerp(hot, clamp01(1.3 - (v.y - 1.13) / 0.24 * 1.4) * 0.75) });
 }
 
 function craftPalm(T, K, S) {

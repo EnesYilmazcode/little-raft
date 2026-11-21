@@ -4,6 +4,7 @@
 // ?view=scene             raft + crafts + floating debris, current (left) vs new (right), with frame stats
 // ?view=fp                same raft: first-person eye view (top row) and close top-down (bottom row)
 // ?view=stats             per-model triangles, meshes, draw calls (incl. shadow pass), build ms, frame ms
+// ?view=hero&names=a,b  520 px close-ups, current above new
 // ?view=spin              live turntable of all new props (interactive check, not used by shoot.py)
 import * as T from '../../dist/vendor/three.module.js';
 import { createDebris } from '../../dist/debris.js';
@@ -100,6 +101,16 @@ if (VIEW === 'grid' || VIEW === 'compare') {
   rows.forEach(([yaw, set], ri) => pageNames.forEach((n, ci) => {
     const obj = shade(set === 'new' ? fresh(n) : current(n));
     if (obj) { shootCell(scene, obj, ci * CW, ri * CH, CW, CH, yaw); const s = geoStats(obj); label(`${set === 'new' ? 'NEW' : 'cur'} ${n}  ${s.tris}t ${s.meshes}m${VIEW === 'grid' ? '  ' + yaw + '°' : ''}`, ci * CW + 4, ri * CH + 4); disposeObj(obj); }
+  }));
+  finish();
+} else if (VIEW === 'hero') {
+  // ?view=hero&names=a,b,c[&ao=0]: big close-ups (520 px cells), current on top, new below
+  const names = (q.get('names') || 'lantern,crate,net').split(','), CW = 520, CH = 520;
+  renderer.setSize(CW * names.length, CH * 2);
+  const scene = stage();
+  names.forEach((n, ci) => [['current', 35], ['new', 35]].forEach(([set, yaw], ri) => {
+    const obj = shade(set === 'new' ? fresh(n) : current(n));
+    shootCell(scene, obj, ci * CW, ri * CH, CW, CH, yaw, +(q.get('elev') || 24)); label(`${set} ${n}`, ci * CW + 4, ri * CH + 4); disposeObj(obj);
   }));
   finish();
 } else if (VIEW === 'stats') {

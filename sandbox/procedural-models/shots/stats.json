@@ -20,23 +20,23 @@
   "renderer": "SwiftShader (relative timings only)",
   "scene": {
    "current": {
-    "buildMs": 597.3,
+    "buildMs": 991.8,
     "drawCalls": 271,
     "triangles": 251208,
     "meshes": 137,
     "materials": 78,
-    "frameMs": 5.15,
+    "frameMs": 25.66,
     "programs": 8,
     "textures": 7,
     "geometries": 137
    },
    "new": {
-    "buildMs": 591.1,
+    "buildMs": 427,
     "drawCalls": 50,
-    "triangles": 47194,
+    "triangles": 50218,
     "meshes": 26,
     "materials": 4,
-    "frameMs": 0.92,
+    "frameMs": 0.76,
     "programs": 9,
     "textures": 8,
     "geometries": 163
@@ -370,5 +370,13 @@
   "view": "fp",
   "renderer": "SwiftShader (relative timings only)",
   "scene": {}
+ },
+ "hero_0": {
+  "view": "hero",
+  "renderer": "SwiftShader (relative timings only)"
+ },
+ "hero_1": {
+  "view": "hero",
+  "renderer": "SwiftShader (relative timings only)"
  }
 }
