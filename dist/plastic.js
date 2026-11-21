@@ -43,7 +43,7 @@ function build(T) {
     new T.Vector3(x, y, z), new T.Quaternion().setFromEuler(new T.Euler(rx, ry, rz)), new T.Vector3(sx, sy, sz)));
 
   // 1. Hollow body (open neck) with dents, sun-yellowing, grime and a faded red label.
-  const body = new T.LatheGeometry(prof.map(([r, y]) => new T.Vector2(r, y)), 32);
+  const body = new T.LatheGeometry(prof.map(([r, y]) => new T.Vector2(r, y)), 16);
   {
     const p = body.attributes.position;
     const col = new Float32Array(p.count * 3);
@@ -69,18 +69,18 @@ function build(T) {
   }
   const parts = [body];
   // 2. Neck lip ring.
-  parts.push(paint(xf(new T.TorusGeometry(0.079, 0.008, 5, 18), 0, 0.268, 0, Math.PI / 2), white));
+  parts.push(paint(xf(new T.TorusGeometry(0.079, 0.008, 4, 10), 0, 0.268, 0, Math.PI / 2), white));
   // 3. Faded blue cap (slight tilt) + 4. tamper ring.
-  parts.push(paint(xf(new T.CylinderGeometry(0.086, 0.09, 0.07, 20), 0, 0.315, 0, 0, 0, 0.03),
+  parts.push(paint(xf(new T.CylinderGeometry(0.086, 0.09, 0.07, 14), 0, 0.315, 0, 0, 0, 0.03),
     (x, y) => mix(capBlue, capFade, y > 0.03 ? 0.55 : 0.15)));
-  parts.push(paint(xf(new T.TorusGeometry(0.088, 0.007, 5, 20), 0, 0.283, 0, Math.PI / 2), capBlue));
+  parts.push(paint(xf(new T.TorusGeometry(0.088, 0.007, 4, 14), 0, 0.283, 0, Math.PI / 2), capBlue));
   // 5. Handle loop (half torus bulging out on +x, ends buried in shoulder).
-  parts.push(paint(xf(new T.TorusGeometry(0.085, 0.022, 6, 14, Math.PI), 0.228, 0.06, 0, 0, 0, -Math.PI / 2, 1, 1, 1.25), yellowed));
+  parts.push(paint(xf(new T.TorusGeometry(0.085, 0.022, 5, 8, Math.PI), 0.228, 0.06, 0, 0, 0, -Math.PI / 2, 1, 1, 1.25), yellowed));
   // 6. Mold seam running up the -x side and across the base.
   const seamPts = [];
   for (let y = 0.24; y >= -0.345; y -= 0.02) seamPts.push(new T.Vector3(-radiusAt(y) - 0.002, y, 0));
   seamPts.push(new T.Vector3(0, -0.352, 0), new T.Vector3(radiusAt(-0.34), -0.352, 0));
-  parts.push(paint(new T.TubeGeometry(new T.CatmullRomCurve3(seamPts), 32, 0.0035, 3, false), grime));
+  parts.push(paint(new T.TubeGeometry(new T.CatmullRomCurve3(seamPts), 12, 0.0035, 3, false), grime));
 
   // merge (non-indexed) and normals
   body.computeVertexNormals();

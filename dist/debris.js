@@ -214,7 +214,7 @@ function leafletGeo(T, base, dir, len, wid, droop, out) {
   // out = {pos:[], idx:[]} single sheet, rendered with side: DoubleSide
   const up = new T.Vector3(0, 1, 0);
   const perp = new T.Vector3().crossVectors(up, dir).normalize();
-  const rows = 3, start = out.pos.length / 3;
+  const rows = 2, start = out.pos.length / 3;
   for (let i = 0; i <= rows; i++) {
     const t = i / rows;
     const prof = Math.pow(Math.sin(Math.PI * Math.min(1, t * 0.92 + 0.08)), 0.8) * (1 - 0.35 * t);
@@ -255,7 +255,7 @@ function frondGeo(T, r, length, count) {
   blades.computeVertexNormals();
   // rachis (midrib of the frond)
   const curve = new T.CatmullRomCurve3([0, 0.25, 0.5, 0.75, 1].map(P));
-  const rib = new T.TubeGeometry(curve, 8, 0.009, 3, false);
+  const rib = new T.TubeGeometry(curve, 5, 0.009, 3, false);
   return merge(T, [blades, rib]);
 }
 
@@ -271,13 +271,13 @@ function buildLeaf(T, getMaterial, root, inner, r) {
     parts.push(tint(T, g, greens[f % greens.length]));
   }
   // central stem the fronds sprout from
-  const stem = new T.CylinderGeometry(0.022, 0.034, 0.36, 8);
+  const stem = new T.CylinderGeometry(0.022, 0.034, 0.36, 6);
   place(T, stem, sx - 0.12, 0.01, 0, 0, 0, Math.PI / 2 - 0.08);
   parts.push(tint(T, stem, '#7d8a3d'));
   // twine tie binding the bundle
   parts.push(
-    tint(T, place(T, new T.TorusGeometry(0.037, 0.008, 4, 12), sx - 0.08, 0.012, 0, 0, Math.PI / 2, 0), '#b89a64'),
-    tint(T, place(T, new T.TorusGeometry(0.035, 0.008, 4, 12), sx - 0.045, 0.014, 0, 0, Math.PI / 2, 0), '#b89a64'),
+    tint(T, place(T, new T.TorusGeometry(0.037, 0.008, 3, 8), sx - 0.08, 0.012, 0, 0, Math.PI / 2, 0), '#b89a64'),
+    tint(T, place(T, new T.TorusGeometry(0.035, 0.008, 3, 8), sx - 0.045, 0.014, 0, 0, Math.PI / 2, 0), '#b89a64'),
   );
   // one vertex-colored, double-sided mesh for the whole bundle
   mesh(T, merge(T, parts, true), paintMat(T, T.DoubleSide), inner);
@@ -298,7 +298,7 @@ function buildScrap(T, getMaterial, root, inner, r) {
     y -= 0.03 * Math.exp(-((x - dentX) ** 2 + (z - dentZ) ** 2) / 0.012);
     return y;
   };
-  const g = new T.PlaneGeometry(W, D, 22, 14);
+  const g = new T.PlaneGeometry(W, D, 22, 8); // x keeps the corrugation ripple, z only carries the curl
   g.rotateX(-Math.PI / 2);
   const p = g.attributes.position, n = p.count;
   const col = new Float32Array(n * 3);
@@ -348,7 +348,9 @@ function buildScrap(T, getMaterial, root, inner, r) {
 function buildBarrel(T, getMaterial, root, inner, r, opts) {
   const H = 1, hh = H / 2, rMid = 0.435, rEnd = 0.372;
   const rad = (y) => rEnd + (rMid - rEnd) * (1 - (y / hh) ** 2);
-  const staves = 14, gap = 0.014, thick = 0.03, rows = 6;
+  const staves = 14, gap = 0.014, thick = 0.03, rows = 4;
+  // stave surface radius: the bulge sampled at the row knots, straight between them
+  const radS = (y) => { const f = ((y + hh) / H) * rows, i = Math.min(rows - 1, Math.floor(f)), y0 = -hh + (H * i) / rows, y1 = y0 + H / rows; return rad(y0) + (rad(y1) - rad(y0)) * (f - i); };
   const body = new T.Group();
   const wood = [], metal = []; // merged into one vertex-colored mesh each
   for (let s = 0; s < staves; s++) {
@@ -362,10 +364,11 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
   }
 
   // recessed end caps (chime)
-  const capR = rEnd - thick + 0.004, capY = hh - 0.045;
+  // 12-sided caps circumscribe the old round cap so no gap opens at the stave wall (corners hide inside it)
+  const capR = rEnd - thick + 0.004, capY = hh - 0.045, capC = capR / Math.cos(Math.PI / 12);
   wood.push(
-    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, capY, 0), '#9a6538'),
-    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, -capY, 0), '#9a6538'),
+    tint(T, place(T, new T.CylinderGeometry(capC, capC, 0.03, 12), 0, capY, 0), '#9a6538'),
+    tint(T, place(T, new T.CylinderGeometry(capC, capC, 0.03, 12), 0, -capY, 0), '#9a6538'),
   );
   // board seams on top cap
   for (const z of [-0.18, -0.06, 0.06, 0.18]) {
@@ -376,18 +379,18 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
   // two dark metal hoops with rivets
   const hoopYs = [-0.3, 0.3];
   for (const y of hoopYs) {
-    const R = rad(y), w = 0.038;
+    const R = radS(y), w = 0.038;
     const prof = [
       new T.Vector2(R - 0.004, y - w), new T.Vector2(R + 0.012, y - w + 0.004),
       new T.Vector2(R + 0.015, y), new T.Vector2(R + 0.012, y + w - 0.004),
-      new T.Vector2(R - 0.004, y + w), new T.Vector2(R - 0.004, y - w),
+      new T.Vector2(R - 0.004, y + w), // inner face is hidden inside the staves: profile left open
     ];
-    metal.push(tint(T, new T.LatheGeometry(prof, 32), '#3a3f44'));
+    metal.push(tint(T, new T.LatheGeometry(prof, 20), '#3a3f44'));
   }
   for (const y of hoopYs) {
-    const R = rad(y) + 0.014;
-    for (let k = 0; k < 10; k++) {
-      const a = (k / 10) * Math.PI * 2 + 0.2;
+    const R = radS(y) + 0.014;
+    for (let k = 0; k < 7; k++) {
+      const a = (k / 7) * Math.PI * 2 + 0.2;
       metal.push(tint(T, place(T, new T.SphereGeometry(0.011, 4, 2), Math.sin(a) * R, y, Math.cos(a) * R), '#6d757b'));
     }
   }
