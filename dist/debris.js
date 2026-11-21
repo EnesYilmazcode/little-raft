@@ -2,9 +2,11 @@
 // export createDebris(T, type, getMaterial, opts?) -> THREE.Group
 //   type: 'wood' | 'leaf' | 'scrap' | 'barrel'
 //   getMaterial(colorString) -> shared MeshStandardMaterial (owned by engine, never disposed here)
-//   opts (optional): { seed:number, tilt:number (barrel axis tilt, radians; default ~0.2) }
+//   opts (optional): { seed:number (callers keep the set of seeds small: one cached model each), tilt:number (barrel axis tilt, radians; default ~0.2) }
 // Root is untransformed (engine positions/rotates it). Content is centered on the origin.
-// All geometry is created per call and owned by the returned group's meshes.
+// With opts.seed the model is cached per (type, seed, tilt) and every call returns a clone sharing its
+// geometry (geometry.userData.shared = true): never dispose that geometry per item. Without a seed,
+// geometry is created per call and owned by the returned group's meshes.
 // Materials created here are cached per T and shared by every item (material.userData.shared = true);
 // they must not be disposed when one item is removed. root.userData.localMaterials stays empty.
 
@@ -102,6 +104,15 @@ function metalMat(T, color, extra = {}) {
 const paintMat = (T, side) =>
   sharedMat(T, `paint|${side}`, { color: 0xffffff, vertexColors: true, roughness: 0.85, metalness: 0, side });
 
+// A vertex-coloured twin of an engine material (same maps, shared), cached per source material.
+const TWINS = new WeakMap();
+function vertexColored(T, src) {
+  if (src.vertexColors) return src;
+  let m = TWINS.get(src);
+  if (!m) { m = src.clone(); m.vertexColors = true; m.userData.shared = true; TWINS.set(src, m); }
+  return m;
+}
+
 // Center content on origin; uniformly shrink if xz footprint exceeds maxXZ.
 function fit(T, inner, maxXZ) {
   inner.updateMatrixWorld(true);
@@ -145,15 +156,19 @@ function buildWood(T, getMaterial, root, inner, r) {
     p.setY(i, p.getY(i) + bow * u * u + twist * z * u);
   }
   p.needsUpdate = true;
-  g.computeBoundingSphere();
-  mesh(T, g, getMaterial('#d5a265'), inner);
-
-  // bent rusty nail near the chipped end
-  const nailMat = metalMat(T, '#6f6964', { roughness: 0.6 });
+  // bent rusty nail near the chipped end, merged into the plank: one draw. The plank material (often a
+  // wood-grain map tinted #d5a265) gets vertex colours; the nail's colour is the rust grey divided by the
+  // plank tint, sampled at one texel, so it renders as #6f6964 (matte rather than metallic: it is tiny).
   const shaft = place(T, new T.CylinderGeometry(0.006, 0.006, 0.07, 6), 0.6, 0.065, 0.06, 0, 0, 0.35);
   const tip = place(T, new T.CylinderGeometry(0.005, 0.002, 0.045, 6), 0.627, 0.11, 0.06, 0, 0, 1.25);
   const head = place(T, new T.CylinderGeometry(0.014, 0.014, 0.005, 8), 0.588, 0.034, 0.06);
-  mesh(T, merge(T, [shaft, tip, head]), nailMat, inner, false);
+  const nail = merge(T, [shaft, tip, head]);
+  nail.attributes.uv.array.fill(0.5);
+  const wood = new T.Color('#d5a265'), rust = new T.Color('#6f6964');
+  tint(T, nail, 0xffffff);
+  const nc = nail.attributes.color.array;
+  for (let i = 0; i < nc.length; i += 3) { nc[i] = rust.r / wood.r; nc[i + 1] = rust.g / wood.g; nc[i + 2] = rust.b / wood.b; }
+  mesh(T, merge(T, [tint(T, g, 0xffffff), nail], true), vertexColored(T, getMaterial('#d5a265')), inner);
 }
 
 // ---------------------------------------------------------------- palm leaves
@@ -272,24 +287,23 @@ function buildScrap(T, getMaterial, root, inner, r) {
   g.setAttribute('color', new T.BufferAttribute(col, 3));
   g.computeVertexNormals();
   const sheetMat = metalMat(T, '#ffffff', { vertexColors: true, side: T.DoubleSide });
-  mesh(T, g, sheetMat, inner);
 
   // bolts/rivets along the crease and the near edge
   const spots = [[foldX - 0.03, -0.2], [foldX - 0.03, -0.04], [foldX - 0.03, 0.12], [-0.33, -0.05], [-0.33, 0.1], [0.32, 0.02]];
   const bolts = spots.map(([x, z]) => {
     const b = new T.CylinderGeometry(0.017, 0.019, 0.014, 6);
-    return place(T, b, x, height(x, z) + 0.008, z, 0, r() * 1.0, x > foldX ? foldK * 0.8 : 0);
+    return tint(T, place(T, b, x, height(x, z) + 0.008, z, 0, r() * 1.0, x > foldX ? foldK * 0.8 : 0), '#8e9aa2');
   });
-  mesh(T, merge(T, bolts), metalMat(T, '#8e9aa2', { roughness: 0.45 }), inner);
 
   // small bent rusty bracket bolted to the sheet
   const bx = -0.2, bz = 0.02, by = height(bx, bz) + 0.01;
-  const bracket = merge(T, [
+  const bracket = [
     place(T, new T.BoxGeometry(0.2, 0.012, 0.055), bx, by, bz),
     place(T, new T.BoxGeometry(0.012, 0.09, 0.055), bx + 0.104, by + 0.04, bz, 0, 0, -0.25),
     place(T, new T.CylinderGeometry(0.012, 0.012, 0.012, 6), bx - 0.06, by + 0.01, bz),
-  ]);
-  mesh(T, bracket, metalMat(T, '#9a5a32', { metalness: 0.4, roughness: 0.75 }), inner);
+  ].map((b) => tint(T, b, '#9a5a32'));
+  // sheet, bolts and bracket share the vertex-coloured sheet material: one draw
+  mesh(T, merge(T, [g, ...bolts, ...bracket], true), sheetMat, inner);
 }
 
 // ---------------------------------------------------------------- barrel
@@ -359,9 +373,8 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
   inner.add(pivot);
 }
 
-export function createDebris(T, type, getMaterial, opts = {}) {
-  if (!TYPES.includes(type)) throw new Error(`createDebris: unknown type "${type}"`);
-  const r = rng(opts.seed != null ? opts.seed : Math.floor(Math.random() * 2 ** 31));
+function build(T, type, getMaterial, opts, seed) {
+  const r = rng(seed);
   const root = new T.Group();
   root.name = `debris-${type}`;
   root.userData.type = type;
@@ -377,6 +390,25 @@ export function createDebris(T, type, getMaterial, opts = {}) {
   const size = new T.Box3().setFromObject(inner).getSize(new T.Vector3());
   root.userData.size = { x: size.x, y: size.y, z: size.z };
   return root;
+}
+
+// Seeded models are built once per (type, seed, tilt[, plank material]) and cloned: clones share the
+// template's geometry (geometry.userData.shared = true, so never dispose it per item) and materials.
+const TEMPLATES = new WeakMap();
+export function createDebris(T, type, getMaterial, opts = {}) {
+  if (!TYPES.includes(type)) throw new Error(`createDebris: unknown type "${type}"`);
+  if (opts.seed == null) return build(T, type, getMaterial, opts, Math.floor(Math.random() * 2 ** 31));
+  let cache = TEMPLATES.get(T);
+  if (!cache) TEMPLATES.set(T, (cache = new Map()));
+  const key = `${type}|${opts.seed}|${opts.tilt}|${type === 'wood' ? getMaterial('#d5a265').id : ''}`;
+  let tpl = cache.get(key);
+  if (!tpl) {
+    if (cache.size >= 64) cache.clear();
+    tpl = build(T, type, getMaterial, opts, opts.seed);
+    tpl.traverse((o) => { if (o.geometry) o.geometry.userData.shared = true; });
+    cache.set(key, tpl);
+  }
+  return tpl.clone();
 }
 
 export default createDebris;
