@@ -49,11 +49,17 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
   y 327, 45.3 % H), 2019-02-07-*-07 L191 to L149 (step 42), 2021-04-01-devblog-46-03 L237 to L189
   (step 48, at y 357). The sea just below the horizon is about 20 % darker than the sky just above
   it. On calm days the line is dead straight: in 2018-08-15-*-05, the horizon row varies by 1 px
-  (0.14 % H) across the full width.
+  (0.14 % H) across the full width. **[VERIFIED: re-measured sky 4 px above vs sea 3 to 7 px below,
+  x 30 to 70 % W: 2018-08-15 L202 to L158 (22 % darker, falls to L149 by +9 px), 2019-02-07 L190 to
+  L150 (21 %), 2021-04-01 L230 to about L180 (about 20 to 22 %); so "about 20 %" holds, range 20 to
+  26 % depending on how far below the line you sample. Per-column horizon in 2018-08-15 is rows
+  326 to 327 only.]**
 - **C2 The sea brightens strongly toward the horizon.** In the same frames, the sea 25 % H below the
   horizon is L54 to L61 (2019-02-07-*-07, 2018-08-15-*-05), while the sea just under the line is
   L149 to L150, about 2.5x brighter. store_20 shows the same: sea at the horizon (640,276) L199
-  against deep water near the reef (1150,450) L77.
+  against deep water near the reef (1150,450) L77. **[CORRECTED: about 3x, not 2.5x. Re-measured sea
+  25 % H below the horizon is L55 (2018-08-15) and L50 (2019-02-07), against L158/L150 just under
+  the line, ratios 2.9 and 3.0. store_20 samples L199 and L77 reproduce exactly.]**
 - **C3 The sky is a vertical gradient that is brightest at the horizon.** The zenith is 7 to 40 %
   darker than the horizon: 2018-07-13-development-blog-35-01 top (640,30) L123 against the horizon
   band (40,440) L203; 2021-04-01-devblog-46-03 top L173 against L237; store_20 top L215 against L231.
