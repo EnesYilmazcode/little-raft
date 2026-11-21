@@ -236,7 +236,7 @@ export function createLogbookUI({ getProgress, onPause, onResume, tasks } = {}) 
   dlg.addEventListener('click', e => {
     if (e.target?.closest?.('.lb-close')) { close(); return; }
     const c = e.target?.closest?.('[data-claim]');
-    if (c && !c.disabled) { const id = c.dataset.claim; c.disabled = true; safe(tasks?.claim, /^\d$/.test(id) ? Number(id) : id); setTimeout(() => { if (alive && isOpen) renderTasks(); }, 0); return; }
+    if (c && !c.disabled) { const id = c.dataset.claim; c.disabled = true; safe(tasks?.claim, /^\d$/.test(id) ? Number(id) : id); setTimeout(() => { if (alive && isOpen && c.isConnected) renderTasks(); }, 1500); return; } // update() redraws on a new view; this only re-arms a refused claim
     const t = e.target?.closest?.('[role=tab]');
     if (t) select(t.dataset.tab, true);
   }, opt);
