@@ -56,6 +56,11 @@ void main() {
 }
 `;
 
+const MAX_FOAM = 32;     // floating items that leave a foam collar
+const GRID = 128;        // raft foam field: 0.5 m texels covering 64 m, centred on the origin
+const TEXEL = 0.5;
+const COLLAR = 1.4;      // metres of foam beyond the deck edge
+
 const fragmentShader = /* glsl */`
 uniform float uTime;
 uniform vec3 uSunDir;
@@ -67,6 +72,8 @@ uniform vec3 uShallow;
 uniform vec3 uFoam;
 uniform float uFadeNear;
 uniform float uFadeFar;
+uniform sampler2D uRaftMask;
+uniform vec4 uFoamPts[${MAX_FOAM}];
 varying vec3 vWorld;
 varying vec3 vNormalW;
 varying float vHeight;
@@ -93,60 +100,69 @@ void main() {
   float dist = length(toCam.xz);
   vec3 V = normalize(toCam);
   vec3 L = normalize(uSunDir);
-
-  // Detail ripples fade with distance to avoid shimmering / aliasing.
-  float near = 1.0 - smoothstep(8.0, 60.0, dist);
-  vec2 g = vec2(0.0);
   vec2 p = vWorld.xz;
-  ripple(normalize(vec2(0.8, 0.6)), 0.010, 2.10, 1.30, p, g);
-  ripple(normalize(vec2(-0.5, 0.9)), 0.008, 2.90, 1.70, p, g);
-  ripple(normalize(vec2(0.95, -0.3)), 0.006, 4.30, 2.10, p, g);
-  ripple(normalize(vec2(-0.9, -0.4)), 0.004, 6.70, 2.60, p, g);
-  ripple(normalize(vec2(0.2, 1.0)), 0.003, 9.10, 3.10, p, g);
-  g *= near;
+
+  // Detail ripples fade with distance to avoid shimmering.
+  vec2 g = vec2(0.0);
+  ripple(vec2(0.8, 0.6), 0.012, 2.10, 1.30, p, g);
+  ripple(vec2(-0.48564, 0.87416), 0.009, 2.90, 1.70, p, g);
+  ripple(vec2(0.95448, -0.29827), 0.007, 4.30, 2.10, p, g);
+  ripple(vec2(-0.91192, -0.41036), 0.005, 6.70, 2.60, p, g);
+  ripple(vec2(0.19612, 0.98058), 0.0035, 9.10, 3.10, p, g);
+  g *= 1.0 - smoothstep(8.0, 60.0, dist);
   vec3 n = normalize(vec3(vNormalW.x - g.x, vNormalW.y, vNormalW.z - g.y));
 
   float ndv = max(dot(n, V), 0.0);
-  float fresnel = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
-  fresnel = min(fresnel, 0.72);
-
+  float fresnel = min(0.02 + 0.98 * pow(1.0 - ndv, 5.0), 0.6);
   vec3 R = reflect(-V, n);
-  vec3 skyRefl = mix(uSky, uZenith, smoothstep(0.0, 0.6, R.y));
+  vec3 skyRefl = mix(uSky, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.3));
 
-  // Body colour: deep teal in troughs, turquoise on crests and in slow patches.
-  float patches = vnoise(p * 0.045 + uTime * 0.01) * 0.6 + vnoise(p * 0.13 - uTime * 0.02) * 0.4;
+  // Water body: looking steeply down near the raft you see clear turquoise; grazing and far
+  // away the light path is long, so it sinks to deep blue. Crests glow where sun passes through.
   float h = clamp(vHeight / 0.2 * 0.5 + 0.5, 0.0, 1.0);
-  float shallowMix = clamp(h * 0.55 + patches * 0.35 + (1.0 - ndv) * 0.15, 0.0, 1.0);
-  vec3 body = mix(uDeep, uShallow, shallowMix);
-  // Soft subsurface glow where sunlight passes through crests.
-  float sss = smoothstep(0.45, 1.0, h) * (0.5 + 0.5 * max(dot(n, L), 0.0)) * 0.35;
+  float clear = pow(ndv, 1.4) * (1.0 - smoothstep(4.0, 45.0, dist));
+  float patches = vnoise(p * 0.05 + uTime * 0.01);
+  vec3 body = mix(uDeep, uShallow, clamp(clear * 0.85 + h * 0.25 + patches * 0.12, 0.0, 1.0));
+  float sss = smoothstep(0.5, 1.0, h) * pow(max(dot(-V, L) * 0.5 + 0.5, 0.0), 2.0) * 0.45;
   body += uShallow * sss;
-  float diff = 0.7 + 0.3 * max(dot(n, L), 0.0);
-  vec3 col = mix(body * diff, skyRefl, fresnel);
+  vec3 col = mix(body * (0.78 + 0.22 * max(dot(n, L), 0.0)), skyRefl, fresnel);
 
-  // Sun highlights: sharp glint + broad sheen, clamped and faded to avoid flashing.
+  // Sun: sharp glint + broad sheen.
   vec3 H = normalize(L + V);
   float ndh = max(dot(n, H), 0.0);
-  float spec = pow(ndh, 260.0) * 1.6 + pow(ndh, 36.0) * 0.12;
-  spec = min(spec, 1.4) * (1.0 - smoothstep(40.0, 120.0, dist) * 0.7);
-  col += uSunColor * spec;
+  float spec = min(pow(ndh, 300.0) * 2.0 + pow(ndh, 40.0) * 0.12, 1.6);
+  col += uSunColor * spec * (1.0 - smoothstep(40.0, 120.0, dist) * 0.6);
 
-  // Thin, sparse lacy foam riding the crests.
-  vec2 fp = p + vec2(uTime * 0.35, uTime * 0.12);
-  float n1 = vnoise(fp * 0.9);
-  float n2 = vnoise(fp * 2.6 + vec2(uTime * -0.2, uTime * 0.15));
-  float lace = 1.0 - smoothstep(0.0, 0.035, abs(n1 * 0.7 + n2 * 0.3 - 0.5));
-  float crest = smoothstep(0.06, 0.17, vHeight);
-  float speck = smoothstep(0.86, 0.93, vnoise(fp * 3.7)) * smoothstep(0.0, 0.12, vHeight);
-  float foam = clamp(lace * crest * 0.55 + speck * 0.35, 0.0, 0.6);
+  // Foam: one lace pattern, revealed by crests, the raft edge and floating items.
+  vec2 fp = p + vec2(uTime * 0.3, uTime * 0.1);
+  float lace = vnoise(fp * 1.7) * 0.6 + vnoise(fp * 4.3 - uTime * 0.25) * 0.4;
+  float crest = smoothstep(0.07, 0.18, vHeight) * 0.6;
+  float edge = 0.0;
+  if (dist < 45.0) {
+    // Raft collar: CPU-built falloff field, filtered by hand so it is smooth on every GPU.
+    vec2 t = p / ${TEXEL.toFixed(2)} + ${(GRID / 2 - 0.5).toFixed(1)};
+    vec2 i0 = floor(t), fr = t - i0;
+    i0 = (i0 + 0.5) / ${GRID.toFixed(1)};
+    float k = 1.0 / ${GRID.toFixed(1)};
+    float m = mix(mix(texture2D(uRaftMask, i0).r, texture2D(uRaftMask, i0 + vec2(k, 0.0)).r, fr.x),
+                  mix(texture2D(uRaftMask, i0 + vec2(0.0, k)).r, texture2D(uRaftMask, i0 + vec2(k)).r, fr.x), fr.y);
+    edge = m * (0.85 + 0.15 * sin(uTime * 1.7 + p.x * 2.0 + p.y * 1.3));
+    for (int i = 0; i < ${MAX_FOAM}; i++) {
+      vec4 f = uFoamPts[i];
+      if (f.z <= 0.0) continue;
+      float d = length(p - f.xy) / f.z;  // thin broken ring hugging the item's waterline
+      edge = max(edge, smoothstep(0.35, 0.7, d) * (1.0 - smoothstep(0.7, 1.0, d)) * 0.5);
+    }
+  }
+  float amount = max(crest, edge);
+  float foam = smoothstep(1.0 - amount, 1.0 - amount * 0.55, lace) * min(1.0, amount * 1.4);
   foam *= 1.0 - smoothstep(30.0, 90.0, dist);
-  col = mix(col, uFoam, foam);
+  col = mix(col, uFoam, foam * 0.85);
 
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   // Fade toward the (untonemapped) sky colour after tone mapping so the horizon matches the background.
-  float fade = smoothstep(uFadeNear, uFadeFar, dist);
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, uSky, fade);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, uSky, smoothstep(uFadeNear, uFadeFar, dist));
   #include <colorspace_fragment>
 }
 `;
@@ -158,18 +174,23 @@ export function createOcean(T, options = {}) {
   geometry.rotateX(-Math.PI / 2);
 
   const sun = options.sunDirection ?? new T.Vector3(-15, 28, 12);
+  const maskData = new Uint8Array(GRID * GRID);
+  const mask = new T.DataTexture(maskData, GRID, GRID, T.RedFormat, T.UnsignedByteType);
+    const foamPts = Array.from({ length: MAX_FOAM }, () => new T.Vector4());
   const uniforms = {
     uTime: { value: 0 },
     uCamera: { value: new T.Vector3() },
     uSunDir: { value: sun.clone().normalize() },
     uSunColor: { value: new T.Color('#fff3d6') },
-    uSky: { value: new T.Color(options.skyColor ?? '#99dfe1') },
-    uZenith: { value: new T.Color('#5fb6dc') },
-    uDeep: { value: new T.Color('#0a4a5a') },
-    uShallow: { value: new T.Color('#1fa9a8') },
-    uFoam: { value: new T.Color('#eefbf8') },
+    uSky: { value: new T.Color(options.skyColor ?? '#d6ecf2') },
+    uZenith: { value: new T.Color(options.zenith ?? '#5aa3dc') },
+    uDeep: { value: new T.Color('#07476b') },
+    uShallow: { value: new T.Color('#1fb3b5') },
+    uFoam: { value: new T.Color('#f4fbfb') },
     uFadeNear: { value: options.fadeNear ?? 52 },
     uFadeFar: { value: options.fadeFar ?? 135 },
+    uRaftMask: { value: mask },
+    uFoamPts: { value: foamPts },
   };
 
   const material = new T.ShaderMaterial({
@@ -188,10 +209,51 @@ export function createOcean(T, options = {}) {
 
   const step = size / segments;
   let time = 0;
+  let foamGroup = null;
+
+  // Raft tiles ([x, z], 2 m squares centred on x*2, z*2) -> foam falloff around the deck edge.
+  // Runs only when the raft changes; only texels near the raft are visited.
+  function setRaftTiles(tiles) {
+    maskData.fill(0);
+    if (tiles.length) {
+      let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+      for (const [x, z] of tiles) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+      const pad = 1 + COLLAR, half = GRID / 2;
+      const toI = (w) => Math.max(0, Math.min(GRID - 1, Math.floor(w / TEXEL + half)));
+      for (let j = toI(z0 * 2 - pad); j <= toI(z1 * 2 + pad); j++) {
+        const wz = (j + 0.5 - half) * TEXEL;
+        for (let i = toI(x0 * 2 - pad); i <= toI(x1 * 2 + pad); i++) {
+          const wx = (i + 0.5 - half) * TEXEL;
+          let d = Infinity;
+          for (const [x, z] of tiles) {
+            const dx = Math.max(Math.abs(wx - x * 2) - 1, 0), dz = Math.max(Math.abs(wz - z * 2) - 1, 0);
+            d = Math.min(d, Math.hypot(dx, dz));
+          }
+          const f = 1 - d / COLLAR;
+          if (f > 0) maskData[j * GRID + i] = Math.round(255 * f * f);
+        }
+      }
+    }
+    mask.needsUpdate = true;
+  }
+  // Children of this group (floating items) each get a foam collar, read every update.
+  function trackFoam(group) { foamGroup = group; }
+  function syncFoam() {
+    const kids = foamGroup ? foamGroup.children : null;
+    let n = 0;
+    if (kids) for (let i = 0; i < kids.length && n < MAX_FOAM; i++) {
+      const c = kids[i];
+      if (!c.visible) continue;
+      const r = c.userData.foamRadius ?? 0.7;
+      foamPts[n++].set(c.position.x, c.position.z, r * c.scale.x, 0);
+    }
+    for (; n < MAX_FOAM; n++) foamPts[n].z = 0;
+  }
 
   function update(t, camera) {
     time = t;
     uniforms.uTime.value = t;
+    syncFoam();
     if (camera) {
       uniforms.uCamera.value.copy(camera.position);
       if (options.followCamera) {
@@ -232,17 +294,19 @@ export function createOcean(T, options = {}) {
     return mesh.position.y + tmp[1];
   }
   // Approximate surface slope for tilting floating objects: returns {x, z} tilt gradient.
+  // The returned object is reused between calls; read it before calling again.
+  const slope = { x: 0, z: 0 };
   function getSlope(x, z, t = time, e = 0.6) {
-    return {
-      x: (getHeight(x + e, z, t) - getHeight(x - e, z, t)) / (2 * e),
-      z: (getHeight(x, z + e, t) - getHeight(x, z - e, t)) / (2 * e),
-    };
+    slope.x = (getHeight(x + e, z, t) - getHeight(x - e, z, t)) / (2 * e);
+    slope.z = (getHeight(x, z + e, t) - getHeight(x, z - e, t)) / (2 * e);
+    return slope;
   }
 
   function dispose() {
     geometry.dispose();
     material.dispose();
+    mask.dispose();
   }
 
-  return { mesh, update, getHeight, getSlope, uniforms, material, dispose };
+  return { mesh, update, getHeight, getSlope, setRaftTiles, trackFoam, uniforms, material, dispose };
 }

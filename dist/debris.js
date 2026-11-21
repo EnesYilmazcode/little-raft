@@ -4,8 +4,8 @@
 //   getMaterial(colorString) -> shared MeshStandardMaterial (owned by engine, never disposed here)
 //   opts (optional): { seed:number, tilt:number (barrel axis tilt, radians; default ~0.2) }
 // Root is untransformed (engine positions/rotates it). Content is centered on the origin.
-// All geometry is created per call and owned by the returned group's meshes.
-// Per-instance metal materials are listed in root.userData.localMaterials.
+// Each item is ONE mesh whose geometry and material are shared and cached per engine (flagged
+// userData.shared: the engine must not dispose them per item). seed picks one of 3 variants.
 
 const TYPES = ['wood', 'leaf', 'scrap', 'barrel'];
 
@@ -344,22 +344,82 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
   inner.add(pivot);
 }
 
-export function createDebris(T, type, getMaterial, opts = {}) {
-  if (!TYPES.includes(type)) throw new Error(`createDebris: unknown type "${type}"`);
-  const r = rng(opts.seed != null ? opts.seed : Math.floor(Math.random() * 2 ** 31));
+// Bake a built model into ONE geometry: transforms applied, each part's material colour written
+// as a vertex colour (times any existing one). Textured timber keeps its colour in the map, so
+// its vertices stay white. Temporary part geometries are disposed.
+function bake(T, root) {
+  root.updateMatrixWorld(true);
+  const parts = [], tint = new T.Color();
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const g = (o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone()).applyMatrix4(o.matrixWorld);
+    const n = g.attributes.position.count, col = new Float32Array(n * 3), prev = g.attributes.color;
+    if (o.material.map) tint.setRGB(1, 1, 1); else tint.copy(o.material.color);
+    for (let i = 0; i < n; i++) {
+      col[i * 3] = tint.r * (prev ? prev.getX(i) : 1);
+      col[i * 3 + 1] = tint.g * (prev ? prev.getY(i) : 1);
+      col[i * 3 + 2] = tint.b * (prev ? prev.getZ(i) : 1);
+    }
+    g.setAttribute('color', new T.BufferAttribute(col, 3));
+    parts.push(g);
+    o.geometry.dispose();
+  });
+  return merge(T, parts, true);
+}
+
+// Per-engine caches: every item of a kind reuses one of VARIANTS geometries and one of three
+// materials, so each floating item is one draw call and spawning allocates no GPU data.
+const VARIANTS = 3;
+const caches = new WeakMap();
+function cacheFor(T, getMaterial) {
+  let c = caches.get(getMaterial);
+  if (c) return c;
+  const timber = getMaterial('#d5a265').clone(); // shares the engine's grain texture
+  timber.vertexColors = true;
+  timber.color.set('#ffffff');
+  const plain = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, side: T.DoubleSide });
+  const metal = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.15, side: T.DoubleSide });
+  for (const m of [timber, plain, metal]) m.userData.shared = true;
+  c = { geos: new Map(), mats: { wood: timber, barrel: plain, leaf: plain, scrap: metal } };
+  caches.set(getMaterial, c);
+  return c;
+}
+
+function build(T, type, getMaterial, r, opts) {
   const root = new T.Group();
-  root.name = `debris-${type}`;
-  root.userData.type = type;
   root.userData.localMaterials = [];
   const inner = new T.Group();
-  inner.name = `debris-${type}-model`;
   root.add(inner);
   if (type === 'wood') { buildWood(T, getMaterial, root, inner, r); fit(T, inner, 1.6); }
   else if (type === 'leaf') { buildLeaf(T, getMaterial, root, inner, r); fit(T, inner, 1.75); }
   else if (type === 'scrap') { buildScrap(T, getMaterial, root, inner, r); fit(T, inner, 1.2); }
   else { buildBarrel(T, getMaterial, root, inner, r, opts); fit(T, inner, 1.25); }
-  inner.updateMatrixWorld(true);
-  const size = new T.Box3().setFromObject(inner).getSize(new T.Vector3());
+  const geo = bake(T, root);
+  for (const m of root.userData.localMaterials) m.dispose();
+  geo.computeBoundingBox();
+  geo.userData.shared = true; // the engine must not dispose it when one item is removed
+  return geo;
+}
+
+// Rough half-width on the water, for the ocean's foam collar.
+const FOAM_RADIUS = { wood: 0.95, leaf: 0.95, scrap: 0.75, barrel: 0.7 };
+
+export function createDebris(T, type, getMaterial, opts = {}) {
+  if (!TYPES.includes(type)) throw new Error(`createDebris: unknown type "${type}"`);
+  const c = cacheFor(T, getMaterial);
+  const v = ((opts.seed != null ? opts.seed : Math.floor(Math.random() * 1e9)) >>> 0) % VARIANTS;
+  const key = type + v;
+  let geo = c.geos.get(key);
+  if (!geo) { geo = build(T, type, getMaterial, rng(v * 7919 + 17), opts); c.geos.set(key, geo); }
+  const root = new T.Group();
+  root.name = `debris-${type}`;
+  root.userData.type = type;
+  root.userData.foamRadius = FOAM_RADIUS[type];
+  const m = new T.Mesh(geo, c.mats[type]);
+  m.name = `debris-${type}-model`;
+  m.receiveShadow = true; // no castShadow: the water never receives it, so it only doubled draw calls
+  root.add(m);
+  const size = geo.boundingBox.getSize(new T.Vector3());
   root.userData.size = { x: size.x, y: size.y, z: size.z };
   return root;
 }
