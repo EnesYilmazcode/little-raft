@@ -26,7 +26,7 @@ const DEAD = 25, CLAMP = 140;
 
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
 const CSS = `
-.bm-wheel{position:fixed;left:50%;top:50%;z-index:6;width:min(380px,92vw,66vh);aspect-ratio:1;transform:translate(-50%,-50%) scale(.94);
+.bm-wheel{position:fixed;left:50%;top:50%;z-index:31;width:min(380px,92vw,66vh);aspect-ratio:1;transform:translate(-50%,-50%) scale(.94);
   opacity:0;pointer-events:none;transition:opacity .12s,transform .12s;font:500 13px/1.25 ${FONT};color:#fff2cc;user-select:none;-webkit-user-select:none}
 .bm-wheel.bm-open{opacity:1;transform:translate(-50%,-50%);pointer-events:auto}
 .bm-wheel>svg{display:block;width:100%;height:100%;overflow:visible;filter:drop-shadow(0 8px 22px #0008)}
