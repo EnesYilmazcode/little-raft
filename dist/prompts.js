@@ -43,6 +43,8 @@ export function isNotice(text, hasKbd) {
   // "Floor needs" doubles as game.js's hover prompt; the muted "Needs …" prompt already covers it.
   return !!t && !hasKbd && !/^(Hold click to reel|Waiting for your brother|Floor needs)/i.test(t);
 }
+// While a throw charges, the charge bar sits in the prompt's first row (prompts.css), so the prompt steps aside.
+export const promptQuiet = s => !!s?.charging || !!s?.inventoryOpen;
 export function shouldPost(last, text, now) { return !(last && last.text === text && now - last.at < DUP_MS); }
 const have = (stock, k) => { const n = Number(stock?.[k]); return Number.isFinite(n) && n > 0 ? n : 0; };
 export const costText = cost => Object.entries(cost).map(([k, n]) => `${n} ${k}`).join(' · ');
@@ -164,7 +166,7 @@ function createPrompts(win, doc) {
       const stage = state?.hookStage ?? null;
       if (state?.running && lastStage !== undefined && isThrow(lastStage, stage) && throws < 1e6) { throws++; safe(() => win.localStorage.setItem(STORE_KEY, JSON.stringify({throws}))); }
       lastStage = stage;
-      const blocked = !!doc.querySelector('dialog[open]') || !!state?.inventoryOpen;
+      const blocked = !!doc.querySelector('dialog[open]') || promptQuiet(state);
       // Unlocked (resume hint up) shows nothing; drag-to-look fallback aims at the cursor, so the prompt follows it.
       const fallback = !!state?.lockFallback && !state?.pointerLocked; aimAt = fallback ? mouse : null;
       const show = !!state?.running && !state.disposed && (state.pointerLocked || (fallback && !!mouse)) && doc.body.classList.contains('playing') && !blocked;
