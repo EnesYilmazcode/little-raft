@@ -92,7 +92,7 @@ export function gearMask(count)       // count(kind) -> number; bit set when cou
 export function applyGear(mask, out)  // multiplies out.* by GEAR of each set bit (count above 1 adds nothing); returns out. Bad mask -> unchanged.
 export function maskIds(mask, list)   // fills a reused array with the worn ids (in GEAR_IDS order), returns it
 ```
-The numbers in use are fins 1.3, a 45 s -> 75 s dive, fog 30 -> 46 m, and scraper 0.6 (metal ore 1.4 s -> 0.84 s, others 1.0 -> 0.6 s).
+The numbers in use are fins 1.3, a 45 s -> 75 s dive (the jug multiplier 75/45; since the 33 s Raft breath landed it gives 33 s -> 55 s), fog 30 -> 46 m, and scraper 0.6 (metal ore 1.4 s -> 0.84 s, others 1.0 -> 0.6 s).
 
 ## 7. `dist/diving-gear.js`: `createDivingGear(ctx)`, name `'divegear'`
 - Imports only the core. It has no serialize/load/action/interact/prompt/decorModel: gear lives in the Bag, which is already saved and synced.
