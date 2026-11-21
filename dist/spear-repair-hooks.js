@@ -1,6 +1,6 @@
 // Spear + foundation repair glue for game.js (fidelity lane C). Keeps game.js edits to a few one-line hooks.
 // Rules live in spear.js / repair.js (pure, tested); this file owns the viewmodels, thrust animation,
-// hit marker, repair prompt, damaged-tile tint overlay and the host-side actions 'spearHit' / 'repairTile'.
+// hit marker, repair prompt and the host-side actions 'spearHit' / 'repairTile'.
 //
 // ctx (all getters so hot swaps and role changes are picked up):
 //   T, camera(), raft(), world(), physics(), other(), localBag(), role(), elapsed(), shark()
@@ -139,49 +139,15 @@ export function attachSpearRepair(ctx) {
       const who = actor === 'guest' ? ctx.other() : ctx.physics();
       if (who && !inReach(who.x, who.z, a.x, a.z, BUILD_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : 0.01))) return true;
       const r = repairTile(ctx.world(), a.x, a.z, bag);
-      if (r.ok) { bag.version++; damageSig = NaN; ctx.emit({ kind: 'build', text: r.hp >= TILE_MAX_HP ? 'Foundation good as new' : `Foundation repaired: ${Math.round(r.hp)}%` }, 'all'); }
+      if (r.ok) { bag.version++; ctx.emit({ kind: 'build', text: r.hp >= TILE_MAX_HP ? 'Foundation good as new' : `Foundation repaired: ${Math.round(r.hp)}%` }, 'all'); }
       else if (r.reason === 'cost') ctx.emit({ kind: 'notice', text: 'Repair needs 1 plank' }, actor);
       return true;
     }
     return false;
   }
 
-  // ---------- damaged-tile tint ----------
-  // createRaftMesh merges every tile into a few shared-colour meshes, so there is no cheap per-tile colour.
-  // Instead each damaged tile gets one flat, unlit, shadowless overlay just above the planks whose
-  // opacity follows missing HP. Rebuilt only when world.tileHp changes (signature check, no allocation).
-  const overlayGroup = new T.Group(); overlayGroup.name = 'tileDamage';
-  const overlayGeo = new T.PlaneGeometry(1.94, 1.94); overlayGeo.rotateX(-Math.PI / 2); overlayGeo.userData.shared = true;
-  const overlayPool = [];
-  let damageSig = NaN;
-  function overlayMesh(i) {
-    if (!overlayPool[i]) {
-      const m = new T.MeshBasicMaterial({ color: 0x2a2a28, transparent: true, opacity: 0, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-      m.userData.shared = true;
-      const mesh = new T.Mesh(overlayGeo, m); mesh.castShadow = false; mesh.receiveShadow = false; mesh.name = 'tileDamageOverlay';
-      overlayPool[i] = mesh;
-    }
-    return overlayPool[i];
-  }
-  function tick() {
-    if (!unprovide) providePrompt();
-    const raft = ctx.raft(), world = ctx.world(); if (!raft || !world) return;
-    if (overlayGroup.parent !== raft) { raft.add(overlayGroup); damageSig = NaN; } // rebuildRaft() clears raft children
-    const hp = world.tileHp;
-    let sig = world.tiles.length * 7919, n = 0;
-    if (hp && typeof hp === 'object') for (const k in hp) { const v = Number(hp[k]); if (Number.isFinite(v) && v < TILE_MAX_HP) { n++; sig += (v + 1) * n * 31 + k.length; } }
-    if (sig === damageSig) return;
-    damageSig = sig;
-    let used = 0;
-    if (n) for (const [x, z] of world.tiles) {
-      const h = tileHpOf(world, x, z); if (h >= TILE_MAX_HP) continue;
-      const mesh = overlayMesh(used++);
-      mesh.position.set(x * 2, 0.215, z * 2);
-      mesh.material.opacity = 0.12 + (1 - h / TILE_MAX_HP) * 0.5;
-      if (mesh.parent !== overlayGroup) overlayGroup.add(mesh);
-    }
-    for (let i = used; i < overlayPool.length; i++) if (overlayPool[i].parent) overlayGroup.remove(overlayPool[i]);
-  }
+  // The damaged-tile darkening is drawn by the shark module (one instanced draw call, dist/shark.js), not here.
+  function tick() { if (!unprovide) providePrompt(); }
 
   // ---------- debug ----------
   function give(kind, n = 1) {
@@ -202,14 +168,11 @@ export function attachSpearRepair(ctx) {
   }
   /** Test helper: hold the jab at phase p (0..1, 1 = start) for screenshots; null releases it. */
   const pinPoke = (p) => { pinnedPoke = p == null ? -1 : Math.min(1, Math.max(0, Number(p) || 0)); };
-  const debug = () => ({ lastThrust, poke, repairAim: repairAim ? { ...repairAim } : null, overlays: overlayGroup.children.length, damage: spearDamage(rawKind()) });
+  const debug = () => ({ lastThrust, poke, repairAim: repairAim ? { ...repairAim } : null, damage: spearDamage(rawKind()) });
 
   function dispose() {
     clearTimeout(markerTimer); markerEl?.remove(); markerEl = null;
     try { unprovide?.(); } catch {} unprovide = null;
-    overlayGroup.parent?.remove(overlayGroup);
-    for (const m of overlayPool) m.material.dispose();
-    overlayGeo.dispose();
     for (const h of hands()) { try { h.dispose?.(); } catch {} h.group.parent?.remove(h.group); }
   }
 
