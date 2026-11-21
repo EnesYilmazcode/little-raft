@@ -112,7 +112,7 @@ export function createStationPanel({ getStation, getBag, items = {}, fuelValue =
     const inSig = inputs.map(k => `${k}:${have[k]}:${safe(() => st.accepts(k)) ? 1 : 0}`).join(',');
     const fuelSig = fuels.map(k => `${k}:${have[k]}:${fuelN + Number(fuelValue[k]) <= cap + 1e-9 ? 1 : 0}`).join(',');
     set('inChips', inSig, () => { el.inChips.innerHTML = inputs.map(k => chipHTML('input', k, have[k], safe(() => st.accepts(k)))).join('') || '<p class="st-none">Nothing in your bag cooks here yet.</p>'; });
-    set('fuelChips', fuelSig, () => { el.fuelChips.innerHTML = fuels.map(k => chipHTML('fuel', k, have[k], fuelN + Number(fuelValue[k]) <= cap + 1e-9)).join('') || '<p class="st-none">No fuel. Planks burn well.</p>'; });
+    set('fuelChips', fuelSig, () => { el.fuelChips.innerHTML = fuels.map(k => chipHTML('fuel', k, have[k], fuelN + Number(fuelValue[k]) <= cap + 1e-9)).join('') || '<p class="st-none">No fuel in your bag. Planks burn well.</p>'; });
     const inp = st.input, out = st.output;
     set('in', inp ? `${inp.kind}:${inp.count}` : '', () => { el.inSlot.innerHTML = slotHTML(inp); el.back.disabled = !inp; });
     set('out', out ? `${out.kind}:${out.count}` : '', () => { el.outSlot.innerHTML = slotHTML(out); el.take.disabled = !out; el.outSlot.classList.toggle('st-ready', !!out); });
