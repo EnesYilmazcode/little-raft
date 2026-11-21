@@ -179,7 +179,50 @@ test('module with THREE: decorModel dresses the cloth, design swaps in place, ca
   m.update(.016);
   const w = m.debug.wind();
   assert.equal(w.uStr, .9); assert.equal(w.uTime, 2);
-  assert.ok(Math.abs(w.yaw[0] - 1) < .07);
+  assert.ok(Math.abs(w.yaw[0] - (1 - Math.PI / 2)) < .07);
+  m.dispose();
+});
+
+// [review] wind blows toward (sin wd, cos wd) (sailing-core windVector): the cloth's +X must stream that way,
+// whatever the placement rotation.
+test('module with THREE: cloth streams downwind for any windDir and placement rotation', () => {
+  const ctx = fakeCtx('host'); ctx.T = T;
+  const m = createFlags(ctx), root = new T.Group(), v = new T.Vector3(), q = new T.Quaternion();
+  const g = m.decorModel('flagpole', pole(0, 0)); root.add(g);
+  for (const [wd, rot] of [[0, 0], [1, 0], [-2, Math.PI / 2], [2.5, -1.2]]) {
+    g.rotation.y = rot; ctx.world.sailing = { windDir: wd, windStr: .5 }; ctx.elapsed = 0;
+    g.userData.pivot.position.x = 0; m.update(.016); root.updateMatrixWorld(true);
+    g.userData.cloth.getWorldQuaternion(q); v.set(1, 0, 0).applyQuaternion(q);
+    assert.ok(v.x * Math.sin(wd) + v.z * Math.cos(wd) > .99, `wd ${wd} rot ${rot}: ${v.x.toFixed(2)},${v.z.toFixed(2)}`);
+  }
+  // aim at the cloth centre downwind of the masthead (not the mast): it targets the pole
+  ctx.world.sailing = { windDir: 0, windStr: .5 }; ctx.camera.position = { x: 0, y: 3.22, z: 3 }; ctx.physics = { x: 0, z: 1 };
+  assert.equal(m.prompt({ dir: { x: 0, y: 0, z: -1 } }), '<kbd>E</kbd>Design flag');
+  ctx.camera.position = { x: .65, y: 3.22, z: 3 };
+  assert.equal(m.prompt({ dir: { x: 0, y: 0, z: -1 } }), null, 'upwind/crosswind side has no cloth');
+  m.dispose();
+});
+
+test('module: save load keeps r monotonic; dead poles release the DEFAULT cloth; real undecor flow', () => {
+  const ctx = fakeCtx('host'); ctx.T = T;
+  const m = createFlags(ctx), root = new T.Group();
+  const r0 = m.serialize().r;
+  m.load({ v: 1, r: Number.MAX_SAFE_INTEGER - 1, s: 'x', f: {} }, 'save');
+  const r1 = m.serialize().r; assert.ok(r1 > r0 && Number.isSafeInteger(r1));
+  m.action({ kind: 'flag.set', x: 0, z: 0, d: [2, 2, 2, 2, 2] }, 'host');
+  assert.equal(m.serialize().r, r1 + 1, 'r++ still moves');
+  // a pole with no entry draws DEFAULT; once it is gone the DEFAULT texture is freed on rescan
+  ctx.world.decor.push(pole(1, 0));
+  const g0 = m.decorModel('flagpole', pole(0, 0)), g1 = m.decorModel('flagpole', pole(1, 0)); root.add(g0, g1);
+  m.update(.016); assert.equal(m.debug.texCount(), 2);
+  ctx.world.decor.splice(1, 1); root.remove(g1); m.update(.016);
+  assert.equal(m.debug.texCount(), 1, 'DEFAULT pruned with its pole');
+  // game.js 'undecor' order: splice decor, afterUndecor, then rebuildRaft (old groups detached, new ones built)
+  const rB = m.serialize().r, d = ctx.world.decor[0]; ctx.world.decor.splice(0, 1);
+  m.afterUndecor(d, 'host');
+  assert.deepEqual(m.serialize().f, {}); assert.equal(m.serialize().r, rB + 1);
+  root.remove(g0); m.update(.016);
+  assert.equal(m.debug.texCount(), 0, 'no cloth kept for a pole that is gone');
   m.dispose();
 });
 
