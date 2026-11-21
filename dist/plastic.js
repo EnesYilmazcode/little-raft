@@ -1,19 +1,28 @@
-// Floating plastic resource: weathered milk jug. Pure procedural, no assets.
-// createPlastic(T) -> THREE.Group (~0.65 x 0.7 x 0.4).
-// The jug is one vertex-coloured mesh (one draw call). Its geometry is built once per THREE instance
-// and cloned per call (each clone is owned by the returned mesh); the material is shared module-wide
-// and never disposed (dispose() is a no-op so engine cleanup does not force shader recompiles).
+// Floating plastic resource: a flattened, crumpled plastic jug. Pure procedural, no assets.
+// createPlastic(T, seed?) -> THREE.Group (~0.65 x 0.7 x 0.24).
+// The jug is one vertex-coloured mesh (one draw call). Each of the VARIANTS colourways (pale blue, mint,
+// off-white with a pink label) has its own geometry built once per THREE instance and shared by every jug
+// of that colourway (userData.shared), plus one shared glossy material that is never disposed (dispose()
+// is a no-op so engine cleanup does not force shader recompiles). seed picks the colourway; without one
+// the colourways are dealt round-robin, so the item batch still draws one instanced bucket per colourway.
 // The engine floats the jug on its side with local -z up, so the content sits SINK toward +z: it rides
-// about half submerged instead of perched on the waves. Callers that frame it re-center by bounds.
-const SINK = 0.05;
+// low, a little more than half submerged, instead of perched on the waves. Callers that frame it
+// re-center by bounds.
+const SINK = 0.07;
+// body, yellowed (sun-aged shade), label, labelFade, cap, capFade
+const VARIANTS = [
+  ['#bcd9e6', '#accbd2', '#8fbcd6', '#bcd9e8', '#4f86b8', '#86aacb'], // clear-ish pale blue
+  ['#b4dcc8', '#a3cbb4', '#8fcab0', '#e6f2ea', '#3f9a7c', '#7bbca3'], // mint
+  ['#ecebe2', '#dad9ca', '#e8a6b6', '#f4d8de', '#d0675e', '#e2a19a'], // off-white, pink label
+];
 const CACHE = new WeakMap();
 
 function lin(T, hex) { const c = new T.Color(hex); return [c.r, c.g, c.b]; }
 const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 
 // lod: far-view jug (beyond the item batch's LOD distance): 12-sided body, cap and handle only, ~400 triangles.
-function build(T, lod = false) {
-  const Z = 0.2 / 0.27; // depth squash -> 0.4 deep
+function build(T, lod = false, v = 0) {
+  const Z = 0.12 / 0.27; // flattened / crumpled: depth squash -> ~0.24 deep, so it lies low and flat on the water
   // Body profile (radius, y) with beveled base and shoulders.
   const prof = [
     [0.0, -0.35], [0.2, -0.35], [0.245, -0.343], [0.265, -0.325], [0.27, -0.3],
@@ -28,9 +37,10 @@ function build(T, lod = false) {
     return 0.075;
   };
   const h = (a, b) => { const s = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return s - Math.floor(s); };
-  const white = lin(T, '#e4dfcf'), yellowed = lin(T, '#cfc6a8'), grime = lin(T, '#9c9682');
-  const label = lin(T, '#b8695c'), labelFade = lin(T, '#d6b3a4');
-  const capBlue = lin(T, '#5d84a8'), capFade = lin(T, '#8ea7bd');
+  const [cBody, cYel, cLab, cLabF, cCap, cCapF] = VARIANTS[v];
+  const white = lin(T, cBody), yellowed = lin(T, cYel), grime = lin(T, '#8fa0a4');
+  const label = lin(T, cLab), labelFade = lin(T, cLabF);
+  const capBlue = lin(T, cCap), capFade = lin(T, cCapF);
   const paint = (g, fn) => {
     const p = g.attributes.position, col = new Float32Array(p.count * 3);
     for (let i = 0; i < p.count; i++) {
@@ -53,15 +63,17 @@ function build(T, lod = false) {
       const r = Math.hypot(x, z);
       const ang = Math.atan2(x, z);
       if (r > 0.01 && y > -0.33 && y < 0.2) {
-        const d = 0.006 * Math.sin(ang * 3 + y * 9) + 0.004 * Math.sin(ang * 7 - y * 17)
-          - 0.018 * Math.max(0, Math.cos(ang - 2.2)) * Math.max(0, 1 - Math.abs(y + 0.08) / 0.12);
+        // crumple: creases plus a couple of deep dents so the flattened body never reads as a smooth loaf
+        const d = 0.012 * Math.sin(ang * 3 + y * 9) + 0.008 * Math.sin(ang * 7 - y * 17) + 0.006 * Math.sin(ang * 11 + y * 31)
+          - 0.03 * Math.max(0, Math.cos(ang - 2.2)) * Math.max(0, 1 - Math.abs(y + 0.08) / 0.12)
+          - 0.024 * Math.max(0, Math.cos(ang + 0.9)) * Math.max(0, 1 - Math.abs(y - 0.05) / 0.1);
         const k = (r + d) / r;
         x *= k; z *= k;
       }
       p.setXYZ(i, x, y, z * Z);
       const n = h(Math.round(ang * 10), Math.round(y * 40));
-      let c = mix(white, yellowed, 0.25 + 0.5 * n * Math.max(0, Math.sin(ang * 2 + 1)));
-      c = mix(c, grime, (y < -0.27 ? 0.45 : 0) + 0.18 * Math.max(0, Math.sin(ang * 3 + y * 6)));
+      let c = mix(white, yellowed, 0.15 + 0.45 * n * Math.max(0, Math.sin(ang * 2 + 1)));
+      c = mix(c, grime, (y < -0.27 ? 0.3 : 0) + 0.1 * Math.max(0, Math.sin(ang * 3 + y * 6)));
       // label band on the front face, scuffed
       if (y > -0.17 && y < 0.0 && Math.cos(ang) > 0.25) c = mix(label, labelFade, 0.25 + 0.6 * n);
       col.set(c, i * 3);
@@ -107,19 +119,30 @@ function build(T, lod = false) {
   geo.computeBoundingSphere();
 
   if (lod) return { geo, mat: null };
-  const mat = new T.MeshStandardMaterial({ name: 'plastic_jug', vertexColors: true, roughness: 0.42, metalness: 0, side: T.DoubleSide });
+  const mat = new T.MeshStandardMaterial({ name: 'plastic_jug', vertexColors: true, roughness: 0.22, metalness: 0, side: T.DoubleSide });
   mat.dispose = () => {};
   return { geo, mat };
 }
 
-export function createPlastic(T) {
-  let c = CACHE.get(T);
+function variant(T, v) {
+  let all = CACHE.get(T);
+  if (!all) CACHE.set(T, all = []);
+  let c = all[v];
   if (!c) {
-    c = build(T); c.geo.userData.shared = true; c.mat.userData.shared = true;
-    const far = build(T, true).geo; far.userData.shared = true;
+    c = build(T, false, v); c.geo.userData.shared = true;
+    // one glossy material for every colourway (colours live in the vertex colours)
+    if (all.mat) c.mat = all.mat; else { all.mat = c.mat; c.mat.userData.shared = true; }
+    const far = build(T, true, v).geo; far.userData.shared = true;
     Object.defineProperty(c.geo.userData, 'lod', { value: far }); // item batch draws it when the jug is far; non-enumerable, so geometry toJSON skips it
-    CACHE.set(T, c);
+    all[v] = c;
   }
+  return c;
+}
+
+let deal = 0;
+export function createPlastic(T, seed) {
+  const v = Number.isFinite(seed) ? Math.abs(Math.floor(seed)) % VARIANTS.length : deal++ % VARIANTS.length;
+  const c = variant(T, v);
   const root = new T.Group();
   root.name = 'plastic';
   const body = new T.Mesh(c.geo, c.mat); // shared geometry + material (userData.shared): nothing per jug to free
@@ -128,7 +151,8 @@ export function createPlastic(T) {
   body.userData.batch = true; // shared geometry: debris.js createItemBatch may draw it instanced
   root.add(body);
   root.userData.type = 'plastic';
-  root.userData.size = { x: 0.65, y: 0.7, z: 0.4 };
+  root.userData.variant = v;
+  root.userData.size = { x: 0.65, y: 0.7, z: 0.24 };
   root.userData.dispose = () => {};
   return root;
 }
