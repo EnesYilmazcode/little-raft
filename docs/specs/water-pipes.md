@@ -130,3 +130,23 @@ Run `npm test` and shoot.py. The `errors` list must be empty.
 ## 12. Files
 New: `dist/pipes.js`, `dist/pipes-model.js`, `tests/pipes.test.mjs`. Edited: `dist/items.js:288,:326`, `dist/craft-book.js:34,:156`, `dist/content.js:67,:69`.
 Not touched: game.js, rain.js, watering.js, farming.js, coop.js, and INDEX.md (the lead adds the line).
+
+## Build notes
+- **Change from the spec: purifiers do NOT feed tanks.** Taking a ready purifier's cup into a tank would make a cup the player put in vanish from where they left it, and players must never lose items. `SOURCES` holds only the `rainbarrel` row. The table stays open: a future source adds one row and nothing else. Because of this, the tank tip, the craft-book `use` line and the empty-tank prompt say "rain barrel" only (`Water tank: empty · pipe in a rain barrel`). Test 3 checks that a ready purifier next to the tank keeps its `{t:15, ready:1}` entry.
+- **Unlock**: `discover('freshcup', 'scrap')` fails the progression catalogue tests, because `freshcup` is a core inventory kind and not an items.js item (an unknown ref, and the item is unreachable). Both items use `discover('plastic', 'scrap')` instead; those are the recipe's own materials.
+- **live.js**: `pipes-model.js` and `pipes.js` were added to `PRELOAD`, because tests/live-preload.test.mjs requires it. The FEATURES order is `… createBees, createPower, createPipes, createJuicer …`, and `createCookpot` stays last.
+- **Pure API** (pipes.js): `cleanPipes`, `prunePipes`, `buildNets(st, world, tables?)`, `decorSig`, `newNetCache(tables?)`/`netsFor`, `tickPipes(st, world, dt, cache?)`, `pipeAction(st, world, a, bag, pose)`, `promptText(view)`, `pipeLayout(st, decor, nets)`, `jointKind(mask)`.
+  `tables` defaults to `{sources: SOURCES, sinks: WATERABLE}`. Tests pass an extra WATERABLE row there, because the exported arrays are frozen.
+  Layout tuples carry a trailing wet flag (`[x,z,kind,wet]`, `[x,z,dir,start,len,wet]`). A device stub arm (`start 1, len .62`) covers the radial range .38..1 m.
+- **Extra refusal**: `far` ("Try a spot a little closer") is used when the actor is beyond `REACH + HOST_SLACK`, and on the client beyond `REACH + .5`. Host and client also refuse a non-int `x,z` (`notarget`).
+- **Prompt note**: with a salt cup held at the tank, the core `Drink (-5 water)` eat tip still wins (game.js gives way to content prompts only when they start with `<kbd>E</kbd>`). This is the existing rule and game.js is not touched. The module prompt still returns `Water tank: N/12 · fresh water only`.
+- **Model tweaks**: the hoops sit at y .17 and .86 (spec: .3 and .78) so that they do not cross the level window. The body material uses metalness 0 so that the staves do not go black. The spigot is shortened so the tank fits .75 m. The ghost is a brighter green (#5dff8f, opacity .7).
+- **Co-op / saves**: as specced. The host owns `world.ext.pipes`, guests only render, `load(…,'net')` dedupes on `r`/`s`, and `undefined` from the net sets OLD_HOST. Old saves load as an empty slice. Rollback risk as in section 10: an older build drops `watertank` decor and resets a bag that holds the new kinds.
+- **Lift always refunds**: room is checked on a snapshot copy first. With a full bag the pipe stays down and the player gets "Your bag is full". The refund is the same `waterpipe` item.
+- **QA**: `raftDebug.content.pipes` has `state`, `nets`, `place(type,x,z)` (watertank / rainbarrel / palm / sprinkler / purifier), `lay`, `fill`, `fastForward`, plus `prompt()`, `layout()` and `target()`.
+  The close-up script at scratchpad r4/pipes/pipes_shot.py does the following:
+  - places a barrel, a tank, 2 palms and a sprinkler, and lays a run with 2 tees and an elbow;
+  - checks every tank prompt;
+  - pours with E;
+  - lays and lifts a pipe with real left and right clicks;
+  - runs the flow.
