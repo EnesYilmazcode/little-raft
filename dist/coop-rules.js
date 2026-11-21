@@ -1,6 +1,5 @@
-// Small pure helpers for nets, co-op hook state and decor colliders. No DOM, no Three.js.
+// Small pure helpers for bag fits, co-op hook state and decor colliders. No DOM, no Three.js.
 
-export const NET_RANGE = 4;
 export const GUEST_HELD_TTL = 1500; // ms a guest's reported hook contents stay valid without a fresh move
 const MAX_HELD = 32;
 
@@ -10,17 +9,6 @@ export function lootFits(bag, loot) {
   const scratch = new bag.constructor(bag.snapshot());
   for (const [k, n] of Object.entries(loot)) if (scratch.add(k, n) > 0) return false;
   return true;
-}
-
-// First item near the net that is not held or pending and whose loot fits.
-// unit: metres per net coordinate (2 = legacy tile cells, 1 = raft-local metres as placement.js stores decor).
-export function pickNetItem(items, net, {held = new Set(), isPending = () => false, fits = () => true, unit = 2} = {}) {
-  for (const it of items) {
-    if (held.has(it.token) || isPending(it)) continue;
-    if (Math.hypot(it.x - net.x * unit, it.z - net.z * unit) >= NET_RANGE) continue;
-    if (fits(it)) return it;
-  }
-  return null;
 }
 
 // Cleans the optional `held` field of a guest move message. Missing or malformed means none.

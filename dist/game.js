@@ -35,7 +35,7 @@ import { createSignalModel } from './signal-models.js?build=v3-survival-ae77fa84
 import { cleanWatering, copyWatering, plantStage, tick as tickWatering, tileKey, fillCup, loadPurifier, takeWater, water as waterPlant, harvest as harvestPlant, WATER_ACTIONS, FILL_REACH, USE_REACH, HOST_SLACK, PURIFY_SECONDS } from './watering.js?build=v3-survival-ae77fa84ac2b';
 import { createPurifier, paintPurifier, preparePlanter, paintPlanter } from './purifier-model.js?build=v3-survival-ae77fa84ac2b';
 import { cleanRain, copyRain, tickRain, takeRain, fillSprinkler, rainTarget, RAIN_ACTIONS } from './rain.js?build=v3-survival-ae77fa84ac2b'; import { createRainBarrel, paintRainBarrel, createSprinkler, paintSprinkler } from './rain-model.js?build=v3-survival-ae77fa84ac2b'; // rain-sprinkler (docs/specs/rain-sprinkler.md)
-import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
+import { lootFits, createGuestHeld, cleanHeldTokens, decorBlockers, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
 import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
@@ -61,6 +61,7 @@ import { newVitals, tickVitals, damage as damageVitals, consume as consumeVitals
 import { createVitalsUI } from './vitals-ui.js'; // [vitals] HUD bars, damage vignette, faint overlay
 import { createShark, cleanShark, cleanTileHp, lootable, SHARK, SHARK_LOOT } from './shark.js?build=v3-survival-ae77fa84ac2b'; // shark lane (dist/shark.js)
 import { createWaterEffects } from './waterfx.js?build=v3-survival-ae77fa84ac2b'; // shark lane: bite splashes
+import { cleanNets, copyNets, migrateDeckNets, netSpot, netBlock, netOnCell, catchNet, netAt, findNet, emptyNet, createNetView, createNetModel, netEdgeX, netEdgeZ, netYaw, netCenterX, netCenterZ, NET_CAPACITY, NET_REACH } from './nets.js?build=v3-survival-ae77fa84ac2b'; // [nets] edge collection nets
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -166,7 +167,7 @@ export function mount(transfer = null) {
   // ---------- World ----------
   function newWorld() {
     const fresh = new Bag().snapshot();
-    return {tiles:Array.from({length:9}, (_, i) => [i % 3 - 1, Math.floor(i / 3) - 1]), decor:[], stock:{wood:0, leaf:0, scrap:0, plastic:0}, fish:0, collected:0, hookHealth:MAX_HEALTH, items:[], hostInventory:fresh, guestInventory:new Bag().snapshot(), signal:null, notes:[], achievements:[], garden:{}, purifiers:{}, collectors:{}, sprinklers:{}, pieces:[], tileHp:{}, shark:cleanShark(null)};
+    return {tiles:Array.from({length:9}, (_, i) => [i % 3 - 1, Math.floor(i / 3) - 1]), decor:[], stock:{wood:0, leaf:0, scrap:0, plastic:0}, fish:0, collected:0, hookHealth:MAX_HEALTH, items:[], hostInventory:fresh, guestInventory:new Bag().snapshot(), signal:null, notes:[], achievements:[], garden:{}, purifiers:{}, collectors:{}, sprinklers:{}, pieces:[], tileHp:{}, shark:cleanShark(null), nets:[]};
   }
   // Validates a saved world or a host snapshot. Returns a fresh clean object or null.
   function cleanWorld(v, withItems = false) {
@@ -186,6 +187,8 @@ export function mount(transfer = null) {
       const rot = Number.isFinite(d.rot) ? Math.round(wrapRot(d.rot) * 1000) / 1000 : 0; // placement rotation (R / shift+wheel while placing)
       used.add(k); decor.push(rot ? {type:d.type, x:d.x, z:d.z, rot} : {type:d.type, x:d.x, z:d.z});
     }
+    const nets = cleanNets(v.nets, tiles), deckNets = decor.filter(d => d.type === 'net'); // [nets] old deck nets move to the raft edge
+    if (deckNets.length) { const left = new Set(migrateDeckNets(deckNets, tiles, nets)); for (let i = decor.length - 1; i >= 0; i--) if (decor[i].type === 'net' && !left.has(decor[i])) decor.splice(i, 1); }
     const count = n => (isInt(n) && n >= 0 ? n : 0);
     const items = [];
     if (withItems && Array.isArray(v.items)) for (const it of v.items.slice(0, 80)) {
@@ -196,14 +199,14 @@ export function mount(transfer = null) {
     return {tiles, decor, stock, fish:count(v.fish), collected:count(v.collected), hookHealth:Number.isFinite(v.hookHealth) ? clamp(Math.round(v.hookHealth), 0, MAX_HEALTH) : MAX_HEALTH, items,
       hostInventory:validSnapshot(v.hostInventory), guestInventory:validSnapshot(v.guestInventory), signal:cleanSignal(v.signal), ext:cleanExt(v.ext), pieces:cleanPieces(v.pieces, tiles), sailing:cleanSailing(v.sailing), // content + building-pieces + sailing hooks
       notes:progress.notes, achievements:progress.achievements, vitals:v.vitals ? cleanVitals(v.vitals) : null, // [vitals] old saves: null -> start full
-      tileHp:cleanTileHp(v.tileHp, tiles), shark:cleanShark(v.shark), // shark lane: foundation HP + saved shark (old saves: full HP, fresh 300 s timer)
+      tileHp:cleanTileHp(v.tileHp, tiles), shark:cleanShark(v.shark), nets, // [nets]; shark lane: foundation HP + saved shark (old saves: full HP, fresh 300 s timer)
       ...cleanWatering(v, decor, {seedMissing:true}), ...cleanRain(v, decor)};
   }
   function copyWorld(w) { // isolation from the previous engine's live object (rollback safety)
     return {...w, tiles:w.tiles.map(t => [t[0], t[1]]), decor:Array.isArray(w.decor) ? w.decor.map(d => ({...d})) : [], items:Array.isArray(w.items) ? w.items.map(i => ({...i})) : [], stock:{...(w.stock || {})}, pieces:Array.isArray(w.pieces) ? w.pieces.map(p => ({...p})) : [],
       fish:isInt(w.fish) ? w.fish : 0, collected:isInt(w.collected) ? w.collected : 0, signal:cleanSignal(w.signal), ext:cleanExt(w.ext), sailing:cleanSailing(w.sailing), // content + sailing hooks
       ...cleanProgress(w), // fresh, validated notes/achievements arrays
-      tileHp:cleanTileHp(w.tileHp, w.tiles), shark:cleanShark(w.shark), // shark lane
+      tileHp:cleanTileHp(w.tileHp, w.tiles), shark:cleanShark(w.shark), nets:copyNets(w.nets), // shark lane; [nets]
       ...copyWatering(w), ...copyRain(w)};
   }
   const liveWorld = w => cleanWorld(w, true) ?? copyWorld(w);
@@ -290,7 +293,8 @@ export function mount(transfer = null) {
   let lastHostMessage = X?.lastHostMessage || performance.now(), lastGuestMessage = X?.lastGuestMessage || performance.now();
   let joinTimer = 0, joinDeadline = Number.isFinite(X?.joinDeadline) ? X.joinDeadline : 0;
   let waterClock = 0, waterAim = null; const wateringGroups = new Map(); // tileKey -> palm/purifier group
-  let netClock = 0, lastSaveAt = performance.now(), lastNetSendAt = 0, toastTimer = 0, wheelAcc = 0, peerHidden = !!X?.peerHidden, heartbeat = 0;
+  let netView = null, netAim = -1; const NET_TIPS = Array.from({length:NET_CAPACITY + 1}, (_, n) => ({key:'E', label:`Empty net (${n})`})); // [nets]
+  let lastSaveAt = performance.now(), lastNetSendAt = 0, toastTimer = 0, wheelAcc = 0, peerHidden = !!X?.peerHidden, heartbeat = 0;
   let noticeText = '', noticeUntil = 0, contextCache = null, uiFailed = false; let fishShown = null;
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
@@ -413,7 +417,7 @@ export function mount(transfer = null) {
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
     itemsGroup = new T.Group(); scene.add(itemsGroup); ocean.trackFoam(itemsGroup);
     player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
-    ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => { try { return prog?.modelFor(k, {type:k}) ?? (k === 'rainbarrel' ? createRainBarrel(T) : k === 'sprinkler' ? createSprinkler(T) : k === 'purifier' ? createPurifier(T) : createCraft(T, k) ?? createSignalModel(T, k) ?? content?.decorModel(k) ?? null); } catch { return null; } }}); // see-through real models, red when blocked
+    ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => { try { if (k === 'net') return createNetModel(T, mergeGeometries, {ownMaterials:true}); return prog?.modelFor(k, {type:k}) ?? (k === 'rainbarrel' ? createRainBarrel(T) : k === 'sprinkler' ? createSprinkler(T) : k === 'purifier' ? createPurifier(T) : createCraft(T, k) ?? createSignalModel(T, k) ?? content?.decorModel(k) ?? null); } catch { return null; } }}); // see-through real models, red when blocked
     const ropeGeo = new T.BufferGeometry(); ropeAttr = new T.BufferAttribute(new Float32Array((ROPE_SEGMENTS + 1) * 3), 3); ropeAttr.setUsage(T.DynamicDrawUsage); ropeGeo.setAttribute('position', ropeAttr);
     rope = new T.Line(ropeGeo, new T.LineBasicMaterial({color:'#e9d39a'})); rope.visible = false; rope.frustumCulled = false; scene.add(rope);
     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
@@ -437,6 +441,7 @@ export function mount(transfer = null) {
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging}); for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
     try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); diving?.warm(renderer); } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     initShark(); // shark lane
+    netView = createNetView(T, {scene, raft, merge:mergeGeometries, itemModel:(type, id) => itemModel({type, id}), dispose:disposeGeometry}); // [nets]
     rebuildRaft();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     syncItems(); singlePass(scene); refreshPointerUI(true);
@@ -588,6 +593,7 @@ export function mount(transfer = null) {
       raft.add(g);
     }
     blockList = world.decor.flatMap(d => decorBlockers(d, BLOCK_RADIUS));
+    netView?.sync(world.nets); // [nets]
     building?.sync(world); // building-pieces lane hook
     sailing?.onRaftBuilt(); // [sailing] re-find sail models
   }
@@ -679,13 +685,14 @@ export function mount(transfer = null) {
     if (tipCache.size > 200) tipCache.clear(); tipCache.set(html, t); return t;
   }
   function updateEatTip(dialog) {
-    const k = running && !dialog && fainted < 0 && !hook && !fishWait && !pickTarget && !waterAim?.click ? eatKind() : null;
+    const k = running && !dialog && fainted < 0 && !hook && !fishWait && !pickTarget && netAim < 0 && !waterAim?.click ? eatKind() : null; // [nets] E on a net wins
     if (!k) { eatTip = null; return; }
     if (eating) { EATING_TIP.label = FOOD[k].food > 0 ? 'Eating…' : 'Drinking…'; eatTip = EATING_TIP; return; }
     eatTip = eatTips.get(k); if (!eatTip) { eatTip = {key:'LMB', label:eatLabel(k)}; eatTips.set(k, eatTip); }
   }
   function promptTip() { // watering hints only when actionable or while holding a cup (never hides the hook's "Throw")
     if (eatTip) return eatTip;
+    if (netAim >= 0) return NET_TIPS[Math.min(NET_CAPACITY, world.nets[netAim]?.items.length ?? 0)]; // [nets] "Empty net (n)"
     const p = waterAim?.prompt; return p && (p.startsWith('<kbd>') || CUP_KINDS.includes(selectedKind())) ? tipFor(p) : null;
   }
   let contextHtml = null;
@@ -880,7 +887,8 @@ export function mount(transfer = null) {
   function placementFor(kind, p) {
     if (!p) return null; const x = Math.round(p.x / 2), z = Math.round(p.z / 2);
     let why;
-    if (kind === 'hammer') why = floorBlock(world.tiles, x, z);
+    if (kind === 'net') { const v = netSpot(world.tiles, world.nets, p.x, p.z); if (v && !v.blocked && !inReach(physics.x, physics.z, netCenterX(v) / 2, netCenterZ(v) / 2)) v.blocked = 'reach'; return v; } // [nets] edge spot {x, z, d}
+    if (kind === 'hammer') why = floorBlock(world.tiles, x, z) ?? (netOnCell(world.nets, x, z) ? 'net' : null); // [nets] no floor over a net
     else if (DECOR_TYPES.includes(kind)) { if (fc?.hasGrill(x, z)) return null; why = decorBlock(world.tiles, world.decor, x, z); } // [fishing-cooking] grill tiles
     else return null;
     if (why && !BLOCK_TEXT[why]) return null;
@@ -889,7 +897,8 @@ export function mount(transfer = null) {
   }
   function placementCandidates(kind) {
     const out = [], ok = (x, z) => inReach(physics.x, physics.z, x, z);
-    if (kind === 'hammer') { const seen = new Set(); for (const [tx, tz] of world.tiles) for (const [a, b] of NEIGHBOURS) { const x = tx + a, z = tz + b, k = x + ',' + z; if (!seen.has(k) && !floorBlock(world.tiles, x, z) && ok(x, z)) { seen.add(k); out.push({x, z}); } } }
+    if (kind === 'net') { for (const [tx, tz] of world.tiles) for (let d = 0; d < 4; d++) { const v = {x:tx, z:tz, d}; if (!netBlock(world.tiles, world.nets, tx, tz, d) && ok(netCenterX(v) / 2, netCenterZ(v) / 2)) out.push(v); } return out; } // [nets]
+    if (kind === 'hammer') { const seen = new Set(); for (const [tx, tz] of world.tiles) for (const [a, b] of NEIGHBOURS) { const x = tx + a, z = tz + b, k = x + ',' + z; if (!seen.has(k) && !floorBlock(world.tiles, x, z) && !netOnCell(world.nets, x, z) && ok(x, z)) { seen.add(k); out.push({x, z}); } } }
     else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (!decorBlock(world.tiles, world.decor, x, z) && !fc?.hasGrill(x, z) && ok(x, z)) out.push({x, z});
     return out;
   }
@@ -1008,13 +1017,28 @@ export function mount(transfer = null) {
       award({kind:'collect'});
       return;
     }
+    if (a.kind === 'emptyNet') { // [nets] host-authoritative: loot goes into the actor's bag, leftovers stay in the net
+      const i = findNet(world.nets, a.x, a.z, a.d), p = actor === 'guest' ? other : physics; if (i < 0 || !p) return;
+      const n = world.nets[i]; if (Math.hypot(netCenterX(n) - p.x, netCenterZ(n) - p.z) > NET_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .5)) return;
+      if (!n.items.length) { emit({kind:'notice', text:'The net is empty'}, actor); return; }
+      const r = emptyNet(n, bag, type => (type === 'barrel' ? rollBarrel(Math.random, prog?.barrelLuck) : LOOT[type]));
+      if (r.taken) { world.collected += r.taken; emit({kind:'loot', text:'+ ' + Object.entries(r.loot).map(([k, c]) => `${c} ${itemName(k)}`).join(' · '), loot:r.loot}, actor); award({kind:'collect'}); netView?.sync(world.nets); }
+      if (r.left) emit({kind:'full', text:r.taken ? `Your bag is full: ${r.left} left in the net` : 'Your bag is full'}, actor);
+      return;
+    }
     if (a.kind === 'build') {
       let placedText = null;
       if (!isInt(a.x) || !isInt(a.z)) return;
       const who = actor === 'guest' ? other : physics; // guest pose may be missing until its first move
       if (who && !inReach(who.x, who.z, a.x, a.z, BUILD_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .01))) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
-      if (a.recipe === 'floor') {
-        const why = floorBlock(world.tiles, a.x, a.z);
+      if (a.recipe === 'net') { // [nets] hangs off a tile side over open water
+        const why = netBlock(world.tiles, world.nets, a.x, a.z, a.d); if (why) { emit({kind:'notice', text:BLOCK_TEXT[why] ?? 'Hang the net from the raft edge'}, actor); return; }
+        const sel = bag.slots[bag.selectedIndex];
+        if (sel?.kind === 'net') { sel.count--; if (sel.count <= 0) bag.slots[bag.selectedIndex] = null; }
+        else if (!bag.remove('net', 1)) { emit({kind:'notice', text:'Craft a Collection Net first'}, actor); return; }
+        world.nets.push({x:a.x, z:a.z, d:a.d, items:[]});
+      } else if (a.recipe === 'floor') {
+        const why = floorBlock(world.tiles, a.x, a.z) ?? (netOnCell(world.nets, a.x, a.z) ? 'net' : null); // [nets]
         if (why) { if (BLOCK_TEXT[why]) emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; }
         if (bag.count('hammer') < 1) { emit({kind:'notice', text:'Craft a hammer first'}, actor); return; }
         if (!spend(bag, FLOOR_COST)) { emit({kind:'notice', text:'Floor needs ' + missingText(bag, FLOOR_COST)}, actor); return; }
@@ -1116,6 +1140,7 @@ export function mount(transfer = null) {
       action({kind:'collect', id:target.id, token:target.token});
       return;
     }
+    if (netAim >= 0) { if (guestWaiting()) { notice('Wait for your raft to connect'); return; } const n = world.nets[netAim]; swing = .6; action({kind:'emptyNet', x:n.x, z:n.z, d:n.d}); return; } // [nets]
     if (canHarvestShark()) { if (guestWaiting()) { notice('Wait for your raft to connect'); return; } swing = .6; action({kind:'shark:loot'}); return; } // shark lane
     if (content?.interact(currentAim())) return; // content hook: chest, research table, island nodes
     if (fc?.interact()) return; // [fishing-cooking] grill
@@ -1142,9 +1167,10 @@ export function mount(transfer = null) {
     }
     if (kind === 'hammer' || DECOR_TYPES.includes(kind)) {
       const v = placementFor(kind, p);
-      if (!v) { notice(kind === 'hammer' ? 'Point at an empty space beside the raft' : 'Point at an empty raft floor'); return; }
+      if (!v) { notice(kind === 'hammer' ? 'Point at an empty space beside the raft' : kind === 'net' ? 'Point at the water beside the raft edge' : 'Point at an empty raft floor'); return; } // [nets]
       if (v.blocked) { notice(BLOCK_TEXT[v.blocked]); return; }
       if (kind === 'hammer' && !canAfford(bag, FLOOR_COST)) { notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
+      if (kind === 'net') { swing = 1; action({kind:'build', recipe:'net', x:v.x, z:v.z, d:v.d}); return; } // [nets] faces outward, no free rotation
       swing = 1; action({kind:'build', recipe:kind === 'hammer' ? 'floor' : kind, ...v, ...(kind !== 'hammer' && placeRot ? {rot:placeRot} : {})}); return;
     }
     if (kind === 'fishingrod') {
@@ -1323,6 +1349,7 @@ export function mount(transfer = null) {
       friend.userData.animate?.(dt, {speed:Math.min(6, Math.hypot(friend.position.x - before.x, friend.position.z - before.z) / dt), swimming:other.swimming, pitch:other.pitch});
     }
   }
+  let netsChanged = false; // [nets]
   const allHeldTokens = () => new Set([...caughtList(castOut()).map(c => c.token), ...(role === 'guest' ? [] : guestHeld.tokens(performance.now()))]);
   function updateItems(dt) {
     const heldTokens = allHeldTokens();
@@ -1334,11 +1361,15 @@ export function mount(transfer = null) {
       for (const it of world.items) {
         if (it.type === 'cache') continue; // the signal cache drifts in signalTick, never respawns
         if (heldTokens.has(it.token)) continue; // a hook (ours or the guest's) holds it; don't let it drift away or respawn
+        const x0 = it.x, z0 = it.z; // [nets]
         it.z += dt * .22; it.x += Math.sin(elapsed * .13 + it.phase) * dt * .04;
         it.x += sailFlow.x * dt; it.z += sailFlow.z * dt; // [sailing] water flows past a sailing/anchored raft
+        const ni = isPending(it) ? -1 : catchNet(world.nets, it.type, x0, z0, it.x, it.z); // [nets] drifted into a net with room: it stops there
+        if (ni >= 0) { world.nets[ni].items.push(it.type); Object.assign(it, makeItem(it.id)); sailing?.respawned(it); respawned = true; netsChanged = true; continue; }
         if ((sailing ? sailing.outOfRange(it) : it.z > end || Math.abs(it.x) > side) || hasTile(Math.round(it.x / 2), Math.round(it.z / 2))) { Object.assign(it, makeItem(it.id)); sailing?.respawned(it); respawned = true; } // [sailing] flow-aware despawn replaces the +z box
       }
       if (respawned) syncItems();
+      if (netsChanged) { netsChanged = false; netView?.sync(world.nets); }
     } else for (const it of world.items) if (!heldTokens.has(it.token)) { it.x += sailFlow.x * dt; it.z += (sailFlow.z + .22) * dt; } // [sailing] guest dead-reckons debris between host snapshots
     for (const it of world.items) {
       const m = itemMeshes.get(it.token); if (!m) continue;
@@ -1406,13 +1437,14 @@ export function mount(transfer = null) {
     spearRep?.updateAim(hook ? null : kind, frameAim); spearRep?.tick(); // [spear-repair]
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing ? placementFor(kind, frameAim.point) : null;
     if (!hover) { ghosts.hide(); return; }
+    if (kind === 'net') { ghosts.show('net', netEdgeX(hover), 0, netEdgeZ(hover), netYaw(hover.d), !hover.blocked, elapsed); return; } // [nets]
     const floor = kind === 'hammer';
     ghosts.show(floor ? 'floor' : kind, hover.x * 2, floor ? .015 : .22, hover.z * 2, floor ? 0 : placeRot, !hover.blocked && !(floor && !canAfford(localBag(), FLOOR_COST)), elapsed);
   }
   function hostState() {
     const c = guestBag.counts();
     return {type:'state', v:3, ack:guestAck, bag:guestBag.snapshot(), other:pose(),
-      world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items, ext:content ? content.serialize() : world.ext, sailing:world.sailing, signal:world.signal, notes:world.notes, achievements:world.achievements, garden:world.garden, purifiers:world.purifiers, collectors:world.collectors, sprinklers:world.sprinklers, tileHp:world.tileHp, ...(world.pieces !== sentPieces ? {pieces:(sentPieces = world.pieces)} : {})}, ...(shark ? {shark:shark.net().slice()} : {})}; // content hook: ext; shark lane: tileHp + compact shark pose
+      world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items, ext:content ? content.serialize() : world.ext, sailing:world.sailing, signal:world.signal, notes:world.notes, achievements:world.achievements, garden:world.garden, purifiers:world.purifiers, collectors:world.collectors, sprinklers:world.sprinklers, tileHp:world.tileHp, nets:world.nets, ...(world.pieces !== sentPieces ? {pieces:(sentPieces = world.pieces)} : {})}, ...(shark ? {shark:shark.net().slice()} : {})}; // content hook: ext; shark lane: tileHp + compact shark pose
   }
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, held:heldKind()});
   function frame() {
@@ -1427,10 +1459,13 @@ export function mount(transfer = null) {
     coop?.update(dt, elapsed); // coop: interpolated remote avatar, rope, ghost, pings, pose stream, reconnect
     frameAim = running && !dialog ? currentAim(aimScratch) : null;
     pickTarget = pickupFrom(frameAim);
-    waterAim = pickTarget ? null : wateringTarget(frameAim);
+    netAim = pickTarget || !frameAim?.point ? -1 : netAt(world.nets, frameAim.point.x, frameAim.point.z); // [nets] E empties the aimed net in reach
+    if (netAim >= 0 && Math.hypot(netCenterX(world.nets[netAim]) - physics.x, netCenterZ(world.nets[netAim]) - physics.z) > NET_REACH) netAim = -1;
+    waterAim = pickTarget || netAim >= 0 ? null : wateringTarget(frameAim);
     updateVitals(dt, dialog); updateEatTip(dialog); // [vitals]
     if (vitalsUI) { vitalsUI.update(vitals, running && !disposed && fainted < 0); }
     if (!promptOff && window.raftPrompts?.provide) { try { promptOff = window.raftPrompts.provide({id:'game-context', priority:0, prompt:promptTip}); } catch { promptOff = () => {}; } } // [vitals] eat/drink + watering prompts
+    netView?.update(elapsed); // [nets]
     updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost();
     content?.update(dt); // content hook
     sky?.follow(ocean.uniforms, scene.background); sky?.update(elapsed, camera); // sky dome tracks day/night's horizon, zenith and sun
@@ -1441,11 +1476,6 @@ export function mount(transfer = null) {
       const itemCount = world.items.length, sigEvents = signalTick(world, dt, {token:newToken, held:new Set(caughtList(castOut()).map(c => c.token))});
       for (const e of sigEvents) emit({kind:'signal', text:e.kind === 'detected' ? 'A signal! Something is drifting your way' : 'The signal cache is close: hook it in!'}, 'all');
       if (sigEvents.length || world.items.length !== itemCount) syncItems();
-      netClock += dt;
-      if (netClock > .8) { // nets gather into the host's bag (trusted shared machine) and never consume when full
-        netClock = 0; const heldTokens = allHeldTokens(), fits = it => it.type !== 'cache' && lootFits(actorBag('host'), LOOT[it.type]);
-        for (const net of world.decor.filter(d => d.type === 'net')) { const it = pickNetItem(world.items, net, {held:heldTokens, isPending, fits}); if (it) applyAction({kind:'collect', id:it.id, token:it.token, net:true}, 'host'); }
-      }
       waterClock += dt; if (waterClock >= 1) { waterClock -= 1; const r = tickWatering(world, 1); tickRain(world, 1, content?.rain() ?? 0); if (r.ripe.length && performance.now() >= noticeUntil) emit({kind:'notice', text:'A palm is ready to harvest'}, 'all'); }
     }
     if (running) { const t = wallTick(now, lastSaveAt, 3000); lastSaveAt = t.next; if (t.due) save(); } // wall clock: dt is capped
@@ -1718,6 +1748,8 @@ export function mount(transfer = null) {
         const w = cleanWorld(data.world, true); if (!w) return;
         const first = !networkReady;
         if (!Array.isArray(data.world.pieces) && !first) w.pieces = world.pieces; // building-pieces lane hook: host omits unchanged pieces
+        if (!Array.isArray(data.world.nets) && !first) w.nets = world.nets; // [nets] older host: keep what we had
+        const netsDiffer = JSON.stringify(world.nets) !== JSON.stringify(w.nets); // [nets]
         const changed = first || JSON.stringify([world.tiles, world.decor]) !== JSON.stringify([w.tiles, w.decor]), piecesChanged = w.pieces !== world.pieces;
         world = w; other = validPose(data.other);
         if (data.bag) { // canonical bag once the host has applied all of our sent actions
@@ -1729,7 +1761,8 @@ export function mount(transfer = null) {
         }
         content?.load(w.ext, 'net'); // content hook
         shark?.applyNet(data.shark); // shark lane: older hosts send none, so no shark is shown
-        syncItems(); if (changed && scene) { rebuildRaft(); fitShadow(); } else if (piecesChanged && scene) building?.sync(world); // building-pieces lane hook
+        syncItems(); if (netsDiffer && !changed && scene) netView?.sync(world.nets); // [nets]
+        if (changed && scene) { rebuildRaft(); fitShadow(); } else if (piecesChanged && scene) building?.sync(world); // building-pieces lane hook
         if (first) {
           networkReady = true; joinTimer = cancelTimer(joinTimer); joinDeadline = 0;
           setStatus('Connected! You are aboard your brother’s raft.'); setConnectionLabel(`TWO ABOARD · ${room.toUpperCase()}`);
@@ -1887,6 +1920,7 @@ export function mount(transfer = null) {
         dive:diving?.state ?? null, // diving lane hook
         rain:{...copyRain(world), rain:content?.rain() ?? 0}, // rain-sprinkler
         watering:{...copyWatering(world), target:waterAim ? {prompt:waterAim.prompt, click:waterAim.click?.kind ?? null, e:waterAim.e?.kind ?? null} : null},
+        nets:copyNets(world.nets), netAim, // [nets]
         signal:world.signal ? cleanSignal(world.signal) : null, antennas:countAntennas(world.decor), signalReadout:lastReadout ? {...lastReadout} : null,
       };
     },
