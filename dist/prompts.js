@@ -85,7 +85,7 @@ export function statePrompt(s, opt = {}) {
     if (stage === 'fishing' || s.fishWait) return {label:'Waiting for a bite…', muted:true}; // bites land automatically (game.js fishWait)
     return stage === 'idle' ? {key:'LMB', label:'Cast line'} : null;
   }
-  if (DECOR_NAMES[held] && s.tool === 'place') return s.build?.hover ? {key:'LMB', label:'Place ' + DECOR_NAMES[held]} : {label:'Aim at the raft floor', muted:true};
+  if (DECOR_NAMES[held] && s.tool === 'place') return s.build?.hover && s.build.hover.blocked !== 'nofloor' ? {key:'LMB', label:'Place ' + DECOR_NAMES[held]} : {label:'Aim at the raft floor', muted:true}; // nofloor: red ghost just off the deck
   return null;
 }
 

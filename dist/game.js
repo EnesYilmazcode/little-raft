@@ -759,17 +759,21 @@ export function mount(transfer = null) {
       else paintPlanter(g, plantStage(world.garden?.[k]), world.garden?.[k]?.water === 1);
     }
   }
-  // Returns null when the cell is not a build spot at all, else {x, z} plus `blocked` ('bound' | 'cap' | 'reach') when refused.
+  // Returns null when the cell is not a build spot at all, else {x, z, blocked} with `blocked` ('bound' | 'cap' | 'reach' |
+  // 'nofloor') when refused, null when it can be built. Runs every frame, so it fills one reused result (read it right away).
+  const placed = {x:0, z:0, blocked:null};
   function placementFor(kind, p) {
     if (!p) return null; const x = Math.round(p.x / 2), z = Math.round(p.z / 2);
     let why;
     if (kind === 'hammer') why = floorBlock(world.tiles, x, z);
     else if (DECOR_TYPES.includes(kind)) { if (fc?.hasGrill(x, z)) return null; why = decorBlock(world.tiles, world.decor, x, z); } // [fishing-cooking] grill tiles
     else return null;
+    if (why === 'nofloor' && !nearDeck(x, z)) return null; // just off the deck edge still shows a red ghost instead of nothing
     if (why && !BLOCK_TEXT[why]) return null;
     if (!why && !inReach(physics.x, physics.z, x, z)) why = 'reach';
-    return why ? {x, z, blocked:why} : {x, z};
+    placed.x = x; placed.z = z; placed.blocked = why || null; return placed;
   }
+  function nearDeck(x, z) { for (const [a, b] of NEIGHBOURS) if (hasTile(x + a, z + b)) return true; return false; }
   function placementCandidates(kind) {
     const out = [], ok = (x, z) => inReach(physics.x, physics.z, x, z);
     if (kind === 'hammer') { const seen = new Set(); for (const [tx, tz] of world.tiles) for (const [a, b] of NEIGHBOURS) { const x = tx + a, z = tz + b, k = x + ',' + z; if (!seen.has(k) && !floorBlock(world.tiles, x, z) && ok(x, z)) { seen.add(k); out.push({x, z}); } } }
@@ -998,7 +1002,7 @@ export function mount(transfer = null) {
       if (!v) { notice(kind === 'hammer' ? 'Point at an empty space beside the raft' : 'Point at an empty raft floor'); return; }
       if (v.blocked) { notice(BLOCK_TEXT[v.blocked]); return; }
       if (kind === 'hammer' && !canAfford(bag, FLOOR_COST)) { notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
-      swing = 1; ghostHold = {kind, x:v.x, z:v.z}; action({kind:'build', recipe:kind === 'hammer' ? 'floor' : kind, ...v, ...(kind !== 'hammer' && placeRot ? {rot:placeRot} : {})}); return;
+      swing = 1; ghostHold = {kind, x:v.x, z:v.z}; action({kind:'build', recipe:kind === 'hammer' ? 'floor' : kind, x:v.x, z:v.z, ...(kind !== 'hammer' && placeRot ? {rot:placeRot} : {})}); return;
     }
     if (kind === 'fishingrod') {
       if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2))) { notice('Point at the water to fish'); return; }
