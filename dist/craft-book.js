@@ -16,6 +16,10 @@ const CATEGORY_OF = Object.freeze({
   rope: 'materials',
   net: 'survival', palm: 'survival', lantern: 'survival',
   sail: 'building', bench: 'building', crate: 'building',
+  // progression catalogue (items.js)
+  metalhook: 'tools', binoculars: 'tools',
+  nail: 'materials', bolt: 'materials', hinge: 'materials',
+  researchtable: 'building', grill: 'building', smelter: 'building',
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
@@ -35,18 +39,34 @@ export const ITEM_TEXT = Object.freeze({
   net:        { desc: 'A rope net stretched over the water.', use: 'Catches nearby floating supplies for you.' },
   bench:      { desc: 'A simple plank bench.', use: 'Somewhere to sit; place it on a floor tile.' },
   crate:      { desc: 'A nailed wooden crate.', use: 'Decorates the raft; place it on a floor tile.' },
-  sand:       { desc: 'Fine sand scooped from the seafloor.', use: 'Dive for more; crafting uses are coming.' },
-  stone:      { desc: 'A smooth stone from an island shore.', use: 'Sturdier builds and island tools.' },
+  sand:       { desc: 'Fine sand from barrels and the seafloor.', use: 'Melt it into glass in the smelter.' },
+  stone:      { desc: 'A smooth, heavy stone.', use: 'Part of the smelter; sturdier builds and island tools.' },
   seed:       { desc: 'A palm seed washed up on an island.', use: 'Plant it in a palm planter.' },
-  research:   { desc: 'A small table for studying finds.', use: 'Place it, then research new recipes.' },
-  clay:       { desc: 'Sticky clay from the seafloor.', use: 'Dive for more; crafting uses are coming.' },
-  metalore:   { desc: 'A lump of ore from the seafloor.', use: 'Dive for more; crafting uses are coming.' },
+  research:   { desc: 'A tinker\u2019s desk for studying finds.', use: 'Place it, then study parts to learn signal and water gear.' },
+  clay:       { desc: 'Sticky clay from barrels and the seafloor.', use: 'Fire it into bricks on a grill.' },
+  metalore:   { desc: 'A lump of ore from barrels and the seafloor.', use: 'Smelt it into metal ingots.' },
   receiver:   { desc: 'A crackling radio receiver.', use: 'Place one, add antennas, and follow the signal.' },
   antenna:    { desc: 'A rope-braced antenna mast.', use: 'Strengthens the receiver signal; place on a tile.' },
   cup:        { desc: 'An empty plastic cup.', use: 'Click the sea to scoop water.' },
   saltcup:    { desc: 'A cup of salty sea water.', use: 'Pour it into a water purifier.' },
   freshcup:   { desc: 'A cup of clean fresh water.', use: 'Water a palm planter.' },
   purifier:   { desc: 'A small still that boils off the salt.', use: 'Turns sea water into fresh water.' },
+  // progression catalogue (items.js; its tooltips also show the item's own tip)
+  copperore:  { desc: 'Green-flecked ore from a lucky barrel.', use: 'Smelt it into copper ingots.' },
+  seaweed:    { desc: 'A slippery strand of seaweed.', use: 'Quick fuel for the grill and smelter.' },
+  nail:       { desc: 'A handful of bent scrap nails.', use: 'Research tables, smelters and sturdier builds.' },
+  brick:      { desc: 'A clay brick fired on the grill.', use: 'The walls of a smelter.' },
+  metalingot: { desc: 'A bar of smelted metal.', use: 'Metal hooks, bolts and hinges.' },
+  copperingot:{ desc: 'A bar of warm copper.', use: 'Fine parts for advanced gear.' },
+  glass:      { desc: 'A pane of glass melted from sand.', use: 'Lenses for binoculars.' },
+  bolt:       { desc: 'A threaded metal bolt.', use: 'Strong joints for advanced builds.' },
+  hinge:      { desc: 'A small metal hinge.', use: 'Lids, doors and folding parts.' },
+  metalhook:  { desc: 'A heavy metal hook that lasts much longer.', use: 'Throw it like the hook; wears far slower.' },
+  binoculars: { desc: 'Glass lenses in a copper tube.', use: 'Hold to spot barrels and islands far away.' },
+  cookedfish: { desc: 'A fish grilled golden.', use: 'A hearty snack.' },
+  researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
+  grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
+  smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },
 });
 
 const TOOLISH = new Set(['hook', 'hammer', 'fishingrod', 'rod', 'axe', 'spear']);

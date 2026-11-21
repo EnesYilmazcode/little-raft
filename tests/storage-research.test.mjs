@@ -8,6 +8,10 @@ const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST
 const T = await import(new URL('vendor/three.module.js', base));
 const { Bag, RECIPES, SLOT_COUNT, TOOL_DURABILITY } = await import(new URL('inventory-state.js', base));
 const SR = await import(new URL('storage-research.js', base));
+// The tree tests below were written for the pre-progression recipe set; recipes the progression
+// catalogue added (nail, bolt, stations, ...) are owned by items.js unlocks, as game.js wires it.
+const TABLE_TREE = new Set(['rope', 'hook', 'hammer', 'fishingrod', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'research', 'receiver', 'antenna', 'cup', 'purifier']);
+SR.setOwnedElsewhere(id => !TABLE_TREE.has(id));
 const { cleanSlice, cleanSlot, isProgressed, learnedFrom, moveStack, putAll, applyStorageAction, stateFrom, sliceOf,
   researchableKinds, ingredientKinds, createStorage, STARTER, CHEST_SLOTS, LOCK_REASON } = SR;
 
@@ -16,7 +20,7 @@ const freshWorld = () => ({ tiles: Array.from({ length: 9 }, (_, i) => [i % 3 - 
   fish: 0, collected: 0, items: [], hostInventory: new Bag().snapshot(), guestInventory: new Bag().snapshot(), ext: {} });
 const bagFrom = (slots) => { const s = new Array(SLOT_COUNT).fill(null); slots.forEach((v, i) => { s[i] = v; }); return new Bag({ slots: s, selected: 0 }); };
 const allRecipes = Object.keys(RECIPES);
-const nonStarter = allRecipes.filter(id => !STARTER.includes(id));
+const nonStarter = allRecipes.filter(id => !STARTER.includes(id) && TABLE_TREE.has(id)); // see setOwnedElsewhere below
 const env = (decor, pos = null) => ({ decorAt: (x, z) => decor.find(d => d.x === x && d.z === z)?.type ?? null, pos: () => pos });
 const total = (...arrs) => { const out = {}; for (const a of arrs) for (const s of a) if (s) out[s.kind] = (out[s.kind] ?? 0) + s.count; return out; };
 const emptyState = () => stateFrom({ v: 1, chests: {}, seen: [], learned: [], r: 0 }, 'save', freshWorld());
@@ -275,8 +279,9 @@ test('research: wood unlocks bench, then scrap unlocks lantern; repeats and non-
 test('research: recipes join the tree from their cost alone (learnedFrom)', () => {
   assert.deepEqual(learnedFrom(['wood']), ['bench']);
   assert.deepEqual(learnedFrom(['wood', 'leaf']), ['bench', 'palm']);
-  assert.deepEqual(learnedFrom(['wood', 'rope']), ['bench', 'fishingrod', 'net']);
-  assert.deepEqual(learnedFrom(['wood', 'rope', 'leaf']), ['bench', 'fishingrod', 'net', 'palm', 'sail']);
+  assert.deepEqual(learnedFrom(['wood', 'rope']), ['bench', 'fishingrod']); // net also needs nails since the progression rebalance
+  assert.deepEqual(learnedFrom(['wood', 'rope', 'nail']), ['bench', 'fishingrod', 'net']);
+  assert.deepEqual(learnedFrom(['wood', 'rope', 'leaf']), ['bench', 'fishingrod', 'palm', 'sail']);
   assert.deepEqual(learnedFrom(['leaf'], ['lantern']), ['lantern']);
 });
 
@@ -295,9 +300,10 @@ test('module: research emits one notice per new recipe to everyone; craftLocked 
   assert.equal(emits[0].to, 'host');
   emits.length = 0;
   mod.action({ kind: 'storage.research', x: 0, z: 1, slot: slotOf('wood'), expect: { kind: 'wood' } }, 'host', bags.host);
-  assert.deepEqual(emits.map(e => e.e.text).sort(), ['New recipe: Bench!', 'New recipe: Fishing Rod!', 'New recipe: Net!']);
+  assert.deepEqual(emits.map(e => e.e.text).sort(), ['New recipe: Bench!', 'New recipe: Fishing Rod!']); // net also needs nails now
   assert.ok(emits.every(e => e.to === 'all'));
-  assert.equal(mod.craftLocked('net'), null);
+  assert.equal(mod.craftLocked('fishingrod'), null);
+  assert.equal(mod.craftLocked('net'), LOCK_REASON);
   assert.equal(mod.craftLocked('sail'), LOCK_REASON);
   emits.length = 0;
   mod.action({ kind: 'storage.research', x: 0, z: 1, slot: slotOf('wood'), expect: { kind: 'wood' } }, 'host', bags.host);
@@ -443,4 +449,17 @@ test('stale clicks get a soft "someone moved that" notice and a repaint; a diffe
   mod.action({ kind: 'storage.put', x: 1, z: 0, from: 9, to: 1, expect: { kind: 'scrap', count: 1 } }, 'host', bags.host);
   assert.equal(emits[0].e.text, 'That slot already holds something else');
   assert.deepEqual(bags.host.slots[9], { kind: 'scrap', count: 1 });
+});
+
+test('setOwnedElsewhere: recipes owned by the progression catalogue are never locked by the table', async () => {
+  const { ITEMS } = await import(new URL('items.js', base));
+  try {
+    SR.setOwnedElsewhere(id => !!ITEMS[id]);
+    const st = { seen: [], learned: [], all: false };
+    const locked = SR.lockedRecipes(st);
+    assert.ok(locked.length > 0);
+    for (const id of locked) assert.ok(!ITEMS[id], `${id} is a catalogue recipe`);
+    assert.equal(SR.isLearned(st, 'sail'), true);
+    assert.deepEqual(SR.learnedFrom(['wood', 'rope', 'leaf']), []);
+  } finally { SR.setOwnedElsewhere(id => !TABLE_TREE.has(id)); }
 });

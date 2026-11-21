@@ -1,5 +1,6 @@
 // Authoritative per-player inventory ("bag") for the raft survival game.
 // Pure ES module: no DOM, no THREE, no timers, no randomness.
+import { infoTable, recipeTable, TOOL_IDS } from './items.js'; // [progression-hook]
 
 export const STACK_SIZE = 20;
 export const SLOT_COUNT = 28;
@@ -9,7 +10,7 @@ export const TOOL_DURABILITY = 100;
 // content hook: islands/storage item kinds and recipes live in content-items.js
 import { CONTENT_ITEMS, CONTENT_RECIPES } from './content-items.js?build=v3-survival-ae77fa84ac2b';
 
-const TOOL_KINDS = new Set(['hook', 'hammer', 'fishingrod']);
+const TOOL_KINDS = new Set(['hook', 'hammer', 'fishingrod', ...TOOL_IDS]); // [progression-hook]
 
 // icon = symbol id in dist/icons.svg. placeholder:true means the icon is
 // borrowed from a related item until a dedicated asset exists.
@@ -40,6 +41,8 @@ export const ITEM_INFO = Object.freeze({
   saltcup:    Object.freeze({ kind: 'saltcup',    name: 'Cup of Sea Water', icon: 'icon-saltcup', maxStack: 5,      tool: false, placeholder: false }),
   freshcup:   Object.freeze({ kind: 'freshcup',   name: 'Cup of Fresh Water', icon: 'icon-freshcup', maxStack: 5,   tool: false, placeholder: false }),
   purifier:   Object.freeze({ kind: 'purifier',   name: 'Water Purifier', icon: 'icon-purifier', maxStack: STACK_SIZE, tool: false, placeholder: false }),
+
+  ...infoTable(), // [progression-hook] items.js overrides legacy rows and adds new kinds
 });
 
 export const ITEM_KINDS = Object.freeze(Object.keys(ITEM_INFO));
@@ -71,6 +74,8 @@ export const RECIPES = Object.freeze({
   antenna:    recipe('antenna',    'Antenna',      1, { wood: 2, scrap: 1, rope: 1 }),
   cup:        recipe('cup',        'Cup',          1, { plastic: 1 }),
   purifier:   recipe('purifier',   'Water Purifier', 1, { wood: 2, scrap: 2, plastic: 1 }),
+
+  ...recipeTable(), // [progression-hook] every hand recipe from items.js (new costs win)
 });
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);

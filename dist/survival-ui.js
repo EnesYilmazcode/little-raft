@@ -2,6 +2,7 @@
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, HOLD, anchorTip } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { ITEM_ICONS } from './item-svg.js'; // [progression-hook]
 
 const VERSION = 'sv2';
 const HB = Number(HOTBAR_SIZE) || 8;
@@ -61,6 +62,7 @@ const CUSTOM = {
     <path d="M38 27.5 V29" stroke="#153e49" stroke-width="1.6"/></g>`,
 };
 
+Object.assign(CUSTOM, ITEM_ICONS); // [progression-hook] dedicated drawings for placeholder kinds
 const norm = k => String(k ?? '').toLowerCase().replace(/[\s_\-]/g, '');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clamp01 = v => Math.max(0, Math.min(1, v));
@@ -192,6 +194,7 @@ const CSS = `
 #inventory .sv-recipe.sv-pick{background:linear-gradient(#8e6a3e,#6c4d2c);box-shadow:inset 0 0 0 2px #ffe3a6,0 0 0 1px #24170c}
 #inventory .sv-recipe.sv-locked .sv-rart>*{filter:grayscale(.85) brightness(.7);opacity:.75}
 #inventory .sv-recipe.sv-locked .sv-rname{color:#cdbb98}
+#inventory .sv-recipe.sv-gated .sv-rart>*{filter:grayscale(1) brightness(.55)} /* [progression-hook] research-locked */
 #inventory .sv-recipe:focus-visible{outline:2px solid #ffe3a6;outline-offset:1px}
 #inventory .sv-rart{display:grid;place-items:center;width:42px;height:42px;border-radius:3px;background:radial-gradient(circle at 50% 40%,#9a7a52,#4a3420 75%);box-shadow:inset 0 0 0 1px #d4b07a55}
 #inventory .sv-rart .sv-icon{width:36px;height:36px}
@@ -330,7 +333,8 @@ function readSnap(bag) {
   return s && Array.isArray(s.slots) ? s : null;
 }
 
-export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause, iconFor } = {}) {
+export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause, iconFor, recipeGate } = {}) {
+  const gate = id => { try { return recipeGate?.(id) || null; } catch { return null; } }; // [progression-hook] {hidden, locked, reason}
   // Hot reload: DOM is adopted, not rebuilt; the previous instance releases its listeners only once
   // this one is fully built (see below), so an early throw leaves the old UI working.
   const prev = window[INST_KEY];
@@ -406,7 +410,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   }
   const viewOf = id => recipeEls.find(v => v.r.id === id) || null;
   function buildRecipes() {
-    recipes = recipeList();
+    recipes = recipeList().filter(r => !gate(r.id)?.hidden); // [progression-hook]
     groups = groupRecipes(recipes, ITEM_INFO);
     const catOf = new Map();
     for (const g of groups) for (const r of g.recipes) catOf.set(r.id, g.id);
@@ -484,7 +488,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const ready = v.state === 'ready';
     D.btn.setAttribute('aria-disabled', String(!ready));
     if (!hold) {
-      D.label.textContent = ready ? 'Craft' : v.state === 'full' ? 'Bag is full' : 'Missing materials';
+      D.label.textContent = ready ? 'Craft' : v.state === 'gated' ? 'Locked' : v.state === 'full' ? 'Bag is full' : 'Missing materials'; // [progression-hook]
       D.hint.textContent = ready && v.times > 1 ? 'hold for more' : '';
     }
     D.btn.setAttribute('aria-label', ready ? `Craft ${v.r.name}. Hold to craft several.` : `${v.r.name}: ${D.label.textContent}`);
@@ -497,23 +501,27 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const rows = ingredientRows(r.reqs, k => countOf(bag, k));
     let check = null;
     if (typeof bag.canCraft === 'function') { try { check = bag.canCraft(r.id); } catch (e) { console.error(e); } }
-    return { rows, state: recipeState(rows, check), times: craftableTimes(rows) };
+    const g = gate(r.id); // [progression-hook] research/station lock wins over materials
+    if (g?.locked) return { rows, state: 'gated', reason: g.reason || '', times: 0 };
+    return { rows, state: recipeState(rows, check), reason: '', times: craftableTimes(rows) };
   }
   function paintRecipes(bag) {
     const readyPer = new Map();
     for (const v of recipeEls) {
       const r = v.r;
-      const { rows, state, times } = evaluate(bag, r);
-      v.rows = rows; v.state = state; v.times = times;
+      const { rows, state, times, reason } = evaluate(bag, r);
+      v.rows = rows; v.state = state; v.times = times; v.reason = reason; // [progression-hook] reason
       if (state === 'ready') readyPer.set(v.cat, (readyPer.get(v.cat) || 0) + 1);
-      const sig = state + rows.map(x => x.have).join(',');
+      const sig = state + (v.reason || '') + rows.map(x => x.have).join(','); // [progression-hook] reason
       if (v.sig === sig) continue;
       v.sig = sig;
       v.el.classList.toggle('sv-ready', state === 'ready');
       v.el.classList.toggle('sv-full', state === 'full');
-      v.el.classList.toggle('sv-locked', state === 'missing');
+      v.el.classList.toggle('sv-locked', state === 'missing' || state === 'gated');
+      v.el.classList.toggle('sv-gated', state === 'gated'); // [progression-hook]
       const lacking = rows.filter(x => !x.enough);
-      v.sub.textContent = state === 'ready' ? 'Ready to craft'
+      v.sub.textContent = state === 'gated' ? 'Locked: ' + (v.reason || 'not learned yet') // [progression-hook]
+        : state === 'ready' ? 'Ready to craft'
         : state === 'full' ? 'No room in your bag'
         : 'Need ' + lacking.map(x => `${x.short} ${itemName(x.kind)}`).join(', ');
       v.badge.textContent = state === 'ready' && Number.isFinite(times) && times > 0 ? '×' + Math.min(times, 99) : '';
