@@ -46,7 +46,7 @@ export function createCoop(ctx, saved = null) {
   const hand = new T.Vector3(), sample = {};
   const ac = new AbortController();
   let conn = null, peer = null;            // peer = their hello, once received on this connection
-  let lastSend = 0, lastSent = null, lastRecv = now(), lastItems = null, lastItemsAt = 0, itemKey = '';
+  let settled = false, lastSend = 0, lastSent = null, lastRecv = now(), lastItems = null, lastItemsAt = 0, itemKey = '';
   let lastHook = null, throwAt = -1, emote = null, lastPose = null, errors = 0, aboard = !!saved?.aboard; // aboard: guest had a live session
   let rejoin = saved?.rejoin ?? null;      // {since, attempt, next} while a guest is reconnecting
   let peerName = saved?.peerName ?? 'Brother'; avatar.setName(peerName);
@@ -123,7 +123,9 @@ export function createCoop(ctx, saved = null) {
   }
   function sendPose(t) {
     const s = snapshot(ctx.local()), key = JSON.stringify(s), moving = key !== lastSent;
-    if (t - lastSend < (moving ? SEND_MS : IDLE_MS)) return;
+    // The first unchanged snap still goes out on the 15 Hz tick so the receiver sees the stop promptly (no overshoot).
+    if (t - lastSend < (moving || !settled ? SEND_MS : IDLE_MS)) return;
+    settled = !moving;
     lastSend = t; lastSent = key; s.t = Math.round(t);
     sendRaw(enc.encode(s));
   }
