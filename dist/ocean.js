@@ -58,9 +58,9 @@ void main() {
 `;
 
 const MAX_FOAM = 32;     // floating items that leave a foam collar
-const GRID = 128;        // raft foam field: 0.5 m texels covering 64 m, centred on the origin
-const TEXEL = 0.5;
-const COLLAR = 1.4;      // metres of foam beyond the deck edge
+const GRID = 256;        // raft foam field: 0.25 m texels covering 64 m, centred on the origin
+const TEXEL = 0.25;
+const COLLAR = 1.1;      // metres of foam beyond the deck edge
 
 const fragmentShader = /* glsl */`
 uniform float uTime;
@@ -162,17 +162,26 @@ void main() {
     vec2 i0 = floor(t), fr = t - i0;
     i0 = (i0 + 0.5) / ${GRID.toFixed(1)};
     float k = 1.0 / ${GRID.toFixed(1)};
-    float m = mix(mix(texture2D(uRaftMask, i0).r, texture2D(uRaftMask, i0 + vec2(k, 0.0)).r, fr.x),
-                  mix(texture2D(uRaftMask, i0 + vec2(0.0, k)).r, texture2D(uRaftMask, i0 + vec2(k)).r, fr.x), fr.y);
-    float edge = m * (0.85 + 0.15 * sin(uTime * 1.7 + p.x * 2.0 + p.y * 1.3));
+    vec2 m = mix(mix(texture2D(uRaftMask, i0).rg, texture2D(uRaftMask, i0 + vec2(k, 0.0)).rg, fr.x),
+                 mix(texture2D(uRaftMask, i0 + vec2(0.0, k)).rg, texture2D(uRaftMask, i0 + vec2(k)).rg, fr.x), fr.y);
+    // G: shade under and just around the deck. Water seen through the board gaps stays dark navy.
+    float under = m.y;
+    col *= mix(1.0, 0.35, under);
+    foam *= 1.0 - under;
+    float cl = vnoise(fp * 1.7) * 0.6 + vnoise(fp * 4.3 - uTime * 0.25) * 0.4;
+    // R: raft collar, a thin broken line hugging the outside of the deck edge (none underneath).
+    float re = m.x * (0.85 + 0.15 * sin(uTime * 1.7 + p.x * 2.0 + p.y * 1.3));
+    float lacy = cl * 0.7 + vnoise(fp * 9.0 + uTime * 0.3) * 0.3;
+    float collar = smoothstep(0.9 - re * 0.45, 0.98 - re * 0.45, lacy) * min(1.0, re * 1.6) * 0.6;
+    collar *= 1.0 - smoothstep(0.55, 0.85, under);
+    float edge = 0.0;
     for (int i = 0; i < ${MAX_FOAM}; i++) {
       vec4 f = uFoamPts[i];
       if (f.z <= 0.0) break;  // live points are packed first
       float d = length(wp - f.xy) / f.z;  // thin broken ring hugging the item's waterline
       edge = max(edge, smoothstep(0.35, 0.7, d) * (1.0 - smoothstep(0.7, 1.0, d)) * 0.35);
     }
-    float cl = vnoise(fp * 1.7) * 0.6 + vnoise(fp * 4.3 - uTime * 0.25) * 0.4;
-    float collar = smoothstep(1.0 - edge, 1.0 - edge * 0.55, cl) * min(1.0, edge * 1.4) * 0.85;
+    collar = max(collar, smoothstep(1.0 - edge, 1.0 - edge * 0.55, cl) * min(1.0, edge * 1.4) * 0.85);
     col = mix(col, uFoam, max(foam, collar));
   }
 
@@ -191,8 +200,8 @@ export function createOcean(T, options = {}) {
   geometry.rotateX(-Math.PI / 2);
 
   const sun = options.sunDirection ?? new T.Vector3(-15, 28, 12);
-  const maskData = new Uint8Array(GRID * GRID);
-  const mask = new T.DataTexture(maskData, GRID, GRID, T.RedFormat, T.UnsignedByteType);
+  const maskData = new Uint8Array(GRID * GRID * 2); // RG: collar foam, depth under the deck
+  const mask = new T.DataTexture(maskData, GRID, GRID, T.RGFormat, T.UnsignedByteType);
   const foamPts = Array.from({ length: MAX_FOAM }, () => new T.Vector4());
   const uniforms = {
     uTime: { value: 0 },
@@ -229,26 +238,49 @@ export function createOcean(T, options = {}) {
   let foamGroup = null;
   const camPos = new T.Vector3(); // last camera passed to update(); collars beyond 48 m are skipped
 
-  // Raft tiles ([x, z], 2 m squares centred on x*2, z*2) -> foam falloff around the deck edge.
+  // Raft tiles ([x, z], 2 m squares centred on x*2, z*2) -> signed distance to the deck edge
+  // (negative under the deck). R: foam collar, a thin band hugging the edge outside the raft.
+  // G: depth under the deck, used as a cheap contact shadow so board gaps show dark water.
   // Runs only when the raft changes; only texels near the raft are visited.
   function setRaftTiles(tiles) {
     maskData.fill(0);
     if (tiles.length) {
       let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-      for (const [x, z] of tiles) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+      const set = new Set();
+      for (const [x, z] of tiles) {
+        x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z);
+        set.add(x + ',' + z);
+      }
+      const has = (x, z) => set.has(x + ',' + z);
       const pad = 1 + COLLAR, half = GRID / 2;
       const toI = (w) => Math.max(0, Math.min(GRID - 1, Math.floor(w / TEXEL + half)));
       for (let j = toI(z0 * 2 - pad); j <= toI(z1 * 2 + pad); j++) {
         const wz = (j + 0.5 - half) * TEXEL;
         for (let i = toI(x0 * 2 - pad); i <= toI(x1 * 2 + pad); i++) {
           const wx = (i + 0.5 - half) * TEXEL;
-          let d = Infinity;
-          for (const [x, z] of tiles) {
-            const dx = Math.max(Math.abs(wx - x * 2) - 1, 0), dz = Math.max(Math.abs(wz - z * 2) - 1, 0);
-            d = Math.min(d, Math.hypot(dx, dz));
+          const tx = Math.round(wx / 2), tz = Math.round(wz / 2);
+          let d;
+          if (has(tx, tz)) {
+            // Inside: distance to the nearest tile edge that is not shared with a neighbour.
+            const lx = wx - tx * 2, lz = wz - tz * 2;
+            d = Infinity;
+            if (!has(tx - 1, tz)) d = Math.min(d, lx + 1);
+            if (!has(tx + 1, tz)) d = Math.min(d, 1 - lx);
+            if (!has(tx, tz - 1)) d = Math.min(d, lz + 1);
+            if (!has(tx, tz + 1)) d = Math.min(d, 1 - lz);
+            d = -Math.min(d, 2);
+          } else {
+            d = Infinity;
+            for (const [x, z] of tiles) {
+              const dx = Math.max(Math.abs(wx - x * 2) - 1, 0), dz = Math.max(Math.abs(wz - z * 2) - 1, 0);
+              d = Math.min(d, Math.hypot(dx, dz));
+            }
           }
+          const o = (j * GRID + i) * 2;
           const f = 1 - d / COLLAR;
-          if (f > 0) maskData[j * GRID + i] = Math.round(255 * f * f);
+          if (d > 0 && f > 0) maskData[o] = Math.round(255 * f);
+          // Shade: full from 0.3 m under the deck, fading out 0.25 m beyond the edge.
+          maskData[o + 1] = Math.round(255 * Math.max(0, Math.min(1, (0.25 - d) / 0.55)));
         }
       }
     }
