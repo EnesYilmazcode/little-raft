@@ -447,7 +447,7 @@ export function mount(transfer = null) {
     const el = document.getElementById('signalReadout'), mk = document.getElementById('signalMarker');
     if (el) {
       const show = !!(running && r); if (el.hidden === show) el.hidden = !show;
-      const html = show ? `<span class="sig-arrow" style="transform:rotate(${r.listening ? 0 : Math.round(r.arrow)}deg)">${r.listening ? '◌' : '▲'}</span>` + esc(r.label) : '';
+      const html = show ? `<span class="sig-arrow" style="transform:rotate(${r.listening ? 0 : Math.round(r.arrow)}deg)">${r.listening ? '◌' : '↑'}</span>` + esc(r.label) : '';
       if (html !== signalHtml) { signalHtml = html; el.innerHTML = html; }
     }
     const c = world.signal?.cache, m = c ? itemMeshes.get(c.token) : null;

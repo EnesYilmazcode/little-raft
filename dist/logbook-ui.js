@@ -23,6 +23,7 @@ const CSS = `
 #logbook .lb-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .lb h2{font:700 20px/1.2 ${FONT};margin:0;color:#fff2cc;letter-spacing:0;text-shadow:0 1px 0 #3e2a17}
 #logbook .lb-close{width:32px;height:32px;min-width:32px;padding:0;display:grid;place-items:center;background:transparent;border:0;border-radius:4px;color:#fff2cc;cursor:pointer;box-shadow:none}
+#logbook .lb-close:hover{transform:none;background:#00000022}
 #logbook .lb-close svg{width:22px;height:22px}
 #logbook .lb-close:focus-visible{outline:2px solid #ffe3a6;outline-offset:1px}
 #logbook .lb-tabs{display:flex;gap:6px}
@@ -35,7 +36,7 @@ const CSS = `
 .lb-notes{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .lb-note{background:#f3e6c4;color:#3e2a17;border-radius:3px;padding:10px 12px;box-shadow:0 2px 0 #24170c;font-style:italic}
 .lb-note .lb-no{display:inline-block;font:600 12px/1.2 ${FONT};font-variant:small-caps;letter-spacing:.04em;color:#8a663a;font-style:normal;margin-bottom:3px}
-.lb-note p{margin:0}
+.lb-note p{margin:0;color:inherit;font-size:14px;line-height:1.45}
 .lb-note.lb-missing{background:transparent;border:1px dashed #b48d5566;box-shadow:none;color:#d6b67e99;font-style:normal}
 .lb-note.lb-missing .lb-no{color:#d6b67e99}
 .lb-new::after{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:#ffbd66;margin-left:6px;vertical-align:middle}

@@ -156,7 +156,8 @@ Own `MeshStandardMaterial`s (roughness .8; disposeGeometry frees them), castShad
 - The `!hasR && !cache` early return also removes any stray `cache` items (keeps §3 "stale mirrors" true on the idle path).
 - The spawn token is capped to 79 chars so it always passes `cleanSignal` / `cleanWorld`.
 - The cache beam mesh has `raycast = () => {}` so the invisible 8 u beam never becomes an aim/pickup target.
-- The listening pill shows a neutral `◌` glyph (unrotated) in the `.sig-arrow` slot instead of `▲`, since there is no bearing yet.
+- The listening pill shows a neutral `◌` glyph (unrotated) in the `.sig-arrow` slot since there is no bearing yet. The bearing glyph is `↑` instead of `▲`: an equilateral
+  triangle looks the same every 120° of rotation (a 149° bearing rendered as ◀ in the Playwright check).
 - HUD visibility is reconciled every frame against `el.hidden` (only the innerHTML is string-cached), so a hot-swap where
   the old engine's `dispose()` hides the nodes after the new mount has drawn cannot leave the pill hidden.
 - Antenna toast: "counts" is decided by comparing `countAntennas` before/after the push; with no receiver on the raft the
