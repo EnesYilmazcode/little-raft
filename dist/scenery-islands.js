@@ -1,9 +1,11 @@
 // Distant islands: grey-beige rock masses on a flat sand shelf, bent palms and bushes,
 // a white foam ring at the shoreline and a pale turquoise shallow halo.
-// Each island is built once and merged into three meshes (solid, foam, shallows) to keep
+// Each island is built once and merged into two meshes (solid, and the shallows + foam rings) to keep
 // draw calls low. Purely decorative: no physics or gameplay depends on it.
 //
 //   createIsland(T, {seed, radius}) -> THREE.Group (origin at sea level, centre of the island)
+
+import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 
 const ROCK = '#9a968c', ROCK_SHADE = '#7d786e', ROCK_DARK = '#6a665d', SAND = '#e3d2a0', SAND_WET = '#cdb987';
 const TRUNK = '#8f6a45', TRUNK_RING = '#76583a', LEAF_A = '#4e8f3e', LEAF_B = '#6fa548', LEAF_DARK = '#3b7134', BUSH = '#4a8a3c';
@@ -51,8 +53,9 @@ function materials(T) {
   if (shared) return shared;
   shared = {
     solid: new T.MeshStandardMaterial({vertexColors:true, flatShading:true, roughness:.95, metalness:0}),
-    foam: new T.MeshBasicMaterial({color:'#ffffff', vertexColors:true, transparent:true, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2}),
-    shallow: new T.MeshBasicMaterial({vertexColors:true, transparent:true, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1}),
+    // Shallows and foam rings share one see-through material; the foam's triangles come after the shallows' in
+    // the merged index, so it still blends on top (as its higher renderOrder did when they were two meshes).
+    rings: new T.MeshBasicMaterial({vertexColors:true, transparent:true, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2}),
   };
   return shared;
 }
@@ -197,9 +200,11 @@ export function createIsland(T, {seed = 1, radius = 10} = {}) {
   const solid = new T.Mesh(merged, mats.solid); solid.receiveShadow = false; solid.castShadow = false;
 
   const white = new T.Color('#ffffff'), turq = new T.Color('#6fd6c8'), turqOut = new T.Color('#3fa9a8');
-  const foam = new T.Mesh(ringGeometry(T, shore, -.2, 2.2, .16, white, 1, white, 0, 1.2, seed), mats.foam); foam.renderOrder = 2;
-  const shallow = new T.Mesh(ringGeometry(T, shore, .2, radius * .9, .08, turq, .75, turqOut, 0, radius * .25, seed + 3), mats.shallow); shallow.renderOrder = 1;
-  group.add(shallow, foam, solid);
+  const shallowGeo = ringGeometry(T, shore, .2, radius * .9, .08, turq, .75, turqOut, 0, radius * .25, seed + 3);
+  const foamGeo = ringGeometry(T, shore, -.2, 2.2, .16, white, 1, white, 0, 1.2, seed);
+  const rings = new T.Mesh(mergeGeometries(T, [shallowGeo, foamGeo]), mats.rings); rings.renderOrder = 1;
+  shallowGeo.dispose(); foamGeo.dispose();
+  group.add(rings, solid);
   return group;
 }
 
