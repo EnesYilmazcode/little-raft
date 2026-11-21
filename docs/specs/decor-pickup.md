@@ -169,3 +169,28 @@ chip "Release X to pick up the Crate". Then `act` it, and capture the bag showin
 8. Round trip (pure): bag B, place a crate (remove 1), fill the chest from the bag, then assemble loot and tryLoot → counts equal B.
 9. `hostCanUndecor({caps:{undecor:1}})` is true; `({})` and `undefined` are false.
 Run `npm test` and shoot.py. The `errors` list must be empty.
+
+## Build notes
+- **Tag:** every hook line is tagged `// [undecor]` (the coordinator's tag for this lane) rather than `[decor-pickup]`; `grep -rn "\[undecor\]" dist` lists them all.
+- **Files:** new `dist/decor-pickup.js` (pure; imports `inventory-state.js` and `watering.js` only, rain needs no veto) and
+  `tests/decor-pickup.test.mjs` (10 tests, covering every item in section 11 plus a progression-station test). The hooks are in `dist/game.js`, `dist/building.js`, `dist/content.js`
+  (header doc + registry), `dist/live.js` (PRELOAD), `dist/progression-hooks.js`, `dist/storage-research.js`, `dist/kiln.js`,
+  `dist/bees.js`, `dist/engine.js`, `dist/sleep.js`, `dist/animals.js` and `dist/decor-pack.js`.
+- **Kiln queue loot:** a queued batch took `SMELT[r].need` inputs when it was loaded, so the queue comes back as
+  `[r, q * need]` (2 sand per glass batch), not `[r, q]`, so no ore or sand is lost. The tray comes back as `[o, n]`. Firebox fuel units are lost, the same as station fuel.
+- **Storage:** chest slots keep `{durability}` (and `id` when present) as the meta. `dropTile` and `afterUndecor` share one
+  `dropKey` delete. A guest's open chest UI already closes itself when the crate's decor vanishes (storage-research-ui.js `update`), and the host closes its own UI in `afterUndecor`.
+- **Progression:** `beforeUndecor/undecorLoot` also read a station that is still only in `pendingStations` (loaded from
+  localStorage, not yet synced by `tick`), so a fresh load can't skip the mid-cook check. `afterUndecor` deletes both the live and the pending entry and closes the panel.
+- **Sail / wheel grab:** the host branch calls `sailing.release()` when a sail or wheel is picked up while the host is steering.
+  On either peer, the existing per-frame `grabLost()` in sailing-world.js releases a grab once the last sail (or the last wheel) is gone.
+  Steering isn't tied to one particular sail or wheel, so a grab can keep going while another one of the same kind is left.
+- **Client targeting:** `rebuildRaft` tags every decor group with `userData.tileKey` and keeps them in `decorGroups`, so the
+  ray never tests the deck mesh. `decorRemoveTarget` runs only while X is held. It reuses one hit array and one result
+  object, and it builds the chip text and the action object only when the aimed tile or type changes. (Three's
+  `intersectObjects` still makes its own hit records.) The chip shows `UNDECOR_TEXT.reach` when the tile is out of `BUILD_REACH` (the action is still sent, and the host answers with BLOCK_TEXT.reach).
+- **Old host:** `building.removeAction()` calls `removeExtra.deny()` when there's no action, and the guest sees the oldHost notice. Nothing is sent.
+- **Host caps:** `HOST_CAPS = {undecor:1}` sits beside `hostState()`. Other lanes should add their flags to that object instead of adding a second `caps` key.
+- **QA:** `raftDebug.undecor.{target, preview, clear, act, caps}`. `preview` holds X while the hammer is in hand.
+  Headless smoke: crate (3 wood inside) + lantern. Both show the red ghost and the "Release X to pick up the …" chip. Afterwards the bag gained 1 crate, 3 wood and 1 lantern, `world.decor` and the storage chests are empty, and there are no page errors.
+- **Known gaps:** there's no gamepad binding (section 9). While X is held, other context prompts (for example "Open crate") still show. Mixed-version co-op (an old guest on a new host) is unsupported.

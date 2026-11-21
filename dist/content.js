@@ -8,6 +8,8 @@
 //   name                      string, used for save/net keys and raftDebug.content[name]
 //   update(dt)                per frame, after items/hook updates. No allocations.
 //   afterMove(physics, dt)    after player physics (islands: stand on sand)
+//   ride(physics, dt, input)  takes over player motion this frame; return true to skip physics.update (sit, zipline)
+//   seated()                  -> true while the local player sits
 //   serialize()               -> JSON-safe data. Host saves it in world.ext[name] and sends it in state.
 //   load(data, from)          from: 'save' | 'net' | 'restore'. data may be undefined (old save).
 //   action(a, actor, bag)     host only. Return true if a.kind was handled. Guests reach it via ctx.action().
@@ -22,6 +24,16 @@
 //   alt(aim, kind)            right click while holding `kind`. Return true if consumed (paint: brush colour).
 //   afterRebuild()            after rebuildRaft() recreated the deck/decor meshes (paint: re-tint planks)
 //   tileTint(x, z, base)      plank colour for deck tile x,z (base = the plank's own colour) or null (paint)
+//   beforeUndecor(d, actor)   [undecor] host only. d = the world.decor entry {type,x,z,rot?} (read-only), actor 'host'|'guest'.
+//                             -> veto string (shown as a notice to the actor) when this module's state on d's tile
+//                             is busy, else null. Must not mutate anything. Called for every decor type: ignore
+//                             types you don't own.
+//   undecorLoot(d)            [undecor] host only. -> array of [kind, n] or [kind, n, meta] that this module stores on d's tile
+//                             (contents, NOT the item itself: the host adds {d.type:1}). [] or null when nothing.
+//                             Must not mutate. Called only after every beforeUndecor returned null.
+//   afterUndecor(d, actor)    [undecor] host only, after the bag is committed and d is spliced out of world.decor.
+//                             Delete this module's slice key for d's tile, bump its rev so guests resync, close any
+//                             open UI for that tile. Must not throw. No return value.
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   dispose()
 //
@@ -37,14 +49,16 @@ import { createDecorPack } from './decor-pack.js?build=v3-survival-ae77fa84ac2b'
 import { createDayNight } from './daynight.js?build=v3-survival-ae77fa84ac2b';
 import { createEngine } from './engine.js?build=v3-survival-ae77fa84ac2b';
 import { createSleep } from './sleep.js?build=v3-survival-ae77fa84ac2b';
+import { createSitting } from './sitting.js?build=v3-survival-ae77fa84ac2b'; // [sit]
 import { createPaint } from './paint.js?build=v3-survival-ae77fa84ac2b'; // content hook (paint)
 import { createKiln } from './kiln.js?build=v3-survival-ae77fa84ac2b';
 import { createAnimals } from './animals.js?build=v3-survival-ae77fa84ac2b';
 import { createBees } from './bees.js?build=v3-survival-ae77fa84ac2b'; // [bees]
 import { createTreasure } from './treasure.js?build=v3-survival-ae77fa84ac2b';
 import { createMapTable } from './maptable.js?build=v3-survival-ae77fa84ac2b';
+import { createFlags } from './flags.js?build=v3-survival-ae77fa84ac2b'; // [flags]
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees]; // [bees] + createBees
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createFlags]; // [bees] + createBees, [flags] + createFlags, [sit] + createSitting
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -87,12 +101,17 @@ export function createContent(ctx, features = FEATURES) {
     load(ext, from) { const e = ext && typeof ext === 'object' ? ext : {}; for (const m of mods) call(m, 'load', e[m.name], from); },
     action(a, actor, bag) { for (const m of mods) if (call(m, 'action', a, actor, bag)) return true; return false; },
     interact: aim => !!first('interact', aim),
+    ride: (p, dt, i) => !!first('ride', p, dt, i), // content hook (sit, zipline): first module to take over motion wins
+    seated: () => !!first('seated'), // [sit]
     prompt: aim => first('prompt', aim),
     use: (aim, kind) => !!first('use', aim, kind), // content hook (paint)
     alt: (aim, kind) => !!first('alt', aim, kind), // content hook (paint)
     afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)
     tileTint: (x, z, base) => first('tileTint', x, z, base), // content hook (paint): plank hex for a painted deck tile, else null
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
+    beforeUndecor: (d, actor) => first('beforeUndecor', d, actor), // [undecor]
+    undecorLoot: d => { const out = []; for (const m of mods) { const r = call(m, 'undecorLoot', d); if (Array.isArray(r)) out.push(...r); } return out; }, // [undecor]
+    afterUndecor: (d, actor) => { for (const m of mods) call(m, 'afterUndecor', d, actor); }, // [undecor]
     decorModel: (type, d) => first('decorModel', type, d),
     sailPush: (s, out) => !!first('sailPush', s, out),
     steerTargets: () => first('steerTargets'),
