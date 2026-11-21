@@ -694,7 +694,8 @@ export function mount(transfer = null) {
       if (fainted >= 2.6) {
         fainted = -1; const c = cleanVitals(RESPAWN); vitals.hp = c.hp; vitals.food = c.food; vitals.water = c.water; vitals.hurtAt = -Infinity; vitals.starving = false;
         diving?.cancel(); const s = spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); pitch = -.28; // fresh physics: dry, grounded, not diving
-        vitalsUI?.faint(false); notice('You wake up on the raft, hungry and thirsty', 3200);
+        charging = null; reeling = false; down = null; if (hook) { fishWait = 0; endHook(); } // nothing cast or charged during the faint survives the wake
+        vitalsUI?.faint(false); notice('You wake up on the raft, hungry and thirsty', 3200); refreshPointerUI(true);
       }
       return;
     }
@@ -706,7 +707,7 @@ export function mount(transfer = null) {
     }
     if (role === 'solo' && dialog && dialogOpen()) return; // the solo pause menu stops the clock
     vitalsOpts.mult = exertion; tickVitals(vitals, dt, vitalsOpts);
-    if (vitals.hp <= 0) { fainted = 0; eating = null; charging = null; reeling = false; if (hook) { fishWait = 0; endHook(); } clearInput(); } // drop the line: it must not stay out from the old spot
+    if (vitals.hp <= 0) { fainted = 0; eating = null; charging = null; reeling = false; if (hook) { fishWait = 0; endHook(); } if (building?.menu.isOpen) building.menu.close(false); clearInput(); } // drop the line: it must not stay out from the old spot
   }
   // Crosshair prompts (dist/prompts.js provider): eat/drink, else the cup/purifier/planter prompt (game.js markup).
   const tipCache = new Map(), eatTips = new Map(), EATING_TIP = {key:'', label:'…', muted:true};
@@ -1204,7 +1205,7 @@ export function mount(transfer = null) {
 
   // Inventory UI and hotbar. The guest predicts locally; the host snapshot (acked by seq) is canonical.
   function selectSlot(i) {
-    if (!isInt(i) || i < 0 || i >= HOTBAR) return;
+    if (fainted >= 0 || !isInt(i) || i < 0 || i >= HOTBAR) return;
     const bag = localBag(); if (bag.selectedIndex === i) return;
     charging = null; hover = null; play('ui', .5); if (hintsDone.has('bag')) hintDone('slots');
     if (!reelCast('slot') && hook && !hook.fishing) { hook.cancel?.(); endHook(); } // switching away retracts the hook; its catch stays in the sea
@@ -1224,19 +1225,19 @@ export function mount(transfer = null) {
     const locked = content?.craftLocked(recipe, myActor()); if (locked) { notice(String(locked)); return false; }
     return action({kind:'craft', recipe}) !== false;
   }
-  function repair() { if (!running) return; const bag = localBag();
+  function repair() { if (!running || fainted >= 0) return; const bag = localBag();
     const sel = bag.slots[bag.selectedIndex]; if (sel?.kind === 'spade') { action({kind:'treasure.repair'}); return; } // [treasure-hook] R on a held spade
     action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH, isHookSlot)}); }
   // Pad build radial pick: hold the hammer (from the hotbar) and select that piece on the building wheel.
   function pickBuildPiece(id) {
-    if (!running || !building || !Object.hasOwn(PIECES, id)) return;
+    if (!running || fainted >= 0 || !building || !Object.hasOwn(PIECES, id)) return;
     const slots = localBag().slots, i = selectedKind() === 'hammer' ? localBag().selectedIndex : slots.findIndex((s, k) => k < HOTBAR && toolRole(s?.kind ?? null) === 'hammer');
     if (i < 0) { notice('Put a hammer on your hotbar to build'); return; }
     selectSlot(i); building.menu.setSelected(id); notice(PIECES[id].name + ' selected', 1200);
   }
-  function openInventory() { if (!running || !survivalUI) return; pauseInput(); releaseLock(); survivalUI.open?.(); play('open'); hintDone('bag'); }
+  function openInventory() { if (!running || fainted >= 0 || !survivalUI) return; pauseInput(); releaseLock(); survivalUI.open?.(); play('open'); hintDone('bag'); }
   function interact() {
-    if (!running || uiBlocked() || diving?.state.diving) return; // diving lane hook: E gathers underwater
+    if (!running || fainted >= 0 || uiBlocked() || diving?.state.diving) return; // diving lane hook: E gathers underwater
     if (!pickupFrom(currentAim()) && sailing?.interact()) return; // [sailing] E on a sail / anchor (pick-up wins)
     const target = pickupFrom(currentAim());
     if (target) {
@@ -1286,13 +1287,13 @@ export function mount(transfer = null) {
     if (kind === 'cup' || kind === 'saltcup' || kind === 'freshcup') { const w = wateringTarget(aim); if (w?.click) { swing = 1; action(w.click); } else notice(w?.why ?? WATER_WHY[kind]); return; }
   }
   function beginCharge(at) {
-    if (!running || hook || fishWait || selectedKind() !== 'hook') return;
+    if (!running || fainted >= 0 || hook || fishWait || selectedKind() !== 'hook') return;
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
     charging = {start:performance.now(), x:at?.x ?? null, y:at?.y ?? null};
   }
   function releaseCharge(aim) {
     const c = charging; charging = null;
-    if (!c || !running || hook || selectedKind() !== 'hook') return;
+    if (!c || !running || fainted >= 0 || hook || selectedKind() !== 'hook') return;
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
     throwHook(aim, clamp((performance.now() - c.start) / CHARGE_MS, MIN_CHARGE, 1));
   }
@@ -1689,6 +1690,7 @@ export function mount(transfer = null) {
     look(dx, dy, LOOK_SENSITIVITY * options.sensitivity);
   });
   on(canvas, 'pointerdown', e => {
+    if (running && fainted >= 0) return; // passed out: no tool, hook, wheel or station input
     if (e.button === 2 && running && building && heldKind() === 'hammer' && !uiBlocked()) { building.menu.open(); return; } // building-pieces lane hook
     if (e.button === 2 && running && !uiBlocked() && content?.alt(isLocked() ? pickCenter() : currentAim(), heldKind())) return; // content hook (paint: brush colour)
     if (!running || !scene || e.button !== 0 || uiBlocked()) return;
@@ -1751,6 +1753,7 @@ export function mount(transfer = null) {
   on(window, 'keydown', e => {
     const kd = keyDecision({inField:!!e.target?.matches?.('input, textarea, select'), blocked:uiBlocked()});
     if (!kd.act) { if (kd.record && !controls) keys[e.code] = true; return; } // held keys survive a panel; movePlayer gets input=false meanwhile
+    if (running && fainted >= 0) { if (!controls) keys[e.code] = true; if (e.code.startsWith('Arrow') || e.code === 'Space' || e.code === 'Tab') e.preventDefault(); return; } // passed out: keys are held, nothing acts
     if (running && building?.key(e.code, true, heldKind() === 'hammer', e.repeat)) { e.stopImmediatePropagation(); if (e.code === 'KeyX' || e.code === 'KeyR') e.preventDefault(); return; } // building-pieces lane hook
     if (controls) { if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault(); return; } // controls lane: actions come from the action map
     keys[e.code] = true;
@@ -1782,7 +1785,7 @@ export function mount(transfer = null) {
       pause:() => settingsController?.open(), buildWheelOpen:() => !!building?.menu.isOpen, // hotbar + interact are swallowed while the build wheel is open
       buildPieces:() => PIECE_ORDER.map(id => ({id, label:PIECES[id].name})), buildPick:pickBuildPiece, // pad build radial = the hammer's wheel
       menuBack:() => { if (!running) return; if (survivalUI?.isOpen) survivalUI.close(); else if (settingsController?.isOpen) settingsController.close(); }, // pad Y/Start/B: same close + relock as the keyboard
-      useDown:() => { if (fc?.pointerDown()) return; if (reelCast('click')) return; if (castOut()) reeling = true; else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); } },
+      useDown:() => { if (fainted >= 0) return; if (fc?.pointerDown()) return; if (reelCast('click')) return; if (castOut()) reeling = true; else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); } },
       useUp:() => { reeling = false; if (fc?.pointerUp()) return; if (charging) releaseCharge(pickCenter()); }, useCancel:() => { reeling = false; if (charging?.x === null) charging = null; fc?.releaseInput(); }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});
     signal.addEventListener('abort', () => controls?.dispose());
   } catch (e) { console.error('controls lane failed to start', e); controls = null; }
