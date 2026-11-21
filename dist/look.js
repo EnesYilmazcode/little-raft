@@ -84,3 +84,19 @@ export function noteAchievements(unlocked, ids) {
   for (const h of HATS) if (h.unlock && got.has(h.unlock) && !unlocked.has(h.id)) { unlocked.add(h.id); fresh.push(h.id); }
   return fresh;
 }
+
+// Receiver-side throttle for the partner's look (a buggy or hostile peer may flood k:'look'): at most one avatar
+// rebuild per minMs; a look arriving sooner waits as `pending` (latest wins) and is released by poll().
+// offer/poll return the look to apply now, or null.
+export function createLookGate(minMs = 300, current = null) {
+  let key = current ? lookKey(current) : null, at = -Infinity, pending = null;
+  const take = (l, t) => { key = lookKey(l); at = t; pending = null; return l; };
+  return {
+    offer(look, t) {
+      if (lookKey(look) === key) { pending = null; return null; }
+      if (t - at < minMs) { pending = look; return null; }
+      return take(look, t);
+    },
+    poll(t) { return pending && t - at >= minMs ? take(pending, t) : null; },
+  };
+}

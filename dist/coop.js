@@ -21,7 +21,7 @@ import { DeltaEncoder, DeltaDecoder, quantize } from './coop-delta.js';
 import { createRemoteAvatar } from './coop-avatar.js';
 import { createPings, createRemoteRope, createRemoteGhost } from './coop-fx.js';
 import { createFeed } from './coop-feed.js';
-import { loadLook, cleanLook, lookKey, PARTNER_DEFAULT } from './look.js?build=v3-survival-ae77fa84ac2b';
+import { loadLook, cleanLook, createLookGate, PARTNER_DEFAULT } from './look.js?build=v3-survival-ae77fa84ac2b';
 
 export const COOP_VERSION = 1;
 const HELD = [null, 'hook', 'hammer', 'fishingrod', 'wood', 'leaf', 'scrap', 'plastic', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate'];
@@ -33,7 +33,6 @@ const FEED_RE = /joined|left|disconnected|reconnect|aboard/i;
 const r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
 const coopId = (globalThis.__littleRaftCoopId ??= Math.random().toString(36).slice(2, 10)); // per tab, survives hot swaps
 const readName = () => { try { return (localStorage.getItem('little-raft-name') || '').trim().slice(0, 16) || 'Brother'; } catch { return 'Brother'; } };
-const readLook = () => loadLook().look;
 
 export function createCoop(ctx, saved = null) {
   const {T} = ctx;
@@ -42,7 +41,9 @@ export function createCoop(ctx, saved = null) {
   const pings = createPings(T, ctx.scene);
   const rope = createRemoteRope(T, ctx.scene);
   const ghost = createRemoteGhost(T, ctx.scene);
-  let peerLook = cleanLook(saved?.peerLook, PARTNER_DEFAULT), peerLookKey = lookKey(peerLook); // survives hot swaps: no default-look flash
+  let peerLook = cleanLook(saved?.peerLook, PARTNER_DEFAULT); // survives hot swaps: no default-look flash
+  const lookGate = createLookGate(300, peerLook); // at most one partner rebuild per 300 ms, latest look wins
+  const readLook = () => { try { const l = ctx.look?.(); if (l) return cleanLook(l); } catch {} return loadLook().look; }; // engine's in-memory look (storage may be blocked)
   const avatar = createRemoteAvatar(T, {color:'#70a7e4', name:'Brother', look:peerLook});
   avatar.group.visible = false; ctx.scene.add(avatar.group);
   const buffer = new SnapshotBuffer();
@@ -61,9 +62,9 @@ export function createCoop(ctx, saved = null) {
   function applyPeerLook(x) { // untrusted: indices + known hat ids only; old peers without a look get the old blue partner
     if (x && typeof x === 'object') { try { if (JSON.stringify(x).length > 200) return; } catch { return; } } // oversized: ignore
     const l = cleanLook(x, PARTNER_DEFAULT);
-    if (lookKey(l) === peerLookKey) return;
-    peerLook = l; peerLookKey = lookKey(l); avatar.setLook(l);
+    setPeerLook(lookGate.offer(l, now()));
   }
+  function setPeerLook(l) { if (l) { peerLook = l; avatar.setLook(l); } }
 
   // A new DataConnection means a fresh session: drop baselines and announce ourselves.
   function track() {
@@ -228,7 +229,7 @@ export function createCoop(ctx, saved = null) {
       const role = ctx.role();
       if (role === 'guest' && ctx.ready()) aboard = true; else if (role === 'solo') aboard = false;
       if (peer && role === 'guest' && ctx.ready() && t - lastRecv > SILENCE_MS) lost(); // host went quiet
-      tickRejoin(t);
+      tickRejoin(t); setPeerLook(lookGate.poll(t));
       renderRemote(dt, t, time);
       pings.update(dt, time, ctx.camera);
     } catch (e) { if (++errors <= 3) console.error('coop update failed', e); }

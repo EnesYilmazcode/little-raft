@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LOOK_KEY, PALETTE, HATS, DEFAULT_LOOK, PARTNER_DEFAULT, cleanLook, lookColors, lookKey, loadLook, saveLook, noteAchievements, hatAvailable } from '../dist/look.js';
+import { LOOK_KEY, PALETTE, HATS, DEFAULT_LOOK, PARTNER_DEFAULT, cleanLook, lookColors, lookKey, loadLook, saveLook, noteAchievements, hatAvailable, createLookGate } from '../dist/look.js';
 import { ACHIEVEMENT_IDS } from '../dist/logbook.js';
 
 const fakeStorage = () => { const m = new Map(); return { m, getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) }; };
@@ -101,7 +101,10 @@ test('3D hooks: default avatar unchanged, hats build, remote setLook rebakes onc
   const before = draws();
   assert.equal(r.setLook(PARTNER_DEFAULT), false, 'same look: no rebuild');
   const plum = cleanLook({ shirt: 5, trousers: 1, skin: 5, hair: 1, hat: 'bucket' });
+  const oldRes = new Set(); r.group.traverse(o => { if (o.isMesh && !o.isSprite && !o.name.startsWith('held') && o.parent?.name !== 'held_hook') { oldRes.add(o.geometry); oldRes.add(o.material); } });
+  let freed = 0; for (const x of oldRes) x.addEventListener('dispose', () => freed++);
   assert.equal(r.setLook(plum), true);
+  assert.equal(freed, oldRes.size, 'old baked body geometry/materials disposed on rebuild');
   assert.equal(r.setLook({ ...plum }), false);
   r.update(1 / 60, pose, 0.1);
   let heldVisible = 0; r.group.traverse(o => { if (o.name === 'held_hook' && o.visible) heldVisible++; });
@@ -110,7 +113,26 @@ test('3D hooks: default avatar unchanged, hats build, remote setLook rebakes onc
   r.dispose();
   const hands = createHands(T, {});
   const sleeve = () => { let c = null; hands.group.traverse(o => { if (o.isMesh && o.material.color.getHex() === new T.Color('#efae55').getHex()) c = o; }); return c; };
+  assert.doesNotThrow(() => { hands.setLook(null); hands.setLook(); hands.setLook({ skin: 5 }); });
   hands.setLook(lookColors(DEFAULT_LOOK));
   assert.ok(sleeve(), 'sleeve takes the shirt colour');
   hands.dispose?.();
+});
+
+test('partner look gate: a flood of k:look rebuilds at most once per window, latest wins', () => {
+  const g = createLookGate(300, PARTNER_DEFAULT);
+  assert.equal(g.offer(cleanLook(PARTNER_DEFAULT), 0), null, 'same as current');
+  const a = cleanLook({ shirt: 2 }), b = cleanLook({ shirt: 3 }), c = cleanLook({ shirt: 4 });
+  assert.equal(g.offer(a, 1000), a);
+  let applied = 0;
+  for (let i = 0; i < 100; i++) if (g.offer(cleanLook({ shirt: i % 10 }), 1001 + i)) applied++;
+  assert.equal(applied, 0, 'flood inside the window applies nothing');
+  assert.equal(g.offer(b, 1200), null);
+  assert.equal(g.offer(c, 1250), null);
+  assert.equal(g.poll(1290), null, 'still inside the window');
+  assert.equal(g.poll(1300), c, 'latest pending look released');
+  assert.equal(g.poll(2000), null, 'nothing left');
+  assert.equal(g.offer(cleanLook({ shirt: 5 }), 1400), null);
+  assert.equal(g.offer(c, 1450), null, 'back to the current look cancels the pending one');
+  assert.equal(g.poll(5000), null);
 });

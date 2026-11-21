@@ -241,7 +241,7 @@ export function mount(transfer = null) {
   const modelOf = k => { try { return getModel(k); } catch (e) { console.warn('model failed', k, e); return null; } };
   let fc = null; // [fishing-cooking] rod fishing v2 + grills + journal (dist/fishing-cooking.js)
   let logbookUI = null;
-  let lookUI = null, lookState = loadLook(), seenAch = -1; // [look] per-browser look + hat unlocks (never in the world save)
+  let lookUI = null, lookState = loadLook(), seenAch = -1, seenAchList = null; // [look] per-browser look + hat unlocks (never in the world save)
   let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
@@ -1262,7 +1262,7 @@ export function mount(transfer = null) {
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     try { logbookUI?.update?.(); } catch (e) { console.error('logbook update failed', e); logbookUI = null; }
     const achList = Array.isArray(world.achievements) ? world.achievements : [];
-    if (achList.length !== seenAch) { seenAch = achList.length; const n = noteAchievements(lookState.unlocked, achList); if (n.length) { saveLook(lookState.look, lookState.unlocked); lookUI?.refresh(); notice('New hat for your Look: ' + n.map(id => LOOK_HATS.find(h => h.id === id)?.label ?? id).join(', ')); } } // [look] hat unlocks (host or guest view of the list)
+    if (achList.length !== seenAch || achList !== seenAchList) { seenAch = achList.length; seenAchList = achList; const n = noteAchievements(lookState.unlocked, achList); if (n.length) { saveLook(lookState.look, lookState.unlocked); lookUI?.refresh(); notice('New hat for your Look: ' + n.map(id => LOOK_HATS.find(h => h.id === id)?.label ?? id).join(', ')); } } // [look] hat unlocks (host or guest view of the list)
     refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud();
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
     renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
@@ -1557,6 +1557,7 @@ export function mount(transfer = null) {
     local:() => { const k = heldKind(); return {x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, grounded:physics.grounded, held:k, charge:charging ? chargeValue() : 0, reeling:reeling && !!castOut(),
       hook:hookMesh.visible && hook ? {stage:hook.fishing ? 'fishing' : hook.stage, ...(hook.fishing ? {x:hookMesh.position.x, y:.05, z:hookMesh.position.z} : {x:hook.position.x, y:hook.position.y, z:hook.position.z})} : null, // physics height; remote maps it onto waves
       ghost:hover ? {x:hover.x, z:hover.z, kind:k, ok:k !== 'hammer' || canAfford(localBag(), FLOOR_COST)} : null}; },
+    look:() => lookState.look, // [look] coop.js sends the in-memory look (localStorage may be blocked)
     reconnect:coopRejoin, giveUp:() => { closeConnection(); setStatus('Host disconnected. Rejoin when their tab is open.'); }});
   // PeerJS (~93 KB) is only fetched on the first host/join; solo play never loads it. Shared across hot-swapped engines.
   function loadPeer() {

@@ -425,7 +425,8 @@ export function createHands(T, { modelFactory = null } = {}) {
       return handTip;
     },
     preload(kinds) { for (const k of kinds) mountFor(k); },
-    setLook({ skin: skinHex, shirt } = {}) {
+    setLook(colors) {
+      const { skin: skinHex, shirt } = colors && typeof colors === 'object' ? colors : {};
       // The viewmodel skin keeps its own darker, warmer shading: each skin material is the chosen tone scaled per
       // channel by (old hard-coded colour / default body skin), so the default tone gives exactly the old colours.
       if (typeof skinHex === 'string') for (const [m, c] of skinTones) m.color.set(skinHex).multiply(c);
