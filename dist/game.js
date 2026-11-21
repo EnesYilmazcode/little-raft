@@ -211,7 +211,7 @@ export function mount(transfer = null) {
   let noticeText = '', noticeUntil = 0, contextCache = null, uiFailed = false;
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
-  let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = '';
+  let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = -1;
   const chargeMeter = $('#chargeMeter'), chargeFill = chargeMeter?.querySelector('i');
   let blockList = [];
 
@@ -228,7 +228,7 @@ export function mount(transfer = null) {
     const t = world.tiles.find(t => t[0] === 0 && t[1] === 0) ?? world.tiles[0]; return {x:t[0] * 2, z:t[1] * 2};
   }
 
-  const hasTile = (x, z) => world.tiles.some(t => t[0] === x && t[1] === z);
+  function hasTile(x, z) { for (const t of world.tiles) if (t[0] === x && t[1] === z) return true; return false; }
   const isLocked = () => !!canvas && document.pointerLockElement === canvas;
   const dialogOpen = () => !!document.querySelector('dialog[open]');
   const uiBlocked = () => dialogOpen() || !!survivalUI?.isOpen;
@@ -241,6 +241,8 @@ export function mount(transfer = null) {
   const heldKind = () => (hook?.fishing ? 'fishingrod' : hook ? 'hook' : selectedKind());
   const caughtList = h => (Array.isArray(h?.caughtItems) ? h.caughtItems : h?.caught ? [h.caught] : []);
   const deckY = () => (raft ? raft.position.y : raftPose.y) + FLOOR_Y;
+  const heldSet = new Set(); // reused every frame: tokens our cast hook is carrying
+  function heldTokens() { heldSet.clear(); const h = castOut(); if (h) for (const c of caughtList(h)) heldSet.add(c.token); return heldSet; }
 
   // ---------- Small mesh helpers ----------
   const materialCache = new Map();
@@ -451,7 +453,7 @@ export function mount(transfer = null) {
   // Body classes, crosshair and resume hint follow running and pointer-lock state.
   function refreshPointerUI(force = false) {
     const locked = isLocked(), dialog = uiBlocked();
-    const signature = [running, locked, dialog, lockFallback].join();
+    const signature = (running ? 1 : 0) | (locked ? 2 : 0) | (dialog ? 4 : 0) | (lockFallback ? 8 : 0);
     if (!force && signature === uiSignature) return; uiSignature = signature;
     const b = document.body.classList;
     b.toggle('pointer-locked', locked); b.toggle('locked', locked); b.toggle('first-person', running); b.toggle('playing', running);
@@ -495,12 +497,15 @@ export function mount(transfer = null) {
   function clearInput() { keys = {}; charging = null; reeling = false; down = null; }
 
   // ---------- Aiming ----------
-  function pickNdc(nx, ny) {
+  const hits = [], aimScratch = {point:null, item:null, dir:new T.Vector3(), at:new T.Vector3()};
+  // `out` (per-frame aim only) reuses its vectors; event callers get a fresh result they may keep.
+  function pickNdc(nx, ny, out = null) {
     pointer.set(nx, ny); ray.setFromCamera(pointer, camera);
     plane.constant = -deckY() - .02;
-    const held = new Set(caughtList(castOut()).map(c => c.token));
+    const held = heldTokens();
     let item = null;
-    for (const hit of ray.intersectObjects(itemsGroup.children, true)) {
+    hits.length = 0;
+    for (const hit of ray.intersectObjects(itemsGroup.children, true, hits)) {
       let o = hit.object; while (o && !o.userData.token) o = o.parent;
       const found = o && world.items.find(it => it.token === o.userData.token);
       if (found && !isPending(found) && !held.has(found.token)) { item = found; break; }
@@ -509,17 +514,19 @@ export function mount(transfer = null) {
       let best = Infinity;
       for (const it of world.items) {
         if (isPending(it) || held.has(it.token)) continue; const m = itemMeshes.get(it.token); if (!m) continue;
-        const along = m.position.clone().sub(ray.ray.origin).dot(ray.ray.direction);
+        const along = tmpV.copy(m.position).sub(ray.ray.origin).dot(ray.ray.direction);
         if (along > 0 && along < 5 && along < best && ray.ray.distanceSqToPoint(m.position) < .2) { best = along; item = it; }
       }
     }
+    hits.length = 0;
+    if (out) { out.point = ray.ray.intersectPlane(plane, out.at); out.item = item; out.dir.copy(ray.ray.direction); return out; }
     return {point:ray.ray.intersectPlane(plane, new T.Vector3()), item, dir:ray.ray.direction.clone()};
   }
-  function pickScreen(x, y) { const r = canvas.getBoundingClientRect(); return pickNdc((x - r.left) / r.width * 2 - 1, -(y - r.top) / r.height * 2 + 1); }
-  const pickCenter = () => pickNdc(0, 0);
-  function currentAim() {
-    if (isLocked()) return pickCenter();
-    if (lockFallback && mouse.inside) return pickScreen(mouse.x, mouse.y);
+  function pickScreen(x, y, out) { const r = canvas.getBoundingClientRect(); return pickNdc((x - r.left) / r.width * 2 - 1, -(y - r.top) / r.height * 2 + 1, out); }
+  const pickCenter = out => pickNdc(0, 0, out);
+  function currentAim(out) {
+    if (isLocked()) return pickCenter(out);
+    if (lockFallback && mouse.inside) return pickScreen(mouse.x, mouse.y, out);
     return null;
   }
   function pickupFrom(aim) {
@@ -710,12 +717,14 @@ export function mount(transfer = null) {
   }
 
   // ---------- Movement ----------
-  const held = (...codes) => codes.some(c => keys[c]);
+  const held = (a, b) => !!(keys[a] || (b && keys[b]));
+  const moveInput = {forward:0, strafe:0, yaw:0, jump:false, sprint:false, tiles:null, deckY:0, waterY:0, blocked:null}; // reused every frame
   function movePlayer(dt, input) {
     if (!running) { walking = false; return; }
     const fwd = input ? held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown') : 0, side = input ? held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft') : 0;
-    const ev = physics.update(dt, {forward:fwd, strafe:side, yaw, jump:input && held('Space'), sprint:input && held('ShiftLeft', 'ShiftRight'),
-      tiles:world.tiles, deckY:deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList});
+    const mi = moveInput; mi.forward = fwd; mi.strafe = side; mi.yaw = yaw; mi.jump = input && held('Space'); mi.sprint = input && held('ShiftLeft', 'ShiftRight');
+    mi.tiles = world.tiles; mi.deckY = deckY(); mi.waterY = ocean.getHeight(physics.x, physics.z); mi.blocked = blockList;
+    const ev = physics.update(dt, mi);
     const speed = Math.hypot(physics.vx, physics.vz);
     walking = physics.grounded && speed > .4; if (walking) walkPhase += dt * 9 * Math.min(1.6, speed / 2.6);
     if (ev?.splashed) beep(180);
@@ -723,7 +732,10 @@ export function mount(transfer = null) {
   }
 
   // ---------- Frame ----------
+  const TITLE_FOCUS = new T.Vector3(-5, 0, 2), vmParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0};
+  const fishPos = new T.Vector3(), hookPos = new T.Vector3(), fishRope = Array.from({length:ROPE_SEGMENTS + 1}, () => new T.Vector3()), freeItems = [];
   const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3(), oceanSample = {h:0, sx:0, sz:0};
+  const hookParams = {hand:handPos, items:freeItems, reeling:false, time:0};
   // Hook physics floats at a flat WATER_Y; map heights near the water onto the visible waves.
   function surfaceY(x, z, y) {
     const k = clamp((y - WATER_Y) / .6, 0, 1), w = ocean.getHeight(x, z) + .04 + (y - WATER_Y);
@@ -748,7 +760,7 @@ export function mount(transfer = null) {
       camera.position.set(physics.x, physics.y + bob, physics.z);
       camera.rotation.set(pitch, yaw, physics.grounded ? raft.rotation.z * CAMERA_ROLL * options.cameraMotion : 0, 'YXZ');
     } else { // gentle cinematic view for the welcome screen
-      const focus = new T.Vector3(-5, 0, 2), d = 23, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .77;
+      const focus = TITLE_FOCUS, d = 23, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .77;
       camera.position.set(focus.x + Math.sin(cy) * d * Math.cos(cp), d * Math.sin(cp), focus.z + Math.cos(cy) * d * Math.cos(cp)); camera.lookAt(focus);
     }
     swing = Math.max(0, swing - dt * 3);
@@ -757,11 +769,12 @@ export function mount(transfer = null) {
     hookHands.group.visible = running && kind === 'hook';
     hammerHands.group.visible = running && kind === 'hammer';
     rodHands.group.visible = running && kind === 'fishingrod';
-    if (hookHands.group.visible) hookHands.update({dt, time:elapsed, charge:ch, reeling:reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion});
-    if (hammerHands.group.visible) hammerHands.update({dt, time:elapsed, charge:0, reeling:false, casting:swing, walking, hasHookOut:false, motion});
+    const vp = vmParams; vp.dt = dt; vp.time = elapsed; vp.casting = swing; vp.walking = walking; vp.motion = motion; vp.charge = 0; vp.reeling = false; vp.hasHookOut = false;
+    if (hookHands.group.visible) { vp.charge = ch; vp.reeling = reeling && !!castOut(); vp.hasHookOut = !!castOut(); hookHands.update(vp); }
+    if (hammerHands.group.visible) hammerHands.update(vp);
     if (rodHands.group.visible) {
       const out = !!hook?.fishing; if (rodModel.userData.float) rodModel.userData.float.visible = !out; if (rodModel.userData.leader) rodModel.userData.leader.visible = !out;
-      rodHands.update({dt, time:elapsed, charge:0, reeling:out && hook.t > fishWait, casting:swing, walking, hasHookOut:false, motion});
+      vp.reeling = out && hook.t > fishWait; rodHands.update(vp);
     }
     camera.updateMatrixWorld(true);
     (kind === 'fishingrod' ? rodTip : hookHands.handTip).getWorldPosition(handPos);
@@ -777,11 +790,13 @@ export function mount(transfer = null) {
     }
   }
   function updateItems(dt) {
-    const heldTokens = new Set(caughtList(castOut()).map(c => c.token));
+    const held = heldTokens();
     if (role !== 'guest') {
-      let respawned = false; const end = Math.max(...world.tiles.map(t => t[1])) * 2 + 24, side = Math.max(...world.tiles.map(t => Math.abs(t[0]))) * 2 + 24;
+      let respawned = false, maxZ = -Infinity, maxX = -Infinity;
+      for (const t of world.tiles) { if (t[1] > maxZ) maxZ = t[1]; const ax = Math.abs(t[0]); if (ax > maxX) maxX = ax; }
+      const end = maxZ * 2 + 24, side = maxX * 2 + 24;
       for (const it of world.items) {
-        if (heldTokens.has(it.token)) continue; // our hook holds it; don't let it drift away or respawn
+        if (held.has(it.token)) continue; // our hook holds it; don't let it drift away or respawn
         it.z += dt * .22; it.x += Math.sin(elapsed * .13 + it.phase) * dt * .04;
         if (it.z > end || Math.abs(it.x) > side || hasTile(Math.round(it.x / 2), Math.round(it.z / 2))) { Object.assign(it, makeItem(it.id)); respawned = true; }
       }
@@ -803,15 +818,17 @@ export function mount(transfer = null) {
     if (!hook) { rope.visible = false; hookMesh.visible = false; return; }
     if (hook.fishing) { // simple bobber animation, separate from HookCast
       hook.t += dt; const f = hook.t / hook.duration, u = Math.min(1, f * 5);
-      const pos = handPos.clone().lerp(hook.end, u);
+      const pos = fishPos.copy(handPos).lerp(hook.end, u);
       if (u >= 1) pos.y = ocean.getHeight(pos.x, pos.z) + .05 + Math.sin(elapsed * 5) * .03 - (hook.t > fishWait ? .12 : 0); else pos.y += Math.sin(u * Math.PI) * 1.2;
-      const pts = []; for (let i = 0; i <= ROPE_SEGMENTS; i++) pts.push(handPos.clone().lerp(pos, i / ROPE_SEGMENTS));
-      setRope(pts); hookMesh.visible = true; hookMesh.position.copy(pos); hookMesh.rotation.set(0, yaw, 1.1);
+      for (let i = 0; i <= ROPE_SEGMENTS; i++) fishRope[i].copy(handPos).lerp(pos, i / ROPE_SEGMENTS);
+      setRope(fishRope); hookMesh.visible = true; hookMesh.position.copy(pos); hookMesh.rotation.set(0, yaw, 1.1);
       if (f >= 1) { action({kind:'fish'}); fishWait = 0; endHook(); }
       return;
     }
-    const ev = hook.update(dt, {hand:handPos, items:world.items.filter(it => !isPending(it)), reeling, time:elapsed});
-    const hp = hook.position, pos = new T.Vector3(hp.x, surfaceY(hp.x, hp.z, hp.y), hp.z);
+    freeItems.length = 0; for (const it of world.items) if (!isPending(it)) freeItems.push(it);
+    hookParams.reeling = reeling; hookParams.time = elapsed;
+    const ev = hook.update(dt, hookParams);
+    const hp = hook.position, pos = hookPos.set(hp.x, surfaceY(hp.x, hp.z, hp.y), hp.z);
     hookMesh.visible = true; hookMesh.position.copy(pos);
     if (hook.stage === 'flying') hookMesh.rotation.set(-hook.flightT * Math.PI * 2, yaw, 0);
     else if (hook.stage === 'reeling') hookMesh.rotation.set(-.6, yaw, 0);
@@ -857,14 +874,14 @@ export function mount(transfer = null) {
     ocean.update(elapsed, camera);
     updateRaft(dt); movePlayer(dt, running && !dialog);
     updateAvatars(dt); updateCamera(dt);
-    frameAim = running && !dialog ? currentAim() : null;
+    frameAim = running && !dialog ? currentAim(aimScratch) : null;
     pickTarget = pickupFrom(frameAim);
     updateItems(dt); updateHook(dt); updateGhost();
     if (running && role !== 'guest') {
       netClock += dt;
       if (netClock > .8) { // nets gather into the host's bag (trusted shared machine) and never consume when full
-        netClock = 0; const heldTokens = new Set(caughtList(castOut()).map(c => c.token));
-        for (const net of world.decor.filter(d => d.type === 'net')) { const it = world.items.find(it => !heldTokens.has(it.token) && !isPending(it) && Math.hypot(it.x - net.x * 2, it.z - net.z * 2) < 4); if (it) applyAction({kind:'collect', id:it.id, token:it.token, net:true}, 'host'); }
+        netClock = 0; const held = heldTokens();
+        for (const net of world.decor) { if (net.type !== 'net') continue; const it = world.items.find(it => !held.has(it.token) && !isPending(it) && Math.hypot(it.x - net.x * 2, it.z - net.z * 2) < 4); if (it) applyAction({kind:'collect', id:it.id, token:it.token, net:true}, 'host'); }
       }
     }
     if (running) { saveClock += dt; if (saveClock > 3) { saveClock = 0; save(); } }
