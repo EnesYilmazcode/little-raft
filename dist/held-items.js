@@ -46,7 +46,7 @@ export const HOLD = Object.freeze({
   plastic:    { hand: 'right', pose: 'grip', rx: 0.1, ry: 1.2, rz: 0.1 },
   rope:       { hand: 'right', pose: 'grip', ry: 0.4, arm: [-0.01, 0.05, 0] },     // coil hangs off the fist, in front of the palm
   fish:       { hand: 'right', pose: 'grip', rx: 0.1, ry: 0.35, rz: 0.25, arm: [-0.02, 0.06, 0] },      // by the tail, body across the view
-  sharkbait:  { hand: 'right', pose: 'grip', rx: 0.15, ry: 0.5, rz: 0.3, arm: [-0.04, 0.08, 0] }, // [bait] lifted so the float shows
+  sharkbait:  { hand: 'right', pose: 'grip', rx: 0.1, ry: 0.35, rz: 0.25, arm: [-0.02, 0.1, 0] }, // [bait] by the stick end, lure out to the left
   cup:        { hand: 'right', pose: 'grip', ry: 0.3 },
   water:      { hand: 'right', pose: 'grip', ry: 0.3 },
   drum: { hand: 'right', pose: 'grip', rx: 0.75 }, pipes: { hand: 'right', pose: 'grip', rx: 0.2 }, bells: { hand: 'right', pose: 'grip', rx: 1.2, rz: 0.1 }, // [instruments] right fist, clear of the hotbar
@@ -250,7 +250,8 @@ export function buildItemModel(T, kind, factory = null) {
     root.userData.grip = [gp.x, gp.y, gp.z];
     root.userData.model = m;                                     // rod: userData.float/leader/tipNode live here
   } else if (kind === 'sharkbait') { // [bait] the lure itself, held by the stick
-    root = fit(T, createBaitModel(T), 0.24, (s) => new T.Vector3(-s.x * 0.3, 0, 0));
+    const lure = new T.Group(); lure.add(createBaitModel(T)); lure.rotation.set(1.0, Math.PI, 0); // float out to the left like the held fish, rolled so a fish shows its side
+    root = fit(T, lure, 0.3, (s) => new T.Vector3(s.x * 0.44, 0, 0));                   // fist on the bare stick end, fish and float in view
   } else if (kind === 'spade' || kind === 'finder') {
     const m = kind === 'spade' ? createSpade(T) : createFinder(T), s = 0.55;
     m.scale.setScalar(s);
