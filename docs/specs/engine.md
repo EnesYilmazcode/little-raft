@@ -13,10 +13,14 @@ Cozy: no damage, no breakdowns, nothing is lost when fuel runs out. The motor si
   ("Tank is full"); overflow is clamped (small waste is fine). Holding fuel with a full tank, or holding anything else: E toggles.
 - **Burn**: host only, 1 s of fuel per second for each motor that is on, fuelled and not anchored. At 0 it stays `on`
   (it restarts by itself when fed) and the host emits "A motor ran out of fuel" to all.
-- **Push**: `speed = ENGINE_SPEED 0.7 * GAIN[min(n, MAX_MOTORS 4)] * sizeFactor(tiles)`, n = running motors,
-  `GAIN = [0, 1, 1.5, 1.8, 2.0]` (diminishing; a 5th+ motor adds nothing but still burns, and its prompt says "Max 4 motors help"),
-  `sizeFactor = clamp(sqrt(16 / max(1, tiles)), 0.6, 1)`. Direction = `(sin heading, cos heading)`. Max 1.4 m/s.
-- **Total cap**: sail target + engine push is clamped to `SAIL.TARGET_CAP 2.0` m/s (< `V_CLAMP 3`). Paddle and current unchanged.
+- **Push** (Raft-like; revised): a ground velocity that ignores the wind and current, and only with a `wheel` decor on the
+  raft (no wheel: no push, no fuel burn, prompt "Needs a steering wheel"). `speed = ENGINE_SPEED 0.6 * GAIN[min(n, 2)] *
+  min(1, n * TILES_PER_MOTOR 100 / tiles)`, n = running motors, `GAIN = [0, 1, 1.25]`: one motor 0.6 m/s (2x the 0.30
+  drift, ~1.33x a downwind sail at 0.45), two or more 0.75 m/s. One motor handles 100 floor tiles; a bigger raft needs
+  `usefulMotors(tiles) = max(2, ceil(tiles / 100))` motors for full speed, and more than that adds nothing but still
+  burns ("Max N motors help"). Direction = `(sin heading, cos heading)`. Max 0.75 m/s.
+- **Sail vs motor**: no stacking: the faster of the sail ground target and the motor push wins, clamped to
+  `SAIL.TARGET_CAP 2.0` m/s. Water-relative target = ground target - current. Paddle unchanged.
 - **Wheel** (`wheel` decor): hold R while aiming at it = the existing sail steering (same `state.heading`, same STEER_RATE,
   same guest predict/send). E on the wheel toggles **all** motors: any on -> all off, else all on.
 - Islands (`dist/islands.js`) keep their own drift timeline. No special casing in v1 (noted for later).
@@ -126,7 +130,8 @@ decor in `cleanWorld` :154 and ignore `ext.engine`. The slice stays tiny (64 ent
 
 ## 11. Tests: `tests/engine.test.mjs` (pure; import pattern of tests/storage-research.test.mjs)
 - `cleanEngine`: undefined/array/garbage -> default; bad keys, NaN/negative/huge fuel, non-boolean `on`, >64 entries; getters that throw.
-- `engineSpeed`: n 0..6 -> 0, .7, 1.05, 1.26, 1.4, 1.4; size 9 tiles = 1x, 100 tiles = .6x; monotonic, never above 1.4.
+- `engineSpeed`: n 0..6 on 9 tiles -> 0, .6, .75, .75, .75, .75, .75; 1 motor on 200 tiles = .3, 2 on 400 = .375,
+  4 on 400 = .75; monotonic in n, non-increasing in tiles, never above .75. `enginePush` is 0 without a wheel.
 - `enginePush`: points along heading (0, PI/2); zero when anchored, all off, or fuel 0; ignores entries without decor; no allocation (same `out`).
 - `burn`: only on+fuelled+unanchored motors; clamps dt; returns keys hitting 0; fuel never negative.
 - `applyEngineAction`: toggle/all semantics; fuel removes exactly 1 item, adds FUEL value, clamps to cap, refuses
@@ -137,7 +142,7 @@ decor in `cleanWorld` :154 and ignore `ext.engine`. The slice stays tiny (64 ent
 
 ## 12. QA screenshots (copy scratchpad shoot.py; steps via `page.evaluate`)
 1. `raftDebug.content.engine.place('motor',1,0)`, `place('wheel',0,1)`; screenshot the deck near both (models, prompt).
-2. `fuel(1,0,120); set(1,0,true)`; wait 3 s; screenshot: spinning prop, HUD "Motor · 0.7 m/s"; assert
+2. `fuel(1,0,120); set(1,0,true)`; wait 3 s; screenshot: spinning prop, HUD "Motor · 0.6 m/s"; assert
    `raftDebug.sailing.push` length about .7 and `raftDebug.sailing.speed` rising.
 3. Aim at the wheel (`raftDebug.camera`/`project`), hold R, turn yaw; assert `raftDebug.sailing.heading` changes; screenshot P_WHEEL prompt.
 4. Drop the anchor -> push 0, burn stops. `fuel(1,0,0)` -> prompt "Needs fuel". Reload page -> state restored from save.
