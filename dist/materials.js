@@ -17,13 +17,13 @@ export const PRESETS = {
   planks:  { cell: 'planks',  roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1] },
   plank:   { cell: 'plank',   roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1] },
   bark:    { cell: 'bark',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [2, 1] },
-  plastic: { cell: 'plastic', roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1], transparent: true, opacity: 0.88, side: 'double' },
-  leaf:    { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 0.8, repeat: [1, 1], alphaTest: 0.5, side: 'double' },
+  plastic: { cell: 'plastic', roughness: 1,    metalness: 0,    normalScale: 1.3, repeat: [1, 1], transparent: true, opacity: 0.95, side: 'double' },
+  leaf:    { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1], alphaTest: 0.5, side: 'double' },
   rope:    { cell: 'rope',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [1, 3] },
-  scrap:   { cell: 'scrap',   roughness: 1,    metalness: 0.55, normalScale: 1.0, repeat: [1, 1] },
+  scrap:   { cell: 'scrap',   roughness: 1,    metalness: 1,    normalScale: 1.0, repeat: [1, 1], metalMap: true }, // metalness lives in albedo alpha
   sand:    { cell: 'sand',    roughness: 1,    metalness: 0,    normalScale: 0.8, repeat: [3, 3] },
   rock:    { cell: 'rock',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [2, 2] },
-  foam:    { cell: 'foam',    roughness: 1,    metalness: 0,    normalScale: 0.5, repeat: [2, 2], transparent: true, depthWrite: false },
+  foam:    { cell: 'foam',    roughness: 1,    metalness: 0,    normalScale: 0.3, repeat: [2, 2], transparent: true, depthWrite: false },
   cloth:   { cell: 'cloth',   roughness: 1,    metalness: 0,    normalScale: 0.7, repeat: [2, 2], side: 'double' },
 };
 
@@ -68,7 +68,8 @@ function patch(T, shader, u) {
     .replace('#include <common>', '#include <common>' + FRAG_HEAD)
     .replace('#include <map_fragment>', C.map_fragment.replace('texture2D( map, vMapUv )', 'lrTex( map, vMapUv )'))
     .replace('#include <normal_fragment_maps>', C.normal_fragment_maps.replace(/texture2D\( normalMap, vNormalMapUv \)/g, 'lrTex( normalMap, vNormalMapUv )'))
-    .replace('#include <roughnessmap_fragment>', C.roughnessmap_fragment.replace('texture2D( roughnessMap, vRoughnessMapUv )', 'lrTex( roughnessMap, vRoughnessMapUv )').replace('texelRoughness.g', 'texelRoughness.a'));
+    .replace('#include <roughnessmap_fragment>', C.roughnessmap_fragment.replace('texture2D( roughnessMap, vRoughnessMapUv )', 'lrTex( roughnessMap, vRoughnessMapUv )').replace('texelRoughness.g', 'texelRoughness.a'))
+    .replace('#include <metalnessmap_fragment>', C.metalnessmap_fragment.replace('texture2D( metalnessMap, vMetalnessMapUv )', 'lrTex( metalnessMap, vMetalnessMapUv )').replace('texelMetalness.b', 'texelMetalness.a'));
 }
 
 const srgbToLin = c => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
@@ -79,7 +80,7 @@ export function getMaterial(T, name, opts = {}) {
   if (cache.has(key)) return cache.get(key);
   const atlas = getAtlas(T), cell = atlas.cells[p.cell];
   const m = new T.MeshStandardMaterial({
-    map: atlas.map, normalMap: atlas.normalMap, roughnessMap: atlas.normalMap,
+    map: atlas.map, normalMap: atlas.normalMap, roughnessMap: atlas.normalMap, metalnessMap: p.metalMap ? atlas.map : null,
     roughness: p.roughness, metalness: p.metalness, normalScale: new T.Vector2(p.normalScale, p.normalScale),
     transparent: !!p.transparent, opacity: p.opacity ?? 1, alphaTest: p.alphaTest ?? 0,
     depthWrite: p.depthWrite ?? true, side: p.side === 'double' ? T.DoubleSide : T.FrontSide,

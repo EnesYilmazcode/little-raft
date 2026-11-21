@@ -20,7 +20,9 @@ console.log(`atlas built in ${d.ms} ms`);
 const opaque = (src, f) => { const o = new Uint8Array(src.length); for (let i = 0; i < src.length; i += 4) f(src, i, o); return o; };
 const rough = opaque(d.normal, (s, i, o) => { o[i] = o[i + 1] = o[i + 2] = s[i + 3]; o[i + 3] = 255; });
 const nrm = opaque(d.normal, (s, i, o) => { o[i] = s[i]; o[i + 1] = s[i + 1]; o[i + 2] = s[i + 2]; o[i + 3] = 255; });
-const alb = opaque(d.albedo, (s, i, o) => { const a = s[i + 3] / 255, bg = ((i >> 5) ^ (i >> 15)) & 1 ? 40 : 90; for (let c = 0; c < 3; c++) o[i + c] = s[i + c] * a + bg * (1 - a); o[i + 3] = 255; });
+const ALPHA_CELLS = ['leaf', 'foam', 'plastic']; // other cells may keep metalness in alpha
+const alphaAt = i => { const x = (i >> 2) % ATLAS, y = ((i >> 2) / ATLAS) | 0, n = Object.keys(d.cells)[(y >> 8) * 4 + (x >> 8)]; return ALPHA_CELLS.includes(n); };
+const alb = opaque(d.albedo, (s, i, o) => { const a = alphaAt(i) ? s[i + 3] / 255 : 1, bg = ((i >> 5) ^ (i >> 15)) & 1 ? 40 : 90; for (let c = 0; c < 3; c++) o[i + c] = s[i + c] * a + bg * (1 - a); o[i + 3] = 255; });
 if (!only) for (const [n, buf] of [['albedo', alb], ['normal', nrm], ['rough', rough]]) writeFileSync(`${out}/atlas-${n}.png`, png(ATLAS, ATLAS, buf));
 for (const [name, c] of Object.entries(d.cells)) {
   if (only && only !== name) continue;

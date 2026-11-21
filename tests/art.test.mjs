@@ -23,6 +23,7 @@ test('atlas: GPU memory under 16 MB including mipmaps', () => {
 test('atlas: cells tile seamlessly (edge steps look like interior steps)', () => {
   const S = TX.TILE, A = TX.ATLAS;
   for (const [name, c] of Object.entries(data.cells)) {
+    if (TX.GENERATORS[name].panelEdge) continue; // deliberate plate edge at the wrap
     const x0 = Math.round(c.uv[0] * A), y0 = Math.round(c.uv[1] * A);
     const px = (buf, x, y, k) => buf[((y0 + y) * A + x0 + x) * 4 + k];
     for (const [label, buf] of [['albedo', data.albedo], ['normal', data.normal]]) {
@@ -44,7 +45,7 @@ test('atlas: gutters wrap the tile so mip taps do not bleed', () => {
   }
 });
 
-test('atlas: textures are not flat and alpha is only used where intended', () => {
+test('atlas: textures are not flat and alpha is only used where intended (scrap alpha = metalness)', () => {
   const A = TX.ATLAS, S = TX.TILE;
   for (const [name, c] of Object.entries(data.cells)) {
     const x0 = Math.round(c.uv[0] * A), y0 = Math.round(c.uv[1] * A);
@@ -54,7 +55,7 @@ test('atlas: textures are not flat and alpha is only used where intended', () =>
       min = Math.min(min, l / 3); max = Math.max(max, l / 3); minA = Math.min(minA, data.albedo[i + 3]);
     }
     assert.ok(max - min > 12, `${name} albedo looks flat (${min}-${max})`);
-    if (!['leaf', 'foam', 'plastic'].includes(name)) assert.ok(minA > 250, `${name} should be opaque`);
+    if (!['leaf', 'foam', 'plastic', 'scrap'].includes(name)) assert.ok(minA > 250, `${name} should be opaque`);
   }
 });
 

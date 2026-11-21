@@ -7,21 +7,22 @@
 // cell with fract() + textureGrad, so cells repeat like ordinary textures.
 // Pure data build (buildAtlasData) runs in Node, workers or pages; getAtlas(T) wraps it in THREE textures.
 import * as N from './texgen/noise.js';
-import planks from './texgen/planks.js';
-import plank from './texgen/plank.js';
-import bark from './texgen/bark.js';
-import plastic from './texgen/plastic.js';
-import leaf from './texgen/leaf.js';
-import rope from './texgen/rope.js';
-import scrap from './texgen/scrap.js';
-import sand from './texgen/sand.js';
-import rock from './texgen/rock.js';
-import foam from './texgen/foam.js';
-import cloth from './texgen/cloth.js';
+import * as planks from './texgen/planks.js';
+import * as plank from './texgen/plank.js';
+import * as bark from './texgen/bark.js';
+import * as plastic from './texgen/plastic.js';
+import * as leaf from './texgen/leaf.js';
+import * as rope from './texgen/rope.js';
+import * as scrap from './texgen/scrap.js';
+import * as sand from './texgen/sand.js';
+import * as rock from './texgen/rock.js';
+import * as foam from './texgen/foam.js';
+import * as cloth from './texgen/cloth.js';
 
 export const ATLAS = 1024, CELL = 256, PAD = 16, TILE = CELL - 2 * PAD, GRID = ATLAS / CELL;
 // Generator contract (texgen/<name>.js default export): (S, N) => {albedo, height, rough, alpha?}
 //   albedo Float32Array S*S*3 sRGB 0..1, height/rough/alpha Float32Array S*S 0..1, row 0 = bottom (v=0).
+//   Optional metal Float32Array S*S (metalness, opaque cells only: it is stored in the albedo alpha).
 //   Must tile seamlessly on S. Optional export `normalStrength` (height units -> slope, default 4).
 export const GENERATORS = { planks, plank, bark, plastic, leaf, rope, scrap, sand, rock, foam, cloth };
 
@@ -37,7 +38,7 @@ export function buildAtlasData(gens = GENERATORS) {
   Object.entries(gens).forEach(([name, gen], index) => {
     if (index >= GRID * GRID) throw new Error('texture atlas full');
     const out = (gen.default ?? gen)(S, N), strength = gen.normalStrength ?? out.normalStrength ?? 4;
-    const { albedo: A, height: H, rough: R, alpha: M } = out;
+    const { albedo: A, height: H, rough: R, alpha: M, metal: MT } = out; // metal: opaque cells only, stored in albedo alpha
     const col = index % GRID, row = (index / GRID) | 0, ox = col * CELL, oy = row * CELL;
     // Normals and roughness once per tile texel (Sobel on wrapped height), then copy with a wrapped gutter.
     const nrm = new Uint8Array(S * S * 4), alb = new Uint8Array(S * S * 4), mean = [0, 0, 0];
@@ -50,7 +51,7 @@ export function buildAtlasData(gens = GENERATORS) {
         const nx = -gx * strength, ny = -gy * strength, l = Math.hypot(nx, ny, 1);
         nrm[d] = b8(nx / l * 0.5 + 0.5); nrm[d + 1] = b8(ny / l * 0.5 + 0.5); nrm[d + 2] = b8(0.5 / l + 0.5); nrm[d + 3] = b8(R ? R[s] : 0.8);
         const a = M ? M[s] : 1;
-        alb[d] = b8(A[s * 3]); alb[d + 1] = b8(A[s * 3 + 1]); alb[d + 2] = b8(A[s * 3 + 2]); alb[d + 3] = b8(a);
+        alb[d] = b8(A[s * 3]); alb[d + 1] = b8(A[s * 3 + 1]); alb[d + 2] = b8(A[s * 3 + 2]); alb[d + 3] = b8(M ? a : MT ? MT[s] : 1);
         for (let c = 0; c < 3; c++) mean[c] += srgbToLin(A[s * 3 + c]) * a;
       }
     }

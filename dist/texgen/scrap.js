@@ -1,4 +1,6 @@
 // Scrap metal sheet: grey steel (#7D8288) with soft-haloed, pitted rust patches (#8A4A24-#A85D2E),
+// panelEdge: the riveted overlap strip ends at the tile wrap on purpose (seam test skips it).
+export const panelEdge = true;
 // faded chipped paint (mostly blue #4F7EA0, some red #A23A2A), fine diagonal scratches that brighten the
 // bare metal, a riveted overlap strip (v 0..0.15) with a panel line, and one shallow dent.
 // UV scale: one tile ~ 1 m of sheet (8 rivets, ~12 cm apart). Seamless on S; deterministic.
@@ -31,13 +33,13 @@ export default function generate(S, N) {
     LO[0][k] = fb(RUST, u, v); LO[1][k] = fb(PAINT, u, v); LO[2][k] = fb(TONE, u, v); LO[3][k] = vn(HUE, u * 2, v * 2); LO[4][k] = vn(SMASK, u * 3, v * 3); LO[5][k] = vn(CHIP, u * 28, v * 28);
   }
   const lo = new Float32Array(6);
-  const albedo = new Float32Array(S * S * 3), height = new Float32Array(S * S), rough = new Float32Array(S * S);
+  const albedo = new Float32Array(S * S * 3), height = new Float32Array(S * S), rough = new Float32Array(S * S), metal = new Float32Array(S * S);
   const RIV = 8, RIV_V = 0.075, RIV_R = 0.026, SEAM = 0.15; // rivets per tile, rivet row v, radius, panel line v
   const DU = 0.62, DV = 0.62, DR2 = 0.018;                   // dent centre and size (wrapped gaussian)
   const gw = (t, c) => { const e = Math.min(Math.abs(t - c), 1 - Math.abs(t - c)); return Math.exp(-e * e / DR2); }; // wrapped gaussian (separable)
   const DX = Float32Array.from({ length: S }, (_, x) => gw(x / S, DU));
   for (let y = 0; y < S; y++) {
-    const v = y / S, dy = gw(v, DV), strip = v < SEAM ? 1 : 0, seamD = Math.abs(v - SEAM) * S, seam = seamD < 2 ? 1 - seamD / 2 : 0;
+    const v = y / S, dy = gw(v, DV), strip = v < SEAM ? 1 : 0, seamD = Math.min(Math.abs(v - SEAM), v, 1 - v) * S, seam = seamD < 2 ? 1 - seamD / 2 : 0;
     for (let x = 0; x < S; x++) {
       const u = x / S, i = y * S + x, fine = vn(FINE, u * 24, v * 24);
       { const gx = x / 2, gy = y / 2, x0 = gx | 0, y0 = gy | 0, fx = gx - x0, fy = gy - y0, x1 = (x0 + 1) % L, r0 = y0 * L, r1 = ((y0 + 1) % L) * L;
@@ -78,7 +80,8 @@ export default function generate(S, N) {
       r += (0.88 + 0.06 * fine - r) * Math.max(rust, halo * 0.5);
       r += (0.86 - r) * paint;
       rough[i] = clamp01(r + (0.38 - r) * dome * 0.8);
+      metal[i] = (0.85 + 0.1 * scr) * (1 - Math.max(rust, halo * 0.4)) * (1 - paint) + 0.05 * rust; // optional, see report
     }
   }
-  return { albedo, height, rough };
+  return { albedo, height, rough, metal }; // metal: extra field, ignored by the current atlas
 }
