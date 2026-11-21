@@ -223,6 +223,9 @@ const CSS = `
 #inventory .sv-recipe.sv-locked .sv-rart>*{filter:grayscale(.7);opacity:.8}
 #inventory .sv-recipe.sv-locked .sv-rname{color:#a9b0b2}
 #inventory .sv-recipe.sv-gated .sv-rart>*{filter:grayscale(1) brightness(.55)} /* [progression-hook] research-locked */
+#inventory .sv-recipe.sv-gated .sv-rsub{color:#ffcf9a}
+#inventory .sv-rsection{flex:none;margin:8px 2px 1px;font:800 11px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#c9cfd0}
+#inventory .sv-rsection[hidden]{display:none}
 #inventory .sv-recipe:focus-visible{outline:2px solid #fff6e0;outline-offset:1px}
 #inventory .sv-rart{display:grid;place-items:center;width:42px;height:42px;border-radius:3px;background:radial-gradient(circle at 50% 40%,#20282c,#0d1215 75%);box-shadow:inset 0 0 0 1px #ffffff55}
 #inventory .sv-rart .sv-icon{width:36px;height:36px}
@@ -523,7 +526,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!groups.some(g => g.id === activeTab)) activeTab = groups[0]?.id ?? null;
     if (!recipes.some(r => r.id === pickId)) pickId = null;
     const key = recipes.map(r => r.id).join(',') + '|book';
-    if (dlg.dataset.svRecipes !== key || rlist.childElementCount !== recipes.length || !recipes.length) {
+    if (dlg.dataset.svRecipes !== key || rlist.querySelectorAll(':scope>.sv-recipe').length !== recipes.length || !recipes.length) {
       tabsEl.style.setProperty('--tabs', String(Math.max(1, groups.length)));
       tabsEl.innerHTML = groups.map(g => `<button type="button" class="sv-tab" role="tab" data-cat="${esc(g.id)}" aria-selected="false" tabindex="-1">${iconSVG(g.icon)}<span>${esc(g.name)}</span><i class="sv-tbadge"></i></button>`).join('');
       // Rows in tab order so the list reads naturally inside each category.
@@ -548,6 +551,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1;
     });
     for (const v of recipeEls) v.el.hidden = v.cat !== activeTab;
+    placeSections();
     const inTab = recipeEls.filter(v => v.cat === activeTab);
     if (!inTab.some(v => v.r.id === pickId)) pickId = (inTab.find(v => v.state === 'ready') || inTab[0])?.r.id ?? null;
     if (activeTab) dlg.dataset.svTab = activeTab;
@@ -660,6 +664,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       if (tipAnchor === v.el) showTipFor(v.el);
     }
     reorderRecipes();
+    placeSections();
     tabsEl.querySelectorAll('.sv-tab').forEach(t => {
       const n = readyPer.get(t.dataset.cat) || 0, b = t.querySelector('.sv-tbadge');
       if (b && b.textContent !== (n ? String(n) : '')) b.textContent = n ? String(n) : '';
@@ -728,6 +733,23 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     recipeEls = next;
     if (focused && focused !== document.activeElement && rlist.contains(focused)) { try { focused.focus({ preventScroll: true }); } catch {} }
     if (tipAnchor && rlist.contains(tipAnchor)) placeTipAt(tipAnchor);
+  }
+
+  // A real header row above the first locked recipe of each tab (locked rows sort last).
+  const sections = new Map();
+  function placeSections() {
+    for (const g of groups) {
+      const first = recipeEls.find(v => v.cat === g.id && v.state === 'gated');
+      let h = sections.get(g.id);
+      if (!first) { if (h) h.hidden = true; continue; }
+      if (!h || !rlist.contains(h)) {
+        h = document.createElement('div'); h.className = 'sv-rsection'; h.dataset.cat = g.id;
+        h.setAttribute('role', 'heading'); h.setAttribute('aria-level', '3'); h.textContent = 'Locked';
+        sections.set(g.id, h);
+      }
+      if (h.nextElementSibling !== first.el) rlist.insertBefore(h, first.el);
+      h.hidden = g.id !== activeTab;
+    }
   }
 
   // ---------- hold to craft ----------

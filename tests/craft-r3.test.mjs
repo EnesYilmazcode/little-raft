@@ -58,3 +58,14 @@ test('CRAFT-3: every locked recipe stays in the book with its reason; the smelte
   ];
   assert.deepEqual(CB.sortCraftableFirst(views).map(v => v.id), ['raftpiece', 'bench', 'smelter', 'beehive', 'purifier']);
 });
+
+const { readFile } = await import('node:fs/promises');
+const src = async f => readFile(new URL(f, base), 'utf8');
+
+test('CRAFT-6: the locked section is a real header row, not a ::before squeezed into the 3px ready stripe', async () => {
+  const sr = await src('storage-research-ui.js'), sv = await src('survival-ui.js');
+  assert.doesNotMatch(sr, /\.sv-recipe[^{]*::before/, 'no pseudo-element header on recipe rows');
+  assert.doesNotMatch(sr, /data-locked\]?\{[^}]*pointer-events:none/, 'locked rows stay selectable so the cost and reason can be read');
+  assert.match(sv, /className = 'sv-rsection'/);
+  assert.match(sv, /#inventory \.sv-recipe::before\{[^}]*width:3px/, 'the ready stripe is untouched');
+});
