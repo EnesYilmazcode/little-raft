@@ -12,7 +12,7 @@ python sandbox/audio/adopt.py --apply   # same edits on dist/ in place
 `adopt.py` holds every edit as an exact `old -> new` string that must match `dist/game.js` exactly once, so it refuses to half-apply if game.js has drifted. `--check` starts a solo game, clicks the canvas (user gesture), presses R (which plays an effect sound), and asserts four things: no page errors, exactly one `AudioContext`, `audio-worklet.js?build=…` loaded with one `AudioWorkletNode` built, and oscillators created. The last run passed:
 
 ```
-modules: ["http://127.0.0.1:…/audio-worklet.js?build=v3-survival-ae77fa84ac2b"], worklets: 1, contexts: 1, oscillators: 1-9 (varies with which effect R triggers), errors: []
+modules: ["http://127.0.0.1:…/audio-worklet.js?build=v3-survival-ae77fa84ac2b"], worklets: 1, contexts: 1, oscillators: 2 (varies with which effect R triggers), panners: 1, errors: []
 ```
 
 ## Manual steps (what the script does)
@@ -29,7 +29,7 @@ modules: ["http://127.0.0.1:…/audio-worklet.js?build=v3-survival-ae77fa84ac2b"
 - `audio-worklet.js` wraps `registerProcessor` in try/catch. A hot update that loads the new file into the same `AudioContext` keeps working: the first-registered class is used.
 - AudioWorklet needs a secure context. `127.0.0.1` (desktop app and the local server) and https qualify. On a plain-http LAN address the engine silently uses its node-graph ambience instead.
 
-`dist/audio.js` keeps the old API: `createOceanAudio({context, volume, ambience})` returns `{context, resume(), setVolume(v), play(ev, s), destroy()}`, and `EVENTS` contains every old event. Nothing else in `dist/` imports `audio.js` today, so the old callers' contract is preserved trivially. The new members (`setListener`, `setOcean`, `setReel`, `setBus`, `duck`, `stats`, the `opts` argument to `play`) are optional.
+`dist/audio.js` keeps the old API: `createOceanAudio({context, volume, ambience})` returns `{context, resume(), setVolume(v), play(ev, s), destroy()}`, and `EVENTS` contains every old event. Nothing else in `dist/` imports `audio.js` today, so the old callers' contract is preserved trivially. The new members (`setListener`, `setOcean`, `setReel`, `setBus`, `duck`, `creak`, `stats`, the `opts` argument to `play`) are optional. So are the new factory options `reverb` (default `true`: the open-air early-reflection send, about 1 % of a core; pass `false` for weak devices), `hrtf`, `gulls` and `seed` (fixed worklet noise seed, for tests).
 
 Two behaviour differences from the old `dist/audio.js`:
 - **Play before the context is running.** After `resume()` has been *called*, `play()` schedules the sound even while the context is still `suspended` (it plays on resume). The old version returned false and dropped it.
@@ -94,17 +94,17 @@ The build token below is the one game.js already uses on its other imports.
    - In `capture()` (line 1139), change `fishWait, sound, audio, peer,` to `fishWait, sound, audio:sfx.context ?? audio, peer,`. The next build receives the live context as `X.audio` and passes it to its own `createOceanAudio({context:audio})`.
    - In `dispose()` (after line 1171 `try { settingsController?.destroy(); } catch {}`), add `try { sfx.destroy(); } catch {}`. This stops and disconnects only this build's nodes and worklet and **never closes the context**.
 
-Optional, not in the script: drive the sea from the game. Once per frame (or less often), call `sfx.setOcean({swell: clamp(Math.hypot(raft.rotation.x, raft.rotation.z) * 8, .2, 1), wind: weatherWind, speed: raftSpeed})`. All values are 0..1 and smoothed over about 1 s, so per-frame calls are fine. Footsteps on planks can use `sfxPlay('creak', .3, {x, y, z})` sparingly.
+Optional, not in the script: drive the sea from the game, and jolt the raft. Once per frame (or less often), call `sfx.setOcean({swell: clamp(Math.hypot(raft.rotation.x, raft.rotation.z) * 8, .2, 1), wind: weatherWind, speed: raftSpeed})`. All values are 0..1 and smoothed over about 1 s, so per-frame calls are fine. Call `sfx.creak(.4 + .6 * impact)` when the player lands on the deck after a jump or a big wave hits; it fires one creak in the ambience worklet (or the node-graph creak if the worklet is unavailable). Footsteps on planks can use `sfxPlay('creak', .3, {x, y, z})` sparingly.
 
 ### 3. Verify
 
 1. `python sandbox/audio/adopt.py --check` must print `"ok": true`.
-2. `python sandbox/audio/shoot.py`: `summary.warnings` must be `{}` (no clipping, DC or truncated tails), `errors` must be `[]`, and `realtime.hotSwap.sameContext` must be `true`.
+2. `python sandbox/audio/shoot.py`: `summary.warnings` must be `{}` (no clipping, DC or truncated tails), `errors` must be `[]`, and `realtime.hotSwap.sameContext` must be `true`. Each case also reports `loud_max` (K-weighted momentary loudness); `catch` should be the loudest one-shot and `error`/`ui`/`hover` the quietest (see the table in `audio.md`).
 3. Manual, with sound:
    - Start solo and click once. The ocean fades in over 2.5 s.
    - Throw the hook and listen for the whoosh, then a splash where it lands. Hold to reel for the ratchet. A catch should give a shloop plus pluck, with the ocean dipping briefly.
    - Build a floor for the hammer crack.
-   - Turn your head: the hook splash and gulls should move between the ears.
+   - Turn your head: the hook splash and gulls should move between the ears. A sound hard left should still reach the right ear, quieter and duller (crossfeed), and distant gulls should sound duller than close ones.
    - Toggle Sound off and on, and move the volume slider.
 4. Hot update: publish a candidate with `publish_local.py`. The ocean should keep playing through the swap: the new mount calls `sfx.resume()` straight away on the context that is already running, and old and new overlap briefly because `live.js` disposes the old build only after the new mount succeeds. `stats().worklet` should be `true` after the swap (`raftDebug` does not expose it; check with a breakpoint or a temporary `window.__sfx = sfx`).
 
