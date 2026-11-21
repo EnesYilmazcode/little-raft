@@ -21,7 +21,7 @@ export function normalizePrompt(p) {
   const out = list.slice(0, 2).map(x => {
     let key = x.key == null ? '' : String(x.key).trim(), hold = !!x.hold;
     if (/^hold\s+/i.test(key)) { hold = true; key = key.replace(/^hold\s+/i, ''); }
-    return {key:key.slice(0, 12), label:x.label.trim().slice(0, 60), hold, muted:!!x.muted};
+    return {key:key.slice(0, 12), label:x.label.trim().slice(0, 72), hold, muted:!!x.muted}; // [bait] 72: the baited waiting line runs to 64 chars
   });
   return out.length ? out : null;
 }
