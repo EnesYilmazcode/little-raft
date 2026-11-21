@@ -438,6 +438,7 @@ export function mount(transfer = null) {
     for (const h of [hookHands, hammerHands, rodHands]) if (h.group.parent !== camera) camera.add(h.group);
     try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
     catch (e) { console.warn('shader warm-up failed', e); }
+    try { diving?.warm(renderer); } catch (e) { console.warn('diving warm-up failed', e); } // diving lane hook: seafloor + underwater overlay programs
     showViewmodel(null); // the next frame attaches whichever one is held
   }
   // Only the held viewmodel hangs under the camera, so per-frame matrix updates skip the other two entirely.
