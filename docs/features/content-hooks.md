@@ -2,7 +2,7 @@
 
 All four content features (islands, wildlife, storage/research, day/night) plug into the engine
 through one registry, `dist/content.js`. The engine creates it once in `init()` and calls it from
-lines in `dist/game.js` marked `// content hook`. There are 24 of these lines, and `grep -n "content hook" dist/game.js` lists them.
+lines in `dist/game.js` marked `// content hook`. There are 31 of these lines, and `grep -n "content hook" dist/game.js` lists them.
 
 | Hook in game.js | Calls | Purpose |
 |---|---|---|
@@ -23,6 +23,10 @@ lines in `dist/game.js` marked `// content hook`. There are 24 of these lines, a
 | guest `state` handler, `restoreOwnRaft()` | `content.load(ext, 'net' / 'restore')` | apply host state, or the guest's own raft after a visit |
 | `disposeScene()` | `content.dispose()` | cleanup |
 | `raftDebug.content` | each module's `debug` object | QA helpers for tests and screenshots |
+| `useSelected()` | `content.use(aim, kind)` | left click with an item no engine tool handles (paint brush) |
+| canvas `pointerdown` | `content.alt(aim, heldKind())` | right click while holding an item (brush colour) |
+| `rebuildRaft()` | `content.afterRebuild()` | after deck/decor meshes are recreated (re-tint painted planks) |
+| `contentCtx` | `building`, `brush`, `woodMat(hex)`, `aim()` | piece grid + tint hooks, held brush model, cached tinted wood, this frame's aim |
 
 Item kinds `sand`, `stone`, `seed`, `research` and the `research` recipe live in
 `dist/content-items.js`. `inventory-state.js` spreads them into `ITEM_INFO` and `RECIPES` in two
