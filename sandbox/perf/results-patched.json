@@ -1,0 +1,181 @@
+{
+ "frames": 12,
+ "scenarios": {
+  "stock dist": {
+   "frames": 12,
+   "frameMs": 3530.43,
+   "frameP95": 4909.9,
+   "frameWorst": 4909.9,
+   "renderMs": 3529.71,
+   "submitMs": 10.6,
+   "submitMin": 5.4,
+   "logicMs": 0.72,
+   "logicP95": 0.9,
+   "rafGapMs": 3555.93,
+   "calls": 524,
+   "triangles": 241586,
+   "geometries": 348,
+   "textures": 8,
+   "programs": 10,
+   "pixelRatio": 1,
+   "drawingBuffer": [
+    1280,
+    720
+   ],
+   "heapDeltaKB": -6861,
+   "shadow": "every frame",
+   "cpuMsPerFrame": {
+    "browser": 2.3,
+    "utility": 0.5,
+    "renderer": 26.4,
+    "gpu-process": 1515.0,
+    "total": 1544.2
+   },
+   "census": {
+    "meshes": 470,
+    "casters": 232,
+    "verts": 470502,
+    "materials": 113,
+    "geometries": 463,
+    "textures": 7,
+    "byOwner": {
+     "camera(viewmodels)": {
+      "objects": 1,
+      "meshes": 60,
+      "casters": 0,
+      "verts": 54882,
+      "materials": 14
+     },
+     "ocean": {
+      "objects": 1,
+      "meshes": 1,
+      "casters": 0,
+      "verts": 60000,
+      "materials": 1
+     },
+     "raft (deck tiles + decor)": {
+      "objects": 1,
+      "meshes": 62,
+      "casters": 53,
+      "verts": 123876,
+      "materials": 7
+     },
+     "floating items": {
+      "objects": 1,
+      "meshes": 155,
+      "casters": 155,
+      "verts": 207264,
+      "materials": 85
+     },
+     "islands": {
+      "objects": 12,
+      "meshes": 120,
+      "casters": 24,
+      "verts": 7200,
+      "materials": 5
+     },
+     "clouds": {
+      "objects": 24,
+      "meshes": 72,
+      "casters": 0,
+      "verts": 17280,
+      "materials": 1
+     }
+    }
+   },
+   "state": {
+    "pointerLocked": true,
+    "tiles": 9,
+    "items": 30
+   },
+   "shot": "sandbox/perf/shots/game-stock-baseline.png",
+   "errors": [
+    "Failed to load resource: the server responded with a status of 404 (File not found)"
+   ]
+  },
+  "patched dist": {
+   "frames": 12,
+   "frameMs": 1098.46,
+   "frameP95": 1367.4,
+   "frameWorst": 1367.4,
+   "renderMs": 1096.91,
+   "submitMs": 5.1,
+   "submitMin": 2.7,
+   "logicMs": 1.55,
+   "logicP95": 5.3,
+   "rafGapMs": 1086.33,
+   "calls": 250,
+   "triangles": 194448,
+   "geometries": 249,
+   "textures": 15,
+   "programs": 10,
+   "pixelRatio": 1,
+   "drawingBuffer": [
+    1280,
+    720
+   ],
+   "heapDeltaKB": 280,
+   "shadow": "every frame",
+   "cpuMsPerFrame": {
+    "browser": 1.8,
+    "renderer": 18.2,
+    "gpu-process": 1127.7,
+    "total": 1147.7
+   },
+   "census": {
+    "meshes": 231,
+    "casters": 8,
+    "verts": 474495,
+    "materials": 126,
+    "geometries": 224,
+    "textures": 14,
+    "byOwner": {
+     "camera(viewmodels)": {
+      "objects": 1,
+      "meshes": 60,
+      "casters": 0,
+      "verts": 54882,
+      "materials": 14
+     },
+     "ocean": {
+      "objects": 1,
+      "meshes": 1,
+      "casters": 0,
+      "verts": 60000,
+      "materials": 1
+     },
+     "group": {
+      "objects": 1,
+      "meshes": 7,
+      "casters": 6,
+      "verts": 123876,
+      "materials": 7
+     },
+     "floating items": {
+      "objects": 1,
+      "meshes": 157,
+      "casters": 0,
+      "verts": 211257,
+      "materials": 98
+     },
+     "scenery": {
+      "objects": 6,
+      "meshes": 6,
+      "casters": 2,
+      "verts": 24480,
+      "materials": 1
+     }
+    }
+   },
+   "state": {
+    "pointerLocked": true,
+    "tiles": 9,
+    "items": 30
+   },
+   "shot": "sandbox/perf/shots/game-patched-baseline.png",
+   "errors": [
+    "Failed to load resource: the server responded with a status of 404 (File not found)"
+   ]
+  }
+ }
+}

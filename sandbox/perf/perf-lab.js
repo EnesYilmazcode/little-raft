@@ -2,6 +2,7 @@
 // URL params: mode=naive|instanced|batched  items=240  tiles=25  shadow=off|every|cached
 //             dpr=auto|<number>  alloc=1 (per-frame allocations, to show GC pressure)
 import * as THREE from '../../dist/vendor/three.module.js';
+import { createPerfOverlay } from './perf-overlay.js';
 
 const q = new URLSearchParams(location.search);
 const cfg = {
@@ -201,20 +202,9 @@ function fitShadow(r) {
 fitShadow(cfg.shadow === 'cached' ? raftRadius + 1 : 25);
 let shadowClock = 0;
 
-// ---------- adaptive DPR ----------
-// EMA of frame time; drop 10% after 1 s over budget, raise after 3 s well under. Hysteresis stops oscillation.
-const dprCtl = {
-  scale: renderer.getPixelRatio(), ema: 16.7, over: 0, under: 0, budget: 1000 / 60,
-  tick(ms, dt) {
-    if (cfg.dpr !== 'auto') return;
-    this.ema += (ms - this.ema) * 0.1;
-    if (this.ema > this.budget * 1.2) { this.over += dt; this.under = 0; } else if (this.ema < this.budget * 0.75) { this.under += dt; this.over = 0; } else { this.over = this.under = 0; }
-    let next = this.scale;
-    if (this.over > 1) next = Math.max(0.6, this.scale - 0.1);
-    else if (this.under > 3) next = Math.min(maxDpr, this.scale + 0.1);
-    if (next !== this.scale) { this.scale = +next.toFixed(2); renderer.setPixelRatio(this.scale); this.over = this.under = 0; }
-  },
-};
+// ---------- overlay + adaptive DPR (the in-game proposal, perf-overlay.js) ----------
+const perf = createPerfOverlay({ renderer, maxPixelRatio: maxDpr, dynamic: cfg.dpr === 'auto' });
+perf.el.hidden = false;
 
 // ---------- loop ----------
 let t = 0;
@@ -234,8 +224,7 @@ function animate(now) {
   if (window.__benchRunning) return;
   requestAnimationFrame(animate);
   const dt = Math.min((now - last) / 1000, 0.05); last = now;
-  const t0 = performance.now(); step(dt); const cpu = performance.now() - t0;
-  dprCtl.tick(dt * 1000, dt);
+  perf.begin(); const t0 = performance.now(); step(dt); const cpu = performance.now() - t0; perf.end();
   frames++; msAcc += cpu; hudClock += dt;
   if (hudClock > 0.5) {
     const i = renderer.info;
@@ -256,7 +245,7 @@ window.runBench = (n = 120) => {
   let calls = 0, tris = 0, frameCalls = [];
   const times = [], h0 = heap();
   for (let i = 0; i < n; i++) {
-    const t0 = performance.now(); step(1 / 60); gl.finish(); times.push(performance.now() - t0);
+    renderer.info.reset(); const t0 = performance.now(); step(1 / 60); gl.finish(); times.push(performance.now() - t0);
     calls += renderer.info.render.calls; tris += renderer.info.render.triangles; frameCalls.push(renderer.info.render.calls);
   }
   times.sort((a, b) => a - b);

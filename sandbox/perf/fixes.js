@@ -4,7 +4,7 @@
 import { mergeMeshesByMaterial } from './merge.js';
 
 const findGroups = (scene, test) => scene.children.filter(o => o.isGroup && test(o));
-const isRaft = g => g.children.some(c => c.name === 'raft-floor');
+const isRaft = g => g.children.some(c => c.name === 'raft-floor' || c.name === 'raft-deck');
 const isItems = g => g.children.some(c => /^debris-|^plastic$/.test(c.name) || c.userData?.token);
 const isCloud = g => g.children.length === 3 && g.children.every(c => c.isMesh && c.geometry.type === 'IcosahedronGeometry');
 const isIsland = g => !isRaft(g) && !isItems(g) && g.children.some(c => c.isGroup) && g.children.some(c => c.geometry?.type === 'CylinderGeometry');

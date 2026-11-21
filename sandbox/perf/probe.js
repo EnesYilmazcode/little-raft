@@ -8,7 +8,13 @@
 // window.__perf.measure(n) -> {frameMs, renderMs, logicMs, calls, callsMain, triangles, ...}
 (() => {
   // Deterministic world: the game spawns floating items with Math.random. Seed it so every scenario sees the same sea.
-  if (!/[?&]noseed\b/.test(location.search)) { let a = 12345; Math.random = () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+  // three's generateUUID also calls Math.random (once per object/material/geometry), so a build that creates a
+  // different number of objects (e.g. merged meshes) would shift the sequence: uuids get their own stream.
+  if (!/[?&]noseed\b/.test(location.search)) {
+    const mk = a => () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const game = mk(12345), other = mk(999);
+    Math.random = () => (/generateUUID/.test(new Error().stack) ? other() : game());
+  }
   const px = new Uint8Array(4);
   const P = window.__perf = { frames: [], recording: false, finish: true, R: null };
   const raf = window.requestAnimationFrame.bind(window);
@@ -91,7 +97,7 @@
       let key = label(top);
       if (top.isGroup && !top.name) {
         const ch = top.children;
-        if (ch.some(x => x.name === 'raft-floor')) key = 'raft (deck tiles + decor)';
+        if (ch.some(x => x.name === 'raft-floor' || x.name === 'raft-deck')) key = 'raft (deck tiles + decor)';
         else if (top === P.itemsGroup || ch.some(x => /^debris|plastic/i.test(x.name) || x.children?.some(y => /debris|jug|plastic/i.test(y.name)))) key = 'floating items';
         else if (ch.length === 3 && ch.every(x => x.isMesh && x.geometry.type === 'IcosahedronGeometry')) key = 'clouds';
         else if (ch.some(x => x.isGroup) && ch.some(x => x.geometry?.type === 'CylinderGeometry')) key = 'islands';

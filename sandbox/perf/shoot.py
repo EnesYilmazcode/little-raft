@@ -23,6 +23,7 @@ ap.add_argument('--no-cdp', action='store_true')
 ap.add_argument('--out', default=str(HERE / 'shots'))
 ap.add_argument('--json', default=str(HERE / 'results.json'))
 ap.add_argument('--tag', default='')
+ap.add_argument('--big', action='store_true', help='late-game save: 7x7 deck (49 tiles) with 12 decorations')
 args = ap.parse_args()
 dist = Path(args.dist).resolve(); out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
 
@@ -99,6 +100,11 @@ def measure(page, n):
 def start_game(b):
     ctx = b.new_context(viewport={'width': 1280, 'height': 720}, device_scale_factor=args.dsf)
     ctx.add_init_script(PROBE)
+    if args.big:
+        decor = [{'type': t, 'x': x, 'z': z} for (t, x, z) in [('sail', 0, 2), ('palm', -2, -2), ('lantern', 2, -2), ('net', 3, 3), ('bench', -3, 1), ('crate', 2, 1),
+                 ('crate', -1, 3), ('lantern', -3, -3), ('palm', 3, -1), ('bench', 1, -3), ('net', -3, 3), ('sail', -2, 0)]]
+        world = {'tiles': [[x, z] for x in range(-3, 4) for z in range(-3, 4)], 'decor': decor, 'stock': {}, 'fish': 0, 'collected': 0}
+        ctx.add_init_script("try { localStorage.setItem('little-raft-v1', %s) } catch (e) {}" % json.dumps(json.dumps(world)))
     page = ctx.new_page()
     errs = []
     page.on('pageerror', lambda e: errs.append(str(e)[:300]))
@@ -160,7 +166,7 @@ with sync_playwright() as p:
             r['mainPassOnly'] = page.evaluate('__perf.mainOnly()')
             if not args.no_cdp: r['cdp'] = cdp_profile(page)
         # freeze the scene for comparable stills: pause via raftDebug is not exposed, so shoot immediately
-        shotp = out / f"game-{args.tag + '-' if args.tag else ''}{name}{'-dsf' + str(args.dsf) if args.dsf != 1 else ''}.png"
+        shotp = out / f"game-{args.tag + '-' if args.tag else ''}{'big-' if args.big else ''}{name}{'-dsf' + str(args.dsf) if args.dsf != 1 else ''}.png"
         page.screenshot(path=str(shotp)); r['shot'] = str(shotp.relative_to(ROOT)) if shotp.is_relative_to(ROOT) else str(shotp)
         r['errors'] = errs
         report['scenarios'][name] = r
