@@ -176,13 +176,67 @@ and before `  } catch (e) {`, add:
 ```
 
 Uses existing locals: `later` (timer that is cancelled on dispose), `renderer`, `mat` (shared
-material cache; debris icons draw from it and the baker never disposes those materials),
+material cache; debris icons draw from it and the baker never disposes those materials, nor any
+material flagged `userData.shared`),
 `disposed` (line 61; set by `dispose()`, which live.js calls on the old engine right after the
 new one mounts), `ITEM_INFO` (already imported on line 12). `() => disposed` cancels the bake
 between tiles, so a disposed engine's bake stops drawing on the transferred renderer, writes no
 cache entry and creates no blob URLs. Note the second
 `rafId = requestAnimationFrame(animate)` in `resume()` (line ~1150) is NOT the anchor; the patch
 anchors on the line followed by `  } catch (e) {`.
+
+## With procedural-models
+
+`fleet-tech/procedural-models` replaces `dist/plastic.js`, `dist/crafts.js` and `dist/debris.js` (and
+`deck.js`) with one module, `dist/lowpoly-props.js`, which exports `createPlastic(T)`,
+`createCraft(T, type)` and `createDebris(T, type, getMaterial, opts)` with the same signatures and
+return contracts (no imports of its own; THREE is passed in). Its 3 materials (`lp-solid`, `lp-cloth`,
+`lp-glow`) are module-shared and flagged `material.userData.shared = true`.
+
+The baker already leaves those alone: `disposeTree` in `item-icons.js` and `defaultDispose` in
+`icon-atlas.js` skip any material (and geometry) with `userData.shared` truthy, as well as the game's
+`mat` cache. Before this, a bake disposed `lp-solid` / `lp-cloth` 8 times (sail, palm, bench, crate,
+plastic, leaf), forcing every raft prop to re-acquire its program.
+
+Order: adopt either topic first. Then:
+
+1. procedural-models steps 1 to 3 (add `dist/lowpoly-props.js`, switch the `game.js` imports, the
+   `disposeGeometry` guard).
+2. icons steps 1 to 4 (`adopt_patch.py --apply`), if not already done. Do this while
+   `plastic.js`, `crafts.js` and `debris.js` still exist: `--check` refuses a dist that lacks a module
+   `item-icons.js` imports.
+3. In `dist/item-icons.js` replace the three builder imports
+
+   ```js
+   import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
+   import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
+   import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
+   ```
+
+   with
+
+   ```js
+   import { createPlastic, createCraft, createDebris } from './lowpoly-props.js?build=v3-survival-ae77fa84ac2b';
+   ```
+
+   No call sites change (`createDebris(T, 'leaf', gm, { seed: 3 })`, `createPlastic(T)`,
+   `createCraft(T, 'sail' | 'palm' | 'bench' | 'crate')`). The `hammer.js` and `icon-atlas.js` imports
+   stay. Do the same in `sandbox/icons/item-models.js` (`../../dist/lowpoly-props.js`) so later
+   `--apply` runs produce it.
+4. In `dist/icon-atlas.js` bump `ICON_ATLAS_VERSION` from `'ia4'` to `'ia5'` (also in the sandbox copy),
+   so icons cached from the old models under the same build id are not reused. A new build id alone
+   would also miss the cache, but the bump keeps a same-build adopt honest.
+5. Only now delete the old builder files, after procedural-models step 4's grep over `dist/` and
+   `sandbox/` comes back empty. `game.js` imports `item-icons.js` statically, so a missing builder
+   module stops the game from booting.
+
+Checked on a scratch copy of `dist/` with procedural-models steps 1 to 3, `--apply` and steps 3 and 4
+above: the game boots with no page or console errors, loads `lowpoly-props.js` and `item-icons.js`
+(not `plastic.js`, `crafts.js` or `debris.js`), and the hotbar and bag show baked icons of the low-poly
+props with one `littleRaft.icons.ia5.*` key. Dispose listeners on the 3 `lp-*` materials counted
+0 events during a full 15-icon bake with the current `item-icons.js`, against 8 with the previous
+`disposeTree`. `adopt_patch.py --check --dist <copy without plastic.js crafts.js debris.js>` exits 1
+and names the three missing modules.
 
 ## Cache behaviour
 
@@ -229,7 +283,8 @@ is a cache hit.
 
 ## Verify
 
-1. `python sandbox/icons/adopt_patch.py --check` prints `ok`.
+1. `python sandbox/icons/adopt_patch.py --check` prints `ok` (anchors, plus every module `item-icons.js`
+   imports exists in the target dist; `--dist <path>` checks or applies to another copy).
 2. `python sandbox/icons/shoot.py` (sandbox; uses a patched copy of the current
    `dist/survival-ui.js`), then read `sandbox/icons/shots/ui-inventory-2x-panel.png` and
    `ui-hotbar-2x-bar.png`: every slot, recipe and cost chip shows a 3D icon.
