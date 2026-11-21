@@ -36,8 +36,11 @@ const CSS = `
 #lrVitalsFlash{background:radial-gradient(ellipse at center,rgba(200,20,0,.12) 30%,rgba(190,15,0,.6) 100%)}
 #lrVitalsFlash.hit{animation:lvHit .45s ease-out}
 @keyframes lvHit{from{opacity:1}to{opacity:0}}
-#lrFaint{position:fixed;inset:0;z-index:2147482000;pointer-events:none;display:grid;place-items:center;background:#0b0604e6;opacity:0;transition:opacity .5s ease}
-#lrFaint.on{opacity:1}
+#lrFaint{position:fixed;inset:0;z-index:2147482000;pointer-events:none;display:grid;place-items:center;background:#0b0604e6;opacity:0;transition:opacity .5s ease;
+  margin:0;border:0;padding:0;width:auto;height:auto;max-width:none;max-height:none;overflow:hidden;color:inherit}
+#lrFaint[popover]:not(:popover-open){display:none}
+#lrFaint.on{opacity:1;animation:lvFaintIn .5s ease}
+@keyframes lvFaintIn{from{opacity:0}}
 #lrFaint div{font:700 30px/1.2 ${FONT};color:#f6ecd6;letter-spacing:.04em;text-shadow:0 2px 6px #000}
 #lrFaint small{display:block;margin-top:8px;font:500 14px/1.3 ${FONT};letter-spacing:0;opacity:.8;text-align:center}
 @media(max-width:760px){#lrVitals{bottom:108px;width:132px;padding:5px 7px 6px 5px;gap:4px}#lrVitals .lv-row{grid-template-columns:14px 1fr 22px;gap:4px}
@@ -70,6 +73,10 @@ export function createVitalsUI(doc = document) {
   root.setAttribute('aria-label', 'Health, food and water'); root.hidden = true;
   const vignette = make('lrVitalsVignette'), flashEl = make('lrVitalsFlash');
   const faintEl = make('lrFaint', '<div>You passed out<small>You wake up back on the raft</small></div>'); faintEl.setAttribute('role', 'status');
+  // The onboarding Notes panel is a top-layer popover that no z-index can cover, so the overlay joins the top layer
+  // too (shown later = stacked above). Without popover support it stays a plain z-indexed layer.
+  const pop = typeof faintEl.showPopover === 'function'; if (pop) faintEl.popover = 'manual';
+  let faintHide = 0;
   const rows = {}, shown = {hp:-1, food:-1, water:-1}, low = {hp:null, food:null, water:null};
   for (const k of KEYS) { const r = root.querySelector('.lv-' + k); rows[k] = {row:r, fill:r.querySelector('.lv-fill'), num:r.querySelector('.lv-num')}; }
   let visible = false, starving = false, fainted = false;
@@ -90,7 +97,12 @@ export function createVitalsUI(doc = document) {
     }
   }
   function flash() { flashEl.classList.remove('hit'); void flashEl.offsetWidth; flashEl.classList.add('hit'); }
-  function faint(on) { on = !!on; if (on !== fainted) { fainted = on; faintEl.classList.toggle('on', on); } }
-  function dispose() { for (const el of [root, vignette, flashEl, faintEl]) el.remove(); }
+  function faint(on) {
+    on = !!on; if (on === fainted) return; fainted = on;
+    if (faintHide) { clearTimeout(faintHide); faintHide = 0; }
+    if (pop) try { if (on) { if (faintEl.matches(':popover-open')) faintEl.hidePopover(); faintEl.showPopover(); } else faintHide = setTimeout(() => { faintHide = 0; try { if (!fainted) faintEl.hidePopover(); } catch {} }, 520); } catch {}
+    faintEl.classList.toggle('on', on);
+  }
+  function dispose() { if (faintHide) clearTimeout(faintHide); for (const el of [root, vignette, flashEl, faintEl]) el.remove(); }
   return {update, flash, faint, dispose, get shown() { return {...shown}; }};
 }
