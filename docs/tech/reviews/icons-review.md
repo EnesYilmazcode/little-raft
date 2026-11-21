@@ -1,135 +1,180 @@
-# Review: icons, round 2 (fleet-tech/icons @ bf13795)
+# Review: icons, round 3 (retarget/icons @ 9073000)
 
-Judge run on 2026-11-21. Box: 4 cores, load average 17 to 27 (other fleet agents), SwiftShader, so all ms
-are relative only. dist/ itself is unchanged on the branch; everything was checked on a scratch copy built
-with `adopt_patch.py`.
+Judge run on 2026-11-21. Box: 4 cores, load average 28 to 43 (other fleet agents), SwiftShader, so ms are
+relative only. The target is current origin/main dist (build `v3-survival-ae77fa84ac2b`, game.js 1780 lines),
+which ships its own `dist/item-icons.js`. dist/ is identical between the branch and origin/main. Everything
+was checked on scratch copies. My probes and logs are in `scratchpad/judge-icons3/` (not committed).
 
 ## Scores
 
-| | round 1 | round 2 |
-|---|---|---|
-| LOOKS | 7 | 8 |
-| COST | 7 | 7 |
-| ADOPT-CORRECTNESS | 6 | 7 |
-| **OVERALL** | **6** | **7** |
-
-## Round 1 summary
-
-Round 1 scored OVERALL 6. The 8 required fixes were:
-1. a try/finally around the bake;
-2. cancelling the bake on dispose and hot swap, and stopping an orphan bake from wiping the new build's cache;
-3. revoking blob URLs;
-4. validating the cache contents;
-5. fixing stale docs (the missing variants.py, wrong comments, conflicting cache-hit figures, the 100 to 150 KB size claim);
-6. being honest about mid-gameplay rebakes on hot swap;
-7. making the hook icon match the held scrap hook;
-8. making thin tools, and scrap and net at 18 px, readable (plus stack counts sitting on the art).
-
-## What I ran (round 2)
-
-- `adopt_patch.py --check` prints ok (build `v3-survival-ae77fa84ac2b`).
-- `robust.py`: `allPass: true`. The 6 cases are a throw in make(), a throw in a render, cancel after 2
-  tiles, an orphan write, stale-key cleanup and corrupt entries (a missing kind, a non-PNG value, an array,
-  truncated JSON). After each throw and after the cancel, the renderer comes back with autoClear true, a
-  null render target, the shadow map on and autoReset on.
-- `hotswap.py midswap`: the old engine drew 6 tiles, was disposed, and drew 0 old tiles after that.
-  15 blobs were created, all of them for the new build. localStorage ends with only
-  `ia4.v3-test-hotswap`. After the swap the renderer has autoClear true and programs/textures 9/7. No
-  errors. `pass: true`.
-- `hotswap.py postswap`: 30 blobs created, 15 revoked, 15 live. The old key is replaced by the new one.
-  Programs/textures/geometries are 9/7/248 before and 9/7/248 after. `pass: true`.
-- `shoot.py` took 4 m 37 s:
-
-  | | bake total | worst frame during bake | cache hit |
-  |---|---|---|---|
-  | DPR 1 | 4.9 s | 0.95 s | 6.3 ms |
-  | DPR 2 | 5.0 s | 1.15 s | 6.4 ms |
-
-  4 programs are compiled. renderer.info is the same before and after, 25 calls / 41,734 triangles /
-  25 geometries / 2 textures / 6 programs. The data URLs total 259,814 chars. In `lateSwap`, 47 SVG
-  icons go to 0 and 47 baked icons appear while the bag stays open. The only page errors are SwiftShader
-  ReadPixels stall notices and one 404, which is the sandbox page's missing favicon.
-- `game_probe.py` on my own patched copy. A fresh bake shows baked hotbar icons 34.9 s after Solo. There
-  are no page or console errors and one `ia4` key of 260,016 chars. The in-game cache hit took 19.7,
-  9.5, 4.3, 4.8 and 5.3 ms. After a reload the hotbar is baked 3.1 s after Solo.
-- `RAFT_DIST=<patched> node --test tests/survival.test.mjs` passes 22/22.
-- I read sheet-2x-compare, sheet-2x-chip18, ui-inventory-1x and ui-hotbar-2x-bar, plus my own in-game
-  hotbar and bag screenshots.
-
-## The 8 round-1 fixes
-
-| # | fix | status | evidence |
+| | round 1 | round 2 | round 3 (retarget) |
 |---|---|---|---|
-| 1 | try/finally around the bake | done | A per-tile `try/finally` restores RT, clear, shadow, autoClear and autoReset. The outer `finally` disposes the targets, the quad, the unified materials and any prebuilt models. robust.py makeThrows and renderThrows pass and leave the renderer clean. |
-| 2 | cancel and orphan handling | done | `isCancelled` is checked before the bake, before each tile, after the readback and before the cache write. game.js passes `() => disposed`. The orphan rule ("a key appeared during my bake, so write nothing and delete nothing") holds in robust.py and in the midswap run, where 0 old tiles were drawn after dispose. |
-| 3 | revoke blob URLs | done | `setItemIcons` revokes the URLs it replaces and `destroy()` revokes the rest. postswap ends with 30 created, 15 revoked, 15 live. midswap makes no blobs for the cancelled build. |
-| 4 | validate cache contents | done | `readIconCache(key, kinds)` requires every kind to be a `data:image/png;base64,` string. Corrupt entries are misses and get rebaked. |
-| 5 | stale docs | done | `variants.py` is committed. The item-models.js header now matches (5 unchanged, 2 rescaled, 2 procedural, 6 icon-only) and says it returns blob URLs. The cache-hit numbers are reconciled: about 6.8 ms in the sandbox, 10 to 200 ms in game under load. I measured 4 to 20 ms in game, so the claim holds. The 100 to 150 KB figure is now labelled as a first-pass estimate next to the measured 254 KB. |
-| 6 | mid-gameplay rebake on hot swap | done as documentation | A hot swap to a new build still rebakes in the middle of play. This is now stated plainly in icons.md and ADOPT ("Hot swaps"). The orphan is cancelled, and ADOPT suggests a content-hash key as the next step. Acceptable. |
-| 7 | hook icon matches the held tool | done | In the real game the slot 1 icon is the same grey curved scrap hook on a rope-wrapped handle that the right hand holds. |
-| 8 | thin tools, 18 px, stack counts | done | Hammer, hook and rod have a cream rim and read on the dark 34 px recipe rows. At 18 px, scrap is a rust-red corrugated sheet and net is a tan grid with orange floats. Stack counts ("14", "20", "7") sit in the corner, clear of the art. |
+| LOOKS | 7 | 8 | 8 |
+| COST | 7 | 7 | 6 |
+| ADOPT-CORRECTNESS | 6 | 7 | 8 |
+| **OVERALL** | **6** | **7** | **7** |
 
-## Regressions introduced by the fixes
+OVERALL is capped at lowest + 2 = 8. I give 7 because the cost claim in the docs does not reproduce.
 
-None found in the icons code itself. Specifically:
-- Removing the -5 px slot expansion did not shrink the icons badly. They still fill the slots.
-- `pointer-events:none` on the baked img leaves drag on the button. The bag drag hint and slot layout
-  are unchanged in the shots.
-- The `ICON_REV` repaint path did not cause per-frame innerHTML churn. The slot signature changes only
-  when the revision bumps.
-- renderer.info has no leak in the sandbox or after the hot swaps.
+## History (short)
 
-## Cross-topic: procedural-models (`origin/fleet-tech/procedural-models`)
+- **Round 1 (OVERALL 6):** 8 required fixes: bake try/finally, cancel on dispose and hot swap, blob revoke,
+  cache validation, stale docs, honest mid-play rebake, hook to match the held tool, readable thin tools at 18 px.
+- **Round 2 (OVERALL 7):** all 8 were done. The nice-to-haves were the `userData.shared` disposal for
+  procedural-models, an import-existence check in `--check`, and a content-hash cache key.
+- **Round 3 (this one):** main shipped its own lazy `item-icons.js`, which made the round-2 atlas baker a
+  competing pipeline. The authors retargeted the work as a merge. The result is a drop-in `item-icons.js`
+  with the same exports, plus a new `item-icon-models.js`, and no caller changes. Round 2's
+  `userData.shared` and import-check nice-to-haves are now in, and the localStorage cache was dropped on
+  purpose. That is the right call given the shared ~5 MB origin quota with the save.
 
-`docs/tech/icons-ADOPT.md` does not mention procedural-models at all. The coordination note lives only in
-`procedural-models-ADOPT.md` step 4, which says to point `item-icons.js` at `./lowpoly-props.js` and bump
-`ICON_ATLAS_VERSION`. Following that note exposes two problems on the icons side:
+## What I ran
 
-1. **The bake disposes the game's shared low-poly materials.** `disposeTree` in `item-models.js` disposes
-   every material except those from `getMaterial`. lowpoly-props materials are module-shared and flagged
-   `userData.shared = true`. I baked the real `item-models.js` with its plastic, crafts and debris imports
-   pointed at `lowpoly-props.js` from the procedural-models branch. The bake fired **8 `dispose` events on
-   `lp-solid` / `lp-cloth`** (sail, palm, bench, crate, plastic, leaf). In game those are the materials of
-   every raft prop, so the bake forces their programs to be re-acquired. This is exactly the hitch that
-   procedural-models step 3 exists to prevent. The fix is one line: also skip `m.userData?.shared` in
-   `disposeTree`, and ideally in `defaultDispose` in icon-atlas.js too.
-2. **A static import makes boot depend on the old files.** The game.js patch imports `item-icons.js`
-   statically, and that file imports `./plastic.js`, `./crafts.js` and `./debris.js`. If procedural-models
-   lands first and someone deletes those files, the game fails to boot. Procedural step 4 warns against
-   this, but `adopt_patch.py --check` does not verify that the modules `item-icons.js` imports exist in
-   dist/.
+- **`adopt_patch.py --check`**, 4 m 05 s:
+  - all 14 anchors matched exactly once, the 7 API names are preserved and the imports are present;
+  - the real game booted through index.html / live.js with no page or console errors;
+  - 8/8 hotbar slots showed 3D icons 74.5 s after Solo, and the bag had 31 3D and 19 SVG icons;
+  - the patched test run gave 533 tests, 532 passing.
+- **Unpatched `node --test tests/*.test.mjs`:** 533 tests, 532 passing. The single failure is the same on
+  both sides: `art.test.mjs` "atlas ... build stays fast", a texgen timing assert under load that has
+  nothing to do with icons. Both item-icons tests in `survival.test.mjs` pass on the merged module (that
+  file honours `RAFT_DIST`, so the patched run really exercises the merged file).
+- **`robust.py`:** 12/12 cases pass with no page errors. After context loss, 2 contexts have been created
+  in total. The old copy stops in 11 ms (the docs say "within 5 ms", which is within noise). Live contexts
+  after release: 0.
+- **My own real live.js hot-swap probe** (`scratchpad/judge-icons3/hotswap_probe*.py`). The authors deleted
+  their round-2 `hotswap.py`, and `robust.py` only imports two module copies, so I wrote this. It boots a
+  seeded game, waits for 8 hotbar 3D icons, rewrites every `?build=` in the served copy to a new id, bumps
+  version.json and calls `raftLive.check()`. It counts 128x128 WebGL contexts through a `getContext` hook:
 
-Neither problem breaks the game when the topics are adopted in either order with the old files kept. It
-is still a gap. It does not block OVERALL 7, but it is the first nice-to-have.
+  | | main | merged (run 1 / run 2) |
+  |---|---|---|
+  | swap status | updated | updated / updated |
+  | peak live icon contexts during the swap | **2** (old copy keeps rendering) | **1** / **1** |
+  | icon GL program links, both copies in total | 10 | 8 / 8 |
+  | hotbar back to 8 3D icons after `check()` | 44 s | 66 s / 44 s |
+  | live icon contexts once settled | 0 (195 s) | 0 (309 s) / 0 (303 s) |
+  | bag after the swap (3D / SVG) | 31 / 19 | 31 / 19 / 31 / 19 |
+  | console errors and item-icon warnings | none | none |
 
-## Looks
+  The second merged run also logged a timeline: cached icons went 5 → 10 → 11 → 16 over about 190 s, and
+  the context was released at about 300 s once the 18 no-model kinds had drained. That is slow
+  idle-time draining behind a running game, **not a leak**. Main has the same queue shape. The bag
+  screenshot after the swap (`hotswap-merged-bag.png`) is correct.
+- **`shoot.py main merged`, then `shoot.py merged main`** (2 runs per variant, in alternating order):
 
-The 15 kinds are distinct and consistent: same light, navy outline and soft shadow. The hook now matches
-the viewmodel, which matters because it is the first icon the player sees. The rod reads with its reel
-and bobber, the log pile has ringed ends and the net has floats. Remaining weak spots:
-- the white jug is low-contrast on the light strip;
-- the cream rim on three tools gives them a slightly sticker-like edge that the other 12 do not have;
-- the sail is taller than wide;
-- with no env, metal comes out a little flat and dark.
+  | | main cold | merged cold | main warm | merged warm |
+  |---|---|---|---|---|
+  | all 34 queued → last ready | 4.95 / 3.67 s | 6.64 / 6.95 s | 5.65 / 5.90 s | 4.72 / 8.17 s |
+  | worst game frame | 550 / 267 ms | 933 / 1233 ms | 1217 / 717 ms | 267 / 1967 ms |
+  | frames > 100 ms | 6 / 9 | 12 / 14 | 10 / 8 | 8 / 13 |
+  | GL links, contexts | 4, 1 | 4, 1 | 4, 1 | 4, 1 |
+  | data URL bytes | 160,556 | 318,836 | | |
+  | game renderer.info after (programs / geometries / textures) | 1 / 13 / 0 | 1 / 13 / 0 | | |
 
-## Cost
+- **Screenshots read:** `shots/compare-sheet.png`, `main-hotbar.png` vs `adopt-hotbar.png`, `adopt-bag.png`,
+  my own regenerated adopt shots (identical content) and my post-swap bag shot.
 
-Nothing changed here since round 1, and the numbers are honest. A first bake costs:
-- 4 small programs;
-- about 15 game frames, one tile per frame (35 s from Solo under SwiftShader load, a few ms per tile on a
-  real GPU);
-- 2 MB of transient VRAM, freed afterwards;
-- 255 KB of localStorage per build.
+## API and caller audit
 
-A warm load costs 4 to 20 ms in game. Each hot swap to a new build still pays a full bake during play.
+Diff of `sandbox/icons/item-icons.js` against `dist/item-icons.js`:
+- The exports are unchanged: `iconURL`, `getItemIcon` (same function object, asserted by the test),
+  `loadItemIcon`, `warmIcons`, `onIconReady` (it still returns the unsubscribe function) and
+  `setModelProvider`. `buildFallbackModel` is kept but has no dist user.
+- The dist users are `survival-ui.js:6/95/376/695/1043` and `game.js:51/1760`. All of them use only the sync
+  null-while-rendering contract and `(kind, url)` listeners, and those semantics are unchanged. Listeners
+  still fire only for real URLs.
+- There are four deliberate behaviour changes, and each is benign for these callers:
+  1. **A blank render now yields `null`.** Main cached an invisible PNG, for example after a lost context.
+  2. **`setModelProvider` no longer re-renders `ICON_MODELS` kinds.** They do not depend on the provider.
+  3. **`loadItemIcon` resolves `null` straight away when the kind was not queued.** This only happens when
+     the copy is superseded.
+  4. **After a hot swap the old copy returns `null` for uncached kinds and stops its queue.**
+- **The merge fixes one real main bug.** On main, `freeModel` disposed geometry and materials flagged
+  `userData.shared`, so the plastic.js fallback would dispose the game's shared jug geometry and material.
+  The merge skips them, and `unify` never adds a color attribute to shared geometry. Provider models
+  (`models.js getModel` clones sharing cached geometry and materials) are never disposed or mutated. Their
+  materials are swapped only for the duration of the synchronous render and then restored.
+
+## Looks: 8
+
+The merged column is the best of the three on every rendered kind. The real hotbar goes from a pale forked
+stick, two hairlines, a single plank and grey scratches (main) to a thick scrap hook, a rod with a reel and
+bobber, a hammer, a log pile, a rusty corrugated sheet, a rope coil and three nails. All of them read at
+40 px, and the cream rim makes the dark tools pop on the navy slots. The bag and the recipe rows look the
+same.
+
+Weak spots:
+- The navy outline is nearly invisible on the dark slots. It only shows on the light strip, so on slots it
+  does little.
+- Bench and sail come from models.js and are still thin slivers at chip size.
+- 18 of 34 kinds are still SVG, the same as main. The hotbar and bag mix painted 3D with flat outlined
+  sprites (sand, ingot, bolt, glass, cooked fish, anchor). This is the biggest remaining visual
+  inconsistency, but it is inherited from main and is not a regression.
+
+## Cost: 6
+
+The good part is real:
+- 4 links, the same as main;
+- 1 private context;
+- no game `renderer.info` change;
+- nothing persisted;
+- on a hot swap, one live icon context at a time instead of main's two, and fewer total links.
+
+**The headline claim does not reproduce.** The docs say merged and main cost the same, citing medians of
+4 interleaved runs. In my 4 interleaved cold runs, merged was slower every time: total 6.6 to 6.9 s
+against 3.7 to 5.0 s, and the worst frame 0.93 to 1.23 s against 0.27 to 0.55 s, with about twice the
+frames over 100 ms. Warm runs were mixed. The likely causes are cheap per kind but real:
+- the 2D outline pass does `drawImage` from the WebGL canvas, `getImageData`, 32 to 64 more `drawImage`
+  calls and a second `toDataURL`, which is an extra readback and sync for each kind;
+- `createHammer` with the icon wrapper and the heavier stand-in meshes (hammer `readyAt` jumps about 900 ms).
+
+In the real game the time to 8 hotbar icons was the same: 72.7 s on main and 72.0 / 53.5 / 74.5 s merged.
+So in practice this is probably a small extra idle-time cost, not a gameplay problem. But the table in
+icons.md should say "cold ~1.3 to 1.9x main in the sandbox, equal in game", not "same". Data URL memory
+doubles to 319 KB, and it stays resident in the module copy of every hot-swapped build, since modules are
+never unloaded. Main has the same pattern at half the size.
+
+## Adopt-correctness: 8
+
+- No caller changes.
+- Anchors and the API are asserted.
+- Imports are checked.
+- The build id is rewritten.
+- The real game boots.
+- Test parity holds (532/533 on both sides, with the same unrelated failure).
+- Robustness cases pass.
+- A real live.js swap leaves no leaked contexts and has a lower context peak than main.
+
+Rollback is two files.
+
+Deductions:
+1. **The supersede latch is permanent, so a failed hot swap leaves the old engine stuck on SVG.**
+   `claim()` runs in the new copy as soon as its `createSurvivalUI` calls `setModelProvider`, and that
+   happens inside `mount()` (game.js:1747). If `mount()` then throws later, live.js resumes the old engine,
+   but the old copy is superseded for good. Its uncached kinds return `null` forever and it never queues
+   again. Only kinds still uncached at swap time are affected (`warmIcons` queues every `ITEM_INFO` kind
+   at startup), and it needs a failed swap, so the impact is low. A fix: release ownership when the new
+   copy's UI is destroyed or after its queue drains, or let a superseded copy render when the owner's
+   queue is empty.
+2. **The real live.js hot-swap probe was deleted.** The claim "B renders, and no live contexts remain"
+   rests on `robust.py`, which imports two module copies by query string and never goes through live.js.
+   My probe confirms the claim, but the branch no longer carries the evidence.
+3. **Context-loss retry never sets `failed`.** A machine whose contexts are lost every time creates up to 3
+   contexts per kind (one at a time, each released) before it gives up on that kind. This is bounded and
+   harmless, but noisy.
 
 ## Nice-to-haves (OVERALL >= 7, none required)
 
-1. Add a "procedural-models" section to icons-ADOPT:
-   - skip `userData.shared` materials in `disposeTree` and `defaultDispose`;
-   - give the import swap to `./lowpoly-props.js` together with the `ICON_ATLAS_VERSION` bump;
-   - have `adopt_patch.py --check` assert that every module `item-icons.js` imports exists in dist/.
-2. Key the cache on a content hash of `item-icons.js` and `icon-atlas.js` (plus the builder files)
-   instead of the build id, so a hot swap that does not touch the models does not rebake mid-play.
-3. Darken or tint the plastic jug a little, or give it the rim, so it reads on light strips.
-4. Consider a softer rim colour, or a thinner rim (1.2 px), so the three tools match the rest of the set.
+1. **Fix the cost claim in `icons.md` and the table in `icons-ADOPT.md`.** State that merged cold is slower
+   than main in the sandbox (my runs show 1.3 to 1.9x the total and 2 to 4x the worst frame) and equal in
+   game. The current "On this box merged and main cost the same" is not what I measured. This is the top
+   item.
+2. **Make the supersede latch reversible** (deduction 1), and add a robust.js case: B claims and is never
+   used, then A must still render.
+3. **Bring back a real live.js hot-swap probe in the branch.** Mine is a ready template.
+4. **Make the outline do something on dark slots.** Use a lighter rim for all icons, or a slightly lighter
+   outline, or drop the dark ring there to save the 2D pass.
+5. **Look at the outline pass cost.** For example, take `getImageData` alpha from the GL `readPixels` you
+   already pay for, or reuse a single draw. The aim is that merged really does match main cold.
+6. **Fill the 18 SVG-only kinds** (`ICON_MODELS` or models.js), and thicken bench and sail for chips.
