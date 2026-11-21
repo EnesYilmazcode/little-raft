@@ -16,7 +16,7 @@
 //   placeholder: true when the icon is not a dedicated icons.svg symbol
 //   tool:      true only for durability items (Bag keeps durability 0..100 percent)
 //   durability: tools only: number of uses from 100% to 0% (wear per use = 100 / uses)
-//   actsAs:    optional tool role ('hook' | 'fishingrod' | 'hammer'); see toolRole()
+//   actsAs:    optional tool role ('hook' | 'fishingrod' | 'hammer' | 'spear'); see toolRole()
 //   placeable: true when the item is put on a raft tile as a decor/station
 //   recipe:    null (gathered) | {
 //                cost:   {kind: n}  (station recipes have exactly one cost key = input)
@@ -140,6 +140,12 @@ const LIST = [
     tool: true, durability: 40,
     recipe: hand({ wood: 6, rope: 8 }), unlock: discover('rope'),
     tip: 'Cast, wait for a nibble, and reel in a fish. Good for about 40 catches between repairs.' }),
+  item('spear', 'Wooden Spear', 'tool', { iconTint: '#bb8650', tool: true, durability: 20,
+    recipe: hand({ wood: 8, rope: 3 }), unlock: discover('rope'),
+    tip: 'A long pole with a sharp lashed tip. Click to jab at things in the water; wears only when it lands.' }),
+  item('metalspear', 'Metal Spear', 'tool', { iconTint: '#9fb1bf', tool: true, durability: 40, actsAs: 'spear',
+    recipe: hand({ wood: 6, rope: 2, metalingot: 2, bolt: 1 }), unlock: research('metalingot', 'bolt'),
+    tip: 'A heavy metal point on a sturdy shaft. Twice the bite of the wooden one and lasts twice as long.' }),
   item('binoculars', 'Binoculars', 'tool', { iconTint: '#5d6b78', stack: 1,
     recipe: hand({ glass: 2, copperingot: 1, hinge: 2, bolt: 1 }), unlock: research('glass', 'copperingot'),
     tip: 'Hold them to spot the nearest barrel: bearing and distance. They never wear out.' }),
@@ -193,6 +199,9 @@ export const BLOCK_RADII = deepFreeze({
   smelter: 0.5, researchtable: 0.55, grill: 0.45,
 });
 
+/** Damage one landed spear thrust deals (spear lane; see docs/loop/research/fidelity-r1-shark.md). */
+export const SPEAR_DAMAGE = deepFreeze({ spear: 5, metalspear: 10 });
+
 /** Fuel units per item put into a station. Plastic is never burned (friendly seas). */
 export const FUEL_VALUE = deepFreeze({ wood: 1, leaf: 0.5, seaweed: 0.5 });
 
@@ -202,6 +211,8 @@ const REPAIRS = deepFreeze({
   metalhook: { scrap: 2, nail: 2 },
   hammer: { wood: 2, rope: 1 },
   fishingrod: { wood: 1, rope: 2 },
+  spear: { wood: 2, rope: 1 },
+  metalspear: { metalingot: 1, rope: 1 },
 });
 
 /** Alternate / older names that may appear in saves or network messages. */

@@ -43,6 +43,7 @@ const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); 
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
+import { attachSpearRepair } from './spear-repair-hooks.js'; // [spear-repair]
 import { newVitals, tickVitals, damage as damageVitals, consume as consumeVitals, cleanVitals, saveVitals, isEdible, eatLabel, FOOD, SPRINT_MULT, EAT_SECONDS, RESPAWN } from './vitals.js'; // [vitals] hunger, thirst, health
 import { createVitalsUI } from './vitals-ui.js'; // [vitals] HUD bars, damage vignette, faint overlay
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
@@ -283,6 +284,8 @@ export function mount(transfer = null) {
   }
   let coop = null; // coop: hub from coop.js, created after init(); every use is optional (coop?.)
   let prog = null; // [progression-hook]
+  let shark = null; // shark lane sets this
+  let spearRep = null; // [spear-repair] spear viewmodels/thrust + hammer foundation repair (dist/spear-repair-hooks.js)
 
   function makePhysics(src) {
     const deck = raftPose.y + FLOOR_Y + EYE_OFFSET;
@@ -442,6 +445,7 @@ export function mount(transfer = null) {
     hammerHands = createHands(T, holdable(hammer, hammer.userData.grip, {ry:Math.PI / 2, rz:.2, scale:.6}));
     rodModel = createFishingTool(T); rodTip = rodModel.userData.tipNode ?? rodModel;
     rodHands = createHands(T, holdable(rodModel, rodModel.userData.grip, {rx:-.15, rz:.6, scale:.55}));
+    spearRep = attachSpearRepair({T, camera:() => camera, raft:() => raft, world:() => world, physics:() => physics, other:() => other, localBag, role:() => role, elapsed:() => elapsed, shark:() => shark, createHands, holdable, action, emit, notice, beep, setSwing:v => { swing = v; }}); spearRep.buildViewmodels(); // [spear-repair]
     // Viewmodels draw last (transparent queue, renderOrder 1000) after a camera-owned marker clears depth, so the
     // world never clips them while fingers and tools still depth-sort correctly against each other.
     const depthClear = new T.Mesh(new T.PlaneGeometry(1e-4, 1e-4), new T.MeshBasicMaterial({colorWrite:false, depthWrite:false, depthTest:false, transparent:true}));
@@ -449,7 +453,7 @@ export function mount(transfer = null) {
     depthClear.renderOrder = 999; depthClear.position.set(0, 0, -.1);
     depthClear.onBeforeRender = (r, _s, cam) => { if (cam !== camera) return; r.state?.buffers?.depth?.setMask?.(true); r.clearDepth(); };
     camera.add(depthClear);
-    for (const h of [hookHands, hammerHands, rodHands]) {
+    for (const h of [hookHands, hammerHands, rodHands, ...(spearRep?.hands() ?? [])]) {
       h.group.traverse(c => { if (c.isMesh) { c.castShadow = false; c.receiveShadow = false; c.renderOrder = 1000; c.frustumCulled = false; for (const m of [].concat(c.material)) { m.depthTest = true; m.depthWrite = true; if (!m.transparent) { m.transparent = true; m.opacity = m.opacity ?? 1; } m.needsUpdate = true; } } });
       singlePass(h.group); // attached to the camera only while held (see showViewmodel)
     }
@@ -493,14 +497,14 @@ export function mount(transfer = null) {
   // compile() walks the scene graph, so all viewmodels are attached just for the synchronous part of the call.
   function warmShaders() {
     if (typeof renderer.compileAsync !== 'function') return;
-    for (const h of [hookHands, hammerHands, rodHands]) if (h.group.parent !== camera) camera.add(h.group);
+    for (const h of [hookHands, hammerHands, rodHands, ...(spearRep?.hands() ?? [])]) if (h.group.parent !== camera) camera.add(h.group);
     try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
     catch (e) { console.warn('shader warm-up failed', e); }
     showViewmodel(null); // the next frame attaches whichever one is held
   }
   // Only the held viewmodel hangs under the camera, so per-frame matrix updates skip the other two entirely.
   function showViewmodel(held) {
-    for (const h of [hookHands, hammerHands, rodHands]) {
+    for (const h of [hookHands, hammerHands, rodHands, ...(spearRep?.hands() ?? [])]) {
       if (h === held) { if (h.group.parent !== camera) camera.add(h.group); }
       else if (h.group.parent) h.group.parent.remove(h.group);
     }
@@ -893,6 +897,7 @@ export function mount(transfer = null) {
     if (!a || typeof a !== 'object' || role === 'guest') return;
     if (prog?.apply(a, actor)) return; // [progression-hook] locked crafts + 'prog:*' actions
     const bag = actorBag(actor);
+    if (spearRep?.apply(a, actor, bag)) return; // [spear-repair] 'spearHit' / 'repairTile'
     if (typeof a.kind === 'string' && a.kind.startsWith('fc:')) { fc?.applyAction(a, actor, {count:k => bag.count(k), remove:(k, n) => bag.remove(k, n), add:(k, n) => bag.add(k, n), emit:text => emit({kind:'notice', text}, actor)}); return; } // [fishing-cooking]
     if (a.kind === 'selectSlot') { bag.select(a.index); return; }
     if (a.kind === 'sail') { const t = sailing?.apply(a, actor); if (t) emit({kind:'notice', text:t}, actor); return; } // [sailing]
@@ -1027,6 +1032,7 @@ export function mount(transfer = null) {
     if (!running || hook || fishWait || eating || fainted >= 0) return;
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
     const kind = selectedKind(), bag = localBag(), p = aim?.point ?? null;
+    if (kind === 'spear' ? spearRep?.use() : kind === 'hammer' && spearRep?.useHammer()) return; // [spear-repair] thrust / repair a damaged tile
     if (isEdible(kind)) { // [vitals] a fresh cup on a planter still waters it, a salt cup at a purifier still loads it
       const w = CUP_KINDS.includes(kind) ? wateringTarget(aim) : null;
       if (w?.click) { swing = 1; action(w.click); } else startEat(kind);
@@ -1159,11 +1165,12 @@ export function mount(transfer = null) {
     swing = Math.max(0, swing - dt * 3);
     const kind = heldKind(), motion = options.cameraMotion;
     const ch = charging ? clamp((performance.now() - charging.start) / CHARGE_MS, 0, 1) : 0;
-    const vm = !running ? null : kind === 'hook' ? hookHands : kind === 'hammer' ? hammerHands : kind === 'fishingrod' ? rodHands : null;
+    const vm = !running ? null : kind === 'hook' ? hookHands : kind === 'hammer' ? hammerHands : kind === 'fishingrod' ? rodHands : spearRep?.viewmodelFor(kind) ?? null; // [spear-repair]
     showViewmodel(vm);
     const vp = vmParams; vp.dt = dt; vp.time = elapsed; vp.casting = swing; vp.walking = walking; vp.motion = motion; vp.charge = 0; vp.reeling = false; vp.hasHookOut = false;
     if (vm === hookHands) { vp.charge = ch; vp.reeling = reeling && !!castOut(); vp.hasHookOut = !!castOut(); hookHands.update(vp); }
     if (vm === hammerHands) hammerHands.update(vp);
+    spearRep?.updateViewmodel(vm, vp); // [spear-repair]
     if (vm === rodHands) {
       const out = !!hook?.fishing; if (rodModel.userData.float) rodModel.userData.float.visible = !out; if (rodModel.userData.leader) rodModel.userData.leader.visible = !out;
       vp.reeling = fc ? fc.rodReeling : out && hook.t > fishWait; rodHands.update(vp); // [fishing-cooking]
@@ -1260,6 +1267,7 @@ export function mount(transfer = null) {
     const kind = heldKind();
     const pieces = kind === 'hammer' && !hook && building && building.piece !== 'foundation'; // building-pieces lane hook
     building?.update(raft, frameAim, camera.position, running && kind === 'hammer' && !hook && !uiBlocked(), localBag(), yaw, deckY());
+    spearRep?.updateAim(hook ? null : kind, frameAim); spearRep?.tick(); // [spear-repair]
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing ? placementFor(kind, frameAim.point) : null;
     ghost.visible = !!hover; if (!hover) return;
     ghost.position.set(hover.x * 2, raft.position.y + .29, hover.z * 2);
@@ -1719,6 +1727,11 @@ export function mount(transfer = null) {
       return {notes:[...world.notes], nextNote:nextNote(world.notes), achievements:[...world.achievements], totals:{notes:12, achievements:15}, bottleAfloat:world.items.some(i => i.type === 'bottle')};
     },
     get progression() { return prog?.debug ?? null; }, // [progression-hook]
+    give(kind, n = 1) { return spearRep?.give(kind, n) ?? -1; }, // [spear-repair] test helper: add items to the local (host/solo) bag
+    setTileHp(x, z, hp) { spearRep?.setTileHp(x, z, hp); }, // [spear-repair] test helper
+    spearTestHit() { return spearRep?.testHit() ?? false; }, // [spear-repair] test helper: fake a landed thrust
+    spearPose(p) { spearRep?.pinPoke(p); }, // [spear-repair] test helper: freeze the jab for screenshots
+    get spear() { return spearRep?.debug() ?? null; }, // [spear-repair]
     get targets() {
       return world.items.map(it => {
         const m = itemMeshes.get(it.token), p = m ? m.position : {x:it.x, y:ITEM_FLOAT, z:it.z};
@@ -1794,6 +1807,7 @@ export function mount(transfer = null) {
     for (const id of ['signalReadout', 'signalMarker']) { const el = document.getElementById(id); if (el) el.hidden = true; }
     try { logbookUI?.destroy?.(); } catch {}
     try { prog?.dispose(); } catch {} // [progression-hook]
+    try { spearRep?.dispose(); } catch {} spearRep = null; // [spear-repair]
     try { vitalsUI?.dispose(); } catch {} vitalsUI = null; try { promptOff?.(); } catch {} promptOff = null; // [vitals]
     for (const id of timers) clearTimeout(id); timers.clear(); clearInterval(heartbeat);
     unlisten(bindings.splice(0));

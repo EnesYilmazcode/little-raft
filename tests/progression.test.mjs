@@ -118,7 +118,7 @@ test('items: every entry is complete and self-consistent', () => {
       assert.equal(it.durability, undefined, `${id} non-tool durability`);
     }
     if (it.placeable) assert.ok(Object.hasOwn(BLOCK_RADII, id) && BLOCK_RADII[id] >= 0, `${id} radius`);
-    if (it.actsAs !== undefined) assert.ok(['hook', 'fishingrod', 'hammer'].includes(it.actsAs) && it.tool, `${id} actsAs`);
+    if (it.actsAs !== undefined) assert.ok(['hook', 'fishingrod', 'hammer', 'spear'].includes(it.actsAs) && it.tool, `${id} actsAs`);
   }
   for (const id of Object.keys(BLOCK_RADII)) assert.ok(ITEMS[id]?.placeable, `radius for non-placeable ${id}`);
 });
@@ -171,7 +171,7 @@ test('items: legacy kinds keep their ids and Bag-compatible stack/tool shape', (
     assert.equal(INFO[k].tool, Inv.ITEM_INFO[k].tool, `${k} tool flag matches Bag`);
   }
   assert.equal(ITEMS.wood.name, 'Plank');
-  assert.deepEqual([...TOOL_IDS].sort(), ['fishingrod', 'hammer', 'hook', 'metalhook']);
+  assert.deepEqual([...TOOL_IDS].sort(), ['fishingrod', 'hammer', 'hook', 'metalhook', 'metalspear', 'spear']);
   for (const s of ['smelter', 'researchtable', 'grill']) assert.ok(STATION_IDS.includes(s) && PLACEABLE_IDS.includes(s));
   for (const k of ['sail', 'palm', 'lantern', 'net', 'bench', 'crate']) assert.ok(PLACEABLE_IDS.includes(k));
 });

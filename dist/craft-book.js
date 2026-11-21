@@ -17,7 +17,7 @@ const CATEGORY_OF = Object.freeze({
   net: 'survival', palm: 'survival', lantern: 'survival',
   sail: 'building', bench: 'building', crate: 'building',
   // progression catalogue (items.js)
-  metalhook: 'tools', binoculars: 'tools',
+  metalhook: 'tools', binoculars: 'tools', spear: 'tools', metalspear: 'tools',
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   researchtable: 'building', grill: 'building', smelter: 'building',
 });
@@ -62,6 +62,8 @@ export const ITEM_TEXT = Object.freeze({
   bolt:       { desc: 'A threaded metal bolt.', use: 'Strong joints for advanced builds.' },
   hinge:      { desc: 'A small metal hinge.', use: 'Lids, doors and folding parts.' },
   metalhook:  { desc: 'A heavy metal hook that lasts much longer.', use: 'Throw it like the hook; wears far slower.' },
+  spear:      { desc: 'A driftwood pole with a lashed flint point.', use: 'Click to jab: 5 damage, wears only when it lands.' },
+  metalspear: { desc: 'A sturdy shaft with a steel point.', use: 'Click to jab: 10 damage, lasts twice as long.' },
   binoculars: { desc: 'Glass lenses in a copper tube.', use: 'Hold to spot barrels and islands far away.' },
   cookedfish: { desc: 'A fish grilled golden.', use: 'A hearty snack.' },
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
