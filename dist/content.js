@@ -51,7 +51,7 @@ import { createPaddleboard } from './paddleboard.js?build=v3-survival-ae77fa84ac
 import { createBuoyCourse } from './buoycourse.js?build=v3-survival-ae77fa84ac2b'; // [buoycourse]
 import { createCookpot } from './cookpot.js?build=v3-survival-ae77fa84ac2b';
 
-const FEATURES = [createIslands, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createBees, createKiln, createAnimals, createDivingGear, createTrader, createGameTable, createPaddleboard, createBuoyCourse, createCookpot]; // [bees] + createBees; cookpot stays last; [paddleboard] before cookpot
+const FEATURES = [createIslands, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createBees, createKiln, createAnimals, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createCookpot]; // [bees] + createBees; cookpot stays last; [paddleboard] before cookpot; buoycourse before paddleboard so its aimed E/prompts win while riding
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
