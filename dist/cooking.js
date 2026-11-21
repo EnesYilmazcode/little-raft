@@ -155,7 +155,7 @@ export function createGrillModel(T, opts = {}) {
     geo.setAttribute('color', new T.BufferAttribute(arr, 3));
     return geo;
   };
-  const solid = (geo, hex, j = 0) => { c2.set(hex).multiplyScalar(1 - j / 2 + rnd() * j); const k = c2.clone(); return paint(geo, o => o.copy(k)); };
+  const solid = (geo, hex, j = 0) => { c2.set(hex).multiplyScalar(1 - j / 2 + rnd() * j); const k = c2.clone(); return paint(geo, (x, y, z, o) => o.copy(k)); };
   const merge = list => {
     const parts = list.map(x => (x.index ? x.toNonIndexed() : x));
     const out = new T.BufferGeometry();
@@ -212,12 +212,12 @@ export function createGrillModel(T, opts = {}) {
   const METAL = [];
   const rust = (ph) => (x, y, z, o) => {
     const n = Math.sin(x * 23 + ph) * Math.sin(y * 31 - ph * 2) + Math.sin((x + y) * 11 + ph);
-    o.set(0x737b80).lerp(c2.set(0x9a5430), clamp(n * 0.45 + 0.25, 0, 0.85));
+    o.set(0x737b80).lerp(c2.set(0x9a5430), clamp(n * 0.5 + 0.4, 0, 0.9));
     o.multiplyScalar(0.75 + 0.35 * clamp((y - Y0) / (Y1 - Y0), 0, 1));
   };
   const wall = (w, x, z, ry) => {
     const geo = new T.BoxGeometry(w, Y1 - Y0, TH, 10, 4, 1);
-    const dents = [0, 1, 2].map(() => [(rnd() - 0.5) * w * 0.7, (rnd() - 0.5) * 0.1, 0.05 + rnd() * 0.05, 0.008 + rnd() * 0.014]);
+    const dents = [0, 1, 2].map(() => [(rnd() - 0.5) * w * 0.7, (rnd() - 0.5) * 0.1, 0.05 + rnd() * 0.05, 0.014 + rnd() * 0.016]);
     const p = geo.attributes.position;
     for (let i = 0; i < p.count; i++) {
       let d = 0;
@@ -255,18 +255,18 @@ export function createGrillModel(T, opts = {}) {
     const geo = new T.IcosahedronGeometry(r, 0), p = geo.attributes.position;
     for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) * (0.8 + rnd() * 0.4), p.getY(i) * (0.55 + rnd() * 0.3), p.getZ(i) * (0.8 + rnd() * 0.4));
     geo.computeVertexNormals();
-    STONE.push(bake(solid(geo, [0x8c8a84, 0x9d978b, 0x77736d, 0xa7a294][(rnd() * 4) | 0], 0.15), x, y, z, 0, rnd() * 6));
+    STONE.push(bake(solid(geo, [0x6f6d68, 0x7d786e, 0x5f5b56, 0x868174][(rnd() * 4) | 0], 0.15), x, y, z, 0, rnd() * 6));
   };
   for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; stone(0.04 + rnd() * 0.015, Math.cos(a) * 0.3, Y0 + 0.025, Math.sin(a) * 0.19); }
-  stone(0.06, 0.47, 0.025, 0.22); stone(0.045, 0.52, 0.02, 0.12); stone(0.05, -0.46, 0.022, -0.24);
+  stone(0.05, 0.43, 0.03, 0.33); stone(0.04, 0.44, 0.022, 0.18); stone(0.045, -0.42, 0.025, -0.34);
   add(STONE, std({ flatShading: true, roughness: 0.95 }), 'grillStones');
 
   // --- charred logs and an ember bed (basic material so vertex colours glow; tinted by fire level)
   const LOG = [];
   for (const [a, b] of [[V(-0.22, Y0 + 0.04, -0.08), V(0.2, Y0 + 0.06, 0.09)], [V(-0.2, Y0 + 0.06, 0.1), V(0.22, Y0 + 0.04, -0.07)]]) {
-    LOG.push(along(paint(new T.CylinderGeometry(0.03, 0.035, a.distanceTo(b), 7, 3), (x, y) => o => o).computeVertexNormals() || paint(new T.CylinderGeometry(0.03, 0.035, a.distanceTo(b), 7, 3), (x, y, z, o) => o.set(0x3a2a20).lerp(c2.set(0x15100d), 0.5 + 0.5 * Math.sin(y * 50))), a, b));
+    LOG.push(along(paint(new T.CylinderGeometry(0.03, 0.035, a.distanceTo(b), 7, 3),
+      (x, y, z, o) => o.set(0x3a2a20).lerp(c2.set(0x15100d), 0.5 + 0.5 * Math.sin(y * 50 + x * 30))), a, b));
   }
-  LOG.shift().dispose && 0;
   add(LOG, std({ roughness: 1 }), 'grillLogs');
   const EMB = [];
   for (let i = 0; i < 22; i++) {
@@ -278,10 +278,10 @@ export function createGrillModel(T, opts = {}) {
   add(EMB, emberMat, 'grillEmbers').castShadow = false;
 
   // --- three flickering cone flames sharing one additive material
-  const fgeo = paint(new T.ConeGeometry(0.06, 1, 8, 4, true).translate(0, 0.5, 0), (x, y, z, o) =>
+  const fgeo = paint(new T.ConeGeometry(0.085, 1, 8, 4, true).translate(0, 0.5, 0), (x, y, z, o) =>
     o.set(0xffe27a).lerp(c2.set(0xff5a14), clamp(y * 1.4, 0, 1)).multiplyScalar(1 - y * 0.75));
   const flameMat = new T.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, toneMapped: false });
-  const flames = [[-0.09, 0.03, 0.2, 1.0], [0.1, -0.03, 0.17, 1.15], [0, 0, 0.27, 1.3]].map(([x, z, h, w], i) => {
+  const flames = [[-0.1, 0.04, 0.27, 1.0], [0.11, -0.04, 0.24, 1.1], [0, 0, 0.36, 1.3]].map(([x, z, h, w], i) => {
     const m = new T.Mesh(fgeo, flameMat);
     m.position.set(x, Y0 + 0.03, z); m.userData.f = { h, w, ph: i * 2.1 };
     m.name = 'grillFlame' + i; m.castShadow = false; g.add(m); meshCount++;
@@ -307,7 +307,7 @@ export function createGrillModel(T, opts = {}) {
     }
     flameMat.opacity = 0.75 + 0.15 * Math.sin(t * 13);
     emberMat.color.setScalar(0.16 + level * (0.75 + 0.15 * Math.sin(t * 3.1) + 0.1 * Math.sin(t * 7.7)));
-    if (light) light.intensity = level * (1.6 + 0.4 * Math.sin(t * 11) + 0.2 * Math.sin(t * 27));
+    if (light) light.intensity = level * (0.8 + 0.25 * Math.sin(t * 11) + 0.2 * Math.sin(t * 27));
   };
   ud.dispose = () => {
     const seen = new Set();
