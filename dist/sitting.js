@@ -247,6 +247,11 @@ export function createSitting(ctx) {
         send({ kind: 'sit.down', x, z, seat });
         return true;
       },
+      remove(x, z) { // QA (host): drop the seat decor at x,z, as a pickup or shark kill would
+        const list = ctx.world?.decor; if (isGuest() || !Array.isArray(list)) return false;
+        const i = list.findIndex(d => d && SEATS[d.type] && near(d.x, x) && near(d.z, z)); if (i < 0) return false;
+        list.splice(i, 1); try { ctx.rebuildRaft?.(); } catch {} return true;
+      },
       up() { if (seated()) standUp(); else send({ kind: 'sit.up' }); return true; },
       stand(x, z) { const p = ctx.physics; if (!p || !Number.isFinite(x) || !Number.isFinite(z)) return false; p.x = x; p.z = z; p.vx = 0; p.vz = 0; return true; },
       state() { return { in: JSON.parse(JSON.stringify(slice.in)), t: slice.t, seated: seated(), pendingUp, yaw: lastYaw, inMax, hostHas }; },
