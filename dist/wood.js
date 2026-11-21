@@ -2,7 +2,7 @@
 // Look: weathered, sun-bleached driftwood. Broad soft mottling, faint grain, grimy scuffed ends, matte.
 
 // Raft timber palette (deck boards, logs, log ends); already weathered, drawn as given.
-export const DRIFTWOOD = Object.freeze({plank:'#9c8a5e', plankLight:'#a6956e', plankDark:'#8e7f57', log:'#5b4e38', logEnd:'#9a8b64'});
+export const DRIFTWOOD = Object.freeze({plank:'#aa9a6a', plankLight:'#b4a478', plankDark:'#9c8c5f', log:'#5b4e38', logEnd:'#9a8b64'});
 const AS_IS = new Set(Object.values(DRIFTWOOD));
 
 // Older warm timber colours keep their hue but are pulled toward grey-olive and slightly lightened (sun bleach).

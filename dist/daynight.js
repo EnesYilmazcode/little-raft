@@ -110,8 +110,8 @@ const key = (phase, ...colors) => ({ phase, c: new Float32Array(colors.flatMap(h
 export const PALETTE_KEYS = Object.freeze([
   //   phase  horizon    zenith     deep       shallow    sun        hemi sky   hemi gnd   cloud      sky mid    sky zenith
   key(0.00, '#f6bf98', '#7c9cc6', '#103a5c', '#2c6c94', '#ffc995', '#f0d2bf', '#33566a', '#ffdcc6', '#a9bfdc', '#5f86c2'), // sunrise peach
-  key(0.09, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#ffffff', '#4fb8e6', '#1e86d2'), // bright tropical day
-  key(0.54, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#ffffff', '#4fb8e6', '#1e86d2'),
+  key(0.09, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#5a5a48', '#ffffff', '#4fb8e6', '#1e86d2'), // bright tropical day
+  key(0.54, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#5a5a48', '#ffffff', '#4fb8e6', '#1e86d2'),
   key(0.635, '#f7a159', '#7d82b4', '#163a5c', '#35698c', '#ffa04e', '#f2bb8c', '#4a5266', '#ffc58e', '#eaa877', '#5f6ea6'), // warm orange dusk
   key(0.70, '#6f6f9e', '#58679a', '#173c54', '#2f6276', '#c3b0dc', '#8f8cba', '#34465e', '#8e88b2', '#525e94', '#2e3a70'), // blue hour
   key(0.77, '#2c4068', '#22355f', '#0b2840', '#184660', '#a8bff0', '#6a80b4', '#22364e', '#4c5c84', '#1d2d58', '#0f1a3c'), // deep blue night

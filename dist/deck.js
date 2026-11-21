@@ -9,7 +9,7 @@ export const FLOOR_BOUNDS = Object.freeze({minX:-1, maxX:1, minY:0, maxY:0.2, mi
 
 // Timber keys match wood.js DRIFTWOOD (game.js draws them with the driftwood texture). Every board shares one
 // plank material; per-board tone comes from a vertex colour tint (see tinted()).
-const PLANK_COLOR = '#9c8a5e';
+const PLANK_COLOR = '#aa9a6a';
 const BEAM_COLOR = '#5b4e38', BEAM_END_COLOR = '#9a8b64', ROPE_COLOR = '#a8946c', NAIL_COLOR = '#4b4844';
 const UNDER_COLOR = '#2e2519', UNDER_Y = 0.126; // dark lashed underlay: seams between boards read dark brown, not water
 const BEV = 0.011, BEV_T = 0.01, THICK = 0.052;
