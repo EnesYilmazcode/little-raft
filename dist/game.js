@@ -19,13 +19,13 @@ import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84a
 import { createContent, cleanExt } from './content.js?build=v3-survival-ae77fa84ac2b'; // content hook (islands, wildlife, storage, day/night)
 import { CONTENT_DECOR, CONTENT_BLOCK_RADIUS } from './content-items.js?build=v3-survival-ae77fa84ac2b'; // content hook
 import { createBuilding, cleanPieces } from './building.js?build=v3-survival-ae77fa84ac2b'; // building-pieces lane hook (docs/cloud/building-pieces.md)
-import { createControls } from './controls.js'; // controls lane: input map, gamepad, movement feel (docs/cloud/controls.md)
+import { createControls } from './controls.js?build=v3-survival-ae77fa84ac2b'; // controls lane: input map, gamepad, movement feel (docs/cloud/controls.md)
 import { createSailing } from './sailing-world.js?build=v3-survival-ae77fa84ac2b'; // [sailing] see docs/cloud/sailing.md
 import { cleanSailing } from './sailing-core.js?build=v3-survival-ae77fa84ac2b'; // [sailing]
 import { createCoop } from './coop.js?build=v3-survival-ae77fa84ac2b'; // coop: co-op layer (docs/cloud/coop.md)
 import { createDiving, DIVE } from './diving.js?build=v3-survival-ae77fa84ac2b'; // diving lane hook (docs/cloud/diving.md)
 import { nodeById, NODE_LOOT } from './seafloor.js?build=v3-survival-ae77fa84ac2b'; // diving lane hook
-import { createFishingCooking } from './fishing-cooking.js'; // [fishing-cooking] lane hook, see docs/cloud/fishing-cooking.md
+import { createFishingCooking } from './fishing-cooking.js?build=v3-survival-ae77fa84ac2b'; // [fishing-cooking] lane hook, see docs/cloud/fishing-cooking.md
 import { createInstruments } from './instruments.js?build=v3-survival-ae77fa84ac2b'; // [instruments] held drum / pipes / bells (docs/specs/instruments.md)
 import { cleanProgress, nextNote, shouldSpawnBottle, evaluate, achievementName, NOTE_COUNT } from './logbook.js?build=v3-survival-ae77fa84ac2b';
 import { createLogbookUI } from './logbook-ui.js?build=v3-survival-ae77fa84ac2b';
@@ -42,8 +42,8 @@ import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?bui
 import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
-import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
-import { attachProgression } from './progression-hooks.js'; // [progression-hook]
+import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
+import { attachProgression } from './progression-hooks.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { loadSoundPref, saveSoundPref, dragLookScale } from './hud.js?build=v3-survival-ae77fa84ac2b';
 import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
@@ -329,7 +329,7 @@ export function mount(transfer = null) {
 
   // ---------- Small mesh helpers ----------
   const materialCache = new Map();
-  let diving = null; const islands = [], aboveWater = [], gatheredIds = new Set(); // gatheredIds: host-side guard against re-gathering; // diving lane hook
+  let diving = null, diveWarmed = false, diveWarmAt = 0, playFrames = 0; const islands = [], aboveWater = [], gatheredIds = new Set(); // gatheredIds: host-side guard against re-gathering; // diving lane hook
   function mat(color) {
     if (!materialCache.has(color)) {
       let m = ART.artEnabled() ? ART.materialForColor(T, color) : null; // art lane hook
@@ -398,7 +398,7 @@ export function mount(transfer = null) {
     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     hemi = new T.HemisphereLight('#bfe6ff', '#2f6f7a', 1.0); scene.add(hemi); // content hook: kept for day/night; blue sky fill from above, teal sea bounce from below
     sun = new T.DirectionalLight('#ffeccb', 3.0); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.0004; sun.shadow.normalBias = .03; sun.shadow.radius = 3; scene.add(sun, sun.target); // shadow box is fitted to the raft each frame
-    quality = createQuality({renderer, sun, preset:options.graphics, onChange:() => applyUserGraphics()}); // owns pixel ratio, shadow map size and sun.castShadow
+    quality = createQuality({sun, preset:options.graphics, onChange:() => applyUserGraphics()}); applyUserGraphics(); // owns the level (shadow map size, sun.castShadow); applyUserGraphics sets the pixel ratio once, with the render scale
     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#a6e9f2', fadeNear:28, fadeFar:190}); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
     if (ART.artEnabled()) ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T}); // art lane hook
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
@@ -426,8 +426,8 @@ export function mount(transfer = null) {
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
       getPush:(s, o) => { content?.sailPush(s, o); }, steerTargets:() => content?.steerTargets() ?? null}); /* engine: motor push + wheel grab points */ for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
-    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); diving?.warm(renderer); } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
-    rebuildRaft();
+    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
+    rebuildRaft(); fitShadow();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     syncItems(); singlePass(scene); refreshPointerUI(true);
   }
@@ -519,6 +519,15 @@ export function mount(transfer = null) {
       if (k === 'hammer') ghosts.preload(['floor']); else if (DECOR_TYPES.includes(k)) ghosts.preload([k]);
     }
     if (fresh) { try { ghosts.warm(() => renderer.compileAsync(scene, camera).catch(() => {})); } catch (e) { console.warn('shader warm-up failed', e); } }
+  }
+  // Also build the no-shadow variant (adaptive floor / Shadows off), else that switch relinks every lit program mid-game.
+  // Runs once, a few seconds into play (after lazily built materials such as wildlife exist), so boot compiles only what the first frame draws.
+  let lateNoShadowWarm = true;
+  function warmNoShadow() {
+    if (!sun?.castShadow || typeof renderer?.compileAsync !== 'function') return;
+    sun.castShadow = false;
+    try { renderer.compileAsync(scene, camera).catch(() => {}); } catch {}
+    sun.castShadow = true;
   }
   function palm(parent, x, y, z, s = 1) {
     const g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); cylinder(.09, .17, 1.6, '#ad8153', 0, .8, 0, g);
@@ -684,6 +693,7 @@ export function mount(transfer = null) {
   // ---------- Aiming ----------
   const hits = [], aimScratch = {point:null, item:null, dir:new T.Vector3(), at:new T.Vector3()};
   // `out` (per-frame aim only) reuses its vectors; event callers get a fresh result they may keep.
+  function itemByToken(token) { const its = world.items; for (let i = 0; i < its.length; i++) if (its[i].token === token) return its[i]; return undefined; }
   function pickNdc(nx, ny, out = null) {
     pointer.set(nx, ny); ray.setFromCamera(pointer, camera);
     plane.constant = -deckY() - .02;
@@ -692,7 +702,7 @@ export function mount(transfer = null) {
     hits.length = 0;
     for (const hit of ray.intersectObjects(itemsGroup.children, true, hits)) {
       let o = hit.object; while (o && !o.userData.token) o = o.parent;
-      const found = o && world.items.find(it => it.token === o.userData.token);
+      const found = o && itemByToken(o.userData.token);
       if (found && !isPending(found) && !held.has(found.token)) { item = found; break; }
     }
     if (!item) { // small forgiveness for hand pickup only; throws never use this
@@ -1061,7 +1071,8 @@ export function mount(transfer = null) {
   function applyUserGraphics() {
     if (!renderer || !quality) return;
     const l = quality.levels[quality.level], sc = clamp(options.renderScale ?? 1, .5, 1);
-    if (l) renderer.setPixelRatio(Math.max(.5, l.pixelRatio * sc));
+    const pr = l ? Math.max(.5, l.pixelRatio * sc) : null;
+    if (pr != null && renderer.getPixelRatio() !== pr) renderer.setPixelRatio(pr); // each call resizes the canvas and its MSAA buffers
     if (sun) sun.castShadow = options.shadows !== false && !!l?.shadows;
   }
   function applyOptions(next) {
@@ -1110,6 +1121,7 @@ export function mount(transfer = null) {
     const fwd = ci ? ci.forward : input ? held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown') : 0, side = ci ? ci.strafe : input ? held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft') : 0;
     const surf = building ? building.preStep(physics, deckY()) : null; // building-pieces lane hook
     const dive = diving?.move(laneDt, physics, {forward:fwd, strafe:side, yaw, pitch, up:ci ? ci.jump : input && held('Space'), down:ci ? !!ci.crouch : input && held('KeyC'), fast:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'), gather:input && (controls ? controls.input.down('interact') : held('KeyE'))}); // diving lane hook
+    if (dive && !diveWarmed) warmDive(); // first dive before the idle warm-up ran: compile now, before its first underwater frame
     // Real frame time in equal substeps (<= .05 s) so walking speed holds at low fps. Jump stays held on every
     // substep: PlayerPhysics fires the impulse only on the press edge, i.e. the first substep, never again.
     let ev = null;
@@ -1136,7 +1148,7 @@ export function mount(transfer = null) {
   const TITLE_FOCUS = new T.Vector3(-5, 0, 2), vmParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0};
   const fishPos = new T.Vector3(), hookPos = new T.Vector3(), fishRope = Array.from({length:ROPE_SEGMENTS + 1}, () => new T.Vector3()), freeItems = [], ropeScratch = [];
   const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3(), oceanSample = {h:0, sx:0, sz:0};
-  const hookParams = {hand:handPos, items:freeItems, skip:isPending, reeling:false, time:0};
+  const hookParams = {hand:handPos, items:freeItems, reeling:false, time:0}; // freeItems is already filtered for pending items
   // Hook physics floats at a flat WATER_Y; map heights near the water onto the visible waves.
   const deckAt = (x, z) => (hasTile(Math.round(x / 2), Math.round(z / 2)) ? deckY() + .06 : null);
   function surfaceY(x, z, y) {
@@ -1175,8 +1187,7 @@ export function mount(transfer = null) {
     const rod = kind === 'fishingrod' ? hands.itemModel('fishingrod') : null, out = !!hook?.fishing;
     if (rod?.userData.float) { rod.userData.float.visible = !out; rod.userData.leader.visible = !out; }
     hands.update({dt, time:elapsed, charge:ch, reeling:rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch, fov:camera.fov}); // [fishing-cooking] rod reel pose from the lane
-    camera.updateMatrixWorld(true);
-    hands.ropeAnchor().getWorldPosition(handPos);
+    hands.ropeAnchor().getWorldPosition(handPos); // updates the anchor's parent chain (camera included); render refreshes the rest
   }
   function updateAvatars(dt) {
     player.position.set(physics.x, physics.y - EYE_OFFSET, physics.z); player.rotation.y = yaw + Math.PI;
@@ -1191,7 +1202,12 @@ export function mount(transfer = null) {
       friend.userData.animate?.(dt, {speed:Math.min(6, Math.hypot(friend.position.x - before.x, friend.position.z - before.z) / dt), swimming:other.swimming, pitch:other.pitch});
     }
   }
-  const allHeldTokens = () => new Set([...caughtList(castOut()).map(c => c.token), ...(role === 'guest' ? [] : guestHeld.tokens(performance.now()))]);
+  const allHeldSet = new Set(); // reused: callers read it synchronously and never keep it
+  function allHeldTokens() {
+    allHeldSet.clear(); const h = castOut(); if (h) for (const c of caughtList(h)) allHeldSet.add(c.token);
+    if (role !== 'guest') for (const t of guestHeld.tokens(performance.now())) allHeldSet.add(t);
+    return allHeldSet;
+  }
   function updateItems(dt) {
     const heldTokens = allHeldTokens();
     if (sailing) sailing.itemFlow(sailFlow); // [sailing]
@@ -1233,13 +1249,17 @@ export function mount(transfer = null) {
       hook.t += dt; const f = hook.t / hook.duration, u = Math.min(1, f * 5);
       const pos = fishPos.copy(handPos).lerp(hook.end, u);
       if (u >= 1) pos.y = ocean.getHeight(pos.x, pos.z) + .05 + Math.sin(elapsed * 5) * .03 - (hook.t > fishWait ? .12 : 0); else pos.y += Math.sin(u * Math.PI) * 1.2;
-      const pts = []; for (let i = 0; i <= ROPE_SEGMENTS; i++) pts.push(handPos.clone().lerp(pos, i / ROPE_SEGMENTS));
-      setRope(pts); hookMesh.visible = false; bobber.visible = true; bobber.position.copy(pos);
+      for (let i = 0; i <= ROPE_SEGMENTS; i++) fishRope[i].copy(handPos).lerp(pos, i / ROPE_SEGMENTS);
+      setRope(fishRope); hookMesh.visible = false; bobber.visible = true; bobber.position.copy(pos);
       if (f >= 1) { if (selectedKind() === 'fishingrod') action({kind:'fish'}); fishWait = 0; endHook(); }
       return;
     }
-    const guestTokens = role === 'guest' ? null : new Set(guestHeld.tokens(performance.now())); // host skips the guest's catch
-    const ev = hook.update(dt, {hand:handPos, items:world.items.filter(it => !isPending(it) && !guestTokens?.has(it.token)), reeling, time:elapsed});
+    const guestTokens = role === 'guest' ? null : guestHeld.tokens(performance.now()); // host skips the guest's catch
+    freeItems.length = 0;
+    for (const it of world.items) if (!isPending(it) && !guestTokens?.includes(it.token)) freeItems.push(it);
+    hookParams.reeling = reeling; hookParams.time = elapsed;
+    const ev = hook.update(dt, hookParams);
+    freeItems.length = 0; // don't keep item references between frames
     const hp = hook.position, pos = hookPos.set(hp.x, hook.onDeck ? hp.y : surfaceY(hp.x, hp.z, hp.y), hp.z); // on the planks it rests at deck height
     hookMesh.visible = true; hookMesh.position.copy(pos); bobber.visible = false;
     if (hook.stage === 'flying') hookMesh.rotation.set(-hook.flightT * Math.PI * 2, yaw, 0);
@@ -1282,9 +1302,19 @@ export function mount(transfer = null) {
     return {type:'state', v:3, ack:guestAck, bag:guestBag.snapshot(), other:pose(),
       world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items, ext:content ? content.serialize() : world.ext, sailing:world.sailing, signal:world.signal, notes:world.notes, achievements:world.achievements, garden:world.garden, purifiers:world.purifiers, collectors:world.collectors, sprinklers:world.sprinklers, ...(world.pieces !== sentPieces ? {pieces:(sentPieces = world.pieces)} : {})}}; // content hook: ext
   }
+  const signalOpts = {token:newToken, held:null}; // reused per frame; signalTick reads it synchronously only
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, held:heldKind()});
+  // Diving shaders (ceiling, bubbles, overlay) compile synchronously: 0-200 ms on software GL. Done at idle time once
+  // gameplay frames are on screen instead of during mount; movePlayer() compiles them on the spot if a dive comes first.
+  function warmDive() { if (diveWarmed || disposed || !diving) return; diveWarmed = true; diving.warm(renderer); }
+  function scheduleDiveWarm() {
+    if (diveWarmAt || diveWarmed) return;
+    if (typeof requestIdleCallback === 'function') diveWarmAt = requestIdleCallback(() => { diveWarmAt = 0; warmDive(); }, {timeout:3000});
+    else diveWarmAt = later(() => { diveWarmAt = 0; warmDive(); }, 400);
+  }
   function frame() {
     const now = performance.now(), rawMs = now - last, realDt = rawMs / 1000, dt = Math.min(realDt, .05); last = now; elapsed += dt;
+    if (running && !diveWarmed && ++playFrames > 2) scheduleDiveWarm();
     const dialog = uiBlocked();
     if (running && !dialog && !document.hidden && !PIN_QUALITY) quality.tick(rawMs);
     checkPeerStale(now);
@@ -1302,7 +1332,8 @@ export function mount(transfer = null) {
     if (fc) { try { fc.update(dt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
     if (instruments) { try { instruments.update(dt); } catch (e) { console.error('instruments update failed', e); try { instruments.dispose(); } catch {} instruments = null; } } // [instruments]
     if (running && role !== 'guest') {
-      const itemCount = world.items.length, sigEvents = signalTick(world, dt, {token:newToken, held:new Set(caughtList(castOut()).map(c => c.token))});
+      signalOpts.held = heldTokens(); // our hook only, as before
+      const itemCount = world.items.length, sigEvents = signalTick(world, dt, signalOpts);
       for (const e of sigEvents) emit({kind:'signal', text:e.kind === 'detected' ? 'A signal! Something is drifting your way' : 'The signal cache is close: hook it in!'}, 'all');
       if (sigEvents.length || world.items.length !== itemCount) syncItems();
       netClock += dt;
@@ -1324,6 +1355,7 @@ export function mount(transfer = null) {
     if (veiled && now - lastDraw < 100) return;
     lastDraw = now;
     renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
+    if (lateNoShadowWarm && running) { lateNoShadowWarm = false; later(warmNoShadow, 4000); }
   }
   // Peer liveness. rAF stops in hidden tabs, so a timer keeps the channel warm and each side says when it is
   // hidden; a hidden peer is never timed out (the data channel's 'close' still ends the session).
@@ -1698,7 +1730,46 @@ export function mount(transfer = null) {
     return {x:r.left + (v.x + 1) / 2 * r.width, y:r.top + (1 - v.y) / 2 * r.height, visible:inFront && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1, inFront};
   }
   const worldPos = o => { if (!o) return null; const p = o.getWorldPosition(new T.Vector3()); return {x:p.x, y:p.y, z:p.z, visible:o.visible}; };
+  // raftDebug.hud: a light live view for the timer-driven HUD readers (onboarding 4 Hz, prompts 10 Hz), holding only
+  // the keys they read from .state. No deep copies: arrays are the live world/bag lists (read only); bag counts and
+  // ownedTools are rebuilt at most once per rendered frame (or every 100 ms while rAF is idle). Objects handed out are
+  // never mutated after the fact, so a reader may keep them (onboarding keeps the last pickup).
+  let hudAt = -1, hudBuilt = 0, hudBag = null, hudStock = null, hudOwned = null, hudInv = null, hudPick = null, hudPickSrc = null, hudPickType = null;
+  const hudModeOf = kind => (kind === 'hammer' ? 'build' : kind === 'fishingrod' ? 'fish' : kind === 'hook' ? 'hook' : DECOR_TYPES.includes(kind) ? 'place' : 'none');
+  const hudCounts = () => {
+    const bag = localBag(), now = performance.now();
+    if (bag !== hudBag || hudAt !== last || now - hudBuilt > 100) {
+      hudBag = bag; hudAt = last; hudBuilt = now; hudStock = bag.counts();
+      hudOwned = []; if (hudStock.hook > 0) hudOwned.push('hook'); if (hudStock.hammer > 0) hudOwned.push('hammer'); if (hudStock.fishingrod > 0) hudOwned.push('fishingrod');
+    }
+    return hudStock;
+  };
+  const hudAffords = () => { const bag = localBag(); for (const k in FLOOR_COST) if (bag.count(k) < FLOOR_COST[k]) return false; return true; };
+  const hudPhysics = {get climbing() { return !!physics.climbing; }};
+  const hudMe = {get x() { return physics.x; }, get y() { return physics.y; }, get z() { return physics.z; }, get yaw() { return yaw; }, get pitch() { return pitch; }};
+  const hudBuild = {get hover() { return !!hover; }, get affordable() { const m = hudModeOf(heldKind()); return m === 'build' ? hudAffords() : m === 'place'; }};
+  const hudView = Object.freeze({
+    get running() { return running; }, get disposed() { return disposed; }, get role() { return role; }, get networkReady() { return networkReady; },
+    get pointerLocked() { return isLocked(); }, get lockFallback() { return lockFallback; }, get inventoryOpen() { return !!survivalUI?.isOpen; },
+    get heldKind() { return heldKind(); }, get tool() { return hudModeOf(heldKind()); }, get fishWait() { return fishWait; },
+    get hookStage() { return hook ? (hook.fishing ? 'fishing' : hook.stage) : 'idle'; },
+    get hookCaughtItems() { return caughtList(castOut()); },
+    get hookHealth() { return hookDurability(localBag()); },
+    get pickup() {
+      if (!pickTarget) return null;
+      if (pickTarget !== hudPickSrc || pickTarget.type !== hudPickType) { hudPickSrc = pickTarget; hudPickType = pickTarget.type; hudPick = Object.freeze({type:hudPickType}); }
+      return hudPick;
+    },
+    get stock() { return hudCounts(); }, get ownedTools() { hudCounts(); return hudOwned; },
+    get inventory() { const bag = localBag(); if (hudInv?.bag !== bag) hudInv = {bag, get slots() { return this.bag.slots; }}; return hudInv; },
+    get selectedIndex() { return localBag().selectedIndex; },
+    get tiles() { return world.tiles.length; }, get tileList() { return world.tiles; }, get decor() { return world.decor; },
+    get fish() { return world.fish; }, get collected() { return world.collected; },
+    get swimming() { return physics.swimming; }, get grounded() { return physics.grounded; }, get physics() { return hudPhysics; },
+    get me() { return hudMe; }, get build() { return hudBuild; },
+  });
   const debugApi = Object.freeze({
+    get hud() { return hudView; },
     get renderInfo() {
       if (!renderer) return null;
       const i = renderer.info, c = {meshes:0, visible:0, lights:0, shadowCasters:0};
@@ -1803,6 +1874,7 @@ export function mount(transfer = null) {
   function disposeScene() {
     if (!scene) return;
     try { building?.dispose(); } catch {} building = null; // building-pieces lane hook
+    if (diveWarmAt && typeof cancelIdleCallback === 'function') { try { cancelIdleCallback(diveWarmAt); } catch {} } diveWarmAt = 0; // a later() fallback is cleared with the other timers
     try { diving?.dispose(); } catch {} diving = null; // diving lane hook
     const mats = new Set(), geos = new Set();
     scene.traverse(o => {

@@ -19,7 +19,7 @@
 // Bodies are a loft of cross-section rings along X with per-shape profile functions; colours are per-face
 // (flat low-poly look): back -> flank -> belly gradient plus stripes / bars / spots / scales patterns.
 // Fins, tail, eyes, catfish barbels, tuna finlets and the Sunscale glow bands are thin double-faced shapes.
-import { speciesById } from './fish-species.js';
+import { speciesById } from './fish-species.js?build=v3-survival-ae77fa84ac2b';
 
 const STATES = ['raw', 'cooked', 'burnt'];
 // Body shapes at unit length. H/W = max half height/width, peak = thickest point (0 tail .. 1 nose),

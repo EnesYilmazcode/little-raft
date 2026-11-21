@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ITEM_INFO } from '../dist/inventory-state.js';
-import { migrateSnapshot } from '../dist/items.js';
+import { readFileSync } from 'node:fs';
+// Import items.js through the same specifier inventory-state.js uses (build-stamped),
+// so registerBagKinds() and migrateSnapshot() share one module instance.
+const dist = new URL('../dist/', import.meta.url);
+const itemsSpec = readFileSync(new URL('inventory-state.js', dist), 'utf8').match(/['"](\.\/items\.js[^'"]*)['"]/)[1];
+const { migrateSnapshot } = await import(new URL(itemsSpec, dist));
 
 test('every ITEM_INFO kind survives migrateSnapshot (save/load, co-op)', () => {
   for (const kind of Object.keys(ITEM_INFO)) {

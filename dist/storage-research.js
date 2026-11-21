@@ -3,7 +3,7 @@
 // ingredient kinds you feed it. Slice: world.ext.storage. Host-authoritative actions 'storage.*'.
 // The top half of this file is pure (no DOM, no THREE) and exported for tests.
 import { Bag, RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { buildResearchTable } from './storage-research-model.js';
+import { buildResearchTable } from './storage-research-model.js?build=v3-survival-ae77fa84ac2b';
 
 export const CHEST_SLOTS = 12;
 export const MAX_CHESTS = 400;
@@ -299,7 +299,7 @@ export function createStorage(ctx) {
 
   function loadUI() {
     if (ui || uiLoading || uiFailed || typeof document === 'undefined') return uiLoading;
-    uiLoading = import('./storage-research-ui.js').then(m => { ui = m.createStorageUI(api); return ui; })
+    uiLoading = import('./storage-research-ui.js?build=v3-survival-ae77fa84ac2b').then(m => { ui = m.createStorageUI(api); return ui; })
       .catch(e => { console.error('storage ui failed', e); uiFailed = true; uiLoading = null; return null; }); // no retry every frame
     return uiLoading;
   }
