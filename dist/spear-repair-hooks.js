@@ -75,10 +75,11 @@ export function attachSpearRepair(ctx) {
   }
 
   // ---------- repair ----------
-  /** Called once per frame with the held tool role and frame aim; caches the damaged tile under the crosshair. */
-  function updateAim(kind, aim) {
+  /** Called once per frame with the held tool role and frame aim; caches the damaged tile under the crosshair.
+   *  buildFirst: a building piece has a green ghost, so the click builds it (no repair, no Repair prompt). */
+  function updateAim(kind, aim, buildFirst = false) {
     repairAim = null;
-    if (kind !== 'hammer' || !aim?.point) return;
+    if (kind !== 'hammer' || !aim?.point || buildFirst) return;
     const x = Math.round(aim.point.x / 2), z = Math.round(aim.point.z / 2), ph = ctx.physics();
     const w = ctx.world();
     if (!inReach(ph.x, ph.z, x, z) || !hasTileAt(w, x, z)) return;
@@ -91,7 +92,7 @@ export function attachSpearRepair(ctx) {
     if (repairAim) {
       const bag = ctx.localBag(), ok = Object.entries(TILE_REPAIR_COST).every(([k, n]) => bag.count(k) >= n);
       const bar = hpBarText(repairAim.hp);
-      return ok ? { key: 'LMB', label: 'Repair (1 plank) ' + bar } : { label: 'Repair needs 1 plank ' + bar, muted: true };
+      return ok ? { key: 'LMB', label: 'Repair (1 Plank) ' + bar } : { label: 'Repair needs 1 Plank ' + bar, muted: true };
     }
     if (!state?.pickup && isSpear(rawKind())) return { key: 'LMB', label: 'Jab' };
     return null;
@@ -105,7 +106,7 @@ export function attachSpearRepair(ctx) {
   function useHammer() {
     if (!repairAim) return false;
     const bag = ctx.localBag();
-    if (!Object.entries(TILE_REPAIR_COST).every(([k, n]) => bag.count(k) >= n)) { ctx.notice('Repair needs 1 plank'); return true; }
+    if (!Object.entries(TILE_REPAIR_COST).every(([k, n]) => bag.count(k) >= n)) { ctx.notice('Repair needs 1 Plank'); return true; }
     ctx.setSwing(1);
     ctx.action({ kind: 'repairTile', x: repairAim.x, z: repairAim.z });
     return true;
@@ -130,7 +131,7 @@ export function attachSpearRepair(ctx) {
       if (who && !inReach(who.x, who.z, a.x, a.z, BUILD_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : 0.01))) return true;
       const r = repairTile(ctx.world(), a.x, a.z, bag);
       if (r.ok) { bag.version++; ctx.emit({ kind: 'build', text: r.hp >= TILE_MAX_HP ? 'Foundation good as new' : `Foundation repaired: ${Math.round(r.hp)}%` }, 'all'); }
-      else if (r.reason === 'cost') ctx.emit({ kind: 'notice', text: 'Repair needs 1 plank' }, actor);
+      else if (r.reason === 'cost') ctx.emit({ kind: 'notice', text: 'Repair needs 1 Plank' }, actor);
       return true;
     }
     return false;

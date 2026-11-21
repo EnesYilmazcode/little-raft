@@ -469,6 +469,7 @@ export function mount(transfer = null) {
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
     try { vitalsUI = createVitalsUI(); } catch (e) { console.warn('vitals HUD unavailable', e); vitalsUI = null; } // [vitals]
     building = createBuilding(T, scene); // building-pieces lane hook
+    building.setBlock(p => { const w = pieceBlock(world.decor, p, grillAt); return w ? BLOCK_TEXT[w] : ''; }); // the ghost refuses what the host refuses
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
@@ -979,6 +980,7 @@ export function mount(transfer = null) {
   // Returns null when the cell is not a build spot at all, else {x, z, blocked} with `blocked` ('bound' | 'cap' | 'reach' |
   // 'nofloor') when refused, null when it can be built. Runs every frame, so it fills one reused result (read it right away).
   const placed = {x:0, z:0, blocked:null};
+  function grillAt(x, z) { return !!fc?.hasGrill(x, z); } // [fishing-cooking] grill tiles take no decor and no level-0 stairs
   function placementFor(kind, p) {
     if (!p) return null; const x = Math.round(p.x / 2), z = Math.round(p.z / 2);
     let why;
@@ -988,6 +990,7 @@ export function mount(transfer = null) {
     if (why === 'nofloor' && !nearDeck(x, z)) return null; // just off the deck edge still shows a red ghost instead of nothing
     if (why && !BLOCK_TEXT[why]) return null;
     if (!why && !inReach(physics.x, physics.z, x, z)) why = 'reach';
+    if (!why && kind !== 'hammer' && building && camera) why = building.occludes(camera.position, p, deckY()) || null; // no decor through a wall or an upper floor
     if (!why && kind !== 'hammer') { // never drop a prop on a player
       const inWay = playerInWay(decorBlockers({type:kind, x, z, rot:placeRot}, BLOCK_RADIUS), [physics, other], PLAYER_CONSTANTS.BODY_RADIUS + .05);
       if (inWay >= 0) why = inWay === 0 ? 'self' : 'brother';
@@ -1152,7 +1155,7 @@ export function mount(transfer = null) {
       if (!isInt(a.i) || !isInt(a.j)) return;
       const who = actor === 'guest' ? other : physics, [ci, cj] = pieceCell(a); // guest pose may be missing until its first move
       if (who && !inReach(who.x, who.z, ci, cj, PIECE_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .01))) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
-      const why = a.kind === 'piece' && (pieceBlock(world.decor, a) || (a.l === 0 && a.t === 'stairs' && fc?.hasGrill(a.i, a.j) ? 'decor' : null));
+      const why = a.kind === 'piece' && pieceBlock(world.decor, a, grillAt); // same rule as the ghost (building.setBlock)
       if (why) { emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; }
       const r = building.apply(a, bag, world);
       if (r.ok) emit({kind:'build', text:r.text}, 'all'); else if (r.text) emit({kind:'notice', text:r.text}, actor);
@@ -1273,7 +1276,7 @@ export function mount(transfer = null) {
       return;
     }
     if (kind === 'hammer' && building && building.piece !== 'foundation') { // building-pieces lane hook
-      const a = building.use(); if (a) { swing = 1; action(a); } else notice('Point at a green spot'); return;
+      const a = building.use(); if (a) { swing = 1; action(a); } else notice(building.aim?.reason || 'Point at a green spot'); return;
     }
     if (kind === 'hammer' || DECOR_TYPES.includes(kind)) {
       const v = placementFor(kind, p);
@@ -1576,7 +1579,7 @@ export function mount(transfer = null) {
     const kind = heldKind();
     const pieces = kind === 'hammer' && !hook && building && building.piece !== 'foundation'; // building-pieces lane hook
     building?.update(raft, frameAim, camera.position, running && kind === 'hammer' && !hook && !uiBlocked(), localBag(), yaw, deckY());
-    spearRep?.updateAim(hook ? null : kind, frameAim); spearRep?.tick(); // [spear-repair]
+    spearRep?.updateAim(hook ? null : kind, frameAim, !!building?.ready); spearRep?.tick(); // [spear-repair] a green piece ghost builds instead of repairing
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing && !building?.menu.isOpen ? placementFor(kind, frameAim.point) : null;
     if (!hover || ghostHold && (ghostHold.kind !== kind || ghostHold.x !== hover.x || ghostHold.z !== hover.z)) ghostHold = null;
     if (!hover || ghostHold) { ghosts.hide(); return; } // just-placed spot: no ghost over the new piece until the aim moves off
@@ -2079,7 +2082,7 @@ export function mount(transfer = null) {
   const hudAffords = () => { const bag = localBag(); for (const k in FLOOR_COST) if (bag.count(k) < FLOOR_COST[k]) return false; return true; };
   const hudPhysics = {get climbing() { return !!physics.climbing; }};
   const hudMe = {get x() { return physics.x; }, get y() { return physics.y; }, get z() { return physics.z; }, get yaw() { return yaw; }, get pitch() { return pitch; }};
-  const hudBuild = {get hover() { return hover || null; }, get affordable() { const m = hudModeOf(heldKind()); return m === 'build' ? hudAffords() : m === 'place'; }};
+  const hudBuild = {get hover() { return hover || null; }, get piece() { return heldKind() === 'hammer' && building && building.piece !== 'foundation' ? building.aim ?? false : null; }, get affordable() { const m = hudModeOf(heldKind()); return m === 'build' ? hudAffords() : m === 'place'; }};
   const hudView = Object.freeze({
     get running() { return running; }, get disposed() { return disposed; }, get role() { return role; }, get networkReady() { return networkReady; },
     get pointerLocked() { return isLocked(); }, get lockFallback() { return lockFallback; }, get inventoryOpen() { return !!survivalUI?.isOpen; },
@@ -2141,7 +2144,7 @@ export function mount(transfer = null) {
         hook:hook ? (hook.fishing ? {fishing:true, id:null, t:hook.t, duration:hook.duration} : {fishing:false, id:hc.caught?.id ?? null, stage:hc.stage, x:hc.position.x, y:hc.position.y, z:hc.position.z, tension:hc.tension, distance:hc.distance, caughtCount:caughtList(hc).length}) : null,
         fishWait, hookStage:hook ? (hook.fishing ? 'fishing' : hook.stage) : 'idle', hookCaught:hc?.caught ? {...hc.caught} : null, hookCaughtItems:caughtList(hc).map(c => ({...c})),
         hookHealth:hookDurability(bag), hookRange:16 + hookDurability(bag) * .16, charge:chargeValue(), charging:!!charging, reeling,
-        build:{active:mode === 'build' || mode === 'place', recipe:kind, rot:placeRot, pointing, ghost:!!ghosts?.visible, hover:hover ? {...hover} : null, candidates:scene ? placementCandidates(kind).length : 0, affordable:mode === 'build' ? canAfford(bag, FLOOR_COST) : mode === 'place'},
+        build:{active:mode === 'build' || mode === 'place', recipe:kind, rot:placeRot, pointing, ghost:!!ghosts?.visible, hover:hover ? {...hover} : null, piece:heldKind() === 'hammer' && building && building.piece !== 'foundation' ? (building.aim ? {...building.aim} : false) : null, candidates:scene ? placementCandidates(kind).length : 0, affordable:mode === 'build' ? canAfford(bag, FLOOR_COST) : mode === 'place'},
         pieces:{list:(world.pieces || []).map(p => ({...p})), piece:building?.piece ?? null, rotation:building?.rotation ?? 0, removing:!!building?.removing}, // building-pieces lane hook
         pickup:pickTarget ? {id:pickTarget.id, token:pickTarget.token, type:pickTarget.type} : null, feed:pickupFeed.rows,
         me:{x:physics.x, y:physics.y, z:physics.z, yaw, pitch}, other:other ? {...other} : null,
