@@ -12,16 +12,27 @@ function kit(T, g) {
   };
   const pips = (name, n, y0, dy, z, size) => {
     const grp = new T.Group(); grp.name = name; g.add(grp);
-    const on = std(PIP_ON, .3, 0, {emissive:PIP_ON, emissiveIntensity:.6}), off = std(PIP_OFF, .9);
-    grp.userData.on = on; grp.userData.off = off;
-    for (let i = 0; i < n; i++) add(grp, new T.BoxGeometry(size, size, .02), off, name + i, 0, y0 + i * dy, z, false);
+    // One material per pip, recoloured in place: swapping shared on/off materials would leave the unused
+    // one outside the scene graph, where rebuildRaft's disposeGeometry never finds it (leak per rebuild).
+    for (let i = 0; i < n; i++) add(grp, new T.BoxGeometry(size, size, .02), std(PIP_OFF, .9, 0, {emissive:PIP_ON, emissiveIntensity:0}), name + i, 0, y0 + i * dy, z, false);
     return grp;
   };
   return {std, add, pips};
 }
 
 function lightPips(grp, n) {
-  grp.children.forEach((m, i) => { m.material = i < n ? grp.userData.on : grp.userData.off; });
+  const c = grp.children;
+  for (let i = 0; i < c.length; i++) {
+    const m = c[i].material, on = i < n;
+    m.color.setHex(on ? PIP_ON : PIP_OFF); m.emissiveIntensity = on ? .6 : 0; m.roughness = on ? .3 : .9;
+  }
+}
+
+// Round spray drops: discard the corners of each square point sprite (no texture, no allocation).
+function roundPoints(mat) {
+  mat.onBeforeCompile = (s) => { s.fragmentShader = s.fragmentShader.replace('void main() {', 'void main() {\n\tif ( length( gl_PointCoord - vec2( .5 ) ) > .5 ) discard;'); };
+  mat.customProgramCacheKey = () => 'rain-round-points';
+  return mat;
 }
 
 export function createRainBarrel(T) {
@@ -45,7 +56,7 @@ export function createRainBarrel(T) {
 }
 
 export function paintRainBarrel(g, entry, raining, elapsed) {
-  const ud = g.userData, w = entry?.w ?? 0, sig = w + '|' + !!raining;
+  const ud = g.userData, w = entry?.w ?? 0, sig = w * 2 + (raining ? 1 : 0); // numeric: no per-frame string
   if (!ud.parts) { const get = n => g.getObjectByName(n); ud.parts = {water:get('barrelWater'), ripple:get('barrelRipple'), pips:get('barrelPips')}; }
   const p = ud.parts;
   if (ud.sig !== sig) {
@@ -79,8 +90,10 @@ export function createSprinkler(T) {
   const pos = new Float32Array(SPRAY_N * 3);
   for (let i = 0; i < SPRAY_N; i++) pos[i * 3 + 1] = .56;
   const geo = new T.BufferGeometry(); geo.setAttribute('position', new T.BufferAttribute(pos, 3));
-  const spray = new T.Points(geo, new T.PointsMaterial({color:0xcfefff, size:.05, transparent:true, opacity:.8, depthWrite:false}));
+  const spray = new T.Points(geo, roundPoints(new T.PointsMaterial({color:0xcfefff, size:.05, transparent:true, opacity:.8, depthWrite:false})));
   spray.name = 'spray'; spray.frustumCulled = false; spray.visible = false; g.add(spray);
+  spray.raycast = () => {}; // Points raycast with the default 1 m threshold (even while hidden) would steal aims from nearby palms
+
   g.userData.craftType = 'sprinkler';
   g.userData.height = .6;
   paintSprinkler(g, null, 0, false);
