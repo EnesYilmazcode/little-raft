@@ -1,5 +1,10 @@
 # Integration status
 
+## Claims (to avoid double merges between integrators)
+Integrator B, round 5 (from 09:10 UTC), merging in worktrees; please skip these or coordinate here:
+loop-fidelity-202611210804, -0821 (0747 skipped: duplicate shark/needs systems); loop-features-202611210735, -0749, -0753-zfs, -0814;
+loop-perf-202611210708; loop-ux-202611210648 (new commits), -0742, -0748, -0833; loop-visuals-202611210748, -0558.
+
 Updated: 2026-11-21 09:10 UTC, round 5 (integrator A, alongside integrator B). PR #4 merged into main at 912d941 (raft-master dbf2ca9).
 Gate: 983/983 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text.
 Perf vs main (pinned quality, median of 3, two interleaved runs): 185/191 vs 195/192 ms, 49-52 vs 51-55 draw calls.

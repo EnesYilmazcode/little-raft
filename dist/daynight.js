@@ -336,6 +336,7 @@ export function createDayNight(ctx) {
     cloudGroups.push(g); cloudBase.push(g.position.x, g.scale.x, g.scale.z);
     for (const m of g.children) if (m.isMesh) { cloudMeshes.push(m); cloudOrig.push(m.material); m.material = cloudMat; }
   }
+  for (const m of ctx.cloudMeshes ?? []) if (m?.isMesh && !cloudMeshes.includes(m)) { cloudMeshes.push(m); cloudOrig.push(m.material); m.material = cloudMat; } // instanced cloud copies (game.js)
 
   // ---- stars
   const starGeo = new T.BufferGeometry();
@@ -416,7 +417,7 @@ export function createDayNight(ctx) {
   const POOL_COLOR = new T.Color('#ffb35c'), lanternTint = Array.from({length:MAX_LANTERNS}, () => POOL_COLOR.clone()), lanternGain = new Float32Array(MAX_LANTERNS).fill(1); // per-lantern pool tint/gain (lanternGlow.userData.pool)
   const poolPick = new Int32Array(POOL_LIGHTS).fill(-1);
   let partCount = 0, lanternCount = 0, signature = -1, scanClock = 0, rankClock = 0, poolLit = 0, lastNf = -1, lastGrow = -1;
-  let scanRaft = null, scanFirst = null, scanLen = -1; // what raft.children looked like at the last scan
+  let scanRaft = null, scanFirst = null, scanLen = -1, scanRev; // what raft.children looked like at the last scan (rev: game.js raft.userData.rev)
   function lanternSignature(raft, world) {
     let n = raft.children.length * 131;
     const decor = world?.decor;
@@ -461,7 +462,7 @@ export function createDayNight(ctx) {
     }
     for (let i = lanternCount; i < MAX_LANTERNS; i++) lanternGroups[i] = null;
     for (let i = partCount; i < MAX_PARTS; i++) partMat[i] = null;
-    scanRaft = raft; scanFirst = raft.children.length ? raft.children[0] : null; scanLen = raft.children.length;
+    scanRaft = raft; scanFirst = raft.children.length ? raft.children[0] : null; scanLen = raft.children.length; scanRev = raft.userData?.rev;
     if (lanternCount > 0) poolWanted = true;
     rankClock = 1e9;
   }
@@ -588,10 +589,11 @@ export function createDayNight(ctx) {
     }
     // lanterns
     if (raft) {
-      // O(1) every frame: rebuildRaft() replaces every child, so the first child or the child count
-      // changes (or our first lantern lost its parent). Rescan at once so new lanterns never show a dim frame.
+      // O(1) every frame: rebuildRaft() bumps raft.userData.rev whenever it adds or removes a child (older hosts
+      // replaced every child, so the first child or the child count changes, or our first lantern lost its parent).
+      // Rescan at once so new lanterns never show a dim frame.
       const n = raft.children.length;
-      if (raft !== scanRaft || n !== scanLen || (n ? raft.children[0] : null) !== scanFirst || (lanternCount > 0 && lanternGroups[0].parent !== raft)) {
+      if (raft !== scanRaft || n !== scanLen || (n ? raft.children[0] : null) !== scanFirst || raft.userData?.rev !== scanRev || (lanternCount > 0 && lanternGroups[0].parent !== raft)) {
         scanClock = 0; signature = lanternSignature(raft, ctx.world); scanLanterns(raft); lastNf = -1;
       }
       scanClock += dt;
