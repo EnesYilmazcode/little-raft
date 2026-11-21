@@ -245,6 +245,20 @@ test('INPUT3-5: createControls forwards ownsWheel; game.js rotates before the lo
   assert.match(gameSrc, /ownsWheel:e => running && wheelRotates\(e\)/);
 });
 
+// ---------------------------------------------------------------- INPUT3-4 dive speed vs fps
+
+test('INPUT3-4: swimming underwater covers the same distance at 60, 20, 10 and 4 fps', async () => {
+  const { DiveBody } = await import(new URL('diving.js', base));
+  const run = fps => { const b = new DiveBody({x:0, y:-3, z:0, vx:0, vy:0, vz:0, oxygen:1}); b.grace = 0;
+    for (let i = 0; i < fps * 2; i++) b.step(1 / fps, {forward:1, yaw:0, pitch:0}, {waterY:0, floorY:-20, tiles:[[0, 0]], deckY:.2});
+    return {d:Math.hypot(b.x, b.z), o:b.oxygen}; };
+  const ref = run(60);
+  for (const fps of [20, 10, 4]) { const r = run(fps); assert.ok(Math.abs(r.d - ref.d) < .15, `${fps} fps swam ${r.d} vs ${ref.d}`); assert.ok(Math.abs(r.o - ref.o) < .005); }
+  const b = new DiveBody({x:0, y:-.1, z:5, vx:0, vy:3, vz:0, oxygen:1}); b.grace = 0;
+  const ev = b.step(.25, {up:true}, {waterY:0, floorY:-20, tiles:[], deckY:.2});
+  assert.equal(ev.surfaced, true, 'a long frame stops substepping once it surfaces');
+});
+
 // ---------------------------------------------------------------- INPUT-4 wheel over the hotbar
 
 const el = (...inside) => ({closest: sel => inside.some(s => sel.split(',').map(x => x.trim()).includes(s)) ? {} : null});
