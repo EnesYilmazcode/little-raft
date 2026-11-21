@@ -57,6 +57,7 @@ import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { getItemIcon, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { createIsland } from './scenery-islands.js?build=v3-survival-ae77fa84ac2b'; // decorative distant islands (islands.js is the content lane's dockable islands)
 import { attachSpearRepair } from './spear-repair-hooks.js'; // [spear-repair]
+import { cleanTileArmor } from './armor.js'; // [armor] foundation armor (world.tileArmor)
 import { newVitals, tickVitals, damage as damageVitals, consume as consumeVitals, cleanVitals, saveVitals, isEdible, eatLabel, FOOD, SPRINT_MULT, EAT_SECONDS, RESPAWN } from './vitals.js'; // [vitals] hunger, thirst, health
 import { createVitalsUI } from './vitals-ui.js'; // [vitals] HUD bars, damage vignette, faint overlay
 import { createShark, cleanShark, cleanTileHp, lootable, SHARK, SHARK_LOOT } from './shark.js?build=v3-survival-ae77fa84ac2b'; // shark lane (dist/shark.js)
@@ -168,7 +169,7 @@ export function mount(transfer = null) {
   const STARTER_TILES = [[-1, -1], [0, -1], [-1, 0], [0, 0]];
   function newWorld() {
     const fresh = new Bag().snapshot();
-    return {tiles:STARTER_TILES.map(t => [t[0], t[1]]), decor:[], stock:{wood:0, leaf:0, scrap:0, plastic:0}, fish:0, collected:0, hookHealth:MAX_HEALTH, items:[], hostInventory:fresh, guestInventory:new Bag().snapshot(), signal:null, notes:[], achievements:[], garden:{}, purifiers:{}, collectors:{}, sprinklers:{}, pieces:[], tileHp:{}, shark:cleanShark(null)};
+    return {tiles:STARTER_TILES.map(t => [t[0], t[1]]), decor:[], stock:{wood:0, leaf:0, scrap:0, plastic:0}, fish:0, collected:0, hookHealth:MAX_HEALTH, items:[], hostInventory:fresh, guestInventory:new Bag().snapshot(), signal:null, notes:[], achievements:[], garden:{}, purifiers:{}, collectors:{}, sprinklers:{}, pieces:[], tileHp:{}, tileArmor:{}, shark:cleanShark(null)};
   }
   // Validates a saved world or a host snapshot. Returns a fresh clean object or null.
   function cleanWorld(v, withItems = false) {
@@ -198,14 +199,15 @@ export function mount(transfer = null) {
     return {tiles, decor, stock, fish:count(v.fish), collected:count(v.collected), hookHealth:Number.isFinite(v.hookHealth) ? clamp(Math.round(v.hookHealth), 0, MAX_HEALTH) : MAX_HEALTH, items,
       hostInventory:validSnapshot(v.hostInventory), guestInventory:validSnapshot(v.guestInventory), signal:cleanSignal(v.signal), ext:cleanExt(v.ext), pieces:cleanPieces(v.pieces, tiles), sailing:cleanSailing(v.sailing), // content + building-pieces + sailing hooks
       notes:progress.notes, achievements:progress.achievements, vitals:v.vitals ? cleanVitals(v.vitals) : null, // [vitals] old saves: null -> start full
-      tileHp:cleanTileHp(v.tileHp, tiles), shark:cleanShark(v.shark), // shark lane: foundation HP + saved shark (old saves: full HP, fresh 300 s timer)
+      tileHp:cleanTileHp(v.tileHp, tiles), tileArmor:cleanTileArmor(v.tileArmor, tiles), shark:cleanShark(v.shark), // [armor]
+      // shark lane: foundation HP + saved shark (old saves: full HP, fresh 300 s timer)
       ...cleanWatering(v, decor, {seedMissing:true}), ...cleanRain(v, decor)};
   }
   function copyWorld(w) { // isolation from the previous engine's live object (rollback safety)
     return {...w, tiles:w.tiles.map(t => [t[0], t[1]]), decor:Array.isArray(w.decor) ? w.decor.map(d => ({...d})) : [], items:Array.isArray(w.items) ? w.items.map(i => ({...i})) : [], stock:{...(w.stock || {})}, pieces:Array.isArray(w.pieces) ? w.pieces.map(p => ({...p})) : [],
       fish:isInt(w.fish) ? w.fish : 0, collected:isInt(w.collected) ? w.collected : 0, signal:cleanSignal(w.signal), ext:cleanExt(w.ext), sailing:cleanSailing(w.sailing), // content + sailing hooks
       ...cleanProgress(w), // fresh, validated notes/achievements arrays
-      tileHp:cleanTileHp(w.tileHp, w.tiles), shark:cleanShark(w.shark), // shark lane
+      tileHp:cleanTileHp(w.tileHp, w.tiles), tileArmor:cleanTileArmor(w.tileArmor, w.tiles), shark:cleanShark(w.shark), // shark lane; [armor]
       ...copyWatering(w), ...copyRain(w)};
   }
   const liveWorld = w => cleanWorld(w, true) ?? copyWorld(w);
@@ -502,7 +504,7 @@ export function mount(transfer = null) {
   // First-person viewmodel: one hands controller that swaps the held item model per hotbar kind.
   function buildViewmodels() {
     hands = createHands(T, {modelFactory:modelOf}); hands.preload(['hook']); // 3D models from models.js, built-ins as fallback
-    spearRep = attachSpearRepair({T, camera:() => camera, raft:() => raft, world:() => world, physics:() => physics, other:() => other, localBag, role:() => role, elapsed:() => elapsed, shark:() => shark, action, emit, notice, play, setSwing:v => { swing = v; }}); // [spear-repair]
+    spearRep = attachSpearRepair({T, camera:() => camera, raft:() => raft, world:() => world, physics:() => physics, other:() => other, localBag, role:() => role, elapsed:() => elapsed, shark:() => shark, scene:() => scene, action, emit, notice, play, setSwing:v => { swing = v; }}); // [spear-repair]; scene: [armor] plates
     // Viewmodels draw last (transparent queue, renderOrder 1000) after a camera-owned marker clears depth, so the
     // world never clips them while fingers and tools still depth-sort correctly against each other.
     const depthClear = new T.Mesh(new T.PlaneGeometry(1e-4, 1e-4), new T.MeshBasicMaterial({colorWrite:false, depthWrite:false, depthTest:false, transparent:true}));
@@ -1132,7 +1134,7 @@ export function mount(transfer = null) {
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
     const kind = selectedKind(), bag = localBag(), p = aim?.point ?? null;
     if (instruments?.use(kind)) { swing = .7; return; } // [instruments]
-    if (kind === 'spear' ? spearRep?.use() : kind === 'hammer' && spearRep?.useHammer()) return; // [spear-repair] thrust / repair a damaged tile
+    if (kind === 'spear' ? spearRep?.use() : kind === 'hammer' ? spearRep?.useHammer() : kind === 'armor' && spearRep?.useArmor()) return; // [spear-repair] thrust / repair a damaged tile; [armor] fit armor
     if (isEdible(kind)) { // [vitals] a fresh cup on a planter still waters it, a salt cup at a purifier still loads it
       const w = CUP_KINDS.includes(kind) ? wateringTarget(aim) : null;
       if (w?.click) { swing = 1; action(w.click); } else startEat(kind);
@@ -1414,7 +1416,7 @@ export function mount(transfer = null) {
   function hostState() {
     const c = guestBag.counts();
     return {type:'state', v:3, ack:guestAck, bag:guestBag.snapshot(), other:pose(),
-      world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items, ext:content ? content.serialize() : world.ext, sailing:world.sailing, signal:world.signal, notes:world.notes, achievements:world.achievements, garden:world.garden, purifiers:world.purifiers, collectors:world.collectors, sprinklers:world.sprinklers, tileHp:world.tileHp, ...(world.pieces !== sentPieces ? {pieces:(sentPieces = world.pieces)} : {})}, ...(shark ? {shark:shark.net().slice()} : {})}; // content hook: ext; shark lane: tileHp + compact shark pose
+      world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items, ext:content ? content.serialize() : world.ext, sailing:world.sailing, signal:world.signal, notes:world.notes, achievements:world.achievements, garden:world.garden, purifiers:world.purifiers, collectors:world.collectors, sprinklers:world.sprinklers, tileHp:world.tileHp, tileArmor:world.tileArmor, ...(world.pieces !== sentPieces ? {pieces:(sentPieces = world.pieces)} : {})}, ...(shark ? {shark:shark.net().slice()} : {})}; // content hook: ext; shark lane: tileHp + compact shark pose
   }
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, held:heldKind()});
   function frame() {
@@ -1845,6 +1847,7 @@ export function mount(transfer = null) {
     get target() { const s = shark?.sim; return s?.hasTarget ? {x:s.tx, z:s.tz, nx:s.nx, nz:s.nz} : null; },
     get looted() { return !!shark?.sim.looted; }, get respawn() { return shark?.sim.respawn ?? null; },
     get tileHp() { return {...(world.tileHp || {})}; },
+    get tileArmor() { return {...(world.tileArmor || {})}; }, // [armor]
     get pose() { const v = shark?.view; return v ? {x:v.x, z:v.z, heading:v.heading, visible:shark.visible, y:shark.visible ? ocean.getHeight(v.x, v.z) + v.depth : null} : null; },
     get canHarvest() { return canHarvestShark(); },
     forceAttack() { return role !== 'guest' && !!shark?.forceAttack(); },

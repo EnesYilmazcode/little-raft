@@ -209,6 +209,10 @@ const LIST = [
     recipe: hand({ wood: 3, rope: 3, nail: 2 }), unlock: discover('nail'),
     tip: 'Place it near the edge and it scoops up passing debris (even barrels!) for you.' }),
 
+  item('armor', 'Foundation Armor', 'build', { iconTint: '#8e9aa4',
+    recipe: hand({ metalingot: 1, nail: 2 }), unlock: research('metalingot', 'nail'),
+    tip: 'Metal plates for one foundation. Hold it and click a tile: the shark will not bite an armored tile.' }),
+
   // ----- stations -----
   item('researchtable', 'Research Table', 'station', { iconTint: '#c69860', stack: 5, placeable: true,
     recipe: hand({ wood: 10, nail: 4, rope: 2 }), unlock: discover('nail'),

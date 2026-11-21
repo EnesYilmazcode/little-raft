@@ -23,6 +23,7 @@ const CATEGORY_OF = Object.freeze({
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
   researchtable: 'building', grill: 'building', smelter: 'building',
+  armor: 'building', // foundation armor (dist/armor.js)
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
@@ -68,6 +69,7 @@ export const ITEM_TEXT = Object.freeze({
   glass:      { desc: 'A pane of glass melted from sand.', use: 'Lenses for binoculars.' },
   bolt:       { desc: 'A threaded metal bolt.', use: 'Strong joints for advanced builds.' },
   hinge:      { desc: 'A small metal hinge.', use: 'Lids, doors and folding parts.' },
+  armor:      { desc: 'Riveted metal plates for one foundation.', use: 'Hold it and click a tile: the shark leaves armored tiles alone.' },
   metalhook:  { desc: 'A heavy metal hook that lasts much longer.', use: 'Throw it like the hook; wears far slower.' },
   spear:      { desc: 'A driftwood pole with a lashed flint point.', use: 'Click to jab: 5 damage, wears only when it lands.' },
   metalspear: { desc: 'A sturdy shaft with a steel point.', use: 'Click to jab: 10 damage, lasts twice as long.' },

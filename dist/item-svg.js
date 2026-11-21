@@ -70,6 +70,13 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M10 12 L35 9.5" stroke="#fff" stroke-width="1.2" stroke-opacity=".7" stroke-linecap="round"/>
     <path d="M42 2 V8 M39 5 H45" stroke="#fff2cc" stroke-width="1.6" stroke-linecap="round"/>`,
 
+  armor: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M5 16 L24 9 L43 16 L43 22 L24 15 L5 22 Z" fill="#c6d6e0"/>
+    <path d="M5 22 L24 15 L43 22 V37 L24 43 L5 37 Z" fill="#9fb1bf"/>
+    <path d="M24 15 V43" fill="none" stroke-width="1.5"/></g>
+    <g fill="#4e6372" stroke="${O}" stroke-width="1.1"><circle cx="11" cy="27" r="1.9"/><circle cx="11" cy="34" r="1.9"/><circle cx="37" cy="27" r="1.9"/><circle cx="37" cy="34" r="1.9"/><circle cx="24" cy="21" r="1.6"/></g>
+    <path d="M8 18.5 L24 12.6" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-opacity=".8"/>`,
+
   hinge: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <rect x="4" y="11" width="18" height="27" rx="2" fill="#9fb1bf"/>
     <path d="M26 12 L42 7 V40 L26 37 Z" fill="#7d93a3"/>
