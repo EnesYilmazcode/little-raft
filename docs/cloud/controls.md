@@ -21,7 +21,7 @@ Branch: `claude/raft-controls`. All of the lane's code is in new files under `di
 | Look | Mouse | Right stick (deadzone 0.15, curve 2, 2.6 rad/s) |
 | Jump | Space | A |
 | Sprint (hold or toggle) | Shift | L3 |
-| Crouch (hold or toggle) | Left Ctrl / C | B |
+| Crouch (hold or toggle) | C | B |
 | Use / throw | Left mouse | RT (analog) |
 | Aim / reel | Right mouse | LT (analog) |
 | Interact | E | X |
@@ -29,7 +29,6 @@ Branch: `claude/raft-controls`. All of the lane's code is in new files under `di
 | Hotbar 1–0 | 1…0 | — |
 | Hotbar next/prev | Wheel | RB / LB |
 | Rotate | R | R3 |
-| Drop | Q | Back |
 | Pause | Esc | Start |
 | Build radial | — | D-pad up (hold) |
 
@@ -51,7 +50,7 @@ Branch: `claude/raft-controls`. All of the lane's code is in new files under `di
 ### For other lanes
 - **Menus:** call `raftControls.mountTab(container)` to mount the tab, and `raftControls.unmountTab(tab)` to remove it. The dialog must call `document.exitPointerLock()` when it opens.
 - **Audio:** listen for the `window` event `little-raft-footstep` (`{side, sprint, crouch}`).
-- **Building:** listen for the `window` event `little-raft-action`, which carries `{id:'drop'}`, `{id:'rotate'}` or `{id:'buildPick', piece}`. R still runs the game's existing repair action.
+- **Building:** listen for the `window` event `little-raft-action`, which carries `{id:'rotate'}` (and `{id:'buildPick', piece}` only when the host passes no `buildPick` callback; game.js does, and selects the hammer plus that piece). R still runs the game's existing repair action.
 - **Ladders:** call `raftControls.feel.setLadder({bottomY, topY, x, z, normal:[nx,nz]})`, then use `ladderInput()` to get climb `vy` and when to detach.
 - **Physics:** for crisper stops, a separate ground deceleration rate in `player-physics.js` (about 20/s) could replace the brake in `controls.js`.
 
@@ -73,7 +72,7 @@ In game, the crouch camera sits 0.54 m lower (camera y 1.738 → 1.203).
 - Keys are released on blur, a hidden tab, pointer lock loss (mouse buttons), Meta keyup (stuck keys on macOS) and dialogs opening.
 - Key auto-repeat never counts as a new press, and keys typed in form fields are ignored.
 - The first mouse move after lock is dropped, and so is any move over 300 px.
-- Ctrl chords are blocked while crouching (no Save or Bookmark dialogs).
+- Ctrl chords are blocked while crouching on a Ctrl binding (no Save or Bookmark dialogs). Crouch defaults to C: Ctrl+W would close the tab.
 - One wheel event steps the hotbar exactly once.
 - Gamepads are polled again every frame. Null entries and non-standard mappings are ignored, and the pad used most recently is the one that counts.
 - Triggers have hysteresis (on above 0.5, off below 0.4).

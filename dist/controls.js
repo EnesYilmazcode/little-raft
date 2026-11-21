@@ -1,7 +1,7 @@
 // Little Raft - controls glue. Wires input.js (keyboard/mouse/gamepad action map) and move-feel.js
 // (accel ramp, footstep bob, crouch, landing dip) into game.js through a handful of callbacks, so
-// game.js only needs tiny hooks (search "controls lane" there). Discrete actions the game has no
-// handler for (drop, rotate, buildPick) are re-emitted as window 'little-raft-action' CustomEvents,
+// game.js only needs tiny hooks (search "controls lane" there). rotate (and buildPick when g.buildPick is missing)
+// is also emitted as a window 'little-raft-action' CustomEvent,
 // footfalls as 'little-raft-footstep', so other lanes can listen without touching this file.
 import { ActionMap } from './input-map.js';
 import { createInput } from './input.js';
@@ -20,32 +20,37 @@ function storage() { try { return globalThis.localStorage ?? null; } catch { ret
 const emit = (type, detail) => { try { globalThis.dispatchEvent?.(new CustomEvent(type, {detail})); } catch {} };
 
 // g: {canvas, isBlocked, sensitivity, motion, look(dx,dy), hotbarSize, slot(), selectSlot(i), interact(),
-//     inventory(), repair(), pause(), useDown(), useUp(), useCancel(), reelDown(), reelUp(), buildPieces?}
+//     inventory(), repair(back), pause(), menuBack(id) (pad closes the open menu), useDown(), useUp(), useCancel(), reelDown(), reelUp(),
+//     buildPieces? (list or () => list of {id,label}), buildPick?(id)}
 export function createControls(g) {
   const map = new ActionMap({storage:storage()});
   const feel = new MoveFeel({motionScale:1});
   let idle = true, radial = null, cursor = [0, 0], tabs = new Set(), fx = {bobY:0, bobX:0, roll:0, eyeOffset:0, footstep:false}, padUse = false, padReel = false;
   const call = (name, ...a) => { try { return g[name]?.(...a); } catch (e) { console.error('controls:', name, e); } };
 
-  const onAction = (id, phase) => {
+  const onAction = (id, phase, info) => {
+    if (info?.blocked) { // pad Y / Start / B while a menu is open: close it (never while a rebind is listening)
+      if (![...tabs].some(t => t.capturing)) { call('menuBack', id); input.clear(); }
+      return;
+    }
     const pad = input.activeDevice === 'pad';
     if (phase === 'down') {
       if (id === 'interact') call('interact');
       else if (id === 'inventory') call('inventory');
       else if (id === 'pause' && pad) call('pause'); // Escape on the keyboard is owned by settings.js / pointer lock
-      else if (id === 'rotate') { call('repair'); emit('little-raft-action', {id}); } // game's R = repair today
-      else if (id === 'drop') emit('little-raft-action', {id});
+      else if (id === 'rotate') { call('repair', input.shiftHeld()); emit('little-raft-action', {id}); } // game's R = repair today
       else if (id === 'buildMenu') openRadial();
       else if ((id === 'use' || id === 'aim') && pad) return; // pad triggers handled analog in frame()
     } else if (id === 'buildMenu') radial?.confirm();
     else if (id === 'rotate') call('release'); // let go of a steered sail on any device
   };
-  const input = createInput({element:g.canvas, map, onAction, sensitivity:g.sensitivity,
+  const input = createInput({element:g.canvas, map, onAction, sensitivity:g.sensitivity, blockedActions:['inventory', 'pause'],
     isBlocked:() => [...tabs].some(t => t.capturing) || (!!g.isBlocked?.() && !radial?.isOpen)});
 
   function openRadial() {
     if (g.isBlocked?.()) return;
-    radial ??= createBuildRadial({items:g.buildPieces ?? BUILD_PIECES, onPick:it => emit('little-raft-action', {id:'buildPick', piece:it?.id})});
+    const items = (typeof g.buildPieces === 'function' ? g.buildPieces() : g.buildPieces) ?? BUILD_PIECES;
+    radial ??= createBuildRadial({items, onPick:it => g.buildPick ? call('buildPick', it?.id) : emit('little-raft-action', {id:'buildPick', piece:it?.id})});
     cursor = [0, 0]; radial.open();
   }
 
@@ -73,7 +78,7 @@ export function createControls(g) {
     const crouch = active && input.crouching();
     const shaped = feel.shapeInput(dt, {forward:m.forward, strafe:m.strafe, sprint:active && input.sprinting(), crouch,
       grounded:physics.grounded, swimming:physics.swimming});
-    return {...shaped, jump:active && input.down('jump'), crouch};
+    return {...shaped, jump:active && (input.down('jump') || input.pressed('jump')), crouch}; // pressed: a sub-frame tap still jumps / rises
   }
   // Call after physics.update(); ev is its return value.
   function afterMove(dt, physics, ev) {
