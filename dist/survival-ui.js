@@ -250,7 +250,7 @@ const CSS = `
 #inventory .sv-recipe.sv-ready{background:#ffffff12}
 #inventory .sv-recipe:hover{background:#ffffff17;box-shadow:inset 0 0 0 1px #fff6e0a8}
 #inventory .sv-recipe.sv-pick{background:linear-gradient(180deg,#46545ad0,#1c2529dc);box-shadow:inset 0 0 0 2px #fff6e0}
-#inventory .sv-recipe.sv-locked .sv-rart>*{filter:grayscale(.85) brightness(.7);opacity:.75}
+#inventory .sv-recipe.sv-locked .sv-rart>*{filter:grayscale(.7);opacity:.8}
 #inventory .sv-recipe.sv-locked .sv-rname{color:#f4efe2a0}
 #inventory .sv-recipe .sv-rart{width:42px;height:42px}
 #inventory .sv-recipe .sv-rart .sv-icon{width:36px;height:36px}

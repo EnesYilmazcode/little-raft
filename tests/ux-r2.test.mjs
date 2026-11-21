@@ -19,6 +19,25 @@ test('UX-3: slot tooltip words the stack size so it is not read as have/need', (
   assert.doesNotMatch(book.stackLabel(7, 20), /^\d+ \/ \d+$/);
 });
 
+test('UX-4: hammer and rod icons are posed side-on (head and reel face the camera) and the rod is thickened', async () => {
+  const T = await import(new URL('vendor/three.module.js', base));
+  const icons = await import(new URL('item-icons.js', base));
+  const view = new T.Vector3(1, 0.85, 1.35).normalize(); // item-icons.js camera direction
+  for (const kind of ['hammer', 'fishingrod']) {
+    const e = new T.Euler(...icons.POSE[kind]);
+    const along = new T.Vector3(0, 1, 0).applyEuler(e).dot(view);  // tool length (local +Y)
+    const head = new T.Vector3(0, 0, 1).applyEuler(e).dot(view);   // hammer head / reel side (local Z)
+    assert.ok(Math.abs(along) < 0.3, `${kind}: length lies in the picture plane (${along.toFixed(2)})`);
+    assert.ok(Math.abs(head) < 0.6, `${kind}: head/reel not seen edge-on (${head.toFixed(2)})`);
+  }
+  assert.ok(icons.ICON_FATTEN.fishingrod >= 2, 'the rod is thick enough to read at slot size');
+  // Locked recipes stay legible: no brightness cut on the icon.
+  const { readFile } = await import('node:fs/promises');
+  const ui = await readFile(new URL('survival-ui.js', base), 'utf8');
+  const rule = ui.match(/\.sv-locked \.sv-rart>\*\{([^}]*)\}/)[1];
+  assert.doesNotMatch(rule, /brightness/);
+});
+
 test('UX-5: the pickup feed gets the bag\'s 3D icons from the same item-icons module instance', async () => {
   const { readFile } = await import('node:fs/promises');
   const src = await readFile(new URL('game.js', base), 'utf8');
