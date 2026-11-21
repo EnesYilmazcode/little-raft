@@ -1,0 +1,290 @@
+{
+ "shots": [
+  "01-hud.png",
+  "02-select-90ms.png",
+  "03-select-150ms.png",
+  "04-pickup-150ms.png",
+  "05-pickup-420ms.png",
+  "06-pickup-landing.png",
+  "07-toast-stack.png",
+  "08-toast-merge-110ms.png",
+  "09-damage-300ms.png",
+  "10-damage-700ms.png",
+  "11-heal-380ms.png",
+  "12-low-pulse.png",
+  "13-inv-open-70ms.png",
+  "14-inv-open.png",
+  "15-recipe-pressed.png",
+  "16-craft-140ms.png",
+  "17-inv-close-60ms.png",
+  "18-slot-pressed.png",
+  "19-crosshair-states.png",
+  "20-reduced-motion-150ms.png",
+  "21-phone-pickup-300ms.png"
+ ],
+ "cost": {
+  "idle": {
+   "coldLongestTaskMs": 201,
+   "frames": 149,
+   "avgFrameMs": 29.64,
+   "worstFrameMs": 399.9,
+   "styleMs": 0,
+   "styleCount": 0,
+   "layoutMs": 0,
+   "layoutCount": 0,
+   "scriptMs": 3.98,
+   "taskMs": 28.17,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "perFrame": {
+    "styleMs": 0.0,
+    "layoutMs": 0.0,
+    "scriptMs": 0.0
+   },
+   "extraLayouts": 0
+  },
+  "select": {
+   "coldLongestTaskMs": 0,
+   "frames": 149,
+   "avgFrameMs": 29.98,
+   "worstFrameMs": 383.3,
+   "styleMs": 33.83,
+   "styleCount": 132,
+   "layoutMs": 0.18,
+   "layoutCount": 2,
+   "scriptMs": 12.31,
+   "taskMs": 149.1,
+   "longTasks": 1,
+   "longestTaskMs": 224,
+   "perFrame": {
+    "styleMs": 0.227,
+    "layoutMs": 0.001,
+    "scriptMs": 0.056
+   },
+   "extraLayouts": 2
+  },
+  "select-nofeel": {
+   "coldLongestTaskMs": 163,
+   "frames": 149,
+   "avgFrameMs": 30.65,
+   "worstFrameMs": 316.6,
+   "styleMs": 7.57,
+   "styleCount": 40,
+   "layoutMs": 0,
+   "layoutCount": 0,
+   "scriptMs": 2.9,
+   "taskMs": 53.7,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "perFrame": {
+    "styleMs": 0.051,
+    "layoutMs": 0.0,
+    "scriptMs": -0.007
+   },
+   "extraLayouts": 0
+  },
+  "pickup": {
+   "coldLongestTaskMs": 252,
+   "frames": 149,
+   "avgFrameMs": 35.01,
+   "worstFrameMs": 383.3,
+   "styleMs": 46.95,
+   "styleCount": 150,
+   "layoutMs": 6.6,
+   "layoutCount": 31,
+   "scriptMs": 8.48,
+   "taskMs": 244.93,
+   "longTasks": 2,
+   "longestTaskMs": 124,
+   "perFrame": {
+    "styleMs": 0.315,
+    "layoutMs": 0.044,
+    "scriptMs": 0.03
+   },
+   "extraLayouts": 31
+  },
+  "pickup-nofeel": {
+   "coldLongestTaskMs": 0,
+   "frames": 149,
+   "avgFrameMs": 24.38,
+   "worstFrameMs": 233.3,
+   "styleMs": 0.81,
+   "styleCount": 11,
+   "layoutMs": 1.61,
+   "layoutCount": 11,
+   "scriptMs": 3.49,
+   "taskMs": 33.05,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "perFrame": {
+    "styleMs": 0.005,
+    "layoutMs": 0.011,
+    "scriptMs": -0.003
+   },
+   "extraLayouts": 11
+  },
+  "toast": {
+   "coldLongestTaskMs": 0,
+   "frames": 149,
+   "avgFrameMs": 23.15,
+   "worstFrameMs": 250,
+   "styleMs": 18.96,
+   "styleCount": 133,
+   "layoutMs": 3.39,
+   "layoutCount": 23,
+   "scriptMs": 3.73,
+   "taskMs": 132.74,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "perFrame": {
+    "styleMs": 0.127,
+    "layoutMs": 0.023,
+    "scriptMs": -0.002
+   },
+   "extraLayouts": 23
+  },
+  "stats": {
+   "coldLongestTaskMs": 80,
+   "frames": 149,
+   "avgFrameMs": 27.18,
+   "worstFrameMs": 433.3,
+   "styleMs": 23.74,
+   "styleCount": 150,
+   "layoutMs": 0,
+   "layoutCount": 0,
+   "scriptMs": 3.0,
+   "taskMs": 118.32,
+   "longTasks": 1,
+   "longestTaskMs": 56,
+   "perFrame": {
+    "styleMs": 0.159,
+    "layoutMs": 0.0,
+    "scriptMs": -0.007
+   },
+   "extraLayouts": 0
+  },
+  "crosshair": {
+   "coldLongestTaskMs": 0,
+   "frames": 149,
+   "avgFrameMs": 33.44,
+   "worstFrameMs": 433.3,
+   "styleMs": 13.42,
+   "styleCount": 119,
+   "layoutMs": 1.74,
+   "layoutCount": 16,
+   "scriptMs": 3.31,
+   "taskMs": 82.2,
+   "longTasks": 1,
+   "longestTaskMs": 143,
+   "perFrame": {
+    "styleMs": 0.09,
+    "layoutMs": 0.012,
+    "scriptMs": -0.004
+   },
+   "extraLayouts": 16
+  },
+  "inventory": {
+   "coldLongestTaskMs": 332,
+   "frames": 149,
+   "avgFrameMs": 43.85,
+   "worstFrameMs": 583.2,
+   "styleMs": 38.09,
+   "styleCount": 72,
+   "layoutMs": 8.7,
+   "layoutCount": 16,
+   "scriptMs": 3.63,
+   "taskMs": 132.36,
+   "longTasks": 6,
+   "longestTaskMs": 427,
+   "perFrame": {
+    "styleMs": 0.256,
+    "layoutMs": 0.058,
+    "scriptMs": -0.002
+   },
+   "extraLayouts": 16
+  },
+  "inventory-nofeel": {
+   "coldLongestTaskMs": 0,
+   "frames": 149,
+   "avgFrameMs": 21.92,
+   "worstFrameMs": 166.6,
+   "styleMs": 17.37,
+   "styleCount": 20,
+   "layoutMs": 8.53,
+   "layoutCount": 12,
+   "scriptMs": 3.32,
+   "taskMs": 70.14,
+   "longTasks": 1,
+   "longestTaskMs": 120,
+   "perFrame": {
+    "styleMs": 0.117,
+    "layoutMs": 0.057,
+    "scriptMs": -0.004
+   },
+   "extraLayouts": 12
+  },
+  "naive-select": {
+   "coldLongestTaskMs": 0,
+   "frames": 149,
+   "avgFrameMs": 20.81,
+   "worstFrameMs": 200,
+   "styleMs": 27.46,
+   "styleCount": 189,
+   "layoutMs": 0,
+   "layoutCount": 0,
+   "scriptMs": 4.04,
+   "taskMs": 94.57,
+   "longTasks": 1,
+   "longestTaskMs": 89,
+   "perFrame": {
+    "styleMs": 0.184,
+    "layoutMs": 0.0,
+    "scriptMs": 0.0
+   },
+   "extraLayouts": 0
+  },
+  "naive-toast": {
+   "coldLongestTaskMs": 156,
+   "frames": 149,
+   "avgFrameMs": 28.41,
+   "worstFrameMs": 249.9,
+   "styleMs": 12.13,
+   "styleCount": 116,
+   "layoutMs": 9.51,
+   "layoutCount": 116,
+   "scriptMs": 3.53,
+   "taskMs": 122.86,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "perFrame": {
+    "styleMs": 0.081,
+    "layoutMs": 0.064,
+    "scriptMs": -0.003
+   },
+   "extraLayouts": 116
+  },
+  "naive-stats": {
+   "coldLongestTaskMs": 79,
+   "frames": 149,
+   "avgFrameMs": 23.04,
+   "worstFrameMs": 283.2,
+   "styleMs": 7.63,
+   "styleCount": 110,
+   "layoutMs": 8.04,
+   "layoutCount": 105,
+   "scriptMs": 3.65,
+   "taskMs": 85.69,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "perFrame": {
+    "styleMs": 0.051,
+    "layoutMs": 0.054,
+    "scriptMs": -0.002
+   },
+   "extraLayouts": 105
+  }
+ },
+ "errors": [],
+ "reducedMotionActive": true,
+ "cost_reps": 3
+}
