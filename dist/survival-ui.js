@@ -127,7 +127,7 @@ const CSS = `
 .tools.sv-hotbar::before,.tools.sv-hotbar::after{content:none;display:none}
 .tools.sv-hotbar>button.sv-slot,#inventory.sv-inv button.sv-slot{
   position:relative;display:block;flex:0 0 auto;width:var(--s);height:var(--s);min-width:0;min-height:0;margin:0;padding:0;border:0;border-radius:6px;
-  background:linear-gradient(180deg,#20282cb0,#0d1215c4);
+  background:linear-gradient(180deg,#20282ce6,#0d1215f0);
   box-shadow:inset 0 0 0 1px #ffffff1c,inset 0 1px 0 #ffffff14,0 2px 8px #0005;
   color:#f4efe2;font:600 14px/1 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;outline:none;
   transition:transform .18s cubic-bezier(.3,1.5,.5,1),background .15s,box-shadow .15s}
@@ -145,8 +145,8 @@ const CSS = `
 .sv-slot .sv-dur>i{display:block;height:100%;width:100%;background:#8fd36a;transition:width .3s}
 .sv-slot.sv-bumpA .sv-art{animation:svBumpA .34s ease-out}.sv-slot.sv-bumpB .sv-art{animation:svBumpB .34s ease-out}
 @keyframes svBumpA{35%{transform:scale(1.22) rotate(-6deg)}}@keyframes svBumpB{35%{transform:scale(1.22) rotate(-6deg)}}
-.tools.sv-hotbar>button.sv-slot:hover,#inventory.sv-inv button.sv-slot:hover{background:linear-gradient(180deg,#323d42c0,#151c20d0)}
-.tools.sv-hotbar>button.sv-slot.sv-sel{transform:scale(1.06);background:linear-gradient(180deg,#46545ad0,#1c2529dc);box-shadow:inset 0 1px 0 #ffffff26,0 6px 14px #0007}
+.tools.sv-hotbar>button.sv-slot:hover,#inventory.sv-inv button.sv-slot:hover{background:linear-gradient(180deg,#323d42ec,#151c20f2)}
+.tools.sv-hotbar>button.sv-slot.sv-sel{transform:scale(1.06);background:linear-gradient(180deg,#46545aee,#1c2529f4);box-shadow:inset 0 1px 0 #ffffff26,0 6px 14px #0007}
 .tools.sv-hotbar>button.sv-slot.sv-sel .sv-art{scale:1.1}
 .tools.sv-hotbar>button.sv-slot.sv-sel .sv-num{opacity:.95}
 .tools.sv-hotbar>button.sv-slot:focus-visible,#inventory.sv-inv button.sv-slot:focus-visible{outline:2px solid #fff3d6;outline-offset:1px}
@@ -172,7 +172,7 @@ const CSS = `
 #inventory .sv-h{align-self:stretch;margin:2px 2px 1px;font:800 11px/1 ${FONT};letter-spacing:2.2px;text-transform:uppercase;color:#f4efe2b3}
 #inventory .sv-craft>.sv-h{margin:4px 2px 10px}
 #inventory .sv-slot.sv-hot{background:linear-gradient(180deg,#26313690,#10171ab0)}
-#inventory.sv-inv button.sv-slot.sv-sel{background:linear-gradient(180deg,#46545ad0,#1c2529dc);box-shadow:inset 0 0 0 2px #fff6e0,0 0 12px #fff3d633}
+#inventory.sv-inv button.sv-slot.sv-sel{background:linear-gradient(180deg,#46545aee,#1c2529f4);box-shadow:inset 0 0 0 2px #fff6e0,0 0 12px #fff3d633}
 #inventory.sv-inv button.sv-slot.sv-src{background:linear-gradient(180deg,#5d4a2ad0,#2b2214dc);box-shadow:inset 0 0 0 2px #ffc66e,0 0 12px #ffc66e66;transform:translateY(-3px)}
 #inventory.sv-inv button.sv-slot.sv-over{box-shadow:inset 0 0 0 2px #9fe0d6,0 0 10px #9fe0d677;transform:scale(1.06)}
 #inventory.sv-inv button.sv-slot.sv-deny{box-shadow:inset 0 0 0 2px #e06a4a,0 0 6px #e06a4a88;animation:svShake .26s}
@@ -195,7 +195,7 @@ const CSS = `
 #inventory .sv-recipe:disabled{cursor:not-allowed}
 #inventory .sv-recipe:disabled .sv-rart,#inventory .sv-recipe:disabled .sv-rname{opacity:.55}
 #inventory .sv-recipe:focus-visible{outline:2px solid #fff3d6;outline-offset:1px}
-#inventory .sv-rart{display:grid;place-items:center;width:48px;height:48px;border-radius:6px;background:linear-gradient(180deg,#20282cb0,#0d1215c4);box-shadow:inset 0 0 0 1px #ffffff1c}
+#inventory .sv-rart{display:grid;place-items:center;width:48px;height:48px;border-radius:6px;background:linear-gradient(180deg,#20282ce6,#0d1215f0);box-shadow:inset 0 0 0 1px #ffffff1c}
 #inventory .sv-rart .sv-icon{width:42px;height:42px;filter:drop-shadow(0 2px 2px #0009)}
 #inventory .sv-rart svg.sv-icon{width:32px;height:32px}
 #inventory .sv-rbody{display:block;min-width:0}
