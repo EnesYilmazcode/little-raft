@@ -190,3 +190,56 @@ test('module: zoom gate, debug force/snap, menus snap to 1, nothing saved', () =
   m.dispose();
   assert.equal(globalThis.raftSpyglass, undefined);
 });
+
+test('module: fainted (hp 0) never zooms; an idle frame with another tool never queries the UI', () => {
+  const f = fakeCtx('hammer');
+  let uiCalls = 0; const ui = f.ctx.uiOpen; f.ctx.uiOpen = () => { uiCalls++; return ui(); };
+  const m = createSpyglass(f.ctx);
+  for (let i = 0; i < 10; i++) { m.update(1 / 60); m.zoom(); m.prompt(null); }
+  assert.equal(uiCalls, 0, 'hammer in hand: gate stops at the kind check');
+  f.ctx.vitals = { hp: 0 };
+  m.debug.force('spyglass', { snap: true });
+  assert.equal(m.zoom(), 1, 'faint card: no zoom');
+  m.update(1 / 60); assert.equal(m.debug.t(), 0);
+  f.ctx.vitals = { hp: 50 };
+  m.debug.force('spyglass', { snap: true });
+  assert.equal(m.zoom(), 3, 'awake again');
+  m.dispose();
+});
+
+test('module: pad LT holds the zoom without pointer lock and the prompt names LT', async () => {
+  const { ActionMap } = await import(new URL('input-map.js' + BUILD, base));
+  const prevDoc = globalThis.document, prevRc = globalThis.raftControls;
+  let aim = false;
+  const input = { activeDevice: 'pad', down: id => id === 'aim' && aim };
+  globalThis.document = { hidden: false, pointerLockElement: null, body: { classList: { contains: () => false } } };
+  globalThis.raftControls = { input, map: new ActionMap({}) };
+  try {
+    const f = fakeCtx('spyglass');
+    const m = createSpyglass(f.ctx);
+    m.update(1 / 60);
+    assert.match(m.prompt(null), /^<kbd>LT<\/kbd>Hold to look$/);
+    aim = true;
+    for (let i = 0; i < 20; i++) m.update(0.02);
+    assert.equal(m.zoom(), 3, 'unlocked pad LT zooms');
+    input.activeDevice = 'kbm';
+    for (let i = 0; i < 20; i++) m.update(0.02);
+    assert.equal(m.zoom(), 1, 'unlocked mouse does not (input.js only counts RMB while locked)');
+    aim = false;
+    assert.match(m.prompt(null), /^<kbd>RMB<\/kbd>Hold to look$/);
+    m.dispose();
+  } finally {
+    if (prevDoc === undefined) delete globalThis.document; else globalThis.document = prevDoc;
+    if (prevRc === undefined) delete globalThis.raftControls; else globalThis.raftControls = prevRc;
+  }
+});
+
+test('zoomed crosshair CSS targets the current graphics.css dot, not the old ring markup', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('spyglass.js', base), 'utf8');
+  assert.ok(!/#crosshair i\b|#crosshair:before/.test(src), 'old style.css selectors removed');
+  const rule = /body\.lr-spy #crosshair\{([^}]*)\}/.exec(src);
+  assert.ok(rule, 'body.lr-spy #crosshair rule present');
+  assert.match(rule[1], /background:[^;]*!important/, 'beats graphics.css #crosshair background !important');
+  assert.match(rule[1], /box-shadow:[^;]*rgba\(8,22,36,\.9\)/, 'dark outline so the dot reads on bright sky');
+});

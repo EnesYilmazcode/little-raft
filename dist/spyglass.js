@@ -94,8 +94,7 @@ const CSS = `#lrSpyVignette{position:fixed;inset:0;pointer-events:none;z-index:2
 #lrSpyLabel{position:fixed;left:50%;top:calc(50% + 30px);transform:translateX(-50%);padding:3px 10px;border-radius:8px;
   background:rgba(8,22,36,.6);color:#f6ecd6;font:700 14px/1.3 system-ui,sans-serif;white-space:nowrap;pointer-events:none;z-index:4}
 body.lr-spy #lrPrompt,body.lr-spy #binocularsHud,body.lr-spy #treasureHud,body.lr-spy #chargeMeter{visibility:hidden!important}
-body.lr-spy #crosshair:before{opacity:0}
-body.lr-spy #crosshair i{width:4px;height:4px;margin:-2px 0 0 -2px}`;
+body.lr-spy #crosshair{width:6px;height:6px;opacity:1;background:#fff!important;box-shadow:0 0 0 1.5px rgba(8,22,36,.9),0 0 5px rgba(0,0,0,.7)!important}`; // graphics.css dot (#fffd, faint shadow) vanishes on bright sky at zoom
 
 export function createSpyglass(ctx) {
   const T = ctx.T;
@@ -123,20 +122,23 @@ export function createSpyglass(ctx) {
     return s ? s.kind : null;
   }
   // The zoomable kind in hand right now, or null (not running, menu, swimming, diving, hidden tab, other kind).
+  // Cheapest checks first: the kind test means an idle frame never touches the DOM (uiOpen queries dialog[open]).
   function gate() {
-    if (!ctx.running || (ctx.uiOpen && ctx.uiOpen()) || ctx.physics?.swimming) return null;
+    if (!ctx.running) return null;
+    const k = forced || heldKind();
+    if (!zoomFor(k)) return null;
+    if (ctx.physics?.swimming || (ctx.vitals && ctx.vitals.hp <= 0)) return null; // fainted: hp stays 0 until the wake-up
     const cam = ctx.camera, sea = ctx.ocean?.mesh?.position?.y ?? 0;
     if (cam && cam.position && cam.position.y < sea) return null;
     const d = doc(); if (d && d.hidden) return null;
-    if (forced) return forced;
-    const k = heldKind();
-    return zoomFor(k) ? k : null;
+    if (ctx.uiOpen && ctx.uiOpen()) return null;
+    return k;
   }
   function held() {
     if (forced) return true;
     const d = doc(); if (!d) return false;
     const rc = globalThis.raftControls;
-    if (d.pointerLockElement && rc?.input?.down?.('aim')) return true;
+    if (rc?.input?.down?.('aim') && (d.pointerLockElement || rc.input.activeDevice === 'pad')) return true; // pad LT works unlocked too
     return rmbDrag && (!!d.body?.classList.contains('drag-look') || !rc?.input);
   }
 
@@ -193,10 +195,11 @@ export function createSpyglass(ctx) {
   }
 
   function keyText() {
-    const code = globalThis.raftControls?.map?.bindings?.aim?.keys?.[0] ?? null;
+    const rc = globalThis.raftControls, aim = rc?.map?.bindings?.aim;
+    const code = (rc?.input?.activeDevice === 'pad' ? aim?.pad?.[0] : aim?.keys?.[0]) ?? null; // pad players see LT, not RMB
     if (code !== promptCode) {
       promptCode = code;
-      const map = globalThis.raftControls?.map;
+      const map = rc?.map;
       let txt = 'RMB';
       if (code && code !== 'Mouse2' && map && typeof map.label === 'function') { try { txt = String(map.label(code)); } catch { txt = 'RMB'; } }
       const e = ctx.esc ? ctx.esc(txt) : txt.replace(/[&<>"']/g, '');
