@@ -291,7 +291,7 @@ export function mount(transfer = null) {
     scene.add(new T.HemisphereLight('#f2ead4', '#3d6b6a', 1.8));
     sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.001; scene.add(sun, sun.target);
     quality = createQuality({renderer, sun, preset:options.graphics}); // owns pixel ratio, shadow map size and sun.castShadow
-    ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.receiveShadow = true; scene.add(ocean.mesh); ocean.update(elapsed);
+    ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); // after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000) ocean.update(elapsed);
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
     itemsGroup = new T.Group(); scene.add(itemsGroup);
     player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
@@ -723,7 +723,7 @@ export function mount(transfer = null) {
   }
 
   // ---------- Frame ----------
-  const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3();
+  const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3(), oceanSample = {h:0, sx:0, sz:0};
   // Hook physics floats at a flat WATER_Y; map heights near the water onto the visible waves.
   function surfaceY(x, z, y) {
     const k = clamp((y - WATER_Y) / .6, 0, 1), w = ocean.getHeight(x, z) + .04 + (y - WATER_Y);
@@ -735,11 +735,11 @@ export function mount(transfer = null) {
     ropeAttr.needsUpdate = true; rope.geometry.setDrawRange(0, n); rope.visible = true;
   }
   function updateRaft(dt) {
-    const base = ocean.mesh.position.y, h = ocean.getHeight(0, 0) - base, s = ocean.getSlope(0, 0, undefined, 2.2);
+    const s = ocean.sample(0, 0, oceanSample, undefined, 2.2), h = s.h - ocean.mesh.position.y;
     const ky = Math.min(1, dt * 2), kr = Math.min(1, dt * 1.5);
     raft.position.y += (h * .3 - raft.position.y) * ky;
-    raft.rotation.x += (-s.z * .35 - raft.rotation.x) * kr;
-    raft.rotation.z += (s.x * .35 + Math.sin(elapsed * .7) * .003 - raft.rotation.z) * kr;
+    raft.rotation.x += (-s.sz * .35 - raft.rotation.x) * kr;
+    raft.rotation.z += (s.sx * .35 + Math.sin(elapsed * .7) * .003 - raft.rotation.z) * kr;
   }
   function updateCamera(dt) {
     const fov = running ? options.fov : 48; if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
@@ -793,9 +793,9 @@ export function mount(transfer = null) {
       const u = m.userData;
       if (role === 'guest' && u.sx !== undefined && Math.hypot(it.x - u.sx, it.z - u.sz) < 3) { const k = Math.min(1, dt * 8); u.sx += (it.x - u.sx) * k; u.sz += (it.z - u.sz) * k; }
       else { u.sx = it.x; u.sz = it.z; }
-      const s = ocean.getSlope(u.sx, u.sz);
-      m.position.set(u.sx, ocean.getHeight(u.sx, u.sz) + ITEM_FLOAT, u.sz);
-      m.rotation.set(-s.z * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.x * 1.2 + Math.sin(elapsed + it.phase) * .05);
+      const s = ocean.sample(u.sx, u.sz, oceanSample);
+      m.position.set(u.sx, s.h + ITEM_FLOAT, u.sz);
+      m.rotation.set(-s.sz * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.sx * 1.2 + Math.sin(elapsed + it.phase) * .05);
     }
   }
   function endHook() { hook = null; lastCaughtCount = 0; reeling = false; rope.visible = false; hookMesh.visible = false; }
