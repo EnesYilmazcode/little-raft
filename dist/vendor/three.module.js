@@ -18592,6 +18592,8 @@ function setValueM4( gl, v ) {
 
 function setValueV1i( gl, v ) {
 
+	if ( typeof v === 'boolean' ) v = v ? 1 : 0; // keep uniform caches unboxed
+
 	const cache = this.cache;
 
 	if ( cache[ 0 ] === v ) return;

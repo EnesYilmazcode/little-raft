@@ -503,7 +503,7 @@ function buildLantern(T, K, g) {
   // amber glass (translucent, no shadows) and warm emissive core (no real light)
   K.addTo(g, K.box(0.16, 0.24, 0.16, LX, 1.25, 0), new T.MeshStandardMaterial({
     color: 0xffc56e, transparent: true, opacity: 0.36, roughness: 0.08, metalness: 0,
-    emissive: 0xff9a3c, emissiveIntensity: 0.6, depthWrite: false, side: T.DoubleSide,
+    emissive: 0xff9a3c, emissiveIntensity: 0.6, depthWrite: false, side: T.DoubleSide, forceSinglePass: true,
   }), 'lanternGlass', true);
   K.addTo(g, K.bake(new T.SphereGeometry(0.055, 12, 10), LX, 1.24, 0), new T.MeshStandardMaterial({
     color: 0xffb04a, transparent: true, opacity: 0.4, roughness: 1, emissive: 0xff8c2a, emissiveIntensity: 1.6, depthWrite: false,
