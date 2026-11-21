@@ -142,12 +142,12 @@ export class StationModel {
     this.fuelUnits = this.progress = 0;
     if (!snap || typeof snap !== 'object') return;
     const stack = (s, ok) => {
-      if (!s || typeof s !== 'object' || typeof s.kind !== 'string' || !this.items[s.kind] || !ok(s.kind)) return null;
+      if (!s || typeof s !== 'object' || typeof s.kind !== 'string' || !Object.hasOwn(this.items, s.kind) || !ok(s.kind)) return null;
       const count = Math.min(posInt(s.count), this.stackOf(s.kind));
       return count > 0 ? { kind: s.kind, count } : null;
     };
     this.input = stack(snap.input, (k) => !!this.recipeFor(k));
-    this.output = stack(snap.output, () => true);
+    this.output = stack(snap.output, (k) => this.items[k]?.recipe?.station === this.stationId);
     const f = Number(snap.fuel);
     this.fuelUnits = Number.isFinite(f) ? Math.min(this.fuelCap, Math.max(0, f)) : 0;
     const r = this.recipe, p = Number(snap.progress);

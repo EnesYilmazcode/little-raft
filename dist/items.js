@@ -351,8 +351,14 @@ export function recipeTable() {
   return Object.freeze(out);
 }
 
+// Number() that never throws (Symbols, objects with throwing valueOf, ...): junk -> NaN.
+function num(v) {
+  if (typeof v === 'number') return v;
+  try { return Number(v); } catch { return NaN; }
+}
+
 function toCount(v) {
-  const n = typeof v === 'number' ? v : Number(v);
+  const n = num(v);
   return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), Number.MAX_SAFE_INTEGER) : 0;
 }
 
@@ -379,7 +385,7 @@ export function migrateSnapshot(snap) {
   const overflow = [];
   const ids = new Set();
   const durOf = (raw) => {
-    const d = Number(raw);
+    const d = num(raw);
     return raw === undefined || raw === null || !Number.isFinite(d) ? MAX_DURABILITY : Math.min(MAX_DURABILITY, Math.max(0, d));
   };
   for (let i = 0; i < src.length; i++) {
