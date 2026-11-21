@@ -91,9 +91,11 @@ export function cleanSlice(v, decorAt) {
   for (const key of Object.keys(rods)) {
     if (count >= MAX_RODS) break;
     if (!KEY_RE.test(key)) continue;
+    const c = key.indexOf(','), x = +key.slice(0, c), z = +key.slice(c + 1);
+    if (keyOf(x, z) !== key) continue; // "01,1" or "-0,1" would shadow the real "1,1" / "0,1" entry and never be paid or pruned
     const e = rods[key];
     if (!e || typeof e !== 'object' || Array.isArray(e)) continue;
-    if (decorAt) { const c = key.indexOf(','); if (decorAt(+key.slice(0, c), +key.slice(c + 1)) !== 'stormrod') continue; }
+    if (decorAt && decorAt(x, z) !== 'stormrod') continue;
     const n = Number.isInteger(e.n) ? clamp(e.n, 0, ROD_MAX) : 0;
     const last = Number.isInteger(e.last) && e.last >= -1 ? e.last : -1;
     if (n === 0 && last === -1) continue;
@@ -291,7 +293,7 @@ export function createStorm(ctx, { peek } = {}) {
     }
     if (st.r !== shownR || st !== shownSt) { applySlots(); shownR = st.r; shownSt = st; }
     // host: forget rods whose tile no longer holds a Lightning Rod
-    if (host()) {
+    if (host() && Array.isArray(ctx.world?.decor)) { // no world yet (or mid-swap): never mistake it for "every rod removed"
       pruneClock += dt;
       if (pruneClock >= 1) {
         pruneClock = 0;

@@ -391,3 +391,31 @@ test('debug helpers: place, fill, force, strike (visual only), next; forecast is
   assert.equal(fc.index, nx.index);
   dn.dispose(); m.dispose();
 });
+
+// ---------------------------------------------------------------- review regressions
+test('cleanSlice drops non-canonical keys that would shadow a real rod entry', () => {
+  const v = cleanSlice({ r: 1, rods: { '01,1': { n: 3, last: 5 }, '-0,1': { n: 3, last: 5 }, '1,01': { n: 2, last: 1 }, '1,1': { n: 1, last: 2 } } });
+  assert.deepEqual(v.rods, { '1,1': { n: 1, last: 2 } });
+  const decorAt = (x, z) => (x === 0 && z === 1 ? 'stormrod' : null);
+  assert.deepEqual(cleanSlice({ rods: { '-0,1': { n: 3, last: 1 }, '0,1': { n: 1, last: 1 } } }, decorAt).rods, { '0,1': { n: 1, last: 1 } });
+});
+
+test('host prune keeps rods while the world is briefly missing', () => {
+  resetLive();
+  const ctx = stubCtx();
+  const m = createStorm(ctx);
+  ctx.world.decor.push({ type: 'stormrod', x: 0, z: 1 });
+  m.load({ v: 1, r: 2, rods: { '0,1': { n: 2, last: 7 } } }, 'save');
+  const w = ctx.world;
+  ctx.world = null;
+  for (let i = 0; i < 30; i++) m.update(0.1);
+  ctx.world = { tiles: w.tiles, decor: 'junk' };
+  for (let i = 0; i < 30; i++) m.update(0.1);
+  ctx.world = w;
+  m.update(0.1);
+  assert.equal(m.debug.slice().rods['0,1']?.n, 2);
+  w.decor.length = 0; // the rod really is gone: pruned
+  for (let i = 0; i < 12; i++) m.update(0.1);
+  assert.equal(m.debug.slice().rods['0,1'], undefined);
+  m.dispose();
+});
