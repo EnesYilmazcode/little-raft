@@ -404,6 +404,17 @@ export function rollBarrel(rand = Math.random, luck = null) {
   return out;
 }
 
+/**
+ * rollBarrel against a copy of the luck counters, for a pickup that may still be refused (bag full).
+ * Returns {loot, keep()}: keep() copies the updated counters back once the loot was actually taken,
+ * so a refused pickup never uses up a pity drop. luck as for rollBarrel (null: keep() is a no-op).
+ */
+export function rollBarrelTrial(rand = Math.random, luck = null) {
+  const real = luckMisses(luck), trial = real ? { misses: { ...real } } : null;
+  const loot = rollBarrel(rand, trial);
+  return { loot, keep() { if (real && trial) Object.assign(real, trial.misses); } };
+}
+
 export function isItem(kind) { return typeof kind === 'string' && hasOwn(ITEMS, kind); }
 
 /** Repair cost {kind:n} for a tool, or null when the item cannot be repaired. */

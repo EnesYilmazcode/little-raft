@@ -15,13 +15,16 @@ export function classifyLockError(err) {
 
 // Decide whether a refusal switches to drag-look. Only a missing API, NotSupportedError, or repeated
 // refusals while the window has focus count. Unfocused refusals never count. SecurityError counts when
-// focused (a sandbox or permissions-policy denial is permanent) but one alone never switches.
-export function lockFailureVerdict({ supported = true, err, focused = true, failures = 0, maxFailures = 3 } = {}) {
+// focused (a sandbox or permissions-policy denial is permanent) but one alone never switches, and one
+// within `cooldown` ms of a lock loss the page did not cause (sinceUserExit) is Chrome's post-Esc cooldown: never counts.
+export const USER_EXIT_COOLDOWN = 1500;
+export function lockFailureVerdict({ supported = true, err, focused = true, failures = 0, maxFailures = 3, sinceUserExit = Infinity, cooldown = USER_EXIT_COOLDOWN } = {}) {
   if (!supported) return { fallback: true, failures };
   const kind = classifyLockError(err);
   if (kind === 'unsupported') return { fallback: true, failures };
   if (!focused) return { fallback: false, failures };
   if (kind === 'transient' && err.name !== 'SecurityError') return { fallback: false, failures };
+  if (kind === 'transient' && sinceUserExit >= 0 && sinceUserExit < cooldown) return { fallback: false, failures };
   const n = failures + 1;
   return { fallback: n >= maxFailures, failures: n };
 }

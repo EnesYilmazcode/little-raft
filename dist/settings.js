@@ -31,7 +31,7 @@ const DEFAULTS = Object.freeze(Object.fromEntries(Object.entries(SPEC).map(([k, 
 const KEYS = Object.keys(SPEC);
 const TABS = [['controls', 'Controls'], ['graphics', 'Graphics'], ['audio', 'Audio']];
 const KEYMAP = [['W A S D', 'Walk'], ['Space', 'Jump'], ['Shift', 'Sprint'], ['Click', 'Use tool / charge throw'], ['Hold click', 'Reel in'],
-  ['1 - 0 / Wheel', 'Pick hotbar slot'], ['Tab / I', 'Inventory'], ['E', 'Interact'], ['R', 'Rotate piece / repair hook'], ['Shift + wheel', 'Fine rotate piece'], ['X', 'Remove piece (Hammer)'], ['L', 'Logbook'], ['Esc', 'Back / pause']];
+  ['1 - 0 / Wheel', 'Pick hotbar slot'], ['Q / Right-click', 'Build wheel (hammer)'], ['Tab / I', 'Inventory'], ['E', 'Interact'], ['R', 'Rotate piece / repair hook'], ['Shift + wheel', 'Fine rotate piece'], ['X', 'Remove piece (Hammer)'], ['L', 'Logbook'], ['Esc', 'Back / pause']];
 
 export function validateSettings(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
@@ -281,7 +281,10 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     if (dialog.open) { if (panelOpen()) { setPanel(false); form.querySelector('[data-act="settings"]')?.focus({ preventScroll: true }); } else close(true); return true; }
     const others = otherDialogs();
     if (others.length) { others[others.length - 1].close(); return true; }
-    if (buildWheelOpen()) return false; // the game's own key handler closes the wheel
+    if (buildWheelOpen()) { // desktop app: the shell swallowed the keydown, so close the wheel through the game (lock kept)
+      try { if (window.raftShell?.closeBuildWheel?.()) return true; } catch { /* fall through */ }
+      return false;
+    }
     if (!gameActive()) { // title screen: Escape only leaves fullscreen (the desktop app swallows the native one)
       if (!document.fullscreenElement) return false;
       Promise.resolve(document.exitFullscreen?.()).catch(() => {});
@@ -304,8 +307,10 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     // Held Escape: repeats keep this press "handled" so its late keyup never opens the pause menu.
     if (event.repeat) { esc.keydown(now, { repeat: true }); if (dialog.open) event.preventDefault(); return; }
     // Other dialogs (inventory/crew/help) close natively through their own cancel; we only remember it.
-    // The build wheel closes through the game's own key handler; that press is still handled, so its keyup never pauses.
-    if (dialog.open || !otherDialogs().length) { const wheel = buildWheelOpen(); if (escape()) event.preventDefault(); else esc.keydown(now, { handled: wheel }); }
+    // The build wheel closes through the game's own key handler for this keydown (not escape(): no double handling);
+    // that press is still handled, so its keyup never pauses.
+    if (!dialog.open && !otherDialogs().length && buildWheelOpen()) esc.keydown(now, { handled: true });
+    else if (dialog.open || !otherDialogs().length) { if (!escape()) esc.keydown(now, { handled: false }); else event.preventDefault(); }
     else esc.keydown(now, { handled: true });
   }), { capture: true, signal: ac.signal });
 
@@ -361,6 +366,8 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     }), 150);
   }), { capture: true, signal: ac.signal });
   window.addEventListener('pointerdown', () => document.body.classList.remove('relock'), { capture: true, signal: ac.signal });
+  // Focus lost (alt-tab): show the cursor and the "away" resume hint again; a click on return relocks.
+  window.addEventListener('blur', () => document.body.classList.remove('relock'), { signal: ac.signal });
 
   // Native dialog Escape: route through our escape so the engine resumes.
   dialog.addEventListener('cancel', guard((event) => {

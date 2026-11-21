@@ -2,6 +2,8 @@
 // sound on/off preference, drag-look scaling and the first-run hint chain.
 // No DOM access here so the logic can be tested in node.
 
+import { HOTBAR_SIZE } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+
 export const NOTICE_MS = 2800, NOTICE_MAX = 3;
 
 // A short stack of notices. Repeating a line refreshes it instead of stacking a copy.
@@ -39,7 +41,7 @@ export const HINT_KEY = 'little-raft-hints';
 export const HINTS = Object.freeze([
   {id:'throw', text:'Hold click to charge, release to throw at floating supplies', when:c => c.heldKind === 'hook' && !c.castOut},
   {id:'bag', text:'Press Tab or E to open your bag and craft', when:c => c.hasLoot},
-  {id:'slots', text:'Press 1–9 or 0 to choose what you hold', when:() => true},
+  {id:'slots', text:`Press 1–${Math.min(HOTBAR_SIZE, 9)}${HOTBAR_SIZE >= 10 ? ' or 0' : ''} (or scroll) to choose what you hold`, when:() => true},
   // Loot -> rope -> hammer -> first floor. Each is also marked done from bag/world state (hintsFromState),
   // so a player who already has rope or a hammer, or has built, never gets stuck on an earlier step.
   {id:'rope', text:'Open your bag (Tab) → Materials → craft Rope from palm leaves', when:c => c.hasLeaf},
