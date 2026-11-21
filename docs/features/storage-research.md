@@ -379,6 +379,11 @@ methods are no-ops, and the module's `dispose()` frees them for real.
 **Screenshots** are in `docs/cloud/shots/content/`: `storage-world.png` (table and crate on the
 raft), `storage-chest.png`, `storage-research.png` and `storage-recipes-locked.png`.
 
+**Headless check** (Playwright, solo, preloaded save): walking up to the table and pressing E opens
+the research panel. Escape closes it without opening the pause menu. A click puts a bag stack
+into the crate and Shift+click takes half back. Studying Palm Leaf learns Palm Planter and shows
+the banner. Tab shows the locked rows, and `unlockAll()` clears them. No page errors.
+
 **Not done / known issues**
 - The two-page co-op check (section 9) was not run, because the headless sandbox has no PeerJS
   signalling. The guest path is covered by the unit tests: `ctx.action` dispatches it, `'net'`
