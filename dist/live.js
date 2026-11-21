@@ -18,7 +18,7 @@ const PRELOAD = [
   'bees.js', 'bottle.js', 'camera-models.js', 'camera.js' /* [camera] */, 'canteen-model.js', 'canteen.js' /* [canteen] */, 'brush-model.js', 'build-menu.js', 'build-radial.js', 'build-rules.js',
   'building-models.js', 'building-pieces.js', 'building.js', 'content-items.js', 'content.js', 'controls.js',
   'cooking.js', 'cookpot-core.js', 'cookpot-model.js', 'cookpot.js', 'coop-avatar.js', 'coop-delta.js', 'coop-feed.js', 'coop-fx.js', 'coop-interp.js',
-  'coop-loopback.js', 'coop-rules.js', 'coop.js', 'craft-book.js', 'crafts.js', 'daynight.js', 'debris.js',
+  'coop-loopback.js', 'coop-rules.js', 'coop.js', 'craft-book.js', 'crafts.js', 'crate-labels.js', 'daynight.js', 'debris.js',
   'deck.js', 'decor-pack-models.js', 'display-model.js', 'display.js' /* [display] */, 'decor-pack.js', 'decor-pickup.js', 'diving-gear-core.js', 'diving-gear.js', 'diving-ui.js', 'diving.js', 'engine-models.js', 'engine.js',
   'fireworks-model.js', 'fireworks.js' /* [fireworks] */, 'fish-journal.js', 'fish-models.js', 'fish-trap-model.js', 'fish-trap.js' /* [fishtrap] */, 'fish-species.js', 'fishing-cooking.js', 'fishing-rules.js',
   'fishing-tool.js', 'fishing-v2.js', 'flags-core.js', 'flags-model.js', 'flags.js', 'gull-models.js', 'gull.js' /* [gull] */, 'hammer.js', 'hands.js', 'held-items.js', 'hook-physics.js', 'hook.js',

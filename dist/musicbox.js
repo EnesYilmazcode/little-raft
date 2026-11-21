@@ -103,8 +103,10 @@ export function createMusicBox(ctx) {
   // ---------------------------------------------------------------- actions
   function send(a) {
     if (ctx.role === 'guest' && !noticeAt) noticeAt = (ctx.elapsed ?? 0) + NOTICE_AFTER;
+    sentLog.push({ at: ctx.elapsed ?? 0, on: a.on, t: a.t }); if (sentLog.length > 8) sentLog.shift();
     try { ctx.action(a); } catch {}
   }
+  const sentLog = [];                             // QA: the last few actions this peer sent
   const set = (key, on, t) => send({ kind: 'musicbox:set', key, on, t });
 
   function resetSched() { sched.key = null; sched.tune = -1; sched.s = NaN; sched.anchor = NaN; sched.cursor = NaN; sched.checkAt = 0; sched.bar = -1; sched.prevMax = -Infinity; }
@@ -322,6 +324,7 @@ export function createMusicBox(ctx) {
         return out.map(c => ({ t: c.dt, m: c.n.m, hz: c.n.hz, bass: c.n.bass }));
       },
       scheduled: () => scheduled,
+      sent: () => sentLog.map(a => ({ ...a })),
     },
     dispose() {
       disposed = true;
