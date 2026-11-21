@@ -61,6 +61,12 @@ export const CONTENT_ITEMS = Object.freeze({
   meal_stew:     Object.freeze({ kind: 'meal_stew',     name: 'Captain\u2019s Stew', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
   // driftboard paddleboard (paddleboard.js): launched from the bag, never lost
   driftboard: Object.freeze({ kind: 'driftboard', name: 'Driftboard', icon: 'icon-driftboard', maxStack: 1, tool: false, placeholder: false }),
+  // sky kites (kite.js): fly from the deck, tie to a railing
+  kite_sunburst:   Object.freeze({ kind: 'kite_sunburst',   name: 'Sunburst Kite',   icon: 'icon-kite', maxStack: 1, tool: false, placeholder: false }),
+  kite_gullwing:   Object.freeze({ kind: 'kite_gullwing',   name: 'Gullwing Kite',   icon: 'icon-kite', maxStack: 1, tool: false, placeholder: false }),
+  kite_tidestripe: Object.freeze({ kind: 'kite_tidestripe', name: 'Tidestripe Kite', icon: 'icon-kite', maxStack: 1, tool: false, placeholder: false }),
+  // dolphin friend (dolphin.js)
+  conch: Object.freeze({ kind: 'conch', name: 'Conch Call', icon: 'icon-conch', maxStack: 1, tool: false, placeholder: false }),
 });
 
 // Same shape as recipe() in inventory-state.js.
@@ -121,6 +127,12 @@ export const CONTENT_RECIPES = Object.freeze({
   gametable: recipe('gametable', 'Driftwood Game Table', 1, { wood: 6, rope: 1, stone: 2 }),
   // driftboard paddleboard (paddleboard.js)
   driftboard: recipe('driftboard', 'Driftboard', 1, { wood: 6, plastic: 3, rope: 2 }),
+  // sky kites (kite.js)
+  kite_sunburst:   recipe('kite_sunburst',   'Sunburst Kite',   1, { leaf: 4, wood: 2, rope: 3 }),
+  kite_gullwing:   recipe('kite_gullwing',   'Gullwing Kite',   1, { leaf: 4, wood: 2, rope: 3 }),
+  kite_tidestripe: recipe('kite_tidestripe', 'Tidestripe Kite', 1, { leaf: 4, wood: 2, rope: 3, paint_lagoon: 1 }),
+  // dolphin friend (dolphin.js)
+  conch: recipe('conch', 'Conch Call', 1, { shell: 2, rope: 1 }),
 });
 
 // Placeable decor added by content modules (models come from content.decorModel()).

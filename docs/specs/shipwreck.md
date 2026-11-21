@@ -168,3 +168,14 @@ Checks: `npm test`, shoot2.py `errors: []`. For a browser QA pass:
 3. expect a loot feed row and, on a new world, a note celebrate
 4. take a screenshot underwater
 5. check co-op with coop2.mjs: open a slot from the guest; the host bit is set and the guest re-tints.
+
+## Implementation notes
+- **Model `build` signature.** It is `build(lay, slotPos, site, floorAt)`, not `build(lay, slotPos)`. The bed skirt, the loose planks, the anchor, the rocks and the kelp all need the site's origin and `floorAt` to drop onto the floor. The model also exposes `updateMarker(x, z, getHeight, time)`, which bobs the marker planks, and `clear()`. The module calls `updateMarker` only while the marker is visible.
+- **Open crates.** Open crates use a fixed `count` of 4, and a crate's closed and open instances swap between a zero-scale matrix and its real matrix. `count` is not changed.
+- **Chest hover.** The chest uses a clone of the shared material (`chestMat`), so hovering can brighten it ×1.35 without an `instanceColor`.
+- **Bed rim.** The bed rim sinks up to 0.29 m under the floor beyond r = 3.5 m, so the skirt blends into the noise floor without a hard seam.
+- **Core extras.** The core also exports `dockZFor`, `raftEdge`, `offsetFor`, `fillSlotPos`, `fullMask`, `SLOT_CENTRE` (0.35) and `HULL_HALF`. The reach check (§8, step 7) measures to the slot base + `SLOT_CENTRE`, and `REACH + SLACK` applies to both host and guest, as §8 states.
+- **`shipwreckNow()` and `debug.site()`.** `shipwreckNow().z` is the marker z (`path.mz`), which equals `site.z` while docked. During approach, `debug.site().z` is also the marker z.
+- **Extra QA helpers.** `debug.warpTo(x, y, z)` is a free dive warp on any client. `debug.targets()` and `debug.hover()` are also available.
+- **Late floor.** If `floorAt` is NaN when a site loads (for example, diving not created yet), the slot positions fall back to `site.y`. They are re-derived on the first frame where `floorAt` is finite.
+- **FEATURES comment.** `createShipwreck` has no inline `/* … */` comment inside the FEATURES array. The cookpot and gametable tests parse the array with `[^\]]*`, so a bracketed tag there breaks them.

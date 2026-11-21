@@ -46,6 +46,12 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', loo
   const Cyl = (r0, r1, h, n = 6) => new T.CylinderGeometry(r0, r1, h, n);
   const Box = (x, y, z) => new T.BoxGeometry(x, y, z);
   // Every model: grip at origin, long axis +Y (holder turns +Y forward/up). tip = rope/line attach point.
+  const kite = (g, K, hex) => { // [kite] spool and a small diamond in the pattern colour
+    part(g, Cyl(0.045, 0.045, 0.06, 8), K.rope, 0, 0.02, 0, 0, 0, Math.PI / 2);
+    part(g, Box(0.012, 0.16, 0.012), K.wood, 0, 0.12);
+    part(g, Box(0.13, 0.13, 0.01), M(hex), 0, 0.22, 0, 0, 0, Math.PI / 4);
+    return [0, 0.22, 0];
+  };
   const BUILD = {
     hook(g, K) {
       part(g, Cyl(0.028, 0.03, 0.24), K.wood, 0, 0.04);
@@ -69,6 +75,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', loo
       g.userData.reel = reel;
       return [0, 1.13, 0];
     },
+    kite_sunburst(g, K) { return kite(g, K, '#e9a08c'); }, kite_gullwing(g, K) { return kite(g, K, '#f4f1ea'); }, kite_tidestripe(g, K) { return kite(g, K, '#86b3d6'); }, // [kite]
     spade(g, K) {   // treasure.js Little Spade: shaft, blade, D-grip
       part(g, Cyl(0.016, 0.018, 0.5), K.wood, 0, 0.12);
       part(g, Box(0.15, 0.17, 0.014), K.steel, 0, 0.45);
@@ -124,7 +131,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', loo
   const holder = new T.Group();
   holder.position.set(0, -0.5, 0.03);
   P.rightArm.add(holder);
-  const TOOL_TILT = { hook: 1.25, hammer: 1.35, fishingrod: 0.95, lantern: 1.45, drum: 1.5, pipes: 0.4, bells: 1.2, spade: 1.1, finder: 0.9, spear: 1.0, metalspear: 1.0 }; // [instruments] [treasure]
+  const TOOL_TILT = { hook: 1.25, hammer: 1.35, fishingrod: 0.95, lantern: 1.45, drum: 1.5, pipes: 0.4, bells: 1.2, spade: 1.1, finder: 0.9, spear: 1.0, metalspear: 1.0, kite_sunburst: 1.2, kite_gullwing: 1.2, kite_tidestripe: 1.2 }; // [instruments] [treasure]
   const cache = new Map();
   let curKind, cur = null;
   const getModel = (kind) => {

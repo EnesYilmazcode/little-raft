@@ -23,6 +23,7 @@
 //   afterRebuild()            after rebuildRaft() recreated the deck/decor meshes (paint: re-tint planks)
 //   tileTint(x, z, base)      plank colour for deck tile x,z (base = the plank's own colour) or null (paint)
 //   diveMods(m)               multiply m.swim/oxy/fog/gather in place (local player, per frame, no allocations; docs/specs/diving-gear.md)
+//   diveTargets(x,y,z,r,out) push cached hold-E dive targets into out (never allocate per frame; docs/specs/shipwreck.md)
 //   ride(dt, physics, inp)    local player, every frame (not while diving). Return true to skip PlayerPhysics (driftboard; zipline)
 //   riding()                  -> true while ride() owns the player
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
@@ -53,9 +54,12 @@ import { createTrader } from './trader.js?build=v3-survival-ae77fa84ac2b';
 import { createGameTable } from './gametable.js?build=v3-survival-ae77fa84ac2b'; // game table
 import { createPaddleboard } from './paddleboard.js?build=v3-survival-ae77fa84ac2b'; // [paddleboard]
 import { createBuoyCourse } from './buoycourse.js?build=v3-survival-ae77fa84ac2b'; // [buoycourse]
+import { createShipwreck } from './shipwreck.js?build=v3-survival-ae77fa84ac2b'; // [shipwreck]
+import { createDolphin } from './dolphin.js?build=v3-survival-ae77fa84ac2b'; // [dolphin]
+import { createKite } from './kite.js?build=v3-survival-ae77fa84ac2b'; // [kite]
 import { createCookpot } from './cookpot.js?build=v3-survival-ae77fa84ac2b';
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createJuicer, createGull, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createCookpot]; // [bees] + createBees; round 3 diving gear, trader, cookpot; [juicer] + createJuicer [gull] + createGull; round 4 game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); cookpot stays last
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createJuicer, createGull, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createDolphin, createShipwreck, createKite, createCookpot]; // [bees] + createBees; round 3 diving gear, trader, cookpot; [juicer] + createJuicer [gull] + createGull; round 4 game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); cookpot stays last; [dolphin] after paddleboard; [shipwreck] createShipwreck before cookpot (no brackets inside the array: tests parse it with [^\]]*)
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -83,6 +87,7 @@ export function createContent(ctx, features = FEATURES) {
   const off = m => { if (m.dead) return; m.dead = true; console.error('content module disabled:', m.name); try { m.dispose?.(); } catch (e) { console.error(`content ${m.name}.dispose failed`, e); } };
   const call = (m, fn, ...a) => { if (m.dead || typeof m[fn] !== 'function') return undefined; try { return m[fn](...a); } catch (e) { console.error(`content ${m.name}.${fn} failed`, e); off(m); return undefined; } };
   const call1 = (m, out) => { try { m.diveMods(out); } catch (e) { console.error(`content ${m.name}.diveMods failed`, e); off(m); } };
+  const callT = (m, x, y, z, r, out) => { try { m.diveTargets(x, y, z, r, out); } catch (e) { console.error(`content ${m.name}.diveTargets failed`, e); off(m); } };
   // Sibling peek: a module may read another's live serialize() (e.g. the map table reads islands). Read, never keep.
   const peek = name => { const m = mods.find(x => x.name === name && !x.dead); return m ? call(m, 'serialize') : undefined; };
   for (const make of features) {
@@ -111,6 +116,7 @@ export function createContent(ctx, features = FEATURES) {
     steerTargets: () => first('steerTargets'),
     rain() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }, // rain-sprinkler: live 0..1 rain
     diveMods(out) { out.swim = out.oxy = out.fog = out.gather = 1; for (let i = 0; i < mods.length; i++) { const m = mods[i]; if (!m.dead && typeof m.diveMods === 'function') call1(m, out); } return out; }, // shared dive modifier hook (no per-frame rest-arg arrays)
+    diveTargets(x, y, z, r, out) { out.length = 0; for (let i = 0; i < mods.length; i++) { const m = mods[i]; if (!m.dead && typeof m.diveTargets === 'function') callT(m, x, y, z, r, out); } return out; }, // [shipwreck] extra hold-E dive targets
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };
 }

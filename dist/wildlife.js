@@ -18,7 +18,7 @@ const PERCH_TOP = { sail: 3.62, crate: 0.85, bench: 0.47 }; // decor that gives 
 // Keep-out margins past the raft edge (m). On the starter raft these add nothing; bigger rafts push animals out.
 export const GULL_MARGIN = 2.5, FISH_MARGIN = 4, CIRCLER_MARGIN = 5;
 const GULL_R0 = 5.5, FISH_R0 = 7, CIRCLER_R0 = 9; // smallest base radius of each path
-const pushOut = (ext, margin, r0) => (fin(ext) && ext + margin > r0 ? ext + margin - r0 : 0);
+export const pushOut = (ext, margin, r0) => (fin(ext) && ext + margin > r0 ? ext + margin - r0 : 0);
 const EYE = 1.6; // eye height above the deck, for a friend pose with no y
 
 // ------------------------------------------------------------------ pure plan (no THREE)
@@ -252,7 +252,7 @@ const _cp = { x: 0, z: 0 }, _cp2 = { x: 0, z: 0 };
 // rounded back break the surface, nose up on the way up and nose down going under. Returns false for a turtle.
 export const DOLPHIN_CYCLE = 3, DOLPHIN_LEAP = 1;
 const DOLPHIN_BASE = -0.3;
-function dolphinMotion(u, out) {
+export function dolphinMotion(u, out) {
   if (out.kind !== 'dolphin') return false;
   const k = u / DOLPHIN_CYCLE, f = (k - Math.floor(k)) * DOLPHIN_CYCLE;
   if (f < DOLPHIN_LEAP) { const q = f / DOLPHIN_LEAP; out.y = DOLPHIN_BASE + 1.15 * Math.sin(Math.PI * q); out.pitch = -0.9 * Math.cos(Math.PI * q); }

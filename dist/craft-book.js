@@ -29,7 +29,7 @@ const CATEGORY_OF = Object.freeze({
   kiln: 'building', glasslamp: 'survival', sinker: 'survival', // kiln
   nestbox: 'survival', cushion: 'building', // raft animals
   // content (engine, sleep, paint)
-  motor: 'building', wheel: 'building', bed: 'building', brush: 'tools', driftboard: 'tools', // [paddleboard]
+  motor: 'building', wheel: 'building', bed: 'building', brush: 'tools', driftboard: 'tools', kite_sunburst: 'tools', kite_gullwing: 'tools', kite_tidestripe: 'tools', /* [kite] */ conch: 'tools', // [paddleboard] [dolphin]
   paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
   fins: 'tools', airjug: 'tools', goggles: 'tools', scraper: 'tools',
   cookpot: 'building', bowl: 'survival',
@@ -129,6 +129,10 @@ export const ITEM_TEXT = Object.freeze({
   nestbox:    { desc: 'A cosy box of straw for puffhens.', use: 'Place it on the raft and a puffhen may come to stay.' },
   cushion:    { desc: 'A plump cushion stuffed with feathers.', use: 'Place it on the raft for a soft seat.' },
   driftboard: { desc: 'A plank board on two plastic floats, with a paddle.', use: 'Click the water by the raft to launch it, E to climb on.' },
+  kite_sunburst: { desc: 'A light leaf-and-spar kite on a long line.', use: 'Hold it on deck: click to launch, tug and tie it to a railing.' },
+  kite_gullwing: { desc: 'A light leaf-and-spar kite on a long line.', use: 'Hold it on deck: click to launch, tug and tie it to a railing.' },
+  kite_tidestripe: { desc: 'A light leaf-and-spar kite on a long line.', use: 'Hold it on deck: click to launch, tug and tie it to a railing.' },
+  conch: { desc: 'A spiral shell horn with a rope loop.', use: 'Blow it (left click) to call your dolphin friend.' }, // [dolphin]
   cookedsharkmeat: { desc: 'A shark steak grilled through.', use: 'A filling meal (+30 food).' },
   sharkmeat:  { desc: 'A raw slab of shark meat.', use: 'Grill it for a proper meal; four come from every shark.' },
   sharkhead:  { desc: 'The head of a shark you beat.', use: 'A trophy, and proof the raft is safe for a while.' },
