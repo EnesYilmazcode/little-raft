@@ -629,4 +629,12 @@ export function getModel(kind, { lod = 0 } = {}) {
   delete c.userData.dispose;
   return c;
 }
+// Free the getModel templates and the shared materials. Only for a module instance nobody draws with any
+// more (game.js dispose: an old ?build= graph stays loaded after a live swap and would keep them forever).
+export function resetModelCache() {
+  for (const m of cache.values()) m.userData.dispose?.();
+  cache.clear();
+  if (MATS) for (const m of Object.values(MATS)) { m.map?.dispose(); m.dispose(); }
+  MATS = null;
+}
 export default buildModel;

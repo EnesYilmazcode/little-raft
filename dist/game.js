@@ -57,8 +57,9 @@ import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI, iconSVG } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { createGhosts, wrapRot, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
-import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
-import { getItemIcon, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { getModel, resetModelCache } from './models.js?build=v3-survival-ae77fa84ac2b';
+import { getItemIcon, onIconReady, resetItemIcons } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { disposeFishCache } from './fish-models.js?build=v3-survival-ae77fa84ac2b';
 import { createShark, cleanShark, cleanTileHp, lootable, SHARK, SHARK_LOOT } from './shark.js?build=v3-survival-ae77fa84ac2b'; // shark lane (dist/shark.js)
 import { createWaterEffects } from './waterfx.js?build=v3-survival-ae77fa84ac2b'; // shark lane: bite splashes
 import { createIsland } from './scenery-islands.js?build=v3-survival-ae77fa84ac2b'; // decorative distant islands (islands.js is the content lane's dockable islands)
@@ -2112,6 +2113,8 @@ export function mount(transfer = null) {
     try { if (window.raftDebug === debugApi) delete window.raftDebug; } catch {}
     try { if (window.raftShell === shellApi) delete window.raftShell; } catch {}
     disposeScene();
+    // This ?build= module graph stays loaded after a live swap: free its module-level caches (the new build has its own).
+    for (const reset of [resetItemIcons, resetModelCache, disposeFishCache]) { try { reset(); } catch {} }
   }
 
   const optionsDialog = document.getElementById('options'), previousSettingsOwner = optionsDialog?.dataset.owner;
