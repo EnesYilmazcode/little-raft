@@ -99,3 +99,23 @@ Re-ranked by the skeptic: old #4 (crosshair) is now #1, old #1-#3 are #2-#4, old
 - **Q4.** `store_16`/`store_22` show a larger hotbar (42.2% W, was given as 41.9%, no end tabs), probably an older build or a different UI-scale setting. The 38.9% median (was 38.75%) comes from the 1.0-era shots. **[VERIFIED with corrected values]**
 - **Q5.** With 8 slots, matching Raft's slot pitch gives about 31% W, not 39%. That is intentional: keep the slot size (about 6% H), not the total width. **[VERIFIED]** (8 x 48.7 px pitch = 390 px = 30.4% W)
 - **Q6.** The threshold tick on Raft's bars (C14) is read from a 3x crop only. Its exact % is not measured. **[UNSURE: not re-measured]**
+
+## Verification log
+
+Skeptic pass. Tag counts in this file: **33 VERIFIED, 16 CORRECTED, 4 UNSURE** (53 tags).
+- Claims C1-C25: 17 VERIFIED, 8 CORRECTED (C5, C6, C7, C8, C13, C14, C19, C20), plus 1 UNSURE inside C21 (hold duration, wiki unreachable).
+- Section 3 (Little Raft today): 6 VERIFIED, 3 CORRECTED (760 px rule line, crosshair double ring and off-centre, supplies card already hidden).
+- Change list: 8 VERIFIED, 4 CORRECTED (#1 crosshair, #2 hotbar gap, #7 selected scale, #12 supplies card). Re-ranked: crosshair moved from #4 to #1, supplies card from #10 to last.
+- Open questions: 2 VERIFIED (Q4, Q5), 1 CORRECTED (Q1 settled), 3 UNSURE (Q2, Q3, Q6).
+
+Most important corrections:
+1. **Crosshair (Q1 settled, plus a new bug).** `index.html:2` loads `style.css` then `graphics.css`, and no JS styles the crosshair. Both rings render, but they touch (1 px border of the 23 px box plus the 2 px `style.css:9` `::before` ring just inside it), so on screen they read as one ring about 3 px thick, not as two separate rings. The bigger problem: `style.css:7` `margin:-13px 0 0 -13px` and `graphics.css:208` `transform:translate(-50%,-50%)` both apply. The reticle centre renders at (627,347) in a 1280x720 viewport, 13 px up-left of the aim ray at NDC (0,0) (`game.js:488`). This is now change #1.
+2. **Hotbar width** is 498 px = **38.9% W** (was 38.75%). Edges are x 391/888 in all 10 1.0-era stills. The older `store_16`/`_22` measure 541 px = 42.2% (was 41.9%).
+3. **Slot height of 44 px = 6.1% H is confirmed** (tan fill y 671-714 in 6 stills, 672-713 in `store_02`). Slots are 43-45 px wide, not 42, so they are close to square at 44x44. The gap is 4-5 px, not 6-7. The selected slot is +6-9% wider, not +10%.
+4. The supplies card is hidden in play (`game.js:46`), so old change #10 is moot.
+
+Method: every cited still was opened. Edges were found with Pillow and numpy row and column scans (dark-brown frame mask, luminance-threshold slot runs, cream key-cap mask, luminance peaks for the crosshair ring). Colours are 3x3 or 5x5 medians at the stated coordinates. The dist/ line references were checked with `sed -n`. The crosshair and HUD were rendered with Playwright Chromium at 1280x720 from `python -m http.server` on `dist/`, and computed styles and bounding boxes were read; a flat background isolated the reticle. Scripts and crops are in the scratchpad under `hud-skeptic/`.
+
+Images re-checked: `stills/steam/community_069`, `_063`, `_147`, `_090`, `_084`, `_115`, `_126`, `_049`, `_122`, `store_04`, `store_02`, `store_16`, `store_22`; `building/yt/M4AhtY9BB1I_0100.jpg`; `inventory-crafting/yt/68lj91mBrDI_0149.jpg`. Hotbar width was re-measured in 12 stills and slot height in 7. `press/2019-08-16-devblog-38-09.jpg` was not re-opened.
+
+Originality: no change item asks to copy Raft's logo, icons, item art, UI skin, fonts or creature designs. #3 and #11 name Little Raft's own colours and style, and #8's tab is an original "E Bag" label.
