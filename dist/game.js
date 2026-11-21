@@ -4,7 +4,7 @@ import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
 import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
-import { createSettings } from './settings.js?build=v3-survival-ae77fa84ac2b';
+import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-survival-ae77fa84ac2b';
 import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createHands } from './hands.js?build=v3-survival-ae77fa84ac2b';
@@ -181,7 +181,7 @@ export function mount(transfer = null) {
   }
   let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghost, rope, ropeAttr, hookMesh, friend, player, sun;
   let hookHands = null, hammerHands = null, rodHands = null, rodModel = null, rodTip = null, clothMat;
-  let survivalUI = null, settingsController = null, options = {sensitivity:1, fov:75, cameraMotion:.35, volume:.5, graphics:'medium'};
+  let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
   let yaw = Number.isFinite(X?.yaw) ? X.yaw : 0, pitch = Number.isFinite(X?.pitch) ? X.pitch : -.28;
@@ -397,7 +397,7 @@ export function mount(transfer = null) {
     const el = $('#toast'); if (!el) return; el.textContent = s; el.classList.add('show');
     toastTimer = cancelTimer(toastTimer); toastTimer = later(() => { toastTimer = 0; el.classList.remove('show'); }, 2600);
   }
-  function beep(f = 500) { if (!sound || !(options?.volume > 0)) return; try { audio ??= new AudioContext(); audio.resume(); const o = audio.createOscillator(), g = audio.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(f, audio.currentTime); o.frequency.exponentialRampToValueAtTime(f * 1.4, audio.currentTime + .12); g.gain.setValueAtTime(.12 * options.volume, audio.currentTime); g.gain.exponentialRampToValueAtTime(.001, audio.currentTime + .22); o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + .23); } catch {} }
+  function beep(f = 500) { const vol = (options?.volume ?? 0) * (options?.effects ?? 1); if (!sound || !(vol > 0)) return; try { audio ??= new AudioContext(); audio.resume(); const o = audio.createOscillator(), g = audio.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(f, audio.currentTime); o.frequency.exponentialRampToValueAtTime(f * 1.4, audio.currentTime + .12); g.gain.setValueAtTime(.12 * vol, audio.currentTime); g.gain.exponentialRampToValueAtTime(.001, audio.currentTime + .22); o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + .23); } catch {} }
   function updateContext(dialog) {
     let html = '';
     if (running && !dialog) {
@@ -460,7 +460,7 @@ export function mount(transfer = null) {
     if (!wasFallback && running) notice('Mouse lock unavailable: drag to look, click to use', 3000);
   }
   function releaseLock() { if (isLocked()) document.exitPointerLock?.(); }
-  function look(dx, dy, k) { yaw -= dx * k; pitch = clamp(pitch - dy * k, -PITCH_LIMIT, PITCH_LIMIT); }
+  function look(dx, dy, k) { yaw -= dx * k; pitch = clamp(pitch - (options.invertY ? -dy : dy) * k, -PITCH_LIMIT, PITCH_LIMIT); }
   function clearInput() { keys = {}; charging = null; reeling = false; down = null; }
 
   // ---------- Aiming ----------
@@ -666,6 +666,37 @@ export function mount(transfer = null) {
     running = true; const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false;
     if (!saveAvailable) setText('#saveStatus', 'Browser storage is unavailable. This session will not be saved.');
     refreshPointerUI(true);
+  }
+  function applyOptions(next) {
+    const shadowsChanged = options.shadows !== next.shadows; options = next;
+    if (!renderer) return;
+    const cap = next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3;
+    renderer.setPixelRatio(Math.max(.5, Math.min(devicePixelRatio, cap) * (next.renderScale ?? 1)));
+    renderer.shadowMap.enabled = next.shadows !== false;
+    if (shadowsChanged) scene?.traverse(o => { const m = o.material; if (m) for (const x of Array.isArray(m) ? m : [m]) x.needsUpdate = true; });
+  }
+  // Pause menu "quit to title": save, leave any crew, show the title. The world stays loaded for Continue.
+  function quitToTitle() {
+    save(); if (role !== 'solo') closeConnection();
+    hook = null; fishWait = 0; clearInput(); releaseLock();
+    running = false; const w = $('#welcome'); if (w) w.hidden = false; const h = $('#hud'); if (h) h.hidden = true;
+    refreshTitle(); refreshPointerUI(true);
+  }
+  // Fresh raft: only the hook, starting tiles, new drift. Wipes the solo save.
+  function newGame() {
+    if (role !== 'solo') closeConnection();
+    hook = null; fishWait = 0; charging = null; reeling = false; lastCaughtCount = 0; pending.clear();
+    world = newWorld(); const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
+    const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); yaw = 0; pitch = -.28;
+    for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
+    if (scene) { syncItems(); rebuildRaft(); }
+    save(); start();
+  }
+  const hasSave = () => { try { return !!localStorage.getItem(SAVE); } catch { return false; } };
+  function refreshTitle() { // Continue only when a save exists; New game asks twice before wiping one
+    const cont = $('#solo'), fresh = $('#newGame'), saved = hasSave();
+    if (cont) cont.hidden = !saved;
+    if (fresh) { fresh.textContent = saved ? 'New game' : "Let's set sail"; fresh.className = saved ? 'secondary' : 'primary'; delete fresh.dataset.confirm; }
   }
   function syncWorldInventories() { // only for the world this client owns (solo / host)
     world.hostInventory = hostBag.snapshot(); world.guestInventory = guestBag.snapshot();
@@ -919,6 +950,12 @@ export function mount(transfer = null) {
   const setHandler = (el, prop, fn) => { if (el) { const previous = el[prop], next = guard(fn); propertyHandlers.push([el, prop, previous, next]); el[prop] = next; } };
   function openDialog(id) { releaseLock(); const d = $('#' + id); if (d && !d.open) d.showModal(); }
   setHandler($('#solo'), 'onclick', () => { start(); requestLock(); });
+  setHandler($('#newGame'), 'onclick', e => {
+    const b = e.currentTarget;
+    if (hasSave() && !b.dataset.confirm) { b.dataset.confirm = '1'; b.textContent = 'Wipe my raft and start over?'; return; }
+    newGame(); requestLock(); refreshTitle();
+  });
+  if (!running) refreshTitle();
   setHandler($('#crewButton'), 'onclick', () => openDialog('crew'));
   setHandler($('#welcomeCrew'), 'onclick', () => openDialog('crew'));
   setHandler($('#helpButton'), 'onclick', () => settingsController?.open());
@@ -1180,7 +1217,7 @@ export function mount(transfer = null) {
   try {
     if (!canvas) throw new Error('#world canvas missing');
     init();
-    settingsController = createSettings({onChange:next => { options = next; if (renderer) { renderer.setPixelRatio(Math.min(devicePixelRatio, next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3)); renderer.shadowMap.enabled = next.graphics !== 'low'; } }, onPause:clearInput, onResume:() => requestLock()});
+    settingsController = createSettings({onChange:applyOptions, onPause:clearInput, onResume:() => requestLock(), onQuit:guard(quitToTitle)});
     survivalUI = createSurvivalUI({
       getBag:() => localBag(),
       onSelect:guard(i => selectSlot(i)),
