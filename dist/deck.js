@@ -201,7 +201,7 @@ export function createFloor(T, index = 0, getMaterial) {
   }
 
   const add = (geo, m, name) => { const mesh = new T.Mesh(geo, m); mesh.name = name; mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh); return mesh; };
-  for (const [color, list] of byColor) add(merge(T, list), mat(color), 'floor-planks');
+  for (const [color, list] of byColor) add(merge(T, list), mat(color), 'floor-planks').userData.color = color; // paint: base colour for tinting
   add(merge(T, beams), mat(BEAM_COLOR), 'floor-logs');
   add(merge(T, caps), mat(BEAM_END_COLOR), 'floor-log-ends');
   if (ropes.length) add(merge(T, ropes), mat(ROPE_COLOR), 'floor-lashings');

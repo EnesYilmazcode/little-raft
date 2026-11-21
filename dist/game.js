@@ -12,6 +12,7 @@ import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { PlayerPhysics } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
+import { createBrush } from './brush-model.js?build=v3-survival-ae77fa84ac2b'; // content hook (paint)
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
@@ -212,7 +213,7 @@ export function mount(transfer = null) {
   let building = null, sentPieces = null; // building-pieces lane hook (sentPieces: last pieces array sent to the guest)
   let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghost, rope, ropeAttr, hookMesh, friend, player, sun;
   let hemi = null, clouds = [], content = null; // content hook: lights/clouds handed to content modules
-  let hookHands = null, hammerHands = null, rodHands = null, rodModel = null, rodTip = null, clothMat;
+  let hookHands = null, hammerHands = null, brushHands = null, brushModel = null, rodHands = null, rodModel = null, rodTip = null, clothMat;
   let fc = null; // [fishing-cooking] rod fishing v2 + grills + journal (dist/fishing-cooking.js)
   let logbookUI = null;
   let survivalUI = null, settingsController = null, options = {sensitivity:1, fov:75, cameraMotion:.35, volume:.5, graphics:'medium'};
@@ -296,6 +297,11 @@ export function mount(transfer = null) {
   function box(w, h, d, c, x = 0, y = 0, z = 0, parent) { const m = new T.Mesh(new T.BoxGeometry(w, h, d), mat(c)); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; parent?.add(m); return m; }
   function cylinder(rt, rb, h, c, x, y, z, parent, n = 8) { const m = new T.Mesh(new T.CylinderGeometry(rt, rb, h, n), mat(c)); m.position.set(x, y, z); m.castShadow = true; parent?.add(m); return m; }
   function sphere(r, c, x, y, z, parent) { const m = new T.Mesh(new T.IcosahedronGeometry(r, 1), mat(c)); m.position.set(x, y, z); parent?.add(m); return m; }
+  function woodMat(hex) { // content hook (paint): tinted plank materials, cached forever (disposeGeometry skips them)
+    const k = 'wood:' + hex;
+    if (!materialCache.has(k)) { let m = null; try { m = createWoodMaterial(T, hex); } catch (e) { console.warn('wood material failed', e); } materialCache.set(k, m ?? new T.MeshStandardMaterial({color:hex, roughness:.85, metalness:0})); }
+    return materialCache.get(k);
+  }
   function disposeGeometry(o) { const cached = new Set(materialCache.values()), materials = new Set(); o.traverse(c => { c.geometry?.dispose(); for (const m of [].concat(c.material || [])) if (!cached.has(m) && m !== clothMat) materials.add(m); }); for (const m of materials) { m.map?.dispose(); m.dispose(); } }
 
   // ---------- DOM adoption (stable nodes shared across hot swaps) ----------
@@ -332,6 +338,7 @@ export function mount(transfer = null) {
     get elapsed() { return elapsed; }, get options() { return options; }, get other() { return other; },
     localBag: () => localBag(), actorBag: a => actorBag(a), action: a => action(a), emit: (e, to) => emit(e, to), notice: (s, ms) => notice(s, ms),
     esc: s => esc(s), mat: c => mat(c), rebuildRaft: () => rebuildRaft(), deckY: () => deckY(), uiOpen: () => uiBlocked(),
+    get building() { return building; }, get brush() { return brushModel; }, woodMat: c => woodMat(c), aim: () => frameAim, // content hook (paint)
     openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
   };
   function init() {
@@ -400,6 +407,7 @@ export function mount(transfer = null) {
   function buildViewmodels() {
     hookHands = createHands(T, createHook(T));
     const hammer = createHammer(T);
+    brushModel = createBrush(T); brushHands = createHands(T, holdable(brushModel, brushModel.userData.grip, {rx:-.25, ry:.35, rz:.35, scale:.6})); // content hook (paint)
     hammerHands = createHands(T, holdable(hammer, hammer.userData.grip, {ry:Math.PI / 2, rz:.2, scale:.6}));
     rodModel = createFishingTool(T); rodTip = rodModel.userData.tipNode ?? rodModel;
     rodHands = createHands(T, holdable(rodModel, rodModel.userData.grip, {rx:-.15, rz:.6, scale:.55}));
@@ -410,7 +418,7 @@ export function mount(transfer = null) {
     depthClear.renderOrder = 999; depthClear.position.set(0, 0, -.1);
     depthClear.onBeforeRender = (r, _s, cam) => { if (cam !== camera) return; r.state?.buffers?.depth?.setMask?.(true); r.clearDepth(); };
     camera.add(depthClear);
-    for (const h of [hookHands, hammerHands, rodHands]) {
+    for (const h of [hookHands, hammerHands, brushHands, rodHands]) { // content hook (paint): + brushHands
       h.group.traverse(c => { if (c.isMesh) { c.castShadow = false; c.receiveShadow = false; c.renderOrder = 1000; c.frustumCulled = false; for (const m of [].concat(c.material)) { m.depthTest = true; m.depthWrite = true; if (!m.transparent) { m.transparent = true; m.opacity = m.opacity ?? 1; } m.needsUpdate = true; } } });
       h.group.visible = false; camera.add(h.group);
     }
@@ -439,6 +447,7 @@ export function mount(transfer = null) {
     }
     blockList = world.decor.filter(d => BLOCK_RADIUS[d.type]).map(d => ({x:d.x * 2, z:d.z * 2, r:BLOCK_RADIUS[d.type]}));
     building?.sync(world); // building-pieces lane hook
+    content?.afterRebuild(); // content hook (paint): re-tint the new deck planks
     sailing?.onRaftBuilt(); // [sailing] re-find sail models
   }
 
@@ -869,6 +878,7 @@ export function mount(transfer = null) {
       fishWait = 3 + Math.random() * 2; hook = {end:new T.Vector3(p.x, .1, p.z), t:0, duration:fishWait + .8, fishing:true};
       swing = 1; notice('Wait for a bite…', 2500); beep(280);
     }
+    if (content?.use(aim, kind)) { swing = 1; return; } // content hook (paint brush)
     if (kind === 'cup' || kind === 'saltcup' || kind === 'freshcup') { const w = wateringTarget(aim); if (w?.click) { swing = 1; action(w.click); } else notice(w?.why ?? WATER_WHY[kind]); return; }
   }
   function beginCharge(at) {
@@ -964,9 +974,11 @@ export function mount(transfer = null) {
     const ch = charging ? clamp((performance.now() - charging.start) / CHARGE_MS, 0, 1) : 0;
     hookHands.group.visible = running && kind === 'hook';
     hammerHands.group.visible = running && kind === 'hammer';
+    brushHands.group.visible = running && kind === 'brush'; // content hook (paint)
     rodHands.group.visible = running && kind === 'fishingrod';
     if (hookHands.group.visible) hookHands.update({dt, time:elapsed, charge:ch, reeling:reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion});
     if (hammerHands.group.visible) hammerHands.update({dt, time:elapsed, charge:0, reeling:false, casting:swing, walking, hasHookOut:false, motion});
+    if (brushHands.group.visible) brushHands.update({dt, time:elapsed, charge:0, reeling:false, casting:swing, walking, hasHookOut:false, motion}); // content hook (paint)
     if (rodHands.group.visible) {
       const out = !!hook?.fishing; if (rodModel.userData.float) rodModel.userData.float.visible = !out; if (rodModel.userData.leader) rodModel.userData.leader.visible = !out;
       rodHands.update({dt, time:elapsed, charge:0, reeling:fc ? fc.rodReeling : out && hook.t > fishWait, // [fishing-cooking]
@@ -1119,6 +1131,7 @@ export function mount(transfer = null) {
   });
   on(canvas, 'pointerdown', e => {
     if (e.button === 2 && running && building && heldKind() === 'hammer' && !uiBlocked()) { building.menu.open(); return; } // building-pieces lane hook
+    if (e.button === 2 && running && !uiBlocked() && content?.alt(isLocked() ? pickCenter() : currentAim(), heldKind())) return; // content hook (paint: brush colour)
     if (!running || !scene || e.button !== 0 || uiBlocked()) return;
     if (building?.menu.isOpen) { building.menu.close(isLocked()); return; } // building-pieces lane hook (unlocked: a click off the wheel cancels)
     if (controls?.radialOpen) return; // controls lane: a click while the build radial is open picks a piece, not the tool
