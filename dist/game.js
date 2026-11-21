@@ -52,6 +52,7 @@ import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
+import { createItemBatches } from './item-batches.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { createGhosts, wrapRot, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
@@ -402,6 +403,7 @@ export function mount(transfer = null) {
     if (ART.artEnabled()) ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T}); // art lane hook
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
     itemsGroup = new T.Group(); scene.add(itemsGroup); ocean.trackFoam(itemsGroup);
+    itemBatches = createItemBatches(T, itemsGroup); scene.add(itemBatches.root); scene.onBeforeRender = (_r, _s, cam) => itemBatches?.update(cam); // perf: floating items sharing a geometry draw as one instanced mesh
     player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
     ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => { try { return prog?.modelFor(k, {type:k}) ?? (k === 'rainbarrel' ? createRainBarrel(T) : k === 'sprinkler' ? createSprinkler(T) : k === 'purifier' ? createPurifier(T) : createCraft(T, k) ?? createSignalModel(T, k) ?? content?.decorModel(k) ?? null); } catch { return null; } }}); // see-through real models, red when blocked
     const ropeGeo = new T.BufferGeometry(); ropeAttr = new T.BufferAttribute(new Float32Array((ROPE_SEGMENTS + 1) * 3), 3); ropeAttr.setUsage(T.DynamicDrawUsage); ropeGeo.setAttribute('position', ropeAttr);
@@ -573,6 +575,7 @@ export function mount(transfer = null) {
   }
   // Meshes are keyed by token, not id: a respawned item keeps its id but may change type.
   const itemMeshes = new Map();
+  let itemBatches = null; // item-batches.js: instanced drawing of the shared jug/debris meshes in itemsGroup
   function syncItems() {
     if (!itemsGroup) return;
     const live = new Set(world.items.map(x => x.token));
@@ -582,7 +585,7 @@ export function mount(transfer = null) {
       if (itemMeshes.has(item.token)) continue;
       const g = itemModel(item); g.userData.token = item.token; singlePass(g);
       g.traverse(o => { o.castShadow = false; }); // the ocean takes no shadows, so floating supplies skip the shadow pass
-      g.position.set(item.x, ITEM_FLOAT, item.z);
+      g.position.set(item.x, ITEM_FLOAT, item.z); itemBatches?.adopt(g);
       itemsGroup.add(g); itemMeshes.set(item.token, g);
     }
   }
@@ -1841,6 +1844,7 @@ export function mount(transfer = null) {
     if (!scene) return;
     try { building?.dispose(); } catch {} building = null; // building-pieces lane hook
     try { diving?.dispose(); } catch {} diving = null; // diving lane hook
+    itemBatches?.dispose(); itemBatches = null;
     const mats = new Set(), geos = new Set();
     scene.traverse(o => {
       if (o.geometry) geos.add(o.geometry);
