@@ -148,6 +148,17 @@ Next ideas:
 - Also fixed: Escape with the hammer build wheel open opened the pause menu.
 - Gate: 533/533, no page errors, hook-only spawn, Esc from inventory OK, perf +0.8% vs main (fair probe), draw calls 148 vs 539.
 - Merged PR #1 into main.
+
+## 2026-11-21 · loop-features-202611210534 (features, round 2)
+Base: origin/claude/raft-master (7555d67) with round 1 (loop-features-202611210451) merged in (conflicts in game.js/index.html/inventory-state.js resolved; all lanes + round 1 coexist).
+All three features are content-registry modules (dist/content.js FEATURES), state in world.ext[name].
+- **Seaside Kiln** (`kiln`) — research-gated station (stone 4, clay 4, scrap 1) smelting metal ore → Metal Bar, sand → Glass Pane, clay → Fired Brick with wood fuel; recipes Glass Lantern (lit at night), Line Sinker (halves hook wear; one game.js line in wearHook), Glass Cups ×3, Brick Planters ×2. Files: kiln.js, kiln-core.js, kiln-model.js.
+- **Puffhen raft animals** (`animals`) — starter Nest Box lured with a palm seed (or 3 leaves); hens wander deterministically on the host clock (no positions sent), lay Puff Eggs (+ feathers), can be fed, petted (hearts) and renamed; Feather Cushion decor and Egg Lantern recipe. Files: animals.js, animals-core.js, animals-models.js, animals-ui.js. game.js: contentCtx.hasGrill.
+- **Decor pack + signboards** (`decorpack`) — Woven Deck Mat, Wind Pennant, Hanging Fern Post, Shell Chime, Rope Hammock, Clay Pot Trio (first clay use) and a writable Signboard (3×18 chars, cleaned, CanvasTexture cache); quarter-turn rotation with E. Files: decor-pack.js, decor-pack-models.js, signs-core.js, signs-ui.js. game.js: decorModel(type, d).
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (13 agents).
+Review fixes: kiln guest revision skip for old hosts; sign text lone surrogates + huge input, sign dialog lifecycle on dispose; puffhen rename reach, guest clock slew, graph rebuild churn, dialog leak; storage-research tests made robust to new recipes; icons for sand/stone/clay/ore/pots/sign/chime; hammock pillow, cushion tufts.
+Checks: npm test 342/342; shoot.py errors []; coop-e2e (loopback) all pass except test 4 middle-click ping (fails on base too); sign write/turn verified host↔guest over loopback.
+Known limits: decor collision is a centre circle (fern/hammock posts walkable); doorway clipping of hens; glass lantern glass looks pale at night; mat/fern/hammock borrow icons.
 ## claude/loop-visuals-202611210451 (visuals, round 1)
 Base: origin/claude/raft-integration (d5419eb). Fleet: critic, 7 builders, art judge, perf checker.
 - Accepted: bright tropical sky dome with wispy clouds and cyan horizon fog (sky.js wired in); warm sun + blue hemisphere fill, shadow camera actually applied; deep blue ocean with softer foam; weathered olive-tan deck, 3-4 boards per tile; rocky sand-shelf islands with palms (islands.js, merged geometry; renamed scenery-islands.js on merge into raft-master, where islands.js is the content lane); light canvas hotbar/inventory in tan wood frame.
@@ -240,3 +251,78 @@ Two integrator sessions are running on claude/raft-master; each merges the other
 - Next: lane agents merging the newest loop-features/perf/ux/visuals/fidelity and raft-content/tests/integration + lane-placement.
 - Still skipped: raft-reference (scraped commercial-game stills). Farming (farming.js) is merged but not reachable in play:
   it and the watering lane drive the same palm planter; it needs a design decision.
+## 2026-11-21 · loop-features-202611210703 (features)
+Base: origin/claude/raft-master (6ab9b24, includes progression/items.js). Branch: claude/loop-features-202611210703.
+Not redone this round (done in other branches or already on master): bed/sleep, motor/wheel, paint (loop-features-202611210548, whose code is not yet on master); animals, kiln, signs (0534); instruments, rain barrel, beehive (0648); binoculars and smelter (already on master).
+
+Features (research in docs/features, specs in docs/specs):
+- **Character customisation (Look)**:
+  - Shirt, trousers, skin and hair palettes, plus 5 hats: straw (today's), none, and beanie, bucket hat and flower crown, which unlock from logbook achievements.
+  - The Look dialog has a 2D SVG preview and opens from the pause menu and the title/onboarding menu.
+  - First-person hands and sleeves now match the body; this fixes the old green sleeve.
+  - Co-op: the look is sent in hello plus a `k:'look'` event, validated, and throttled to 1 rebuild per 300 ms. The remote body is re-baked only when the look changes.
+  - Stored per browser in `little-raft-look-v1`, never in the world.
+  - Files: dist/look.js, dist/look-ui.js.
+- **Seashell Finder + Little Spade + buried treasure ("Sandy Secrets")**:
+  - Each island has 1–2 buried bundles at spots from a seeded stream, so `layoutFor` is unchanged.
+  - The finder shows a ring HUD, beeps faster as you get close, and has a glowing bead.
+  - E with the spade digs. The host checks reach, using the guest's position for guest digs.
+  - Loot comes from existing items, with a 15% keepsake ingot; an empty dig gives 1 sand.
+  - The spade wears out and R repairs it.
+  - State is `world.ext.treasure {v, seed, dug[]}` and resets when the island changes.
+  - Files: dist/treasure.js, treasure-rules.js, treasure-models.js; `islandNow()` accessor in islands.js.
+- **Map table + sea chart**:
+  - The map table is an items.js placeable; copper unlocks it.
+  - E opens a parchment canvas chart (-z up, 150 m to 10 km): raft and heading, sailed trail, charted islands with generated names and visited/gathered ticks, the signal wedge, and up to 8 pins.
+  - Set course reuses the sail heading action.
+  - State `world.ext.maptable` is about 3.6 KB at most. Only the host records islands and the trail; guests send validated pin actions.
+  - Files: dist/maptable.js, maptable-ui.js, maptable-model.js; content.js passes `{peek}` to modules.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (13 agents).
+Review/QA fixes:
+- Look: a flood of partner look messages could force a rebuild each time (now throttled); the in-memory look is sent when storage is blocked; hats are rechecked after a world swap; `hands.setLook(null)` threw.
+- Treasure: host dig cooldown in a hidden tab, the finder bead glow, hole colour, per-frame HUD strings; a guest end-to-end dig test was added.
+- Map table: the "Course set" text was hidden behind the modal and now shows in the dialog; km/m edge text.
+- Pickup feed: blank icons for model-less items, long notes overlapping the hotbar, journal chip over the phone hotbar.
+Checks: `npm test` 571/571 (was 549 at base); shoot.py `errors: []`. Loopback co-op probes for look and treasure.
+Process notes: one intermediate commit (3d365c8) had a broken game.js, fixed in the next commit (86488d7). Two commits carry another agent's hunk because the git index is shared.
+Known limits: chart labels overlap near the raft; the treasure chest is a plain box; the phone inventory needs scrolling to reach its hotbar row; empty digs give sand fast (tune?); no live two-browser test of a guest digging.
+Next ideas: merge loop-features-202611210548 (sleep/motor/paint) into master; a general content-prompt bridge to raftPrompts; message-bottle loot in treasure; nicer chest model.
+
+## 2026-11-21 · loop-fidelity-202611210714 (raft fidelity, round 1)
+Base: origin/claude/raft-master (d356103). Branch: claude/loop-fidelity-202611210714.
+Research: docs/loop/research/fidelity-r1-survival.md and fidelity-r1-shark.md. The wiki hosts were DNS-blocked, so the numbers come from search summaries.
+
+Claimed gaps (the three largest: none of these existed before):
+- **Hunger, thirst, health**: dist/vitals.js and dist/vitals-ui.js. Hunger drains 0.09/s and thirst 0.11/s, x1.5 while sprinting or swimming. Each empty bar costs 0.75 HP/s. Health regenerates 0.25 HP/s while both bars are above 0.
+  - Click with food or a cup to eat or drink. Raw fish is salty; a salt cup costs 5 water; grilled fish +35; a fresh cup +40 and gives the cup back.
+  - The bars sit in the lower left with a low-health vignette.
+  - At 0 HP you pass out and wake at the raft centre with 100 HP and 75 food/water, keeping the inventory (gentle mode).
+  - Vitals are saved. A guest eats through the host's 'eat' action and 'ate' effect.
+- **Shark**: dist/shark.js and dist/shark-model.js.
+  - It circles at the raft's edge + 6 m. Every 300 s it attacks a random unarmored edge tile: 20 damage every 2 s against 100 HP per tile. A broken tile takes its decor, pieces, grill and crate contents with it; the last tile is never removed.
+  - It hunts swimmers within 25 m (30 damage every 3.5 s).
+  - 150 HP. 15 damage within one attack repels it. Harvest the body with E for 4 shark meat and 1 shark head; it respawns 180 s after looting.
+  - Co-op: the host is authoritative, and the guest gets a compact pose plus tileHp.
+- **Spear and foundation repair**: dist/spear.js, repair.js, spear-model.js and spear-repair-hooks.js.
+  - Wooden spear: 8 planks + 3 rope, 5 damage, 20 uses. Metal spear: 6 planks + 2 rope + 2 ingots + 1 bolt, 10 damage, 40 uses.
+  - LMB thrust with a 0.7 s cooldown and 2.8 m reach. Only hits wear the spear.
+  - Hammer on a damaged tile: 1 plank restores 50 HP.
+  - Raw shark meat grills into Grilled Shark Meat (+30 food).
+
+Fleet: 2 researchers, 3 builders (worktrees), 2 reviewers.
+Review fixes:
+- one damaged-tile overlay instead of two
+- crate contents cleared with their broken tile
+- the guest spear-hit rate limit now sits under the spear cooldown
+- fainting reels in the fishing line and ends a dive; opening a menu cancels eating
+- HUD overlaps fixed at 600 px wide; the faint overlay sits above the checklist
+- shoot.py waits 60 s for the page to load
+Checks: npm test 488/488 (was 456); shoot.py `errors: []`. Frame time 293-317 ms on a loaded machine (base 297); 129 draw calls (+9), 97 shadow casters (no change).
+Known limits:
+- A guest spear thrust the host rejects still wears the spear.
+- The spear's hit test ignores the deck, so you can hit the shark through the planks.
+- Spearing a circling shark resets its attack timer.
+- The tileArmor contract exists (world.tileArmor) but no armor item yet.
+- Eating has no hand animation.
+Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/foundation costs; crop plots (potato/beet); simple purifier fuel and timings (30 s per cup); shark bait.

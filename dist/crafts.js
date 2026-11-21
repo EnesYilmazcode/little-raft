@@ -85,7 +85,7 @@ function makeKit(T) {
       const grain = 0.5 + 0.5 * Math.sin(A * 70 + Math.sin(L * 5 + ph) * 2.2 + ph);
       const knot = Math.pow(Math.max(0, Math.sin(L * 6.1 + ph * 1.3) * Math.sin(A * 20 + ph)), 6);
       const wx = 0.5 + 0.5 * Math.sin(L * 2.3 + ph * 0.7 + A * 3);
-      c.copy(base).lerp(dark, grain * 0.32 + knot * 0.5).lerp(grey, wk * wx * 0.5);
+      c.copy(base).lerp(dark, grain * 0.32 + knot * 0.5).lerp(grey, 0.4 + wk * wx * 0.4);
     });
   };
   const plank = (w, h, d, hex, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, weather) =>

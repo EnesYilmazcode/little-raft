@@ -50,16 +50,16 @@ const ball = (T, w = 8, h = 6) => new T.SphereGeometry(1, w, h);
 export const GULL_SHOULDER = [0.1, 0.27, 0.05];
 export function gullBodyGeometry(T) {
   const P = [];
-  P.push(part(T, ball(T, 9, 7), 0xf6f6f1, [0, 0.22, 0, 0, 0, 0, 0.13, 0.12, 0.27]));
-  P.push(part(T, ball(T, 7, 5), 0xa9b3bc, [0, 0.285, -0.04, 0, 0, 0, 0.1, 0.05, 0.2])); // grey mantle on the back
-  P.push(part(T, ball(T, 8, 6), 0xffffff, [0, 0.34, 0.21, 0, 0, 0, 0.088, 0.085, 0.1]));
-  P.push(part(T, new T.ConeGeometry(0.028, 0.13, 6), 0xf39a24, [0, 0.33, 0.34, Math.PI / 2, 0, 0]));
-  P.push(part(T, ball(T, 6, 4), 0xe0452b, [0, 0.318, 0.33, 0, 0, 0, 0.012, 0.012, 0.012])); // the little red beak spot
-  for (const s of [-1, 1]) P.push(part(T, ball(T, 6, 4), 0x1b1d22, [s * 0.066, 0.36, 0.255, 0, 0, 0, 0.016, 0.018, 0.016]));
+  P.push(part(T, ball(T, 8, 4), 0xf6f6f1, [0, 0.22, 0, 0, 0, 0, 0.13, 0.12, 0.27]));
+  P.push(part(T, ball(T, 5, 3), 0xa9b3bc, [0, 0.285, -0.04, 0, 0, 0, 0.1, 0.05, 0.2])); // grey mantle on the back
+  P.push(part(T, ball(T, 6, 4), 0xffffff, [0, 0.34, 0.21, 0, 0, 0, 0.088, 0.085, 0.1]));
+  P.push(part(T, new T.ConeGeometry(0.028, 0.13, 4, 1, true), 0xf39a24, [0, 0.33, 0.34, Math.PI / 2, 0, 0]));
+  P.push(part(T, ball(T, 4, 2), 0xe0452b, [0, 0.318, 0.33, 0, 0, 0, 0.012, 0.012, 0.012])); // the little red beak spot
+  for (const s of [-1, 1]) P.push(part(T, ball(T, 4, 2), 0x1b1d22, [s * 0.066, 0.36, 0.255, 0, 0, 0, 0.016, 0.018, 0.016]));
   P.push(part(T, new T.ConeGeometry(0.085, 0.2, 4), f => (f % 2 ? 0xe9ecee : 0xd9dee2), [0, 0.235, -0.31, -Math.PI / 2, Math.PI / 4, 0, 1, 1, 0.35])); // tail
   let body = 0; for (const p of P) body += p.attributes.position.count;
   for (const s of [-1, 1]) { // legs last: the vertices after `body` get legW = 1, so the shader can tuck them in flight
-    P.push(part(T, new T.CylinderGeometry(0.012, 0.012, 0.13, 5), 0xf0a050, [s * 0.045, 0.065, 0.01]));
+    P.push(part(T, new T.CylinderGeometry(0.012, 0.012, 0.13, 3, 1, true), 0xf0a050, [s * 0.045, 0.065, 0.01]));
     P.push(part(T, new T.ConeGeometry(0.04, 0.07, 3), 0xf0a050, [s * 0.045, 0.006, 0.04, Math.PI / 2, 0, 0, 1, 1, 0.2])); // webbed foot
   }
   const g = merge(T, P), n = g.attributes.position.count, w = new Float32Array(n);

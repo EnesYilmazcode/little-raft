@@ -2,7 +2,7 @@
 // API (window.raftOnboarding): register({chapter, title?, after?, steps}), complete(id), reset(), state().
 // Step: {id, title, hint (string or S -> string), done(S, base, ctx) -> bool, count?(S, base, ctx) -> [n, of], start?(S) -> base, needs?:[ids],
 //        optional?:bool (never blocks its chapter), show?(S) -> bool (visibility gate), every?:bool (shown in any chapter)}.
-// count may add a unit: [n, of, '°']. ctx = {S0, gained(k), yawTravel, walked (path metres), prev, mem, silent}. Completion reads only window.raftDebug.state (polled 250 ms).
+// count may add a unit: [n, of, '°']. ctx = {S0, gained(k), yawTravel, walked (path metres), prev, mem, silent}. Completion reads only window.raftDebug.hud (a light live view; .state if absent), polled 250 ms.
 export const SAVE_KEY = 'little-raft-v1', KEY = 'little-raft-onboarding-v1', AUTOSTART = 'little-raft-autostart';
 const POLL_MS = 250, MAX_ROWS = 3, DIM_MS = 20000, HOLD_MS = 2000, ASIDE_MIN = 190, GUTTER = 8;
 
@@ -91,8 +91,12 @@ export function insertSteps(steps, chapters, {chapter, title, after, steps:add} 
   steps.splice(at + 1, 0, ...add.map(s => ({...s, chapter})));
   return steps;
 }
-const snap = S => ({tiles:num(S.tiles), fish:num(S.fish), collected:num(S.collected), hookHealth:num(S.hookHealth),
-  decor:Object.fromEntries(arr(S.decor).filter(d => typeof d?.type === 'string').map(d => [d.type, decorCount(S, d.type)])),
+function decorCounts(S) {
+  const out = {}, list = arr(S.decor);
+  for (let i = 0; i < list.length; i++) { const t = list[i]?.type; if (typeof t === 'string') out[t] = (out[t] ?? 0) + 1; }
+  return out;
+}
+const snap = S => ({tiles:num(S.tiles), fish:num(S.fish), collected:num(S.collected), hookHealth:num(S.hookHealth), decor:decorCounts(S),
   stock:{...(S.stock && typeof S.stock === 'object' ? S.stock : {})}, me:S.me ? {x:num(S.me.x), z:num(S.me.z), yaw:num(S.me.yaw)} : null});
 function ctxFor(rec, S, prev, silent) {
   const base = rec?.base ?? FRESH;
@@ -136,10 +140,10 @@ export function evaluate(steps, P, rawS, {silent = false} = {}) {
     const byId = new Map(steps.map(s => [s.id, s])), mark = id => { if (!P.done[id] && byId.has(id)) { P.done[id] = true; silentDone.push(id); arr(byId.get(id).needs).forEach(mark); } };
     for (const s of steps) if (check(s, S, FRESH, ctxFor(null, S, null, true))) mark(s.id);
   }
-  const vis = visibleSteps(steps, P, S), keep = {};
+  const vis = visibleSteps(steps, P, S), keep = {}, now = snap(S); // one snapshot per poll, shared read-only by every step
   for (const s of swapped ? [] : vis) {
-    const rec = P.track[s.id] ?? track(s, S), now = snap(S);
-    for (const k of Object.keys(now.stock)) { const d = inv(now, k) - inv(rec.last, k); if (d > 0) rec.gained[k] = num(rec.gained[k]) + d; }
+    const rec = P.track[s.id] ?? track(s, S, now);
+    for (const k in now.stock) { const d = inv(now, k) - inv(rec.last, k); if (d > 0) rec.gained[k] = num(rec.gained[k]) + d; }
     if (now.me && rec.last.me) {
       rec.yaw += Math.abs(wrapPi(now.me.yaw - rec.last.me.yaw));
       const d = Math.hypot(now.me.x - rec.last.me.x, now.me.z - rec.last.me.z); if (d < 3) rec.walk += d; // >3 m in 250 ms: a teleport
@@ -147,13 +151,13 @@ export function evaluate(steps, P, rawS, {silent = false} = {}) {
     rec.last = now; keep[s.id] = rec;
     if (check(s, S, rec.base, ctxFor(rec, S, prev, false))) { P.done[s.id] = true; newly.push(s.id); }
   }
-  P.track = keep; P.prev = snapPrev(S);
+  P.track = keep; P.prev = snapPrev(S, now);
   const after = visibleSteps(steps, P, S), counts = {}, hints = {};
-  for (const s of after) { P.track[s.id] ??= track(s, S); counts[s.id] = countOf(s, S, P.track[s.id], P.prev); hints[s.id] = hintOf(s, S); }
+  for (const s of after) { P.track[s.id] ??= track(s, S, now); counts[s.id] = countOf(s, S, P.track[s.id], P.prev); hints[s.id] = hintOf(s, S); }
   return {newly, silentDone, visible:after.map(s => s.id), chapter:currentChapter(steps, P.done), counts, hints, reset};
 }
-function track(s, S) { let base; try { base = s.start ? s.start(S) : null; } catch {} return {base:base ?? snap(S), gained:{}, yaw:0, walk:0, mem:{}, last:snap(S)}; }
-const snapPrev = S => ({...snap(S), role:S.role, hostWorld:hostWorld(S), pickup:S.pickup ?? null, hookStage:S.hookStage});
+function track(s, S, now = snap(S)) { let base; try { base = s.start ? s.start(S) : null; } catch {} return {base:base ?? now, gained:{}, yaw:0, walk:0, mem:{}, last:now}; }
+const snapPrev = (S, now = snap(S)) => ({...now, role:S.role, hostWorld:hostWorld(S), pickup:S.pickup ?? null, hookStage:S.hookStage});
 
 export function saveSummary(raw) {
   try {
@@ -270,7 +274,7 @@ function boot() {
     renderHead(shownCh);
   }
   function tick() {
-    let S = null; try { S = window.raftDebug?.state; } catch {}
+    let S = null; try { const d = window.raftDebug; S = d?.hud ?? d?.state; } catch {} // hud: live view without .state's deep copies
     const playing = !!S?.running;
     if (!playing) return;
     lastS = S;
@@ -319,6 +323,7 @@ function boot() {
     menu.innerHTML = `${raw != null ? `<button type="button" class="ob-item" data-act="continue">Continue${sub ? `<small>${hintHTML(sub)}</small>` : ''}</button>` : ''}
       <button type="button" class="ob-item" data-act="new">${auto && raw == null ? 'Set sail' : 'New Game'}</button>
       <button type="button" class="ob-item" data-act="crew">Play together</button>
+      ${$('#welcomeLook') ? '<button type="button" class="ob-item" data-act="look">Change look</button>' : ''}
       <button type="button" class="ob-item" data-act="settings">Settings</button>
       <small class="ob-savenote">Saves automatically in this browser</small>`;
     welcome.prepend(logo); card.prepend(menu); welcome.classList.add('ob-on'); document.body.classList.add('ob-title-ready');
@@ -342,6 +347,7 @@ function boot() {
         else if (armed) { disarm(); wipe(); }
         else { newBtn.textContent = 'Start over? Click again'; newBtn.classList.add('ob-confirm'); armed = setTimeout(disarm, 4000); }
       } else if (act === 'crew') $('#welcomeCrew')?.click();
+      else if (act === 'look') $('#welcomeLook')?.click(); // [look] docs/specs/customise.md
       else if (act === 'settings') $('#helpButton')?.click();
     });
     menu.addEventListener('keydown', e => {

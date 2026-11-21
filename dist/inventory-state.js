@@ -1,6 +1,6 @@
 // Authoritative per-player inventory ("bag") for the raft survival game.
 // Pure ES module: no DOM, no THREE, no timers, no randomness.
-import { infoTable, recipeTable, TOOL_IDS, registerBagKinds } from './items.js'; // [progression-hook]
+import { infoTable, recipeTable, TOOL_IDS, registerBagKinds } from './items.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 
 export const STACK_SIZE = 20;
 export const SLOT_COUNT = 28;
@@ -35,6 +35,9 @@ export const ITEM_INFO = Object.freeze({
   sand:       Object.freeze({ kind: 'sand',       name: 'Sand',         icon: 'icon-scrap' ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
   clay:       Object.freeze({ kind: 'clay',       name: 'Clay',         icon: 'icon-scrap' ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
   metalore:   Object.freeze({ kind: 'metalore',   name: 'Metal Ore',    icon: 'icon-scrap'  ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  // Shark (dist/shark.js): harvested from a dead shark with E.
+  sharkmeat:  Object.freeze({ kind: 'sharkmeat',  name: 'Raw Shark Meat', icon: 'icon-sharkmeat', maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  sharkhead:  Object.freeze({ kind: 'sharkhead',  name: 'Shark Head',   icon: 'icon-sharkhead', maxStack: 5,          tool: false, placeholder: true }),
   receiver:   Object.freeze({ kind: 'receiver',   name: 'Receiver',     icon: 'icon-compass', maxStack: STACK_SIZE, tool: false, placeholder: true }),
   antenna:    Object.freeze({ kind: 'antenna',    name: 'Antenna',      icon: 'icon-antenna', maxStack: STACK_SIZE, tool: false, placeholder: false }),
   cup:        Object.freeze({ kind: 'cup',        name: 'Cup',          icon: 'icon-cup',     maxStack: 5,          tool: false, placeholder: false }),

@@ -21,7 +21,7 @@
 // Notes: no DOM timers. Voices clean themselves up on the sources' 'ended' event.
 
 export const EVENTS = Object.freeze(['throw', 'splash', 'collect', 'build', 'place', 'craft', 'repair', 'plant', 'water', 'jump',
-  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny']);
+  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny', 'detect', 'chime']);
 // friendlier names other modules may use; play() resolves them to a recipe above
 export const ALIASES = Object.freeze({ pickup: 'collect', cast: 'throw', hook: 'throw', pour: 'water', click: 'ui' });
 export const BUSES = Object.freeze(['master', 'effects', 'ambience', 'music']);
@@ -56,22 +56,28 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     return globalThis.AudioContext || globalThis.webkitAudioContext || null;
   }
 
+  // Built on the first gesture, before the JIT has warmed up, so each buffer is one short pass with few operations
+  // per sample (cold-loop double math boxes every intermediate: the old 6 s, three-pass brown loop made MBs of garbage).
+  // Brown: leaky-integrated white noise (leak .998, ~10 ms memory, so it is stationary and needs no drift removal),
+  // scaled by a fixed gain that gives the old peak-normalised loudness (RMS ~.24). The integrator runs on for FADE
+  // samples past the end and that continuation is equal-power crossfaded into the head: d[0] is then the natural
+  // successor of d[len - 1], so the loop seam is click-free.
+  const BROWN_GAIN = 1.32, LEAK = 0.998, KICK = 0.04 * LEAK * BROWN_GAIN, FADE_S = 0.05; // x = G*y, y' = (y + .02*(2r-1)) * LEAK
   function makeNoise(seconds, brown) {
-    const len = Math.max(1, Math.floor(ctx.sampleRate * seconds));
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const rate = ctx.sampleRate, len = Math.max(1, Math.floor(rate * seconds));
+    const buf = ctx.createBuffer(1, len, rate);
     const d = buf.getChannelData(0);
     if (!brown) {
       for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
       return buf;
     }
-    let last = 0;
-    for (let i = 0; i < len; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) * 0.998; d[i] = last; }
-    // remove drift so the loop point is continuous, then normalise
-    const start = d[0], drift = (d[len - 1] - start) / (len - 1);
-    let peak = 0;
-    for (let i = 0; i < len; i++) { d[i] -= start + drift * i; peak = Math.max(peak, Math.abs(d[i])); }
-    const k = peak > 0 ? 0.9 / peak : 0;
-    for (let i = 0; i < len; i++) d[i] *= k;
+    let x = 0;
+    for (let i = 0; i < len; i++) { x = x * LEAK + (Math.random() - 0.5) * KICK; d[i] = x; }
+    const fade = Math.min(len >> 1, Math.floor(rate * FADE_S)), step = Math.PI / 2 / Math.max(1, fade);
+    for (let i = 0; i < fade; i++) {
+      x = x * LEAK + (Math.random() - 0.5) * KICK;
+      d[i] = d[i] * Math.sin(i * step) + x * Math.cos(i * step);
+    }
     return buf;
   }
 
@@ -92,7 +98,7 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
       const fx = ctx.createGain(), am = ctx.createGain(), mu = ctx.createGain();
       fx.gain.value = busGain('effects'); am.gain.value = busGain('ambience'); mu.gain.value = busGain('music');
       fx.connect(tone); am.connect(tone); mu.connect(tone);
-      graph = { master, tone, limiter, effects: fx, ambience: am, music: mu, noise: makeNoise(1.5, false), brown: makeNoise(6, true) };
+      graph = { master, tone, limiter, effects: fx, ambience: am, music: mu, noise: makeNoise(1.5, false), brown: makeNoise(2, true) };
       return true;
     } catch (_) { graph = null; return false; }
   }
@@ -359,6 +365,9 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
       tone(v, t + 0.04, 'triangle', base, 0.1 * s, 0.004, 0.12, 0, lp);
       tone(v, t + 0.1, 'triangle', base * 1.5, 0.09 * s, 0.004, 0.16, 0, lp);
     },
+    // Seashell Finder tick (pitch and level rise with closeness s) and the soft lock-on chime (treasure.js)
+    detect(v, t, s) { const f = 700 + 500 * s; tone(v, t, 'sine', f, 0.05 + 0.04 * s, 0.002, 0.05); tone(v, t, 'triangle', f * 2, 0.015 * s, 0.001, 0.03); },
+    chime(v, t, s) { tone(v, t, 'sine', 880, 0.09 * s, 0.002, 0.4); tone(v, t + 0.07, 'sine', 1318.5, 0.06 * s, 0.002, 0.35); tone(v, t + 0.14, 'sine', 1760, 0.04 * s, 0.002, 0.3); },
     repair(v, t, s) {
       // scrape: grainy band noise with fast tremolo, ending on a soft knock
       const g = gain(v, v.bus);

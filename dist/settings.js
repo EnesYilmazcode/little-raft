@@ -136,13 +136,14 @@ function markup() {
   const pages = TABS.map(([id]) => `<div class="rs-page" role="tabpanel" data-page="${id}" hidden>` +
     (id === 'controls' ? `<div class="rs-keys">${keys}</div>` : '') + page(id) +
     (id === 'graphics' ? '<button type="button" class="rs-wide" data-act="fullscreen">Enter fullscreen</button>' : '') + '</div>').join('');
-  return `<form class="rs-form" method="dialog" data-raft-settings="3">
+  return `<form class="rs-form" method="dialog" data-raft-settings="4">
 <nav class="rs-menu"><div class="rs-eyebrow">PAUSED</div><h2>Little Raft</h2>
 <button type="button" data-act="resume">Resume</button>
 <button type="button" data-act="settings" aria-expanded="false">Settings</button>
 <button type="button" data-act="help">How to play</button>
 <button type="button" data-act="crew">Play together</button>
 <button type="button" data-act="logbook">Raft logbook</button>
+<button type="button" data-act="look">Change look</button>
 <button type="button" class="rs-quit" data-act="quit">Save and quit to title</button>
 <div class="rs-foot"><kbd>Esc</kbd>Back</div></nav>
 <section class="rs-panel" aria-label="Settings" hidden><div class="rs-tabs" role="tablist">${tabs}</div>${pages}</section></form>`;
@@ -156,7 +157,7 @@ function ensureDialog() {
     dialog.id = DIALOG_ID;
     document.body.appendChild(dialog);
   }
-  if (dialog.querySelector('[data-raft-settings]')?.dataset.raftSettings !== '3') { // missing or an older layout
+  if (dialog.querySelector('[data-raft-settings]')?.dataset.raftSettings !== '4') { // missing or an older layout
     reused = false;
     dialog.replaceChildren();
     dialog.insertAdjacentHTML('beforeend', markup());
@@ -368,6 +369,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
       return;
     }
     if (act === 'logbook') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-logbook')); return; }
+    if (act === 'look') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-look')); return; }
     if (act === 'help' || act === 'crew') {
       const target = document.getElementById(act);
       if (!(target instanceof HTMLDialogElement)) return;
