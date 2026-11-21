@@ -1,52 +1,66 @@
-// Bark: fissured grey-brown bark plates for the round logs under the raft deck.
-// UV: CylinderGeometry, u wraps around the log, v runs along it; preset repeat [2,1] on a ~0.4 m
-// circumference x 2 m log, so one tile is ~0.2 m (u) x ~2 m (v). The tile is therefore authored
-// squashed in v (~10x): plates are 7 across u and 8 along v (~29 x 250 mm on the log).
-// Plates = periodic Voronoi, metric partly squashed in v so fissures form a long diamond net;
-// deep dark fissures, lighter dry ridge tops, fine grain along the log, sparse lichen speckle.
+// Bark: furrowed bark of long vertical ridges split by narrow dark fissures (pine/oak style, stylized).
+// UV: CylinderGeometry, u wraps around the log, v runs along it. Authored at its true look in the square
+// tile (8 ridges across u, fissures meandering along v): ideal preset repeat [2,4] on the ~0.4 m x 2 m
+// deck logs (~25 mm ridges, plates ~150-250 mm long); at the old [2,1] the ridges just get 4x longer.
+// Fissures = NC meandering vertical lines (periodic noise in v), free to touch and cross so ridges
+// split and merge into a long diamond net. Partial cross-cracks break ridges into long plates.
+// Flat dry ridge tops with fibre streaks, rounded shoulders, a little lichen.
 export const normalStrength = 5;
+const NC = 10, SEED = 5;
 
 export default function generate(S, N) {
   const n = S * S, albedo = new Float32Array(n * 3), height = new Float32Array(n), rough = new Float32Array(n);
-  const PX = 7, PY = 8, KY = 1.6; // plate grid; KY = physical cell height / width
-  const pts = new Float32Array(PX * PY * 3); // jittered plate centres (cell units) + id
-  for (let j = 0; j < PY; j++) for (let i = 0; i < PX; i++) {
-    const k = (j * PX + i) * 3;
-    pts[k] = i + 0.5 + (N.hash2(i, j, 5) - 0.5) * 0.8; pts[k + 1] = j + 0.5 + (N.hash2(i, j, 6) - 0.5) * 0.95; pts[k + 2] = N.hash2(i, j, 7);
+  // per row y, per fissure k: centre (in ridge units) and half width (px)
+  const X = new Float32Array(S * NC), HW = new Float32Array(S * NC);
+  for (let y = 0; y < S; y++) for (let k = 0; k < NC; k++) {
+    const v = y / S, m = N.vnoise(v * 3, k * 5, 3, 64, SEED) - 0.5, m2 = N.vnoise(v * 8, k * 5, 8, 64, SEED + 40) - 0.5;
+    X[y * NC + k] = k + 1.1 * m + 0.35 * m2;
+    HW[y * NC + k] = 0.35 + 1.5 * N.smooth(0.25, 0.85, N.vnoise(v * 5, k * 5, 5, 64, SEED + 80));
   }
-  const dark = [0.2, 0.15, 0.11], lo = [0.37, 0.3, 0.22], hi = [0.5, 0.42, 0.31], dry = [0.62, 0.56, 0.46], lich = [0.55, 0.6, 0.5];
+  // per ridge (between fissure k and k+1): 2 partial cross-cracks [v, reach 0..1, from left?]
+  const CC = [];
+  for (let k = 0; k < NC; k++) for (let q = 0; q < 2; q++) CC.push([(q + N.hash2(k, q, SEED + 1)) / 2, 0.35 + 0.6 * N.hash2(k, q, SEED + 2), N.hash2(k, q, SEED + 3) < 0.5]);
+  const RW = S / NC;
+  const dark = [0.27, 0.19, 0.12], lo = [0.45, 0.34, 0.23], hi = [0.58, 0.46, 0.32], dry = [0.71, 0.61, 0.48], lich = [0.62, 0.66, 0.5];
   for (let y = 0; y < S; y++) {
-    const v = y / S;
+    const v = y / S, row = y * NC;
     for (let x = 0; x < S; x++) {
-      const u = x / S, i = y * S + x;
-      // periodic warp so fissures wander sideways along the log
-      const gx = u * PX + 1.1 * (N.vnoise(u * 4, v * 10, 4, 10, 11) - 0.5), gy = v * PY;
-      const xi = Math.floor(gx), yi = Math.floor(gy);
-      let f1 = 9, f2 = 9, id = 0;
-      for (let b = -1; b <= 1; b++) for (let a = -2; a <= 2; a++) {
-        const cx = ((xi + a) % PX + PX) % PX, cy = ((yi + b) % PY + PY) % PY, k = (cy * PX + cx) * 3;
-        const dx = xi + a + pts[k] - cx - gx, dy = (yi + b + pts[k + 1] - cy - gy) * KY;
-        const d = dx * dx + dy * dy;
-        if (d < f1) { f2 = f1; f1 = d; id = pts[k + 2]; } else if (d < f2) f2 = d;
+      const u = x / S, i = y * S + x, gx = u * NC, c0 = Math.floor(gx);
+      // nearest fissure (check neighbours, wrapped) and the ridge we sit in (last fissure to our left)
+      let d = 99, hw = 1, left = -99, rid = 0, right = 99;
+      for (let a = -2; a <= 2; a++) {
+        const kk = c0 + a, k = ((kk % NC) + NC) % NC, fx = X[row + k] + (kk - k), dd = (gx - fx) * RW;
+        const ad = Math.abs(dd) - HW[row + k];
+        if (ad < d) { d = ad; hw = HW[row + k]; }
+        if (dd >= 0 && fx > left) { left = fx; rid = k; }
+        if (dd < 0 && fx < right) right = fx;
       }
-      const edge = Math.sqrt(f2) - Math.sqrt(f1); // ~distance to plate border, x-cell units
-      const cw = 0.07 + 0.13 * N.vnoise(u * 8, v * 16, 8, 16, 31);
-      const crack = 1 - N.smooth(0, cw, edge);
-      const crown = N.smooth(0.03, 0.5, edge);
-      const grain = N.vnoise(u * 64, v * 6, 64, 6, 41) * 0.6 + N.vnoise(u * 28, v * 3, 28, 3, 43) * 0.4;
-      const h = N.clamp01(0.22 + 0.55 * crown + 0.16 * (grain - 0.5) + 0.1 * (id - 0.5) - 0.3 * crack);
+      // cross-cracks: short, from one fissure part way across the ridge
+      const wid = Math.max(0.2, right - left), t = (gx - left) / wid;
+      let cd = 99;
+      for (let q = 0; q < 2; q++) {
+        const cc = CC[rid * 2 + q]; let dv = v - cc[0] - (t - 0.5) * 0.02; dv -= Math.round(dv);
+        const reach = cc[2] ? t : 1 - t;
+        if (reach < cc[1]) cd = Math.min(cd, Math.abs(dv * S) + 1.2 * reach / cc[1]);
+      }
+      const e = Math.min(d, cd + 0.6); // px from the nearest fissure lip (cross-cracks shallower)
+      const id = N.hash2(rid, 0, SEED + 4), pr = Math.sqrt(Math.sin(Math.PI * Math.min(1, Math.max(0, t)))); // ridge profile
+      // shallow fibrous splits on the ridge faces: short broken vertical dashes
+      const sp = N.smooth(0.84, 0.93, N.vnoise(u * 72 + pr, v * 5, 72, 5, SEED + 47)) * pr;
+      const fib = N.vnoise(u * 112, v * 3, 112, 3, SEED + 41), str = N.vnoise(u * 32, v * 4, 32, 4, SEED + 43);
+      const crack = 1 - N.smooth(-0.6, 0.7, e), crown = N.smooth(-0.3, 4 + hw * 1.5, Math.min(d, cd + 2.5));
+      const h = N.clamp01(0.2 + 0.38 * crown + 0.22 * pr - 0.1 * sp + 0.16 * (str - 0.5) + 0.12 * (fib - 0.5) + 0.06 * (id - 0.5) - 0.28 * crack);
       height[i] = h;
-      const t = N.clamp01(0.4 + 0.55 * (id - 0.5) + 0.6 * (grain - 0.5) + 0.2 * crown);
-      const top = N.smooth(0.55, 0.8, h) * (0.4 + 0.6 * N.vnoise(u * 14, v * 20, 14, 20, 53));
-      // lichen: patchy mask x sparse speckle (2 px across, 1 px along: round on the log)
-      const lm = N.smooth(0.52, 0.66, N.vnoise(u * 6, v * 10, 6, 10, 67)) * N.smooth(0.72, 0.85, N.hash2(x >> 1, y, 71)) * (1 - crack);
+      const tone = N.clamp01(0.45 + 0.45 * (id - 0.5) + 0.6 * (str - 0.5) + 0.55 * (fib - 0.5));
+      const top = N.smooth(0.5, 0.72, h) * (0.5 + 0.5 * N.vnoise(u * 16, v * 5, 16, 5, SEED + 53));
+      const lm = N.smooth(0.58, 0.72, N.vnoise(u * 6, v * 5, 6, 5, SEED + 67)) * N.smooth(0.8, 0.9, N.hash2(x, y >> 1, SEED + 71)) * crown;
       for (let c = 0; c < 3; c++) {
-        let col = N.mix(lo[c], hi[c], t);
-        col = N.mix(col, dry[c], top * 0.6);
-        col = N.mix(col, dark[c], crack * 0.95);
-        albedo[i * 3 + c] = N.mix(col, lich[c], lm * 0.6);
+        let col = N.mix(lo[c], hi[c], tone);
+        col = N.mix(col, dry[c], top * 0.8);
+        col = N.mix(col, dark[c], crack * 0.72 + ((1 - crown) * 0.15 + (1 - pr) * 0.15 + sp * 0.35) * (1 - crack));
+        albedo[i * 3 + c] = N.mix(col, lich[c], lm * 0.35);
       }
-      rough[i] = N.clamp01(0.92 + 0.06 * crack - 0.05 * top);
+      rough[i] = N.clamp01(0.92 + 0.06 * crack - 0.06 * top);
     }
   }
   return { albedo, height, rough };

@@ -17,7 +17,7 @@ import { createSky } from './sky.js';
 export const PRESETS = {
   planks:  { cell: 'planks',  roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1] },
   plank:   { cell: 'plank',   roughness: 1,    metalness: 0,    normalScale: 0.9, repeat: [1, 3] }, // deck board: u across (0.34 m), v along
-  bark:    { cell: 'bark',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [2, 1] },
+  bark:    { cell: 'bark',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [2, 4] }, // deck logs ~0.4 m round x 2 m
   plastic: { cell: 'plastic', roughness: 1,    metalness: 0,    normalScale: 0.8, repeat: [1, 1], transparent: true, opacity: 0.95, side: 'double' },
   foliage: { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [10, 5] }, // dense bush/island canopy, opaque
   leaf:    { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1], alphaTest: 0.5, side: 'double' },
