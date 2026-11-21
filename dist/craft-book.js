@@ -23,6 +23,9 @@ const CATEGORY_OF = Object.freeze({
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
   juicer: 'survival', berrycup: 'survival', coconutcup: 'survival', mixcup: 'survival', // [juicer]
   perch: 'survival', // [gull]
+  shelf: 'survival', trophystand: 'survival', // [display]
+  turbine: 'survival', battery: 'survival', stringlights: 'survival', lamppost: 'survival', // [power]
+  fishtrap: 'survival', // [fishtrap]
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
   researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
   rug: 'building', pennant: 'building', fern: 'building', chime: 'building', hammock: 'building', pots: 'building', sign: 'building', // decor pack
@@ -35,6 +38,8 @@ const CATEGORY_OF = Object.freeze({
   fins: 'tools', airjug: 'tools', goggles: 'tools', scraper: 'tools',
   cookpot: 'building', bowl: 'survival',
   shellwreath: 'building',
+  cup: 'survival', purifier: 'survival', // water gear sits with the rain barrel and sprinkler
+  research: 'building', antenna: 'building', receiver: 'building',
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
@@ -130,6 +135,13 @@ export const ITEM_TEXT = Object.freeze({
   cookedsharkmeat: { desc: 'A shark steak grilled through.', use: 'A filling meal (+30 food).' },
   sharkmeat:  { desc: 'A raw slab of shark meat.', use: 'Grill it for a proper meal; four come from every shark.' },
   sharkhead:  { desc: 'The head of a shark you beat.', use: 'A trophy, and proof the raft is safe for a while.' },
+  shelf:      { desc: 'A little wooden display shelf.', use: 'Shows 3 items; E to put or take.' }, // [display]
+  trophystand: { desc: 'A small pedestal with a brass plaque.', use: 'Shows 1 item or a fish trophy.' }, // [display]
+  turbine:    { desc: 'A little three-blade wind turbine on a mast.', use: 'Place next to a battery; it charges in the wind.' }, // [power]
+  battery:    { desc: 'A sturdy box that stores wind power.', use: 'Powers lights within 3 tiles at night. Check it with E.' }, // [power]
+  stringlights: { desc: 'A post with a wire of warm little bulbs.', use: 'Glows at night near a charged battery.' }, // [power]
+  lamppost:   { desc: 'A tall lamp with a glass head.', use: 'Lights the deck at night near a charged battery.' }, // [power]
+  fishtrap:   { desc: 'A woven fish basket on a little arm.', use: 'Place on an edge tile. Seaweed bait helps. Collect with E.' }, // [fishtrap]
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
   grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },
@@ -233,9 +245,10 @@ export function stackLabel(count, max) {
 }
 
 // ---- hold-to-craft schedule ----
-// A press crafts one immediately. Keep holding: the 2nd craft lands after HOLD.first ms, then each
-// interval shrinks by HOLD.decay down to HOLD.min ms.
-export const HOLD = Object.freeze({ first: 450, decay: 0.78, min: 90, max: 99 });
+// A press crafts one immediately, and a plain click never makes more than that. Keep holding: the
+// button fills for HOLD.first ms before the 2nd craft, then each interval shrinks by HOLD.decay
+// down to HOLD.min ms.
+export const HOLD = Object.freeze({ first: 800, decay: 0.7, min: 90, max: 99 });
 
 /** Milliseconds to wait after the `done`-th craft (done >= 1) before the next one. */
 export function holdDelay(done) {
@@ -259,19 +272,49 @@ export function craftsForHold(ms, cap = HOLD.max) {
 }
 
 // ---- tooltip anchoring ----
+const usableRect = r => !!r && [r.left, r.top, r.right, r.bottom].every(Number.isFinite) && (r.right - r.left > 0 || r.bottom - r.top > 0);
 /**
  * Place a tooltip of size w x h beside an anchor rect {left, top, right, bottom} inside a
  * vw x vh viewport. Prefers the right side, then left, then below, then above; always clamped.
- * @returns {{x:number, y:number, side:'right'|'left'|'below'|'above'}}
+ * opts.beside: a column rect; the tooltip goes beside the whole column (row-aligned) instead of
+ * just beside the anchor. opts.avoid: a rect it must not cover (the Craft button); the tooltip
+ * slides above or below it when it can.
+ * Returns null when the anchor has no box (hidden or detached), so callers hide the tooltip
+ * instead of pinning it to the top-left corner.
+ * @returns {{x:number, y:number, side:'right'|'left'|'below'|'above'}|null}
  */
-export function anchorTip(rect, w, h, vw, vh, gap = 8, pad = 6) {
+export function anchorTip(rect, w, h, vw, vh, gap = 8, pad = 6, opts = null) {
+  if (!usableRect(rect)) return null;
+  const col = usableRect(opts?.beside) ? opts.beside : null;
+  const L = col ? Math.min(col.left, rect.left) : rect.left, R = col ? Math.max(col.right, rect.right) : rect.right;
   const clampV = (v, lo, hi) => Math.max(lo, Math.min(v, Math.max(lo, hi)));
   const yAligned = clampV(rect.top, pad, vh - h - pad);
   const xAligned = clampV(rect.left, pad, vw - w - pad);
-  if (rect.right + gap + w <= vw - pad) return { x: rect.right + gap, y: yAligned, side: 'right' };
-  if (rect.left - gap - w >= pad) return { x: rect.left - gap - w, y: yAligned, side: 'left' };
-  if (rect.bottom + gap + h <= vh - pad) return { x: xAligned, y: rect.bottom + gap, side: 'below' };
-  return { x: xAligned, y: clampV(rect.top - gap - h, pad, vh - h - pad), side: 'above' };
+  let p;
+  if (R + gap + w <= vw - pad) p = { x: R + gap, y: yAligned, side: 'right' };
+  else if (L - gap - w >= pad) p = { x: L - gap - w, y: yAligned, side: 'left' };
+  else if (rect.bottom + gap + h <= vh - pad) p = { x: xAligned, y: rect.bottom + gap, side: 'below' };
+  else p = { x: xAligned, y: clampV(rect.top - gap - h, pad, vh - h - pad), side: 'above' };
+  const a = usableRect(opts?.avoid) ? opts.avoid : null;
+  if (a && p.x < a.right && p.x + w > a.left && p.y < a.bottom && p.y + h > a.top) {
+    if (a.top - gap - h >= pad) p.y = a.top - gap - h;
+    else if (a.bottom + gap + h <= vh - pad) p.y = a.bottom + gap;
+  }
+  return p;
+}
+
+/** True when a box can anchor a tooltip: it is laid out (not hidden, not detached). */
+export const anchorVisible = el => !!el && el.isConnected !== false && usableRect(el.getBoundingClientRect?.());
+
+/**
+ * One recipe gate for the crafting panel from the progression gate ({hidden} | {locked, reason} |
+ * null) and a host-side lock reason (string | null, e.g. storage-research craftLocked: the host
+ * refuses those crafts, so the panel must not offer them). Hidden wins, then the first lock.
+ */
+export function mergeGate(prog, lockReason) {
+  if (prog && (prog.hidden || prog.locked)) return prog;
+  if (lockReason) return { locked: true, reason: String(lockReason) };
+  return prog || null;
 }
 
 // ---- bag open/close and keyboard ----

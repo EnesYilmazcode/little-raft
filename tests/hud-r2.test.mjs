@@ -90,11 +90,12 @@ test('HUD-6/UX-7: the header sits above the welcome overlay so the brand is read
 
 test('UX-2: the bag keeps its top edge across crafting tabs (pinned top, fixed-height craft column)', () => {
   const ui = src('survival-ui.js');
-  assert.match(ui, /#inventory\.sv-inv\{[^}]*margin:max\(16px,calc\(50vh - 300px\)\) auto auto;/, 'top edge pinned, not margin:auto');
-  const book = [...ui.matchAll(/^#inventory \.sv-craft\{flex:0 0 324px;[^}]*\}/gm)].at(-1)?.[0];
+  const book = [...ui.matchAll(/^#inventory \.sv-craft\{[^}]*\}/gm)].at(-1)?.[0];
   assert.ok(book, 'crafting-book column rule');
-  assert.match(book, /;height:min\(560px,calc\(94vh - 30px\)\)/, 'fixed height, so the panel height does not follow the tab');
-  assert.match(ui, /@media\(max-width:860px\),\(max-height:520px\)\{#inventory \.sv-craft\{[^}]*height:auto;max-height:none/, 'stacked layout resets the height');
+  assert.match(book, /;height:var\(--ph\)/, 'fixed height, so the panel height does not follow the tab');
+  assert.match(ui, /#inventory\.sv-inv\{[^}]*--ph:min\(600px,calc\(94vh - 36px\)\)/);
+  assert.match(ui, /#inventory\.sv-inv\{[^}]*margin:max\(16px,calc\(50vh - 300px\)\) auto auto;/, 'top edge pinned, not margin:auto');
+  assert.match(ui, /@media\(max-width:900px\),\(max-height:520px\)[^@]*#inventory \.sv-craft\{height:auto;max-height:none/, 'stacked layout resets the height');
 });
 
 // ---------------------------------------------------------------- co-op feed stacking
@@ -108,6 +109,7 @@ test('co-op: the pickup feed stacks above #coopFeed instead of overlapping it', 
     documentElement: { style: { setProperty: (k, v) => props.set(k, v), removeProperty: k => props.delete(k) } },
     defaultView: { setTimeout: () => 0, clearTimeout() {} } };
   const feed = createFeed({ doc });
+  feed.push('Brother is joining', 'info'); // no shared stack here: the first line mounts the own #coopFeed box
   const box = doc.body.children.find(c => c.tagName === 'div');
   box.offsetHeight = 40; feed.push('Brother joined', 'join');
   assert.equal(props.get('--coop-feed-h'), '46px');
