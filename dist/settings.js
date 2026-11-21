@@ -21,12 +21,15 @@ const SPEC = {
   volume: { tab: 'audio', label: 'Master volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.5, fmt: pct },
   effects: { tab: 'audio', label: 'Effects', type: 'range', min: 0, max: 1, step: 0.05, def: 1, fmt: pct },
   ambience: { tab: 'audio', label: 'Ocean ambience', type: 'range', min: 0, max: 1, step: 0.05, def: 0.7, fmt: pct },
+  // [needs] read by game.js when a NEW raft is made; a running or saved raft keeps its own mode (needs.js, combat-bus.js)
+  gameMode: { tab: 'gameplay', label: 'Game mode (new games)', type: 'select', options: ['relaxed', 'peaceful', 'easy', 'normal', 'hard'], def: 'normal' },
 };
 // Picking a preset also sets the knobs it implies; they stay editable afterwards.
 const PRESETS = { low: { renderScale: 0.7, shadows: false }, medium: { renderScale: 0.85, shadows: true }, high: { renderScale: 1, shadows: true } };
 const DEFAULTS = Object.freeze(Object.fromEntries(Object.entries(SPEC).map(([k, s]) => [k, s.def])));
 const KEYS = Object.keys(SPEC);
-const TABS = [['controls', 'Controls'], ['graphics', 'Graphics'], ['audio', 'Audio']];
+const TABS = [['controls', 'Controls'], ['graphics', 'Graphics'], ['audio', 'Audio'], ['gameplay', 'Gameplay']];
+const PAGE_NOTE = { gameplay: '<p class="rs-note">Relaxed: no hunger, thirst or danger. Peaceful: needs, no shark. Easy, Normal and Hard add a hungrier sea. Applies when you start a new game.</p>' };
 const KEYMAP = [['W A S D', 'Walk'], ['Space', 'Jump'], ['Shift', 'Sprint'], ['Click', 'Use tool / charge throw'], ['Hold click', 'Reel in'],
   ['1 - 8 / Wheel', 'Pick hotbar slot'], ['Tab / I', 'Inventory'], ['E', 'Interact'], ['R', 'Repair hook'], ['L', 'Logbook'], ['Esc', 'Back / pause']];
 
@@ -85,6 +88,7 @@ const CSS = `
 #options .rs-page{display:grid;gap:14px}
 #options .rs-row{display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center}
 #options .rs-row label{color:var(--cream,#f1e7d0);font-weight:600}
+#options .rs-note{margin:4px 0 0;color:var(--muted,#8f9aa0);font-size:13px;line-height:1.45}
 #options .rs-row output{color:var(--amber-lt,#ffc96b);font-variant-numeric:tabular-nums;min-width:4ch;text-align:right}
 #options .rs-row input[type=range]{grid-column:1/-1;width:100%;margin:0;padding:0;border:0;background:none;accent-color:var(--amber,#e9a640)}
 #options .rs-row input[type=checkbox]{appearance:none;width:42px;height:22px;margin:0;border:0;border-radius:11px;background:rgba(0,0,0,.5);cursor:pointer;position:relative;
@@ -131,7 +135,7 @@ function markup() {
   const keys = KEYMAP.map(([k, v]) => `<kbd>${k}</kbd><span>${v}</span>`).join('');
   const tabs = TABS.map(([id, name]) => `<button type="button" role="tab" data-tab="${id}" aria-selected="false">${name}</button>`).join('');
   const pages = TABS.map(([id]) => `<div class="rs-page" role="tabpanel" data-page="${id}" hidden>` +
-    (id === 'controls' ? `<div class="rs-keys">${keys}</div>` : '') + page(id) +
+    (id === 'controls' ? `<div class="rs-keys">${keys}</div>` : '') + page(id) + (PAGE_NOTE[id] ?? '') +
     (id === 'graphics' ? '<button type="button" class="rs-wide" data-act="fullscreen">Enter fullscreen</button>' : '') + '</div>').join('');
   return `<form class="rs-form" method="dialog" data-raft-settings="3">
 <nav class="rs-menu"><div class="rs-eyebrow">PAUSED</div><h2>Little Raft</h2>
