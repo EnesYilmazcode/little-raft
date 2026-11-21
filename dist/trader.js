@@ -200,11 +200,13 @@ export function createTrader(ctx) {
   const canShow = () => !disposed && docked() && localInReach();
   function openUI() {
     if (disposed || uiFailed || typeof document === 'undefined') return false;
-    ctx.releaseLock?.();
-    if (ui) { if (canShow()) { uiSeed = st.visit.seed; ui.open(); } return true; }
+    // Release the lock only as the dialog shows: a slow first module load would otherwise outlast the page-exit
+    // window, so the unlock read as an Escape and opened the pause menu instead (same fix as the game table).
+    const show = u => { uiSeed = st.visit.seed; ctx.releaseLock?.(); u.open(); };
+    if (ui) { if (canShow()) show(ui); return true; }
     uiLoading ??= import('./trader-ui.js?build=v3-survival-ae77fa84ac2b').then(m => { ui = m.createTraderUI(api); return ui; })
       .catch(e => { console.error('trader ui failed', e); uiFailed = true; uiLoading = null; return null; });
-    uiLoading.then(u => { if (!u || disposed || ctx.uiOpen?.() || !canShow()) return; uiSeed = st.visit.seed; u.open(); });
+    uiLoading.then(u => { if (!u || disposed || ctx.uiOpen?.() || !canShow()) return; show(u); });
     return true;
   }
 

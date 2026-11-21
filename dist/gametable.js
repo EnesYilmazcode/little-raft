@@ -184,6 +184,7 @@ export function createGameTable(ctx) {
   }
   function prompt(aim) {
     const d = target(aim); if (!d) return null;
+    if (!ui && !uiLoading) loadUI(); // warm the dialog module while the player aims, so the first E opens at once
     const key = keyOf(d.x, d.z);
     if (pOut !== null && key === pKey && st.r === pR && st === pSt) return pOut;
     pOut = '<kbd>E</kbd>' + esc('Play at the game table') + ' · ' + esc(status(st.t[key] ?? null));
@@ -208,17 +209,19 @@ export function createGameTable(ctx) {
     send: a => { if (uiKey === null) return; const gm = st.t[uiKey]; ctx.action({ ...a, x: uiX, z: uiZ, n: gm ? gm.n : 0 }); },
   };
   function setKey(key) { uiKey = key; const c = key.indexOf(','); uiX = +key.slice(0, c); uiZ = +key.slice(c + 1); }
-  function openUI(key) {
-    if (disposed || uiFailed || typeof document === 'undefined') return false;
-    ctx.releaseLock?.();
-    if (ui) { setKey(key); if (inReach(uiX, uiZ)) ui.open(key); return true; }
+  function loadUI() {
+    if (disposed || uiFailed || typeof document === 'undefined') return null;
     uiLoading ??= import('./gametable-ui.js?build=v3-survival-ae77fa84ac2b').then(m => { if (disposed) return null; ui = m.createGameTableUI(api); return ui; })
       .catch(e => { console.error('game table ui failed', e); uiFailed = true; uiLoading = null; return null; });
-    uiLoading.then(u => {
-      if (!u || disposed || ctx.uiOpen?.()) return;
-      setKey(key);
-      if (inReach(uiX, uiZ)) u.open(key);
-    });
+    return uiLoading;
+  }
+  // The lock is released only once the dialog is about to show: releasing it while the UI module still loads let a
+  // slow first load outlast the page-exit window, so the unlock read as an Escape and opened the pause menu instead.
+  function show(u, key) { setKey(key); if (!inReach(uiX, uiZ)) return; ctx.releaseLock?.(); u.open(key); }
+  function openUI(key) {
+    if (disposed || uiFailed || typeof document === 'undefined') return false;
+    if (ui) { show(ui, key); return true; }
+    loadUI()?.then(u => { if (u && !disposed && !ctx.uiOpen?.()) show(u, key); });
     return true;
   }
 

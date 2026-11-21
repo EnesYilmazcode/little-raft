@@ -4,6 +4,7 @@ import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { createSky } from './sky.js?build=v3-survival-ae77fa84ac2b';
 import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
+import { createRopeMesh } from './rope-mesh.js?build=v3-survival-ae77fa84ac2b';
 import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
 import { HookCast, WATER_Y, catchLoot, holdForFullBag, throwOrigin } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-survival-ae77fa84ac2b';
@@ -128,6 +129,9 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
   border:2px solid #fff3cf;box-shadow:0 0 8px rgba(255,189,102,.7);pointer-events:none;z-index:29}
 #signalMarker.edge{opacity:.7}
 #signalReadout[hidden],#signalMarker[hidden]{display:none}
+/* top-left status pills stack: signal, then treasure finder, then buoy timer */
+body:has(#signalReadout:not([hidden])) #treasureHud{top:48px!important}
+body:has(#signalReadout:not([hidden])):has(#treasureHud:not([style*="display: none"])) #buoyTimer{top:82px}
 /* Rows wrap inside the gutter left of the hotbar (its left edge is 50vw - 253px); below 1000px wide that gutter is too narrow, so the feed lifts above the hotbar. */
 #pickupFeed .pf-row{max-width:max(200px,calc(50vw - 287px));white-space:normal;line-height:1.25}
 @media(max-width:1000px){#pickupFeed[popover]{inset:auto auto calc(182px + var(--coop-feed-h, 0px)) 10px}#pickupFeed .pf-row{max-width:calc(50vw - 120px)}}
@@ -299,7 +303,7 @@ export function mount(transfer = null) {
   let vitalsUI = null, eating = null, fainted = Number.isFinite(X?.fainted) ? X.fainted : -1, exertion = 1; // eating {item, slot, t}; fainted: seconds into the faint, -1 = awake
   const vitalsOpts = {mult:1};
   let building = null, sentPieces = null; // building-pieces lane hook (sentPieces: last pieces array sent to the guest)
-  let scene = null, camera = null, renderer = null, quality = null, ocean = null, sky = null, raft, itemsGroup, ghosts, rope, ropeAttr, hookMesh, bobber, friend, player, sun;
+  let scene = null, camera = null, renderer = null, quality = null, ocean = null, sky = null, raft, itemsGroup, ghosts, rope, hookMesh, bobber, friend, player, sun;
   let hemi = null, clouds = [], content = null; // content hook: lights/clouds handed to content modules
   let hands = null, offIconReady = null, clothMat; // one hands controller swaps the held item model per hotbar kind
   const modelOf = k => { try { return getModel(k); } catch (e) { console.warn('model failed', k, e); return null; } };
@@ -343,7 +347,9 @@ export function mount(transfer = null) {
   let waterClock = 0, waterAim = null; const wateringGroups = new Map(); // tileKey -> palm/purifier group
   let netView = null, netAim = -1; const NET_TIPS = Array.from({length:NET_CAPACITY + 1}, (_, n) => (n ? {key:'E', label:`Empty net (${n})`} : {label:'The net is empty', muted:true})); // [nets]
   const decorGroups = [], undecorHits = []; let hostCaps = null, hostUndecor = false, undecorPreview = null, undecorD = null, undecorText = '', undecorAct = null; // [undecor] decor meshes (rebuildRaft), guest's last host caps, QA preview tile, cached chip/action per target
-  const undecorOut = {text:'', action:null, d:null, deny:null}; // [undecor] reused every frame
+  const undecorOut = {text:'', action:null, d:null, deny:null, name:''}; // [undecor] reused every frame
+  let undecorHid = null, undecorHidD = null, undecorName = '', wasRemoving = false; // [undecor] real decor hidden under the pickup ghost; chip name; X edge
+  const HAMMER_HINT = 'Point at an empty space beside the raft';
   let lastSaveAt = performance.now(), lastNetSendAt = 0, toastTimer = 0, wheelAcc = 0, peerHidden = !!X?.peerHidden, heartbeat = 0;
   let noticeText = '', noticeUntil = 0, noticeCache = null, contextCache = null, uiFailed = false; let fishShown = null, lookTaught = 0, walkTaught = 0, walkSeen = 0;
   const hintsDone = X?.hintsDone instanceof Set ? X.hintsDone : freshSave ? new Set() : loadHints(window.localStorage); // loop-ux: first-run hint chain, once per save
@@ -471,7 +477,7 @@ export function mount(transfer = null) {
     hurtPlayer: (n, cause) => hurtPlayer(n, cause), get vitals() { return vitals; }, // [vitals] damage the LOCAL player; vitals is read-only for modules
     adjustVitals: (hp, food, water) => { if (running && fainted < 0) adjustVitals(vitals, hp, food, water); }, // [bed] a slept night: +40 health, -20 food, -20 water
     note: (i, n, s) => note(i, n, s), get content() { return content; }, // [buoycourse] bell chime + registry view (board mode)
-    faceYaw: y => { if (Number.isFinite(y)) yaw = y; }, // [sit] seat facing
+    faceYaw: y => { if (Number.isFinite(y)) yaw = y; }, get pitch() { return pitch; }, facePitch: p => { if (Number.isFinite(p)) pitch = clamp(p, -PITCH_LIMIT, PITCH_LIMIT); }, // [sit] seat facing
     award: ev => award(ev), night: () => content?.night?.() ?? 0, // [sit] host achievements, [fireworks] content hook
     heldKind: () => heldKind(), // [zipline] content hook
   };
@@ -495,8 +501,7 @@ export function mount(transfer = null) {
     itemsGroup = new T.Group(); scene.add(itemsGroup); ocean.trackFoam(itemsGroup);
     player = makeAvatar(lookState.look); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
     ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => { try { if (k === 'net') return createNetModel(T, mergeGeometries, {ownMaterials:true}); return prog?.modelFor(k, {type:k}) ?? (k === 'anchor' ? createAnchorModel(T) : k === 'rainbarrel' ? createRainBarrel(T) : k === 'sprinkler' ? createSprinkler(T) : k === 'purifier' ? createPurifier(T) : createCraft(T, k) ?? createSignalModel(T, k) ?? content?.decorModel(k) ?? null); } catch { return null; } }}); // see-through real models, red when blocked
-    const ropeGeo = new T.BufferGeometry(); ropeAttr = new T.BufferAttribute(new Float32Array((ROPE_SEGMENTS + 1) * 3), 3); ropeAttr.setUsage(T.DynamicDrawUsage); ropeGeo.setAttribute('position', ropeAttr);
-    rope = new T.Line(ropeGeo, new T.LineBasicMaterial({color:'#e9d39a'})); rope.visible = false; rope.frustumCulled = false; scene.add(rope);
+    rope = createRopeMesh(T, ROPE_SEGMENTS + 1).mesh; rope.visible = false; scene.add(rope); // camera-facing braided ribbon; geometry/material/map freed by disposeScene's traverse
     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
     bobber = createFishingTool(T).userData.float; bobber.removeFromParent(); bobber.position.set(0, 0, 0); bobber.scale.setScalar(3.5); bobber.visible = false; scene.add(bobber); // own materials, normal render order
     clothMat = new T.MeshStandardMaterial({color:'#fff3cf', side:T.DoubleSide, roughness:1});
@@ -685,7 +690,7 @@ export function mount(transfer = null) {
     if (item.type === 'bottle') { const g = new T.Group(), b = createBottle(T); b.position.y = .04; b.rotation.y = (item.id % 7) * .9; g.add(b); return singlePass(g); }
     if (JUNK_TYPES.includes(item.type)) { const g = new T.Group(), m = modelOf(item.type); if (m) { m.traverse(o => { if (o.geometry) { o.geometry.userData.shared = true; if (o.isMesh) { o.castShadow = false; o.userData.batch = true; } } for (const x of [].concat(o.material || [])) x.userData.shared = true; }); /* shared models.js cache: never disposed on pickup */ m.rotation.y = (item.id % 7) * .9; m.position.y = .03; g.add(m); } return singlePass(g); } // [recycler] before createDebris (it throws on unknown types)
     if (item.type !== 'plastic') { const d = createDebris(T, item.type, mat, {seed:item.id, pool:4}); if (ART.artEnabled() && item.type === 'scrap') d.traverse(o => { if (o.isMesh && o.material.vertexColors) { o.material.dispose(); o.material = mat('#8e9aa2'); } }); /* art lane hook */ return singlePass(d); } // pooled geometry, drawn instanced by the item batch
-    const g = new T.Group(), jug = createPlastic(T); if (ART.artEnabled()) { const b = jug.getObjectByName('jugBody'); if (b) { b.material.dispose(); b.material = mat('#f2f0e6'); } } /* art lane hook */ singlePass(jug); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
+    const g = new T.Group(), jug = createPlastic(T, item.id); if (ART.artEnabled()) { const b = jug.getObjectByName('jugBody'); if (b) { b.material.dispose(); b.material = mat('#f2f0e6'); } } /* art lane hook */ singlePass(jug); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
   }
   // Meshes are keyed by token, not id: a respawned item keeps its id but may change type.
   const itemMeshes = new Map();
@@ -1043,10 +1048,10 @@ export function mount(transfer = null) {
       d = targetFromAim(world.decor, key, key ? null : frameAim?.point);
     }
     if (!d) { undecorD = null; return null; }
-    if (!undecorD || d.x !== undecorD.x || d.z !== undecorD.z || d.type !== undecorD.type) { undecorText = 'Release X to pick up the ' + (ITEM_INFO[d.type]?.name ?? d.type); undecorAct = {kind:'undecor', x:d.x, z:d.z, t:d.type}; }
+    if (!undecorD || d.x !== undecorD.x || d.z !== undecorD.z || d.type !== undecorD.type) { undecorName = ITEM_INFO[d.type]?.name ?? d.type; undecorText = 'Release X to pick up the ' + undecorName; undecorAct = {kind:'undecor', x:d.x, z:d.z, t:d.type}; }
     undecorD = d;
     const old = role === 'guest' && !hostUndecor;
-    undecorOut.d = d; undecorOut.action = old ? null : undecorAct; undecorOut.deny = old ? denyOldHost : null;
+    undecorOut.d = d; undecorOut.name = undecorName; undecorOut.action = old ? null : undecorAct; undecorOut.deny = old ? denyOldHost : null;
     undecorOut.text = old ? UNDECOR_TEXT.oldHost : !inReach(physics.x, physics.z, d.x, d.z, BUILD_REACH) ? UNDECOR_TEXT.reach : coreUndecorBlock(world, d) || undecorText;
     return undecorOut;
   }
@@ -1481,7 +1486,7 @@ export function mount(transfer = null) {
     }
     if (kind === 'hammer' || DECOR_TYPES.includes(kind)) {
       const v = placementFor(kind, p);
-      if (!v) { notice(kind === 'hammer' ? 'Point at an empty space beside the raft' : kind === 'net' ? 'Point at the water beside the raft edge' : 'Point at an empty raft floor'); return; } // [nets]
+      if (!v) { notice(kind === 'hammer' ? HAMMER_HINT : kind === 'net' ? 'Point at the water beside the raft edge' : 'Point at an empty raft floor'); return; } // [nets]
       if (v.blocked) { notice(BLOCK_TEXT[v.blocked]); return; }
       if (kind === 'hammer' && !canAfford(bag, FLOOR_COST)) { notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
       if (kind === 'net') { swing = 1; action({kind:'build', recipe:'net', x:v.x, z:v.z, d:v.d}); return; } // [nets] faces outward, no free rotation
@@ -1648,9 +1653,7 @@ export function mount(transfer = null) {
     return w + (y - w) * k;
   }
   function setRope(points) {
-    const arr = ropeAttr.array, n = Math.min(points.length, ROPE_SEGMENTS + 1);
-    for (let i = 0; i < n; i++) { arr[i * 3] = points[i].x; arr[i * 3 + 1] = points[i].y; arr[i * 3 + 2] = points[i].z; }
-    ropeAttr.needsUpdate = true; rope.geometry.setDrawRange(0, n); rope.visible = true;
+    rope.userData.update(points, Math.min(points.length, ROPE_SEGMENTS + 1)); rope.visible = true;
   }
   function updateRaft(dt) {
     const s = ocean.sample(0, 0, oceanSample, undefined, 2.2), h = s.h - ocean.mesh.position.y;
@@ -1799,13 +1802,25 @@ export function mount(transfer = null) {
     hookStage = hook.stage;
     if (hook.stage === 'done') endHook();
   }
+  // [undecor] hide the real decor while its red pickup ghost shows (so the ghost reads as see-through), restore after.
+  // Re-finds the group only when the target or the raft rebuild changes (decorGroups is refilled by rebuildRaft).
+  function hideDecorUnder(d) {
+    if (d === undecorHidD && (!undecorHid || undecorHid.parent)) return;
+    if (undecorHid) undecorHid.visible = true;
+    undecorHid = null; undecorHidD = d;
+    if (!d) return;
+    const k = tileKey(d.x, d.z);
+    for (let i = 0; i < decorGroups.length; i++) if (decorGroups[i].userData.tileKey === k) { undecorHid = decorGroups[i]; undecorHid.visible = false; break; }
+  }
   function updateGhost() {
     const kind = heldKind();
     const pieces = kind === 'hammer' && !hook && building && building.piece !== 'foundation'; // building-pieces lane hook
     if (undecorPreview && kind === 'hammer' && !building?.removing) building?.key('KeyX', true, true); // [undecor] QA preview holds X
     building?.update(raft, frameAim, camera.position, running && kind === 'hammer' && !hook && !uiBlocked(), localBag(), yaw, deckY());
     spearRep?.updateAim(hook ? null : kind, frameAim); spearRep?.tick(); // [spear-repair]
-    const undecorEx = building?.removing ? building.removeExtra : null; // [undecor] red see-through ghost of the aimed decor
+    const removing = !!building?.removing; if (removing && !wasRemoving) pickupFeed.dismiss(HAMMER_HINT); wasRemoving = removing; // [undecor] X held: the place hint no longer applies
+    const undecorEx = removing ? building.removeExtra : null; // [undecor] red see-through ghost of the aimed decor
+    hideDecorUnder(undecorEx?.d ?? null);
     if (undecorEx?.d) { const d = undecorEx.d; hover = null; ghostHold = null; ghosts.show(d.type, d.x * 2, .22, d.z * 2, d.rot || 0, false, elapsed); return; }
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing && !building?.menu.isOpen ? placementFor(kind, frameAim.point) : null;
     if (kind === 'net') { if (!hover) { ghosts.hide(); return; } ghosts.show('net', netEdgeX(hover), 0, netEdgeZ(hover), netYaw(hover.d), !hover.blocked, elapsed); return; } // [nets]
