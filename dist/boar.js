@@ -207,7 +207,7 @@ export function createBoar(ctx) {
       if (st.s !== prevSeed) view.ok = false; // a new tusker snaps; the same one keeps easing toward each ~8 Hz pose
     } else {
       if (st.a === LIFE.alive) { st.m = MODE.idle; st.t = 1; }
-      view.ok = false;
+      view.ok = false; seenSeed = -1; // our own world again: a later join starts a fresh gore count
     }
   }
 
