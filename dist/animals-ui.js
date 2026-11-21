@@ -27,7 +27,7 @@ export function createAnimalsUI(ctx) {
     <div class="lr-an-row"><button type="button" class="lr-an-cancel">Cancel</button><button type="button" class="lr-an-save">Save</button></div>
   </form>`;
   document.body.append(dlg);
-  const input = dlg.querySelector('input');
+  const input = dlg.querySelector('input'), heading = dlg.querySelector('h2');
   let id = null;
 
   const close = () => { if (dlg.open) { try { dlg.close(); } catch { dlg.removeAttribute('open'); } } };
@@ -45,8 +45,10 @@ export function createAnimalsUI(ctx) {
   dlg.addEventListener('close', () => { id = null; if (ctx.running) ctx.requestLock?.(); });
 
   return {
-    open(animalId, name) {
+    open(animalId, name, label = 'Puffhen') {
       id = animalId;
+      const l = String(label || 'Puffhen');
+      heading.textContent = `Name your ${l}`; input.setAttribute('aria-label', `${l} name`);
       input.value = String(name ?? '');
       ctx.releaseLock?.();
       if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }

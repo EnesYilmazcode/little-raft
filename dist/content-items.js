@@ -27,6 +27,9 @@ export const CONTENT_ITEMS = Object.freeze({
   feather:  item('feather', 'Puff Feather',    'icon-feather', false),
   nestbox:  item('nestbox', 'Nest Box',        'icon-nest',    false),
   cushion:  item('cushion', 'Feather Cushion', 'icon-cushion', false),
+  goatpen:  item('goatpen', 'Hay Corner',      'icon-hay',     false),
+  bucket:   item('bucket',  'Wooden Pail',     'icon-pail',    false, 5),
+  milk:     item('milk',    'Pail of Milk',    'icon-milk',    false, 5),
   research: item('research', 'Tinker\u2019s Desk', 'icon-research', false),
   motor:    item('motor',    'Little Motor',   'icon-motor',  false),
   wheel:    item('wheel',    'Steering Wheel', 'icon-wheel',  false),
@@ -63,6 +66,8 @@ export const CONTENT_RECIPES = Object.freeze({
   nestbox: recipe('nestbox', 'Nest Box',        1, { wood: 3, leaf: 2, rope: 1 }),
   cushion: recipe('cushion', 'Feather Cushion', 1, { feather: 3, leaf: 2 }),
   egglamp: Object.freeze({ id: 'egglamp', name: 'Egg Lantern', output: Object.freeze({ kind: 'lantern', count: 1 }), cost: Object.freeze({ puffegg: 1, wood: 2 }) }),
+  goatpen: recipe('goatpen', 'Hay Corner',      1, { wood: 4, leaf: 3, rope: 1 }),
+  bucket:  recipe('bucket',  'Wooden Pail',     1, { wood: 3, rope: 1 }),
   motor:    recipe('motor', 'Little Motor', 1, { wood: 6, scrap: 4, rope: 2 }),
   wheel:    recipe('wheel', 'Steering Wheel', 1, { wood: 5, rope: 2 }),
   bed:      recipe('bed', 'Bed', 1, { wood: 6, leaf: 4 }),
@@ -75,5 +80,5 @@ export const CONTENT_RECIPES = Object.freeze({
 });
 
 // Placeable decor added by content modules (models come from content.decorModel()).
-export const CONTENT_DECOR = Object.freeze(['research', 'bed', 'motor', 'wheel', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign', 'kiln', 'glasslamp', 'nestbox', 'cushion']);
-export const CONTENT_BLOCK_RADIUS = Object.freeze({ research: .5, bed: .55, motor: .45, wheel: .4, pennant: .1, fern: .12, chime: .12, hammock: .45, pots: .3, sign: .1, kiln: .45, glasslamp: .12, nestbox: .35, cushion: .3 });
+export const CONTENT_DECOR = Object.freeze(['research', 'bed', 'motor', 'wheel', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign', 'kiln', 'glasslamp', 'nestbox', 'cushion', 'goatpen']);
+export const CONTENT_BLOCK_RADIUS = Object.freeze({ research: .5, bed: .55, motor: .45, wheel: .4, pennant: .1, fern: .12, chime: .12, hammock: .45, pots: .3, sign: .1, kiln: .45, glasslamp: .12, nestbox: .35, cushion: .3, goatpen: .4 });

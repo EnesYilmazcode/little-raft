@@ -718,7 +718,7 @@ export function mount(transfer = null) {
   function updateEatTip(dialog) {
     const k = running && !dialog && fainted < 0 && !hook && !fishWait && !pickTarget && !waterAim?.click ? eatKind() : null;
     if (!k) { eatTip = null; return; }
-    if (eating) { EATING_TIP.label = FOOD[k].food > 0 ? 'Eating…' : 'Drinking…'; eatTip = EATING_TIP; return; }
+    if (eating) { EATING_TIP.label = FOOD[k].food > 0 && !FOOD[k].drink ? 'Eating…' : 'Drinking…'; eatTip = EATING_TIP; return; }
     eatTip = eatTips.get(k); if (!eatTip) { eatTip = {key:'LMB', label:eatLabel(k)}; eatTips.set(k, eatTip); }
   }
   function promptTip() { // watering hints only when actionable or while holding a cup (never hides the hook's "Throw")

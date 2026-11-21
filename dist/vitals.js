@@ -30,6 +30,8 @@ export const FOOD = {
   saltcup:         {food:0,    water:-5, returns:'cup'},
   sharkmeat:       {food:10,   water:-5},
   cookedsharkmeat: {food:30,   water:0},
+  milk:            {food:10,   water:25, returns:'bucket', drink:true}, // Bramblegoat milk; the pail comes back
+  honeyfish:       {food:45,   water:0},
 };
 
 const num = (x, d = 0) => (typeof x === 'number' && Number.isFinite(x) ? x : d);
@@ -82,7 +84,7 @@ export function consume(v, kind) {
 /** Short prompt label, e.g. "Eat (+35 food)" / "Drink (+40 water)". */
 export function eatLabel(kind) {
   const e = isEdible(kind) ? FOOD[kind] : null; if (!e) return '';
-  const drink = !e.food && e.water !== 0 || kind.endsWith('cup');
+  const drink = e.drink || (!e.food && e.water !== 0) || kind.endsWith('cup');
   const parts = [];
   if (e.food) parts.push(`${e.food > 0 ? '+' : ''}${e.food} food`);
   if (e.water) parts.push(`${e.water > 0 ? '+' : ''}${e.water} water`);
