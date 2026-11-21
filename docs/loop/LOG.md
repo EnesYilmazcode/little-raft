@@ -148,3 +148,41 @@ Next ideas:
 - Also fixed: Escape with the hammer build wheel open opened the pause menu.
 - Gate: 533/533, no page errors, hook-only spawn, Esc from inventory OK, perf +0.8% vs main (fair probe), draw calls 148 vs 539.
 - Merged PR #1 into main.
+
+## 2026-11-21 · loop-features-202611210703 (features)
+Base: origin/claude/raft-master (6ab9b24, includes progression/items.js). Branch: claude/loop-features-202611210703.
+Not redone this round (done in other branches or already on master): bed/sleep, motor/wheel, paint (loop-features-202611210548, whose code is not yet on master); animals, kiln, signs (0534); instruments, rain barrel, beehive (0648); binoculars and smelter (already on master).
+
+Features (research in docs/features, specs in docs/specs):
+- **Character customisation (Look)**:
+  - Shirt, trousers, skin and hair palettes, plus 5 hats: straw (today's), none, and beanie, bucket hat and flower crown, which unlock from logbook achievements.
+  - The Look dialog has a 2D SVG preview and opens from the pause menu and the title/onboarding menu.
+  - First-person hands and sleeves now match the body; this fixes the old green sleeve.
+  - Co-op: the look is sent in hello plus a `k:'look'` event, validated, and throttled to 1 rebuild per 300 ms. The remote body is re-baked only when the look changes.
+  - Stored per browser in `little-raft-look-v1`, never in the world.
+  - Files: dist/look.js, dist/look-ui.js.
+- **Seashell Finder + Little Spade + buried treasure ("Sandy Secrets")**:
+  - Each island has 1–2 buried bundles at spots from a seeded stream, so `layoutFor` is unchanged.
+  - The finder shows a ring HUD, beeps faster as you get close, and has a glowing bead.
+  - E with the spade digs. The host checks reach, using the guest's position for guest digs.
+  - Loot comes from existing items, with a 15% keepsake ingot; an empty dig gives 1 sand.
+  - The spade wears out and R repairs it.
+  - State is `world.ext.treasure {v, seed, dug[]}` and resets when the island changes.
+  - Files: dist/treasure.js, treasure-rules.js, treasure-models.js; `islandNow()` accessor in islands.js.
+- **Map table + sea chart**:
+  - The map table is an items.js placeable; copper unlocks it.
+  - E opens a parchment canvas chart (-z up, 150 m to 10 km): raft and heading, sailed trail, charted islands with generated names and visited/gathered ticks, the signal wedge, and up to 8 pins.
+  - Set course reuses the sail heading action.
+  - State `world.ext.maptable` is about 3.6 KB at most. Only the host records islands and the trail; guests send validated pin actions.
+  - Files: dist/maptable.js, maptable-ui.js, maptable-model.js; content.js passes `{peek}` to modules.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (13 agents).
+Review/QA fixes:
+- Look: a flood of partner look messages could force a rebuild each time (now throttled); the in-memory look is sent when storage is blocked; hats are rechecked after a world swap; `hands.setLook(null)` threw.
+- Treasure: host dig cooldown in a hidden tab, the finder bead glow, hole colour, per-frame HUD strings; a guest end-to-end dig test was added.
+- Map table: the "Course set" text was hidden behind the modal and now shows in the dialog; km/m edge text.
+- Pickup feed: blank icons for model-less items, long notes overlapping the hotbar, journal chip over the phone hotbar.
+Checks: `npm test` 571/571 (was 549 at base); shoot.py `errors: []`. Loopback co-op probes for look and treasure.
+Process notes: one intermediate commit (3d365c8) had a broken game.js, fixed in the next commit (86488d7). Two commits carry another agent's hunk because the git index is shared.
+Known limits: chart labels overlap near the raft; the treasure chest is a plain box; the phone inventory needs scrolling to reach its hotbar row; empty digs give sand fast (tune?); no live two-browser test of a guest digging.
+Next ideas: merge loop-features-202611210548 (sleep/motor/paint) into master; a general content-prompt bridge to raftPrompts; message-bottle loot in treasure; nicer chest model.
