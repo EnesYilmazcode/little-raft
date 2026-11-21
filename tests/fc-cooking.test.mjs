@@ -30,7 +30,7 @@ test('no cooking without fire', () => {
   assert.equal(g.slots[0].t, 0);
 });
 
-test('raw -> cooked -> burnt timing', () => {
+test('raw -> cooked timing; cooked food never chars (Raft)', () => {
   const ct = cookTime(fish);
   assert.equal(ct, COOK_TUNING.cookSeconds.default + COOK_TUNING.cookSeconds.perCm * 25);
   const g = new GrillState();
@@ -38,17 +38,29 @@ test('raw -> cooked -> burnt timing', () => {
   assert.equal(run(g, ct - 1).length, 0);
   assert.deepEqual(run(g, 1.5), [{ kind: 'cooked', slot: 0 }]);
   assert.equal(g.slots[0].state, 'cooked');
-  assert.equal(run(g, COOK_TUNING.burnAfter - 2).length, 0);
-  assert.deepEqual(run(g, 2), [{ kind: 'burnt', slot: 0 }]);
-  assert.deepEqual(g.take(0), { species: 'pomfret', cm: 25, state: 'burnt' });
+  const fuel = g.fuel;
+  assert.deepEqual(run(g, 200), [{ kind: 'out', idle: true }], 'no char; the fire idles out once nothing is raw');
+  assert.ok(g.fuel >= fuel - COOK_TUNING.idleBurn - 1e-9 && g.lit && !g.burning, 'fuel burns only while cooking (plus the short idle)');
+  assert.deepEqual(g.take(0), { species: 'pomfret', cm: 25, state: 'cooked' });
+  assert.equal(new GrillState({ slots: [{ species: 'a', cm: 20, t: 999, state: 'burnt' }] }).slots[0].state, 'burnt', 'old saves keep their charred fish');
   assert.equal(g.update(0.1), g.update(0.1), 'no-event result is a shared constant');
+});
+
+test('Raft fuel: 1 plank = 50 s, the grill holds 2, a part-burnt plank still fills its slot', () => {
+  assert.equal(COOK_TUNING.fuelPerWood, 50); assert.equal(COOK_TUNING.maxFuel, 2);
+  const g = new GrillState();
+  assert.equal(g.addFuel(1), 1); assert.equal(g.planks, 1); assert.equal(g.fuel, 50);
+  g.place({ species: 'tuna', cm: 80 }); run(g, 10);
+  assert.equal(g.planks, 1); assert.equal(g.addFuel(5), 1); assert.equal(g.planks, 2); assert.equal(g.fuel, 90);
+  assert.equal(g.addFuel(1), 0, 'both slots in use');
+  run(g, 41); assert.equal(g.planks, 1); assert.equal(g.addFuel(1), 1);
 });
 
 test('fish stop cooking when fuel runs out', () => {
   const g = new GrillState();
-  g.addFuel(1); g.place(fish);
+  g.addFuel(1); g.place({ species: 'tuna', cm: 80 }); // 54 s: longer than one plank
   const ev = run(g, 60);
-  assert.deepEqual(ev, [{ kind: 'cooked', slot: 0 }, { kind: 'out' }]);
+  assert.deepEqual(ev, [{ kind: 'out' }]);
   assert.equal(g.lit, false);
   const t = g.slots[0].t;
   run(g, 30);

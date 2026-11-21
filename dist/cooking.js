@@ -5,12 +5,14 @@
 //   COOK_TUNING                         tuning constants (see below)
 //   cookTime({cm}) -> seconds           raw -> cooked time on a lit grill
 //   new GrillState(snapshot?)           { id, x, z, fuel(seconds), idle, slots:[{species,cm,t,state}|null x2] }
-//     .addFuel(nWood) -> accepted       capped at maxFuel wood; (re)kindles an idled fire
+//     .addFuel(nWood) -> accepted       one plank per free fuel slot (maxFuel planks); (re)kindles an idled fire
+//     .planks                           fuel slots in use: ceil(fuel / fuelPerWood)
 //     .lit                              fuel > 0
-//     .burning                          lit and (a fish is on, or emptied less than idleBurn seconds ago)
+//     .burning                          lit and (a raw fish is on, or the last one finished less than idleBurn seconds ago)
 //     .place({species,cm}) -> slot|-1   raw fish only, needs a free slot
 //     .take(slot) -> {species,cm,state}|null
-//     .update(dt) -> events             [{kind:'cooked',slot}|{kind:'burnt',slot}|{kind:'out',idle?}]
+//     .update(dt) -> events             [{kind:'cooked',slot}|{kind:'out',idle?}]  (Raft fidelity: food never chars;
+//                                       'burnt' stays a valid state only so old saves still load)
 //                                       (returns a shared frozen empty array when nothing happened)
 //     .snapshot()                       plain JSON; the constructor sanitises anything (never throws)
 // Visuals (T = THREE):
@@ -21,9 +23,9 @@
 
 export const COOK_TUNING = Object.freeze({
   cookSeconds: Object.freeze({ default: 22, perCm: 0.4 }),
-  burnAfter: 20,     // extra seconds after cooked before it chars
-  fuelPerWood: 45,   // seconds of fire per wood
-  maxFuel: 4,        // wood
+  burnAfter: 20,     // legacy: old saves may hold a 'burnt' fish; cooked food no longer chars (Raft)
+  fuelPerWood: 50,   // seconds of fire per plank (Raft: 1 plank = 50 s)
+  maxFuel: 2,        // planks (Raft: the grill holds 2)
   slots: 2,
   idleBurn: 10,      // the fire keeps burning this long after the grill is emptied, then idles out
 });
@@ -69,11 +71,13 @@ export class GrillState {
   }
   get lit() { return this.fuel > 0; }
   get occupied() { return this.slots.some(Boolean); }
-  get burning() { return this.lit && (this.occupied || this.idle < COOK_TUNING.idleBurn); }
+  get cooking() { for (let i = 0; i < this.slots.length; i++) if (this.slots[i] && this.slots[i].state === 'raw') return true; return false; }
+  get burning() { return this.lit && (this.cooking || this.idle < COOK_TUNING.idleBurn); }
+  get planks() { return Math.ceil(this.fuel / COOK_TUNING.fuelPerWood - 1e-9); }
   addFuel(nWood) {
     const n = Math.max(0, Math.floor(fin(nWood, 0)));
     const per = COOK_TUNING.fuelPerWood, cap = COOK_TUNING.maxFuel * per;
-    const room = Math.max(0, Math.ceil((cap - this.fuel) / per - 1e-9));
+    const room = Math.max(0, COOK_TUNING.maxFuel - this.planks); // a part-burnt plank still fills its slot
     const ok = Math.min(n, room);
     if (ok > 0) { this.fuel = Math.min(cap, this.fuel + ok * per); this.idle = 0; }
     return ok;
@@ -98,7 +102,7 @@ export class GrillState {
   update(dt) {
     dt = fin(dt, 0);
     if (dt <= 0 || this.fuel <= 0) return NO_EVENTS;
-    const occ = this.occupied, IB = COOK_TUNING.idleBurn;
+    const occ = this.cooking, IB = COOK_TUNING.idleBurn; // only raw food keeps the fire going (fuel burns while processing)
     let burn = dt;
     if (!occ) {
       if (this.idle >= IB) return NO_EVENTS;
@@ -111,11 +115,10 @@ export class GrillState {
     if (occ) {
       for (let i = 0; i < this.slots.length; i++) {
         const f = this.slots[i];
-        if (!f || f.state === 'burnt') continue;
+        if (!f || f.state !== 'raw') continue; // cooked food waits on the grill and never chars
         const ct = cookTime(f);
-        f.t += use;
-        if (f.state === 'raw' && f.t >= ct) { f.state = 'cooked'; ev = pushEv(ev, { kind: 'cooked', slot: i }); }
-        if (f.state === 'cooked' && f.t >= ct + COOK_TUNING.burnAfter) { f.state = 'burnt'; ev = pushEv(ev, { kind: 'burnt', slot: i }); }
+        f.t = Math.min(ct, f.t + use);
+        if (f.t >= ct) { f.state = 'cooked'; this.idle = 0; ev = pushEv(ev, { kind: 'cooked', slot: i }); }
       }
     }
     if (this.fuel <= 1e-9) { this.fuel = 0; ev = pushEv(ev, { kind: 'out' }); }

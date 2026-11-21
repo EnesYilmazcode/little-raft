@@ -145,10 +145,10 @@ export function createFishingCooking(T, host) {
     const g = grills.get(a.id); if (!g) return;
     const st = g.st;
     if (a.kind === 'fc:fuel') {
-      if (st.fuel >= FUEL_CAP - 1e-6) return say('Fuel is full');
-      if (bag.count('wood') < 1 || !bag.remove('wood', 1)) return say('Grill needs wood to light');
+      if (st.planks >= COOK_TUNING.maxFuel) return say(`Fuel is full (${st.planks}/${COOK_TUNING.maxFuel})`);
+      if (bag.count('wood') < 1 || !bag.remove('wood', 1)) return say('Grill needs a plank to light');
       const was = st.lit; st.addFuel(1); markChanged();
-      return say(was ? `Added wood · fire ${Math.round(st.fuel)}s` : 'Fire lit');
+      return say(was ? `Added fuel (${st.planks}/${COOK_TUNING.maxFuel}) · fire ${Math.round(st.fuel)}s` : `Fire lit (${st.planks}/${COOK_TUNING.maxFuel})`);
     }
     if (a.kind === 'fc:cook') {
       const f = cleanFish(a.fish); if (!f) return;
@@ -335,25 +335,25 @@ export function createFishingCooking(T, host) {
     st.slots.forEach((f) => {
       if (!f) return;
       const ct = cookTime(f);
-      const s = f.state === 'burnt' ? 'charred' : f.state === 'cooked' ? (f.t > ct + 12 ? 'burning!' : 'ready!') : `cooking ${Math.max(1, Math.ceil(ct - f.t))}s`;
-      if (!status || s === 'burning!' || s === 'ready!') status = s;
+      const s = f.state === 'burnt' ? 'charred' : f.state === 'cooked' ? 'ready!' : `cooking ${Math.max(1, Math.ceil(ct - f.t))}s`;
+      if (!status || s === 'ready!') status = s;
     });
     const tail = status ? ` · ${status}` : '';
     const done = st.slots.findIndex((f) => f && f.state !== 'raw');
     if (done >= 0 && journal.basket.length >= BASKET_MAX && journal.basket.every((b) => b.state === 'raw')) return 'Basket full of raw fish · cook some first' + tail;
     if (done >= 0) { nextAct = { kind: 'fc:take', id: st.id, slot: done }; return `<kbd>E</kbd> Take ${esc(dishName(st.slots[done].species, st.slots[done].state))}${tail}`; }
     if (!st.lit) {
-      if (wood > 0) { nextAct = { kind: 'fc:fuel', id: st.id }; return `<kbd>E</kbd> Add fuel (wood)${tail}`; }
-      return 'Grill needs wood to light' + tail;
+      if (wood > 0) { nextAct = { kind: 'fc:fuel', id: st.id }; return `<kbd>E</kbd> Add fuel (${st.planks}/${COOK_TUNING.maxFuel})${tail}`; }
+      return 'Grill needs a plank to light' + tail;
     }
     if (free >= 0 && ri >= 0) {
       const f = journal.basket[ri]; nextAct = { kind: 'fc:cook', id: st.id, basket: ri };
       return `<kbd>E</kbd> Grill ${esc(speciesById(f.species).name)} (${f.cm.toFixed(1)} cm)${tail}`;
     }
-    if (st.fuel < FUEL_CAP - COOK_TUNING.fuelPerWood * 0.5 && wood > 0) { nextAct = { kind: 'fc:fuel', id: st.id }; return `<kbd>E</kbd> Add fuel (wood) · ${Math.round(st.fuel)}s left${tail}`; }
+    if (st.planks < COOK_TUNING.maxFuel && wood > 0) { nextAct = { kind: 'fc:fuel', id: st.id }; return `<kbd>E</kbd> Add fuel (${st.planks}/${COOK_TUNING.maxFuel}) · ${Math.round(st.fuel)}s left${tail}`; }
     if (status) return `Grill${tail}`;
     if (free >= 0 && ri < 0) return 'Catch a fish to cook here';
-    return st.fuel >= FUEL_CAP - COOK_TUNING.fuelPerWood ? 'Fire is roaring (full)' : `Grill · fire ${Math.round(st.fuel)}s`;
+    return st.planks >= COOK_TUNING.maxFuel ? `Fuel full (${st.planks}/${COOK_TUNING.maxFuel})` : `Grill · fire ${Math.round(st.fuel)}s`;
   }
   function interact() {
     if (!host.running() || host.uiBlocked()) return false;
@@ -411,7 +411,7 @@ export function createFishingCooking(T, host) {
       g.model.userData.update?.(dt, time);
       if (burning) {
         let dark = false, cooking = false;
-        for (const f of st.slots) if (f) { cooking = true; if (f.state === 'burnt' || (f.state === 'cooked' && f.t > cookTime(f) + 12)) dark = true; }
+        for (const f of st.slots) if (f) { cooking = true; if (f.state === 'burnt') dark = true; }
         g.smokeT += dt * (dark ? 6 : cooking ? 3 : 1);
         if (g.smokeT >= 1) {
           g.smokeT -= Math.floor(g.smokeT);
