@@ -176,6 +176,7 @@ function markup() {
 <button type="button" data-act="crew">Play together</button>
 <button type="button" data-act="logbook">Raft logbook</button>
 <button type="button" data-act="look">Change look</button>
+<button type="button" data-act="album">Photo album</button>
 <button type="button" class="rs-quit" data-act="quit">Save and quit to title</button>
 <div class="rs-foot"><kbd>Esc</kbd>Back</div></nav>
 <section class="rs-panel" data-panel="settings" aria-label="Settings" hidden><div class="rs-tabs" role="tablist">${tabs}</div>${pages}</section>
@@ -453,6 +454,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit, initial } 
     }
     if (act === 'logbook') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-logbook')); return; }
     if (act === 'look') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-look')); return; }
+    if (act === 'album') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-album')); return; } // [camera]
     if (act === 'crew') {
       const target = document.getElementById(act);
       if (!(target instanceof HTMLDialogElement)) return;
