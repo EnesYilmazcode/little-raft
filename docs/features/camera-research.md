@@ -52,7 +52,7 @@ checked against 7294e26). Lines move fast: re-grep the quoted text before editin
   end of frame on a `wantShot` flag) hide viewmodel, `renderer.render(scene, camera)` (+ diving render),
   then immediately `ctx2d.drawImage(renderer.domElement, sx, sy, sw, sh, 0, 0, 256, 144)` (center crop to
   16:9), restore, then `canvas2.toBlob(cb, 'image/jpeg', .75)` (async encode, off the main thread).
-- Precedent: dist/item-icons.js:166-170 renders, copies the WebGL canvas to a 2D canvas with drawImage,
+- Precedent: dist/item-icons.js:168-170 renders, copies the WebGL canvas to a 2D canvas with drawImage,
   and encodes later with toBlob (dist/item-icons.js:182-191). Copy that shape.
 - Alternative: WebGLRenderTarget 256x144 + `renderer.readPixels` - needs a flip, manual sRGB/tone-map
   handling and a sync GPU stall; only worth it if the canvas path misbehaves.
@@ -73,7 +73,7 @@ checked against 7294e26). Lines move fast: re-grep the quoted text before editin
   durability); dist/items.js:150-152 binoculars = category 'tool', `stack: 1`, no `tool:true`, no wear.
   The camera should copy binoculars. dist/items.js:373 `toolRole(kind)`.
 - Item icon art: dist/item-svg.js:132 (binoculars SVG); craft-book blurbs dist/craft-book.js:20,72.
-- Left-click dispatch: dist/game.js:991 `useSelected(aim)`; dist/game.js:996
+- Left-click dispatch: dist/game.js:992 `useSelected(aim)`; dist/game.js:996
   `if (instruments?.use(kind)) { swing = .7; return; }` - the camera hook goes right beside it
   (content modules have no use() hook, content.js:7-19, so either add one or a `[camera]` line here).
 - Held-item HUD precedent: progression-hooks.js:239-250 (shows only while binoculars are selected).
