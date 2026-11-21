@@ -162,6 +162,7 @@ export function createSettings({ onChange, onResume, onPause } = {}) {
 
   const gameActive = () => document.body.classList.contains('playing') || document.body.classList.contains('first-person');
   const otherDialogOpen = () => [...document.querySelectorAll('dialog[open]')].some((d) => d !== dialog);
+  const buildWheelOpen = () => !!document.querySelector?.('.bm-wheel.bm-open'); // hammer piece wheel: Escape just closes it
 
   function releasePointer() {
     if (document.pointerLockElement) { try { document.exitPointerLock?.(); } catch { /* ignore */ } }
@@ -186,7 +187,7 @@ export function createSettings({ onChange, onResume, onPause } = {}) {
   }
 
   function tryOpenFromEscape(event) {
-    if (dialog.open || otherDialogOpen() || !gameActive()) return false;
+    if (dialog.open || otherDialogOpen() || buildWheelOpen() || !gameActive()) return false;
     event.preventDefault();
     open();
     return true;
@@ -198,7 +199,7 @@ export function createSettings({ onChange, onResume, onPause } = {}) {
     if (event.repeat) { if (dialog.open) event.preventDefault(); return; }
     if (dialog.open) { event.preventDefault(); escHandledAt = performance.now(); close(true); return; }
     // Another menu (inventory/crew/help) owns this Escape; suppress the keyup pause fallback.
-    if (otherDialogOpen()) { escHandledAt = performance.now(); return; }
+    if (otherDialogOpen() || buildWheelOpen()) { escHandledAt = performance.now(); return; }
     if (tryOpenFromEscape(event)) escHandledAt = performance.now();
   }), { capture: true, signal: ac.signal });
 
