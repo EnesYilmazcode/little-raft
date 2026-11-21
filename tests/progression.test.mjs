@@ -804,3 +804,17 @@ test('hooks: prog take with a full bag keeps the output; partial take returns th
   assert.equal(g.bags.guest.count('metalingot') + (b.debug.state().stations['0,0'].output?.count ?? 0), 25);
   b.dispose();
 });
+
+test('hooks: taking output leaves the queued input in the station', () => {
+  fakeStorage();
+  const g = fakeGame({ world: { tiles: [[0, 0]], decor: [{ type: 'smelter', x: 0, z: 0 }], items: [], collected: 1 } });
+  globalThis.localStorage.setItem(H.PROGRESSION_KEY, JSON.stringify({ v: 1, host: {}, guest: {}, stations: { '0,0': { station: 'smelter', input: { kind: 'metalore', count: 4 }, output: { kind: 'metalingot', count: 2 } } } }));
+  const b = H.attachProgression(g.ctx);
+  b.tick(0.016);
+  b.apply({ kind: 'prog:take', key: '0,0' }, 'host');
+  const st = b.debug.state().stations['0,0'];
+  assert.equal(g.bags.host.count('metalingot'), 2);
+  assert.equal(st.output, null);
+  assert.deepEqual(st.input, { kind: 'metalore', count: 4 }, 'ore stays queued');
+  b.dispose();
+});

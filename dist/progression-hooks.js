@@ -136,10 +136,11 @@ export function attachProgression(ctx) {
       const out = a.kind === 'prog:take' ? st.output : st.input; if (!out) return true;
       const left = bag.add(out.kind, out.count);
       if (left === out.count) { ctx.emit({ kind: 'full', text: 'Your bag is full' }, actor); return true; }
-      if (a.kind === 'prog:take') st.output = left > 0 ? { kind: out.kind, count: left } : null;
-      if (a.kind === 'prog:take' && ITEMS[out.kind]?.category === 'food') ctx.observe?.({ kind: 'cook', item: out.kind }, actor); // [tasks]
-      if (a.kind === 'prog:take' && st.stationId === 'recycler') ctx.emit({ kind: 'loot', text: 'The sea looks a little cleaner.' }, actor); // [recycler]
-      else { st.takeInput(); if (left > 0) st.input = { kind: out.kind, count: left }; }
+      if (a.kind === 'prog:take') {
+        st.output = left > 0 ? { kind: out.kind, count: left } : null;
+        if (ITEMS[out.kind]?.category === 'food') ctx.observe?.({ kind: 'cook', item: out.kind }, actor); // [tasks]
+        if (st.stationId === 'recycler') ctx.emit({ kind: 'loot', text: 'The sea looks a little cleaner.' }, actor); // [recycler]
+      } else { st.takeInput(); if (left > 0) st.input = { kind: out.kind, count: left }; }
     }
     dirty = true; syncClock = SYNC_EVERY; return true;
   }
