@@ -47,18 +47,7 @@ export function createWoodMaterial(T, color) {
  ctx.fillStyle='rgba(146,146,128,.08)';ctx.fillRect(0,0,W,H);
  for(const [x0,x1] of [[0,16],[W,W-16]]){const g=ctx.createLinearGradient(x0,0,x1,0);g.addColorStop(0,'rgba(44,38,24,.2)');g.addColorStop(1,'rgba(44,38,24,0)');ctx.fillStyle=g;ctx.fillRect(Math.min(x0,x1),0,16,H);}
  const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=4;
- // The bump reads the same canvas through an isotropic twin (anisotropy is invisible at this bump scale but
- // costly on software GL), and with one tap instead of three: the height slope comes from screen derivatives.
- const bump=texture.clone();bump.anisotropy=1;
- const m=new T.MeshStandardMaterial({map:texture,bumpMap:bump,bumpScale:.009,roughness:.95,metalness:0}); // driftwood look; one-tap bump below for perf
- const chunk=oneTapBump(T);
- if(chunk){m.onBeforeCompile=sh=>{sh.fragmentShader=sh.fragmentShader.replace('#include <bumpmap_pars_fragment>',chunk);};m.customProgramCacheKey=()=>'lr-wood-bump1';}
- return m;
-}
-// three's bump chunk with the two offset taps replaced by dFdx/dFdy of the centre tap; null if the chunk changed shape.
-let bumpChunk;
-function oneTapBump(T){
- if(bumpChunk!==undefined)return bumpChunk;
- const src=T.ShaderChunk?.bumpmap_pars_fragment||'',x=/float dBx = [^;]*;/,y=/float dBy = [^;]*;/;
- return bumpChunk=x.test(src)&&y.test(src)?src.replace(x,'float dBx = dFdx( Hll );').replace(y,'float dBy = dFdy( Hll );'):null;
+ // No bumpMap: at bumpScale .018 it moved no pixel by more than 1/255 at spawn, looking down or along the deck, while
+ // its three extra taps per pixel were the largest single cost of shading the deck (docs/tech/perf-ADOPT.md step 6).
+ return new T.MeshStandardMaterial({map:texture,roughness:.86,metalness:0});
 }
