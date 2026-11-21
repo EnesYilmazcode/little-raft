@@ -18,7 +18,7 @@ const CSS = `
 #stationPanel .st-x:hover{background:#5d4129}
 #stationPanel .st-body{display:flex;gap:12px;align-items:stretch}
 #stationPanel .st-bag,#stationPanel .st-main{background:#3a2716eb;border-radius:4px;box-shadow:inset 0 0 0 2px #24170c,inset 0 0 0 3px #b48d5544;padding:10px}
-#stationPanel .st-bag{width:190px;max-height:300px;overflow:auto;box-sizing:border-box;scrollbar-color:#b48d55 #2a1b0e}
+#stationPanel .st-bag{user-select:none;-webkit-user-select:none;width:190px;max-height:300px;overflow:auto;box-sizing:border-box;scrollbar-color:#b48d55 #2a1b0e}
 #stationPanel .st-sub{margin:0 0 6px;font:700 11px/1 ${FONT};letter-spacing:1.4px;text-transform:uppercase;color:#d9c9a6}
 #stationPanel .st-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
 #stationPanel .st-none{margin:0 0 12px;font-size:12px;color:#bfae8a}
