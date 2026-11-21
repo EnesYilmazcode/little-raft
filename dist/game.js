@@ -15,6 +15,7 @@ import { floorBlock, decorBlock, inReach, BUILD_REACH, GUEST_REACH_SLACK, BLOCK_
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
 import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
@@ -341,9 +342,11 @@ export function mount(transfer = null) {
     return fallbackAvatar(color);
   }
 
+  // Shared low-poly props (models.js); a kind it lacks, or a build error, falls back to the procedural mesh.
+  const sharedModel = kind => { try { return getModel(kind); } catch (e) { console.warn('model failed', kind, e); return null; } };
   // First-person viewmodel: one hands controller that swaps the held item model per hotbar kind.
   function buildViewmodels() {
-    hands = createHands(T); hands.preload(['hook']);
+    hands = createHands(T, {modelFactory:sharedModel}); hands.preload(['hook']);
     // Viewmodels draw last (transparent queue, renderOrder 1000) after a camera-owned marker clears depth, so the
     // world never clips them while fingers and tools still depth-sort correctly against each other.
     const depthClear = new T.Mesh(new T.PlaneGeometry(1e-4, 1e-4), new T.MeshBasicMaterial({colorWrite:false, depthWrite:false, depthTest:false, transparent:true}));
@@ -637,7 +640,8 @@ export function mount(transfer = null) {
   function selectSlot(i) {
     if (!isInt(i) || i < 0 || i >= HOTBAR) return;
     const bag = localBag(); if (bag.selectedIndex === i) return;
-    charging = null; hover = null; reelCast('slot'); if (hintsDone.has('bag')) hintDone('slots');
+    charging = null; hover = null;
+    if (!reelCast('slot') && castOut()) { hook.cancel?.(); endHook(); } // switching away pulls the hook back; its catch stays in the sea if (hintsDone.has('bag')) hintDone('slots');
     if (role === 'guest') { if (!networkReady) return; bag.select(i); action({kind:'selectSlot', index:i}); }
     else action({kind:'selectSlot', index:i});
   }
@@ -1352,6 +1356,7 @@ export function mount(transfer = null) {
       onCraft:guard(id => craft(id)),
       onResume:guard(() => requestLock()),
       onPause:guard(clearInput),
+      getModel:sharedModel,
     });
     // Pickup feed rows use the same cached 3D item icons as the bag; a late render swaps into a live row.
     pickupFeed.setIconProvider(kind => getItemIcon(kind));
