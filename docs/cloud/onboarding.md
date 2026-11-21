@@ -32,7 +32,7 @@ Owner's acceptance check: during normal play nothing sits in the screen centre e
 - repair: optional, appears when the hook is at 50% or below
 
 **Chapter 3, A Home on the Water**
-- wood gather, rope8, rod
+- rodwood (gather 6 wood), rope8, rod
 - fish1, fish3
 - sail, seat (bench), crate, home (16 tiles)
 

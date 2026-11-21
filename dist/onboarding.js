@@ -47,7 +47,7 @@ export const STEPS = [
   {chapter:'ch1', ...gainStep('leaves', 'Gather 4 palm leaves', 'Leafy bundles drift by now and then', 'leaf', 4, ['reel'], hasHammer)},
   {chapter:'ch1', id:'bag', title:'Peek in your bag', hint:'[Tab] opens your bag', needs:['reel'], done:S => S.inventoryOpen === true},
   {chapter:'ch1', ...gainStep('rope', 'Twist 2 rope', 'In your bag: Rope, 2 leaves each', 'rope', 2, ['bag', 'leaves'], hasHammer)},
-  {chapter:'ch1', id:'swim', title:'Climb back aboard', hint:'Fell in? [Space]+[W] at the edge climbs up', optional:true, every:true, show:S => S.swimming === true,
+  {chapter:'ch1', id:'swim', title:'Climb back aboard', hint:'Fell in? Hold [Space] at the edge to climb up', optional:true, every:true, show:S => S.swimming === true,
     done:(S, b, c) => { if (S.swimming) c.mem.wet = true; return !!c.mem.wet && !S.swimming && !!S.grounded; }},
   {chapter:'ch1', id:'hammer', title:'Make a hammer', hint:'Bag: 4 wood + 2 rope', needs:['rope', 'wood'], done:S => owns(S, 'hammer')},
   {chapter:'ch1', ...gainStep('plastic', 'Fish out 2 plastic', 'Hook the bobbing jugs', 'plastic', 2, ['hammer'])},
