@@ -45,14 +45,16 @@
   "    drawCalls p50 165, p95 178, max 185; triangles p95 140000; heapMB 5; domNodes 100, domNodesLateHalf 20; glObjects 350;",
   "    webglContexts 3 (main + icon renderer + one recreation), webglContextsPeakLive 2. Old main (552 draws) now fails the draw/triangle",
   "    budgets by design: the gate guards against regressions from current main, not from the old build.",
-  "2026-11-21 integ-perf union: draw/triangle/growth budgets are the main-line recalibration above; heap and GL use the accounting-fix metrics (jsHeapMBLateHalf, per-context GL, webglContextsPeak)."
+  "2026-11-21 integ-perf union: draw/triangle/growth budgets are the main-line recalibration above; heap and GL use the accounting-fix metrics (jsHeapMBLateHalf, per-context GL, webglContextsPeak).",
+  "2026-11-21 perf round 4: item-icons.js draws with the game's renderer (setIconRenderer) into a render target, async readback; no icon context.",
+  "  webglContexts 2-3 -> 1 and webglContextsPeak 2 -> 1 (seed 1 default session); budgets tightened to 1 / 1. A second context is a regression."
  ],
  "session": {"durationS": 90, "warmupS": 6, "warmupFrames": 15, "maxExtendS": 120},
  "drawCalls": {"p50": 165, "p95": 178, "max": 185},
  "triangles": {"p95": 140000},
  "growth": {"heapMB": 5, "jsHeapMBLateHalf": 2, "domNodes": 100, "domNodesLateHalf": 20, "listeners": 10, "glObjects": 350, "glObjectsLateHalf": 20},
- "webglContexts": 3,
- "webglContextsPeak": 2,
+ "webglContexts": 1,
+ "webglContextsPeak": 1,
  "longTasks": {"hitchMinMs": 500, "hitchFactor": 4, "hitches": 2},
  "minFrames": 30,
  "stallS": 20
