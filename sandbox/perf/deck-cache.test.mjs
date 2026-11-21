@@ -36,3 +36,16 @@ test('dispose frees the cached tiles; the merged deck stays valid until its owne
   assert.equal(dc.size, 0); assert.equal(dc.last, null);
   assert.ok(g.children[0].geometry.attributes.position.count > 0);
 });
+
+test('painted tiles (tint) match createRaftMesh; repainting one tile regenerates only that tile', () => {
+  const paint = new Map([['0,0', '#3366aa']]), wood = new Map();
+  const tint = (t, base) => { const c = paint.get(t.x / 2 + ',' + t.z / 2); return c ? '#' + base.slice(1, 4) + c.slice(4) : null; };
+  const tintMat = hex => wood.get(hex) ?? wood.set(hex, new T.MeshStandardMaterial({ color: hex })).get(hex);
+  let calls = 0; const counting = (T2, tiles, ...r) => { calls += tiles.length; return createRaftMesh(T2, tiles, ...r); };
+  const dc = createDeckCache(T, counting, mat), ts = spec([[0, 0], [1, 0], [0, 1]]);
+  same(dc.build(ts, tint, tintMat), createRaftMesh(T, ts, mat, tint, tintMat)); assert.equal(calls, 3 + 0);
+  paint.set('1,0', '#aa3322'); calls = 0;
+  same(dc.build(ts, tint, tintMat), createRaftMesh(T, ts, mat, tint, tintMat)); assert.equal(calls, 1);
+  paint.clear(); calls = 0;
+  same(dc.build(ts, tint, tintMat), createRaftMesh(T, ts, mat, tint, tintMat)); assert.equal(calls, 2);
+});

@@ -1,5 +1,5 @@
 // In-game perf panel for dist/perf-overlay.js. Pure ES module, nothing happens on import.
-//   import { createPerfOverlay } from './perf-overlay.js?build=...';
+//   import createPerfOverlay from perf-overlay.js with the same ?build= stamp as game.js' other imports
 //   const perf = createPerfOverlay({renderer, quality});   // quality: the quality.js scaler (optional)
 //   // in frame(): perf.begin(); ...update + render...; perf.end();
 //   // F3 (or ?perf in the URL) toggles the panel. perf.dispose() on unmount.

@@ -12,21 +12,23 @@ B = 'v3-survival-ae77fa84ac2b'
 STEPS = {
   # 1. Incremental raft rebuild: deck tiles generated once (deck-cache.js), unchanged decor keeps its model.
   1: [
-    ('game.js', f"import {{ mergeGeometries }} from './merge-geo.js?build={B}';\n",
-     f"import {{ mergeGeometries }} from './merge-geo.js?build={B}';\n"
+    ('game.js', f"import {{ createRaftMesh, createFloor }} from './deck.js?build={B}';\n",
+     f"import {{ createRaftMesh, createFloor }} from './deck.js?build={B}';\n"
      f"import {{ createDeckCache }} from './deck-cache.js?build={B}'; // perf: incremental raft rebuilds\n"),
     ('game.js', """  function rebuildRaft() {
+    ocean.setRaftTiles(world.tiles);
     for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
     wateringGroups.clear();
-    raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat));
+    raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat, content ? (t, c) => content.tileTint(t.x / 2, t.z / 2, c) : null, woodMat)); // content hook (paint): painted deck tiles
     for (const d of world.decor) {
 """, """  // perf: rebuildRaft() runs on every floor, decoration, synced world and save load. Floor tiles are generated once
   // (deck-cache.js; the deck group is kept while the tile list is unchanged) and a decoration whose save entry is
   // unchanged keeps its model (a sail is ~46 ms of geometry), so a build costs one tile or one model, not the raft.
   let deckCache = null;
   function rebuildRaft() {
+    ocean.setRaftTiles(world.tiles);
     deckCache ??= createDeckCache(T, createRaftMesh, mat);
-    const floors = deckCache.build(world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2}))), reuse = new Map();
+    const floors = deckCache.build(world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), content ? (t, c) => content.tileTint(t.x / 2, t.z / 2, c) : null, woodMat), reuse = new Map(); // content hook (paint): painted deck tiles
     for (const c of [...raft.children]) {
       if (c === floors) continue;
       const k = c.userData.decorKey;
@@ -39,8 +41,9 @@ STEPS = {
       const decorKey = JSON.stringify(d), kept = reuse.get(decorKey)?.pop();
       if (kept) { if (kept.userData.tileKey !== undefined) wateringGroups.set(kept.userData.tileKey, kept); continue; }
 """),
-    ('game.js', "      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); detailed.rotation.y = d.rot || 0; raft.add(detailed);",
-                "      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); detailed.rotation.y = d.rot || 0; detailed.userData.decorKey = decorKey; raft.add(detailed);"),
+    ('game.js', "      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); if (d.rot) detailed.rotation.y = d.rot; raft.add(detailed);",
+                "      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); if (d.rot) detailed.rotation.y = d.rot; detailed.userData.decorKey = decorKey; raft.add(detailed);"),
+    ('live.js', "'deck.js', ", "'deck-cache.js', 'deck.js', "),
     ('game.js', "      const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2); g.rotation.y = d.rot || 0;\n",
                 "      const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2); g.rotation.y = d.rot || 0; g.userData.decorKey = decorKey;\n"),
     ('game.js', """      raft.add(g);
@@ -69,6 +72,7 @@ STEPS = {
                 "    init();\n    try { perfHud = createPerfOverlay({renderer, quality}); } catch (e) { console.warn('perf overlay unavailable', e); } // perf: hidden until F3 / ?perf\n    try { coop = createCoop("),
     ('game.js', "    try { settingsController?.destroy(); } catch {}\n    try { survivalUI?.destroy?.(); } catch {}\n",
                 "    try { settingsController?.destroy(); } catch {}\n    try { perfHud?.dispose(); } catch {} perfHud = null; // perf\n    try { survivalUI?.destroy?.(); } catch {}\n"),
+    ('live.js', "'paint.js', 'pickup-feed.js', ", "'paint.js', 'perf-overlay.js', 'pickup-feed.js', "),
   ],
   # 3. live.js: two overlapping check() calls both swapped (guard only set inside swap(), after an await).
   3: [
@@ -81,19 +85,8 @@ STEPS = {
     // Silent: network hiccups must not disturb play.
 """),
   ],
-  # 4. wood.js: no plank bump map (invisible at bumpScale .018; 11-18% of a SwiftShader frame even through the twin).
+  # 4. The 'low' preset also creates the WebGL context without MSAA (a context attribute: from the next page load).
   4: [
-    ('wood.js', """ // The bump term samples its map three times per pixel; anisotropic filtering there is invisible at this bump
- // scale but costly on software GL, so the bump reads the same canvas through an isotropic twin.
- const bump=texture.clone();bump.anisotropy=1;
- return new T.MeshStandardMaterial({map:texture,bumpMap:bump,bumpScale:.018,roughness:.86,metalness:0});
-""", """ // No bump map: at bumpScale .018 it changed no pixel by more than 8/255 (deck diff 0.01 of 255), but even through
- // an isotropic twin its three extra taps per pixel were 11-18% of a SwiftShader frame (docs/tech/perf.md).
- return new T.MeshStandardMaterial({map:texture,roughness:.86,metalness:0});
-"""),
-  ],
-  # 5. The 'low' preset also creates the WebGL context without MSAA (a context attribute: from the next page load).
-  5: [
     ('game.js', f"import {{ createSettings, SETTINGS_DEFAULTS }} from './settings.js?build={B}';\n",
                 f"import {{ createSettings, SETTINGS_DEFAULTS, SETTINGS_STORAGE_KEY, validateSettings }} from './settings.js?build={B}';\n"),
     ('game.js', "const PIN_QUALITY = /[?&]pinQuality\\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level\n",

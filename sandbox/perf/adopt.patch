@@ -1,7 +1,7 @@
 diff -ruN a/dist/deck-cache.js b/dist/deck-cache.js
 --- a/dist/deck-cache.js
 +++ b/dist/deck-cache.js
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,80 @@
 +// Incremental raft deck for dist/game.js rebuildRaft(). ES module, no imports (takes T like every dist module).
 +//
 +// createRaftMesh (deck.js) regenerates every tile's procedural planks, logs and lashings on every call, and game.js
@@ -13,19 +13,22 @@ diff -ruN a/dist/deck-cache.js b/dist/deck-cache.js
 +// order, same tile order inside each bucket), so it renders identically.
 +//
 +//   const deck = createDeckCache(T, createRaftMesh, mat);
-+//   const g = deck.build(tiles);      // tiles: [{index, x, z}] as for createRaftMesh
++//   const g = deck.build(tiles, tint, tintMat);   // same arguments as createRaftMesh(T, tiles, mat, tint, tintMat)
 +//   if (g !== deck.previous) { ...old group out, g in... }
-+//   deck.dispose();                   // frees the cached tile geometry
++//   deck.dispose();                               // frees the cached tile geometry
++// Painted tiles (paint.js via content.tileTint): a tile's cache key includes tint(t, PROBE), the colour its first
++// plank shade would get, so repainting a tile regenerates that tile only.
 +export function createDeckCache(T, createRaftMesh, getMaterial) {
 +  const tiles = new Map(); // key -> [{bucket, name, castShadow, material, geometry}] in createRaftMesh part order
 +  let last = null, lastSig = '', previous = null;
-+  const keyOf = t => t.index + '|' + t.x + '|' + t.z;
++  const PROBE = '#bb8a53'; // deck.js PLANK_COLORS[0]: a real plank shade, so the probe is a colour paint would make anyway
++  let tint = null, tintMat = null;
++  const keyOf = t => t.index + '|' + t.x + '|' + t.z + (tint ? '|' + (tint(t, PROBE) ?? '') : '');
 +
-+  function tileParts(t) {
-+    const k = keyOf(t);
++  function tileParts(t, k) {
 +    let parts = tiles.get(k);
 +    if (!parts) {
-+      const g = createRaftMesh(T, [t], getMaterial); // one tile: one mesh per bucket, geometry already translated
++      const g = createRaftMesh(T, [t], getMaterial, tint, tintMat); // one tile: one mesh per bucket, geometry already translated
 +      parts = g.children.filter(m => m.isMesh).map(m => ({ bucket: m.material.uuid + '|' + m.castShadow, name: m.name, castShadow: m.castShadow, receiveShadow: m.receiveShadow, material: m.material, geometry: m.geometry }));
 +      tiles.set(k, parts);
 +    }
@@ -34,6 +37,7 @@ diff -ruN a/dist/deck-cache.js b/dist/deck-cache.js
 +
 +  function concat(list) {
 +    const names = Object.keys(list[0].attributes), out = new T.BufferGeometry();
++    if (list.some(g => Object.keys(g.attributes).join() !== names.join())) return null; // mixed attributes: caller falls back
 +    for (const n of names) {
 +      const size = list[0].attributes[n].itemSize; let len = 0;
 +      for (const g of list) len += g.attributes[n].array.length;
@@ -45,20 +49,22 @@ diff -ruN a/dist/deck-cache.js b/dist/deck-cache.js
 +    return out;
 +  }
 +
-+  function build(list) {
-+    previous = last;
-+    const sig = list.map(keyOf).join(',');
++  function build(list, tintFn = null, tintMaterial = null) {
++    previous = last; tint = tintFn; tintMat = tintMaterial;
++    const keys = list.map(keyOf), sig = keys.join(',');
 +    if (last && sig === lastSig) return last;
-+    const want = new Set(list.map(keyOf));
++    const want = new Set(keys);
 +    for (const [k, parts] of tiles) if (!want.has(k)) { for (const p of parts) p.geometry.dispose(); tiles.delete(k); }
 +    const buckets = new Map();
-+    for (const t of list) for (const p of tileParts(t)) {
++    for (let i = 0; i < list.length; i++) for (const p of tileParts(list[i], keys[i])) {
 +      if (!buckets.has(p.bucket)) buckets.set(p.bucket, { ...p, list: [] });
 +      buckets.get(p.bucket).list.push(p.geometry);
 +    }
 +    const g = new T.Group(); g.name = 'raft-floors';
 +    for (const b of buckets.values()) {
-+      const mesh = new T.Mesh(concat(b.list), b.material); mesh.name = b.name;
++      const geo = concat(b.list);
++      if (!geo) { for (const m of g.children) m.geometry.dispose(); last = createRaftMesh(T, list, getMaterial, tint, tintMat); lastSig = sig; return last; }
++      const mesh = new T.Mesh(geo, b.material); mesh.name = b.name;
 +      mesh.castShadow = b.castShadow; mesh.receiveShadow = b.receiveShadow; g.add(mesh);
 +    }
 +    g.userData.kind = 'floors';
@@ -79,28 +85,28 @@ diff -ruN a/dist/deck-cache.js b/dist/deck-cache.js
 diff -ruN a/dist/game.js b/dist/game.js
 --- a/dist/game.js
 +++ b/dist/game.js
-@@ -5,7 +5,7 @@
+@@ -6,8 +6,9 @@
  import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
  import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
- import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
+ import { HookCast, WATER_Y, catchLoot, holdForFullBag, throwOrigin } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 -import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-survival-ae77fa84ac2b';
 +import { createSettings, SETTINGS_DEFAULTS, SETTINGS_STORAGE_KEY, validateSettings } from './settings.js?build=v3-survival-ae77fa84ac2b';
  import { createRaftMesh, createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
- import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
++import { createDeckCache } from './deck-cache.js?build=v3-survival-ae77fa84ac2b'; // perf: incremental raft rebuilds
+ import { createDebris, createItemBatch } from './debris.js?build=v3-survival-ae77fa84ac2b';
  import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
-@@ -37,8 +37,11 @@
+ import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
+@@ -43,7 +44,9 @@
  export { PROTOCOL }; // live.js reads the running engine's protocol from here
  import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
  import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
 +import { createPerfOverlay } from './perf-overlay.js?build=v3-survival-ae77fa84ac2b'; // perf: F3 / ?perf panel
  const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
 +const storedGraphics = () => { try { return validateSettings(JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY))).graphics; } catch { return null; } }; // perf: the saved preset, before createSettings() runs
- import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
-+import { createDeckCache } from './deck-cache.js?build=v3-survival-ae77fa84ac2b'; // perf: incremental raft rebuilds
- import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
- import { attachProgression } from './progression-hooks.js'; // [progression-hook]
- import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
-@@ -101,7 +104,7 @@
+ import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
+ import { attachProgression } from './progression-hooks.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
+ import { attachSpearRepair } from './spear-repair-hooks.js?build=v3-survival-ae77fa84ac2b'; // [spear-repair]
+@@ -131,7 +134,7 @@
    const clamp = T.MathUtils.clamp;
    const ac = new AbortController(), signal = ac.signal;
    const timers = new Set();
@@ -109,16 +115,16 @@ diff -ruN a/dist/game.js b/dist/game.js
  
    // ---------- Small utilities ----------
    const newToken = () => crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36);
-@@ -375,7 +378,7 @@
+@@ -434,7 +437,7 @@
      prepareDom();
-     scene = new T.Scene(); scene.background = new T.Color('#cbd2c0'); scene.fog = new T.Fog('#cbd2c0', 25, 125);
+     scene = new T.Scene(); sky = createSky(T, {sunDirection:new T.Vector3(-15, 28, 12)}); scene.add(sky.group); scene.background = sky.horizonColor.clone(); scene.fog = new T.Fog(sky.horizonColor.clone(), 60, 260);
      camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 200); camera.rotation.order = 'YXZ'; scene.add(camera);
 -    renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:devicePixelRatio < 1.5}); // dense screens get their smoothing from pixels, not MSAA
 +    renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:devicePixelRatio < 1.5 && storedGraphics() !== 'low'}); // dense screens get their smoothing from pixels, not MSAA; 'low' skips MSAA (~1/3 of software-GL raster; applies from the next load)
+     try { setIconRenderer(renderer); } catch {} // item icons share this WebGL context
      renderer.setSize(innerWidth, innerHeight);
-     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
-     hemi = new T.HemisphereLight('#f2ead4', '#3d6b6a', 1.8); scene.add(hemi); // content hook: kept for day/night
-@@ -488,14 +491,27 @@
+     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
+@@ -603,15 +606,28 @@
      for (let i = 0; i < 7; i++) { const l = new T.Mesh(new T.ConeGeometry(.28, 1.5, 4), mat(i % 2 ? '#519b55' : '#72ae59')); l.rotation.z = 1.2; l.rotation.y = i * Math.PI * 2 / 7; l.position.set(Math.sin(i * Math.PI * 2 / 7) * .5, 1.65, Math.cos(i * Math.PI * 2 / 7) * .5); g.add(l); }
      parent.add(g);
    }
@@ -127,9 +133,10 @@ diff -ruN a/dist/game.js b/dist/game.js
 +  // unchanged keeps its model (a sail is ~46 ms of geometry), so a build costs one tile or one model, not the raft.
 +  let deckCache = null;
    function rebuildRaft() {
+     ocean.setRaftTiles(world.tiles);
 -    for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
 +    deckCache ??= createDeckCache(T, createRaftMesh, mat);
-+    const floors = deckCache.build(world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2}))), reuse = new Map();
++    const floors = deckCache.build(world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), content ? (t, c) => content.tileTint(t.x / 2, t.z / 2, c) : null, woodMat), reuse = new Map(); // content hook (paint): painted deck tiles
 +    for (const c of [...raft.children]) {
 +      if (c === floors) continue;
 +      const k = c.userData.decorKey;
@@ -137,53 +144,53 @@ diff -ruN a/dist/game.js b/dist/game.js
 +      raft.remove(c); disposeGeometry(c);
 +    }
      wateringGroups.clear();
--    raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat));
+-    raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat, content ? (t, c) => content.tileTint(t.x / 2, t.z / 2, c) : null, woodMat)); // content hook (paint): painted deck tiles
 +    if (floors.parent !== raft) raft.add(floors);
      for (const d of world.decor) {
 +      const decorKey = JSON.stringify(d), kept = reuse.get(decorKey)?.pop();
 +      if (kept) { if (kept.userData.tileKey !== undefined) wateringGroups.set(kept.userData.tileKey, kept); continue; }
-       let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
--      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); detailed.rotation.y = d.rot || 0; raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; }
+       let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'rainbarrel' ? createRainBarrel(T) : d.type === 'sprinkler' ? createSprinkler(T) : d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type, d) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
+-      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); if (d.rot) detailed.rotation.y = d.rot; raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier' || d.type === 'rainbarrel' || d.type === 'sprinkler') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; } // decor-pack models keep their own quarter-turn unless placement rotated them
 -      const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2); g.rotation.y = d.rot || 0;
-+      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); detailed.rotation.y = d.rot || 0; detailed.userData.decorKey = decorKey; raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; }
++      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); if (d.rot) detailed.rotation.y = d.rot; detailed.userData.decorKey = decorKey; raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier' || d.type === 'rainbarrel' || d.type === 'sprinkler') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; } // decor-pack models keep their own quarter-turn unless placement rotated them
 +      const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2); g.rotation.y = d.rot || 0; g.userData.decorKey = decorKey;
        if (d.type === 'sail') { cylinder(.065, .08, 3.8, '#906f48', 0, 1.9, 0, g); box(2.5, .07, .07, '#906f48', 0, 3.2, 0, g); const s = new T.Mesh(new T.PlaneGeometry(2.35, 2.1), clothMat); s.position.set(0, 2.15, .06); g.add(s); }
        if (d.type === 'palm') { cylinder(.38, .28, .5, '#db8764', 0, .25, 0, g); palm(g, 0, .5, 0); }
        if (d.type === 'lantern') { cylinder(.055, .075, 1.8, '#725942', 0, .9, 0, g); box(.32, .42, .32, '#ffe197', .43, 1.5, 0, g); }
-@@ -504,6 +520,7 @@
+@@ -620,6 +636,7 @@
        if (d.type === 'crate') { box(.8, .8, .8, '#a97d4c', 0, .4, 0, g); }
        raft.add(g);
      }
 +    for (const list of reuse.values()) for (const c of list) { raft.remove(c); disposeGeometry(c); } // decor that was removed or changed
      blockList = world.decor.flatMap(d => decorBlockers(d, BLOCK_RADIUS));
      building?.sync(world); // building-pieces lane hook
-     sailing?.onRaftBuilt(); // [sailing] re-find sail models
-@@ -1215,6 +1232,7 @@
+     content?.afterRebuild(); // content hook (paint): re-tint the new deck planks
+@@ -1577,6 +1594,7 @@
+     else diveWarmAt = later(() => { diveWarmAt = 0; warmDive(); }, 400);
    }
-   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, held:heldKind()});
    function frame() {
 +    perfHud?.begin();
-     const now = performance.now(), rawMs = now - last, dt = Math.min(rawMs / 1000, .05); last = now; elapsed += dt;
+     const now = performance.now(), rawMs = now - last, realDt = rawMs / 1000, dt = Math.min(realDt, .05); last = now; elapsed += dt;
+     if (running && !diveWarmed && ++playFrames > 2) scheduleDiveWarm();
      const dialog = uiBlocked();
-     if (running && !dialog && !document.hidden && !PIN_QUALITY) quality.tick(rawMs);
-@@ -1249,6 +1267,7 @@
-     refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud();
-     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
+@@ -1626,6 +1644,7 @@
+     if (veiled && now - lastDraw < 100) return;
+     lastDraw = now;
      renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
 +    perfHud?.end();
    }
    // Peer liveness. rAF stops in hidden tabs, so a timer keeps the channel warm and each side says when it is
    // hidden; a hidden peer is never timed out (the data channel's 'close' still ends the session).
-@@ -1717,7 +1736,7 @@
+@@ -2213,7 +2232,7 @@
      for (const m of mats) { try { for (const v of Object.values(m)) if (v?.isTexture) v.dispose(); m.dispose(); } catch {} }
-     try { content?.dispose(); } catch {} content = null; // content hook
+     try { content?.dispose(); contentPromptOff?.(); } catch {} content = null; contentPromptOff = null; // content hook
      try { ocean?.dispose(); } catch {}
 -    materialCache.clear(); itemMeshes.clear(); scene.clear();
 +    materialCache.clear(); itemMeshes.clear(); scene.clear(); deckCache?.dispose(); deckCache = null; // perf: cached tile geometry
      scene = null; // renderer, canvas, AudioContext, peer and conn are left untouched
    }
    function dispose() {
-@@ -1725,6 +1744,7 @@
+@@ -2221,6 +2240,7 @@
      pause(); disposed = true; ac.abort(); sfx.destroy(); offIconReady?.();
      try { coop?.dispose(); } catch {} coop = null; // coop
      try { settingsController?.destroy(); } catch {}
@@ -191,18 +198,35 @@ diff -ruN a/dist/game.js b/dist/game.js
      try { survivalUI?.destroy?.(); } catch {}
      try { sailing?.dispose(); } catch {} // [sailing]
      try { fc?.dispose(); } catch {} fc = null; // [fishing-cooking]
-@@ -1742,6 +1762,7 @@
+@@ -2243,6 +2263,7 @@
      if (!canvas) throw new Error('#world canvas missing');
-     prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), resume:() => requestLock(), pause:clearInput}); // [progression-hook]
+     prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), aim:() => frameAim, resume:() => requestLock(), pause:clearInput}); // [progression-hook]
      init();
 +    try { perfHud = createPerfOverlay({renderer, quality}); } catch (e) { console.warn('perf overlay unavailable', e); } // perf: hidden until F3 / ?perf
      try { coop = createCoop(coopContext(), X?.coop); } catch (e) { console.warn('co-op layer unavailable', e); coop = null; } // coop
-     settingsController = createSettings({onChange:applyOptions, onPause:clearInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});
+     settingsController = createSettings({onChange:next => { applyOptions(next); soundLabel(); }, onPause:pauseInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});
      survivalUI = createSurvivalUI({
 diff -ruN a/dist/live.js b/dist/live.js
 --- a/dist/live.js
 +++ b/dist/live.js
-@@ -219,6 +219,7 @@
+@@ -19,14 +19,14 @@
+   'building-models.js', 'building-pieces.js', 'building.js', 'content-items.js', 'content.js', 'controls.js',
+   'cooking.js', 'coop-avatar.js', 'coop-delta.js', 'coop-feed.js', 'coop-fx.js', 'coop-interp.js',
+   'coop-loopback.js', 'coop-rules.js', 'coop.js', 'craft-book.js', 'crafts.js', 'daynight.js', 'debris.js',
+-  'deck.js', 'decor-pack-models.js', 'decor-pack.js', 'diving-ui.js', 'diving.js', 'engine-models.js', 'engine.js',
++  'deck-cache.js', 'deck.js', 'decor-pack-models.js', 'decor-pack.js', 'diving-ui.js', 'diving.js', 'engine-models.js', 'engine.js',
+   'fish-journal.js', 'fish-models.js', 'fish-species.js', 'fishing-cooking.js', 'fishing-rules.js',
+   'fishing-tool.js', 'fishing-v2.js', 'hammer.js', 'hands.js', 'held-items.js', 'hook-physics.js', 'hook.js',
+   'hud.js', 'input-map.js', 'input-rules.js', 'input.js', 'instrument-models.js', 'instruments.js',
+   'inventory-state.js', 'islands-layout.js', 'islands-models.js', 'islands.js', 'item-icons.js', 'item-svg.js',
+   'item-tooltips.js', 'items.js', 'kiln-core.js', 'kiln-model.js', 'kiln.js', 'lock-rules.js', 'logbook-ui.js',
+   'logbook.js', 'look-ui.js', 'look.js', 'maptable-model.js', 'maptable.js', 'materials.js', 'merge-geo.js',
+-  'models.js', 'move-feel.js', 'ocean.js', 'paint.js', 'pickup-feed.js', 'placement.js', 'plastic.js',
++  'models.js', 'move-feel.js', 'ocean.js', 'paint.js', 'perf-overlay.js', 'pickup-feed.js', 'placement.js', 'plastic.js',
+   'player-physics.js', 'progression-hooks.js', 'progression.js', 'purifier-model.js', 'quality.js', 'rain-model.js',
+   'rain.js', 'repair.js', 'sailing-core.js', 'sailing-ui.js', 'sailing-world.js', 'scenery-islands.js',
+   'seafloor.js', 'session-rules.js', 'settings.js', 'shark-model.js', 'shark.js', 'signal-models.js', 'signal.js',
+@@ -263,6 +263,7 @@
    let manifest;
    try {
      manifest = await fetchManifest();
@@ -215,7 +239,7 @@ diff -ruN a/dist/perf-overlay.js b/dist/perf-overlay.js
 +++ b/dist/perf-overlay.js
 @@ -0,0 +1,54 @@
 +// In-game perf panel for dist/perf-overlay.js. Pure ES module, nothing happens on import.
-+//   import { createPerfOverlay } from './perf-overlay.js?build=...';
++//   import createPerfOverlay from perf-overlay.js with the same ?build= stamp as game.js' other imports
 +//   const perf = createPerfOverlay({renderer, quality});   // quality: the quality.js scaler (optional)
 +//   // in frame(): perf.begin(); ...update + render...; perf.end();
 +//   // F3 (or ?perf in the URL) toggles the panel. perf.dispose() on unmount.
@@ -268,18 +292,3 @@ diff -ruN a/dist/perf-overlay.js b/dist/perf-overlay.js
 +    dispose() { removeEventListener('keydown', onKey); el.remove(); },
 +  };
 +}
-diff -ruN a/dist/wood.js b/dist/wood.js
---- a/dist/wood.js
-+++ b/dist/wood.js
-@@ -13,8 +13,7 @@
-   for(let r=1;r<6;r++){ctx.beginPath();ctx.ellipse(x,y,r*1.4,r*4.7,.1,0,Math.PI*2);ctx.strokeStyle=`rgba(68,37,19,${.18-r*.02})`;ctx.lineWidth=.7;ctx.stroke();}
-  }
-  const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=4;
-- // The bump term samples its map three times per pixel; anisotropic filtering there is invisible at this bump
-- // scale but costly on software GL, so the bump reads the same canvas through an isotropic twin.
-- const bump=texture.clone();bump.anisotropy=1;
-- return new T.MeshStandardMaterial({map:texture,bumpMap:bump,bumpScale:.018,roughness:.86,metalness:0});
-+ // No bump map: at bumpScale .018 it changed no pixel by more than 8/255 (deck diff 0.01 of 255), but even through
-+ // an isotropic twin its three extra taps per pixel were 11-18% of a SwiftShader frame (docs/tech/perf.md).
-+ return new T.MeshStandardMaterial({map:texture,roughness:.86,metalness:0});
- }

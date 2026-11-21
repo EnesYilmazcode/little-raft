@@ -9,9 +9,10 @@ Usage: python sandbox/perf/verify_adopt.py [--frames 8] [--skip shoot,node,gate,
 4. gate:    tests/e2e/perf_gate.py (the budgeted perf gate) on stock and patched.
 5. race:    live_race.py (live.js double mount: fails on stock, passes patched) and the hot-swap leak audit
             tests/audit/perf1_hotswap_leaks_old_engine.py on stock and patched.
-Steps 4-5 run COPIES of tests/: the gate and the audits click #solo with a Playwright locator, which times out on
-the current title screen (onboarding.js hides #solo behind its own menu). The copies click it from JS instead
-(one-line substitution, SOLO_FIX below); nothing else in them changes.
+Steps 3-5 run COPIES of tests/ next to each dist copy. The audits still click #solo with a Playwright locator, which
+times out on the current title screen (onboarding.js hides #solo behind its own menu; the perf gate itself now boots
+through harness.START_SELECTORS). The copies click it from JS instead (one-line substitution, SOLO_FIX below);
+nothing else in them changes.
 6. play:    playtest.py --big on stock and patched: hammer floors, decor, hook, hot swaps through live.js's poll;
             build handler time, deck checksum incremental == full rebuild, memory flat across swaps.
 Prints one JSON summary; writes it to <out>/verify.json."""
