@@ -67,6 +67,47 @@ function prune(world) {
 }
 const tidy = (map, k) => { const e = map[k]; if (e && !(e.w || e.f || e.s)) delete map[k]; };
 
+// A sprinkler's water: its own tank first, else a neighbouring rain barrel (NEIGHBOURS order).
+function waterSource(world, types, x, z) {
+  const k = tileKey(x, z);
+  if (world.sprinklers?.[k]?.w >= 1) return [world.sprinklers, k];
+  for (const [dx, dz] of NEIGHBOURS) {
+    const nk = tileKey(x + dx, z + dz);
+    if (types.get(nk) === 'rainbarrel' && world.collectors?.[nk]?.w >= 1) return [world.collectors, nk];
+  }
+  return null;
+}
+const hasWater = (world, types, x, z) => !!waterSource(world, types, x, z);
+/** Spends one unit of the sprinkler at (x, z)'s water and starts its spray. -> false when it has none. */
+function useWater(world, types, x, z) {
+  const src = waterSource(world, types, x, z); if (!src) return false;
+  src[0][src[1]].w -= 1; tidy(src[0], src[1]);
+  const k = tileKey(x, z), sp = world.sprinklers[k] ?? (world.sprinklers[k] = {w:0, s:0});
+  sp.s = SPRAY_SECONDS;
+  return true;
+}
+
+/**
+ * Sprinklers serving other decor (crop plots, crops.js): for each sprinkler with water, `pick(keys)` gets the
+ * sorted "x,z" keys of the 8 tiles around it and returns one of them to water (or null); one unit is then spent
+ * and `water(key)` is called. Host only, after sprinkle() in the same second. -> keys watered.
+ */
+export function sprinkleOther(world, pick, water) {
+  if (!isPlain(world.collectors)) world.collectors = {};
+  if (!isPlain(world.sprinklers)) world.sprinklers = {};
+  const types = decorTypes(world.decor), out = [];
+  for (const k of keysOf(types, 'sprinkler')) {
+    const [x, z] = k.split(',').map(Number);
+    if (!hasWater(world, types, x, z)) continue;
+    const around = [];
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (dx || dz) around.push(tileKey(x + dx, z + dz));
+    around.sort();
+    const key = pick(around); if (!key) continue;
+    useWater(world, types, x, z); water(key); out.push(key);
+  }
+  return out;
+}
+
 /** One sprinkler pass: each sprinkler waters at most one dry, unripe neighbouring palm. -> palm keys watered. */
 export function sprinkle(world) {
   if (!isPlain(world.collectors)) world.collectors = {};
@@ -75,12 +116,7 @@ export function sprinkle(world) {
   const types = decorTypes(world.decor), garden = world.garden, watered = [];
   for (const k of keysOf(types, 'sprinkler')) {
     const [x, z] = k.split(',').map(Number);
-    let src = world.sprinklers[k]?.w >= 1 ? world.sprinklers[k] : null, srcMap = world.sprinklers, srcKey = k;
-    if (!src) for (const [dx, dz] of NEIGHBOURS) {
-      const nk = tileKey(x + dx, z + dz);
-      if (types.get(nk) === 'rainbarrel' && world.collectors[nk]?.w >= 1) { src = world.collectors[nk]; srcMap = world.collectors; srcKey = nk; break; }
-    }
-    if (!src) continue;
+    if (!hasWater(world, types, x, z)) continue;
     const palms = [];
     for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
       if (!dx && !dz) continue;
@@ -91,10 +127,7 @@ export function sprinkle(world) {
     const pk = palms.find(p => plantStage(garden[p]) < 2 && garden[p]?.water !== 1);
     if (!pk) continue;
     garden[pk] = {water:1, grow:garden[pk]?.grow ?? 0};
-    src.w -= 1;
-    tidy(srcMap, srcKey);
-    const sp = world.sprinklers[k] ?? (world.sprinklers[k] = {w:0, s:0});
-    sp.s = SPRAY_SECONDS;
+    useWater(world, types, x, z);
     watered.push(pk);
   }
   return watered;

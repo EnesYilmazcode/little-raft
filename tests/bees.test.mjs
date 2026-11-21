@@ -136,7 +136,8 @@ test('module: action validation, net load caching, OLD_HOST guard', () => {
   assert.equal(gm.interact(AIM), true);
   assert.deepEqual(g.actions.at(-1), { kind: 'bees.harvest', x: 0, z: 0 });
   gm.load(undefined, 'net');
-  assert.equal(gm.prompt(AIM), OLD_HOST);
+  assert.equal(gm.prompt(AIM), null, 'status lines stay out of #contextPrompt (it feeds the notice log)');
+  assert.equal(gm.debug.status(AIM).label, OLD_HOST);
   const sent = g.actions.length;
   assert.equal(gm.interact(AIM), true);
   assert.equal(g.actions.length, sent, 'an old host never gets bees.harvest');
@@ -150,13 +151,13 @@ test('module: host ticks at 1 Hz and prompts follow the hive', () => {
   ctx.camera = { position: { x: 0, y: 1.7, z: 3 } };
   const m = B.createBees(ctx); m.load(undefined, 'save');
   const aim = AIM;
-  assert.equal(m.prompt(aim), 'Bees are busy… 0%');
+  assert.equal(m.prompt(aim), null); assert.deepEqual(m.debug.status(aim), { key: null, label: 'Bees are busy… 0%' });
   for (let i = 0; i < 180 * 60; i++) m.update(1 / 60);
-  assert.equal(m.prompt(aim), 'Bees are busy… 50%');
+  assert.equal(m.prompt(aim), null); assert.deepEqual(m.debug.status(aim), { key: null, label: 'Bees are busy… 50%' });
   m.debug.fastForward(10000);
   assert.equal(m.prompt(aim), '<kbd>E</kbd>Collect honeycomb (3) · full');
   ctx.world.decor.splice(1, 1); m.load(undefined, 'save');
-  assert.equal(m.prompt(aim), 'Beehive: bees need a flower box nearby');
+  assert.equal(m.prompt(aim), null); assert.deepEqual(m.debug.status(aim), { key: null, label: 'Beehive: bees need a flower box nearby' });
   for (let i = 0; i < 10; i++) m.update(1);
   assert.equal(emits.length, 0);
   ctx.world.decor.push(box(0, 1), box(1, 1), box(-1, 1));

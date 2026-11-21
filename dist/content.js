@@ -12,6 +12,8 @@
 //   load(data, from)          from: 'save' | 'net' | 'restore'. data may be undefined (old save).
 //   action(a, actor, bag)     host only. Return true if a.kind was handled. Guests reach it via ctx.action().
 //   interact(aim)             E key. Return true if consumed (before the inventory opens).
+//   use(kind, aim)            left click holding `kind`, before eating/placing. Return true if consumed.
+//   claims(kind, aim)         true when use(kind, aim) would consume the click (hides the eat/drink tip)
 //   prompt(aim)               -> context prompt HTML (escaped by the module) or null
 //   craftLocked(recipe, actor)-> reason string if the recipe is locked, else null
 //   decorModel(type, d)       -> THREE.Object3D for a CONTENT_DECOR type, or null (d = the world.decor entry, read-only)
@@ -22,6 +24,7 @@
 //   alt(aim, kind)            right click while holding `kind`. Return true if consumed (paint: brush colour).
 //   afterRebuild()            after rebuildRaft() recreated the deck/decor meshes (paint: re-tint planks)
 //   tileTint(x, z, base)      plank colour for deck tile x,z (base = the plank's own colour) or null (paint)
+//   bindRain(fn)              called once at start with fn() -> live 0..1 rain
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   dispose()
 //
@@ -42,9 +45,10 @@ import { createKiln } from './kiln.js?build=v3-survival-ae77fa84ac2b';
 import { createAnimals } from './animals.js?build=v3-survival-ae77fa84ac2b';
 import { createBees } from './bees.js?build=v3-survival-ae77fa84ac2b'; // [bees]
 import { createTreasure } from './treasure.js?build=v3-survival-ae77fa84ac2b';
+import { createCrops } from './crops.js?build=v3-survival-ae77fa84ac2b'; // [crops]
 import { createMapTable } from './maptable.js?build=v3-survival-ae77fa84ac2b';
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees]; // [bees] + createBees
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createCrops]; // [bees] + createBees, [crops] + createCrops
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -77,6 +81,8 @@ export function createContent(ctx, features = FEATURES) {
     try { const m = make(ctx, { peek }); if (m) mods.push(m); } catch (e) { console.error('content module failed to start', e); }
   }
   const first = (fn, ...a) => { for (const m of mods) { const r = call(m, fn, ...a); if (r) return r; } return null; };
+  const rain = () => { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }; // rain-sprinkler: live 0..1 rain
+  for (const m of mods) call(m, 'bindRain', rain); // [crops] rain waters crop plots
   const debug = {};
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
   return {
@@ -87,6 +93,8 @@ export function createContent(ctx, features = FEATURES) {
     load(ext, from) { const e = ext && typeof ext === 'object' ? ext : {}; for (const m of mods) call(m, 'load', e[m.name], from); },
     action(a, actor, bag) { for (const m of mods) if (call(m, 'action', a, actor, bag)) return true; return false; },
     interact: aim => !!first('interact', aim),
+    use: (kind, aim) => !!first('use', kind, aim),
+    claims: (kind, aim) => !!first('claims', kind, aim),
     prompt: aim => first('prompt', aim),
     use: (aim, kind) => !!first('use', aim, kind), // content hook (paint)
     alt: (aim, kind) => !!first('alt', aim, kind), // content hook (paint)
@@ -96,7 +104,7 @@ export function createContent(ctx, features = FEATURES) {
     decorModel: (type, d) => first('decorModel', type, d),
     sailPush: (s, out) => !!first('sailPush', s, out),
     steerTargets: () => first('steerTargets'),
-    rain() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }, // rain-sprinkler: live 0..1 rain
+    rain, // rain-sprinkler: live 0..1 rain
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };
 }
