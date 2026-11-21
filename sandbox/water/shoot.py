@@ -1,10 +1,12 @@
-"""Headless check for the water lab. Usage: python sandbox/water/shoot.py [out_dir]
+"""Headless check for the water lab. Usage: [FRAMES=60] python sandbox/water/shoot.py [out_dir] [tiers, e.g. cur,a,b,c]
 Serves the repo root, renders every tier x view at a frozen time, prints frame ms + errors.
 SwiftShader timings are only useful relative to each other."""
 import sys, json, threading, functools, http.server, socketserver
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
+import os
+FRAMES = int(os.environ.get('FRAMES', '60'))   # FRAMES=4 for quick visual iteration
 root = Path(__file__).resolve().parents[2]
 out = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).parent / 'shots').resolve()
 out.mkdir(parents=True, exist_ok=True)
@@ -16,9 +18,10 @@ srv = socketserver.ThreadingTCPServer(('127.0.0.1', 0), functools.partial(Quiet,
 port = srv.server_address[1]
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 report = {'errors': [], 'runs': []}
-cases = [(t, v, 1) for t in 'abc' for v in ('fp', 'over', 'sun')] + [('a', 'fp', 2.6), ('c', 'over', 2.6)]
+tiers = sys.argv[2].split(',') if len(sys.argv) > 2 else ['cur', 'a', 'b', 'c']
+cases = [(t, v, 1) for t in tiers for v in ('fp', 'over', 'sun')] + [(t, 'fp', 2.6) for t in tiers if t in ('a', 'c')]
 with sync_playwright() as p:
-    b = p.chromium.launch(channel='chrome', headless=True,
+    b = p.chromium.launch(executable_path='/opt/pw-browsers/chromium-1243/chrome-linux64/chrome', headless=True,
                           args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'])
     page = b.new_page(viewport={'width': 1280, 'height': 720})
     page.on('pageerror', lambda e: report['errors'].append(str(e)))
@@ -26,10 +29,24 @@ with sync_playwright() as p:
     for t, v, a in cases:
         page.goto(f'http://127.0.0.1:{port}/sandbox/water/index.html?tier={t}&view={v}&amp={a}&t=12.5')
         page.wait_for_function('window.lab && window.lab.ready', timeout=20000)
-        ms = page.evaluate('lab.probe()')
+        ms = page.evaluate(f'lab.probe({FRAMES})')
         name = f'{t}-{v}-amp{a}.png'
         page.screenshot(path=str(out / name))
-        report['runs'].append({'tier': t, 'view': v, 'amp': a, 'ms': round(ms, 1), 'shot': name})
+        report['runs'].append({'tier': t, 'view': v, 'amp': a, 'avgMs': round(ms['avg'], 1), 'worstMs': round(ms['worst'], 1),
+                               **{k: ms[k] for k in ('calls', 'triangles', 'geometries', 'textures', 'programs')}, 'shot': name})
+    # Interleaved timing (fp view, calm): the machine is shared, so alternate tiers each round and keep medians.
+    rounds = int(os.environ.get('ROUNDS', '3'))
+    samples = {t: [] for t in tiers}
+    for _ in range(rounds):
+        for t in tiers:
+            page.goto(f'http://127.0.0.1:{port}/sandbox/water/index.html?tier={t}&view=fp&amp=1&t=12.5')
+            page.wait_for_function('window.lab && window.lab.ready', timeout=20000)
+            page.evaluate('lab.probe(10)')   # warm-up (shader compile, first shadow map)
+            samples[t].append(page.evaluate('lab.probe(40)'))
+    med = lambda xs: sorted(xs)[len(xs) // 2]
+    report['timing'] = {t: {'avgMs': round(med([s['avg'] for s in v]), 1), 'worstMs': round(med([s['worst'] for s in v]), 1),
+                            'samplesAvgMs': [round(s['avg'], 1) for s in v], **{k: v[-1][k] for k in ('calls', 'triangles', 'geometries', 'textures', 'programs')}}
+                        for t, v in samples.items() if v}
     b.close()
 srv.shutdown()
 print(json.dumps(report, indent=1))
