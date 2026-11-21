@@ -85,7 +85,7 @@ test('cook flow: fuel, cook, take -> journal dish', () => {
   const h = mount();
   h.action({ kind: 'fc:placeGrill', x: 0, z: 0 });
   const g = [...h.api.grills.values()][0];
-  h.api.journal.recordCatch({ species: 'herring', cm: 22, stars: 1 });
+  h.api.journal.recordCatch({ species: 'herring', cm: 22, stars: 1 }); h.counts.fish = 1; // the catch also gave a bag fish
   assert.equal(h.api.journal.basket.length, 1);
   step(h, 0.2);
   assert.match(h.api.prompt, /Add fuel/);
@@ -96,6 +96,7 @@ test('cook flow: fuel, cook, take -> journal dish', () => {
   assert.equal(h.api.interact(), true); // cook
   assert.equal(h.api.journal.basket.length, 0);
   assert.equal(g.st.slots[0].species, 'herring');
+  assert.equal(h.counts.fish, 0, 'cooking uses up the bag fish too');
   assert.ok(g.fish[0], 'fish model on the grate');
   // invalid fish data is rejected
   h.api.applyAction({ kind: 'fc:cook', id: g.st.id, fish: { species: 'herring', cm: 999 } }, 'host', h.bagApi);

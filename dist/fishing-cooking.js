@@ -91,7 +91,7 @@ export function createFishingCooking(T, host) {
         m.userData.cm = f.cm;
         m.scale.setScalar(Math.min(1, 0.48 / (m.userData.length || f.cm / 100)));
         if (pos[i]) m.position.copy(pos[i]);
-        m.position.y += 0.02; m.rotation.set(0, Math.PI / 2 + (i ? 0.12 : -0.12), 0); // lie across the grate, head away
+        m.position.y += 0.02; m.rotation.set(Math.PI / 2, Math.PI / 2 + (i ? 0.12 : -0.12), 0, 'YXZ'); // on its side across the grate, head away
         m.traverse((o) => { o.castShadow = false; }); // lies on the grate inside the box: shadow is invisible, skip the shadow draw
         g.model.add(m); g.fish[i] = m;
       } else if (m.userData.state !== f.state) setFishState(m, f.state);
@@ -153,6 +153,7 @@ export function createFishingCooking(T, host) {
       const f = cleanFish(a.fish); if (!f) return;
       const slot = st.place(f);
       if (slot < 0) { give(actor, { ...f, state: 'raw' }); return say('The grill is full'); }
+      if (bag?.count?.('fish') > 0) bag.remove('fish', 1); // the bag's classic fish item is the same catch: cooking uses it up
       syncFish(g); markChanged(); return say(`${speciesById(f.species).name} is on the grill`);
     }
     if (a.kind === 'fc:take') {
@@ -220,6 +221,7 @@ export function createFishingCooking(T, host) {
   function toggleJournal() {
     if (!HAS_DOC) return;
     panel ??= createJournalPanel({ getJournal: () => journal, onClose: () => {} });
+    if (!panel.isOpen) try { document.exitPointerLock?.(); } catch {} // free the cursor so the tabs can be clicked
     panel.toggle();
   }
   function placeGrillAtAim() {
@@ -286,8 +288,8 @@ export function createFishingCooking(T, host) {
     dropHeld();
     if (camera) {
       held = createFishModel(T, sp.id, { cm: c.cm, state: 'raw' });
-      held.scale.setScalar(Math.min(1, 0.42 / (held.userData.length || c.cm / 100)));
-      held.position.set(0.26, -0.2, -0.62); held.rotation.set(0.25, 0.5, 0.35);
+      held.scale.setScalar(Math.min(1, 0.36 / (held.userData.length || c.cm / 100)));
+      held.position.set(-0.1, -0.17, -0.6); held.rotation.set(0.15, 0.3, 0.45); // held up left of centre, clear of the rod
       held.traverse((o) => { o.renderOrder = 999; o.castShadow = false; }); // viewmodel: no shadow pass
       camera.add(held); heldT = 2.2;
     }
