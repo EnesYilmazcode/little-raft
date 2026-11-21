@@ -42,7 +42,7 @@ import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?bui
 import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
-import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
+import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrelTrial, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
 import { loadSoundPref, saveSoundPref, dragLookScale } from './hud.js?build=v3-survival-ae77fa84ac2b';
 import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
@@ -77,7 +77,7 @@ const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, la
 const SAVE = 'little-raft-v1';
 const THROW_LOFT = .2, FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 10, PICKUP_REACH = 2.5;
 const LOOK_SENSITIVITY = .0022, DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
-const FISH_REACH = 26, PENDING_MS = 2500, JOIN_TIMEOUT = 15000, ACK_TIMEOUT = 2000;
+const FISH_REACH = 26, PENDING_MS = 2500, NET_RETRY_MS = 6000, JOIN_TIMEOUT = 15000, ACK_TIMEOUT = 2000;
 const CHARGE_MS = 900, MIN_CHARGE = .15, WEAR_PER_CATCH = 2, MAX_HEALTH = 100;
 const ROPE_SEGMENTS = 16, ITEM_FLOAT = .05, CAMERA_ROLL = .2;
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -279,6 +279,7 @@ export function mount(transfer = null) {
   let lastHostMessage = X?.lastHostMessage || performance.now(), lastGuestMessage = X?.lastGuestMessage || performance.now();
   let joinTimer = 0, joinDeadline = Number.isFinite(X?.joinDeadline) ? X.joinDeadline : 0;
   let waterClock = 0, waterAim = null; const wateringGroups = new Map(); // tileKey -> palm/purifier group
+  const netRefused = new Map(); // token -> time: barrels a net tried but whose real roll did not fit
   let netClock = 0, lastSaveAt = performance.now(), lastNetSendAt = 0, toastTimer = 0, wheelAcc = 0, peerHidden = !!X?.peerHidden, heartbeat = 0;
   let noticeText = '', noticeUntil = 0, contextCache = null, uiFailed = false; let fishShown = null;
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
@@ -881,13 +882,14 @@ export function mount(transfer = null) {
       if (typeof a.cast === 'string' && a.cast && hookIndex(bag, a.slot) < 0) return; // a hook cast with no hook left in the bag catches nothing
       if (world.items[i].type === 'bottle') { collectBottle(i, a, bag, actor); return; }
       const it = world.items[i]; if (it.type === 'cache' && a.net) return; // nets never take the signal cache
-      const isCache = it.type === 'cache', loot = isCache ? cacheLoot(countAntennas(world.decor), Math.random) : it.type === 'barrel' ? rollBarrel(Math.random, prog?.barrelLuck) : LOOT[it.type]; if (!loot) return; // [progression-hook] barrel table
+      const isCache = it.type === 'cache', barrel = it.type === 'barrel' ? rollBarrelTrial(Math.random, prog?.barrelLuck) : null, loot = isCache ? cacheLoot(countAntennas(world.decor), Math.random) : barrel ? barrel.loot : LOOT[it.type]; if (!loot) return; // [progression-hook] barrel table; pity counters only advance once the loot is taken
       const scratch = new Bag(bag.snapshot());
       for (const [k, n] of Object.entries(loot)) if (scratch.add(k, n) > 0) { // atomic: all loot fits or nothing changes
         if (!a.net) emit({kind:'full', text:'Your bag is full', tokens:[it.token]}, actor);
+        else netRefused.set(it.token, performance.now() + NET_RETRY_MS); // the net's fit guess was wrong for this roll: leave it a while
         return;
       }
-      commit(bag, scratch);
+      commit(bag, scratch); barrel?.keep();
       world.collected++; world.items.splice(i, 1); if (isCache) onCacheCollected(world); else world.items.push(makeItem(a.id)); syncItems();
       if (typeof a.cast === 'string' && a.cast && wornCasts[actor] !== a.cast) { wornCasts[actor] = a.cast; wearHook(bag, a.slot, actor); }
       if (isCache) emit({kind:'build', text:'Signal cache recovered!'}, actor === 'host' ? 'guest' : 'host');
@@ -1294,7 +1296,8 @@ export function mount(transfer = null) {
       if (sigEvents.length || world.items.length !== itemCount) syncItems();
       netClock += dt;
       if (netClock > .8) { // nets gather into the host's bag (trusted shared machine) and never consume when full
-        netClock = 0; const heldTokens = allHeldTokens(), fits = it => it.type !== 'cache' && lootFits(actorBag('host'), LOOT[it.type]);
+        netClock = 0; const heldTokens = allHeldTokens(), nowMs = performance.now(), fits = it => it.type !== 'cache' && !(netRefused.get(it.token) > nowMs) && lootFits(actorBag('host'), LOOT[it.type]);
+        for (const [t, until] of netRefused) if (until <= nowMs) netRefused.delete(t);
         for (const net of world.decor.filter(d => d.type === 'net')) { const it = pickNetItem(world.items, net, {held:heldTokens, isPending, fits}); if (it) applyAction({kind:'collect', id:it.id, token:it.token, net:true}, 'host'); }
       }
       waterClock += dt; if (waterClock >= 1) { waterClock -= 1; const r = tickWatering(world, 1); tickRain(world, 1, content?.rain() ?? 0); if (r.ripe.length && performance.now() >= noticeUntil) emit({kind:'notice', text:'A palm is ready to harvest'}, 'all'); }

@@ -59,6 +59,31 @@ test('game.js retracts a hook cast whose hook left its slot, and the host drops 
   const upd = gameSrc.slice(gameSrc.indexOf('function updateHook('));
   assert.match(upd.slice(0, 800), /if \(!hook\.fishing && castHookGone\(localBag\(\)\.slots, hookSlot, isHookSlot\)\) \{ hook\.cancel\?\.\(\); endHook\(\); return; \}/);
   const col = gameSrc.slice(gameSrc.indexOf("if (a.kind === 'collect') {"));
-  const drop = col.indexOf('a.cast && hookIndex(bag, a.slot) < 0) return;'), roll = col.indexOf('rollBarrel(');
+  const drop = col.indexOf('a.cast && hookIndex(bag, a.slot) < 0) return;'), roll = col.indexOf('const isCache');
   assert.ok(drop > 0 && drop < roll, 'cast collect without a hook returns before loot is rolled');
+});
+
+// ---------------------------------------------------------------- G3: refused barrels keep their pity counters
+test('rollBarrelTrial: an untaken roll leaves the pity counters alone; keep() applies them', () => {
+  const luck = { misses: { clay: 0, stone: 0, metalore: 0, sand: 0, copperore: items.BARREL_PITY.copperore } }; // copper is due
+  const before = JSON.stringify(luck.misses);
+  for (let n = 0; n < 20; n++) {
+    const t = items.rollBarrelTrial(Math.random, luck);
+    assert.ok(t.loot.copperore > 0, 'the overdue kind is still forced on every retry');
+  }
+  assert.equal(JSON.stringify(luck.misses), before, 'refused rolls changed nothing');
+  const t = items.rollBarrelTrial(() => 0, luck); t.keep();
+  assert.equal(luck.misses.copperore, 0);
+  assert.equal(luck.misses.clay, 1);
+  const plain = items.rollBarrelTrial(() => 0, null); plain.keep();
+  assert.deepEqual(plain.loot, items.rollBarrel(() => 0));
+});
+
+test('game.js commits barrel luck only after the loot fits, and nets back off a refused barrel', () => {
+  const col = gameSrc.slice(gameSrc.indexOf("if (a.kind === 'collect') {"), gameSrc.indexOf("if (a.kind === 'build') {"));
+  assert.doesNotMatch(col, /rollBarrel\(/);
+  assert.match(col, /rollBarrelTrial\(Math\.random, prog\?\.barrelLuck\)/);
+  assert.match(col, /commit\(bag, scratch\); barrel\?\.keep\(\);/);
+  assert.match(col, /else netRefused\.set\(it\.token, performance\.now\(\) \+ NET_RETRY_MS\)/);
+  assert.match(gameSrc, /fits = it => it\.type !== 'cache' && !\(netRefused\.get\(it\.token\) > nowMs\) && lootFits/);
 });
