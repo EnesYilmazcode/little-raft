@@ -62,6 +62,7 @@ export function createHandLantern(T) {
   const inner = new T.Group();
   const m1 = new T.Mesh(tin, tinMat); m1.name = 'handLanternTin';
   const m2 = new T.Mesh(at(new T.BoxGeometry(0.075, 0.14, 0.075), 0, 0.092, 0), glassMat); m2.name = 'handLanternGlass';
+  m2.userData.viewOrder = 1; // held: drawn after the flame (viewmodels write depth, a glass drawn first hides it)
   const m3 = new T.Mesh(at(new T.SphereGeometry(0.026, 10, 8), 0, 0.09, 0), heldGlowMaterial(T)); m3.name = 'handLanternGlow';
   inner.add(m1, m2, m3);
   const root = new T.Group(); root.name = 'handLantern';
@@ -89,7 +90,7 @@ export function createFireflyJar(T) {
   ], false);
   const glass = new T.Mesh(glassGeo, new T.MeshStandardMaterial({ color: '#d8f2ee', emissive: '#c8f060', emissiveIntensity: 0.3, roughness: 0.1,
     transparent: true, opacity: 0.3, side: T.DoubleSide, forceSinglePass: true, depthWrite: false }));
-  glass.name = 'jarGlass';
+  glass.name = 'jarGlass'; glass.userData.viewOrder = 1; // held: drawn after the glow and bugs inside
   const glow = new T.Mesh(at(new T.SphereGeometry(0.045, 8, 6), 0, 0.1, 0),
     new T.MeshStandardMaterial({ color: '#eaffb8', emissive: '#c8f060', emissiveIntensity: 0.9, roughness: 1, transparent: true, opacity: 0.85, depthWrite: false }));
   glow.name = 'lanternGlow';

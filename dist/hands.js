@@ -139,7 +139,7 @@ export function createHands(T, { modelFactory = null } = {}) {
   // never cast shadows and are never culled. Solid ones skip blending (opaque cost, transparent-queue order).
   const prep = (o) => o.traverse((c) => {
     if (!c.isMesh) return;
-    c.castShadow = false; c.receiveShadow = false; c.frustumCulled = false; c.renderOrder = 1000;
+    c.castShadow = false; c.receiveShadow = false; c.frustumCulled = false; c.renderOrder = 1000 + (c.userData.viewOrder | 0); // viewOrder: glass after what it holds
     for (const m of [].concat(c.material)) {
       if (!m.transparent && m.opacity >= 1) m.blending = T.NoBlending;
       m.depthTest = true; m.depthWrite = true; m.transparent = true;

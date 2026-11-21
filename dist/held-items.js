@@ -37,7 +37,7 @@ export const HOLD = Object.freeze({
   fishingrod: { hand: 'right', pose: 'grip', rx: -0.15, rz: 0.6 },
   spade:      { hand: 'right', pose: 'grip', rx: 0.2, rz: 0.35 },
   finder:     { hand: 'right', pose: 'grip', rx: -1.1, rz: 0.25 },
-  handlantern: { hand: 'right', pose: 'grip', rx: 0.1, arm: [-0.06, 0.17, 0] }, // [nightlight] hangs from the fist by its loop
+  handlantern: { hand: 'right', pose: 'grip', rx: 0.1, arm: [-0.06, 0.25, 0] }, // [nightlight] hangs from the fist by its loop
   spear:      { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 }, // [spear-repair] point forward, a ready jab
   metalspear: { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 },
   brush:      { hand: 'right', pose: 'grip', rx: -0.25, ry: 0.35, rz: 0.35 }, // content hook (paint)
@@ -52,8 +52,10 @@ export const HOLD = Object.freeze({
   drum: { hand: 'left', pose: 'grip', rx: -0.7 }, pipes: { hand: 'right', pose: 'grip', rx: 0.2 }, bells: { hand: 'left', pose: 'grip', rx: -1.25 }, // [instruments]
   ...Object.fromEntries(PLACEABLE_KINDS.filter((k) => k !== 'hammer').map((k) => [k, { hand: 'left', pose: SEED_KINDS.includes(k) ? 'grip' : 'point' }])),
 });
+// Kinds that look like another kind in hand (crop seeds are seeds, cups of water are cups), not a bundle.
+const HELD_AS = Object.freeze({ flaxseed: 'seeds', bellseed: 'seeds', tuberseed: 'seeds', freshcup: 'water', saltcup: 'water' });
 // Unknown kinds (other lanes may add items): carried on the left fist if placeable, else gripped.
-export const holdFor = (kind) => HOLD[kind] || (isPlaceable(kind) ? HOLD.crate : { hand: 'right', pose: 'grip' });
+export const holdFor = (kind) => HOLD[kind] || HOLD[HELD_AS[kind]] || (isPlaceable(kind) ? HOLD.crate : { hand: 'right', pose: 'grip' });
 
 // Left-fist (placeable) models are capped to a small carried size so they never fill the lower left.
 export const HELD_LEFT_MAX = 0.11;
@@ -223,6 +225,7 @@ function buildBundle(T) {
 // Kind -> fresh model ('' / null -> null). Never null for a real kind: falls back to a bundle.
 export function buildItemModel(T, kind, factory = null) {
   if (!kind) return null;
+  if (HELD_AS[kind]) { const r = buildItemModel(T, HELD_AS[kind], factory); r.name = 'item_' + kind; r.userData.kind = kind; return r; }
   let root = null;
   const left = holdFor(kind).hand === 'left';
   const dim = (k, d) => (left ? Math.min(SIZE[k] || d, HELD_LEFT_MAX) : SIZE[k] || d);
