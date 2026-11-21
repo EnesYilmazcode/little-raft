@@ -24,7 +24,7 @@ export function createSailing(T, ctx) {
   const abort = new AbortController();
   const ui = createSailingUI({ signal: abort.signal });
   const out = { dwx: 0, dwz: 0, dgx: 0, dgz: 0 };
-  const flow = { x: 0, z: 0 }, info = { running: false, yaw: 0, windDir: 0, windStr: 0, heading: 0, raised: false, anchored: false, nSails: 0, speed: 0, travelDir: 0, motor: 0, islandOn: false, islandDir: 0 };
+  const flow = { x: 0, z: 0 }, info = { running: false, yaw: 0, windDir: 0, windStr: 0, heading: 0, raised: false, anchored: false, nSails: 0, speed: 0, travelDir: 0, motor: 0, islandOn: false, islandDir: 0, beaconOn: false, beaconDir: 0 };
   const stepOpts = { nSails: 0, host: true, rng: Math.random, blockers: [], push: { x: 0, z: 0 } };
   const localAct = { kind: 'sail', op: 'heading', heading: 0 };
   const drifters = [], sails = [], rolls = [];
@@ -89,6 +89,10 @@ export function createSailing(T, ctx) {
   // Compass marker for the live content island (raft-relative x, z), or markIsland(NaN) for none.
   function markIsland(x, z) {
     if (Number.isFinite(x) && Number.isFinite(z)) { info.islandOn = true; info.islandDir = Math.atan2(x, z); } else info.islandOn = false;
+  }
+  // Compass marker for the Old Beacon Mast while the receiver tracks it (mast.js), or markBeacon(NaN) for none.
+  function markBeacon(x, z) {
+    if (Number.isFinite(x) && Number.isFinite(z)) { info.beaconOn = true; info.beaconDir = Math.atan2(x, z); } else info.beaconOn = false;
   }
   function moveDrifters() {
     for (let i = 0; i < drifters.length; i++) {
@@ -369,6 +373,6 @@ export function createSailing(T, ctx) {
     for (const r of rolls) r.parent?.remove(r);
     rolls.length = 0; lastOp.clear(); drifters.length = 0; stepOpts.blockers.length = 0;
   }
-  return { update, onRaftBuilt, addDrifter, addBlocker, blockerClear, groundOffset, markIsland, itemFlow, respawned, outOfRange, interact, removeAnchorAction, grab, release, apply, paddleReady, debug, dispose,
+  return { update, onRaftBuilt, addDrifter, addBlocker, blockerClear, groundOffset, markIsland, markBeacon, itemFlow, respawned, outOfRange, interact, removeAnchorAction, grab, release, apply, paddleReady, debug, dispose,
     get steering() { return steering; } };
 }
