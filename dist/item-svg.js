@@ -165,6 +165,16 @@ export const ITEM_ICONS = Object.freeze({
     <rect x="19.5" y="35" width="9" height="8" rx="1.5" fill="#fff2cc" stroke-width="1.5"/>
     <path d="M19 31 C18 34 18 38 18.5 41" fill="none" stroke="#fff2cc" stroke-width="1.3" stroke-linecap="round"/></g>`,
 
+  // Anchor: grey stone-iron anchor with a ring and a curl of rope.
+  anchor: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M30 5 C40 6 43 14 37 18" fill="none" stroke="#b99a62" stroke-width="3.2"/>
+    <circle cx="24" cy="9" r="4" fill="none" stroke-width="3.4"/><circle cx="24" cy="9" r="4" fill="none" stroke="#9fb1bf" stroke-width="1.6"/>
+    <rect x="14" y="15" width="20" height="4.4" rx="2" fill="#7f8a90"/>
+    <path d="M21.6 13 H26.4 V36 H21.6 Z" fill="#8f9aa0"/>
+    <path d="M7 27 L12 25 C12 33 17 38 24 38.5 C31 38 36 33 36 25 L41 27 C40 37 33 43 24 43 C15 43 8 37 7 27 Z" fill="#7f8a90"/>
+    <path d="M5 30 L9 22 L14 27 Z M43 30 L39 22 L34 27 Z" fill="#9aa3a8"/></g>
+    <path d="M23 16 V33" stroke="#c6d6e0" stroke-width="1.4" stroke-linecap="round"/>`,
+
   // Stone axe: driftwood handle, chipped grey stone head lashed on with rope.
   axe: `<g transform="rotate(25 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <path d="M22 8 L21.2 45 Q24 47 26.8 45 L26 8 Z" fill="#bb8650"/>

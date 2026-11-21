@@ -15,7 +15,7 @@ const CATEGORY_OF = Object.freeze({
   hook: 'tools', hammer: 'tools', fishingrod: 'tools',
   rope: 'materials',
   net: 'survival', palm: 'survival', lantern: 'survival',
-  sail: 'building', bench: 'building', crate: 'building',
+  sail: 'building', bench: 'building', crate: 'building', anchor: 'building',
   // progression catalogue (items.js)
   metalhook: 'tools', binoculars: 'tools', spear: 'tools', metalspear: 'tools', finder: 'tools', spade: 'tools', paddle: 'tools', axe: 'tools',
   drum: 'tools', pipes: 'tools', bells: 'tools', // [instruments]
@@ -58,6 +58,7 @@ export const ITEM_TEXT = Object.freeze({
   research:   { desc: 'A tinker\u2019s desk for studying finds.', use: 'Place it, then study parts to learn signal and water gear.' },
   motor:      { desc: 'A little outboard motor that burns leaves, wood or plastic.', use: 'Place it, fuel it, and it pushes the raft along.' },
   wheel:      { desc: 'A rope-lashed steering wheel.', use: 'Place it, then grab it to steer the raft.' },
+  anchor:     { desc: 'A stone anchor on a rope reel.', use: 'Place it at the raft edge; E drops or raises it. Remove it with the hammer (X).' },
   bed:        { desc: 'A plank bed with a leaf mattress.', use: 'Lie down at night to sleep until morning. It is also your respawn point.' },
   brush:      { desc: 'A paint brush with stiff bristles.', use: 'Click walls, floors or deck to paint; right click picks a colour.' },
   paint_seafoam:  { desc: 'A pot of soft seafoam green paint.', use: 'One pot paints one piece with the brush.' },

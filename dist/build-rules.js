@@ -17,6 +17,7 @@ export const BLOCK_TEXT = Object.freeze({
   split: 'That would split the raft in two',
   brother: 'Your brother is in the way',
   nofloor: 'Place it on the raft floor',
+  rim: 'Place it at the raft edge',
 });
 
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -33,11 +34,15 @@ export function floorBlock(tiles, x, z) {
   return null;
 }
 
-// Why decor can't go at (x, z): 'invalid' | 'nofloor' | 'occupied', or null when it can.
-export function decorBlock(tiles, decor, x, z) {
+// Kinds that must stand on an edge tile (one side open to the sea): the anchor drops its rope over that side.
+export const EDGE_ONLY = Object.freeze(['anchor']);
+
+// Why decor can't go at (x, z): 'invalid' | 'nofloor' | 'occupied' | 'rim' (type needs an edge tile), or null when it can.
+export function decorBlock(tiles, decor, x, z, type = null) {
   if (!isInt(x) || !isInt(z)) return 'invalid';
   if (!hasTile(tiles, x, z)) return 'nofloor';
   if (decor.some(d => d.x === x && d.z === z)) return 'occupied';
+  if (type !== null && EDGE_ONLY.includes(type) && NEIGHBOURS.every(([a, b]) => hasTile(tiles, x + a, z + b))) return 'rim';
   return null;
 }
 
