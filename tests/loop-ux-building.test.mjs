@@ -67,3 +67,22 @@ test('B1: holding Q opens the wheel once; auto-repeat neither closes it nor comm
   assert.notEqual(b.piece, 'foundation');
   b.dispose();
 });
+
+// ============================================================ B3: R only for rotatable pieces
+
+test('B3: R is consumed only for cell pieces (floor/stairs/roof); others fall through to sail/repair', () => {
+  const b = createBuilding(T, new T.Scene());
+  for (const id of PIECE_ORDER) {
+    if (id === 'foundation') continue;
+    pick(b, id);
+    const cell = PIECES[id].slot === 'cell';
+    const r0 = b.rotation;
+    assert.equal(b.key('KeyR', true, true, false), cell, `${id}: consumed=${cell}`);
+    assert.equal(b.rotation, cell ? (r0 + 1) % 4 : r0, `${id}: rotation`);
+  }
+  for (const id of ['wall', 'halfwall', 'window', 'door', 'pillar']) assert.notEqual(PIECES[id].slot, 'cell', id);
+  for (const id of ['floor', 'stairs', 'roof']) assert.equal(PIECES[id].slot, 'cell', id);
+  pick(b, 'foundation');
+  assert.equal(b.key('KeyR', true, true, false), false, 'foundation: R stays hook repair');
+  b.dispose();
+});
