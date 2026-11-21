@@ -129,3 +129,36 @@ Keep all existing suites green (`npm test`), esp. progression, survival, models,
 - `raftDebug.renderInfo.lights` unchanged before/after equipping; `daynight.state().poolCarry` 1 while held at night.
 - `?daynight=off`: load, craft, hold, try catch: no console errors, no light, prompt says fireflies come out after dusk.
 - Co-op loopback: guest holds the lantern -> host sees the avatar lantern and a lit pool around the guest.
+
+## Build notes
+Built as specified, except where noted.
+- **Files**: `dist/nightlight.js`, `dist/nightlight-models.js`, `tests/nightlight.test.mjs` (10 tests). Hooks: daynight.js
+  (`DAYNIGHT_CARRY`, `CARRY_PEAK`, `planPool`, `poolCarry`), content.js, coop.js, held-items.js, coop-avatar.js, avatar.js,
+  items.js, craft-book.js (`CATEGORY`, `ITEM_TEXT`, and `ITEM_SOURCE.fireflyjar`), item-svg.js, live.js PRELOAD,
+  tests/progression.test.mjs, plus the tools-tab list in tests/survival.test.mjs.
+- **coop.js beyond `HELD`**: with the co-op hub, game.js `other` comes from coop.js `lastPose`, which had no `held`, so
+  `ctx.other.held` was always null on the guest. `lastPose` now carries `held` (decoded from the existing `h` index).
+  The wire format is unchanged.
+- **`want`** is checked when the local bag's `version` changes as well as every 1 s. With only the timer, a slow first
+  frame after crafting left the pool off until the lantern was equipped at night, which relinked shaders at that point.
+- **Partner light**: placed at their hand height, eye -0.45 m and 0.35 m ahead, not eye +0.15 m. Above the head it lit
+  only the hat and shoulders.
+- **Jar pool light**: the `lanternGlow` bounding-sphere centre is lifted to 0.55 m (radius 0.5), not ~0.22 m. At 0.22 m a
+  POOL_PEAK light blows the deck out white, as with the candle. The test still checks >= 0.18.
+- **Swarm** uses a 16x16 radial-alpha DataTexture as `map`. Without it the points draw as squares. The swarm group sits
+  at `(cx, gy, cz)`, and each point floats 0.4 to 2.4 m above the sand height at that spot (`groundAt`), so none sit
+  inside the dune.
+- **Held jar**: `jar`/`fireflyjar` use the Firefly Jar model in the hand (`heldJar`, not `craft_lantern`; the empty jar
+  hides its glow and bugs) instead of the generic bundle. Hand Lantern hold: `arm: [-0.06, 0.17, 0]`, so the lantern
+  shows above the hotbar.
+- **Prompt**: the muted "Fireflies come out after dusk" hint shows only while an island is present.
+- **QA** (swiftshader; see the night-shots folder of the round's scratchpad):
+  - `programs` before/after equipping at night: low 107/107, medium 108/108, high 73/73.
+  - `lights` are unchanged, and `poolCarry` is 1 while the lantern is held at night.
+  - Catching swaps jar -> fireflyjar. The prompt reads "E Catch fireflies" at night and the hint by day.
+  - Co-op loopback: the guest sees the host's lantern (`partner.on`, `poolCarry` 1).
+- **Limits**:
+  - A guest (or host) who owns no lantern and has no placed lantern/candle/jar attaches the pool the first time the
+    partner equips a lantern. That is a one-time shader relink.
+  - On `low` the carried lantern takes the only pool slot, so placed lanterns and jars keep only their emissive glow.
+  - The first-person grip pose is the generic tool grip (fingers half open around the thin loop).
