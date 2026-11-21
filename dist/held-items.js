@@ -46,6 +46,7 @@ export const HOLD = Object.freeze({
   plastic:    { hand: 'right', pose: 'grip', rx: 0.1, ry: 1.2, rz: 0.1 },
   rope:       { hand: 'right', pose: 'grip', ry: 0.4, arm: [-0.01, 0.05, 0] },     // coil hangs off the fist, in front of the palm
   fish:       { hand: 'right', pose: 'grip', rx: 0.1, ry: 0.35, rz: 0.25, arm: [-0.02, 0.06, 0] },      // by the tail, body across the view
+  sharkbait:  { hand: 'right', pose: 'grip', rx: 0.15, ry: 0.5, rz: 0.3, arm: [-0.04, 0.08, 0] }, // [bait] lifted so the float shows
   cup:        { hand: 'right', pose: 'grip', ry: 0.3 },
   water:      { hand: 'right', pose: 'grip', ry: 0.3 },
   drum: { hand: 'right', pose: 'grip', rx: 0.75 }, pipes: { hand: 'right', pose: 'grip', rx: 0.2 }, bells: { hand: 'right', pose: 'grip', rx: 1.2, rz: 0.1 }, // [instruments] right fist, clear of the hotbar

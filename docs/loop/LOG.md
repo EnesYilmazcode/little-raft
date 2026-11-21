@@ -863,3 +863,12 @@ Next ideas: hammer pickup that refunds contents, a placeable music stand, flower
   mid-compile); patched the vendored three with the upstream-style guard. Full fleet-gate PASS at dbf2ca9 (983 tests,
   hook-only spawn, Esc from inventory keeps the lock, no page errors, shoot.py 159 vs 156 ms on main = +2%).
   PR #4 merged dbf2ca9 into main. PR #5 (round 6) is the open PR now.
+
+## 2026-11-21 · fidelity: Shark Bait
+- Item `sharkbait` "Shark Bait": 2 rope + 2 fish (the raw fish kind), hand craft, stacks to 5, unlocks once you have held a fish.
+- Hold it and left click: it is lobbed along the view (8.5 m/s plus loft, gravity) and floats where it lands; a throw onto the deck rolls off the nearest edge.
+- While it floats (80 s from landing) the shark (new `lure` state in dist/shark.js) drops any raft attack in progress, ignores swimmers and circles the bait at 2.4 m, darting in to bite it every 3 s. A spear repel sends it off briefly; it comes back to the bait.
+- When the bait is used up the shark circles the raft again with a full 300 s attack timer.
+- Co-op: the host simulates the bait. A guest sends `bait:throw` (origin must be within 4 m of the guest); the bait rides as 4 extra numbers on the shark pose (older guests read only the first 7). On a guest the lure shows as the hunt pose code.
+- Not saved: an active bait is dropped on reload, rejoin or hot swap; the shark simply resumes circling.
+- Files: dist/bait.js (rules, low-poly lure model, game glue), tests/bait.test.mjs, tests/e2e/bait_probe.py; game.js edits marked `// [bait]`.

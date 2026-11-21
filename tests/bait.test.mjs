@@ -138,3 +138,71 @@ test('a dead shark ignores the bait', () => {
   step(s, 0.05, w, { preys: [], lure: { active: true, x: 0, z: 20 } });
   assert.equal(s.state, 'dead');
 });
+
+// ---- view + co-op glue (real three.js, no renderer)
+const T = await import('../dist/vendor/three.module.js');
+const { createShark } = await import('../dist/shark.js');
+const { createBaitModel, attachBait } = await import('../dist/bait.js');
+
+function rig(role, w = world()) {
+  const scene = new T.Scene(), ocean = { getHeight: () => 0 };
+  const shark = createShark(T, { scene, ocean, raft: () => null, world: () => w, role: () => role, preys: () => {} });
+  const camera = new T.PerspectiveCamera(); camera.position.set(0, 1.8, 1); camera.lookAt(0, 1.7, 10); camera.updateMatrixWorld(true);
+  const sent = [], bag = new Bag(), physics = { x: 0, z: 1 };
+  let now = 0;
+  const bait = attachBait({ T, scene, ocean, camera: () => camera, world: () => w, role: () => role, shark: () => shark, physics: () => physics, other: () => physics,
+    flow: () => ({ x: 0, z: 0 }), elapsed: () => now, action: a => sent.push(a), emit: () => {} });
+  return { scene, shark, bait, sent, bag, w, tick: dt => { now += dt; bait.update(dt, now); shark.update(dt, now); } };
+}
+
+test('model: one merged vertex-coloured mesh of modest size', () => {
+  const m = createBaitModel(T);
+  assert.ok(m.isMesh && m.geometry.attributes.color);
+  assert.ok(m.geometry.attributes.position.count < 1500);
+  const box = new T.Box3().setFromObject(m), size = box.getSize(new T.Vector3());
+  assert.ok(size.x > 0.6 && size.x < 1.0, 'about 0.75 m long: ' + size.x);
+});
+
+test('host: a throw action uses one bait from the bag; the shark goes for it and the pose carries it', () => {
+  const h = rig('solo');
+  assert.ok(h.bait.use('sharkbait'));
+  assert.equal(h.sent.length, 1); assert.equal(h.sent[0].kind, 'bait:throw');
+  assert.ok(h.bait.apply(h.sent[0], 'host', h.bag), 'handled');
+  assert.equal(h.bait.state.stage, 0, 'nothing thrown without bait in the bag');
+  h.bag.add('sharkbait', 2);
+  h.bait.apply(h.sent[0], 'host', h.bag);
+  assert.equal(h.bag.count('sharkbait'), 1);
+  assert.equal(h.bait.state.stage, BAIT_STAGE.flying);
+  for (let i = 0; i < 60; i++) h.tick(0.05);
+  assert.equal(h.bait.state.stage, BAIT_STAGE.floating);
+  assert.equal(h.shark.lure.active, true);
+  assert.equal(h.shark.sim.state, 'lure');
+  const pose = h.shark.net();
+  assert.equal(pose.length, 11);
+  assert.equal(pose[7], BAIT_STAGE.floating);
+  assert.ok(Math.abs(pose[10] - h.bait.state.z) < 0.01); // [stage, x, y, z] after the 7 pose numbers
+  assert.ok(h.bait.mesh.visible);
+  assert.equal(h.bait.apply({ kind: 'bait:throw', o: [30, 2, 30], d: [0, 0, 1] }, 'guest', h.bag), true);
+  assert.equal(h.bag.count('sharkbait'), 1, 'a throw from far away is refused');
+  h.bait.clear();
+  assert.equal(h.shark.lure.active, false);
+  assert.equal(h.shark.net().length, 7, 'no bait: the old 7-number pose');
+});
+
+test('guest: renders the bait from the host pose and sends throws as actions', () => {
+  const h = rig('solo');
+  h.bait.place(1, 9);
+  h.tick(0.05);
+  const g = rig('guest');
+  g.shark.applyNet(h.shark.net().slice());
+  g.tick(0.05);
+  assert.ok(g.bait.mesh.visible);
+  assert.ok(Math.abs(g.bait.mesh.position.x - 1) < 0.05 && Math.abs(g.bait.mesh.position.z - 9) < 0.05);
+  assert.equal(g.bait.debug().stage, 'floating');
+  g.shark.applyNet([0, 20, 0, 0, -0.5, 0, 150]); // an older host: no bait numbers
+  g.tick(0.05);
+  assert.equal(g.bait.mesh.visible, false);
+  assert.ok(g.bait.use('sharkbait'));
+  assert.equal(g.sent[0].kind, 'bait:throw');
+  assert.equal(g.bait.state.stage, 0, 'the guest never simulates the bait');
+});

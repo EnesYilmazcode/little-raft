@@ -107,10 +107,10 @@ export function createBaitModel(T) {
   const floatBand = new T.CylinderGeometry(0.096, 0.08, 0.05, 7, 1); floatBand.translate(0.37, 0.0, 0); col(floatBand, 0xf1ead8);
   // two fish hung either side of the stick, heads toward the float
   for (const side of [-1, 1]) {
-    const body = new T.OctahedronGeometry(1, 0); body.scale(0.17, 0.065, 0.05); body.translate(-0.04, -0.03, side * 0.07); col(body, side > 0 ? 0x6f93a8 : 0x8aa0a8);
-    const belly = new T.OctahedronGeometry(1, 0); belly.scale(0.12, 0.035, 0.042); belly.translate(-0.02, -0.065, side * 0.07); col(belly, 0xe6ece6);
-    const tail = new T.ConeGeometry(0.06, 0.1, 4, 1); tail.rotateZ(-Math.PI / 2); tail.scale(1, 1, 0.35); tail.translate(-0.25, -0.03, side * 0.07); col(tail, 0x4f6f80);
-    const eye = new T.OctahedronGeometry(0.014, 0); eye.translate(0.09, -0.015, side * 0.112); col(eye, 0x1c1c1c);
+    const body = new T.OctahedronGeometry(1, 0); body.scale(0.17, 0.065, 0.05); body.translate(-0.04, 0.015, side * 0.075); col(body, side > 0 ? 0x6f93a8 : 0x8aa0a8);
+    const belly = new T.OctahedronGeometry(1, 0); belly.scale(0.12, 0.035, 0.042); belly.translate(-0.02, -0.02, side * 0.075); col(belly, 0xe6ece6);
+    const tail = new T.ConeGeometry(0.06, 0.1, 4, 1); tail.rotateZ(-Math.PI / 2); tail.scale(1, 1, 0.35); tail.translate(-0.25, 0.015, side * 0.075); col(tail, 0x4f6f80);
+    const eye = new T.OctahedronGeometry(0.014, 0); eye.translate(0.09, 0.03, side * 0.117); col(eye, 0x1c1c1c);
   }
   // rope lashings round stick + fish
   for (const x of [-0.13, 0.06]) {
@@ -132,7 +132,7 @@ export function attachBait(ctx) {
   const { T } = ctx;
   const b = createBaitState(), out = [0, 0, 0, 0], shown = { stage: 0, x: 0, y: 0, z: 0 };
   const camPos = new T.Vector3(), camDir = new T.Vector3();
-  const mesh = createBaitModel(T); mesh.visible = false; ctx.scene.add(mesh);
+  const mesh = createBaitModel(T); mesh.scale.setScalar(1.35); mesh.visible = false; ctx.scene.add(mesh); // a bit larger than life so it reads from the deck
   let lastThrow = -Infinity, spin = 0, lastGuest = 0;
   const guest = () => ctx.role() === 'guest';
 
@@ -173,7 +173,7 @@ export function attachBait(ctx) {
     }
     const h = ocean ? ocean.getHeight(shown.x, shown.z) : 0, s = ctx.shark(), v = s && s.view;
     const nip = v && v.anim > 0 && Math.hypot(v.x - shown.x, v.z - shown.z) < 2.6 ? v.anim : 0; // the shark is snapping at it
-    mesh.position.set(shown.x, h - 0.02 + Math.sin(t * 2.1) * 0.025 - nip * 0.12, shown.z);
+    mesh.position.set(shown.x, h + 0.03 + Math.sin(t * 2.1) * 0.025 - nip * 0.12, shown.z);
     mesh.rotation.set(Math.sin(t * 1.3) * 0.12 + nip * Math.sin(t * 40) * 0.25, t * 0.15, Math.sin(t * 1.7 + 1) * 0.1);
   }
   /** Every frame (host before shark.update): steps the bait, steers the shark, renders. */
