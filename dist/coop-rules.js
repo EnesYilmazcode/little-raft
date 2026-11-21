@@ -49,3 +49,17 @@ export function decorBlockers(d, radii) {
   }
   return radii[d.type] ? [{x:cx, z:cz, r:radii[d.type]}] : [];
 }
+
+// Which hook slot R repairs: the preferred (selected) slot if it holds a hook, else the most worn
+// hook below `max`, else the first hook (already in great shape). -1 when there is no hook.
+export function repairHookSlot(slots, prefer, max = 100) {
+  if (!Array.isArray(slots)) return -1;
+  if (Number.isInteger(prefer) && slots[prefer]?.kind === 'hook') return prefer;
+  let best = -1, worst = max;
+  slots.forEach((s, i) => {
+    if (s?.kind !== 'hook') return;
+    const d = Number.isFinite(s.durability) ? s.durability : max;
+    if (best < 0 || d < worst) { best = i; worst = d; }
+  });
+  return best;
+}

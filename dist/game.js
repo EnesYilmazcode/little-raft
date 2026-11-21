@@ -15,7 +15,7 @@ import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
-import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
+import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -44,7 +44,7 @@ const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const TIMBER = new Set(['#bb8a53','#c69860','#ad7c4a','#5e4029','#9c7649', '#c8995f', '#d3a368', '#8c6745', '#d5a265', '#a97d4c', '#b4824b', '#906f48', '#725942', '#756a49', '#ad8153']);
 const STYLE_ID = 'little-raft-engine-style';
 const HUD_CSS = `
-body.playing header,body.playing #hud .inventory,body.playing #hud .goal,body.playing #durability,body.playing #toast,
+body.playing header,body.playing #hud .inventory,body.playing #hud .goal,body.playing #toast,
 body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.playing [data-quick-recipe]{display:none!important}
 #contextPrompt{position:fixed;left:50%;top:calc(50% + 26px);transform:translateX(-50%);padding:3px 10px;border-radius:8px;
   background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:none;z-index:30;white-space:nowrap}
@@ -469,7 +469,7 @@ export function mount(transfer = null) {
   function pickNdc(nx, ny) {
     pointer.set(nx, ny); ray.setFromCamera(pointer, camera);
     plane.constant = -deckY() - .02;
-    const held = new Set(caughtList(castOut()).map(c => c.token));
+    const held = allHeldTokens(); // ours and, on the host, the guest's hook
     let item = null;
     for (const hit of ray.intersectObjects(itemsGroup.children, true)) {
       let o = hit.object; while (o && !o.userData.token) o = o.parent;
@@ -587,7 +587,7 @@ export function mount(transfer = null) {
       world.fish++; emit({kind:'loot', text:'You caught a fish!'}, actor); return;
     }
     if (a.kind === 'repair') {
-      const i = hookIndex(bag, a.slot);
+      const i = repairHookSlot(bag.slots, a.slot, MAX_HEALTH);
       if (i < 0) { emit({kind:'notice', text:'No hook to repair'}, actor); return; }
       if ((bag.slots[i].durability ?? MAX_HEALTH) >= MAX_HEALTH) { emit({kind:'notice', text:'Your hook is in great shape'}, actor); return; }
       if (!spend(bag, REPAIR_COST)) { emit({kind:'notice', text:'Repair needs ' + missingText(bag, REPAIR_COST)}, actor); return; }
@@ -610,7 +610,7 @@ export function mount(transfer = null) {
     action(a);
   }
   function craft(recipe) { if (typeof recipe === 'string') action({kind:'craft', recipe}); }
-  function repair() { if (!running) return; const bag = localBag(); action({kind:'repair', slot:hookIndex(bag)}); }
+  function repair() { if (!running) return; const bag = localBag(); action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH)}); }
   function openInventory() { if (!running || !survivalUI) return; clearInput(); releaseLock(); survivalUI.open?.(); }
   function interact() {
     if (!running || uiBlocked()) return;
@@ -659,7 +659,8 @@ export function mount(transfer = null) {
     if (slot?.kind !== 'hook') return;
     const durability = clamp(slot.durability ?? MAX_HEALTH, 0, MAX_HEALTH), maxRange = 16 + durability * .16;
     const direction = aim?.dir ?? camera.getWorldDirection(new T.Vector3());
-    hook = new HookCast(T, {origin:handPos.clone(), direction, maxRange, charge});
+    const deckAt = (x, z) => (hasTile(Math.round(x / 2), Math.round(z / 2)) ? deckY() : null); // stop on the planks
+    hook = new HookCast(T, {origin:handPos.clone(), direction, maxRange, charge, deckAt});
     castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; beep(230);
     if (durability <= 0) notice('Worn hook: shorter throws. R to repair');
   }
@@ -782,7 +783,8 @@ export function mount(transfer = null) {
       if (f >= 1) { action({kind:'fish'}); fishWait = 0; endHook(); }
       return;
     }
-    const ev = hook.update(dt, {hand:handPos, items:world.items.filter(it => !isPending(it)), reeling, time:elapsed});
+    const guestTokens = role === 'guest' ? null : new Set(guestHeld.tokens(performance.now())); // host skips the guest's catch
+    const ev = hook.update(dt, {hand:handPos, items:world.items.filter(it => !isPending(it) && !guestTokens?.has(it.token)), reeling, time:elapsed});
     const hp = hook.position, pos = new T.Vector3(hp.x, surfaceY(hp.x, hp.z, hp.y), hp.z);
     hookMesh.visible = true; hookMesh.position.copy(pos);
     if (hook.stage === 'flying') hookMesh.rotation.set(-hook.flightT * Math.PI * 2, yaw, 0);
@@ -925,7 +927,6 @@ export function mount(transfer = null) {
   setHandler($('#crewButton'), 'onclick', () => openDialog('crew'));
   setHandler($('#welcomeCrew'), 'onclick', () => openDialog('crew'));
   setHandler($('#helpButton'), 'onclick', () => settingsController?.open());
-  setHandler($('#repairButton'), 'onclick', repair);
   document.querySelectorAll('[data-close]').forEach(b => setHandler(b, 'onclick', () => $('#' + b.dataset.close)?.close()));
   const soundLabel = () => setText('#soundButton', 'Sound: ' + (sound ? 'on' : 'off'));
   setHandler($('#soundButton'), 'onclick', () => { sound = !sound; soundLabel(); });
