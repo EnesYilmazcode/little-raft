@@ -1,6 +1,6 @@
 // Authoritative per-player inventory ("bag") for the raft survival game.
 // Pure ES module: no DOM, no THREE, no timers, no randomness.
-import { infoTable, recipeTable, TOOL_IDS, registerBagKinds } from './items.js'; // [progression-hook]
+import { infoTable, recipeTable, TOOL_IDS, registerBagKinds } from './items.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 
 export const STACK_SIZE = 20;
 export const SLOT_COUNT = 28;
