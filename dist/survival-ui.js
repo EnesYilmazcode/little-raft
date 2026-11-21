@@ -1,9 +1,9 @@
 // Little Raft survival UI: shared-play hotbar (.tools) + inventory/crafting dialog (#inventory).
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, holdDelay, holdHint, holdLabel, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, holdDelay, holdHint, holdLabel, sortCraftableFirst, isSpareTool, usefulReady, autoPick, craftKinds, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_ICONS } from './item-svg.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
-import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { iconURL, warmIcons, primeIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
 const VERSION = 'sv4';
 const HB = Number(HOTBAR_SIZE) || 8;
@@ -131,7 +131,7 @@ function durFrac(s) {
 let iconsLive = false;
 function iconHTML(kind) {
   const url = iconsLive ? iconURL(kind) : null;
-  if (url) return `<img class="sv-icon sv-3d" data-icon="${esc(kind)}" src="${url}" alt="" draggable="false">`;
+  if (url) return `<img class="sv-icon sv-3d" data-icon="${esc(kind)}" src="${url}" alt="" draggable="false" decoding="sync">`;
   return iconSVG(kind).replace('<svg ', `<svg data-icon="${esc(kind)}" `);
 }
 function iconSVG(kind) {
@@ -272,6 +272,9 @@ const CSS = `
 #inventory .sv-rname{display:block;font:700 14px/1.2 ${FONT};color:#3e2a17;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #inventory .sv-rsub{display:block;margin-top:2px;font:600 12px/1.2 ${FONT};color:#4e3720;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #inventory .sv-ready .sv-rsub{color:#3f6a26}
+#inventory .sv-recipe.sv-spare.sv-ready::before{background:#8f8a5a;box-shadow:none}
+#inventory .sv-recipe.sv-spare.sv-ready{background:linear-gradient(180deg,#d6c397,#c4ae80)}
+#inventory .sv-spare.sv-ready .sv-rsub{color:#6b5638}
 #inventory .sv-full .sv-rsub{color:#8a4a12}
 #inventory .sv-locked .sv-rsub{color:#a3321a}
 #inventory .sv-rbadge{font:800 12px/1 ${FONT};color:#3f6a26;font-variant-numeric:tabular-nums}
@@ -530,6 +533,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let activeTab = dlg.dataset.svTab || null, pickId = dlg.dataset.svPick || null, shownPick = null, ingEls = [];
   let hold = null, btnDenyTimer = 0, countTimer = 0, flashUntil = 0;
   let pickedByUser = false; // false: pickId is an automatic default, re-chosen on open once states are known
+  let tabByUser = false;    // false: the bag may open on the first tab with something new to craft
+  let opening = false;      // inside open(): icon priming waits for the final tab
   let tipAnchor = null;
   let pinId = null, trackEl = null, trackSig = null;
   const store = () => { try { return window.localStorage; } catch { return null; } };
@@ -580,14 +585,24 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     });
     for (const v of recipeEls) v.el.hidden = v.cat !== activeTab;
     const inTab = recipeEls.filter(v => v.cat === activeTab);
-    if (!inTab.some(v => v.r.id === pickId)) pickId = (inTab.find(v => v.state === 'ready') || inTab.find(v => v.state !== 'gated') || inTab[0])?.r.id ?? null;
+    if (!inTab.some(v => v.r.id === pickId)) pickId = autoPick(inTab); // never a spare Hook when something new is craftable
+    if (isOpen && !opening) primeTab(inTab);
     if (activeTab) dlg.dataset.svTab = activeTab;
     const tabEl = tabsEl.querySelector(`.sv-tab[data-cat="${activeTab}"]`);
     if (tabEl) rlist.setAttribute('aria-label', tabEl.textContent.trim() + ' recipes');
     applyPick();
   }
+  // 3D icons for what this tab shows (picked recipe first), rendered before the frame that shows them so
+  // nothing swaps from flat art to 3D in front of the player. Bounded: leftovers swap in as before.
+  const PRIME_MS = 48;
+  function primeTab(inTab) {
+    if (!iconsLive || iconFor) return;
+    const pick = inTab.find(v => v.r.id === pickId);
+    primeIcons(craftKinds([pick?.r, ...inTab.map(v => v.r)]), PRIME_MS);
+  }
   function setTab(id, focus = false) {
     if (!groups.some(g => g.id === id)) return;
+    tabByUser = true;
     if (id !== activeTab) { stopHold(); flashUntil = 0; activeTab = id; pickId = null; pickedByUser = false; reorderRecipes(); applyTab(); }
     if (focus) tabsEl.querySelector(`.sv-tab[data-cat="${id}"]`)?.focus();
   }
@@ -668,20 +683,22 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       const r = v.r;
       const { rows, state, times, reason } = evaluate(bag, r);
       v.rows = rows; v.state = state; v.times = times; v.reason = reason; // [progression-hook] reason
-      if (state === 'ready') readyPer.set(v.cat, (readyPer.get(v.cat) || 0) + 1);
-      const sig = state + times + ':' + (v.reason || '') + rows.map(x => x.have).join(','); // [progression-hook] reason
+      v.spare = isSpareTool(r.out.kind, countOf(bag, r.out.kind), ITEM_INFO?.[r.out.kind]); // a second Hook is not news
+      if (state === 'ready' && !v.spare) readyPer.set(v.cat, (readyPer.get(v.cat) || 0) + 1);
+      const sig = state + times + (v.spare ? 's' : '') + ':' + (v.reason || '') + rows.map(x => x.have).join(','); // [progression-hook] reason
       if (v.sig === sig) continue;
       v.sig = sig;
       v.el.classList.toggle('sv-ready', state === 'ready');
       v.el.classList.toggle('sv-full', state === 'full');
       v.el.classList.toggle('sv-locked', state === 'missing' || state === 'gated');
       v.el.classList.toggle('sv-gated', state === 'gated'); // [progression-hook]
+      v.el.classList.toggle('sv-spare', v.spare);
       const lacking = rows.filter(x => !x.enough);
       v.sub.textContent = state === 'gated' ? 'Locked: ' + (v.reason || 'not learned yet') // [progression-hook]
-        : state === 'ready' ? 'Ready to craft'
+        : state === 'ready' ? (v.spare ? 'Spare · you have one' : 'Ready to craft')
         : state === 'full' ? 'No room in your bag'
         : 'Need ' + lacking.map(x => `${x.short} ${itemName(x.kind)}`).join(', ');
-      v.badge.textContent = state === 'ready' && Number.isFinite(times) && times > 0 ? '×' + Math.min(times, 99) : '';
+      v.badge.textContent = state === 'ready' && !v.spare && Number.isFinite(times) && times > 0 ? '×' + Math.min(times, 99) : '';
       v.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${rows.map(x => `${x.need} ${itemName(x.kind)}, have ${x.have}`).join('; ') || 'nothing'}. ${v.sub.textContent}.`);
       if (tipAnchor === v.el) showTipFor(v.el);
     }
@@ -880,11 +897,15 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     labelTimer = setTimeout(() => label.classList.remove('sv-show'), 1400);
   }
   // A late 3D icon render swaps itself in wherever the flat placeholder is showing.
-  const offIcons = onIconReady(kind => {
+  // The flat art stays until the 3D image has loaded, so a slot never flashes empty in between.
+  const offIcons = onIconReady((kind, url) => {
     if (!alive) return;
     const sel = `[data-icon="${kind}"]`;
     if (trackEl?.querySelector(sel)) trackSig = null;
-    for (const root of [tools, dlg]) root?.querySelectorAll(sel).forEach(n => { n.outerHTML = iconHTML(kind); });
+    const swap = () => { if (alive) for (const root of [tools, dlg]) root?.querySelectorAll(sel).forEach(n => { if (n.getAttribute('src') !== url) n.outerHTML = iconHTML(kind); }); };
+    let pre = null;
+    try { pre = new Image(); pre.src = url; } catch { pre = null; }
+    if (!pre || pre.complete) swap(); else pre.onload = pre.onerror = swap;
   });
 
   // ---------- inventory grid ----------
@@ -1071,17 +1092,19 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (document.querySelector('dialog[open]:not(#inventory)')) return false;
     return !!document.pointerLockElement || !!document.body?.classList.contains('playing');
   }
-  // Hotbar icons on the first play frame, the rest ~5 s later (or on first open), never at the title.
+  // Hotbar icons on the first play frame, then the crafting panel's (idle-paced, so the hidden recipe
+  // rows already hold 3D art when the bag first opens), the rest ~5 s later (or on first open), never at the title.
   let warmTimer = 0;
   function liveIcons() {
     iconsLive = true;
     warmIcons(curSlots.slice(0, HB).map(s => s?.kind).filter(Boolean));
+    warmIcons(craftKinds(recipes.length ? recipes : recipeList()));
     if (!warmTimer) warmTimer = setTimeout(warmAll, 5000);
   }
   function warmAll() { warmTimer = -1; iconsLive = true; warmIcons(Object.keys(ITEM_INFO || {})); }
   function open() {
     if (!alive || isOpen) return;
-    isOpen = true;
+    isOpen = true; opening = true; // the tab is primed once its final choice is made
     downOnBackdrop = upOnBackdrop = false;
     if (warmTimer >= 0) { clearTimeout(warmTimer); warmAll(); }
     clearSrc(); clearSay();
@@ -1097,6 +1120,15 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     render(true);
     reorderRecipes();
     if (!pickedByUser && viewOf(pickId)?.state !== 'ready') pickId = null; // default to the first ready recipe
+    if (!pickedByUser && !tabByUser) { // until the player picks a tab, open where something new can be made
+      const inTab = id => recipeEls.filter(v => v.cat === id);
+      if (!usefulReady(inTab(activeTab))) {
+        const g = groups.find(x => usefulReady(inTab(x.id)));
+        if (g) { activeTab = g.id; pickId = null; }
+      }
+    }
+    opening = false;
+    if (iconsLive && !iconFor) primeIcons(curSlots.map(s => s?.kind).filter(Boolean), PRIME_MS / 2); // backpack stacks
     applyTab();
     try { wrap.focus({ preventScroll: true }); } catch {}
   }

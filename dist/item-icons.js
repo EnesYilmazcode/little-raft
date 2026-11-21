@@ -285,6 +285,26 @@ export function loadItemIcon(kind) {
 }
 /** Queue several kinds ahead of time (rendered in idle slices). */
 export function warmIcons(kinds) { for (const k of kinds) request(k, false); }
+/** Render these kinds right now, in order, until budgetMs is spent (the rest are queued ahead of the
+ *  warm-up). For a panel about to show: called in the same task that builds it, the 3D icons land
+ *  before the first paint instead of swapping in over flat placeholders. Only with the game's
+ *  renderer (setIconRenderer): never opens a WebGL context of its own. Returns how many it rendered. */
+export function primeIcons(kinds, budgetMs = 40) {
+  if (!hostGL || failed) return 0; // the idle queue (iconURL / warmIcons) still gets them there
+  const t0 = performance.now();
+  let n = 0;
+  for (const k of new Set(kinds || [])) {
+    if (!k || cache.has(k) || encoding.has(k)) continue;
+    if (performance.now() - t0 >= budgetMs) { request(k, true); continue; }
+    queued.delete(k); urgent.delete(k);
+    const canvas = renderKind(k);
+    let url = '';
+    try { url = canvas ? canvas.toDataURL('image/png') : ''; } catch {}
+    finish(k, url); n++;
+  }
+  if (n && gl && !pumping && !releaseTimer) releaseTimer = setTimeout(release, RELEASE_MS);
+  return n;
+}
 /** Called with (kind, url) whenever an icon (re)renders. Returns an unsubscribe function. */
 export function onIconReady(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 /** Swap the model source (e.g. hands.js buildItemModel). Re-renders every icon seen so far. */

@@ -298,18 +298,51 @@ export function placeRefusal(kind, t, max) {
 // Inside a tab, recipes you can make right now come first, then ones blocked only by bag space,
 // then the rest, closest-to-done first (fewest ingredients short, then fewest units short).
 // The sort is stable, so recipes keep their book order within each group.
+// A spare (a second copy of a one-per-slot tool you already carry) sinks below its state's peers.
 const STATE_RANK = Object.freeze({ ready: 0, full: 1, missing: 2 });
 
-/** views: [{state, rows}] (rows from ingredientRows). Returns a new, sorted array. */
+/** views: [{state, rows, spare?}] (rows from ingredientRows). Returns a new, sorted array. */
 export function sortCraftableFirst(views) {
   const key = v => {
     let kinds = 0, units = 0;
     for (const r of v?.rows || []) if (!r.enough) { kinds++; units += r.short; }
-    return [STATE_RANK[v?.state] ?? 3, kinds, units];
+    return [(STATE_RANK[v?.state] ?? 3) + (v?.spare ? 0.5 : 0), kinds, units];
   };
   return (views || []).map((v, i) => ({ v, i, k: key(v) }))
     .sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1] || a.k[2] - b.k[2] || a.i - b.i)
     .map(x => x.v);
+}
+
+/** True when crafting `kind` only gives a second copy of a tool already in the bag
+ *  (a non-stacking tool, such as the Hook, with at least one carried). */
+export function isSpareTool(kind, have, info = null) {
+  if (!(Number(have) > 0)) return false;
+  const tool = info ? !!info.tool : TOOLISH.has(String(kind ?? ''));
+  return tool && !(Number(info?.maxStack ?? 1) > 1);
+}
+
+/** Every kind a list of recipes shows (each output, then its ingredients), once each, in book order. */
+export function craftKinds(recipes) {
+  const out = new Set();
+  for (const r of recipes || []) {
+    if (!r) continue;
+    if (r.out?.kind) out.add(r.out.kind);
+    for (const q of r.reqs || []) if (q?.kind) out.add(q.kind);
+  }
+  return [...out];
+}
+
+/** How many recipes are worth a badge: ready to craft and not a spare tool. */
+export const usefulReady = views => (views || []).filter(v => v && v.state === 'ready' && !v.spare).length;
+
+/** The recipe a tab opens on when the player has not picked one, from views in list order:
+ *  the first useful ready one, else the first unlocked non-spare, else the first unlocked, else the first. */
+export function autoPick(views) {
+  const list = (views || []).filter(Boolean);
+  const v = list.find(x => x.state === 'ready' && !x.spare)
+    || list.find(x => x.state !== 'gated' && !x.spare)
+    || list.find(x => x.state !== 'gated') || list[0];
+  return v ? (v.id ?? v.r?.id ?? null) : null;
 }
 
 // ---- where items come from ----
