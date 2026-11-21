@@ -160,6 +160,8 @@ export function createFishingCooking(T, host) {
     if (a.kind === 'fc:take') {
       let slot = Number.isInteger(a.slot) ? a.slot : st.slots.findIndex((s) => s && s.state !== 'raw');
       if (!st.slots[slot] || st.slots[slot].state === 'raw') return;
+      const dish = st.slots[slot].state === 'cooked'; // a cooked dish is real food in the bag; a burnt one is journal-only
+      if (dish && bag?.add && bag.add('cookedfish', 1) > 0) return say('Bag full: free a slot to take the fish'); // stays on the grill
       const item = st.take(slot); syncFish(g); markChanged();
       give(actor, item); return say(`Took ${dishName(item.species, item.state)}`);
     }
