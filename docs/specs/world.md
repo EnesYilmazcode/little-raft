@@ -147,13 +147,22 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
   the open water in community_097 (0,0 to 560,600), 13.7 % in community_082 and 9.1 % in
   community_134. Bright opaque foam (saturation below 0.3 and L above 170) covers 0.01 to 0.5 %.
   The patches are tens of pixels across and drift like mist on the surface (community_097 left,
-  community_039 bottom right).
+  community_039 bottom right). **[CORRECTED: only the community_097 figure reproduces (11.2 % in
+  0,0-560,600), and there the mask sits mostly at the bottom, beside the raft: 15.4 % in y 300 to
+  600 but 3.6 % in y 0 to 400. In community_082 the same mask on open water only is 1.7 %
+  (860,300-1280,540) and 0.7 % (190,300-540,490); over the whole lower strip it is 9.2 %, but an
+  overlay shows that is the raft, walkway and HUD, not foam. In community_134 open water it is 0.0 %
+  (0,20-430,290) and 3.0 % (750,30-1280,250). So soft open-sea foam covers about 1 to 4 %, rising to
+  about 10 to 15 % only in the mist near a raft. Hard foam 0.00 to 0.09 % on open water is
+  confirmed. Overlay: scratchpad/world-skeptic/foam_overlay.png.]**
 - **C13 Contact foam is the strong foam.** A bright, continuous, near-white line traces every place
   where water meets a solid. Along the island shore in store_20, column scans give peak values
   #f0f6f2 to #fffff8 (L244 to L254) against water at L100 to L143, with a line 7 to 18 px thick
   (1 to 2.5 % H) close to the camera. Raft hulls carry the same white rim and a short wake: the
   right hull edge in community_039, the barge outline in community_107, the starter raft in
-  2021-04-01-devblog-46-03 (a white wake patch under the raft at y 405 to 420).
+  2021-04-01-devblog-46-03 (a white wake patch under the raft at y 405 to 420). **[VERIFIED: store_20
+  column x 200 peaks at #f0f6f2 (y 500) over water L100 or less; (300,500) is L238. Hulls checked by
+  eye in community_039/107 and 2021-04-01.]**
 
 ### Islands, landmarks and scale
 
