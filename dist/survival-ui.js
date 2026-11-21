@@ -1214,7 +1214,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   pinId = loadPin(store(), recipes.map(r => r.id));
   paintPin();
   if (isOpen) render(true);
-  warmIcons(Object.keys(ITEM_INFO || {}));
+  warmIcons((bagNow()?.slots || []).map(s => s?.kind).filter(Boolean), true); // held kinds first; the rest render when shown
 
   const api = {
     update() { render(false); },
