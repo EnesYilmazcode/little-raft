@@ -26,9 +26,9 @@ export function phaseAt(clock) {
   return p >= 1 || !(p >= 0) ? 0 : p;
 }
 
-// Sun angle along its circle: day half (0 to .66) above the horizon, night half below.
+// Sun angle along its circle: day half (0 to .70, so dusk still has a low golden sun) above the horizon, night half below.
 export function sunAngle(phase) {
-  return phase < 0.66 ? (phase / 0.66) * Math.PI : Math.PI + ((phase - 0.66) / 0.34) * Math.PI;
+  return phase < 0.7 ? (phase / 0.7) * Math.PI : Math.PI + ((phase - 0.7) / 0.3) * Math.PI;
 }
 
 export function lightAt(phase, out) {
@@ -110,7 +110,7 @@ const key = (phase, ...colors) => ({ phase, c: new Float32Array(colors.flatMap(h
 export const PALETTE_KEYS = Object.freeze([
   //   phase  horizon    zenith     deep       shallow    sun        hemi sky   hemi gnd   cloud
   key(0.00, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#f6d3c2'), // sunrise peach
-  key(0.08, '#cbd2c0', '#a9c1c0', '#14505a', '#3f8c88', '#fff0c7', '#f2ead4', '#3d6b6a', '#e7f9eb'), // day sage
+  key(0.13, '#cbd2c0', '#a9c1c0', '#14505a', '#3f8c88', '#fff0c7', '#f2ead4', '#3d6b6a', '#e7f9eb'), // day sage
   key(0.54, '#cbd2c0', '#a9c1c0', '#14505a', '#3f8c88', '#fff0c7', '#f2ead4', '#3d6b6a', '#e7f9eb'),
   key(0.635, '#eaa98e', '#b79fb0', '#1d4a5e', '#4d7f88', '#ffb27e', '#f4c3a6', '#4b5a68', '#f2b8aa'), // dusk coral
   key(0.70, '#6f6f9e', '#58679a', '#173c54', '#2f6276', '#c3b0dc', '#a9a6d2', '#3a4c66', '#8e88b2'), // blue hour
@@ -120,7 +120,7 @@ export const PALETTE_KEYS = Object.freeze([
 ]);
 // Rain pulls every colour toward a cool grey-green of similar brightness.
 export const RAIN_MIX = 0.65;
-const RAIN_TINT = new Float32Array([0.92, 1.0, 0.97]);
+const RAIN_TINT = new Float32Array([0.9, 0.98, 1.04]);
 export function rainBlend(r, g, b, rain, out, o) {
   const l = 0.3 * r + 0.59 * g + 0.11 * b;
   const k = rain * RAIN_MIX;
@@ -223,7 +223,7 @@ void main() {
   p += vec3(-uWind * 0.25, 0.8, -uWind * 0.1) * aTop;
   vec4 mv = viewMatrix * vec4(p, 1.0);
   float d = length(mv.xyz);
-  vFade = smoothstep(0.5, 1.6, d) * (1.0 - smoothstep(6.0, 9.0, d));
+  vFade = smoothstep(1.4, 3.0, d) * (1.0 - smoothstep(6.0, 9.0, d));
   gl_Position = projectionMatrix * mv;
 }`;
 const RAIN_FS = /* glsl */`
@@ -270,7 +270,7 @@ export function createDayNight(ctx) {
   const cHorizon = new T.Color(), cZenith = new T.Color(), cDeep = new T.Color(), cShallow = new T.Color();
   const cSun = new T.Color(), cHemiSky = new T.Color(), cHemiGround = new T.Color(), cCloud = new T.Color();
   const cRain = new T.Color();
-  const vDir = new T.Vector3(), vTmp = new T.Vector3();
+  const vDir = new T.Vector3(), vMoon = new T.Vector3(), vTmp = new T.Vector3();
   const AXIS = new T.Vector3(-0.78, 0, 0.62).normalize(), SIDE = new T.Vector3(0.62, 0, 0.78).normalize();
   const setSRGB = (c, o) => c.setRGB(PAL[o], PAL[o + 1], PAL[o + 2], T.SRGBColorSpace);
 
@@ -365,7 +365,7 @@ export function createDayNight(ctx) {
   const partMat = new Array(MAX_PARTS).fill(null), partBase = new Float32Array(MAX_PARTS), partMult = new Float32Array(MAX_PARTS);
   const lanternGroups = new Array(MAX_LANTERNS).fill(null), lanternLocal = new Float32Array(MAX_LANTERNS * 3), lanternDist = new Float32Array(MAX_LANTERNS);
   const poolPick = new Int32Array(POOL_LIGHTS).fill(-1);
-  let partCount = 0, lanternCount = 0, signature = -1, scanClock = 0, rankClock = 0, poolLit = 0;
+  let partCount = 0, lanternCount = 0, signature = -1, scanClock = 0, rankClock = 0, poolLit = 0, lastNf = -1, lastGrow = -1;
   function lanternSignature(raft, world) {
     let n = raft.children.length * 131;
     const decor = world?.decor;
@@ -439,8 +439,9 @@ export function createDayNight(ctx) {
     const th = sunAngle(phaseAt(phase * DAY_SECONDS));
     const ct = Math.cos(th), st = Math.sin(th);
     const up = L.sunHeight >= 0;
+    vMoon.set(-AXIS.x * ct - SIDE.x * 0.6, -st * 0.5, -AXIS.z * ct - SIDE.z * 0.6).normalize(); // the moon rides low, opposite the sun
     if (up) vDir.set(AXIS.x * ct - SIDE.x * 0.32, st, AXIS.z * ct - SIDE.z * 0.32).normalize();
-    else vDir.set(-AXIS.x * ct - SIDE.x * 0.6, -st * 0.5, -AXIS.z * ct - SIDE.z * 0.6).normalize(); // the moon rides low, opposite the sun
+    else vDir.copy(vMoon);
     const dayI = 2.5 * (1 - 0.15 * wet) * smooth(-0.02, 0.2, L.sunHeight);
     const moonI = 0.6 * (1 - 0.3 * wet) * smooth(-0.02, 0.2, -L.sunHeight);
     if (sun) {
@@ -466,24 +467,23 @@ export function createDayNight(ctx) {
     }
     // clouds
     cloudMat.color.copy(cCloud); cloudMat.emissive.copy(cCloud).multiplyScalar(0.32 + 0.18 * nf); // soft self-lit undersides
-    const drift = (W.wind - 0.15) * 0.9 * dt;
+    const drift = (W.wind - 0.15) * 0.9 * dt, grow = 1 + (W.cloud - 0.25) * 0.5;
     for (let i = 0; i < cloudGroups.length; i++) {
       const g = cloudGroups[i];
       if (drift > 0) { g.position.x += drift; if (g.position.x > 85) g.position.x -= 170; }
-      const grow = 1 + (W.cloud - 0.25) * 0.5;
-      g.scale.x = cloudBase[i * 3 + 1] * grow; g.scale.z = cloudBase[i * 3 + 2] * grow;
+      if (grow !== lastGrow) { g.scale.x = cloudBase[i * 3 + 1] * grow; g.scale.z = cloudBase[i * 3 + 2] * grow; }
     }
+    lastGrow = grow;
     // stars and moon
     const starA = nf * (1 - 0.85 * W.cloud * W.cloud);
     starUniforms.uTime.value = time; starUniforms.uOpacity.value = starA;
     stars.visible = starA > 0.01;
-    const moonA = smooth(0.1, 0.7, nf) * (1 - 0.75 * wet);
+    const moonA = smooth(0.1, 0.7, nf) * smooth(-0.02, 0.1, vMoon.y) * (1 - 0.75 * wet);
     moonUniforms.uOpacity.value = moonA;
     moon.visible = moonA > 0.01;
     if (cam) {
       stars.position.copy(cam.position);
-      moon.position.copy(cam.position).addScaledVector(vDir, MOON_DIST);
-      if (!up) moon.position.y = cam.position.y + Math.max(vDir.y, 0.12) * MOON_DIST;
+      moon.position.copy(cam.position).addScaledVector(vMoon, MOON_DIST);
       moon.lookAt(cam.position);
     }
     // rain
@@ -502,9 +502,9 @@ export function createDayNight(ctx) {
         let stale = false;
         for (let i = 0; i < lanternCount; i++) if (lanternGroups[i].parent !== raft) { stale = true; break; }
         const sig = lanternSignature(raft, ctx.world);
-        if (stale || sig !== signature) { signature = sig; scanLanterns(raft); }
+        if (stale || sig !== signature) { signature = sig; scanLanterns(raft); lastNf = -1; }
       }
-      for (let i = 0; i < partCount; i++) partMat[i].emissiveIntensity = partBase[i] * (1 + (partMult[i] - 1) * nf);
+      if (nf !== lastNf) { lastNf = nf; for (let i = 0; i < partCount; i++) partMat[i].emissiveIntensity = partBase[i] * (1 + (partMult[i] - 1) * nf); }
       rankClock += dt;
       if (rankClock >= 0.5) { rankClock = 0; rankLanterns(raft, cam); }
     }
