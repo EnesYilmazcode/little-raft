@@ -95,7 +95,7 @@ const PAL = {
 };
 // floor sand as linear vertex colours: muted, slightly green-grey so the depth tint reads teal.
 // Kept low because the scene's hemisphere (1.8) + sun (2.5) light is tuned for the surface.
-const SAND = [0.3, 0.32, 0.27], LIGHT = [0.36, 0.37, 0.31], DARK = [0.21, 0.24, 0.22];
+const SAND = [0.15, 0.18, 0.165], LIGHT = [0.19, 0.215, 0.19], DARK = [0.1, 0.125, 0.12];
 
 const CAUSTIC_GLSL = /* glsl */`
 uniform float uTime;
@@ -135,7 +135,7 @@ function addCaustics(mat, uniforms, sway) {
     // depth absorption (red goes first) + caustic colour #d9fff0 (linear ~0.69, 1.0, 0.87)
     shader.fragmentShader = CAUSTIC_GLSL + shader.fragmentShader
       .replace('#include <color_fragment>', `#include <color_fragment>
-      diffuseColor.rgb *= mix(vec3(1.0), vec3(0.35, 0.6, 0.65), clamp(-vCausticPos.y / 10.0, 0.0, 1.0));`)
+      diffuseColor.rgb *= mix(vec3(1.0), vec3(0.3, 0.58, 0.66), clamp(-vCausticPos.y / 10.0, 0.0, 1.0));`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
       float lrFade = uCaustic * clamp(1.0 + vCausticPos.y / 30.0, 0.45, 1.0);
       totalEmissiveRadiance += vec3(0.69, 1.0, 0.87) * (lrCaustic(vCausticPos.xz, uTime) * 0.4 * lrFade);`);
