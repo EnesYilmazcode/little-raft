@@ -2,7 +2,7 @@
 // and unlocked. Pure ES module: no DOM, no timers, no randomness.
 // Every entry point takes an optional `items` table (defaults to ITEMS) so
 // tests can inject fixtures.
-import { ITEMS } from './items.js?build=v3-survival-ae77fa84ac2b';
+import { ITEMS, freshDurability /* [canteen] */ } from './items.js?build=v3-survival-ae77fa84ac2b';
 
 const hasOwn = (o, k) => o != null && Object.prototype.hasOwnProperty.call(o, k);
 const strList = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
@@ -171,7 +171,7 @@ function check(bag, id, prog, opts) {
   }
   const scratch = new bag.constructor(bag.snapshot());
   for (const [kind, need] of Object.entries(r.cost)) scratch.remove(kind, need);
-  const meta = item.tool ? { durability: 100 } : {};
+  const meta = item.tool ? { durability: freshDurability(id) /* [canteen] */ } : {};
   if (scratch.add(id, r.count || 1, meta) > 0) return { ...res, full: true, reason: 'Bag is full' };
   return { ...res, ok: true, scratch };
 }

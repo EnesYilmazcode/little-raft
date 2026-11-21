@@ -38,6 +38,7 @@ export const FOOD = {
   coconutcup:      {food:6,    water:45, returns:'cup'},  // [juicer]
   mixcup:          {food:14,   water:38, returns:'cup'},  // [juicer]
   milk:            {food:10,   water:25, returns:'bucket', drink:true}, // Bramblegoat milk; the pail comes back
+  canteen:         {food:0,    water:40, drink:true},     // [canteen] one sip; the host keeps the canteen (no returns)
 };
 
 const num = (x, d = 0) => (typeof x === 'number' && Number.isFinite(x) ? x : d);

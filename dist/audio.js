@@ -15,6 +15,10 @@
 //                    inside MIN_GAP are dropped, so 'reel' can be called every frame while reeling.
 //   note(i, step, s=1) [instruments] i in drum|pipes|bells, step integer 0..7 (D4..F#5); true if scheduled (never
 //                    throws). 50 ms gap per instrument; at most 10 live instrument voices inside MAX_VOICES.
+//   box(hz, when, s) [musicbox] one music-box comb pluck on the music bus, scheduled at context time `when`
+//                    (must be in [currentTime, currentTime + 1]); hz 80..2000, s 0..1; at most 8 live box voices
+//                    inside MAX_VOICES; true if scheduled (never throws). Music is ducked under play() effects.
+//   now              [musicbox] getter: ctx.currentTime once the graph exists, else null (for look-ahead scheduling)
 //   tick(dt, st)     drives ambient one-shots (lapping, plank creaks) and music chord changes;
 //                    st.swimming muffles the wind and drops creaks. Allocation-free when idle.
 //   destroy()        stops + disconnects only this instance's nodes; never closes the context
@@ -104,8 +108,9 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
       limiter.connect(out || ctx.destination);
       const fx = ctx.createGain(), am = ctx.createGain(), mu = ctx.createGain();
       fx.gain.value = busGain('effects'); am.gain.value = busGain('ambience'); mu.gain.value = busGain('music');
-      fx.connect(tone); am.connect(tone); mu.connect(tone);
-      graph = { master, tone, limiter, effects: fx, ambience: am, music: mu, noise: makeNoise(1.5, false), brown: makeNoise(2, true) };
+      const duck = ctx.createGain(); // [musicbox] music ducks under effects
+      fx.connect(tone); am.connect(tone); mu.connect(duck); duck.connect(tone);
+      graph = { master, tone, limiter, effects: fx, ambience: am, music: mu, duck, noise: makeNoise(1.5, false), brown: makeNoise(2, true) };
       return true;
     } catch (_) { graph = null; return false; }
   }
@@ -557,6 +562,7 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
       const now = ctx.currentTime;
       if (now - (lastPlay[event] ?? -1) < MIN_GAP[event]) return false;
       lastPlay[event] = now;
+      try { graph.duck.gain.setTargetAtTime(.45, now, .03); graph.duck.gain.setTargetAtTime(1, now + .25, .4); } catch (_) {} // [musicbox]
       return voice(event, s, graph.effects);
     } catch (_) { return false; }
   }
@@ -581,6 +587,34 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
       voices.add(v);
       try { NOTES[instr](v, now + 0.005, s, NOTE_HZ[step]); }
       catch (_) { killVoice(v); return false; }
+      if (v.live === 0) finishVoice(v);
+      return true;
+    } catch (_) { return false; }
+  }
+
+  // [musicbox] comb pluck: sine + two slightly inharmonic partials + a tiny highpassed tick, scheduled ahead at `when`
+  function box(hz, when, strength = 1) {
+    try {
+      if (!ready()) return false;
+      if (!Number.isFinite(hz) || hz < 80 || hz > 2000) return false;
+      const now = ctx.currentTime;
+      if (!Number.isFinite(when) || when < now || when > now + 1) return false;
+      const s = clamp01(strength, 0);
+      if (s <= 0.001) return false;
+      if (voices.size >= MAX_VOICES) return false;
+      let nb = 0;
+      for (const v of voices) if (v.box) nb++;
+      if (nb >= 8) return false;
+      const v = newVoice(graph.music);
+      v.box = true;
+      voices.add(v);
+      try {
+        const dec = 1.4 - 0.8 * clamp01((hz - 150) / 1100);
+        tone(v, when, 'sine', hz, 0.16 * s, 0.002, dec);
+        tone(v, when, 'sine', hz * 3.01, 0.05 * s, 0.002, dec * 0.5);
+        tone(v, when, 'sine', hz * 6.2, 0.02 * s, 0.002, dec * 0.3);
+        burst(v, when, 'highpass', 4000, 0.7, 0.015 * s, 0.001, 0.006);
+      } catch (_) { killVoice(v); return false; }
       if (v.live === 0) finishVoice(v);
       return true;
     } catch (_) { return false; }
@@ -625,7 +659,7 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     stopNodes(amb); amb = null;
     stopMusic(false);
     if (graph) {
-      for (const n of [graph.effects, graph.ambience, graph.music, graph.tone, graph.master, graph.limiter]) { try { n.disconnect(); } catch (_) {} }
+      for (const n of [graph.effects, graph.ambience, graph.music, graph.duck, graph.tone, graph.master, graph.limiter]) { try { n.disconnect(); } catch (_) {} }
       graph = null;
     }
     // The AudioContext (supplied or lazily created) is intentionally left open so a
@@ -643,6 +677,8 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     setAmbience,
     play,
     note, // [instruments]
+    box, // [musicbox]
+    get now() { return ctx && graph ? ctx.currentTime : null; }, // [musicbox]
     tick,
     destroy,
   };

@@ -1,6 +1,6 @@
 // Authoritative per-player inventory ("bag") for the raft survival game.
 // Pure ES module: no DOM, no THREE, no timers, no randomness.
-import { infoTable, recipeTable, TOOL_IDS, registerBagKinds } from './items.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
+import { infoTable, recipeTable, TOOL_IDS, registerBagKinds, freshDurability /* [canteen] */ } from './items.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 
 export const STACK_SIZE = 20;
 export const SLOT_COUNT = 28;
@@ -403,7 +403,7 @@ export class Bag {
     for (const [kind, need] of Object.entries(r.cost)) {
       if (!scratch.remove(kind, need)) return { ok: false, reason: 'missing', missing: this.canCraft(id).missing };
     }
-    if (scratch.add(r.output.kind, r.output.count, isTool(r.output.kind) ? { durability: TOOL_DURABILITY } : {}) > 0) {
+    if (scratch.add(r.output.kind, r.output.count, isTool(r.output.kind) ? { durability: freshDurability(r.output.kind) /* [canteen] */ } : {}) > 0) {
       return { ok: false, reason: 'full' };
     }
     // Commit only after every step succeeded on the scratch copy.

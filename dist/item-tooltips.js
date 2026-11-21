@@ -1,6 +1,7 @@
 // Little Raft item tooltips: one floating card for hotbar/inventory slots, crafting rows and any
 // [data-item-kind] element. Read-only view over ITEMS + bag + progression; never mutates anything.
 import { ITEMS } from './items.js?build=v3-survival-ae77fa84ac2b';
+import { sipsOf } from './canteen.js?build=v3-survival-ae77fa84ac2b'; // [canteen]
 import { ITEM_TEXT, anchorTip, anchorVisible, catalogueRecipes, tipFacts } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // craft-book text covers every ITEM_INFO kind (content, diving, signal...)
 import { ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
@@ -80,9 +81,10 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
   function html({ kind, slot, recipe, el }) {
     const it = table[kind] || {};
     const bag = call(getBag), prog = call(getProgression);
-    const cat = it.category || (it.tool || ITEM_INFO[kind]?.tool ? 'tool' : '');
+    const cat = kind === 'canteen' ? 'survival' /* [canteen] */ : it.category || (it.tool || ITEM_INFO[kind]?.tool ? 'tool' : '');
     let meta = '';
-    if (it.tool && it.durability > 0 && !slot) meta = `Lasts <b>${esc(it.durability)}</b> uses`;
+    if (kind === 'canteen') meta = slot ? `Sips <b>${sipsOf(slot)}</b>/4` : 'Holds <b>4</b> sips'; // [canteen] the fill, not uses
+    else if (it.tool && it.durability > 0 && !slot) meta = `Lasts <b>${esc(it.durability)}</b> uses`;
     else if (it.tool && it.durability > 0) {
       const pct = slot && slot.durability != null ? Math.max(0, Math.min(100, Number(slot.durability) || 0)) : 100;
       const uses = Math.round(pct / 100 * it.durability);

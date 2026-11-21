@@ -312,7 +312,7 @@ export function mount(transfer = null) {
   const sfx = createOceanAudio({context:X?.audio ?? null, volume:sound ? options.volume : 0, ambience:options.ambience ?? .7, output:ctx => diving?.audioOut(ctx) ?? null}); // diving lane hook: muffled underwater
   const play = (ev, s) => sfx.play(ev, s);
   const note = (i, n, s) => sfx.note?.(i, n, s) ?? false; // [instruments]
-  const applyVolume = () => { sfx.setVolume(sound ? options.volume : 0); sfx.setBus('effects', options.effects ?? 1); sfx.setAmbience(options.ambience ?? .7); };
+  const applyVolume = () => { sfx.setVolume(sound ? options.volume : 0); sfx.setBus('effects', options.effects ?? 1); sfx.setAmbience(options.ambience ?? .7); sfx.setBus('music', options.music ?? .7); }; // [musicbox] music bus
   if (X?.audio) sfx.resume(); // hot swap: the old context is already unlocked
   let charging = X?.charging && Number.isFinite(X.charging.start) ? {...X.charging} : null, reeling = !!X?.reeling && !!hook, hookFull = false; // hookFull: the catch will not fit, so the reel stops short
   let lastCaughtCount = isInt(X?.lastCaughtCount) ? X.lastCaughtCount : (hook?.caughtItems?.length ?? (hook?.caught ? 1 : 0));
@@ -454,6 +454,7 @@ export function mount(transfer = null) {
     faceYaw: y => { if (Number.isFinite(y)) yaw = y; }, // [sit] seat facing
     award: ev => award(ev), night: () => content?.night?.() ?? 0, // [sit] host achievements, [fireworks] content hook
     heldKind: () => heldKind(), // [zipline] content hook
+    box: (hz, when, s) => sfx.box?.(hz, when, s) ?? false, audioNow: () => sfx.now ?? null, // [musicbox]
   };
   function init() {
     // Point the sprite at this build so a deploy never shows a stale cached icons.svg; survival-ui.js reads the URL back.

@@ -196,6 +196,17 @@ export const ITEM_ICONS = Object.freeze({
     <rect x="8" y="23" width="7" height="5" rx="1" fill="#ffffff"/>
     <circle cx="26" cy="29" r="9" fill="#2b3a40"/><circle cx="26" cy="29" r="5.5" fill="#bfe6ef"/></g>
     <path d="M23.5 26.8 C24.3 25.8 25.4 25.3 26.6 25.3" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>`,
+  musicbox: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M7 20 L11 5 H37 L33 20 Z" fill="#a87443"/>
+    <path d="M15 9 H33" fill="none" stroke="#fff2cc" stroke-width="1.4"/>
+    <rect x="5" y="20" width="34" height="21" rx="2" fill="#bb8650"/>
+    <rect x="9" y="22" width="26" height="6" rx="1" fill="#6b4529"/>
+    <rect x="11" y="23" width="22" height="2.6" rx="1" fill="#c9a24a" stroke-width="1.2"/>
+    <path d="M39 30 H43 V36" fill="none" stroke-width="2.2"/>
+    <circle cx="43" cy="37.5" r="2.8" fill="#ffbd66"/></g>
+    <path d="M13 26.6 V28 M16 26.6 V28 M19 26.6 V28 M22 26.6 V28 M25 26.6 V28 M28 26.6 V28 M31 26.6 V28" fill="none" stroke="#b8bcc4" stroke-width="1.2"/>
+    <circle cx="16" cy="34.5" r="2.4" fill="#fff2cc"/><circle cx="28" cy="34.5" r="2.4" fill="#fff2cc"/>
+    <circle cx="22" cy="34.5" r="1.6" fill="#e8b9a8"/>`, // [musicbox]
   photoframe: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <path d="M14 40 L10 46 M34 40 L38 46" fill="none" stroke-width="2.4"/>
     <rect x="3" y="6" width="42" height="34" rx="3" fill="#c99560"/>
