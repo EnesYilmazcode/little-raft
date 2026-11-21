@@ -144,14 +144,14 @@ test('module: actions, reach, prompts, net load caching, OLD_HOST', () => {
   assert.deepEqual(m.debug.state().b, {}); assert.equal(bag.count('bellseed'), 1);
   assert.equal(m.action({ kind: 'crops.plant', x: 0, z: 0, seed: 'bellseed' }, 'host', bag), true);
   assert.deepEqual(m.debug.state().b, { '0,0': { c: 'bell', g: 0, w: 0 } });
-  assert.equal(m.prompt(AIM), 'Blushbell 0% · dry, needs fresh water');
+  assert.equal(m.prompt(AIM), null); assert.equal(m.debug.promptText(AIM), 'Blushbell 0% · dry, needs fresh water');
   setBag(bagWith([{ kind: 'freshcup', count: 1 }]));
   assert.equal(m.prompt(AIM), '<kbd>E</kbd>Water the bed');
   const s1 = m.serialize(); assert.equal(m.serialize(), s1, 'serialize cached by revision');
   m.debug.setGrow(0, 0, 75, 10);
   assert.notEqual(m.serialize(), s1);
-  assert.equal(m.prompt(AIM), 'Blushbell 50% · watered');
-  ctx.rain = () => 1; assert.equal(m.prompt(AIM), 'Blushbell 50% · rain'); ctx.rain = () => 0;
+  assert.equal(m.prompt(AIM), null); assert.equal(m.debug.promptText(AIM), 'Blushbell 50% · watered');
+  ctx.rain = () => 1; assert.equal(m.prompt(AIM), null); assert.equal(m.debug.promptText(AIM), 'Blushbell 50% · rain'); ctx.rain = () => 0;
   // host update ticks at 1 Hz
   for (let i = 0; i < 40; i++) m.update(1 / 4);
   assert.deepEqual(m.debug.state().b['0,0'], { c: 'bell', g: 85, w: 0 });
@@ -162,7 +162,7 @@ test('module: actions, reach, prompts, net load caching, OLD_HOST', () => {
   assert.equal(m.action({ kind: 'crops.harvest', x: 0, z: 0 }, 'guest', hb), true);
   assert.deepEqual(emits.at(-1), [{ kind: 'loot', text: '+ 2 blushbell petals · 1 blushbell seed', loot: { petal: 2, bellseed: 1 } }, 'guest']);
   assert.equal(hb.count('petal'), 2);
-  assert.equal(m.prompt(AIM), 'Garden Bed: plant a crop seed');
+  assert.equal(m.prompt(AIM), null); assert.equal(m.debug.promptText(AIM), 'Garden Bed: plant a crop seed');
   assert.equal(m.prompt({ point: { x: 20, y: 0, z: 0 } }), null);
 
   // guest side
@@ -179,7 +179,7 @@ test('module: actions, reach, prompts, net load caching, OLD_HOST', () => {
   assert.deepEqual(gm.debug.state().b, { '0,0': { c: 'tuber', g: 180, w: 0 } }, 'a changed r re-cleans');
   gm.update(100); assert.deepEqual(gm.debug.state().b, { '0,0': { c: 'tuber', g: 180, w: 0 } }, 'guests never tick');
   gm.load(undefined, 'net');
-  assert.equal(gm.prompt(AIM), OLD_HOST);
+  assert.equal(gm.prompt(AIM), null); assert.equal(gm.debug.promptText(AIM), OLD_HOST);
   const sent = g.actions.length;
   assert.equal(gm.interact(AIM), true); assert.equal(g.actions.length, sent, 'an old host never gets crops.*');
   assert.deepEqual(g.notices.at(-1), OLD_HOST);

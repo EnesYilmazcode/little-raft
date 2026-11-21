@@ -3,8 +3,8 @@
 // Static parts are baked into vertex-coloured geometries; geometries and materials are cached per THREE
 // and shared by every bed, so paintBed only swaps references (no allocation after the first use).
 
-const SOIL_Y = .25, SLOTS = [[-.19, -.16], [.19, .16]], STAGE_SCALE = [.35, .7, 1];
-export const SOIL_DRY = '#9a7552', SOIL_WET = '#5e4330';
+const SOIL_Y = .25, SLOTS = [[-.19, -.16], [.19, .16]], STAGE_SCALE = [.5, .75, 1];
+export const SOIL_DRY = '#9a7552', SOIL_WET = '#3e2a1c';
 export const CROP_INDEX = Object.freeze({ flax: 1, bell: 2, tuber: 3 });
 
 function bake(T, parts) { // [geometry, hex, matrix] -> one non-indexed geometry with a colour attribute
@@ -63,8 +63,8 @@ function plantParts(T, add, c, ripe, seedRot) {
         add(new T.CylinderGeometry(.006, .008, .24, 5), '#3f7f45', Math.cos(a) * .03, .14, Math.sin(a) * .03, Math.sin(a) * .2, 0, -Math.cos(a) * .2);
         for (let k = 0; k < 3; k++) {
           const t = .55 + k * .2, bx = Math.cos(a) * (.03 + .05 * t + .03 * k), bz = Math.sin(a) * (.03 + .05 * t + .03 * k);
-          add(new T.ConeGeometry(.03, .05, 8, 1, true), '#f28bb0', bx, .2 - k * .035, bz, Math.PI, 0, 0);
-          add(new T.SphereGeometry(.02, 6, 4), '#f7a8c6', bx, .225 - k * .035, bz);
+          add(new T.ConeGeometry(.038, .06, 8, 1, false), '#ff6fa3', bx, .2 - k * .035, bz, Math.PI, 0, 0);
+          add(new T.SphereGeometry(.02, 6, 4), '#ffb3cf', bx, .225 - k * .035, bz);
         }
       }
     }
@@ -87,14 +87,14 @@ function shared(T) {
   let c = CACHE.get(T); if (c) return c;
   const body = new T.MeshStandardMaterial({ vertexColors: true, roughness: .85, metalness: 0 });
   const dry = new T.MeshStandardMaterial({ color: SOIL_DRY, roughness: .95, metalness: 0 });
-  const wet = new T.MeshStandardMaterial({ color: SOIL_WET, roughness: .55, metalness: .05 });
+  const wet = new T.MeshStandardMaterial({ color: SOIL_WET, roughness: .45, metalness: .1 });
   const { parts, add } = kit(T);
   const W = .9, H = .28, th = .06;
-  for (const sx of [-1, 1]) add(new T.BoxGeometry(th, H, W), '#7a5a3a', sx * (W - th) / 2, H / 2, 0);
-  for (const sz of [-1, 1]) add(new T.BoxGeometry(W - th * 2, H, th), '#8a6844', 0, H / 2, sz * (W - th) / 2);
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new T.BoxGeometry(.08, H + .03, .08), '#5f4630', sx * (W / 2 - .03), (H + .03) / 2, sz * (W / 2 - .03));
-  add(new T.BoxGeometry(W - .02, .02, .07), '#9a7a54', 0, H + .01, -(W - th) / 2); // top rails
-  add(new T.BoxGeometry(W - .02, .02, .07), '#9a7a54', 0, H + .01, (W - th) / 2);
+  for (const sx of [-1, 1]) add(new T.BoxGeometry(th, H, W), '#a07850', sx * (W - th) / 2, H / 2, 0);
+  for (const sz of [-1, 1]) add(new T.BoxGeometry(W - th * 2, H, th), '#b08858', 0, H / 2, sz * (W - th) / 2);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new T.BoxGeometry(.08, H + .03, .08), '#7a5a3a', sx * (W / 2 - .03), (H + .03) / 2, sz * (W / 2 - .03));
+  add(new T.BoxGeometry(W - .02, .02, .07), '#c29a68', 0, H + .01, -(W - th) / 2); // top rails
+  add(new T.BoxGeometry(W - .02, .02, .07), '#c29a68', 0, H + .01, (W - th) / 2);
   const frame = bake(T, parts);
   const soil = new T.BoxGeometry(W - th * 2, .04, W - th * 2).translate(0, SOIL_Y - .02, 0);
   const plants = new Map();

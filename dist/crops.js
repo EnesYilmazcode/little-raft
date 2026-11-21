@@ -96,6 +96,8 @@ export function createCrops(ctx) {
     }
   }
 
+  function promptHtml(aim) { const d = target(aim); return d ? plan(d, heldKind())?.prompt ?? null : null; }
+
   // raftPrompts provider: content prompts reach #lrPrompt only when no eat tip is showing, and a fresh cup or a
   // tuber in hand always has one. This keeps "E Water the bed" / "E Harvest" visible over the LMB drink tip.
   let unprovide = null;
@@ -105,9 +107,8 @@ export function createCrops(ctx) {
       unprovide = P.provide({ id: 'crops', priority: 1, prompt: pc => {
         const s = pc?.state; // yield to the built-in pickup / waiting prompts: pickups win E in game.js
         if (ctx.running === false || s?.pickup || (s?.role === 'guest' && !s.networkReady) || s?.swimming || ctx.uiOpen?.()) return null;
-        const d = target(ctx.aim?.() ?? null); if (!d) return null;
-        const p = plan(d, heldKind()); if (!p) return null;
-        return parts(p.prompt);
+        const p = promptHtml(ctx.aim?.() ?? null);
+        return p ? parts(p) : null;
       } });
     } catch { unprovide = () => {}; }
   }
@@ -155,9 +156,12 @@ export function createCrops(ctx) {
         if (ripe.length) ctx.emit?.({ kind: 'notice', text: 'A garden bed is ready to harvest' }, 'all');
       }
     },
+    // Only actionable (<kbd>E</kbd>) prompts go through game.js's #contextPrompt: prompts.js feeds every plain
+    // #contextPrompt text into the event feed, so a growing "Sea Flax 41%" would spam it. The status lines are
+    // shown by the crops raftPrompts provider instead.
     prompt(aim) {
-      const d = target(aim); if (!d) return null;
-      return plan(d, heldKind())?.prompt ?? null;
+      const p = promptHtml(aim);
+      return p && p.startsWith('<kbd>') ? p : null;
     },
     interact(aim) {
       const d = target(aim); if (!d) return false;
@@ -188,6 +192,8 @@ export function createCrops(ctx) {
     debug: {
       state: () => JSON.parse(JSON.stringify(st)),
       target: aim => { const d = target(aim); return d ? { x: d.x, z: d.z } : null; },
+      /** The full prompt for an aim, status lines included (what the raftPrompts provider shows). */
+      promptText: aim => promptHtml(aim),
       list: () => decor().filter(d => d && d.type === 'gardenbed').map(d => ({ x: d.x, z: d.z, ...bedInfo(st, decor(), d.x, d.z) })),
       /** Host QA: put a garden bed on a free raft tile. */
       place(x, z) {
