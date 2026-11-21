@@ -98,7 +98,7 @@ Original cozy take for Little Raft ("Look" panel, wording our own):
   Option A: a "Look" tab in `TABS` with swatch rows (needs a new control type beside range/toggle/select,
   `control()` `:116-127`). Option B (cleaner): a separate `data-act="look"` button that opens an own
   dialog module (`dist/look-ui.js`), like the logbook button is wired to `logbook-ui.js`
-  (`game.js:1758`). Bump `data-raft-settings` (`settings.js:145,160`) if the markup changes.
+  (`game.js:1758`). Bump `data-raft-settings` (`settings.js:136,156`) if the markup changes.
 - Title / welcome card `index.html:12` (`#welcome`, "Let's set sail" / "Play with my brother"): a small
   "Change look" secondary button fits under the two primary buttons for pick-at-start.
 - Onboarding (`dist/onboarding.js`): `window.raftOnboarding.register({chapter, steps})` (`:2`, `:80`)
