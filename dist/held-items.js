@@ -33,7 +33,7 @@ export const HOLD = Object.freeze({
   fish:       { hand: 'right', pose: 'grip', rx: 0.15, ry: -0.5, rz: 0.15 },
   cup:        { hand: 'right', pose: 'grip', ry: 0.3 },
   water:      { hand: 'right', pose: 'grip', ry: 0.3 },
-  drum: { hand: 'left', pose: 'grip', rx: -0.7 }, pipes: { hand: 'right', pose: 'grip', rx: 0.2 }, bells: { hand: 'left', pose: 'grip', rx: -1.25 }, // [instruments]
+  drum: { hand: 'right', pose: 'grip', rx: 0.75 }, pipes: { hand: 'right', pose: 'grip', rx: 0.2 }, bells: { hand: 'right', pose: 'grip', rx: 1.2, rz: 0.1 }, // [instruments] right fist, clear of the hotbar
   ...Object.fromEntries(PLACEABLE_KINDS.filter((k) => k !== 'hammer').map((k) => [k, { hand: 'left', pose: 'point' }])),
 });
 // Unknown kinds (other lanes may add items): carried on the left fist if placeable, else gripped.
@@ -41,7 +41,7 @@ export const holdFor = (kind) => HOLD[kind] || (isPlaceable(kind) ? HOLD.crate :
 
 const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.15, fish: 0.3, sail: 0.22, palm: 0.2, lantern: 0.2, net: 0.2, bench: 0.16, crate: 0.13,
   planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11,
-  drum: 0.24, pipes: 0.2, bells: 0.26 }; // [instruments]
+  drum: 0.15, pipes: 0.2, bells: 0.2 }; // [instruments]
 
 function fit(T, model, maxDim, gripFn) {
   const root = new T.Group();

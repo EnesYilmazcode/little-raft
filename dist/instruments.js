@@ -135,7 +135,7 @@ export function createInstruments(T, host) {
     const c = host.camera;
     if (!c || !camPos(tmp)) return null;
     if (c.getWorldQuaternion) c.getWorldQuaternion(q); else q.copy(c.quaternion);
-    return tmp.add(off.set(0.15, -0.15, -0.5).applyQuaternion(q));
+    return tmp.add(off.set(0.22, 0.10, -0.6).applyQuaternion(q)); // up and right of the crosshair, clear of the "Play" prompt (bottom-right) and the held model
   }
 
   function use(kind) {
