@@ -26,6 +26,8 @@ const keyOf = (d) => d.x + ',' + d.z;
 const joinAnd = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const posInt = (n) => (Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0);
+// Hand recipes every pre-progression build offered; old raft saves keep them learned.
+const LEGACY_RECIPES = ['rope', 'hook', 'hammer', 'fishingrod', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate'];
 
 function load() {
   try { const v = JSON.parse(localStorage.getItem(PROGRESSION_KEY) || 'null'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
@@ -313,6 +315,16 @@ export function attachProgression(ctx) {
     try { tooltips?.dispose(); } catch {}
     try { research?.remove(); hud?.remove(); } catch {}
     panel = research = tooltips = hud = null;
+  }
+
+  // First run on a pre-progression save: keep every recipe the old build offered (the
+  // discover gates are not always in the bag any more), then persist so this happens once.
+  if (!saved.host && isHost()) {
+    const w = ctx.world();
+    if (w && (w.collected > 0 || w.decor?.length > 0 || w.tiles?.length > 9)) {
+      for (const p of Object.values(progs)) for (const id of LEGACY_RECIPES) if (ITEMS[id]) p.learned.add(id);
+    }
+    save();
   }
 
   return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, dispose, debug, progression: (actor) => (actor ? progs[actor] : myProg()) };

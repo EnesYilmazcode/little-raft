@@ -658,3 +658,56 @@ test('station: restore rejects junk, prototype keys and foreign outputs', () => 
   const s = new StationModel('smelter', { input: { kind: 'metalore', count: 5 }, output: { kind: 'metalingot', count: 3 }, fuel: 4, progress: 12 });
   assert.deepEqual(new StationModel('smelter', JSON.parse(JSON.stringify(s.snapshot()))).snapshot(), s.snapshot());
 });
+
+// ---------- progression-hooks (node, stub game context) ----------
+const H = await import(new URL('progression-hooks.js', base));
+function fakeStorage() {
+  const m = new Map();
+  globalThis.localStorage = { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), clear: () => m.clear() };
+  return m;
+}
+function fakeGame({ world, host = new Bag({ slots: Array(SLOT_COUNT).fill(null), selected: 0 }), guest = new Bag({ slots: Array(SLOT_COUNT).fill(null), selected: 0 }) } = {}) {
+  world ??= { tiles: [[0, 0], [1, 0], [0, 1]], decor: [], items: [], collected: 0 };
+  const bags = { host, guest };
+  return { world, bags, ctx: { T: null, role: () => 'solo', ready: () => false, running: () => false, world: () => world, bag: (a) => bags[a],
+    localBag: () => bags.host, action() {}, emit() {}, notice() {}, pose: () => ({ x: 50, z: 50, yaw: 0 }) } };
+}
+
+test('hooks: an old raft save keeps every legacy recipe; a fresh raft does not and is only judged once', () => {
+  fakeStorage();
+  const old = fakeGame({ world: { tiles: [[0, 0]], decor: [{ type: 'lantern', x: 0, z: 0 }], items: [], collected: 30 } });
+  const a = H.attachProgression(old.ctx);
+  for (const id of ['fishingrod', 'sail', 'lantern', 'net', 'crate']) assert.ok(a.progression('host').isUnlocked(id), id);
+  assert.equal(a.apply({ kind: 'craft', recipe: 'lantern' }, 'host'), false, 'craft not blocked');
+  a.dispose();
+
+  fakeStorage();
+  const fresh = fakeGame();
+  const b = H.attachProgression(fresh.ctx);
+  assert.equal(b.progression('host').isUnlocked('lantern'), false);
+  assert.equal(b.apply({ kind: 'craft', recipe: 'lantern' }, 'host'), true, 'locked craft blocked');
+  b.dispose();
+  fresh.world.collected = 5; // later sessions of a new raft are not grandfathered
+  const c = H.attachProgression(fresh.ctx);
+  assert.equal(c.progression('host').isUnlocked('lantern'), false);
+  c.dispose();
+});
+
+test('hooks: prog take with a full bag keeps the output; partial take returns the rest', () => {
+  fakeStorage();
+  const g = fakeGame({ world: { tiles: [[0, 0]], decor: [{ type: 'smelter', x: 0, z: 0 }], items: [], collected: 1 } });
+  const a = H.attachProgression(g.ctx);
+  a.tick(0.016);
+  const st = { station: 'smelter', output: { kind: 'metalingot', count: 15 } };
+  a.dispose();
+  globalThis.localStorage.setItem(H.PROGRESSION_KEY, JSON.stringify({ v: 1, host: {}, guest: {}, stations: { '0,0': st } }));
+  for (let i = 0; i < SLOT_COUNT; i++) g.bags.guest.add('wood', 20);
+  g.bags.guest.remove('wood', 20); assert.equal(g.bags.guest.add('metalingot', 10), 0); // one slot with room for 10
+  const b = H.attachProgression(g.ctx);
+  b.tick(0.016);
+  b.apply({ kind: 'prog:take', key: '0,0' }, 'guest');
+  assert.equal(g.bags.guest.count('metalingot') + (b.debug.state().stations['0,0'].output?.count ?? 0), 25);
+  b.apply({ kind: 'prog:take', key: '0,0' }, 'guest');
+  assert.equal(g.bags.guest.count('metalingot') + (b.debug.state().stations['0,0'].output?.count ?? 0), 25);
+  b.dispose();
+});
