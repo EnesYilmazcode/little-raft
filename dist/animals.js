@@ -188,6 +188,9 @@ export function createAnimals(ctx) {
       clock = st.t;
     } else clock += d;
     if (!built) { if (!T || !ctx.scene) return; build(); }
+    const any = st.list.length > 0;
+    birds.visible = eggs.visible = any;
+    if (!any) { heart.visible = false; for (let i = 0; i < MAX_ANIMALS; i++) if (shown[i]) { birds.setMatrixAt(i, zero); shown[i] = 0; birds.instanceMatrix.needsUpdate = true; } return; } // nothing to draw or wander
     refreshGraph(d);
     renderBirds(); renderEggs(); renderHeart(d);
   }
