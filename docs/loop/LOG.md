@@ -656,3 +656,40 @@ Known limits:
 - An old 3x3 save with no checklist progress gets two building steps credited.
 - A net lost to the shark gives no message.
 Next gaps: seagull raids + scarecrow; purifier/grill fuel; hook range (16-32 m that shrinks with wear) and reel speed against Raft's; paddle/anchor as crafted items; simple bed and sleep; Medium Crop Plot (watermelon, pineapple).
+
+## 2026-11-21 · loop-fidelity-202611210910 (raft fidelity, round 3)
+Base: origin/claude/raft-master (80c117e) with round 2 replayed on top (72a66d6, 8979ff5). Branch: claude/loop-fidelity-202611210910, which replaces 202611210804.
+Research: docs/loop/research/fidelity-r3-seagull-bed-fuel.md.
+
+Claimed gaps:
+- **Seagull crop raids and the scarecrow**: dist/raiders.js, raiders-model.js.
+  - One raider per 1-2 planted plots, at most 3, each on a 240 s timer. A raider swoops in and pecks for 15 s; if not stopped, the slot goes back to bare soil.
+  - A player within 2.25 m scares it off. A spear hit both scares and damages it (HP 10). A kill drops 1-3 feathers and a raw drumstick, which grills into a drumstick worth +20 food.
+  - Scarecrow: 5 wood, 3 leaves, 3 nails, 3 plastic. It covers 6 m and takes 3 pecks before it breaks (arm, arm, head).
+  - Plots with a roof or upper floor above them are safe.
+- **Bed and fuel**:
+  - Bed costs 6 wood, 10 leaves, 4 plastic and 3 nails. Sleeping costs 20 food and 20 water and heals 40.
+  - The last bed you used becomes your respawn point: you wake there with 25 HP and 50 food and water.
+  - The purifier burns planks (holds 3, 50 s each) and takes 30 s per cup, pausing without fuel.
+  - Both grills burn planks only, hold 2 at 50 s each, and food no longer chars.
+- **Hook feel**:
+  - The plastic hook lasts 40 hooked items and then breaks; you craft a new one. R repair is gone.
+  - Rope length and reel speed are fixed per hook: plastic 20 m and 4 m/s, metal 26 m and 6 m/s, reeling in pulls twice a second.
+  - The charge shows as a bold cream arc around the crosshair.
+  - Q drops one item from the selected stack as a floating bundle you can hook back.
+  - The rope is now a tan braided tube.
+  - The onboarding step "Craft a new hook" shows in any chapter.
+
+Fleet: 2 researchers, 1 porter, 3 builders (worktrees), 2 reviewers.
+Review fixes:
+- the Simple Grill station uses the same fuel rule as the driftwood grill
+- a full bag during raider loot now says so
+- the new-hook onboarding step appears after a break in chapter 1
+Checks: npm test 972/972 (master 911); shoot.py `errors: []`; 149-264 ms/frame on a shared machine, base 191-228 (no regression); 41-52 draw calls.
+Known limits:
+- A rare Three.js `isReady` error during compileAsync after a raft rebuild (seen once in about 15 runs).
+- Every non-material drop is a generic crate, and drops pile up at the raft edge.
+- With a full bag, raider loot is lost.
+- There are two grill kinds (the driftwood G grill and the Simple Grill station).
+- A salt cup aimed at a loaded purifier shows the drink prompt.
+Next gaps: the crafting UI layout (category rail, 12 rows, green/red craft button, 5x3 backpack); paddle and anchor as crafted items; Medium Crop Plot (watermelon, pineapple); an advanced purifier/grill tier; research-table "Learn" flow.
