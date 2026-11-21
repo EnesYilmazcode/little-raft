@@ -207,7 +207,7 @@ export function createAvatar(T, color) {
     if (kind === heldKind) return;
     heldKind = kind;
     for (const [k, g] of heldModels) g.visible = k === kind;
-    if (kind && !heldModels.has(kind)) { const g = new T.Group(); BUILD[kind](g); grip.add(g); heldModels.set(kind, g); }
+    if (kind && !heldModels.has(kind)) { const g = new T.Group(); BUILD[kind](g); freeze(g); grip.add(g); heldModels.set(kind, g); }
   }
 
   // ---- animation: walk / swim cycle, eased so network jitter never pops ----
@@ -231,6 +231,12 @@ export function createAvatar(T, color) {
     grip.visible = swim < 0.5;
     head.rotation.x = -Math.max(-0.6, Math.min(0.6, pitch)) * 0.5 * (1 - swim) - 0.6 * swim;
   }
+
+  // Everything but the animated pivots is rigid in its parent: bake the local matrices once and stop
+  // three.js recomputing them every frame (the pivots' world matrices still carry them along).
+  const pivots = new Set([root, head, leftArm, rightArm, leftLeg, rightLeg, grip]);
+  function freeze(o) { o.traverse(c => { if (!pivots.has(c)) { c.updateMatrix(); c.matrixAutoUpdate = false; } }); }
+  freeze(root);
 
   root.userData.parts = { head, leftArm, rightArm, leftLeg, rightLeg };
   root.userData.setHeld = setHeld;

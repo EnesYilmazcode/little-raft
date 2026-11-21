@@ -177,6 +177,7 @@ export function createFishingV2(T, { scene, ocean } = {}) {
   const flagShape = new T.Shape(); flagShape.moveTo(0, 0); flagShape.lineTo(0.026, -0.008); flagShape.lineTo(0, -0.017);
   const flag = new T.Mesh(G(new T.ShapeGeometry(flagShape)), flagMat); flag.position.set(0.001, 0.088, 0); bobber.add(flag);
   bobber.visible = false;
+  for (const m of bobber.children) { m.updateMatrix(); m.matrixAutoUpdate = false; } // rigid parts: only the bobber group moves
 
   const N = 24, pos = new Float32Array(N * 3), lineGeo = G(new T.BufferGeometry());
   const attr = new T.BufferAttribute(pos, 3); attr.setUsage(T.DynamicDrawUsage); lineGeo.setAttribute('position', attr);
@@ -186,10 +187,10 @@ export function createFishingV2(T, { scene, ocean } = {}) {
   const ringGeo = G(new T.RingGeometry(0.8, 1, 28)), rings = [];
   for (let i = 0; i < 4; i++) {
     const r = new T.Mesh(ringGeo, M(new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false })));
-    r.rotation.x = -Math.PI / 2; r.visible = false; r.userData.t = 9; rings.push(r); scene?.add(r);
+    r.rotation.x = -Math.PI / 2; r.visible = false; r.matrixAutoUpdate = false; r.userData.t = 9; rings.push(r); scene?.add(r); // matrix updates only while a ring shows
   }
   let ringNext = 0;
-  function splash(x, y, z) { const r = rings[ringNext]; ringNext = (ringNext + 1) % rings.length; r.position.set(x, y + 0.01, z); r.userData.t = 0; r.visible = true; }
+  function splash(x, y, z) { const r = rings[ringNext]; ringNext = (ringNext + 1) % rings.length; r.position.set(x, y + 0.01, z); r.userData.t = 0; r.visible = true; r.matrixAutoUpdate = true; }
 
   scene?.add(bobber); scene?.add(line);
   const hud = createHud();
@@ -202,7 +203,7 @@ export function createFishingV2(T, { scene, ocean } = {}) {
     for (const r of rings) {
       if (!r.visible) continue;
       const t = (r.userData.t += dt), k = t / 0.9;
-      if (k >= 1) { r.visible = false; continue; }
+      if (k >= 1) { r.visible = false; r.matrixAutoUpdate = false; continue; }
       r.scale.setScalar(0.06 + k * 0.5); r.material.opacity = 0.75 * (1 - k);
     }
     hud.update(session);

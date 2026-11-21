@@ -48,25 +48,27 @@ export function createSailing(T, ctx) {
     coil: new T.CylinderGeometry(.08, .08, .24, 10), crank: new T.BoxGeometry(.03, .18, .03), arm: new T.BoxGeometry(.06, .06, .6),
     anchor: anchorGeometry(T), rope: ropeGeo, roll: rollGeo, tie: new T.TorusGeometry(ROLL_R + .004, .009, 5, 12).rotateY(Math.PI / 2),
   };
+  const freeze = o => { o.updateMatrix(); o.matrixAutoUpdate = false; }; // local transform never changes again
   const mesh = (geo, mat, x, y, z, parent, shadow = true) => { const m = new T.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = shadow; parent.add(m); return m; };
 
   const fixture = new T.Group(); fixture.name = 'sailingFixture'; scene.add(fixture);
   const anchorRoot = new T.Group(); fixture.add(anchorRoot);
-  mesh(G.post, M.wood, 0, .5, 0, anchorRoot);
-  mesh(G.drum, M.woodLight, 0, .9, 0, anchorRoot).rotation.z = Math.PI / 2;
+  const post = mesh(G.post, M.wood, 0, .5, 0, anchorRoot);
+  const drum = mesh(G.drum, M.woodLight, 0, .9, 0, anchorRoot); drum.rotation.z = Math.PI / 2;
   const coil = mesh(G.coil, M.rope, 0, .9, 0, anchorRoot); coil.rotation.z = Math.PI / 2;
-  mesh(G.crank, M.wood, .2, .84, 0, anchorRoot, false);
-  mesh(G.arm, M.wood, 0, .97, .3, anchorRoot);
+  const crank = mesh(G.crank, M.wood, .2, .84, 0, anchorRoot, false);
+  const arm = mesh(G.arm, M.wood, 0, .97, .3, anchorRoot);
   const anchorRope = mesh(G.rope, M.rope, 0, .95, .57, anchorRoot, false);
   const hook = new T.Group(); anchorRoot.add(hook);
-  mesh(G.anchor, M.iron, 0, 0, 0, hook, false);
+  const anchorMesh = mesh(G.anchor, M.iron, 0, 0, 0, hook, false);
   hook.position.set(0, .95 - ROPE_UP, .57);
+  for (const m of [post, drum, crank, arm, anchorMesh]) freeze(m); // rigid parts; coil, rope and hook animate (animateAnchor)
 
   // Furled-canvas roll (pooled, one per sail): a cream cylinder with two ties, re-parented onto each sail group.
   function roll(i) {
     while (rolls.length <= i) {
       const r = new T.Mesh(G.roll, M.canvas); r.castShadow = true; r.visible = false;
-      for (const x of [-.32, .32]) { const t = new T.Mesh(G.tie, M.tie); t.position.x = x; r.add(t); }
+      for (const x of [-.32, .32]) { const t = new T.Mesh(G.tie, M.tie); t.position.x = x; freeze(t); r.add(t); }
       rolls.push(r);
     }
     return rolls[i];

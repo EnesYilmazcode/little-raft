@@ -35,6 +35,7 @@ export function createPings(T, scene) {
   const coreGeo = new T.CircleGeometry(0.16, 24); coreGeo.rotateX(-Math.PI / 2); coreGeo.translate(0, 0.12, 0);
 
   const slots = [];
+  const live = (g, on) => g.traverse(o => { o.matrixAutoUpdate = on; });
   for (let i = 0; i < PER_OWNER * 2; i++) {
     const mine = i < PER_OWNER, col = new T.Color(mine ? MINE : THEIRS);
     const basic = o => new T.MeshBasicMaterial({ color: col, transparent: true, depthWrite: false, fog: false, ...o });
@@ -46,6 +47,7 @@ export function createPings(T, scene) {
     const core = new T.Mesh(coreGeo, basic({ side: T.DoubleSide }));
     xray.renderOrder = 20; beam.renderOrder = 19;
     for (const m of [diamond, xray, beam, ring, core]) { m.frustumCulled = false; g.add(m); }
+    live(g, false); // a parked ping is hidden: no per-frame matrix work until add() shows it
     scene.add(g);
     slots.push({ g, diamond, xray, beam, ring, core, mine, born: -1, age: 0, x: 0, y: 0, z: 0, label: '' });
   }
@@ -60,7 +62,7 @@ export function createPings(T, scene) {
       if (!s || c.age > s.age) s = c;
     }
     Object.assign(s, { born: 1, age: 0, x, y, z, label: String(label || '') });
-    s.g.position.set(x, y, z); s.g.visible = true; s.g.userData.label = s.label;
+    s.g.position.set(x, y, z); s.g.visible = true; s.g.userData.label = s.label; live(s.g, true);
     return s.g;
   }
 
@@ -70,7 +72,7 @@ export function createPings(T, scene) {
     for (const s of slots) {
       if (s.born < 0) continue;
       s.age += dt;
-      if (s.age >= PING_LIFE) { s.born = -1; s.g.visible = false; continue; }
+      if (s.age >= PING_LIFE) { s.born = -1; s.g.visible = false; live(s.g, false); continue; }
       const fade = Math.min(1, s.age / 0.2) * Math.min(1, (PING_LIFE - s.age) / 1.2);
       const pop = 1 + 0.6 * Math.max(0, 1 - s.age / 0.35) ** 2;           // little overshoot on spawn
       const d = camera ? cam.distanceTo(s.g.position) : 10;

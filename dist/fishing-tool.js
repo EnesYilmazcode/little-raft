@@ -273,6 +273,10 @@ export function createFishingTool(T) {
   const gripNode = new T.Object3D(); gripNode.name = 'grip'; gripNode.position.copy(grip); root.add(gripNode);
   const tipNode = new T.Object3D(); tipNode.name = 'rodTip'; tipNode.position.copy(tipPoint); root.add(tipNode);
 
+  // Every part is rigid in the model; only the root, the float (game.js re-uses it as the bobber) and the
+  // spool (animatable, see above) keep per-frame matrix updates.
+  root.traverse((o) => { if (o !== root && o !== float && o !== spool) { o.updateMatrix(); o.matrixAutoUpdate = false; } });
+
   root.userData.grip = grip;
   root.userData.gripNode = gripNode;
   root.userData.gripAxis = V3(0, 1, 0);
