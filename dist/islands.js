@@ -6,8 +6,8 @@ import {
   applyGather, standOnSand, DEFAULTS,
 } from './islands-layout.js';
 import { createIslandModels } from './islands-models.js';
-import { ITEM_INFO } from './inventory-state.js';
-import { PLAYER_CONSTANTS } from './player-physics.js';
+import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 
 export * from './islands-layout.js';
 
@@ -20,6 +20,7 @@ const PICK_Y = [1.4, .45, .3, .08], PICK_R = [.95, .75, .55, .55];
 // Solid trunks and rocks the player walks around (radius times node scale; 0 = walk through).
 const SOLID_R = [.28, 0, .42, 0];
 const LOCAL_COOLDOWN = 0.35;
+const SLEW_SNAP = 1, SLEW_RATE = 4; // guest clock: snap past 1 s of error, else ease at 4/s
 
 // Prompt text, built once: PROMPTS[kind][left].
 const LABEL = { palm: 'Gather palm: wood and leaves', bush: 'Pick from bush: leaves, maybe a seed', rock: 'Gather stone', sand: 'Scoop sand' };
@@ -38,12 +39,15 @@ export function createIslands(ctx) {
   const cool = { host: 0, guest: 0 };
   const gatherState = { isl: null, layout: null, cx: 0, cz: 0, clock: 0, cool };
   const out = { v: 1, clock: 0, next: 0, isl: null }; // cached serialize() object
+  const outIsl = { seed: 0, born: 0, dock: 0, side: 1, off: 0, used: null };
   const path = { phase: 'gone', z: 0, left: 0, sink: 0 };
 
   // Live placement, refreshed in update().
   let shown = false, cx = 0, cz = 0, gy = 0, carryX = NaN, carryZ = NaN;
   const sandState = { onSand: false, lastJump: false };
   let localCool = 0, bounceNode = -1, bounceT = 0, hoverNode = -1, prompted = false;
+  let slew = 0;        // guest: host clock minus ours, eased out in tick()
+  let ticked = false;  // afterMove already advanced the clock this frame
 
   // ---------- scene (built once) ----------
   const models = createIslandModels(T, ctx.ocean);
@@ -158,9 +162,20 @@ export function createIslands(ctx) {
   function emitAll(text) { try { ctx.emit({ kind: 'notice', text }, 'all'); } catch {} }
 
   // ---------- module hooks ----------
+  // Advance the clock once per frame. game.js runs afterMove (player physics) before update and sets
+  // the camera in between, so afterMove ticks first and places the island where it will be drawn.
+  function tick(dt) {
+    if (!ctx.running) return;
+    st.clock += dt;
+    if (slew !== 0) {
+      const k = Math.min(1, SLEW_RATE * dt), d = slew * k;
+      st.clock += d; slew -= d;
+      if (Math.abs(slew) < 1e-4) { st.clock += slew; slew = 0; }
+    }
+  }
   function update(dt) {
     if (!(dt > 0)) dt = 0;
-    if (ctx.running) st.clock += dt;
+    if (ticked) ticked = false; else tick(dt);
     if (localCool > 0) localCool -= dt;
     const isl = st.isl;
     if (authority()) {
@@ -192,9 +207,13 @@ export function createIslands(ctx) {
   }
 
   function afterMove(p, dt) {
-    if (!p || !shown) { if (sandState.onSand) sandState.onSand = false; carryX = NaN; return; }
-    // Ride along while the island glides in or out.
-    if (sandState.onSand && carryX === carryX) { p.x += cx - carryX; p.z += cz - carryZ; }
+    if (!(dt > 0)) dt = 0;
+    if (!ticked) { tick(dt); ticked = true; }
+    place();
+    if (!p || !shown) { sandState.onSand = false; sandState.lastJump = !!(p && p._prevJump); carryX = NaN; return; }
+    // Ride along while the island glides in to dock. Not while it departs: it slides out from under
+    // the player, who stays near the dock spot instead of being carried 50 m out to sea.
+    if (sandState.onSand && carryX === carryX && path.phase !== 'depart') { p.x += cx - carryX; p.z += cz - carryZ; }
     carryX = cx; carryZ = cz;
     // Walk around palm trunks and rocks.
     const fx = p.x - cx, fz = p.z - cz;
@@ -214,13 +233,26 @@ export function createIslands(ctx) {
   }
 
   function serialize() {
-    out.clock = st.clock; out.next = st.next; out.isl = st.isl;
+    out.clock = st.clock; out.next = st.next;
+    const i = st.isl;
+    if (!i) out.isl = null;
+    else {
+      // A copy (the caller may keep or mutate it), reusing two cached objects to stay cheap at ~8 Hz.
+      if (!outIsl.used || outIsl.used.length !== i.used.length) outIsl.used = new Array(i.used.length);
+      outIsl.seed = i.seed; outIsl.born = i.born; outIsl.dock = i.dock; outIsl.side = i.side; outIsl.off = i.off;
+      for (let k = 0; k < i.used.length; k++) outIsl.used[k] = i.used[k];
+      out.isl = outIsl;
+    }
     return out;
   }
 
   function load(data, from) {
     const c = clean(data);
-    st.clock = c.clock; // guests snap to the host clock ('net'); saves restore it
+    // Saves and restores snap. Guests ('net') ease toward the host clock unless it is over 1 s off, so a
+    // late packet does not make the drifting island pop.
+    const err = c.clock - st.clock;
+    if (from === 'net' && st.isl && c.isl && st.isl.seed === c.isl.seed && Math.abs(err) <= SLEW_SNAP) slew = err;
+    else { st.clock = c.clock; slew = 0; }
     st.next = c.next;
     if (!c.isl) { if (st.isl) { st.isl = null; relayout(); } place(); return; }
     if (!st.isl || st.isl.seed !== c.isl.seed || st.isl.used.length !== c.isl.used.length) {
@@ -249,6 +281,8 @@ export function createIslands(ctx) {
       const text = r.loot.map(([k, n]) => `+${n} ${itemName(k)}`).join(', ');
       ctx.emit({ kind: 'loot', text }, actor);
     } else if (r.reason === 'full') ctx.emit({ kind: 'full', text: 'Your bag is full' }, actor);
+    else if (r.reason === 'reach') ctx.emit({ kind: 'notice', text: 'Get a little closer' }, actor);
+    // 'cooldown' is ignored quietly: a second tap within 0.3 s just does nothing.
     return true;
   }
 
@@ -294,9 +328,9 @@ export function createIslands(ctx) {
     const k = pickNode(aim);
     if (k < 0) return false;
     if (localCool > 0) return true;
+    if (ctx.action({ kind: 'islands.gather', seed: st.isl.seed, node: k }) === false) return true; // not sent
     localCool = LOCAL_COOLDOWN;
     bounceNode = k; bounceT = .3;
-    ctx.action({ kind: 'islands.gather', seed: st.isl.seed, node: k });
     return true;
   }
 

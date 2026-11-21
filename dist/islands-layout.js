@@ -16,7 +16,9 @@ export const ISLAND = Object.freeze({
   NEAR: 6,              // departure waits while a player is within R + NEAR
   OFF_MIN: 8, OFF_MAX: 60,
   MAX_NODES: 14,
-  WALK_MARGIN: 0.25,    // sand must be this far above the local wave to stand on
+  WALK_MARGIN: 0.25,    // step onto sand only where it is this far above the local wave...
+  STAY_MARGIN: -0.1,    // ...but once standing, stay until a wave covers it by this much (hysteresis)
+  GUEST_SLACK: 1.0,     // extra gather reach for the guest (the host sees a pose up to ~0.12 s old)
 });
 
 export const NODE_KINDS = Object.freeze(['palm', 'bush', 'rock', 'sand']);
@@ -156,7 +158,7 @@ export function clean(data, layoutOf = layoutFor) {
   const out = DEFAULTS();
   try {
     if (!data || typeof data !== 'object' || Array.isArray(data) || data.v !== 1) return out;
-    if (fin(data.clock) && data.clock >= 0) out.clock = data.clock;
+    if (fin(data.clock) && data.clock >= 0) out.clock = Math.min(data.clock, 1e9);
     if (fin(data.next) && data.next >= 0) out.next = Math.min(data.next, out.clock + ISLAND.DOCK_CAP);
     else out.next = out.clock + ISLAND.FIRST;
     const i = data.isl;
@@ -195,8 +197,9 @@ export function applyGather(st, a, actor, pos, bag) {
   if (!(isl.used[k] < n.max)) return no('drained');
   if (!pos || !fin(pos.x) || !fin(pos.z)) return no('reach');
   const dx = pos.x - (st.cx + n.x), dz = pos.z - (st.cz + n.z);
-  if (dx * dx + dz * dz > ISLAND.REACH * ISLAND.REACH) return no('reach');
   const who = actor === 'guest' ? 'guest' : 'host';
+  const reach = ISLAND.REACH + (who === 'guest' ? ISLAND.GUEST_SLACK : 0);
+  if (dx * dx + dz * dz > reach * reach) return no('reach');
   if (st.clock < (st.cool[who] || 0)) return no('cooldown');
   if (!bag || !Array.isArray(bag.slots) || typeof bag.snapshot !== 'function') return no('bag');
   const loot = lootFor(n.kind, isl.seed, k, isl.used[k]);
@@ -211,7 +214,10 @@ export function applyGather(st, a, actor, pos, bag) {
 
 // Stand on island sand after PlayerPhysics.update(). g: sand height (world y) under the player or NaN,
 // w: wave height there. s: per-player state {onSand, lastJump}. No allocation.
+// While standing, the feet are kept DRY above the local wave (a few cm over the sand at most, only in
+// the hysteresis band) so PlayerPhysics never sees wet feet and splashes.
 const EYE = PLAYER_CONSTANTS.EYE_OFFSET, JUMP = PLAYER_CONSTANTS.JUMP_IMPULSE;
+const DRY = PLAYER_CONSTANTS.WATER_ENTER + 0.03;
 export function standOnSand(p, g, w, s) {
   if (p.climbing || !fin(g)) { s.onSand = false; s.lastJump = !!p._prevJump; return false; }
   // PlayerPhysics only jumps off raft tiles, so the hook reads its private _prevJump (the jump key as
@@ -219,8 +225,9 @@ export function standOnSand(p, g, w, s) {
   // stays false and jumping on sand is simply off: nothing breaks.
   const jumpNow = p._prevJump === true;
   const jumpEdge = jumpNow && !s.lastJump; s.lastJump = jumpNow;
-  const feet = p.y - EYE, up = g - feet;
-  if (g < w + ISLAND.WALK_MARGIN) {
+  if (!fin(w)) w = g - 1;
+  if (g < w + (s.onSand ? ISLAND.STAY_MARGIN : ISLAND.WALK_MARGIN)) {
+    const up = g - (p.y - EYE);
     s.onSand = false;
     // Shallows: wade, sand under the feet lifts a swimmer gently instead of letting them sink into it.
     if (p.swimming && up > 0) { p.y = g + EYE; if (p.vy < 0) { p.vy = 0; p.verticalSpeed = 0; } }
@@ -229,10 +236,11 @@ export function standOnSand(p, g, w, s) {
   if (s.onSand && jumpEdge) {
     p.vy = JUMP; p.verticalSpeed = JUMP; p.grounded = false; s.onSand = false; return false;
   }
+  const floor = g > w + DRY ? g : w + DRY, up = floor - (p.y - EYE);
   if (p.vy > 0 && up < 0) { s.onSand = false; return false; } // still rising from a jump
   const stick = s.onSand ? 0.35 : 0.06, step = p.swimming ? 1.6 : 0.6;
   if (up >= -stick && up <= step) {
-    p.y = g + EYE; p.vy = 0; p.verticalSpeed = 0; p.grounded = true; p.swimming = false; s.onSand = true;
+    p.y = floor + EYE; p.vy = 0; p.verticalSpeed = 0; p.grounded = true; p.swimming = false; s.onSand = true;
     return true;
   }
   s.onSand = false;
