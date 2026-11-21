@@ -89,11 +89,11 @@ export function createFireworks(ctx) {
   const budget = budgetFor(ctx.options?.graphics);
   const gate = windowGate(RECV_MAX_PER_S);
   const slots = Array.from({ length: budget.slots }, () => ({ t: -1, x: 0, y: 0, z: 0, shape: 0, h: 25, c: 0, spin: 0, done: 0, frozen: false }));
-  let clock = 0, peakAt = -Infinity, peaks = 0, owed = 0, debugN = 0;
+  let clock = 0, peakAt = -Infinity, gapAt = -Infinity, peaks = 0, owed = 0, wroteI = NaN, debugN = 0;
   let pool = null, flights = null, built = false;
   const v = T ? new T.Vector3() : null, size = T ? new T.Vector2() : null;
   const flashCols = T ? [...COLORS, '#ffe08a'].map(h => new T.Color(h)) : null; // c 0..4, then 'mix'
-  const flashCol = T ? new T.Color() : null, prevHemi = T ? new T.Color() : null;
+  const flashCol = T ? new T.Color() : null, prevHemi = T ? new T.Color() : null, wroteCol = T ? new T.Color() : null;
 
   const decor = () => (Array.isArray(ctx.world?.decor) ? ctx.world.decor : []);
   const night = () => { const n = ctx.night?.() ?? 0; return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0; };
@@ -141,8 +141,10 @@ export function createFireworks(ctx) {
   }
 
   function flash(c, n) {
-    if (n <= 0 || clock - peakAt < FLASH_GAP) return;
-    peakAt = clock; peaks++;
+    if (n <= 0 || clock - gapAt < FLASH_GAP) return;
+    // a new peak rises from the current level (no drop to 0 and back: no flicker when bursts are chained)
+    const cur = flashLevel(clock - peakAt);
+    gapAt = clock; peakAt = clock - 0.25 * cur; peaks++;
     flashCol.copy(flashCols[c < 5 ? c : 5]);
   }
 
@@ -190,7 +192,7 @@ export function createFireworks(ctx) {
     const hemi = ctx.hemi;
     if (hemi && nf > 0) {
       const f = flashLevel(clock - peakAt) * nf;
-      if (f > 0) { prevHemi.copy(hemi.color); owed = 0.35 * f; hemi.intensity += owed; hemi.color.lerp(flashCol, 0.25 * f); }
+      if (f > 0) { prevHemi.copy(hemi.color); owed = 0.35 * f; hemi.intensity += owed; hemi.color.lerp(flashCol, 0.25 * f); wroteI = hemi.intensity; wroteCol.copy(hemi.color); }
     }
   }
 
@@ -221,7 +223,10 @@ export function createFireworks(ctx) {
     if (pool) { pool.points.removeFromParent(); pool.points.geometry.dispose(); pool.points.material.dispose(); pool = null; }
     if (flights) { for (const f of flights) { f.removeFromParent(); f.geometry.dispose(); f.material.dispose(); } flights = null; }
     built = false;
-    if (owed && ctx.hemi) { ctx.hemi.intensity -= owed; ctx.hemi.color.copy(prevHemi); owed = 0; }
+    // undo only our own write: if day/night already restored hemi (it is disposed first), leave its values alone
+    const hemi = ctx.hemi;
+    if (owed && hemi && hemi.intensity === wroteI && hemi.color.equals(wroteCol)) { hemi.intensity -= owed; hemi.color.copy(prevHemi); }
+    owed = 0;
   }
 
   return {

@@ -27,7 +27,7 @@ import { createDiving, DIVE } from './diving.js?build=v3-survival-ae77fa84ac2b';
 import { nodeById, NODE_LOOT } from './seafloor.js?build=v3-survival-ae77fa84ac2b'; // diving lane hook
 import { createFishingCooking } from './fishing-cooking.js'; // [fishing-cooking] lane hook, see docs/cloud/fishing-cooking.md
 import { createInstruments } from './instruments.js?build=v3-survival-ae77fa84ac2b'; // [instruments] held drum / pipes / bells (docs/specs/instruments.md)
-import { cleanProgress, nextNote, shouldSpawnBottle, evaluate, achievementName, NOTE_COUNT } from './logbook.js?build=v3-survival-ae77fa84ac2b';
+import { cleanProgress, nextNote, shouldSpawnBottle, evaluate, achievementName, NOTE_COUNT, ACHIEVEMENTS } from './logbook.js?build=v3-survival-ae77fa84ac2b';
 import { createLogbookUI } from './logbook-ui.js?build=v3-survival-ae77fa84ac2b';
 import { createBottle } from './bottle.js?build=v3-survival-ae77fa84ac2b';
 import { cleanSignal, countAntennas, signalTick, onCacheCollected, cacheLoot, signalReadout, edgePoint } from './signal.js?build=v3-survival-ae77fa84ac2b';
@@ -1733,7 +1733,7 @@ export function mount(transfer = null) {
     aim(p, w = yaw) { if (Number.isFinite(+p) && Number.isFinite(+w)) { pitch = clamp(+p, -PITCH_LIMIT, PITCH_LIMIT); yaw = +w; } }, // diving lane hook: test helper
     swimAt(x, z, p = pitch, w = yaw) { if (![+x, +z, +p, +w].every(Number.isFinite)) return; physics = new PlayerPhysics({x:+x, y:ocean.getHeight(+x, +z) + .45, z:+z, swimming:true}); pitch = clamp(+p, -PITCH_LIMIT, PITCH_LIMIT); yaw = +w; }, // diving lane hook: test helper
     get logbook() {
-      return {notes:[...world.notes], nextNote:nextNote(world.notes), achievements:[...world.achievements], totals:{notes:12, achievements:15}, bottleAfloat:world.items.some(i => i.type === 'bottle')};
+      return {notes:[...world.notes], nextNote:nextNote(world.notes), achievements:[...world.achievements], totals:{notes:12, achievements:ACHIEVEMENTS.length}, bottleAfloat:world.items.some(i => i.type === 'bottle')};
     },
     get progression() { return prog?.debug ?? null; }, // [progression-hook]
     get targets() {

@@ -222,3 +222,56 @@ test('logbook and audio: firework1 and the three new sounds', () => {
   assert.ok(cleanProgress({ ...w, achievements: ['firework1', 'fish1'] }).achievements.includes('firework1'));
   for (const e of ['whistle', 'pop', 'crackle']) assert.ok(EVENTS.includes(e), e);
 });
+
+test('review: guest in reach launches; guest far or on a wrong tile does not', () => {
+  const { ctx, log, mod } = makeCtx({ other: { x: 0.5, y: 1.8, z: 0.5 } });
+  assert.equal(mod.action({ kind: 'fw.light', x: 1, z: 0 }, 'guest'), true); // a palm
+  assert.equal(log.emit.length, 0);
+  ctx.other = null;
+  assert.equal(mod.action({ kind: 'fw.light', x: 0, z: 0 }, 'guest'), true); // guest pose unknown
+  assert.equal(log.emit.length, 0);
+  ctx.other = { x: 0.5, y: 1.8, z: 0.5 };
+  assert.equal(mod.action({ kind: 'fw.light', x: 0, z: 0 }, 'guest'), true);
+  assert.equal(mod.action({ kind: 'fw.light', x: 0, z: 0 }, 'host'), true); // both at once: once only
+  assert.equal(log.emit.length, 1); assert.equal(ctx.world.decor.length, 1);
+  assert.ok(!EVENTS.includes('none'), "'none' is not a sound, so old peers play nothing");
+  mod.dispose();
+});
+
+test('review: a burst during a fading flash rises from the current level (no flicker to 0)', () => {
+  const { ctx, mod } = makeCtx({ night: () => 1 });
+  const step = () => { ctx.hemi.intensity = 0.5; mod.update(1 / 60); return ctx.hemi.intensity - 0.5; };
+  mod.debug.launch(0, 0, 0);
+  for (let i = 0; i < 36; i++) step(); // 0.6 s
+  mod.debug.launch(1, 0, 0); // pops 0.6 s after the first peak, while that flash is still fading
+  const fs = []; for (let i = 0; i < 60 * 5; i++) fs.push(step());
+  const on = fs.findIndex(f => f > 0), off = fs.findIndex((f, i) => i > on && f <= 0);
+  assert.ok(on >= 0 && off > on);
+  assert.equal(mod.debug.flash().peaks, 2);
+  assert.ok(fs.slice(off).every(f => f <= 0), 'the flash went dark and then lit again (flicker)');
+  mod.dispose();
+});
+
+test('review: dispose after day/night restored hemi leaves its values alone', () => {
+  const { ctx, mod } = makeCtx({ night: () => 1 });
+  mod.debug.launch(0, 0, 0);
+  for (let i = 0; i < 93; i++) { ctx.hemi.intensity = 0.5; ctx.hemi.color.set('#203050'); mod.update(1 / 30); } // ~0.2 s after the pop
+  assert.ok(mod.debug.flash().owed > 0);
+  ctx.hemi.intensity = 1; ctx.hemi.color.set('#bfe6ff'); // day/night disposes first and restores the start-up values
+  const col = ctx.hemi.color.clone();
+  mod.dispose();
+  assert.equal(ctx.hemi.intensity, 1); assert.ok(ctx.hemi.color.equals(col));
+  // when nothing rewrote it, dispose undoes exactly its own offset
+  const b = makeCtx({ night: () => 1 });
+  b.mod.debug.launch(0, 0, 0);
+  for (let i = 0; i < 93; i++) { b.ctx.hemi.intensity = 0.5; b.ctx.hemi.color.set('#203050'); b.mod.update(1 / 30); }
+  assert.ok(b.ctx.hemi.intensity > 0.5);
+  b.mod.dispose();
+  assert.ok(Math.abs(b.ctx.hemi.intensity - 0.5) < 1e-9); assert.equal(b.ctx.hemi.color.getHexString(), '203050');
+});
+
+test('review: game.js logbook totals come from ACHIEVEMENTS', () => {
+  const src = readFileSync(fileURLToPath(new URL('game.js', base)), 'utf8');
+  assert.match(src, /achievements:ACHIEVEMENTS\.length/);
+  assert.match(src, /import \{[^}]*\bACHIEVEMENTS\b[^}]*\} from '\.\/logbook\.js/);
+});
