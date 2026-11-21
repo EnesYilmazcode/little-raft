@@ -42,7 +42,7 @@ const CSS = `
 #lrFaint[popover]:not(:popover-open){display:none}
 #lrFaint.on{opacity:1;animation:lvFaintIn .5s ease}
 @keyframes lvFaintIn{from{opacity:0}}
-#lrFaint div{font:700 30px/1.2 ${FONT};color:#f6ecd6;letter-spacing:.04em;text-shadow:0 2px 6px #000}
+#lrFaint div{max-width:calc(100vw - 32px);text-align:center;font:700 30px/1.2 ${FONT};color:#f6ecd6;letter-spacing:.04em;text-shadow:0 2px 6px #000}
 #lrFaint small{display:block;margin-top:8px;font:500 14px/1.3 ${FONT};letter-spacing:0;opacity:.8;text-align:center}
 @media(max-width:760px){#lrVitals{bottom:108px;width:132px;padding:5px 7px 6px 5px;gap:4px}#lrVitals .lv-row{grid-template-columns:14px 1fr 22px;gap:4px}
   #lrVitals svg{width:14px;height:14px}#lrVitals .lv-track{height:7px}}
