@@ -1,6 +1,7 @@
 // Remote co-op player avatar: the brother's body, driven by interpolated pose snapshots.
 // createRemoteAvatar(T, {color, name}) -> { group, update(dt, s, time, camera?), handWorld(out), setName(str), dispose() }
-//   s = {x,y,z,yaw,pitch,speed,swimming,grounded,held,charge,reeling,hookOut,stage,emote:{kind,age}|null,throwAge}
+//   s = {x,y,z,yaw,pitch,speed,swimming,grounded,held,charge,reeling,hookOut,stage,emote:{kind,age}|null,throwAge,riding}
+//   riding ([zipline]): hanging from a glide line by both hands, legs dangling
 //   s.y is the FEET height (physics eye y - EYE_OFFSET). Avatar faces yaw + PI like the local player model.
 // Built on createAvatar (./avatar.js). Held items are tiny own low-poly models (~40-250 tris each; the
 // first-person hook/hammer/rod factories are 6-13k tris, too heavy for a third-person prop), built lazily
@@ -91,6 +92,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother' } = 
     // [instruments] held instruments (own small props)
     drum(g, K) { part(g, Cyl(0.08, 0.08, 0.1, 10), K.wood, 0, 0.08); part(g, Cyl(0.082, 0.082, 0.01, 10), M('#7da35a'), 0, 0.135); return [0, 0.14, 0]; },
     pipes(g) { const m = M('#a5d4d8', { roughness: 0.6 }); [0.16, 0.14, 0.12, 0.1].forEach((h, i) => part(g, Box(0.015, h, 0.015), m, (i - 1.5) * 0.022, h / 2)); return [0, 0.16, 0]; },
+    glidehandle(g, K) { part(g, Cyl(0.012, 0.012, 0.16, 5), K.wood, 0, 0.02, 0, 0, 0, Math.PI / 2); part(g, Cyl(0.006, 0.006, 0.1, 4), K.rope, 0, 0.08); part(g, new T.TorusGeometry(0.025, 0.008, 3, 8), K.woodDark, 0, 0.14); return [0, 0.14, 0]; }, // [zipline] T-bar, rope stem, wheel tip
     bells(g, K) { part(g, Box(0.16, 0.02, 0.1), K.wood, 0, 0.06); const m = M('#c9b26a', { metalness: 0.7, roughness: 0.35 }); for (let i = 0; i < 3; i++) part(g, Box(0.02, 0.008, 0.09 - i * 0.015), m, (i - 1) * 0.045, 0.074); return [0, 0.08, 0]; },
   };
   // Holder sits in the right hand; carry items sit upright-ish, tools point forward.
@@ -156,7 +158,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother' } = 
     const speed = s.swimming ? Math.min(s.speed || 0, 3) : (s.speed || 0);
     const pitch = clamp(s.pitch || 0, -1.3, 1.3);
     A.swim = damp(A.swim, s.swimming ? 1 : 0, 5, dt);
-    const sw = A.swim, air = !s.swimming && s.grounded === false ? 1 : 0;
+    const sw = A.swim, air = s.riding || (!s.swimming && s.grounded === false) ? 1 : 0; // [zipline] riding counts as air
 
     // walk cycle: stride phase advances with ground speed, amplitude grows with speed
     const amp = clamp(speed / 3.5, 0, 1) * (1 - sw) * (1 - air);
@@ -190,6 +192,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother' } = 
       raX = -1.05 + Math.sin(crank) * 0.28; raZ = -0.12 - Math.cos(crank) * 0.12;
       laX = -1.05 - Math.sin(crank) * 0.28; laZ = 0.2 + Math.cos(crank) * 0.1;
     }
+    if (s.riding) { raX = laX = -2.75; raZ = -0.12; laZ = 0.12; lL = 0.15 * Math.sin(time * 2); rL = -0.15 * Math.sin(time * 2); } // [zipline] both hands up on the handle, legs dangle
     // charge: right arm cocks up and back over the shoulder, left arm reaches forward for balance
     const c = smooth(s.charge || 0);
     raX = lerp(raX, PULL_BACK, c); raZ = lerp(raZ, -0.3, c); laX = lerp(laX, -0.9, c);

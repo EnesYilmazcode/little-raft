@@ -677,5 +677,5 @@ export function createDayNight(ctx) {
     },
   };
 
-  return { name: 'daynight', update, serialize, load, dispose, debug, get wind() { return W.wind; }, get rain() { return W.rain; } };
+  return { name: 'daynight', update, serialize, load, dispose, debug, get wind() { return W.wind; }, get rain() { return W.rain; }, get night() { return L.nightFactor; } }; // [fireworks] night
 }

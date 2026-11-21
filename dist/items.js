@@ -157,6 +157,8 @@ const LIST = [
     tip: 'Breathy little tubes tied in a row. Look up for high notes, down for low ones.' }),
   item('bells', 'Bell Bars', 'tool', { iconTint: '#c9b26a', stack: 1, recipe: hand({ wood: 2, scrap: 3, nail: 2 }), unlock: research('nail'),
     tip: 'Scrap-metal bars on a little frame. They ring bright and fade out softly.' }),
+  item('glidehandle', 'Glide Handle', 'tool', { iconTint: '#b0805a', stack: 1, recipe: hand({ wood: 2, rope: 2, scrap: 2 }), unlock: discover('nail'), // [zipline] tool:false, no durability
+    tip: 'A wooden T-bar with a wheel. E links two posts or hooks you onto a line. Space lets go.' }),
 
   // ----- food -----
   item('cookedfish', 'Grilled Fish', 'food', { iconTint: '#e0a060', stack: 10,
@@ -183,6 +185,10 @@ const LIST = [
   item('candle', 'Beeswax Candle', 'decor', { placeable: true, iconTint: '#ffd27a',
     recipe: hand({ wax: 2, rope: 1 }), unlock: discover('wax'),
     tip: 'A little jar candle that glows warmly at night.' }),
+  // [fireworks] sky rocket (model in dist/fireworks-model.js, logic in dist/fireworks.js)
+  item('skyrocket', 'Sky Rocket', 'decor', { placeable: true, stack: 20, iconTint: '#e9a08c',
+    recipe: hand({ plastic: 2, leaf: 1, scrap: 1 }, 3), unlock: discover('plastic', 'scrap'),
+    tip: 'A paper-and-plastic rocket on a little stand. Press E to light it, best after dark!' }),
   item('scarecrow', 'Scarecrow', 'decor', { placeable: true, iconTint: '#c9a46a', // [scarecrow] model in dist/scarecrow-model.js
     recipe: hand({ wood: 3, leaf: 4, rope: 2, plastic: 1 }), unlock: discover('rope'),
     tip: 'A friendly driftwood scarecrow. Gulls leave nearby planters alone and sit on its hat instead.' }),
@@ -198,6 +204,13 @@ const LIST = [
   item('net', 'Collection Net', 'build', { icon: 'icon-net', placeholder: false, placeable: true,
     recipe: hand({ wood: 3, rope: 3, nail: 2 }), unlock: discover('nail'),
     tip: 'Place it near the edge and it scoops up passing debris (even barrels!) for you.' }),
+  // [zipline] glide posts (models in dist/zipline-model.js, logic in dist/zipline.js)
+  item('glidepost', 'Glide Post', 'decor', { placeable: true, iconTint: '#a57a4c',
+    recipe: hand({ wood: 6, rope: 3, nail: 2 }), unlock: discover('nail'),
+    tip: 'A tall mast with a little wheel on top. String a glide line to another post.' }),
+  item('glidestep', 'Low Glide Post', 'decor', { placeable: true, iconTint: '#8b6a43',
+    recipe: hand({ wood: 4, rope: 2, nail: 1 }), unlock: discover('nail'),
+    tip: 'A shorter glide post. Run a line down to it from a tall one for a speedy glide.' }),
 
   // ----- stations -----
   item('researchtable', 'Research Table', 'station', { iconTint: '#c69860', stack: 5, placeable: true,
@@ -223,6 +236,8 @@ export const BLOCK_RADII = deepFreeze({
   smelter: 0.5, researchtable: 0.55, grill: 0.45,
   flowerbox: 0.3, beehive: 0.35, candle: 0.1, // [bees]
   scarecrow: 0.25, // [scarecrow]
+  skyrocket: 0.1, // [fireworks]
+  glidepost: 0.15, glidestep: 0.15, // [zipline]
 });
 
 /** Fuel units per item put into a station. Plastic is never burned (friendly seas). */

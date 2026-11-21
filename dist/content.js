@@ -15,6 +15,7 @@
 //   prompt(aim)               -> context prompt HTML (escaped by the module) or null
 //   craftLocked(recipe, actor)-> reason string if the recipe is locked, else null
 //   decorModel(type)          -> THREE.Object3D for a CONTENT_DECOR type, or null
+//   effect(e)                 a host/peer effect message; return true if consumed (game.js then skips its notice/sound) [fireworks]
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   dispose()
 //
@@ -28,8 +29,10 @@ import { createStorage } from './storage-research.js?build=v3-survival-ae77fa84a
 import { createDayNight } from './daynight.js?build=v3-survival-ae77fa84ac2b';
 import { createBees } from './bees.js?build=v3-survival-ae77fa84ac2b'; // [bees]
 import { createScarecrow } from './scarecrow.js?build=v3-survival-ae77fa84ac2b'; // [scarecrow]
+import { createFireworks } from './fireworks.js?build=v3-survival-ae77fa84ac2b'; // [fireworks]
+import { createZipline } from './zipline.js?build=v3-survival-ae77fa84ac2b'; // [zipline]
 
-const FEATURES = [createIslands, createWildlife, createScarecrow, createStorage, createDayNight, createBees]; // [bees] + createBees, [scarecrow] + createScarecrow
+const FEATURES = [createIslands, createWildlife, createScarecrow, createStorage, createDayNight, createBees, createFireworks, createZipline]; // [bees] + createBees, [scarecrow] + createScarecrow, [fireworks] + createFireworks (after daynight), [zipline] + createZipline
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -58,11 +61,14 @@ export function createContent(ctx, features = FEATURES) {
     action(a, actor, bag) { for (const m of mods) if (call(m, 'action', a, actor, bag)) return true; return false; },
     interact: aim => !!first('interact', aim),
     prompt: aim => first('prompt', aim),
+    ride: (dt, p, inp) => !!first('ride', dt, p, inp), riding: () => !!first('riding'), // [zipline] content hook: glide line ride (game.js movePlayer)
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
     decorModel: type => first('decorModel', type),
     pecked() { const m = peer('scarecrow'); return m?.pecked ?? null; }, // [scarecrow] palm keys paused by a pecking gull (host)
     palmPrompt(aim, base) { const m = peer('scarecrow'); try { return m?.palmPrompt?.(aim, base) ?? null; } catch (e) { console.error('content scarecrow.palmPrompt failed', e); off(m); return null; } }, // [scarecrow]
     rain() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }, // rain-sprinkler: live 0..1 rain
+    night() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const n = m?.night; return Number.isFinite(n) ? n : 0; }, // [fireworks]
+    effect(e) { for (const m of mods) if (call(m, 'effect', e)) return true; return false; }, // [fireworks]
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };
 }

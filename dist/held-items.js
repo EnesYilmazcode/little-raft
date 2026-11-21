@@ -14,6 +14,7 @@ import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { buildInstrument } from './instrument-models.js?build=v3-survival-ae77fa84ac2b'; // [instruments]
+import { createHandle } from './zipline-model.js?build=v3-survival-ae77fa84ac2b'; // [zipline]
 
 export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 // Items you aim at the raft to place: the free hand points at the spot while one of these is held.
@@ -39,6 +40,7 @@ export const HOLD = Object.freeze({
   cup:        { hand: 'right', pose: 'grip', ry: 0.3 },
   water:      { hand: 'right', pose: 'grip', ry: 0.3 },
   drum: { hand: 'left', pose: 'grip', rx: -0.7 }, pipes: { hand: 'right', pose: 'grip', rx: 0.2 }, bells: { hand: 'left', pose: 'grip', rx: -1.25 }, // [instruments]
+  glidehandle: { hand: 'right', pose: 'grip', rx: -0.2, rz: 1.57 }, // [zipline] bar sideways in the fist
   ...Object.fromEntries(PLACEABLE_KINDS.filter((k) => k !== 'hammer').map((k) => [k, { hand: 'left', pose: SEED_KINDS.includes(k) ? 'grip' : 'point' }])),
 });
 // Unknown kinds (other lanes may add items): carried on the left fist if placeable, else gripped.
@@ -46,7 +48,8 @@ export const holdFor = (kind) => HOLD[kind] || (isPlaceable(kind) ? HOLD.crate :
 
 const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.15, fish: 0.3, sail: 0.22, palm: 0.2, lantern: 0.2, net: 0.2, bench: 0.16, crate: 0.13,
   planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11,
-  drum: 0.24, pipes: 0.2, bells: 0.26 }; // [instruments]
+  drum: 0.24, pipes: 0.2, bells: 0.26, // [instruments]
+  glidehandle: 0.3 }; // [zipline]
 
 function fit(T, model, maxDim, gripFn) {
   const root = new T.Group();
@@ -186,6 +189,8 @@ export function buildItemModel(T, kind, factory = null) {
     root = fit(T, buildCup(T, kind === 'water'), SIZE[kind], () => new T.Vector3(0, 0, 0));
   } else if (kind === 'seed' || kind === 'seeds') {
     root = fit(T, buildSeeds(T), SIZE[kind], (s) => new T.Vector3(0, -s.y / 2, 0));
+  } else if (kind === 'glidehandle') { // [zipline]
+    root = fit(T, createHandle(T), SIZE.glidehandle, (s) => new T.Vector3(0, -s.y * 0.38, 0)); // grip = the bar
   } else if (kind === 'planter') {
     root = fit(T, createCraft(T, 'palm'), SIZE.planter, (s) => new T.Vector3(0, -s.y / 2, 0));
   }
