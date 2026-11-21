@@ -1690,12 +1690,20 @@ export function mount(transfer = null) {
     v.project(camera); const r = canvas.getBoundingClientRect();
     return {x:r.left + (v.x + 1) / 2 * r.width, y:r.top + (1 - v.y) / 2 * r.height, visible:inFront && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1, inFront};
   }
+  // Scene object counts for renderInfo: a full traverse, so refreshed at most every 0.5 s (perf probes read renderInfo every frame).
+  let sceneCountAt = -Infinity, sceneCounted = null, sceneCount = null;
+  function sceneCounts() {
+    const now = performance.now();
+    if (sceneCount && sceneCounted === scene && now - sceneCountAt < 500) return {...sceneCount};
+    const c = {meshes:0, visible:0, lights:0, shadowCasters:0};
+    scene?.traverse(o => { if (o.isMesh || o.isLine || o.isPoints) { c.meshes++; if (o.visible) c.visible++; if (o.castShadow) c.shadowCasters++; } if (o.isLight) c.lights++; });
+    sceneCount = c; sceneCounted = scene; sceneCountAt = now; return {...c};
+  }
   const worldPos = o => { if (!o) return null; const p = o.getWorldPosition(new T.Vector3()); return {x:p.x, y:p.y, z:p.z, visible:o.visible}; };
   const debugApi = Object.freeze({
     get renderInfo() {
       if (!renderer) return null;
-      const i = renderer.info, c = {meshes:0, visible:0, lights:0, shadowCasters:0};
-      scene?.traverse(o => { if (o.isMesh || o.isLine || o.isPoints) { c.meshes++; if (o.visible) c.visible++; if (o.castShadow) c.shadowCasters++; } if (o.isLight) c.lights++; });
+      const i = renderer.info, c = sceneCounts();
       return {calls:i.render.calls, triangles:i.render.triangles, lines:i.render.lines, points:i.render.points, geometries:i.memory.geometries, textures:i.memory.textures, programs:i.programs?.length ?? null, pixelRatio:renderer.getPixelRatio(), shadows:renderer.shadowMap.enabled && !!sun?.castShadow, quality:quality ? {level:quality.level, levels:quality.levels.length, preset:quality.info.preset, pixelRatio:quality.info.pixelRatio, shadowMapSize:quality.info.shadowMapSize, ema:quality.info.ema} : null, ...c};
     },
     audio:sfx, // volume buses (setBus/getBus master|effects|ambience|music) and setMusic for the menus
