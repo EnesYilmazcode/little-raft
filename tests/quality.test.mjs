@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
-const { createQuality, buildLevels, setShadows, QUALITY_CONSTANTS: C } = await import(new URL('quality.js', base));
+const { createQuality, buildLevels, setShadows, startLevel, classifyGpu, probeGpu, wantMsaa, QUALITY_CONSTANTS: C } = await import(new URL('quality.js', base));
 
 function fakes() {
   const renderer = { pr: null, calls: 0, shadowMap: { autoUpdate: true, needsUpdate: false }, setPixelRatio(v) { this.pr = v; this.calls++; } };
@@ -167,4 +167,49 @@ test('setShadows toggles the pass and intensity, never castShadow; needsUpdate o
   setShadows(sm, sun, true);
   assert.deepEqual([sm.autoUpdate, sm.needsUpdate, sun.castShadow, sun.shadow.intensity], [true, true, true, 1]);
   setShadows(null, null, false); // tolerates missing parts
+});
+
+test('GPU tier: software / fallback renderers are weak, masked or real GPUs are normal', () => {
+  for (const n of ['ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)', 'llvmpipe (LLVM 15.0.7, 256 bits)',
+    'ANGLE (Microsoft, Microsoft Basic Render Driver Direct3D11 vs_5_0 ps_5_0, D3D11)', 'Google SwiftShader', 'Software Rasterizer']) assert.equal(classifyGpu(n), 'weak', n);
+  for (const n of ['ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)', 'Apple M1', 'Mali-G78', 'WebKit WebGL', '', null, undefined]) assert.equal(classifyGpu(n), 'normal', String(n));
+});
+
+test('MSAA: off on the weak tier, on for real GPUs below dpr 1.5', () => {
+  assert.equal(wantMsaa('normal', 1), true); assert.equal(wantMsaa('normal', 1.25), true);
+  assert.equal(wantMsaa('normal', 2), false); assert.equal(wantMsaa('weak', 1), false); assert.equal(wantMsaa('weak', 2), false);
+});
+
+test('probeGpu reads the unmasked renderer from a throwaway context and releases it', () => {
+  let lost = 0;
+  const gl = { RENDERER: 1, getExtension: (n) => n === 'WEBGL_debug_renderer_info' ? { UNMASKED_RENDERER_WEBGL: 2 } : n === 'WEBGL_lose_context' ? { loseContext: () => lost++ } : null,
+    getParameter: (k) => k === 2 ? 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device))' : 'WebKit WebGL' };
+  const doc = { createElement: () => ({ getContext: () => gl }) };
+  assert.deepEqual(probeGpu(doc), { tier: 'weak', renderer: 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device))' }); assert.equal(lost, 1);
+  assert.deepEqual(probeGpu({ createElement: () => ({ getContext: () => null }) }), { tier: 'normal', renderer: null });
+  assert.deepEqual(probeGpu({ createElement: () => { throw new Error('no dom'); } }), { tier: 'normal', renderer: null });
+  assert.deepEqual(probeGpu(null), { tier: 'normal', renderer: null });
+});
+
+test('weak tier: extra pixel ratio 0.7 floor after shadows off, still capped by the preset; normal tier unchanged', () => {
+  assert.deepEqual(buildLevels('medium', 1, 'weak').map((l) => [l.pixelRatio, l.shadowMapSize]), [[1, 1024], [1, 512], [0.85, 512], [0.85, 0], [0.7, 0]]);
+  assert.deepEqual(buildLevels('low', 2, 'weak').map((l) => [l.pixelRatio, l.shadows]), [[1, false], [0.85, false], [0.7, false]]);
+  assert.deepEqual(buildLevels('high', 2, 'normal'), buildLevels('high', 2));
+  assert.ok(buildLevels('high', 2).every((l) => l.pixelRatio >= 0.85), 'no 0.7 on normal GPUs');
+  for (const p of ['low', 'medium', 'high']) for (const l of buildLevels(p, 3, 'weak')) assert.ok(l.pixelRatio <= { low: 1, medium: 1.3, high: 1.5 }[p]);
+});
+
+test('weak tier starts one level down (small shadow map) and resets / re-caps there, but can still step up', () => {
+  assert.equal(startLevel(buildLevels('high', 2, 'weak'), 'weak'), 3);
+  assert.equal(startLevel(buildLevels('medium', 1, 'weak'), 'weak'), 1);
+  assert.equal(startLevel(buildLevels('low', 1, 'weak'), 'weak'), 0, 'low has no shadow levels: start at its top');
+  assert.equal(startLevel(buildLevels('high', 2), 'normal'), 0);
+  const { q, renderer, sun } = make({ dpr: 1, preset: 'medium', tier: 'weak' });
+  assert.equal(q.level, 1); assert.equal(q.tier, 'weak'); assert.equal(q.info.tier, 'weak');
+  assert.equal(renderer.pr, 1); assert.equal(sun.shadow.mapSize.x, 512); assert.equal(renderer.shadowMap.autoUpdate, true);
+  run(q, 40, 3 * 5000 + 2100); assert.equal(q.level, 4); assert.equal(renderer.pr, 0.7); assert.equal(renderer.shadowMap.autoUpdate, false);
+  run(q, 40, 20000); assert.equal(q.level, 4, 'floor');
+  q.reset({ full: true }); assert.equal(q.level, 1);
+  q.setCap('high'); assert.equal(q.level, 1);
+  run(q, 10, 13100); assert.equal(q.level, 0, 'fast weak device may still climb to the top'); assert.equal(sun.shadow.mapSize.x, 1024);
 });

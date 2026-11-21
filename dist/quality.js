@@ -1,5 +1,6 @@
 // Little Raft adaptive quality. Pure ES module: nothing happens on import, no clock reads.
-// createQuality({renderer, shadowMap, sun, dpr, preset, onChange}) -> { tick(ms), setCap(preset), reset(opts), level, levels, describe() }
+// createQuality({renderer, shadowMap, sun, dpr, preset, tier, onChange}) -> { tick(ms), setCap(preset), reset(opts), level, levels, describe() }
+// probeGpu(doc) / classifyGpu(name) pick the device tier ('weak' = software or very weak GL) before the renderer exists.
 // Driven only by the frame times passed to tick(); time is the sum of accepted samples.
 
 export const PRESETS = Object.freeze({
@@ -22,7 +23,36 @@ export const QUALITY_CONSTANTS = Object.freeze({
   REVERT_MS: 5000,        // a step-down within this long after the post-up cooldown ends counts as a revert
   SHADOW_FULL: 1024,
   SHADOW_LOW: 512,
+  WEAK_FLOOR_PR: 0.7,     // weak tier only: one more pixel-ratio step below "shadows off"
 });
+
+// Software rasterizers and fallback drivers: fill-bound, so no MSAA and a deeper ladder.
+const WEAK_GPU = /swiftshader|llvmpipe|softpipe|software|microsoft basic render|basic render driver/i;
+
+/** 'weak' for software / fallback GL renderer strings, else 'normal'. Unknown (masked) names count as normal. */
+export function classifyGpu(name) {
+  return typeof name === 'string' && WEAK_GPU.test(name) ? 'weak' : 'normal';
+}
+
+/**
+ * Read the GL renderer string from a throwaway context (the game canvas's own context attributes, antialias
+ * included, are fixed at creation, so this must run first). Returns {tier, renderer}.
+ */
+export function probeGpu(doc = globalThis.document) {
+  let name = null;
+  try {
+    const gl = doc?.createElement?.('canvas')?.getContext?.('webgl2') || null;
+    if (gl) {
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      name = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '') || null;
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
+    }
+  } catch { name = null; }
+  return { tier: classifyGpu(name), renderer: name };
+}
+
+/** MSAA only on real GPUs at low dpr (dense screens get their smoothing from pixels). */
+export const wantMsaa = (tier, dpr = 1) => tier !== 'weak' && dpr < 1.5;
 
 const C = QUALITY_CONSTANTS;
 
@@ -34,6 +64,7 @@ const LADDER = [
   { pixelRatio: 1.0, shadows: true, shadowMapSize: C.SHADOW_LOW },
   { pixelRatio: 0.85, shadows: true, shadowMapSize: C.SHADOW_LOW },
   { pixelRatio: 0.85, shadows: false, shadowMapSize: C.SHADOW_LOW },
+  { pixelRatio: C.WEAK_FLOOR_PR, shadows: false, shadowMapSize: C.SHADOW_LOW, weakOnly: true },
 ];
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -56,13 +87,14 @@ export function setShadows(shadowMap, sun, on) {
   }
 }
 
-/** Build the level list for a preset cap and device pixel ratio. Never exceeds the cap. */
-export function buildLevels(preset = 'medium', dpr = 1) {
+/** Build the level list for a preset cap, device pixel ratio and tier. Never exceeds the cap. */
+export function buildLevels(preset = 'medium', dpr = 1, tier = 'normal') {
   const cap = PRESETS[preset] || PRESETS.medium;
   const d = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
   const capPr = Math.min(d, cap.pixelRatio);
   const out = [];
   for (const step of LADDER) {
+    if (step.weakOnly && tier !== 'weak') continue;
     const pixelRatio = round(Math.min(capPr, step.pixelRatio ?? capPr));
     const shadows = cap.shadows && step.shadows;
     const shadowMapSize = shadows ? step.shadowMapSize : 0;
@@ -73,17 +105,24 @@ export function buildLevels(preset = 'medium', dpr = 1) {
   return Object.freeze(out);
 }
 
-export function createQuality({ renderer, shadowMap = renderer?.shadowMap, sun, dpr = globalThis.devicePixelRatio ?? 1, preset = 'medium', onChange } = {}) {
+/** Level to start (and fully reset) at: the top, or on the weak tier the first level with the small shadow map. */
+export function startLevel(levels, tier = 'normal') {
+  if (tier !== 'weak') return 0;
+  const i = levels.findIndex((l) => l.shadows && l.shadowMapSize < C.SHADOW_FULL);
+  return i < 0 ? 0 : i; // no shadow levels (low preset): already cheap, start at its top
+}
+
+export function createQuality({ renderer, shadowMap = renderer?.shadowMap, sun, dpr = globalThis.devicePixelRatio ?? 1, preset = 'medium', tier = 'normal', onChange } = {}) {
   let cap = PRESETS[preset] ? preset : 'medium';
-  let levels = buildLevels(cap, dpr);
-  let level = 0;
+  let levels = buildLevels(cap, dpr, tier);
+  let level = startLevel(levels, tier);
   let ema = null, time = 0, slowFor = 0, fastFor = 0;
   let lastChangeAt = -Infinity, lastUpAt = -Infinity;
   let upAfter = C.UP_AFTER_MS, reverts = [];
 
   function info(reason) {
     const l = levels[level];
-    return { reason, level, count: levels.length, preset: cap, pixelRatio: l.pixelRatio, shadows: l.shadows,
+    return { reason, level, count: levels.length, preset: cap, tier, pixelRatio: l.pixelRatio, shadows: l.shadows,
       shadowMapSize: l.shadowMapSize, ema: ema == null ? null : round(ema), upAfter };
   }
 
@@ -137,21 +176,22 @@ export function createQuality({ renderer, shadowMap = renderer?.shadowMap, sun, 
     return false;
   }
 
-  /** Clear measurements (use on resume / tab return). {full:true} also restores the top level and base up-wait. */
+  /** Clear measurements (use on resume / tab return). {full:true} also restores the start level and base up-wait. */
   function reset({ full = false } = {}) {
     ema = null; slowFor = 0; fastFor = 0;
     lastChangeAt = time; // restart cooldown so the first post-pause frames can't trigger a change
     if (full) {
       upAfter = C.UP_AFTER_MS; lastUpAt = -Infinity; reverts = [];
-      if (level !== 0) { level = 0; apply('reset'); }
+      const top = startLevel(levels, tier);
+      if (level !== top) { level = top; apply('reset'); }
     }
   }
 
-  /** Switch the user's preset cap; restarts at that preset's top level. */
+  /** Switch the user's preset cap; restarts at that preset's start level. */
   function setCap(next) {
     cap = PRESETS[next] ? next : 'medium';
-    levels = buildLevels(cap, dpr);
-    level = 0;
+    levels = buildLevels(cap, dpr, tier);
+    level = startLevel(levels, tier);
     ema = null; slowFor = 0; fastFor = 0;
     lastChangeAt = time; lastUpAt = -Infinity;
     upAfter = C.UP_AFTER_MS; reverts = [];
@@ -172,6 +212,7 @@ export function createQuality({ renderer, shadowMap = renderer?.shadowMap, sun, 
     get levels() { return levels; },
     get ema() { return ema; },
     get upAfter() { return upAfter; },
+    get tier() { return tier; },
     get info() { return info('query'); },
   };
 }
