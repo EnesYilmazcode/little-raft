@@ -1,240 +1,405 @@
 # Islands
 
 Small islands drift past the raft every few minutes. You swim over, walk on the sand, gather
-palm leaves, sand, stones and seeds by holding interact, and swim back before the island drifts
-off. Shallow water around each island shows a glimpse of seafloor.
+from palms, bushes, rocks and sand patches by tapping E, and swim back before the island drifts
+off. Nothing hurts you, and nobody gets stranded.
+
+This revision targets the content registry (`dist/content.js`, `docs/features/content-hooks.md`).
+Everything lives in `dist/islands.js` (plus an optional `dist/islands-layout.js` for pure logic)
+and needs **no game.js edits**.
+
+## As built
+
+Built on `claude/raft-content-islands`. No shared files were touched: game.js, content.js and
+inventory-state.js are unchanged, and no new hook was needed.
+
+| File | What it holds |
+| --- | --- |
+| `dist/islands.js` | `createIslands(ctx)`: timeline, placement, stand on sand, E to gather, save/sync, debug. Re-exports the pure helpers. |
+| `dist/islands-layout.js` | Pure logic with no THREE: `layoutFor`, `pathAt`, `clean`, `lootFor`, `groundHeight`, `nextDelay`, `dockOffset`, `applyGather`, `standOnSand`. |
+| `dist/islands-models.js` | Cached geometries and materials, built once per game. |
+| `tests/islands.test.mjs` | 31 tests: layout, timeline, save validation, loot and host rules, stand on sand with the real `PlayerPhysics` and the real ocean waves, departure, guest clock slew, the ray pick, and a stub-ctx run of the module. |
+
+![Island approaching the raft](../cloud/shots/content/islands-approach.png)
+![Standing on the beach, aiming at a palm](../cloud/shots/content/islands-gather-prompt.png)
+![After three gathers: wood, leaves and a seed in the bag, and the palm turns yellow](../cloud/shots/content/islands-after-gather.png)
+
+**What changed from the plan below, and why:**
+
+- **The dome profile is flatter.** The planned `TOP - (TOP+DROP)·u²` left only about 2.5 m of
+  walkable sand. Built: `TOP - FALL·u⁴`, with `TOP = 0.9` and `FALL = 1.8`, times a gentle
+  shoreline wobble `shape(θ)`, rotated per seed. Low dunes (`heightU`, up to about 0.15 m, faded
+  out by `(1-u²)³` before the shore) break up the flat top; the dome mesh and the physics share
+  the same function, so feet stay on the sand you see. The shore is at `u ≈ 0.84`, the walkable top
+  reaches about `0.69 R`, R is 6 to 9 m, and the mesh ends at `u = 1.15`. All nodes sit within
+  `0.7 R`, on dry sand.
+- **Shallow water is a lagoon overlay, not a sunken disc.** The ocean shader is opaque, so nothing
+  under it shows. The lagoon is a ring mesh that reuses the ocean's own vertex shader (shared
+  `uTime`), so it rides the same waves 10 cm above them (at 5 cm the coarser ocean grid poked through near the camera as a grey band). It has a small fragment shader: wet sand
+  near the shore fades to turquoise and then teal, the alpha fades out by about 2.4 R, and there is
+  a wobbling foam line plus foam rings rolling in. It shares `uSky` and the fade uniforms with the
+  ocean, so it fogs out the same way. If the ocean has no `material.vertexShader` (as in tests), a
+  flat fallback shader is used.
+- **Wading.** In the shallows, a swimmer whose feet would sink into the sand is lifted to stand on it
+  while still swimming. The eye rises smoothly as you swim ashore, with no 1.4 m pop, and walking
+  off the beach eases back into swimming.
+- **Solid trunks and rocks.** `afterMove` pushes the player out of palm trunks and rocks, using
+  circles scaled by node size.
+- **Riding along.** While you stand on the sand of an approaching island, `afterMove` adds the
+  island's motion since the last frame. A departing island does not carry you: it slides out from
+  under you near the dock spot and you are left swimming a short way from the raft (it used to
+  carry players 50 m out to sea). There is no one-frame rider lag: game.js sets the camera between
+  `afterMove` and `update`, so `afterMove` advances the clock (once per frame, `update` skips it
+  then) and places the island before carrying the player.
+- **Waiting and the warning.** While someone is within `R + 6` m, the island holds with 31 s left
+  (up to the 600 s cap). The warning "The island is starting to drift away" goes to everyone
+  (`emit(..., 'all')`) once, when the 30 s countdown really starts. On spawn everyone also gets
+  "An island is drifting this way. Swim over and take a look!".
+- **Placement.** `off` = raft x-edge + gap (10 to 13 m, seeded) + shore radius, on the side where the
+  raft extends less (ties use the seed's parity). `clean` clamps `off` to 8..60 instead of 8..38,
+  so a wide raft cannot pull the island on top of itself. The swim from the raft edge to the shore
+  is 10 to 13 m.
+- **Rendering: 8 draw calls.** Trunk and fronds are one palm geometry, since the fronds sit at
+  the trunk top in the same local frame. Coconuts are a separate small InstancedMesh, and a spent
+  palm swaps to a third one (straw-yellow `#c9b25a` fronds drooped about 18° more, no coconuts),
+  so a drained palm reads clearly from the raft. Fronds are two-sided by duplicating
+  triangles with reversed winding and upward normals, not with `DoubleSide`. That way the
+  undersides are lit like leaves instead of going dark.
+- **Prompts** show uses left, e.g. `E Gather palm: wood and leaves (2 left)`. They are prebuilt per
+  kind and count. The aimed node gets a slight highlight (an instance colour, written only when
+  the aim changes).
+- **Feedback.** A gather makes the node pop for 0.3 s (one instance matrix per frame). Bushes and
+  rocks shrink with each gather (rocks to no less than half size), and sand mounds flatten. A
+  spent node stops prompting: palms swap to the straw model, rocks go a darker grey, bushes and
+  sand turn dry yellow.
+- **Rising and sinking.** The vegetation meshes scale with `1 - sink/SINK`, so palm crowns never
+  stick out of open sea while the island rises at the start or sinks at the end.
+- **Night.** The lagoon shares `uShallow`, `uDeep`, `uSunColor` and `uFoam` with the ocean and
+  scales its own colours by the ratio to their day values (captured when the module starts, before
+  day/night touches them). When day/night darkens the sea, the lagoon dims with it instead of
+  glowing. Checked with `daynight.setPhase(0.85)`.
+- **Shoreline look.** The foam line is thinner and broken up along the shore; the wet sand at the
+  edge is warmer and darker; the per-seed sand tint varies a few percent.
+
+**Review fixes, round 2.**
+
+- **Shoreline hysteresis.** Stepping onto sand still needs it 0.25 m above the local wave
+  (`WALK_MARGIN`), but once you stand you stay until a wave covers the sand by 0.1 m
+  (`STAY_MARGIN`). While standing in that band, the feet are held just clear of the wave
+  (`WATER_ENTER + 0.03`, at most a few cm above the sand), so `PlayerPhysics` never sees wet feet
+  and never beeps. Standing at `u = 0.75` for 20 s with the real ocean, or walking the beach,
+  gives 0 splashes and 0 swim flips (tested). Walking out into the sea gives exactly one splash.
+- **Guest clock.** A `'net'` load eases the guest clock toward the host's at 4/s instead of
+  snapping, unless it is more than 1 s off or the island changed. Saves and restores still snap.
+- **Guest reach.** The host checks the guest against a pose up to ~0.12 s old, so the guest gets
+  `GUEST_SLACK = 1.0` m extra reach. A gather that is out of reach answers "Get a little closer";
+  a cooldown hit is ignored quietly. The local cooldown and the pop start only when the action was
+  really sent (`ctx.action` returns `false` when a guest is not connected).
+- **Pick.** Palms are picked by a trunk capsule (r 0.25 m, about 10 cm of slack round the bark, two segments along the bend) plus a
+  small sphere round the coconuts, not a big crown sphere, so the sky between fronds, the raft or
+  a sand patch next to a palm no longer says "Gather palm". Candidates are ranked by angle off the
+  ray, and sand, bush and rock win over a palm when both are hit.
+- `serialize()` returns a copy of `isl` and `used` (two cached objects, rewritten each call).
+  `clean` clamps `clock` to 1e9. The `inventory-state.js` and `player-physics.js` imports carry the
+  same `?build=` stamp as the other dist modules.
+
+**Rendering budget (as built).** The island adds 8 draw calls: the dome, the lagoon, and the palm,
+spent palm, coconut, bush, rock and sand InstancedMeshes. Shadow passes add 5 more (palms, spent
+palms, coconuts, bushes, rocks). Triangles: dome 2.1k, lagoon 2.8k, palm 1.8k
+each (13 fronds, two-sided), bush 460, rock 144, sand mound 320. A full 14-node island is about
+13.6k triangles, and a typical one is about 9k. There is no texture and no light. Every geometry and
+material is created once, and the meshes stay in the scene with `visible = false` while calm.
+`update()` allocates nothing: it uses scratch vectors, a reused `pathAt` output object and no
+closures, and instance matrices are rewritten only on re-layout, on a gather, or during the
+0.3 s pop.
+
+**Jumping on sand.** `PlayerPhysics` only jumps off raft tiles, so `standOnSand` reads the
+private `physics._prevJump`, which holds the jump key as of this frame's `update()`. If a future
+`PlayerPhysics` drops it, `_prevJump === true` is never satisfied and jumping on sand is simply
+off. Nothing breaks, and a test covers that fallback.
+
+**Debug** (`raftDebug.content.islands`): `spawnNear(seed = 1234, t = 25)` (`t` is seconds into the
+timeline, so `t < 25` gives an approaching island), `phase()`, `skip(s)`, `teleportAshore(dx, dz)`,
+`aimAt(i)` (stands you on the inland side of node `i` and returns it with `yaw`, the camera yaw
+that faces it), `yawTo()`, `nodes()` (each with an aim point `ax, cy, az`; for a palm that is on
+the bent trunk), `pick()` (node under the screen centre), `drain()`,
+`clear()`, `state()`, `groundAt(x, z)`. Headless Chrome holds pointer lock, so screenshot scripts
+turn the view with synthetic `mousemove` `movementX/Y` events (0.0022 rad per pixel).
+
+**Known issues.**
+
+- In co-op, the guest's own gather only pops locally. The drained colour arrives with the next
+  state message (≤125 ms), as planned.
+- Seed items use the placeholder leaf icon from `content-items.js`.
+- On a big raft (x-edge > 28 m) the island docks more than 38 m from the nearest tile. The 50 m
+  safety still has margin, but it is a longer swim.
+- At software-GL frame rates (about 3 fps), the 0.3 s host cooldown is counted in game time, which
+  `dt` caps at 0.05 per frame. Rapid E presses there are dropped. That is harmless, but scripts
+  should wait about 2.5 s between gathers.
+- The green horizon hills from game.js are not avoided, so a hill can sit behind the docked
+  island. Per-seed elongated shapes and palm lean are not done yet.
 
 ## What Raft does
 
-raft.wiki.gg returned HTTP 401 to automated fetches and raft.fandom.com returned 402, so the
-facts below come from search snippets of those wikis and from guides. Each one names its source.
+raft.wiki.gg did not resolve from this session (DNS blocked, as before it returned HTTP 401), and
+raft.fandom.com returns 402. The facts come from search snippets.
 
-- Raft has about 10 hand-built small islands. One of them spawns with high probability while you
-  sail, and each looks the same every time you see it. Vegetation grows on top and resources lie
-  in the water around it. ([Raft wiki: Islands](https://raft.fandom.com/wiki/Islands))
-- Islands spawn based on their distance from the raft. Players report a finite pool of
-  hand-built islands, with resources restored when one comes back. That report may be out of date.
-  ([Steam discussion](https://steamcommunity.com/app/648800/discussions/0/3002172045223679474))
-- Shipwreck Island has a 2% chance to spawn in place of a small island and has three palm trees.
+- About 10 hand-built small islands. One spawns with high probability while you sail. Vegetation
+  grows on top, and sand, clay, scrap and ore lie in the shallows.
   ([Raft wiki: Islands](https://raft.fandom.com/wiki/Islands))
-- Palm trees grow on small and large islands. A tree falls after five axe chops and drops planks
-  and palm leaves, with a small chance of coconuts and palm seeds on each chop. A planted palm seed
-  takes 12 minutes to grow. ([Raft wiki: Palm Tree](https://raft.fandom.com/wiki/Palm_Tree))
-- Small islands also have flowers, fruit and seeds. ([Raft wiki: Islands](https://raft.fandom.com/wiki/Islands))
-- Sand and clay lie on the seafloor, and you mine them by swinging the hook
-  ([gameplay.tips survival guide](https://gameplay.tips/guides/2464-raft.html)). Clay, sand,
-  metal ore, copper and scrap are the underwater finds around small islands
-  ([Raft wiki: Islands](https://raft.fandom.com/wiki/Islands)). Guides tell new players to gather
-  clay, sand, scrap and stone in the shallows by their first island
-  ([TechRaptor guide hub](https://techraptor.net/gaming/guides/raft-guides-guide-hub)).
-- The island never moves. The raft drifts with the current, so you drop an anchor before you go
-  ashore or dive, or the raft leaves without you
-  ([Steam discussion](https://steamcommunity.com/app/648800/discussions/0/1777135944136644161),
-  [Bloxodes Raft wiki](https://bloxodes.com/wiki/raft)). A Stationary Anchor needs a smelter,
-  metal ingots and a hinge, and it can be used any number of times
-  ([Gameranx](https://gameranx.com/features/id/326012/article/raft-how-to-get-a-permanent-anchor-crafting-guide/)).
-- In Raft, sharks attack you while you swim to an island, and a shark bite does damage.
+- A palm tree yields planks, coconuts and palm leaves when chopped (about five axe chops, each with
+  a chance of a drop). Small islands also carry seeds, Palm Seed among them.
+  ([Raft wiki: Islands](https://raft.fandom.com/wiki/Islands),
+  [palm leaves guide](https://anakjjut.pages.dev/posts/raft-how-to-get-palm-leaves-and-rope))
+- The island stays put and the raft drifts, so you need an anchor. Sharks bite on the swim.
 
 ## Our version
 
-Raft uses tension: the raft leaves you behind, and a shark bites you on the swim. Little Raft
-keeps the visit and drops the danger.
-
 | Raft | Little Raft |
 | --- | --- |
-| The raft drifts and the island stays put, so you need an anchor | The raft stays at the origin as it does now, and the island floats past it on a slow track. No anchor. |
-| Sharks attack on the swim | Nothing attacks. Swimming is free. |
-| Axe chops, hook mining, many resource kinds | You hold interact (E) on a node for 1.2 s. There are four node kinds and no tool requirement. |
-| About 10 hand-built layouts plus rare variants | Each layout is generated from a 32-bit seed, so both co-op players build the same island from one number |
-| Island stays until you sail away | The island stays docked for about 3 minutes. When 30 s remain, a gentle warning appears and the island starts drifting away. If you are still standing on it, it waits until you leave (see below). |
+| Raft drifts, island stays, anchor needed | Raft stays at the origin, the island glides past and docks. No anchor. |
+| Sharks attack on the swim | Nothing attacks. |
+| Axe chops, hook mining | Tap E on a node (no tool). One gather per tap, 0.35 s cooldown. |
+| Hand-built layouts | Layout generated from a uint32 seed, so co-op players build the same island from one number. |
 
-Nobody gets stranded. While a player stands on the island or swims within 6 m of it, departure
-pauses. If the island has to leave anyway (for example the 10 minute hard cap ran out), the player
-is carried along and gets the existing respawn-to-raft treatment, never a death.
+### Nodes and loot
 
-### Timeline
+| Node | Count | Gathers | Each gather gives |
+| --- | --- | --- | --- |
+| Palm | 1 to 3 | 3 | 1 wood + 1 leaf; the 3rd gather also gives 1 seed |
+| Bush | 2 to 4 | 2 | 1 leaf; 50% chance of +1 seed (`hash(seed, node, used)`, deterministic) |
+| Rock | 2 to 4 | 3 | 1 stone |
+| Sand patch | 2 to 3 | 4 | 1 sand |
 
-1. **Calm:** No island exists for 150 to 270 s (the delay is seeded, and the first island comes
-   about 3.5 minutes into a fresh world).
-2. **Approach:** The island spawns 70 m upstream (−z, where debris comes from), 14 to 22 m off to
-   one side of the raft, and slides in over 25 s along `z` with an ease-out curve.
-3. **Docked:** It sits 10 to 16 m from the nearest raft tile for 180 s. That is an easy swim.
-4. **Depart:** It slides 70 m downstream over 30 s, the mirror of the approach, and is then removed.
+Total node count is at most 14 (`MAX_NODES`). A drained node turns a dimmer colour and stops
+showing a prompt. Palms stay standing. Kinds used: `wood`, `leaf` (core), `sand`, `stone`, `seed`
+(`dist/content-items.js`). Before granting, check the kind exists in the bag's item table
+(`bag.add` returning the full count means unknown/full); never throw.
 
-The island never overlaps the raft. The spawn side is the one with more clear space, which is the
-smaller `|x|` extent of `world.tiles`, and the gap is measured from the raft's bounding box at the
-moment of spawn. The raft is capped at 400 tiles (±25 tile coords = ±50 m), so the lateral offset
-is clamped to the raft's half-width plus 10 m.
+## Pacing
 
-### Island content
+All timing uses the module's own clock, which advances by `dt` only while `ctx.running`.
 
-- **Ground:** One sand dome (a flattened `SphereGeometry`, radius 5 to 8 m, top 0.35 m above the
-  mean water level), with a ring of darker wet sand at the waterline.
-- **Palms:** 1 to 3. Each is a curved trunk built from cylinders plus 5 leaf planes, reusing the
-  look of the `palm` decor on the raft. Gather gives **2 Palm Leaf**. Each palm has 3 gathers,
-  after which its fronds droop. The tree stays.
-- **Bushes:** 2 to 4 green lumps (`IcosahedronGeometry`, detail 0). Each gather gives **1 Seed**
-  and has a 50% chance to also give 1 Palm Leaf. 2 gathers per bush.
-- **Rocks:** 2 to 4 grey lumps, some half submerged. Each gather gives **1 Stone**. 3 gathers per rock.
-- **Sand patches:** 2 to 3 raked spots. Each gather gives **1 Sand**. 4 gathers per patch.
-- **Seafloor glimpse:** A disc (radius ×2.2 of the island) 2.5 m below the water, with a
-  turquoise-to-deep gradient through vertex colours and a few rocks and starfish on it. The disc
-  shows only through the existing water transparency. It is not walkable, because diving is a
-  separate feature.
+1. **Calm:** 150 to 240 s (seeded). The first island in a fresh world comes at 90 s, so a new
+   player meets one early.
+2. **Approach:** 25 s. Spawns at z = −60 (upstream, where debris comes from) and eases out to its
+   dock z, which is 0 to 6 m upstream of the raft centre.
+3. **Docked:** 180 s, 10 to 14 m gap from the raft's bounding box on the clearer `x` side, so an
+   easy swim (about 6 s at `SWIM_SPEED` 2.1). Keep the island centre within 38 m of the nearest
+   tile, because `PlayerPhysics._safety` teleports a player more than 50 m from the raft.
+4. **Warning:** at 30 s left, `ctx.notice('The island is starting to drift away')` once per actor
+   standing on it or near it.
+5. **Depart:** 30 s, eases to z = +60, then the island hides and the next calm starts.
 
-Node yields are deterministic. The 50% leaf roll on a bush comes from `hash(seed, node, used)`,
-so the host and the guest agree. A drained node shows its spent state, a frond or leaf colour
-that has dimmed, and stops showing the interact prompt.
+Departure pauses while any player (host `ctx.physics`, guest `ctx.other`) is within
+`radius + 6 m` of the centre, up to a hard cap of 10 min docked. After the cap it departs anyway;
+the existing 50 m safety teleport puts a lingering swimmer back on the raft. That is the only
+"penalty", and it is friendly.
 
-### New item kinds
-
-`sand`, `stone` and `seed` need entries in `ITEM_INFO` (`dist/inventory-state.js`), each with
-`maxStack: STACK_SIZE` and `tool: false`, plus icons. `leaf` already exists.
-
-Old builds throw on unknown kinds in `Bag` snapshots (`validateSlot`), so they fall back to a
-fresh bag. That is the same forward-compatibility cost every new item has. A new build loading an
-old save is fine.
-
-Other fleets own `inventory-state.js`, so this feature adds the three entries in one small,
-clearly marked block. If the three kinds are missing, `islands.js` falls back to granting `leaf`
-only and does not crash, because it checks `ITEM_INFO[kind]` before adding.
-
-Recipes that use sand, stone and seed (a sand-and-stone lantern base, a seed planter) are out of
-scope here. They belong to the crafting fleet.
-
-## Data model
-
-Everything visual and positional is a pure function of `(seed, t)`, so the save and the network
-both carry a few numbers per island.
+## Save shape: `world.ext.islands`
 
 ```js
-// world.island (host-authoritative; null while calm)
 {
   v: 1,
-  seed: 12345678,        // uint32, picks layout, side, offsets, node counts
-  born: 812.4,           // islandClock (s) when the approach started
-  dockFor: 180,          // seconds in the docked phase, extended while someone is near
-  side: 1,               // +1 or -1 (x side)
-  offset: 18.5,          // lateral centre distance in metres, fixed at spawn
-  used: [0, 2, 1],       // gathers consumed per node, index = node order from layoutFor(seed)
+  clock: 1003.2,   // module seconds, finite >= 0
+  next: 1170,      // clock value when the next island is born
+  isl: null | {    // null while calm
+    seed: 12345678,  // uint32
+    born: 812.4,     // clock at approach start
+    dock: 180,       // docked seconds, grows while someone is near (cap 600)
+    side: 1,         // +1 | -1
+    off: 22.5,       // lateral centre distance, metres (clamped 8..38)
+    used: [0,2,1],   // gathers per node, length === layout node count
+  }
 }
-world.islandClock = 1003.2;  // seconds of island time elapsed (advances only while running)
-world.islandNext = 1170;     // islandClock value at which the next island is born
 ```
 
-A derived `layout` object is cached by seed and never saved. It holds the node list
-`{kind, lx, lz, r, max}` in island-local metres, plus the radius. The island centre is
-`cx = side * offset`, `cz = pathAt(islandClock - born, dockFor).z`.
+`clean(data)` (pure, exported) returns a fresh valid object and never throws:
 
-The clock is the world's own accumulator: `islandClock += dt` only while the game runs. It is not
-`performance.now()`, so a pause, a save or a reload resumes the same phase.
+- not an object, or `v !== 1`: defaults `{v:1, clock:0, next:90, isl:null}` (old saves land here).
+- `clock`, `next`: finite and `>= 0`, else defaults. `next` is clamped to `clock + 600` at most.
+- `isl`: kept only if `seed` is an integer in `[0, 2^32)`, `born`/`dock`/`off` finite, `side` is
+  ±1 and `used` is an array. `used` is rebuilt to the layout's node count, each entry an integer
+  clamped to `[0, max]`. Anything else gives `isl: null`.
+- An island whose phase is already `gone` at load time is dropped (`isl: null`).
 
-## Save format
+Layout, positions and the path are pure functions of `(seed, clock)`; nothing derived is saved.
 
-The feature adds three optional top-level fields to the existing `little-raft-v1` blob:
-`island`, `islandClock` and `islandNext`. `cleanWorld()` currently rebuilds the world object field
-by field and would drop them, so the hook passes them through `cleanIsland(v)`. That function:
+## Module hooks (`createIslands(ctx)`)
 
-- returns `island: null` unless `v.island` is an object with `v === 1`, a finite `seed`, `born`,
-  `dockFor` and `offset`, `side` of ±1, and `used`, an array of non-negative ints no longer than 32
-- clamps `islandClock` and `islandNext` to finite values of 0 or more, with defaults of `0` and
-  `210`
+| Hook | Behaviour |
+| --- | --- |
+| `name` | `'islands'` |
+| `update(dt)` | Solo/host: advance `clock`, run the timeline (spawn, dock extension, depart). Guest: advance its local copy of `clock` only (it never spawns or despawns). Everyone: place the island group from `pathAt`, bob it with one `ctx.ocean.getHeight` sample at its centre, and update the gather cooldown. No allocations. |
+| `afterMove(physics, dt)` | Stand on sand (below). |
+| `serialize()` | Returns a cached object with a copy of `isl` and `used`, rewritten each call. Cheap at 8 Hz. |
+| `load(data, from)` | `clean()` it. If `isl.seed` differs from the current one: re-layout (rewrite instance matrices, no new geometry). If only `used` differs: update instance colours. Guest `'net'`: ease `clock` toward the host's (snap if over 1 s off). Idempotent. |
+| `action(a, actor, bag)` | Handles `islands.gather` (below). Return `true` for any `islands.*` kind. |
+| `interact(aim)` / `prompt(aim)` | E to gather (below). |
+| `debug` | QA helpers (below). |
+| `dispose()` | Remove the group, dispose the cached geometries and materials. |
 
-Old saves have no fields, which means calm with the first island at the default delay. An old
-build reading a new save ignores the fields, because `cleanWorld` drops them. Nothing breaks
-either way.
+The guest's own island survives a visit, because game.js keeps the guest's own `world.ext` in its
+backup and calls `load(ext, 'restore')` on return.
 
-## Co-op sync
+## Action: `islands.gather` (host-authoritative)
 
-- The **host** owns the timeline. It sends `island` and `islandClock` in the existing
-  `{type:'state'}` world payload (`world:{...}` near game.js:817). That adds a few dozen bytes,
-  and `used` changes only when someone gathers.
-- The **guest** rebuilds the layout from the seed and advances its own copy of the clock between
-  host states, snapping when one arrives. It never spawns or despawns on its own.
-- Gathering goes through the existing action channel as a new action:
-  `{kind:'gather', node:i, seed}`. The host's `applyAction` checks `seed === world.island.seed`,
-  that `used[i] < max`, and that the actor is within 3 m of the node. It adds the loot to the
-  actor's bag atomically, the same way `collect` does (scratch bag, all or nothing), and bumps
-  `used[i]`. The guest shows the hold progress locally, and the host result settles it.
-- A stale seed (the island left before the action arrived) is ignored silently.
-- The guest's own-raft backup (`ownWorldBackup`) keeps its own island fields, so visiting a host
-  and returning does not lose the guest's island.
+Client (any role) sends `ctx.action({kind:'islands.gather', seed, node})`. In solo/host it runs
+locally right away through the same path.
 
-## API (`dist/islands.js`)
+Host `action(a, actor, bag)` checks, in order, and returns `true` silently on any failure:
 
-```js
-import { createIslands, layoutFor, pathAt, cleanIsland } from './islands.js';
+1. `a.kind === 'islands.gather'`, an island exists, `a.seed === isl.seed` (stale seed: ignore).
+2. `node` is an integer in `[0, nodes.length)` and `used[node] < max`.
+3. Reach: actor position (`ctx.physics` for `'host'`, `ctx.other` for `'guest'`; null means
+   reject) is within 3.5 m horizontally of the node's world position (4.5 m for the guest, whose
+   pose is up to ~0.12 s old). Out of reach: notice "Get a little closer" to that player.
+4. Per-actor cooldown 0.3 s on the host clock (stops key-repeat spam).
+5. Loot is atomic: `const s = new bag.constructor(bag.snapshot())`, add each loot kind to `s`; if
+   any `add` returns leftover, `ctx.emit({kind:'full', text:'Your bag is full'}, actor)` and stop.
+   Else copy `s.slots[i]` into `bag.slots[i]` (same as game.js `commit`), `used[node]++`, and
+   `ctx.emit({kind:'loot', text:'+1 Stone'}, actor)` (friendly, built from item names).
 
-const islands = createIslands({ THREE, scene, ocean, getWorld: () => world });
+The guest sees the drained node when the next state message arrives (≤ 125 ms). It may dim the
+node locally on press for feedback; the next `load('net')` settles it.
 
-islands.update(dt, { players: [{x, z, swimming}], role }); // host advances the clock; everyone moves the mesh
-islands.groundAt(x, z)               // -> {y} | null  (sand height for player physics)
-islands.nodeAt(origin, dir, reach)   // -> {index, kind, label} | null  (interact target)
-islands.gather(index, bag, actorPos) // host only: -> {ok:true, loot} | {ok:false, reason}
-islands.capture()                    // -> {island, islandClock, islandNext} for save and state payload
-islands.restore(fields)              // validated restore (same rules as cleanIsland)
-islands.dispose()                    // frees geometry and materials, removes the group
+## Standing on sand: `afterMove(physics, dt)`
 
-// pure helpers, exported for tests
-layoutFor(seed)          // deterministic node list
-pathAt(t, dockFor)       // {phase: 'approach'|'docked'|'depart'|'gone', z}
-cleanIsland(v)           // save validation
+`movePlayer()` calls `physics.update(...)` first; the physics knows only raft tiles, so on the
+island it would fall into swimming every frame. `afterMove` corrects that. Ground:
+
+```
+groundAt(x, z): local r = distance to island centre / R
+  r > 1 -> NaN (off island)
+  g = baseY + bob + TOP - (TOP + DROP) * r*r      // TOP = 0.7, DROP = 1.4, baseY = ocean.mesh.position.y
 ```
 
-### Performance
+So the dome top is 0.7 m above mean water and the rim sits 0.7 m under it (the shallow ring).
+Fields used are the public ones of `PlayerPhysics` (`x, y, z, vy, grounded, swimming,
+verticalSpeed, climbing`) and `PLAYER_CONSTANTS.EYE_OFFSET` (1.6) and `JUMP_IMPULSE` (4.6),
+imported from `./player-physics.js`. Per frame:
 
-- Geometries and materials are built once per module: sand dome, wet ring, trunk, leaf, bush,
-  rock and seafloor disc. Each island is one `Group` of `Mesh`es that share them, with scale and
-  rotation varied from the seed.
-- `update` moves one group and allocates nothing. Temporary vectors are module-scoped. The island
-  bobs a few centimetres, with `ocean.getHeight` sampled once per frame at its centre.
-- While calm, the group has `visible = false` and nothing is updated. After a departure the
-  meshes are kept for the next seed, so a new island only rewrites node transforms.
+```
+if (physics.climbing) { onSand = false; return }
+g = groundAt(physics.x, physics.z); w = ocean.getHeight(physics.x, physics.z)
+if (!isFinite(g)) { onSand = false; return }
+if (g < w + (onSand ? -0.1 : 0.25)) { onSand = false; return }  // wet edge (hysteresis): swim/wade
+floor = max(g, w + WATER_ENTER + 0.03)                          // feet kept dry in the band
+feet = physics.y - EYE_OFFSET; up = floor - feet
+jumpEdge = physics._prevJump && !lastJump; lastJump = physics._prevJump
+if (onSand && jumpEdge) { physics.vy = JUMP_IMPULSE; physics.verticalSpeed = JUMP_IMPULSE;
+                          physics.grounded = false; onSand = false; return }
+if (physics.vy > 0 && up < 0) return                             // still rising from a jump
+stick = onSand ? 0.35 : 0.06                                     // follow downslopes when walking
+step  = physics.swimming ? 1.6 : 0.6                             // wade ashore from swim height
+if (up >= -stick && up <= step) {
+  physics.y = floor + EYE_OFFSET; physics.vy = 0; physics.verticalSpeed = 0
+  physics.grounded = true; physics.swimming = false; onSand = true
+} else onSand = false
+```
 
-## Hook into game.js
+(As built; the original plan had a fixed `g < w + 0.25` test with no hysteresis and no dry floor,
+which flip-flopped between standing and swimming at the shoreline with a splash beep each time.)
 
-Each change is a small, clearly delimited block marked `// ISLANDS HOOK begin` and
-`// ISLANDS HOOK end`:
+Why it works: next frame `update()` sees `grounded = true`, so horizontal movement uses
+`WALK_SPEED`/`GROUND_ACCEL`. Its grounded branch finds no tile, clears `grounded`, and gravity
+drops the feet about 1 cm; because `floor >= w + 0.13` the feet stay above `waterY + WATER_ENTER`
+(0.1), so it never flips to swimming or plays the splash beep. `afterMove` then snaps back, and
+game.js reads `physics.grounded` after the hook, so the walk animation plays. The 0.25 margin
+covers wave height (amplitudes sum to 0.255) at the walkable part.
 
-1. Import `createIslands` from `./islands.js` and create the instance after the ocean exists.
-2. In `cleanWorld`, copy `island`, `islandClock` and `islandNext` through `cleanIsland`.
-3. In the frame loop, call `islands.update(dt, ...)`, and pass `ground: islands.groundAt` in the
-   `physics.update` input. `player-physics.js` ignores unknown inputs today. Using the extra
-   ground there is one guarded branch: when `ground(x, z)` returns a height above the feet and
-   within step range, the player is supported at that height instead of swimming.
-4. On interact (E) hold, if there is no debris target and `islands.nodeAt` hits, show the prompt
-   "Hold E: gather palm leaves" and send `{kind:'gather'}` after 1.2 s.
-5. In `applyAction`, add one `if (a.kind === 'gather')` branch that delegates to `islands.gather`.
-6. For the state payload and the save, spread `islands.capture()` into `world` before `save()`
-   and before sending the state.
+`_prevJump` is a private field. It is the only way to see the jump key from the hook; if it is
+`undefined`, jumping on sand is simply disabled (safe). Note this in the code.
 
-## Test plan
+## E to gather: `interact(aim)` / `prompt(aim)`
 
-Unit tests go in `tests/islands.test.mjs` and run with `node --test`. They need no DOM and use
-only the pure helpers plus `Bag`:
+`aim` from game.js is `{point, item, dir}` (no origin) or `null` when the pointer is unlocked.
+Ray origin is `ctx.camera.getWorldPosition(scratchV)`; direction is `aim.dir`, or the camera
+forward from `ctx.camera.getWorldDirection(scratchD)` when `aim` is null.
 
-- `layoutFor(seed)` is deterministic: the same seed gives a deep-equal layout. Node counts fall
-  within the ranges above, and every node lies inside the island radius.
-- `pathAt` goes through approach, docked, depart and gone in order. `z` is continuous at every
-  phase boundary, and the island never comes closer than 10 m to a 3x3 raft.
-- `cleanIsland` rejects a bad `v`, NaN fields, `side` 0, negative `used` entries and an oversized
-  `used`. It accepts a good blob, and it returns `island: null` for `undefined`, which covers old
-  saves.
-- `gather` on a drained node fails. A gather into a full bag changes nothing, because it is
-  atomic. A stale seed is rejected, and `used` increments by exactly 1.
-- Departure pauses while a player is within 6 m of the island.
+`pickNode()` is an analytic ray-sphere test against each node's bounding sphere (centre and
+radius cached in world space when the island moves; ≤ 14 nodes). Nearest hit within 3.5 m of the
+camera with `used < max` wins. This avoids `Raycaster.intersectObject` on the InstancedMesh,
+which allocates result arrays each frame. Returns a node index or −1, no allocation.
 
-Headless shots use `python shoot.py dist .qa/islands-*` with a debug query param
-(`?island=docked`) that forces the docked phase at a fixed seed:
+- `prompt(aim)`: `null` unless a node is hit. Else a cached string per kind and state, e.g.
+  `<kbd>E</kbd>Gather palm (wood, leaf)`, `<kbd>E</kbd>Gather stone`, `<kbd>E</kbd>Scoop sand`.
+  Text is static, so no `esc` needed, and strings are prebuilt (no per-frame concatenation).
+- `interact(aim)`: if a node is hit and the local cooldown has passed, send the action, start a
+  0.35 s cooldown, and return `true` (so the inventory does not open). Off island: return `false`.
 
-- `.qa/islands-approach.png`: the island is visible on the horizon.
-- `.qa/islands-docked.png`: the view from the raft shows sand, palms, rocks and a turquoise
-  seafloor ring.
-- `.qa/islands-ashore.png`: the player stands on the sand with the gather prompt visible.
+Floating debris pickup runs before the content hook in game.js, so debris near the beach still
+wins. That is fine.
 
-Manual co-op check: the host and the guest see the same layout. When the guest gathers, its bag
-updates and the node drains for both players. Reloading the host mid-docked restores the same
-island with the same drained nodes.
+## Rendering plan
 
-Performance check: with the island docked, frame time stays within about 0.3 ms of calm on medium
-graphics, and the heap does not grow over two full island cycles.
+Geometries and materials are created once in `createIslands` and reused for every island.
+
+| Draw | Object | Notes |
+| --- | --- | --- |
+| 1 | Island `Mesh` | Flattened `SphereGeometry(1, 32, 12)` scaled to R (5 to 8 m) and the dome profile; vertex colours: dry sand top, wet sand band near the waterline. Receives shadows. |
+| 2 | Shallow disc `Mesh` | `CircleGeometry(1, 32)` at R × 2, 0.9 m under mean water, turquoise-to-deep vertex colours, `depthWrite: false`. Seen through the water. |
+| 3 | Palm trunks `InstancedMesh(count 3)` | One tapered, slightly bent `CylinderGeometry` (6 radial segments). Casts shadows. |
+| 4 | Palm fronds `InstancedMesh(3)` | One merged geometry of 5 leaf planes (`BufferGeometryUtils` is not vendored, so merge by hand into one `BufferGeometry`). `side: DoubleSide`. Drained: droop via instance matrix, dim via `setColorAt`. |
+| 5 | Bushes `InstancedMesh(4)` | `IcosahedronGeometry(1, 0)`, `flatShading`. |
+| 6 | Rocks `InstancedMesh(5)` | `DodecahedronGeometry(1, 0)`, per-instance squash and rotation from the seed. Casts shadows. |
+| 7 | Sand patches `InstancedMesh(3)` | Small flat `CircleGeometry` decal, a lighter sand colour, `polygonOffset`. |
+
+Budget: **7 draw calls** for the whole island (plus shadow passes for trunks, fronds, rocks),
+**about 3k triangles**, no new lights, no texture. All are children of one `Group`; while calm
+the group has `visible = false` and `update` returns early after advancing the clock. Instance
+counts are allocated at the max and `mesh.count` is set per layout. Instance colours use
+`MeshStandardMaterial({vertexColors:false})` + `setColorAt` (initialised once so the shader
+does not recompile later). Per-frame motion moves only the group (`position`, small `rotation.z`
+bob); instance matrices are written only on re-layout or a node draining. Scratch `Vector3`,
+`Matrix4`, `Quaternion`, `Color` are module-level.
+
+## Debug: `raftDebug.content.islands`
+
+- `spawnNear(seed?)`: create an island right now in the docked phase at the default spot (seed
+  default `1234`). Host/solo only.
+- `phase()`: `{phase, t, left, seed, clock, next}` for scripts.
+- `skip(seconds)`: advance the clock (e.g. skip calm).
+- `teleportAshore()`: put the local player on the dome top (sets `physics.x/z/y`, grounded).
+- `aimAt(i)`: turn the camera to look at node `i` (for prompt screenshots); `nodes()` lists
+  `{i, kind, used, max, x, y, z}`.
+- `drain()`: mark every node used (spent look).
+- `clear()`: remove the island and restart calm.
+
+## Exports for tests
+
+`dist/islands.js` (or `islands-layout.js`) exports pure helpers with no THREE dependency:
+`layoutFor(seed)`, `pathAt(t, dock)` → `{phase, z}`, `clean(data)`, `lootFor(kind, seed, node,
+used)`, `groundHeight(r, R)`, `nextDelay(seed, first)`, and `applyGather(state, a, actorPos, bag)`
+(the host action logic, so tests run it without a scene).
+
+## Test plan (`tests/islands.test.mjs`)
+
+Same base-URL import pattern as `tests/survival.test.mjs`.
+
+- `layoutFor`: same seed gives a deep-equal layout; counts in range; every node inside 0.8 R;
+  nodes at least 1 m apart; total ≤ 14.
+- `pathAt`: phases in order approach → docked → depart → gone; `z` continuous at each boundary;
+  docked centre gap ≥ 10 m from a 3x3 raft and centre ≤ 38 m from the nearest tile.
+- `clean`: `undefined`, `null`, `'x'`, `{v:2}` give defaults; NaN clock, `side: 0`, non-integer
+  seed, oversized or negative `used` are fixed or dropped; a good blob round-trips through
+  `serialize()` → `JSON` → `load()` → `serialize()` unchanged.
+- `applyGather` with a real `Bag`: grants the loot table; stale seed, bad node, out of reach,
+  drained node and cooldown all change nothing; a full bag changes nothing (atomic) and emits
+  `full`; `used` goes up by exactly 1; bush seed roll is deterministic.
+- Stand on sand: a `PlayerPhysics` placed over the dome, stepped 120 frames with
+  `update()` + `afterMove()` (fake ctx with a flat ocean), stays `grounded`, never `swimming`,
+  feet within 2 cm of the ground; walking off the rim ends up swimming; swimming in toward the
+  beach lands on the sand.
+- Timeline: departure pauses while a fake player is within `R + 6`, and the 600 s cap still
+  departs.
+- `createIslands` with a stub ctx (THREE from vendor, a `Scene`, a fake ocean) survives
+  `load(undefined, 'save')`, `load(garbage, 'net')`, and an `update` loop over a full cycle.
+
+Screenshots (own playwright script, modelled on `tools/shoot_headless.py`): `spawnNear()` then
+shots from the raft (island visible, palms, rocks, shallow ring), after `teleportAshore()`
+(standing on sand), and with `aimAt(0)` (gather prompt). Read the PNGs and judge them.
+
+Manual co-op: host and guest see the same layout; a guest gather fills the guest's bag and drains
+the node for both; reloading the host mid-dock restores the same island and drained nodes; an old
+save without `ext` starts calm with the first island at 90 s.
