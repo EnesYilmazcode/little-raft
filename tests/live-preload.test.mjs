@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { resolve, join } from 'node:path';
+import { resolve, join, posix } from 'node:path';
 
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
 const dir = fileURLToPath(base);
@@ -13,7 +13,8 @@ const strip = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])
 
 // Static imports only: `import x from './a.js?…'`, `import {…} from "./a.js"`, `import './a.js'`, `export … from './a.js'`.
 // Dynamic `import('./a.js')` is deliberately not matched: lazy modules must stay out of the preload list.
-const STATIC = /(?:^|[\s;}])(?:import|export)\s+(?:[^'"();]*?\s+from\s+|[^'"();]*?\bfrom\s*)?['"]\.\/([a-z][a-z0-9-]*\.js)(?:\?([^'"]*))?['"]/gm;
+// Also './dir/name.js' (textures.js imports texgen/*.js); names are dist-relative posix paths.
+const STATIC = /(?:^|[\s;}])(?:import|export)\s+(?:[^'"();]*?\s+from\s+|[^'"();]*?\bfrom\s*)?['"]\.\/((?:[a-z][a-z0-9-]*\/)*[a-z][a-z0-9-]*\.js)(?:\?([^'"]*))?['"]/gm;
 
 function staticGraph(entry) {
   const seen = new Map(); // name -> query strings it was imported with
@@ -21,7 +22,8 @@ function staticGraph(entry) {
   while (queue.length) {
     const file = queue.shift();
     for (const m of strip(read(file)).matchAll(STATIC)) {
-      const [, name, query = ''] = m;
+      const [, rel, query = ''] = m;
+      const name = posix.normalize(posix.join(posix.dirname(file), rel));
       if (!seen.has(name)) { seen.set(name, new Set()); queue.push(name); }
       seen.get(name).add(query);
     }
@@ -59,4 +61,18 @@ test('lazy feature modules are not in the startup graph', () => {
   for (const n of ['coop-hub.js', 'controls-tab.js']) {
     if (existsSync(join(dir, n))) assert.ok(!graph.has(n), n + ' should only load through import()');
   }
+});
+
+test('index.html statically preloads game.js and exactly the PRELOAD list, stamped with the baked build', () => {
+  // publish_local.py writes both from the same graph; the static tags start the fetches while the HTML parses.
+  const baked = read('live.js').match(/game\.js\?build=([^'"&]+)/)[1];
+  const html = read('index.html');
+  const block = html.match(/<!-- startup-preload -->([\s\S]*?)<!-- \/startup-preload -->/);
+  assert.ok(block, 'index.html has the <!-- startup-preload --> block (python publish_local.py dist --resync)');
+  const hrefs = [...block[1].matchAll(/<link rel="modulepreload" href="([^"]+)">/g)].map(m => m[1]);
+  assert.equal(hrefs[0], 'game.js?build=' + baked, 'game.js is preloaded first');
+  for (const h of hrefs) assert.ok(h.endsWith('?build=' + baked), h + ' carries ?build=' + baked);
+  const names = hrefs.slice(1).map(h => h.split('?')[0]);
+  assert.equal(new Set(names).size, names.length, 'no duplicate preloads');
+  assert.deepEqual([...names].sort(), [...preloadList()].sort(), 'index.html preloads == live.js PRELOAD');
 });

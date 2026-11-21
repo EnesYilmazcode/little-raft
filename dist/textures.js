@@ -6,18 +6,18 @@
 // mipmaps and bilinear taps don't bleed. GPU cost: 2 x 4 MB + mips = ~11.2 MB. materials.js samples a
 // cell with fract() + textureGrad, so cells repeat like ordinary textures.
 // Pure data build (buildAtlasData) runs in Node, workers or pages; getAtlas(T) wraps it in THREE textures.
-import * as N from './texgen/noise.js';
-import * as planks from './texgen/planks.js';
-import * as plank from './texgen/plank.js';
-import * as bark from './texgen/bark.js';
-import * as plastic from './texgen/plastic.js';
-import * as leaf from './texgen/leaf.js';
-import * as rope from './texgen/rope.js';
-import * as scrap from './texgen/scrap.js';
-import * as sand from './texgen/sand.js';
-import * as rock from './texgen/rock.js';
-import * as foam from './texgen/foam.js';
-import * as cloth from './texgen/cloth.js';
+import * as N from './texgen/noise.js?build=v3-survival-ae77fa84ac2b';
+import * as planks from './texgen/planks.js?build=v3-survival-ae77fa84ac2b';
+import * as plank from './texgen/plank.js?build=v3-survival-ae77fa84ac2b';
+import * as bark from './texgen/bark.js?build=v3-survival-ae77fa84ac2b';
+import * as plastic from './texgen/plastic.js?build=v3-survival-ae77fa84ac2b';
+import * as leaf from './texgen/leaf.js?build=v3-survival-ae77fa84ac2b';
+import * as rope from './texgen/rope.js?build=v3-survival-ae77fa84ac2b';
+import * as scrap from './texgen/scrap.js?build=v3-survival-ae77fa84ac2b';
+import * as sand from './texgen/sand.js?build=v3-survival-ae77fa84ac2b';
+import * as rock from './texgen/rock.js?build=v3-survival-ae77fa84ac2b';
+import * as foam from './texgen/foam.js?build=v3-survival-ae77fa84ac2b';
+import * as cloth from './texgen/cloth.js?build=v3-survival-ae77fa84ac2b';
 
 export const ATLAS = 1024, CELL = 256, PAD = 16, TILE = CELL - 2 * PAD, GRID = ATLAS / CELL;
 // Generator contract (texgen/<name>.js default export): (S, N) => {albedo, height, rough, alpha?}

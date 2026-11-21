@@ -9,10 +9,12 @@ const POLL_MS = 6000;
 const MAX_BACKOFF_MS = 60000;
 const FAILED_RETRY_MS = 60000;
 const CSS_TIMEOUT_MS = 15000;
+const LOAD_WAIT_MS = 5000;
 const CSS_FILES = ['style.css', 'graphics.css'];
 // Every module in game.js' static import graph (dynamic import() targets stay out). Preloading them all at once
-// flattens the 6-level import waterfall. tests/live-preload.test.mjs keeps this list in step with the imports;
-// a stale entry only costs a wasted request, a missing one just loads late via the normal import.
+// flattens the 6-level import waterfall. publish_local.py regenerates this list and the matching static
+// <link rel=modulepreload> block in index.html (`python publish_local.py dist --resync` after changing imports);
+// tests/live-preload.test.mjs checks both against the real graph. A stale entry only costs a wasted request.
 const PRELOAD = [
   'animals-core.js', 'animals-models.js', 'animals.js', 'audio.js', 'avatar.js', 'bake.js', 'bees-model.js',
   'bees.js', 'bottle.js', 'brush-model.js', 'build-menu.js', 'build-radial.js', 'build-rules.js',
@@ -32,7 +34,9 @@ const PRELOAD = [
   'seafloor.js', 'session-rules.js', 'settings.js', 'shark-model.js', 'shark.js', 'signal-models.js', 'signal.js',
   'signs-core.js', 'sky.js', 'sleep-model.js', 'sleep.js', 'smelter-model.js', 'smelter-ui.js', 'smelter.js',
   'spear-model.js', 'spear-repair-hooks.js', 'spear.js', 'storage-research-model.js', 'storage-research.js',
-  'survival-ui.js', 'textures.js', 'treasure-models.js', 'treasure-rules.js', 'treasure.js', 'underwater-fx.js',
+  'survival-ui.js', 'texgen/bark.js', 'texgen/cloth.js', 'texgen/foam.js', 'texgen/leaf.js', 'texgen/noise.js',
+  'texgen/plank.js', 'texgen/planks.js', 'texgen/plastic.js', 'texgen/rock.js', 'texgen/rope.js', 'texgen/sand.js',
+  'texgen/scrap.js', 'textures.js', 'treasure-models.js', 'treasure-rules.js', 'treasure.js', 'underwater-fx.js',
   'vitals-ui.js', 'vitals.js', 'waterfx.js', 'watering.js', 'wildlife-models.js', 'wildlife.js', 'wood.js',
 ];
 
@@ -155,10 +159,12 @@ async function importGame(build, retry) {
 function preloadGraph(build) {
   if (!build || typeof document === 'undefined') return;
   const head = document.head || document.documentElement;
+  // index.html already carries static (relative-href) preloads for the baked build; compare resolved URLs.
+  const have = new Set([...document.querySelectorAll('link[rel="modulepreload"]')].map((l) => l.href));
   for (const name of PRELOAD) {
     const url = new URL('./' + name, BASE);
     url.searchParams.set('build', build);
-    if (document.querySelector('link[rel="modulepreload"][href="' + url.href + '"]')) continue;
+    if (have.has(url.href)) continue;
     const link = document.createElement('link');
     link.rel = 'modulepreload';
     link.href = url.href;
@@ -221,18 +227,29 @@ function stageCss(build) {
 // The build baked into moduleUrl() (publish_local.py rewrites it in step with version.json).
 const BAKED_BUILD = new URL(moduleUrl(null)).searchParams.get('build');
 
+function pageLoaded(ms) {
+  if (document.readyState === 'complete') return Promise.resolve();
+  return new Promise((resolve) => {
+    const t = setTimeout(resolve, ms);
+    window.addEventListener('load', () => { clearTimeout(t); resolve(); }, { once: true });
+  });
+}
+
 async function boot() {
   const retry = state.retryCount ? state.retryCount : 0;
   // Start fetching game.js and its whole import graph (in parallel) while version.json is in flight.
   preloadGraph(BAKED_BUILD);
+  const manifestP = fetchManifest().catch((e) => {
+    console.warn('[raftLive] version.json unavailable, booting unversioned game.js', e);
+    return null;
+  });
+  // index.html preloads the graph statically, so it is all in flight already. Evaluating game.js before the page's
+  // load event would hold that event back until mount had finished (mount adds elements that delay it); the modules
+  // arrive at about load time anyway, so let load fire first (capped, in case some page resource hangs).
+  await pageLoaded(LOAD_WAIT_MS);
   const early = importGame(null, retry);
   early.catch(() => {}); // only awaited if the manifest agrees (or is unavailable)
-  let manifest = null;
-  try {
-    manifest = await fetchManifest();
-  } catch (e) {
-    console.warn('[raftLive] version.json unavailable, booting unversioned game.js', e);
-  }
+  const manifest = await manifestP;
   const build = manifest ? manifest.build : null;
   try {
     if (build && build !== BAKED_BUILD) preloadGraph(build);
