@@ -5,7 +5,8 @@
 //   opts (optional): { seed:number, tilt:number (barrel axis tilt, radians; default ~0.2) }
 // Root is untransformed (engine positions/rotates it). Content is centered on the origin.
 // All geometry is created per call and owned by the returned group's meshes.
-// Per-instance metal materials are listed in root.userData.localMaterials.
+// Materials created here are cached per T and shared by every item (material.userData.shared = true);
+// they must not be disposed when one item is removed. root.userData.localMaterials stays empty.
 
 const TYPES = ['wood', 'leaf', 'scrap', 'barrel'];
 
@@ -64,19 +65,42 @@ function place(T, g, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, s = 1) {
   return g;
 }
 
-function mesh(T, geo, mat, parent) {
+function mesh(T, geo, mat, parent, castShadow = true) {
   const m = new T.Mesh(geo, mat);
-  m.castShadow = true;
+  m.castShadow = castShadow;
   m.receiveShadow = true;
   parent.add(m);
   return m;
 }
 
-function metalMat(T, root, color, extra = {}) {
-  const m = new T.MeshStandardMaterial({ color, metalness: 0.55, roughness: 0.5, ...extra });
-  root.userData.localMaterials.push(m);
+// Bake a flat color (sRGB hex -> linear, as three does for material.color) into a color attribute.
+function tint(T, g, hex) {
+  const c = new T.Color(hex), n = g.attributes.position.count, a = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+  g.setAttribute('color', new T.BufferAttribute(a, 3));
+  return g;
+}
+
+// Module-level material cache (one set per THREE namespace). Shared across items: never dispose per item.
+const SHARED = new WeakMap();
+function sharedMat(T, key, opts) {
+  let cache = SHARED.get(T);
+  if (!cache) SHARED.set(T, (cache = new Map()));
+  let m = cache.get(key);
+  if (!m) {
+    m = new T.MeshStandardMaterial(opts);
+    m.userData.shared = true;
+    cache.set(key, m);
+  }
   return m;
 }
+
+function metalMat(T, color, extra = {}) {
+  return sharedMat(T, `metal|${color}|${JSON.stringify(extra)}`, { color, metalness: 0.55, roughness: 0.5, ...extra });
+}
+// Plain engine-like (roughness .85) material that takes its colors from the geometry.
+const paintMat = (T, side) =>
+  sharedMat(T, `paint|${side}`, { color: 0xffffff, vertexColors: true, roughness: 0.85, metalness: 0, side });
 
 // Center content on origin; uniformly shrink if xz footprint exceeds maxXZ.
 function fit(T, inner, maxXZ) {
@@ -125,19 +149,19 @@ function buildWood(T, getMaterial, root, inner, r) {
   mesh(T, g, getMaterial('#d5a265'), inner);
 
   // bent rusty nail near the chipped end
-  const nailMat = metalMat(T, root, '#6f6964', { roughness: 0.6 });
+  const nailMat = metalMat(T, '#6f6964', { roughness: 0.6 });
   const shaft = place(T, new T.CylinderGeometry(0.006, 0.006, 0.07, 6), 0.6, 0.065, 0.06, 0, 0, 0.35);
   const tip = place(T, new T.CylinderGeometry(0.005, 0.002, 0.045, 6), 0.627, 0.11, 0.06, 0, 0, 1.25);
   const head = place(T, new T.CylinderGeometry(0.014, 0.014, 0.005, 8), 0.588, 0.034, 0.06);
-  mesh(T, merge(T, [shaft, tip, head]), nailMat, inner);
+  mesh(T, merge(T, [shaft, tip, head]), nailMat, inner, false);
 }
 
 // ---------------------------------------------------------------- palm leaves
 function leafletGeo(T, base, dir, len, wid, droop, out) {
-  // out = {pos:[], idx:[]} single-sided top; mirrored later
+  // out = {pos:[], idx:[]} single sheet, rendered with side: DoubleSide
   const up = new T.Vector3(0, 1, 0);
   const perp = new T.Vector3().crossVectors(up, dir).normalize();
-  const rows = 6, start = out.pos.length / 3;
+  const rows = 3, start = out.pos.length / 3;
   for (let i = 0; i <= rows; i++) {
     const t = i / rows;
     const prof = Math.pow(Math.sin(Math.PI * Math.min(1, t * 0.92 + 0.08)), 0.8) * (1 - 0.35 * t);
@@ -170,21 +194,15 @@ function frondGeo(T, r, length, count) {
       leafletGeo(T, base.clone().add(new T.Vector3(0, 0, side * 0.006)), dir, len, 0.022 + 0.018 * (len / 0.34), 0.35 + r() * 0.2, out);
     }
   }
-  // build double-sided indexed geometry (smooth normals per side)
-  const n = out.pos.length / 3;
-  const pos = new Float32Array(n * 6), uv = new Float32Array(n * 4);
-  pos.set(out.pos, 0); pos.set(out.pos, n * 3);
-  uv.set(out.uv, 0); uv.set(out.uv, n * 2);
-  const idx = out.idx.slice();
-  for (let i = 0; i < out.idx.length; i += 3) idx.push(out.idx[i] + n, out.idx[i + 2] + n, out.idx[i + 1] + n);
+  // single-sided indexed sheet; the material is DoubleSide so no mirrored copy is needed
   const blades = new T.BufferGeometry();
-  blades.setAttribute('position', new T.BufferAttribute(pos, 3));
-  blades.setAttribute('uv', new T.BufferAttribute(uv, 2));
-  blades.setIndex(idx);
+  blades.setAttribute('position', new T.Float32BufferAttribute(out.pos, 3));
+  blades.setAttribute('uv', new T.Float32BufferAttribute(out.uv, 2));
+  blades.setIndex(out.idx);
   blades.computeVertexNormals();
   // rachis (midrib of the frond)
   const curve = new T.CatmullRomCurve3([0, 0.25, 0.5, 0.75, 1].map(P));
-  const rib = new T.TubeGeometry(curve, 16, 0.009, 5, false);
+  const rib = new T.TubeGeometry(curve, 8, 0.009, 3, false);
   return merge(T, [blades, rib]);
 }
 
@@ -192,22 +210,24 @@ function buildLeaf(T, getMaterial, root, inner, r) {
   const greens = ['#4f9a3a', '#5fae45', '#46893a', '#6bb84c'];
   const fronds = 4;
   const sx = -0.42;
+  const parts = [];
   for (let f = 0; f < fronds; f++) {
     const g = frondGeo(T, r, 0.78 + r() * 0.12, 9);
     const yaw = -0.5 + (f / (fronds - 1)) * 1.0 + (r() - 0.5) * 0.15;
     place(T, g, sx, 0.015 * f, 0, (r() - 0.5) * 0.35, yaw, 0.05 + r() * 0.06);
-    mesh(T, g, getMaterial(greens[f % greens.length]), inner);
+    parts.push(tint(T, g, greens[f % greens.length]));
   }
   // central stem the fronds sprout from
   const stem = new T.CylinderGeometry(0.022, 0.034, 0.36, 8);
   place(T, stem, sx - 0.12, 0.01, 0, 0, 0, Math.PI / 2 - 0.08);
-  mesh(T, stem, getMaterial('#7d8a3d'), inner);
+  parts.push(tint(T, stem, '#7d8a3d'));
   // twine tie binding the bundle
-  const tie = merge(T, [
-    place(T, new T.TorusGeometry(0.037, 0.008, 6, 14), sx - 0.08, 0.012, 0, 0, Math.PI / 2, 0),
-    place(T, new T.TorusGeometry(0.035, 0.008, 6, 14), sx - 0.045, 0.014, 0, 0, Math.PI / 2, 0),
-  ]);
-  mesh(T, tie, getMaterial('#b89a64'), inner);
+  parts.push(
+    tint(T, place(T, new T.TorusGeometry(0.037, 0.008, 4, 12), sx - 0.08, 0.012, 0, 0, Math.PI / 2, 0), '#b89a64'),
+    tint(T, place(T, new T.TorusGeometry(0.035, 0.008, 4, 12), sx - 0.045, 0.014, 0, 0, Math.PI / 2, 0), '#b89a64'),
+  );
+  // one vertex-colored, double-sided mesh for the whole bundle
+  mesh(T, merge(T, parts, true), paintMat(T, T.DoubleSide), inner);
 }
 
 // ---------------------------------------------------------------- scrap metal
@@ -251,7 +271,7 @@ function buildScrap(T, getMaterial, root, inner, r) {
   p.needsUpdate = true;
   g.setAttribute('color', new T.BufferAttribute(col, 3));
   g.computeVertexNormals();
-  const sheetMat = metalMat(T, root, '#ffffff', { vertexColors: true, side: T.DoubleSide });
+  const sheetMat = metalMat(T, '#ffffff', { vertexColors: true, side: T.DoubleSide });
   mesh(T, g, sheetMat, inner);
 
   // bolts/rivets along the crease and the near edge
@@ -260,7 +280,7 @@ function buildScrap(T, getMaterial, root, inner, r) {
     const b = new T.CylinderGeometry(0.017, 0.019, 0.014, 6);
     return place(T, b, x, height(x, z) + 0.008, z, 0, r() * 1.0, x > foldX ? foldK * 0.8 : 0);
   });
-  mesh(T, merge(T, bolts), metalMat(T, root, '#8e9aa2', { roughness: 0.45 }), inner);
+  mesh(T, merge(T, bolts), metalMat(T, '#8e9aa2', { roughness: 0.45 }), inner);
 
   // small bent rusty bracket bolted to the sheet
   const bx = -0.2, bz = 0.02, by = height(bx, bz) + 0.01;
@@ -269,71 +289,66 @@ function buildScrap(T, getMaterial, root, inner, r) {
     place(T, new T.BoxGeometry(0.012, 0.09, 0.055), bx + 0.104, by + 0.04, bz, 0, 0, -0.25),
     place(T, new T.CylinderGeometry(0.012, 0.012, 0.012, 6), bx - 0.06, by + 0.01, bz),
   ]);
-  mesh(T, bracket, metalMat(T, root, '#9a5a32', { metalness: 0.4, roughness: 0.75 }), inner);
+  mesh(T, bracket, metalMat(T, '#9a5a32', { metalness: 0.4, roughness: 0.75 }), inner);
 }
 
 // ---------------------------------------------------------------- barrel
 function buildBarrel(T, getMaterial, root, inner, r, opts) {
   const H = 1, hh = H / 2, rMid = 0.435, rEnd = 0.372;
   const rad = (y) => rEnd + (rMid - rEnd) * (1 - (y / hh) ** 2);
-  const staves = 14, gap = 0.014, thick = 0.03;
+  const staves = 14, gap = 0.014, thick = 0.03, rows = 6;
   const body = new T.Group();
-  const sets = [[], []];
+  const wood = [], metal = []; // merged into one vertex-colored mesh each
   for (let s = 0; s < staves; s++) {
     const dr = (r() - 0.5) * 0.006, dy = (r() - 0.5) * 0.012;
     const prof = [];
-    for (let i = 0; i <= 8; i++) { const y = -hh + (H * i) / 8; prof.push(new T.Vector2(rad(y) + dr, y + (i === 0 || i === 8 ? dy : 0))); }
-    for (let i = 8; i >= 0; i--) { const y = -hh + (H * i) / 8; prof.push(new T.Vector2(rad(y) + dr - thick, y + (i === 0 || i === 8 ? dy : 0))); }
+    for (let i = 0; i <= rows; i++) { const y = -hh + (H * i) / rows; prof.push(new T.Vector2(rad(y) + dr, y + (i === 0 || i === rows ? dy : 0))); }
+    for (let i = rows; i >= 0; i--) { const y = -hh + (H * i) / rows; prof.push(new T.Vector2(rad(y) + dr - thick, y + (i === 0 || i === rows ? dy : 0))); }
     prof.push(prof[0].clone());
     const phi = (s / staves) * Math.PI * 2;
-    sets[s % 2].push(new T.LatheGeometry(prof, 3, phi + gap / 2, (Math.PI * 2) / staves - gap));
+    wood.push(tint(T, new T.LatheGeometry(prof, 3, phi + gap / 2, (Math.PI * 2) / staves - gap), s % 2 ? '#b98148' : '#a8703f'));
   }
-  mesh(T, merge(T, sets[0]), getMaterial('#a8703f'), body);
-  mesh(T, merge(T, sets[1]), getMaterial('#b98148'), body);
 
   // recessed end caps (chime)
   const capR = rEnd - thick + 0.004, capY = hh - 0.045;
-  mesh(T, merge(T, [
-    place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, capY, 0),
-    place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, -capY, 0),
-  ]), getMaterial('#9a6538'), body);
+  wood.push(
+    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, capY, 0), '#9a6538'),
+    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, -capY, 0), '#9a6538'),
+  );
   // board seams on top cap
-  const seams = [-0.18, -0.06, 0.06, 0.18].map((z) => {
+  for (const z of [-0.18, -0.06, 0.06, 0.18]) {
     const len = 2 * Math.sqrt(capR * capR - z * z) - 0.01;
-    return place(T, new T.BoxGeometry(len, 0.006, 0.007), 0, capY + 0.015, z);
-  });
-  mesh(T, merge(T, seams), getMaterial('#5e3b20'), body);
+    wood.push(tint(T, place(T, new T.BoxGeometry(len, 0.006, 0.007), 0, capY + 0.015, z), '#5e3b20'));
+  }
 
   // two dark metal hoops with rivets
-  const hoopMat = metalMat(T, root, '#3a3f44');
   const hoopYs = [-0.3, 0.3];
-  const hoops = hoopYs.map((y) => {
+  for (const y of hoopYs) {
     const R = rad(y), w = 0.038;
     const prof = [
       new T.Vector2(R - 0.004, y - w), new T.Vector2(R + 0.012, y - w + 0.004),
       new T.Vector2(R + 0.015, y), new T.Vector2(R + 0.012, y + w - 0.004),
       new T.Vector2(R - 0.004, y + w), new T.Vector2(R - 0.004, y - w),
     ];
-    return new T.LatheGeometry(prof, 40);
-  });
-  mesh(T, merge(T, hoops), hoopMat, body);
-  const rivets = [];
+    metal.push(tint(T, new T.LatheGeometry(prof, 32), '#3a3f44'));
+  }
   for (const y of hoopYs) {
     const R = rad(y) + 0.014;
     for (let k = 0; k < 10; k++) {
       const a = (k / 10) * Math.PI * 2 + 0.2;
-      rivets.push(place(T, new T.SphereGeometry(0.011, 6, 4), Math.sin(a) * R, y, Math.cos(a) * R));
+      metal.push(tint(T, place(T, new T.SphereGeometry(0.011, 4, 2), Math.sin(a) * R, y, Math.cos(a) * R), '#6d757b'));
     }
   }
-  mesh(T, merge(T, rivets), metalMat(T, root, '#6d757b', { roughness: 0.4 }), body);
 
   // bung plug on top
   const bx = 0.17, bz = 0;
-  mesh(T, place(T, new T.TorusGeometry(0.045, 0.01, 6, 16), bx, capY + 0.017, bz, Math.PI / 2, 0, 0), hoopMat, body);
-  mesh(T, merge(T, [
-    place(T, new T.CylinderGeometry(0.036, 0.04, 0.035, 12), bx, capY + 0.03, bz),
-    place(T, new T.BoxGeometry(0.05, 0.012, 0.012), bx, capY + 0.052, bz),
-  ]), getMaterial('#6b4426'), body);
+  metal.push(tint(T, place(T, new T.TorusGeometry(0.045, 0.01, 4, 12), bx, capY + 0.017, bz, Math.PI / 2, 0, 0), '#3a3f44'));
+  wood.push(
+    tint(T, place(T, new T.CylinderGeometry(0.036, 0.04, 0.035, 12), bx, capY + 0.03, bz), '#6b4426'),
+    tint(T, place(T, new T.BoxGeometry(0.05, 0.012, 0.012), bx, capY + 0.052, bz), '#6b4426'),
+  );
+  mesh(T, merge(T, wood, true), paintMat(T, T.FrontSide), body);
+  mesh(T, merge(T, metal, true), metalMat(T, '#ffffff', { vertexColors: true }), body);
 
   // tilt pivot (root stays untransformed for the engine)
   const tilt = opts.tilt != null ? opts.tilt : 0.14 + r() * 0.14;

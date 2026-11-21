@@ -139,6 +139,11 @@ function emptySlots() {
 }
 
 export class Bag {
+  // Monotonic mutation counter: bumped by every mutating method (never by reads),
+  // so observers (the HUD) can skip work when nothing changed. Direct writes to
+  // .slots bypass it; observers must not rely on it alone.
+  version = 0;
+
   /**
    * @param {{slots:Array, selected:number}|null} snapshot
    * Throws TypeError if a provided snapshot is malformed.
@@ -234,6 +239,7 @@ export class Bag {
       if (meta.id !== undefined) meta = { ...meta, id: undefined };
       left -= put;
     }
+    if (left !== toCount(count)) this.version++;
     return left;
   }
 
@@ -251,6 +257,7 @@ export class Bag {
       left -= take;
       if (s.count === 0) this.slots[i] = null;
     }
+    this.version++;
     return true;
   }
 
@@ -282,6 +289,7 @@ export class Bag {
         this.slots[to] = { kind: src.kind, count: amt };
         src.count -= amt;
       }
+      this.version++;
       return true;
     }
 
@@ -293,18 +301,21 @@ export class Bag {
         // Both full stacks of same kind: swapping is a no-op but harmless.
         this.slots[to] = src;
         this.slots[from] = dst;
+        this.version++;
         return true;
       }
       const put = Math.min(space, amt);
       dst.count += put;
       src.count -= put;
       if (src.count === 0) this.slots[from] = null;
+      this.version++;
       return true;
     }
 
     if (!whole) return false;
     this.slots[to] = src;
     this.slots[from] = dst;
+    this.version++;
     return true;
   }
 
@@ -314,13 +325,16 @@ export class Bag {
 
   select(index) {
     if (!isIndex(index, HOTBAR_SIZE)) return false;
+    if (this.selectedIndex !== index) this.version++;
     this.selectedIndex = index;
     return true;
   }
 
   cycle(delta) {
     const d = typeof delta === 'number' && Number.isFinite(delta) ? Math.trunc(delta) : 0;
-    this.selectedIndex = (((this.selectedIndex + d) % HOTBAR_SIZE) + HOTBAR_SIZE) % HOTBAR_SIZE;
+    const next = (((this.selectedIndex + d) % HOTBAR_SIZE) + HOTBAR_SIZE) % HOTBAR_SIZE;
+    if (next !== this.selectedIndex) this.version++;
+    this.selectedIndex = next;
     return this.selectedIndex;
   }
 
@@ -359,6 +373,7 @@ export class Bag {
     // Commit only after every step succeeded on the scratch copy.
     // Keep the same array object so external references to bag.slots stay valid.
     for (let i = 0; i < SLOT_COUNT; i++) this.slots[i] = scratch.slots[i];
+    this.version++;
     return { ok: true, crafted: { kind: r.output.kind, count: r.output.count } };
   }
 }

@@ -6,10 +6,15 @@
 //   hands.update({ dt, time, charge, reeling, casting, walking, hasHookOut, motion });
 //   hands.handTip.getWorldPosition(v);    // rope anchor (left hand / coil)
 //
+// Static parts under each animated node (frame, hand, spool) are merged into one vertex-colored mesh
+// per material after building, so the viewmodel costs ~8 draw calls of its own.
+//
 // Coordinate convention: group sits at the camera origin, camera looks down -Z, +Y up, +X right.
 // Right fist grips the hook's lower handle near (0.38,-0.32,-0.80); left fist holds a rope coil
 // near (-0.34,-0.35,-0.70). Each arm is posed ABSOLUTELY every frame (base + offsets computed from
 // time / charge / casting and exponentially smoothed weights), so nothing accumulates or drifts.
+
+import { mergeChildMeshes } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 
 export function createHands(T, hookModel) {
   const TOOL_SCALE = 0.55;             // createHook() model (~.72 x .84 x .38) -> ~.40 x .46 x .21
@@ -40,9 +45,13 @@ export function createHands(T, hookModel) {
   const cuffMat = mat(0x3e5648, 0.95);
   const ropeMat = mat(0xb89a64, 0.95);
   const ropeDarkMat = mat(0x8a6e44, 1.0);
+  // merge targets: white vertex-colored materials that take each part's color from its build material
+  const skinV = mat(0xffffff, 0.62, { emissive: 0x1c0e06, vertexColors: true });
+  const clothV = mat(0xffffff, 0.95, { vertexColors: true });
+  const ropeV = mat(0xffffff, 0.95, { vertexColors: true });
+  const mergeInto = new Map([[skin, skinV], [skinPalm, skinV], [crease, skinV], [sleeveMat, clothV], [cuffMat, clothV], [ropeMat, ropeV], [ropeDarkMat, ropeV]]);
 
-  let meshCount = 0;
-  const finish = (m) => { m.castShadow = false; m.receiveShadow = false; m.frustumCulled = false; meshCount++; return m; };
+  const finish = (m) => { m.castShadow = false; m.receiveShadow = false; m.frustumCulled = false; return m; };
   const G = (g) => { geos.push(g); return g; };
 
   // Tapered capsule along +Y, cap centers at -L/2 (radius r0) and +L/2 (radius r1).
@@ -59,7 +68,7 @@ export function createHands(T, hookModel) {
     mesh.quaternion.setFromUnitVectors(UP, d.normalize());
     parent.add(mesh); return mesh;
   };
-  const sphereGeo = G(new T.SphereGeometry(1, 16, 12));
+  const sphereGeo = G(new T.SphereGeometry(1, 12, 8));
   const ellipsoid = (parent, m, p, rx, ry, rz, rotY = 0) => {
     const mesh = finish(new T.Mesh(sphereGeo, m));
     mesh.position.copy(p); mesh.scale.set(rx, ry, rz); mesh.rotation.y = rotY;
@@ -165,7 +174,7 @@ export function createHands(T, hookModel) {
   const COIL_R = 0.068;
   const spool = new T.Group(); spool.position.set(0, -COIL_R, 0); coil.add(spool);
   [[-0.014, 0.066, 0.10], [0.0, 0.070, -0.04], [0.014, 0.063, 0.07]].forEach(([z, rr, tilt]) => {
-    const m = finish(new T.Mesh(G(new T.TorusGeometry(rr, 0.0095, 8, 40)), ropeMat));
+    const m = finish(new T.Mesh(G(new T.TorusGeometry(rr, 0.0095, 6, 28)), ropeMat));
     m.position.set(0, COIL_R - rr, z); m.rotation.x = tilt; m.rotation.z = tilt * 2;
     spool.add(m);
   });
@@ -182,13 +191,27 @@ export function createHands(T, hookModel) {
   handTip.position.copy(tipLocal);
   L.hand.add(handTip);
 
-  root.userData.meshCount = meshCount;   // own meshes (41)
+  // ---------------- merge static parts under each animated node ----------------
+  for (const node of [R.frame, R.hand, L.frame, L.hand, spool]) {
+    for (const m of mergeChildMeshes(T, node, { material: (c) => mergeInto.get(c.material), colorize: true })) geos.push(m.geometry);
+  }
+  let meshCount = 0;
+  root.traverse((o) => { if (o.isMesh) meshCount++; });
+  if (hookModel) hookModel.traverse((o) => { if (o.isMesh) meshCount--; });
+  root.userData.meshCount = meshCount;   // own meshes after merging (8)
   root.userData.toolScale = TOOL_SCALE;
 
   // ---------------- animation state (weights only; transforms are rebuilt every frame) ----------------
   const st = { walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0 };
   const qOff = new T.Quaternion(), eul = new T.Euler(0, 0, 0, 'XYZ'), qSwing = new T.Quaternion(), AX = V(1, 0, 0);
-  const last = {};
+  // returned every frame; written in place so update() allocates nothing
+  const last = { charge: 0, chargeEased: 0, throw: 0, pull: 0, walkW: 0, reelW: 0, hookOutW: 0, toolW: 1, spool: 0,
+    rightOffset: { pos: [0, 0, 0], rot: [0, 0, 0], wrist: [0, 0, 0] },
+    leftOffset: { pos: [0, 0, 0], rot: [0, 0, 0] } };
+  const set3 = (a, x, y, z) => { a[0] = x; a[1] = y; a[2] = z; };
+  const NO_PARAMS = {};
+  let kdt = 0;
+  const k = (rate) => 1 - Math.exp(-rate * kdt);              // frame-rate independent smoothing
 
   function applyArm(A, px, py, pz, rx, ry, rz, wx, wy, wz) {
     A.pose.position.set(A.basePos.x + px, A.basePos.y + py, A.basePos.z + pz);
@@ -197,7 +220,7 @@ export function createHands(T, hookModel) {
     A.wrist.rotation.set(wx, wy, wz);
   }
 
-  function update(params = {}) {
+  function update(params = NO_PARAMS) {
     const dt = Math.min(Math.max(params.dt ?? 1 / 60, 0), 0.1);
     st.t += dt;
     const t = params.time ?? st.t;
@@ -205,7 +228,7 @@ export function createHands(T, hookModel) {
     const casting = clamp01(params.casting || 0);
     const reeling = !!params.reeling, walking = !!params.walking, hasHookOut = !!params.hasHookOut;
     const amp = clamp01(params.motion ?? 0.35) / 0.35;
-    const k = (rate) => 1 - Math.exp(-rate * dt);             // frame-rate independent smoothing
+    kdt = dt;
 
     st.walkW += ((walking ? 1 : 0) - st.walkW) * k(5);
     st.reelW += ((reeling ? 1 : 0) - st.reelW) * k(9);
@@ -274,9 +297,10 @@ export function createHands(T, hookModel) {
     }
     toolHolder.scale.setScalar(hasHookOut ? 1 : 0.7 + 0.3 * easeOutBack(tw));  // little "catch" pop on return
 
-    Object.assign(last, { charge: chargeEff, chargeEased: ce, throw: a, pull: pull * rW, walkW: st.walkW, reelW: rW, hookOutW: oW, toolW: tw, spool: st.spool,
-      rightOffset: { pos: [rpx, rpy, rpz], rot: [rrx, rry, rrz], wrist: [rwx, 0, rwz] },
-      leftOffset: { pos: [lpx, lpy, lpz], rot: [lrx, lry, lrz] } });
+    last.charge = chargeEff; last.chargeEased = ce; last.throw = a; last.pull = pull * rW; last.walkW = st.walkW;
+    last.reelW = rW; last.hookOutW = oW; last.toolW = tw; last.spool = st.spool;
+    set3(last.rightOffset.pos, rpx, rpy, rpz); set3(last.rightOffset.rot, rrx, rry, rrz); set3(last.rightOffset.wrist, rwx, 0, rwz);
+    set3(last.leftOffset.pos, lpx, lpy, lpz); set3(last.leftOffset.rot, lrx, lry, lrz);
     return last;
   }
 

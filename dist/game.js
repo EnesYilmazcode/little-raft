@@ -5,7 +5,7 @@ import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
 import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings } from './settings.js?build=v3-survival-ae77fa84ac2b';
-import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
+import { createRaftMesh } from './deck.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createHands } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
@@ -38,6 +38,9 @@ import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave } f
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { createItemIcons } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
+import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
+const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
+import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -63,6 +66,7 @@ const FISH_REACH = 26, PENDING_MS = 2500, JOIN_TIMEOUT = 15000, ACK_TIMEOUT = 20
 const CHARGE_MS = 900, MIN_CHARGE = .15, WEAR_PER_CATCH = 2, MAX_HEALTH = 100;
 const ROPE_SEGMENTS = 16, ITEM_FLOAT = .05, CAMERA_ROLL = .2;
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const SUN_OFFSET = Object.freeze([-15, 28, 12]), SHADOW_MARGIN = 4, SHADOW_MIN = 8, SHADOW_MAX = 25; // sun light offset from its target; shadow box half-size limits (m)
 const TIMBER = new Set(['#bb8a53','#c69860','#ad7c4a','#5e4029','#9c7649', '#c8995f', '#d3a368', '#8c6745', '#d5a265', '#a97d4c', '#b4824b', '#906f48', '#725942', '#756a49', '#ad8153']);
 const STYLE_ID = 'little-raft-engine-style';
 const HUD_CSS = `
@@ -220,7 +224,7 @@ export function mount(transfer = null) {
   let saveRev = isInt(X?.saveRev) ? X.saveRev : storedRev();
   let saveBlocked = !!X?.saveBlocked;
   let building = null, sentPieces = null; // building-pieces lane hook (sentPieces: last pieces array sent to the guest)
-  let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghost, rope, ropeAttr, hookMesh, bobber, friend, player, sun;
+  let scene = null, camera = null, renderer = null, quality = null, ocean = null, raft, itemsGroup, ghost, rope, ropeAttr, hookMesh, bobber, friend, player, sun;
   let hemi = null, clouds = [], content = null; // content hook: lights/clouds handed to content modules
   let hookHands = null, hammerHands = null, rodHands = null, rodModel = null, rodTip = null, clothMat;
   let fc = null; // [fishing-cooking] rod fishing v2 + grills + journal (dist/fishing-cooking.js)
@@ -255,7 +259,7 @@ export function mount(transfer = null) {
   let noticeText = '', noticeUntil = 0, contextCache = null, uiFailed = false; let fishShown = null;
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
-  let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = '';
+  let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = -1;
   const chargeMeter = $('#chargeMeter'), chargeFill = chargeMeter?.querySelector('i');
   let blockList = [];
   let controls = null; // controls lane: set in the Input section
@@ -280,7 +284,7 @@ export function mount(transfer = null) {
     const t = world.tiles.find(t => t[0] === 0 && t[1] === 0) ?? world.tiles[0]; return {x:t[0] * 2, z:t[1] * 2};
   }
 
-  const hasTile = (x, z) => world.tiles.some(t => t[0] === x && t[1] === z);
+  function hasTile(x, z) { const ts = world.tiles; for (let i = 0; i < ts.length; i++) if (ts[i][0] === x && ts[i][1] === z) return true; return false; }
   const isLocked = () => !!canvas && document.pointerLockElement === canvas;
   const dialogOpen = () => !!document.querySelector('dialog[open]');
   const uiBlocked = () => dialogOpen() || !!survivalUI?.isOpen;
@@ -293,6 +297,8 @@ export function mount(transfer = null) {
   const heldKind = () => (hook?.fishing ? 'fishingrod' : hook ? 'hook' : selectedKind());
   const caughtList = h => (Array.isArray(h?.caughtItems) ? h.caughtItems : h?.caught ? [h.caught] : []);
   const deckY = () => (raft ? raft.position.y : raftPose.y) + FLOOR_Y;
+  const heldSet = new Set(); // reused every frame: tokens our cast hook is carrying
+  function heldTokens() { heldSet.clear(); const h = castOut(); if (h) for (const c of caughtList(h)) heldSet.add(c.token); return heldSet; }
 
   // ---------- Small mesh helpers ----------
   const materialCache = new Map();
@@ -308,7 +314,10 @@ export function mount(transfer = null) {
   function box(w, h, d, c, x = 0, y = 0, z = 0, parent) { const m = new T.Mesh(new T.BoxGeometry(w, h, d), mat(c)); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; parent?.add(m); return m; }
   function cylinder(rt, rb, h, c, x, y, z, parent, n = 8) { const m = new T.Mesh(new T.CylinderGeometry(rt, rb, h, n), mat(c)); m.position.set(x, y, z); m.castShadow = true; parent?.add(m); return m; }
   function sphere(r, c, x, y, z, parent) { const m = new T.Mesh(new T.IcosahedronGeometry(r, 1), mat(c)); m.position.set(x, y, z); parent?.add(m); return m; }
-  function disposeGeometry(o) { const cached = new Set(materialCache.values()), materials = new Set(); o.traverse(c => { c.geometry?.dispose(); for (const m of [].concat(c.material || [])) if (!cached.has(m) && m !== clothMat) materials.add(m); }); for (const m of materials) { m.map?.dispose(); m.dispose(); } }
+  // three r170 draws transparent DoubleSide materials as two passes and flips material.side (a full program-parameter
+  // rebuild) around each; these thin, depth-tested parts look the same in one pass.
+  function singlePass(o) { o.traverse(c => { for (const m of [].concat(c.material || [])) if (m.transparent && m.side === T.DoubleSide) m.forceSinglePass = true; }); return o; }
+  function disposeGeometry(o) { const cached = new Set(materialCache.values()), materials = new Set(); o.traverse(c => { if (!c.geometry?.userData.shared) c.geometry?.dispose(); for (const m of [].concat(c.material || [])) if (!cached.has(m) && m !== clothMat && !m.userData.shared) materials.add(m); }); for (const m of materials) { m.map?.dispose(); m.dispose(); } }
 
   // ---------- DOM adoption (stable nodes shared across hot swaps) ----------
   function prepareDom() {
@@ -351,12 +360,13 @@ export function mount(transfer = null) {
     prepareDom();
     scene = new T.Scene(); scene.background = new T.Color('#cbd2c0'); scene.fog = new T.Fog('#cbd2c0', 25, 125);
     camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 200); camera.rotation.order = 'YXZ'; scene.add(camera);
-    renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:true});
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7)); renderer.setSize(innerWidth, innerHeight);
+    renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:devicePixelRatio < 1.5}); // dense screens get their smoothing from pixels, not MSAA
+    renderer.setSize(innerWidth, innerHeight);
     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
     hemi = new T.HemisphereLight('#f2ead4', '#3d6b6a', 1.8); scene.add(hemi); // content hook: kept for day/night
-    sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(-15, 28, 12); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, {left:-25, right:25, top:25, bottom:-25}); sun.shadow.bias = -.001; scene.add(sun);
-    ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.receiveShadow = true; scene.add(ocean.mesh); ocean.update(elapsed);
+    sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.001; scene.add(sun, sun.target);
+    quality = createQuality({renderer, sun, preset:options.graphics}); // owns pixel ratio, shadow map size and sun.castShadow
+    ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
     itemsGroup = new T.Group(); scene.add(itemsGroup);
     player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
@@ -369,8 +379,8 @@ export function mount(transfer = null) {
     buildViewmodels();
     try { fc = createFishingCooking(T, fcHost()); } catch (e) { console.error('fishing-cooking failed', e); fc = null; } // [fishing-cooking]
     islands.length = 0; aboveWater.length = 0; // diving lane hook: seafloor rises toward islands; these groups hide underwater
-    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); islands.push({x:g.position.x, z:g.position.z, r:5}); aboveWater.push(g); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scene.add(g); scenery.push([g, 6]); } // [sailing] islands drift past; diving: seafloor rises toward these
-    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; scene.add(g); clouds.push(g); aboveWater.push(g); scenery.push([g, 0]); } // content + sailing: clouds
+    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); islands.push({x:g.position.x, z:g.position.z, r:5}); aboveWater.push(g); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); bakeGroup(g); scene.add(g); scenery.push([g, 6]); } // [sailing] islands drift past; diving: seafloor rises toward these
+    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; bakeGroup(g); scene.add(g); clouds.push(g); aboveWater.push(g); scenery.push([g, 0]); } // content + sailing: clouds
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
     building = createBuilding(T, scene); // building-pieces lane hook
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
@@ -424,10 +434,60 @@ export function mount(transfer = null) {
     camera.add(depthClear);
     for (const h of [hookHands, hammerHands, rodHands]) {
       h.group.traverse(c => { if (c.isMesh) { c.castShadow = false; c.receiveShadow = false; c.renderOrder = 1000; c.frustumCulled = false; for (const m of [].concat(c.material)) { m.depthTest = true; m.depthWrite = true; if (!m.transparent) { m.transparent = true; m.opacity = m.opacity ?? 1; } m.needsUpdate = true; } } });
-      h.group.visible = false; camera.add(h.group);
+      singlePass(h.group); // attached to the camera only while held (see showViewmodel)
     }
   }
 
+  // Fits the sun's shadow box to the raft (plus a margin for props, avatars and nearby supplies). Call after tiles change.
+  // The box never grows past the old fixed ±25 m, so texels are never coarser than before.
+  function fitShadow() {
+    if (!sun || !world.tiles.length) return;
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const [x, z] of world.tiles) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+    const cx = (x0 + x1), cz = (z0 + z1), r = clamp(Math.hypot(x1 - x0 + 1, z1 - z0 + 1) + SHADOW_MARGIN, SHADOW_MIN, SHADOW_MAX); // tiles are 2 m: centre = sum, half-diagonal = hypot(span + 1)
+    sun.target.position.set(cx, 0, cz); sun.position.set(cx + SUN_OFFSET[0], SUN_OFFSET[1], cz + SUN_OFFSET[2]);
+    const d = Math.hypot(...SUN_OFFSET), cam = sun.shadow.camera;
+    Object.assign(cam, {left:-r, right:r, top:r, bottom:-r, near:Math.max(.5, d - r - 6), far:d + r + 6}); cam.updateProjectionMatrix();
+  }
+  // Bakes a drifting scenery group (island or cloud) into one mesh per material, kept local so sailing can still move the group.
+  function bakeGroup(g) {
+    const pos = g.position.clone(), scl = g.scale.clone(); g.position.set(0, 0, 0); g.scale.set(1, 1, 1);
+    const holder = new T.Group(); holder.add(g); g.scale.copy(scl); // scale is baked in, position stays on the group
+    const merged = mergeStatic(holder); holder.remove(g);
+    for (const c of [...g.children]) g.remove(c);
+    g.scale.set(1, 1, 1); g.position.copy(pos); for (const m of merged) g.add(m);
+    return g;
+  }
+  // Bakes every mesh under `root` (world transforms) into one non-shadow-casting mesh per material; disposes the parts.
+  function mergeStatic(root) {
+    root.updateMatrixWorld(true);
+    const byMat = new Map();
+    root.traverse(o => { if (!o.isMesh) return; if (!byMat.has(o.material)) byMat.set(o.material, []); byMat.get(o.material).push(o); });
+    const out = [];
+    for (const [material, meshes] of byMat) {
+      const parts = meshes.map(m => { const g = m.geometry.clone().applyMatrix4(m.matrixWorld); for (const n of Object.keys(g.attributes)) if (n !== 'position' && n !== 'normal' && n !== 'uv') g.deleteAttribute(n); return g; });
+      const merged = new T.Mesh(mergeGeometries(T, parts), material); merged.castShadow = false; merged.receiveShadow = false; merged.matrixAutoUpdate = false;
+      for (const g of parts) g.dispose(); for (const m of meshes) m.geometry.dispose();
+      out.push(merged);
+    }
+    return out;
+  }
+  // Compile every scene program up front (hidden viewmodels, hook, rope, ghost) so the first frame after #solo doesn't.
+  // compile() walks the scene graph, so all viewmodels are attached just for the synchronous part of the call.
+  function warmShaders() {
+    if (typeof renderer.compileAsync !== 'function') return;
+    for (const h of [hookHands, hammerHands, rodHands]) if (h.group.parent !== camera) camera.add(h.group);
+    try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
+    catch (e) { console.warn('shader warm-up failed', e); }
+    showViewmodel(null); // the next frame attaches whichever one is held
+  }
+  // Only the held viewmodel hangs under the camera, so per-frame matrix updates skip the other two entirely.
+  function showViewmodel(held) {
+    for (const h of [hookHands, hammerHands, rodHands]) {
+      if (h === held) { if (h.group.parent !== camera) camera.add(h.group); }
+      else if (h.group.parent) h.group.parent.remove(h.group);
+    }
+  }
   function palm(parent, x, y, z, s = 1) {
     const g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); cylinder(.09, .17, 1.6, '#ad8153', 0, .8, 0, g);
     for (let i = 0; i < 7; i++) { const l = new T.Mesh(new T.ConeGeometry(.28, 1.5, 4), mat(i % 2 ? '#519b55' : '#72ae59')); l.rotation.z = 1.2; l.rotation.y = i * Math.PI * 2 / 7; l.position.set(Math.sin(i * Math.PI * 2 / 7) * .5, 1.65, Math.cos(i * Math.PI * 2 / 7) * .5); g.add(l); }
@@ -436,7 +496,7 @@ export function mount(transfer = null) {
   function rebuildRaft() {
     for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
     wateringGroups.clear();
-    world.tiles.forEach(([x, z]) => { const g = createFloor(T, x * 719 + z * 311, mat); g.position.set(x * 2, 0, z * 2); raft.add(g); });
+    raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat));
     for (const d of world.decor) {
       let detailed = null; try { detailed = d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type) ?? null; } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel
       if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; }
@@ -461,9 +521,9 @@ export function mount(transfer = null) {
   }
   function itemModel(item) {
     if (item.type === 'cache') return createSignalModel(T, 'cache');
-    if (item.type === 'bottle') { const g = new T.Group(), b = createBottle(T); b.position.y = .04; b.rotation.y = (item.id % 7) * .9; g.add(b); return g; }
-    if (item.type !== 'plastic') return createDebris(T, item.type, mat, {seed:item.id});
-    const g = new T.Group(), jug = createPlastic(T); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
+    if (item.type === 'bottle') { const g = new T.Group(), b = createBottle(T); b.position.y = .04; b.rotation.y = (item.id % 7) * .9; g.add(b); return singlePass(g); }
+    if (item.type !== 'plastic') return singlePass(createDebris(T, item.type, mat, {seed:item.id}));
+    const g = new T.Group(), jug = singlePass(createPlastic(T)); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
   }
   // Meshes are keyed by token, not id: a respawned item keeps its id but may change type.
   const itemMeshes = new Map();
@@ -540,7 +600,7 @@ export function mount(transfer = null) {
   // Body classes, crosshair and resume hint follow running and pointer-lock state.
   function refreshPointerUI(force = false) {
     const locked = isLocked(), dialog = uiBlocked();
-    const signature = [running, locked, dialog, lockFallback].join();
+    const signature = (running ? 1 : 0) | (locked ? 2 : 0) | (dialog ? 4 : 0) | (lockFallback ? 8 : 0);
     if (!force && signature === uiSignature) return; uiSignature = signature;
     const b = document.body.classList;
     b.toggle('pointer-locked', locked); b.toggle('locked', locked); b.toggle('first-person', running); b.toggle('playing', running);
@@ -584,12 +644,15 @@ export function mount(transfer = null) {
   function clearInput() { keys = {}; charging = null; reeling = false; down = null; controls?.clear(); } // controls lane: also release the input layer
 
   // ---------- Aiming ----------
-  function pickNdc(nx, ny) {
+  const hits = [], aimScratch = {point:null, item:null, dir:new T.Vector3(), at:new T.Vector3()};
+  // `out` (per-frame aim only) reuses its vectors; event callers get a fresh result they may keep.
+  function pickNdc(nx, ny, out = null) {
     pointer.set(nx, ny); ray.setFromCamera(pointer, camera);
     plane.constant = -deckY() - .02;
     const held = allHeldTokens(); // ours and, on the host, the guest's hook
     let item = null;
-    for (const hit of ray.intersectObjects(itemsGroup.children, true)) {
+    hits.length = 0;
+    for (const hit of ray.intersectObjects(itemsGroup.children, true, hits)) {
       let o = hit.object; while (o && !o.userData.token) o = o.parent;
       const found = o && world.items.find(it => it.token === o.userData.token);
       if (found && !isPending(found) && !held.has(found.token)) { item = found; break; }
@@ -598,18 +661,20 @@ export function mount(transfer = null) {
       let best = Infinity;
       for (const it of world.items) {
         if (isPending(it) || held.has(it.token)) continue; const m = itemMeshes.get(it.token); if (!m) continue;
-        const along = m.position.clone().sub(ray.ray.origin).dot(ray.ray.direction);
+        const along = tmpV.copy(m.position).sub(ray.ray.origin).dot(ray.ray.direction);
         if (along > 0 && along < 5 && along < best && ray.ray.distanceSqToPoint(m.position) < .2) { best = along; item = it; }
       }
     }
+    hits.length = 0;
+    if (out) { out.point = ray.ray.intersectPlane(plane, out.at); out.item = item; out.dir.copy(ray.ray.direction); out.decor = pickWateringDecor(out.point); return out; }
     const point = ray.ray.intersectPlane(plane, new T.Vector3());
     return {point, item, dir:ray.ray.direction.clone(), decor:pickWateringDecor(point)};
   }
-  function pickScreen(x, y) { const r = canvas.getBoundingClientRect(); return pickNdc((x - r.left) / r.width * 2 - 1, -(y - r.top) / r.height * 2 + 1); }
-  const pickCenter = () => pickNdc(0, 0);
-  function currentAim() {
-    if (isLocked()) return pickCenter();
-    if (lockFallback && mouse.inside) return pickScreen(mouse.x, mouse.y);
+  function pickScreen(x, y, out) { const r = canvas.getBoundingClientRect(); return pickNdc((x - r.left) / r.width * 2 - 1, -(y - r.top) / r.height * 2 + 1, out); }
+  const pickCenter = out => pickNdc(0, 0, out);
+  function currentAim(out) {
+    if (isLocked()) return pickCenter(out);
+    if (lockFallback && mouse.inside) return pickScreen(mouse.x, mouse.y, out);
     return null;
   }
   function pickupFrom(aim) {
@@ -804,7 +869,7 @@ export function mount(transfer = null) {
         world.decor.push({type:a.recipe, x:a.x, z:a.z});
         if (a.recipe === 'antenna') { const n = countAntennas(world.decor); placedText = n > antennasBefore ? `Antenna placed · signal ${n}/3` : antennasBefore >= 3 ? 'Antenna placed' : 'Antenna placed (put it 2+ tiles from the receiver)'; }
       } else return;
-      rebuildRaft(); emit({kind:'build', text:placedText ?? (a.recipe === 'floor' ? 'A little more room!' : `${ITEM_INFO[a.recipe].name} placed`)}, 'all');
+      rebuildRaft(); fitShadow(); emit({kind:'build', text:placedText ?? (a.recipe === 'floor' ? 'A little more room!' : `${ITEM_INFO[a.recipe].name} placed`)}, 'all');
       award({kind:'build'});
       return;
     }
@@ -947,7 +1012,8 @@ export function mount(transfer = null) {
   }
 
   // ---------- Movement ----------
-  const held = (...codes) => codes.some(c => keys[c]);
+  const held = (a, b) => !!(keys[a] || (b && keys[b]));
+  const moveInput = {forward:0, strafe:0, yaw:0, jump:false, sprint:false, tiles:null, deckY:0, waterY:0, blocked:null}; // reused every frame
   function movePlayer(dt, input) {
     const ci = controls?.movement(dt, running && input, physics); // controls lane: polls input, applies look, shapes movement
     if (!running) { walking = false; return; }
@@ -966,7 +1032,10 @@ export function mount(transfer = null) {
   }
 
   // ---------- Frame ----------
-  const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3();
+  const TITLE_FOCUS = new T.Vector3(-5, 0, 2), vmParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0};
+  const fishPos = new T.Vector3(), hookPos = new T.Vector3(), fishRope = Array.from({length:ROPE_SEGMENTS + 1}, () => new T.Vector3()), freeItems = [], ropeScratch = [];
+  const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3(), oceanSample = {h:0, sx:0, sz:0};
+  const hookParams = {hand:handPos, items:freeItems, skip:isPending, reeling:false, time:0};
   // Hook physics floats at a flat WATER_Y; map heights near the water onto the visible waves.
   function surfaceY(x, z, y) {
     const k = clamp((y - WATER_Y) / .6, 0, 1), w = ocean.getHeight(x, z) + .04 + (y - WATER_Y);
@@ -978,11 +1047,11 @@ export function mount(transfer = null) {
     ropeAttr.needsUpdate = true; rope.geometry.setDrawRange(0, n); rope.visible = true;
   }
   function updateRaft(dt) {
-    const base = ocean.mesh.position.y, h = ocean.getHeight(0, 0) - base, s = ocean.getSlope(0, 0, undefined, 2.2);
+    const s = ocean.sample(0, 0, oceanSample, undefined, 2.2), h = s.h - ocean.mesh.position.y;
     const ky = Math.min(1, dt * 2), kr = Math.min(1, dt * 1.5);
     raft.position.y += (h * .3 - raft.position.y) * ky;
-    raft.rotation.x += (-s.z * .35 - raft.rotation.x) * kr;
-    raft.rotation.z += (s.x * .35 + Math.sin(elapsed * .7) * .003 - raft.rotation.z) * kr;
+    raft.rotation.x += (-s.sz * .35 - raft.rotation.x) * kr;
+    raft.rotation.z += (s.sx * .35 + Math.sin(elapsed * .7) * .003 - raft.rotation.z) * kr;
   }
   function updateCamera(dt) {
     const fov = running ? options.fov : 48; if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
@@ -992,24 +1061,25 @@ export function mount(transfer = null) {
       camera.position.set(physics.x + (cf?.x ?? 0), physics.y + bob, physics.z + (cf?.z ?? 0));
       camera.rotation.set(pitch, yaw, (physics.grounded ? raft.rotation.z * CAMERA_ROLL * options.cameraMotion : 0) + (cf?.roll ?? 0), 'YXZ');
     } else { // gentle cinematic view for the welcome screen
-      const focus = new T.Vector3(-5, 0, 2), d = 23, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .77;
+      const focus = TITLE_FOCUS, d = 23, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .77;
       camera.position.set(focus.x + Math.sin(cy) * d * Math.cos(cp), d * Math.sin(cp), focus.z + Math.cos(cy) * d * Math.cos(cp)); camera.lookAt(focus);
     }
     swing = Math.max(0, swing - dt * 3);
     const kind = heldKind(), motion = options.cameraMotion;
     const ch = charging ? clamp((performance.now() - charging.start) / CHARGE_MS, 0, 1) : 0;
-    hookHands.group.visible = running && kind === 'hook';
-    hammerHands.group.visible = running && kind === 'hammer';
-    rodHands.group.visible = running && kind === 'fishingrod';
-    if (hookHands.group.visible) hookHands.update({dt, time:elapsed, charge:ch, reeling:reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion});
-    if (hammerHands.group.visible) hammerHands.update({dt, time:elapsed, charge:0, reeling:false, casting:swing, walking, hasHookOut:false, motion});
-    if (rodHands.group.visible) {
+    const vm = !running ? null : kind === 'hook' ? hookHands : kind === 'hammer' ? hammerHands : kind === 'fishingrod' ? rodHands : null;
+    showViewmodel(vm);
+    const vp = vmParams; vp.dt = dt; vp.time = elapsed; vp.casting = swing; vp.walking = walking; vp.motion = motion; vp.charge = 0; vp.reeling = false; vp.hasHookOut = false;
+    if (vm === hookHands) { vp.charge = ch; vp.reeling = reeling && !!castOut(); vp.hasHookOut = !!castOut(); hookHands.update(vp); }
+    if (vm === hammerHands) hammerHands.update(vp);
+    if (vm === rodHands) {
       const out = !!hook?.fishing; if (rodModel.userData.float) rodModel.userData.float.visible = !out; if (rodModel.userData.leader) rodModel.userData.leader.visible = !out;
-      rodHands.update({dt, time:elapsed, charge:0, reeling:fc ? fc.rodReeling : out && hook.t > fishWait, // [fishing-cooking]
-        casting:swing, walking, hasHookOut:false, motion});
+      vp.reeling = fc ? fc.rodReeling : out && hook.t > fishWait; rodHands.update(vp); // [fishing-cooking]
     }
-    camera.updateMatrixWorld(true);
-    (kind === 'fishingrod' ? rodTip : hookHands.handTip).getWorldPosition(handPos);
+    camera.updateMatrixWorld(true); // camera, depth marker and the held viewmodel only
+    const tipOwner = kind === 'fishingrod' ? rodHands : hookHands, tip = kind === 'fishingrod' ? rodTip : hookHands.handTip;
+    if (tipOwner.group.parent === camera) tip.getWorldPosition(handPos);
+    else { tip.updateWorldMatrix(true, false); handPos.setFromMatrixPosition(tip.matrixWorld).applyMatrix4(camera.matrixWorld); } // detached: same spot as if held
   }
   function updateAvatars(dt) {
     player.position.set(physics.x, physics.y - EYE_OFFSET, physics.z); player.rotation.y = yaw + Math.PI;
@@ -1026,7 +1096,9 @@ export function mount(transfer = null) {
     const heldTokens = allHeldTokens();
     if (sailing) sailing.itemFlow(sailFlow); // [sailing]
     if (role !== 'guest') {
-      let respawned = false; const end = Math.max(...world.tiles.map(t => t[1])) * 2 + 24, side = Math.max(...world.tiles.map(t => Math.abs(t[0]))) * 2 + 24;
+      let respawned = false, maxZ = -Infinity, maxX = -Infinity;
+      for (const t of world.tiles) { if (t[1] > maxZ) maxZ = t[1]; const ax = Math.abs(t[0]); if (ax > maxX) maxX = ax; }
+      const end = maxZ * 2 + 24, side = maxX * 2 + 24;
       for (const it of world.items) {
         if (it.type === 'cache') continue; // the signal cache drifts in signalTick, never respawns
         if (heldTokens.has(it.token)) continue; // a hook (ours or the guest's) holds it; don't let it drift away or respawn
@@ -1042,9 +1114,9 @@ export function mount(transfer = null) {
       const u = m.userData;
       if (role === 'guest' && u.sx !== undefined && Math.hypot(it.x - u.sx, it.z - u.sz) < 3) { const k = Math.min(1, dt * 8); u.sx += (it.x - u.sx) * k; u.sz += (it.z - u.sz) * k; }
       else { u.sx = it.x; u.sz = it.z; }
-      const s = ocean.getSlope(u.sx, u.sz);
-      m.position.set(u.sx, ocean.getHeight(u.sx, u.sz) + ITEM_FLOAT, u.sz);
-      m.rotation.set(-s.z * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.x * 1.2 + Math.sin(elapsed + it.phase) * .05);
+      const s = ocean.sample(u.sx, u.sz, oceanSample);
+      m.position.set(u.sx, s.h + ITEM_FLOAT, u.sz);
+      m.rotation.set(-s.sz * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.sx * 1.2 + Math.sin(elapsed + it.phase) * .05);
     }
   }
   function endHook() { hook = null; lastCaughtCount = 0; reeling = false; rope.visible = false; hookMesh.visible = false; if (bobber) bobber.visible = false; }
@@ -1059,7 +1131,7 @@ export function mount(transfer = null) {
     if (hook.stage === 'floating' && hook.base) { hook.base.x += sailFlow.x * dt; hook.base.z += sailFlow.z * dt; } // [sailing] a floating hook drifts with the water
     if (hook.fishing) { // simple bobber animation, separate from HookCast
       hook.t += dt; const f = hook.t / hook.duration, u = Math.min(1, f * 5);
-      const pos = handPos.clone().lerp(hook.end, u);
+      const pos = fishPos.copy(handPos).lerp(hook.end, u);
       if (u >= 1) pos.y = ocean.getHeight(pos.x, pos.z) + .05 + Math.sin(elapsed * 5) * .03 - (hook.t > fishWait ? .12 : 0); else pos.y += Math.sin(u * Math.PI) * 1.2;
       const pts = []; for (let i = 0; i <= ROPE_SEGMENTS; i++) pts.push(handPos.clone().lerp(pos, i / ROPE_SEGMENTS));
       setRope(pts); hookMesh.visible = false; bobber.visible = true; bobber.position.copy(pos);
@@ -1073,7 +1145,7 @@ export function mount(transfer = null) {
     if (hook.stage === 'flying') hookMesh.rotation.set(-hook.flightT * Math.PI * 2, yaw, 0);
     else if (hook.stage === 'reeling') hookMesh.rotation.set(-.6, yaw, 0);
     else hookMesh.rotation.set(0, yaw, 1.1);
-    const pts = hook.ropePoints(handPos, ROPE_SEGMENTS);
+    const pts = hook.ropePoints(handPos, ROPE_SEGMENTS, ropeScratch);
     for (let i = 1; i < pts.length; i++) pts[i].y = surfaceY(pts[i].x, pts[i].z, pts[i].y);
     pts[pts.length - 1].copy(pos); setRope(pts);
     const caught = caughtList(hook);
@@ -1108,15 +1180,16 @@ export function mount(transfer = null) {
   }
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, swimming:physics.swimming});
   function frame() {
-    const now = performance.now(), dt = Math.min((now - last) / 1000, .05); last = now; elapsed += dt;
+    const now = performance.now(), rawMs = now - last, dt = Math.min(rawMs / 1000, .05); last = now; elapsed += dt;
     const dialog = uiBlocked();
+    if (running && !dialog && !document.hidden && !PIN_QUALITY) quality.tick(rawMs);
     checkPeerStale(now);
     ocean.update(elapsed, camera);
     updateRaft(dt); if (sailing) sailing.update(dt, elapsed); // [sailing]
     movePlayer(dt, running && !dialog);
     updateAvatars(dt); updateCamera(dt); if (running) diving?.update(dt, elapsed); // diving lane hook
     coop?.update(dt, elapsed); // coop: interpolated remote avatar, rope, ghost, pings, pose stream, reconnect
-    frameAim = running && !dialog ? currentAim() : null;
+    frameAim = running && !dialog ? currentAim(aimScratch) : null;
     pickTarget = pickupFrom(frameAim);
     waterAim = pickTarget ? null : wateringTarget(frameAim);
     updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost();
@@ -1256,6 +1329,7 @@ export function mount(transfer = null) {
       useUp:() => { reeling = false; if (charging) releaseCharge(pickCenter()); }, useCancel:() => { reeling = false; if (charging?.x === null) charging = null; }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});
     signal.addEventListener('abort', () => controls?.dispose());
   } catch (e) { console.error('controls lane failed to start', e); controls = null; }
+  on(document, 'visibilitychange', () => { quality?.reset(); });
   on(window, 'beforeunload', () => { save(); send({type:'leaving'}); try { conn?.close(); peer?.destroy(); } catch {} });
   on(document, 'visibilitychange', () => {
     send({type:document.hidden ? 'hidden' : 'visible'}); lastNetSendAt = performance.now();
@@ -1302,7 +1376,7 @@ export function mount(transfer = null) {
     if (b.physics) physics = new PlayerPhysics(b.physics); else { const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); }
     if (!world.items.length) for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     content?.load(world.ext, 'restore'); // content hook
-    if (scene) { syncItems(); rebuildRaft(); }
+    if (scene) { syncItems(); rebuildRaft(); fitShadow(); }
     queueMicrotask(guard(retroAward)); // callers set role = 'solo' right after this returns
   }
   function closeConnection() {
@@ -1387,7 +1461,7 @@ export function mount(transfer = null) {
           const b = Bag.fromCounts(w.stock, {tools:['hook', 'hammer', 'fishingrod']}); if (remoteBag) b.select(remoteBag.selectedIndex); remoteBag = b;
         }
         content?.load(w.ext, 'net'); // content hook
-        syncItems(); if (changed && scene) rebuildRaft(); else if (piecesChanged && scene) building?.sync(world); // building-pieces lane hook
+        syncItems(); if (changed && scene) { rebuildRaft(); fitShadow(); } else if (piecesChanged && scene) building?.sync(world); // building-pieces lane hook
         if (first) {
           networkReady = true; joinTimer = cancelTimer(joinTimer); joinDeadline = 0;
           setStatus('Connected! You are aboard your brother’s raft.'); setConnectionLabel(`TWO ABOARD · ${room.toUpperCase()}`);
@@ -1425,26 +1499,46 @@ export function mount(transfer = null) {
       hook:hookMesh.visible && hook ? {stage:hook.fishing ? 'fishing' : hook.stage, ...(hook.fishing ? {x:hookMesh.position.x, y:.05, z:hookMesh.position.z} : {x:hook.position.x, y:hook.position.y, z:hook.position.z})} : null, // physics height; remote maps it onto waves
       ghost:hover ? {x:hover.x, z:hover.z, kind:k, ok:k !== 'hammer' || canAfford(localBag(), FLOOR_COST)} : null}; },
     reconnect:coopRejoin, giveUp:() => { closeConnection(); setStatus('Host disconnected. Rejoin when their tab is open.'); }});
-  setHandler($('#host'), 'onclick', () => {
+  // PeerJS (~93 KB) is only fetched on the first host/join; solo play never loads it. Shared across hot-swapped engines.
+  function loadPeer() {
+    if (typeof globalThis.Peer === 'function') return Promise.resolve(globalThis.Peer);
+    return globalThis.__littleRaftPeerJs ??= new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = new URL('./vendor/peerjs.min.js', import.meta.url).href;
+      s.onload = () => typeof globalThis.Peer === 'function' ? resolve(globalThis.Peer) : reject(new Error('PeerJS missing'));
+      s.onerror = () => { s.remove(); reject(new Error('PeerJS failed to load')); };
+      document.head.appendChild(s);
+    }).catch(e => { globalThis.__littleRaftPeerJs = null; throw e; }); // allow a retry on the next click
+  }
+  let netAttempt = 0; // the latest host/join click wins while PeerJS is loading
+  setHandler($('#host'), 'onclick', async () => {
     if (role === 'host' && peer && !peer.destroyed) { setStatus('Your room is open. Share the code below.'); return; }
+    const attempt = ++netAttempt;
     closeConnection();
-    if (typeof globalThis.Peer !== 'function') { setStatus('Online play is unavailable. Solo play still works.'); return; }
-    role = 'host'; room = Array.from(crypto.getRandomValues(new Uint8Array(6)), v => 'abcdefghjkmnpqrstuvwxyz'[v % 22]).join('');
     setStatus('Opening your room…');
-    try { peer = new globalThis.Peer('little-raft-' + room); bindPeer(peer, true); }
+    let Peer; try { Peer = await loadPeer(); } catch { Peer = null; }
+    if (disposed || attempt !== netAttempt) return;
+    if (!Peer) { setStatus('Online play is unavailable. Solo play still works.'); return; }
+    closeConnection();
+    role = 'host'; room = Array.from(crypto.getRandomValues(new Uint8Array(6)), v => 'abcdefghjkmnpqrstuvwxyz'[v % 22]).join('');
+    try { peer = new Peer('little-raft-' + room); bindPeer(peer, true); }
     catch { closeConnection(); setStatus('Online play is unavailable. Solo play still works.'); }
   });
-  setHandler($('#joinForm'), 'onsubmit', e => {
+  setHandler($('#joinForm'), 'onsubmit', async e => {
     e.preventDefault(); const code = ($('#roomInput')?.value ?? '').trim().toLowerCase();
     if (!/^[a-z]{6}$/.test(code)) return setStatus('Enter the six letters from your brother’s screen.');
+    const attempt = ++netAttempt;
     closeConnection();
-    if (typeof globalThis.Peer !== 'function') { setStatus('Online play is unavailable. Try solo for now.'); return; }
+    setStatus('Finding your brother’s raft…');
+    let Peer; try { Peer = await loadPeer(); } catch { Peer = null; }
+    if (disposed || attempt !== netAttempt) return;
+    if (!Peer) { setStatus('Online play is unavailable. Try solo for now.'); return; }
+    closeConnection();
     if (storedRev() <= saveRev) save(); // role is still solo here: persist our own raft, unless another tab saved newer
     ownWorldBackup = {world, host:hostBag.snapshot(), guest:guestBag.snapshot(), physics:physics.capture()};
     role = 'guest'; room = code; hook = null; fishWait = 0; charging = null; reeling = false; remoteBag = null; seq = 0; lastSeqSent = 0;
-    setStatus('Finding your brother’s raft…');
     try {
-      peer = new globalThis.Peer(); bindPeer(peer, false);
+      peer = new Peer(); bindPeer(peer, false);
       joinDeadline = performance.now() + JOIN_TIMEOUT; joinTimer = later(joinTimedOut, JOIN_TIMEOUT); // stays until the first state
     } catch { closeConnection(); setStatus('Online play is unavailable. Try solo for now.'); }
   });
@@ -1478,7 +1572,7 @@ export function mount(transfer = null) {
       if (!renderer) return null;
       const i = renderer.info, c = {meshes:0, visible:0, lights:0, shadowCasters:0};
       scene?.traverse(o => { if (o.isMesh || o.isLine || o.isPoints) { c.meshes++; if (o.visible) c.visible++; if (o.castShadow) c.shadowCasters++; } if (o.isLight) c.lights++; });
-      return {calls:i.render.calls, triangles:i.render.triangles, lines:i.render.lines, points:i.render.points, geometries:i.memory.geometries, textures:i.memory.textures, programs:i.programs?.length ?? null, pixelRatio:renderer.getPixelRatio(), shadows:renderer.shadowMap.enabled, ...c};
+      return {calls:i.render.calls, triangles:i.render.triangles, lines:i.render.lines, points:i.render.points, geometries:i.memory.geometries, textures:i.memory.textures, programs:i.programs?.length ?? null, pixelRatio:renderer.getPixelRatio(), shadows:renderer.shadowMap.enabled && !!sun?.castShadow, quality:quality ? {level:quality.level, levels:quality.levels.length, preset:quality.info.preset, pixelRatio:quality.info.pixelRatio, shadowMapSize:quality.info.shadowMapSize, ema:quality.info.ema} : null, ...c};
     },
     get state() {
       const hc = castOut(), bag = localBag(), counts = bag.counts(), kind = heldKind();
@@ -1562,7 +1656,7 @@ export function mount(transfer = null) {
   function pause() { active = false; if (rafId) cancelAnimationFrame(rafId); rafId = 0; }
   function resume() {
     if (disposed || active || !scene) return;
-    active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
+    active = true; last = performance.now(); quality?.reset(); rafId = requestAnimationFrame(animate);
   }
   function disposeScene() {
     if (!scene) return;
@@ -1604,7 +1698,7 @@ export function mount(transfer = null) {
     if (!canvas) throw new Error('#world canvas missing');
     init();
     try { coop = createCoop(coopContext(), X?.coop); } catch (e) { console.warn('co-op layer unavailable', e); coop = null; } // coop
-    settingsController = createSettings({onChange:next => { options = next; if (renderer) { renderer.setPixelRatio(Math.min(devicePixelRatio, next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3)); renderer.shadowMap.enabled = next.graphics !== 'low'; } }, onPause:clearInput, onResume:() => requestLock()});
+    settingsController = createSettings({onChange:next => { options = next; if (quality && quality.info.preset !== next.graphics) quality.setCap(next.graphics); }, onPause:clearInput, onResume:() => { quality?.reset(); requestLock(); }});
     survivalUI = createSurvivalUI({
       getBag:() => localBag(),
       onSelect:guard(i => selectSlot(i)),
@@ -1619,6 +1713,7 @@ export function mount(transfer = null) {
     later(() => { try { itemIcons.prime(); } catch (e) { console.warn('item icons', e); } }, 1500); // render 3D recipe icons off the first-open path
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
     if ($('#toast')?.classList.contains('show')) toastTimer = later(() => { toastTimer = 0; $('#toast')?.classList.remove('show'); }, 2600);
+    warmShaders(); // after settings: the saved graphics preset decides the light/shadow program variants
     active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
     // onboarding/prompts hook (docs/cloud/onboarding.md): lets dist/prompts.js raycast with the live camera.
     try { window.raftMount = {T, scene, camera, debug:debugApi}; window.dispatchEvent(new CustomEvent('raft:mount', {detail:window.raftMount})); } catch {}

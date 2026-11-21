@@ -5,7 +5,7 @@
 export const PRESETS = Object.freeze({
   low: Object.freeze({ pixelRatio: 1, shadows: false }),
   medium: Object.freeze({ pixelRatio: 1.3, shadows: true }),
-  high: Object.freeze({ pixelRatio: 1.7, shadows: true }),
+  high: Object.freeze({ pixelRatio: 1.5, shadows: true }),
 });
 
 export const QUALITY_CONSTANTS = Object.freeze({
