@@ -57,6 +57,8 @@ export const HOLD = Object.freeze({
   drum: { hand: 'right', pose: 'grip', rx: 0.75 }, pipes: { hand: 'right', pose: 'grip', rx: 0.2 }, bells: { hand: 'right', pose: 'grip', rx: 1.2, rz: 0.1 }, // [instruments] right fist, clear of the hotbar
   camera: { hand: 'right', pose: 'grip', rx: 0.1, rz: -1 }, // [camera] lens faces forward; tilted up so the body clears the hotbar
   glidehandle: { hand: 'right', pose: 'grip', rx: -0.2, rz: 1.57 }, // [zipline] bar sideways in the fist
+  biofuel: { hand: 'right', pose: 'grip', ry: 0.5 }, // [biofuel] jug hangs by its handle, cap toward the view
+  waterpipe: { hand: 'right', pose: 'grip', rx: -0.5, rz: 0.6 }, // [pipes] length tilted forward across the fist
   ...Object.fromEntries(PLACEABLE_KINDS.filter((k) => k !== 'hammer').map((k) => [k, { hand: 'left', pose: SEED_KINDS.includes(k) ? 'grip' : 'point' }])),
 });
 // Unknown kinds (other lanes may add items): carried on the left fist if placeable, else gripped.
@@ -69,6 +71,7 @@ const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.22, fi
   drum: 0.15, pipes: 0.2, bells: 0.2, // [instruments]
   camera: 0.13, // [camera]
   glidehandle: 0.24, // [zipline]
+  biofuel: 0.12, waterpipe: 0.16, // [biofuel][pipes]
   skyrocket: 0.2, scarecrow: 0.24, glidepost: 0.24, glidestep: 0.2, candle: 0.11, beehive: 0.18, flowerbox: 0.2 };
 // Kind -> its own world model (one fresh copy per held build; hands.js caches the held model per kind).
 const MODEL_KINDS = {
@@ -227,6 +230,31 @@ function buildSeeds(T) {
   return g;
 }
 
+// [biofuel] Biofuel Jug: a squat amber-green can, dark screw cap on one shoulder, carry handle on top.
+function buildFuelJug(T) {
+  const g = new T.Group();
+  const body = new T.MeshStandardMaterial({ color: 0x9a9a3a, roughness: 0.5, metalness: 0.15 });
+  const band = new T.MeshStandardMaterial({ color: 0xd9a73a, roughness: 0.45, metalness: 0.1 });
+  const dark = new T.MeshStandardMaterial({ color: 0x2f3336, roughness: 0.6 });
+  const can = new T.Mesh(new T.BoxGeometry(0.1, 0.085, 0.06), body); g.add(can);
+  const stripe = new T.Mesh(new T.BoxGeometry(0.102, 0.022, 0.062), band); stripe.position.y = -0.008; g.add(stripe);
+  const neck = new T.Mesh(new T.CylinderGeometry(0.011, 0.013, 0.012, 10), body); neck.position.set(0.03, 0.048, 0); g.add(neck);
+  const cap = new T.Mesh(new T.CylinderGeometry(0.014, 0.014, 0.014, 10), dark); cap.position.set(0.03, 0.06, 0); g.add(cap);
+  const handle = new T.Mesh(new T.TorusGeometry(0.019, 0.005, 6, 12, Math.PI), dark); handle.position.set(-0.018, 0.0425, 0); g.add(handle);
+  return g;
+}
+
+// [pipes] Water Pipe: a short copper length with a wider hub ring at one end and a thin band at the other.
+function buildPipeLength(T) {
+  const g = new T.Group();
+  const copper = new T.MeshStandardMaterial({ color: 0xc98a4b, roughness: 0.35, metalness: 0.6 });
+  const hub = new T.MeshStandardMaterial({ color: 0x9a5a2e, roughness: 0.4, metalness: 0.55 });
+  const pipe = new T.Mesh(new T.CylinderGeometry(0.014, 0.014, 0.14, 12), copper); g.add(pipe);
+  const ring = new T.Mesh(new T.CylinderGeometry(0.021, 0.021, 0.026, 12), hub); ring.position.y = 0.06; g.add(ring);
+  const lip = new T.Mesh(new T.TorusGeometry(0.016, 0.003, 5, 14), hub); lip.rotation.x = Math.PI / 2; lip.position.y = -0.068; g.add(lip);
+  return g;
+}
+
 // A small cloth bundle tied with rope: stands in for any kind without a model of its own.
 function buildBundle(T) {
   const g = new T.Group();
@@ -297,6 +325,10 @@ export function buildItemModel(T, kind, factory = null) {
     root = fit(T, createHandle(T), dim('glidehandle'), (s) => new T.Vector3(-s.x * 0.24, -s.y * 0.38, 0)); // grip = one half of the bar, stem beside the fist
   } else if (MODEL_KINDS[kind]) { // [zipline][fireworks][scarecrow][bees]
     root = fit(T, MODEL_KINDS[kind](T), dim(kind), (s) => new T.Vector3(0, -s.y / 2, 0)); // grip = base centre
+  } else if (kind === 'biofuel') { // [biofuel]
+    root = fit(T, buildFuelJug(T), SIZE.biofuel, (s) => new T.Vector3(-s.x * 0.18, s.y * 0.36, 0)); // fist round the handle
+  } else if (kind === 'waterpipe') { // [pipes]
+    root = fit(T, buildPipeLength(T), SIZE.waterpipe, (s) => new T.Vector3(0, -s.y * 0.1, 0));
   } else if (kind === 'planter') {
     root = fit(T, createCraft(T, 'palm'), dim('planter'), (s) => new T.Vector3(0, -s.y / 2, 0));
   }

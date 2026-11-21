@@ -80,8 +80,14 @@ export function buildRefiner(T) {
   const liquidMat = new T.MeshStandardMaterial({ color: 0xd9a73a, emissive: 0x6a3d08, emissiveIntensity: .5, roughness: .3 }); liquidMat.name = 'bioLiquid';
   const bubbleGeo = new T.SphereGeometry(.015, 8, 6);
   const bubbleMat = new T.MeshStandardMaterial({ color: 0xfff1c4, transparent: true, opacity: .8, roughness: .2 }); bubbleMat.name = 'bioBubble';
-  const jugGeo = new T.BoxGeometry(.08, .12, .08);
-  const jugMat = new T.MeshStandardMaterial({ color: 0xd9a73a, roughness: .45 }); jugMat.name = 'bioJug';
+  // one tray jug: small amber cylinder, dark shoulder and screw cap (one merged, vertex-coloured mesh); bottom at y -.06
+  const jp = painter(T, 41);
+  jp.add(new T.CylinderGeometry(.032, .034, .085, 12), 0xd9a73a, 0, -.0175, 0, 0, 0, 0, .05);  // body
+  jp.add(new T.CylinderGeometry(.034, .034, .012, 12), 0xa8742a, 0, -.035, 0, 0, 0, 0, .03);   // label band
+  jp.add(new T.CylinderGeometry(.018, .032, .018, 12), 0xc79630, 0, .034, 0, 0, 0, 0, .04);    // shoulder
+  jp.add(new T.CylinderGeometry(.015, .015, .02, 10), 0x2f3336, 0, .053, 0, 0, 0, 0, .03);     // cap
+  const jugGeo = mergeParts(T, jp.parts);
+  const jugMat = new T.MeshStandardMaterial({ vertexColors: true, roughness: .45, metalness: .1 }); jugMat.name = 'bioJug';
   const free = shareable(T, [baseGeo, bulbGeo, liquidGeo, bubbleGeo, jugGeo, baseMat, bulbMat, liquidMat, bubbleMat, jugMat]);
   const mesh = (geo, mat, name, x, y, z) => { const m = new T.Mesh(geo, mat); m.name = name; m.position.set(x, y, z); m.castShadow = false; return m; };
 
