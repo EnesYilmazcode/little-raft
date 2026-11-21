@@ -21,7 +21,7 @@ import { createFarmView } from './farming-view.js?build=v3-survival-ae77fa84ac2b
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { floorBlock, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
-import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
+import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
@@ -46,6 +46,7 @@ const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
 const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12});
 const SAVE = 'little-raft-v1';
+const SAVE_STATUS = "Solo and hosted rafts save automatically. Joining uses the host's world."; // #saveStatus default
 const FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 8, PICKUP_REACH = 2.5;
 const LOOK_SENSITIVITY = .0022, DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
 const FISH_REACH = 26, PENDING_MS = 2500, JOIN_TIMEOUT = 15000, ACK_TIMEOUT = 2000;
@@ -735,6 +736,7 @@ export function mount(transfer = null) {
   }
 
   function start() {
+    if (adoptOnStart({running, role, storedRev:storedRev(), saveRev})) adoptStoredSave();
     running = true; const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false;
     if (!saveAvailable) setText('#saveStatus', 'Browser storage is unavailable. This session will not be saved.');
     refreshPointerUI(true);
@@ -762,6 +764,7 @@ export function mount(transfer = null) {
     const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); yaw = 0; pitch = -.28;
     for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     if (scene) { syncItems(); rebuildRaft(); }
+    saveRev = newGameBaseRev(storedRev(), saveRev); unblockSave(); // the player chose to overwrite the stored save
     save(); start();
   }
   const hasSave = () => { try { return !!localStorage.getItem(SAVE); } catch { return false; } };
@@ -769,6 +772,8 @@ export function mount(transfer = null) {
     const cont = $('#solo'), fresh = $('#newGame'), saved = hasSave();
     if (cont) cont.hidden = !saved;
     if (fresh) { fresh.textContent = saved ? 'New game' : "Let's set sail"; fresh.className = saved ? 'secondary' : 'primary'; delete fresh.dataset.confirm; }
+    const note = $('#titleSaveStatus'), text = titleSaveNote({available:saveAvailable, blocked:saveBlocked, storedRev:storedRev(), saveRev});
+    if (note) { note.textContent = text; note.hidden = !text; }
   }
   function syncWorldInventories() { // only for the world this client owns (solo / host)
     world.hostInventory = hostBag.snapshot(); world.guestInventory = guestBag.snapshot();
@@ -779,6 +784,9 @@ export function mount(transfer = null) {
     setText('#saveStatus', 'This raft was saved in another tab. This tab stopped saving so it will not overwrite it. Reload to continue from that save.');
     notice('Saved in another tab. This tab stopped saving', 3200);
   }
+  function unblockSave() { if (!saveBlocked) return; saveBlocked = false; setText('#saveStatus', SAVE_STATUS); }
+  // Leaving the title for play while another tab has saved since: continue from that newer save, not our stale copy.
+  function adoptStoredSave() { loadRaft(savedOwnRaft()); saveRev = storedRev(); unblockSave(); }
   function save() {
     if (role === 'guest' || disposed || saveBlocked) return;
     syncWorldInventories();
@@ -1064,8 +1072,9 @@ export function mount(transfer = null) {
   });
   on(window, 'pagehide', () => { if (running) save(); });
   on(window, 'storage', e => { // another tab wrote our save key
-    if (e.key !== SAVE || role === 'guest') return;
-    if (saveRevision(e.newValue) > saveRev) blockSave();
+    if (e.key !== SAVE) return;
+    if (storageBlocks({running, role, newRaw:e.newValue, baseRev:saveRev})) blockSave();
+    else if (!running) refreshTitle(); // on the title: Continue will adopt the newer save
   });
   on(window, 'resize', () => { if (!camera) return; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
@@ -1108,6 +1117,9 @@ export function mount(transfer = null) {
     const newer = storedRev() > saveRev; // another tab (e.g. the host in this browser) saved since we joined: never restore over it
     const b = (newer ? null : normaliseBackup(ownWorldBackup)) ?? savedOwnRaft(); ownWorldBackup = null; remoteBag = null;
     if (newer) { saveRev = storedRev(); saveBlocked = false; }
+    loadRaft(b);
+  }
+  function loadRaft(b) { // b: {world, host, guest, physics|null}
     hook = null; fishWait = 0; charging = null; reeling = false; lastCaughtCount = 0; pending.clear();
     world = b.world; hostBag = snapBag(b.host) ?? new Bag(); guestBag = snapBag(b.guest) ?? new Bag();
     if (b.physics) physics = new PlayerPhysics(b.physics); else { const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); }
