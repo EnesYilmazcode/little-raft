@@ -16,7 +16,7 @@ export function createFarIslands(T, {haze = '#c4dfeb', sunDirection, layout = LA
   const sand = new T.Color(SAND), grass = new T.Color(GRASS), rock = new T.Color(ROCK), c = new T.Color();
   const pos = [], col = [], v = new T.Vector3(), n = new T.Vector3();
   for (const [bearing, dist, rx, h, rz, k, seed] of layout) {
-    const g = new T.IcosahedronGeometry(1, 3).toNonIndexed(), p = g.attributes.position;
+    const g = new T.IcosahedronGeometry(1, 3), p = g.attributes.position;
     // A few overlapping bumps make an uneven ridge line instead of a dome.
     const bumps = [0, 1, 2, 3, 4].map(i => [Math.sin(seed * 7.1 + i * 2.3) * .75, Math.cos(seed * 3.7 + i * 1.9) * .5, .3 + .45 * Math.abs(Math.sin(seed * 1.3 + i * 2.1))]);
     const cx = Math.sin(bearing) * dist, cz = Math.cos(bearing) * dist, rot = seed * .9;
