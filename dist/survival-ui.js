@@ -289,7 +289,7 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-locked .sv-rsub{color:#a3321a}
 #inventory .sv-rbadge{font:800 12px/1 ${FONT};color:#3f6a26;font-variant-numeric:tabular-nums}
 /* detail: big icon, name, what it is for, have / need rows and the Craft button */
-#inventory .sv-detail{flex:0 1 auto;min-height:0;display:flex;flex-direction:column;gap:7px;padding:10px 11px 11px;border-radius:4px;background:#e6d6adf7;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1733}
+#inventory .sv-detail{flex:none;display:flex;flex-direction:column;gap:7px;padding:10px 11px 11px;border-radius:4px;background:#e6d6adf7;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1733}
 #inventory .sv-detail[hidden]{display:none}
 #inventory .sv-dhead{flex:none;display:grid;grid-template-columns:64px 1fr auto;gap:11px;align-items:center}
 #inventory .sv-dart{display:grid;place-items:center;width:64px;height:64px;border-radius:4px;background:#b89f6e;box-shadow:inset 0 0 0 1px #7a5a34}
@@ -304,7 +304,8 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-dstate[hidden]{display:none}
 #inventory .sv-dlabel{flex:none;display:flex;justify-content:space-between;font:700 10px/1 ${FONT};letter-spacing:1.5px;text-transform:uppercase;color:#6b5638}
 #inventory .sv-dlabel i{font-style:normal;letter-spacing:.6px;text-transform:none;font-weight:700;padding-right:8px}
-#inventory .sv-ings{flex:none;max-height:100px;overflow-y:auto;list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;scrollbar-width:thin;scrollbar-color:#a08a5e transparent}
+/* every ingredient row stays visible: rows wrap into columns instead of scrolling */
+#inventory .sv-ings{flex:none;list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:3px 4px}
 #inventory .sv-ing{flex:none;display:grid;grid-template-columns:26px 1fr auto;gap:8px;align-items:center;padding:3px 8px 3px 5px;border-radius:3px;background:#d6c397;box-shadow:inset 3px 0 0 #b0391e}
 #inventory .sv-ing.sv-ok{box-shadow:inset 3px 0 0 #5f9c3a}
 #inventory .sv-ing .sv-icon{width:26px;height:26px}
@@ -342,11 +343,15 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-tip[hidden]{display:none}
 #inventory .sv-tip small{display:block;margin-top:2px;font:500 12px/1.35 ${FONT};color:#5e4426}
 #inventory .sv-tip small em{font-style:normal;font-weight:700;color:#8a3a12}
-/* smaller screens: slightly smaller slots, then a stacked, scrolling layout */
+/* smaller screens: slightly smaller slots, then a compact side-by-side layout, and only phones stack */
 @media(max-width:1040px){#inventory.sv-inv{--s:45px;--g:5px}#inventory .sv-cbody{grid-template-columns:80px 256px}}
+@media(max-width:900px){#inventory.sv-inv{--s:min(44px,calc((96vw - 380px) / 10 - 4px));--g:4px}#inventory .sv-wrap{gap:8px;padding:10px}#inventory .sv-side{gap:8px}
+  #inventory .sv-cbody{grid-template-columns:66px 222px;gap:6px}#inventory .sv-tab{height:54px;font-size:11px}#inventory .sv-tab .sv-icon{width:24px;height:24px}
+  #inventory .sv-recipe{grid-template-columns:34px 1fr auto;gap:7px;min-height:44px;padding:4px 6px 4px 5px}#inventory .sv-rart{width:34px;height:34px}#inventory .sv-rart .sv-icon{width:30px;height:30px}
+  #inventory .sv-bag{padding:8px 10px 9px;gap:6px}#inventory .sv-detail{gap:5px;padding:8px 9px 9px}#inventory .sv-craftbtn{height:38px}#inventory .sv-slot .sv-art{inset:3px}}
 @media(max-height:640px){#inventory .sv-dart{width:52px;height:52px}#inventory .sv-dart .sv-icon{width:46px;height:46px}#inventory .sv-dhead{grid-template-columns:52px 1fr auto}
   #inventory .sv-hint{font-size:11px;line-height:1.3}#inventory .sv-tab{height:56px}}
-@media(max-width:900px),(max-height:520px){#inventory.sv-inv{width:auto;--s:44px;--g:5px}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}
+@media(max-width:720px),(max-height:520px){#inventory.sv-inv{width:auto;--s:44px;--g:5px}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}
   #inventory .sv-craft{height:auto;max-height:none;overflow:visible}#inventory .sv-cbody{grid-template-columns:76px minmax(0,1fr)}#inventory .sv-rlist{max-height:40vh}
   #inventory .sv-side{flex:none}#inventory .sv-detail{flex:none}#inventory .sv-bag{min-width:0}#inventory .sv-slot .sv-art{inset:3px}}
 @media(max-width:560px){#inventory.sv-inv{--s:min(36px,calc((92vw - 75px) / ${HB}));--g:4px}#inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}}
