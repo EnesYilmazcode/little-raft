@@ -401,14 +401,14 @@ export function createWildlife(ctx) {
 
   // Folding swings the wing back (Y), turns it on edge along the flank with the grey top facing out (X twist
   // about its own length), and drops the shoulder so the wing lies along the flank instead of standing above it.
+  // Local wing matrix: translate(shoulder) * scale(side,1,1) * Ry(1.55 fold) * Rx(1.4 fold) * Rz(flap) * scale(1 - 0.3 fold,1,1)
+  // (folded, the hand tucks under: the tips just cross the tail). The mirror commutes through as Ry(side*a) Rx(b) Rz(side*c),
+  // so it is one Euler 'YXZ' compose with x-scale side*(1 - 0.3 fold) and one multiply. Reuses v3/q4/eul/sc3: the body is composed already.
   function setWing(index, side, flap, fold) {
-    mA.makeTranslation(side * (GULL_SHOULDER[0] + 0.035 * fold), GULL_SHOULDER[1] - 0.09 * fold, GULL_SHOULDER[2]);
-    mB.makeScale(side, 1, 1);
-    mC.makeRotationY(fold * 1.55);
-    mD.makeRotationX(fold * 1.4);
-    mE.makeRotationZ(flap * (1 - 0.8 * fold));
-    mA.multiply(mB).multiply(mC).multiply(mD).multiply(mE);
-    mC.makeScale(1 - 0.3 * fold, 1, 1); mA.multiply(mC); // folded, the hand tucks under: the tips just cross the tail
+    v3.set(side * (GULL_SHOULDER[0] + 0.035 * fold), GULL_SHOULDER[1] - 0.09 * fold, GULL_SHOULDER[2]);
+    eul.set(fold * 1.4, side * fold * 1.55, side * flap * (1 - 0.8 * fold), 'YXZ'); q4.setFromEuler(eul);
+    sc3.set(side * (1 - 0.3 * fold), 1, 1);
+    mA.compose(v3, q4, sc3);
     mB.multiplyMatrices(m4, mA);
     gullWing.setMatrixAt(index, mB);
   }
