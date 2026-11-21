@@ -364,9 +364,15 @@ export function attachProgression(ctx) {
   // Registered lazily from tick(), since prompts.js may load after this module.
   let promptOff = null;
   const stationPrompt = () => { const d = ctx.running() && ctx.aim ? stationNear(ctx.aim(), true) : null; return d ? { key: 'E', label: 'Use the ' + nameOf(d.type) } : null; };
+  function reset() { // game.js newGame(): a fresh world starts with fresh research, stations and barrel luck
+    progs.host = new Progression(); progs.guest = new Progression(); stations.clear();
+    for (const k of Object.keys(pendingStations)) delete pendingStations[k];
+    for (const k of Object.keys(barrelLuck.misses)) delete barrelLuck.misses[k];
+    save();
+  }
   const disposeAll = () => { try { promptOff?.(); } catch {} dispose(); }; // content hook
 
-  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, dispose: disposeAll, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()) };
+  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, reset, dispose: disposeAll, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()) };
 }
 
 export default attachProgression;

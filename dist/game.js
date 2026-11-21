@@ -1377,7 +1377,8 @@ export function mount(transfer = null) {
     if (role !== 'solo') closeConnection();
     resetHints(window.localStorage, hintsDone); // first-run hints are once per save, and this is a fresh one
     const w = newWorld(), b = bagsFromWorld(w);
-    loadRaft({world:w, host:b.host.snapshot(), guest:b.guest.snapshot(), physics:null}); yaw = 0; pitch = -.28; // lanes reload from the fresh world too
+    try { fc?.resetWorld?.(); } catch (e) { console.warn('fishing reset failed', e); } try { prog?.reset?.(); } catch (e) { console.warn('progression reset failed', e); } // per-raft stores outside world
+    loadRaft({world:w, host:b.host.snapshot(), guest:b.guest.snapshot(), physics:null}); resetVitals(); yaw = 0; pitch = -.28; // lanes reload from the fresh world too
     saveRev = newGameBaseRev(storedRev(), saveRev); unblockSave(); // the player chose to overwrite the stored save
     save(); start();
   }
