@@ -997,3 +997,10 @@ Next ideas: merge rounds 0548/0703/0749 into master; look into the warmShaders r
 - Skipped claude/loop-ux-202611210848: its new work is loop-ux-202611210833 (plus loop-ux-0648 commits) with an older raft-master merged in; both are claimed by integrator B, and it conflicts in 16 files.
 - Merged claude/loop-ux-202611210852 with no content change: its only new commit merges loop-ux-202611210748, which raft-master already has; kept raft-master's side.
 - Gate after merging raft-master: 1138/1138 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text; 166 ms/frame, 37 draw calls.
+
+## 2026-11-21 · integrator D: loop-fidelity-202611210900, -0910, -0914; loop-features-202611210855
+- Merged loop-fidelity-202611210914: Simple Bed (Raft recipe, sleep effect on vitals, home-bed respawn) and Raft breath (33 s, halved when starving) with drowning damage.
+- Merged loop-features-202611210855: docs only, research notes and specs for zipline, night light (hand lantern, firefly jar) and crops.
+- Skipped loop-fidelity-202611210900: it is loop-fidelity-202611210821 (paddle, stone axe) merged with raft-master, and integrator B claimed -0821.
+- Skipped loop-fidelity-202611210910: conflicts in 11 dist files, and its edge collection nets (nets.js, world.nets) replace raft-master's decor net collection. Needs a rebase by its worker. It also brings crops, foundation armor, a 2x2 start and Raft costs.
+- Gate: 1148/1148 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text.
