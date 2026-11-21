@@ -9,6 +9,13 @@ export const BLOCK_TEXT = Object.freeze({
   bound: 'Raft can’t grow further this way',
   cap: 'Raft can’t grow further this way',
   reach: 'Too far away: step closer',
+  overlap: 'Something is in the way',
+  edge: 'Needs floor underneath',
+  self: 'Too close: step back',
+  last: 'You can’t remove your last floor',
+  decor: 'Clear what stands on this floor first',
+  split: 'That would split the raft in two',
+  brother: 'Your brother is in the way',
 });
 
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -37,4 +44,19 @@ export function decorBlock(tiles, decor, x, z) {
 export function inReach(px, pz, x, z, reach = BUILD_REACH) {
   if (!Number.isFinite(px) || !Number.isFinite(pz)) return false;
   return Math.hypot(x * 2 - px, z * 2 - pz) <= reach;
+}
+
+const escHtml = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;'}[c]));
+// Context-prompt HTML while a build tool is held. hover: the placement result ({kind, ok, blocked}) or
+// null; held: 'hammer' or a decor kind; name: the decor's display name; cost: 'n item, n item';
+// missing: what the floor still needs ('' when affordable). Plain-text inputs are escaped here.
+// remove: the display name of what X would remove with the hammer ('' for nothing).
+export function placePrompt(hover, held, {name = '', cost = '', missing = '', remove = ''} = {}) {
+  const rm = held === 'hammer' && remove ? '<kbd>X</kbd>Remove ' + escHtml(remove) : '';
+  if (!hover) return rm;
+  if (rm) return placePrompt(hover, held, {name, cost, missing}) + ' · ' + rm;
+  const rot = held === 'hammer' ? '' : '<kbd>R</kbd>Rotate';
+  if (hover.blocked) return escHtml(BLOCK_TEXT[hover.blocked] ?? '') + (rot && ' · ' + rot);
+  if (held === 'hammer') return missing ? 'Floor needs ' + escHtml(missing) : '<kbd>Click</kbd>Build floor · ' + escHtml(cost);
+  return hover.ok ? `<kbd>Click</kbd>Place ${escHtml(name)} · ${rot}` : rot;
 }

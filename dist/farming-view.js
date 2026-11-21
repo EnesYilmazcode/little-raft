@@ -102,9 +102,9 @@ export function createFarmView(T, { getModel = null } = {}) {
     return find(decor, point.x, point.z);
   };
   // Placement ghost: exactly what a fresh planter looks like (pot + dry soil). Materials are
-  // cloned because the ghost swaps and disposes them; geometry stays shared.
-  function ghostModel() {
-    const g = new T.Group(); g.add(model('planter')); mesh(G.soil, M.dry, g, 0, POT_H - .01, 0);
+  // cloned because the ghost replaces (and disposes) every material on what it is given; geometry stays shared.
+  function ghostModel(kind = 'planter') {
+    const g = new T.Group(); g.add(model(kind)); if (kind === 'planter') mesh(G.soil, M.dry, g, 0, POT_H - .01, 0);
     g.traverse(o => { if (o.isMesh) o.material = Array.isArray(o.material) ? o.material.map(m => m.clone()) : o.material.clone(); });
     return g;
   }

@@ -2,7 +2,7 @@
 // Load as: <script type="module" src="live.js"></script> (needs import.meta.url).
 // Contract: game.js exports mount(transfer|null) -> { capture(), dispose(), pause?(), resume?() }.
 
-import { buildFromUrl, liveDecision } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
+import { buildFromUrl, liveDecision, routeStatus } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 
 const BASE = import.meta.url;
 const POLL_MS = 6000;
@@ -33,12 +33,12 @@ function injectStyle() {
   const s = document.createElement('style');
   s.id = 'raftLiveStyle';
   s.textContent = `
-#updateStatus{position:fixed;left:50%;bottom:18px;transform:translate(-50%,12px);z-index:2147483000;
+#updateStatus{position:fixed;left:22px;bottom:26px;transform:translateY(12px);z-index:2147483000;
 max-width:min(92vw,420px);padding:9px 16px;border-radius:10px;background:#14213d;color:#fdf6e3;
 border:1px solid rgba(253,246,227,.35);box-shadow:0 6px 20px rgba(0,0,0,.28);
-font:500 13px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;letter-spacing:.01em;text-align:center;
+font:500 13px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;letter-spacing:.01em;text-align:left;
 pointer-events:none;opacity:0;transition:opacity .25s ease,transform .25s ease}
-#updateStatus.show{opacity:1;transform:translate(-50%,0)}
+#updateStatus.show{opacity:1;transform:none}
 #raftLiveError{position:fixed;inset:0;z-index:2147483001;display:flex;align-items:center;justify-content:center;
 background:rgba(20,33,61,.55);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 #raftLiveError section{max-width:min(92vw,440px);padding:22px 24px;border-radius:14px;background:#fdf6e3;color:#14213d;
@@ -55,6 +55,8 @@ font:600 14px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;cursor:pointe
 
 let statusHideTimer = 0;
 function showStatus(text, ms) {
+  // A running engine shows it in its bottom-left feed; this own-CSS pill (same corner) is the pre-boot fallback.
+  if (routeStatus(window, text)) { document.getElementById('updateStatus')?.classList.remove('show'); return; }
   injectStyle();
   let el = document.getElementById('updateStatus');
   if (!el) {

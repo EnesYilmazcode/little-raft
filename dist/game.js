@@ -4,15 +4,15 @@ import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
-import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
+import { HookCast, WATER_Y, catchLoot, holdForFullBag, throwOrigin } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-survival-ae77fa84ac2b';
 import { createRaftMesh, createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
-import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { PlayerPhysics } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
-import { floorBlock, decorBlock, inReach, BUILD_REACH, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
+import { Bag, ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { PlayerPhysics, PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
+import { floorBlock, decorBlock, inReach, BUILD_REACH, GUEST_REACH_SLACK, BLOCK_TEXT, placePrompt } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createContent, cleanExt } from './content.js?build=v3-survival-ae77fa84ac2b'; // content hook (islands, wildlife, storage, day/night)
@@ -34,8 +34,8 @@ import { createSignalModel } from './signal-models.js?build=v3-survival-ae77fa84
 import { cleanWatering, copyWatering, plantStage, tick as tickWatering, tileKey, fillCup, loadPurifier, takeWater, water as waterPlant, harvest as harvestPlant, WATER_ACTIONS, FILL_REACH, USE_REACH, HOST_SLACK, PURIFY_SECONDS } from './watering.js?build=v3-survival-ae77fa84ac2b';
 import { createPurifier, paintPurifier, preparePlanter, paintPlanter } from './purifier-model.js?build=v3-survival-ae77fa84ac2b';
 import { cleanRain, copyRain, tickRain, takeRain, fillSprinkler, rainTarget, RAIN_ACTIONS } from './rain.js?build=v3-survival-ae77fa84ac2b'; import { createRainBarrel, paintRainBarrel, createSprinkler, paintSprinkler } from './rain-model.js?build=v3-survival-ae77fa84ac2b'; // rain-sprinkler (docs/specs/rain-sprinkler.md)
-import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
-import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
+import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, hookableItems, decorBlockers, playerInWay, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
+import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan, LIVE_STATUS_EVENT } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
@@ -48,9 +48,12 @@ import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lan
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
-import { createGhosts, wrapRot, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
+import { createGhosts, FOOTPRINT, wheelDelta, decorOnRay, floorRemoveBlock, refundOf, wrapRot, ROT_STEP, FINE_STEP, DECOR_REACH, FLOOR_REACH } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
-import { getItemIcon, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { iconURL, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints, feedPlacement, hintsFromState } from './hud.js?build=v3-survival-ae77fa84ac2b';
+import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, escReleasePlan, dragLook } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -66,10 +69,13 @@ const ITEM_NAMES = Object.freeze({wood:'plank', leaf:'bundle of leaves', scrap:'
 const SPAWN_TABLE = Object.freeze(['wood', 'wood', 'wood', 'plastic', 'plastic', 'plastic', 'leaf', 'leaf', 'leaf', 'scrap', 'barrel']);
 const LOOT = Object.freeze({wood:{wood:2}, leaf:{leaf:1}, scrap:{scrap:1}, plastic:{plastic:1}, barrel:{wood:3, leaf:2, scrap:1, plastic:1}, cache:{wood:6, plastic:4, scrap:3, rope:2}});
 const STOCK_KEYS = Object.freeze(['wood', 'leaf', 'scrap', 'plastic']); // legacy world.stock (derived)
+const START_TILES = 4; // newWorld() raft size; more tiles means the player has built a floor
 const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
-const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12, receiver:.35, antenna:.1, purifier:.3, rainbarrel:.3, sprinkler:.12, ...CONTENT_BLOCK_RADIUS, ...BLOCK_RADII}); // content hook, [progression-hook]
+// number: circle radius; array: the placement rect (crate, sail and lantern collide as their FOOTPRINT, after the catalogue radii)
+const BLOCK_RADIUS = Object.freeze({palm:.42, bench:.45, receiver:.35, antenna:.1, purifier:.3, rainbarrel:.3, sprinkler:.12, ...CONTENT_BLOCK_RADIUS, ...BLOCK_RADII, crate:FOOTPRINT.crate, sail:FOOTPRINT.sail, lantern:FOOTPRINT.lantern}); // content hook, [progression-hook]
 const SAVE = 'little-raft-v1';
+const SAVE_STATUS = "Solo and hosted rafts save automatically. Joining uses the host's world."; // #saveStatus default
 const THROW_LOFT = .2, FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 10, PICKUP_REACH = 2.5;
 const LOOK_SENSITIVITY = .0022, DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
 const FISH_REACH = 26, PENDING_MS = 2500, JOIN_TIMEOUT = 15000, ACK_TIMEOUT = 2000;
@@ -82,7 +88,7 @@ const STYLE_ID = 'little-raft-engine-style';
 const HUD_CSS = `
 body.playing header,body.playing #hud .inventory,body.playing #hud .goal,body.playing #toast,
 body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.playing [data-quick-recipe]{display:none!important}
-#contextPrompt{position:fixed;left:50%;top:calc(50% + 26px);transform:translateX(-50%);padding:3px 10px;border-radius:8px;
+#contextPrompt{position:fixed;left:50%;bottom:132px;transform:translateX(-50%);padding:3px 10px;border-radius:8px;
   background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 var(--ui-font,system-ui,sans-serif);pointer-events:none;z-index:30;white-space:nowrap}
 #contextPrompt[hidden]{display:none}
 #contextPrompt kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:0 4px;border:1px solid rgba(246,236,214,.6);border-radius:4px;font:inherit;text-align:center}
@@ -94,6 +100,20 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
   border:2px solid #fff3cf;box-shadow:0 0 8px rgba(255,189,102,.7);pointer-events:none;z-index:29}
 #signalMarker.edge{opacity:.7}
 #signalReadout[hidden],#signalMarker[hidden]{display:none}
+/* The pickup feed is a manual popover during play; with the bag or pause menu open it docks into a lane inside that panel. */
+#pickupFeed[popover]{position:fixed;inset:auto auto 44px 22px;margin:0;padding:0;border:0;background:none;overflow:visible;width:auto;height:auto;max-width:none;max-height:none;color:#f6ecd6}
+/* Rows wrap inside the gutter left of the hotbar (its left edge is 50vw - 253px); below 1000px wide that gutter is too narrow, so the feed lifts above the hotbar. */
+#pickupFeed .pf-row{max-width:max(200px,calc(50vw - 287px));white-space:normal;line-height:1.25}
+@media(max-width:1000px){#pickupFeed[popover]{inset:auto auto 96px 10px}#pickupFeed .pf-row{max-width:calc(50vw - 120px)}}
+#pickupFeed .pf-hint{white-space:normal;max-width:max(180px,min(340px,calc(50vw - 300px)));line-height:1.3}#pickupFeed .pf-hint span{color:#ffd98f}
+.feed-lane{display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(transparent,#000 22px);mask-image:linear-gradient(transparent,#000 22px)}
+#inventory .sv-bag>.feed-lane{flex:1 1 0;min-height:88px;align-self:stretch}
+/* Pause rail: the lane fills the space under "Esc Back"; an equal spacer on top keeps the menu centred. */
+#options .rs-menu::before,#options .rs-menu>.feed-lane{content:"";flex:1 1 0;min-height:0;margin:0;padding:0}
+#options .rs-menu>.feed-lane{margin-top:18px;padding:0 16px 16px 0}#options .rs-menu::before{margin-bottom:18px;padding-bottom:16px}
+#pickupFeed.docked{position:static;inset:auto;z-index:auto;max-width:100%}
+#pickupFeed.docked .pf-row{max-width:100%;white-space:normal;line-height:1.25}
+@media(max-width:760px){#contextPrompt{bottom:96px}#pickupFeed[popover]{inset:auto auto 96px 10px}#options .rs-menu::before,#options .rs-menu>.feed-lane{display:none}}
 `;
 
 export function mount(transfer = null) {
@@ -213,7 +233,7 @@ export function mount(transfer = null) {
   let peer = X?.peer ?? null, conn = X?.conn ?? null, role = ['solo', 'host', 'guest'].includes(X?.role) ? X.role : 'solo';
   let networkReady = !!X?.networkReady, room = typeof X?.room === 'string' ? X.room : '';
   let world, hostBag = null, guestBag = null, remoteBag = null, saveAvailable = X ? X.saveAvailable !== false : true;
-  let ownWorldBackup = normaliseBackup(X?.ownWorldBackup);
+  let ownWorldBackup = normaliseBackup(X?.ownWorldBackup), freshSave = false;
   if (X?.world && Array.isArray(X.world.tiles)) {
     world = liveWorld(X.world);
     if (X.version >= 3 && X.bags) { hostBag = snapBag(X.bags.host); guestBag = snapBag(X.bags.guest); remoteBag = snapBag(X.bags.remote); }
@@ -228,6 +248,7 @@ export function mount(transfer = null) {
     let raw = null;
     try { raw = localStorage.getItem(SAVE); } catch { saveAvailable = false; }
     if (raw) { try { const v = cleanWorld(JSON.parse(raw)); if (v) world = v; } catch {} }
+    freshSave = !raw;
     const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
   }
   // Revision of the save this tab last loaded or wrote. Another tab writing a newer one stops our autosave.
@@ -242,38 +263,43 @@ export function mount(transfer = null) {
   let fc = null; // [fishing-cooking] rod fishing v2 + grills + journal (dist/fishing-cooking.js)
   let instruments = null; // [instruments]
   let logbookUI = null;
+  const farmPlot = () => null; // planters run on the watering lane (watering.js), not farming.js plots: seeds never point at one
   let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
   let yaw = Number.isFinite(X?.yaw) ? X.yaw : 0, pitch = Number.isFinite(X?.pitch) ? X.pitch : 0;
   let walking = false, walkPhase = Number.isFinite(X?.walkPhase) ? X.walkPhase : 0, swing = 0;
   const pointer = new T.Vector2(), ray = new T.Raycaster(), plane = new T.Plane(new T.Vector3(0, 1, 0), -.22);
+  let removeTarget = null; // hammer: what X would remove (prompt only)
   let hover = null, mouse = {x:0, y:0, inside:false}, frameAim = null, pickTarget = null;
   const raftPose = {y:X?.raftPose?.y ?? 0, rx:X?.raftPose?.rx ?? 0, rz:X?.raftPose?.rz ?? 0};
   let physics = makePhysics(X);
   let other = X?.other ? validPose(X.other) : null;
   let keys = X?.keys && typeof X.keys === 'object' ? {...X.keys} : {};
+  const lookFilter = createLookFilter(); // drops pointer-lock spikes without cutting real flicks short
   let hook = X?.hook && (X.hook.fishing || typeof X.hook.update === 'function') ? X.hook : null;
   let castId = typeof X?.castId === 'string' ? X.castId : newToken();
   let hookSlot = isInt(X?.hookSlot) ? X.hookSlot : -1;
   let fishWait = Number.isFinite(X?.fishWait) ? X.fishWait : 0;
-  let sound = X ? X.sound !== false : true;
+  let sound = X ? X.sound !== false : loadSoundPref(window.localStorage); // the sound toggle is remembered across sessions
   const sfx = createOceanAudio({context:X?.audio ?? null, volume:sound ? options.volume : 0, output:ctx => diving?.audioOut(ctx) ?? null}); // diving lane hook: muffled underwater
   const play = (ev, s) => sfx.play(ev, s);
   const note = (i, n, s) => sfx.note?.(i, n, s) ?? false; // [instruments]
   const applyVolume = () => { sfx.setVolume(sound ? options.volume : 0); sfx.setBus('effects', options.effects ?? 1); sfx.setBus('ambience', options.ambience ?? .7); };
   if (X?.audio) sfx.resume(); // hot swap: the old context is already unlocked
-  let charging = X?.charging && Number.isFinite(X.charging.start) ? {...X.charging} : null, reeling = !!X?.reeling && !!hook;
+  let charging = X?.charging && Number.isFinite(X.charging.start) ? {...X.charging} : null, reeling = !!X?.reeling && !!hook, hookFull = false; // hookFull: the catch will not fit, so the reel stops short
   let lastCaughtCount = isInt(X?.lastCaughtCount) ? X.lastCaughtCount : (hook?.caughtItems?.length ?? (hook?.caught ? 1 : 0));
   const pending = new Map(X?.pending instanceof Map ? X.pending : []); // item token -> expiry; hides supplies we reeled in while the host confirms
   const guestHeld = createGuestHeld(); // host only: tokens on the guest's hook, from its move messages
+  let hostHeld = new Set(); // guest only: tokens on the host's hook, from its state messages
   const wornCasts = {host:X?.wornCasts?.host ?? null, guest:X?.wornCasts?.guest ?? null}; // one wear per successful throw
   let seq = isInt(X?.seq) ? X.seq : 0, lastSeqSent = Number.isFinite(X?.lastSeqSent) ? X.lastSeqSent : 0, guestAck = isInt(X?.guestAck) ? X.guestAck : 0;
   let lastHostMessage = X?.lastHostMessage || performance.now(), lastGuestMessage = X?.lastGuestMessage || performance.now();
   let joinTimer = 0, joinDeadline = Number.isFinite(X?.joinDeadline) ? X.joinDeadline : 0;
   let waterClock = 0, waterAim = null; const wateringGroups = new Map(); // tileKey -> palm/purifier group
   let netClock = 0, lastSaveAt = performance.now(), lastNetSendAt = 0, toastTimer = 0, wheelAcc = 0, peerHidden = !!X?.peerHidden, heartbeat = 0;
-  let noticeText = '', noticeUntil = 0, contextCache = null, uiFailed = false; let fishShown = null;
+  let noticeText = '', noticeUntil = 0, noticeCache = null, contextCache = null, uiFailed = false; let fishShown = null;
+  const hintsDone = X?.hintsDone instanceof Set ? X.hintsDone : freshSave ? new Set() : loadHints(window.localStorage); // first-run hint chain, once per save
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
   let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = -1;
@@ -356,10 +382,11 @@ export function mount(transfer = null) {
       + '<li><kbd>W A S D</kbd><span><b>Walk</b>, hold <kbd>Shift</kbd> to run, <kbd>Space</kbd> to jump. Fell in? Swim to the raft and hold <kbd>Space</kbd> to climb aboard.</span></li>'
       + '<li><kbd>1–0</kbd><span><b>Hotbar.</b> Number keys or the mouse wheel choose a slot. Click uses what you are holding.</span></li>'
       + '<li><kbd>Hook</kbd><span><b>Throw.</b> Hold click to power up, aim higher to throw farther, release. Hold again to reel in everything it touches.</span></li>'
-      + '<li><kbd>E</kbd><span><b>Pick up</b> a supply right beside you, or open your bag to craft. <kbd>Tab</kbd> / <kbd>I</kbd> open the bag too.</span></li>'
+      + '<li><kbd>E</kbd><span><b>Pick up</b> a supply right beside you, or open your bag to craft. <kbd>Tab</kbd> / <kbd>I</kbd> open the bag too; <kbd>E</kbd>, <kbd>I</kbd> or <kbd>Esc</kbd> close it. Inside, <kbd>Tab</kbd> and the arrow keys move between slots.</span></li>'
       + '<li><kbd>E</kbd><span><b>Sail.</b> Look at a sail and press E to raise or lower it; hold <kbd>R</kbd> and turn to steer it. The pennant shows the wind. E at the anchor post stops the raft.</span></li>' // [sailing]
       + '<li><kbd>Craft</kbd><span><b>Make tools.</b> A Hammer builds raft floors (2 wood, 2 plastic each). A Fishing Rod catches fish. Crafted decorations are placed one at a time.</span></li>'
-      + '<li><kbd>R</kbd><span><b>Repair</b> a worn hook for 2 wood and 1 scrap.</span></li>'
+      + '<li><kbd>X</kbd><span><b>Remove</b> the floor or piece you aim at while holding the Hammer. You get about half its materials back.</span></li>'
+      + '<li><kbd>R</kbd><span><b>Rotate</b> the piece you are placing (<kbd>Shift</kbd> + wheel turns it finely), or <b>repair</b> a worn hook for 2 wood and 1 scrap.</span></li>'
       + '<li><kbd>Esc</kbd><span><b>Menu.</b> Settings, Play together and this guide.</span></li>';
     const note = $('#help .guide-note'); if (note) note.textContent = 'Everyone has their own bag; the raft and the sea are shared. Nothing can hurt you, and your raft never sinks. Mouse won\'t lock? Drag the ocean to look instead.';
   }
@@ -391,7 +418,7 @@ export function mount(transfer = null) {
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
     itemsGroup = new T.Group(); scene.add(itemsGroup); ocean.trackFoam(itemsGroup);
     player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
-    ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => { try { return prog?.modelFor(k, {type:k}) ?? (k === 'rainbarrel' ? createRainBarrel(T) : k === 'sprinkler' ? createSprinkler(T) : k === 'purifier' ? createPurifier(T) : createCraft(T, k) ?? createSignalModel(T, k) ?? content?.decorModel(k) ?? null); } catch { return null; } }}); // see-through real models, red when blocked
+    ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => { try { const m = prog?.modelFor(k, {type:k}) ?? (k === 'rainbarrel' ? createRainBarrel(T) : k === 'sprinkler' ? createSprinkler(T) : k === 'purifier' ? createPurifier(T) : createCraft(T, k) ?? createSignalModel(T, k) ?? content?.decorModel(k) ?? null); if (m && k === 'palm') { preparePlanter(T, m); paintPlanter(m, 0, false); } return m; } catch { return null; } }}); // see-through real models, red when blocked; a planter ghosts as the fresh, dry planter it places
     const ropeGeo = new T.BufferGeometry(); ropeAttr = new T.BufferAttribute(new Float32Array((ROPE_SEGMENTS + 1) * 3), 3); ropeAttr.setUsage(T.DynamicDrawUsage); ropeGeo.setAttribute('position', ropeAttr);
     rope = new T.Line(ropeGeo, new T.LineBasicMaterial({color:'#e9d39a'})); rope.visible = false; rope.frustumCulled = false; scene.add(rope);
     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
@@ -563,24 +590,26 @@ export function mount(transfer = null) {
   function notice(s, ms = 1800) { if (s == null || s === '') return; noticeText = String(s).slice(0, 90); noticeUntil = performance.now() + Math.min(ms, 400); pickupFeed.note(noticeText); } // bottom-left feed, never the screen centre
   function toast(s) {
     if (coop?.feed(s)) return; // coop: connection news goes to the bottom-left feed
-    if (running) { notice(s, 2400); return; }
-    const el = $('#toast'); if (!el) return; el.textContent = s; el.classList.add('show');
-    toastTimer = cancelTimer(toastTimer); toastTimer = later(() => { toastTimer = 0; el.classList.remove('show'); }, 2600);
+    notice(s, 2400); // in play and on the title alike: the bottom-left feed, never a centred pill
   }
   // Old tone API (fishing-cooking lane, logbook): routed to the procedural sound recipes in audio.js.
   function beep(f = 500) { play(f >= 850 ? 'bite' : f >= 600 ? 'catch' : f >= 420 ? 'collect' : f >= 260 ? 'ui' : f >= 200 ? 'throw' : 'splash', .8); }
   let contextHtml = null;
+  const buildPromptInfo = () => ({remove:removeTarget ? (removeTarget.what === 'floor' ? 'floor' : ITEM_INFO[removeTarget.type]?.name ?? removeTarget.type) : '', name:ITEM_INFO[heldKind()]?.name ?? heldKind(),
+    cost:Object.entries(FLOOR_COST).map(([k, n]) => `${n} ${itemName(k)}`).join(', '), missing:heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST) ? missingText(localBag(), FLOOR_COST) : ''});
   function updateContext(dialog) {
     let html = '';
     if (running && !dialog) {
       if (guestWaiting()) html = 'Waiting for your brother’s raft…';
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
-      else if (hover?.blocked) html = esc(BLOCK_TEXT[hover.blocked]);
+      else if (hover?.blocked) html = placePrompt(hover, heldKind(), buildPromptInfo()); // why a red ghost is refused
       else if (waterAim?.prompt) html = waterAim.prompt;
       else if ((contextHtml = content?.prompt(frameAim) ?? null)) html = contextHtml; // content hook
       else if (fc?.prompt) html = fc.prompt; // [fishing-cooking] trusted static markup from the lane module
-      else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
+      else if (hover || removeTarget) html = placePrompt(hover, heldKind(), buildPromptInfo()); // what a click does (cost, R rotate, X remove), or why it can't
       else if (hook?.fishing) html = esc(castPrompt(hook, fishWait));
+      else if (hookFull && castOut()) html = 'Bag full: free a slot to reel it in';
+      else if (castOut() && castOut().stage === 'floating') html = caughtList(castOut()).length ? 'Hold click to reel it in' : 'Hold click to reel';
     }
     const usable = !!(running && !dialog && (pickTarget || waterAim?.click || waterAim?.e));
     if (usable !== crossUsable) { crossUsable = usable; $('#crosshair')?.classList.toggle('usable', usable); } // dot grows over interactables
@@ -607,6 +636,46 @@ export function mount(transfer = null) {
     const css = `translate(${Math.round(e.x)}px,${Math.round(e.y)}px)` + (e.edge ? ' e' : ''); if (css === markerCss && mk.style.transform) return; markerCss = css; // write only on change
     mk.style.transform = css.replace(' e', ''); mk.classList.toggle('edge', e.edge);
   }
+  const onboardingActive = () => !!window.raftOnboarding?.state?.(); // the onboarding lane's Notes tracker teaches first steps; the feed hint chain is its fallback
+  function hintDone(id) { if (hintsDone.has(id)) return; hintsDone.add(id); saveHints(window.localStorage, hintsDone); }
+  // A lane inside the open bag or pause rail that the feed docks into, so its rows never cover panel controls.
+  function feedLane(place) {
+    const host = place === 'inventory' ? $('#inventory .sv-bag') : place === 'options' ? $('#options .rs-menu') : null;
+    if (!host) return null;
+    let lane = host.querySelector(':scope>.feed-lane');
+    if (!lane) { lane = document.createElement('div'); lane.className = 'feed-lane'; host.appendChild(lane); }
+    return lane;
+  }
+  // First-run hints sit at the top of the bottom-left pickup feed. While the bag or pause menu is open the
+  // feed moves into that panel's lane; for other dialogs it stays hidden under their backdrop.
+  function updateNotices(dialog) {
+    if (survivalUI?.isOpen) hintDone('bag');
+    const bag = localBag(), has = k => { try { return bag.count(k) > 0; } catch { return false; } };
+    for (const id of hintsFromState({hasRope:has('rope'), hasHammer:has('hammer'), built:(world?.tiles?.length ?? 0) > START_TILES})) hintDone(id);
+    const hint = running && !dialog && !guestWaiting() && !onboardingActive() ? nextHint(hintsDone, {heldKind:heldKind(), castOut:!!hook, hasLoot:hintsDone.has('loot'), hasLeaf:has('leaf')}) : null;
+    const place = feedPlacement({inventoryOpen:!!survivalUI?.isOpen, optionsOpen:!!$('#options')?.open, dialog:!!dialog});
+    const sig = (hint?.id ?? '') + '|' + place;
+    if (sig === noticeCache) return; noticeCache = sig;
+    let el = $('#pickupFeed');
+    if (!el) { el = document.createElement('div'); el.id = 'pickupFeed'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite'); document.body.appendChild(el); }
+    let row = el.querySelector(':scope>.pf-hint');
+    if (hint) {
+      if (!row) { row = document.createElement('div'); row.className = 'pf-row pf-note pf-hint'; row.append(document.createElement('i'), document.createElement('span')); }
+      row.lastChild.textContent = hint.text; if (el.firstChild !== row) el.prepend(row);
+    } else row?.remove();
+    const lane = feedLane(place);
+    if (lane) { // docked: an ordinary in-flow box inside the panel, not a top-layer popover over it
+      try { if (el.matches(':popover-open')) el.hidePopover(); } catch {}
+      el.removeAttribute('popover'); el.classList.add('docked');
+      if (el.parentNode !== lane) lane.appendChild(el);
+      return;
+    }
+    el.classList.remove('docked');
+    if (el.parentNode !== document.body) document.body.appendChild(el);
+    if (typeof el.showPopover !== 'function') return;
+    if (!el.hasAttribute('popover')) el.setAttribute('popover', 'manual');
+    try { if (el.matches(':popover-open')) el.hidePopover(); if (place === 'hud') el.showPopover(); } catch {} // re-show so it sits above the HUD
+  }
   const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;'}[c]));
   function updateCharge() {
     if (!chargeMeter) return;
@@ -622,46 +691,53 @@ export function mount(transfer = null) {
     if (!force && signature === uiSignature) return; uiSignature = signature;
     const b = document.body.classList;
     b.toggle('pointer-locked', locked); b.toggle('locked', locked); b.toggle('first-person', running); b.toggle('playing', running);
+    b.toggle('drag-look', dragLook({running, supported:lockSupported, fallback:lockFallback}));
     const crosshair = $('#crosshair'); if (crosshair) crosshair.hidden = !(running && locked);
     const resume = $('#resumeHint'); if (resume) resume.hidden = !(running && !locked && lockSupported && !dialog);
   }
 
   // ---------- Pointer lock ----------
-  let lockPromisePending = false, lockHasPromise = false, lockEventFailures = 0, lockNoGesture = false;
+  let lockPromisePending = false, lockHasPromise = false, lockFailures = 0;
+  const windowFocused = () => { try { return document.hasFocus(); } catch { return true; } };
+  // Always ask (no navigator.userActivation pre-gate): after the page itself released the lock (inventory,
+  // crafting, crew) Chrome relocks without a gesture. Refusals are handled in lockFailed (lock-rules.js).
+  // While Escape is still held (it just closed a panel), Chrome may treat the held key as the user leaving
+  // the new lock, so the relock waits for the release (no gesture needed: the page released the lock itself).
+  let escHeld = false, relockOnEscUp = false;
+  // A browser keyup defers (escReleasePlan): Chrome can revoke a lock granted inside the Escape keyup itself, so the relock runs
+  // just after it. The desktop shell's released() stays synchronous to keep its executeJavaScript user gesture.
+  function escReleased(fromShell = false) {
+    const plan = escReleasePlan({running, pending:relockOnEscUp, fromShell});
+    escHeld = relockOnEscUp = false;
+    if (plan.relock === 'defer') setTimeout(guard(requestLock), 0); else if (plan.relock === 'now') requestLock();
+    return plan;
+  }
   function requestLock() {
-    if (!running || !lockSupported || uiBlocked()) return;
-    // Without a user gesture (e.g. Esc closing the inventory) browsers still relock when the page itself released the
-    // lock. If they refuse, stay in click-to-look quietly: the next click retries, and it never counts as unsupported.
-    lockNoGesture = !!navigator.userActivation && !navigator.userActivation.isActive;
+    if (!shouldRequestLock({running, supported:lockSupported, blocked:uiBlocked()}) || isLocked()) return;
+    if (escHeld) { relockOnEscUp = true; return; }
     try {
       const p = canvas.requestPointerLock();
-      if (p && typeof p.then === 'function') { lockPromisePending = lockHasPromise = true; p.then(() => { lockPromisePending = false; lockEventFailures = 0; }, guard(err => { lockPromisePending = false; lockFailed(err); })); }
+      if (p && typeof p.then === 'function') { lockPromisePending = lockHasPromise = true; p.then(() => { lockPromisePending = false; lockFailures = 0; }, guard(err => { lockPromisePending = false; lockFailed(err); })); }
     } catch (err) { lockFailed(err); }
   }
-  // Lock refused. Transient refusals (Escape cooldown, NotAllowedError, missing gesture) keep click-to-look so the next
-  // canvas click retries. Only genuinely unsupported cases switch permanently to drag-look. The click that asked for lock never acts.
-  function lockUnsupported(err) {
-    if (!lockSupported) return true;
-    if (!err || typeof err !== 'object') return false;
-    const isDom = typeof DOMException !== 'undefined' && err instanceof DOMException;
-    if (isDom) return err.name === 'NotSupportedError' || err.name === 'WrongDocumentError' || err.name === 'SecurityError';
-    return err instanceof Error; // non-DOM rejection: the environment cannot provide pointer lock
-  }
+  // Lock refused. Escape cooldown (SecurityError), unfocused window (WrongDocumentError) and missing gesture are
+  // transient: the next click or focus retries. Only NotSupportedError, a missing API, or repeated refusals while
+  // focused switch to drag-look. The click that asked for lock never acts.
   function lockFailed(err) {
     if (isLocked()) return;
-    if (lockNoGesture) { lockNoGesture = false; refreshPointerUI(true); return; } // a gestureless retry may be refused
     const isEvent = typeof Event !== 'undefined' && err instanceof Event;
-    if (isEvent) {
-      if (lockPromisePending || lockHasPromise) { refreshPointerUI(true); return; } // the promise rejection carries the real reason
-      // Legacy event-only API gives no reason: treat as transient, but repeated refusals mean it is unavailable.
-      if (++lockEventFailures < 3) { refreshPointerUI(true); return; }
-    } else if (!lockUnsupported(err)) { refreshPointerUI(true); return; }
+    if (isEvent && (lockPromisePending || lockHasPromise)) { refreshPointerUI(true); return; } // the promise rejection carries the real reason
+    const verdict = lockFailureVerdict({supported:lockSupported, err:isEvent ? null : err, focused:windowFocused(), failures:lockFailures});
+    lockFailures = verdict.failures;
+    if (!verdict.fallback) { refreshPointerUI(true); return; }
     const wasFallback = lockFallback; lockFallback = true; refreshPointerUI(true);
     if (!wasFallback && running) notice('Mouse lock unavailable: drag to look, click to use', 3000);
   }
   function releaseLock() { if (isLocked()) document.exitPointerLock?.(); }
   function look(dx, dy, k) { yaw -= dx * k; pitch = clamp(pitch - (options.invertY ? -dy : dy) * k, -PITCH_LIMIT, PITCH_LIMIT); }
-  function clearInput() { keys = {}; charging = null; reeling = false; down = null; controls?.clear(); } // controls lane: also release the input layer
+  function clearInput() { keys = {}; charging = null; reeling = false; down = null; controls?.clear(); lookFilter.reset(); } // controls lane: also release the input layer
+  // A panel opening keeps held keys (keyup still arrives); only window blur really loses keyups.
+  function pauseInput() { charging = null; reeling = false; down = null; lookFilter.reset(); }
 
   // ---------- Aiming ----------
   const hits = [], aimScratch = {point:null, item:null, dir:new T.Vector3(), at:new T.Vector3()};
@@ -686,9 +762,9 @@ export function mount(transfer = null) {
       }
     }
     hits.length = 0;
-    if (out) { out.point = ray.ray.intersectPlane(plane, out.at); out.item = item; out.dir.copy(ray.ray.direction); out.decor = pickWateringDecor(out.point); return out; }
+    if (out) { out.point = ray.ray.intersectPlane(plane, out.at); out.item = item; out.dir.copy(ray.ray.direction); out.decor = pickWateringDecor(out.point); out.lray = raftLocalRay(out.lray); return out; }
     const point = ray.ray.intersectPlane(plane, new T.Vector3());
-    return {point, item, dir:ray.ray.direction.clone(), decor:pickWateringDecor(point)};
+    return {point, item, dir:ray.ray.direction.clone(), decor:pickWateringDecor(point), lray:raftLocalRay(null)};
   }
   function pickScreen(x, y, out) { const r = canvas.getBoundingClientRect(); return pickNdc((x - r.left) / r.width * 2 - 1, -(y - r.top) / r.height * 2 + 1, out); }
   const pickCenter = out => pickNdc(0, 0, out);
@@ -765,6 +841,7 @@ export function mount(transfer = null) {
     else return null;
     if (why && !BLOCK_TEXT[why]) return null;
     if (!why && !inReach(physics.x, physics.z, x, z)) why = 'reach';
+    if (!why && kind !== 'hammer') { const inWay = playerInWay(decorBlockers({type:kind, x, z, rot:placeRot}, BLOCK_RADIUS), [physics, other], PLAYER_CONSTANTS.BODY_RADIUS + .05); if (inWay >= 0) why = inWay === 0 ? 'self' : 'brother'; } // never drop a prop on a player
     return why ? {x, z, blocked:why} : {x, z};
   }
   function placementCandidates(kind) {
@@ -775,6 +852,40 @@ export function mount(transfer = null) {
   }
   let placeRot = 0, pointing = false; // decor placement rotation (radians) and the pointing-hand pose
   function rotatePlacement(step) { placeRot = Math.round(wrapRot(placeRot + step) * 1000) / 1000; play('ui', .6); }
+  // ---------- Removing (hammer + X): placed decor under the crosshair, else a bare floor tile ----------
+  const invRaft = new T.Matrix4(), UNIT = new T.Vector3(1, 1, 1);
+  function raftLocalRay(out) { // the current aim ray in raft-local metres ({o, d}), or null without a raft
+    if (!raft) return null;
+    out ??= {o:new T.Vector3(), d:new T.Vector3()};
+    invRaft.compose(raft.position, raft.quaternion, UNIT).invert();
+    out.o.copy(ray.ray.origin).applyMatrix4(invRaft); out.d.copy(ray.ray.direction).transformDirection(invRaft);
+    return out;
+  }
+  let decorMetres = null, decorMetresSrc = null, decorMetresLen = -1; // world.decor in raft-local metres (placement.js rules), rebuilt on change
+  function decorInMetres() {
+    if (decorMetresSrc !== world.decor || decorMetresLen !== world.decor.length || !decorMetres) { decorMetresSrc = world.decor; decorMetresLen = world.decor.length; decorMetres = world.decor.map(d => ({type:d.type, x:d.x * 2, z:d.z * 2, rot:d.rot || 0, src:d})); }
+    return decorMetres;
+  }
+  function removalFor(aim) { // {what:'decor'|'floor', x, z, type} in tile cells, or null
+    if (!aim) return null;
+    const hit = aim.lray ? decorOnRay(decorInMetres(), aim.lray.o, aim.lray.d) : null;
+    if (hit) { const d = hit.src; return inReach(physics.x, physics.z, d.x, d.z) ? {what:'decor', x:d.x, z:d.z, type:d.type} : null; }
+    const p = aim.point; if (!p) return null;
+    const tx = Math.round(p.x / 2), tz = Math.round(p.z / 2);
+    return hasTile(tx, tz) && Math.hypot(tx * 2 - physics.x, tz * 2 - physics.z) <= FLOOR_REACH ? {what:'floor', x:tx, z:tz, type:'floor'} : null;
+  }
+  function floorRemoveWhy(tx, tz) { // placement.js rules on metres, plus building-lane pieces standing on the tile
+    if (Array.isArray(world.pieces) && world.pieces.some(q => q && q.i === tx && q.j === tz)) return 'decor';
+    return floorRemoveBlock(world.tiles, decorInMetres(), tx, tz);
+  }
+  function removePiece() {
+    if (!running || uiBlocked() || heldKind() !== 'hammer') return false;
+    if (guestWaiting()) { notice('Wait for your raft to connect'); return false; }
+    const t = removalFor(currentAim());
+    if (!t) { notice('Aim at a floor or a placed piece to remove it'); return false; }
+    if (t.what === 'floor') { const why = floorRemoveWhy(t.x, t.z); if (why) { notice(BLOCK_TEXT[why] ?? 'Can’t remove that'); return false; } }
+    swing = 1; action({kind:'remove', what:t.what, x:t.x, z:t.z}); return true;
+  }
 
   // ---------- Actions (host is authoritative; actor = 'host' | 'guest') ----------
   function send(data) { if (coop) data = coop.encode(data); if (data && conn?.open) { try { conn.send(data); } catch {} } } // coop: delta-encode
@@ -796,6 +907,8 @@ export function mount(transfer = null) {
     if (e.loot && typeof e.loot === 'object') { for (const [k, n] of Object.entries(e.loot)) if (ITEM_INFO[k] && isInt(n) && n > 0) pickupFeed.add(k, n); } // pickup feed rows with icons
     else if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90));
     if (e.kind === 'note' || e.kind === 'achievement') logbookUI?.celebrate?.(e);
+    if (e.kind === 'loot') hintDone('loot');
+    if (e.kind === 'build') hintDone('build');
     play(typeof e.sound === 'string' ? e.sound : e.kind === 'signal' || e.kind === 'note' || e.kind === 'achievement' ? 'catch' : e.kind === 'build' ? 'build' : e.kind === 'craft' ? 'craft' : e.kind === 'loot' ? 'collect' : 'deny', e.kind === 'notice' ? .6 : 1);
   }
   function collectBottle(i, a, bag, actor) { // no bag space needed; does not count toward world.collected
@@ -872,6 +985,7 @@ export function mount(transfer = null) {
       if (world.items[i].type === 'bottle') { collectBottle(i, a, bag, actor); return; }
       const it = world.items[i]; if (it.type === 'cache' && a.net) return; // nets never take the signal cache
       const isCache = it.type === 'cache', loot = isCache ? cacheLoot(countAntennas(world.decor), Math.random) : it.type === 'barrel' ? rollBarrel(Math.random, prog?.barrelLuck) : LOOT[it.type]; if (!loot) return; // [progression-hook] barrel table
+      if (actor === 'guest' && !a.net && ownHeldTokens().has(it.token)) return; // on the host's hook: the host claimed it first
       const scratch = new Bag(bag.snapshot());
       for (const [k, n] of Object.entries(loot)) if (scratch.add(k, n) > 0) { // atomic: all loot fits or nothing changes
         if (!a.net) emit({kind:'full', text:'Your bag is full', tokens:[it.token]}, actor);
@@ -889,16 +1003,20 @@ export function mount(transfer = null) {
       let placedText = null;
       if (!isInt(a.x) || !isInt(a.z)) return;
       const who = actor === 'guest' ? other : physics; // guest pose may be missing until its first move
-      if (who && !inReach(who.x, who.z, a.x, a.z, BUILD_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .01))) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
+      const slack = actor === 'guest' ? GUEST_REACH_SLACK : .01, far = (x, z, reach) => !!who && Math.hypot(x - who.x, z - who.z) > reach + slack;
       if (a.recipe === 'floor') {
-        const why = floorBlock(world.tiles, a.x, a.z);
+        if (!isInt(a.x) || !isInt(a.z)) return;
+        const why = floorBlock(world.tiles, a.x, a.z); // occupied / detached / world bound / tile cap
         if (why) { if (BLOCK_TEXT[why]) emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; }
+        if (far(a.x * 2, a.z * 2, FLOOR_REACH)) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
         if (bag.count('hammer') < 1) { emit({kind:'notice', text:'Craft a hammer first'}, actor); return; }
         if (!spend(bag, FLOOR_COST)) { emit({kind:'notice', text:'Floor needs ' + missingText(bag, FLOOR_COST)}, actor); return; }
         world.tiles.push([a.x, a.z]);
       } else if (DECOR_TYPES.includes(a.recipe)) {
         if (decorBlock(world.tiles, world.decor, a.x, a.z)) return; if (fc?.hasGrill(a.x, a.z)) return; // [fishing-cooking] grill tiles
         if (a.recipe === 'receiver' && world.decor.some(d => d.type === 'receiver')) { emit({kind:'notice', text:'Your raft already has a receiver'}, actor); return; }
+        { const inWay = playerInWay(decorBlockers({type:a.recipe, x:a.x, z:a.z, rot:Number.isFinite(a.rot) ? a.rot : 0}, BLOCK_RADIUS), [physics, other], PLAYER_CONSTANTS.BODY_RADIUS); // host pose, guest pose
+          if (inWay >= 0) { emit({kind:'notice', text:BLOCK_TEXT[(inWay === 0) === (actor === 'host') ? 'self' : 'brother']}, actor); return; } }
         const sel = bag.slots[bag.selectedIndex];
         if (sel?.kind === a.recipe) { sel.count--; if (sel.count <= 0) bag.slots[bag.selectedIndex] = null; }
         else if (!bag.remove(a.recipe, 1)) { emit({kind:'notice', text:`Craft a ${itemName(a.recipe)} first`}, actor); return; }
@@ -924,6 +1042,29 @@ export function mount(transfer = null) {
       for (const [k, c] of Object.entries(loot)) if (scratch.add(k, c) > 0) { emit({kind:'full', text:'Your bag is full'}, actor); return; }
       commit(bag, scratch); gatheredIds.add(n.id); later(() => gatheredIds.delete(n.id), DIVE.REGROW * 1000); nodeTaken(n.id, 'all');
       emit({kind:'loot', text:'+ ' + Object.entries(loot).map(([k, c]) => `${c} ${itemName(k)}`).join(' · ')}, actor); return;
+    }
+    if (a.kind === 'remove') { // hammer + X: take a placed piece or a bare floor tile back for about half its cost (tile cells)
+      const who = actor === 'guest' ? other : physics, slack = actor === 'guest' ? GUEST_REACH_SLACK : .01;
+      if (bag.count('hammer') < 1 || !isInt(a.x) || !isInt(a.z)) return;
+      let i = -1, refund, name, reach;
+      if (a.what === 'decor') {
+        i = world.decor.findIndex(d => d.x === a.x && d.z === a.z); if (i < 0) return;
+        const d = world.decor[i]; refund = refundOf(RECIPES[d.type]?.cost); name = ITEM_INFO[d.type]?.name ?? d.type; reach = DECOR_REACH;
+        if (d.type === 'crate' && content?.mods?.find(m => m.name === 'storage' && !m.dead)?.serialize?.()?.chests?.[a.x + ',' + a.z]) { emit({kind:'notice', text:'Empty the chest first'}, actor); return; } // content storage: never destroy stored items
+      } else if (a.what === 'floor') {
+        const why = floorRemoveWhy(a.x, a.z);
+        if (why) { if (BLOCK_TEXT[why]) emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; }
+        i = world.tiles.findIndex(t => t[0] === a.x && t[1] === a.z); refund = refundOf(FLOOR_COST); name = 'Floor'; reach = FLOOR_REACH;
+      } else return;
+      if (who && Math.hypot(a.x * 2 - who.x, a.z * 2 - who.z) > reach + slack) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
+      const scratch = new Bag(bag.snapshot());
+      for (const [k, n] of Object.entries(refund)) if (scratch.add(k, n) > 0) { emit({kind:'full', text:'Your bag is full'}, actor); return; }
+      commit(bag, scratch);
+      if (a.what === 'floor') world.tiles.splice(i, 1);
+      else { world.decor.splice(i, 1); const k = tileKey(a.x, a.z); for (const m of [world.garden, world.purifiers, world.collectors, world.sprinklers]) if (m && typeof m === 'object') delete m[k]; } // watering lane state of that tile
+      rebuildRaft(); fitShadow();
+      emit({kind:'build', text:`Removed ${name}`, loot:refund}, actor); if (actor === 'guest') emit({kind:'build'}, 'host');
+      return;
     }
     if (a.kind === 'fish') {
       if (bag.count('fishingrod') < 1) return;
@@ -952,6 +1093,7 @@ export function mount(transfer = null) {
     const bag = localBag(); if (bag.selectedIndex === i) return;
     charging = null; hover = null; play('ui', .5);
     if (!reelCast('slot') && hook && !hook.fishing) { hook.cancel?.(); endHook(); } // switching away retracts the hook; its catch stays in the sea
+    if (hintsDone.has('bag')) hintDone('slots');
     if (role === 'guest') { if (!networkReady) return; bag.select(i); action({kind:'selectSlot', index:i}); }
     else action({kind:'selectSlot', index:i});
   }
@@ -962,7 +1104,7 @@ export function mount(transfer = null) {
   }
   function craft(recipe) { if (typeof recipe === 'string') action({kind:'craft', recipe}); }
   function repair() { if (!running) return; const bag = localBag(); action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH)}); }
-  function openInventory() { if (!running || !survivalUI) return; clearInput(); releaseLock(); survivalUI.open?.(); play('open'); }
+  function openInventory() { if (!running || !survivalUI) return; pauseInput(); releaseLock(); survivalUI.open?.(); play('open'); hintDone('bag'); } // pauseInput: held W/Shift survive the panel
   function interact() {
     if (!running || uiBlocked() || diving?.state.diving) return; // diving lane hook: E gathers underwater
     if (!pickupFrom(currentAim()) && sailing?.interact()) return; // [sailing] E on a sail / anchor (pick-up wins)
@@ -1023,12 +1165,13 @@ export function mount(transfer = null) {
     const durability = clamp(slot.durability ?? MAX_HEALTH, 0, MAX_HEALTH), maxRange = 16 + durability * .16;
     const direction = (aim?.dir ?? camera.getWorldDirection(new T.Vector3())).clone();
     direction.y += THROW_LOFT; direction.normalize(); // a little loft so a level throw carries
-    hook = new HookCast(T, {origin:handPos.clone(), direction, maxRange, charge, deck:deckAt});
-    castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; play('throw', charge);
+    hook = new HookCast(T, {origin:throwOrigin(handPos, new T.Vector3()), direction, maxRange, charge, deck:deckAt}); // throwOrigin: a swimmer's hand starts the throw above the water
+    castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; play('throw', charge); hintDone('throw');
     if (durability <= 0) notice('Worn hook: shorter throws. R to repair');
   }
 
   function start() {
+    if (adoptOnStart({running, role, storedRev:storedRev(), saveRev})) adoptStoredSave();
     running = true; const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false;
     if (!saveAvailable) setText('#saveStatus', 'Browser storage is unavailable. This session will not be saved.');
     refreshPointerUI(true);
@@ -1051,7 +1194,27 @@ export function mount(transfer = null) {
     save(); if (role !== 'solo') closeConnection();
     hook = null; fishWait = 0; clearInput(); releaseLock();
     running = false; const w = $('#welcome'); if (w) w.hidden = false; const h = $('#hud'); if (h) h.hidden = true;
-    refreshPointerUI(true);
+    refreshTitle(); refreshPointerUI(true);
+  }
+  // Fresh raft: only the hook, starting tiles, new drift. Wipes the solo save.
+  function newGame() {
+    if (role !== 'solo') closeConnection();
+    hook = null; fishWait = 0; charging = null; reeling = false; lastCaughtCount = 0; pending.clear();
+    resetHints(window.localStorage, hintsDone); // first-run hints are once per save, and this is a fresh one
+    world = newWorld(); const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
+    const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); yaw = 0; pitch = -.28;
+    for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
+    if (scene) { syncItems(); rebuildRaft(); }
+    saveRev = newGameBaseRev(storedRev(), saveRev); unblockSave(); // the player chose to overwrite the stored save
+    save(); start();
+  }
+  const hasSave = () => { try { return !!localStorage.getItem(SAVE); } catch { return false; } };
+  function refreshTitle() { // Continue only when a save exists; New game asks twice before wiping one
+    const cont = $('#solo'), fresh = $('#newGame'), saved = hasSave();
+    if (cont) cont.hidden = !saved;
+    if (fresh) { fresh.textContent = saved ? 'New game' : "Let's set sail"; fresh.className = saved ? 'secondary' : 'primary'; delete fresh.dataset.confirm; }
+    const note = $('#titleSaveStatus'), text = titleSaveNote({available:saveAvailable, blocked:saveBlocked, storedRev:storedRev(), saveRev});
+    if (note) { note.textContent = text; note.hidden = !text; }
   }
   function syncWorldInventories() { // only for the world this client owns (solo / host)
     world.hostInventory = hostBag.snapshot(); world.guestInventory = guestBag.snapshot();
@@ -1063,6 +1226,9 @@ export function mount(transfer = null) {
     setText('#saveStatus', 'This raft was saved in another tab. This tab stopped saving so it will not overwrite it. Reload to continue from that save.');
     notice('Saved in another tab. This tab stopped saving', 3200);
   }
+  function unblockSave() { if (!saveBlocked) return; saveBlocked = false; setText('#saveStatus', SAVE_STATUS); }
+  // Leaving the title for play while another tab has saved since: continue from that newer save, not our stale copy.
+  function adoptStoredSave() { loadRaft(savedOwnRaft()); saveRev = storedRev(); unblockSave(); }
   function save() {
     if (role === 'guest' || disposed || saveBlocked) return;
     syncWorldInventories();
@@ -1084,8 +1250,19 @@ export function mount(transfer = null) {
     const fwd = ci ? ci.forward : input ? held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown') : 0, side = ci ? ci.strafe : input ? held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft') : 0;
     const surf = building ? building.preStep(physics, deckY()) : null; // building-pieces lane hook
     const dive = diving?.move(dt, physics, {forward:fwd, strafe:side, yaw, pitch, up:ci ? ci.jump : input && held('Space'), down:ci ? !!ci.crouch : input && held('KeyC'), fast:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'), gather:input && (controls ? controls.input.down('interact') : held('KeyE'))}); // diving lane hook
-    const ev = dive ? null : physics.update(dt, {forward:fwd, strafe:side, yaw, jump:ci ? ci.jump : input && held('Space'), sprint:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'),
-      tiles:surf ? surf.tiles : world.tiles, deckY:surf ? surf.deckY : deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList});
+    // Real frame time in equal substeps (<= MAX_DT) so walking speed holds at low fps. Jump stays held on every
+    // substep: PlayerPhysics fires the impulse only on the press edge, i.e. the first substep, never again.
+    let ev = null;
+    if (!dive) {
+      const {n, step} = splitSteps(dt), jump = ci ? ci.jump : input && held('Space'), sprint = ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight');
+      ev = {landed:false, splashed:false, leftWater:false};
+      for (let i = 0; i < n; i++) {
+        const e = physics.update(step, {forward:fwd, strafe:side, yaw, jump, sprint,
+          tiles:surf ? surf.tiles : world.tiles, deckY:surf ? surf.deckY : deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList});
+        if (e?.landed) ev.landed = true; if (e?.splashed) ev.splashed = true; if (e?.leftWater) ev.leftWater = true;
+      }
+      if (n) dt = n * step;
+    }
     controls?.afterMove(dt, physics, ev); // controls lane: footstep bob, crouch, landing dip
     building?.postStep(physics, deckY()); // building-pieces lane hook
     content?.afterMove(physics, dt); // content hook: e.g. stand on island sand
@@ -1159,7 +1336,9 @@ export function mount(transfer = null) {
       friend.userData.animate?.(dt, {speed:Math.min(6, Math.hypot(friend.position.x - before.x, friend.position.z - before.z) / dt), swimming:other.swimming, pitch:other.pitch});
     }
   }
-  const allHeldTokens = () => new Set([...caughtList(castOut()).map(c => c.token), ...(role === 'guest' ? [] : guestHeld.tokens(performance.now()))]);
+  const ownHeldTokens = () => new Set(caughtList(castOut()).map(c => c.token));
+  const otherHeldTokens = () => (role === 'guest' ? hostHeld : new Set(guestHeld.tokens(performance.now())));
+  const allHeldTokens = () => new Set([...ownHeldTokens(), ...otherHeldTokens()]);
   function updateItems(dt) {
     const heldTokens = allHeldTokens();
     if (sailing) sailing.itemFlow(sailFlow); // [sailing]
@@ -1187,7 +1366,7 @@ export function mount(transfer = null) {
       m.rotation.set(-s.sz * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.sx * 1.2 + Math.sin(elapsed + it.phase) * .05);
     }
   }
-  function endHook() { hook = null; lastCaughtCount = 0; reeling = false; rope.visible = false; hookMesh.visible = false; if (bobber) bobber.visible = false; }
+  function endHook() { hook = null; lastCaughtCount = 0; reeling = false; hookFull = false; rope.visible = false; hookMesh.visible = false; if (bobber) bobber.visible = false; }
   // A click or slot change while the rod line is out reels it in: a fish only if it is biting on a click.
   function reelCast(source) {
     const r = castInput(hook, fishWait, source); if (r === 'none') return false;
@@ -1206,8 +1385,9 @@ export function mount(transfer = null) {
       if (f >= 1) { if (selectedKind() === 'fishingrod') action({kind:'fish'}); fishWait = 0; endHook(); }
       return;
     }
-    const guestTokens = role === 'guest' ? null : new Set(guestHeld.tokens(performance.now())); // host skips the guest's catch
-    const ev = hook.update(dt, {hand:handPos, items:world.items.filter(it => !isPending(it) && !guestTokens?.has(it.token)), reeling, time:elapsed});
+    hookFull = holdForFullBag(hook, c => lootFits(localBag(), catchLoot(c, LOOT))); // full bag: keep the catch on the hook in the water
+    // Each side skips the other's catch, but never lets go of what its own hook already holds (the first hook to claim an item keeps it).
+    const ev = hook.update(dt, {hand:handPos, items:hookableItems(world.items, {isPending, otherHeld:otherHeldTokens(), ownHeld:ownHeldTokens()}), reeling:reeling && !hookFull, time:elapsed});
     const hp = hook.position, pos = hookPos.set(hp.x, hook.onDeck ? hp.y : surfaceY(hp.x, hp.z, hp.y), hp.z); // on the planks it rests at deck height
     hookMesh.visible = true; hookMesh.position.copy(pos); bobber.visible = false;
     if (hook.stage === 'flying') hookMesh.rotation.set(-hook.flightT * Math.PI * 2, yaw, 0);
@@ -1240,13 +1420,14 @@ export function mount(transfer = null) {
     const pieces = kind === 'hammer' && !hook && building && building.piece !== 'foundation'; // building-pieces lane hook
     building?.update(raft, frameAim, camera.position, running && kind === 'hammer' && !hook && !uiBlocked(), localBag(), yaw, deckY());
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing ? placementFor(kind, frameAim.point) : null;
+    removeTarget = frameAim && kind === 'hammer' && !hook && !pieces ? removalFor(frameAim) : null; // X Remove prompt (decor or a bare floor tile)
     if (!hover) { ghosts.hide(); return; }
     const floor = kind === 'hammer';
     ghosts.show(floor ? 'floor' : kind, hover.x * 2, floor ? .015 : .22, hover.z * 2, floor ? 0 : placeRot, !hover.blocked && !(floor && !canAfford(localBag(), FLOOR_COST)), elapsed);
   }
   function hostState() {
     const c = guestBag.counts();
-    return {type:'state', v:3, ack:guestAck, bag:guestBag.snapshot(), other:pose(),
+    return {type:'state', v:3, ack:guestAck, bag:guestBag.snapshot(), other:pose(), held:[...ownHeldTokens()],
       world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items, ext:content ? content.serialize() : world.ext, sailing:world.sailing, signal:world.signal, notes:world.notes, achievements:world.achievements, garden:world.garden, purifiers:world.purifiers, collectors:world.collectors, sprinklers:world.sprinklers, ...(world.pieces !== sentPieces ? {pieces:(sentPieces = world.pieces)} : {})}}; // content hook: ext
   }
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, held:heldKind()});
@@ -1257,7 +1438,7 @@ export function mount(transfer = null) {
     checkPeerStale(now);
     ocean.update(elapsed, camera); sfx.tick(dt, {swimming:physics.swimming});
     updateRaft(dt); if (sailing) sailing.update(dt, elapsed); // [sailing]
-    movePlayer(dt, running && !dialog);
+    const realDt = rawMs / 1000; movePlayer(realDt, running && !dialog); // the player substeps the real frame time (splitSteps)
     updateAvatars(dt); updateCamera(dt); if (running) diving?.update(dt, elapsed); // diving lane hook
     coop?.update(dt, elapsed); // coop: interpolated remote avatar, rope, ghost, pings, pose stream, reconnect
     frameAim = running && !dialog ? currentAim(aimScratch) : null;
@@ -1283,7 +1464,7 @@ export function mount(transfer = null) {
     try { prog?.tick(dt); } catch (e) { console.error('progression tick failed', e); } // [progression-hook]
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     try { logbookUI?.update?.(); } catch (e) { console.error('logbook update failed', e); logbookUI = null; }
-    refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud(); warmKinds();
+    refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud(); updateNotices(dialog); warmKinds(); // updateNotices: feed docking into the bag / pause lanes + first-run hints
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
     // Behind a blurred pause/settings backdrop the world only redraws at ~10 fps (the inventory has no blur).
     const veiled = dialog && !!document.querySelector('dialog[open]:not(#inventory)');
@@ -1316,7 +1497,8 @@ export function mount(transfer = null) {
   // ---------- Input ----------
   const on = (target, type, fn, opts = {}) => target?.addEventListener(type, guard(fn), {...opts, signal});
   on(document, 'pointerlockchange', () => {
-    if (isLocked()) { lockFallback = false; lockEventFailures = 0; lockNoGesture = false; }
+    lookFilter.reset({dropFirst:isLocked()}); // the first move after lock is often a bogus jump
+    if (isLocked()) { lockFallback = false; lockFailures = 0; }
     else { if (charging && charging.x === null) charging = null; reeling = false; }
     if (!isLocked() && !lockFallback && building?.menu.isOpen) building.menu.close(false); // building-pieces lane hook
     down = null; refreshPointerUI(true);
@@ -1324,8 +1506,9 @@ export function mount(transfer = null) {
   on(document, 'pointerlockerror', lockFailed);
   on(document, 'mousemove', e => {
     if (building?.menu.isOpen) { if (isLocked()) building.menu.move(e.movementX, e.movementY); else building.menu.hoverAt(e.clientX, e.clientY); return; } // building-pieces lane hook
-    if (controls || !isLocked() || uiBlocked()) return; // controls lane: input.js owns mouse look
-    look(clamp(e.movementX, -200, 200), clamp(e.movementY, -200, 200), LOOK_SENSITIVITY * options.sensitivity);
+    if (controls || !isLocked() || uiBlocked()) return; // controls lane: input.js owns mouse look (and drops its own spikes)
+    const [dx, dy] = lookFilter.filter(e.movementX, e.movementY); // spike filter instead of a hard clamp: fast flicks are kept
+    look(dx, dy, LOOK_SENSITIVITY * options.sensitivity);
   });
   on(canvas, 'pointerdown', e => {
     if (e.button === 2 && running && building && heldKind() === 'hammer' && !uiBlocked()) { building.menu.open(); return; } // building-pieces lane hook
@@ -1350,7 +1533,7 @@ export function mount(transfer = null) {
     if (!down || isLocked()) return;
     const dx = e.clientX - down.x, dy = e.clientY - down.y;
     if (!down.moved && Math.hypot(dx, dy) > 4) { down.moved = true; if (charging && charging.x !== null) charging = null; } // a drag is a look, not a throw
-    if (down.moved) { look(dx, dy, DRAG_SENSITIVITY); down.x = e.clientX; down.y = e.clientY; }
+    if (down.moved) { look(dx, dy, dragLookScale(DRAG_SENSITIVITY, options.sensitivity)); down.x = e.clientX; down.y = e.clientY; }
   });
   on(window, 'pointerup', e => { if (e.button === 2 && building?.menu.isOpen) building.menu.close(true); }); // building-pieces lane hook
   on(canvas, 'pointerup', e => {
@@ -1368,11 +1551,11 @@ export function mount(transfer = null) {
   on(canvas, 'pointerleave', () => { mouse.inside = false; });
   on(canvas, 'pointercancel', () => { down = null; reeling = false; if (charging && charging.x !== null) charging = null; });
   on(canvas, 'contextmenu', e => e.preventDefault());
-  on(canvas, 'wheel', e => {
-    if (!running || uiBlocked() || (!isLocked() && !lockFallback)) return;
+  on(window, 'wheel', e => { // window, not canvas: in drag-look the hotbar sits over the canvas and must scroll slots too
+    if (!running || uiBlocked() || (!isLocked() && !lockFallback) || !wheelForGame(e.target)) return;
     e.preventDefault();
     if (controls && isLocked()) return; // controls lane: input.js steps the hotbar while locked (was double-stepping)
-    wheelAcc += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+    wheelAcc += wheelDelta(e); // Shift+wheel arrives as deltaX in Chromium
     if (Math.abs(wheelAcc) < 40) return;
     const step = wheelAcc > 0 ? 1 : -1; wheelAcc = 0;
     if ((e.shiftKey || e.ctrlKey || e.altKey) && DECOR_TYPES.includes(heldKind())) { rotatePlacement(step * FINE_STEP); return; }
@@ -1385,10 +1568,12 @@ export function mount(transfer = null) {
   on(window, 'keydown', () => { sfx.resume(); }, {capture:true});
   on(document, 'click', e => { if (e.target?.closest?.('button, [role=button], .slot')) play('ui', .8); });
   on(window, 'keydown', e => {
-    if (e.target?.matches?.('input, textarea, select') || uiBlocked()) return;
-    if (running && building?.key(e.code, true, heldKind() === 'hammer', e.repeat)) { e.stopImmediatePropagation(); if (e.code === 'KeyX' || e.code === 'KeyR') e.preventDefault(); return; } // building-pieces lane hook
+    const kd = keyDecision({inField:!!e.target?.matches?.('input, textarea, select'), blocked:uiBlocked()});
+    if (kd.record && !controls) keys[e.code] = true; // held keys survive a panel; movePlayer gets input=false meanwhile
+    if (!kd.act) return;
+    if (running && building?.key(e.code, true, heldKind() === 'hammer', e.repeat)) { e.stopImmediatePropagation(); if (e.code === 'KeyX' || e.code === 'KeyR') e.preventDefault(); return; } // building-pieces lane hook (X: released below)
+    if (e.code === 'KeyX' && !e.repeat && !building) removePiece(); // hammer + X without the building lane: remove decor or a bare floor tile
     if (controls) { if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault(); return; } // controls lane: actions come from the action map
-    keys[e.code] = true;
     const m = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
     if (m && running) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
     if (e.code === 'KeyE' && !e.repeat) interact();
@@ -1397,9 +1582,17 @@ export function mount(transfer = null) {
   });
   on(window, 'keyup', e => {
     keys[e.code] = false; if (e.code === 'KeyR') sailing?.release(); // [sailing]
-    if (e.code === 'KeyX' && building?.removing) { const a = building.removeAction(); if (a && running) { swing = 1; action(a); } } // building-pieces lane hook
+    if (e.code === 'KeyX' && building?.removing) { const a = building.removeAction(); if (a && running) { swing = 1; action(a); } else if (running) removePiece(); } // building-pieces lane hook; no piece aimed: decor or floor
   });
-  on(window, 'blur', clearInput); on(window, 'blur', () => sailing?.release()); // [sailing]
+  on(window, LIVE_STATUS_EVENT, e => { if (!running || !e.detail?.text) return; notice(e.detail.text); e.preventDefault(); }); // live.js update notices -> feed
+  on(window, 'keydown', e => { if (e.key === 'Escape' && !e.repeat) { escHeld = true; relockOnEscUp = false; } }, {capture:true});
+  // preventDefault: an unhandled Escape keyup makes Chrome drop the lock it just granted (LOCK-1).
+  on(window, 'keyup', e => { if (e.key === 'Escape' && escReleased().preventDefault) e.preventDefault(); }, {capture:true});
+  on(window, 'pointerdown', () => { escHeld = relockOnEscUp = false; }, {capture:true}); // a click relocks on its own
+  // Focus loss (alt-tab): drop held input and show the hint at the top edge; one click on return relocks.
+  on(window, 'blur', () => { clearInput(); sailing?.release(); // [sailing]
+    escHeld = relockOnEscUp = false; document.body.classList.toggle('away', running); refreshPointerUI(true); });
+  on(window, 'focus', () => { document.body.classList.remove('away'); refreshPointerUI(true); });
   // controls lane: one input layer for keyboard/mouse/gamepad; falls back to the legacy handlers above if it fails to start.
   try {
     controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
@@ -1419,8 +1612,9 @@ export function mount(transfer = null) {
   });
   on(window, 'pagehide', () => { if (running) save(); });
   on(window, 'storage', e => { // another tab wrote our save key
-    if (e.key !== SAVE || role === 'guest') return;
-    if (saveRevision(e.newValue) > saveRev) blockSave();
+    if (e.key !== SAVE) return;
+    if (storageBlocks({running, role, newRaw:e.newValue, baseRev:saveRev})) blockSave();
+    else if (!running) refreshTitle(); // on the title: Continue will adopt the newer save
   });
   on(window, 'resize', () => { if (!camera) return; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
@@ -1429,12 +1623,22 @@ export function mount(transfer = null) {
   const setHandler = (el, prop, fn) => { if (el) { const previous = el[prop], next = guard(fn); propertyHandlers.push([el, prop, previous, next]); el[prop] = next; } };
   function openDialog(id) { releaseLock(); const d = $('#' + id); if (d && !d.open) d.showModal(); }
   setHandler($('#solo'), 'onclick', () => { start(); requestLock(); });
+  setHandler($('#newGame'), 'onclick', e => {
+    const b = e.currentTarget;
+    if (hasSave() && !b.dataset.confirm) { b.dataset.confirm = '1'; b.textContent = 'Start over? Click again'; return; }
+    newGame(); requestLock(); refreshTitle();
+  });
+  if (!running) refreshTitle();
   setHandler($('#crewButton'), 'onclick', () => openDialog('crew'));
   setHandler($('#welcomeCrew'), 'onclick', () => openDialog('crew'));
   setHandler($('#helpButton'), 'onclick', () => settingsController?.open());
   document.querySelectorAll('[data-close]').forEach(b => setHandler(b, 'onclick', () => $('#' + b.dataset.close)?.close()));
-  const soundLabel = () => setText('#soundButton', 'Sound: ' + (sound ? 'on' : 'off'));
-  setHandler($('#soundButton'), 'onclick', () => { sound = !sound; applyVolume(); soundLabel(); });
+  // Crew/Help closed during play go back to locked play; opened from the pause menu, settings.js reopens it instead.
+  for (const id of ['crew', 'help']) on($('#' + id), 'close', e => {
+    if (shouldRelockAfterClose({running, locked:isLocked(), blocked:uiBlocked(), returnToPause:!!e.target?.dataset?.fromPause})) requestLock();
+  });
+  const soundLabel = () => setText('#soundButton', 'Sound: ' + (!sound ? 'off' : options.volume > 0 ? 'on' : 'on (volume is 0%)'));
+  setHandler($('#soundButton'), 'onclick', () => { sound = !sound; saveSoundPref(window.localStorage, sound); applyVolume(); if (sound) sfx.resume(); soundLabel(); }); // remembered across sessions
   soundLabel();
 
   // ---------- Networking (PeerJS, host authoritative) ----------
@@ -1450,9 +1654,12 @@ export function mount(transfer = null) {
     return {world:w, host:bags.host.snapshot(), guest:bags.guest.snapshot(), physics:null};
   }
   function restoreOwnRaft() {
-    const newer = storedRev() > saveRev; // another tab (e.g. the host in this browser) saved since we joined: never restore over it
-    const b = (newer ? null : normaliseBackup(ownWorldBackup)) ?? savedOwnRaft(); ownWorldBackup = null; remoteBag = null;
-    if (newer) { saveRev = storedRev(); saveBlocked = false; }
+    const plan = guestLeavePlan(storedRev(), saveRev); // another tab (e.g. the host in this browser) saved since we joined: never restore over it
+    const b = (plan.useBackup ? normaliseBackup(ownWorldBackup) : null) ?? savedOwnRaft(); ownWorldBackup = null; remoteBag = null;
+    loadRaft(b);
+    if (plan.block) blockSave(); // keep our old rev: that tab keeps saving; Continue from the title adopts its save
+  }
+  function loadRaft(b) { // b: {world, host, guest, physics|null}
     hook = null; fishWait = 0; charging = null; reeling = false; lastCaughtCount = 0; pending.clear();
     world = b.world; hostBag = snapBag(b.host) ?? new Bag(); guestBag = snapBag(b.guest) ?? new Bag();
     if (b.physics) physics = new PlayerPhysics(b.physics); else { const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); }
@@ -1463,7 +1670,7 @@ export function mount(transfer = null) {
   }
   function closeConnection() {
     joinTimer = cancelTimer(joinTimer); joinDeadline = 0; networkReady = false; peerHidden = false;
-    const oldConn = conn, oldPeer = peer; conn = null; peer = null; other = null;
+    const oldConn = conn, oldPeer = peer; conn = null; peer = null; other = null; hostHeld = new Set();
     unlisten(bindings.splice(0));
     try { oldConn?.close(); } catch {} try { oldPeer?.destroy(); } catch {}
     if (role === 'guest') restoreOwnRaft();
@@ -1535,7 +1742,7 @@ export function mount(transfer = null) {
         const first = !networkReady;
         if (!Array.isArray(data.world.pieces) && !first) w.pieces = world.pieces; // building-pieces lane hook: host omits unchanged pieces
         const changed = first || JSON.stringify([world.tiles, world.decor]) !== JSON.stringify([w.tiles, w.decor]), piecesChanged = w.pieces !== world.pieces;
-        world = w; other = validPose(data.other);
+        world = w; other = validPose(data.other); hostHeld = new Set(cleanHeldTokens(data.held));
         if (data.bag) { // canonical bag once the host has applied all of our sent actions
           const acked = first || !isInt(data.ack) || data.ack >= seq || performance.now() - lastSeqSent > ACK_TIMEOUT;
           if (acked) { const b = snapBag(data.bag); if (b) remoteBag = b; }
@@ -1672,7 +1879,7 @@ export function mount(transfer = null) {
         hook:hook ? (hook.fishing ? {fishing:true, id:null, t:hook.t, duration:hook.duration} : {fishing:false, id:hc.caught?.id ?? null, stage:hc.stage, x:hc.position.x, y:hc.position.y, z:hc.position.z, tension:hc.tension, distance:hc.distance, caughtCount:caughtList(hc).length}) : null,
         fishWait, hookStage:hook ? (hook.fishing ? 'fishing' : hook.stage) : 'idle', hookCaught:hc?.caught ? {...hc.caught} : null, hookCaughtItems:caughtList(hc).map(c => ({...c})),
         hookHealth:hookDurability(bag), hookRange:16 + hookDurability(bag) * .16, charge:chargeValue(), charging:!!charging, reeling,
-        build:{active:mode === 'build' || mode === 'place', recipe:kind, rot:placeRot, pointing, ghost:!!ghosts?.visible, hover:hover ? {...hover} : null, candidates:scene ? placementCandidates(kind).length : 0, affordable:mode === 'build' ? canAfford(bag, FLOOR_COST) : mode === 'place'},
+        build:{active:mode === 'build' || mode === 'place', recipe:kind, rot:placeRot, pointing, ghost:!!ghosts?.visible, hover:hover ? {...hover} : null, remove:removeTarget ? {...removeTarget} : null, candidates:scene ? placementCandidates(kind).length : 0, affordable:mode === 'build' ? canAfford(bag, FLOOR_COST) : mode === 'place'},
         pieces:{list:(world.pieces || []).map(p => ({...p})), piece:building?.piece ?? null, rotation:building?.rotation ?? 0, removing:!!building?.removing}, // building-pieces lane hook
         pickup:pickTarget ? {id:pickTarget.id, token:pickTarget.token, type:pickTarget.type} : null, feed:pickupFeed.rows,
         me:{x:physics.x, y:physics.y, z:physics.z, yaw, pitch}, other:other ? {...other} : null,
@@ -1722,6 +1929,14 @@ export function mount(transfer = null) {
     },
   });
   const previousDebug = Object.getOwnPropertyDescriptor(window, 'raftDebug'); // restored if this mount fails
+  // Desktop shell hook (desktop/main.cjs). The shell claims Escape and runs window.raftEscape() (settings.js) with a
+  // user gesture; hold() first marks the key as held so a relock waits for released(), sent on the key's release.
+  const shellApi = {
+    hold:guard(() => { escHeld = true; relockOnEscUp = false; }),
+    released:guard(() => { escReleased(true); }),
+  };
+  const previousShell = Object.getOwnPropertyDescriptor(window, 'raftShell'), previousEscape = Object.getOwnPropertyDescriptor(window, 'raftEscape');
+  window.raftShell = shellApi;
   window.raftDebug = debugApi;
 
   // ---------- Lifecycle ----------
@@ -1731,7 +1946,7 @@ export function mount(transfer = null) {
     return {
       version:3, world, bags:{host:hostBag.snapshot(), guest:guestBag.snapshot(), remote:remoteBag ? remoteBag.snapshot() : null},
       physics:physics.capture(), me:{x:physics.x, y:physics.y, z:physics.z}, other:other ? {...other} : null, yaw, pitch, running, elapsed, walkPhase,
-      hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio:sfx.context, peer, conn, role, networkReady, room, ownWorldBackup, pending:new Map(pending),
+      hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio:sfx.context, hintsDone, peer, conn, role, networkReady, room, ownWorldBackup, pending:new Map(pending),
       dive:diving?.capture?.() ?? null, // diving lane hook
       wornCasts:{...wornCasts}, seq, lastSeqSent, guestAck,
       joinDeadline:joinTimer ? joinDeadline : 0, saveAvailable, lockFallback, keys:{...keys},
@@ -1779,30 +1994,31 @@ export function mount(transfer = null) {
     for (const id of timers) clearTimeout(id); timers.clear(); clearInterval(heartbeat);
     unlisten(bindings.splice(0));
     try { if (window.raftDebug === debugApi) delete window.raftDebug; } catch {}
+    try { if (window.raftShell === shellApi) delete window.raftShell; } catch {}
     disposeScene();
   }
 
   const optionsDialog = document.getElementById('options'), previousSettingsOwner = optionsDialog?.dataset.owner;
   try {
     if (!canvas) throw new Error('#world canvas missing');
-    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), resume:() => requestLock(), pause:clearInput}); // [progression-hook]
+    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), resume:() => requestLock(), pause:pauseInput}); // [progression-hook]
     init();
     try { coop = createCoop(coopContext(), X?.coop); } catch (e) { console.warn('co-op layer unavailable', e); coop = null; } // coop
-    settingsController = createSettings({onChange:applyOptions, onPause:clearInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});
+    settingsController = createSettings({onChange:next => { applyOptions(next); soundLabel(); }, onPause:pauseInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});
     survivalUI = createSurvivalUI({
       getBag:() => localBag(),
       onSelect:guard(i => selectSlot(i)),
       onMove:guard((from, to, amount) => moveSlot(from, to, amount)),
       onCraft:guard(id => craft(id)),
       onResume:guard(() => { play('close'); requestLock(); }),
-      onPause:guard(clearInput),
+      onPause:guard(pauseInput), // held movement keys survive the bag
       getModel:modelOf, // 3D icons rendered from models.js
       recipeGate:id => prog?.recipeGate(id), // [progression-hook]
     });
     prog.installUI(); // [progression-hook]
-    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(clearInput), onResume:guard(() => requestLock())});
+    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock())});
     if (role !== 'guest') retroAward();
-    pickupFeed.setIconProvider(getItemIcon); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
+    pickupFeed.setIconProvider(k => iconURL(k)); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
     if ($('#toast')?.classList.contains('show')) toastTimer = later(() => { toastTimer = 0; $('#toast')?.classList.remove('show'); }, 2600);
     warmShaders(); // after settings: the saved graphics preset decides the light/shadow program variants
@@ -1812,6 +2028,8 @@ export function mount(transfer = null) {
   } catch (e) {
     console.error(e); dispose();
     try { if (previousDebug && !Object.getOwnPropertyDescriptor(window, 'raftDebug')) Object.defineProperty(window, 'raftDebug', previousDebug); } catch {}
+    restoreGlobal(window, 'raftShell', previousShell, shellApi); // the old engine keeps its desktop shell hooks
+    if (previousEscape && window.raftEscape !== previousEscape.value) restoreGlobal(window, 'raftEscape', previousEscape, window.raftEscape); // and its Escape
     for (const [el, prop, previous, next] of propertyHandlers) if (el[prop] === next) el[prop] = previous;
     const od = document.getElementById('options'); if (od && previousSettingsOwner !== undefined) od.dataset.owner = previousSettingsOwner; // hand Escape back to the old engine's settings
     setText('#loadError', 'The 3D ocean could not start. Try a current Chrome, Edge, or Safari browser with WebGL enabled.');

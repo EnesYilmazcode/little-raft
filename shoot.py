@@ -72,7 +72,7 @@ with sync_playwright() as p:
     bp.on('pageerror', lambda e: report['errors'].append('build: ' + str(e)))
     bp.add_init_script('localStorage.getItem("little-raft-v1")||localStorage.setItem("little-raft-v1",%s)' % json.dumps(json.dumps(save)))
     bp.goto(url); bp.wait_for_function('!!window.raftDebug', timeout=20000)
-    click(bp, '#solo'); bp.wait_for_function('raftDebug.state.running', timeout=15000); bp.wait_for_timeout(800)
+    bp.locator('.ob-item[data-act="continue"]:visible, #solo:visible').first.click(force=True, timeout=60000);  # Continue: the onboarding title menu hides #solo bp.wait_for_function('raftDebug.state.running', timeout=15000); bp.wait_for_timeout(800)
     look = lambda dx, dy: bp.evaluate(f'document.dispatchEvent(new MouseEvent("mousemove",{{movementX:{dx},movementY:{dy}}}))')  # headless lock gives no movement
     look(0, 55); bp.keyboard.press('2'); bp.wait_for_timeout(400); shot(bp, '11-build-floor-ghost')
     look(-120, 180); bp.keyboard.press('3'); bp.wait_for_timeout(400); shot(bp, '12-place-crate-ghost')
