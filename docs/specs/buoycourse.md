@@ -9,7 +9,7 @@ Source: docs/features/buoy-course-research.md. One builder. You swim (or paddle)
 - `tests/buoycourse.test.mjs`: node:test, imports only the core.
 - Small edits: `dist/content.js`, `dist/content-items.js`, `dist/craft-book.js`, `dist/icons.svg`, `dist/survival-ui.js` and one line in `dist/game.js`.
 
-## Ids (none may collide with paddleboard `paddleboard`/`paddleboard.*` or gametable `gametable`/`game.*`)
+## Ids (none may collide with paddleboard `driftboard`/`paddleboard.*`/`icon-driftboard` or gametable `gametable`/`gt.*`)
 - Items: `courseflag` "Start Flag" (icon `icon-buoyflag`, `item('courseflag','Start Flag','icon-buoyflag',false)`) and `scoreboard` "Race Scoreboard" (icon `icon-scoreboard`, `false`).
 - Recipes in CONTENT_RECIPES (glasscups style):
   `coursekit: Object.freeze({ id:'coursekit', name:'Course Kit', output:Object.freeze({kind:'courseflag',count:1}), cost:Object.freeze({plastic:4, rope:3, wood:3}) })`
@@ -55,7 +55,7 @@ validFinish(st, a) -> boolean                          // the buoy.finish predic
 **Gate frame.** For a gate `[x,z,yaw]`, the normal is `n = (sin yaw, cos yaw)` (the travel direction) and the tangent is `t = (n.z, -n.x)`. Round x and z to 0.1 and yaw to 0.01.
 
 **crossGate.** Return false if any value is not finite or the horizontal distance `|p1-p0| > TELEPORT`. Let `d0=(p0-c)·n` and `d1=(p1-c)·n`. A hit
-needs `d0 < 0 && d1 >= 0`. Then `s=d0/(d0-d1)` and `q=lerp(p0,p1,s)`. Require `|(q-c)·t| <= HIT` and `waterY+YLO <= q.y <= waterY+YHI`. YHI 2.0 lets the board rider's eye (board deck + 1.5) through. The deck is solid, so walkers never reach these gates.
+needs `d0 < 0 && d1 >= 0`. Then `s=d0/(d0-d1)` and `q=lerp(p0,p1,s)`. Require `|(q-c)·t| <= HIT` and `waterY+YLO <= q.y <= waterY+YHI`. YHI 2.0 lets the board rider's eye (≈ waterY+1.72 plus swell lag, paddleboard.md asks for ≥ 1.9) through. The deck is solid, so walkers never reach these gates.
 
 **makeCourse.** Let `b = bbox(tiles)`, centre `(cx,cz)`, half sizes `hx,hz`. The flag side is the bbox side nearest the flag tile
 centre. Its outward unit axis is `d` (±x or ±z), the along axis is `a = (d.z, -d.x)`, and `e` is that side's coordinate (e.g. `x1` for +x).
@@ -106,14 +106,12 @@ Every candidate gate is pushed radially away from `(cx,cz)` in 0.5 m steps (≤ 
 - **moving():** `const s = ctx.world?.sailing; return !!s && !s.anchored && Math.hypot(+s.vx||0, +s.vz||0) > 0.15;`.
   `world.sailing` holds the water-relative raft velocity (sailing-core.js: `vx/vz`, which includes engine push). It is synced to guests in hostState, so both
   sides read the same thing. While anchored, the water drifts at the current (0.3 m/s), which is fine for racing.
-- **ridingBoard()** (board mode, defensive, no throw):
+- **ridingBoard()** (board mode, defensive, no throw). The primary signal is docs/specs/paddleboard.md ("Buoy course" bullet): the board sets `ctx.physics.mount === 'driftboard'` while the local player rides. The fallback is the paddleboard module's own `riding()` through the registry view:
   ```js
-  const mods = ctx.content?.mods; let pb = null;
-  if (Array.isArray(mods)) for (let i = 0; i < mods.length; i++) if (mods[i]?.name === 'paddleboard' && !mods[i].dead) { pb = mods[i]; break; }
-  try { return !!(pb && (typeof pb.riding === 'function' ? pb.riding() : pb.debug?.riding?.())); } catch { return false; }
+  try { if (ctx.physics?.mount === 'driftboard') return true; const mods = ctx.content?.mods; if (!Array.isArray(mods)) return false;
+    for (let i = 0; i < mods.length; i++) { const m = mods[i]; if (m?.name === 'paddleboard' && !m.dead) return typeof m.riding === 'function' && !!m.riding(); } } catch {} return false;
   ```
-  The contract for the paddleboard lane: module `name:'paddleboard'`, with `riding()` true while the **local** player rides (registry hook, docs/features/paddleboard-research.md (i)).
-  Match it by name, because a zipline module may also implement `riding()`. The board writes `physics.x/y/z` itself, so detection needs nothing else. If there's no registry view or no paddleboard, the mode is always `'swim'`.
+  Match by module name, never the registry-wide `riding()`, because zipline also answers it. ride() writes `physics.x/y/z` (eye at about waterY+1.72) before afterMove, so detection needs nothing else. With neither signal, the mode is always `'swim'`.
 
 ## Visibility, models and draw calls (`buoycourse-model.js`)
 - `buildCourseModels(T)` returns `{ flag(), scoreboard(), rings, boardTex, scoreTex, paintBoard(info), paintScore(rows), dispose() }`.
@@ -155,7 +153,7 @@ Example QA: `place`, `shape('sprint')`, `start()`, `teleportThrough(0..4)` → a
 
 ## Tests (`tests/buoycourse.test.mjs`)
 1. crossGate: a straight swim through the centre hits. The reverse direction misses. Parallel misses. Lateral 1.55 hits, 1.7 misses.
-2. crossGate: an eye 1.7 under the water misses, a board eye +1.6 hits. A >3 m jump (teleport) misses. NaN misses. A start exactly on the plane (d0=0) misses, and ending on the plane hits.
+2. crossGate: an eye 1.7 under the water misses, a board eye +1.9 hits, +2.1 misses. A >3 m jump (teleport) misses. NaN misses. A start exactly on the plane (d0=0) misses, and ending on the plane hits.
 3. makeCourse, for each shape on a 1-tile, 3x3, 6x2 and L-shaped raft: the right count (7/5/6/9), every gate `nearestTile ≥ 4` and `≤ 20`, |x|,|z| ≤ 40, deterministic.
 4. makeCourse: a huge raft (40x40 tiles) gives null for every shape, unknown shape or empty tiles give null, and with the flag on an edge tile, the sprint finish is ≤ 7 m from it.
 5. Gate yaw follows the path: a swimmer stepping gate→gate along the polyline hits every gate in order.
