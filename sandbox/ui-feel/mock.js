@@ -1,13 +1,19 @@
-// Mock HUD: the REAL dist/survival-ui.js + dist/inventory-state.js Bag, with ui-feel.js layered on top,
-// wired the same way docs/tech/ui-feel-ADOPT.md wires dist/game.js. No three.js: the world is a static frame.
-import { createSurvivalUI } from '../../dist/survival-ui.js?build=v3-survival-ae77fa84ac2b';
+// Mock HUD: the REAL current dist/survival-ui.js (sv3: own cursor, name tag, paint bumps, 3D icons),
+// dist/pickup-feed.js (the game's text feed) and the dist/inventory-state.js Bag, with ui-feel.js layered on
+// top and wired the same way docs/tech/ui-feel-ADOPT.md wires dist/game.js: ui-feel flies the loot into the
+// hotbar and drives the reticle; the pickup feed keeps the text. The world is a static frame.
+//   ?toasts=1  ui-feel's own toast stack instead of the pickup feed (standalone mode, e.g. a game without a feed)
+//   ?nofeel=1  no ui-feel (cost baseline)   ?rm=1 reduced motion
+import { createSurvivalUI, iconSVG } from '../../dist/survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO } from '../../dist/inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { pickupFeed } from '../../dist/pickup-feed.js?build=v3-survival-ae77fa84ac2b';
+import { getItemIcon } from '../../dist/item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { createUIFeel } from './ui-feel.js';
 
 const q = new URLSearchParams(location.search);
-const SPRITE = new URL('../../dist/icons.svg?build=v3-survival-ae77fa84ac2b', import.meta.url).href;
 const LOOT = { wood: { wood: 2 }, leaf: { leaf: 1 }, scrap: { scrap: 1 }, plastic: { plastic: 1 }, barrel: { wood: 3, leaf: 2, scrap: 1, plastic: 1 } };
 const NAMES = { wood: 'Wood', leaf: 'Palm Leaf', scrap: 'Scrap', plastic: 'Plastic', rope: 'Rope' };
+const TOASTS = q.has('toasts');
 const CHARGE_MS = 900;
 
 // ---------- bag + real survival UI ----------
@@ -22,11 +28,11 @@ const ui = createSurvivalUI({
   onPause() {}, onResume() {},
 });
 
-// Sprite-based icon; survival-ui's own iconSVG is used in dist (see ADOPT: export it).
-const iconHTML = kind => {
-  const id = ITEM_INFO[kind]?.placeholder ? null : ITEM_INFO[kind]?.icon;
-  return id ? `<svg class="sv-icon" viewBox="0 0 48 48"><use href="${SPRITE}#${id}"></use></svg>` : null;
-};
+// Same as ADOPT 3c: the rendered 3D icon when it is ready, else survival-ui's SVG.
+const iconHTML = kind => { const u = getItemIcon(kind); return u ? `<img src="${u}" alt="">` : iconSVG(kind); };
+// (the feed's own fallback is a document-relative icons.svg, which only resolves under dist/)
+const svgEl = html => { const t = document.createElement('template'); t.innerHTML = html; return t.content.firstElementChild; };
+pickupFeed.setIconProvider(kind => getItemIcon(kind) || svgEl(iconSVG(kind)));
 
 // ---------- feel layer ----------
 // ?nofeel=1: same mock without the feel layer (cost baseline).
@@ -34,7 +40,12 @@ const noop = () => {};
 const feel = q.has('nofeel')
   ? { pickup: noop, toast: noop, crafted: noop, iconFor: () => '', setReducedMotion: noop, reducedMotion: false,
       crosshair: { hover: noop, charge: noop, hit: noop }, statBar: (c, o) => ({ value: o.value, set(v) { this.value = v; } }) }
-  : createUIFeel({ getBag: () => bag, iconHTML, reducedMotion: q.has('rm') ? true : 'auto' });
+  : createUIFeel({ getBag: () => bag, iconHTML, toasts: TOASTS, reducedMotion: q.has('rm') ? true : 'auto' });
+// Text feedback: the game's pickup feed (ADOPT), or ui-feel's stack in ?toasts=1.
+const say = {
+  loot: (kind, count) => TOASTS ? feel.toast(NAMES[kind] || kind, { kind: 'loot', icon: feel.iconFor(kind) || '', amount: count, key: 'loot:' + kind }) : pickupFeed.add(kind, count),
+  text: (text, kind = 'info') => TOASTS ? feel.toast(text, { kind }) : pickupFeed.note(text),
+};
 const statsEl = document.getElementById('stats');
 const stats = {
   health: feel.statBar(statsEl, { tone: 'health', label: 'Health', value: .86 }),
@@ -48,24 +59,27 @@ function select(i) { bag.select(((i % 8) + 8) % 8); ui.update(); }
 function pickup(type = 'wood', from) {
   const loot = LOOT[type]; if (!loot) return;
   for (const [k, n] of Object.entries(loot)) bag.add(k, n);
-  ui.update();
+  // Same order as the game: applyAction changes the bag, effect() runs, survival-ui repaints later in the frame.
   const items = Object.entries(loot).map(([kind, count]) => ({ kind, count }));
   feel.pickup(items, from);
   feel.crosshair.hit('gold');
-  for (const it of items) feel.toast(NAMES[it.kind] || it.kind, { kind: 'loot', icon: feel.iconFor(it.kind) || '', amount: it.count, key: 'loot:' + it.kind });
+  for (const it of items) say.loot(it.kind, it.count);
+  ui.update();
 }
 function craft(id) {
   const r = bag.craft(id);
-  if (r.ok) { feel.crafted(id); feel.toast('Crafted ' + (ITEM_INFO[r.crafted.kind]?.name ?? id), { kind: 'craft', icon: feel.iconFor(r.crafted.kind) || '' }); }
-  else if (r.reason === 'full') feel.toast('Your bag is full', { kind: 'full' });
-  else feel.toast('Need ' + r.missing.map(m => `${m.count} more ${ITEM_INFO[m.kind]?.name.toLowerCase()}`).join(' and '), { kind: 'warn' });
+  if (r.ok) { feel.crafted(r.crafted.kind); if (TOASTS) say.text('Crafted ' + (ITEM_INFO[r.crafted.kind]?.name ?? id), 'craft'); else pickupFeed.add(r.crafted.kind, r.crafted.count); }
+  else if (r.reason === 'full') { feel.crosshair.hit('deny'); say.text('Your bag is full', 'full'); }
+  else say.text('Need ' + r.missing.map(m => `${m.count} more ${ITEM_INFO[m.kind]?.name.toLowerCase()}`).join(' and '), 'warn');
   ui.update();
+  return r.ok;
 }
 let hover = false;
-const prompt = document.getElementById('contextPrompt');
+const prompt = document.getElementById('lrPrompt');
 function setHover(on) {
   hover = !!on; feel.crosshair.hover(hover);
-  prompt.innerHTML = hover ? '<kbd>E</kbd>Pick up plank' : ''; prompt.hidden = !hover;
+  if (hover) prompt.innerHTML = '<div class="lr-row"><span class="lr-key">E</span><span>Pick up plank</span></div>';
+  prompt.classList.toggle('lr-on', hover);
 }
 let chargeStart = 0;
 function chargeTick(now) {
@@ -141,7 +155,7 @@ const scenarios = {
   idle: () => frames(120),
   select: () => frames(120, i => { if (i % 3 === 0) select(bag.selectedIndex + 1); }),
   pickup: () => frames(120, i => { if (i % 10 === 0) pickup(['wood', 'barrel', 'leaf', 'plastic'][(i / 10) % 4]); }),
-  toast: () => frames(120, i => { if (i % 4 === 0) feel.toast(['Wood', 'Palm Leaf', 'Hook getting worn', 'Crafted Rope'][(i / 4) % 4], { kind: ['loot', 'loot', 'warn', 'craft'][(i / 4) % 4], amount: (i / 4) % 4 < 2 ? 2 : 0 }); }),
+  toast: () => frames(120, i => { if (i % 4 === 0) (TOASTS ? feel.toast : (t, o) => o.amount ? pickupFeed.add('wood', o.amount) : pickupFeed.note(t))(['Wood', 'Palm Leaf', 'Hook getting worn', 'Crafted Rope'][(i / 4) % 4], { kind: ['loot', 'loot', 'warn', 'craft'][(i / 4) % 4], amount: (i / 4) % 4 < 2 ? 2 : 0 }); }),
   stats: () => frames(120, i => { if (i % 6 === 0) { const s = Object.values(stats)[(i / 6) % 3]; s.set(s.value > .3 ? s.value - .15 : .95); } }),
   crosshair: () => frames(120, i => {
     feel.crosshair.charge(i % 60 < 45 ? (i % 60) / 45 : null);
@@ -155,7 +169,7 @@ const scenarios = {
 };
 
 window.feelDemo = {
-  bag, ui, feel, stats, select, pickup, craft, setHover, beginCharge, releaseCharge, hurt, heal,
+  bag, ui, feel, stats, pickupFeed, say, toasts: TOASTS, select, pickup, craft, setHover, beginCharge, releaseCharge, hurt, heal,
   scenarios: Object.keys(scenarios),
   // Pause every running animation (WAAPI, CSS transitions and CSS animations) at `ms` after its start.
   freeze(ms) { for (const a of document.getAnimations()) { a.pause(); a.currentTime = ms; } return document.getAnimations().length; },

@@ -1,6 +1,9 @@
 """Headless check of the ui-feel sandbox.
 Usage: python sandbox/ui-feel/shoot.py [out_dir] [--cost-only | --shots-only] [--reps N]   (default: sandbox/ui-feel/shots, 3 reps)
 
+The mock wires ui-feel the way docs/tech/ui-feel-ADOPT.md wires dist/game.js (pickup feed keeps the text,
+ui-feel flies loot and drives the reticle); the toast frames and the placement/fullscreen checks use the
+standalone `?toasts=1` mode.
 1. Key frames, frozen mid-animation: every running animation (WAAPI, CSS transition, CSS animation) is paused
    and its currentTime set, so a PNG shows e.g. the select cursor 90 ms into its slide.
 2. Cost: each scenario runs ~150 real frames in a fresh page; Chrome's Performance domain gives
@@ -62,7 +65,7 @@ report = {'shots': [], 'cost': {}, 'errors': errors}
 def key_frames(b):
     # ---------- key frames, desktop ----------
     pg = open_page(b)
-    pg.evaluate("feelDemo.select(1); feelDemo.feel.toast('Your brother joined the raft!', {kind:'build'}); feelDemo.pickup('wood')")
+    pg.evaluate("feelDemo.select(1); feelDemo.say.text('Your brother joined the raft!', 'build'); feelDemo.pickup('wood')")
     pg.wait_for_timeout(1100)
     shot(pg, '01-hud'); report['shots'].append('01-hud')
 
@@ -78,7 +81,13 @@ def key_frames(b):
     pg.evaluate("feelDemo.pickup('wood')"); pg.wait_for_timeout(700)
     pg.evaluate('document.getAnimations().forEach(a => a.pause())')
     shot(pg, '06-pickup-landing'); unfreeze(pg); pg.wait_for_timeout(3600)
+    report['countHeldUntilLanding'] = pg.evaluate("""async () => { feelDemo.pickup('wood'); await 0; await new Promise(r => requestAnimationFrame(r));
+      const s = document.querySelector('.tools .sv-slot.uf-wait'); const c = s?.querySelector('.sv-count');
+      return s ? {painted: c.textContent, shown: getComputedStyle(c, '::after').content, hidden: getComputedStyle(c).visibility} : null; }""")
+    pg.wait_for_timeout(1200)
+    pg.context.close()
 
+    pg = open_page(b, q='toasts=1')
     pg.evaluate("""() => { const f = feelDemo.feel;
       f.toast('Wood', {kind:'loot', amount:2, key:'loot:wood'}); f.toast('Wood', {kind:'loot', amount:2, key:'loot:wood'});
       f.toast('Crafted Rope', {kind:'craft'}); f.toast('A little more room!', {kind:'build'});
@@ -104,13 +113,16 @@ def key_frames(b):
     unfreeze(pg); pg.wait_for_timeout(400)
     shot(pg, '14-inv-open')
     # press state on a recipe and a bag slot
-    box = pg.locator('#inventory .sv-recipe:not([disabled])').first.bounding_box()
+    box = pg.locator('#inventory .sv-recipe.sv-ready').first.bounding_box()
     pg.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2); pg.mouse.down(); pg.wait_for_timeout(120)
     shot(pg, '15-recipe-pressed', clip={'x': box['x'] - 20, 'y': box['y'] - 20, 'width': box['width'] + 40, 'height': box['height'] * 2 + 40})
-    pg.mouse.up(); pg.wait_for_timeout(30)
+    pg.mouse.up(); pg.wait_for_timeout(200)
+    # survival-ui sv3: the recipe row only picks; the craft button crafts one on pointerdown
+    cb = pg.locator('#inventory .sv-craftbtn').bounding_box()
+    pg.mouse.move(cb['x'] + cb['width'] / 2, cb['y'] + cb['height'] / 2); pg.mouse.down(); pg.mouse.up(); pg.wait_for_timeout(30)
     pg.evaluate('document.getAnimations().forEach(a => { a.pause(); a.currentTime = 140; })')
     shot(pg, '16-craft-140ms'); unfreeze(pg); pg.wait_for_timeout(300)
-    shot(pg, '24-inv-craft-toast-rest', clip={'x': 760, 'y': 470, 'width': 520, 'height': 250})
+    shot(pg, '24-inv-craft-toast-rest')
     act_freeze(pg, 'feelDemo.ui.close()', 60); shot(pg, '17-inv-close-60ms')
     unfreeze(pg); pg.wait_for_timeout(300)
 
@@ -133,7 +145,7 @@ def key_frames(b):
         ('deny 80ms', "feelDemo.feel.crosshair.hit('deny')", 80),
     ]
     paths = []
-    pg.evaluate("document.getElementById('contextPrompt').style.visibility='hidden'")
+    pg.evaluate("document.getElementById('lrPrompt').style.visibility='hidden'")
     for i, (label, js, ms) in enumerate(states):
         if js:
             pg.evaluate(f'async () => {{ {js}; await 0; {"feelDemo.freeze(%d)" % ms if ms is not None else ""} }}')
@@ -164,8 +176,42 @@ def key_frames(b):
     shot(pg, '21-phone-pickup-300ms')
     unfreeze(pg); pg.wait_for_timeout(300)
     pg.evaluate("feelDemo.ui.open()"); pg.wait_for_timeout(400)
-    pg.locator('#inventory .sv-recipe:not([disabled])').first.click(); pg.wait_for_timeout(250)
+    pg.locator('#inventory .sv-recipe.sv-ready').first.click(); pg.wait_for_timeout(150)
+    pg.locator('#inventory .sv-craftbtn').click(); pg.wait_for_timeout(250)
     shot(pg, '23-phone-inv-craft')
+    pg.context.close()
+
+    # ---------- toasts with the inventory open at desktop widths 761-1279 (they must not cover the panel) ----------
+    report['toastPlacement'] = {}
+    for w, h in [(1280, 720), (1024, 600), (800, 600)]:
+        pg = open_page(b, w=w, h=h, q='toasts=1')
+        pg.wait_for_timeout(1500)  # let survival-ui finish rendering its 3D icons (long tasks) first
+        pg.evaluate("feelDemo.ui.open()"); pg.wait_for_timeout(400)
+        # toasts + freeze in one task: a stalled headless frame cannot age them past their 3.2 s life
+        pg.evaluate("""async () => { const f = feelDemo.feel; f.toast('Wood', {kind:'loot', amount:3, key:'loot:wood'});
+          f.toast('Crafted Rope', {kind:'craft'}); f.toast('Your bag is full', {kind:'full'}); await 0; feelDemo.freeze(1000); }""")
+        pg.wait_for_timeout(100)
+        shot(pg, f'25-inv-toasts-{w}x{h}')
+        report['toastPlacement'][f'{w}x{h}'] = pg.evaluate("""() => { const d = document.querySelector('#inventory .sv-wrap').getBoundingClientRect();
+          const rows = [...document.querySelectorAll('.uf-toast')].filter(t => +getComputedStyle(t).opacity > .05).map(t => t.getBoundingClientRect());
+          const hit = rows.filter(r => r.right > d.left && r.left < d.right && r.bottom > d.top && r.top < d.bottom).length;
+          const c = document.querySelector('#inventory .sv-craft').getBoundingClientRect(); // panel content (inside the padding)
+          const hitContent = rows.filter(r => r.right > c.left && r.left < d.right && r.bottom > c.top && r.top < c.bottom).length;
+          return {mode: document.getElementById('uf-toasts').className || 'br', rows: rows.length, overlapPanelFrame: hit, overlapPanelContent: hitContent}; }""")
+        pg.context.close()
+
+    # ---------- fullscreen: the stack must stay above a fullscreen <html> ----------
+    pg = open_page(b, q='toasts=1')
+    pg.evaluate("document.body.addEventListener('click', () => document.documentElement.requestFullscreen().catch(e => window.__fsErr = String(e)), {once:true})")
+    pg.mouse.click(200, 200); pg.wait_for_timeout(500)
+    pg.evaluate("feelDemo.feel.toast('A little more room!', {kind:'build'}); feelDemo.feel.toast('Your bag is full', {kind:'full'})")
+    pg.wait_for_timeout(500)
+    report['fullscreen'] = pg.evaluate("""() => { const t = [...document.querySelectorAll('.uf-toast')].find(t => +getComputedStyle(t).opacity > .5);
+      const r = t?.getBoundingClientRect(); t && (t.style.pointerEvents = 'auto');
+      const top = r ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null; t && (t.style.pointerEvents = '');
+      return {fullscreen: document.fullscreenElement === document.documentElement, err: window.__fsErr || null,
+        toastIsTopmost: !!top && t.contains(top)}; }""")
+    shot(pg, '26-fullscreen-toasts')
     pg.context.close()
 
     # ---------- guest fallback: the effect arrives before the predicted bag has the item ----------
