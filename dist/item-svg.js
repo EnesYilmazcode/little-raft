@@ -120,6 +120,22 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M15 33 L19 23 M22 35 L26 22 M29 35 L33 23" fill="none" stroke="#4a2410" stroke-width="2.4" stroke-linecap="round"/>
     <g fill="none" stroke="#fff2cc" stroke-width="2" stroke-linecap="round" stroke-opacity=".9"><path d="M18 14 C16 11 20 9 18 5"/><path d="M26 13 C24 10 28 8 26 3"/><path d="M34 14 C32 11 36 9 34 5"/></g>`,
 
+  // [puffer] Puffer Goo: a glossy green blob with a drip, a spine stuck in it. Blast Powder: a tied pouch spilling grey grit, a spark.
+  goo: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M7 34 C5 26 11 19 19 19 C22 13 31 12 35 18 C42 19 45 27 41 33 C40 37 36 39 31 39 L31 44 C31 46 27 46 27 44 L27 39 H15 C10 39 8 37 7 34 Z" fill="#7cc243"/>
+    <path d="M11 31 C11 26 15 23 20 23 C23 19 29 18 32 22 C36 23 38 27 37 30 C29 28 19 28 11 31 Z" fill="#b2e273" stroke="none"/>
+    <path d="M35 12 L31 21" stroke="#6e5f2c" stroke-width="2.4"/><path d="M35 12 L33.5 15" stroke="#f4eed8" stroke-width="2"/></g>
+    <ellipse cx="17" cy="26" rx="3" ry="1.8" fill="#fff2cc" fill-opacity=".9"/><circle cx="25" cy="33" r="1.6" fill="#4f8f2a"/><circle cx="33" cy="30" r="1.2" fill="#4f8f2a"/>`,
+
+  blastpowder: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M14 18 C9 24 8 33 11 38 C14 42 30 42 34 38 C37 33 36 24 31 18 Z" fill="#c69860"/>
+    <path d="M15 17 C18 14 27 14 30 17 L28 20 C25 19 20 19 17 20 Z" fill="#a9784a"/>
+    <path d="M16 17 L13 10 M29 17 L32 10" fill="none" stroke-width="2.2"/><path d="M18 19.5 C21 21 25 21 27 19.5" fill="none" stroke="#e9d39a" stroke-width="2"/>
+    <path d="M30 42 C33 37 38 36 43 38 C45 40 44 42 42 42 Z" fill="#6f7a5a"/></g>
+    <g fill="#4d5440"><circle cx="35" cy="40" r=".9"/><circle cx="39" cy="39.5" r=".9"/><circle cx="41.5" cy="41" r=".8"/></g>
+    <path d="M19 30 C21 27 25 27 27 30" fill="none" stroke="#fff2cc" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".7"/>
+    <g stroke="#ffbd66" stroke-width="2" stroke-linecap="round"><path d="M38 9 V15 M35 12 H41 M35.8 9.8 L40.2 14.2 M40.2 9.8 L35.8 14.2"/></g>`,
+
   sharkhead: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <path d="M4 30 C6 20 16 12 30 12 C38 12 44 18 44 26 L44 38 C36 40 26 40 18 38 C10 37 5 34 4 30 Z" fill="#7f8f99"/>
     <path d="M4 30 C10 34 20 36 30 35 C36 35 41 36 44 38 C36 40 26 40 18 38 C10 37 5 34 4 30 Z" fill="#eef2f0"/>

@@ -113,6 +113,8 @@ const LIST = [
     tip: 'A thick slab cut from a shark you fought off for good. Four come from every shark.' }),
   item('sharkhead', 'Shark Head', 'material', { iconTint: '#7f8f99', stack: 5,
     tip: 'A grim trophy from a beaten shark. Proof that your raft bites back.' }),
+  item('goo', 'Puffer Goo', 'material', { iconTint: '#8fd14f', // [puffer] dropped by a speared Bloatfish (dist/puffer.js)
+    tip: 'Sticky green goo from a Bloatfish you speared before it burst. The smelter cooks it into Blast Powder.' }),
 
   // ----- refined (hand crafted or station) -----
   item('rope', 'Rope', 'refined', { icon: 'icon-net', placeholder: true, iconTint: '#d9c38c',
@@ -133,6 +135,9 @@ const LIST = [
   item('glass', 'Glass', 'refined', { iconTint: '#bfe6ef',
     recipe: cook('smelter', 'sand', { time: 25, fuel: 1 }), unlock: atStation('smelter'),
     tip: 'Sand melted into a clear little pane. Look through it and the sea sparkles.' }),
+  item('blastpowder', 'Blast Powder', 'refined', { iconTint: '#6f7a5a', // [puffer]
+    recipe: cook('smelter', 'goo', { time: 20, fuel: 1 }), unlock: atStation('smelter'),
+    tip: 'Puffer goo baked dry into a gritty, fizzing powder. Keep it dry: it is the start of anything that goes bang.' }),
   item('bolt', 'Bolt', 'refined', { iconTint: '#8d96a3',
     recipe: hand({ metalingot: 1, scrap: 1 }, 2), unlock: research('metalingot'),
     tip: 'Two sturdy bolts from one ingot. They hold the fancy stuff together.' }),
