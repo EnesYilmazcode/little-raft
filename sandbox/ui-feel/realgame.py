@@ -1,92 +1,66 @@
 """ui-feel in the REAL game, headless.
-Usage: python sandbox/ui-feel/realgame.py [--hook-tries N] [--freeze MS] [--phone]
+Usage: python sandbox/ui-feel/realgame.py [--hook-tries N] [--freeze MS] [--keep] [--patch-only]
 
-1. Copies dist/ to a temp folder and applies docs/tech/ui-feel-ADOPT.md (steps 1, 2, 3a-3i) as exact string
-   replacements; each must match exactly once, so this also proves ADOPT is current against dist.
-2. Boots the game (Solo), checks the feel layer attached, then tries to land a real hook catch
-   (aim at a supply, charge, throw, hold to reel). SwiftShader runs the game at a few fps and the throw is
-   ballistic, so a catch is not guaranteed; after N misses it falls back to a scratch-only QA line
-   (`window.__qaAction = a => action(a)`, added to the temp copy only) that sends the same
-   {kind:'collect'} action the hook sends on a catch. Either way the loot reaches ui-feel through the real
-   applyAction -> emit -> effect -> feelEffect -> uiFeel.pickup path.
-3. Freezes every animation MS after the pickup and writes sandbox/ui-feel/shots/rg-*.png. Prints JSON.
+1. Copies dist/ to a temp folder and applies docs/tech/ui-feel-ADOPT.md literally: every block tagged
+   <!-- copy: ... -->, <!-- apply: FILE --> (a ```diff whose '-' and ' ' lines must occur exactly once in FILE)
+   or <!-- append: FILE --> is parsed out of the doc, so the doc and this check cannot drift apart.
+   A scratch-only QA line (`window.__qaAction` / `window.__qaEffect`) is added on top; it is not part of ADOPT.
+   --patch-only stops here and prints the scratch folder (for running tests/ with RAFT_DIST=<it>/dist).
+2. Boots the game (Solo) at 1280x720 and checks the layer attached in "main" mode (no own hotbar cursor, no
+   toast popover). Tries to land a real hook catch; after N misses sends the same {kind:'collect'} action a
+   catch sends. Either way loot reaches ui-feel through applyAction -> emit -> effect -> feelEffect.
+3. Freezes the fly MS after the pickup (rg-01), at 600 ms (rg-02) and landed (rg-03); records that the target
+   slots keep their old count until the icon lands. Crafts through the real recipe row + craft button
+   (rg-04, 1280x720), resizes to 1024x600 with the bag open (rg-05). Checks the partner-build marker and the
+   guards (a throwing pickup, a throwing per-frame hover). Enters fullscreen through Pause > Graphics and lands
+   another pickup (rg-06). Writes sandbox/ui-feel/shots/rg-*.png and prints JSON.
 """
-import sys, json, shutil, tempfile, threading, functools, http.server, socketserver
+import re, sys, json, shutil, tempfile, threading, functools, http.server, socketserver
 from pathlib import Path
-from playwright.sync_api import sync_playwright
 
 REPO = Path(__file__).resolve().parents[2]
-OUT = REPO / 'sandbox/ui-feel/shots'; OUT.mkdir(parents=True, exist_ok=True)
+OUT = REPO / 'sandbox/ui-feel/shots'
 argv = sys.argv[1:]
 TRIES = int(argv[argv.index('--hook-tries') + 1]) if '--hook-tries' in argv else 2
 FREEZE_MS = int(argv[argv.index('--freeze') + 1]) if '--freeze' in argv else 330
-PHONE = '--phone' in argv
-W, H = (390, 844) if PHONE else (1280, 720)
-PFX = 'rg-phone-' if PHONE else 'rg-'
-TOK = 'v3-survival-ae77fa84ac2b'
+if '--out' in argv: OUT = Path(argv[argv.index('--out') + 1]).resolve()
+OUT.mkdir(parents=True, exist_ok=True)
+W, H = 1280, 720
 
-# ---------- 1. ADOPT on a scratch copy ----------
+# ---------- 1. ADOPT on a scratch copy, parsed from the doc ----------
 tmp = Path(tempfile.mkdtemp(prefix='uifeel-rg-'))
 D = tmp / 'dist'
 shutil.copytree(REPO / 'dist', D)
-shutil.copy(REPO / 'sandbox/ui-feel/ui-feel.js', D / 'ui-feel.js')                       # step 1
+doc = (REPO / 'docs/tech/ui-feel-ADOPT.md').read_text()
+BLOCK = re.compile(r'<!-- (copy|apply|append): (.+?) -->\n```[a-z]*\n(.*?)```', re.S)
+applied = []
+for verb, arg, body in BLOCK.findall(doc):
+    if verb == 'copy':
+        src, dst = [x.strip() for x in arg.split('->')]
+        shutil.copy(REPO / src, D / dst); applied.append(f'copy {dst}'); continue
+    p = D / arg.strip(); s = p.read_text()
+    if verb == 'append':
+        p.write_text(s + '\n' + body); applied.append(f'append {arg}'); continue
+    old, new = [], []
+    for ln in body.rstrip('\n').split('\n'):
+        tag, text = ln[:1], ln[1:]
+        if tag in ('-', ' '): old.append(text)
+        if tag in ('+', ' '): new.append(text)
+    old_s, new_s = '\n'.join(old) + '\n', '\n'.join(new) + '\n'
+    n = s.count(old_s)
+    assert n == 1, f'ADOPT block for dist/{arg}: expected 1 match, found {n}:\n{old_s[:300]}'
+    p.write_text(s.replace(old_s, new_s)); applied.append(f'apply {arg}: {old[0].strip()[:60]}')
+assert sum(a.startswith('apply game.js') for a in applied) == 11, applied
+# scratch-only QA hooks (NOT part of ADOPT)
+g = D / 'game.js'; s = g.read_text(); a = '  window.raftDebug = debugApi;\n'
+assert s.count(a) == 1
+g.write_text(s.replace(a, a + '  window.__qaAction = a => action(a); window.__qaEffect = e => effect(e); window.__qaFeelFailed = () => feelFailed;\n'))
+log = {'adopt': applied, 'scratch': str(tmp)}
+if '--patch-only' in argv:
+    print(json.dumps(log, indent=1)); sys.exit(0)
 
-def edit(name, pairs):
-    p = D / name; s = p.read_text()
-    for step, a, b in pairs:
-        n = s.count(a)
-        assert n == 1, f'ADOPT step {step}: expected 1 match in dist/{name}, found {n}: {a[:80]!r}'
-        s = s.replace(a, b)
-    p.write_text(s)
+from playwright.sync_api import sync_playwright
 
-edit('survival-ui.js', [('2', 'function iconSVG(kind) {', 'export function iconSVG(kind) {')])
-edit('game.js', [
-    ('3a', f"import {{ createSurvivalUI }} from './survival-ui.js?build={TOK}';",
-     f"import {{ createSurvivalUI, iconSVG }} from './survival-ui.js?build={TOK}';\nimport {{ createUIFeel }} from './ui-feel.js?build={TOK}';"),
-    ('3b', "  let survivalUI = null, settingsController = null, options =", "  let survivalUI = null, uiFeel = null, settingsController = null, options ="),
-    ('3c', "      onPause:guard(clearInput),\n    });\n",
-     "      onPause:guard(clearInput),\n    });\n"
-     "    try { uiFeel = createUIFeel({ getBag: () => localBag(), iconHTML: iconSVG, hotbarSize: HOTBAR }); }\n"
-     "    catch (e) { uiFeel = null; console.error('ui-feel failed', e); } // purely cosmetic: never block the game\n"),
-    ('3d', "    try { survivalUI?.destroy?.(); } catch {}\n", "    try { survivalUI?.destroy?.(); } catch {}\n    try { uiFeel?.destroy(); } catch {}\n"),
-    ('3e', """    if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90));
-    beep(e.kind === 'build' ? 640 : e.kind === 'craft' ? 560 : e.kind === 'full' ? 220 : 440);
-  }
-""", """    const felt = uiFeel && feelEffect(e);
-    if (typeof e.text === 'string' && e.text && !felt) notice(e.text.slice(0, 90));
-    beep(e.kind === 'build' ? 640 : e.kind === 'craft' ? 560 : e.kind === 'full' ? 220 : 440);
-  }
-  // Loot / craft / build / full go to the toast stack (and fly into the hotbar); 'notice' stays under the crosshair.
-  function feelEffect(e) {
-    const name = k => ITEM_INFO[k]?.name ?? k;
-    if (e.kind === 'loot' && e.loot && typeof e.loot === 'object') {
-      const items = Object.entries(e.loot).filter(([k, n]) => ITEM_INFO[k] && n > 0).map(([kind, count]) => ({kind, count}));
-      uiFeel.pickup(items);
-      uiFeel.crosshair.hit('gold');
-      for (const it of items) uiFeel.toast(name(it.kind), {kind:'loot', icon:iconSVG(it.kind), amount:it.count, key:'loot:' + it.kind});
-      return true;
-    }
-    if (e.kind === 'craft') { uiFeel.crafted(e.recipe); uiFeel.toast(e.text, {kind:'craft', icon:ITEM_INFO[e.recipe] ? iconSVG(e.recipe) : ''}); return true; }
-    if (e.kind === 'build') { uiFeel.crosshair.hit('hit'); uiFeel.toast(e.text, {kind:'build'}); return true; }
-    if (e.kind === 'full') { uiFeel.crosshair.hit('deny'); uiFeel.toast(e.text, {kind:'full'}); return true; }
-    return false;
-  }
-"""),
-    ('3f supply', "      if (!a.net) emit({kind:'loot', text:'+ '", "      if (!a.net) emit({kind:'loot', loot, text:'+ '"),
-    ('3f fish', "      world.fish++; emit({kind:'loot', text:'You caught a fish!'}, actor); return;",
-     "      world.fish++; emit({kind:'loot', loot:{fish:1}, text:'You caught a fish!'}, actor); return;"),
-    ('3f craft', "      if (r.ok) emit({kind:'craft', text:`Crafted", "      if (r.ok) emit({kind:'craft', recipe:a.recipe, text:`Crafted"),
-    ('3g', "    refreshPointerUI(); updateCharge(); updateContext(dialog);\n",
-     "    refreshPointerUI(); updateCharge(); updateContext(dialog);\n"
-     "    if (uiFeel) { uiFeel.crosshair.hover(!!pickTarget || !!hover); uiFeel.crosshair.charge(charging && running ? chargeValue() : null); }\n"),
-    ('3h', "    if (caught.length !== lastCaughtCount) { if (caught.length > lastCaughtCount) beep(520 + caught.length * 30); lastCaughtCount = caught.length; }",
-     "    if (caught.length !== lastCaughtCount) { if (caught.length > lastCaughtCount) { beep(520 + caught.length * 30); uiFeel?.crosshair.hit('gold'); } lastCaughtCount = caught.length; }"),
-    # NOT part of ADOPT: scratch-only QA line for the fallback in step 2.
-    ('qa', "  window.raftDebug = debugApi;\n", "  window.raftDebug = debugApi;\n  window.__qaAction = a => action(a);\n"),
-])
-css = D / 'graphics.css'; css.write_text(css.read_text() + '\nhtml:has(#crosshair.uf-xh) #chargeMeter{display:none!important}\n')  # 3i
-
-# ---------- 2/3. drive it ----------
 class Quiet(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
 srv = socketserver.ThreadingTCPServer(('127.0.0.1', 0), functools.partial(Quiet, directory=str(tmp)))
@@ -94,38 +68,54 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 URL = f'http://127.0.0.1:{srv.server_address[1]}/dist/index.html'
 CHROME = '/opt/pw-browsers/chromium-1243/chrome-linux64/chrome'
 ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']
-# Wrap the live instance's pickup: run it, and once effect() has also queued its toasts (a microtask later, same
-# task) pause every animation at currentTime = ms. Wall-clock waits do not work here: SwiftShader renders the game
-# at a few fps, so 330 ms after the pickup its animations have often not had their first frame yet. After the
-# first pickup the harness also pins performance.now(): a screenshot here can take longer than a toast's 3.2 s
-# life (which reads performance.now), and the game simply stops advancing (dt = 0) while the HUD is inspected.
-FREEZE = """ms => { const f = window.__littleRaftUIFeel, orig = f.pickup; window.__flies = 0;
-  f.pickup = (items, from) => { orig(items, from); window.__loot = items;
-    if (++window.__flies === 1) queueMicrotask(() => {
+# Wrap the live instance's pickup: once effect() has run (a microtask later, same task) pause every animation at
+# currentTime = ms and pin performance.now (SwiftShader runs the game at a few fps; screenshots must not age the
+# HUD). release() restores the clock and plays everything again.
+FREEZE = """ms => { const f = window.__littleRaftUIFeel, orig = f.pickup; window.__frozen = 0; window.__pn ??= performance.now;
+  f.pickup = (items, from) => { const r = orig(items, from); window.__loot = items;
+    if (!window.__frozen) queueMicrotask(() => {
       for (const a of document.getAnimations()) { a.pause(); a.currentTime = ms; }
-      const t0 = performance.now(); performance.now = () => t0; window.__frozen = 1; }); }; }"""
+      const t0 = performance.now(); performance.now = () => t0; window.__frozen = 1;
+      window.__feedAtFreeze = [...document.querySelectorAll('#pickupFeed .pf-row')].map(r => r.textContent.trim());
+      window.__held = [...document.querySelectorAll('.tools .sv-slot.uf-wait')].map(s => ({slot: +s.dataset.slot,
+        painted: s.querySelector('.sv-count').textContent, shown: s.querySelector('.sv-count').dataset.ufOld, fresh: s.classList.contains('uf-fresh')})); });
+    return r; };
+  window.__release = () => { f.pickup = orig; performance.now = window.__pn; document.getAnimations().forEach(a => a.play()); }; }"""
 SEEK = '(ms) => { for (const a of document.getAnimations()) { a.pause(); a.currentTime = ms; } }'
-log, errors = {'adopt': 'all steps matched exactly once', 'viewport': [W, H]}, []
+errors, expected = [], []
 shots = []
-def shot(name, **kw):
-    pg.screenshot(path=str(OUT / f'{PFX}{name}.png'), **kw); shots.append(f'{PFX}{name}.png')
+def shot(name):
+    pg.screenshot(path=str(OUT / f'rg-{name}.png')); shots.append(f'rg-{name}.png')
+def on_console(m):
+    if m.type != 'error': return
+    (expected if 'QA-EXPECTED' in m.text else errors).append(m.text[:200])
+
+def collect_supply():
+    ts = pg.evaluate('raftDebug.targets.filter(t=>!t.pending).sort((a,b)=>(b.type==="barrel")-(a.type==="barrel")||a.distance-b.distance)')
+    t = ts[0]
+    pg.evaluate('t => window.__qaAction({kind:"collect", id:t.id, token:t.token})', t)
+    pg.wait_for_function('window.__frozen === 1', timeout=30000)
+    return t['type']
 
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path=CHROME, args=ARGS)
-    c = b.new_context(viewport={'width': W, 'height': H}, device_scale_factor=2 if PHONE else 1)
+    c = b.new_context(viewport={'width': W, 'height': H})
     c.add_init_script("HTMLCanvasElement.prototype.requestPointerLock=function(){return Promise.reject(new Error('QA fallback'))};")
     pg = c.new_page(); pg.set_default_timeout(180000)
     pg.on('pageerror', lambda e: errors.append(str(e)))
-    pg.on('console', lambda m: m.type == 'error' and errors.append(m.text[:200]))
-    pg.goto(URL); pg.wait_for_function('!!window.raftDebug', timeout=60000)
-    pg.locator('#solo').click()
-    pg.wait_for_function('raftDebug.state.running', timeout=60000)
-    pg.wait_for_timeout(1500)
-    log['feelAttached'] = pg.evaluate("!!window.__littleRaftUIFeel && !!document.querySelector('#crosshair.uf-xh') && !!document.querySelector('.uf-cursor.on')")
-    log['toastsInTopLayer'] = pg.evaluate("document.getElementById('uf-toasts').matches(':popover-open')")
-    pg.mouse.click(W / 2, H * .3); pg.wait_for_timeout(600)       # first click: pointer lock is refused -> drag/aim fallback
-    log['lockFallback'] = pg.evaluate('raftDebug.state.lockFallback')
+    pg.on('console', on_console)
+    missing = set(); pg.on('response', lambda r: r.status >= 400 and missing.add(r.url.split('/dist/')[-1]))
+    pg.goto(URL); pg.wait_for_function('!!window.raftDebug', timeout=90000)
+    pg.evaluate("document.querySelector('#solo').click()")  # the title card may be animating/covered (onboarding); same as tests/playtest.py
+    pg.wait_for_function('raftDebug.state.running', timeout=90000)
+    pg.wait_for_timeout(2500)
+    log['attached'] = pg.evaluate("""() => ({feel: !!window.__littleRaftUIFeel, reticle: !!document.querySelector('#crosshair.uf-xh'),
+      ownCursorShown: !!document.querySelector('.uf-cursor.on'), cursorClass: !!document.querySelector('.tools.uf-has-cursor'), mainCursor: !!document.querySelector('.tools>.sv-cursor'),
+      toastPopover: !!document.getElementById('uf-toasts'), style: document.querySelectorAll('#ui-feel-style').length})""")
+    pg.mouse.click(W / 2, H * .3); pg.wait_for_timeout(600)       # pointer lock is refused -> drag/aim fallback
     pg.evaluate(FREEZE, FREEZE_MS)
+
+    # ---------- pickup: a real hook catch, else the same collect action ----------
     VIS = f't=>t.screen?.visible&&!t.pending&&t.screen.x>{W*.15}&&t.screen.x<{W*.85}&&t.screen.y>{H*.3}&&t.screen.y<{H*.85}'
     log['via'] = None; tries = []
     for attempt in range(TRIES):
@@ -133,50 +123,106 @@ with sync_playwright() as p:
         if not ts: pg.wait_for_timeout(800); continue
         t = ts[0]; s = t['screen']
         pg.mouse.move(s['x'], s['y']); pg.mouse.down(); pg.wait_for_timeout(600)
-        if attempt == 0: shot('01-charge')
+        if attempt == 0: shot('00-charge')
         pg.wait_for_timeout(350); pg.mouse.up()
         try: pg.wait_for_function('raftDebug.state.hookStage!=="flying"', timeout=8000)
         except Exception: pass
-        pg.mouse.down(); hooked = None
-        for _ in range(80):
+        pg.mouse.down(); st = {}
+        for _ in range(60):
             st = pg.evaluate('({stage: raftDebug.state.hookStage, n: raftDebug.state.hookCaughtItems.length, frozen: window.__frozen})')
-            if st['n'] and not hooked: hooked = st; shot('02-hooked')
             if st['frozen'] or st['stage'] == 'idle': break
             pg.wait_for_timeout(150)
         pg.mouse.up()
-        tries.append({'type': t['type'], 'dist': round(t['distance'], 1), 'hooked': bool(hooked), 'landedLoot': bool(st['frozen'])})
-        if st['frozen']: log['via'] = 'hook catch'; break
+        tries.append({'type': t['type'], 'dist': round(t['distance'], 1), 'landedLoot': bool(st.get('frozen'))})
+        if st.get('frozen'): log['via'] = 'hook catch'; break
         pg.wait_for_timeout(400)
     log['hookTries'] = tries
-    if not log['via']:
-        # Fallback: the same collect action a catch sends, on the nearest visible supply (prefer a barrel: 4 items).
-        ts = pg.evaluate('raftDebug.targets.filter(t=>!t.pending).sort((a,b)=>(b.type==="barrel")-(a.type==="barrel")||a.distance-b.distance)')
-        t = ts[0]; log['via'] = 'qa collect action (' + t['type'] + ')'
-        pg.evaluate('t => window.__qaAction({kind:"collect", id:t.id, token:t.token})', t)
-        pg.wait_for_function('window.__frozen === 1', timeout=15000)
-    shot('03-loot-fly-330ms')
-    log['diag'] = pg.evaluate("""() => ['#uf-toasts', '.uf-toast', '#uf-layer', '.uf-fly', '#crosshair'].map(sel => {
-      const e = document.querySelector(sel); if (!e) return sel + ': missing';
-      const cs = getComputedStyle(e), r = e.getBoundingClientRect();
-      return `${sel}: display=${cs.display} vis=${cs.visibility} op=${cs.opacity} z=${cs.zIndex} pos=${cs.position} rect=${r.x|0},${r.y|0},${r.width|0}x${r.height|0} anims=${e.getAnimations().length} parent=${e.parentElement?.tagName}`; })""")
+    if not log['via']: log['via'] = 'qa collect action (' + collect_supply() + ')'
+    shot('01-loot-fly-%dms' % FREEZE_MS)
     log['loot'] = pg.evaluate('window.__loot')
-    log['hotbar'] = pg.evaluate('raftDebug.state.inventory.slots.slice(0,8).map(s => s ? s.kind + "x" + s.count : null)')
-    pg.evaluate(SEEK, 600); pg.wait_for_timeout(150); shot('04-flight-600ms')
-    pg.evaluate(SEEK, 5000); pg.wait_for_timeout(150); shot('05-toasts')   # every fly landed, toasts at rest
-    pg.evaluate('document.getAnimations().forEach(a => a.play())')
-    # open the inventory and craft whatever the loot allows (craft toast must sit above the backdrop)
-    pg.keyboard.press('Tab'); pg.wait_for_timeout(600)
-    btn = pg.locator('#inventory .sv-recipe:not([disabled])')
-    log['craftable'] = btn.count()
-    if btn.count():
-        btn.first.click(); pg.wait_for_timeout(300)
-    pg.evaluate(SEEK, 5000); pg.wait_for_timeout(150)   # dialog transition and craft toast at rest
-    shot('06-inventory-craft')
-    log['toastsAboveInventory'] = pg.evaluate("document.getElementById('uf-toasts').matches(':popover-open') && document.getElementById('inventory').open")
-    log['errors'] = errors
+    log['heldWhileFlying'] = pg.evaluate('window.__held')
+    log['feedAtFreeze'] = pg.evaluate('window.__feedAtFreeze')
+    pg.evaluate(SEEK, 600); pg.wait_for_timeout(150); shot('02-flight-600ms')
+    # finish() (not a seek) so the flights' onfinish runs: the slots release their held count and bump
+    pg.evaluate("document.getAnimations().forEach(a => { if (a.effect && a.effect.getComputedTiming().endTime !== Infinity) a.finish(); })")
+    pg.wait_for_timeout(400); pg.evaluate(SEEK, 100000); pg.wait_for_timeout(150); shot('03-landed')
+    log['afterLanding'] = pg.evaluate("""() => ({waiting: document.querySelectorAll('.tools .sv-slot.uf-wait').length,
+      feed: raftDebug.state.feed, hotbar: raftDebug.state.inventory.slots.slice(0, 8).map(s => s ? s.kind + 'x' + s.count : null)})""")
+    pg.evaluate('window.__release()'); pg.wait_for_timeout(500)
+
+    # ---------- craft through the real UI, inventory at 1280 and 1024 ----------
+    pg.keyboard.press('Tab'); pg.wait_for_function('raftDebug.state.inventoryOpen'); pg.wait_for_timeout(500)
+    ready = pg.locator('#inventory .sv-recipe.sv-ready')
+    log['craftReady'] = ready.count()
+    if ready.count():
+        # recipes are filtered by category tab and the list scrolls: pick through the real click handlers in JS
+        log['craftPicked'] = pg.evaluate("""() => { const r = document.querySelector('#inventory .sv-recipe.sv-ready');
+          document.querySelector(`#inventory .sv-tab[data-cat="${r.dataset.cat}"]`)?.click();
+          r.scrollIntoView({block: 'nearest'}); r.click(); return r.dataset.recipe; }""")
+        pg.wait_for_timeout(300)
+        pg.evaluate("""() => { const f = window.__littleRaftUIFeel, o = f.crafted; window.__crafted = [];
+          f.crafted = id => { const r = o(id); window.__crafted.push({id, flashed: r,
+            anims: document.querySelector('#inventory .sv-recipe.sv-pick')?.getAnimations({subtree: true}).length ?? 0,
+            feed: [...document.querySelectorAll('#pickupFeed .pf-row')].map(r => r.textContent.trim())}); return r; }; }""")
+        pg.locator('#inventory .sv-craftbtn').click(); pg.wait_for_timeout(250)
+        log['craft'] = pg.evaluate('window.__crafted')
+    pg.wait_for_timeout(600); shot('04-inventory-craft-1280')
+    pg.set_viewport_size({'width': 1024, 'height': 600}); pg.wait_for_timeout(800); shot('05-inventory-1024')
+    log['inventory1024'] = pg.evaluate("""() => { const r = document.querySelector('#inventory .sv-wrap').getBoundingClientRect();
+      return {panel: [r.left|0, r.top|0, r.width|0, r.height|0], fitsViewport: r.right <= innerWidth && r.bottom <= innerHeight + 1,
+        topAtCentre: document.elementFromPoint(r.left + r.width / 2, r.top + 12)?.closest('#inventory') ? 'inventory' : 'other',
+        toastPopover: !!document.getElementById('uf-toasts')}; }""")
+    pg.keyboard.press('Tab'); pg.wait_for_function('!raftDebug.state.inventoryOpen'); pg.wait_for_timeout(300)
+    pg.set_viewport_size({'width': W, 'height': H}); pg.wait_for_timeout(500)
+
+    # ---------- hit marker only for your own build ----------
+    HITS = "() => document.querySelector('#crosshair .uf-x-hit').getAnimations().length"
+    log['buildMarker'] = {}
+    for label, by in [('partner (by:guest)', 'guest'), ('no owner', None), ('mine (by:host)', 'host')]:
+        pg.evaluate("document.querySelector('#crosshair .uf-x-hit').getAnimations().forEach(a => a.cancel())")
+        e = {'kind': 'build', 'text': 'A little more room!'}
+        if by: e['by'] = by
+        pg.evaluate('e => window.__qaEffect(e)', e)
+        log['buildMarker'][label] = pg.evaluate(HITS)
+
+    # ---------- guards ----------
+    n0 = len(errors)
+    pg.evaluate("""() => { const f = window.__littleRaftUIFeel; window.__origPickup = f.pickup; f.pickup = () => { throw new Error('QA-EXPECTED pickup'); }; }""")
+    pg.evaluate("window.__qaEffect({kind:'loot', loot:{wood:1}, text:'+ 1 Plank'})")
+    pg.evaluate("() => { window.__littleRaftUIFeel.pickup = window.__origPickup; }")
+    log['guardEffect'] = {'feedStillGotIt': pg.evaluate("raftDebug.state.feed.some(r => /Plank/.test(r))"), 'pageErrors': len(errors) - n0}
+    pg.evaluate("window.__qaEffect({kind:'craft', loot:{'x\"]\\n[y':1}, text:'Crafted ?'})")
+    pg.evaluate("window.__qaEffect({kind:'craft', loot:{toString:null}, text:'Crafted ?'})")
+    log['guardHostileCraft'] = {'pageErrors': len(errors) - n0}
+    pg.evaluate("""() => { const x = window.__littleRaftUIFeel.crosshair; window.__origHover = x.hover; x.hover = () => { throw new Error('QA-EXPECTED hover'); }; }""")
+    pg.wait_for_timeout(1500)
+    log['guardFrame'] = pg.evaluate("""async () => { const t0 = raftDebug.state.camera; await new Promise(r => setTimeout(r, 1200));
+      return {feelFailed: window.__qaFeelFailed(), stillRunning: raftDebug.state.running}; }""")
+    log['guardFrame']['pageErrors'] = len(errors) - n0
+    log['guardFrame']['expectedConsoleErrors'] = len(expected)
+    pg.evaluate("() => { window.__littleRaftUIFeel.crosshair.hover = window.__origHover; }")
+
+    # ---------- fullscreen through Pause > Graphics, then another pickup ----------
+    pg.keyboard.press('Escape')
+    try:
+        pg.wait_for_function('document.querySelector("#options")?.open', timeout=8000)
+        if pg.locator('#options [data-act="settings"]').count(): pg.locator('#options [data-act="settings"]').click()
+        pg.locator('#options [data-tab="graphics"]').click(); pg.wait_for_timeout(200)
+        pg.locator('#options [data-act="fullscreen"]').click(); pg.wait_for_timeout(800)
+        log['fullscreen'] = pg.evaluate('document.fullscreenElement === document.documentElement')
+        pg.locator('#options [data-act="resume"]').click(); pg.wait_for_timeout(600)
+    except Exception as ex:
+        log['fullscreen'] = 'not reachable: ' + str(ex)[:120]
+    pg.evaluate(FREEZE, 420)
+    collect_supply()
+    shot('06-fullscreen-fly-420ms')
+    log['fullscreenFly'] = pg.evaluate("""() => ({fullscreen: !!document.fullscreenElement,
+      flying: [...document.querySelectorAll('.uf-fly')].filter(f => +getComputedStyle(f).opacity > .5).length,
+      feedAtFreeze: window.__feedAtFreeze})""")
+    pg.evaluate('window.__release()')
+    log['errors'] = errors; log['missingResources'] = sorted(missing)
     b.close()
 srv.shutdown()
-if "--keep" in argv: log["scratch"] = str(tmp)
-else: shutil.rmtree(tmp, ignore_errors=True)
+if '--keep' not in argv: shutil.rmtree(tmp, ignore_errors=True); log.pop('scratch')
 log['shots'] = shots
 print(json.dumps(log, indent=1))
