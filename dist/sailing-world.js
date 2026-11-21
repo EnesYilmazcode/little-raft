@@ -6,8 +6,9 @@ import { SAIL, cleanSailing, defaultSailing, stepSailing, sailTarget, applySailA
 import { createSailingUI } from './sailing-ui.js?build=v3-survival-ae77fa84ac2b';
 import { ANCHOR_MODEL, poseAnchor } from './anchor-model.js?build=v3-survival-ae77fa84ac2b';
 import { anchorBlock, anchorCount } from './anchor-rules.js?build=v3-survival-ae77fa84ac2b';
+import { driftSwimmer } from './swim-drift.js?build=v3-survival-ae77fa84ac2b';
 
-const WRAP = SAIL.ISLAND_WRAP > 0 ? SAIL.ISLAND_WRAP : 150, LEASH = 10, STEER_RATE = 1.6, REACH = 3.2, MAST_H = 3.6, MAST_R = .25, ANCHOR_R = .35, DECK_Y = .22, WHEEL_Y = 1.05, WHEEL_R = .5;
+const WRAP = SAIL.ISLAND_WRAP > 0 ? SAIL.ISLAND_WRAP : 150, STEER_RATE = 1.6, REACH = 3.2, MAST_H = 3.6, MAST_R = .25, ANCHOR_R = .35, DECK_Y = .22, WHEEL_Y = 1.05, WHEEL_R = .5;
 const CLOTH_R = 1.2, CLOTH_Y0 = 1, CLOTH_Y1 = 3.4; // raised cloth hit volume around the mast axis (cheap approximation)
 const FURL = .04, FURL_Z = .3, ROLL_AT = .3, ROLL_R = .07, BASE_FLOW_Z = .22, ITEM_MARGIN = 26, GROUND_CLEAR = 2.5, OP_GAP = 250, SNAP2 = 36;
 const ANCHOR_AIM_Y = .22 + ANCHOR_MODEL.DRUM_Y; // raft-local height of the drum (the aim point)
@@ -279,8 +280,7 @@ export function createSailing(T, ctx) {
     smoothDisplay(guest, dt);
     ocean?.uniforms?.uFlow?.value?.set?.(disp.wx, disp.wz);
     moveDrifters();
-    const ph = ctx.getPhysics?.();
-    if (ph?.swimming && ph.x * ph.x + ph.z * ph.z > LEASH * LEASH) { ph.x -= out.dwx; ph.z -= out.dwz; }
+    driftSwimmer(ctx.getPhysics?.(), out.dwx, out.dwz); // a swimmer floats in the water: a moving raft leaves them behind (swim-drift.js)
     animateSails(dt, elapsed); animateAnchor(dt);
     updateAim(); updatePrompt();
     info.running = !!ctx.isRunning(); info.yaw = ctx.getYaw(); info.windDir = state.windDir; info.windStr = state.windStr;

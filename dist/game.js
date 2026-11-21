@@ -36,6 +36,7 @@ import { loadLook, saveLook, lookColors, noteAchievements, HATS as LOOK_HATS } f
 import { createLookUI } from './look-ui.js?build=v3-survival-ae77fa84ac2b'; // [look]
 import { createBottle } from './bottle.js?build=v3-survival-ae77fa84ac2b';
 import { cleanSignal, countAntennas, signalTick, onCacheCollected, cacheLoot, signalReadout, edgePoint } from './signal.js?build=v3-survival-ae77fa84ac2b';
+import { SWIM, raftDistance, leashLevel, bearingTo, markerSpot } from './swim-drift.js?build=v3-survival-ae77fa84ac2b'; // [swim-drift] left behind by a moving raft: warn, mark, faint
 import { createSignalModel } from './signal-models.js?build=v3-survival-ae77fa84ac2b';
 import { cleanWatering, copyWatering, plantStage, tick as tickWatering, tileKey, fillCup, loadPurifier, takeWater, water as waterPlant, harvest as harvestPlant, fuelPurifier, purifierFuel, clockText, FUEL_CAP, WATER_ACTIONS, FILL_REACH, USE_REACH, HOST_SLACK, PURIFY_SECONDS } from './watering.js?build=v3-survival-ae77fa84ac2b';
 import { createPurifier, paintPurifier, preparePlanter, paintPlanter } from './purifier-model.js?build=v3-survival-ae77fa84ac2b';
@@ -128,6 +129,11 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
   border:2px solid #fff3cf;box-shadow:0 0 8px rgba(255,189,102,.7);pointer-events:none;z-index:29}
 #signalMarker.edge{opacity:.7}
 #signalReadout[hidden],#signalMarker[hidden]{display:none}
+#raftMarker{position:fixed;left:0;top:0;width:96px;margin:-20px 0 0 -48px;display:flex;flex-direction:column;align-items:center;gap:3px;pointer-events:none;z-index:29;
+  color:#f6ecd6;font:600 12px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.04em;text-shadow:0 1px 3px rgba(0,0,0,.75)}
+#raftMarker .rm-arrow{width:0;height:0;border-left:10px solid transparent;border-right:10px solid transparent;border-bottom:18px solid #ff9a62;filter:drop-shadow(0 0 4px rgba(0,0,0,.55))}
+#raftMarker.lost .rm-arrow{border-bottom-color:#ff5f4a}
+#raftMarker[hidden]{display:none}
 /* Rows wrap inside the gutter left of the hotbar (its left edge is 50vw - 253px); below 1000px wide that gutter is too narrow, so the feed lifts above the hotbar. */
 #pickupFeed .pf-row{max-width:max(200px,calc(50vw - 287px));white-space:normal;line-height:1.25}
 @media(max-width:1000px){#pickupFeed[popover]{inset:auto auto calc(182px + var(--coop-feed-h, 0px)) 10px}#pickupFeed .pf-row{max-width:calc(50vw - 120px)}}
@@ -433,6 +439,7 @@ export function mount(transfer = null) {
     if (!document.getElementById('contextPrompt')) { const el = document.createElement('div'); el.id = 'contextPrompt'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite'); el.hidden = true; document.body.appendChild(el); }
     if (!document.getElementById('signalReadout')) { const el = document.createElement('div'); el.id = 'signalReadout'; el.setAttribute('role', 'status'); el.hidden = true; document.body.appendChild(el); }
     if (!document.getElementById('signalMarker')) { const el = document.createElement('div'); el.id = 'signalMarker'; el.hidden = true; document.body.appendChild(el); }
+    if (!document.getElementById('raftMarker')) { const el = document.createElement('div'); el.id = 'raftMarker'; el.setAttribute('aria-hidden', 'true'); el.innerHTML = '<span class="rm-arrow"></span><span class="rm-text"></span>'; el.hidden = true; document.body.appendChild(el); } // [swim-drift]
     document.querySelectorAll('[data-quick-recipe]').forEach(b => b.remove()); // old pseudo-inventory buttons
     document.body.classList.remove('build');
     const recipes = $('#recipes'); if (recipes) { recipes.hidden = true; recipes.innerHTML = ''; }
@@ -756,7 +763,32 @@ export function mount(transfer = null) {
     }
     if (role === 'solo' && dialog && dialogOpen()) return; // the solo pause menu stops the clock
     vitalsOpts.mult = exertion; tickVitals(vitals, dt, vitalsOpts);
-    if (vitals.hp <= 0) { if (vitals.starving) hurtCause = vitals.water <= 0 ? 'thirst' : 'hunger'; faintHome = !!content?.respawnSpot?.(wakeSpot); fainted = 0; eating = null; charging = null; reeling = false; if (hook) { fishWait = 0; endHook(); } clearInput(); } // drop the line: it must not stay out from the old spot
+    if (vitals.hp <= 0) { if (vitals.starving) hurtCause = vitals.water <= 0 ? 'thirst' : 'hunger'; passOut(); }
+  }
+  function passOut(cause) { // faint now (0 hp, or [swim-drift] the raft is lost); wakes in bed / on the raft via updateVitals
+    if (cause) hurtCause = cause;
+    faintHome = !!content?.respawnSpot?.(wakeSpot); fainted = 0; eating = null; charging = null; reeling = false; if (hook) { fishWait = 0; endHook(); } clearInput(); // drop the line: it must not stay out from the old spot
+  }
+  // ---------- [swim-drift] left behind: warn past SWIM.WARN, faint past SWIM.LOST (no teleport) ----------
+  const leashPt = {x:0, z:0}, leashSpot = {x:0, y:0, rot:0}; let leashLv = 0, leashDist = 0, leashWarnAt = -Infinity, raftMarkText = null; const raftMarkCss = {x:NaN, y:NaN, rot:NaN};
+  function updateLeash() {
+    if (!running || fainted >= 0) { leashLv = 0; return; }
+    leashDist = raftDistance(world.tiles, physics.x, physics.z, leashPt);
+    const lv = leashLevel(leashDist);
+    if (lv === 2) { leashLv = 0; notice('Your raft drifted out of sight', 3200); passOut('lost'); return; }
+    if (lv === 1 && (leashLv < 1 || elapsed - leashWarnAt > SWIM.WARN_REPEAT)) { leashWarnAt = elapsed; notice('Your raft is drifting away!', 2600); }
+    leashLv = lv;
+  }
+  function updateRaftMarker() {
+    const mk = document.getElementById('raftMarker'); if (!mk) return;
+    const show = leashLv >= 1 && running && !uiBlocked();
+    if (mk.hidden === show) mk.hidden = !show;
+    if (!show) return;
+    markerSpot(bearingTo(physics.x, physics.z, yaw, leashPt.x, leashPt.z), innerWidth, innerHeight, leashSpot);
+    const x = Math.round(leashSpot.x), y = Math.round(leashSpot.y), rot = Math.round(leashSpot.rot / 3) * 3;
+    if (x !== raftMarkCss.x || y !== raftMarkCss.y) { raftMarkCss.x = x; raftMarkCss.y = y; mk.style.transform = `translate(${x}px,${y}px)`; } // write (and build strings) only on change
+    if (rot !== raftMarkCss.rot) { raftMarkCss.rot = rot; mk.firstChild.style.transform = `rotate(${rot}deg)`; }
+    const m = Math.round(leashDist / 5) * 5; if (m !== raftMarkText) { raftMarkText = m; mk.lastChild.textContent = `Raft ${m} m`; mk.classList.toggle('lost', leashDist > SWIM.LOST * .75); }
   }
   // Crosshair prompts (dist/prompts.js provider): eat/drink, else the cup/purifier/planter prompt (game.js markup).
   const tipCache = new Map(), eatTips = new Map(), EATING_TIP = {key:'', label:'…', muted:true};
@@ -1841,6 +1873,7 @@ export function mount(transfer = null) {
     ocean.update(elapsed, camera); sfx.tick(dt, {swimming:physics.swimming});
     updateRaft(dt); if (sailing) sailing.update(dt, elapsed); // [sailing]
     movePlayer(realDt, running && !dialog && fainted < 0); // player substeps the real frame time
+    updateLeash(); // [swim-drift]
     updateAvatars(dt); updateCamera(dt); if (running) diving?.update(dt, elapsed); // diving lane hook
     coop?.update(dt, elapsed); // coop: interpolated remote avatar, rope, ghost, pings, pose stream, reconnect
     frameAim = running && !dialog ? currentAim(aimScratch) : null;
@@ -1874,7 +1907,7 @@ export function mount(transfer = null) {
     try { logbookUI?.update?.(); } catch (e) { console.error('logbook update failed', e); logbookUI = null; }
     const achList = Array.isArray(world.achievements) ? world.achievements : [];
     if (achList.length !== seenAch || achList !== seenAchList) { seenAch = achList.length; seenAchList = achList; const n = noteAchievements(lookState.unlocked, achList); if (n.length) { saveLook(lookState.look, lookState.unlocked); lookUI?.refresh(); notice('New hat for your Look: ' + n.map(id => LOOK_HATS.find(h => h.id === id)?.label ?? id).join(', ')); } } // [look] hat unlocks (host or guest view of the list)
-    refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud(); updateNotices(dialog); warmKinds();
+    refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud(); updateRaftMarker(); updateNotices(dialog); warmKinds();
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
     // Behind a blurred pause/settings backdrop the world only redraws at ~10 fps (the inventory has no blur).
     const veiled = dialog && !!document.querySelector('dialog[open]:not(#inventory)');
@@ -2543,7 +2576,7 @@ export function mount(transfer = null) {
     try { fc?.dispose(); } catch {} fc = null; // [fishing-cooking]
     try { instruments?.dispose(); } catch {} instruments = null; // [instruments]
     try { camTool?.dispose(); } catch {} camTool = null; try { albumUI?.destroy(); } catch {} albumUI = null; // [camera]
-    for (const id of ['signalReadout', 'signalMarker']) { const el = document.getElementById(id); if (el) el.hidden = true; }
+    for (const id of ['signalReadout', 'signalMarker', 'raftMarker']) { const el = document.getElementById(id); if (el) el.hidden = true; }
     try { logbookUI?.destroy?.(); } catch {}
     try { lookUI?.destroy?.(); } catch {} lookUI = null; // [look]
     try { prog?.dispose(); } catch {} // [progression-hook]
