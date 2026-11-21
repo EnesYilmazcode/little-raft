@@ -25,11 +25,12 @@ const PRELOAD = [
   'islands-models.js', 'islands.js', 'item-icons.js', 'item-svg.js', 'item-tooltips.js', 'items.js', 'lock-rules.js',
   'logbook-ui.js', 'logbook.js', 'materials.js', 'merge-geo.js', 'models.js', 'move-feel.js', 'ocean.js', 'paint.js',
   'pickup-feed.js', 'placement.js', 'plastic.js', 'player-physics.js', 'progression-hooks.js', 'progression.js',
-  'purifier-model.js', 'quality.js', 'rain-model.js', 'rain.js', 'sailing-core.js', 'sailing-ui.js',
-  'sailing-world.js', 'scenery-islands.js', 'seafloor.js', 'session-rules.js', 'settings.js', 'signal-models.js',
-  'signal.js', 'sky.js', 'sleep-model.js', 'sleep.js', 'smelter-model.js', 'smelter-ui.js', 'smelter.js',
-  'storage-research-model.js', 'storage-research.js', 'survival-ui.js', 'textures.js', 'underwater-fx.js',
-  'watering.js', 'wildlife-models.js', 'wildlife.js', 'wood.js',
+  'purifier-model.js', 'quality.js', 'rain-model.js', 'rain.js', 'repair.js', 'sailing-core.js', 'sailing-ui.js',
+  'sailing-world.js', 'scenery-islands.js', 'seafloor.js', 'session-rules.js', 'settings.js', 'shark-model.js',
+  'shark.js', 'signal-models.js', 'signal.js', 'sky.js', 'sleep-model.js', 'sleep.js', 'smelter-model.js',
+  'smelter-ui.js', 'smelter.js', 'spear-model.js', 'spear-repair-hooks.js', 'spear.js', 'storage-research-model.js',
+  'storage-research.js', 'survival-ui.js', 'textures.js', 'underwater-fx.js', 'vitals-ui.js', 'vitals.js',
+  'waterfx.js', 'watering.js', 'wildlife-models.js', 'wildlife.js', 'wood.js',
 ];
 
 const state = {

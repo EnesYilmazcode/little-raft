@@ -17,6 +17,17 @@ import { installItemTooltips } from './item-tooltips.js?build=v3-survival-ae77fa
 
 export const PROGRESSION_KEY = 'littleRaft.progression.v1';
 const REACH = 2.2, NOTE_EVERY = 0.5, SAVE_EVERY = 2, SYNC_EVERY = 0.3;
+const AIM_R = 0.8, AIM_LIFT = 0.5; // content hook: E needs the aim ray within 0.8 m of the station centre (deck + 0.5 m)
+// Distance (m) from a station centre (sx, deck + AIM_LIFT, sz) to the aim ray, Infinity when the ray misses the deck
+// (sky) or the station is behind the player. aim = {point: deck-plane hit, dir: unit view dir}, me = {x, z}.
+export function aimMiss(aim, sx, sz, me) {
+  const p = aim?.point, d = aim?.dir; if (!p || !d) return Infinity;
+  const wx = sx - p.x, wy = AIM_LIFT, wz = sz - p.z, t = wx * d.x + wy * d.y + wz * d.z; // t < 0: towards the eye
+  const reach = me ? Math.hypot(p.x - me.x, p.z - me.z) / (Math.hypot(d.x, d.z) || 1e-6) : Infinity;
+  if (t > AIM_R || t < -reach - AIM_R) return Infinity;
+  const cx = wy * d.z - wz * d.y, cy = wz * d.x - wx * d.z, cz = wx * d.y - wy * d.x;
+  return Math.hypot(cx, cy, cz);
+}
 const COOKERS = new Set(Object.values(ITEMS).map((it) => it.recipe?.station).filter(Boolean));
 const STATIONS = new Set(Object.keys(ITEMS).filter((id) => ITEMS[id].category === 'station'));
 const MODELS = { smelter: createSmelterModel, researchtable: createResearchTableModel, grill: createGrillModel };
@@ -211,18 +222,20 @@ export function attachProgression(ctx) {
   }
 
   // Nearest station (decor) within reach of the player; the aim point breaks ties.
-  function stationNear(aim) {
+  // aimed (content hook): also require the aim ray to pass near it, so E at the sky or a crate is not stolen.
+  function stationNear(aim, aimed) {
     const me = ctx.pose(); let best = null, bestD = Infinity;
     for (const d of decor()) {
       if (!STATIONS.has(d.type)) continue;
       const dist = Math.hypot(d.x * 2 - me.x, d.z * 2 - me.z); if (dist > REACH) continue;
+      if (aimed && aimMiss(aim, d.x * 2, d.z * 2, me) > AIM_R) continue; // content hook
       const score = aim?.point ? Math.hypot(d.x * 2 - aim.point.x, d.z * 2 - aim.point.z) : dist;
       if (score < bestD) { bestD = score; best = d; }
     }
     return best;
   }
   function interact(aim) {
-    const d = stationNear(aim); if (!d) return false;
+    const d = stationNear(aim, !!aim); if (!d) return false; // content hook: aim-aware when game.js passes an aim
     if (d.type === 'researchtable') openResearch(); else openStation(keyOf(d));
     return true;
   }
@@ -291,6 +304,7 @@ export function attachProgression(ctx) {
     const near = ctx.running() ? stationNear(null) : null, nk = near ? keyOf(near) : null;
     if (nk !== nearKey) { nearKey = nk; if (near) ctx.notice(`E: use the ${nameOf(near.type)}`, 2200); }
     updateHud();
+    if (!promptOff && typeof window !== 'undefined' && window.raftPrompts) promptOff = window.raftPrompts.provide({ id: 'station', prompt: stationPrompt }); // content hook
   }
 
   // ---------- models ----------
@@ -345,7 +359,13 @@ export function attachProgression(ctx) {
     save();
   }
 
-  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, dispose, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()) };
+  // content hook: show "E Use the <station>" in main's #lrPrompt while aimed at one in reach (prompts.js samples at 10 Hz).
+  // Registered lazily from tick(), since prompts.js may load after this module.
+  let promptOff = null;
+  const stationPrompt = () => { const d = ctx.running() && ctx.aim ? stationNear(ctx.aim(), true) : null; return d ? { key: 'E', label: 'Use the ' + nameOf(d.type) } : null; };
+  const disposeAll = () => { try { promptOff?.(); } catch {} dispose(); }; // content hook
+
+  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, dispose: disposeAll, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()) };
 }
 
 export default attachProgression;

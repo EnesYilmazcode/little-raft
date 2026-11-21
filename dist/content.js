@@ -47,6 +47,20 @@ export function cleanExt(v) { // used by game.js cleanWorld(); modules validate 
   try { const s = JSON.stringify(v); return s.length <= EXT_MAX ? JSON.parse(s) : {}; } catch { return {}; }
 }
 
+// content hook: module prompts are HTML ("<kbd>E</kbd>Open crate"); main's #lrPrompt (prompts.js) wants
+// {key, label}. Converts one prompt; text without a <kbd> becomes a muted hint. Single-entry cache, since
+// the same string comes back every sample while the player keeps aiming at one thing.
+const ENT = {amp:'&', lt:'<', gt:'>', quot:'"', '#39':"'", apos:"'", nbsp:' '};
+const plain = s => s.replace(/<[^>]*>/g, '').replace(/&(amp|lt|gt|quot|#39|apos|nbsp);/g, (_, e) => ENT[e]).replace(/\s+/g, ' ').trim();
+let lastHtml = null, lastParts = null;
+export function promptParts(html) {
+  if (typeof html !== 'string' || !html) return null;
+  if (html === lastHtml) return lastParts;
+  const m = /^\s*<kbd>([^<]*)<\/kbd>([\s\S]*)$/i.exec(html), key = m ? plain(m[1]) : '', label = plain(m ? m[2] : html);
+  lastHtml = html; lastParts = label ? (key ? {key, label} : {label, muted:true}) : null;
+  return lastParts;
+}
+
 export function createContent(ctx, features = FEATURES) {
   const mods = [];
   for (const make of features) {
