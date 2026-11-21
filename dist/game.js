@@ -237,6 +237,7 @@ export function mount(transfer = null) {
   let scene = null, camera = null, renderer = null, quality = null, ocean = null, raft, itemsGroup, ghosts, rope, ropeAttr, hookMesh, bobber, friend, player, sun;
   let hemi = null, clouds = [], cloudMeshes = [], sceneryMat = null, content = null; const sceneryInst = []; // content hook: lights/clouds handed to content modules
   let hands = null, offIconReady = null, clothMat; // one hands controller swaps the held item model per hotbar kind
+  const handsParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0, yaw:0, pitch:0}; // reused every frame
   const modelOf = k => { try { return getModel(k); } catch (e) { console.warn('model failed', k, e); return null; } };
   let fc = null; // [fishing-cooking] rod fishing v2 + grills + journal (dist/fishing-cooking.js)
   let logbookUI = null;
@@ -1119,7 +1120,10 @@ export function mount(transfer = null) {
     hands.setPose(pointing ? 'point' : null);
     const rod = kind === 'fishingrod' ? hands.itemModel('fishingrod') : null, out = !!hook?.fishing;
     if (rod?.userData.float) { rod.userData.float.visible = !out; rod.userData.leader.visible = !out; }
-    hands.update({dt, time:elapsed, charge:ch, reeling:rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch}); // [fishing-cooking] rod reel pose from the lane
+    const hp = handsParams;
+    hp.dt = dt; hp.time = elapsed; hp.charge = ch; hp.reeling = rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(); // [fishing-cooking] rod reel pose from the lane
+    hp.casting = swing; hp.walking = walking; hp.hasHookOut = !!castOut(); hp.motion = motion; hp.yaw = yaw; hp.pitch = pitch;
+    hands.update(hp);
     camera.updateMatrixWorld(true);
     hands.ropeAnchor().getWorldPosition(handPos);
   }

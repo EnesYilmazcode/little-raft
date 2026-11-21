@@ -16,6 +16,7 @@
 // the left near (-0.34,-0.35,-0.70). Each arm is posed ABSOLUTELY every frame from smoothed weights, so
 // nothing accumulates or drifts. Held models are built lazily once per kind and cached.
 import { buildItemModel, holdFor, isPlaceable, PLACEABLE_KINDS } from './held-items.js?build=v3-survival-ae77fa84ac2b';
+import { createPalette, bakeGeometry, visibleMeshes, bakeInPlace } from './bake.js?build=v3-survival-ae77fa84ac2b';
 export { buildItemModel, isPlaceable, PLACEABLE_KINDS };
 const POSES = ['point', 'throw', 'grip', 'open'];
 
@@ -46,6 +47,15 @@ export function createHands(T, { modelFactory = null } = {}) {
   const cuffMat = mat(0x3e5648, 0.95);
   const ropeMat = mat(0xb89a64, 0.95);
   const ropeDarkMat = mat(0x8a6e44, 1.0);
+  // The materials above are only templates: every part is baked (vertex colours + a roughness/emissive
+  // look-up) into a few merged meshes that share this one material. Hand poses are pre-baked variants.
+  const pal = createPalette({ size: 16, emissiveScale: 0.02 });
+  const temp = [];                                      // build-time geometry, freed once baked
+  const baked = (meshesOrGroup, space, name) => {
+    const list = Array.isArray(meshesOrGroup) ? meshesOrGroup : visibleMeshes(meshesOrGroup);
+    const m = new T.Mesh(G(bakeGeometry(list, space, pal)), pal.material); m.name = name;
+    return m;
+  };
 
   // Viewmodel meshes draw in the transparent queue after the camera's depth-clear marker (see game.js),
   // never cast shadows and are never culled.
@@ -57,11 +67,11 @@ export function createHands(T, { modelFactory = null } = {}) {
   const G = (g) => { geos.push(g); return g; };
 
   // Tapered capsule along +Y, cap centers at -L/2 (radius r0) and +L/2 (radius r1).
-  const taperGeo = (r0, r1, L, radial = 10, cap = 4) => {
+  const taperGeo = (r0, r1, L, radial = 8, cap = 3) => {
     const pts = [];
     for (let i = 0; i <= cap; i++) { const a = -Math.PI / 2 + (Math.PI / 2) * (i / cap); pts.push(new T.Vector2(Math.max(1e-5, r0 * Math.cos(a)), -L / 2 + r0 * Math.sin(a))); }
     for (let i = 0; i <= cap; i++) { const a = (Math.PI / 2) * (i / cap); pts.push(new T.Vector2(Math.max(1e-5, r1 * Math.cos(a)), L / 2 + r1 * Math.sin(a))); }
-    return G(new T.LatheGeometry(pts, radial));
+    const g = new T.LatheGeometry(pts, radial); temp.push(g); return g;
   };
   const seg = (parent, m, a, b, r0, r1, radial) => {
     const d = b.clone().sub(a); const L = d.length();
@@ -70,9 +80,10 @@ export function createHands(T, { modelFactory = null } = {}) {
     mesh.quaternion.setFromUnitVectors(UP, d.normalize());
     parent.add(mesh); return mesh;
   };
-  const sphereGeo = G(new T.SphereGeometry(1, 16, 12));
+  const sphereGeo = new T.SphereGeometry(1, 16, 12), nailGeo = new T.SphereGeometry(1, 10, 8);
+  temp.push(sphereGeo, nailGeo);
   const ellipsoid = (parent, m, p, rx, ry, rz, rotY = 0) => {
-    const mesh = new T.Mesh(sphereGeo, m);
+    const mesh = new T.Mesh(m === nail ? nailGeo : sphereGeo, m);
     mesh.position.copy(p); mesh.scale.set(rx, ry, rz); mesh.rotation.y = rotY;
     parent.add(mesh); return mesh;
   };
@@ -80,8 +91,9 @@ export function createHands(T, { modelFactory = null } = {}) {
   // ---------------- hand (right-hand layout; mirrored for left) ----------------
   // Grip axis = local Y through origin, gripR = radius of the gripped object. Back of hand +X, palm -X,
   // wrist +Z, so straight fingers point -Z. Each finger and the thumb are built twice (curled round
-  // the grip, and straight); a pose just toggles which one is visible.
-  function buildHand(parent, gripR) {
+  // the grip, and straight); each pose is baked into one mesh and a pose just toggles which one is visible.
+  function buildHand(handParent, gripR, poses) {
+    const parent = new T.Group();
     const k = (gripR + 0.010) / 0.042;
     const P = (aDeg, R, y) => V(R * Math.cos(aDeg * DEG), y, -R * Math.sin(aDeg * DEG));
     ellipsoid(parent, skin, V(0.016 * k, -0.004, 0.047 * k), 0.030 * k, 0.050, 0.040 * k, -0.22);
@@ -129,19 +141,26 @@ export function createHands(T, { modelFactory = null } = {}) {
     seg(thumbTuck, skin, t0, w1, 0.0135, 0.0118);
     seg(thumbTuck, skin, w1, w2, 0.0118, 0.0094);
     parent.add(thumbCurl, thumbExt, thumbTuck);
-    return { wristPt: V(0.018 * k, -0.006, 0.084 * k), fingers, thumbCurl, thumbExt, thumbTuck };
+    const parts = { fingers, thumbCurl, thumbExt, thumbTuck }, variants = {};
+    for (const p of poses) {
+      showParts(parts, p);
+      const m = variants[p] = baked(parent, parent, 'hand_' + p);
+      m.visible = false; handParent.add(m);
+    }
+    return { wristPt: V(0.018 * k, -0.006, 0.084 * k), variants };
   }
-  function setPose(H, pose) {
+  function showParts(H, pose) {
     H.fingers.forEach((f, i) => {
       const straight = pose === 'open' || (pose === 'point' && i === 0);
       f.ext.visible = straight; f.tight.visible = !straight && pose === 'point'; f.curl.visible = !straight && pose !== 'point';
     });
     H.thumbCurl.visible = pose === 'grip'; H.thumbExt.visible = pose === 'open'; H.thumbTuck.visible = pose === 'point';
   }
+  function setPose(H, pose) { for (const p in H.variants) H.variants[p].visible = p === pose; }
 
   // ---------------- arm builder ----------------
   // u = grip axis (camera space), F = forearm direction wrist->elbow (camera space).
-  function buildArm({ name, basePos, u, F, gripR, mirror }) {
+  function buildArm({ name, basePos, u, F, gripR, mirror, poses }) {
     u = u.clone().normalize(); F = F.clone().normalize();
     const f = F.clone().addScaledVector(u, -F.dot(u)).normalize();
     const r = V().crossVectors(u, f).normalize();
@@ -154,21 +173,23 @@ export function createHands(T, { modelFactory = null } = {}) {
     const wrist = new T.Group();
     const hand = new T.Group();
     frame.add(wrist); wrist.add(hand);
-    const H = buildHand(hand, gripR);
+    const H = buildHand(hand, gripR, poses);
     const W = H.wristPt;
     wrist.position.copy(W); wrist.scale.setScalar(1.12); hand.position.copy(W).negate();   // hands a touch chunky, Raft-style
 
     const Fl = toLocal(F).normalize();
     const at = (s) => W.clone().addScaledVector(Fl, s);
-    seg(frame, skin, at(0), at(0.24), 0.031, 0.042, 12);           // forearm
-    seg(frame, cuffMat, at(0.19), at(0.225), 0.047, 0.050, 14);    // rolled cuff
-    seg(frame, sleeveMat, at(0.23), at(0.60), 0.051, 0.070, 14);   // sleeve (runs off-screen)
+    const arm = new T.Group();
+    seg(arm, skin, at(0), at(0.24), 0.031, 0.042, 12);           // forearm
+    seg(arm, cuffMat, at(0.19), at(0.225), 0.047, 0.050, 14);    // rolled cuff
+    seg(arm, sleeveMat, at(0.23), at(0.60), 0.051, 0.070, 14);   // sleeve (runs off-screen)
+    frame.add(baked(arm, arm, name + '_forearm'));
 
     return { pose, frame, wrist, hand, H, qBase, toLocal, basePos: basePos.clone(), r, u, f };
   }
 
-  const R = buildArm({ name: 'rightArm', basePos: V(0.38, -0.32, -0.80), u: V(0.27, 0.95, -0.15), F: V(0.35, -0.50, 1.0), gripR: 0.032, mirror: false });
-  const L = buildArm({ name: 'leftArm', basePos: V(-0.34, -0.35, -0.70), u: V(0.85, 0.30, 0.10), F: V(-0.40, -0.50, 1.0), gripR: 0.028, mirror: true });
+  const R = buildArm({ name: 'rightArm', basePos: V(0.38, -0.32, -0.80), u: V(0.27, 0.95, -0.15), F: V(0.35, -0.50, 1.0), gripR: 0.032, mirror: false, poses: ['grip', 'open', 'point'] });
+  const L = buildArm({ name: 'leftArm', basePos: V(-0.34, -0.35, -0.70), u: V(0.85, 0.30, 0.10), F: V(-0.40, -0.50, 1.0), gripR: 0.028, mirror: true, poses: ['grip', 'point'] });
   lagRoot.add(R.pose, L.pose);
   // Pointing frames: hand half-prone, index aimed just below the crosshair. The left one is the mirror
   // image (x -> -x of the same grip axis / forearm direction; the arm frame itself is already mirrored).
@@ -212,6 +233,12 @@ export function createHands(T, { modelFactory = null } = {}) {
       const g = item.userData.grip;
       if (h.hand === 'left') item.position.set(-g[0], 0.03 - g[1], -g[2]);  // base sits on top of the fist
       else item.position.set(-g[0], -g[1], -g[2]);
+      if (kind !== 'hook' && kind !== 'hammer' && kind !== 'fishingrod') {          // tools bake themselves
+        const own = (set) => { item.traverse((o) => { if (o.isMesh) { set.add(o.geometry); [].concat(o.material).forEach((x) => set.add(x)); } }); return set; };
+        const before = item.userData.shared ? null : own(new Set());
+        bakeInPlace(item);
+        if (before) { const kept = own(new Set()); for (const x of before) if (!kept.has(x)) x.dispose(); }
+      }
       pivot.add(item); prep(pivot); pivot.visible = false;
       (h.hand === 'left' ? leftHolder : toolHolder).add(pivot);
       m = { pivot, item };
@@ -225,18 +252,26 @@ export function createHands(T, { modelFactory = null } = {}) {
   L.hand.add(coil);
   const COIL_R = 0.068;
   const spool = new T.Group(); spool.position.set(0, -COIL_R, 0); coil.add(spool);
-  [[-0.014, 0.066, 0.10], [0.0, 0.070, -0.04], [0.014, 0.063, 0.07]].forEach(([z, rr, tilt]) => {
-    const m = new T.Mesh(G(new T.TorusGeometry(rr, 0.0095, 6, 28)), ropeMat);
-    m.position.set(0, COIL_R - rr, z); m.rotation.x = tilt; m.rotation.z = tilt * 2;
-    spool.add(m);
-  });
-  const binding = new T.Mesh(G(new T.TorusGeometry(0.026, 0.006, 6, 18)), ropeDarkMat);
-  binding.position.set(0, -COIL_R, 0); binding.rotation.y = Math.PI / 2;
-  spool.add(binding);
+  {
+    const loops = new T.Group();
+    [[-0.014, 0.066, 0.10], [0.0, 0.070, -0.04], [0.014, 0.063, 0.07]].forEach(([z, rr, tilt]) => {
+      const m = new T.Mesh(new T.TorusGeometry(rr, 0.0095, 6, 28), ropeMat);
+      m.position.set(0, COIL_R - rr, z); m.rotation.x = tilt; m.rotation.z = tilt * 2;
+      loops.add(m); temp.push(m.geometry);
+    });
+    const binding = new T.Mesh(new T.TorusGeometry(0.026, 0.006, 6, 18), ropeDarkMat);
+    binding.position.set(0, -COIL_R, 0); binding.rotation.y = Math.PI / 2;
+    loops.add(binding); temp.push(binding.geometry);
+    spool.add(baked(loops, loops, 'spool'));
+  }
   const fwdL = L.toLocal(V(0, 0, -1));
   const tipLocal = V(0, 0.072, 0).addScaledVector(fwdL, 0.022);
-  const lead = new T.Mesh(G(new T.TubeGeometry(new T.CatmullRomCurve3([V(0, -0.02, 0), V(0, 0.03, 0), V(0, 0.058, 0).addScaledVector(fwdL, 0.006), tipLocal.clone()]), 16, 0.0085, 7, false)), ropeMat);
+  const leadSrc = new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3([V(0, -0.02, 0), V(0, 0.03, 0), V(0, 0.058, 0).addScaledVector(fwdL, 0.006), tipLocal.clone()]), 16, 0.0085, 7, false), ropeMat);
+  temp.push(leadSrc.geometry);
+  const lead = baked([leadSrc], null, 'ropeLead');
   L.hand.add(lead);
+  for (const g of temp) g.dispose();
+  temp.length = 0;
   const handTip = new T.Object3D(); handTip.name = 'handTip';
   handTip.position.copy(tipLocal);
   L.hand.add(handTip);
@@ -247,7 +282,8 @@ export function createHands(T, { modelFactory = null } = {}) {
   const st = { walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0,
     shown: null, target: null, poseOverride: null, ptR: 0, ptL: 0, lowering: false, dip: 1, down: 1, raise: 1, lagX: 0, lagY: 0, lastYaw: null, lastPitch: 0 };
   const qOff = new T.Quaternion(), eul = new T.Euler(0, 0, 0, 'XYZ'), qSwing = new T.Quaternion(), AX = V(1, 0, 0);
-  const last = {};
+  const last = { held: null, target: null, pose: 'grip', pointHand: null, dip: 1, lag: [0, 0], charge: 0, chargeEased: 0, throw: 0,
+    pull: 0, walkW: 0, reelW: 0, hookOutW: 0, toolW: 1, spool: 0, models: 0 };
   setPose(L.H, 'grip');
 
   // Resolved pose of the shown item ('point' | 'throw' | 'grip' | 'open') and which hand points.
@@ -381,8 +417,9 @@ export function createHands(T, { modelFactory = null } = {}) {
     }
     toolHolder.scale.setScalar(hasHookOut ? 1 : 0.7 + 0.3 * easeOutBack(tw));  // little "catch" pop on return
 
-    Object.assign(last, { held: st.shown, target: st.target, pose, pointHand: pointer, dip: down, lag: [st.lagX, st.lagY], charge: chargeEff, chargeEased: ce, throw: a,
-      pull: pull * rW, walkW: st.walkW, reelW: rW, hookOutW: oW, toolW: tw, spool: st.spool, models: mounts.size });
+    last.held = st.shown; last.target = st.target; last.pose = pose; last.pointHand = pointer; last.dip = down;
+    last.lag[0] = st.lagX; last.lag[1] = st.lagY; last.charge = chargeEff; last.chargeEased = ce; last.throw = a;
+    last.pull = pull * rW; last.walkW = st.walkW; last.reelW = rW; last.hookOutW = oW; last.toolW = tw; last.spool = st.spool; last.models = mounts.size;
     return last;
   }
 
@@ -391,6 +428,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     const extra = new Set();
     dropMounts();
     for (const x of [...geos, ...mats]) x.dispose();
+    pal.dispose();
     geos.length = 0; mats.length = 0;
   }
   // Frees every cached held model (factory models share cached geometry, so those are only detached).
@@ -399,7 +437,12 @@ export function createHands(T, { modelFactory = null } = {}) {
     for (const m of mounts.values()) {
       if (!m) continue;
       m.pivot.removeFromParent();
-      if (!m.item.userData.shared) m.item.traverse((o) => { if (o.isMesh) { extra.add(o.geometry); [].concat(o.material).forEach((x) => extra.add(x)); } });
+      // shared (factory) models only own what was baked from them
+      m.item.traverse((o) => {
+        if (!o.isMesh || (m.item.userData.shared && !o.userData.baked)) return;
+        extra.add(o.geometry);
+        for (const x of [].concat(o.material)) { extra.add(x); for (const t of [x.roughnessMap, x.metalnessMap, x.emissiveMap]) if (t) extra.add(t); }
+      });
     }
     for (const x of extra) x.dispose();
     mounts.clear();
