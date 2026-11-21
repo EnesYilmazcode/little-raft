@@ -240,3 +240,56 @@ Two integrator sessions are running on claude/raft-master; each merges the other
 - Next: lane agents merging the newest loop-features/perf/ux/visuals/fidelity and raft-content/tests/integration + lane-placement.
 - Still skipped: raft-reference (scraped commercial-game stills). Farming (farming.js) is merged but not reachable in play:
   it and the watering lane drive the same palm planter; it needs a design decision.
+
+## Perf round 202611210748 (branch `claude/loop-perf-202611210748`, base `origin/claude/raft-master` 7294e26)
+
+Fleet: 6 profilers (GPU objects, heap, draws/triangles, startup, CPU + WASM, shaders/fill/quality), 7 optimizers
+(item icons, CPU/DOM, startup, instancing, heap, static merge, GPU/quality), 1 screenshot regression checker, 1 measurer.
+Measured base vs head run concurrently on the same loaded box (SwiftShader, 640x360). Counts repeat exactly; timings ±15%.
+
+| Metric | Before | After | Change |
+|---|---|---|---|
+| Draw calls p50 / p95 (perf gate) | 80 / 89 | 34 / 35 | -58% / -61% |
+| Draw calls, spawn frame (main / shadow) | 89 (80 / 9) | 34 (34 / 0) | -62% |
+| Triangles p50 (gate) / spawn frame | 107.8k / 110.7k | 98.0k / 98.8k | -9% / -11% |
+| Script ms/frame p50 (quality pinned) | | | -13% |
+| fps (unpinned, adaptive quality acts) / pinned | 3.30 / | 4.54 / | +37% / +4% |
+| Heap post-GC end | 15.69 MB | 14.32 MB | -9% |
+| Heap growth over session (pinned) | | | -48% |
+| Live GL object growth / late half | 199 / 76 | 48 / ~0 | -76% / -100% (pinned: 206 -> 0) |
+| WebGL contexts | 2 | 1 | -50% |
+| Duplicate module instances | 5 | 0 | -100% |
+| Debug API ready -> 2 frames | 3258 ms | 1496 ms | -54% |
+| Play allocation (per frame) | | | -49% |
+| Retained heap after idle | 16.17 MB | 14.89 MB | -8% |
+| DOM node growth | 29-41 | 51-61 | regression, fix in progress |
+
+What changed:
+- **GL leak / 2nd context:** item icons render through the main renderer (black/white two-pass alpha in a scissored
+  corner, read back in the same task) on a 3 ms/frame budget; no idle-callback pump, no forceContextLoss; icon models are
+  built uncached and freed after render.
+- **Draws:** floating jugs and debris drawn as InstancedMeshes (`item-batches.js`, frustum-culled per instance, debris
+  variants built lazily); raft floor = one wood-atlas mesh + one rope/nail mesh; hook, hammer (grip/handle thinned),
+  fishing rod, bottle, anchor windlass, island rings merged (`merge-geo.js mergeChildMeshesPBR`); smoke hidden when idle.
+- **GPU:** ocean foam collars frustum-culled before upload (-13% frame cost when items are off-screen); shadow map redrawn
+  every 3rd frame unless light/casters move; fitShadow on new worlds (was three's default ±5 m box).
+- **Adaptive quality:** acts on very slow machines (only >1000 ms or >4x EMA frames ignored), new steps 0.75/512,
+  0.75/no shadows, 0.6/no shadows; shadowless programs pre-warmed one step ahead.
+- **Startup:** 5 double-loaded modules deduped; whole static graph modulepreloaded from live.js (test keeps it in step);
+  render loop waits for compileAsync (1.5 s cap); checkShaderErrors only with ?debug; dive shaders warmed at idle.
+- **CPU/DOM:** tooltip measures only on content change; onboarding/prompts poll a cheap `raftDebug.hud`; recipe pick
+  repaints 2 rows; gull wing matrices cached; ingot lookup cached; held-token Set reused; renderInfo scene counts at 2 Hz;
+  ~30% fewer updateMatrix calls (static parts frozen).
+- **Heap:** models.js released pre-merge buckets (1.1 MB retained); input binding lists cached per revision; hands update
+  allocation-free; daynight palette at 10 Hz; fish layout precomputed.
+- Skipped: sky-after-ocean with stencil (no gain on SwiftShader, +2.3% cost).
+
+Regression check (every shoot.py pair viewed, plus seeded close-ups of deck, held tools, jug/barrel, horizon, inventory,
+and a 90-frame screencast of the icon corner): no visual regressions; icons pixel-identical to base's 3D icons and now show
+immediately. shoot.py now passes `?pinQuality` so adaptive quality cannot soften later shots.
+
+Rust/WASM: still no; nothing near 1 ms/frame (see `docs/loop/rust-wasm.md`).
+
+Next ideas: defer far islands / build menu / viewmodels out of `mount()` (longest startup task ~1.3 s); first-dive hitch
+(1.3-2.2 s, seafloor/underwater setup); viewmodel hands forced transparent (hands.js:122, ~23 transparent draws); graphics
+panel should show the adaptive level; lower ocean grid density far out (flag: visual check).
