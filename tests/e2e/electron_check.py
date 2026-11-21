@@ -89,8 +89,13 @@ SNAP = r"""(() => {
   };
 })()"""
 
-START_BUTTON = r"""(() => { for (const s of ['#solo', '#newGame']) { const el = document.querySelector(s), r = el?.getBoundingClientRect();
-  if (r && r.width && !el.disabled && getComputedStyle(el).visibility !== 'hidden') return s; } return null; })()"""
+sys.path.insert(0, str(HERE.parent))
+from harness import START_SELECTORS, FIRST_VISIBLE_JS  # same start-control order as the browser tools
+
+# First visible start control: new main's onboarding menu (.ob-item[data-act="new"], #solo hidden), the Continue/New
+# game title (#newGame), or the legacy welcome card (#solo).
+START_BUTTON = f'({FIRST_VISIBLE_JS})({json.dumps(START_SELECTORS)})'
+START_ANY = ', '.join(START_SELECTORS)
 
 LOCK_OR_FALLBACK = 'document.pointerLockElement || raftDebug.state.lockFallback'
 
@@ -349,7 +354,7 @@ class Run:
         else: self.cmd('click', x=int(x), y=int(y))
 
     def click_selector(self, sel, label):
-        r = self.js(f"(() => {{ const r = document.querySelector({json.dumps(sel)})?.getBoundingClientRect(); return r && r.width ? {{x: r.x + r.width / 2, y: r.y + r.height / 2}} : null }})()")
+        r = self.js(f"(() => {{ const r = [...document.querySelectorAll({json.dumps(sel)})].map((e) => e.getBoundingClientRect()).find((b) => b.width > 0); return r && r.width ? {{x: r.x + r.width / 2, y: r.y + r.height / 2}} : null }})()")
         if not r: raise Infra(f'{sel} not visible to click')
         self.click(r['x'], r['y'], label)
 
@@ -379,6 +384,14 @@ class Run:
     @staticmethod
     def has_lock(s): return s['locked'] == 'world'
 
+    @staticmethod
+    def bounced(ev):
+        """Last two pointerlockchange events are lock-then-unlock. Chromium can fire both in one task (lock engaged and was
+        dropped before the page ran), and the probe reads pointerLockElement when the listener runs, so that case shows as
+        two 'unlocked' changes with the same timestamp: the first one was the lock engaging."""
+        if len(ev) < 2 or ev[-1]['locked'] is not None: return False
+        return ev[-2]['locked'] == 'world' or (ev[-2]['locked'] is None and ev[-2]['t'] == ev[-1]['t'])
+
     def screenshot(self, name):
         try:
             png = base64.b64decode(self.cmd('capture', timeout=20))
@@ -387,8 +400,8 @@ class Run:
 
     # ---------- the run ----------
     def run(self):
-        if not self.wait_for('!!window.raftDebug && !!window.raftLive && !!document.querySelector("#solo, #newGame")', timeout=60):
-            raise Infra('game never booted in the desktop shell (no raftDebug/raftLive/#solo/#newGame)')
+        if not self.wait_for(f'!!window.raftDebug && !!window.raftLive && !!({START_BUTTON})', timeout=60):
+            raise Infra(f'game never booted in the desktop shell (no raftDebug/raftLive or no visible start control among {START_ANY})')
         self.js(PROBE)
         boot = self.js('({w: innerWidth, h: innerHeight, dpr: devicePixelRatio, url: location.href})')
         ready = next((h for h in self.harness_log if h.get('harness') == 'ready'), {})
@@ -402,9 +415,9 @@ class Run:
         # Solo with a real mouse click (trusted gesture through sendInputEvent). Branches with a Continue/New game title
         # (wip/fleet/menus) hide #solo until a save exists and start a fresh raft from #newGame.
         start_btn = self.js(START_BUTTON)
-        if not start_btn: raise Infra('no visible start button (#solo or #newGame) on the title screen')
+        if not start_btn: raise Infra(f'no visible start control ({START_ANY}) on the title screen')
         self.metrics['start_button'] = start_btn
-        self.click_selector(start_btn, f'click {start_btn} ({self.js(f"document.querySelector({json.dumps(start_btn)}).textContent.trim()")!r})')
+        self.click_selector(start_btn, f'click {start_btn} ({self.js(f"[...document.querySelectorAll({json.dumps(start_btn)})].find((e) => e.getBoundingClientRect().width > 0).textContent.trim()")!r})')
         started = self.wait_for('raftDebug.state.running', timeout=20)
         if not self.check('solo.start', 'clicking Solo starts the game', started, None if started else self.snap()):
             return
@@ -505,7 +518,7 @@ class Run:
         if self.real and s['shellClaimsEsc']:
             # A shell that claims Escape hands the page a gesture for this press, so resuming can (and is meant to) relock.
             ev = [e for e in s['events'] if e['type'] == 'change']
-            bounced = len(ev) >= 2 and ev[-2]['locked'] == 'world' and ev[-1]['locked'] is None
+            bounced = self.bounced(ev)
             self.check(f'{cid}.relocked', 'Esc in the pause menu resumes into locked play when the shell claims Escape', self.has_lock(s),
                        {'locked': s['locked'], 'resumeHint': s['resumeHint'], 'events': s['events'], 'exits': s['exits']},
                        repro_extra='desktop/main.cjs claims Escape and calls window.raftEscape() with a user gesture; pause closes and the game re-requests lock; '
@@ -575,7 +588,7 @@ class Run:
         detail = {'locked': s['locked'], 'resumeHint': s['resumeHint'], 'lockFallback': s['lockFallback'], 'open_to_esc_ms': gap,
                   'lastCall': s['lastCall'], 'events': s['events'], 'keys': s['keys']}
         ev = [e for e in s['events'] if e['type'] == 'change']
-        bounced = len(ev) >= 2 and ev[-2]['locked'] == 'world' and ev[-1]['locked'] is None
+        bounced = self.bounced(ev)
         if claimed:
             # The shell hands the page a gesture-backed Esc, so the game can relock whatever the dwell.
             via = (f'desktop/main.cjs claims Escape and calls window.raftEscape() with a user gesture; the inventory closes '
