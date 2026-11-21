@@ -4,11 +4,125 @@ Goal: every item in the hotbar, bag and recipe list shows a small picture of the
 model the player holds or places, rendered once at load and cached. No art files, no new deps,
 nothing that costs frame time after the bake.
 
-Today `dist/survival-ui.js` draws icons from `dist/icons.svg` plus hand-drawn SVG fallbacks.
+## Retarget onto main's item-icons.js (round 3, current decision)
+
+Main has since shipped its own `dist/item-icons.js`:
+- a lazy queue that renders one kind per `requestIdleCallback`;
+- a private 128 px WebGL context, released 2.5 s after the queue drains;
+- PNG data URLs, models from `setModelProvider(models.js getModel)`;
+- SVG fallback while an icon renders or when a kind has no model.
+
+`survival-ui.js` and `game.js` (pickup feed) call it through `iconURL / getItemIcon /
+loadItemIcon / warmIcons / onIconReady / setModelProvider`. The round-2 plan below (bake on the
+game renderer, `setItemIcons`, blob URLs, a localStorage cache) is a second, competing pipeline
+against that code. The comparison below is what decided between them.
+
+**Decision: merge.** Keep main's architecture and API unchanged and bring in the fleet work that
+measurably helps. The result is `sandbox/icons/item-icons.js` (drop-in, same exports) plus
+`sandbox/icons/item-icon-models.js` (new). No caller changes. Steps are in `icons-ADOPT.md`
+(`adopt_patch.py --check/--apply`).
+
+### Looks (`sandbox/icons/shots/compare-sheet.png`, all 34 `ITEM_IDS` kinds, SVG | main | fleet | merged)
+
+Each icon is shown on a 52 px dark slot, as an 18 px chip and on a light strip.
+- **Main** renders 16 of 34 kinds; 18 have no model and keep their SVG.
+  - The world tools are unreadable at slot size. The hook is a thin forked stick (the models.js
+    prop, not the scrap hook the player holds), and the rod and hammer are one-pixel diagonals.
+  - Wood is a single plank, nail is a few grey hairlines, the lantern is mostly its post and the
+    net is a dark slab.
+  - The icons have no outline, so on the dark slots they read as floating photos beside the outlined
+    SVG icons.
+- **Fleet** has the best tools, wood, scrap, net and lantern, but it covers only the 15 legacy kinds.
+  It has no nail, and its bench, crate, palm and sail come from the old crafts.js models, not models.js.
+- **Merged** uses the fleet stand-ins for the 10 kinds whose world model does not read (wood, scrap,
+  rope, fish, hook, hammer, rod, lantern, net, plus a new chunky nail). The other 6 rendered kinds
+  (leaf, plastic, bench, palm, sail, crate) come from models.js as on main, so they match the world.
+  Every icon gets the navy outline (`icons.svg` stroke family), and thin tools also get a light rim.
+  The same 18 kinds stay SVG.
+
+Real game, same seeded save:
+- `shots/main-hotbar.png` vs `shots/adopt-hotbar.png`: the hotbar goes from thin sticks and a plank
+  to a held-hook, rod, hammer, log pile, bottle, rusty sheet, rope coil and nails that all read at 40 px;
+- `shots/main-bag.png` vs `shots/adopt-bag.png`: the recipe list and the cost chips also use the new icons.
+
+### Cost (`python sandbox/icons/shoot.py`, SwiftShader)
+
+Load average was 35 to 58 on 4 cores, so the numbers swing 3 to 5x between runs. The table gives
+medians of 4 interleaved runs each, with a 480x270 game-like scene rendering every rAF:
+
+| | main | merged | fleet (round 2) |
+|---|---|---|---|
+| kinds with a 3D icon | 16 / 34 | 16 / 34 | 15 / 34 |
+| GL program links (icon work) | 4 | 4 | 4 (on the game renderer) |
+| all 34 queued -> last ready, cold | ~8.2 s | ~8.8 s | 4 to 9 s (atlas bake) |
+| worst game frame while rendering, cold | ~1.7 s (0.6 to 2.8) | ~1.7 s (0.6 to 3.5) | 0.3 to 3.0 s |
+| worst frame, warm reload | ~0.9 s | ~0.7 s | 0.1 to 0.8 s (localStorage hit, 0 links) |
+| data URL bytes in memory | 161 KB | 319 KB | 260 KB + 260 KB localStorage |
+| extra WebGL contexts | 1, released after 2.5 s | 1, released after 2.5 s | 0 |
+| game `renderer.info` after (programs / geometries / textures) | unchanged | unchanged | unchanged |
+
+On this box merged and main cost the same. The first version of the merge did not: the stand-in
+models brought their own material flag sets and cost **14 to 15 program links** and twice the worst
+frame. Two fixes brought it back to 4 links:
+- unify the materials for the render;
+- keep the stand-in materials alive until the context is released, because three frees a program
+  together with its last material.
+
+Per-kind timing showed that the cost is almost entirely the GPU sync at the first read of each
+render, which waits for any new shader compile. Model building (1 to 70 ms), PNG encode (2 to 16 ms)
+and the 2D outline pass are small next to it.
+
+### What was taken, what was left
+
+Taken from the fleet:
+- the icon-only models;
+- the outline look, done as a 2D-canvas pass instead of a GLSL resolve, so it adds no program;
+- material unify with a metal cap;
+- `userData.shared`-aware disposal;
+- hot-swap ownership, so a stale engine stops working.
+
+Left out:
+- **Baking on the game renderer.** It saves the second context, but it puts the bake's state
+  changes and compiles inside the game's own render path. Main's private context is simpler and
+  cannot corrupt game render state.
+- **The localStorage cache.** It is the one clear win of the fleet design, since warm loads do
+  zero GL work. But the game save (`little-raft-v1`), progression and fishing journal all share the
+  same ~5 MB origin quota. A 260 to 330 KB icon blob that can push a save write into
+  `QuotaExceededError` is the wrong trade for saving about a second of idle-time rendering. If
+  wanted later, put it in IndexedDB or the Cache API, keyed by build, behind the same API.
+- **Blob URLs.** They would need revoke ownership in survival-ui. Data URLs keep the contract (`getItemIcon` -> data URL) unchanged.
+
+Robustness (`python sandbox/icons/robust.py`, all 12 cases pass on the merged module):
+- the provider throwing falls back to the old builders;
+- an empty model, or a kind with no model, resolves null (the SVG stays);
+- `onIconReady` fires only for real icons;
+- **WebGL context loss** mid-queue drops the context and retries, and the icons still render;
+- a provider swap keeps the stand-in icons and re-renders the provider kinds;
+- **hot swap**: once copy B claims the queue, copy A's pending kinds resolve null within 5 ms and A
+  keeps its finished icons. B renders, and no live contexts remain after release.
+
+By code reading, main renders a lost context into a blank PNG and caches it for the session (an
+invisible icon). Its old module copy also keeps rendering its whole queue after a hot swap.
+
+Still open:
+- 18 kinds have no 3D model and stay SVG. That is the same mix as on main; adding them to models.js
+  or `ICON_MODELS` would fill the set.
+- Bench and sail from models.js are thin at chip size.
+
+The SVG sprites remain the fallback for the first idle seconds and for no-WebGL.
+
+---
+
+Round-2 history follows. Superseded by the retarget above: it targets the pre-merge dist, and its
+survival-ui / game.js patches no longer apply. `icon-atlas.js` / `item-models.js` / `index.html` /
+`main.js` remain in `sandbox/icons/` as the reference the `fleet` column of the compare harness runs.
+The `ui` mode of `index.html` relied on the retired survival-ui patch.
+
+Before main's item-icons.js, `dist/survival-ui.js` drew icons from `dist/icons.svg` plus hand-drawn SVG fallbacks.
 Several kinds share a sprite (`plastic` and `scrap` both use `icon-scrap`, `fishingrod` uses
 `icon-hook`, `rope` uses `icon-net`, `bench` uses `icon-repair`, `crate` uses `icon-barrel`).
 
-## Decision (final)
+## Round-2 decision (fleet atlas baker, superseded)
 
 Runtime-baked atlas with the game's own renderer, cached per build, SVG fallback. Working code:
 
