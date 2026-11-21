@@ -387,6 +387,10 @@ export function mount(transfer = null) {
       + '<li><kbd>Craft</kbd><span><b>Make tools.</b> A Hammer builds raft floors (2 wood, 2 plastic each). A Fishing Rod catches fish. Crafted decorations are placed one at a time.</span></li>'
       + '<li><kbd>X</kbd><span><b>Remove</b> the floor or piece you aim at while holding the Hammer. You get about half its materials back.</span></li>'
       + '<li><kbd>R</kbd><span><b>Rotate</b> the piece you are placing (<kbd>Shift</kbd> + wheel turns it finely), or <b>repair</b> a worn hook for 2 wood and 1 scrap.</span></li>'
+      + '<li><kbd>E</kbd><span><b>Use a station</b>: look at a smelter, grill, research table or crate and press E.</span></li>'
+      + '<li><kbd>L</kbd><span><b>Logbook.</b> Messages from bottles and your raft\u2019s milestones.</span></li>'
+      + '<li><kbd>J</kbd><span><b>Fisher\u2019s notebook.</b> Every species you have caught.</span></li>'
+      + '<li><kbd>N</kbd><span><b>Goals.</b> Show or hide the goal list in the top-right corner.</span></li>'
       + '<li><kbd>Esc</kbd><span><b>Menu.</b> Settings, Play together and this guide.</span></li>';
     const note = $('#help .guide-note'); if (note) note.textContent = 'Everyone has their own bag; the raft and the sea are shared. Nothing can hurt you, and your raft never sinks. Mouse won\'t lock? Drag the ocean to look instead.';
   }

@@ -136,6 +136,21 @@ test('UX3-3: the selected crafting tab reads as light, bold text at >= 4.5:1 ove
   assert.match(rule, /font-weight:800/);
 });
 
+// ---------------------------------------------------------------- UX3-8 undocumented keys, clashing "Notes"
+
+test('UX3-8: Controls and How to play both list L, J and N, and the goal panel is no longer called "Notes"', () => {
+  const keymap = src('settings.js').match(/const KEYMAP = \[([\s\S]*?)\];/)[1];
+  for (const k of ['L', 'J', 'N']) assert.match(keymap, new RegExp(`\\['${k}', '[^']+'\\]`), `Controls lists ${k}`);
+  const guide = src('game.js').match(/guide\.innerHTML = ([\s\S]*?);\n/)[1];
+  for (const k of ['L', 'J', 'N']) assert.match(guide, new RegExp(`<li><kbd>${k}</kbd>`), `How to play lists ${k}`);
+  assert.match(guide, /<b>Use a station<\/b>/);
+  const ob = src('onboarding.js');
+  assert.doesNotMatch(ob, /textContent = [^\n]*'Notes'/, 'header text');
+  assert.doesNotMatch(ob, /aria-label', 'Notes'/);
+  assert.match(ob, /'Goals'/);
+  assert.match(ob, /<kbd class="ob-key"[^>]*>N<\/kbd>/, 'the panel shows its own hotkey');
+});
+
 // ---------------------------------------------------------------- HUD-6 shader warm-up page error
 
 test('HUD-6: shader warm-ups use the synchronous compile, so no timer poll can trip over a disposed material', () => {
