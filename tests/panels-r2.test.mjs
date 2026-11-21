@@ -55,3 +55,29 @@ test('UX3-2: How to play is a page inside the pause rail, not a centred dialog',
   assert.doesNotMatch(settings, /act === 'help' \|\| act === 'crew'/, 'help is not opened with showModal');
   assert.doesNotMatch(game, /\['crew', 'help'\]/);
 });
+
+// ---------------------------------------------------------------- UX3-4 recipe list room, scroll cue, frozen order
+
+test('UX3-4: recipe rows sort only when the bag opens, never while it is open', async () => {
+  const { recipeOrder } = await import(new URL('craft-book.js', base));
+  const row = (id, cat, state, short = 0) => ({ id, cat, state, rows: short ? [{ enough: false, short }] : [] });
+  // Hammer was ready, the player crafted it, now it is missing: the frozen order keeps it in place.
+  const views = [row('hook', 'tools', 'ready'), row('hammer', 'tools', 'missing', 2), row('drum', 'tools', 'ready'), row('plank', 'mats', 'ready')];
+  assert.deepEqual(recipeOrder(views, ['tools', 'mats']).map(v => v.id), ['hook', 'hammer', 'drum', 'plank'], 'frozen while open');
+  assert.deepEqual(recipeOrder(views, ['tools', 'mats'], { resort: true }).map(v => v.id), ['hook', 'drum', 'hammer', 'plank'], 'craftable first on open');
+  const ui = src('survival-ui.js');
+  assert.doesNotMatch(ui, /sortCraftableFirst\(/, 'survival-ui never re-sorts on its own');
+  assert.match(ui, /function open\(\)[\s\S]{0,600}resortOnPaint = true;[\s\S]{0,80}buildRecipes\(\)/, 'open() asks for one sort');
+  assert.match(ui, /recipeOrder\(recipeEls, .*\{ resort: resortOnPaint \}\);\s*resortOnPaint = false;/, 'and the flag clears after it');
+});
+
+test('UX3-4: the detail card leaves the list the whole column, and hidden rows show a fade cue', async () => {
+  const { moreBelow } = await import(new URL('craft-book.js', base));
+  assert.equal(moreBelow(600, 0, 400), true);
+  assert.equal(moreBelow(600, 200, 400), false, 'scrolled to the bottom');
+  assert.equal(moreBelow(400, 0, 400), false, 'everything fits');
+  const ui = src('survival-ui.js');
+  assert.match(ui, /\.sv-rlist\.sv-more\{[^}]*mask-image:linear-gradient/);
+  assert.match(ui, /wideBag\?\.matches \? dlg\.querySelector\('\.sv-bag'\)/, 'wide layout docks the detail card under the backpack');
+  assert.doesNotMatch(ui, /sv-hint\{[^}]*width:\$\{HB \* 62/, 'hint width follows the slot size, so the bag fits 900px');
+});

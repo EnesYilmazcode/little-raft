@@ -280,6 +280,16 @@ export function sortCraftableFirst(views) {
     .map(x => x.v);
 }
 
+/** Recipe row order for the bag. Sorted (craftable first, per tab) only when the bag opens;
+ *  while it stays open the order is frozen, so a row never moves out from under the cursor. */
+export function recipeOrder(views, cats, { resort = false } = {}) {
+  if (!resort) return views || [];
+  return (cats || []).flatMap(c => sortCraftableFirst((views || []).filter(v => v.cat === c)));
+}
+
+/** True when a scroll box hides rows below its bottom edge (shows the fade cue). */
+export const moreBelow = (scrollHeight, scrollTop, clientHeight) => scrollHeight - scrollTop - clientHeight > 2;
+
 // ---- where items come from ----
 // `tag` is the short text beside a missing ingredient; `how` is the tooltip line.
 export const ITEM_SOURCE = Object.freeze({
