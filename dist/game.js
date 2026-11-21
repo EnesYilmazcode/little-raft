@@ -1115,7 +1115,7 @@ export function mount(transfer = null) {
       if (role === 'guest' && u.sx !== undefined && Math.hypot(it.x - u.sx, it.z - u.sz) < 3) { const k = Math.min(1, dt * 8); u.sx += (it.x - u.sx) * k; u.sz += (it.z - u.sz) * k; }
       else { u.sx = it.x; u.sz = it.z; }
       const s = ocean.sample(u.sx, u.sz, oceanSample);
-      m.position.set(u.sx, s.h + ITEM_FLOAT, u.sz);
+      m.position.set(u.sx, s.h + (u.float ?? (it.type === 'plastic' ? -.04 : ITEM_FLOAT)), u.sz); // per-type waterline (debris.js sets userData.float)
       m.rotation.set(-s.sz * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.sx * 1.2 + Math.sin(elapsed + it.phase) * .05);
     }
   }
