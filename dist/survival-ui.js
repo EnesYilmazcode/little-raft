@@ -1,7 +1,7 @@
 // Little Raft survival UI: shared-play hotbar (.tools) + inventory/crafting dialog (#inventory).
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, holdDelay, holdHint, holdLabel, sortCraftableFirst, isSpareTool, usefulReady, autoPick, craftKinds, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, needHaveLabel, idleButton, BAG_KEYS_HINT, stackLabel, holdDelay, holdHint, holdLabel, sortCraftableFirst, isSpareTool, usefulReady, autoPick, craftKinds, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_ICONS } from './item-svg.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { iconURL, warmIcons, primeIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
@@ -277,6 +277,7 @@ const CSS = `
 #inventory .sv-spare.sv-ready .sv-rsub{color:#6b5638}
 #inventory .sv-full .sv-rsub{color:#8a4a12}
 #inventory .sv-locked .sv-rsub{color:#a3321a}
+#inventory .sv-locked .sv-rsub,#inventory .sv-full .sv-rsub{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;line-height:1.2}
 #inventory .sv-rbadge{font:800 12px/1 ${FONT};color:#3f6a26;font-variant-numeric:tabular-nums}
 #inventory .sv-detail{flex:none;display:flex;flex-direction:column;gap:7px;padding:9px;border-radius:4px;background:#e6d6adf2;box-shadow:inset 0 0 0 1px #5e4426}
 #inventory .sv-detail[hidden]{display:none}
@@ -287,9 +288,9 @@ const CSS = `
 #inventory .sv-ddesc{display:block;margin-top:2px;font:500 12px/1.3 ${FONT};color:#5e4426}
 #inventory .sv-dlabel{font:700 10px/1 ${FONT};letter-spacing:1.5px;text-transform:uppercase;color:#6b5638}
 #inventory .sv-ings{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
-#inventory .sv-ing{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:3px 8px 3px 4px;border-radius:3px;background:#d6c397;box-shadow:inset 3px 0 0 #b0391e}
+#inventory .sv-ing{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;padding:3px 8px 3px 4px;border-radius:3px;background:#d6c397;box-shadow:inset 3px 0 0 #b0391e}
 #inventory .sv-ing.sv-ok{box-shadow:inset 3px 0 0 #5f9c3a}
-#inventory .sv-ing .sv-icon{width:24px;height:24px}
+#inventory .sv-ing>.sv-icon{box-sizing:border-box;width:28px;height:28px;padding:1px;border-radius:3px;background:#b89f6e;box-shadow:inset 0 0 0 1px #7a5a34;opacity:1;filter:drop-shadow(0 1px 0 #3e2a17aa)}
 #inventory .sv-iname{font:600 13px/1.2 ${FONT};color:#3e2a17}
 #inventory .sv-iname{display:flex;align-items:baseline;gap:7px;min-width:0}
 #inventory .sv-iname>span{white-space:nowrap}
@@ -299,7 +300,7 @@ const CSS = `
   font:700 11px/1.2 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none}
 #inventory button.sv-ijump:hover{background:#e0cfa5;color:#3e2a17}
 #inventory button.sv-ijump:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
-#inventory .sv-iamt{font:800 13px/1 ${FONT};font-variant-numeric:tabular-nums;color:#a3321a}
+#inventory .sv-iamt{font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums;color:#a3321a;white-space:nowrap}
 #inventory .sv-ok .sv-iamt{color:#3f6a26}
 #inventory .sv-craftbtn{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;margin:0;padding:0 12px;overflow:hidden;border:0;border-radius:4px;
   background:linear-gradient(#5c8a3a,#3f6a26);box-shadow:inset 0 0 0 1px #c8f0a0aa,0 2px 0 #1f3612;color:#f4ffe6;font:800 15px/1 ${FONT};letter-spacing:.5px;text-transform:none;cursor:pointer;transform:none;
@@ -313,6 +314,7 @@ const CSS = `
 #inventory .sv-craftbtn.sv-done{background:linear-gradient(#5c8a3a,#3f6a26);box-shadow:inset 0 0 0 1px #c8f0a0aa,0 2px 0 #1f3612;color:#f4ffe6}
 #inventory .sv-craftbtn[aria-disabled="true"] .sv-fill{transition:none;transform:scaleX(0)}
 #inventory .sv-craftbtn.sv-holding .sv-clabel,#inventory .sv-craftbtn.sv-done .sv-clabel{font-variant-numeric:tabular-nums}
+#inventory .sv-craftbtn.sv-holding .sv-clabel{color:#fff;text-shadow:0 1px 2px #1f3612,0 0 4px #1f3612} /* readable over the light fill */
 #inventory .sv-craftbtn.sv-done[aria-disabled="true"]{color:#c8f7a0}
 #inventory .sv-clabel,#inventory .sv-chint,#inventory .sv-ccount{position:relative;pointer-events:none}
 #inventory .sv-chint{font:600 11px/1 ${FONT};letter-spacing:0;color:#e6f7d4;opacity:.9}
@@ -325,7 +327,13 @@ const CSS = `
 #inventory .sv-tip[hidden]{display:none}
 #inventory .sv-tip small{display:block;margin-top:2px;font:500 12px/1.35 ${FONT};color:#5e4426}
 #inventory .sv-tip small em{font-style:normal;font-weight:700;color:#8a3a12}
-@media(max-width:860px),(max-height:520px){#inventory .sv-craft{flex:none;width:auto;min-width:0;height:auto;max-height:none;overflow:visible}#inventory.sv-inv{width:auto}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}#inventory .sv-rlist{max-height:30vh}#inventory .sv-bag{min-width:0}
+/* 760-1000px wide: stay side by side with a narrower crafting column and smaller slots, so the whole
+   backpack stays on screen (800x600 included) instead of being stacked below the crafting list. */
+@media(min-width:760px) and (max-width:1000px) and (min-height:521px){#inventory.sv-inv{--s:min(56px,calc((96vw - 374px) / 10 - 1px));--g:4px}
+  #inventory .sv-wrap{gap:10px;padding:10px}#inventory .sv-craft{flex-basis:280px;width:280px;min-width:280px;height:min(560px,calc(94vh - 24px))}
+  #inventory .sv-bag{padding:8px 12px 10px}#inventory .sv-slot .sv-art{inset:3px}}
+/* Narrower or very short: stacked, backpack first, with the recipe list capped so both fit. */
+@media(max-width:759px),(max-height:520px){#inventory .sv-craft{flex:none;width:auto;min-width:0;height:auto;max-height:none;overflow:visible}#inventory.sv-inv{width:auto}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}#inventory .sv-rlist{max-height:30vh}#inventory .sv-bag{min-width:0;order:-1}
   #inventory.sv-inv{--s:44px;--g:5px}#inventory .sv-slot .sv-art{inset:3px}}
 @media(max-width:440px){#inventory.sv-inv{--s:36px;--g:4px}#inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.sv-slot,.sv-art,.sv-cursor,.sv-label,#inventory .sv-recipe,#inventory .sv-craftbtn .sv-fill{transition:none!important;animation:none!important}}
@@ -370,7 +378,7 @@ function ensureStyle() {
 
 const slotInner = num => `${num ? `<i class="sv-num">${num}</i>` : ''}<i class="sv-art"></i><i class="sv-count"></i><i class="sv-dur" hidden><i></i></i>`;
 
-const HINT = 'Click a stack to pick it up, then a slot to place it, or drag it. Right-click a stack to take half; right-click while holding to place one. Arrow keys move between slots; Tab, E, I or Esc closes.';
+const HINT = 'Click a stack to pick it up, then a slot to place it, or drag it. Right-click a stack to take half; right-click while holding to place one. Arrow keys move between recipes and slots; Enter crafts the picked recipe (hold for more). Tab, E, I or Esc closes.'; // ends with craft-book BAG_KEYS_HINT
 function mountDialog() {
   let d = document.getElementById('inventory');
   if (!d || d.tagName !== 'DIALOG') {
@@ -532,6 +540,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let recipes = [], recipeEls = [], groups = [];
   let activeTab = dlg.dataset.svTab || null, pickId = dlg.dataset.svPick || null, shownPick = null, ingEls = [];
   let hold = null, btnDenyTimer = 0, countTimer = 0, flashUntil = 0;
+  let lastDone = null;      // { id, n } of the last craft batch, so the button can say 'Crafted 4 ✓'
   let pickedByUser = false; // false: pickId is an automatic default, re-chosen on open once states are known
   let tabByUser = false;    // false: the bag may open on the first tab with something new to craft
   let opening = false;      // inside open(): icon priming waits for the final tab
@@ -603,12 +612,12 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function setTab(id, focus = false) {
     if (!groups.some(g => g.id === id)) return;
     tabByUser = true;
-    if (id !== activeTab) { stopHold(); flashUntil = 0; activeTab = id; pickId = null; pickedByUser = false; reorderRecipes(); applyTab(); }
+    if (id !== activeTab) { stopHold(); flashUntil = 0; lastDone = null; activeTab = id; pickId = null; pickedByUser = false; reorderRecipes(); applyTab(); }
     if (focus) tabsEl.querySelector(`.sv-tab[data-cat="${id}"]`)?.focus();
   }
   function setPick(id) {
     if (id === pickId) return;
-    stopHold(); flashUntil = 0; pickId = id; pickedByUser = true; applyPick();
+    stopHold(); flashUntil = 0; lastDone = null; pickId = id; pickedByUser = true; applyPick();
   }
   // Open the recipe that makes an ingredient (its tab, picked, focused and scrolled into view).
   function jumpTo(id) {
@@ -648,17 +657,19 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const v = viewOf(pickId); if (!v || detail.hidden) return;
     v.rows.forEach((row, k) => {
       const e = ingEls[k]; if (!e) return;
-      e.amt.textContent = amountLabel(row);
+      e.amt.textContent = needHaveLabel(row);
       e.el.classList.toggle('sv-ok', row.enough);
       const src = row.enough ? null : sourceOf(row.kind, recipes, itemName);
       e.el.setAttribute('aria-label', `${itemName(row.kind)}: have ${row.have}, need ${row.need}${src ? '. ' + src.how : ''}`);
     });
     const ready = v.state === 'ready';
     D.btn.setAttribute('aria-disabled', String(!ready));
-    if (!hold && performance.now() >= flashUntil) {
-      D.btn.classList.remove('sv-done');
-      D.label.textContent = ready ? 'Craft' : v.state === 'gated' ? 'Locked' : v.state === 'full' ? 'Bag is full' : 'Missing materials'; // [progression-hook]
-      D.hint.textContent = ready ? holdHint(v.times) : '';
+    if (!hold) {
+      // After a batch the button keeps 'Crafted 4 ✓' while the recipe can't be made again (craft-book idleButton).
+      const b = idleButton(v.state, pickId, lastDone, performance.now() < flashUntil); // [progression-hook] 'Locked'
+      D.btn.classList.toggle('sv-done', b.done);
+      D.label.textContent = b.text;
+      D.hint.textContent = ready && !b.done ? holdHint(v.times) : '';
     }
     D.btn.setAttribute('aria-label', ready ? `Craft ${v.r.name}. Hold to craft several.` : `${v.r.name}: ${D.label.textContent}`);
   }
@@ -755,7 +766,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     t.classList.toggle('ct-gated', tv.state === 'gated');
     const state = ready ? `Ready${tv.times > 1 ? ' ×' + Math.min(tv.times, 99) : ''}` : tv.state === 'gated' ? 'Locked: ' + (tv.reason || 'not learned yet') : tv.state === 'full' ? 'Bag is full' : `${tv.met} of ${tv.total} gathered`;
     t.innerHTML = `<div class="ct-head"><span class="ct-art" aria-hidden="true">${art(tv.kind)}</span><span><b class="ct-name">${esc(tv.name)}</b><small class="ct-state">${esc(state)}</small></span></div>`
-      + `<ul>${tv.rows.map(x => `<li class="${x.enough ? 'ct-ok' : ''}" aria-label="${esc(itemName(x.kind))}: have ${x.have}, need ${x.need}">${art(x.kind)}<span>${esc(itemName(x.kind))}</span><b>${esc(amountLabel(x))}</b></li>`).join('')}</ul>`
+      + `<ul>${tv.rows.map(x => `<li class="${x.enough ? 'ct-ok' : ''}" aria-label="${esc(itemName(x.kind))}: have ${x.have}, need ${x.need}">${art(x.kind)}<span>${esc(itemName(x.kind))}</span><b>${esc(needHaveLabel(x))}</b></li>`).join('')}</ul>`
       + (ready ? '<div class="ct-foot">Open your bag with <kbd>Tab</kbd> to craft</div>' : '');
     t.hidden = false;
   }
@@ -814,6 +825,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     // Cap at what the materials on hand cover, so a lagging (networked) bag cannot overshoot.
     const cap = Math.max(1, Math.min(HOLD.max, Number.isFinite(v.times) ? v.times : HOLD.max));
     if (!craftNow(pickId)) { denyBtn(); return; }
+    lastDone = null;
     hold = { id: pickId, done: 1, cap, t0: performance.now(), wait: holdDelay(1), raf: 0 };
     D.btn.classList.add('sv-holding');
     D.hint.textContent = holdHint(cap); // what this batch will make, not what is left after the first craft
@@ -836,12 +848,13 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function stopHold() {
     if (!hold) return;
     cancelAnimationFrame(hold.raf);
-    const made = hold.done, out = viewOf(hold.id)?.r.out.count || 1;
+    const made = hold.done, hold0 = hold.id, out = viewOf(hold.id)?.r.out.count || 1;
     hold = null;
     D.btn.classList.remove('sv-holding');
     setFill(0);
     clearTimeout(countTimer);
     flashUntil = performance.now() + 1100;
+    lastDone = made > 0 ? { id: hold0, n: made * out } : null;
     D.label.textContent = holdLabel(made, 0, false, out);
     D.hint.textContent = '';
     D.btn.classList.add('sv-done');
@@ -1019,11 +1032,10 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!el || dragging) { hideTip(); return; }
     const kind = el.dataset.tipKind;
     if (!kind) { hideTip(); return; }
-    let extra = '';
-    const v = el.classList.contains('sv-recipe') ? viewOf(el.dataset.recipe) : null;
-    if (v) extra = haveNeedLine(v.rows, itemName);
+    // Recipe rows: the detail card already shows the item and its counts; a card would cover them.
+    if (el.classList.contains('sv-recipe')) { hideTip(); return; }
     tipAnchor = el;
-    tip.innerHTML = tipHTML(kind, extra, !v);
+    tip.innerHTML = tipHTML(kind);
     tip.hidden = false;
     placeTipAt(el);
   }
@@ -1105,6 +1117,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function open() {
     if (!alive || isOpen) return;
     isOpen = true; opening = true; // the tab is primed once its final choice is made
+    lastDone = null; flashUntil = 0;
     downOnBackdrop = upOnBackdrop = false;
     if (warmTimer >= 0) { clearTimeout(warmTimer); warmAll(); }
     clearSrc(); clearSay();
@@ -1289,23 +1302,46 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (n < 0) return;
     e.preventDefault(); setTab(ids[n], true);
   }, opt);
-  // Arrow keys move focus across the slots (by layout) and up/down the visible recipe list.
+  // Keyboard: arrows move focus across the slots (by layout) and up/down the visible recipe list; from
+  // the panel itself (where open() leaves focus) Up/Down enter the recipe list at the picked recipe and
+  // Left/Right enter the backpack. Right from a recipe goes to the bag, Left off the bag's edge goes back.
+  // Enter / Space on a recipe picks it and crafts (held: hold-to-craft, like the craft button).
+  const ARROW_CODES = new Set(['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight']);
+  const pickedRow = () => viewOf(pickId)?.el || recipeEls.find(v => !v.el.hidden)?.el || null;
+  const firstSlot = () => invEls[HB] || invEls[0] || null;
   dlg.addEventListener('keydown', e => {
     if (!isOpen || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
     const slot = e.target.closest?.('.sv-slot[data-index]'), rec = e.target.closest?.('.sv-recipe');
+    if (rec && (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space')) {
+      e.preventDefault();
+      if (e.repeat || hold) return;
+      setPick(rec.dataset.recipe);
+      startHold();
+      return;
+    }
+    if (!ARROW_CODES.has(e.code)) return;
     let next = null;
     if (slot) {
       const rects = invEls.map(el => el ? el.getBoundingClientRect() : null);
       const n = arrowNeighbor(rects, +slot.dataset.index, e.code);
       if (n >= 0) next = invEls[n];
-    } else if (rec && (e.code === 'ArrowDown' || e.code === 'ArrowUp')) {
-      // Locked (gated) rows are skipped: arrows walk the recipes you can work towards.
-      const vis = recipeEls.filter(v => !v.el.hidden && (v.state !== 'gated' || v.el === rec)).map(v => v.el), i = vis.indexOf(rec);
-      next = vis[i + (e.code === 'ArrowDown' ? 1 : -1)] || null;
+      else if (e.code === 'ArrowLeft') next = pickedRow();
+    } else if (rec) {
+      if (e.code === 'ArrowRight') next = firstSlot();
+      else if (e.code === 'ArrowDown' || e.code === 'ArrowUp') {
+        // Locked (gated) rows are skipped: arrows walk the recipes you can work towards.
+        const vis = recipeEls.filter(v => !v.el.hidden && (v.state !== 'gated' || v.el === rec)).map(v => v.el), i = vis.indexOf(rec);
+        next = vis[i + (e.code === 'ArrowDown' ? 1 : -1)] || null;
+      }
+    } else if (e.target === wrap || e.target === dlg) {
+      next = e.code === 'ArrowDown' || e.code === 'ArrowUp' ? pickedRow() : firstSlot();
     }
     if (!next) return;
     e.preventDefault();
     try { next.focus({ preventScroll: false }); } catch {}
+  }, opt);
+  dlg.addEventListener('keyup', e => {
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') && e.target.closest?.('.sv-recipe')) stopHold();
   }, opt);
   // Keep scroll inside the panel from reaching the engine's hotbar wheel handler.
   dlg.addEventListener('wheel', e => e.stopPropagation(), { ...opt, passive: true });
@@ -1322,7 +1358,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   // Tab / I open while playing; Tab / I / E close.
   document.addEventListener('keydown', e => {
     if (!alive || e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
-    const act = bagKeyAction(e.code, isOpen);
+    const act = bagKeyAction(e.code, isOpen, e.shiftKey);
     if (!act) return;
     const t = e.target;
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;

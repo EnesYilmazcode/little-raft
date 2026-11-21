@@ -94,5 +94,5 @@ test('UX-8: after a hold batch the button reports the craft, not "Missing materi
   assert.equal(book.craftButtonText('ready'), 'Craft');
   assert.equal(book.craftButtonText('full', { n: 0 }), 'Bag is full');
   // The batch hint is computed from the cap taken before the first craft (6), not the 5 left after it.
-  assert.equal(book.holdHint(6), 'hold: up to 6');
+  assert.equal(book.holdHint(6), 'Hold to craft up to 6');
 });
