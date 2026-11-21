@@ -275,8 +275,8 @@ test('research: wood unlocks bench, then scrap unlocks lantern; repeats and non-
 test('research: recipes join the tree from their cost alone (learnedFrom)', () => {
   assert.deepEqual(learnedFrom(['wood']), ['bench']);
   assert.deepEqual(learnedFrom(['wood', 'leaf']), ['bed', 'bench', 'palm']);
-  assert.deepEqual(learnedFrom(['wood', 'rope']), ['bench', 'fishingrod', 'net']);
-  assert.deepEqual(learnedFrom(['wood', 'rope', 'leaf']), ['bed', 'bench', 'fishingrod', 'net', 'palm', 'sail']);
+  assert.deepEqual(learnedFrom(['wood', 'rope']), ['bench', 'fishingrod', 'net', 'wheel']);
+  assert.deepEqual(learnedFrom(['wood', 'rope', 'leaf']), ['bed', 'bench', 'fishingrod', 'net', 'palm', 'sail', 'wheel']);
   assert.deepEqual(learnedFrom(['leaf'], ['lantern']), ['lantern']);
 });
 
@@ -295,7 +295,7 @@ test('module: research emits one notice per new recipe to everyone; craftLocked 
   assert.equal(emits[0].to, 'host');
   emits.length = 0;
   mod.action({ kind: 'storage.research', x: 0, z: 1, slot: slotOf('wood'), expect: { kind: 'wood' } }, 'host', bags.host);
-  assert.deepEqual(emits.map(e => e.e.text).sort(), ['New recipe: Bench!', 'New recipe: Fishing Rod!', 'New recipe: Net!']);
+  assert.deepEqual(emits.map(e => e.e.text).sort(), ['New recipe: Bench!', 'New recipe: Fishing Rod!', 'New recipe: Net!', 'New recipe: Steering Wheel!']);
   assert.ok(emits.every(e => e.to === 'all'));
   assert.equal(mod.craftLocked('net'), null);
   assert.equal(mod.craftLocked('sail'), LOCK_REASON);
