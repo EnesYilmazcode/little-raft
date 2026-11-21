@@ -109,7 +109,7 @@ export function createPlastic(T) {
   }));
   root.add(creases);
 
-  root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  root.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; /* perf: shadow never lands on water */ } });
   root.userData.type = 'plastic';
   root.userData.size = { x: 0.65, y: 0.7, z: 0.4 };
   root.userData.dispose = () => {

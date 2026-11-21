@@ -66,7 +66,7 @@ function place(T, g, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, s = 1) {
 
 function mesh(T, geo, mat, parent) {
   const m = new T.Mesh(geo, mat);
-  m.castShadow = true;
+  m.castShadow = false; // perf: ocean does not receive shadows, so floating debris shadows were never visible
   m.receiveShadow = true;
   parent.add(m);
   return m;
