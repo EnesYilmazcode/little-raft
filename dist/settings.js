@@ -5,7 +5,7 @@
 // In the desktop app the main process claims Escape and calls window.raftEscape() with a user gesture,
 // so closing a menu can relock the mouse without a click.
 
-import { createEscGate } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { createEscGate, exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 
 const STORAGE_KEY = 'little-raft-settings';
 const DIALOG_ID = 'options';
@@ -279,7 +279,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit, initial } 
   const otherDialogs = () => [...document.querySelectorAll('dialog[open]')].filter((d) => d !== dialog);
 
   function releasePointer() {
-    if (document.pointerLockElement) { try { document.exitPointerLock?.(); } catch { /* ignore */ } }
+    exitLock(document); // marked as page-initiated, so game.js does not treat it as a lost lock
   }
 
   function open() {

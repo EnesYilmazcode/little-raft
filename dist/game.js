@@ -24,7 +24,7 @@ import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, BAG_OPEN_KEYS, BAG_CLOSE_KEYS, REEL_PROMPT, LOOK_DONE_RAD, WALK_DONE_S } from './hud.js?build=v3-survival-ae77fa84ac2b';
-import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, pageLock, exitLock, lockLossAction, shouldDeferredRelock, shouldFocusRelock, escapeCooldownRetry } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -472,7 +472,12 @@ export function mount(transfer = null) {
     const b = document.body.classList;
     b.toggle('pointer-locked', locked); b.toggle('locked', locked); b.toggle('first-person', running); b.toggle('playing', running);
     const crosshair = $('#crosshair'); if (crosshair) crosshair.hidden = !(running && locked);
-    const resume = $('#resumeHint'); if (resume) resume.hidden = !(running && !locked && lockSupported && !dialog);
+    const resume = $('#resumeHint');
+    if (resume) {
+      resume.hidden = !(running && !locked && lockSupported && !dialog);
+      const away = b.contains('away'), text = away ? 'AWAY' : 'BACK';
+      if (resume.dataset.text !== text) { resume.dataset.text = text; resume.innerHTML = away ? '<b>Click the ocean</b> to pick up where you left off' : '<b>Click the ocean</b> to look around again'; }
+    }
     if (inShell && dialog !== shellPanel) { shellPanel = dialog; console.info('[raft-shell] panel=' + dialog); } // desktop/main.cjs watches this
   }
 
@@ -483,8 +488,58 @@ export function mount(transfer = null) {
   // crafting, crew) Chrome relocks without a gesture. Refusals are handled in lockFailed (lock-rules.js).
   // While Escape is still held (it just closed a panel), Chrome may treat the held key as the user leaving
   // the new lock, so the relock waits for the release (no gesture needed: the page released the lock itself).
-  let escHeld = false, relockOnEscUp = false;
-  function escReleased() { escHeld = false; if (relockOnEscUp) { relockOnEscUp = false; requestLock(); } }
+  // Even then it must not run inside the keyup task: Chrome's Escape key-release handling drops a lock
+  // granted there within a few ms. So the release schedules the relock RELOCK_AFTER_ESC ms later.
+  const RELOCK_AFTER_ESC = 250;
+  let escHeld = false, relockOnEscUp = false, relockTimer = 0;
+  function cancelRelock() { relockTimer = cancelTimer(relockTimer); }
+  function escReleased() {
+    escHeld = false;
+    if (!relockOnEscUp) return;
+    relockOnEscUp = false; cancelRelock();
+    relockTimer = later(() => {
+      relockTimer = 0;
+      if (shouldDeferredRelock({running, blocked:uiBlocked(), locked:isLocked(), escHeld, focused:windowFocused()})) requestLock();
+    }, RELOCK_AFTER_ESC);
+  }
+  // Lock losses the page did not cause (pageLock in lock-rules.js): an Escape Chrome consumed opens the
+  // pause menu; a fresh lock dropped by the browser is retried once; focus loss (alt-tab) never pauses
+  // and focus return relocks if the game was locked when it left.
+  let lossTimer = 0, earlyRetried = false, lockedAtBlur = false, lostAt = -Infinity, escapeUnlockAt = -Infinity, cooldownRetried = false, cooldownTimer = 0, retryCheck = 0;
+  function pauseFromLockLoss() {
+    if (running && !uiBlocked() && !isLocked() && windowFocused()) settingsController?.open();
+  }
+  // Ask again; in the desktop shell main re-runs relock() with a user gesture ([raft-shell] relock sentinel).
+  function retryLock() {
+    if (inShell) console.info('[raft-shell] relock'); else requestLock();
+  }
+  function lockLost() {
+    const now = performance.now();
+    if (pageLock.selfCaused(now) || !running) { earlyRetried = false; return; }
+    // Desktop: no Escape key-release accelerator drops fresh locks there, so an early loss is a real Escape.
+    const early = !inShell && pageLock.early(now);
+    if (!early) earlyRetried = false;
+    lostAt = escapeUnlockAt = now; cooldownRetried = false;
+    lossTimer = cancelTimer(lossTimer);
+    lossTimer = later(() => {
+      lossTimer = 0;
+      const action = lockLossAction({running, locked:isLocked(), blocked:uiBlocked(), focused:windowFocused(), hidden:document.hidden, early, retried:earlyRetried});
+      if (action === 'away') lockedAtBlur = true;
+      else if (action === 'pause') pauseFromLockLoss();
+      else if (action === 'retry') {
+        earlyRetried = true;
+        retryLock();
+        retryCheck = cancelTimer(retryCheck);
+        retryCheck = later(() => { retryCheck = 0; pauseFromLockLoss(); }, 700); // still free: the pause menu, never a loose cursor
+      }
+    }, 100);
+  }
+  function focusRelock() {
+    const ok = shouldFocusRelock({lockedAtBlur, running, blocked:uiBlocked(), locked:isLocked()});
+    lockedAtBlur = false;
+    if (ok) requestLock();
+    return ok;
+  }
   function requestLock() {
     if (!shouldRequestLock({running, supported:lockSupported, blocked:uiBlocked()}) || isLocked()) return;
     if (escHeld) { relockOnEscUp = true; return; }
@@ -498,6 +553,12 @@ export function mount(transfer = null) {
   // focused switch to drag-look. The click that asked for lock never acts.
   function lockFailed(err) {
     if (isLocked()) return;
+    // Refused within the user-escape cooldown after a lock loss the page did not cause: retry once after it.
+    const wait = running ? escapeCooldownRetry({now:performance.now(), escapeUnlockAt, retried:cooldownRetried}) : -1;
+    if (wait >= 0 && !(typeof Event !== 'undefined' && err instanceof Event && lockHasPromise)) {
+      cooldownRetried = true; cooldownTimer = cancelTimer(cooldownTimer);
+      cooldownTimer = later(() => { cooldownTimer = 0; if (running && !uiBlocked() && !isLocked() && windowFocused()) retryLock(); }, wait + 30);
+    }
     const isEvent = typeof Event !== 'undefined' && err instanceof Event;
     if (isEvent && (lockPromisePending || lockHasPromise)) { refreshPointerUI(true); return; } // the promise rejection carries the real reason
     const verdict = lockFailureVerdict({supported:lockSupported, err:isEvent ? null : err, focused:windowFocused(), failures:lockFailures});
@@ -506,7 +567,7 @@ export function mount(transfer = null) {
     const wasFallback = lockFallback; lockFallback = true; refreshPointerUI(true);
     if (!wasFallback && running) notice('Mouse lock unavailable: drag to look, click to use', 3000);
   }
-  function releaseLock() { if (isLocked()) document.exitPointerLock?.(); }
+  function releaseLock() { if (isLocked()) exitLock(document); } // marked page-initiated (lock-rules.js)
   function look(dx, dy, k) {
     yaw -= dx * k; pitch = clamp(pitch - (options.invertY ? -dy : dy) * k, -PITCH_LIMIT, PITCH_LIMIT);
     if (running && !hintsDone.has('look') && (lookTaught += Math.hypot(dx, dy) * k) >= LOOK_DONE_RAD) hintDone('look');
@@ -981,8 +1042,8 @@ export function mount(transfer = null) {
   // ---------- Input ----------
   const on = (target, type, fn, opts = {}) => target?.addEventListener(type, guard(fn), {...opts, signal});
   on(document, 'pointerlockchange', () => {
-    if (isLocked()) { lockFallback = false; lockFailures = 0; }
-    else { if (charging && charging.x === null) charging = null; reeling = false; }
+    if (isLocked()) { lockFallback = false; lockFailures = 0; pageLock.gained(performance.now()); lockedAtBlur = false; retryCheck = cancelTimer(retryCheck); cancelRelock(); }
+    else { if (charging && charging.x === null) charging = null; reeling = false; lockLost(); }
     down = null; refreshPointerUI(true);
   });
   on(document, 'pointerlockerror', lockFailed);
@@ -1044,11 +1105,16 @@ export function mount(transfer = null) {
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
   on(window, 'keyup', e => { keys[e.code] = false; });
-  on(window, 'keydown', e => { if (e.key === 'Escape' && !e.repeat) { escHeld = true; relockOnEscUp = false; } }, {capture:true});
+  on(window, 'keydown', e => { if (e.key === 'Escape' && !e.repeat) { escHeld = true; relockOnEscUp = false; cancelRelock(); } }, {capture:true});
   on(window, 'keyup', e => { if (e.key === 'Escape') escReleased(); }, {capture:true});
-  on(window, 'pointerdown', () => { escHeld = relockOnEscUp = false; }, {capture:true}); // a click relocks on its own
-  // Focus loss (alt-tab): drop held input and show the hint at the top edge; one click on return relocks.
-  on(window, 'blur', () => { clearInput(); escHeld = relockOnEscUp = false; document.body.classList.toggle('away', running); refreshPointerUI(true); });
+  on(window, 'pointerdown', () => { escHeld = relockOnEscUp = false; cancelRelock(); lockedAtBlur = false; }, {capture:true}); // a click relocks on its own
+  // Focus loss (alt-tab): drop held input and show the hint at the top edge. On return the desktop shell
+  // relocks through raftShell.focusRelock(); in a browser one click relocks (no gesture on focus).
+  on(window, 'blur', () => {
+    clearInput(); escHeld = relockOnEscUp = false; cancelRelock();
+    if (running && (isLocked() || performance.now() - lostAt < 500)) lockedAtBlur = true;
+    document.body.classList.toggle('away', running); refreshPointerUI(true);
+  });
   on(window, 'focus', () => { document.body.classList.remove('away'); refreshPointerUI(true); });
   on(window, 'beforeunload', () => { save(); send({type:'leaving'}); try { conn?.close(); peer?.destroy(); } catch {} });
   on(document, 'visibilitychange', () => {
@@ -1298,8 +1364,13 @@ export function mount(transfer = null) {
     // held=true: the shell swallowed the Escape keydown and calls released() on its keyup (relock happens then).
     escape:guard((held = false) => {
       if (disposed) return false;
-      if (held) { escHeld = true; relockOnEscUp = false; }
-      if (survivalUI?.isOpen) { survivalUI.close(); return true; }
+      if (held) { escHeld = true; relockOnEscUp = false; cancelRelock(); }
+      if (survivalUI?.isOpen) {
+        // Same path as a browser Esc: the dialog's cancel puts a held stack back first, then closes.
+        const inv = document.getElementById('inventory');
+        if (inv?.open) inv.dispatchEvent(new Event('cancel', {cancelable:true})); else survivalUI.close();
+        return true;
+      }
       // Same steps as browser Esc (settings.js escape): panel, pause, crew/help, title fullscreen. Closing relocks via onResume/close listeners.
       if (settingsController) return settingsController.escape();
       const d = [...document.querySelectorAll('dialog[open]')].pop();
@@ -1309,6 +1380,12 @@ export function mount(transfer = null) {
       return true;
     }),
     released:guard(() => escReleased()),
+    // The shell saw an Escape keyup without its keydown: the browser used that keydown to leave the lock.
+    escapedLock:guard(() => { if (!disposed && running && !uiBlocked() && !isLocked()) { lossTimer = cancelTimer(lossTimer); settingsController?.open(); return true; } return false; }),
+    // Window focus came back (main runs this with a gesture): relock only if play was locked when it left.
+    focusRelock:guard(() => !disposed && focusRelock()),
+    // Gesture retry requested by the page through the [raft-shell] relock sentinel.
+    relock:guard(() => { if (!disposed && running && !uiBlocked() && !isLocked()) requestLock(); }),
   };
   window.raftShell = shellApi;
   window.raftDebug = debugApi;

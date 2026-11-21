@@ -1,5 +1,6 @@
 // Little Raft survival UI: shared-play hotbar (.tools) + inventory/crafting dialog (#inventory).
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
+import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { iconSVG, itemName } from './item-sprites.js?build=v3-survival-ae77fa84ac2b';
@@ -965,7 +966,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     px = py = NaN; kbdHeld = false; // stale pointer position from the last time the bag was open
     clearSrc(); clearSay();
     safe(onPause);
-    if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
+    exitLock(document); // marked as page-initiated (lock-rules.js)
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     buildRecipes();
     lastSig = null;
