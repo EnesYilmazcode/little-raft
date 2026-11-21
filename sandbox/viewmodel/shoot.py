@@ -1,6 +1,6 @@
 """Headless check of the viewmodel lab. Usage: python sandbox/viewmodel/shoot.py [out_dir]
 Serves the repo root, drives each scripted scene on a fixed 60 Hz clock through window.vmLab, screenshots it,
-then renders 120 frames per perf case and prints avg/worst frame ms + renderer.info as JSON.
+then renders 120 frames per perf case (CPU submit and GPU-synced) and prints avg/worst frame ms + renderer.info as JSON.
 Default out_dir: sandbox/viewmodel/shots/. Env ONLY=substr1,substr2 limits shots and skips perf (quick iteration)."""
 import os, sys, json, threading, functools, http.server, socketserver
 from pathlib import Path
@@ -70,4 +70,5 @@ with sync_playwright() as p:
         page.close()
     b.close()
 srv.shutdown()
+(out / 'report.json').write_text(json.dumps(report, indent=1))
 print(json.dumps(report, indent=1))

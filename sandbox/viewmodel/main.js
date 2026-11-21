@@ -144,7 +144,16 @@ function info() {
 }
 window.vmLab = {
   advance(seconds, dt = 1 / 60) { const n = Math.round(seconds / dt); for (let i = 0; i < n; i++) step(dt); render(); return info(); },
-  bench(frames = 120, dt = 1 / 60) { SYNC = true; frameMs.length = 0; updMs.length = 0; for (let i = 0; i < frames; i++) { step(dt); render(); } SYNC = false; return info(); },
+  // CPU: renderer.render() submit time, no GPU wait (what three.js + the viewmodel cost on the main thread).
+  // synced: same plus a 1-pixel readPixels, so it includes SwiftShader raster time (relative only).
+  // vmUpdateUs: vm.update() alone, 2000 calls (pure JS: springs, equip, sway).
+  bench(frames = 120, dt = 1 / 60) {
+    const run = (sync) => { SYNC = sync; frameMs.length = 0; updMs.length = 0; for (let i = 0; i < frames; i++) { step(dt); render(); } SYNC = false; return info(); };
+    const cpu = run(false), synced = run(true);
+    let vmUpdateUs = null;
+    if (vm) { const n = 2000, t0 = performance.now(); for (let i = 0; i < n; i++) vm.update({ dt, kind: 'hook', yaw: Math.sin(i * 0.01), pitch: 0, walking: true, walkPhase: i * 0.15, charge: 0, swing: 0, motion: MOTION }); vmUpdateUs = +((performance.now() - t0) / n * 1000).toFixed(2); }
+    return { ...synced, cpuRenderAvgMs: cpu.renderAvgMs, cpuRenderWorstMs: cpu.renderWorstMs, syncedRenderAvgMs: synced.renderAvgMs, syncedRenderWorstMs: synced.renderWorstMs, stepAvgMs: cpu.updateAvgMs, vmUpdateUs };
+  },
   info,
 };
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); vm?.setAspect(camera.aspect); });
