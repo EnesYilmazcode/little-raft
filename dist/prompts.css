@@ -18,6 +18,8 @@
 #lrFeed .lr-line{animation:lrIn .16s ease-out;transition:opacity .4s ease,transform .4s ease;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 #lrFeed .lr-line.lr-out{opacity:0;transform:translateX(-6px)}
 @keyframes lrIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+/* Narrow windows: a long prompt wraps before it reaches the Notes column (right:16px, 248px wide) instead of running under it. */
+@media(max-width:1100px){#lrPrompt{white-space:normal;max-width:max(150px,calc(50vw - 300px))}#lrPrompt .lr-key,#lrPrompt .lr-glyph,#lrPrompt .lr-hold{flex:0 0 auto}}
 @media(max-width:760px){#lrFeed{left:16px;bottom:336px;font-size:13px}#lrPrompt{font-size:13px}}
 @media(prefers-reduced-motion:reduce){#lrPrompt,#lrPrompt.lr-on,#lrFeed .lr-line{transition:none;animation:none;transform:none}}
 /* The resume hint sits at the top edge (graphics.css); the throw charge is a thin ring on the reticle (graphics.css). */
