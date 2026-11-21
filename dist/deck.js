@@ -15,6 +15,8 @@ const BEAM_R = 0.064, BEAM_Y = 0.072, BEAM_HALF = 0.985;
 // Dark sheet under the boards (drawn with the log material, so no extra draw call) so plank gaps read as shadow, not water.
 // Full 2x2 so neighbouring tiles' underlays meet with no seam; up-facing only, so it is invisible from below.
 const UNDERLAY_Y = 0.135;
+let _underMat = null; // unlit: the underlay only shows through board gaps; lighting it cost a full-screen lit pass
+const underlayMat = T => _underMat || (_underMat = new T.MeshBasicMaterial({color:'#24180e'}));
 
 function makeRng(index) {
   let h = 2166136261 >>> 0; const s = String(index ?? 0);
@@ -174,7 +176,7 @@ function floorParts(T, index) {
 
   // Logs underneath, parallel to X.
   for (const z of beamZ) { const b = beamParts(T, rng, z); beams.push(b.beam); caps.push(...b.caps); }
-  const under = new T.PlaneGeometry(2, 2); under.rotateX(-Math.PI / 2); under.translate(0, UNDERLAY_Y, 0); beams.push(under);
+  const under = new T.PlaneGeometry(2, 2); under.rotateX(-Math.PI / 2); under.translate(0, UNDERLAY_Y, 0); const underlay=[under];
 
   // Rope lashings: a sparse random few per log (one to two), so the wraps do not repeat as a pattern tile after tile.
   const lashed = new Set();
@@ -211,6 +213,7 @@ function floorParts(T, index) {
   for (const [color, list] of byColor) add(list, color, 'floor-planks');
   add(beams, BEAM_COLOR, 'floor-logs');
   add(caps, BEAM_END_COLOR, 'floor-log-ends');
+  add(underlay, BEAM_COLOR, 'floor-underlay', false);
   if (ropes.length) add(ropes, ROPE_COLOR, 'floor-lashings', false); // thin rope: shadow is invisible, skip the shadow pass
   if (nails.length) add(nails, NAIL_COLOR, 'floor-nails', false);
   return parts;
@@ -253,7 +256,7 @@ export function createRaftMesh(T, tiles, getMaterial, tint = null, tintMat = nul
   }
   const g = new T.Group(); g.name = 'raft-floors';
   for (const b of buckets.values()) {
-    const mesh = new T.Mesh(merge(T, b.list), b.tinted && tintMat ? tintMat(b.color) : mat(b.color)); mesh.name = b.name;
+    const mesh = new T.Mesh(merge(T, b.list), b.name === 'floor-underlay' ? underlayMat(T) : b.tinted && tintMat ? tintMat(b.color) : mat(b.color)); mesh.name = b.name;
     mesh.castShadow = b.castShadow; mesh.receiveShadow = true; g.add(mesh);
   }
   g.userData.kind = 'floors';
