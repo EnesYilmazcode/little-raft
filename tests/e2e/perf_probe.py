@@ -29,6 +29,13 @@ HOOK = r"""
   wrap(window.WebGL2RenderingContext && WebGL2RenderingContext.prototype);
   wrap(window.WebGLRenderingContext && WebGLRenderingContext.prototype);
   P.t0 = performance.now();
+  // Timestamp readiness in-page: when raftDebug is assigned and when the second frame after it lands
+  // (Playwright's rAF polling lags by whole SwiftShader frames, so polling time is not startup time).
+  let dbg;
+  Object.defineProperty(window, 'raftDebug', { configurable: true, get() { return dbg; }, set(v) {
+    dbg = v;
+    if (!P.ready) { P.ready = performance.now(); requestAnimationFrame(() => requestAnimationFrame(() => { P.firstFrames = performance.now(); })); }
+  } });
 })();
 """
 SAMPLE = r"""(ms) => new Promise(res => {
@@ -67,7 +74,8 @@ def one(b):
     page = ctx.new_page(); errs = []
     page.on('pageerror', lambda e: errs.append(str(e)))
     page.goto(url); page.wait_for_function('!!window.raftDebug', timeout=30000)
-    r = {'debugReadyMs': page.evaluate('performance.now() - __perf.t0')}
+    page.wait_for_function('!!__perf.firstFrames', timeout=30000)
+    r = page.evaluate('({debugReadyMs: __perf.ready - __perf.t0, firstFramesMs: __perf.firstFrames - __perf.t0})')
     r['dcl'] = page.evaluate("performance.getEntriesByType('navigation')[0].domContentLoadedEventEnd")
     page.wait_for_timeout(500)
     # Click and time inside the page: Playwright's actionability checks wait on (slow, software GL) frames.
@@ -84,7 +92,7 @@ def median(rs):
     def m(path):
         vals = [functools.reduce(lambda d, k: d[k], path, r) for r in rs]
         return round(statistics.median(vals), 3)
-    out = {'runs': len(rs), 'debugReadyMs': m(['debugReadyMs']), 'soloToRunningMs': m(['soloToRunningMs'])}
+    out = {'runs': len(rs), 'debugReadyMs': m(['debugReadyMs']), 'firstFramesMs': m(['firstFramesMs']), 'soloToRunningMs': m(['soloToRunningMs'])}
     for ph in ('idle', 'walk'):
         out[ph] = {k: m([ph, k]) for k in rs[0][ph]}
     out['errors'] = sorted({e for r in rs for e in r['errors']})
