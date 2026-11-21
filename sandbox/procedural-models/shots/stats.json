@@ -20,26 +20,26 @@
   "renderer": "SwiftShader (relative timings only)",
   "scene": {
    "current": {
-    "buildMs": 612.2,
+    "buildMs": 597.3,
     "drawCalls": 271,
     "triangles": 251208,
     "meshes": 137,
     "materials": 78,
-    "frameMs": 6.54,
+    "frameMs": 5.15,
     "programs": 8,
     "textures": 7,
     "geometries": 137
    },
    "new": {
-    "buildMs": 409.7,
-    "drawCalls": 52,
-    "triangles": 56606,
-    "meshes": 27,
-    "materials": 5,
-    "frameMs": 1.45,
+    "buildMs": 591.1,
+    "drawCalls": 50,
+    "triangles": 47194,
+    "meshes": 26,
+    "materials": 4,
+    "frameMs": 0.92,
     "programs": 9,
     "textures": 8,
-    "geometries": 164
+    "geometries": 163
    }
   }
  },
@@ -365,5 +365,10 @@
    "textures": 7,
    "programs": 15
   }
+ },
+ "fp": {
+  "view": "fp",
+  "renderer": "SwiftShader (relative timings only)",
+  "scene": {}
  }
 }

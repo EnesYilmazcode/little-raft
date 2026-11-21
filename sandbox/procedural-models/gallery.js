@@ -2,6 +2,7 @@
 // ?view=grid&page=0|1     turntable grid (rows = yaw angles, cols = 6 props), new set
 // ?view=compare&page=0|1  current (top row) vs new (bottom row), hero angle
 // ?view=scene             raft + crafts + floating debris, current (left) vs new (right), with frame stats
+// ?view=fp                same raft: first-person eye view (top row) and close top-down (bottom row)
 // ?view=stats             per-model triangles, meshes, draw calls (incl. shadow pass), build ms, frame ms
 // ?view=spin              live turntable of all new props (interactive check, not used by shoot.py)
 import * as T from '../../dist/vendor/three.module.js';
@@ -137,8 +138,9 @@ if (VIEW === 'grid' || VIEW === 'compare') {
   stats.renderer_info = { geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, programs: renderer.info.programs.length };
   const pre = document.createElement('pre'); pre.textContent = JSON.stringify(stats, null, 1); wrap.appendChild(pre);
   finish();
-} else if (VIEW === 'scene') {
-  const W = 800, H = 620; renderer.setSize(W * 2, H);
+} else if (VIEW === 'scene' || VIEW === 'fp') {
+  const FP = VIEW === 'fp';
+  const W = 800, H = FP ? 450 : 620; renderer.setSize(W * 2, FP ? H * 2 : H);
   const gl = renderer.getContext();
   const tiles = []; for (let x = -1; x <= 1; x++) for (let z = -1; z <= 1; z++) tiles.push([x, z]);
   const decor = [['sail', 0, 0], ['palm', -1, -1], ['lantern', 1, -1], ['crate', 1, 1], ['bench', -1, 1], ['net', 0, 1]];
@@ -166,8 +168,19 @@ if (VIEW === 'grid' || VIEW === 'compare') {
   }
   const cam = new T.PerspectiveCamera(50, W / H, 0.05, 300);
   cam.position.set(4.2, 4.6, 10.5); cam.lookAt(0, 0.8, 0.6);
+  if (FP) {
+    // ?view=fp: first-person (eye 1.6 m over the deck, game FOV 70) on top, close top-down below; current | new
+    const fpCam = new T.PerspectiveCamera(70, W / H, 0.05, 300); fpCam.position.set(-0.6, 0.2 + 1.6, 2.7); fpCam.lookAt(0.6, 0.3, -0.4);
+    const topCam = new T.PerspectiveCamera(40, W / H, 0.05, 300); topCam.position.set(1.2, 3.2, 2.6); topCam.lookAt(1.6, 0.2, 1.4);
+    ['current', 'new'].forEach((set, i) => {
+      const { s } = build(set);
+      [fpCam, topCam].forEach((c, row) => { renderer.setViewport(i * W, (1 - row) * H, W, H); renderer.setScissor(i * W, (1 - row) * H, W, H); renderer.render(s, c); });
+      label(set.toUpperCase(), i * W + 8, 8);
+    });
+    finish();
+  }
   stats.scene = {};
-  ['current', 'new'].forEach((set, i) => {
+  if (!FP) ['current', 'new'].forEach((set, i) => {
     const { s, buildMs } = build(set);
     renderer.setViewport(i * W, 0, W, H); renderer.setScissor(i * W, 0, W, H);
     renderer.info.reset(); renderer.render(s, cam);
@@ -178,7 +191,7 @@ if (VIEW === 'grid' || VIEW === 'compare') {
     const st = stats.scene[set];
     label(`${set.toUpperCase()}  calls ${st.drawCalls}  tris ${st.triangles}  meshes ${st.meshes}  mats ${st.materials}\nframe ${st.frameMs} ms  build ${st.buildMs} ms`, i * W + 8, 8);
   });
-  finish();
+  if (!FP) finish();
 } else if (VIEW === 'spin') {
   const CW = 220, CH = 240; renderer.setSize(CW * 6, CH * 2);
   const scene = stage();

@@ -41,6 +41,7 @@ function hash4(a, b, c, d) {
   return (h >>> 0) / 4294967296;
 }
 const clamp01 = v => (v < 0 ? 0 : v > 1 ? 1 : v);
+const TWIST = [1.12, 0.97, 0.8];
 
 // ================================================================== KIT
 export function lowpoly(T) {
@@ -99,6 +100,7 @@ export function lowpoly(T) {
     return lathe(pts, seg);
   }
   const ico = (r, detail = 0) => flat(new T.IcosahedronGeometry(r, detail));
+  const octa = r => flat(new T.OctahedronGeometry(r, 0));
   const cone = (r, h, seg = 6) => lathe([[0, -h / 2], [r, -h / 2], [0, h / 2]], seg);
   const torus = (R, r, radial = 4, tubular = 10, arc = Math.PI * 2) => flat(new T.TorusGeometry(R, r, radial, tubular, arc));
   function tube(pts, r, radial = 4, segs) {
@@ -162,9 +164,35 @@ export function lowpoly(T) {
 
   // ---------- parts -> one merged, vertex-coloured, flat-normal geometry
   function parts() {
-    const list = [];
+    const list = [], occl = [];
     let id = 0;
     const A = V(), B = V(), Cc = V(), N = V(), M = V(), col = new T.Color(), base = new T.Color();
+    // Cheap baked contact AO: each vertex is darkened by nearby occluder boxes of OTHER parts that lie in front
+    // of its normal (cosine-weighted, quadratic falloff over radius R). O(verts x occluders), a few ms per object.
+    function contactAO(pos, nor, cl, ranges, K, R) {
+      const L = V(), Q = V(), D = V();
+      for (let pi = 0; pi < ranges.length - 1; pi++) for (let v = ranges[pi]; v < ranges[pi + 1]; v++) {
+        const px = pos[v * 3], py = pos[v * 3 + 1], pz = pos[v * 3 + 2];
+        let acc = 0;
+        for (let j = 0; j < occl.length; j++) {
+          const ob = occl[j];
+          if (!ob || j === pi) continue;
+          const w = ob.wb;
+          if (px < w.min.x - R || px > w.max.x + R || py < w.min.y - R || py > w.max.y + R || pz < w.min.z - R || pz > w.max.z + R) continue;
+          L.set(px, py, pz).applyMatrix4(ob.inv);
+          Q.copy(L).clamp(ob.lmin, ob.lmax).applyMatrix4(ob.m);
+          D.set(Q.x - px, Q.y - py, Q.z - pz);
+          const d = D.length();
+          if (d > R) continue;
+          const c = d < 1e-4 ? 0.5 : (D.x * nor[v * 3] + D.y * nor[v * 3 + 1] + D.z * nor[v * 3 + 2]) / d;
+          if (c <= 0) continue;
+          const fall = 1 - d / R;
+          acc += c * fall * fall;
+        }
+        const f = 1 - K * Math.min(1, acc);
+        cl[v * 3] *= f; cl[v * 3 + 1] *= f; cl[v * 3 + 2] *= f;
+      }
+    }
     const api = {
       count: () => list.length,
       // o: at, rot, scale, from/to (along), jitter, seed, tint (facet variance), paint(color, centroid, normal, triIndex)
@@ -172,8 +200,13 @@ export function lowpoly(T) {
         g = flat(g);
         const seed = o.seed ?? (id * 977 + 31);
         if (o.jitter) jitter(g, o.jitter, seed);
-        if (o.from) along(g, o.from, o.to);
-        else if (o.at || o.rot || o.scale) xf(g, o.at, o.rot, o.scale);
+        // Occluder for contact AO: an oriented box (local bbox + the transform applied below). Chamfered boxes
+        // occlude by default; anything else opts in with o.occlude.
+        const occ = o.occlude ?? !!g.attributes.bev;
+        let ob = null;
+        if (occ) { g.computeBoundingBox(); ob = { lmin: g.boundingBox.min.clone(), lmax: g.boundingBox.max.clone(), m: new T.Matrix4() }; }
+        if (o.from) { along(g, o.from, o.to); if (ob) ob.m.copy(_m); }
+        else if (o.at || o.rot || o.scale) { xf(g, o.at, o.rot, o.scale); if (ob) ob.m.copy(_m); }
         const p = g.attributes.position, n = p.count, arr = new Float32Array(n * 3), tint = o.tint ?? 0.06;
         base.copy(C(color));
         // Paint per quad (consecutive triangle pair) so quads never checker; per triangle if the count is odd.
@@ -194,10 +227,19 @@ export function lowpoly(T) {
           const k = hash4(Math.round(N.x * 4), Math.round(N.y * 4), Math.round(N.z * 4), seed + (o.facetPos ? Math.round(M.x * 20) * 31 + Math.round(M.y * 20) * 17 + Math.round(M.z * 20) : 0));
           let f = 1 + (k - 0.5) * 2 * tint;
           if (bev && bev.getX(t0 * 3) > 0.5) f *= 1 + edge;
+          // rope twist: quads in a ring of o.twist, shaded in a 3-step spiral so the strand reads as laid rope
+          if (o.twist) { const q = t0 / step; f *= TWIST[((q % o.twist) + Math.floor(q / o.twist)) % 3]; }
           for (let q = t0 * 3; q < (t0 + step) * 3; q++) { arr[q * 3] = col.r * f; arr[q * 3 + 1] = col.g * f; arr[q * 3 + 2] = col.b * f; }
+          // per-vertex paint (smooth gradients across facets, e.g. rust creeping in from edges)
+          if (o.vpaint) for (let q = t0 * 3; q < (t0 + step) * 3; q++) {
+            A.fromBufferAttribute(p, q); col.setRGB(arr[q * 3], arr[q * 3 + 1], arr[q * 3 + 2]);
+            o.vpaint(col, A, N); arr[q * 3] = col.r; arr[q * 3 + 1] = col.g; arr[q * 3 + 2] = col.b;
+          }
         }
         g.setAttribute('color', new T.BufferAttribute(arr, 3));
-        list.push(g); id++;
+        g.userData.alpha = o.alpha ?? 1;
+        if (ob) { ob.inv = ob.m.clone().invert(); ob.wb = new T.Box3(ob.lmin, ob.lmax).applyMatrix4(ob.m); }
+        list.push(g); occl.push(ob); id++;
         return api;
       },
       // ao: {y0, y1, lo} vertical occlusion gradient + darker down-facing faces
@@ -206,13 +248,17 @@ export function lowpoly(T) {
         let count = 0; for (const g of list) count += g.attributes.position.count;
         const pos = new Float32Array(count * 3), cl = new Float32Array(count * 3);
         let off = 0;
-        for (const g of list) { pos.set(g.attributes.position.array, off * 3); cl.set(g.attributes.color.array, off * 3); off += g.attributes.position.count; g.dispose(); }
+        const ranges = [], alphas = list.map(g => g.userData.alpha);
+        for (const g of list) { pos.set(g.attributes.position.array, off * 3); cl.set(g.attributes.color.array, off * 3); ranges.push(off); off += g.attributes.position.count; g.dispose(); }
+        ranges.push(off);
         list.length = 0;
         const out = new T.BufferGeometry();
         out.setAttribute('position', new T.BufferAttribute(pos, 3));
         out.setAttribute('normal', new T.BufferAttribute(new Float32Array(count * 3), 3));
         out.setAttribute('color', new T.BufferAttribute(cl, 3));
         out.computeVertexNormals();
+        if (ao && ao.contact) contactAO(pos, out.attributes.normal.array, cl, ranges, ao.contact, ao.radius ?? 0.07);
+        occl.length = 0;
         if (ao) {
           const nor = out.attributes.normal.array, lo = ao.lo ?? 0.62, y0 = ao.y0 ?? 0, h = Math.max(1e-4, (ao.y1 ?? 1) - y0), down = ao.down ?? 0.8;
           for (let i = 0; i < count; i++) {
@@ -221,6 +267,11 @@ export function lowpoly(T) {
             if (nor[i * 3 + 1] < -0.5) f *= down;
             cl[i * 3] *= f; cl[i * 3 + 1] *= f; cl[i * 3 + 2] *= f;
           }
+        }
+        if (alphas.some(a => a < 1)) { // RGBA vertex colours (material needs vertexColors + transparent)
+          const rgba = new Float32Array(count * 4);
+          for (let pi = 0; pi < alphas.length; pi++) for (let v = ranges[pi]; v < ranges[pi + 1]; v++) { rgba[v * 4] = cl[v * 3]; rgba[v * 4 + 1] = cl[v * 3 + 1]; rgba[v * 4 + 2] = cl[v * 3 + 2]; rgba[v * 4 + 3] = alphas[pi]; }
+          out.setAttribute('color', new T.BufferAttribute(rgba, 4));
         }
         out.computeBoundingBox(); out.computeBoundingSphere();
         return out;
@@ -234,23 +285,24 @@ export function lowpoly(T) {
   const materials = {
     solid: share(new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.84, metalness: 0 })),
     cloth: share(new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, side: T.DoubleSide })),
-    glow: share(new T.MeshBasicMaterial({ vertexColors: true, toneMapped: false })),
-    glass: share(new T.MeshStandardMaterial({ color: PALETTE.glass, emissive: '#ff9b3d', emissiveIntensity: 0.75, roughness: 0.25, transparent: true, opacity: 0.5, depthWrite: false, side: T.DoubleSide })),
+    // Unlit, translucent via vertex alpha: candle + flame (alpha 1) are drawn first, then the front faces of the
+    // glowing panes blend over them. One draw call for the whole lit part of a lantern.
+    glow: share(new T.MeshBasicMaterial({ vertexColors: true, toneMapped: false, transparent: true, depthWrite: false })),
   };
-  materials.solid.name = 'lp-solid'; materials.cloth.name = 'lp-cloth'; materials.glow.name = 'lp-glow'; materials.glass.name = 'lp-glass';
+  materials.solid.name = 'lp-solid'; materials.cloth.name = 'lp-cloth'; materials.glow.name = 'lp-glow';
 
   function mesh(parent, geo, matKey, name) {
     if (!geo) return null;
     const m = new T.Mesh(geo, materials[matKey]);
     m.name = name || matKey;
-    const glass = matKey === 'glass' || matKey === 'glow';
+    const glass = matKey === 'glow';
     m.castShadow = !glass; m.receiveShadow = !glass;
     if (glass) m.userData.glass = true;
     parent.add(m);
     return m;
   }
 
-  const kit = { V, UP, C, flat, box, beam, lathe, cyl, ico, cone, torus, tube, blade, sheet, xf, along, jitter, warp, parts, materials, mesh, rng: mulberry, seedOf, hash4 };
+  const kit = { V, UP, C, flat, box, beam, lathe, cyl, ico, octa, cone, torus, tube, blade, sheet, xf, along, jitter, warp, parts, materials, mesh, rng: mulberry, seedOf, hash4 };
   KITS.set(T, kit);
   return kit;
 }
@@ -263,21 +315,27 @@ function timberPaint(T, axis = 'x', endHex = 'woodEnd') {
   const ai = axis === 'x' ? 'x' : axis === 'y' ? 'y' : 'z';
   return (c, m, n) => { if (Math.abs(n[ai]) > 0.85) c.lerp(end, 0.55); else if (n.y > 0.85) c.multiplyScalar(1.06); };
 }
-function nail(K, P, x, y, z, rot = [0, 0, 0]) { P.add(K.cyl(0.013, 0.014, 0.012, 5), 'iron', { at: [x, y, z], rot, tint: 0 }); }
+// n plank colours on a narrow woodMid -> woodLight ramp, shuffled deterministically by seed
+function calmTones(T, n, seed) {
+  const a = new T.Color(PALETTE.woodMid), b = new T.Color(PALETTE.woodLight), r = mulberry(seed);
+  return Array.from({ length: n }, (_, i) => a.clone().lerp(b, 0.3 + 0.55 * ((i * 0.618 + r()) % 1)));
+}
+function nail(K, P, x, y, z, rot = [0, 0, 0]) { P.add(K.box(0.02, 0.01, 0.02, 0), 'iron', { at: [x, y, z], rot, tint: 0, occlude: false }); }
 
 // ================================================================== DEBRIS
 function buildPlank(T, K, P, r) {
   const j = a => (r() - 0.5) * a;
-  // main board with a split, broken end (three fingers of different length) at +x
+  // main board with a broken end at +x: three splinters of different length that touch (no gaps, so it never
+  // reads as a fork), each tapering to a point
   const W = 0.25, H = 0.07, L = 1.0;
   const tone = ['woodMid', 'woodLight', 'woodMid'][Math.floor(r() * 3)];
   const tp = timberPaint(T, 'x');
   P.add(K.box(L, H, W, 0.016), tone, { at: [-0.2, 0, 0], jitter: 0.012, paint: tp });
-  const fingers = [[0.085, 0.12 + j(0.04)], [0.08, 0.03 + j(0.02)], [0.085, 0.08 + j(0.03)]];
-  let z = -W / 2;
-  for (const [fw, fl] of fingers) {
-    P.add(K.box(fl + 0.04, H * 0.96, fw - 0.014, 0.012), tone, { at: [0.3 - 0.02 + fl / 2, j(0.006), z + fw / 2], rot: [0, j(0.06), j(0.04)], jitter: 0.01, paint: tp });
-    z += fw;
+  const fl = [0.07 + j(0.02), 0.16 + j(0.03), 0.04 + j(0.02)], fw = W / 3;
+  for (let k = 0; k < 3; k++) {
+    const len = fl[k] + 0.05, sp = K.box(len, H * (0.97 - 0.06 * k), fw, 0.01);
+    K.warp(sp, v => { const t = clamp01((v.x + len / 2 - 0.035) / (len - 0.035)); v.z *= 1 - 0.7 * t; v.y *= 1 - 0.35 * t; v.z += (k - 1) * 0.012 * t; });
+    P.add(sp, tone, { at: [0.3 - 0.02 + len / 2 - 0.03, j(0.004), -W / 2 + fw * (k + 0.5)], rot: [0, (k - 1) * 0.03, j(0.03)], jitter: 0.006, paint: tp, occlude: false });
   }
   // a short cross batten nailed across the other end: reads as "salvaged raft piece"
   P.add(K.box(0.12, 0.05, 0.46, 0.012), 'woodDark', { at: [-0.52, H / 2 + 0.022, 0.02], rot: [0, 0.18, 0.02], jitter: 0.01, paint: timberPaint(T, 'z') });
@@ -328,19 +386,27 @@ function buildScrap(T, K, P, r) {
     if (j === 0 && i > nx * 0.6) z += ((i * 5) % 3) * 0.02;
     return [x, y, z];
   });
+  // Rust is painted per VERTEX so it blends across facets: it creeps in from the edges, collects in the
+  // corrugation valleys and along the bend, and breaks up with a soft two-octave noise. Ramp steel -> orange
+  // bloom -> rust -> dark scale.
+  const nz2 = (x, z) => 0.5 + 0.3 * Math.sin(x * 7.3 + ph) * Math.cos(z * 9.1 - ph * 0.7) + 0.2 * Math.sin(x * 19 + z * 15 + ph * 2);
   P.add(g, 'steel', {
-    tint: 0.1, facetPos: true,
-    paint: (c, m) => {
-      const edge = Math.min(Wd / 2 - Math.abs(m.x), D / 2 - Math.abs(m.z));
-      const nse = 0.5 + 0.5 * Math.sin(m.x * 11 + ph) * Math.cos(m.z * 13 - ph);
-      const k = clamp01((1 - edge / 0.14) * 0.9 + (nse - 0.6) * 1.4);
-      c.copy(k < 0.35 ? steel : k < 0.7 ? rustL : rust); if (k > 0.9) c.copy(rustD);
+    tint: 0.07, facetPos: true,
+    vpaint: (c, v) => {
+      const edge = Math.min(Wd / 2 - Math.abs(v.x), D / 2 - Math.abs(v.z));
+      const valley = Math.abs(v.y - ((v.x > foldX ? (v.x - foldX) * foldK : 0) + 0.1 * clamp01((v.z - 0.12) / (D / 2 - 0.12)) ** 2)) < 0.006 ? 0.18 : 0;
+      const bend = Math.max(0, 1 - Math.abs(v.x - foldX) / 0.06) * 0.25;
+      const k = clamp01(Math.pow(clamp01(1 - edge / 0.2), 1.6) * 1.1 + valley + bend + (nz2(v.x, v.z) - 0.55) * 0.9);
+      if (k < 0.3) c.lerp(steel, 0);
+      else if (k < 0.55) c.lerp(rustL, (k - 0.3) / 0.25 * 0.85);
+      else if (k < 0.85) c.copy(rustL).lerp(rust, (k - 0.55) / 0.3);
+      else c.copy(rust).lerp(rustD, (k - 0.85) / 0.15);
     },
   });
   // bolts along the bend and a rusty angle bracket
   const hAt = x => (x > foldX ? (x - foldX) * foldK : 0) + 0.03;
   for (const [x, z] of [[foldX - 0.05, -0.18], [foldX - 0.05, 0.0], [foldX - 0.05, 0.16], [-0.3, -0.1]]) P.add(K.cyl(0.02, 0.022, 0.018, 6), 'steelDark', { at: [x, hAt(x), z], tint: 0 });
-  P.add(K.box(0.22, 0.016, 0.06, 0.004), 'rustDark', { at: [-0.18, 0.04, 0.12] });
+  P.add(K.box(0.22, 0.016, 0.06, 0.004), 'rust', { at: [-0.18, 0.04, 0.12], vpaint: (c, v) => c.lerp(rustD, clamp01(0.5 + Math.sin(v.x * 40 + ph) * 0.5)) });
   P.add(K.box(0.016, 0.1, 0.06, 0.004), 'rust', { at: [-0.07, 0.085, 0.12], rot: [0, 0, -0.3] });
 }
 
@@ -390,7 +456,7 @@ export function createDebris(T, type, getMaterial, opts = {}) {
   const inner = new T.Group(); inner.name = `debris-${type}-model`; root.add(inner);
   const P = K.parts();
   def[0](T, K, P, r);
-  const geo = P.build({ y0: -0.25, y1: 0.25, lo: 0.7 });
+  const geo = P.build({ y0: -0.25, y1: 0.25, lo: 0.7, contact: 0.45, radius: 0.06 });
   const leafy = type === 'leaf' || type === 'scrap';
   if (type === 'barrel') {
     const tilt = opts.tilt != null ? opts.tilt : 0.14 + r() * 0.14;
@@ -443,28 +509,38 @@ export function createFloor(T, index = 0, getMaterial) {
   const end = new T.Color(PALETTE.woodEnd);
   for (const z of logZ) {
     P.add(K.cyl(LOG_R * 0.96, LOG_R, 1.97, 7, 0.012), r() < 0.5 ? 'bark' : 'barkDark', {
-      at: [0, LOG_Y, z], rot: [r() * 6, 0, Math.PI / 2], jitter: 0.008, tint: 0.07,
+      at: [0, LOG_Y, z], rot: [r() * 6, 0, Math.PI / 2], jitter: 0.008, tint: 0.07, occlude: true,
       paint: (c, m, n) => { if (Math.abs(n.x) > 0.8) c.lerp(end, 0.6); },
     });
   }
   const n = r() < 0.35 ? 6 : 7, pitch = 2 / n;
-  const tones = ['woodLight', 'woodMid', 'woodPale', 'woodMid', 'woodLight', 'woodDark'];
+  // Calm tone ramp: every plank is a blend between woodMid and woodLight, with the odd weathered (greyer) or
+  // older (darker) board. Keeps the deck one warm colour from first person instead of a light/dark barcode.
+  const mid = new T.Color(PALETTE.woodMid), light = new T.Color(PALETTE.woodLight), drift = new T.Color(PALETTE.drift);
   const tp = timberPaint(T, 'z');
+  // lashed planks (rope over the plank and round the log) at the edges and one in the middle; the rest are nailed
+  const lashed = new Set([0, n - 1, 2 + Math.floor(r() * (n - 4))]);
   for (let i = 0; i < n; i++) {
-    const x0 = -1 + i * pitch + 0.014, x1 = -1 + (i + 1) * pitch - 0.014, w = x1 - x0, xc = (x0 + x1) / 2;
+    const x0 = -1 + i * pitch + 0.009, x1 = -1 + (i + 1) * pitch - 0.009, w = x1 - x0, xc = (x0 + x1) / 2;
     const th = 0.058, top = FLOOR_TOP - r() * 0.007;
-    const tone = r() < 0.05 ? 'drift' : tones[Math.floor(r() * tones.length)];
+    const tone = mid.clone().lerp(light, 0.2 + 0.55 * r()), kind = r(), ps = seedOf(index) + i * 131;
+    if (kind < 0.1) tone.lerp(drift, 0.22); else if (kind > 0.88) tone.multiplyScalar(0.9);
     const len = 1.985 - r() * 0.02, dz = (r() - 0.5) * 0.01;
-    P.add(K.box(w, th, len, 0.014), tone, { at: [xc, top - th / 2, dz], rot: [0, (r() - 0.5) * 0.012, (r() - 0.5) * 0.02], jitter: 0.006, paint: tp, tint: 0.05 });
-    // nail pairs over each log
-    for (const z of logZ) for (const s of [-1, 1]) nail(K, P, xc + s * w * 0.28, top + 0.002, z + (r() - 0.5) * 0.02);
+    P.add(K.box(w, th, len, 0.014), tone, { at: [xc, top - th / 2, dz], rot: [0, (r() - 0.5) * 0.012, (r() - 0.5) * 0.02], jitter: 0.006, paint: tp, tint: 0.05,
+      vpaint: (c, v) => c.multiplyScalar(0.93 + 0.14 * hash4(Math.round(v.z * 3), Math.round(v.x * 40), 0, ps)) }); // weathering drift along the board
+    // faint grain streaks (slightly darker slivers on the top face) and the occasional split along the grain
+    for (let k = 0, ns = 1 + Math.floor(r() * 2.5); k < ns; k++) { const sl = 0.5 + r() * 0.9, sz = (r() - 0.5) * (1.8 - sl); P.add(K.box(0.014 + r() * 0.01, 0.003, sl, 0), tone.clone().multiplyScalar(0.9), { at: [xc + (r() - 0.5) * w * 0.7, top + 0.001, sz + dz], tint: 0, occlude: false }); }
+    if (r() < 0.3) { const cx = xc + (r() - 0.5) * w * 0.4, cl = 0.35 + r() * 0.4, cz = (r() - 0.5) * (1.6 - cl); P.add(K.box(0.008, 0.004, cl, 0), 'woodDeep', { at: [cx, top + 0.0012, cz], rot: [0, (r() - 0.5) * 0.04, 0], tint: 0, occlude: false }); }
+    for (const z of logZ) {
+      if (lashed.has(i)) {
+        for (const oz of [-0.02, 0.02]) {
+          const zz = z + oz, rt = top + 0.004;
+          P.add(K.tube([K.V(x0 - 0.01, top - 0.055, zz), K.V(x0 + 0.004, rt, zz), K.V(xc, rt + 0.004, zz + oz * 0.2), K.V(x1 - 0.004, rt, zz), K.V(x1 + 0.01, top - 0.055, zz)], 0.015, 3, 8), 'ropeDark', { tint: 0.05, twist: 3 });
+        }
+      } else for (const s of [-1, 1]) nail(K, P, xc + s * w * 0.28, top + 0.002, z + (r() - 0.5) * 0.02);
+    }
   }
-  // rope lashings at the four corners
-  for (const z of logZ) for (const xs of [-1, 1]) {
-    const x = xs * (1 - pitch / 2);
-    for (const dx of [-0.025, 0.025]) P.add(K.torus(LOG_R + 0.012, 0.011, 3, 9), 'rope', { at: [x + dx, 0.1, z], rot: [0, Math.PI / 2, 0], scale: [1, 1.1, 1], tint: 0.1 });
-  }
-  K.mesh(g, P.build({ y0: 0, y1: FLOOR_TOP, lo: 0.6 }), 'solid', 'floor');
+  K.mesh(g, P.build({ y0: 0, y1: FLOOR_TOP, lo: 0.6, contact: 0.5, radius: 0.06 }), 'solid', 'floor');
   g.userData.kind = 'floor'; g.userData.index = index; g.userData.topY = FLOOR_TOP; g.userData.bounds = FLOOR_BOUNDS;
   g.userData.dispose = () => g.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
   return g;
@@ -484,19 +560,19 @@ function craftCrate(T, K, S) {
     P.add(K.box(F * 0.8, F, B - 2 * F + 0.01, 0.012), 'woodDark', { at: [s * hb, y, 0], paint: tz, jitter: 0.005 });
   }
   // slats on four sides, three each, with a gap
-  const tones = ['woodLight', 'woodMid', 'woodPale'];
+  const tones = calmTones(T, 4, 11);
   const slatH = (y1 - y0 - 2 * F) / 3 - 0.02;
   for (let k = 0; k < 3; k++) {
     const y = y0 + F + 0.01 + slatH / 2 + k * (slatH + 0.02);
     for (const s of [-1, 1]) {
-      P.add(K.box(B - 2 * F, slatH, 0.035, 0.01), tones[(k + (s > 0 ? 1 : 0)) % 3], { at: [0, y, s * (hb - 0.005)], paint: tp, jitter: 0.006 });
-      P.add(K.box(0.035, slatH, B - 2 * F, 0.01), tones[(k + 2) % 3], { at: [s * (hb - 0.005), y, 0], paint: tz, jitter: 0.006 });
+      P.add(K.box(B - 2 * F, slatH, 0.035, 0.01), tones[(k + (s > 0 ? 1 : 0)) % 4], { at: [0, y, s * (hb - 0.005)], paint: tp, jitter: 0.006 });
+      P.add(K.box(0.035, slatH, B - 2 * F, 0.01), tones[(k + 2) % 4], { at: [s * (hb - 0.005), y, 0], paint: tz, jitter: 0.006 });
     }
   }
   // diagonal braces front/back
   for (const s of [-1, 1]) P.add(K.box(0.07, Math.hypot(B - 2 * F, y1 - y0 - 2 * F) - 0.04, 0.03, 0.01), 'woodMid', { at: [0, ym, s * (hb + 0.028)], rot: [0, 0, s * Math.atan2(B - 2 * F, y1 - y0 - 2 * F)], paint: ty });
   // lid planks
-  for (let i = 0; i < 4; i++) P.add(K.box(0.2, 0.035, B - 0.02, 0.01), tones[i % 3], { at: [-0.3 + i * 0.2 + (i - 1.5) * 0.004, top + 0.017, 0], rot: [0, (i - 1.5) * 0.01, 0], paint: tz, jitter: 0.006 });
+  for (let i = 0; i < 4; i++) P.add(K.box(0.2, 0.035, B - 0.02, 0.01), tones[i], { at: [-0.3 + i * 0.2 + (i - 1.5) * 0.004, top + 0.017, 0], rot: [0, (i - 1.5) * 0.01, 0], paint: tz, jitter: 0.006 });
   for (let i = 0; i < 4; i++) for (const z of [-0.33, 0.33]) nail(K, P, -0.3 + i * 0.2, top + 0.036, z);
   // rope handles on the x sides
   for (const s of [-1, 1]) {
@@ -507,7 +583,7 @@ function craftCrate(T, K, S) {
 
 function craftBench(T, K, S) {
   const P = S.solid, tp = timberPaint(T, 'x'), ty = timberPaint(T, 'y');
-  const tones = ['woodLight', 'woodMid', 'woodPale'];
+  const tones = calmTones(T, 3, 5);
   for (let i = 0; i < 3; i++) P.add(K.box(1.4, 0.06, 0.135, 0.014), tones[i], { at: [0, 0.45, -0.14 + i * 0.14], rot: [0, (i - 1) * 0.008, 0], paint: tp, jitter: 0.008 });
   for (const sx of [-0.56, 0.56]) {
     for (const sz of [-0.15, 0.15]) P.add(K.box(0.08, 0.42, 0.08, 0.014), 'woodDark', { at: [sx, 0.21, sz], rot: [sz * 0.25, 0, 0], paint: ty, jitter: 0.008 });
@@ -525,22 +601,23 @@ function craftNet(T, K, S) {
   const P = S.solid, ty = timberPaint(T, 'x');
   const L = 1.62, h = L / 2;
   for (const s of [-1, 1]) {
-    P.add(K.cyl(0.035, 0.035, L, 6, 0.008), 'woodDark', { at: [0, 0.06, s * (h - 0.04)], rot: [0, 0, Math.PI / 2], jitter: 0.006, paint: ty });
-    P.add(K.cyl(0.035, 0.035, L - 0.1, 6, 0.008), 'woodMid', { at: [s * (h - 0.04), 0.1, 0], rot: [Math.PI / 2, 0, 0], jitter: 0.006, paint: timberPaint(T, 'z') });
+    P.add(K.cyl(0.04, 0.04, L, 6, 0.008), 'woodDark', { at: [0, 0.06, s * (h - 0.04)], rot: [0, 0, Math.PI / 2], jitter: 0.006, paint: ty, occlude: true });
+    P.add(K.cyl(0.04, 0.04, L - 0.1, 6, 0.008), 'woodDark', { at: [s * (h - 0.04), 0.1, 0], rot: [Math.PI / 2, 0, 0], jitter: 0.006, paint: timberPaint(T, 'z'), occlude: true });
   }
-  const n = 7, sag = y => 0.06 - 0.025 * (1 - y * y);
+  const netRope = new T.Color(PALETTE.ropeDark).lerp(new T.Color(PALETTE.bark), 0.25);
+  // rope mesh: thick laid rope (spiral-shaded), sagging into the middle, knotted at every crossing
+  const n = 6, sagAt = (a, b) => 0.085 - 0.035 * (1 - a * a) * (1 - b * b), span = h - 0.06;
   for (let k = 1; k < n; k++) {
-    const t = -h + 0.04 + (L - 0.08) * k / n, u = t / h;
+    const t = -span + 2 * span * k / n, u = t / span;
     const ptsX = [], ptsZ = [];
-    for (let q = 0; q <= 6; q++) { const v = -1 + 2 * q / 6, sv = v * (h - 0.06); ptsX.push(K.V(sv, 0.08 - 0.04 * (1 - v * v) * (1 - u * u), t)); ptsZ.push(K.V(t, 0.08 - 0.04 * (1 - v * v) * (1 - u * u), sv)); }
-    P.add(K.tube(ptsX, 0.012, 3, 12), 'ropeDark', { tint: 0.1 });
-    P.add(K.tube(ptsZ, 0.012, 3, 12), 'rope', { tint: 0.1 });
+    for (let q = 0; q <= 4; q++) { const v = -1 + 2 * q / 4, sv = v * span; ptsX.push(K.V(sv, sagAt(v, u) + 0.008, t)); ptsZ.push(K.V(t, sagAt(v, u), sv)); }
+    P.add(K.tube(ptsX, 0.021, 3, 8), netRope, { tint: 0.05, twist: 3 });
+    P.add(K.tube(ptsZ, 0.021, 3, 8), netRope, { tint: 0.05, twist: 3 });
+    for (let q = 1; q < n; q++) { const v = -span + 2 * span * q / n; P.add(K.octa(0.036), 'barkLight', { at: [v, sagAt(v / span, u) + 0.006, t], rot: [0, 0.6 + k + q, 0], scale: [1, 0.7, 1], tint: 0.12 }); }
   }
-  for (const [x, z] of [[-h + 0.04, -h + 0.04], [h - 0.04, -h + 0.04], [-h + 0.04, h - 0.04], [h - 0.04, h - 0.04]]) {
-    P.add(K.torus(0.05, 0.012, 3, 8), 'ropeDark', { at: [x, 0.08, z], rot: [Math.PI / 2, 0, 0.7] });
-  }
-  for (const [x, z] of [[0, -h + 0.02], [0, h - 0.02], [-h + 0.02, 0.3], [h - 0.02, -0.3]]) P.add(K.cyl(0.085, 0.085, 0.13, 6, 0.025), 'float', { at: [x, 0.06, z], rot: [Math.PI / 2, 0, x ? Math.PI / 2 : 0], paint: (c, m, nn) => { if (Math.abs(m.x - x) + Math.abs(m.z - z) < 0.03) c.set(PALETTE.floatLight); } });
-  void sag;
+  // corner lashings binding the frame
+  for (const [x, z] of [[-h + 0.04, -h + 0.04], [h - 0.04, -h + 0.04], [-h + 0.04, h - 0.04], [h - 0.04, h - 0.04]]) P.add(K.torus(0.055, 0.014, 3, 8), 'ropeDark', { at: [x, 0.08, z], rot: [Math.PI / 2, 0, 0.7], scale: [1, 1, 1.3], twist: 8 });
+  for (const [x, z] of [[0, -h + 0.02], [0, h - 0.02], [-h + 0.02, 0.3], [h - 0.02, -0.3]]) P.add(K.cyl(0.085, 0.085, 0.13, 6, 0.025), 'float', { at: [x, 0.06, z], rot: [Math.PI / 2, 0, x ? Math.PI / 2 : 0], paint: (c, m) => { if (Math.abs(m.x - x) + Math.abs(m.z - z) < 0.03) c.set(PALETTE.floatLight); } });
 }
 
 function craftLantern(T, K, S) {
@@ -570,10 +647,12 @@ function craftLantern(T, K, S) {
   P.add(K.cyl(0.03, 0.03, 0.035, 6), 'brass', { at: [LX, 1.51, 0] });
   P.add(K.cyl(0.045, 0.045, 0.012, 6), 'brass', { at: [LX, 1.53, 0] });
   P.add(K.cyl(0.05, 0.045, 0.02, 6), 'brass', { at: [LX, 1.13, 0] });
-  // glass (translucent, emissive, no shadows) and unlit flame/candle
-  S.glass.add(K.box(0.15, 0.24, 0.15, 0.01), 'glass', { at: [LX, 1.25, 0], tint: 0 });
+  // lit part: see the glow material (one translucent, unlit, unshadowed mesh)
+  // candle + flame, then glowing panes (translucent, warm, brighter low down where the flame is)
   S.glow.add(K.cyl(0.026, 0.028, 0.08, 6), 'candle', { at: [LX, 1.18, 0], tint: 0 });
   S.glow.add(K.cone(0.022, 0.07, 5), 'flame', { at: [LX, 1.255, 0], tint: 0, paint: (c, m) => { if (m.y < 1.245) c.set(PALETTE.flameCore); } });
+  const hot = new T.Color(PALETTE.flame);
+  S.glow.add(K.box(0.15, 0.24, 0.15, 0.01), 'glass', { at: [LX, 1.25, 0], tint: 0, edge: 0, alpha: 0.42, vpaint: (c, v) => c.lerp(hot, clamp01(1.3 - (v.y - 1.13) / 0.24 * 1.4) * 0.6) });
 }
 
 function craftPalm(T, K, S) {
@@ -689,13 +768,12 @@ export function createCraft(T, type) {
   if (!build) return null;
   const K = lowpoly(T);
   const g = new T.Group(); g.name = 'craft_' + key;
-  const S = { solid: K.parts(), cloth: K.parts(), glass: K.parts(), glow: K.parts() };
+  const S = { solid: K.parts(), cloth: K.parts(), glow: K.parts() };
   build(T, K, S);
   g.updateMatrixWorld(true);
-  const ao = { y0: 0, y1: 0.5, lo: 0.68 };
+  const ao = { y0: 0, y1: 0.5, lo: 0.68, contact: 0.45, radius: 0.07 };
   K.mesh(g, S.solid.build(ao), 'solid', key + 'Solid');
   K.mesh(g, S.cloth.build(ao), 'cloth', key + 'Cloth');
-  K.mesh(g, S.glass.build(), 'glass', key + 'Glass');
   K.mesh(g, S.glow.build(), 'glow', key + 'Glow');
   g.updateMatrixWorld(true);
   const box = new T.Box3().setFromObject(g), size = box.getSize(new T.Vector3());

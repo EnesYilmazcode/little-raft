@@ -12,7 +12,7 @@ OUT.mkdir(exist_ok=True)
 VIEWS = [
     ("grid_0", "view=grid&page=0", (1560, 780)), ("grid_1", "view=grid&page=1", (1560, 780)),
     ("compare_0", "view=compare&page=0", (1560, 520)), ("compare_1", "view=compare&page=1", (1560, 520)),
-    ("scene", "view=scene", (1600, 620)), ("stats", "view=stats", (600, 400)),
+    ("scene", "view=scene", (1600, 620)), ("fp", "view=fp", (1600, 900)), ("stats", "view=stats", (600, 400)),
 ]
 only = set(sys.argv[1:])
 
