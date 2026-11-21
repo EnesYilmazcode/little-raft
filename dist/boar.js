@@ -29,7 +29,7 @@ export function createBoar(ctx) {
   const st = defaults(), ev = { hit: -1, alert: false }, out = {};
   const players = [{ x: 0, z: 0, on: false, feet: NaN, ground: NaN }, { x: 0, z: 0, on: false, feet: NaN, ground: NaN }];
   const isHost = () => ctx.role !== 'guest';
-  let alertSeed = -1, seenHg = -1, seenSeed = -1, flash = 0, phase = 0, clock = 0;
+  let frozen = false, alertSeed = -1, seenHg = -1, seenSeed = -1, flash = 0, phase = 0, clock = 0;
   const hitAt = { host: -1e9, guest: -1e9 };
 
   // ---------- scene: 2 draw calls (body + 4 instanced legs, one material) ----------
@@ -84,7 +84,7 @@ export function createBoar(ctx) {
     clock += dt;
     const isl = islandNow();
     if (isHost() && isl && isl.seed !== st.s) spawnFor(st, isl.seed, isl.R);
-    if (isHost() && isl && ctx.running && st.a === LIFE.alive && st.s === isl.seed) simulate(dt, isl);
+    if (isHost() && isl && ctx.running && !frozen && st.a === LIFE.alive && st.s === isl.seed) simulate(dt, isl);
     draw(dt, isl);
   }
 
@@ -226,6 +226,7 @@ export function createBoar(ctx) {
     hit(dmg = 5) { if (!isHost()) return null; flash = 1; return applyHit(dmg, ctx.physics, 'host'); },
     kill() { if (!isHost()) return null; let r = null; while (st.a === LIFE.alive) r = hitBoar(st, BOAR.MAX_DMG); if (r === 'killed') emit({ kind: 'notice', text: TEXT.dead }, 'all'); return debug.state(); },
     canButcher,
+    freeze(on = true) { frozen = !!on; return frozen; }, // QA: hold the pose (screenshots)
   };
 
   return { name: 'tusker', update, serialize, load, action, prompt, interact, debug, dispose };
