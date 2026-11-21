@@ -19,6 +19,8 @@ Files:
 
 ## What the game does today
 
+**Current main (retarget, round 3).** `dist/game.js` (1780 lines) now imports `createOceanAudio` from `dist/audio.js` (550 lines) and drives it: 20 events plus 5 aliases, buses `master/effects/ambience/music`, a music bed, `tick(dt, {swimming})`, and an `output` hook for diving's underwater low-pass. The engine below is now a superset of that API, and adopting it is a file swap; see "Retarget to main" below and `audio-ADOPT.md`. The two bullets that follow describe the fleet snapshot the engine was first written against.
+
 - `dist/audio.js` (`createOceanAudio`) exists but **nothing imports it**. It has 8 events, a looped brown-noise surf at gain 0.025, and node-graph one-shots.
 - `dist/game.js` makes every sound with `beep(f)` at line 400: one sine with a pitch blip, a new `AudioContext` on first use, and no buses, ducking, spatialisation or ambience. Its 7 call sites are effect feedback (line 530), pickup (618), rod cast (640), hook throw (661), player splash (690), catch (792) and hook returned (804). The `AudioContext` is carried across hot updates as `X.audio` and `capture().audio`.
 
@@ -130,6 +132,106 @@ Order of loudness now: catch (−16 close, −23 at hook distance), big splash, 
 - `ambience-*`: a broadband bed with a visible wash on each crest. `ambience-rough` now reads as one continuous body from the lows to about 2 kHz, with no band missing between the bed and the wind.
 - `catch-16m`: the same shape as `catch` (sweep, drips, plucks, octave chime), about 7 dB lower and slightly darker. `splash-16m`: a short, dull burst plus two bubbles.
 - `mix-ducking`: every event is distinct over the bed, and the catch chime is the brightest line in the picture.
+
+## Retarget to main (round 3)
+
+**API diff (old fleet `dist/audio.js`, 337 lines → main, 550 lines).** These were added on main:
+- events `place craft plant water land step reel catch bite open close deny`;
+- `ALIASES` (`pickup→collect`, `cast/hook→throw`, `pour→water`, `click→ui`);
+- `BUSES` with `setBus` (returns the clamped value, `null` if unknown) and `getBus`;
+- `setMusic` and the `music` getter, with a pad and plucks driven by `tick`;
+- `tick(dt, {swimming})` for lapping, creaks, music and swim muffling;
+- the `output(ctx)` option.
+
+**What uses it.** Grepping all of `dist/*.js`, every sound goes through `game.js`:
+- `play` at 551 (`beep(f)` → event for fishing-cooking's `host.beep`), 750, 772 (`e.sound`, or the effect kind), 919, 931, 969, 991, 1059–1062, 1184, 1196–1198, 1345 and 1752;
+- `tick` at 1222, `resume` at 261 and 1343–1344, `setVolume`/`setBus` at 260, `destroy` at 1725;
+- `raftDebug.audio` for the menus.
+
+Sailing, wildlife, smelter, grill and diving play nothing of their own. Their actions come out as generic `craft`/`loot`/`notice` effects. diving only offers `audioOut(ctx)` and the `raft:underwater` event. Wildlife has gulls, fish, a dolphin and a turtle, and **no shark**, so no shark sound was added.
+
+**What changed in the engine.**
+- **Drop-in superset.** Main's 20 events come first, in the same order. `ALIASES` and `BUSES` are identical, and so are every option, member and return value. The round-2 `pickup` recipe is now `grab`, because main aliases `pickup` to `collect`. The music bed is ported. `MIN_GAP.reel` is main's 75 ms, because `game.js` calls `play('reel')` every frame.
+- **New events, 12–58 nodes each.**
+  - cooking: `sizzle` (wet contact, then hiss and fat crackle);
+  - smelter: `stoke` (log thunk, fire whumpf, crackle), `clank` (ore into the crucible), `ingot` (bright clink, then set down);
+  - sailing: `sail` (canvas flaps, pulley zip, rope groan), `anchor` (accelerating chain rattle, then a splash);
+  - diving: `dive` (muffled plunge, rush, rising bubbles), `surface` (water shed, drips, breath in).
+
+  Main's own events also get recipes in the engine's style (`place plant water land step open close deny`).
+- **Continuous state from `tick`.**
+  - `sail` (`world.sailing`): wind from `windStr`, a 6-node canvas luff loop while the sail is up, and the sail/anchor edges.
+  - `flow`: hull speed.
+  - `swimming`: wind ×0.33.
+  - `underwater`, or diving's `raft:underwater` event: plays `dive`/`surface`, closes the tone stage to 1 kHz on top of diving's 600 Hz output low-pass, and drops the wind.
+- **Main bug fixed.** Underwater muffling was lost after every hot update: `let diving` (game.js:320) is still in its TDZ when the hot-update mount calls `sfx.resume()` at 261. `output` is now retried from `tick()` until it returns a node. `adopt.py --check` asserts `routed` after a real hot update.
+- **Judge's round-2 defect fixed: a failed mount silenced the ocean.** The taken-over handle records the engine it came from (`from`). `destroy()` first hands the ocean back to that engine if it is still alive, moving the fade gain onto its ambience bus in the same task. The old engine's `tick()` also restarts a fresh ocean if the owner died without handing back (a shared `core.dead` flag).
+- **Version field.** The shared per-context record and every ocean handle carry `v: SHARED_VERSION` (2). A build takes over or reuses only its own version.
+- **Seeded randomness.** `seed` now seeds every recipe and the noise buffers, so render cases are reproducible: the same seed gives identical numbers run to run.
+- **One-shots never loop.** A one-shot longer than its noise buffer now plays it back to back with plain sources instead of `loop = true`, so every voice ends by itself, under main's fake-graph test too.
+
+**Evidence (this branch).**
+
+`adopt.py --check` passes all 18 checks. It boots the game headless with the brief's `executable_path` and SwiftShader args.
+
+| check | result |
+|---|---|
+| contexts | 1 engine context; a second context is onboarding.js's own chime, which is not the engine's |
+| worklet | URL `audio-worklet.js?build=v3-survival-ae77fa84ac2b` |
+| routing | limiter routed into diving's low-pass |
+| events | all 35 EVENTS schedule in the game |
+| underwater | the `raft:underwater` event is seen, then cleared |
+| buses | `[0.5, 1, 0.7, 0.7]` |
+| failed hot update | live.js kept the old build ("injected mount failure"). The old engine owns a worklet ocean again, with no new worklet node. Level: median −37.9 dB, worst 100 ms dip 3.0 dB, minimum −42.7 dB (control 4 s before: dip 1.2 dB). |
+| good hot update | same AudioContext, worklet nodes still 1, every module carries `?build=`. Dip 3.5 dB, minimum −43.8 dB (control 1.6 dB). The new engine re-routed into the new diving module's low-pass. |
+
+**Same check with the round-2 engine** (`--engine` pointed at `origin/review/audio`'s `audio.js`): 8 checks fail.
+- `sfx.tick is not a function`: it is not a drop-in for main.
+- Failed mount: the ocean falls to **−120 dB**, a dip of 82.9 dB.
+- Good swap: minimum −88 dB.
+
+**`tests/` (node --test, 533 tests).** Unpatched dist: 532 pass. Patched copy (`RAFT_DIST`, engine and the 3 edits): 532 pass. The one failure is identical in both, a timing assertion (`atlas build took 12657 ms` on this loaded box), not audio. Both `survival.test.mjs` audio API tests pass against the new engine. The browser audits `tests/audit/audio1_*` and `perf1_*` cannot run on current main patched or unpatched: they click a `#solo` that is not visible in the current title UI, which is harness drift.
+
+**shoot.py (55 cases).**
+- **Health.** No errors and no clipping. Max peak −2.8 dBFS (the mix case). Every |DC| < 8e-4: the low thumps got a 40 Hz high-pass, and stoke now uses pink noise. Every one-shot tail decays; the only warning is `music`, a 12 s render of a bed that keeps playing.
+- **Loudness** (momentary, LUFS-like):
+
+  | sound | level |
+  |---|---|
+  | catch | −17.0 |
+  | anchor | −20.5 |
+  | stoke | −21.9 |
+  | build | −22.1 |
+  | dive | −22.8 |
+  | hammer, ingot | −25.3 |
+  | sizzle | −25.6 (first take −17.6, cut 8 dB) |
+  | land | −26.8 |
+  | sail-luff loop | −28.4 |
+  | clank | −28.9 |
+  | water | −29.3 |
+  | place | −29.4 |
+  | sail | −29.5 |
+  | surface | −29.6 |
+  | calm sea | −29.7 |
+  | plant | −33.1 |
+  | deny | −35.1 |
+  | step | −36.0 |
+  | music bed | −38 |
+  | close | −39.1 |
+  | open | −46 |
+
+  The catch is still the loudest one-shot, and the UI sits at the bottom.
+- **Underwater case.** The 2–8 kHz band drops from −45.2 dB to −52.7 dB when under (engine tone stage only; in the game diving's 600 Hz output filter comes on top).
+- **`play()` cost.** Median main-thread JS for the new events is 0.4–2.0 ms (anchor 2.0 ms and 58 nodes, sizzle 1.2 ms and 36). p95 spikes of 10–200 ms appear on every event, old ones included, and come from GC and load on this shared box.
+
+**Spectrograms read.**
+- `sizzle`: a 1.8 kHz contact burst, then a 2–10 kHz hiss decaying to about 1.5 s, with faint crackle ticks.
+- `stoke`: a knock, then a low noise whumpf sweeping up to about 1.4 kHz and back, then sparse broadband crackles.
+- `ingot`: two bright inharmonic clinks (1.75, 4, 6.6, 9.5 kHz partials) with the first ringing to about 0.6 s.
+- `anchor`: six accelerating chain clicks with 2–2.6 kHz pings, then a broadband splash and bubbles.
+- `dive`: a low plunge whose top closes from about 3 kHz, then upward-chirping bubbles at 300–900 Hz.
+- `sail-luff`: flap bursts at 0.5 s and 3.5 s with a 400–900 Hz flutter band (vertical banding) between them.
+- `underwater`: at 3 s the sea above about 2 kHz goes dark and the dive bubbles show; at 6.5 s the surface shed and breath appear and the top end returns. The hammer transients still show faint lines up to 10 kHz under water (one 12 dB/oct stage); in the game diving's 600 Hz output filter removes them.
 
 ## Decision
 
