@@ -9,18 +9,18 @@ import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
-import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { PlayerPhysics } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
+import { Bag, ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { PlayerPhysics, PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
-import { floorTarget, decorCheck, normaliseDecor, createGhosts, tileAt, wrapRot, ROT_STEP, FINE_STEP, DECOR_REACH, FLOOR_REACH } from './placement.js?build=v3-survival-ae77fa84ac2b';
+import { floorTarget, decorCheck, normaliseDecor, createGhosts, FOOTPRINT, wheelDelta, decorOnRay, floorRemoveBlock, refundOf, tileAt, wrapRot, ROT_STEP, FINE_STEP, DECOR_REACH, FLOOR_REACH } from './placement.js?build=v3-survival-ae77fa84ac2b';
 import * as Farm from './farming.js?build=v3-survival-ae77fa84ac2b'; // farming
 import { createFarmView } from './farming-view.js?build=v3-survival-ae77fa84ac2b'; // farming
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
-import { floorBlock, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
-import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
+import { floorBlock, GUEST_REACH_SLACK, BLOCK_TEXT, placePrompt } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
+import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers, playerInWay, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
 import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
@@ -45,7 +45,7 @@ const LOOT = Object.freeze({wood:{wood:2}, leaf:{leaf:1}, scrap:{scrap:1}, plast
 const STOCK_KEYS = Object.freeze(['wood', 'leaf', 'scrap', 'plastic']); // legacy world.stock (derived)
 const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
-const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12});
+const BLOCK_RADIUS = Object.freeze({palm:.42, bench:.45, crate:FOOTPRINT.crate, sail:FOOTPRINT.sail, lantern:FOOTPRINT.lantern}); // number: circle radius; array: the placement rect
 const SAVE = 'little-raft-v1';
 const FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 8, PICKUP_REACH = 2.5;
 const LOOK_SENSITIVITY = .0022, DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
@@ -206,6 +206,7 @@ export function mount(transfer = null) {
   let yaw = Number.isFinite(X?.yaw) ? X.yaw : 0, pitch = Number.isFinite(X?.pitch) ? X.pitch : -.28;
   let walking = false, walkPhase = Number.isFinite(X?.walkPhase) ? X.walkPhase : 0, swing = 0;
   const pointer = new T.Vector2(), ray = new T.Raycaster(), plane = new T.Plane(new T.Vector3(0, 1, 0), -.22);
+  let removeTarget = null; // hammer: what X would remove (prompt only)
   let hover = null, mouse = {x:0, y:0, inside:false}, frameAim = null, pickTarget = null;
   const raftPose = {y:X?.raftPose?.y ?? 0, rx:X?.raftPose?.rx ?? 0, rz:X?.raftPose?.rz ?? 0};
   let physics = makePhysics(X);
@@ -294,7 +295,8 @@ export function mount(transfer = null) {
       + '<li><kbd>Hook</kbd><span><b>Throw.</b> Hold click to power up, aim higher to throw farther, release. Hold again to reel in everything it touches.</span></li>'
       + '<li><kbd>E</kbd><span><b>Pick up</b> a supply right beside you, or open your bag to craft. <kbd>Tab</kbd> / <kbd>I</kbd> open the bag too; <kbd>E</kbd>, <kbd>I</kbd> or <kbd>Esc</kbd> close it. Inside, <kbd>Tab</kbd> and the arrow keys move between slots.</span></li>'
       + '<li><kbd>Craft</kbd><span><b>Make tools.</b> A Hammer builds raft floors (2 wood, 2 plastic each). A Fishing Rod catches fish. Crafted decorations are placed one at a time.</span></li>'
-      + '<li><kbd>R</kbd><span><b>Repair</b> a worn hook for 2 wood and 1 scrap.</span></li>'
+      + '<li><kbd>X</kbd><span><b>Remove</b> the floor or piece you aim at while holding the Hammer. You get about half its materials back.</span></li>'
+      + '<li><kbd>R</kbd><span><b>Rotate</b> the piece you are placing (<kbd>Shift</kbd> + wheel turns it finely), or <b>repair</b> a worn hook for 2 wood and 1 scrap.</span></li>'
       + '<li><kbd>Esc</kbd><span><b>Menu.</b> Settings, Play together and this guide.</span></li>';
     const note = $('#help .guide-note'); if (note) note.textContent = 'Everyone has their own bag; the raft and the sea are shared. Nothing can hurt you, and your raft never sinks. Mouse won\'t lock? Drag the ocean to look instead.';
   }
@@ -315,7 +317,7 @@ export function mount(transfer = null) {
     farmView = createFarmView(T, {getModel:k => getModel(k)}); scene.add(farmView.group); // farming
     itemsGroup = new T.Group(); scene.add(itemsGroup);
     player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
-    ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => createCraft(T, k)});
+    ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => (Farm.isPlot({type:k}) && farmView ? farmView.ghostModel('planter') : createCraft(T, k))}); // a planter is placed empty, so ghost the empty pot
     const ropeGeo = new T.BufferGeometry(); ropeAttr = new T.BufferAttribute(new Float32Array((ROPE_SEGMENTS + 1) * 3), 3); ropeAttr.setUsage(T.DynamicDrawUsage); ropeGeo.setAttribute('position', ropeAttr);
     rope = new T.Line(ropeGeo, new T.LineBasicMaterial({color:'#e9d39a'})); rope.visible = false; rope.frustumCulled = false; scene.add(rope);
     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
@@ -411,8 +413,7 @@ export function mount(transfer = null) {
       if (guestWaiting()) html = 'Waiting for your brother’s raft…';
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
       else if (farmPlot(frameAim)) { const t = Farm.promptFor(farmPlot(frameAim).farm, heldKind()); html = t.startsWith('E  ') ? '<kbd>E</kbd>' + esc(t.slice(3)) : esc(t); } // farming
-      else if (hover?.blocked) html = esc(BLOCK_TEXT[hover.blocked]);
-      else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
+      else if (hover || removeTarget) html = placePrompt(hover, heldKind(), {remove:removeTarget ? (removeTarget.what === 'floor' ? 'floor' : ITEM_INFO[removeTarget.type]?.name ?? removeTarget.type) : '', name:ITEM_INFO[heldKind()]?.name ?? heldKind(), cost:Object.entries(FLOOR_COST).map(([k, n]) => `${n} ${itemName(k)}`).join(', '), missing:heldKind() === 'hammer' ? missingText(localBag(), FLOOR_COST) : ''}); // what a click does, or why it can't
       else if (hook?.fishing) html = esc(castPrompt(hook, fishWait));
       else if (castOut() && castOut().stage === 'floating') html = caughtList(castOut()).length ? 'Hold click to reel it in' : 'Hold click to reel';
     }
@@ -511,7 +512,8 @@ export function mount(transfer = null) {
         if (along > 0 && along < 5 && along < best && ray.ray.distanceSqToPoint(m.position) < .2) { best = along; item = it; }
       }
     }
-    return {point:ray.ray.intersectPlane(plane, new T.Vector3()), item, dir:ray.ray.direction.clone(), local:deckHit()};
+    const local = deckHit(); // also leaves the raft-local ray in localRay
+    return {point:ray.ray.intersectPlane(plane, new T.Vector3()), item, dir:ray.ray.direction.clone(), local, lray:raft ? {o:localRay.origin.clone(), d:localRay.direction.clone()} : null};
   }
   function pickScreen(x, y) { const r = canvas.getBoundingClientRect(); return pickNdc((x - r.left) / r.width * 2 - 1, -(y - r.top) / r.height * 2 + 1); }
   const pickCenter = () => pickNdc(0, 0);
@@ -535,7 +537,7 @@ export function mount(transfer = null) {
   }
   // Hammer: {kind:'floor', x, z} grid cells. Placeable: {kind, x, z, rot} raft-local metres. ok = can place right now.
   // Runs every frame, so it fills one reused result (read it right away; debug state copies it).
-  // blocked: '' or a BLOCK_TEXT reason ('bound' | 'cap') the player is told about (red ghost + prompt).
+  // blocked: '' or a BLOCK_TEXT reason ('bound' | 'cap' | 'overlap' | 'edge' | 'self' | 'brother') the player is told about (red ghost + prompt).
   const placed = {kind:'', x:0, z:0, rot:0, ok:false, blocked:''}, probe = {type:'', x:0, z:0, rot:0};
   const setPlaced = (kind, x, z, rot, ok, blocked = '') => { placed.kind = kind; placed.x = x; placed.z = z; placed.rot = rot; placed.ok = ok && !blocked; placed.blocked = blocked; return placed; };
   function placementFor(kind, p) {
@@ -548,7 +550,9 @@ export function mount(transfer = null) {
     }
     if (!DECOR_TYPES.includes(kind) || !nearDeck(p.x, p.z) || Math.hypot(p.x - physics.x, p.z - physics.z) > DECOR_REACH) return null;
     probe.type = kind; probe.x = Math.round(p.x * 1000) / 1000; probe.z = Math.round(p.z * 1000) / 1000; probe.rot = placeRot;
-    return setPlaced(kind, probe.x, probe.z, placeRot, decorCheck(hasTile, world.decor, probe) === 'ok');
+    const res = decorCheck(hasTile, world.decor, probe), ok = res === 'ok';
+    const inWay = ok ? playerInWay(decorBlockers(probe, BLOCK_RADIUS, 1), [physics, other], PLAYER_CONSTANTS.BODY_RADIUS + .05) : -1; // never drop a prop on a player
+    return setPlaced(kind, probe.x, probe.z, placeRot, ok, inWay === 0 ? 'self' : inWay === 1 ? 'brother' : res === 'blocked' ? 'overlap' : res === 'air' ? 'edge' : '');
   }
   // Within a metre of the deck: just off the edge still shows a red ghost instead of nothing.
   function nearDeck(x, z) {
@@ -560,6 +564,23 @@ export function mount(transfer = null) {
     if (kind === 'hammer') { const seen = new Set(); for (const [tx, tz] of world.tiles) for (const [a, b] of NEIGHBOURS) { const x = tx + a, z = tz + b, k = x + ',' + z; if (!seen.has(k) && !floorBlock(world.tiles, x, z)) { seen.add(k); out.push({x, z, wx:x * 2, wz:z * 2}); } } }
     else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (decorCheck(hasTile, world.decor, {type:kind, x:x * 2, z:z * 2, rot:placeRot}) === 'ok') out.push({x:x * 2, z:z * 2, wx:x * 2, wz:z * 2});
     return out;
+  }
+  // Hammer + X: the decor under the crosshair, else the floor tile it points at. {what, x, z, type} or null.
+  function removalFor(aim) {
+    if (!aim) return null;
+    const d = aim.lray ? decorOnRay(world.decor, aim.lray.o, aim.lray.d) : null;
+    if (d) return Math.hypot(d.x - physics.x, d.z - physics.z) <= DECOR_REACH ? {what:'decor', x:d.x, z:d.z, type:d.type} : null;
+    const p = aim.local; if (!p) return null;
+    const tx = tileAt(p.x), tz = tileAt(p.z);
+    return hasTile(tx, tz) && Math.hypot(tx * 2 - physics.x, tz * 2 - physics.z) <= FLOOR_REACH ? {what:'floor', x:tx, z:tz, type:'floor'} : null;
+  }
+  function removePiece() {
+    if (!running || uiBlocked() || heldKind() !== 'hammer') return;
+    if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
+    const t = removalFor(currentAim());
+    if (!t) { notice('Aim at a floor or a placed piece to remove it'); return; }
+    if (t.what === 'floor') { const why = floorRemoveBlock(world.tiles, world.decor, t.x, t.z); if (why) { notice(BLOCK_TEXT[why] ?? 'Can’t remove that'); return; } }
+    swing = 1; action({kind:'remove', what:t.what, x:t.x, z:t.z});
   }
   function rotatePlacement(step) { placeRot = Math.round(wrapRot(placeRot + step) * 1000) / 1000; sfx('ui', .5); }
 
@@ -630,14 +651,41 @@ export function mount(transfer = null) {
         world.tiles.push([a.x, a.z]);
       } else if (DECOR_TYPES.includes(a.recipe)) {
         const d = normaliseDecor({type:a.recipe, x:a.x, z:a.z, rot:a.rot}, DECOR_TYPES, hasTile); // old guests send tile cells
-        if (!d || world.decor.length >= 400 || decorCheck(hasTile, world.decor, d) !== 'ok') return;
+        const res = d ? decorCheck(hasTile, world.decor, d) : 'air';
+        if (!d || world.decor.length >= 400 || res !== 'ok') { if (d && res !== 'ok') emit({kind:'notice', text:BLOCK_TEXT[res === 'blocked' ? 'overlap' : 'edge']}, actor); return; }
         if (far(d.x, d.z, DECOR_REACH)) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
+        const inWay = playerInWay(decorBlockers(d, BLOCK_RADIUS, 1), [physics, other], PLAYER_CONSTANTS.BODY_RADIUS); // host pose, guest pose
+        if (inWay >= 0) { emit({kind:'notice', text:BLOCK_TEXT[(inWay === 0) === (actor === 'host') ? 'self' : 'brother']}, actor); return; }
         const sel = bag.slots[bag.selectedIndex];
         if (sel?.kind === a.recipe) { sel.count--; if (sel.count <= 0) bag.slots[bag.selectedIndex] = null; }
         else if (!bag.remove(a.recipe, 1)) { emit({kind:'notice', text:`Craft a ${itemName(a.recipe)} first`}, actor); return; }
         world.decor.push(Farm.isPlot(d) ? {...d, farm:Farm.newPlanter()} : d); // farming: empty planter, plant a seed in it
       } else return;
       rebuildRaft(); emit({kind:'build'}, 'all'); // the new piece appearing is the feedback; no centre text
+      return;
+    }
+    if (a.kind === 'remove') { // hammer + X: take a piece back for about half its cost
+      const who = actor === 'guest' ? other : physics, slack = actor === 'guest' ? GUEST_REACH_SLACK : .01;
+      if (bag.count('hammer') < 1 || !Number.isFinite(a.x) || !Number.isFinite(a.z)) return;
+      let i = -1, refund, name, reach;
+      if (a.what === 'decor') {
+        i = world.decor.findIndex(d => d.x === a.x && d.z === a.z); if (i < 0) return;
+        const d = world.decor[i]; refund = refundOf(RECIPES[d.type]?.cost); name = ITEM_INFO[d.type]?.name ?? d.type; reach = DECOR_REACH;
+        if (Farm.isPlot(d) && d.farm && d.farm.s !== Farm.EMPTY) refund.seed = (refund.seed ?? 0) + 1; // the planted seed comes back
+      } else if (a.what === 'floor') {
+        if (!isInt(a.x) || !isInt(a.z)) return;
+        const why = floorRemoveBlock(world.tiles, world.decor, a.x, a.z);
+        if (why) { if (BLOCK_TEXT[why]) emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; }
+        i = world.tiles.findIndex(t => t[0] === a.x && t[1] === a.z); refund = refundOf(FLOOR_COST); name = 'Floor'; reach = FLOOR_REACH;
+      } else return;
+      const px = a.what === 'floor' ? a.x * 2 : a.x, pz = a.what === 'floor' ? a.z * 2 : a.z;
+      if (who && Math.hypot(px - who.x, pz - who.z) > reach + slack) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
+      const scratch = new Bag(bag.snapshot());
+      for (const [k, n] of Object.entries(refund)) if (scratch.add(k, n) > 0) { emit({kind:'full', text:'Your bag is full'}, actor); return; }
+      commit(bag, scratch);
+      if (a.what === 'floor') world.tiles.splice(i, 1); else world.decor.splice(i, 1);
+      rebuildRaft();
+      emit({kind:'build', text:`Removed ${name}`, loot:refund}, actor); if (actor === 'guest') emit({kind:'build'}, 'host');
       return;
     }
     if (a.kind === 'farm') { const r = Farm.applyFarmAction(world, bag, a); if (r.text) emit(r.items ? {kind:r.effect, text:r.text, items:r.items} : {kind:r.effect, text:r.text}, actor); if (r.changed) farmSeen = null; return; } // farming
@@ -939,6 +987,7 @@ export function mount(transfer = null) {
   function updateGhost() {
     const kind = heldKind();
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook ? placementFor(kind, frameAim.local) : null;
+    removeTarget = frameAim && kind === 'hammer' && !hook ? removalFor(frameAim) : null;
     if (hover) ghosts.show(hover.kind, hover.kind === 'floor' ? hover.x * 2 : hover.x, hover.kind === 'floor' ? .015 : .22, hover.kind === 'floor' ? hover.z * 2 : hover.z, hover.rot, hover.ok, elapsed);
     else ghosts.hide();
   }
@@ -1046,7 +1095,7 @@ export function mount(transfer = null) {
   on(window, 'wheel', e => { // window, not canvas: in drag-look the hotbar sits over the canvas and must scroll slots too
     if (!running || uiBlocked() || (!isLocked() && !lockFallback) || !wheelForGame(e.target)) return;
     e.preventDefault();
-    wheelAcc += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+    wheelAcc += wheelDelta(e);
     if (Math.abs(wheelAcc) < 40) return;
     const step = wheelAcc > 0 ? 1 : -1; wheelAcc = 0;
     if ((e.shiftKey || e.ctrlKey || e.altKey) && DECOR_TYPES.includes(heldKind())) { rotatePlacement(step * FINE_STEP); return; }
@@ -1061,6 +1110,7 @@ export function mount(transfer = null) {
     const m = /^(?:Digit|Numpad)([1-8])$/.exec(e.code);
     if (m && running) selectSlot(+m[1] - 1);
     if (e.code === 'KeyE' && !e.repeat) interact();
+    if (e.code === 'KeyX' && !e.repeat) removePiece();
     if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? -ROT_STEP : ROT_STEP); else repair(); }
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
@@ -1287,7 +1337,7 @@ export function mount(transfer = null) {
         hook:hook ? (hook.fishing ? {fishing:true, id:null, t:hook.t, duration:hook.duration} : {fishing:false, id:hc.caught?.id ?? null, stage:hc.stage, x:hc.position.x, y:hc.position.y, z:hc.position.z, tension:hc.tension, distance:hc.distance, caughtCount:caughtList(hc).length}) : null,
         fishWait, hookStage:hook ? (hook.fishing ? 'fishing' : hook.stage) : 'idle', hookCaught:hc?.caught ? {...hc.caught} : null, hookCaughtItems:caughtList(hc).map(c => ({...c})),
         hookHealth:hookDurability(bag), hookRange:16 + hookDurability(bag) * .16, charge:chargeValue(), charging:!!charging, reeling,
-        build:{active:mode === 'build' || mode === 'place', recipe:kind, rot:placeRot, pointing, ghost:!!ghosts?.visible, hover:hover ? {...hover} : null, candidates:scene ? placementCandidates(kind).length : 0, affordable:mode === 'build' ? canAfford(bag, FLOOR_COST) : mode === 'place'},
+        build:{active:mode === 'build' || mode === 'place', recipe:kind, rot:placeRot, pointing, ghost:!!ghosts?.visible, hover:hover ? {...hover} : null, remove:removeTarget ? {...removeTarget} : null, candidates:scene ? placementCandidates(kind).length : 0, affordable:mode === 'build' ? canAfford(bag, FLOOR_COST) : mode === 'place'},
         pickup:pickTarget ? {id:pickTarget.id, token:pickTarget.token, type:pickTarget.type} : null, feed:pickupFeed.rows,
         me:{x:physics.x, y:physics.y, z:physics.z, yaw, pitch}, other:other ? {...other} : null,
         avatars:{local:worldPos(player), remote:worldPos(friend)},
