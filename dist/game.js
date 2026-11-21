@@ -28,9 +28,7 @@ import { nodeById, NODE_LOOT } from './seafloor.js?build=v3-survival-ae77fa84ac2
 import { createFishingCooking } from './fishing-cooking.js?build=v3-survival-ae77fa84ac2b'; // [fishing-cooking] lane hook, see docs/cloud/fishing-cooking.md
 import { createInstruments } from './instruments.js?build=v3-survival-ae77fa84ac2b'; // [instruments] held drum / pipes / bells (docs/specs/instruments.md)
 import { cleanProgress, nextNote, shouldSpawnBottle, evaluate, achievementName, NOTE_COUNT } from './logbook.js?build=v3-survival-ae77fa84ac2b';
-import { createLogbookUI } from './logbook-ui.js?build=v3-survival-ae77fa84ac2b';
 import { loadLook, saveLook, lookColors, noteAchievements, HATS as LOOK_HATS } from './look.js?build=v3-survival-ae77fa84ac2b'; // [look] character customisation (docs/specs/customise.md)
-import { createLookUI } from './look-ui.js?build=v3-survival-ae77fa84ac2b'; // [look]
 import { createBottle } from './bottle.js?build=v3-survival-ae77fa84ac2b';
 import { cleanSignal, countAntennas, signalTick, onCacheCollected, cacheLoot, signalReadout, edgePoint } from './signal.js?build=v3-survival-ae77fa84ac2b';
 import { createSignalModel } from './signal-models.js?build=v3-survival-ae77fa84ac2b';
@@ -260,8 +258,8 @@ export function mount(transfer = null) {
   const modelOf = k => { try { return getModel(k); } catch (e) { console.warn('model failed', k, e); return null; } };
   let fc = null; // [fishing-cooking] rod fishing v2 + grills + journal (dist/fishing-cooking.js)
   let instruments = null; // [instruments]
-  let logbookUI = null;
-  let lookUI = null, lookState = loadLook(), seenAch = -1, seenAchList = null; // [look] per-browser look + hat unlocks (never in the world save)
+  let logbookUI = null, logbookLoading = null; // logbook-ui.js / look-ui.js load with import() right after mount (off the startup graph)
+  let lookUI = null, lookLoading = null, lookState = loadLook(), seenAch = -1, seenAchList = null; // [look] per-browser look + hat unlocks (never in the world save)
   let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
@@ -1669,7 +1667,7 @@ export function mount(transfer = null) {
   setHandler($('#solo'), 'onclick', () => { start(); requestLock(); });
   setHandler($('#crewButton'), 'onclick', () => openDialog('crew'));
   setHandler($('#welcomeCrew'), 'onclick', () => openDialog('crew'));
-  setHandler($('#welcomeLook'), 'onclick', () => lookUI?.open()); // [look]
+  setHandler($('#welcomeLook'), 'onclick', () => { if (lookUI) lookUI.open(); else lookLoading?.then(ui => ui?.open()); }); // [look]
   setHandler($('#helpButton'), 'onclick', () => settingsController?.open());
   document.querySelectorAll('[data-close]').forEach(b => setHandler(b, 'onclick', () => $('#' + b.dataset.close)?.close()));
   // Crew/Help closed during play go back to locked play; opened from the pause menu, settings.js reopens it instead.
@@ -2132,8 +2130,14 @@ export function mount(transfer = null) {
       recipeGate:id => prog?.recipeGate(id), // [progression-hook]
     });
     prog.installUI(); // [progression-hook]
-    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock())});
-    try { lookUI = createLookUI({getState:() => lookState, onChange:guard(applyLook), onSend:guard(() => coop?.sendLook?.()), onPause:guard(pauseInput), onResume:guard(() => { if (running) requestLock(); })}); } catch (e) { console.error('look UI failed', e); lookUI = null; } // [look]
+    // Lazy UIs: fetched now (the title screen is up long before they can be opened). An open request (settings menu
+    // event) that arrives before the module does is replayed once it has loaded; the UIs own their keys after that.
+    logbookLoading = import('./logbook-ui.js?build=v3-survival-ae77fa84ac2b').then(m => { if (disposed) return null; logbookUI = m.createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock())}); return logbookUI; })
+      .catch(e => { console.error('logbook UI failed', e); return null; });
+    lookLoading = import('./look-ui.js?build=v3-survival-ae77fa84ac2b').then(m => { if (disposed) return null; lookUI = m.createLookUI({getState:() => lookState, onChange:guard(applyLook), onSend:guard(() => coop?.sendLook?.()), onPause:guard(pauseInput), onResume:guard(() => { if (running) requestLock(); })}); return lookUI; })
+      .catch(e => { console.error('look UI failed', e); lookUI = null; return null; }); // [look]
+    document.addEventListener('littleraft:open-logbook', () => { if (!logbookUI) logbookLoading?.then(ui => ui?.open()); }, {signal});
+    document.addEventListener('littleraft:open-look', () => { if (!lookUI) lookLoading?.then(ui => ui?.open()); }, {signal});
     if (role !== 'guest') retroAward();
     pickupFeed.setIconProvider(k => getItemIcon(k) || feedSprite(k)); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }

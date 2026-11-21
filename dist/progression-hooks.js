@@ -11,7 +11,6 @@
 import { ITEMS, FUEL_VALUE, toolRole } from './items.js?build=v3-survival-ae77fa84ac2b';
 import { Progression } from './progression.js?build=v3-survival-ae77fa84ac2b';
 import { StationModel } from './smelter.js?build=v3-survival-ae77fa84ac2b';
-import { createStationPanel } from './smelter-ui.js?build=v3-survival-ae77fa84ac2b';
 import { createSmelterModel, createResearchTableModel, createGrillModel, setSmelterGlow } from './smelter-model.js?build=v3-survival-ae77fa84ac2b';
 import { installItemTooltips } from './item-tooltips.js?build=v3-survival-ae77fa84ac2b';
 
@@ -70,6 +69,7 @@ export function attachProgression(ctx) {
   let noteClock = NOTE_EVERY, saveClock = 0, syncClock = 0, time = 0, dirty = false, nearKey = null;
   let savedLuckSig = JSON.stringify(barrelLuck.misses);
   let panel = null, research = null, tooltips = null, hud = null, gateCache = null;
+  let panelMod = null, panelLoading = null, gone = false; // smelter-ui.js: import() from installUI(), off the startup graph
 
   const isRemote = () => ctx.role() === 'guest' && !!ctx.ready();
   const isHost = () => ctx.role() !== 'guest';
@@ -159,8 +159,11 @@ export function attachProgression(ctx) {
   // ---------- UI ----------
   const act = (a) => { ctx.action(a); later(); };
   const later = () => setTimeout(() => { panel?.update(); renderResearch(true); }, isRemote() ? 350 : 0);
+  const loadPanel = () => panelLoading ??= import('./smelter-ui.js?build=v3-survival-ae77fa84ac2b').then((m) => (panelMod = m))
+    .catch((e) => { console.error('station panel failed', e); panelLoading = null; return null; });
   function openStation(key) {
-    panel ??= createStationPanel({
+    if (!panelMod) { loadPanel().then((m) => { if (m && !gone) openStation(key); }); return; } // only if opened before the prefetch landed
+    panel ??= panelMod.createStationPanel({
       getStation: (k) => stationView(k), getBag: () => ctx.localBag(), items: ITEMS, fuelValue: FUEL_VALUE,
       onInsert: (k, n) => act({ kind: 'prog:insert', key: panel.stationId, item: k, n }),
       onFuel: (k, n) => act({ kind: 'prog:fuel', key: panel.stationId, item: k, n }),
@@ -318,6 +321,7 @@ export function attachProgression(ctx) {
   function installUI() {
     tooltips?.dispose();
     tooltips = installItemTooltips({ getBag: () => ctx.localBag(), getProgression: () => myProg(), items: ITEMS });
+    loadPanel(); // prefetch the station panel now so the first E on a station opens it at once
   }
 
   // ---------- debug (window.raftDebug.progression) ----------
@@ -340,6 +344,7 @@ export function attachProgression(ctx) {
   });
 
   function dispose() {
+    gone = true;
     save();
     self.flush = null;
     if (globalThis[OWNER] === self) globalThis[OWNER] = prevOwner;

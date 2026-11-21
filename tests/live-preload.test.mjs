@@ -58,7 +58,9 @@ test('lazy feature modules are not in the startup graph', () => {
   const graph = staticGraph('game.js');
   // Only modules this build actually loads through import(); coop-avatar/coop-fx/underwater-fx/diving-ui are still
   // static imports here (the round-1 lazy hub / lazy dive fx were not carried over), so they are not listed.
-  for (const n of ['coop-hub.js', 'controls-tab.js']) {
+  // logbook-ui/look-ui (game.js), build-menu (building.js) and smelter-ui (progression-hooks.js) are fetched right
+  // after mount; they must not slip back into the startup graph.
+  for (const n of ['coop-hub.js', 'controls-tab.js', 'logbook-ui.js', 'look-ui.js', 'build-menu.js', 'smelter-ui.js']) {
     if (existsSync(join(dir, n))) assert.ok(!graph.has(n), n + ' should only load through import()');
   }
 });
