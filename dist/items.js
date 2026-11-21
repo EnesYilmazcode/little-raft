@@ -272,6 +272,16 @@ const LIST = [
     tip: 'A tall lamp that lights the deck at night. Needs a charged battery nearby.' }),
   item('fishtrap', 'Fish Trap', 'decor', { placeable: true, iconTint: '#b98a4e', recipe: hand({ wood: 3, rope: 3, leaf: 2 }), unlock: discover('fish'), // [fishtrap] see dist/fish-trap.js
     tip: 'A woven basket that hangs off the raft edge. Fish swim in while you relax.' }),
+  // [bait] rod bait tiers (dist/bait.js): used up only on a landed catch, best one in the bag goes on the hook
+  item('seaweedbait', 'Seaweed Bait', 'material', { stack: 20, iconTint: '#4f9a5c', // [bait]
+    recipe: hand({ seaweed: 2 }, 3), unlock: discover('seaweed', 'fishingrod'),
+    tip: 'A soggy little wad of seaweed. Hold your rod with some in the bag and the fish come sooner.' }),
+  item('chumbait', 'Fish Chum', 'material', { stack: 20, iconTint: '#b07a5a', // [bait]
+    recipe: hand({ fish: 1, seaweed: 1 }, 3), unlock: discover('fish'),
+    tip: 'Chopped fish and seaweed. Rare fish can\'t resist it.' }),
+  item('goldbait', 'Golden Bait', 'material', { stack: 20, iconTint: '#f2b134', // [bait]
+    recipe: hand({ honey: 1, fish: 1, seaweed: 1 }, 2), unlock: discover('honey', 'fish'),
+    tip: 'Honey-sweet and shiny. Even the Golden Sunscale takes a peek.' }),
   item('shelf', 'Display Shelf', 'decor', { placeable: true, iconTint: '#b4824b', // [display] see dist/display.js
     recipe: hand({ wood: 4, nail: 2 }), unlock: discover('nail'),
     tip: 'A little shelf for showing off your favourite finds.' }), // [display]

@@ -27,6 +27,7 @@ const CATEGORY_OF = Object.freeze({
   shelf: 'survival', trophystand: 'survival', // [display]
   turbine: 'survival', battery: 'survival', stringlights: 'survival', lamppost: 'survival', // [power]
   fishtrap: 'survival', // [fishtrap]
+  seaweedbait: 'survival', chumbait: 'survival', goldbait: 'survival', // [bait]
 
   taskboard: 'survival', // [tasks]
   skyrocket: 'survival', // [fireworks]
@@ -175,6 +176,9 @@ export const ITEM_TEXT = Object.freeze({
   stringlights: { desc: 'A post with a wire of warm little bulbs.', use: 'Glows at night near a charged battery.' }, // [power]
   lamppost:   { desc: 'A tall lamp with a glass head.', use: 'Lights the deck at night near a charged battery.' }, // [power]
   fishtrap:   { desc: 'A woven fish basket on a little arm.', use: 'Place on an edge tile. Seaweed bait helps. Collect with E.' }, // [fishtrap]
+  seaweedbait: { desc: 'A soggy wad of seaweed bait.', use: 'Keep it in your bag: bites come sooner.' }, // [bait]
+  chumbait:    { desc: 'A pail of fish chum.', use: 'Faster bites and more rare fish.' }, // [bait]
+  goldbait:    { desc: 'Sweet golden bait.', use: 'The best bait: much faster bites, far more rare and legendary fish.' }, // [bait]
   skyrocket:  { desc: 'A little sky rocket on a stand.', use: 'Place on a tile, then press E to launch it.' }, // [fireworks]
   scarecrow:  { desc: 'A driftwood post in a leaf skirt and a bucket hat.', use: 'Place it near palm planters; gulls will not peck within about two tiles.' }, // [scarecrow]
   glidepost:  { desc: 'A tall mast with a grooved wheel on top.', use: 'Hold a Glide Handle and press E on two posts to string a line.' }, // [zipline]

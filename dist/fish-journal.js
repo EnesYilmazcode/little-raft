@@ -7,9 +7,11 @@
 //     .recordDish(speciesId, 'cooked'|'burnt') -> { isNew }
 //     .addToBasket(item) -> bool     .takeFromBasket(index) -> item|null
 //     .totalCaught  .speciesSeen() -> ids[]  .entry(id) -> {count,bestCm,firstAt}|null
+//     .recordBait(id) -> bool  .baitedTotal  .baited {id: n}  [bait]
 //     .basket [{species,cm,stars,state}]   .dishes {"Grilled Pomfret": n}   .snapshot() -> plain JSON
 //   createJournalPanel({ getJournal, onClose }) -> { open(), close(), toggle(), isOpen, refresh(), destroy() }
 import { SPECIES, RARITY, speciesById, dishName } from './fish-species.js?build=v3-survival-ae77fa84ac2b';
+import { isBait } from './bait.js?build=v3-survival-ae77fa84ac2b'; // [bait]
 
 export const BASKET_MAX = 40;
 const STATES = ['raw', 'cooked', 'burnt'];
@@ -41,7 +43,12 @@ export class Journal {
       if (typeof k === 'string' && k.length <= 60 && n > 0) this.dishes[k] = n;
     }
     this.basket = (Array.isArray(s.basket) ? s.basket : []).map(cleanItem).filter(Boolean).slice(0, BASKET_MAX);
+    this.baited = {}; // [bait] landed catches per bait id
+    if (isObj(s.baited)) for (const [k, v] of Object.entries(s.baited)) { const n = int(v, 0, 1e9, 0); if (isBait(k) && n > 0) this.baited[k] = n; }
   }
+
+  recordBait(id) { if (!isBait(id)) return false; this.baited[id] = (this.baited[id] || 0) + 1; return true; } // [bait]
+  get baitedTotal() { return Object.values(this.baited).reduce((a, n) => a + n, 0); } // [bait]
 
   recordCatch(c) {
     const item = cleanItem({ ...(isObj(c) ? c : {}), state: 'raw' });
@@ -86,7 +93,9 @@ export class Journal {
   snapshot() {
     const species = {};
     for (const [k, e] of Object.entries(this.species)) species[k] = { ...e };
-    return { species, dishes: { ...this.dishes }, basket: this.basket.map((b) => ({ ...b })) };
+    const snap = { species, dishes: { ...this.dishes }, basket: this.basket.map((b) => ({ ...b })) };
+    if (Object.keys(this.baited).length) snap.baited = { ...this.baited }; // [bait] only when non-empty (old shape kept)
+    return snap;
   }
 }
 
@@ -207,7 +216,8 @@ export function createJournalPanel({ getJournal, onClose } = {}) {
 
   function refresh() {
     const j = journal();
-    prog.textContent = `${j.speciesSeen().length} / ${SPECIES.length} species`;
+    const nb = j.baitedTotal || 0; // [bait]
+    prog.textContent = `${j.speciesSeen().length} / ${SPECIES.length} species${nb > 0 ? ` · ${nb} caught with bait` : ''}`;
     tabBtns.forEach((b, i) => { const on = TABS[i][0] === tab; b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1; });
     let view;
     if (tab === 'fish') view = fishTab(j);
