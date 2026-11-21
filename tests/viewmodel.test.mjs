@@ -116,6 +116,19 @@ test('the right hand grips the line while the hook is out and pulls hand over ha
   h.dispose();
 });
 
+test('the left (rope coil) hand stays tucked away while the hook is idle and rises to wind up', () => {
+  const h = createHands(T);
+  const left = h.group.getObjectByName('leftArm');
+  const step = (n, p = {}) => { for (let i = 0; i < n; i++) h.update({ dt: 1 / 30, ...p }); };
+  h.setHeld('hook'); step(30);
+  assert.equal(left.visible, false, 'idle hook: only the right hand shows');
+  step(10, { charge: 0.8 }); assert.equal(left.visible, true, 'winding up brings the coil hand in');
+  step(30, { hasHookOut: true }); assert.equal(left.visible, true, 'hook out keeps it');
+  step(60); assert.equal(left.visible, false, 'back to idle tucks it away again');
+  h.setHeld('crate'); step(30); assert.equal(left.visible, true, 'left-hand items still show it');
+  h.dispose();
+});
+
 test('seeds rest in the hand and point only on request; cups use the shared model', () => {
   const h = createHands(T);
   const step = (n = 30) => { for (let i = 0; i < n; i++) h.update({ dt: 1 / 30 }); };

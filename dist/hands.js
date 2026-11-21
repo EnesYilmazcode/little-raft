@@ -352,7 +352,7 @@ export function createHands(T, { modelFactory = null } = {}) {
   // ---------------- animation state (weights only; transforms are rebuilt every frame) ----------------
   // dip: 0 = arms up, 1 = lowered out of view. A swap lowers, switches model/pose at the bottom, raises.
   const REEL_HZ = 2.5;
-  const st = { hookOut: false, walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0,
+  const st = { hookOut: false, leftW: 0, walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0,
     shown: null, target: null, poseOverride: null, ptR: 0, ptL: 0, lowering: false, dip: 1, down: 1, raise: 1, lagX: 0, lagY: 0, lastYaw: null, lastPitch: 0 };
   const qOff = new T.Quaternion(), eul = new T.Euler(0, 0, 0, 'XYZ'), qSwing = new T.Quaternion(), AX = V(1, 0, 0);
   const last = { lag: [0, 0] };
@@ -360,7 +360,6 @@ export function createHands(T, { modelFactory = null } = {}) {
 
   // Resolved pose of the shown item ('point' | 'throw' | 'grip' | 'open') and which hand points.
   const poseOf = (kind) => st.poseOverride || (kind ? holdFor(kind).pose : 'grip');
-  const usesLeft = (kind) => kind === 'hook' || holdFor(kind).hand === 'left';
   const handPoses = { R: '', L: '' };
   function applyFingers(pose, ropeGrip) {
     const pointer = pose !== 'point' || !st.shown ? null : holdFor(st.shown).hand === 'left' ? 'R' : 'L';
@@ -414,8 +413,13 @@ export function createHands(T, { modelFactory = null } = {}) {
     // pointing blends in; a left hand that only shows up to point slides in from below
     st.ptR += ((pointer === 'R' ? 1 : 0) - st.ptR) * k(12);
     st.ptL += ((pointer === 'L' ? 1 : 0) - st.ptL) * k(12);
-    const leftNeeded = usesLeft(st.shown), lIn = leftNeeded ? 1 : st.ptL;
-    L.pose.visible = st.shown !== null && (leftNeeded || st.ptL > 0.02);
+    // The left hand (rope coil) only rises while the hook is busy: winding up, casting, out or reeling.
+    // Idle it stays tucked below the frame, so one right hand shows and nothing sits over the hotbar.
+    const leftBusy = !!st.shown && (holdFor(st.shown).hand === 'left' ||
+      (isHook && (charge0 > 0.02 || casting > 0 || hasHookOut || reeling)));
+    st.leftW += ((leftBusy ? 1 : 0) - st.leftW) * k(leftBusy ? 14 : 4);
+    const lIn = Math.max(st.leftW, st.ptL);
+    L.pose.visible = st.shown !== null && lIn > 0.02;
     const rightIdle = !!st.shown && holdFor(st.shown).hand === 'left', rIn = rightIdle ? st.ptR : 1;   // empty right hand stays down
     R.pose.visible = st.shown !== null && (!rightIdle || st.ptR > 0.02);
     coil.visible = lead.visible = isHook && pointer !== 'L';
