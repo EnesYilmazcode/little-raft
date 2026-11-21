@@ -645,6 +645,7 @@ export function mount(transfer = null) {
   // ---------- Aiming ----------
   const hits = [], aimScratch = {point:null, item:null, dir:new T.Vector3(), at:new T.Vector3()};
   // `out` (per-frame aim only) reuses its vectors; event callers get a fresh result they may keep.
+  function itemByToken(token) { const its = world.items; for (let i = 0; i < its.length; i++) if (its[i].token === token) return its[i]; return undefined; }
   function pickNdc(nx, ny, out = null) {
     pointer.set(nx, ny); ray.setFromCamera(pointer, camera);
     plane.constant = -deckY() - .02;
@@ -653,7 +654,7 @@ export function mount(transfer = null) {
     hits.length = 0;
     for (const hit of ray.intersectObjects(itemsGroup.children, true, hits)) {
       let o = hit.object; while (o && !o.userData.token) o = o.parent;
-      const found = o && world.items.find(it => it.token === o.userData.token);
+      const found = o && itemByToken(o.userData.token);
       if (found && !isPending(found) && !held.has(found.token)) { item = found; break; }
     }
     if (!item) { // small forgiveness for hand pickup only; throws never use this
@@ -1123,7 +1124,12 @@ export function mount(transfer = null) {
       friend.userData.animate?.(dt, {speed:Math.min(6, Math.hypot(friend.position.x - before.x, friend.position.z - before.z) / dt), swimming:other.swimming, pitch:other.pitch});
     }
   }
-  const allHeldTokens = () => new Set([...caughtList(castOut()).map(c => c.token), ...(role === 'guest' ? [] : guestHeld.tokens(performance.now()))]);
+  const allHeldSet = new Set(); // reused: callers read it synchronously and never keep it
+  function allHeldTokens() {
+    allHeldSet.clear(); const h = castOut(); if (h) for (const c of caughtList(h)) allHeldSet.add(c.token);
+    if (role !== 'guest') for (const t of guestHeld.tokens(performance.now())) allHeldSet.add(t);
+    return allHeldSet;
+  }
   function updateItems(dt) {
     const heldTokens = allHeldTokens();
     if (sailing) sailing.itemFlow(sailFlow); // [sailing]
