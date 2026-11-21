@@ -173,6 +173,9 @@ or from effects.
 - The fresh-day notice shows as a pickup-feed row (bottom left), the same place as all notices.
 - daynight `setPhase` stays inside the current day. To test a real rollover, use `setPhase(.9996)` and wait a
   moment. `nextDay()` rolls at once.
-- A guest seat that never joins still collects `owed` rewards in solo (bit 2). Each kind is capped at 99 and
-  there are at most 8 kinds. A guest who joins later can claim them.
-- Logbook Claim buttons disable on click until the next view arrives, so a guest cannot double-send.
+- `seen` (bitmask, default 1) marks the seats aboard today: the host sets bit 2 while a guest is connected,
+  and a guest claim sets it too. `rollTasks` only owes rewards to seats in `seen`, so a solo day owes nothing
+  to the guest seat. Each owed kind is capped at 99 and there are at most 8 kinds.
+- A guest shows no Tasks tab until the first host state arrives (no stale local tasks while joining).
+- Logbook Claim buttons disable on click until the next view arrives (re-armed after 1.5 s if the claim was
+  refused, e.g. a full bag). The host re-checks the claimed bit anyway, so a double send cannot dupe.
