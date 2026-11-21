@@ -5,10 +5,13 @@
 
 export const OVERHANG = 1.15;
 const PIVOT_Y = .48, PIVOT_Z = OVERHANG + .1;
-// basket, relative to the pivot: 4 stacked bands from the bottom up, tapering r .17 (bottom) to .24 (top)
-const BASKET_TOP = -.5, BAND_H = .085, BAND_GAP = .013;
-const BANDS = [[.19, .17], [.215, .19], [.235, .215], [.24, .235]]; // [top, bottom] radius, bottom band first
-export const BASKET_CENTRE_Y = BASKET_TOP - 2 * (BAND_H + BAND_GAP); // about -.70 from the pivot
+// basket, relative to the pivot: a bellied creel woven as a checker of light and dark cells (ROWS x COLS),
+// "over" cells standing a little proud of "under" cells, with thin dark gaps between the rows.
+const BASKET_TOP = -.5, ROW_H = .08, ROW_GAP = .012, COLS = 12;
+const PROFILE = [.15, .2, .235, .245, .238, .222]; // ring radii from the bottom up (ROWS + 1 rings)
+const ROWS = PROFILE.length - 1, WEAVE = ['#d6a865', '#7c5430']; // two wood tones
+const BASKET_BOTTOM = BASKET_TOP - ROWS * (ROW_H + ROW_GAP);
+export const BASKET_CENTRE_Y = (BASKET_TOP + BASKET_BOTTOM) / 2; // about -.73 from the pivot
 
 function bake(T, parts) {
   const geos = [];
@@ -58,20 +61,31 @@ export function createFishTrap(T) {
   // --- the hanging basket
   const hang = new T.Group(); hang.name = 'hang'; hang.position.set(0, PIVOT_Y, PIVOT_Z); g.add(hang);
   const bk = kit(T);
-  bk.add(new T.CylinderGeometry(.012, .012, .6, 5), '#d8c39a', 0, -.3, 0);         // rope down into the mouth
-  bk.add(new T.TorusGeometry(.03, .008, 4, 8), '#d8c39a', 0, -.012, 0, 0, Math.PI / 2, 0); // rope loop round the arm tip
-  for (let i = 0; i < BANDS.length; i++) {
-    const [rt, rb] = BANDS[i], y = BASKET_TOP - (BANDS.length - i - .5) * (BAND_H + BAND_GAP);
-    bk.add(new T.CylinderGeometry(rt, rb, BAND_H, 10, 1, true), i % 2 ? '#93683a' : '#b98a4e', 0, y, 0);
+  const ROPE = '#e6d3a3', RW = 2 * Math.PI / COLS;
+  bk.add(new T.TorusGeometry(.046, .013, 4, 10), ROPE); // rope lashed round the arm tip (the arm runs along z)
+  const KNOT_Y = BASKET_TOP + .2;
+  bk.add(new T.CylinderGeometry(.016, .016, -.046 - KNOT_Y, 5), ROPE, 0, (KNOT_Y - .046) / 2, 0); // rope from the arm down to the bridle knot
+  bk.add(new T.SphereGeometry(.03, 6, 4), ROPE, 0, KNOT_Y, 0);
+  const up = new T.Vector3(0, 1, 0), dir = new T.Vector3(), mid = new T.Vector3(), rq = new T.Quaternion(), one = new T.Vector3(1, 1, 1);
+  for (let i = 0; i < 3; i++) { // three bridle ropes from the knot to the rim
+    const a = i * 2 * Math.PI / 3 + .5, rx = Math.sin(a) * PROFILE[ROWS], rz = Math.cos(a) * PROFILE[ROWS];
+    dir.set(rx, BASKET_TOP - KNOT_Y, rz); const len = dir.length(); dir.normalize();
+    mid.set(rx / 2, (BASKET_TOP + KNOT_Y) / 2, rz / 2); rq.setFromUnitVectors(up, dir);
+    bk.parts.push([new T.CylinderGeometry(.01, .01, len, 4), ROPE, new T.Matrix4().compose(mid, rq, one)]);
   }
-  const bottomY = BASKET_TOP - BANDS.length * (BAND_H + BAND_GAP);
-  bk.add(new T.CylinderGeometry(.17, .17, .02, 10), '#7a5530', 0, bottomY + .01, 0); // floor of the basket
-  for (let i = 0; i < 8; i++) { // vertical ribs, leaning with the taper
-    const a = i * Math.PI / 4, r = .212;
-    bk.add(new T.BoxGeometry(.018, BASKET_TOP - bottomY + .02, .018), '#7a5530', Math.sin(a) * r, (BASKET_TOP + bottomY) / 2, Math.cos(a) * r, Math.cos(a) * .19, 0, -Math.sin(a) * .19);
+  for (let r = 0; r < ROWS; r++) { // the weave: a checker of cells, alternate tones, "over" cells proud
+    const y = BASKET_BOTTOM + r * (ROW_H + ROW_GAP) + ROW_H / 2, rb = PROFILE[r], rt = PROFILE[r + 1];
+    for (let c = 0; c < COLS; c++) {
+      const over = (r + c) % 2 === 0, d = over ? .012 : 0;
+      bk.add(new T.CylinderGeometry(rt + d, rb + d, ROW_H, 2, 1, true, c * RW, RW), WEAVE[over ? 0 : 1], 0, y, 0);
+    }
   }
-  bk.add(new T.CylinderGeometry(.2, .07, .12, 10, 1, true), '#a87a44', 0, BASKET_TOP - .06, 0); // funnel mouth
-  bk.add(new T.TorusGeometry(.235, .02, 5, 14), '#7a5530', 0, BASKET_TOP, 0, Math.PI / 2, 0, 0); // rim
+  bk.add(new T.CylinderGeometry(.13, .15, .02, 10), '#4a3420', 0, BASKET_BOTTOM + .01, 0); // dark floor: the inside reads deep through the mouth
+  for (const [ry, rr] of [[BASKET_BOTTOM, PROFILE[0] + .01], [BASKET_TOP, PROFILE[ROWS] + .012]]) // dark binding hoops top and bottom
+    bk.add(new T.TorusGeometry(rr, .018, 5, 16), '#5e3f22', 0, ry, 0, Math.PI / 2, 0, 0);
+  for (let c = 0; c < COLS; c++) // funnel mouth: woven wedges sloping in to a small opening, alternate tones
+    bk.add(new T.CylinderGeometry(PROFILE[ROWS] - .01, .075, .16, 2, 1, true, c * RW, RW), WEAVE[c % 2], 0, BASKET_TOP - .08, 0);
+  bk.add(new T.TorusGeometry(.078, .012, 4, 10), '#5e3f22', 0, BASKET_TOP - .16, 0, Math.PI / 2, 0, 0); // lip of the funnel opening
   const basket = new T.Mesh(bake(T, bk.parts), new T.MeshStandardMaterial({ vertexColors: true, roughness: .9, flatShading: true, side: T.DoubleSide }));
   basket.name = 'basket'; basket.castShadow = true; hang.add(basket);
 
@@ -88,13 +102,14 @@ export function createFishTrap(T) {
 }
 
 /** Bob and sway the basket; the fish silhouette shows when full (cached). No allocation. */
-export function paintTrap(g, full, elapsed, phase = 0) {
+export function paintTrap(g, full, elapsed, phase = 0, move = true) { // move=false: off-screen or far, only the fish visibility updates
   const u = g?.userData; if (!u || !u.hang) return;
+  const f = full ? 1 : 0;
+  if (u.sig !== f) { u.sig = f; u.fish.visible = !!full; }
+  if (!move) return;
   const h = u.hang;
   h.position.y = PIVOT_Y + .025 * Math.sin(elapsed * 1.4 + phase);
   h.rotation.x = .05 * Math.sin(elapsed * 1.1 + phase);
   h.rotation.z = .04 * Math.sin(elapsed * .9 + phase * 2);
-  const f = full ? 1 : 0;
-  if (u.sig !== f) { u.sig = f; u.fish.visible = !!full; }
   if (full) u.fish.rotation.y = .25 * Math.sin(elapsed * 5 + phase);
 }

@@ -42,11 +42,16 @@ export function isEdgeTile(tiles, x, z) {
 
 /** [dx, dz] of the open side: the one `rot` faces when open, else the first open in SIDES order; null when none. */
 export function openSide(tiles, x, z, rot = 0) {
+  const i = sideIndex(tiles, x, z, rot);
+  return i < 0 ? null : [SIDES[i][0], SIDES[i][1]];
+}
+// Index into SIDES of the open side (same rule as openSide), -1 when none. No allocation (per-frame target).
+function sideIndex(tiles, x, z, rot) {
   const r = Number.isFinite(rot) ? rot : 0;
   const fx = Math.round(Math.sin(r)), fz = Math.round(Math.cos(r));
-  if ((fx === 0) !== (fz === 0) && !hasTile(tiles, x + fx, z + fz)) return [fx, fz];
-  for (const [dx, dz] of SIDES) if (!hasTile(tiles, x + dx, z + dz)) return [dx, dz];
-  return null;
+  if ((fx === 0) !== (fz === 0) && !hasTile(tiles, x + fx, z + fz)) return fz === 1 ? 0 : fx === 1 ? 1 : fz === -1 ? 2 : 3;
+  for (let i = 0; i < SIDES.length; i++) if (!hasTile(tiles, x + SIDES[i][0], z + SIDES[i][1])) return i;
+  return -1;
 }
 
 /** mulberry32 on st.seed; writes the advanced state back. */
@@ -153,14 +158,18 @@ export function createFishTrap(ctx) {
   const traps = []; // {g, k, x, z, phase} for each craft_fishtrap group in ctx.raft
   let scanLen = -1, scanFirst = null, scanRaft = null;
   const scratch = T ? new T.Vector3() : null, camPos = T ? new T.Vector3() : null;
+  // per-frame culling (preallocated): only traps on screen and within 30 m bob
+  const frustum = T ? new T.Frustum() : null, projView = T ? new T.Matrix4() : null, bound = T ? new T.Sphere(new T.Vector3(), 1.6) : null;
 
   const oldHost = () => ctx.role === 'guest' && !hostHasTrap;
   const decor = () => (Array.isArray(ctx.world?.decor) ? ctx.world.decor : []);
   const tiles = () => (Array.isArray(ctx.world?.tiles) ? ctx.world.tiles : []);
   // Where the basket hangs: out over the open side, or the tile centre when none is open.
+  // Writes spotX / spotZ (no allocation: target() runs every frame through prompt()).
+  let spotX = 0, spotZ = 0;
   function spot(d) {
-    const s = openSide(tiles(), d.x, d.z, d.rot);
-    return s ? [d.x * 2 + s[0] * OVERHANG, d.z * 2 + s[1] * OVERHANG] : [d.x * 2, d.z * 2];
+    const i = sideIndex(tiles(), d.x, d.z, d.rot);
+    spotX = d.x * 2 + (i < 0 ? 0 : SIDES[i][0] * OVERHANG); spotZ = d.z * 2 + (i < 0 ? 0 : SIDES[i][1] * OVERHANG);
   }
 
   // Nearest trap basket along the view ray (or the camera forward), within reach of the player.
@@ -176,7 +185,7 @@ export function createFishTrap(ctx) {
     for (let i = 0; i < w.decor.length; i++) {
       const d = w.decor[i]; if (!d || d.type !== 'fishtrap') continue;
       if (Math.hypot(p.x - d.x * 2, p.z - d.z * 2) > REACH + OVERHANG + .1) continue;
-      const [cx, cz] = spot(d);
+      spot(d); const cx = spotX, cz = spotZ;
       if (Math.hypot(p.x - cx, p.z - cz) > REACH) continue;
       const vx = cx - ox, vy = cy - oy, vz = cz - oz, along = vx * dx + vy * dy + vz * dz;
       if (along <= 0) continue;
@@ -206,12 +215,15 @@ export function createFishTrap(ctx) {
   function paint() {
     scanTraps(); if (!traps.length) return;
     const cam = ctx.camera, elapsed = ctx.elapsed ?? 0, old = oldHost();
-    if (cam && camPos) cam.getWorldPosition(camPos);
+    const near = !!(cam && camPos), cull = near && !!cam.projectionMatrix && !!cam.matrixWorldInverse;
+    if (near) cam.getWorldPosition(camPos);
+    if (cull) frustum.setFromProjectionMatrix(projView.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
     for (let i = 0; i < traps.length; i++) {
       const { g, k, phase } = traps[i];
-      if (cam && camPos) { g.getWorldPosition(scratch); if (scratch.distanceToSquared(camPos) > 900) continue; }
+      let move = true;
+      if (near) { g.getWorldPosition(bound.center); move = bound.center.distanceToSquared(camPos) <= 900 && (!cull || frustum.intersectsSphere(bound)); }
       const e = old ? null : st.t[k];
-      paintTrap(g, !!e && e.f.length >= TRAP_MAX, elapsed, phase);
+      paintTrap(g, !!e && e.f.length >= TRAP_MAX, elapsed, phase, move); // fish silhouette always tracks the state; bob only when seen
     }
   }
 
@@ -259,9 +271,9 @@ export function createFishTrap(ctx) {
       const t = target(aim); if (!t) return null;
       if (oldHost()) return OLD_HOST;
       const info = trapInfo(st, tiles(), decor(), t.x, t.z); if (!info) return null;
+      if (info.n > 0) return `<kbd>E</kbd>Collect fish (${info.n})${info.n >= TRAP_MAX ? ' · full' : ''}`; // before the edge check: fish in a trap that floor later closed in are never stuck
       if (!info.edge) return NOT_EDGE;
-      if (info.n > 0) return `<kbd>E</kbd>Collect fish (${info.n})${info.n >= TRAP_MAX ? ' · full' : ''}`;
-      const pct = Math.floor(info.w / info.need * 100);
+      const pct = Math.min(99, Math.floor(info.w / info.need * 100)); // w can exceed BAIT_SEC when bait lands on a part-filled unbaited timer
       if (info.b > 0) return `Fish trap (baited): waiting… ${pct}%`;
       if (hasSeaweed()) return '<kbd>E</kbd>Bait with seaweed';
       return `Fish trap: waiting… ${pct}% · seaweed makes good bait`;
@@ -271,9 +283,9 @@ export function createFishTrap(ctx) {
       if (oldHost()) { ctx.notice?.(OLD_HOST, 2400); return true; }
       const info = trapInfo(st, tiles(), decor(), t.x, t.z);
       if (!info) { ctx.notice?.(TEXT.notarget); return true; }
+      if (info.n > 0) { ctx.action({ kind: 'fishtrap.collect', x: t.x, z: t.z }); return true; } // an inner trap still gives up its fish
       if (!info.edge) { ctx.notice?.(NOT_EDGE, 2400); return true; }
-      if (info.n > 0) ctx.action({ kind: 'fishtrap.collect', x: t.x, z: t.z });
-      else if (info.b === 0 && hasSeaweed()) ctx.action({ kind: 'fishtrap.bait', x: t.x, z: t.z });
+      if (info.b === 0 && hasSeaweed()) ctx.action({ kind: 'fishtrap.bait', x: t.x, z: t.z });
       else ctx.notice?.(TEXT.empty);
       return true;
     },
@@ -282,7 +294,7 @@ export function createFishTrap(ctx) {
       if (!isInt(a.x) || !isInt(a.z)) return true;
       const d = trapAt(decor(), a.x, a.z); if (!d) return true;
       const pose = actor === 'guest' ? ctx.other : ctx.physics;
-      const [cx, cz] = spot(d);
+      spot(d); const cx = spotX, cz = spotZ;
       if (!pose || !Number.isFinite(pose.x) || !Number.isFinite(pose.z) || Math.hypot(cx - pose.x, cz - pose.z) > REACH + HOST_SLACK) return true;
       const key = tileKey(a.x, a.z);
       if (a.kind === 'fishtrap.collect') {
