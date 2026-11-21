@@ -374,6 +374,8 @@ const CSS = `
 #craftTracker li.ct-ok b{color:#9ee07a}
 #craftTracker .ct-foot{margin-top:6px;font:600 11px/1.3 ${FONT};color:#f4efe299}
 #craftTracker .ct-foot kbd{font:800 10px/1 ${FONT};padding:1px 4px;border-radius:3px;box-shadow:inset 0 0 0 1px #ffffff40;color:#fff6e0}
+/* the hotbar is 52px slots up to ~1600px wide: from 1060px down its right end reaches under the tracker, so stand on it */
+@media(min-width:761px) and (max-width:1060px){#craftTracker{bottom:96px}}
 @media(max-width:760px){#craftTracker{bottom:110px;right:10px;width:180px}}
 /* Short screens: compact tabs and detail card so the recipe list keeps room for several rows. */
 @media(max-height:760px){#inventory .sv-craft>.sv-h{display:none}#inventory .sv-tab{gap:1px;padding:4px 2px 3px}#inventory .sv-tab .sv-icon{width:17px;height:17px}#inventory .sv-tab>span{font-size:11px}
