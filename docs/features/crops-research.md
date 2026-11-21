@@ -34,8 +34,7 @@ Survival raft and island games usually handle farming like this:
 | Blushbell (`bellseed`) | ~150 s | 2 `petal` + seed | A paint-pot recipe, for example Coral without clay or a new pink (paint_* in dist/content-items.js:68-72, dist/paint.js:16) |
 | Sweet Tuber (`tuberseed`) | ~180 s | 2 `tuber` + seed | Raw edible. On the progression grill `cook('grill','tuber')` gives `roasttuber` (as cookedfish, dist/items.js:179) |
 
-The palm planter is 90 s (dist/watering.js:5), so these times stay in the same easy band. Each crop has 3
-stages, like `plantStage` (dist/watering.js:85).
+Palm planter is 90 s (dist/watering.js:5); 3 stages like `plantStage` (dist/watering.js:85).
 
 ## (b) Code anchors
 
@@ -43,7 +42,6 @@ stages, like `plantStage` (dist/watering.js:85).
 - dist/farming.js and dist/farming-view.js are **not used by the game**. Nothing in game.js imports them.
   Only tests load them (tests/farming.test.mjs, survival-r2.test.mjs:8, build-r2.test.mjs:12), and those
   tests pin them, so leave both files alone.
-- inventory-state.js:49-52 keeps the old kinds `seed` and `water` in the Bag for saves.
 
 **world.garden**
 - Shape `{"x,z": {water:0|1, grow:0..90}}` (dist/watering.js:3, 29-37).
@@ -54,8 +52,7 @@ stages, like `plantStage` (dist/watering.js:85).
 
 **game.js palm wiring**
 - `pickWateringDecor` is hard-coded to palm, purifier, rainbarrel and sprinkler (dist/game.js:924-936).
-- `wateringTarget` builds the prompt and actions (938-963). Visuals are at 965-974.
-- Host apply is `applyWatering` (1049-1062), dispatched at 1196.
+- `wateringTarget` prompt/actions 938-963; visuals 965-974; host `applyWatering` 1049-1062, dispatched 1196.
 - The 1 Hz host tick runs `tickWatering` and `tickRain` (1617).
 - Net state carries garden and purifiers (1572). raftDebug lists them at 2115 and 2154-2157.
 
@@ -77,7 +74,7 @@ stages, like `plantStage` (dist/watering.js:85).
 - tests/islands.test.mjs:122-131 pins the palm rows exactly and requires bush seed rate 120-280/400 and
   flower rate 40-130/400. Carve crop seeds **out of** the .2-.5 band; do not widen it.
 - `seed` is a placeholder kind (dist/content-items.js:13). Its only other use is `paint_sunshell` (70).
-- craft-book.js:325 says seeds come from "barrels", but BARREL_LOOT has no `seed` row.
+- (craft-book.js:325 says "barrels" for `seed`, but BARREL_LOOT has no such row.)
 - Barrels: the `BARREL_LOOT` treasure pool (dist/items.js:320-333) through `rollBarrel` (375), called at
   dist/game.js:1103.
 - flowerseed (weight 6) is the template. New rows dilute clay, stone and ore and invalidate the odds comment
