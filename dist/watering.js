@@ -93,12 +93,13 @@ function prune(world) {
 }
 
 /** Advances timers by whole seconds (floored, clamped 0..MAX_TICK). Host only. */
-export function tick(world, dt) {
+export function tick(world, dt, skip) { // [scarecrow] optional skip: Set of garden keys paused this tick
   prune(world);
   const s = Math.min(MAX_TICK, Math.max(0, Math.floor(Number.isFinite(dt) ? dt : 0)));
   const out = {grown:[], ripe:[], done:[]};
   if (!s) return out;
   for (const k of Object.keys(world.garden)) {
+    if (skip && typeof skip.has === 'function' && skip.has(k)) continue; // [scarecrow] a pecking gull pauses growth
     const e = world.garden[k];
     if (e.water !== 1 || e.grow >= GROW_SECONDS) continue;
     const before = plantStage(e);
