@@ -110,7 +110,7 @@ const key = (phase, ...colors) => ({ phase, c: new Float32Array(colors.flatMap(h
 export const PALETTE_KEYS = Object.freeze([
   //   phase  horizon    zenith     deep       shallow    sun        hemi sky   hemi gnd   cloud
   key(0.00, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#f6d3c2'), // sunrise peach
-  key(0.08, '#cbd2c0', '#a9c1c0', '#14505a', '#3f8c88', '#fff0c7', '#f2ead4', '#3d6b6a', '#e7f9eb'), // day sage
+  key(0.13, '#cbd2c0', '#a9c1c0', '#14505a', '#3f8c88', '#fff0c7', '#f2ead4', '#3d6b6a', '#e7f9eb'), // day sage
   key(0.54, '#cbd2c0', '#a9c1c0', '#14505a', '#3f8c88', '#fff0c7', '#f2ead4', '#3d6b6a', '#e7f9eb'),
   key(0.635, '#eaa98e', '#b79fb0', '#1d4a5e', '#4d7f88', '#ffb27e', '#f4c3a6', '#4b5a68', '#f2b8aa'), // dusk coral
   key(0.70, '#6f6f9e', '#58679a', '#173c54', '#2f6276', '#c3b0dc', '#a9a6d2', '#3a4c66', '#8e88b2'), // blue hour
@@ -120,7 +120,7 @@ export const PALETTE_KEYS = Object.freeze([
 ]);
 // Rain pulls every colour toward a cool grey-green of similar brightness.
 export const RAIN_MIX = 0.65;
-const RAIN_TINT = new Float32Array([0.92, 1.0, 0.97]);
+const RAIN_TINT = new Float32Array([0.9, 0.98, 1.04]);
 export function rainBlend(r, g, b, rain, out, o) {
   const l = 0.3 * r + 0.59 * g + 0.11 * b;
   const k = rain * RAIN_MIX;
