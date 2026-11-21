@@ -137,6 +137,8 @@ export function createDecorPack(ctx) {
   }
 
   // ---------------------------------------------------------------- per frame
+  // Placement rotation (radians, d.rot) -> nearest quarter turn 0..3, or null when the piece was placed unrotated.
+  const quarterOf = r => (Number.isFinite(r) && r ? ((Math.round(r / (Math.PI / 2)) % 4) + 4) % 4 : null);
   function rescan() {
     dirty = false;
     anim = anim.filter(a => a.g.parent);
@@ -150,6 +152,8 @@ export function createDecorPack(ctx) {
       if (!d || !isInt(d.x) || !isInt(d.z)) continue;
       const k = keyOf(d.x, d.z); types.set(k, d.type);
       if (!PACK.includes(d.type) || st.rot[k] !== undefined || nRot >= MAX_ROT) continue;
+      const q = quarterOf(d.rot);
+      if (q !== null) { st.rot[k] = q; nRot++; changed = true; continue; } // placed with R: keep that turn (E-turns then live in st.rot)
       const cx = d.x * 2, cz = d.z * 2;
       let near = null, best = Infinity;
       for (const p of [me, other]) {
@@ -219,8 +223,8 @@ export function createDecorPack(ctx) {
       if (!PACK.includes(type) || !T || !d || !isInt(d.x) || !isInt(d.z)) return null;
       models ??= buildDecorPack(T);
       const k = keyOf(d.x, d.z), g = models.instance(type);
-      g.rotation.y = (st.rot[k] ?? 0) * Math.PI / 2;
-      g.userData.tileKey = k;
+      g.rotation.y = (st.rot[k] ?? quarterOf(d.rot) ?? 0) * Math.PI / 2;
+      g.userData.tileKey = k; g.userData.ownRot = true; // st.rot owns the facing: game.js must not re-apply d.rot on a rebuild
       live.set(k, g);
       if (g.userData.swing) anim.push({ g, swing: g.userData.swing, type, ph: d.x * 1.7 + d.z * 2.3 });
       if (type === 'sign') applyText(g, st.t[k]);

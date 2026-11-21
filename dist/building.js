@@ -27,6 +27,8 @@ export function createBuilding(T, scene) {
   let rot = 0, version = -1, removing = false, removeTarget = null, chipText = '';
   let remRec = null, remVer = -1, remText = '';
   let removeExtraFn = null, removeExtra = null; // [undecor] game.js decor target when no piece is aimed: {text, action, d, deny?}
+  let rotPiece = null; // the piece rot belongs to: a pick from any wheel (pad radial uses menu.setSelected) starts unrotated
+  let placeExtraFn = null, placeBlocked = ''; // game.js host-side block (decor / grill on the cell): rec -> reason text or ''
   let curBag = null; // the local bag of the last update(); afford() is one function, not a per-frame closure
   const afford = cost => { if (!curBag) return true; for (const k in cost) if (curBag.count(k) < cost[k]) return false; return true; };
   const okColor = new T.Color(GHOST_OK), badColor = new T.Color(GHOST_BAD);
@@ -36,6 +38,7 @@ export function createBuilding(T, scene) {
   const menu = createBuildMenu({pieces:PIECE_ORDER.map(id => ({id, name:PIECES[id].name, cost:PIECES[id].cost})), onPick:() => { rot = 0; },
     countOf:k => (curBag ? curBag.count(k) : 0), nameOf:k => ITEM_INFO[k]?.name});
   menu.setAfford(afford);
+  rotPiece = menu.selected;
 
   // Instance placement in raft-local space (the group follows the raft transform every frame).
   function place(o, p) {
@@ -79,10 +82,11 @@ export function createBuilding(T, scene) {
   function update(raft, aim, camPos, active, bag, yaw, deckY) {
     group.position.copy(raft.position); group.quaternion.copy(raft.quaternion);
     curBag = bag;
+    if (piece() !== rotPiece) { rotPiece = piece(); rot = 0; }
     menu.setVisible(active);
     if (active) menu.refresh(); // cost lines follow the bag (only repaints when a count changed)
     if (!active) { removing = false; if (menu.isOpen) menu.close(false); } // hammer put away / UI opened: no stuck wheel or X mode
-    ghost.visible = false; removeTarget = null; removeExtra = null; // [undecor]
+    ghost.visible = false; removeTarget = null; removeExtra = null; placeBlocked = ''; // [undecor]
     let text = '';
     if (active && aim?.dir && !menu.isOpen) {
       origin.copy(camPos);
@@ -100,7 +104,8 @@ export function createBuilding(T, scene) {
         else { removeExtra = removeExtraFn ? removeExtraFn(origin, d) : null; text = removeExtra?.text ?? 'Point at a piece to remove'; } // [undecor]
       } else if (freePiece()) {
         const r = grid.aim(origin.x, origin.y, origin.z, d.x, d.y, d.z, piece(), (yawDir(yaw) + rot) % 4, deckY, REACH, aimOut);
-        if (r) { showGhost(r, r.ok && afford(PIECES[r.t].cost) ? okColor : badColor); text = r.ok ? (afford(PIECES[r.t].cost) ? '' : 'Not enough materials') : r.reason; }
+        if (r?.ok && placeExtraFn) placeBlocked = placeExtraFn(r) || '';
+        if (r) { const ok = r.ok && !placeBlocked; showGhost(r, ok && afford(PIECES[r.t].cost) ? okColor : badColor); text = placeBlocked || (r.ok ? (afford(PIECES[r.t].cost) ? '' : 'Not enough materials') : r.reason); }
       }
     }
     if (text !== chipText) { chipText = text; menu.setChip(text); }
@@ -120,7 +125,7 @@ export function createBuilding(T, scene) {
 
   // Click with the hammer: returns an engine action or null (foundation stays with the engine's own flow).
   function use() {
-    if (!freePiece() || !ghost.visible || !aimOut.ok) return null;
+    if (!freePiece() || !ghost.visible || !aimOut.ok || placeBlocked) return null;
     return {kind:'piece', t:aimOut.t, i:aimOut.i, j:aimOut.j, l:aimOut.l, r:aimOut.r};
   }
   function removeAction() {
@@ -206,6 +211,7 @@ export function createBuilding(T, scene) {
   return {grid, menu, group, sync, update, use, removeAction, apply, key, dispose, setTint, retint, preview, // setTint/retint/preview: content hook (paint)
     target, prompt, promptOf, interact, toggle, climb:(...a) => grid.climb(...a),
     setRemoveExtra(fn) { removeExtraFn = typeof fn === 'function' ? fn : null; }, get removeExtra() { return removeExtra; }, // [undecor]
+    setPlaceExtra(fn) { placeExtraFn = typeof fn === 'function' ? fn : null; }, // extra host-side placement block: rec {t,i,j,l,r} -> reason text or ''
     get removing() { return removing; }, get piece() { return piece(); }, get rotation() { return rot; },
     preStep:(phys, deckY, c) => grid.preStep(phys, deckY, c), postStep:(phys, deckY) => grid.postStep(phys, deckY)};
 }

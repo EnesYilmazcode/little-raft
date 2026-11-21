@@ -20,10 +20,10 @@ export const BLOCK_TEXT = Object.freeze({
   nofloor: 'Place it on the raft floor',
   net: 'A collection net hangs there',
   trapedge: 'Fish traps hang on an edge tile, next to open water', // [fishtrap]
-  piece: 'Stairs are in the way',
+  piece: 'A building piece is in the way',
 });
-// Building pieces that fill a deck cell (stairs at level 0; floor/roof only sit higher up, but count them too).
-const CELL_PIECES = ['floor', 'stairs', 'roof'];
+// Building pieces that fill a deck cell (stairs/ladder at level 0; floor/roof only sit higher up, but count them too).
+const CELL_PIECES = ['floor', 'stairs', 'roof', 'ladder'];
 
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const isInt = Number.isInteger;
@@ -39,7 +39,7 @@ export function floorBlock(tiles, x, z) {
   return null;
 }
 
-// Is there a level-0 cell piece (stairs) standing on deck cell (x, z)?
+// Is there a level-0 cell piece (stairs, ladder) standing on deck cell (x, z)?
 export function deckPieceAt(pieces, x, z) {
   return Array.isArray(pieces) && pieces.some(p => p && p.l === 0 && p.i === x && p.j === z && CELL_PIECES.includes(p.t));
 }
