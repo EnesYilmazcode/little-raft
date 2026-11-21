@@ -49,6 +49,8 @@ import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { createGhosts, wrapRot, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { getItemIcon, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { bus as spearBus } from './combat-bus.js'; // [spear] shared slots: bus.shark may be null
+import { SPEAR, createStab, startStab, tickStab, stabAmount, rayHit, wearSpear, giveSharkMeat } from './spear.js'; // [spear]
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -823,6 +825,7 @@ export function mount(transfer = null) {
     const bag = actorBag(actor);
     if (typeof a.kind === 'string' && a.kind.startsWith('fc:')) { fc?.applyAction(a, actor, {count:k => bag.count(k), remove:(k, n) => bag.remove(k, n), add:(k, n) => bag.add(k, n), emit:text => emit({kind:'notice', text}, actor)}); return; } // [fishing-cooking]
     if (a.kind === 'selectSlot') { bag.select(a.index); return; }
+    if (a.kind === 'spear:wear') { if (Number.isInteger(a.slot)) spearWear(bag, a.slot, actor); return; } // [spear] a guest's spear hit
     if (a.kind === 'sail') { const t = sailing?.apply(a, actor); if (t) emit({kind:'notice', text:t}, actor); return; } // [sailing]
     if (a.kind === 'moveSlot') { bag.move(a.from, a.to, a.amount ?? undefined); return; }
     if (a.kind === 'craft') {
@@ -946,11 +949,51 @@ export function mount(transfer = null) {
     openInventory();
   }
 
+  // [spear] wooden spear: timing + hit maths in spear.js; the shark is whatever bus.shark holds (may be null).
+  const spearStab = createStab(), spearO = new T.Vector3(), spearD = new T.Vector3(), spearP = {x:0, y:0, z:0};
+  let spearMarkT = 0, spearMarkEl = null, spearShark = null, spearLastHit = -1;
+  function spearMark(kill) {
+    if (!spearMarkEl?.isConnected) { spearMarkEl = $('#spearHit') ?? document.body.appendChild(Object.assign(document.createElement('div'), {id:'spearHit'})); spearMarkEl.setAttribute('aria-hidden', 'true'); }
+    spearMarkEl.classList.add('on'); spearMarkEl.classList.toggle('kill', !!kill); spearMarkT = kill ? .3 : .14;
+  }
+  function spearWear(bag, slot, actor) {
+    const r = wearSpear(bag, slot); if (!r) return;
+    if (r.broke) emit({kind:'notice', text:'Your spear snapped!'}, actor);
+    else if (r.durability <= 20 && r.durability + wearPerUse('spear') > 20) emit({kind:'notice', text:'Your spear is getting worn'}, actor);
+  }
+  function spearKill() { // host only: the shark's meat goes straight into the host's bag
+    if (role === 'guest' || disposed) return;
+    const r = giveSharkMeat(hostBag, SPEAR.meatDrop);
+    if (r.added > 0) emit({kind:'loot', text:`+ ${r.added} ${itemName('sharkmeat')}`, loot:{sharkmeat:r.added}}, 'host');
+    if (r.lost > 0) emit({kind:'full', text:'Bag full: some shark meat sank'}, 'host');
+    if (elapsed - spearLastHit < 3) spearMark(true);
+  }
+  function spearUpdate(dt) {
+    const sh = spearBus.shark;
+    if (sh && sh !== spearShark) { // chain onto whatever onDeath the shark already had, once per shark object
+      spearShark = sh; const prev = typeof sh.onDeath === 'function' ? sh.onDeath : null;
+      sh.onDeath = pos => { try { prev?.(pos); } finally { if (!disposed) spearKill(pos); } };
+    }
+    if (spearMarkT > 0 && (spearMarkT -= dt) <= 0) spearMarkEl?.classList.remove('on', 'kill');
+    if (!tickStab(spearStab, dt) || !camera || !running) return; // below: once per stab, at the peak
+    const s = spearBus.shark, pos = s?.position;
+    if (!s || s.alive === false || typeof s.hit !== 'function' || !pos) return;
+    camera.getWorldPosition(spearO); camera.getWorldDirection(spearD);
+    if (rayHit(spearO, spearD, pos, spearP) < 0) return;
+    let ok = false; try { ok = !!s.hit(SPEAR.damage, {x:spearP.x, y:spearP.y, z:spearP.z}, {x:spearD.x, y:spearD.y, z:spearD.z}); } catch (e) { console.warn('shark.hit failed', e); }
+    if (!ok) return;
+    spearLastHit = elapsed; play('place', 1); spearMark(false);
+    const i = localBag().selectedIndex;
+    if (role === 'guest') action({kind:'spear:wear', slot:i}); else spearWear(hostBag, i, 'host');
+  }
+  // [/spear]
+
   // Left click uses the selected bag item. The hook uses charge/throw/reel below.
   function useSelected(aim) {
     if (!running || hook || fishWait) return;
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
     const kind = selectedKind(), bag = localBag(), p = aim?.point ?? null;
+    if (kind === 'spear') { if (startStab(spearStab)) play('throw', .25); return; } // [spear] quick stab; the hit lands at its peak (spearUpdate)
     if (kind === 'hammer' && building && building.piece !== 'foundation') { // building-pieces lane hook
       if (building.removing) return;
       const a = building.use(); if (a) { swing = 1; action(a); } else notice('Point at a green spot'); return;
@@ -1106,7 +1149,7 @@ export function mount(transfer = null) {
     hands.setPose(pointing ? 'point' : null);
     const rod = kind === 'fishingrod' ? hands.itemModel('fishingrod') : null, out = !!hook?.fishing;
     if (rod?.userData.float) { rod.userData.float.visible = !out; rod.userData.leader.visible = !out; }
-    hands.update({dt, time:elapsed, charge:ch, reeling:rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch}); // [fishing-cooking] rod reel pose from the lane
+    hands.update({dt, time:elapsed, charge:ch, reeling:rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch, stab:stabAmount(spearStab)}); // [fishing-cooking] rod reel pose from the lane; [spear] stab thrust
     camera.updateMatrixWorld(true);
     hands.ropeAnchor().getWorldPosition(handPos);
   }
@@ -1223,6 +1266,7 @@ export function mount(transfer = null) {
     updateRaft(dt); if (sailing) sailing.update(dt, elapsed); // [sailing]
     movePlayer(dt, running && !dialog);
     updateAvatars(dt); updateCamera(dt); if (running) diving?.update(dt, elapsed); // diving lane hook
+    spearUpdate(dt); // [spear] stab peak hit test + shark onDeath hookup
     coop?.update(dt, elapsed); // coop: interpolated remote avatar, rope, ghost, pings, pose stream, reconnect
     frameAim = running && !dialog ? currentAim(aimScratch) : null;
     pickTarget = pickupFrom(frameAim);
@@ -1657,6 +1701,8 @@ export function mount(transfer = null) {
       return {notes:[...world.notes], nextNote:nextNote(world.notes), achievements:[...world.achievements], totals:{notes:12, achievements:15}, bottleAfloat:world.items.some(i => i.type === 'bottle')};
     },
     get progression() { return prog?.debug ?? null; }, // [progression-hook]
+    get spear() { return {t:spearStab.t, cooldown:spearStab.cd, amount:stabAmount(spearStab), lastHit:spearLastHit, shark:!!spearBus.shark}; }, // [spear] test helper
+    stab() { useSelected(null); return spearStab.t >= 0; }, // [spear] test helper: stab with the held spear
     get targets() {
       return world.items.map(it => {
         const m = itemMeshes.get(it.token), p = m ? m.position : {x:it.x, y:ITEM_FLOAT, z:it.z};

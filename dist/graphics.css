@@ -307,3 +307,19 @@ body.playing header,body.playing .goal,body.playing #toast,body.playing .control
 /* live-qa */
 
 /* live-qa */
+
+/* [spear] hit marker: four diagonal ticks round the crosshair, flashed by game.js on a spear hit */
+#spearHit{position:fixed;left:50%;top:50%;width:30px;height:30px;transform:translate(-50%,-50%) rotate(45deg) scale(.8);pointer-events:none;z-index:4;opacity:0;transition:opacity .18s ease-out,transform .18s ease-out;
+  background:
+    linear-gradient(#fff4dc,#fff4dc) 50% 0 / 2px 8px no-repeat,
+    linear-gradient(#fff4dc,#fff4dc) 50% 100% / 2px 8px no-repeat,
+    linear-gradient(#fff4dc,#fff4dc) 0 50% / 8px 2px no-repeat,
+    linear-gradient(#fff4dc,#fff4dc) 100% 50% / 8px 2px no-repeat;
+  filter:drop-shadow(0 0 1px #000c)}
+#spearHit.on{opacity:1;transform:translate(-50%,-50%) rotate(45deg) scale(1);transition:none}
+#spearHit.kill{background:
+    linear-gradient(#ff9a7a,#ff9a7a) 50% 0 / 2px 9px no-repeat,
+    linear-gradient(#ff9a7a,#ff9a7a) 50% 100% / 2px 9px no-repeat,
+    linear-gradient(#ff9a7a,#ff9a7a) 0 50% / 9px 2px no-repeat,
+    linear-gradient(#ff9a7a,#ff9a7a) 100% 50% / 9px 2px no-repeat}
+body:not(.playing) #spearHit{display:none}
