@@ -134,3 +134,19 @@ export function cleanJuicer(v, decor)  // -> {v:1, s, r, j:{"x,z":{m, n}}}; junk
 - `dist/craft-book.js:23` CATEGORY_OF (`juicer`, the three cups → `'survival'`). ITEM_TEXT after `:101`: six rows with `desc` and `use`, e.g. juicer use "Press E with a cup of fresh water and 2 fruit."
   ITEM_SOURCE after `:311`: berries `{tag:'island bushes', how:'Pick bushes on islands; some drop berries.'}`, coconut `{tag:'palm planter', how:'Harvest a ripe palm planter.'}`,
   each cup `{tag:'juicer', how:'Press E on a juicer with a cup of fresh water and 2 fruit.'}`. Also update the `leaf` row's palm text if needed. `dist/item-svg.js:10`: six icon bodies.
+
+## Build notes
+- **Shipped as specced.** New `dist/juicer.js`, `dist/juicer-model.js` and `tests/juicer.test.mjs` (8 tests). Hooks are tagged `// [juicer]` in items.js, vitals.js,
+  islands-layout.js, islands.js, watering.js, content.js, game.js (import, `:699`, `:716-717`, `:936`), craft-book.js and item-svg.js.
+- **Extra hook, not in section 9:** `dist/live.js` PRELOAD gets `juicer-model.js` and `juicer.js`. `tests/live-preload.test.mjs` requires the list to match game.js' static import graph.
+- **Constants:** `JAR_COLOR` and `SPIN_SECONDS` are defined in juicer-model.js, which imports nothing, and juicer.js re-exports them. There is one source and no import cycle.
+- **Prompt text:** the mixed prompt reads `<kbd>E</kbd>Blend an island smoothie`. It says "an", not "a".
+- **Spin detection:** `watch()` runs only when the slice revision, the slice object or `decor.length` changes. A missing entry counts as `n = 0`, so the first blend on a newly placed juicer
+  spins too, because the juicer was seen at placement. A `'save'`/`'restore'` load clears `seen`, so a loaded world never spins on its first look. `debug.spinning()` was added for tests and QA.
+- **Splash height:** the drop `y = .2 + sin(t·π)·.08` is measured from the jar base, which is the splash group origin. The drops arc just above the rim and spout.
+- **Emit:** a failed blend emits `{kind, text}` with no `loot` key, the same as bees, instead of `loot: undefined`.
+- **Prompt precedence (game.js):** an E-actionable content prompt now beats the click-to-eat hint whenever an edible is held. The companion gull relies on this too.
+  Verified in the browser: holding a freshcup and aiming at the juicer, `#lrPrompt` shows "E Blend an island smoothie". After the cups run out it falls back to "Click Drink (…)".
+- **Close-up QA:** scratchpad `r3/juicer/juicer_shot.py`. It places a juicer, aims while holding the fresh cup, presses E, then shows the mixed (coral) jar and then the berry (pink) jar mid-spin
+  with the splash drops. No page errors. `shoot.py` reports `errors: []`.
+- **Mixed-version co-op is unsupported** (section 7): an old guest on a new host drops the decor, the slice and the new kinds.
