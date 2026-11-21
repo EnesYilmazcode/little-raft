@@ -18,7 +18,7 @@ const CSS = `
 .lrr-sec{cursor:pointer}
 .lrr-sec.lrr-on path{fill:#f0b04a;stroke:#ffe0a6}
 .lrr-sec.lrr-on text{fill:#1a1206}
-.lrr-hub{fill:rgba(26,16,6,.92);stroke:#b07a3c;stroke-width:2}
+.lrr-hub{fill:#1a1006;stroke:#b07a3c;stroke-width:2}
 .lrr-name{fill:#f0b04a;font-size:15px;text-anchor:middle}
 .lrr-hint{fill:#c9b28c;font-size:10.5px;text-anchor:middle;letter-spacing:.04em}
 `;

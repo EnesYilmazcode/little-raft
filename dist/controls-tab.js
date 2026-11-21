@@ -18,7 +18,7 @@ const CSS = `
 .lrc-row>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lrc button{font:600 13px/1 system-ui,sans-serif;color:var(--lrc-ink);cursor:pointer;border-radius:7px;border:1px solid var(--lrc-edge);
   background:rgba(28,16,6,.45);padding:7px 6px;min-height:30px}
-.lrc button:hover{border-color:#d89a50;background:rgba(60,36,14,.7)}
+.lrc button:hover{border-color:#d89a50;background:rgba(60,36,14,.7);transform:none}
 .lrc button:focus-visible,.lrc input:focus-visible{outline:2px solid var(--lrc-acc);outline-offset:2px}
 .lrc-slot{width:100%;font-size:12.5px!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lrc-slot.lrc-empty{color:rgba(243,230,204,.38);font-weight:400}
@@ -27,6 +27,7 @@ const CSS = `
 .lrc-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px 18px}
 .lrc-opt{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center}
 .lrc-opt output{color:var(--lrc-acc);font-variant-numeric:tabular-nums;text-align:right}
+.lrc input{flex:none;padding:0;border:0;border-radius:0;background:none;box-shadow:none;color:inherit;font-size:inherit;text-transform:none;letter-spacing:normal}
 .lrc-opt input[type=range]{grid-column:1/-1;width:100%;margin:0;accent-color:#e8a23a}
 .lrc-check{display:flex;gap:8px;align-items:center;cursor:pointer}
 .lrc-check input{accent-color:#e8a23a;width:16px;height:16px;margin:0}
@@ -41,7 +42,8 @@ const CSS = `
   background:rgba(26,16,6,.92);color:var(--lrc-ink);font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.45);opacity:0;transform:translateY(6px);
   transition:opacity .2s,transform .2s;pointer-events:none}
 .lrc-toast.lrc-show{opacity:1;transform:none}
-@media (max-width:520px){.lrc-head,.lrc-row{grid-template-columns:minmax(0,1fr) repeat(3,minmax(52px,1fr))}}
+@media (max-width:520px){.lrc-head,.lrc-row{grid-template-columns:minmax(0,1fr) repeat(3,minmax(52px,1fr))}
+  .lrc-row>span{white-space:normal;line-height:1.15}.lrc-slot{white-space:normal;line-height:1.15;font-size:11.5px!important;padding:5px 3px;overflow-wrap:anywhere}}
 `;
 
 const GROUP_ORDER = ['Movement', 'Actions', 'Hotbar', 'Gamepad'];
