@@ -204,8 +204,10 @@ def key_frames(b):
     pg = open_page(b, q='toasts=1')
     pg.evaluate("document.body.addEventListener('click', () => document.documentElement.requestFullscreen().catch(e => window.__fsErr = String(e)), {once:true})")
     pg.mouse.click(200, 200); pg.wait_for_timeout(500)
-    pg.evaluate("feelDemo.feel.toast('A little more room!', {kind:'build'}); feelDemo.feel.toast('Your bag is full', {kind:'full'})")
-    pg.wait_for_timeout(500)
+    # toasts + freeze in one task (as frame 25): the PNG shows the rows the JSON checks, not an expired stack
+    pg.evaluate("""async () => { feelDemo.feel.toast('A little more room!', {kind:'build'}); feelDemo.feel.toast('Your bag is full', {kind:'full'});
+      await 0; feelDemo.freeze(1000); }""")
+    pg.wait_for_timeout(100)
     report['fullscreen'] = pg.evaluate("""() => { const t = [...document.querySelectorAll('.uf-toast')].find(t => +getComputedStyle(t).opacity > .5);
       const r = t?.getBoundingClientRect(); t && (t.style.pointerEvents = 'auto');
       const top = r ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null; t && (t.style.pointerEvents = '');
