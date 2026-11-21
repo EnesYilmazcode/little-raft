@@ -158,3 +158,12 @@ In `wearHook` (game.js:726), replace `    s.durability = Math.max(0, before - WE
     update never steps, host update steps and emits to 'all'; `storage.*` actions return false; `debug.finish` fills the tray; `decorModel('kiln')`
     is a kiln_station with ≤6 meshes; `decorModel('glasslamp')` is a craft_lantern with a lanternGlow mesh; `decorModel('crate')` is null.
 11. Sinker: a grep of game.js finds `bag.count('sinker') > 0 ? 1 : WEAR_PER_CATCH`. Then run `npm test`, shoot.py, `node tests/coop-e2e.mjs`.
+
+## Implementation notes
+- `cleanEntry`: "`r` must be in INPUTS (else null)" is read as `r = null` (the entry then goes through the q/r reset), not as rejecting the whole entry; only non-objects return null outright.
+- `kiln-core.js` holds a `NAMES` table (metal ore / sand / clay / Metal Bar / Glass Pane / Fired Brick) because it may not import ITEM_INFO. `TEXT` also carries `bad` and `nothing` fallbacks; the `nothing` refusal uses the computed "Need N more …" text.
+- `kiln.load` with an `item` outside INPUTS is refused as `bad`. A take that empties an otherwise idle kiln deletes its key from `st.k` (sliceOf would omit it anyway).
+- `kilnGlow` is one mesh (the mouth plane and ember box merged), so an instance has exactly 6 meshes: body, glow, flame, 3 tray goods. The flame sits just in front of the mouth plane (z .44) so it is visible.
+- Prompt status always shows `fuel N` (including `fuel 0` on an idle kiln) unless paused, when it shows `needs wood`.
+- Glass Lantern post material is named `lanternIron` (not a daynight part, so only the glass and glow scale at night).
+- `debug.give` returns the count added; like the other mutating helpers it is host only.

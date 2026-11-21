@@ -157,3 +157,14 @@ the warm palette of storage-research-ui. It contains `<form>` with a title "Sign
   Calling `.dispose()` on the shared geometry or material keeps its attributes. `rotation.y` follows `rot`. `decorModel('crate')` returns null. `paintSign` with a fake 2D context calls `fillText` once per line and shrinks px for 18 wide 'W's.
   `update(.016)` twice moves the pennant flag and stays alloc-free, by structure: no `new` or array literals in the loop. `dispose()` does not throw.
 - Run `npm test`, the shoot.py screenshot (`errors: []`, with `raftDebug.content.decorpack.place` for each type and `write(…)`), and `node tests/coop-e2e.mjs`: the guest's write must show on the host, and the guest's turn must rotate on both.
+
+## Implementation notes
+Deviations from the text above, each forced or strictly additive:
+- **Hammock orientation and footprint.** With three.js's convention, `ry = π/4` sends the sling's local +X to (.71, −.71), away from the posts at (−.72,−.72)/(.72,.72). The sling uses `ry = −π/4` so it hangs between the posts. A full-width (.7) sling at 45° pokes out to about ±.97 m at the corners. The segment width tapers from .7 in the middle to .44 at the ends (`.44 + .26·sin(πs)`), the end spreaders are .46 long, and the footprint stays inside ±.9 m (this is asserted in tests/decor-pack.test.mjs).
+- **Pennant flag pivot.** The flag mesh sits at (0, 2.14, 0), with its geometry in pivot space (bands span ±.18 m). `rotation.y` still turns about the pole axis, and `rotation.x` now sways the flag about its own mid-height instead of the deck.
+- **Removal rescan.** rebuildRaft only calls `decorModel` for tiles that still exist, so removing the last pack piece would never set `dirty`. `update()` also sets `dirty` when the `world.decor` array or its length changes (two comparisons, no allocation). Without this, stale `rot`/`t` keys and orphaned live groups would linger.
+- **Reach with an unknown pose.** `applyDecorAction` refuses with `far` when `env.pos(actor)` is missing or non-finite, following the spec's "must be within". storage-research.js lets that case through.
+- **Rotation cap.** A `decor.turn` on a new key once `MAX_ROT` keys exist returns `fullrot`, and nothing is emitted. The host's automatic face-the-player assignment also stops at `MAX_ROT`.
+- **cleanLines.** The two separator characters in the §5 regex are U+2028/U+2029, written as `  `.
+- **storage-research.test.mjs.** The coordinator asked for asserts that hold for every builder's content recipes, so the test filters against an allowlist of the original 15 recipe ids (`ORIG`, plus `ORIG_NAMES` for the emit list) rather than the decor-pack `PACK` set. The "Researched Rope!" single-emit check is skipped only when some later content recipe needs rope alone.
+- **Extras.** `debug.isOpen()`. `ui.isOpen` is a getter. Nothing in icons.svg or survival-ui.js changed, because every pack item reuses an existing sprite.

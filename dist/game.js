@@ -331,7 +331,7 @@ export function mount(transfer = null) {
     get world() { return world; }, get role() { return role; }, get running() { return running; }, get physics() { return physics; },
     get elapsed() { return elapsed; }, get options() { return options; }, get other() { return other; },
     localBag: () => localBag(), actorBag: a => actorBag(a), action: a => action(a), emit: (e, to) => emit(e, to), notice: (s, ms) => notice(s, ms),
-    esc: s => esc(s), mat: c => mat(c), rebuildRaft: () => rebuildRaft(), deckY: () => deckY(), uiOpen: () => uiBlocked(),
+    esc: s => esc(s), mat: c => mat(c), rebuildRaft: () => rebuildRaft(), deckY: () => deckY(), uiOpen: () => uiBlocked(), hasGrill: (x, z) => !!fc?.hasGrill(x, z),
     openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
   };
   function init() {
@@ -425,7 +425,7 @@ export function mount(transfer = null) {
     wateringGroups.clear();
     world.tiles.forEach(([x, z]) => { const g = createFloor(T, x * 719 + z * 311, mat); g.position.set(x * 2, 0, z * 2); raft.add(g); });
     for (const d of world.decor) {
-      let detailed = null; try { detailed = d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? content?.decorModel(d.type) ?? createSignalModel(T, d.type); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel
+      let detailed = null; try { detailed = d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? content?.decorModel(d.type, d) ?? createSignalModel(T, d.type); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel
       if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; }
       const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2);
       if (d.type === 'sail') { cylinder(.065, .08, 3.8, '#906f48', 0, 1.9, 0, g); box(2.5, .07, .07, '#906f48', 0, 3.2, 0, g); const s = new T.Mesh(new T.PlaneGeometry(2.35, 2.1), clothMat); s.position.set(0, 2.15, .06); g.add(s); }
@@ -723,7 +723,7 @@ export function mount(transfer = null) {
   function wearHook(bag, slot, actor) {
     const i = hookIndex(bag, slot); if (i < 0) return;
     const s = bag.slots[i], before = clamp(s.durability ?? MAX_HEALTH, 0, MAX_HEALTH);
-    s.durability = Math.max(0, before - WEAR_PER_CATCH);
+    s.durability = Math.max(0, before - (bag.count('sinker') > 0 ? 1 : WEAR_PER_CATCH)); // kiln: a Line Sinker in the bag halves hook wear
     if (before > 0 && s.durability === 0) emit({kind:'notice', text:'Hook worn out: shorter throws. R to repair'}, actor);
     else if (before > 25 && s.durability <= 25) emit({kind:'notice', text:'Hook getting worn. R repairs: 2 wood, 1 scrap'}, actor);
   }

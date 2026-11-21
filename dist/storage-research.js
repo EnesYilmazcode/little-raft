@@ -8,7 +8,7 @@ import { buildResearchTable } from './storage-research-model.js';
 export const CHEST_SLOTS = 12;
 export const MAX_CHESTS = 400;
 export const REACH = 3.2;             // metres from the actor to the tile centre
-export const STARTER = Object.freeze(['rope', 'hook', 'hammer', 'crate', 'research']);
+export const STARTER = Object.freeze(['rope', 'hook', 'hammer', 'crate', 'research', 'nestbox']);
 export const LOCK_REASON = 'Research it first at a Research Table';
 const NOTHING_NEW = 'That doesn’t teach anything new';
 

@@ -7,7 +7,7 @@ import { createHook } from './hook.js';
 
 const MINE = '#efae55', THEIRS = '#70a7e4';
 const ROPE = '#e9d39a', GHOST_OK = '#b6ffd0', GHOST_BAD = '#ee8e75';
-const DECOR = new Set(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
+const DECOR = new Set(['sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign']);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const fin = (...v) => v.every(Number.isFinite);
 
