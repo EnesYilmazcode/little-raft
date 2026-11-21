@@ -32,7 +32,7 @@ const PRELOAD = [
   './held-items.js?build=v3-survival-ae77fa84ac2b', './hook-physics.js?build=v3-survival-ae77fa84ac2b',
   './hook.js?build=v3-survival-ae77fa84ac2b', './input-map.js', './input.js',
   './inventory-state.js?build=v3-survival-ae77fa84ac2b', './islands-layout.js', './islands-models.js',
-  './islands.js?build=v3-survival-ae77fa84ac2b', './item-icons.js?build=v3-survival-ae77fa84ac2b', './item-svg.js',
+  './islands.js?build=v3-survival-ae77fa84ac2b', './item-batches.js?build=v3-survival-ae77fa84ac2b', './item-icons.js?build=v3-survival-ae77fa84ac2b', './item-svg.js',
   './item-tooltips.js', './items.js', './logbook-ui.js?build=v3-survival-ae77fa84ac2b',
   './logbook.js?build=v3-survival-ae77fa84ac2b', './materials.js?build=v3-survival-ae77fa84ac2b',
   './merge-geo.js?build=v3-survival-ae77fa84ac2b', './models.js?build=v3-survival-ae77fa84ac2b', './move-feel.js',
