@@ -80,7 +80,6 @@ const LOOK_SENSITIVITY = .0022, DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
 const FISH_REACH = 26, PENDING_MS = 2500, JOIN_TIMEOUT = 15000, ACK_TIMEOUT = 2000;
 const CHARGE_MS = 900, MIN_CHARGE = .15, WEAR_PER_CATCH = 2, MAX_HEALTH = 100;
 const ROPE_SEGMENTS = 16, ITEM_FLOAT = .05, CAMERA_ROLL = .2;
-const ITEM_SINK = {plastic:-.05, wood:-.06, leaf:-.1, scrap:-.08, barrel:-.22}; // model offset under ITEM_FLOAT so supplies sit partly below the waterline
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const SUN_OFFSET = Object.freeze([-15, 28, 12]), SHADOW_MARGIN = 4, SHADOW_MIN = 8, SHADOW_MAX = 25; // sun light offset from its target; shadow box half-size limits (m)
 const TIMBER = new Set(['#bb8a53','#c69860','#ad7c4a','#5e4029','#9c7649', '#c8995f', '#d3a368', '#8c6745', '#d5a265', '#a97d4c', '#b4824b', '#906f48', '#725942', '#756a49', '#ad8153']);
@@ -546,15 +545,9 @@ export function mount(transfer = null) {
   }
   function itemModel(item) {
     if (item.type === 'cache') return createSignalModel(T, 'cache');
-    if (item.type === 'bottle') { const g = new T.Group(), b = createBottle(T); b.position.y = -.02; b.rotation.y = (item.id % 7) * .9; g.add(b); return singlePass(g); }
-    const g = new T.Group(), h = n => { const s = Math.sin((item.id + 1) * n * 12.9898) * 43758.5453; return s - Math.floor(s); }; // stable per-item 0..1
-    if (item.type !== 'plastic') {
-      const d = createDebris(T, item.type, mat, {seed:item.id}); if (ART.artEnabled() && item.type === 'scrap') d.traverse(o => { if (o.isMesh && o.material.vertexColors) { o.material.dispose(); o.material = mat('#8e9aa2'); } }); /* art lane hook */
-      d.position.y = ITEM_SINK[item.type] ?? 0; d.rotation.set((h(1) - .5) * .12, 0, (h(2) - .5) * .12); g.add(d); return singlePass(g); // ride low in the water, slight resting tilt
-    }
-    const jug = createPlastic(T), b = jug.getObjectByName('jugBody');
-    if (b) { b.material = ART.artEnabled() ? mat('#9fd0dc') : b.material.clone(); b.material.userData.shared = false; if (!ART.artEnabled()) b.material.color.setHSL(.5 + h(3) * .07, .3 + h(4) * .25, .86 + h(5) * .08); } /* art lane hook */ // per-item hue drift on the baked teal
-    singlePass(jug); jug.rotation.set(Math.PI / 2 + (h(6) - .5) * .3, 0, .4 + (item.id % 5) * .5); jug.position.y = ITEM_SINK.plastic; jug.scale.set(.85, .85, .85 * (.75 + h(7) * .25)); g.add(jug); return g; // some jugs crushed flatter
+    if (item.type === 'bottle') { const g = new T.Group(), b = createBottle(T); b.position.y = .04; b.rotation.y = (item.id % 7) * .9; g.add(b); return singlePass(g); }
+    if (item.type !== 'plastic') { const d = createDebris(T, item.type, mat, {seed:item.id}); if (ART.artEnabled() && item.type === 'scrap') d.traverse(o => { if (o.isMesh && o.material.vertexColors) { o.material.dispose(); o.material = mat('#8e9aa2'); } }); /* art lane hook */ return singlePass(d); }
+    const g = new T.Group(), jug = createPlastic(T); if (ART.artEnabled()) { const b = jug.getObjectByName('jugBody'); if (b) { b.material.dispose(); b.material = mat('#f2f0e6'); } } /* art lane hook */ singlePass(jug); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
   }
   // Meshes are keyed by token, not id: a respawned item keeps its id but may change type.
   const itemMeshes = new Map();

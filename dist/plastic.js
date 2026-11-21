@@ -1,4 +1,4 @@
-// Floating plastic resource: weathered pale-teal plastic jug. Pure procedural, no assets.
+// Floating plastic resource: weathered milk jug. Pure procedural, no assets.
 // createPlastic(T) -> THREE.Group (~0.65 x 0.7 x 0.4, centered on origin).
 // Every jug is identical, so geometry and materials are built once per T and shared by all jugs
 // (geometry/material.userData.shared = true): they must not be disposed when one jug is removed.
@@ -61,7 +61,7 @@ function buildJug(T) {
   {
     const p = bodyGeo.attributes.position;
     const col = new Float32Array(p.count * 3);
-    const base = new T.Color(0x9fd0dc); // sun-bleached teal plastic, baked in (game.js tints per item)
+    const base = new T.Color(0xf2f0e6); // former material color, now baked in
     const h = (a, b) => { const s = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return s - Math.floor(s); };
     for (let i = 0; i < p.count; i++) {
       let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
@@ -76,7 +76,7 @@ function buildJug(T) {
       p.setXYZ(i, x, y, z * Z);
       const n = h(Math.round(ang * 10), Math.round(y * 40));
       const grime = 0.86 + 0.1 * n - (y < -0.25 ? 0.08 : 0) - 0.04 * Math.max(0, Math.sin(ang * 2 + y * 5));
-      col[i * 3] = grime * 0.96 * base.r; col[i * 3 + 1] = grime * 0.98 * base.g; col[i * 3 + 2] = grime * base.b;
+      col[i * 3] = grime * 0.98 * base.r; col[i * 3 + 1] = grime * 0.97 * base.g; col[i * 3 + 2] = grime * 0.9 * base.b;
     }
     bodyGeo.setAttribute('color', new T.BufferAttribute(col, 3));
     bodyGeo.computeVertexNormals();
@@ -84,7 +84,7 @@ function buildJug(T) {
   const parts = [bodyGeo];
 
   // 2. Neck lip ring.
-  parts.push(tint(T, place(new T.TorusGeometry(0.079, 0.008, 4, 12), 0, 0.268, 0, Math.PI / 2), 0x93c4d0));
+  parts.push(tint(T, place(new T.TorusGeometry(0.079, 0.008, 4, 12), 0, 0.268, 0, Math.PI / 2), 0xe8e6da));
 
   // 3. Blue cap with knurled edge (radial segments) and slight tilt.
   parts.push(tint(T, place(new T.CylinderGeometry(0.086, 0.09, 0.07, 20), 0, 0.315, 0, 0, 0.03), 0x2f6fc4));
@@ -92,16 +92,16 @@ function buildJug(T) {
   parts.push(tint(T, place(new T.TorusGeometry(0.088, 0.007, 4, 12), 0, 0.283, 0, Math.PI / 2), 0x2f6fc4));
 
   // 5. Handle loop (half torus bulging out on +x, ends buried in shoulder).
-  parts.push(tint(T, place(new T.TorusGeometry(0.085, 0.022, 6, 12, Math.PI), 0.228, 0.06, 0, 0, -Math.PI / 2, 1.25), 0x98cad6));
+  parts.push(tint(T, place(new T.TorusGeometry(0.085, 0.022, 6, 12, Math.PI), 0.228, 0.06, 0, 0, -Math.PI / 2, 1.25), 0xeeece0));
 
   // 6. Mold seam running up the -x side and across the base.
   const seamPts = [];
   for (let y = 0.24; y >= -0.345; y -= 0.02) seamPts.push(new T.Vector3(-radiusAt(y) - 0.002, y, 0));
   seamPts.push(new T.Vector3(0, -0.352, 0), new T.Vector3(radiusAt(-0.34), -0.352, 0));
-  parts.push(tint(T, new T.TubeGeometry(new T.CatmullRomCurve3(seamPts), 12, 0.0035, 3, false), 0x86b8c6));
+  parts.push(tint(T, new T.TubeGeometry(new T.CatmullRomCurve3(seamPts), 12, 0.0035, 3, false), 0xdcdacb));
 
   const solidGeo = merge(T, parts);
-  const solidMat = new T.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, side: T.DoubleSide, roughness: 0.35, metalness: 0 });
+  const solidMat = new T.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, side: T.DoubleSide, roughness: 0.7, metalness: 0 });
 
   // 7. Light-blue creased plastic triangles on the front/back faces.
   const tris = [
@@ -122,7 +122,7 @@ function buildJug(T) {
   creaseGeo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
   creaseGeo.computeVertexNormals();
   const creaseMat = new T.MeshStandardMaterial({
-    color: 0xd8f0f4, transparent: true, opacity: 0.45, side: T.DoubleSide, forceSinglePass: true, roughness: 0.7, metalness: 0,
+    color: 0xa9d2ec, transparent: true, opacity: 0.55, side: T.DoubleSide, forceSinglePass: true, roughness: 0.7, metalness: 0,
     polygonOffset: true, polygonOffsetFactor: -2, depthWrite: false,
   });
   for (const x of [solidGeo, creaseGeo, solidMat, creaseMat]) x.userData.shared = true;

@@ -102,10 +102,6 @@ function metalMat(T, color, extra = {}) {
 const paintMat = (T, side) =>
   sharedMat(T, `paint|${side}`, { color: 0xffffff, vertexColors: true, roughness: 0.85, metalness: 0, side });
 
-// Fronds: soft sheen plus a faint green self-glow so they read as thin, light-passing leaves on the water.
-const leafMat = (T) =>
-  sharedMat(T, 'leaf', { color: 0xffffff, vertexColors: true, roughness: 0.6, metalness: 0, side: T.DoubleSide, emissive: 0x24400e });
-
 // Center content on origin; uniformly shrink if xz footprint exceeds maxXZ.
 function fit(T, inner, maxXZ) {
   inner.updateMatrixWorld(true);
@@ -211,7 +207,7 @@ function frondGeo(T, r, length, count) {
 }
 
 function buildLeaf(T, getMaterial, root, inner, r) {
-  const greens = ['#7fb54f', '#8ec25a', '#73a848', '#9acb64']; // pale sun-washed fronds
+  const greens = ['#4f9a3a', '#5fae45', '#46893a', '#6bb84c'];
   const fronds = 4;
   const sx = -0.42;
   const parts = [];
@@ -231,7 +227,7 @@ function buildLeaf(T, getMaterial, root, inner, r) {
     tint(T, place(T, new T.TorusGeometry(0.035, 0.008, 4, 12), sx - 0.045, 0.014, 0, 0, Math.PI / 2, 0), '#b89a64'),
   );
   // one vertex-colored, double-sided mesh for the whole bundle
-  mesh(T, merge(T, parts, true), leafMat(T), inner);
+  mesh(T, merge(T, parts, true), paintMat(T, T.DoubleSide), inner);
 }
 
 // ---------------------------------------------------------------- scrap metal

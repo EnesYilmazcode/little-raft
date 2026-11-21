@@ -49,12 +49,12 @@ export const COLOR_PRESETS = {
   rope: ['#a8946c', '#b89a64', '#e9d39a'],
   scrap: ['#4b4844', '#8e9aa2', '#6f6964', '#6d757b', '#9a5a32'],
   foliage: ['#4f9b72'],
-  plastic: ['#f2f0e6', '#9fd0dc'], // jug body (plastic.js), swapped in by the game hook
+  plastic: ['#f2f0e6'], // jug body (plastic.js), swapped in by the game hook
   leaf: ['#72ae59', '#519b55', '#6bb84c', '#5fae45', '#7d8a3d'],
   sand: ['#e6d7a3'],
   cloth: ['#fff3cf'],
 };
-const COLOR_OPTS = { '#f2f0e6': { repeat: [3, 1] }, '#9fd0dc': { repeat: [3, 1] } }; // per-colour overrides (jug lathe uv: u around ~1.7 m)
+const COLOR_OPTS = { '#f2f0e6': { repeat: [3, 1] } }; // per-colour overrides (jug lathe uv: u around ~1.7 m)
 const COLOR_TO_PRESET = new Map(Object.entries(COLOR_PRESETS).flatMap(([p, list]) => list.map(c => [c.toLowerCase(), p])));
 
 export const artEnabled = () => typeof location !== 'undefined' && /[?&]art(=1|&|$)/.test(location.search);
