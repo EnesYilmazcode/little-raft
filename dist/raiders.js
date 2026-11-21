@@ -335,10 +335,10 @@ export function createRaiders(ctx) {
     const kids = raft.children;
     if (raft !== scanRaft || kids.length !== scanLen || kids[0] !== scanFirst) {
       scanRaft = raft; scanLen = kids.length; scanFirst = kids[0]; crows.length = 0;
-      for (let i = 0; i < kids.length; i++) { const g = kids[i]; if (g.name === 'craft_scarecrow') { g.userData.armL ??= g.getObjectByName('armL'); g.userData.armR ??= g.getObjectByName('armR'); crows.push(g); } }
+      for (let i = 0; i < kids.length; i++) { const g = kids[i]; if (g.name === 'craft_scarecrow') { const u = g.userData; u.armL ??= g.getObjectByName('armL'); u.armR ??= g.getObjectByName('armR'); u.hpKey = keyOf(Math.round(g.position.x / 2), Math.round(g.position.z / 2)); crows.push(g); } }
     }
     for (let i = 0; i < crows.length; i++) {
-      const g = crows[i], hp = state.sc[keyOf(Math.round(g.position.x / 2), Math.round(g.position.z / 2))] ?? SCARECROW_HP;
+      const g = crows[i], hp = state.sc[g.userData.hpKey] ?? SCARECROW_HP; // key cached at scan time: no per-frame strings
       const l = g.userData.armL, rr = g.userData.armR;
       if (l && l.visible !== hp >= SCARECROW_HP) l.visible = hp >= SCARECROW_HP;
       if (rr && rr.visible !== hp >= SCARECROW_HP - 1) rr.visible = hp >= SCARECROW_HP - 1;
@@ -381,7 +381,7 @@ export function createRaiders(ctx) {
       const step = fin(dt) && dt > 0 ? Math.min(dt, 0.25) : 0;
       clock += step;
       if (ctx.running && ctx.role !== 'guest') hostTick(step);
-      else if (ctx.role === 'guest') for (const r of state.r) if (r.st !== WAIT) r.t += step; // guest: animate between host updates
+      else if (ctx.role === 'guest') for (let i = 0; i < MAX_RAIDERS; i++) if (state.r[i].st !== WAIT) state.r[i].t += step; // guest: animate between host updates
       if (!T || !ctx.scene) return;
       if (!built) build();
       render(step); paintScarecrows();
@@ -440,6 +440,8 @@ export function createRaiders(ctx) {
       peckLeft(i = 0, left = 0.05) { const r = state.r[i]; if (!r || r.st !== PECKING) return false; r.t = PECK - left; return true; },
       setTimer(i = 0, sec = 1) { const r = state.r[i]; if (!r || r.st !== WAIT) return false; r.t = sec; countClock = 1; return true; },
       hit(i = 0, dmg = 5) { return hitRaider(state, i, dmg, 0); },
+      /** QA: move the local player to raft-local (x, z) (screenshots, scare checks). */
+      standAt(x, z) { const p = ctx.physics; if (!p || !fin(x) || !fin(z)) return false; p.x = x; p.z = z; if ('vx' in p) p.vx = 0; if ('vz' in p) p.vz = 0; return true; },
       worldPos(i = 0) { return { x: wpos[i * 3], y: wpos[i * 3 + 1], z: wpos[i * 3 + 2] }; },
       /** Host QA: put a scarecrow on a free raft tile. */
       placeScarecrow(x, z) {
