@@ -745,10 +745,12 @@ export function mount(transfer = null) {
     const early = !inShell && pageLock.early(now);
     if (!early) earlyRetried = false;
     lostAt = escapeUnlockAt = now; cooldownRetried = false;
+    // Focus is sampled now too: a timer starved while unfocused can fire after focus came back (alt-tab is never a pause).
+    const focusedAtLoss = windowFocused(), hiddenAtLoss = document.hidden;
     lossTimer = cancelTimer(lossTimer);
     lossTimer = later(() => {
       lossTimer = 0;
-      const action = lockLossAction({running, locked:isLocked(), blocked:uiBlocked(), focused:windowFocused(), hidden:document.hidden, early, retried:earlyRetried});
+      const action = lockLossAction({running, locked:isLocked(), blocked:uiBlocked(), focused:focusedAtLoss && windowFocused(), hidden:hiddenAtLoss || document.hidden, early, retried:earlyRetried});
       if (action === 'away') lockedAtBlur = true;
       else if (action === 'pause') pauseFromLockLoss();
       else if (action === 'retry') {
