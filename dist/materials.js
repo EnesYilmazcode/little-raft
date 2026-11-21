@@ -10,6 +10,7 @@
 //   applyLighting(scene, renderer)              -> recommended warm tropical rig (LIGHTING)
 //   artEnabled()                                -> true when the page URL has ?art (temporary hook gate)
 import { getAtlas } from './textures.js';
+import { createSky } from './sky.js';
 
 // Tuned against the research notes (sandbox/art/notes/research.md). roughness scales the map's roughness.
 // repeat = tiles per UV unit. normalScale = strength of the baked normal.
@@ -20,7 +21,7 @@ export const PRESETS = {
   plastic: { cell: 'plastic', roughness: 1,    metalness: 0,    normalScale: 1.3, repeat: [1, 1], transparent: true, opacity: 0.95, side: 'double' },
   leaf:    { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1], alphaTest: 0.5, side: 'double' },
   rope:    { cell: 'rope',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [1, 3] },
-  scrap:   { cell: 'scrap',   roughness: 1,    metalness: 1,    normalScale: 1.0, repeat: [1, 1], metalMap: true }, // metalness lives in albedo alpha
+  scrap:   { cell: 'scrap',   roughness: 1,    metalness: 0.5,  normalScale: 1.0, repeat: [1, 1], metalMap: true }, // x metal mask in albedo alpha; capped: no env map in game
   sand:    { cell: 'sand',    roughness: 1,    metalness: 0,    normalScale: 0.8, repeat: [3, 3] },
   rock:    { cell: 'rock',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [2, 2] },
   foam:    { cell: 'foam',    roughness: 1,    metalness: 0,    normalScale: 0.3, repeat: [2, 2], transparent: true, depthWrite: false },
@@ -28,11 +29,14 @@ export const PRESETS = {
 };
 
 // Recommended rig: sky-blue hemisphere over a sea-teal bounce, warm sun about 3x the fill, fog matching
-// the horizon so the sea melts into the sky. Distances in metres.
+// the horizon so the sea melts into the sky. Distances in metres. sky* = optional gradient dome (sky.js),
+// ocean* = ocean.js uniforms retinted by applyOceanLook().
 export const LIGHTING = {
-  background: '#cfe3ec', fog: '#cfe3ec', fogNear: 30, fogFar: 150,
-  hemiSky: '#bfe3ff', hemiGround: '#3a6e7a', hemiIntensity: 1.25,
-  sun: '#fff1d6', sunIntensity: 3.0, exposure: 1.05,
+  background: '#cde6f2', fog: '#cde6f2', fogNear: 35, fogFar: 150,
+  hemiSky: '#bfe3ff', hemiGround: '#5c8f96', hemiIntensity: 1.1,
+  sun: '#ffeccc', sunIntensity: 3.2, exposure: 1.1,
+  skyDome: true, skyZenith: '#6fb4e6', skyCloudLit: '#ffffff', skyCloudShade: '#d3e3ee', skyCoverage: 0.35,
+  oceanDeep: '#0b5f7a', oceanShallow: '#1fb0b5', oceanZenith: '#7cc0e8',
 };
 
 // Game palette hex -> preset. Explicit, so avatars, UI ghosts and the hook keep their own materials.
@@ -106,8 +110,11 @@ export function materialForColor(T, color) {
   return preset ? getMaterial(T, preset, { color }) : null;
 }
 
-// Apply LIGHTING to an existing scene (adjusts the first hemisphere/directional light it finds).
-export function applyLighting(scene, renderer, L = LIGHTING) {
+// Apply LIGHTING to an existing scene (adjusts the first hemisphere/directional light it finds). With
+// L.skyDome it also adds one sky.js gradient dome (horizon = fog colour) that follows the camera.
+// extra = { ocean, T }: ocean ({uniforms}) is retinted via applyOceanLook; T (three namespace) enables the dome.
+// Idempotent, so it can be called again once the ocean exists.
+export function applyLighting(scene, renderer, L = LIGHTING, { ocean = null, T = null } = {}) {
   if (scene.background?.isColor) scene.background.set(L.background);
   if (scene.fog) { scene.fog.color.set(L.fog); if ('near' in scene.fog) { scene.fog.near = L.fogNear; scene.fog.far = L.fogFar; } }
   let hemi = null, sun = null;
@@ -115,7 +122,25 @@ export function applyLighting(scene, renderer, L = LIGHTING) {
   if (hemi) { hemi.color.set(L.hemiSky); hemi.groundColor.set(L.hemiGround); hemi.intensity = L.hemiIntensity; }
   if (sun) { sun.color.set(L.sun); sun.intensity = L.sunIntensity; }
   if (renderer) renderer.toneMappingExposure = L.exposure;
-  return { hemi, sun };
+  let sky = scene.getObjectByName('art-sky');
+  if (L.skyDome && T && !sky) {
+    const dome = createSky(T, { sunDirection: sun ? sun.position : undefined, horizon: L.fog, zenith: L.skyZenith, sunColor: L.sun, coverage: L.skyCoverage });
+    dome.uniforms.uCloudLit.value.set(L.skyCloudLit); dome.uniforms.uCloudShade.value.set(L.skyCloudShade);
+    sky = dome.group; sky.name = 'art-sky'; sky.userData.dome = dome;
+    const mesh = sky.children[0];
+    mesh.onBeforeRender = (r, s, cam) => { dome.update(performance.now() / 1000, null); sky.position.set(cam.position.x, 0, cam.position.z); sky.updateMatrixWorld(); };
+    scene.add(sky);
+  }
+  if (ocean) applyOceanLook(ocean, L);
+  return { hemi, sun, sky };
+}
+
+// Retint ocean.js uniforms: body colours, overhead reflection, and the distance fade toward the fog colour.
+export function applyOceanLook(ocean, L = LIGHTING) {
+  const u = ocean?.uniforms; if (!u) return;
+  u.uDeep?.value.set(L.oceanDeep); u.uShallow?.value.set(L.oceanShallow); u.uZenith?.value.set(L.oceanZenith);
+  u.uSky?.value.set(L.fog); u.uSunColor?.value.set(L.sun);
+  if (u.uFadeNear) u.uFadeNear.value = L.fogNear; if (u.uFadeFar) u.uFadeFar.value = L.fogFar;
 }
 
 // Memory/diagnostics for tests and the demo page.
