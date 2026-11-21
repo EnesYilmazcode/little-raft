@@ -171,9 +171,16 @@ def heap(page, cdp, gc=True):
     window the GC took so long tasks it caused can be excluded."""
     w0 = page.evaluate('performance.now()')
     if gc:
-        cdp.send('HeapProfiler.collectGarbage'); cdp.send('HeapProfiler.collectGarbage')
+        # The game keeps rendering between CDP calls, so a frame's garbage can land between the
+        # GC and the read. Take the lowest of three GC+read rounds: that is the retained heap.
+        h = None
+        for _ in range(3):
+            cdp.send('HeapProfiler.collectGarbage')
+            x = cdp.send('Runtime.getHeapUsage')
+            if h is None or x['usedSize'] < h['usedSize']: h = x
+    else:
+        h = cdp.send('Runtime.getHeapUsage')
     w1 = page.evaluate('performance.now()')
-    h = cdp.send('Runtime.getHeapUsage')
     pm, glLive, domNow = page.evaluate('[performance.memory ? performance.memory.usedJSHeapSize : null, Object.values(__perf.gl).reduce((a, b) => a + b, 0), document.getElementsByTagName("*").length]')
     m = {x['name']: x['value'] for x in cdp.send('Performance.getMetrics')['metrics']}
     return {'usedMB': round(h['usedSize'] / 1048576, 3), 'totalMB': round(h['totalSize'] / 1048576, 3),
