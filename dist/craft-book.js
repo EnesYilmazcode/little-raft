@@ -84,6 +84,11 @@ export const ITEM_TEXT = Object.freeze({
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
   grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },
+  // [recycler] floating junk + Sorting Tub
+  oldboot:    { desc: 'A soggy old boot fished from the sea.', use: 'Sort it in a Sorting Tub for 2 plastic.' },
+  tincan:     { desc: 'A dented tin can fished from the sea.', use: 'Sort it in a Sorting Tub for 2 scrap.' },
+  seajar:     { desc: 'A cloudy glass jar fished from the sea.', use: 'Sort it in a Sorting Tub for 2 sand.' },
+  recycler:   { desc: 'A hand-cranked sorting tub.', use: 'Turns junk into scrap, plastic and sand. No fuel.' },
 });
 
 const TOOLISH = new Set(['hook', 'hammer', 'fishingrod', 'rod', 'axe', 'spear']);
@@ -273,13 +278,13 @@ export const ITEM_SOURCE = Object.freeze({
   wax:     Object.freeze({ tag: 'beehive', how: 'Collected with honey from a full beehive (E).' }),
   wood:    Object.freeze({ tag: 'found floating', how: 'Hook floating planks. Barrels hold more.' }),
   leaf:    Object.freeze({ tag: 'floating, palm', how: 'Hook floating leaf bundles, or harvest a grown palm.' }),
-  plastic: Object.freeze({ tag: 'found floating', how: 'Hook floating plastic jugs. Barrels hold some too.' }),
-  scrap:   Object.freeze({ tag: 'found floating', how: 'Hook floating scrap. Barrels hold some too.' }),
+  plastic: Object.freeze({ tag: 'found floating', how: 'Hook floating plastic jugs. Barrels hold some too, or sort junk in a Sorting Tub.' }),
+  scrap:   Object.freeze({ tag: 'found floating', how: 'Hook floating scrap. Barrels hold some too, or sort junk in a Sorting Tub.' }),
   seed:    Object.freeze({ tag: 'barrels, palm', how: 'Hook floating barrels, or harvest a grown palm.' }),
   fish:    Object.freeze({ tag: 'fishing rod', how: 'Cast the Fishing Rod into the sea and wait for a bite.' }),
   water:   Object.freeze({ tag: 'fill a cup', how: 'Fill a Filter Cup at the sea.' }),
   // raft-master materials (items.js): barrels, islands, the seafloor and the stations
-  sand:        Object.freeze({ tag: 'barrels, islands', how: 'Hook floating barrels, scoop it on an island or dive for it.' }),
+  sand:        Object.freeze({ tag: 'barrels, islands', how: 'Hook floating barrels, scoop it on an island or dive for it, or sort junk in a Sorting Tub.' }),
   clay:        Object.freeze({ tag: 'barrels, seafloor', how: 'Hook floating barrels or dive to the seafloor.' }),
   stone:       Object.freeze({ tag: 'barrels, islands', how: 'Hook floating barrels or gather rocks on an island.' }),
   metalore:    Object.freeze({ tag: 'barrels, seafloor', how: 'Hook floating barrels or dive to the seafloor.' }),
@@ -292,6 +297,9 @@ export const ITEM_SOURCE = Object.freeze({
   saltcup:     Object.freeze({ tag: 'fill a cup', how: 'Hold an empty cup and click the sea.' }),
   freshcup:    Object.freeze({ tag: 'purifier', how: 'Pour sea water into a purifier and wait.' }),
   cookedfish:  Object.freeze({ tag: 'grill', how: 'Cook a fish on a grill.' }),
+  oldboot:     Object.freeze({ tag: 'found floating', how: 'Hook it as it drifts by. Nets catch it too.' }), // [recycler]
+  tincan:      Object.freeze({ tag: 'found floating', how: 'Hook it as it drifts by. Nets catch it too.' }),
+  seajar:      Object.freeze({ tag: 'found floating', how: 'Hook it as it drifts by. Nets catch it too.' }),
 });
 
 /**
