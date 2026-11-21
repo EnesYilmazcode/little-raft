@@ -49,8 +49,9 @@ const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); 
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrelTrial, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { attachSpearRepair } from './spear-repair-hooks.js?build=v3-survival-ae77fa84ac2b'; // [spear-repair]
-import { newVitals, tickVitals, damage as damageVitals, consume as consumeVitals, cleanVitals, saveVitals, isEdible, isDrink /* [juicer] */, eatLabel, FOOD, SPRINT_MULT, EAT_SECONDS, RESPAWN } from './vitals.js?build=v3-survival-ae77fa84ac2b'; // [vitals] hunger, thirst, health
+import { newVitals, tickVitals, damage as damageVitals, adjust as adjustVitals /* [bed] */, consume as consumeVitals, cleanVitals, saveVitals, isEdible, isDrink /* [juicer] */, eatLabel, FOOD, SPRINT_MULT, EAT_SECONDS, RESPAWN } from './vitals.js?build=v3-survival-ae77fa84ac2b'; // [vitals] hunger, thirst, health
 import { createVitalsUI } from './vitals-ui.js?build=v3-survival-ae77fa84ac2b'; // [vitals] HUD bars, damage vignette, faint overlay
+import { BED_RESPAWN } from './sleep.js?build=v3-survival-ae77fa84ac2b'; // [bed] wake-up bars at your bed
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
@@ -275,6 +276,7 @@ export function mount(transfer = null) {
   // [vitals] The local player's own hunger/thirst/health. Solo/host persist it in world.vitals; a guest keeps
   // its own in memory (and in its own save once back home). Never sent over the network.
   const vitals = newVitals(X?.vitals ?? world.vitals);
+  let hurtCause = null, faintHome = false; const wakeSpot = {x:0, z:0, bed:false}; // [bed] [drown]
   let vitalsUI = null, eating = null, fainted = Number.isFinite(X?.fainted) ? X.fainted : -1, exertion = 1; // eating {item, slot, t}; fainted: seconds into the faint, -1 = awake
   const vitalsOpts = {mult:1};
   let building = null, sentPieces = null; // building-pieces lane hook (sentPieces: last pieces array sent to the guest)
@@ -443,6 +445,7 @@ export function mount(transfer = null) {
     get building() { return building; }, get brush() { return hands?.itemModel('brush') ?? null; }, woodMat: c => woodMat(c), aim: () => frameAim, // content hook (paint)
     openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
     hurtPlayer: (n, cause) => hurtPlayer(n, cause), get vitals() { return vitals; }, // [vitals] damage the LOCAL player; vitals is read-only for modules
+    adjustVitals: (hp, food, water) => { if (running && fainted < 0) adjustVitals(vitals, hp, food, water); }, // [bed] a slept night: +40 health, -20 food, -20 water
     note: (i, n, s) => note(i, n, s), get content() { return content; }, // [buoycourse] bell chime + registry view (board mode)
     faceYaw: y => { if (Number.isFinite(y)) yaw = y; }, // [sit] seat facing
     award: ev => award(ev), night: () => content?.night?.() ?? 0, // [sit] host achievements, [fireworks] content hook
@@ -492,7 +495,8 @@ export function mount(transfer = null) {
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
       getPush:(s, o) => { content?.sailPush(s, o); }, steerTargets:() => content?.steerTargets() ?? null}); /* engine: motor push + wheel grab points */ for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
-    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id}), getMods:out => content?.diveMods?.(out)}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
+    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id}), getMods:out => content?.diveMods?.(out),
+      breath:() => (vitals.food <= 0 || vitals.water <= 0 ? DIVE.STARVED_BREATH : 1), onDrown:hp => hurtPlayer(hp, 'drown')}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     initShark(); // shark lane
     rebuildRaft(); fitShadow();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
@@ -692,7 +696,7 @@ export function mount(transfer = null) {
   function hurtPlayer(n, cause = 'hit') {
     if (!running || fainted >= 0) return 0;
     const lost = damageVitals(vitals, Number(n), String(cause ?? 'hit'));
-    if (lost > 0) vitalsUI?.flash();
+    if (lost > 0) { vitalsUI?.flash(); hurtCause = String(cause ?? 'hit'); } // [drown] the faint overlay names the last hurt
     return lost;
   }
   const eatKind = () => { const k = localBag().slots[localBag().selectedIndex]?.kind ?? null; return isEdible(k) ? k : null; };
@@ -704,11 +708,13 @@ export function mount(transfer = null) {
   function updateVitals(dt, dialog) {
     if (!running) { eating = null; return; }
     if (fainted >= 0) { // passed out: a short dark beat, then wake up on the raft
-      fainted += dt; vitalsUI?.faint(true);
+      fainted += dt; vitalsUI?.faint(true, hurtCause, faintHome);
       if (fainted >= 2.6) {
-        fainted = -1; const c = cleanVitals(RESPAWN); vitals.hp = c.hp; vitals.food = c.food; vitals.water = c.water; vitals.hurtAt = -Infinity; vitals.starving = false;
-        diving?.cancel(); const s = spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); pitch = -.28; // fresh physics: dry, grounded, not diving
-        vitalsUI?.faint(false); notice('You wake up on the raft, hungry and thirsty', 3200);
+        // [bed] wake beside your last used / placed bed with 25 health, 50 food, 50 water; no bed (or it is gone) -> raft centre, RESPAWN bars
+        const bed = content?.respawnSpot?.(wakeSpot) ?? null;
+        fainted = -1; const c = cleanVitals(bed ? BED_RESPAWN : RESPAWN); vitals.hp = c.hp; vitals.food = c.food; vitals.water = c.water; vitals.hurtAt = -Infinity; vitals.starving = false;
+        diving?.reset(); const s = bed ?? spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); pitch = -.28; // fresh physics: dry, grounded, not diving [drown] reset: full lungs
+        vitalsUI?.faint(false); notice(bed ? 'You wake up in your bed, hungry and thirsty' : 'You wake up on the raft, hungry and thirsty', 3200); hurtCause = null;
       }
       return;
     }
@@ -720,7 +726,7 @@ export function mount(transfer = null) {
     }
     if (role === 'solo' && dialog && dialogOpen()) return; // the solo pause menu stops the clock
     vitalsOpts.mult = exertion; tickVitals(vitals, dt, vitalsOpts);
-    if (vitals.hp <= 0) { fainted = 0; eating = null; charging = null; reeling = false; if (hook) { fishWait = 0; endHook(); } clearInput(); } // drop the line: it must not stay out from the old spot
+    if (vitals.hp <= 0) { if (vitals.starving) hurtCause = vitals.water <= 0 ? 'thirst' : 'hunger'; faintHome = !!content?.respawnSpot?.(wakeSpot); fainted = 0; eating = null; charging = null; reeling = false; if (hook) { fishWait = 0; endHook(); } clearInput(); } // drop the line: it must not stay out from the old spot
   }
   // Crosshair prompts (dist/prompts.js provider): eat/drink, else the cup/purifier/planter prompt (game.js markup).
   const tipCache = new Map(), eatTips = new Map(), EATING_TIP = {key:'', label:'…', muted:true};
@@ -1240,6 +1246,7 @@ export function mount(transfer = null) {
         const antennasBefore = countAntennas(world.decor);
         const rot = Number.isFinite(a.rot) ? Math.round(wrapRot(a.rot) * 1000) / 1000 : 0;
         world.decor.push(rot ? {type:a.recipe, x:a.x, z:a.z, rot} : {type:a.recipe, x:a.x, z:a.z});
+        content?.placed?.(a.recipe, a.x, a.z, actor); // [bed] a new bed is its placer's wake-up spot
         if (a.recipe === 'antenna') { const n = countAntennas(world.decor); placedText = n > antennasBefore ? `Antenna placed · signal ${n}/3` : antennasBefore >= 3 ? 'Antenna placed' : 'Antenna placed (put it 2+ tiles from the receiver)'; }
       } else return;
       rebuildRaft(); fitShadow(); emit({kind:'build', text:placedText ?? (a.recipe === 'floor' ? 'A little more room!' : `${ITEM_INFO[a.recipe].name} placed`), sound:a.recipe === 'floor' ? 'build' : 'place'}, 'all');

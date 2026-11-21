@@ -103,7 +103,7 @@ test('diving.js: oxygen length and swim speed follow the multipliers', () => {
   assert.ok(near(speed({ ...env, swimMul: 1.3 }), DIVE.FAST * 1.3, 0.02));
   const b = new DiveBody({ x: 0, y: -5, z: 0 });
   for (let i = 0; i < 60; i++) b.step(1 / 60, {}, { ...env, oxyMul: 75 / 45 });
-  assert.ok(near(b.oxygen, 1 - 1 / 75, 1e-6));
+  assert.ok(near(b.oxygen, 1 - 1 / (DIVE.OXY_SECONDS * 75 / 45), 1e-6)); // the jug stretches the base breath (33 s -> 55 s)
 });
 
 test('registry: diveMods multiplies, and a throwing module is disabled', () => {

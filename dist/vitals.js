@@ -4,6 +4,7 @@
 //   const v = newVitals();               // {hp:100, food:100, water:100, hurtAt:-Infinity, clock:0, starving:false}
 //   tickVitals(v, dt, {mult})            // mult: 1 normal, SPRINT_MULT while sprinting/swimming. Returns v.
 //   damage(v, n, cause)                  // -> HP actually lost; blocks regen for REGEN_DELAY seconds
+//   adjust(v, dHp, dFood, dWater)       // [bed] add to the bars at once (sleeping); never kills (hp stays >= 1). -> v
 //   consume(v, kind)                     // -> {food, water, returns} applied deltas, or null if not edible
 //   FOOD[kind] = {food, water, returns?} // other lanes may add entries (addFood helper validates)
 //   cleanVitals(raw)                     // save validation: -> {hp, food, water} (missing/invalid -> full)
@@ -75,6 +76,13 @@ export function damage(v, n, cause = 'hit') { // eslint-disable-line no-unused-v
   n = num(n); if (!(n > 0) || !(v.hp > 0)) return 0;
   const before = v.hp; v.hp = clampBar(v.hp - n); v.hurtAt = num(v.clock);
   return before - v.hp;
+}
+
+/** [bed] Adds to the bars at once (a night's sleep). A sleeper never dies of it: hp stays at least 1. No-op at hp 0. */
+export function adjust(v, dHp, dFood, dWater) {
+  if (!v || !(v.hp > 0)) return v;
+  v.hp = Math.max(1, clampBar(num(v.hp) + num(dHp))); v.food = clampBar(num(v.food) + num(dFood)); v.water = clampBar(num(v.water) + num(dWater));
+  return v;
 }
 
 /** Applies an edible item to the bars. Returns the entry used ({food, water, returns}) or null. */
