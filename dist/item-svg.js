@@ -105,6 +105,22 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M35 25.5 l3 3 M38 25.5 l-3 3" fill="none" stroke-width="1.6"/></g>
     <g fill="none" stroke="#fff2cc" stroke-width="2" stroke-linecap="round" stroke-opacity=".9"><path d="M18 15 C16 12 20 10 18 6"/><path d="M26 14 C24 11 28 9 26 4"/><path d="M34 15 C32 12 36 10 34 6"/></g>`,
 
+  sharkmeat: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M6 30 C5 21 13 14 24 14 C35 14 43 20 42 29 C41 37 33 41 23 40 C13 39 7 36 6 30 Z" fill="#d9767a"/>
+    <path d="M10 28 C11 22 17 18 24 18 C31 18 37 22 38 27 C31 25 18 25 10 28 Z" fill="#f0a3a0" stroke="none"/>
+    <path d="M6 30 C7 36 13 39 23 40 C33 41 41 37 42 29 C38 33 30 35 23 35 C15 35 9 33 6 30 Z" fill="#8a9ba6"/></g>
+    <path d="M14 27 C18 24 24 23 30 24.5" fill="none" stroke="#fff2cc" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M18 31 C22 29 28 29 33 30.5" fill="none" stroke="#b5565c" stroke-width="1.4" stroke-linecap="round"/>`,
+
+  sharkhead: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M4 30 C6 20 16 12 30 12 C38 12 44 18 44 26 L44 38 C36 40 26 40 18 38 C10 37 5 34 4 30 Z" fill="#7f8f99"/>
+    <path d="M4 30 C10 34 20 36 30 35 C36 35 41 36 44 38 C36 40 26 40 18 38 C10 37 5 34 4 30 Z" fill="#eef2f0"/>
+    <path d="M24 12 L30 3 L33 12 Z" fill="#6d7d87"/>
+    <path d="M8 31 L12 34 L15 31.5 L18 34.5 L21 32 L24 35 L27 32.5" fill="#fff" stroke-width="1.3"/>
+    <circle cx="16" cy="22.5" r="2.4" fill="${O}" stroke="none"/></g>
+    <path d="M30 20 V30 M34 19.5 V30.5 M38 20 V30" stroke="${O}" stroke-width="1.4" stroke-linecap="round" stroke-opacity=".6"/>
+    <path d="M12 17.5 C16 14.5 21 13.2 26 13.2" fill="none" stroke="#c6d6e0" stroke-width="1.8" stroke-linecap="round"/>`,
+
   metalhook: `<g fill="none" stroke-linecap="round" stroke-linejoin="round">
     <path d="M24 8 C20 4 13 3 7 6" stroke="${O}" stroke-width="6"/><path d="M24 8 C20 4 13 3 7 6" stroke="#bb8650" stroke-width="3"/>
     <path d="M24 12 V37 M24 37 C17 39 11 35 10 26 M24 37 C31 39 37 35 38 26" stroke="${O}" stroke-width="8"/>

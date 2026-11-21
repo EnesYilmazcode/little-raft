@@ -98,6 +98,10 @@ const LIST = [
     tip: 'Slippery seaweed tangled in a barrel. Dried out, it burns slow and gentle as fuel.' }),
   item('fish', 'Fish', 'food', { icon: 'icon-fish', placeholder: false,
     tip: 'A shiny catch from your fishing rod. Grill it for a tasty treat.' }),
+  item('sharkmeat', 'Raw Shark Meat', 'food', { iconTint: '#d97a7a',
+    tip: 'A thick slab cut from a shark you fought off for good. Four come from every shark.' }),
+  item('sharkhead', 'Shark Head', 'material', { iconTint: '#7f8f99', stack: 5,
+    tip: 'A grim trophy from a beaten shark. Proof that your raft bites back.' }),
 
   // ----- refined (hand crafted or station) -----
   item('rope', 'Rope', 'refined', { icon: 'icon-net', placeholder: true, iconTint: '#d9c38c',
