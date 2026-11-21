@@ -66,3 +66,12 @@ test('HUD-4: #lrFeed moves into the pickup feed column once, so the two stack in
   assert.match(css, /#pickupFeed>#lrFeed\{position:static/, 'flows in the column');
   assert.match(css, /#pickupFeed\.docked>#lrFeed\{display:none\}/, 'hidden while the feed is docked in the open bag');
 });
+
+// ---------------------------------------------------------------- HUD-5 pause menu single highlight
+
+test('HUD-5: hovering a pause item moves focus to it, and :hover is no longer a second highlight', () => {
+  const s = src('settings.js');
+  assert.match(s, /form\.addEventListener\('pointerover', guard\(\(event\) => \{\s*const b = event\.target\.closest\?\.\('\.rs-menu button'\);\s*if \(b && b !== document\.activeElement\) b\.focus\(\{ preventScroll: true \}\);/);
+  assert.doesNotMatch(s, /\.rs-menu button:hover/, 'the selected look follows focus only');
+  assert.match(s, /#options \.rs-menu button:focus,#options \.rs-menu button\[aria-expanded=true\]\{/);
+});
