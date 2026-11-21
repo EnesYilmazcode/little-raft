@@ -65,11 +65,12 @@ const cook = (station, input, { count = 1, time, fuel }) => ({ cost: { [input]: 
 function item(id, name, category, opts) {
   const {
     stack = STACK, icon = `icon-${id}`, placeholder = !opts.icon, iconTint, tool = false,
-    durability, actsAs, placeable = false, recipe = null, unlock = START, tip,
+    durability, actsAs, placeable = false, recipe = null, unlock = START, tip, startEmpty = false, // [canteen]
   } = opts;
   const e = { id, name, category, stack: tool ? 1 : stack, icon, placeholder, tool, placeable, recipe, unlock, tip };
   if (iconTint) e.iconTint = iconTint;
   if (tool) e.durability = durability;
+  if (tool && startEmpty) e.startEmpty = true; // [canteen] crafted with durability 0
   if (actsAs) e.actsAs = actsAs;
   return e;
 }
@@ -202,6 +203,8 @@ const LIST = [
   // [camera] Little Camera (dist/camera.js): no durability, photos stay in this browser
   item('camera', 'Little Camera', 'tool', { iconTint: '#e07a5f', stack: 1, recipe: hand({ glass: 1, plastic: 2, scrap: 2, rope: 1 }), unlock: research('glass'),
     tip: 'Click to snap a photo. Press P to open your album.' }),
+  item('canteen', 'Seaglass Canteen', 'tool', { tool: true, durability: 4, startEmpty: true, iconTint: '#8fd8f2', recipe: hand({ glass: 1, rope: 1, plastic: 2 }), unlock: research('glass'),
+    tip: 'A sea-glass flask on a rope strap. Holds 4 sips of fresh water.' }), // [canteen]
   item('glidehandle', 'Glide Handle', 'tool', { iconTint: '#b0805a', stack: 1, recipe: hand({ wood: 2, rope: 2, scrap: 2 }), unlock: discover('nail'), // [zipline] tool:false, no durability
     tip: 'A wooden T-bar with a wheel. E links two posts or hooks you onto a line. Space lets go.' }),
 
@@ -282,6 +285,7 @@ const LIST = [
     tip: 'Pin up the crew tasks for the day.' }),
   item('photoframe', 'Photo Frame', 'decor', { placeable: true, iconTint: '#c69860', recipe: hand({ wood: 3, glass: 1, nail: 1 }), unlock: research('glass', 'nail'), // [camera]
     tip: 'Hang a favourite photo on your raft. Press E on it to choose one.' }),
+  item('musicbox', 'Music Box', 'decor', { placeable: true, iconTint: '#b4824b', recipe: hand({ wood: 3, nail: 1, scrap: 2 }), unlock: discover('nail'), tip: 'A shell-inlaid box with a tiny turning cylinder. Press E to wind it up.' }), // [musicbox] shell is a content-items kind (not in ITEMS), so nail/scrap
   // [fireworks] sky rocket (model in dist/fireworks-model.js, logic in dist/fireworks.js)
   item('skyrocket', 'Sky Rocket', 'decor', { placeable: true, stack: 20, iconTint: '#e9a08c',
     recipe: hand({ plastic: 2, leaf: 1, scrap: 1 }, 3), unlock: discover('plastic', 'scrap'),
@@ -350,6 +354,7 @@ export const BLOCK_RADII = deepFreeze({
   fishtrap: 0.2, // [fishtrap] only the post stands on the deck
   taskboard: 0.3, // [tasks]
   photoframe: 0.15, // [camera]
+  musicbox: 0.2, // [musicbox]
   recycler: 0.45, // [recycler]
   scarecrow: 0.25, // [scarecrow]
   skyrocket: 0.1, // [fireworks]
@@ -542,6 +547,9 @@ export function wearPerUse(kind) {
   const it = isItem(kind) ? ITEMS[kind] : null;
   return it && it.tool && it.durability > 0 ? MAX_DURABILITY / it.durability : 0;
 }
+
+/** Durability a newly made tool starts with: 0 for startEmpty tools (the canteen), else full. [canteen] */
+export function freshDurability(kind) { return isItem(kind) && ITEMS[kind].startEmpty ? 0 : MAX_DURABILITY; }
 
 /** Gameplay role of a held item: metalhook -> 'hook'; otherwise the kind itself. */
 export function toolRole(kind) {

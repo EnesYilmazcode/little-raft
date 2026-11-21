@@ -486,10 +486,10 @@ function paintSlot(el, s, sig, label) {
   const f = durFrac(s);
   if (r.dur) {
     r.dur.hidden = f == null;
-    if (f != null) { r.bar.style.width = (f * 100).toFixed(0) + '%'; r.bar.style.background = f > 0.5 ? '#8fd36a' : f > 0.25 ? '#ffbd66' : '#e06a4a'; }
+    if (f != null) { r.bar.style.width = (f * 100).toFixed(0) + '%'; r.bar.style.background = s.kind === 'canteen' ? '#4fb6e8' /* [canteen] fill, not wear */ : f > 0.5 ? '#8fd36a' : f > 0.25 ? '#ffbd66' : '#e06a4a'; }
   }
   el.classList.remove('sv-empty');
-  el.setAttribute('aria-label', `${label}, ${itemName(s.kind)}${s.count > 1 ? ', ' + s.count : ''}${f != null ? ', durability ' + Math.round(f * 100) + ' percent' : ''}`);
+  el.setAttribute('aria-label', `${label}, ${itemName(s.kind)}${s.count > 1 ? ', ' + s.count : ''}${f == null ? '' : s.kind === 'canteen' ? ', ' + Math.round(f * 4) + ' of 4 sips' /* [canteen] */ : ', durability ' + Math.round(f * 100) + ' percent'}`);
   return true;
 }
 

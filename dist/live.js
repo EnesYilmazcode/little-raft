@@ -15,10 +15,10 @@ const CSS_FILES = ['style.css', 'graphics.css'];
 // a stale entry only costs a wasted request, a missing one just loads late via the normal import.
 const PRELOAD = [
   'animals-core.js', 'armor.js', 'animals-models.js', 'animals.js', 'audio.js', 'avatar.js', 'axe-model.js', 'bake.js', 'bees-model.js',
-  'bees.js', 'bottle.js', 'camera-models.js', 'camera.js' /* [camera] */, 'brush-model.js', 'build-menu.js', 'build-radial.js', 'build-rules.js',
+  'bees.js', 'bottle.js', 'camera-models.js', 'camera.js' /* [camera] */, 'canteen-model.js', 'canteen.js' /* [canteen] */, 'brush-model.js', 'build-menu.js', 'build-radial.js', 'build-rules.js',
   'building-models.js', 'building-pieces.js', 'building.js', 'content-items.js', 'content.js', 'controls.js',
   'cooking.js', 'cookpot-core.js', 'cookpot-model.js', 'cookpot.js', 'coop-avatar.js', 'coop-delta.js', 'coop-feed.js', 'coop-fx.js', 'coop-interp.js',
-  'coop-loopback.js', 'coop-rules.js', 'coop.js', 'craft-book.js', 'crafts.js', 'crops-model.js', 'crops.js', 'daynight.js', 'debris-budget.js', 'debris.js',
+  'coop-loopback.js', 'coop-rules.js', 'coop.js', 'craft-book.js', 'crafts.js', 'crate-labels.js', 'crops-model.js', 'crops.js', 'daynight.js', 'debris-budget.js', 'debris.js',
   'deck.js', 'decor-pack-models.js', 'display-model.js', 'display.js' /* [display] */, 'decor-pack.js', 'decor-pickup.js', 'diving-gear-core.js', 'diving-gear.js', 'diving-ui.js', 'diving.js', 'engine-models.js', 'engine.js',
   'fireworks-model.js', 'fireworks.js' /* [fireworks] */, 'fish-journal.js', 'fish-models.js', 'fish-trap-model.js', 'fish-trap.js' /* [fishtrap] */, 'fish-species.js', 'fishing-cooking.js', 'fishing-rules.js',
   'fishing-tool.js', 'fishing-v2.js', 'flags-core.js', 'flags-model.js', 'flags.js', 'gull-models.js', 'gull.js' /* [gull] */, 'hammer.js', 'hands.js', 'held-items.js', 'hook-physics.js', 'hook.js',
@@ -26,7 +26,7 @@ const PRELOAD = [
   'inventory-state.js', 'islands-layout.js', 'islands-models.js', 'islands.js', 'item-icons.js', 'item-svg.js',
   'item-tooltips.js', 'items.js', 'juicer-model.js', 'juicer.js' /* [juicer] */, 'kiln-core.js', 'kiln-model.js', 'kiln.js', 'lock-rules.js', 'logbook-ui.js',
   'logbook.js', 'look-ui.js', 'look.js', 'maptable-model.js', 'maptable.js', 'materials.js', 'merge-geo.js', 'nets.js',
-  'models.js', 'move-feel.js', 'ocean.js', 'paddle-model.js', 'paddle.js', 'paint.js', 'pickup-feed.js', 'placement.js', 'plastic.js',
+  'models.js', 'move-feel.js', 'musicbox-core.js', 'musicbox-model.js', 'musicbox.js' /* [musicbox] */, 'ocean.js', 'paddle-model.js', 'paddle.js', 'paint.js', 'pickup-feed.js', 'placement.js', 'plastic.js',
   'photo-album-ui.js', 'photo-frame.js', 'photo-store.js' /* [camera] */, 'player-physics.js', 'power-model.js', 'power.js' /* [power] */, 'progression-hooks.js', 'progression.js', 'purifier-model.js', 'quality.js', 'rain-model.js',
   'rain.js', 'recycler-model.js' /* [recycler] */, 'repair.js', 'rope-mesh.js', 'sailing-core.js', 'sailing-ui.js', 'sailing-world.js', 'scenery-islands.js', 'buoycourse-core.js', 'buoycourse-model.js', 'buoycourse.js', 'gametable-core.js', 'gametable-model.js', 'gametable.js', 'paddleboard-core.js', 'paddleboard-model.js', 'paddleboard.js',
   'scarecrow-model.js', 'scarecrow.js' /* [scarecrow] */, 'seafloor.js', 'session-rules.js', 'settings.js', 'shark-model.js', 'shark.js', 'signal-models.js', 'signal.js',

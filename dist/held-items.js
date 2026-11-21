@@ -20,6 +20,7 @@ import { createAxe } from './axe-model.js?build=v3-survival-ae77fa84ac2b'; // [a
 import { buildInstrument } from './instrument-models.js?build=v3-survival-ae77fa84ac2b'; // [instruments]
 import { createSpade, createFinder } from './treasure-models.js?build=v3-survival-ae77fa84ac2b';
 import { buildCameraModel } from './camera-models.js?build=v3-survival-ae77fa84ac2b'; // [camera]
+import { createCanteenModel } from './canteen-model.js?build=v3-survival-ae77fa84ac2b'; // [canteen]
 import { createHandle, createGlidePost } from './zipline-model.js?build=v3-survival-ae77fa84ac2b'; // [zipline]
 import { createRocket } from './fireworks-model.js?build=v3-survival-ae77fa84ac2b'; // [fireworks]
 import { createScarecrow3D } from './scarecrow-model.js?build=v3-survival-ae77fa84ac2b'; // [scarecrow]
@@ -63,6 +64,7 @@ export const HOLD = Object.freeze({
   drum: { hand: 'right', pose: 'grip', rx: 0.75 }, pipes: { hand: 'right', pose: 'grip', rx: 0.2 }, bells: { hand: 'right', pose: 'grip', rx: 1.2, rz: 0.1 }, // [instruments] right fist, clear of the hotbar
   camera: { hand: 'right', pose: 'grip', rx: 0.1, rz: -1 }, // [camera] lens faces forward; tilted up so the body clears the hotbar
   glidehandle: { hand: 'right', pose: 'grip', rx: -0.2, rz: 1.57 }, // [zipline] bar sideways in the fist
+  canteen: { hand: 'right', pose: 'grip', rx: 0.15, rz: -0.35 }, // [canteen]
   ...Object.fromEntries(PLACEABLE_KINDS.filter((k) => k !== 'hammer').map((k) => [k, { hand: 'left', pose: SEED_KINDS.includes(k) ? 'grip' : 'point' }])),
 });
 // Unknown kinds (other lanes may add items): carried on the left fist if placeable, else gripped.
@@ -74,6 +76,7 @@ const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.22, fi
   planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11, coconut: 0.11, // coconut: a palm-sized nut, not a melon
   drum: 0.24, pipes: 0.2, bells: 0.26, // [instruments]
   camera: 0.13, // [camera]
+  canteen: 0.16, // [canteen] (spec 0.2 hid most of the flask under the hotbar)
   glidehandle: 0.24, // [zipline]
   skyrocket: 0.2, scarecrow: 0.24, glidepost: 0.24, glidestep: 0.2, candle: 0.11, beehive: 0.18, flowerbox: 0.2 };
 // Kind -> its own world model (one fresh copy per held build; hands.js caches the held model per kind).
@@ -315,6 +318,7 @@ export function buildItemModel(T, kind, factory = null) {
   } else if (kind === 'planter') {
     root = fit(T, createCraft(T, 'palm'), dim('planter'), (s) => new T.Vector3(0, -s.y / 2, 0));
   }
+  if (!root && kind === 'canteen') root = fit(T, createCanteenModel(T), SIZE.canteen, (s) => new T.Vector3(0, -s.y * 0.3, 0)); // [canteen] fist on the lower flask, neck and cork stand clear
   if (!root && kind === 'camera') { const cm = buildCameraModel(T), gf = cm.userData.gripFrac; root = fit(T, cm, SIZE.camera, (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z)); } // [camera]
   if (!root) { const ins = buildInstrument(T, kind), gf = ins?.userData.gripFrac; if (ins) root = fit(T, ins, SIZE[kind], gf ? (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z) : null); } // [instruments]
   if (!root) root = fit(T, buildBundle(T), left ? HELD_LEFT_MAX : 0.12, (s) => new T.Vector3(0, left ? -s.y / 2 : 0, 0));

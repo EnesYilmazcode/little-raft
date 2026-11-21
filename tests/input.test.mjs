@@ -34,6 +34,7 @@ test('reverse lookup', () => {
   assert.deepEqual(m.actionFor('Pad0'), ['jump']);
   assert.deepEqual(m.actionFor('Mouse0'), ['use']);
   assert.deepEqual(m.actionFor('KeyZ'), []);
+  assert.deepEqual(m.actionFor('KeyF'), ['stash']); // [crate-labels]
   assert.deepEqual(m.actionFor(42), []);
 });
 

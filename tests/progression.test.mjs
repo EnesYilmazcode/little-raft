@@ -113,7 +113,8 @@ test('items: every entry is complete and self-consistent', () => {
     if (it.tool) {
       assert.equal(it.stack, 1, `${id} tool stack`);
       assert.ok(Number.isInteger(it.durability) && it.durability > 0, `${id} durability uses`);
-      assert.ok(repairCost(id), `${id} tool needs a repair cost`);
+      if (id === 'canteen') assert.equal(repairCost(id), null, 'canteen is refilled, never repaired'); // [canteen] durability is the fill
+      else assert.ok(repairCost(id), `${id} tool needs a repair cost`);
     } else {
       assert.equal(it.durability, undefined, `${id} non-tool durability`);
     }
@@ -157,7 +158,7 @@ test('items: every recipe, unlock, repair, alias, loot and fuel reference is a r
     const st = ITEMS[id].recipe?.station;
     if (st && st !== 'purifier') assert.ok(STATION_IDS.includes(st) && ITEMS[st].recipe, `station ${st}`);
   }
-  for (const t of TOOL_IDS) for (const k of Object.keys(repairCost(t))) assert.ok(valid(k), `repair ${t} ${k}`);
+  for (const t of TOOL_IDS) for (const k of Object.keys(repairCost(t) ?? {} /* [canteen] no repair cost */)) assert.ok(valid(k), `repair ${t} ${k}`);
   for (const [a, k] of Object.entries(LEGACY_ALIASES)) { assert.ok(valid(k), `alias ${a}`); assert.ok(!valid(a), `alias shadows item ${a}`); }
   for (const e of BARREL_LOOT) { assert.ok(valid(e.kind)); assert.ok(e.min >= 1 && e.max >= e.min && e.weight > 0); }
   for (const k of Object.keys(FUEL_VALUE)) assert.ok(valid(k) && FUEL_VALUE[k] > 0);
@@ -171,7 +172,7 @@ test('items: legacy kinds keep their ids and Bag-compatible stack/tool shape', (
     assert.equal(INFO[k].tool, Inv.ITEM_INFO[k].tool, `${k} tool flag matches Bag`);
   }
   assert.equal(ITEMS.wood.name, 'Plank');
-  assert.deepEqual([...TOOL_IDS].sort(), ['axe', 'fishingrod', 'hammer', 'hook', 'metalhook', 'metalspear', 'paddle', 'spade', 'spear']);
+  assert.deepEqual([...TOOL_IDS].sort(), ['axe', 'canteen' /* [canteen] */, 'fishingrod', 'hammer', 'hook', 'metalhook', 'metalspear', 'paddle', 'spade', 'spear']);
   for (const s of ['smelter', 'researchtable', 'grill']) assert.ok(STATION_IDS.includes(s) && PLACEABLE_IDS.includes(s));
   for (const k of ['sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'juicer' /* [juicer] */]) assert.ok(PLACEABLE_IDS.includes(k));
   assert.ok(!STATION_IDS.includes('juicer')); // [juicer] decor, not a slot-panel station

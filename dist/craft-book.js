@@ -20,11 +20,13 @@ const CATEGORY_OF = Object.freeze({
   metalhook: 'tools', binoculars: 'tools', spyglass: 'tools', spear: 'tools', metalspear: 'tools', finder: 'tools', spade: 'tools', paddle: 'tools', axe: 'tools', // [spyglass] spyglass
   drum: 'tools', pipes: 'tools', bells: 'tools', // [instruments]
   camera: 'tools', photoframe: 'survival', // [camera]
+  canteen: 'survival', // [canteen] not 'tools' through info.tool
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
   juicer: 'survival', berrycup: 'survival', coconutcup: 'survival', mixcup: 'survival', // [juicer]
   perch: 'survival', // [gull]
   shelf: 'survival', trophystand: 'survival', // [display]
+  musicbox: 'survival', // [musicbox]
   turbine: 'survival', battery: 'survival', stringlights: 'survival', lamppost: 'survival', // [power]
   fishtrap: 'survival', // [fishtrap]
 
@@ -90,6 +92,7 @@ export const ITEM_TEXT = Object.freeze({
   cup:        { desc: 'An empty plastic cup.', use: 'Click the sea to scoop water.' },
   saltcup:    { desc: 'A cup of salty sea water.', use: 'Pour it into a water purifier.' },
   freshcup:   { desc: 'A cup of clean fresh water.', use: 'Water a palm planter.' },
+  canteen:    { desc: 'A sea-glass flask that holds 4 sips.', use: 'Click to sip. Fill at a purifier or rain barrel, or drop a fresh cup on it.' }, // [canteen]
   seed:       { desc: 'A palm seed.', use: 'Plant it in an empty palm planter.' },
   rainbarrel: { desc: 'A tub with a leaf funnel that catches the rain.', use: 'Fills by itself in the rain. Hold an empty cup and press E.' },
   sprinkler:  { desc: 'A little spinning head with its own tank.', use: 'Waters nearby palm planters and crop plots for you. Fill it with fresh water, or put it next to a rain barrel.' },
@@ -119,6 +122,7 @@ export const ITEM_TEXT = Object.freeze({
   bells:      { desc: 'Brass-bright scrap bars on a small frame.', use: 'Click to ring a note that fades out softly.' }, // [instruments]
   camera:     { desc: 'A little box camera with a glass lens.', use: 'Click to snap photos; P opens your album.' }, // [camera]
   photoframe: { desc: 'A driftwood frame with a glass front.', use: 'Place it, then press E to show a photo.' }, // [camera]
+  musicbox:   { desc: 'A shell-inlaid box with a tiny turning cylinder.', use: 'E to play or stop; right-click or E twice: next tune.' }, // [musicbox]
   cookedfish: { desc: 'A fish grilled golden.', use: 'A hearty snack.' },
   flowerseed: { desc: 'A tiny seed from an island bush.', use: 'Plant it in a flower box.' }, // [bees]
   flowerbox:  { desc: 'A planter full of bright blooms.', use: 'Place near a beehive; bees love it.' }, // [bees]

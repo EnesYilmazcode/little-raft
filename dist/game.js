@@ -41,6 +41,7 @@ import { createSignalModel } from './signal-models.js?build=v3-survival-ae77fa84
 import { cleanWatering, copyWatering, plantStage, tick as tickWatering, tileKey, fillCup, loadPurifier, takeWater, water as waterPlant, harvest as harvestPlant, fuelPurifier, purifierFuel, clockText, FUEL_CAP, WATER_ACTIONS, FILL_REACH, USE_REACH, HOST_SLACK, PURIFY_SECONDS } from './watering.js?build=v3-survival-ae77fa84ac2b';
 import { createPurifier, paintPurifier, preparePlanter, paintPlanter } from './purifier-model.js?build=v3-survival-ae77fa84ac2b';
 import { cleanRain, copyRain, tickRain, takeRain, fillSprinkler, rainTarget, RAIN_ACTIONS } from './rain.js?build=v3-survival-ae77fa84ac2b'; import { createRainBarrel, paintRainBarrel, createSprinkler, paintSprinkler } from './rain-model.js?build=v3-survival-ae77fa84ac2b'; // rain-sprinkler (docs/specs/rain-sprinkler.md)
+import { sipsOf, isPour, pourCup, sipFrom, fillFrom, canteenTarget, OLD_HOST as CANTEEN_OLD_HOST, EMPTY as CANTEEN_EMPTY } from './canteen.js?build=v3-survival-ae77fa84ac2b'; // [canteen]
 import { lootFits, createGuestHeld, cleanHeldTokens, hookableItems, decorBlockers, playerInWay, repairHookSlot, castHookGone } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
 import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan, LIVE_STATUS_EVENT } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
@@ -326,7 +327,7 @@ export function mount(transfer = null) {
   const sfx = createOceanAudio({context:X?.audio ?? null, volume:sound ? options.volume : 0, ambience:options.ambience ?? .7, output:ctx => diving?.audioOut(ctx) ?? null}); // diving lane hook: muffled underwater
   const play = (ev, s) => sfx.play(ev, s);
   const note = (i, n, s) => sfx.note?.(i, n, s) ?? false; // [instruments]
-  const applyVolume = () => { sfx.setVolume(sound ? options.volume : 0); sfx.setBus('effects', options.effects ?? 1); sfx.setAmbience(options.ambience ?? .7); };
+  const applyVolume = () => { sfx.setVolume(sound ? options.volume : 0); sfx.setBus('effects', options.effects ?? 1); sfx.setAmbience(options.ambience ?? .7); sfx.setBus('music', options.music ?? .7); }; // [musicbox] music bus
   if (X?.audio) sfx.resume(); // hot swap: the old context is already unlocked
   let charging = X?.charging && Number.isFinite(X.charging.start) ? {...X.charging} : null, reeling = !!X?.reeling && !!hook, hookFull = false; // hookFull: the catch will not fit, so the reel stops short
   let lastCaughtCount = isInt(X?.lastCaughtCount) ? X.lastCaughtCount : (hook?.caughtItems?.length ?? (hook?.caught ? 1 : 0));
@@ -390,6 +391,7 @@ export function mount(transfer = null) {
   const guestWaiting = () => role === 'guest' && !networkReady;
   const chargeValue = () => (charging ? clamp((performance.now() - charging.start) / CHARGE_MS, MIN_CHARGE, 1) : 0);
   const localBag = () => (role === 'guest' && networkReady && remoteBag ? remoteBag : hostBag);
+  const hostCanteen = () => role !== 'guest' || !!hostCaps?.canteen; // [canteen] old hosts send no canteen cap
   const actorBag = actor => (actor === 'guest' ? guestBag : hostBag);
   const selectedKind = () => toolRole(localBag().slots[localBag().selectedIndex]?.kind ?? null); // [progression-hook] metalhook acts as 'hook'
   const heldKind = () => (hook?.fishing ? 'fishingrod' : hook ? 'hook' : selectedKind());
@@ -470,6 +472,7 @@ export function mount(transfer = null) {
     faceYaw: y => { if (Number.isFinite(y)) yaw = y; }, // [sit] seat facing
     award: ev => award(ev), night: () => content?.night?.() ?? 0, // [sit] host achievements, [fireworks] content hook
     heldKind: () => heldKind(), // [zipline] content hook
+    box: (hz, when, s) => sfx.box?.(hz, when, s) ?? false, audioNow: () => sfx.now ?? null, // [musicbox]
   };
   function init() {
     // Point the sprite at this build so a deploy never shows a stale cached icons.svg; survival-ui.js reads the URL back.
@@ -723,7 +726,7 @@ export function mount(transfer = null) {
     if (lost > 0) { vitalsUI?.flash(); hurtCause = String(cause ?? 'hit'); } // [drown] the faint overlay names the last hurt
     return lost;
   }
-  const eatKind = () => { const k = localBag().slots[localBag().selectedIndex]?.kind ?? null; return isEdible(k) ? k : null; };
+  const eatKind = () => { const s = localBag().slots[localBag().selectedIndex], k = s?.kind ?? null; return isEdible(k) && (k !== 'canteen' || sipsOf(s) > 0) ? k : null; }; // [canteen] an empty canteen shows no eat tip
   function startEat(kind) {
     if (eating || fainted >= 0) return;
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
@@ -755,6 +758,7 @@ export function mount(transfer = null) {
   // Crosshair prompts (dist/prompts.js provider): eat/drink, else the cup/purifier/planter prompt (game.js markup).
   const tipCache = new Map(), eatTips = new Map(), EATING_TIP = {key:'', label:'…', muted:true};
   let eatTip = null, promptOff = null;
+  const CANTEEN_EMPTY_TIP = {label:CANTEEN_EMPTY, muted:true}; // [canteen]
   function tipFor(html) {
     let t = tipCache.get(html); if (t) return t;
     const m = /^<kbd>([^<]*)<\/kbd>(.*)$/.exec(html), txt = s => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
@@ -771,6 +775,7 @@ export function mount(transfer = null) {
     if (DECOR_TYPES.includes(heldKind())) return null; // place mode: prompts.js placePrompt stacks the aim row itself
     if (eatTip) return eatTip;
     if (netAim >= 0) return NET_TIPS[Math.min(NET_CAPACITY, world.nets[netAim]?.items.length ?? 0)]; // [nets] "Empty net (n)"
+    const sk = selectedKind(); if (sk === 'canteen' && !waterAim?.prompt) return sipsOf(localBag().slots[localBag().selectedIndex]) < 1 ? CANTEEN_EMPTY_TIP : null; // [canteen] muted 'Empty' tip
     const p = waterAim?.prompt; return p ? tipFor(p) : null;
   }
   let contextHtml = null, contentPromptOff = null; // content hook: contextHtml also feeds main's #lrPrompt via raftPrompts
@@ -1066,6 +1071,7 @@ export function mount(transfer = null) {
     if (!aim) return null;
     const kind = selectedKind(), cupHeld = CUP_KINDS.includes(kind), d = aim.decor;
     if (d && Math.hypot(d.x * 2 - physics.x, d.z * 2 - physics.z) <= USE_REACH) {
+      if (kind === 'canteen') { const c = canteenTarget(world, d, localBag().slots[localBag().selectedIndex]); if (c && (c.click || d.type !== 'purifier')) return c; } // [canteen] fill beats takeWater / takeRain; a busy purifier keeps its countdown below
       if (d.type === 'rainbarrel' || d.type === 'sprinkler') return rainTarget(world, d, kind, (content?.rain() ?? 0) > .2); // rain-sprinkler
       const at = {x:d.x, z:d.z}, none = {prompt:'', click:null, e:null, why:null};
       if (d.type === 'purifier') {
@@ -1202,6 +1208,12 @@ export function mount(transfer = null) {
     emit({kind:r.ok ? r.kind : (r.reason === 'full' ? 'full' : 'notice'), text:r.text}, actor);
     if (r.ok && (a.kind === 'waterPlant' || a.kind === 'harvestPlant')) content?.observe({kind:a.kind === 'waterPlant' ? 'water' : 'harvest'}, actor); // [tasks]
   }
+  function applyCanteen(a, actor, bag) { // [canteen] host-side fill at a purifier / rain barrel (rules in canteen.js)
+    const p = actor === 'guest' ? other : physics; if (!p) return;
+    if (!isInt(a.x) || !isInt(a.z) || Math.hypot(a.x * 2 - p.x, a.z * 2 - p.z) > USE_REACH + HOST_SLACK) return;
+    const r = fillFrom(world, tileKey(a.x, a.z), bag);
+    emit({kind:r.ok ? r.kind : (r.reason === 'full' ? 'full' : 'notice'), text:r.text}, actor);
+  }
   function applyRain(a, actor, bag) { // rain-sprinkler: host-side validation (logic in rain.js)
     const p = actor === 'guest' ? other : physics; if (!p) return;
     if (!isInt(a.x) || !isInt(a.z) || Math.hypot(a.x * 2 - p.x, a.z * 2 - p.z) > USE_REACH + HOST_SLACK) return;
@@ -1228,7 +1240,10 @@ export function mount(transfer = null) {
     if (a.kind === 'selectSlot') { bag.select(a.index); return; }
     if (paddle?.apply(a, actor, bag)) return; // [paddle] validates the stroker, applies the sail op, wears the paddle
     if (a.kind === 'sail') { const t = sailing?.apply(a, actor); if (t) emit({kind:'notice', text:t}, actor); return; } // [sailing]
-    if (a.kind === 'moveSlot') { bag.move(a.from, a.to, a.amount ?? undefined); return; }
+    if (a.kind === 'moveSlot') {
+      if (isPour(bag, a.from, a.to)) { const r = pourCup(bag, a.from, a.to); emit({kind:r.ok ? 'loot' : (r.reason === 'full' ? 'full' : 'notice'), text:r.text}, actor); return; } // [canteen] a fresh cup dropped on a canteen pours, never swaps
+      bag.move(a.from, a.to, a.amount ?? undefined); return;
+    }
     if (a.kind === 'craft') {
       const locked = content?.craftLocked(a.recipe, actor); if (locked) { emit({kind:'notice', text:String(locked)}, actor); return; } // content hook
       const r = bag.craft(a.recipe);
@@ -1358,7 +1373,9 @@ export function mount(transfer = null) {
       bag.slots[i].durability = MAX_HEALTH; emit({kind:'build', text:'Hook repaired!', sound:'repair'}, actor);
       award({kind:'repair'}); content?.observe({kind:'repair'}, actor); return; // [tasks] observe
     }
+    if (a.kind === 'canteenFill') { applyCanteen(a, actor, bag); return; } // [canteen]
     if (a.kind === 'eat') { // [vitals] host removes the item (and gives the cup back); the eater applies the bars on 'ate'
+      if (a.item === 'canteen') { const r = sipFrom(bag); if (r.ok) emit({kind:'ate', item:'canteen'}, actor); else emit({kind:'notice', text:r.text}, actor); return; } // [canteen] one sip; the canteen stays
       const k = a.item; if (!isEdible(k) || bag.count(k) < 1) return;
       const s = new Bag(bag.snapshot()); if (!s.remove(k, 1)) return;
       const back = FOOD[k].returns; if (back && s.add(back, 1) > 0) { emit({kind:'full', text:`No room for the empty ${itemName(back).replace(/^empty /, '')}`}, actor); return; }
@@ -1395,7 +1412,11 @@ export function mount(transfer = null) {
   }
   function moveSlot(from, to, amount) {
     const a = {kind:'moveSlot', from, to}; if (isInt(amount)) a.amount = amount;
-    if (role === 'guest') { if (!networkReady) return; localBag().move(from, to, a.amount); }
+    if (role === 'guest') {
+      if (!networkReady) return;
+      if (isPour(localBag(), from, to)) { if (!hostCanteen()) { notice(CANTEEN_OLD_HOST, 2400); return; } } // [canteen] wait for the host's bag, no local swap
+      else localBag().move(from, to, a.amount);
+    }
     action(a);
   }
   const myActor = () => (role === 'guest' ? 'guest' : 'host');
@@ -1430,7 +1451,8 @@ export function mount(transfer = null) {
     }
     if (netAim >= 0) { if (guestWaiting()) { notice('Wait for your raft to connect'); return; } const n = world.nets[netAim]; swing = .6; action({kind:'emptyNet', x:n.x, z:n.z, d:n.d}); return; } // [nets]
     if (canHarvestShark()) { if (guestWaiting()) { notice('Wait for your raft to connect'); return; } swing = .6; action({kind:'shark:loot'}); return; } // shark lane
-    const w = wateringTarget(currentAim()); if (w?.e) { if (guestWaiting()) { notice('Wait for your raft to connect'); return; } action(w.e); swing = .6; return; } // same order as the updateContext prompt: water action beats content / grill
+    const w = wateringTarget(currentAim()); if (w?.e?.kind === 'canteenFill' && !hostCanteen()) { notice(CANTEEN_OLD_HOST, 2400); return; } // [canteen]
+    if (w?.e) { if (guestWaiting()) { notice('Wait for your raft to connect'); return; } action(w.e); swing = .6; return; } // same order as the updateContext prompt: water action beats content / grill
     const pt = building?.interact(camera.position, currentAim(), deckY()); if (pt) { if (guestWaiting()) { notice('Wait for your raft to connect'); return; } swing = .4; action(pt); return; } // [buildpack] E opens / closes a hatch or gate
     if (content?.interact(currentAim())) return; // content hook: chest, research table, island nodes
     if (fc?.interact()) return; // [fishing-cooking] grill
@@ -1447,6 +1469,12 @@ export function mount(transfer = null) {
     if (instruments?.use(kind)) { swing = .7; return; } // [instruments]
     if (kind === 'paddle' && paddle?.use()) return; // [paddle] stroke at the raft edge
     if (kind === 'spear' ? spearRep?.use() : kind === 'hammer' ? spearRep?.useHammer() : kind === 'armor' && spearRep?.useArmor()) return; // [spear-repair] thrust / repair a damaged tile; [armor] fit armor
+    if (kind === 'canteen') { // [canteen] fill at a purifier / barrel, else sip
+      if (!hostCanteen()) { notice(CANTEEN_OLD_HOST, 2400); return; }
+      const w = wateringTarget(aim);
+      if (w?.click) { swing = 1; action(w.click); } else if (sipsOf(bag.slots[bag.selectedIndex]) > 0) startEat('canteen'); else notice(CANTEEN_EMPTY);
+      return;
+    }
     if (content?.use(aim, kind)) { swing = 1; return; } // content hook, before eating: [crops] plant / water a crop plot slot; paint brush
     if (isEdible(kind)) { // [vitals] a fresh cup on a planter still waters it, a salt cup at a purifier still loads it
       const w = CUP_KINDS.includes(kind) ? wateringTarget(aim) : null;
@@ -1790,7 +1818,7 @@ export function mount(transfer = null) {
     if (!hover || ghostHold) { ghosts.hide(); return; }
     ghosts.show(floor ? 'floor' : kind, hover.x * 2, floor ? .015 : .22, hover.z * 2, floor ? 0 : placeRot, !hover.blocked && !(floor && !canAfford(localBag(), FLOOR_COST)), elapsed);
   }
-  const HOST_CAPS = Object.freeze({undecor:1}); // [undecor] top-level host capabilities (cleanWorld would strip them inside world); add new flags here
+  const HOST_CAPS = Object.freeze({undecor:1, canteen:1 /* [canteen] */}); // [undecor] top-level host capabilities (cleanWorld would strip them inside world); add new flags here
   function hostState() {
     const c = guestBag.counts();
     return {type:'state', v:3, ack:guestAck, caps:HOST_CAPS, bag:guestBag.snapshot(), other:pose(), held:[...ownHeldTokens()],
@@ -1964,6 +1992,7 @@ export function mount(transfer = null) {
     const wheelOpen = !!building?.menu.isOpen; // building wheel open: no hotbar swap (drops the hammer, closes the wheel) and no interact
     if (m && running && !wheelOpen) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
     if (e.code === 'KeyE' && !e.repeat && !wheelOpen) interact();
+    if (e.code === 'KeyF' && !e.repeat && running && !uiBlocked()) dispatchEvent(new CustomEvent('little-raft-action', {detail:{id:'stash'}})); // [crate-labels]
     if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? FINE_STEP : e.altKey ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration (Shift+R in 15 degree steps, Alt+R back)
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
@@ -2386,6 +2415,19 @@ export function mount(transfer = null) {
       get caps() { return role === 'guest' ? hostCaps : HOST_CAPS; },
     }),
     look:() => ({look:{...lookState.look}, unlocked:[...lookState.unlocked], open:!!lookUI?.isOpen}), // [look]
+    canteen:Object.freeze({ // [canteen] QA helpers (host/solo bag only)
+      give(sips = 4) {
+        if (role === 'guest') return -1;
+        const bag = hostBag, before = bag.slots.map(s => s?.kind === 'canteen' ? s : null), d = clamp(Math.round(Number(sips) || 0), 0, 4) * 25;
+        if (bag.add('canteen', 1, {durability:d}) > 0) return -1;
+        const i = bag.slots.findIndex((s, k) => s?.kind === 'canteen' && s !== before[k]);
+        if (i >= 0 && i < HOTBAR) selectSlot(i);
+        return i;
+      },
+      fill(sips) { if (role === 'guest') return false; const s = hostBag.slots[hostBag.selectedIndex]; if (s?.kind !== 'canteen') return false; s.durability = clamp(Math.round(Number(sips) || 0), 0, 4) * 25; return true; },
+      move(from, to) { moveSlot(from, to); return localBag().snapshot().slots; }, // the real bag drag path (a fresh cup onto the canteen pours)
+      state() { const b = localBag(), s = b.slots[b.selectedIndex]; return {selected:s?.kind === 'canteen', sips:sipsOf(s), durability:s?.kind === 'canteen' ? s.durability : null, hostCaps:role === 'guest' ? hostCaps : HOST_CAPS}; },
+    }),
     give(kind, n = 1) { return spearRep?.give(kind, n) ?? -1; }, // [spear-repair] test helper: add items to the local (host/solo) bag
     setTileHp(x, z, hp) { spearRep?.setTileHp(x, z, hp); }, // [spear-repair] test helper
     spearTestHit() { return spearRep?.testHit() ?? false; }, // [spear-repair] test helper: fake a landed thrust

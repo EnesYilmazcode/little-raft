@@ -29,6 +29,7 @@ const SPEC = {
   volume: { tab: 'audio', label: 'Master volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.5, fmt: pct },
   effects: { tab: 'audio', label: 'Effects', type: 'range', min: 0, max: 1, step: 0.05, def: 1, fmt: pct },
   ambience: { tab: 'audio', label: 'Ocean ambience', type: 'range', min: 0, max: 1, step: 0.05, def: 0.7, fmt: pct },
+  music: { tab: 'audio', label: 'Music', type: 'range', min: 0, max: 1, step: 0.05, def: 0.7, fmt: pct }, // [musicbox]
 };
 const DEFAULTS = Object.freeze(Object.fromEntries(Object.entries(SPEC).map(([k, s]) => [k, s.def])));
 const KEYS = Object.keys(SPEC);
