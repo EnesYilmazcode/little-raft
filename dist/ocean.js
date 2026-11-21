@@ -188,11 +188,11 @@ void main() {
       if (f.z <= 0.0) break;  // live points are packed first
       vec2 dv = wp - f.xy;
       if (dot(dv, dv) >= f.z * f.z) continue;  // outside this ring: skip the sqrt and smoothsteps
-      float d = length(dv) / f.z + (cl - 0.5) * 0.3;  // noise-warped radius: wobbly ring at the waterline
-      ring = max(ring, smoothstep(0.25, 0.6, d) * (1.0 - smoothstep(0.6, 1.0, d)) * f.w);
+      float d = length(dv) / f.z + (cl - 0.5) * 0.12;  // lightly noise-warped radius
+      ring = max(ring, smoothstep(0.55, 0.75, d) * (1.0 - smoothstep(0.75, 0.95, d)) * f.w);  // thin band hugging the hull
     }
-    // Items: a faint ring broken up by the same noise.
-    collar = max(collar, ring * smoothstep(0.3, 0.75, cl) * 0.4);
+    // Items: a faint, broken waterline lick (noise gaps), no halo.
+    collar = max(collar, ring * smoothstep(0.4, 0.75, cl) * 0.22);
     col = mix(col, uFoam, max(foam, collar));
   }
 
@@ -358,7 +358,7 @@ export function createOcean(T, options = {}) {
       let j = n < MAX_FOAM ? n++ : n - 1;
       const spare = foamPts[j]; // the slot that falls off (or the next free one) is reused
       for (; j > 0 && foamD2[j - 1] > d2; j--) { foamD2[j] = foamD2[j - 1]; foamPts[j] = foamPts[j - 1]; }
-      const r = c.userData.foamRadius ?? 0.7, fade = 1 - Math.max(0, Math.min(1, (Math.sqrt(d2) - FOAM_NEAR) / (FOAM_FAR - FOAM_NEAR)));
+      const r = c.userData.foamRadius ?? 0.5, fade = 1 - Math.max(0, Math.min(1, (Math.sqrt(d2) - FOAM_NEAR) / (FOAM_FAR - FOAM_NEAR)));
       foamD2[j] = d2; foamPts[j] = spare.set(c.position.x, c.position.z, r * c.scale.x, fade);
     }
     for (let k = n; k < MAX_FOAM; k++) foamPts[k].z = 0;
