@@ -1,6 +1,6 @@
 // Islands: cached geometries and materials (built once per game, shared by every island).
 // Everything uses vertex colours so instance colours (setColorAt) can tint a node when it drains.
-import { ISLAND, SHORE_U, shape, hash3, heightU } from './islands-layout.js';
+import { ISLAND, SHORE_U, shape, hash3, heightU } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -261,8 +261,10 @@ export function createIslandModels(T, ocean) {
     palm: new T.MeshStandardMaterial({ vertexColors: true, roughness: .85 }),
     palmSpent: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9 }),
     nuts: new T.MeshStandardMaterial({ vertexColors: true, roughness: .7 }),
-    bush: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9, flatShading: true }),
-    rock: new T.MeshStandardMaterial({ vertexColors: true, roughness: .95, flatShading: true }),
+    // bush and rock are non-indexed polyhedra, so their vertex normals are already face normals (flat look) without
+    // flatShading: dome, palm, nuts, bush, rock and sand share one lit program
+    bush: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9 }),
+    rock: new T.MeshStandardMaterial({ vertexColors: true, roughness: .95 }),
     sand: new T.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),
     lagoon: new T.ShaderMaterial({ uniforms: lagoonUniforms, vertexShader: vert, fragmentShader: LAGOON_FRAG, transparent: true, depthWrite: false, fog: false, lights: false,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),

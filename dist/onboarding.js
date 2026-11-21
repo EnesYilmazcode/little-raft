@@ -2,7 +2,7 @@
 // API (window.raftOnboarding): register({chapter, title?, after?, steps}), complete(id), reset(), state().
 // Step: {id, title, hint (string or S -> string), done(S, base, ctx) -> bool, count?(S, base, ctx) -> [n, of], start?(S) -> base, needs?:[ids],
 //        optional?:bool (never blocks its chapter), show?(S) -> bool (visibility gate), every?:bool (shown in any chapter)}.
-// count may add a unit: [n, of, '°']. ctx = {S0, gained(k), yawTravel, walked (path metres), prev, mem, silent}. Completion reads only window.raftDebug.state (polled 250 ms).
+// count may add a unit: [n, of, '°']. ctx = {S0, gained(k), yawTravel, walked (path metres), prev, mem, silent}. Completion reads only window.raftDebug.hud (a light live view; .state if absent), polled 250 ms.
 export const SAVE_KEY = 'little-raft-v1', KEY = 'little-raft-onboarding-v1', AUTOSTART = 'little-raft-autostart';
 const POLL_MS = 250, MAX_ROWS = 3, DIM_MS = 20000, HOLD_MS = 2000, ASIDE_MIN = 190, GUTTER = 8;
 
@@ -30,7 +30,7 @@ const gainStep = (id, title, hint, k, n, needs, or) => ({id, title, hint, needs,
 const hasHammer = S => owns(S, 'hammer'), hasRod = S => owns(S, 'fishingrod');
 // Hotbar key for an item: 'Press [6] to hold your hammer, then ' ('' when it is already in hand, null when not in the bag).
 const slotOf = (S, k) => arr(S?.inventory?.slots).findIndex(x => x?.kind === k);
-const hold = (S, k, what) => { const i = slotOf(S, k); return i < 0 ? null : i === S.selectedIndex ? '' : i >= 8 ? `[Tab], drag ${what} to the hotbar, then ` : `Press [${i + 1}] to hold ${what}, then `; };
+const hold = (S, k, what) => { const i = slotOf(S, k); return i < 0 ? null : i === S.selectedIndex ? '' : i >= 10 ? `[Tab], drag ${what} to the hotbar, then ` : `Press [${(i + 1) % 10}] to hold ${what}, then `; };
 const use = (S, k, what, rest, fallback) => { const h = hold(S, k, what); return h === null ? fallback : h ? h + rest : rest[0].toUpperCase() + rest.slice(1); };
 const LOOK = 1.4, WALK = 4; // rad of yaw sweep (~80°), metres walked
 
@@ -91,8 +91,12 @@ export function insertSteps(steps, chapters, {chapter, title, after, steps:add} 
   steps.splice(at + 1, 0, ...add.map(s => ({...s, chapter})));
   return steps;
 }
-const snap = S => ({tiles:num(S.tiles), fish:num(S.fish), collected:num(S.collected), hookHealth:num(S.hookHealth),
-  decor:Object.fromEntries(arr(S.decor).filter(d => typeof d?.type === 'string').map(d => [d.type, decorCount(S, d.type)])),
+function decorCounts(S) {
+  const out = {}, list = arr(S.decor);
+  for (let i = 0; i < list.length; i++) { const t = list[i]?.type; if (typeof t === 'string') out[t] = (out[t] ?? 0) + 1; }
+  return out;
+}
+const snap = S => ({tiles:num(S.tiles), fish:num(S.fish), collected:num(S.collected), hookHealth:num(S.hookHealth), decor:decorCounts(S),
   stock:{...(S.stock && typeof S.stock === 'object' ? S.stock : {})}, me:S.me ? {x:num(S.me.x), z:num(S.me.z), yaw:num(S.me.yaw)} : null});
 function ctxFor(rec, S, prev, silent) {
   const base = rec?.base ?? FRESH;
@@ -136,10 +140,10 @@ export function evaluate(steps, P, rawS, {silent = false} = {}) {
     const byId = new Map(steps.map(s => [s.id, s])), mark = id => { if (!P.done[id] && byId.has(id)) { P.done[id] = true; silentDone.push(id); arr(byId.get(id).needs).forEach(mark); } };
     for (const s of steps) if (check(s, S, FRESH, ctxFor(null, S, null, true))) mark(s.id);
   }
-  const vis = visibleSteps(steps, P, S), keep = {};
+  const vis = visibleSteps(steps, P, S), keep = {}, now = snap(S); // one snapshot per poll, shared read-only by every step
   for (const s of swapped ? [] : vis) {
-    const rec = P.track[s.id] ?? track(s, S), now = snap(S);
-    for (const k of Object.keys(now.stock)) { const d = inv(now, k) - inv(rec.last, k); if (d > 0) rec.gained[k] = num(rec.gained[k]) + d; }
+    const rec = P.track[s.id] ?? track(s, S, now);
+    for (const k in now.stock) { const d = inv(now, k) - inv(rec.last, k); if (d > 0) rec.gained[k] = num(rec.gained[k]) + d; }
     if (now.me && rec.last.me) {
       rec.yaw += Math.abs(wrapPi(now.me.yaw - rec.last.me.yaw));
       const d = Math.hypot(now.me.x - rec.last.me.x, now.me.z - rec.last.me.z); if (d < 3) rec.walk += d; // >3 m in 250 ms: a teleport
@@ -147,13 +151,13 @@ export function evaluate(steps, P, rawS, {silent = false} = {}) {
     rec.last = now; keep[s.id] = rec;
     if (check(s, S, rec.base, ctxFor(rec, S, prev, false))) { P.done[s.id] = true; newly.push(s.id); }
   }
-  P.track = keep; P.prev = snapPrev(S);
+  P.track = keep; P.prev = snapPrev(S, now);
   const after = visibleSteps(steps, P, S), counts = {}, hints = {};
-  for (const s of after) { P.track[s.id] ??= track(s, S); counts[s.id] = countOf(s, S, P.track[s.id], P.prev); hints[s.id] = hintOf(s, S); }
+  for (const s of after) { P.track[s.id] ??= track(s, S, now); counts[s.id] = countOf(s, S, P.track[s.id], P.prev); hints[s.id] = hintOf(s, S); }
   return {newly, silentDone, visible:after.map(s => s.id), chapter:currentChapter(steps, P.done), counts, hints, reset};
 }
-function track(s, S) { let base; try { base = s.start ? s.start(S) : null; } catch {} return {base:base ?? snap(S), gained:{}, yaw:0, walk:0, mem:{}, last:snap(S)}; }
-const snapPrev = S => ({...snap(S), role:S.role, hostWorld:hostWorld(S), pickup:S.pickup ?? null, hookStage:S.hookStage});
+function track(s, S, now = snap(S)) { let base; try { base = s.start ? s.start(S) : null; } catch {} return {base:base ?? now, gained:{}, yaw:0, walk:0, mem:{}, last:now}; }
+const snapPrev = (S, now = snap(S)) => ({...now, role:S.role, hostWorld:hostWorld(S), pickup:S.pickup ?? null, hookStage:S.hookStage});
 
 export function saveSummary(raw) {
   try {
@@ -228,15 +232,23 @@ function boot() {
     } catch {}
   }
   const feed = t => { try { window.raftPrompts?.feed?.(t); } catch {} };
+  // The tick re-renders 4x/s: write only values that changed (every write is a DOM mutation plus style work).
+  const setText = (el, t) => { if (el.textContent !== t) el.textContent = t; };
+  let logHTML = '';
   function renderHead(ch) {
     const all = ch === null, list = STEPS.filter(s => s.chapter === ch && !s.optional);
     panel.classList.toggle('ob-all', all);
-    head.querySelector('.ob-ch').textContent = all ? 'Notes' : collapsed ? 'Notes' : chName(ch);
-    head.querySelector('.ob-sum').textContent = all ? '' : `${collapsed ? '· ' : ''}${list.filter(s => P.done[s.id]).length}/${list.length}`;
-    const open = all ? logOpen : !collapsed;
+    setText(head.querySelector('.ob-ch'), all ? 'Notes' : collapsed ? 'Notes' : chName(ch));
+    setText(head.querySelector('.ob-sum'), all ? '' : `${collapsed ? '· ' : ''}${list.filter(s => P.done[s.id]).length}/${list.length}`);
+    const open = String(all ? logOpen : !collapsed), hide = !(all && logOpen);
     panel.classList.toggle('ob-collapsed', !all && collapsed); panel.classList.toggle('ob-logopen', all && logOpen);
-    head.setAttribute('aria-expanded', String(open)); logEl.hidden = !(all && logOpen);
-    if (all && logOpen) logEl.innerHTML = [...new Set(STEPS.map(s => s.chapter))].map(c => `<section><h3>${hintHTML(chName(c))}</h3><ul>${STEPS.filter(s => s.chapter === c && (!s.optional || P.done[s.id])).map(s => `<li class="${P.done[s.id] ? 'ob-tick' : ''}">${hintHTML(s.title)}</li>`).join('')}</ul></section>`).join('');
+    if (head.getAttribute('aria-expanded') !== open) head.setAttribute('aria-expanded', open);
+    if (logEl.hidden !== hide) logEl.hidden = hide;
+    if (hide) logHTML = '';
+    else {
+      const html = [...new Set(STEPS.map(s => s.chapter))].map(c => `<section><h3>${hintHTML(chName(c))}</h3><ul>${STEPS.filter(s => s.chapter === c && (!s.optional || P.done[s.id])).map(s => `<li class="${P.done[s.id] ? 'ob-tick' : ''}">${hintHTML(s.title)}</li>`).join('')}</ul></section>`).join('');
+      if (html !== logHTML) logEl.innerHTML = logHTML = html;
+    }
   }
   function toggle() {
     if (panel.classList.contains('ob-all')) logOpen = !logOpen; else collapsed = !collapsed;
@@ -264,13 +276,13 @@ function boot() {
     for (const [id, li] of rows) if (!vis.has(id) && !li.classList.contains('ob-done')) { li.remove(); rows.delete(id); }
     for (const id of r.visible) {
       const li = rows.get(id) ?? rowFor(id, animate), c = r.counts[id], h = r.hints[id] ?? '';
-      li.querySelector('.ob-count').textContent = c ? `${c[0]}/${c[1]}${c[2] ?? ''}` : '';
+      setText(li.querySelector('.ob-count'), c ? `${c[0]}/${c[1]}${c[2] ?? ''}` : '');
       if (li.dataset.hint !== h) { li.dataset.hint = h; li.querySelector('.ob-hint').innerHTML = hintHTML(h); }
     }
     renderHead(shownCh);
   }
   function tick() {
-    let S = null; try { S = window.raftDebug?.state; } catch {}
+    let S = null; try { const d = window.raftDebug; S = d?.hud ?? d?.state; } catch {} // hud: live view without .state's deep copies
     const playing = !!S?.running;
     if (!playing) return;
     lastS = S;
@@ -282,7 +294,23 @@ function boot() {
     if (r.reset) collapsed = false;
     sync(r); booted = true;
     panel.classList.toggle('ob-dim', Date.now() - lastProgress > DIM_MS && !panel.classList.contains('ob-all'));
-    placeBesideBag(S.inventoryOpen && $('#inventory .sv-wrap')?.getBoundingClientRect());
+    placeBag(!!S.inventoryOpen);
+  }
+  // Placement reads layout (forced sync reflow), so it runs once per bag open and again only when the window, the
+  // Notes or the bag change size (ResizeObserver / resize mark it dirty), not on every tick.
+  let placedOpen = null, placeDirty = true, bagEl = null;
+  const markPlace = () => { placeDirty = true; };
+  const sizeObs = typeof ResizeObserver === 'function' ? new ResizeObserver(markPlace) : null;
+  sizeObs?.observe(panel); window.addEventListener('resize', markPlace);
+  function placeBag(open) {
+    if (open) {
+      const el = $('#inventory .sv-wrap');
+      if (el !== bagEl) { if (bagEl) sizeObs?.unobserve(bagEl); bagEl = el; if (el) sizeObs?.observe(el); placeDirty = true; }
+      if (!sizeObs) placeDirty = true; // no observer: measure every tick as before
+    }
+    if (open === placedOpen && (!placeDirty || !open)) return;
+    placedOpen = open; placeDirty = false;
+    placeBesideBag(open && bagEl?.getBoundingClientRect());
   }
   // Bag open: if the Notes overlap it, move them (narrowed, >= ASIDE_MIN px) into the wider gutter beside the bag;
   // no gutter that wide (phones, small windows) -> .ob-covered hides them rather than peeking out over the bag.
@@ -319,6 +347,7 @@ function boot() {
     menu.innerHTML = `${raw != null ? `<button type="button" class="ob-item" data-act="continue">Continue${sub ? `<small>${hintHTML(sub)}</small>` : ''}</button>` : ''}
       <button type="button" class="ob-item" data-act="new">${auto && raw == null ? 'Set sail' : 'New Game'}</button>
       <button type="button" class="ob-item" data-act="crew">Play together</button>
+      ${$('#welcomeLook') ? '<button type="button" class="ob-item" data-act="look">Change look</button>' : ''}
       <button type="button" class="ob-item" data-act="settings">Settings</button>
       <small class="ob-savenote">Saves automatically in this browser</small>`;
     welcome.prepend(logo); card.prepend(menu); welcome.classList.add('ob-on'); document.body.classList.add('ob-title-ready');
@@ -342,6 +371,7 @@ function boot() {
         else if (armed) { disarm(); wipe(); }
         else { newBtn.textContent = 'Start over? Click again'; newBtn.classList.add('ob-confirm'); armed = setTimeout(disarm, 4000); }
       } else if (act === 'crew') $('#welcomeCrew')?.click();
+      else if (act === 'look') $('#welcomeLook')?.click(); // [look] docs/specs/customise.md
       else if (act === 'settings') $('#helpButton')?.click();
     });
     menu.addEventListener('keydown', e => {

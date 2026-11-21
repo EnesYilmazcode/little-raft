@@ -71,6 +71,7 @@ export function createWaterEffects(T) {
       opacity: 0,
       depthWrite: false,
       side: T.DoubleSide,
+      forceSinglePass: true,
       polygonOffset: true,
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -2,

@@ -1,6 +1,6 @@
 // Islands: pure logic (no THREE, no DOM). Layout from a uint32 seed, the drift timeline, save
 // validation, loot rules, the host gather check and the stand-on-sand step. See docs/features/islands.md.
-import { PLAYER_CONSTANTS } from './player-physics.js';
+import { PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 
 export const ISLAND = Object.freeze({
   FIRST: 90,            // first island in a fresh world (s)
@@ -183,7 +183,7 @@ export function clean(data, layoutOf = layoutFor) {
 // What one gather gives: [[kind, count], ...].
 export function lootFor(kind, seed, node, used) {
   if (kind === 'palm') return used === NODE_MAX.palm - 1 ? [['wood', 1], ['leaf', 1], ['seed', 1]] : [['wood', 1], ['leaf', 1]];
-  if (kind === 'bush') return hash3(seed, node, used) < 0.5 ? [['leaf', 1], ['seed', 1]] : [['leaf', 1]];
+  if (kind === 'bush') { const h = hash3(seed, node, used); return h < 0.2 ? [['leaf', 1], ['flowerseed', 1]] : h < 0.5 ? [['leaf', 1], ['seed', 1]] : [['leaf', 1]]; } // [bees] flower seeds
   if (kind === 'rock') return [['stone', 1]];
   if (kind === 'sand') return [['sand', 1]];
   return [];

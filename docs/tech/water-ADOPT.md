@@ -30,8 +30,9 @@ It keeps the contract that `dist/game.js` already uses:
 | `ocean.dispose()` (line 1164)                       | yes | same; also frees the SDF texture                                      |
 
 New methods (all optional to call): `setRaft`, `setRaftPose`, `setFloaters`, `footprint(object3d)`,
-`setBobber(position | null)`, and `setAmp(a)`. The ocean uniforms `uFloaters` and `uRaft` (vec3) from
-earlier drafts of this file are gone (now `uFloatA`/`uFloatB` and a vec4 `uRaft`); `game.js` never used them.
+`setBobber(position | null)`, and `setAmp(a)`. The uniforms `uFloaters`, `uDeckLift` and the vec3 `uRaft`
+from earlier drafts of this file are gone (now the `tFloatMap` texture, the `deckLift` option baked by
+`setRaft`, and a vec4 `uRaft`); `game.js` never used them.
 
 The import line stays as it is:
 
@@ -60,7 +61,7 @@ After the `world.tiles.forEach(... createFloor ...)` line, add:
 
 `rebuildRaft()` runs from `init()` (after the ocean is created at line 290), after every build
 action (line 579), and after host and guest world syncs (lines 949 and 1025), so the foam always
-matches the deck. The bake takes about 2 to 9 ms for 7 to 400 tiles and runs only on those
+matches the deck. The bake (raft SDF plus the baked deck shadow) takes a few ms for 7 to 400 tiles and runs only on those
 events. The raft group never moves in x/z (it only bobs and tilts), so the pose stays (0, 0, 0).
 
 ## 3. Feed floating items and the hook bobber (`dist/game.js`, `updateItems()`)
@@ -76,30 +77,33 @@ loop closes (after line 768) and before the function's closing brace, add:
 
 ```js
     floaters.length = 0; for (const m of itemMeshes.values()) if (m.visible) floaters.push(ocean.footprint?.(m) ?? [m.position.x, m.position.z, .35]);
-    ocean.setFloaters?.(floaters, camera.position.x, camera.position.z);
     ocean.setBobber?.(hookMesh?.visible ? hookMesh.position : null);
+    ocean.setFloaters?.(floaters, camera.position.x, camera.position.z);
 ```
 
 `footprint(m)` measures the item model's local bounding box once (cached in `m.userData`) and
 returns a reused `[x, z, r, hx, hz]` capsule: the long horizontal side, turned by the mesh's current
 rotation and scale, so a plank gets an elongated band of foam and a jug a small round one. It
-assumes `itemsGroup` is untransformed, which it is (line 292). `setFloaters` keeps the 16 items
-nearest the camera. Footprints plus the pick cost about 0.02 to 0.1 ms a frame with 30 items. It runs
-on host and guest, because it uses the mesh positions that both already update.
+assumes `itemsGroup` is untransformed, which it is (line 292). `setFloaters` stamps every item (no
+slot limit) into a 64 m distance map centred on the camera; footprints plus stamping cost about 0.02
+to 0.1 ms a frame with 30 items. It runs on host and guest, because it uses the mesh positions that
+both already update.
 
-`setBobber` gets the hook mesh from the previous frame (`updateHook` runs right after
-`updateItems`, line 830), which is invisible at this scale. The ocean decides "on the water" itself
-(within .25 m of `getHeight`), so the flying and reeled-in hook get no foam. While it floats it gets a
-small collar and ripple rings, plus one splash ring from the moment it lands.
+`setBobber` must come before `setFloaters`, which stamps the bobber into the same map. It gets the
+hook mesh from the previous frame (`updateHook` runs right after `updateItems`, line 830), which is
+invisible at this scale. The ocean decides "on the water" itself (within .25 m of `getHeight`), so the
+flying and reeled-in hook get no foam. While it floats it gets lace and ripple rings like an item.
 
 ## 4. Verify
 
-1. `node sandbox/water/parity.mjs` should print `"ok":true`.
+1. `node sandbox/water/parity.mjs` should print `"ok":true` (heights, slopes and `setAmp`).
 2. Patch a copy of `dist`, then shoot it and the original:
    `python sandbox/water/shoot_game.py <patched_dist> /tmp/w new` and
    `python sandbox/water/shoot_game.py dist /tmp/w cur`. Expect no errors. Expect
-   `new-down.png` to show white collars and lace rings around the raft edge and every item,
-   shaded water (not foam) in the plank gaps, and a glittering sun path.
+   `new-down.png` to show a thin collar and fine lace at the raft edge, lace shaped like each
+   item around it, and shaded water (not foam) in the plank gaps; `new-cast.png` shows the thrown
+   hook floating with lace around it. `gpuCpuMs` should be within about 10% of `cur`'s (it was
+   1140 against 1090 on the loaded lab box).
 3. In the game: build a floor tile. The foam band should move to the new edge right away. Swim
    (fall off). The swim test still uses the same `getHeight`, so nothing changes.
 4. Run the existing checks (`check_game.py`, `check_survival.py`). They do not touch the

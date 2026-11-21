@@ -54,8 +54,8 @@ export function normalizeDecor(decor) {
 // Advances one plant by dt seconds. Mutates p. Returns true when its look changed
 // (new stage or the soil just dried), so the view and co-op sync know to refresh.
 export function tickPlant(p, dt) {
-  if (!p || !(dt > 0) || p.s < SEEDLING || p.w <= 0) return false;
-  if (p.s >= MATURE) { p.w = Math.max(0, p.w - dt); return p.w === 0; } // grown palms just let the soil dry
+  if (!p || !(dt > 0) || p.s < EMPTY || p.w <= 0) return false;
+  if (p.s >= MATURE || p.s === EMPTY) { p.w = Math.max(0, p.w - dt); return p.w === 0; } // grown palms and empty planters just let the soil dry
   const wet = Math.min(dt, p.w);
   p.w -= wet; p.g += wet;
   let changed = p.w <= 0;
@@ -94,8 +94,16 @@ export function promptFor(p, heldKind) {
   if (p.s === EMPTY) return heldKind === 'seed' ? 'Click to plant a palm seed' : 'Empty planter: plant a Palm Seed';
   if (p.s >= MATURE) return 'E  Harvest the palm';
   const name = STAGE_NAMES[p.s], pct = Math.round(progress(p) * 100);
-  if (p.w > 0) return heldKind === 'water' && p.w < WATER_SECONDS * .5 ? `${name} ${pct}%: click to water` : `${name} ${pct}%: growing`;
+  if (p.w > 0) return heldKind === 'water' ? (p.w < WATER_SECONDS * .5 ? `${name} ${pct}%: click to water` : `${name} ${pct}%: soil still wet`) : `${name} ${pct}%: growing`;
   return heldKind === 'water' ? `${name} ${pct}%: click to water` : `${name} ${pct}%: dry soil, needs fresh water`;
+}
+
+// Feed note for a click with a seed or water that did nothing. p is the plot in reach, or null.
+// Never carries the prompt's 'E  ' key prefix, which only the crosshair prompt renders as a key.
+export function useNote(p, heldKind) {
+  if (!p) return heldKind === 'water' ? 'Point at a palm planter to water it' : 'Point at a palm planter to plant the seed';
+  const t = promptFor(p, heldKind);
+  return t.startsWith('E  ') ? 'Press E to ' + t.charAt(3).toLowerCase() + t.slice(4) : t;
 }
 
 // Gives every item in loot to bag atomically (all or nothing). bag is a Bag.
@@ -106,11 +114,15 @@ function giveAll(bag, loot) {
   return true;
 }
 // Takes one of kind, preferring the selected slot so the held stack shrinks.
-function takeOne(bag, kind) {
-  const sel = bag.slots[bag.selectedIndex];
-  if (sel?.kind === kind) { sel.count--; if (sel.count <= 0) bag.slots[bag.selectedIndex] = null; return true; }
-  return bag.remove(kind, 1);
+// Returns the slot index it took from, or -1 (falsy-safe callers compare with >= 0).
+function takeOneAt(bag, kind) {
+  let i = bag.slots[bag.selectedIndex]?.kind === kind ? bag.selectedIndex : -1;
+  if (i < 0) for (let j = bag.slots.length - 1; j >= 0; j--) if (bag.slots[j]?.kind === kind) { i = j; break; }
+  if (i < 0) return -1;
+  const s = bag.slots[i]; s.count--; if (s.count <= 0) bag.slots[i] = null;
+  return i;
 }
+const takeOne = (bag, kind) => takeOneAt(bag, kind) >= 0;
 
 // Host-authoritative farm action. a = {kind:'farm', op, x, z}; op is plant | water | harvest | fill.
 // Mutates world.decor and bag. Returns {ok, text, effect, changed} where effect is the emit kind
@@ -140,11 +152,15 @@ export function applyFarmAction(world, bag, a) {
     if (p.s === EMPTY) return fail('Plant a seed first');
     if (p.w >= WATER_SECONDS * .5) return fail('The soil is still wet');
     const scratch = new bag.constructor(bag.snapshot());
-    if (!takeOne(scratch, 'water')) return fail('Fill a Filter Cup at the sea first');
-    if (scratch.add('cup', 1) > 0) return fail('Your bag is full', 'full');
+    const from = takeOneAt(scratch, 'water');
+    if (from < 0) return fail('Fill a Filter Cup at the sea first');
+    // The empty cup goes back where the water was; with no room at all nothing is used up.
+    const kept = !scratch.slots[from] ? (scratch.slots[from] = { kind: 'cup', count: 1 }, true) : scratch.add('cup', 1) === 0;
+    if (!kept) return fail('Your bag is full', 'full');
     for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i];
     const wasDry = p.w <= 0; p.w = WATER_SECONDS;
-    return { ok: true, text: p.s >= MATURE ? 'Watered the palm' : 'Watered! It will grow while the soil is wet', effect: 'build', changed: wasDry };
+    const text = p.s >= MATURE ? 'Watered the palm' : 'Watered! It will grow while the soil is wet';
+    return { ok: true, text, effect: 'build', changed: wasDry };
   }
   if (a.op === 'harvest') {
     if (p.s < MATURE) return fail(p.s === EMPTY ? 'Nothing to harvest' : 'Not ready yet');
@@ -160,4 +176,10 @@ export function farmSignature(decor) {
   let s = '';
   for (const d of decor) if (isPlot(d)) s += `${d.x},${d.z}:${d.farm ? d.farm.s : MATURE}${d.farm && d.farm.w > 0 ? 'w' : 'd'};`;
   return s;
+}
+
+// The emit payload for an applyFarmAction result: items go out as loot so the pickup feed shows them.
+export function farmEffect(r) {
+  if (!r || !r.text) return null;
+  return r.items ? { kind: r.effect, text: r.text, loot: { ...r.items } } : { kind: r.effect, text: r.text };
 }

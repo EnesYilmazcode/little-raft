@@ -35,7 +35,7 @@ sys.path.insert(0, str(HERE.parent.parent / 'tools'))
 TOOL = 'playbot'
 LOOK_K = .0022            # game.js LOOK_SENSITIVITY (options.sensitivity defaults to 1)
 PITCH_LIMIT = 1.35        # game.js PITCH_LIMIT
-FOV_RANGE = (60, 95)      # settings.js fov min/max while running
+FOV_RANGE = (60, 100)     # settings.js fov min/max while running (95 before the onboarding build, 100 since)
 # Game seconds a hook may legitimately sit in a stage (hook-physics MAX_FLIGHT_TIME = 8; 'done' is ended next frame).
 HOOK_STUCK_SIM_S = {'flying': 12, 'done': 2}
 HOOK_STAGES = {'idle', 'flying', 'floating', 'reeling', 'done', 'fishing'}
@@ -276,6 +276,7 @@ class Bot:
 
     sample_t = None
     crashed = False
+    prev_bad_fov = False
 
     def check_sample(self, s, el):
         self.samples += 1
@@ -330,8 +331,12 @@ class Bot:
         if not finite(cam.get('x'), cam.get('y'), cam.get('z'), cam.get('fov'), cam.get('pitch'), cam.get('roll')):
             self.fail('camera_nonfinite', f'camera not finite: {cam}')
         else:
-            if not FOV_RANGE[0] - .01 <= cam['fov'] <= FOV_RANGE[1] + .01:
-                self.fail('camera_fov', f'camera fov {cam["fov"]} outside {FOV_RANGE} while running')
+            # game.js applies options.fov (vs the title's 48) in its own frame loop, so the sample taken in the frame
+            # where running flips can still see 48: only a value that persists into a second sample is a bug.
+            bad_fov = not FOV_RANGE[0] - .01 <= cam['fov'] <= FOV_RANGE[1] + .01
+            if bad_fov and self.prev_bad_fov:
+                self.fail('camera_fov', f'camera fov {cam["fov"]} outside {FOV_RANGE} while running (two samples in a row)')
+            self.prev_bad_fov = bad_fov
             if abs(cam['pitch']) > PITCH_LIMIT + 1e-6:
                 self.fail('camera_pitch', f'camera pitch {cam["pitch"]:.3f} beyond +-{PITCH_LIMIT}')
             if abs(cam['roll']) > .35:
@@ -789,7 +794,8 @@ def main():
         dist = Path(args.dist).resolve()
         if not (dist / 'index.html').is_file():
             raise InfraError(f'no index.html in {dist}')
-        from harness import StaticServer, launch_chromium
+        from harness import StaticServer, launch_chromium, click_start, START_SELECTORS
+        CONTINUE_FIRST = ['.ob-item[data-act="continue"]', '#solo', *[x for x in START_SELECTORS if x != '#solo']]
         from playwright.sync_api import sync_playwright
         save = ''
         if args.kit == 'starter':
@@ -823,9 +829,22 @@ def main():
                     page.wait_for_timeout(500)
                     if page.evaluate("!window.raftDebug && !!document.getElementById('raftLiveError')"):
                         raise RuntimeError('live.js reported that the game failed to start (#raftLiveError shown)')
-                    # Title buttons differ between branches: #solo may be a hidden "Continue" with #newGame next to it.
-                    btn = page.locator('#solo:visible, #newGame:visible').first
-                    btn.click()
+                    # Title controls differ between branches (onboarding menu, #solo/#newGame, legacy #solo).
+                    # With the starter kit saved, prefer Continue: New Game would ask to wipe the save (onboarding)
+                    # or start a fresh raft (#newGame).
+                    sels = CONTINUE_FIRST if args.kit == 'starter' else START_SELECTORS
+                    # The onboarding menu disables Continue/New while #solo is disabled (still loading); clicking then
+                    # would fall through to New Game, so wait for #solo to be enabled first.
+                    page.wait_for_function("!document.querySelector('#solo')?.disabled", timeout=60000)
+                    used = None
+                    for _ in range(60):
+                        used = click_start(page, sels)
+                        if used:
+                            break
+                        page.wait_for_timeout(500)
+                    if not used:
+                        raise RuntimeError(f'no visible start control among {sels}')
+                    bot.m['start_control'] = used
                     page.wait_for_function('raftDebug.state.running', timeout=30000)
                 except Exception as e:
                     errs = bot.page_errors + bot.console_errors

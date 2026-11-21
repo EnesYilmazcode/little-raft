@@ -131,11 +131,10 @@ function frame(now) {
     const y = water.getHeight(f.x, f.z);
     f.mesh.position.set(f.x, y + (f.kind === 'barrel' ? 0.05 : 0.0), f.z);
   }
+  bobber.position.set(BOB.x, water.getHeight(BOB.x, BOB.z) + 0.02, BOB.z);
+  water.setBobber?.(bobber.position);   // before setFloaters, which stamps it
   if (water.footprint) water.setFloaters(floaters.map((f) => water.footprint(f.mesh).slice()), camera.position.x, camera.position.z);
   else water.setFloaters(floaters.map((f) => [f.x, f.z, 0.35]));
-  bobber.position.set(BOB.x, water.getHeight(BOB.x, BOB.z) + 0.02, BOB.z);
-  water.setBobber?.(bobber.position);
-  if (fixedT !== null && water.uniforms.uBobber) water.uniforms.uBobber.value.w = fixedT - 0.5;   // frozen shot: landed 0.5 s ago
   camera.position.set(v.pos[0], v.pos[1] + raft.position.y, v.pos[2]);
   camera.lookAt(...v.look);
   sky.position.copy(camera.position);

@@ -298,3 +298,28 @@ test('wrapAxis', () => {
   assert.equal(SAIL.WATER_WRAP % 512, 0, 'shader fine detail uses mod(uFlow, 512.)');
   assert.equal(wrapAxis(NaN, 130), 0);
 });
+
+test('engine push: absent = old result; push alone converges; sail + push capped; anchored ignores push', () => {
+  const mk = () => { const s = defaultSailing(); s.raised = true; s.heading = s.windDir; return s; };
+  // no push (and a zero push) give byte-identical results to the old path
+  const a = mk(), b = mk(), c = mk();
+  run(a, 5, { nSails: 1, host: true, rng: seeded(3) });
+  run(b, 5, { nSails: 1, host: true, rng: seeded(3), push: undefined });
+  run(c, 5, { nSails: 1, host: true, rng: seeded(3), push: { x: 0, z: 0 } });
+  assert.deepEqual(b, a); assert.deepEqual(c, a);
+  run(c, .1, { nSails: 1, host: false, push: { x: NaN, z: 1 } }); run(a, .1, { nSails: 1, host: false });
+  assert.deepEqual(c, a, 'non-finite push ignored');
+  // push alone (no sail) converges to |push| along the push
+  const p = defaultSailing();
+  run(p, 60, { nSails: 0, host: false, push: { x: .42, z: .56 } });
+  near(p.vx, .42, 1e-4); near(p.vz, .56, 1e-4);
+  // sail + push clamps at TARGET_CAP
+  const q = mk(); q.windStr = 1;
+  run(q, 80, { nSails: 3, host: false, push: { x: Math.sin(q.heading) * 1.4, z: Math.cos(q.heading) * 1.4 } });
+  near(Math.hypot(q.vx, q.vz), SAIL.TARGET_CAP, 1e-3);
+  assert.ok(SAIL.TARGET_CAP < SAIL.V_CLAMP);
+  // anchored: push ignored, raft comes to rest, seabed offset frozen
+  const r = defaultSailing(); r.anchored = true; const g = [r.gx, r.gz];
+  run(r, 30, { nSails: 0, host: false, push: { x: 0, z: 1.4 } });
+  near(Math.hypot(r.vx, r.vz), 0, 1e-12); assert.deepEqual([r.gx, r.gz], g);
+});
