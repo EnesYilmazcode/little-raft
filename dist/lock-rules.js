@@ -15,13 +15,15 @@ export function classifyLockError(err) {
 
 // Decide whether a refusal switches to drag-look. Only a missing API, NotSupportedError, or repeated
 // refusals while the window has focus count. Unfocused refusals never count. SecurityError counts when
-// focused (a sandbox or permissions-policy denial is permanent) but one alone never switches.
-export function lockFailureVerdict({ supported = true, err, focused = true, failures = 0, maxFailures = 3 } = {}) {
+// focused (a sandbox or permissions-policy denial is permanent) but one alone never switches. Once this document
+// has held the lock (everLocked) a SecurityError is always transient: a policy denial refuses the very first
+// request, so a later one is Chromium's re-lock cooldown after an Escape exit, however long that lasts.
+export function lockFailureVerdict({ supported = true, err, focused = true, failures = 0, maxFailures = 3, everLocked = false } = {}) {
   if (!supported) return { fallback: true, failures };
   const kind = classifyLockError(err);
   if (kind === 'unsupported') return { fallback: true, failures };
   if (!focused) return { fallback: false, failures };
-  if (kind === 'transient' && err.name !== 'SecurityError') return { fallback: false, failures };
+  if (kind === 'transient' && (err.name !== 'SecurityError' || everLocked)) return { fallback: false, failures };
   const n = failures + 1;
   return { fallback: n >= maxFailures, failures: n };
 }
@@ -69,6 +71,7 @@ export function createEscGate({ handledWindow = 600, lockWindow = 1500 } = {}) {
   let handledAt = -Infinity, lockLostAt = -Infinity, pressHandled = false;
   return {
     get handledAt() { return handledAt; },
+    get lockLostAt() { return lockLostAt; },
     keydown(now, { repeat = false, handled = false } = {}) {
       if (repeat) {
         if (pressHandled) handledAt = now;
@@ -88,3 +91,40 @@ export function createEscGate({ handledWindow = 600, lockWindow = 1500 } = {}) {
     },
   };
 }
+
+// body.relock is tied to a real lock request (game.js requestLock): set when the request is made, cleared
+// when it settles. This long timeout is only a safety net for a browser whose requestPointerLock has no promise.
+export const RELOCK_SAFETY_TIMEOUT = 3000;
+
+// Pointer lock lost without the page asking (the browser ate the Escape keydown that ended it, so no key event
+// may reach the page at all): open the pause menu. Never for alt-tab (unfocused/hidden/away), a menu the page
+// opened (selfCaused, dialogOpen), the build wheel, drag-look, a pending relock, or a lock held under heldMs
+// (a granted-then-revoked relock).
+export const LOCK_LOSS_MIN_HELD = 250;
+export function lockLossOpensPause({ gameActive = false, focused = true, visible = true, away = false, dialogOpen = false,
+  wheelOpen = false, dragLook = false, selfCaused = false, relockPending = false, locked = false, heldMs = 0 } = {}) {
+  return !!gameActive && !!focused && !!visible && !away && !dialogOpen && !wheelOpen && !dragLook && !selfCaused
+    && !relockPending && !locked && heldMs >= LOCK_LOSS_MIN_HELD;
+}
+
+// Desktop shell: an Escape keyUp arrived without its keyDown (Chromium's exclusive-access handler consumed the
+// keyDown to end pointer lock or HTML fullscreen). 'press' runs the full press (hold, raftEscape, released);
+// 'pause' only opens the pause menu; 'none' does nothing. It never closes an open panel: the same orphan keyUp
+// follows an Escape that only left fullscreen.
+export const FULLSCREEN_ESC_WINDOW = 300;
+export function orphanEscPlan({ gameActive = false, dialogOpen = false, wheelOpen = false, locked = false,
+  sinceLockLoss = Infinity, sinceFullscreenChange = Infinity, lockWindow = 1500 } = {}) {
+  if (!gameActive || dialogOpen || wheelOpen) return 'none';
+  const lockedPlay = locked || sinceLockLoss <= lockWindow;
+  return lockedPlay && sinceFullscreenChange > FULLSCREEN_ESC_WINDOW ? 'press' : 'pause';
+}
+
+// Soft drag-look (entered after repeated refusals, not a missing API): a plain canvas click retries the lock,
+// at most once per interval ms. Hard fallback (no API, NotSupportedError) never retries.
+export function softRelockTry({ fallback = false, hard = false, now = 0, lastTry = -Infinity, interval = 1500 } = {}) {
+  return !!fallback && !hard && now - lastTry >= interval;
+}
+
+// Shared stamp: when the page itself last released the lock (game.js releaseLock, engine dispose). settings.js
+// treats a lock loss right after it as self-caused, so it never opens the pause menu.
+export const selfRelease = { at: -Infinity };

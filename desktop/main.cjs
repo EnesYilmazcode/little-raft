@@ -6,6 +6,7 @@ const origin=config.origin||'http://127.0.0.1:41896';
 app.setName('Little Raft');
 app.setPath('userData',path.join(app.getPath('appData'),'Little Raft'));
 app.setAppUserModelId('local.littleraft.game');
+const ORPHAN_ESC='(()=>{const s=window.raftShell,p=window.raftOrphanEscape?window.raftOrphanEscape():"none";if(p==="press"){s&&s.hold&&s.hold();window.raftEscape&&window.raftEscape();s&&s.released&&s.released();}return p;})()';
 let win,retry,escClaimed=false,escDown=false; // escClaimed: the page routes Escape via window.raftEscape()
 if(!app.requestSingleInstanceLock())app.quit();else{
 app.on('second-instance',()=>{if(win){if(win.isMinimized())win.restore();win.show();win.focus();}});
@@ -28,6 +29,11 @@ app.whenReady().then(()=>{
    // Relock on release, with a gesture: relocking while Escape is still held would count as leaving the lock.
    escDown=false;
    wc.executeJavaScript('window.raftShell&&window.raftShell.released&&window.raftShell.released()',true).catch(()=>{});
+  }else{
+   // A keyUp with no keyDown: Chromium's exclusive-access handler consumed the keyDown to end pointer lock
+   // (or HTML fullscreen) before this event runs. The page decides (settings.js raftOrphanEscape): in locked
+   // play run the whole press here, in one gesture; otherwise at most open pause, never close a panel.
+   wc.executeJavaScript(ORPHAN_ESC,true).catch(()=>{});
   }
  });
  win.on('blur',()=>{escDown=false;}); // the page drops its held-Escape state on blur too; the next click relocks

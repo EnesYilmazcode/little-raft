@@ -89,7 +89,8 @@ SNAP = r"""(() => {
   };
 })()"""
 
-START_BUTTON = r"""(() => { for (const s of ['#solo', '#newGame']) { const el = document.querySelector(s), r = el?.getBoundingClientRect();
+# The onboarding title menu (.ob-item buttons) hides #solo/#newGame; those stay as fallbacks for older titles.
+START_BUTTON = r"""(() => { for (const s of ['.ob-item[data-act="continue"]', '.ob-item[data-act="new"]', '#solo', '#newGame']) { const el = document.querySelector(s), r = el?.getBoundingClientRect();
   if (r && r.width && !el.disabled && getComputedStyle(el).visibility !== 'hidden') return s; } return null; })()"""
 
 LOCK_OR_FALLBACK = 'document.pointerLockElement || raftDebug.state.lockFallback'
@@ -401,8 +402,9 @@ class Run:
 
         # Solo with a real mouse click (trusted gesture through sendInputEvent). Branches with a Continue/New game title
         # (wip/fleet/menus) hide #solo until a save exists and start a fresh raft from #newGame.
+        self.wait_for(START_BUTTON, timeout=10)
         start_btn = self.js(START_BUTTON)
-        if not start_btn: raise Infra('no visible start button (#solo or #newGame) on the title screen')
+        if not start_btn: raise Infra('no visible start button (.ob-item[data-act=continue|new], #solo or #newGame) on the title screen')
         self.metrics['start_button'] = start_btn
         self.click_selector(start_btn, f'click {start_btn} ({self.js(f"document.querySelector({json.dumps(start_btn)}).textContent.trim()")!r})')
         started = self.wait_for('raftDebug.state.running', timeout=20)
@@ -486,18 +488,13 @@ class Run:
                                          if s['shellClaimsEsc'] and 'keyDown' not in shell_saw else
                                          f'(desktop/main.cjs claims Escape; its before-input-event saw {shell_saw} for this press, yet no pause menu)' if s['shellClaimsEsc'] else
                                          '(Electron delivers neither keydown nor keyup of the lock-releasing Esc to the page, so the settings.js keyup fallback never fires)'))
-        presses = 1
-        if not opened and not s['dialogs']:
-            # Keep going so the rest of the cycle is still tested: see how many more presses pause takes.
-            self.key('Escape', 'Esc again (pause did not open)'); self.settle(700); presses += 1
-            s = self.snap()
-            self.window_alive(f'{cid}.window1b', 'the second Esc')
-        self.metrics.setdefault('esc_presses_to_pause', {})[cid] = presses if s['options'] else None
-        if not s['options']:
-            self.check(f'{cid}.open-eventually', 'pause menu opens within two Esc presses', False, s); return
+        # Exactly one Esc: a second press would hide LOCK-R3-1 (the shell dropping the lock-ending keyDown).
+        self.metrics.setdefault('esc_presses_to_pause', {})[cid] = 1 if s['options'] else None
+        if not opened: return
         self.screenshot(f'{cid}-menu')
         exits0 = self.js('__lrProbe.exits')
         self.key('Escape', 'Esc (in pause menu)'); self.settle(700)
+        if self.real: self.wait_for('document.pointerLockElement', timeout=4)  # a loaded box can take seconds to grant the relock
         s = self.snap()
         self.window_alive(f'{cid}.window2', 'Esc in the pause menu')
         self.check(f'{cid}.resume', 'second Esc closes the pause menu and resumes the game',
