@@ -16,7 +16,7 @@
 //   placeholder: true when the icon is not a dedicated icons.svg symbol
 //   tool:      true only for durability items (Bag keeps durability 0..100 percent)
 //   durability: tools only: number of uses from 100% to 0% (wear per use = 100 / uses)
-//   actsAs:    optional tool role ('hook' | 'fishingrod' | 'hammer' | 'spear' | 'paddle'); see toolRole()
+//   actsAs:    optional tool role ('hook' | 'fishingrod' | 'hammer' | 'spear' | 'paddle' | 'axe'); see toolRole()
 //   placeable: true when the item is put on a raft tile as a decor/station
 //   recipe:    null (gathered) | {
 //                cost:   {kind: n}  (station recipes have exactly one cost key = input)
@@ -162,6 +162,9 @@ const LIST = [
   item('paddle', 'Paddle', 'tool', { iconTint: '#c29462', tool: true, durability: 60,
     recipe: hand({ wood: 4, rope: 2, plastic: 2 }), unlock: discover('rope'),
     tip: 'Stand at the raft edge and click to push the raft the way you face. Good for about 60 strokes.' }),
+  item('axe', 'Stone Axe', 'tool', { iconTint: '#8f9aa0', tool: true, durability: 50,
+    recipe: hand({ wood: 6, stone: 3, rope: 2 }), unlock: discover('stone', 'rope'),
+    tip: 'A sharp stone head lashed to a sturdy handle. Click a palm five times to fell it; good for about 50 chops.' }),
   item('binoculars', 'Binoculars', 'tool', { iconTint: '#5d6b78', stack: 1,
     recipe: hand({ glass: 2, copperingot: 1, hinge: 2, bolt: 1 }), unlock: research('glass', 'copperingot'),
     tip: 'Hold them to spot the nearest barrel: bearing and distance. They never wear out.' }),
@@ -174,6 +177,8 @@ const LIST = [
     tip: 'Scrap-metal bars on a little frame. They ring bright and fade out softly.' }),
 
   // ----- food -----
+  item('coconut', 'Coconut', 'food', { iconTint: '#6b4a2a',
+    tip: 'A hairy brown nut knocked loose from an island palm. Crack it open for a cool drink (+5 food, +20 water).' }),
   item('cookedfish', 'Grilled Fish', 'food', { iconTint: '#e0a060', stack: 10,
     recipe: cook('grill', 'fish', { time: 40, fuel: 0.8 }), unlock: atStation('grill'), // = cooking.js cookTime at 30 cm; 1 plank burns 50 s
     tip: 'A cosy, smoky meal. Click with it in hand to eat (+35 food).' }),
@@ -254,6 +259,7 @@ const REPAIRS = deepFreeze({
   spear: { wood: 2, rope: 1 },
   metalspear: { metalingot: 1, rope: 1 },
   paddle: { wood: 2, rope: 1 },
+  axe: { wood: 2, stone: 1 },
 });
 
 /** Alternate / older names that may appear in saves or network messages. */

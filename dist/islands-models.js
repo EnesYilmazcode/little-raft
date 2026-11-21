@@ -137,6 +137,32 @@ function palmGeometry(T, spent = false) {
   for (let i = 0; i < 4; i++) parts.push(frond(i / 4 * Math.PI * 2 + .6, 1.2, 1.0, .9, .3)); // young upright fronds
   return merge(T, parts);
 }
+// Felled palm: a short ragged stump with a pale cut top and a couple of fallen frond stubs, in the palm's
+// frame (shown instead of the palm once it has been chopped down).
+function stumpGeometry(T) {
+  const H = .42, R0 = .21, R1 = .17, parts = [];
+  const side = new T.CylinderGeometry(R1, R0, H, 9, 2, true); side.translate(0, H / 2, 0);
+  const sp = side.attributes.position;
+  for (let i = 0; i < sp.count; i++) if (sp.getY(i) > H - 1e-3) { const a = Math.atan2(sp.getZ(i), sp.getX(i)); sp.setY(i, H - .07 * (.5 + .5 * Math.sin(a * 3 + .4))); } // chopped, uneven rim
+  side.deleteAttribute('uv'); side.computeVertexNormals();
+  const bark = new T.Color('#8a6440'), barkLight = new T.Color('#b88a5a');
+  parts.push(paint(T, side, (x, y, z, c) => { c.copy(Math.round(y / H * 4) % 2 ? bark : barkLight); }));
+  const top = new T.CircleGeometry(R1 * .97, 9); top.rotateX(-Math.PI / 2);
+  const tp = top.attributes.position;
+  for (let i = 0; i < tp.count; i++) { const a = Math.atan2(tp.getZ(i), tp.getX(i)), r = Math.hypot(tp.getX(i), tp.getZ(i)) / R1; tp.setY(i, H - .07 * r * (.5 + .5 * Math.sin(a * 3 + .4)) - .01); }
+  top.deleteAttribute('uv'); top.computeVertexNormals();
+  const wood = new T.Color('#e8cf9a'), ring = new T.Color('#c9a66b');
+  parts.push(paint(T, top, (x, y, z, c) => { const r = Math.hypot(x, z) / R1; c.copy(r > .55 && r < .75 ? ring : wood); }));
+  for (let i = 0; i < 2; i++) { // two dry fronds lying in the sand
+    const g = new T.PlaneGeometry(.9, .26, 6, 1), gp = g.attributes.position;
+    for (let j = 0; j < gp.count; j++) { const t = (gp.getX(j) + .45) / .9; gp.setY(j, gp.getY(j) * Math.sin(Math.PI * Math.min(1, t * .9 + .1)) * (j % 2 ? .55 : 1)); } // leaf taper, ragged edge
+    g.rotateX(-Math.PI / 2); g.translate(.62, .12, 0); g.rotateY(i * 2.4 + .7); // lifted clear of the sand (palms sit 0.1 m low)
+    g.deleteAttribute('uv'); g.computeVertexNormals();
+    const st = new T.Color('#9c8a40'), tip = new T.Color('#c9b25a');
+    parts.push(paint(T, g, (x, y, z, c) => { c.copy(st).lerp(tip, Math.min(1, Math.hypot(x, z) / 1.1)); }));
+  }
+  return merge(T, parts);
+}
 // Coconut cluster under the crown, in the palm's frame (hidden once the palm is spent).
 function nutsGeometry(T) {
   const parts = [], nut = new T.Color('#6b6233'), dark = new T.Color('#4f4626');
@@ -254,12 +280,12 @@ export function createIslandModels(T, ocean) {
   lagoonUniforms.uSeaFoam0 = day(lagoonUniforms.uSeaFoam);
   const vert = ocean && ocean.material && typeof ocean.material.vertexShader === 'string' ? ocean.material.vertexShader : FALLBACK_VERT;
   const geos = {
-    dome: domeGeometry(T), palm: palmGeometry(T), palmSpent: palmGeometry(T, true), nuts: nutsGeometry(T), bush: bushGeometry(T), rock: rockGeometry(T), sand: sandGeometry(T), lagoon: lagoonGeometry(T),
+    dome: domeGeometry(T), palm: palmGeometry(T), palmSpent: stumpGeometry(T), nuts: nutsGeometry(T), bush: bushGeometry(T), rock: rockGeometry(T), sand: sandGeometry(T), lagoon: lagoonGeometry(T),
   };
   const mats = {
     dome: new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 }),
     palm: new T.MeshStandardMaterial({ vertexColors: true, roughness: .85 }),
-    palmSpent: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9 }),
+    palmSpent: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9, side: T.DoubleSide }), // felled stump (open fronds seen from both sides)
     nuts: new T.MeshStandardMaterial({ vertexColors: true, roughness: .7 }),
     bush: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9, flatShading: true }),
     rock: new T.MeshStandardMaterial({ vertexColors: true, roughness: .95, flatShading: true }),
