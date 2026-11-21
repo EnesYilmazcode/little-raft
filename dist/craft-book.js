@@ -33,21 +33,21 @@ const CATEGORY_OF = Object.freeze({
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
 export const ITEM_TEXT = Object.freeze({
-  wood:       { desc: 'Driftwood planks fished from the sea.', use: 'Raft floors, tools and almost every build.' },
+  wood:       { desc: 'Driftwood planks fished from the sea.', use: 'Foundations, tools and almost every build.' },
   leaf:       { desc: 'A tough, fibrous palm frond.', use: 'Twist into rope; thatch for sails and planters.' },
-  plastic:    { desc: 'An old floating jug, still watertight.', use: 'Hooks and new raft floors (with the hammer).' },
+  plastic:    { desc: 'An old floating jug, still watertight.', use: 'Hooks and new Foundations (with the hammer).' },
   scrap:      { desc: 'Bent bits of salvaged metal.', use: 'Lanterns, crates and hook repairs.' },
   rope:       { desc: 'Palm fibre twisted into a sturdy cord.', use: 'Binds hammers, rods, nets and sails.' },
   fish:       { desc: 'A fresh catch from the open water.', use: 'Proof of a good day out on the waves.' },
-  hook:       { desc: 'A scrap hook on a rope. Throw it at floating supplies.', use: 'Pulls in floating wood, leaves, plastic and barrels.' },
-  hammer:     { desc: 'A rope-bound building hammer.', use: 'Adds raft floor tiles (2 wood + 2 plastic each).' },
+  hook:       { desc: 'A scrap hook on a rope. Throw it at floating supplies.', use: 'Pulls in floating planks, leaves, plastic and barrels.' },
+  hammer:     { desc: 'A rope-bound building hammer.', use: 'Builds Foundations to grow the raft (2 Plank + 2 Plastic each).' },
   fishingrod: { desc: 'A bamboo rod with a float and line.', use: 'Cast into the sea and wait for a bite to catch fish.' },
-  sail:       { desc: 'A tall mast with a woven sail.', use: 'Decorates the raft; place it on a floor tile.' },
+  sail:       { desc: 'A tall mast with a woven sail.', use: 'Decorates the raft; place it on a Foundation.' },
   palm:       { desc: 'A clay pot with a small palm tree.', use: 'A bit of island on your raft; place on a tile.' },
   lantern:    { desc: 'A post lantern with a warm glow.', use: 'Lights the raft at night; place on a tile.' },
   net:        { desc: 'A rope net stretched over the water.', use: 'Catches nearby floating supplies for you.' },
-  bench:      { desc: 'A simple plank bench.', use: 'Somewhere to sit; place it on a floor tile.' },
-  crate:      { desc: 'A nailed wooden crate.', use: 'Decorates the raft; place it on a floor tile.' },
+  bench:      { desc: 'A simple plank bench.', use: 'Somewhere to sit; place it on a Foundation.' },
+  crate:      { desc: 'A nailed wooden crate.', use: 'Decorates the raft; place it on a Foundation.' },
   sand:       { desc: 'Fine sand from barrels and the seafloor.', use: 'Melt it into glass in the smelter.' },
   stone:      { desc: 'A smooth, heavy stone.', use: 'Part of the smelter; sturdier builds and island tools.' },
   research:   { desc: 'A tinker\u2019s desk for studying finds.', use: 'Place it, then study parts to learn signal and water gear.' },
@@ -386,15 +386,18 @@ export function savePin(storage, id) {
 /**
  * What the HUD tracker shows for a normalised recipe: its owned/needed rows, state, how many
  * crafts the materials cover, and how many ingredient lines are complete.
- * `check` is an optional Bag.canCraft() result. Returns null without a recipe.
+ * `check` is an optional Bag.canCraft() result; `gate` an optional recipe gate
+ * ({locked|hidden, reason}) that turns the state to 'gated'. Returns null without a recipe.
  */
-export function trackerView(recipe, countOf, check = null) {
+export function trackerView(recipe, countOf, check = null, gate = null) {
   if (!recipe) return null;
   const rows = ingredientRows(recipe.reqs, countOf);
   const times = craftableTimes(rows);
+  const locked = !!(gate && (gate.locked || gate.hidden));
   return {
     id: recipe.id, name: recipe.name, kind: recipe.out?.kind ?? recipe.id, rows,
-    state: recipeState(rows, check), times: Number.isFinite(times) ? times : 0,
+    state: locked ? 'gated' : recipeState(rows, check), reason: locked ? String(gate.reason || '') : '',
+    times: locked || !Number.isFinite(times) ? 0 : times,
     met: rows.filter(r => r.enough).length, total: rows.length,
   };
 }

@@ -43,37 +43,37 @@ export const STEPS = [
   {chapter:'ch1', id:'throw', title:'Toss your hook', hint:'Hold [LMB] to wind up, let go. Aim above far debris, it arcs', done:(S, b, c) => ['flying', 'floating', 'reeling'].includes(S.hookStage) || played(S, c)},
   {chapter:'ch1', id:'reel', title:'Reel in a treasure', hint:'Hold [LMB] while the hook floats', needs:['throw'],
     done:(S, b, c) => (c.hostWorld ? MATS.some(k => c.gained(k) > 0) : num(S.collected) - num(b.collected) >= 1)},
-  {chapter:'ch1', ...gainStep('wood', 'Gather 6 wood', 'Planks and barrels give wood', 'wood', 6, ['reel'], hasHammer)},
+  {chapter:'ch1', ...gainStep('wood', 'Gather 6 planks', 'Hook floating planks and barrels', 'wood', 6, ['reel'], hasHammer)},
   {chapter:'ch1', ...gainStep('leaves', 'Gather 4 palm leaves', 'Leafy bundles drift by now and then', 'leaf', 4, ['reel'], hasHammer)},
   {chapter:'ch1', id:'bag', title:'Peek in your bag', hint:'[Tab] opens your bag', needs:['reel'], done:S => S.inventoryOpen === true},
   {chapter:'ch1', ...gainStep('rope', 'Twist 2 rope', 'In your bag: Rope, 2 leaves each', 'rope', 2, ['bag', 'leaves'], hasHammer)},
   {chapter:'ch1', id:'swim', title:'Climb back aboard', hint:'Fell in? Hold [Space] at the edge to climb up', optional:true, every:true, show:S => S.swimming === true,
     done:(S, b, c) => { if (S.swimming) c.mem.wet = true; return !!c.mem.wet && !S.swimming && !!S.grounded; }},
-  {chapter:'ch1', id:'hammer', title:'Make a hammer', hint:'Bag: 4 wood + 2 rope', needs:['rope', 'wood'], done:S => owns(S, 'hammer')},
+  {chapter:'ch1', id:'hammer', title:'Make a hammer', hint:'Bag: 4 planks + 2 rope', needs:['rope', 'wood'], done:S => owns(S, 'hammer')},
   {chapter:'ch1', ...gainStep('plastic', 'Fish out 2 plastic', 'Hook the bobbing jugs', 'plastic', 2, ['hammer'])},
-  {chapter:'ch1', id:'floor', title:'Build a floor tile', hint:S => '2 wood + 2 plastic. ' + use(S, 'hammer', 'your hammer', '[LMB] beside the raft', 'Hammer in hand, [LMB] beside the raft'), needs:['hammer'], done:(S, b) => num(S.tiles) - num(b.tiles) >= 1},
-  {chapter:'ch2', id:'grow3', title:'Grow your raft by 3', hint:'Each tile: 2 wood + 2 plastic', count:(S, b) => [num(S.tiles) - num(b.tiles), 3]},
+  {chapter:'ch1', id:'floor', title:'Build a foundation', hint:S => '2 planks + 2 plastic. ' + use(S, 'hammer', 'your hammer', '[LMB] beside the raft', 'Hammer in hand, [LMB] beside the raft'), needs:['hammer'], done:(S, b) => num(S.tiles) - num(b.tiles) >= 1},
+  {chapter:'ch2', id:'grow3', title:'Grow your raft by 3', hint:'Each foundation: 2 planks + 2 plastic', count:(S, b) => [num(S.tiles) - num(b.tiles), 3]},
   {chapter:'ch2', id:'grab', title:'Grab one by hand', hint:'Wait for debris to drift close, then [E]',
     done:(S, b, c) => handGrab(S, c)},
   {chapter:'ch2', id:'barrel', title:'Hook a barrel', hint:'Barrels hold a bit of everything', done:(S, b, c) => arr(S.hookCaughtItems).some(i => i?.type === 'barrel') || handGrab(S, c, 'barrel')},
-  {chapter:'ch2', id:'palm-craft', title:'Make a palm planter', hint:'Bag: 2 wood + 3 leaves', done:(S, b, c) => c.gained('palm') >= 1 || placedNow(S, b, c, 'palm')},
+  {chapter:'ch2', id:'palm-craft', title:'Make a palm planter', hint:'Bag: 2 planks + 3 leaves', done:(S, b, c) => c.gained('palm') >= 1 || placedNow(S, b, c, 'palm')},
   {chapter:'ch2', id:'plant', title:'Plant your first palm', hint:S => use(S, 'palm', 'the planter', '[LMB] on the raft', 'Hold it, [LMB] on the raft'), done:(S, b, c) => placedNow(S, b, c, 'palm')},
-  {chapter:'ch2', id:'lantern', title:'Hang a lantern', hint:S => use(S, 'lantern', 'the lantern', '[LMB] on the raft', 'Bag: 2 wood + 2 scrap, then place it'), done:(S, b, c) => placedNow(S, b, c, 'lantern')},
-  {chapter:'ch2', id:'repair', title:'Mend your hook', hint:'[R] repairs: 2 wood + 1 scrap', optional:true, show:S => owns(S, 'hook') && Number.isFinite(S.hookHealth) && S.hookHealth <= 50,
+  {chapter:'ch2', id:'lantern', title:'Hang a lantern', hint:S => use(S, 'lantern', 'the lantern', '[LMB] on the raft', 'Bag: 2 planks + 2 scrap, then place it'), done:(S, b, c) => placedNow(S, b, c, 'lantern')},
+  {chapter:'ch2', id:'repair', title:'Mend your hook', hint:'[R] repairs: 2 planks + 1 scrap', optional:true, show:S => owns(S, 'hook') && Number.isFinite(S.hookHealth) && S.hookHealth <= 50,
     done:(S, b, c) => { if (num(S.hookHealth) < 100 && Number.isFinite(S.hookHealth)) c.mem.low = true; return !!c.mem.low && S.hookHealth === 100; }},
   // The rod (6 wood + 8 rope) comes after a short wood top-up; rope already twisted (or spent on the rod) counts.
-  {chapter:'ch3', ...gainStep('rodwood', 'Gather 6 wood', 'For the rod. A bench is 3 wood', 'wood', 6, [], hasRod)},
+  {chapter:'ch3', ...gainStep('rodwood', 'Gather 6 planks', 'For the rod. A bench is 3 planks', 'wood', 6, [], hasRod)},
   {chapter:'ch3', id:'rope8', title:'Twist 8 rope', hint:'16 leaves. Barrels give leaves too',
     count:(S, b, c) => [most(c, hasRod(S) ? 8 : inv(S, 'rope')), 8]},
-  {chapter:'ch3', id:'rod', title:'Make a fishing rod', hint:'Bag: 6 wood + 8 rope', needs:['rodwood', 'rope8'], done:hasRod},
+  {chapter:'ch3', id:'rod', title:'Make a fishing rod', hint:'Bag: 6 planks + 8 rope', needs:['rodwood', 'rope8'], done:hasRod},
   {chapter:'ch3', id:'fish1', title:'Catch a fish', hint:S => use(S, 'fishingrod', 'the rod', '[LMB] at the water', 'Rod in hand, [LMB] at the water'), needs:['rod'],
     done:(S, b, c) => fishSince(S, b, c) >= 1},
   {chapter:'ch3', id:'fish3', title:'Catch two more', hint:'Cast and wait, the fish comes to you', needs:['fish1'],
     count:(S, b, c) => [fishSince(S, b, c) - (c.silent ? 1 : 0), 2]},
-  {chapter:'ch3', id:'sail', title:'Raise a sail', hint:'Bag: 4 wood, 3 rope, 3 leaves', needs:['rod'], done:(S, b, c) => placedNow(S, b, c, 'sail')},
+  {chapter:'ch3', id:'sail', title:'Raise a sail', hint:'Bag: 4 planks, 3 rope, 3 leaves', needs:['rod'], done:(S, b, c) => placedNow(S, b, c, 'sail')},
   {chapter:'ch3', id:'seat', title:'Build a bench', hint:'Somewhere to watch the waves', done:(S, b, c) => placedNow(S, b, c, 'bench')},
-  {chapter:'ch3', id:'crate', title:'Make a storage crate', hint:S => use(S, 'crate', 'the crate', '[LMB] on the raft', 'Bag: 4 wood + 1 scrap, then place it'), done:(S, b, c) => placedNow(S, b, c, 'crate')},
-  {chapter:'ch3', id:'home', title:'Reach 16 tiles', hint:'A proper little home', count:S => [num(S.tiles), 16], done:(S, b, c) => !c.hostWorld && num(S.tiles) >= 16},
+  {chapter:'ch3', id:'crate', title:'Make a storage crate', hint:S => use(S, 'crate', 'the crate', '[LMB] on the raft', 'Bag: 4 planks + 1 scrap, then place it'), done:(S, b, c) => placedNow(S, b, c, 'crate')},
+  {chapter:'ch3', id:'home', title:'Reach 16 foundations', hint:'A proper little home', count:S => [num(S.tiles), 16], done:(S, b, c) => !c.hostWorld && num(S.tiles) >= 16},
 ];
 
 // ---------- pure logic (node-testable) ----------
@@ -336,25 +336,30 @@ function boot() {
   // ----- title screen -----
   const welcome = $('#welcome'), card = welcome?.querySelector('.welcome-card');
   if (welcome && card) {
-    const raw = store.get(SAVE_KEY), auto = store.get(AUTOSTART, true) === '1';
+    const auto = store.get(AUTOSTART, true) === '1';
     if (auto) store.del(AUTOSTART, true);
     const logo = document.createElement('div');
     logo.className = 'ob-logo';
     logo.innerHTML = '<h2 class="ob-logo-name"><svg class="ob-sail" viewBox="0 0 48 48" aria-hidden="true"><use href="icons.svg#icon-sail"></use></svg>Little Raft</h2><p class="ob-tag">A little ocean. A big adventure.</p>';
     const menu = document.createElement('nav');
     menu.className = 'ob-menu'; menu.setAttribute('aria-label', 'Main menu');
-    const sub = raw != null ? saveSummary(raw) : '';
-    menu.innerHTML = `${raw != null ? `<button type="button" class="ob-item" data-act="continue">Continue${sub ? `<small>${hintHTML(sub)}</small>` : ''}</button>` : ''}
-      <button type="button" class="ob-item" data-act="new">${auto && raw == null ? 'Set sail' : 'New Game'}</button>
+    let newBtn = null, newLabel = '', armed = 0;
+    // Built from the current save every time the title is shown, so "Save and quit" lands on Continue.
+    function renderMenu(first = false) {
+      const raw = store.get(SAVE_KEY), sub = raw != null ? saveSummary(raw) : '';
+      clearTimeout(armed); armed = 0;
+      menu.innerHTML = `${raw != null ? `<button type="button" class="ob-item" data-act="continue">Continue${sub ? `<small>${hintHTML(sub)}</small>` : ''}</button>` : ''}
+      <button type="button" class="ob-item" data-act="new">${first && auto && raw == null ? 'Set sail' : 'New Game'}</button>
       <button type="button" class="ob-item" data-act="crew">Play together</button>
       ${$('#welcomeLook') ? '<button type="button" class="ob-item" data-act="look">Change look</button>' : ''}
       <button type="button" class="ob-item" data-act="settings">Settings</button>
       <small class="ob-savenote">Saves automatically in this browser</small>`;
+      newBtn = menu.querySelector('[data-act="new"]'); newLabel = newBtn.textContent;
+    }
+    renderMenu(true);
     welcome.prepend(logo); card.prepend(menu); welcome.classList.add('ob-on'); document.body.classList.add('ob-title-ready');
     const items = () => [...menu.querySelectorAll('.ob-item')];
     const solo = () => $('#solo');
-    const newBtn = menu.querySelector('[data-act="new"]'), newLabel = newBtn.textContent;
-    let armed = 0;
     const disarm = () => { clearTimeout(armed); armed = 0; newBtn.textContent = newLabel; newBtn.classList.remove('ob-confirm'); };
     function wipe() {
       wiping = true;
@@ -380,8 +385,14 @@ function boot() {
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
       e.preventDefault(); list[(i + (e.key === 'ArrowDown' ? 1 : list.length - 1)) % list.length]?.focus();
     });
-    newBtn.addEventListener('blur', () => { if (armed) setTimeout(() => { if (document.activeElement !== newBtn) disarm(); }, 0); });
+    menu.addEventListener('focusout', e => { if (armed && e.target === newBtn) setTimeout(() => { if (document.activeElement !== newBtn) disarm(); }, 0); });
     const syncDisabled = () => { const off = !!solo()?.disabled; for (const b of items()) if (b.dataset.act === 'continue' || b.dataset.act === 'new') b.disabled = off; };
+    // Back on the title (pause menu "Save and quit"): rebuild from the fresh save.
+    new MutationObserver(() => {
+      if (welcome.hidden) return;
+      renderMenu(); syncDisabled();
+      try { (items()[0])?.focus({preventScroll:true}); } catch {}
+    }).observe(welcome, {attributes:true, attributeFilter:['hidden']});
     setInterval(syncDisabled, 500); syncDisabled();
     try { (items()[0])?.focus({preventScroll:true}); } catch {}
   }

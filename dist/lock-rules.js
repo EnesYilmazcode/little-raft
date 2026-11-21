@@ -88,3 +88,29 @@ export function createEscGate({ handledWindow = 600, lockWindow = 1500 } = {}) {
     },
   };
 }
+
+// Alt-tab: was play locked as the window lost focus? Chromium may drop the lock just before 'blur' fires,
+// so a lock lost within `graceMs` of the blur still counts.
+export function lockedAtBlur({ running, locked, now, lockLostAt = -Infinity, graceMs = 300 }) {
+  return !!running && (!!locked || now - lockLostAt < graceMs);
+}
+
+// Back from alt-tab: 'relock' | 'done' (forget the blur) | 'wait' (keep it for a later focus with a gesture).
+export function refocusAction({ lockedAtBlur, focused, running, blocked, locked }) {
+  if (!lockedAtBlur || !focused) return 'wait';
+  if (!running || blocked || locked) return 'done';
+  return 'relock';
+}
+
+// Escape while the hammer's build wheel is (or was, until the lock loss of this very press) open: it belongs to
+// the wheel. The wheel closes, the lock comes back and the pause menu stays shut.
+export function escapeIsForBuild({ running, blocked, wheelOpen, now, closedByLockAt = -Infinity, windowMs = 1000 }) {
+  if (!running || blocked) return false;
+  return !!wheelOpen || now - closedByLockAt <= windowMs;
+}
+
+// After a menu closes during play and before the lock is back: hide the cursor and the click hint (body.relock).
+// Never in drag-look, where the cursor is how you aim, and never while another menu is still open.
+export function shouldMarkRelock({ playing, fallback, locked, dialogOpen }) {
+  return !!playing && !fallback && !locked && !dialogOpen;
+}

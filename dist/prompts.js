@@ -1,5 +1,6 @@
-// Little Raft interaction prompts: a small key prompt just bottom-right of the crosshair (#lrPrompt)
-// plus a bottom-left event feed (#lrFeed) that takes over game.js's centred #contextPrompt notices.
+// Little Raft interaction prompts: a small key prompt just bottom-right of the crosshair (#lrPrompt).
+// game.js's hidden #contextPrompt (kbd prompts and persistent status like "Waiting for a bite…") is mirrored
+// into it, as is the diving gather label; feed(text) posts into the one bottom-left stack (window.raftFeed).
 // API (window.raftPrompts): register({id, object?, test?, range, priority, prompt}) -> unregister,
 //   provide({id, priority, prompt}) -> unregister, current(), refresh(), feed(text).
 // prompt(ctx, hit) returns {key:'E', label:'Pick up', hold?, muted?} | up to 2 of them | null.
@@ -37,11 +38,38 @@ export function pickPrompt(candidates) {
 }
 export const signature = list => (list ? list.map(p => `${p.hold ? 'H' : ''}${p.key}|${p.label}|${p.muted ? 1 : 0}`).join('~') : '');
 export function formatFeed(text) { return String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 90); }
-// Is a #contextPrompt text a notice worth feeding (vs a persistent prompt we already render)?
-export function isNotice(text, hasKbd) {
-  const t = formatFeed(text);
-  // "Floor needs" doubles as game.js's hover prompt; the muted "Needs …" prompt already covers it.
-  return !!t && !hasKbd && !/^(Hold click to reel|Waiting for your brother|Floor needs)/i.test(t);
+const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
+const keyName = k => /^(left[- ]?)?click$/i.test(k) ? 'LMB' : /^right[- ]?click$/i.test(k) ? 'RMB' : k;
+// "Hold click to reel it in" / "Click to water" (no <kbd>) -> a mouse prompt; anything else -> a muted status line.
+function textPrompt(t) {
+  const m = /^(hold\s+)?(?:left[- ]?)?click\s+(?:to\s+)?(.+)$/i.exec(t);
+  return m ? {key:'LMB', hold:!!m[1], label:cap(m[2].trim())} : {label:t, muted:true};
+}
+// #contextPrompt markup as segments [{kbd:bool, text}] -> prompt rows (normalizePrompt keeps the first two).
+// "<kbd>E</kbd>Raise sail · hold <kbd>R</kbd> to steer" -> [E Raise sail] [Hold R Steer]; "<kbd>Click</kbd> Strike!" -> [LMB Strike!].
+export function parseContext(segs) {
+  const list = (Array.isArray(segs) ? segs : []).map(x => ({kbd:!!x?.kbd, text:formatFeed(x?.text)})).filter(x => x.text);
+  if (!list.length) return null;
+  if (!list.some(x => x.kbd)) return textPrompt(list.map(x => x.text).join(' '));
+  const out = []; let cur = null, hold = false;
+  for (let i = 0; i < list.length; i++) {
+    const x = list[i];
+    if (x.kbd) { cur = {key:keyName(x.text), hold, label:''}; hold = false; out.push(cur); continue; }
+    let t = x.text;
+    if (list[i + 1]?.kbd) { const m = /(?:^|\s*·\s*|\s+)(hold|press)\s*$/i.exec(t); if (m) { hold = /hold/i.test(m[1]); t = t.slice(0, m.index); } }
+    t = t.replace(/^\s*·\s*|\s*·\s*$/g, '').trim();
+    if (!t) continue;
+    if (cur && !cur.label) cur.label = cap(t.replace(/^to\s+/i, ''));
+    else out.push({label:t, muted:true});
+  }
+  for (const r of out) if (!r.label) r.label = r.key === 'LMB' ? 'Use' : 'Interact';
+  return out;
+}
+// The diving gather label ("Hold E · Scrap") as a prompt.
+export function labelPrompt(text) {
+  const t = formatFeed(text); if (!t) return null;
+  const m = /^(hold\s+)?(\S+)\s*·\s*(.+)$/i.exec(t);
+  return m ? {key:keyName(m[2]), hold:!!m[1], label:m[3]} : {label:t, muted:true};
 }
 export function shouldPost(last, text, now) { return !(last && last.text === text && now - last.at < DUP_MS); }
 const have = (stock, k) => { const n = Number(stock?.[k]); return Number.isFinite(n) && n > 0 ? n : 0; };
@@ -59,9 +87,22 @@ export function raftDistance(x, z, tiles) {
 }
 // Counts hook throws: a hook leaving 'idle' for 'flying' (not a rod cast, which shows as 'fishing').
 export const isThrow = (prev, stage) => stage === 'flying' && prev !== 'flying';
-// Built-in, state-derived prompts (replicates + extends game.js updateContext). opt.throws hides the hook's Throw tip once learned.
+// Fishing rod (fishing-v2 session stage, window.raftFC.state.stage) -> prompt.
+export function rodPrompt(stage) {
+  switch (stage) {
+    case 'idle': case 'done': return {key:'LMB', label:'Cast line'};
+    case 'charging': return {key:'LMB', label:'Release to cast', muted:true};
+    case 'flying': case 'waiting': case 'nibble': return {label:'Waiting for a bite…', muted:true};
+    case 'bite': return {key:'LMB', label:'Strike!'};
+    case 'reeling': return {key:'LMB', hold:true, label:'Reel'};
+    default: return null; // caught / escaped: the feed says what happened
+  }
+}
+// Built-in, state-derived prompts (replicates + extends game.js updateContext). opt.throws hides the hook's Throw tip once learned;
+// opt.fcStage is the rod session stage (fishing-v2), which beats the old hookStage/fishWait rod path.
 export function statePrompt(s, opt = {}) {
   if (!s || !s.running) return null;
+  if (s.dive?.underwater || s.dive?.diving) return null; // underwater: the gather label (mirrored in tick) is the prompt
   if (s.role === 'guest' && !s.networkReady) return {label:'Waiting for your brother’s raft…', muted:true};
   if (s.pickup) return {key:'E', label:'Pick up ' + (PICK_NAMES[s.pickup.type] ?? 'supply')};
   if (s.swimming && !s.physics?.climbing) { // physics: hold jump near a tile edge to clamber
@@ -82,6 +123,7 @@ export function statePrompt(s, opt = {}) {
     return [{label:'Needs ' + costText(FLOOR_COST), muted:true}, ...(m && m !== costText(FLOOR_COST) ? [{label:'Missing ' + m, muted:true}] : [])];
   }
   if (held === 'fishingrod') {
+    if (opt.fcStage) return rodPrompt(opt.fcStage);
     if (stage === 'fishing' || s.fishWait) return {label:'Waiting for a bite…', muted:true}; // bites land automatically (game.js fishWait)
     return stage === 'idle' ? {key:'LMB', label:'Cast line'} : null;
   }
@@ -94,7 +136,7 @@ const MOUSE = side => `<svg class="lr-mouse" viewBox="0 0 12 16" width="11" heig
 
 function createPrompts(win, doc) {
   const rays = new Map(), providers = new Map(); let order = 0, shown = null, sig = null, visible = false, lastFeed = null;
-  let promptEl = null, feedEl = null, ctxEl = null, observer = null, ray = null, rayT = null, aimAt = null, placed = '';
+  let promptEl = null, feedEl = null, ray = null, rayT = null, aimAt = null, placed = '';
   let throws = 0, lastStage; // undefined until the first sample, so a restored in-flight hook is not counted
   let mouse = null; win.addEventListener('pointermove', e => { mouse = {x:e.clientX, y:e.clientY}; }, {passive:true, capture:true});
   win.addEventListener('pointerout', e => { if (!e.relatedTarget) mouse = null; }, {passive:true, capture:true});
@@ -106,24 +148,26 @@ function createPrompts(win, doc) {
       promptEl = doc.getElementById('lrPrompt') || doc.createElement('div');
       promptEl.id = 'lrPrompt'; promptEl.setAttribute('aria-hidden', 'true'); if (!promptEl.isConnected) doc.body.appendChild(promptEl);
     }
-    if (!feedEl || !feedEl.isConnected) {
-      feedEl = doc.getElementById('lrFeed') || doc.createElement('div');
-      feedEl.id = 'lrFeed'; feedEl.setAttribute('role', 'status'); feedEl.setAttribute('aria-live', 'polite'); if (!feedEl.isConnected) doc.body.appendChild(feedEl);
-    }
-    const c = doc.getElementById('contextPrompt');
-    if (c && c !== ctxEl) { // game.js (re)created it: re-attach
-      safe(() => observer?.disconnect()); ctxEl = c; let lastText = '';
-      observer = new win.MutationObserver(() => safe(() => {
-        const t = formatFeed(ctxEl.textContent);
-        if (t !== lastText) { lastText = t; if (!ctxEl.hidden && isNotice(t, !!ctxEl.querySelector('kbd'))) feed(t); }
-      }));
-      observer.observe(ctxEl, {childList:true, characterData:true, subtree:true, attributes:true, attributeFilter:['hidden']});
-    }
   }
+  // game.js's #contextPrompt is hidden (prompts.css); its text becomes a side prompt, never a feed line.
+  let ctxSig = null, ctxList = null;
+  function contextPrompt() {
+    const c = doc.getElementById('contextPrompt'); if (!c || c.hidden) return null;
+    const html = c.innerHTML; if (html === ctxSig) return ctxList;
+    const segs = [...c.childNodes].map(n => ({kbd:n.nodeName === 'KBD', text:n.textContent}));
+    ctxSig = html; ctxList = normalizePrompt(parseContext(segs)); return ctxList;
+  }
+  const diveLabel = () => { const l = doc.querySelector('.diveRingLabel.on'); return l ? labelPrompt(l.textContent) : null; };
   function feed(text) {
     return safe(() => {
       const t = formatFeed(text), now = Date.now(); if (!t || !shouldPost(lastFeed, t, now)) return false;
-      lastFeed = {text:t, at:now}; ensureEls();
+      lastFeed = {text:t, at:now};
+      const shared = safe(() => win.raftFeed); // the one bottom-left stack (pickup-feed.js)
+      if (shared && typeof shared.note === 'function') return !!shared.note(t);
+      if (!feedEl || !feedEl.isConnected) { // fallback before the game has loaded its feed
+        feedEl = doc.getElementById('lrFeed') || doc.createElement('div');
+        feedEl.id = 'lrFeed'; feedEl.setAttribute('role', 'status'); feedEl.setAttribute('aria-live', 'polite'); if (!feedEl.isConnected) doc.body.appendChild(feedEl);
+      }
       const line = doc.createElement('div'); line.className = 'lr-line'; line.textContent = t; // untrusted: textContent only
       feedEl.appendChild(line); while (feedEl.children.length > FEED_MAX) feedEl.firstElementChild.remove();
       win.setTimeout(() => line.classList.add('lr-out'), FEED_MS); win.setTimeout(() => line.remove(), FEED_MS + 450);
@@ -179,7 +223,11 @@ function createPrompts(win, doc) {
       if (show) {
         const cands = rayHits(ctx);
         for (const p of providers.values()) safe(() => cands.push({prompts:p.prompt(ctx), priority:p.priority, ray:false, order:p.order}));
-        cands.push({prompts:statePrompt(state, {throws}), priority:0, ray:false}); // built-ins lose ties to registered providers
+        const fcStage = safe(() => win.raftFC?.state?.stage) ?? null;
+        cands.push({prompts:statePrompt(state, {throws, fcStage}), priority:0, ray:false}); // built-ins lose ties to registered providers
+        const cp = safe(contextPrompt); // a key prompt from game.js beats the built-in muted hints; plain status only fills a gap
+        if (cp) cands.push({prompts:cp, priority:cp.some(p => p.key) ? 0.5 : -1, ray:false});
+        cands.push({prompts:safe(diveLabel), priority:2, ray:false});
         list = pickPrompt(cands);
       }
       shown = list; const s = signature(list);

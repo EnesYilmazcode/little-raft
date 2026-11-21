@@ -43,7 +43,18 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
     clear(row.hold); row.el.classList.add('out');
     row.hold = timer(() => row.el.remove(), FADE_MS);
   }
-  function arm(key, row) { clear(row.hold); row.hold = timer(() => drop(key, row), HOLD_MS); }
+  function arm(key, row) { clear(row.hold); row.hold = timer(() => drop(key, row), row.life || HOLD_MS); }
+  // One left stack: CSS caps the host's height; when rows overflow it, the oldest go at once (fading rows first).
+  // The host is justify-content:flex-end, so overflow spills off the top: a negative first offsetTop, not scrollHeight.
+  const overflowing = host => host.clientHeight > 0 && (host.scrollHeight > host.clientHeight + 1 || (host.firstElementChild?.offsetTop ?? 0) < -1);
+  function fit(host) {
+    for (let i = 0; i < 12 && overflowing(host); i++) {
+      const fading = host.querySelector?.(':scope>.pf-row.out');
+      if (fading) { fading.remove(); continue; }
+      if (rows.size <= 1) break;
+      const [k, r] = rows.entries().next().value; rows.delete(k); clear(r.hold); r.el.remove();
+    }
+  }
 
   // Restart the icon pop: Web Animations when available (no forced layout), else re-add the CSS class.
   function bump(el) {
@@ -52,7 +63,7 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
     if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
     icon.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.18)', offset: 0.4 }, { transform: 'scale(1)' }], { duration: 250, easing: 'ease-out' });
   }
-  function push(key, build, update) {
+  function push(key, build, update, life = 0) {
     const t = now(), old = rows.get(key);
     if (old && t - old.at < MERGE_MS) {
       old.at = t; update(old);
@@ -62,10 +73,11 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
     }
     if (old) drop(key, old);
     const el = doc.createElement('div'); el.className = 'pf-row';
-    const row = { el, at: t, hold: 0, count: 0 };
+    const row = { el, at: t, hold: 0, count: 0, life };
     build(row); update(row);
-    root().appendChild(el); rows.set(key, row); arm(key, row);
+    const host = root(); host.appendChild(el); rows.set(key, row); arm(key, row);
     while (rows.size > MAX_ROWS) { const [k, r] = rows.entries().next().value; drop(k, r); }
+    fit(host);
     return row;
   }
 
@@ -81,14 +93,19 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
         row.el.append(row.box, row.label);
       }, row => { row.count += n; row.label.textContent = `+${row.count} ${ITEM_INFO[kind]?.name ?? kind}`; });
     },
-    /** A short text line in the same corner (replaces centred toasts). Same text merges. */
-    note(text) {
-      const s = String(text ?? '').trim().slice(0, 90); if (!s) return null;
+    /** A short text line in the same corner (replaces centred toasts). Same text merges.
+     *  opt.cls: extra row classes (e.g. the co-op feed's 'cf-line cf-join'); opt.color: dot colour; opt.life: hold ms. */
+    note(text, opt = {}) {
+      const s = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 90); if (!s) return null;
+      const cls = typeof opt?.cls === 'string' ? opt.cls.split(/\s+/).filter(c => /^[\w-]+$/.test(c)) : [];
+      const color = typeof opt?.color === 'string' && /^#[0-9a-f]{3,8}$/i.test(opt.color) ? opt.color : '';
+      const life = Number.isFinite(opt?.life) ? Math.min(Math.max(opt.life, 500), 15000) : 0;
       return push('t:' + s, row => {
-        row.el.classList.add('pf-note');
-        const dot = doc.createElement('i'); row.label = doc.createElement('span'); row.label.textContent = s;
+        row.el.classList.add('pf-note'); for (const c of cls) row.el.classList.add(c);
+        const dot = doc.createElement('i'); if (color && dot.style) dot.style.background = color;
+        row.label = doc.createElement('span'); row.label.textContent = s;
         row.el.append(dot, row.label);
-      }, () => {});
+      }, () => {}, life);
     },
     /** fn(kind) -> data URL | canvas | element | null (null: sprite fallback, or the bare swatch tile). */
     setIconProvider(fn) { iconProvider = typeof fn === 'function' ? fn : null; },
@@ -107,10 +124,15 @@ let shared = null;
 const feed = () => (shared ??= createFeed());
 export const pickupFeed = Object.freeze({
   add: (kind, count) => feed().add(kind, count),
-  note: text => feed().note(text),
+  note: (text, opt) => feed().note(text, opt),
   setIconProvider: fn => feed().setIconProvider(fn),
   refresh: kind => shared?.refresh(kind),
   clear: () => feed().clear(),
   get rows() { return shared ? shared.rows : []; },
 });
+// The one left-hand stack: prompts.js and coop-feed.js post their lines here via window.raftFeed.
+// The first instance wins, so a live reload's second copy keeps writing into the same stack.
+if (typeof window !== 'undefined' && !window.raftFeed) {
+  try { Object.defineProperty(window, 'raftFeed', { value: pickupFeed, configurable: true }); } catch {}
+}
 export default pickupFeed;

@@ -604,3 +604,84 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
   when Chromium ate the keyDown that ended pointer lock (electron check), icon encode is synchronous under the deterministic clock (visual check).
 - Full fleet gate PASS at c7a8293 (unit, playbot, visual, perf, electron). Electron is now installed in node_modules.
 - PR #3 (round 4) is the open PR from raft-master; integrator B merged #2 at 1636dfe meanwhile.
+
+## UX round 4: claude/loop-ux-202611210648 (base: origin/claude/raft-master d56c3ef)
+
+Brought in UX rounds 1-3 (`loop-ux-202611210603`), which had never reached raft-master, and resolved
+conflicts so every lane hook was kept (merge 4ee6229). Then ran five subsystem bug hunters, two
+independent adversarial verifiers per hunter report, a fixer per subsystem in its own worktree, a
+new-player screenshot reviewer and a crafting UX builder. Every bug below was confirmed by both
+verifiers before it was fixed; each fix has regression tests.
+
+### Pointer lock (owner priority)
+- **E0, desktop:** during locked play, Chromium uses the Esc keydown to exit pointer lock, so
+  main.cjs only saw the keyup, swallowed it and never paused. The player was left unlocked and
+  unpaused, with the cursor showing. Confirmed in a real Electron 45 run under xvfb. An Esc keyup
+  with no matching keydown now runs `raftEscape()` with a gesture.
+- **LOCK-2:** Esc with the build wheel open closes the wheel and keeps the lock, instead of pausing.
+- **LOCK-3:** on alt-tab or focus return, the shell relocks through `raftShell.refocus()` with a
+  gesture, but only if play was locked at blur.
+- **LOCK-1:** every dialog close now hides the cursor and the hint straight away, not only the
+  inventory and pause.
+- **LOCK-4/5:** in drag-look fallback, the cursor stays visible and the stale "Click the ocean"
+  hint is hidden.
+
+### Crafting
+- **CRAFT-5 (data loss):** save load, hot-swap and guest sync deleted cups, purifiers, antennas,
+  receivers, Tinker's Desks and seeds. `migrateSnapshot` now accepts the bag's `ITEM_INFO`.
+- **CRAFT-1/2:** recipes locked behind research now show as locked everywhere: row, auto-pick,
+  arrow keys, hold counter and pinned tracker.
+- **CRAFT-3/4:** tooltips refresh when the bag changes, and the false "Locked: Unknown item" line
+  is gone.
+- **CRAFT-6:** recipes that unlock while the bag is open appear without reopening it.
+- **Builder:**
+  - Tooltips are anchored beside their element and add "Get it" and "Used in" lines.
+  - Recipe order and panel height stay put while the bag is open.
+  - The button counts "Crafting 3 / 20" while held, then shows "Crafted N".
+
+### HUD (no centred popups)
+- One capped left feed: pickup, onboarding and co-op lines share a single stack that stays left of
+  the hotbar and below the crosshair.
+- The reel meter, dive gather label and binoculars readout moved into the side prompt column.
+- Key prompts are visible again: Strike!, grill, water, harvest and crate prompts were all being
+  dropped. The rod prompt now follows the fishing stage.
+- The logbook toast no longer covers the compass.
+
+### Controls
+- Shift+wheel fine-rotates instead of changing slot, and Shift+R rotates backwards.
+- Gamepad: B, Y and Start close menus. RT uses the new rod code, and the build radial picks real
+  pieces.
+- A Space tap shorter than one frame now jumps.
+- Crouch defaults to C only, because Ctrl+W closed the browser tab. The dead drop binding is removed.
+
+### Building, storage and save
+- Holding X no longer builds foundations.
+- The crate and desk dialogs work from the keyboard (Tab stays inside, arrow keys move).
+- A crashed content module no longer wipes its save slice (chests and research) on the next
+  autosave.
+- No ghost shows under the build wheel.
+- Stairs and decorations block each other.
+- The host checks reach for building pieces, at 8 m to match the client's 7 m aim ray.
+
+### New-player UX (from screenshots)
+- After "Save and quit", the title shows Continue again; before, only New Game was offered, and it
+  wiped the save.
+- The Tinker's Desk header fits on one line.
+- Copy uses Plank and Foundation throughout, and the rod lock reads "Craft Rope first".
+- Settings lists the real controls.
+- The hovered piece on the build wheel is labelled.
+- How to play fits at 720p, and the logbook returns to pause.
+- The "No sail" chip is hidden until a sail can be made.
+
+### Checks
+- `npm test`: 630 pass, 0 fail. The art atlas timing check fails only under heavy machine load and
+  passes alone.
+- `shoot.py`: shots read by eye show no cursor, no centred popups and Continue after quitting.
+
+### Open for next round
+- The inventory, pause, Settings, How to play and Logbook panels are still centred modals.
+  Consider a docked layout.
+- Item icons swap from placeholder art to 3D art a moment after the bag opens.
+- The crafting UI still pre-selects and badges a duplicate Hook for a new player.
+- `prompts.js` costs and building.js "needs" text still say "wood".
+- shoot.py `#solo` times out when a save exists; it needs to click Continue.

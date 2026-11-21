@@ -113,5 +113,5 @@ test('co-op: the pickup feed stacks above #coopFeed instead of overlapping it', 
   assert.equal(props.get('--coop-feed-h'), '46px');
   feed.dispose();
   assert.equal(props.has('--coop-feed-h'), false);
-  assert.match(src('style.css'), /#pickupFeed\{[^}]*bottom:calc\(178px \+ var\(--coop-feed-h, 0px\)\)/);
+  assert.match(src('style.css'), /#pickupFeed\{[^}]*bottom:calc\(132px \+ var\(--coop-feed-h, 0px\)\)/);
 });
