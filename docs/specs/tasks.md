@@ -158,3 +158,21 @@ or from effects.
 - Co-op: guest actions (fish, collect, net) advance shared bars once (no double count); guest sees host
   progress within ~0.2 s; guest Claim lands in guest bag, host can still claim own copy.
 - Screenshots: Tasks tab open (desktop + 390 px wide) and the board on deck, via the patched shoot.py.
+
+## Build notes
+- Built as specced. Files: dist/tasks-rules.js, dist/tasks.js, dist/tasks-model.js, tests/tasks.test.mjs (10 tests);
+  hooks in content.js, game.js, daynight.js, fishing-cooking.js, progression-hooks.js, islands.js, logbook-ui.js,
+  items.js, craft-book.js and item-svg.js are tagged `[tasks]`.
+- `grill` need: fishing-cooking grills are not decor, so contentCtx also gets `hasGrill: () => fc.grills.size > 0`.
+- A missing `needs` object counts every flag as false, so tasks with a need are never picked blind.
+- `content.tasksView()` calls the module's `view()` with no argument; the module reads `ctx.role` itself.
+- The view is cached by a `rev` counter. Partial progress bumps it too, not only finished tasks.
+- Extra rules exports: `freshTasks`, `completeTask` (QA), `bundleText`, `bitOf`. `taskView` also returns
+  `claimable` and `doneCount`, which the prompt ("1 to claim") and the tab label use.
+- Extra debug helpers: `view()`, `needs()`, `setPlayT(sec)`, `claim(i)`, `target(aim)`, `bit()`.
+- The fresh-day notice shows as a pickup-feed row (bottom left), the same place as all notices.
+- daynight `setPhase` stays inside the current day. To test a real rollover, use `setPhase(.9996)` and wait a
+  moment. `nextDay()` rolls at once.
+- A guest seat that never joins still collects `owed` rewards in solo (bit 2). Each kind is capped at 99 and
+  there are at most 8 kinds. A guest who joins later can claim them.
+- Logbook Claim buttons disable on click until the next view arrives, so a guest cannot double-send.
