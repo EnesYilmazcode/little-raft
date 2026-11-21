@@ -170,7 +170,7 @@ export function createDecorPack(ctx) {
       const a = anim[i], sw = a.swing, ph = a.ph;
       if (a.type === 'pennant') {
         const amp = .08 + .35 * ws * ws;
-        sw.rotation.y = wd - a.g.rotation.y + amp * Math.sin(t * (4 + 4 * ws) + ph);
+        sw.rotation.y = wd - Math.PI / 2 - a.g.rotation.y + amp * Math.sin(t * (4 + 4 * ws) + ph);
         sw.rotation.x = .2 * amp * Math.sin(t * 5.1 + ph);
       } else if (a.type === 'fern') {
         sw.rotation.z = .05 * Math.sin(t * 1.1 + ph);
