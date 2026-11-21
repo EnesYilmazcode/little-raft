@@ -120,7 +120,7 @@ INIT_JS = r"""
     try {
       const ri = window.raftDebug && window.raftDebug.renderInfo; if (!ri) return;
       const r = ri.render || ri; const c = +r.calls;
-      if (Number.isFinite(c)) { P.riSeen = 1; P.curRi = Math.max(P.curRi, 0) + c; }
+      if (Number.isFinite(c)) { P.riSeen = 1; P.curRi = Math.max(P.curRi, c); }
     } catch (e) {}
   };
   const raf = window.requestAnimationFrame.bind(window);
@@ -384,10 +384,14 @@ def run(args, budget):
     lt = budget.get('longTasks') or {}
     med = pct([x for _, x in longs], .5) or 0
     hitch_ms = round(max(lt.get('hitchMinMs', 500), lt.get('hitchFactor', 4) * med), 1)
-    draws = d['riCalls'] if d['riSeen'] else d['draws']
+    # Budgets are calibrated on the WebGL wrapper count (every real draw, all passes). A branch
+    # that starts exposing raftDebug.renderInfo must not silently switch the budgeted metric
+    # (three.js info only covers the last render() and may not auto-reset), so it is info only.
+    draws = d['draws']
     metrics = {
         'frames': d['n'], 'recordedS': round(recorded_s, 1), 'fps': round(d['n'] / recorded_s, 2) if recorded_s else None,
-        'playCycles': i, 'drawCallSource': 'raftDebug.renderInfo' if d['riSeen'] else 'webgl-wrap',
+        'playCycles': i, 'drawCallSource': 'webgl-wrap',
+        'renderInfoCalls': stats(d['riCalls']) if d['riSeen'] else None,
         'drawCalls': stats(draws), 'webglDrawCalls': stats(d['draws']), 'triangles': stats(d['tris']),
         'offscreenDrawCalls': stats(d['off']),
         'scriptMsPerFrame': stats(d['script']), 'frameIntervalMs': stats(intervals),
