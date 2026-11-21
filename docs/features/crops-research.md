@@ -15,7 +15,7 @@ Survival raft and island games usually handle farming like this:
   In the harsher games a plot left dry wilts or dies.
 - **Harvest feeds other systems.** Vegetables go to the grill or pot, fibre goes into rope or cloth, and
   coloured plants go into dye.
-- **Pests.** Birds land on ripe plots and steal the crop, and the counter is a scarecrow or chasing them off.
+- **Pests.** Birds steal ripe crops; the counter is a scarecrow or shooing them off.
 
 ### Cozy take for Little Raft (original names)
 
@@ -46,12 +46,11 @@ stages, like `plantStage` (dist/watering.js:85).
 - inventory-state.js:49-52 keeps the old kinds `seed` and `water` in the Bag for saves.
 
 **world.garden**
-- Shape: `{"x,z": {water:0|1, grow:0..90}}` (dist/watering.js:3, 29-37).
+- Shape `{"x,z": {water:0|1, grow:0..90}}` (dist/watering.js:3, 29-37).
 - `cleanWatering` **drops every key whose decor is not `'palm'`** (dist/watering.js:72). It runs on load
   (dist/game.js:219) and on **every host tick** through `prune()` (dist/watering.js:90-97).
 - So Garden Bed state goes in **`world.ext.crops`** through a content module, not in world.garden.
-- Reusable helper: `swapOne(bag,'freshcup','cup')` (dist/watering.js:127) pours a cup and gives the empty
-  one back.
+- Reusable: `swapOne(bag,'freshcup','cup')` (dist/watering.js:127) pours a cup, returns the empty one.
 
 **game.js palm wiring**
 - `pickWateringDecor` is hard-coded to palm, purifier, rainbarrel and sprinkler (dist/game.js:924-936).
@@ -64,14 +63,13 @@ stages, like `plantStage` (dist/watering.js:85).
 - `useSelected` treats `freshcup` as edible and drinks it unless `wateringTarget` returns a click
   (dist/game.js:1252-1255). `content.use()` only runs later (1274), and the drink tip appears unless
   `waterAim.click` is set (723).
-- So **a left click with a fresh cup on a bed drinks the water**.
-- E is safe: `interact()` tries `wateringTarget`, then `content.interact` (1238-1239).
-- Fix: water beds with E, or add a small content `cupTarget` hook before `startEat` in useSelected.
+  So **a left click with a fresh cup on a bed drinks the water**.
+- E is safe (`interact()`: wateringTarget, then content.interact, 1238-1239). Water beds with E, or add a
+  content `cupTarget` hook before `startEat`.
 
 **Rain and sprinkler** (on master: dist/rain.js, imported at dist/game.js:40)
 - `sprinkle()` waters only neighbours of type `'palm'` (dist/rain.js:84-93).
-- v1 waters beds by rain and E-cups only. Teaching sprinklers about beds belongs in rain.js, which is pinned
-  by tests/rain.test.mjs.
+- v1: rain + E-cups only. Sprinkler support belongs in rain.js (pinned by tests/rain.test.mjs).
 
 **Seeds**
 - `lootFor('bush')` (dist/islands-layout.js:186) gives flowerseed when h < .2 and `seed` (Palm Seed) when
@@ -90,7 +88,6 @@ stages, like `plantStage` (dist/watering.js:85).
 **Items, recipes and unlocks**
 - The craft UI lists `RECIPES` (dist/survival-ui.js:166). inventory-state.js merges three sources in order:
   legacy rows, then `CONTENT_RECIPES`, then items.js `recipeTable()`. The items.js rows win.
-- Catalogue items unlock by discover, research or station.
 - `CONTENT_RECIPES` that are not in the catalogue are **gated by Tinker's Desk research**
   (dist/storage-research.js:29-56; `setOwnedElsewhere` at dist/game.js:464).
 - **Recommendation:** put the seeds, the bed and the outputs in **dist/items.js** with
@@ -103,12 +100,9 @@ stages, like `plantStage` (dist/watering.js:85).
   - (b) Add an optional `output` field to the items.js schema. This touches the progression tests.
 - The grill cook recipe is `cook('grill','tuber',{time,fuel})` with `unlock: atStation('grill')`, like
   dist/items.js:179-185. The station model is in dist/progression-hooks.js:31-33.
-- Do not use the fishing-cooking.js driftwood grill. It only takes fish species (`fc:cook`, :153).
-- **There is no cookpot or juicer on master** (reverted in 7190097).
+- Not the fishing-cooking.js driftwood grill (fish species only, `fc:cook` :153). **No cookpot/juicer on master** (reverted 7190097).
 - Edible crops: `addFood(kind,{food,water})` (dist/vitals.js:39; FOOD table at 26). For example tuber
   {food:8, water:2} and roasttuber {food:25}.
-- Note: the brief says "no hunger", but vitals exist. Food values are a bonus, not a
-  requirement.
 
 **Tests every new kind must pass**
 - progression.test.mjs:100-111: each item needs a name, a tip longer than 10 characters and an `icon-*`. A
@@ -116,7 +110,6 @@ stages, like `plantStage` (dist/watering.js:85).
 - progression.test.mjs:126-199: every reference must be a real item, a station recipe has a single input,
   and **everything must be reachable from START**. Seeds must drop somewhere and the bed must unlock by
   discover(seed).
-- progression.test.mjs:203-210: the INFO table equals ITEM_IDS.
 - survival.test.mjs:533-560: every RECIPES entry lands in a CraftBook tab, and **every ITEM_INFO kind needs
   `ITEM_TEXT[k].desc` and `.use`** (dist/craft-book.js:35). Add `ITEM_SOURCE` rows too (317).
 - models.test.mjs:48-57: every bag kind needs a model or a held fallback.
@@ -136,8 +129,7 @@ stages, like `plantStage` (dist/watering.js:85).
   `world.ext.crops = {v:1, r:rev, b:{"x,z":{c:'flax', g:0..T, w:0|1}}}`.
 - Guest actions: `ctx.action({kind:'crops.plant'|'crops.water'|'crops.harvest', x, z, seed?})`. The host
   checks reach the way applyWatering does (USE_REACH + HOST_SLACK).
-- For an old host, show a notice like the bees `OLD_HOST` one (dist/bees.js:8).
-- Prune bed entries whose decor is gone, and on `load(undefined)` start empty.
+- Old host: notice like bees `OLD_HOST` (dist/bees.js:8). Prune beds whose decor is gone; `load(undefined)` -> empty.
 
 ## (c) Risks
 
