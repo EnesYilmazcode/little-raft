@@ -98,7 +98,7 @@ export function createBuildMenu({ pieces, onPick, root = document.body, countOf 
   if (!document.getElementById(STYLE_ID)) {
     const st = document.createElement('style'); st.id = STYLE_ID; st.textContent = CSS; document.head.appendChild(st);
   }
-  const list = (pieces || []).map(p => ({ id: String(p.id), name: String(p.name ?? p.id), cost: p.cost || {} }));
+  const list = (pieces || []).map(p => ({ id: String(p.id), name: String(p.name ?? p.id), cost: p.cost || {}, rotates: !!p.rotates }));
   const n = Math.max(1, list.length), step = 360 / n;
   const byId = new Map(list.map((p, i) => [p.id, i]));
   let haveOf = typeof countOf === 'function' ? countOf : null;
@@ -133,8 +133,11 @@ export function createBuildMenu({ pieces, onPick, root = document.body, countOf 
   const chip = document.createElement('div');
   chip.className = 'bm-chip'; chip.hidden = true; chip.setAttribute('role', 'status');
   chip.innerHTML = '<i></i><div><span class="bm-row"><b></b><span class="bm-cost"></span></span>' +
-    '<span class="bm-hint"><kbd>Q</kbd> / <kbd>Right-click</kbd> pieces · <kbd>R</kbd> rotate · <kbd>X</kbd> remove</span><span class="bm-status"></span></div>';
+    '<span class="bm-hint"></span><span class="bm-status"></span></div>';
   const chipIcon = chip.querySelector('i'), chipName = chip.querySelector('b'), chipCost = chip.querySelector('.bm-cost'), chipStatus = chip.querySelector('.bm-status');
+  const chipHint = chip.querySelector('.bm-hint');
+  // R only turns pieces that rotate (floor / stairs / roof); for the rest R is sail grab / hook repair.
+  const hintHtml = rotates => '<kbd>Q</kbd> / <kbd>Right-click</kbd> pieces' + (rotates ? ' · <kbd>R</kbd> rotate' : '') + ' · <kbd>X</kbd> remove';
   root.appendChild(chip);
   let chipShown = false, chipText = '', chipSig = '';
 
@@ -145,7 +148,7 @@ export function createBuildMenu({ pieces, onPick, root = document.body, countOf 
     const cost = costHtml(p.cost), sig = p.id + '|' + cost;
     if (sig === chipSig) return;
     chipSig = sig;
-    chipIcon.innerHTML = iconSvg(p.id, 26); chipName.textContent = p.name; chipCost.innerHTML = cost;
+    chipIcon.innerHTML = iconSvg(p.id, 26); chipName.textContent = p.name; chipCost.innerHTML = cost; chipHint.innerHTML = hintHtml(p.rotates);
   }
   function renderMid() {
     const i = hot >= 0 ? hot : byId.get(selected) ?? -1, p = list[i];

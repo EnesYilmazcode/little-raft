@@ -30,7 +30,7 @@ export function createBuilding(T, scene) {
   const WHITE = new T.Color(1, 1, 1), tmp = new T.Color(), tintCount = {};
   let tintOf = null; // content hook (paint): p -> T.Color instance tint or null (white = untinted)
 
-  const menu = createBuildMenu({pieces:PIECE_ORDER.map(id => ({id, name:PIECES[id].name, cost:PIECES[id].cost})), onPick:() => { rot = 0; },
+  const menu = createBuildMenu({pieces:PIECE_ORDER.map(id => ({id, name:PIECES[id].name, cost:PIECES[id].cost, rotates:PIECES[id].slot === 'cell'})), onPick:() => { rot = 0; },
     countOf:k => (curBag ? curBag.count(k) : 0), nameOf:k => ITEM_INFO[k]?.name});
   menu.setAfford(afford);
 

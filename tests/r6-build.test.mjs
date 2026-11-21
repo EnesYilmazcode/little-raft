@@ -113,3 +113,51 @@ test('K3: stairs refuse a decorated tile; decor refuses a tile under stairs; old
   assert.match(host, /if \(building\?\.cellTaken\(a\.x, a\.z\)\) \{ emit\(\{kind:'notice', text:BLOCK_TEXT\.overlap\}, actor\); return; \}/);
   b.dispose();
 });
+
+// ============================================================ K1: hammer chip and R behind the wheel
+
+const { createControls } = await import(new URL('controls.js', base));
+function pick(b, id) {
+  const i = PIECE_ORDER.indexOf(id), step = 360 / PIECE_ORDER.length, a = (i * step) * Math.PI / 180;
+  b.menu.open(); b.menu.move(Math.sin(a) * 200, -Math.cos(a) * 200); b.menu.close(true);
+  assert.equal(b.piece, id);
+}
+function key(type, code, extra = {}) { const e = new Event(type); Object.assign(e, { code, key: code, repeat: false, ...extra }); win.dispatchEvent(e); }
+const physics = { grounded: true, swimming: false, vx: 0, vz: 0, vy: 0 };
+function setupControls(extra = {}) {
+  let open = false;
+  const calls = [];
+  const rec = name => (...a) => calls.push([name, ...a]);
+  const c = createControls({ canvas: null, isBlocked: () => false, look: rec('look'), hotbarSize: 10, slot: () => 0,
+    selectSlot: rec('selectSlot'), interact: rec('interact'), inventory: rec('inventory'), repair: rec('repair'), pause: rec('pause'),
+    useDown: noop, useUp: noop, useCancel: noop, reelDown: noop, reelUp: noop, buildWheelOpen: () => open, ...extra });
+  return { c, calls, tick: () => c.movement(1 / 60, true, physics), setOpen: v => { open = v; } };
+}
+
+test('K1: the hammer chip offers "R rotate" only for pieces that rotate', () => {
+  const made = [], make = doc.createElement;
+  doc.createElement = () => { const e = fakeEl(); made.push(e); return e; };
+  const b = createBuilding(T, new T.Scene());
+  doc.createElement = make;
+  const chip = made.find(e => e.className === 'bm-chip'), hint = chip.querySelector('.bm-hint');
+  b.menu.setVisible(true);
+  for (const id of PIECE_ORDER) {
+    if (id !== b.piece) pick(b, id);
+    b.menu.refresh();
+    const rot = PIECES[id].slot === 'cell';
+    assert.equal(/<kbd>R<\/kbd> rotate/.test(hint.innerHTML), rot, `${id}: R rotate shown=${rot}`);
+    assert.match(hint.innerHTML, /<kbd>X<\/kbd> remove/);
+  }
+  b.dispose();
+});
+
+test('K1: R does not repair a hook while the build wheel is open', () => {
+  const s = setupControls();
+  s.setOpen(true);
+  key('keydown', 'KeyR'); s.tick(); key('keyup', 'KeyR'); s.tick();
+  assert.deepEqual(s.calls.filter(c => c[0] === 'repair'), [], 'swallowed behind the wheel');
+  s.setOpen(false);
+  key('keydown', 'KeyR'); s.tick(); key('keyup', 'KeyR'); s.tick();
+  assert.equal(s.calls.filter(c => c[0] === 'repair').length, 1, 'works again once closed');
+  s.c.dispose();
+});
