@@ -1,7 +1,7 @@
 # Driftboard (paddleboard): spec
 
-Owner: one builder. Research: [docs/features/paddleboard-research.md](../features/paddleboard-research.md). Anchors below are quoted Cozy: no damage, the board is never lost; host-authoritative except the ride pose (owned by the rider).
-text, because line numbers move (a merge may still be in progress in game.js, content.js, content-items.js, craft-book.js and icons.svg).
+Owner: one builder. Research: [docs/features/paddleboard-research.md](../features/paddleboard-research.md). Anchors below are quoted text, because line numbers move (a merge may still be in progress in game.js, content.js, content-items.js, craft-book.js and icons.svg).
+Cozy: no damage, the board is never lost; host-authoritative except the ride pose (owned by the rider).
 
 ## Files
 - `dist/paddleboard-core.js`: pure and side-effect free (no THREE, no DOM). `tests/paddleboard.test.mjs` tests it.

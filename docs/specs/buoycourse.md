@@ -157,7 +157,7 @@ Example QA: `place`, `shape('sprint')`, `start()`, `teleportThrough(0..4)` → a
 1. crossGate: a straight swim through the centre hits. The reverse direction misses. Parallel misses. Lateral 1.55 hits, 1.7 misses.
 2. crossGate: an eye 1.7 under the water misses, a board eye +1.6 hits. A >3 m jump (teleport) misses. NaN misses. A start exactly on the plane (d0=0) misses, and ending on the plane hits.
 3. makeCourse, for each shape on a 1-tile, 3x3, 6x2 and L-shaped raft: the right count (7/5/6/9), every gate `nearestTile ≥ 4` and `≤ 20`, |x|,|z| ≤ 40, deterministic.
-4. makeCourse: a huge raft (30x30 tiles) gives null, unknown shape or empty tiles give null, and with the flag on an edge tile, the sprint finish is ≤ 7 m from it.
+4. makeCourse: a huge raft (40x40 tiles) gives null for every shape, unknown shape or empty tiles give null, and with the flag on an edge tile, the sprint finish is ≤ 7 m from it.
 5. Gate yaw follows the path: a swimmer stepping gate→gate along the polyline hits every gate in order.
 6. addBest: sorted, top 5, one row per name (a slower retry doesn't replace, a faster one does), rank/best flags, input not mutated.
 7. minMs/pathLength: a known square path. `buoy.finish` below minMs is rejected and one at minMs is accepted (test the core predicate `validFinish(st, a)`, exported).
