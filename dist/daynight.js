@@ -510,8 +510,10 @@ export function createDayNight(ctx) {
     }
     const poolI = nf < 0.15 ? 0 : POOL_PEAK * smooth(0.15, 1, nf);
     poolLit = 0;
+    const poolOn = poolI > 0 && lanternCount > 0 && !!raft; // perf: idle point lights still cost every lit fragment; all-or-none so shaders recompile only at dusk/dawn
     for (let i = 0; i < POOL_LIGHTS; i++) {
       const l = pool[i], k = poolPick[i];
+      l.visible = poolOn;
       if (k < 0 || k >= lanternCount || poolI <= 0 || !raft) { l.intensity = 0; continue; }
       l.position.set(lanternLocal[k * 3], lanternLocal[k * 3 + 1], lanternLocal[k * 3 + 2]);
       raft.localToWorld(l.position);
