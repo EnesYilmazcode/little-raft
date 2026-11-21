@@ -76,7 +76,7 @@ export function buildFallbackModel(kind) {
     case 'fish': return fishModel();
     case 'wood': return woodModel();
     case 'leaf': case 'scrap': return createDebris(T, kind, mat, { seed: 7, tilt: 0 });
-    default: return createCraft(T, kind);
+    default: return createCraft(T, kind, { fresh: true });
   }
 }
 

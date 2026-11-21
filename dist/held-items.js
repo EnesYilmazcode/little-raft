@@ -172,14 +172,14 @@ export function buildItemModel(T, kind, factory = null) {
     const f = buildFish(T); f.rotation.z = Math.PI / 2;           // held by the tail, head down
     root = fit(T, f, SIZE.fish, (s) => new T.Vector3(0, s.y * 0.4, 0));
   } else if (DECOR_KINDS.includes(kind)) {
-    const c = createCraft(T, kind);
+    const c = createCraft(T, kind, { fresh: true });
     if (c) root = fit(T, c, SIZE[kind], (s) => new T.Vector3(0, -s.y / 2, 0)); // grip = base centre
   } else if (kind === 'cup' || kind === 'water') {
     root = fit(T, buildCup(T, kind === 'water'), SIZE[kind], () => new T.Vector3(0, 0, 0));
   } else if (kind === 'seed' || kind === 'seeds') {
     root = fit(T, buildSeeds(T), SIZE[kind], (s) => new T.Vector3(0, -s.y / 2, 0));
   } else if (kind === 'planter') {
-    root = fit(T, createCraft(T, 'palm'), SIZE.planter, (s) => new T.Vector3(0, -s.y / 2, 0));
+    root = fit(T, createCraft(T, 'palm', { fresh: true }), SIZE.planter, (s) => new T.Vector3(0, -s.y / 2, 0));
   }
   if (!root) root = fit(T, buildBundle(T), 0.12, (s) => new T.Vector3(0, left ? -s.y / 2 : 0, 0));
   root.name = 'item_' + kind;

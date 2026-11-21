@@ -1,27 +1,88 @@
-// Raft craft models (ES module, no imports, no textures).
+// Raft craft models (ES module, no textures).
 // Usage: import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b'; const g = createCraft(THREE, 'sail');
 // Returns a THREE.Group (or null for an unknown type). Local origin = centre of the 2x2 raft
 // floor top surface; place the group at the floor (y = .22). Everything builds upward from y = 0
-// inside a ~1.7 x 1.7 footprint. Every call creates its own geometries and materials, so the
-// caller may dispose them freely. Meshes are merged per material to keep draw calls low.
+// inside a ~1.7 x 1.7 footprint. The builders are deterministic, so each type is built once per THREE
+// and createCraft() returns a clone that shares its geometries and materials (userData.shared = true:
+// the engine's disposeGeometry() skips them). The palm's soil material is per instance (paintPlanter
+// tints it). Pass { fresh: true } for a private copy the caller may dispose or re-material freely.
+// Meshes are merged per material class (timber, thin rope, steel, cloth) to keep draw calls low;
+// thin parts (rope, lashing, knots, nails) cast no shadow.
 //
 // Types: sail (~3.76 tall), palm (~2.25), lantern (~1.9), net (~0.21), bench (~0.9), crate (~0.84).
+import { mergeChildMeshes } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 
-export function createCraft(T, type) {
+const BUILDERS = { sail: buildSail, palm: buildPalm, lantern: buildLantern, net: buildNet, bench: buildBench, crate: buildCrate };
+const TEMPLATES = new WeakMap(); // THREE namespace -> Map(type -> template group)
+
+export function createCraft(T, type, opts = {}) {
   const key = String(type || '').toLowerCase();
-  const builders = { sail: buildSail, palm: buildPalm, lantern: buildLantern, net: buildNet, bench: buildBench, crate: buildCrate };
-  const build = builders[key];
-  if (!build) return null;
+  if (!Object.hasOwn(BUILDERS, key)) return null;
+  if (opts && opts.fresh) return buildCraft(T, key);
+  let byType = TEMPLATES.get(T);
+  if (!byType) TEMPLATES.set(T, byType = new Map());
+  let tpl = byType.get(key);
+  if (!tpl) {
+    tpl = buildCraft(T, key);
+    tpl.traverse(o => {
+      if (!o.isMesh) return;
+      o.geometry.userData.shared = true;
+      if (!o.userData.ownMaterial) o.material.userData.shared = true;
+    });
+    byType.set(key, tpl);
+  }
+  const g = tpl.clone(true);
+  g.traverse(o => { if (o.isMesh && o.userData.ownMaterial) o.material = o.material.clone(); });
+  return g;
+}
+
+// Merge groups per type: [merged name, member mesh names, material class, casts shadow].
+// A null class keeps the (single) member's own material. Names the game reads stay: sailCloth (sailing),
+// trunk / coconuts / fronds / soil (planter), lantern glass/glow/candle/flame (day-night), pennant.
+const MERGE = {
+  sail: [['sailRope', ['sailRope', 'sailLashing'], 'thin', false], ['sailSteel', ['sailSteel'], null, false],
+    ['sailCloth', ['sailCloth', 'sailSeams', 'sailPatch', 'sailStitches'], 'cloth', true]],
+  palm: [['pot', ['pot', 'palmBase', 'pebbles'], 'solidDS', true], ['palmRope', ['palmRope'], null, false],
+    ['palmNails', ['palmNails'], null, false], ['trunk', ['trunk', 'crown', 'frondRibs'], 'bark', true]],
+  lantern: [['lanternRope', ['lanternRope'], null, false], ['lanternSteel', ['lanternSteel', 'lanternBrass'], 'darkMetal', true]],
+  net: [['netFrame', ['netFrame', 'netFloats'], 'solid', true], ['netRope', ['netRope', 'netKnots'], 'thin', false], ['netSteel', ['netSteel'], null, false]],
+  bench: [['benchNails', ['benchNails'], null, false], ['benchRope', ['benchRope'], null, false]],
+  crate: [['crateSteel', ['crateSteel'], null, false], ['crateRope', ['crateRope'], null, false]],
+};
+const CLASSES = {
+  solid: () => ({ roughness: 0.88 }),
+  solidDS: T => ({ roughness: 0.86, side: T.DoubleSide }),
+  thin: () => ({ roughness: 0.96 }),
+  cloth: T => ({ roughness: 0.93, side: T.DoubleSide }),
+  bark: () => ({ roughness: 0.95 }),
+  darkMetal: () => ({ roughness: 0.48, metalness: 0.72 }),
+};
+
+function buildCraft(T, key) {
   const K = makeKit(T);
   const g = new T.Group();
   g.name = 'craft_' + key;
-  build(T, K, g);
+  BUILDERS[key](T, K, g);
   g.traverse(o => {
     if (!o.isMesh) return;
     const glass = !!o.userData.glass;
     o.castShadow = !glass;
     o.receiveShadow = !glass;
   });
+  for (const [name, members, cls, cast] of MERGE[key] || []) {
+    const meshes = members.map(n => g.children.find(c => c.isMesh && c.name === n)).filter(Boolean);
+    if (!meshes.length) continue;
+    let mesh = meshes[0];
+    if (cls) {
+      const mat = new T.MeshStandardMaterial(Object.assign({ color: 0xffffff, metalness: 0, vertexColors: true }, CLASSES[cls](T)));
+      for (const m of meshes) if (m.geometry.attributes.uv) m.geometry.deleteAttribute('uv'); // untextured
+      const set = new Set(meshes);
+      mesh = mergeChildMeshes(T, g, { colorize: true, skip: c => !set.has(c), material: () => mat })[0];
+      for (const m of meshes) { m.geometry.dispose(); m.material.dispose(); }
+    }
+    mesh.name = name;
+    mesh.castShadow = cast;
+  }
   g.updateMatrixWorld(true);
   const box = new T.Box3().setFromObject(g);
   const size = box.getSize(new T.Vector3());
@@ -44,6 +105,8 @@ function makeKit(T) {
   const UP = V(0, 1, 0);
   const _m = new T.Matrix4(), _q = new T.Quaternion(), _e = new T.Euler(), _s = new T.Vector3(), _p = new T.Vector3();
   const sg = d => Math.max(2, Math.min(16, Math.round(d / 0.06)));
+  // along a plank's long axis the grain colour only drifts slowly, so it needs half the rows
+  const sgL = d => Math.max(2, Math.min(16, Math.round(d / 0.12)));
 
   const bake = (geo, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => {
     _e.set(rx, ry, rz); _q.setFromEuler(_e); _p.set(x, y, z); _s.set(sx, sy, sz);
@@ -88,15 +151,17 @@ function makeKit(T) {
       c.copy(base).lerp(dark, grain * 0.32 + knot * 0.5).lerp(grey, wk * wx * 0.5);
     });
   };
-  const plank = (w, h, d, hex, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, weather) =>
-    bake(woodify(new T.BoxGeometry(w, h, d, sg(w), sg(h), sg(d)), hex, weather), x, y, z, rx, ry, rz);
+  const plank = (w, h, d, hex, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, weather) => {
+    const L = Math.max(w, h, d), s = v => (v === L ? sgL(v) : sg(v));
+    return bake(woodify(new T.BoxGeometry(w, h, d, s(w), s(h), s(d)), hex, weather), x, y, z, rx, ry, rz);
+  };
   const beam = (a, b, w, d, hex, weather) => {
     const len = a.distanceTo(b);
-    return along(woodify(new T.BoxGeometry(w, len, d, 2, sg(len), 2), hex, weather), a, b);
+    return along(woodify(new T.BoxGeometry(w, len, d, 2, sgL(len), 2), hex, weather), a, b);
   };
   const rod = (a, b, r1, r2 = r1, radial = 8, hex = null) => {
     const len = a.distanceTo(b);
-    const geo = new T.CylinderGeometry(r2, r1, len, radial, hex ? sg(len) : 1);
+    const geo = new T.CylinderGeometry(r2, r1, len, radial, hex ? sgL(len) : 1);
     if (hex) woodify(geo, hex);
     return along(geo, a, b);
   };
@@ -113,10 +178,10 @@ function makeKit(T) {
       pts.push(axis === 'y' ? V(c.x + ca, c.y + h, c.z + sa)
         : axis === 'x' ? V(c.x + h, c.y + ca, c.z + sa) : V(c.x + ca, c.y + sa, c.z + h));
     }
-    return new T.TubeGeometry(new T.CatmullRomCurve3(pts), n * 3, tr, 5, false);
+    return new T.TubeGeometry(new T.CatmullRomCurve3(pts), n, tr, 4, false);
   };
   const torus = (r, tr, x, y, z, rx = 0, ry = 0, rz = 0, arc = Math.PI * 2) =>
-    bake(new T.TorusGeometry(r, tr, 6, 18, arc), x, y, z, rx, ry, rz);
+    bake(new T.TorusGeometry(r, tr, tr <= 0.01 ? 4 : 6, tr <= 0.01 && r < 0.08 ? 12 : 18, arc), x, y, z, rx, ry, rz);
   const nail = (x, y, z, axis = 'y') =>
     bake(new T.CylinderGeometry(0.012, 0.012, 0.01, 6), x, y, z, axis === 'z' ? Math.PI / 2 : 0, 0, axis === 'x' ? Math.PI / 2 : 0);
   const box = (w, h, d, x, y, z, rx = 0, ry = 0, rz = 0) => bake(new T.BoxGeometry(w, h, d), x, y, z, rx, ry, rz);
@@ -341,7 +406,7 @@ function buildPalm(T, K, g) {
       }
     }
     soil.computeVertexNormals();
-    K.addTo(g, K.bake(soil, 0, B + 0.455, 0), K.std(0x4a3322, 1), 'soil');
+    K.addTo(g, K.bake(soil, 0, B + 0.455, 0), K.std(0x4a3322, 1), 'soil').userData.ownMaterial = true; // paintPlanter tints it per tile
     const peb = [];
     for (let i = 0; i < 6; i++) {
       const a = i * 1.07 + 0.4, r = 0.17 + 0.12 * K.rnd();
@@ -354,7 +419,7 @@ function buildPalm(T, K, g) {
   const potR = y => 0.3 + 0.05 * (y - 0.08) / 0.34;
   for (const y of [0.2, 0.25]) R.push(K.bake(new T.TorusGeometry(potR(y) + 0.008, 0.013, 6, 36), 0, B + y, 0, Math.PI / 2, 0, 0));
   const kr = potR(0.225) + 0.02;
-  R.push(K.bake(new T.SphereGeometry(0.024, 8, 6), 0, B + 0.225, kr));
+  R.push(K.bake(new T.SphereGeometry(0.024, 6, 4), 0, B + 0.225, kr));
   R.push(K.tube([V(0.005, B + 0.22, kr), V(0.03, B + 0.16, kr + 0.012), V(0.04, B + 0.1, kr - 0.005)], 0.009, 12));
   R.push(K.tube([V(-0.005, B + 0.22, kr), V(-0.025, B + 0.15, kr + 0.01), V(-0.02, B + 0.12, kr - 0.01)], 0.009, 12));
 
@@ -547,7 +612,7 @@ function buildNet(T, K, g) {
       RD.push(K.torus(0.068, 0.008, c, 0.04, s * E, 0, Math.PI / 2, 0)); // tie around lower beam
     }
   }
-  for (const x of lines) for (const z of lines) RD.push(K.bake(new T.SphereGeometry(0.02, 8, 6), x, S(x, z), z));
+  for (const x of lines) for (const z of lines) RD.push(K.bake(new T.SphereGeometry(0.02, 6, 4), x, S(x, z), z));
 
   // corner floats, steel straps and nails
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
@@ -626,7 +691,7 @@ function buildCrate(T, K, g) {
     R.push(K.tube([V(sx * 0.4, 0.56, -0.13), V(sx * 0.46, 0.5, -0.08), V(sx * 0.48, 0.47, 0), V(sx * 0.46, 0.5, 0.08), V(sx * 0.4, 0.56, 0.13)], 0.014, 24));
     for (const sz of [-1, 1]) {
       ST.push(K.box(0.012, 0.05, 0.05, sx * 0.405, 0.56, sz * 0.13));
-      R.push(K.bake(new T.SphereGeometry(0.022, 8, 6), sx * 0.415, 0.56, sz * 0.13));
+      R.push(K.bake(new T.SphereGeometry(0.022, 6, 4), sx * 0.415, 0.56, sz * 0.13));
     }
   }
   K.addTo(g, W, K.woodMat(), 'crateTimber');
