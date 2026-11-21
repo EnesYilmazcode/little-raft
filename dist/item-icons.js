@@ -100,9 +100,6 @@ function ensureGL() {
   if (gl || failed) return !!gl;
   if (hostGL) {
     gl = hostGL;
-    rt = new T.WebGLRenderTarget(SIZE * 2, SIZE * 2); // no MSAA (the XR flag below skips its resolve): supersample 2x instead
-    rt.texture.colorSpace = T.SRGBColorSpace;
-    rt.isXRRenderTarget = true; // three applies renderer tone mapping only to the screen or XR targets; icons want it
     pixels = new Uint8Array(SIZE * SIZE * 16);
   } else try {
     const canvas = document.createElement('canvas');
@@ -192,10 +189,14 @@ function renderKind(kind) {
       const prevRT = gl.getRenderTarget(), prevExp = gl.toneMappingExposure, prevTM = gl.toneMapping, prevAlpha = gl.getClearAlpha(), prevClear = gl.getClearColor(_clear), prevAuto = gl.autoClear, prevShadow = gl.shadowMap.enabled;
       try {
         gl.toneMapping = T.ACESFilmicToneMapping; gl.toneMappingExposure = f.exp || 1.15; gl.autoClear = true; gl.shadowMap.enabled = false;
+        // A fresh target per icon (a few dozen, once): a reused one looks like a per-frame pass to frame-skipping probes.
+        rt = new T.WebGLRenderTarget(SIZE * 2, SIZE * 2); // no MSAA (the XR flag below skips its resolve): supersample 2x instead
+        rt.texture.colorSpace = T.SRGBColorSpace;
+        rt.isXRRenderTarget = true; // three applies renderer tone mapping only to the screen or XR targets; icons want it
         gl.setRenderTarget(rt); gl.setClearColor(0x000000, 0); gl.clear(); gl.render(scene, camera);
         gl.readRenderTargetPixels(rt, 0, 0, SIZE * 2, SIZE * 2, pixels);
       } finally {
-        gl.setRenderTarget(prevRT); gl.toneMapping = prevTM; gl.toneMappingExposure = prevExp; gl.setClearColor(prevClear, prevAlpha); gl.autoClear = prevAuto; gl.shadowMap.enabled = prevShadow;
+        gl.setRenderTarget(prevRT); try { rt?.dispose(); } catch {} rt = null; gl.toneMapping = prevTM; gl.toneMappingExposure = prevExp; gl.setClearColor(prevClear, prevAlpha); gl.autoClear = prevAuto; gl.shadowMap.enabled = prevShadow;
       }
       const N = SIZE * 2, img = new ImageData(N, N), row = N * 4;
       for (let y = 0; y < N; y++) img.data.set(pixels.subarray((N - 1 - y) * row, (N - y) * row), y * row); // GL rows are bottom-up
@@ -219,9 +220,11 @@ function finish(kind, url) {
   if (url) for (const fn of listeners) { try { fn(kind, url); } catch (e) { console.error(e); } }
   const old = stale.get(kind); if (old) { stale.delete(kind); URL.revokeObjectURL(old); }
 }
+// Deterministic probes (virtual clock) need icons ready in a known frame: encode synchronously there.
+const SYNC_ENCODE = typeof window !== 'undefined' && !!window.__det;
 function encode(kind, canvas) {
   if (!canvas) { finish(kind, ''); return; }
-  if (typeof canvas.toBlob !== 'function') { let url = ''; try { url = canvas.toDataURL('image/png'); } catch {} finish(kind, url); return; }
+  if (SYNC_ENCODE || typeof canvas.toBlob !== 'function') { let url = ''; try { url = canvas.toDataURL('image/png'); } catch {} finish(kind, url); return; }
   const token = {};
   encoding.set(kind, token);
   canvas.toBlob(blob => {
