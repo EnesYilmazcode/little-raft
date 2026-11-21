@@ -122,7 +122,7 @@ export function nestBoxModel(T) {
     P.push(part(T, new T.ConeGeometry(0.012, 0.09, 3), k % 2 ? straw : strawDk, [Math.cos(a) * 0.3, H + 0.03, Math.sin(a) * 0.3, Math.sin(a) * 0.7, 0, -Math.cos(a) * 0.7]));
   }
   for (const sx of [-1, 1]) P.push(part(T, new T.BoxGeometry(0.05, 0.32, 0.05), woodDk, [sx * (half - 0.035), H + 0.16, -half + 0.035])); // roof posts
-  P.push(part(T, new T.BoxGeometry(W + 0.06, 0.035, 0.36), f => (f % 4 < 2 ? woodLt : wood), [0, H + 0.27, -half + 0.13, 0.45, 0, 0])); // slanted roof
+  P.push(part(T, new T.BoxGeometry(W + 0.04, 0.03, 0.3), f => (f % 4 < 2 ? woodLt : wood), [0, H + 0.25, -half + 0.1, 0.62, 0, 0])); // slanted roof over the back
   return group(T, decorMesh(T, merge(T, P)), 'decor_nestbox');
 }
 
