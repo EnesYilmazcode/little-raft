@@ -3,6 +3,14 @@
 //   LR_MAIN        absolute path to the copied main.cjs (its config.json sets the origin)
 //   LR_USER_DATA   throwaway userData dir (also isolates the single-instance lock)
 //   LR_WINDOW      hidden (default) | offscreen | show
+// Control channel: one JSON command per stdin line, {id, op, ...}; replies {reply: id, ok, value|error} on stdout.
+//   eval {code}           webContents.executeJavaScript(code) without a user gesture
+//   key {key, mods?}      real keyDown/char/keyUp through webContents.sendInputEvent
+//   click {x, y}          real mouseMove/mouseDown/mouseUp through sendInputEvent (a trusted gesture)
+//   move {x, y}           mouseMove
+//   focus                 show + focus the window and its webContents
+//   capture               PNG of the page, base64
+//   status                window/app liveness
 const Module = require('node:module');
 const electron = require('electron');
 const { app } = electron;
@@ -22,6 +30,8 @@ class HarnessWindow extends electron.BrowserWindow {
     if (mode === 'hidden') o.show = false;
     if (mode === 'offscreen') { o.x = -6000; o.y = -6000; }
     super(o);
+    wins.push(this);
+    this.on('closed', () => log('window-closed'));
     log('window-created', { mode, show: o.show !== false, webPreferences: opts.webPreferences || {} });
     this.on('focus', () => log('focus'));
     this.on('blur', () => log('blur'));
@@ -37,6 +47,7 @@ class HarnessWindow extends electron.BrowserWindow {
     });
   }
 }
+const wins = [];
 const shim = new Proxy(electron, { get: (t, k) => (k === 'BrowserWindow' ? HarnessWindow : t[k]) });
 const load = Module._load;
 Module._load = function (request, ...rest) { return request === 'electron' ? shim : load.call(this, request, ...rest); };
@@ -58,6 +69,55 @@ app.on('web-contents-created', (_e, wc) => {
     }));
   }
 });
+app.on('before-quit', () => log('before-quit'));
+app.on('will-quit', () => log('will-quit'));
+app.on('child-process-gone', (_e, d) => log('child-process-gone', d));
 app.on('ready', () => log('ready', { electron: process.versions.electron, chrome: process.versions.chrome }));
+
+const win = () => wins.find((w) => !w.isDestroyed());
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const ops = {
+  async eval({ code }) { return win().webContents.executeJavaScript(code, false); },
+  async key({ key, mods = [] }) {
+    const wc = win().webContents;
+    wc.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers: mods });
+    if (key.length === 1) wc.sendInputEvent({ type: 'char', keyCode: key, modifiers: mods });
+    await sleep(60);
+    wc.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers: mods });
+    return true;
+  },
+  async move({ x, y }) { win().webContents.sendInputEvent({ type: 'mouseMove', x, y }); return true; },
+  async click({ x, y }) {
+    const wc = win().webContents;
+    wc.sendInputEvent({ type: 'mouseMove', x, y });
+    await sleep(30);
+    wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+    await sleep(60);
+    wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+    return true;
+  },
+  async capture() { return (await win().webContents.capturePage()).toPNG().toString('base64'); },
+  async focus() { const w = win(); w.show(); w.focus(); w.webContents.focus(); return true; },
+  async status() {
+    const w = win();
+    return { windows: wins.filter((x) => !x.isDestroyed()).length, visible: !!w && w.isVisible(), focused: !!w && w.isFocused(),
+      crashed: !!w && w.webContents.isCrashed(), url: w ? w.webContents.getURL() : null, bounds: w ? w.getContentBounds() : null };
+  },
+};
+let buf = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buf += chunk;
+  let i;
+  while ((i = buf.indexOf('\n')) >= 0) {
+    const line = buf.slice(0, i); buf = buf.slice(i + 1);
+    if (!line.trim()) continue;
+    let cmd;
+    try { cmd = JSON.parse(line); } catch { continue; }
+    const reply = (o) => process.stdout.write(JSON.stringify({ reply: cmd.id, ...o }) + '\n');
+    Promise.resolve().then(() => { if (!ops[cmd.op]) throw new Error('unknown op ' + cmd.op); if (cmd.op !== 'status' && !win()) throw new Error('no window'); return ops[cmd.op](cmd); })
+      .then((value) => reply({ ok: true, value: value === undefined ? null : value }), (e) => reply({ ok: false, error: String(e && e.stack || e) }));
+  }
+});
 
 require(process.env.LR_MAIN);
