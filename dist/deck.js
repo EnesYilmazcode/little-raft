@@ -10,7 +10,7 @@ export const FLOOR_BOUNDS = Object.freeze({minX:-1, maxX:1, minY:0, maxY:0.2, mi
 // Material keys (game.js TIMBER); wood.js draws them as bleached olive-tan driftwood (#9c8a5e / #a6956e / #8e7f57).
 const PLANK_COLORS = ['#bb8a53', '#c69860', '#ad7c4a'];
 const BEAM_COLOR = '#5e4029', BEAM_END_COLOR = '#9c7649', ROPE_COLOR = '#a8946c', NAIL_COLOR = '#4b4844';
-const BEV = 0.011, BEV_T = 0.01, THICK = 0.052;
+const BEV = 0.011, BEV_T = 0.01, THICK = 0.07;
 const BEAM_R = 0.064, BEAM_Y = 0.072, BEAM_HALF = 0.985;
 
 function makeRng(index) {
