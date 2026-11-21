@@ -241,6 +241,44 @@ Two integrator sessions are running on claude/raft-master; each merges the other
 - Still skipped: raft-reference (scraped commercial-game stills). Farming (farming.js) is merged but not reachable in play:
   it and the watering lane drive the same palm planter; it needs a design decision.
 
+## 2026-11-21 · loop-fidelity-202611210714 (raft fidelity, round 1)
+Base: origin/claude/raft-master (d356103). Branch: claude/loop-fidelity-202611210714.
+Research: docs/loop/research/fidelity-r1-survival.md and fidelity-r1-shark.md. The wiki hosts were DNS-blocked, so the numbers come from search summaries.
+
+Claimed gaps (the three largest: none of these existed before):
+- **Hunger, thirst, health**: dist/vitals.js and dist/vitals-ui.js. Hunger drains 0.09/s and thirst 0.11/s, x1.5 while sprinting or swimming. Each empty bar costs 0.75 HP/s. Health regenerates 0.25 HP/s while both bars are above 0.
+  - Click with food or a cup to eat or drink. Raw fish is salty; a salt cup costs 5 water; grilled fish +35; a fresh cup +40 and gives the cup back.
+  - The bars sit in the lower left with a low-health vignette.
+  - At 0 HP you pass out and wake at the raft centre with 100 HP and 75 food/water, keeping the inventory (gentle mode).
+  - Vitals are saved. A guest eats through the host's 'eat' action and 'ate' effect.
+- **Shark**: dist/shark.js and dist/shark-model.js.
+  - It circles at the raft's edge + 6 m. Every 300 s it attacks a random unarmored edge tile: 20 damage every 2 s against 100 HP per tile. A broken tile takes its decor, pieces, grill and crate contents with it; the last tile is never removed.
+  - It hunts swimmers within 25 m (30 damage every 3.5 s).
+  - 150 HP. 15 damage within one attack repels it. Harvest the body with E for 4 shark meat and 1 shark head; it respawns 180 s after looting.
+  - Co-op: the host is authoritative, and the guest gets a compact pose plus tileHp.
+- **Spear and foundation repair**: dist/spear.js, repair.js, spear-model.js and spear-repair-hooks.js.
+  - Wooden spear: 8 planks + 3 rope, 5 damage, 20 uses. Metal spear: 6 planks + 2 rope + 2 ingots + 1 bolt, 10 damage, 40 uses.
+  - LMB thrust with a 0.7 s cooldown and 2.8 m reach. Only hits wear the spear.
+  - Hammer on a damaged tile: 1 plank restores 50 HP.
+  - Raw shark meat grills into Grilled Shark Meat (+30 food).
+
+Fleet: 2 researchers, 3 builders (worktrees), 2 reviewers.
+Review fixes:
+- one damaged-tile overlay instead of two
+- crate contents cleared with their broken tile
+- the guest spear-hit rate limit now sits under the spear cooldown
+- fainting reels in the fishing line and ends a dive; opening a menu cancels eating
+- HUD overlaps fixed at 600 px wide; the faint overlay sits above the checklist
+- shoot.py waits 60 s for the page to load
+Checks: npm test 488/488 (was 456); shoot.py `errors: []`. Frame time 293-317 ms on a loaded machine (base 297); 129 draw calls (+9), 97 shadow casters (no change).
+Known limits:
+- A guest spear thrust the host rejects still wears the spear.
+- The spear's hit test ignores the deck, so you can hit the shark through the planks.
+- Spearing a circling shark resets its attack timer.
+- The tileArmor contract exists (world.tileArmor) but no armor item yet.
+- Eating has no hand animation.
+Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/foundation costs; crop plots (potato/beet); simple purifier fuel and timings (30 s per cup); shark bait.
+
 ## 2026-11-21 · integrator round 3
 - Clean merges: raft-tests, raft-tech, loop-features-202611210648, fleet-tech icons/perf/procedural-models/water/audio/foliage.
 - One subagent per conflicting branch in its own worktree: merged raft-integration (10-slot hotbar, throw ring, ocean foam, offline fonts),

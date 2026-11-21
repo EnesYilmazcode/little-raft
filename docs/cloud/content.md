@@ -12,7 +12,7 @@ Nothing in them hurts the player.
 | Day, night and weather | `dist/daynight.js` | [features/daynight.md](../features/daynight.md) | `tests/daynight.test.mjs` (21) |
 | Registry | `dist/content.js`, `dist/content-items.js` | [features/content-hooks.md](../features/content-hooks.md) | `tests/content.test.mjs` (3) |
 
-On the merged branch, `npm test` passes all 535 tests across every fleet's test files.
+On the merged branch, `npm test` passes all 539 tests across every fleet's test files.
 
 ## What was built
 
@@ -84,11 +84,12 @@ Other shared-file lines, each marked `// content hook`:
 
 ## How it was made
 
-A fleet of 25 subagents worked in parallel git worktrees, one branch per feature (`claude/raft-content-<name>`):
+A fleet of 22 subagents worked in parallel git worktrees, one branch per feature (`claude/raft-content-<name>`):
 - **Designers (4).** They rewrote the earlier fleet's design docs for the hook API. raft.wiki.gg cannot be reached from the sandbox (401 or DNS block), so the Raft facts come from search snippets, fandom and Steam threads, and each doc cites them.
 - **Builders (4).** Each implemented one feature, with tests and screenshots.
 - **Reviewers (4).** Fresh agents reviewed each diff without seeing the builder's conclusions.
 - **Visual QA (5).** Four took feature screenshots, read them and critiqued them; one did the merged build.
+- **Integration fixer (1).** It fixed the issues the merged QA found.
 - **Fixers (4, two rounds each).** They fixed every verified review finding, then the QA findings, with regression tests that fail on the old code.
 
 Review rounds caught, among other things:
@@ -112,12 +113,43 @@ All are in `docs/cloud/shots/content/` (the repo ignores `*.png` except under `d
 | Wildlife | `wildlife-gull.png`, `wildlife-fish.png`, `wildlife-dolphin.png`, `wildlife-turtle.png` |
 | Storage and research | `storage-world.png`, `storage-chest.png`, `storage-research.png`, `storage-research-800x600.png`, `storage-recipes-locked.png` |
 | Day and night | `daynight-morning.png`, `daynight-dusk.png`, `daynight-night.png`, `daynight-rain.png` |
-| Merged build | `merged-*.png` (see below) |
+| Merged build | `merged-spawn.png`, `merged-island.png` (island, dolphin, gull, lantern), `merged-island-dusk.png`, `merged-night.png`, `merged-desk.png`, `merged-rain.png`, `merged-prompt-island.png`, `merged-prompt-crate.png` |
+
+## Merging with main
+
+While this fleet worked, an integrator merged earlier snapshots of the content branches into
+`main`. `claude/raft-content` merges `main` back in (commit "Merge main into raft-content"). That merge resolved these conflicts:
+- **The table's name.** `main` renamed the desk "Tinker’s Desk" to keep it apart from its own progression Research Table. We kept that name, with the new `icon-research`.
+- **`icons.svg` and the `SPRITES` list.** Both sides added symbols, so we kept both sets.
+- **The sun target offset in `daynight.js`.** We kept main's shadow-fitted target and our `MOON_I`.
+- **Tests on both sides.** We kept both sets of tests.
+
+The final merged QA, run in one session with all four features and main's progression, found two integration bugs. Both are fixed:
+- **Content "E" prompts never showed.** `main` hides `#contextPrompt` and replaced it with `#lrPrompt`. `content.js` now exports `promptParts()`, and `game.js` registers one `raftPrompts.provide({id:'content'})`, so crates, the desk and island nodes show "E Gather palm…" in main's style. Main's Research Table prompt had the same bug and is fixed the same way in `progression-hooks.js`.
+- **E opened main's Research Table by distance alone.** That happened even when you were looking at the sky or a crate. Station E is now aim-aware (`aimMiss()`, 0.8 m).
+
+Draw calls in the merged build (software GL, medium): 149 at spawn and by day, 150 in rain, 134 at night on a furnished deck, 117 to 175 near an island. There were no page errors.
+
+## Needs a decision
+
+**Two research stations.** Our Tinker’s Desk and main's progression Research Table now sit side by side. They look alike and follow different rules:
+- **When you get it.** The desk is craftable from the start. The Research Table is a minute-20 goal.
+- **What studying costs.** The desk uses up one item per study. The Research Table keeps the item.
+- **Which recipes.** With `setOwnedElsewhere`, the desk gates only recipes outside main's catalogue.
+
+A player chasing the "Build the Research Table" goal may build the desk instead. There are three options:
+1. Retire the desk's gating in favour of main's table, keeping the crate chests.
+2. Have main's Research Table open the desk's study panel.
+3. Keep both, but make them agree on consuming items and clearly separate their names and looks.
+
+This fleet did not choose, because it is a product call.
 
 ## Known issues
 
 - The ocean shader is opaque, so fish are silhouettes at the surface and there is no visible seafloor under islands. The lagoon ring stands in for shallow water.
 - The sky is one flat colour (dist/sky.js is unused), so dusk is an even wash rather than a gradient.
 - Sand, stone and seed use placeholder icons.
+- Main's 12 plain green horizon islands sit behind the detailed drifting island and look different from it.
+- Main still posts a distance-based "E: use the …" feed line when you walk up to a station. It is harmless, but it repeats the new prompt.
 - A green decorative horizon hill can sit behind a docked island.
 - Co-op was verified with unit tests (two-module host/guest simulations with jitter, drops and duplicates). The sandbox has no PeerJS signalling, so no live two-browser session was run.
