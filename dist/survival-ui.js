@@ -120,6 +120,7 @@ function durFrac(s) {
   if (!s || s.durability == null) return null;
   const d = Number(s.durability); if (!Number.isFinite(d)) return null;
   const i = info(s.kind);
+  if (i?.unbreakable) return null; // the hammer never wears: no bar
   let max = Number(i?.maxDurability ?? i?.durability ?? i?.maxDur ?? s.maxDurability);
   if (!(max > 0)) max = DUR_MAX;
   if (max > 0) return clamp01(d / max);
@@ -390,7 +391,7 @@ function ensureStyle() {
 
 const slotInner = num => `${num ? `<i class="sv-num">${num}</i>` : ''}<i class="sv-art"></i><i class="sv-count"></i><i class="sv-dur" hidden><i></i></i>`;
 
-const HINT = 'Click a stack to pick it up, then a slot to place it, or drag it. Right-click a stack to take half; right-click while holding to place one. Arrow keys move between slots; Tab, E, I or Esc closes.';
+const HINT = 'Click a stack to pick it up, then a slot to place it, or drag it. Right-click a stack to take half; right-click while holding to place one; let go outside the bag to drop it in the sea. Arrow keys move between slots; Tab, E, I or Esc closes.';
 function mountDialog() {
   let d = document.getElementById('inventory');
   if (!d || d.tagName !== 'DIALOG') {
@@ -489,7 +490,7 @@ function readSnap(bag) {
 
 // getModel (optional): (kind) -> Object3D, e.g. models.js getModel; icons are rendered from it.
 // iconFor (optional): (kind) -> data URL; overrides the rendered icon for that kind.
-export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause, iconFor, recipeGate, getModel } = {}) {
+export function createSurvivalUI({ getBag, onSelect, onMove, onDrop, onCraft, onResume, onPause, iconFor, recipeGate, getModel } = {}) {
   if (typeof getModel === 'function') setModelProvider(getModel);
   const gate = id => { try { return recipeGate?.(id) || null; } catch { return null; } }; // [progression-hook] {hidden, locked, reason}
   // Hot reload: DOM is adopted, not rebuilt; the previous instance releases its listeners only once
@@ -1000,6 +1001,12 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (r && typeof r.then === 'function') r.then(v => { if (v === false) deny(el, 'Can’t place that there'); }, e => console.error(e));
     return true;
   }
+  // A held / dragged stack let go on the backdrop falls into the sea (Raft: drag out of the inventory to drop).
+  function dropOut(from, amt) {
+    if (from == null || !(amt > 0) || !slotSig(curSlots[from]) || typeof onDrop !== 'function') return false;
+    try { onDrop(from, Math.min(amt, curSlots[from].count)); } catch (e) { console.error(e); }
+    invalidate(); return true;
+  }
   function paintInventory(slots, sigs, selected) {
     for (let i = 0; i < TOTAL; i++) {
       const el = invEls[i]; if (!el) continue;
@@ -1157,7 +1164,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   dlg.addEventListener('pointerdown', e => { downOnBackdrop = e.target === dlg; upOnBackdrop = false; }, opt);
   dlg.addEventListener('pointerup', e => { upOnBackdrop = e.target === dlg; }, opt);
   dlg.addEventListener('click', e => {
-    if (e.target === dlg) { const shut = backdropCloses(downOnBackdrop, upOnBackdrop); downOnBackdrop = upOnBackdrop = false; if (shut) close(); return; }
+    if (e.target === dlg) { const shut = backdropCloses(downOnBackdrop, upOnBackdrop); downOnBackdrop = upOnBackdrop = false; if (shut && src != null) { const from = src, amt = srcAmt; clearSrc(); dropOut(from, amt); return; } if (shut) close(); return; } // holding a stack: the backdrop drops it
     downOnBackdrop = upOnBackdrop = false;
     if (e.target.closest?.('.sv-pinbtn')) { togglePin(); return; }
     const tb = e.target.closest?.('.sv-tab');
@@ -1226,7 +1233,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!dragging) return;
     const el = slotFrom(e);
     if (el !== overEl) { overEl?.classList.remove('sv-over'); overEl = el; el?.classList.add('sv-over'); }
-    if (el) { e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch {} }
+    if (el || e.target === dlg) { e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch {} } // backdrop accepts: drops into the sea
   }, opt);
   dlg.addEventListener('drop', e => {
     if (!dragging) return;
@@ -1235,6 +1242,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const from = dragFrom, amt = dragAmt;
     endDrag();
     clearSrc();
+    if (!el && e.target === dlg) { dropOut(from, amt); return; }
     if (el && from != null) {
       const to = +el.dataset.index;
       if (to !== from && amt > 0) { if (planMove(from, to, amt).ok) sendMove(from, to, amt, el); else deny(el, refusal(from, to)); }

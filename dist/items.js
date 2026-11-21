@@ -16,6 +16,7 @@
 //   placeholder: true when the icon is not a dedicated icons.svg symbol
 //   tool:      true only for durability items (Bag keeps durability 0..100 percent)
 //   durability: tools only: number of uses from 100% to 0% (wear per use = 100 / uses)
+//   unbreakable: tools only: never wears (no durability, no repair, no bar), e.g. the hammer
 //   actsAs:    optional tool role ('hook' | 'fishingrod' | 'hammer' | 'spear'); see toolRole()
 //   placeable: true when the item is put on a raft tile as a decor/station
 //   recipe:    null (gathered) | {
@@ -63,11 +64,12 @@ const cook = (station, input, { count = 1, time, fuel }) => ({ cost: { [input]: 
 function item(id, name, category, opts) {
   const {
     stack = STACK, icon = `icon-${id}`, placeholder = !opts.icon, iconTint, tool = false,
-    durability, actsAs, placeable = false, recipe = null, unlock = START, tip,
+    durability, unbreakable = false, actsAs, placeable = false, recipe = null, unlock = START, tip,
   } = opts;
   const e = { id, name, category, stack: tool ? 1 : stack, icon, placeholder, tool, placeable, recipe, unlock, tip };
   if (iconTint) e.iconTint = iconTint;
-  if (tool) e.durability = durability;
+  if (tool && unbreakable) e.unbreakable = true;
+  else if (tool) e.durability = durability;
   if (actsAs) e.actsAs = actsAs;
   return e;
 }
@@ -149,20 +151,20 @@ const LIST = [
     tip: 'A tiny hinge that swings just right. Binoculars fold up thanks to these.' }),
 
   // ----- tools -----
-  item('hook', 'Hook', 'tool', { icon: 'icon-hook', placeholder: false, tool: true, durability: 50,
+  item('hook', 'Hook', 'tool', { icon: 'icon-hook', placeholder: false, tool: true, durability: 40,
     recipe: hand({ wood: 1, plastic: 2 }), unlock: START,
-    tip: 'Throw it, reel it, grab the goodies. Gets tired after about 50 catches; R fixes it up.' }),
+    tip: 'Throw it, reel it, grab the goodies. Breaks after about 40 catches, so press R to fix it up before then.' }),
   item('metalhook', 'Metal Hook', 'tool', { icon: 'icon-hook', placeholder: true, iconTint: '#a9b4c2',
-    tool: true, durability: 150, actsAs: 'hook',
+    tool: true, durability: 100, actsAs: 'hook',
     recipe: hand({ metalingot: 6, bolt: 2, rope: 2, wood: 2 }), unlock: research('metalingot', 'bolt'),
-    tip: 'A shiny metal hook that lasts three times longer. Your arm will thank you.' }),
-  item('hammer', 'Hammer', 'tool', { icon: 'icon-hammer', placeholder: false, tool: true, durability: 120,
+    tip: 'A shiny metal hook that lasts two and a half times longer. Your arm will thank you.' }),
+  item('hammer', 'Hammer', 'tool', { icon: 'icon-hammer', placeholder: false, tool: true, unbreakable: true,
     recipe: hand({ wood: 4, rope: 2 }), unlock: START,
-    tip: 'Builds new floor tiles (2 planks + 2 plastic each). Make room for friends!' }),
+    tip: 'Builds and removes raft pieces: right-click picks a piece, click places it. Never wears out.' }),
   item('fishingrod', 'Fishing Rod', 'tool', { icon: 'icon-hook', placeholder: true, iconTint: '#c69860',
-    tool: true, durability: 40,
+    tool: true, durability: 15,
     recipe: hand({ wood: 6, rope: 8 }), unlock: discover('rope'),
-    tip: 'Cast, wait for a nibble, and reel in a fish. Good for about 40 catches between repairs.' }),
+    tip: 'Cast, wait for a nibble, and reel in a fish. Breaks after about 15 catches.' }),
   item('spear', 'Wooden Spear', 'tool', { iconTint: '#bb8650', tool: true, durability: 20,
     recipe: hand({ wood: 8, rope: 3 }), unlock: discover('rope'),
     tip: 'A long pole with a sharp lashed tip. Click to jab at things in the water; wears only when it lands.' }),
@@ -353,7 +355,6 @@ export const FUEL_VALUE = deepFreeze({ wood: 1, leaf: 0.5, seaweed: 0.5 });
 const REPAIRS = deepFreeze({
   hook: { wood: 2, scrap: 1 },
   metalhook: { scrap: 2, nail: 2 },
-  hammer: { wood: 2, rope: 1 },
   fishingrod: { wood: 1, rope: 2 },
   spade: { wood: 2, scrap: 1 },
   spear: { wood: 2, rope: 1 },
@@ -509,6 +510,21 @@ export function wearPerUse(kind) {
   return it && it.tool && it.durability > 0 ? MAX_DURABILITY / it.durability : 0;
 }
 
+/**
+ * Wears tool slot i of `slots` by `amount` percent. Raft rule: at 0 the tool breaks and the slot empties.
+ * Returns {kind, before, after, broke} or null for an empty slot. Float dust below 1e-6 counts as 0.
+ */
+export function wearSlot(slots, i, amount) {
+  const s = slots?.[i]; if (!s) return null;
+  const d = Number.isFinite(s.durability) ? s.durability : MAX_DURABILITY;
+  const before = Math.max(0, Math.min(MAX_DURABILITY, d));
+  let after = before - (Number.isFinite(amount) && amount > 0 ? amount : 0); if (after < 1e-6) after = 0;
+  s.durability = after;
+  const broke = before > 0 && after === 0;
+  if (broke) slots[i] = null;
+  return { kind: s.kind, before, after, broke };
+}
+
 /** Gameplay role of a held item: metalhook -> 'hook'; otherwise the kind itself. */
 export function toolRole(kind) {
   return isItem(kind) ? (ITEMS[kind].actsAs ?? kind) : kind;
@@ -532,7 +548,8 @@ export function infoTable() {
   for (const id of ITEM_IDS) {
     const it = ITEMS[id];
     const row = { kind: id, name: it.name, icon: it.icon, maxStack: it.stack, tool: it.tool, placeholder: it.placeholder };
-    if (it.tool) row.maxDurability = MAX_DURABILITY;
+    if (it.unbreakable) row.unbreakable = true;
+    else if (it.tool) row.maxDurability = MAX_DURABILITY;
     out[id] = Object.freeze(row);
   }
   return Object.freeze(out);

@@ -81,7 +81,8 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     const bag = call(getBag), prog = call(getProgression);
     const cat = it.category || (it.tool || ITEM_INFO[kind]?.tool ? 'tool' : '');
     let meta = '';
-    if (it.tool && it.durability > 0 && !slot) meta = `Lasts <b>${esc(it.durability)}</b> uses`;
+    if (it.tool && it.unbreakable) meta = 'Never wears out';
+    else if (it.tool && it.durability > 0 && !slot) meta = `Lasts <b>${esc(it.durability)}</b> uses`;
     else if (it.tool && it.durability > 0) {
       const pct = slot && slot.durability != null ? Math.max(0, Math.min(100, Number(slot.durability) || 0)) : 100;
       const uses = Math.round(pct / 100 * it.durability);

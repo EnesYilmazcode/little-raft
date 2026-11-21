@@ -189,7 +189,6 @@ export function createBuilding(T, scene) {
     if (!hammer) { removing = false; return false; }
     if (code === 'KeyR' && down && PIECES[piece()]?.slot === 'cell') { if (!repeat) rot = (rot + 1) % 4; return true; } // only floor/stairs/roof rotate; else R stays sail grab / hook repair
     if (code === 'Escape' && down && menu.isOpen) { menu.close(false); return true; }
-    if (code === 'KeyQ' && down) { if (!repeat) menu.isOpen ? menu.close(true) : menu.open(); return true; } // auto-repeat must not re-toggle (each close commits)
     if (code === 'KeyX') { if (down) removing = true; return true; }
     return false;
   }
