@@ -158,3 +158,20 @@ then turn toward the spot with `raftDebug.aim(-0.5, yaw)` (yaw from the spot vec
 and the prompt 'Dig here!' visible. (4) `R.dig(0)`, wait 0.3 s: chest pop and mound. (5) after 2 s: mound and hole left, loot rows in the
 feed. Check `R.state().dug[0] === 1`, the bag gained the loot, and the spade durability is < 100. Also check `renderInfo` mesh count +≤ 9
 and no console errors. Co-op: run `tests/coop-e2e.mjs` style and check the guest's `dug` matches within 0.5 s.
+
+## Build notes
+Deviations from the spec above, as built:
+- `clean(data)` sizes `dug` to `spotsFor(seed).length` (always ≤ MAX_SPOTS), not just "≤ MAX_SPOTS", so a slice never has flags for
+  spots that do not exist. Entries are 1 only for `1` or `true`.
+- The finder distance is horizontal (feet to the buried spot), so LOCK = 1 m is reachable while standing.
+- A successful bundle dig emits two effects: a `notice` "You dug up a little bundle!" (sound `chime`) and the `loot` rows
+  (sound `collect`). game.js `effect()` shows only feed rows when `loot` is set, so the text alone would be invisible.
+  An empty dig emits only the loot row (`+1 Sand`, sound `chime`). Extra replies: `dug` → "Someone already dug here", `none` → "The island drifted off".
+- The raftPrompts provider registers lazily from `update()` too, in case `window.raftPrompts` appears after the content registry starts.
+- The HUD hides via `style.display`, not `hidden`: the inline `display:flex` would override the `hidden` attribute.
+- No brass band on the chest (7 meshes: 2 holes, 2 mounds, chest box + lid, puff). The mound is a low-poly, flat-shaded half sphere
+  (scale .38×.16×.38, `#dcb877`) so it reads as a heap; the spec's `.45×.14×.45` smooth one looked like a flat disc.
+- `userData.bead` exists on the finder model, but nothing drives its glow yet: treasure.js cannot reach the hands' model.
+- `HOLD.finder.rx` is -1.1 (not -0.5), with the coil tilted in the model, so it leans forward over the sand.
+- `coop.js` `HELD` gains `'spade', 'finder'` (appended, so older peers read them as null) so the partner sees them in hand.
+- Debug adds `chestUp()`; the islands `now` object also carries `phase`.
