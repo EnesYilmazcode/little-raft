@@ -42,7 +42,7 @@ import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, hookableItems,
 import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan, LIVE_STATUS_EVENT } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
-import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
+import { createQuality, setShadows } from './quality.js?build=v3-survival-ae77fa84ac2b';
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
@@ -440,7 +440,7 @@ export function mount(transfer = null) {
     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     hemi = new T.HemisphereLight('#bfe6ff', '#2f6f7a', 1.0); scene.add(hemi); // content hook: kept for day/night; blue sky fill from above, teal sea bounce from below
     sun = new T.DirectionalLight('#ffeccb', 3.0); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.0004; sun.shadow.normalBias = .03; sun.shadow.radius = 3; scene.add(sun, sun.target); // shadow box is fitted to the raft each frame
-    quality = createQuality({sun, preset:options.graphics, onChange:() => applyUserGraphics()}); applyUserGraphics(); // owns the level (shadow map size, sun.castShadow); applyUserGraphics sets the pixel ratio once, with the render scale
+    quality = createQuality({sun, shadowMap:renderer.shadowMap, preset:options.graphics, onChange:() => applyUserGraphics()}); applyUserGraphics(); // owns the level (shadow map size, shadow pass on/off); applyUserGraphics sets the pixel ratio once, with the render scale
     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#a6e9f2', fadeNear:28, fadeFar:190}); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
     if (ART.artEnabled()) ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T}); // art lane hook
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
@@ -575,15 +575,6 @@ export function mount(transfer = null) {
     hands?.preload(['hammer', 'fishingrod', 'spear']);
     try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
     catch (e) { console.warn('shader warm-up failed', e); }
-  }
-  // Also build the no-shadow variant (adaptive floor / Shadows off), else that switch relinks every lit program mid-game.
-  // Runs once, a few seconds into play (after lazily built materials such as wildlife exist), so boot compiles only what the first frame draws.
-  let lateNoShadowWarm = true;
-  function warmNoShadow() {
-    if (!sun?.castShadow || typeof renderer?.compileAsync !== 'function') return;
-    sun.castShadow = false;
-    try { renderer.compileAsync(scene, camera).catch(() => {}); } catch {}
-    sun.castShadow = true;
   }
   // Held models and build ghosts for every kind in the bag are built ahead and their shaders compiled
   // (ghosts are shown for the call: renderer.compile skips hidden meshes), so the first switch never links programs mid-play.
@@ -1305,7 +1296,7 @@ export function mount(transfer = null) {
     const l = quality.levels[quality.level], sc = clamp(options.renderScale ?? 1, .5, 1);
     const pr = l ? Math.max(.5, l.pixelRatio * sc) : null;
     if (pr != null && renderer.getPixelRatio() !== pr) renderer.setPixelRatio(pr); // each call resizes the canvas and its MSAA buffers
-    if (sun) sun.castShadow = options.shadows !== false && !!l?.shadows;
+    setShadows(renderer.shadowMap, sun, options.shadows !== false && !!l?.shadows); // keeps castShadow on: no program change
   }
   function applyOptions(next) {
     options = next; applyVolume(); soundLabel(); // loop-ux: label notes a 0% volume
@@ -1620,7 +1611,6 @@ export function mount(transfer = null) {
     if (achList.length !== seenAch || achList !== seenAchList) { seenAch = achList.length; seenAchList = achList; const n = noteAchievements(lookState.unlocked, achList); if (n.length) { saveLook(lookState.look, lookState.unlocked); lookUI?.refresh(); notice('New hat for your Look: ' + n.map(id => LOOK_HATS.find(h => h.id === id)?.label ?? id).join(', ')); } } // [look] hat unlocks (host or guest view of the list)
     refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud(); updateNotices(dialog); warmKinds();
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
-    if (lateNoShadowWarm && running) { lateNoShadowWarm = false; later(warmNoShadow, 4000); }
     // Behind a blurred pause/settings backdrop the world only redraws at ~10 fps (the inventory has no blur).
     const veiled = dialog && !!document.querySelector('dialog[open]:not(#inventory)');
     if (veiled && now - lastDraw < 100) return;
@@ -2080,7 +2070,7 @@ export function mount(transfer = null) {
       if (!renderer) return null;
       const i = renderer.info, c = {meshes:0, visible:0, lights:0, shadowCasters:0};
       scene?.traverse(o => { if (o.isMesh || o.isLine || o.isPoints) { c.meshes++; if (o.visible) c.visible++; if (o.castShadow) c.shadowCasters++; } if (o.isLight) c.lights++; });
-      return {calls:i.render.calls, triangles:i.render.triangles, lines:i.render.lines, points:i.render.points, geometries:i.memory.geometries, textures:i.memory.textures, programs:i.programs?.length ?? null, pixelRatio:renderer.getPixelRatio(), shadows:renderer.shadowMap.enabled && !!sun?.castShadow, quality:quality ? {level:quality.level, levels:quality.levels.length, preset:quality.info.preset, pixelRatio:quality.info.pixelRatio, shadowMapSize:quality.info.shadowMapSize, ema:quality.info.ema} : null, ...c};
+      return {calls:i.render.calls, triangles:i.render.triangles, lines:i.render.lines, points:i.render.points, geometries:i.memory.geometries, textures:i.memory.textures, programs:i.programs?.length ?? null, pixelRatio:renderer.getPixelRatio(), shadows:renderer.shadowMap.enabled && renderer.shadowMap.autoUpdate && !!sun?.castShadow && sun.shadow.intensity > 0, quality:quality ? {level:quality.level, levels:quality.levels.length, preset:quality.info.preset, pixelRatio:quality.info.pixelRatio, shadowMapSize:quality.info.shadowMapSize, ema:quality.info.ema} : null, ...c};
     },
     audio:sfx, // volume buses (setBus/getBus master|effects|ambience|music) and setMusic for the menus
     get state() {

@@ -1,5 +1,5 @@
 // Little Raft adaptive quality. Pure ES module: nothing happens on import, no clock reads.
-// createQuality({renderer, sun, dpr, preset, onChange}) -> { tick(ms), setCap(preset), reset(opts), level, levels, describe() }
+// createQuality({renderer, shadowMap, sun, dpr, preset, onChange}) -> { tick(ms), setCap(preset), reset(opts), level, levels, describe() }
 // Driven only by the frame times passed to tick(); time is the sum of accepted samples.
 
 export const PRESETS = Object.freeze({
@@ -38,6 +38,24 @@ const LADDER = [
 
 const round = (v) => Math.round(v * 1000) / 1000;
 
+/**
+ * Turn the sun's shadows on or off without changing any shader program key. sun.castShadow stays true
+ * (flipping it changes numDirLightShadows, so every lit material would need a second program); "off"
+ * stops the shadow pass (shadowMap.autoUpdate=false: WebGLShadowMap.render returns early, 0 draws) and sets
+ * shadow.intensity=0 so the stale map reads as fully lit. "On" restores both and asks for one redraw.
+ */
+export function setShadows(shadowMap, sun, on) {
+  if (sun) {
+    sun.castShadow = true;
+    if (sun.shadow) sun.shadow.intensity = on ? 1 : 0;
+  }
+  if (shadowMap) {
+    if (on && !shadowMap.autoUpdate) shadowMap.needsUpdate = true;
+    if (!on) shadowMap.needsUpdate = false;
+    shadowMap.autoUpdate = !!on;
+  }
+}
+
 /** Build the level list for a preset cap and device pixel ratio. Never exceeds the cap. */
 export function buildLevels(preset = 'medium', dpr = 1) {
   const cap = PRESETS[preset] || PRESETS.medium;
@@ -55,7 +73,7 @@ export function buildLevels(preset = 'medium', dpr = 1) {
   return Object.freeze(out);
 }
 
-export function createQuality({ renderer, sun, dpr = globalThis.devicePixelRatio ?? 1, preset = 'medium', onChange } = {}) {
+export function createQuality({ renderer, shadowMap = renderer?.shadowMap, sun, dpr = globalThis.devicePixelRatio ?? 1, preset = 'medium', onChange } = {}) {
   let cap = PRESETS[preset] ? preset : 'medium';
   let levels = buildLevels(cap, dpr);
   let level = 0;
@@ -80,11 +98,9 @@ export function createQuality({ renderer, sun, dpr = globalThis.devicePixelRatio
           shadow.map = null;
           shadow.mapSize.set(l.shadowMapSize, l.shadowMapSize);
         }
-        sun.castShadow = true;
-      } else {
-        sun.castShadow = false;
       }
     }
+    if (sun || shadowMap) setShadows(shadowMap, sun, l.shadows);
     if (notify) onChange?.(info(reason));
   }
 
