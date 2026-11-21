@@ -88,7 +88,7 @@ test('D2: E runs the water action (purifier / planter) before the grill, matchin
 
 test('D3: gamepad RT drives the fishing-cooking rod (species catch) before the legacy use/charge path', () => {
   const down = gameSrc.match(/useDown:\(\) => \{(.*)/)[1];
-  assert.match(down, /^\s*if \(fc\?\.pointerDown\(\)\) return;/, 'fc.pointerDown is tried first');
+  assert.match(down, /^\s*(?:if \(fainted >= 0\) return; )?if \(fc\?\.pointerDown\(\)\) return;/, 'fc.pointerDown is tried first (after the passed-out guard)');
   const up = gameSrc.match(/useUp:\(\) => \{(.*)/)[1];
   const i = up.indexOf('fc?.pointerUp()');
   assert.ok(i >= 0 && i < up.indexOf('releaseCharge'), 'fc.pointerUp before releaseCharge');

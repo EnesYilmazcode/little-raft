@@ -386,7 +386,22 @@ export function mount(transfer = null) {
   // three r170 draws transparent DoubleSide materials as two passes and flips material.side (a full program-parameter
   // rebuild) around each; these thin, depth-tested parts look the same in one pass.
   function singlePass(o) { o.traverse(c => { for (const m of [].concat(c.material || [])) if (m.transparent && m.side === T.DoubleSide) m.forceSinglePass = true; }); return o; }
-  function disposeGeometry(o) { const cached = new Set(materialCache.values()), materials = new Set(); o.traverse(c => { if (!c.geometry?.userData.shared) c.geometry?.dispose(); for (const m of [].concat(c.material || [])) if (!cached.has(m) && m !== clothMat && !m.userData.shared) materials.add(m); }); for (const m of materials) { m.map?.dispose(); m.dispose(); } }
+  // three's compileAsync polls every material it compiled until its program is ready; a material disposed meanwhile has no
+  // program and the poll throws ("reading 'isReady'"). So while any warm-up is in flight, material disposal is queued and
+  // flushed when the last one settles (or after WARM_SETTLE_MS: a poll that threw never settles its promise).
+  const WARM_SETTLE_MS = 20000;
+  let warmPending = 0; const warmDisposeQueue = new Set();
+  function freeMaterial(m) { try { m.map?.dispose(); m.dispose(); } catch {} }
+  function flushWarmDisposals() { const q = [...warmDisposeQueue]; warmDisposeQueue.clear(); for (const m of q) freeMaterial(m); }
+  function trackWarm(p) {
+    if (!p || typeof p.then !== 'function') return p;
+    warmPending++; let done = false;
+    const settle = () => { if (done) return; done = true; clearTimeout(t); if (--warmPending <= 0) { warmPending = 0; flushWarmDisposals(); } };
+    const t = setTimeout(settle, WARM_SETTLE_MS); // plain timer (not later()): it must settle even after dispose so the queue never leaks
+    p.then(settle, settle);
+    return p;
+  }
+  function disposeGeometry(o) { const cached = new Set(materialCache.values()), materials = new Set(); o.traverse(c => { if (!c.geometry?.userData.shared) c.geometry?.dispose(); for (const m of [].concat(c.material || [])) if (!cached.has(m) && m !== clothMat && !m.userData.shared) materials.add(m); }); for (const m of materials) { if (warmPending > 0) warmDisposeQueue.add(m); else freeMaterial(m); } }
   function woodMat(hex) { // content hook (paint): tinted plank materials, cached forever (disposeGeometry skips them)
     const k = 'wood:' + hex;
     if (!materialCache.has(k)) { let m = null; try { m = createWoodMaterial(T, hex); } catch (e) { console.warn('wood material failed', e); } materialCache.set(k, m ?? new T.MeshStandardMaterial({color:hex, roughness:.85, metalness:0})); }
@@ -496,7 +511,7 @@ export function mount(transfer = null) {
         onBroke:(x, z) => { fc?.dropTile?.(x, z); content?.mods?.find(m => m.name === 'storage')?.dropTile?.(x, z); rebuildRaft(); fitShadow(); emit({kind:'shark', fx:'broke', x, z, text:'The shark tore a foundation off the raft!'}, 'all'); },
         onHurt:(i, n) => { if (i === 0) hurtLocal(n); else emit({kind:'shark', hurt:n}, 'guest'); },
         onWarn:() => emit({kind:'shark', text:'The shark is biting the raft!'}, 'all'),
-        sendHit:dmg => action({kind:'shark:hit', dmg}),
+        sendHit:dmg => action({kind:'shark:hit', dmg, slot:localBag().selectedIndex}), // one action: the host wears this spear only if it accepts the hit
       }, world.shark);
     } catch (e) { console.error('shark failed', e); shark = null; }
   }
@@ -578,7 +593,7 @@ export function mount(transfer = null) {
   function warmShaders() {
     if (typeof renderer.compileAsync !== 'function') return;
     hands?.preload(['hammer', 'fishingrod', 'spear']);
-    try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
+    try { trackWarm(renderer.compileAsync(scene, camera)).catch(e => console.warn('shader warm-up failed', e)); }
     catch (e) { console.warn('shader warm-up failed', e); }
   }
   // Also build the no-shadow variant (adaptive floor / Shadows off), else that switch relinks every lit program mid-game.
@@ -587,7 +602,7 @@ export function mount(transfer = null) {
   function warmNoShadow() {
     if (!sun?.castShadow || typeof renderer?.compileAsync !== 'function') return;
     sun.castShadow = false;
-    try { renderer.compileAsync(scene, camera).catch(() => {}); } catch {}
+    try { trackWarm(renderer.compileAsync(scene, camera)).catch(() => {}); } catch {}
     sun.castShadow = true;
   }
   // Held models and build ghosts for every kind in the bag are built ahead and their shaders compiled
@@ -601,7 +616,7 @@ export function mount(transfer = null) {
       warmedKinds.add(k); fresh = true; hands.preload([k]);
       if (k === 'hammer') ghosts.preload(['floor']); else if (DECOR_TYPES.includes(k)) ghosts.preload([k]);
     }
-    if (fresh) { try { ghosts.warm(() => renderer.compileAsync(scene, camera).catch(() => {})); } catch (e) { console.warn('shader warm-up failed', e); } }
+    if (fresh) { try { ghosts.warm(() => trackWarm(renderer.compileAsync(scene, camera)).catch(() => {})); } catch (e) { console.warn('shader warm-up failed', e); } }
   }
   function palm(parent, x, y, z, s = 1) {
     const g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); cylinder(.09, .17, 1.6, '#ad8153', 0, .8, 0, g);
@@ -677,8 +692,9 @@ export function mount(transfer = null) {
   function gulp(munch) { beep(munch ? 240 : 330); later(() => beep(munch ? 200 : 280), 130); }
   // Game-internal damage hook for other systems (sharks, falls…). Hurts the LOCAL player only; on a host, a hit on the
   // guest must be sent to the guest (e.g. as an effect) and applied there with its own hurtPlayer. Returns HP lost.
+  let soloPaused = false; // solo pause menu (a real <dialog>) is open: the world holds still; set once per frame. Never for host/guest.
   function hurtPlayer(n, cause = 'hit') {
-    if (!running || fainted >= 0) return 0;
+    if (!running || fainted >= 0 || soloPaused) return 0;
     const lost = damageVitals(vitals, Number(n), String(cause ?? 'hit'));
     if (lost > 0) vitalsUI?.flash();
     return lost;
@@ -696,7 +712,8 @@ export function mount(transfer = null) {
       if (fainted >= 2.6) {
         fainted = -1; const c = cleanVitals(RESPAWN); vitals.hp = c.hp; vitals.food = c.food; vitals.water = c.water; vitals.hurtAt = -Infinity; vitals.starving = false;
         diving?.cancel(); const s = spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); pitch = -.28; // fresh physics: dry, grounded, not diving
-        vitalsUI?.faint(false); notice('You wake up on the raft, hungry and thirsty', 3200);
+        charging = null; reeling = false; down = null; if (hook) { fishWait = 0; endHook(); } // nothing cast or charged during the faint survives the wake
+        vitalsUI?.faint(false); notice('You wake up on the raft, hungry and thirsty', 3200); refreshPointerUI(true);
       }
       return;
     }
@@ -706,9 +723,9 @@ export function mount(transfer = null) {
       else if (bag.selectedIndex !== eating.slot || bag.slots[eating.slot]?.kind !== eating.item) eating = null; // switched slot or item gone
       else if ((eating.t += dt) >= EAT_SECONDS) { const item = eating.item; eating = null; action({kind:'eat', item}); }
     }
-    if (role === 'solo' && dialog && dialogOpen()) return; // the solo pause menu stops the clock
+    if (soloPaused) return; // the solo pause menu stops the clock
     vitalsOpts.mult = exertion; tickVitals(vitals, dt, vitalsOpts);
-    if (vitals.hp <= 0) { fainted = 0; eating = null; charging = null; reeling = false; if (hook) { fishWait = 0; endHook(); } clearInput(); } // drop the line: it must not stay out from the old spot
+    if (vitals.hp <= 0) { fainted = 0; eating = null; charging = null; reeling = false; if (hook) { fishWait = 0; endHook(); } if (building?.menu.isOpen) building.menu.close(false); clearInput(); } // drop the line: it must not stay out from the old spot
   }
   // Crosshair prompts (dist/prompts.js provider): eat/drink, else the cup/purifier/planter prompt (game.js markup).
   const tipCache = new Map(), eatTips = new Map(), EATING_TIP = {key:'', label:'…', muted:true};
@@ -1238,6 +1255,15 @@ export function mount(transfer = null) {
       award({kind:'fish'}); return;
     }
     if (a.kind === 'repair') {
+      const sel = isInt(a.slot) ? bag.slots[a.slot] : null;
+      if (sel && PROG_ITEMS[sel.kind]?.tool && !isHookSlot(sel)) { // the held tool itself (spear, hammer, rod…), never a hook elsewhere
+        const cost = repairCost(sel.kind), name = itemName(sel.kind), title = ITEM_INFO[sel.kind]?.name ?? sel.kind;
+        if (!cost) { emit({kind:'notice', text:title + ' cannot be repaired'}, actor); return; }
+        if ((sel.durability ?? MAX_HEALTH) >= MAX_HEALTH) { emit({kind:'notice', text:'Your ' + name + ' is in great shape'}, actor); return; }
+        if (!spend(bag, cost)) { emit({kind:'notice', text:'Repair needs ' + missingText(bag, cost)}, actor); return; }
+        bag.slots[a.slot].durability = MAX_HEALTH; bag.version++; emit({kind:'build', text:title + ' repaired!', sound:'repair'}, actor);
+        award({kind:'repair'}); return;
+      }
       const i = repairHookSlot(bag.slots, a.slot, MAX_HEALTH, isHookSlot);
       if (i < 0) { emit({kind:'notice', text:'No hook to repair'}, actor); return; }
       if ((bag.slots[i].durability ?? MAX_HEALTH) >= MAX_HEALTH) { emit({kind:'notice', text:'Your hook is in great shape'}, actor); return; }
@@ -1264,7 +1290,7 @@ export function mount(transfer = null) {
     if (a.kind === 'shark:hit') { // shark lane: a guest's spear hit (the host's own hits go straight to the sim)
       const p = actor === 'guest' ? other : physics, now = performance.now();
       if (!shark || !p || !Number.isFinite(a.dmg) || now - sharkHitAt[actor] < 250 || shark.distanceTo(p.x, p.z) > 6) return;
-      sharkHitAt[actor] = now; shark.applyHit(a.dmg); return;
+      sharkHitAt[actor] = now; shark.applyHit(a.dmg); spearRep?.wearHit(bag, a.slot, actor); return; // wear only for an accepted hit
     }
     if (content?.action(a, actor, bag)) return; // content hook: module actions (chest, research, gather…)
     if (WATER_ACTIONS.includes(a.kind)) { applyWatering(a, actor, bag); return; }
@@ -1274,7 +1300,7 @@ export function mount(transfer = null) {
 
   // Inventory UI and hotbar. The guest predicts locally; the host snapshot (acked by seq) is canonical.
   function selectSlot(i) {
-    if (!isInt(i) || i < 0 || i >= HOTBAR) return;
+    if (fainted >= 0 || !isInt(i) || i < 0 || i >= HOTBAR) return;
     const bag = localBag(); if (bag.selectedIndex === i) return;
     charging = null; hover = null; play('ui', .5); if (hintsDone.has('bag')) hintDone('slots');
     if (!reelCast('slot') && hook && !hook.fishing) { hook.cancel?.(); endHook(); } // switching away retracts the hook; its catch stays in the sea
@@ -1294,21 +1320,22 @@ export function mount(transfer = null) {
     const locked = content?.craftLocked(recipe, myActor()); if (locked) { notice(String(locked)); return false; }
     return action({kind:'craft', recipe}) !== false;
   }
-  function repair() { if (!running) return; const bag = localBag();
+  function repair() { if (!running || fainted >= 0) return; const bag = localBag();
     const sel = bag.slots[bag.selectedIndex]; if (sel?.kind === 'spade') { action({kind:'treasure.repair'}); return; } // [treasure-hook] R on a held spade
-    action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH, isHookSlot)}); }
+    const own = sel && PROG_ITEMS[sel.kind]?.tool && !isHookSlot(sel); // a held spear/hammer/rod repairs itself; the hook search is only for non-tools
+    action({kind:'repair', slot:own ? bag.selectedIndex : repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH, isHookSlot)}); }
   // Pad build radial pick: hold the hammer (from the hotbar) and select that piece on the building wheel.
   function pickBuildPiece(id) {
-    if (!running || !building || !Object.hasOwn(PIECES, id)) return;
+    if (!running || fainted >= 0 || !building || !Object.hasOwn(PIECES, id)) return;
     const slots = localBag().slots, i = selectedKind() === 'hammer' ? localBag().selectedIndex : slots.findIndex((s, k) => k < HOTBAR && toolRole(s?.kind ?? null) === 'hammer');
     if (i < 0) { notice('Put a hammer on your hotbar to build'); return; }
     selectSlot(i); building.menu.setSelected(id); notice(PIECES[id].name + ' selected', 1200);
   }
   // X (or the pad remove button) released with the hammer: remove what the chip named.
   function removeRelease() { if (!building?.removing) return; const a = building.removeAction(); if (a && running) { swing = 1; action(a); } }
-  function openInventory() { if (!running || !survivalUI) return; pauseInput(); releaseLock(); survivalUI.open?.(); play('open'); hintDone('bag'); }
+  function openInventory() { if (!running || fainted >= 0 || !survivalUI) return; pauseInput(); releaseLock(); survivalUI.open?.(); play('open'); hintDone('bag'); }
   function interact() {
-    if (!running || uiBlocked() || diving?.state.diving) return; // diving lane hook: E gathers underwater
+    if (!running || fainted >= 0 || uiBlocked() || diving?.state.diving) return; // diving lane hook: E gathers underwater
     if (!pickupFrom(currentAim()) && sailing?.interact()) return; // [sailing] E on a sail / anchor (pick-up wins)
     const target = pickupFrom(currentAim());
     if (target) {
@@ -1358,13 +1385,13 @@ export function mount(transfer = null) {
     if (kind === 'cup' || kind === 'saltcup' || kind === 'freshcup') { const w = wateringTarget(aim); if (w?.click) { swing = 1; action(w.click); } else notice(w?.why ?? WATER_WHY[kind]); return; }
   }
   function beginCharge(at) {
-    if (!running || hook || fishWait || selectedKind() !== 'hook') return;
+    if (!running || fainted >= 0 || hook || fishWait || selectedKind() !== 'hook') return;
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
     charging = {start:performance.now(), x:at?.x ?? null, y:at?.y ?? null};
   }
   function releaseCharge(aim) {
     const c = charging; charging = null;
-    if (!c || !running || hook || selectedKind() !== 'hook') return;
+    if (!c || !running || fainted >= 0 || hook || selectedKind() !== 'hook') return;
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
     throwHook(aim, clamp((performance.now() - c.start) / CHARGE_MS, MIN_CHARGE, 1));
   }
@@ -1681,7 +1708,7 @@ export function mount(transfer = null) {
   function frame() {
     const now = performance.now(), rawMs = now - last, realDt = rawMs / 1000, dt = Math.min(realDt, .05); last = now; elapsed += dt;
     if (running && !diveWarmed && ++playFrames > 2) scheduleDiveWarm();
-    const dialog = uiBlocked();
+    const dialog = uiBlocked(); soloPaused = role === 'solo' && dialog && dialogOpen();
     if (running && !dialog && !document.hidden && !PIN_QUALITY) quality.tick(rawMs);
     checkPeerStale(now);
     ocean.update(elapsed, camera); sfx.tick(dt, {swimming:physics.swimming});
@@ -1697,7 +1724,7 @@ export function mount(transfer = null) {
     if (!promptOff && window.raftPrompts?.provide) { try { promptOff = window.raftPrompts.provide({id:'game-context', priority:0, prompt:promptTip}); } catch { promptOff = () => {}; } } // [vitals] eat/drink + watering prompts
     updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost();
     content?.update(dt); // content hook
-    if (shark) { try { shark.update(dt, elapsed, running); } catch (e) { console.error('shark update failed', e); try { shark.dispose(); } catch {} shark = null; } } // shark lane
+    if (shark && !soloPaused) { try { shark.update(dt, elapsed, running); } catch (e) { console.error('shark update failed', e); try { shark.dispose(); } catch {} shark = null; } } // shark lane
     sky?.follow(ocean.uniforms, scene.background); sky?.update(elapsed, camera); // sky dome tracks day/night's horizon, zenith and sun
     if (fc) { try { fc.update(dt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
     if (instruments) { try { instruments.update(dt); } catch (e) { console.error('instruments update failed', e); try { instruments.dispose(); } catch {} instruments = null; } } // [instruments]
@@ -1774,6 +1801,7 @@ export function mount(transfer = null) {
     look(dx, dy, LOOK_SENSITIVITY * options.sensitivity);
   });
   on(canvas, 'pointerdown', e => {
+    if (running && fainted >= 0) return; // passed out: no tool, hook, wheel or station input
     if (e.button === 2 && running && building && heldKind() === 'hammer' && !uiBlocked()) { building.menu.open(); return; } // building-pieces lane hook
     if (e.button === 2 && running && !uiBlocked() && content?.alt(isLocked() ? pickCenter() : currentAim(), heldKind())) return; // content hook (paint: brush colour)
     if (!running || !scene || e.button !== 0 || uiBlocked()) return;
@@ -1836,6 +1864,7 @@ export function mount(transfer = null) {
   on(window, 'keydown', e => {
     const kd = keyDecision({inField:!!e.target?.matches?.('input, textarea, select'), blocked:uiBlocked()});
     if (!kd.act) { if (kd.record && !controls) keys[e.code] = true; return; } // held keys survive a panel; movePlayer gets input=false meanwhile
+    if (running && fainted >= 0) { if (!controls) keys[e.code] = true; if (e.code.startsWith('Arrow') || e.code === 'Space' || e.code === 'Tab') e.preventDefault(); return; } // passed out: keys are held, nothing acts
     if (running && building?.key(e.code, true, heldKind() === 'hammer', e.repeat)) { e.stopImmediatePropagation(); if (e.code === 'KeyX' || e.code === 'KeyR') e.preventDefault(); return; } // building-pieces lane hook
     if (controls) { if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault(); return; } // controls lane: actions come from the action map
     keys[e.code] = true;
@@ -1872,7 +1901,7 @@ export function mount(transfer = null) {
       buildPieces:() => PIECE_ORDER.map(id => ({id, label:PIECES[id].name})), buildPick:pickBuildPiece, // pad build radial = the hammer's wheel
       menuBack:id => { if (!running) return; if (survivalUI?.isOpen) survivalUI.close(); else if (id === 'back' && settingsController?.back()) return; else if (settingsController?.isOpen) settingsController.close(); else topDialog()?.close(); }, // pad Y/Start/B: same close + relock as the keyboard (B first folds the settings panel; other dialogs close and relock, or return to pause, in their close handlers)
       menuNav:(id, phase) => padNav.handle(id, phase), // pad D-pad/stick/A/LB/RB move focus inside the open panel (pad-nav.js)
-      useDown:() => { if (fc?.pointerDown()) return; if (reelCast('click')) return; if (castOut()) reeling = true; else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); } },
+      useDown:() => { if (fainted >= 0) return; if (fc?.pointerDown()) return; if (reelCast('click')) return; if (castOut()) reeling = true; else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); } },
       useUp:() => { reeling = false; if (fc?.pointerUp()) return; if (charging) releaseCharge(pickCenter()); }, useCancel:() => { reeling = false; if (charging?.x === null) charging = null; fc?.releaseInput(); }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});
     signal.addEventListener('abort', () => controls?.dispose());
   } catch (e) { console.error('controls lane failed to start', e); controls = null; }
@@ -2326,6 +2355,7 @@ export function mount(transfer = null) {
       if (o.isLight && o.shadow?.dispose) o.shadow.dispose();
     });
     for (const m of materialCache.values()) mats.add(m);
+    for (const m of warmDisposeQueue) mats.add(m); warmDisposeQueue.clear(); // removed while a warm-up ran: not in the scene any more
     if (clothMat) mats.add(clothMat);
     for (const g of geos) { try { g.dispose(); } catch {} }
     for (const m of mats) { try { for (const v of Object.values(m)) if (v?.isTexture) v.dispose(); m.dispose(); } catch {} }
