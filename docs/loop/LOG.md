@@ -60,3 +60,13 @@ Review fixes: last-bottle respawn, sanitized logbook progress on hot-swap fallba
 Checks: `npm test` 61/61 (was 22; npm test now runs tests/*.test.mjs); shoot.py `errors: []`.
 Known limits: live two-peer co-op not run (PeerJS broker blocked from the sandbox; co-op reviewed by code). Older builds reject bags holding the new item kinds (mixed-version co-op unsupported; downgrading drops new decor).
 Next ideas: nicer receiver model, ripe-palm cue, logbook tab height jump; more building pieces/decorations once the building-pieces lane lands.
+
+## 2026-11-21 · claude/loop-visuals-202611210558 (visuals, round 2)
+Base: origin/claude/raft-master (cf2069d). Fleet: critic, 11 builders, art judge, perf checker (14 agents).
+Round 1 (claude/loop-visuals-202611210451) was on the older integration base; this round ports it onto raft-master and adds the critic's next gaps.
+- Ported + judge fixes: tropical sky dome driven by day/night (horizon cumulus, warm dusk, blue night); warm sun + blue fill; deep blue ocean to the horizon with soft crest foam; driftwood deck with per-board tone and dark seams; rocky sand-shelf scenery islands (island-art.js); tan canvas hotbar, inventory and pause menu.
+- New: hook redo (slimmer teal plastic J, fist wraps the tape grip); title camera low near the horizon; HUD widgets no longer overlap, warm plates; cream key-cap prompt under the crosshair and tan "+N" pickup pills; painted item icons; debris sits in the water with weathered colours and a foam ring.
+- Judge: 10/11 accepted; deck rejected as too dark/olive -> lightened boards and neutral hemi ground (#5a5a48).
+- Perf: PASS. Spawn probe median 288 vs 288 ms (calm weather), draw calls unchanged, triangles +15%.
+- Screenshots: use ?daynight=off for calm, comparable shots (weather is random per seed).
+- Next: hotbar hook icon should match the teal hook; scrap reads as a shark fin; plastic blob -> bottle; cumulus glows in rain; rain streaks too long; onboarding title contrast; gulls over the title logo; islands small from spawn; thumb blob, empty fist mid-screen after throw.
