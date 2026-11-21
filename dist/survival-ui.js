@@ -1,5 +1,6 @@
 // Little Raft survival UI: shared-play hotbar (.tools) + inventory/crafting dialog (#inventory).
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
+import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, holdDelay, holdHint, holdLabel, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_ICONS } from './item-svg.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
@@ -213,6 +214,7 @@ const CSS = `
   transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),5px);transition:opacity .25s,transform .22s cubic-bezier(.3,1.3,.5,1)}
 .tools.sv-hotbar>.sv-label.sv-show{opacity:1;transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),0)}
 @media(max-width:760px){.tools.sv-hotbar{--s:min(42px,calc((96vw - 41px) / 10));--g:3px}.tools.sv-hotbar .sv-art{inset:3px}.tools.sv-hotbar .sv-count{font-size:12px}}
+body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag has its own hotbar row; the world one peeked out under the modal */
 #inventory.sv-inv{--s:min(56px,calc((96vw - 410px) / 10 - 6px));--g:6px;padding:0;margin:max(16px,calc(50vh - 300px)) auto auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#3e2a17;
   width:max-content;min-width:0;max-width:96vw;max-height:94vh;overflow:visible;font:500 14px/1.35 ${FONT}}
 #inventory.sv-inv::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
@@ -1063,7 +1065,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (warmTimer >= 0) { clearTimeout(warmTimer); warmAll(); }
     clearSrc(); clearSay();
     safe(onPause);
-    if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
+    exitLock(document); // marked page-initiated (lock-rules.js), so the game does not treat it as a lost lock
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     if (trackEl) trackEl.hidden = true;
     buildRecipes();

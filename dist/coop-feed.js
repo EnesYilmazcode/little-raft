@@ -7,7 +7,7 @@ const CSS = `
 #coopFeed{position:fixed;left:20px;bottom:132px;z-index:3;display:flex;flex-direction:column;align-items:flex-start;gap:5px;
   max-width:min(320px,calc(50vw - 40px));pointer-events:none;font:600 13px/1.3 system-ui,-apple-system,'Segoe UI',sans-serif}
 #coopFeed .cf-line{display:flex;align-items:center;gap:8px;max-width:100%;padding:6px 12px 6px 10px;border-radius:999px;
-  background:#081624cc;color:#f6ecd6;box-shadow:0 2px 10px #0006;backdrop-filter:blur(4px);
+  background:#081624e0;color:#f6ecd6;box-shadow:0 2px 10px #0006;
   opacity:0;transform:translateY(6px);transition:opacity .25s,transform .25s}
 #coopFeed .cf-line.cf-in{opacity:1;transform:none}
 #coopFeed .cf-line.cf-out{opacity:0;transition:opacity ${FADE}ms}

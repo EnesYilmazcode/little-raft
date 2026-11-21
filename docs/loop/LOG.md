@@ -589,6 +589,83 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
 - Fixed after the merges: honey/wax/flower-seed sources, context prompt moved beside the crosshair, held-item and sprite-list conflicts with the beehive/instrument lanes.
 - Perf probe now compares against the current main (144c94a): 216 vs 322 ms, 96 vs 152 draw calls.
 - PR #2 merged into main (3031d67). Review fixes: inventory width at 900px, recipe tracker overlap, Pin button contrast. Reviewer low-priority notes left open: per-frame allocations in rain.js rainTarget and the physics substep input, sky.dispose() missing on hot swap, passive wheel listener.
+## Round 2: claude/loop-ux-202611210547 (base: origin/claude/raft-integration 7d19797 + round 1 merged in e4c3aee)
+
+Fleet:
+- 4 subsystem hunters: cursor/Electron, crafting/backpack, menus/settings, tools/viewmodel.
+- 2 adversarial verifiers per hunter report (8).
+- 5 fixers.
+- 1 new-player UX reviewer, reading screenshots.
+- 1 crafting UX builder.
+- 1 merge agent.
+
+### Merge
+Round 1 was merged into raft-integration, keeping both sides:
+- integration's dark translucent restyle, menus, pickup feed and hands viewmodel;
+- loop-ux's lock rules, edge notices and crafting features.
+
+The two item-icon modules became one shared cache.
+
+### Fixed (each confirmed by both verifiers)
+- **Cursor (CUR2-1..5)**, found with real X11 keys in headful Chrome:
+  - A relock made inside the Esc keyup was granted and then dropped by Chrome's Escape key-release shortcut. The relock is now deferred 250 ms, with guards.
+  - Chrome sometimes eats the Esc in locked play. Any lock loss the page didn't cause now opens the pause menu if the window is focused.
+  - Electron:
+    - on an eaten-Esc keyUp, `raftShell.escapedLock()` runs with a gesture;
+    - on window focus, `raftShell.focusRelock()` relocks after alt-tab, but only if play was locked and nothing is open;
+    - a gesture retry covers the Escape cooldown;
+    - the extra key-release round trip is gone.
+  - In the desktop app, Esc while holding a stack in the bag now puts the stack back first.
+- **Menus (MEN2-1..5):**
+  - The ambience slider is wired up, with its gain after the swell.
+  - The title help button no longer shows Resume or Quit, and quit-to-title is a no-op on the title screen.
+  - The shell Escape goes through settings' stepwise routing.
+  - The default renderScale is now 0.85.
+  - The Audio tab has a Sound toggle.
+- **Tools (TOOL2-1..5):**
+  - A cancelled hand swap rises back instead of staying half-lowered.
+  - A pose override waits for its own item.
+  - models.js is wired into held items and icons, with a fallback.
+  - Rod prompts no longer invite a losing click.
+  - Switching slots pulls the hook back, ported from lane-bugs 53426f0.
+- **Crafting (CRA2-1..6 + builder):**
+  - The crafting panel no longer jumps between tabs.
+  - Esc or a backdrop click while holding a stack puts it back.
+  - A stack picked up with the keyboard sits on its slot.
+  - No overflow between 861 and 923 px.
+  - The icon fallback is shared with the pickup feed.
+  - Tooltips show on focus.
+  - Inline ingredient counts.
+  - Craftable recipes sort first.
+  - A pinned-recipe tracker sits at the top-right edge.
+  - Shift crafts the maximum.
+  - Tools craft one at a time.
+  - The bag opens on the first ready recipe the player doesn't own yet.
+  - Counts read "have X · need Y".
+  - Clicking an ingredient jumps to its recipe.
+  - A slot flashes after crafting.
+- **UX (UX2-2/3/6/7/8):**
+  - Help shows in the pause side panel.
+  - Action prompts are in the edge stack.
+  - The hint chain teaches look → walk → throw → bag → slots.
+  - Key and reel wording is unified.
+  - The throw meter has a gradient fill and a full-power cue.
+  - One palette and font across all menus.
+  - Segmented preset picker.
+  - Title: a legible logo and a single "Play together" button.
+
+### Checks
+- `npm test`: 166 pass, 0 fail.
+- `python shoot.py dist <out>`: no page or console errors. The pause menu is a left rail; the bag shows inline counts.
+- `python tests/e2e/escape_lock.py`: the Esc-from-inventory relock and locked-play Esc → pause pass with native key codes, 3/3 in my run and 5/5 in the fixer's. The fixer measured HEAD before the fix at 0/5.
+- XTest real-key trials: 15/15, from the fixer.
+
+### Open for next round
+- None of the Electron main.cjs paths have ever run. They have only been reasoned from source and checked in a node sim. A real desktop run is needed.
+- The focus relock also fires when the player returns by clicking the title bar or taskbar, which is debatable.
+- Play together is still a separate centred dialog.
+- The Hammer and Fishing Rod icons are still dim on their tiles.
+
 
 ## 2026-11-21 · loop-features-202611210722 (features, round 3)
 Base: origin/claude/raft-master (6ab9b24, already holding round 1) + round 2 (loop-features-202611210534) merged in (re-based 3-way merge; kiln metal now uses master's `metalingot`/`glass`/`brick`; decor-pack rotation kept via `userData.ownRot`). raft-integration (newer timestamp) was skipped as base: it is a divergent line 558 commits behind master without the lanes.
@@ -712,6 +789,24 @@ Left for later:
 - "Discover at a Tinker's Desk" heading squeezed to 3 px (pre-existing UI bug)
 - `ocean.sampleAt` to remove double-argument boxing in `updateItems`
 
+## 2026-11-21 · loop-features-202611210648 (features)
+Base: origin/claude/raft-master (8cfdbcd). Branch: claude/loop-features-202611210648.
+
+Features (research in docs/features, specs in docs/specs):
+- **Rain Barrel + Sprinkler**: the barrel fills during rain (1 fresh cup per 30 s, with a slow dew trickle as a fallback), and E fills a cup at it. The sprinkler waters one dry, unripe palm per second in the 8 tiles around it, from its own tank or from a barrel beside it. State is in `world.collectors` / `world.sprinklers`, which old saves load as {}. New `get rain()` in daynight. Files: dist/rain.js, rain-model.js.
+- **Instruments**: three held instruments, Tide Drum, Reed Pipes and Bell Bars. LMB or RT plays; camera pitch picks one of 8 D-pentatonic notes. New `audio.note()` on the effects bus (50 ms gap, 10-voice cap). Co-op sends a transient `inst` message with validation, rate limits and distance falloff; HELD enum appended. Files: dist/instruments.js, instrument-models.js.
+- **Beehive + Flower Box**: honey and beeswax for a Beeswax Candle (night glow) and Honey Glazed Fish. Combs fill from flower boxes within 2 tiles, up to 3 combs. Flower seed comes from island bushes and treasure barrels. State in `world.ext.bees`, with an OLD_HOST guard. Files: dist/bees.js, bees-model.js.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA, 1 QA fixer (14 agents).
+Review fixes:
+- The candle's night light blew the deck out.
+- Hidden sprinkler spray stole the aim; pip materials leaked on raft rebuild.
+- The instrument prompt hid the pickup and swim prompts; the rate limit ran before validation; note sprites are now pooled.
+QA found that every content-module and watering prompt (round 1 purifier, storage, grill, plus this round's) went into the CSS-hidden `#contextPrompt` and leaked status lines into the notice feed. They now go through `raftPrompts.provide` via `promptFromHtml`.
+Checks: `npm test` 568/568 (was 533); shoot.py `errors: []`.
+Known limits: live two-peer co-op not run (co-op reviewed by code and unit tests). Mixed-version co-op unsupported (older builds drop the new decor and reset bags holding new kinds). Removing a barrel, sprinkler or hive with the hammer discards its contents. Fishing labels over 48 characters get cut off.
+Next ideas: hammer pickup that refunds contents, a placeable music stand, flower variety, sprinkler range ring while aiming.
+
 ## claude/loop-visuals-202611210648 (visuals, round 2)
 Base: origin/claude/raft-master (d56c3ef). Fleet: critic, 6 builders (sky, water, materials, hands-and-items, UI, models), art judge, perf checker (10 agents).
 - Accepted (judge: all 6 clearly better):
@@ -738,3 +833,33 @@ Base: origin/claude/raft-master (d56c3ef). Fleet: critic, 6 builders (sky, water
   - thumb blob on the hook grip
   - faint banding in the pause panel
 - Integrator merge into raft-master: only the orange-claw hook (hook.js) was taken; sky, daynight, ocean, deck, wood, islands, hands and HUD were stale parallel copies of work already on raft-master, so raft-master kept its versions (sky stays driven by daynight via sky.follow).
+
+## 2026-11-21 · integrator round 5 (integrator A)
+- Merged into raft-master: fleet-tech procedural-models/foliage/audio/perf/water/icons, loop-perf-0708, loop-features-0648, raft-tech, raft-content, raft-tests, lane-models, loop-perf-0648 (daynight refresh at 10 Hz, late no-shadow warm, idle dive warm), loop-perf-0720 (ghost hold after place, Shift+R 15° steps; Alt+R now turns backwards), loop-features-0703, loop-ux-0603/0648 remainders (bee item sources, title save line), loop-features-0831 (juicer, gull, building pack; restored after the earlier revert once the branch was finished).
+- Skipped: lane-placement (old placement model, superseded), raft-reference (third-party reference frames, not game code).
+- PR #2 review (2 reviewers, comments on the PR). Fixed: items.js still had an 8-slot hotbar, so slots 9/0 reset on load and for co-op guests; red off-deck ghost said "Place"; slot 9/0 onboarding hint; pickup feed covered the vitals panel; vitals panel overlapped the 10-slot hotbar below 1100px; resume hint forced next to the crosshair by an !important rule; sky noise texture leaked on hot swap.
+- Gate at dbf2ca9: 983/983, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text. Perf vs main (pinned, median of 3, interleaved): 185/191 vs 195/192 ms, 49-52 vs 51-55 draw calls.
+- Merged PR #4 into main (912d941).
+
+## 2026-11-21 · loop-features-202611210648 (features)
+Base: origin/claude/raft-master (8cfdbcd). Branch: claude/loop-features-202611210648.
+
+Features (research in docs/features, specs in docs/specs):
+- **Rain Barrel + Sprinkler**: the barrel fills during rain (1 fresh cup per 30 s, with a slow dew trickle as a fallback), and E fills a cup at it. The sprinkler waters one dry, unripe palm per second in the 8 tiles around it, from its own tank or from a barrel beside it. State is in `world.collectors` / `world.sprinklers`, which old saves load as {}. New `get rain()` in daynight. Files: dist/rain.js, rain-model.js.
+- **Instruments**: three held instruments, Tide Drum, Reed Pipes and Bell Bars. LMB or RT plays; camera pitch picks one of 8 D-pentatonic notes. New `audio.note()` on the effects bus (50 ms gap, 10-voice cap). Co-op sends a transient `inst` message with validation, rate limits and distance falloff; HELD enum appended. Files: dist/instruments.js, instrument-models.js.
+- **Beehive + Flower Box**: honey and beeswax for a Beeswax Candle (night glow) and Honey Glazed Fish. Combs fill from flower boxes within 2 tiles, up to 3 combs. Flower seed comes from island bushes and treasure barrels. State in `world.ext.bees`, with an OLD_HOST guard. Files: dist/bees.js, bees-model.js.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA, 1 QA fixer (14 agents).
+Review fixes:
+- The candle's night light blew the deck out.
+- Hidden sprinkler spray stole the aim; pip materials leaked on raft rebuild.
+- The instrument prompt hid the pickup and swim prompts; the rate limit ran before validation; note sprites are now pooled.
+QA found that every content-module and watering prompt (round 1 purifier, storage, grill, plus this round's) went into the CSS-hidden `#contextPrompt` and leaked status lines into the notice feed. They now go through `raftPrompts.provide` via `promptFromHtml`.
+Checks: `npm test` 568/568 (was 533); shoot.py `errors: []`.
+Known limits: live two-peer co-op not run (co-op reviewed by code and unit tests). Mixed-version co-op unsupported (older builds drop the new decor and reset bags holding new kinds). Removing a barrel, sprinkler or hive with the hammer discards its contents. Fishing labels over 48 characters get cut off.
+Next ideas: hammer pickup that refunds contents, a placeable music stand, flower variety, sprinkler range ring while aiming.
+
+- Follow-up: the electron check caught an uncaught `isReady` TypeError (three r170 compileAsync polling a material disposed
+  mid-compile); patched the vendored three with the upstream-style guard. Full fleet-gate PASS at dbf2ca9 (983 tests,
+  hook-only spawn, Esc from inventory keeps the lock, no page errors, shoot.py 159 vs 156 ms on main = +2%).
+  PR #4 merged dbf2ca9 into main. PR #5 (round 6) is the open PR now.

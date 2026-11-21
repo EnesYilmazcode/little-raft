@@ -206,6 +206,12 @@ test('seafloor builder: isGathered/highlight API and analytic normals', { skip: 
   floor.highlight(n.id);
   assert.equal(hl().length, 1);
   assert.equal(hl()[0].name, `SeafloorHighlight_${n.type}`);
+  floor.setDecor(false); // above water: only the floor patch draws
+  assert.equal(hl().length, 0);
+  assert.deepEqual(floor.group.children.filter((o) => o.visible).map((o) => o.name), ['SeafloorPatch']);
+  floor.setDecor(true);
+  assert.equal(hl().length, 1);
+  assert.ok(floor.group.getObjectByName('SeafloorRocks').visible && floor.group.getObjectByName('SeafloorWeed').visible);
   floor.highlight(null);
   assert.equal(hl().length, 0);
   assert.equal(floor.isGathered(n.id), false);
