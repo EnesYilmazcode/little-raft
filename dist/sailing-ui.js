@@ -6,17 +6,17 @@ const CSS = `
 #sailBadge{position:fixed;top:64px;right:16px;z-index:30;display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;
   color:#f6ecd6;font:600 12px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;user-select:none}
 #sailBadge[hidden],#sailPrompt[hidden]{display:none}
-#sailBadge svg{width:84px;height:84px;display:block;border-radius:50%;background:rgba(8,22,36,.55);box-shadow:0 4px 14px rgba(8,22,36,.25)}
-#sailBadge .sail-label{padding:2px 8px;border-radius:8px;background:rgba(8,22,36,.55);white-space:nowrap}
+#sailBadge svg{width:84px;height:84px;display:block;border-radius:50%;background:rgba(43,30,18,.7);box-shadow:0 0 0 1.5px rgba(246,236,214,.5),0 4px 14px rgba(43,30,18,.3)}
+#sailBadge .sail-label{padding:2px 8px;border-radius:8px;background:rgba(43,30,18,.7);box-shadow:0 0 0 1px rgba(246,236,214,.5);white-space:nowrap}
 #sailBadge .sail-dim{opacity:.3}
 #sailPrompt{position:fixed;left:50%;top:calc(50% + 54px);transform:translateX(-50%);padding:3px 10px;border-radius:8px;
-  background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:none;z-index:30;white-space:nowrap}
+  background:rgba(43,30,18,.7);box-shadow:0 0 0 1px rgba(246,236,214,.5);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:none;z-index:30;white-space:nowrap}
 #sailPrompt kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:0 4px;border:1px solid rgba(246,236,214,.6);border-radius:4px;font:inherit;text-align:center}
 .sail-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 `;
 const SVG = '<circle cx="0" cy="0" r="38" fill="none" stroke="rgba(246,236,214,.35)" stroke-width="1.5"/>'
   + '<path d="M0-41V-35M41 0H35M0 41V35M-41 0H-35" stroke="rgba(246,236,214,.45)" stroke-width="1.5"/>'
-  + '<g data-k="n"><text x="0" y="-21" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="700" fill="#f6ecd6" font-family="system-ui,sans-serif">N</text></g>'
+  + '<text data-k="n" x="0" y="-21" text-anchor="middle" dominant-baseline="central" font-size="10" font-weight="700" fill="#f6ecd6" font-family="system-ui,sans-serif">N</text>'
   + '<g data-k="w"><path d="M-3 22Q2 10-2 0T2-18" fill="none" stroke="#9fd8e6" stroke-width="3" stroke-linecap="round"/>'
   + '<path d="M2-27L-5-15L8-16Z" fill="#9fd8e6"/></g>'
   + '<g data-k="s"><path d="M0-36L-6-26H6Z" fill="#ffb355" stroke="#473b26" stroke-width=".8" stroke-linejoin="round"/></g>'
@@ -24,10 +24,12 @@ const SVG = '<circle cx="0" cy="0" r="38" fill="none" stroke="rgba(246,236,214,.
 
 export function createSailingUI({ signal } = {}) {
   if (typeof document === 'undefined') return { update() {}, setPrompt() {}, dispose() {} };
-  let style = document.getElementById('sailing-ui-style');
-  if (!style) { style = document.createElement('style'); style.id = 'sailing-ui-style'; document.head.appendChild(style); }
-  if (style.textContent !== CSS) style.textContent = CSS;
-  for (const id of ['sailBadge', 'sailPrompt']) document.getElementById(id)?.remove(); // hot reload leftovers
+  // Hot reload mounts the new engine before disposing the old one, so every instance owns its own <style> and
+  // elements, removes only those (by reference) on dispose, and clears stale ids at creation.
+  const uid = Math.random().toString(36).slice(2, 10);
+  const style = document.createElement('style'); style.dataset.sailingUi = uid; style.textContent = CSS;
+  document.head.appendChild(style);
+  for (const id of ['sailBadge', 'sailPrompt']) document.getElementById(id)?.remove(); // previous instance's elements
 
   const badge = document.createElement('div');
   badge.id = 'sailBadge'; badge.hidden = true;
@@ -56,7 +58,10 @@ export function createSailingUI({ signal } = {}) {
     if (!show) return;
     const yaw = +info.yaw || 0;
     const n = toScreen(Math.PI, yaw); // north = world -z
-    if (n !== qN) { qN = n; north.setAttribute('transform', 'rotate(' + n + ')'); }
+    if (n !== qN) { // move the glyph around the ring, keep it upright
+      qN = n; const r = n / DEG;
+      north.setAttribute('x', (21 * Math.sin(r)).toFixed(1)); north.setAttribute('y', (-21 * Math.cos(r)).toFixed(1));
+    }
     const w = toScreen(+info.windDir || 0, yaw);
     const ws = Math.round(Math.min(1, Math.max(0.3, +info.windStr || 0)) * 20) / 20;
     if (w !== qW || ws !== qWs) { qW = w; qWs = ws; wind.setAttribute('transform', 'rotate(' + w + ') scale(' + ws + ')'); }
@@ -89,8 +94,7 @@ export function createSailingUI({ signal } = {}) {
   let disposed = false;
   function dispose() {
     if (disposed) return; disposed = true;
-    badge.remove(); prompt.remove();
-    style.remove();
+    badge.remove(); prompt.remove(); style.remove(); // own references only: never a newer instance's nodes
   }
   if (signal) { if (signal.aborted) dispose(); else signal.addEventListener('abort', dispose, { once: true }); }
   return { update, setPrompt, dispose };

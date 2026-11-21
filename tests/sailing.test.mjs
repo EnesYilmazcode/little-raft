@@ -182,8 +182,9 @@ test('grounding stops approach to a blocker but allows leaving', () => {
     stepSailing(s, 1 / 30, { nSails: 4, host: false, blockers: bl }, o);
     minD = Math.min(minD, Math.hypot(base.x - s.gx, base.z - s.gz));
   }
-  assert.ok(minD >= r + SAIL.GROUND_PAD - 0.3, `got within ${minD}`);
-  assert.ok(minD < r + SAIL.GROUND_PAD + 0.5, 'did approach');
+  assert.ok(minD >= r - 0.3, `got within ${minD}`); // b.r is the full stop distance (no extra pad)
+  assert.ok(minD < r + 0.5, 'did approach');
+  assert.equal('GROUND_PAD' in SAIL, false);
   // turning away (heading -z, wind -z) lets the raft leave
   s.heading = s.windDir = Math.PI;
   const before = Math.hypot(base.x - s.gx, base.z - s.gz);
@@ -212,6 +213,38 @@ test('placeUpstream and driftedOut geometry', () => {
   assert.equal(driftedOut({ x: 0, z: -50 }, 0, 1, 40), false, 'upstream, still arriving');
   assert.equal(driftedOut({ x: 0, z: 30 }, 0, 1, 40), false, 'inside R');
   assert.equal(driftedOut({ x: 50, z: 0 }, 1, 0, 40), true);
+  // centre-aware variants
+  a = placeUpstream({ x: 10, z: -20 }, 1, 0, 10, 0); near(a.x, -10); near(a.z, 0, 1e-9);
+  assert.equal(driftedOut({ x: 10, z: 50 }, 0, 1, 40, 10, 20), false, 'within R of the centre');
+  assert.equal(driftedOut({ x: 10, z: 61 }, 0, 1, 40, 10, 20), true);
+});
+
+test('fresh spawns rotated about the raft centre are never instantly out of range', () => {
+  // Mirrors game.js makeItem + sailing-world respawned/outOfRange (R = half diagonal + 26).
+  const shapes = {
+    small: [[0, 0]],
+    square: [[-1, -1], [0, -1], [1, -1], [-1, 0], [0, 0], [1, 0], [-1, 1], [0, 1], [1, 1]],
+    long: [], wide: [], offset: [[4, 3], [5, 3], [6, 4], [9, 5]],
+  };
+  for (let z = -14; z <= 1; z++) for (let x = -1; x <= 1; x++) shapes.long.push([x, z]);
+  for (let x = 0; x <= 10; x++) shapes.wide.push([x, 0], [x, 1]);
+  const rng = seeded(11);
+  for (const [name, tiles] of Object.entries(shapes)) {
+    const xs = tiles.map(t => t[0]), zs = tiles.map(t => t[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs);
+    const cx = x0 + x1, cz = z0 + z1, R = Math.hypot(x1 - x0 + 1, z1 - z0 + 1) + 26;
+    const spread = Math.max(11, Math.max(...xs.map(Math.abs)) * 2 + 6), edge = z0 * 2 - 1;
+    for (let k = 0; k < 24; k++) {
+      const ang = k * Math.PI / 12, mag = k % 3 === 0 ? 0.06 : 0.5 + k * 0.1;
+      const fx = Math.sin(ang) * mag, fz = Math.cos(ang) * mag;
+      for (let i = 0; i < 200; i++) {
+        const it = { x: (rng() - 0.5) * spread * 2, z: edge - 3 - rng() * 17 };
+        placeUpstream(it, fx, fz, cx, cz);
+        assert.equal(driftedOut(it, fx, fz, R, cx, cz), false, `${name} flow ${ang.toFixed(2)} at ${it.x.toFixed(1)},${it.z.toFixed(1)}`);
+        assert.ok((it.x - cx) * fx + (it.z - cz) * fz < 0, `${name}: spawn is upstream of the centre`);
+      }
+    }
+  }
 });
 
 test('applySailAction ops and garbage', () => {
@@ -261,6 +294,7 @@ test('wrapAxis', () => {
   near(wrapAxis(131, 130), -129); near(wrapAxis(-131, 130), 129);
   assert.equal(wrapAxis(130, 130), -130);
   assert.equal(SAIL.GROUND_WRAP % (2 * SAIL.ISLAND_WRAP), 0);
-  assert.equal(SAIL.ISLAND_WRAP, 150); assert.equal(SAIL.WATER_WRAP, 2048);
+  assert.equal(SAIL.ISLAND_WRAP, 150); assert.equal(SAIL.WATER_WRAP, 65536);
+  assert.equal(SAIL.WATER_WRAP % 512, 0, 'shader fine detail uses mod(uFlow, 512.)');
   assert.equal(wrapAxis(NaN, 130), 0);
 });

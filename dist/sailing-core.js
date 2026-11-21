@@ -18,10 +18,9 @@ export const SAIL = Object.freeze({
   WIND_CLOCK_MIN: 70, WIND_CLOCK_MAX: 140, WIND_CLOCK_CAP: 200,
   PADDLE_IMPULSE: 0.25, PADDLE_CAP: 0.9, PADDLE_COOLDOWN: 0.8, // paddling alone never exceeds PADDLE_CAP
   V_CLAMP: 3,               // validator clamp on |vx|,|vz|
-  GROUND_PAD: 6,            // 2.5 clearance + ~3.5 raft radius
   // Offsets wrap per axis into [-W/2, W/2). Water offsets feed a float32 shader (hash noise) so they
   // stay small; seabed offsets only need bounded float64 precision.
-  WATER_WRAP: 2048,
+  WATER_WRAP: 65536,        // the ocean shader takes mod(uFlow, 512.) for its fine detail
   GROUND_WRAP: 105000,      // 350 * 2*ISLAND_WRAP, so wrapped islands never jump
   ISLAND_WRAP: 150,
   MAX_SAILS: 3,
@@ -146,14 +145,15 @@ export function stepSailing(state, dt, opts, out) {
     out.dwx = -CX * dt; out.dwz = -CZ * dt;
   } else {
     // Grounding: remove seabed-velocity components pointing toward nearby blockers.
+    // b.r is the full stop distance (island radius + clearance + raft radius).
     const bl = o.blockers;
     if (bl && bl.length) {
       for (let i = 0; i < bl.length; i++) {
         const b = bl[i];
         if (!b || !fin(b.x) || !fin(b.z)) continue;
-        const d = Math.hypot(b.x, b.z);
-        if (!(d > 1e-6) || d >= (fin(b.r) ? b.r : 0) + SAIL.GROUND_PAD) continue;
-        const nx = b.x / d, nz = b.z / d;
+        const r = fin(b.r) ? b.r : 0, d2 = b.x * b.x + b.z * b.z;
+        if (!(d2 > 1e-12) || d2 >= r * r) continue;
+        const d = Math.sqrt(d2), nx = b.x / d, nz = b.z / d;
         const toward = (state.vx + CX) * nx + (state.vz + CZ) * nz;
         if (toward > 0) { state.vx -= toward * nx; state.vz -= toward * nz; }
       }
@@ -194,18 +194,22 @@ export function applySailAction(state, a) {
   }
 }
 
-/** Rotate a freshly spawned item (placed upstream of a +z flow) so it is upstream of flow (fx,fz). */
-export function placeUpstream(it, fx, fz) {
-  if (!it || !fin(fx) || !fin(fz) || Math.hypot(fx, fz) < 0.05) return it;
+/**
+ * Rotate a freshly spawned item (placed upstream of a +z flow) about the centre (cx,cz) so it is upstream of
+ * flow (fx,fz). Rotation keeps the distance to the centre and maps the +z axis onto the flow direction.
+ */
+export function placeUpstream(it, fx, fz, cx = 0, cz = 0) {
+  if (!it || !fin(fx) || !fin(fz) || !fin(cx) || !fin(cz) || fx * fx + fz * fz < 0.0025) return it;
   // Angle mapping +z (0,1) onto (fx,fz) in compass convention: dir(a) = (sin a, cos a).
   const a = Math.atan2(fx, fz), s = Math.sin(a), c = Math.cos(a);
-  const x = it.x, z = it.z;
-  it.x = x * c + z * s;
-  it.z = -x * s + z * c;
+  const x = it.x - cx, z = it.z - cz;
+  it.x = cx + x * c + z * s;
+  it.z = cz - x * s + z * c;
   return it;
 }
 
-/** True if the item is beyond R from the origin and moving away along the flow. */
-export function driftedOut(it, fx, fz, R) {
-  return Math.hypot(it.x, it.z) > R && (it.x * fx + it.z * fz) > 0;
+/** True if the item is beyond R from the centre (cx,cz) and moving away from it along the flow. */
+export function driftedOut(it, fx, fz, R, cx = 0, cz = 0) {
+  const x = it.x - cx, z = it.z - cz;
+  return x * x + z * z > R * R && (x * fx + z * fz) > 0;
 }
