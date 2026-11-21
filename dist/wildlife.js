@@ -3,6 +3,7 @@
 // Everything is a closed-form plan of a shared clock t, so host and guest see the same animals.
 // Rendering: 4 draw calls (gull bodies, gull wings, fish, the visible circler). No per-frame allocations.
 import { gullBodyGeometry, gullWingGeometry, dolphinGeometry, turtleGeometry, fishGeometry, GULL_SHOULDER, GULL_HIP } from './wildlife-models.js';
+import { protectedPalms, rimSpot, PALM_RIM, HAT_TOP, PALM_GULLS, PALM_CHANCE } from './scarecrow.js?build=v3-survival-ae77fa84ac2b'; // [scarecrow]
 
 export const WILDLIFE_SEED = 0x5eaf00d;
 export const GULL_MAX = 6, SCHOOL_MAX = 2, FISH_PER_SCHOOL = 12;
@@ -14,7 +15,7 @@ const FISH_SCALE = 1.3, FISH_ALPHA = 0.6, AWAY = 5; // AWAY: how far (m) a spook
 const ARRIVE = 10, TAU = Math.PI * 2;
 export const SLEW_RATE = 0.5, SNAP_GAP = 10; // guest clock: ease at <= 0.5 s/s, hard-snap only past 10 s
 const FLOOR_Y = 0.2, DECOR_Y = 0.22;
-const PERCH_TOP = { sail: 3.62, crate: 0.85, bench: 0.47 }; // decor that gives a raised perch (local height above its base)
+const PERCH_TOP = { sail: 3.62, crate: 0.85, bench: 0.47, scarecrow: HAT_TOP }; // decor that gives a raised perch (local height above its base) [scarecrow] + hat top
 // Keep-out margins past the raft edge (m). On the starter raft these add nothing; bigger rafts push animals out.
 export const GULL_MARGIN = 2.5, FISH_MARGIN = 4, CIRCLER_MARGIN = 5;
 const GULL_R0 = 5.5, FISH_R0 = 7, CIRCLER_R0 = 9; // smallest base radius of each path
@@ -71,14 +72,15 @@ export function perchesFrom(tiles, decor) {
   if (!Array.isArray(tiles)) return out;
   const held = new Map();
   if (Array.isArray(decor)) for (const d of decor) if (d && fin(d.x) && fin(d.z)) held.set(d.x + ',' + d.z, d.type);
-  const seen = new Set();
+  const seen = new Set(), guarded = protectedPalms(decor); // [scarecrow] palms near a scarecrow give no perch
   for (const t of tiles) {
     if (!Array.isArray(t) || !fin(t[0]) || !fin(t[1])) continue;
     const key = t[0] + ',' + t[1];
     if (seen.has(key)) continue; seen.add(key);
     const type = held.get(key);
-    if (type === undefined) out.push({ x: t[0] * 2, y: FLOOR_Y, z: t[1] * 2, key, tx: t[0], tz: t[1] });
-    else if (PERCH_TOP[type] !== undefined) out.push({ x: t[0] * 2, y: DECOR_Y + PERCH_TOP[type], z: t[1] * 2, key, tx: t[0], tz: t[1] });
+    if (type === undefined) out.push({ x: t[0] * 2, y: FLOOR_Y, z: t[1] * 2, key, tx: t[0], tz: t[1], kind: 'deck' });
+    else if (type === 'palm') { if (!guarded.has(key)) { const r = rimSpot(t[0], t[1]); out.push({ x: t[0] * 2 + r.dx, y: DECOR_Y + PALM_RIM, z: t[1] * 2 + r.dz, key, tx: t[0], tz: t[1], kind: 'palm' }); } } // [scarecrow] pot rim
+    else if (PERCH_TOP[type] !== undefined) out.push({ x: t[0] * 2, y: DECOR_Y + PERCH_TOP[type], z: t[1] * 2, key, tx: t[0], tz: t[1], kind: type });
   }
   out.sort((a, b) => a.tx - b.tx || a.tz - b.tz);
   for (const p of out) { delete p.tx; delete p.tz; }
@@ -103,11 +105,12 @@ export function gullVisit(seed, i, slot, n, v) {
   v.stay = 6 + 9 * rnd(s, 2);
   v.perch = n > 0 ? (Math.floor(rnd(c, 0) * n) + i) % n : -1;
   v.yaw = TAU * rnd(s, 3);
+  v.palm = i < PALM_GULLS && rnd(s, 5) < PALM_CHANCE; // [scarecrow] this visit would like a palm planter rim
   return v;
 }
 
 const _sky = { sx: 0, sy: 0, sz: 0, bank: 0, ph: 0 }, _sky2 = { sx: 0, sy: 0, sz: 0, bank: 0, ph: 0 };
-const _visit = { on: false, start: 0, stay: 0, perch: -1, yaw: 0 };
+const _visit = { on: false, start: 0, stay: 0, perch: -1, yaw: 0, palm: false };
 
 function baseBlend(v, t, leaveAt) {
   if (t < v.start + GULL_DESCEND) return smooth((t - v.start) / GULL_DESCEND);
@@ -264,8 +267,9 @@ export function createWildlife(ctx) {
   let spookX = 0, spookZ = 0;
   // Per gull: the scheduled visit of the current slot and the perch latched when it began (kept for the visit).
   const vis = [], lat = [];
-  for (let i = 0; i < GULL_MAX; i++) { vis.push({ on: false, start: 0, stay: 0, perch: -1, yaw: 0 }); lat.push({ slot: -1, done: false, on: false, key: '', x: 0, y: 0, z: 0 }); }
-  const forced = []; for (let i = 0; i < GULL_MAX; i++) forced.push({ on: false, start: 0, stay: 0, perch: -1, yaw: 0, scare: false, key: '', x: 0, y: 0, z: 0 });
+  for (let i = 0; i < GULL_MAX; i++) { vis.push({ on: false, start: 0, stay: 0, perch: -1, yaw: 0, palm: false }); lat.push({ slot: -1, done: false, on: false, key: '', x: 0, y: 0, z: 0, kind: '' }); } // [scarecrow] + palm, kind
+  const forced = []; for (let i = 0; i < GULL_MAX; i++) forced.push({ on: false, start: 0, stay: 0, perch: -1, yaw: 0, scare: false, key: '', x: 0, y: 0, z: 0, kind: '' });
+  const palmPool = []; for (let i = 0; i < GULL_MAX; i++) palmPool.push({ i, key: '' }); // [scarecrow] reused onPalm() entries
   const forceC = { kind: null, start: 0, a0: 0, r: 10, speed: 2.6, dir: 1, laps: 1, dur: 0, arrive: false };
   const pinned = []; for (let i = 0; i < SCHOOL_MAX; i++) pinned.push({ on: false, x: 0, z: 0, heading: 0 });
   const plan2 = { state: 'circle', x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, flap: 0, fold: 0, blend: 0, sx: 0, sy: 0, sz: 0, px: 0, py: 0, pz: 0, perch: -1 };
@@ -385,10 +389,15 @@ export function createWildlife(ctx) {
       if (t >= V.start) { // the visit begins: latch its perch and keep it to the end
         L.done = true;
         if (V.on && V.perch >= 0 && V.perch < n) { // the scheduled perch, or the next free one after it
-          for (let k = 0; k < n; k++) {
+          if (V.palm && i < PALM_GULLS) for (let k = 0; k < n; k++) { // [scarecrow] a peckish visit takes the first free planter rim
             const j = (V.perch + k) % n, p = perches[j];
-            if (!perchFree(p, i, slot, nG)) continue;
-            V.perch = j; L.on = true; L.key = p.key; L.x = p.x; L.y = p.y; L.z = p.z; break;
+            if (p.kind !== 'palm' || !perchFree(p, i, slot, nG)) continue;
+            V.perch = j; L.on = true; L.key = p.key; L.x = p.x; L.y = p.y; L.z = p.z; L.kind = p.kind; break;
+          }
+          if (!L.on) for (let k = 0; k < n; k++) {
+            const j = (V.perch + k) % n, p = perches[j];
+            if (p.kind === 'palm' || !perchFree(p, i, slot, nG)) continue; // [scarecrow] planters only on a peckish visit
+            V.perch = j; L.on = true; L.key = p.key; L.x = p.x; L.y = p.y; L.z = p.z; L.kind = p.kind; break;
           }
         }
       }
@@ -421,6 +430,7 @@ export function createWildlife(ctx) {
       const b = plan.blend;
       v3b.set(plan.sx + (v3.x - plan.sx) * b, plan.sy + (v3.y - plan.sy) * b, plan.sz + (v3.z - plan.sz) * b);
       let yaw = plan.yaw, pitch = plan.pitch;
+      if (plan.state === 'perched' && P && mod.pecking.size && mod.pecking.has(P.key)) pitch += 0.35 * Math.max(0, Math.sin(t * 9 + i)); // [scarecrow] head-bob peck
       const sA = f.on ? (f.scare ? scareAt[i] : -Infinity) : scareSlot[i] === slot ? scareAt[i] : -Infinity;
       if (plan.state === 'leave' && sA > -Infinity && (awayX[i] !== 0 || awayZ[i] !== 0)) {
         // a spooked gull swerves away from the player and up before it rejoins its circle
@@ -532,6 +542,31 @@ export function createWildlife(ctx) {
     },
     get clock() { return now(); },
     get offset() { return offset; },
+    pecking: new Set(), // [scarecrow] palm keys being pecked (set by the scarecrow module); perched gulls there bob
+    onPalm(out) { // [scarecrow] {i, key} for each perched gull on a planter rim (reused entries)
+      out.length = 0;
+      for (let i = 0; i < last.nG && i < GULL_MAX; i++) {
+        if (last.gs[i] !== 'perched') continue;
+        const P = forced[i].on ? forced[i] : lat[i].on ? lat[i] : null;
+        if (!P || P.kind !== 'palm') continue;
+        const e = palmPool[i]; e.key = P.key; out.push(e);
+      }
+      return out;
+    },
+    shoo(key) { // [scarecrow] gulls descending to or perched on that planter take off (the layout-change scare path)
+      const t = now(), slot = Math.floor(t / GULL_SLOT), me = ctx.physics;
+      let left = false;
+      for (let i = 0; i < last.nG && i < GULL_MAX; i++) {
+        const st = last.gs[i]; if (st !== 'perched' && st !== 'descend') continue;
+        const f = forced[i], P = f.on ? f : lat[i].on && lat[i].slot === slot ? lat[i] : null;
+        if (!P || P.key !== key) continue;
+        scareAt[i] = t; scareSlot[i] = slot; if (f.on) f.scare = true;
+        const dx = last.gx[i * 3] - (me && fin(me.x) ? me.x : last.gx[i * 3]), dz = last.gx[i * 3 + 2] - (me && fin(me.z) ? me.z : last.gx[i * 3 + 2]), d = Math.hypot(dx, dz);
+        awayX[i] = d > 1e-3 ? dx / d : 0; awayZ[i] = d > 1e-3 ? dz / d : 0;
+        left = true;
+      }
+      return left;
+    },
   };
 
   // ------------------------------------------------------------------ QA helpers (local only, never serialized)
@@ -572,7 +607,7 @@ export function createWildlife(ctx) {
       }
       if (Number.isInteger(opts.perch) && opts.perch >= 0 && opts.perch < perches.length) best = opts.perch;
       const p = perches[best];
-      Object.assign(forced[i], { key: p.key, x: p.x, y: p.y, z: p.z, on: true, start: now() - (opts.instant ? GULL_DESCEND : 0), stay: fin(opts.stay) ? opts.stay : 15, perch: best, yaw: fin(opts.yaw) ? opts.yaw : TAU * Math.random(), scare: !!opts.scare });
+      Object.assign(forced[i], { key: p.key, x: p.x, y: p.y, z: p.z, on: true, start: now() - (opts.instant ? GULL_DESCEND : 0), stay: fin(opts.stay) ? opts.stay : 15, perch: best, yaw: fin(opts.yaw) ? opts.yaw : TAU * Math.random(), scare: !!opts.scare, kind: p.kind ?? '' }); // [scarecrow] + kind
       scareAt[i] = -Infinity;
       return { ...perches[best] };
     },
