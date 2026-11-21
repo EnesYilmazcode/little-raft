@@ -44,8 +44,10 @@ lightning, storm damage and any survival pressure.
   `(seed, i)`. Weights calm 0.5, breezy 0.3, rain 0.2, and rain never follows rain. 25 s blends.
   Co-op only needs `clock` and `seed`.
 - **Lanterns.** Glow and pool lights scale with `nightFactor` (section 5).
-- **Opt out.** `?daynight=off` or localStorage `little-raft.daynight = "day"` (try/catch) pins
-  mid-morning calm.
+- **Opt out.** `?daynight=off` or localStorage `little-raft.daynight = "day"` (try/catch) turns
+  the module into a true no-op (`createDayNightOff`): it touches no light, colour, ocean or cloud
+  and adds no objects, so the game looks exactly as it did before this feature. It only keeps the
+  last valid slice from `load` and returns a copy of it from `serialize`, so the save passes through.
 
 ## 3. Module shape (`createDayNight(ctx)` in `dist/daynight.js`)
 
@@ -53,10 +55,10 @@ lightning, storm damage and any survival pressure.
 |---|---|
 | `name` | `'daynight'` (slice `world.ext.daynight`) |
 | `update(dt)` | host/solo: `clock += dt`. Guest: `clock += dt + drift correction` (section 6). Then derive state and write visuals. Zero allocations. |
-| `serialize()` | returns one reused object `{v:1, clock, seed}` (clock rounded to 0.01 s). The registry JSONs it. |
-| `load(data, from)` | `cleanDayNight(data)`. `null` keeps current/default state. `'save'`/`'restore'` snap; `'net'` feeds the drift filter. |
+| `serialize()` | returns a fresh `{v:1, clock, seed}` (clock rounded to 0.01 s). The registry JSONs it. |
+| `load(data, from)` | `cleanDayNight(data)`. `'save'`/`'restore'` snap; `'net'` feeds the drift filter. Invalid data: `'save'`/`'net'` keep the current state, `'restore'` resets to a fresh morning (section 6). |
 | `debug` | section 8 |
-| `dispose()` | remove stars, moon, rain, 4 point lights; restore cloud materials, fog, exposure, ocean uniforms; dispose own geometries/materials |
+| `dispose()` | remove stars, moon, rain and the pool lights; restore cloud materials, fog, exposure, ocean uniforms; dispose own geometries/materials |
 | others | not used (`action`, `interact`, `prompt`, `craftLocked`, `decorModel`, `afterMove`) |
 
 Pure exports (no WebGL, used by tests):
@@ -68,7 +70,7 @@ export function lightAt(phase, out)            // fills {sunHeight, nightFactor,
 export function segmentAt(seed, index, out)    // fills {weather, start, length}
 export function weatherAt(seed, clock, out)    // fills {weather, weatherNext, blend, rain, wind, cloud}
 export function paletteAt(phase, rain, out)    // fills preallocated Float32Array(3 * N_COLORS)
-export function cleanDayNight(v)               // -> {v:1, clock, seed} | null
+export function cleanDayNight(v)               // -> {v:1, clock, seed} | null (v missing, 0 or any number >= 1)
 export function driftStep(local, target, dt)   // -> corrected local clock (section 6)
 ```
 
@@ -96,7 +98,7 @@ reflections use `mix(uSky, uZenith, R.y)`. To keep the horizon seamless:
 - `uZenith` (`#a9c1c0`), `uDeep` (`#14505a`), `uShallow` (`#3f8c88`) come from the palette.
   Night darkens deep and shallow by about 55%, not to black.
 - `uSunDir` = normalised sun/moon position, `uSunColor` = sun colour times a specular factor
-  (0.25 at night so the moon glint stays soft).
+  (0.18 at night so the moon glint stays soft).
 - Capture the starting values at create time and restore them in `dispose()`.
 
 ### 4.3 Clouds
@@ -120,26 +122,39 @@ lantern is tinted separately. Mesh names to drive:
 
 | Mesh name | Base `emissiveIntensity` | Night |
 |---|---|---|
-| `lanternGlow` | 1.6 | x2.0 |
+| `lanternGlow` | 1.6 | x2.4 |
 | `flame` | 3.0 | x1.6 |
-| `lanternGlass` | 0.6 | x2.5 |
+| `lanternGlass` | 0.6 | x1.6 |
 | `candle` | 0.25 | x2.0 |
 
 (`lanternTimber`, `lanternSteel`, `lanternBrass`, `lanternRope` stay as they are.) There is no
-"raft rebuilt" hook, so: every 0.5 s compare a cheap signature (`raft.children.length` plus the
-number of `'lantern'` entries in `world.decor`). When it changes, walk `raft.children` once and fill
+"raft rebuilt" hook, so every frame does an O(1) staleness check: `rebuildRaft()` replaces every
+child, so `raft.children[0]` (identity), `raft.children.length`, the `ctx.raft` object or the first
+cached lantern's `parent` changes. Any of those rescans at once, in the same update and before the
+render, so freshly built lanterns (which start at their daytime emissive) never show a dim frame.
+Every 0.5 s a slower check also compares a signature (`raft.children.length` plus the number of
+`'lantern'` entries in `world.decor`) for decor changes that do not touch the children. A rescan walks `raft.children` once and fills
 preallocated arrays (cap 64 lanterns): material refs, base intensities, and the lantern's local
 position. Emissive = `base * (1 + (mult - 1) * nightFactor)`. The fallback lantern box (built when
 crafts.js fails) has no named meshes and is ignored.
 
 ## 5. Lantern pool lights (fixed count)
 
-- `POOL_LIGHTS = 4` `T.PointLight('#ffb35c', 0, 7, 2)`, `castShadow = false`, added to the scene
-  in `createDayNight` **before the first render** and never removed until `dispose()`. The count
-  never changes, so no shader recompiles.
-- By day (`nightFactor < 0.15`) intensity is exactly 0. Above that it eases to 2.2 at full night.
+- Up to `POOL_LIGHTS = 4` `T.PointLight('#ffb35c', 0, POOL_RANGE = 8, 2)`, `castShadow = false`,
+  built once in `createDayNight` but **not added to the scene until the first scan finds a
+  lantern**. A raft without lanterns pays nothing for them. Once added they stay until `dispose()`,
+  even if every lantern is removed later.
+- The count is capped by `ctx.options.graphics` (`POOL_CAP`): `low` 1, `medium` 2 (also the
+  default for a missing or unknown value), `high` 4. The cap is applied when the pool is first
+  added and again whenever the graphics setting changes. That is the only time the light count
+  changes (and so the only shader recompile), never at dusk or dawn.
+- The first scan runs in the first `update()`, which game.js calls before the first
+  `renderer.render`, so a world that loads with lanterns compiles its materials once, with the
+  lights already in place.
+- By day (`nightFactor < 0.15`) intensity is exactly 0. Above that it eases to `POOL_PEAK = 5` at
+  full night, with a gentle flicker.
 - Every 0.5 s, rank lanterns by distance to the camera (preallocated Float32Array, partial
-  selection of 4) and copy `raft.localToWorld(scratch)` + (0, 1.25, 0) into the lights. Between
+  selection of 4) and copy `raft.localToWorld(lanternLocal)` into the first `cap` lights. Between
   ranks, positions follow the raft each frame via the cached local positions. Unused lights get
   intensity 0.
 
@@ -149,7 +164,7 @@ crafts.js fails) has no named meshes and is ignored.
   (finite, 0 to 1.2e9). `seed` is a uint32.
 - An old save gives `load(undefined, 'save')`, so the module keeps its default: `clock = 0.10 *
   DAY_SECONDS` (morning) and a random seed. The first save writes the slice.
-- **Host** serializes about 8 times a second. That is ~40 bytes and one reused object, no
+- **Host** serializes about 8 times a second. That is ~40 bytes in one small fresh object, no
   allocations beyond what the registry does.
 - **Guest `load(data, 'net')`** must not snap on every message (that would stutter 8 times a
   second, since messages arrive with jitter):
@@ -160,7 +175,13 @@ crafts.js fails) has no named meshes and is ignored.
     time never runs backwards and never more than 10% fast or slow. A 1 s drift closes in ~10 s,
     which no one can see.
   - Same data twice is a no-op (idempotent). No meshes are ever rebuilt on load.
-- `'restore'` (guest back on its own raft) snaps to the saved slice. Weather follows from
+  - A stopped host clock (host `debug.freeze`) sends the same clock over and over. A repeat that
+    arrives more than 0.2 s after the last new clock cannot be a plain duplicate (a running host's
+    clock changes every 0.12 s send), so the guest stops advancing its target and holds the host's
+    clock instead of running ahead. The next new clock resumes normal tracking.
+- `'restore'` (guest back on its own raft) snaps to the saved slice. If that slice is missing or
+  invalid, it resets to `MORNING` with a fresh random seed and clears the drift target
+  (`hasTarget = false`), so the guest does not keep the host's sky on its own raft. Weather follows from
   `(seed, clock)` on both peers, so rain starts at the same moment for both.
 
 ## 7. Rain budget
@@ -179,7 +200,8 @@ crafts.js fails) has no named meshes and is ignored.
 - Cost: about 1.2k vertices and a few thousand fragments of thin lines. That is negligible next to
   the ocean mesh.
 
-**Total added cost:** stars 1 draw, moon 1, rain 0 or 1, and 4 point lights (fixed). Per frame:
+**Total added cost:** stars 1 draw, moon 1, rain 0 or 1, and 0 to 4 point lights (0 until a
+lantern exists, then 1/2/4 by graphics setting). Per frame:
 about 60 float lerps into preallocated `T.Color`/`Float32Array`, about 15 uniform/colour writes,
 and N lantern material writes (N <= 64). There is no `new`, closure, array literal or `.clone()`
 in `update`.
@@ -245,7 +267,12 @@ the exposure; it is already a getter in `contentCtx`.
   same brightness (`rainBlend`, 65%).
 - The sun moves on an arc (east to west, tilted south). At night the same DirectionalLight becomes
   the moon, which rides lower (about 40 degrees at midnight) on the opposite side. The light's height
-  is clamped so shadows never stretch across the whole raft at dawn and dusk.
+  is clamped so shadows never stretch across the whole raft at dawn and dusk. Where sun and moon
+  trade places (phase 0.70 and 0/1, `sunHeight = 0`) the direction jumps by about 110 degrees, so
+  the light's intensity (and the ocean glint) is multiplied by `smoothstep(0, SWAP_FADE = 0.12,
+  |sunHeight|)`. It reaches exactly 0 at the swap and is back to full about 30 s later at sunset
+  and 14 s later at sunrise; the hemisphere light keeps the deck readable meanwhile. The moon floor
+  (0.55) also eases in with `smoothstep(0.3, 0.7, nightFactor)` instead of switching on at 0.5.
 - Ocean: `uSky`, `uZenith`, `uDeep`, `uShallow`, `uSunDir`, `uSunColor` (glint fades at the horizon,
   soft 0.18 moon glint) and `uFadeFar` (follows fog: 125 dry, 80 in rain). **Addition:** `uFoam` is
   also dimmed and tinted at night, because white foam glared on a dark sea in the first night shots.
@@ -260,13 +287,15 @@ the exposure; it is already a getter in `contentCtx`.
 - Rain: one `LineSegments`, 600 streaks (1,200 vertices) in a 14 x 10 x 14 m box around the camera,
   all motion in the vertex shader, hidden when dry.
 - Lanterns: emissive boost on `lanternGlow` x2.4, `flame` x1.6, `lanternGlass` x1.6, `candle` x2.0
-  (glass was lowered from the design's 2.5, which washed the amber out to white). Four
-  `PointLight('#ffb35c', 0 to 5, range 8, decay 2)` follow the nearest four lanterns with a gentle
-  flicker. Peak raised from the design's 2.2 to 5 so the warm pool on the deck is clearly visible.
+  (glass was lowered from the first design's 2.5, which washed the amber out to white). Up to four
+  `PointLight('#ffb35c', 0 to 5, range 8, decay 2)` (1/2/4 by graphics, added with the first
+  lantern) follow the nearest lanterns with a gentle flicker. Peak raised from the first design's
+  2.2 to 5 so the warm pool on the deck is clearly visible.
 - Co-op: as section 6. One detail changed: `driftStep(local, target, dt)` takes both clocks at the
   start of the frame and the caller then advances `target += dt`, which removes a one-frame bias.
   `load(data,'net')` with the same clock twice is a no-op.
-- Opt out: `?daynight=off` or `localStorage['little-raft.daynight'] = 'day'` pins phase 0.15, calm.
+- Opt out: `?daynight=off` or `localStorage['little-raft.daynight'] = 'day'` gives the no-op
+  pass-through module (section 2). Its `debug.state()` returns `{optOut: true, kept, role}`.
 
 **Debug (`raftDebug.content.daynight`)**: `setPhase(p|null)`, `setWeather(name|null)`,
 `freeze(bool)` (stop the clock for screenshots), `giveLantern(n)` (adds lanterns to your bag),
@@ -275,8 +304,11 @@ the exposure; it is already a getter in `contentCtx`.
 
 **How to verify**
 
-1. `npm test`: 13 day/night tests (pure functions, headless module with a stub ctx, save round
-   trip, driftStep, and a two-minute co-op simulation with jittery, lossy, duplicated messages).
+1. `npm test`: 19 day/night tests (pure functions, headless module with a stub ctx, save round
+   trip, driftStep, a two-minute co-op simulation with jittery, lossy, duplicated messages, and the
+   review fixes: no dim lantern frame after a rebuild, a smooth light vector across phases 0.70 and
+   0.94 to 0.04, lazy and capped pool lights, the opt-out pass-through, restore reset, and a guest
+   holding still while the host clock is frozen).
 2. In the browser console after clicking Play solo:
    `d = raftDebug.content.daynight; d.freeze(true); d.placeLantern(1, 0); d.setPhase(0.82)`. You
    should see a blue night with stars, a moon up and to the left of the start view, readable deck
@@ -295,9 +327,10 @@ Screenshots: `docs/cloud/shots/content/daynight-morning.png`, `daynight-dusk.png
 
 **Cost.** Draw calls from `renderInfo()` in the same view: day 272, dusk 274 (+stars, +moon),
 rain 215 vs 214 in the same view (+1 line draw), rain at night 217. So it is +0 by day, +2 at
-night and +1 more while raining. Stars add 450 points and rain adds 600 lines. Four point lights
-are always present, so every lit material evaluates four extra lights. That is the main
-frame-time cost; it is fixed and never recompiles shaders. Frame time under headless SwiftShader
+night and +1 more while raining. Stars add 450 points and rain adds 600 lines. The pool lights are
+the main frame-time cost: every lit material evaluates them, even by day at intensity 0. They now
+exist only once a lantern does, and only 1/2/4 of them by graphics setting. (The measurements
+below were taken with the earlier fixed four lights.) Frame time under headless SwiftShader
 on a heavily loaded 4-core sandbox (load average ~15, so the numbers are noisy): baseline stub
 ~1.1 to 1.7 s per frame, this module ~1.8 s by day and ~2.0 s at night with three lanterns. That is
 roughly +10 to 30%, almost all from per-fragment lighting in software GL. `update()` contains
@@ -311,4 +344,7 @@ state, which is one minor GC roughly every two minutes at 60 fps.
 - The sky is a single colour (background + fog). Dusk reads as an even coral wash rather than a
   gradient; mounting `dist/sky.js` would fix that at the cost of one full-screen draw.
 - Rain streaks are 1 px WebGL lines, so they look thin at high resolutions.
-- The four point lights add fragment cost to every standard material all day long (at intensity 0).
+- Once a lantern exists, the pool lights (1 to 4) add fragment cost to every standard material all
+  day long, at intensity 0 by day. Toggling them at dusk would recompile every shader, so they stay.
+- The shadow light fades to 0 for a few seconds at sunset and sunrise while it swaps between sun
+  and moon, so shadows briefly vanish then.
