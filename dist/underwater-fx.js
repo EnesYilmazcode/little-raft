@@ -78,7 +78,10 @@ function bubbleTexture(T) {
 export function createUnderwaterFx(T, { scene, camera, ocean, seafloor = null, hideAbove = [], getTiles = null, getDeckY = null }) {
   const shallow = new T.Color(SHALLOW), deep = new T.Color(DEEP);
   const fogColor = new T.Color(SHALLOW), bgColor = new T.Color(SHALLOW);
-  const fog = new T.Fog(fogColor, FOG_NEAR, FOG_FAR); fog.color = fogColor;
+  const ownFog = new T.Fog(fogColor, FOG_NEAR, FOG_FAR); ownFog.color = fogColor;
+  // An existing linear scene.fog / colour background is mutated in place (no program refresh); else swapped.
+  const saved = { fogColor: new T.Color(), near: 0, far: 0, bg: new T.Color() };
+  let fog = ownFog, bg = bgColor, fogMut = false, bgMut = false;
   const camPos = new T.Vector3(), camDir = new T.Vector3();
   let active = false, fade = 0, savedFog = null, savedBg = null, spawnAcc = 0, surfaceY = -0.24, lastTiles = null, lastTileN = -1, tileCount = 0;
   const hidden = [];
@@ -138,14 +141,19 @@ export function createUnderwaterFx(T, { scene, camera, ocean, seafloor = null, h
   function enter() {
     active = true; fade = 0; spawnAcc = 0;
     savedFog = scene.fog; savedBg = scene.background;
-    scene.fog = fog; scene.background = bgColor;
+    fogMut = !!savedFog?.isFog; bgMut = !!savedBg?.isColor;
+    if (fogMut) { fog = savedFog; saved.fogColor.copy(fog.color); saved.near = fog.near; saved.far = fog.far; }
+    else { fog = ownFog; scene.fog = fog; }
+    if (bgMut) { bg = savedBg; saved.bg.copy(bg); } else { bg = bgColor; scene.background = bg; }
     ceiling.visible = bubbles.visible = true;
     for (const o of hideAbove) if (o?.isObject3D) { hidden.push(o, o.visible); o.visible = false; }
     for (let i = 0; i < 18; i++) spawn(i % 3 !== 0); // entry splash burst
   }
   function exit() {
     active = false; fade = 0;
-    scene.fog = savedFog; scene.background = savedBg; savedFog = savedBg = null;
+    if (fogMut) { fog.color.copy(saved.fogColor); fog.near = saved.near; fog.far = saved.far; } else scene.fog = savedFog;
+    if (bgMut) bg.copy(saved.bg); else scene.background = savedBg;
+    savedFog = savedBg = null; fog = ownFog; bg = bgColor; fogMut = bgMut = false;
     ceiling.visible = bubbles.visible = false;
     for (let i = 0; i < hidden.length; i += 2) hidden[i].visible = hidden[i + 1];
     hidden.length = 0;
@@ -161,7 +169,7 @@ export function createUnderwaterFx(T, { scene, camera, ocean, seafloor = null, h
     if (underwater !== active) underwater ? enter() : exit();
     if (!active) return;
     const k = Math.min(1, Math.max(0, depth / DEEP_AT));
-    fogColor.copy(shallow).lerp(deep, k); bgColor.copy(fogColor);
+    fogColor.copy(shallow).lerp(deep, k); bg.copy(fogColor); fog.color.copy(fogColor); fog.near = FOG_NEAR;
     fogColor.getRGB(ceilUniforms.uFog.value, T.SRGBColorSpace);
     fog.far = FOG_FAR - k * 6;
     fade = Math.min(1, fade + dt / FADE_IN);
@@ -205,7 +213,7 @@ export function createUnderwaterFx(T, { scene, camera, ocean, seafloor = null, h
   // Optional: compile the ceiling, bubble and overlay programs (with the underwater fog) ahead of the first dive.
   function warm(renderer) {
     if (active) return;
-    const f = scene.fog; scene.fog = fog; ceiling.visible = bubbles.visible = true;
+    const f = scene.fog; if (!f?.isFog) scene.fog = ownFog; ceiling.visible = bubbles.visible = true;
     try { renderer.compile(scene, camera); renderer.compile(ovScene, ovCam); }
     finally { scene.fog = f; ceiling.visible = bubbles.visible = false; }
   }
