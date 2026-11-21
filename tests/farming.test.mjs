@@ -142,3 +142,34 @@ test('farmSignature changes on stage and wet, not on growth seconds', () => {
   F.tickFarm(w.decor, F.STAGE_SECONDS);
   assert.notEqual(F.farmSignature(w.decor), a);
 });
+
+test('watering with a full bag still works: the empty cup goes into the water slot or merges', () => {
+  const full = Array.from({ length: SLOT_COUNT }, () => ({ kind: 'wood', count: 20 }));
+  const bagOf = () => new Bag({ slots: full.map((s) => ({ ...s })), selected: 3 });
+  full[3] = { kind: 'water', count: 1 };
+  let w = worldWith(F.newPlant()), bag = bagOf();
+  assert.equal(F.applyFarmAction(w, bag, { op: 'water', ...at }).ok, true);
+  assert.deepEqual({ ...bag.slots[3] }, { kind: 'cup', count: 1 }, 'cup is back in hand');
+  // A partly used stack with no free slot: water anyway, never block farming.
+  full[3] = { kind: 'water', count: 3 };
+  w = worldWith(F.newPlant()); bag = bagOf();
+  assert.equal(F.applyFarmAction(w, bag, { op: 'water', ...at }).ok, true);
+  assert.equal(bag.count('water'), 2); assert.equal(w.decor[0].farm.w, F.WATER_SECONDS);
+  // An existing cup stack takes the empty cup.
+  full[4] = { kind: 'cup', count: 1 };
+  w = worldWith(F.newPlant()); bag = bagOf();
+  assert.equal(F.applyFarmAction(w, bag, { op: 'water', ...at }).ok, true);
+  assert.equal(bag.count('cup'), 2); assert.equal(bag.count('water'), 2);
+});
+
+test('the planter ghost is the empty pot that gets placed, not a grown palm', async () => {
+  const T = await import(new URL('vendor/three.module.js', base));
+  const { createFarmView } = await import(new URL('farming-view.js', base));
+  const view = createFarmView(T), ghost = view.ghostModel();
+  const h = new T.Box3().setFromObject(ghost).getSize(new T.Vector3()).y;
+  assert.ok(h > .3 && h < .7, `ghost is pot-sized (${h.toFixed(2)} m)`);
+  view.sync([{ type: 'palm', x: 0, z: 0 }]);
+  const mats = new Set(); view.group.traverse((o) => { if (o.isMesh) mats.add(o.material); });
+  assert.ok(mats.size > 0);
+  ghost.traverse((o) => { if (o.isMesh) assert.ok(!mats.has(o.material), 'ghost owns its materials'); });
+});

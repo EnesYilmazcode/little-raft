@@ -350,7 +350,7 @@ export function mount(transfer = null) {
     farmView = createFarmView(T, {getModel:modelOf}); scene.add(farmView.group); // farming
     itemsGroup = new T.Group(); scene.add(itemsGroup);
     player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
-    ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => createCraft(T, k)});
+    ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => k === Farm.PLOT_TYPE ? farmView.ghostModel() : createCraft(T, k)}); // planter ghost = the placed empty pot
     const ropeGeo = new T.BufferGeometry(); ropeAttr = new T.BufferAttribute(new Float32Array((ROPE_SEGMENTS + 1) * 3), 3); ropeAttr.setUsage(T.DynamicDrawUsage); ropeGeo.setAttribute('position', ropeAttr);
     rope = new T.Line(ropeGeo, new T.LineBasicMaterial({color:'#e9d39a'})); rope.visible = false; rope.frustumCulled = false; scene.add(rope);
     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
@@ -718,7 +718,7 @@ export function mount(transfer = null) {
   const farmNotify = text => notice(text); // farming hints: one hook for the notification feed
   function farmUse(aim, interacting) {
     const kind = selectedKind(), d = farmPlot(aim);
-    if (d) { const op = Farm.plotAction(d.farm, kind, interacting); if (op) { swing = .6; action({kind:'farm', op, x:d.x, z:d.z}); return true; } if (!interacting && (kind === 'seed' || kind === 'water')) { farmNotify(Farm.promptFor(d.farm, kind)); return true; } }
+    if (d) { const op = Farm.plotAction(d.farm, kind, interacting); if (op) { swing = .6; action({kind:'farm', op, x:d.x, z:d.z}); return true; } if (!interacting && (kind === 'seed' || kind === 'water')) { const t = Farm.promptFor(d.farm, kind); farmNotify(t.startsWith('E  ') ? 'Press E: ' + t.slice(3) : t); return true; } if (interacting) return true; }
     if (interacting || kind !== 'cup') return false;
     const p = aim?.point; if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2)) || Math.hypot(p.x - physics.x, p.z - physics.z) > 6) { farmNotify('Point at the sea next to the raft to fill the cup'); return true; }
     swing = .6; action({kind:'farm', op:'fill'}); return true;
@@ -973,7 +973,7 @@ export function mount(transfer = null) {
         for (const net of world.decor.filter(d => d.type === 'net')) { const it = world.items.find(it => !heldTokens.has(it.token) && !isPending(it) && Math.hypot(it.x - net.x, it.z - net.z) < 4); if (it) applyAction({kind:'collect', id:it.id, token:it.token, net:true}, 'host'); }
       }
     }
-    if (running) { saveClock += dt; if (saveClock > 3) { saveClock = 0; save(); } }
+    if (running) { if (!saveClock) saveClock = now; if (now - saveClock > 3000) { saveClock = now; save(); } } // wall clock: dt is capped, so low fps would stretch the interval
     if (conn?.open) { networkTick += dt; if (networkTick > .12) { networkTick = 0; send(role === 'host' ? hostState() : {type:'move', me:pose()}); } }
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     refreshPointerUI(); updateCharge(); updateContext(dialog);
