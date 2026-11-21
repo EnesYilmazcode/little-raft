@@ -272,10 +272,15 @@ test('module: serialize cache, update knobs, diveMods, dispose resets, debug flo
   assert.equal(MOVE_MUL.swim, 1);
   // night floor
   mod.debug.feed('meal_custard'); mod.update(.1);
-  assert.equal(renderer.toneMappingExposure, 1); assert.equal(hemi.intensity, 1.25);
-  // expiry toast
+  assert.ok(Math.abs(renderer.toneMappingExposure - 1) < 1e-5); assert.ok(Math.abs(hemi.intensity - 1.25) < 1e-5);
+  // expiry toast; with nothing else rewriting the lights (no daynight) the floor is put back
   for (let i = 0; i < 245; i++) mod.update(1);
   assert.equal(mod.debug.buff().entry, null); assert.ok(notes.includes('Night Owl wore off'));
+  assert.equal(renderer.toneMappingExposure, .6); assert.equal(hemi.intensity, .7);
+  // daynight rewrote the lights since: never restore over its value
+  mod.debug.feed('meal_custard'); mod.update(.1); renderer.toneMappingExposure = .9; mod.update(.1);
+  mod.debug.feed('meal_stew'); renderer.toneMappingExposure = .95; mod.update(.1);
+  assert.equal(renderer.toneMappingExposure, .95); assert.equal(hemi.intensity, .7);
   mod.debug.feed('meal_stew'); mod.update(.1);
   const pot = mod.decorModel('cookpot');
   assert.equal(pot.name, 'cookpot_station');
@@ -288,7 +293,7 @@ test('module: serialize cache, update knobs, diveMods, dispose resets, debug flo
 });
 
 test('module: guest adopts b from net, applies only its own buff, never mutates', () => {
-  const { mod, sent, emits } = makeCtx('guest');
+  const { mod, sent, emits, notes } = makeCtx('guest');
   assert.equal(mod.interact(null), false); // nothing aimed, no meal held
   mod.load({ v: 1, r: 2, br: 1, k: { '1,0': { i: ['leaf'], f: 1 } }, b: { host: { m: 'meal_chowder', s: 100 }, guest: null } }, 'net');
   mod.update(.1);
@@ -305,6 +310,8 @@ test('module: guest adopts b from net, applies only its own buff, never mutates'
   assert.equal(mod.debug.buff().entry.s, 100);
   assert.equal(mod.debug.run(5), false); assert.equal(mod.debug.feed('meal_stew'), false);
   assert.equal(sent.length, 0); assert.equal(emits.length, 0);
+  mod.load({ v: 1, r: 2, br: 3, k: {}, b: { host: null, guest: null } }, 'net'); mod.update(.1); // host expired it first: still toasts
+  assert.equal(MOVE_MUL.walk, 1); assert.ok(notes.includes('Springy Step wore off'));
   mod.dispose();
   assert.equal(MOVE_MUL.walk, 1);
 });

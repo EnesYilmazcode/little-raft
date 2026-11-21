@@ -27,6 +27,7 @@ export function createCookpot(ctx) {
   let netR = -1, netBr = -1, gotNet = false;
   let model = null, dirty = false, childCount = -1, shownR = -1, shownSt = null, anyActive = false;
   let clock = 0, pruneClock = 0;
+  let nightE = NaN, nightH = NaN, baseE = 1, baseH = 1; // night floor: what we wrote and what it replaced
   let pKey = null, pR = -1, pSel = null, pPct = -1, pSt = null, pBowl = false, pOut = null;
   let lastMeal = null, quiet = true; // quiet: skip the "wore off" toast right after a load
   let chip = null, chipSpan = null, chipSec = -1, chipMeal = null;
@@ -76,7 +77,7 @@ export function createCookpot(ctx) {
     return cache;
   }
   function load(data, from) {
-    quiet = true;
+    if (from !== 'net' || !gotNet) quiet = true; // net: only the first state replaces our own buff (a later expiry still toasts)
     if (from === 'net') {
       const ok = data && typeof data === 'object';
       const r = ok ? data.r : -2, br = ok ? data.br : -2; // -2: host without a cookpot slice (older build)
@@ -88,7 +89,7 @@ export function createCookpot(ctx) {
       gotNet = true;
       return;
     }
-    netR = -1; netBr = -1;
+    netR = -1; netBr = -1; gotNet = false;
     st = cleanSlice(data, decorAt, from !== 'save'); dirty = true; // 'save': a past guest's buff is not kept
   }
 
@@ -172,15 +173,25 @@ export function createCookpot(ctx) {
     MOVE_MUL.walk = mods.walk; MOVE_MUL.swim = mods.swim; MOVE_MUL.jump = Math.min(mods.jump, 1.15);
     HOOK_MUL.reel = mods.reel;
     FISHING_TUNING.reelTime = REEL_BASE / mods.reel;
-    if (mods.night) {
-      const r = ctx.renderer; if (r) r.toneMappingExposure = Math.max(r.toneMappingExposure, 1.0);
-      const h = ctx.hemi; if (h) h.intensity = Math.max(h.intensity, 1.25);
-    }
+    nightFloor(mods.night);
     const m = me ? me.m : null;
     if (lastMeal && !m && !quiet) ctx.notice?.(`${MEALS[lastMeal].buff} wore off`);
     lastMeal = m; quiet = false;
     visuals(dt);
     hud(me);
+  }
+
+  // daynight rewrites exposure/hemi every frame; without it (?daynight=off, day-only option, ?art) put back what we raised.
+  function nightFloor(on) {
+    const r = ctx.renderer, h = ctx.hemi;
+    if (on) {
+      // the floor is written a hair above 1.0 / 1.25 so it never equals a value daynight wrote itself
+      if (r) { const v = r.toneMappingExposure; if (v !== nightE) { if (v < 1.0) { baseE = v; r.toneMappingExposure = nightE = 1.000001; } else nightE = NaN; } }
+      if (h) { const v = h.intensity; if (v !== nightH) { if (v < 1.25) { baseH = v; h.intensity = nightH = 1.250001; } else nightH = NaN; } }
+      return;
+    }
+    if (nightE === nightE) { if (r && r.toneMappingExposure === nightE) r.toneMappingExposure = baseE; nightE = NaN; }
+    if (nightH === nightH) { if (h && h.intensity === nightH) h.intensity = baseH; nightH = NaN; }
   }
 
   function prompt(aim) {
@@ -291,6 +302,7 @@ export function createCookpot(ctx) {
       chip?.remove(); chip = null; chipSpan = null; chipMeal = null;
       if (typeof document !== 'undefined') document.getElementById('cookpotStyle')?.remove();
       MOVE_MUL.walk = MOVE_MUL.swim = MOVE_MUL.jump = 1; HOOK_MUL.reel = 1; FISHING_TUNING.reelTime = REEL_BASE;
+      nightFloor(false);
       model?.dispose(); model = null;
     },
   };
