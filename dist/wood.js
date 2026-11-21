@@ -16,8 +16,30 @@ function bleach(hex) {
  return '#'+f(r)+f(g)+f(b);
 }
 
+/** The driftwood tone wood.js paints for a timber key (hex string): the deck palette, or the bleached hue. */
+export function driftwood(color) { return WEATHERED[color]??bleach(color); }
+
 export function createWoodMaterial(T, color) {
- const base=WEATHERED[color]??bleach(color);
+ return new T.MeshStandardMaterial({map:grainTexture(T, driftwood(color)),roughness:.86,metalness:0});
+}
+
+// One grain map on a neutral grey of the deck's value, tinted by vertex colour, shared by every craft
+// model (crafts.js). material.color lifts the grey back to 1, so vertex colour * map ~= the deck's look.
+// Marked shared with no-op dispose, so ghost/icon/raft rebuild code that frees per-model materials leaves it.
+const TINTED=new WeakMap(), NEUTRAL='#8c8c8c';
+export function sharedTintedWood(T) {
+ let m=TINTED.get(T);
+ if (m) return m;
+ let map=null;
+ try { if (typeof document!=='undefined') { map=grainTexture(T, NEUTRAL); map.wrapS=map.wrapT=T.RepeatWrapping; map.dispose=()=>{}; } } catch { map=null; }
+ m=new T.MeshStandardMaterial({map,vertexColors:true,roughness:.86,metalness:0});
+ if (map) m.color.setStyle(NEUTRAL).setRGB(1/m.color.r,1/m.color.g,1/m.color.b);
+ m.name='craft-wood'; m.userData.shared=true; m.dispose=()=>{};
+ TINTED.set(T,m);
+ return m;
+}
+
+function grainTexture(T, base) {
  const W=128,H=512;
  const canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
  const ctx=canvas.getContext('2d');ctx.fillStyle=base;ctx.fillRect(0,0,W,H);
@@ -49,5 +71,5 @@ export function createWoodMaterial(T, color) {
  const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=4;
  // No bumpMap: at bumpScale .018 it moved no pixel by more than 1/255 at spawn, looking down or along the deck, while
  // its three extra taps per pixel were the largest single cost of shading the deck (docs/tech/perf-ADOPT.md step 6).
- return new T.MeshStandardMaterial({map:texture,roughness:.86,metalness:0});
+ return texture;
 }
