@@ -54,8 +54,9 @@ export function createKiln(ctx) {
   }
   function load(data, from) {
     if (from === 'net') {
-      if (data && typeof data === 'object' && data.r === netR) return; // unchanged host state
-      st = cleanSlice(data); netR = data && typeof data === 'object' ? data.r : -1; dirty = true;
+      const r = data && typeof data === 'object' ? data.r : -2; // -2: host without a kiln slice (older build)
+      if (r === netR) return; // unchanged host state
+      st = cleanSlice(data); netR = r; dirty = true;
       return;
     }
     netR = -1;
