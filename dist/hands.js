@@ -103,7 +103,6 @@ export function createHands(T, { modelFactory = null } = {}) {
   const ropeDarkMat = mat(0x8a6e44, 1.0);
   // Baked parts: one vertex-coloured material per surface type (the flat ones above only supply the colours).
   const skinV = mat(0xffffff, 0.62, { emissive: 0x1c0e06, vertexColors: true });
-  const clothV = mat(0xffffff, 0.95, { vertexColors: true });
   const ropeV = mat(0xffffff, 0.95, { vertexColors: true });
   const tint = (m) => m.material.color;
   const meshesOf = (...objs) => { const out = []; for (const o of objs) o.traverse((c) => { if (c.isMesh) out.push(c); }); return out; };
@@ -239,7 +238,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     const forearm = seg(frame, skin, at(0), at(0.24), 0.031, 0.042, 12);
     const cuff = seg(frame, cuffMat, at(0.19), at(0.225), 0.047, 0.050, 14);    // rolled cuff
     const sleeve = seg(frame, sleeveMat, at(0.23), at(0.60), 0.051, 0.070, 14); // sleeve (runs off-screen)
-    bake(frame, [forearm], skinV); bake(frame, [cuff, sleeve], clothV);
+    bake(frame, [forearm, cuff, sleeve], skinV);   // one draw per arm: the sleeve rides the skin material, colour per vertex
     for (const o of [forearm, cuff, sleeve]) o.removeFromParent();
 
     return { pose, frame, wrist, hand, H, qBase, toLocal, basePos: basePos.clone(), r, u, f };
