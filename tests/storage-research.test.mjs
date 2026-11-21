@@ -285,7 +285,8 @@ test('research: recipes join the tree from their cost alone (learnedFrom)', () =
   assert.deepEqual(learnedFrom(['wood', 'leaf']), ['bench', 'palm']);
   assert.deepEqual(learnedFrom(['wood', 'rope']), ['bench', 'fishingrod']); // net also needs nails since the progression rebalance
   assert.deepEqual(learnedFrom(['wood', 'rope', 'nail']), ['bench', 'fishingrod', 'net']);
-  assert.deepEqual(learnedFrom(['wood', 'rope', 'leaf']), ['bench', 'fishingrod', 'palm', 'sail']);
+  assert.deepEqual(learnedFrom(['wood', 'rope', 'leaf']), ['bench', 'fishingrod', 'palm']);
+  assert.ok(learnedFrom(['wood', 'leaf', 'scrap']).includes('sail')); // Raft sail: 10 planks + 20 leaves + 3 scrap
   assert.deepEqual(learnedFrom(['leaf'], ['lantern']), ['lantern']);
 });
 

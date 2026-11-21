@@ -12,6 +12,8 @@
 //   load(data, from)          from: 'save' | 'net' | 'restore'. data may be undefined (old save).
 //   action(a, actor, bag)     host only. Return true if a.kind was handled. Guests reach it via ctx.action().
 //   interact(aim)             E key. Return true if consumed (before the inventory opens).
+//   use(aim, kind)            left click holding `kind`, before eating/placing. Return true if consumed (crops, paint).
+//   claims(kind, aim)         true when use(kind, aim) would consume the click (hides the eat/drink tip)
 //   prompt(aim)               -> context prompt HTML (escaped by the module) or null
 //   craftLocked(recipe, actor)-> reason string if the recipe is locked, else null
 //   decorModel(type, d)       -> THREE.Object3D for a CONTENT_DECOR type, or null (d = the world.decor entry, read-only)
@@ -41,10 +43,11 @@ import { createPaint } from './paint.js?build=v3-survival-ae77fa84ac2b'; // cont
 import { createKiln } from './kiln.js?build=v3-survival-ae77fa84ac2b';
 import { createAnimals } from './animals.js?build=v3-survival-ae77fa84ac2b';
 import { createBees } from './bees.js?build=v3-survival-ae77fa84ac2b'; // [bees]
+import { createCrops } from './crops.js?build=v3-survival-ae77fa84ac2b'; // [crops]
 import { createTreasure } from './treasure.js?build=v3-survival-ae77fa84ac2b';
 import { createMapTable } from './maptable.js?build=v3-survival-ae77fa84ac2b';
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees]; // [bees] + createBees
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createCrops]; // [bees] + createBees, [crops] + createCrops
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -87,8 +90,9 @@ export function createContent(ctx, features = FEATURES) {
     load(ext, from) { const e = ext && typeof ext === 'object' ? ext : {}; for (const m of mods) call(m, 'load', e[m.name], from); },
     action(a, actor, bag) { for (const m of mods) if (call(m, 'action', a, actor, bag)) return true; return false; },
     interact: aim => !!first('interact', aim),
+    claims: (kind, aim) => !!first('claims', kind, aim),
     prompt: aim => first('prompt', aim),
-    use: (aim, kind) => !!first('use', aim, kind), // content hook (paint)
+    use: (aim, kind) => !!first('use', aim, kind), // content hook (paint, crops)
     alt: (aim, kind) => !!first('alt', aim, kind), // content hook (paint)
     afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)
     tileTint: (x, z, base) => first('tileTint', x, z, base), // content hook (paint): plank hex for a painted deck tile, else null
