@@ -125,9 +125,9 @@ void main() {
   vec3 n = normalize(vec3(vNormalW.x - g.x, vNormalW.y, vNormalW.z - g.y));
 
   float ndv = max(dot(n, V), 0.0);
-  float fresnel = min(0.02 + 0.98 * pow(1.0 - ndv, 5.0), 0.5);
+  float fresnel = min(0.02 + 0.98 * pow(1.0 - ndv, 5.0), 0.3); // capped low: mid-distance sea keeps its own saturated blue
   vec3 R = reflect(-V, n);
-  vec3 skyRefl = mix(uSky, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.25));
+  vec3 skyRefl = mix(uSky, uZenith, 0.35 + 0.65 * pow(clamp(R.y, 0.0, 1.0), 0.25)); // reflect mostly the blue sky, not the pale horizon
 
   // Water body: looking steeply down near the raft you see clear turquoise; grazing and far
   // away the light path is long, so it sinks to deep blue. Crests glow where sun passes through.
@@ -137,7 +137,7 @@ void main() {
   vec3 body = mix(uDeep, uShallow, clamp(clear * 0.85 + h * 0.25 + patches * 0.12, 0.0, 1.0));
   float sss = smoothstep(0.5, 1.0, h) * pow(max(dot(-V, L) * 0.5 + 0.5, 0.0), 2.0) * 0.45;
   body += uShallow * sss;
-  body *= mix(0.75, 1.0, ndv); // grazing water darkens toward deep blue
+  body *= mix(0.65, 1.0, ndv); // grazing water darkens toward deep blue
   vec3 col = mix(body * (0.78 + 0.22 * max(dot(n, L), 0.0)), skyRefl, fresnel);
 
   // Sun: sharp glint + broad sheen.
@@ -158,6 +158,7 @@ void main() {
     float speck = smoothstep(0.86, 0.93, vnoise(fp * 3.7)) * smoothstep(0.0, 0.12, vHeight);
     float foam = clamp(lace * crest * 0.2 + speck * 0.12, 0.0, 0.3) * (1.0 - smoothstep(12.0, 40.0, dist));
     vec2 wp = vWorld.xz; // raft mask and item collars live in world space (no sailing flow)
+    float cl = vnoise(fp * 1.7) * 0.6 + vnoise(fp * 4.3 - uTime * 0.25) * 0.4; // drifting breakup for every collar
     // Raft collar: CPU-built falloff field, filtered by hand so it is smooth on every GPU.
     vec2 t = wp / ${TEXEL.toFixed(2)} + ${(GRID / 2 - 0.5).toFixed(1)};
     vec2 i0 = floor(t), fr = t - i0;
@@ -166,16 +167,18 @@ void main() {
     float m = mix(mix(texture2D(uRaftMask, i0).r, texture2D(uRaftMask, i0 + vec2(k, 0.0)).r, fr.x),
                   mix(texture2D(uRaftMask, i0 + vec2(0.0, k)).r, texture2D(uRaftMask, i0 + vec2(k)).r, fr.x), fr.y);
     float edge = m * (0.85 + 0.15 * sin(uTime * 1.7 + wp.x * 2.0 + wp.y * 1.3));
+    float ring = 0.0;
     for (int i = 0; i < ${MAX_FOAM}; i++) {
       vec4 f = uFoamPts[i];
       if (f.z <= 0.0) break;  // live points are packed first
       vec2 dv = wp - f.xy;
       if (dot(dv, dv) >= f.z * f.z) continue;  // outside this ring: skip the sqrt and smoothsteps
-      float d = length(dv) / f.z;  // thin broken ring hugging the item's waterline
-      edge = max(edge, smoothstep(0.35, 0.7, d) * (1.0 - smoothstep(0.7, 1.0, d)) * 0.35 * f.w);
+      float d = length(dv) / f.z + (cl - 0.5) * 0.3;  // noise-warped radius: wobbly ring at the waterline
+      ring = max(ring, smoothstep(0.25, 0.6, d) * (1.0 - smoothstep(0.6, 1.0, d)) * f.w);
     }
-    float cl = vnoise(fp * 1.7) * 0.6 + vnoise(fp * 4.3 - uTime * 0.25) * 0.4;
-    float collar = smoothstep(1.0 - edge, 1.0 - edge * 0.55, cl) * min(1.0, edge * 1.4) * 0.85;
+    // Raft edge: lace that thins with distance from the deck. Items: a faint ring broken up by the same noise.
+    float collar = max(smoothstep(1.0 - edge, 1.0 - edge * 0.4, cl) * min(1.0, edge * 1.4),
+                       ring * smoothstep(0.3, 0.75, cl) * 0.8) * 0.5;
     col = mix(col, uFoam, max(foam, collar));
   }
 
@@ -207,8 +210,8 @@ export function createOcean(T, options = {}) {
     uZenith: { value: new T.Color(options.zenith ?? '#2a8fd6') },
     uDeep: { value: new T.Color('#08355f') },
     uShallow: { value: new T.Color('#1a78b0') },
-    uFoam: { value: new T.Color('#f4fbfc') },
-    uFadeNear: { value: options.fadeNear ?? 52 },
+    uFoam: { value: new T.Color('#d8efe9') },
+    uFadeNear: { value: options.fadeNear ?? 75 },
     uFadeFar: { value: options.fadeFar ?? 135 },
     uRaftMask: { value: mask },
     uFoamPts: { value: foamPts },
