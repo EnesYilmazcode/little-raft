@@ -1032,7 +1032,7 @@ export function mount(transfer = null) {
   }
 
   // ---------- Frame ----------
-  const TITLE_FOCUS = new T.Vector3(-5, 0, 2), vmParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0};
+  const TITLE_FOCUS = new T.Vector3(0, 0, 0), vmParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0};
   const fishPos = new T.Vector3(), hookPos = new T.Vector3(), fishRope = Array.from({length:ROPE_SEGMENTS + 1}, () => new T.Vector3()), freeItems = [], ropeScratch = [];
   const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3(), oceanSample = {h:0, sx:0, sz:0};
   const hookParams = {hand:handPos, items:freeItems, skip:isPending, reeling:false, time:0};
@@ -1061,8 +1061,12 @@ export function mount(transfer = null) {
       camera.position.set(physics.x + (cf?.x ?? 0), physics.y + bob, physics.z + (cf?.z ?? 0));
       camera.rotation.set(pitch, yaw, (physics.grounded ? raft.rotation.z * CAMERA_ROLL * options.cameraMotion : 0) + (cf?.roll ?? 0), 'YXZ');
     } else { // gentle cinematic view for the welcome screen
-      const focus = TITLE_FOCUS, d = 23, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .77;
-      camera.position.set(focus.x + Math.sin(cy) * d * Math.cos(cp), d * Math.sin(cp), focus.z + Math.cos(cy) * d * Math.cos(cp)); camera.lookAt(focus);
+      // Low, near-horizon framing: sky fills the top, raft at eye level right of centre (menu sits left).
+      const focus = TITLE_FOCUS, d = 11, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .1, side = 1.6, ry = raft ? raft.position.y : 0;
+      const cx = focus.x + Math.sin(cy) * d * Math.cos(cp), cz = focus.z + Math.cos(cy) * d * Math.cos(cp);
+      const cyW = Math.max(ry + d * Math.sin(cp) + .6, ocean.getHeight(cx, cz) + 1.1); // never dip into a wave crest
+      camera.position.set(cx, cyW, cz);
+      camera.lookAt(focus.x - Math.cos(cy) * side, ry + 1.2, focus.z + Math.sin(cy) * side);
     }
     swing = Math.max(0, swing - dt * 3);
     const kind = heldKind(), motion = options.cameraMotion;
