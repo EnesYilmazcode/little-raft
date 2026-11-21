@@ -347,7 +347,7 @@ export function mount(transfer = null) {
 
   // ---------- Small mesh helpers ----------
   const materialCache = new Map();
-  let diving = null, diveWarmed = false, diveWarmAt = 0, playFrames = 0; const islands = [], aboveWater = [], gatheredIds = new Set(); // gatheredIds: host-side guard against re-gathering; // diving lane hook
+  let diving = null, diveWarmed = false, diveWarmAt = 0, playFrames = 0; const islands = [], aboveWater = [], gatheredIds = new Set(); let islandSpecs = [], islandsBuilt = false; // gatheredIds: host-side guard against re-gathering; // diving lane hook
   function mat(color) {
     if (!materialCache.has(color)) {
       let m = ART.artEnabled() ? ART.materialForColor(T, color) : null; // art lane hook
@@ -436,7 +436,9 @@ export function mount(transfer = null) {
     islands.length = 0; aboveWater.length = 0; // diving lane hook: seafloor rises toward islands; these groups hide underwater
     // A few islands at varied distances [angle, distance, radius]; draws 12 rand() values so later world seeding is unchanged.
     const isl = [[3.6, 62, 11], [2.55, 96, 15], [.75, 80, 9], [-1.75, 112, 13]];
-    for (let i = 0; i < 12; i++) { const j = rand(); if (i < isl.length) { const [a, d, r] = isl[i], rr = r * (.9 + j * .2), g = createIsland(T, {seed:i + 1, radius:rr}); g.position.set(Math.sin(a) * d, 0, Math.cos(a) * d); g.rotation.y = j * 6.28; islands.push({x:g.position.x, z:g.position.z, r:rr * .6}); aboveWater.push(g); scene.add(g); scenery.push([g, rr * .7]); } } // [sailing] islands drift past; diving: seafloor rises toward these (createIsland merges its own meshes)
+    // Positions are fixed here (seafloor and island nodes need them now); the meshes are built by buildIslands(), at idle after the first title frame or at start().
+    islandSpecs = []; islandsBuilt = false;
+    for (let i = 0; i < 12; i++) { const j = rand(); if (i < isl.length) { const [a, d, r] = isl[i], rr = r * (.9 + j * .2), x = Math.sin(a) * d, z = Math.cos(a) * d; islandSpecs.push({seed:i + 1, rr, x, z, ry:j * 6.28}); islands.push({x, z, r:rr * .6}); } }
     // Clouds are wisps in the sky dome (sky.js); the old puffy cloud groups are gone, so content's day/night gets clouds = [].
     aboveWater.push(sky.group); // diving lane hook: no sky dome underwater
     setOwnedElsewhere(id => Object.prototype.hasOwnProperty.call(PROG_ITEMS, id)); // [progression-hook] items.js unlocks own the catalogue
@@ -446,12 +448,23 @@ export function mount(transfer = null) {
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
-      getPush:(s, o) => { content?.sailPush(s, o); }, steerTargets:() => content?.steerTargets() ?? null}); /* engine: motor push + wheel grab points */ for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
+      getPush:(s, o) => { content?.sailPush(s, o); }, steerTargets:() => content?.steerTargets() ?? null}); /* engine: motor push + wheel grab points */ for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; } // scenery is empty until buildIslands() adds the islands
     try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     initShark(); // shark lane
     rebuildRaft(); fitShadow();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     syncItems(); singlePass(scene); refreshPointerUI(true);
+    if (running) buildIslands(); // remounted mid-game: no title screen to hide the build behind
+  }
+  // Decorative islands (scenery-islands.js): about 120 ms of geometry, so a title-screen mount defers it to idle.
+  // Pushed into aboveWater (diving hides them underwater; the fx reads the array when it hides) and into sailing's drifters.
+  function buildIslands() {
+    if (islandsBuilt || !scene) return false; islandsBuilt = true;
+    for (const {seed, rr, x, z, ry} of islandSpecs) {
+      const g = createIsland(T, {seed, radius:rr}); g.position.set(x, 0, z); g.rotation.y = ry; singlePass(g); // [sailing] islands drift past (createIsland merges its own meshes)
+      aboveWater.push(g); scene.add(g); scenery.push([g, rr * .7]); sailing?.addDrifter(g, rr * .7);
+    }
+    return true;
   }
 
   // ---------- Shark (shark lane, dist/shark.js) ----------
@@ -548,11 +561,23 @@ export function mount(transfer = null) {
   }
   // Compile every scene program up front (hidden viewmodels, hook, rope, ghost) so the first frame after #solo doesn't.
   // compile() walks the scene graph, so all viewmodels are attached just for the synchronous part of the call.
+  // On the title screen the islands and the held tools are built at idle after the first frame (or at start(), whichever is first),
+  // then compiled by a second compileAsync, so the first title frame isn't held up by ~170 ms of geometry.
+  let lateWarmed = false, lateWarmAt = 0, lateWarmIdle = false;
   function warmShaders() {
-    if (typeof renderer.compileAsync !== 'function') return;
-    hands?.preload(['hammer', 'fishingrod', 'spear']);
+    if (typeof renderer.compileAsync !== 'function') { buildIslands(); return; }
+    if (running) warmLate(false);
     try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
     catch (e) { console.warn('shader warm-up failed', e); }
+    if (!lateWarmed) requestAnimationFrame(() => requestAnimationFrame(() => { if (disposed || lateWarmed) return; // once the first title frames are up
+      if (typeof requestIdleCallback === 'function') { lateWarmIdle = true; lateWarmAt = requestIdleCallback(() => { lateWarmAt = 0; warmLate(true); }, {timeout:1500}); }
+      else lateWarmAt = later(() => { lateWarmAt = 0; warmLate(true); }, 200); }));
+  }
+  function warmLate(compile) {
+    if (lateWarmed || disposed || !scene) return; lateWarmed = true;
+    if (lateWarmAt) { if (lateWarmIdle) { try { cancelIdleCallback(lateWarmAt); } catch {} } else cancelTimer(lateWarmAt); lateWarmAt = 0; }
+    buildIslands(); hands?.preload(['hammer', 'fishingrod', 'spear']);
+    if (compile && typeof renderer?.compileAsync === 'function') { try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); } catch (e) { console.warn('shader warm-up failed', e); } }
   }
   // Also build the no-shadow variant (adaptive floor / Shadows off), else that switch relinks every lit program mid-game.
   // Warm it only when the scaler is one step from turning shadows off, so fast machines never pay for the extra programs.
@@ -1207,6 +1232,7 @@ export function mount(transfer = null) {
   }
 
   function start() {
+    warmLate(true); // islands must be up before play; a no-op once the idle warm-up ran
     running = true; const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false;
     if (!saveAvailable) setText('#saveStatus', 'Browser storage is unavailable. This session will not be saved.');
     refreshPointerUI(true);
@@ -2074,6 +2100,7 @@ export function mount(transfer = null) {
   function disposeScene() {
     if (!scene) return;
     try { building?.dispose(); } catch {} building = null; // building-pieces lane hook
+    if (lateWarmAt && lateWarmIdle && typeof cancelIdleCallback === 'function') { try { cancelIdleCallback(lateWarmAt); } catch {} } lateWarmAt = 0; lateWarmed = true;
     if (diveWarmAt && typeof cancelIdleCallback === 'function') { try { cancelIdleCallback(diveWarmAt); } catch {} } diveWarmAt = 0; // a later() fallback is cleared with the other timers
     try { diving?.dispose(); } catch {} diving = null; // diving lane hook
     try { shark?.dispose(); } catch {} shark = null; try { sharkFx?.dispose(); } catch {} sharkFx = null; // shark lane
