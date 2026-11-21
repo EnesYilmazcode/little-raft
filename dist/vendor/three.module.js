@@ -20467,6 +20467,10 @@ function WebGLProgram( renderer, cacheKey, parameters, bindingStates ) {
 
 		bindingStates.releaseStatesOfProgram( this );
 
+		// little-raft patch: a program compiled but never drawn (shader warm-up) still owns its shaders, which
+		// only onFirstUse deletes; free them here (deleting a deleted shader again is a no-op)
+		gl.deleteShader( glVertexShader );
+		gl.deleteShader( glFragmentShader );
 		gl.deleteProgram( program );
 		this.program = undefined;
 
