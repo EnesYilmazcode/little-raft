@@ -13,6 +13,7 @@ const WOOD = 'repeating-linear-gradient(90deg,#00000012 0 2px,transparent 2px 23
 const PIN_COLORS = ['#e0a128', '#4f8fa8', '#d0605a', '#5f9a5a'];
 const PIN_LABELS = ['Star', 'Fish', 'Heart', 'Flag'];
 const HIT = 16; // css px
+const BAR_M = [50, 250, 1000, 5000]; // scale bar length per SCALES preset
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const fin = Number.isFinite;
 
@@ -52,7 +53,8 @@ const CSS = `
 #lrMap .lrm-tick{color:#3f7f74;margin-left:4px}
 #lrMap .lrm-empty{margin:4px 2px 8px;font-style:italic;color:#e8d3a8}
 @media (max-width:520px){#lrMap .lrm-wrap{padding:8px}#lrMap h2{font-size:17px}#lrMap summary{pointer-events:none;list-style:none}#lrMap summary::-webkit-details-marker{display:none}
-  #lrMap canvas{width:min(100vw - 44px,62dvh);height:min(100vw - 44px,62dvh)}#lrMap ul{max-height:none}}
+  #lrMap canvas{width:min(100vw - 44px,62dvh);height:min(100vw - 44px,62dvh)}#lrMap ul{max-height:none}
+  #lrMap .lrm-icons{flex:1 1 100%;justify-content:space-between}#lrMap .lrm-icons button{flex:1}#lrMap .lrm-go,#lrMap .lrm-close{flex:1}}
 @media (prefers-reduced-motion:reduce){#lrMap .lrm-shake{animation:none}}
 `;
 
@@ -241,10 +243,10 @@ export function createMapTableUI(api) {
     g.font = `700 11px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'bottom'; g.fillStyle = INK; g.fillText('N', 0, -17);
     g.restore();
 
-    // scale bar (bottom left): a quarter of the chart width
-    const bar = R() / 2, bx0 = 14, by0 = size - 16;
+    // scale bar (bottom left): a round distance, about a quarter of the chart width
+    const nice = BAR_M[scaleIdx], bar = nice * k, bx0 = 14, by0 = size - 16;
     g.save(); g.strokeStyle = INK; g.lineWidth = 2; g.beginPath(); g.moveTo(bx0, by0); g.lineTo(bx0 + bar, by0); g.moveTo(bx0, by0 - 4); g.lineTo(bx0, by0 + 4); g.moveTo(bx0 + bar, by0 - 4); g.lineTo(bx0 + bar, by0 + 4); g.stroke();
-    g.font = `600 11px ${FONT}`; g.textAlign = 'left'; g.textBaseline = 'bottom'; g.fillStyle = INK; g.fillText(distText(scale() / 2), bx0 + 2, by0 - 5); g.restore();
+    g.font = `600 11px ${FONT}`; g.textAlign = 'left'; g.textBaseline = 'bottom'; g.fillStyle = INK; g.fillText(nice < 1000 ? nice + ' m' : nice / 1000 + ' km', bx0 + 2, by0 - 5); g.restore();
 
     lastRev = api.viewRev(); lastGx = v.gx; lastGz = v.gz; lastH = v.h;
     renderList(v);

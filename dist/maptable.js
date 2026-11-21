@@ -293,6 +293,19 @@ export function createMapTable(ctx, opts = {}) {
     close: () => ui?.close(),
     course(n = 0) { const e = st.isl[n]; return e ? course(e.x, e.z) : null; },
     ui: () => ui?.debug ?? null,
+    place(x = 1, z = 0, type = 'maptable') { // QA: put a table (or e.g. a receiver for the wedge) on raft tile (x, z), skipping bag/unlock
+      const w = ctx.world; if (!host() || !w || !Array.isArray(w.decor) || !w.tiles?.some(t => t[0] === x && t[1] === z)) return false;
+      if (!w.decor.some(d => d.x === x && d.z === z)) { w.decor.push({ type: String(type), x, z }); ctx.rebuildRaft?.(); }
+      return w.decor.some(d => d.x === x && d.z === z && d.type === type);
+    },
+    signalSoon() { const sg = ctx.world?.signal; if (!host() || !sg || sg.cache) return false; sg.cooldown = 0; return true; }, // QA: skip the receiver's first wait (wedge shots)
+    aimAt() { // QA: yaw/pitch that look from the player at the nearest table top
+      const w = ctx.world, p = ctx.physics, cam = ctx.camera; if (!w || !p || !cam) return null;
+      const d = w.decor.filter(e => e.type === 'maptable').sort((a, b) => Math.hypot(a.x * 2 - p.x, a.z * 2 - p.z) - Math.hypot(b.x * 2 - p.x, b.z * 2 - p.z))[0];
+      if (!d) return null;
+      const dx = d.x * 2 - cam.position.x, dz = d.z * 2 - cam.position.z, dy = (ctx.raft?.position.y ?? 0) + .8 - cam.position.y;
+      return { yaw: Math.atan2(-dx, -dz), pitch: Math.atan2(dy, Math.hypot(dx, dz)), dist: Math.hypot(d.x * 2 - p.x, d.z * 2 - p.z) };
+    },
     target: () => !!target(null),
   };
 
