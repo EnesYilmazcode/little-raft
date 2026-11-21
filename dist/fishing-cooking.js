@@ -144,7 +144,8 @@ export function createFishingCooking(T, host) {
       if (!bag.remove('scrap', GRILL_COST.scrap)) { bag.add('wood', GRILL_COST.wood); return say('Need 4 wood and 2 scrap for a grill'); }
       addGrill({ x, z }); markChanged(); return say('Grill placed');
     }
-    const g = grills.get(a.id); if (!g) return;
+    const g = grills.get(a.id);
+    if (!g) { if (a.kind === 'fc:cook') { refund(a, actor); say('That grill is gone'); } return; } // shark/another player took it: the fish comes back
     const st = g.st;
     if (a.kind === 'fc:fuel') {
       if (st.fuel >= FUEL_CAP - 1e-6) return say('Fuel is full');

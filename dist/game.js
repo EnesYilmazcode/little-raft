@@ -1080,8 +1080,20 @@ export function mount(transfer = null) {
     if (before > 0 && s.durability === 0) emit({kind:'notice', text:'Hook worn out: shorter throws. R to repair'}, actor);
     else if (before > 25 && s.durability <= 25) emit({kind:'notice', text:'Hook getting worn. R repairs: ' + Object.entries(repairCost(s.kind) ?? REPAIR_COST).map(([k, n]) => n + ' ' + itemName(k)).join(', ')}, actor); // [progression-hook]
   }
+  // [fishing-cooking] / [progression-hook] tile a guest's fc:* / prog:* action works on (null: none to check).
+  function laneActionTile(a) {
+    if (a.kind === 'fc:placeGrill') return {x:Math.round(Number(a.x)), z:Math.round(Number(a.z))};
+    if (a.kind.startsWith('fc:')) { const g = fc?.grills?.get(a.id); return g ? {x:g.st.x, z:g.st.z} : null; } // a missing grill: fc refunds
+    if (a.kind === 'prog:research') { const ts = world.decor.filter(d => d.type === 'researchtable'); return ts.find(d => inReach(other.x, other.z, d.x, d.z, BUILD_REACH + GUEST_REACH_SLACK)) ?? ts[0] ?? null; } // no table: progression explains
+    if (a.kind.startsWith('prog:')) { const [x, z] = String(a.key ?? '').split(',').map(Number); return {x, z}; }
+    return null;
+  }
   function applyAction(a, actor = 'host') {
     if (!a || typeof a !== 'object' || role === 'guest') return;
+    if (actor === 'guest' && other && typeof a.kind === 'string' && (a.kind.startsWith('fc:') || a.kind.startsWith('prog:'))) { // host reach check, like build
+      const t = laneActionTile(a);
+      if (t && !inReach(other.x, other.z, t.x, t.z, BUILD_REACH + GUEST_REACH_SLACK)) { fc?.refund?.(a, actor); emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
+    }
     if (prog?.apply(a, actor)) return; // [progression-hook] locked crafts + 'prog:*' actions
     const bag = actorBag(actor);
     if (spearRep?.apply(a, actor, bag)) return; // [spear-repair] 'spearHit' / 'repairTile'
