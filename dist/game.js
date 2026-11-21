@@ -1295,9 +1295,10 @@ export function mount(transfer = null) {
   let chargeWidth = '', hookStage = '';
   const TITLE_FOCUS = new T.Vector3(-5, 0, 2), vmParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0};
   const fishPos = new T.Vector3(), hookPos = new T.Vector3(), fishRope = Array.from({length:ROPE_SEGMENTS + 1}, () => new T.Vector3()), freeItems = [], ropeScratch = [];
+  let freeXZ = new Float64Array(64); // x,z of freeItems[i] at [2i], [2i+1]: HookCast sweeps read these instead of the item records
   const handParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0, yaw:0, pitch:0};
   const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3(), oceanSample = {h:0, sx:0, sz:0};
-  const hookParams = {hand:handPos, items:freeItems, reeling:false, time:0}; // freeItems is already filtered for pending items
+  const hookParams = {hand:handPos, items:freeItems, xz:freeXZ, reeling:false, time:0}; // freeItems is already filtered for pending items
   // Hook physics floats at a flat WATER_Y; map heights near the water onto the visible waves.
   const deckAt = (x, z) => (hasTile(Math.round(x / 2), Math.round(z / 2)) ? deckY() + .06 : null);
   function surfaceY(x, z, y) {
@@ -1414,6 +1415,8 @@ export function mount(transfer = null) {
     const guestTokens = role === 'guest' ? null : guestHeld.tokens(performance.now()); // host skips the guest's catch
     freeItems.length = 0;
     for (const it of world.items) if (!isPending(it) && !guestTokens?.includes(it.token)) freeItems.push(it);
+    if (freeXZ.length < freeItems.length * 2) hookParams.xz = freeXZ = new Float64Array(freeItems.length * 4);
+    for (let i = 0; i < freeItems.length; i++) { const it = freeItems[i], x = it.x, z = it.z; freeXZ[2 * i] = typeof x === 'number' ? x : NaN; freeXZ[2 * i + 1] = typeof z === 'number' ? z : NaN; }
     hookParams.reeling = reeling; hookParams.time = elapsed;
     const ev = hook.update(dt, hookParams);
     freeItems.length = 0; // don't keep item references between frames
