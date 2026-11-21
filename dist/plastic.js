@@ -11,7 +11,8 @@ const CACHE = new WeakMap();
 function lin(T, hex) { const c = new T.Color(hex); return [c.r, c.g, c.b]; }
 const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 
-function build(T) {
+// lod: far-view jug (beyond the item batch's LOD distance): 12-sided body, cap and handle only, ~400 triangles.
+function build(T, lod = false) {
   const Z = 0.2 / 0.27; // depth squash -> 0.4 deep
   // Body profile (radius, y) with beveled base and shoulders.
   const prof = [
@@ -43,7 +44,7 @@ function build(T) {
     new T.Vector3(x, y, z), new T.Quaternion().setFromEuler(new T.Euler(rx, ry, rz)), new T.Vector3(sx, sy, sz)));
 
   // 1. Hollow body (open neck) with dents, sun-yellowing, grime and a faded red label.
-  const body = new T.LatheGeometry(prof.map(([r, y]) => new T.Vector2(r, y)), 32);
+  const body = new T.LatheGeometry(prof.map(([r, y]) => new T.Vector2(r, y)), lod ? 12 : 32);
   {
     const p = body.attributes.position;
     const col = new Float32Array(p.count * 3);
@@ -69,18 +70,20 @@ function build(T) {
   }
   const parts = [body];
   // 2. Neck lip ring.
-  parts.push(paint(xf(new T.TorusGeometry(0.079, 0.008, 5, 18), 0, 0.268, 0, Math.PI / 2), white));
+  if (!lod) parts.push(paint(xf(new T.TorusGeometry(0.079, 0.008, 5, 18), 0, 0.268, 0, Math.PI / 2), white));
   // 3. Faded blue cap (slight tilt) + 4. tamper ring.
-  parts.push(paint(xf(new T.CylinderGeometry(0.086, 0.09, 0.07, 20), 0, 0.315, 0, 0, 0, 0.03),
+  parts.push(paint(xf(new T.CylinderGeometry(0.086, 0.09, 0.07, lod ? 8 : 20), 0, 0.315, 0, 0, 0, 0.03),
     (x, y) => mix(capBlue, capFade, y > 0.03 ? 0.55 : 0.15)));
-  parts.push(paint(xf(new T.TorusGeometry(0.088, 0.007, 5, 20), 0, 0.283, 0, Math.PI / 2), capBlue));
+  if (!lod) parts.push(paint(xf(new T.TorusGeometry(0.088, 0.007, 5, 20), 0, 0.283, 0, Math.PI / 2), capBlue));
   // 5. Handle loop (half torus bulging out on +x, ends buried in shoulder).
-  parts.push(paint(xf(new T.TorusGeometry(0.085, 0.022, 6, 14, Math.PI), 0.228, 0.06, 0, 0, 0, -Math.PI / 2, 1, 1, 1.25), yellowed));
+  parts.push(paint(xf(new T.TorusGeometry(0.085, 0.022, lod ? 4 : 6, lod ? 7 : 14, Math.PI), 0.228, 0.06, 0, 0, 0, -Math.PI / 2, 1, 1, 1.25), yellowed));
   // 6. Mold seam running up the -x side and across the base.
-  const seamPts = [];
-  for (let y = 0.24; y >= -0.345; y -= 0.02) seamPts.push(new T.Vector3(-radiusAt(y) - 0.002, y, 0));
-  seamPts.push(new T.Vector3(0, -0.352, 0), new T.Vector3(radiusAt(-0.34), -0.352, 0));
-  parts.push(paint(new T.TubeGeometry(new T.CatmullRomCurve3(seamPts), 32, 0.0035, 3, false), grime));
+  if (!lod) {
+    const seamPts = [];
+    for (let y = 0.24; y >= -0.345; y -= 0.02) seamPts.push(new T.Vector3(-radiusAt(y) - 0.002, y, 0));
+    seamPts.push(new T.Vector3(0, -0.352, 0), new T.Vector3(radiusAt(-0.34), -0.352, 0));
+    parts.push(paint(new T.TubeGeometry(new T.CatmullRomCurve3(seamPts), 32, 0.0035, 3, false), grime));
+  }
 
   // merge (non-indexed) and normals
   body.computeVertexNormals();
@@ -103,6 +106,7 @@ function build(T) {
   geo.translate(0, 0, SINK);
   geo.computeBoundingSphere();
 
+  if (lod) return { geo, mat: null };
   const mat = new T.MeshStandardMaterial({ name: 'plastic_jug', vertexColors: true, roughness: 0.42, metalness: 0, side: T.DoubleSide });
   mat.dispose = () => {};
   return { geo, mat };
@@ -110,7 +114,12 @@ function build(T) {
 
 export function createPlastic(T) {
   let c = CACHE.get(T);
-  if (!c) { c = build(T); c.geo.userData.shared = true; c.mat.userData.shared = true; CACHE.set(T, c); }
+  if (!c) {
+    c = build(T); c.geo.userData.shared = true; c.mat.userData.shared = true;
+    const far = build(T, true).geo; far.userData.shared = true;
+    Object.defineProperty(c.geo.userData, 'lod', { value: far }); // item batch draws it when the jug is far; non-enumerable, so geometry toJSON skips it
+    CACHE.set(T, c);
+  }
   const root = new T.Group();
   root.name = 'plastic';
   const body = new T.Mesh(c.geo, c.mat); // shared geometry + material (userData.shared): nothing per jug to free
