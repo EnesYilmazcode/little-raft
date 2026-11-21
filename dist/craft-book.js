@@ -18,7 +18,10 @@ const CATEGORY_OF = Object.freeze({
   sail: 'building', bench: 'building', crate: 'building',
   // progression catalogue (items.js)
   metalhook: 'tools', binoculars: 'tools',
+  drum: 'tools', pipes: 'tools', bells: 'tools', // [instruments]
   nail: 'materials', bolt: 'materials', hinge: 'materials',
+  flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
+  rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
   researchtable: 'building', grill: 'building', smelter: 'building',
 });
 
@@ -51,6 +54,8 @@ export const ITEM_TEXT = Object.freeze({
   saltcup:    { desc: 'A cup of salty sea water.', use: 'Pour it into a water purifier.' },
   freshcup:   { desc: 'A cup of clean fresh water.', use: 'Water a palm planter.' },
   seed:       { desc: 'A palm seed.', use: 'Plant it in an empty palm planter.' },
+  rainbarrel: { desc: 'A tub with a leaf funnel that catches the rain.', use: 'Fills by itself in the rain. Hold an empty cup and press E.' },
+  sprinkler:  { desc: 'A little spinning head with its own tank.', use: 'Waters nearby palm planters for you. Fill it with fresh water, or put it next to a rain barrel.' },
   water:      { desc: 'A filtered cup of fresh water.', use: 'Water a palm planter.' },
   purifier:   { desc: 'A small still that boils off the salt.', use: 'Turns sea water into fresh water.' },
   // progression catalogue (items.js; its tooltips also show the item's own tip)
@@ -65,7 +70,17 @@ export const ITEM_TEXT = Object.freeze({
   hinge:      { desc: 'A small metal hinge.', use: 'Lids, doors and folding parts.' },
   metalhook:  { desc: 'A heavy metal hook that lasts much longer.', use: 'Throw it like the hook; wears far slower.' },
   binoculars: { desc: 'Glass lenses in a copper tube.', use: 'Hold to spot barrels and islands far away.' },
+  drum:       { desc: 'A wooden hand drum with a palm-leaf head.', use: 'Click to play; look up or down to change the note.' }, // [instruments]
+  pipes:      { desc: 'Plastic reed tubes tied in a row.', use: 'Click to play soft breathy notes with your friend.' }, // [instruments]
+  bells:      { desc: 'Brass-bright scrap bars on a small frame.', use: 'Click to ring a note that fades out softly.' }, // [instruments]
   cookedfish: { desc: 'A fish grilled golden.', use: 'A hearty snack.' },
+  flowerseed: { desc: 'A tiny seed from an island bush.', use: 'Plant it in a flower box.' }, // [bees]
+  flowerbox:  { desc: 'A planter full of bright blooms.', use: 'Place near a beehive; bees love it.' }, // [bees]
+  beehive:    { desc: 'A cosy straw hive of friendly bees.', use: 'Place by flower boxes; collect honeycomb with E.' }, // [bees]
+  honey:      { desc: 'Sweet, golden and sticky.', use: 'Glaze a grilled fish.' }, // [bees]
+  wax:        { desc: 'Soft beeswax from the comb.', use: 'Make beeswax candles.' }, // [bees]
+  candle:     { desc: 'A little jar candle.', use: 'Glows warmly at night; place on a tile.' }, // [bees]
+  honeyfish:  { desc: 'Grilled fish with a honey glaze.', use: 'A sweet treat.' }, // [bees]
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
   grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },

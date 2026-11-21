@@ -401,7 +401,7 @@ export function createDayNight(ctx) {
   function lanternSignature(raft, world) {
     let n = raft.children.length * 131;
     const decor = world?.decor;
-    if (Array.isArray(decor)) for (let i = 0; i < decor.length; i++) if (decor[i]?.type === 'lantern') n++;
+    if (Array.isArray(decor)) for (let i = 0; i < decor.length; i++) if (decor[i]?.type === 'lantern' || decor[i]?.type === 'candle') n++; // [bees] candles glow too
     return n;
   }
   function restoreParts() { for (let i = 0; i < partCount; i++) if (partMat[i]) partMat[i].emissiveIntensity = partBase[i]; }
@@ -410,7 +410,7 @@ export function createDayNight(ctx) {
     partCount = 0; lanternCount = 0;
     for (let c = 0; c < raft.children.length && lanternCount < MAX_LANTERNS; c++) {
       const g = raft.children[c];
-      if (g.name !== 'craft_lantern') continue;
+      if (g.name !== 'craft_lantern' && g.name !== 'craft_candle') continue; // [bees]
       let found = false;
       for (let k = 0; k < g.children.length; k++) {
         const m = g.children[k];
@@ -651,5 +651,5 @@ export function createDayNight(ctx) {
     },
   };
 
-  return { name: 'daynight', update, serialize, load, dispose, debug, get wind() { return W.wind; } };
+  return { name: 'daynight', update, serialize, load, dispose, debug, get wind() { return W.wind; }, get rain() { return W.rain; } };
 }

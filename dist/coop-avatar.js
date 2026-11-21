@@ -88,12 +88,16 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother' } = 
     net(g, K) { part(g, Cyl(0.012, 0.012, 0.3, 4), K.wood, 0, 0.08); part(g, new T.TorusGeometry(0.11, 0.012, 3, 10), K.rope, 0, 0.33); part(g, new T.CircleGeometry(0.105, 8), K.net, 0, 0.33); return [0, 0.33, 0]; },
     bench(g, K) { part(g, Box(0.34, 0.03, 0.12), K.wood, 0, 0.1, 0, Math.PI / 2); part(g, Box(0.03, 0.1, 0.1), K.woodDark, 0.13, 0.1, -0.06); part(g, Box(0.03, 0.1, 0.1), K.woodDark, -0.13, 0.1, -0.06); return [0, 0.1, 0]; },
     crate(g, K) { part(g, Box(0.24, 0.24, 0.24), K.wood, 0, 0.1); part(g, Box(0.25, 0.04, 0.25), K.woodDark, 0, 0.1); return [0, 0.1, 0]; },
+    // [instruments] held instruments (own small props)
+    drum(g, K) { part(g, Cyl(0.08, 0.08, 0.1, 10), K.wood, 0, 0.08); part(g, Cyl(0.082, 0.082, 0.01, 10), M('#7da35a'), 0, 0.135); return [0, 0.14, 0]; },
+    pipes(g) { const m = M('#a5d4d8', { roughness: 0.6 }); [0.16, 0.14, 0.12, 0.1].forEach((h, i) => part(g, Box(0.015, h, 0.015), m, (i - 1.5) * 0.022, h / 2)); return [0, 0.16, 0]; },
+    bells(g, K) { part(g, Box(0.16, 0.02, 0.1), K.wood, 0, 0.06); const m = M('#c9b26a', { metalness: 0.7, roughness: 0.35 }); for (let i = 0; i < 3; i++) part(g, Box(0.02, 0.008, 0.09 - i * 0.015), m, (i - 1) * 0.045, 0.074); return [0, 0.08, 0]; },
   };
   // Holder sits in the right hand; carry items sit upright-ish, tools point forward.
   const holder = new T.Group();
   holder.position.set(0, -0.5, 0.03);
   P.rightArm.add(holder);
-  const TOOL_TILT = { hook: 1.25, hammer: 1.35, fishingrod: 0.95, lantern: 1.45 };
+  const TOOL_TILT = { hook: 1.25, hammer: 1.35, fishingrod: 0.95, lantern: 1.45, drum: 1.5, pipes: 0.4, bells: 1.2 }; // [instruments]
   const cache = new Map();
   let curKind, cur = null;
   const getModel = (kind) => {
