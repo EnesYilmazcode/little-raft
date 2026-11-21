@@ -675,8 +675,9 @@ export function mount(transfer = null) {
   function gulp(munch) { beep(munch ? 240 : 330); later(() => beep(munch ? 200 : 280), 130); }
   // Game-internal damage hook for other systems (sharks, falls…). Hurts the LOCAL player only; on a host, a hit on the
   // guest must be sent to the guest (e.g. as an effect) and applied there with its own hurtPlayer. Returns HP lost.
+  let soloPaused = false; // solo pause menu (a real <dialog>) is open: the world holds still; set once per frame. Never for host/guest.
   function hurtPlayer(n, cause = 'hit') {
-    if (!running || fainted >= 0) return 0;
+    if (!running || fainted >= 0 || soloPaused) return 0;
     const lost = damageVitals(vitals, Number(n), String(cause ?? 'hit'));
     if (lost > 0) vitalsUI?.flash();
     return lost;
@@ -705,7 +706,7 @@ export function mount(transfer = null) {
       else if (bag.selectedIndex !== eating.slot || bag.slots[eating.slot]?.kind !== eating.item) eating = null; // switched slot or item gone
       else if ((eating.t += dt) >= EAT_SECONDS) { const item = eating.item; eating = null; action({kind:'eat', item}); }
     }
-    if (role === 'solo' && dialog && dialogOpen()) return; // the solo pause menu stops the clock
+    if (soloPaused) return; // the solo pause menu stops the clock
     vitalsOpts.mult = exertion; tickVitals(vitals, dt, vitalsOpts);
     if (vitals.hp <= 0) { fainted = 0; eating = null; charging = null; reeling = false; if (hook) { fishWait = 0; endHook(); } if (building?.menu.isOpen) building.menu.close(false); clearInput(); } // drop the line: it must not stay out from the old spot
   }
@@ -1597,7 +1598,7 @@ export function mount(transfer = null) {
   function frame() {
     const now = performance.now(), rawMs = now - last, realDt = rawMs / 1000, dt = Math.min(realDt, .05); last = now; elapsed += dt;
     if (running && !diveWarmed && ++playFrames > 2) scheduleDiveWarm();
-    const dialog = uiBlocked();
+    const dialog = uiBlocked(); soloPaused = role === 'solo' && dialog && dialogOpen();
     if (running && !dialog && !document.hidden && !PIN_QUALITY) quality.tick(rawMs);
     checkPeerStale(now);
     ocean.update(elapsed, camera); sfx.tick(dt, {swimming:physics.swimming});
@@ -1613,7 +1614,7 @@ export function mount(transfer = null) {
     if (!promptOff && window.raftPrompts?.provide) { try { promptOff = window.raftPrompts.provide({id:'game-context', priority:0, prompt:promptTip}); } catch { promptOff = () => {}; } } // [vitals] eat/drink + watering prompts
     updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost();
     content?.update(dt); // content hook
-    if (shark) { try { shark.update(dt, elapsed, running); } catch (e) { console.error('shark update failed', e); try { shark.dispose(); } catch {} shark = null; } } // shark lane
+    if (shark && !soloPaused) { try { shark.update(dt, elapsed, running); } catch (e) { console.error('shark update failed', e); try { shark.dispose(); } catch {} shark = null; } } // shark lane
     sky?.follow(ocean.uniforms, scene.background); sky?.update(elapsed, camera); // sky dome tracks day/night's horizon, zenith and sun
     if (fc) { try { fc.update(dt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
     if (instruments) { try { instruments.update(dt); } catch (e) { console.error('instruments update failed', e); try { instruments.dispose(); } catch {} instruments = null; } } // [instruments]

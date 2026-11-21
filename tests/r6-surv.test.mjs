@@ -36,3 +36,13 @@ test('V1: waking clears any hook/charge and re-checks the pointer UI', () => {
   assert.match(v, /You wake up on the raft[^\n]*refreshPointerUI\(true\)/);
   assert.match(v, /fainted = 0;[^\n]*building\.menu\.close\(false\)/, 'fainting closes the build wheel');
 });
+
+test('V2: the solo pause menu freezes the shark and its damage; host/guest never pause', () => {
+  const f = fnBody('frame');
+  assert.match(f, /soloPaused = role === 'solo' && dialog && dialogOpen\(\);/, 'computed once per frame, solo only');
+  assert.match(f, /if \(shark && !soloPaused\) \{ try \{ shark\.update\(dt, elapsed, running\); \}/, 'shark.update skipped entirely (not dt=0 / inactive)');
+  assert.ok(f.indexOf('soloPaused =') < f.indexOf('shark.update'), 'set before the shark runs');
+  assert.match(head(fnBody('hurtPlayer')), /soloPaused\) return 0;/, 'no damage while solo paused');
+  assert.match(fnBody('updateVitals'), /if \(soloPaused\) return;/, 'vitals clock uses the same flag');
+  assert.equal((game.match(/soloPaused = /g) || []).length, 2, 'declaration + one per-frame writer');
+});
