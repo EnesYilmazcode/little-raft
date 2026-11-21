@@ -19,8 +19,8 @@ export const PRESETS = {
   plank:   { cell: 'plank',   roughness: 1,    metalness: 0,    normalScale: 0.9, repeat: [1, 3] }, // deck board: u across (0.34 m), v along
   bark:    { cell: 'bark',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [2, 4] }, // deck logs ~0.4 m round x 2 m
   plastic: { cell: 'plastic', roughness: 1,    metalness: 0,    normalScale: 0.8, repeat: [1, 1], transparent: true, opacity: 0.95, side: 'double' },
-  foliage: { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [10, 5] }, // dense bush/island canopy, opaque
-  leaf:    { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1], alphaTest: 0.5, side: 'double' },
+  foliage: { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 0.7, repeat: [10, 5] }, // dense bush/island canopy, opaque
+  leaf:    { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1], cutout: 0.5, side: 'double' },
   rope:    { cell: 'rope',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [1, 3] },
   scrap:   { cell: 'scrap',   roughness: 1,    metalness: 0.5,  normalScale: 1.0, repeat: [1, 1], metalMap: true }, // x metal mask in albedo alpha; capped: no env map in game
   sand:    { cell: 'sand',    roughness: 1,    metalness: 0,    normalScale: 0.8, repeat: [3, 3] },
@@ -63,6 +63,8 @@ const cache = new Map();
 const TINT = 0.65; // how far game palette colours pull a texture's own colour (1 = exact average)
 const FRAG_HEAD = `
 uniform vec4 lrCell; // atlas cell: xy offset, zw size
+uniform float lrCut; // alpha cutout threshold (0 = off). Not material.alphaTest: three's shadow depth
+                     // material would copy map+alphaTest and sample the whole atlas with leaf uvs.
 uniform vec4 lrScale; // xy tiles per uv unit, zw phase offset
 vec4 lrTex(sampler2D s, vec2 uv) {
   uv = uv * lrScale.xy + lrScale.zw;
@@ -71,11 +73,11 @@ vec4 lrTex(sampler2D s, vec2 uv) {
 }
 `;
 function patch(T, shader, u) {
-  shader.uniforms.lrCell = u.cell; shader.uniforms.lrScale = u.scale;
+  shader.uniforms.lrCell = u.cell; shader.uniforms.lrScale = u.scale; shader.uniforms.lrCut = u.cut;
   const C = T.ShaderChunk;
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', '#include <common>' + FRAG_HEAD)
-    .replace('#include <map_fragment>', C.map_fragment.replace('texture2D( map, vMapUv )', 'lrTex( map, vMapUv )'))
+    .replace('#include <map_fragment>', C.map_fragment.replace('texture2D( map, vMapUv )', 'lrTex( map, vMapUv )') + '\nif (diffuseColor.a < lrCut) discard;')
     .replace('#include <normal_fragment_maps>', C.normal_fragment_maps.replace(/texture2D\( normalMap, vNormalMapUv \)/g, 'lrTex( normalMap, vNormalMapUv )'))
     .replace('#include <roughnessmap_fragment>', C.roughnessmap_fragment.replace('texture2D( roughnessMap, vRoughnessMapUv )', 'lrTex( roughnessMap, vRoughnessMapUv )').replace('texelRoughness.g', 'texelRoughness.a'))
     .replace('#include <metalnessmap_fragment>', C.metalnessmap_fragment.replace('texture2D( metalnessMap, vMetalnessMapUv )', 'lrTex( metalnessMap, vMetalnessMapUv )').replace('texelMetalness.b', 'texelMetalness.a'));
@@ -91,7 +93,7 @@ export function getMaterial(T, name, opts = {}) {
   const m = new T.MeshStandardMaterial({
     map: atlas.map, normalMap: atlas.normalMap, roughnessMap: atlas.normalMap, metalnessMap: p.metalMap ? atlas.map : null,
     roughness: p.roughness, metalness: p.metalness, normalScale: new T.Vector2(p.normalScale, p.normalScale),
-    transparent: !!p.transparent, opacity: p.opacity ?? 1, alphaTest: p.alphaTest ?? 0,
+    transparent: !!p.transparent, opacity: p.opacity ?? 1,
     depthWrite: p.depthWrite ?? true, side: p.side === 'double' ? T.DoubleSide : T.FrontSide,
   });
   const [rx, ry] = opts.repeat ?? p.repeat;
@@ -102,10 +104,10 @@ export function getMaterial(T, name, opts = {}) {
   }
   // Per-material uv phase (hash of the key) so differently tinted boards/logs don't line up knots and nails.
   let h = 2166136261; for (const ch of key) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
-  const u = { cell: { value: new T.Vector4(...cell.uv) }, scale: { value: new T.Vector4(rx, ry, (h & 1023) / 1024, ((h >>> 10) & 1023) / 1024) } };
+  const u = { cut: { value: p.cutout ?? 0 }, cell: { value: new T.Vector4(...cell.uv) }, scale: { value: new T.Vector4(rx, ry, (h & 1023) / 1024, ((h >>> 10) & 1023) / 1024) } };
   m.userData.lr.uniforms = u;
   m.onBeforeCompile = sh => patch(T, sh, u);
-  m.customProgramCacheKey = () => 'lr-atlas-1';
+  m.customProgramCacheKey = () => 'lr-atlas-2'; // bump whenever patch() output changes (programs are shared by key)
   m.name = 'lr-' + name;
   cache.set(key, m);
   return m;

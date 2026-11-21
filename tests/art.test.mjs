@@ -77,7 +77,7 @@ test('materials: presets are cached, tinted and the patched shader compiles to v
     assert.ok(m.isMeshStandardMaterial && m.map && m.normalMap && m.roughnessMap === m.normalMap, name);
     const sh = { uniforms: {}, vertexShader: T.ShaderLib.standard.vertexShader, fragmentShader: T.ShaderLib.standard.fragmentShader };
     m.onBeforeCompile(sh);
-    assert.ok(sh.uniforms.lrCell && sh.uniforms.lrScale, name);
+    assert.ok(sh.uniforms.lrCell && sh.uniforms.lrScale && sh.uniforms.lrCut, name);
     assert.ok(/lrTex\( map/.test(sh.fragmentShader) && /texelRoughness\.a/.test(sh.fragmentShader), name);
   }
   const tinted = MAT.materialForColor(T, '#bb8a53');
@@ -92,4 +92,16 @@ test('materials: lighting rig applies to a scene', () => {
   assert.ok(hemi && sun);
   assert.equal(sun.intensity, MAT.LIGHTING.sunIntensity);
   assert.equal('#' + scene.fog.color.getHexString(), MAT.LIGHTING.fog.toLowerCase());
+});
+
+test('noise: worleyGrid matches worley and cached vnoise matches hashing', async () => {
+  const N = await import('../dist/texgen/noise.js');
+  const wf = N.worleyGrid(5, 7, 3, 0.9);
+  for (let i = 0; i < 400; i++) {
+    const x = (i * 0.37) % 11 - 3, y = (i * 0.53) % 13 - 4, a = { ...N.worley(x, y, 5, 7, 3, 0.9) }, b = wf(x, y);
+    assert.ok(Math.abs(a.f1 - b.f1) < 1e-9 && Math.abs(a.f2 - b.f2) < 1e-9 && a.id === b.id, `worley mismatch at ${x},${y}`);
+  }
+  // vnoise falls back to hashing for non-integer periods; at integer coordinates both must equal the hash.
+  for (let i = 0; i < 50; i++) assert.equal(N.vnoise(i, 2 * i, 8, 8, 4), N.hash2(i % 8, (2 * i) % 8, 4));
+  N.clearNoiseCache();
 });
