@@ -1051,8 +1051,10 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function liveIcons() {
     iconsLive = true;
     warmIcons(curSlots.slice(0, HB).map(s => s?.kind).filter(Boolean));
+    warmIcons(FIRST_CATCH); // what the first hook throws bring in: the pickup feed shows these within seconds
     if (!warmTimer) warmTimer = setTimeout(warmAll, 5000);
   }
+  const FIRST_CATCH = ['wood', 'plastic', 'leaf', 'scrap', 'rope', 'hammer'];
   function warmAll() { warmTimer = -1; iconsLive = true; warmIcons(Object.keys(ITEM_INFO || {})); }
   function open() {
     if (!alive || isOpen) return;
@@ -1072,6 +1074,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     reorderRecipes();
     if (!pickedByUser && viewOf(pickId)?.state !== 'ready') pickId = null; // default to the first ready recipe
     applyTab();
+    // Recipe rows are built before icons go live, so they hold flat placeholders: ask for every shown
+    // kind ahead of the background warm-up; onIconReady swaps each one in as it lands.
+    dlg.querySelectorAll('svg[data-icon]').forEach(n => iconURL(n.dataset.icon));
     try { wrap.focus({ preventScroll: true }); } catch {}
   }
   function close() {
