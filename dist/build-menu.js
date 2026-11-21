@@ -4,7 +4,7 @@
 const STYLE_ID = 'lr-build-menu-style';
 const SPRITE = (() => { try { return new URL('icons.svg', import.meta.url).href; } catch { return 'icons.svg'; } })();
 const MAT_SPRITE = { wood: 'wood', leaf: 'leaf', scrap: 'scrap' };
-const MAT_NAME = { wood: 'plank', leaf: 'palm leaf', plastic: 'plastic', scrap: 'scrap', rope: 'rope' };
+const MAT_NAME = { wood: 'Plank', leaf: 'Palm Leaf', plastic: 'Plastic', scrap: 'Scrap', rope: 'Rope' }; // item display names (items.js)
 
 // Original 24x24 line icons (stroke = currentColor).
 const ICONS = {
@@ -71,6 +71,7 @@ body.bm-wheel-up #lrPrompt,body.bm-wheel-up #contextPrompt{visibility:hidden}
 .bm-row{display:flex;align-items:center;gap:10px}
 .bm-row b{font:700 14px/1.1 ${FONT};white-space:nowrap}
 .bm-hint{display:block;margin-top:3px;font:500 11px/1.2 ${FONT};color:#d9c9a6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bm-hint [hidden]{display:none}
 .bm-hint kbd{font:700 10px/1 ${FONT};color:#ffdd95;border:1px solid #e0bd7155;border-radius:3px;padding:1px 3px}
 .bm-status{display:block;margin-top:3px;font:700 12px/1.2 ${FONT};color:#ffab8f}
 .bm-status:empty{display:none}
@@ -91,7 +92,7 @@ export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
   if (!document.getElementById(STYLE_ID)) {
     const st = document.createElement('style'); st.id = STYLE_ID; st.textContent = CSS; document.head.appendChild(st);
   }
-  const list = (pieces || []).map(p => ({ id: String(p.id), name: String(p.name ?? p.id), cost: p.cost || {} }));
+  const list = (pieces || []).map(p => ({ id: String(p.id), name: String(p.name ?? p.id), cost: p.cost || {}, rotates: p.rotates !== false }));
   const n = Math.max(1, list.length), step = 360 / n;
   const byId = new Map(list.map((p, i) => [p.id, i]));
   let canAfford = () => true, selected = byId.has('foundation') ? 'foundation' : (list[0]?.id ?? null);
@@ -126,8 +127,9 @@ export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
   const chip = document.createElement('div');
   chip.className = 'bm-chip'; chip.hidden = true; chip.setAttribute('role', 'status');
   chip.innerHTML = '<i></i><div><span class="bm-row"><b></b><span class="bm-cost"></span></span>' +
-    '<span class="bm-hint"><kbd>Right-click</kbd> pieces · <kbd>R</kbd> rotate · <kbd>X</kbd> remove</span><span class="bm-status"></span></div>';
+    '<span class="bm-hint"><kbd>Right-click</kbd> pieces<span class="bm-rot"> · <kbd>R</kbd> rotate</span> · <kbd>X</kbd> remove</span><span class="bm-status"></span></div>';
   const chipIcon = chip.querySelector('i'), chipName = chip.querySelector('b'), chipCost = chip.querySelector('.bm-cost'), chipStatus = chip.querySelector('.bm-status');
+  const chipRot = chip.querySelector('.bm-rot');
   root.appendChild(chip);
   let chipShown = false, chipText = '';
 
@@ -135,6 +137,7 @@ export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
     const p = list[byId.get(selected)];
     if (!p) return;
     chipIcon.innerHTML = iconSvg(p.id, 26); chipName.textContent = p.name; chipCost.innerHTML = costHtml(p.cost);
+    if (chipRot) chipRot.hidden = !p.rotates; // R does nothing for pieces whose axis comes from the aim
   }
   function renderMid() {
     const i = hot >= 0 ? hot : byId.get(selected) ?? -1, p = list[i];

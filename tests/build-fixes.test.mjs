@@ -89,7 +89,7 @@ test('game.js host checks piece/unpiece reach and decor before building.apply', 
   const branch = g.slice(at, apply);
   assert.match(branch, /inReach\(who\.x, who\.z, ci, cj, PIECE_REACH \+ \(actor === 'guest' \? GUEST_REACH_SLACK/);
   assert.match(branch, /who && !inReach/); // missing guest pose is tolerated like the floor branch
-  assert.match(branch, /pieceBlock\(world\.decor, a\)/);
+  assert.match(branch, /pieceBlock\(world\.decor, a(, grillAt)?\)/);
   assert.match(branch, /emit\(\{kind:'notice', text:BLOCK_TEXT\[why\]\}, actor\)/);
   assert.match(g, /decorBlock\(world\.tiles, world\.decor, a\.x, a\.z, world\.pieces\)/); // host decor branch
   assert.match(g, /why = decorBlock\(world\.tiles, world\.decor, x, z, world\.pieces\)/); // client placementFor

@@ -19,6 +19,8 @@ export const BLOCK_TEXT = Object.freeze({
   brother: 'Your brother is in the way',
   nofloor: 'Place it on the raft floor',
   piece: 'Stairs are in the way',
+  wall: 'A wall is in the way',
+  floor: 'A floor is in the way',
 });
 // Building pieces that fill a deck cell (stairs at level 0; floor/roof only sit higher up, but count them too).
 const CELL_PIECES = ['floor', 'stairs', 'roof'];
@@ -51,10 +53,12 @@ export function decorBlock(tiles, decor, x, z, pieces) {
   return null;
 }
 
-// Why a building piece can't go at deck level: 'decor' when a level-0 cell piece would land on a decor tile, else null.
-export function pieceBlock(decor, p) {
+// Why a building piece can't go at deck level: 'decor' when a level-0 cell piece would land on a decor tile
+// or a grill (hasGrill(x, z), optional), else null. One function for the client ghost and the host check.
+export function pieceBlock(decor, p, hasGrill) {
   if (!p || p.l !== 0 || !CELL_PIECES.includes(p.t)) return null;
-  return Array.isArray(decor) && decor.some(d => d.x === p.i && d.z === p.j) ? 'decor' : null;
+  if (Array.isArray(decor) && decor.some(d => d.x === p.i && d.z === p.j)) return 'decor';
+  return typeof hasGrill === 'function' && hasGrill(p.i, p.j) ? 'decor' : null;
 }
 
 // World XZ centre of a piece record {t, i, j, l, r} (edges sit on a cell side, pillars on a corner), in cell units for inReach.

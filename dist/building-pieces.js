@@ -77,6 +77,7 @@ export class BuildGrid {
     this._prevHead = Infinity; this._px = 0; this._pz = 0; this._pvy = 0;
     this._refused = null; this._rx = 0; this._rz = 0; this._rvy = 0;
     this._pre = {deckY: 0, tiles: this._tileArr};
+    this.block = null; // optional p -> reason text ('' = ok), applied to the aimed slot in aim()
   }
 
   setTiles(tiles) {
@@ -305,7 +306,22 @@ export class BuildGrid {
         }
       }
     }
+    if (found && out.ok && this.block) { const why = this.block(out); if (why) { out.ok = false; out.reason = why; } } // caller rules (decor / grill on the floor): red ghost, same reason the host gives
     return found ? out : null;
+  }
+
+  // Does a built wall / pillar / door frame ('wall') or floor / roof slab ('floor') stand between the eye
+  // (ox, oy, oz) and the point (px, py, pz)? '' when the line is clear. Doorways and gaps stay open.
+  occludes(ox, oy, oz, px, py, pz, deckY) {
+    let dx = px - ox, dy = py - oy, dz = pz - oz;
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (!(len > 0.06)) return '';
+    dx /= len; dy /= len; dz /= len;
+    this._rebuild();
+    const max = len - 0.05;
+    for (let n = 0; n < this._solidN; n++) { const t = rayBox(ox, oy, oz, dx, dy, dz, this._solid, n * 6, deckY); if (t >= 0 && t < max) return 'wall'; }
+    for (let n = 0; n < this._slabN; n++) { const t = rayBox(ox, oy, oz, dx, dy, dz, this._slabs, n * 6, deckY); if (t >= 0 && t < max) return 'floor'; }
+    return '';
   }
 
   // ---------- walking ----------

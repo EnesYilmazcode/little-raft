@@ -117,6 +117,9 @@ export function statePrompt(s, opt = {}) {
     return null;
   }
   if (held === 'hammer') {
+    const pc = s.build?.piece; // a building piece is selected: its aimed slot ({ok, reason, name, cost}), or false (nothing aimed)
+    if (pc) return pc.ok ? [{key:'LMB', label:'Build ' + pc.name}, {label:pc.cost, muted:true}] : {label:pc.reason || 'Can’t build here', muted:true};
+    if (pc === false) return {label:'Aim at the raft to build', muted:true};
     if (!s.build?.hover) return {label:'Aim at the raft edge', muted:true};
     if (s.build.affordable) return [{key:'LMB', label:'Build floor'}, {label:costText(FLOOR_COST), muted:true}];
     const m = missingText(s.stock, FLOOR_COST);
