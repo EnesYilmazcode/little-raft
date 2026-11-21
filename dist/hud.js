@@ -40,7 +40,20 @@ export const HINTS = Object.freeze([
   {id:'throw', text:'Hold click to charge, release to throw at floating supplies', when:c => c.heldKind === 'hook' && !c.castOut},
   {id:'bag', text:'Press Tab or E to open your bag and craft', when:c => c.hasLoot},
   {id:'slots', text:'Press 1–8 to choose what you hold', when:() => true},
+  // Loot -> rope -> hammer -> first floor. Each is also marked done from bag/world state (hintsFromState),
+  // so a player who already has rope or a hammer, or has built, never gets stuck on an earlier step.
+  {id:'rope', text:'Open your bag (Tab) → Materials → craft Rope from palm leaves', when:c => c.hasLeaf},
+  {id:'hammer', text:'Craft a Hammer in Tools: 4 wood, 2 rope', when:() => true},
+  {id:'build', text:'With the Hammer, click the water beside the raft to add floor', when:c => c.heldKind === 'hammer'},
 ]);
+// Hint ids already satisfied by what the player owns or has built (c: {hasRope, hasHammer, built}).
+export function hintsFromState(c) {
+  const out = [];
+  if (c?.hasRope || c?.hasHammer) out.push('rope');
+  if (c?.hasHammer) out.push('hammer');
+  if (c?.built) out.push('build');
+  return out;
+}
 export function loadHints(storage) {
   try { const v = JSON.parse(storage?.getItem(HINT_KEY) ?? '[]'); return new Set(Array.isArray(v) ? v.filter(x => typeof x === 'string') : []); } catch { return new Set(); }
 }

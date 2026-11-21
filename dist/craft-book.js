@@ -111,6 +111,17 @@ export function usedIn(kind, recipes) {
 /** "owned / needed" label for an ingredient row. */
 export const amountLabel = row => `${row.have} / ${row.need}`;
 
+/** Recipe tooltip line: owned/needed for every ingredient, e.g. "Have/need: 20/4 Wood · 0/2 Rope". */
+export function haveNeedLine(rows, nameOf = k => k) {
+  return (rows || []).length ? 'Have/need: ' + rows.map(x => `${x.have}/${x.need} ${nameOf(x.kind)}`).join(' · ') : '';
+}
+
+/** Slot tooltip stack size, worded so it can't be read as have/need: "stack 20/20". */
+export function stackLabel(count, max) {
+  const n = Math.max(0, Math.floor(Number(count) || 0));
+  return max > 0 ? `stack ${n}/${max}` : String(n);
+}
+
 // ---- hold-to-craft schedule ----
 // A press crafts one immediately. Keep holding: the 2nd craft lands after HOLD.first ms, then each
 // interval shrinks by HOLD.decay down to HOLD.min ms.
@@ -279,6 +290,13 @@ export function trackerView(recipe, countOf, check = null) {
     state: recipeState(rows, check), times: Number.isFinite(times) ? times : 0,
     met: rows.filter(r => r.enough).length, total: rows.length,
   };
+}
+
+/** Craft button label. Right after a batch (`done` = { n, name }) it reports the success, even
+ *  though the batch has usually used the materials up, instead of a grey 'Missing materials'. */
+export function craftButtonText(state, done = null) {
+  if (done && done.n > 0) return `Crafted ${done.n}${done.name ? ' ' + done.name : ''}`;
+  return state === 'ready' ? 'Craft' : state === 'full' ? 'Bag is full' : 'Missing materials';
 }
 
 /** Craft button hint: how many a hold would make right now ('' when one or none). */

@@ -2,7 +2,7 @@
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, holdDelay, holdHint, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, craftButtonText, holdDelay, holdHint, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 
 const VERSION = 'sv4';
 const HB = Number(HOTBAR_SIZE) || 8;
@@ -214,6 +214,9 @@ const CSS = `
 #inventory .sv-req .sv-icon{width:22px;height:22px}
 #inventory .sv-req svg.sv-icon{width:16px;height:16px;margin:3px}
 #inventory .sv-req.sv-short{color:#ff9c84;background:#5a1d1240}
+#inventory .sv-rsub .sv-req{margin-right:4px;padding:0 6px 0 1px;font-size:11px;vertical-align:middle}
+#inventory .sv-rsub .sv-req .sv-icon{width:16px;height:16px}
+#inventory .sv-rsub .sv-req svg.sv-icon{width:13px;height:13px;margin:1px}
 #inventory .sv-why{display:block;margin-top:4px;font:600 12px/1.2 ${FONT};color:#ffc98f}
 #inventory .sv-why:empty{display:none}
 #inventory .sv-empty-list{margin:6px;color:#f4efe299;font-size:14px}
@@ -247,7 +250,7 @@ const CSS = `
 #inventory .sv-recipe.sv-ready{background:#ffffff12}
 #inventory .sv-recipe:hover{background:#ffffff17;box-shadow:inset 0 0 0 1px #fff6e0a8}
 #inventory .sv-recipe.sv-pick{background:linear-gradient(180deg,#46545ad0,#1c2529dc);box-shadow:inset 0 0 0 2px #fff6e0}
-#inventory .sv-recipe.sv-locked .sv-rart>*{filter:grayscale(.85) brightness(.7);opacity:.75}
+#inventory .sv-recipe.sv-locked .sv-rart>*{filter:grayscale(.7);opacity:.8}
 #inventory .sv-recipe.sv-locked .sv-rname{color:#f4efe2a0}
 #inventory .sv-recipe .sv-rart{width:42px;height:42px}
 #inventory .sv-recipe .sv-rart .sv-icon{width:36px;height:36px}
@@ -289,6 +292,7 @@ const CSS = `
 #inventory .sv-craftbtn:hover{background:linear-gradient(#6c9c46,#4a7a2e)}
 #inventory .sv-craftbtn:focus-visible{outline:2px solid #fff3d6;outline-offset:2px}
 #inventory .sv-craftbtn[aria-disabled="true"]{background:#ffffff0b;box-shadow:inset 0 0 0 1px #ffffff17;color:#f4efe280;cursor:not-allowed}
+#inventory .sv-craftbtn.sv-done{background:linear-gradient(#5c8a3a,#3f6a26);box-shadow:inset 0 0 0 1px #c8f0a0aa,0 2px 0 #1f3612;color:#f4ffe6}
 #inventory .sv-craftbtn.sv-deny{box-shadow:inset 0 0 0 2px #e06a4a,0 0 6px #e06a4a88}
 #inventory .sv-fill{position:absolute;inset:0;transform-origin:left center;transform:scaleX(var(--fill,0));background:linear-gradient(90deg,#d8f7a066,#f4ffd0aa);pointer-events:none}
 #inventory .sv-craftbtn:not(.sv-holding) .sv-fill{transition:transform .25s ease-out}
@@ -477,7 +481,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let tools = null, hotEls = [];
   let recipes = [], recipeEls = [], groups = [];
   let activeTab = dlg.dataset.svTab || null, pickId = dlg.dataset.svPick || null, shownPick = null, ingEls = [];
-  let hold = null, btnDenyTimer = 0, countTimer = 0;
+  let hold = null, btnDenyTimer = 0, countTimer = 0, justMade = null; // justMade: { id, n, name } for ~1 s after a batch
   let pickedByUser = false; // false: pickId is an automatic default, re-chosen on open once states are known
   let tipAnchor = null;
   let pinId = null, trackEl = null, trackSig = null;
@@ -583,9 +587,12 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     });
     const ready = v.state === 'ready';
     D.btn.setAttribute('aria-disabled', String(!ready));
+    const done = justMade && justMade.id === v.r.id ? justMade : null;
+    D.btn.classList.toggle('sv-done', !!done && !hold);
     if (!hold) {
-      D.label.textContent = ready ? 'Craft' : v.state === 'full' ? 'Bag is full' : 'Missing materials';
-      D.hint.textContent = ready ? holdHint(v.times) : '';
+      D.label.textContent = craftButtonText(v.state, done);
+      D.hint.textContent = ready && !done ? holdHint(v.times) : '';
+      if (done) D.count.textContent = '';
     }
     D.btn.setAttribute('aria-label', ready ? `Craft ${v.r.name}. Hold to craft several.` : `${v.r.name}: ${D.label.textContent}`);
   }
@@ -616,11 +623,14 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       v.el.classList.toggle('sv-full', state === 'full');
       v.el.classList.toggle('sv-locked', state === 'missing');
       const lacking = rows.filter(x => !x.enough);
-      v.sub.textContent = state === 'ready' ? 'Ready to craft'
+      const subText = state === 'ready' ? 'Ready to craft'
         : state === 'full' ? 'No room in your bag'
         : 'Need ' + lacking.map(x => `${x.short} ${itemName(x.kind)}`).join(', ');
+      // Missing: owned/needed chip per ingredient (short ones in red), like the detail card.
+      if (state === 'missing') v.sub.innerHTML = rows.map(x => `<span class="sv-req${x.enough ? '' : ' sv-short'}">${art(x.kind)}${x.have}/${x.need}</span>`).join('');
+      else v.sub.textContent = subText;
       v.badge.textContent = state === 'ready' && Number.isFinite(times) && times > 0 ? '×' + Math.min(times, 99) : '';
-      v.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${rows.map(x => `${x.need} ${itemName(x.kind)}, have ${x.have}`).join('; ') || 'nothing'}. ${v.sub.textContent}.`);
+      v.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${rows.map(x => `${x.need} ${itemName(x.kind)}, have ${x.have}`).join('; ') || 'nothing'}. ${subText}.`);
       if (tipAnchor === v.el) showTipFor(v.el);
     }
     reorderRecipes();
@@ -723,6 +733,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function startHold() {
     if (!pickId) return;
     stopHold();
+    justMade = null; clearTimeout(countTimer);
     const v = freshView(pickId);
     if (!v || v.state !== 'ready') { denyBtn(); paintDetail(); return; }
     // Cap at what the materials on hand cover, so a lagging (networked) bag cannot overshoot.
@@ -730,6 +741,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!craftNow(pickId)) { denyBtn(); return; }
     hold = { id: pickId, done: 1, cap, t0: performance.now(), wait: holdDelay(1), raf: 0 };
     D.btn.classList.add('sv-holding');
+    D.hint.textContent = holdHint(cap); // what this batch will make, not what is left after the first craft
     showCount(1);
     if (hold.done >= hold.cap) { stopHold(); return; }
     hold.raf = requestAnimationFrame(tick);
@@ -749,11 +761,13 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function stopHold() {
     if (!hold) return;
     cancelAnimationFrame(hold.raf);
+    const made = hold.done, v = viewOf(hold.id);
     hold = null;
+    justMade = made > 0 && v ? { id: v.r.id, n: made * (v.r.out.count || 1), name: v.r.name } : null;
     D.btn.classList.remove('sv-holding');
     setFill(0);
     clearTimeout(countTimer);
-    countTimer = setTimeout(() => { D.count.textContent = ''; }, 1100);
+    countTimer = setTimeout(() => { D.count.textContent = ''; justMade = null; if (alive) paintDetail(); }, 1100);
     paintDetail();
   }
 
@@ -923,7 +937,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!kind) { hideTip(); return; }
     let extra = '';
     const v = el.classList.contains('sv-recipe') ? viewOf(el.dataset.recipe) : null;
-    if (v) extra = v.r.reqs.length ? 'Needs ' + v.r.reqs.map(q => `${q.count} ${itemName(q.kind)}`).join(', ') : '';
+    if (v) extra = haveNeedLine(v.rows, itemName);
     tipAnchor = el;
     tip.innerHTML = tipHTML(kind, extra, !v);
     tip.hidden = false;
@@ -933,7 +947,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const s = curSlots[i], el = invEls[i];
     if (!s || !slotSig(s) || dragging || !el) { hideTip(); return; }
     const f = durFrac(s), max = stackMax(s.kind);
-    const sub = f != null ? `Durability ${Math.round(f * 100)}%` : s.count > 1 || max > 1 ? (max ? `${s.count} / ${max}` : String(s.count)) : '';
+    const sub = f != null ? `Durability ${Math.round(f * 100)}%` : s.count > 1 || max > 1 ? stackLabel(s.count, max) : '';
     tipAnchor = el;
     tip.innerHTML = tipHTML(s.kind, sub);
     tip.hidden = false;
