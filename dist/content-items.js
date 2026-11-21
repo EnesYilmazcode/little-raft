@@ -55,9 +55,9 @@ export const CONTENT_ITEMS = Object.freeze({
   meal_fishbowl: Object.freeze({ kind: 'meal_fishbowl', name: 'Smoky Fish Bowl', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
   meal_custard:  Object.freeze({ kind: 'meal_custard',  name: 'Coconut Custard', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
   meal_stew:     Object.freeze({ kind: 'meal_stew',     name: 'Captain\u2019s Stew', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
-  refiner:  item('refiner',  'Biofuel Refiner', 'icon-kiln'), // [biofuel] biofuel.js; jugs come out of the refiner, never the craft list
-  fueltank: item('fueltank', 'Fuel Tank',       'icon-cup'), // [biofuel]
-  biofuel:  item('biofuel',  'Biofuel Jug',     'icon-cup', true, 10), // [biofuel]
+  refiner:  item('refiner',  'Biofuel Refiner', 'icon-refiner'), // [biofuel] biofuel.js; jugs come out of the refiner, never the craft list
+  fueltank: item('fueltank', 'Fuel Tank',       'icon-fueltank'), // [biofuel]
+  biofuel:  item('biofuel',  'Biofuel Jug',     'icon-biofuel', true, 10), // [biofuel]
 });
 
 // Same shape as recipe() in inventory-state.js.

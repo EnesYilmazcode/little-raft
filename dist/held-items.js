@@ -57,7 +57,7 @@ export const HOLD = Object.freeze({
   drum: { hand: 'right', pose: 'grip', rx: 0.75 }, pipes: { hand: 'right', pose: 'grip', rx: 0.2 }, bells: { hand: 'right', pose: 'grip', rx: 1.2, rz: 0.1 }, // [instruments] right fist, clear of the hotbar
   camera: { hand: 'right', pose: 'grip', rx: 0.1, rz: -1 }, // [camera] lens faces forward; tilted up so the body clears the hotbar
   glidehandle: { hand: 'right', pose: 'grip', rx: -0.2, rz: 1.57 }, // [zipline] bar sideways in the fist
-  biofuel: { hand: 'right', pose: 'grip', ry: 0.5 }, // [biofuel] jug hangs by its handle, cap toward the view
+  biofuel: { hand: 'right', pose: 'grip', ry: 0.5, arm: [-0.01, 0.06, 0] }, // [biofuel] jug held up in the fist, cap toward the view
   waterpipe: { hand: 'right', pose: 'grip', rx: -0.5, rz: 0.6 }, // [pipes] length tilted forward across the fist
   ...Object.fromEntries(PLACEABLE_KINDS.filter((k) => k !== 'hammer').map((k) => [k, { hand: 'left', pose: SEED_KINDS.includes(k) ? 'grip' : 'point' }])),
 });
@@ -326,7 +326,7 @@ export function buildItemModel(T, kind, factory = null) {
   } else if (MODEL_KINDS[kind]) { // [zipline][fireworks][scarecrow][bees]
     root = fit(T, MODEL_KINDS[kind](T), dim(kind), (s) => new T.Vector3(0, -s.y / 2, 0)); // grip = base centre
   } else if (kind === 'biofuel') { // [biofuel]
-    root = fit(T, buildFuelJug(T), SIZE.biofuel, (s) => new T.Vector3(-s.x * 0.18, s.y * 0.36, 0)); // fist round the handle
+    root = fit(T, buildFuelJug(T), SIZE.biofuel, (s) => new T.Vector3(-s.x * 0.12, -s.y * 0.05, 0)); // fist round the can body, handle and cap above it
   } else if (kind === 'waterpipe') { // [pipes]
     root = fit(T, buildPipeLength(T), SIZE.waterpipe, (s) => new T.Vector3(0, -s.y * 0.1, 0));
   } else if (kind === 'planter') {

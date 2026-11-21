@@ -578,4 +578,61 @@ export const ITEM_ICONS = Object.freeze({
     <g fill="none" stroke="${O}" stroke-width="1.1" stroke-opacity=".55" stroke-linecap="round"><path d="M16 9 C18 16 16 24 20 33"/><path d="M32 12 C31 20 32 28 28 38"/></g>
     <g fill="#bdeef0" stroke="${O}" stroke-width="1.2"><circle cx="40" cy="16" r="2.6"/><circle cx="42" cy="26" r="1.6"/><circle cx="8" cy="15" r="1.8"/></g>`,
 
+  // [biofuel] squat amber-green jug, dark cap and handle
+  biofuel: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M11 15 C10 11 12 8 15 8 H21 C24 8 25 11 25 15" fill="none" stroke-width="5"/>
+    <path d="M11 15 C10 11 12 8 15 8 H21 C24 8 25 11 25 15" fill="none" stroke="#3a3f42" stroke-width="2.6"/>
+    <path d="M7 18 C7 16 8 15 10 15 H38 C40 15 41 16 41 18 V40 C41 42 40 43 38 43 H10 C8 43 7 42 7 40 Z" fill="#8f9a3e"/>
+    <path d="M7 26 H41 V34 H7 Z" fill="#ffbd66"/>
+    <rect x="30" y="8" width="8" height="7" rx="1.5" fill="#3a3f42"/>
+    <path d="M16 30 C18 27 20 27 21 30 C22 33 20 35 18.5 35 C17 35 15 33 16 30 Z" fill="#d9773a" stroke-width="1.4"/></g>
+    <path d="M10.5 19 V24 M10.5 37 V40" stroke="#fff2cc" stroke-width="1.8" stroke-linecap="round" stroke-opacity=".7"/>`,
+
+  // [pipes] short copper pipe length with a hub ring
+  waterpipe: `<g transform="rotate(-35 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <rect x="4" y="19" width="34" height="10" rx="2" fill="#d9773a"/>
+    <rect x="33" y="15.5" width="10" height="17" rx="2.5" fill="#a9542a"/>
+    <path d="M36.5 16 V32" fill="none" stroke-width="1.2" stroke-opacity=".55"/>
+    <ellipse cx="4.5" cy="24" rx="2.2" ry="5" fill="#a9542a"/>
+    <path d="M8 21.5 H31" fill="none" stroke="#f4a868" stroke-width="1.8" stroke-linecap="round"/></g>
+    <g fill="#9fd6d0" stroke="${O}" stroke-width="1.2"><path d="M8 39 C8 36.5 10 34 10 34 C10 34 12 36.5 12 39 C12 40.2 11.1 41 10 41 C8.9 41 8 40.2 8 39 Z"/></g>`,
+
+  // [biofuel] copper still on a plinth, glass bulb of amber fuel, a jug below
+  refiner: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M15 12 V7 H30 L35 16" fill="none" stroke-width="4.5"/>
+    <path d="M15 12 V7 H30 L35 16" fill="none" stroke="#d9773a" stroke-width="2.4"/>
+    <rect x="3" y="39" width="42" height="5" rx="1" fill="#bb8650"/>
+    <path d="M6 39 V24 C6 17 10 12 15 12 C20 12 24 17 24 24 V39 Z" fill="#d9773a"/>
+    <path d="M6 27 H24" fill="none" stroke="#a9542a" stroke-width="2.6"/>
+    <path d="M33 30 L30 39 M37 30 L40 39" fill="none" stroke="#6b5a4c" stroke-width="1.8"/>
+    <circle cx="35" cy="23" r="7.5" fill="#c6e8e4"/>
+    <path d="M28.6 25 C31 26.5 39 26.5 41.4 25 C41 28 38.5 30.5 35 30.5 C31.5 30.5 29 28 28.6 25 Z" fill="#ffbd66" stroke-width="1.3"/>
+    <rect x="27" y="31" width="6" height="8" rx="1.5" fill="#ffbd66" stroke-width="1.5"/>
+    <rect x="28.5" y="29" width="3" height="2.4" fill="#3a3f42" stroke-width="1.2"/></g>
+    <path d="M9.5 23 C9.5 19 11.5 16 14 15" fill="none" stroke="#f4a868" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M31.5 20 C32.5 18.5 34 18 35 18" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-opacity=".8"/>`,
+
+  // [biofuel] green fuel drum with rims, dark cap and an amber level window
+  fueltank: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <rect x="27" y="3" width="7" height="5" rx="1" fill="#3a3f42"/>
+    <path d="M9 9 C9 7 16 6 24 6 C32 6 39 7 39 9 V41 C39 43 32 44 24 44 C16 44 9 43 9 41 Z" fill="#5f8a6b"/>
+    <path d="M8 15 H40 M8 35 H40" fill="none" stroke="#41604a" stroke-width="3.4"/>
+    <path d="M8 15 H40 M8 35 H40" fill="none" stroke-width="1" stroke-opacity=".6"/>
+    <rect x="20" y="17" width="8" height="16" rx="1.5" fill="#1b2420"/>
+    <rect x="21.5" y="24" width="5" height="7.5" fill="#ffbd66" stroke="none"/>
+    <path d="M9 9 C9 11 16 12 24 12 C32 12 39 11 39 9" fill="none" stroke-width="1.3" stroke-opacity=".6"/></g>
+    <path d="M12.5 18 V32" stroke="#9fd6d0" stroke-width="1.8" stroke-linecap="round" stroke-opacity=".7"/>`,
+
+  // [pipes] green water tank on legs: copper roof and bands, a blue level window, an outlet stub
+  watertank: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M14 38 V45 M34 38 V45" fill="none" stroke="#3a3f42" stroke-width="3"/>
+    <rect x="10" y="13" width="28" height="26" rx="2" fill="#4f6b4a"/>
+    <path d="M9 18 H39 M9 35 H39" fill="none" stroke="#d9773a" stroke-width="3.4"/>
+    <path d="M9 18 H39 M9 35 H39" fill="none" stroke-width="1" stroke-opacity=".55"/>
+    <rect x="15" y="21" width="5" height="12" rx="1" fill="#1b2420"/>
+    <rect x="16" y="27" width="3" height="5.5" fill="#54a6a4" stroke="none"/>
+    <path d="M7 14 L24 4 L41 14 Z" fill="#d9773a"/>
+    <path d="M38 30 H44" fill="none" stroke="${O}" stroke-width="4.5"/><path d="M38 30 H44" fill="none" stroke="#a9542a" stroke-width="2.4"/></g>
+    <path d="M13 12 L23 6.5" fill="none" stroke="#f4a868" stroke-width="1.6" stroke-linecap="round"/>`,
+
 });
