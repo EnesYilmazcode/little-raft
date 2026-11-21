@@ -787,15 +787,26 @@ def main():
                 page.on('console', on_console)
                 try:
                     page.goto(srv.url, timeout=60000)
-                    page.wait_for_function('!!window.raftDebug', timeout=60000)
+                    # live.js catches a throwing mount(), logs console.error and shows #raftLiveError: stop waiting then.
+                    page.wait_for_function("!!window.raftDebug || !!document.getElementById('raftLiveError')", timeout=60000)
                     page.wait_for_timeout(500)
-                    page.locator('#solo').click()
+                    if page.evaluate("!window.raftDebug && !!document.getElementById('raftLiveError')"):
+                        raise RuntimeError('live.js reported that the game failed to start (#raftLiveError shown)')
+                    # Title buttons differ between branches: #solo may be a hidden "Continue" with #newGame next to it.
+                    btn = page.locator('#solo:visible, #newGame:visible').first
+                    btn.click()
                     page.wait_for_function('raftDebug.state.running', timeout=30000)
                 except Exception as e:
-                    if bot.page_errors:
-                        bot.fail('boot_failed', f'game did not start: {e}; pageerrors: {bot.page_errors[:3]}', shot=False)
+                    errs = bot.page_errors + bot.console_errors
+                    try:
+                        webgl = page.evaluate("(() => { try { const c = document.createElement('canvas');"
+                                              " return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; } })()")
+                    except Exception:
+                        webgl = True   # page unusable: let the recorded errors decide
+                    if errs and webgl:
+                        bot.fail('boot_failed', f'game did not start: {e}; page/console errors: {errs[:3]}', shot=False)
                     else:
-                        raise InfraError(f'could not start Solo game: {e}')
+                        raise InfraError(f'could not start Solo game: {e}' + ('' if webgl else ' (WebGL unavailable in this Chromium)'))
                 if not bot.failures:
                     bot.t0 = time.monotonic()
                     bot.cx, bot.cy = vw // 2, vh // 2
