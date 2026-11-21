@@ -390,6 +390,7 @@ export function createStorageUI(api) {
   }
 
   // ---------- per frame ----------
+  let preAnnotated = false;
   function update() {
     if (isOpen) {
       const want = mode === 'crate' ? 'crate' : 'research', p = ctx.physics;
@@ -402,6 +403,7 @@ export function createStorageUI(api) {
       const row = inv.querySelector('.sv-recipe'), table = api.hasTable();
       if (!invWasOpen || invRev !== api.rev || invRow !== row || invTable !== table) { invRev = api.rev; invRow = row; invTable = table; annotate(); }
     }
+    else if (!preAnnotated && inv && inv.querySelector('.sv-recipe')) { preAnnotated = true; annotate(); } // build lock badges up front, not on the first bag open
     if (invOpen) for (let i = 0; i < lockedRows.length; i++) if (lockedRows[i].getAttribute('aria-label') !== LOCKED_LABEL) lockedRows[i].setAttribute('aria-label', LOCKED_LABEL);
     invWasOpen = invOpen;
   }
