@@ -436,6 +436,7 @@ export function mount(transfer = null) {
     for (const item of world.items) {
       if (itemMeshes.has(item.token)) continue;
       const g = itemModel(item); g.userData.token = item.token; bakeStatic(g); singlePass(g);
+      g.traverse(o => { o.castShadow = false; }); // the ocean takes no shadows, so floating supplies skip the shadow pass
       g.position.set(item.x, ITEM_FLOAT, item.z);
       itemsGroup.add(g); itemMeshes.set(item.token, g);
     }
