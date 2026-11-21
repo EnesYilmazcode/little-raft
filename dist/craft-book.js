@@ -46,7 +46,6 @@ export const ITEM_TEXT = Object.freeze({
   crate:      { desc: 'A nailed wooden crate.', use: 'Decorates the raft; place it on a floor tile.' },
   sand:       { desc: 'Fine sand from barrels and the seafloor.', use: 'Melt it into glass in the smelter.' },
   stone:      { desc: 'A smooth, heavy stone.', use: 'Part of the smelter; sturdier builds and island tools.' },
-  seed:       { desc: 'A palm seed washed up on an island.', use: 'Plant it in a palm planter.' },
   research:   { desc: 'A tinker\u2019s desk for studying finds.', use: 'Place it, then study parts to learn signal and water gear.' },
   clay:       { desc: 'Sticky clay from barrels and the seafloor.', use: 'Fire it into bricks on a grill.' },
   metalore:   { desc: 'A lump of ore from barrels and the seafloor.', use: 'Smelt it into metal ingots.' },
@@ -83,7 +82,7 @@ export const ITEM_TEXT = Object.freeze({
   wax:        { desc: 'Soft beeswax from the comb.', use: 'Make beeswax candles.' }, // [bees]
   candle:     { desc: 'A little jar candle.', use: 'Glows warmly at night; place on a tile.' }, // [bees]
   honeyfish:  { desc: 'Grilled fish with a honey glaze.', use: 'A sweet treat.' }, // [bees]
-  researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
+  researchtable: { desc: 'A table for showing off new finds (not the Tinker\u2019s Desk).', use: 'Place it and research ore, metal and other finds to unlock the smelter, metal tools and instruments.' },
   grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },
 });
@@ -281,7 +280,7 @@ export const ITEM_SOURCE = Object.freeze({
   scrap:   Object.freeze({ tag: 'floating', how: 'Hook floating scrap. Barrels hold some too.' }),
   seed:    Object.freeze({ tag: 'barrels', how: 'Hook floating barrels, or harvest a grown palm.' }),
   fish:    Object.freeze({ tag: 'fishing rod', how: 'Cast the Fishing Rod into the sea and wait for a bite.' }),
-  water:   Object.freeze({ tag: 'fill a cup', how: 'Fill a Filter Cup at the sea.' }),
+  water:   Object.freeze({ tag: 'fill a cup', how: 'Scoop sea water with a Cup, then purify it.' }),
   // raft-master materials (items.js): barrels, islands, the seafloor and the stations
   sand:        Object.freeze({ tag: 'barrels', how: 'Hook floating barrels, scoop it on an island or dive for it.' }),
   clay:        Object.freeze({ tag: 'barrels', how: 'Hook floating barrels or dive to the seafloor.' }),
