@@ -20,6 +20,9 @@ const CATEGORY_OF = Object.freeze({
   metalhook: 'tools', binoculars: 'tools',
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   researchtable: 'building', grill: 'building', smelter: 'building',
+  // content (engine, sleep, paint)
+  motor: 'building', wheel: 'building', bed: 'building', brush: 'tools',
+  paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
@@ -43,6 +46,15 @@ export const ITEM_TEXT = Object.freeze({
   stone:      { desc: 'A smooth, heavy stone.', use: 'Part of the smelter; sturdier builds and island tools.' },
   seed:       { desc: 'A palm seed washed up on an island.', use: 'Plant it in a palm planter.' },
   research:   { desc: 'A tinker\u2019s desk for studying finds.', use: 'Place it, then study parts to learn signal and water gear.' },
+  motor:      { desc: 'A little outboard motor that burns leaves, wood or plastic.', use: 'Place it, fuel it, and it pushes the raft along.' },
+  wheel:      { desc: 'A rope-lashed steering wheel.', use: 'Place it, then grab it to steer the raft.' },
+  bed:        { desc: 'A plank bed with a leaf mattress.', use: 'Lie down at night to sleep until morning.' },
+  brush:      { desc: 'A paint brush with stiff bristles.', use: 'Click walls, floors or deck to paint; right click picks a colour.' },
+  paint_seafoam:  { desc: 'A pot of soft seafoam green paint.', use: 'One pot paints one piece with the brush.' },
+  paint_coral:    { desc: 'A pot of warm coral paint.', use: 'One pot paints one piece with the brush.' },
+  paint_sunshell: { desc: 'A pot of sunny shell-yellow paint.', use: 'One pot paints one piece with the brush.' },
+  paint_lagoon:   { desc: 'A pot of deep lagoon blue paint.', use: 'One pot paints one piece with the brush.' },
+  paint_pebble:   { desc: 'A pot of pebble grey paint.', use: 'One pot paints one piece with the brush.' },
   clay:       { desc: 'Sticky clay from barrels and the seafloor.', use: 'Fire it into bricks on a grill.' },
   metalore:   { desc: 'A lump of ore from barrels and the seafloor.', use: 'Smelt it into metal ingots.' },
   receiver:   { desc: 'A crackling radio receiver.', use: 'Place one, add antennas, and follow the signal.' },

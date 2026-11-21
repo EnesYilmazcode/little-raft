@@ -15,19 +15,30 @@
 //   prompt(aim)               -> context prompt HTML (escaped by the module) or null
 //   craftLocked(recipe, actor)-> reason string if the recipe is locked, else null
 //   decorModel(type)          -> THREE.Object3D for a CONTENT_DECOR type, or null
+//   sailPush(sailing, out)    write an extra water-relative push (m/s) into out.x/out.z; return true if non-zero.
+//                             Host and guest must compute it from synced data (engine: motors).
+//   steerTargets()            -> array of raft-local {x,z} extra hold-R steering grab points (engine: wheels)
+//   use(aim, kind)            left click with a bag item `kind` that no engine tool handles. Return true if consumed.
+//   alt(aim, kind)            right click while holding `kind`. Return true if consumed (paint: brush colour).
+//   afterRebuild()            after rebuildRaft() recreated the deck/decor meshes (paint: re-tint planks)
+//   tileTint(x, z, base)      plank colour for deck tile x,z (base = the plank's own colour) or null (paint)
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   dispose()
 //
 // ctx (live getters, set up by game.js): T, scene, camera, raft, ocean, sun, hemi, clouds, world, role,
 // running, physics, elapsed, options, localBag(), actorBag(actor), action(a), emit(e, to), notice(s),
-// esc(s), mat(color), rebuildRaft(), deckY(), uiOpen().
+// esc(s), mat(color), rebuildRaft(), deckY(), uiOpen(), building (piece grid/tint, may be null early), brush (held
+// brush model), woodMat(hex) (cached procedural wood material), aim() (this frame's aim {point, dir} or null).
 
 import { createIslands } from './islands.js?build=v3-survival-ae77fa84ac2b';
 import { createWildlife } from './wildlife.js?build=v3-survival-ae77fa84ac2b';
 import { createStorage } from './storage-research.js?build=v3-survival-ae77fa84ac2b';
 import { createDayNight } from './daynight.js?build=v3-survival-ae77fa84ac2b';
+import { createEngine } from './engine.js?build=v3-survival-ae77fa84ac2b';
+import { createSleep } from './sleep.js?build=v3-survival-ae77fa84ac2b';
+import { createPaint } from './paint.js?build=v3-survival-ae77fa84ac2b'; // content hook (paint)
 
-const FEATURES = [createIslands, createWildlife, createStorage, createDayNight];
+const FEATURES = [createIslands, createWildlife, createStorage, createDayNight, createSleep, createEngine, createPaint];
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -55,8 +66,14 @@ export function createContent(ctx, features = FEATURES) {
     action(a, actor, bag) { for (const m of mods) if (call(m, 'action', a, actor, bag)) return true; return false; },
     interact: aim => !!first('interact', aim),
     prompt: aim => first('prompt', aim),
+    use: (aim, kind) => !!first('use', aim, kind), // content hook (paint)
+    alt: (aim, kind) => !!first('alt', aim, kind), // content hook (paint)
+    afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)
+    tileTint: (x, z, base) => first('tileTint', x, z, base), // content hook (paint): plank hex for a painted deck tile, else null
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
     decorModel: type => first('decorModel', type),
+    sailPush: (s, out) => !!first('sailPush', s, out),
+    steerTargets: () => first('steerTargets'),
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };
 }
