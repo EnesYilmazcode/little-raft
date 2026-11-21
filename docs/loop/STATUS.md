@@ -19,6 +19,7 @@ Features-lane integrator (09:30-10:10 UTC) ALREADY MERGED AND PUSHED to raft-mas
 Integrator C, round 5 (from 09:40 UTC), in a worktree: loop-features-202611210831 (new commits), -0847-r2, -0849; loop-perf-202611210847.
 Integrator E (formerly logged as C before the name clash; from 09:25 UTC), in a worktree: loop-features-202611210911; loop-perf-202611210823.
 Integrator D (from 09:20 UTC), in worktrees: loop-features-202611210855; loop-fidelity-202611210900, -0910, -0914; loop-ux-202611210848, -0852; loop-visuals-202611210843; loop-perf-202611210748, -0859.
+Integrator ux-lane (from 09:29 UTC), in a worktree: loop-ux-202611210743 (new round-3 commits). loop-ux-0547 already merged (ead02a0); 0648/0742/0748/0833 left to B, 0848 to D.
 
 Updated: 2026-11-21 09:10 UTC, round 5 (integrator A, alongside integrator B). PR #4 merged into main at 912d941 (raft-master dbf2ca9).
 Gate: 983/983 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text.
