@@ -86,11 +86,12 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
         row.el.append(row.box, row.label);
       }, row => { row.count += n; row.label.textContent = `+${row.count} ${ITEM_INFO[kind]?.name ?? kind}`; });
     },
-    /** A short text line in the same corner (replaces centred toasts). Same text merges. */
-    note(text) {
+    /** A short text line in the same corner (replaces centred toasts). Same text merges. kind tints the dot (coop: join/leave/emote...). */
+    note(text, kind) {
       const s = String(text ?? '').trim().slice(0, 90); if (!s) return null;
       return push('t:' + s, row => {
         row.el.classList.add('pf-note');
+        if (typeof kind === 'string' && /^[a-z]{1,12}$/.test(kind)) row.el.classList.add('pf-' + kind);
         const dot = doc.createElement('i'); row.label = doc.createElement('span'); row.label.textContent = s;
         row.el.append(dot, row.label);
       }, () => {});
@@ -112,10 +113,12 @@ let shared = null;
 const feed = () => (shared ??= createFeed());
 export const pickupFeed = Object.freeze({
   add: (kind, count) => feed().add(kind, count),
-  note: text => feed().note(text),
+  note: (text, kind) => feed().note(text, kind),
   setIconProvider: fn => feed().setIconProvider(fn),
   refresh: kind => shared?.refresh(kind),
   clear: () => feed().clear(),
   get rows() { return shared ? shared.rows : []; },
 });
+// The one bottom-left stack: coop-feed.js and prompts.js post their lines here so feeds never overlap.
+if (typeof window !== 'undefined' && typeof document !== 'undefined') { try { window.raftPickupFeed = pickupFeed; } catch {} }
 export default pickupFeed;

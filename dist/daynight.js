@@ -30,6 +30,8 @@ export function skipClock(clock, toPhase) {
 
 // Live read-only mirror for other content modules (sleep.js). Written by update(), no allocation.
 export const DAYNIGHT_LIVE = { phase: MORNING, optOut: false, ready: false };
+// Storm mirror: daynight writes the schedule fields; storm.js writes flash (0..1), pin (debug, -1 = schedule) and dirty.
+export const STORM_LIVE = { ready: false, level: 0, on: false, index: 0, start: 0, end: 0, clock: 0, seed: 0, nf: 0, pin: -1, flash: 0, dirty: false };
 // sleep.js SLEEP_START / SLEEP_END plus slack: a lie-down at .019 reaches the skip ~2 s later (after the hold and
 // fade). Still well before MORNING (.10), so a second skip right after one stays refused.
 const sleepable = p => p >= 0.66 || p < 0.04;
@@ -115,6 +117,19 @@ export function weatherAt(seed, clock, out) {
   return weatherParams(a, b, blend, out);
 }
 
+// ---- friendly storms (storm.js): a storm is a rain segment whose salt-3 roll is under STORM_P (.2 * .35 = 7 % of segments)
+export const STORM_P = 0.35, STORM_EASE = 40, STORM_TAIL = 5;
+export function isStormSegment(seed, i) { return weatherIndex(seed, i) === 2 && hash01(seed, i, 3) < STORM_P; }
+export function stormAt(seed, clock, out) {
+  const c = Number.isFinite(clock) && clock > 0 ? clock : 0;
+  const i = segmentIndexAt(seed, c);
+  const start = segmentStart(seed, i), end = segmentStart(seed, i + 1);
+  const on = isStormSegment(seed, i);
+  out.index = i; out.start = start; out.end = end; out.on = on;
+  out.storm = on ? smooth(start, start + STORM_EASE, c) * (1 - smooth(end - STORM_EASE - STORM_TAIL, end - STORM_TAIL, c)) : 0;
+  return out;
+}
+
 // ---------------------------------------------------------------- palette
 // Colours (sRGB 0..1): 0 horizon (background, fog, ocean uSky), 1 ocean zenith, 2 ocean deep,
 // 3 ocean shallow, 4 sun/moon light, 5 hemi sky, 6 hemi ground, 7 cloud.
@@ -125,8 +140,8 @@ export const PALETTE_KEYS = Object.freeze([
   //   phase  horizon    zenith     deep       shallow    sun        hemi sky   hemi gnd   cloud
   key(0.00, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#ffdcc8'), // sunrise peach
   key(0.04, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#ffdcc8'), // ... held a little
-  key(0.13, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'), // bright tropical day (visuals loop)
-  key(0.54, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'),
+  key(0.13, '#86dcef', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'), // bright tropical day (visuals loop)
+  key(0.54, '#86dcef', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'),
   key(0.635, '#eaa98e', '#b79fb0', '#1d4a5e', '#4d7f88', '#ffb27e', '#f4c3a6', '#4b5a68', '#ffc9b0'), // dusk coral
   key(0.70, '#6f6f9e', '#58679a', '#173c54', '#2f6276', '#c3b0dc', '#a9a6d2', '#2c3b55', '#8e88b2'), // blue hour
   key(0.77, '#34486f', '#2e4170', '#0f3046', '#1f5066', '#a8bff0', '#9bb4e6', '#1f3044', '#5e6f98'), // cosy blue night
@@ -257,6 +272,7 @@ const LANTERN_PARTS = ['lanternGlow', 'flame', 'lanternGlass', 'candle'];
 const LANTERN_MULT = [2.4, 2.2, 1.1, 3.0];
 const GLASS_NIGHT = '#ffb35c'; // glass emissive is tinted toward this at night so it reads amber, not cream
 const MAX_LANTERNS = 64, MAX_PARTS = MAX_LANTERNS * 4;
+export const UNLIT = 0.05; // [power] emissive scale of an unpowered light (base * UNLIT)
 const STAR_COUNT = 700, STAR_RADIUS = 140, MOON_DIST = 120, RAIN_STREAKS = 600;
 const SUN_RADIUS = Math.hypot(-15, 28, 12);
 // The one shadow-casting light is the sun by day and the moon by night. Its direction swaps when the
@@ -302,6 +318,9 @@ export function createDayNight(ctx) {
   const L = { sunHeight: 0, nightFactor: 0, light: 1 };
   const W = { weather: 'calm', weatherNext: 'calm', blend: 0, rain: 0, wind: 0.15, cloud: 0.25 };
   const PAL = new Float32Array(N_COLORS * 3);
+  const S = { storm: 0, index: 0, start: 0, end: 0, on: false };
+  const FLASH_HEMI = 1.6, FLASH_EXP = 0.35;
+  let hemiBase = 0, expBase = 1, flashWas = false;
 
   // ---- scratch
   const cHorizon = new T.Color(), cZenith = new T.Color(), cDeep = new T.Color(), cShallow = new T.Color();
@@ -336,6 +355,7 @@ export function createDayNight(ctx) {
     cloudGroups.push(g); cloudBase.push(g.position.x, g.scale.x, g.scale.z);
     for (const m of g.children) if (m.isMesh) { cloudMeshes.push(m); cloudOrig.push(m.material); m.material = cloudMat; }
   }
+  for (const m of ctx.cloudMeshes ?? []) if (m?.isMesh && !cloudMeshes.includes(m)) { cloudMeshes.push(m); cloudOrig.push(m.material); m.material = cloudMat; } // instanced cloud copies (game.js)
 
   // ---- stars
   const starGeo = new T.BufferGeometry();
@@ -413,13 +433,15 @@ export function createDayNight(ctx) {
   const partMat = new Array(MAX_PARTS).fill(null), partBase = new Float64Array(MAX_PARTS), partMult = new Float64Array(MAX_PARTS);
   const partColor = new Float64Array(MAX_PARTS * 3), partTint = new Uint8Array(MAX_PARTS); // base emissive rgb, 1 = glass (tinted at night)
   const lanternGroups = new Array(MAX_LANTERNS).fill(null), lanternLocal = new Float32Array(MAX_LANTERNS * 3), lanternDist = new Float32Array(MAX_LANTERNS);
+  const POOL_COLOR = new T.Color('#ffb35c'), lanternTint = Array.from({length:MAX_LANTERNS}, () => POOL_COLOR.clone()), lanternGain = new Float32Array(MAX_LANTERNS).fill(1); // per-lantern pool tint/gain (lanternGlow.userData.pool)
   const poolPick = new Int32Array(POOL_LIGHTS).fill(-1);
+  const lanternPower = new Array(MAX_LANTERNS).fill(null), lanternOn = new Uint8Array(MAX_LANTERNS).fill(1), lanternNoPool = new Uint8Array(MAX_LANTERNS), partOwner = new Uint8Array(MAX_PARTS); // [power] g.userData.power {lit} / noPool per lantern
   let partCount = 0, lanternCount = 0, signature = -1, scanClock = 0, rankClock = 0, poolLit = 0, lastNf = -1, lastGrow = -1;
-  let scanRaft = null, scanFirst = null, scanLen = -1; // what raft.children looked like at the last scan
+  let scanRaft = null, scanFirst = null, scanLen = -1, scanRev; // what raft.children looked like at the last scan (rev: game.js raft.userData.rev)
   function lanternSignature(raft, world) {
     let n = raft.children.length * 131;
     const decor = world?.decor;
-    if (Array.isArray(decor)) for (let i = 0; i < decor.length; i++) if (decor[i]?.type === 'lantern' || decor[i]?.type === 'candle') n++; // [bees] candles glow too
+    if (Array.isArray(decor)) for (let i = 0; i < decor.length; i++) if (decor[i]?.type === 'lantern' || decor[i]?.type === 'candle' || decor[i]?.type === 'stringlights' || decor[i]?.type === 'lamppost') n++; // [bees] candles glow too // [power] + stringlights, lamppost
     return n;
   }
   function restoreParts() {
@@ -434,7 +456,7 @@ export function createDayNight(ctx) {
     partCount = 0; lanternCount = 0;
     for (let c = 0; c < raft.children.length && lanternCount < MAX_LANTERNS; c++) {
       const g = raft.children[c];
-      if (g.name !== 'craft_lantern' && g.name !== 'craft_candle') continue; // [bees]
+      if (g.name !== 'craft_lantern' && g.name !== 'craft_candle' && g.name !== 'craft_stringlights' && g.name !== 'craft_lamppost') continue; // [bees] // [power] + stringlights, lamppost
       let found = false;
       for (let k = 0; k < g.children.length; k++) {
         const m = g.children[k];
@@ -442,7 +464,7 @@ export function createDayNight(ctx) {
         const pi = LANTERN_PARTS.indexOf(m.name);
         if (pi < 0 || partCount >= MAX_PARTS) continue;
         const e = m.material.emissive;
-        partMat[partCount] = m.material; partBase[partCount] = m.material.emissiveIntensity; partMult[partCount] = LANTERN_MULT[pi];
+        partMat[partCount] = m.material; partBase[partCount] = m.material.emissiveIntensity; partMult[partCount] = LANTERN_MULT[pi]; partOwner[partCount] = lanternCount; // [power] partOwner
         partTint[partCount] = pi === 2 && e?.isColor ? 1 : 0;
         if (e?.isColor) { partColor[partCount * 3] = e.r; partColor[partCount * 3 + 1] = e.g; partColor[partCount * 3 + 2] = e.b; }
         partCount++;
@@ -450,21 +472,25 @@ export function createDayNight(ctx) {
           if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
           const s = m.geometry.boundingSphere.center;
           lanternLocal[lanternCount * 3] = g.position.x + s.x; lanternLocal[lanternCount * 3 + 1] = g.position.y + s.y; lanternLocal[lanternCount * 3 + 2] = g.position.z + s.z;
+          const pc = m.userData.pool; // optional {color:'#rrggbb', gain:0..1} (JSON-safe, survives clone()): e.g. a candle's softer, paler pool
+          lanternTint[lanternCount].copy(POOL_COLOR); if (typeof pc?.color === 'string') lanternTint[lanternCount].setStyle(pc.color); lanternGain[lanternCount] = Number.isFinite(pc?.gain) ? Math.max(0, Math.min(1, pc.gain)) : 1;
           found = true;
         }
       }
-      if (!found) { lanternLocal[lanternCount * 3] = g.position.x + 0.3; lanternLocal[lanternCount * 3 + 1] = g.position.y + 1.24; lanternLocal[lanternCount * 3 + 2] = g.position.z; }
+      if (!found) { lanternTint[lanternCount].copy(POOL_COLOR); lanternGain[lanternCount] = 1; lanternLocal[lanternCount * 3] = g.position.x + 0.3; lanternLocal[lanternCount * 3 + 1] = g.position.y + 1.24; lanternLocal[lanternCount * 3 + 2] = g.position.z; }
+      lanternPower[lanternCount] = g.userData.power ?? null; lanternOn[lanternCount] = lanternPower[lanternCount] ? (lanternPower[lanternCount].lit ? 1 : 0) : 1; lanternNoPool[lanternCount] = g.userData.noPool ? 1 : 0; // [power]
       lanternGroups[lanternCount++] = g;
     }
     for (let i = lanternCount; i < MAX_LANTERNS; i++) lanternGroups[i] = null;
     for (let i = partCount; i < MAX_PARTS; i++) partMat[i] = null;
-    scanRaft = raft; scanFirst = raft.children.length ? raft.children[0] : null; scanLen = raft.children.length;
-    if (lanternCount > 0) poolWanted = true;
+    scanRaft = raft; scanFirst = raft.children.length ? raft.children[0] : null; scanLen = raft.children.length; scanRev = raft.userData?.rev;
+    for (let i = 0; i < lanternCount && !poolWanted; i++) if (!lanternNoPool[i]) poolWanted = true; // noPool-only lights (string lights) never turn the pool on
     rankClock = 1e9;
   }
   function rankLanterns(raft, cam) {
     for (let i = 0; i < POOL_LIGHTS; i++) poolPick[i] = -1;
     for (let i = 0; i < lanternCount; i++) {
+      if (!lanternOn[i] || lanternNoPool[i]) continue; // [power] unlit lights and String Lights never take a pool light
       vTmp.set(lanternLocal[i * 3], lanternLocal[i * 3 + 1], lanternLocal[i * 3 + 2]);
       raft.localToWorld(vTmp);
       lanternDist[i] = cam ? vTmp.distanceToSquared(cam.position) : i;
@@ -490,17 +516,25 @@ export function createDayNight(ctx) {
     lightAt(phase, L);
     if (pinWeather >= 0) { W.weather = W.weatherNext = WEATHERS[pinWeather]; W.blend = 0; weatherParams(pinWeather, pinWeather, 0, W); }
     else weatherAt(seed, clock, W);
+    stormAt(seed, clock, S);
+    const stm = STORM_LIVE.pin >= 0 ? STORM_LIVE.pin : pinWeather >= 0 && pinWeather !== 2 ? 0 : S.storm;
+    STORM_LIVE.level = stm; STORM_LIVE.on = S.on; STORM_LIVE.index = S.index; STORM_LIVE.start = S.start; STORM_LIVE.end = S.end; STORM_LIVE.nf = L.nightFactor;
     paletteAt(phase, W.rain, PAL);
     nf = L.nightFactor; wet = W.rain;
     setSRGB(cHorizon, 0); setSRGB(cZenith, 3); setSRGB(cDeep, 6); setSRGB(cShallow, 9);
     setSRGB(cSun, 12); setSRGB(cHemiSky, 15); setSRGB(cHemiGround, 18); setSRGB(cCloud, 21);
+    if (stm > 0) { // storm: one absolute darkening from PAL (refreshSky rewrites every value, so nothing compounds)
+      const dk = 1 - 0.35 * stm * (1 - 0.6 * L.nightFactor); // nights are dark already: keep them readable
+      cHorizon.multiplyScalar(dk); cZenith.multiplyScalar(dk); cDeep.multiplyScalar(dk); cShallow.multiplyScalar(dk);
+      cHemiSky.multiplyScalar(dk); cCloud.multiplyScalar(dk); cSun.multiplyScalar(1 - 0.5 * stm);
+    }
     const cool = Math.max(0, W.wind - 0.15) * (1 - wet) * 0.15 / 0.55; // breezy: cooler (0.15 at full breeze)
     cHorizon.r *= 1 - cool; cHorizon.g *= 1 - cool * 0.4; cCloud.r *= 1 - cool;
 
     // sky, fog (nothing else writes these per frame, so they only change here)
     if (scene) {
       if (scene.background?.isColor) scene.background.copy(cHorizon);
-      if (scene.fog) { scene.fog.color.copy(cHorizon); scene.fog.near = 60 - 44 * wet; scene.fog.far = 260 - 180 * wet; }
+      if (scene.fog) { scene.fog.color.copy(cHorizon); scene.fog.near = (90 - 74 * wet) * (1 - 0.3 * stm); scene.fog.far = (260 - 180 * wet) * (1 - 0.25 * stm); } // [storm] storms pull the fog in
     }
     // sun / moon direction
     const th = sunAngle(phaseAt(phase * DAY_SECONDS));
@@ -512,18 +546,24 @@ export function createDayNight(ctx) {
     const dayI = 3.0 * (1 - 0.15 * wet) * smooth(-0.02, 0.2, L.sunHeight);
     const moonI = MOON_I * (1 - 0.3 * wet) * smooth(-0.02, 0.2, -L.sunHeight);
     const swap = smooth(0, SWAP_FADE, Math.abs(L.sunHeight)); // 0 exactly where sun and moon trade places
-    if (sun) { sun.color.copy(cSun); sun.intensity = Math.max(dayI + moonI, MOON_I * smooth(0.3, 0.7, nf)) * swap; } // position: per frame in applyVisuals
+    if (sun) { sun.color.copy(cSun); sun.intensity = Math.max((dayI + moonI) * (1 - 0.2 * stm), MOON_I * smooth(0.3, 0.7, nf)) * swap; } // storm dims the sun, never below the night floor // position: per frame in applyVisuals
     if (hemi) {
       hemi.color.copy(cHemiSky); hemi.groundColor.copy(cHemiGround);
-      hemi.intensity = HEMI_NIGHT + (1.0 - HEMI_NIGHT) * (L.light - NIGHT_FLOOR) / (1 - NIGHT_FLOOR) * (1 - 0.08 * wet); // day 1.0 (visuals: blue sky fill), dark nights
+      hemi.intensity = Math.max(HEMI_NIGHT, (HEMI_NIGHT + (1.0 - HEMI_NIGHT) * (L.light - NIGHT_FLOOR) / (1 - NIGHT_FLOOR) * (1 - 0.08 * wet)) * (1 - 0.25 * stm)); // day 1.0 (visuals: blue sky fill), dark nights
+      hemiBase = hemi.intensity;
     }
-    if (renderer) renderer.toneMappingExposure = 1.1 - 0.25 * nf;
+    expBase = 1.1 - 0.25 * nf - 0.1 * stm * (1 - nf); // storms dim the day; nights keep their readable floor
+    if (renderer) renderer.toneMappingExposure = expBase;
     // ocean
     const u = ctx.ocean?.uniforms;
     if (u) {
       u.uSky?.value.copy(cHorizon); u.uZenith?.value.copy(cZenith);
+      if (u.uFarSea) { // far sea: shallow tint lifted a third toward the horizon (more with a low warm sun), darker after dusk
+        const k = 0.32 + 0.2 * (1 - smooth(0.1, 0.5, Math.abs(L.sunHeight))), d = 1 - 0.35 * Math.max(nf, smooth(0.2, 0, L.sunHeight));
+        u.uFarSea.value.setRGB((PAL[9] + (PAL[0] - PAL[9]) * k) * d, (PAL[10] + (PAL[1] - PAL[10]) * k) * d, (PAL[11] + (PAL[2] - PAL[11]) * k) * d, T.SRGBColorSpace).multiplyScalar(1 - 0.3 * wet).lerp(cHorizon, 0.45 * wet); // rain: hazier horizon
+      }
       u.uDeep?.value.copy(cDeep).multiplyScalar(1 - 0.3 * wet); u.uShallow?.value.copy(cShallow).multiplyScalar(1 - 0.3 * wet);
-      if (u.uFadeFar && scene?.fog) u.uFadeFar.value = Math.min(scene.fog.far, 190); // camera.far is 200
+      if (u.uFadeFar && scene?.fog) u.uFadeFar.value = Math.min(scene.fog.far, 140); // ocean plane half-size: past its edge the sky dome shows far sea
       if (u.uFadeNear) u.uFadeNear.value = fadeNear0 * (1 - 0.55 * Math.max(nf, smooth(0.2, 0, L.sunHeight))); // no light band at the horizon after sunset
       u.uSunDir?.value.copy(vDir);
       if (u.uSunColor) {
@@ -536,7 +576,7 @@ export function createDayNight(ctx) {
     const low = 1 - smooth(0.1, 0.5, Math.abs(L.sunHeight)); // sun near the horizon: lit from below, not dark
     cloudMat.color.copy(cCloud).multiplyScalar(1 - 0.35 * wet); // rain: darker grey
     cloudMat.emissive.copy(cCloud).multiplyScalar((0.32 + 0.18 * nf + 0.3 * low) * (1 - 0.5 * wet)); // soft self-lit undersides
-    const grow = 1 + (W.cloud - 0.25) * 0.8; // drift is per frame in applyVisuals
+    const grow = 1 + (W.cloud - 0.25) * 0.8 + 0.25 * stm; // drift is per frame in applyVisuals
     if (grow !== lastGrow) {
       lastGrow = grow;
       for (let i = 0; i < cloudGroups.length; i++) { const g = cloudGroups[i]; g.scale.x = cloudBase[i * 3 + 1] * grow; g.scale.z = cloudBase[i * 3 + 2] * grow; }
@@ -551,7 +591,7 @@ export function createDayNight(ctx) {
     mLook.lookAt(ORIGIN, vMoon, moon.up); moon.quaternion.setFromRotationMatrix(mLook);
     // rain
     rain.visible = wet > 0.01;
-    rainUniforms.uRain.value = wet; rainUniforms.uWind.value = W.wind;
+    rainUniforms.uRain.value = wet; rainUniforms.uWind.value = W.wind + 0.5 * stm;
     cRain.copy(cHemiSky).lerp(cHorizon, 0.3).lerp(cRainCool, 0.5 * nf).multiplyScalar(0.8 + 0.6 * L.light);
     rainUniforms.uColor.value.copy(cRain); rainUniforms.uAlpha.value = (0.85 + 0.15 * nf) * Math.min(1, wet * 1.5);
     poolI = nf < 0.15 ? 0 : POOL_PEAK * smooth(0.15, 1, nf);
@@ -560,10 +600,18 @@ export function createDayNight(ctx) {
   function applyVisuals(dt) {
     const scene = ctx.scene, cam = ctx.camera, raft = ctx.raft;
     attach(scene);
+    if (STORM_LIVE.dirty) { STORM_LIVE.dirty = false; skyDirty = true; }
     if (skyDirty || !(Math.abs(clock - skyClock) < SKY_STEP) || !Object.is(pinPhase, skyPin) || pinWeather !== skyPinW
       || seed !== skySeed || scene !== skyScene || ctx.ocean !== skyOcean) {
       skyDirty = false; skyClock = clock; skyPin = pinPhase; skyPinW = pinWeather; skySeed = seed; skyScene = scene; skyOcean = ctx.ocean;
       refreshSky(Number.isFinite(pinPhase) ? pinPhase : phaseAt(clock), scene);
+      flashWas = true; // re-apply the flash on top of the fresh base
+    }
+    const fl = STORM_LIVE.flash;
+    if (fl > 0 || flashWas) { // lightning: additive to the cached base, no new light
+      if (hemi) hemi.intensity = hemiBase + FLASH_HEMI * fl;
+      if (renderer) renderer.toneMappingExposure = expBase + FLASH_EXP * fl;
+      flashWas = fl > 0;
     }
     // the sun keeps its offset from the shadow-fitted target, which can move between refreshes
     if (sun) sun.position.set(vDir.x * SUN_RADIUS, Math.max(vDir.y, 0.42) * SUN_RADIUS, vDir.z * SUN_RADIUS).add(sun.target.position);
@@ -585,10 +633,11 @@ export function createDayNight(ctx) {
     }
     // lanterns
     if (raft) {
-      // O(1) every frame: rebuildRaft() replaces every child, so the first child or the child count
-      // changes (or our first lantern lost its parent). Rescan at once so new lanterns never show a dim frame.
+      // O(1) every frame: rebuildRaft() bumps raft.userData.rev whenever it adds or removes a child (older hosts
+      // replaced every child, so the first child or the child count changes, or our first lantern lost its parent).
+      // Rescan at once so new lanterns never show a dim frame.
       const n = raft.children.length;
-      if (raft !== scanRaft || n !== scanLen || (n ? raft.children[0] : null) !== scanFirst || (lanternCount > 0 && lanternGroups[0].parent !== raft)) {
+      if (raft !== scanRaft || n !== scanLen || (n ? raft.children[0] : null) !== scanFirst || raft.userData?.rev !== scanRev || (lanternCount > 0 && lanternGroups[0].parent !== raft)) {
         scanClock = 0; signature = lanternSignature(raft, ctx.world); scanLanterns(raft); lastNf = -1;
       }
       scanClock += dt;
@@ -599,12 +648,13 @@ export function createDayNight(ctx) {
         const sig = lanternSignature(raft, ctx.world);
         if (stale || sig !== signature) { signature = sig; scanLanterns(raft); lastNf = -1; }
       }
+      for (let i = 0; i < lanternCount; i++) { const p = lanternPower[i]; if (p && (p.lit ? 1 : 0) !== lanternOn[i]) { lanternOn[i] = p.lit ? 1 : 0; lastNf = -1; rankClock = 1e9; } } // [power] lit flips re-write emissive and re-rank at once
       if (nf !== lastNf) {
         lastNf = nf;
         for (let i = 0; i < partCount; i++) {
-          const m = partMat[i];
-          m.emissiveIntensity = partBase[i] * (1 + (partMult[i] - 1) * nf);
-          if (partTint[i]) m.emissive.setRGB(partColor[i * 3], partColor[i * 3 + 1], partColor[i * 3 + 2]).lerp(cGlassNight, 0.7 * nf);
+          const m = partMat[i], on = lanternOn[partOwner[i]];
+          m.emissiveIntensity = on ? partBase[i] * (1 + (partMult[i] - 1) * nf) : partBase[i] * UNLIT; // [power] unlit: base * UNLIT
+          if (partTint[i]) m.emissive.setRGB(partColor[i * 3], partColor[i * 3 + 1], partColor[i * 3 + 2]).lerp(cGlassNight, on ? 0.7 * nf : 0);
         }
       }
       rankClock += dt;
@@ -617,7 +667,8 @@ export function createDayNight(ctx) {
       if (k < 0 || k >= lanternCount || poolI <= 0 || !raft) { l.intensity = 0; continue; }
       l.position.set(lanternLocal[k * 3], lanternLocal[k * 3 + 1], lanternLocal[k * 3 + 2]);
       raft.localToWorld(l.position);
-      l.intensity = poolI * (0.94 + 0.06 * Math.sin(time * 7.3 + k * 1.7)); // gentle candle flicker
+      l.color.copy(lanternTint[k]);
+      l.intensity = poolI * lanternGain[k] * (0.94 + 0.06 * Math.sin(time * 7.3 + k * 1.7)); // gentle candle flicker
       poolLit++;
     }
   }
@@ -632,6 +683,7 @@ export function createDayNight(ctx) {
       else clock += dt;
     } else if (!frozen) clock += dt;
     if (clock > MAX_CLOCK) clock = 0;
+    STORM_LIVE.ready = true; STORM_LIVE.clock = clock; STORM_LIVE.seed = seed;
     DAYNIGHT_LIVE.phase = Number.isFinite(pinPhase) ? pinPhase : phaseAt(clock); DAYNIGHT_LIVE.ready = true; // the day-only opt-out is a no-op now, so DAYNIGHT_LIVE.optOut stays false
     applyVisuals(dt);
   }
@@ -675,7 +727,7 @@ export function createDayNight(ctx) {
   }
 
   function dispose() {
-    DAYNIGHT_LIVE.ready = false;
+    DAYNIGHT_LIVE.ready = false; STORM_LIVE.ready = false; STORM_LIVE.level = 0; STORM_LIVE.on = false;
     restoreParts();
     attach(null);
     for (let i = 0; i < cloudMeshes.length; i++) cloudMeshes[i].material = cloudOrig[i];
@@ -727,5 +779,5 @@ export function createDayNight(ctx) {
     },
   };
 
-  return { name: 'daynight', update, serialize, load, action, dispose, debug, get wind() { return W.wind; }, get rain() { return W.rain; } };
+  return { name: 'daynight', update, serialize, load, action, dispose, debug, get wind() { return W.wind; }, get night() { return L.nightFactor; } /* [power] */, get rain() { return W.rain; }, get day() { return Math.floor(clock / DAY_SECONDS); } /* [tasks] */, get storm() { return STORM_LIVE.level; } /* [storm] */ };
 }

@@ -1,0 +1,44 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Icon sheet</title>
+<style>
+body{margin:0;padding:10px;background:#0b1114;color:#dfe8ea;font:12px/1.2 system-ui,sans-serif}
+.wrap{display:flex;gap:18px;align-items:flex-start}
+table{border-collapse:collapse}
+th{font-weight:600;padding:2px 4px;color:#9fb4b9;text-align:center}
+td{padding:2px 3px;text-align:center;vertical-align:middle}
+td.k{text-align:right;color:#cfdade;padding-right:6px;white-space:nowrap}
+.slot{width:52px;height:52px;border-radius:8px;background:linear-gradient(180deg,#263136,#10171a);display:grid;place-items:center;box-shadow:inset 0 1px 0 #ffffff1a}
+.slot img,.slot svg{width:42px;height:42px;filter:drop-shadow(0 2px 2px #0009);object-fit:contain}
+.chip{width:24px;height:24px;border-radius:5px;background:#1a2428;display:grid;place-items:center}
+.chip img,.chip svg{width:18px;height:18px;object-fit:contain}
+.light{width:40px;height:40px;border-radius:6px;background:#efe3c6;display:grid;place-items:center}
+.light img,.light svg{width:36px;height:36px;object-fit:contain}
+.none{color:#e07060;font-size:10px}
+td.g{border-left:1px solid #2a3a40}
+</style></head><body><div class="wrap" id="w"></div>
+<script type="module">
+import { ITEMS } from '../../dist/items.js';
+import { ITEM_ICONS } from '../../dist/item-svg.js';
+const SPR = new URL('../../dist/icons.svg', import.meta.url).href;
+function svg(k) {
+  const it = ITEMS[k], body = ITEM_ICONS[k];
+  if (it?.placeholder && body) return `<svg viewBox="0 0 48 48">${body}</svg>`;
+  const id = (it?.icon || '').replace(/^icon-/, '');
+  if (id) return `<svg viewBox="0 0 48 48"><use href="${SPR}#icon-${id}"></use></svg>`;
+  return body ? `<svg viewBox="0 0 48 48">${body}</svg>` : '';
+}
+window.drawSheet = ({ kinds, variants }) => {
+  const names = ['svg', ...Object.keys(variants)];
+  const cell = (n, k) => {
+    const h = n === 'svg' ? svg(k) : variants[n][k] ? `<img src="${variants[n][k]}">` : '';
+    if (!h) return `<td class="g" colspan="3"><span class="none">no icon (SVG)</span></td>`;
+    return `<td class="g"><div class="slot">${h}</div></td><td><div class="chip">${h}</div></td><td><div class="light">${h}</div></td>`;
+  };
+  const half = Math.ceil(kinds.length / 2);
+  document.getElementById('w').innerHTML = [kinds.slice(0, half), kinds.slice(half)].map(ks =>
+    `<table><tr><th></th>${names.map(n => `<th colspan="3" class="g">${n}</th>`).join('')}</tr>` +
+    ks.map(k => `<tr><td class="k">${k}</td>${names.map(n => cell(n, k)).join('')}</tr>`).join('') + '</table>').join('');
+  return Promise.all([...document.images].map(i => i.decode().catch(() => {})));
+};
+window.sheetReady = true;
+</script></body></html>

@@ -190,6 +190,12 @@ export function createKiln(ctx) {
   return {
     name: 'kiln',
     serialize, load, action, interact, prompt, update, debug,
+    beforeUndecor(d) { return d?.type === 'kiln' && burning(st.k[keyOf(d.x, d.z)]) ? 'The kiln is still firing' : null; }, // [undecor]
+    undecorLoot(d) { // [undecor] queued batches come back as their raw input (each batch took SMELT.need), the tray as is; fuel is lost
+      if (d?.type !== 'kiln') return null; const e = st.k[keyOf(d.x, d.z)]; if (!e) return null; const out = [];
+      if (e.r && e.q > 0) out.push([e.r, e.q * SMELT[e.r].need]); if (e.o && e.n > 0) out.push([e.o, e.n]); return out;
+    },
+    afterUndecor(d) { if (d?.type !== 'kiln') return; const k = keyOf(d.x, d.z); if (st.k[k]) { delete st.k[k]; st.r++; } }, // [undecor]
     decorModel(type) {
       if (!T) return null;
       if (type === 'kiln') { model ??= buildKiln(T); dirty = true; return model.instance(); }

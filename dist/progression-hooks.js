@@ -8,12 +8,14 @@
 // guest only renders the snapshots the host sends ({kind:'prog:sync'} effects) and sends
 // 'prog:*' actions. Limits: guest progression is tied to the host's save (a guest starts fresh on
 // another host's raft), and guest station/research views lag by one sync (~0.3 s).
-import { ITEMS, FUEL_VALUE, toolRole } from './items.js?build=v3-survival-ae77fa84ac2b';
+import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { ITEMS, FUEL_VALUE, toolRole, stationExtraRecipes } from './items.js?build=v3-survival-ae77fa84ac2b';
 import { Progression } from './progression.js?build=v3-survival-ae77fa84ac2b';
 import { StationModel } from './smelter.js?build=v3-survival-ae77fa84ac2b';
 import { createStationPanel } from './smelter-ui.js?build=v3-survival-ae77fa84ac2b';
 import { createSmelterModel, createResearchTableModel, createGrillModel, setSmelterGlow } from './smelter-model.js?build=v3-survival-ae77fa84ac2b';
 import { installItemTooltips } from './item-tooltips.js?build=v3-survival-ae77fa84ac2b';
+import { createRecyclerModel } from './recycler-model.js?build=v3-survival-ae77fa84ac2b'; // [recycler]
 
 export const PROGRESSION_KEY = 'littleRaft.progression.v1';
 const REACH = 2.2, NOTE_EVERY = 0.5, SAVE_EVERY = 2, SYNC_EVERY = 0.3;
@@ -28,9 +30,10 @@ export function aimMiss(aim, sx, sz, me) {
   const cx = wy * d.z - wz * d.y, cy = wz * d.x - wx * d.z, cz = wx * d.y - wy * d.x;
   return Math.hypot(cx, cy, cz);
 }
-const COOKERS = new Set(Object.values(ITEMS).map((it) => it.recipe?.station).filter(Boolean));
+const COOKERS = new Set([...Object.values(ITEMS).map((it) => it.recipe?.station).filter(Boolean),
+  ...Object.keys(ITEMS).filter((id) => stationExtraRecipes(id))]); // [recycler] + fuel-free stations
 const STATIONS = new Set(Object.keys(ITEMS).filter((id) => ITEMS[id].category === 'station'));
-const MODELS = { smelter: createSmelterModel, researchtable: createResearchTableModel, grill: createGrillModel };
+const MODELS = { smelter: createSmelterModel, researchtable: createResearchTableModel, grill: createGrillModel, recycler: createRecyclerModel };
 const nameOf = (k) => ITEMS[k]?.name ?? k;
 const isHand = (id) => !!ITEMS[id]?.recipe && ITEMS[id].recipe.station == null;
 const keyOf = (d) => d.x + ',' + d.z;
@@ -39,6 +42,10 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const posInt = (n) => (Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0);
 // Hand recipes every pre-progression build offered; old raft saves keep them learned.
 const LEGACY_RECIPES = ['rope', 'hook', 'hammer', 'fishingrod', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate'];
+// [recycler] station panel wording; stations not listed keep the cooking copy.
+const PANEL_COPY = Object.freeze({
+  recycler: Object.freeze({ input: 'To sort', none: 'No junk in your bag to sort.', busy: 'Sorting', idle: 'Pick some junk from your bag to sort.', nothing: 'Nothing here to sort.' }),
+});
 // The live instance that may write PROGRESSION_KEY (hot reload mounts the new engine before disposing the old one).
 const OWNER = Symbol.for('littleRaft.progression.owner');
 
@@ -98,6 +105,11 @@ export function attachProgression(ctx) {
     for (const key of [...stations.keys()]) if (!live.has(key)) { stations.delete(key); dirty = true; if (panel?.isOpen && panel.stationId === key) panel.close(); }
   }
   const stationSnaps = () => Object.fromEntries([...stations].map(([k, s]) => [k, s.snapshot()]));
+  // [undecor] pick up a placed station: refuse mid-cook, return input + output; idle fuel units are not items.
+  const stationOf = (d) => { if (!d || !COOKERS.has(d.type)) return null; const k = keyOf(d), s = stations.get(k); if (s) return s.stationId === d.type ? s : null; const p = pendingStations[k]; return p?.station === d.type ? new StationModel(d.type, p) : null; };
+  function beforeUndecor(d) { const s = stationOf(d); return s && (s.progress > 0 || (s.input && s.fuelUnits > 0)) ? "It's still cooking" : null; }
+  function undecorLoot(d) { const s = stationOf(d); if (!s) return null; const out = []; for (const x of [s.input, s.output]) if (x && x.count > 0) out.push([x.kind, x.count]); return out; }
+  function afterUndecor(d) { if (!d || !COOKERS.has(d.type)) return; const k = keyOf(d); if (stations.delete(k)) dirty = true; if (k in pendingStations) { delete pendingStations[k]; dirty = true; } if (panel?.isOpen && panel.stationId === k) panel.close(); }
 
   function save() {
     if (!isHost() || globalThis[OWNER] !== self) return;
@@ -141,8 +153,11 @@ export function attachProgression(ctx) {
       const out = a.kind === 'prog:take' ? st.output : st.input; if (!out) return true;
       const left = bag.add(out.kind, out.count);
       if (left === out.count) { ctx.emit({ kind: 'full', text: 'Your bag is full' }, actor); return true; }
-      if (a.kind === 'prog:take') st.output = left > 0 ? { kind: out.kind, count: left } : null;
-      else { st.takeInput(); if (left > 0) st.input = { kind: out.kind, count: left }; }
+      if (a.kind === 'prog:take') {
+        st.output = left > 0 ? { kind: out.kind, count: left } : null;
+        if (ITEMS[out.kind]?.category === 'food') ctx.observe?.({ kind: 'cook', item: out.kind }, actor); // [tasks]
+        if (st.stationId === 'recycler') ctx.emit({ kind: 'loot', text: 'The sea looks a little cleaner.' }, actor); // [recycler]
+      } else { st.takeInput(); if (left > 0) st.input = { kind: out.kind, count: left }; }
     }
     dirty = true; syncClock = SYNC_EVERY; return true;
   }
@@ -161,7 +176,7 @@ export function attachProgression(ctx) {
   const later = () => setTimeout(() => { panel?.update(); renderResearch(true); }, isRemote() ? 350 : 0);
   function openStation(key) {
     panel ??= createStationPanel({
-      getStation: (k) => stationView(k), getBag: () => ctx.localBag(), items: ITEMS, fuelValue: FUEL_VALUE,
+      getStation: (k) => stationView(k), getBag: () => ctx.localBag(), items: ITEMS, fuelValue: FUEL_VALUE, copy: PANEL_COPY,
       onInsert: (k, n) => act({ kind: 'prog:insert', key: panel.stationId, item: k, n }),
       onFuel: (k, n) => act({ kind: 'prog:fuel', key: panel.stationId, item: k, n }),
       onTake: () => act({ kind: 'prog:take', key: panel.stationId }),
@@ -216,7 +231,7 @@ export function attachProgression(ctx) {
       document.body.append(research);
     }
     ctx.pause?.();
-    if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
+    exitLock(document); // marked page-initiated (lock-rules.js), so the game does not pause on it
     if (!research.open) { try { research.showModal(); } catch { research.setAttribute('open', ''); } }
     renderResearch(true);
   }
@@ -252,11 +267,11 @@ export function attachProgression(ctx) {
   // ---------- binoculars HUD ----------
   function updateHud() {
     const kind = ctx.localBag()?.selected?.kind ?? null;
-    const show = !!ctx.running() && toolRole(kind) === 'binoculars';
+    const show = !!ctx.running() && toolRole(kind) === 'binoculars' && !globalThis.raftSpyglass?.zoomed; // [spyglass] hide while zoomed
     if (!show) { if (hud) hud.hidden = true; return; }
     if (!hud) {
       hud = document.createElement('div'); hud.id = 'binocularsHud'; hud.setAttribute('role', 'status');
-      hud.style.cssText = 'position:fixed;left:16px;top:56px;padding:4px 12px;border-radius:8px;background:rgba(8,22,36,.6);color:#f6ecd6;font:700 15px/1.3 system-ui,sans-serif;pointer-events:none;z-index:30;white-space:nowrap';
+      hud.style.cssText = 'position:fixed;left:calc(50% + 34px);top:calc(50% + 2px);transform:none;color:#f6ecd6;opacity:.88;font:500 13px/1.25 var(--ui-font,system-ui,sans-serif);text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 8px rgba(0,0,0,.55);pointer-events:none;z-index:30;white-space:nowrap;text-align:left'; // muted line atop the crosshair-side prompt column, never a centred panel
       document.body.append(hud);
     }
     const me = ctx.pose(); let best = null, bd = Infinity;
@@ -274,6 +289,7 @@ export function attachProgression(ctx) {
   }
 
   // ---------- per frame ----------
+  const nodeCache = new WeakMap(); // station group -> {glow, ingot, crank, pile}
   function tick(dt) {
     time += dt;
     if (isHost()) {
@@ -296,8 +312,11 @@ export function attachProgression(ctx) {
       if (!g.parent) { models.delete(key); glow.delete(key); continue; }
       const st = stationView(key), target = st?.cooking ? 1 : st && st.fuelUnits > 0 ? 0.25 : 0;
       const a = (glow.get(key) ?? 0) + (target - (glow.get(key) ?? 0)) * Math.min(1, dt * 2);
-      glow.set(key, a); setSmelterGlow(g, a, time);
-      const ingot = g.getObjectByName('ingot'); if (ingot) ingot.visible = !!st?.output;
+      let n = nodeCache.get(g); if (!n) nodeCache.set(g, n = { glow: g.getObjectByName('glow'), ingot: g.getObjectByName('ingot'), crank: g.getObjectByName('recyclerCrank'), pile: g.getObjectByName('recyclerPile') }); // looked up once, not per frame
+      glow.set(key, a); if (n.glow) setSmelterGlow(g, a, time); // tub and research table have no glow node
+      if (n.ingot) n.ingot.visible = !!st?.output;
+      if (n.crank && st?.cooking) n.crank.rotation.z = (n.crank.rotation.z + dt * 4) % (Math.PI * 2); // [recycler]
+      if (n.pile) n.pile.visible = !!st?.output;
     }
     if (panel?.isOpen) { if (!stationView(panel.stationId)) panel.close(); else panel.update(); }
     renderResearch(false);
@@ -365,7 +384,7 @@ export function attachProgression(ctx) {
   const stationPrompt = () => { const d = ctx.running() && ctx.aim ? stationNear(ctx.aim(), true) : null; return d ? { key: 'E', label: 'Use the ' + nameOf(d.type) } : null; };
   const disposeAll = () => { try { promptOff?.(); } catch {} dispose(); }; // content hook
 
-  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, dispose: disposeAll, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()) };
+  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, dispose: disposeAll, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()), beforeUndecor, undecorLoot, afterUndecor }; // [undecor] beforeUndecor/undecorLoot/afterUndecor
 }
 
 export default attachProgression;

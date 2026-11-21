@@ -589,6 +589,83 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
 - Fixed after the merges: honey/wax/flower-seed sources, context prompt moved beside the crosshair, held-item and sprite-list conflicts with the beehive/instrument lanes.
 - Perf probe now compares against the current main (144c94a): 216 vs 322 ms, 96 vs 152 draw calls.
 - PR #2 merged into main (3031d67). Review fixes: inventory width at 900px, recipe tracker overlap, Pin button contrast. Reviewer low-priority notes left open: per-frame allocations in rain.js rainTarget and the physics substep input, sky.dispose() missing on hot swap, passive wheel listener.
+## Round 2: claude/loop-ux-202611210547 (base: origin/claude/raft-integration 7d19797 + round 1 merged in e4c3aee)
+
+Fleet:
+- 4 subsystem hunters: cursor/Electron, crafting/backpack, menus/settings, tools/viewmodel.
+- 2 adversarial verifiers per hunter report (8).
+- 5 fixers.
+- 1 new-player UX reviewer, reading screenshots.
+- 1 crafting UX builder.
+- 1 merge agent.
+
+### Merge
+Round 1 was merged into raft-integration, keeping both sides:
+- integration's dark translucent restyle, menus, pickup feed and hands viewmodel;
+- loop-ux's lock rules, edge notices and crafting features.
+
+The two item-icon modules became one shared cache.
+
+### Fixed (each confirmed by both verifiers)
+- **Cursor (CUR2-1..5)**, found with real X11 keys in headful Chrome:
+  - A relock made inside the Esc keyup was granted and then dropped by Chrome's Escape key-release shortcut. The relock is now deferred 250 ms, with guards.
+  - Chrome sometimes eats the Esc in locked play. Any lock loss the page didn't cause now opens the pause menu if the window is focused.
+  - Electron:
+    - on an eaten-Esc keyUp, `raftShell.escapedLock()` runs with a gesture;
+    - on window focus, `raftShell.focusRelock()` relocks after alt-tab, but only if play was locked and nothing is open;
+    - a gesture retry covers the Escape cooldown;
+    - the extra key-release round trip is gone.
+  - In the desktop app, Esc while holding a stack in the bag now puts the stack back first.
+- **Menus (MEN2-1..5):**
+  - The ambience slider is wired up, with its gain after the swell.
+  - The title help button no longer shows Resume or Quit, and quit-to-title is a no-op on the title screen.
+  - The shell Escape goes through settings' stepwise routing.
+  - The default renderScale is now 0.85.
+  - The Audio tab has a Sound toggle.
+- **Tools (TOOL2-1..5):**
+  - A cancelled hand swap rises back instead of staying half-lowered.
+  - A pose override waits for its own item.
+  - models.js is wired into held items and icons, with a fallback.
+  - Rod prompts no longer invite a losing click.
+  - Switching slots pulls the hook back, ported from lane-bugs 53426f0.
+- **Crafting (CRA2-1..6 + builder):**
+  - The crafting panel no longer jumps between tabs.
+  - Esc or a backdrop click while holding a stack puts it back.
+  - A stack picked up with the keyboard sits on its slot.
+  - No overflow between 861 and 923 px.
+  - The icon fallback is shared with the pickup feed.
+  - Tooltips show on focus.
+  - Inline ingredient counts.
+  - Craftable recipes sort first.
+  - A pinned-recipe tracker sits at the top-right edge.
+  - Shift crafts the maximum.
+  - Tools craft one at a time.
+  - The bag opens on the first ready recipe the player doesn't own yet.
+  - Counts read "have X · need Y".
+  - Clicking an ingredient jumps to its recipe.
+  - A slot flashes after crafting.
+- **UX (UX2-2/3/6/7/8):**
+  - Help shows in the pause side panel.
+  - Action prompts are in the edge stack.
+  - The hint chain teaches look → walk → throw → bag → slots.
+  - Key and reel wording is unified.
+  - The throw meter has a gradient fill and a full-power cue.
+  - One palette and font across all menus.
+  - Segmented preset picker.
+  - Title: a legible logo and a single "Play together" button.
+
+### Checks
+- `npm test`: 166 pass, 0 fail.
+- `python shoot.py dist <out>`: no page or console errors. The pause menu is a left rail; the bag shows inline counts.
+- `python tests/e2e/escape_lock.py`: the Esc-from-inventory relock and locked-play Esc → pause pass with native key codes, 3/3 in my run and 5/5 in the fixer's. The fixer measured HEAD before the fix at 0/5.
+- XTest real-key trials: 15/15, from the fixer.
+
+### Open for next round
+- None of the Electron main.cjs paths have ever run. They have only been reasoned from source and checked in a node sim. A real desktop run is needed.
+- The focus relock also fires when the player returns by clicking the title bar or taskbar, which is debatable.
+- Play together is still a separate centred dialog.
+- The Hammer and Fishing Rod icons are still dim on their tiles.
+
 
 ## 2026-11-21 · loop-features-202611210722 (features, round 3)
 Base: origin/claude/raft-master (6ab9b24, already holding round 1) + round 2 (loop-features-202611210534) merged in (re-based 3-way merge; kiln metal now uses master's `metalingot`/`glass`/`brick`; decor-pack rotation kept via `userData.ownRot`). raft-integration (newer timestamp) was skipped as base: it is a divergent line 558 commits behind master without the lanes.
@@ -712,6 +789,24 @@ Left for later:
 - "Discover at a Tinker's Desk" heading squeezed to 3 px (pre-existing UI bug)
 - `ocean.sampleAt` to remove double-argument boxing in `updateItems`
 
+## 2026-11-21 · loop-features-202611210648 (features)
+Base: origin/claude/raft-master (8cfdbcd). Branch: claude/loop-features-202611210648.
+
+Features (research in docs/features, specs in docs/specs):
+- **Rain Barrel + Sprinkler**: the barrel fills during rain (1 fresh cup per 30 s, with a slow dew trickle as a fallback), and E fills a cup at it. The sprinkler waters one dry, unripe palm per second in the 8 tiles around it, from its own tank or from a barrel beside it. State is in `world.collectors` / `world.sprinklers`, which old saves load as {}. New `get rain()` in daynight. Files: dist/rain.js, rain-model.js.
+- **Instruments**: three held instruments, Tide Drum, Reed Pipes and Bell Bars. LMB or RT plays; camera pitch picks one of 8 D-pentatonic notes. New `audio.note()` on the effects bus (50 ms gap, 10-voice cap). Co-op sends a transient `inst` message with validation, rate limits and distance falloff; HELD enum appended. Files: dist/instruments.js, instrument-models.js.
+- **Beehive + Flower Box**: honey and beeswax for a Beeswax Candle (night glow) and Honey Glazed Fish. Combs fill from flower boxes within 2 tiles, up to 3 combs. Flower seed comes from island bushes and treasure barrels. State in `world.ext.bees`, with an OLD_HOST guard. Files: dist/bees.js, bees-model.js.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA, 1 QA fixer (14 agents).
+Review fixes:
+- The candle's night light blew the deck out.
+- Hidden sprinkler spray stole the aim; pip materials leaked on raft rebuild.
+- The instrument prompt hid the pickup and swim prompts; the rate limit ran before validation; note sprites are now pooled.
+QA found that every content-module and watering prompt (round 1 purifier, storage, grill, plus this round's) went into the CSS-hidden `#contextPrompt` and leaked status lines into the notice feed. They now go through `raftPrompts.provide` via `promptFromHtml`.
+Checks: `npm test` 568/568 (was 533); shoot.py `errors: []`.
+Known limits: live two-peer co-op not run (co-op reviewed by code and unit tests). Mixed-version co-op unsupported (older builds drop the new decor and reset bags holding new kinds). Removing a barrel, sprinkler or hive with the hammer discards its contents. Fishing labels over 48 characters get cut off.
+Next ideas: hammer pickup that refunds contents, a placeable music stand, flower variety, sprinkler range ring while aiming.
+
 ## claude/loop-visuals-202611210648 (visuals, round 2)
 Base: origin/claude/raft-master (d56c3ef). Fleet: critic, 6 builders (sky, water, materials, hands-and-items, UI, models), art judge, perf checker (10 agents).
 - Accepted (judge: all 6 clearly better):
@@ -738,3 +833,367 @@ Base: origin/claude/raft-master (d56c3ef). Fleet: critic, 6 builders (sky, water
   - thumb blob on the hook grip
   - faint banding in the pause panel
 - Integrator merge into raft-master: only the orange-claw hook (hook.js) was taken; sky, daynight, ocean, deck, wood, islands, hands and HUD were stale parallel copies of work already on raft-master, so raft-master kept its versions (sky stays driven by daynight via sky.follow).
+
+## 2026-11-21 · integrator round 5 (integrator A)
+- Merged into raft-master: fleet-tech procedural-models/foliage/audio/perf/water/icons, loop-perf-0708, loop-features-0648, raft-tech, raft-content, raft-tests, lane-models, loop-perf-0648 (daynight refresh at 10 Hz, late no-shadow warm, idle dive warm), loop-perf-0720 (ghost hold after place, Shift+R 15° steps; Alt+R now turns backwards), loop-features-0703, loop-ux-0603/0648 remainders (bee item sources, title save line), loop-features-0831 (juicer, gull, building pack; restored after the earlier revert once the branch was finished).
+- Skipped: lane-placement (old placement model, superseded), raft-reference (third-party reference frames, not game code).
+- PR #2 review (2 reviewers, comments on the PR). Fixed: items.js still had an 8-slot hotbar, so slots 9/0 reset on load and for co-op guests; red off-deck ghost said "Place"; slot 9/0 onboarding hint; pickup feed covered the vitals panel; vitals panel overlapped the 10-slot hotbar below 1100px; resume hint forced next to the crosshair by an !important rule; sky noise texture leaked on hot swap.
+- Gate at dbf2ca9: 983/983, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text. Perf vs main (pinned, median of 3, interleaved): 185/191 vs 195/192 ms, 49-52 vs 51-55 draw calls.
+- Merged PR #4 into main (912d941).
+
+## 2026-11-21 · loop-features-202611210648 (features)
+Base: origin/claude/raft-master (8cfdbcd). Branch: claude/loop-features-202611210648.
+
+Features (research in docs/features, specs in docs/specs):
+- **Rain Barrel + Sprinkler**: the barrel fills during rain (1 fresh cup per 30 s, with a slow dew trickle as a fallback), and E fills a cup at it. The sprinkler waters one dry, unripe palm per second in the 8 tiles around it, from its own tank or from a barrel beside it. State is in `world.collectors` / `world.sprinklers`, which old saves load as {}. New `get rain()` in daynight. Files: dist/rain.js, rain-model.js.
+- **Instruments**: three held instruments, Tide Drum, Reed Pipes and Bell Bars. LMB or RT plays; camera pitch picks one of 8 D-pentatonic notes. New `audio.note()` on the effects bus (50 ms gap, 10-voice cap). Co-op sends a transient `inst` message with validation, rate limits and distance falloff; HELD enum appended. Files: dist/instruments.js, instrument-models.js.
+- **Beehive + Flower Box**: honey and beeswax for a Beeswax Candle (night glow) and Honey Glazed Fish. Combs fill from flower boxes within 2 tiles, up to 3 combs. Flower seed comes from island bushes and treasure barrels. State in `world.ext.bees`, with an OLD_HOST guard. Files: dist/bees.js, bees-model.js.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA, 1 QA fixer (14 agents).
+Review fixes:
+- The candle's night light blew the deck out.
+- Hidden sprinkler spray stole the aim; pip materials leaked on raft rebuild.
+- The instrument prompt hid the pickup and swim prompts; the rate limit ran before validation; note sprites are now pooled.
+QA found that every content-module and watering prompt (round 1 purifier, storage, grill, plus this round's) went into the CSS-hidden `#contextPrompt` and leaked status lines into the notice feed. They now go through `raftPrompts.provide` via `promptFromHtml`.
+Checks: `npm test` 568/568 (was 533); shoot.py `errors: []`.
+Known limits: live two-peer co-op not run (co-op reviewed by code and unit tests). Mixed-version co-op unsupported (older builds drop the new decor and reset bags holding new kinds). Removing a barrel, sprinkler or hive with the hammer discards its contents. Fishing labels over 48 characters get cut off.
+Next ideas: hammer pickup that refunds contents, a placeable music stand, flower variety, sprinkler range ring while aiming.
+
+## loop-ux round 5: claude/loop-ux-202611210748 (base: origin/claude/raft-master 7294e26)
+Merged the unmerged round-4 branch (loop-ux-202611210648: steady recipe order and panel height, hold counter, tooltips beside their element) first. Fleet of 7 subsystem hunters, a new-player screenshot reviewer, 2 adversarial verifiers per cluster (14), and 7 fixers, each fix with a regression test.
+
+Fixed (confirmed by both verifiers unless noted):
+- **Cursor and lock:** Chrome's post-Esc SecurityError no longer counts toward drag-look fallback. The cursor stays visible in drag-look after a panel closes. `relock` is cleared on blur so the away hint shows. `acceptFirstMouse` is set in Electron. Desktop Esc now closes the hammer build wheel and keeps the lock: `raftShell.closeBuildWheel()` is called from `raftEscape`.
+- **Controls:** keys held through a panel resume when it closes, with no false press edge. A sub-frame Space tap jumps. Mouse flicks over 300px go through the look spike filter instead of being dropped. The fish journal closes on physical KeyJ.
+- **Build wheel:** holding Q no longer flickers it open and shut. While it is open, digits, the mouse wheel and E are swallowed. WASD still works, which is intended. R is consumed only for pieces that rotate.
+- **Fishing:** a rod charge or reel hold is released on blur and lock loss, so there is no stale full-power cast. E follows the prompt order. Gamepad RT uses fishing v2. Clicking during the post-catch linger recasts. Grills don't cook on the title screen.
+- **HUD:** the crosshair prompt follows the fishing stage and grill, rain and content prompts. The dive label, binoculars readout and reel bar moved out of screen centre into the crosshair-side column. The three bottom-left feeds are now one stack. Notes and achievements show once, and the toast queue is FIFO. The help text gives the right bag-close keys.
+- **Inventory:** a metal hook is repaired with R. A cast retracts when its hook leaves the slot. Barrel pity counters advance only when the loot is taken, and nets back off for 6s after a refused roll.
+- **Crafting (Raft-like):**
+  - Layout: a vertical category column, a tall scrolling recipe list with a fade, and a detail pane (big icon, used-for, have/need rows, Craft) above a 10-column backpack. The panel is the same size on every tab.
+  - Locked recipes: recipes locked behind the Tinker's Desk show as locked with the full reason, instead of "Ready" while the host refuses them.
+  - Crafting and icons: a click crafts exactly 1, and a hold repeats after 800ms with a fill. The receiver has a real icon. Tooltips never jump to the top-left or cover the Craft button.
+  - Build costs and categories: costs show per-material have/need using bag names. Cup and purifier are in Survival.
+- Refuted: Tab-to-close bag (Tab moves focus by design; help text fixed).
+
+Gate: npm test 695/695. `tests/art.test.mjs` "atlas build stays fast" is load-sensitive: it fails sometimes with ~20 agents on 4 cores and passes alone. shoot.py: no page errors; Esc from inventory leaves the game locked with no pause; Esc closes the settings panel first.
+
+Open / next:
+- Gamepad build menu (Pad12) lists decor and emits an unhandled `buildPick`.
+- Rebinding UI is not mounted in settings; several keys bypass input-map.
+- Two Invert Y settings.
+- Ctrl+W crouch-walk closes the browser tab.
+- Pieces and decor don't check each other for overlap.
+- The host does no reach check on piece and unpiece.
+- Fish journal chip overlaps the hotbar at 390px.
+- Grill progress is lost on tab discard.
+- Icon style still swaps from flat SVG to 3D mid-session.
+## 2026-11-21 · loop-features-202611210735 (features)
+Base: origin/claude/raft-master (c96002e), plus the two round-1 commits that missed the master merge (the prompt fix).
+Branch: claude/loop-features-202611210735.
+
+Features (research in docs/features, specs in docs/specs):
+- **Fish Trap**:
+  - Placed on edge tiles only, via a new `placeBlock` content hook. A woven creel hangs off the raft edge into the water.
+  - Catches a fish every 240 s, or every 150 s with seaweed bait (5 charges). Catches use `rollCatch` on a seeded host RNG; up to 3 fish.
+  - E collects all-or-nothing into the bag and the collector's journal (`recordTrapCatch`).
+  - Tails poke above the rim when the trap holds fish; a seaweed tuft shows when baited.
+  - State in `world.ext.fishtrap`. Files: dist/fish-trap.js, fish-trap-model.js.
+- **Power**:
+  - Wind Turbine, Battery, String Lights and Lamp Post. Turbines beside a battery charge it from the daynight wind; lights within 3 tiles glow and drain it at night.
+  - Only the charge is synced (`world.ext.power`); each peer works out lit state itself.
+  - No new PointLights: the Lamp Post shares the lantern pool lights, and new `night` getter and per-light lit flag in daynight.
+  - Files: dist/power.js, power-model.js.
+- **Display Shelf + Trophy Stand**:
+  - E puts or takes the held item in the aimed slot, through atomic host actions with `expect`.
+  - Items are fitted to the slot: tools stand upright, long items lie flat.
+  - The stand mounts a cosmetic trophy of a fish species from your journal, with a plaque.
+  - State in `world.ext.display`. Shared per-kind model templates; 48-model cap. Files: dist/display.js, display-model.js.
+
+## 2026-11-21 · loop-features-202611210831 (features)
+Base: origin/claude/raft-master (1636dfe). Branch: claude/loop-features-202611210831.
+Round 2 (loop-features-202611210735) is not in raft-master yet. It conflicts with raft-master's own content-prompt routing and the vitals lane, so it needs an integrator merge.
+
+Features (research in docs/features, specs in docs/specs):
+- **Juicer and smoothies**: berries come from island bushes (25% of plain-leaf picks; seed and flower rates unchanged), and coconuts from ripe palm planters. E on the Juicer blends 1 fresh cup and 2 fruit into a berry, coconut or island smoothie. It is host-checked and all-or-nothing. The drinks feed vitals and give the cup back. Also: a `honeyfish` FOOD row (it could not be eaten before), an `isDrink` cue, and an E content prompt now beats the eat hint. Files: dist/juicer.js, juicer-model.js.
+- **Companion Gull**: on a Gull Perch, treats on a 90 s visit schedule (3 points to move in). Rest, loop and follow modes run on the host clock; only the clock is synced. Pet and name it, with a heart burst. Finds go into a 3-slot tray, collected all-or-nothing. The rename dialog is shared with the Puffhen. State is in `world.ext.gull`. Files: dist/gull.js, gull-models.js.
+- **Building pack**:
+  - Railing (1.2 m collision so a bobbing jump can't clear it), Hatch and Gate (E toggles, `o:1` only while open, so closed records are unchanged), and Ladder (MoveFeel climb with a virtual ground in preStep).
+  - The host `piecetoggle` checks `expect`, reach and occupancy, and is rate-limited.
+  - The open variants are instanced meshes.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA, 1 QA fixer (14 agents).
+
+Review fixes:
+- Fish trap:
+  - Fish can still be collected from a trap that no longer sits on an edge.
+  - The waiting percent no longer goes over 100.
+  - The bob animation is skipped off-screen.
+- Power: old-host prompts on lights; slimmer wooden turbine; brighter powered bulbs and darker unpowered ones; battery charge gauge on the top face.
+- Display: items fitted to slots, using instanced-mesh bounds; plaque textures stay alive while shown.
+
+QA regression fixed: round 1's game-aim provider hid the placement hint while holding a crate or bench. Place mode now shows the hint, with the aim prompt stacked below it.
+Also fixed:
+- muted status prompts get a dark pill
+- the caught-fish viewmodel also expires on wall-clock time
+- new tests/syntax.test.mjs runs `node --check` on every dist module, after a broken game.js passed `npm test`
+
+Checks: `npm test` 605/605 (was 568); shoot.py `errors: []`.
+Known limits:
+- Live two-peer co-op not run; mixed-version co-op is unsupported.
+- Decor still cannot be removed (a refund helper exists for shelves).
+- Trap catches don't count toward fish achievements.
+- The trap's placement ghost doesn't face the water.
+Next ideas: decor pickup with refunds, achievement hooks for content modules, flower variety, power for the receiver and purifier.
+
+- Follow-up: the electron check caught an uncaught `isReady` TypeError (three r170 compileAsync polling a material disposed
+  mid-compile); patched the vendored three with the upstream-style guard. Full fleet-gate PASS at dbf2ca9 (983 tests,
+  hook-only spawn, Esc from inventory keeps the lock, no page errors, shoot.py 159 vs 156 ms on main = +2%).
+  PR #4 merged dbf2ca9 into main. PR #5 (round 6) is the open PR now.
+
+## 2026-11-21 · loop-fidelity-202611210914 (raft fidelity, worker B round 2)
+Base: raft-master 3247525. Two fidelity routines are running in parallel. Worker A's 0714/0804/0821 rounds landed first, so worker B's round 1 (`claude/loop-fidelity-202611210747`: needs, shark, spear) is superseded and should NOT be merged.
+- Round 2 built crops + gull raids + scarecrow, bed, drowning and fuel parity on the 0747 base. Crops and fuel duplicate worker A's 0804/0821, so only the pieces raft-master lacks were ported onto its vitals API.
+Landed:
+- **Simple Bed (extends sleep.js; one 'bed' kind):**
+  - recipe 10 leaf, 6 wood, 4 plastic, 3 nails
+  - a slept night gives +40 health, -20 food, -20 water (vitals.adjust; health floor 1)
+  - the last bed you lay in or placed is home: wake there at 25/50/50; if it is gone, wake at the raft centre with RESPAWN
+  - no lying down while swimming; the co-op prompt shows "1/2 sleeping"
+- **Drowning:**
+  - breath 33 s, halved at 0 food or water; empty air underwater costs 3.5 HP/s (every 0.5 s, cause 'drown')
+  - waking up resets the dive
+  - the faint overlay names the cause
+  - Breath Jug now gives 55 s
+Checks: npm test 1029/1029. Headless bed run: night prompt, sleep to morning, faint then wake in bed at 25/50/50; no page errors.
+Not covered in the browser: drowning (SwiftShader time is too slow; unit-tested) and the bed-gone fallback (unit-tested).
+Open for worker A: gull crop raids + scarecrow (built on work3 against the old needs API; not ported). raft-master has no game modes, so sleep and drowning effects always apply.
+
+## 2026-11-21 · loop-features-202611210749 (features)
+Base: origin/claude/raft-master (7294e26). Merging rounds 0548/0703 into the base hit 10 conflicting files, so that is left to the integrator. Not redone: everything listed in rounds 0548/0703 plus the other branches' diving gear, trader, cookpot, fish trap, power chain and display shelf.
+
+Features (research in docs/features, specs in docs/specs):
+- **Junk debris + Sorting Tub**: `oldboot`, `tincan` and `seajar` are about 1 in 11 floating spawns (re-rolled in makeItem, so the spawn table is unchanged). Hooks and nets collect them. The Sorting Tub is a fuel-free progression station (6 wood, 2 rope, 3 nail, unlocked after nails) that sorts tin into 2 scrap, boot into 2 plastic and jar into 2 sand. It reuses StationModel through a `stationExtraRecipes` fallback, so the smelter and grill are unchanged. The tub has a crank animation and an output pile. Files: dist/recycler-model.js plus hooks in items.js, smelter.js, smelter-ui.js, progression-hooks.js and models.js.
+- **Daily crew tasks**: 3 tasks a day from a pool of 16, picked from (seed, day) and skipping tasks whose prerequisites are missing. Counting is host-only, through a new `observe(ev, actor)` content hook placed after every successful action. Small rewards, an all-three bonus and a streak with a best. Each player claims their own reward, unclaimed rewards carry over as `owed`, and the day falls back to a play-time clock when day/night is off. The logbook has a "Tasks" tab and there is a Task Board decor. Files: dist/tasks.js, tasks-rules.js, tasks-model.js.
+- **Little Camera + photo album + Photo Frame**: click to snap. The capture hides hands and ghosts, crops to 256x144 and saves a JPEG to IndexedDB, falling back to localStorage and then memory. The album holds 24 photos and refuses new shots when full. P opens the album (also from the pause menu). The Photo Frame decor shows a chosen photo; the owner sends the JPEG once over co-op, the message is validated and capped at 24k chars, and image data never goes in saves. Files: dist/camera.js, photo-store.js, photo-album-ui.js, camera-models.js, photo-frame.js.
+- Also fixed on the base: holding a seed threw a ReferenceError every frame, because `farmPlot` is undefined at game.js:1158.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (13 agents).
+Review/QA fixes:
+- **Station take (serious):** the recycler change had made "take output" also empty the smelter/grill input, which could also duplicate items.
+- **Pickup feed:** icons for placeholder items were missing.
+- **Station node lookups:** were repeated every frame.
+- **Tasks:** solo games owed rewards to the empty guest seat; a guest briefly showed stale tasks; the Claim button re-armed early.
+- **Camera:** pose was hidden behind the hotbar; the flash was barely visible; a hung save could lock the camera; co-op photo asks were slow; moved frames left stale entries in the save.
+- **Phone layout:** the journal chip overlapped the hotbar, and the bag hotbar row was clipped.
+
+Checks: `npm test` 660/660; shoot.py `errors: []`. A two-tab loopback co-op run of the photo frame passed.
+Known limits:
+- An intermittent three.js `compileAsync` "isReady" error comes from warmShaders in game.js (existing).
+- One headless run produced a solid-teal photo (not reproduced), and once only 3 of 4 snaps were saved.
+- Capture while diving is unverified.
+- Junk items get 3D icons while the new stations have flat icons (mixed styles).
+Next ideas: merge rounds 0548/0703/0749 into master; look into the warmShaders race; snap/save reliability; a richer camera model.
+
+## 2026-11-21 · integrator B round 4 (alongside the parallel integrator, which shipped PRs #3 and #4)
+- Clean merges: loop-fidelity-202611210821, raft-tech, fleet-tech perf/water. Sky dome now disposed on hot swap.
+- One subagent per conflicting branch, each pushing straight to raft-master after tests, shoot.py and perf:
+  - merged loop-features-202611210722 (diving gear, Pim's trader barge, cooking pot) and 0648; loop-ux-202611210743 (menu restyle, help panel, sound settings);
+    loop-perf-202611210708 (partial: quality ladder, fog cache, cached models) and 0648; loop-visuals-202611210648 (new held hook only).
+  - skipped loop-fidelity-202611210747 (second copy of vitals/shark with a different save format; its game-mode and death card would need porting),
+    loop-perf-202611210720 (stale), loop-ux-202611210742 (redoes lock rows, still being pushed). raft-integration was already in.
+- Gate at 9b3ba49: 1023/1023, no page errors, hook-only spawn, Esc OK, perf 133 ms / 43 calls (main 912d941: 229 ms / 49 calls).
+- Recurring flake: tests/art.test.mjs atlas build-time (<1500 ms) fails under machine load (load avg > 15); passes alone.
+
+## 2026-11-21 · loop-features-202611210814 (features, round 4)
+Base: origin/claude/raft-master (77b1cb6) + round 3 branch (rounds 1–3) merged in; master did not yet hold round 2, it comes with this merge. Avoided features other loop runs already covered (shelf, fish trap, wind power, crew tasks, camera, recycler, fireworks, zipline, scarecrow, treasure, map table, customise…).
+- **Driftboard paddleboard** (`paddleboard`) — craft, launch from the deck edge, ride at ~3.6 m/s (4.5 sprint) with mouse steering, tethered under 45 m, tie/pick up/drift home, co-op riders visible. Adds the zipline-compatible `ride`/`riding` content hook (byte-identical to loop-features-202611210753-zfs) + extra rideIn fields in game.js.
+- **Driftwood Game Table** (`gametable`) — draughts (forced captures, multi-jumps, kings) and noughts & crosses vs the crewmate or the Gull AI (Easy/Clever minimax); 2D board dialog + instanced 3D pieces; host-authoritative moves with stale-move counter.
+- **Buoy ring course** (`buoycourse`) — Start Flag with course board, four preset shapes, countdown, ring crossing detection (swim and board bands), timer pill, bell per ring (contentCtx `note`), top-5 scoreboard per shape/mode with host-validated finishes.
+Fleet: merge agent, 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (14 agents).
+Fixes: icons.svg was invalid XML on master (unclosed sprinkler symbol) — closed; course timer now on the movement clock and generous host min-time; game table save validation, gull/dialog after table removal, instanced buffer leak; driftboard orphaned guest ride, held Space after UI, per-frame scan; course flag answers E while riding (FEATURES order); X pieces no longer inherit the close-button style; course beam no longer blinds riders; phone timer pill clear of compass; riding prompt wording.
+Checks: npm test 835/835; shoot2.py errors []; coop2 loopback base failures only (3, 4, 6; 2b flaky under load); loopback verified guest board, guest draughts moves, guest course finish.
+Observed: master now shows health/hunger/thirst vitals bars — a design change from the original "no damage, no hunger" brief made in another lane; not touched here.
+Known limits: held driftboard viewmodel is a plain box; noughts winning line not highlighted; chest/trader/sleep take E before the board while riding.
+
+## 2026-11-21 · loop-features-202611210753-zfs (features)
+
+Base: `origin/claude/raft-master` 7294e26. `raft-integration` was newer by commit time but 685 commits behind master; merging it gave 6 conflicts (held-items, ocean, settings, sky, survival-ui, survival tests), so that is left to the integrator. The branch name has a `-zfs` suffix because a parallel session pushed `loop-features-202611210749` first.
+
+Features (research, spec, build, review for each; then one visual QA pass and one polish pass):
+- **Scarecrow + gentle gulls** (`dist/scarecrow.js`, `scarecrow-model.js`; spec `docs/specs/scarecrow.md`). Gulls 0–2 sometimes land on a watered palm planter and pause its growth (it never goes backwards). The host decides pecks, with one pecking gull per raft and a 90 s cooldown per planter. E shoos the gull through `raftPrompts`, and harvest/water E still work. A Scarecrow protects palms within 4.5 m, and gulls sit on its hat. `world.ext.scarecrow` is only sent over the network; an old host turns the feature off.
+- **Sky Rockets** (`dist/fireworks.js`, `fireworks-model.js`; spec `docs/specs/fireworks.md`). A placeable rocket; E lights it through a host action, then fuse, rise, and a sphere, ring or willow burst. One pooled Points draw call, a hemi sky flash at night, whistle/pop/crackle sounds, and the `firework1` achievement. Old peers get `sound:'none'` and no notice. New `content.effect` and `content.night` hooks.
+- **Ziplines** (`dist/zipline.js`, `zipline-model.js`; spec `docs/specs/zipline.md`). Glide Post and Low Glide Post decor, and a Glide Handle. E on two posts strings a line (4–16 m, rope cost scales with length, blocked by building pieces). Riding uses gravity, drag and input, Space lets go, and you hop off at the end. `world.ext.zipline` holds the lines. Co-op: `HELD[17]=glidehandle`, and pose flag bit 8 means riding (the partner hangs with arms up).
+
+Review fixes:
+- The shoo prompt was invisible because `#contextPrompt` is hidden.
+- The sky flash drifted on dispose and flickered on back-to-back bursts.
+- You could mount a zipline mid-clamber.
+- Riders passed through walls built across a line.
+- Ropes ignored the raft's tilt.
+
+Visual QA (`docs/cloud/qa-round-zfs.md`, shots in `docs/cloud/shots/zfs/`) fixed 9 issues:
+- Real held models for the new placeables (and candle, beehive, flower box).
+- Bolder, bigger bursts and a willow that droops.
+- The gull no longer clips the palm.
+- A chunkier rocket.
+- A hanging ride pose, and the ride stops 1.3 m before the end post.
+- A 1.15x scarecrow.
+- A distinct low-post icon.
+
+Checks: `npm test` 680/680, and shoot.py plus the feature capture scripts ran with no page errors.
+
+Open for next round:
+- **Hidden prompts:** watering, purifier and other content prompts that go through `updateContext` never show, because `#contextPrompt` is `display:none`. They need `raftPrompts` providers.
+- **Mixed icons:** bags mix flat SVG and 3D-rendered icons.
+- **Gold willow:** the willow core still looks warm-white up close.
+- **Not exercised:** the two-browser co-op e2e for all three features was not run.
+- **Island sand:** `islands.afterMove` still runs during a ride.
+
+## 2026-11-21 · integrator D: loop-ux-202611210848, loop-ux-202611210852
+- Skipped claude/loop-ux-202611210848: its new work is loop-ux-202611210833 (plus loop-ux-0648 commits) with an older raft-master merged in; both are claimed by integrator B, and it conflicts in 16 files.
+- Merged claude/loop-ux-202611210852 with no content change: its only new commit merges loop-ux-202611210748, which raft-master already has; kept raft-master's side.
+- Gate after merging raft-master: 1138/1138 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text; 166 ms/frame, 37 draw calls.
+
+## 2026-11-21 · integrator F (scheduled run, 09:34 UTC)
+- Merged loop-features-202611210926 (biofuel and power-hookup specs, research notes; docs only). npm test 1270/1270.
+- Skipped loop-visuals-202611210548: 1624 commits behind, conflicts in sky.js and hands.js, and baking the sky once would freeze
+  the daynight-driven sky on raft-master.
+- Still skipped: loop-perf-0720, loop-fidelity-0747 (large stale branches, need worker rebases). Everything else with new commits
+  is claimed by integrators B-E in STATUS.md, so this run left those and PR #5 (gated by B) alone.
+- Screenshot gate tool unavailable here (no Python playwright); not a blocker for a docs-only merge.
+
+## 2026-11-21 · integrator D: loop-fidelity-202611210900, -0910, -0914; loop-features-202611210855
+- Merged loop-fidelity-202611210914: Simple Bed (Raft recipe, sleep effect on vitals, home-bed respawn) and Raft breath (33 s, halved when starving) with drowning damage.
+- Merged loop-features-202611210855: docs only, research notes and specs for zipline, night light (hand lantern, firefly jar) and crops.
+- Skipped loop-fidelity-202611210900: it is loop-fidelity-202611210821 (paddle, stone axe) merged with raft-master, and integrator B claimed -0821.
+- Skipped loop-fidelity-202611210910: conflicts in 11 dist files, and its edge collection nets (nets.js, world.nets) replace raft-master's decor net collection. Needs a rebase by its worker. It also brings crops, foundation armor, a 2x2 start and Raft costs.
+- Gate after merging raft-master: 1277/1277 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text, 198 ms/frame, 46 draw calls. Kept the raft-master zipline spec over the older one in -0855.
+- Juicer: open hopper funnel.
+- Gull:
+  - prototype-key treats
+  - junk timestamps that blocked treats forever
+  - a rebuild after dispose
+  - culling
+  - its own slimmer wing and a neck
+- Building:
+  - The new thin-wall sweep froze players sliding along walls at low fps; it was rewritten.
+  - A guest no longer drops off the ladder on every pieces resend.
+  - The hatch prompt now beats the eat hint.
+  - A double press can no longer re-toggle.
+- QA fixes:
+  - The pickup feed covered the new vitals panel; the pickup and notice feeds are lifted above it.
+  - One post per railing corner.
+  - Lighter hatch underside.
+  - Shaped gull finds.
+
+Checks: `npm test` 857/857 (was 816); shoot.py `errors: []`.
+Known limits:
+- Live two-peer co-op not run; mixed-version co-op is unsupported.
+- Stepping backward off a ladder top drops a storey.
+- A ladder placed under a painted hatch loses the tint.
+Note for the owner: raft-master now has hunger/thirst/health, sharks and a spear (the "fidelity" lane). The README still says "No hunger or damage".
+## Perf round, 2026-11-21 07:08 UTC
+
+Branch `claude/loop-perf-202611210708`, from `origin/claude/raft-master` 6ab9b24.
+
+**Who ran it:**
+- 6 profilers: world, building, environment, alloc, startup, hud+viewmodel.
+- 9 optimizers: debris, scenery, deck, decor, viewmodel, hud, startup, alloc, quality.
+- 1 regression checker, who read every before/after pair. Pairs are side by side in `r2-regress/cmp/`.
+- 1 measurer.
+
+**Probe setup:** headless SwiftShader at 1280x720, load average 2.5–12. perf_probe used 3 interleaved runs per tree. Frame ms is noise.
+
+| Metric | Before | After | Change |
+|---|---|---|---|
+| perf_probe draw calls, idle (pinQuality + seed) | 148 | 35 | **−76%** |
+| perf_probe draw calls, walk | 147 | 35 | −76% |
+| perf_probe triangles, idle | 116.2k | 109.2k | −6% |
+| perf_gate draw calls, p50 / p95 / max | 136 / 147 / 150 | 32 / 37 / 37 | −76% |
+| perf_gate result | FAIL (2 WebGL contexts) | PASS | |
+| perf_gate GL object growth | 135 | 1 | −99% |
+| JS allocation, idle (KB/frame, CDP sampling) | 134.7 | 87.1 | **−35%** |
+| Heap after forced GC at 60 s (MB) | 29.1 | 28.9 | −1% |
+| WebGL contexts | 2 | 1 | −50% |
+| Live programs at 30 s | 43 | 170 | +295% (shader variants warmed on purpose) |
+| Draw calls, night + lantern | 158 | 44 | −72% |
+| Draw calls, island ashore | 105 | 32 | −70% |
+| Draw calls, underwater (regression checker's dive) | 78 | 23 | −71% |
+| Big raft draw calls, spawn / outside | 425 / 509 | 184 / 225 | **−57%** |
+| Big raft triangles | 710k | 527k | −26% |
+| Big raft materials | 142 | 56 | −61% |
+| Big raft shadow casters | 157 | 58 | −63% |
+| Placing one decor piece on the big raft | 625–899 ms, +36–53 MB | 1–2 ms, +0.1 MB | **−99.7%** |
+| Startup: game.js request start | 1442 ms | 26 ms | −98% (all 103 modules preloaded) |
+| Startup: raftDebug ready | 2332 ms | 1837 ms | −21% |
+| Startup: modules loaded twice | 5 | 0 | |
+
+The big raft is 49 tiles, 26 decor items and 58 building pieces. The startup rows are medians of 3 interleaved runs taken at load average about 45.
+
+### What changed
+
+- **Floating items:**
+  - Models are merged: plastic 2→1, scrap 3→1, wood 2→1, bottle 6→2, signal models down to 2 meshes each.
+  - Shapes are cached, 3 per type.
+  - New `dist/item-instancer.js` draws one InstancedMesh per geometry and material. It runs its own culling, and picking still uses the hidden source meshes.
+  - Result: about 56 item draws drop to about 12.
+- **Scenery:** the 12 islands and 24 clouds are each drawn as one InstancedMesh, fed from proxy groups (new `dist/scenery-instances.js`), so sailing drift and day/night are unchanged.
+- **Seafloor:** its decor is drawn only underwater.
+- **Islands:** coconuts are merged into the palm.
+- **Viewmodel:** ported `dist/bake.js`, which bakes hands into one mesh per pose and the hook, hammer and rod into single meshes. Holding the hook went from 47 draw calls to 7.
+- **Decor:**
+  - One cached model per type; placed copies are clones that share geometry and materials (palm soil and smelter glow stay per instance).
+  - Parts are merged by material class, and tessellation is trimmed.
+  - Purifier went from 21 meshes to 2.
+- **Deck:**
+  - Tile parts are cached, and merging is a plain array copy.
+  - Timber and fittings use 2 vertex-coloured meshes per chunk, with 4x4-tile chunks on rafts of 26+ tiles.
+  - `rebuildRaft` keeps the floor when tiles are unchanged and only adds or removes decor that changed. That is why placing decor no longer rebuilds the raft.
+- **HUD:**
+  - Item icons now render on the main renderer into an atlas, encoded asynchronously with `toBlob`, and only for the hotbar and bag. This removed the second WebGL context and 19 synchronous `toDataURL` calls.
+  - The world redraws at 10 Hz behind menu dialogs.
+  - Backdrop blurs are removed.
+  - New slim `raftDebug.hud` for the prompt and onboarding pollers.
+- **Startup:**
+  - Fonts no longer block.
+  - The whole static module graph is modulepreloaded, generated by `publish_local.py`, with a `--sync` mode.
+  - Every relative specifier is stamped with `?build=`, so no module loads twice.
+  - `tests/module-graph.test.mjs` enforces both.
+- **Allocation:**
+  - `input.update` no longer allocates.
+  - three.js fog colour conversion is cached.
+  - Wildlife fish and gull constants are precomputed.
+  - `ocean.sample` uses scratch storage.
+  - The hook-out paths use scratch objects.
+- **Quality:**
+  - The ladder now steps render scale before turning shadows off; the old 512-map step saved nothing.
+  - The ocean has an `OCEAN_LOW` shader at the bottom two levels.
+  - Shadows are off underwater.
+  - Shader warm-up also compiles the shadows-off and lantern-light variants, so the first lantern and the shadows-off step no longer cause a compile hitch.
+- **Sailing:** the anchor winch is merged.
+- **Harness:** perf_gate and playbot now click the onboarding title menu. `#solo` is hidden on this build, so the gate had been timing out.
+
+### Regression check
+
+No regressions. Intended differences:
+- Dialogs are not blurred.
+- Shadows are crisper on fewer casters.
+- Net and rope no longer cast shadows.
+- Purifier embers flicker together.
+- Lowest quality has less fine ripple detail.
+
+### Caveats
+
+- The live program count roughly quadruples because of the warmed variants. This is fine with `KHR_parallel_shader_compile` (ANGLE D3D and Metal), but needs checking on a laptop without it.
+- Headless frames are too slow for the quality scaler to step on its own.
+- `raftDebug` has no quality setter; the regression checker patched one in for testing.
+- The `art.test.mjs` atlas build-time check flakes when the box is loaded.
+
+### Next ideas
+
+- A `raftDebug.quality` setter for probes.
+- The grill's PointLight still changes the light count.
+- Lower the net rope segment count (about 5k tris).
+- Measure decor and deck chunk culling on rafts of 144+ tiles.
+- Check whether three.js's `setValueV3f` boxing (8–11 KB/frame) can be avoided.

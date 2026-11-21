@@ -348,3 +348,40 @@ test('models: every pack piece and both open variants build inside their bounds'
   }
   assert.throws(() => createPieceGeometry(T, 'hatchOpen'));
 });
+
+test('lag spike: a 0.25 s frame of physics substeps never carries a body through a railing or wall', () => {
+  for (const t of ['railing', 'wall', 'gate']) for (const sprint of [false, true]) {
+    const g = grid(tilesSq(2), [P(t, -1, 2, 0, 0), P(t, 0, 2, 0, 0), P(t, 1, 2, 0, 0)]); // z = 3
+    const ph = new PlayerPhysics({ x: 0.2, y: eyeAt(0), z: 1.5 });
+    let maxZ = -Infinity;
+    for (let f = 0; f < 12; f++) {
+      const surf = g.preStep(ph, D0);
+      for (let k = 0; k < 5; k++) ph.update(0.05, { forward: 1, sprint, yaw: yawTo(0.05, 1), tiles: surf.tiles, deckY: surf.deckY, waterY: WATER });
+      g.postStep(ph, D0);
+      maxZ = Math.max(maxZ, ph.z);
+    }
+    assert.ok(maxZ < 3 - 0.07 - R + 1e-6, `${t} sprint=${sprint}: stayed on the near side (z ${maxZ})`);
+  }
+});
+
+test('lag spike: a body sliding diagonally along a wall keeps its tangential motion (the sweep does not freeze it)', () => {
+  for (const t of ['wall', 'railing']) {
+    const g = grid(tilesSq(2), [-2, -1, 0, 1, 2].map(i => P(t, i, 2, 0, 0))); // z = 3
+    const ph = new PlayerPhysics({ x: -3, y: eyeAt(0), z: 2.6 });
+    for (let f = 0; f < 10; f++) {
+      const surf = g.preStep(ph, D0);
+      for (let k = 0; k < 4; k++) ph.update(0.05, { forward: 1, sprint: true, yaw: yawTo(1, 1), tiles: surf.tiles, deckY: surf.deckY, waterY: WATER });
+      g.postStep(ph, D0);
+      assert.ok(ph.z < 3 - 0.07 - R + 1e-6, `${t}: stayed on the near side (z ${ph.z})`);
+    }
+    assert.ok(ph.x > -3 + 3, `${t}: slid along the wall (x ${ph.x})`);
+  }
+});
+
+test('a reload of the pieces (guest snapshot) mid-climb keeps the climber on the ladder', () => {
+  const g = grid(tilesSq(2), [P('pillar', 0, 1, 0), P('pillar', 1, 1, 0), P('pillar', 0, 2, 0), P('pillar', 1, 2, 0), P('ladder', 0, 0, 0, 0), P('floor', 0, 1, 1)]);
+  const feel = new MoveFeel(), ph = new PlayerPhysics({ x: 0, y: eyeAt(0), z: 0.55 });
+  const out = run(g, ph, 2, (p, n) => { if (n === 30) g.load(g.list.map(q => ({ ...q }))); return { forward: 1, yaw: yawTo(0, 1) }; }, { dt: 1 / 60, bob: 0 }, { t: 0 }, feel);
+  assert.ok(out[40].climbing, 'still climbing after the reload');
+  assert.ok(Math.abs(out.at(-1).feet - LEVEL_H) < 0.05 && out.at(-1).z > 1, `reached the landing (feet ${out.at(-1).feet}, z ${out.at(-1).z})`);
+});

@@ -5,7 +5,7 @@
 import { BuildGrid, PIECES, PIECE_ORDER, LEVEL_H, STATEFUL, cleanPieces, toRec } from './building-pieces.js?build=v3-survival-ae77fa84ac2b';
 import { createPieceGeometry, createPieceMaterial } from './building-models.js?build=v3-survival-ae77fa84ac2b';
 import { createBuildMenu } from './build-menu.js?build=v3-survival-ae77fa84ac2b';
-import { Bag } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 export { cleanPieces };
 const FLOOR_Y = .2, REACH = 7, GHOST_OK = '#9dffc0', GHOST_BAD = '#ff8a73';
@@ -26,13 +26,15 @@ export function createBuilding(T, scene) {
   const dummy = new T.Object3D(), aimOut = {}, origin = new T.Vector3();
   let rot = 0, version = -1, removing = false, removeTarget = null, chipText = '';
   let remRec = null, remVer = -1, remText = '';
+  let removeExtraFn = null, removeExtra = null; // [undecor] game.js decor target when no piece is aimed: {text, action, d, deny?}
   let curBag = null; // the local bag of the last update(); afford() is one function, not a per-frame closure
   const afford = cost => { if (!curBag) return true; for (const k in cost) if (curBag.count(k) < cost[k]) return false; return true; };
   const okColor = new T.Color(GHOST_OK), badColor = new T.Color(GHOST_BAD);
   const WHITE = new T.Color(1, 1, 1), tmp = new T.Color(), tintCount = {};
   let tintOf = null; // content hook (paint): p -> T.Color instance tint or null (white = untinted)
 
-  const menu = createBuildMenu({pieces:PIECE_ORDER.map(id => ({id, name:PIECES[id].name, cost:PIECES[id].cost})), onPick:() => { rot = 0; }});
+  const menu = createBuildMenu({pieces:PIECE_ORDER.map(id => ({id, name:PIECES[id].name, cost:PIECES[id].cost})), onPick:() => { rot = 0; },
+    countOf:k => (curBag ? curBag.count(k) : 0), nameOf:k => ITEM_INFO[k]?.name});
   menu.setAfford(afford);
 
   // Instance placement in raft-local space (the group follows the raft transform every frame).
@@ -78,8 +80,9 @@ export function createBuilding(T, scene) {
     group.position.copy(raft.position); group.quaternion.copy(raft.quaternion);
     curBag = bag;
     menu.setVisible(active);
+    if (active) menu.refresh(); // cost lines follow the bag (only repaints when a count changed)
     if (!active) { removing = false; if (menu.isOpen) menu.close(false); } // hammer put away / UI opened: no stuck wheel or X mode
-    ghost.visible = false; removeTarget = null;
+    ghost.visible = false; removeTarget = null; removeExtra = null; // [undecor]
     let text = '';
     if (active && aim?.dir && !menu.isOpen) {
       origin.copy(camPos);
@@ -94,7 +97,7 @@ export function createBuilding(T, scene) {
           }
           text = remText;
         }
-        else text = 'Point at a piece to remove';
+        else { removeExtra = removeExtraFn ? removeExtraFn(origin, d) : null; text = removeExtra?.text ?? 'Point at a piece to remove'; } // [undecor]
       } else if (freePiece()) {
         const r = grid.aim(origin.x, origin.y, origin.z, d.x, d.y, d.z, piece(), (yawDir(yaw) + rot) % 4, deckY, REACH, aimOut);
         if (r) { showGhost(r, r.ok && afford(PIECES[r.t].cost) ? okColor : badColor); text = r.ok ? (afford(PIECES[r.t].cost) ? '' : 'Not enough materials') : r.reason; }
@@ -121,8 +124,9 @@ export function createBuilding(T, scene) {
     return {kind:'piece', t:aimOut.t, i:aimOut.i, j:aimOut.j, l:aimOut.l, r:aimOut.r};
   }
   function removeAction() {
-    const p = removeTarget; removing = false;
-    return p ? {kind:'unpiece', t:p.t, i:p.i, j:p.j, l:p.l, r:p.r} : null;
+    const p = removeTarget, ex = removeExtra; removing = false; removeExtra = null; // [undecor]
+    if (!p && ex && !ex.action) ex.deny?.(); // [undecor] e.g. an old host: say why on release, send nothing
+    return p ? {kind:'unpiece', t:p.t, i:p.i, j:p.j, l:p.l, r:p.r} : ex?.action ?? null;
   }
 
   // Host-authoritative: validate, charge or refund the actor's bag, mutate world.pieces. Returns {ok, text}.
@@ -158,19 +162,22 @@ export function createBuilding(T, scene) {
   const PROMPTS = {hatch:['<kbd>E</kbd>Open hatch', '<kbd>E</kbd>Close hatch'], gate:['<kbd>E</kbd>Open gate', '<kbd>E</kbd>Close gate']};
   const promptOf = r => (r && STATEFUL[r.t] ? PROMPTS[r.t][r.o ? 1 : 0] : null); // static markup, no user text
   function prompt(camPos, aim, deckY) { return promptOf(target(camPos, aim, deckY)); }
-  function interact(camPos, aim, deckY) { const r = target(camPos, aim, deckY); return r ? {kind:'piecetoggle', t:r.t, i:r.i, j:r.j, l:r.l, r:r.r} : null; }
+  function interact(camPos, aim, deckY) { const r = target(camPos, aim, deckY); return r ? {kind:'piecetoggle', t:r.t, i:r.i, j:r.j, l:r.l, r:r.r, o:r.o === 1 ? 1 : 0} : null; } // o: the state the actor saw
   // Host-authoritative toggle. pose = the actor's body, bodies = everyone who could be in the way.
+  const TOGGLE_GAP = 150; let lastToggle = -Infinity; // ms between accepted toggles (any piece, either player)
   function toggle(a, world, pose, bodies, deckY) {
     sync(world);
     if (!a || typeof a.t !== 'string' || !STATEFUL[a.t] || ![a.i, a.j, a.l, a.r].every(Number.isInteger)) return {ok:false, text:''};
     const rec = grid.find(a);
     if (!rec || rec.t !== a.t) return {ok:false, text:''};
+    if ((a.o === 0 || a.o === 1) && (rec.o === 1 ? 1 : 0) !== a.o) return {ok:false, text:''}; // stale (a double press in flight): no flip back
+    const now = performance.now(); if (now - lastToggle < TOGGLE_GAP) return {ok:false, text:''}; // a spammed piecetoggle: no rebuild + pieces resend per message
     const s = PIECES[rec.t].slot, cy = deckY + rec.l * LEVEL_H;
     const cx = s === 'edge' ? (rec.r ? rec.i * 2 - 1 : rec.i * 2) : rec.i * 2, cz = s === 'edge' ? (rec.r ? rec.j * 2 : rec.j * 2 - 1) : rec.j * 2;
     const far = REACH_E + 1.5;
     if (!pose || !(Math.hypot(pose.x - cx, pose.z - cz) <= far) || !(Math.abs(pose.y - cy) <= far)) return {ok:false, text:''};
     if (rec.o === 1) for (const b of bodies || []) if (b && grid.occupied(rec, b.x, b.y, b.z, deckY)) return {ok:false, text:'Someone is in the way'};
-    grid.toggle(rec);
+    grid.toggle(rec); lastToggle = now;
     world.pieces = lastPieces = grid.list.map(toRec);
     rebuild();
     return {ok:true, text:(rec.t === 'hatch' ? 'Hatch ' : 'Gate ') + (rec.o ? 'opened' : 'closed')};
@@ -180,15 +187,15 @@ export function createBuilding(T, scene) {
   // Input from game.js. Returns true when the event was consumed.
   function key(code, down, hammer, repeat = false) {
     if (!hammer) { removing = false; return false; }
-    if (code === 'KeyR' && down && freePiece()) { if (!repeat) rot = (rot + 1) % 4; return true; } // foundation: R stays hook repair
+    if (code === 'KeyR' && down && PIECES[piece()]?.slot === 'cell') { if (!repeat) rot = (rot + 1) % 4; return true; } // only floor/stairs/roof rotate; else R stays sail grab / hook repair
     if (code === 'Escape' && down && menu.isOpen) { menu.close(false); return true; }
-    if (code === 'KeyQ' && down) { menu.isOpen ? menu.close(true) : menu.open(); return true; }
+    if (code === 'KeyQ' && down) { if (!repeat) menu.isOpen ? menu.close(true) : menu.open(); return true; } // auto-repeat must not re-toggle (each close commits)
     if (code === 'KeyX') { if (down) removing = true; return true; }
     return false;
   }
 
   const blur = new AbortController(); // a lost keyup (alt-tab while holding X) must not leave remove mode stuck on
-  addEventListener('blur', () => { removing = false; }, {signal:blur.signal});
+  addEventListener('blur', () => { removing = false; removeExtra = null; }, {signal:blur.signal}); // [undecor] removeExtra
 
   function dispose() {
     blur.abort(); menu.dispose(); scene.remove(group);
@@ -198,6 +205,7 @@ export function createBuilding(T, scene) {
 
   return {grid, menu, group, sync, update, use, removeAction, apply, key, dispose, setTint, retint, preview, // setTint/retint/preview: content hook (paint)
     target, prompt, promptOf, interact, toggle, climb:(...a) => grid.climb(...a),
+    setRemoveExtra(fn) { removeExtraFn = typeof fn === 'function' ? fn : null; }, get removeExtra() { return removeExtra; }, // [undecor]
     get removing() { return removing; }, get piece() { return piece(); }, get rotation() { return rot; },
     preStep:(phys, deckY, c) => grid.preStep(phys, deckY, c), postStep:(phys, deckY) => grid.postStep(phys, deckY)};
 }

@@ -1,18 +1,28 @@
 // Water purifier, cups and palm-planter watering. Pure logic: no DOM, no THREE,
-// no imports, no clocks or randomness (harvest takes an injected rng).
+// no clocks or randomness (harvest takes an injected rng). Only imports the item fuel table.
 // State lives in world.garden / world.purifiers, keyed "x,z" (tile ints).
+// A purifier entry is {t, ready, fuel, cup}: cup 1 while a cup sits in it, fuel = seconds of fire left.
+// The cup only boils while fuel > 0 and each boiling second burns one second of fuel (Raft: 1 plank = 50 s,
+// one cup = 60 s). Entries saved before fuel existed have no `cup` field and always held a cup.
+import { FUEL_VALUE } from './items.js?build=v3-survival-ae77fa84ac2b';
 
-export const PURIFY_SECONDS = 15, GROW_SECONDS = 90, STAGE_SECONDS = 45, MAX_TICK = 60;
+export const PURIFY_SECONDS = 60, FUEL_SECONDS = 50, FUEL_CAP = 150, GROW_SECONDS = 90, STAGE_SECONDS = 45, MAX_TICK = 60;
 export const FILL_REACH = 6, USE_REACH = 3, HOST_SLACK = 2; // metres (horizontal)
 export const HARVEST = Object.freeze({leaf:2, coconut:1}) /* [juicer] */, BONUS = Object.freeze({wood:1}), BONUS_CHANCE = .25;
-export const WATER_ACTIONS = Object.freeze(['fillCup', 'loadPurifier', 'takeWater', 'waterPlant', 'harvestPlant']);
+export const WATER_ACTIONS = Object.freeze(['fillCup', 'loadPurifier', 'takeWater', 'waterPlant', 'harvestPlant', 'fuelPurifier']);
+/** Seconds of purifier fire one item gives (plank 50, palm leaf 25); 0 = not a fuel. */
+export const purifierFuel = (kind) => (typeof kind === 'string' && Object.prototype.hasOwnProperty.call(FUEL_VALUE, kind) ? Math.round(FUEL_VALUE[kind] * FUEL_SECONDS) : 0);
+/** True while the purifier fire burns (a cup is boiling and there is fuel). */
+export const purifierLit = (e) => !!e && e.cup !== 0 && !e.ready && e.fuel > 0;
+/** "m:ss" for a fuel / time readout. */
+export const clockText = (sec) => { const n = Math.max(0, Math.ceil(sec)); return Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0'); };
 export const tileKey = (x, z) => x + ',' + z;
 
 const KEY_RE = /^-?\d+,-?\d+$/;
 const TEXT = Object.freeze({
   fillCup:'Scooped a cup of sea water', loadPurifier:'The purifier is bubbling away', takeWater:'+ 1 cup of fresh water',
   water:'The planter drinks it up', harvest:'+ 2 palm leaf · 1 coconut', harvestBonus:'+ 2 palm leaf · 1 coconut · 1 wood', // [juicer]
-  full:'Your bag is full', nocup:'You need a cup', busy:'It is already purifying', notready:'Almost ready…',
+  full:'Your bag is full', fuel:'The fire crackles', fuelfull:'The fire is full of fuel', nofuel:'That will not burn', nocup:'You need a cup', busy:'It is already purifying', notready:'Almost ready…',
   watered:'Already watered', ripe:'Harvest it first', notripe:'Still growing', notarget:'Nothing to use that on',
 });
 
@@ -38,11 +48,14 @@ function cleanGardenEntry(e) {
 
 function cleanPurifierEntry(e) {
   if (!isPlain(e)) return null;
+  const cup = e.cup === 0 || e.cup === false ? 0 : 1;
+  const fuel = intIn(e.fuel, 0, FUEL_CAP) ?? 0;
+  if (!cup) return fuel ? {t:0, ready:0, fuel, cup:0} : null;
   const ready = e.ready === 1 || e.ready === true ? 1 : 0;
   let t = intIn(e.t, 0, PURIFY_SECONDS);
   if (t === null) t = 0;
   if (ready) t = PURIFY_SECONDS;
-  return {t, ready};
+  return {t, ready, fuel, cup:1};
 }
 
 function cleanMap(src, types, want, entry) {
@@ -93,12 +106,13 @@ function prune(world) {
 }
 
 /** Advances timers by whole seconds (floored, clamped 0..MAX_TICK). Host only. */
-export function tick(world, dt) {
+export function tick(world, dt, skip) { // [scarecrow] optional skip: Set of garden keys paused this tick
   prune(world);
   const s = Math.min(MAX_TICK, Math.max(0, Math.floor(Number.isFinite(dt) ? dt : 0)));
   const out = {grown:[], ripe:[], done:[]};
   if (!s) return out;
   for (const k of Object.keys(world.garden)) {
+    if (skip && typeof skip.has === 'function' && skip.has(k)) continue; // [scarecrow] a pecking gull pauses growth
     const e = world.garden[k];
     if (e.water !== 1 || e.grow >= GROW_SECONDS) continue;
     const before = plantStage(e);
@@ -108,8 +122,9 @@ export function tick(world, dt) {
   }
   for (const k of Object.keys(world.purifiers)) {
     const e = world.purifiers[k];
-    if (e.ready) continue;
-    e.t = Math.min(PURIFY_SECONDS, e.t + s);
+    if (!purifierLit(e)) continue;
+    const step = Math.min(s, e.fuel, PURIFY_SECONDS - e.t);
+    e.t += step; e.fuel -= step;
     if (e.t >= PURIFY_SECONDS) { e.ready = 1; out.done.push(k); }
   }
   return out;
@@ -156,20 +171,35 @@ export function fillCup(world, bag) {
 export function loadPurifier(world, key, bag) {
   ensureMaps(world);
   if (!decorAt(world, key, 'purifier')) return fail('notarget');
-  if (hasOwn(world.purifiers, key)) return fail('busy');
+  const e = world.purifiers[key];
+  if (e && e.cup !== 0) return fail('busy');
   if (bag.count('saltcup') < 1) return fail('nocup');
   if (!bag.remove('saltcup', 1)) return fail('nocup');
-  world.purifiers[key] = {t:0, ready:0};
+  world.purifiers[key] = {t:0, ready:0, fuel:e ? e.fuel : 0, cup:1};
   return okBuild(TEXT.loadPurifier);
+}
+
+/** Burns one plank / palm leaf into the purifier fire (+50 s / +25 s, capped at FUEL_CAP). */
+export function fuelPurifier(world, key, bag, kind) {
+  ensureMaps(world);
+  if (!decorAt(world, key, 'purifier')) return fail('notarget');
+  const add = purifierFuel(kind);
+  if (!add) return fail('nofuel');
+  const e = world.purifiers[key];
+  if ((e ? e.fuel : 0) + add > FUEL_CAP) return fail('fuelfull');
+  if (!bag.remove(kind, 1)) return fail('nofuel');
+  if (e) e.fuel += add; else world.purifiers[key] = {t:0, ready:0, fuel:add, cup:0};
+  return okBuild(TEXT.fuel);
 }
 
 export function takeWater(world, key, bag) {
   ensureMaps(world);
   if (!decorAt(world, key, 'purifier')) return fail('notarget');
   const e = world.purifiers[key];
-  if (!e || !e.ready) return fail('notready');
+  if (!e || e.cup === 0 || !e.ready) return fail('notready');
   if (!trade(bag, {}, {freshcup:1})) return fail('full');
-  delete world.purifiers[key];
+  if (e.fuel > 0) world.purifiers[key] = {t:0, ready:0, fuel:e.fuel, cup:0};
+  else delete world.purifiers[key];
   return okLoot(TEXT.takeWater);
 }
 

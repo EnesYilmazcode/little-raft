@@ -30,18 +30,23 @@ function pipes(T) {
   return g;
 }
 
-function bells(T) {
+function bells(T) { // a little glockenspiel: brass bars stepping down in length on two wooden rails
   const g = new T.Group();
-  const wood = mat(T, 0x8a6440, { roughness: 0.75 }), brass = mat(T, 0xc9b26a, { metalness: 0.7, roughness: 0.35 }), head = mat(T, 0xd9573f, { roughness: 0.6 });
-  const rail = new T.BoxGeometry(0.2, 0.015, 0.015);
-  mesh(T, g, rail, wood, 'rail0', 0, 0, -0.035); mesh(T, g, rail, wood, 'rail1', 0, 0, 0.035);
-  [0.09, 0.08, 0.07, 0.06].forEach((l, i) => mesh(T, g, new T.BoxGeometry(0.016, 0.008, l), brass, 'bar' + i, -0.066 + i * 0.044, 0.0115, 0));
+  const wood = mat(T, 0x7a5432, { roughness: 0.75 }), head = mat(T, 0xd9573f, { roughness: 0.6 });
+  const brass = mat(T, 0xd9a93e, { metalness: 0.35, roughness: 0.3, emissive: 0x3a2806 }); // reads as brass without an env map
+  const lens = [0.1, 0.088, 0.076, 0.064, 0.052, 0.042];
+  // rails converge with the bars, like a real glockenspiel frame
+  for (const s of [-1, 1]) {
+    const r = mesh(T, g, new T.BoxGeometry(0.22, 0.014, 0.012), wood, s < 0 ? 'rail0' : 'rail1', 0, 0, s * 0.036);
+    r.rotation.y = s * 0.1;
+  }
+  lens.forEach((l, i) => mesh(T, g, new T.BoxGeometry(0.024, 0.008, l), brass, 'bar' + i, -0.085 + i * 0.034, 0.011, 0));
   const mallet = new T.Group(); mallet.name = 'mallet';
   mesh(T, mallet, new T.CylinderGeometry(0.004, 0.004, 0.1, 6), wood, 'malletStick', 0, 0.05, 0);
   mesh(T, mallet, new T.SphereGeometry(0.012, 10, 8), head, 'malletHead', 0, 0.1, 0);
-  mallet.position.set(0.025, 0.024, 0.062); mallet.rotation.set(0, 0, -1.25); // resting on the right, in front of the bars
+  mallet.position.set(-0.03, 0.024, 0.06); mallet.rotation.set(0, 0, 1.25); // resting across the long bars, in front
   g.add(mallet);
-  g.userData.gripFrac = [-0.4, 0, 0]; // held by the -x rail ends so the bars clear the fist (toward screen centre)
+  g.userData.gripFrac = [0.42, 0, 0]; // right fist on the short (+x) end; the long bars reach toward screen centre
   return g;
 }
 

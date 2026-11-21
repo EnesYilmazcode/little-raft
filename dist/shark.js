@@ -65,7 +65,7 @@ export function pickTarget(tiles, armor, rnd = Math.random) {
   const [nx, nz] = open[Math.min(open.length - 1, Math.floor(rnd() * open.length))];
   return { x, z, nx, nz };
 }
-// Removes a tile and everything standing on it: decor, garden/purifier state, its HP entry, unsupported pieces.
+// Removes a tile and everything standing on it: decor, garden/purifier state, its HP and armor entries, unsupported pieces.
 // Never removes the last tile. Returns true when the tile was removed.
 export function removeTile(world, x, z) {
   const tiles = world && world.tiles;
@@ -76,6 +76,7 @@ export function removeTile(world, x, z) {
   const k = tileKey(x, z);
   if (Array.isArray(world.decor)) world.decor = world.decor.filter(d => !(d && d.x === x && d.z === z));
   if (world.tileHp) delete world.tileHp[k];
+  if (world.tileArmor && typeof world.tileArmor === 'object' && !Array.isArray(world.tileArmor) && !(world.tileArmor instanceof Set)) delete world.tileArmor[k]; // the armor goes down with its tile
   if (world.garden) delete world.garden[k];
   if (world.purifiers) delete world.purifiers[k];
   if (Array.isArray(world.pieces)) world.pieces = cleanPieces(world.pieces, tiles);

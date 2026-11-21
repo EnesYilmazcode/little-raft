@@ -38,7 +38,7 @@ export const ITEM_INFO = Object.freeze({
   // Shark (dist/shark.js): harvested from a dead shark with E.
   sharkmeat:  Object.freeze({ kind: 'sharkmeat',  name: 'Raw Shark Meat', icon: 'icon-sharkmeat', maxStack: STACK_SIZE, tool: false, placeholder: true }),
   sharkhead:  Object.freeze({ kind: 'sharkhead',  name: 'Shark Head',   icon: 'icon-sharkhead', maxStack: 5,          tool: false, placeholder: true }),
-  receiver:   Object.freeze({ kind: 'receiver',   name: 'Receiver',     icon: 'icon-compass', maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  receiver:   Object.freeze({ kind: 'receiver',   name: 'Receiver',     icon: 'icon-receiver', maxStack: STACK_SIZE, tool: false, placeholder: false }),
   antenna:    Object.freeze({ kind: 'antenna',    name: 'Antenna',      icon: 'icon-antenna', maxStack: STACK_SIZE, tool: false, placeholder: false }),
   cup:        Object.freeze({ kind: 'cup',        name: 'Cup',          icon: 'icon-cup',     maxStack: 5,          tool: false, placeholder: false }),
   saltcup:    Object.freeze({ kind: 'saltcup',    name: 'Cup of Sea Water', icon: 'icon-saltcup', maxStack: 5,      tool: false, placeholder: false }),
@@ -47,7 +47,8 @@ export const ITEM_INFO = Object.freeze({
   rainbarrel: Object.freeze({ kind: 'rainbarrel', name: 'Rain Barrel',  icon: 'icon-rainbarrel', maxStack: STACK_SIZE, tool: false, placeholder: false }), // rain-sprinkler
   sprinkler:  Object.freeze({ kind: 'sprinkler',  name: 'Sprinkler',    icon: 'icon-sprinkler', maxStack: STACK_SIZE, tool: false, placeholder: false }), // rain-sprinkler
   // farming.js (raft-integration) kinds. Palm planters run on the watering lane above (cup -> saltcup -> purifier ->
-  // freshcup), so the farming rules' 'cup' is this Cup; seed/water are known to the bag but not dropped in play yet.
+  // freshcup), so the farming rules' 'cup' is this Cup; seed/water are known to the bag but not dropped
+  // in play (old water cups load as freshcup, items.js LOAD_RENAMES).
   seed:       Object.freeze({ kind: 'seed',       name: 'Palm Seed',    icon: 'icon-leaf',    maxStack: STACK_SIZE, tool: false, placeholder: true }),
   water:      Object.freeze({ kind: 'water',      name: 'Cup of Fresh Water', icon: 'icon-freshcup', maxStack: 5, tool: false, placeholder: true }),
 
@@ -73,17 +74,17 @@ export const RECIPES = Object.freeze({
   hook:       recipe('hook',       'Hook',         1, { wood: 1, plastic: 2 }),
   hammer:     recipe('hammer',     'Hammer',       1, { wood: 4, rope: 2 }),
   fishingrod: recipe('fishingrod', 'Fishing Rod',  1, { wood: 6, rope: 8 }),
-  sail:       recipe('sail',       'Sail',         1, { wood: 4, rope: 3, leaf: 3 }),
+  sail:       recipe('sail',       'Sail',         1, { wood: 10, leaf: 20, scrap: 3 }), // Raft costs (items.js wins anyway)
   palm:       recipe('palm',       'Palm Planter', 1, { wood: 2, leaf: 3 }),
   lantern:    recipe('lantern',    'Lantern',      1, { wood: 2, scrap: 2 }),
-  net:        recipe('net',        'Net',          1, { wood: 3, rope: 3 }),
+  net:        recipe('net',        'Net',          1, { wood: 6, rope: 8, nail: 2 }),
   bench:      recipe('bench',      'Bench',        1, { wood: 3 }),
   crate:      recipe('crate',      'Crate',        1, { wood: 4, scrap: 1 }),
   ...CONTENT_RECIPES, // content hook
   receiver:   recipe('receiver',   'Receiver',     1, { wood: 3, scrap: 4, plastic: 3, rope: 2 }),
   antenna:    recipe('antenna',    'Antenna',      1, { wood: 2, scrap: 1, rope: 1 }),
-  cup:        recipe('cup',        'Cup',          1, { plastic: 1 }),
-  purifier:   recipe('purifier',   'Water Purifier', 1, { wood: 2, scrap: 2, plastic: 1 }),
+  cup:        recipe('cup',        'Cup',          1, { plastic: 4 }), // Raft: 4 plastic (farming.js FARM_RECIPES.cup mirrors this)
+  purifier:   recipe('purifier',   'Water Purifier', 1, { wood: 6, leaf: 6, plastic: 4 }), // Raft: 6 planks + 6 leaves + 4 plastic
   rainbarrel: recipe('rainbarrel', 'Rain Barrel',  1, { wood: 3, leaf: 2, plastic: 1 }), // rain-sprinkler
   sprinkler:  recipe('sprinkler',  'Sprinkler',    1, { scrap: 2, plastic: 2, rope: 1 }), // rain-sprinkler
 

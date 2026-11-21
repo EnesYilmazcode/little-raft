@@ -1,10 +1,11 @@
 // Little Raft item tooltips: one floating card for hotbar/inventory slots, crafting rows and any
 // [data-item-kind] element. Read-only view over ITEMS + bag + progression; never mutates anything.
 import { ITEMS } from './items.js?build=v3-survival-ae77fa84ac2b';
-import { ITEM_TEXT, anchorTip, catalogueRecipes, tipFacts } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // craft-book text covers every ITEM_INFO kind (content, diving, signal...)
+import { ITEM_TEXT, anchorTip, anchorVisible, catalogueRecipes, tipFacts } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // craft-book text covers every ITEM_INFO kind (content, diving, signal...)
 import { ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 const STYLE_ID = 'item-tooltips-style';
+const BAG_EVENT = 'littleraft:bagchange'; // survival-ui.js BAG_EVENT (not imported: keeps this module DOM-light)
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
 const CATS = { material: 'Material', refined: 'Refined', tool: 'Tool', station: 'Station', build: 'Building', food: 'Food', decor: 'Decor' };
 const CSS = `
@@ -76,7 +77,7 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     return s && s.kind && s.count > 0 ? { kind: s.kind, slot: s, el } : null;
   }
 
-  function html({ kind, slot, recipe }) {
+  function html({ kind, slot, recipe, el }) {
     const it = table[kind] || {};
     const bag = call(getBag), prog = call(getProgression);
     const cat = it.category || (it.tool || ITEM_INFO[kind]?.tool ? 'tool' : '');
@@ -108,24 +109,30 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
       const lines = (f.get ? `<p><em>Get it:</em> ${esc(f.get)}</p>` : '') + (f.uses.length ? `<p><em>Used in:</em> ${esc(f.uses.join(', '))}</p>` : '');
       if (lines) out += `<div class="it-facts">${lines}</div>`;
     }
-    if (prog && typeof prog.isUnlocked === 'function' && call(() => prog.isUnlocked(kind)) === false) {
+    if (Object.hasOwn(table, kind) && prog && typeof prog.isUnlocked === 'function' && call(() => prog.isUnlocked(kind)) === false) { // catalogue items only: others are not progression's ('Unknown item')
       const why = call(() => prog.whyLocked?.(kind));
       out += `<div class="it-lock">Locked${why ? ': ' + esc(why) : ''}</div>`;
-    }
+    } else if (recipe && el?.dataset.lockReason) out += `<div class="it-lock">Locked: ${esc(el.dataset.lockReason)}</div>`; // survival-ui gated row (e.g. not studied yet)
     return out;
   }
 
   // Anchored beside the hovered element (craft-book anchorTip: right, else left, below, above), so it
   // never trails the pointer over the craft button or drifts to the middle of the screen.
+  // Crafting rows sit beside their whole column (recipe list / detail pane) and slide off the Craft
+  // button. A hidden or detached anchor (tab switch, repaint) hides the card instead of pinning it top-left.
   function place() {
     if (tip.hidden || !cur) return;
-    const p = anchorTip(cur.el.getBoundingClientRect(), tip.offsetWidth, tip.offsetHeight, innerWidth, innerHeight);
+    const col = cur.el.closest?.('#inventory .sv-rcol, #inventory .sv-detail');
+    const btn = col && doc.querySelector('#inventory .sv-detail:not([hidden]) .sv-craftbtn');
+    const p = cur.el.isConnected && anchorTip(cur.el.getBoundingClientRect(), tip.offsetWidth, tip.offsetHeight, innerWidth, innerHeight, 8, 6,
+      col ? { beside: col.getBoundingClientRect(), avoid: btn?.getBoundingClientRect() } : null);
+    if (!p) { hide(); return; }
     tip.style.transform = `translate(${Math.round(p.x)}px,${Math.round(p.y)}px)`;
     tip.dataset.side = p.side;
   }
 
   function show(el, x, y) {
-    const res = resolve(el);
+    const res = anchorVisible(el) ? resolve(el) : null;
     if (!res) { hide(); return; }
     const host = el.closest('dialog[open]') || doc.body;
     if (tip.parentNode !== host) host.append(tip);
@@ -150,6 +157,7 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
   on(root, 'pointerover', e => { const el = target(e); if (el) show(el, e.clientX, e.clientY); else if (cur) hide(); });
   on(root, 'pointerout', e => { if (cur && !cur.el.contains(e.relatedTarget)) hide(); });
   on(root, 'pointerdown', () => { if (cur) requestAnimationFrame(refresh); });
+  on(root, 'click', () => { if (cur) requestAnimationFrame(refresh); }); // a tab switch / repaint may hide or replace the anchor
   on(root, 'dragstart', hide);
   on(root, 'focusin', e => {
     const el = target(e); if (!el || !el.matches(':focus-visible')) return;
@@ -160,9 +168,10 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
   on(doc, 'scroll', () => { if (cur) hide(); }, { capture: true, passive: true });
   on(doc, 'keydown', e => { if (e.key === 'Escape' && cur) hide(); }, { capture: true });
   on(doc.defaultView || window, 'blur', hide);
+  on(doc, BAG_EVENT, () => { if (cur) refresh(); }); // survival-ui.js: bag changed (craft, pickup, move...)
 
   // Re-render the open card (e.g. after a craft/move changes counts); hides if the slot emptied.
-  function refresh() { if (cur && cur.el.isConnected) show(cur.el, px, py); else if (cur) hide(); }
+  function refresh() { if (cur && anchorVisible(cur.el)) show(cur.el, px, py); else if (cur) hide(); }
   return {
     refresh,
     dispose() { hide(); ac.abort(); tip.remove(); if (!doc.querySelector('.it-tip')) doc.getElementById(STYLE_ID)?.remove(); },

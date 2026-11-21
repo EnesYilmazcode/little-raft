@@ -539,7 +539,7 @@ test('CraftBook: every recipe lands in exactly one known tab, in CATEGORIES orde
   assert.equal(seen.length, recipes.length);
   assert.deepEqual([...seen].sort(), recipes.map(r => r.id).sort());
   for (const g of groups) assert.ok(g.recipes.length > 0, `${g.id} not empty`);
-  assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod', 'brush', 'fins', 'airjug', 'goggles', 'scraper', 'metalhook', 'spear', 'metalspear', 'binoculars', 'drum', 'pipes', 'bells', 'finder', 'spade']); // [instruments] [treasure]
+  assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod', 'brush', 'fins', 'airjug', 'goggles', 'scraper', 'driftboard', 'metalhook', 'spear', 'metalspear', 'paddle', 'axe', 'binoculars', 'spyglass', 'drum', 'pipes', 'bells', 'finder', 'spade', 'camera', 'glidehandle']); // [instruments] [treasure] [camera] [zipline] [spyglass]
   assert.deepEqual(groups.find(g => g.id === 'materials').recipes.map(r => r.id), ['rope', 'paint_seafoam', 'paint_coral', 'paint_sunshell', 'paint_lagoon', 'paint_pebble', 'nail', 'bolt', 'hinge']);
 });
 
@@ -626,7 +626,7 @@ test('CraftBook: a click crafts one; holding crafts more, capped', () => {
     assert.equal(CB.craftsForHold(sched[i] - 1), i);
   }
   assert.equal(CB.craftsForHold(60000, 4), 4);
-  assert.ok(CB.craftsForHold(2000) > 6, 'a two second hold crafts plenty');
+  assert.ok(CB.craftsForHold(3000) > 6, 'a three second hold crafts plenty'); // repeats start at 800 ms (was 450) so a click never makes two
 });
 
 test('CraftBook: tooltip anchors beside the element, never off-screen', () => {

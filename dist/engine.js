@@ -260,6 +260,8 @@ export function createEngine(ctx) {
   }
   return (mod = {
     name: 'engine',
+    beforeUndecor(d) { return d?.type === 'motor' && onOf(d.x, d.z) ? 'Switch the motor off first' : null; }, // [undecor] leftover fuel seconds are not items
+    afterUndecor(d) { if (d?.type === 'motor') delete st.motors[keyOf(d.x, d.z)]; }, // [undecor] wheels: sailing-world releases a grab whose kind is gone; game.js releases any sail/wheel grab on pickup
     serialize: () => st,
     load(data) { st = cleanEngine(data); }, // cheap (<= 64 entries); never touches meshes
     action(a, actor, bag) {
