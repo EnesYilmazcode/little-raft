@@ -145,8 +145,14 @@ Edited: `dist/engine.js` (:13, :31, after :127, :263), `dist/content-items.js` (
   - Prompts: when the refiner queue is full and an organic item is held, the prompt reads `Biofuel Refiner · full · …`
     (no `<kbd>`). The tank reads `Fuel Tank · full 8/8 · …` when it is full and jugs are held.
   - Extra `debug.give(kind, n)` (host) like kiln's, for QA.
-- Known and accepted, the same as the kiln: picking up a refiner or tank drops its queued items, tray or stored jugs on
-  the next 1 s prune.
+- Removal (review): game.js has no decor pickup today (the hammer removes pieces only). The only way a refiner or
+  tank leaves `world.decor` is a shark-broken foundation, which takes the decor and its contents, exactly like chests
+  (`storage.dropTile`) and the kiln; the 1 s prune then drops the entry. For any future removal, `refundBiofuel` (core)
+  and the module's `beforeRemove(type, x, z, actor, bag)` refund tray/tank jugs all-or-nothing and refuse while
+  batches are queued (the slice does not record which organic kinds were loaded) or the bag is full.
+- Caps (review): a new refiner past MAX_REFINERS or a new tank past MAX_TANKS is refused ("Too many busy refiners and
+  tanks"), since cleanSlice would otherwise drop it on the next load.
+- Near gate (review): bubbles animate only within 14 m of the player.
 - Verified: `npm test` passes (1216 at the time, incl. the new tests/biofuel.test.mjs (14) and 3 engine additions),
   `node --check` is clean, and `shoot.py` reports `errors: []`. The close-up script is
   `scratchpad/r4/biofuel/biofuel_shot.py`. Its 7 checks all pass: the host top-up moved one jug (tank 5→4, motor
