@@ -4,7 +4,8 @@ Usage: python3.13 tests/e2e/electron_check.py --dist <dist_dir> [--out <artifact
                                                [--window show|offscreen|hidden] [--xvfb] [--input send|xtest]
                                                [--no-hot-swap] [--keep]
 
-The candidate is copied to a temp dir and served by the unmodified desktop/server.py (RAFT_DIST,
+The shell is the graded tree's own desktop/ when it sits next to --dist (a git-archive export of a branch), else this
+checkout's desktop/ (override with --desktop). The candidate is copied to a temp dir and served by the unmodified desktop/server.py (RAFT_DIST,
 RAFT_PORT, release mode). An unmodified copy of desktop/main.cjs runs next to a config.json that
 points its origin at that server, loaded through tools/electron_harness.cjs, which isolates
 userData (and the single-instance lock) and exposes a stdin control channel. All input is real:
@@ -83,8 +84,12 @@ SNAP = r"""(() => {
     keys: (P.keys || []).slice(-6),
     pageErrors: P.errors.slice(0, 5),
     focused: document.hasFocus(), visibility: document.visibilityState,
+    shellClaimsEsc: typeof window.raftDesktop?.claimEscape === 'function',
   };
 })()"""
+
+START_BUTTON = r"""(() => { for (const s of ['#solo', '#newGame']) { const el = document.querySelector(s), r = el?.getBoundingClientRect();
+  if (r && r.width && !el.disabled && getComputedStyle(el).visibility !== 'hidden') return s; } return null; })()"""
 
 LOCK_OR_FALLBACK = 'document.pointerLockElement || raftDebug.state.lockFallback'
 
@@ -119,6 +124,13 @@ def find_electron() -> Path:
     raise Infra('electron binary not found; set LR_ELECTRON or npm install electron')
 
 
+def find_desktop(candidate: Path) -> Path:
+    """The graded tree's own shell: <dist>/../desktop when it has main.cjs and server.py (a git-archive export of a branch,
+    as tools/fleet-gate.sh makes), else this checkout's desktop/."""
+    own = candidate.parent / 'desktop'
+    return own if (own / 'main.cjs').is_file() and (own / 'server.py').is_file() else ROOT / 'desktop'
+
+
 def http_json(url: str, timeout=1.5):
     with urllib.request.urlopen(url, timeout=timeout) as r: return json.load(r)
 
@@ -141,8 +153,11 @@ def start_xvfb(work: Path):
 
 
 class Run:
-    def __init__(self, candidate: Path, window: str, keep: bool, force_xvfb: bool, hot_swap: bool, input_mode: str = 'send'):
+    def __init__(self, candidate: Path, window: str, keep: bool, force_xvfb: bool, hot_swap: bool, input_mode: str = 'send', desktop: Path | None = None):
         self.candidate, self.window, self.keep, self.do_hot_swap = candidate, window, keep, hot_swap
+        self.desktop = desktop or find_desktop(candidate)
+        self.desktop_label = ("the graded tree's own desktop/main.cjs" if self.desktop == candidate.parent / 'desktop'
+                              else f'desktop/main.cjs from {self.desktop.parent}')
         self.input = input_mode
         self.force_xvfb = force_xvfb or input_mode == 'xtest'  # XTest input only ever goes to a private Xvfb, never your desktop
         self.work = Path(tempfile.mkdtemp(prefix='lr-electron-'))
@@ -172,10 +187,10 @@ class Run:
         shutil.copytree(self.candidate, self.dist, ignore=shutil.ignore_patterns('*.tmp'))
         self.publish(self.build_a)
         self.start_server()
-        # Unmodified main.cjs next to a config.json that points it at our server.
-        self.app.mkdir(); self.user.mkdir()
-        shutil.copy2(ROOT / 'desktop' / 'main.cjs', self.app / 'main.cjs')
-        if (ROOT / 'desktop' / 'little-raft.png').is_file(): shutil.copy2(ROOT / 'desktop' / 'little-raft.png', self.app / 'little-raft.png')
+        # Unmodified copy of the shell (main.cjs plus whatever it loads next to it, e.g. a preload) with a config.json
+        # that points it at our server.
+        shutil.copytree(self.desktop, self.app, ignore=shutil.ignore_patterns('config.json', '__pycache__', '*.ico', '*.icns'))
+        self.user.mkdir()
         (self.app / 'config.json').write_text(json.dumps({'origin': self.origin}))
         env = {**os.environ, 'LR_MAIN': str(self.app / 'main.cjs'), 'LR_USER_DATA': str(self.user), 'LR_WINDOW': self.window,
                'ELECTRON_ENABLE_LOGGING': '0', 'ELECTRON_DISABLE_SECURITY_WARNINGS': '1'}
@@ -188,6 +203,7 @@ class Run:
         self.metrics['input'] = 'xtest (xdotool on the private Xvfb)' if self.input == 'xtest' else 'webContents.sendInputEvent'
         if self.input == 'xtest' and not (self.xvfb and shutil.which('xdotool')): raise Infra('--input xtest needs Xvfb and xdotool (apt install xdotool)')
         self.metrics['xvfb'] = bool(self.xvfb)
+        self.metrics['desktop'] = str(self.desktop)
         self.electron = subprocess.Popen([str(find_electron()), *ELECTRON_FLAGS, str(HARNESS)], cwd=str(self.app), env=env, **CHILD,
                                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=open(self.work / 'electron.err', 'wb'),
                                          text=True, bufsize=1)
@@ -207,7 +223,7 @@ class Run:
         for attempt in range(5):
             self.port = free_port(); self.origin = f'http://127.0.0.1:{self.port}'
             env = {**os.environ, 'RAFT_DIST': str(self.dist), 'RAFT_PORT': str(self.port), 'RAFT_RELEASE_MODE': '1', 'PYTHONDONTWRITEBYTECODE': '1'}
-            self.server = subprocess.Popen([sys.executable, str(ROOT / 'desktop' / 'server.py')], env=env, **CHILD, stdin=subprocess.DEVNULL,
+            self.server = subprocess.Popen([sys.executable, str(self.desktop / 'server.py')], env=env, **CHILD, stdin=subprocess.DEVNULL,
                                            stdout=subprocess.DEVNULL, stderr=open(self.work / 'server.log', 'ab'))
             for _ in range(150):
                 if self.server.poll() is not None: break
@@ -321,7 +337,6 @@ class Run:
         if key == 'Escape': self.last_esc = time.time()
         self.steps.append(label.format(ms=held))
         return held, hit
-        if key == 'Escape': self.last_esc = time.time()
 
     def click(self, x, y, label, flush=True):
         self.steps.append(label)
@@ -344,7 +359,7 @@ class Run:
     def repro(self, extra=''):
         seq = ' -> '.join(self.steps[-12:])
         how = 'real X keyboard/mouse via XTest' if self.input == 'xtest' else 'trusted input via webContents.sendInputEvent; real X/XTest input behaves the same'
-        return (f'Desktop app (Electron {self.metrics.get("electron", "?")} running desktop/main.cjs, {self.window} window, {how}): '
+        return (f'Desktop app (Electron {self.metrics.get("electron", "?")} running {self.desktop_label}, {self.window} window, {how}): '
                 f'{seq}{"; " + extra if extra else ""}')
 
     def check(self, cid: str, name: str, ok: bool, detail=None, repro_extra=''):
@@ -371,8 +386,8 @@ class Run:
 
     # ---------- the run ----------
     def run(self):
-        if not self.wait_for('!!window.raftDebug && !!window.raftLive && !!document.querySelector("#solo")', timeout=60):
-            raise Infra('game never booted in the desktop shell (no raftDebug/raftLive/#solo)')
+        if not self.wait_for('!!window.raftDebug && !!window.raftLive && !!document.querySelector("#solo, #newGame")', timeout=60):
+            raise Infra('game never booted in the desktop shell (no raftDebug/raftLive/#solo/#newGame)')
         self.js(PROBE)
         boot = self.js('({w: innerWidth, h: innerHeight, dpr: devicePixelRatio, url: location.href})')
         ready = next((h for h in self.harness_log if h.get('harness') == 'ready'), {})
@@ -383,8 +398,12 @@ class Run:
                    boot['url'].startswith(self.origin + '/') and s['build'] == self.build_a, {'url': boot['url'], 'build': s['build']})
         self.check('shell.sandbox', 'page runs sandboxed with no node integration', self.js("typeof require === 'undefined' && typeof process === 'undefined'"))
 
-        # Solo with a real mouse click (trusted gesture through sendInputEvent).
-        self.click_selector('#solo', 'click #solo')
+        # Solo with a real mouse click (trusted gesture through sendInputEvent). Branches with a Continue/New game title
+        # (wip/fleet/menus) hide #solo until a save exists and start a fresh raft from #newGame.
+        start_btn = self.js(START_BUTTON)
+        if not start_btn: raise Infra('no visible start button (#solo or #newGame) on the title screen')
+        self.metrics['start_button'] = start_btn
+        self.click_selector(start_btn, f'click {start_btn} ({self.js(f"document.querySelector({json.dumps(start_btn)}).textContent.trim()")!r})')
         started = self.wait_for('raftDebug.state.running', timeout=20)
         if not self.check('solo.start', 'clicking Solo starts the game', started, None if started else self.snap()):
             return
@@ -418,8 +437,12 @@ class Run:
         if self.do_hot_swap: self.hot_swap()
         if self.real: self.quick_reclick()
 
-        errs = [h for h in self.harness_log if h.get('harness') in ('render-process-gone', 'console-error')
-                or (h.get('harness') == 'child-process-gone' and h.get('reason') != 'clean-exit')]
+        gone = [h for h in self.harness_log if h.get('harness') == 'child-process-gone' and h.get('reason') != 'clean-exit']
+        # The swiftshader GPU process can die under CPU starvation on this box (Chromium restarts it and the page keeps
+        # running); report it, but only renderer crashes and other child processes count as failures.
+        gpu = [h for h in gone if h.get('type') == 'GPU']
+        if gpu: self.metrics['gpu_process_gone'] = gpu[:3]; self.notes.append(f'GPU process exited abnormally {len(gpu)}x (not counted as a game failure)')
+        errs = [h for h in self.harness_log if h.get('harness') in ('render-process-gone', 'console-error')] + [h for h in gone if h.get('type') != 'GPU']
         page_errs = self.snap()['pageErrors']
         self.check('health.errors', 'no renderer crash, console error or uncaught page error', not errs and not page_errs, {'shell': errs[:5], 'page': page_errs})
         navs = [h for h in self.harness_log if h.get('harness') == 'did-navigate']
@@ -449,13 +472,19 @@ class Run:
     def pause_cycle(self, cid):
         s = self.relock('to resume play')
         if self.real and not self.has_lock(s): return
+        mark = len(self.harness_log)
         self.key('Escape', 'Esc (in play)'); self.settle(700)
         s = self.snap()
+        shell_saw = [h['type'] for h in self.harness_log[mark:] if h.get('harness') == 'before-input']
         self.window_alive(f'{cid}.window1', 'Esc in play')
         self.check(f'{cid}.unlock', 'Esc during play releases pointer lock', not s['locked'], s)
         opened = self.check(f'{cid}.open', 'the same Esc that releases the lock opens the pause menu', s['options'], s,
-                            repro_extra=f'expected pause menu after one Esc; got dialogs={s["dialogs"]} locked={s["locked"]} resumeHint={s["resumeHint"]} '
-                                        '(Electron delivers neither keydown nor keyup of the lock-releasing Esc to the page, so the settings.js keyup fallback never fires)')
+                            repro_extra=f'expected pause menu after one Esc; got dialogs={s["dialogs"]} locked={s["locked"]} resumeHint={s["resumeHint"]} ' +
+                                        (f'(desktop/main.cjs claims Escape and opens pause via window.raftEscape() on keyDown, but its before-input-event saw only '
+                                         f'{shell_saw or "nothing"} for this press: Chromium consumes the keyDown that ends pointer lock, so raftEscape() never runs)'
+                                         if s['shellClaimsEsc'] and 'keyDown' not in shell_saw else
+                                         f'(desktop/main.cjs claims Escape; its before-input-event saw {shell_saw} for this press, yet no pause menu)' if s['shellClaimsEsc'] else
+                                         '(Electron delivers neither keydown nor keyup of the lock-releasing Esc to the page, so the settings.js keyup fallback never fires)'))
         presses = 1
         if not opened and not s['dialogs']:
             # Keep going so the rest of the cycle is still tested: see how many more presses pause takes.
@@ -477,10 +506,17 @@ class Run:
 
     # Page-time gap between the key that opened the inventory and the Esc that closed it. Chromium's transient user
     # activation lasts 5 s and Esc does not grant one, so this decides whether the game CAN relock on that Esc.
-    ACT_GAP = r"""(() => { const k = (window.__lrProbe && __lrProbe.keys) || []; let esc = null, open = null;
-      for (let i = k.length - 1; i >= 0; i--) { const e = k[i]; if (e.type !== 'keydown') continue;
-        if (esc === null) { if (e.key === 'Escape') esc = e.t; } else if (['Tab', 'i', 'I'].includes(e.key)) { open = e.t; break; } }
-      return esc !== null && open !== null ? esc - open : null; })()"""
+    # A shell that claims Escape (main.cjs before-input-event, wip/fleet/menus) never lets the page see the Esc key; it
+    # calls window.raftEscape() with a user gesture instead. Then the inventory's close event stands in for the Esc time
+    # (an upper bound) and the activation window no longer limits the relock.
+    ACT_GAP = r"""(() => { const k = (window.__lrProbe && __lrProbe.keys) || []; let esc = null, closed = null, open = null;
+      for (let i = k.length - 1; i >= 0; i--) { const e = k[i];
+        if ((e.type === 'cancel' || e.type === 'close') && e.key === 'inventory' && open === null) { closed = e.t; continue; }
+        if (e.type !== 'keydown') continue;
+        if (e.key === 'Escape') { if (open === null) esc = e.t; } else if (['Tab', 'i', 'I'].includes(e.key)) { open = e.t; break; } }
+      const claimed = esc === null && typeof window.raftDesktop?.claimEscape === 'function';
+      const at = esc !== null ? esc : claimed ? closed : null;
+      return { gap: at !== null && open !== null ? at - open : null, claimed }; })()"""
     ACTIVATION_MS = 5000
 
     def inventory_cycle(self, cid, key, dwell_ms=400, hold=100):
@@ -497,6 +533,7 @@ class Run:
                                    timeout=8, poll=.05)
             if not self.check(f'{cid}.open', f'{key} opens the inventory and frees the cursor', opened, None if opened else self.snap()): return
             where = 'in inventory' + (f', after {dwell_ms // 1000}s' if not quick else '')
+            exits0 = self.js('__lrProbe.exits')
             if quick:
                 self.settle(max(0, dwell_ms - 300))
                 # No frame wait: stay inside the activation window. Hold Esc until the game's relock lands (on real hardware
@@ -509,9 +546,10 @@ class Run:
                 self.key('Escape', f'Esc held {hold} ms ({where})', hold=hold, flush=False); held = hold; relocked_while_down = None
             self.settle(800)
             s = self.snap()
-            gap = self.js(self.ACT_GAP)
-            self.metrics.setdefault('inventory_esc', {})[cid] = {'open_to_esc_ms': gap, 'held_ms': held, 'locked_before_release': relocked_while_down, 'attempts': attempt + 1}
-            if not (real and quick) or (gap is not None and gap < self.ACTIVATION_MS - 500): break
+            g = self.js(self.ACT_GAP); gap, claimed = g['gap'], g['claimed']
+            self.metrics.setdefault('inventory_esc', {})[cid] = {'open_to_esc_ms': gap, 'held_ms': held, 'locked_before_release': relocked_while_down,
+                                                                 'attempts': attempt + 1, 'shell_claims_esc': claimed}
+            if not (real and quick) or claimed or (gap is not None and gap < self.ACTIVATION_MS - 500): break
             self.notes.append(f'{cid}: Esc came {gap} ms after {key} (load), outside the activation window; retrying')
             if s['inventory']: self.key('Escape', 'Esc (close inventory)')
         self.window_alive(f'{cid}.window', f'Esc in the inventory ({key})')
@@ -521,9 +559,25 @@ class Run:
         if not real: return
         detail = {'locked': s['locked'], 'resumeHint': s['resumeHint'], 'lockFallback': s['lockFallback'], 'open_to_esc_ms': gap,
                   'lastCall': s['lastCall'], 'events': s['events'], 'keys': s['keys']}
-        if gap is not None and gap < self.ACTIVATION_MS - 500:
-            ev = [e for e in s['events'] if e['type'] == 'change']
-            bounced = len(ev) >= 2 and ev[-2]['locked'] == 'world' and ev[-1]['locked'] is None
+        ev = [e for e in s['events'] if e['type'] == 'change']
+        bounced = len(ev) >= 2 and ev[-2]['locked'] == 'world' and ev[-1]['locked'] is None
+        if claimed:
+            # The shell hands the page a gesture-backed Esc, so the game can relock whatever the dwell.
+            via = (f'desktop/main.cjs claims Escape and calls window.raftEscape() with a user gesture; the inventory closes '
+                   f'{gap} ms after {key} and the game re-requests lock')
+            page_exit = s['exits'] != exits0
+            why = (f'{via}; lock engages, then is dropped {ev[-1]["t"] - ev[-2]["t"]} ms later '
+                   + ('(the page called exitPointerLock())' if page_exit else
+                      'with no exitPointerLock() call from the page: the browser ends it for the Escape press even though main.cjs '
+                      'preventDefaults Escape in before-input-event')
+                   + '; player is left unlocked with the resume hint') if bounced else f'{via}; lock was not re-acquired'
+            if quick:
+                self.check(f'{cid}.relocked', 'closing the inventory with Esc puts the player back in locked play (lock holds after Esc is released)',
+                           self.has_lock(s), {**detail, 'locked_before_release': relocked_while_down, 'shell_claims_esc': True}, repro_extra=why)
+            else:
+                self.check(f'{cid}.resume-hint', 'closing the inventory after a long dwell relocks or shows the click-to-resume hint (no drag-look latch)',
+                           self.has_lock(s) or (s['resumeHint'] and not s['lockFallback']), {**detail, 'shell_claims_esc': True}, repro_extra=why)
+        elif gap is not None and gap < self.ACTIVATION_MS - 500:
             detail['locked_before_release'] = relocked_while_down
             self.check(f'{cid}.relocked', 'closing the inventory with Esc puts the player back in locked play (lock holds after Esc is released)',
                        self.has_lock(s), detail,
@@ -602,6 +656,7 @@ def main():
     ap.add_argument('--xvfb', action='store_true', help='use a private Xvfb even when $DISPLAY is set')
     ap.add_argument('--input', choices=['send', 'xtest'], default='send',
                     help='send (default): webContents.sendInputEvent; xtest: real X events via xdotool into a private Xvfb (cross-check)')
+    ap.add_argument('--desktop', help="shell dir with main.cjs + server.py (default: <dist>/../desktop if present, else this checkout's desktop/)")
     ap.add_argument('--no-hot-swap', action='store_true')
     ap.add_argument('--keep', action='store_true', help='keep the temp work dir')
     a = ap.parse_args()
@@ -611,7 +666,7 @@ def main():
     if not (candidate / 'index.html').is_file():
         report['failures'] = [{'id': 'infra', 'detail': f'not a dist dir: {candidate}', 'repro': f'ls {candidate}/index.html'}]
         print(json.dumps(report)); sys.exit(2)
-    run = Run(candidate, a.window, a.keep, a.xvfb, not a.no_hot_swap, a.input)
+    run = Run(candidate, a.window, a.keep, a.xvfb, not a.no_hot_swap, a.input, Path(a.desktop).resolve() if a.desktop else None)
     def on_term(signum, _frame): raise KeyboardInterrupt(f'signal {signum}')
     signal.signal(signal.SIGTERM, on_term)
     infra = None
