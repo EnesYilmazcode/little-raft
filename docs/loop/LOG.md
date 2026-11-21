@@ -1349,3 +1349,14 @@ Claimed for round 4 (research: docs/loop/research/fidelity-r4-gaps.md):
   - the bag covered the compass
   - the settings panel ran off-screen
 - Note: quality level 3 now renders at a 0.7 pixel ratio (main had 0.85), so part of the frame-time gain is resolution.
+
+## 2026-11-21 · integrator A, QA round (head fbfc100 → dfe019b)
+- QA fixes pushed: Continue on the title after quitting (and focused, so Enter resumes), the world hotbar hidden under the bag,
+  "plank" in build costs/hints, build chip on the hotbar, X/Z emotes only with a crewmate aboard (X dropped a ping beacon solo),
+  Q/G/J/C listed in Controls help, juicer items given craft-book text and sources (the merged loop-features-0831 WIP failed 5 tests).
+- Gate: unit, playbot, visual, electron pass (electron binary installed). perf fails from cd51bb0 (loop-visuals-0843 merge)
+  on domNodesLateHalf 38–44 > 20 and GL growth. Investigation: not a leak. With seed 1 the first hook catch lands late
+  (68–81 s), adding recipe rows and shader programs once; DOM plateaus over 200 s; seeds 2 and 3 pass. The DOM metric lacks
+  the step exclusion the GL metric has. Needs a gate-owner decision; not auto-merged.
+- Perf QA: draw calls, triangles, JS heap, hitches equal to main; frame time too noisy under shared load to call.
+- Open: farming.js/farming-view.js are not imported anywhere (palm planters run on the watering lane); two left-side notice feeds overlap.
