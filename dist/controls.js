@@ -3,11 +3,10 @@
 // game.js only needs tiny hooks (search "controls lane" there). Discrete actions the game has no
 // handler for (drop, rotate, buildPick) are re-emitted as window 'little-raft-action' CustomEvents,
 // footfalls as 'little-raft-footstep', so other lanes can listen without touching this file.
-import { ActionMap } from './input-map.js';
-import { createInput } from './input.js';
-import { MoveFeel } from './move-feel.js';
-import { createControlsTab } from './controls-tab.js';
-import { createBuildRadial } from './build-radial.js';
+import { ActionMap } from './input-map.js?build=v3-survival-ae77fa84ac2b';
+import { createInput } from './input.js?build=v3-survival-ae77fa84ac2b';
+import { MoveFeel } from './move-feel.js?build=v3-survival-ae77fa84ac2b';
+import { createBuildRadial } from './build-radial.js?build=v3-survival-ae77fa84ac2b';
 
 const BUILD_PIECES = [
   {id:'floor', label:'Floor'}, {id:'sail', label:'Sail'}, {id:'palm', label:'Palm'},
@@ -40,8 +39,9 @@ export function createControls(g) {
     } else if (id === 'buildMenu') radial?.confirm();
     else if (id === 'rotate') call('release'); // let go of a steered sail on any device
   };
+  const tabCapturing = () => { for (const t of tabs) if (t.capturing) return true; return false; }; // per frame: no array copy
   const input = createInput({element:g.canvas, map, onAction, sensitivity:g.sensitivity,
-    isBlocked:() => [...tabs].some(t => t.capturing) || (!!g.isBlocked?.() && !radial?.isOpen)});
+    isBlocked:() => tabCapturing() || (!!g.isBlocked?.() && !radial?.isOpen)});
 
   function openRadial() {
     if (g.isBlocked?.()) return;
@@ -91,8 +91,21 @@ export function createControls(g) {
   const api = {map, input, feel, movement, afterMove, camera,
     get radialOpen() { return !!radial?.isOpen; },
     clear() { input.clear(); padUse = padReel = false; radial?.close(); },
-    mountTab(container) { // the tab's own dispose() should be paired with api.unmountTab(tab)
-      const t = createControlsTab({map, input}); t.mount(container); tabs.add(t); return t; },
+    // controls-tab.js is only fetched the first time a menu mounts the tab. mountTab() returns a handle at once
+    // (capturing/refresh/dispose work before the module arrives); handle.ready resolves to the real tab.
+    mountTab(container) { // the handle's dispose() should be paired with api.unmountTab(handle)
+      let tab = null, gone = false;
+      const handle = {
+        get element() { return tab?.element ?? null; },
+        get capturing() { return !!tab?.capturing; },
+        refresh() { tab?.refresh(); },
+        dispose() { gone = true; tab?.dispose?.(); tab = null; },
+        ready: import('./controls-tab.js?build=v3-survival-ae77fa84ac2b').then(m => {
+          if (gone) return null;
+          tab = m.createControlsTab({map, input}); tab.mount(container); return tab;
+        }).catch(e => { console.error('controls: tab failed to load', e); return null; }),
+      };
+      tabs.add(handle); return handle; },
     unmountTab(t) { tabs.delete(t); t?.dispose?.(); },
     dispose() { input.dispose(); radial?.dispose(); for (const t of tabs) t.dispose?.(); tabs.clear(); if (globalThis.raftControls === api) delete globalThis.raftControls; }};
   globalThis.raftControls = api; // menus lane: raftControls.mountTab(el); QA: raftControls.feel / .input

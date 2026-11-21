@@ -9,10 +9,13 @@ python sandbox/audio/adopt.py --check   # copies dist/ to a temp dir, applies ev
 python sandbox/audio/adopt.py --apply   # same edits on dist/ in place
 ```
 
-`adopt.py` holds every edit as an exact `old -> new` string that must match `dist/game.js` exactly once, so it refuses to half-apply if game.js has drifted. `--check` starts a solo game, clicks the canvas (user gesture), presses R (which plays an effect sound), and asserts four things: no page errors, exactly one `AudioContext`, `audio-worklet.js?build=…` loaded with one `AudioWorkletNode` built, and oscillators created. The last run passed:
+`adopt.py` holds every edit as an exact `old -> new` string that must match `dist/game.js` exactly once, so it refuses to half-apply if game.js has drifted. `--check` starts a solo game, clicks the canvas (user gesture) and presses R (which plays an effect sound). It asserts: no page errors, exactly one `AudioContext`, the worklet loaded as `audio-worklet.js?build=<the game's token>` (the `?build=` must be there) with one `AudioWorkletNode` built, and oscillators created. Then it **hot-updates the running game**. It republishes the temp `dist/` with a new token (`hotcheck`) the way `publish_local.py` does, lets `live.js`'s own poll swap builds, and asserts: one new mount, still exactly one `AudioContext` and it is `running`, the ocean handed over (no second ocean node, no stale un-stamped module URL), and **the ocean level holds**. A recorder worklet taps everything that reaches `ctx.destination`. From the new mount until 3.5 s after the old build's teardown, no 100 ms window may be more than 10 dB under the median of the second before it, and nothing may come within 70 dB of silence. The old engine fails this check (−120 dB, a dip of 79–87 dB). The last run passed:
 
 ```
-modules: ["http://127.0.0.1:…/audio-worklet.js?build=v3-survival-ae77fa84ac2b"], worklets: 1, contexts: 1, oscillators: 2 (varies with which effect R triggers), panners: 1, errors: []
+checks: no_errors, one_context, worklet_built, worklet_url_has_build, oscillators, swap_updated, swap_one_context,
+        swap_ocean_handed_over, swap_no_stale_module, swap_level_holds  -> all true
+modules: [".../audio-worklet.js?build=v3-survival-ae77fa84ac2b"], worklets: 1, contexts: 1, states: ["running"]
+hot_swap: dispose_after_mount_s 3.46, dip_db 3.0 (same metric before the swap: 1.9), min_level_db -43.2
 ```
 
 ## Manual steps (what the script does)
@@ -25,8 +28,8 @@ modules: ["http://127.0.0.1:…/audio-worklet.js?build=v3-survival-ae77fa84ac2b"
 | `sandbox/audio/audio-worklet.js` | `dist/audio-worklet.js` | copied unchanged |
 
 **Worklet location.** It is served next to the module as `dist/audio-worklet.js`, so the URL is `/audio-worklet.js?build=<token>`. `audio.js` resolves it with `new URL('./audio-worklet.js?build=…', import.meta.url)`, which means it works under any base path.
-- `publish_local.py` rewrites every `'./name.js'` literal in root `.js` files to carry the new `?build=`, the worklet literal included. Each release therefore loads its own processor file.
-- `audio-worklet.js` wraps `registerProcessor` in try/catch. A hot update that loads the new file into the same `AudioContext` keeps working: the first-registered class is used.
+- `publish_local.py` rewrites every `'./name.js'` literal in root `.js` files to carry the new `?build=`, the worklet literal included. A fresh page load therefore always fetches the current processor file.
+- On a hot update no worklet module is loaded at all. The new engine takes over the ocean node that is already playing on the shared context. `audio-worklet.js` also wraps `registerProcessor` in try/catch, so loading it twice into one context would be harmless; the first-registered class is used. Either way, edits to `audio-worklet.js` are heard after a page reload, not after a hot update.
 - AudioWorklet needs a secure context. `127.0.0.1` (desktop app and the local server) and https qualify. On a plain-http LAN address the engine silently uses its node-graph ambience instead.
 
 `dist/audio.js` keeps the old API: `createOceanAudio({context, volume, ambience})` returns `{context, resume(), setVolume(v), play(ev, s), destroy()}`, and `EVENTS` contains every old event. Nothing else in `dist/` imports `audio.js` today, so the old callers' contract is preserved trivially. The new members (`setListener`, `setOcean`, `setReel`, `setBus`, `duck`, `creak`, `stats`, the `opts` argument to `play`) are optional. So are the new factory options `reverb` (default `true`: the open-air early-reflection send, about 1 % of a core; pass `false` for weak devices), `hrtf`, `gulls` and `seed` (fixed worklet noise seed, for tests).
@@ -54,7 +57,7 @@ The build token below is the one game.js already uses on its other imports.
    function wakeAudio() { if (!sound || !(options?.volume > 0)) return; sfx.setVolume(options.volume); sfx.resume(); audio = sfx.context ?? audio; }
    function sfxPlay(ev, s = 1, pos = null) { if (!sound || !(options?.volume > 0)) return; wakeAudio(); sfx.play(ev, s, pos); }
    ```
-4. **Call sites.** Replace each `beep(...)`. `pos` is the hook's `T.Vector3` already in scope at those lines; PannerNode reads `.x/.y/.z`.
+4. **Call sites.** Replace each `beep(...)`. `pos` is the hook's `T.Vector3` already in scope at those lines; PannerNode reads `.x/.y/.z`. The hook is usually 8–32 m away, so the engine gives `catch` a 14 m and `splash`/`bite` an 8 m reference distance: a catch at 16 m still measures −23 LUFS momentary, louder than the hammer (it was about −34 with the default 2 m).
 
    | line | old | new |
    |---|---|---|
@@ -102,11 +105,12 @@ Optional, not in the script: drive the sea from the game, and jolt the raft. Onc
 2. `python sandbox/audio/shoot.py`: `summary.warnings` must be `{}` (no clipping, DC or truncated tails), `errors` must be `[]`, and `realtime.hotSwap.sameContext` must be `true`. Each case also reports `loud_max` (K-weighted momentary loudness); `catch` should be the loudest one-shot and `error`/`ui`/`hover` the quietest (see the table in `audio.md`).
 3. Manual, with sound:
    - Start solo and click once. The ocean fades in over 2.5 s.
+   - Toggle Sound off: after about 0.2 s the context suspends (`sfx.stats().state === 'suspended'`, via a temporary `window.__sfx = sfx`). Toggle it on and it resumes.
    - Throw the hook and listen for the whoosh, then a splash where it lands. Hold to reel for the ratchet. A catch should give a shloop plus pluck, with the ocean dipping briefly.
    - Build a floor for the hammer crack.
    - Turn your head: the hook splash and gulls should move between the ears. A sound hard left should still reach the right ear, quieter and duller (crossfeed), and distant gulls should sound duller than close ones.
    - Toggle Sound off and on, and move the volume slider.
-4. Hot update: publish a candidate with `publish_local.py`. The ocean should keep playing through the swap: the new mount calls `sfx.resume()` straight away on the context that is already running, and old and new overlap briefly because `live.js` disposes the old build only after the new mount succeeds. `stats().worklet` should be `true` after the swap (`raftDebug` does not expose it; check with a breakpoint or a temporary `window.__sfx = sfx`).
+4. Hot update: publish a candidate with `publish_local.py`. The ocean keeps playing through the swap with no gap and no doubling. `live.js` mounts the new build before it disposes the old one. The new mount calls `sfx.resume()` straight away on the running context, and the new engine takes over the old engine's ocean node in that same task. The old engine's `destroy()` leaves that ocean alone, fades its own master to 0 over 80 ms (so a one-shot that is still ringing does not click) and disconnects after the fade. `adopt.py --check` measures this: the worst 100 ms dip across the swap is about 3 dB, the same as the sea's own variation. With the previous engine the output went to digital silence for 1–6 s and then faded back in over 2.5 s. One-shots and the mixer come from the new build; worklet (ocean DSP) changes are heard only after a reload. `stats().worklet` should be `true` after the swap (`raftDebug` does not expose it; check with a breakpoint or a temporary `window.__sfx = sfx`).
 
 ## Rollback
 

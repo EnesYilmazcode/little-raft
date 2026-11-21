@@ -1,10 +1,10 @@
 // Authoritative per-player inventory ("bag") for the raft survival game.
 // Pure ES module: no DOM, no THREE, no timers, no randomness.
-import { infoTable, recipeTable, TOOL_IDS, registerBagKinds } from './items.js'; // [progression-hook]
+import { infoTable, recipeTable, TOOL_IDS, registerBagKinds } from './items.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 
 export const STACK_SIZE = 20;
 export const SLOT_COUNT = 28;
-export const HOTBAR_SIZE = 8;
+export const HOTBAR_SIZE = 10;
 export const TOOL_DURABILITY = 100;
 
 // content hook: islands/storage item kinds and recipes live in content-items.js
@@ -35,12 +35,17 @@ export const ITEM_INFO = Object.freeze({
   sand:       Object.freeze({ kind: 'sand',       name: 'Sand',         icon: 'icon-scrap' ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
   clay:       Object.freeze({ kind: 'clay',       name: 'Clay',         icon: 'icon-scrap' ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
   metalore:   Object.freeze({ kind: 'metalore',   name: 'Metal Ore',    icon: 'icon-scrap'  ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  // Shark (dist/shark.js): harvested from a dead shark with E.
+  sharkmeat:  Object.freeze({ kind: 'sharkmeat',  name: 'Raw Shark Meat', icon: 'icon-sharkmeat', maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  sharkhead:  Object.freeze({ kind: 'sharkhead',  name: 'Shark Head',   icon: 'icon-sharkhead', maxStack: 5,          tool: false, placeholder: true }),
   receiver:   Object.freeze({ kind: 'receiver',   name: 'Receiver',     icon: 'icon-compass', maxStack: STACK_SIZE, tool: false, placeholder: true }),
   antenna:    Object.freeze({ kind: 'antenna',    name: 'Antenna',      icon: 'icon-antenna', maxStack: STACK_SIZE, tool: false, placeholder: false }),
   cup:        Object.freeze({ kind: 'cup',        name: 'Cup',          icon: 'icon-cup',     maxStack: 5,          tool: false, placeholder: false }),
   saltcup:    Object.freeze({ kind: 'saltcup',    name: 'Cup of Sea Water', icon: 'icon-saltcup', maxStack: 5,      tool: false, placeholder: false }),
   freshcup:   Object.freeze({ kind: 'freshcup',   name: 'Cup of Fresh Water', icon: 'icon-freshcup', maxStack: 5,   tool: false, placeholder: false }),
   purifier:   Object.freeze({ kind: 'purifier',   name: 'Water Purifier', icon: 'icon-purifier', maxStack: STACK_SIZE, tool: false, placeholder: false }),
+  rainbarrel: Object.freeze({ kind: 'rainbarrel', name: 'Rain Barrel',  icon: 'icon-rainbarrel', maxStack: STACK_SIZE, tool: false, placeholder: false }), // rain-sprinkler
+  sprinkler:  Object.freeze({ kind: 'sprinkler',  name: 'Sprinkler',    icon: 'icon-sprinkler', maxStack: STACK_SIZE, tool: false, placeholder: false }), // rain-sprinkler
   // farming.js (raft-integration) kinds. Palm planters run on the watering lane above (cup -> saltcup -> purifier ->
   // freshcup), so the farming rules' 'cup' is this Cup; seed/water are known to the bag but not dropped in play yet.
   seed:       Object.freeze({ kind: 'seed',       name: 'Palm Seed',    icon: 'icon-leaf',    maxStack: STACK_SIZE, tool: false, placeholder: true }),
@@ -79,6 +84,8 @@ export const RECIPES = Object.freeze({
   antenna:    recipe('antenna',    'Antenna',      1, { wood: 2, scrap: 1, rope: 1 }),
   cup:        recipe('cup',        'Cup',          1, { plastic: 1 }),
   purifier:   recipe('purifier',   'Water Purifier', 1, { wood: 2, scrap: 2, plastic: 1 }),
+  rainbarrel: recipe('rainbarrel', 'Rain Barrel',  1, { wood: 3, leaf: 2, plastic: 1 }), // rain-sprinkler
+  sprinkler:  recipe('sprinkler',  'Sprinkler',    1, { scrap: 2, plastic: 2, rope: 1 }), // rain-sprinkler
 
   ...recipeTable(), // [progression-hook] every hand recipe from items.js (new costs win)
 });

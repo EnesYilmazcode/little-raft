@@ -5,7 +5,7 @@
 // host can validate a gather request with nodeById(id) + distance alone.
 //
 // Usage:
-//   import { createSeafloor, nodeById } from './seafloor.js';
+//   import { createSeafloor, nodeById } from './seafloor.js?build=v3-survival-ae77fa84ac2b';
 //   const floor = createSeafloor(THREE, { islands });
 //   scene.add(floor.group);
 //   // every frame: floor.update(dt, camera, time);  floor.uniforms.uCaustic.value = 0..1
@@ -39,6 +39,7 @@ function hash(ix, iz, seed) {
 }
 const smooth = (t) => t * t * (3 - 2 * t);
 const smoothstep = (a, b, v) => smooth(Math.min(1, Math.max(0, (v - a) / (b - a))));
+// Reference value noise; latticeHeights below runs a hand-inlined copy (keep the two in step).
 function vnoise(x, z, seed) {
   const ix = Math.floor(x), iz = Math.floor(z);
   const fx = smooth(x - ix), fz = smooth(z - iz);
@@ -48,21 +49,48 @@ function vnoise(x, z, seed) {
 }
 const CAP_FAR = FLOOR.MIN_DEPTH_UNDER_RAFT + (FLOOR.SHALLOWEST - FLOOR.MIN_DEPTH_UNDER_RAFT) * smoothstep(9, 20, 20);
 
+// Seafloor heights for `count` points (ox + offs[3i], oz + offs[3i+2]) into out; with sand != null also the
+// sand-colour noise vnoise(x/14, z/14, 31) per point. vnoise and hash are hand-inlined (same integer and float
+// ops in the same order, so bit-identical to the functions above): this is the patch-rebuild hot loop, and V8
+// boxed every double crossing a non-inlined call (~1 MB of garbage per rebuild). seafloorHeight runs it for one point.
+function latticeHeights(out, sand, count, ox, oz, offs, islands) {
+  const octaves = sand ? 4 : 3;
+  for (let i = 0, i3 = 0; i < count; i++, i3 += 3) {
+    const x = ox + offs[i3], z = oz + offs[i3 + 2];
+    let n = 0;   // 0.6*vnoise(x/23,z/23,11) + 0.3*vnoise(x/9,z/9,12) + 0.1*vnoise(x/3.5,z/3.5,13), left to right
+    for (let o = 0; o < octaves; o++) {
+      const sc = o === 0 ? 23 : o === 1 ? 9 : o === 2 ? 3.5 : 14, px = x / sc, pz = z / sc;
+      const ix = Math.floor(px), iz = Math.floor(pz), fx = smooth(px - ix), fz = smooth(pz - iz);
+      const sd = Math.imul(o < 3 ? 11 + o : 31, 1442695041);
+      const x0 = Math.imul(ix, 374761393), x1 = Math.imul(ix + 1, 374761393);
+      const z0 = Math.imul(iz, 668265263) ^ sd, z1 = Math.imul(iz + 1, 668265263) ^ sd;
+      let h = x0 ^ z0; h = Math.imul(h ^ (h >>> 13), 1274126177); const a = ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+      h = x1 ^ z0; h = Math.imul(h ^ (h >>> 13), 1274126177); const b = ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+      h = x0 ^ z1; h = Math.imul(h ^ (h >>> 13), 1274126177); const c = ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+      h = x1 ^ z1; h = Math.imul(h ^ (h >>> 13), 1274126177); const d = ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+      const v = a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz;
+      if (o < 3) n += (o === 0 ? 0.6 : o === 1 ? 0.3 : 0.1) * v; else sand[i] = v;
+    }
+    let h = FLOOR.BASE + (n - 0.5) * 5;                    // about -13.5 .. -8.5
+    let t = 0;                                             // island shelf influence
+    for (let k = 0; k < islands.length; k++) {
+      const isl = islands[k], r = isl.r ?? 5, dx = x - isl.x, dz = z - isl.z;
+      if (dx * dx + dz * dz >= (r + 40) * (r + 40)) continue;   // outside the shelf: contributes 0
+      t = Math.max(t, 1 - smoothstep(r, r + 40, Math.hypot(dx, dz)));
+    }
+    h += (FLOOR.SHALLOWEST - h) * t;
+    // keep the raft area deep: cap rises smoothly from -7 (<= 9 m) to SHALLOWEST (>= 20 m)
+    const cap = x * x + z * z >= 400 ? CAP_FAR
+      : FLOOR.MIN_DEPTH_UNDER_RAFT + (FLOOR.SHALLOWEST - FLOOR.MIN_DEPTH_UNDER_RAFT) * smoothstep(9, 20, Math.hypot(x, z));
+    out[i] = Math.min(h, cap, FLOOR.SHALLOWEST);
+  }
+}
+const ONE = new Float64Array(1), ORIGIN = new Float32Array(3);
+
 /** Deterministic world y of the seafloor. Always <= FLOOR.SHALLOWEST. */
 export function seafloorHeight(x, z, islands = []) {
-  const n = 0.6 * vnoise(x / 23, z / 23, 11) + 0.3 * vnoise(x / 9, z / 9, 12) + 0.1 * vnoise(x / 3.5, z / 3.5, 13);
-  let h = FLOOR.BASE + (n - 0.5) * 5;                    // about -13.5 .. -8.5
-  let t = 0;                                             // island shelf influence
-  for (let i = 0; i < islands.length; i++) {
-    const isl = islands[i], r = isl.r ?? 5, dx = x - isl.x, dz = z - isl.z;
-    if (dx * dx + dz * dz >= (r + 40) * (r + 40)) continue;   // outside the shelf: contributes 0
-    t = Math.max(t, 1 - smoothstep(r, r + 40, Math.hypot(dx, dz)));
-  }
-  h += (FLOOR.SHALLOWEST - h) * t;
-  // keep the raft area deep: cap rises smoothly from -7 (<= 9 m) to SHALLOWEST (>= 20 m)
-  const cap = x * x + z * z >= 400 ? CAP_FAR
-    : FLOOR.MIN_DEPTH_UNDER_RAFT + (FLOOR.SHALLOWEST - FLOOR.MIN_DEPTH_UNDER_RAFT) * smoothstep(9, 20, Math.hypot(x, z));
-  return Math.min(h, cap, FLOOR.SHALLOWEST);
+  latticeHeights(ONE, null, 1, x, z, ORIGIN, islands);   // x + 0 === x (bar -0, which gives the same height)
+  return ONE[0];
 }
 
 /** Gatherable node in integer cell (cx, cz), or null. */
@@ -85,6 +113,23 @@ export function nodeById(id, islands = []) {
   if (!m) return null;
   const node = nodeAt(Number(m[1]), Number(m[2]), islands);
   return node && node.id === id ? node : null;   // rejects "-0,1", "01,2" etc.
+}
+
+// Floor patch positions + sand colours from latticeHeights' unrounded heights (ys) and sand noise.
+// Closure-free with hash(x/STEP, z/STEP, 32) hand-inlined, for the same reason as latticeHeights.
+function fillPatch(pos, col, heights, ys, sand, baseXZ, ox, oz, STEP, SAND, LIGHT, DARK) {
+  const s0 = SAND[0], s1 = SAND[1], s2 = SAND[2], d0 = DARK[0], d1 = DARK[1], d2 = DARK[2];
+  const l0 = LIGHT[0] - s0, l1 = LIGHT[1] - s1, l2 = LIGHT[2] - s2, seed = Math.imul(32, 1442695041);
+  for (let i = 0, i3 = 0; i < ys.length; i++, i3 += 3) {
+    const x = ox + baseXZ[i3], z = oz + baseXZ[i3 + 2], y = ys[i], n = sand[i];
+    heights[i] = y; pos[i3] = x; pos[i3 + 1] = y; pos[i3 + 2] = z;
+    const light = smoothstep(0.42, 0.2, n) * 0.7, dark = smoothstep(0.55, 0.78, n) * 0.85;
+    let h = Math.imul(Math.round(x / STEP), 374761393) ^ Math.imul(Math.round(z / STEP), 668265263) ^ seed;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    const k = 1 - (((h ^ (h >>> 16)) >>> 0) / 4294967296) * 0.06 - Math.min(1, Math.max(0, (-y - 2) / 12)) * 0.15;
+    const b0 = s0 + l0 * light, b1 = s1 + l1 * light, b2 = s2 + l2 * light;
+    col[i3] = (b0 + (d0 - b0) * dark) * k; col[i3 + 1] = (b1 + (d1 - b1) * dark) * k; col[i3 + 2] = (b2 + (d2 - b2) * dark) * k;
+  }
 }
 
 // ---------- THREE builder ----------
@@ -253,7 +298,7 @@ export function createSeafloor(T, { islands = [] } = {}) {
   // floor patch: rows along +z, columns along +x (PlaneGeometry rotated -90 deg about x)
   const floorGeo = new T.PlaneGeometry(PATCH, PATCH, SEGMENTS, SEGMENTS).rotateX(-Math.PI / 2);
   const baseXZ = Float32Array.from(floorGeo.attributes.position.array);
-  const heights = new Float32Array(ROW * ROW);
+  const heights = new Float32Array(ROW * ROW), ys = new Float64Array(ROW * ROW), sand = new Float64Array(ROW * ROW);
   floorGeo.setAttribute('color', new T.BufferAttribute(new Float32Array(baseXZ.length), 3));
   group.add(Object.assign(new T.Mesh(floorGeo, std({})), { name: 'SeafloorPatch' }));
 
@@ -314,18 +359,8 @@ export function createSeafloor(T, { islands = [] } = {}) {
     // floor vertices on a world-aligned STEP lattice so recentring never shifts the floor
     const ox = Math.round(cx / STEP) * STEP, oz = Math.round(cz / STEP) * STEP;
     const pos = floorGeo.attributes.position.array, col = floorGeo.attributes.color.array, nor = floorGeo.attributes.normal.array;
-    for (let i = 0; i < heights.length; i++) {
-      const x = ox + baseXZ[i * 3], z = oz + baseXZ[i * 3 + 2], y = heightAt(x, z);
-      heights[i] = y;
-      pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
-      const n = vnoise(x / 14, z / 14, 31);
-      const light = smoothstep(0.42, 0.2, n) * 0.7, dark = smoothstep(0.55, 0.78, n) * 0.85;
-      const k = 1 - hash(Math.round(x / STEP), Math.round(z / STEP), 32) * 0.06 - Math.min(1, Math.max(0, (-y - 2) / 12)) * 0.15;
-      for (let j = 0; j < 3; j++) {
-        const base = SAND[j] + (LIGHT[j] - SAND[j]) * light;
-        col[i * 3 + j] = (base + (DARK[j] - base) * dark) * k;
-      }
-    }
+    latticeHeights(ys, sand, ys.length, ox, oz, baseXZ, islands);
+    fillPatch(pos, col, heights, ys, sand, baseXZ, ox, oz, STEP, SAND, LIGHT, DARK);
     // analytic normals from central differences on the height grid (one-sided at the rim)
     for (let r = 0; r < ROW; r++) {
       const r0 = r > 0 ? r - 1 : r, r1 = r < SEGMENTS ? r + 1 : r;
@@ -349,7 +384,7 @@ export function createSeafloor(T, { islands = [] } = {}) {
         const node = nodeAt(ix, iz, islands);
         if (node) { patchNodes.push(node); continue; }
         const r = hash(ix, iz, 41);
-        const x = (ix + hash(ix, iz, 42)) * CELL, z = (iz + hash(ix, iz, 43)) * CELL, y = heightAt(x, z);
+        const x = (ix + hash(ix, iz, 42)) * CELL, z = (iz + hash(ix, iz, 43)) * CELL, y = seafloorHeight(x, z, islands);
         if (r < 0.12 && y < -1.4) {
           const sc = 0.35 + 0.9 * hash(ix, iz, 44);
           place(rocks, x, y - 0.15 * sc, z, r * 60, sc * 1.2, sc * (0.6 + 0.4 * hash(ix, iz, 45)), sc);
@@ -357,7 +392,7 @@ export function createSeafloor(T, { islands = [] } = {}) {
           const tufts = 1 + Math.floor(hash(ix, iz, 46) * 3), tint = hash(ix, iz, 47) < 0.3 ? kelpTint : white;
           for (let t = 0; t < tufts; t++) {
             const wx = x + (hash(ix, iz, 50 + t) - 0.5) * 1.6, wz = z + (hash(ix, iz, 60 + t) - 0.5) * 1.6;
-            const k = place(weed, wx, heightAt(wx, wz) - 0.05, wz, hash(ix, iz, 70 + t) * 6.283, 1, 0.75 + 0.5 * hash(ix, iz, 80 + t), 1);
+            const k = place(weed, wx, seafloorHeight(wx, wz, islands) - 0.05, wz, hash(ix, iz, 70 + t) * 6.283, 1, 0.75 + 0.5 * hash(ix, iz, 80 + t), 1);
             if (k >= 0) weed.setColorAt(k, tint);
           }
         }

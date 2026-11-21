@@ -118,7 +118,7 @@ test('items: every entry is complete and self-consistent', () => {
       assert.equal(it.durability, undefined, `${id} non-tool durability`);
     }
     if (it.placeable) assert.ok(Object.hasOwn(BLOCK_RADII, id) && BLOCK_RADII[id] >= 0, `${id} radius`);
-    if (it.actsAs !== undefined) assert.ok(['hook', 'fishingrod', 'hammer'].includes(it.actsAs) && it.tool, `${id} actsAs`);
+    if (it.actsAs !== undefined) assert.ok(['hook', 'fishingrod', 'hammer', 'spear'].includes(it.actsAs) && it.tool, `${id} actsAs`);
   }
   for (const id of Object.keys(BLOCK_RADII)) assert.ok(ITEMS[id]?.placeable, `radius for non-placeable ${id}`);
 });
@@ -171,14 +171,14 @@ test('items: legacy kinds keep their ids and Bag-compatible stack/tool shape', (
     assert.equal(INFO[k].tool, Inv.ITEM_INFO[k].tool, `${k} tool flag matches Bag`);
   }
   assert.equal(ITEMS.wood.name, 'Plank');
-  assert.deepEqual([...TOOL_IDS].sort(), ['fishingrod', 'hammer', 'hook', 'metalhook']);
+  assert.deepEqual([...TOOL_IDS].sort(), ['fishingrod', 'hammer', 'hook', 'metalhook', 'metalspear', 'spade', 'spear']);
   for (const s of ['smelter', 'researchtable', 'grill']) assert.ok(STATION_IDS.includes(s) && PLACEABLE_IDS.includes(s));
   for (const k of ['sail', 'palm', 'lantern', 'net', 'bench', 'crate']) assert.ok(PLACEABLE_IDS.includes(k));
 });
 
 test('items: no unlock/recipe cycles and every item is reachable from the start', () => {
   // Raw sources: floating debris + barrel loot. Fish comes from the fishing rod.
-  const have = new Set(['wood', 'leaf', 'plastic', 'scrap', ...BARREL_LOOT.map((e) => e.kind)]);
+  const have = new Set(['wood', 'leaf', 'plastic', 'scrap', 'sharkmeat', 'sharkhead', ...BARREL_LOOT.map((e) => e.kind)]); // shark loot comes from a dead shark (shark.js)
   const unlocked = (id) => {
     const u = ITEMS[id].unlock;
     if (u.type === 'start') return true;
@@ -188,6 +188,7 @@ test('items: no unlock/recipe cycles and every item is reachable from the start'
   for (let changed = true; changed;) {
     changed = false;
     if (have.has('fishingrod') && !have.has('fish')) { have.add('fish'); changed = true; }
+    if (have.has('beehive') && have.has('flowerbox') && !have.has('honey')) { have.add('honey'); have.add('wax'); changed = true; } // [bees] hive harvest
     for (const id of ITEM_IDS) {
       const r = ITEMS[id].recipe;
       if (have.has(id) || !r || !unlocked(id)) continue;
@@ -386,7 +387,8 @@ test('migrate: aliases, unknown kinds, durability, selected', () => {
   assert.deepEqual(m.slots[8], { kind: 'metalhook', count: 1, durability: 100 });
   for (let i = 9; i < SLOT_COUNT; i++) assert.equal(m.slots[i], null);
   assert.equal(m.selected, 6);
-  for (const sel of [8, -1, 2.5, '3', NaN, null]) assert.equal(migrateSnapshot({ slots: [], selected: sel }).selected, 0);
+  for (const sel of [10, -1, 2.5, '3', NaN, null]) assert.equal(migrateSnapshot({ slots: [], selected: sel }).selected, 0);
+  for (const sel of [8, 9]) assert.equal(migrateSnapshot({ slots: [], selected: sel }).selected, sel); // 10-slot hotbar
   for (const junk of [null, undefined, 0, 'x', [], true]) assert.equal(migrateSnapshot(junk), null);
 });
 

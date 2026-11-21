@@ -3,15 +3,15 @@
  "scenarios": {
   "stock dist": {
    "frames": 12,
-   "frameMs": 7203.65,
-   "frameP95": 10847.3,
-   "frameWorst": 10847.3,
-   "renderMs": 7202.96,
-   "submitMs": 11.5,
-   "submitMin": 5,
-   "logicMs": 0.69,
-   "logicP95": 1,
-   "rafGapMs": 7290.62,
+   "frameMs": 2204,
+   "frameP95": 2817.1,
+   "frameWorst": 2817.1,
+   "renderMs": 2202.38,
+   "submitMs": 10,
+   "submitMin": 5.5,
+   "logicMs": 1.63,
+   "logicP95": 4.9,
+   "rafGapMs": 2209.01,
    "calls": 1026,
    "triangles": 685494,
    "geometries": 711,
@@ -22,14 +22,14 @@
     1280,
     720
    ],
-   "heapDeltaKB": 478,
+   "heapDeltaKB": 519,
    "shadow": "every frame",
    "cpuMsPerFrame": {
-    "browser": 1.4,
-    "utility": 0.9,
-    "renderer": 38.2,
-    "gpu-process": 3037.7,
-    "total": 3078.2
+    "browser": 0.9,
+    "utility": 0.5,
+    "renderer": 24.1,
+    "gpu-process": 3166.8,
+    "total": 3192.3
    },
    "census": {
     "meshes": 833,
@@ -96,33 +96,33 @@
   },
   "patched dist": {
    "frames": 12,
-   "frameMs": 3479.35,
-   "frameP95": 4713.8,
-   "frameWorst": 4713.8,
-   "renderMs": 3477.82,
-   "submitMs": 7.2,
-   "submitMin": 4.6,
-   "logicMs": 1.53,
-   "logicP95": 5,
-   "rafGapMs": 3593.8,
+   "frameMs": 2108.51,
+   "frameP95": 2788.8,
+   "frameWorst": 2788.8,
+   "renderMs": 2107.33,
+   "submitMs": 6,
+   "submitMin": 3.5,
+   "logicMs": 1.18,
+   "logicP95": 4.4,
+   "rafGapMs": 2089.31,
    "calls": 362,
    "triangles": 721006,
    "geometries": 333,
-   "textures": 15,
+   "textures": 8,
    "programs": 12,
    "pixelRatio": 1,
    "drawingBuffer": [
     1280,
     720
    ],
-   "heapDeltaKB": -85,
+   "heapDeltaKB": -106,
    "shadow": "every frame",
    "cpuMsPerFrame": {
     "browser": 0.9,
-    "utility": 0.9,
-    "renderer": 24.1,
-    "gpu-process": 2328.2,
-    "total": 2354.1
+    "utility": 0.5,
+    "renderer": 19.1,
+    "gpu-process": 1891.8,
+    "total": 1912.3
    },
    "census": {
     "meshes": 315,
@@ -130,7 +130,7 @@
     "verts": 1475502,
     "materials": 189,
     "geometries": 308,
-    "textures": 14,
+    "textures": 7,
     "byOwner": {
      "camera(viewmodels)": {
       "objects": 1,

@@ -133,3 +133,16 @@ sequence + lying + opacity). Steps, each a screenshot:
 6. `?daynight=off` load: aim bed -> "Too bright to sleep".
 7. Co-op (tests/coop-e2e.mjs harness or two pages): host lies -> host "1/2", guest notice; guest lies
    -> both fade, both wake at .10. Record `daynight.renderInfo().calls` with 0 vs 3 beds (+1 each).
+
+## Builder deviations (v1 build)
+- `bedPose` eye height is `deckY()+.8`, not `+.55`: at `.55` the eye sat inside the blanket's folded lip
+  (blanket top is ~.48 above deck), so the view was a wall of cloth. Screenshot-checked.
+- `DAYNIGHT_LIVE.phase` also honours a debug `pinPhase` (same expression as `daynight.debug.state()`), so a
+  guest's QA pin and the sleep prompt agree. Hosts never pin, so the host gate is unchanged.
+- `#contextPrompt` is hidden by prompts.css, so the module also registers a `raftPrompts.provide({id:'sleep',
+  priority:1})` provider with plain labels (`E Sleep`, `Sleeping… · E Get up`, muted refusals). It reuses the
+  last aim game.js passed to `prompt()`. Notices (`Good morning!`, brother asleep) go through `ctx.notice` and
+  show in the prompts.js feed.
+- `getUpSpot` treats any decor except `net` as blocking (game.js `BLOCK_RADIUS` is not importable).
+- Extra QA helper `raftDebug.content.sleep.stand(x,z)` moves the local player (metres, raft frame).
+- Lie refusal for a tile without a bed: "Find a bed to lie down"; out of reach: "Step a little closer".

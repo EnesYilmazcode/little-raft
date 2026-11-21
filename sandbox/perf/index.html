@@ -42,7 +42,7 @@
   <nav><a href="synthetic.html">synthetic lab (instancing / batching / adaptive DPR + overlay)</a><a href="../../docs/tech/perf.md">perf.md</a><a href="../../docs/tech/perf-ADOPT.md">perf-ADOPT.md</a></nav>
 
   <h2>Fixes, one at a time <span class="m" id="runinfo"></span></h2>
-  <div class="wrap"><table id="t"><thead><tr><th>scenario</th><th>draw calls<br>(incl. shadow)</th><th>triangles</th><th>submit ms<br>(median)</th><th>renderer CPU<br>ms/frame</th><th>GPU-process CPU<br>ms/frame</th><th>Δ GPU</th><th>looks</th><th>what it does</th></tr></thead><tbody></tbody></table></div>
+  <div class="wrap"><table id="t"><thead><tr><th>scenario</th><th>draw calls<br>(incl. shadow)</th><th>triangles</th><th>submit ms<br>(median)</th><th>renderer CPU<br>ms/frame</th><th>GPU-process CPU<br>ms/frame</th><th>Δ GPU</th><th>pixel diff<br>deck / changed px</th><th>looks</th><th>what it does</th></tr></thead><tbody></tbody></table></div>
   <p class="m">Click a row to compare its screenshot with the baseline. Drag the slider to wipe between them.</p>
   <div class="diffbox" id="wipe"><img id="wa" alt="baseline"><img id="wb" class="top" alt="fix"></div>
   <input type="range" id="cut" min="0" max="100" value="50" aria-label="wipe position">
@@ -69,7 +69,7 @@ const WHAT = {
   'merge-raft': ['9 deck tiles (63 meshes) baked into one mesh per material', 'same'],
   'wood-bump-aniso1': ['wood bump map gets its own sampler without anisotropic filtering (colour map keeps 4x)', 'same'],
   'wood-aniso-1': ['wood colour + bump without anisotropic filtering', 'planks blur at grazing angles'],
-  'wood-no-bump': ['wood without bump map', 'grain relief lost'],
+  'wood-no-bump': ['wood without bump map (ADOPTED: at bumpScale .018 it changes no pixel, even looking straight down)', 'same'],
   'dpr-0.75': ['render at 0.75 pixel ratio (what dynamic resolution does under load)', 'softer image'],
   'shadows-off': ['no shadow map at all (upper bound)', 'no shadows'],
   'hide-raft': ['diagnostic: raft hidden', 'diagnostic'],
@@ -80,6 +80,19 @@ const cpu = (r, k) => r.cpuMsPerFrame?.[k];
 const fmt = (v, d = 1) => v == null ? '–' : (+v).toFixed(d);
 const delta = (v, b) => { if (v == null || !b) return '<span class=m>–</span>'; const p = 100 * (v - b) / b; return `<span class="${p < -3 ? 'g' : p > 3 ? 'b' : 'm'}">${p > 0 ? '+' : ''}${p.toFixed(0)}%</span>`; };
 const shot = r => '../../' + r.shot;
+// Same metric as imgdiff.py: mean |a-b| over the deck strip (0-255) and % of pixels off by more than 8/255.
+const img = src => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+const pixels = async src => { const i = await img(src); if (!i) return null; const c = document.createElement('canvas'); c.width = i.naturalWidth; c.height = i.naturalHeight; const x = c.getContext('2d'); x.drawImage(i, 0, 0); return x.getImageData(0, 0, c.width, c.height); };
+async function pxdiff(a, b) {
+  const [A, B] = await Promise.all([pixels(a), pixels(b)]); if (!A || !B || A.width !== B.width) return '–';
+  let sum = 0, n = 0, changed = 0; const w = A.width;
+  for (let y = 0; y < A.height; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4, d = Math.max(Math.abs(A.data[i] - B.data[i]), Math.abs(A.data[i + 1] - B.data[i + 1]), Math.abs(A.data[i + 2] - B.data[i + 2]));
+    if (d > 8) changed++;
+    if (y >= 420 && y < 620 && x >= 100 && x < 1180) { sum += Math.abs(A.data[i] - B.data[i]) + Math.abs(A.data[i + 1] - B.data[i + 1]) + Math.abs(A.data[i + 2] - B.data[i + 2]); n += 3; }
+  }
+  return `${(sum / n).toFixed(2)} / ${(100 * changed / (w * A.height)).toFixed(2)}%`;
+}
 function show(name, s, base) {
   document.querySelectorAll('#t tbody tr').forEach(tr => tr.classList.toggle('sel', tr.dataset.n === name));
   $('#ia').src = $('#wa').src = shot(base); $('#ib').src = $('#wb').src = shot(s[name]);
@@ -92,20 +105,21 @@ fetch('results.json').then(r => r.json()).then(R => {
   for (const [name, r] of Object.entries(s)) {
     const tr = document.createElement('tr'); tr.dataset.n = name;
     const [what, looks] = WHAT[name] ?? ['', ''];
-    tr.innerHTML = `<td>${name}</td><td>${r.calls}</td><td>${(r.triangles / 1000).toFixed(0)}k</td><td>${fmt(r.submitMs, 2)}</td><td>${fmt(cpu(r, 'renderer'))}</td><td>${fmt(cpu(r, 'gpu-process'), 0)}</td><td>${name === 'baseline' ? '' : delta(cpu(r, 'gpu-process'), bg)}</td><td>${looks}</td><td class=what>${what}</td>`;
+    tr.innerHTML = `<td>${name}</td><td>${r.calls}</td><td>${(r.triangles / 1000).toFixed(0)}k</td><td>${fmt(r.submitMs, 2)}</td><td>${fmt(cpu(r, 'renderer'))}</td><td>${fmt(cpu(r, 'gpu-process'), 0)}</td><td>${name === 'baseline' ? '' : delta(cpu(r, 'gpu-process'), bg)}</td><td class=px>…</td><td>${looks}</td><td class=what>${what}</td>`;
     tr.onclick = () => show(name, s, base);
+    pxdiff(shot(base), shot(r)).then(v => { tr.querySelector('.px').textContent = v; });
     $('#t tbody').append(tr);
   }
   show(s['all-safe'] ? 'all-safe' : 'baseline', s, base);
   for (const [k, e] of Object.entries(base.census?.byOwner ?? {})) $('#tc tbody').insertAdjacentHTML('beforeend', `<tr><td>${k}</td><td>${e.objects}</td><td>${e.meshes}</td><td>${e.casters}</td><td>${e.verts.toLocaleString()}</td><td>${e.materials}</td></tr>`);
   for (const f of base.cdp?.selfTop ?? []) $('#tj tbody').insertAdjacentHTML('beforeend', `<tr><td>${f.fn}</td><td>${f.ms}</td><td>${f.pct}</td></tr>`);
 });
-fetch('results-patched.json').then(r => r.ok ? r.json() : null).then(R => {
-  if (!R) { $('#tp tbody').innerHTML = '<tr><td colspan=7 class=m>run sandbox/perf/verify_adopt.sh to fill this in</td></tr>'; return; }
+for (const [file, label] of [['results-patched.json', 'fresh 9-tile raft'], ['results-patched-big.json', '49-tile raft, 12 decorations']]) fetch(file).then(r => r.ok ? r.json() : null).then(R => {
+  if (!R) { $('#tp tbody').insertAdjacentHTML('beforeend', `<tr><td colspan=7 class=m>${label}: run sandbox/perf/verify_adopt.py${file.includes('big') ? ' --big' : ''}</td></tr>`); return; }
   const rows = Object.entries(R.scenarios), b = rows[0][1];
   for (const [name, r] of rows) {
-    $('#tp tbody').insertAdjacentHTML('beforeend', `<tr><td>${name}</td><td>${r.calls}</td><td>${(r.triangles / 1000).toFixed(0)}k</td><td>${fmt(r.submitMs, 2)}</td><td>${fmt(cpu(r, 'renderer'))}</td><td>${fmt(cpu(r, 'gpu-process'), 0)}</td><td>${r === b ? '' : delta(cpu(r, 'gpu-process'), cpu(b, 'gpu-process'))}</td></tr>`);
-    $('#pshots').insertAdjacentHTML('beforeend', `<figure><img src="${shot(r)}" alt="${name}"><figcaption>${name}</figcaption></figure>`);
+    $('#tp tbody').insertAdjacentHTML('beforeend', `<tr><td>${name} · ${label}</td><td>${r.calls}</td><td>${(r.triangles / 1000).toFixed(0)}k</td><td>${fmt(r.submitMs, 2)}</td><td>${fmt(cpu(r, 'renderer'))}</td><td>${fmt(cpu(r, 'gpu-process'), 0)}</td><td>${r === b ? '' : delta(cpu(r, 'gpu-process'), cpu(b, 'gpu-process'))}</td></tr>`);
+    $('#pshots').insertAdjacentHTML('beforeend', `<figure><img src="${shot(r)}" alt="${name}"><figcaption>${name} · ${label}</figcaption></figure>`);
   }
 });
 </script>

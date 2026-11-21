@@ -3,7 +3,7 @@
 // API (window.raftPrompts): register({id, object?, test?, range, priority, prompt}) -> unregister,
 //   provide({id, priority, prompt}) -> unregister, current(), refresh(), feed(text).
 // prompt(ctx, hit) returns {key:'E', label:'Pick up', hold?, muted?} | up to 2 of them | null.
-// ctx = {state, camera, T, scene}. Highest priority wins; raycast beats provider at equal priority; nearest hit next.
+// ctx = {state (full raftDebug.state, built lazily on first read), camera, T, scene}. Highest priority wins; raycast beats provider at equal priority; nearest hit next.
 
 const SAMPLE_MS = 100, FEED_MAX = 4, FEED_MS = 4000, DUP_MS = 600;
 const PICK_NAMES = {wood:'plank', leaf:'leaves', plastic:'plastic jug', scrap:'scrap', barrel:'barrel'};
@@ -85,7 +85,7 @@ export function statePrompt(s, opt = {}) {
     if (stage === 'fishing' || s.fishWait) return {label:'Waiting for a bite…', muted:true}; // bites land automatically (game.js fishWait)
     return stage === 'idle' ? {key:'LMB', label:'Cast line'} : null;
   }
-  if (DECOR_NAMES[held] && s.tool === 'place') return s.build?.hover ? {key:'LMB', label:'Place ' + DECOR_NAMES[held]} : {label:'Aim at the raft floor', muted:true};
+  if (DECOR_NAMES[held] && s.tool === 'place') return s.build?.hover && s.build.hover.blocked !== 'nofloor' ? {key:'LMB', label:'Place ' + DECOR_NAMES[held]} : {label:'Aim at the raft floor', muted:true}; // nofloor: red ghost just off the deck
   return null;
 }
 
@@ -159,8 +159,13 @@ function createPrompts(win, doc) {
   function tick() {
     safe(() => {
       if (!doc.body) return; ensureEls();
-      const m = mount(), debug = safe(() => win.raftDebug) || m?.debug, state = safe(() => debug?.state);
-      const ctx = {state, camera:m?.camera ?? null, T:m?.T ?? null, scene:m?.scene ?? null};
+      const m = mount(), debug = safe(() => win.raftDebug) || m?.debug;
+      // debug.hud is a cheap live view with the keys statePrompt reads; the full .state snapshot (deep copies, grows
+      // with the raft) is built only if a registered prompt reads ctx.state, or when an older game.js has no .hud.
+      const hud = safe(() => debug?.hud) || null;
+      let full = hud ? undefined : safe(() => debug?.state);
+      const state = hud || full;
+      const ctx = {get state() { if (full === undefined) full = safe(() => debug?.state); return full; }, camera:m?.camera ?? null, T:m?.T ?? null, scene:m?.scene ?? null};
       const stage = state?.hookStage ?? null;
       if (state?.running && lastStage !== undefined && isThrow(lastStage, stage) && throws < 1e6) { throws++; safe(() => win.localStorage.setItem(STORE_KEY, JSON.stringify({throws}))); }
       lastStage = stage;

@@ -8,11 +8,11 @@
 // Save: localStorage 'little-raft-fc-v1' {v:1, journal, grills}. Grills are the player's own (host world); while a
 // guest, own grills are stashed and the host's broadcast grills are shown instead.
 // Debug: window.raftFC = { state, session, journal, grills, forceBite(id), forceCatch(id) }.
-import { FishingSession, createFishingV2 } from './fishing-v2.js';
-import { Journal, createJournalPanel, BASKET_MAX } from './fish-journal.js';
-import { SPECIES, speciesById, dishName } from './fish-species.js';
-import { GrillState, COOK_TUNING, cookTime, createGrillModel, createSmoke } from './cooking.js';
-import { createFishModel, setFishState, wiggle } from './fish-models.js';
+import { FishingSession, createFishingV2 } from './fishing-v2.js?build=v3-survival-ae77fa84ac2b';
+import { Journal, createJournalPanel, BASKET_MAX } from './fish-journal.js?build=v3-survival-ae77fa84ac2b';
+import { SPECIES, speciesById, dishName } from './fish-species.js?build=v3-survival-ae77fa84ac2b';
+import { GrillState, COOK_TUNING, cookTime, createGrillModel, createSmoke } from './cooking.js?build=v3-survival-ae77fa84ac2b';
+import { createFishModel, setFishState, wiggle } from './fish-models.js?build=v3-survival-ae77fa84ac2b';
 
 export const FC_SAVE_KEY = 'little-raft-fc-v1';
 export const MAX_GRILLS = 6, GRILL_REACH = 2.2, GRILL_COST = Object.freeze({ wood: 4, scrap: 2 });
@@ -24,6 +24,7 @@ const isGuest = (r) => r === 'guest';
 const ESCAPE_TEXT = { early: 'Too early — wait for the dunk', missed: 'It got away…', snapped: 'The line slipped — ease off when it goes red' };
 const CSS = `#fcChip{position:fixed;left:12px;bottom:12px;z-index:3;pointer-events:none;font:600 12px/1 system-ui,sans-serif;
 color:#fffdf4;background:#0d2a3a99;padding:5px 9px;border-radius:10px;text-shadow:0 1px 1px #0008}
+@media(max-width:760px){#fcChip{bottom:80px}} /* narrow: the centred hotbar reaches the left edge, so sit above it */
 #fcToast{position:fixed;left:28px;top:20px;z-index:5;pointer-events:none;display:grid;gap:6px;justify-items:start;text-align:left}
 #fcToast div{font:600 14px/1.3 system-ui,sans-serif;color:#1a3245;background:#f1e7d0f0;border:1px solid #c9a46b;border-radius:10px;
 padding:7px 14px;box-shadow:0 4px 14px #0005;animation:fcIn .25s ease-out;transition:opacity .4s}
@@ -456,6 +457,7 @@ export function createFishingCooking(T, host) {
     pointerDown, pointerUp, interact, update, applyAction, onNet, dispose,
     get prompt() { return prompt; },
     hasGrill: (x, z) => !!grillAt(x, z), // game.js keeps decor off grill tiles
+    dropTile(x, z) { const g = grillAt(x, z); if (!g || isGuest(host.role())) return false; removeGrill(g); markChanged(); return true; }, // shark lane: a destroyed foundation takes its grill with it
     get rodReeling() { return !!session && session.stage === 'reeling' && session.holding; },
     capture() { save(); return { v: 1, journal: journal.snapshot(), grills: isGuest(lastRole) ? (stash || []) : snapshots() }; },
     // test/QA helpers

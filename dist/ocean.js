@@ -57,6 +57,12 @@ void main() {
 }
 `;
 
+const MAX_FOAM = 8;      // nearest floating items that leave a foam collar
+const FOAM_NEAR = 12, FOAM_FAR = 15; // collars fade out over this camera distance (only readable up close)
+const GRID = 128;        // raft foam field: 0.5 m texels covering 64 m, centred on the origin
+const TEXEL = 0.5;
+const COLLAR = 1.4;      // metres of foam beyond the deck edge
+
 const fragmentShader = /* glsl */`
 uniform float uTime;
 uniform vec2 uFlow; // [sailing] raft travel relative to the water (sailing-world.js)
@@ -69,6 +75,8 @@ uniform vec3 uShallow;
 uniform vec3 uFoam;
 uniform float uFadeNear;
 uniform float uFadeFar;
+uniform sampler2D uRaftMask;
+uniform vec4 uFoamPts[${MAX_FOAM}];
 varying vec3 vWorld;
 varying vec3 vNormalW;
 varying float vHeight;
@@ -117,48 +125,64 @@ void main() {
   vec3 n = normalize(vec3(vNormalW.x - g.x, vNormalW.y, vNormalW.z - g.y));
 
   float ndv = max(dot(n, V), 0.0);
-  float fresnel = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
-  fresnel = min(fresnel, 0.72);
-
+  float fresnel = min(0.02 + 0.98 * pow(1.0 - ndv, 5.0), 0.5);
   vec3 R = reflect(-V, n);
-  vec3 skyRefl = mix(uSky, uZenith, smoothstep(0.0, 0.6, R.y));
+  vec3 skyRefl = mix(uSky, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.25));
 
-  // Body colour: deep teal in troughs, turquoise on crests and in slow patches.
-  float patches = vnoise(p * 0.045 + uTime * 0.01) * 0.6 + vnoise(p * 0.13 - uTime * 0.02) * 0.4;
+  // Water body: looking steeply down near the raft you see clear turquoise; grazing and far
+  // away the light path is long, so it sinks to deep blue. Crests glow where sun passes through.
   float h = clamp(vHeight / 0.2 * 0.5 + 0.5, 0.0, 1.0);
-  float shallowMix = clamp(h * 0.55 + patches * 0.35 + (1.0 - ndv) * 0.15, 0.0, 1.0);
-  vec3 body = mix(uDeep, uShallow, shallowMix);
-  // Soft subsurface glow where sunlight passes through crests.
-  float sss = smoothstep(0.45, 1.0, h) * (0.5 + 0.5 * max(dot(n, L), 0.0)) * 0.35;
+  float clear = pow(ndv, 1.4) * (1.0 - smoothstep(4.0, 45.0, dist));
+  float patches = vnoise(p * 0.05 + uTime * 0.01);
+  vec3 body = mix(uDeep, uShallow, clamp(clear * 0.85 + h * 0.25 + patches * 0.12, 0.0, 1.0));
+  float sss = smoothstep(0.5, 1.0, h) * pow(max(dot(-V, L) * 0.5 + 0.5, 0.0), 2.0) * 0.45;
   body += uShallow * sss;
-  float diff = 0.7 + 0.3 * max(dot(n, L), 0.0);
-  vec3 col = mix(body * diff, skyRefl, fresnel);
+  body *= mix(0.75, 1.0, ndv); // grazing water darkens toward deep blue
+  vec3 col = mix(body * (0.78 + 0.22 * max(dot(n, L), 0.0)), skyRefl, fresnel);
 
-  // Sun highlights: sharp glint + broad sheen, clamped and faded to avoid flashing.
+  // Sun: sharp glint + broad sheen.
   vec3 H = normalize(L + V);
   float ndh = max(dot(n, H), 0.0);
-  float spec = pow(ndh, 260.0) * 1.6 + pow(ndh, 36.0) * 0.12;
-  spec = min(spec, 1.4) * (1.0 - smoothstep(40.0, 120.0, dist) * 0.7);
+  float spec = pow(ndh, 420.0) * 2.6 + pow(ndh, 60.0) * 0.28;
+  spec = min(spec, 2.2) * (1.0 - smoothstep(60.0, 130.0, dist) * 0.6);
   col += uSunColor * spec;
 
-  // Thin, sparse lacy foam riding the crests (fully faded out from 90 on, so skipped there).
-  if (dist < 90.0) {
+  // Foam, near only (nothing from 45 on, so skipped there): faint soft foam on the nearest crests,
+  // plus contact collars around the raft edge and floating items.
+  if (dist < 45.0) {
     vec2 fp = p + vec2(uTime * 0.35, uTime * 0.12);
     float n1 = vnoise(fp * 0.9);
     float n2 = vnoise(fp * 2.6 + vec2(uTime * -0.2, uTime * 0.15));
-    float lace = 1.0 - smoothstep(0.0, 0.035, abs(n1 * 0.7 + n2 * 0.3 - 0.5));
+    float lace = 1.0 - smoothstep(0.0, 0.06, abs(n1 * 0.7 + n2 * 0.3 - 0.5));
     float crest = smoothstep(0.06, 0.17, vHeight);
     float speck = smoothstep(0.86, 0.93, vnoise(fp * 3.7)) * smoothstep(0.0, 0.12, vHeight);
-    float foam = clamp(lace * crest * 0.55 + speck * 0.35, 0.0, 0.6);
-    foam *= 1.0 - smoothstep(30.0, 90.0, dist);
-    col = mix(col, uFoam, foam);
+    float foam = clamp(lace * crest * 0.2 + speck * 0.12, 0.0, 0.3) * (1.0 - smoothstep(12.0, 40.0, dist));
+    vec2 wp = vWorld.xz; // raft mask and item collars live in world space (no sailing flow)
+    // Raft collar: CPU-built falloff field, filtered by hand so it is smooth on every GPU.
+    vec2 t = wp / ${TEXEL.toFixed(2)} + ${(GRID / 2 - 0.5).toFixed(1)};
+    vec2 i0 = floor(t), fr = t - i0;
+    i0 = (i0 + 0.5) / ${GRID.toFixed(1)};
+    float k = 1.0 / ${GRID.toFixed(1)};
+    float m = mix(mix(texture2D(uRaftMask, i0).r, texture2D(uRaftMask, i0 + vec2(k, 0.0)).r, fr.x),
+                  mix(texture2D(uRaftMask, i0 + vec2(0.0, k)).r, texture2D(uRaftMask, i0 + vec2(k)).r, fr.x), fr.y);
+    float edge = m * (0.85 + 0.15 * sin(uTime * 1.7 + wp.x * 2.0 + wp.y * 1.3));
+    for (int i = 0; i < ${MAX_FOAM}; i++) {
+      vec4 f = uFoamPts[i];
+      if (f.z <= 0.0) break;  // live points are packed first
+      vec2 dv = wp - f.xy;
+      if (dot(dv, dv) >= f.z * f.z) continue;  // outside this ring: skip the sqrt and smoothsteps
+      float d = length(dv) / f.z;  // thin broken ring hugging the item's waterline
+      edge = max(edge, smoothstep(0.35, 0.7, d) * (1.0 - smoothstep(0.7, 1.0, d)) * 0.35 * f.w);
+    }
+    float cl = vnoise(fp * 1.7) * 0.6 + vnoise(fp * 4.3 - uTime * 0.25) * 0.4;
+    float collar = smoothstep(1.0 - edge, 1.0 - edge * 0.55, cl) * min(1.0, edge * 1.4) * 0.85;
+    col = mix(col, uFoam, max(foam, collar));
   }
 
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   // Fade toward the (untonemapped) sky colour after tone mapping so the horizon matches the background.
-  float fade = smoothstep(uFadeNear, uFadeFar, dist);
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, uSky, fade);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, uSky, smoothstep(uFadeNear, uFadeFar, dist));
   #include <colorspace_fragment>
 }
 `;
@@ -170,18 +194,24 @@ export function createOcean(T, options = {}) {
   geometry.rotateX(-Math.PI / 2);
 
   const sun = options.sunDirection ?? new T.Vector3(-15, 28, 12);
+  const maskData = new Uint8Array(GRID * GRID);
+  const mask = new T.DataTexture(maskData, GRID, GRID, T.RedFormat, T.UnsignedByteType);
+  const foamPts = Array.from({ length: MAX_FOAM }, () => new T.Vector4());
+  const foamD2 = new Float64Array(MAX_FOAM); // squared camera distance per packed point, kept sorted
   const uniforms = {
     uTime: { value: 0 },
     uFlow: { value: new T.Vector2() }, // [sailing] wave-field offset written by sailing-world.js
     uSunDir: { value: sun.clone().normalize() },
     uSunColor: { value: new T.Color('#fff3d6') },
-    uSky: { value: new T.Color(options.skyColor ?? '#99dfe1') },
-    uZenith: { value: new T.Color('#5fb6dc') },
-    uDeep: { value: new T.Color('#0a4a5a') },
-    uShallow: { value: new T.Color('#1fa9a8') },
-    uFoam: { value: new T.Color('#eefbf8') },
+    uSky: { value: new T.Color(options.skyColor ?? '#a6e9f2') },
+    uZenith: { value: new T.Color(options.zenith ?? '#2a8fd6') },
+    uDeep: { value: new T.Color('#08355f') },
+    uShallow: { value: new T.Color('#1a78b0') },
+    uFoam: { value: new T.Color('#f4fbfc') },
     uFadeNear: { value: options.fadeNear ?? 52 },
     uFadeFar: { value: options.fadeFar ?? 135 },
+    uRaftMask: { value: mask },
+    uFoamPts: { value: foamPts },
   };
 
   const material = new T.ShaderMaterial({
@@ -200,15 +230,64 @@ export function createOcean(T, options = {}) {
 
   const step = size / segments;
   let time = 0;
+  let foamGroup = null;
+  const camPos = new T.Vector3(); // last camera passed to update(); collars beyond 48 m are skipped
+
+  // Raft tiles ([x, z], 2 m squares centred on x*2, z*2) -> foam falloff around the deck edge.
+  // Runs only when the raft changes; only texels near the raft are visited.
+  function setRaftTiles(tiles) {
+    maskData.fill(0);
+    if (tiles.length) {
+      let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+      for (const [x, z] of tiles) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+      const pad = 1 + COLLAR, half = GRID / 2;
+      const toI = (w) => Math.max(0, Math.min(GRID - 1, Math.floor(w / TEXEL + half)));
+      for (let j = toI(z0 * 2 - pad); j <= toI(z1 * 2 + pad); j++) {
+        const wz = (j + 0.5 - half) * TEXEL;
+        for (let i = toI(x0 * 2 - pad); i <= toI(x1 * 2 + pad); i++) {
+          const wx = (i + 0.5 - half) * TEXEL;
+          let d = Infinity;
+          for (const [x, z] of tiles) {
+            const dx = Math.max(Math.abs(wx - x * 2) - 1, 0), dz = Math.max(Math.abs(wz - z * 2) - 1, 0);
+            d = Math.min(d, Math.hypot(dx, dz));
+          }
+          const f = 1 - d / COLLAR;
+          if (f > 0) maskData[j * GRID + i] = Math.round(255 * f * f);
+        }
+      }
+    }
+    mask.needsUpdate = true;
+  }
+  // Children of this group (floating items) each get a foam collar, read every update.
+  function trackFoam(group) { foamGroup = group; }
+  function syncFoam() {
+    const kids = foamGroup ? foamGroup.children : null, cam = camPos;
+    let n = 0;
+    // Keep the MAX_FOAM nearest within FOAM_FAR by insertion (no allocation): the shader loops only over these.
+    if (kids) for (let i = 0; i < kids.length; i++) {
+      const c = kids[i];
+      if (!c.visible) continue;
+      const cx = c.position.x - cam.x, cz = c.position.z - cam.z, d2 = cx * cx + cz * cz;
+      if (d2 >= FOAM_FAR * FOAM_FAR || (n === MAX_FOAM && d2 >= foamD2[n - 1])) continue;
+      let j = n < MAX_FOAM ? n++ : n - 1;
+      const spare = foamPts[j]; // the slot that falls off (or the next free one) is reused
+      for (; j > 0 && foamD2[j - 1] > d2; j--) { foamD2[j] = foamD2[j - 1]; foamPts[j] = foamPts[j - 1]; }
+      const r = c.userData.foamRadius ?? 0.7, fade = 1 - Math.max(0, Math.min(1, (Math.sqrt(d2) - FOAM_NEAR) / (FOAM_FAR - FOAM_NEAR)));
+      foamD2[j] = d2; foamPts[j] = spare.set(c.position.x, c.position.z, r * c.scale.x, fade);
+    }
+    for (let k = n; k < MAX_FOAM; k++) foamPts[k].z = 0;
+  }
 
   function update(t, camera) {
     time = t;
     uniforms.uTime.value = t;
+    if (camera) camPos.copy(camera.position);
     if (camera && options.followCamera) {
       // Snap to grid spacing so vertices never swim (waves use world coords).
       mesh.position.x = Math.round(camera.position.x / step) * step;
       mesh.position.z = Math.round(camera.position.z / step) * step;
     }
+    syncFoam();
   }
 
   // CPU mirror of the vertex shader (inverts horizontal Gerstner shift with 2 iterations).
@@ -269,7 +348,8 @@ export function createOcean(T, options = {}) {
   function dispose() {
     geometry.dispose();
     material.dispose();
+    mask.dispose();
   }
 
-  return { mesh, update, getHeight, getSlope, sample, uniforms, material, dispose };
+  return { mesh, update, getHeight, getSlope, sample, setRaftTiles, trackFoam, uniforms, material, dispose };
 }

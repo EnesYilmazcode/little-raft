@@ -2,7 +2,7 @@
 
 All four content features (islands, wildlife, storage/research, day/night) plug into the engine
 through one registry, `dist/content.js`. The engine creates it once in `init()` and calls it from
-lines in `dist/game.js` marked `// content hook`. There are 24 of these lines, and `grep -n "content hook" dist/game.js` lists them.
+lines in `dist/game.js` marked `// content hook`. There are 31 of these lines, and `grep -n "content hook" dist/game.js` lists them.
 
 | Hook in game.js | Calls | Purpose |
 |---|---|---|
@@ -23,6 +23,10 @@ lines in `dist/game.js` marked `// content hook`. There are 24 of these lines, a
 | guest `state` handler, `restoreOwnRaft()` | `content.load(ext, 'net' / 'restore')` | apply host state, or the guest's own raft after a visit |
 | `disposeScene()` | `content.dispose()` | cleanup |
 | `raftDebug.content` | each module's `debug` object | QA helpers for tests and screenshots |
+| `useSelected()` | `content.use(aim, kind)` | left click with an item no engine tool handles (paint brush) |
+| canvas `pointerdown` | `content.alt(aim, heldKind())` | right click while holding an item (brush colour) |
+| `rebuildRaft()` | `content.afterRebuild()` | after deck/decor meshes are recreated (re-tint painted planks) |
+| `contentCtx` | `building`, `brush`, `woodMat(hex)`, `aim()` | piece grid + tint hooks, held brush model, cached tinted wood, this frame's aim |
 
 Item kinds `sand`, `stone`, `seed`, `research` and the `research` recipe live in
 `dist/content-items.js`. `inventory-state.js` spreads them into `ITEM_INFO` and `RECIPES` in two
@@ -33,3 +37,15 @@ uses its defaults. Older builds drop `ext`, because their `cleanWorld` ignores u
 
 **Co-op.** The host sends `ext` in every state message, about 8 per second, so `serialize()` must be cheap
 and `load(data, 'net')` must not rebuild meshes unless the data changed.
+
+**Prompts on screen.** Main hides `#contextPrompt` (prompts.css) and draws `#lrPrompt` from
+`window.raftPrompts` providers. `updateContext()` clears `contextHtml` each frame and registers one
+provider (`id:'content'`, priority 1) that converts the module HTML with `promptParts()` from
+`content.js`: `<kbd>E</kbd>Open crate` becomes `{key:'E', label:'Open crate'}`; text without a
+`<kbd>` shows as a muted hint. Modules keep returning HTML from `prompt(aim)`.
+
+**Stations and E.** `progression-hooks.js` gets `ctx.aim` (game.js `frameAim`). Its E check
+(`stationNear(aim, true)`) now also needs the aim ray within 0.8 m of the station centre
+(`aimMiss()`), so E at the sky or at an out-of-reach crate opens the inventory instead of the
+Research Table. The same check drives a `station` provider ("E Use the Research Table").
+Screenshots: `docs/cloud/shots/content/merged-prompt-island.png`, `merged-prompt-crate.png`.
