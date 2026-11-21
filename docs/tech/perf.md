@@ -1,0 +1,166 @@
+# Performance: measurements and ranked findings
+
+Topic owner: perf prototyper (engine-tech fleet). Prototype and tools: `sandbox/perf/`. Drop-in steps:
+`docs/tech/perf-ADOPT.md` (patch: `sandbox/perf/adopt.patch`).
+
+**Summary.** The game spends its frame in two places: draw-call submission on the main thread, and the
+pixel shading of the textured, bump-mapped deck. About half of the draw calls do nothing visible. Floating items cast
+shadows onto an ocean that cannot receive them. Static islands, clouds and deck tiles are drawn piece by piece.
+The shadow camera covers 50 x 50 m of mostly open sea. Fixing those, plus giving the wood bump map a cheaper sampler,
+cuts draw calls by 53% on a fresh raft (65% on a 49-tile raft), main-thread `renderer.render` time by about 40% and
+SwiftShader raster CPU by about 20%. In frozen-scene screenshots the result is pixel-identical on the fresh raft
+and 0.36% of pixels differ on the big raft, all at deck shadow edges. A second, hidden cost
+is a hitch: `rebuildRaft()` regenerates every tile's procedural geometry whenever anything is built, about 300 ms
+of CPU on a 49-tile raft. The adopt patch makes rebuilds incremental.
+
+## How it was measured
+
+`python sandbox/perf/shoot.py` runs the REAL `dist/` game in headless Chromium (SwiftShader, 1280x720, pixel ratio 1)
+and injects `sandbox/perf/probe.js` before the game loads. No dist file is modified. The probe does the following:
+
+- **Captures the game's renderer** through `Scene.prototype.onBeforeRender` (three's `render` is an instance
+  property, so it cannot be patched on the prototype), then wraps `renderer.render`.
+- **Counts the shadow pass.** three r170 calls `shadowMap.render()` *before* `info.reset()`, so the stock
+  `renderer.info.render.calls` hides every shadow draw. The probe sets `info.autoReset = false` and resets before
+  each frame. All draw-call numbers below include the shadow pass. The stock counter would show 326 instead of 542 at spawn.
+- **Makes the scene deterministic.** `Math.random` is seeded (three's uuid generation gets its own stream, so builds
+  that create a different number of objects still spawn the same sea). `performance.now()` is replaced by a frame clock
+  that stops 40 frames after Play. Every scenario therefore renders the same frozen scene, and the same build
+  screenshots pixel-identically run to run (checked: baseline vs baseline-2 is 0.00 mean diff).
+- **Measures with CPU time, not wall time.** The machine was shared with other agents at load average 30 to 45 on
+  4 cores, so wall-clock frame times swung by 2-3x and are not reported. `shoot.py` reads `/proc/<pid>/stat` for every
+  Chromium process it started and reports CPU ms per frame for the **renderer** process (JS, three.js and WebGL
+  command encoding) and the **GPU process**, where SwiftShader rasterises on the CPU, so it stands in for GPU cost.
+  Each frame ends with `gl.finish()` and a 1-pixel `readPixels`, so frames do not pipeline.
+- **submit ms** is the median main-thread time inside `renderer.render` without the GPU sync. It is still a wall-clock
+  number, so it is noisy under load, but it is the closest proxy for what a real GPU machine spends on the CPU side.
+- **Profiles JS with CDP.** `Profiler` sampling at 200 us and `HeapProfiler` sampling during 4 s of play.
+
+Run-to-run noise of the CPU-time numbers on this machine is about ±5% (baseline 1366 to 1414 GPU ms/frame, renderer
+22 to 24 ms). Treat differences under 5% as noise. SwiftShader numbers are relative only. A real GPU is roughly
+100x faster at raster, so on real hardware the **draw-call / submit** column matters most and the raster column
+shows where fill-rate goes on weak integrated GPUs.
+
+## What is in a frame (fresh 9-tile raft, 30 floating items, hook in hand)
+
+PLACEHOLDER_CENSUS
+
+The main pass is 326 calls and the shadow pass 216 (542 total). The shadow casters are the 162 item meshes,
+53 deck meshes and 24 island trunks; the hands and the ocean do not cast.
+Observations:
+
+1. **Floating items are 30% of all draw calls, and half of those are shadow draws nobody sees.** The ocean is a
+   `ShaderMaterial` with `lights:false` (dist/ocean.js), so `ocean.mesh.receiveShadow = true` (game.js:290) has no
+   effect. Items carry 80 distinct materials, because every plastic jug and every metal part of a barrel or scrap gets
+   its own `MeshStandardMaterial`.
+2. **The deck is 62 meshes for 9 tiles.** `createFloor` already merges within a tile (one mesh per material), but not
+   across tiles. A 49-tile raft is about 340 deck meshes, about 630 draws with shadows.
+3. **Islands and clouds are 192 static meshes.** Most clouds are off-screen and culled, but the ones in view still cost a draw each.
+4. **The hook viewmodel is 60 meshes** (hands.js builds each finger from segments). These are animated, so they cannot be baked
+   like the rest. See follow-ups.
+5. **Programs: 10, textures: 7 to 8.** Shader variety is fine. Each timber colour gets its own 128x512 canvas texture
+   (wood.js). That is wasteful but small.
+
+## Where the time goes
+
+**Pixels (SwiftShader GPU-process CPU, 1375 ms/frame at baseline).** Bisection by hiding one owner at a time:
+hiding the raft drops raster CPU to about 455 ms (-67%), while hiding the ocean, the items or the viewmodel each
+changes it by less than 10%. The deck covers about a third of the screen with `MeshStandardMaterial` + colour map +
+bump map + PCF-soft shadow receive + fog. Inside that cost:
+
+- the **bump map**: removing it saves about 32%. It samples the texture 3 times per pixel for its derivative and shares
+  the colour map's `anisotropy = 4` sampler. Giving the bump map an `anisotropy = 1` sampler alone saves about 18%.
+- **anisotropic filtering** on both maps: setting 1 everywhere saves about 25%, but planks blur at grazing angles
+  (deck diff 0.76).
+- **shadow receiving** on the deck: about 8%. **The shadow pass**: turning shadows fully off saves only about 5% of raster.
+- **resolution**: pixel ratio 0.75 saves about 28%. Raster scales with pixels as expected.
+
+**Main thread (renderer process 22-24 ms CPU/frame, submit about 6 ms median).** The CDP profile shows the main thread
+idle about 97% of the time (it waits on the GPU process). Of the JS that runs, nearly all is three.js per-object
+work: `projectObject`, `setProgram`, uniform uploads (`copyArray`, `setValueM4`), `renderBufferDirect`. That cost
+scales with draw calls. Game logic (`frame()` minus render) is about 1 ms per frame. The heaviest game function is
+the CPU Gerstner `displace` (ocean.js), used by `getHeight`/`getSlope` for 30 items and the raft, at well under 0.5 ms.
+
+**Allocations: not a problem.** Heap sampling shows about 85 KB/s allocated, 87% of it attributed to `(IDLE_EXTERNAL)`
+(browser internals). GC took 0.5% of the window. The per-frame `new Set`, spread `Math.max(...)`, `getSlope` objects
+and `clone()` calls in game.js are real but small. Rewriting them would add risk for no measurable gain, so this
+was not done.
+
+**Hitches: `rebuildRaft()` rebuilds everything.** Every build, decor placement or network world change disposes and
+regenerates all tiles (`createFloor`: ExtrudeGeometry per plank, about 6 ms CPU per tile in node), so about 50 ms at 9
+tiles and about 300 ms at 49 tiles. Static batching would add about 1 ms per tile on top if done naively. The adopt
+patch's `createStaticBatch` appends only new tiles, so placing anything costs about one tile of work.
+
+## Fixes, one at a time (live A/B on the real game)
+
+Each row is a fresh page with the fix applied to the live scene by `sandbox/perf/fixes.js`, same frozen scene, 12 measured
+frames. Δ is against the baseline row. Screenshots are `sandbox/perf/shots/game-<scenario>.png`. "pixel diff" is
+`imgdiff.py` against the baseline screenshot: mean absolute difference over the deck strip (0-255), and the share of
+pixels off by more than 8/255.
+
+PLACEHOLDER_FIXES
+
+## The adopt patch, measured end to end
+
+`python sandbox/perf/verify_adopt.py [--big]` copies `dist/`, applies `adopt.patch` and profiles stock vs patched.
+The fresh raft is 9 tiles. The big raft is 49 tiles with 12 decorations (sails, palms, lanterns, nets, benches, crates), loaded from a save.
+
+PLACEHOLDER_PATCHED
+
+Screenshots: `shots/game-stock-baseline.png` / `shots/game-patched-baseline.png` and
+`shots/game-stock-big-baseline.png` / `shots/game-patched-big-baseline.png`. I read all four. On the fresh raft they
+are pixel-identical. On the big raft the only differences are the sail and palm shadow edges on the deck. The
+512² fitted map is 4.3 cm per texel there against 4.9 cm before, so the edges are marginally crisper.
+
+## Ranked findings
+
+| # | finding | fix | gain | looks | effort |
+|---|---|---|---|---|---|
+| 1 | Bump map sampled 3x per deck pixel through a 4x anisotropic sampler, with no visible effect at play distance | bump map gets its own `anisotropy=1` sampler (adopted). Dropping it entirely is the bigger win if art agrees. | -18% raster (drop: -32%) | none measured | 2 lines, wood.js |
+| 2 | Floating items cast shadows onto an ocean that ignores lights | `castShadow = false` in `itemModel` | -155 calls (-29%) | none | 3 lines |
+| 3 | Shadow camera covers ±25 m of sea | fit to the raft, 512² map while the raft is under 14 m | -164 calls on its own | deck shadows slightly crisper | 6 lines |
+| 4 | Deck is 7 meshes per tile, and every build regenerates every tile | `createStaticBatch`: one mesh per material, incremental | -97 calls at 9 tiles, about -600 at 49; 300 ms hitch down to about 10 ms | none | merge.js + 8 lines |
+| 5 | 192 static island/cloud meshes | `mergeMeshesByMaterial` once at init | -61 calls | none | 4 lines |
+| 6 | No way to see any of this in game, and stock `renderer.info` hides the shadow pass | `perf-overlay.js` (F3), dynamic resolution behind `?dynres` | 0.75 pixel ratio = -28% raster when it kicks in | softer only while over budget | optional |
+
+Rejected after measuring: shadow map at 10 Hz (-100 calls, but deck shadows step while the raft rocks; #3 gets most
+of it without the artefact), anisotropy 1 on the colour map (planks blur, deck diff 0.76), a lower fixed pixel-ratio cap
+(use #6's dynamic control instead).
+
+## Instancing vs merging vs BatchedMesh (synthetic lab)
+
+`sandbox/perf/synthetic.html` (salvaged, now with the overlay) draws a raft plus 240 floating supplies three ways:
+`?mode=naive|instanced|batched`. Its conclusion holds for the real game. `InstancedMesh` only pays off when many
+copies share one geometry. The real game's debris is procedurally unique per seed (debris.js `createDebris(.., {seed})`),
+and deck tiles are unique per position (`createFloor(T, x * 719 + z * 311)`), so instancing them would mean giving up
+that variety. Static merging keeps every vertex and needs no per-frame work. `BatchedMesh` (r170) can draw unique moving
+geometries in one call where `WEBGL_multi_draw` exists. It is the right tool for floating items if 30 items ever
+grow to hundreds, but it needs the 80 per-item materials folded into a few shared ones first.
+
+## In-game overlay proposal
+
+`sandbox/perf/perf-overlay.js` (adopt step 7). The API is `createPerfOverlay({renderer, maxPixelRatio, minPixelRatio, dynamic, key})`
+→ `{begin(), end(), setDynamic(v), setMaxPixelRatio(v), pixelRatio, el, dispose()}`.
+
+- When hidden it costs two `performance.now()` calls, two EMA updates and one `info.reset()` per frame: no DOM writes and no allocations.
+  When shown it does one `textContent` write every 500 ms.
+- It shows fps and frame ms from rAF gaps (what the player feels), p95 over 120 frames, main-thread ms between
+  `begin` and `end`, draw calls and triangles **including the shadow pass**, live geometries, textures and programs (leak watch:
+  they should stay flat while playing), heap MB, pixel ratio and shadow mode.
+- **Dynamic resolution** works with hysteresis. The budget is the display's own refresh interval, measured as a slowly
+  forgetting minimum rAF gap, so 60, 120 and 144 Hz screens all work. After 1 s with the frame EMA over 1.25x budget it drops the pixel
+  ratio by 0.15 (floor 0.6). After 4 s under 1.08x budget it raises it by 0.1, never above the settings cap. The
+  synthetic lab runs it live with `?dpr=auto`.
+
+## Follow-ups not done here
+
+- **Viewmodel draw calls** (60 meshes for the hook hands): skin the fingers, or merge the rigid segments per bone.
+  This is hands.js work and belongs to the viewmodel topic.
+- **Leaf debris is 4.5k triangles per item** (debris.js `buildLeaf`), and items have 80 unique materials. Sharing the
+  per-item metal and plastic materials through `getMaterial`, plus a 2-level LOD for items beyond about 25 m, would
+  cut submit cost further, but changes debris.js and plastic.js internals.
+- **One wood texture, tinted**, instead of 15 canvases (wood.js). This saves uploads and memory, but the grain strokes
+  are alpha-blended over the base colour, so a tinted version would look slightly different. Art call.
+- **Merged meshes lose per-object frustum culling.** On the big raft the patched build draws about 5% more triangles
+  (the whole deck is always drawn) while issuing 65% fewer calls. That is the right trade at these sizes. Past about
+  15x15 tiles, chunk the deck batch (one `createStaticBatch` per 4x4 tiles).

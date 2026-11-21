@@ -1,0 +1,299 @@
+{
+ "shots": [
+  "01-hud.png",
+  "02-select-90ms.png",
+  "03-select-150ms.png",
+  "04-pickup-150ms.png",
+  "05-pickup-420ms.png",
+  "06-pickup-landing.png",
+  "07-toast-stack.png",
+  "08-toast-merge-110ms.png",
+  "09-damage-300ms.png",
+  "10-damage-700ms.png",
+  "11-heal-380ms.png",
+  "12-low-pulse.png",
+  "13-inv-open-70ms.png",
+  "14-inv-open.png",
+  "15-recipe-pressed.png",
+  "16-craft-140ms.png",
+  "17-inv-close-60ms.png",
+  "18-slot-pressed.png",
+  "19-crosshair-states.png",
+  "20-reduced-motion-150ms.png",
+  "21-phone-pickup-300ms.png",
+  "22-guest-generic-470ms.png",
+  "22-guest-generic-590ms.png",
+  "23-phone-inv-craft.png",
+  "24-inv-craft-toast-rest.png",
+  "rg-01-charge.png",
+  "rg-03-loot-fly-330ms.png",
+  "rg-04-flight-600ms.png",
+  "rg-05-toasts.png",
+  "rg-06-inventory-craft.png"
+ ],
+ "cost": {
+  "idle": {
+   "coldLongestTaskMs": 51,
+   "frames": 149,
+   "avgFrameMs": 22.59,
+   "worstFrameMs": 233.3,
+   "styleMs": 0,
+   "styleCount": 0,
+   "layoutMs": 0,
+   "layoutCount": 0,
+   "scriptMs": 3.32,
+   "taskMs": 22.04,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "perFrame": {
+    "styleMs": 0.0,
+    "layoutMs": 0.0,
+    "scriptMs": 0.0
+   },
+   "extraLayouts": 0
+  },
+  "select": {
+   "coldLongestTaskMs": 136,
+   "frames": 149,
+   "avgFrameMs": 24.27,
+   "worstFrameMs": 266.7,
+   "styleMs": 32.18,
+   "styleCount": 135,
+   "layoutMs": 0,
+   "layoutCount": 0,
+   "scriptMs": 10.42,
+   "taskMs": 126.19,
+   "longTasks": 2,
+   "longestTaskMs": 125,
+   "perFrame": {
+    "styleMs": 0.216,
+    "layoutMs": 0.0,
+    "scriptMs": 0.048
+   },
+   "extraLayouts": 0
+  },
+  "select-nofeel": {
+   "coldLongestTaskMs": 251,
+   "frames": 149,
+   "avgFrameMs": 20.58,
+   "worstFrameMs": 299.9,
+   "styleMs": 6.94,
+   "styleCount": 40,
+   "layoutMs": 0,
+   "layoutCount": 0,
+   "scriptMs": 2.82,
+   "taskMs": 50.87,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "perFrame": {
+    "styleMs": 0.047,
+    "layoutMs": 0.0,
+    "scriptMs": -0.003
+   },
+   "extraLayouts": 0
+  },
+  "pickup": {
+   "coldLongestTaskMs": 419,
+   "frames": 149,
+   "avgFrameMs": 41.94,
+   "worstFrameMs": 500,
+   "styleMs": 38.98,
+   "styleCount": 151,
+   "layoutMs": 4.5,
+   "layoutCount": 24,
+   "scriptMs": 7.43,
+   "taskMs": 179.54,
+   "longTasks": 5,
+   "longestTaskMs": 459,
+   "perFrame": {
+    "styleMs": 0.262,
+    "layoutMs": 0.03,
+    "scriptMs": 0.028
+   },
+   "extraLayouts": 24
+  },
+  "pickup-nofeel": {
+   "coldLongestTaskMs": 136,
+   "frames": 149,
+   "avgFrameMs": 27.4,
+   "worstFrameMs": 333.3,
+   "styleMs": 0.8,
+   "styleCount": 11,
+   "layoutMs": 1.43,
+   "layoutCount": 11,
+   "scriptMs": 2.71,
+   "taskMs": 29.55,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "perFrame": {
+    "styleMs": 0.005,
+    "layoutMs": 0.01,
+    "scriptMs": -0.004
+   },
+   "extraLayouts": 11
+  },
+  "toast": {
+   "coldLongestTaskMs": 177,
+   "frames": 149,
+   "avgFrameMs": 28.3,
+   "worstFrameMs": 300,
+   "styleMs": 16.38,
+   "styleCount": 130,
+   "layoutMs": 2.65,
+   "layoutCount": 16,
+   "scriptMs": 3.13,
+   "taskMs": 93.1,
+   "longTasks": 1,
+   "longestTaskMs": 61,
+   "perFrame": {
+    "styleMs": 0.11,
+    "layoutMs": 0.018,
+    "scriptMs": -0.001
+   },
+   "extraLayouts": 16
+  },
+  "stats": {
+   "coldLongestTaskMs": 0,
+   "frames": 149,
+   "avgFrameMs": 25.84,
+   "worstFrameMs": 383.2,
+   "styleMs": 21.69,
+   "styleCount": 150,
+   "layoutMs": 0,
+   "layoutCount": 0,
+   "scriptMs": 2.97,
+   "taskMs": 109.8,
+   "longTasks": 1,
+   "longestTaskMs": 134,
+   "perFrame": {
+    "styleMs": 0.146,
+    "layoutMs": 0.0,
+    "scriptMs": -0.002
+   },
+   "extraLayouts": 0
+  },
+  "crosshair": {
+   "coldLongestTaskMs": 0,
+   "frames": 149,
+   "avgFrameMs": 28.19,
+   "worstFrameMs": 233.4,
+   "styleMs": 11.89,
+   "styleCount": 123,
+   "layoutMs": 1.53,
+   "layoutCount": 14,
+   "scriptMs": 2.66,
+   "taskMs": 66.24,
+   "longTasks": 1,
+   "longestTaskMs": 65,
+   "perFrame": {
+    "styleMs": 0.08,
+    "layoutMs": 0.01,
+    "scriptMs": -0.004
+   },
+   "extraLayouts": 14
+  },
+  "inventory": {
+   "coldLongestTaskMs": 977,
+   "frames": 149,
+   "avgFrameMs": 36.02,
+   "worstFrameMs": 583.3,
+   "styleMs": 35.53,
+   "styleCount": 85,
+   "layoutMs": 8.66,
+   "layoutCount": 16,
+   "scriptMs": 3.14,
+   "taskMs": 122.94,
+   "longTasks": 4,
+   "longestTaskMs": 224,
+   "perFrame": {
+    "styleMs": 0.238,
+    "layoutMs": 0.058,
+    "scriptMs": -0.001
+   },
+   "extraLayouts": 16
+  },
+  "inventory-nofeel": {
+   "coldLongestTaskMs": 218,
+   "frames": 149,
+   "avgFrameMs": 30.87,
+   "worstFrameMs": 650,
+   "styleMs": 14.39,
+   "styleCount": 20,
+   "layoutMs": 7.09,
+   "layoutCount": 12,
+   "scriptMs": 2.7,
+   "taskMs": 56.42,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "perFrame": {
+    "styleMs": 0.097,
+    "layoutMs": 0.048,
+    "scriptMs": -0.004
+   },
+   "extraLayouts": 12
+  },
+  "naive-select": {
+   "coldLongestTaskMs": 171,
+   "frames": 149,
+   "avgFrameMs": 27.07,
+   "worstFrameMs": 466.6,
+   "styleMs": 20.85,
+   "styleCount": 184,
+   "layoutMs": 0,
+   "layoutCount": 0,
+   "scriptMs": 3.15,
+   "taskMs": 79.16,
+   "longTasks": 1,
+   "longestTaskMs": 75,
+   "perFrame": {
+    "styleMs": 0.14,
+    "layoutMs": 0.0,
+    "scriptMs": -0.001
+   },
+   "extraLayouts": 0
+  },
+  "naive-toast": {
+   "coldLongestTaskMs": 65,
+   "frames": 149,
+   "avgFrameMs": 27.07,
+   "worstFrameMs": 250.1,
+   "styleMs": 10.88,
+   "styleCount": 117,
+   "layoutMs": 8.4,
+   "layoutCount": 117,
+   "scriptMs": 2.92,
+   "taskMs": 96.72,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "perFrame": {
+    "styleMs": 0.073,
+    "layoutMs": 0.056,
+    "scriptMs": -0.003
+   },
+   "extraLayouts": 117
+  },
+  "naive-stats": {
+   "coldLongestTaskMs": 130,
+   "frames": 149,
+   "avgFrameMs": 32.77,
+   "worstFrameMs": 383.3,
+   "styleMs": 7.29,
+   "styleCount": 112,
+   "layoutMs": 7.57,
+   "layoutCount": 109,
+   "scriptMs": 3.22,
+   "taskMs": 70.44,
+   "longTasks": 1,
+   "longestTaskMs": 93,
+   "perFrame": {
+    "styleMs": 0.049,
+    "layoutMs": 0.051,
+    "scriptMs": -0.001
+   },
+   "extraLayouts": 109
+  }
+ },
+ "errors": [],
+ "reducedMotionActive": true,
+ "cost_reps": 3
+}

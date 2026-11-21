@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Low-poly Prop Gallery</title>
+<style>
+  html, body { margin: 0; background: #cbd2c0; color: #1f2b2a; font: 600 13px/1.35 ui-monospace, Consolas, monospace; }
+  #wrap { position: relative; display: inline-block; }
+  canvas { display: block; }
+  .lbl { position: absolute; padding: 2px 6px; background: rgba(8,22,36,.72); color: #f6ecd6; border-radius: 4px; pointer-events: none; white-space: pre; }
+  #nav { padding: 6px 10px; }
+  #nav a { color: #23433f; margin-right: 10px; }
+</style>
+</head>
+<body>
+<div id="nav">
+  <a href="?view=grid&page=0">turntable 1</a><a href="?view=grid&page=1">turntable 2</a>
+  <a href="?view=compare&page=0">vs current 1</a><a href="?view=compare&page=1">vs current 2</a>
+  <a href="?view=scene">raft scene</a><a href="?view=stats">stats</a><a href="?view=spin">spin</a>
+  <a href="deck-study.html">deck study</a>
+</div>
+<div id="wrap"></div>
+<script type="module" src="./gallery.js"></script>
+</body>
+</html>
