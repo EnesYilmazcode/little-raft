@@ -77,19 +77,21 @@ export function normaliseDecor(d, types, hasTile) {
 export function createGhosts(T, scene, raft, {floor, craft}) {
   const OK = new T.Color('#4dff8f'), BAD = new T.Color('#ff4a3a');
   const mat = new T.MeshLambertMaterial({color:OK, emissive:OK.clone(), emissiveIntensity:.55, transparent:true, opacity:.5, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1});
+  const floorMat = mat.clone(); floorMat.emissiveIntensity = 1.3; // over the sea a 50% mint floor reads as shallow water: brighter, more solid
   const depth = new T.MeshBasicMaterial({colorWrite:false, transparent:true, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1}); // offset: a ghost over a coincident placed piece wins cleanly instead of z-fighting // depth pre-pass after the opaque scene: only the ghost's front surface is tinted
   const root = new T.Group(); root.name = 'build-ghost'; scene.add(root);
   const cache = new Map();
   let shown = null, wasOk = true;
   function model(kind) {
     if (cache.has(kind)) return cache.get(kind);
-    const g = kind === 'floor' ? floor(() => mat) : craft(kind);
+    const m0 = kind === 'floor' ? floorMat : mat;
+    const g = kind === 'floor' ? floor(() => floorMat) : craft(kind);
     if (g) {
       const meshes = [];
       g.traverse(o => { if (o.isMesh) meshes.push(o); });
       for (const o of meshes) {
-        for (const m of [].concat(o.material)) if (m !== mat) m.dispose();
-        o.material = mat; o.castShadow = false; o.receiveShadow = false; o.renderOrder = 6;
+        for (const m of [].concat(o.material)) if (m !== m0) m.dispose();
+        o.material = m0; o.castShadow = false; o.receiveShadow = false; o.renderOrder = 6;
         const pre = new T.Mesh(o.geometry, depth); pre.renderOrder = 5; o.add(pre);
       }
       g.visible = false; root.add(g);
@@ -103,8 +105,9 @@ export function createGhosts(T, scene, raft, {floor, craft}) {
     if (shown !== g) { hide(); shown = g; g.visible = true; }
     root.position.copy(raft.position); root.quaternion.copy(raft.quaternion);
     g.position.set(x, y, z); g.rotation.y = rot;
-    if (ok !== wasOk) { wasOk = ok; mat.color.copy(ok ? OK : BAD); mat.emissive.copy(ok ? OK : BAD); }
-    mat.opacity = .5 + Math.sin(time * 4) * .06;
+    if (ok !== wasOk) { wasOk = ok; for (const m of [mat, floorMat]) { m.color.copy(ok ? OK : BAD); m.emissive.copy(ok ? OK : BAD); } }
+    const pulse = Math.sin(time * 4) * .06;
+    mat.opacity = .5 + pulse; floorMat.opacity = .76 + pulse;
   }
   // Builds ghosts ahead (e.g. for every placeable in the bag) so the first preview does no mesh work.
   function preload(kinds) { for (const k of kinds) model(k); }

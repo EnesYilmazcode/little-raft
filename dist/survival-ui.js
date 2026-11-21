@@ -1,7 +1,7 @@
 // Little Raft survival UI: shared-play hotbar (.tools) + inventory/crafting dialog (#inventory).
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { iconURL, primeIcons, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
 const VERSION = 'sv3';
 const HB = Number(HOTBAR_SIZE) || 8;
@@ -53,6 +53,7 @@ const CUSTOM = {
 const norm = k => String(k ?? '').toLowerCase().replace(/[\s_\-]/g, '');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clamp01 = v => Math.max(0, Math.min(1, v));
+const PRIME_KINDS = ['hook', 'wood', 'leaf', 'scrap', 'plastic'];
 const info = kind => (ITEM_INFO && ITEM_INFO[kind]) || null;
 
 function itemName(kind) {
@@ -88,7 +89,8 @@ function iconSVG(kind) {
   // Placeholder (borrowed) sprite + a dedicated inline drawing -> prefer the drawing.
   const custom = meta?.placeholder && CUSTOM[n];
   // A borrowed sprite would show the wrong item (water as a barrel), so wait on a blank tile instead.
-  if (meta?.placeholder && !custom) return '<svg class="sv-icon sv-blank" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><circle cx="24" cy="24" r="8" fill="#ffffff12"/></svg>';
+  // Neutral tile (rounded box + initials) so the slot never looks empty while the 3D icon renders.
+  if (meta?.placeholder && !custom) return `<svg class="sv-icon sv-blank" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><rect x="9" y="9" width="30" height="30" rx="6" fill="#ffffff14" stroke="#ffffff40" stroke-width="1.5"/><text x="24" y="29" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="13" font-weight="700" fill="#ffffffa0">${esc(itemName(kind).replace(/\s+/g, '').slice(0, 2))}</text></svg>`;
   let id = custom ? null : meta?.icon;
   if (typeof id === 'string') id = id.replace(/^icon-/, ''); else id = null;
   if (!custom && (!id || !SPRITES.has(id))) id = SPRITE_FOR[n];
@@ -127,7 +129,7 @@ const CSS = `
 .tools.sv-hotbar::before,.tools.sv-hotbar::after{content:none;display:none}
 .tools.sv-hotbar>button.sv-slot,#inventory.sv-inv button.sv-slot{
   position:relative;display:block;flex:0 0 auto;width:var(--s);height:var(--s);min-width:0;min-height:0;margin:0;padding:0;border:0;border-radius:6px;
-  background:linear-gradient(180deg,#20282cb0,#0d1215c4);
+  background:linear-gradient(180deg,#20282ce6,#0d1215f0);
   box-shadow:inset 0 0 0 1px #ffffff1c,inset 0 1px 0 #ffffff14,0 2px 8px #0005;
   color:#f4efe2;font:600 14px/1 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;outline:none;
   transition:transform .18s cubic-bezier(.3,1.5,.5,1),background .15s,box-shadow .15s}
@@ -145,8 +147,8 @@ const CSS = `
 .sv-slot .sv-dur>i{display:block;height:100%;width:100%;background:#8fd36a;transition:width .3s}
 .sv-slot.sv-bumpA .sv-art{animation:svBumpA .34s ease-out}.sv-slot.sv-bumpB .sv-art{animation:svBumpB .34s ease-out}
 @keyframes svBumpA{35%{transform:scale(1.22) rotate(-6deg)}}@keyframes svBumpB{35%{transform:scale(1.22) rotate(-6deg)}}
-.tools.sv-hotbar>button.sv-slot:hover,#inventory.sv-inv button.sv-slot:hover{background:linear-gradient(180deg,#323d42c0,#151c20d0)}
-.tools.sv-hotbar>button.sv-slot.sv-sel{transform:scale(1.06);background:linear-gradient(180deg,#46545ad0,#1c2529dc);box-shadow:inset 0 1px 0 #ffffff26,0 6px 14px #0007}
+.tools.sv-hotbar>button.sv-slot:hover,#inventory.sv-inv button.sv-slot:hover{background:linear-gradient(180deg,#323d42ec,#151c20f2)}
+.tools.sv-hotbar>button.sv-slot.sv-sel{transform:scale(1.06);background:linear-gradient(180deg,#46545aee,#1c2529f4);box-shadow:inset 0 1px 0 #ffffff26,0 6px 14px #0007}
 .tools.sv-hotbar>button.sv-slot.sv-sel .sv-art{scale:1.1}
 .tools.sv-hotbar>button.sv-slot.sv-sel .sv-num{opacity:.95}
 .tools.sv-hotbar>button.sv-slot:focus-visible,#inventory.sv-inv button.sv-slot:focus-visible{outline:2px solid #fff3d6;outline-offset:1px}
@@ -172,7 +174,7 @@ const CSS = `
 #inventory .sv-h{align-self:stretch;margin:2px 2px 1px;font:800 11px/1 ${FONT};letter-spacing:2.2px;text-transform:uppercase;color:#f4efe2b3}
 #inventory .sv-craft>.sv-h{margin:4px 2px 10px}
 #inventory .sv-slot.sv-hot{background:linear-gradient(180deg,#26313690,#10171ab0)}
-#inventory.sv-inv button.sv-slot.sv-sel{background:linear-gradient(180deg,#46545ad0,#1c2529dc);box-shadow:inset 0 0 0 2px #fff6e0,0 0 12px #fff3d633}
+#inventory.sv-inv button.sv-slot.sv-sel{background:linear-gradient(180deg,#46545aee,#1c2529f4);box-shadow:inset 0 0 0 2px #fff6e0,0 0 12px #fff3d633}
 #inventory.sv-inv button.sv-slot.sv-src{background:linear-gradient(180deg,#5d4a2ad0,#2b2214dc);box-shadow:inset 0 0 0 2px #ffc66e,0 0 12px #ffc66e66;transform:translateY(-3px)}
 #inventory.sv-inv button.sv-slot.sv-over{box-shadow:inset 0 0 0 2px #9fe0d6,0 0 10px #9fe0d677;transform:scale(1.06)}
 #inventory.sv-inv button.sv-slot.sv-deny{box-shadow:inset 0 0 0 2px #e06a4a,0 0 6px #e06a4a88;animation:svShake .26s}
@@ -195,7 +197,7 @@ const CSS = `
 #inventory .sv-recipe:disabled{cursor:not-allowed}
 #inventory .sv-recipe:disabled .sv-rart,#inventory .sv-recipe:disabled .sv-rname{opacity:.55}
 #inventory .sv-recipe:focus-visible{outline:2px solid #fff3d6;outline-offset:1px}
-#inventory .sv-rart{display:grid;place-items:center;width:48px;height:48px;border-radius:6px;background:linear-gradient(180deg,#20282cb0,#0d1215c4);box-shadow:inset 0 0 0 1px #ffffff1c}
+#inventory .sv-rart{display:grid;place-items:center;width:48px;height:48px;border-radius:6px;background:linear-gradient(180deg,#20282ce6,#0d1215f0);box-shadow:inset 0 0 0 1px #ffffff1c}
 #inventory .sv-rart .sv-icon{width:42px;height:42px;filter:drop-shadow(0 2px 2px #0009)}
 #inventory .sv-rart svg.sv-icon{width:32px;height:32px}
 #inventory .sv-rbody{display:block;min-width:0}
@@ -308,6 +310,8 @@ function readSnap(bag) {
 // getModel (optional): (kind) -> Object3D, e.g. models.js getModel; icons are rendered from it.
 export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause, getModel } = {}) {
   if (typeof getModel === 'function') setModelProvider(getModel);
+  // The starting hotbar (hook) and the common pickups are drawn at mount so play never starts on blank slots/rows.
+  primeIcons(PRIME_KINDS);
   // Hot reload: DOM is adopted, not rebuilt; the previous instance releases its listeners only once
   // this one is fully built (see below), so an early throw leaves the old UI working.
   const prev = window[INST_KEY];
@@ -725,7 +729,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
 
   buildRecipes();
   if (isOpen) render(true);
-  warmIcons(Object.keys(ITEM_INFO || {}));
+  warmIcons(Object.keys(ITEM_INFO || {}).filter(k => !PRIME_KINDS.includes(k)));
 
   const api = {
     update() { render(false); },
