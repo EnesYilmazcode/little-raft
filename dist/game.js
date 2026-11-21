@@ -41,7 +41,7 @@ import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?bui
 import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
-import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
+import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, countBarrelLuck, copyBarrelLuck, cleanBarrelLoot, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
@@ -200,7 +200,7 @@ export function mount(transfer = null) {
     const items = [];
     if (withItems && Array.isArray(v.items)) for (const it of v.items.slice(0, 80)) {
       if (it && isInt(it.id) && typeof it.token === 'string' && it.token.length < 80 && (ITEM_TYPES.includes(it.type) || it.type === 'bottle') && Number.isFinite(it.x) && Number.isFinite(it.z) && Math.abs(it.x) < 80 && Math.abs(it.z) < 80)
-        items.push({id:it.id, token:it.token, type:it.type, x:it.x, z:it.z, phase:Number.isFinite(it.phase) ? it.phase : 0});
+      { const loot = it.type === 'barrel' ? cleanBarrelLoot(it.loot) : null; items.push({id:it.id, token:it.token, type:it.type, x:it.x, z:it.z, phase:Number.isFinite(it.phase) ? it.phase : 0, ...(loot ? {loot} : {})}); } // barrel: its rolled loot travels with it
     }
     const progress = cleanProgress(v);
     return {tiles, decor, stock, fish:count(v.fish), collected:count(v.collected), hookHealth:Number.isFinite(v.hookHealth) ? clamp(Math.round(v.hookHealth), 0, MAX_HEALTH) : MAX_HEALTH, items,
@@ -558,8 +558,18 @@ export function mount(transfer = null) {
   // ---------- Floating supplies ----------
   function makeItem(id) { const edge = Math.min(...world.tiles.map(t => t[1])) * 2 - 1, spread = Math.max(11, Math.max(...world.tiles.map(t => Math.abs(t[0]))) * 2 + 6); const it = {id, token:newToken(), type:SPAWN_TABLE[Math.floor(Math.random() * SPAWN_TABLE.length)], x:(Math.random() - .5) * spread * 2, z:edge - 3 - Math.random() * 17, phase:Math.random() * 6};
     if (role !== 'guest' && SPAWN_TABLE.includes(it.type) && shouldSpawnBottle(world, id)) it.type = 'bottle';
+    if (role !== 'guest') lootOf(it); // a barrel rolls its contents once, so the full-bag checks and the collect agree
     return it;
   }
+  // Loot one supply gives. A barrel rolls once (on a scratch copy of the pity counters) and keeps the roll;
+  // the counters advance only when it is really collected. A guest without the host's roll uses the estimate.
+  function lootOf(it) {
+    if (!it) return null;
+    if (it.type !== 'barrel') return LOOT[it.type] ?? null;
+    if (!it.loot && role !== 'guest') it.loot = rollBarrel(Math.random, copyBarrelLuck(prog?.barrelLuck));
+    return it.loot ?? LOOT.barrel;
+  }
+  const caughtLoot = c => lootOf(world.items.find(it => it.token === c?.token) ?? c); // a caught entry is {id, token, type}
   function itemModel(item) {
     if (item.type === 'cache') return createSignalModel(T, 'cache');
     if (item.type === 'bottle') { const g = new T.Group(), b = createBottle(T); b.position.y = .04; b.rotation.y = (item.id % 7) * .9; g.add(b); return singlePass(g); }
@@ -984,14 +994,14 @@ export function mount(transfer = null) {
       const i = world.items.findIndex(it => it.id === a.id && it.token === a.token); if (i < 0) return; // token guard: each supply counts once
       if (world.items[i].type === 'bottle') { collectBottle(i, a, bag, actor); return; }
       const it = world.items[i]; if (it.type === 'cache' && a.net) return; // nets never take the signal cache
-      const isCache = it.type === 'cache', loot = isCache ? cacheLoot(countAntennas(world.decor), Math.random) : it.type === 'barrel' ? rollBarrel(Math.random, prog?.barrelLuck) : LOOT[it.type]; if (!loot) return; // [progression-hook] barrel table
+      const isCache = it.type === 'cache', loot = isCache ? cacheLoot(countAntennas(world.decor), Math.random) : lootOf(it); if (!loot) return; // [progression-hook] barrel table, rolled once per barrel
       if (actor === 'guest' && !a.net && ownHeldTokens().has(it.token)) return; // on the host's hook: the host claimed it first
       const scratch = new Bag(bag.snapshot());
       for (const [k, n] of Object.entries(loot)) if (scratch.add(k, n) > 0) { // atomic: all loot fits or nothing changes
         if (!a.net) emit({kind:'full', text:'Your bag is full', tokens:[it.token]}, actor);
         return;
       }
-      commit(bag, scratch);
+      commit(bag, scratch); if (it.type === 'barrel' && prog?.barrelLuck) countBarrelLuck(prog.barrelLuck, loot); // pity counts only a barrel really opened
       world.collected++; world.items.splice(i, 1); if (isCache) onCacheCollected(world); else world.items.push(makeItem(a.id)); syncItems();
       if (typeof a.cast === 'string' && a.cast && wornCasts[actor] !== a.cast) { wornCasts[actor] = a.cast; wearHook(bag, a.slot, actor); }
       if (isCache) emit({kind:'build', text:'Signal cache recovered!'}, actor === 'host' ? 'guest' : 'host');
@@ -1387,7 +1397,7 @@ export function mount(transfer = null) {
       if (f >= 1) { if (selectedKind() === 'fishingrod') action({kind:'fish'}); fishWait = 0; endHook(); }
       return;
     }
-    hookFull = holdForFullBag(hook, c => lootFits(localBag(), catchLoot(c, LOOT))); // full bag: keep the catch on the hook in the water
+    hookFull = holdForFullBag(hook, c => lootFits(localBag(), catchLoot(c, caughtLoot))); // full bag: keep the catch on the hook in the water
     // Each side skips the other's catch, but never lets go of what its own hook already holds (the first hook to claim an item keeps it).
     const ev = hook.update(dt, {hand:handPos, items:hookableItems(world.items, {isPending, otherHeld:otherHeldTokens(), ownHeld:ownHeldTokens()}), reeling:reeling && !hookFull, time:elapsed});
     const hp = hook.position, pos = hookPos.set(hp.x, hook.onDeck ? hp.y : surfaceY(hp.x, hp.z, hp.y), hp.z); // on the planks it rests at deck height
@@ -1457,7 +1467,7 @@ export function mount(transfer = null) {
       if (sigEvents.length || world.items.length !== itemCount) syncItems();
       netClock += dt;
       if (netClock > .8) { // nets gather into the host's bag (trusted shared machine) and never consume when full
-        netClock = 0; const heldTokens = allHeldTokens(), fits = it => it.type !== 'cache' && lootFits(actorBag('host'), LOOT[it.type]);
+        netClock = 0; const heldTokens = allHeldTokens(), fits = it => it.type !== 'cache' && lootFits(actorBag('host'), lootOf(it));
         for (const net of world.decor.filter(d => d.type === 'net')) { const it = pickNetItem(world.items, net, {held:heldTokens, isPending, fits}); if (it) applyAction({kind:'collect', id:it.id, token:it.token, net:true}, 'host'); }
       }
       waterClock += dt; if (waterClock >= 1) { waterClock -= 1; const r = tickWatering(world, 1); tickRain(world, 1, content?.rain() ?? 0); if (r.ripe.length && performance.now() >= noticeUntil) emit({kind:'notice', text:'A palm is ready to harvest'}, 'all'); }

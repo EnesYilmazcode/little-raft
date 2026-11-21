@@ -354,8 +354,35 @@ export function rollBarrel(rand = Math.random, luck = null) {
     if (forced) { const e = TREASURE_ROW[forced]; out[forced] = (out[forced] || 0) + e.min + Math.floor(unit(rand) * (e.max - e.min + 1)); }
     else pickFrom(POOLS.treasure, rand, out);
   }
-  if (misses) for (const k of PITY_KINDS) misses[k] = out[k] > 0 ? 0 : misses[k] + 1;
+  if (misses) countBarrelLuck(luck, out);
   return out;
+}
+
+/**
+ * Advances the pity counters for one barrel that was actually opened with `loot`
+ * (the same rule rollBarrel applies). Lets a caller roll on a scratch copy of luck and
+ * count the barrel only once it is really collected.
+ */
+export function countBarrelLuck(luck, loot) {
+  const misses = luckMisses(luck); if (!misses) return;
+  for (const k of PITY_KINDS) misses[k] = loot && loot[k] > 0 ? 0 : misses[k] + 1;
+}
+
+/** A scratch copy of a luck state, safe to pass to rollBarrel without touching the original. */
+export function copyBarrelLuck(luck) {
+  const m = luck && typeof luck === 'object' && luck.misses && typeof luck.misses === 'object' ? luck.misses : {};
+  return { misses: { ...m } };
+}
+
+/** A validated barrel loot table {kind: n} (known items, whole counts 1..99, at most 8 kinds), or null. */
+export function cleanBarrelLoot(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const out = {}; let n = 0;
+  for (const [k, c] of Object.entries(v)) {
+    if (!isItem(k) || !Number.isInteger(c) || c < 1 || c > 99 || ++n > 8) return null;
+    out[k] = c;
+  }
+  return n ? out : null;
 }
 
 export function isItem(kind) { return typeof kind === 'string' && hasOwn(ITEMS, kind); }

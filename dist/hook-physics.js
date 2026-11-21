@@ -400,10 +400,10 @@ export function throwOrigin(hand, out) {
 // ---------- bag-full reel stop (used by game.js) ----------
 export const FULL_HOLD_DIST = 2; // m: a catch that will not fit stops this far out, still in the water
 
-/** Sums the loot of every caught item (table: type -> {kind: count}). Pure. */
+/** Sums the loot of every caught item. table: type -> {kind: count}, or a function item -> {kind: count}. Pure. */
 export function catchLoot(items, table) {
-  const out = {};
-  for (const it of items || []) for (const [k, n] of Object.entries(table?.[it?.type] || {})) out[k] = (out[k] || 0) + n;
+  const out = {}, of = typeof table === 'function' ? table : it => table?.[it?.type];
+  for (const it of items || []) for (const [k, n] of Object.entries(of(it) || {})) out[k] = (out[k] || 0) + n;
   return out;
 }
 
