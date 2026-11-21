@@ -70,22 +70,23 @@ export function createContent(ctx, features = FEATURES) {
   const mods = [];
   // A failing module is disabled and disposed once, so shared engine state (fog, lights…) is restored.
   const off = m => { if (m.dead) return; m.dead = true; console.error('content module disabled:', m.name); try { m.dispose?.(); } catch (e) { console.error(`content ${m.name}.dispose failed`, e); } };
-  const call = (m, fn, ...a) => { if (m.dead || typeof m[fn] !== 'function') return undefined; try { return m[fn](...a); } catch (e) { console.error(`content ${m.name}.${fn} failed`, e); off(m); return undefined; } };
+  // Fixed arity (no rest/spread arrays): hooks run every frame. Every hook takes at most three arguments.
+  const call = (m, fn, a, b, c) => { if (m.dead || typeof m[fn] !== 'function') return undefined; try { return m[fn](a, b, c); } catch (e) { console.error(`content ${m.name}.${fn} failed`, e); off(m); return undefined; } };
   // Sibling peek: a module may read another's live serialize() (e.g. the map table reads islands). Read, never keep.
   const peek = name => { const m = mods.find(x => x.name === name && !x.dead); return m ? call(m, 'serialize') : undefined; };
   for (const make of features) {
     try { const m = make(ctx, { peek }); if (m) mods.push(m); } catch (e) { console.error('content module failed to start', e); }
   }
-  const first = (fn, ...a) => { for (const m of mods) { const r = call(m, fn, ...a); if (r) return r; } return null; };
+  const first = (fn, a, b, c) => { for (let i = 0; i < mods.length; i++) { const r = call(mods[i], fn, a, b, c); if (r) return r; } return null; };
   const debug = {};
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
   return {
     mods, debug,
-    update(dt) { for (const m of mods) call(m, 'update', dt); },
-    afterMove(physics, dt) { for (const m of mods) call(m, 'afterMove', physics, dt); },
+    update(dt) { for (let i = 0; i < mods.length; i++) call(mods[i], 'update', dt); },
+    afterMove(physics, dt) { for (let i = 0; i < mods.length; i++) call(mods[i], 'afterMove', physics, dt); },
     serialize() { const out = {}; for (const m of mods) { const d = call(m, 'serialize'); if (d !== undefined && m.name) out[m.name] = d; } return out; },
     load(ext, from) { const e = ext && typeof ext === 'object' ? ext : {}; for (const m of mods) call(m, 'load', e[m.name], from); },
-    action(a, actor, bag) { for (const m of mods) if (call(m, 'action', a, actor, bag)) return true; return false; },
+    action(a, actor, bag) { for (let i = 0; i < mods.length; i++) if (call(mods[i], 'action', a, actor, bag)) return true; return false; },
     interact: aim => !!first('interact', aim),
     prompt: aim => first('prompt', aim),
     use: (aim, kind) => !!first('use', aim, kind), // content hook (paint)
