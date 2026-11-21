@@ -824,7 +824,7 @@ def main():
                     if page.evaluate("!window.raftDebug && !!document.getElementById('raftLiveError')"):
                         raise RuntimeError('live.js reported that the game failed to start (#raftLiveError shown)')
                     # Title buttons differ between branches: #solo may be a hidden "Continue" with #newGame next to it.
-                    btn = page.locator('#solo:visible, #newGame:visible').first
+                    btn = page.locator('.ob-menu .ob-item[data-act="new"]:visible, #solo:visible, #newGame:visible').first
                     btn.click()
                     page.wait_for_function('raftDebug.state.running', timeout=30000)
                 except Exception as e:
