@@ -183,6 +183,9 @@ Built as specified; the hook lines in content.js and game.js are byte-identical 
 - **pushOut.** When a circle centre is already inside a tile, pushOut leaves by the nearest side that has no neighbour tile, instead of pushing deeper into the raft.
 - **Texts not given by the spec.** An empty bag on launch shows "You need a Driftboard". A stow shows "Driftboard packed away" with the collect sound. A refused guest ride sends nothing, so the guest's 2 s timeout shows "Someone is already on it".
   Opening a UI while holding E cancels the hold without boarding.
+- **Guest ride go-live (host).** After the host accepts a guest's ride, it copies `ctx.other` into the board only after the guest's pose has come within .3 m of the board.
+  The guest's first ride frame writes exactly that pose. Without this gate, the board was dragged to wherever the guest stood while the confirmation was in flight, and pushOut then shoved it out the far side.
+  If the guest never arrives, the host frees the board after 6 s. The host draws the guest-ridden mesh from `ctx.other` only once the ride is live.
 - **Model.** `setTie(x, z, y = .2)` takes an optional height, so the rope reaches the deck edge. `userData.rest()` lays the paddle flat on the deck while nobody rides.
 - **Debug.** Also `meshes()`, which returns the drawn poses that co-op QA uses. `state()` also returns the last rideTick `info` `{tug, push, d}`.
 - **Tests.** There is one extra test for wrapAngle/angDiff/headingOf, and the survival.test.mjs tools-tab list now includes `driftboard` after `scraper`.

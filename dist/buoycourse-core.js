@@ -5,7 +5,9 @@ export const SHAPES = Object.freeze(['loop', 'sprint', 'zigzag', 'eight']);
 export const NAMES = Object.freeze({ loop: 'Loop', sprint: 'Sprint', zigzag: 'Zigzag', eight: 'Figure 8' });
 export const MODES = Object.freeze(['swim', 'board']);
 export const RING = Object.freeze({ R: 1.5, HIT: 1.6, YLO: -1.6, YHI: 1.4, YHI_BOARD: 2.0, TELEPORT: 3, CLEAR: 5, FAR: 20, LIM: 40, MAXG: 10, TOP: 5 });
-export const MAX_MS = 600000, MIN_SPEED = 6;
+// MIN_SPEED is the host's anti-cheat floor, with a generous margin: the fastest legit move is ~6 m/s (fast dive x fins x
+// Swift Fins meal), plus the 0.3 m/s current, a countdown head start and cutting each 1.6 m gate edge.
+export const MAX_MS = 600000, MIN_SPEED = 9;
 
 const fin = Number.isFinite;
 const r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;

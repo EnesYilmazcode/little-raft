@@ -19,8 +19,10 @@ export function createBuoyCourse(ctx) {
   const prev = { x: 0, y: 0, z: 0, ok: false };
   let showT = 0, goT = 0, tail = 0, tailText = '', onDeckAll = 0, left = false, cdShown = 0;
   let models = null, modelsFailed = false, added = false, flagClock = 0, paintClock = 0, paintKey = '', tryKey = '';
-  let pill = null, pillKey = -1, pillBig = false, pillBestKey = '', pillBest = '';
+  let pill = null, pillKey = -1, pillBig = false, pillBestMode = '', pillBestR = -1, pillBestShape = '', pillBest = '';
   let pOut = null, pKey = '';
+  let lastMove = 0, movedFrame = false; // run clock: wall time between afterMove calls, the same time base the player physics integrates
+  const nowMs = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
   const scratch = T ? new T.Vector3() : null;
   const host = () => ctx.role !== 'guest';
 
@@ -129,12 +131,17 @@ export function createBuoyCourse(ctx) {
     return true;
   }
   function afterMove(physics, dt) {
+    // Physics substeps the real frame time (capped .25 s, game.js splitSteps), while content dt is capped at .05 s.
+    // Timing the run with that real step keeps time and distance on one clock, so slow machines don't run a slow timer.
+    const now = nowMs(), fdt = lastMove ? Math.min(Math.max((now - lastMove) / 1000, 0), .25) : Math.min(dt > 0 ? dt : 0, .25);
+    lastMove = now; movedFrame = true;
     if (run.phase !== 'go' || !physics) return;
+    run.t += fdt;
     step(physics);
     if (run.phase !== 'go') return;
     const tiles = ctx.world?.tiles;
     const onDeck = !!physics.grounded && !physics.swimming && nearestTile(tiles, physics.x, physics.z) <= .25;
-    const d = dt > 0 ? dt : 0;
+    const d = fdt;
     if (onDeck && run.next > 0) { run.deck += d; if (run.deck > 2) { stop(); return; } } else run.deck = 0;
     if (!left) { if (onDeck) { onDeckAll += d; if (onDeckAll > 90) stop(); } else left = true; }
   }
@@ -214,9 +221,11 @@ export function createBuoyCourse(ctx) {
     if (run.phase === 'go') {
       if (goT > 0) { setPill('Go!', true, 99); return; }
       const ms = Math.round(run.t * 1000), tenth = Math.floor(ms / 100);
-      const bk = run.shape + ':' + run.mode + ':' + st.r;
-      if (bk !== pillBestKey) { pillBestKey = bk; const b = bestFor(run.shape, run.mode); pillBest = b ? ' · best ' + fmt(b[1]) : ''; pillKey = -1; }
-      setPill(`Ring ${run.next}/${st.g.length} · ${fmt(ms)}${pillBest}`, false, 1000 + run.next * 1e7 + tenth);
+      if (run.mode !== pillBestMode || st.r !== pillBestR || run.shape !== pillBestShape) { // no per-frame strings
+        pillBestMode = run.mode; pillBestR = st.r; pillBestShape = run.shape; const b = bestFor(run.shape, run.mode); pillBest = b ? ' · best ' + fmt(b[1]) : ''; pillKey = -1;
+      }
+      const key = 1000 + run.next * 1e7 + tenth;
+      if (key !== pillKey || pillBig) setPill(`Ring ${run.next}/${st.g.length} · ${fmt(ms)}${pillBest}`, false, key);
       return;
     }
     if (tail > 0) { setPill(tailText, false, 50); return; }
@@ -260,7 +269,9 @@ export function createBuoyCourse(ctx) {
       run.cd -= d;
       const n = Math.ceil(run.cd);
       if (run.cd <= 0) go(); else if (n !== cdShown) { cdShown = n; tick(); }
-    } else if (run.phase === 'go') run.t += d;
+    }
+    if (!movedFrame) lastMove = 0; // no player move this frame (not running): a pause never counts
+    movedFrame = false;
     if (run.phase !== 'idle') {
       if (moving()) stop();
       else if (!flagOk()) stop();

@@ -37,7 +37,7 @@ without this line: `ctx.note?.('bells', k, .8) || ctx.emit?.({kind:'buoy', sound
 ```
 export const SHAPES = ['loop','sprint','zigzag','eight'];   NAMES = {loop:'Loop', sprint:'Sprint', zigzag:'Zigzag', eight:'Figure 8'}
 export const MODES = ['swim','board'];   export const RING = {R:1.5, HIT:1.6, YLO:-1.6, YHI:1.4, YHI_BOARD:2.0, TELEPORT:3, CLEAR:5, FAR:20, LIM:40, MAXG:10, TOP:5}
-export const MAX_MS = 600000, MIN_SPEED = 6;           // m/s ceiling for validation (fins + meal + dive / board sprint < 6)
+export const MAX_MS = 600000, MIN_SPEED = 9;           // m/s ceiling for validation (fastest legit ~6 m/s; 1.5x margin)
 bbox(tiles) -> {x0,x1,z0,z1} | null                    // metres; tile [tx,tz] covers tx*2±1, tz*2±1
 clearOf(b, x, z) -> number                             // distance from point to bbox rectangle, 0 inside
 nearestTile(tiles, x, z) -> number                     // distance to the nearest tile square
@@ -181,7 +181,8 @@ Old saves load. Draw calls with rings visible go up by ≤ 3, plus flag/scoreboa
 - **Flag sync** runs on the host every 0.05 s of game time (a scan of `world.decor`), not every frame. If the flag exists but `g` is empty
   (bad saved gates, or the raft was too big), the host retries once per tile-count/shape change.
 - **craft-book CATEGORY_OF**: `courseflag`/`scoreboard` are filed under Building (not in the spec; without it they already fell back there).
-- **Timer and slow machines.** As specced, `t` sums the capped content `dt` (≤ 0.05 s), while the player physics integrates real frame time up to
-  0.25 s. Below ~20 fps the timer therefore runs slow relative to distance covered; with the 6 m/s ceiling a normal swim stays valid, but a
-  very slow machine plus every speed buff could in theory trip `minMs`. Not changed (spec says `t += dt`).
+- **Timer and slow machines.** The run clock is the real time between `afterMove` calls (capped .25 s per frame, the same cap
+  as game.js `splitSteps`), i.e. the time base the player physics integrates, not the capped content `dt` (.05 s). Frames with no
+  player move (not running) reset the clock, so a pause never counts. The deck timers use the same step. `MIN_SPEED` is 9 m/s (not 6)
+  so a buffed fast dive (~6 m/s) plus current drift, a countdown head start and gate-edge corner cuts stays well above `minMs`.
 - `debug.placeScore(x,z)` and `debug.show(s)` were added for QA; `state()` also reports `f`, `r` and `riding`.

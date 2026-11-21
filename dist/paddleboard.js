@@ -21,6 +21,10 @@ export function createPaddleboard(ctx) {
   const nt = { d: 0, tx: 0, tz: 0, px: 0, pz: 0 }, spot = { x: 0, z: 0, h: 0 }, vel = { x: 0, z: 0 }, S = { h: 0, sx: 0, sz: 0 };
   const stepIn = { forward: 1, strafe: 0, sprint: false, yaw: 0 }, out = { v: 1, n: 1, boards: [] }, outBoards = [];
   let frame = 0, retie = 0, staleT = 0, clock = 0, group = null;
+  // Host: a guest's ride goes live once its pose reaches the board (its first ride frame writes the board pose),
+  // so the board is not dragged to where the guest stood while the confirmation travels. 6 s without that frees it.
+  const GL = { id: 0, live: false, t: 0 };
+  const guestLive = b => GL.id === b.id && GL.live;
 
   const host = () => ctx.role !== 'guest';
   const me = () => (ctx.role === 'guest' ? 'guest' : 'host');
@@ -201,6 +205,7 @@ export function createPaddleboard(ctx) {
     if (a.kind === 'paddleboard.ride') {
       if (b.r || riderOf(actor) || !reach(actor, b, .5)) { if (actor === 'host') notice('Someone is already on it'); return true; }
       b.r = actor;
+      if (actor === 'guest') { GL.id = b.id; GL.live = false; GL.t = 0; }
       if (actor === me()) startRide(b);
       return true;
     }
@@ -247,7 +252,10 @@ export function createPaddleboard(ctx) {
       for (const b of slice.boards) {
         if (b.r === 'host') { if (R.on && R.id === b.id) { b.x = R.st.x; b.z = R.st.z; b.h = R.st.h; } else if (!R.on) { b.r = null; b.s = 'adrift'; } }
         else if (b.r === 'guest') {
-          if (other && fin(other.x) && fin(other.z)) {
+          if (GL.id !== b.id) { GL.id = b.id; GL.live = true; } // e.g. a slice restored with a rider
+          if (!GL.live && other && fin(other.x) && fin(other.z) && Math.hypot(other.x - b.x, other.z - b.z) < .3) GL.live = true;
+          if (!GL.live) { GL.t += dt; if (GL.t > 6) { b.r = null; GL.id = 0; } }
+          else if (other && fin(other.x) && fin(other.z)) {
             b.x = clamp(other.x, -C.CLAMP, C.CLAMP); b.z = clamp(other.z, -C.CLAMP, C.CLAMP);
             if (fin(other.yaw)) b.h = wrapAngle(b.h + clamp(angDiff(b.h, headingOf(other.yaw)), -C.TURN * dt, C.TURN * dt));
           } else if (staleT >= STALE_T) { b.r = null; b.s = 'adrift'; }
@@ -266,7 +274,7 @@ export function createPaddleboard(ctx) {
     const ocean = ctx.ocean, k3 = Math.min(1, dt * 3), k6 = Math.min(1, dt * 6), dy = ctx.deckY?.() ?? 0;
     for (const b of slice.boards) {
       const e = meshFor(b), g = e.g; e.seen = frame;
-      const local = R.on && R.id === b.id, peerRide = b.r && b.r === theirs && other && fin(other.x) && fin(other.z);
+      const local = R.on && R.id === b.id, peerRide = b.r && b.r === theirs && other && fin(other.x) && fin(other.z) && (!host() || guestLive(b));
       const px = e.x, pz = e.z;
       if (local) { e.x = R.st.x; e.z = R.st.z; e.h = R.st.h; }
       else if (peerRide) {
