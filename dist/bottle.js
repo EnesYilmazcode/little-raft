@@ -1,5 +1,7 @@
 // Message in a bottle: small glass bottle with a cork and a rolled note inside.
 // createBottle(T) -> THREE.Group named 'bottle' (~0.42 long along X, centred on origin). No textures.
+// Drawn as two meshes: the glass, and the cork + note + twine (per-vertex material values, see merge-geo.js).
+import { mergeChildMeshes, mergeChildMeshesPBR } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 export function createBottle(T) {
   const root = new T.Group();
   root.name = 'bottle';
@@ -39,9 +41,11 @@ export function createBottle(T) {
   band.position.y = -0.07;
   inner.add(band);
 
+  inner.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
+  mergeChildMeshesPBR(T, inner); // opaque cork, paper, twine
+  mergeChildMeshes(T, inner);    // glass body, neck, lip (one material; renderOrder 2 from the body)
   inner.rotation.z = -Math.PI / 2; // +Y -> +X
   root.add(inner);
-  root.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
   return root;
 }
 
