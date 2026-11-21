@@ -17,9 +17,9 @@ const PRELOAD = [
   'animals-core.js', 'animals-models.js', 'animals.js', 'audio.js', 'avatar.js', 'bake.js', 'bees-model.js',
   'bees.js', 'bottle.js', 'brush-model.js', 'build-menu.js', 'build-radial.js', 'build-rules.js',
   'building-models.js', 'building-pieces.js', 'building.js', 'content-items.js', 'content.js', 'controls.js',
-  'cooking.js', 'coop-avatar.js', 'coop-delta.js', 'coop-feed.js', 'coop-fx.js', 'coop-interp.js',
+  'cooking.js', 'cookpot-core.js', 'cookpot-model.js', 'cookpot.js', 'coop-avatar.js', 'coop-delta.js', 'coop-feed.js', 'coop-fx.js', 'coop-interp.js',
   'coop-loopback.js', 'coop-rules.js', 'coop.js', 'craft-book.js', 'crafts.js', 'daynight.js', 'debris.js',
-  'deck.js', 'decor-pack-models.js', 'decor-pack.js', 'diving-ui.js', 'diving.js', 'engine-models.js', 'engine.js',
+  'deck.js', 'decor-pack-models.js', 'decor-pack.js', 'diving-gear-core.js', 'diving-gear.js', 'diving-ui.js', 'diving.js', 'engine-models.js', 'engine.js',
   'fish-journal.js', 'fish-models.js', 'fish-species.js', 'fishing-cooking.js', 'fishing-rules.js',
   'fishing-tool.js', 'fishing-v2.js', 'hammer.js', 'hands.js', 'held-items.js', 'hook-physics.js', 'hook.js',
   'hud.js', 'input-map.js', 'input-rules.js', 'input.js', 'instrument-models.js', 'instruments.js',
@@ -32,7 +32,7 @@ const PRELOAD = [
   'seafloor.js', 'session-rules.js', 'settings.js', 'shark-model.js', 'shark.js', 'signal-models.js', 'signal.js',
   'signs-core.js', 'sky.js', 'sleep-model.js', 'sleep.js', 'smelter-model.js', 'smelter-ui.js', 'smelter.js',
   'spear-model.js', 'spear-repair-hooks.js', 'spear.js', 'storage-research-model.js', 'storage-research.js',
-  'survival-ui.js', 'textures.js', 'treasure-models.js', 'treasure-rules.js', 'treasure.js', 'underwater-fx.js',
+  'survival-ui.js', 'textures.js', 'trader-core.js', 'trader-model.js', 'trader.js', 'treasure-models.js', 'treasure-rules.js', 'treasure.js', 'underwater-fx.js',
   'vitals-ui.js', 'vitals.js', 'waterfx.js', 'watering.js', 'wildlife-models.js', 'wildlife.js', 'wood.js',
 ];
 
