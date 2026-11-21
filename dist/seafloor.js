@@ -269,7 +269,7 @@ function nodeParts(T, type) {
   ];
 }
 
-function seaweedGeometry(T) {
+export function seaweedGeometry(T) {
   // three narrow, gently curved blades per tuft (1.6 m base height; instances scale y 0.75..1.25)
   const blades = [0, 2.1, 4.2].map((rot) => {
     const g = new T.PlaneGeometry(0.3, 1.6, 1, 4).translate(0, 0.8, 0);

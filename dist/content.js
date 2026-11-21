@@ -83,6 +83,7 @@ import { createCookpot } from './cookpot.js?build=v3-survival-ae77fa84ac2b';
 import { createDisplay } from './display.js?build=v3-survival-ae77fa84ac2b'; // [display]
 import { createPower } from './power.js?build=v3-survival-ae77fa84ac2b'; // [power]
 import { createFishTrap } from './fish-trap.js?build=v3-survival-ae77fa84ac2b'; // [fishtrap]
+import { createKelpLine } from './kelpline.js?build=v3-survival-ae77fa84ac2b'; // [kelpline]
 import { createPhotoFrame } from './photo-frame.js?build=v3-survival-ae77fa84ac2b'; // [camera] photo frame decor
 import { createTasks } from './tasks.js?build=v3-survival-ae77fa84ac2b'; // [tasks]
 import { createFlags } from './flags.js?build=v3-survival-ae77fa84ac2b'; // [flags]
@@ -94,6 +95,7 @@ import { createStorm } from './storm.js?build=v3-survival-ae77fa84ac2b'; // [sto
 import { createStars } from './stars.js?build=v3-survival-ae77fa84ac2b'; // [stars]
 
 const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createStorm, createStars, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createCrops, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createSpyglass, createCookpot]; // round 4: game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); // [bees] + createBees; [scarecrow] after wildlife; [sit] + createSitting; [flags] + createFlags; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [storm] after daynight; [stars] after storm; [crops] + createCrops; [spyglass]; [juicer] + createJuicer [gull] + createGull
+FEATURES.push(createKelpLine); // [kelpline]
 // [undecor] decor whose module stores items per tile but has no beforeUndecor/undecorLoot/afterUndecor yet:
 // picking it up would lose what it holds, so the host refuses (display, fish trap, cooking pot, gull perch tray).
 const NO_UNDECOR = new Set(['shelf', 'trophystand', 'fishtrap', 'cookpot', 'perch', 'cropplot', 'glidepost', 'glidestep']); // [zipline] posts hold line rope // [crops] slots live on the decor entry

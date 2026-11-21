@@ -520,6 +520,18 @@ export const ITEM_ICONS = Object.freeze({
       <path d="M27 17 L33 11 L35 16 L31 18 Z" fill="#54a6a4" stroke-width="1.5"/></g>
     <path d="M13 34 C13 37 14 39 16 40" fill="none" stroke="#fff2cc" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".8"/>`,
 
+  // [kelpline] a post with a cleat, a rope out to three round floats, and three wavy green blades hanging below
+  kelpline: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="6" y="10" width="5" height="30" rx="1" fill="#8a6640"/>
+    <rect x="3.5" y="14" width="10" height="3" rx="1" fill="#6e4f33" stroke-width="1.6"/></g>
+    <path d="M11 15.5 C19 18 28 21 43 24" fill="none" stroke="#d8c39a" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M13 27 C17 25.5 21 28.5 25 27 C29 25.5 33 28.5 37 27 C40 26 42 27.5 44 27" fill="none" stroke="#7cc6d6" stroke-width="1.6" stroke-linecap="round"/>
+    <g fill="#4f9a5c" stroke="${O}" stroke-width="1.6" stroke-linejoin="round">
+      <path d="M17 22 C14 28 20 32 16 38 C15 41 17 43 18.5 41 C21 36 17 31 20 23 Z"/>
+      <path d="M26 25 C23 31 29 35 25 41 C24 44 26 46 27.5 44 C30 39 26 34 29 26 Z" fill="#5fae4a"/>
+      <path d="M35 27 C32 32 38 35 34.5 40 C33.5 42.5 35.5 44 37 42 C39 38 35 34 38 28 Z" fill="#3f8f3a"/></g>
+    <g stroke="${O}" stroke-width="2"><circle cx="18" cy="19.5" r="3.6" fill="#e9e4d4"/><circle cx="27.5" cy="22.3" r="3.6" fill="#d9774a"/><circle cx="37" cy="24.6" r="3.6" fill="#e9e4d4"/></g>`,
+
   // [recycler] floating junk + Sorting Tub
   oldboot: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <path d="M13 8 H27 L28 26 C34 27 41 29 43 34 V39 H7 V31 C9 25 11 18 13 8 Z" fill="#8a6242"/>

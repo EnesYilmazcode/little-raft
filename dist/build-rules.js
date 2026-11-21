@@ -20,6 +20,7 @@ export const BLOCK_TEXT = Object.freeze({
   nofloor: 'Place it on the raft floor',
   net: 'A collection net hangs there',
   trapedge: 'Fish traps hang on an edge tile, next to open water', // [fishtrap]
+  kelpedge: 'Kelp lines hang on an edge tile, next to open water', // [kelpline]
   piece: 'Stairs are in the way',
 });
 // Building pieces that fill a deck cell (stairs at level 0; floor/roof only sit higher up, but count them too).

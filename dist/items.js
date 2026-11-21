@@ -272,6 +272,8 @@ const LIST = [
     tip: 'A tall lamp that lights the deck at night. Needs a charged battery nearby.' }),
   item('fishtrap', 'Fish Trap', 'decor', { placeable: true, iconTint: '#b98a4e', recipe: hand({ wood: 3, rope: 3, leaf: 2 }), unlock: discover('fish'), // [fishtrap] see dist/fish-trap.js
     tip: 'A woven basket that hangs off the raft edge. Fish swim in while you relax.' }),
+  item('kelpline', 'Kelp Line', 'decor', { placeable: true, iconTint: '#4f9a5c', recipe: hand({ wood: 2, rope: 3, plastic: 1 }), unlock: discover('seaweed'), // [kelpline] see dist/kelpline.js
+    tip: 'A float line off the raft edge. Seaweed grows on it while you sail.' }),
   item('shelf', 'Display Shelf', 'decor', { placeable: true, iconTint: '#b4824b', // [display] see dist/display.js
     recipe: hand({ wood: 4, nail: 2 }), unlock: discover('nail'),
     tip: 'A little shelf for showing off your favourite finds.' }), // [display]
@@ -348,6 +350,7 @@ export const BLOCK_RADII = deepFreeze({
   shelf: 0.45, trophystand: 0.25, // [display]
   turbine: 0.2, battery: 0.3, stringlights: 0.1, lamppost: 0.12, // [power]
   fishtrap: 0.2, // [fishtrap] only the post stands on the deck
+  kelpline: 0.2, // [kelpline] only the post stands on the deck
   taskboard: 0.3, // [tasks]
   photoframe: 0.15, // [camera]
   recycler: 0.45, // [recycler]
