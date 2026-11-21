@@ -55,6 +55,11 @@ const CSS = `
 .bm-req.bm-short{color:#ff9f86}
 .bm-req.bm-short svg{opacity:.5;filter:grayscale(.7)}
 .bm-free{font:600 12px/1 ${FONT};color:#d9c9a6}
+.bm-tag{position:absolute;left:50%;top:50%;padding:4px 10px;border-radius:10px;white-space:nowrap;pointer-events:none;background:#24170cf0;border:1.5px solid #ffe3a6;
+  color:#fff2cc;font:700 13px/1.2 ${FONT};box-shadow:0 3px 10px #0007;transform:translate(-50%,-50%)}
+.bm-tag[hidden]{display:none}
+/* the hammer's "Aim at the raft edge" prompt sits under the hub: hide it while the wheel is up */
+body.bm-wheel-up #lrPrompt,body.bm-wheel-up #contextPrompt{visibility:hidden}
 .bm-chip{position:fixed;left:max(16px,calc(50% - 253px));bottom:var(--bm-chip-bottom,178px);z-index:3;text-align:left;display:flex;align-items:center;gap:10px;
   padding:7px 14px 7px 7px;border-radius:12px;pointer-events:none;max-width:calc(100vw - 32px);
   background:repeating-linear-gradient(90deg,#0000000f 0 2px,transparent 2px 21px),linear-gradient(#5d4129f0,#3d2a19f0);
@@ -110,9 +115,10 @@ export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
       `<g class="bm-ic" transform="translate(${(ix - 22).toFixed(2)} ${(iy - 22).toFixed(2)})">${iconSvg(p.id, 44)}</g></g>`;
   }).join('')}<circle class="bm-hub" r="${R_IN - 6}"/><circle class="bm-hubin" r="${R_IN - 12}"/>` +
     `<g class="bm-pipg"><path class="bm-pip" d="M-7 ${-(R_IN - 1)}L0 ${-(R_IN + 7)}L7 ${-(R_IN - 1)}Z"/></g></svg>` +
-    `<div class="bm-mid" aria-live="polite"><small>Selected</small><b></b><div class="bm-cost"></div></div>`;
+    `<div class="bm-mid" aria-live="polite"><small>Selected</small><b></b><div class="bm-cost"></div></div><span class="bm-tag" aria-hidden="true" hidden></span>`;
   const secs = [...wheel.querySelectorAll('.bm-sec')];
   const pipG = wheel.querySelector('.bm-pipg');
+  const tag = wheel.querySelector('.bm-tag');
   const midLabel = wheel.querySelector('.bm-mid small'), midName = wheel.querySelector('.bm-mid b'), midCost = wheel.querySelector('.bm-cost');
   root.appendChild(wheel);
 
@@ -141,8 +147,16 @@ export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
     if (hot >= 0) secs[hot].classList.remove('bm-hot');
     hot = i;
     if (hot >= 0) { secs[hot].classList.add('bm-hot'); pipG.setAttribute('transform', `rotate(${hot * step})`); }
+    placeTag();
     wheel.classList.toggle('bm-has', hot >= 0);
     renderMid();
+  }
+  // Name tag just outside the ring at the hovered sector (the icons alone do not say what they are).
+  function placeTag() {
+    tag.hidden = hot < 0; if (hot < 0) return;
+    const [x, y] = pt(R_OUT + 26, hot * step).split(' ').map(Number);
+    tag.textContent = list[hot].name;
+    tag.style.left = `${50 + x / (VB * 2) * 100}%`; tag.style.top = `${50 + y / (VB * 2) * 100}%`;
   }
   // Sector from an offset (screen px, y down). Dead zone -> -1.
   function pickAt(dx, dy, dead) {
@@ -176,7 +190,7 @@ export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
     open() {
       if (open || !list.length) return;
       open = true; vx = vy = 0; wheel.hidden = false;
-      refreshAfford(); setHot(-1); renderMid(); chip.classList.add('bm-dim');
+      refreshAfford(); setHot(-1); renderMid(); chip.classList.add('bm-dim'); document.body.classList.add('bm-wheel-up');
       void wheel.offsetWidth; wheel.classList.add('bm-open'); measure();
     },
     move(dx, dy) {
@@ -194,7 +208,7 @@ export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
     },
     close(confirm = true) {
       if (!open) return;
-      open = false; wheel.classList.remove('bm-open'); wheel.hidden = true; chip.classList.remove('bm-dim');
+      open = false; wheel.classList.remove('bm-open'); wheel.hidden = true; chip.classList.remove('bm-dim'); document.body.classList.remove('bm-wheel-up');
       const i = hot; setHot(-1);
       if (confirm && i >= 0) { selected = list[i].id; renderChip(); onPick?.(selected); }
     },
@@ -207,7 +221,7 @@ export function createBuildMenu({ pieces, onPick, root = document.body } = {}) {
     setChip(text) { text = text ? String(text) : ''; if (text !== chipText) { chipText = text; chipStatus.textContent = text; } },
     dispose() {
       wheel.removeEventListener('click', onClick); wheel.removeEventListener('contextmenu', onCtx);
-      removeEventListener('resize', onResize); wheel.remove(); chip.remove(); open = false;
+      removeEventListener('resize', onResize); wheel.remove(); chip.remove(); open = false; document.body.classList.remove('bm-wheel-up');
     },
   };
   renderChip();
