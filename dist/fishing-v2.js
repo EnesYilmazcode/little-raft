@@ -123,7 +123,7 @@ export class FishingSession {
 }
 
 // ---------------------------------------------------------------- visuals
-const CSS = `#fcReelHud{position:fixed;left:50%;top:calc(50% + 30px);transform:translateX(-50%);width:150px;z-index:4;
+const CSS = `#fcReelHud{position:fixed;left:50%;top:calc(50% + 58px);transform:translateX(-50%);width:150px;z-index:4;
 pointer-events:none;display:none;font:600 12px/1.2 system-ui,sans-serif;color:#fffdf4;text-align:center;text-shadow:0 1px 2px #0b3a44}
 #fcReelHud.show{display:block}#fcReelHud .bar{height:8px;border-radius:5px;background:#0d3d4766;box-shadow:0 0 0 1.5px #fffdf4aa;overflow:hidden;margin-top:5px}
 #fcReelHud .bar i{display:block;height:100%;width:0;border-radius:5px;background:#fffdf4}
@@ -165,7 +165,7 @@ export function createFishingV2(T, { scene, ocean } = {}) {
   const G = (g) => (geos.push(g), g), M = (m) => (mats.push(m), m);
   const corkMat = M(new T.MeshStandardMaterial({ color: 0xc89a62, roughness: 0.85 }));
   const tealMat = M(new T.MeshStandardMaterial({ color: 0x1f9e9a, roughness: 0.5 }));
-  const whiteMat = M(new T.MeshStandardMaterial({ color: 0xf6f1e4, roughness: 0.45 }));
+  const whiteMat = M(new T.MeshStandardMaterial({ color: 0xe8452c, roughness: 0.45 })); // red cap: reads against teal water, matches the rod's hanging float
   const pinMat = M(new T.MeshStandardMaterial({ color: 0x3a3430, roughness: 0.6 }));
   const flagMat = M(new T.MeshStandardMaterial({ color: 0xf2a83b, roughness: 0.6, side: T.DoubleSide }));
   const bobber = new T.Group(); bobber.name = 'fcBobber';
@@ -242,11 +242,13 @@ export function createFishingV2(T, { scene, ocean } = {}) {
       const e = 0.4, sx = (H(p.x + e, p.z) - H(p.x - e, p.z)) / (2 * e), sz = (H(p.x, p.z + e) - H(p.x, p.z - e)) / (2 * e);
       bobber.rotation.set(-sz * 1.1 + (st === 'reeling' ? side * 0.6 : 0), 0, sx * 1.1);
     }
-    bobber.position.copy(p); bobber.visible = true;
+    // keep the float readable out on the water: grow with distance from the rod tip (1x close, up to 3x far)
+    const bs = Math.min(3, Math.max(1, tip.distanceTo(p) / 3.5));
+    bobber.position.copy(p); bobber.scale.setScalar(bs); bobber.visible = true;
     // line: tip -> bobber top with a sag that tightens with tension
-    top.set(p.x, p.y + 0.06, p.z);
+    top.set(p.x, p.y + 0.06 * bs, p.z);
     const dist = tip.distanceTo(top);
-    const sag = st === 'flying' ? 0.05 * dist : (st === 'reeling' ? 1 - session.tension * 0.9 : 1) * Math.min(1.2, 0.05 + dist * 0.07);
+    const sag = st === 'flying' ? 0.05 * dist : (st === 'reeling' ? 1 - session.tension * 0.9 : 1) * Math.min(0.5, 0.04 + dist * 0.03);
     const floor = (h ?? H(p.x, p.z)) - 0.02;
     for (let i = 0; i < N; i++) {
       const s = i / (N - 1);
