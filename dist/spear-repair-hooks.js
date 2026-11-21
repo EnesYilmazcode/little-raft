@@ -8,6 +8,7 @@
 import { isSpear, spearDamage, canThrust, thrust, wearSpearSlot, SPEAR_REACH } from './spear.js?build=v3-survival-ae77fa84ac2b';
 import { hasTileAt, repairTile, hpBarText, tileHpOf, TILE_MAX_HP, TILE_REPAIR_COST } from './repair.js?build=v3-survival-ae77fa84ac2b';
 import { inReach, BUILD_REACH, GUEST_REACH_SLACK } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
+import { trySpearTargets } from './spear-targets.js?build=v3-survival-ae77fa84ac2b'; // [puffer] Bloatfish and other spear targets
 
 const POKE_TIME = 0.32; // seconds of the visible jab (cooldown is longer: SPEAR_COOLDOWN)
 
@@ -69,7 +70,7 @@ export function attachSpearRepair(ctx) {
     const cam = ctx.camera();
     cam.getWorldPosition(camPos); cam.getWorldDirection(camDir);
     const shark = ctx.shark();
-    const r = thrust(slot, (dmg) => shark?.trySpear?.(camPos, camDir, SPEAR_REACH, dmg) === true);
+    const r = thrust(slot, (dmg) => shark?.trySpear?.(camPos, camDir, SPEAR_REACH, dmg) === true || trySpearTargets(camPos, camDir, SPEAR_REACH, dmg)); // [puffer]
     if (r.hit) { hitMarker(); ctx.beep(120); ctx.action({ kind: 'spearHit', slot: idx }); }
     return true;
   }
