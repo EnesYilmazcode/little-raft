@@ -502,3 +502,31 @@ test('HookCast: caught items that vanish from the world are not paid out', () =>
   assert.equal(events.length, 1);
   assert.deepEqual(events[0].items, [{ id: 'b', token: 'tb', type: 'plastic' }]);
 });
+
+// ---- feel: audio buses + co-op avatar held item ----
+test('audio buses clamp, unknown names are rejected, play is silent without a context', async () => {
+  const { createOceanAudio, BUSES, EVENTS } = await import(new URL('audio.js', base));
+  const a = createOceanAudio({ volume: 2 });
+  assert.deepEqual([...BUSES], ['master', 'effects', 'ambience', 'music']);
+  assert.equal(a.getBus('master'), 1);
+  assert.equal(a.setBus('ambience', -1), 0);
+  assert.equal(a.setBus('nope', 1), null);
+  assert.equal(a.setMusic(true), true);
+  for (const e of EVENTS) assert.equal(a.play(e), false);
+  a.tick(0.016, { swimming: true });
+  a.destroy();
+});
+
+test('avatar shows one held model per kind and animates without NaN', async () => {
+  const { createAvatar } = await import(new URL('avatar.js', base));
+  const g = createAvatar(T, '#70a7e4'), held = g.getObjectByName('held');
+  g.userData.setHeld('hammer'); g.userData.setHeld('hook'); g.userData.setHeld('hammer');
+  assert.equal(held.children.length, 2);
+  assert.equal(held.children.filter(c => c.visible).length, 1);
+  g.userData.setHeld('not-a-thing');
+  assert.equal(held.children.filter(c => c.visible).length, 0);
+  for (let i = 0; i < 20; i++) g.userData.animate(1 / 60, { speed: 3, swimming: i > 10, pitch: 0.4 });
+  const { rightArm, leftLeg } = g.userData.parts;
+  assert.ok(Number.isFinite(rightArm.rotation.x) && Number.isFinite(leftLeg.rotation.x));
+  g.userData.dispose();
+});
