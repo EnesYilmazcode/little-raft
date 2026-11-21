@@ -42,7 +42,7 @@ const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); 
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
-import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, BAG_OPEN_KEYS, BAG_CLOSE_KEYS, REEL_PROMPT, LOOK_DONE_RAD, WALK_DONE_S } from './hud.js?build=v3-survival-ae77fa84ac2b';
+import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, syncHintsFromTracker, BAG_OPEN_KEYS, BAG_CLOSE_KEYS, REEL_PROMPT, LOOK_DONE_RAD, WALK_DONE_S } from './hud.js?build=v3-survival-ae77fa84ac2b';
 import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, pageLock, exitLock, lockLossAction, shouldDeferredRelock, shouldFocusRelock, escapeCooldownRetry } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
@@ -90,7 +90,9 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
 #noticeStack{position:fixed;inset:auto auto 44px 22px;margin:0;padding:0;border:0;background:none;overflow:visible;width:auto;height:auto;color:#f6ecd6;
   max-width:min(380px,calc(50vw - 330px));display:flex;flex-direction:column;align-items:flex-start;gap:5px;pointer-events:none;z-index:40}
 #noticeStack[hidden]{display:none}
-#noticeStack>#pickupFeed{position:static;inset:auto;margin:0}
+#noticeStack>#pickupFeed{position:static;inset:auto;margin:0;max-width:100%}
+#noticeStack.ns-panel>#pickupFeed,#noticeStack.ns-panel>.hint{display:none}
+#noticeStack>#binocularsHud{position:static;inset:auto;transform:none;margin:0}
 #noticeStack>.hint,#contextPrompt{padding:6px 34px 6px 12px;border-radius:7px 0 0 7px;background:linear-gradient(90deg,#1a120bc8 0%,#1a120b88 60%,#1a120b00 100%);
   text-shadow:0 1px 2px #000d;font:600 13px/1.35 var(--ui-font,system-ui,sans-serif)}
 #noticeStack>.hint{color:#ffd98f}
@@ -99,6 +101,9 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
 #contextPrompt[hidden]{display:none}
 #noticeStack>#sailPrompt{position:static;inset:auto;transform:none;margin:0;padding:6px 34px 6px 12px;border-radius:7px 0 0 7px;background:linear-gradient(90deg,#1a120bc8 0%,#1a120b88 60%,#1a120b00 100%)}
 #noticeStack>#sailPrompt[hidden]{display:none}
+#binocularsHud{position:fixed;left:22px;bottom:44px;z-index:30;padding:6px 34px 6px 12px;border-radius:7px 0 0 7px;background:linear-gradient(90deg,#1a120bc8 0%,#1a120b88 60%,#1a120b00 100%);
+  color:var(--amber-lt,#ffd98f);font:600 13px/1.35 var(--ui-font,system-ui,sans-serif);text-shadow:0 1px 2px #000d;pointer-events:none;white-space:nowrap}
+#binocularsHud[hidden]{display:none}
 #contextPrompt kbd{display:inline-block;min-width:1.4em;margin-right:7px;padding:1px 5px;border-radius:4px;font:700 12px/1.2 var(--ui-font,system-ui,sans-serif);text-align:center;
   color:#fff6e0;background:#0008;box-shadow:inset 0 0 0 1px #fff6e099}
 @media(max-width:1100px){#noticeStack{bottom:96px;max-width:min(380px,calc(50vw - 122px))}}
@@ -634,12 +639,23 @@ export function mount(transfer = null) {
   function hintDone(id) { if (hintsDone.has(id)) return; hintsDone.add(id); saveHints(window.localStorage, hintsDone); }
   // One edge stack at the bottom-left: the current first-run hint above the pickup feed (pickups and notices).
   // It is a manual popover, re-shown whenever a menu opens, so it stays visible over the open bag.
+  // The onboarding tracker (onboarding.js "First Ten Minutes") owns look/walk/throw/bag while it runs: the chain
+  // follows its progress instead of repeating it (sampled twice a second, not per frame).
+  let trackerOn = false, trackerAt = 0;
+  function readTracker() {
+    const t = performance.now(); if (t - trackerAt < 500) return trackerOn; trackerAt = t;
+    let st = null; try { st = window.raftOnboarding?.state?.() ?? null; } catch {}
+    trackerOn = !!st && !!document.getElementById('obNotes');
+    if (st && syncHintsFromTracker(hintsDone, st.done)) saveHints(window.localStorage, hintsDone);
+    return trackerOn;
+  }
   function updateNotices(dialog) {
     if (survivalUI?.isOpen) hintDone('bag');
-    const hint = running && !dialog && !guestWaiting() ? nextHint(hintsDone, {heldKind:heldKind(), castOut:!!hook, hasLoot:hintsDone.has('loot')}) : null;
-    // Prompts from other modules (prompts.js #lrPrompt, sailing-ui.js #sailPrompt) join the edge stack once they exist.
-    const lr = document.getElementById('lrPrompt'), sp = document.getElementById('sailPrompt'), stack = document.getElementById('noticeStack');
-    const sig = (hint?.id ?? '') + '|' + dialog + (stack && (lr && lr.parentNode !== stack || sp && sp.parentNode !== stack) ? '|adopt' : '');
+    const tracker = readTracker();
+    const hint = running && !dialog && !guestWaiting() ? nextHint(hintsDone, {heldKind:heldKind(), castOut:!!hook, hasLoot:hintsDone.has('loot'), tracker}) : null;
+    // Prompts from other modules (prompts.js #lrPrompt, sailing-ui.js #sailPrompt, the binoculars readout) join the edge stack once they exist.
+    const lr = document.getElementById('lrPrompt'), sp = document.getElementById('sailPrompt'), bn = document.getElementById('binocularsHud'), stack = document.getElementById('noticeStack');
+    const sig = (hint?.id ?? '') + '|' + dialog + (stack && (lr && lr.parentNode !== stack || sp && sp.parentNode !== stack || bn && bn.parentNode !== stack) ? '|adopt' : '');
     if (sig === noticeCache) return; noticeCache = sig;
     let el = $('#noticeStack');
     if (!el) { el = document.createElement('div'); el.id = 'noticeStack'; document.body.appendChild(el); }
@@ -648,7 +664,9 @@ export function mount(transfer = null) {
     if (feed.parentNode !== el) el.appendChild(feed);
     const prompt = $('#contextPrompt'); if (prompt && prompt.parentNode !== el) el.prepend(prompt); // action prompts live in the edge stack too
     if (sp && sp.parentNode !== el) el.prepend(sp);
+    if (bn && bn.parentNode !== el) el.prepend(bn);
     if (lr && lr.parentNode !== el) el.prepend(lr); // before #contextPrompt: prompts.css hides that one while this shows
+    el.classList.toggle('ns-panel', !!dialog); // a panel (bag, station, journal) is open: no feed rows drawn over it
     let h = el.querySelector(':scope>.hint');
     if (!h) { h = document.createElement('div'); h.className = 'hint'; h.setAttribute('role', 'status'); el.prepend(h); }
     h.textContent = hint?.text ?? ''; h.hidden = !hint;
@@ -1073,6 +1091,7 @@ export function mount(transfer = null) {
     charging = null; hover = null; play('ui', .5);
     if (!reelCast('slot') && hook && !hook.fishing) { hook.cancel?.(); endHook(); } // switching away retracts the hook; its catch stays in the sea
     if (hintsDone.has('bag')) hintDone('slots');
+    hintDone('look'); // switching tools: looking around is learnt, the look hint is stale
     if (role === 'guest') { if (!networkReady) return; bag.select(i); action({kind:'selectSlot', index:i}); }
     else action({kind:'selectSlot', index:i});
   }
@@ -2002,6 +2021,7 @@ export function mount(transfer = null) {
     prog.installUI(); // [progression-hook]
     logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock())});
     if (role !== 'guest') retroAward();
+    try { window.raftPickupFeed = pickupFeed; } catch {} // prompts.js feed() and onboarding lines post here
     pickupFeed.setIconProvider(getItemIcon); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
     if ($('#toast')?.classList.contains('show')) toastTimer = later(() => { toastTimer = 0; $('#toast')?.classList.remove('show'); }, 2600);

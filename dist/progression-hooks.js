@@ -161,20 +161,22 @@ export function attachProgression(ctx) {
     panel.open(key);
   }
 
-  const RCSS = `#researchPanel{padding:0;margin:auto;border:0;background:transparent;width:min(420px,94vw);color:#fff2cc;font:500 14px/1.35 'Segoe UI',system-ui,sans-serif}
-#researchPanel::backdrop{background:rgba(12,9,5,.42)}
-#researchPanel .rp-wrap{padding:12px;border-radius:6px;background:linear-gradient(#b48d55,#8a663a);border:3px solid #3e2a17;box-shadow:0 0 0 2px #d6b67e,0 18px 50px #000a;outline:none}
+  // Shared slate palette and --ui-font (graphics.css tokens), like the bag and the storage panel.
+  const RCSS = `#researchPanel{padding:0;margin:auto;border:0;background:transparent;width:min(420px,94vw);color:var(--cream,#f4efe2);font:500 14px/1.35 var(--ui-font,system-ui,sans-serif)}
+#researchPanel::backdrop{background:rgba(6,10,12,.42)}
+#researchPanel .rp-wrap{padding:12px;border-radius:9px;background:var(--glass,#11181bf2);box-shadow:var(--frame,0 10px 28px rgba(0,0,0,.45));outline:none}
 #researchPanel .rp-head{display:flex;justify-content:space-between;align-items:center;margin:-2px 2px 10px}
-#researchPanel h2{margin:0;font:800 19px/1.1 system-ui,sans-serif;font-family:inherit;color:#2a1b0e}
-#researchPanel .rp-x{width:30px;height:30px;border:0;border-radius:4px;background:#3a2716;color:#fff2cc;font:700 18px/1 sans-serif;cursor:pointer}
-#researchPanel section{background:#3a2716eb;border-radius:4px;padding:10px;margin-top:8px}
-#researchPanel .rp-sub{margin:0 0 6px;font:700 11px/1 sans-serif;letter-spacing:1.4px;text-transform:uppercase;color:#d9c9a6}
-#researchPanel .rp-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid #b48d5533}
+#researchPanel h2{margin:0;font:700 19px/1.1 var(--ui-font,system-ui,sans-serif);color:var(--cream-hi,#fff6e0)}
+#researchPanel .rp-x{width:30px;height:30px;border:0;border-radius:5px;background:#ffffff0d;color:var(--cream,#f4efe2);font:700 18px/1 var(--ui-font,system-ui,sans-serif);cursor:pointer;transform:none}
+#researchPanel .rp-x:hover{background:#ffffff22}
+#researchPanel section{background:#ffffff0a;border-radius:6px;box-shadow:inset 0 0 0 1px var(--line,#ffffff17);padding:10px;margin-top:8px}
+#researchPanel .rp-sub{margin:0 0 6px;font:800 10px/1 var(--ui-font,system-ui,sans-serif);letter-spacing:1.4px;text-transform:uppercase;color:var(--muted,#f4efe280)}
+#researchPanel .rp-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid var(--line,#ffffff17)}
 #researchPanel .rp-row:first-of-type{border-top:0}
-#researchPanel .rp-row small{display:block;color:#d9c9a6;font-size:12px}
-#researchPanel button.rp-go{padding:5px 10px;border:0;border-radius:3px;background:linear-gradient(#ffcf7d,#e9a24a);color:#2a1b0e;font:800 12px/1 sans-serif;cursor:pointer;box-shadow:0 2px 0 #8a5a26}
+#researchPanel .rp-row small{display:block;color:var(--cream-dim,#f4efe2b3);font-size:12px}
+#researchPanel button.rp-go{padding:6px 11px;border:0;border-radius:5px;background:var(--amber,#ffc66e);color:#1a1206;font:800 12px/1 var(--ui-font,system-ui,sans-serif);cursor:pointer;transform:none}
 #researchPanel button.rp-go:disabled{opacity:.4;cursor:default}
-#researchPanel .rp-none{margin:0;color:#bfae8a;font-size:13px}`;
+#researchPanel .rp-none{margin:0;color:var(--cream-dim,#f4efe2b3);font-size:13px}`;
   let researchSig = '';
   function renderResearch(force) {
     if (!research?.open) return;
@@ -203,6 +205,8 @@ export function attachProgression(ctx) {
         const b = e.target.closest('[data-research]'); if (b && !b.disabled) act({ kind: 'prog:research', item: b.dataset.research });
       });
       research.addEventListener('close', () => ctx.resume?.());
+      // E / Tab close it, as they close the bag and the storage panel (Esc is the dialog default).
+      research.addEventListener('keydown', (e) => { if ((e.code === 'KeyE' || e.code === 'Tab') && !e.repeat) { e.preventDefault(); e.stopPropagation(); research.close(); } });
       document.body.append(research);
     }
     ctx.pause?.();
@@ -243,9 +247,10 @@ export function attachProgression(ctx) {
     const show = !!ctx.running() && toolRole(kind) === 'binoculars';
     if (!show) { if (hud) hud.hidden = true; return; }
     if (!hud) {
+      // Styled by game.js (#binocularsHud): a status row docked in the bottom-left #noticeStack, never centred over the sea.
       hud = document.createElement('div'); hud.id = 'binocularsHud'; hud.setAttribute('role', 'status');
-      hud.style.cssText = 'position:fixed;left:50%;top:18%;transform:translateX(-50%);padding:4px 12px;border-radius:8px;background:rgba(8,22,36,.6);color:#f6ecd6;font:700 15px/1.3 system-ui,sans-serif;pointer-events:none;z-index:30;white-space:nowrap';
-      document.body.append(hud);
+      const stack = document.getElementById('noticeStack');
+      if (stack) stack.prepend(hud); else document.body.append(hud);
     }
     const me = ctx.pose(); let best = null, bd = Infinity;
     for (const it of ctx.world()?.items ?? []) if (it.type === 'barrel') { const dd = Math.hypot(it.x - me.x, it.z - me.z); if (dd < bd) { bd = dd; best = it; } }
