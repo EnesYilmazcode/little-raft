@@ -20,3 +20,11 @@ export function castPrompt(cast, fishWait) {
   if (!cast?.fishing) return '';
   return cast.t > fishWait ? 'A bite! Click to reel in' : 'Waiting for a bite… click to reel in';
 }
+
+// Host verdict for a landed fish. fitBag: the bag copy fitted. basket: the catch is already in the
+// fish basket (rod v2), which is the real store, so a full bag only skips the bag mirror.
+export function fishOutcome(fitBag, basket) {
+  if (fitBag) return { keep: true, kind: 'loot', text: 'You caught a fish!' };
+  if (basket) return { keep: true, kind: 'notice', text: 'Bag full: the fish went in your basket' };
+  return { keep: false, kind: 'full', text: 'Bag full: the fish swam away' };
+}

@@ -37,11 +37,11 @@ import { cleanRain, copyRain, tickRain, takeRain, fillSprinkler, rainTarget, RAI
 import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, hookableItems, decorBlockers, playerInWay, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
 import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan, LIVE_STATUS_EVENT } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
-import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
+import { releaseShouldFire, castInput, castPrompt, fishOutcome } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
-import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
+import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, countBarrelLuck, copyBarrelLuck, cleanBarrelLoot, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
@@ -200,7 +200,7 @@ export function mount(transfer = null) {
     const items = [];
     if (withItems && Array.isArray(v.items)) for (const it of v.items.slice(0, 80)) {
       if (it && isInt(it.id) && typeof it.token === 'string' && it.token.length < 80 && (ITEM_TYPES.includes(it.type) || it.type === 'bottle') && Number.isFinite(it.x) && Number.isFinite(it.z) && Math.abs(it.x) < 80 && Math.abs(it.z) < 80)
-        items.push({id:it.id, token:it.token, type:it.type, x:it.x, z:it.z, phase:Number.isFinite(it.phase) ? it.phase : 0});
+      { const loot = it.type === 'barrel' ? cleanBarrelLoot(it.loot) : null; items.push({id:it.id, token:it.token, type:it.type, x:it.x, z:it.z, phase:Number.isFinite(it.phase) ? it.phase : 0, ...(loot ? {loot} : {})}); } // barrel: its rolled loot travels with it
     }
     const progress = cleanProgress(v);
     return {tiles, decor, stock, fish:count(v.fish), collected:count(v.collected), hookHealth:Number.isFinite(v.hookHealth) ? clamp(Math.round(v.hookHealth), 0, MAX_HEALTH) : MAX_HEALTH, items,
@@ -558,8 +558,18 @@ export function mount(transfer = null) {
   // ---------- Floating supplies ----------
   function makeItem(id) { const edge = Math.min(...world.tiles.map(t => t[1])) * 2 - 1, spread = Math.max(11, Math.max(...world.tiles.map(t => Math.abs(t[0]))) * 2 + 6); const it = {id, token:newToken(), type:SPAWN_TABLE[Math.floor(Math.random() * SPAWN_TABLE.length)], x:(Math.random() - .5) * spread * 2, z:edge - 3 - Math.random() * 17, phase:Math.random() * 6};
     if (role !== 'guest' && SPAWN_TABLE.includes(it.type) && shouldSpawnBottle(world, id)) it.type = 'bottle';
+    if (role !== 'guest') lootOf(it); // a barrel rolls its contents once, so the full-bag checks and the collect agree
     return it;
   }
+  // Loot one supply gives. A barrel rolls once (on a scratch copy of the pity counters) and keeps the roll;
+  // the counters advance only when it is really collected. A guest without the host's roll uses the estimate.
+  function lootOf(it) {
+    if (!it) return null;
+    if (it.type !== 'barrel') return LOOT[it.type] ?? null;
+    if (!it.loot && role !== 'guest') it.loot = rollBarrel(Math.random, copyBarrelLuck(prog?.barrelLuck));
+    return it.loot ?? LOOT.barrel;
+  }
+  const caughtLoot = c => lootOf(world.items.find(it => it.token === c?.token) ?? c); // a caught entry is {id, token, type}
   function itemModel(item) {
     if (item.type === 'cache') return createSignalModel(T, 'cache');
     if (item.type === 'bottle') { const g = new T.Group(), b = createBottle(T); b.position.y = .04; b.rotation.y = (item.id % 7) * .9; g.add(b); return singlePass(g); }
@@ -984,14 +994,14 @@ export function mount(transfer = null) {
       const i = world.items.findIndex(it => it.id === a.id && it.token === a.token); if (i < 0) return; // token guard: each supply counts once
       if (world.items[i].type === 'bottle') { collectBottle(i, a, bag, actor); return; }
       const it = world.items[i]; if (it.type === 'cache' && a.net) return; // nets never take the signal cache
-      const isCache = it.type === 'cache', loot = isCache ? cacheLoot(countAntennas(world.decor), Math.random) : it.type === 'barrel' ? rollBarrel(Math.random, prog?.barrelLuck) : LOOT[it.type]; if (!loot) return; // [progression-hook] barrel table
+      const isCache = it.type === 'cache', loot = isCache ? cacheLoot(countAntennas(world.decor), Math.random) : lootOf(it); if (!loot) return; // [progression-hook] barrel table, rolled once per barrel
       if (actor === 'guest' && !a.net && ownHeldTokens().has(it.token)) return; // on the host's hook: the host claimed it first
       const scratch = new Bag(bag.snapshot());
       for (const [k, n] of Object.entries(loot)) if (scratch.add(k, n) > 0) { // atomic: all loot fits or nothing changes
         if (!a.net) emit({kind:'full', text:'Your bag is full', tokens:[it.token]}, actor);
         return;
       }
-      commit(bag, scratch);
+      commit(bag, scratch); if (it.type === 'barrel' && prog?.barrelLuck) countBarrelLuck(prog.barrelLuck, loot); // pity counts only a barrel really opened
       world.collected++; world.items.splice(i, 1); if (isCache) onCacheCollected(world); else world.items.push(makeItem(a.id)); syncItems();
       if (typeof a.cast === 'string' && a.cast && wornCasts[actor] !== a.cast) { wornCasts[actor] = a.cast; wearHook(bag, a.slot, actor); }
       if (isCache) emit({kind:'build', text:'Signal cache recovered!'}, actor === 'host' ? 'guest' : 'host');
@@ -1068,9 +1078,10 @@ export function mount(transfer = null) {
     }
     if (a.kind === 'fish') {
       if (bag.count('fishingrod') < 1) return;
-      if (bag.add('fish', 1) > 0) { emit({kind:'full', text:'Bag full: the fish swam away'}, actor); return; }
-      world.fish++; emit({kind:'loot', text:'You caught a fish!', loot:{fish:1}}, actor);
-      award({kind:'fish'}); return;
+      const fit = bag.add('fish', 1) === 0, o = fishOutcome(fit, a.basket === true); // basket: rod v2 already stored it
+      emit(fit ? {kind:o.kind, text:o.text, loot:{fish:1}} : {kind:o.kind, text:o.text}, actor);
+      if (!o.keep) return;
+      world.fish++; award({kind:'fish'}); return;
     }
     if (a.kind === 'repair') {
       const i = repairHookSlot(bag.slots, a.slot, MAX_HEALTH);
@@ -1116,9 +1127,11 @@ export function mount(transfer = null) {
   function repair() { if (!running) return; const bag = localBag(); action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH)}); }
   function openInventory() { if (!running || !survivalUI) return; pauseInput(); releaseLock(); survivalUI.open?.(); play('open'); hintDone('bag'); } // pauseInput: held W/Shift survive the panel
   function interact() {
-    if (!running || uiBlocked() || diving?.state.diving) return; // diving lane hook: E gathers underwater
-    if (!pickupFrom(currentAim()) && sailing?.interact()) return; // [sailing] E on a sail / anchor (pick-up wins)
+    if (!running || uiBlocked()) return;
+    const dive = diving?.state; if (dive?.diving && dive.gatherTarget) return; // diving lane hook: E gathers a seafloor node in view
+    if (!dive?.diving && !pickupFrom(currentAim()) && sailing?.interact()) return; // [sailing] E on a sail / anchor (pick-up wins)
     const target = pickupFrom(currentAim());
+    if (dive?.diving && !target) return; // underwater E only grabs floating debris overhead (matches the prompt)
     if (target) {
       if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
       pending.set(target.token, performance.now() + PENDING_MS); swing = .6;
@@ -1203,7 +1216,7 @@ export function mount(transfer = null) {
   // Pause menu "quit to title": save, leave any crew, show the title. The world stays loaded for Continue.
   function quitToTitle() {
     save(); if (role !== 'solo') closeConnection();
-    hook = null; fishWait = 0; clearInput(); releaseLock();
+    hook = null; fishWait = 0; clearInput(); releaseLock(); diving?.cancel(); // no dive survives the title
     running = false; const w = $('#welcome'); if (w) w.hidden = false; const h = $('#hud'); if (h) h.hidden = true;
     refreshTitle(); refreshPointerUI(true);
   }
@@ -1261,7 +1274,7 @@ export function mount(transfer = null) {
     if (!running) { walking = false; return; }
     const fwd = ci ? ci.forward : input ? held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown') : 0, side = ci ? ci.strafe : input ? held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft') : 0;
     const surf = building ? building.preStep(physics, deckY()) : null; // building-pieces lane hook
-    const dive = diving?.move(dt, physics, {forward:fwd, strafe:side, yaw, pitch, up:ci ? ci.jump : input && held('Space'), down:ci ? !!ci.crouch : input && held('KeyC'), fast:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'), gather:input && (controls ? controls.input.down('interact') : held('KeyE'))}); // diving lane hook
+    const dive = diving?.move(dt, physics, {forward:fwd, strafe:side, yaw, pitch, up:ci ? ci.jump : input && held('Space'), down:!!input && (controls ? controls.input.down('crouch') : held('KeyC')) /* raw hold, not the crouch toggle: a surfacing must stick */, fast:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'), gather:input && (controls ? controls.input.down('interact') : held('KeyE'))}); // diving lane hook
     // Real frame time in equal substeps (<= MAX_DT) so walking speed holds at low fps. Jump stays held on every
     // substep: PlayerPhysics fires the impulse only on the press edge, i.e. the first substep, never again.
     let ev = null;
@@ -1387,7 +1400,6 @@ export function mount(transfer = null) {
   }
   function updateHook(dt) {
     if (!hook) { rope.visible = false; hookMesh.visible = false; if (bobber) bobber.visible = false; return; }
-    if (hook.stage === 'floating' && hook.base) { hook.base.x += sailFlow.x * dt; hook.base.z += sailFlow.z * dt; } // [sailing] a floating hook drifts with the water
     if (hook.fishing) { // simple bobber animation, separate from HookCast
       hook.t += dt; const f = hook.t / hook.duration, u = Math.min(1, f * 5);
       const pos = fishPos.copy(handPos).lerp(hook.end, u);
@@ -1397,9 +1409,9 @@ export function mount(transfer = null) {
       if (f >= 1) { if (selectedKind() === 'fishingrod') action({kind:'fish'}); fishWait = 0; endHook(); }
       return;
     }
-    hookFull = holdForFullBag(hook, c => lootFits(localBag(), catchLoot(c, LOOT))); // full bag: keep the catch on the hook in the water
+    hookFull = holdForFullBag(hook, c => lootFits(localBag(), catchLoot(c, caughtLoot))); // full bag: keep the catch on the hook in the water
     // Each side skips the other's catch, but never lets go of what its own hook already holds (the first hook to claim an item keeps it).
-    const ev = hook.update(dt, {hand:handPos, items:hookableItems(world.items, {isPending, otherHeld:otherHeldTokens(), ownHeld:ownHeldTokens()}), reeling:reeling && !hookFull, time:elapsed});
+    const ev = hook.update(dt, {hand:handPos, items:hookableItems(world.items, {isPending, otherHeld:otherHeldTokens(), ownHeld:ownHeldTokens()}), reeling:reeling && !hookFull, time:elapsed, flow:sailFlow}); // [sailing] flow: the hook drifts with the water, but not while resting on the deck
     const hp = hook.position, pos = hookPos.set(hp.x, hook.onDeck ? hp.y : surfaceY(hp.x, hp.z, hp.y), hp.z); // on the planks it rests at deck height
     hookMesh.visible = true; hookMesh.position.copy(pos); bobber.visible = false;
     if (hook.stage === 'flying') hookMesh.rotation.set(-hook.flightT * Math.PI * 2, yaw, 0);
@@ -1451,10 +1463,10 @@ export function mount(transfer = null) {
     ocean.update(elapsed, camera); sfx.tick(dt, {swimming:physics.swimming});
     updateRaft(dt); if (sailing) sailing.update(dt, elapsed); // [sailing]
     const realDt = rawMs / 1000; movePlayer(realDt, running && !dialog); // the player substeps the real frame time (splitSteps)
-    updateAvatars(dt); updateCamera(dt); if (running) diving?.update(dt, elapsed); // diving lane hook
+    updateAvatars(dt); updateCamera(dt); diving?.update(dt, elapsed); // diving lane hook: every frame, so the title camera (above water) clears the underwater look
     coop?.update(dt, elapsed); // coop: interpolated remote avatar, rope, ghost, pings, pose stream, reconnect
     frameAim = running && !dialog ? currentAim(aimScratch) : null;
-    pickTarget = pickupFrom(frameAim);
+    pickTarget = diving?.state.gatherTarget ? null : pickupFrom(frameAim); // a seafloor node in view owns E (and its prompt)
     waterAim = pickTarget ? null : wateringTarget(frameAim);
     updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost();
     const simDt = running ? dt : 0; // the title screen freezes the world: no day clock, no grill fuel or cooking
@@ -1467,7 +1479,7 @@ export function mount(transfer = null) {
       if (sigEvents.length || world.items.length !== itemCount) syncItems();
       netClock += dt;
       if (netClock > .8) { // nets gather into the host's bag (trusted shared machine) and never consume when full
-        netClock = 0; const heldTokens = allHeldTokens(), fits = it => it.type !== 'cache' && lootFits(actorBag('host'), LOOT[it.type]);
+        netClock = 0; const heldTokens = allHeldTokens(), fits = it => it.type !== 'cache' && lootFits(actorBag('host'), lootOf(it));
         for (const net of world.decor.filter(d => d.type === 'net')) { const it = pickNetItem(world.items, net, {held:heldTokens, isPending, fits}); if (it) applyAction({kind:'collect', id:it.id, token:it.token, net:true}, 'host'); }
       }
       waterClock += dt; if (waterClock >= 1) { waterClock -= 1; const r = tickWatering(world, 1); tickRain(world, 1, content?.rain() ?? 0); if (r.ripe.length && performance.now() >= noticeUntil) emit({kind:'notice', text:'A palm is ready to harvest'}, 'all'); }
