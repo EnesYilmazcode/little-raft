@@ -624,3 +624,35 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
 - Open nits: "Discover at a Tinker's Desk" ::before header shows above the detail card when locked rows are scrolled out of view;
   co-op HELD lacks metalhook/sharkmeat/brush/decor kinds; content.js EXT_MAX drops all world.ext at once when exceeded;
   per-frame stroke closure in hands.update; adaptive quality starts later after New game (check for an extra reset on that path).
+
+## 2026-11-21 · loop-fidelity-202611210804 (raft fidelity, round 2)
+Base: origin/claude/raft-master (80c117e), which already has round 1. Branch: claude/loop-fidelity-202611210910. Round 2 was first built on claude/loop-fidelity-202611210804 and replayed here on master's round-1 code (master's spear viewmodel in spear-repair-hooks.js, beep()). The old deck-net sweep (pickNetItem/netClock) is replaced by edge nets; live.js PRELOAD lists armor.js, crops.js, crops-model.js and nets.js.
+Research: docs/loop/research/fidelity-r2-gaps.md.
+
+Claimed gaps:
+- **Crop plots**: dist/crops.js, crops-model.js and a content.js module.
+  - Small Crop Plot: 6 wood + 4 rope, 3 slots.
+  - Beet grows in 50 s and potato in 300 s, only while the slot is wet. One fresh cup keeps a slot wet for 150 s. E harvests 2, and a crop is its own seed.
+  - Raw +10 food, grilled +15.
+  - Barrels sometimes drop beets and potatoes.
+  - Rain and sprinklers water the plots.
+- **Raft-style collection net**: dist/nets.js, docs/specs/collection-net.md.
+  - It hangs off a raft edge over the water and catches debris drifting into it, up to 10 items. E empties it into your bag; leftovers stay if the bag is full. Cost: 6 wood + 8 rope + 2 nails.
+  - Old deck nets move to edge spots.
+  - When the shark breaks a tile, the nets hanging from it go too.
+- **Foundation armor, 2x2 start, Raft costs**: dist/armor.js.
+  - Armor costs 1 ingot + 2 nails, fits on a tile, and the shark skips armored tiles. Plates show on open sides.
+  - New games start on a 2x2 raft; old saves are unchanged.
+  - Sail 10 wood + 20 leaves + 3 scrap; purifier 6 wood + 6 leaves + 4 plastic; cup 4 plastic (one definition now); hook 40 uses.
+
+Fleet: 2 researchers, 1 porter, 3 builders (worktrees), 2 reviewers.
+Review fixes:
+- the shark bites from a side without a net
+- beehive and purifier status lines no longer flood the bottom-left feed; they sit at the crosshair instead
+Checks: npm test 939/939; shoot.py `errors: []`; 153 ms/frame vs master 165 on the same machine (software GL); 46 draw calls (master 45); 93 shadow casters (no change).
+Known limits:
+- The purifier burns no fuel (Raft's burns planks).
+- No seagull crop raids and no scarecrow.
+- An old 3x3 save with no checklist progress gets two building steps credited.
+- A net lost to the shark gives no message.
+Next gaps: seagull raids + scarecrow; purifier/grill fuel; hook range (16-32 m that shrinks with wear) and reel speed against Raft's; paddle/anchor as crafted items; simple bed and sleep; Medium Crop Plot (watermelon, pineapple).
