@@ -17,6 +17,7 @@ const CSS = `.dgGear{position:fixed;left:50%;bottom:172px;transform:translateX(-
 .dgMask{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:0;transition:opacity .4s;background:rgba(10,28,34,.5);-webkit-mask:radial-gradient(ellipse 25% 40% at 32% 50%,transparent 90%,#000 100%),radial-gradient(ellipse 25% 40% at 68% 50%,transparent 90%,#000 100%);mask:radial-gradient(ellipse 25% 40% at 32% 50%,transparent 90%,#000 100%),radial-gradient(ellipse 25% 40% at 68% 50%,transparent 90%,#000 100%);-webkit-mask-composite:source-in;mask-composite:intersect}
 .dgMask.on{opacity:1}
 @media(max-width:760px){.dgGear{bottom:152px}}
+@media(max-aspect-ratio:1/1){.dgMask{-webkit-mask:radial-gradient(ellipse 40% 24% at 30% 50%,transparent 90%,#000 100%),radial-gradient(ellipse 40% 24% at 70% 50%,transparent 90%,#000 100%);mask:radial-gradient(ellipse 40% 24% at 30% 50%,transparent 90%,#000 100%),radial-gradient(ellipse 40% 24% at 70% 50%,transparent 90%,#000 100%);-webkit-mask-composite:source-in;mask-composite:intersect}}
 @media(prefers-reduced-motion:reduce){.dgGear,.dgMask{transition:none}}`;
 
 export function createDivingGear(ctx) {
