@@ -1,4 +1,4 @@
-// Small pure helpers for nets, co-op hook state and decor colliders. No DOM, no Three.js.
+// Small pure helpers for bag fits, co-op hook state and decor colliders. No DOM, no Three.js.
 
 import { blockerGap } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 

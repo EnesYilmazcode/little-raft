@@ -79,11 +79,10 @@ test('rollBarrelTrial: an untaken roll leaves the pity counters alone; keep() ap
   assert.deepEqual(plain.loot, items.rollBarrel(() => 0));
 });
 
-test('game.js commits barrel luck only after the loot fits, and nets back off a refused barrel', () => {
+test('game.js commits barrel luck only after the loot fits', () => {
   const col = gameSrc.slice(gameSrc.indexOf("if (a.kind === 'collect') {"), gameSrc.indexOf("if (a.kind === 'build') {"));
-  assert.doesNotMatch(col, /rollBarrel\(/);
+  assert.doesNotMatch(col, /rollBarrel\(/); // edge nets (emptyNet) use the trial too
   assert.match(col, /rollBarrelTrial\(Math\.random, prog\?\.barrelLuck\)/);
   assert.match(col, /commit\(bag, scratch\); barrel\?\.keep\(\);/);
   assert.match(col, /else netRefused\.set\(it\.token, performance\.now\(\) \+ NET_RETRY_MS\)/);
-  assert.match(gameSrc, /fits = it => it\.type !== 'cache' && !\(netRefused\.get\(it\.token\) > nowMs\) && lootFits/);
 });

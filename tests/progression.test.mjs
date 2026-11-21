@@ -247,7 +247,7 @@ test('items: exports are deeply frozen and helpers return safe values', () => {
   }
   assert.equal(fuelValue('constructor'), 0);
   assert.equal(fuelValue('__proto__'), 0);
-  assert.equal(wearPerUse('hook'), 2);
+  assert.equal(wearPerUse('hook'), 2.5); // 40 uses (Raft's plastic hook)
   assert.ok(Math.abs(wearPerUse('metalhook') - 100 / 150) < 1e-12);
   assert.equal(toolRole('metalhook'), 'hook');
   assert.equal(toolRole('hook'), 'hook');

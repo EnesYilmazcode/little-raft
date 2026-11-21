@@ -948,3 +948,42 @@ Next ideas: decor pickup with refunds, achievement hooks for content modules, fl
     loop-perf-202611210720 (stale), loop-ux-202611210742 (redoes lock rows, still being pushed). raft-integration was already in.
 - Gate at 9b3ba49: 1023/1023, no page errors, hook-only spawn, Esc OK, perf 133 ms / 43 calls (main 912d941: 229 ms / 49 calls).
 - Recurring flake: tests/art.test.mjs atlas build-time (<1500 ms) fails under machine load (load avg > 15); passes alone.
+## 2026-11-21 · loop-fidelity round 1 rebased onto raft-master (7294e26)
+Merged `claude/loop-fidelity-202611210714` (vitals, shark, spears + foundation repair) into the latest raft-master, keeping master's architecture:
+- **Spear viewmodel on the hands system.** held-items.js builds 'spear'/'metalspear' from spear-model.js (HOLD entries tuned so the shaft points where the old viewmodel did), and models.js registers both, so icons, held items and avatars get the same mesh. hands.update takes a new `thrust` (0..1): the right arm lunges and the held item slides `holdFor(kind).thrust` m along its grip axis. spear-repair-hooks.js keeps only the jab timing (`jab(dt)`); the old hookHands/hammerHands/rodHands/holdable paths are gone.
+- **Sounds.** audio.js has new `eat`, `drink` and `jab` recipes; eating, drinking and the spear use play(), not the oscillator beep.
+- **Bags.** master's registerBagKinds/EXTRA_KINDS replaces the round's `migrateSnapshot(snap, extraStack)`; the vitals test now checks cups survive via inventory-state's registration.
+- **HUD.** The vitals bars stay lower left (bottom 40px). Master's #pickupFeed (bottom 44px) overlapped them, so it moves to 132px (narrow 184px) and #lrFeed to 380px (narrow 396px) to stay above five pickup rows.
+- Kept: eating camera nod, shark camera shake, `exertion` in the substepped movePlayer, `fainted` gating, shark.update in frame, vitals/tileHp/shark save, capture and network fields. Craft book: shark meat/head sources; tools tab order now spears before binoculars and instruments.
+
+## 2026-11-21 · loop-fidelity-202611210804 (raft fidelity, round 2)
+Base: origin/claude/raft-master (7294e26) merged with round 1 (0a4f5c9; the spear viewmodel was ported to the new hands/models system). Branch: claude/loop-fidelity-202611210804. It carries round 1 as well, so the integrator can merge this one instead of 202611210714.
+Research: docs/loop/research/fidelity-r2-gaps.md.
+
+Claimed gaps:
+- **Crop plots**: dist/crops.js, crops-model.js and a content.js module.
+  - Small Crop Plot: 6 wood + 4 rope, 3 slots.
+  - Beet grows in 50 s and potato in 300 s, only while the slot is wet. One fresh cup keeps a slot wet for 150 s. E harvests 2, and a crop is its own seed.
+  - Raw +10 food, grilled +15.
+  - Barrels sometimes drop beets and potatoes.
+  - Rain and sprinklers water the plots.
+- **Raft-style collection net**: dist/nets.js, docs/specs/collection-net.md.
+  - It hangs off a raft edge over the water and catches debris drifting into it, up to 10 items. E empties it into your bag; leftovers stay if the bag is full. Cost: 6 wood + 8 rope + 2 nails.
+  - Old deck nets move to edge spots.
+  - When the shark breaks a tile, the nets hanging from it go too.
+- **Foundation armor, 2x2 start, Raft costs**: dist/armor.js.
+  - Armor costs 1 ingot + 2 nails, fits on a tile, and the shark skips armored tiles. Plates show on open sides.
+  - New games start on a 2x2 raft; old saves are unchanged.
+  - Sail 10 wood + 20 leaves + 3 scrap; purifier 6 wood + 6 leaves + 4 plastic; cup 4 plastic (one definition now); hook 40 uses.
+
+Fleet: 2 researchers, 1 porter, 3 builders (worktrees), 2 reviewers.
+Review fixes:
+- the shark bites from a side without a net
+- beehive and purifier status lines no longer flood the bottom-left feed; they sit at the crosshair instead
+Checks: npm test 688/688; shoot.py `errors: []`; 174 ms/frame vs master 207-210 on the same machine; 71 draw calls; 99 shadow casters (no change).
+Known limits:
+- The purifier burns no fuel (Raft's burns planks).
+- No seagull crop raids and no scarecrow.
+- An old 3x3 save with no checklist progress gets two building steps credited.
+- A net lost to the shark gives no message.
+Next gaps: seagull raids + scarecrow; purifier/grill fuel; hook range (16-32 m that shrinks with wear) and reel speed against Raft's; paddle/anchor as crafted items; simple bed and sleep; Medium Crop Plot (watermelon, pineapple).

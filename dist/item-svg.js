@@ -84,6 +84,13 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M10 12 L35 9.5" stroke="#fff" stroke-width="1.2" stroke-opacity=".7" stroke-linecap="round"/>
     <path d="M42 2 V8 M39 5 H45" stroke="#fff2cc" stroke-width="1.6" stroke-linecap="round"/>`,
 
+  armor: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M5 16 L24 9 L43 16 L43 22 L24 15 L5 22 Z" fill="#c6d6e0"/>
+    <path d="M5 22 L24 15 L43 22 V37 L24 43 L5 37 Z" fill="#9fb1bf"/>
+    <path d="M24 15 V43" fill="none" stroke-width="1.5"/></g>
+    <g fill="#4e6372" stroke="${O}" stroke-width="1.1"><circle cx="11" cy="27" r="1.9"/><circle cx="11" cy="34" r="1.9"/><circle cx="37" cy="27" r="1.9"/><circle cx="37" cy="34" r="1.9"/><circle cx="24" cy="21" r="1.6"/></g>
+    <path d="M8 18.5 L24 12.6" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-opacity=".8"/>`,
+
   hinge: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <rect x="4" y="11" width="18" height="27" rx="2" fill="#9fb1bf"/>
     <path d="M26 12 L42 7 V40 L26 37 Z" fill="#7d93a3"/>
@@ -469,4 +476,35 @@ export const ITEM_ICONS = Object.freeze({
     <g fill="none" stroke="${O}" stroke-width="1.1" stroke-opacity=".55" stroke-linecap="round"><path d="M16 9 C18 16 16 24 20 33"/><path d="M32 12 C31 20 32 28 28 38"/></g>
     <g fill="#bdeef0" stroke="${O}" stroke-width="1.2"><circle cx="40" cy="16" r="2.6"/><circle cx="42" cy="26" r="1.6"/><circle cx="8" cy="15" r="1.8"/></g>`,
 
+  // [crops] beet, potato, grilled beet, baked potato, small crop plot
+  beet: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M22 17 C16 11 12 6 14 3 C18 3 22 9 23 16 Z" fill="#5fae6b"/><path d="M26 17 C30 10 35 5 38 7 C38 11 32 15 27 18 Z" fill="#4f9a5c"/>
+    <path d="M24 17 V6" fill="none" stroke="#b23a55" stroke-width="2.2"/>
+    <path d="M24 17 C33 17 39 23 38 30 C37 37 30 41 25 45 C19 41 11 37 10 30 C9 23 15 17 24 17 Z" fill="#a8324a"/></g>
+    <path d="M15 26 C16 22.5 19 20.5 22.5 20" fill="none" stroke="#f08aa0" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M18 33 C22 34 27 34 31 32" fill="none" stroke="#6e1a30" stroke-width="1.2" stroke-linecap="round"/>`,
+
+  potato: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M7 27 C6 19 13 13 22 13 C30 12 41 15 42 24 C43 32 37 38 27 39 C16 40 8 35 7 27 Z" fill="#c9a46a"/></g>
+    <path d="M12 24 C13 19.5 17 17 22 16.5" fill="none" stroke="#f1dca8" stroke-width="1.8" stroke-linecap="round"/>
+    <g fill="#8a6a3c"><circle cx="19" cy="26" r="1.4"/><circle cx="29" cy="21" r="1.2"/><circle cx="33" cy="30" r="1.4"/><circle cx="23" cy="33" r="1.1"/></g>`,
+
+  cookedbeet: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M24 15 C33 15 39 21 38 28 C37 35 30 39 25 43 C19 39 11 35 10 28 C9 21 15 15 24 15 Z" fill="#7e2438"/>
+    <path d="M16 31 L22 19 M23 34 L29 19 M30 31 L34 23" fill="none" stroke="#3a0e18" stroke-width="2.2"/></g>
+    <g fill="none" stroke="#fff2cc" stroke-width="2" stroke-linecap="round" stroke-opacity=".9"><path d="M18 12 C16 9 20 7 18 3"/><path d="M28 11 C26 8 30 6 28 2"/></g>`,
+
+  cookedpotato: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M7 29 C6 21 13 16 22 16 C30 15 41 18 42 26 C43 34 37 39 27 40 C16 41 8 37 7 29 Z" fill="#b77a3a"/>
+    <path d="M15 26 C19 22 27 21 33 24 C30 28 22 30 15 26 Z" fill="#fbe7a6"/>
+    <path d="M22 25.5 C24 24.5 26 24.5 28 25.5" fill="none" stroke="#ffd35a" stroke-width="2.4"/></g>
+    <g fill="none" stroke="#fff2cc" stroke-width="2" stroke-linecap="round" stroke-opacity=".9"><path d="M18 13 C16 10 20 8 18 4"/><path d="M28 12 C26 9 30 7 28 3"/></g>`,
+
+  cropplot: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M10 22 V16 M24 22 V12 M38 22 V16" fill="none" stroke="#3f8f4a" stroke-width="2.2"/>
+    <path d="M10 17 C6 13 6 10 8 9 C11 11 11 14 10 17 Z M24 13 C20 8 21 5 23 4 C26 6 26 9 24 13 Z M24 14 C28 9 31 9 32 10 C31 13 28 14 24 14 Z M38 17 C42 13 42 10 40 9 C37 11 37 14 38 17 Z" fill="#5fae6b"/>
+    <path d="M3 24 H45 V40 H3 Z" fill="#9a6a3e"/>
+    <path d="M3 24 H45 V28 H3 Z" fill="#3b291b"/></g>
+    <path d="M3 33 H45" stroke="${O}" stroke-width="1.2" stroke-opacity=".5"/>
+    <g fill="#21160d"><ellipse cx="10" cy="26" rx="4" ry="1.3"/><ellipse cx="24" cy="26" rx="4" ry="1.3"/><ellipse cx="38" cy="26" rx="4" ry="1.3"/></g>`,
 });

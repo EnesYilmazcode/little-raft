@@ -1,20 +1,22 @@
 // Spear + foundation repair glue for game.js (fidelity lane C). Keeps game.js edits to a few one-line hooks.
-// Rules live in spear.js / repair.js (pure, tested); this file owns the viewmodels, thrust animation,
-// hit marker, repair prompt and the host-side actions 'spearHit' / 'repairTile'.
+// Rules live in spear.js / repair.js (pure, tested); this file owns the thrust timing (the spear viewmodel is hands.js),
+// hit marker, repair prompt and the host-side actions 'spearHit' / 'repairTile'. Foundation armor (dist/armor.js) rides along:
+// aim with the Foundation Armor selected, LMB fits it ('fitArmor'), and the plates view follows the raft.
 //
 // ctx (all getters so hot swaps and role changes are picked up):
-//   T, camera(), raft(), world(), physics(), other(), localBag(), role(), elapsed(), shark()
-//   action(a), emit(e, to), notice(text), beep(f), setSwing(v)
+//   T, camera(), raft(), world(), physics(), other(), localBag(), role(), elapsed(), shark(), scene()
+//   action(a), emit(e, to), notice(text), beep(f), play(soundName, strength) (audio.js recipes), setSwing(v)
 import { isSpear, spearDamage, canThrust, thrust, wearSpearSlot, SPEAR_REACH } from './spear.js?build=v3-survival-ae77fa84ac2b';
 import { hasTileAt, repairTile, hpBarText, tileHpOf, TILE_MAX_HP, TILE_REPAIR_COST } from './repair.js?build=v3-survival-ae77fa84ac2b';
 import { inReach, BUILD_REACH, GUEST_REACH_SLACK } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
+import { ARMOR_ITEM, canFitArmor, fitArmor, createArmorView } from './armor.js?build=v3-survival-ae77fa84ac2b';
 
 const POKE_TIME = 0.32; // seconds of the visible jab (cooldown is longer: SPEAR_COOLDOWN)
 
 export function attachSpearRepair(ctx) {
   const { T } = ctx;
-  let lastThrust = -Infinity, poke = 0, pinnedPoke = -1, repairAim = null, markerEl = null, markerTimer = 0;
-  const camPos = new T.Vector3(), camDir = new T.Vector3(), aimScratch = { x: 0, z: 0, hp: 0, pct: 0 };
+  let lastThrust = -Infinity, poke = 0, pinnedPoke = -1, repairAim = null, markerEl = null, markerTimer = 0, armorAim = null, armorView = null;
+  const camPos = new T.Vector3(), camDir = new T.Vector3(), aimScratch = { x: 0, z: 0, hp: 0, pct: 0 }, armorScratch = { x: 0, z: 0 };
 
   // ---------- viewmodels ----------
   // The spear models are built by held-items.js (kinds 'spear' / 'metalspear') and shown by game.js's single
@@ -65,19 +67,24 @@ export function attachSpearRepair(ctx) {
     const now = ctx.elapsed();
     if (!canThrust(now, lastThrust)) return true;
     if (!(slot.durability > 0)) { ctx.notice('This spear is worn out'); return true; }
-    lastThrust = now; poke = 1; ctx.beep(190);
+    lastThrust = now; poke = 1; ctx.play('jab', 0.8);
     const cam = ctx.camera();
     cam.getWorldPosition(camPos); cam.getWorldDirection(camDir);
     const shark = ctx.shark();
     const r = thrust(slot, (dmg) => shark?.trySpear?.(camPos, camDir, SPEAR_REACH, dmg) === true);
-    if (r.hit) { hitMarker(); ctx.beep(120); ctx.action({ kind: 'spearHit', slot: idx }); }
+    if (r.hit) { hitMarker(); ctx.play('catch', 0.8); ctx.action({ kind: 'spearHit', slot: idx }); }
     return true;
   }
 
   // ---------- repair ----------
   /** Called once per frame with the held tool role and frame aim; caches the damaged tile under the crosshair. */
   function updateAim(kind, aim) {
-    repairAim = null;
+    repairAim = null; armorAim = null;
+    if (kind === ARMOR_ITEM && aim?.point) { // [armor] the unarmored foundation under the crosshair
+      const x = Math.round(aim.point.x / 2) || 0, z = Math.round(aim.point.z / 2) || 0, ph = ctx.physics(); // || 0: no -0 keys
+      if (inReach(ph.x, ph.z, x, z) && !canFitArmor(ctx.world(), x, z)) { armorScratch.x = x; armorScratch.z = z; armorAim = armorScratch; }
+      return;
+    }
     if (kind !== 'hammer' || !aim?.point) return;
     const x = Math.round(aim.point.x / 2), z = Math.round(aim.point.z / 2), ph = ctx.physics();
     const w = ctx.world();
@@ -88,6 +95,7 @@ export function attachSpearRepair(ctx) {
   const aimedRepair = () => repairAim;
   /** Crosshair prompt (dist/prompts.js provider format): repair the aimed damaged tile, or jab with a spear. */
   function prompt(state) {
+    if (armorAim) return { key: 'LMB', label: 'Fit armor' }; // [armor]
     if (repairAim) {
       const bag = ctx.localBag(), ok = Object.entries(TILE_REPAIR_COST).every(([k, n]) => bag.count(k) >= n);
       const bar = hpBarText(repairAim.hp);
@@ -111,6 +119,15 @@ export function attachSpearRepair(ctx) {
     return true;
   }
 
+  /** LMB with Foundation Armor: fits it to the aimed unarmored tile. Returns true when handled. */
+  function useArmor() {
+    if (!armorAim) { ctx.notice('Point at a foundation without armor'); return true; }
+    ctx.setSwing(1);
+    ctx.action({ kind: 'fitArmor', x: armorAim.x, z: armorAim.z });
+    return true;
+  }
+  const aimedArmor = () => armorAim;
+
   // ---------- host actions ----------
   /** Host side. Returns true when the action was one of ours. */
   function apply(a, actor, bag) {
@@ -133,11 +150,25 @@ export function attachSpearRepair(ctx) {
       else if (r.reason === 'cost') ctx.emit({ kind: 'notice', text: 'Repair needs 1 plank' }, actor);
       return true;
     }
+    if (a.kind === 'fitArmor') { // [armor]
+      if (!Number.isInteger(a.x) || !Number.isInteger(a.z)) return true;
+      const who = actor === 'guest' ? ctx.other() : ctx.physics();
+      if (who && !inReach(who.x, who.z, a.x, a.z, BUILD_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : 0.01))) return true;
+      const r = fitArmor(ctx.world(), a.x, a.z, bag);
+      if (r.ok) { bag.version++; ctx.emit({ kind: 'build', text: 'Foundation armored: the shark will leave it alone' }, 'all'); }
+      else if (r.reason === 'cost') ctx.emit({ kind: 'notice', text: 'Craft Foundation Armor first' }, actor);
+      else if (r.reason === 'armored') ctx.emit({ kind: 'notice', text: 'That foundation is already armored' }, actor);
+      return true;
+    }
     return false;
   }
 
   // The damaged-tile darkening is drawn by the shark module (one instanced draw call, dist/shark.js), not here.
-  function tick() { if (!unprovide) providePrompt(); }
+  function tick() {
+    if (!unprovide) providePrompt();
+    if (armorView === null && ctx.scene?.()) { try { armorView = createArmorView(T, ctx.scene()); } catch (e) { console.warn('armor view disabled', e); armorView = false; } }
+    if (armorView) armorView.update(ctx.world(), ctx.raft()); // [armor] rebuilds only when tiles/armor change
+  }
 
   // ---------- debug ----------
   function give(kind, n = 1) {
@@ -154,16 +185,17 @@ export function attachSpearRepair(ctx) {
   function testHit() {
     const bag = ctx.localBag(), idx = bag.selectedIndex;
     if (!isSpear(bag.slots[idx]?.kind)) return false;
-    hitMarker(); ctx.beep(120); ctx.action({ kind: 'spearHit', slot: idx }); return true;
+    hitMarker(); ctx.play('catch', 0.8); ctx.action({ kind: 'spearHit', slot: idx }); return true;
   }
   /** Test helper: hold the jab at phase p (0..1, 1 = start) for screenshots; null releases it. */
   const pinPoke = (p) => { pinnedPoke = p == null ? -1 : Math.min(1, Math.max(0, Number(p) || 0)); };
-  const debug = () => ({ lastThrust, poke, repairAim: repairAim ? { ...repairAim } : null, damage: spearDamage(rawKind()) });
+  const debug = () => ({ lastThrust, poke, repairAim: repairAim ? { ...repairAim } : null, armorAim: armorAim ? { ...armorAim } : null, armorPlates: armorView ? armorView.count : 0, damage: spearDamage(rawKind()) });
 
   function dispose() {
     clearTimeout(markerTimer); markerEl?.remove(); markerEl = null;
     try { unprovide?.(); } catch {} unprovide = null;
+    try { armorView?.dispose(); } catch {} armorView = null;
   }
 
-  return { viewmodelFor, updateViewmodel, use, updateAim, aimedRepair, prompt, useHammer, apply, tick, give, setTileHp, testHit, pinPoke, debug, dispose };
+  return { viewmodelFor, updateViewmodel, use, updateAim, aimedRepair, prompt, useHammer, useArmor, aimedArmor, apply, tick, give, setTileHp, testHit, pinPoke, debug, dispose };
 }

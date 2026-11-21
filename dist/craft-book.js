@@ -40,6 +40,9 @@ const CATEGORY_OF = Object.freeze({
   shellwreath: 'building',
   cup: 'survival', purifier: 'survival', // water gear sits with the rain barrel and sprinkler
   research: 'building', antenna: 'building', receiver: 'building',
+  cropplot: 'survival', cookedbeet: 'survival', cookedpotato: 'survival', // [crops]
+  researchtable: 'building', grill: 'building', smelter: 'building',
+  armor: 'building', // foundation armor (dist/armor.js)
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
@@ -48,7 +51,7 @@ export const ITEM_TEXT = Object.freeze({
   leaf:       { desc: 'A tough, fibrous palm frond.', use: 'Twist into rope; thatch for sails and planters.' },
   plastic:    { desc: 'An old floating jug, still watertight.', use: 'Hooks and new raft floors (with the hammer).' },
   scrap:      { desc: 'Bent bits of salvaged metal.', use: 'Lanterns, crates and hook repairs.' },
-  rope:       { desc: 'Palm fibre twisted into a sturdy cord.', use: 'Binds hammers, rods, nets and sails.' },
+  rope:       { desc: 'Palm fibre twisted into a sturdy cord.', use: 'Binds hammers, rods and nets.' },
   fish:       { desc: 'A fresh catch from the open water.', use: 'Proof of a good day out on the waves.' },
   hook:       { desc: 'A scrap hook on a rope. Throw it at floating supplies.', use: 'Pulls in floating wood, leaves, plastic and barrels.' },
   hammer:     { desc: 'A rope-bound building hammer.', use: 'Adds raft floor tiles (2 plank + 2 plastic each).' },
@@ -56,7 +59,7 @@ export const ITEM_TEXT = Object.freeze({
   sail:       { desc: 'A tall mast with a woven sail.', use: 'Decorates the raft; place it on a floor tile.' },
   palm:       { desc: 'A clay pot with a small palm tree.', use: 'A bit of island on your raft; place on a tile.' },
   lantern:    { desc: 'A post lantern with a warm glow.', use: 'Lights the raft at night; place on a tile.' },
-  net:        { desc: 'A rope net stretched over the water.', use: 'Catches nearby floating supplies for you.' },
+  net:        { desc: 'A wooden frame of rope netting that hangs off the raft edge.', use: 'Debris that drifts into it stays put (up to 10). Press E to empty it.' },
   bench:      { desc: 'A simple plank bench.', use: 'Somewhere to sit; place it on a floor tile.' },
   crate:      { desc: 'A nailed wooden crate.', use: 'Decorates the raft; place it on a floor tile.' },
   sand:       { desc: 'Fine sand from barrels and the seafloor.', use: 'Melt it into glass in the smelter.' },
@@ -80,7 +83,7 @@ export const ITEM_TEXT = Object.freeze({
   freshcup:   { desc: 'A cup of clean fresh water.', use: 'Water a palm planter.' },
   seed:       { desc: 'A palm seed.', use: 'Plant it in an empty palm planter.' },
   rainbarrel: { desc: 'A tub with a leaf funnel that catches the rain.', use: 'Fills by itself in the rain. Hold an empty cup and press E.' },
-  sprinkler:  { desc: 'A little spinning head with its own tank.', use: 'Waters nearby palm planters for you. Fill it with fresh water, or put it next to a rain barrel.' },
+  sprinkler:  { desc: 'A little spinning head with its own tank.', use: 'Waters nearby palm planters and crop plots for you. Fill it with fresh water, or put it next to a rain barrel.' },
   water:      { desc: 'A filtered cup of fresh water.', use: 'Water a palm planter.' },
   purifier:   { desc: 'A small still that boils off the salt.', use: 'Turns sea water into fresh water.' },
   // progression catalogue (items.js; its tooltips also show the item's own tip)
@@ -93,6 +96,7 @@ export const ITEM_TEXT = Object.freeze({
   glass:      { desc: 'A pane of glass melted from sand.', use: 'Lenses for binoculars.' },
   bolt:       { desc: 'A threaded metal bolt.', use: 'Strong joints for advanced builds.' },
   hinge:      { desc: 'A small metal hinge.', use: 'Lids, doors and folding parts.' },
+  armor:      { desc: 'Riveted metal plates for one foundation.', use: 'Hold it and click a tile: the shark leaves armored tiles alone.' },
   metalhook:  { desc: 'A heavy metal hook that lasts much longer.', use: 'Throw it like the hook; wears far slower.' },
   spear:      { desc: 'A driftwood pole with a lashed flint point.', use: 'Click to jab: 5 damage, wears only when it lands.' },
   metalspear: { desc: 'A sturdy shaft with a steel point.', use: 'Click to jab: 10 damage, lasts twice as long.' },
@@ -142,6 +146,14 @@ export const ITEM_TEXT = Object.freeze({
   stringlights: { desc: 'A post with a wire of warm little bulbs.', use: 'Glows at night near a charged battery.' }, // [power]
   lamppost:   { desc: 'A tall lamp with a glass head.', use: 'Lights the deck at night near a charged battery.' }, // [power]
   fishtrap:   { desc: 'A woven fish basket on a little arm.', use: 'Place on an edge tile. Seaweed bait helps. Collect with E.' }, // [fishtrap]
+  beet:       { desc: 'A crunchy red beet.', use: 'Eat raw (+10 food), grill it, or plant it in a crop plot.' }, // [crops]
+  potato:     { desc: 'A knobbly brown potato.', use: 'Eat raw (+10 food), grill it, or plant it in a crop plot.' }, // [crops]
+  cookedbeet: { desc: 'A beet grilled sweet and soft.', use: 'A tasty snack (+15 food).' }, // [crops]
+  cookedpotato: { desc: 'A potato baked on the grill.', use: 'A warm, filling snack (+15 food).' }, // [crops]
+  cropplot:   { desc: 'A three-slot box of dark soil.', use: 'Plant beets or potatoes; water each slot with fresh water. Rain and a sprinkler next to it water it too.' }, // [crops]
+  cookedsharkmeat: { desc: 'A shark steak grilled through.', use: 'A filling meal (+30 food).' },
+  sharkmeat:  { desc: 'A raw slab of shark meat.', use: 'Grill it for a proper meal; four come from every shark.' },
+  sharkhead:  { desc: 'The head of a shark you beat.', use: 'A trophy, and proof the raft is safe for a while.' },
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
   grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },
@@ -400,7 +412,7 @@ export const ITEM_SOURCE = Object.freeze({
   scrap:   Object.freeze({ tag: 'found floating', how: 'Hook floating scrap. Barrels hold some too.' }),
   seed:    Object.freeze({ tag: 'barrels, palm', how: 'Hook floating barrels, or harvest a grown palm.' }),
   fish:    Object.freeze({ tag: 'fishing rod', how: 'Cast the Fishing Rod into the sea and wait for a bite.' }),
-  water:   Object.freeze({ tag: 'fill a cup', how: 'Fill a Filter Cup at the sea.' }),
+  water:   Object.freeze({ tag: 'fill a cup', how: 'Fill a cup at the sea.' }),
   // raft-master materials (items.js): barrels, islands, the seafloor and the stations
   sand:        Object.freeze({ tag: 'barrels, islands', how: 'Hook floating barrels, scoop it on an island or dive for it.' }),
   clay:        Object.freeze({ tag: 'barrels, seafloor', how: 'Hook floating barrels or dive to the seafloor.' }),
@@ -436,6 +448,13 @@ export const ITEM_SOURCE = Object.freeze({
   meal_fishbowl: Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: cooked fish + palm leaf + seed; collect with a bowl.' }),
   meal_custard:  Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: puff egg + seed + fresh water; collect with a bowl.' }),
   meal_stew:     Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: cooked fish + puff egg + seaweed; collect with a bowl.' }),
+  sharkmeat:   Object.freeze({ tag: 'shark', how: 'Fight off the shark for good, then harvest its body with E.' }), // shark lane
+  sharkhead:   Object.freeze({ tag: 'shark', how: 'Fight off the shark for good, then harvest its body with E.' }),
+  cookedsharkmeat: Object.freeze({ tag: 'grill', how: 'Grill raw shark meat.' }),
+  cookedbeet:  Object.freeze({ tag: 'grill', how: 'Grill a beet.' }), // [crops]
+  cookedpotato: Object.freeze({ tag: 'grill', how: 'Grill a potato.' }), // [crops]
+  beet:        Object.freeze({ tag: 'barrels, crop plot', how: 'Hook floating barrels, or grow beets in a crop plot.' }), // [crops]
+  potato:      Object.freeze({ tag: 'barrels, crop plot', how: 'Hook floating barrels, or grow potatoes in a crop plot.' }), // [crops]
 });
 
 /**

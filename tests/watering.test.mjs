@@ -172,10 +172,10 @@ test('copyWatering deep-copies and defaults', () => {
 
 test('recipes and ITEM_INFO for cups and purifier', () => {
   for (const k of ['cup', 'saltcup', 'freshcup', 'purifier']) assert.ok(ITEM_INFO[k], k);
-  assert.deepEqual({ ...RECIPES.cup.cost }, { plastic: 1 });
-  assert.deepEqual({ ...RECIPES.purifier.cost }, { wood: 2, scrap: 2, plastic: 1 });
+  assert.deepEqual({ ...RECIPES.cup.cost }, { plastic: 4 });
+  assert.deepEqual({ ...RECIPES.purifier.cost }, { wood: 6, leaf: 6, plastic: 4 });
   assert.equal(RECIPES.saltcup, undefined); assert.equal(RECIPES.freshcup, undefined);
-  const bag = bagFrom([{ kind: 'plastic', count: 2 }, { kind: 'wood', count: 2 }, { kind: 'scrap', count: 2 }]);
+  const bag = bagFrom([{ kind: 'plastic', count: 8 }, { kind: 'wood', count: 6 }, { kind: 'leaf', count: 6 }]);
   assert.equal(bag.craft('cup').ok, true); assert.equal(bag.count('cup'), 1);
   assert.equal(bag.craft('purifier').ok, true); assert.equal(bag.count('purifier'), 1);
   const snap = bagFrom([{ kind: 'cup', count: 5 }, { kind: 'saltcup', count: 2 }, { kind: 'freshcup', count: 1 }, { kind: 'purifier', count: 3 }]).snapshot();

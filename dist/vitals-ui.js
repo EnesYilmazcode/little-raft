@@ -1,5 +1,5 @@
 // Little Raft vitals HUD: health / food / water bars (lower left, above the fish-journal chip and below the
-// #lrFeed / #coopFeed event feeds, which sit at bottom:132px (184px on narrow screens) to clear it),
+// #pickupFeed (style.css, bottom:132px) and #lrFeed (prompts.css, bottom:380px), which stack above it),
 // a red vignette while hunger or thirst drains health, a short red flash on any hit, and the
 // "You passed out" overlay. DOM is written only when a rounded value or a state flag changes.
 //

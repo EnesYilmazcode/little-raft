@@ -111,6 +111,11 @@ const LIST = [
     tip: 'A shiny catch from your fishing rod. Edible raw, but salty: grill it to fill up properly.' }),
   item('sharkmeat', 'Raw Shark Meat', 'food', { iconTint: '#d97a7a',
     tip: 'A thick slab cut from a shark you fought off for good. Four come from every shark.' }),
+  // [crops] Small Crop Plot crops (dist/crops.js): each crop is its own seed, like Raft
+  item('beet', 'Beet', 'food', { iconTint: '#a8324a',
+    tip: 'A crunchy red beet. Eat it raw (+10 food), grill it, or plant it in a crop plot for two more.' }),
+  item('potato', 'Potato', 'food', { iconTint: '#c9a46a',
+    tip: 'A knobbly potato. Eat it raw (+10 food), grill it, or plant it in a crop plot: slow, but two come back.' }),
   item('sharkhead', 'Shark Head', 'material', { iconTint: '#7f8f99', stack: 5,
     tip: 'A grim trophy from a beaten shark. Proof that your raft bites back.' }),
 
@@ -141,9 +146,9 @@ const LIST = [
     tip: 'A tiny hinge that swings just right. Binoculars fold up thanks to these.' }),
 
   // ----- tools -----
-  item('hook', 'Hook', 'tool', { icon: 'icon-hook', placeholder: false, tool: true, durability: 50,
+  item('hook', 'Hook', 'tool', { icon: 'icon-hook', placeholder: false, tool: true, durability: 40, // Raft's plastic hook: 40 uses
     recipe: hand({ wood: 1, plastic: 2 }), unlock: START,
-    tip: 'Throw it, reel it, grab the goodies. Gets tired after about 50 catches; R fixes it up.' }),
+    tip: 'Throw it, reel it, grab the goodies. Gets tired after about 40 catches; R fixes it up.' }),
   item('metalhook', 'Metal Hook', 'tool', { icon: 'icon-hook', placeholder: true, iconTint: '#a9b4c2',
     tool: true, durability: 150, actsAs: 'hook',
     recipe: hand({ metalingot: 6, bolt: 2, rope: 2, wood: 2 }), unlock: research('metalingot', 'bolt'),
@@ -194,6 +199,12 @@ const LIST = [
   item('cookedsharkmeat', 'Grilled Shark Meat', 'food', { iconTint: '#c7764a', stack: 10,
     recipe: cook('grill', 'sharkmeat', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
     tip: 'A thick, smoky steak. Click with it in hand to eat (+30 food).' }),
+  item('cookedbeet', 'Grilled Beet', 'food', { iconTint: '#7e2438', stack: 10, // [crops]
+    recipe: cook('grill', 'beet', { time: 15, fuel: 0.5 }), unlock: atStation('grill'),
+    tip: 'A sweet, smoky beet. Click with it in hand to eat (+15 food).' }),
+  item('cookedpotato', 'Baked Potato', 'food', { iconTint: '#b77a3a', stack: 10, // [crops]
+    recipe: cook('grill', 'potato', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
+    tip: 'Fluffy inside, crispy outside. Click with it in hand to eat (+15 food).' }),
 
   // ----- build / decor (placeable on raft tiles) -----
   item('bench', 'Bench', 'decor', { icon: 'icon-repair', placeholder: true, placeable: true,
@@ -202,6 +213,9 @@ const LIST = [
   item('palm', 'Palm Planter', 'decor', { icon: 'icon-palm', placeholder: false, placeable: true,
     recipe: hand({ wood: 2, leaf: 3 }), unlock: START,
     tip: 'A little potted palm. Every raft deserves some green.' }),
+  item('cropplot', 'Small Crop Plot', 'decor', { placeable: true, iconTint: '#7a5232', // [crops]
+    recipe: hand({ wood: 6, rope: 4 }), unlock: discover('rope'),
+    tip: 'A long box of dark soil with three slots. Plant beets or potatoes, water them, harvest with E.' }),
   // [bees] flower box, beehive and beeswax candle (models in dist/bees-model.js)
   item('flowerbox', 'Flower Box', 'decor', { placeable: true, iconTint: '#ff7aa2',
     recipe: hand({ wood: 2, flowerseed: 1 }), unlock: discover('flowerseed'),
@@ -241,7 +255,7 @@ const LIST = [
     recipe: hand({ wood: 3, scrap: 1 }), unlock: discover('fish'),
     tip: 'A small pedestal for one treasure, or a trophy of your best catch.' }), // [display]
   item('sail', 'Sail', 'build', { icon: 'icon-sail', placeholder: false, placeable: true,
-    recipe: hand({ wood: 4, rope: 3, leaf: 3 }), unlock: discover('rope', 'plastic'),
+    recipe: hand({ wood: 10, leaf: 20, scrap: 3 }), unlock: discover('leaf', 'scrap'), // Raft: 10 planks + 20 leaves + 3 scrap
     tip: 'Catch the breeze and look the part of a proper sea captain.' }),
   item('lantern', 'Lantern', 'decor', { icon: 'icon-lantern', placeholder: false, placeable: true,
     recipe: hand({ wood: 2, scrap: 2 }), unlock: discover('scrap'),
@@ -250,11 +264,15 @@ const LIST = [
     recipe: hand({ wood: 4, scrap: 1 }), unlock: discover('scrap'),
     tip: 'A sturdy wooden crate. Looks great stacked by the edge.' }),
   item('net', 'Collection Net', 'build', { icon: 'icon-net', placeholder: false, placeable: true,
-    recipe: hand({ wood: 3, rope: 3, nail: 2 }), unlock: discover('nail'),
-    tip: 'Place it near the edge and it scoops up passing debris (even barrels!) for you.' }),
+    recipe: hand({ wood: 6, rope: 8, nail: 2 }), unlock: discover('nail'),
+    tip: 'Hang it off the raft edge. Debris drifting into it stays there (up to 10, even barrels). Press E to empty it.' }),
   item('maptable', 'Map Table', 'decor', { iconTint: '#c9a46a', stack: 5, placeable: true,
     recipe: hand({ wood: 6, rope: 3, nail: 2, copperingot: 1 }), unlock: research('copperingot'),
     tip: 'A little chart table. It remembers the islands you meet and points the sail where you like.' }),
+
+  item('armor', 'Foundation Armor', 'build', { iconTint: '#8e9aa4',
+    recipe: hand({ metalingot: 1, nail: 2 }), unlock: research('metalingot', 'nail'),
+    tip: 'Metal plates for one foundation. Hold it and click a tile: the shark will not bite an armored tile.' }),
 
   // ----- stations -----
   item('researchtable', 'Research Table', 'station', { iconTint: '#c69860', stack: 5, placeable: true,
@@ -284,6 +302,7 @@ export const BLOCK_RADII = deepFreeze({
   shelf: 0.45, trophystand: 0.25, // [display]
   turbine: 0.2, battery: 0.3, stringlights: 0.1, lamppost: 0.12, // [power]
   fishtrap: 0.2, // [fishtrap] only the post stands on the deck
+  cropplot: 0.45, // [crops]
 });
 
 /** Damage one landed spear thrust deals (spear lane; see docs/loop/research/fidelity-r1-shark.md). */
@@ -354,7 +373,7 @@ export const PROGRESSION_PLAN = deepFreeze([
  * Barrel loot: BARREL_ROLLS.basic picks from the 'basic' pool (min..max each)
  * plus BARREL_ROLLS.treasure picks from the 'treasure' pool (always 1 of the
  * kind, so mid-game materials trickle in steadily with low variance).
- * Picks of the same kind add up. Plain weighted odds per barrel (treasure total 102): ~5.3
+ * Picks of the same kind add up. Plain weighted odds per barrel (treasure total 111, incl. beet 5 and potato 4): ~5.3
  * basics plus clay .18, stone .12, metal ore .10, sand .12, seaweed .08 (x1.5), copper ore
  * .06, flower seed .06, scrap .29. With the caller's luck state (BARREL_PITY) the mid-game kinds come at
  * least every 5-13 barrels (a few more when two are overdue at once), so the real rates are
@@ -373,6 +392,8 @@ export const BARREL_LOOT = deepFreeze([
   { kind: 'seaweed', min: 1, max: 2, weight: 8, pool: 'treasure' },
   { kind: 'copperore', min: 1, max: 1, weight: 6, pool: 'treasure' },
   { kind: 'flowerseed', min: 1, max: 1, weight: 6, pool: 'treasure' }, // [bees]
+  { kind: 'beet', min: 1, max: 2, weight: 5, pool: 'treasure' }, // [crops] a new player can start farming
+  { kind: 'potato', min: 1, max: 1, weight: 4, pool: 'treasure' }, // [crops]
   { kind: 'scrap', min: 1, max: 1, weight: 30, pool: 'treasure' },
 ]);
 const POOLS = Object.freeze(Object.fromEntries(['basic', 'treasure'].map((p) => {

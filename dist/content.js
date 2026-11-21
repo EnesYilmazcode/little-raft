@@ -12,6 +12,7 @@
 //   load(data, from)          from: 'save' | 'net' | 'restore'. data may be undefined (old save).
 //   action(a, actor, bag)     host only. Return true if a.kind was handled. Guests reach it via ctx.action().
 //   interact(aim)             E key. Return true if consumed (before the inventory opens).
+//   claims(aim, kind)         true when use(aim, kind) would consume the click before eating (hides the eat/drink tip) // [crops]
 //   prompt(aim)               -> context prompt HTML (escaped by the module) or null
 //   craftLocked(recipe, actor)-> reason string if the recipe is locked, else null
 //   decorModel(type, d)       -> THREE.Object3D for a CONTENT_DECOR type, or null (d = the world.decor entry, read-only)
@@ -25,6 +26,7 @@
 //   tileTint(x, z, base)      plank colour for deck tile x,z (base = the plank's own colour) or null (paint)
 //   diveMods(m)               multiply m.swim/oxy/fog/gather in place (local player, per frame, no allocations; docs/specs/diving-gear.md)
 //   link(env)                 optional: env.wind() / env.night() live daynight getters // [power]
+//   bindRain(fn)              optional: called once at start with fn() -> live 0..1 rain // [crops]
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   dispose()
 //
@@ -54,8 +56,9 @@ import { createCookpot } from './cookpot.js?build=v3-survival-ae77fa84ac2b';
 import { createDisplay } from './display.js?build=v3-survival-ae77fa84ac2b'; // [display]
 import { createPower } from './power.js?build=v3-survival-ae77fa84ac2b'; // [power]
 import { createFishTrap } from './fish-trap.js?build=v3-survival-ae77fa84ac2b'; // [fishtrap]
+import { createCrops } from './crops.js?build=v3-survival-ae77fa84ac2b'; // [crops]
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createPower, createJuicer, createGull, createFishTrap, createDisplay, createDivingGear, createTrader, createCookpot]; // [bees] + createBees; [power] after bees; [fishtrap] [display]; round 3 diving gear, trader, cookpot (cookpot stays last); [juicer] + createJuicer [gull] + createGull
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createPower, createJuicer, createGull, createFishTrap, createDisplay, createDivingGear, createTrader, createCrops, createCookpot]; // [crops] + createCrops // [bees] + createBees; [power] after bees; [fishtrap] [display]; round 3 diving gear, trader, cookpot (cookpot stays last); [juicer] + createJuicer [gull] + createGull
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -89,6 +92,8 @@ export function createContent(ctx, features = FEATURES) {
     try { const m = make(ctx, { peek }); if (m) mods.push(m); } catch (e) { console.error('content module failed to start', e); }
   }
   const first = (fn, ...a) => { for (const m of mods) { const r = call(m, fn, ...a); if (r) return r; } return null; };
+  const rain = () => { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }; // rain-sprinkler: live 0..1 rain
+  for (const m of mods) call(m, 'bindRain', rain); // [crops] rain waters crop plots
   const debug = {};
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
   const dn = () => mods.find(m => m.name === 'daynight' && !m.dead), num = (v, d) => (Number.isFinite(v) ? v : d); // [power]
@@ -102,6 +107,7 @@ export function createContent(ctx, features = FEATURES) {
     load(ext, from) { const e = ext && typeof ext === 'object' ? ext : {}; for (const m of mods) call(m, 'load', e[m.name], from); },
     action(a, actor, bag) { for (const m of mods) if (call(m, 'action', a, actor, bag)) return true; return false; },
     interact: aim => !!first('interact', aim),
+    claims: (aim, kind) => !!first('claims', aim, kind), // [crops]
     prompt: aim => first('prompt', aim),
     use: (aim, kind) => !!first('use', aim, kind), // content hook (paint)
     alt: (aim, kind) => !!first('alt', aim, kind), // content hook (paint)
