@@ -17,6 +17,7 @@ export const TEXT = Object.freeze({
 });
 const ROLES = Object.freeze(['host', 'guest']);
 const STAND_EYE = 1.6, PENDING_UP = 1, SENT_DOWN = .6, OFF_RAY = .6, MOVE = .3;
+const SIT_PITCH = -.45, PITCH_EASE = .5; // on sitting, tip the view down so the deck edge shows (once; the mouse wins after). -.22 still showed only sea on an edge bench
 const CY = Object.freeze({ bench: .5, cushion: .2 });
 
 export function createSitting(ctx) {
@@ -26,6 +27,7 @@ export function createSitting(ctx) {
   let nHx = NaN, nHz = NaN, nHs = NaN, nGx = NaN, nGz = NaN, nGs = NaN, nT = NaN; // last net copy (primitives)
   const last = { type: 'bench', x: 0, z: 0, rot: 0 }; let lastSeat = 0; // last seat (decor may vanish before we stand)
   const pt = { x: 0, z: 0, yaw: 0 }, spot = { x: 0, z: 0 }, dir = { x: 0, y: 0, z: 0 };
+  let ease = 0, easeSet = NaN; // pitch ease left (s) and the pitch we last set (a different value = the player looked)
   let hitD = null, hitI = 0, camDir = null, lastYaw = null, inMax = 0; // inMax: QA, largest move input seen while seated
 
   const isGuest = () => ctx.role === 'guest';
@@ -99,7 +101,7 @@ export function createSitting(ctx) {
   // ---- local player (both roles)
   function standUp() {
     const p = ctx.physics;
-    pendingUp = PENDING_UP; wasSeated = false;
+    pendingUp = PENDING_UP; wasSeated = false; ease = 0;
     if (p) {
       standSpot(ctx.world, findDecor(ctx.world, last.x, last.z) ?? last, lastSeat, spot);
       p.x = spot.x; p.z = spot.z; p.y = deck() + STAND_EYE; p.vx = 0; p.vy = 0; p.vz = 0; p.grounded = true;
@@ -120,13 +122,23 @@ export function createSitting(ctx) {
       if (!wasSeated) {
         wasSeated = true; sentDown = 0;
         const d = findDecor(ctx.world, mine[0], mine[1]); if (d) { seatPoint(d, mine[2], pt); ctx.faceYaw?.(pt.yaw); }
+        const p0 = ctx.pitch; if (typeof ctx.facePitch === 'function' && Number.isFinite(p0) && p0 > SIT_PITCH) { ease = PITCH_EASE; easeSet = p0; }
       }
+      if (ease > 0) easePitch(dt);
       if ((ctx.vitals?.hp ?? 1) <= 0) standUp(); // fainted: get up
     } else if (wasSeated) standUp(); // the host cleared the seat by itself (decor gone, or a remote sit.up)
   }
 
+  function easePitch(dt) {
+    const p0 = ctx.pitch;
+    if (!Number.isFinite(p0) || Math.abs(p0 - easeSet) > 1e-4 || p0 <= SIT_PITCH) { ease = 0; return; } // the player looked: stop
+    ease = Math.max(0, ease - dt);
+    const p1 = ease > 0 ? p0 + (SIT_PITCH - p0) * (1 - Math.exp(-12 * dt)) : SIT_PITCH;
+    ctx.facePitch(p1); easeSet = ctx.pitch;
+  }
+
   // A new world (own save restored, or a different raft joined): drop the seat without teleporting.
-  function forget() { pendingUp = 0; sentDown = 0; wasSeated = false; }
+  function forget() { pendingUp = 0; sentDown = 0; wasSeated = false; ease = 0; }
 
   function load(data, from) {
     if (from === 'net') {

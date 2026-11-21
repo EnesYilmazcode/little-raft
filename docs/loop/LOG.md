@@ -1241,6 +1241,46 @@ Base: origin/claude/raft-master 23bfb35 (the integrator already took round 3's i
 - Ocean: teal body and turquoise far sea (daynight midday keys), aqua crest glow (uCrest).
 - Judge: 7/7 accepted. Perf: PASS (spawn median 106.4 vs 106.4 ms; rope ~+4k tris, no cost). Note: ?fixedres is not read by any module.
 - Next: sink jugs ~15% deeper, more saturated colourways, rounder cap; rope narrower near camera + hemp colour + sag; vitals order and number legibility; deck albedo +10%; ocean darker at steep angles, softer horizon band; raft edge at the waterline (thickness, foam, wetness); forearm taper and thumb; HUD style clash (light hotbar vs dark vitals, slate quest panel/compass); crate material.
+## 2026-11-21 · loop-features-202611210847-r2 (features)
+
+Base: `origin/claude/raft-master` 4ee6b16 (910 tests green). Note: master now carries vitals (hunger/thirst/hp) and sharks, which goes against the friendly brief. This round left them alone.
+
+Features (research, spec, build, review for each; then visual QA and a polish pass):
+- **Pick up placed items** (`dist/decor-pickup.js`; spec `docs/specs/decor-pickup.md`).
+  - Hold X with the hammer. Building pieces still win; otherwise the aimed decor gets a red see-through ghost and the build card names it. Release X sends `{kind:'undecor',x,z,t}`.
+  - The host gives back the item itself plus its contents through a scratch bag. It refuses when the item is busy (mid-cook, ripe palm, ready purifier, comb in the hive, motor on, someone in the bed or seat, hen in the nest) or when the bag is full. Items are never lost: a purifying purifier returns its salt cup.
+  - New content hooks: `beforeUndecor`, `undecorLoot` and `afterUndecor`, plus a matching set in progression. `caps:{undecor:1}` lets a guest detect an old host.
+- **Flagpole + flag designer** (`dist/flags*.js`; spec `docs/specs/raft-flag.md`).
+  - The designer offers 8 colours, 6 patterns, 8 original emblems and an emblem colour. The pole flies downwind with a shader wave.
+  - Saved as `world.ext.flags` per tile, with one cached texture per design. Guests send `flag.set` and the host checks it.
+- **Sitting** (`dist/sitting*.js`; spec `docs/specs/sitting.md`).
+  - Bench has 2 seats, Feather Cushion 1 low seat. Look is clamped to ±100°, and the view eases down on sit.
+  - WASD, Space or E stands you up; while seated, the sit module gets first claim on E.
+  - The host picks seats and stores them in `ext.sit`. Co-op pose bit 16 means seated, and the partner avatar now has knees.
+  - New achievement `sit1` "Sit a While". `content.ride` is a shared first-wins hook, the same shape as the zipline branch.
+
+Review fixes:
+- Flag pointed crosswind.
+- The flag dialog outlived its pole.
+- A flag texture leaked.
+- E while seated could also start sleeping.
+- A stale aim could pick up a different item.
+
+QA: `docs/cloud/qa-round-r2.md`, shots in `docs/cloud/shots/r2/`. It found the existing Wind Pennant flying 90° off the wind; that is fixed too.
+
+Checks: `npm test` 954/954.
+
+Merge notes for the integrator:
+- `coop.js` flag math now lives in `poseFlags`/`readFlags`. Add the zipline's bit 8 there.
+- `content.ride` is identical on both branches, so keep one copy.
+- logbook achievement counts add up (`firework1` + `sit1`).
+
+Open for next round:
+- No gamepad binding for remove.
+- An intermittent three.js warm-up error, `reading 'isReady'`, existed before this round.
+- `cleanWorld` keeps decor on integer tiles only.
+- Locked recipes still say "Ready to craft".
+||||||| 050b35f0
 ## 2026-11-21 · loop-fidelity-202611210821 (raft fidelity, round 2b)
 Base: raft-master 77b1cb6. Research: docs/loop/research/fidelity-r2b-stations.md and fidelity-r2b-world.md (the wiki hosts were DNS-blocked, so the numbers come from search snippets).
 Skipped because the parallel fidelity run (loop-fidelity-202611210804) already claims them: crop plots, collection net, foundation armor, 2x2 start, Raft recipe costs.
@@ -1360,3 +1400,14 @@ Claimed for round 4 (research: docs/loop/research/fidelity-r4-gaps.md):
   - the bag covered the compass
   - the settings panel ran off-screen
 - Note: quality level 3 now renders at a 0.7 pixel ratio (main had 0.85), so part of the frame-time gain is resolution.
+
+## 2026-11-21 · integrator A, QA round (head fbfc100 → dfe019b)
+- QA fixes pushed: Continue on the title after quitting (and focused, so Enter resumes), the world hotbar hidden under the bag,
+  "plank" in build costs/hints, build chip on the hotbar, X/Z emotes only with a crewmate aboard (X dropped a ping beacon solo),
+  Q/G/J/C listed in Controls help, juicer items given craft-book text and sources (the merged loop-features-0831 WIP failed 5 tests).
+- Gate: unit, playbot, visual, electron pass (electron binary installed). perf fails from cd51bb0 (loop-visuals-0843 merge)
+  on domNodesLateHalf 38–44 > 20 and GL growth. Investigation: not a leak. With seed 1 the first hook catch lands late
+  (68–81 s), adding recipe rows and shader programs once; DOM plateaus over 200 s; seeds 2 and 3 pass. The DOM metric lacks
+  the step exclusion the GL metric has. Needs a gate-owner decision; not auto-merged.
+- Perf QA: draw calls, triangles, JS heap, hitches equal to main; frame time too noisy under shared load to call.
+- Open: farming.js/farming-view.js are not imported anywhere (palm planters run on the watering lane); two left-side notice feeds overlap.
