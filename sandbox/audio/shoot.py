@@ -70,7 +70,8 @@ with sync_playwright() as p:
           const ok = await a.resume();
           await new Promise(r => setTimeout(r, 600));
           a.setListener(0, 1.6, 0, 0, 0, -1); a.setOcean({ swell: 0.8, wind: 0.6 });
-          const played = {}; for (const ev of EVENTS) played[ev] = a.play(ev, 1, ev === 'gull' ? { x: 10, y: 8, z: -10 } : null);
+          const played = {}; let k = 0;  /* 35 events, 24 voice slots: let each batch of 10 ring out */
+          for (const ev of EVENTS) { played[ev] = a.play(ev, 1, ev === 'gull' ? { x: 10, y: 8, z: -10 } : null); if (++k % 10 === 0) await new Promise(r => setTimeout(r, 1800)); }
           const reel = a.setReel(true, 0.5); await new Promise(r => setTimeout(r, 300)); a.setReel(false);
           const s1 = a.stats(), ctx = a.context, t0 = ctx.currentTime;
           await new Promise(r => setTimeout(r, 1500));

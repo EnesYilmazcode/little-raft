@@ -232,7 +232,7 @@ test('ride hook: rides along the line, Space drops off, the end hops, the line b
 test('mount from a post with E, then from the line; blocked lines refuse; swimming refuses', () => {
   const h = harness(); h.m.debug.link(0, 0, 3, 0);
   const p = h.ctx.physics; p.x = 0; p.z = 2;
-  assert.equal(h.m.prompt(AIM_POST), '<kbd>E</kbd>Glide · <kbd>C</kbd>+<kbd>E</kbd>new line');
+  assert.equal(h.m.prompt(AIM_POST), '<kbd>E</kbd>Glide · <kbd>C</kbd>+<kbd>E</kbd> new line');
   h.ctx.world.pieces = [{ t: 'wall', i: 2, j: 0, l: 0, r: 1 }];
   assert.equal(h.m.interact(AIM_POST), true); assert.equal(h.m.riding(), false); assert.equal(h.notices.at(-1), TEXT.inway);
   h.ctx.world.pieces = [];

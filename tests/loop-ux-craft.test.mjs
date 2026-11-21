@@ -134,9 +134,10 @@ test('F4: crafting tooltips sit beside the whole column and never over the Craft
 });
 
 // ---------------------------------------------------------------- F5
-test('F5: water gear sits in Survival; desk, antenna and receiver in Building', () => {
-  for (const k of ['cup', 'purifier', 'rainbarrel', 'sprinkler']) assert.equal(CB.categoryOf(k), 'survival', k);
-  for (const k of ['research', 'antenna', 'receiver']) assert.equal(CB.categoryOf(k), 'building', k);
+test('F5: water gear sits in Food & Water; the desk in Building; antenna and receiver in Navigation', () => {
+  for (const k of ['cup', 'purifier', 'rainbarrel', 'sprinkler']) assert.equal(CB.categoryOf(k), 'food', k);
+  assert.equal(CB.categoryOf('research'), 'building');
+  for (const k of ['antenna', 'receiver']) assert.equal(CB.categoryOf(k), 'navigation', k);
 });
 
 // ---------------------------------------------------------------- hold to craft

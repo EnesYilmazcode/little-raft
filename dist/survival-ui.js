@@ -255,6 +255,7 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-tabs{display:flex;flex-direction:column;gap:5px;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
 #inventory .sv-tab{position:relative;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:100%;min-width:0;height:62px;margin:0;padding:6px 3px 5px;border:0;border-radius:4px;
   background:linear-gradient(#b8a173,#a68e60);box-shadow:inset 0 0 0 1px #7a5a34;color:#3e2a17;font:700 12px/1.1 ${FONT};letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
+#inventory .sv-tlabel{display:block;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:clip}
 #inventory .sv-tab .sv-icon{width:28px;height:28px;opacity:.8}
 #inventory .sv-tab:hover{background:linear-gradient(#c8b285,#b39b6d);box-shadow:inset 0 0 0 1px #4a3520}
 #inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#ead9ae,#d6c397);color:#2e1f10;box-shadow:inset 0 0 0 2px #4a3520,inset 4px 0 0 #5f9c3a}
@@ -601,7 +602,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const key = recipes.map(r => r.id).join(',') + '|' + (iconFor ? 3 : 2);
     if (dlg.dataset.svRecipes !== key || rlist.childElementCount !== recipes.length || !recipes.length) {
       tabsEl.style.setProperty('--tabs', String(Math.max(1, groups.length)));
-      tabsEl.innerHTML = groups.map(g => `<button type="button" class="sv-tab" role="tab" data-cat="${esc(g.id)}" aria-selected="false" tabindex="-1">${iconSVG(g.icon)}<span>${esc(g.name)}</span><i class="sv-tbadge"></i></button>`).join('');
+      tabsEl.innerHTML = groups.map(g => `<button type="button" class="sv-tab" role="tab" data-cat="${esc(g.id)}" data-title="${esc(g.title || g.name)}" title="${esc(g.title || g.name)}" aria-selected="false" tabindex="-1">${iconSVG(g.icon)}<span class="sv-tlabel">${esc(g.name)}</span><i class="sv-tbadge"></i></button>`).join('');
       // Rows in tab order so the list reads naturally inside each category.
       const ordered = groups.flatMap(g => g.recipes);
       rlist.innerHTML = ordered.length ? ordered.map(r => `<button type="button" class="sv-recipe sv-locked" data-recipe="${esc(r.id)}" data-cat="${esc(catOf.get(r.id))}" data-tip-kind="${esc(r.out.kind)}">
@@ -628,7 +629,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!inTab.some(v => v.r.id === pickId)) pickId = (inTab.find(v => v.state === 'ready') || inTab.find(v => v.state !== 'gated') || inTab[0])?.r.id ?? null;
     if (activeTab) dlg.dataset.svTab = activeTab;
     const tabEl = tabsEl.querySelector(`.sv-tab[data-cat="${activeTab}"]`);
-    if (tabEl) rlist.setAttribute('aria-label', tabEl.textContent.trim() + ' recipes');
+    if (tabEl) rlist.setAttribute('aria-label', (tabEl.dataset.title || tabEl.textContent.trim()) + ' recipes');
     applyPick();
     paintMore();
   }
@@ -741,7 +742,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     tabsEl.querySelectorAll('.sv-tab').forEach(t => {
       const n = readyPer.get(t.dataset.cat) || 0, b = t.querySelector('.sv-tbadge');
       if (b && b.textContent !== (n ? String(n) : '')) b.textContent = n ? String(n) : '';
-      t.setAttribute('aria-label', `${t.querySelector('span')?.textContent || ''}${n ? `, ${n} ready` : ''}`);
+      t.setAttribute('aria-label', `${t.dataset.title || t.querySelector('span')?.textContent || ''}${n ? `, ${n} ready` : ''}`);
     });
     paintDetail();
   }

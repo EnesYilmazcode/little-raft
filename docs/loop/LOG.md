@@ -1269,3 +1269,123 @@ Open for next round:
 - An intermittent three.js warm-up error, `reading 'isReady'`, existed before this round.
 - `cleanWorld` keeps decor on integer tiles only.
 - Locked recipes still say "Ready to craft".
+||||||| 050b35f0
+## 2026-11-21 · loop-fidelity-202611210821 (raft fidelity, round 2b)
+Base: raft-master 77b1cb6. Research: docs/loop/research/fidelity-r2b-stations.md and fidelity-r2b-world.md (the wiki hosts were DNS-blocked, so the numbers come from search snippets).
+Skipped because the parallel fidelity run (loop-fidelity-202611210804) already claims them: crop plots, collection net, foundation armor, 2x2 start, Raft recipe costs.
+Claimed and landed:
+- **Station fuel and timings.** The purifier burns fuel: a plank gives 50 s and a leaf 25 s, capped at 150 s. A cup takes 60 s and only advances while lit. It has a flame and a plank-tray visual, and its prompts show the time and fuel. The grill burns 50 s per plank, holds 2 planks, cooks in 28 + 0.4*cm s, and chars only after 120 s. The cook times in items.js now match cooking.js.
+- **Drowning.** You get 33 s of air, or 17 s when food or water is at 0. Out of air you float up and take 3.5 HP/s through hurtPlayer. The air bar turns red below 25%.
+- **Stone Axe and palm chopping** (axe-model.js, islands-layout.js chop action):
+  - Recipe 6 planks + 3 stone + 2 rope, 50 chops.
+  - A palm takes 5 chops and drops 5 planks + 2 leaves. Each chop rolls 17.6% for a coconut and 11.8% for a palm seed.
+  - Bare hands can no longer gather wood from palms. A felled palm leaves a stump.
+  - New coconut food: +5 food, +20 water.
+- **Paddle** (paddle.js, paddle-model.js):
+  - Recipe 4 planks + 2 rope + 2 plastic, 60 strokes.
+  - LMB from an edge tile pushes the raft the way you face. Host checks: the stroke's slot holds a paddle, you stand on an edge tile, the raft is not anchored, and the 0.8 s cooldown has passed (the local cooldown is 0.85 s).
+  - PADDLE_CAP raised to 1.1.
+- **Debris follows raft motion** (debris-budget.js). It spawns at 0.6 items per metre travelled plus 0.05/s, with at most 3 banked. Anchoring stops the water flow and the item drift.
+- **Fix:** items.js HOTBAR_SIZE is now 10 (it was 8), so a saved selection of slot 9 or 0 no longer resets.
+Fleet: 2 researchers, 3 builders (worktrees), 2 reviewers.
+Review fixes:
+- the host no longer finds a paddle anywhere in the bag; it uses the stroke's slot
+- a NaN angle wore the paddle
+- held paddle and coconut poses
+- the coconut icon
+- the purifier countdown spammed the pickup feed
+- the felled-palm fronds
+- the axe head tones
+Checks:
+- npm test 753/753 (base 724).
+- shoot.py `errors: []`.
+- Frame time 154 ms (base 159 ms on the same machine).
+Open:
+- In old saves a boiling cup waits for fuel.
+- Islands still sail in, dock and leave, while Raft's islands stay fixed and you sail to them (the top world gap for next round).
+- The axe uses the generic tool swing.
+- The paddle can't be repaired with R.
+- coop.js's held-item list lacks paddle, axe and spear.
+- Rope never drops from barrels (Raft about 7%).
+- Raft wind never changes direction; ours shifts every 70-140 s.
+Next gaps: fixed-position islands, crafting tabs (Navigation, Food/Water), bed as a respawn point, tool durability (hook 40, rod 10), Tinker's Desk cost 14 planks + 2 scrap.
+
+## 2026-11-21 · loop-fidelity-202611210900 (raft fidelity, round 3)
+Base: raft-master 0cf1e15 merged with loop-fidelity-202611210821 (db942be7, ported by hand: import build suffixes, juicer coconut unified to Raft's +5/+20, dive gear oxy x drowning air).
+This branch carries round 2b too, so merge it instead of 202611210821.
+Claimed and landed:
+- **Islands stay put** (islands-layout.js, islands.js, sailing-world.js):
+  - An island sits at a fixed seabed position and moves only by the sailing seabed offset. You steer, paddle or anchor to reach it, or drift past it. The old dock timeline is gone.
+  - The first island spawns 60-80 m ahead and later ones 120-160 m, 20-40 m to the side.
+  - It despawns more than 150 m behind or more than 220 m away, but never while a player is on it.
+  - It shows a "Land ahead!" notice and a compass badge, and the raft can beach on it.
+  - Save format v2 (bx, bz); v1 saves migrate. The host owns spawn and despawn.
+- **Bed respawn point** (sleep.js spawn[role], content respawn hook): sleeping in a bed, or E on it by day, sets your respawn. A faint wakes you beside that bed if it still stands.
+- **Crafted anchor** (anchor-rules.js, anchor-model.js):
+  - Costs 2 wood + 4 rope + 4 stone and is placed on an edge tile. E drops or raises it; hammer + X takes it back.
+  - The raft can't drop anchor without one. Old anchored saves get one placed for free.
+- **Fishing rod** lasts 10 catches; it now wears per catch and breaks at 0.
+- **Six crafting tabs**: Tools, Sailing, Food, Parts, Build, Other. Every recipe sits in exactly one tab, and labels hide below 440 px.
+- **Barrel loot** follows Raft's shape: 4-6 items (plank 37.7, leaf 18.9, plastic 14.2, scrap 9.4, rope 7.1, stone 6.1, flower seed and coconut 3.3 each, plus 1 treasure roll).
+- **Tinker's Desk** costs 14 planks + 2 scrap.
+Fleet: 1 porter, 3 builders (worktrees), 2 reviewers.
+Review fixes:
+- a rod already at 0 never broke
+- islands dispose left the compass marker and blocker live
+- the anchor had a floating brace and no rope run
+- the compass island glyph read as "H"; the compass also jumped when its label changed
+- seven recipes had blank icons (rug, pennant, fern, hammock, glass lamp, receiver, sinker)
+- the land notice wrapped
+Checks:
+- npm test 1041/1041.
+- shoot.py `errors: []`; Esc from the inventory: no pause, still locked.
+- Frame time 151 ms vs raft-master 147 ms on the same machine (+3%, within pose noise).
+Open:
+- PlayerPhysics pulls you aboard at 50 m, so a drifting raft yanks you off an island.
+- migrateAnchor ignores grill tiles.
+- The palm planter and lantern onboarding steps may wait on the 14-plank desk in a fresh world; check it in play.
+- The anchor has no held model.
+- The sailing spec and engine docs still mention the anchor post.
+Next gaps: seagull crop raids + scarecrow (after the crops lane lands), swimming back to a drifting raft instead of the 50 m teleport, a hook range and reel speed check against Raft, a Medium Crop Plot, backpack +10 slots, constant wind direction.
+
+## 2026-11-21 · loop-fidelity-202611210946 (raft fidelity, round 4, in progress)
+Base: raft-master 473da9a, merged with loop-fidelity-202611210900 (d2edaa06). That merge carries round 3, which integrator D skipped by mistake (it is not just 0821): fixed islands, crafted anchor, six tabs, Raft barrel loot, rod wear and Tinker's Desk 14+2. For bed respawn and drowning, master's versions were kept.
+Claimed for round 4 (research: docs/loop/research/fidelity-r4-gaps.md):
+- swimming back to a drifting raft (no 50 m snap), plus constant wind
+- the Receiver chain (circuit board, vine goo, battery power), leading to an original beacon-mast landmark
+- a Medium Crop Plot with watermelon and pineapple
+
+## 2026-11-21 · integrator D: loop-perf-202611210859, loop-perf-202611210748, loop-visuals-202611210843
+- Merged loop-perf-202611210859 (drop backdrop blurs). raft-master already had the blur removals in graphics.css, settings.js and coop-feed.js, so those conflicts keep raft-master. This adds the fish journal, research panel and style.css backdrops.
+- Skipped loop-perf-202611210748: a stale parallel copy of perf work raft-master already has (quality ladder, shadow camera fit, pre-warm, pinned quality). It hit 77 conflict hunks across 28 files. Its every-third-frame shadow redraw and frustum-culled foam need a rebase by their worker.
+- Not merged by D: loop-visuals-202611210843 was already on raft-master (cd51bb0f) from another integrator, so D's own merge of it was dropped.
+- Gate: npm test 1402/1402. shoot.py errors [], hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text.
+- Perf, final vs raft-master, six interleaved pairs, medians: 146 vs 141 ms (+3.5%), 46.5 vs 46.5 draw calls, 97 shadow casters on both.
+## 2026-11-21 · integrator H (the scheduled :00/:30 second integrator; logged as B in rounds 3-5 before the name clash)
+- Round 5 merged and pushed: loop-fidelity-0804, -0821 (nets, crop plot, armor, paddle, stone axe + coconut, debris budget, purifier fuel; 0747 skipped as a duplicate shark/needs build); fleet-tech/perf; icons.svg fetched once (from loop-perf-0720); place-mode prompt wiring from loop-features-0735.
+  Co-op HELD: paddle 23, axe 24 (after glidehandle 21, spyglass 22). Sail chip/lock text follow the new sail recipe.
+- Reverted the loop-features-0831 merge at 7190097 (its WIP juicer commit broke 5 tests); the branch was later finished and merged by integrator C.
+- PR #5 review (2 reviewers, comments on #5). Fixed in 99a2d3e, which landed on raft-master after #5 merged, so it ships with PR #6:
+  floor1 achievement and START_TILES/onboarding reset assumed the old 3x3 start; net view resync when the shark breaks a tile;
+  blocked placement showed "LMB Place X" (now shows the reason, like the hammer); the Place row lost to the keyed aim prompt in place mode;
+  build chip overlapped the vitals panel under 1100px; Lightning Rod pickup lost its shards (now not pick-up-able); duplicate motor/wheel/bed/brush/paint recipes; duplicate `play` hook.
+- Perf at 99a2d3e vs main c3a29df (pinned quality, median of 3, quiet box): 137 vs 138 ms idle, 122 vs 124 ms walking, ~50 draw calls both.
+- Process note: three or more integrators merged the same branches in parallel this round; much worker-merge work was thrown away. Claims in STATUS.md are now the coordination point.
+
+## 2026-11-21 · integrator D summary (09:20–10:05 UTC)
+- Coordinated with integrators A/B/C through the STATUS claims list. Dropped my early duplicate batches (B had claimed the same branches) and did not merge raft-reference: its 53MB of stills are scraped from the commercial game, which doesn't belong in an original game.
+- Merged: loop-ux-0852 (no-op), loop-fidelity-0914 (Simple Bed, breath/drowning), loop-features-0855 (docs), loop-perf-0859 (cheaper menu backdrops).
+- Skipped:
+  - loop-ux-0848 (B's 0833/0648 work)
+  - loop-fidelity-0900 (B's 0821)
+  - loop-fidelity-0910 (replaces the existing nets; needs a rebase)
+  - loop-perf-0748 (stale copy, 77 conflict hunks; its 3-frame shadow refresh and foam culling are worth porting)
+- PR #5 review: code (https://github.com/EnesYilmazcode/little-raft/pull/5#issuecomment-7060592670) and playtest (https://github.com/EnesYilmazcode/little-raft/pull/5#issuecomment-7060667647). Fixed:
+  - junk pickups disposed shared models.js geometry and materials
+  - icons.svg was unstamped on first load (stale sprite after a deploy)
+  - Q was listed twice in Controls
+  - the craft card hid its second ingredient
+  - the 900x600 bag pushed the backpack and hotbar off-screen
+  - the bag covered the compass
+  - the settings panel ran off-screen
+- Note: quality level 3 now renders at a 0.7 pixel ratio (main had 0.85), so part of the frame-time gain is resolution.

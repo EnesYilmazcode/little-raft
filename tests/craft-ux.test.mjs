@@ -40,18 +40,17 @@ test('sortCraftableFirst: ready, then full, then closest-to-done missing', () =>
   assert.deepEqual(CB.sortCraftableFirst([{ id: 'x' }, { id: 'y', state: 'ready' }]).map(v => v.id), ['y', 'x']);
 });
 
-test('sortCraftableFirst: the building tab puts what wood alone makes above the sail', () => {
+test('sortCraftableFirst: the building tab puts what the bag makes right now first', () => {
   const recipes = CB.groupRecipes(normRecipes(), ITEM_INFO).find(g => g.id === 'building').recipes;
-  assert.equal(recipes[0].id, 'sail', 'book order starts with the sail');
+  assert.equal(recipes[0].id, 'bench', 'book order starts with the bench');
   const bag = bagWith({ wood: 9, scrap: 1, leaf: 7, rope: 2 });
   const ids = CB.sortCraftableFirst(viewsFor(bag, recipes)).map(v => v.id);
-  // raft-master's building tab holds more recipes; only the relative order of these three is checked.
-  const three = list => list.filter(id => ['bench', 'crate', 'sail'].includes(id));
-  assert.deepEqual(three(ids), ['bench', 'crate', 'sail']);
+  const two = list => list.filter(id => ['bench', 'crate'].includes(id));
+  assert.deepEqual(two(ids), ['bench', 'crate']);
   assert.deepEqual(ids.slice(0, 2), ['bench', 'crate'], 'what the bag makes right now comes first');
   // With nothing at all, book order is kept apart from the closest-to-done rule.
   const none = CB.sortCraftableFirst(viewsFor(bagWith({}), recipes)).map(v => v.id);
-  assert.deepEqual(three(none), ['bench', 'crate', 'sail'], 'bench needs 1 kind, crate 2, sail 3');
+  assert.deepEqual(two(none), ['bench', 'crate'], 'bench needs 1 kind, crate 2');
 });
 
 test('holdHint previews how many a hold makes, capped', () => {
