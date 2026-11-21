@@ -15,6 +15,7 @@ import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -179,7 +180,7 @@ export function mount(transfer = null) {
     if (raw) { try { const v = cleanWorld(JSON.parse(raw)); if (v) world = v; } catch {} }
     const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
   }
-  let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghost, rope, ropeAttr, hookMesh, friend, player, sun;
+  let scene = null, camera = null, renderer = null, quality = null, ocean = null, raft, itemsGroup, ghost, rope, ropeAttr, hookMesh, friend, player, sun;
   let hookHands = null, hammerHands = null, rodHands = null, rodModel = null, rodTip = null, clothMat;
   let survivalUI = null, settingsController = null, options = {sensitivity:1, fov:75, cameraMotion:.35, volume:.5, graphics:'medium'};
   let running = !!X?.running;
@@ -283,10 +284,11 @@ export function mount(transfer = null) {
     scene = new T.Scene(); scene.background = new T.Color('#cbd2c0'); scene.fog = new T.Fog('#cbd2c0', 25, 125);
     camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 200); camera.rotation.order = 'YXZ'; scene.add(camera);
     renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:true});
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7)); renderer.setSize(innerWidth, innerHeight);
+    renderer.setSize(innerWidth, innerHeight);
     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
     scene.add(new T.HemisphereLight('#f2ead4', '#3d6b6a', 1.8));
     sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(-15, 28, 12); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, {left:-25, right:25, top:25, bottom:-25}); sun.shadow.bias = -.001; scene.add(sun);
+    quality = createQuality({renderer, sun, preset:options.graphics}); // owns pixel ratio, shadow map size and sun.castShadow
     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.receiveShadow = true; scene.add(ocean.mesh); ocean.update(elapsed);
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
     itemsGroup = new T.Group(); scene.add(itemsGroup);
@@ -818,8 +820,9 @@ export function mount(transfer = null) {
   }
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, swimming:physics.swimming});
   function frame() {
-    const now = performance.now(), dt = Math.min((now - last) / 1000, .05); last = now; elapsed += dt;
+    const now = performance.now(), rawMs = now - last, dt = Math.min(rawMs / 1000, .05); last = now; elapsed += dt;
     const dialog = uiBlocked();
+    if (running && !dialog && !document.hidden) quality.tick(rawMs);
     if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { closeConnection(); toast('Host disconnected. You are back on your own raft.'); }
     if (role === 'host' && conn?.open && now - lastGuestMessage > 8000) { const stale = conn; conn = null; unbindTarget(stale); stale.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); }
     ocean.update(elapsed, camera);
@@ -911,6 +914,7 @@ export function mount(transfer = null) {
   });
   on(window, 'keyup', e => { keys[e.code] = false; });
   on(window, 'blur', clearInput);
+  on(document, 'visibilitychange', () => { quality?.reset(); });
   on(window, 'beforeunload', () => { save(); send({type:'leaving'}); try { conn?.close(); peer?.destroy(); } catch {} });
   on(window, 'resize', () => { if (!camera) return; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
@@ -1116,7 +1120,7 @@ export function mount(transfer = null) {
       if (!renderer) return null;
       const i = renderer.info, c = {meshes:0, visible:0, lights:0, shadowCasters:0};
       scene?.traverse(o => { if (o.isMesh || o.isLine || o.isPoints) { c.meshes++; if (o.visible) c.visible++; if (o.castShadow) c.shadowCasters++; } if (o.isLight) c.lights++; });
-      return {calls:i.render.calls, triangles:i.render.triangles, lines:i.render.lines, points:i.render.points, geometries:i.memory.geometries, textures:i.memory.textures, programs:i.programs?.length ?? null, pixelRatio:renderer.getPixelRatio(), shadows:renderer.shadowMap.enabled, ...c};
+      return {calls:i.render.calls, triangles:i.render.triangles, lines:i.render.lines, points:i.render.points, geometries:i.memory.geometries, textures:i.memory.textures, programs:i.programs?.length ?? null, pixelRatio:renderer.getPixelRatio(), shadows:renderer.shadowMap.enabled && !!sun?.castShadow, quality:quality ? {level:quality.level, levels:quality.levels.length, preset:quality.info.preset, pixelRatio:quality.info.pixelRatio, shadowMapSize:quality.info.shadowMapSize, ema:quality.info.ema} : null, ...c};
     },
     get state() {
       const hc = castOut(), bag = localBag(), counts = bag.counts(), kind = heldKind();
@@ -1173,7 +1177,7 @@ export function mount(transfer = null) {
   function pause() { active = false; if (rafId) cancelAnimationFrame(rafId); rafId = 0; }
   function resume() {
     if (disposed || active || !scene) return;
-    active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
+    active = true; last = performance.now(); quality?.reset(); rafId = requestAnimationFrame(animate);
   }
   function disposeScene() {
     if (!scene) return;
@@ -1206,7 +1210,7 @@ export function mount(transfer = null) {
   try {
     if (!canvas) throw new Error('#world canvas missing');
     init();
-    settingsController = createSettings({onChange:next => { options = next; if (renderer) { renderer.setPixelRatio(Math.min(devicePixelRatio, next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3)); renderer.shadowMap.enabled = next.graphics !== 'low'; } }, onPause:clearInput, onResume:() => requestLock()});
+    settingsController = createSettings({onChange:next => { options = next; if (quality && quality.info.preset !== next.graphics) quality.setCap(next.graphics); }, onPause:clearInput, onResume:() => { quality?.reset(); requestLock(); }});
     survivalUI = createSurvivalUI({
       getBag:() => localBag(),
       onSelect:guard(i => selectSlot(i)),
