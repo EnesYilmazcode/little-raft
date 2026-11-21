@@ -353,6 +353,68 @@ export const ITEM_ICONS = Object.freeze({
     <g fill="#fffbd0" stroke="#d8ff6a" stroke-width="1.6"><circle cx="21" cy="24" r="1.8"/><circle cx="28" cy="20" r="1.6"/><circle cx="26" cy="31" r="2"/><circle cx="19" cy="35" r="1.5"/><circle cx="30" cy="37" r="1.6"/></g>
     <path d="M17 18 V37" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".8"/>`,
 
+  // [crops] crop seeds, garden produce, roast tuber and the garden bed
+  flaxseed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M10 40 C8 33 14 27 20 30 C24 33 21 41 15 43 C13 43.5 11 42.5 10 40 Z" fill="#c9a56a"/>
+    <path d="M24 37 C24 30 31 25 36 29 C39 32 36 40 30 41 C27 41.5 24.5 40 24 37 Z" fill="#b8925a"/>
+    <path d="M30 23 V8" fill="none" stroke="#5f9a8a" stroke-width="2.2"/>
+    <path d="M30 16 C26 13 23 14 22 16 M30 12 C34 9 37 10 38 12" fill="none" stroke="#5f9a8a" stroke-width="1.8"/></g>
+    <g stroke="${O}" stroke-width="1.2"><circle cx="30" cy="6" r="3.2" fill="#a9c8f0"/><circle cx="30" cy="6" r="1.1" fill="#f5e7a0"/></g>
+    <path d="M13 37 C14 34.5 16 33 18 33" fill="none" stroke="#fff2cc" stroke-width="1.6" stroke-linecap="round"/>`,
+
+  bellseed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <circle cx="17" cy="33" r="8" fill="#e9a3b8"/>
+    <circle cx="32" cy="36" r="6.5" fill="#d98aa4"/></g>
+    <g fill="#a3506d"><circle cx="14" cy="31" r="1.2"/><circle cx="19" cy="36" r="1.1"/><circle cx="20" cy="29" r=".9"/><circle cx="31" cy="38" r="1"/><circle cx="34" cy="34" r=".9"/></g>
+    <path d="M13 29 C14 27 16 26 18 26" fill="none" stroke="#fff2cc" stroke-width="1.6" stroke-linecap="round"/>
+    <g stroke="${O}" stroke-width="1.4" stroke-linejoin="round"><path d="M33 10 C35 15 35 20 33 24" fill="none" stroke="#3f7f45" stroke-width="1.8"/>
+    <path d="M27 12 C28 6 38 6 39 12 C36 11 30 11 27 12 Z" fill="#f28bb0"/></g>`,
+
+  tuberseed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M8 34 C8 26 16 22 25 23 C35 24 41 29 40 35 C39 41 31 44 22 43 C13 42 8 39 8 34 Z" fill="#d9893f"/>
+    <path d="M25 23 C24 17 22 13 18 10" fill="none" stroke="#4f8a3c" stroke-width="2.2"/>
+    <path d="M18 10 C13 9 10 12 10 15 C14 16 17 14 18 10 Z M24 17 C28 12 33 12 35 14 C32 18 27 18 24 17 Z" fill="#7cb85a"/></g>
+    <g fill="#8a4a22"><ellipse cx="17" cy="33" rx="1.6" ry="1.1"/><ellipse cx="29" cy="36" rx="1.6" ry="1.1"/><ellipse cx="33" cy="30" rx="1.3" ry=".9"/></g>
+    <path d="M13 30 C15 27.5 18 26.5 21 26.3" fill="none" stroke="#ffd2a0" stroke-width="1.6" stroke-linecap="round"/>`,
+
+  fibre: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M12 42 C14 30 12 18 16 6 L21 6 C18 18 20 30 18 42 Z" fill="#d8cc9e"/>
+    <path d="M19 42 C22 30 21 17 26 5 L31 6 C27 18 27 30 25 42 Z" fill="#cfc49a"/>
+    <path d="M26 42 C30 31 31 19 36 8 L41 10 C36 20 34 31 32 42 Z" fill="#e3d9b0"/>
+    <rect x="9" y="25" width="30" height="6" rx="2" fill="#5f9a8a" transform="rotate(-6 24 28)"/></g>
+    <path d="M15 12 C15.5 16 15 20 14.8 22" fill="none" stroke="#fff8e0" stroke-width="1.4" stroke-linecap="round"/>`,
+
+  petal: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M24 24 C16 22 9 15 12 8 C18 6 24 14 24 24 Z" fill="#f28bb0"/>
+    <path d="M24 24 C26 16 33 9 40 12 C41 19 32 24 24 24 Z" fill="#f7a8c6"/>
+    <path d="M24 24 C30 28 35 36 30 42 C23 42 21 32 24 24 Z" fill="#e9779f"/>
+    <path d="M24 24 C19 30 11 35 7 30 C8 24 17 22 24 24 Z" fill="#f49ab9"/></g>
+    <circle cx="24" cy="24" r="3" fill="#ffd35a" stroke="${O}" stroke-width="1.4"/>
+    <path d="M15 11 C17 12 19 14 20 16" fill="none" stroke="#fff2cc" stroke-width="1.5" stroke-linecap="round"/>`,
+
+  tuber: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M7 30 C6 22 14 17 24 18 C35 19 43 25 42 32 C41 39 32 43 22 42 C13 41 8 37 7 30 Z" fill="#e8873a"/>
+    <path d="M24 18 C23 12 20 8 15 6 M25 18 C28 12 32 9 37 9" fill="none" stroke="#4f8a3c" stroke-width="2.2"/>
+    <path d="M15 6 C11 4 7 6 7 9 C11 10 14 9 15 6 Z M37 9 C40 6 44 7 44 10 C41 12 38 11 37 9 Z" fill="#7cb85a"/></g>
+    <path d="M14 32 C18 33 22 33 26 32 M20 37 C24 38 29 37 32 35" fill="none" stroke="#a9542a" stroke-width="1.3" stroke-linecap="round"/>
+    <path d="M13 26 C16 23 20 22 24 22" fill="none" stroke="#ffd2a0" stroke-width="1.8" stroke-linecap="round"/>`,
+
+  roasttuber: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <ellipse cx="24" cy="38" rx="19" ry="5" fill="#fff2cc"/>
+    <path d="M8 31 C7 24 14 19 24 20 C34 21 41 25 40 31 C39 36 31 38 23 38 C15 38 9 36 8 31 Z" fill="#b8652e"/>
+    <path d="M24 20 C27 25 27 30 24 34 C21 30 21 25 24 20 Z" fill="#f2b134" stroke-width="1.4"/></g>
+    <g stroke="#7a3a1a" stroke-width="1.6" stroke-linecap="round"><path d="M13 27 L16 31 M31 26 L34 30"/></g>
+    <path d="M18 14 C16 11 19 9 17 6 M28 14 C26 11 29 9 27 6" fill="none" stroke="${O}" stroke-width="1.4" stroke-opacity=".45" stroke-linecap="round"/>`,
+
+  gardenbed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M12 24 V14 M20 24 V10 M30 24 V12 M37 24 V16" fill="none" stroke="#4f8a3c" stroke-width="2.2"/>
+    <g stroke-width="1.4"><circle cx="12" cy="12" r="3.2" fill="#a9c8f0"/><path d="M17 9 C19 5 23 5 24 9 C21 8 19 8 17 9 Z" fill="#f28bb0"/>
+    <ellipse cx="30" cy="11" rx="4.5" ry="2.4" fill="#7cb85a"/><ellipse cx="37" cy="15" rx="3.5" ry="2" fill="#6aa04a"/></g>
+    <path d="M4 24 H44 V30 H4 Z" fill="#5e4330"/>
+    <path d="M4 28 H44 L42 43 H6 Z" fill="#9a7552"/>
+    <path d="M5 33 H43 M6 38 H42" fill="none" stroke-width="1.2" stroke-opacity=".55"/></g>
+    <path d="M8 31 H20" stroke="#fff2cc" stroke-width="1.5" stroke-linecap="round" stroke-opacity=".7"/>`,
+
   honeyfish: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <path d="M6 26 C12 15 28 14 36 24 L44 17 V35 L36 28 C28 38 12 37 6 26 Z" fill="#d98a4e"/>
     <path d="M14 22 L18 31 M21 20 L25 32 M28 21 L31 30" fill="none" stroke="#8a4a22" stroke-width="2"/>

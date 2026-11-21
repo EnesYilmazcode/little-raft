@@ -72,6 +72,9 @@ export const CONTENT_RECIPES = Object.freeze({
   paint_sunshell: recipe('paint_sunshell', 'Sunshell Paint', 4, { sand: 1, seed: 1 }),
   paint_lagoon:   recipe('paint_lagoon', 'Lagoon Paint', 4, { plastic: 1, leaf: 1 }),
   paint_pebble:   recipe('paint_pebble', 'Pebble Paint', 4, { stone: 1, clay: 1 }),
+  // [crops] garden bed produce (crops.js): learned at the Tinker's Desk like the paint pots
+  fibrerope:  Object.freeze({ id: 'fibrerope', name: 'Fibre Rope', output: Object.freeze({ kind: 'rope', count: 1 }), cost: Object.freeze({ fibre: 1 }) }),
+  blushpaint: Object.freeze({ id: 'blushpaint', name: 'Blush Paint', output: Object.freeze({ kind: 'paint_coral', count: 4 }), cost: Object.freeze({ petal: 2 }) }),
 });
 
 // Placeable decor added by content modules (models come from content.decorModel()).

@@ -540,7 +540,7 @@ test('CraftBook: every recipe lands in exactly one known tab, in CATEGORIES orde
   assert.deepEqual([...seen].sort(), recipes.map(r => r.id).sort());
   for (const g of groups) assert.ok(g.recipes.length > 0, `${g.id} not empty`);
   assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod', 'brush', 'metalhook', 'spear', 'metalspear', 'binoculars', 'drum', 'pipes', 'bells', 'finder', 'spade', 'handlantern']); // [instruments] [treasure] [nightlight]
-  assert.deepEqual(groups.find(g => g.id === 'materials').recipes.map(r => r.id), ['rope', 'paint_seafoam', 'paint_coral', 'paint_sunshell', 'paint_lagoon', 'paint_pebble', 'nail', 'bolt', 'hinge']);
+  assert.deepEqual(groups.find(g => g.id === 'materials').recipes.map(r => r.id), ['rope', 'paint_seafoam', 'paint_coral', 'paint_sunshell', 'paint_lagoon', 'paint_pebble', 'fibrerope', 'blushpaint', 'nail', 'bolt', 'hinge']); // [crops] fibrerope, blushpaint
 });
 
 test('CraftBook: unknown outputs fall back to tools (tool flag) or building', () => {

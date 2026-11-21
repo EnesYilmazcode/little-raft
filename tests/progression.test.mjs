@@ -189,6 +189,7 @@ test('items: no unlock/recipe cycles and every item is reachable from the start'
     changed = false;
     if (have.has('fishingrod') && !have.has('fish')) { have.add('fish'); changed = true; }
     if (have.has('beehive') && have.has('flowerbox') && !have.has('honey')) { have.add('honey'); have.add('wax'); changed = true; } // [bees] hive harvest
+    for (const [s, out] of [['flaxseed', 'fibre'], ['bellseed', 'petal'], ['tuberseed', 'tuber']]) if (have.has('gardenbed') && have.has(s) && !have.has(out)) { have.add(out); changed = true; } // [crops] garden bed harvest
     if (have.has('jar') && !have.has('fireflyjar')) { have.add('fireflyjar'); changed = true; } // [nightlight] caught at night
     for (const id of ITEM_IDS) {
       const r = ITEMS[id].recipe;

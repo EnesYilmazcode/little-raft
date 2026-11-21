@@ -103,6 +103,17 @@ const LIST = [
     tip: 'Sweet, golden and sticky.' }),
   item('wax', 'Beeswax', 'material', { iconTint: '#f3e2a4',
     tip: 'Soft beeswax from the comb. Good for candles.' }),
+  // [crops] seeds (island bushes, barrels) and garden bed produce, see dist/crops.js
+  item('flaxseed', 'Sea Flax Seed', 'material', { iconTint: '#7fa9b8',
+    tip: 'A flat, shiny seed. Plant it in a Garden Bed to grow Sea Flax.' }),
+  item('bellseed', 'Blushbell Seed', 'material', { iconTint: '#e98fb0',
+    tip: 'A round pink-speckled seed. Plant it in a Garden Bed to grow Blushbells.' }),
+  item('tuberseed', 'Sweet Tuber Eye', 'material', { iconTint: '#d9893f',
+    tip: 'A little sprouting tuber piece. Plant it in a Garden Bed to grow Sweet Tubers.' }),
+  item('fibre', 'Flax Fibre', 'material', { iconTint: '#cfc49a',
+    tip: 'Soft, strong strands from Sea Flax. Show it at a Tinker\u2019s Desk to learn Fibre Rope.' }),
+  item('petal', 'Blushbell Petals', 'material', { iconTint: '#f28bb0',
+    tip: 'A handful of pink petals. Show them at a Tinker\u2019s Desk to learn Blush Paint.' }),
   item('fish', 'Fish', 'food', { icon: 'icon-fish', placeholder: false,
     tip: 'A shiny catch from your fishing rod. Edible raw, but salty: grill it to fill up properly.' }),
   item('sharkmeat', 'Raw Shark Meat', 'food', { iconTint: '#d97a7a',
@@ -192,6 +203,11 @@ const LIST = [
   item('cookedsharkmeat', 'Grilled Shark Meat', 'food', { iconTint: '#c7764a', stack: 10,
     recipe: cook('grill', 'sharkmeat', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
     tip: 'A thick, smoky steak. Click with it in hand to eat (+30 food).' }),
+  item('tuber', 'Sweet Tuber', 'food', { iconTint: '#e8873a', stack: 10, // [crops]
+    tip: 'A sweet orange root from a Garden Bed. Click to eat (+8 food), or roast it on a grill.' }),
+  item('roasttuber', 'Roast Tuber', 'food', { iconTint: '#b8652e', stack: 10, // [crops]
+    recipe: cook('grill', 'tuber', { time: 15, fuel: 0.5 }), unlock: atStation('grill'),
+    tip: 'A soft, caramel-sweet roasted tuber. Click with it in hand to eat (+25 food).' }),
 
   // ----- build / decor (placeable on raft tiles) -----
   item('bench', 'Bench', 'decor', { icon: 'icon-repair', placeholder: true, placeable: true,
@@ -210,6 +226,9 @@ const LIST = [
   item('candle', 'Beeswax Candle', 'decor', { placeable: true, iconTint: '#ffd27a',
     recipe: hand({ wax: 2, rope: 1 }), unlock: discover('wax'),
     tip: 'A little jar candle that glows warmly at night.' }),
+  item('gardenbed', 'Garden Bed', 'decor', { placeable: true, iconTint: '#7a5a3a', // [crops]
+    recipe: hand({ wood: 4, sand: 2, leaf: 2 }), unlock: discover('sand'),
+    tip: 'A planter box of soft soil. Plant a seed, water it with a fresh cup or let the rain do it.' }),
   item('sail', 'Sail', 'build', { icon: 'icon-sail', placeholder: false, placeable: true,
     recipe: hand({ wood: 4, rope: 3, leaf: 3 }), unlock: discover('rope', 'plastic'),
     tip: 'Catch the breeze and look the part of a proper sea captain.' }),
@@ -251,6 +270,7 @@ export const BLOCK_RADII = deepFreeze({
   palm: 0.42, crate: 0.55, bench: 0.45, sail: 0.14, lantern: 0.12, net: 0,
   smelter: 0.5, researchtable: 0.55, grill: 0.45, maptable: 0.5,
   flowerbox: 0.3, beehive: 0.35, candle: 0.1, // [bees]
+  gardenbed: 0.45, // [crops]
   fireflyjar: 0.1, // [nightlight]
 });
 
@@ -323,9 +343,9 @@ export const PROGRESSION_PLAN = deepFreeze([
  * kind, so mid-game materials trickle in steadily with low variance).
  * Picks of the same kind add up. Plain weighted odds per barrel (treasure total 102): ~5.3
  * basics plus clay .18, stone .12, metal ore .10, sand .12, seaweed .08 (x1.5), copper ore
- * .06, flower seed .06, scrap .29. With the caller's luck state (BARREL_PITY) the mid-game kinds come at
+ * .06, flower seed .06, each crop seed .01, scrap .26. With the caller's luck state (BARREL_PITY) the mid-game kinds come at
  * least every 5-13 barrels (a few more when two are overdue at once), so the real rates are
- * clay .24, stone .19, metal ore .18, sand .14, copper ore .09, seaweed .05 (x1.5).
+ * clay .24, stone .19, metal ore .18, sand .14, copper ore .09, seaweed .05 (x1.5), each crop seed ~.005.
  */
 export const BARREL_ROLLS = deepFreeze({ basic: 3, treasure: 1 });
 export const BARREL_LOOT = deepFreeze([
@@ -340,7 +360,10 @@ export const BARREL_LOOT = deepFreeze([
   { kind: 'seaweed', min: 1, max: 2, weight: 8, pool: 'treasure' },
   { kind: 'copperore', min: 1, max: 1, weight: 6, pool: 'treasure' },
   { kind: 'flowerseed', min: 1, max: 1, weight: 6, pool: 'treasure' }, // [bees]
-  { kind: 'scrap', min: 1, max: 1, weight: 30, pool: 'treasure' },
+  { kind: 'flaxseed', min: 1, max: 1, weight: 1, pool: 'treasure' }, // [crops]
+  { kind: 'bellseed', min: 1, max: 1, weight: 1, pool: 'treasure' }, // [crops]
+  { kind: 'tuberseed', min: 1, max: 1, weight: 1, pool: 'treasure' }, // [crops]
+  { kind: 'scrap', min: 1, max: 1, weight: 27, pool: 'treasure' }, // [crops] 30 -> 27: the crop seeds take 3, so the total (102) and every pity roll stay the same
 ]);
 const POOLS = Object.freeze(Object.fromEntries(['basic', 'treasure'].map((p) => {
   const rows = BARREL_LOOT.filter((e) => e.pool === p);

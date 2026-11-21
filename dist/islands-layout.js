@@ -183,7 +183,11 @@ export function clean(data, layoutOf = layoutFor) {
 // What one gather gives: [[kind, count], ...].
 export function lootFor(kind, seed, node, used) {
   if (kind === 'palm') return used === NODE_MAX.palm - 1 ? [['wood', 1], ['leaf', 1], ['seed', 1]] : [['wood', 1], ['leaf', 1]];
-  if (kind === 'bush') { const h = hash3(seed, node, used); return h < 0.2 ? [['leaf', 1], ['flowerseed', 1]] : h < 0.5 ? [['leaf', 1], ['seed', 1]] : [['leaf', 1]]; } // [bees] flower seeds
+  if (kind === 'bush') { // [bees] flower seeds; [crops] the palm-seed band also gives the three crop seeds
+    const h = hash3(seed, node, used);
+    return h < 0.2 ? [['leaf', 1], ['flowerseed', 1]] : h < 0.38 ? [['leaf', 1], ['seed', 1]] : h < 0.42 ? [['leaf', 1], ['flaxseed', 1]]
+      : h < 0.46 ? [['leaf', 1], ['bellseed', 1]] : h < 0.5 ? [['leaf', 1], ['tuberseed', 1]] : [['leaf', 1]];
+  }
   if (kind === 'rock') return [['stone', 1]];
   if (kind === 'sand') return [['sand', 1]];
   return [];

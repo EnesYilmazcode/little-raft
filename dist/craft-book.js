@@ -22,6 +22,7 @@ const CATEGORY_OF = Object.freeze({
   zippost: 'building', // [zipline]
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
+  gardenbed: 'survival', // [crops]
   handlantern: 'tools', jar: 'survival', fireflyjar: 'survival', // [nightlight]
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
   researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
@@ -68,7 +69,7 @@ export const ITEM_TEXT = Object.freeze({
   antenna:    { desc: 'A rope-braced antenna mast.', use: 'Strengthens the receiver signal; place on a tile.' },
   cup:        { desc: 'An empty plastic cup.', use: 'Click the sea to scoop water.' },
   saltcup:    { desc: 'A cup of salty sea water.', use: 'Pour it into a water purifier.' },
-  freshcup:   { desc: 'A cup of clean fresh water.', use: 'Water a palm planter.' },
+  freshcup:   { desc: 'A cup of clean fresh water.', use: 'Water a palm planter, or press E on a garden bed.' },
   seed:       { desc: 'A palm seed.', use: 'Plant it in an empty palm planter.' },
   rainbarrel: { desc: 'A tub with a leaf funnel that catches the rain.', use: 'Fills by itself in the rain. Hold an empty cup and press E.' },
   sprinkler:  { desc: 'A little spinning head with its own tank.', use: 'Waters nearby palm planters for you. Fill it with fresh water, or put it next to a rain barrel.' },
@@ -103,6 +104,14 @@ export const ITEM_TEXT = Object.freeze({
   jar:        { desc: 'An empty glass jar with a cork.', use: 'Hold it near an island after dusk and press E to catch fireflies.' }, // [nightlight]
   fireflyjar: { desc: 'A corked jar of sleepy fireflies.', use: 'Place it on a tile for a soft green-gold glow at night.' }, // [nightlight]
   honeyfish:  { desc: 'Grilled fish with a honey glaze.', use: 'A sweet treat.' }, // [bees]
+  gardenbed:  { desc: 'A plank planter box full of soft soil.', use: 'Place it, plant a crop seed with E, water it with a fresh cup or let the rain do it.' }, // [crops]
+  flaxseed:   { desc: 'A flat, shiny Sea Flax seed.', use: 'Plant it in a Garden Bed (E).' }, // [crops]
+  bellseed:   { desc: 'A round, pink-speckled Blushbell seed.', use: 'Plant it in a Garden Bed (E).' }, // [crops]
+  tuberseed:  { desc: 'A sprouting piece of Sweet Tuber.', use: 'Plant it in a Garden Bed (E).' }, // [crops]
+  fibre:      { desc: 'Soft, strong strands of Sea Flax.', use: 'Twist into Fibre Rope (1 fibre makes 1 rope).' }, // [crops]
+  petal:      { desc: 'A handful of pink Blushbell petals.', use: 'Mix into Blush Paint (2 petals make 4 Coral paint).' }, // [crops]
+  tuber:      { desc: 'A sweet orange root.', use: 'Click to eat (+8 food), or roast it on a grill.' }, // [crops]
+  roasttuber: { desc: 'A tuber roasted soft and sweet.', use: 'Click to eat (+25 food).' }, // [crops]
   finder:     { desc: 'A driftwood wand with a brass coil.', use: 'Hold it on island sand: it ticks faster near buried bundles.' },
   spade:      { desc: 'A little wooden spade with a metal blade.', use: 'E on island sand digs up bundles (or a pinch of sand).' },
   maptable:   { desc: 'A little driftwood chart table with brass fittings.', use: 'Place it, press E: see charted islands, drop pins, set a course.' },
@@ -321,14 +330,11 @@ export function sortCraftableFirst(views) {
 // ---- where items come from ----
 // `tag` is the short text beside a missing ingredient; `how` is the tooltip line.
 export const ITEM_SOURCE = Object.freeze({
-  flowerseed: Object.freeze({ tag: 'island bushes', how: 'Pick bushes on islands; some drop flower seeds.' }),
-  honey:   Object.freeze({ tag: 'beehive', how: 'Put a beehive near flower boxes, then press E on it to collect honeycomb.' }),
-  wax:     Object.freeze({ tag: 'beehive', how: 'Collected with honey from a full beehive (E).' }),
   wood:    Object.freeze({ tag: 'found floating', how: 'Hook floating planks. Barrels hold more.' }),
   leaf:    Object.freeze({ tag: 'floating, palm', how: 'Hook floating leaf bundles, or harvest a grown palm.' }),
   plastic: Object.freeze({ tag: 'found floating', how: 'Hook floating plastic jugs. Barrels hold some too.' }),
   scrap:   Object.freeze({ tag: 'found floating', how: 'Hook floating scrap. Barrels hold some too.' }),
-  seed:    Object.freeze({ tag: 'barrels, palm', how: 'Hook floating barrels, or harvest a grown palm.' }),
+  seed:    Object.freeze({ tag: 'palms, bushes', how: 'Harvest a grown palm, or pick bushes on islands.' }),
   fish:    Object.freeze({ tag: 'fishing rod', how: 'Cast the Fishing Rod into the sea and wait for a bite.' }),
   water:   Object.freeze({ tag: 'fill a cup', how: 'Fill a Filter Cup at the sea.' }),
   // raft-master materials (items.js): barrels, islands, the seafloor and the stations
@@ -349,6 +355,14 @@ export const ITEM_SOURCE = Object.freeze({
   flowerseed:  Object.freeze({ tag: 'bushes, barrels', how: 'Harvest bushes on islands, or open floating barrels.' }),
   honey:       Object.freeze({ tag: 'beehive', how: 'Press E at a full beehive placed near flower boxes.' }),
   wax:         Object.freeze({ tag: 'beehive', how: 'Collected with honey from a beehive (E).' }),
+  // [crops] seeds from bushes and barrels; produce from a ripe Garden Bed (E)
+  flaxseed:    Object.freeze({ tag: 'bushes, barrels', how: 'Pick bushes on islands, or open floating barrels.' }),
+  bellseed:    Object.freeze({ tag: 'bushes, barrels', how: 'Pick bushes on islands, or open floating barrels.' }),
+  tuberseed:   Object.freeze({ tag: 'bushes, barrels', how: 'Pick bushes on islands, or open floating barrels.' }),
+  fibre:       Object.freeze({ tag: 'garden bed', how: 'Grow Sea Flax in a Garden Bed and press E when it flowers.' }),
+  petal:       Object.freeze({ tag: 'garden bed', how: 'Grow Blushbells in a Garden Bed and press E when the bells open.' }),
+  tuber:       Object.freeze({ tag: 'garden bed', how: 'Grow Sweet Tubers in a Garden Bed and press E when the root shows.' }),
+  roasttuber:  Object.freeze({ tag: 'grill', how: 'Roast a Sweet Tuber on a grill.' }),
   // raft animals (animals.js)
   puffegg:     Object.freeze({ tag: 'puffhen', how: 'Place a Nest Box; a puffhen moves in and lays eggs. Press E on the nest to collect.' }),
   feather:     Object.freeze({ tag: 'puffhen', how: 'Sometimes left with the eggs in a puffhen nest box; collect with E.' }),
