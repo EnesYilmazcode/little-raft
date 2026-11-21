@@ -62,7 +62,7 @@ test('cleanSlice: a JSON round trip is stable', () => {
   const st = stateFrom({ chests: { '1,0': [{ kind: 'wood', count: 3 }, { kind: 'hook', count: 1, durability: 40 }] }, seen: ['wood', 'leaf'], learned: ['bench'], r: 9 }, 'save', freshWorld());
   const once = sliceOf(st), twice = sliceOf(stateFrom(JSON.parse(JSON.stringify(once)), 'save', freshWorld()));
   assert.deepEqual(twice, once);
-  assert.deepEqual(once.learned, ['bench', 'palm']); // recomputed from seen
+  assert.deepEqual(once.learned, ['bed', 'bench', 'palm']); // recomputed from seen
 });
 
 test('cleanSlice: caps the number of chests at 400', () => {
@@ -274,9 +274,9 @@ test('research: wood unlocks bench, then scrap unlocks lantern; repeats and non-
 
 test('research: recipes join the tree from their cost alone (learnedFrom)', () => {
   assert.deepEqual(learnedFrom(['wood']), ['bench']);
-  assert.deepEqual(learnedFrom(['wood', 'leaf']), ['bench', 'palm']);
+  assert.deepEqual(learnedFrom(['wood', 'leaf']), ['bed', 'bench', 'palm']);
   assert.deepEqual(learnedFrom(['wood', 'rope']), ['bench', 'fishingrod', 'net']);
-  assert.deepEqual(learnedFrom(['wood', 'rope', 'leaf']), ['bench', 'fishingrod', 'net', 'palm', 'sail']);
+  assert.deepEqual(learnedFrom(['wood', 'rope', 'leaf']), ['bed', 'bench', 'fishingrod', 'net', 'palm', 'sail']);
   assert.deepEqual(learnedFrom(['leaf'], ['lantern']), ['lantern']);
 });
 
