@@ -91,6 +91,8 @@ function composeTune(def) {
     notes.push({ k: t0 + mid, m: root - 12 + c + 7, g: 0.5, bass: true });
     for (const cell of melody[b]) notes.push({ k: t0 + cell.s, m: root + semi(cell.i), g: cell.s === 0 ? 0.9 : cell.s % 2 === 0 ? 0.75 : 0.6, bass: false });
   }
+  const mel = new Set(notes.filter(n => !n.bass).map(n => n.k * 128 + n.m));
+  for (let j = notes.length - 1; j >= 0; j--) if (notes[j].bass && mel.has(notes[j].k * 128 + notes[j].m)) notes.splice(j, 1); // a unison with the melody: one tine, not two
   notes.sort((a, b) => a.k - b.k || (a.bass === b.bass ? a.m - b.m : a.bass ? -1 : 1));
   const frozen = Object.freeze(notes.map(n => Object.freeze({ t: n.k * step, m: n.m, hz: midiHz(n.m), g: n.g, bass: n.bass })));
   return Object.freeze({ name: def.name, step, bar, bars, meter, root, scale: def.scale, loop: bars * bar, notes: frozen });

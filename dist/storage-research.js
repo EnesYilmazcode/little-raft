@@ -4,6 +4,7 @@
 // The top half of this file is pure (no DOM, no THREE) and exported for tests.
 import { Bag, RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { buildResearchTable } from './storage-research-model.js?build=v3-survival-ae77fa84ac2b';
+import { STASH_R, LABEL_TEXT, cleanLabel, cleanLabels, sameLabel, labelName, sortChest, stashTargets, planStash, stashableKinds, seenKinds } from './crate-labels.js?build=v3-survival-ae77fa84ac2b'; // [crate-labels]
 
 export const CHEST_SLOTS = 12;
 export const MAX_CHESTS = 400;
@@ -22,6 +23,7 @@ const maxStack = k => ITEM_INFO[k]?.maxStack ?? 1;
 const nameOf = k => ITEM_INFO[k]?.name ?? RECIPES[k]?.name ?? String(k);
 const keyOf = (x, z) => x + ',' + z;
 const sortedUnique = a => [...new Set(a)].sort();
+const escHTML = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); // [crate-labels] fallback when ctx.esc is missing
 
 // ------------------------------------------------------------------ recipe tree
 
@@ -95,6 +97,8 @@ export function cleanSlice(data) {
     legacy: d.legacy === true, // set once when an old save was grandfathered; kept so the save remembers why (QA via debug.state)
     r: isInt(d.r) && d.r >= 0 && d.r < Number.MAX_SAFE_INTEGER ? d.r : 0,
     s: typeof d.s === 'string' && d.s.length <= 24 ? d.s : '',
+    labels: cleanLabels(d.labels, isKind, MAX_CHESTS), // [crate-labels]
+    v: isInt(d.v) ? d.v : 0, // [crate-labels] v>=2: the host understands labels/stash/sort
   };
 }
 
@@ -117,7 +121,7 @@ export function isProgressed(w) {
 /** Turn a slice (maybe undefined/garbage) into live state, applying the backward-compat rules. */
 export function stateFrom(data, from, world) {
   const c = cleanSlice(data);
-  const st = { chests: c.chests, seen: [], learned: [], legacy: c.legacy, all: false, r: c.r, s: c.s };
+  const st = { chests: c.chests, seen: [], learned: [], legacy: c.legacy, all: false, r: c.r, s: c.s, labels: c.labels }; // [crate-labels] labels
   if (from === 'net') {
     if (data === undefined || c.learned === null) st.all = true; // old host without this module allows every craft
     st.seen = c.seen ?? []; st.learned = c.learned ?? [];
@@ -133,11 +137,13 @@ export function stateFrom(data, from, world) {
   return st;
 }
 
+const copyLabels = m => { const o = {}; for (const k of Object.keys(m)) o[k] = { ...m[k] }; return o; }; // [crate-labels]
 export function sliceOf(st) {
   const chests = {};
   for (const k of Object.keys(st.chests)) chests[k] = st.chests[k].map(s => (s ? { ...s } : null));
-  const out = { v: 1, chests, seen: st.seen.slice(), learned: st.learned.slice(), r: st.r, s: st.s };
+  const out = { v: 2, chests, seen: st.seen.slice(), learned: st.learned.slice(), r: st.r, s: st.s }; // [crate-labels] v:2
   if (st.legacy) out.legacy = true;
+  if (st.labels && Object.keys(st.labels).length) out.labels = copyLabels(st.labels); // [crate-labels] only when non-empty
   return out;
 }
 
@@ -182,11 +188,18 @@ export function putAll(bagSlots, chest) {
 
 const copySlot = s => (s ? { ...s } : null);
 const sameSlot = (a, b) => a === b || (!!a && !!b && a.kind === b.kind && a.count === b.count && a.durability === b.durability);
-/** JSON length of the slice with chest `key` replaced by `chest` (null = removed). */
-export function sliceChars(st, key, chest) {
+/**
+ * JSON length of the slice with `changes` ({key: chest|null}, null = removed) and `labels` applied; equal to
+ * JSON.stringify(sliceOf(st)).length for no changes. The old (st, key, chest) form still works. [crate-labels]
+ */
+export function sliceChars(st, changes, labels = st.labels) {
+  if (typeof changes === 'string') { const key = changes; changes = { [key]: arguments[2] ?? null }; labels = st.labels; } // old (st, key, chest) form
   const chests = { ...st.chests };
-  if (chest && !chestEmpty(chest)) chests[key] = chest; else delete chests[key];
-  return JSON.stringify({ v: 1, chests, seen: st.seen, learned: st.learned, r: st.r, s: st.s, legacy: st.legacy }).length;
+  for (const key of Object.keys(changes || {})) { const chest = changes[key]; if (chest && !chestEmpty(chest)) chests[key] = chest; else delete chests[key]; }
+  const out = { v: 2, chests, seen: st.seen, learned: st.learned, r: st.r, s: st.s };
+  if (st.legacy) out.legacy = true;
+  if (labels && Object.keys(labels).length) out.labels = labels;
+  return JSON.stringify(out).length;
 }
 const optIndex = (v, n) => v === undefined || v === null || isIndex(v, n);
 const expectOk = (e, s) => !!(e && typeof e === 'object' && s && e.kind === s.kind && e.count === s.count);
@@ -200,8 +213,9 @@ export function applyStorageAction(st, a, actor, bag, env) {
   const no = reason => ({ ok: false, reason });
   if (!a || typeof a !== 'object' || typeof a.kind !== 'string') return no('bad');
   const verb = a.kind.slice(8);
-  if (!['put', 'take', 'putAll', 'research'].includes(verb)) return no('bad');
+  if (!['put', 'take', 'putAll', 'research', 'stash', 'sort', 'label'].includes(verb)) return no('bad'); // [crate-labels] stash, sort, label
   if (!bag || !Array.isArray(bag.slots) || bag.slots.length !== SLOT_COUNT) return no('bad');
+  if (verb === 'stash') return stashAction(st, actor, bag, env); // [crate-labels] no tile: every crate in STASH_R
   if (!isInt(a.x) || !isInt(a.z) || Math.abs(a.x) > 25 || Math.abs(a.z) > 25) return no('bad');
   const type = env?.decorAt?.(a.x, a.z) ?? null;
   if (type !== (verb === 'research' ? 'research' : 'crate')) return no('missing');
@@ -209,6 +223,24 @@ export function applyStorageAction(st, a, actor, bag, env) {
   if (actor === 'guest' && !p) return no('reach'); // no guest pose yet: we cannot tell where they stand
   if (p && Number.isFinite(p.x) && Number.isFinite(p.z) && Math.hypot(p.x - a.x * 2, p.z - a.z * 2) > REACH) return no('reach');
   const key = keyOf(a.x, a.z), slots = bag.slots;
+  st.labels ??= {}; // [crate-labels]
+
+  if (verb === 'sort') { // [crate-labels] the host sorts what it has; already sorted = silent no-op, no r bump
+    const c = st.chests[key]; if (!c) return { ok: true, moved: 0 };
+    const res = sortChest(c); if (!res.changed) return { ok: true, moved: 0 };
+    st.chests[key] = res.slots; st.r++;
+    return { ok: true, moved: 0 };
+  }
+  if (verb === 'label') { // [crate-labels]
+    const l = a.label === null ? null : cleanLabel(a.label, isKind);
+    if (a.label !== null && !l) return no('badLabel');
+    if (sameLabel(l, st.labels[key] ?? null)) return { ok: true, moved: 0 };
+    const next = { ...st.labels }; if (l) next[key] = l; else delete next[key];
+    const after = sliceChars(st, {}, next);
+    if (after > MAX_SLICE_CHARS && after > sliceChars(st, {})) return no('tooBig');
+    st.labels = next; st.r++;
+    return { ok: true, moved: 0 };
+  }
 
   if (verb === 'research') {
     if (!isIndex(a.slot, SLOT_COUNT)) return no('bad');
@@ -251,11 +283,32 @@ export function applyStorageAction(st, a, actor, bag, env) {
   return { ok: true, moved };
 }
 
+// [crate-labels] Stash: every backpack stack whose kind sits in (or labels) a crate within STASH_R, all at once.
+function stashAction(st, actor, bag, env) {
+  const p = env?.pos?.(actor);
+  if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.z)) return { ok: false, reason: 'reach' };
+  st.labels ??= {};
+  const targets = stashTargets(env?.crates?.() ?? [], st.chests, st.labels, p, STASH_R);
+  const slots = bag.slots, bagCopy = slots.map(copySlot), copies = {}, originals = {};
+  for (const t of targets) if (st.chests[t.key]) { copies[t.key] = st.chests[t.key].map(copySlot); originals[t.key] = st.chests[t.key]; }
+  const res = planStash(bagCopy, copies, targets, st.labels, moveStack);
+  if (res.moved === 0) return { ok: false, reason: 'nothingNear' };
+  const changed = {}, before = {};
+  for (const k of res.changed) { changed[k] = copies[k]; before[k] = originals[k] ?? null; }
+  const after = sliceChars(st, changed);
+  if (after > MAX_SLICE_CHARS && after > sliceChars(st, before)) return { ok: false, reason: 'tooBig' };
+  for (let i = 0; i < SLOT_COUNT; i++) if (!sameSlot(slots[i], bagCopy[i])) slots[i] = bagCopy[i];
+  for (const k of res.changed) { if (chestEmpty(copies[k])) delete st.chests[k]; else st.chests[k] = copies[k]; }
+  st.r++;
+  return { ok: true, moved: res.moved, crates: res.crates.size };
+}
+
 const REFUSALS = {
   missing: 'That spot has nothing to open', reach: 'Step a little closer', nothing: NOTHING_NEW,
   chestFull: 'The crate is full', bagFull: 'Your bag is full', nothingToPut: 'Nothing in your backpack to store',
   slotTaken: 'That slot already holds something else', expect: 'Someone moved that — try again', empty: 'Someone moved that — try again',
   tooBig: 'Your crates are stuffed! Try stacking things together first',
+  nothingNear: LABEL_TEXT.nothingNear, badLabel: LABEL_TEXT.badLabel, // [crate-labels]
 };
 
 // ------------------------------------------------------------------ the content module
@@ -267,13 +320,14 @@ export function createStorage(ctx) {
   let cache = null, cacheSt = null, cacheR = -1, netR = -1, netS = null, ver = 0; // ver: local view revision (UI repaint)
   let ui = null, uiLoading = null, uiFailed = false, model = null, flicker = 0;
   let hostHasStorage = true, netUndef = false; // guest aboard an old host: no slice at all
+  let hostV2 = true, plaques = null, plaquesLoading = false, labelsSig = '{}', labelsVer = -1; // [crate-labels]
   const fresh = new Set(); // learned this session, glow once in the craft list
   const scratch = T ? new T.Vector3() : null;
 
   const decorAt = (x, z) => { const d = ctx.world?.decor; if (!Array.isArray(d)) return null; for (let i = 0; i < d.length; i++) if (d[i].x === x && d[i].z === z) return d[i].type; return null; };
   const posOf = actor => { if (actor === 'guest') return ctx.other ?? null; const p = ctx.physics; return p ? { x: p.x, z: p.z } : null; };
   const bump = () => { st.r++; ver++; };
-  const dropKey = k => { if (ctx.role === 'guest' || !st.chests[k]) return false; delete st.chests[k]; bump(); return true; }; // [undecor]
+  const dropKey = k => { if (ctx.role === 'guest') return false; st.labels ??= {}; const had = !!st.chests[k] || !!st.labels[k]; delete st.chests[k]; delete st.labels[k]; if (had) bump(); return had; }; // [undecor] [crate-labels] a label on an empty crate goes too
 
   // Nearest crate/research decor along the view ray (or the camera forward when no aim), within reach.
   function target(aim) {
@@ -318,10 +372,40 @@ export function createStorage(ctx) {
     return true;
   }
   const oldHost = () => ctx.role === 'guest' && !hostHasStorage;
+  const oldLabels = () => ctx.role === 'guest' && !hostV2; // [crate-labels] v1 host: no label/stash/sort
+  const crates = () => { const d = ctx.world?.decor; return Array.isArray(d) ? d.filter(e => e.type === 'crate') : []; }; // [crate-labels]
+  const labelAt = (x, z) => st.labels?.[keyOf(x, z)] ?? null; // [crate-labels]
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  function stashable() { // [crate-labels] UI enable at the local pose (called on repaint only)
+    if (oldLabels()) return false;
+    const p = ctx.physics, bag = ctx.localBag?.(); if (!p || !bag) return false;
+    const t = stashTargets(crates(), st.chests, st.labels, { x: p.x, z: p.z }, STASH_R);
+    return stashableKinds(bag.slots, st.chests, t, st.labels).size > 0;
+  }
+  function onKey(e) { // [crate-labels] F (rebindable 'stash'), no UI open
+    if (e?.detail?.id !== 'stash' || !ctx.running || ctx.uiOpen?.()) return;
+    if (oldHost() || oldLabels()) { ctx.notice?.(LABEL_TEXT.oldHost, 2400); return; }
+    ctx.action({ kind: 'storage.stash' });
+  }
+  if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('little-raft-action', onKey);
+  function loadPlaques() { // [crate-labels] lazy, like loadUI; THREE + canvas only
+    if (plaques || plaquesLoading || !T || typeof document === 'undefined') return;
+    plaquesLoading = true;
+    Promise.all([import('./crate-labels-plaque.js?build=v3-survival-ae77fa84ac2b'), import('./item-icons.js?build=v3-survival-ae77fa84ac2b'), import('./item-svg.js?build=v3-survival-ae77fa84ac2b')])
+      .then(([m, icons, svg]) => {
+        if (disposed) return;
+        plaques = m.createPlaques(T, { iconURL: icons.iconURL, onIconReady: icons.onIconReady, svgFor: k => svg.ITEM_ICONS?.[k] ?? null, nameOf });
+        labelsVer = -1; syncPlaques();
+      })
+      .catch(e => { console.error('crate plaques failed', e); });
+  }
+  function syncPlaques() { if (plaques && ctx.raft) { plaques.sync(ctx.raft, st.labels ?? {}); labelsSig = JSON.stringify(st.labels ?? {}); } }
+  let disposed = false;
 
   function run(a, actor, bag) {
-    const res = applyStorageAction(st, a, actor, bag, { decorAt, pos: posOf });
+    const res = applyStorageAction(st, a, actor, bag, { decorAt, pos: posOf, crates });
     if (res.ok || res.reason === 'expect' || res.reason === 'empty') ver++; // stale click: repaint the panel at once
+    if (res.ok && a.kind === 'storage.stash') ctx.emit({ kind: 'notice', text: `Stashed ${plural(res.moved, 'item')} into ${plural(res.crates, 'crate')}` }, actor); // [crate-labels]
     if (res.ok && a.kind === 'storage.research') {
       if (res.learned.length) for (const id of res.learned) { fresh.add(id); ctx.emit({ kind: 'craft', text: `New recipe: ${nameOf(id)}!` }, 'all'); }
       else ctx.emit({ kind: 'notice', text: `Researched ${nameOf(res.kind)}! It helps with something new` }, actor);
@@ -349,6 +433,11 @@ export function createStorage(ctx) {
     takeFresh: () => { const out = [...fresh]; fresh.clear(); return out; },
     nameOf,
     reach: REACH,
+    labelAt, // [crate-labels]
+    labelName: l => labelName(l, nameOf),
+    canLabels: () => !oldLabels(),
+    seenKinds: () => seenKinds(ctx.localBag?.()?.slots, st.chests, st.seen),
+    stashable,
   };
 
   function load(data, from) {
@@ -356,13 +445,15 @@ export function createStorage(ctx) {
       if (data && typeof data === 'object' && data.r === netR && data.s === netS) return; // unchanged host state
       if (data === undefined && netUndef) return; // old host, still no slice: nothing to rebuild
       netUndef = data === undefined; hostHasStorage = data !== undefined;
+      hostV2 = !!data && typeof data === 'object' && data.v >= 2; // [crate-labels]
       st = stateFrom(data, 'net', ctx.world);
       netR = data && typeof data === 'object' ? data.r : -1; netS = data && typeof data === 'object' ? data.s : null;
       ver++;
       return;
     }
-    netR = -1; netS = null; netUndef = false; hostHasStorage = true;
+    netR = -1; netS = null; netUndef = false; hostHasStorage = true; hostV2 = true;
     st = stateFrom(data, from, ctx.world);
+    for (const k of Object.keys(st.labels)) { const [x, z] = k.split(',').map(Number); if (decorAt(x, z) !== 'crate') delete st.labels[k]; } // [crate-labels] label only on a crate
     st.s = session; bump();
   }
 
@@ -401,15 +492,18 @@ export function createStorage(ctx) {
     prompt(aim) {
       const d = target(aim); if (!d) return null;
       if (oldHost()) return OLD_HOST;
-      return d.type === 'crate' ? '<kbd>E</kbd>Open crate' : '<kbd>E</kbd>Use tinker\u2019s desk';
+      if (d.type === 'crate') { const l = labelAt(d.x, d.z); return '<kbd>E</kbd>Open crate' + (l ? ' · ' + (ctx.esc ?? escHTML)(labelName(l, nameOf)) : ''); } // [crate-labels]
+      return '<kbd>E</kbd>Use tinker\u2019s desk';
     },
     decorModel(type) {
       if (type !== 'research' || !T) return null;
       model ??= buildResearchTable(T);
       return model.instance();
     },
+    afterRebuild() { if (plaques) syncPlaques(); else if (st.labels && Object.keys(st.labels).length) loadPlaques(); }, // [crate-labels]
     update(dt) {
       if (model) { flicker += dt; model.flicker(flicker); }
+      if (labelsVer !== ver) { labelsVer = ver; const sig = JSON.stringify(st.labels ?? {}); if (sig !== labelsSig) { if (plaques) syncPlaques(); else if (sig !== '{}') loadPlaques(); } } // [crate-labels]
       if (ui) ui.update(dt);
       else if (!uiFailed && typeof document !== 'undefined' && ctx.running) loadUI(); // craft-list lock badges need the UI module
     },
@@ -437,7 +531,31 @@ export function createStorage(ctx) {
       close() { ui?.close(); },
       rev() { return ver; },
       state() { return { ...JSON.parse(JSON.stringify(sliceOf(st))), all: st.all, open: ui?.openInfo() ?? null, locked: lockedRecipes(st) }; },
+      // [crate-labels] QA: three crates near the player (A wood label, B plastic, C "Fishing gear" + worn hook) and a bag to stash.
+      labelDemo() {
+        const w = ctx.world, p = ctx.physics, bag = ctx.localBag?.();
+        if (ctx.role === 'guest' || !w || !p || !bag || !Array.isArray(w.tiles)) return null;
+        const free = w.tiles.map(([x, z]) => ({ x, z, d: Math.hypot(p.x - x * 2, p.z - z * 2) }))
+          .filter(t => t.d <= 5 && t.d >= 1.2 && !decorAt(t.x, t.z)).sort((a, b) => a.d - b.d || a.x - b.x || a.z - b.z).slice(0, 3);
+        if (free.length < 3) return null;
+        const [A, B, C] = free;
+        for (const t of free) w.decor.push({ type: 'crate', x: t.x, z: t.z });
+        st.labels ??= {};
+        st.labels[keyOf(A.x, A.z)] = { k: 'wood' }; delete st.chests[keyOf(A.x, A.z)];
+        delete st.labels[keyOf(B.x, B.z)]; st.chests[keyOf(B.x, B.z)] = cleanChest([{ kind: 'plastic', count: 3 }]);
+        st.labels[keyOf(C.x, C.z)] = { t: 'Fishing gear' }; st.chests[keyOf(C.x, C.z)] = cleanChest([{ kind: 'hook', count: 1, durability: 40 }]);
+        const s = bag.slots;
+        s[0] = { kind: 'wood', count: 3 };
+        const put = (v, i) => { s[HOTBAR_SIZE + i] = v; };
+        [{ kind: 'wood', count: 12 }, { kind: 'plastic', count: 7 }, { kind: 'hook', count: 1, durability: 55 }, { kind: 'rope', count: 5 }].forEach(put);
+        bump(); ctx.rebuildRaft?.();
+        return JSON.parse(JSON.stringify({ crates: free.map(t => ({ x: t.x, z: t.z, label: labelAt(t.x, t.z) })), bag: s }));
+      },
+      stash() { if (ctx.role === 'guest') return null; return run({ kind: 'storage.stash' }, 'host', ctx.localBag()); },
+      label(x, z, l) { if (ctx.role === 'guest') return null; return run({ kind: 'storage.label', x, z, label: l ?? null }, 'host', ctx.localBag()); },
+      sort(x, z) { if (ctx.role === 'guest') return null; return run({ kind: 'storage.sort', x, z }, 'host', ctx.localBag()); },
+      plaques() { return plaques ? plaques.info() : []; },
     },
-    dispose() { ui?.destroy(); ui = null; model?.dispose(); model = null; },
+    dispose() { ui?.destroy(); ui = null; model?.dispose(); model = null; disposed = true; plaques?.dispose(); plaques = null; if (typeof window !== 'undefined' && window.removeEventListener) window.removeEventListener('little-raft-action', onKey); }, // [crate-labels] plaques, F key
   };
 }

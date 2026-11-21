@@ -24,6 +24,7 @@ export const ACTIONS = Object.freeze([
   { id: 'interact', label: 'Interact', group: 'Actions', kind: 'button' },
   { id: 'inventory', label: 'Inventory', group: 'Actions', kind: 'button' },
   { id: 'rotate', label: 'Rotate', group: 'Actions', kind: 'button' },
+  { id: 'stash', label: 'Stash to nearby crates', group: 'Actions', kind: 'button' }, // [crate-labels]
   { id: 'pause', label: 'Pause', group: 'Actions', kind: 'button' },
   ...hotbar,
   { id: 'hotbarNext', label: 'Next slot', group: 'Hotbar', kind: 'button' },
@@ -49,6 +50,7 @@ export const DEFAULT_BINDINGS = Object.freeze({
   interact: b(['KeyE'], ['Pad2']),
   inventory: b(['Tab', 'KeyI'], ['Pad3']),
   rotate: b(['KeyR'], ['Pad11']),
+  stash: b(['KeyF']), // [crate-labels] keyboard only
   pause: b(['Escape'], ['Pad9']),
   ...Object.fromEntries(hotbar.map((a) => [a.id, b([`Digit${a.id.slice(6)}`])])),
   hotbarNext: b(['WheelDown'], ['Pad5']),
