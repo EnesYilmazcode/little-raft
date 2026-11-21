@@ -111,7 +111,15 @@ All hooks are marked with a `// diving lane hook` comment.
 
 ## Screenshots
 
-See `docs/cloud/shots/diving/`.
+These are in `docs/cloud/shots/diving/`, produced by `tests/dive_shots.py` on the final build:
+
+- [01 surface swim](shots/diving/01-surface-swim.png): no oxygen bar above water.
+- [02 just under](shots/diving/02-just-under.png): fog, caustics, raft and debris seen from below, oxygen bar.
+- [03 looking up](shots/diving/03-looking-up.png): the surface from below with the bright window overhead.
+- [04 near the floor](shots/diving/04-near-floor.png) and [05 floor forward](shots/diving/05-floor-forward.png): teal sand, caustic lines, kelp, rocks, nodes.
+- [06 gathering](shots/diving/06-gathering.png): "Hold E · Scrap" ring filling. [07 after gather](shots/diving/07-after-gather.png): the node is gone and scrap is in the hotbar.
+- [08 under the raft](shots/diving/08-under-raft-up.png): the raft hull overhead.
+- [09 surfacing](shots/diving/09-surfacing.png): rising with the oxygen bar partly used.
 
 ## Reviews done
 
@@ -127,6 +135,17 @@ See `docs/cloud/shots/diving/`.
   - getting stuck under the raft with no oxygen
   - an fx failure leaving the underwater fog on
   - hot-swap state loss
+- **Adversarial review, second pass.** Fixed:
+  - an fx failure in render left the underwater look on
+  - starting a dive near far tiles teleported you
+  - an out-of-breath re-dive loop while holding C
+  - a failed hot swap removed the old HUD
+  - leftovers when building the controller partly failed
+  - a ring flash with nothing gathered
+  - an ambiguous mount id
+  - nodes desyncing between host and guest: gathered nodes now use their own
+    `{type:'gathered', id}` network message, which older clients ignore, and a
+    stale request gets that message back
 - **Performance:**
   - The seafloor is hidden and not updated above water, so draw calls above water match main.
   - Rebuilds take about 1.2 ms and happen on a 16 m recentre grid.
@@ -144,9 +163,15 @@ See `docs/cloud/shots/diving/`.
   - a blown-out window overhead
   - the surface dropping out at yaw 45°
   - the gather ring sitting off the crosshair
+- **Final polish:** a darker teal floor with visible caustics, and nodes scaled to
+  about 0.5–0.9 m.
 
 ## Known limits
 
+- **Above-water objects from just under the surface:** things above the water
+  draw over the surface-from-below layer, so the raft's top and floating debris
+  can be seen near the horizon. Real optics would hide them, but this keeps the
+  raft readable, and the effect is mild.
 - **Shallow reefs are out of reach:** the decorative islands are 65–90 m out, but
   the player is clamped to 50 m. Shallow reefs only become reachable when another
   lane makes islands reachable.

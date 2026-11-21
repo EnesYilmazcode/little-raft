@@ -101,6 +101,16 @@ test('DiveBody: horizontal distance clamped to MAX_DISTANCE from origin', () => 
   assert.ok(b.x > 49.9);
 });
 
+test('DiveBody: leash is relative to the nearest raft tile, not the origin', () => {
+  const env = { ...ENV, tiles: [[25, 0]] }; // tile centre x=50, footprint 49..51
+  const b = new DiveBody({ x: 60, y: -4, z: 0 });
+  b.step(1 / 60, {}, env);
+  assert.ok(Math.abs(b.x - 60) < 0.1, `no jump: x ${b.x}`);
+  const far = new DiveBody({ x: 100, y: -4, z: 0 });
+  run(far, 3, { forward: 1, yaw: -Math.PI / 2, fast: true }, env);
+  assert.ok(far.x <= 51 + DIVE.MAX_DISTANCE + 1e-9 && far.x > 100.9, `x ${far.x}`);
+});
+
 test('DiveBody: survives junk input and env', () => {
   const b = new DiveBody({ x: NaN, y: undefined, z: 'x' });
   b.step(NaN, null, {});
