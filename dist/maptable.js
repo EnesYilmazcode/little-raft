@@ -2,9 +2,9 @@
 // trail and up to 8 shared pins, and can point the sail at any of them. Host-authoritative; saved in
 // world.ext.maptable. Spec: docs/specs/maptable.md. The top half is pure (no DOM, no THREE) and
 // exported for tests; the dialog lives in maptable-ui.js (lazy) and the mesh in maptable-model.js.
-import { SAIL, wrapAxis } from './sailing-core.js';
-import { ISLAND, layoutFor, pathAt, hash3 } from './islands-layout.js';
-import { createMapTableModel } from './maptable-model.js';
+import { SAIL, wrapAxis } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
+import { ISLAND, layoutFor, pathAt, hash3 } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
+import { createMapTableModel } from './maptable-model.js?build=v3-survival-ae77fa84ac2b';
 
 export const HG = SAIL.GROUND_WRAP / 2;
 export const TRAIL_STEP = 25, TRAIL_MAX = 240, ISL_MAX = 40, PIN_MAX = 8, PIN_RANGE = 12000;
@@ -241,7 +241,7 @@ export function createMapTable(ctx, opts = {}) {
   };
   function loadUI() {
     if (ui || uiLoading || uiFailed || typeof document === 'undefined') return uiLoading;
-    uiLoading = import('./maptable-ui.js').then(m => { ui = m.createMapTableUI(api); return ui; })
+    uiLoading = import('./maptable-ui.js?build=v3-survival-ae77fa84ac2b').then(m => { ui = m.createMapTableUI(api); return ui; })
       .catch(e => { console.error('map table ui failed', e); uiFailed = true; uiLoading = null; return null; });
     return uiLoading;
   }

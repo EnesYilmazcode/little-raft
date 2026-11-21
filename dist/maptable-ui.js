@@ -2,9 +2,9 @@
 // its trail, charted islands, the receiver's signal wedge and up to 8 shared pins.
 // createMapTableUI(api) -> {open, close, isOpen, update, dispose, debug}. Spec: docs/specs/maptable.md §8.
 import { SCALES, PIN_MAX, PIN_ICONS, FULL_TEXT, HG, islandName, courseTo, compassPoint, distText } from './maptable.js?build=v3-survival-ae77fa84ac2b';
-import { layoutFor, shape } from './islands-layout.js';
+import { layoutFor, shape } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
 import { signalReadout, raftCentre, countAntennas, TIERS } from './signal.js?build=v3-survival-ae77fa84ac2b';
-import { wrapAxis } from './sailing-core.js';
+import { wrapAxis } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
 
 const STYLE_ID = 'little-raft-map-style';
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";

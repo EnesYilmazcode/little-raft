@@ -1,8 +1,8 @@
 // Sandy Secrets: pure rules (no THREE, no DOM). Buried bundle spots per island seed, their loot, the
 // Seashell Finder beep curve, save validation and the host dig / spade repair checks.
 // Spec: docs/specs/treasure.md. Unit tested in tests/treasure.test.mjs.
-import { ISLAND, rng, layoutFor, groundHeight, shape } from './islands-layout.js';
-import { wearPerUse, repairCost } from './items.js';
+import { ISLAND, rng, layoutFor, groundHeight, shape } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
+import { wearPerUse, repairCost } from './items.js?build=v3-survival-ae77fa84ac2b';
 
 export const TREASURE = Object.freeze({
   K: 0x5EA5E11, LOOT_K: 0x7EA5B0, MAX_SPOTS: 2,

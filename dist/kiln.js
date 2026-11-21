@@ -1,7 +1,7 @@
 // Seaside Kiln content module (docs/specs/kiln.md §5). Slice: world.ext.kiln. Host-authoritative actions 'kiln.*'.
 // Smelts metal ore -> Metal Ingot, sand -> Glass, clay -> Brick (the items.js catalogue kinds). Pure rules live in kiln-core.js.
-import { KILN, SMELT, INPUTS, NAMES, keyOf, blank, cleanEntry, cleanSlice, sliceOf, stepAll, burning, progress, applyKilnAction } from './kiln-core.js';
-import { buildKiln, buildGlassLamp } from './kiln-model.js';
+import { KILN, SMELT, INPUTS, NAMES, keyOf, blank, cleanEntry, cleanSlice, sliceOf, stepAll, burning, progress, applyKilnAction } from './kiln-core.js?build=v3-survival-ae77fa84ac2b';
+import { buildKiln, buildGlassLamp } from './kiln-model.js?build=v3-survival-ae77fa84ac2b';
 
 const MAX_SHOWN = 100;
 

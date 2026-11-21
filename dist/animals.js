@@ -5,8 +5,8 @@
 import {
   MAX_ANIMALS, BEAT, TILE, REACH, FULL_AT, FOODS, cleanAnimals, cleanName, buildGraph, homeDist, plan, pose, newPlan,
   tick, feed, pet, collect, lure, rename, rnd, findId, findHome, lureAt,
-} from './animals-core.js';
-import { puffhenGeometry, eggGeometry, heartGeometry, nestBoxModel, cushionModel, vertexMaterial } from './animals-models.js';
+} from './animals-core.js?build=v3-survival-ae77fa84ac2b';
+import { puffhenGeometry, eggGeometry, heartGeometry, nestBoxModel, cushionModel, vertexMaterial } from './animals-models.js?build=v3-survival-ae77fa84ac2b';
 
 const FLOOR_Y = .2, DECOR_Y = .22, BOX_LIFT = .18, BIRD_R = .24, BIRD_CY = .18, BOX_R = .4, BOX_CY = .3;
 const EGG_SLOTS = [[-.11, .05], [.1, .07], [0, -.1]], EGG_Y = .24;
@@ -309,7 +309,7 @@ export function createAnimals(ctx) {
 
   function loadUI() {
     if (ui || uiLoading || typeof document === 'undefined') return uiLoading;
-    uiLoading = import('./animals-ui.js').then(m => { if (disposed) return null; ui = m.createAnimalsUI(ctx); return ui; }).catch(e => { console.error('animals ui failed', e); uiLoading = null; return null; });
+    uiLoading = import('./animals-ui.js?build=v3-survival-ae77fa84ac2b').then(m => { if (disposed) return null; ui = m.createAnimalsUI(ctx); return ui; }).catch(e => { console.error('animals ui failed', e); uiLoading = null; return null; });
     return uiLoading;
   }
   function openRename(id) {

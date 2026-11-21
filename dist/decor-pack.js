@@ -4,8 +4,8 @@
 // Host-authoritative actions 'decor.turn' / 'decor.write'; guests send them with ctx.action().
 // Tiles are updated in place: rebuildRaft is never called for text or rotation.
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { buildDecorPack, paintSign } from './decor-pack-models.js';
-import { PACK, MAX_LINES, LINE_MAX, MAX_ROT, MAX_SIGNS, REACH, keyOf, linesKey, faceRot, cleanSlice, applyDecorAction } from './signs-core.js';
+import { buildDecorPack, paintSign } from './decor-pack-models.js?build=v3-survival-ae77fa84ac2b';
+import { PACK, MAX_LINES, LINE_MAX, MAX_ROT, MAX_SIGNS, REACH, keyOf, linesKey, faceRot, cleanSlice, applyDecorAction } from './signs-core.js?build=v3-survival-ae77fa84ac2b';
 
 const isInt = Number.isInteger;
 const CY = { rug: .1, sign: 1.09 };
@@ -105,7 +105,7 @@ export function createDecorPack(ctx) {
   };
   function loadUI() {
     if (ui || uiLoading || typeof document === 'undefined') return uiLoading;
-    uiLoading = import('./signs-ui.js').then(m => { if (disposed) return null; ui = m.createSignUI(api); return ui; }).catch(e => { console.error('sign ui failed', e); uiLoading = null; return null; });
+    uiLoading = import('./signs-ui.js?build=v3-survival-ae77fa84ac2b').then(m => { if (disposed) return null; ui = m.createSignUI(api); return ui; }).catch(e => { console.error('sign ui failed', e); uiLoading = null; return null; });
     return uiLoading;
   }
   function openSign(x, z) {

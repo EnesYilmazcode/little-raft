@@ -4,13 +4,13 @@
 // away with the island. Spec: docs/specs/treasure.md.
 // Follow-up (not this round): a rare "bottle of notes" find would need a game.js hook into world.notes.
 import { islandNow } from './islands.js?build=v3-survival-ae77fa84ac2b'; // same specifier as content.js: one shared instance
-import { layoutFor, groundHeight } from './islands-layout.js';
+import { layoutFor, groundHeight } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
 import {
   TREASURE, spotsFor, beepInterval, closeness, warmth, DEFAULTS, clean, nearestSpot, applyDig, applyRepair,
-} from './treasure-rules.js';
-import { createMoundKit, setFinderGlow } from './treasure-models.js';
+} from './treasure-rules.js?build=v3-survival-ae77fa84ac2b';
+import { createMoundKit, setFinderGlow } from './treasure-models.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { repairCost } from './items.js';
+import { repairCost } from './items.js?build=v3-survival-ae77fa84ac2b';
 
 const itemName = k => (ITEM_INFO[k] && ITEM_INFO[k].name) || k;
 const COST_TEXT = Object.entries(repairCost('spade') || {}).map(([k, n]) => `${n} ${itemName(k)}`).join(', ');
