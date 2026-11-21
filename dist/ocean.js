@@ -196,10 +196,10 @@ export function createOcean(T, options = {}) {
     uFlow: { value: new T.Vector2() }, // [sailing] wave-field offset written by sailing-world.js
     uSunDir: { value: sun.clone().normalize() },
     uSunColor: { value: new T.Color('#fff3d6') },
-    uSky: { value: new T.Color(options.skyColor ?? '#d6ecf2') },
+    uSky: { value: new T.Color(options.skyColor ?? '#c4dfeb') },
     uZenith: { value: new T.Color(options.zenith ?? '#5aa3dc') },
-    uDeep: { value: new T.Color('#0a4a85') },
-    uShallow: { value: new T.Color('#14b4c4') },
+    uDeep: { value: new T.Color('#0d4670') },
+    uShallow: { value: new T.Color('#1a8f94') },
     uFoam: { value: new T.Color('#f4fbfb') },
     uFadeNear: { value: options.fadeNear ?? 52 },
     uFadeFar: { value: options.fadeFar ?? 135 },
