@@ -1,0 +1,122 @@
+{
+ "errors": [],
+ "console": [
+  "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "[raftLive] Little Raft failed to start TypeError: Failed to fetch dynamically imported module: http://127.0.0.1:57352/game.js?build=v3-survival-ae77fa84ac2b",
+  "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+  "[.WebGL-0x41fc00e68600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+  "[.WebGL-0x41fc00e68600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+  "[.WebGL-0x41fc00e68600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+  "[.WebGL-0x41fc00e68600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+ ],
+ "shots": [
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement\\01-title.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement\\02-spawn.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement\\03-charging.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement\\04-thrown.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement\\05-inventory.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement\\06-after-esc-from-inventory.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement\\07-pause.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement\\08-walked.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement\\09-build-floor-ghost.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement\\10-place-crate-ghost.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement\\11-place-bench-rotated.png"
+ ],
+ "spawnState": {
+  "stock": {
+   "wood": 0,
+   "leaf": 0,
+   "plastic": 0,
+   "scrap": 0,
+   "rope": 0,
+   "fish": 0,
+   "hook": 1,
+   "hammer": 0,
+   "fishingrod": 0,
+   "sail": 0,
+   "palm": 0,
+   "lantern": 0,
+   "net": 0,
+   "bench": 0,
+   "crate": 0
+  },
+  "inventory": {
+   "slots": [
+    {
+     "kind": "hook",
+     "count": 1,
+     "durability": 100
+    },
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ],
+   "selected": 0
+  },
+  "heldKind": "hook",
+  "ownedTools": [
+   "hook"
+  ]
+ },
+ "pauseOpenAfterInvEsc": false,
+ "frameMs": {
+  "avg": 152.2166666666791,
+  "worst": 202.29999999999563
+ },
+ "heapMB": 23.655712127685547,
+ "renderInfo": null,
+ "build": {
+  "decor": [
+   {
+    "type": "crate",
+    "x": -2,
+    "z": 0,
+    "rot": 0
+   }
+  ],
+  "build": {
+   "active": true,
+   "recipe": "bench",
+   "rot": 0.785,
+   "pointing": true,
+   "ghost": true,
+   "hover": {
+    "kind": "bench",
+    "x": -1.245,
+    "z": 0.146,
+    "rot": 0.785,
+    "ok": false
+   },
+   "candidates": 3,
+   "affordable": true
+  },
+  "locked": true
+ }
+}

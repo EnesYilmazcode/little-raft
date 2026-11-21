@@ -46,6 +46,22 @@ with sync_playwright() as p:
     report['heapMB'] = page.evaluate('performance.memory ? performance.memory.usedJSHeapSize/1048576 : null')
     try: report['renderInfo'] = page.evaluate('raftDebug.renderInfo || null')
     except Exception: pass
+    # building: a save with a hammer, placeables and an old tile-centred crate (save migration)
+    slots = [{'kind': 'hook', 'count': 1, 'durability': 100}, {'kind': 'hammer', 'count': 1, 'durability': 100},
+             {'kind': 'crate', 'count': 4}, {'kind': 'bench', 'count': 2}, {'kind': 'wood', 'count': 20}, {'kind': 'plastic', 'count': 20}] + [None] * 22
+    save = {'tiles': [[-1, 0], [0, 0], [-1, 1], [0, 1]], 'decor': [{'type': 'crate', 'x': -1, 'z': 0}], 'stock': {}, 'fish': 0, 'collected': 1,
+            'hostInventory': {'slots': slots, 'selected': 0}}
+    bp = b.new_context(viewport={'width': 1280, 'height': 720}).new_page()
+    bp.on('pageerror', lambda e: report['errors'].append('build: ' + str(e)))
+    bp.add_init_script('localStorage.getItem("little-raft-v1")||localStorage.setItem("little-raft-v1",%s)' % json.dumps(json.dumps(save)))
+    bp.goto(url); bp.wait_for_function('!!window.raftDebug', timeout=20000)
+    bp.locator('#solo').click(); bp.wait_for_function('raftDebug.state.running', timeout=15000); bp.wait_for_timeout(800)
+    look = lambda dx, dy: bp.evaluate(f'document.dispatchEvent(new MouseEvent("mousemove",{{movementX:{dx},movementY:{dy}}}))')  # headless lock gives no movement
+    look(0, 55); bp.keyboard.press('2'); bp.wait_for_timeout(400); shot(bp, '09-build-floor-ghost')
+    look(-120, 180); bp.keyboard.press('3'); bp.wait_for_timeout(400); shot(bp, '10-place-crate-ghost')
+    bp.mouse.down(); bp.mouse.up(); bp.wait_for_timeout(300)
+    look(60, -40); bp.keyboard.press('4'); bp.keyboard.press('r'); bp.wait_for_timeout(400); shot(bp, '11-place-bench-rotated')
+    report['build'] = bp.evaluate('({decor: raftDebug.state.decor, build: raftDebug.state.build, locked: raftDebug.state.pointerLocked})')
     b.close()
 srv.shutdown()
 print(json.dumps(report, indent=1, default=str))

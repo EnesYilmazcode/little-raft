@@ -1,0 +1,86 @@
+{
+ "errors": [],
+ "console": [
+  "[.WebGL-0x30fc011e9800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+  "[.WebGL-0x30fc011e9800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+  "[.WebGL-0x30fc011e9800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+  "[.WebGL-0x30fc011e9800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+ ],
+ "shots": [
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement-before\\01-title.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement-before\\02-spawn.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement-before\\03-charging.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement-before\\04-thrown.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement-before\\05-inventory.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement-before\\06-after-esc-from-inventory.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement-before\\07-pause.png",
+  "C:\\Users\\galax\\Downloads\\Projects\\little-raft\\.claude\\worktrees\\wf_35ac8176-272-6\\.qa\\placement-before\\08-walked.png"
+ ],
+ "spawnState": {
+  "stock": {
+   "wood": 0,
+   "leaf": 0,
+   "plastic": 0,
+   "scrap": 0,
+   "rope": 0,
+   "fish": 0,
+   "hook": 1,
+   "hammer": 0,
+   "fishingrod": 0,
+   "sail": 0,
+   "palm": 0,
+   "lantern": 0,
+   "net": 0,
+   "bench": 0,
+   "crate": 0
+  },
+  "inventory": {
+   "slots": [
+    {
+     "kind": "hook",
+     "count": 1,
+     "durability": 100
+    },
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ],
+   "selected": 0
+  },
+  "heldKind": "hook",
+  "ownedTools": [
+   "hook"
+  ]
+ },
+ "pauseOpenAfterInvEsc": false,
+ "frameMs": {
+  "avg": 194.22916666666666,
+  "worst": 249.8000000000029
+ },
+ "heapMB": 26.92387866973877,
+ "renderInfo": null
+}
