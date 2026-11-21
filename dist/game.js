@@ -636,19 +636,20 @@ export function mount(transfer = null) {
       fainted += dt; vitalsUI?.faint(true);
       if (fainted >= 2.6) {
         fainted = -1; const c = cleanVitals(RESPAWN); vitals.hp = c.hp; vitals.food = c.food; vitals.water = c.water; vitals.hurtAt = -Infinity; vitals.starving = false;
-        const s = spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); pitch = -.28;
+        diving?.cancel(); const s = spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); pitch = -.28; // fresh physics: dry, grounded, not diving
         vitalsUI?.faint(false); notice('You wake up on the raft, hungry and thirsty', 3200);
       }
       return;
     }
     if (eating) {
       const bag = localBag();
-      if (bag.selectedIndex !== eating.slot || bag.slots[eating.slot]?.kind !== eating.item) eating = null; // switched slot or item gone
+      if (dialog) eating = null; // a menu opened mid-bite: cancel, the item stays in the bag
+      else if (bag.selectedIndex !== eating.slot || bag.slots[eating.slot]?.kind !== eating.item) eating = null; // switched slot or item gone
       else if ((eating.t += dt) >= EAT_SECONDS) { const item = eating.item; eating = null; action({kind:'eat', item}); }
     }
     if (role === 'solo' && dialog && dialogOpen()) return; // the solo pause menu stops the clock
     vitalsOpts.mult = exertion; tickVitals(vitals, dt, vitalsOpts);
-    if (vitals.hp <= 0) { fainted = 0; eating = null; charging = null; reeling = false; clearInput(); }
+    if (vitals.hp <= 0) { fainted = 0; eating = null; charging = null; reeling = false; if (hook) { fishWait = 0; endHook(); } clearInput(); } // drop the line: it must not stay out from the old spot
   }
   // Crosshair prompts (dist/prompts.js provider): eat/drink, else the cup/purifier/planter prompt (game.js markup).
   const tipCache = new Map(), eatTips = new Map(), EATING_TIP = {key:'', label:'…', muted:true};
