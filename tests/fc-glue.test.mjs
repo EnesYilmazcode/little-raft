@@ -33,7 +33,7 @@ function makeHost({ role = 'solo', tiles = [[0, 0], [1, 0], [0, 1]], decor = [],
     aim: () => ({ point: h._aim, dir: new T.Vector3(0, 0, -1) }), _aim: new T.Vector3(0, 0, 0),
     rodTip: () => new T.Vector3(0.3, 1.4, -0.4), player: () => ({ x: 0, y: 0.3, z: 0, yaw: 0 }),
     hasTile: (x, z) => tiles.some(([a, b]) => a === x && b === z), decorAt: (x, z) => decor.some(([a, b]) => a === x && b === z),
-    bagCount: (k) => counts[k] || 0, running: () => true, uiBlocked: () => false, busy: () => false,
+    bagCount: (k) => counts[k] || 0, running: () => true, uiBlocked: () => !!h._blocked, busy: () => false,
     action(a) {
       actions.push(a);
       if (h._role === 'guest') { sent.push({ type: 'action', a }); return true; }
@@ -60,11 +60,13 @@ test('placing grills: costs, tiles only, max count', () => {
   for (let i = 1; i < 7; i++) h.action({ kind: 'fc:placeGrill', x: i, z: 0 });
   assert.equal(h.api.grills.size, MAX_GRILLS);
   const g = [...h.api.grills.values()][0];
-  h.api.update(0.016);
-  assert.equal(g.model.parent.parent, h.raft, 'grill group lives under the raft');
+  h.raft.position.set(0, 0.3, 0); h.raft.rotation.set(0.05, 0, -0.04); h.api.update(0.016);
+  assert.ok(g.model.parent.parent === h.scene, 'grill group lives in the scene, not under the raft');
   assert.deepEqual([g.model.position.x, g.model.position.y, g.model.position.z], [0, 0.22, 0]);
-  h.raft.clear(); h.api.update(0.016); // game's rebuildRaft removes every raft child
-  assert.equal(g.model.parent.parent, h.raft, 'grill group re-added after a raft rebuild');
+  h.scene.updateMatrixWorld(true);
+  const pg = new T.Vector3(2, 0.22, 0), pr = pg.clone();
+  g.model.parent.localToWorld(pg); h.raft.localToWorld(pr);
+  assert.ok(pg.distanceTo(pr) < 1e-9, 'grill group follows the raft pose');
   h.api.dispose();
 });
 
@@ -215,5 +217,89 @@ test('rod fishing: press/release casts, bite then reel to a catch', () => {
   assert.equal(h.api.journal.entry('herring')?.count, 1);
   h._kind = 'hammer'; h.api.update(0.016);
   assert.equal(h.api.pointerDown(), false, 'not holding the rod');
+  h.api.dispose();
+});
+
+// ---------- adversarial review regressions ----------
+test('raft rebuild never touches lane objects (game.js disposes every raft child)', () => {
+  mem.clear();
+  const h = mount();
+  h.action({ kind: 'fc:placeGrill', x: 0, z: 0 });
+  h.api.update(0.016);
+  assert.equal(h.raft.children.length, 0, 'nothing of ours under the raft');
+  h.api.dispose();
+  assert.equal(h.scene.getObjectByName('fcGrills'), undefined);
+});
+
+test('host grill snapshot arriving before the next frame after joining keeps own grills stashed', () => {
+  mem.clear();
+  const h = mount();
+  h.action({ kind: 'fc:placeGrill', x: 0, z: 0 });
+  const own = [...h.api.grills.keys()][0];
+  h._role = 'guest'; // join clicked, no update() yet (background tab: no rAF)
+  h.api.onNet({ type: 'fc', grills: [{ id: 'H1', x: 1, z: 0 }] }, 'host');
+  assert.deepEqual([...h.api.grills.keys()], ['H1']);
+  h.api.save();
+  assert.deepEqual(JSON.parse(mem.get(FC_SAVE_KEY)).grills.map((g) => g.id), [own], 'own grill saved, not the host one');
+  assert.deepEqual(h.api.capture().grills.map((g) => g.id), [own], 'capture() returns own grills while a guest');
+  h._role = 'solo'; h.api.update(0.016);
+  assert.deepEqual([...h.api.grills.keys()], [own]);
+  h.api.dispose();
+});
+
+test('save before the first frame after joining does not wipe own grills', () => {
+  mem.clear();
+  const h = mount();
+  h.action({ kind: 'fc:placeGrill', x: 0, z: 0 });
+  h._role = 'guest'; h.api.save();
+  assert.equal(JSON.parse(mem.get(FC_SAVE_KEY)).grills.length, 1);
+  h.api.dispose();
+});
+
+test('junk or orphaned saved grills are dropped (off-raft, decor, duplicates, non-objects)', () => {
+  mem.clear();
+  mem.set(FC_SAVE_KEY, JSON.stringify({ v: 1, grills: [{ id: 'a', x: 9, z: 9 }, 7, 'x', null, { id: 'b', x: 1e300, z: 0 },
+    { id: 'c', x: 0, z: 0 }, { id: 'd', x: 0.2, z: 0 }, { id: 'e', x: 0, z: 1 }] }));
+  const h = mount({ decor: [[0, 1]] });
+  assert.deepEqual([...h.api.grills.keys()], ['c']);
+  h.api.dispose();
+});
+
+test('taking a dish never destroys it: basket full of raw fish blocks the take', () => {
+  mem.clear();
+  const h = mount();
+  h.action({ kind: 'fc:placeGrill', x: 0, z: 0 });
+  const g = [...h.api.grills.values()][0];
+  for (let i = 0; i < 40; i++) h.api.journal.addToBasket({ species: 'herring', cm: 20, state: 'raw' });
+  g.st.slots[0] = { species: 'tuna', cm: 100, t: 70, state: 'cooked' };
+  step(h, 0.2);
+  assert.match(h.api.prompt, /Basket full/);
+  h.api.interact();
+  assert.equal(g.st.slots[0]?.species, 'tuna', 'dish stays on the grill');
+  h.api.journal.basket[5].state = 'cooked'; step(h, 0.2); // now a dish can make room
+  assert.match(h.api.prompt, /Take Grilled Tuna/);
+  assert.equal(h.api.interact(), true);
+  assert.equal(g.st.slots[0], null);
+  assert.ok(h.api.journal.basket.some((b) => b.species === 'tuna'));
+  h.api.dispose();
+});
+
+test('a dialog opening mid-reel releases the hold instead of snapping the line', () => {
+  mem.clear();
+  const h = mount();
+  const fc = globalThis.window.raftFC;
+  h.api.pointerDown(); step(h, 0.3, 0.05); h.api.pointerUp(); step(h, 0.1, 0.05);
+  fc.forceBite('herring'); h.api.update(0.016);
+  h.api.pointerDown();
+  assert.equal(fc.state.stage, 'reeling');
+  h._blocked = true; // journal / inventory dialog: the canvas never sees pointerup
+  for (let i = 0; i < 300 && fc.state.stage === 'reeling'; i++) h.api.update(1 / 30);
+  assert.equal(fc.state.stage, 'reeling'); assert.equal(fc.session.holding, false);
+  assert.equal(h.api.pointerUp(), false);
+  h._blocked = false;
+  // and while charging a cast, a dialog cancels it rather than casting
+  fc.session.cancel(); h.api.update(0.016);
+  h.api.pointerDown(); h.api.update(0.1); h._blocked = true; h.api.update(0.016);
+  assert.equal(fc.state.stage, 'idle');
   h.api.dispose();
 });

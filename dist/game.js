@@ -882,7 +882,7 @@ export function mount(transfer = null) {
       else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); }
       return;
     }
-    if (lockFallback && fc?.pointerDown()) return; // [fishing-cooking]
+    if (lockFallback && fc?.pointerDown()) { try { canvas.setPointerCapture(e.pointerId); } catch {} return; } // [fishing-cooking] capture so a release off-canvas still ends the reel hold
     down = {x:e.clientX, y:e.clientY, moved:false}; try { canvas.setPointerCapture(e.pointerId); } catch {}
     if (castOut()) reeling = true; // hold to reel works without lock too
     else if (lockFallback && selectedKind() === 'hook' && !hook && !fishWait) beginCharge({x:e.clientX, y:e.clientY});

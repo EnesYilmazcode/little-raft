@@ -149,9 +149,28 @@ test('junk snapshots are sanitised, never throw', () => {
   assert.deepEqual(j.speciesSeen(), ['pomfret']);
   assert.deepEqual(j.dishes, { 'Grilled Pomfret': 2 });
   assert.deepEqual(j.basket, [
-    { species: 'tuna', cm: 0, stars: 3, state: 'raw' },
+    { species: 'tuna', cm: 60, stars: 3, state: 'raw' }, // junk cm -> species minimum (the grill rejects off-range fish)
     { species: 'herring', cm: 22.3, stars: 1, state: 'raw' },
   ]);
+});
+
+test('basket fish stay inside the species size range', () => {
+  const j = new Journal({ basket: [{ species: 'herring', cm: 500 }, { species: 'tuna', cm: 1 }] });
+  assert.deepEqual(j.basket.map((b) => b.cm), [30, 60]);
+  j.addToBasket({ species: 'pomfret', cm: -4 }); assert.equal(j.basket.at(-1).cm, 18);
+});
+
+test('a full basket makes room by dropping the oldest finished dish, never a raw fish', () => {
+  const j = new Journal();
+  j.addToBasket({ species: 'tuna', cm: 70, state: 'raw' });
+  j.addToBasket({ species: 'salmon', cm: 50, state: 'cooked' });
+  for (let i = 0; i < 38; i++) j.addToBasket({ species: 'pomfret', cm: 20, state: 'burnt' });
+  assert.equal(j.basket.length, BASKET_MAX);
+  assert.equal(j.recordCatch({ species: 'herring', cm: 20 }).basketed, true);
+  assert.equal(j.basket.length, BASKET_MAX);
+  assert.equal(j.basket[0].species, 'tuna', 'raw fish kept');
+  assert.ok(!j.basket.some((b) => b.species === 'salmon'), 'oldest dish made room');
+  assert.equal(j.basket.at(-1).species, 'herring');
 });
 
 test('panel module is Node-importable; fishSvg escapes colours', () => {

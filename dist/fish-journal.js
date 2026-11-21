@@ -19,8 +19,9 @@ const int = (v, lo, hi, d) => Math.floor(num(v, lo, hi, d));
 const cm1 = (v) => Math.round(num(v, 0, 1000, 0) * 10) / 10;
 
 function cleanItem(raw) {
-  if (!isObj(raw) || !speciesById(raw.species)) return null;
-  return { species: raw.species, cm: cm1(raw.cm), stars: int(raw.stars, 1, 3, 1),
+  const sp = isObj(raw) && speciesById(raw.species);
+  if (!sp) return null; // cm is kept inside the species range so the grill (which checks it) never rejects a basket fish
+  return { species: raw.species, cm: Math.round(num(raw.cm, sp.minCm, sp.maxCm, sp.minCm) * 10) / 10, stars: int(raw.stars, 1, 3, 1),
     state: STATES.includes(raw.state) ? raw.state : 'raw' };
 }
 
@@ -63,7 +64,12 @@ export class Journal {
 
   addToBasket(item) {
     const it = cleanItem(item);
-    if (!it || this.basket.length >= BASKET_MAX) return false;
+    if (!it) return false;
+    if (this.basket.length >= BASKET_MAX) { // full: a finished dish (already in the cookbook) makes room, raw fish never do
+      const i = this.basket.findIndex((b) => b.state !== 'raw');
+      if (i < 0) return false;
+      this.basket.splice(i, 1);
+    }
     this.basket.push(it);
     return true;
   }
