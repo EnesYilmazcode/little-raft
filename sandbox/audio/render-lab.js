@@ -150,7 +150,7 @@ async function renderOnce(name, sampleRate) {
   e.destroy();
   return {
     name, seconds: c.seconds, ms, msPerSec: ms / c.seconds, setupMs, scheduleMs,
-    engine: { ambience: st.ambience, nodes: st.nodes },
+    engine: { ambience: st.ambience, nodesCreated: st.nodesCreated },
     stats: analyse(buffer, !c.ambience, c.windows), buffer,
   };
 }
@@ -339,9 +339,9 @@ export async function scheduleCost(reps = 100) {
     for (let i = 0; i < reps; i++) {
       const e = createOceanAudio({ context: ctx, volume: 1, ambience: false, gulls: false });
       await e.resume();
-      const base = e.stats().nodes, t = performance.now();
+      const base = e.stats().nodesCreated, t = performance.now();
       e.play(ev, 1);
-      ms.push(performance.now() - t); nodes = e.stats().nodes - base;
+      ms.push(performance.now() - t); nodes = e.stats().nodesCreated - base;
       e.destroy();
     }
     ms.sort((a, b) => a - b);

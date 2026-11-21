@@ -27,7 +27,7 @@
 //   setListener(x,y,z, fx,fy,fz)   camera position + forward, per frame
 //   setOcean({swell, wind, speed, creak})   0..1 sea state, smoothed over ~1 s
 //   setReel(on, speed=.5, pos?)    looping ratchet + line hiss while reeling
-//   duck(amount, hold) | creak(force=.7) | stats()
+//   duck(amount, hold) | creak(force=.7) | stats()   (stats().nodesCreated: AudioNodes this engine created, cumulative)
 //   setBus also takes the round-1 names 'sfx' and 'ui' (sub-buses under 'effects').
 //
 // Graph: voices -> [air lp -> panner -> crossfeed] -> sfx bus ─┐
@@ -125,7 +125,7 @@ export function createOceanAudio({
   let ambPromise = null;
   let reel = null;
   let gullClock = null;
-  let nodeCount = 0;
+  let nodeCount = 0;          // AudioNodes created so far (cumulative; stats().nodesCreated)
   const ocean = { swell: 0.5, wind: 0.3, speed: 0.2, creak: 0.5 };
   const voices = new Set();
   const lastPlay = Object.create(null);
@@ -295,7 +295,6 @@ export function createOceanAudio({
         prev.handedOff = true;
         amb = { ...prev, handedOff: false, owner: self, from: prev.owner && prev.owner.alive ? prev.owner : null };
         graph.sh.ocean = amb;
-        nodeCount += amb.nodes.length;
         applyOcean(0.3);
         return null;
       } catch (_) { amb = null; }
@@ -397,7 +396,6 @@ export function createOceanAudio({
     try {
       amb.fade.disconnect();
       if (!to.reclaim(amb)) throw new Error('refused');
-      nodeCount -= amb.nodes.length;
       amb.handedOff = true; amb = null;
       return true;
     } catch (_) { try { amb.fade.connect(graph.ambBus); } catch (__) {} return false; }
@@ -408,7 +406,6 @@ export function createOceanAudio({
     h.fade.connect(graph.ambBus);
     amb = { ...h, handedOff: false, owner: self, from: amb?.from && amb.from.alive ? amb.from : null };
     graph.sh.ocean = amb;
-    nodeCount += amb.nodes.length;
     applyOcean(0.3);
     return true;
   };
@@ -1077,7 +1074,6 @@ export function createOceanAudio({
   function stopMusic(fade) {
     if (!bed) return;
     const b = bed; bed = null;
-    nodeCount -= b.nodes.length;
     const free = () => { for (const n of b.nodes) { try { n.disconnect(); } catch (_) {} } };
     if (fade && ctx) {
       try {
@@ -1110,10 +1106,13 @@ export function createOceanAudio({
         const lfo = mk(ctx.createOscillator()); lfo.type = 'triangle'; lfo.frequency.value = 4;
         const depth = mk(ctx.createGain()); depth.gain.value = 0.4; lfo.connect(depth); depth.connect(am.gain);
         src.start(t, rnd() * graph.pink.duration); lfo.start(t);
-        luff = { out, bp, lfo, src, nodes };
+        luff = { out, bp, lfo, src, nodes, w: -1 };
       }
       if (!luff) return;
       if (on) {
+        // re-target only when the wind moved (tick() calls this every frame while the sail is up)
+        if (Math.abs(w - luff.w) <= 0.02) return;
+        luff.w = w;
         luff.out.gain.setTargetAtTime(0.012 + 0.05 * w * w, t, 0.4);
         luff.lfo.frequency.setTargetAtTime(3 + 5 * w, t, 0.5);
         luff.bp.frequency.setTargetAtTime(380 + 420 * w, t, 0.5);
@@ -1122,7 +1121,6 @@ export function createOceanAudio({
         l.out.gain.setTargetAtTime(0, t, 0.15);
         l.lfo.onended = () => { for (const n of l.nodes) { try { n.disconnect(); } catch (_) {} } };
         l.src.stop(t + 0.8); l.lfo.stop(t + 0.8);
-        nodeCount -= l.nodes.length;
       }
     } catch (_) {}
   }
@@ -1379,7 +1377,7 @@ export function createOceanAudio({
 
   function stats() {
     return { voices: voices.size, worklet: amb?.kind === 'worklet' && !amb.handedOff, ambience: amb && !amb.handedOff ? amb.kind : null,
-      nodes: nodeCount, state: ctx?.state ?? null, reel: !!reel, music: !!bed, luff: !!luff, underwater: !!scene.underwater,
+      nodesCreated: nodeCount, state: ctx?.state ?? null, reel: !!reel, music: !!bed, luff: !!luff, underwater: !!scene.underwater,
       routed: !!graph?.out, version: SHARED_VERSION };
   }
 
