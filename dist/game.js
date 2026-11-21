@@ -443,6 +443,7 @@ export function mount(transfer = null) {
     get building() { return building; }, get brush() { return hands?.itemModel('brush') ?? null; }, woodMat: c => woodMat(c), aim: () => frameAim, // content hook (paint)
     openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
     hurtPlayer: (n, cause) => hurtPlayer(n, cause), get vitals() { return vitals; }, // [vitals] damage the LOCAL player; vitals is read-only for modules
+    note: (i, n, s) => note(i, n, s), get content() { return content; }, // [buoycourse] bell chime + registry view (board mode)
     faceYaw: y => { if (Number.isFinite(y)) yaw = y; }, // [sit] seat facing
     award: ev => award(ev), night: () => content?.night?.() ?? 0, // [sit] host achievements, [fireworks] content hook
     heldKind: () => heldKind(), // [zipline] content hook
@@ -638,7 +639,7 @@ export function mount(transfer = null) {
     raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat, content ? (t, c) => content.tileTint(t.x / 2, t.z / 2, c) : null, woodMat)); // content hook (paint): painted deck tiles
     for (const d of world.decor) {
       let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'rainbarrel' ? createRainBarrel(T) : d.type === 'sprinkler' ? createSprinkler(T) : d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type, d) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
-      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); if (d.rot) detailed.rotation.y = d.rot; raft.add(detailed); detailed.userData.tileKey = tileKey(d.x, d.z); decorGroups.push(detailed); /* [undecor] tag every decor */ if (d.type === 'palm' || d.type === 'purifier' || d.type === 'rainbarrel' || d.type === 'sprinkler') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; } // decor-pack models keep their own quarter-turn unless placement rotated them
+      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); if (d.rot && !detailed.userData.ownRot) detailed.rotation.y = d.rot; /* [buoycourse] ownRot: model keeps default facing */ raft.add(detailed); detailed.userData.tileKey = tileKey(d.x, d.z); decorGroups.push(detailed); /* [undecor] tag every decor */ if (d.type === 'palm' || d.type === 'purifier' || d.type === 'rainbarrel' || d.type === 'sprinkler') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; } // decor-pack models keep their own quarter-turn unless placement rotated them
       const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2); g.rotation.y = d.rot || 0;
       if (d.type === 'sail') { cylinder(.065, .08, 3.8, '#906f48', 0, 1.9, 0, g); box(2.5, .07, .07, '#906f48', 0, 3.2, 0, g); const s = new T.Mesh(new T.PlaneGeometry(2.35, 2.1), clothMat); s.position.set(0, 2.15, .06); g.add(s); }
       if (d.type === 'palm') { cylinder(.38, .28, .5, '#db8764', 0, .25, 0, g); palm(g, 0, .5, 0); }
@@ -1532,7 +1533,7 @@ export function mount(transfer = null) {
     const surf = building ? building.preStep(physics, deckY(), climb) : null; // building-pieces lane hook [buildpack] climb
     const dive = diving?.move(laneDt, physics, {forward:fwd, strafe:side, yaw, pitch, up:ci ? ci.jump : input && held('Space'), down:ci ? !!ci.crouch : input && held('KeyC'), fast:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'), gather:input && (controls ? controls.input.down('interact') : held('KeyE'))}); // diving lane hook
     if (dive && !diveWarmed) warmDive(); // first dive before the idle warm-up ran: compile now, before its first underwater frame
-    rideIn.forward = fwd; rideIn.jump = !!(ci ? ci.jump : input && held('Space')); rideIn.crouch = !!(ci ? ci.crouch : input && held('KeyC')); rideIn.strafe = side; rideIn.yaw = yaw; const ride = !dive && !!content?.ride?.(dt, physics, rideIn); // [zipline] content hook: hanging on a glide line skips PlayerPhysics; [sit] seated holds the seat
+    rideIn.forward = fwd; rideIn.jump = !!(ci ? ci.jump : input && held('Space')); rideIn.crouch = !!(ci ? ci.crouch : input && held('KeyC')); rideIn.strafe = side; rideIn.yaw = yaw; rideIn.sprint = !!(ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight')); rideIn.interact = !!(input && (controls ? controls.input.down('interact') : held('KeyE'))); /* [paddleboard] */ const ride = !dive && !!content?.ride?.(dt, physics, rideIn); // [zipline] content hook: hanging on a glide line skips PlayerPhysics; [sit] seated holds the seat
     // Real frame time in equal substeps (<= .05 s) so walking speed holds at low fps. Jump stays held on every
     // substep: PlayerPhysics fires the impulse only on the press edge, i.e. the first substep, never again.
     let ev = null;

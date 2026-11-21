@@ -41,7 +41,7 @@ const CATEGORY_OF = Object.freeze({
   goatpen: 'survival', bucket: 'survival', // raft goats
   stormrod: 'building', stormlamp: 'survival', stormglass: 'building', // storm
   // content (engine, sleep, paint)
-  motor: 'building', wheel: 'building', bed: 'building', brush: 'tools',
+  motor: 'building', wheel: 'building', bed: 'building', brush: 'tools', driftboard: 'tools', // [paddleboard]
   paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
   cup: 'survival', purifier: 'survival', // water: scoop the sea, purify it
   fins: 'tools', airjug: 'tools', goggles: 'tools', scraper: 'tools',
@@ -49,6 +49,8 @@ const CATEGORY_OF = Object.freeze({
   shellwreath: 'building',
   cup: 'survival', purifier: 'survival', // water gear sits with the rain barrel and sprinkler
   research: 'building', antenna: 'building', receiver: 'building',
+  courseflag: 'building', scoreboard: 'building', // buoy ring course (buoycourse.js)
+  gametable: 'building', // game table (gametable.js)
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
@@ -153,6 +155,7 @@ export const ITEM_TEXT = Object.freeze({
   goatpen:    { desc: 'A cosy fenced corner with a pile of hay.', use: 'Place it on the raft and set out greens; a bramblegoat may come to stay.' },
   bucket:     { desc: 'A little wooden pail with a rope handle.', use: 'Hold it and press E on a bramblegoat with milk.' },
   milk:       { desc: 'A pail of fresh, creamy goat milk.', use: 'Drink it (+10 food, +25 water); the pail comes back.' },
+  driftboard: { desc: 'A plank board on two plastic floats, with a paddle.', use: 'Click the water by the raft to launch it, E to climb on.' },
   cookedsharkmeat: { desc: 'A shark steak grilled through.', use: 'A filling meal (+30 food).' },
   sharkmeat:  { desc: 'A raw slab of shark meat.', use: 'Grill it for a proper meal; four come from every shark.' },
   sharkhead:  { desc: 'The head of a shark you beat.', use: 'A trophy, and proof the raft is safe for a while.' },
@@ -174,6 +177,8 @@ export const ITEM_TEXT = Object.freeze({
   fins:       { desc: 'Webbed fins stitched with puff feathers.', use: 'Works from your bag: swim 30% faster underwater.' },
   airjug:     { desc: 'A sealed jug of fresh air.', use: 'Works from your bag: a dive lasts 75 s instead of 45 s.' },
   goggles:    { desc: 'Goggles with seaglass lenses.', use: 'Works from your bag: see much further underwater.' },
+  courseflag: { desc: 'A start flag with a little course board.', use: 'Place it, pick a course on the board, press E on the pole to race.' },
+  scoreboard: { desc: 'A painted board for race times.', use: 'Shows the best three times for the chosen course.' },
   scraper:    { desc: 'A flat metal scraper for the seafloor.', use: 'Works from your bag: gather sand, clay and ore faster.' },
   cookpot:    { desc: 'A squat clay pot on three stones.', use: 'Add 3 ingredients and wood; cooks 2 servings into bowls.' },
   bowl:       { desc: 'A little carved bowl.', use: 'Collect a meal from the Cooking Pot.' },
@@ -192,6 +197,7 @@ export const ITEM_TEXT = Object.freeze({
   tincan:     { desc: 'A dented tin can fished from the sea.', use: 'Sort it in a Sorting Tub for 2 scrap.' },
   seajar:     { desc: 'A cloudy glass jar fished from the sea.', use: 'Sort it in a Sorting Tub for 2 sand.' },
   recycler:   { desc: 'A hand-cranked sorting tub.', use: 'Turns junk into scrap, plastic and sand. No fuel.' },
+  gametable:  { desc: 'A low driftwood table with a board inlay.', use: 'Press E to play draughts or noughts and crosses.' },
 });
 
 const TOOLISH = new Set(['hook', 'hammer', 'fishingrod', 'rod', 'axe', 'spear']);

@@ -20,7 +20,7 @@ const SPRITE_URL = () => spriteUrl ??= (document.querySelector('use[href*="icons
 
 // Symbols that actually exist in icons.svg.
 const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'crew', 'help', 'sound', 'close', 'repair', 'hammer', 'compass', 'antenna', 'cup', 'saltcup', 'freshcup', 'purifier', 'rainbarrel', 'sprinkler', 'research', 'receiver',
-  'brush', 'paint-seafoam', 'paint-coral', 'paint-sunshell', 'paint-lagoon', 'paint-pebble', 'bed', 'motor', 'wheel', 'kiln', 'ingot', 'glass', 'brick', 'egg', 'feather', 'nest', 'cushion', 'fins', 'airjug', 'goggles', 'scraper', 'cookpot', 'bowl', 'meal', 'shell', 'wreath', 'float',
+  'brush', 'paint-seafoam', 'paint-coral', 'paint-sunshell', 'paint-lagoon', 'paint-pebble', 'bed', 'motor', 'wheel', 'kiln', 'ingot', 'glass', 'brick', 'egg', 'feather', 'nest', 'cushion', 'fins', 'airjug', 'goggles', 'scraper', 'cookpot', 'bowl', 'meal', 'shell', 'wreath', 'float', 'gametable', 'buoyflag', 'scoreboard', 'driftboard',
   'hay', 'pail', 'milk', 'stormrod', 'stormshard', 'stormlamp', 'stormglass']); // + rain-sprinkler, research (storage-research); content hook (paint); kiln, animals; goats, storm
 // Item kind (normalised) -> sprite symbol.
 const SPRITE_FOR = {

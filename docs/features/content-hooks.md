@@ -29,6 +29,8 @@ lines in `dist/game.js` marked `// content hook`. There are 31 of these lines, a
 | `contentCtx` | `building`, `brush`, `woodMat(hex)`, `aim()` | piece grid + tint hooks, held brush model, cached tinted wood, this frame's aim |
 | `updateCamera()` (`// [spyglass]`) | `viewZoom = content.zoom()` | view zoom (spyglass/binoculars, first module wins, 1..8, default 1): FOV is `options.fov / viewZoom`, bob/roll/sway and bite shake scale by `1 / viewZoom`, the viewmodel hides while `viewZoom > 1.6` |
 | `look()` (`// [spyglass]`) | `k /= viewZoom` | look speed follows the zoom on every path (controls lane, legacy mouse, drag-look, pad) |
+| `contentCtx` | `note(i, n, s)`, `content` | buoy course: bell chime per ring (`sfx.note`) and a read-only registry view (paddleboard `riding()` fallback) |
+| `movePlayer()` | `content.ride(dt, physics, rideIn)` | a module owns the local player this frame (driftboard paddling; zipline) and PlayerPhysics is skipped |
 
 Item kinds `sand`, `stone`, `seed`, `research` and the `research` recipe live in
 `dist/content-items.js`. `inventory-state.js` spreads them into `ITEM_INFO` and `RECIPES` in two
