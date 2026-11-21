@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Raft Audio Lab</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg:#0f1621; --panel:#172131; --line:#2a3850; --ink:#e4ebf3; --dim:#93a4b8; --acc:#5fc4d8; --warn:#ff8a7a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 14px; margin: 0 0 8px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+  p { color: var(--dim); margin: 0 0 12px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: 0 0 12px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 6px; }
+  button { background: #22324a; color: var(--ink); border: 1px solid var(--line); border-radius: 7px; padding: 7px 11px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--acc); } button:active { transform: translateY(1px); }
+  button.on { background: var(--acc); color: #06202a; }
+  label { display: inline-flex; gap: 6px; align-items: center; margin: 0 14px 6px 0; color: var(--dim); }
+  input[type=range] { width: 120px; }
+  #pad { width: 100%; max-width: 320px; aspect-ratio: 1; background: #0b111a; border: 1px solid var(--line); border-radius: 8px; cursor: crosshair; display: block; }
+  #report { width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line); display: block; margin-top: 8px; }
+  #stat { font-family: monospace; font-size: 12px; color: var(--dim); white-space: pre-wrap; }
+  .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Raft audio lab</h1>
+  <p>Procedural, file-free: AudioWorklet ocean (swell, wash, slaps, wind, creaks), node-graph SFX, PannerNode spatial voices, head-shadow crossfeed and distance air absorption, an open-air early-reflection send, ambience/sfx/ui buses with ducking. Click <b>Start audio</b> first.</p>
+
+  <section>
+    <h2>Engine</h2>
+    <div class="grid">
+      <button id="start">Start audio</button>
+      <button id="amb" class="on">Ambience on</button>
+      <button id="reel">Hold to reel</button>
+      <button id="jolt">Raft jolt (creak)</button>
+      <button id="air" class="on">Air reverb on</button>
+    </div>
+    <div style="margin-top:10px">
+      <label>volume <input type="range" id="volume" min="0" max="1" step="0.01" value="0.5"></label>
+      <label>swell <input type="range" data-ocean="swell" min="0" max="1" step="0.01" value="0.5"></label>
+      <label>wind <input type="range" data-ocean="wind" min="0" max="1" step="0.01" value="0.3"></label>
+      <label>raft speed <input type="range" data-ocean="speed" min="0" max="1" step="0.01" value="0.2"></label>
+      <label>creak <input type="range" data-ocean="creak" min="0" max="1" step="0.01" value="0.5"></label>
+    </div>
+    <div>
+      <label>ambience bus <input type="range" data-bus="ambience" min="0" max="1" step="0.01" value="1"></label>
+      <label>sfx bus <input type="range" data-bus="sfx" min="0" max="1" step="0.01" value="1"></label>
+      <label>ui bus <input type="range" data-bus="ui" min="0" max="1" step="0.01" value="0.8"></label>
+      <label>strength <input type="range" id="strength" min="0.05" max="1" step="0.01" value="1"></label>
+    </div>
+  </section>
+
+  <section>
+    <h2>Sounds</h2>
+    <div class="grid" id="sounds"></div>
+  </section>
+
+  <section class="row">
+    <div>
+      <h2>Spatial pad</h2>
+      <p>Top-down, listener at centre facing up, 20 m radius. Click to play the selected sound there.</p>
+      <canvas id="pad" width="320" height="320"></canvas>
+      <label style="margin-top:8px">sound <select id="padSound"></select></label>
+    </div>
+    <div style="flex:1;min-width:260px">
+      <h2>Stats</h2>
+      <div id="stat">not started</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Offline render</h2>
+    <div class="grid" id="cases"></div>
+    <canvas id="report" width="1000" height="444"></canvas>
+  </section>
+</main>
+<script type="module">
+import { createOceanAudio, EVENTS } from './audio.js';
+import { CASES, renderCase, drawReport, wavBase64, scheduleCost, analyse } from './render-lab.js';
+
+let audio = null, ambience = true, reverb = true;
+const $ = (s) => document.querySelector(s);
+const make = () => createOceanAudio({ context: audio?.context ?? null, volume: +$('#volume').value, ambience, reverb });
+
+$('#start').onclick = async () => { audio ??= make(); const ok = await audio.resume(); $('#start').textContent = ok ? 'Running' : 'Failed'; };
+$('#amb').onclick = async () => {
+  ambience = !ambience; $('#amb').classList.toggle('on', ambience); $('#amb').textContent = ambience ? 'Ambience on' : 'Ambience off';
+  if (audio) { audio.destroy(); audio = make(); await audio.resume(); }   // also exercises the hot-swap path
+};
+$('#jolt').onclick = () => audio?.creak(+$('#strength').value);
+$('#air').onclick = async () => {
+  reverb = !reverb; $('#air').classList.toggle('on', reverb); $('#air').textContent = reverb ? 'Air reverb on' : 'Air reverb off';
+  if (audio) { audio.destroy(); audio = make(); await audio.resume(); }
+};
+$('#volume').oninput = (e) => audio?.setVolume(+e.target.value);
+for (const el of document.querySelectorAll('[data-ocean]')) el.oninput = () => audio?.setOcean({ [el.dataset.ocean]: +el.value });
+for (const el of document.querySelectorAll('[data-bus]')) el.oninput = () => audio?.setBus(el.dataset.bus, +el.value);
+
+const reelBtn = $('#reel');
+const reelOn = () => { audio?.setReel(true, 0.4); reelBtn.classList.add('on'); };
+const reelOff = () => { audio?.setReel(false); reelBtn.classList.remove('on'); };
+reelBtn.onpointerdown = reelOn; reelBtn.onpointerup = reelOff; reelBtn.onpointerleave = reelOff;
+
+for (const ev of EVENTS) {
+  const b = document.createElement('button'); b.textContent = ev;
+  b.onclick = () => { if (!audio) return; audio.play(ev, +$('#strength').value); };
+  $('#sounds').append(b);
+  const o = document.createElement('option'); o.textContent = ev; if (ev === 'gull') o.selected = true; $('#padSound').append(o);
+}
+
+const pad = $('#pad'), pg = pad.getContext('2d'), dots = [];
+function drawPad() {
+  pg.fillStyle = '#0b111a'; pg.fillRect(0, 0, 320, 320);
+  pg.strokeStyle = '#223047'; for (const r of [40, 80, 120, 160]) { pg.beginPath(); pg.arc(160, 160, r, 0, Math.PI * 2); pg.stroke(); }
+  pg.fillStyle = '#5fc4d8'; pg.beginPath(); pg.moveTo(160, 148); pg.lineTo(152, 168); pg.lineTo(168, 168); pg.fill();
+  const now = performance.now();
+  for (const d of dots) { const a = Math.max(0, 1 - (now - d.t) / 1500); pg.fillStyle = `rgba(255,190,110,${a})`; pg.beginPath(); pg.arc(d.x, d.y, 6, 0, 7); pg.fill(); }
+  requestAnimationFrame(drawPad);
+}
+drawPad();
+pad.onclick = (e) => {
+  if (!audio) return;
+  const r = pad.getBoundingClientRect(), px = ((e.clientX - r.left) / r.width) * 320, py = ((e.clientY - r.top) / r.height) * 320;
+  dots.push({ x: px, y: py, t: performance.now() }); if (dots.length > 12) dots.shift();
+  const x = ((px - 160) / 160) * 20, z = ((py - 160) / 160) * 20;
+  audio.setListener(0, 1.6, 0, 0, 0, -1);
+  audio.play($('#padSound').value, +$('#strength').value, { x, y: 1, z });
+};
+setInterval(() => { if (audio) $('#stat').textContent = JSON.stringify(audio.stats(), null, 1); }, 300);
+
+for (const name of Object.keys(CASES)) {
+  const b = document.createElement('button'); b.textContent = name;
+  b.onclick = async () => { const r = await renderCase(name); drawReport($('#report'), r); };
+  $('#cases').append(b);
+}
+
+// shoot.py hook
+window.lab = { ready: true, cases: Object.keys(CASES), events: EVENTS, scheduleCost,
+  async render(name) {
+    const r = await renderCase(name);
+    const c = document.createElement('canvas'); drawReport(c, r);
+    const { buffer, ...rest } = r;
+    return { ...rest, png: c.toDataURL('image/png'), wav: wavBase64(buffer) };
+  },
+};
+</script>
+</body>
+</html>
