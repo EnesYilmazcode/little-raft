@@ -49,7 +49,7 @@ void main() {
   // mid-sky blue, deep blue overhead.
   float up = clamp(y, 0.0, 1.0);
   vec3 col = mix(uHorizon, uMid, smoothstep(0.0, 0.22, up));
-  col = mix(col, uZenith, smoothstep(0.12, 0.85, up));
+  col = mix(col, uZenith, smoothstep(0.05, 0.52, up));
 
   // Sun: wide soft glow, tighter bloom, crisp bright disk.
   float sd = max(dot(dir, uSunDir), 0.0);
@@ -148,8 +148,8 @@ export function createSky(T, options = {}) {
   const uniforms = {
     uHorizon: { value: new T.Color(options.horizon ?? '#86dcef') },
     uFarSea: { value: new T.Color(options.farSea ?? '#3d97c8') },
-    uMid: { value: new T.Color(options.mid ?? '#4fb8e6') },
-    uZenith: { value: new T.Color(options.zenith ?? '#1e86d2') },
+    uMid: { value: new T.Color(options.mid ?? '#2aa8dc') },
+    uZenith: { value: new T.Color(options.zenith ?? '#0b84c6') },
     uSunColor: { value: new T.Color(options.sunColor ?? '#fff6dc') },
     uSunDir: { value: sunDirection },
     uCloudLit: { value: new T.Color('#ffffff') },
@@ -206,7 +206,7 @@ export function createSky(T, options = {}) {
     const u = uniforms;
     if (background?.isColor) u.uHorizon.value.copy(background);
     const zen = oceanUniforms?.uZenith?.value;
-    if (zen) { u.uZenith.value.copy(zen); u.uMid.value.copy(u.uHorizon.value).lerp(zen, .45).lerp(MID_DAY, Math.min(1, lum(u.uHorizon.value) / DAY_LUM) * .5); }
+    if (zen) { u.uZenith.value.copy(zen); u.uMid.value.copy(u.uHorizon.value).lerp(zen, .6).lerp(MID_DAY, Math.min(1, lum(u.uHorizon.value) / DAY_LUM) * .5); }
     if (oceanUniforms?.uFarSea) u.uFarSea.value.copy(oceanUniforms.uFarSea.value);
     if (oceanUniforms?.uSunDir) u.uSunDir.value.copy(oceanUniforms.uSunDir.value).normalize();
     if (oceanUniforms?.uSunColor) u.uSunColor.value.copy(oceanUniforms.uSunColor.value);
