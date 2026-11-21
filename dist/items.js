@@ -143,6 +143,12 @@ const LIST = [
   item('binoculars', 'Binoculars', 'tool', { iconTint: '#5d6b78', stack: 1,
     recipe: hand({ glass: 2, copperingot: 1, hinge: 2, bolt: 1 }), unlock: research('glass', 'copperingot'),
     tip: 'Hold them to spot the nearest barrel: bearing and distance. They never wear out.' }),
+  item('finder', 'Seashell Finder', 'tool', { iconTint: '#c99560', stack: 1,
+    recipe: hand({ scrap: 4, wood: 2, rope: 2 }), unlock: discover('sand', 'scrap'),
+    tip: 'A driftwood wand with a brass coil. It ticks faster near buried bundles. Never wears out.' }),
+  item('spade', 'Little Spade', 'tool', { iconTint: '#bb8650', tool: true, durability: 60,
+    recipe: hand({ wood: 3, scrap: 2 }), unlock: discover('sand'),
+    tip: 'Press E on island sand to dig. Finds bundles, or at least a handful of sand. R fixes it.' }),
 
   // ----- food -----
   item('cookedfish', 'Grilled Fish', 'food', { iconTint: '#e0a060', stack: 10,
@@ -205,6 +211,7 @@ const REPAIRS = deepFreeze({
   metalhook: { scrap: 2, nail: 2 },
   hammer: { wood: 2, rope: 1 },
   fishingrod: { wood: 1, rope: 2 },
+  spade: { wood: 2, scrap: 1 },
 });
 
 /** Alternate / older names that may appear in saves or network messages. */

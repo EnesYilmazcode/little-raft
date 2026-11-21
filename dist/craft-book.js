@@ -17,7 +17,7 @@ const CATEGORY_OF = Object.freeze({
   net: 'survival', palm: 'survival', lantern: 'survival',
   sail: 'building', bench: 'building', crate: 'building',
   // progression catalogue (items.js)
-  metalhook: 'tools', binoculars: 'tools',
+  metalhook: 'tools', binoculars: 'tools', finder: 'tools', spade: 'tools',
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
 });
@@ -65,6 +65,8 @@ export const ITEM_TEXT = Object.freeze({
   hinge:      { desc: 'A small metal hinge.', use: 'Lids, doors and folding parts.' },
   metalhook:  { desc: 'A heavy metal hook that lasts much longer.', use: 'Throw it like the hook; wears far slower.' },
   binoculars: { desc: 'Glass lenses in a copper tube.', use: 'Hold to spot barrels and islands far away.' },
+  finder:     { desc: 'A driftwood wand with a brass coil.', use: 'Hold it on island sand: it ticks faster near buried bundles.' },
+  spade:      { desc: 'A little wooden spade with a metal blade.', use: 'E on island sand digs up bundles (or a pinch of sand).' },
   cookedfish: { desc: 'A fish grilled golden.', use: 'A hearty snack.' },
   maptable:   { desc: 'A little driftwood chart table with brass fittings.', use: 'Place it, press E: see charted islands, drop pins, set a course.' },
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },

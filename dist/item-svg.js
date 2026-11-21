@@ -138,6 +138,25 @@ export const ITEM_ICONS = Object.freeze({
     <g fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><path d="M10 31 C10.5 29.5 11.5 28.8 13 28.5"/><path d="M32 31 C32.5 29.5 33.5 28.8 35 28.5"/></g>
     <path d="M7 16 V21 M29 16 V21" stroke="#9fd6d0" stroke-width="1.5" stroke-linecap="round"/>`,
 
+  finder: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M11 43 L27 21" fill="none" stroke-width="7"/><path d="M11 43 L27 21" fill="none" stroke="#c99560" stroke-width="4"/>
+    <path d="M12.5 41 L16.5 35.5" fill="none" stroke="#fff2cc" stroke-width="3.5" stroke-linecap="butt"/>
+    <ellipse cx="32" cy="15" rx="12" ry="9" fill="#ffbd66" transform="rotate(-25 32 15)"/>
+    <ellipse cx="32" cy="15" rx="7" ry="4.6" fill="#54a6a4" transform="rotate(-25 32 15)"/>
+    <circle cx="25" cy="24" r="3" fill="#ffbd66"/></g>
+    <path d="M27 11 C29 9.5 32 8.8 35 9" fill="none" stroke="#fff2cc" stroke-width="1.6" stroke-linecap="round"/>
+    <g fill="none" stroke="#ffbd66" stroke-width="1.8" stroke-linecap="round"><path d="M41 31 C43 33 43.5 36 42.5 38.5"/><path d="M37 33 C38.3 34.3 38.6 36 38 37.6"/></g>`,
+
+  spade: `<g transform="rotate(35 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M18 3 H30 V8 C30 10.5 28 12 25.5 12 H22.5 C20 12 18 10.5 18 8 Z" fill="#c99560"/>
+    <rect x="21" y="5.5" width="6" height="3.5" rx="1.5" fill="#153e49" fill-opacity=".4" stroke="none"/>
+    <rect x="21.5" y="11" width="5" height="17" rx="2" fill="#bb8650"/>
+    <g fill="#d9c38c" stroke-width="1.3"><rect x="20.8" y="15" width="6.4" height="2.4" rx="1"/><rect x="20.8" y="18.6" width="6.4" height="2.4" rx="1"/></g>
+    <rect x="20" y="26.5" width="8" height="4" rx="1.5" fill="#6d8496"/>
+    <path d="M15 30 H33 V36 C33 41.5 28.5 45.5 24 45.5 C19.5 45.5 15 41.5 15 36 Z" fill="#9fb1bf"/>
+    <path d="M18 33 C17.6 36.5 18.6 39.5 21 41.5" fill="none" stroke="#fff" stroke-width="1.6"/></g>
+    <g fill="#e9b85a" stroke="${O}" stroke-width="1.2"><circle cx="33" cy="43" r="2"/><circle cx="39" cy="44.5" r="1.6"/><circle cx="43" cy="40.5" r="1.4"/></g>`,
+
   smelter: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <rect x="29" y="3" width="8" height="12" rx="1" fill="#7a858b"/>
     <path d="M7 42 V25 C7 14 14.5 8 24 8 C33.5 8 41 14 41 25 V42 Z" fill="#8f9aa0"/>
