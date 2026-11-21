@@ -44,6 +44,30 @@ test('Bag: a fresh bag holds only one full-durability hook in hotbar slot 0', ()
   for (const k of ITEM_KINDS) assert.equal(counts[k], k === 'hook' ? 1 : 0, k);
 });
 
+test('Bag.version increases on every mutation and never on reads', () => {
+  const bag = new Bag();
+  let v = bag.version;
+  const bumped = (label) => { assert.ok(bag.version > v, `${label} bumps version`); v = bag.version; };
+  const same = (label) => { assert.equal(bag.version, v, `${label} leaves version`); };
+  bag.count('wood'); bag.counts(); bag.snapshot(); void bag.selected; bag.canCraft('hook'); bag.canCraft('rope');
+  same('reads');
+  bag.add('wood', 5); bumped('add');
+  bag.add('plastic', 4); bumped('add');
+  bag.add('nope', 3); bag.add('wood', 0); same('rejected add');
+  bag.remove('wood', 1); bumped('remove');
+  bag.remove('wood', 999); same('refused remove');
+  bag.move(1, 9); bumped('move');
+  bag.move(1, 9); same('refused move');
+  bag.select(3); bumped('select');
+  bag.select(3); bag.select(99); same('no-op select');
+  bag.cycle(1); bumped('cycle');
+  bag.cycle(0); same('no-op cycle');
+  assert.equal(bag.craft('hook').ok, true); bumped('craft');
+  assert.equal(bag.craft('fishingrod').ok, false); same('failed craft');
+  bag.count('hook'); bag.snapshot(); same('reads after mutations');
+  assert.equal('version' in bag.snapshot(), false, 'snapshot stays version-free');
+});
+
 test('Bag.fromCounts migrates legacy stock without granting an extra hook', () => {
   const none = Bag.fromCounts({ wood: 3 }, { tools: [] });
   assert.equal(none.count('hook'), 0);
