@@ -28,9 +28,7 @@ Copy `sandbox/icons/icon-atlas.js` unchanged. It has no imports (THREE is passed
 Copy `sandbox/icons/item-models.js` and rewrite its imports to the dist convention:
 
 ```js
-import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
-import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
@@ -40,16 +38,24 @@ import { bakeIconAtlas } from './icon-atlas.js?build=v3-survival-ae77fa84ac2b';
 Exports `bakeItemIcons(T, renderer, getMaterial, build, kinds)` -> `Promise<{ kind: blobURL }>`,
 plus `makeIconItems` and `ICON_POSES` (pose per kind; tweak there). Fish and rope have no world
 model in dist, so this file holds two small procedural ones (`createFishModel`,
-`createRopeCoil`). If those kinds get real models later, swap the builder in `makeIconItems`.
+`createRopeCoil`). It also holds icon-only variants where the world model does not read at
+40 px: `createRodIcon` (short thick rod, reel, bobber), `createJHook` (J hook, eye, rope),
+`createScrapIcon` (torn corrugated sheet, rust, rivets), `createLogPile` (wood), and
+`createLanternIcon` (the lantern without its 1.9 m post); the sail uses the craft model with
+its height squashed to 0.68. If a world model changes, swap the builder in `makeIconItems`.
 
-## 3. `dist/survival-ui.js` (5 edits, all additive)
+## 3. `dist/survival-ui.js` (6 edits, all additive)
 
 a) Above `// Symbols that actually exist in icons.svg.` add:
 
 ```js
 // Baked 3D item icons (kind -> image URL) from item-icons.js. Until set, the SVG sprite is used.
 let BAKED = null, ICON_REV = 0;
-export function setItemIcons(urls) { BAKED = urls && typeof urls === 'object' ? urls : null; ICON_REV++; }
+export function setItemIcons(urls) {
+  BAKED = urls && typeof urls === 'object' ? urls : null; ICON_REV++;
+  // repaint the live UI now: hotbar, open bag and recipe list swap without a reopen
+  try { window[INST_KEY]?.update?.(); } catch (e) { console.error(e); }
+}
 ```
 
 b) First lines of `function iconSVG(kind) {` become:
@@ -90,7 +96,21 @@ every frame), and the open bag on its next render.
 
 e) In `buildRecipes()`:
 `const key = recipes.map(r => r.id).join(',');` -> `const key = recipes.map(r => r.id).join(',') + '#' + ICON_REV;`
-(the recipe list is rebuilt with baked icons the next time the dialog opens).
+
+f) Refresh while the bag is open. In `createSurvivalUI`, after `let recipes = [], recipeEls = [];` add
+`let iconRevSeen = ICON_REV;`, and in `render(force)` after `curSlots = slots; curSelected = selected;` add:
+
+```js
+    if (iconRevSeen !== ICON_REV && !dragging) {
+      iconRevSeen = ICON_REV;
+      if (isOpen) { buildRecipes(); recipeEls.forEach(v => { v.sig = null; }); force = true; }
+    }
+```
+
+So when the bake lands while the bag is open, bag slots, recipe icons and cost chips swap at once
+(the `setItemIcons` call itself triggers the repaint), with no close/reopen. Checked in the sandbox
+(`ui-inventory-late-2x`: 47 SVG icons -> 0, 47 baked, dialog still open) and in the real game
+(see Verify).
 
 ## 4. `dist/game.js` (2 edits)
 
@@ -119,8 +139,8 @@ anchors on the line followed by `  } catch (e) {`.
 
 ## Cache behaviour
 
-With a real build id the 15 PNGs (data URLs, about 190 KB total) are stored in `localStorage`
-under `littleRaft.icons.ia3.<build>`; older `littleRaft.icons.*` keys are removed when a new one
+With a real build id the 15 PNGs (data URLs, about 250 KB total) are stored in `localStorage`
+under `littleRaft.icons.ia4.<build>`; older `littleRaft.icons.*` keys are removed when a new one
 is written. The next load skips WebGL entirely (cache hit measured at 5.5 ms on SwiftShader, including blob conversion).
 `build === 'dev'` never caches, so model edits show on reload. Changing poses, lighting or the
 shader without a new build id: bump `ICON_ATLAS_VERSION` in `icon-atlas.js`.
@@ -131,11 +151,15 @@ shader without a new build id: bump `ICON_ATLAS_VERSION` in `icon-atlas.js`.
 2. `python sandbox/icons/shoot.py` (sandbox; uses a patched copy of the current
    `dist/survival-ui.js`), then read `sandbox/icons/shots/ui-inventory-2x-panel.png` and
    `ui-hotbar-2x-bar.png`: every slot, recipe and cost chip shows a 3D icon.
-3. After `--apply`: `python shoot.py dist <out>` (repo root probe) and read `05-inventory.png`;
-   the hotbar shows SVG icons for about the first second (SwiftShader: longer), then PNGs.
-   In the browser console, `localStorage` has one `littleRaft.icons.ia3.*` key; a reload paints
-   PNG icons without a bake (no `GPU stall` messages).
-4. `node --test tests/` still passes (survival-ui exports only gained `setItemIcons`).
+3. After `--apply` (do it on a scratch copy of the repo): run the game, read the inventory.
+   The bake starts 400 ms after mount (title screen) and on SwiftShader finishes in a few seconds,
+   before Solo; the hotbar, bag, recipes and cost chips all show PNGs. `localStorage` has one
+   `littleRaft.icons.ia4.*` key; a reload paints PNG icons from it without a bake.
+   (SwiftShader logs "GPU stall due to ReadPixels" a few times per page; the unpatched baseline
+   logs the same.)
+4. `RAFT_DIST=<patched copy>/dist node --test tests/survival.test.mjs` passes 22/22.
+   `tests/legacy_hook.mjs` fails 2 tests on the unpatched dist too (HookCast attachment token);
+   unrelated to icons.
 
 ## Rollback
 
