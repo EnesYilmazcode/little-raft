@@ -17,6 +17,13 @@ loadItemIcon / warmIcons / onIconReady / setModelProvider`. The round-2 plan bel
 game renderer, `setItemIcons`, blob URLs, a localStorage cache) is a second, competing pipeline
 against that code. The comparison below is what decided between them.
 
+Drift refresh (main `8d21618`): main's module has since moved to rendering through the game's own
+renderer (`setIconRenderer`, a render target per icon, no second context), `toBlob` blob URLs, an
+urgent queue for visible slots, a 60 s release, per-kind `FRAME` framing, side-on `POSE` +
+`ICON_FATTEN` for hammer and rod, and a models.js fallback (`resolveIconModel`) for cup, seed and water.
+The merged file was re-based onto that code and keeps all of it; the cost figures below were measured
+against the older private-context main and were not re-run. Current anchors and results: `icons-ADOPT.md`.
+
 **Decision: merge.** Keep main's architecture and API unchanged and bring in the fleet work that
 measurably helps. The result is `sandbox/icons/item-icons.js` (drop-in, same exports) plus
 `sandbox/icons/item-icon-models.js` (new). No caller changes. Steps are in `icons-ADOPT.md`
