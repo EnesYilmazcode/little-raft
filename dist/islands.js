@@ -9,7 +9,7 @@ import {
 import { createIslandModels, PALM_H, PALM_BEND } from './islands-models.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
-import { SAIL, wrapAxis } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
+import { SAIL, wrapAxis, currentVector } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
 
 export * from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
 
@@ -208,15 +208,20 @@ export function createIslands(ctx) {
     seed = (Number.isInteger(seed) && seed >= 0 && seed < 4294967296) ? seed : (Math.random() * 4294967296) >>> 0;
     const lay = layoutFor(seed), g = ground();
     if (near) { const { side, off } = dockOffset(ctx.world && ctx.world.tiles, lay); rel.x = side * off; rel.z = lay.dockZ; }
-    else spawnSpot(seed, dir.x, dir.z, rel);
+    else { latchDir(); spawnSpot(seed, dir.x, dir.z, rel); }
     st.isl = { seed, bx: wrapAxis(g.gx + rel.x, HG), bz: wrapAxis(g.gz + rel.z, HG), born: st.clock - Math.max(0, t), sink: -1, used: lay.nodes.map(() => 0) };
     relayout(); place();
     if (!near) emitAll(T_HORIZON);
   }
-  // Latch the raft's travel direction over the seabed (kept while anchored or nearly still).
+  // Latch the raft's travel direction over the seabed (kept while anchored or nearly still). Before the
+  // first clear reading (e.g. a save loaded at anchor) fall back to downwind, where the current takes the raft.
+  let latched = false;
   function latchDir() {
-    travelOf(ctx.world?.sailing, trav);
-    const l2 = trav.x * trav.x + trav.z * trav.z;
+    const s = ctx.world?.sailing;
+    travelOf(s, trav);
+    let l2 = trav.x * trav.x + trav.z * trav.z;
+    if (l2 > .0025) latched = true;
+    else if (!latched && s) { currentVector(s, trav); l2 = trav.x * trav.x + trav.z * trav.z; }
     if (l2 > .0025) { const l = Math.sqrt(l2); dir.x = trav.x / l; dir.z = trav.z / l; }
   }
   function emitAll(text) { try { ctx.emit({ kind: 'notice', text }, 'all'); } catch {} }

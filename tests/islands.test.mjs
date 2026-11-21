@@ -364,7 +364,8 @@ test('drift: the island moves by the seabed delta, stops at anchor, steers with 
   w.mod.debug.spawnAhead(77); w.mod.update(0);
   const p0 = w.mod.debug.phase();
   assert.ok(p0.dist >= ISLAND.SPAWN_MIN && p0.dist <= Math.hypot(ISLAND.SPAWN_MAX, ISLAND.SIDE_MAX), `spawned ${p0.dist.toFixed(1)} m away`);
-  assert.ok(p0.z >= ISLAND.SPAWN_MIN - 1e-9, 'ahead of a raft riding the +z current');
+  { const c = currentVector(w.ctx.world.sailing, {}), l = Math.hypot(c.x, c.z); // the default wind is not +z
+    assert.ok((p0.x * c.x + p0.z * c.z) / l >= ISLAND.SPAWN_MIN - 1e-9, 'ahead of a raft riding the current'); }
   assert.ok(w.emits.some(x => x.e.text === 'An island on the horizon' && x.to === 'all'));
   assert.ok(!w.emits.some(x => /drifting this way/.test(x.e.text)));
   // drifting on the current: every step the island moves by exactly -dg (it is fixed on the seabed)
@@ -388,6 +389,15 @@ test('drift: the island moves by the seabed delta, stops at anchor, steers with 
   const c = w.mod.debug.state();
   assert.ok(b.cx - c.cx > 3, `sailing east moves the island west (${(b.cx - c.cx).toFixed(1)} m)`);
   assert.equal(w.mod.debug.phase().phase, 'adrift', 'no timer: it is still there');
+});
+
+test('drift: a raft loaded at anchor under a non +z wind spawns its island downwind', () => {
+  const w = stubWorld();
+  Object.assign(w.ctx.world.sailing, { anchored: true, windDir: Math.PI / 2 }); // wind and current toward +x
+  w.mod.load(undefined, 'save');
+  w.mod.debug.spawnAhead(77); w.mod.update(0);
+  const p = w.mod.debug.phase();
+  assert.ok(p.x >= ISLAND.SPAWN_MIN - 1e-9, `downwind (+x), got x=${p.x.toFixed(1)} z=${p.z.toFixed(1)}`);
 });
 
 test('drift: passing the island warns at 60 m behind, sinks past 150 m, then the calm delay', () => {
