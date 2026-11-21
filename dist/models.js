@@ -180,12 +180,15 @@ function kit(kind, lod) {
       }
       const size = box.getSize(new T.Vector3());
       Object.assign(root.userData, { kind, lod, size: size.toArray().map(v => +v.toFixed(3)), height: +box.max.y.toFixed(3) }, K.ud);
-      root.userData.dispose = () => { for (const [, g] of geos) g.dispose(); };
+      root.userData.dispose = disposer(geos.map(([, g]) => g));
+      buckets.clear(); stack.length = 1; // pre-merge source geometries are no longer needed
       return root;
     },
   };
   return K;
 }
+// Built outside kit() so a template's dispose closure retains only its merged geometries, not the kit scope.
+const disposer = list => () => { for (const g of list) g.dispose(); };
 // Merge indexed/non-indexed geometries with position/normal/uv/color into one indexed geometry. Disposes inputs.
 function merge(list) {
   let nv = 0, ni = 0;
