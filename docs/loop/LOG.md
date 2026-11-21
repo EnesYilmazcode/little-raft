@@ -1230,3 +1230,42 @@ No regressions. Intended differences:
 - Gate at fd3724d: 1402/1402, no page errors, hook-only spawn, Esc OK, 135 vs 225 ms, 50.8 vs 53.0 calls. Merged as c3a29df.
 - Open, pre-existing: in the browser, Esc with the hammer build wheel open closes the wheel but leaves the cursor free (Chrome needs a click
   to relock after a user exit). Fix idea: have the wheel release the lock itself, like the inventory does.
+## 2026-11-21 · loop-features-202611210847-r2 (features)
+
+Base: `origin/claude/raft-master` 4ee6b16 (910 tests green). Note: master now carries vitals (hunger/thirst/hp) and sharks, which goes against the friendly brief. This round left them alone.
+
+Features (research, spec, build, review for each; then visual QA and a polish pass):
+- **Pick up placed items** (`dist/decor-pickup.js`; spec `docs/specs/decor-pickup.md`).
+  - Hold X with the hammer. Building pieces still win; otherwise the aimed decor gets a red see-through ghost and the build card names it. Release X sends `{kind:'undecor',x,z,t}`.
+  - The host gives back the item itself plus its contents through a scratch bag. It refuses when the item is busy (mid-cook, ripe palm, ready purifier, comb in the hive, motor on, someone in the bed or seat, hen in the nest) or when the bag is full. Items are never lost: a purifying purifier returns its salt cup.
+  - New content hooks: `beforeUndecor`, `undecorLoot` and `afterUndecor`, plus a matching set in progression. `caps:{undecor:1}` lets a guest detect an old host.
+- **Flagpole + flag designer** (`dist/flags*.js`; spec `docs/specs/raft-flag.md`).
+  - The designer offers 8 colours, 6 patterns, 8 original emblems and an emblem colour. The pole flies downwind with a shader wave.
+  - Saved as `world.ext.flags` per tile, with one cached texture per design. Guests send `flag.set` and the host checks it.
+- **Sitting** (`dist/sitting*.js`; spec `docs/specs/sitting.md`).
+  - Bench has 2 seats, Feather Cushion 1 low seat. Look is clamped to ±100°, and the view eases down on sit.
+  - WASD, Space or E stands you up; while seated, the sit module gets first claim on E.
+  - The host picks seats and stores them in `ext.sit`. Co-op pose bit 16 means seated, and the partner avatar now has knees.
+  - New achievement `sit1` "Sit a While". `content.ride` is a shared first-wins hook, the same shape as the zipline branch.
+
+Review fixes:
+- Flag pointed crosswind.
+- The flag dialog outlived its pole.
+- A flag texture leaked.
+- E while seated could also start sleeping.
+- A stale aim could pick up a different item.
+
+QA: `docs/cloud/qa-round-r2.md`, shots in `docs/cloud/shots/r2/`. It found the existing Wind Pennant flying 90° off the wind; that is fixed too.
+
+Checks: `npm test` 954/954.
+
+Merge notes for the integrator:
+- `coop.js` flag math now lives in `poseFlags`/`readFlags`. Add the zipline's bit 8 there.
+- `content.ride` is identical on both branches, so keep one copy.
+- logbook achievement counts add up (`firework1` + `sit1`).
+
+Open for next round:
+- No gamepad binding for remove.
+- An intermittent three.js warm-up error, `reading 'isReady'`, existed before this round.
+- `cleanWorld` keeps decor on integer tiles only.
+- Locked recipes still say "Ready to craft".

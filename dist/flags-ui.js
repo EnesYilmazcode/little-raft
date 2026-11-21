@@ -37,6 +37,13 @@ const CSS = `
 #lr-flag .flag-btn:focus-visible{outline:2px solid #fff2cc;outline-offset:2px}
 #lr-flag .flag-btn.flag-save{background:linear-gradient(#5f8f45,#456c31)}
 #lr-flag .flag-btn.flag-random{margin-right:auto}
+@media (max-width:420px){ /* phone: even rows, no single orphan (8 swatches on one row, patterns 3+3, emblems 5+4) */
+#lr-flag .flag-opts{display:grid;gap:5px}
+#lr-flag .opts-sw{grid-template-columns:repeat(8,minmax(0,40px))}
+#lr-flag .opts-sw .flag-swatch{width:100%;min-width:0;height:auto;aspect-ratio:1}
+#lr-flag .opts-pat{grid-template-columns:repeat(3,58px)}
+#lr-flag .opts-emb{grid-template-columns:repeat(5,40px)}
+}
 `;
 const SVG = 'http://www.w3.org/2000/svg';
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
@@ -65,7 +72,7 @@ export function createFlagUI(api) {
   const rows = [];
   function row(label, idx, count, build) {
     const r = el('div', 'flag-row'), lab = el('p', 'flag-label', label), opts = el('div', 'flag-opts');
-    const id = 'lr-flag-row-' + idx; lab.id = id; opts.setAttribute('role', 'group'); opts.setAttribute('aria-labelledby', id);
+    const id = 'lr-flag-row-' + idx; lab.id = id; opts.classList.add(idx === 1 ? 'opts-pat' : idx === 3 ? 'opts-emb' : 'opts-sw'); opts.setAttribute('role', 'group'); opts.setAttribute('aria-labelledby', id);
     const btns = [];
     for (let v = 0; v < count; v++) {
       const b = el('button', 'flag-opt'); b.type = 'button';
