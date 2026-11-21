@@ -118,12 +118,12 @@ void main() {
 
   float ndv = max(dot(n, V), 0.0);
   float fresnel = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
-  fresnel = min(fresnel, 0.72);
+  fresnel = min(fresnel, 0.5);
 
   vec3 R = reflect(-V, n);
   vec3 skyRefl = mix(uSky, uZenith, smoothstep(0.0, 0.6, R.y));
 
-  // Body colour: deep teal in troughs, turquoise on crests and in slow patches.
+  // Body colour: deep ocean blue in troughs, brighter blue on crests and in slow patches.
   float patches = vnoise(p * 0.045 + uTime * 0.01) * 0.6 + vnoise(p * 0.13 - uTime * 0.02) * 0.4;
   float h = clamp(vHeight / 0.2 * 0.5 + 0.5, 0.0, 1.0);
   float shallowMix = clamp(h * 0.55 + patches * 0.35 + (1.0 - ndv) * 0.15, 0.0, 1.0);
@@ -131,26 +131,27 @@ void main() {
   // Soft subsurface glow where sunlight passes through crests.
   float sss = smoothstep(0.45, 1.0, h) * (0.5 + 0.5 * max(dot(n, L), 0.0)) * 0.35;
   body += uShallow * sss;
+  body *= mix(0.75, 1.0, ndv);
   float diff = 0.7 + 0.3 * max(dot(n, L), 0.0);
   vec3 col = mix(body * diff, skyRefl, fresnel);
 
   // Sun highlights: sharp glint + broad sheen, clamped and faded to avoid flashing.
   vec3 H = normalize(L + V);
   float ndh = max(dot(n, H), 0.0);
-  float spec = pow(ndh, 260.0) * 1.6 + pow(ndh, 36.0) * 0.12;
-  spec = min(spec, 1.4) * (1.0 - smoothstep(40.0, 120.0, dist) * 0.7);
+  float spec = pow(ndh, 420.0) * 2.6 + pow(ndh, 60.0) * 0.28;
+  spec = min(spec, 2.2) * (1.0 - smoothstep(60.0, 130.0, dist) * 0.6);
   col += uSunColor * spec;
 
-  // Thin, sparse lacy foam riding the crests (fully faded out from 90 on, so skipped there).
-  if (dist < 90.0) {
+  // Faint, soft foam on the nearest crests only (contact foam comes from waterfx; fully faded out from 40 on, so skipped there).
+  if (dist < 40.0) {
     vec2 fp = p + vec2(uTime * 0.35, uTime * 0.12);
     float n1 = vnoise(fp * 0.9);
     float n2 = vnoise(fp * 2.6 + vec2(uTime * -0.2, uTime * 0.15));
-    float lace = 1.0 - smoothstep(0.0, 0.035, abs(n1 * 0.7 + n2 * 0.3 - 0.5));
+    float lace = 1.0 - smoothstep(0.0, 0.06, abs(n1 * 0.7 + n2 * 0.3 - 0.5));
     float crest = smoothstep(0.06, 0.17, vHeight);
     float speck = smoothstep(0.86, 0.93, vnoise(fp * 3.7)) * smoothstep(0.0, 0.12, vHeight);
-    float foam = clamp(lace * crest * 0.55 + speck * 0.35, 0.0, 0.6);
-    foam *= 1.0 - smoothstep(30.0, 90.0, dist);
+    float foam = clamp(lace * crest * 0.2 + speck * 0.12, 0.0, 0.3);
+    foam *= 1.0 - smoothstep(12.0, 40.0, dist);
     col = mix(col, uFoam, foam);
   }
 
@@ -175,11 +176,11 @@ export function createOcean(T, options = {}) {
     uFlow: { value: new T.Vector2() }, // [sailing] wave-field offset written by sailing-world.js
     uSunDir: { value: sun.clone().normalize() },
     uSunColor: { value: new T.Color('#fff3d6') },
-    uSky: { value: new T.Color(options.skyColor ?? '#99dfe1') },
-    uZenith: { value: new T.Color('#5fb6dc') },
-    uDeep: { value: new T.Color('#0a4a5a') },
-    uShallow: { value: new T.Color('#1fa9a8') },
-    uFoam: { value: new T.Color('#eefbf8') },
+    uSky: { value: new T.Color(options.skyColor ?? '#a6e9f2') },
+    uZenith: { value: new T.Color('#2a8fd6') },
+    uDeep: { value: new T.Color('#08355f') },
+    uShallow: { value: new T.Color('#1a78b0') },
+    uFoam: { value: new T.Color('#f4fbfc') },
     uFadeNear: { value: options.fadeNear ?? 52 },
     uFadeFar: { value: options.fadeFar ?? 135 },
   };
