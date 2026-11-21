@@ -90,11 +90,12 @@ export function nodeById(id, islands = []) {
 // ---------- THREE builder ----------
 const CAP = { rocks: 140, weed: 420, node: 128 };
 const PAL = {
-  rock: 0x6f7f7a, rockShade: 0x55635f, moss: 0x5f7f58,
+  rock: 0x5a6965, rockShade: 0x44514e, moss: 0x4c6a47,
   weed: 0x1f5a4a, weedTip: 0x4f8f63, kelp: 0x1b5058,
 };
-// floor sand as linear vertex colours: cool, slightly green-grey so the depth tint reads teal
-const SAND = [0.55, 0.6, 0.52], LIGHT = [0.64, 0.68, 0.58], DARK = [0.42, 0.47, 0.43];
+// floor sand as linear vertex colours: muted, slightly green-grey so the depth tint reads teal.
+// Kept low because the scene's hemisphere (1.8) + sun (2.5) light is tuned for the surface.
+const SAND = [0.3, 0.32, 0.27], LIGHT = [0.36, 0.37, 0.31], DARK = [0.21, 0.24, 0.22];
 
 const CAUSTIC_GLSL = /* glsl */`
 uniform float uTime;
@@ -134,10 +135,10 @@ function addCaustics(mat, uniforms, sway) {
     // depth absorption (red goes first) + caustic colour #d9fff0 (linear ~0.69, 1.0, 0.87)
     shader.fragmentShader = CAUSTIC_GLSL + shader.fragmentShader
       .replace('#include <color_fragment>', `#include <color_fragment>
-      diffuseColor.rgb *= mix(vec3(1.0), vec3(0.45, 0.72, 0.78), clamp(-vCausticPos.y / 12.0, 0.0, 1.0));`)
+      diffuseColor.rgb *= mix(vec3(1.0), vec3(0.35, 0.6, 0.65), clamp(-vCausticPos.y / 10.0, 0.0, 1.0));`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
       float lrFade = uCaustic * clamp(1.0 + vCausticPos.y / 30.0, 0.45, 1.0);
-      totalEmissiveRadiance += vec3(0.69, 1.0, 0.87) * (lrCaustic(vCausticPos.xz, uTime) * 0.35 * lrFade);`);
+      totalEmissiveRadiance += vec3(0.69, 1.0, 0.87) * (lrCaustic(vCausticPos.xz, uTime) * 0.4 * lrFade);`);
   };
   mat.customProgramCacheKey = () => (sway ? 'lr-caustic-sway' : 'lr-caustic');
   return mat;
@@ -185,36 +186,36 @@ function lump(T, geo, jitter, faceColor) {
 function nodeParts(T, type) {
   const c0 = new T.Color();
   if (type === 'sand') {   // ochre-gold mound, pale crown, shell/pebble specks, dark rim ring on the floor
-    const g = new T.SphereGeometry(0.6, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.45, 1);
+    const g = new T.SphereGeometry(0.4, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.8, 1);   // ~0.8 w x 0.32 t
     const mound = lump(T, g, 0.12, (c, f, x, y) => {
       const r = hash(f, 9, 6);
-      c.set(y < 0.06 ? 0x8a6a3a : r < 0.07 ? 0xf6efe2 : r < 0.12 ? 0x5e574d : y > 0.19 ? 0xe6c98a : 0xc9a560);
+      c.set(y < 0.05 ? 0x8a6a3a : r < 0.07 ? 0xf6efe2 : r < 0.12 ? 0x5e574d : y > 0.22 ? 0xe6c98a : 0xc9a560);
     });
-    const rim = lump(T, new T.RingGeometry(0.5, 0.7, 12, 1).rotateX(-Math.PI / 2).translate(0, 0.02, 0), 0,
+    const rim = lump(T, new T.RingGeometry(0.34, 0.46, 12, 1).rotateX(-Math.PI / 2).translate(0, 0.02, 0), 0,
       (c, f) => c.set(0x4f3c22).lerp(c0.set(0x6e5430), hash(f, 2, 6) * 0.5));
     return [{ glow: 0xc9a560, geo: merge(T, [mound, rim]) }];
   }
   if (type === 'clay') {   // squat orange lump, lit top, dark undersides
-    const g = new T.DodecahedronGeometry(0.42, 0).scale(1.15, 0.7, 1).translate(0, 0.18, 0);
+    const g = new T.DodecahedronGeometry(0.27, 0).scale(1.1, 0.85, 1).translate(0, 0.19, 0);   // ~0.6 w x 0.45 t
     return [{ glow: 0xc8703e, geo: lump(T, g, 0.25, (c, f, x, y) =>
-      c.set(y > 0.3 ? 0xe08e55 : y < 0.12 ? 0x8f4a2a : 0xc8703e).lerp(c0.set(0x8f4a2a), hash(f, 1, 6) * 0.25)) }];
+      c.set(y > 0.3 ? 0xe08e55 : y < 0.1 ? 0x8f4a2a : 0xc8703e).lerp(c0.set(0x8f4a2a), hash(f, 1, 6) * 0.25)) }];
   }
   if (type === 'scrap') {  // three bent plates leaning together: rusty edges, one painted stripe
     const plates = [];
     for (let k = 0; k < 3; k++) {
-      const g = new T.BoxGeometry(0.85, 0.04, 0.45, 6, 1, 2);
+      const g = new T.BoxGeometry(0.6, 0.03, 0.32, 6, 1, 2);   // plates ~0.6 m long, pile ~0.5 m tall
       const p = g.attributes.position;
-      for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + 0.18 * Math.sin(p.getX(i) * 3.2 + k));
+      for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + 0.08 * Math.sin(p.getX(i) * 4.5 + k));
       plates.push(lump(T, g, 0, (c, f, x, y, z) => c.set(
-        Math.abs(x) > 0.3 || Math.abs(z) > 0.16 ? 0xb0714a : k === 1 && Math.abs(x) < 0.1 ? 0xd9a441 : 0x9fb2bb))
-        .rotateZ(0.35 + k * 0.4).rotateY(k * 2.1).translate(0.12 * (k - 1), 0.22, 0.08 * k));
+        Math.abs(x) > 0.21 || Math.abs(z) > 0.11 ? 0xb0714a : k === 1 && Math.abs(x) < 0.07 ? 0xd9a441 : 0x9fb2bb))
+        .rotateZ(0.35 + k * 0.4).rotateY(k * 2.1).translate(0.08 * (k - 1), 0.16, 0.05 * k));
     }
     return [{ glow: 0x9fb2bb, geo: merge(T, plates), mat: { metalness: 0.45, roughness: 0.55 } }];
   }
   // metalore: dark rock + glowing pale-blue crystal shards (separate part, brighter emissive)
-  const g = new T.IcosahedronGeometry(0.45, 1).scale(1.1, 0.75, 1).translate(0, 0.2, 0);
+  const g = new T.IcosahedronGeometry(0.36, 1).scale(1.1, 0.8, 1).translate(0, 0.17, 0);   // rock ~0.8 w; shard tips ~0.7 m
   const rock = lump(T, g, 0.3, (c, f) => c.set(0x3e4650).lerp(c0.set(0x2c323a), hash(f, 3, 7) * 0.6));
-  const shards = [[0.22, 0.42, 0.08, 0.5, 0.3], [-0.2, 0.4, -0.12, -0.45, 1.9], [0.02, 0.48, -0.26, 0.2, 4.1], [-0.08, 0.44, 0.24, -0.3, 2.8]]
+  const shards = [[0.18, 0.38, 0.06, 0.5, 0.3], [-0.16, 0.36, -0.1, -0.45, 1.9], [0.02, 0.44, -0.21, 0.2, 4.1], [-0.06, 0.4, 0.19, -0.3, 2.8]]
     .map(([x, y, z, tilt, yaw]) => lump(T, new T.OctahedronGeometry(0.1, 0).scale(0.8, 2.2, 0.8)
       .rotateZ(tilt).rotateY(yaw).translate(x, y, z), 0, (c) => c.set(0x9fd4ff)));
   return [
@@ -287,7 +288,7 @@ export function createSeafloor(T, { islands = [] } = {}) {
     return mesh.count++;
   };
   const nodeYaw = (n) => hash(Math.round(n.x * 10), Math.round(n.z * 10), 90) * 6.283;
-  const nodeScale = (n) => 0.95 + 0.25 * hash(Math.round(n.x * 10), Math.round(n.z * 10), 91);
+  const nodeScale = (n) => 0.9 + 0.2 * hash(Math.round(n.x * 10), Math.round(n.z * 10), 91);
 
   function refreshNodes() {
     for (const type of NODE_TYPES) for (const m of nodeMeshes[type]) m.count = 0;
