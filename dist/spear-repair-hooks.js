@@ -158,7 +158,7 @@ export function attachSpearRepair(ctx) {
   function setTileHp(x, z, v) {
     if (ctx.role() === 'guest') return;
     const w = ctx.world(); if (!w.tileHp || typeof w.tileHp !== 'object') w.tileHp = {};
-    const h = Number(v); if (!Number.isFinite(h) || h >= TILE_MAX_HP) delete w.tileHp[x + ',' + z]; else w.tileHp[x + ',' + z] = Math.max(0, h);
+    const h = Number(v); if (!Number.isFinite(h) || h >= TILE_MAX_HP) delete w.tileHp[x + ',' + z]; else w.tileHp[x + ',' + z] = Math.max(1, h); // 0 would be a broken tile that is still there (saves clamp to 1 too)
   }
   /** Test helper: act as if the held spear just landed a hit (marker, sound, host wear). */
   function testHit() {
