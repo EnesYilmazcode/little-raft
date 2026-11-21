@@ -511,6 +511,7 @@ class Run:
         self.screenshot(f'{cid}-menu')
         exits0 = self.js('__lrProbe.exits')
         self.key('Escape', 'Esc (in pause menu)'); self.settle(700)
+        self.flush()  # pointerlockchange is delivered with the rendering update: let a lock drop reach the page before reading it
         s = self.snap()
         self.window_alive(f'{cid}.window2', 'Esc in the pause menu')
         self.check(f'{cid}.resume', 'second Esc closes the pause menu and resumes the game',
