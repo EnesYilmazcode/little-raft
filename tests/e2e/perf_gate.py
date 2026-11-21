@@ -58,7 +58,11 @@ with sync_playwright() as p:
     # JIT warm-up: at full size software GL runs ~1-3 fps, so per-frame code never gets optimized by V8 and every double
     # gets boxed, inflating allocation figures. Run frames at a tiny viewport first, then measure at full size.
     if a.warm:
+        tokens = "Array.from(raftDebug.targets, t => t.token).join()"; first, extra = page.evaluate(tokens), 0
         page.set_viewport_size({'width': 240, 'height': 136}); page.evaluate(COUNT, a.warm)
+        # keep warming until a floating item has respawned (a token changed), so the respawn path is warm before measuring
+        while page.evaluate(tokens) == first and extra < 9000: page.evaluate(COUNT, 150); extra += 150
+        rep['warmRespawnFrames'] = extra
         page.set_viewport_size({'width': 1280, 'height': 720})
     page.evaluate(COUNT, 30)
     rep['warmFrames'] = a.warm
