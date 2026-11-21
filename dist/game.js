@@ -42,6 +42,7 @@ const FISH_REACH = 26, PENDING_MS = 2500, JOIN_TIMEOUT = 15000, ACK_TIMEOUT = 20
 const CHARGE_MS = 900, MIN_CHARGE = .15, WEAR_PER_CATCH = 2, MAX_HEALTH = 100;
 const ROPE_SEGMENTS = 16, ITEM_FLOAT = .05, CAMERA_ROLL = .2;
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const SUN_OFFSET = Object.freeze([-15, 28, 12]), SHADOW_MARGIN = 4, SHADOW_MIN = 8, SHADOW_MAX = 25; // sun light offset from its target; shadow box half-size limits (m)
 const TIMBER = new Set(['#bb8a53','#c69860','#ad7c4a','#5e4029','#9c7649', '#c8995f', '#d3a368', '#8c6745', '#d5a265', '#a97d4c', '#b4824b', '#906f48', '#725942', '#756a49', '#ad8153']);
 const STYLE_ID = 'little-raft-engine-style';
 const HUD_CSS = `
@@ -288,7 +289,7 @@ export function mount(transfer = null) {
     renderer.setSize(innerWidth, innerHeight);
     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
     scene.add(new T.HemisphereLight('#f2ead4', '#3d6b6a', 1.8));
-    sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(-15, 28, 12); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, {left:-25, right:25, top:25, bottom:-25}); sun.shadow.bias = -.001; scene.add(sun);
+    sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.001; scene.add(sun, sun.target);
     quality = createQuality({renderer, sun, preset:options.graphics}); // owns pixel ratio, shadow map size and sun.castShadow
     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.receiveShadow = true; scene.add(ocean.mesh); ocean.update(elapsed);
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
@@ -304,7 +305,7 @@ export function mount(transfer = null) {
     for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scenery.add(g); }
     for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; scenery.add(g); }
     for (const m of mergeStatic(scenery)) scene.add(m);
-    rebuildRaft();
+    rebuildRaft(); fitShadow();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     syncItems(); refreshPointerUI(true);
   }
@@ -348,6 +349,17 @@ export function mount(transfer = null) {
     }
   }
 
+  // Fits the sun's shadow box to the raft (plus a margin for props, avatars and nearby supplies). Call after tiles change.
+  // The box never grows past the old fixed ±25 m, so texels are never coarser than before.
+  function fitShadow() {
+    if (!sun || !world.tiles.length) return;
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const [x, z] of world.tiles) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+    const cx = (x0 + x1), cz = (z0 + z1), r = clamp(Math.hypot(x1 - x0 + 1, z1 - z0 + 1) + SHADOW_MARGIN, SHADOW_MIN, SHADOW_MAX); // tiles are 2 m: centre = sum, half-diagonal = hypot(span + 1)
+    sun.target.position.set(cx, 0, cz); sun.position.set(cx + SUN_OFFSET[0], SUN_OFFSET[1], cz + SUN_OFFSET[2]);
+    const d = Math.hypot(...SUN_OFFSET), cam = sun.shadow.camera;
+    Object.assign(cam, {left:-r, right:r, top:r, bottom:-r, near:Math.max(.5, d - r - 6), far:d + r + 6}); cam.updateProjectionMatrix();
+  }
   // Bakes every mesh under `root` (world transforms) into one non-shadow-casting mesh per material; disposes the parts.
   function mergeStatic(root) {
     root.updateMatrixWorld(true);
@@ -595,7 +607,7 @@ export function mount(transfer = null) {
         else if (!bag.remove(a.recipe, 1)) { emit({kind:'notice', text:`Craft a ${itemName(a.recipe)} first`}, actor); return; }
         world.decor.push({type:a.recipe, x:a.x, z:a.z});
       } else return;
-      rebuildRaft(); emit({kind:'build', text:a.recipe === 'floor' ? 'A little more room!' : `${ITEM_INFO[a.recipe].name} placed`}, 'all');
+      rebuildRaft(); fitShadow(); emit({kind:'build', text:a.recipe === 'floor' ? 'A little more room!' : `${ITEM_INFO[a.recipe].name} placed`}, 'all');
       return;
     }
     if (a.kind === 'fish') {
@@ -967,7 +979,7 @@ export function mount(transfer = null) {
     world = b.world; hostBag = snapBag(b.host) ?? new Bag(); guestBag = snapBag(b.guest) ?? new Bag();
     if (b.physics) physics = new PlayerPhysics(b.physics); else { const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); }
     if (!world.items.length) for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
-    if (scene) { syncItems(); rebuildRaft(); }
+    if (scene) { syncItems(); rebuildRaft(); fitShadow(); }
   }
   function closeConnection() {
     joinTimer = cancelTimer(joinTimer); joinDeadline = 0; networkReady = false;
@@ -1043,7 +1055,7 @@ export function mount(transfer = null) {
         } else { // older host without personal bags: mirror its shared stock
           const b = Bag.fromCounts(w.stock, {tools:['hook', 'hammer', 'fishingrod']}); if (remoteBag) b.select(remoteBag.selectedIndex); remoteBag = b;
         }
-        syncItems(); if (changed && scene) rebuildRaft();
+        syncItems(); if (changed && scene) { rebuildRaft(); fitShadow(); }
         if (first) {
           networkReady = true; joinTimer = cancelTimer(joinTimer); joinDeadline = 0;
           setStatus('Connected! You are aboard your brother’s raft.'); setConnectionLabel(`TWO ABOARD · ${room.toUpperCase()}`);
