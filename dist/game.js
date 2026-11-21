@@ -355,7 +355,7 @@ export function mount(transfer = null) {
     for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
     world.tiles.forEach(([x, z]) => { const g = createFloor(T, x * 719 + z * 311, mat); g.position.set(x * 2, 0, z * 2); raft.add(g); });
     for (const d of world.decor) {
-      let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? createCraft(T, d.type); } // [progression-hook] catch (e) { console.warn('craft model failed', e); }
+      let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? createCraft(T, d.type); } catch (e) { console.warn('craft model failed', e); } // [progression-hook]
       if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); raft.add(detailed); continue; }
       const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2);
       if (d.type === 'sail') { cylinder(.065, .08, 3.8, '#906f48', 0, 1.9, 0, g); box(2.5, .07, .07, '#906f48', 0, 3.2, 0, g); const s = new T.Mesh(new T.PlaneGeometry(2.35, 2.1), clothMat); s.position.set(0, 2.15, .06); g.add(s); }

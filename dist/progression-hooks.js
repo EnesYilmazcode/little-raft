@@ -125,6 +125,7 @@ export function attachProgression(ctx) {
   // ---------- guest-side effects ----------
   function effect(e) {
     if (e.kind !== 'prog:sync') return false;
+    if (!isRemote()) return true; // host never adopts snapshots it did not make
     if (e.prog && typeof e.prog === 'object') { remote.prog = new Progression(e.prog); gateCache = null; }
     if (e.stations && typeof e.stations === 'object') remote.stations = e.stations;
     return true;
