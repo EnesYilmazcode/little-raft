@@ -143,7 +143,8 @@ export function mount(transfer = null) {
     return bag.slots.findIndex(s => toolRole(s?.kind) === 'hook'); // [progression-hook]
   }
   const hookDurability = (bag, prefer) => { const i = hookIndex(bag, prefer); return i < 0 ? 0 : clamp(bag.slots[i].durability ?? MAX_HEALTH, 0, MAX_HEALTH); };
-  const legacyStock = bag => { const c = bag.counts(); return Object.fromEntries(STOCK_KEYS.map(k => [k, c[k] ?? 0])); };
+  let stockSrc = null, stockOut = null; // bag.counts() is shared until the bag changes: rebuild the legacy view only then
+  const legacyStock = bag => { const c = bag.counts(); if (c !== stockSrc) { stockSrc = c; stockOut = Object.freeze(Object.fromEntries(STOCK_KEYS.map(k => [k, c[k] ?? 0]))); } return stockOut; };
 
   // Builds host/guest bags for a cleaned world. New saves carry snapshots; older saves only carry shared stock.
   function bagsFromWorld(w) {
@@ -1897,16 +1898,18 @@ export function mount(transfer = null) {
   }
   const worldPos = o => { if (!o) return null; const p = o.getWorldPosition(new T.Vector3()); return {x:p.x, y:p.y, z:p.z, visible:o.visible}; };
   // raftDebug.hud: a light live view for the timer-driven HUD readers (onboarding 4 Hz, prompts 10 Hz), holding only
-  // the keys they read from .state. No deep copies: arrays are the live world/bag lists (read only); bag counts and
-  // ownedTools are rebuilt at most once per rendered frame (or every 100 ms while rAF is idle). Objects handed out are
+  // the keys they read from .state. No deep copies: arrays are the live world/bag lists (read only); bag counts (the bag's
+  // shared frozen counts()) and ownedTools are re-checked at most once per rendered frame (or every 100 ms while rAF is
+  // idle) and rebuilt only when the bag changed. Objects handed out are
   // never mutated after the fact, so a reader may keep them (onboarding keeps the last pickup).
   let hudAt = -1, hudBuilt = 0, hudBag = null, hudStock = null, hudOwned = null, hudInv = null, hudPick = null, hudPickSrc = null, hudPickType = null;
   const hudModeOf = kind => (kind === 'hammer' ? 'build' : kind === 'fishingrod' ? 'fish' : kind === 'hook' ? 'hook' : DECOR_TYPES.includes(kind) ? 'place' : 'none');
   const hudCounts = () => {
     const bag = localBag(), now = performance.now();
     if (bag !== hudBag || hudAt !== last || now - hudBuilt > 100) {
-      hudBag = bag; hudAt = last; hudBuilt = now; hudStock = bag.counts();
-      hudOwned = []; if (hudStock.hook > 0) hudOwned.push('hook'); if (hudStock.hammer > 0) hudOwned.push('hammer'); if (hudStock.fishingrod > 0) hudOwned.push('fishingrod');
+      hudBag = bag; hudAt = last; hudBuilt = now;
+      const c = bag.counts(); if (c === hudStock && hudOwned) return hudStock; // shared until the bag changes
+      hudStock = c; hudOwned = []; if (hudStock.hook > 0) hudOwned.push('hook'); if (hudStock.hammer > 0) hudOwned.push('hammer'); if (hudStock.fishingrod > 0) hudOwned.push('fishingrod');
     }
     return hudStock;
   };
