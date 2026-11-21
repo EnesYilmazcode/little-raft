@@ -9,7 +9,8 @@
 // userData.strikeNormal Vector3: outward normal of the striking face (0,0,-1)
 // userData.clawTip      Vector3: tip of the claw, in root space
 // userData.firstPerson  suggested camera-space pose for a right-hand hold (tune in game)
-// Meshes: handle, head, face, collar (+ wedge), rivets, rope wrap, rope ties = 7.
+// Parts: handle, head, face, collar (+ wedge), rivets, rope wrap, rope ties = 7, merged into one mesh (one draw).
+import { mergeChildMeshesPBR } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 export function createHammer(T) {
   const root = new T.Group();
   root.name = 'buildHammer';
@@ -102,8 +103,10 @@ export function createHammer(T) {
 
   // ================= 1. worn wooden handle =================
   {
+    // Rings every 12 mm where the wood shows; sparse under the rope wrap and inside the collar/head, which hide it.
     const ys = [0, 0.0008, 0.003, 0.006, 0.01];
-    for (let y = 0.016; y < TOP - 0.004; y += 0.012) ys.push(y);
+    const hidden = y => (y > WRAP_BOT + 0.008 && y < WRAP_TOP - 0.008) || (y > COLLAR_Y - COLLAR_H / 2 + 0.008 && y < COLLAR_Y + COLLAR_H / 2 - 0.006) || (y > HY - 0.036 && y < TOP - 0.02);
+    for (let y = 0.016; y < TOP - 0.004; y += 0.012) if (!hidden(y) || !hidden(ys[ys.length - 1]) || y - ys[ys.length - 1] > 0.045) ys.push(y);
     const pts = [];
     const capR = 0.01;
     for (const y of ys) {
@@ -317,8 +320,8 @@ export function createHammer(T) {
         return out.set(Math.cos(a) * ropeX(y), y, Math.sin(a) * ropeZ(y));
       }
     }
-    const turns = 23;
-    const tub = turns * 14, rad = 6;
+    const turns = 23, perTurn = 8, k14 = 14 / perTurn; // colour pattern was authored for 14 segments per turn
+    const tub = turns * perTurn, rad = 6;
     const geo = new T.TubeGeometry(new Wrap(turns), tub, ROPE_R, rad, false);
     const n = geo.attributes.position.count;
     const cols = new Float32Array(n * 3);
@@ -326,8 +329,8 @@ export function createHammer(T) {
     const c = new T.Color();
     for (let i = 0; i < n; i++) {
       const j = Math.floor(i / (rad + 1)), k = i % (rad + 1);
-      const ply = Math.sin((k / rad) * Math.PI * 2 * 3 + j * 1.25); // 3-ply twist
-      const dirt = 0.5 + 0.5 * Math.sin(j * 0.07) * Math.sin(j * 0.031 + 1.3);
+      const ply = Math.sin((k / rad) * Math.PI * 2 * 3 + j * k14 * 1.25); // 3-ply twist
+      const dirt = 0.5 + 0.5 * Math.sin(j * k14 * 0.07) * Math.sin(j * k14 * 0.031 + 1.3);
       c.copy(base).lerp(ply > 0 ? hi : lo, Math.abs(ply) * 0.55).lerp(lo, dirt * 0.25);
       cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
     }
@@ -383,6 +386,7 @@ export function createHammer(T) {
   const center = box.getCenter(new T.Vector3());
   inner.position.sub(center);
   const size = box.getSize(new T.Vector3());
+  mergeChildMeshesPBR(T, inner); // static parts: one draw, each part's material look baked per vertex
 
   root.userData.size = { x: size.x, y: size.y, z: size.z };
   root.userData.grip = new T.Vector3(0, GRIP_Y, 0).sub(center);
