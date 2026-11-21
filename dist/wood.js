@@ -1,5 +1,5 @@
 // A small original procedural timber texture, shared by every plank material.
-// The incoming colour is only a key: it is weathered (sun-bleached, desaturated toward grey-olive) and
+// The incoming colour is only a key: it is weathered (sun-bleached, pulled toward a warm weathered tan) and
 // painted per pixel once with grain streaks, worn dark board edges, dirt/moss blotches and nail stains.
 // One canvas per colour, cached; no per-frame cost.
 const W = 128, H = 512, cache = new Map();
@@ -7,9 +7,9 @@ const W = 128, H = 512, cache = new Map();
 function weathered(color) {
  const n = parseInt(String(color).replace('#', ''), 16) || 0xbb8a53;
  const r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255;
- const lum = 0.3 * r + 0.59 * g + 0.11 * b, k = 1, s = 0.8;
- // near-neutral grey-tan with the same luminance (the warm sun adds the yellow), darkened for a strong sun
- return [(r * (1 - k) + lum * 1.03 * k) * s, (g * (1 - k) + lum * 0.99 * k) * s, (b * (1 - k) + lum * 0.96 * k) * s];
+ const lum = 0.3 * r + 0.59 * g + 0.11 * b, k = 1, s = 0.78;
+ // weathered warm tan with the same luminance, darkened for a strong sun
+ return [(r * (1 - k) + lum * 1.16 * k) * s, (g * (1 - k) + lum * 0.96 * k) * s, (b * (1 - k) + lum * 0.72 * k) * s];
 }
 
 function paint(color) {
