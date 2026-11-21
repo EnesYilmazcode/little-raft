@@ -97,7 +97,7 @@ function decorCounts(S) {
   return out;
 }
 const snap = S => ({tiles:num(S.tiles), fish:num(S.fish), collected:num(S.collected), hookHealth:num(S.hookHealth), decor:decorCounts(S),
-  stock:{...(S.stock && typeof S.stock === 'object' ? S.stock : {})}, me:S.me ? {x:num(S.me.x), z:num(S.me.z), yaw:num(S.me.yaw)} : null});
+  stock:S.stock && typeof S.stock === 'object' ? (Object.isFrozen(S.stock) ? S.stock : {...S.stock}) : {}, me:S.me ? {x:num(S.me.x), z:num(S.me.z), yaw:num(S.me.yaw)} : null});
 function ctxFor(rec, S, prev, silent) {
   const base = rec?.base ?? FRESH;
   return {S0:base, prev, silent, hostWorld:hostWorld(S), mem:rec?.mem ?? {}, yawTravel:silent ? 0 : rec?.yaw ?? 0, walked:silent ? 0 : rec?.walk ?? 0,
@@ -113,15 +113,36 @@ export function countOf(step, S, rec, prev) {
   try { const c = step.count?.(S, rec?.base ?? FRESH, ctxFor(rec, S, prev, false)); return c ? [Math.max(0, Math.min(num(c[0]), num(c[1]))), num(c[1]), ...(typeof c[2] === 'string' ? [c[2]] : [])] : null; } catch { return null; }
 }
 export const hintOf = (step, S) => { try { return String((typeof step.hint === 'function' ? step.hint(S ?? {}) : step.hint) ?? ''); } catch { return ''; } };
-const chapterOrder = steps => [...new Set(steps.map(s => s.chapter))];
+// Polled 4 Hz: plain loops, no per-poll Sets/closures (a few dozen steps, so the quadratic scans are cheap).
 export function currentChapter(steps, done) {
-  return chapterOrder(steps).find(ch => steps.some(s => s.chapter === ch && !s.optional && !done[s.id])) ?? null;
+  // first chapter, in order of first appearance, with a required step left
+  for (let i = 0; i < steps.length; i++) {
+    const ch = steps[i].chapter;
+    let seen = false;
+    for (let j = 0; j < i && !seen; j++) seen = steps[j].chapter === ch;
+    if (seen) continue;
+    for (let j = i; j < steps.length; j++) { const s = steps[j]; if (s.chapter === ch && !s.optional && !done[s.id]) return ch; }
+  }
+  return null;
 }
+const hasStep = (steps, id) => { for (let i = 0; i < steps.length; i++) if (steps[i].id === id) return true; return false; };
+function needsMet(steps, s, done) {
+  const needs = s.needs;
+  if (!Array.isArray(needs)) return true;
+  for (let i = 0; i < needs.length; i++) { const n = needs[i]; if (!done[n] && hasStep(steps, n)) return false; }
+  return true;
+}
+function gateOpen(s, P, S) { try { return !s.show || P.track[s.id] || s.show(S); } catch { return false; } }
 export function visibleSteps(steps, P, S) {
-  const ch = currentChapter(steps, P.done), ids = new Set(steps.map(s => s.id));
-  const gate = s => { try { return !s.show || P.track[s.id] || s.show(S); } catch { return false; } };
-  const open = steps.filter(s => (s.chapter === ch || s.every) && !P.done[s.id] && arr(s.needs).every(n => P.done[n] || !ids.has(n)) && gate(s));
-  return [...open.filter(s => s.show), ...open.filter(s => !s.show)].slice(0, MAX_ROWS); // gated (urgent) steps first
+  const ch = currentChapter(steps, P.done), out = [];
+  let gated = 0;
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    if (!((s.chapter === ch || s.every) && !P.done[s.id] && needsMet(steps, s, P.done) && gateOpen(s, P, S))) continue;
+    if (s.show) out.splice(gated++, 0, s); else out.push(s); // gated (urgent) steps first
+  }
+  if (out.length > MAX_ROWS) out.length = MAX_ROWS;
+  return out;
 }
 export const createProgress = (done = []) => ({done:Object.fromEntries(arr(done).filter(x => typeof x === 'string').map(id => [id, true])), track:{}, prev:null});
 

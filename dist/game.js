@@ -2120,14 +2120,22 @@ export function mount(transfer = null) {
   const worldPos = o => { if (!o) return null; const p = o.getWorldPosition(new T.Vector3()); return {x:p.x, y:p.y, z:p.z, visible:o.visible}; };
   // raftDebug.hud: a light live view for the timer-driven HUD readers (onboarding 4 Hz, prompts 10 Hz), holding only
   // the keys they read from .state. No deep copies: arrays are the live world/bag lists (read only); bag counts and
-  // ownedTools are rebuilt at most once per rendered frame (or every 100 ms while rAF is idle). Objects handed out are
-  // never mutated after the fact, so a reader may keep them (onboarding keeps the last pickup).
-  let hudAt = -1, hudBuilt = 0, hudBag = null, hudStock = null, hudOwned = null, hudInv = null, hudPick = null, hudPickSrc = null, hudPickType = null;
+  // ownedTools are rebuilt only when the bag's slots change (slot object, kind or count: .slots is also written
+  // directly, so Bag.version alone can't tell). Objects handed out are never mutated after the fact (stock is frozen),
+  // so a reader may keep them (onboarding keeps the last pickup and stock).
+  const hudSlotSig = [];
+  let hudBag = null, hudStock = null, hudOwned = null, hudInv = null, hudPick = null, hudPickSrc = null, hudPickType = null;
   const hudModeOf = kind => (kind === 'hammer' ? 'build' : kind === 'fishingrod' ? 'fish' : kind === 'hook' ? 'hook' : DECOR_TYPES.includes(kind) ? 'place' : 'none');
   const hudCounts = () => {
-    const bag = localBag(), now = performance.now();
-    if (bag !== hudBag || hudAt !== last || now - hudBuilt > 100) {
-      hudBag = bag; hudAt = last; hudBuilt = now; hudStock = bag.counts();
+    const bag = localBag(), slots = bag.slots, n = slots.length;
+    let same = bag === hudBag && hudSlotSig.length === n * 3;
+    for (let i = 0, j = 0; i < n; i++, j += 3) {
+      const s = slots[i], kind = s ? s.kind : null, count = s ? s.count : 0;
+      if (hudSlotSig[j] !== s || hudSlotSig[j + 1] !== kind || hudSlotSig[j + 2] !== count) { same = false; hudSlotSig[j] = s; hudSlotSig[j + 1] = kind; hudSlotSig[j + 2] = count; }
+    }
+    hudSlotSig.length = n * 3;
+    if (!same || !hudStock) {
+      hudBag = bag; hudStock = Object.freeze(bag.counts());
       hudOwned = []; if (hudStock.hook > 0) hudOwned.push('hook'); if (hudStock.hammer > 0) hudOwned.push('hammer'); if (hudStock.fishingrod > 0) hudOwned.push('fishingrod');
     }
     return hudStock;
