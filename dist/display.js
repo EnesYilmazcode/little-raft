@@ -17,7 +17,7 @@ export const OLD_HOST = 'Your friend’s raft doesn’t have display shelves yet
 export const TEXT = Object.freeze({ stale: 'That spot just changed, try again', full: 'Your bag is full', busy: 'Something is already there',
   empty: 'Hold an item to display it', fill: 'Empty the shelf first', notarget: 'Nothing to display on', bad: 'That can’t go on display' });
 export const TROPHY_DOWN = 'Trophy taken down. Your journal keeps the record.';
-export const SHELF_SIZE = 0.30, STAND_SIZE = 0.34;
+export const SHELF_SIZE = 0.26, STAND_SIZE = 0.30; // largest dimension of a displayed item
 
 const KEY_RE = /^-?\d{1,3},-?\d{1,3}$/;
 const isInt = Number.isInteger;
@@ -250,11 +250,26 @@ export function createDisplay(ctx) {
       model.userData.ownBox = true;
     }
     const inner = new T.Group(); inner.add(model);
-    const box = new T.Box3().setFromObject(inner), size = box.getSize(new T.Vector3());
-    if (size.y > 1.6 * Math.max(size.x, size.z)) { inner.rotation.z = Math.PI / 2; inner.updateMatrixWorld(true); box.setFromObject(inner); box.getSize(size); } // long tools lie down
-    const s = SHELF_SIZE / Math.max(size.x, size.y, size.z, 1e-3);
-    inner.scale.multiplyScalar(s); inner.updateMatrixWorld(true);
-    box.setFromObject(inner);
+    // Normalise from the visible meshes only (held models can carry hidden helpers): the largest dimension fits the
+    // slot box, bulky items a little smaller so a cup does not dwarf a slim tool, and the item sits on the surface.
+    const box = new T.Box3(), part = new T.Box3(), size = new T.Vector3();
+    const measure = () => {
+      inner.updateMatrixWorld(true); box.makeEmpty();
+      inner.traverseVisible(o => { if (!o.isMesh || !o.geometry) return; if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); part.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld); box.union(part); });
+      if (box.isEmpty()) box.setFromObject(inner);
+      return box.getSize(size);
+    };
+    measure();
+    if (size.y > 1.6 * Math.max(size.x, size.z)) {
+      const tool = !!(ITEM_INFO[kind]?.tool || ITEMS[kind]?.tool || ITEMS[kind]?.category === 'tool');
+      if (tool) inner.rotation.set(-.26, size.z > size.x ? Math.PI / 2 : 0, 0); // tools stand up, leaning back on the rail, broad side to the front
+      else inner.rotation.z = Math.PI / 2;                                          // long materials (plank, fish) lie down
+      measure();
+    }
+    const dims = [size.x, size.y, size.z].sort((p, q) => p - q), big = Math.max(dims[2], 1e-3);
+    const s = SHELF_SIZE * (dims[1] > .75 * big ? .85 : 1) / big;
+    inner.scale.multiplyScalar(s);
+    measure();
     const c = box.getCenter(new T.Vector3());
     inner.position.set(-c.x, -box.min.y, -c.z);
     const tpl = new T.Group(); tpl.name = 'display_template:' + kind; tpl.add(inner);
@@ -265,7 +280,7 @@ export function createDisplay(ctx) {
   }
 
   function plaqueMat(text) {
-    if (plaques.has(text)) return plaques.get(text);
+    if (plaques.has(text)) { const hit = plaques.get(text); plaques.delete(text); plaques.set(text, hit); return hit; } // LRU order
     if (typeof document === 'undefined') return null;
     let tex = null;
     try {
@@ -281,7 +296,10 @@ export function createDisplay(ctx) {
     } catch { return null; }
     const m = new T.MeshStandardMaterial({ map: tex, roughness: .45, metalness: .3 }); m.userData.shared = true;
     plaques.set(text, m);
-    if (plaques.size > 24) { const [k, old] = plaques.entries().next().value; plaques.delete(k); old.map?.dispose(); old.dispose(); }
+    if (plaques.size > 24) { // evict the oldest plaque that no painted stand still shows (never dispose a visible texture)
+      const used = new Set(); for (const e of groups) { const pt = e.g.getObjectByName('plaqueText'); if (pt) used.add(pt.material); }
+      for (const [k, old] of plaques) if (old !== m && !used.has(old)) { plaques.delete(k); old.map?.dispose(); old.dispose(); break; }
+    }
     return m;
   }
 
