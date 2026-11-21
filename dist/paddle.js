@@ -5,7 +5,7 @@
 import { wearPerUse, toolRole } from './items.js';
 
 export const PADDLE = Object.freeze({
-  COOLDOWN: 0.8,     // seconds between strokes (matches SAIL.PADDLE_COOLDOWN)
+  COOLDOWN: 0.85,    // seconds between strokes (a little over SAIL.PADDLE_COOLDOWN so a lagged stroke is never dropped)
   STROKE_TIME: 0.6,  // seconds of the visible stroke
   TILE: 2,           // raft tile size (metres)
   SPLASH_OUT: 1.3,   // metres in front of the player where the blade hits the water
@@ -96,8 +96,10 @@ export function attachPaddle(ctx) {
   /** Host side of a paddle stroke: validates the actor, applies the sail op, wears the paddle. True when handled. */
   function apply(a, actor, bag) {
     if (!a || a.kind !== 'sail' || a.op !== 'paddle') return false;
-    const i = Number.isInteger(a.slot) && bag.slots[a.slot] && isPaddle(bag.slots[a.slot].kind) ? a.slot
-      : bag.slots.findIndex((s) => s && isPaddle(s.kind));
+    // The stroke must name the paddle slot it was made with (a paddle tucked in the backpack can't push), and a
+    // bad angle is refused here: sailing-core would ignore it, but the paddle would still wear.
+    if (!Number.isFinite(a.angle)) return true;
+    const i = Number.isInteger(a.slot) && bag.slots[a.slot] && isPaddle(bag.slots[a.slot].kind) ? a.slot : -1;
     if (i < 0 || !(bag.slots[i].durability > 0)) return true;
     const who = actor === 'guest' ? ctx.other() : ctx.physics();
     if (!who || who.swimming || !onEdgeTile(ctx.tiles(), who.x, who.z)) return true;

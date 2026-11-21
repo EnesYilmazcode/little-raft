@@ -22,10 +22,10 @@ test('paddle item: tool, 60 strokes, 4 wood + 2 rope + 2 plastic, in the Tools t
   assert.ok(ITEM_ICONS.paddle?.includes('<'));
 });
 
-test('cooldown 0.8 s, same as the sailing core', () => {
-  assert.equal(PADDLE.COOLDOWN, SAIL.PADDLE_COOLDOWN);
+test('cooldown 0.85 s, just over the sailing core', () => {
+  assert.ok(PADDLE.COOLDOWN > SAIL.PADDLE_COOLDOWN && PADDLE.COOLDOWN < SAIL.PADDLE_COOLDOWN + 0.1);
   assert.ok(canStroke(0, -Infinity));
-  assert.ok(!canStroke(10.79, 10)); assert.ok(canStroke(10.8, 10)); assert.ok(canStroke(11, 10));
+  assert.ok(!canStroke(10.84, 10)); assert.ok(canStroke(10.85, 10)); assert.ok(canStroke(11, 10));
   near(SAIL.PADDLE_CAP, 1.1);
 });
 
