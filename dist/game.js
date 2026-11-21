@@ -5,7 +5,7 @@ import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
 import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-survival-ae77fa84ac2b';
-import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
+import { createFloor, createFloorChunk, floorParts } from './deck.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft, createCraftBatch } from './crafts.js?build=v3-survival-ae77fa84ac2b';
@@ -341,10 +341,15 @@ export function mount(transfer = null) {
     parent.add(g);
   }
   // Incremental: only parts whose key changed are built or disposed, so placing one thing never rebuilds the raft.
-  const raftParts = new Map();
+  // Floor tiles are merged per 8x8-tile chunk (a few draw calls per chunk, still frustum culled); each tile's
+  // geometry is built once and cached, so adding a tile only builds that tile and re-merges its chunk.
+  const raftParts = new Map(), tileParts = new Map();
+  const tileGeo = (x, z) => { const k = x + ',' + z; let p = tileParts.get(k); if (!p) tileParts.set(k, p = floorParts(T, x * 719 + z * 311)); return p; };
   function rebuildRaft() {
-    const want = new Map();
-    for (const [x, z] of world.tiles) want.set('t' + x + ',' + z, [x, z]);
+    const want = new Map(), chunks = new Map();
+    for (const t of world.tiles) { const k = 'f' + Math.floor((t[0] + 4) / 8) + ',' + Math.floor((t[1] + 4) / 8); if (!chunks.has(k)) chunks.set(k, []); chunks.get(k).push(t); }
+    for (const [k, list] of chunks) want.set(k + ':' + list.map(t => t[0] + ',' + t[1]).sort().join(';'), list);
+    for (const k of tileParts.keys()) if (!hasTile(...k.split(',').map(Number))) tileParts.delete(k);
     farmSeen = null; // farming
     for (const d of world.decor) if (!(farmView && Farm.isPlot(d))) want.set(d.type + ':' + d.x + ',' + d.z + ',' + d.rot, d);
     for (const [k, o] of raftParts) if (!want.has(k) || o.parent !== raft) { o.removeFromParent(); disposeGeometry(o); raftParts.delete(k); }
@@ -352,7 +357,7 @@ export function mount(transfer = null) {
     for (const [k, v] of want) {
       if (raftParts.has(k)) continue;
       let g = null;
-      if (Array.isArray(v)) { g = createFloor(T, v[0] * 719 + v[1] * 311, mat); g.position.set(v[0] * 2, 0, v[1] * 2); }
+      if (Array.isArray(v)) g = createFloorChunk(T, v.map(([x, z]) => ({parts:tileGeo(x, z), x:x * 2, z:z * 2})), mat);
       else { try { g = crafts.place(v.type); } catch (e) { console.warn('craft model failed', e); } if (!g) continue; g.position.set(v.x, .22, v.z); g.rotation.y = v.rot; }
       g.userData.partKey = k; raft.add(g); raftParts.set(k, g);
     }
