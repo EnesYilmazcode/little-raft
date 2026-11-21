@@ -1375,6 +1375,7 @@ export function mount(transfer = null) {
   let swimStroke = 0; // swim stroke sound timer
   const held = (a, b) => !!(keys[a] || (b && keys[b]));
   const moveInput = {forward:0, strafe:0, yaw:0, jump:false, sprint:false, tiles:null, deckY:0, waterY:0, blocked:null}; // reused every frame
+  const climbIn = {forward:0, jump:false, yaw:0}; // [buildpack] ladder input, reused every frame
   const steps = {n:0, step:0}; // splitSteps fills this every frame (no allocation)
   function movePlayer(frameDt, input) {
     splitSteps(frameDt, .05, .25, steps); // real frame time in equal steps; a long stall must not teleport the player
@@ -1382,7 +1383,8 @@ export function mount(transfer = null) {
     const ci = controls?.movement(laneDt, running && input, physics); // controls lane: polls input, applies look, shapes movement
     if (!running) { walking = false; return; }
     const fwd = ci ? ci.forward : input ? held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown') : 0, side = ci ? ci.strafe : input ? held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft') : 0;
-    const climb = building && !diving?.state.diving ? building.climb(controls?.feel ?? null, physics, deckY(), {forward:fwd, jump:ci ? ci.jump : input && held('Space'), yaw}, dt) : undefined; // [buildpack] ladder (MoveFeel)
+    if (building) { climbIn.forward = fwd; climbIn.jump = !!(ci ? ci.jump : input && held('Space')); climbIn.yaw = yaw; } // [buildpack] reused, no per-frame object
+    const climb = building && !diving?.state.diving ? building.climb(controls?.feel ?? null, physics, deckY(), climbIn, dt) : undefined; // [buildpack] ladder (MoveFeel)
     const surf = building ? building.preStep(physics, deckY(), climb) : null; // building-pieces lane hook [buildpack] climb
     const dive = diving?.move(laneDt, physics, {forward:fwd, strafe:side, yaw, pitch, up:ci ? ci.jump : input && held('Space'), down:ci ? !!ci.crouch : input && held('KeyC'), fast:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'), gather:input && (controls ? controls.input.down('interact') : held('KeyE'))}); // diving lane hook
     if (dive && !diveWarmed) warmDive(); // first dive before the idle warm-up ran: compile now, before its first underwater frame

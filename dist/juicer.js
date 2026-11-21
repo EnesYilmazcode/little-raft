@@ -167,7 +167,7 @@ export function createJuicer(ctx) {
       const t = spin.get(k) ?? 0;
       paintJuicer(g, old ? null : st.j[k] ?? null, t);
     }
-    for (const [k, t] of spin) if (t >= SPIN_SECONDS) spin.delete(k);
+    if (spin.size) for (const [k, t] of spin) if (t >= SPIN_SECONDS) spin.delete(k); // no iterator on idle frames
   }
 
   function load(data, from) {

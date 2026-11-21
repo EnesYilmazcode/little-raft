@@ -134,3 +134,22 @@ The content provider (priority 1) then beats the game-context eat tip (priority 
 8. Prompt: with a cookedfish selected and the gull perched, `prompt` returns `<kbd>E</kbd>Offer fish (0/3)`; the name is escaped (`<b>` comes back as `&lt;b&gt;`).
 9. Model: `createPerch` has `find0..2`, fits .6 x 1.3 x .6; `paintPerch(g, ['wood','rope'])` shows two slots. animals-ui: no test change needed (DOM only).
 Also: `tests/progression.test.mjs` passes (complete entry + radius); keep `?build=` stamps (`tests/module-specifiers.test.mjs`). Run `npm test` and shoot.py; `errors` must be empty.
+
+## Build notes
+- **Files.** New: `dist/gull.js` (pure rules on top, `createGull` below), `dist/gull-models.js` (`createPerch`, `paintPerch`, `PERCH_Y`, `FIND_COLOR`), `tests/gull.test.mjs` (11 tests).
+  Hooks tagged `[gull]`: `items.js` (perch row after the candle, `BLOCK_RADII.perch = .2`), `content.js` (import + `FEATURES`), `craft-book.js` (category + ITEM_TEXT),
+  `item-svg.js` (perch icon), `animals-ui.js` (options `{title, kind, label, domId}`, CSS now `dialog.lr-an …`), and `live.js` PRELOAD (`gull-models.js`, `gull.js`;
+  `tests/live-preload.test.mjs` requires the static import graph there). Every new import carries `?build=v3-survival-ae77fa84ac2b`.
+- **game.js:715 not edited by this lane.** The juicer lane made the same change (a content prompt starting with `<kbd>E</kbd>` beats the eat hint). Checked in the close-up:
+  with grilled fish selected, `#lrPrompt` reads "E Offer fish (0/3)".
+- **Small departures.** `treat(st, food, bag, decor)` takes `decor` as a 4th argument so move-in can set `home = target(st, decor)`. A `rehome(st, decor)` helper is exported
+  (used by `cleanGull` and the host's 1 Hz tick). `treatAt`/`bondAt` default to `-1e9`. `fw` is clamped to `0..FIND_BASE`. A moved-in gull with no saved name gets the
+  seeded default name on load. `tickGull` bumps `r` when it makes a find. `physics.y` is the eye, so follow uses feet = `y - 1.6` and the gull hovers at feet + 1.9
+  (about 0.3 m above the head, 0.35 m to the side). The heart burst runs on every client when `pops` grows, the host included, so no extra host-side pop is needed.
+  The perch hit is a sphere at local y .7, r .45, and the gull hit is at its feet + .2, r .3. They do not overlap, so looking at the tray collects and looking at the bird pets.
+- **Picking without THREE.** The ray and `toWorld` use plain numbers (`raft.matrixWorld.elements`), so prompts and actions work in node tests with no renderer.
+- **Debug.** `raftDebug.content.gull`: `state()`, `clock`, `mode()`, `pose()` (with `world` pos), `target()`, `pick(aim)`, `fastForward(sec)`, `befriend()`, `place(x,z)`, `burst()`, `openRename()`.
+- **Verified.** `npm test` passes. `node --check` passes on every dist file. `shoot.py` reports `errors: []`. The Playwright close-up `scratchpad/r3/gull/gull_shot.py`
+  places a perch and fast-forwards to a visit. It checks the prompt while grilled fish is held, then three treats over three visits move the gull in and 800 s fill the tray.
+  It then shoots the gull resting on its perch with the tray, pets it for the heart burst, collects (+wood, plastic, rope), and renames it through `#lrGull`.
+- **Known look.** The folded wing is the shared wildlife wing. Up close it reads as a large slab along the flank. It is the same asset the wild gulls use.
