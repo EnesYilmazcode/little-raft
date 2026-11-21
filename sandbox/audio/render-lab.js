@@ -23,6 +23,9 @@ export const CASES = {
   },
   'reel-tick': one('reel', 1, 0.3),
   catch: one('catch', 1, 1.2),
+  // hook cues where the hook usually is (16 m out, ahead and to the right of the listener)
+  'catch-16m': { seconds: 1.2, run: (e) => { e.setListener(0, 1.6, 0, 0, 0, -1); e.play('catch', 1, { at: 0.05, x: 6, y: 0, z: -14.8 }); } },
+  'splash-16m': { seconds: 1.0, run: (e) => { e.setListener(0, 1.6, 0, 0, 0, -1); e.play('splash', 0.55, { at: 0.05, x: 6, y: 0, z: -14.8 }); } },
   hammer: one('hammer', 1, 0.6),
   'hammer-left': { seconds: 0.6, run: (e) => { e.setListener(0, 1.6, 0, 0, 0, -1); e.play('hammer', 1, { at: 0.05, x: -6, y: 1, z: 0 }); } },
   'gull-far': { seconds: 4, run: (e) => { e.setListener(0, 1.6, 0, 0, 0, -1); e.play('gull', 0.8, { at: 0.05, x: 18, y: 12, z: -20 }); } },
