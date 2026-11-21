@@ -859,6 +859,35 @@ Checks: `npm test` 568/568 (was 533); shoot.py `errors: []`.
 Known limits: live two-peer co-op not run (co-op reviewed by code and unit tests). Mixed-version co-op unsupported (older builds drop the new decor and reset bags holding new kinds). Removing a barrel, sprinkler or hive with the hammer discards its contents. Fishing labels over 48 characters get cut off.
 Next ideas: hammer pickup that refunds contents, a placeable music stand, flower variety, sprinkler range ring while aiming.
 
+## loop-ux round 5: claude/loop-ux-202611210748 (base: origin/claude/raft-master 7294e26)
+Merged the unmerged round-4 branch (loop-ux-202611210648: steady recipe order and panel height, hold counter, tooltips beside their element) first. Fleet of 7 subsystem hunters, a new-player screenshot reviewer, 2 adversarial verifiers per cluster (14), and 7 fixers, each fix with a regression test.
+
+Fixed (confirmed by both verifiers unless noted):
+- **Cursor and lock:** Chrome's post-Esc SecurityError no longer counts toward drag-look fallback. The cursor stays visible in drag-look after a panel closes. `relock` is cleared on blur so the away hint shows. `acceptFirstMouse` is set in Electron. Desktop Esc now closes the hammer build wheel and keeps the lock: `raftShell.closeBuildWheel()` is called from `raftEscape`.
+- **Controls:** keys held through a panel resume when it closes, with no false press edge. A sub-frame Space tap jumps. Mouse flicks over 300px go through the look spike filter instead of being dropped. The fish journal closes on physical KeyJ.
+- **Build wheel:** holding Q no longer flickers it open and shut. While it is open, digits, the mouse wheel and E are swallowed. WASD still works, which is intended. R is consumed only for pieces that rotate.
+- **Fishing:** a rod charge or reel hold is released on blur and lock loss, so there is no stale full-power cast. E follows the prompt order. Gamepad RT uses fishing v2. Clicking during the post-catch linger recasts. Grills don't cook on the title screen.
+- **HUD:** the crosshair prompt follows the fishing stage and grill, rain and content prompts. The dive label, binoculars readout and reel bar moved out of screen centre into the crosshair-side column. The three bottom-left feeds are now one stack. Notes and achievements show once, and the toast queue is FIFO. The help text gives the right bag-close keys.
+- **Inventory:** a metal hook is repaired with R. A cast retracts when its hook leaves the slot. Barrel pity counters advance only when the loot is taken, and nets back off for 6s after a refused roll.
+- **Crafting (Raft-like):**
+  - Layout: a vertical category column, a tall scrolling recipe list with a fade, and a detail pane (big icon, used-for, have/need rows, Craft) above a 10-column backpack. The panel is the same size on every tab.
+  - Locked recipes: recipes locked behind the Tinker's Desk show as locked with the full reason, instead of "Ready" while the host refuses them.
+  - Crafting and icons: a click crafts exactly 1, and a hold repeats after 800ms with a fill. The receiver has a real icon. Tooltips never jump to the top-left or cover the Craft button.
+  - Build costs and categories: costs show per-material have/need using bag names. Cup and purifier are in Survival.
+- Refuted: Tab-to-close bag (Tab moves focus by design; help text fixed).
+
+Gate: npm test 695/695. `tests/art.test.mjs` "atlas build stays fast" is load-sensitive: it fails sometimes with ~20 agents on 4 cores and passes alone. shoot.py: no page errors; Esc from inventory leaves the game locked with no pause; Esc closes the settings panel first.
+
+Open / next:
+- Gamepad build menu (Pad12) lists decor and emits an unhandled `buildPick`.
+- Rebinding UI is not mounted in settings; several keys bypass input-map.
+- Two Invert Y settings.
+- Ctrl+W crouch-walk closes the browser tab.
+- Pieces and decor don't check each other for overlap.
+- The host does no reach check on piece and unpiece.
+- Fish journal chip overlaps the hotbar at 390px.
+- Grill progress is lost on tab discard.
+- Icon style still swaps from flat SVG to 3D mid-session.
 ## 2026-11-21 · loop-features-202611210735 (features)
 Base: origin/claude/raft-master (c96002e), plus the two round-1 commits that missed the master merge (the prompt fix).
 Branch: claude/loop-features-202611210735.
@@ -909,3 +938,13 @@ Next ideas: decor pickup with refunds, achievement hooks for content modules, fl
   mid-compile); patched the vendored three with the upstream-style guard. Full fleet-gate PASS at dbf2ca9 (983 tests,
   hook-only spawn, Esc from inventory keeps the lock, no page errors, shoot.py 159 vs 156 ms on main = +2%).
   PR #4 merged dbf2ca9 into main. PR #5 (round 6) is the open PR now.
+
+## 2026-11-21 · integrator B round 4 (alongside the parallel integrator, which shipped PRs #3 and #4)
+- Clean merges: loop-fidelity-202611210821, raft-tech, fleet-tech perf/water. Sky dome now disposed on hot swap.
+- One subagent per conflicting branch, each pushing straight to raft-master after tests, shoot.py and perf:
+  - merged loop-features-202611210722 (diving gear, Pim's trader barge, cooking pot) and 0648; loop-ux-202611210743 (menu restyle, help panel, sound settings);
+    loop-perf-202611210708 (partial: quality ladder, fog cache, cached models) and 0648; loop-visuals-202611210648 (new held hook only).
+  - skipped loop-fidelity-202611210747 (second copy of vitals/shark with a different save format; its game-mode and death card would need porting),
+    loop-perf-202611210720 (stale), loop-ux-202611210742 (redoes lock rows, still being pushed). raft-integration was already in.
+- Gate at 9b3ba49: 1023/1023, no page errors, hook-only spawn, Esc OK, perf 133 ms / 43 calls (main 912d941: 229 ms / 49 calls).
+- Recurring flake: tests/art.test.mjs atlas build-time (<1500 ms) fails under machine load (load avg > 15); passes alone.
