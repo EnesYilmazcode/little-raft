@@ -217,7 +217,27 @@ function renderKind(kind) {
 }
 
 const stale = new Map();    // kind -> blob URL replaced by setModelProvider, revoked once the new icon lands
-function finish(kind, url) {
+const decoded = new Map();  // kind -> decoded Image: keeps the bitmap hot so an <img> using the URL paints on its first frame
+// An icon is published (cached, listeners told) only once its image has decoded, so a swap or a first paint
+// never shows an empty frame between the flat sprite and the 3D render. encoding keeps the kind busy meanwhile.
+function finish(kind, url, token = null, now = false) {
+  if (url && typeof Image === 'function') {
+    if (now) { const img = new Image(); img.src = url; decoded.set(kind, img); publish(kind, url); return; } // data URL: the <img> gets it from memory at once
+    if (!token) { token = {}; encoding.set(kind, token); }
+    const img = new Image();
+    img.src = url;
+    const done = () => {
+      if (encoding.get(kind) !== token) return;               // provider swapped meanwhile: re-queued
+      decoded.set(kind, img);
+      publish(kind, url);
+    };
+    (typeof img.decode === 'function' ? img.decode() : Promise.resolve()).then(done, done);
+    return;
+  }
+  publish(kind, url);
+}
+function publish(kind, url) {
+  encoding.delete(kind);
   cache.set(kind, url);
   const w = waiters.get(kind); if (w) { waiters.delete(kind); for (const r of w) r(url || null); }
   if (url) for (const fn of listeners) { try { fn(kind, url); } catch (e) { console.error(e); } }
@@ -230,8 +250,8 @@ function encode(kind, canvas) {
   encoding.set(kind, token);
   canvas.toBlob(blob => {
     if (encoding.get(kind) !== token) return;                    // provider swapped meanwhile: re-queued
-    encoding.delete(kind);
-    finish(kind, blob ? URL.createObjectURL(blob) : '');
+    if (!blob) { encoding.delete(kind); finish(kind, ''); return; }
+    finish(kind, URL.createObjectURL(blob), token);              // still marked busy until decoded
   }, 'image/png');
 }
 
@@ -280,6 +300,28 @@ export function loadItemIcon(kind) {
   if (url || !kind || cache.has(kind) || failed) return Promise.resolve(url);
   return new Promise(r => { let w = waiters.get(kind); if (!w) waiters.set(kind, w = []); w.push(r); });
 }
+/**
+ * Render the kinds that are not cached yet right now (synchronous render + PNG encode), within budgetMs.
+ * For a panel about to open: its first paint then shows the 3D icon instead of a sprite that swaps later.
+ * Kinds still rendering in the background, or past the budget, stay with the async path.
+ * Returns the number of icons rendered here (already cached and announced when it returns).
+ */
+export function renderNow(kinds, budgetMs = 60) {
+  const t0 = performance.now();
+  let n = 0;
+  for (const kind of kinds || []) {
+    if (!kind || cache.has(kind) || encoding.has(kind) || failed) continue;
+    if (performance.now() - t0 > budgetMs) break;
+    queued.delete(kind); urgent.delete(kind);
+    const canvas = renderKind(kind);
+    let url = '';
+    try { url = canvas ? canvas.toDataURL('image/png') : ''; } catch {}
+    finish(kind, url, null, true);
+    n++;
+  }
+  if (gl && !urgent.size && !queued.size && !releaseTimer && !pumping) releaseTimer = setTimeout(release, RELEASE_MS);
+  return n;
+}
 /** Queue several kinds ahead of time (rendered in idle slices). */
 export function warmIcons(kinds) { for (const k of kinds) request(k, false); }
 /** Called with (kind, url) whenever an icon (re)renders. Returns an unsubscribe function. */
@@ -289,6 +331,6 @@ export function setModelProvider(fn) {
   provider = typeof fn === 'function' ? fn : null;
   const kinds = [...cache.keys(), ...encoding.keys()];
   for (const [k, u] of cache) if (u.startsWith('blob:')) { if (stale.has(k)) URL.revokeObjectURL(stale.get(k)); stale.set(k, u); }
-  cache.clear(); encoding.clear();
+  cache.clear(); encoding.clear(); decoded.clear();
   warmIcons(kinds);
 }
