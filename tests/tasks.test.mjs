@@ -62,7 +62,7 @@ test('completion: third finish bumps streak and best once', () => {
 });
 
 test('rollTasks: streak rules, owed per missing bit, new ids from pick', () => {
-  const done = () => { const st = withIds(['rope', 'decor', 'island'], { streak: 2, best: 4 }); observeTasks(st, { kind: 'craft', item: 'rope' }); observeTasks(st, { kind: 'build', recipe: 'x' }); observeTasks(st, { kind: 'gather' }); return st; };
+  const done = () => { const st = withIds(['rope', 'decor', 'island'], { streak: 2, best: 4, seen: 3 }); observeTasks(st, { kind: 'craft', item: 'rope' }); observeTasks(st, { kind: 'build', recipe: 'x' }); observeTasks(st, { kind: 'gather' }); return st; };
   const a = done(); assert.equal(a.streak, 3);
   a.claimed[0] = 1; a.bonus = 3;
   assert.ok(rollTasks(a, 1, ALL));
@@ -75,6 +75,24 @@ test('rollTasks: streak rules, owed per missing bit, new ids from pick', () => {
   const c = withIds(['rope', 'decor', 'island'], { streak: 3, best: 5 }); observeTasks(c, { kind: 'gather' });
   rollTasks(c, 1, ALL); assert.equal(c.streak, 0); assert.equal(c.best, 5); assert.deepEqual(c.owed[0], { rope: 1 });
   assert.equal(rollTasks(c, 0, ALL), false); assert.equal(c.day, 1);
+  const solo = done(); solo.seen = 1; rollTasks(solo, 1, ALL);
+  assert.deepEqual(solo.owed[1], {}, 'no guest aboard that day: nothing owed to the guest seat');
+  assert.equal(solo.owed[0].rope, 1 + BONUS.rope); assert.equal(solo.seen, 1, 'presence resets each day');
+});
+
+test('module: guest seat is owed only on days a guest was aboard', () => {
+  const ctx = fakeCtx({ other: null });
+  const m = createTasks(ctx); m.load({ seed: 1, day: 0, ids: ['rope', 'decor', 'island'] }, 'save');
+  m.observe({ kind: 'craft', item: 'rope' });
+  m.update(.1); m.debug.nextDay();
+  assert.deepEqual(m.debug.state().owed, [{ leaf: 2 }, {}], 'solo day');
+  ctx.other = { x: 0, y: 0, z: 0 }; m.update(.1); ctx.other = null; m.update(.1);
+  m.debug.complete(0); m.debug.nextDay();
+  const id0 = m.debug.state().owed;
+  assert.ok(Object.keys(id0[1]).length > 0, 'guest was aboard: their copy is kept');
+  assert.equal(m.debug.state().seen, 1);
+  const saved = JSON.parse(JSON.stringify(m.serialize()));
+  assert.equal(cleanTasks({ ...saved, seen: undefined }, ALL).seen, 1, 'old slice: host seat only');
 });
 
 class FakeBag {
@@ -163,7 +181,9 @@ test('module: observe, claim action, guests never mutate, net load no-op on same
   assert.equal(m.view().rows[0].claimed, true);
 
   const g = fakeCtx({ role: 'guest', dayIndex: () => 0 });
-  const gm = createTasks(g); gm.load(data, 'net');
+  const gm = createTasks(g);
+  assert.equal(gm.view(), null, 'guest before the first host state: no stale local tasks');
+  gm.load(data, 'net');
   const before = JSON.stringify(gm.debug.state());
   gm.observe({ kind: 'craft', item: 'rope' }); gm.update(DAY_SECONDS * 3);
   gm.action({ kind: 'tasks.claim', i: 1 }, 'guest', g.actorBag('guest'));

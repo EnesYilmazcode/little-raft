@@ -57,6 +57,7 @@ export function createTasks(ctx) {
 
   // Host clock: advance by day deltas from daynight, or by play time when daynight is off.
   function tick(dt) {
+    if (ctx.role === 'host' && ctx.other && !(st.seen & 2)) st.seen |= 2; // guest aboard today: owe them too
     let src = null; try { src = ctx.dayIndex?.() ?? null; } catch { src = null; }
     if (Number.isInteger(src)) {
       if (lastSrc !== null && src > lastSrc) roll(src - lastSrc);
@@ -94,7 +95,7 @@ export function createTasks(ctx) {
   }
 
   function view() {
-    if (isGuest() && !hostHas) return null;
+    if (isGuest() && (!hostHas || netSig === null)) return null; // old host, or no host state yet
     const bit = isGuest() ? 2 : 1, key = rev + '|' + bit;
     if (viewCache && key === viewKey) return viewCache;
     viewKey = key; viewCache = taskView(st, bit);
@@ -109,7 +110,7 @@ export function createTasks(ctx) {
   }
   function providerPrompt(pctx) {
     const s = pctx?.state;
-    if (!s || s.pickup || s.swimming || (s.role === 'guest' && !s.networkReady)) return null;
+    if (!s || !s.running || s.pickup || s.swimming || (s.role === 'guest' && !s.networkReady)) return null;
     if (!target(null)) return null;
     return promptList();
   }

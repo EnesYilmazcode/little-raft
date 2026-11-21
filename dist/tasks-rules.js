@@ -68,7 +68,7 @@ function cleanBundle(v) {
 
 export function freshTasks(seed, needs, day = 0) {
   const s = (typeof seed === 'number' && Number.isFinite(seed) ? seed : 0) >>> 0;
-  return { v: 1, seed: s, day, ids: pick(s, day, needs), prog: [0, 0, 0], claimed: [0, 0, 0], bonus: 0, streak: 0, best: 0, playT: 0, owed: [{}, {}] };
+  return { v: 1, seed: s, day, ids: pick(s, day, needs), prog: [0, 0, 0], claimed: [0, 0, 0], bonus: 0, streak: 0, best: 0, playT: 0, owed: [{}, {}], seen: 1 };
 }
 
 /** Validated slice. Non-object -> fresh (seed given, day 0). Never retro-completes anything. */
@@ -86,6 +86,7 @@ export function cleanTasks(v, needs, seed = 0) {
   const owed = Array.isArray(v.owed) ? [cleanBundle(v.owed[0]), cleanBundle(v.owed[1])] : [{}, {}];
   return {
     v: 1, seed: s, day, ids, prog, claimed, bonus: okIds ? clampInt(v.bonus, 0, 3, 0) : 0,
+    seen: clampInt(v.seen, 0, 3, 1) | 1,
     streak, best: Math.max(best, streak), playT: typeof v.playT === 'number' && Number.isFinite(v.playT) ? Math.min(DAY_SECONDS, Math.max(0, v.playT)) : 0, owed,
   };
 }
@@ -117,20 +118,24 @@ function addOwed(st, slot, bundle) {
   }
 }
 
-/** Advance `k` days: unclaimed rewards move to owed, streak breaks unless all 3 were done (k === 1). */
+/**
+ * Advance `k` days: unclaimed rewards move to owed (only for seats in `st.seen`, the crew members aboard
+ * that day; a missing mask owes both), streak breaks unless all 3 were done (k === 1).
+ */
 export function rollTasks(st, k, needs) {
   const n = Math.floor(k);
   if (!(n >= 1)) return false;
-  const all = allDone(st);
+  const all = allDone(st), seen = Number.isInteger(st.seen) ? st.seen | 1 : 3;
+  const bits = [1, 2].filter(b => seen & b);
   for (let i = 0; i < st.ids.length; i++) {
     if (!isDone(st, i)) continue;
-    for (const bit of [1, 2]) if (!(st.claimed[i] & bit)) addOwed(st, bit - 1, BY_ID[st.ids[i]].reward);
+    for (const bit of bits) if (!(st.claimed[i] & bit)) addOwed(st, bit - 1, BY_ID[st.ids[i]].reward);
   }
-  if (all) for (const bit of [1, 2]) if (!(st.bonus & bit)) addOwed(st, bit - 1, BONUS);
+  if (all) for (const bit of bits) if (!(st.bonus & bit)) addOwed(st, bit - 1, BONUS);
   if (!all || n > 1) st.streak = 0;
   st.day += n;
   st.ids = pick(st.seed, st.day, needs);
-  st.prog = [0, 0, 0]; st.claimed = [0, 0, 0]; st.bonus = 0;
+  st.prog = [0, 0, 0]; st.claimed = [0, 0, 0]; st.bonus = 0; st.seen = 1;
   return true;
 }
 
@@ -157,7 +162,7 @@ export function claimTasks(st, a, actor, addAll) {
     bundle = { ...BY_ID[st.ids[i]].reward }; commit = () => { st.claimed[i] |= bit; };
   } else return { ok: false, reason: 'bad' };
   if (typeof addAll !== 'function' || !addAll(bundle)) return { ok: false, reason: 'full' };
-  commit();
+  commit(); st.seen = (Number.isInteger(st.seen) ? st.seen : 1) | bit;
   return { ok: true, loot: bundle };
 }
 
