@@ -38,3 +38,21 @@ test('CRAFT-2: craftable count respects bag space, not just materials', () => {
   assert.equal(book.fittingTimes(roomy, 'rope', 3), 3);
   assert.equal(book.fittingTimes({ snapshot: () => ({}) }, 'rope'), null, 'uncopyable bag falls back');
 });
+
+const { readFileSync } = await import('node:fs');
+const uiSrc = readFileSync(new URL('survival-ui.js', base), 'utf8');
+
+test('CRAFT-2: recipe rows repaint when only the fitting count changes', () => {
+  assert.match(uiSrc, /const sig = state \+ times \+/);
+  assert.match(uiSrc, /fittingTimes\(bag, r\.id/);
+});
+
+test('CRAFT-3: opening the bag re-picks an automatic, unready recipe once states are known', () => {
+  const open = uiSrc.slice(uiSrc.indexOf('function open()'), uiSrc.indexOf('function close()'));
+  const render = open.indexOf('render(true)');
+  const clear = open.indexOf("if (!pickedByUser && viewOf(pickId)?.state !== 'ready') pickId = null");
+  const tab = open.lastIndexOf('applyTab()');
+  assert.ok(render >= 0 && clear > render && tab > clear, 'states are evaluated, then the auto pick is cleared, then applyTab picks first ready');
+  assert.match(uiSrc, /function setPick\(id\) \{[^}]*pickedByUser = true/);
+  assert.match(uiSrc, /activeTab = id; pickId = null; pickedByUser = false;/);
+});

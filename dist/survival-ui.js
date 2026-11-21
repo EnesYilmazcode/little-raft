@@ -441,6 +441,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let recipes = [], recipeEls = [], groups = [];
   let activeTab = dlg.dataset.svTab || null, pickId = dlg.dataset.svPick || null, shownPick = null, ingEls = [];
   let hold = null, btnDenyTimer = 0, countTimer = 0;
+  let pickedByUser = false; // false: pickId is an automatic default, re-chosen on open once states are known
   let tipAnchor = null;
 
   const safe = (fn, ...a) => { try { return fn?.(...a); } catch (e) { console.error(e); } };
@@ -491,12 +492,12 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   }
   function setTab(id, focus = false) {
     if (!groups.some(g => g.id === id)) return;
-    if (id !== activeTab) { stopHold(); activeTab = id; pickId = null; applyTab(); }
+    if (id !== activeTab) { stopHold(); activeTab = id; pickId = null; pickedByUser = false; applyTab(); }
     if (focus) tabsEl.querySelector(`.sv-tab[data-cat="${id}"]`)?.focus();
   }
   function setPick(id) {
     if (id === pickId) return;
-    stopHold(); pickId = id; applyPick();
+    stopHold(); pickId = id; pickedByUser = true; applyPick();
   }
   function applyPick() {
     for (const v of recipeEls) { const on = v.r.id === pickId; v.el.classList.toggle('sv-pick', on); v.el.setAttribute('aria-current', String(on)); }
@@ -862,6 +863,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     invEls.forEach(el => { el._svCount = undefined; }); // no pop for changes made while closed
     recipeEls.forEach(v => { v.sig = null; });
     render(true);
+    if (!pickedByUser && viewOf(pickId)?.state !== 'ready') pickId = null; // default to the first ready recipe
     applyTab();
     try { wrap.focus({ preventScroll: true }); } catch {}
   }
