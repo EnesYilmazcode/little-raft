@@ -188,6 +188,7 @@ test('items: no unlock/recipe cycles and every item is reachable from the start'
   for (let changed = true; changed;) {
     changed = false;
     if (have.has('fishingrod') && !have.has('fish')) { have.add('fish'); changed = true; }
+    if (have.has('beehive') && have.has('flowerbox') && !have.has('honey')) { have.add('honey'); have.add('wax'); changed = true; } // [bees] hive harvest
     for (const id of ITEM_IDS) {
       const r = ITEMS[id].recipe;
       if (have.has(id) || !r || !unlocked(id)) continue;

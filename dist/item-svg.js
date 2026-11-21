@@ -138,6 +138,24 @@ export const ITEM_ICONS = Object.freeze({
     <g fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><path d="M10 31 C10.5 29.5 11.5 28.8 13 28.5"/><path d="M32 31 C32.5 29.5 33.5 28.8 35 28.5"/></g>
     <path d="M7 16 V21 M29 16 V21" stroke="#9fd6d0" stroke-width="1.5" stroke-linecap="round"/>`,
 
+  // [instruments] Tide Drum, Reed Pipes, Bell Bars
+  drum: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M7 17 L10 39 C14 43 34 43 38 39 L41 17 Z" fill="#bb8650"/>
+    <ellipse cx="24" cy="17" rx="17" ry="6" fill="#7da35a"/></g>
+    <path d="M13 16 C17 14 22 13.5 26 13.8" fill="none" stroke="#b8d88f" stroke-width="1.8" stroke-linecap="round"/>
+    <g fill="none" stroke="#e8cf9a" stroke-width="2" stroke-linecap="round"><path d="M11 22 L18 38 M24 23.5 V41 M37 22 L30 38"/><path d="M8.5 28 C16 32 32 32 39.5 28" stroke="${O}" stroke-width="1.4"/></g>`,
+  pipes: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <rect x="5" y="6" width="7" height="36" rx="3" fill="#8fc3c9"/><rect x="12.5" y="6" width="7" height="31" rx="3" fill="#a5d4d8"/>
+    <rect x="20" y="6" width="7" height="26" rx="3" fill="#8fc3c9"/><rect x="27.5" y="6" width="7" height="21" rx="3" fill="#a5d4d8"/>
+    <rect x="35" y="6" width="7" height="16" rx="3" fill="#8fc3c9"/>
+    <rect x="3" y="11" width="41" height="5" rx="2" fill="#c9a46a"/></g>
+    <g fill="${O}"><circle cx="8.5" cy="8.5" r="1.3"/><circle cx="16" cy="8.5" r="1.3"/><circle cx="23.5" cy="8.5" r="1.3"/><circle cx="31" cy="8.5" r="1.3"/><circle cx="38.5" cy="8.5" r="1.3"/></g>`,
+  bells: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <rect x="4" y="15" width="40" height="4" rx="1.5" fill="#bb8650"/><rect x="4" y="31" width="40" height="4" rx="1.5" fill="#bb8650"/>
+    <rect x="7" y="7" width="7" height="36" rx="1.5" fill="#c9b26a"/><rect x="16.5" y="10" width="7" height="30" rx="1.5" fill="#d8c27a"/>
+    <rect x="26" y="13" width="7" height="24" rx="1.5" fill="#c9b26a"/><rect x="35.5" y="16" width="7" height="18" rx="1.5" fill="#d8c27a"/></g>
+    <path d="M9.5 10 V22 M19 13 V22 M28.5 16 V24" stroke="#fff2cc" stroke-width="1.5" stroke-linecap="round"/>`,
+
   smelter: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <rect x="29" y="3" width="8" height="12" rx="1" fill="#7a858b"/>
     <path d="M7 42 V25 C7 14 14.5 8 24 8 C33.5 8 41 14 41 25 V42 Z" fill="#8f9aa0"/>
@@ -193,6 +211,61 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M11 37 L27 22" stroke="${O}" stroke-width="6" stroke-linecap="round"/><path d="M11 37 L27 22" stroke="#bb8650" stroke-width="3" stroke-linecap="round"/>
     <path d="M35 18 L39 14.5 M35 30 L39 26.5" stroke="${O}" stroke-width="1.2" stroke-opacity=".5" stroke-linecap="round"/>
     <g fill="#fff2cc"><circle cx="8" cy="19" r=".9"/><circle cx="30" cy="19" r=".9"/><circle cx="8" cy="40" r=".9"/><circle cx="30" cy="40" r=".9"/></g>`,
+
+  // [bees] flower seed, flower box, beehive, honey, beeswax, candle, honey glazed fish
+  flowerseed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M24 44 C15 44 11 37 13 31 C15 25 20 22 24 17 C28 22 33 25 35 31 C37 37 33 44 24 44 Z" fill="#c99560"/>
+    <path d="M24 17 V9" fill="none" stroke="#3f8f5a" stroke-width="2.4"/>
+    <path d="M24 11 C20 5 13 5 11 8 C14 12 20 13 24 11 Z" fill="#7cc47f"/><path d="M24 9 C27 4 34 3 37 6 C34 10 28 11 24 9 Z" fill="#5fae6b"/></g>
+    <path d="M18 33 C18.5 29 20.5 26.5 23 24.5" fill="none" stroke="#fff2cc" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="40" cy="16" r="2.4" fill="#ff7aa2" stroke="${O}" stroke-width="1.2"/>`,
+
+  flowerbox: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M12 28 V18 M24 28 V13 M36 28 V18" fill="none" stroke="#3f8f5a" stroke-width="2.2"/>
+    <g stroke-width="1.6"><circle cx="12" cy="15" r="5" fill="#ff7aa2"/><circle cx="24" cy="10" r="5" fill="#ffd35a"/><circle cx="36" cy="15" r="5" fill="#9b7bff"/></g>
+    <g fill="#ffbd66" stroke-width="1.2"><circle cx="12" cy="15" r="1.8"/><circle cx="24" cy="10" r="1.8"/><circle cx="36" cy="15" r="1.8"/></g>
+    <path d="M4 28 H44 L41 43 H7 Z" fill="#bb8650"/>
+    <path d="M4 28 H44 V32 H4 Z" fill="#5a3d28"/></g>
+    <path d="M10 37 H38" stroke="${O}" stroke-width="1.1" stroke-opacity=".45" stroke-linecap="round"/>`,
+
+  beehive: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <rect x="5" y="39" width="38" height="5" rx="1.5" fill="#9c7649"/>
+    <path d="M9 39 C8 33 9 28 11 25 H37 C39 28 40 33 39 39 Z" fill="#d9a441"/>
+    <path d="M11 25 C11 20 13 17 15 15 H33 C35 17 37 20 37 25 Z" fill="#c58f32"/>
+    <path d="M15 15 C16 9 20 6 24 6 C28 6 32 9 33 15 Z" fill="#d9a441"/>
+    <path d="M18 39 V33 A6 6 0 0 1 30 33 V39 Z" fill="#3b2a1a"/></g>
+    <path d="M16 11 C17.5 9 19.5 8 21.5 7.8" fill="none" stroke="#fff2cc" stroke-width="1.8" stroke-linecap="round"/>
+    <g stroke="${O}" stroke-width="1"><ellipse cx="41" cy="12" rx="3" ry="2.2" fill="#f5c542"/><ellipse cx="40" cy="9" rx="2" ry="1.4" fill="#fff"/></g>`,
+
+  honey: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M10 18 C8 26 8 36 12 42 H32 C36 36 36 26 34 18 Z" fill="#f2b134"/>
+    <rect x="9" y="13" width="26" height="6" rx="2" fill="#bb8650"/>
+    <path d="M38 4 L32 20" fill="none" stroke="#9c7649" stroke-width="2.6"/>
+    <ellipse cx="39" cy="4.5" rx="3.6" ry="2.6" fill="#c99560" transform="rotate(-20 39 4.5)"/></g>
+    <path d="M14 24 C13 29 13.5 34 15 38" fill="none" stroke="#ffe39a" stroke-width="2" stroke-linecap="round"/>
+    <path d="M17 19 V24 C17 26 20 26 20 24 V19" fill="#f2b134" stroke="${O}" stroke-width="1.4"/>`,
+
+  wax: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M24 5 L40 14 V33 L24 42 L8 33 V14 Z" fill="#f3e2a4"/>
+    <path d="M24 5 L40 14 L24 23 L8 14 Z" fill="#fff2cc"/>
+    <path d="M24 23 V42" fill="none" stroke-width="1.4"/></g>
+    <g fill="none" stroke="#d9b65a" stroke-width="1.3" stroke-linejoin="round"><path d="M17 12 L20 10.5 L23 12 L23 15 L20 16.5 L17 15 Z"/><path d="M25 12 L28 10.5 L31 12 L31 15 L28 16.5 L25 15 Z"/></g>
+    <path d="M11 20 V30" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".8"/>`,
+
+  candle: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M24 5 C28 10 29 14 27 17 C26 19 22 19 21 17 C19 14 21 10 24 5 Z" fill="#ffbd66"/>
+    <path d="M24 11 C25.5 13 25.5 15 24 16 C22.5 15 22.5 13 24 11 Z" fill="#fff2cc" stroke-width="1"/>
+    <path d="M24 19 V22" fill="none" stroke-width="1.5"/>
+    <rect x="15" y="22" width="18" height="18" rx="2" fill="#fff2cc"/>
+    <path d="M10 18 V40 C10 43 13 44 16 44 H32 C35 44 38 43 38 40 V18" fill="#9fd6d0" fill-opacity=".45"/></g>
+    <path d="M13 22 V37" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".8"/>`,
+
+  honeyfish: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M6 26 C12 15 28 14 36 24 L44 17 V35 L36 28 C28 38 12 37 6 26 Z" fill="#d98a4e"/>
+    <path d="M14 22 L18 31 M21 20 L25 32 M28 21 L31 30" fill="none" stroke="#8a4a22" stroke-width="2"/>
+    <path d="M9 23 C15 20 22 24 27 21 C30 19 33 21 34 23 L33 26 C31 25 30 28 30 31 C28 27 24 27 22 29 C21 26 17 26 14 28 C13 25 11 25 9 26 Z" fill="#f2b134" stroke-width="1.4"/></g>
+    <circle cx="12" cy="24" r="1.4" fill="${O}"/>
+    <path d="M17 22 C20 21 22 21.5 24 22" fill="none" stroke="#ffe39a" stroke-width="1.5" stroke-linecap="round"/>`,
 
   seaweed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <path d="M16 44 C8 36 18 29 12 21 C8 15 11 9 14 4 C23 9 21 16 25 22 C29 30 22 36 24 44 Z" fill="#3f8f5a"/>
