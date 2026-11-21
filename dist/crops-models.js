@@ -98,6 +98,7 @@ function shared(T) {
   const frame = bake(T, parts);
   const soil = new T.BoxGeometry(W - th * 2, .04, W - th * 2).translate(0, SOIL_Y - .02, 0);
   const plants = new Map();
+  for (const o of [body, dry, wet, frame, soil]) o.userData.shared = true; // game.js disposeGeometry skips them on rebuildRaft
   c = { body, dry, wet, frame, soil, plants }; CACHE.set(T, c);
   return c;
 }
@@ -125,7 +126,7 @@ function plantGeo(T, sh, c, s) {
   for (const [geo] of parts) { pos.set(geo.attributes.position.array, o * 3); nor.set(geo.attributes.normal.array, o * 3); col.set(geo.attributes.color.array, o * 3); o += geo.attributes.position.count; geo.dispose(); }
   g = new T.BufferGeometry();
   g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setAttribute('normal', new T.BufferAttribute(nor, 3)); g.setAttribute('color', new T.BufferAttribute(col, 3));
-  g.computeBoundingSphere();
+  g.computeBoundingSphere(); g.userData.shared = true;
   sh.plants.set(key, g);
   return g;
 }

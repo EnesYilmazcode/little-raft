@@ -33,6 +33,9 @@ export function createCrops(ctx) {
   function target(aim) {
     const w = ctx.world, p = ctx.physics; if (!w || !p || !Array.isArray(w.decor)) return null;
     const near = d => Math.hypot(p.x - d.x * 2, p.z - d.z * 2) <= REACH;
+    // A palm planter / purifier / barrel under the crosshair in reach takes E first (game.js wateringTarget), so the
+    // bed prompt steps aside rather than promising an E that would water the palm instead.
+    const ad = aim && aim.decor; if (ad && ad.type !== 'gardenbed' && isInt(ad.x) && isInt(ad.z) && near(ad)) return null;
     const cam = ctx.camera;
     if (cam && cam.position) {
       let dx, dy, dz;
@@ -105,10 +108,13 @@ export function createCrops(ctx) {
     const P = globalThis.raftPrompts; if (unprovide || typeof P?.provide !== 'function') return;
     try {
       unprovide = P.provide({ id: 'crops', priority: 1, prompt: pc => {
-        const s = pc?.state; // yield to the built-in pickup / waiting prompts: pickups win E in game.js
-        if (ctx.running === false || s?.pickup || (s?.role === 'guest' && !s.networkReady) || s?.swimming || ctx.uiOpen?.()) return null;
-        const p = promptHtml(ctx.aim?.() ?? null);
-        return p ? parts(p) : null;
+        if (ctx.running === false || ctx.uiOpen?.()) return null;
+        const p = promptHtml(ctx.aim?.() ?? null); if (!p) return null;
+        // yield to the built-in pickup / waiting prompts (pickups win E in game.js). raftDebug.hud is the cheap live
+        // view; pc.state builds the full deep-copied debug state, so it is only the fallback for an older game.js.
+        const s = globalThis.raftDebug?.hud ?? pc?.state;
+        if (s?.pickup || (s?.role === 'guest' && !s.networkReady) || s?.swimming) return null;
+        return parts(p);
       } });
     } catch { unprovide = () => {}; }
   }

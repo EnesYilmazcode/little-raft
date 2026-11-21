@@ -228,3 +228,33 @@ test('model: bed repaints only on a new signature and shares geometry', () => {
   const hs = [0, 1, 2].map(s => { M.paintBed(a, { c: 'flax', stage: s, wet: false }); crop.geometry.computeBoundingBox(); return crop.geometry.boundingBox.max.y; });
   assert.ok(hs[0] < hs[1] && hs[1] < hs[2], 'plants grow taller');
 });
+
+test('prompt provider: steps aside for pickups and a watering decor in reach, never reads the full debug state', () => {
+  const { ctx, setBag } = modCtx();
+  let prov = null, stateReads = 0;
+  const prevP = globalThis.raftPrompts, prevD = globalThis.raftDebug;
+  const hud = { pickup: null, role: 'solo', networkReady: true, swimming: false };
+  globalThis.raftPrompts = { provide: o => { prov = o; return () => { prov = null; }; } };
+  globalThis.raftDebug = { hud };
+  try {
+    let aim = AIM; ctx.aim = () => aim;
+    const m = createCrops(ctx); m.load(undefined, 'save'); m.update(0);
+    assert.equal(prov?.priority, 1);
+    const pc = { get state() { stateReads++; return hud; } };
+    setBag(bagWith([{ kind: 'flaxseed', count: 1 }]));
+    assert.deepEqual(prov.prompt(pc), { key: 'E', label: 'Plant Sea Flax' });
+    aim = { point: { x: 20, y: 0, z: 0 } }; assert.equal(prov.prompt(pc), null);
+    aim = { ...AIM, decor: { type: 'palm', x: 1, z: 0 } };
+    assert.equal(prov.prompt(pc), null, 'a palm in reach takes E (game.js wateringTarget)'); assert.equal(m.prompt(aim), null);
+    aim = { ...AIM, decor: { type: 'palm', x: 9, z: 0 } }; assert.deepEqual(prov.prompt(pc), { key: 'E', label: 'Plant Sea Flax' });
+    aim = AIM; hud.pickup = { type: 'wood' }; assert.equal(prov.prompt(pc), null);
+    assert.equal(stateReads, 0, 'raftDebug.hud is used, not the deep-copied pc.state');
+    m.dispose(); assert.equal(prov, null);
+  } finally { globalThis.raftPrompts = prevP; globalThis.raftDebug = prevD; }
+});
+
+test('model: shared geometry and materials are flagged so rebuildRaft does not dispose them', () => {
+  const g = M.createGardenBed(T); M.paintBed(g, { c: 'tuber', stage: 2, wet: true });
+  g.traverse(o => { if (!o.isMesh) return; assert.ok(o.geometry.userData.shared, o.name + ' geometry'); assert.ok(o.material.userData.shared, o.name + ' material'); });
+  M.paintBed(g, null); assert.ok(g.getObjectByName('bedSoil').material.userData.shared);
+});
