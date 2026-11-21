@@ -25,8 +25,6 @@ raft.wiki.gg could not be reached. An earlier pass got HTTP 401 (Cloudflare). Th
 Status: implemented in `dist/wildlife.js` (module, plan, debug) and `dist/wildlife-models.js` (merged low-poly
 geometries). No game.js, content.js or inventory-state.js edits; no new hooks.
 
-![Gull perched on the deck](../cloud/shots/content/wildlife-gull.png)
-
 - **Gulls.** White body and head, grey mantle and wings with black, white-spotted tips, orange beak with a red
   spot, orange legs and webbed feet, black eyes (~0.6 m long, 1.4 m span). They bank on their circle and glide
   with bursts of flapping. A visit runs inside a 40 s slot per gull: glide down over 4 s, then perch 6 to 15 s
@@ -140,7 +138,18 @@ Overrides are local and are never serialized.
 4. Draw calls: `w.renderCalls()`, then `w.setVisible(false)`, wait a frame, and `w.renderCalls()` again.
 5. Co-op: host and guest should see the same gulls on the same tiles (the guest's clock follows `ext.wildlife.t`).
 
-Screenshots (headless Chromium, software GL): `docs/cloud/shots/content/wildlife-*.png`.
+Screenshots (headless Chromium, software GL, taken with `landGull`, `schoolHere` and `summonCircler`):
+
+| | |
+|---|---|
+| ![Gulls perched on the deck](../cloud/shots/content/wildlife-gull.png) | ![A school of fish past the deck edge](../cloud/shots/content/wildlife-fish.png) |
+| ![A dolphin leaping](../cloud/shots/content/wildlife-dolphin.png) | ![A sea turtle paddling by](../cloud/shots/content/wildlife-turtle.png) |
+
+**Measured draw calls** (`renderer.info.render.calls`, solo spawn, medium graphics, no circler on screen):
+317 with the wildlife group hidden and 320 with it shown, so +3 (gull bodies, gull wings, fish). A visible
+dolphin or turtle adds 1, for at most +4, as designed. Floating debris makes the total vary by about 1 between
+frames. The fish material sets `forceSinglePass`, because three.js otherwise draws transparent DoubleSide
+meshes twice (an earlier build measured +4 with no circler for that reason). Nothing casts shadows.
 
 ## Save format
 

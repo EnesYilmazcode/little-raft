@@ -211,7 +211,7 @@ export function createWildlife(ctx) {
     eul = new T.Euler(0, 0, 0, 'YXZ'); col = new T.Color(); zero = new T.Matrix4().makeScale(0, 0, 0); UP = new T.Vector3(0, 1, 0);
     fishDark = new T.Color('#0b2f36'); fishWater = new T.Color('#3f8c88');
     material = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: T.DoubleSide });
-    fishMat = new T.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.7, depthWrite: false, side: T.DoubleSide });
+    fishMat = new T.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.7, depthWrite: false, side: T.DoubleSide, forceSinglePass: true }); // one pass: transparent DoubleSide would draw twice
     group = new T.Group(); group.name = 'wildlife';
     const inst = (geo, mat, n, name) => {
       const m = new T.InstancedMesh(geo, mat, n); m.name = name; m.frustumCulled = false; m.castShadow = false; m.receiveShadow = false;
