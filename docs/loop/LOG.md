@@ -1231,6 +1231,12 @@ No regressions. Intended differences:
 - Open, pre-existing: in the browser, Esc with the hammer build wheel open closes the wheel but leaves the cursor free (Chrome needs a click
   to relock after a user exit). Fix idea: have the wheel release the lock itself, like the inventory does.
 
+## 2026-11-21 · integrator D: loop-perf-202611210859, loop-perf-202611210748, loop-visuals-202611210843
+- Merged loop-perf-202611210859 (drop backdrop blurs). raft-master already had the blur removals in graphics.css, settings.js and coop-feed.js, so those conflicts keep raft-master. This adds the fish journal, research panel and style.css backdrops.
+- Skipped loop-perf-202611210748: a stale parallel copy of perf work raft-master already has (quality ladder, shadow camera fit, pre-warm, pinned quality). It hit 77 conflict hunks across 28 files. Its every-third-frame shadow redraw and frustum-culled foam need a rebase by their worker.
+- Not merged by D: loop-visuals-202611210843 was already on raft-master (cd51bb0f) from another integrator, so D's own merge of it was dropped.
+- Gate: npm test 1402/1402. shoot.py errors [], hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text.
+- Perf, final vs raft-master, six interleaved pairs, medians: 146 vs 141 ms (+3.5%), 46.5 vs 46.5 draw calls, 97 shadow casters on both.
 ## 2026-11-21 · integrator H (the scheduled :00/:30 second integrator; logged as B in rounds 3-5 before the name clash)
 - Round 5 merged and pushed: loop-fidelity-0804, -0821 (nets, crop plot, armor, paddle, stone axe + coconut, debris budget, purifier fuel; 0747 skipped as a duplicate shark/needs build); fleet-tech/perf; icons.svg fetched once (from loop-perf-0720); place-mode prompt wiring from loop-features-0735.
   Co-op HELD: paddle 23, axe 24 (after glidehandle 21, spyglass 22). Sail chip/lock text follow the new sail recipe.
