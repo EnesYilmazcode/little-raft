@@ -6,6 +6,7 @@
 // Control channel: one JSON command per stdin line, {id, op, ...}; replies {reply: id, ok, value|error} on stdout.
 //   eval {code}           webContents.executeJavaScript(code) without a user gesture
 //   key {key, mods?, hold?} real keyDown/char/keyUp through webContents.sendInputEvent
+//   down/up {key, mods?}  just the keyDown(+char) or the keyUp half of a press
 //   click {x, y}          real mouseMove/mouseDown/mouseUp through sendInputEvent (a trusted gesture)
 //   move {x, y}           mouseMove
 //   focus                 show + focus the window and its webContents
@@ -86,6 +87,14 @@ const ops = {
     wc.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers: mods });
     return true;
   },
+  // Split press for timing-sensitive steps: the driver decides when to release.
+  async down({ key, mods = [] }) {
+    const wc = win().webContents;
+    wc.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers: mods });
+    if (key.length === 1) wc.sendInputEvent({ type: 'char', keyCode: key, modifiers: mods });
+    return true;
+  },
+  async up({ key, mods = [] }) { win().webContents.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers: mods }); return true; },
   async move({ x, y }) { win().webContents.sendInputEvent({ type: 'mouseMove', x, y }); return true; },
   async click({ x, y }) {
     const wc = win().webContents;

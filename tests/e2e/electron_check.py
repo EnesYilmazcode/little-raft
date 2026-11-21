@@ -56,6 +56,10 @@ PROBE = r"""(() => {
   Document.prototype.exitPointerLock = function (...a) { P.exits++; return exit.apply(this, a); };
   document.addEventListener('pointerlockchange', () => P.events.push({ t: Math.round(performance.now()), type: 'change', locked: document.pointerLockElement?.id || null }));
   document.addEventListener('pointerlockerror', () => P.events.push({ t: Math.round(performance.now()), type: 'error' }));
+  P.keys = [];
+  const kl = (type, key) => { P.keys.push({ t: Math.round(performance.now()), type, key, locked: !!document.pointerLockElement }); if (P.keys.length > 60) P.keys.shift(); };
+  for (const type of ['keydown', 'keyup']) window.addEventListener(type, (e) => { if (['Escape', 'Tab', 'i', 'I'].includes(e.key)) kl(type, e.key); }, true);
+  for (const type of ['cancel', 'close']) document.addEventListener(type, (e) => kl(type, e.target && e.target.id), true);
   window.addEventListener('error', (e) => P.errors.push(String(e.message).slice(0, 300)));
   window.addEventListener('unhandledrejection', (e) => P.errors.push('unhandledrejection: ' + String(e.reason && (e.reason.stack || e.reason)).slice(0, 300)));
   return true;
@@ -76,6 +80,7 @@ SNAP = r"""(() => {
     build: window.raftLive?.build ?? null, liveError: window.raftLive?.lastError ?? null,
     nav: performance.getEntriesByType('navigation').length,
     calls: P.calls.length, lastCall: P.calls[P.calls.length - 1] || null, events: P.events.slice(-4), exits: P.exits,
+    keys: (P.keys || []).slice(-6),
     pageErrors: P.errors.slice(0, 5),
     focused: document.hasFocus(), visibility: document.visibilityState,
   };
@@ -143,6 +148,7 @@ class Run:
         self.t0 = time.time()
         self.last_esc = 0.0
         self.real = False  # True while the session plays with real pointer lock (not lockFallback)
+        self.frame_waits: list[int] = []
         nonce = os.urandom(4).hex()  # per-run build ids, so a run can tell its own server from a parallel run's
         self.build_a, self.build_b = f'electron-check-a-{nonce}', f'electron-check-b-{nonce}'
 
@@ -257,21 +263,58 @@ class Run:
 
     def settle(self, ms=450): time.sleep(ms / 1000)
 
+    FLUSH = ('new Promise((res) => { const t = performance.now(); const done = () => res(Math.round(performance.now() - t));'
+             ' requestAnimationFrame(() => requestAnimationFrame(done)); setTimeout(done, 6000); })')
+
+    def flush(self):
+        """Wait until the page has rendered two frames. Under swiftshader this window renders ~1-2 fps, and Chromium delivers
+        dialog close / pointerlockchange events with the rendering update, so without this a step can land before the page has
+        seen the previous step's events (e.g. a stale inventory `close` event arriving after the inventory was reopened).
+        On real hardware a frame is ~16 ms, so a human never outruns it; the harness must not either."""
+        ms = self.cmd('eval', code=self.FLUSH, timeout=15)
+        self.frame_waits.append(ms)
+
     XKEYS = {'Escape': 'Escape', 'Tab': 'Tab', 'I': 'i'}
 
     def xdo(self, *args):
         r = subprocess.run(['xdotool', *map(str, args)], env={**os.environ, 'DISPLAY': self.display}, capture_output=True, text=True, timeout=10)
         if r.returncode: raise Infra(f'xdotool {" ".join(map(str, args))} failed: {r.stderr[-300:]}')
 
-    def key(self, key, label=None, hold=100):
+    def key(self, key, label=None, hold=100, flush=True):
         self.steps.append(label or key)
+        if flush: self.flush()
         if self.input == 'xtest':
             self.xdo('keydown', self.XKEYS[key]); time.sleep(hold / 1000); self.xdo('keyup', self.XKEYS[key])
         else: self.cmd('key', key=key, hold=hold)
+
+    def key_until(self, key, label, until, min_ms=100, max_ms=None):
+        """Press key, keep it down until JS `until` is true (at least min_ms, at most max_ms), release. Returns
+        (held_ms, until_was_true_at_release). Used where the outcome depends on the release landing after a page reaction
+        (a fast machine reacts within a few ms of keydown; swiftshader here can take longer than a 100 ms tap)."""
+        # sendInputEvent has no autorepeat, so a long hold is safe; X autorepeats after ~600 ms.
+        if max_ms is None: max_ms = 600 if self.input == 'xtest' else 4000
+        self.flush()
+        t0 = time.time()
+        if self.input == 'xtest': self.xdo('keydown', self.XKEYS[key])
+        else: self.cmd('down', key=key)
+        hit = False
+        while True:
+            el = time.time() - t0
+            if el >= max_ms / 1000: break
+            if not hit: hit = bool(self.js(f'!!({until})'))
+            if hit and el >= min_ms / 1000: break
+            time.sleep(.02)
+        held = round((time.time() - t0) * 1000)
+        if self.input == 'xtest': self.xdo('keyup', self.XKEYS[key])
+        else: self.cmd('up', key=key)
+        if key == 'Escape': self.last_esc = time.time()
+        self.steps.append(label.format(ms=held))
+        return held, hit
         if key == 'Escape': self.last_esc = time.time()
 
-    def click(self, x, y, label):
+    def click(self, x, y, label, flush=True):
         self.steps.append(label)
+        if flush: self.flush()
         if self.input == 'xtest':
             b = self.cmd('status')['bounds']  # content bounds are root-window coordinates (no WM under Xvfb)
             self.xdo('mousemove', b['x'] + int(x), b['y'] + int(y)); time.sleep(.03)
@@ -334,7 +377,7 @@ class Run:
         started = self.wait_for('raftDebug.state.running', timeout=20)
         if not self.check('solo.start', 'clicking Solo starts the game', started, None if started else self.snap()):
             return
-        self.wait_for(LOCK_OR_FALLBACK, timeout=4); self.settle(400)
+        self.wait_for(LOCK_OR_FALLBACK, timeout=8); self.settle(400)
         s = self.snap()
         solo_mode = 'pointer-lock' if self.has_lock(s) else 'lockFallback' if s['lockFallback'] else 'none'
         self.metrics['lock_mode_after_solo'] = solo_mode
@@ -342,7 +385,7 @@ class Run:
             # The first canvas click is also a documented lock gesture.
             self.notes.append(f'Solo click did not lock (last request {s["lastCall"]}); trying a canvas click')
             self.click_canvas('click canvas (first lock attempt)')
-            self.wait_for(LOCK_OR_FALLBACK, timeout=4); self.settle(300)
+            self.wait_for(LOCK_OR_FALLBACK, timeout=8); self.settle(300)
             s = self.snap()
         perm = [h for h in self.harness_log if h.get('harness', '').startswith('permission') and h.get('perm') == 'pointerLock']
         mode = 'pointer-lock' if self.has_lock(s) else 'lockFallback' if s['lockFallback'] else 'none'
@@ -381,7 +424,7 @@ class Run:
             gap = 1.5 - (time.time() - self.last_esc)
             if gap > 0: self.steps.append(f'wait {gap + .05:.1f} s'); time.sleep(gap)
             self.click_canvas(f'click canvas ({label})')
-            self.wait_for(LOCK_OR_FALLBACK, timeout=3); self.settle(300)
+            self.wait_for(LOCK_OR_FALLBACK, timeout=8); self.settle(300)
             s = self.snap()
         if self.real and s['lockFallback']:
             self.check('lock.fallback-latch', 'game stays in pointer-lock mode (does not latch drag-look lockFallback) after a refused re-lock', False, s,
@@ -429,7 +472,14 @@ class Run:
         s = self.snap()
         if not self.check(f'{cid}.open', f'{key} opens the inventory and frees the cursor', s['inventory'] and not s['locked'] and not s['options'], s): return
         self.settle(max(0, dwell_ms - 500))
-        self.key('Escape', f'Esc held {hold} ms (in inventory' + (f', after {dwell_ms // 1000}s)' if dwell_ms >= 1000 else ')'), hold=hold)
+        where = 'in inventory' + (f', after {dwell_ms // 1000}s' if dwell_ms >= 1000 else '')
+        if real:
+            # Hold Esc until the game's relock lands (as it does within a normal key press on real hardware), then release.
+            held, relocked_while_down = self.key_until('Escape', f'Esc down ({where}), held {{ms}} ms until the game re-locked, Esc up',
+                                                       'document.pointerLockElement')
+            self.metrics.setdefault('inventory_esc', {})[cid] = {'held_ms': held, 'locked_before_release': relocked_while_down}
+        else:
+            self.key('Escape', f'Esc held {hold} ms ({where})', hold=hold)
         self.settle(800)
         s = self.snap()
         self.window_alive(f'{cid}.window', f'Esc in the inventory ({key})')
@@ -440,9 +490,12 @@ class Run:
             ev = [e for e in s['events'] if e['type'] == 'change']
             bounced = len(ev) >= 2 and ev[-2]['locked'] == 'world' and ev[-1]['locked'] is None
             self.check(f'{cid}.relocked', 'closing the inventory with Esc puts the player back in locked play (lock holds after Esc is released)',
-                       self.has_lock(s), {'locked': s['locked'], 'resumeHint': s['resumeHint'], 'lastCall': s['lastCall'], 'events': s['events']},
-                       repro_extra=('the game re-requests lock on Esc keydown, lock engages, then Electron drops it on the Esc keyup '
-                                    f'({ev[-1]["t"] - ev[-2]["t"]} ms later); player is left unlocked with the resume hint') if bounced else '')
+                       self.has_lock(s), {'locked': s['locked'], 'resumeHint': s['resumeHint'], 'lastCall': s['lastCall'], 'events': s['events'], 'keys': s['keys'],
+                                          'locked_before_release': relocked_while_down},
+                       repro_extra=('the game re-requests lock on Esc keydown (inventory close -> resume), lock engages before the key is released, then '
+                                    f'Electron treats the Esc keyup as "leave pointer lock" and drops it ({ev[-1]["t"] - ev[-2]["t"]} ms after it engaged); '
+                                    'player is left unlocked with the resume hint') if bounced and relocked_while_down else
+                                   'the game never re-requested/re-acquired lock while Esc was held' if not relocked_while_down else '')
 
     def hot_swap(self):
         self.relock('to resume play')
@@ -467,21 +520,37 @@ class Run:
         self.inventory_cycle('swap.inv', 'Tab')
 
     def quick_reclick(self):
-        """A player who presses Esc and clicks straight back in (within Chromium's ~1 s re-lock cooldown) must not lose pointer lock for good."""
-        s = self.relock('to resume play')
-        if not self.has_lock(s): return
-        self.key('Escape', 'Esc (in play)'); self.settle(400)
-        if self.snap()['options']: self.key('Escape', 'Esc (close pause)'); self.settle(250)
-        else: self.key('Escape', 'Esc (open pause)'); self.settle(250); self.key('Escape', 'Esc (close pause)'); self.settle(250)
-        self.click_canvas(f'click canvas {time.time() - self.last_esc:.1f} s after the last Esc')
-        self.wait_for(LOCK_OR_FALLBACK, timeout=3); self.settle(300)
-        s = self.snap()
-        self.metrics['quick_reclick'] = {'locked': s['locked'], 'lockFallback': s['lockFallback'], 'lastCall': s['lastCall']}
+        """A player who presses Esc and clicks straight back in (within Chromium's ~1 s re-lock cooldown) must not lose pointer
+        lock for good. No frame waits here: the cooldown is wall-clock. The gap that matters (lock lost -> lock requested) is
+        measured from page timestamps; if load stretched it past the cooldown the attempt did not exercise it and is retried."""
+        COOLDOWN_MS = 900
+        for attempt in range(3):
+            s = self.relock('to resume play')
+            if not self.has_lock(s): return
+            vp = self.js('({w: innerWidth, h: innerHeight, ev: __lrProbe.events.length, calls: __lrProbe.calls.length})')
+            self.key('Escape', 'Esc (in play)'); time.sleep(.25)
+            if self.js("!!document.querySelector('#options')?.open"):  # pause opened on the first Esc: close it, as a player would
+                self.key('Escape', 'Esc (close pause)', flush=False); time.sleep(.15)
+            self.click(vp['w'] * .5, vp['h'] * .55, f'click canvas {time.time() - self.last_esc:.1f} s after the last Esc', flush=False)
+            self.wait_for(LOCK_OR_FALLBACK + ' || __lrProbe.calls.slice(' + str(vp['calls']) + ").some((c) => c.result !== 'pending')", timeout=8)
+            self.settle(300)
+            s = self.snap()
+            P = self.js(f"({{ev: __lrProbe.events.slice({vp['ev']}), calls: __lrProbe.calls.slice({vp['calls']})}})")
+            lost = next((e['t'] for e in P['ev'] if e['type'] == 'change' and e['locked'] is None), None)
+            call = P['calls'][0] if P['calls'] else None
+            gap = call['t'] - lost if call and lost is not None else None
+            self.metrics.setdefault('quick_reclick', []).append({'gap_ms': gap, 'result': call and call['result'], 'locked': s['locked'], 'lockFallback': s['lockFallback']})
+            if s['lockFallback'] or (gap is not None and gap < COOLDOWN_MS): break
+            self.notes.append(f'quick re-click attempt {attempt + 1}: lock request came {gap} ms after the lock was lost (load), cooldown not exercised; retrying')
+        else:
+            self.notes.append('quick re-click: could not land a click inside the re-lock cooldown in 3 attempts; check not run'); return
         self.check('lock.quick-reclick', 'a quick click back in after Esc does not latch lockFallback (drag-look) for the session', not s['lockFallback'], s,
-                   repro_extra=f'lock request result: {s["lastCall"] and s["lastCall"]["result"]}; game treats that SecurityError (re-lock cooldown) as "pointer lock unsupported"')
+                   repro_extra=f'lock requested {gap} ms after Esc released it; request result: {call and call["result"]}; '
+                               'game.js lockUnsupported() treats that SecurityError (Chromium re-lock cooldown) as "pointer lock unsupported" and latches lockFallback')
         if not s['lockFallback']:
-            self.settle(1500); self.click_canvas('wait 1.5 s, click canvas'); self.wait_for(LOCK_OR_FALLBACK, timeout=3); self.settle(300)
-            self.check('lock.quick-reclick-recover', 'after a refused quick re-click, the next click locks', self.has_lock(self.snap()), self.snap())
+            self.settle(1500); self.click_canvas('wait 1.5 s, click canvas'); self.wait_for(LOCK_OR_FALLBACK, timeout=8); self.settle(300)
+            s = self.snap()
+            self.check('lock.quick-reclick-recover', 'after a refused quick re-click, the next click locks', self.has_lock(s), s)
 
 
 def main():
@@ -509,6 +578,9 @@ def main():
         run.run()
     except Exception as e:
         infra = str(e) if isinstance(e, Infra) else f'{type(e).__name__}: {e}'
+    if run.frame_waits:
+        fw = sorted(run.frame_waits)
+        run.metrics['two_frame_wait_ms'] = {'n': len(fw), 'median': fw[len(fw) // 2], 'max': fw[-1]}
     run.metrics.update(seconds=round(time.time() - run.t0, 1), checks=len(run.checks), checks_failed=sum(not c['ok'] for c in run.checks), notes=run.notes)
     failures = [{'id': c['id'], 'detail': c['name'] + (': ' + json.dumps(c['detail'], default=str)[:800] if 'detail' in c else ''), 'repro': c['repro']}
                 for c in run.checks if not c['ok']]
