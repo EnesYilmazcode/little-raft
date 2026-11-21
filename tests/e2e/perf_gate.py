@@ -51,8 +51,9 @@ with sync_playwright() as p:
     cdp = page.context.new_cdp_session(page); cdp.send('Performance.enable'); cdp.send('HeapProfiler.enable')
     t0 = time.time(); page.goto(url); page.wait_for_function('!!window.raftDebug', timeout=30000, polling=20)
     rep['startup'] = {'toDebugMs': round((time.time() - t0) * 1000), 'nav': page.evaluate("(()=>{const n=performance.getEntriesByType('navigation')[0];return n?{domContentLoaded:Math.round(n.domContentLoadedEventEnd),load:Math.round(n.loadEventEnd),transferKB:Math.round(performance.getEntriesByType('resource').reduce((s,r)=>s+(r.decodedBodySize||0),0)/1024)}:null})()")}
-    page.locator('#solo').wait_for(state='visible')
-    rep['startup']['soloToFirstFrameMs'] = page.evaluate("new Promise(r=>{const t=performance.now();document.querySelector('#solo').click();requestAnimationFrame(()=>requestAnimationFrame(()=>r(Math.round(performance.now()-t))))})")
+    start = '#newGame' if page.locator('#newGame').count() else '#solo'  # title start button: #newGame on newer builds
+    page.locator(start).wait_for(state='visible')
+    rep['startup']['soloToFirstFrameMs'] = page.evaluate("s=>new Promise(r=>{const t=performance.now();document.querySelector(s).click();requestAnimationFrame(()=>requestAnimationFrame(()=>r(Math.round(performance.now()-t))))})", start)
     page.wait_for_function('raftDebug.state.running', timeout=30000)
     # JIT warm-up: at full size software GL runs ~1-3 fps, so per-frame code never gets optimized by V8 and every double
     # gets boxed, inflating allocation figures. Run frames at a tiny viewport first, then measure at full size.
