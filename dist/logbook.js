@@ -37,6 +37,8 @@ export const ACHIEVEMENTS = Object.freeze([
   a('repair1', 'Good as New', 'Repair a worn hook.', 'repair'),
   a('note1', 'Message Received', 'Find a message in a bottle.', 'bottle'),
   a('notes_all', 'Pen Pals', 'Read all 12 messages.', 'bottle'),
+  a('wish1', 'Wish Upon a Star', 'Make a wish on a falling star.', 'compass'), // [stars]
+  a('wish10', 'Stargazer', 'Make 10 wishes on falling stars.', 'compass'), // [stars]
 ]);
 export const ACHIEVEMENT_IDS = Object.freeze(ACHIEVEMENTS.map(x => x.id));
 
@@ -94,6 +96,8 @@ export function evaluate(world, bags, event) {
       case 'sit1': return ev.kind === 'sit'; // [sit]
       case 'note1': return notes >= 1;
       case 'notes_all': return notes === NOTE_COUNT;
+      case 'wish1': return ev.kind === 'wish'; // [stars]
+      case 'wish10': return ev.kind === 'wish' && num(ev.n) >= 10; // [stars]
     }
     if (id.startsWith('craft_')) {
       const k = id.slice(6);

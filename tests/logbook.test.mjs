@@ -10,18 +10,18 @@ const {
   cleanProgress, nextNote, shouldSpawnBottle, evaluate, achievementName,
 } = await import(new URL('logbook.js', base));
 
-const TABLE = ['floor1', 'tiles25', 'fish1', 'fish10', 'supplies100', 'craft_sail', 'craft_palm', 'craft_lantern', 'craft_net', 'craft_bench', 'craft_crate', 'firework1', 'homestead', 'sit1', 'repair1', 'note1', 'notes_all'];
+const TABLE = ['floor1', 'tiles25', 'fish1', 'fish10', 'supplies100', 'craft_sail', 'craft_palm', 'craft_lantern', 'craft_net', 'craft_bench', 'craft_crate', 'firework1', 'homestead', 'sit1', 'repair1', 'note1', 'notes_all', 'wish1', 'wish10'];
 const tiles = n => Array.from({ length: n }, (_, i) => [i % 5, Math.floor(i / 5)]);
 const w = (o = {}) => ({ tiles: tiles(9), decor: [], fish: 0, collected: 0, items: [], notes: [], achievements: [], ...o });
 const all12 = Array.from({ length: 12 }, (_, i) => i);
 
-test('constants: 12 notes and 17 achievements in table order', () => {
+test('constants: 12 notes and 19 achievements in table order', () => {
   assert.equal(NOTE_COUNT, 12);
   assert.equal(NOTES.length, 12);
   for (const n of NOTES) { assert.equal(typeof n, 'string'); assert.ok(n.length > 0 && n.length <= 300); }
-  assert.equal(ACHIEVEMENTS.length, 17); // [fireworks] + firework1, [sit] + sit1
+  assert.equal(ACHIEVEMENTS.length, 19); // [fireworks] + firework1, [sit] + sit1, [stars] + wish1, wish10
   assert.deepEqual([...ACHIEVEMENT_IDS], TABLE);
-  assert.equal(new Set(ACHIEVEMENT_IDS).size, 17);
+  assert.equal(new Set(ACHIEVEMENT_IDS).size, 19);
   for (const a of ACHIEVEMENTS) {
     for (const k of ['name', 'desc', 'icon']) assert.ok(typeof a[k] === 'string' && a[k].length > 0, `${a.id}.${k}`);
     assert.ok(Object.isFrozen(a));
