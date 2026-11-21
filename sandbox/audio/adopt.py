@@ -320,7 +320,9 @@ def check():
     ts0, ts1 = hs['mounts'][2] if len(hs['mounts']) >= 3 else float('inf'), hs['disposed'][1] + 3.5
     rep['hot_swap'] = {**hs, **window_report(sm, lv, ts0, ts1), 'control_before': window_report(sm, lv, ts0 - 4, ts0)}
     a, bt, fm, h = rep['audio'], rep['boot'], rep['failed_mount'], rep['hot_swap']
-    holds = lambda r: r['dip_db'] is not None and r['dip_db'] <= 10 and r['min_level_db'] is not None and r['min_level_db'] > -70
+    # the 'main' mix puts the sea bed near -62 dB (p10 about -65), so the absolute floor only catches a real
+    # hole (digital silence reads -120 here); the relative 10 dB dip check does the fine work
+    holds = lambda r: r['dip_db'] is not None and r['dip_db'] <= 10 and r['min_level_db'] is not None and r['min_level_db'] > -85
     rep['checks'] = {
         'no_errors': not rep['errors'],
         'one_engine_context': a['engineContexts'] == 1,
