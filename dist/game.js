@@ -4,6 +4,7 @@ import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { createSky } from './sky.js?build=v3-survival-ae77fa84ac2b';
 import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
+import { createRope } from './rope.js?build=v3-survival-ae77fa84ac2b';
 import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
 import { HookCast, WATER_Y, catchLoot, holdForFullBag, throwOrigin } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-survival-ae77fa84ac2b';
@@ -272,7 +273,7 @@ export function mount(transfer = null) {
   let vitalsUI = null, eating = null, fainted = Number.isFinite(X?.fainted) ? X.fainted : -1, exertion = 1; // eating {item, slot, t}; fainted: seconds into the faint, -1 = awake
   const vitalsOpts = {mult:1};
   let building = null, sentPieces = null; // building-pieces lane hook (sentPieces: last pieces array sent to the guest)
-  let scene = null, camera = null, renderer = null, quality = null, ocean = null, sky = null, raft, itemsGroup, ghosts, rope, ropeAttr, hookMesh, bobber, friend, player, sun;
+  let scene = null, camera = null, renderer = null, quality = null, ocean = null, sky = null, raft, itemsGroup, ghosts, rope, fishLine, hookMesh, bobber, friend, player, sun;
   let hemi = null, clouds = [], content = null; // content hook: lights/clouds handed to content modules
   let hands = null, offIconReady = null, clothMat; // one hands controller swaps the held item model per hotbar kind
   const modelOf = k => { try { return getModel(k); } catch (e) { console.warn('model failed', k, e); return null; } };
@@ -447,8 +448,8 @@ export function mount(transfer = null) {
     itemsGroup = new T.Group(); scene.add(itemsGroup); ocean.trackFoam(itemsGroup);
     player = makeAvatar(lookState.look); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
     ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => { try { return prog?.modelFor(k, {type:k}) ?? (k === 'rainbarrel' ? createRainBarrel(T) : k === 'sprinkler' ? createSprinkler(T) : k === 'purifier' ? createPurifier(T) : createCraft(T, k) ?? createSignalModel(T, k) ?? content?.decorModel(k) ?? null); } catch { return null; } }}); // see-through real models, red when blocked
-    const ropeGeo = new T.BufferGeometry(); ropeAttr = new T.BufferAttribute(new Float32Array((ROPE_SEGMENTS + 1) * 3), 3); ropeAttr.setUsage(T.DynamicDrawUsage); ropeGeo.setAttribute('position', ropeAttr);
-    rope = new T.Line(ropeGeo, new T.LineBasicMaterial({color:'#e9d39a'})); rope.visible = false; rope.frustumCulled = false; scene.add(rope);
+    const makeRope = (segments, radius) => { const r = createRope(T, {segments, radius}); r.mesh.material.roughness = .95; r.mesh.castShadow = false; scene.add(r.mesh); return r; };
+    rope = makeRope(24, .012); fishLine = makeRope(16, .003); // braided tan tube (hook) and a thin line (rod), both preallocated
     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
     bobber = createFishingTool(T).userData.float; bobber.removeFromParent(); bobber.position.set(0, 0, 0); bobber.scale.setScalar(3.5); bobber.visible = false; scene.add(bobber); // own materials, normal render order
     clothMat = new T.MeshStandardMaterial({color:'#fff3cf', side:T.DoubleSide, roughness:1});
@@ -1407,11 +1408,9 @@ export function mount(transfer = null) {
     const k = clamp((y - WATER_Y) / .6, 0, 1), w = ocean.getHeight(x, z) + .04 + (y - WATER_Y);
     return w + (y - w) * k;
   }
-  function setRope(points) {
-    const arr = ropeAttr.array, n = Math.min(points.length, ROPE_SEGMENTS + 1);
-    for (let i = 0; i < n; i++) { arr[i * 3] = points[i].x; arr[i * 3 + 1] = points[i].y; arr[i * 3 + 2] = points[i].z; }
-    ropeAttr.needsUpdate = true; rope.geometry.setDrawRange(0, n); rope.visible = true;
-  }
+  const ropeOpts = {tension:0, visible:true};
+  function setRope(points, tension = 0, line = rope) { ropeOpts.tension = tension; line.update(points, ropeOpts); }
+  function hideRopes() { rope.mesh.visible = false; fishLine.mesh.visible = false; }
   function updateRaft(dt) {
     const s = ocean.sample(0, 0, oceanSample, undefined, 2.2), h = s.h - ocean.mesh.position.y;
     const ky = Math.min(1, dt * 2), kr = Math.min(1, dt * 1.5);
@@ -1497,7 +1496,7 @@ export function mount(transfer = null) {
       m.rotation.set(-s.sz * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.sx * 1.2 + Math.sin(elapsed + it.phase) * .05);
     }
   }
-  function endHook() { hook = null; lastCaughtCount = 0; reeling = false; hookFull = false; rope.visible = false; hookMesh.visible = false; if (bobber) bobber.visible = false; }
+  function endHook() { hook = null; lastCaughtCount = 0; reeling = false; hookFull = false; hideRopes(); hookMesh.visible = false; if (bobber) bobber.visible = false; }
   // A click or slot change while the rod line is out reels it in: a fish only if it is biting on a click.
   function reelCast(source) {
     const r = castInput(hook, fishWait, source); if (r === 'none') return false;
@@ -1505,14 +1504,15 @@ export function mount(transfer = null) {
     fishWait = 0; endHook(); return true;
   }
   function updateHook(dt) {
-    if (!hook) { rope.visible = false; hookMesh.visible = false; if (bobber) bobber.visible = false; return; }
+    if (!hook) { hideRopes(); hookMesh.visible = false; if (bobber) bobber.visible = false; return; }
     if (hook.stage === 'floating' && hook.base) { hook.base.x += sailFlow.x * dt; hook.base.z += sailFlow.z * dt; } // [sailing] a floating hook drifts with the water
     if (hook.fishing) { // simple bobber animation, separate from HookCast
       hook.t += dt; const f = hook.t / hook.duration, u = Math.min(1, f * 5);
       const pos = fishPos.copy(handPos).lerp(hook.end, u);
       if (u >= 1) pos.y = ocean.getHeight(pos.x, pos.z) + .05 + Math.sin(elapsed * 5) * .03 - (hook.t > fishWait ? .12 : 0); else pos.y += Math.sin(u * Math.PI) * 1.2;
-      for (let i = 0; i <= ROPE_SEGMENTS; i++) fishRope[i].copy(handPos).lerp(pos, i / ROPE_SEGMENTS);
-      setRope(fishRope); hookMesh.visible = false; bobber.visible = true; bobber.position.copy(pos);
+      const sag = fishRope[0].copy(handPos).distanceTo(pos) * .06; // a light belly on the rod line
+      for (let i = 0; i <= ROPE_SEGMENTS; i++) { const t = i / ROPE_SEGMENTS; fishRope[i].copy(handPos).lerp(pos, t).y -= sag * 4 * t * (1 - t); }
+      setRope(fishRope, 0, fishLine); rope.mesh.visible = false; hookMesh.visible = false; bobber.visible = true; bobber.position.copy(pos);
       if (f >= 1) { if (selectedKind() === 'fishingrod') action({kind:'fish'}); fishWait = 0; endHook(); }
       return;
     }
@@ -1524,9 +1524,12 @@ export function mount(transfer = null) {
     if (hook.stage === 'flying') hookMesh.rotation.set(-hook.flightT * Math.PI * 2, yaw, 0);
     else if (hook.stage === 'reeling') hookMesh.rotation.set(-.6, yaw, 0);
     else hookMesh.rotation.set(0, yaw, 1.1);
-    const pts = hook.ropePoints(handPos, ROPE_SEGMENTS, ropeScratch);
-    for (let i = 1; i < pts.length; i++) pts[i].y = surfaceY(pts[i].x, pts[i].z, pts[i].y);
-    pts[pts.length - 1].copy(pos); setRope(pts);
+    const pts = hook.ropePoints(handPos, ROPE_SEGMENTS, ropeScratch), nLast = pts.length - 1;
+    const dx = pts[nLast].x - pts[0].x, dz = pts[nLast].z - pts[0].z, span = Math.hypot(dx, dz);
+    const bow = hook.stage === 'flying' ? 0 : span * .06 * (1 - hook.tension) / (span || 1); // slack rope drifts into a lazy sideways curve on the water
+    for (let i = 1; i < nLast; i++) { const t = i / nLast, b = bow * Math.sin(Math.PI * t) * (1 + .3 * Math.sin(elapsed * .8 + t * 5)); pts[i].x -= dz * b; pts[i].z += dx * b; }
+    for (let i = 1; i < pts.length; i++) { const q = pts[i], d = deckAt(q.x, q.z); q.y = d === null ? Math.max(surfaceY(q.x, q.z, q.y), ocean.getHeight(q.x, q.z) + .008) : Math.max(q.y, d - .04); } // slack rope floats on the waves and lies on the planks, never through them
+    pts[pts.length - 1].copy(pos); setRope(pts, hook.tension); fishLine.mesh.visible = false;
     const caught = caughtList(hook);
     if (caught.length !== lastCaughtCount) { if (caught.length > lastCaughtCount) play('catch'); lastCaughtCount = caught.length; }
     for (let i = 0; i < caught.length; i++) { // visual only: the whole catch trails the hook as a bundle
