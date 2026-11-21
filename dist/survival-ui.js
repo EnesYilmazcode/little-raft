@@ -87,6 +87,8 @@ function iconSVG(kind) {
   const meta = info(kind);
   // Placeholder (borrowed) sprite + a dedicated inline drawing -> prefer the drawing.
   const custom = meta?.placeholder && CUSTOM[n];
+  // A borrowed sprite would show the wrong item (water as a barrel), so wait on a blank tile instead.
+  if (meta?.placeholder && !custom) return '<svg class="sv-icon sv-blank" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><circle cx="24" cy="24" r="8" fill="#ffffff12"/></svg>';
   let id = custom ? null : meta?.icon;
   if (typeof id === 'string') id = id.replace(/^icon-/, ''); else id = null;
   if (!custom && (!id || !SPRITES.has(id))) id = SPRITE_FOR[n];

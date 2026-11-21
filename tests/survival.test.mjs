@@ -589,6 +589,13 @@ test('pickup feed: icon provider wins, svg sprite is the fallback', () => {
   assert.equal(icon(1).tagName, 'IMG'); assert.equal(icon(1).src, 'data:image/png;base64,AA');
 });
 
+test('pickup feed: no borrowed sprite for placeholder items (water is not a barrel)', () => {
+  const doc = fakeDoc(), c = fakeClock(), feed = createFeed({ doc, ...c });
+  feed.add('water', 1); feed.add('seed', 1);
+  const box = r => doc.getElementById('pickupFeed').children[r].children[0];
+  assert.equal(box(0).children.length, 0); assert.equal(box(1).children.length, 0);
+});
+
 test('pickup feed: refresh swaps in an icon that finished rendering late', () => {
   const doc = fakeDoc(), c = fakeClock(), feed = createFeed({ doc, ...c });
   let ready = null; feed.setIconProvider(() => ready);

@@ -32,7 +32,7 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
       return got.isConnected ? got.cloneNode(true) : got;
     }
     const sym = ITEM_INFO[kind]?.icon;
-    if (!sym) return null;
+    if (!sym || ITEM_INFO[kind].placeholder) return null; // a borrowed sprite would name the wrong item
     const svg = doc.createElementNS(SVG, 'svg'); svg.setAttribute('viewBox', '0 0 48 48'); svg.setAttribute('aria-hidden', 'true');
     const use = doc.createElementNS(SVG, 'use'); use.setAttribute('href', `icons.svg#${sym}`); svg.appendChild(use);
     return svg;
