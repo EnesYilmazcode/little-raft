@@ -21,3 +21,5 @@
 @media(max-width:760px){#lrFeed{left:16px;bottom:336px;font-size:13px}#lrPrompt{font-size:13px}}
 @media(prefers-reduced-motion:reduce){#lrPrompt,#lrPrompt.lr-on,#lrFeed .lr-line{transition:none;animation:none;transform:none}}
 /* The resume hint sits at the top edge (graphics.css); the throw charge is a thin ring on the reticle (graphics.css). */
+/* Phone width: text notes (unlocks) get a readable column instead of calc(50vw - 120px) (~75px at 390px), still left of the centre prompts. */
+@media(max-width:760px){#pickupFeed .pf-row.pf-note{max-width:min(230px,calc(100vw - 150px))}}

@@ -45,7 +45,8 @@ export const STEPS = [
     done:(S, b, c) => (c.hostWorld ? MATS.some(k => c.gained(k) > 0) : num(S.collected) - num(b.collected) >= 1)},
   {chapter:'ch1', ...gainStep('wood', 'Gather 6 planks', 'Planks and barrels give planks', 'wood', 6, ['reel'], hasHammer)},
   {chapter:'ch1', ...gainStep('leaves', 'Gather 4 palm leaves', 'Leafy bundles drift by now and then', 'leaf', 4, ['reel'], hasHammer)},
-  {chapter:'ch1', id:'bag', title:'Peek in your bag', hint:'[Tab] opens your bag', needs:['reel'], done:S => S.inventoryOpen === true},
+  // No needs: it shows as soon as look/walk are done, so the first minute names the bag key and crafting.
+  {chapter:'ch1', id:'bag', title:'Open your bag', hint:'[Tab] opens it: craft Rope there', done:S => S.inventoryOpen === true},
   {chapter:'ch1', ...gainStep('rope', 'Twist 2 rope', 'In your bag: Rope, 2 leaves each', 'rope', 2, ['bag', 'leaves'], hasHammer)},
   {chapter:'ch1', id:'swim', title:'Climb back aboard', hint:'Fell in? Hold [Space] at the edge to climb up', optional:true, every:true, show:S => S.swimming === true,
     done:(S, b, c) => { if (S.swimming) c.mem.wet = true; return !!c.mem.wet && !S.swimming && !!S.grounded; }},

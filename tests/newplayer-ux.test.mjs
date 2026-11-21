@@ -58,10 +58,10 @@ test('logbook shows one hint instead of a row per missing note', () => {
 });
 
 test('HUD chips: no sail chip waits for a sail to be makeable; fish chip is short', () => {
-  assert.match(src('sailing-ui.js'), /m === 'none' && info\.sailKnown === false/);
+  assert.match(src('sailing-ui.js'), /m === 'none' && \(info\.sailKnown === false/);
   assert.match(src('sailing-world.js'), /info\.sailKnown = !!ctx\.sailKnown\(\)/);
   assert.match(src('game.js'), /const sailKnown = \(\) =>[^\n]*isUnlocked\?\.\('sail'\)[^\n]*'scrap'/);
-  assert.match(src('fishing-cooking.js'), /`🎣 Fish \$\{n\}\/\$\{SPECIES\.length\} · J`/);
+  assert.match(src('fishing-cooking.js'), /`🎣 Fish journal \$\{n\}\/\$\{SPECIES\.length\} \[J\]`/);
   const fresh = new Progression();
   assert.equal(fresh.isUnlocked('sail'), false); // a new player does not see "craft one" yet
   fresh.noteItems(['leaf', 'scrap']);

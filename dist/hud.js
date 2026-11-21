@@ -44,10 +44,20 @@ export const REEL_PROMPT = 'Hold click to reel in';
 // First-run hints, shown one at a time and only until the player has done each thing once.
 // Look and walk come first, then throwing, then the bag and the hotbar.
 export const HINT_KEY = 'little-raft-hints';
+// True while the onboarding Notes (window.raftOnboarding) are on their first chapter. Polled at most 4 times a second.
+let teachAt = -1e9, teaching = false;
+export function checklistTeaching(now = globalThis.performance?.now?.() ?? Date.now()) {
+  if (now - teachAt < 250) return teaching;
+  teachAt = now;
+  try { teaching = globalThis.raftOnboarding?.state?.()?.chapter === 'ch1'; } catch { teaching = false; }
+  return teaching;
+}
 export const LOOK_DONE_RAD = 1.2, WALK_DONE_S = 1; // about a second of looking around / walking
 export const HINTS = Object.freeze([
-  {id:'look', text:'Move the mouse to look around', when:() => true},
-  {id:'walk', text:'Press W A S D to walk', when:() => true},
+  // Look and walk wait (stay silent) while the Notes checklist is teaching its first chapter: it already says
+  // the same thing, and the duplicate line lingered for half a minute.
+  {id:'look', text:'Move the mouse to look around', when:() => !checklistTeaching()},
+  {id:'walk', text:'Press W A S D to walk', when:() => !checklistTeaching()},
   {id:'throw', text:'Hold click to charge, release to throw at floating supplies', when:c => c.heldKind === 'hook' && !c.castOut},
   {id:'bag', text:`Press ${BAG_OPEN_KEYS} to open your bag and craft`, when:c => c.hasLoot},
   {id:'slots', text:`Press 1–${Math.min(HOTBAR_SIZE, 9)}${HOTBAR_SIZE >= 10 ? ' or 0' : ''} (or scroll) to choose what you hold`, when:() => true},

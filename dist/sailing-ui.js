@@ -51,6 +51,18 @@ export function createSailingUI({ signal } = {}) {
   // World angle a (direction (sin a, cos a)) -> clockwise screen degrees, 0 = camera forward.
   const toScreen = (a, yaw) => norm(Math.round((Math.PI + yaw - a) * DEG));
 
+  // Latched true once the local player owns a hammer or the raft has grown past the 3x3 start (raftDebug.hud).
+  // No live view (tests, other hosts): count as a builder, so only info.sailKnown decides.
+  let built = false;
+  const builder = () => {
+    if (built) return true;
+    try {
+      const h = globalThis.raftDebug?.hud; if (!h) return true;
+      built = (Array.isArray(h.ownedTools) && h.ownedTools.includes('hammer')) || (+h.tiles || 0) > 9;
+    } catch { return true; }
+    return built;
+  };
+
   function update(info) {
     if (!info) return;
     const show = !!info.running || document.body.classList.contains('playing');
@@ -81,7 +93,8 @@ export function createSailingUI({ signal } = {}) {
       if (t !== labelText) { labelText = t; label.textContent = t; }
     }
     // "No sail — craft one" only once a sail is something the player can make (info.sailKnown false hides it).
-    const quiet = m === 'none' && info.sailKnown === false;
+    // On top of that it waits for the first hammer or the first built tile, so minute one has no sail nag.
+    const quiet = m === 'none' && (info.sailKnown === false || !builder());
     if (quiet !== label.hidden) label.hidden = quiet;
     const ls = !hasSail ? '' : info.anchored ? 'Anchor dropped' : info.raised ? 'Sail raised' : 'Sail lowered';
     if (ls !== liveState) { if (liveState !== null && ls) live.textContent = ls; liveState = ls; }
