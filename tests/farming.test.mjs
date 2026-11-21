@@ -143,18 +143,18 @@ test('farmSignature changes on stage and wet, not on growth seconds', () => {
   assert.notEqual(F.farmSignature(w.decor), a);
 });
 
-test('watering with a full bag still works: the empty cup goes into the water slot or merges', () => {
+test('watering with a full bag: the empty cup goes into the water slot or merges, never lost', () => {
   const full = Array.from({ length: SLOT_COUNT }, () => ({ kind: 'wood', count: 20 }));
   const bagOf = () => new Bag({ slots: full.map((s) => ({ ...s })), selected: 3 });
   full[3] = { kind: 'water', count: 1 };
   let w = worldWith(F.newPlant()), bag = bagOf();
   assert.equal(F.applyFarmAction(w, bag, { op: 'water', ...at }).ok, true);
   assert.deepEqual({ ...bag.slots[3] }, { kind: 'cup', count: 1 }, 'cup is back in hand');
-  // A partly used stack with no free slot: water anyway, never block farming.
+  // A partly used stack with no room for the empty cup: refused, nothing is lost.
   full[3] = { kind: 'water', count: 3 };
   w = worldWith(F.newPlant()); bag = bagOf();
-  assert.equal(F.applyFarmAction(w, bag, { op: 'water', ...at }).ok, true);
-  assert.equal(bag.count('water'), 2); assert.equal(w.decor[0].farm.w, F.WATER_SECONDS);
+  assert.equal(F.applyFarmAction(w, bag, { op: 'water', ...at }).ok, false);
+  assert.equal(bag.count('water'), 3); assert.equal(w.decor[0].farm.w, 0);
   // An existing cup stack takes the empty cup.
   full[4] = { kind: 'cup', count: 1 };
   w = worldWith(F.newPlant()); bag = bagOf();
