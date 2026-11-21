@@ -1,6 +1,8 @@
 // Item kind -> 3D model + icon pose, for baking inventory icons from the game's own models.
-// Every kind in ITEM_INFO (dist/inventory-state.js) has an entry. Twelve use the existing dist
-// builders; fish and rope have no world model yet, so two small procedural ones live here.
+// Every kind in ITEM_INFO (dist/inventory-state.js) has an entry. 8 kinds use dist builders
+// unchanged (hammer, plastic, leaf debris, palm/bench/crate crafts... see makeIconItems), the sail
+// is the craft model squashed; fish and rope have no world model yet, so two small procedural
+// ones live here, plus icon-only variants for kinds whose world model does not read at 40 px.
 //
 // makeIconItems(T, getMaterial) -> [{ kind, make: () => Object3D, pose, dispose(obj) }]
 //   getMaterial(color) is the engine's shared material cache (game.js `mat`). Materials it hands
@@ -11,12 +13,17 @@ import { createCraft } from '../../dist/crafts.js';
 import { createDebris } from '../../dist/debris.js';
 import { bakeIconAtlas } from './icon-atlas.js';
 
-// Engine entry point: bake every kind once, return { kind: dataURL }.
+// Engine entry point: bake every kind once (or read the per-build localStorage cache) and return
+// { kind: blobURL } for the DOM. The cache holds PNG data: URLs; the DOM gets short blob: URLs so
+// innerHTML stays small. The caller owns the blob URLs (survival-ui setItemIcons revokes them when
+// they are replaced and when the UI is destroyed).
 // build is the ?build= id; with a real build id the PNGs are cached in localStorage under it.
-export async function bakeItemIcons(T, renderer, getMaterial, build = 'dev', kinds = null) {
+// isCancelled() is polled between tiles; once it is true the bake stops, writes nothing to the
+// cache, creates no blob URLs and resolves to null (game.js passes () => disposed).
+export async function bakeItemIcons(T, renderer, getMaterial, build = 'dev', kinds = null, isCancelled = null) {
   const items = makeIconItems(T, getMaterial).filter(it => !kinds || kinds.includes(it.kind));
-  const res = await bakeIconAtlas(T, renderer, items, { cacheKey: build && build !== 'dev' ? build : '' });
-  // data: URLs are what gets cached; hand the DOM short blob: URLs so innerHTML stays small.
+  const res = await bakeIconAtlas(T, renderer, items, { cacheKey: build && build !== 'dev' ? build : '', isCancelled });
+  if (!res || (isCancelled && isCancelled())) return null;
   const out = {};
   for (const [k, u] of Object.entries(res.urls)) {
     try {

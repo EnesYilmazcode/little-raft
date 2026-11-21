@@ -21,9 +21,16 @@ SURVIVAL_UI = [
     # 1. module-level registry of baked icon URLs + a revision that invalidates painted slots
     ("// Symbols that actually exist in icons.svg.\n",
      "// Baked 3D item icons (kind -> image URL) from item-icons.js. Until set, the SVG sprite is used.\n"
+     "// This module owns the blob: URLs it is given: replaced ones are revoked here, the rest on destroy().\n"
      "let BAKED = null, ICON_REV = 0;\n"
+     "function revokeIcons(urls, keep) {\n"
+     "  const k = new Set(keep ? Object.values(keep) : []);\n"
+     "  for (const u of urls ? Object.values(urls) : []) if (typeof u === 'string' && u.startsWith('blob:') && !k.has(u)) { try { URL.revokeObjectURL(u); } catch {} }\n"
+     "}\n"
      "export function setItemIcons(urls) {\n"
-     "  BAKED = urls && typeof urls === 'object' ? urls : null; ICON_REV++;\n"
+     "  const next = urls && typeof urls === 'object' ? urls : null;\n"
+     "  if (BAKED && BAKED !== next) revokeIcons(BAKED, next);\n"
+     "  BAKED = next; ICON_REV++;\n"
      "  // repaint the live UI now: hotbar, open bag and recipe list swap without a reopen\n"
      "  try { window[INST_KEY]?.update?.(); } catch (e) { console.error(e); }\n"
      "}\n\n"
@@ -38,7 +45,7 @@ SURVIVAL_UI = [
     (".sv-slot .sv-icon{display:block;width:100%;height:100%;filter:drop-shadow(0 1px 1px #0008)}\n",
      ".sv-slot .sv-icon{display:block;width:100%;height:100%;filter:drop-shadow(0 1px 1px #0008)}\n"
      ".sv-icon.sv-baked{filter:none;object-fit:contain;-webkit-user-drag:none;user-select:none;pointer-events:none}\n"
-     ".sv-slot .sv-icon.sv-baked{margin:-5px;width:calc(100% + 10px);height:calc(100% + 10px)}\n"
+     ".sv-slot .sv-icon.sv-baked{margin:-4px 0 0 -4px;width:calc(100% + 4px);height:calc(100% + 4px)}\n"
      "#inventory .sv-req .sv-icon.sv-baked{width:22px;height:22px;margin:-2px}\n"),
     # 4. slot signature includes the icon revision so already painted slots repaint once
     ("return s.kind + ':' + s.count + ':' + (f == null ? '' : Math.round(f * 100));\n",
@@ -60,6 +67,10 @@ SURVIVAL_UI = [
      "      iconRevSeen = ICON_REV;\n"
      "      if (isOpen) { buildRecipes(); recipeEls.forEach(v => { v.sig = null; }); force = true; }\n"
      "    }\n"),
+    # 7. destroy(): the engine is disposed (or hot-swapped to another build's UI): revoke the blob URLs
+    ("      if (window[INST_KEY] === api) window[INST_KEY] = null;\n",
+     "      if (window[INST_KEY] === api) window[INST_KEY] = null;\n"
+     "      revokeIcons(BAKED); BAKED = null; ICON_REV++;\n"),
 ]
 
 def game_patches(b):
@@ -67,11 +78,12 @@ def game_patches(b):
         (f"import {{ createSurvivalUI }} from './survival-ui.js?build={b}';\n",
          f"import {{ createSurvivalUI, setItemIcons }} from './survival-ui.js?build={b}';\n"
          f"import {{ bakeItemIcons }} from './item-icons.js?build={b}';\n"),
-        # bake after the first frames are up; SVG icons show until the PNGs exist; cached per build
+        # bake after the first frames are up; SVG icons show until the PNGs exist; cached per build.
+        # () => disposed cancels the bake between tiles when this engine is disposed (hot swap).
         ("    active = true; last = performance.now(); rafId = requestAnimationFrame(animate);\n  } catch (e) {\n",
          "    active = true; last = performance.now(); rafId = requestAnimationFrame(animate);\n"
          "    later(() => { if (!renderer) return; const iconBuild = new URL(import.meta.url).searchParams.get('build') || 'dev';\n"
-         "      bakeItemIcons(T, renderer, mat, iconBuild, Object.keys(ITEM_INFO)).then(urls => { if (!disposed && urls) setItemIcons(urls); }, e => console.warn('item icon bake failed, keeping SVG icons', e)); }, 400);\n"
+         "      bakeItemIcons(T, renderer, mat, iconBuild, Object.keys(ITEM_INFO), () => disposed).then(urls => { if (!disposed && urls) setItemIcons(urls); }, e => console.warn('item icon bake failed, keeping SVG icons', e)); }, 400);\n"
          "  } catch (e) {\n"),
     ]
 
