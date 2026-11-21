@@ -165,3 +165,23 @@ Example QA: `place`, `shape('sprint')`, `start()`, `teleportThrough(0..4)` → a
 ## Checks for the builder
 `npm test`, then shoot2.py with `errors: []`, then coop2.mjs (no new failures beyond tests 3 and 6). In co-op, the guest finish shows up on both screens and on the scoreboard.
 Old saves load. Draw calls with rings visible go up by ≤ 3, plus flag/scoreboard meshes.
+
+## Implementation notes
+- **Frame for sprint/zigzag/eight.** A frame point `(out, along)` maps to `S + d·out + a·along`, where `S` is the point on the flag side's line
+  whose along coordinate `p·a` is 0. Sprint centres `along` on the flag's own along coordinate; zigzag and the figure 8 centre it on the bbox
+  centre (the spec only pins sprint to the flag). Ties between equally near sides resolve in the order +x, −x, +z, −z.
+- **Test 5** starts the swimmer 2 m behind gate 0 instead of at the flag: the lead-in from the flag to gate 0 is free swimming (the zigzag's
+  first gate faces +a, away from a straight line out of the flag). Each leg is stepped in ≤ 0.5 m moves, under the 3 m teleport skip.
+- **Duplicate finish gate** (loop, figure 8): drawn once. Gate 0 is orange while it is next (at the start and again as the final gate) and
+  gold (finish) in between; the beam follows.
+- **Rings vs ring count:** the beam is a thin (r 0.22 m) additive cylinder: a 1.2 m one washed the sky out white on screen.
+- **Prompts.** The board prompt names the shape E will switch to (`Next course · Zigzag` while Sprint is set); the board face and the pole
+  prompt show the current one. The scoreboard prompt shows the top swim row (else board) or "No Sprint times yet". Extra flags answer E with
+  the muted line as a notice. Models set `userData.ownRot` so a rotated placement still faces +z (aim targets assume it).
+- **Flag sync** runs on the host every 0.05 s of game time (a scan of `world.decor`), not every frame. If the flag exists but `g` is empty
+  (bad saved gates, or the raft was too big), the host retries once per tile-count/shape change.
+- **craft-book CATEGORY_OF**: `courseflag`/`scoreboard` are filed under Building (not in the spec; without it they already fell back there).
+- **Timer and slow machines.** As specced, `t` sums the capped content `dt` (≤ 0.05 s), while the player physics integrates real frame time up to
+  0.25 s. Below ~20 fps the timer therefore runs slow relative to distance covered; with the 6 m/s ceiling a normal swim stays valid, but a
+  very slow machine plus every speed buff could in theory trip `minMs`. Not changed (spec says `t += dt`).
+- `debug.placeScore(x,z)` and `debug.show(s)` were added for QA; `state()` also reports `f`, `r` and `riding`.

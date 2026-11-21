@@ -168,3 +168,21 @@ skipping reach), `setPos(x, z, h)` (while riding, set the board and physics), `l
 `npm test` is green. shoot2.py reports `errors: []`. In a browser QA run via debug: launch, ride 20 m, step onto the deck (the board ties), hold E to pick up,
 hop off at sea, and the board drifts home. A save then reload gives a tied or adrift board and the player on deck. With coop2.mjs, the peer sees the board under the rider,
 and only tests 3 and 6 fail, as on the base.
+
+## Implementation notes
+Built as specified; the hook lines in content.js and game.js are byte-identical to `origin/claude/loop-features-202611210753-zfs` (plus the one `[paddleboard]` input line). Deviations and additions:
+- **Heading convention.** The board nose points along `(sin h, cos h)` (a THREE `rotation.y` of h), but the game camera looks along `(-sin yaw, -cos yaw)`.
+  `stepRide` therefore takes the camera yaw in `inp.yaw` and eases h toward `headingOf(yaw) = wrapAngle(yaw + π)`, so W paddles where you look.
+  The host eases a guest's board toward `headingOf(other.yaw)` in the same way.
+- **Feature order.** The buoy course (built in parallel) also inserted itself before cookpot. FEATURES now ends with `…, createPaddleboard, createBuoyCourse, createCookpot`.
+  Paddleboard still runs after islands and sleep, cookpot is still last, and the course's afterMove runs after ours (it reads the pose we wrote). The test checks this order, not adjacency.
+- **Extra core exports.** `headingOf`, `parallel` (an edge-parallel heading close to the current one), `THRUST`, `rideState()`, `rideVel(st,out)` and `rideTick(st, inp, dt, tiles, info)`.
+  `rideTick` is stepRide plus tether, the hard clamp at 45 m and pushOut with the into-hull velocity removed. The module, `debug.step` and the tests all share it.
+  `stepRide` also sets `st.wraps`, the number of stroke wraps this call, which drives the splash sound.
+- **Extra BOARD keys.** `LAUNCH_PLAYER` (4), `CLAMP` (45), `BRAKE` (2.5 m/s², the S deceleration), `IDLE_FRICTION` (.15 m/s², so an idle board actually stops), `KEEP_LAT` (.6, the share of forward speed that becomes slip on a turn) and `TIE_GAP` (1.2).
+- **pushOut.** When a circle centre is already inside a tile, pushOut leaves by the nearest side that has no neighbour tile, instead of pushing deeper into the raft.
+- **Texts not given by the spec.** An empty bag on launch shows "You need a Driftboard". A stow shows "Driftboard packed away" with the collect sound. A refused guest ride sends nothing, so the guest's 2 s timeout shows "Someone is already on it".
+  Opening a UI while holding E cancels the hold without boarding.
+- **Model.** `setTie(x, z, y = .2)` takes an optional height, so the rope reaches the deck edge. `userData.rest()` lays the paddle flat on the deck while nobody rides.
+- **Debug.** Also `meshes()`, which returns the drawn poses that co-op QA uses. `state()` also returns the last rideTick `info` `{tug, push, d}`.
+- **Tests.** There is one extra test for wrapAngle/angDiff/headingOf, and the survival.test.mjs tools-tab list now includes `driftboard` after `scraper`.

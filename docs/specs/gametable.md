@@ -161,3 +161,15 @@ Size: 100 tables × ~120 chars ≪ EXT_MAX.
    `decorModel('crate')` null; prompt escapes and caches.
 9. Static: survival-ui SPRITES has 'gametable'; icons.svg has `id="icon-gametable"`; content.js FEATURES includes createGameTable; gametable-ui.js
    contains `stopPropagation` and `requestLock`. Then run `npm test`, shoot2.py (errors []), coop2.mjs (only known failures 3 and 6).
+
+## Implementation notes
+Built as specified; deviations and small additions:
+- **Seats after a gull rematch.** `gt.rematch` swaps seats, so a gull game's next round has `s = ['ai', 'host']` (the gull moves first, as the research asks). `cleanGame` therefore accepts `s[0] === 'ai'` and instead requires two different seat values (never `['ai','ai']` or the same human twice). Otherwise a saved rematch game against the gull would be dropped on reload.
+- **Actions on an empty table.** `gt.move`, `gt.resign` and `gt.rematch` on a table with no game return `bad` (the spec names no reason for this case).
+- **Outcome order (draughts).** "The side to move has no pieces or no move → the mover wins" is checked before the 40-turn quiet draw.
+- **Extra core exports:** `KINDS`, `TEXT`, `SIDE_NAMES`, `GAME_NAMES`, `startText(g)`, `resultText(gm)` and `tally(st, gm)` (the module uses `tally` for the gull's moves). `applyGameAction` also returns `over` (the new `w`). The noughts minimax keeps a module-level memo keyed by board string. This is still pure and deterministic, and it makes the exhaustive "never loses" test fast.
+- **Success texts.** Resign emits 'You shook hands: good game' (build) to the actor. Rematch emits the start text ('Knots & Hoops: Knots to move'). A finished game (move, resign or gull move) emits the loot line to all.
+- **Model slide.** A sliding king moves its two stacked instances, so it costs 2 matrix writes per frame. A noughts placement drops in from 8 cm above instead of sliding.
+- **Dialog.** The setup panel is also shown during play when a seated human other than the viewer is not connected, so the host can "take the seat" through Start. The status reads 'Your crewmate left: start a new game'. Noughts cells flip for a side-1 viewer just like the draughts board. Their labels use the screen position ('top left', 'centre'…). X and O are drawn in CSS, not as font glyphs. The UI also has `reset()`, which `load()` calls.
+- **Debug extras:** `open(x, z)` and `close()`, used for QA and co-op tests.
+- `ITEM_SOURCE` needed no entry: the table is crafted, so `sourceOf` describes its recipe. `tests/survival.test.mjs` does not hard-code the sprite or tab lists.
