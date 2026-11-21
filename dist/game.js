@@ -825,7 +825,7 @@ export function mount(transfer = null) {
   // ---------- Frame ----------
   const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3();
   let chargeWidth = '';
-  const aimPoint = new T.Vector3(), hookPos = new T.Vector3(), titleFocus = new T.Vector3(-5, 0, 2), heldScratch = new Set(), fishPts = [], ropeScratch = [];
+  const aimPoint = new T.Vector3(), hookPos = new T.Vector3(), titleFocus = new T.Vector3(-5, 0, 2), heldScratch = new Set(), fishPts = [], ropeScratch = [], itemSample = {h:0, sx:0, sz:0};
   const hookParams = {hand:null, items:null, skip:it => isPending(it), reeling:false, time:0};
   for (let i = 0; i <= ROPE_SEGMENTS; i++) fishPts.push(new T.Vector3());
   function heldTokenSet() { heldScratch.clear(); for (const c of caughtList(castOut())) heldScratch.add(c.token); return heldScratch; } // reused every frame
@@ -906,9 +906,9 @@ export function mount(transfer = null) {
       const u = m.userData;
       if (role === 'guest' && u.sx !== undefined && Math.hypot(it.x - u.sx, it.z - u.sz) < 3) { const k = Math.min(1, dt * 8); u.sx += (it.x - u.sx) * k; u.sz += (it.z - u.sz) * k; }
       else { u.sx = it.x; u.sz = it.z; }
-      const s = ocean.getSlope(u.sx, u.sz);
-      m.position.set(u.sx, ocean.getHeight(u.sx, u.sz) + ITEM_FLOAT, u.sz);
-      m.rotation.set(-s.z * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.x * 1.2 + Math.sin(elapsed + it.phase) * .05);
+      const s = ocean.sample(u.sx, u.sz, itemSample); // height + slope in one call, reused object
+      m.position.set(u.sx, s.h + ITEM_FLOAT, u.sz);
+      m.rotation.set(-s.sz * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.sx * 1.2 + Math.sin(elapsed + it.phase) * .05);
     }
   }
   let hookStage = '';
