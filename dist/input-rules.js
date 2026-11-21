@@ -28,11 +28,12 @@ export function createLookFilter({floor = 400, ratio = 4, keep = .25} = {}) {
 
 // Frame stepping: split a real frame time into n equal steps of at most maxStep seconds,
 // after capping the frame at cap seconds (a long stall must not teleport the player).
-export function splitSteps(dt, maxStep = .05, cap = .25) {
+// out: optional object to fill instead of allocating one (the game reuses one every frame).
+export function splitSteps(dt, maxStep = .05, cap = .25, out = {n: 0, step: 0}) {
   dt = Number.isFinite(dt) && dt > 0 ? Math.min(dt, cap) : 0;
-  if (dt <= 0) return {n: 0, step: 0};
-  const n = Math.ceil(dt / maxStep - 1e-9);
-  return {n, step: dt / n};
+  if (dt <= 0) { out.n = 0; out.step = 0; return out; }
+  out.n = Math.ceil(dt / maxStep - 1e-9); out.step = dt / out.n;
+  return out;
 }
 
 // Wheel: the hotbar wheel listens on window; ignore wheel events aimed at a dialog or at a

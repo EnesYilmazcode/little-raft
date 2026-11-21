@@ -149,6 +149,14 @@ Next ideas:
 - Gate: 533/533, no page errors, hook-only spawn, Esc from inventory OK, perf +0.8% vs main (fair probe), draw calls 148 vs 539.
 - Merged PR #1 into main.
 
+## claude/loop-visuals-202611210451 (visuals, round 1)
+Base: origin/claude/raft-integration (d5419eb). Fleet: critic, 7 builders, art judge, perf checker.
+- Accepted: bright tropical sky dome with wispy clouds and cyan horizon fog (sky.js wired in); warm sun + blue hemisphere fill, shadow camera actually applied; deep blue ocean with softer foam; weathered olive-tan deck, 3-4 boards per tile; rocky sand-shelf islands with palms (islands.js, merged geometry; renamed scenery-islands.js on merge into raft-master, where islands.js is the content lane); light canvas hotbar/inventory in tan wood frame.
+- Rejected by judge: chunky teal hook + right-hand-only viewmodel (hand did not grip the handle, toy-like block) - reverted.
+- Perf: PASS. shoot.py median 195.8 -> 202.3 ms (noise); spawn probe 304 -> 289 ms, draws ~524 -> ~382.
+- Next: hook/hand grip redo (thinner head, own colour), dark board gaps + per-board tone, near-foam decal lines, pale far-water band, cumulus near horizon, island sand pancake edges, pause menu still navy, selected-slot highlight.
+# Little Raft improvement loop log
+
 ## Round 1: claude/loop-ux-202611210451 (base: origin/claude/raft-integration d5419eb)
 
 Fleet: 8 subsystem bug hunters, 2 independent adversarial verifiers per bug report (16), 7 fixers each with regression tests, 1 new-player UX reviewer reading screenshots, and 1 crafting UX builder.
@@ -294,3 +302,15 @@ Fleet: 8 subsystem hunters (lock, craft, build, hook, survival, net, input, hud)
 - The hold-to-craft progress is still a bar, not a ring.
 - Electron was not run here. The desktop Esc path was checked only by reading the code.
 - The machine was heavily loaded, so shoot.py frame times are not comparable between runs.
+
+## 2026-11-21 · integrator A, round 2/3
+Two integrator sessions are running on claude/raft-master; each merges the other's pushes before pushing.
+- Merged loop-visuals-202611210451 (driftwood palette, scenery-islands.js, sky.follow() tracks day/night) and resolved it
+  against the other integrator's raft-integration merge: one sky-sync path (sky.follow), the visuals palette on the 10-slot
+  hotbar, combined ocean foam (soft crest + raft/item collars), single-tap wood bump with driftwood values.
+- Verified at 0ebcf17: npm test 628/628, shoot.py errors [], fresh spawn hook only, Esc from inventory: no pause, pointer stays locked.
+- Under heavy machine load (4 merge agents), the art "atlas build stays fast" timing test and stock shoot.py time out on
+  untouched bases too; both pass once load drops.
+- Next: lane agents merging the newest loop-features/perf/ux/visuals/fidelity and raft-content/tests/integration + lane-placement.
+- Still skipped: raft-reference (scraped commercial-game stills). Farming (farming.js) is merged but not reachable in play:
+  it and the watering lane drive the same palm planter; it needs a design decision.

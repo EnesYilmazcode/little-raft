@@ -14,7 +14,7 @@ export const CATEGORIES = Object.freeze([
 const CATEGORY_OF = Object.freeze({
   hook: 'tools', hammer: 'tools', fishingrod: 'tools',
   rope: 'materials',
-  net: 'survival', palm: 'survival', lantern: 'survival', cup: 'survival',
+  net: 'survival', palm: 'survival', lantern: 'survival',
   sail: 'building', bench: 'building', crate: 'building',
   // progression catalogue (items.js)
   metalhook: 'tools', binoculars: 'tools',
@@ -23,6 +23,9 @@ const CATEGORY_OF = Object.freeze({
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
   researchtable: 'building', grill: 'building', smelter: 'building',
+  // content (engine, sleep, paint)
+  motor: 'building', wheel: 'building', bed: 'building', brush: 'tools',
+  paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
@@ -37,7 +40,7 @@ export const ITEM_TEXT = Object.freeze({
   hammer:     { desc: 'A rope-bound building hammer.', use: 'Adds raft floor tiles (2 wood + 2 plastic each).' },
   fishingrod: { desc: 'A bamboo rod with a float and line.', use: 'Cast into the sea and wait for a bite to catch fish.' },
   sail:       { desc: 'A tall mast with a woven sail.', use: 'Decorates the raft; place it on a floor tile.' },
-  palm:       { desc: 'A clay planter for a palm seed.', use: 'Place it on the raft, plant a seed, water it and grow leaves.' },
+  palm:       { desc: 'A clay pot with a small palm tree.', use: 'A bit of island on your raft; place on a tile.' },
   lantern:    { desc: 'A post lantern with a warm glow.', use: 'Lights the raft at night; place on a tile.' },
   net:        { desc: 'A rope net stretched over the water.', use: 'Catches nearby floating supplies for you.' },
   bench:      { desc: 'A simple plank bench.', use: 'Somewhere to sit; place it on a floor tile.' },
@@ -46,6 +49,15 @@ export const ITEM_TEXT = Object.freeze({
   stone:      { desc: 'A smooth, heavy stone.', use: 'Part of the smelter; sturdier builds and island tools.' },
   seed:       { desc: 'A palm seed washed up on an island.', use: 'Plant it in a palm planter.' },
   research:   { desc: 'A tinker\u2019s desk for studying finds.', use: 'Place it, then study parts to learn signal and water gear.' },
+  motor:      { desc: 'A little outboard motor that burns leaves, wood or plastic.', use: 'Place it, fuel it, and it pushes the raft along.' },
+  wheel:      { desc: 'A rope-lashed steering wheel.', use: 'Place it, then grab it to steer the raft.' },
+  bed:        { desc: 'A plank bed with a leaf mattress.', use: 'Lie down at night to sleep until morning.' },
+  brush:      { desc: 'A paint brush with stiff bristles.', use: 'Click walls, floors or deck to paint; right click picks a colour.' },
+  paint_seafoam:  { desc: 'A pot of soft seafoam green paint.', use: 'One pot paints one piece with the brush.' },
+  paint_coral:    { desc: 'A pot of warm coral paint.', use: 'One pot paints one piece with the brush.' },
+  paint_sunshell: { desc: 'A pot of sunny shell-yellow paint.', use: 'One pot paints one piece with the brush.' },
+  paint_lagoon:   { desc: 'A pot of deep lagoon blue paint.', use: 'One pot paints one piece with the brush.' },
+  paint_pebble:   { desc: 'A pot of pebble grey paint.', use: 'One pot paints one piece with the brush.' },
   clay:       { desc: 'Sticky clay from barrels and the seafloor.', use: 'Fire it into bricks on a grill.' },
   metalore:   { desc: 'A lump of ore from barrels and the seafloor.', use: 'Smelt it into metal ingots.' },
   receiver:   { desc: 'A crackling radio receiver.', use: 'Place one, add antennas, and follow the signal.' },
@@ -279,6 +291,9 @@ export function sortCraftableFirst(views) {
 // ---- where items come from ----
 // `tag` is the short text beside a missing ingredient; `how` is the tooltip line.
 export const ITEM_SOURCE = Object.freeze({
+  flowerseed: Object.freeze({ tag: 'island bushes', how: 'Pick bushes on islands; some drop flower seeds.' }),
+  honey:   Object.freeze({ tag: 'beehive', how: 'Put a beehive near flower boxes, then press E on it to collect honeycomb.' }),
+  wax:     Object.freeze({ tag: 'beehive', how: 'Collected with honey from a full beehive (E).' }),
   wood:    Object.freeze({ tag: 'found floating', how: 'Hook floating planks. Barrels hold more.' }),
   leaf:    Object.freeze({ tag: 'floating, palm', how: 'Hook floating leaf bundles, or harvest a grown palm.' }),
   plastic: Object.freeze({ tag: 'found floating', how: 'Hook floating plastic jugs. Barrels hold some too.' }),
@@ -286,20 +301,20 @@ export const ITEM_SOURCE = Object.freeze({
   seed:    Object.freeze({ tag: 'barrels, palm', how: 'Hook floating barrels, or harvest a grown palm.' }),
   fish:    Object.freeze({ tag: 'fishing rod', how: 'Cast the Fishing Rod into the sea and wait for a bite.' }),
   water:   Object.freeze({ tag: 'fill a cup', how: 'Fill a Filter Cup at the sea.' }),
-  // Lane items (progression, diving, islands, watering, cooking): gathered or made at a station, not in the hand-craft list.
-  sand:      Object.freeze({ tag: 'barrels, seafloor', how: 'Open floating barrels, dive to the seafloor, or scoop it on an island.' }),
-  clay:      Object.freeze({ tag: 'barrels, seafloor', how: 'Open floating barrels, or dive and dig it from the seafloor.' }),
-  metalore:  Object.freeze({ tag: 'barrels, seafloor', how: 'Open floating barrels, or dive and mine it from the seafloor.' }),
-  stone:     Object.freeze({ tag: 'barrels, islands', how: 'Open floating barrels, or gather rocks on an island.' }),
-  copperore: Object.freeze({ tag: 'barrels', how: 'A lucky find in floating barrels.' }),
-  seaweed:   Object.freeze({ tag: 'barrels', how: 'Found tangled in floating barrels.' }),
-  saltcup:   Object.freeze({ tag: 'fill a cup', how: 'Click the sea while holding an empty cup.' }),
-  freshcup:  Object.freeze({ tag: 'purifier', how: 'Pour sea water into a water purifier and take the fresh cup.' }),
-  brick:     Object.freeze({ tag: 'grill', how: 'Fire clay on a grill.' }),
-  metalingot:  Object.freeze({ tag: 'smelter', how: 'Smelt metal ore in the smelter.' }),
-  copperingot: Object.freeze({ tag: 'smelter', how: 'Smelt copper ore in the smelter.' }),
-  glass:     Object.freeze({ tag: 'smelter', how: 'Melt sand in the smelter.' }),
-  cookedfish:  Object.freeze({ tag: 'grill', how: 'Grill a fish on the grill.' }),
+  // raft-master materials (items.js): barrels, islands, the seafloor and the stations
+  sand:        Object.freeze({ tag: 'barrels, islands', how: 'Hook floating barrels, scoop it on an island or dive for it.' }),
+  clay:        Object.freeze({ tag: 'barrels, seafloor', how: 'Hook floating barrels or dive to the seafloor.' }),
+  stone:       Object.freeze({ tag: 'barrels, islands', how: 'Hook floating barrels or gather rocks on an island.' }),
+  metalore:    Object.freeze({ tag: 'barrels, seafloor', how: 'Hook floating barrels or dive to the seafloor.' }),
+  copperore:   Object.freeze({ tag: 'barrels', how: 'Hook floating barrels; copper ore is rare.' }),
+  seaweed:     Object.freeze({ tag: 'barrels', how: 'Hook floating barrels.' }),
+  brick:       Object.freeze({ tag: 'grill', how: 'Fire clay on a grill.' }),
+  metalingot:  Object.freeze({ tag: 'smelter', how: 'Smelt metal ore in a smelter.' }),
+  copperingot: Object.freeze({ tag: 'smelter', how: 'Smelt copper ore in a smelter.' }),
+  glass:       Object.freeze({ tag: 'smelter', how: 'Melt sand in a smelter.' }),
+  saltcup:     Object.freeze({ tag: 'fill a cup', how: 'Hold an empty cup and click the sea.' }),
+  freshcup:    Object.freeze({ tag: 'purifier', how: 'Pour sea water into a purifier and wait.' }),
+  cookedfish:  Object.freeze({ tag: 'grill', how: 'Cook a fish on a grill.' }),
   // [bees] beehive harvest and island bushes
   flowerseed: Object.freeze({ tag: 'bushes, barrels', how: 'Pick it from island bushes, or find it in floating barrels.' }),
   honey:     Object.freeze({ tag: 'beehive', how: 'Put a beehive near flower boxes, then collect the honeycomb with E.' }),

@@ -16,6 +16,7 @@ export const BLOCK_TEXT = Object.freeze({
   decor: 'Clear what stands on this floor first',
   split: 'That would split the raft in two',
   brother: 'Your brother is in the way',
+  nofloor: 'Place it on the raft floor',
 });
 
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];

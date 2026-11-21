@@ -142,3 +142,20 @@ decor in `cleanWorld` :154 and ignore `ext.engine`. The slice stays tiny (64 ent
 3. Aim at the wheel (`raftDebug.camera`/`project`), hold R, turn yaw; assert `raftDebug.sailing.heading` changes; screenshot P_WHEEL prompt.
 4. Drop the anchor -> push 0, burn stops. `fuel(1,0,0)` -> prompt "Needs fuel". Reload page -> state restored from save.
 5. `npm test` green.
+
+## 13. Build notes (deviations, as built)
+- **Propeller placement**: the prop sits behind the housing at deck height (a fan on a short shaft along +z, spinning in
+  the x-y plane) instead of hanging below the deck. A prop at model y -.1 would sit inside the floor tile and never be seen.
+- **Wheel height**: the ring is at model y .83, so its centre is about 1.05 above the water line with the .22 deck offset.
+  This matches `WHEEL_Y 1.05` (raft-local aim in sailing-world.js) and the engine module's `1.05` target centre.
+  The wheel ring turns with the shared heading (`rotation.z = -2 * heading`), which is cosmetic only.
+- **Texts beyond §4**: `all` with no fuel in any motor says "Needs fuel". A 65th motor entry says "Too many motors". A fuel item
+  missing from the bag says "No wood in your bag" (or leaf/plastic). The wheel prompt with no motors is
+  `Hold <kbd>R</kbd> to steer · no motors yet`. The bag is never touched on any refusal.
+- **cleanEngine** keeps the first 64 valid keys in **sorted** order, so every peer drops the same extras.
+- **Anchor aim** in `updateAim` now also records `best = t`, so a wheel behind the anchor post cannot steal the aim.
+  Behaviour without wheels is unchanged.
+- `onRaftBuilt` keeps a wheel grab alive on a raft with no sail (it used to drop steering whenever `sails.length === 0`).
+- **HUD speed** is ground speed, so the 0.3 m/s current adds to it. One motor heading with the current reads about "Motor · 1.0 m/s".
+- **Debug** is at `raftDebug.state.sailing.push` / `.motor` / `.grabKind` (the spec's `raftDebug.sailing`) and `raftDebug.content.engine.*`.
+- `tests/storage-research.test.mjs` exact learned lists gain `wheel` (wood + rope), because the new recipe joins the research tree.

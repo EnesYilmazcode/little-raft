@@ -97,6 +97,7 @@ test('game.js routes notices to the edge stack, not under the crosshair', async 
   // beep() survives only as the old tone API for lane hooks; it plays the audio.js recipes, never a raw oscillator.
   assert.match(src, /function beep\(f = 500\) \{ play\(/);
   assert.doesNotMatch(src, /createOscillator\(/);
+  assert.doesNotMatch(src, /new AudioContext\(/);
   const css = await readFile(new URL('graphics.css', base), 'utf8');
   assert.doesNotMatch(css, /#resumeHint\{[^}]*top:calc\(50%/);
   assert.doesNotMatch(css, /#chargeMeter\{[^}]*top:calc\(50%/);

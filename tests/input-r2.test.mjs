@@ -118,7 +118,7 @@ test('INPUT-3: jump apex is the same at 30, 60, 144 and 240 fps', () => {
 test('INPUT-3: holding jump through a slow multi-substep frame jumps once, on the first substep', () => {
   const {jumps} = simulate(4, 2, () => ({jump:true})); // lands and keeps holding: no auto re-jump
   assert.equal(jumps, 1);
-  assert.match(gameSrc, /splitSteps\(dt\)/);
+  assert.match(gameSrc, /splitSteps\(frameDt\b/);
   assert.match(gameSrc, /movePlayer\(realDt,/);
 });
 

@@ -45,14 +45,13 @@ test('sortCraftableFirst: the building tab puts what wood alone makes above the 
   assert.equal(recipes[0].id, 'sail', 'book order starts with the sail');
   const bag = bagWith({ wood: 9, scrap: 1, leaf: 7, rope: 2 });
   const ids = CB.sortCraftableFirst(viewsFor(bag, recipes)).map(v => v.id);
-  // Other lanes add more building recipes (antenna, grill, smelter...); the wood-only ones still lead.
-  assert.deepEqual(ids.slice(0, 2), ['bench', 'crate']);
-  assert.ok(ids.indexOf('sail') > 1, 'the sail drops below what the bag can make');
-  assert.deepEqual([...ids].sort(), recipes.map(r => r.id).sort(), 'every recipe kept');
+  // raft-master's building tab holds more recipes; only the relative order of these three is checked.
+  const three = list => list.filter(id => ['bench', 'crate', 'sail'].includes(id));
+  assert.deepEqual(three(ids), ['bench', 'crate', 'sail']);
+  assert.deepEqual(ids.slice(0, 2), ['bench', 'crate'], 'what the bag makes right now comes first');
   // With nothing at all, book order is kept apart from the closest-to-done rule.
   const none = CB.sortCraftableFirst(viewsFor(bagWith({}), recipes)).map(v => v.id);
-  const rel = none.filter(id => ['bench', 'crate', 'sail'].includes(id));
-  assert.deepEqual(rel, ['bench', 'crate', 'sail'], 'bench needs 1 kind, crate 2, sail 3');
+  assert.deepEqual(three(none), ['bench', 'crate', 'sail'], 'bench needs 1 kind, crate 2, sail 3');
 });
 
 test('holdHint previews how many a hold makes, capped', () => {

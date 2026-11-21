@@ -157,3 +157,19 @@ Re-painting a target the same colour is refused with "Already Seafoam" and costs
 - Assert in the report: `renderInfo.calls` within +2 of the same scene before `demo()` paints; `programs` unchanged after painting; `materials() <= 15`;
   after `dropPiece` on one painted wall and one host frame, `state().m` no longer has that key.
 - Tune a hex or the mix factor only if the noon shot looks muddy, and record the change in this spec.
+
+## 13. Build notes (deviations found while building)
+- **`ctx.aim()`**: `update()` has no aim argument, so `contentCtx` also exposes `aim: () => frameAim` for the per-frame target and ghost preview.
+- **Tint cap 8, not 4**: Lagoon's blue needs about 7.5x the plank average in linear light; at 4 it rendered teal. `TINT_CAP = 8` in paint.js.
+- **Cap before charge**: check (6) "That's a lot of paint!" runs before the pot is removed, so a refused paint never eats a pot.
+- **Texts**: a Driftwood success says "Scraped back to raw wood"; the Driftwood count shows as "free".
+- **Visible prompt**: prompts.css hides `#contextPrompt`, so `prompt(aim)` (with the swatch) is never seen. The module also registers
+  `raftPrompts.provide({id:'paint'})`: "LMB Paint wall · Coral (3)" + "RMB Colour". The swatch circle only lives in the hidden HTML.
+- **Icons**: survival-ui.js only draws sprite ids in its `SPRITES` set, so `brush` and `paint-<id>` were added there. Pot icons got a wide
+  label band in the paint colour (the drip alone was too small to tell colours apart in the hotbar).
+- **Brush pose**: `{rx:-.25, ry:.35, rz:.35, scale:.6}` shows the flat bristle face; the tip box is .094 x .05 x .044 over the bristle end.
+- **use() when out of the colour**: it switches to `nextColour` with a notice and does not paint on that click.
+- **retint()** rebuilds instead when the grid version is newer than the instance buffers.
+- **Research test**: tests/storage-research.test.mjs now expects `brush` in the wood + rope unlocks.
+- **QA (headless, swiftshader)**: same scene painted vs scraped back: calls 602/602 (and 556/556 in a second run), programs 19/19 (20/20);
+  `materials()` 14; `dropPiece('wall:0,1,0,0')` pruned the key on the next frame. Sunshell walls read khaki in shade; left as is.

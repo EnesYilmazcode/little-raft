@@ -53,9 +53,9 @@ test('UX-5: the pickup feed gets the bag\'s 3D icons from the same item-icons mo
   const feed = createFeed({ doc, now: () => 0, timer: () => 0, clear() {} });
   let ready = false;
   feed.setIconProvider(() => (ready ? 'data:image/png;base64,AAAA' : null));
-  const row = feed.add('plastic', 1);
+  const row = feed.add('wood', 1); // plastic's sprite is a placeholder now, so it gets no fallback sprite
   assert.equal(row.box.children[0].tagName, 'SVG');
-  ready = true; feed.refresh('plastic');
+  ready = true; feed.refresh('wood');
   assert.equal(row.box.children[0].tagName, 'IMG');
   assert.equal(row.box.children[0].src, 'data:image/png;base64,AAAA');
 });

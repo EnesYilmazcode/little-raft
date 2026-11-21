@@ -271,7 +271,7 @@ void main() {
   // Ripple rings run outward from every item (and the hook bobber, which is stamped into the same map).
   float fd = floatDist(p);
   float floatLace = (1.0 - smoothstep(-0.1, ${FLOAT_REACH.toFixed(2)}, fd)) * (0.45 + 1.1 * abs(fract(fd * 2.5 - uTime * 0.8) - 0.5));
-  float laceMask = max(max(raftLace, floatLace * 0.8), contact);
+  float laceMask = max(max(raftLace, floatLace), contact);
 
   // Lace: thin contour lines of a two-octave noise (scrolled with the swell) that widen as the mask grows.
   // Coverage is anti-aliased by the noise's screen footprint, so far-away lines thin out instead of sparkling.
@@ -286,11 +286,11 @@ void main() {
     float iso = abs(n1 * 0.6 + n2 * 0.4 - 0.5), isoAA = foot * 1.2 + 1e-4;
     // Coverage of a contour band of half-width w: AA'd edges, and lines thinner than a pixel dim instead of
     // staying half-covered, so distant lace thins out rather than turning into soft blobs.
-    float wc = 0.012 + crestMask * 0.09, wl = 0.003 + laceMask * 0.017;
+    float wc = 0.012 + crestMask * 0.09, wl = 0.004 + laceMask * 0.022;
     float crest = clamp((wc - iso) / isoAA + 0.5, 0.0, 1.0) * min(wc * 3.0 / isoAA + 0.5, 1.0) * smoothstep(0.0, 0.08, crestMask);
     float lace = clamp((wl - iso) / isoAA + 0.5, 0.0, 1.0) * min(wl * 3.0 / isoAA + 0.3, 1.0) * smoothstep(0.02, 0.12, laceMask);
-    float raftCore = 1.0 - smoothstep(0.0, 0.05 + 0.1 * n1, rd);   // thin ragged collar where logs meet water
-    foam = max(max(crest * 0.85, lace * 0.66), raftCore * 0.85);
+    float raftCore = 1.0 - smoothstep(0.0, 0.06 + 0.12 * n1, rd);   // thin ragged collar where logs meet water
+    foam = max(max(crest * 0.85, lace * 0.75), raftCore * 0.85);
     foam *= (1.0 - smoothstep(30.0, 90.0, dist)) * smoothstep(-0.7, -0.3, rd);   // none deep under the deck (plank gaps)
   }
   col *= mix(0.55, 1.0, smoothstep(-1.2, 0.1, rd));                               // occluded water under the raft

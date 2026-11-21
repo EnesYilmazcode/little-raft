@@ -4,9 +4,9 @@
 //   getMaterial(colorString) -> shared MeshStandardMaterial (owned by engine, never disposed here)
 //   opts (optional): { seed:number, tilt:number (barrel axis tilt, radians; default ~0.2) }
 // Root is untransformed (engine positions/rotates it). Content is centered on the origin.
-// All geometry is created per call and owned by the returned group's meshes.
-// Materials created here are cached per T and shared by every item (material.userData.shared = true);
-// they must not be disposed when one item is removed. root.userData.localMaterials stays empty.
+// Each item is ONE mesh whose geometry and material are shared and cached per engine (flagged
+// userData.shared: the engine must not dispose them per item). seed picks one of 3 variants.
+// Builder materials (cached per T, userData.shared) only supply colours to the bake.
 
 const TYPES = ['wood', 'leaf', 'scrap', 'barrel'];
 
