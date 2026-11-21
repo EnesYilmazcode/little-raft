@@ -1220,6 +1220,7 @@ export function mount(transfer = null) {
     if (fresh) { fresh.textContent = saved ? 'New game' : "Let's set sail"; fresh.className = saved ? 'secondary' : 'primary'; delete fresh.dataset.confirm; }
     const note = $('#titleSaveStatus'), text = titleSaveNote({available:saveAvailable, blocked:saveBlocked, storedRev:storedRev(), saveRev});
     if (note) { note.textContent = text; note.hidden = !text; }
+    try { document.dispatchEvent(new CustomEvent('raft:title', {detail:{hasSave:saved}})); } catch {} // onboarding rebuilds its title menu
   }
   function syncWorldInventories() { // only for the world this client owns (solo / host)
     world.hostInventory = hostBag.snapshot(); world.guestInventory = guestBag.snapshot();

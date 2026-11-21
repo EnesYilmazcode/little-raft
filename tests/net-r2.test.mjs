@@ -145,6 +145,7 @@ test('NET-5: New game resets the first-run hint chain and its stored copy', () =
 const SS = await import(new URL('save-store.js', base));
 const PH = await import(new URL('progression-hooks.js', base));
 const { Bag, SLOT_COUNT } = await import(new URL('inventory-state.js', base));
+const OB = await import(new URL('onboarding.js', base));
 const memStorage = (init = {}) => {
   const m = new Map(Object.entries(init));
   return { m, getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); }, removeItem: k => m.delete(k) };
@@ -279,6 +280,19 @@ test("r3 guest: a guest never writes; going home keeps its own parts; adopting a
   assert.match(g, /function save\(\) \{[^\n]*\n\s*if \(role === 'guest' \|\| disposed \|\| saveBlocked\) return;/);
   assert.match(g, /if \('raw' in b\) saveStore\.loadAll\(b\.raw\);/); // savedOwnRaft carries raw; an own-raft backup does not
   assert.doesNotMatch(g.slice(g.indexOf('function normaliseBackup'), g.indexOf('// ---------- Engine state')), /raw/);
+});
+
+test('r3 NET-4: the title menu is rebuilt from the stored save on every raft:title', () => {
+  assert.doesNotMatch(OB.menuHTML({ hasSave: false }), /data-act="continue"/);
+  const html = OB.menuHTML({ hasSave: true, summary: '9 tiles · 2 fish' });
+  assert.match(html, /data-act="continue">Continue<small>9 tiles · 2 fish<\/small>/);
+  assert.match(html, /data-act="new">New Game</);
+  assert.match(OB.menuHTML({ hasSave: false, firstSail: true }), /data-act="new">Set sail</);
+  const g = src('game.js'), rt = g.slice(g.indexOf('function refreshTitle()'), g.indexOf('function syncWorldInventories()'));
+  assert.match(rt, /dispatchEvent\(new CustomEvent\('raft:title'/);
+  const ob = src('onboarding.js');
+  assert.match(ob, /document\.addEventListener\('raft:title', renderMenu\)/);
+  assert.match(ob, /function renderMenu\(\) \{\s*const raw = store\.get\(SAVE_KEY\)/);
 });
 
 test('r3 fc: New game clears every grill but keeps the journal; reload adopts the stored part', async () => {

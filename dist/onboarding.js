@@ -164,6 +164,14 @@ export function saveSummary(raw) {
     return parts.join(' · ');
   } catch { return ''; }
 }
+// The title menu body: Continue (with the save summary) only when a save exists.
+export function menuHTML({hasSave = false, summary = '', firstSail = false} = {}) {
+  return `${hasSave ? `<button type="button" class="ob-item" data-act="continue">Continue${summary ? `<small>${hintHTML(summary)}</small>` : ''}</button>` : ''}
+      <button type="button" class="ob-item" data-act="new">${firstSail && !hasSave ? 'Set sail' : 'New Game'}</button>
+      <button type="button" class="ob-item" data-act="crew">Play together</button>
+      <button type="button" class="ob-item" data-act="settings">Settings</button>
+      <small class="ob-savenote">Saves automatically in this browser</small>`;
+}
 export const hintHTML = s => String(s ?? '').replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`).replace(/\[([^\]]{1,8})\]/g, (m, k) => /^[LR]MB$/.test(k)
   ? `<kbd class="ob-key ob-mouse" aria-label="${k === 'LMB' ? 'left' : 'right'} mouse button"><svg viewBox="0 0 12 16" width="10" height="14" aria-hidden="true"><rect x=".6" y=".6" width="10.8" height="14.8" rx="5.4" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="${k === 'LMB' ? 'M6 .6A5.4 5.4 0 0 0 .6 6v1.2H6z' : 'M6 .6A5.4 5.4 0 0 1 11.4 6v1.2H6z'}" fill="#e9a640"/></svg></kbd>`
   : `<kbd class="ob-key">${k}</kbd>`);
@@ -317,25 +325,32 @@ function boot() {
   // ----- title screen -----
   const welcome = $('#welcome'), card = welcome?.querySelector('.welcome-card');
   if (welcome && card) {
-    const raw = store.get(SAVE_KEY), auto = store.get(AUTOSTART, true) === '1';
+    const auto = store.get(AUTOSTART, true) === '1';
     if (auto) store.del(AUTOSTART, true);
     const logo = document.createElement('div');
     logo.className = 'ob-logo';
     logo.innerHTML = '<h2 class="ob-logo-name"><svg class="ob-sail" viewBox="0 0 48 48" aria-hidden="true"><use href="icons.svg#icon-sail"></use></svg>Little Raft</h2><p class="ob-tag">A little ocean. A big adventure.</p>';
     const menu = document.createElement('nav');
     menu.className = 'ob-menu'; menu.setAttribute('aria-label', 'Main menu');
-    const sub = raw != null ? saveSummary(raw) : '';
-    menu.innerHTML = `${raw != null ? `<button type="button" class="ob-item" data-act="continue">Continue${sub ? `<small>${hintHTML(sub)}</small>` : ''}</button>` : ''}
-      <button type="button" class="ob-item" data-act="new">${auto && raw == null ? 'Set sail' : 'New Game'}</button>
-      <button type="button" class="ob-item" data-act="crew">Play together</button>
-      <button type="button" class="ob-item" data-act="settings">Settings</button>
-      <small class="ob-savenote">Saves automatically in this browser</small>`;
     welcome.prepend(logo); card.prepend(menu); welcome.classList.add('ob-on'); document.body.classList.add('ob-title-ready');
     const items = () => [...menu.querySelectorAll('.ob-item')];
     const solo = () => $('#solo');
-    const newBtn = menu.querySelector('[data-act="new"]'), newLabel = newBtn.textContent;
-    let armed = 0;
-    const disarm = () => { clearTimeout(armed); armed = 0; newBtn.textContent = newLabel; newBtn.classList.remove('ob-confirm'); };
+    let newBtn = null, newLabel = '', armed = 0, menuSig = null, firstSail = auto;
+    const disarm = () => { clearTimeout(armed); armed = 0; if (newBtn) { newBtn.textContent = newLabel; newBtn.classList.remove('ob-confirm'); } };
+    // Built from the stored save every time the title shows (game.js refreshTitle -> 'raft:title') or another tab
+    // saves, so Continue appears after Save and quit and its summary is current.
+    function renderMenu() {
+      const raw = store.get(SAVE_KEY), sub = raw != null ? saveSummary(raw) : '';
+      if (raw != null) firstSail = false;
+      const html = menuHTML({hasSave:raw != null, summary:sub, firstSail});
+      if (html === menuSig) { disarm(); return; }
+      const focused = menu.contains(document.activeElement) ? document.activeElement.dataset.act : null;
+      disarm(); menuSig = html; menu.innerHTML = html;
+      newBtn = menu.querySelector('[data-act="new"]'); newLabel = newBtn.textContent;
+      newBtn.addEventListener('blur', () => { if (armed) setTimeout(() => { if (document.activeElement !== newBtn) disarm(); }, 0); });
+      syncDisabled();
+      if (focused) { try { (menu.querySelector(`[data-act="${focused}"]`) ?? items()[0])?.focus({preventScroll:true}); } catch {} }
+    }
     function wipe() { // the same reset New game uses, then a clean page with no save at all
       wiping = true;
       saves.reset({final:true}); // every part resets; the save is deleted and nothing in this page can write it again
@@ -358,9 +373,11 @@ function boot() {
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
       e.preventDefault(); list[(i + (e.key === 'ArrowDown' ? 1 : list.length - 1)) % list.length]?.focus();
     });
-    newBtn.addEventListener('blur', () => { if (armed) setTimeout(() => { if (document.activeElement !== newBtn) disarm(); }, 0); });
-    const syncDisabled = () => { const off = !!solo()?.disabled; for (const b of items()) if (b.dataset.act === 'continue' || b.dataset.act === 'new') b.disabled = off; };
-    setInterval(syncDisabled, 500); syncDisabled();
+    function syncDisabled() { const off = !!solo()?.disabled; for (const b of items()) if (b.dataset.act === 'continue' || b.dataset.act === 'new') b.disabled = off; }
+    renderMenu();
+    document.addEventListener('raft:title', renderMenu);
+    addEventListener('storage', e => { if (e.key === SAVE_KEY || e.key === null) renderMenu(); });
+    setInterval(syncDisabled, 500);
     try { (items()[0])?.focus({preventScroll:true}); } catch {}
   }
   return {
