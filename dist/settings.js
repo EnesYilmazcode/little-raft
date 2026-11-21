@@ -59,17 +59,22 @@ const CSS = `
 #options{position:fixed;inset:0;width:100vw;height:100vh;max-width:none;max-height:none;margin:0;padding:0;border:0;border-radius:0;
   overflow:hidden;background:transparent;box-shadow:none;color:var(--cream,#f1e7d0);font:15px/1.4 var(--ui-font,system-ui,sans-serif)}
 #options[open]{display:flex}
-#options::backdrop{background:linear-gradient(90deg,rgba(4,10,16,.9) 0%,rgba(4,10,16,.72) 38%,rgba(4,10,16,.35) 75%);backdrop-filter:blur(3px)}
-#options .rs-form{display:flex;align-items:center;gap:clamp(24px,5vw,72px);width:100%;margin:0;padding:0 clamp(16px,7vw,110px)}
-#options .rs-menu{display:flex;flex-direction:column;align-items:flex-start;min-width:260px}
+#options::backdrop{background:rgba(4,10,16,.42);backdrop-filter:blur(4px) saturate(.8)}
+#options .rs-form{display:flex;align-items:stretch;gap:clamp(24px,5vw,72px);width:100%;height:100%;margin:0;padding:0 clamp(16px,5vw,80px) 0 0}
+#options .rs-menu{display:flex;flex-direction:column;justify-content:center;align-items:stretch;flex:none;width:clamp(280px,26vw,360px);padding:0 0 0 clamp(28px,4vw,56px);
+  background:linear-gradient(90deg,rgba(5,11,17,.94),rgba(5,11,17,.82));box-shadow:1px 0 0 rgba(201,164,107,.28),18px 0 50px rgba(0,0,0,.35)}
+#options .rs-panel{align-self:center;min-height:min(468px,calc(100vh - 80px))} /* tabs keep one height */
+#options .rs-foot{margin-top:34px;padding-right:28px;font:600 11px/1 var(--ui-font);letter-spacing:1.6px;text-transform:uppercase;color:var(--muted,#8f9aa0)}
+#options .rs-foot kbd{margin-right:8px;padding:3px 7px;border-radius:3px;color:var(--cream,#f1e7d0);background:rgba(0,0,0,.4);box-shadow:inset 0 0 0 1px rgba(201,164,107,.45);font:700 10px/1.3 var(--ui-font)}
 #options .rs-eyebrow{font:600 11px/1 var(--ui-font);letter-spacing:3.2px;color:var(--bronze-lt,#c9a46b);margin-bottom:10px}
-#options h2{margin:0 0 26px;font:600 clamp(34px,4vw,52px)/1 var(--display-font,Georgia,serif);color:var(--cream,#f1e7d0);text-shadow:0 2px 14px rgba(0,0,0,.5)}
+#options .rs-menu h2{margin:0 0 30px;padding-right:28px;font:600 clamp(34px,4vw,52px)/1 var(--display-font,Georgia,serif);color:var(--cream,#f1e7d0);text-shadow:0 2px 14px rgba(0,0,0,.5)}
 #options .rs-menu button{position:relative;display:block;width:100%;text-align:left;cursor:pointer;background:none;border:0;border-radius:0;box-shadow:none;
-  padding:9px 0 9px 22px;color:var(--cream-dim,#c9bfa8);font:600 clamp(20px,2vw,26px)/1.15 var(--display-font,Georgia,serif);transition:color .12s,padding .12s}
+  padding:11px 0 11px 22px;color:var(--cream-dim,#c9bfa8);font:600 clamp(20px,2vw,26px)/1.15 var(--display-font,Georgia,serif);transition:color .12s,padding .12s}
 #options .rs-menu button::before{content:"";position:absolute;left:0;top:50%;width:10px;height:2px;background:var(--amber,#e9a640);opacity:0;transform:translateY(-50%) scaleX(.2);transform-origin:left;transition:.12s}
-#options .rs-menu button:hover,#options .rs-menu button:focus-visible,#options .rs-menu button[aria-expanded=true]{color:var(--amber-lt,#ffc96b);padding-left:28px;transform:none;outline:0}
+#options .rs-menu button:hover,#options .rs-menu button:focus-visible,#options .rs-menu button[aria-expanded=true]{color:var(--amber-lt,#ffc96b);padding-left:28px;transform:none;outline:0;
+  background:linear-gradient(90deg,rgba(233,166,64,.14),rgba(233,166,64,0) 85%)}
 #options .rs-menu button:hover::before,#options .rs-menu button:focus-visible::before,#options .rs-menu button[aria-expanded=true]::before{opacity:1;transform:translateY(-50%) scaleX(1)}
-#options .rs-menu .rs-quit{margin-top:18px;font-size:clamp(16px,1.5vw,19px);color:var(--muted,#8f9aa0)}
+#options .rs-menu .rs-quit{margin-top:22px;border-top:1px solid rgba(201,164,107,.18);padding-top:20px;font-size:clamp(16px,1.5vw,19px);color:var(--muted,#8f9aa0)}
 #options .rs-panel{width:min(520px,100%);max-height:calc(100vh - 80px);overflow:auto;padding:22px 24px 24px;border-radius:6px;background:var(--plate-strong,rgba(8,17,26,.92));
   box-shadow:0 0 0 1px var(--bronze-lt,#c9a46b),0 0 0 4px var(--navy-0,#070f17),0 24px 70px rgba(0,0,0,.55)}
 #options .rs-tabs{display:flex;gap:4px;margin:0 0 18px;border-bottom:1px solid rgba(201,164,107,.3)}
@@ -97,7 +102,8 @@ const CSS = `
 #options .rs-wide:hover{background:rgba(17,35,50,.85);transform:none}
 #options :focus-visible{outline:2px solid var(--amber,#e9a640);outline-offset:2px}
 @media (max-width:760px){#options .rs-form{flex-direction:column;align-items:stretch;justify-content:center;gap:18px;overflow:auto;padding:24px 16px}
-  #options h2{margin-bottom:14px}#options .rs-menu button{padding:6px 0 6px 18px}#options .rs-panel{max-height:none}#options .rs-keys{grid-template-columns:auto 1fr}}
+  #options .rs-menu{width:auto;padding:20px 0 20px 20px;border-radius:6px}#options .rs-foot{display:none}
+  #options h2{margin-bottom:14px}#options .rs-menu button{padding:6px 0 6px 18px}#options .rs-panel{max-height:none;min-height:0}#options .rs-keys{grid-template-columns:auto 1fr}}
 /* Waiting to relock after a menu closed without a gesture (browser Esc): no cursor, no centred hint. */
 body.relock #world{cursor:none}
 body.relock #resumeHint{display:none!important}
@@ -127,13 +133,14 @@ function markup() {
   const pages = TABS.map(([id]) => `<div class="rs-page" role="tabpanel" data-page="${id}" hidden>` +
     (id === 'controls' ? `<div class="rs-keys">${keys}</div>` : '') + page(id) +
     (id === 'graphics' ? '<button type="button" class="rs-wide" data-act="fullscreen">Enter fullscreen</button>' : '') + '</div>').join('');
-  return `<form class="rs-form" method="dialog" data-raft-settings="2">
+  return `<form class="rs-form" method="dialog" data-raft-settings="3">
 <nav class="rs-menu"><div class="rs-eyebrow">PAUSED</div><h2>Little Raft</h2>
 <button type="button" data-act="resume">Resume</button>
 <button type="button" data-act="settings" aria-expanded="false">Settings</button>
 <button type="button" data-act="help">How to play</button>
 <button type="button" data-act="crew">Play together</button>
-<button type="button" class="rs-quit" data-act="quit">Save and quit to title</button></nav>
+<button type="button" class="rs-quit" data-act="quit">Save and quit to title</button>
+<div class="rs-foot"><kbd>Esc</kbd>Back</div></nav>
 <section class="rs-panel" aria-label="Settings" hidden><div class="rs-tabs" role="tablist">${tabs}</div>${pages}</section></form>`;
 }
 
@@ -145,7 +152,7 @@ function ensureDialog() {
     dialog.id = DIALOG_ID;
     document.body.appendChild(dialog);
   }
-  if (dialog.querySelector('[data-raft-settings]')?.dataset.raftSettings !== '2') { // missing or an older layout
+  if (dialog.querySelector('[data-raft-settings]')?.dataset.raftSettings !== '3') { // missing or an older layout
     reused = false;
     dialog.replaceChildren();
     dialog.insertAdjacentHTML('beforeend', markup());
@@ -260,7 +267,11 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     if (dialog.open) { if (panelOpen()) { setPanel(false); form.querySelector('[data-act="settings"]')?.focus({ preventScroll: true }); } else close(true); return true; }
     const others = otherDialogs();
     if (others.length) { others[others.length - 1].close(); return true; }
-    if (!gameActive()) return false;
+    if (!gameActive()) { // title screen: Escape only leaves fullscreen (the desktop app swallows the native one)
+      if (!document.fullscreenElement) return false;
+      Promise.resolve(document.exitFullscreen?.()).catch(() => {});
+      return true;
+    }
     open();
     return true;
   }
