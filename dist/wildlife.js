@@ -103,11 +103,11 @@ export function gullPlan(seed, i, t, perches, out, scareAt = -1, visit = null) {
   const flyYaw = Math.atan2(dx, dz), hz = Math.hypot(dx, dz);
   if (state === 'perched') {
     const k = (t - v.start - GULL_DESCEND) / 2.3, f = k - Math.floor(k);
-    out.yaw = v.yaw + Math.floor(k) * 0.9; // a little turn with every hop
-    out.y = out.py + (f < 0.25 ? 0.09 * Math.sin(Math.PI * f / 0.25) : 0);
-    out.pitch = 0; out.roll = 0; out.fold = 1;
-    out.flap = f < 0.25 ? 0.5 * Math.sin(Math.PI * f / 0.25) : -0.15;
-    if (f < 0.25) out.fold = 0.55;
+    out.yaw = v.yaw + Math.floor(k + 0.2) * 0.9; // a little turn with every hop
+    const hop = f > 0.7 && f < 0.92 ? Math.sin(Math.PI * (f - 0.7) / 0.22) : 0; // stand still first, then a little hop
+    out.y = out.py + 0.09 * hop;
+    out.pitch = 0; out.roll = 0; out.fold = 1 - 0.3 * hop;
+    out.flap = -0.1 + 0.35 * hop;
   } else {
     const landing = state === 'descend' ? smooth(((t - v.start) / GULL_DESCEND - 0.7) / 0.3) : 0;
     let dyaw = v.yaw - flyYaw; dyaw -= TAU * Math.round(dyaw / TAU);
