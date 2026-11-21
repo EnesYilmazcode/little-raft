@@ -57,7 +57,7 @@ INIT_JS = r"""
     off: new Float32Array(CAP), snap: 0, snapList: null, lastSnap: null, vendor: null,
     gl: {buffer: 0, texture: 0, program: 0, shader: 0, framebuffer: 0, renderbuffer: 0, vertexArray: 0},
     longCount: 0, longTotal: 0, longMax: 0, loafCount: 0, loafBlockMax: 0, loafBlockTotal: 0,
-    contexts: 0, contextsLive: 0, contextsPeak: 0, contextsLost: 0, longList: [], riCalls: new Float32Array(CAP), riSeen: 0, curRi: -1,
+    contexts: 0, contextsLive: 0, contextsPeak: 0, contextsLost: 0, glFreedByLoss: 0, longList: [], riCalls: new Float32Array(CAP), riSeen: 0, curRi: -1,
   };
   const triCount = (mode, count, inst) => {
     const per = mode === 4 ? Math.floor(count / 3) : (mode === 5 || mode === 6) ? Math.max(0, count - 2) : 0;
@@ -67,6 +67,8 @@ INIT_JS = r"""
     const t = triCount(mode, count, inst); P.curDraws++; P.curTris += t; if (P.fb) P.curOff++;
     if (P.snapList) P.snapList.push([t, count, inst, mode, P.fb ? 1 : 0]);
   };
+  const glPer = new WeakMap();
+  const glOf = ctx => { let c = glPer.get(ctx); if (!c) glPer.set(ctx, c = {}); return c; };
   const wrap = (proto, name, fn) => {
     const orig = proto[name]; if (typeof orig !== 'function') return;
     proto[name] = function (...a) { fn(a); return orig.apply(this, a); };
@@ -79,10 +81,21 @@ INIT_JS = r"""
     wrap(p, 'drawElementsInstanced', a => add(a[0], a[1], a[4]));
     wrap(p, 'drawRangeElements', a => add(a[0], a[3], 1));
     wrap(p, 'bindFramebuffer', a => { P.fb = a[1] || null; });
+    // Live objects are counted per context: when a context is lost (forceContextLoss, e.g. a
+    // transient icon renderer) the browser frees everything in it without delete* calls, so its
+    // remaining count is taken off P.gl in the webglcontextlost listener below.
     for (const k of Object.keys(P.gl)) {
       const K = k[0].toUpperCase() + k.slice(1);
-      wrap(p, 'create' + K, () => { P.gl[k]++; });
-      wrap(p, 'delete' + K, a => { if (a[0]) P.gl[k]--; });
+      const oc = p['create' + K], od = p['delete' + K];
+      if (typeof oc === 'function') p['create' + K] = function (...a) {
+        const r = oc.apply(this, a);
+        if (r) { P.gl[k]++; const c = glOf(this); c[k] = (c[k] || 0) + 1; }
+        return r;
+      };
+      if (typeof od === 'function') p['delete' + K] = function (...a) {
+        if (a[0] && !this.isContextLost()) { P.gl[k]--; const c = glOf(this); c[k] = (c[k] || 0) - 1; }
+        return od.apply(this, a);
+      };
     }
   }
   const ANGLE = 'ANGLE_instanced_arrays';
@@ -103,7 +116,11 @@ INIT_JS = r"""
     if (ctx && /webgl/.test(type) && !this.__perfCtx) {
       this.__perfCtx = 1; P.contexts++; P.contextsLive++; if (P.contextsLive > P.contextsPeak) P.contextsPeak = P.contextsLive;
       // A context given back (forceContextLoss, e.g. a transient icon renderer) stops counting as live.
-      this.addEventListener('webglcontextlost', () => { P.contextsLost++; P.contextsLive--; });
+      // Its GL objects are freed with it: take what is still counted for it off the live totals.
+      this.addEventListener('webglcontextlost', () => {
+        P.contextsLost++; P.contextsLive--;
+        const c = glOf(ctx); for (const k in c) { P.gl[k] -= c[k]; P.glFreedByLoss += c[k]; c[k] = 0; }
+      });
       this.addEventListener('webglcontextrestored', () => { P.contextsLive++; if (P.contextsLive > P.contextsPeak) P.contextsPeak = P.contextsLive; });
       if (!P.vendor) try { const e = ctx.getExtension('WEBGL_debug_renderer_info'); P.vendor = e ? ctx.getParameter(e.UNMASKED_RENDERER_WEBGL) : null; } catch (e) {}
     }
@@ -159,7 +176,7 @@ INIT_JS = r"""
     n: P.n, ts: Array.from(P.ts.subarray(0, P.n)), draws: Array.from(P.draws.subarray(0, P.n)),
     tris: Array.from(P.tris.subarray(0, P.n)), script: Array.from(P.script.subarray(0, P.n)), off: Array.from(P.off.subarray(0, P.n)),
     vendor: P.vendor, snap: P.lastSnap,
-    gl: {...P.gl}, contexts: P.contexts, contextsLive: P.contextsLive, contextsPeak: P.contextsPeak, contextsLost: P.contextsLost,
+    gl: {...P.gl}, glFreedByLoss: P.glFreedByLoss, contexts: P.contexts, contextsLive: P.contextsLive, contextsPeak: P.contextsPeak, contextsLost: P.contextsLost,
     long: P.longList.slice(), t0: P.t0, now: performance.now(),
     riSeen: P.riSeen, riCalls: P.riSeen ? Array.from(P.riCalls.subarray(0, P.n)) : null,
     loaf: {count: P.loafCount, blockingTotalMs: P.loafBlockTotal, blockingMaxMs: P.loafBlockMax},
@@ -277,7 +294,7 @@ CHECKS = [
     ('growth.domNodesLateHalf', 'growth.domNodesLateHalf', 'growth of elements in the document over the second half (first-use UI excluded); steady growth is a DOM leak'),
     ('growth.listeners', 'growth.listeners', 'JS event listener growth after GC'),
     ('growth.glObjects', 'growth.glObjects', 'live WebGL object growth (create* minus delete*)'),
-    ('growth.glObjectsLateHalf', 'growth.glObjectsLateHalf', 'live WebGL object growth over the second half (first-use allocations excluded); steady growth is a GPU leak'),
+    ('growth.glObjectsLateHalf', 'growth.glObjectsLateHalf', 'live WebGL object growth over the second half, end minus the first-half high-water mark (first-use allocations and item churn excluded); steady growth is a GPU leak'),
     ('webglContexts', 'webglContexts', 'WebGL contexts created since page load (main renderer plus transient ones, e.g. an item-icon renderer that is released when idle and recreated on demand); steady growth is context churn'),
     ('webglContextsPeakLive', 'webglContextsPeakLive', 'most WebGL contexts alive at once (created minus lost)'),
     ('longTasks.hitches', 'longTasks.hitches', 'main-thread hitches after warmup: tasks longer than max(hitchMinMs, hitchFactor x median long task) (forced-GC windows excluded)'),
@@ -303,7 +320,8 @@ def check(metrics, budget, repro):
                 bd = metrics['drawBreakdown']
                 extra = f" last-frame split: {bd['mainPass']} main-pass + {bd['offscreenPass']} offscreen-pass draws, {bd['tinyDraws(<=12 tris)']} draws of <=12 tris."
             if mpath.startswith('growth.glObjects'):
-                extra = ' by kind: ' + json.dumps(metrics['growth']['glByKind'])
+                extra = (' by kind (whole session): ' + json.dumps(metrics['growth']['glByKind'])
+                         + '; live objects (t s: count): ' + ', '.join(f"{x['t']}:{x['glLive']}" for x in metrics['heap']['samples']))
             fails.append({'id': fid, 'detail': f'{what}: {val} > budget {lim}.{extra}', 'repro': repro})
     mf = budget.get('minFrames')
     if mf is not None and metrics['frames'] < mf:
@@ -462,12 +480,16 @@ def run(args, budget):
                  'perfMemoryStartMB': h0['perfMemoryMB'], 'perfMemoryEndMB': h1['perfMemoryMB'], 'samples': samples},
         'growth': {'heapMB': round(h1['usedMB'] - h0['usedMB'], 3),
                    'heapMBLateHalf': round(h1['usedMB'] - mid['usedMB'], 3) if mid else None,
-                   'glObjectsLateHalf': h1['glLive'] - mid['glLive'] if mid else None,
+                   # vs the first half's high-water mark, not the mid sample: the live count follows scene
+                   # content (floating items respawn with their own geometry, uploaded when first in view and
+                   # freed on despawn), so dipping at mid and coming back to an earlier level is not growth.
+                   'glObjectsLateHalf': h1['glLive'] - max(x['glLive'] for x in samples if x['t'] <= mid['t']) if mid else None,
+                   'glObjectsLateHalfVsMid': h1['glLive'] - mid['glLive'] if mid else None,
                    'domNodes': h1['domInTree'] - h0['domInTree'],
                    'domNodesLateHalf': h1['domInTree'] - mid['domInTree'] if mid else None,
                    'allNodes': (h1['nodes'] or 0) - (h0['nodes'] or 0), 'documents': (h1['documents'] or 0) - (h0['documents'] or 0),
                    'listeners': (h1['listeners'] or 0) - (h0['listeners'] or 0), 'glObjects': live1 - live0,
-                   'glByKind': {k: d['gl'][k] - gl0.get(k, 0) for k in d['gl']}},
+                   'glByKind': {k: d['gl'][k] - gl0.get(k, 0) for k in d['gl']}, 'glFreedByContextLoss': d['glFreedByLoss']},
         'glLiveObjects': d['gl'], 'webglContexts': d['contexts'], 'webglContextsPeakLive': d['contextsPeak'], 'webglContextsLiveAtEnd': d['contextsLive'], 'webglContextsLost': d['contextsLost'], 'renderQuality': report.get('renderQuality'), 'glRenderer': d['vendor'],
         'endState': report['endState'],
     }
