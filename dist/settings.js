@@ -25,6 +25,7 @@ const SPEC = {
   renderScale: { tab: 'graphics', label: 'Render scale', type: 'range', min: 0.5, max: 1, step: 0.05, def: PRESETS.medium.renderScale, fmt: pct }, // matches the default 'medium' preset
   shadows: { tab: 'graphics', label: 'Shadows', type: 'toggle', def: true },
   sound: { tab: 'audio', label: 'Sound', type: 'toggle', def: true }, // mirrors #soundButton / little-raft-sound (game.js)
+  stormFlash: { tab: 'graphics', label: 'Lightning flashes', type: 'select', options: ['full', 'soft', 'off'], def: 'full' },
   volume: { tab: 'audio', label: 'Master volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.5, fmt: pct },
   effects: { tab: 'audio', label: 'Effects', type: 'range', min: 0, max: 1, step: 0.05, def: 1, fmt: pct },
   ambience: { tab: 'audio', label: 'Ocean ambience', type: 'range', min: 0, max: 1, step: 0.05, def: 0.7, fmt: pct },

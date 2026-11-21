@@ -329,6 +329,7 @@ export function mount(transfer = null) {
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
   let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = -1;
+  let viewZoom = 1; // [spyglass] content.zoom() this frame: FOV, look speed and camera motion divide by it
   const chargeMeter = $('#chargeMeter'); // thin ring around the crosshair, filled by --c
   let crossUsable = false, lastDraw = 0;
   let blockList = [];
@@ -954,6 +955,7 @@ export function mount(transfer = null) {
   }
   function releaseLock() { if (isLocked()) exitLock(document); } // marked page-initiated (lock-rules.js)
   function look(dx, dy, k) {
+    k /= viewZoom; // [spyglass] slower look while zoomed
     yaw -= dx * k; pitch = clamp(pitch - (options.invertY ? -dy : dy) * k, -PITCH_LIMIT, PITCH_LIMIT);
     if (running && !hintsDone.has('look') && (lookTaught += Math.hypot(dx, dy) * k) >= LOOK_DONE_RAD) hintDone('look');
   }
@@ -1582,14 +1584,14 @@ export function mount(transfer = null) {
     raft.rotation.z += (s.sx * .35 + Math.sin(elapsed * .7) * .003 - raft.rotation.z) * kr;
   }
   function updateCamera(dt) {
-    const fov = running ? options.fov : 48; if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
+    viewZoom = running ? content?.zoom() ?? 1 : 1; const damp = 1 / viewZoom; const fov = running ? options.fov / viewZoom : 48; if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); } // [spyglass] zoomed FOV
     if (running) {
       const cf = controls?.camera(yaw); // controls lane: replaces the old sine bob with footstep bob + crouch + landing dip
-      const bob = cf ? cf.y : walking ? Math.sin(walkPhase) * .025 * options.cameraMotion : 0;
-      camera.position.set(physics.x + (cf?.x ?? 0), physics.y + bob, physics.z + (cf?.z ?? 0));
-      camera.rotation.set(pitch, yaw, (physics.grounded ? raft.rotation.z * CAMERA_ROLL * options.cameraMotion : 0) + (cf?.roll ?? 0), 'YXZ');
+      const bob = (cf ? cf.y : walking ? Math.sin(walkPhase) * .025 * options.cameraMotion : 0) * damp; // [spyglass] damp
+      camera.position.set(physics.x + (cf?.x ?? 0) * damp, physics.y + bob, physics.z + (cf?.z ?? 0) * damp); // [spyglass] damp
+      camera.rotation.set(pitch, yaw, ((physics.grounded ? raft.rotation.z * CAMERA_ROLL * options.cameraMotion : 0) + (cf?.roll ?? 0)) * damp, 'YXZ'); // [spyglass] damp
       if (eating) { const k = Math.sin(Math.min(1, eating.t / EAT_SECONDS) * Math.PI); camera.rotation.x -= k * .09; camera.position.y -= k * .035; } // [vitals] hand-to-mouth nod
-      if (shakeAmp > .002) { const k = shakeAmp * (.4 + options.cameraMotion); camera.position.x += (Math.random() - .5) * k; camera.position.y += (Math.random() - .5) * k; camera.rotation.z += (Math.random() - .5) * k * .3; shakeAmp *= Math.exp(-dt * 7); } else shakeAmp = 0; // shark lane: bite shake
+      if (shakeAmp > .002) { const k = shakeAmp * (.4 + options.cameraMotion) * damp; /* [spyglass] */ camera.position.x += (Math.random() - .5) * k; camera.position.y += (Math.random() - .5) * k; camera.rotation.z += (Math.random() - .5) * k * .3; shakeAmp *= Math.exp(-dt * 7); } else shakeAmp = 0; // shark lane: bite shake
     } else { // gentle cinematic view for the welcome screen
       const focus = TITLE_FOCUS, d = 23, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .77;
       camera.position.set(focus.x + Math.sin(cy) * d * Math.cos(cp), d * Math.sin(cp), focus.z + Math.cos(cy) * d * Math.cos(cp)); camera.lookAt(focus);
@@ -1608,6 +1610,7 @@ export function mount(transfer = null) {
     hp.dt = dt; hp.time = elapsed; hp.charge = ch; hp.reeling = rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(); hp.casting = jab ? 0 : swing; // [fishing-cooking] rod reel pose from the lane
     hp.walking = walking; hp.hasHookOut = !!castOut(); hp.motion = motion; hp.yaw = yaw; hp.pitch = pitch; hp.fov = camera.fov; hp.riding = !!content?.riding?.(); // [zipline] riding raises the fist
     hands.update(hp);
+    if (viewZoom > 1.6) hands.group.visible = false; // [spyglass] lens up to the eye: no viewmodel while zoomed
     hands.ropeAnchor().getWorldPosition(handPos); // updates the anchor's parent chain (camera included); render refreshes the rest
   }
   function updateAvatars(dt) {

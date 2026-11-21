@@ -32,6 +32,8 @@ const PRELOAD = [
   'scarecrow-model.js', 'scarecrow.js' /* [scarecrow] */, 'seafloor.js', 'session-rules.js', 'settings.js', 'shark-model.js', 'shark.js', 'signal-models.js', 'signal.js',
   'signs-core.js', 'sitting-core.js', 'sitting.js', 'sky.js', 'sleep-model.js', 'sleep.js', 'smelter-model.js', 'smelter-ui.js', 'smelter.js',
   'spear-model.js', 'spear-repair-hooks.js', 'spear.js', 'storage-research-model.js', 'storage-research.js',
+  'spyglass-model.js', 'spyglass.js', // [spyglass]
+  'storm-model.js', 'storm.js', // [storm]
   'survival-ui.js', 'tasks-model.js', 'tasks-rules.js', 'tasks.js' /* [tasks] */, 'textures.js', 'trader-core.js', 'trader-model.js', 'trader.js', 'treasure-models.js', 'treasure-rules.js', 'treasure.js', 'underwater-fx.js',
   'vitals-ui.js', 'vitals.js', 'waterfx.js', 'watering.js', 'wildlife-models.js', 'wildlife.js', 'wood.js', 'zipline-model.js', 'zipline.js' /* [zipline] */,
 ];

@@ -17,7 +17,7 @@ const CATEGORY_OF = Object.freeze({
   net: 'survival', palm: 'survival', lantern: 'survival',
   sail: 'building', bench: 'building', crate: 'building',
   // progression catalogue (items.js)
-  metalhook: 'tools', binoculars: 'tools', spear: 'tools', metalspear: 'tools', finder: 'tools', spade: 'tools',
+  metalhook: 'tools', binoculars: 'tools', spyglass: 'tools', spear: 'tools', metalspear: 'tools', finder: 'tools', spade: 'tools', // [spyglass] spyglass
   drum: 'tools', pipes: 'tools', bells: 'tools', // [instruments]
   camera: 'tools', photoframe: 'survival', // [camera]
   nail: 'materials', bolt: 'materials', hinge: 'materials',
@@ -38,6 +38,8 @@ const CATEGORY_OF = Object.freeze({
   flagpole: 'building', // [flags]
   kiln: 'building', glasslamp: 'survival', sinker: 'survival', // kiln
   nestbox: 'survival', cushion: 'building', // raft animals
+  goatpen: 'survival', bucket: 'survival', // raft goats
+  stormrod: 'building', stormlamp: 'survival', stormglass: 'building', // storm
   // content (engine, sleep, paint)
   motor: 'building', wheel: 'building', bed: 'building', brush: 'tools',
   paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
@@ -103,7 +105,8 @@ export const ITEM_TEXT = Object.freeze({
   metalhook:  { desc: 'A heavy metal hook that lasts much longer.', use: 'Throw it like the hook; wears far slower.' },
   spear:      { desc: 'A driftwood pole with a lashed flint point.', use: 'Click to jab: 5 damage, wears only when it lands.' },
   metalspear: { desc: 'A sturdy shaft with a steel point.', use: 'Click to jab: 10 damage, lasts twice as long.' },
-  binoculars: { desc: 'Glass lenses in a copper tube.', use: 'Hold to spot barrels and islands far away.' },
+  binoculars: { desc: 'Glass lenses in a copper tube.', use: 'Hold right click to zoom in; also points to the nearest barrel.' }, // [spyglass]
+  spyglass:   { desc: 'A brass-ringed tube with a clear lens.', use: 'Hold right click to zoom in and name far things.' }, // [spyglass]
   drum:       { desc: 'A wooden hand drum with a palm-leaf head.', use: 'Click to play; look up or down to change the note.' }, // [instruments]
   pipes:      { desc: 'Plastic reed tubes tied in a row.', use: 'Click to play soft breathy notes with your friend.' }, // [instruments]
   bells:      { desc: 'Brass-bright scrap bars on a small frame.', use: 'Click to ring a note that fades out softly.' }, // [instruments]
@@ -139,10 +142,17 @@ export const ITEM_TEXT = Object.freeze({
   kiln:       { desc: 'A stone and clay kiln with a wood fire.', use: 'Place it, load ore, sand or clay and some wood; collect ingots, glass and bricks.' },
   glasslamp:  { desc: 'A lantern with clear glass panes.', use: 'Place it for a warm light on the raft.' },
   sinker:     { desc: 'A small metal weight for the hook line.', use: 'Keep it in your bag: the hook wears half as fast.' },
+  stormrod:   { desc: 'A tall metal rod with a copper tip.', use: 'Place it on the raft: in a storm it catches lightning and grows Storm Shards.' },
+  stormshard: { desc: 'Glassy sand fused by lightning.', use: 'Make a Storm Lantern or a Storm Glass.' },
+  stormlamp:  { desc: 'A lantern with a humming blue shard.', use: 'Glows soft blue at night.' },
+  stormglass: { desc: 'A sealed glass of cloudy crystals.', use: 'Look at it to see when the next storm comes.' },
   puffegg:    { desc: 'A speckled egg from a puffhen.', use: 'Make an Egg Lantern.' },
   feather:    { desc: 'A soft puffhen feather.', use: 'Stuff a Feather Cushion.' },
   nestbox:    { desc: 'A cosy box of straw for puffhens.', use: 'Place it on the raft and a puffhen may come to stay.' },
   cushion:    { desc: 'A plump cushion stuffed with feathers.', use: 'Place it on the raft for a soft seat.' },
+  goatpen:    { desc: 'A cosy fenced corner with a pile of hay.', use: 'Place it on the raft and set out greens; a bramblegoat may come to stay.' },
+  bucket:     { desc: 'A little wooden pail with a rope handle.', use: 'Hold it and press E on a bramblegoat with milk.' },
+  milk:       { desc: 'A pail of fresh, creamy goat milk.', use: 'Drink it (+10 food, +25 water); the pail comes back.' },
   cookedsharkmeat: { desc: 'A shark steak grilled through.', use: 'A filling meal (+30 food).' },
   sharkmeat:  { desc: 'A raw slab of shark meat.', use: 'Grill it for a proper meal; four come from every shark.' },
   sharkhead:  { desc: 'The head of a shark you beat.', use: 'A trophy, and proof the raft is safe for a while.' },
@@ -434,6 +444,7 @@ export const ITEM_SOURCE = Object.freeze({
   metalingot:  Object.freeze({ tag: 'smelter, kiln', how: 'Smelt metal ore in a smelter or a Seaside Kiln.' }),
   copperingot: Object.freeze({ tag: 'smelter', how: 'Smelt copper ore in a smelter.' }),
   glass:       Object.freeze({ tag: 'smelter, kiln', how: 'Melt sand in a smelter or a Seaside Kiln.' }),
+  stormshard:  Object.freeze({ tag: 'lightning rod', how: 'Place a Lightning Rod; storms charge it with shards (E to collect).' }),
   saltcup:     Object.freeze({ tag: 'fill a cup', how: 'Hold an empty cup and click the sea.' }),
   freshcup:    Object.freeze({ tag: 'purifier', how: 'Pour sea water into a purifier and wait.' }),
   cookedfish:  Object.freeze({ tag: 'grill', how: 'Cook a fish on a grill.' }),
@@ -444,6 +455,7 @@ export const ITEM_SOURCE = Object.freeze({
   // raft animals (animals.js)
   puffegg:     Object.freeze({ tag: 'puffhen', how: 'Place a Nest Box; a puffhen moves in and lays eggs. Press E on the nest to collect.' }),
   feather:     Object.freeze({ tag: 'puffhen', how: 'Sometimes left with the eggs in a puffhen nest box; collect with E.' }),
+  milk:        Object.freeze({ tag: 'goat', how: 'Place a Hay Corner; a goat moves in. Hold a Wooden Pail and press E on it.' }),
   // shark lane (shark.js): harvest the beaten shark with E
   sharkmeat:   Object.freeze({ tag: 'beaten shark', how: 'Fight off the shark with a spear, then press E on its body.' }),
   sharkhead:   Object.freeze({ tag: 'beaten shark', how: 'Harvested with the meat from a beaten shark (E).' }),

@@ -22,11 +22,19 @@ export const CONTENT_ITEMS = Object.freeze({
   kiln:      item('kiln',      'Seaside Kiln',  'icon-kiln',    false),
   glasslamp: item('glasslamp', 'Glass Lantern', 'icon-lantern', true),
   sinker:    item('sinker',    'Line Sinker',   'icon-ingot',   true),
+  // friendly storms (storm.js): shards only come from a Lightning Rod
+  stormshard: item('stormshard', 'Storm Shard',   'icon-stormshard', false),
+  stormrod:   item('stormrod',   'Lightning Rod', 'icon-stormrod',   false),
+  stormlamp:  item('stormlamp',  'Storm Lantern', 'icon-stormlamp',  false),
+  stormglass: item('stormglass', 'Storm Glass',   'icon-stormglass', false),
   // raft animals (animals.js)
   puffegg:  item('puffegg', 'Puff Egg',        'icon-egg',     false),
   feather:  item('feather', 'Puff Feather',    'icon-feather', false),
   nestbox:  item('nestbox', 'Nest Box',        'icon-nest',    false),
   cushion:  item('cushion', 'Feather Cushion', 'icon-cushion', false),
+  goatpen:  item('goatpen', 'Hay Corner',      'icon-hay',     false),
+  bucket:   item('bucket',  'Wooden Pail',     'icon-pail',    false, 5),
+  milk:     item('milk',    'Pail of Milk',    'icon-milk',    false, 5),
   research: item('research', 'Tinker\u2019s Desk', 'icon-research', false),
   motor:    item('motor',    'Little Motor',   'icon-motor',  false),
   wheel:    item('wheel',    'Steering Wheel', 'icon-wheel',  false),
@@ -75,12 +83,18 @@ export const CONTENT_RECIPES = Object.freeze({
   kiln:         recipe('kiln',      'Seaside Kiln',  1, { stone: 4, clay: 4, scrap: 1 }),
   glasslamp:    recipe('glasslamp', 'Glass Lantern', 1, { glass: 2, metalingot: 1, wood: 1 }),
   sinker:       recipe('sinker',    'Line Sinker',   1, { metalingot: 1, stone: 1 }),
+  // friendly storms (storm.js)
+  stormrod:   recipe('stormrod',   'Lightning Rod', 1, { metalingot: 2, copperingot: 1, wood: 2 }),
+  stormlamp:  recipe('stormlamp',  'Storm Lantern', 1, { stormshard: 2, glass: 1, metalingot: 1 }),
+  stormglass: recipe('stormglass', 'Storm Glass',   1, { stormshard: 1, glass: 1 }),
   glasscups:    Object.freeze({ id: 'glasscups', name: 'Glass Cups', output: Object.freeze({ kind: 'cup', count: 3 }), cost: Object.freeze({ glass: 1 }) }),
   brickplanter: Object.freeze({ id: 'brickplanter', name: 'Brick Planters', output: Object.freeze({ kind: 'palm', count: 2 }), cost: Object.freeze({ brick: 3, leaf: 2 }) }),
   // raft animals (animals.js); the Egg Lantern is a lantern made with an egg instead of scrap
   nestbox: recipe('nestbox', 'Nest Box',        1, { wood: 3, leaf: 2, rope: 1 }),
   cushion: recipe('cushion', 'Feather Cushion', 1, { feather: 3, leaf: 2 }),
   egglamp: Object.freeze({ id: 'egglamp', name: 'Egg Lantern', output: Object.freeze({ kind: 'lantern', count: 1 }), cost: Object.freeze({ puffegg: 1, wood: 2 }) }),
+  goatpen: recipe('goatpen', 'Hay Corner',      1, { wood: 4, leaf: 3, rope: 1 }),
+  bucket:  recipe('bucket',  'Wooden Pail',     1, { wood: 3, rope: 1 }),
   motor:    recipe('motor', 'Little Motor', 1, { wood: 6, scrap: 4, rope: 2 }),
   wheel:    recipe('wheel', 'Steering Wheel', 1, { wood: 5, rope: 2 }),
   bed:      recipe('bed', 'Bed', 1, { wood: 6, leaf: 4 }),
@@ -104,5 +118,5 @@ export const CONTENT_RECIPES = Object.freeze({
 });
 
 // Placeable decor added by content modules (models come from content.decorModel()).
-export const CONTENT_DECOR = Object.freeze(['research', 'bed', 'motor', 'wheel', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign', 'kiln', 'glasslamp', 'nestbox', 'cushion', 'cookpot', 'shellwreath', 'glassfloat', 'flagpole']);
-export const CONTENT_BLOCK_RADIUS = Object.freeze({ research: .5, bed: .55, motor: .45, wheel: .4, pennant: .1, fern: .12, chime: .12, hammock: .45, pots: .3, sign: .1, kiln: .45, glasslamp: .12, nestbox: .35, cushion: .3, cookpot: .35, shellwreath: .12, glassfloat: .2, flagpole: .1 });
+export const CONTENT_DECOR = Object.freeze(['research', 'bed', 'motor', 'wheel', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign', 'kiln', 'glasslamp', 'nestbox', 'cushion', 'cookpot', 'shellwreath', 'glassfloat', 'flagpole', 'goatpen', 'stormrod', 'stormlamp', 'stormglass']);
+export const CONTENT_BLOCK_RADIUS = Object.freeze({ research: .5, bed: .55, motor: .45, wheel: .4, pennant: .1, fern: .12, chime: .12, hammock: .45, pots: .3, sign: .1, kiln: .45, glasslamp: .12, nestbox: .35, cushion: .3, cookpot: .35, shellwreath: .12, glassfloat: .2, flagpole: .1, goatpen: .4, stormrod: .15, stormlamp: .12, stormglass: .1 });
