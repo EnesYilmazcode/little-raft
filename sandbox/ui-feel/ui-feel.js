@@ -36,6 +36,10 @@ const CSS = `
 .uf-cursor>i::after{bottom:-7px;transform:scaleY(-1)}
 .tools.sv-hotbar.uf-has-cursor>button.sv-slot.sv-sel{box-shadow:inset 0 0 0 1px #ffe3a655,0 0 0 1px #3e2a17}
 .tools.sv-hotbar .sv-count{transform-origin:100% 100%}
+/* Everything WAAPI animates carries a static 2D identity transform: a transform appearing/disappearing changes the
+   containing block and costs a layout; a 2D one does not promote a layer (the animation promotes while it runs). */
+.sv-slot .sv-art,.sv-slot .sv-count,.uf-fly,.uf-ring>i,.uf-cursor>i,.uf-x-hit,.uf-toast>.uf-tn,.uf-stat>.uf-si,
+#inventory .sv-recipe .sv-rart{transform:translate(0)}
 
 /* ---- slot landing ring / flash ---- */
 .uf-ring{width:var(--uf-cw,64px);height:var(--uf-ch,64px)}
