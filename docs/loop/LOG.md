@@ -599,3 +599,15 @@ Round 1 (claude/loop-visuals-202611210451) was on the older integration base; th
 - Perf: PASS. Spawn probe median 288 vs 288 ms (calm weather), draw calls unchanged, triangles +15%.
 - Screenshots: use ?daynight=off for calm, comparable shots (weather is random per seed).
 - Next: hotbar hook icon should match the teal hook; scrap reads as a shark fin; plastic blob -> bottle; cumulus glows in rain; rain streaks too long; onboarding title contrast; gulls over the title logo; islands small from spawn; thumb blob, empty fist mid-screen after throw.
+
+## 2026-11-21 · claude/loop-visuals-202611210843 (visuals, round 3)
+Base: origin/claude/raft-master (fbfc100) + round 2 (merged onto it as 4e72541). Fleet: integrator, critic, 7 builders, art judge, perf checker (11 agents).
+- Onboarding notes: warm wood plate, upright cream small-caps title, 230px, only the current step expanded.
+- Pause menu: centred tan wood board with plank buttons, single highlight; title gulls kept off the logo.
+- Item icons: saturation/contrast pass, dark outline + drop shadow, hook icon uses the teal held hook.
+- Hands: warm tan skin; left arm hidden at idle/charging, coil fist when the hook is out; empty right fist low-right.
+- Debris: scrap is a flat rusty sheet; plastic is a white jug with blue cap and per-item label colour.
+- Rain: slate overcast, softer greyed cumulus (sky uWet), short faint wind-slanted streaks.
+- Scenery islands: lush green mounds, 6-10 palms, dense undergrowth, warmer smaller rock, wider beach.
+- Judge: 7/7 accepted. Perf: PASS (spawn probe median 167.5 -> 163.6 ms; rain ~5% faster; icon stylize ~1 ms/icon once).
+- Next: onboarding hint contrast; pause title contrast + panel grain; gull clipped at frame top; plank/seed/fish icons and ~70% "x" placeholder icons; reel-pose thumb blob, open left palm with hammer, fish not gripped; scrap needs grey galvanised patches; rain should dim deck light (daynight dayI 0.15 -> 0.45 wet) and keep cloud-base contrast; island palm height variety; ocean swell/sparkle near raft; deck warmth + contact shadows; three duplicate throw hints (hud.js, prompts, onboarding).
