@@ -1,4 +1,4 @@
-// First-person viewmodel hands (original procedural meshes, no textures). ES module.
+// First-person viewmodel hands (original procedural meshes and tiny generated textures, no image files). ES module.
 // Usage:
 //   const hands = createHands(THREE, { modelFactory });  // factory optional, e.g. (k) => getModel(k) (models.js)
 //   camera.add(hands.group);                       // camera must be in the scene
@@ -18,7 +18,7 @@
 // While the hook is out the right fist closes on the line (ropeAnchor() moves there) and reeling pulls hand over hand. Each arm is posed ABSOLUTELY every frame from smoothed weights, so
 // nothing accumulates or drifts. Held models are built once per kind and cached (preload() builds them ahead,
 // so the first switch to an item does no mesh work); static parts are merged to keep draw calls low.
-import { buildItemModel, holdFor, isPlaceable, PLACEABLE_KINDS } from './held-items.js?build=v3-survival-ae77fa84ac2b';
+import { buildItemModel, holdFor, isPlaceable, PLACEABLE_KINDS, surfaceTextures } from './held-items.js?build=v3-survival-ae77fa84ac2b';
 export { buildItemModel, isPlaceable, PLACEABLE_KINDS };
 const POSES = ['point', 'throw', 'grip', 'open'];
 
@@ -93,24 +93,38 @@ export function createHands(T, { modelFactory = null } = {}) {
     const m = new T.MeshStandardMaterial({ color, roughness, metalness: 0, ...extra });
     mats.push(m); return m;
   };
-  const skin = mat(0xc89068, 0.62, { emissive: 0x1c0e06 });
-  const skinPalm = mat(0xc08562, 0.66, { emissive: 0x1a0c05 });
-  const nail = mat(0xe0b294, 0.4, { emissive: 0x1c0e06 });
-  const crease = mat(0x8e5a3c, 0.8);
-  const sleeveMat = mat(0x52705e, 0.95);
-  const cuffMat = mat(0x3e5648, 0.95);
-  const ropeMat = mat(0xb89a64, 0.95);
+  // Skin: pinkish sun-tanned, faintly mottled. The scene lights reach the viewmodel from wherever the sun
+  // happens to be, so a fixed view-space key term (upper left, toward the eye) adds a soft light-to-shadow
+  // fall-off across forearms and round each finger instead of the flat, evenly lit wax look.
+  const tx = surfaceTextures(T);
+  const keyShade = (m) => {
+    m.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        float vmKey = clamp(dot(normal, normalize(vec3(-0.45, 0.75, 0.5))) * 0.5 + 0.5, 0.0, 1.0);
+        diffuseColor.rgb *= mix(0.42, 1.1, vmKey * vmKey * (3.0 - 2.0 * vmKey));`);
+    };
+    m.customProgramCacheKey = () => 'vmKeyShade';
+    return m;
+  };
+  const skin = keyShade(mat(0xb6786a, 0.6, { emissive: 0x160805, map: tx.skin }));
+  const skinPalm = keyShade(mat(0xbb8274, 0.64, { emissive: 0x160805, map: tx.skin }));
+  const nail = keyShade(mat(0xd8ae9c, 0.38, { emissive: 0x120806 }));
+  const crease = mat(0x7a4a3a, 0.8);
+  const sleeveMat = keyShade(mat(0x5a7462, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
+  const cuffMat = keyShade(mat(0x465c4e, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
+  const ropeMat = mat(0xc4a46c, 1.0, { map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
+  const ropeDarkMat = mat(0x8a6e44, 1.0, { map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
+  // Baked parts: one vertex-coloured material per surface type (the flat ones above only supply the colours;
+  // the baked ones carry the surface textures and the key shade).
+  // [look] skin and cloth bake their colour RELATIVE to a base (vertex colour = part / base) and the shared material
+  // carries the base, so setLook() recolours every baked hand and sleeve by setting one material colour.
   const BODY_SKIN = new T.Color('#f2c29b');           // avatar.js default skin (dist/look.js PALETTE.skin[0])
   const toneOf = (m) => { const c = m.color.clone(); return new T.Color(c.r / BODY_SKIN.r, c.g / BODY_SKIN.g, c.b / BODY_SKIN.b); };
   const skinTones = [skin, skinPalm, nail, crease].map((m) => [m, toneOf(m)]);
-  const ropeDarkMat = mat(0x8a6e44, 1.0);
-  // Baked parts: one vertex-coloured material per surface type (the flat ones above only supply the colours).
-  // [look] skin and cloth bake their colour RELATIVE to a base (vertex colour = part / base) and the shared material
-  // carries the base, so setLook() recolours every baked hand and sleeve by setting one material colour.
   const SLEEVE_BASE = sleeveMat.color.clone();
-  const skinV = mat(0xffffff, 0.62, { emissive: 0x1c0e06, vertexColors: true }); skinV.color.copy(BODY_SKIN);
-  const clothV = mat(0xffffff, 0.95, { vertexColors: true }); clothV.color.copy(SLEEVE_BASE);
-  const ropeV = mat(0xffffff, 0.95, { vertexColors: true });
+  const skinV = keyShade(mat(0xffffff, 0.6, { emissive: 0x160805, vertexColors: true, map: tx.skin })); skinV.color.copy(BODY_SKIN);
+  const clothV = keyShade(mat(0xffffff, 1.0, { vertexColors: true, map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 })); clothV.color.copy(SLEEVE_BASE);
+  const ropeV = mat(0xffffff, 1.0, { vertexColors: true, map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
   const tint = (m) => m.material.color;
   const relTo = (base) => (m) => { const c = m.material.color; return new T.Color(c.r / base.r, c.g / base.g, c.b / base.b); };
   const TINT_FOR = new Map([[skinV, relTo(BODY_SKIN)], [clothV, relTo(SLEEVE_BASE)]]);
