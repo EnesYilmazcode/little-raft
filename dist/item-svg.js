@@ -113,7 +113,18 @@ export const ITEM_ICONS = Object.freeze({
     <circle cx="24" cy="9" r="3.6" stroke="${O}" stroke-width="5"/><circle cx="24" cy="9" r="3.6" stroke="#9fb1bf" stroke-width="2"/></g>
     <g fill="#c6d6e0" stroke="${O}" stroke-width="2" stroke-linejoin="round"><path d="M6.5 28 L10 18 L13.5 28 L10 26 Z"/><path d="M34.5 28 L38 18 L41.5 28 L38 26 Z"/><path d="M20.5 38 L24 46 L27.5 38 Z"/></g>`,
 
+  // Wooden spear: driftwood shaft, chipped flint point lashed on with rope.
   spear: `<g transform="rotate(45 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M22 14 L21.4 51 Q24 53 26.6 51 L26 14 Z" fill="#bb8650"/>
+    <path d="M24 -5 L29 4 L27.5 12 L26 15 H22 L20.5 12 L19 4 Z" fill="#7d7a73"/>
+    <path d="M24 -5 L26.5 4 L24 13 L21.5 4 Z" fill="#a6a29a" stroke-width="1.1" stroke-opacity=".6"/>
+    <path d="M22.3 0 L21 5" fill="none" stroke="#fff2cc" stroke-width="1.3" stroke-linecap="round"/>
+    <g fill="#d9c38c" stroke-width="1.4"><path d="M19.8 13 L28.2 15.5 V18 L19.8 15.5 Z"/><path d="M19.8 17 L28.2 19.5 V22 L19.8 19.5 Z"/></g>
+    <path d="M23 26 V33 M25 38 V45" fill="none" stroke-width="1" stroke-opacity=".45"/>
+    <path d="M22.8 24 V48" fill="none" stroke="#c99560" stroke-width="1.2" stroke-linecap="round"/></g>`,
+
+  // Metal spear: leaf-shaped steel point on a bolted collar.
+  metalspear: `<g transform="rotate(45 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <rect x="21.5" y="13" width="5" height="39" rx="2.5" fill="#c99560"/>
     <path d="M24 -6 C29.5 0 29.5 7 24 14 C18.5 7 18.5 0 24 -6 Z" fill="#9fb1bf"/>
     <path d="M24 -3 V11" fill="none" stroke-width="1.2" stroke-opacity=".6"/>
