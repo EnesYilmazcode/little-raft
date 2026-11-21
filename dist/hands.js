@@ -1,9 +1,13 @@
 // First-person viewmodel hands (original procedural meshes, no textures). ES module.
 // Usage:
-//   const hands = createHands(THREE);
+//   const hands = createHands(THREE, { modelFactory });  // factory optional, e.g. (k) => getModel(k) (models.js)
 //   camera.add(hands.group);                       // camera must be in the scene
-//   hands.setHeld(kind | null);                    // any inventory kind; swaps with a lower/raise animation
-//   hands.setPose('point' | 'grip' | 'open' | null); // null = the held kind's default (decor kinds point)
+//   hands.setHeld(kind | null);                    // any item kind; swaps with a lower/raise animation
+//   hands.setPose('idle' | 'point' | 'throw' | 'grip' | 'open'); // 'idle'/null = the held kind's default
+//     'point': the free hand points its index at the crosshair (right hand when the item rides the left fist,
+//     left hand when the right holds a tool such as the hammer). Blends in, no lower/raise.
+//     'throw': forces the wind-up (full charge) pose.
+//   hands.setModelFactory(fn | null);              // swap the model source later; rebuilds cached models
 //   hands.update({ dt, time, charge, reeling, casting, walking, hasHookOut, motion, yaw, pitch });
 //   hands.ropeAnchor().getWorldPosition(v);        // rope start: rod tip while the rod is held, else left hand
 //   hands.itemModel('fishingrod')                  // the held model (rod userData: float, leader, tipNode)
@@ -11,10 +15,11 @@
 // Camera space: origin at the eye, looking -Z, +Y up, +X right. The right fist grips near (0.38,-0.32,-0.80),
 // the left near (-0.34,-0.35,-0.70). Each arm is posed ABSOLUTELY every frame from smoothed weights, so
 // nothing accumulates or drifts. Held models are built lazily once per kind and cached.
-import { buildItemModel, HOLD } from './held-items.js?build=v3-survival-ae77fa84ac2b';
-export { buildItemModel };
+import { buildItemModel, holdFor, isPlaceable, PLACEABLE_KINDS } from './held-items.js?build=v3-survival-ae77fa84ac2b';
+export { buildItemModel, isPlaceable, PLACEABLE_KINDS };
+const POSES = ['point', 'throw', 'grip', 'open'];
 
-export function createHands(T) {
+export function createHands(T, { modelFactory = null } = {}) {
   const V = (x = 0, y = 0, z = 0) => new T.Vector3(x, y, z);
   const UP = V(0, 1, 0);
   const DEG = Math.PI / 180;
@@ -151,13 +156,13 @@ export function createHands(T) {
     frame.add(wrist); wrist.add(hand);
     const H = buildHand(hand, gripR);
     const W = H.wristPt;
-    wrist.position.copy(W); hand.position.copy(W).negate();
+    wrist.position.copy(W); wrist.scale.setScalar(1.12); hand.position.copy(W).negate();   // hands a touch chunky, Raft-style
 
     const Fl = toLocal(F).normalize();
     const at = (s) => W.clone().addScaledVector(Fl, s);
-    seg(frame, skin, at(0), at(0.27), 0.026, 0.036, 12);           // forearm
-    seg(frame, cuffMat, at(0.20), at(0.235), 0.041, 0.043, 14);    // rolled cuff
-    seg(frame, sleeveMat, at(0.24), at(0.56), 0.044, 0.060, 14);   // sleeve (runs off-screen)
+    seg(frame, skin, at(0), at(0.24), 0.031, 0.042, 12);           // forearm
+    seg(frame, cuffMat, at(0.19), at(0.225), 0.047, 0.050, 14);    // rolled cuff
+    seg(frame, sleeveMat, at(0.23), at(0.60), 0.051, 0.070, 14);   // sleeve (runs off-screen)
 
     return { pose, frame, wrist, hand, H, qBase, toLocal, basePos: basePos.clone(), r, u, f };
   }
@@ -165,16 +170,15 @@ export function createHands(T) {
   const R = buildArm({ name: 'rightArm', basePos: V(0.38, -0.32, -0.80), u: V(0.27, 0.95, -0.15), F: V(0.35, -0.50, 1.0), gripR: 0.032, mirror: false });
   const L = buildArm({ name: 'leftArm', basePos: V(-0.34, -0.35, -0.70), u: V(0.85, 0.30, 0.10), F: V(-0.40, -0.50, 1.0), gripR: 0.028, mirror: true });
   lagRoot.add(R.pose, L.pose);
-  // Pointing frame for the right arm: hand half-prone, index aimed just below the crosshair.
-  {
-    const u = V(-0.55, 0.80, -0.15).normalize(), F = V(0.30, -0.70, 1.0).normalize();
+  // Pointing frames: hand half-prone, index aimed just below the crosshair. The left one is the mirror
+  // image (x -> -x of the same grip axis / forearm direction; the arm frame itself is already mirrored).
+  const pointFrame = (A, sx) => {
+    const u = V(-0.65 * sx, 0.70, -0.20).normalize(), F = V(0.40 * sx, -0.42, 1.0).normalize();
     const f = F.clone().addScaledVector(u, -F.dot(u)).normalize(), r = V().crossVectors(u, f).normalize();
-    // the arm's own frame is (R.r, R.u, R.f); rotate it so that it lands on (r, u, f)
-    const qFrom = new T.Quaternion().setFromRotationMatrix(new T.Matrix4().makeBasis(R.r, R.u, R.f));
-    const qTo = new T.Quaternion().setFromRotationMatrix(new T.Matrix4().makeBasis(r, u, f));
-    R.qPoint = qTo.multiply(qFrom.invert()).multiply(R.qBase);
-    R.pointPos = V(0.27, -0.27, -0.60);
-  }
+    A.qPoint = new T.Quaternion().setFromRotationMatrix(new T.Matrix4().makeBasis(r, u, f));
+    A.pointPos = V(0.25 * sx, -0.25, -0.56);
+  };
+  pointFrame(R, 1); pointFrame(L, -1);
 
   // ---------------- held items (right fist; decorations ride on the left fist) ----------------
   const toolHolder = new T.Group(); toolHolder.name = 'toolHolder';
@@ -195,13 +199,14 @@ export function createHands(T) {
   leftHolder.quaternion.copy(qLeftUp); leftHolder.position.set(0, 0.006, 0);
   L.hand.add(leftHolder);
 
+  let factory = modelFactory;
   const mounts = new Map();                                    // kind -> { pivot, model } (built once)
   function mountFor(kind) {
     if (mounts.has(kind)) return mounts.get(kind);
     let m = null;
-    const item = buildItemModel(T, kind);
+    const item = buildItemModel(T, kind, factory);
     if (item) {
-      const h = HOLD[kind] || {};
+      const h = holdFor(kind);
       const pivot = new T.Group(); pivot.name = 'held_' + kind;
       pivot.rotation.set(h.rx || 0, h.ry || 0, h.rz || 0);
       const g = item.userData.grip;
@@ -240,32 +245,38 @@ export function createHands(T) {
   // ---------------- animation state (weights only; transforms are rebuilt every frame) ----------------
   // dip: 0 = arms up, 1 = lowered out of view. A swap lowers, switches model/pose at the bottom, raises.
   const st = { walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0,
-    shown: null, target: null, pose: 'grip', poseOverride: null, lowering: false, dip: 1, down: 1, raise: 1, lagX: 0, lagY: 0, lastYaw: null, lastPitch: 0 };
+    shown: null, target: null, poseOverride: null, ptR: 0, ptL: 0, lowering: false, dip: 1, down: 1, raise: 1, lagX: 0, lagY: 0, lastYaw: null, lastPitch: 0 };
   const qOff = new T.Quaternion(), eul = new T.Euler(0, 0, 0, 'XYZ'), qSwing = new T.Quaternion(), AX = V(1, 0, 0);
   const last = {};
   setPose(L.H, 'grip');
 
-  const wantPose = () => st.poseOverride || (st.target && HOLD[st.target]?.pose) || 'grip';
-  const usesLeft = (kind) => kind === 'hook' || HOLD[kind]?.hand === 'left';
+  // Resolved pose of the shown item ('point' | 'throw' | 'grip' | 'open') and which hand points.
+  const poseOf = (kind) => st.poseOverride || (kind ? holdFor(kind).pose : 'grip');
+  const usesLeft = (kind) => kind === 'hook' || holdFor(kind).hand === 'left';
+  const handPoses = { R: '', L: '' };
+  function applyFingers(pose) {
+    const pointer = pose !== 'point' || !st.shown ? null : holdFor(st.shown).hand === 'left' ? 'R' : 'L';
+    const r = pointer === 'R' ? 'point' : pose === 'open' ? 'open' : 'grip', l = pointer === 'L' ? 'point' : 'grip';
+    if (handPoses.R !== r) setPose(R.H, handPoses.R = r);
+    if (handPoses.L !== l) setPose(L.H, handPoses.L = l);
+    return pointer;
+  }
   function swapNow() {
     const prev = st.shown && mounts.get(st.shown);
     if (prev) prev.pivot.visible = false;
-    st.shown = st.target; st.pose = wantPose();
+    st.shown = st.target;
     const next = st.shown && mountFor(st.shown);
     if (next) next.pivot.visible = st.shown !== 'hook' || st.outW < 0.5;
-    setPose(R.H, st.pose);
-    const left = usesLeft(st.shown);
-    L.pose.visible = left;
-    coil.visible = lead.visible = st.shown === 'hook';
     R.pose.visible = st.shown !== null;
     st.raise = 0; st.lowering = false;
   }
 
-  function applyArm(A, px, py, pz, rx, ry, rz, wx, wy, wz, point = false) {
-    const b = point ? A.pointPos : A.basePos;
-    A.pose.position.set(b.x + px, b.y + py, b.z + pz);
+  const qA = new T.Quaternion(), pA = V();
+  function applyArm(A, px, py, pz, rx, ry, rz, wx, wy, wz, w = 0) {
+    pA.lerpVectors(A.basePos, A.pointPos, w);
+    A.pose.position.set(pA.x + px, pA.y + py, pA.z + pz);
     eul.set(rx, ry, rz); qOff.setFromEuler(eul);
-    A.pose.quaternion.copy(qOff).multiply(point ? A.qPoint : A.qBase);
+    A.pose.quaternion.copy(qOff).multiply(qA.slerpQuaternions(A.qBase, A.qPoint, w));
     A.wrist.rotation.set(wx, wy, wz);
   }
 
@@ -280,14 +291,22 @@ export function createHands(T) {
     const k = (rate) => 1 - Math.exp(-rate * dt);
 
     // ---- swap / pose change: ease down, switch while hidden, pop back up
-    if (st.shown !== st.target || st.pose !== wantPose()) {
+    if (st.shown !== st.target) {
       if (!st.lowering) { st.lowering = true; st.dip = Math.sqrt(clamp01(st.down)); }
       st.dip = Math.min(1, st.dip + dt / 0.13);
       if (st.dip >= 1) swapNow();
     } else if (st.raise < 1) st.raise = Math.min(1, st.raise + dt / 0.26);
     const down = st.down = st.shown === null ? 1 : st.lowering ? st.dip * st.dip : 1 - easeOutBack(st.raise);
     root.visible = st.shown !== null || st.target !== null;
-    const isHook = st.shown === 'hook', charge = isHook ? charge0 : 0, hasHookOut = isHook && !!params.hasHookOut;
+    const pose = poseOf(st.shown), pointer = applyFingers(pose);
+    const isHook = st.shown === 'hook', hasHookOut = isHook && !!params.hasHookOut;
+    const charge = pose === 'throw' ? 1 : isHook ? charge0 : 0;
+    // pointing blends in; a left hand that only shows up to point slides in from below
+    st.ptR += ((pointer === 'R' ? 1 : 0) - st.ptR) * k(12);
+    st.ptL += ((pointer === 'L' ? 1 : 0) - st.ptL) * k(12);
+    const leftNeeded = usesLeft(st.shown), lIn = leftNeeded ? 1 : st.ptL;
+    L.pose.visible = st.shown !== null && (leftNeeded || st.ptL > 0.02);
+    coil.visible = lead.visible = isHook && pointer !== 'L';
 
     // ---- look lag: hands trail camera turns a little, then settle
     if (Number.isFinite(params.yaw) && Number.isFinite(params.pitch)) {
@@ -315,7 +334,7 @@ export function createHands(T) {
     const forward = casting > 0 ? smooth(0, 0.2, p) * (1 - smooth(0.38, 1, p)) : 0;
     const recoil = casting > 0 ? Math.sin(Math.PI * clamp01((p - 0.5) / 0.5)) * 0.12 : 0;
     const a = (forward - recoil) * (isHook ? 1 : 0.55);
-    const ce = isHook ? Math.sin(chargeEff * Math.PI / 2) : 0;
+    const ce = isHook || pose === 'throw' ? Math.sin(chargeEff * Math.PI / 2) : 0;
     const trem = smooth(0.75, 1, chargeEff) * (casting > 0 ? 0 : 1) * 0.0025 * (Math.sin(t * 37) + 0.6 * Math.sin(t * 23.3));
 
     // ---- idle + walk
@@ -330,7 +349,6 @@ export function createHands(T) {
     const pull = q < 0.58 ? smooth(0, 0.58, q) : 1 - smooth(0.58, 1, q);
     const rW = st.reelW, oW = st.outW, tw = st.toolW;
     const catchDip = hasHookOut ? 0 : (1 - tw);
-    const pt = st.pose === 'point' ? 1 : 0;
 
     // ---- right arm
     const rpx = 0.10 * ce - 0.12 * a + 0.010 * wA * Math.sin(ph) + 0.002 * amp * Math.sin(t * 0.7) + 0.008 * oW - 0.008 * rW + trem;
@@ -341,16 +359,16 @@ export function createHands(T) {
     const rrz = -0.40 * ce + 0.30 * a + 0.03 * wA * Math.sin(ph) + 0.25 * down;
     const rwx = 0.35 * ce - 0.55 * a - 0.10 * oW + 0.06 * rW * Math.sin(t * 18.85);
     const rwz = -0.20 * ce + 0.15 * a + 0.03 * rW * Math.sin(t * 9.42 + 1.3);
-    applyArm(R, rpx, rpy, rpz, rrx, rry, rrz, rwx, 0, rwz, pt === 1);
+    applyArm(R, rpx, rpy, rpz, rrx, rry, rrz, rwx, 0, rwz, smooth(0, 1, st.ptR));
 
     // ---- left arm
     const lpx = 0.02 * ce + 0.02 * a + 0.015 * pull * rW - 0.010 * wA * Math.sin(ph) + 0.002 * amp * Math.sin(t * 0.63 + 1);
-    const lpy = 0.03 * ce + 0.02 * a + (0.010 - 0.035 * pull) * rW - 0.012 * wA * (0.5 - 0.5 * Math.cos(2 * ph + Math.PI)) + 0.004 * amp * brL - 0.45 * down;
+    const lpy = 0.03 * ce + 0.02 * a + (0.010 - 0.035 * pull) * rW - 0.012 * wA * (0.5 - 0.5 * Math.cos(2 * ph + Math.PI)) + 0.004 * amp * brL - 0.45 * down - 0.45 * (1 - lIn);
     const lpz = -0.03 * ce - 0.06 * a + (0.09 * pull - 0.03) * rW;
     const lrx = -0.10 * ce + 0.30 * pull * rW + 0.008 * amp * brL - 0.4 * down;
     const lry = 0.08 * ce;
     const lrz = -0.15 * pull * rW - 0.03 * wA * Math.sin(ph) - 0.2 * down;
-    applyArm(L, lpx, lpy, lpz, lrx, lry, lrz, 0.22 * pull * rW - 0.08 * ce, 0, -0.10 * ce + 0.12 * a);
+    applyArm(L, lpx, lpy, lpz, lrx, lry, lrz, 0.22 * pull * rW - 0.08 * ce, 0, -0.10 * ce + 0.12 * a, smooth(0, 1, st.ptL));
 
     // ---- coil: spool turns while reeling (in) / casting (out); pendulum swing about grip axis
     if (isHook) {
@@ -363,7 +381,7 @@ export function createHands(T) {
     }
     toolHolder.scale.setScalar(hasHookOut ? 1 : 0.7 + 0.3 * easeOutBack(tw));  // little "catch" pop on return
 
-    Object.assign(last, { held: st.shown, target: st.target, pose: st.pose, dip: down, lag: [st.lagX, st.lagY], charge: chargeEff, chargeEased: ce, throw: a,
+    Object.assign(last, { held: st.shown, target: st.target, pose, pointHand: pointer, dip: down, lag: [st.lagX, st.lagY], charge: chargeEff, chargeEased: ce, throw: a,
       pull: pull * rW, walkW: st.walkW, reelW: rW, hookOutW: oW, toolW: tw, spool: st.spool, models: mounts.size });
     return last;
   }
@@ -371,16 +389,32 @@ export function createHands(T) {
   function dispose() {
     if (root.parent) root.parent.remove(root);
     const extra = new Set();
-    for (const m of mounts.values()) if (m) m.item.traverse((o) => { if (o.isMesh) { extra.add(o.geometry); [].concat(o.material).forEach((x) => extra.add(x)); } });
-    for (const x of [...geos, ...mats, ...extra]) x.dispose();
-    geos.length = 0; mats.length = 0; mounts.clear();
+    dropMounts();
+    for (const x of [...geos, ...mats]) x.dispose();
+    geos.length = 0; mats.length = 0;
+  }
+  // Frees every cached held model (factory models share cached geometry, so those are only detached).
+  function dropMounts() {
+    const extra = new Set();
+    for (const m of mounts.values()) {
+      if (!m) continue;
+      m.pivot.removeFromParent();
+      if (!m.item.userData.shared) m.item.traverse((o) => { if (o.isMesh) { extra.add(o.geometry); [].concat(o.material).forEach((x) => extra.add(x)); } });
+    }
+    for (const x of extra) x.dispose();
+    mounts.clear();
   }
 
   update({ dt: 0, time: 0 });
   return {
     group: root, handTip, update, dispose, state: last,
-    setHeld(kind) { st.target = kind && HOLD[kind] ? kind : null; },
-    setPose(pose) { st.poseOverride = pose === 'point' || pose === 'grip' || pose === 'open' ? pose : null; },
+    setHeld(kind) { st.target = kind ? String(kind) : null; },
+    setPose(pose) { st.poseOverride = POSES.includes(pose) ? pose : null; },
+    setModelFactory(fn) {
+      factory = typeof fn === 'function' ? fn : null;
+      const shown = st.shown; dropMounts();
+      if (shown) { const m = mountFor(shown); if (m) m.pivot.visible = true; }
+    },
     itemModel(kind) { const m = mountFor(kind); return m ? (m.item.userData.model || m.item) : null; },
     ropeAnchor() {
       if (st.shown === 'fishingrod') { const rod = mounts.get('fishingrod'); if (rod?.item.userData.model?.userData.tipNode) return rod.item.userData.model.userData.tipNode; }
