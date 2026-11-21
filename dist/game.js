@@ -56,7 +56,7 @@ import { createItemBatches } from './item-batches.js?build=v3-survival-ae77fa84a
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { createGhosts, wrapRot, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
-import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
+import { getModel, buildModel, disposeModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { getItemIcon, onIconReady, renderIcons } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { createIsland } from './scenery-islands.js?build=v3-survival-ae77fa84ac2b'; // decorative distant islands (islands.js is the content lane's dockable islands)
 
@@ -247,6 +247,7 @@ export function mount(transfer = null) {
   let hemi = null, clouds = [], content = null; // content hook: lights/clouds handed to content modules
   let hands = null, offIconReady = null, clothMat; // one hands controller swaps the held item model per hotbar kind
   const modelOf = k => { try { return getModel(k); } catch (e) { console.warn('model failed', k, e); return null; } };
+  const iconModelOf = Object.assign(k => { try { return buildModel(k); } catch (e) { console.warn('model failed', k, e); return null; } }, {dispose:disposeModel}); // icons: built, drawn once, freed, so icon-only kinds never fill the model cache
   let fc = null; // [fishing-cooking] rod fishing v2 + grills + journal (dist/fishing-cooking.js)
   let instruments = null; // [instruments]
   let logbookUI = null;
@@ -1895,7 +1896,7 @@ export function mount(transfer = null) {
       onCraft:guard(id => craft(id)),
       onResume:guard(() => { play('close'); requestLock(); }),
       onPause:guard(pauseInput),
-      getModel:modelOf, // 3D icons rendered from models.js
+      getModel:iconModelOf, // 3D icons rendered from models.js
       recipeGate:id => prog?.recipeGate(id), // [progression-hook]
     });
     prog.installUI(); // [progression-hook]

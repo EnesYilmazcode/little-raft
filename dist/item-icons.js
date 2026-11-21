@@ -112,7 +112,7 @@ function freeModel(root) {
 export function resolveIconModel(kind) {
   let model = null;
   if (provider) { try { model = provider(MODEL_ALIAS[kind] || kind) || provider(kind) || null; } catch (e) { console.warn('item icon provider failed', kind, e); } }
-  if (model) return { model, own: false };
+  if (model) return { model, own: provider.dispose ? 'provider' : false };
   try { model = buildFallbackModel(kind); } catch (e) { console.warn('item icon model failed', kind, e); }
   if (model) return { model, own: true };
   try { model = getLibraryModel(kind); } catch (e) { console.warn('item icon library model failed', kind, e); }
@@ -125,10 +125,10 @@ function stage(kind) {
   if (!model) return null;
   const pivot = new T.Group();
   pivot.add(model);
-  const p = (own ? null : PROVIDER_POSE[kind]) || POSE[kind]; if (p) pivot.rotation.set(p[0], p[1], p[2]);
+  const p = (own === true ? null : PROVIDER_POSE[kind]) || POSE[kind]; if (p) pivot.rotation.set(p[0], p[1], p[2]);
   pivot.updateMatrixWorld(true);
   _box.setFromObject(pivot, true);
-  if (_box.isEmpty()) { if (own) freeModel(model); return null; }
+  if (_box.isEmpty()) { if (own === 'provider') provider?.dispose?.(model); else if (own) freeModel(model); return null; }
   _box.getBoundingSphere(_sphere);
   pivot.position.sub(_sphere.center);
   _box.translate(_v.copy(_sphere.center).negate());
@@ -193,7 +193,7 @@ export function renderIcons(renderer, budgetMs = BUDGET_MS) {
         jobs.push({ kind, x }); x += 2 * S;
       } catch (e) { console.warn('item icon render failed', kind, e); finish(kind, ''); }
       scene.remove(st.pivot);
-      if (st.own) freeModel(st.model);
+      if (st.own === 'provider') provider?.dispose?.(st.model); else if (st.own) freeModel(st.model);
       if (performance.now() - t0 > budgetMs) break;
     }
   } finally {
@@ -282,7 +282,8 @@ export function warmIcons(kinds, first = false) {
 }
 /** Called with (kind, url) whenever an icon (re)renders. Returns an unsubscribe function. */
 export function onIconReady(fn) { listeners.add(fn); return () => listeners.delete(fn); }
-/** Swap the model source (e.g. hands.js buildItemModel). Re-renders every icon seen so far. */
+/** Swap the model source (e.g. hands.js buildItemModel). Re-renders every icon seen so far.
+ *  A provider with a .dispose(model) method hands out one-off models that are freed after each render. */
 export function setModelProvider(fn) {
   provider = typeof fn === 'function' ? fn : null;
   const kinds = [...cache.keys(), ...encoding.keys()];
