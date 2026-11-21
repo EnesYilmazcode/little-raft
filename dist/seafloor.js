@@ -281,6 +281,7 @@ export function createSeafloor(T, { islands = [] } = {}) {
 
   const gathered = new Set();
   let patchNodes = [], hlId = null, hlType = null, centreX = NaN, centreZ = NaN;
+  let decorOn = true; // rocks, weed and nodes; off while the camera is above water (the opaque sea hides them)
   const m4 = new T.Matrix4(), q = new T.Quaternion(), v = new T.Vector3(), s = new T.Vector3(), up = new T.Vector3(0, 1, 0);
   const place = (mesh, x, y, z, yaw, sx, sy = sx, sz = sx) => {
     if (mesh.count >= mesh.instanceMatrix.count) return -1;
@@ -305,7 +306,7 @@ export function createSeafloor(T, { islands = [] } = {}) {
       for (const m of nodeMeshes[n.type]) place(m, n.x, n.y - 0.04, n.z, nodeYaw(n), nodeScale(n));
     }
     for (const type of NODE_TYPES) {
-      hl[type].visible = type === hlType;
+      hl[type].visible = decorOn && type === hlType;
       for (const m of nodeMeshes[type]) m.instanceMatrix.needsUpdate = true;
     }
   }
@@ -402,6 +403,12 @@ export function createSeafloor(T, { islands = [] } = {}) {
       if (had !== !!on && patchNodes.some((n) => n.id === id)) refreshNodes();
     },
     isGathered: (id) => gathered.has(id),
+    /** Show or hide everything but the floor patch (rocks, weed, nodes, highlight). */
+    setDecor(on) {
+      on = !!on; if (on === decorOn) return; decorOn = on;
+      rocks.visible = weed.visible = on;
+      for (const type of NODE_TYPES) { for (const m of nodeMeshes[type]) m.visible = on; hl[type].visible = on && type === hlType; }
+    },
     /** Mark the targeted node (or null). Cheap to call every frame: no-op when unchanged. */
     highlight(id = null) {
       if (id === hlId) return;

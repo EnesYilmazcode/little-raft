@@ -39,6 +39,7 @@ import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?bui
 import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
+import { createSceneryInstances } from './scenery-instances.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
@@ -234,7 +235,7 @@ export function mount(transfer = null) {
   let saveBlocked = !!X?.saveBlocked;
   let building = null, sentPieces = null; // building-pieces lane hook (sentPieces: last pieces array sent to the guest)
   let scene = null, camera = null, renderer = null, quality = null, ocean = null, raft, itemsGroup, ghosts, rope, ropeAttr, hookMesh, bobber, friend, player, sun;
-  let hemi = null, clouds = [], content = null; // content hook: lights/clouds handed to content modules
+  let hemi = null, clouds = [], cloudMeshes = [], sceneryMat = null, content = null; const sceneryInst = []; // content hook: lights/clouds handed to content modules
   let hands = null, offIconReady = null, clothMat; // one hands controller swaps the held item model per hotbar kind
   const modelOf = k => { try { return getModel(k); } catch (e) { console.warn('model failed', k, e); return null; } };
   let fc = null; // [fishing-cooking] rod fishing v2 + grills + journal (dist/fishing-cooking.js)
@@ -322,7 +323,7 @@ export function mount(transfer = null) {
     if (!materialCache.has(color)) {
       let m = ART.artEnabled() ? ART.materialForColor(T, color) : null; // art lane hook
       if (!m && TIMBER.has(color)) { try { m = createWoodMaterial(T, color); } catch (e) { console.warn('wood material failed', e); } }
-      materialCache.set(color, m ?? new T.MeshStandardMaterial({color, roughness:.85, metalness:0}));
+      materialCache.set(color, m ?? new T.MeshStandardMaterial({color, roughness:.85, metalness:0})); materialCache.get(color).userData.color ??= color; // userData.color: tint of textured (wood) materials, for colour baking
     }
     return materialCache.get(color);
   }
@@ -363,7 +364,7 @@ export function mount(transfer = null) {
   // content hook: live view of the engine for content modules (see dist/content.js)
   const contentCtx = {
     T, get scene() { return scene; }, get camera() { return camera; }, get raft() { return raft; }, get ocean() { return ocean; },
-    get sun() { return sun; }, get hemi() { return hemi; }, get clouds() { return clouds; }, get renderer() { return renderer; },
+    get sun() { return sun; }, get hemi() { return hemi; }, get clouds() { return clouds; }, get cloudMeshes() { return cloudMeshes; }, get renderer() { return renderer; },
     get world() { return world; }, get role() { return role; }, get running() { return running; }, get physics() { return physics; },
     get elapsed() { return elapsed; }, get options() { return options; }, get other() { return other; },
     localBag: () => localBag(), actorBag: a => actorBag(a), action: a => action(a), emit: (e, to) => emit(e, to), notice: (s, ms) => notice(s, ms),
@@ -395,8 +396,15 @@ export function mount(transfer = null) {
     buildViewmodels();
     try { fc = createFishingCooking(T, fcHost()); } catch (e) { console.error('fishing-cooking failed', e); fc = null; } // [fishing-cooking]
     islands.length = 0; aboveWater.length = 0; // diving lane hook: seafloor rises toward islands; these groups hide underwater
-    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); islands.push({x:g.position.x, z:g.position.z, r:5}); aboveWater.push(g); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); bakeGroup(g); scene.add(g); scenery.push([g, 6]); } // [sailing] islands drift past; diving: seafloor rises toward these
-    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; bakeGroup(g); scene.add(g); clouds.push(g); aboveWater.push(g); scenery.push([g, 0]); } // content + sailing: clouds
+    // Scenery islands and clouds are identical copies: each is an empty proxy group (moved by sailing/day-night, hidden by diving)
+    // drawn by one InstancedMesh per baked material; syncScenery() copies the proxies in before each render.
+    for (const s of sceneryInst) for (const m of s.meshes) { scene.remove(m); m.geometry.dispose(); m.dispose(); }
+    sceneryInst.length = 0; const islandProxies = [], cloudProxies = [];
+    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); islands.push({x:g.position.x, z:g.position.z, r:5}); aboveWater.push(g); scene.add(g); islandProxies.push(g); scenery.push([g, 6]); } // [sailing] islands drift past; diving: seafloor rises toward these
+    { const g = new T.Group(); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); sceneryInst.push(createSceneryInstances(T, islandProxies, bakeGroup(g, !ART.artEnabled()).children)); }
+    for (let i = 0; i < 24; i++) { const g = new T.Group(); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); scene.add(g); cloudProxies.push(g); clouds.push(g); aboveWater.push(g); scenery.push([g, 0]); } // content + sailing: clouds
+    { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.scale.y = .5; const c = createSceneryInstances(T, cloudProxies, bakeGroup(g).children); sceneryInst.push(c); cloudMeshes = c.meshes; }
+    for (const s of sceneryInst) scene.add(...s.meshes);
     setOwnedElsewhere(id => Object.prototype.hasOwnProperty.call(PROG_ITEMS, id)); // [progression-hook] items.js unlocks own the catalogue
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
     building = createBuilding(T, scene); // building-pieces lane hook
@@ -453,22 +461,27 @@ export function mount(transfer = null) {
     Object.assign(cam, {left:-r, right:r, top:r, bottom:-r, near:Math.max(.5, d - r - 6), far:d + r + 6}); cam.updateProjectionMatrix();
   }
   // Bakes a drifting scenery group (island or cloud) into one mesh per material, kept local so sailing can still move the group.
-  function bakeGroup(g) {
+  function bakeGroup(g, bakeColor = false) {
     const pos = g.position.clone(), scl = g.scale.clone(); g.position.set(0, 0, 0); g.scale.set(1, 1, 1);
     const holder = new T.Group(); holder.add(g); g.scale.copy(scl); // scale is baked in, position stays on the group
-    const merged = mergeStatic(holder); holder.remove(g);
+    const merged = mergeStatic(holder, bakeColor); holder.remove(g);
     for (const c of [...g.children]) g.remove(c);
     g.scale.set(1, 1, 1); g.position.copy(pos); for (const m of merged) g.add(m);
     return g;
   }
   // Bakes every mesh under `root` (world transforms) into one non-shadow-casting mesh per material; disposes the parts.
-  function mergeStatic(root) {
+  // bakeColor: bake each material's colour into a vertex `color` and merge everything into one mesh with one
+  // shared vertex-coloured material (loses textures such as the wood grain; meant for far-off scenery).
+  function mergeStatic(root, bakeColor = false) {
     root.updateMatrixWorld(true);
     const byMat = new Map();
-    root.traverse(o => { if (!o.isMesh) return; if (!byMat.has(o.material)) byMat.set(o.material, []); byMat.get(o.material).push(o); });
+    if (bakeColor && !sceneryMat) sceneryMat = new T.MeshStandardMaterial({vertexColors:true, roughness:.85, metalness:0});
+    root.traverse(o => { if (!o.isMesh) return; const k = bakeColor ? sceneryMat : o.material; if (!byMat.has(k)) byMat.set(k, []); byMat.get(k).push(o); });
     const out = [];
     for (const [material, meshes] of byMat) {
-      const parts = meshes.map(m => { const g = m.geometry.clone().applyMatrix4(m.matrixWorld); for (const n of Object.keys(g.attributes)) if (n !== 'position' && n !== 'normal' && n !== 'uv') g.deleteAttribute(n); return g; });
+      const parts = meshes.map(m => { const g = m.geometry.clone().applyMatrix4(m.matrixWorld); for (const n of Object.keys(g.attributes)) if (n !== 'position' && n !== 'normal' && n !== 'uv') g.deleteAttribute(n);
+        if (bakeColor) { const c = new T.Color(m.material.userData.color ?? m.material.color ?? '#ffffff'), a = new Float32Array(g.attributes.position.count * 3); for (let i = 0; i < a.length; i += 3) { a[i] = c.r; a[i + 1] = c.g; a[i + 2] = c.b; } g.setAttribute('color', new T.BufferAttribute(a, 3)); }
+        return g; });
       const merged = new T.Mesh(mergeGeometries(T, parts), material); merged.castShadow = false; merged.receiveShadow = false; merged.matrixAutoUpdate = false;
       for (const g of parts) g.dispose(); for (const m of meshes) m.geometry.dispose();
       out.push(merged);
@@ -1248,6 +1261,7 @@ export function mount(transfer = null) {
     try { logbookUI?.update?.(); } catch (e) { console.error('logbook update failed', e); logbookUI = null; }
     refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud();
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
+    for (const si of sceneryInst) si.sync(); // drifting island/cloud proxies -> instances
     renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
   }
   // Peer liveness. rAF stops in hidden tabs, so a timer keeps the channel warm and each side says when it is

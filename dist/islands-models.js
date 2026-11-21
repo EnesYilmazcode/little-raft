@@ -84,7 +84,7 @@ function domeGeometry(T) {
 }
 
 // Palm: curved segmented trunk + crown of drooping fronds, one geometry in one frame. The spent
-// variant has straw-yellow fronds drooped ~18 degrees further. Coconuts are their own mesh.
+// variant has straw-yellow fronds drooped ~18 degrees further. The live palm carries its coconuts (nutsGeometry).
 export const PALM_H = 3.5, PALM_BEND = 0.85;
 function palmGeometry(T, spent = false) {
   const H = PALM_H, BEND = PALM_BEND, SEG = 16, RAD = 7, parts = [];
@@ -137,7 +137,7 @@ function palmGeometry(T, spent = false) {
   for (let i = 0; i < 4; i++) parts.push(frond(i / 4 * Math.PI * 2 + .6, 1.2, 1.0, .9, .3)); // young upright fronds
   return merge(T, parts);
 }
-// Coconut cluster under the crown, in the palm's frame (hidden once the palm is spent).
+// Coconut cluster under the crown, in the palm's frame; merged into the live palm (the spent palm has none).
 function nutsGeometry(T) {
   const parts = [], nut = new T.Color('#6b6233'), dark = new T.Color('#4f4626');
   for (let i = 0; i < 4; i++) {
@@ -254,13 +254,12 @@ export function createIslandModels(T, ocean) {
   lagoonUniforms.uSeaFoam0 = day(lagoonUniforms.uSeaFoam);
   const vert = ocean && ocean.material && typeof ocean.material.vertexShader === 'string' ? ocean.material.vertexShader : FALLBACK_VERT;
   const geos = {
-    dome: domeGeometry(T), palm: palmGeometry(T), palmSpent: palmGeometry(T, true), nuts: nutsGeometry(T), bush: bushGeometry(T), rock: rockGeometry(T), sand: sandGeometry(T), lagoon: lagoonGeometry(T),
+    dome: domeGeometry(T), palm: merge(T, [palmGeometry(T), nutsGeometry(T)]), palmSpent: palmGeometry(T, true), bush: bushGeometry(T), rock: rockGeometry(T), sand: sandGeometry(T), lagoon: lagoonGeometry(T),
   };
   const mats = {
     dome: new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 }),
     palm: new T.MeshStandardMaterial({ vertexColors: true, roughness: .85 }),
     palmSpent: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9 }),
-    nuts: new T.MeshStandardMaterial({ vertexColors: true, roughness: .7 }),
     bush: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9, flatShading: true }),
     rock: new T.MeshStandardMaterial({ vertexColors: true, roughness: .95, flatShading: true }),
     sand: new T.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),

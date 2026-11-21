@@ -59,9 +59,8 @@ inventory-state.js are unchanged, and no new hook was needed.
   raft extends less (ties use the seed's parity). `clean` clamps `off` to 8..60 instead of 8..38,
   so a wide raft cannot pull the island on top of itself. The swim from the raft edge to the shore
   is 10 to 13 m.
-- **Rendering: 8 draw calls.** Trunk and fronds are one palm geometry, since the fronds sit at
-  the trunk top in the same local frame. Coconuts are a separate small InstancedMesh, and a spent
-  palm swaps to a third one (straw-yellow `#c9b25a` fronds drooped about 18° more, no coconuts),
+- **Rendering: 7 draw calls.** Trunk, fronds and coconuts are one palm geometry, since they sit
+  in the same local frame. A spent palm swaps to a second InstancedMesh (straw-yellow `#c9b25a` fronds drooped about 18° more, no coconuts),
   so a drained palm reads clearly from the raft. Fronds are two-sided by duplicating
   triangles with reversed winding and upward normals, not with `DoubleSide`. That way the
   undersides are lit like leaves instead of going dark.
