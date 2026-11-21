@@ -32,7 +32,7 @@ export const ACHIEVEMENTS = Object.freeze([
   a('supplies100', 'Beachcomber', 'Fish 100 supplies out of the sea.', 'barrel'),
   ...CRAFT_KINDS.map(k => a('craft_' + k, CRAFT_META[k][0], `Craft a ${k}.`, CRAFT_META[k][1])),
   a('homestead', 'Home Sweet Raft', 'Have all six decorations on deck at once.', 'compass'),
-  a('repair1', 'Good as New', 'Repair a worn hook.', 'repair'),
+  a('repair1', 'Hooked Again', 'Craft a new hook after one breaks.', 'repair'),
   a('note1', 'Message Received', 'Find a message in a bottle.', 'bottle'),
   a('notes_all', 'Pen Pals', 'Read all 12 messages.', 'bottle'),
 ]);

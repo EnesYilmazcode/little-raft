@@ -144,7 +144,7 @@ const LIST = [
   // ----- tools -----
   item('hook', 'Hook', 'tool', { icon: 'icon-hook', placeholder: false, tool: true, durability: 40, // Raft's plastic hook: 40 uses
     recipe: hand({ wood: 1, plastic: 2 }), unlock: START,
-    tip: 'Throw it, reel it, grab the goodies. Gets tired after about 40 catches; R fixes it up.' }),
+    tip: 'Throw it, reel it, grab the goodies. Snaps after 40 catches, so keep 1 wood + 2 plastic handy for a new one.' }),
   item('metalhook', 'Metal Hook', 'tool', { icon: 'icon-hook', placeholder: true, iconTint: '#a9b4c2',
     tool: true, durability: 150, actsAs: 'hook',
     recipe: hand({ metalingot: 6, bolt: 2, rope: 2, wood: 2 }), unlock: research('metalingot', 'bolt'),
