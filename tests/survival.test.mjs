@@ -638,3 +638,100 @@ test('placement: old tile-centred decor still loads, new entries keep floats and
   assert.equal(normaliseDecor({ type: 'crate', x: 0.5, z: 0 }, DECOR, raft2), null, 'float without rot is not a legacy cell');
   assert.equal(normaliseDecor({ type: 'rocket', x: 0, z: 0, rot: 0 }, DECOR, raft2), null);
 });
+
+// ============================================================ bug fixes
+
+test('HookCast: a throw aimed at the deck lands on the deck, not in the water under it', () => {
+  const DECK = 0.26; // deck surface over a 3x3 raft of 2 m tiles centred on the origin
+  const deck = (x, z) => (Math.abs(x) <= 3 && Math.abs(z) <= 3 ? DECK : null);
+  const c = cast({ origin: new T.Vector3(0, 1.8, 0), direction: elevDir(-55), charge: 0.15, deck });
+  flyOut(c);
+  assert.equal(c.stage, 'floating');
+  assert.ok(Math.hypot(c.landing.x, c.landing.z) < 3, 'landed within the raft');
+  assert.equal(c.landing.y, DECK, 'rests on the planks');
+  assert.equal(c.onDeck, true);
+  const { x, z } = c.position;
+  run(c, 2, [], false);
+  assert.equal(c.position.x, x, 'no water drift or bob on the deck');
+  assert.equal(c.position.z, z);
+  assert.equal(c.position.y, DECK);
+  // Reeling home along the deck never sinks below the planks.
+  let low = Infinity;
+  for (let i = 0; i < 300 && c.stage !== 'done'; i++) {
+    c.update(0.02, { hand: new T.Vector3(0, 1.8, 0), items: [], reeling: true });
+    low = Math.min(low, c.position.y);
+  }
+  assert.equal(c.stage, 'done');
+  assert.ok(low >= DECK, `dipped to ${low}`);
+});
+
+test('HookCast: a throw from beside the raft out to sea still lands in the water', () => {
+  const deck = (x, z) => (Math.abs(x) <= 3 && Math.abs(z) <= 3 ? 0.26 : null);
+  const c = cast({ origin: new T.Vector3(0, 1.8, 2.5), direction: elevDir(10).negate().setY(0.17), charge: 0.5, deck });
+  flyOut(c);
+  assert.ok(c.landing.z > 3);
+  assert.equal(c.landing.y, WATER_Y);
+  assert.equal(c.onDeck, false);
+});
+
+test('Bag.salvage keeps every valid slot of a slightly malformed save instead of wiping it', () => {
+  const s = new Array(SLOT_COUNT).fill(null);
+  s[0] = { kind: 'hook', count: 1, durability: 40 };
+  s[1] = { kind: 'wood', count: 35 };             // over the stack cap: clamp
+  s[2] = { kind: 'nail', count: 3 };              // kind from another build: drop
+  s[3] = { kind: 'hammer', count: 1, durability: 250 };
+  s[4] = { kind: 'leaf', count: 4, durability: 9 };
+  s[5] = 'junk';
+  const bag = Bag.salvage({ slots: s.concat([{ kind: 'wood', count: 2 }]), selected: 12 });
+  assert.equal(bag.slots[0].durability, 40);
+  assert.equal(bag.slots[1].count, STACK_SIZE);
+  assert.equal(bag.slots[2], null);
+  assert.equal(bag.slots[3].durability, TOOL_DURABILITY);
+  assert.deepEqual(bag.slots[4], { kind: 'leaf', count: 4 });
+  assert.equal(bag.slots[5], null);
+  assert.equal(bag.slots.length, SLOT_COUNT);
+  assert.equal(bag.selectedIndex, 0);
+  assertStacksValid(bag);
+  assert.equal(Bag.salvage(null), null);
+  assert.equal(Bag.salvage({ slots: 'x' }), null);
+  const good = bagFrom([{ kind: 'wood', count: 3 }], 2).snapshot();
+  assert.deepEqual(Bag.salvage(good).snapshot(), good);
+});
+
+test('HookCast: drifting water never carries a floating hook in under the raft', () => {
+  const deck = (x, z) => (Math.abs(x) <= 3 && Math.abs(z) <= 3 ? 0.26 : null);
+  // Floating just off the -Z edge, the current pushes it toward the hull.
+  const c = cast({ origin: new T.Vector3(0, 1.2, -3.4), direction: elevDir(-80), charge: 0, drift: { x: 0, z: 0.5 }, deck });
+  flyOut(c);
+  assert.equal(c.onDeck, false);
+  for (let i = 0; i < 300; i++) {
+    c.update(0.02, { hand: new T.Vector3(0, 1.2, -3.4), items: [] });
+    assert.equal(deck(c.position.x, c.position.z), null, `hook slid under the deck at z=${c.position.z}`);
+  }
+  assert.equal(c.stage, 'floating');
+});
+
+test('HookCast: a player walking across the raft hauls a floating hook onto the planks', () => {
+  const DECK = 0.26, deck = (x, z) => (Math.abs(x) <= 3 && Math.abs(z) <= 3 ? DECK : null);
+  const c = cast({ origin: new T.Vector3(0, 1.2, -2), direction: elevDir(0), charge: 0, maxRange: 4, deck });
+  flyOut(c);
+  assert.ok(c.landing.z < -3, 'landed in the water off the edge');
+  // Walk to the far side of the raft: the taut rope drags the hook across the deck.
+  for (let i = 0; i < 200; i++) c.update(0.02, { hand: new T.Vector3(0, 1.2, -2 + i * 0.02), items: [] });
+  assert.equal(c.onDeck, true);
+  assert.equal(c.position.y, DECK, 'rests on the deck, not under it');
+  const events = run(c, 3, [], true); // and it still reels home
+  assert.equal(c.stage, 'done');
+  assert.deepEqual(events, [{ kind: 'returned' }]);
+});
+
+test('Bag.salvage repairs a snapshot with the wrong slot count or selection', () => {
+  const short = { slots: [{ kind: 'wood', count: 5 }, { kind: 'hook', count: 1 }], selected: 1 };
+  const bag = Bag.salvage(short);
+  assert.equal(bag.slots.length, SLOT_COUNT);
+  assert.deepEqual(bag.slots[0], { kind: 'wood', count: 5 });
+  assert.equal(bag.slots[1].durability, TOOL_DURABILITY);
+  assert.equal(bag.selectedIndex, 1);
+  assert.throws(() => new Bag(short), TypeError, 'strict constructor still rejects it');
+  assert.equal(Bag.salvage({ slots: [], selected: HOTBAR_SIZE }).selectedIndex, 0);
+});

@@ -173,6 +173,24 @@ export class Bag {
     return bag;
   }
 
+  /**
+   * Lenient load for saves and hot-swap transfers: keeps every usable slot and
+   * repairs or drops the rest (unknown kinds from other builds, over-cap stacks,
+   * bad durability), so one bad slot never wipes the whole bag. Null if hopeless.
+   */
+  static salvage(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.slots)) return null;
+    const bag = new Bag({ slots: emptySlots(), selected: 0 });
+    for (let i = 0; i < SLOT_COUNT; i++) {
+      const raw = snapshot.slots[i];
+      if (!raw || typeof raw !== 'object' || !isKind(raw.kind)) continue;
+      const count = Math.min(toCount(raw.count), maxStackOf(raw.kind));
+      if (count > 0) bag.slots[i] = makeSlot(raw.kind, count, raw);
+    }
+    if (isIndex(snapshot.selected, HOTBAR_SIZE)) bag.selectedIndex = snapshot.selected;
+    return bag;
+  }
+
   get selected() {
     return copySlot(this.slots[this.selectedIndex]);
   }
