@@ -1,215 +1,163 @@
 {
- "dist": "/home/user/little-raft/.claude/worktrees/agent-addfbd60575ca4e1b/dist",
+ "dist": "dist (claude/raft-tech, game.js 1780 lines)",
  "dsf": 1,
- "frames": 12,
+ "frames": 8,
+ "pose": "spawn",
+ "big": false,
  "scenarios": {
   "baseline": {
-   "frames": 12,
-   "frameMs": 3636.99,
-   "frameP95": 6922.2,
-   "frameWorst": 6922.2,
-   "renderMs": 3635.62,
-   "submitMs": 5.8,
-   "submitMin": 2.6,
-   "logicMs": 1.37,
-   "logicP95": 7.3,
-   "rafGapMs": 3699.85,
-   "calls": 542,
-   "triangles": 258626,
-   "geometries": 356,
-   "textures": 8,
-   "programs": 10,
+   "frames": 8,
+   "frameMs": 1891.94,
+   "frameP95": 3085.4,
+   "frameWorst": 3085.4,
+   "renderMs": 1890.31,
+   "submitMs": 3.3,
+   "submitMin": 2.4,
+   "logicMs": 1.63,
+   "logicP95": 3.5,
+   "rafGapMs": 1971.36,
+   "calls": 153,
+   "draws": 153,
+   "shadowDraws": 9,
+   "byOwner": {
+    "floating items": {
+     "main": 61,
+     "shadow": 0,
+     "extra": 0
+    },
+    "viewmodels": {
+     "main": 48,
+     "shadow": 0,
+     "extra": 0
+    },
+    "old islands (12, baked)": {
+     "main": 15,
+     "shadow": 0,
+     "extra": 0
+    },
+    "raft:raft-floors": {
+     "main": 7,
+     "shadow": 5,
+     "extra": 0
+    },
+    "clouds (24, baked)": {
+     "main": 8,
+     "shadow": 0,
+     "extra": 0
+    },
+    "sailingFixture": {
+     "main": 0,
+     "shadow": 4,
+     "extra": 0
+    },
+    "wildlife": {
+     "main": 3,
+     "shadow": 0,
+     "extra": 0
+    },
+    "ocean": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    },
+    "smoke": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    }
+   },
+   "triangles": 113321,
+   "geometries": 161,
+   "textures": 15,
+   "programs": 38,
    "pixelRatio": 1,
    "drawingBuffer": [
     1280,
     720
    ],
-   "heapDeltaKB": 248,
+   "heapDeltaKB": 489,
    "shadow": "every frame",
    "cpuMsPerFrame": {
-    "browser": 0.5,
-    "utility": 0.9,
-    "renderer": 23.6,
-    "gpu-process": 1414.1,
-    "total": 1439.1
-   },
-   "census": {
-    "meshes": 478,
-    "casters": 240,
-    "verts": 495822,
-    "materials": 111,
-    "geometries": 471,
-    "textures": 7,
-    "byOwner": {
-     "camera(viewmodels)": {
-      "objects": 1,
-      "meshes": 60,
-      "casters": 0,
-      "verts": 54882,
-      "materials": 14
-     },
-     "ocean": {
-      "objects": 1,
-      "meshes": 1,
-      "casters": 0,
-      "verts": 60000,
-      "materials": 1
-     },
-     "raft (deck tiles + decor)": {
-      "objects": 1,
-      "meshes": 62,
-      "casters": 53,
-      "verts": 123876,
-      "materials": 7
-     },
-     "floating items": {
-      "objects": 1,
-      "meshes": 163,
-      "casters": 163,
-      "verts": 232584,
-      "materials": 83
-     },
-     "islands": {
-      "objects": 12,
-      "meshes": 120,
-      "casters": 24,
-      "verts": 7200,
-      "materials": 5
-     },
-     "clouds": {
-      "objects": 24,
-      "meshes": 72,
-      "casters": 0,
-      "verts": 17280,
-      "materials": 1
-     }
-    }
+    "browser": 7.2,
+    "utility": 0.6,
+    "renderer": 15.0,
+    "gpu-process": 1127.2,
+    "total": 1150.0
    },
    "state": {
     "pointerLocked": true,
     "tiles": 9,
-    "items": 30
+    "items": 30,
+    "dive": {
+     "underwater": false,
+     "depth": 0
+    }
    },
    "mainPassOnly": {
-    "calls": 326,
-    "triangles": 145638
+    "calls": 144,
+    "triangles": 96961
    },
    "cdp": {
     "windowMs": 4000,
-    "sampledMs": 7624.1,
+    "sampledMs": 6089.2,
     "selfTop": [
      {
       "fn": "(program)",
-      "ms": 7600.0,
-      "pct": 99.7
+      "ms": 5147.1,
+      "pct": 84.5
      },
      {
-      "fn": "requestAnimationFrame",
+      "fn": "bufferSubData",
+      "ms": 401.0,
+      "pct": 6.6
+     },
+     {
+      "fn": "tick prompts.js:159",
+      "ms": 285.0,
+      "pct": 4.7
+     },
+     {
+      "fn": "(native)",
+      "ms": 232.0,
+      "pct": 3.8
+     },
+     {
+      "fn": "uniformMatrix4fv",
+      "ms": 8.3,
+      "pct": 0.1
+     },
+     {
+      "fn": "pickCenter game.js:673",
       "ms": 4.9,
       "pct": 0.1
      },
      {
-      "fn": "needsUpdate three.module.js:15387",
-      "ms": 4.6,
-      "pct": 0.1
-     },
-     {
-      "fn": "updateMatrix three.module.js:7803",
-      "ms": 3.8,
+      "fn": "setProgram three.module.js:30650",
+      "ms": 2.7,
       "pct": 0.0
      },
      {
-      "fn": "uniformMatrix4fv",
+      "fn": "getBindingState three.module.js:15320",
       "ms": 1.1,
       "pct": 0.0
      },
      {
-      "fn": "drawArrays",
-      "ms": 0.9,
-      "pct": 0.0
-     },
-     {
-      "fn": "bindVertexArray",
-      "ms": 0.9,
-      "pct": 0.0
-     },
-     {
-      "fn": "setup three.module.js:15263",
-      "ms": 0.8,
-      "pct": 0.0
-     },
-     {
-      "fn": "update three.module.js:17640",
-      "ms": 0.8,
-      "pct": 0.0
-     },
-     {
       "fn": "multiplyMatrices three.module.js:6301",
+      "ms": 0.8,
+      "pct": 0.0
+     },
+     {
+      "fn": "update input.js:159",
+      "ms": 0.8,
+      "pct": 0.0
+     },
+     {
+      "fn": "determinant three.module.js:6354",
       "ms": 0.5,
       "pct": 0.0
      },
      {
-      "fn": "bindTexture",
-      "ms": 0.4,
-      "pct": 0.0
-     },
-     {
-      "fn": "setProgram three.module.js:30647",
-      "ms": 0.4,
-      "pct": 0.0
-     },
-     {
-      "fn": "update three.module.js:18104",
-      "ms": 0.4,
-      "pct": 0.0
-     },
-     {
-      "fn": "uniform3f",
-      "ms": 0.4,
-      "pct": 0.0
-     },
-     {
-      "fn": "uniformMatrix3fv",
-      "ms": 0.3,
-      "pct": 0.0
-     },
-     {
-      "fn": "drawElements",
-      "ms": 0.3,
-      "pct": 0.0
-     },
-     {
-      "fn": "disable",
-      "ms": 0.3,
-      "pct": 0.0
-     },
-     {
-      "fn": "(garbage collector)",
-      "ms": 0.3,
-      "pct": 0.0
-     },
-     {
-      "fn": "movePlayer game.js:683",
-      "ms": 0.3,
-      "pct": 0.0
-     },
-     {
-      "fn": "setValueM4 three.module.js:18564",
-      "ms": 0.3,
-      "pct": 0.0
-     },
-     {
-      "fn": "setFromProjectionMatrix three.module.js:13466",
-      "ms": 0.3,
-      "pct": 0.0
-     },
-     {
-      "fn": "displace ocean.js:211",
-      "ms": 0.3,
-      "pct": 0.0
-     },
-     {
-      "fn": "update three.module.js:13833",
+      "fn": "updateMatrixWorld three.module.js:7811",
       "ms": 0.3,
       "pct": 0.0
      },
@@ -219,47 +167,92 @@
       "pct": 0.0
      },
      {
-      "fn": "invert three.module.js:6443",
+      "fn": "updateMatrix three.module.js:7803",
+      "ms": 0.3,
+      "pct": 0.0
+     },
+     {
+      "fn": "requestAnimationFrame",
+      "ms": 0.3,
+      "pct": 0.0
+     },
+     {
+      "fn": "uniform3f",
+      "ms": 0.3,
+      "pct": 0.0
+     },
+     {
+      "fn": "LinearToSRGB three.module.js:1751",
+      "ms": 0.3,
+      "pct": 0.0
+     },
+     {
+      "fn": "querySelector",
+      "ms": 0.3,
+      "pct": 0.0
+     },
+     {
+      "fn": "update wildlife.js:495",
+      "ms": 0.3,
+      "pct": 0.0
+     },
+     {
+      "fn": "update daynight.js:564",
+      "ms": 0.3,
+      "pct": 0.0
+     },
+     {
+      "fn": "intersect three.module.js:52449",
+      "ms": 0.3,
+      "pct": 0.0
+     },
+     {
+      "fn": "setValueV3f three.module.js:18439",
+      "ms": 0.3,
+      "pct": 0.0
+     },
+     {
+      "fn": "setMaterial three.module.js:23493",
+      "ms": 0.3,
+      "pct": 0.0
+     },
+     {
+      "fn": "getHeight ocean.js:229",
+      "ms": 0.3,
+      "pct": 0.0
+     },
+     {
+      "fn": "projectObject three.module.js:30187",
       "ms": 0.3,
       "pct": 0.0
      }
     ],
-    "allocKBperSec": 28.1,
+    "allocKBperSec": 18.6,
     "allocTop": [
      {
       "fn": "(IDLE_EXTERNAL)",
-      "KBperSec": 19.2,
-      "pct": 68.5
+      "KBperSec": 12.1,
+      "pct": 65.1
      },
      {
-      "fn": "(native)",
-      "KBperSec": 3.1,
-      "pct": 10.9
+      "fn": "tick prompts.js:159",
+      "KBperSec": 2.4,
+      "pct": 13.0
      },
      {
-      "fn": "setValue three.module.js:19240",
-      "KBperSec": 1.4,
-      "pct": 5.1
+      "fn": "debug sailing-world.js:328",
+      "KBperSec": 2.0,
+      "pct": 10.8
      },
      {
-      "fn": "setup three.module.js:15263",
-      "KBperSec": 1.2,
-      "pct": 4.2
-     },
-     {
-      "fn": "setMask three.module.js:22756",
+      "fn": "push three.module.js:21427",
       "KBperSec": 1.1,
-      "pct": 4.0
+      "pct": 5.7
      },
      {
-      "fn": "update three.module.js:13833",
-      "KBperSec": 1.1,
-      "pct": 3.8
-     },
-     {
-      "fn": "refreshUniformsStandard three.module.js:28310",
+      "fn": "update hands.js:283",
       "KBperSec": 1.0,
-      "pct": 3.6
+      "pct": 5.4
      },
      {
       "fn": "(root)",
@@ -267,12 +260,17 @@
       "pct": 0.0
      },
      {
-      "fn": "animate game.js:844",
+      "fn": "(native)",
       "KBperSec": 0.0,
       "pct": 0.0
      },
      {
-      "fn": "frame game.js:820",
+      "fn": "animate game.js:1269",
+      "KBperSec": 0.0,
+      "pct": 0.0
+     },
+     {
+      "fn": "frame game.js:1217",
       "KBperSec": 0.0,
       "pct": 0.0
      },
@@ -282,1214 +280,1032 @@
       "pct": 0.0
      },
      {
-      "fn": "WebGLRenderer.render three.module.js:29998",
+      "fn": "WebGLRenderer.render three.module.js:30001",
       "KBperSec": 0.0,
       "pct": 0.0
      },
      {
-      "fn": "WebGLShadowMap.render three.module.js:22381",
+      "fn": "projectObject three.module.js:30187",
       "KBperSec": 0.0,
       "pct": 0.0
      },
      {
-      "fn": "renderObject three.module.js:22640",
+      "fn": "updateCamera game.js:1090",
       "KBperSec": 0.0,
       "pct": 0.0
      },
      {
-      "fn": "WebGLRenderer.renderBufferDirect three.module.js:29609",
+      "fn": "tick onboarding.js:272",
       "KBperSec": 0.0,
       "pct": 0.0
      },
      {
-      "fn": "setMaterial three.module.js:23490",
-      "KBperSec": 0.0,
-      "pct": 0.0
-     },
-     {
-      "fn": "projectObject three.module.js:30184",
-      "KBperSec": 0.0,
-      "pct": 0.0
-     },
-     {
-      "fn": "update three.module.js:18104",
-      "KBperSec": 0.0,
-      "pct": 0.0
-     },
-     {
-      "fn": "update three.module.js:17640",
-      "KBperSec": 0.0,
-      "pct": 0.0
-     },
-     {
-      "fn": "renderScene three.module.js:30298",
+      "fn": "get state game.js:1619",
       "KBperSec": 0.0,
       "pct": 0.0
      }
     ]
    },
-   "shot": "sandbox/perf/shots/game-baseline.png",
+   "shot": "sandbox/perf/shots/game-stock-baseline.png",
+   "errors": [
+    "Failed to load resource: the server responded with a status of 404 (File not found)"
+   ],
+   "freezeFrame": 40
+  },
+  "wood-no-bump": {
+   "frames": 8,
+   "frameMs": 2114.5,
+   "frameP95": 3585.6,
+   "frameWorst": 3585.6,
+   "renderMs": 2113.2,
+   "submitMs": 3,
+   "submitMin": 1.6,
+   "logicMs": 1.3,
+   "logicP95": 2.3,
+   "rafGapMs": 2349.91,
+   "calls": 153,
+   "draws": 153,
+   "shadowDraws": 9,
+   "byOwner": {
+    "floating items": {
+     "main": 61,
+     "shadow": 0,
+     "extra": 0
+    },
+    "viewmodels": {
+     "main": 48,
+     "shadow": 0,
+     "extra": 0
+    },
+    "old islands (12, baked)": {
+     "main": 15,
+     "shadow": 0,
+     "extra": 0
+    },
+    "raft:raft-floors": {
+     "main": 7,
+     "shadow": 5,
+     "extra": 0
+    },
+    "clouds (24, baked)": {
+     "main": 8,
+     "shadow": 0,
+     "extra": 0
+    },
+    "sailingFixture": {
+     "main": 0,
+     "shadow": 4,
+     "extra": 0
+    },
+    "wildlife": {
+     "main": 3,
+     "shadow": 0,
+     "extra": 0
+    },
+    "ocean": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    },
+    "smoke": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    }
+   },
+   "triangles": 113321,
+   "geometries": 161,
+   "textures": 15,
+   "programs": 39,
+   "pixelRatio": 1,
+   "drawingBuffer": [
+    1280,
+    720
+   ],
+   "heapDeltaKB": 982,
+   "shadow": "every frame",
+   "cpuMsPerFrame": {
+    "browser": 7.2,
+    "utility": 0.6,
+    "renderer": 17.8,
+    "gpu-process": 973.9,
+    "total": 999.5
+   },
+   "state": {
+    "pointerLocked": true,
+    "tiles": 9,
+    "items": 30,
+    "dive": {
+     "underwater": false,
+     "depth": 0
+    }
+   },
+   "shot": "sandbox/perf/shots/game-wood-no-bump.png",
+   "errors": [
+    "Failed to load resource: the server responded with a status of 404 (File not found)"
+   ],
+   "freezeFrame": 40
+  },
+  "shadows-off": {
+   "frames": 8,
+   "frameMs": 2536.8,
+   "frameP95": 3615.6,
+   "frameWorst": 3615.6,
+   "renderMs": 2534.8,
+   "submitMs": 3.2,
+   "submitMin": 1.3,
+   "logicMs": 2,
+   "logicP95": 8.2,
+   "rafGapMs": 2809.41,
+   "calls": 144,
+   "draws": 144,
+   "shadowDraws": 0,
+   "byOwner": {
+    "floating items": {
+     "main": 61,
+     "shadow": 0,
+     "extra": 0
+    },
+    "viewmodels": {
+     "main": 48,
+     "shadow": 0,
+     "extra": 0
+    },
+    "old islands (12, baked)": {
+     "main": 15,
+     "shadow": 0,
+     "extra": 0
+    },
+    "clouds (24, baked)": {
+     "main": 8,
+     "shadow": 0,
+     "extra": 0
+    },
+    "raft:raft-floors": {
+     "main": 7,
+     "shadow": 0,
+     "extra": 0
+    },
+    "wildlife": {
+     "main": 3,
+     "shadow": 0,
+     "extra": 0
+    },
+    "ocean": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    },
+    "smoke": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    }
+   },
+   "triangles": 96961,
+   "geometries": 161,
+   "textures": 15,
+   "programs": 39,
+   "pixelRatio": 1,
+   "drawingBuffer": [
+    1280,
+    720
+   ],
+   "heapDeltaKB": 119,
+   "shadow": "off",
+   "cpuMsPerFrame": {
+    "browser": 8.3,
+    "utility": 0.6,
+    "renderer": 15.6,
+    "gpu-process": 1120.0,
+    "total": 1144.5
+   },
+   "state": {
+    "pointerLocked": true,
+    "tiles": 9,
+    "items": 30,
+    "dive": {
+     "underwater": false,
+     "depth": 0
+    }
+   },
+   "shot": "sandbox/perf/shots/game-shadows-off.png",
+   "errors": [
+    "Failed to load resource: the server responded with a status of 404 (File not found)"
+   ],
+   "freezeFrame": 40
+  },
+  "shadow-512": {
+   "frames": 8,
+   "frameMs": 1992.54,
+   "frameP95": 3935,
+   "frameWorst": 3935,
+   "renderMs": 1984.11,
+   "submitMs": 2.4,
+   "submitMin": 1.5,
+   "logicMs": 8.42,
+   "logicP95": 59,
+   "rafGapMs": 2073.73,
+   "calls": 153,
+   "draws": 153,
+   "shadowDraws": 9,
+   "byOwner": {
+    "floating items": {
+     "main": 61,
+     "shadow": 0,
+     "extra": 0
+    },
+    "viewmodels": {
+     "main": 48,
+     "shadow": 0,
+     "extra": 0
+    },
+    "old islands (12, baked)": {
+     "main": 15,
+     "shadow": 0,
+     "extra": 0
+    },
+    "raft:raft-floors": {
+     "main": 7,
+     "shadow": 5,
+     "extra": 0
+    },
+    "clouds (24, baked)": {
+     "main": 8,
+     "shadow": 0,
+     "extra": 0
+    },
+    "sailingFixture": {
+     "main": 0,
+     "shadow": 4,
+     "extra": 0
+    },
+    "wildlife": {
+     "main": 3,
+     "shadow": 0,
+     "extra": 0
+    },
+    "ocean": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    },
+    "smoke": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    }
+   },
+   "triangles": 113321,
+   "geometries": 161,
+   "textures": 15,
+   "programs": 39,
+   "pixelRatio": 1,
+   "drawingBuffer": [
+    1280,
+    720
+   ],
+   "heapDeltaKB": -131,
+   "shadow": "every frame",
+   "cpuMsPerFrame": {
+    "browser": 7.2,
+    "renderer": 14.4,
+    "gpu-process": 1128.3,
+    "total": 1149.9
+   },
+   "state": {
+    "pointerLocked": true,
+    "tiles": 9,
+    "items": 30,
+    "dive": {
+     "underwater": false,
+     "depth": 0
+    }
+   },
+   "shot": "sandbox/perf/shots/game-shadow-512.png",
+   "errors": [
+    "Failed to load resource: the server responded with a status of 404 (File not found)"
+   ],
+   "freezeFrame": 40
+  },
+  "dpr-0.85": {
+   "frames": 8,
+   "frameMs": 2259.86,
+   "frameP95": 3491.7,
+   "frameWorst": 3491.7,
+   "renderMs": 2258.51,
+   "submitMs": 3.7,
+   "submitMin": 2.4,
+   "logicMs": 1.35,
+   "logicP95": 3,
+   "rafGapMs": 2361.83,
+   "calls": 153,
+   "draws": 153,
+   "shadowDraws": 9,
+   "byOwner": {
+    "floating items": {
+     "main": 61,
+     "shadow": 0,
+     "extra": 0
+    },
+    "viewmodels": {
+     "main": 48,
+     "shadow": 0,
+     "extra": 0
+    },
+    "old islands (12, baked)": {
+     "main": 15,
+     "shadow": 0,
+     "extra": 0
+    },
+    "raft:raft-floors": {
+     "main": 7,
+     "shadow": 5,
+     "extra": 0
+    },
+    "clouds (24, baked)": {
+     "main": 8,
+     "shadow": 0,
+     "extra": 0
+    },
+    "sailingFixture": {
+     "main": 0,
+     "shadow": 4,
+     "extra": 0
+    },
+    "wildlife": {
+     "main": 3,
+     "shadow": 0,
+     "extra": 0
+    },
+    "ocean": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    },
+    "smoke": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    }
+   },
+   "triangles": 113321,
+   "geometries": 161,
+   "textures": 15,
+   "programs": 39,
+   "pixelRatio": 0.85,
+   "drawingBuffer": [
+    1088,
+    612
+   ],
+   "heapDeltaKB": 735,
+   "shadow": "every frame",
+   "cpuMsPerFrame": {
+    "browser": 6.7,
+    "utility": 0.6,
+    "renderer": 17.2,
+    "gpu-process": 960.6,
+    "total": 985.1
+   },
+   "state": {
+    "pointerLocked": true,
+    "tiles": 9,
+    "items": 30,
+    "dive": {
+     "underwater": false,
+     "depth": 0
+    }
+   },
+   "shot": "sandbox/perf/shots/game-dpr-0.85.png",
+   "errors": [
+    "Failed to load resource: the server responded with a status of 404 (File not found)"
+   ],
+   "freezeFrame": 40
+  },
+  "no-fog": {
+   "frames": 8,
+   "frameMs": 2303.43,
+   "frameP95": 3808.4,
+   "frameWorst": 3808.4,
+   "renderMs": 2297.1,
+   "submitMs": 2.6,
+   "submitMin": 1.5,
+   "logicMs": 6.33,
+   "logicP95": 40.1,
+   "rafGapMs": 2404.67,
+   "calls": 153,
+   "draws": 153,
+   "shadowDraws": 9,
+   "byOwner": {
+    "floating items": {
+     "main": 61,
+     "shadow": 0,
+     "extra": 0
+    },
+    "viewmodels": {
+     "main": 48,
+     "shadow": 0,
+     "extra": 0
+    },
+    "old islands (12, baked)": {
+     "main": 15,
+     "shadow": 0,
+     "extra": 0
+    },
+    "raft:raft-floors": {
+     "main": 7,
+     "shadow": 5,
+     "extra": 0
+    },
+    "clouds (24, baked)": {
+     "main": 8,
+     "shadow": 0,
+     "extra": 0
+    },
+    "sailingFixture": {
+     "main": 0,
+     "shadow": 4,
+     "extra": 0
+    },
+    "wildlife": {
+     "main": 3,
+     "shadow": 0,
+     "extra": 0
+    },
+    "ocean": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    },
+    "smoke": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    }
+   },
+   "triangles": 113321,
+   "geometries": 161,
+   "textures": 15,
+   "programs": 50,
+   "pixelRatio": 1,
+   "drawingBuffer": [
+    1280,
+    720
+   ],
+   "heapDeltaKB": -1047,
+   "shadow": "every frame",
+   "cpuMsPerFrame": {
+    "browser": 9.4,
+    "utility": 0.6,
+    "renderer": 17.8,
+    "gpu-process": 1223.3,
+    "total": 1251.1
+   },
+   "state": {
+    "pointerLocked": true,
+    "tiles": 9,
+    "items": 30,
+    "dive": {
+     "underwater": false,
+     "depth": 0
+    }
+   },
+   "shot": "sandbox/perf/shots/game-no-fog.png",
+   "errors": [
+    "Failed to load resource: the server responded with a status of 404 (File not found)"
+   ],
+   "freezeFrame": 40
+  },
+  "hide-raft": {
+   "frames": 8,
+   "frameMs": 1118.74,
+   "frameP95": 1878.9,
+   "frameWorst": 1878.9,
+   "renderMs": 1117.16,
+   "submitMs": 4.4,
+   "submitMin": 1.6,
+   "logicMs": 1.57,
+   "logicP95": 3.8,
+   "rafGapMs": 1140.43,
+   "calls": 141,
+   "draws": 141,
+   "shadowDraws": 4,
+   "byOwner": {
+    "floating items": {
+     "main": 61,
+     "shadow": 0,
+     "extra": 0
+    },
+    "viewmodels": {
+     "main": 48,
+     "shadow": 0,
+     "extra": 0
+    },
+    "old islands (12, baked)": {
+     "main": 15,
+     "shadow": 0,
+     "extra": 0
+    },
+    "clouds (24, baked)": {
+     "main": 8,
+     "shadow": 0,
+     "extra": 0
+    },
+    "sailingFixture": {
+     "main": 0,
+     "shadow": 4,
+     "extra": 0
+    },
+    "wildlife": {
+     "main": 3,
+     "shadow": 0,
+     "extra": 0
+    },
+    "ocean": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    },
+    "smoke": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    }
+   },
+   "triangles": 67619,
+   "geometries": 161,
+   "textures": 15,
+   "programs": 50,
+   "pixelRatio": 1,
+   "drawingBuffer": [
+    1280,
+    720
+   ],
+   "heapDeltaKB": -333,
+   "shadow": "every frame",
+   "cpuMsPerFrame": {
+    "browser": 3.9,
+    "renderer": 11.1,
+    "gpu-process": 479.4,
+    "total": 494.4
+   },
+   "state": {
+    "pointerLocked": true,
+    "tiles": 9,
+    "items": 30,
+    "dive": {
+     "underwater": false,
+     "depth": 0
+    }
+   },
+   "shot": "sandbox/perf/shots/game-hide-raft.png",
+   "errors": [
+    "Failed to load resource: the server responded with a status of 404 (File not found)"
+   ],
+   "freezeFrame": 40
+  },
+  "hide-ocean": {
+   "frames": 8,
+   "frameMs": 1878.45,
+   "frameP95": 3170.2,
+   "frameWorst": 3170.2,
+   "renderMs": 1876.82,
+   "submitMs": 3.9,
+   "submitMin": 1.5,
+   "logicMs": 1.63,
+   "logicP95": 5.7,
+   "rafGapMs": 1730.89,
+   "calls": 152,
+   "draws": 152,
+   "shadowDraws": 9,
+   "byOwner": {
+    "floating items": {
+     "main": 61,
+     "shadow": 0,
+     "extra": 0
+    },
+    "viewmodels": {
+     "main": 48,
+     "shadow": 0,
+     "extra": 0
+    },
+    "old islands (12, baked)": {
+     "main": 15,
+     "shadow": 0,
+     "extra": 0
+    },
+    "raft:raft-floors": {
+     "main": 7,
+     "shadow": 5,
+     "extra": 0
+    },
+    "clouds (24, baked)": {
+     "main": 8,
+     "shadow": 0,
+     "extra": 0
+    },
+    "sailingFixture": {
+     "main": 0,
+     "shadow": 4,
+     "extra": 0
+    },
+    "wildlife": {
+     "main": 3,
+     "shadow": 0,
+     "extra": 0
+    },
+    "smoke": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    }
+   },
+   "triangles": 93321,
+   "geometries": 161,
+   "textures": 15,
+   "programs": 50,
+   "pixelRatio": 1,
+   "drawingBuffer": [
+    1280,
+    720
+   ],
+   "heapDeltaKB": -310,
+   "shadow": "every frame",
+   "cpuMsPerFrame": {
+    "browser": 6.1,
+    "utility": 0.6,
+    "renderer": 13.9,
+    "gpu-process": 855.6,
+    "total": 876.2
+   },
+   "state": {
+    "pointerLocked": true,
+    "tiles": 9,
+    "items": 30,
+    "dive": {
+     "underwater": false,
+     "depth": 0
+    }
+   },
+   "shot": "sandbox/perf/shots/game-hide-ocean.png",
+   "errors": [
+    "Failed to load resource: the server responded with a status of 404 (File not found)"
+   ],
+   "freezeFrame": 40
+  },
+  "hide-items": {
+   "frames": 8,
+   "frameMs": 3346.07,
+   "frameP95": 7483.5,
+   "frameWorst": 7483.5,
+   "renderMs": 3345.05,
+   "submitMs": 2.5,
+   "submitMin": 1.2,
+   "logicMs": 1.02,
+   "logicP95": 1.6,
+   "rafGapMs": 3804.6,
+   "calls": 92,
+   "draws": 92,
+   "shadowDraws": 9,
+   "byOwner": {
+    "viewmodels": {
+     "main": 48,
+     "shadow": 0,
+     "extra": 0
+    },
+    "old islands (12, baked)": {
+     "main": 15,
+     "shadow": 0,
+     "extra": 0
+    },
+    "raft:raft-floors": {
+     "main": 7,
+     "shadow": 5,
+     "extra": 0
+    },
+    "clouds (24, baked)": {
+     "main": 8,
+     "shadow": 0,
+     "extra": 0
+    },
+    "sailingFixture": {
+     "main": 0,
+     "shadow": 4,
+     "extra": 0
+    },
+    "wildlife": {
+     "main": 3,
+     "shadow": 0,
+     "extra": 0
+    },
+    "ocean": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    },
+    "smoke": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    }
+   },
+   "triangles": 84710,
+   "geometries": 161,
+   "textures": 15,
+   "programs": 50,
+   "pixelRatio": 1,
+   "drawingBuffer": [
+    1280,
+    720
+   ],
+   "heapDeltaKB": -160,
+   "shadow": "every frame",
+   "cpuMsPerFrame": {
+    "browser": 10.0,
+    "utility": 0.6,
+    "renderer": 17.2,
+    "gpu-process": 1046.1,
+    "total": 1073.9
+   },
+   "state": {
+    "pointerLocked": true,
+    "tiles": 9,
+    "items": 30,
+    "dive": {
+     "underwater": false,
+     "depth": 0
+    }
+   },
+   "shot": "sandbox/perf/shots/game-hide-items.png",
+   "errors": [
+    "Failed to load resource: the server responded with a status of 404 (File not found)"
+   ],
+   "freezeFrame": 40
+  },
+  "hide-viewmodels": {
+   "frames": 8,
+   "frameMs": 4281.96,
+   "frameP95": 7194.1,
+   "frameWorst": 7194.1,
+   "renderMs": 4280.13,
+   "submitMs": 2.8,
+   "submitMin": 2.1,
+   "logicMs": 1.84,
+   "logicP95": 8.6,
+   "rafGapMs": 4611.73,
+   "calls": 105,
+   "draws": 105,
+   "shadowDraws": 9,
+   "byOwner": {
+    "floating items": {
+     "main": 61,
+     "shadow": 0,
+     "extra": 0
+    },
+    "old islands (12, baked)": {
+     "main": 15,
+     "shadow": 0,
+     "extra": 0
+    },
+    "raft:raft-floors": {
+     "main": 7,
+     "shadow": 5,
+     "extra": 0
+    },
+    "clouds (24, baked)": {
+     "main": 8,
+     "shadow": 0,
+     "extra": 0
+    },
+    "sailingFixture": {
+     "main": 0,
+     "shadow": 4,
+     "extra": 0
+    },
+    "wildlife": {
+     "main": 3,
+     "shadow": 0,
+     "extra": 0
+    },
+    "ocean": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    },
+    "smoke": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    }
+   },
+   "triangles": 99379,
+   "geometries": 161,
+   "textures": 15,
+   "programs": 50,
+   "pixelRatio": 1,
+   "drawingBuffer": [
+    1280,
+    720
+   ],
+   "heapDeltaKB": -404,
+   "shadow": "every frame",
+   "cpuMsPerFrame": {
+    "browser": 10.0,
+    "utility": 0.6,
+    "renderer": 20.0,
+    "gpu-process": 1077.8,
+    "total": 1108.4
+   },
+   "state": {
+    "pointerLocked": true,
+    "tiles": 9,
+    "items": 30,
+    "dive": {
+     "underwater": false,
+     "depth": 0
+    }
+   },
+   "shot": "sandbox/perf/shots/game-hide-viewmodels.png",
+   "errors": [
+    "Failed to load resource: the server responded with a status of 404 (File not found)"
+   ],
+   "freezeFrame": 40
+  },
+  "hide-sky": {
+   "frames": 8,
+   "frameMs": 5165.29,
+   "frameP95": 9150.7,
+   "frameWorst": 9150.7,
+   "renderMs": 5163.25,
+   "submitMs": 2.7,
+   "submitMin": 1.7,
+   "logicMs": 2.04,
+   "logicP95": 6.4,
+   "rafGapMs": 5025.97,
+   "calls": 130,
+   "draws": 130,
+   "shadowDraws": 9,
+   "byOwner": {
+    "floating items": {
+     "main": 61,
+     "shadow": 0,
+     "extra": 0
+    },
+    "viewmodels": {
+     "main": 48,
+     "shadow": 0,
+     "extra": 0
+    },
+    "raft:raft-floors": {
+     "main": 7,
+     "shadow": 5,
+     "extra": 0
+    },
+    "sailingFixture": {
+     "main": 0,
+     "shadow": 4,
+     "extra": 0
+    },
+    "wildlife": {
+     "main": 3,
+     "shadow": 0,
+     "extra": 0
+    },
+    "ocean": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    },
+    "smoke": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    }
+   },
+   "triangles": 110801,
+   "geometries": 161,
+   "textures": 15,
+   "programs": 50,
+   "pixelRatio": 1,
+   "drawingBuffer": [
+    1280,
+    720
+   ],
+   "heapDeltaKB": 722,
+   "shadow": "every frame",
+   "cpuMsPerFrame": {
+    "browser": 12.8,
+    "utility": 1.1,
+    "renderer": 26.7,
+    "gpu-process": 1156.7,
+    "total": 1197.3
+   },
+   "state": {
+    "pointerLocked": true,
+    "tiles": 9,
+    "items": 30,
+    "dive": {
+     "underwater": false,
+     "depth": 0
+    }
+   },
+   "shot": "sandbox/perf/shots/game-hide-sky.png",
    "errors": [
     "Failed to load resource: the server responded with a status of 404 (File not found)"
    ],
    "freezeFrame": 40
   },
   "baseline-2": {
-   "frames": 12,
-   "frameMs": 3573.15,
-   "frameP95": 6089,
-   "frameWorst": 6089,
-   "renderMs": 3572.12,
-   "submitMs": 7.9,
-   "submitMin": 4.2,
-   "logicMs": 1.03,
-   "logicP95": 4.1,
-   "rafGapMs": 3378.65,
-   "calls": 542,
-   "triangles": 258626,
-   "geometries": 356,
-   "textures": 8,
-   "programs": 10,
+   "frames": 8,
+   "frameMs": 2425.59,
+   "frameP95": 4253.8,
+   "frameWorst": 4253.8,
+   "renderMs": 2424.41,
+   "submitMs": 3.1,
+   "submitMin": 1.6,
+   "logicMs": 1.17,
+   "logicP95": 2.6,
+   "rafGapMs": 2757.03,
+   "calls": 153,
+   "draws": 153,
+   "shadowDraws": 9,
+   "byOwner": {
+    "floating items": {
+     "main": 61,
+     "shadow": 0,
+     "extra": 0
+    },
+    "viewmodels": {
+     "main": 48,
+     "shadow": 0,
+     "extra": 0
+    },
+    "old islands (12, baked)": {
+     "main": 15,
+     "shadow": 0,
+     "extra": 0
+    },
+    "raft:raft-floors": {
+     "main": 7,
+     "shadow": 5,
+     "extra": 0
+    },
+    "clouds (24, baked)": {
+     "main": 8,
+     "shadow": 0,
+     "extra": 0
+    },
+    "sailingFixture": {
+     "main": 0,
+     "shadow": 4,
+     "extra": 0
+    },
+    "wildlife": {
+     "main": 3,
+     "shadow": 0,
+     "extra": 0
+    },
+    "ocean": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    },
+    "smoke": {
+     "main": 1,
+     "shadow": 0,
+     "extra": 0
+    }
+   },
+   "triangles": 113321,
+   "geometries": 161,
+   "textures": 15,
+   "programs": 50,
    "pixelRatio": 1,
    "drawingBuffer": [
     1280,
     720
    ],
-   "heapDeltaKB": 228,
+   "heapDeltaKB": -180,
    "shadow": "every frame",
    "cpuMsPerFrame": {
-    "browser": 1.4,
-    "utility": 0.5,
-    "renderer": 24.1,
-    "gpu-process": 1398.2,
-    "total": 1424.2
-   },
-   "census": {
-    "meshes": 478,
-    "casters": 240,
-    "verts": 495822,
-    "materials": 111,
-    "geometries": 471,
-    "textures": 7,
-    "byOwner": {
-     "camera(viewmodels)": {
-      "objects": 1,
-      "meshes": 60,
-      "casters": 0,
-      "verts": 54882,
-      "materials": 14
-     },
-     "ocean": {
-      "objects": 1,
-      "meshes": 1,
-      "casters": 0,
-      "verts": 60000,
-      "materials": 1
-     },
-     "raft (deck tiles + decor)": {
-      "objects": 1,
-      "meshes": 62,
-      "casters": 53,
-      "verts": 123876,
-      "materials": 7
-     },
-     "floating items": {
-      "objects": 1,
-      "meshes": 163,
-      "casters": 163,
-      "verts": 232584,
-      "materials": 83
-     },
-     "islands": {
-      "objects": 12,
-      "meshes": 120,
-      "casters": 24,
-      "verts": 7200,
-      "materials": 5
-     },
-     "clouds": {
-      "objects": 24,
-      "meshes": 72,
-      "casters": 0,
-      "verts": 17280,
-      "materials": 1
-     }
-    }
+    "browser": 8.9,
+    "renderer": 17.8,
+    "gpu-process": 1141.7,
+    "total": 1168.4
    },
    "state": {
     "pointerLocked": true,
     "tiles": 9,
-    "items": 30
+    "items": 30,
+    "dive": {
+     "underwater": false,
+     "depth": 0
+    }
    },
    "shot": "sandbox/perf/shots/game-baseline-2.png",
    "errors": [
     "Failed to load resource: the server responded with a status of 404 (File not found)"
    ],
-   "freezeFrame": 40
-  },
-  "items-no-shadow": {
-   "frames": 12,
-   "frameMs": 3915.65,
-   "frameP95": 6483.1,
-   "frameWorst": 6483.1,
-   "renderMs": 3913.09,
-   "submitMs": 7.2,
-   "submitMin": 4.1,
-   "logicMs": 2.56,
-   "logicP95": 12.4,
-   "rafGapMs": 3869.55,
-   "calls": 379,
-   "triangles": 181098,
-   "geometries": 356,
-   "textures": 8,
-   "programs": 10,
-   "pixelRatio": 1,
-   "drawingBuffer": [
-    1280,
-    720
-   ],
-   "heapDeltaKB": 798,
-   "shadow": "every frame",
-   "cpuMsPerFrame": {
-    "browser": 0.5,
-    "utility": 0.5,
-    "renderer": 20.5,
-    "gpu-process": 1320.0,
-    "total": 1341.5
-   },
-   "census": {
-    "meshes": 478,
-    "casters": 77,
-    "verts": 495822,
-    "materials": 111,
-    "geometries": 471,
-    "textures": 7,
-    "byOwner": {
-     "camera(viewmodels)": {
-      "objects": 1,
-      "meshes": 60,
-      "casters": 0,
-      "verts": 54882,
-      "materials": 14
-     },
-     "ocean": {
-      "objects": 1,
-      "meshes": 1,
-      "casters": 0,
-      "verts": 60000,
-      "materials": 1
-     },
-     "raft (deck tiles + decor)": {
-      "objects": 1,
-      "meshes": 62,
-      "casters": 53,
-      "verts": 123876,
-      "materials": 7
-     },
-     "floating items": {
-      "objects": 1,
-      "meshes": 163,
-      "casters": 0,
-      "verts": 232584,
-      "materials": 83
-     },
-     "islands": {
-      "objects": 12,
-      "meshes": 120,
-      "casters": 24,
-      "verts": 7200,
-      "materials": 5
-     },
-     "clouds": {
-      "objects": 24,
-      "meshes": 72,
-      "casters": 0,
-      "verts": 17280,
-      "materials": 1
-     }
-    }
-   },
-   "state": {
-    "pointerLocked": true,
-    "tiles": 9,
-    "items": 30
-   },
-   "shot": "sandbox/perf/shots/game-items-no-shadow.png",
-   "errors": [],
-   "freezeFrame": 40
-  },
-  "shadow-fit": {
-   "frames": 12,
-   "frameMs": 4005.48,
-   "frameP95": 6037.7,
-   "frameWorst": 6037.7,
-   "renderMs": 4003.84,
-   "submitMs": 7,
-   "submitMin": 2.6,
-   "logicMs": 1.63,
-   "logicP95": 4.6,
-   "rafGapMs": 3893.79,
-   "calls": 398,
-   "triangles": 190442,
-   "geometries": 356,
-   "textures": 8,
-   "programs": 10,
-   "pixelRatio": 1,
-   "drawingBuffer": [
-    1280,
-    720
-   ],
-   "heapDeltaKB": -129,
-   "shadow": "every frame",
-   "cpuMsPerFrame": {
-    "browser": 1.4,
-    "utility": 0.5,
-    "renderer": 24.5,
-    "gpu-process": 1364.5,
-    "total": 1390.9
-   },
-   "census": {
-    "meshes": 478,
-    "casters": 240,
-    "verts": 495822,
-    "materials": 111,
-    "geometries": 471,
-    "textures": 7,
-    "byOwner": {
-     "camera(viewmodels)": {
-      "objects": 1,
-      "meshes": 60,
-      "casters": 0,
-      "verts": 54882,
-      "materials": 14
-     },
-     "ocean": {
-      "objects": 1,
-      "meshes": 1,
-      "casters": 0,
-      "verts": 60000,
-      "materials": 1
-     },
-     "raft (deck tiles + decor)": {
-      "objects": 1,
-      "meshes": 62,
-      "casters": 53,
-      "verts": 123876,
-      "materials": 7
-     },
-     "floating items": {
-      "objects": 1,
-      "meshes": 163,
-      "casters": 163,
-      "verts": 232584,
-      "materials": 83
-     },
-     "islands": {
-      "objects": 12,
-      "meshes": 120,
-      "casters": 24,
-      "verts": 7200,
-      "materials": 5
-     },
-     "clouds": {
-      "objects": 24,
-      "meshes": 72,
-      "casters": 0,
-      "verts": 17280,
-      "materials": 1
-     }
-    }
-   },
-   "state": {
-    "pointerLocked": true,
-    "tiles": 9,
-    "items": 30
-   },
-   "shot": "sandbox/perf/shots/game-shadow-fit.png",
-   "errors": [],
-   "freezeFrame": 40
-  },
-  "shadow-10hz": {
-   "frames": 12,
-   "frameMs": 3377.27,
-   "frameP95": 6520.7,
-   "frameWorst": 6520.7,
-   "renderMs": 3376.63,
-   "submitMs": 5.6,
-   "submitMin": 2.8,
-   "logicMs": 0.65,
-   "logicP95": 1.6,
-   "rafGapMs": 3551.37,
-   "calls": 452,
-   "triangles": 211548,
-   "geometries": 356,
-   "textures": 8,
-   "programs": 10,
-   "pixelRatio": 1,
-   "drawingBuffer": [
-    1280,
-    720
-   ],
-   "heapDeltaKB": 106,
-   "shadow": "manual",
-   "cpuMsPerFrame": {
-    "browser": 0.9,
-    "renderer": 20.5,
-    "gpu-process": 1346.4,
-    "total": 1367.8
-   },
-   "census": {
-    "meshes": 478,
-    "casters": 240,
-    "verts": 495822,
-    "materials": 111,
-    "geometries": 471,
-    "textures": 7,
-    "byOwner": {
-     "camera(viewmodels)": {
-      "objects": 1,
-      "meshes": 60,
-      "casters": 0,
-      "verts": 54882,
-      "materials": 14
-     },
-     "ocean": {
-      "objects": 1,
-      "meshes": 1,
-      "casters": 0,
-      "verts": 60000,
-      "materials": 1
-     },
-     "raft (deck tiles + decor)": {
-      "objects": 1,
-      "meshes": 62,
-      "casters": 53,
-      "verts": 123876,
-      "materials": 7
-     },
-     "floating items": {
-      "objects": 1,
-      "meshes": 163,
-      "casters": 163,
-      "verts": 232584,
-      "materials": 83
-     },
-     "islands": {
-      "objects": 12,
-      "meshes": 120,
-      "casters": 24,
-      "verts": 7200,
-      "materials": 5
-     },
-     "clouds": {
-      "objects": 24,
-      "meshes": 72,
-      "casters": 0,
-      "verts": 17280,
-      "materials": 1
-     }
-    }
-   },
-   "state": {
-    "pointerLocked": true,
-    "tiles": 9,
-    "items": 30
-   },
-   "shot": "sandbox/perf/shots/game-shadow-10hz.png",
-   "errors": [],
-   "freezeFrame": 40
-  },
-  "merge-scenery": {
-   "frames": 12,
-   "frameMs": 4084.27,
-   "frameP95": 6972.7,
-   "frameWorst": 6972.7,
-   "renderMs": 4083.56,
-   "submitMs": 6.6,
-   "submitMin": 3,
-   "logicMs": 0.72,
-   "logicP95": 1.6,
-   "rafGapMs": 4389.22,
-   "calls": 498,
-   "triangles": 265194,
-   "geometries": 362,
-   "textures": 8,
-   "programs": 10,
-   "pixelRatio": 1,
-   "drawingBuffer": [
-    1280,
-    720
-   ],
-   "heapDeltaKB": -206,
-   "shadow": "every frame",
-   "cpuMsPerFrame": {
-    "browser": 0.9,
-    "renderer": 20.5,
-    "gpu-process": 1353.6,
-    "total": 1375.0
-   },
-   "census": {
-    "meshes": 292,
-    "casters": 218,
-    "verts": 495822,
-    "materials": 111,
-    "geometries": 285,
-    "textures": 7,
-    "byOwner": {
-     "camera(viewmodels)": {
-      "objects": 1,
-      "meshes": 60,
-      "casters": 0,
-      "verts": 54882,
-      "materials": 14
-     },
-     "ocean": {
-      "objects": 1,
-      "meshes": 1,
-      "casters": 0,
-      "verts": 60000,
-      "materials": 1
-     },
-     "raft (deck tiles + decor)": {
-      "objects": 1,
-      "meshes": 62,
-      "casters": 53,
-      "verts": 123876,
-      "materials": 7
-     },
-     "floating items": {
-      "objects": 1,
-      "meshes": 163,
-      "casters": 163,
-      "verts": 232584,
-      "materials": 83
-     },
-     "scenery": {
-      "objects": 6,
-      "meshes": 6,
-      "casters": 2,
-      "verts": 24480,
-      "materials": 1
-     }
-    }
-   },
-   "state": {
-    "pointerLocked": true,
-    "tiles": 9,
-    "items": 30
-   },
-   "shot": "sandbox/perf/shots/game-merge-scenery.png",
-   "errors": [],
-   "freezeFrame": 40
-  },
-  "merge-raft": {
-   "frames": 12,
-   "frameMs": 2774.96,
-   "frameP95": 5217.7,
-   "frameWorst": 5217.7,
-   "renderMs": 2774.09,
-   "submitMs": 6.3,
-   "submitMin": 3.7,
-   "logicMs": 0.87,
-   "logicP95": 2.1,
-   "rafGapMs": 2924.12,
-   "calls": 460,
-   "triangles": 272502,
-   "geometries": 363,
-   "textures": 8,
-   "programs": 10,
-   "pixelRatio": 1,
-   "drawingBuffer": [
-    1280,
-    720
-   ],
-   "heapDeltaKB": 784,
-   "shadow": "every frame",
-   "cpuMsPerFrame": {
-    "browser": 1.4,
-    "utility": 0.5,
-    "renderer": 21.4,
-    "gpu-process": 1399.1,
-    "total": 1422.4
-   },
-   "census": {
-    "meshes": 423,
-    "casters": 193,
-    "verts": 495822,
-    "materials": 111,
-    "geometries": 416,
-    "textures": 7,
-    "byOwner": {
-     "camera(viewmodels)": {
-      "objects": 1,
-      "meshes": 60,
-      "casters": 0,
-      "verts": 54882,
-      "materials": 14
-     },
-     "ocean": {
-      "objects": 1,
-      "meshes": 1,
-      "casters": 0,
-      "verts": 60000,
-      "materials": 1
-     },
-     "raft (deck tiles + decor)": {
-      "objects": 1,
-      "meshes": 7,
-      "casters": 6,
-      "verts": 123876,
-      "materials": 7
-     },
-     "floating items": {
-      "objects": 1,
-      "meshes": 163,
-      "casters": 163,
-      "verts": 232584,
-      "materials": 83
-     },
-     "islands": {
-      "objects": 12,
-      "meshes": 120,
-      "casters": 24,
-      "verts": 7200,
-      "materials": 5
-     },
-     "clouds": {
-      "objects": 24,
-      "meshes": 72,
-      "casters": 0,
-      "verts": 17280,
-      "materials": 1
-     }
-    }
-   },
-   "state": {
-    "pointerLocked": true,
-    "tiles": 9,
-    "items": 30
-   },
-   "shot": "sandbox/perf/shots/game-merge-raft.png",
-   "errors": [],
-   "freezeFrame": 40
-  },
-  "wood-bump-aniso1": {
-   "frames": 12,
-   "frameMs": 2164.57,
-   "frameP95": 5456.1,
-   "frameWorst": 5456.1,
-   "renderMs": 2163.79,
-   "submitMs": 8.1,
-   "submitMin": 3.8,
-   "logicMs": 0.78,
-   "logicP95": 1.9,
-   "rafGapMs": 2292.33,
-   "calls": 542,
-   "triangles": 258626,
-   "geometries": 356,
-   "textures": 15,
-   "programs": 10,
-   "pixelRatio": 1,
-   "drawingBuffer": [
-    1280,
-    720
-   ],
-   "heapDeltaKB": 223,
-   "shadow": "every frame",
-   "cpuMsPerFrame": {
-    "browser": 0.9,
-    "utility": 0.5,
-    "renderer": 21.4,
-    "gpu-process": 1200.9,
-    "total": 1223.7
-   },
-   "census": {
-    "meshes": 478,
-    "casters": 240,
-    "verts": 495822,
-    "materials": 111,
-    "geometries": 471,
-    "textures": 14,
-    "byOwner": {
-     "camera(viewmodels)": {
-      "objects": 1,
-      "meshes": 60,
-      "casters": 0,
-      "verts": 54882,
-      "materials": 14
-     },
-     "ocean": {
-      "objects": 1,
-      "meshes": 1,
-      "casters": 0,
-      "verts": 60000,
-      "materials": 1
-     },
-     "raft (deck tiles + decor)": {
-      "objects": 1,
-      "meshes": 62,
-      "casters": 53,
-      "verts": 123876,
-      "materials": 7
-     },
-     "floating items": {
-      "objects": 1,
-      "meshes": 163,
-      "casters": 163,
-      "verts": 232584,
-      "materials": 83
-     },
-     "islands": {
-      "objects": 12,
-      "meshes": 120,
-      "casters": 24,
-      "verts": 7200,
-      "materials": 5
-     },
-     "clouds": {
-      "objects": 24,
-      "meshes": 72,
-      "casters": 0,
-      "verts": 17280,
-      "materials": 1
-     }
-    }
-   },
-   "state": {
-    "pointerLocked": true,
-    "tiles": 9,
-    "items": 30
-   },
-   "shot": "sandbox/perf/shots/game-wood-bump-aniso1.png",
-   "errors": [],
-   "freezeFrame": 40
-  },
-  "wood-aniso-1": {
-   "frames": 12,
-   "frameMs": 2054.55,
-   "frameP95": 3424.6,
-   "frameWorst": 3424.6,
-   "renderMs": 2053.54,
-   "submitMs": 7.6,
-   "submitMin": 4,
-   "logicMs": 1.01,
-   "logicP95": 2.8,
-   "rafGapMs": 2031.73,
-   "calls": 542,
-   "triangles": 258626,
-   "geometries": 356,
-   "textures": 8,
-   "programs": 10,
-   "pixelRatio": 1,
-   "drawingBuffer": [
-    1280,
-    720
-   ],
-   "heapDeltaKB": 383,
-   "shadow": "every frame",
-   "cpuMsPerFrame": {
-    "browser": 0.5,
-    "utility": 0.5,
-    "renderer": 17.7,
-    "gpu-process": 1024.5,
-    "total": 1043.2
-   },
-   "census": {
-    "meshes": 478,
-    "casters": 240,
-    "verts": 495822,
-    "materials": 111,
-    "geometries": 471,
-    "textures": 7,
-    "byOwner": {
-     "camera(viewmodels)": {
-      "objects": 1,
-      "meshes": 60,
-      "casters": 0,
-      "verts": 54882,
-      "materials": 14
-     },
-     "ocean": {
-      "objects": 1,
-      "meshes": 1,
-      "casters": 0,
-      "verts": 60000,
-      "materials": 1
-     },
-     "raft (deck tiles + decor)": {
-      "objects": 1,
-      "meshes": 62,
-      "casters": 53,
-      "verts": 123876,
-      "materials": 7
-     },
-     "floating items": {
-      "objects": 1,
-      "meshes": 163,
-      "casters": 163,
-      "verts": 232584,
-      "materials": 83
-     },
-     "islands": {
-      "objects": 12,
-      "meshes": 120,
-      "casters": 24,
-      "verts": 7200,
-      "materials": 5
-     },
-     "clouds": {
-      "objects": 24,
-      "meshes": 72,
-      "casters": 0,
-      "verts": 17280,
-      "materials": 1
-     }
-    }
-   },
-   "state": {
-    "pointerLocked": true,
-    "tiles": 9,
-    "items": 30
-   },
-   "shot": "sandbox/perf/shots/game-wood-aniso-1.png",
-   "errors": [],
-   "freezeFrame": 40
-  },
-  "wood-no-bump": {
-   "frames": 12,
-   "frameMs": 1308.27,
-   "frameP95": 2469.3,
-   "frameWorst": 2469.3,
-   "renderMs": 1307.09,
-   "submitMs": 7.5,
-   "submitMin": 4.7,
-   "logicMs": 1.17,
-   "logicP95": 4.7,
-   "rafGapMs": 1354.5,
-   "calls": 542,
-   "triangles": 258626,
-   "geometries": 356,
-   "textures": 8,
-   "programs": 11,
-   "pixelRatio": 1,
-   "drawingBuffer": [
-    1280,
-    720
-   ],
-   "heapDeltaKB": 338,
-   "shadow": "every frame",
-   "cpuMsPerFrame": {
-    "renderer": 15.9,
-    "gpu-process": 930.5,
-    "total": 946.4
-   },
-   "census": {
-    "meshes": 478,
-    "casters": 240,
-    "verts": 495822,
-    "materials": 111,
-    "geometries": 471,
-    "textures": 7,
-    "byOwner": {
-     "camera(viewmodels)": {
-      "objects": 1,
-      "meshes": 60,
-      "casters": 0,
-      "verts": 54882,
-      "materials": 14
-     },
-     "ocean": {
-      "objects": 1,
-      "meshes": 1,
-      "casters": 0,
-      "verts": 60000,
-      "materials": 1
-     },
-     "raft (deck tiles + decor)": {
-      "objects": 1,
-      "meshes": 62,
-      "casters": 53,
-      "verts": 123876,
-      "materials": 7
-     },
-     "floating items": {
-      "objects": 1,
-      "meshes": 163,
-      "casters": 163,
-      "verts": 232584,
-      "materials": 83
-     },
-     "islands": {
-      "objects": 12,
-      "meshes": 120,
-      "casters": 24,
-      "verts": 7200,
-      "materials": 5
-     },
-     "clouds": {
-      "objects": 24,
-      "meshes": 72,
-      "casters": 0,
-      "verts": 17280,
-      "materials": 1
-     }
-    }
-   },
-   "state": {
-    "pointerLocked": true,
-    "tiles": 9,
-    "items": 30
-   },
-   "shot": "sandbox/perf/shots/game-wood-no-bump.png",
-   "errors": [],
-   "freezeFrame": 40
-  },
-  "dpr-0.75": {
-   "frames": 12,
-   "frameMs": 1745.36,
-   "frameP95": 4338,
-   "frameWorst": 4338,
-   "renderMs": 1744.62,
-   "submitMs": 6.5,
-   "submitMin": 4.2,
-   "logicMs": 0.73,
-   "logicP95": 1.3,
-   "rafGapMs": 1824.16,
-   "calls": 542,
-   "triangles": 258626,
-   "geometries": 356,
-   "textures": 8,
-   "programs": 10,
-   "pixelRatio": 0.75,
-   "drawingBuffer": [
-    960,
-    540
-   ],
-   "heapDeltaKB": 237,
-   "shadow": "every frame",
-   "cpuMsPerFrame": {
-    "browser": 0.9,
-    "utility": 0.5,
-    "renderer": 16.4,
-    "gpu-process": 980.5,
-    "total": 998.3
-   },
-   "census": {
-    "meshes": 478,
-    "casters": 240,
-    "verts": 495822,
-    "materials": 111,
-    "geometries": 471,
-    "textures": 7,
-    "byOwner": {
-     "camera(viewmodels)": {
-      "objects": 1,
-      "meshes": 60,
-      "casters": 0,
-      "verts": 54882,
-      "materials": 14
-     },
-     "ocean": {
-      "objects": 1,
-      "meshes": 1,
-      "casters": 0,
-      "verts": 60000,
-      "materials": 1
-     },
-     "raft (deck tiles + decor)": {
-      "objects": 1,
-      "meshes": 62,
-      "casters": 53,
-      "verts": 123876,
-      "materials": 7
-     },
-     "floating items": {
-      "objects": 1,
-      "meshes": 163,
-      "casters": 163,
-      "verts": 232584,
-      "materials": 83
-     },
-     "islands": {
-      "objects": 12,
-      "meshes": 120,
-      "casters": 24,
-      "verts": 7200,
-      "materials": 5
-     },
-     "clouds": {
-      "objects": 24,
-      "meshes": 72,
-      "casters": 0,
-      "verts": 17280,
-      "materials": 1
-     }
-    }
-   },
-   "state": {
-    "pointerLocked": true,
-    "tiles": 9,
-    "items": 30
-   },
-   "shot": "sandbox/perf/shots/game-dpr-0.75.png",
-   "errors": [],
-   "freezeFrame": 40
-  },
-  "shadows-off": {
-   "frames": 12,
-   "frameMs": 3209.83,
-   "frameP95": 5205.1,
-   "frameWorst": 5205.1,
-   "renderMs": 3208.32,
-   "submitMs": 6.9,
-   "submitMin": 3.9,
-   "logicMs": 1.51,
-   "logicP95": 7,
-   "rafGapMs": 3357.45,
-   "calls": 326,
-   "triangles": 145638,
-   "geometries": 356,
-   "textures": 8,
-   "programs": 12,
-   "pixelRatio": 1,
-   "drawingBuffer": [
-    1280,
-    720
-   ],
-   "heapDeltaKB": 551,
-   "shadow": "off",
-   "cpuMsPerFrame": {
-    "browser": 0.5,
-    "renderer": 21.4,
-    "gpu-process": 1325.5,
-    "total": 1347.4
-   },
-   "census": {
-    "meshes": 478,
-    "casters": 240,
-    "verts": 495822,
-    "materials": 111,
-    "geometries": 471,
-    "textures": 7,
-    "byOwner": {
-     "camera(viewmodels)": {
-      "objects": 1,
-      "meshes": 60,
-      "casters": 0,
-      "verts": 54882,
-      "materials": 14
-     },
-     "ocean": {
-      "objects": 1,
-      "meshes": 1,
-      "casters": 0,
-      "verts": 60000,
-      "materials": 1
-     },
-     "raft (deck tiles + decor)": {
-      "objects": 1,
-      "meshes": 62,
-      "casters": 53,
-      "verts": 123876,
-      "materials": 7
-     },
-     "floating items": {
-      "objects": 1,
-      "meshes": 163,
-      "casters": 163,
-      "verts": 232584,
-      "materials": 83
-     },
-     "islands": {
-      "objects": 12,
-      "meshes": 120,
-      "casters": 24,
-      "verts": 7200,
-      "materials": 5
-     },
-     "clouds": {
-      "objects": 24,
-      "meshes": 72,
-      "casters": 0,
-      "verts": 17280,
-      "materials": 1
-     }
-    }
-   },
-   "state": {
-    "pointerLocked": true,
-    "tiles": 9,
-    "items": 30
-   },
-   "shot": "sandbox/perf/shots/game-shadows-off.png",
-   "errors": [],
-   "freezeFrame": 40
-  },
-  "hide-raft": {
-   "frames": 12,
-   "frameMs": 740.57,
-   "frameP95": 1339.5,
-   "frameWorst": 1339.5,
-   "renderMs": 739.91,
-   "submitMs": 7.7,
-   "submitMin": 3.3,
-   "logicMs": 0.66,
-   "logicP95": 0.9,
-   "rafGapMs": 772.71,
-   "calls": 447,
-   "triangles": 195750,
-   "geometries": 356,
-   "textures": 8,
-   "programs": 10,
-   "pixelRatio": 1,
-   "drawingBuffer": [
-    1280,
-    720
-   ],
-   "heapDeltaKB": -67,
-   "shadow": "every frame",
-   "cpuMsPerFrame": {
-    "browser": 0.5,
-    "renderer": 14.1,
-    "gpu-process": 531.4,
-    "total": 546.0
-   },
-   "census": {
-    "meshes": 416,
-    "casters": 187,
-    "verts": 371946,
-    "materials": 104,
-    "geometries": 409,
-    "textures": 2,
-    "byOwner": {
-     "camera(viewmodels)": {
-      "objects": 1,
-      "meshes": 60,
-      "casters": 0,
-      "verts": 54882,
-      "materials": 14
-     },
-     "ocean": {
-      "objects": 1,
-      "meshes": 1,
-      "casters": 0,
-      "verts": 60000,
-      "materials": 1
-     },
-     "floating items": {
-      "objects": 1,
-      "meshes": 163,
-      "casters": 163,
-      "verts": 232584,
-      "materials": 83
-     },
-     "islands": {
-      "objects": 12,
-      "meshes": 120,
-      "casters": 24,
-      "verts": 7200,
-      "materials": 5
-     },
-     "clouds": {
-      "objects": 24,
-      "meshes": 72,
-      "casters": 0,
-      "verts": 17280,
-      "materials": 1
-     }
-    }
-   },
-   "state": {
-    "pointerLocked": true,
-    "tiles": 9,
-    "items": 30
-   },
-   "shot": "sandbox/perf/shots/game-hide-raft.png",
-   "errors": [],
-   "freezeFrame": 40
-  },
-  "all-safe": {
-   "frames": 12,
-   "frameMs": 1551.52,
-   "frameP95": 3692.6,
-   "frameWorst": 3692.6,
-   "renderMs": 1543.41,
-   "submitMs": 4.8,
-   "submitMin": 2.3,
-   "logicMs": 8.11,
-   "logicP95": 87.4,
-   "rafGapMs": 1596.9,
-   "calls": 253,
-   "triangles": 201542,
-   "geometries": 369,
-   "textures": 15,
-   "programs": 10,
-   "pixelRatio": 1,
-   "drawingBuffer": [
-    1280,
-    720
-   ],
-   "heapDeltaKB": 132,
-   "shadow": "every frame",
-   "cpuMsPerFrame": {
-    "browser": 0.5,
-    "utility": 0.5,
-    "renderer": 15.5,
-    "gpu-process": 1095.5,
-    "total": 1112.0
-   },
-   "census": {
-    "meshes": 237,
-    "casters": 8,
-    "verts": 495822,
-    "materials": 111,
-    "geometries": 230,
-    "textures": 14,
-    "byOwner": {
-     "camera(viewmodels)": {
-      "objects": 1,
-      "meshes": 60,
-      "casters": 0,
-      "verts": 54882,
-      "materials": 14
-     },
-     "ocean": {
-      "objects": 1,
-      "meshes": 1,
-      "casters": 0,
-      "verts": 60000,
-      "materials": 1
-     },
-     "raft (deck tiles + decor)": {
-      "objects": 1,
-      "meshes": 7,
-      "casters": 6,
-      "verts": 123876,
-      "materials": 7
-     },
-     "floating items": {
-      "objects": 1,
-      "meshes": 163,
-      "casters": 0,
-      "verts": 232584,
-      "materials": 83
-     },
-     "scenery": {
-      "objects": 6,
-      "meshes": 6,
-      "casters": 2,
-      "verts": 24480,
-      "materials": 1
-     }
-    }
-   },
-   "state": {
-    "pointerLocked": true,
-    "tiles": 9,
-    "items": 30
-   },
-   "shot": "sandbox/perf/shots/game-all-safe.png",
-   "errors": [],
    "freezeFrame": 40
   }
  }
