@@ -61,6 +61,7 @@ import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, escRelea
 import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createShark, cleanShark, cleanTileHp, lootable, SHARK, SHARK_LOOT } from './shark.js?build=v3-survival-ae77fa84ac2b'; // shark lane (dist/shark.js)
 import { createWaterEffects } from './waterfx.js?build=v3-survival-ae77fa84ac2b'; // shark lane: bite splashes
+import { attachBait } from './bait.js?build=v3-survival-ae77fa84ac2b'; // [bait] Shark Bait throw + lure
 import { createIsland } from './scenery-islands.js?build=v3-survival-ae77fa84ac2b'; // decorative distant islands (islands.js is the content lane's dockable islands)
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
@@ -332,6 +333,7 @@ export function mount(transfer = null) {
   let prog = null; // [progression-hook]
   // shark lane (dist/shark.js): host/solo simulate, the guest shows the host's pose. shark.trySpear(origin, dir, reach, dmg) -> boolean
   let shark = null, sharkFx = null, wildlifeMod = null, shakeAmp = 0; const sharkHitAt = {host:0, guest:0};
+  let bait = null; // [bait] dist/bait.js
   let spearRep = null; // [spear-repair] spear viewmodels/thrust + hammer foundation repair (dist/spear-repair-hooks.js)
 
   function makePhysics(src) {
@@ -494,6 +496,7 @@ export function mount(transfer = null) {
         sendHit:dmg => action({kind:'shark:hit', dmg}),
       }, world.shark);
     } catch (e) { console.error('shark failed', e); shark = null; }
+    try { bait = attachBait({T, scene, ocean, camera:() => camera, world:() => world, role:() => role, shark:() => shark, physics:() => physics, other:() => other, flow:() => sailFlow, elapsed:() => elapsed, action, emit, beep, setSwing:v => { swing = v; }}); } catch (e) { console.error('bait failed', e); bait = null; } // [bait]
   }
   function hurtLocal(n) {
     shakeAmp = Math.max(shakeAmp, .2); beep(140); notice('The shark bit you!', 1400);
@@ -1141,6 +1144,7 @@ export function mount(transfer = null) {
     if (prog?.apply(a, actor)) return; // [progression-hook] locked crafts + 'prog:*' actions
     const bag = actorBag(actor);
     if (spearRep?.apply(a, actor, bag)) return; // [spear-repair] 'spearHit' / 'repairTile'
+    if (bait?.apply(a, actor, bag)) return; // [bait] 'bait:throw'
     if (typeof a.kind === 'string' && a.kind.startsWith('fc:')) { fc?.applyAction(a, actor, {count:k => bag.count(k), remove:(k, n) => bag.remove(k, n), add:(k, n) => bag.add(k, n), emit:text => emit({kind:'notice', text}, actor)}); return; } // [fishing-cooking]
     if (a.kind === 'selectSlot') { bag.select(a.index); return; }
     if (a.kind === 'sail') { const t = sailing?.apply(a, actor); if (t) emit({kind:'notice', text:t}, actor); return; } // [sailing]
@@ -1309,6 +1313,7 @@ export function mount(transfer = null) {
     const kind = selectedKind(), bag = localBag(), p = aim?.point ?? null;
     if (instruments?.use(kind)) { swing = .7; return; } // [instruments]
     if (kind === 'spear' ? spearRep?.use() : kind === 'hammer' && spearRep?.useHammer()) return; // [spear-repair] thrust / repair a damaged tile
+    if (bait?.use(kind)) return; // [bait] throw Shark Bait
     if (isEdible(kind)) { // [vitals] a fresh cup on a planter still waters it, a salt cup at a purifier still loads it
       const w = CUP_KINDS.includes(kind) ? wateringTarget(aim) : null;
       if (w?.click) { swing = 1; action(w.click); } else startEat(kind);
@@ -1669,6 +1674,7 @@ export function mount(transfer = null) {
     updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost();
     const simDt = running ? dt : 0; // the title screen freezes the world: no day clock, no grill fuel or cooking
     content?.update(simDt); // content hook
+    if (bait) { try { bait.update(dt, elapsed, running); } catch (e) { console.error('bait update failed', e); try { bait.dispose(); } catch {} bait = null; } } // [bait] before the shark: sets its lure
     if (shark) { try { shark.update(dt, elapsed, running); } catch (e) { console.error('shark update failed', e); try { shark.dispose(); } catch {} shark = null; } } // shark lane
     sky?.follow(ocean.uniforms, scene.background); sky?.update(elapsed, camera); // sky dome tracks day/night's horizon, zenith and sun
     if (fc) { try { fc.update(simDt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
@@ -1903,6 +1909,7 @@ export function mount(transfer = null) {
     if (!world.items.length) for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     content?.load(world.ext, 'restore'); // content hook
     shark?.clearNet(); shark?.load(world.shark); // shark lane: our own shark again
+    bait?.clear(); // [bait] an active bait is not saved
     if (scene) { syncItems(); rebuildRaft(); fitShadow(); }
     queueMicrotask(guard(retroAward)); // callers set role = 'solo' right after this returns
   }
@@ -2219,6 +2226,7 @@ export function mount(transfer = null) {
     spearPose(p) { spearRep?.pinPoke(p); }, // [spear-repair] test helper: freeze the jab for screenshots
     get spear() { return spearRep?.debug() ?? null; }, // [spear-repair]
     get shark() { return sharkDebug; }, // shark lane
+    get bait() { return bait ? {...bait.debug(), place:(x, z, left) => bait.place(+x, +z, left)} : null; }, // [bait] QA
     get targets() {
       return world.items.map(it => {
         const m = itemMeshes.get(it.token), p = m ? m.position : {x:it.x, y:ITEM_FLOAT, z:it.z};
@@ -2305,6 +2313,7 @@ export function mount(transfer = null) {
     if (diveWarmAt && typeof cancelIdleCallback === 'function') { try { cancelIdleCallback(diveWarmAt); } catch {} } diveWarmAt = 0; // a later() fallback is cleared with the other timers
     try { diving?.dispose(); } catch {} diving = null; // diving lane hook
     try { sky?.dispose(); } catch {} sky = null; // frees the sky noise texture on hot swap
+    try { bait?.dispose(); } catch {} bait = null; // [bait]
     try { shark?.dispose(); } catch {} shark = null; try { sharkFx?.dispose(); } catch {} sharkFx = null; // shark lane
     const mats = new Set(), geos = new Set();
     scene.traverse(o => {
