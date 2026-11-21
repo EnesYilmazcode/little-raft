@@ -6,6 +6,7 @@ import { ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77f
 
 const STYLE_ID = 'item-tooltips-style';
 const BAG_EVENT = 'littleraft:bagchange'; // survival-ui.js BAG_EVENT (not imported: keeps this module DOM-light)
+const BAG_OPEN_EVENT = 'littleraft:bagopen'; // survival-ui.js BAG_OPEN_EVENT
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
 const CATS = { material: 'Material', refined: 'Refined', tool: 'Tool', station: 'Station', build: 'Building', food: 'Food', decor: 'Decor' };
 const CSS = `
@@ -126,7 +127,14 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     tip.dataset.side = p.side;
   }
 
+  // A row scrolled out of its list (or clipped by it) is not a place to anchor a card.
+  function clipped(el) {
+    const list = el.closest('.sv-rlist'); if (!list) return false;
+    const r = el.getBoundingClientRect(), l = list.getBoundingClientRect();
+    return r.bottom <= l.top + 4 || r.top >= l.bottom - 4 || r.height <= 0;
+  }
   function show(el, x, y) {
+    if (clipped(el)) { hide(); return; }
     const res = resolve(el);
     if (!res) { hide(); return; }
     const host = el.closest('dialog[open]') || doc.body;
@@ -149,7 +157,12 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
   }
   const target = e => e.target?.closest?.(SEL) || null;
 
-  on(root, 'pointerover', e => { const el = target(e); if (el) show(el, e.clientX, e.clientY); else if (cur) hide(); });
+  // A panel opening under a still pointer sends pointerover with no hover intent: after the bag opens,
+  // cards wait for the first real pointer move.
+  let armed = true;
+  on(doc, BAG_OPEN_EVENT, () => { armed = false; hide(); });
+  on(root, 'pointermove', e => { if (armed || (!e.movementX && !e.movementY)) return; armed = true; const el = target(e); if (el) show(el, e.clientX, e.clientY); });
+  on(root, 'pointerover', e => { if (!armed) return; const el = target(e); if (el) show(el, e.clientX, e.clientY); else if (cur) hide(); });
   on(root, 'pointerout', e => { if (cur && !cur.el.contains(e.relatedTarget)) hide(); });
   on(root, 'pointerdown', () => { if (cur) requestAnimationFrame(refresh); });
   on(root, 'dragstart', hide);
