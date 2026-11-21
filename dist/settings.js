@@ -29,8 +29,9 @@ const PRESETS = { low: { renderScale: 0.7, shadows: false }, medium: { renderSca
 const DEFAULTS = Object.freeze(Object.fromEntries(Object.entries(SPEC).map(([k, s]) => [k, s.def])));
 const KEYS = Object.keys(SPEC);
 const TABS = [['controls', 'Controls'], ['graphics', 'Graphics'], ['audio', 'Audio']];
-const KEYMAP = [['W A S D', 'Walk'], ['Space', 'Jump'], ['Shift', 'Sprint'], ['Click', 'Use tool / charge throw'], ['Hold click', 'Reel in'],
-  ['1 - 8 / Wheel', 'Pick hotbar slot'], ['Tab / I', 'Inventory'], ['E', 'Interact'], ['R', 'Repair hook'], ['L', 'Logbook'], ['Esc', 'Back / pause']];
+export const KEYMAP = [['W A S D', 'Walk'], ['Space', 'Jump / climb'], ['Shift', 'Sprint'], ['C', 'Crouch / dive down'], ['Click', 'Use tool / charge throw'], ['Hold click', 'Reel in'],
+  ['1 - 8 / Wheel', 'Pick hotbar slot'], ['Tab / I', 'Inventory'], ['E', 'Interact / open bag'], ['R', 'Rotate piece / repair hook'],
+  ['Q or Right-click', 'Build wheel'], ['X', 'Remove piece'], ['Shift+wheel', 'Fine rotate'], ['J', 'Fish journal'], ['L', 'Logbook'], ['Esc', 'Back / pause']];
 
 export function validateSettings(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
