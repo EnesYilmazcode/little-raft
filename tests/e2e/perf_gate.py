@@ -9,7 +9,7 @@ from playwright.sync_api import sync_playwright
 
 ap = argparse.ArgumentParser()
 ap.add_argument('dist'); ap.add_argument('--json'); ap.add_argument('--baseline'); ap.add_argument('--frames', type=int, default=240)
-ap.add_argument('--chrome', default='/usr/bin/google-chrome')
+ap.add_argument('--chrome', default='/usr/bin/google-chrome'); ap.add_argument('--swim', action='store_true', help='also measure swimming off the raft')
 a = ap.parse_args()
 
 class Quiet(http.server.SimpleHTTPRequestHandler):
@@ -56,11 +56,20 @@ with sync_playwright() as p:
     page.wait_for_function('raftDebug.state.running', timeout=30000)
     page.evaluate(COUNT, 30)
     rep['idle'] = phase(page, cdp, 'idle at spawn', a.frames)
-    page.mouse.move(640, 360); page.keyboard.down('w')
-    rep['walk'] = phase(page, cdp, 'walking + turning', a.frames // 2)
-    page.keyboard.up('w')
+    page.mouse.move(640, 360)
+    # walk back and forth on the deck (W/S alternate every 0.6 s) so the phase measures deck walking, not swimming
+    page.evaluate("""(()=>{let k='KeyW';const ev=(t,c)=>window.dispatchEvent(new KeyboardEvent(t,{code:c,key:c==='KeyW'?'w':'s',bubbles:true}));
+      ev('keydown',k);window.__walkTimer=setInterval(()=>{ev('keyup',k);k=k==='KeyW'?'KeyS':'KeyW';ev('keydown',k)},600);
+      window.__walkStop=()=>{clearInterval(window.__walkTimer);ev('keyup',k)}})()""")
+    rep['walk'] = phase(page, cdp, 'walking on deck', a.frames // 2)
+    page.evaluate('window.__walkStop()')
+    rep['walk']['onDeck'] = page.evaluate('raftDebug.state.swimming === false')
     page.mouse.down(); page.wait_for_timeout(600); page.mouse.up()
     rep['hook'] = phase(page, cdp, 'hook thrown', a.frames // 2)
+    if a.swim:
+        page.keyboard.down('w'); page.wait_for_function('raftDebug.state.swimming', timeout=60000); page.evaluate(COUNT, 20)
+        rep['swim'] = phase(page, cdp, 'swimming off the raft', a.frames // 2)
+        page.keyboard.up('w')
     b.close()
 srv.shutdown()
 
@@ -69,7 +78,7 @@ if a.json: Path(a.json).write_text(out)
 print(out)
 if a.baseline:
     base = json.loads(Path(a.baseline).read_text()); bad = []
-    for ph in ('idle', 'walk', 'hook'):
+    for ph in [p for p in ('idle', 'walk', 'hook', 'swim') if p in rep and p in base]:
         for k, tol in (('calls', 1.05), ('triangles', 1.05)):
             if rep[ph]['render'][k] > base[ph]['render'][k] * tol + 2: bad.append(f"{ph}.{k} {base[ph]['render'][k]} -> {rep[ph]['render'][k]}")
         if rep[ph]['allocKBPerFrame'] > base[ph]['allocKBPerFrame'] * 1.25 + 1: bad.append(f"{ph}.alloc {base[ph]['allocKBPerFrame']} -> {rep[ph]['allocKBPerFrame']}")
