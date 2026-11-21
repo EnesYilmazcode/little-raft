@@ -8,7 +8,8 @@
 //     left hand when the right holds a tool such as the hammer). Blends in, no lower/raise.
 //     'throw': forces the wind-up (full charge) pose.
 //   hands.setModelFactory(fn | null);              // swap the model source later; rebuilds cached models
-//   hands.update({ dt, time, charge, reeling, casting, walking, hasHookOut, motion, yaw, pitch });
+//   hands.update({ dt, time, charge, reeling, casting, walking, hasHookOut, motion, yaw, pitch, stab });
+//     stab 0..1: spear thrust (right arm pushed out along the spear toward the crosshair; spear.js stabAmount)
 //   hands.ropeAnchor().getWorldPosition(v);        // rope start: rod tip while the rod is held, else left hand
 //   hands.itemModel('fishingrod')                  // the held model (rod userData: float, leader, tipNode)
 //
@@ -287,6 +288,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     const charge0 = clamp01(params.charge || 0);
     const casting = clamp01(params.casting || 0);
     const reeling = !!params.reeling, walking = !!params.walking;
+    const stab = clamp01(params.stab || 0); // [spear]
     const amp = clamp01(params.motion ?? 0.35) / 0.35;
     const k = (rate) => 1 - Math.exp(-rate * dt);
 
@@ -359,7 +361,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     const rrz = -0.40 * ce + 0.30 * a + 0.03 * wA * Math.sin(ph) + 0.25 * down;
     const rwx = 0.35 * ce - 0.55 * a - 0.10 * oW + 0.06 * rW * Math.sin(t * 18.85);
     const rwz = -0.20 * ce + 0.15 * a + 0.03 * rW * Math.sin(t * 9.42 + 1.3);
-    applyArm(R, rpx, rpy, rpz, rrx, rry, rrz, rwx, 0, rwz, smooth(0, 1, st.ptR));
+    applyArm(R, rpx - 0.075 * stab, rpy + 0.055 * stab, rpz - 0.34 * stab, rrx, rry, rrz, rwx, 0, rwz, smooth(0, 1, st.ptR)); // [spear] stab thrust
 
     // ---- left arm
     const lpx = 0.02 * ce + 0.02 * a + 0.015 * pull * rW - 0.010 * wA * Math.sin(ph) + 0.002 * amp * Math.sin(t * 0.63 + 1);
@@ -382,7 +384,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     toolHolder.scale.setScalar(hasHookOut ? 1 : 0.7 + 0.3 * easeOutBack(tw));  // little "catch" pop on return
 
     Object.assign(last, { held: st.shown, target: st.target, pose, pointHand: pointer, dip: down, lag: [st.lagX, st.lagY], charge: chargeEff, chargeEased: ce, throw: a,
-      pull: pull * rW, walkW: st.walkW, reelW: rW, hookOutW: oW, toolW: tw, spool: st.spool, models: mounts.size });
+      pull: pull * rW, stab, walkW: st.walkW, reelW: rW, hookOutW: oW, toolW: tw, spool: st.spool, models: mounts.size });
     return last;
   }
 

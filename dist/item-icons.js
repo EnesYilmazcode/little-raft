@@ -12,6 +12,7 @@ import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84a
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
+import { createSpear } from './spear-model.js?build=v3-survival-ae77fa84ac2b'; // [spear]
 
 const SIZE = 128;
 // Item ids whose name differs from the models.js kind.
@@ -27,7 +28,7 @@ let gl = null, scene = null, camera = null, failed = false, releaseTimer = 0, pu
 
 // Per-kind display pose (radians) so long tools read diagonally like a hotbar icon.
 const POSE = {
-  hook: [0, 0.7, -0.2], hammer: [0, 0.5, -0.75], fishingrod: [0, 0.3, -0.8],
+  hook: [0, 0.7, -0.2], hammer: [0, 0.5, -0.75], fishingrod: [0, 0.3, -0.8], spear: [0, 0, -0.8],
   plastic: [0, 0.4, 0.5], fish: [0, -0.4, 0.15], rope: [0.9, 0, 0.2],
   wood: [0, -0.35, 0.12], leaf: [0.5, 0.4, 0], scrap: [0.3, 0.4, 0],
   net: [0.55, 0.5, 0], bench: [0, 0.5, 0], crate: [0, 0.5, 0],
@@ -71,6 +72,7 @@ export function buildFallbackModel(kind) {
     case 'hook': return createHook(T);
     case 'hammer': return createHammer(T);
     case 'fishingrod': return createFishingTool(T);
+    case 'spear': return createSpear(T); // [spear]
     case 'plastic': return createPlastic(T);
     case 'rope': return ropeModel();
     case 'fish': return fishModel();
