@@ -254,7 +254,7 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
 - The sun is fixed at `(-15,28,12)` (`dist/game.js:289`), an elevation of 55.6 deg. There is no
   time of day, no moon and no stars. A low-sun glint path (C7) can never appear, because the
   specular term (`dist/ocean.js:128-132`) only shows when the player looks steeply down toward the
-  sun.
+  sun. **[VERIFIED: game.js:289; atan(28 / hypot(15,12)) = 55.6 deg.]**
 
 **Waves**
 - There are 4 Gerstner waves (`dist/ocean.js:11-16`): wavelengths 31, 19, 12.5 and 9.2 m, and
@@ -264,7 +264,9 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
 - Five normal-only ripples (`:101-105`) have wavelengths of 3.0 to 0.69 m and fade out between 8
   and 60 m. This matches a calm Raft sea (C10).
 - There is no weather state. The amplitudes are compiled into the shader as constants (`:20-24`),
-  so a storm (C11) cannot scale them at runtime.
+  so a storm (C11) cannot scale them at runtime. **[VERIFIED: ocean.js:11-24; amplitudes sum to
+  0.255 m; T for 31 m = 2 pi / (0.6 sqrt(g k)) = 7.4 s; k a max 0.027 (9.2 m wave); ripple fade
+  smoothstep(8, 60) at :98.]**
 - The ocean is a 280 m plane with 100 segments (`:155-156`), and it does not follow the camera:
   `followCamera` is unset in `dist/game.js:290`, so the snap code at `ocean.js:197-201` never
   runs. If a swimmer goes about 15 m or more from the origin, the far edge comes inside the
@@ -381,8 +383,7 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
 6. **#6 Make the ocean follow the camera.** (dist/game.js:290: pass `followCamera:true`. The
    snapping code at dist/ocean.js:197-201 already exists. This removes the possible far-edge seam
    when a player swims away from the raft.) Impact M, effort S. **[VERIFIED: note `update` must also
-   receive the camera (HEAD calls `ocean.update(elapsed)` at init; check the per-frame call passes
-   it).]**
+   receive the camera, which the per-frame call at game.js:825 already does.]**
 7. **#7 Size the sun disc to Raft's readability, in our own style.** (dist/sky.js: a soft-edged
    core about 5 to 6 deg across, about 4 to 6 % W at the default FOV, with a wide warm halo out to
    about 25 % W (C6). The current fleet disc is 3.6 deg. Scale the bloom down when the sun is
@@ -420,11 +421,13 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
 13. **#13 Add occasional open-sea haze or fog banks.** (dist/game.js:283 fog: tween the fog near
     and far distances to about 10 and 70 m for a minute or two, so islands read as silhouettes at a
     contrast ratio of about 0.9 (C15). This is a cheap, original atmosphere beat with no Raft image
-    to copy.) Impact L, effort S.
+    to copy.) Impact L, effort S. **[VERIFIED: 0.90 to 0.93 dusk ratio re-measured in
+    community_068.]**
 14. **#14 Underwater view, only if diving is added later.** (dist/player-physics.js:22 currently
     keeps the eye above the water. If diving is added: a blue depth fog with visibility of about 20
     to 30 m, lighter toward the surface, animated caustics on the sand, and a back-face ocean
-    surface seen from below (C18).) Impact L, effort L.
+    surface seen from below (C18).) Impact L, effort L. **[UNSURE: player-physics.js:22
+    SWIM_EYE_ABOVE_WATER 0.45 verified; visibility in metres is from memory, wiki unreachable.]**
 
 ## 5. Open questions and unsure items
 
@@ -445,3 +448,50 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
   ship its global "clear when looking down" turquoise as it stands.
 - I did not render Little Raft for this spec. Its values come from reading the code, not from
   screenshots (`shoot.py` exists for a follow-up check).
+
+## Verification log
+
+Skeptic pass, 2026-11-21. Tag totals: **28 VERIFIED, 16 CORRECTED, 4 UNSURE**. By group:
+- Claims C1 to C19: 9 VERIFIED (C1, C3, C4, C6, C10, C13, C14, C16, C17), 9 CORRECTED (C2, C5,
+  C7, C8, C9, C11, C12, C15, C18), 1 UNSURE (C19).
+- Change list #1 to #14: 6 VERIFIED (#1, #4, #5, #6, #7, #13), 5 CORRECTED (#2, #3, #9, #10,
+  #11), 3 UNSURE (#8, #12, #14). The ranking is unchanged. No item asks to copy Raft's logo, icons,
+  item art, UI, fonts or creatures; #9 already specifies its own style.
+- Current-code and branch notes: 13 VERIFIED, 2 CORRECTED (the lace formula wording, and fog at a
+  70 m spawn under fleet fog is 30 %, not 20 %).
+
+The most important corrections:
+1. **Foam coverage (C12, #3).** The 11 % soft-foam figure reproduces only in community_097, and
+   there it is mist next to the raft. Open water in community_082 and community_134 is 0 to 4 %;
+   the analyst's 13.7 % for 082 comes from the raft, walkway and HUD being counted. #3 now targets
+   2 to 4 % on the open sea and 10 to 15 % near the raft.
+2. **Moon size (C5, #9).** The disc has a 1 px hard limb. Limb to limb, it is 4.8 to 6.8 % W, not
+   4.0 to 5.9 %. The half-max cut fell inside the disc because of limb darkening and crater
+   blotches. #9 now says 5 to 6 % W.
+3. **Sea brightening toward the horizon (C2, #2).** The sea just under the horizon is about 3x as
+   bright as the sea 25 % H lower, not 2.5x.
+
+Method. I used my own scripts in
+`/tmp/claude-0/-home-user-little-raft/357b287e-6b25-59b7-a94d-bb803559ea72/scratchpad/world-skeptic/`
+(hz.py, prof.py, rawprof.py, moonprof.py, disc.py, sun.py, sunrow.py, sunmax.py, foam.py,
+foammask.py, foam_overlay.png, isl.py, p2.py, glint.py, stars.py, h024.py), with the venv's Pillow
+and numpy (no scipy). Steps:
+- I found the horizon as the strongest negative row step per column, then sampled the sky median
+  4 px above it and the sea 3 to 7 px below it.
+- For the moon I read raw row and column profiles through each centre.
+- For the sun I took threshold runs along rows and columns.
+- For foam I reapplied the analyst's mask (S < 0.55 and L >= P30 + 30) to the stated box and to
+  several boxes of open water only, then checked it with a magenta overlay.
+- For islands I read hex profiles across the pinnacle top, the waterline and the lateral tips.
+- Code: grep and sed of dist/ (game.js, ocean.js, sky.js, waterfx.js, settings.js,
+  player-physics.js).
+- Branches: read-only `git show` and `git diff HEAD...origin/<branch>` on `wip/fleet/world` and
+  `wip/feature/islands`, as the caller allowed. I ran no other git commands.
+
+Images re-checked, viewed or measured:
+- press: 2018-08-15-update-6-*-05, 2019-02-07-*-07, 2021-04-01-devblog-46-03,
+  2018-07-13-development-blog-35-01.
+- steam: community_094, _146, _053, _007, _102, _103, store_24, community_097, _082, _134,
+  store_20, community_068, _024, _090, _119, _140, store_08, _121 (glint only, not resolved).
+- Not re-checked (relied on the analyst's contact-sheet reading): community_039, _107, _113, _006,
+  _047, _009, store_05, store_09, 2018-07-09-*-04, 2022-01-13-dev-blog-47-07.
