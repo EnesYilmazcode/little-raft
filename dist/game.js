@@ -413,7 +413,7 @@ export function mount(transfer = null) {
     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.autoUpdate = false; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     hemi = new T.HemisphereLight('#bfe6ff', '#2f6f7a', 1.0); scene.add(hemi); // content hook: kept for day/night; blue sky fill from above, teal sea bounce from below
     sun = new T.DirectionalLight('#ffeccb', 3.0); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.0004; sun.shadow.normalBias = .03; sun.shadow.radius = 3; scene.add(sun, sun.target); // shadow box is fitted to the raft each frame
-    quality = createQuality({renderer, sun, preset:options.graphics, onChange:() => applyUserGraphics()}); // owns pixel ratio, shadow map size and sun.castShadow
+    quality = createQuality({renderer, sun, preset:options.graphics, onChange:() => applyUserGraphics(), onPrewarm:() => warmShadowless()}); // owns pixel ratio, shadow map size and sun.castShadow
     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#a6e9f2', fadeNear:28, fadeFar:190}); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
     if (ART.artEnabled()) ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T}); // art lane hook
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
@@ -1126,6 +1126,18 @@ export function mount(transfer = null) {
     if (l) renderer.setPixelRatio(Math.max(.5, l.pixelRatio * sc));
     if (sun) sun.castShadow = options.shadows !== false && !!l?.shadows;
     shadowDirty(); // a new map size or shadow switch needs a fresh map
+  }
+  // Called by the quality scaler one step before it turns shadows off: compiles the shadowless variant of every
+  // program now, in the background where KHR_parallel_shader_compile exists, so that step swaps programs
+  // instead of compiling them mid-game. compile() reads the light state synchronously, so castShadow is only
+  // off for the duration of the call and no frame renders without shadows.
+  let shadowlessWarmed = false;
+  function warmShadowless() {
+    if (shadowlessWarmed || !sun?.castShadow || typeof renderer?.compileAsync !== 'function') return;
+    shadowlessWarmed = true; sun.castShadow = false;
+    try { renderer.compileAsync(scene, camera).catch(e => console.warn('shadowless warm-up failed', e)); }
+    catch (e) { console.warn('shadowless warm-up failed', e); }
+    finally { sun.castShadow = true; }
   }
   function applyOptions(next) {
     options = next; applyVolume();

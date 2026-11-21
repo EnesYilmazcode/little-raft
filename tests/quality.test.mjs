@@ -22,11 +22,11 @@ const run = (q, ms, totalMs) => { let n = 0; for (let t = 0; t < totalMs; t += m
 
 test('ladder per preset, clamped to dpr and cap', () => {
   assert.deepEqual(buildLevels('high', 2).map((l) => [l.pixelRatio, l.shadowMapSize]),
-    [[1.5, 1024], [1.15, 1024], [1, 1024], [1, 512], [0.85, 512], [0.85, 0]]);
+    [[1.5, 1024], [1.15, 1024], [1, 1024], [1, 512], [0.85, 512], [0.75, 512], [0.75, 0], [0.6, 0]]);
   assert.deepEqual(buildLevels('medium', 2)[0], { pixelRatio: 1.3, shadows: true, shadowMapSize: 1024 });
-  assert.deepEqual(buildLevels('low', 2).map((l) => [l.pixelRatio, l.shadows]), [[1, false], [0.85, false]]);
+  assert.deepEqual(buildLevels('low', 2).map((l) => [l.pixelRatio, l.shadows]), [[1, false], [0.85, false], [0.75, false], [0.6, false]]);
   const one = buildLevels('high', 1);
-  assert.deepEqual(one.map((l) => [l.pixelRatio, l.shadowMapSize]), [[1, 1024], [1, 512], [0.85, 512], [0.85, 0]]);
+  assert.deepEqual(one.map((l) => [l.pixelRatio, l.shadowMapSize]), [[1, 1024], [1, 512], [0.85, 512], [0.75, 512], [0.75, 0], [0.6, 0]]);
   for (const p of ['low', 'medium', 'high']) for (const l of buildLevels(p, 3)) assert.ok(l.pixelRatio <= { low: 1, medium: 1.3, high: 1.5 }[p]);
 });
 
@@ -53,10 +53,37 @@ test('single spike or ignored hitches do not step down', () => {
   run(q, 10, 3000);
   q.tick(240); // one big frame
   run(q, 10, 3000);
-  for (let i = 0; i < 40; i++) q.tick(1000); // >250 ms samples ignored
+  for (let r = 0; r < 20; r++) { for (let i = 0; i < C.OUTLIER_RUN - 1; i++) q.tick(i % 2 ? 900 : 5000); q.tick(10); } // bursts shorter than a run
+  for (let r = 0; r < 200; r++) { q.tick(5000); q.tick(10); q.tick(10); } // tab-switch sized frames between normal ones
   q.tick(NaN); q.tick(-5); q.tick(0);
   run(q, 10, 1000);
   assert.equal(q.level, 0);
+  assert.ok(q.ema < 11, `ema ${q.ema}`);
+});
+
+test('a machine where every frame is long still steps down', () => {
+  for (const ms of [300, 600, 1500, 4000]) {
+    const { q } = make();
+    run(q, ms, 3 * Math.max(2000, ms * (C.OUTLIER_RUN + 3)));
+    assert.ok(q.level >= 1, `${ms} ms frames: level ${q.level}`);
+  }
+  const { q } = make();
+  run(q, 10, 3000);
+  run(q, 120, 6000); // a sudden lasting slowdown (12x the EMA) is accepted after a run of outliers
+  assert.equal(q.level, 1);
+});
+
+test('asks for a shadowless warm-up one step before shadows go off', () => {
+  const warm = [];
+  const { q, sun } = make({ onPrewarm: (i) => warm.push(i) });
+  const levels = q.levels, off = levels.findIndex((l) => !l.shadows);
+  while (q.level < off - 1) q.tick(40);
+  assert.equal(warm.length, 1); assert.equal(warm[0].level, off - 1); assert.equal(warm[0].reason, 'prewarm');
+  assert.equal(sun.castShadow, true, 'still shadowed while warming');
+  while (q.level < off) q.tick(40);
+  assert.equal(sun.castShadow, false); assert.equal(warm.length, 1);
+  const low = make({ preset: 'low', onPrewarm: (i) => warm.push(i) });
+  run(low.q, 40, 30000); assert.equal(warm.length, 1, 'never without shadows to lose');
 });
 
 test('shadow map shrink disposes map; bottom level disables castShadow', () => {
@@ -65,9 +92,13 @@ test('shadow map shrink disposes map; bottom level disables castShadow', () => {
   assert.equal(q.level, 3); assert.equal(map.disposed, 1); assert.equal(sun.shadow.map, null);
   assert.equal(sun.shadow.mapSize.x, 512); assert.equal(renderer.pr, 1); assert.equal(sun.castShadow, true);
   run(q, 40, 2 * 5000);
-  assert.equal(q.level, 5); assert.equal(sun.castShadow, false); assert.equal(renderer.pr, 0.85);
+  assert.equal(q.level, 5); assert.equal(sun.castShadow, true); assert.equal(renderer.pr, 0.75);
+  run(q, 40, 5000);
+  assert.equal(q.level, 6); assert.equal(sun.castShadow, false); assert.equal(renderer.pr, 0.75);
+  run(q, 40, 5000);
+  assert.equal(q.level, 7); assert.equal(renderer.pr, 0.6);
   run(q, 40, 20000);
-  assert.equal(q.level, 5, 'stays at the floor');
+  assert.equal(q.level, 7, 'stays at the floor');
 });
 
 test('steps up with hysteresis (8 s below 17.5 ms)', () => {
@@ -83,7 +114,7 @@ test('respects the preset cap', () => {
   assert.equal(renderer.pr, 1); assert.equal(sun.castShadow, false);
   run(q, 10, 30000); assert.equal(q.level, 0); assert.equal(renderer.pr, 1);
   run(q, 40, 3000); assert.equal(q.level, 1); assert.equal(renderer.pr, 0.85);
-  run(q, 40, 20000); assert.equal(q.level, 1);
+  run(q, 40, 20000); assert.equal(q.level, 3); assert.equal(renderer.pr, 0.6); assert.equal(sun.castShadow, false);
   q.setCap('medium');
   assert.equal(q.level, 0); assert.equal(renderer.pr, 1.3); assert.equal(sun.castShadow, true);
   run(q, 10, 60000); assert.equal(renderer.pr, 1.3, 'never above medium cap');
@@ -122,5 +153,5 @@ test('reset() clears measurements and restarts cooldown; full reset restores top
   run(q, 30, 4900); assert.equal(q.level, 1, 'cooldown after reset');
   q.reset({ full: true });
   assert.equal(q.level, 0); assert.equal(renderer.pr, 1.5); assert.equal(q.upAfter, C.UP_AFTER_MS);
-  assert.match(q.describe(), /^high 1\/6: pr 1.5, shadows 1024/);
+  assert.match(q.describe(), /^high 1\/8: pr 1.5, shadows 1024/);
 });

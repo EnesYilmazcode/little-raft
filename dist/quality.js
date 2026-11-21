@@ -1,6 +1,8 @@
 // Little Raft adaptive quality. Pure ES module: nothing happens on import, no clock reads.
-// createQuality({renderer, sun, dpr, preset, onChange}) -> { tick(ms), setCap(preset), reset(opts), level, levels, describe() }
+// createQuality({renderer, sun, dpr, preset, onChange, onPrewarm}) -> { tick(ms), setCap(preset), reset(opts), level, levels, describe() }
 // Driven only by the frame times passed to tick(); time is the sum of accepted samples.
+// onPrewarm(info) fires on reaching the last level before the one that turns shadows off, so the caller can
+// compile the shadowless shader variants in the background (turning sun.castShadow off swaps every lit program).
 
 export const PRESETS = Object.freeze({
   low: Object.freeze({ pixelRatio: 1, shadows: false }),
@@ -10,7 +12,9 @@ export const PRESETS = Object.freeze({
 
 export const QUALITY_CONSTANTS = Object.freeze({
   ALPHA: 0.05,            // EMA weight of each new sample
-  MAX_SAMPLE_MS: 250,     // longer frames (tab switch, GC, load hitch) are ignored
+  HITCH_MS: 1000,         // frames longer than this (tab switch, load hitch)...
+  OUTLIER_X: 4,           // ...or this many times the EMA (GC, shader compile) are ignored...
+  OUTLIER_RUN: 8,         // ...unless this many come in a row: then the machine is that slow (counted as HITCH_MS at most)
   SLOW_MS: 20,            // EMA above this...
   DOWN_AFTER_MS: 2000,    // ...for this long steps quality down
   FAST_MS: 17.5,          // EMA below this...
@@ -31,7 +35,9 @@ const LADDER = [
   { pixelRatio: 1.0, shadows: true, shadowMapSize: C.SHADOW_FULL },
   { pixelRatio: 1.0, shadows: true, shadowMapSize: C.SHADOW_LOW },
   { pixelRatio: 0.85, shadows: true, shadowMapSize: C.SHADOW_LOW },
-  { pixelRatio: 0.85, shadows: false, shadowMapSize: C.SHADOW_LOW },
+  { pixelRatio: 0.75, shadows: true, shadowMapSize: C.SHADOW_LOW },
+  { pixelRatio: 0.75, shadows: false, shadowMapSize: C.SHADOW_LOW },
+  { pixelRatio: 0.6, shadows: false, shadowMapSize: C.SHADOW_LOW },
 ];
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -53,11 +59,11 @@ export function buildLevels(preset = 'medium', dpr = 1) {
   return Object.freeze(out);
 }
 
-export function createQuality({ renderer, sun, dpr = globalThis.devicePixelRatio ?? 1, preset = 'medium', onChange } = {}) {
+export function createQuality({ renderer, sun, dpr = globalThis.devicePixelRatio ?? 1, preset = 'medium', onChange, onPrewarm } = {}) {
   let cap = PRESETS[preset] ? preset : 'medium';
   let levels = buildLevels(cap, dpr);
   let level = 0;
-  let ema = null, time = 0, slowFor = 0, fastFor = 0;
+  let ema = null, time = 0, slowFor = 0, fastFor = 0, outliers = 0;
   let lastChangeAt = -Infinity, lastUpAt = -Infinity;
   let upAfter = C.UP_AFTER_MS;
 
@@ -84,6 +90,8 @@ export function createQuality({ renderer, sun, dpr = globalThis.devicePixelRatio
       }
     }
     if (notify) onChange?.(info(reason));
+    const next = levels[level + 1];
+    if (notify && l.shadows && next && !next.shadows) onPrewarm?.(info('prewarm'));
   }
 
   function changeTo(next, reason) {
@@ -94,8 +102,12 @@ export function createQuality({ renderer, sun, dpr = globalThis.devicePixelRatio
   }
 
   function tick(rawMs) {
-    const ms = Number(rawMs);
-    if (!Number.isFinite(ms) || ms <= 0 || ms > C.MAX_SAMPLE_MS) return false;
+    let ms = Number(rawMs);
+    if (!Number.isFinite(ms) || ms <= 0) return false;
+    if (ms > C.HITCH_MS || (ema != null && ms > C.OUTLIER_X * ema)) {
+      if (++outliers < C.OUTLIER_RUN) return false;
+      ms = Math.min(ms, C.HITCH_MS);
+    } else outliers = 0;
     time += ms;
     ema = ema == null ? ms : ema + C.ALPHA * (ms - ema);
     slowFor = ema > C.SLOW_MS ? slowFor + ms : 0;
@@ -117,7 +129,7 @@ export function createQuality({ renderer, sun, dpr = globalThis.devicePixelRatio
 
   /** Clear measurements (use on resume / tab return). {full:true} also restores the top level and base up-wait. */
   function reset({ full = false } = {}) {
-    ema = null; slowFor = 0; fastFor = 0;
+    ema = null; slowFor = 0; fastFor = 0; outliers = 0;
     lastChangeAt = time; // restart cooldown so the first post-pause frames can't trigger a change
     if (full) {
       upAfter = C.UP_AFTER_MS; lastUpAt = -Infinity;
@@ -130,7 +142,7 @@ export function createQuality({ renderer, sun, dpr = globalThis.devicePixelRatio
     cap = PRESETS[next] ? next : 'medium';
     levels = buildLevels(cap, dpr);
     level = 0;
-    ema = null; slowFor = 0; fastFor = 0;
+    ema = null; slowFor = 0; fastFor = 0; outliers = 0;
     lastChangeAt = time; lastUpAt = -Infinity;
     upAfter = C.UP_AFTER_MS;
     apply('cap');
