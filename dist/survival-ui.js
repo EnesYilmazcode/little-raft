@@ -119,7 +119,7 @@ function recipeList() {
 }
 
 // ---- styles ----
-const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
+const FONT = "var(--ui-font,'Segoe UI',system-ui,sans-serif)";
 const CSS = `
 .tools.sv-hotbar{--s:58px;--g:6px;--px:0px;--py:0px;position:relative;display:flex;flex-wrap:nowrap;gap:var(--g);padding:0;border:0;border-radius:0;max-width:96vw;overflow:visible;background:none;box-shadow:none}
 .tools.sv-hotbar::before,.tools.sv-hotbar::after{content:none;display:none}
