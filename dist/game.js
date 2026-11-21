@@ -3,7 +3,7 @@ import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
 import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
-import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
+import { HookCast, WATER_Y, catchLoot, holdForFullBag, throwOrigin } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-survival-ae77fa84ac2b';
 import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
@@ -219,7 +219,7 @@ export function mount(transfer = null) {
   let hookSlot = isInt(X?.hookSlot) ? X.hookSlot : -1;
   let fishWait = Number.isFinite(X?.fishWait) ? X.fishWait : 0;
   let sound = X ? X.sound !== false : loadSoundPref(window.localStorage), audio = X?.audio ?? null, oceanAudio = null, swimClock = 0;
-  let charging = X?.charging && Number.isFinite(X.charging.start) ? {...X.charging} : null, reeling = !!X?.reeling && !!hook;
+  let charging = X?.charging && Number.isFinite(X.charging.start) ? {...X.charging} : null, reeling = !!X?.reeling && !!hook, hookFull = false; // hookFull: the catch will not fit, so the reel stops short
   let lastCaughtCount = isInt(X?.lastCaughtCount) ? X.lastCaughtCount : (hook?.caughtItems?.length ?? (hook?.caught ? 1 : 0));
   const pending = new Map(X?.pending instanceof Map ? X.pending : []); // item token -> expiry; hides supplies we reeled in while the host confirms
   const guestHeld = createGuestHeld(); // host only: tokens on the guest's hook, from its move messages
@@ -417,6 +417,7 @@ export function mount(transfer = null) {
       else if (farmPlot(frameAim)) { const t = Farm.promptFor(farmPlot(frameAim).farm, heldKind()); html = t.startsWith('E  ') ? '<kbd>E</kbd>' + esc(t.slice(3)) : esc(t); } // farming
       else if (hover || removeTarget) html = placePrompt(hover, heldKind(), {remove:removeTarget ? (removeTarget.what === 'floor' ? 'floor' : ITEM_INFO[removeTarget.type]?.name ?? removeTarget.type) : '', name:ITEM_INFO[heldKind()]?.name ?? heldKind(), cost:Object.entries(FLOOR_COST).map(([k, n]) => `${n} ${itemName(k)}`).join(', '), missing:heldKind() === 'hammer' ? missingText(localBag(), FLOOR_COST) : ''}); // what a click does, or why it can't
       else if (hook?.fishing) html = esc(castPrompt(hook, fishWait));
+      else if (hookFull && castOut()) html = 'Bag full: free a slot to reel it in';
       else if (castOut() && castOut().stage === 'floating') html = caughtList(castOut()).length ? 'Hold click to reel it in' : 'Hold click to reel';
     }
     if (html === contextCache) return; contextCache = html;
@@ -691,7 +692,7 @@ export function mount(transfer = null) {
       emit({kind:'build', text:`Removed ${name}`, loot:refund}, actor); if (actor === 'guest') emit({kind:'build'}, 'host');
       return;
     }
-    if (a.kind === 'farm') { const r = Farm.applyFarmAction(world, bag, a); if (r.text) emit(r.items ? {kind:r.effect, text:r.text, items:r.items} : {kind:r.effect, text:r.text}, actor); if (r.changed) farmSeen = null; return; } // farming
+    if (a.kind === 'farm') { const r = Farm.applyFarmAction(world, bag, a); const e = Farm.farmEffect(r); if (e) emit(e, actor); if (r.changed) farmSeen = null; return; } // farming
     if (a.kind === 'fish') {
       if (bag.count('fishingrod') < 1) return;
       if (bag.add('fish', 1) > 0) { emit({kind:'full', text:'Bag full: the fish swam away'}, actor); return; }
@@ -761,7 +762,8 @@ export function mount(transfer = null) {
   const farmNotify = text => notice(text); // farming hints: one hook for the notification feed
   function farmUse(aim, interacting) {
     const kind = selectedKind(), d = farmPlot(aim);
-    if (d) { const op = Farm.plotAction(d.farm, kind, interacting); if (op) { swing = .6; action({kind:'farm', op, x:d.x, z:d.z}); return true; } if (!interacting && (kind === 'seed' || kind === 'water')) { farmNotify(Farm.promptFor(d.farm, kind)); return true; } }
+    if (d) { const op = Farm.plotAction(d.farm, kind, interacting); if (op) { swing = .6; action({kind:'farm', op, x:d.x, z:d.z}); return true; } if (!interacting && (kind === 'seed' || kind === 'water')) { farmNotify(Farm.useNote(d.farm, kind)); return true; } }
+    else if (!interacting && (kind === 'seed' || kind === 'water')) { farmNotify(Farm.useNote(null, kind)); return true; }
     if (interacting || kind !== 'cup') return false;
     const p = aim?.point; if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2)) || Math.hypot(p.x - physics.x, p.z - physics.z) > 6) { farmNotify('Point at the sea next to the raft to fill the cup'); return true; }
     swing = .6; action({kind:'farm', op:'fill'}); return true;
@@ -784,7 +786,7 @@ export function mount(transfer = null) {
     const durability = clamp(slot.durability ?? MAX_HEALTH, 0, MAX_HEALTH), maxRange = 16 + durability * .16;
     const direction = aim?.dir ?? camera.getWorldDirection(new T.Vector3());
     const deckAt = (x, z) => (hasTile(Math.round(x / 2), Math.round(z / 2)) ? deckY() : null); // stop on the planks
-    hook = new HookCast(T, {origin:handPos.clone(), direction, maxRange, charge, deckAt});
+    hook = new HookCast(T, {origin:throwOrigin(handPos, new T.Vector3()), direction, maxRange, charge, deckAt});
     castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; sfx('throw', .4 + .6 * charge); hintDone('throw');
     if (durability <= 0) notice('Worn hook: shorter throws. R to repair');
   }
@@ -953,7 +955,7 @@ export function mount(transfer = null) {
       m.rotation.set(-s.z * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.x * 1.2 + Math.sin(elapsed + it.phase) * .05);
     }
   }
-  function endHook() { hook = null; lastCaughtCount = 0; reeling = false; rope.visible = false; hookMesh.visible = false; if (bobber) bobber.visible = false; }
+  function endHook() { hook = null; lastCaughtCount = 0; reeling = false; hookFull = false; rope.visible = false; hookMesh.visible = false; if (bobber) bobber.visible = false; }
   // A click or slot change while the rod line is out reels it in: a fish only if it is biting on a click.
   function reelCast(source) {
     const r = castInput(hook, fishWait, source); if (r === 'none') return false;
@@ -971,8 +973,9 @@ export function mount(transfer = null) {
       if (f >= 1) { if (selectedKind() === 'fishingrod') action({kind:'fish'}); fishWait = 0; endHook(); }
       return;
     }
+    hookFull = holdForFullBag(hook, c => lootFits(localBag(), catchLoot(c, LOOT))); // full bag: keep the catch on the hook in the water
     // Each side skips the other's catch, but never lets go of what its own hook already holds.
-    const ev = hook.update(dt, {hand:handPos, items:hookableItems(world.items, {isPending, otherHeld:otherHeldTokens(), ownHeld:ownHeldTokens()}), reeling, time:elapsed});
+    const ev = hook.update(dt, {hand:handPos, items:hookableItems(world.items, {isPending, otherHeld:otherHeldTokens(), ownHeld:ownHeldTokens()}), reeling:reeling && !hookFull, time:elapsed});
     const hp = hook.position, pos = new T.Vector3(hp.x, surfaceY(hp.x, hp.z, hp.y), hp.z);
     hookMesh.visible = true; hookMesh.position.copy(pos); bobber.visible = false;
     if (hook.stage === 'flying') hookMesh.rotation.set(-hook.flightT * Math.PI * 2, yaw, 0);
