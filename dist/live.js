@@ -2,6 +2,8 @@
 // Load as: <script type="module" src="live.js"></script> (needs import.meta.url).
 // Contract: game.js exports mount(transfer|null) -> { capture(), dispose(), pause?(), resume?() }.
 
+import { buildFromUrl, liveDecision } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
+
 const BASE = import.meta.url;
 const POLL_MS = 6000;
 const MAX_BACKOFF_MS = 60000;
@@ -114,6 +116,10 @@ function validEngine(e) {
   return e && typeof e.capture === 'function' && typeof e.dispose === 'function';
 }
 
+function engineProtocol(mod) {
+  return mod && Number.isFinite(mod.PROTOCOL) ? mod.PROTOCOL : null;
+}
+
 async function importGame(build, retry) {
   const mod = await import(moduleUrl(build, retry));
   if (!mod || typeof mod.mount !== 'function') throw new Error('game.js does not export mount()');
@@ -185,8 +191,10 @@ async function boot() {
     const engine = mod.mount(null);
     if (!validEngine(engine)) throw new Error('mount() did not return { capture, dispose }');
     state.engine = engine;
-    state.build = build || 'unversioned';
-    state.protocol = manifest ? manifest.protocol : null;
+    // Know what is running without trusting a later manifest: the build stamped into the game.js URL
+    // and the protocol the engine itself exports. Unknown stays null (never hot-swapped across).
+    state.build = build || buildFromUrl(moduleUrl(null));
+    state.protocol = engineProtocol(mod) ?? (manifest ? manifest.protocol : null);
     state.lastError = null;
   } catch (e) {
     state.retryCount++;
@@ -211,10 +219,9 @@ async function check() {
   }
   state.pollDelay = POLL_MS;
 
-  if (manifest.build === state.build) return { status: 'current', build: state.build };
-
-  if (state.protocol == null && state.engine) state.protocol = manifest.protocol; // unversioned boot
-  if (state.engine && manifest.protocol !== state.protocol) {
+  const decision = liveDecision({ build: state.build, protocol: state.protocol }, manifest, !!state.engine);
+  if (decision === 'current') return { status: 'current', build: state.build };
+  if (decision === 'next-session') {
     if (state.nextSessionBuild !== manifest.build) {
       state.nextSessionBuild = manifest.build;
       showStatus('An update is ready for your next session', 9000);
@@ -256,7 +263,7 @@ async function swap(manifest) {
     css.commit();
     state.engine = next;
     state.build = manifest.build;
-    if (state.protocol == null) state.protocol = manifest.protocol;
+    if (!old) state.protocol = engineProtocol(mod) ?? manifest.protocol; // recovering from a failed boot
     state.failedBuild = null;
     state.lastError = null;
     if (old) {
@@ -310,7 +317,7 @@ window.addEventListener('pageshow', (ev) => {
 // ---------- QA API ----------
 const api = {};
 Object.defineProperties(api, {
-  build: { get: () => state.build, enumerable: true },
+  build: { get: () => state.build || 'unversioned', enumerable: true },
   protocol: { get: () => state.protocol, enumerable: true },
   updating: { get: () => state.updating, enumerable: true },
   lastError: { get: () => state.lastError, enumerable: true },

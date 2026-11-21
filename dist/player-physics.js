@@ -28,6 +28,8 @@ export const PLAYER_CONSTANTS = Object.freeze({
   CLAMBER_REACH: 0.8,        // body edge distance to a tile
   CLAMBER_TIME: 0.42,
   CLAMBER_INSET: 0.45,
+  // A jump press this long before landing still jumps on landing (s).
+  JUMP_BUFFER: 0.12,
   // Horizontal response rates (1/s)
   GROUND_ACCEL: 14,
   AIR_ACCEL: 3.5,
@@ -53,6 +55,7 @@ export class PlayerPhysics {
     this.climbing = false;
     this._climb = null;
     this._prevJump = false;
+    this._jumpBuffer = 0;
     // First update decides grounded: if standing exactly at deck height over a tile we snap to it.
     this._fresh = true;
   }
@@ -86,6 +89,7 @@ export class PlayerPhysics {
     const waterY = fin(inp.waterY, -0.24);
     const jumpPressed = jump && !this._prevJump;
     this._prevJump = jump;
+    this._jumpBuffer = jumpPressed ? C.JUMP_BUFFER : Math.max(0, this._jumpBuffer - dt);
 
     this._sanitize(tiles, deckY);
 
@@ -139,7 +143,7 @@ export class PlayerPhysics {
     if (this.grounded) {
       if (this._supported(tiles, this.x, this.z)) {
         this.y = deckY + C.EYE_OFFSET; this.vy = 0;
-        if (jumpPressed) { this.vy = C.JUMP_IMPULSE; this.grounded = false; }
+        if (this._jumpBuffer > 0) { this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE; this.grounded = false; }
       } else {
         this.grounded = false; // walked off the edge
         if (this.vy > 0) this.vy = 0;
@@ -163,6 +167,7 @@ export class PlayerPhysics {
       if (this.vy <= 0 && prevFeet >= deckY - 0.02 && feet <= deckY && this._supported(tiles, this.x, this.z)) {
         this.y = deckY + C.EYE_OFFSET; this.vy = 0; this.grounded = true; out.landed = true;
         if (this.swimming) { this.swimming = false; out.leftWater = true; }
+        if (this._jumpBuffer > 0) { this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE; this.grounded = false; } // buffered jump
       } else if (!this.swimming && feet < waterY + C.WATER_ENTER) {
         this.swimming = true; out.splashed = true;
         this.vy *= C.SPLASH_DAMP;
@@ -302,9 +307,18 @@ export class PlayerPhysics {
     let dx = n.px - this.x, dz = n.pz - this.z, d = Math.hypot(dx, dz);
     if (d < 1e-6) { dx = n.cx - this.x; dz = n.cz - this.z; d = Math.hypot(dx, dz) || 1; }
     const lim = HALF - 0.3;
-    let tx = clamp(n.px + dx / d * C.CLAMBER_INSET, n.cx - lim, n.cx + lim);
-    let tz = clamp(n.pz + dz / d * C.CLAMBER_INSET, n.cz - lim, n.cz + lim);
-    if (!this._propFree(tx, tz, blocked)) { tx = n.cx; tz = n.cz; }
+    const ex = clamp(n.px + dx / d * C.CLAMBER_INSET, n.cx - lim, n.cx + lim);
+    const ez = clamp(n.pz + dz / d * C.CLAMBER_INSET, n.cz - lim, n.cz + lim);
+    // Props sit at tile centres, so never fall back to the centre. Try the edge spot, then that spot
+    // slid along the edge, then the tile corners (nearest to the swimmer first).
+    const near = (a, b) => Math.hypot(a[0] - this.x, a[1] - this.z) - Math.hypot(b[0] - this.x, b[1] - this.z);
+    const side = Math.abs(dx) >= Math.abs(dz)
+      ? [[ex, n.cz - lim], [ex, n.cz + lim]]
+      : [[n.cx - lim, ez], [n.cx + lim, ez]];
+    const corners = [[n.cx - lim, n.cz - lim], [n.cx + lim, n.cz - lim], [n.cx - lim, n.cz + lim], [n.cx + lim, n.cz + lim]];
+    const spot = [[ex, ez], ...side.sort(near), ...corners.sort(near)].find(([x, z]) => this._propFree(x, z, blocked));
+    if (!spot) return; // fully blocked tile: keep swimming
+    const [tx, tz] = spot;
     this._climb = {t: 0, sx: this.x, sy: this.y, sz: this.z, tx, tz};
     this.climbing = true;
     this.vx = this.vz = 0; this.vy = 0;
