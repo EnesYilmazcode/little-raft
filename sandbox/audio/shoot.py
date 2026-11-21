@@ -52,7 +52,7 @@ with sync_playwright() as p:
         report['cases'][name] = {
             'seconds': r['seconds'], 'render_ms': round(r['ms'], 1), 'ms_per_audio_s': round(r['msPerSec'], 2),
             'setup_ms': round(r['setupMs'], 1), 'engine': r['engine'],
-            'peak_dbfs': s['peakDb'], 'rms_dbfs': s['rmsDb'], 'LR_peak': s['LR'], 'corr': s['corr'],
+            'peak_dbfs': s['peakDb'], 'rms_dbfs': s['rmsDb'], 'loud_max': s.get('loudMax'), 'LR_peak': s['LR'], 'corr': s['corr'],
             'dc': [c['dc'] for c in s['chans']], 'clipped': sum(c['clipped'] for c in s['chans']),
             'onset_ms': s['chans'][0]['onsetMs'], 'decay60_ms': s['chans'][0]['decay60Ms'], 'tail_db': s['chans'][0]['tailDb'],
             'warn': s['warn'],

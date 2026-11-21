@@ -25,8 +25,8 @@ export const CASES = {
   catch: one('catch', 1, 1.2),
   hammer: one('hammer', 1, 0.6),
   'hammer-left': { seconds: 0.6, run: (e) => { e.setListener(0, 1.6, 0, 0, 0, -1); e.play('hammer', 1, { at: 0.05, x: -6, y: 1, z: 0 }); } },
-  'gull-far': { seconds: 2.2, run: (e) => { e.setListener(0, 1.6, 0, 0, 0, -1); e.play('gull', 0.8, { at: 0.05, x: 18, y: 12, z: -20 }); } },
-  gull: one('gull', 1, 2.2),
+  'gull-far': { seconds: 4, run: (e) => { e.setListener(0, 1.6, 0, 0, 0, -1); e.play('gull', 0.8, { at: 0.05, x: 18, y: 12, z: -20 }); } },
+  gull: one('gull', 1, 4),
   pickup: one('pickup', 1, 0.5),
   collect: one('collect', 1, 0.5),
   build: one('build', 1, 0.6),
@@ -45,6 +45,13 @@ export const CASES = {
   'ambience-creaky': { seconds: 12, ambience: true, run: (e) => e.setOcean({ swell: 0.7, wind: 0, speed: 1, creak: 1 }) },
   // ducking check: sfx bus muted, so only the ambience dip from play('catch') at 4 s is heard
   'duck-only': { seconds: 7, ambience: true, windows: [[3.5, 3.95], [4.05, 4.3], [5.0, 5.45]], run: (e) => { e.setOcean({ swell: 0, wind: 0, creak: 0 }); e.setBus('sfx', 0); e.play('catch', 1, { at: 4 }); } },
+  // creak audibility in a calm sea: random creaks off, one forced creak at 5 s; band RMS 500-1500 Hz before vs during
+  'creak-calm': {
+    seconds: 8, ambience: true, windows: [[3.6, 4.9, 500, 1500], [5.0, 6.2, 500, 1500]],
+    run: (e, ctx) => { e.setOcean({ swell: 0.3, wind: 0.15, speed: 0.1, creak: 0 }); ctx.suspend(5.0).then(() => { e.creak(0.6); ctx.resume(); }); },
+  },
+  'ambience-mid': { seconds: 16, ambience: true, run: (e) => e.setOcean({ swell: 0.5, wind: 0.3, speed: 0.2, creak: 0.5 }) },
+  'gull-left': { seconds: 4, run: (e) => { e.setListener(0, 1.6, 0, 0, 0, -1); e.play('gull', 1, { at: 0.05, x: -12, y: 8, z: -3 }); } },
   'ambience-fallback': { seconds: 12, ambience: true, worklet: false, run: (e) => e.setOcean({ swell: 0.5, wind: 0.4 }) },
   'mix-ducking': {
     seconds: 8, ambience: true,
@@ -78,7 +85,7 @@ async function renderOnce(name, sampleRate) {
   if (!c) throw new Error('unknown case ' + name);
   const len = Math.ceil(c.seconds * sampleRate);
   const ctx = new OfflineAudioContext({ numberOfChannels: 2, length: len, sampleRate });
-  const e = createOceanAudio({ context: ctx, volume: 1, ambience: !!c.ambience, worklet: c.worklet !== false, gulls: false });
+  const e = createOceanAudio({ context: ctx, volume: 1, ambience: !!c.ambience, worklet: c.worklet !== false, gulls: false, seed: 1234 });
   const tr0 = performance.now();
   await e.resume();
   const setupMs = performance.now() - tr0;
@@ -99,6 +106,32 @@ async function renderOnce(name, sampleRate) {
 }
 
 const db = (x) => (x > 0 ? 20 * Math.log10(x) : -Infinity);
+
+// direct-form-1 biquad over a Float32Array (analysis only)
+function biquad(x, [b0, b1, b2, a1, a2]) {
+  const y = new Float32Array(x.length);
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let i = 0; i < x.length; i++) { const v = b0 * x[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = x[i]; y2 = y1; y1 = v; y[i] = v; }
+  return y;
+}
+function bandpassCoef(lo, hi, sr) {          // RBJ constant-0-dB-peak band-pass
+  const f = Math.sqrt(lo * hi), q = f / (hi - lo), w = (2 * Math.PI * f) / sr, al = Math.sin(w) / (2 * q), a0 = 1 + al;
+  return [al / a0, 0, -al / a0, (-2 * Math.cos(w)) / a0, (1 - al) / a0];
+}
+// ITU-R BS.1770 K-weighting at 48 kHz; momentary loudness = max over 400 ms windows (100 ms hop), LUFS-like
+const K1 = [1.53512485958697, -2.69169618940638, 1.19839281085285, -1.69065929318241, 0.73248077421585];
+const K2 = [1, -2, 1, -1.99004745483398, 0.99007225036621];
+function momentaryMax(buf) {
+  const sr = buf.sampleRate, n = buf.length, w = Math.floor(sr * 0.4), hop = Math.floor(sr * 0.1);
+  const ks = []; for (let c = 0; c < buf.numberOfChannels; c++) ks.push(biquad(biquad(buf.getChannelData(c), K1), K2));
+  let best = 0;
+  for (let i = 0; i < Math.max(1, n - w + 1); i += hop) {
+    let sum = 0; const e = Math.min(n, i + w);
+    for (const k of ks) { let q = 0; for (let j = i; j < e; j++) q += k[j] * k[j]; sum += q / w; }
+    if (sum > best) best = sum;
+  }
+  return best > 0 ? -0.691 + 10 * Math.log10(best) : -Infinity;
+}
 const r1 = (x) => (Number.isFinite(x) ? Math.round(x * 10) / 10 : x);
 
 export function analyse(buf, oneShot, windows = null) {
@@ -138,12 +171,16 @@ export function analyse(buf, oneShot, windows = null) {
   if (chans.some((c) => Math.abs(c.dc) > 1e-3)) warn.push('DC offset');
   if (oneShot && chans.some((c) => c.tailDb > -40)) warn.push('tail not decayed (truncated?)');
   if (rmsDb < -60) warn.push('nearly silent');
-  const win = windows && windows.map(([a, b]) => {
-    const d = buf.getChannelData(0), i0 = Math.floor(a * sr), i1 = Math.min(n, Math.floor(b * sr));
+  // windows: [from, to] full-band RMS of L, or [from, to, loHz, hiHz] band RMS of (L+R)/2
+  const mono = new Float32Array(n); { const a = buf.getChannelData(0), b = buf.getChannelData(buf.numberOfChannels > 1 ? 1 : 0); for (let i = 0; i < n; i++) mono[i] = (a[i] + b[i]) * 0.5; }
+  const bands = {};
+  const win = windows && windows.map(([a, b, lo, hi]) => {
+    const d = lo ? (bands[lo + '-' + hi] ||= biquad(mono, bandpassCoef(lo, hi, sr))) : buf.getChannelData(0);
+    const i0 = Math.floor(a * sr), i1 = Math.min(n, Math.floor(b * sr));
     let q = 0; for (let i = i0; i < i1; i++) q += d[i] * d[i];
-    return { from: a, to: b, rmsDb: r1(db(Math.sqrt(q / Math.max(1, i1 - i0)))) };
+    return { from: a, to: b, ...(lo ? { band: [lo, hi] } : {}), rmsDb: r1(db(Math.sqrt(q / Math.max(1, i1 - i0)))) };
   });
-  return { peakDb, rmsDb, windows: win, LR: chans.map((c) => c.peakDb), corr, chans, warn };
+  return { peakDb, rmsDb, loudMax: r1(momentaryMax(buf)), windows: win, LR: chans.map((c) => c.peakDb), corr, chans, warn };
 }
 
 // ---- drawing -----------------------------------------------------------------
