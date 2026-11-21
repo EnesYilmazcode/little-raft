@@ -23,9 +23,10 @@ export const SHARK = Object.freeze({
   HUNT_RANGE: 25, HUNT_LOSE: 32, PLAYER_BITE: 30, LUNGE_EVERY: 3.5, LUNGE_RANGE: 1.9,
   RESPAWN: 180, RING_MARGIN: 6, FLEE_TIME: 6, BITE_OFF: 1.75, APPROACH_OFF: 4.5,
   HARVEST_REACH: 4, BODY_R: 0.62,
+  LURE_R: 2.4, LURE_BITE_EVERY: 3, LURE_DASH: 0.9, // [bait] circles a floating Shark Bait (dist/bait.js) at LURE_R, darting in to bite
 });
 export const SHARK_LOOT = Object.freeze({ sharkmeat: 4, sharkhead: 1 });
-export const SHARK_STATES = Object.freeze(['circle', 'approach', 'bite', 'flee', 'hunt', 'dead']);
+export const SHARK_STATES = Object.freeze(['circle', 'approach', 'bite', 'flee', 'hunt', 'dead', 'lure']); // [bait] lure: busy with a Shark Bait
 const TAU = Math.PI * 2, N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const fin = v => typeof v === 'number' && Number.isFinite(v);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -197,6 +198,30 @@ function overRaft(tiles, x, z, pad) {
 }
 const NOOP = {};
 
+// [bait] A floating Shark Bait (env.lure = {active, x, z}) wins over everything: any raft attack in progress is
+// dropped, swimmers are ignored, and the shark circles the bait, darting in to bite it every LURE_BITE_EVERY s.
+// When the bait is gone the shark goes back to circling the raft with a full ATTACK_EVERY timer.
+function lureStep(s, dt, lure, hooks, tiles) {
+  if (s.state !== 'lure') {
+    s.hasTarget = false; s.attackDmg = 0; s.warned = false; s.prey = -1; s.leg = 0;
+    setState(s, 'lure'); s.biteClock = SHARK.LURE_BITE_EVERY;
+  }
+  const dx = s.x - lure.x, dz = s.z - lure.z, d = Math.hypot(dx, dz), R = SHARK.LURE_R;
+  s.biteClock -= dt;
+  if (s.biteClock <= 0 && d < R + 1.5) { // dart in and snap at it
+    if (steer(s, lure.x, lure.z, SHARK.ATTACK_SPEED, dt) < 0.9 || s.biteClock < -SHARK.LURE_DASH * 2) {
+      s.biteClock = SHARK.LURE_BITE_EVERY; s.anim = 1; if (hooks.lureBite) hooks.lureBite(lure.x, lure.z);
+    }
+  } else if (d > R + 4) steer(s, lure.x, lure.z, SHARK.ATTACK_SPEED, dt); // on its way to the bait
+  else {
+    const a = Math.atan2(dz, dx) + s.dir * 0.6;
+    steer(s, lure.x + Math.cos(a) * R, lure.z + Math.sin(a) * R, SHARK.SPEED, dt);
+  }
+  s.under = overRaft(tiles, s.x, s.z, 0.4);
+  return s;
+}
+export const lured = s => s.state === 'lure';
+
 // Advances the shark by dt. world: {tiles, tileHp, tileArmor, decor, pieces...} (mutated by bites).
 // env: {preys: [{x, z, swimming}], ringR?: number, rnd?: fn, hooks?: {bite(x, z, hp), broke(x, z), hurt(i, n), warn(x, z), respawn()}}
 export function step(s, dt, world, env = NOOP) {
@@ -230,6 +255,9 @@ export function step(s, dt, world, env = NOOP) {
     if (d > 0.05) { const k = Math.min(1, Math.min(2, 0.5 + 0.25 * d) * dt / d); s.x += dx * k; s.z += dz * k; } // drifts in faster from afar
     return s;
   }
+  const lure = env.lure; // [bait]
+  if (lure && lure.active && fin(lure.x) && fin(lure.z)) return lureStep(s, dt, lure, hooks, tiles);
+  if (s.state === 'lure') { s.timer = SHARK.ATTACK_EVERY; s.dir = rnd() < 0.5 ? -1 : 1; setState(s, 'circle'); } // [bait] bait used up: a full interval before the next raft attack
   // a swimmer nearby is more interesting than planks (not while fleeing)
   if (s.state !== 'flee' && s.state !== 'hunt') {
     const p = nearestPrey(s, env, SHARK.HUNT_RANGE);
@@ -313,7 +341,7 @@ export function spearHits(ox, oy, oz, dx, dy, dz, reach, x, y, z, heading) {
 }
 
 // Compact pose for co-op: [x, z, heading, stateCode, depth, anim, hp]
-export const STATE_CODE = Object.freeze({ circle: 0, approach: 1, bite: 2, flee: 3, hunt: 4, dead: 5, gone: 6 });
+export const STATE_CODE = Object.freeze({ circle: 0, approach: 1, bite: 2, flee: 3, hunt: 4, dead: 5, gone: 6, lure: 4 }); // [bait] lure shows as hunt (bite wiggle) on guests
 
 // ------------------------------------------------------------------ view
 
@@ -322,7 +350,9 @@ export const STATE_CODE = Object.freeze({ circle: 0, approach: 1, bite: 2, flee:
 export function createShark(T, host, saved = null) {
   let sim = createSharkState(saved);
   const preys = [{ x: 0, z: 0, swimming: false }, { x: 0, z: 0, swimming: false }];
-  const env = { preys, ringR: 0, rnd: Math.random, hooks: {
+  const lure = { active: false, x: 0, z: 0 }; // [bait] written by dist/bait.js on the host before update()
+  const env = { preys, lure, ringR: 0, rnd: Math.random, hooks: {
+    lureBite: (x, z) => mod.fx('lure', x, z), // [bait] a splash at the bait
     bite: (x, z, hp) => host.onBite && host.onBite(x, z, hp),
     broke: (x, z) => host.onBroke && host.onBroke(x, z),
     hurt: (i, n) => host.onHurt && host.onHurt(i, n),
@@ -332,6 +362,7 @@ export function createShark(T, host, saved = null) {
   const view = { x: sim.x, z: sim.z, heading: sim.heading, depth: -0.55, roll: 0, pitch: 0, code: STATE_CODE[sim.state], anim: 0, hp: sim.hp, visible: false, swim: 0 };
   const net = { x: 0, z: 0, heading: 0, code: 0, depth: -0.55, anim: 0, hp: SHARK.HP, have: false };
   const pose = [0, 0, 0, 0, 0, 0, 0];
+  const netTail = [0, 0, 0, 0]; let netTailHave = false, netExtra = null; // [bait] extra 4 numbers riding on the pose (bait.js)
   let extTiles = null, extLen = -1, ext = 0, overlayKey = 0, ovTilesRef = null, bitePulse = 0, biteX = 0, biteZ = 0;
 
   const group = new T.Group(); group.name = 'shark';
@@ -453,16 +484,21 @@ export function createShark(T, host, saved = null) {
       const v = view;
       pose[0] = Math.round(v.x * 100) / 100; pose[1] = Math.round(v.z * 100) / 100; pose[2] = Math.round(v.heading * 100) / 100;
       pose[3] = v.code; pose[4] = Math.round(v.depth * 100) / 100; pose[5] = Math.round(v.anim * 10) / 10; pose[6] = Math.round(v.hp);
+      pose.length = netExtra ? 11 : 7; if (netExtra) for (let i = 0; i < 4; i++) pose[7 + i] = netExtra[i]; // [bait] older guests read only the first 7
       return pose;
     },
     applyNet(p) {
       if (!Array.isArray(p) || p.length < 7 || !p.every(fin)) return;
       net.x = clamp(p[0], -200, 200); net.z = clamp(p[1], -200, 200); net.heading = p[2]; net.code = clamp(p[3] | 0, 0, 6);
       net.depth = clamp(p[4], -3, 0.5); net.anim = clamp(p[5], 0, 1); net.hp = clamp(p[6], 0, SHARK.HP);
+      netTailHave = p.length >= 11; if (netTailHave) for (let i = 0; i < 4; i++) netTail[i] = p[7 + i]; // [bait]
       if (!net.have) { view.x = net.x; view.z = net.z; view.heading = net.heading; view.depth = net.depth; }
       net.have = true;
     },
-    clearNet() { net.have = false; },
+    clearNet() { net.have = false; netTailHave = false; },
+    get lure() { return lure; }, // [bait] host: {active, x, z} the sim chases
+    setNetExtra(a) { netExtra = Array.isArray(a) && a.length >= 4 ? a : null; }, // [bait] host: 4 numbers appended to net()
+    get netTail() { return netTailHave ? netTail : null; }, // [bait] guest: the 4 numbers from the last host pose
     get view() { return view; },
     dispose() {
       group.removeFromParent(); deck.removeFromParent();
