@@ -1,7 +1,7 @@
 // Little Raft progression integration: the ONE object game.js talks to (attachProgression(ctx)).
 // Owns per-actor Progression (host + guest), cooking stations (StationModel per placed smelter/grill,
 // keyed "x,z"), the research dialog, the station panel, item tooltips, the binoculars HUD and
-// persistence in localStorage 'littleRaft.progression.v1'.
+// persistence under 'littleRaft.progression.v1' (in game.js: the 'prog' part of the world save, via ctx.storage).
 //
 // Authority: the host (or solo player) runs everything. A guest's progression and the station
 // contents live on the host (saved in the host's progression slot 'guest', like guestBag); the
@@ -37,28 +37,36 @@ const LEGACY_RECIPES = ['rope', 'hook', 'hammer', 'fishingrod', 'sail', 'palm', 
 // The live instance that may write PROGRESSION_KEY (hot reload mounts the new engine before disposing the old one).
 const OWNER = Symbol.for('littleRaft.progression.owner');
 
-function load() {
-  try { const v = JSON.parse(localStorage.getItem(PROGRESSION_KEY) || 'null'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+function load(storage) {
+  try { const v = JSON.parse(storage().getItem(PROGRESSION_KEY) || 'null'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
 }
 
 /**
  * ctx: { T, role(), ready(), running(), world(), bag(actor), localBag(), action(a), emit(e, to),
- *        notice(text, ms), pose() -> {x, z, yaw}, resume(), pause() }
+ *        notice(text, ms), pose() -> {x, z, yaw}, resume(), pause(), storage? }
+ * storage: Storage-like for PROGRESSION_KEY (game.js passes the save store's adapter); default localStorage.
  */
 export function attachProgression(ctx) {
   const prevOwner = globalThis[OWNER];
   try { prevOwner?.flush?.(); } catch {} // hot reload: the old engine's latest state, not its last autosave
-  const saved = load();
+  const storage = () => ctx.storage ?? globalThis.localStorage;
+  const saved = load(storage);
   const progs = { host: new Progression(saved.host), guest: new Progression(saved.guest) };
   // Per-world barrel bad-luck counters; rollBarrel(rand, barrelLuck) mutates them in place.
   const barrelLuck = { misses: {} };
-  if (saved.barrelLuck?.misses && typeof saved.barrelLuck.misses === 'object') {
-    for (const [k, n] of Object.entries(saved.barrelLuck.misses)) if (Number.isFinite(n) && n > 0) barrelLuck.misses[k] = Math.floor(n);
-  }
   const self = { flush: () => save() };
   globalThis[OWNER] = self;
   const stations = new Map(); // key -> StationModel (host only)
-  const pendingStations = saved.stations && typeof saved.stations === 'object' ? { ...saved.stations } : {};
+  let pendingStations = {};
+  function adoptSaved(v) { // also New game (v = {}) and Continue from another tab's save (reload)
+    progs.host = new Progression(v.host); progs.guest = new Progression(v.guest);
+    for (const k of Object.keys(barrelLuck.misses)) delete barrelLuck.misses[k];
+    if (v.barrelLuck?.misses && typeof v.barrelLuck.misses === 'object') {
+      for (const [k, n] of Object.entries(v.barrelLuck.misses)) if (Number.isFinite(n) && n > 0) barrelLuck.misses[k] = Math.floor(n);
+    }
+    stations.clear(); pendingStations = v.stations && typeof v.stations === 'object' ? { ...v.stations } : {};
+  }
+  adoptSaved(saved);
   const remote = { prog: null, stations: {}, views: new Map() }; // guest-side mirror of the host
   const models = new Map(); // key -> THREE.Group (glowing stations), pruned when detached
   const glow = new Map();
@@ -98,7 +106,7 @@ export function attachProgression(ctx) {
     if (!isHost() || globalThis[OWNER] !== self) return;
     dirty = false;
     try {
-      localStorage.setItem(PROGRESSION_KEY, JSON.stringify({ v: 1, host: progs.host.snapshot(), guest: progs.guest.snapshot(), stations: { ...pendingStations, ...stationSnaps() }, barrelLuck }));
+      storage().setItem(PROGRESSION_KEY, JSON.stringify({ v: 1, host: progs.host.snapshot(), guest: progs.guest.snapshot(), stations: { ...pendingStations, ...stationSnaps() }, barrelLuck }));
     } catch {}
   }
 
@@ -266,7 +274,8 @@ export function attachProgression(ctx) {
     time += dt;
     if (isHost()) {
       syncStations();
-      for (const st of stations.values()) { const was = st.cooking; if (was) dirty = true; st.tick(dt); }
+      // Stations cook only during play: a tab on the title must not simulate (and later save) its stale copy.
+      if (ctx.running()) for (const st of stations.values()) { const was = st.cooking; if (was) dirty = true; st.tick(dt); }
       if ((noteClock += dt) >= NOTE_EVERY) {
         noteClock = 0;
         for (const actor of ['host', 'guest']) { const bag = ctx.bag(actor); if (bag) announce(progs[actor].noteItems(bag), actor); }
@@ -338,15 +347,31 @@ export function attachProgression(ctx) {
 
   // First run on a pre-progression save: keep every recipe the old build offered (the
   // discover gates are not always in the bag any more), then persist so this happens once.
-  if (!saved.host && isHost()) {
+  function grandfather(v) {
+    if (v.host || !isHost()) return;
     const w = ctx.world();
     if (w && (w.collected > 0 || w.decor?.length > 0 || w.tiles?.length > 9)) {
       for (const p of Object.values(progs)) for (const id of LEGACY_RECIPES) if (ITEMS[id]) p.learned.add(id);
     }
     save();
   }
+  grandfather(saved);
 
-  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, dispose, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()) };
+  // The stored slice was replaced (Continue from another tab's save, a guest going home after another tab saved).
+  function reload() {
+    const v = load(storage); adoptSaved(v); gateCache = null; dirty = false; saveClock = 0;
+    savedLuckSig = JSON.stringify(barrelLuck.misses); if (panel?.isOpen) panel.close();
+    grandfather(v);
+  }
+  // New game: the fresh raft starts with the starting progression and no stations.
+  function reset() {
+    adoptSaved({}); gateCache = null; dirty = false; saveClock = 0;
+    savedLuckSig = JSON.stringify(barrelLuck.misses); if (panel?.isOpen) panel.close();
+    if (research?.open) research.close();
+    save();
+  }
+
+  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, reload, reset, dispose, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()) };
 }
 
 export default attachProgression;

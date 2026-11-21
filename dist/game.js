@@ -35,7 +35,7 @@ import { cleanWatering, copyWatering, plantStage, tick as tickWatering, tileKey,
 import { createPurifier, paintPurifier, preparePlanter, paintPlanter } from './purifier-model.js?build=v3-survival-ae77fa84ac2b';
 import { cleanRain, copyRain, tickRain, takeRain, fillSprinkler, rainTarget, RAIN_ACTIONS } from './rain.js?build=v3-survival-ae77fa84ac2b'; import { createRainBarrel, paintRainBarrel, createSprinkler, paintSprinkler } from './rain-model.js?build=v3-survival-ae77fa84ac2b'; // rain-sprinkler (docs/specs/rain-sprinkler.md)
 import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, hookableItems, decorBlockers, playerInWay, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
-import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan, LIVE_STATUS_EVENT } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
+import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan, LIVE_STATUS_EVENT } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt, fishOutcome } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
@@ -43,6 +43,7 @@ const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); 
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, countBarrelLuck, copyBarrelLuck, cleanBarrelLoot, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
+import { getSaveStore } from './save-store.js'; // every per-save part lives inside the world save (one guarded write)
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
@@ -234,6 +235,9 @@ export function mount(transfer = null) {
   let networkReady = !!X?.networkReady, room = typeof X?.room === 'string' ? X.room : '';
   let world, hostBag = null, guestBag = null, remoteBag = null, saveAvailable = X ? X.saveAvailable !== false : true;
   let ownWorldBackup = normaliseBackup(X?.ownWorldBackup), freshSave = false;
+  // Per-save parts (progression, grills, logbook seen, onboarding, hints, pin). Shared across hot swaps: a guest's
+  // own-raft parts stay here untouched while it visits (nothing saves as a guest), so going home saves its own.
+  const saveStore = getSaveStore(); let offSaveStore = null;
   if (X?.world && Array.isArray(X.world.tiles)) {
     world = liveWorld(X.world);
     if (X.version >= 3 && X.bags) { hostBag = snapBag(X.bags.host); guestBag = snapBag(X.bags.guest); remoteBag = snapBag(X.bags.remote); }
@@ -250,6 +254,7 @@ export function mount(transfer = null) {
     if (raw) { try { const v = cleanWorld(JSON.parse(raw)); if (v) world = v; } catch {} }
     freshSave = !raw;
     const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
+    saveStore.loadAll(raw); // the parts of exactly the save this world came from
   }
   // Revision of the save this tab last loaded or wrote. Another tab writing a newer one stops our autosave.
   const storedRev = () => { try { return saveRevision(localStorage.getItem(SAVE)); } catch { return 0; } };
@@ -298,7 +303,7 @@ export function mount(transfer = null) {
   let waterClock = 0, waterAim = null; const wateringGroups = new Map(); // tileKey -> palm/purifier group
   let netClock = 0, lastSaveAt = performance.now(), lastNetSendAt = 0, toastTimer = 0, wheelAcc = 0, peerHidden = !!X?.peerHidden, heartbeat = 0;
   let noticeText = '', noticeUntil = 0, noticeCache = null, contextCache = null, uiFailed = false; let fishShown = null;
-  const hintsDone = X?.hintsDone instanceof Set ? X.hintsDone : freshSave ? new Set() : loadHints(window.localStorage); // first-run hint chain, once per save
+  const hintsDone = X?.hintsDone instanceof Set ? X.hintsDone : freshSave ? new Set() : loadHints(saveStore.storage); // first-run hint chain, once per save (a part of the world save)
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
   let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = -1;
@@ -447,7 +452,7 @@ export function mount(transfer = null) {
     return {scene, raft, ocean, camera, signal, get rodModel() { return hands?.itemModel('fishingrod') ?? null; }, role:() => role, netReady:() => networkReady, send, action, notice, beep,
       selectedKind, aim:() => currentAim(), rodTip:() => handPos, player:() => ({x:physics.x, y:physics.y, z:physics.z, yaw}),
       hasTile, decorAt:(x, z) => world.decor.some(d => d.x === x && d.z === z), bagCount:k => localBag().count(k),
-      running:() => running, uiBlocked, resume:() => requestLock(), busy:() => !!hook || !!fishWait || !!charging};
+      running:() => running, uiBlocked, resume:() => requestLock(), busy:() => !!hook || !!fishWait || !!charging, storage:saveStore.storage};
   }
   function fallbackAvatar(color) {
     const g = new T.Group();
@@ -646,7 +651,7 @@ export function mount(transfer = null) {
     mk.style.transform = css.replace(' e', ''); mk.classList.toggle('edge', e.edge);
   }
   const onboardingActive = () => !!window.raftOnboarding?.state?.(); // the onboarding lane's Notes tracker teaches first steps; the feed hint chain is its fallback
-  function hintDone(id) { if (hintsDone.has(id)) return; hintsDone.add(id); saveHints(window.localStorage, hintsDone); }
+  function hintDone(id) { if (hintsDone.has(id)) return; hintsDone.add(id); saveHints(saveStore.storage, hintsDone); }
   // A lane inside the open bag or pause rail that the feed docks into, so its rows never cover panel controls.
   function feedLane(place) {
     const host = place === 'inventory' ? $('#inventory .sv-bag') : place === 'options' ? $('#options .rs-menu') : null;
@@ -1224,7 +1229,7 @@ export function mount(transfer = null) {
   function newGame() {
     if (role !== 'solo') closeConnection();
     hook = null; fishWait = 0; charging = null; reeling = false; lastCaughtCount = 0; pending.clear();
-    resetHints(window.localStorage, hintsDone); // first-run hints are once per save, and this is a fresh one
+    saveStore.reset(); // every per-save part starts over: progression, stations, grills, logbook seen, onboarding, hints, pin
     world = newWorld(); const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
     const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); yaw = 0; pitch = -.28;
     for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
@@ -1240,6 +1245,7 @@ export function mount(transfer = null) {
     if (fresh) { fresh.textContent = saved ? 'New game' : "Let's set sail"; fresh.className = saved ? 'secondary' : 'primary'; delete fresh.dataset.confirm; }
     const note = $('#titleSaveStatus'), text = titleSaveNote({available:saveAvailable, blocked:saveBlocked, storedRev:storedRev(), saveRev});
     if (note) { note.textContent = text; note.hidden = !text; }
+    try { document.dispatchEvent(new CustomEvent('raft:title', {detail:{hasSave:saved}})); } catch {} // onboarding rebuilds its title menu
   }
   function syncWorldInventories() { // only for the world this client owns (solo / host)
     world.hostInventory = hostBag.snapshot(); world.guestInventory = guestBag.snapshot();
@@ -1254,13 +1260,13 @@ export function mount(transfer = null) {
   function unblockSave() { if (!saveBlocked) return; saveBlocked = false; setText('#saveStatus', SAVE_STATUS); }
   // Leaving the title for play while another tab has saved since: continue from that newer save, not our stale copy.
   function adoptStoredSave() { loadRaft(savedOwnRaft()); saveRev = storedRev(); unblockSave(); }
-  function save() {
+  function save() { // the one guarded write: world + every per-save part in one setItem
     if (role === 'guest' || disposed || saveBlocked) return;
     syncWorldInventories();
     try {
-      const plan = planSave(localStorage.getItem(SAVE), saveRev);
-      if (!plan.ok) { blockSave(); return; }
-      localStorage.setItem(SAVE, JSON.stringify({...world, items:[], rev:plan.rev, savedAt:Date.now()})); saveRev = plan.rev;
+      const r = saveStore.write({...world, items:[]}, saveRev); // planSave inside: never over another tab's newer save
+      if (!r.ok) { if (!r.final) blockSave(); return; }
+      saveRev = r.rev;
     }
     catch { saveAvailable = false; setText('#saveStatus', 'Browser storage is full or unavailable. This session will not be saved.'); }
   }
@@ -1673,10 +1679,11 @@ export function mount(transfer = null) {
   const setConnectionLabel = s => setText('#connection', s);
   // A guest plays in the host's world with a host-held bag; when they leave, put their own raft, bag and body back.
   function savedOwnRaft() { // no usable backup: never stay in (and later autosave) the host's world
-    let w = null;
-    try { const raw = localStorage.getItem(SAVE); if (raw) w = cleanWorld(JSON.parse(raw)); } catch {}
+    let w = null, raw = null;
+    try { raw = localStorage.getItem(SAVE); if (raw) w = cleanWorld(JSON.parse(raw)); } catch {}
+    if (!w) raw = null;
     w ??= newWorld(); const bags = bagsFromWorld(w);
-    return {world:w, host:bags.host.snapshot(), guest:bags.guest.snapshot(), physics:null};
+    return {world:w, host:bags.host.snapshot(), guest:bags.guest.snapshot(), physics:null, raw}; // raw: its parts come with it
   }
   function restoreOwnRaft() {
     const plan = guestLeavePlan(storedRev(), saveRev); // another tab (e.g. the host in this browser) saved since we joined: never restore over it
@@ -1690,6 +1697,7 @@ export function mount(transfer = null) {
     if (b.physics) physics = new PlayerPhysics(b.physics); else { const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); }
     if (!world.items.length) for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     content?.load(world.ext, 'restore'); // content hook
+    if ('raw' in b) saveStore.loadAll(b.raw); // a stored save: adopt its parts too. An own-raft backup keeps the parts in memory
     if (scene) { syncItems(); rebuildRaft(); fitShadow(); }
     queueMicrotask(guard(retroAward)); // callers set role = 'solo' right after this returns
   }
@@ -2016,6 +2024,7 @@ export function mount(transfer = null) {
     for (const id of ['signalReadout', 'signalMarker']) { const el = document.getElementById(id); if (el) el.hidden = true; }
     try { logbookUI?.destroy?.(); } catch {}
     try { prog?.dispose(); } catch {} // [progression-hook]
+    offSaveStore?.(); offSaveStore = null;
     for (const id of timers) clearTimeout(id); timers.clear(); clearInterval(heartbeat);
     unlisten(bindings.splice(0));
     try { if (window.raftDebug === debugApi) delete window.raftDebug; } catch {}
@@ -2026,7 +2035,12 @@ export function mount(transfer = null) {
   const optionsDialog = document.getElementById('options'), previousSettingsOwner = optionsDialog?.dataset.owner;
   try {
     if (!canvas) throw new Error('#world canvas missing');
-    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), resume:() => requestLock(), pause:pauseInput}); // [progression-hook]
+    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), resume:() => requestLock(), pause:pauseInput, storage:saveStore.storage}); // [progression-hook]
+    offSaveStore = saveStore.register('game', {
+      flush:() => { prog?.save(); fc?.save?.(); }, // live station / grill state into the parts, right before the write
+      load:() => { prog?.reload(); fc?.reload?.(); hintsDone.clear(); for (const id of loadHints(saveStore.storage)) hintsDone.add(id); survivalUI?.reloadPin?.(); },
+      reset:() => { prog?.reset(); fc?.reset?.({keepJournal:true}); resetHints(saveStore.storage, hintsDone); survivalUI?.reloadPin?.(); },
+    });
     init();
     try { coop = createCoop(coopContext(), X?.coop); } catch (e) { console.warn('co-op layer unavailable', e); coop = null; } // coop
     settingsController = createSettings({onChange:next => { applyOptions(next); soundLabel(); }, onPause:pauseInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});
@@ -2039,9 +2053,10 @@ export function mount(transfer = null) {
       onPause:guard(pauseInput), // held movement keys survive the bag
       getModel:modelOf, // 3D icons rendered from models.js
       recipeGate, // [progression-hook] + content (Tinker's Desk) locks
+      storage:saveStore.storage, // the pinned recipe is a part of the world save
     });
     prog.installUI(); // [progression-hook]
-    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock())});
+    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock()), storage:saveStore.storage});
     if (role !== 'guest') retroAward();
     pickupFeed.setIconProvider(k => iconURL(k)); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }

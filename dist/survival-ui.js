@@ -440,7 +440,8 @@ function readSnap(bag) {
 
 // getModel (optional): (kind) -> Object3D, e.g. models.js getModel; icons are rendered from it.
 // iconFor (optional): (kind) -> data URL; overrides the rendered icon for that kind.
-export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause, iconFor, recipeGate, getModel } = {}) {
+// storage: Storage-like for the pinned recipe (game.js passes the save store's adapter: a pin is per raft); default localStorage.
+export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause, iconFor, recipeGate, getModel, storage } = {}) {
   if (typeof getModel === 'function') setModelProvider(getModel);
   const gate = id => { try { return recipeGate?.(id) || null; } catch { return null; } }; // [progression-hook] {hidden, locked, reason}
   // Hot reload: DOM is adopted, not rebuilt; the previous instance releases its listeners only once
@@ -510,7 +511,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let pickedByUser = false; // false: pickId is an automatic default, re-chosen on open once states are known
   let tipAnchor = null;
   let pinId = null, trackEl = null, trackSig = null;
-  const store = () => { try { return window.localStorage; } catch { return null; } };
+  const store = () => { try { return storage ?? window.localStorage; } catch { return null; } };
 
   const safe = (fn, ...a) => { try { return fn?.(...a); } catch (e) { console.error(e); } };
   const bagNow = () => { try { return getBag?.() || null; } catch (e) { console.error(e); return null; } };
@@ -1294,6 +1295,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       if (window[INST_KEY] === api) window[INST_KEY] = null;
     },
     get isOpen() { return isOpen; },
+    /** The stored pin changed (New game, Continue from another tab's save). */
+    reloadPin() { pinId = loadPin(store(), recipes.map(r => r.id)); paintPin(); trackSig = null; render(true); },
   };
   if (prev && prev !== api && typeof prev.destroy === 'function') { try { prev.destroy(); } catch (e) { console.error(e); } }
   window[INST_KEY] = api;
