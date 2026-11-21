@@ -758,7 +758,7 @@ export function mount(transfer = null) {
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
       else if (canHarvestShark()) html = '<kbd>E</kbd>Harvest the shark'; // shark lane
       else if (hover?.blocked) html = esc(BLOCK_TEXT[hover.blocked]);
-      else if (eatTip && !(contextHtml = content?.prompt(frameAim) ?? null)?.startsWith('<kbd>E</kbd>')) { contextHtml = null; html = '<kbd>Click</kbd>' + esc(eatTip.label); } // [vitals] kbd markup: a prompt, not a feed notice [juicer] an E content prompt wins
+      else if (eatTip && !bt && !(contextHtml = content?.prompt(frameAim) ?? null)?.startsWith('<kbd>E</kbd>')) { contextHtml = null; html = '<kbd>Click</kbd>' + esc(eatTip.label); } // [vitals] kbd markup: a prompt, not a feed notice [juicer] an E content prompt wins [buildpack] so does E on a hatch / gate (interact() toggles it first)
       else if (waterAim?.prompt) html = waterAim.prompt;
       else if (!contextHtml && bt && (contextHtml = building.promptOf(bt))) html = contextHtml; // [buildpack] Open / Close hatch or gate
       else if (contextHtml ||(contextHtml = content?.prompt(frameAim) ?? null)) html = contextHtml; // content hook [juicer] reuse when set above
