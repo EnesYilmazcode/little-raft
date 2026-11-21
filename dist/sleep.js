@@ -5,7 +5,7 @@
 // Slice world.ext.sleep = { v:1, in:{host:[x,z]|null, guest:[x,z]|null}, fade:0|1, skips }.
 // Host-authoritative actions 'sleep.lie' / 'sleep.up'; the skip itself is 'daynight.skipTo'.
 import { DAYNIGHT_LIVE, MORNING } from './daynight.js?build=v3-survival-ae77fa84ac2b';
-import { buildBed } from './sleep-model.js';
+import { buildBed } from './sleep-model.js?build=v3-survival-ae77fa84ac2b';
 
 export const SLEEP_START = .66, SLEEP_END = .02;
 export const HOLD = 1, FADE = 1.2, BLACK = .4, REACH = 3.2;

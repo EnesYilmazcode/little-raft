@@ -1,6 +1,6 @@
 // Little Raft controls tab: rebinding list + input feel settings. DOM ES module, nothing happens on import.
 // createControlsTab({map: ActionMap, input?, container?, onChange?}) -> {element, mount(el), refresh(), capturing, dispose()}
-import { ACTIONS } from './input-map.js';
+import { ACTIONS } from './input-map.js?build=v3-survival-ae77fa84ac2b';
 
 const STYLE_ID = 'lrc-style';
 const CSS = `

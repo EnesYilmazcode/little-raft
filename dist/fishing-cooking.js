@@ -8,11 +8,11 @@
 // Save: localStorage 'little-raft-fc-v1' {v:1, journal, grills}. Grills are the player's own (host world); while a
 // guest, own grills are stashed and the host's broadcast grills are shown instead.
 // Debug: window.raftFC = { state, session, journal, grills, forceBite(id), forceCatch(id) }.
-import { FishingSession, createFishingV2 } from './fishing-v2.js';
-import { Journal, createJournalPanel, BASKET_MAX } from './fish-journal.js';
-import { SPECIES, speciesById, dishName } from './fish-species.js';
-import { GrillState, COOK_TUNING, cookTime, createGrillModel, createSmoke } from './cooking.js';
-import { createFishModel, setFishState, wiggle } from './fish-models.js';
+import { FishingSession, createFishingV2 } from './fishing-v2.js?build=v3-survival-ae77fa84ac2b';
+import { Journal, createJournalPanel, BASKET_MAX } from './fish-journal.js?build=v3-survival-ae77fa84ac2b';
+import { SPECIES, speciesById, dishName } from './fish-species.js?build=v3-survival-ae77fa84ac2b';
+import { GrillState, COOK_TUNING, cookTime, createGrillModel, createSmoke } from './cooking.js?build=v3-survival-ae77fa84ac2b';
+import { createFishModel, setFishState, wiggle } from './fish-models.js?build=v3-survival-ae77fa84ac2b';
 
 export const FC_SAVE_KEY = 'little-raft-fc-v1';
 export const MAX_GRILLS = 6, GRILL_REACH = 2.2, GRILL_COST = Object.freeze({ wood: 4, scrap: 2 });
