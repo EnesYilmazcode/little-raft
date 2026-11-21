@@ -161,6 +161,9 @@ const LIST = [
   item('metalspear', 'Metal Spear', 'tool', { iconTint: '#9fb1bf', tool: true, durability: 40, actsAs: 'spear',
     recipe: hand({ wood: 6, rope: 2, metalingot: 2, bolt: 1 }), unlock: research('metalingot', 'bolt'),
     tip: 'A heavy metal point on a sturdy shaft. Twice the bite of the wooden one and lasts twice as long.' }),
+  item('sharkbait', 'Shark Bait', 'tool', { iconTint: '#d8452f', stack: 5, // [bait] dist/bait.js
+    recipe: hand({ rope: 2, fish: 2 }), unlock: discover('fish'),
+    tip: 'Two fish lashed to a float. Click to throw it in the sea: the shark chews on it instead of your raft for 80 seconds.' }),
   item('binoculars', 'Binoculars', 'tool', { iconTint: '#5d6b78', stack: 1,
     recipe: hand({ glass: 2, copperingot: 1, hinge: 2, bolt: 1 }), unlock: research('glass', 'copperingot'),
     tip: 'Hold them to spot the nearest barrel: bearing and distance. They never wear out.' }),

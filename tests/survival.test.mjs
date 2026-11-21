@@ -594,7 +594,7 @@ test('CraftBook: usedIn lists the recipes that consume an item', () => {
   const recipes = normRecipes();
   for (const n of ['Crate', 'Lantern']) assert.ok(CB.usedIn('scrap', recipes).includes(n), n); // other lanes add more scrap recipes
   assert.ok(CB.usedIn('rope', recipes).includes('Hammer'));
-  assert.deepEqual(CB.usedIn('fish', recipes), []);
+  assert.deepEqual(CB.usedIn('fish', recipes), ['Shark Bait']); // [bait] 2 rope + 2 fish
 });
 
 test('CraftBook: hold-to-craft interval starts slow, accelerates, and floors at the minimum', () => {

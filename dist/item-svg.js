@@ -137,6 +137,14 @@ export const ITEM_ICONS = Object.freeze({
     <circle cx="24" cy="9" r="3.6" stroke="${O}" stroke-width="5"/><circle cx="24" cy="9" r="3.6" stroke="#9fb1bf" stroke-width="2"/></g>
     <g fill="#c6d6e0" stroke="${O}" stroke-width="2" stroke-linejoin="round"><path d="M6.5 28 L10 18 L13.5 28 L10 26 Z"/><path d="M34.5 28 L38 18 L41.5 28 L38 26 Z"/><path d="M20.5 38 L24 46 L27.5 38 Z"/></g>`,
 
+  // [bait] Shark bait: two fish lashed to a stick with rope, a red cork float on the end.
+  sharkbait: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M5 30 L37 18" fill="none" stroke-width="4.5"/><path d="M5 30 L37 18" fill="none" stroke="#a87a4c" stroke-width="2"/>
+    <path d="M9 31 C14 24 24 22 29 26 C25 31 15 34 9 31 Z" fill="#6f93a8"/><path d="M9 31 L3 27 L4 35 Z" fill="#4f6f80"/>
+    <path d="M12 37 C17 30 27 28 32 32 C28 37 18 40 12 37 Z" fill="#8aa0a8"/><path d="M12 37 L6 33 L7 41 Z" fill="#4f6f80"/>
+    <path d="M17 22 L19 37 M24 20 L26 35" fill="none" stroke="#d9c38c" stroke-width="2.4"/>
+    <circle cx="39" cy="17" r="6.5" fill="#d8452f"/><path d="M33 18 C35 22 43 22 45 18" fill="#f1ead8" stroke-width="1.4"/></g>`,
+
   // Wooden spear: driftwood shaft, chipped flint point lashed on with rope.
   spear: `<g transform="rotate(45 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <path d="M22 14 L21.4 51 Q24 53 26.6 51 L26 14 Z" fill="#bb8650"/>

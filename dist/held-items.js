@@ -15,6 +15,7 @@ import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createSpear } from './spear-model.js?build=v3-survival-ae77fa84ac2b'; // [spear-repair]
+import { createBaitModel } from './bait.js?build=v3-survival-ae77fa84ac2b'; // [bait]
 import { buildInstrument } from './instrument-models.js?build=v3-survival-ae77fa84ac2b'; // [instruments]
 import { createSpade, createFinder } from './treasure-models.js?build=v3-survival-ae77fa84ac2b';
 
@@ -247,6 +248,8 @@ export function buildItemModel(T, kind, factory = null) {
     root.userData.size = { x: sz.x * s, y: sz.y * s, z: sz.z * s };
     root.userData.grip = [gp.x, gp.y, gp.z];
     root.userData.model = m;                                     // rod: userData.float/leader/tipNode live here
+  } else if (kind === 'sharkbait') { // [bait] the lure itself, held by the stick
+    root = fit(T, createBaitModel(T), 0.24, (s) => new T.Vector3(-s.x * 0.3, 0, 0));
   } else if (kind === 'spade' || kind === 'finder') {
     const m = kind === 'spade' ? createSpade(T) : createFinder(T), s = 0.55;
     m.scale.setScalar(s);
