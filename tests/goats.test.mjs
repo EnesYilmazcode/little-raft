@@ -354,3 +354,20 @@ test('prompts: the longest goat prompt fits the 48-char prompt label', () => {
   m.dispose();
 });
 
+test('Hay Corner removed: the goat leaves, its instance is cleared, hens and eggs keep theirs', () => {
+  const scene = new T.Scene();
+  const s = stub({ scene, world: { tiles: grid(3, 2), decor: [{ type: 'nestbox', x: 0, z: 0 }, { type: 'goatpen', x: 1, z: 0 }, { type: 'nestbox', x: 2, z: 0 }], pieces: [] } });
+  const m = createAnimals(s);
+  m.load({ v: 1, r: 0, t: 1000, next: 9, list: [hen({ home: [0, 0], eggs: 2 }), goat({ home: [1, 0] }), hen({ id: 'p2', home: [2, 0], eggs: 2 })], lures: [] }, 'save');
+  for (let i = 0; i < 3; i++) m.update(.016);
+  const goats = scene.getObjectByName('bramblegoats'), heads = scene.getObjectByName('bramblegoatHeads'), birds = scene.getObjectByName('puffhens'), eggs = scene.getObjectByName('puffEggs');
+  const on = (mesh, k) => { const mm = new T.Matrix4(); mesh.getMatrixAt(k, mm); return mm.determinant() !== 0; };
+  assert.deepEqual([on(goats, 0), on(heads, 0), on(birds, 0), on(birds, 1), on(birds, 2)], [true, true, true, true, false]);
+  s.world.decor = s.world.decor.filter(d => d.type !== 'goatpen');
+  for (let i = 0; i < 120; i++) m.update(.016);
+  assert.deepEqual(m.debug.state().list.map(a => a.id), ['p1', 'p2']);
+  assert.equal(goats.visible, false);
+  assert.deepEqual([on(goats, 0), on(heads, 0), on(birds, 0), on(birds, 1), on(birds, 2)], [false, false, true, true, false]);
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map(k => on(eggs, k)), [true, true, false, true, true, false]);
+  m.dispose();
+});
