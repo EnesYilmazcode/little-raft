@@ -89,3 +89,13 @@ A slot gets optional field `m` (1 = mulched). Mulch costs 1 seaweed, needs a pla
 - Mulch: plant a beet, hold seaweed, click: "Mulched with kelp"; water, ripen, harvest 3 beets.
 - Hammer X on a Lush line: item + seaweed refunded; on a Bare line: item only. Reload a save: stages and `m` persist; an old save loads clean.
 - Co-op loopback: guest sees stage changes, harvests within reach, is refused out of reach; guest on a host without the slice sees OLD_HOST.
+
+## Build notes
+- Built as specified: `dist/kelpline-core.js`, `dist/kelpline.js`, `dist/kelpline-model.js`, `tests/kelpline.test.mjs`; hooks in items.js, craft-book.js, item-svg.js, build-rules.js, live.js, content.js, seafloor.js (`export` only) and crops.js (mulch, with cases in tests/crops.test.mjs).
+- Deviation (visual readability): from the deck the ocean surface hides almost all of the hanging strands, so with the spec's cues Bare and Leafy looked the same. The model now shows, above the water, nothing when Bare, a small `sprig` on the middle float when Leafy, and `tuft` (a Group of three upright tufts, one per float) when Lush. Strand size per stage is xz .35 / .5 / .6 (y .18 / .4 / .6 as specified). Strands turn in quarter turns (not 2.1 rad) so the model stays inside the 0.6 m width bound.
+- Deviation (small): `prompts.js` DECOR_NAMES gains `kelpline: 'kelp line'`, so the place prompt reads "Place kelp line" instead of "Place kelpline". As for every other decor, a blocked (red) ghost still says "Place …" in #lrPrompt; the `kelpedge` text shows as a notice on click (pre-existing placePrompt behaviour, not changed here).
+- `tickKelp` also returns `grew` (true when any `g` changed); the module bumps its private `ver` from it, so serialize() carries the current `g` while `r` only moves on stage changes, harvests, prunes and undecor.
+- `kelpInfo().pct` is 100 at Lush (only shown below Lush). The spot (overhang point) uses `openSide`, which allocates a 2-element array per line within reach per frame; lines out of reach are skipped first.
+- The shared seaweed geometry is flagged `userData.shared` with a no-op `dispose` so rebuildRaft and the ghost cannot free it; module `dispose()` frees it.
+- Crop plot mulch also adds a dark green ring on the soil of a mulched slot (shared geometry/material flagged `userData.shared`); `debug.shown()` appends `+mulch`.
+- Mixed-version co-op (new guest, old host) shows OLD_HOST; an old guest on a new host does not know the item or decor (unsupported, as the fish trap).
