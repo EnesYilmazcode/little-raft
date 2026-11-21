@@ -513,3 +513,43 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
   Skipped loop-perf-0548/0540, loop-visuals-0451, loop-ux-0547, loop-features-0534 (see STATUS).
 - Fixed after the merges: honey/wax/flower-seed sources, context prompt moved beside the crosshair, held-item and sprite-list conflicts with the beehive/instrument lanes.
 - Perf probe now compares against the current main (144c94a): 216 vs 322 ms, 96 vs 152 draw calls.
+
+## 2026-11-21 · loop-features-202611210831 (features)
+Base: origin/claude/raft-master (1636dfe). Branch: claude/loop-features-202611210831.
+Round 2 (loop-features-202611210735) is not in raft-master yet. It conflicts with raft-master's own content-prompt routing and the vitals lane, so it needs an integrator merge.
+
+Features (research in docs/features, specs in docs/specs):
+- **Juicer and smoothies**: berries come from island bushes (25% of plain-leaf picks; seed and flower rates unchanged), and coconuts from ripe palm planters. E on the Juicer blends 1 fresh cup and 2 fruit into a berry, coconut or island smoothie. It is host-checked and all-or-nothing. The drinks feed vitals and give the cup back. Also: a `honeyfish` FOOD row (it could not be eaten before), an `isDrink` cue, and an E content prompt now beats the eat hint. Files: dist/juicer.js, juicer-model.js.
+- **Companion Gull**: on a Gull Perch, treats on a 90 s visit schedule (3 points to move in). Rest, loop and follow modes run on the host clock; only the clock is synced. Pet and name it, with a heart burst. Finds go into a 3-slot tray, collected all-or-nothing. The rename dialog is shared with the Puffhen. State is in `world.ext.gull`. Files: dist/gull.js, gull-models.js.
+- **Building pack**:
+  - Railing (1.2 m collision so a bobbing jump can't clear it), Hatch and Gate (E toggles, `o:1` only while open, so closed records are unchanged), and Ladder (MoveFeel climb with a virtual ground in preStep).
+  - The host `piecetoggle` checks `expect`, reach and occupancy, and is rate-limited.
+  - The open variants are instanced meshes.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA, 1 QA fixer (14 agents).
+
+Review fixes:
+- Juicer: open hopper funnel.
+- Gull:
+  - prototype-key treats
+  - junk timestamps that blocked treats forever
+  - a rebuild after dispose
+  - culling
+  - its own slimmer wing and a neck
+- Building:
+  - The new thin-wall sweep froze players sliding along walls at low fps; it was rewritten.
+  - A guest no longer drops off the ladder on every pieces resend.
+  - The hatch prompt now beats the eat hint.
+  - A double press can no longer re-toggle.
+- QA fixes:
+  - The pickup feed covered the new vitals panel; the pickup and notice feeds are lifted above it.
+  - One post per railing corner.
+  - Lighter hatch underside.
+  - Shaped gull finds.
+
+Checks: `npm test` 857/857 (was 816); shoot.py `errors: []`.
+Known limits:
+- Live two-peer co-op not run; mixed-version co-op is unsupported.
+- Stepping backward off a ladder top drops a storey.
+- A ladder placed under a painted hatch loses the tint.
+Note for the owner: raft-master now has hunger/thirst/health, sharks and a spear (the "fidelity" lane). The README still says "No hunger or damage".
