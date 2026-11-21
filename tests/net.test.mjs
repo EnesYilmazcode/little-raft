@@ -125,3 +125,11 @@ test('shark: a destroyed tile takes the nets hanging from it, other nets stay', 
   assert.deepEqual(w.nets.map(n => [n.x, n.z, n.d]), [[1, 0, 0], [0, 1, 2]]);
   assert.deepEqual(N.cleanNets(w.nets, w.tiles), w.nets); // what is left is still valid
 });
+
+test('shark: bites from a side without a net when the tile has one', async () => {
+  const { pickTarget } = await import(new URL('shark.js', base));
+  const tiles = [[0, 0]], nets = [{x:0, z:0, d:0, items:[]}, {x:0, z:0, d:2, items:[]}, {x:0, z:0, d:3, items:[]}];
+  for (const r of [0, 0.3, 0.6, 0.99]) assert.deepEqual(pickTarget(tiles, null, () => r, nets), {x:0, z:0, nx:-1, nz:0});
+  nets.push({x:0, z:0, d:1, items:[]}); // every side netted: it still bites
+  assert.ok(pickTarget(tiles, null, () => 0.5, nets));
+});
