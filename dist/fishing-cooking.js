@@ -24,7 +24,7 @@ const isGuest = (r) => r === 'guest';
 const ESCAPE_TEXT = { early: 'Too early — wait for the dunk', missed: 'It got away…', snapped: 'The line slipped — ease off when it goes red' };
 const CSS = `#fcChip{position:fixed;left:12px;bottom:12px;z-index:3;pointer-events:none;font:600 12px/1 system-ui,sans-serif;
 color:#fffdf4;background:#0d2a3a99;padding:5px 9px;border-radius:10px;text-shadow:0 1px 1px #0008}
-#fcToast{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:5;pointer-events:none;display:grid;gap:6px;justify-items:center}
+#fcToast{position:fixed;left:28px;top:20px;z-index:5;pointer-events:none;display:grid;gap:6px;justify-items:start;text-align:left}
 #fcToast div{font:600 14px/1.3 system-ui,sans-serif;color:#1a3245;background:#f1e7d0f0;border:1px solid #c9a46b;border-radius:10px;
 padding:7px 14px;box-shadow:0 4px 14px #0005;animation:fcIn .25s ease-out;transition:opacity .4s}
 #fcToast div.soft{background:#d7e8f2f0;border-color:#8fb4c9}#fcToast div.out{opacity:0}
@@ -220,7 +220,7 @@ export function createFishingCooking(T, host) {
   }
   function toggleJournal() {
     if (!HAS_DOC) return;
-    panel ??= createJournalPanel({ getJournal: () => journal, onClose: () => {} });
+    panel ??= createJournalPanel({ getJournal: () => journal, onClose: () => { try { host.resume?.(); } catch {} } });
     if (!panel.isOpen) try { document.exitPointerLock?.(); } catch {} // free the cursor so the tabs can be clicked
     panel.toggle();
   }
