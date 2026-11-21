@@ -1607,7 +1607,7 @@ export function mount(transfer = null) {
     if (rod?.userData.float) { rod.userData.float.visible = !out; rod.userData.leader.visible = !out; }
     const hp = handParams; // reused each frame (hands.update only reads it)
     hp.dt = dt; hp.time = elapsed; hp.charge = ch; hp.reeling = rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(); hp.casting = jab ? 0 : swing; // [fishing-cooking] rod reel pose from the lane
-    hp.walking = walking; hp.hasHookOut = !!castOut(); hp.motion = motion; hp.yaw = yaw; hp.pitch = pitch; hp.fov = camera.fov; hp.riding = !!content?.riding?.(); // [zipline] riding raises the fist
+    hp.walking = walking; hp.hasHookOut = !!castOut(); hp.motion = motion; hp.yaw = yaw; hp.pitch = pitch; hp.fov = camera.fov; hp.riding = !!(content?.hanging ?? content?.riding)?.(); // [zipline] the glide line raises the fist (not the driftboard)
     hands.update(hp);
     hands.ropeAnchor().getWorldPosition(handPos); // updates the anchor's parent chain (camera included); render refreshes the rest
   }
@@ -2121,7 +2121,7 @@ export function mount(transfer = null) {
   // coop: read-only window into the engine for coop.js
   const coopContext = () => ({T, scene, camera, canvas, ocean, friend,
     role:() => role, conn:() => conn, ready:() => networkReady, blocked:() => !running || uiBlocked(), aim:() => frameAim, deckY,
-    local:() => { const k = heldKind(); return {x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, grounded:physics.grounded, seated:!!content?.seated?.(), /* [sit] */ held:k, riding:!!content?.riding?.(), /* [zipline] */charge:charging ? chargeValue() : 0, reeling:reeling && !!castOut(),
+    local:() => { const k = heldKind(); return {x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, grounded:physics.grounded, seated:!!content?.seated?.(), /* [sit] */ held:k, riding:!!(content?.hanging ?? content?.riding)?.(), /* [zipline] hanging pose; not the driftboard */charge:charging ? chargeValue() : 0, reeling:reeling && !!castOut(),
       hook:hookMesh.visible && hook ? {stage:hook.fishing ? 'fishing' : hook.stage, ...(hook.fishing ? {x:hookMesh.position.x, y:.05, z:hookMesh.position.z} : {x:hook.position.x, y:hook.position.y, z:hook.position.z})} : null, // physics height; remote maps it onto waves
       ghost:hover ? {x:hover.x, z:hover.z, kind:k, ok:k !== 'hammer' || canAfford(localBag(), FLOOR_COST)} : null}; },
     look:() => lookState.look, // [look] coop.js sends the in-memory look (localStorage may be blocked)
