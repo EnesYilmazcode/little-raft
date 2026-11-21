@@ -190,9 +190,11 @@ test('INPUT-3: holding jump through a slow multi-substep frame jumps once, on th
 // ---------------------------------------------------------------- INPUT3-3 sub-frame Space tap (createControls)
 
 const { El } = (() => { class El extends EventTarget {
-  constructor() { super(); this.children = []; this.attrs = {}; this.style = {}; const cls = new Set(); this.classList = {add:c => cls.add(c), remove:c => cls.delete(c), toggle:(c, on) => (on ?? !cls.has(c)) ? cls.add(c) : cls.delete(c), contains:c => cls.has(c)}; }
+  constructor() { super(); this.children = []; this.attrs = {}; this.style = {}; this.dataset = {}; const cls = new Set(); this.classList = {add:c => cls.add(c), remove:c => cls.delete(c), toggle:(c, on) => (on ?? !cls.has(c)) ? cls.add(c) : cls.delete(c), contains:c => cls.has(c)}; }
   setAttribute(k, v) { this.attrs[k] = v; } append(...k) { this.children.push(...k); } appendChild(k) { this.children.push(k); return k; }
-  replaceChildren() { this.children = []; } remove() {} } return {El}; })();
+  replaceChildren() { this.children = []; } remove() {} querySelector() { return new El(); } querySelectorAll() { return Array.from({length:16}, () => new El()); }
+  getContext() { const f = new Proxy(() => f, {get:(_, k) => k === 'data' ? new Uint8ClampedArray(16) : f, set:() => true, apply:() => f}); return f; }
+  closest() { return null; } getBoundingClientRect() { return {left:0, top:0, width:100, height:100}; } } return {El}; })();
 if (!globalThis.document) { const d = new EventTarget(); Object.assign(d, {pointerLockElement:null, visibilityState:'visible', head:new El(), body:new El(), getElementById:() => null, createElement:() => new El(), createElementNS:() => new El()}); globalThis.document = d; }
 const { createControls } = await import(new URL('controls.js', base));
 function liveControls(g = {}) {
@@ -257,6 +259,32 @@ test('INPUT3-4: swimming underwater covers the same distance at 60, 20, 10 and 4
   const b = new DiveBody({x:0, y:-.1, z:5, vx:0, vy:3, vz:0, oxygen:1}); b.grace = 0;
   const ev = b.step(.25, {up:true}, {waterY:0, floorY:-20, tiles:[], deckY:.2});
   assert.equal(ev.surfaced, true, 'a long frame stops substepping once it surfaces');
+});
+
+// ---------------------------------------------------------------- INPUT3-6 X release removes only what was shown
+
+test('INPUT3-6: holding X with no piece aimed shows the floor/decor fallback, and release only removes what was shown', async () => {
+  globalThis.addEventListener ??= () => {}; globalThis.removeEventListener ??= () => {};
+  const T = await import(new URL('vendor/three.module.js', base));
+  const { createBuilding } = await import(new URL('building.js?build=v3-survival-ae77fa84ac2b', base));
+  const b = createBuilding(T, new T.Scene()), chips = [];
+  b.menu.setChip = t => chips.push(t);
+  const raft = new T.Object3D(), cam = new T.Vector3(0, 1.8, 0);
+  const aim = {dir:new T.Vector3(0, 1, 0)}; // straight up: no piece on the ray
+  b.key('KeyX', true, true);
+  let asked = 0;
+  b.update(raft, aim, cam, true, null, 0, .2, () => { asked++; return 'floor'; });
+  assert.equal(chips.at(-1), 'Release X to remove floor');
+  b.update(raft, aim, cam, true, null, 0, .2, () => '');
+  assert.equal(chips.at(-1), 'Point at a piece to remove');
+  b.menu.open?.(); const n = asked;
+  b.update(raft, aim, cam, true, null, 0, .2, () => { asked++; return 'floor'; });
+  assert.equal(asked, n, 'no fallback while the Q wheel is open');
+  assert.equal(b.removeAction(), null);
+  b.dispose?.();
+  // game.js: the keyup only falls back to removePiece when a fallback target was shown and the wheel is closed
+  assert.match(gameSrc, /const shown = removeTarget, wheel = building\.menu\.isOpen; const a = building\.removeAction\(\); if \(a && running\) \{ swing = 1; action\(a\); \} else if \(running && shown && !wheel\) removePiece\(\);/);
+  assert.match(gameSrc, /removeTarget = building\?\.removing \? fallback :/);
 });
 
 // ---------------------------------------------------------------- INPUT-4 wheel over the hotbar

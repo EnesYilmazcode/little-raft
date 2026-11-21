@@ -68,7 +68,9 @@ export function createBuilding(T, scene) {
   const freePiece = () => piece() !== 'foundation';
 
   // Per frame. aim = engine aim ({dir}) or null; active = hammer held and nothing else going on.
-  function update(raft, aim, camPos, active, bag, yaw, deckY) {
+  // fallback(): called only while X is held, the wheel is closed and no piece is aimed; returns the name of what
+  // the engine would remove instead (floor, crate...) or '' so the chip never says "nothing" while X would remove.
+  function update(raft, aim, camPos, active, bag, yaw, deckY, fallback = null) {
     group.position.copy(raft.position); group.quaternion.copy(raft.quaternion);
     curBag = bag;
     menu.setVisible(active);
@@ -88,7 +90,7 @@ export function createBuilding(T, scene) {
           }
           text = remText;
         }
-        else text = 'Point at a piece to remove';
+        else { let fb = ''; try { fb = fallback?.() || ''; } catch (e) { console.error('building fallback', e); } text = fb ? 'Release X to remove ' + fb : 'Point at a piece to remove'; }
       } else if (freePiece()) {
         const r = grid.aim(origin.x, origin.y, origin.z, d.x, d.y, d.z, piece(), (yawDir(yaw) + rot) % 4, deckY, REACH, aimOut);
         if (r) { showGhost(r, r.ok && afford(PIECES[r.t].cost) ? okColor : badColor); text = r.ok ? (afford(PIECES[r.t].cost) ? '' : 'Not enough materials') : r.reason; }

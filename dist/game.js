@@ -595,7 +595,8 @@ export function mount(transfer = null) {
   // Old tone API (fishing-cooking lane, logbook): routed to the procedural sound recipes in audio.js.
   function beep(f = 500) { play(f >= 850 ? 'bite' : f >= 600 ? 'catch' : f >= 420 ? 'collect' : f >= 260 ? 'ui' : f >= 200 ? 'throw' : 'splash', .8); }
   let contextHtml = null;
-  const buildPromptInfo = () => ({remove:removeTarget ? (removeTarget.what === 'floor' ? 'floor' : ITEM_INFO[removeTarget.type]?.name ?? removeTarget.type) : '', name:ITEM_INFO[heldKind()]?.name ?? heldKind(),
+  const removalName = t => t.what === 'floor' ? 'floor' : ITEM_INFO[t.type]?.name ?? t.type;
+  const buildPromptInfo = () => ({remove:removeTarget ? removalName(removeTarget) : '', name:ITEM_INFO[heldKind()]?.name ?? heldKind(),
     cost:Object.entries(FLOOR_COST).map(([k, n]) => `${n} ${itemName(k)}`).join(', '), missing:heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST) ? missingText(localBag(), FLOOR_COST) : ''});
   function updateContext(dialog) {
     let html = '';
@@ -1418,9 +1419,13 @@ export function mount(transfer = null) {
   function updateGhost() {
     const kind = heldKind();
     const pieces = kind === 'hammer' && !hook && building && building.piece !== 'foundation'; // building-pieces lane hook
-    building?.update(raft, frameAim, camera.position, running && kind === 'hammer' && !hook && !uiBlocked(), localBag(), yaw, deckY());
+    // Holding X with no building piece aimed: the floor/decor under the crosshair is the fallback, and it is shown
+    // (chip + prompt) before release can remove it. Never while the Q wheel is open (update skips the callback then).
+    let fallback = null;
+    const fallbackName = () => (fallback = frameAim && kind === 'hammer' && !hook ? removalFor(frameAim) : null) ? removalName(fallback).toLowerCase() : '';
+    building?.update(raft, frameAim, camera.position, running && kind === 'hammer' && !hook && !uiBlocked(), localBag(), yaw, deckY(), fallbackName);
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing ? placementFor(kind, frameAim.point) : null;
-    removeTarget = frameAim && kind === 'hammer' && !hook && !pieces ? removalFor(frameAim) : null; // X Remove prompt (decor or a bare floor tile)
+    removeTarget = building?.removing ? fallback : frameAim && kind === 'hammer' && !hook && !pieces ? removalFor(frameAim) : null; // X Remove prompt (decor or a bare floor tile)
     if (!hover) { ghosts.hide(); return; }
     const floor = kind === 'hammer';
     ghosts.show(floor ? 'floor' : kind, hover.x * 2, floor ? .015 : .22, hover.z * 2, floor ? 0 : placeRot, !hover.blocked && !(floor && !canAfford(localBag(), FLOOR_COST)), elapsed);
@@ -1584,7 +1589,7 @@ export function mount(transfer = null) {
   });
   on(window, 'keyup', e => {
     keys[e.code] = false; if (e.code === 'KeyR') sailing?.release(); // [sailing]
-    if (e.code === 'KeyX' && building?.removing) { const a = building.removeAction(); if (a && running) { swing = 1; action(a); } else if (running) removePiece(); } // building-pieces lane hook; no piece aimed: decor or floor
+    if (e.code === 'KeyX' && building?.removing) { const shown = removeTarget, wheel = building.menu.isOpen; const a = building.removeAction(); if (a && running) { swing = 1; action(a); } else if (running && shown && !wheel) removePiece(); } // building-pieces lane hook; no piece aimed: only the floor/decor fallback that was shown
   });
   on(window, LIVE_STATUS_EVENT, e => { if (!running || !e.detail?.text) return; notice(e.detail.text); e.preventDefault(); }); // live.js update notices -> feed
   on(window, 'keydown', e => { if (e.key === 'Escape' && !e.repeat) { escHeld = true; relockOnEscUp = false; } }, {capture:true});
