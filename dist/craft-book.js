@@ -73,7 +73,7 @@ export const ITEM_TEXT = Object.freeze({
   rainbarrel: { desc: 'A tub with a leaf funnel that catches the rain.', use: 'Fills by itself in the rain. Hold an empty cup and press E.' },
   sprinkler:  { desc: 'A little spinning head with its own tank.', use: 'Waters nearby palm planters and crop plots for you. Fill it with fresh water, or put it next to a rain barrel.' },
   water:      { desc: 'A filtered cup of fresh water.', use: 'Water a palm planter.' },
-  purifier:   { desc: 'A small still that boils off the salt.', use: 'Turns sea water into fresh water.' },
+  purifier:   { desc: 'A small still that boils off the salt.', use: 'Hold a plank and press E to fuel it (up to 3; one burns 50 s), then pour in sea water: fresh in 30 s.' },
   // progression catalogue (items.js; its tooltips also show the item's own tip)
   copperore:  { desc: 'Green-flecked ore from a lucky barrel.', use: 'Smelt it into copper ingots.' },
   seaweed:    { desc: 'A slippery strand of seaweed.', use: 'Quick fuel for the grill and smelter.' },
@@ -345,7 +345,7 @@ export const ITEM_SOURCE = Object.freeze({
   copperingot: Object.freeze({ tag: 'smelter', how: 'Smelt copper ore in a smelter.' }),
   glass:       Object.freeze({ tag: 'smelter, kiln', how: 'Melt sand in a smelter or a Seaside Kiln.' }),
   saltcup:     Object.freeze({ tag: 'fill a cup', how: 'Hold an empty cup and click the sea.' }),
-  freshcup:    Object.freeze({ tag: 'purifier', how: 'Pour sea water into a purifier and wait.' }),
+  freshcup:    Object.freeze({ tag: 'purifier', how: 'Pour sea water into a fuelled purifier and wait 30 s.' }),
   cookedfish:  Object.freeze({ tag: 'grill', how: 'Cook a fish on a grill.' }),
   // [bees] gathered from flower bushes and beehives
   flowerseed:  Object.freeze({ tag: 'bushes, barrels', how: 'Harvest bushes on islands, or open floating barrels.' }),

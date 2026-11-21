@@ -1,16 +1,23 @@
 // Water purifier, cups and palm-planter watering. Pure logic: no DOM, no THREE,
 // no imports, no clocks or randomness (harvest takes an injected rng).
 // State lives in world.garden / world.purifiers, keyed "x,z" (tile ints).
+// Purifier entry {cup:0|1, t, ready, fuel, burn} (Raft fuel rules): `fuel` = planks waiting in the fuel slot
+// (0..PURIFIER_FUEL_MAX), `burn` = seconds left on the plank on the fire. Fuel burns only while a salt cup is
+// purifying; with no fuel the progress pauses. An entry exists while there is a cup, fuel or a part-burnt plank.
+// Pre-fuel saves stored {t, ready} (only while a cup was in): they load as cup 1, and a cup mid-purify gets one
+// free plank so it is never stuck.
 
-export const PURIFY_SECONDS = 15, GROW_SECONDS = 90, STAGE_SECONDS = 45, MAX_TICK = 60;
+export const PURIFY_SECONDS = 30, PLANK_SECONDS = 50, PURIFIER_FUEL_MAX = 3, FUEL_ITEM = 'wood';
+export const GROW_SECONDS = 90, STAGE_SECONDS = 45, MAX_TICK = 60;
 export const FILL_REACH = 6, USE_REACH = 3, HOST_SLACK = 2; // metres (horizontal)
 export const HARVEST = Object.freeze({leaf:2}), BONUS = Object.freeze({wood:1}), BONUS_CHANCE = .25;
-export const WATER_ACTIONS = Object.freeze(['fillCup', 'loadPurifier', 'takeWater', 'waterPlant', 'harvestPlant']);
+export const WATER_ACTIONS = Object.freeze(['fillCup', 'loadPurifier', 'takeWater', 'waterPlant', 'harvestPlant', 'fuelPurifier']);
 export const tileKey = (x, z) => x + ',' + z;
 
 const KEY_RE = /^-?\d+,-?\d+$/;
 const TEXT = Object.freeze({
-  fillCup:'Scooped a cup of sea water', loadPurifier:'The purifier is bubbling away', takeWater:'+ 1 cup of fresh water',
+  fillCup:'Scooped a cup of sea water', loadPurifier:'The purifier is bubbling away', loadNoFuel:'Sea water in. Add a plank to light the fire',
+  takeWater:'+ 1 cup of fresh water', fuelfull:'The fuel slot is full', nowood:'You need a plank',
   water:'The planter drinks it up', harvest:'+ 2 palm leaf', harvestBonus:'+ 2 palm leaf · 1 wood',
   full:'Your bag is full', nocup:'You need a cup', busy:'It is already purifying', notready:'Almost ready…',
   watered:'Already watered', ripe:'Harvest it first', notripe:'Still growing', notarget:'Nothing to use that on',
@@ -38,12 +45,22 @@ function cleanGardenEntry(e) {
 
 function cleanPurifierEntry(e) {
   if (!isPlain(e)) return null;
-  const ready = e.ready === 1 || e.ready === true ? 1 : 0;
-  let t = intIn(e.t, 0, PURIFY_SECONDS);
+  const legacy = !hasOwn(e, 'fuel'); // pre-fuel save: an entry meant a cup was in
+  const cup = legacy || e.cup === 1 || e.cup === true ? 1 : 0;
+  let ready = cup && (e.ready === 1 || e.ready === true) ? 1 : 0;
+  let t = cup ? intIn(e.t, 0, PURIFY_SECONDS) : 0;
   if (t === null) t = 0;
   if (ready) t = PURIFY_SECONDS;
-  return {t, ready};
+  let fuel = legacy ? (cup && !ready ? 1 : 0) : intIn(e.fuel, 0, PURIFIER_FUEL_MAX);
+  let burn = legacy ? 0 : intIn(e.burn, 0, PLANK_SECONDS);
+  if (fuel === null) fuel = 0;
+  if (burn === null) burn = 0;
+  if (!cup && !fuel && !burn) return null;
+  return {cup, t, ready, fuel, burn};
 }
+
+/** A purifier entry is lit while a cup is purifying and there is fire or fuel to feed it. */
+export const purifierBurning = e => !!e && e.cup === 1 && !e.ready && (e.burn > 0 || e.fuel > 0);
 
 function cleanMap(src, types, want, entry) {
   const out = {};
@@ -108,9 +125,12 @@ export function tick(world, dt) {
   }
   for (const k of Object.keys(world.purifiers)) {
     const e = world.purifiers[k];
-    if (e.ready) continue;
-    e.t = Math.min(PURIFY_SECONDS, e.t + s);
-    if (e.t >= PURIFY_SECONDS) { e.ready = 1; out.done.push(k); }
+    if (!e.cup || e.ready) continue;
+    for (let i = 0; i < s; i++) {
+      if (e.burn <= 0) { if (e.fuel <= 0) break; e.fuel--; e.burn = PLANK_SECONDS; } // the next plank goes on the fire
+      e.burn--; e.t++;
+      if (e.t >= PURIFY_SECONDS) { e.t = PURIFY_SECONDS; e.ready = 1; out.done.push(k); break; }
+    }
   }
   return out;
 }
@@ -156,20 +176,64 @@ export function fillCup(world, bag) {
 export function loadPurifier(world, key, bag) {
   ensureMaps(world);
   if (!decorAt(world, key, 'purifier')) return fail('notarget');
-  if (hasOwn(world.purifiers, key)) return fail('busy');
+  const e = world.purifiers[key];
+  if (e && e.cup !== 0) return fail('busy'); // (an uncleaned pre-fuel entry has no cup field: it holds a cup)
   if (bag.count('saltcup') < 1) return fail('nocup');
   if (!bag.remove('saltcup', 1)) return fail('nocup');
-  world.purifiers[key] = {t:0, ready:0};
-  return okBuild(TEXT.loadPurifier);
+  const fuel = e ? e.fuel | 0 : 0, burn = e ? e.burn | 0 : 0;
+  world.purifiers[key] = {cup:1, t:0, ready:0, fuel, burn};
+  return okBuild(fuel || burn ? TEXT.loadPurifier : TEXT.loadNoFuel);
+}
+
+/** Puts one plank into the purifier's fuel slot (max PURIFIER_FUEL_MAX). */
+export function fuelPurifier(world, key, bag) {
+  ensureMaps(world);
+  if (!decorAt(world, key, 'purifier')) return fail('notarget');
+  const e = world.purifiers[key];
+  if (e && e.fuel >= PURIFIER_FUEL_MAX) return fail('fuelfull');
+  if (bag.count(FUEL_ITEM) < 1 || !bag.remove(FUEL_ITEM, 1)) return fail('nowood');
+  const next = e ?? {cup:0, t:0, ready:0, fuel:0, burn:0};
+  next.fuel = (next.fuel | 0) + 1;
+  world.purifiers[key] = next;
+  return okBuild(`Added fuel (${next.fuel}/${PURIFIER_FUEL_MAX})`);
+}
+
+/**
+ * Crosshair target for a purifier: {prompt, click, e, why}. `kind` = held item, `at` = {x, z}.
+ * prompt starting with <kbd> is an action; anything else is a muted status line.
+ */
+const targetCache = new Map(); // numeric key -> result: the crosshair asks every frame, so repeat answers are reused
+const KIND_IDX = {cup:1, saltcup:2, freshcup:3, [FUEL_ITEM]:4};
+export function purifierTarget(entry, kind, at) {
+  const e = entry && entry.cup !== undefined ? entry : null;
+  const st = !e ? 0 : !e.cup ? 1 : e.ready ? 2 : purifierBurning(e) ? 3 : 4, ki = KIND_IDX[kind] ?? 0;
+  const key = ((((((at.x + 64) * 128 + at.z + 64) * 5 + st) * 4 + (e ? e.fuel : 0)) * 5 + ki) * 64) + (st === 3 ? e.t : 0);
+  let r = targetCache.get(key);
+  if (r === undefined) { if (targetCache.size > 1024) targetCache.clear(); r = buildPurifierTarget(e, kind, at); targetCache.set(key, r); }
+  return r;
+}
+function buildPurifierTarget(e, kind, at) {
+  const cup = !!e && e.cup === 1, fuel = e ? e.fuel : 0;
+  const act = (prompt, k, click = true) => ({prompt, click:click ? {kind:k, x:at.x, z:at.z} : null, e:{kind:k, x:at.x, z:at.z}, why:null});
+  const status = t => ({prompt:t, click:null, e:null, why:t});
+  if (cup && e.ready) return act('<kbd>E</kbd>Take fresh water', 'takeWater', kind === 'cup' || kind === 'saltcup' || kind === 'freshcup');
+  if (kind === FUEL_ITEM && fuel < PURIFIER_FUEL_MAX) return act(`<kbd>E</kbd>Add fuel (${fuel}/${PURIFIER_FUEL_MAX})`, 'fuelPurifier');
+  if (!cup) {
+    if (kind === 'saltcup') return act('<kbd>E</kbd>Pour in sea water', 'loadPurifier');
+    return status(fuel ? `Purifier: needs a cup of sea water · fuel ${fuel}/${PURIFIER_FUEL_MAX}` : 'Purifier: needs sea water and a plank');
+  }
+  if (purifierBurning(e)) return status(`Purifying… ${PURIFY_SECONDS - e.t}s · fuel ${fuel}/${PURIFIER_FUEL_MAX}`);
+  return status('Purifier: out of fuel. Hold a plank and press E');
 }
 
 export function takeWater(world, key, bag) {
   ensureMaps(world);
   if (!decorAt(world, key, 'purifier')) return fail('notarget');
   const e = world.purifiers[key];
-  if (!e || !e.ready) return fail('notready');
+  if (!e || e.cup === 0 || !e.ready) return fail('notready');
   if (!trade(bag, {}, {freshcup:1})) return fail('full');
-  delete world.purifiers[key];
+  if (e.fuel || e.burn) world.purifiers[key] = {cup:0, t:0, ready:0, fuel:e.fuel | 0, burn:e.burn | 0}; // leftover fuel stays in the slot
+  else delete world.purifiers[key];
   return okLoot(TEXT.takeWater);
 }
 

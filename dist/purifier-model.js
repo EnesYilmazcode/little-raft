@@ -26,6 +26,15 @@ export function createPurifier(T) {
     const m = new T.Mesh(new T.IcosahedronGeometry(.035, 0), std(0x5a2a14, .7, 0, {emissive:0xff7a2a, emissiveIntensity:.8}));
     m.position.set(Math.cos(a) * r, .135, Math.sin(a) * r); m.castShadow = m.receiveShadow = true; embers.add(m);
   }
+  // Flame: two crossed emissive cones (no light), shown only while fuel is burning.
+  const flame = new T.Group(); flame.name = 'flame'; g.add(flame);
+  const flameMat = new T.MeshBasicMaterial({color:0xffa53a, transparent:true, opacity:.85, depthWrite:false});
+  const coneGeo = new T.ConeGeometry(.07, .2, 8, 1, true);
+  for (let i = 0; i < 2; i++) { const c = new T.Mesh(coneGeo, flameMat); c.position.set(i ? .03 : -.02, .22, i ? -.02 : .02); c.scale.setScalar(i ? .75 : 1); flame.add(c); }
+  // Fuel slot: up to three planks stacked on the base beside the fire tray (one per stored plank).
+  const planks = new T.Group(); planks.name = 'fuelPlanks'; g.add(planks);
+  const plankMat = std(0xa8794a, .9), plankGeo = new T.BoxGeometry(.06, .03, .3);
+  for (let i = 0; i < 3; i++) { const m = new T.Mesh(plankGeo, plankMat); m.position.set(-.28 + (i % 2) * .065, .055 + i * .03, 0); m.rotation.y = (i - 1) * .12; m.castShadow = m.receiveShadow = true; m.visible = false; planks.add(m); }
   add(new T.CylinderGeometry(.2, .17, .22, 24, 1, true), std(0xb87333, .4, .6, {side:T.DoubleSide}), 'pot', 0, .55, 0);
   const pw = add(new T.CircleGeometry(.185, 24), std(0x5f8fa0, .2), 'potWater', 0, .62, 0); pw.rotation.x = -Math.PI / 2;
   const curve = new T.QuadraticBezierCurve3(new T.Vector3(.14, .66, 0), new T.Vector3(.32, .78, 0), new T.Vector3(.42, .42, 0));
@@ -44,29 +53,36 @@ export function createPurifier(T) {
   return g;
 }
 
+// entry: watering.js purifier entry ({cup, t, ready, fuel, burn}) or null. Allocation-free per frame.
 export function paintPurifier(g, entry, elapsed) {
-  const ud = g.userData, sig = entry ? (entry.ready ? 'r' : 'b') : 'e';
+  const ud = g.userData;
+  const cup = !!entry && entry.cup !== 0, ready = cup && !!entry.ready, fuel = entry ? Math.min(3, entry.fuel | 0) : 0;
+  const lit = cup && !ready && (entry.burn > 0 || fuel > 0); // fire only while a cup is purifying
+  const sig = (cup ? (ready ? 3 : lit ? 2 : 1) : 0) * 4 + fuel; // 0 empty, 1 paused (no fuel), 2 burning, 3 ready
   if (!ud.parts) {
     const get = n => g.getObjectByName(n);
-    ud.parts = {embers:get('embers'), potWater:get('potWater'), cup:get('cup'), cupWater:get('cupWater'), steam:[0, 1, 2].map(i => get('steam' + i))};
+    ud.parts = {embers:get('embers'), flame:get('flame'), planks:get('fuelPlanks'), potWater:get('potWater'), cup:get('cup'), cupWater:get('cupWater'), steam:[0, 1, 2].map(i => get('steam' + i))};
   }
   const p = ud.parts;
   if (ud.sig !== sig) {
     ud.sig = sig;
-    const busy = sig === 'b';
-    p.embers.visible = busy;
-    p.potWater.visible = sig !== 'e';
-    p.cup.visible = sig !== 'e';
-    p.cupWater.visible = sig === 'r';
-    for (const s of p.steam) s.visible = busy;
+    p.embers.visible = lit;
+    if (p.flame) p.flame.visible = lit;
+    if (p.planks) for (let i = 0; i < p.planks.children.length; i++) p.planks.children[i].visible = i < fuel;
+    p.potWater.visible = cup;
+    p.cup.visible = cup;
+    p.cupWater.visible = ready;
+    for (let i = 0; i < p.steam.length; i++) p.steam[i].visible = lit;
   }
-  if (sig !== 'b') return;
-  p.embers.children.forEach((m, i) => { m.material.emissiveIntensity = .8 + .4 * Math.sin(elapsed * 9 + i); });
-  p.steam.forEach((s, i) => {
-    const ph = (((elapsed * .45 + i / 3) % 1) + 1) % 1;
+  if (!lit) return;
+  const em = p.embers.children;
+  for (let i = 0; i < em.length; i++) em[i].material.emissiveIntensity = .8 + .4 * Math.sin(elapsed * 9 + i);
+  if (p.flame) { const f = p.flame.children; for (let i = 0; i < f.length; i++) f[i].scale.y = (i ? .75 : 1) * (.85 + .25 * Math.sin(elapsed * (13 + i * 4) + i)); }
+  for (let i = 0; i < p.steam.length; i++) {
+    const s = p.steam[i], ph = (((elapsed * .45 + i / 3) % 1) + 1) % 1;
     s.position.set(Math.sin(ph * 6 + i) * .04, .7 + ph * .5, 0);
     s.material.opacity = .45 * (1 - ph);
-  });
+  }
 }
 
 const PLANT_PARTS = ['trunk', 'crown', 'coconuts', 'fronds', 'frondRibs'];
