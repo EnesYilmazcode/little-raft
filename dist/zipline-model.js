@@ -51,7 +51,7 @@ export function createGlidePost(T, top, name = top < 3 ? 'craft_glidestep' : 'cr
   const mastH = wheelY - .1;
   add(new T.CylinderGeometry(.07, .09, mastH, 6), '#a57a4c', 0, .06 + mastH / 2, 0);
   // two diagonal braces from the plate to the mast
-  for (const sx of [-1, 1]) add(new T.BoxGeometry(.04, .62, .05), '#8b6a43', sx * .16, .3, 0, 0, 0, sx * .6);
+  for (const sx of [-1, 1]) add(new T.BoxGeometry(.04, .52, .05), '#8b6a43', sx * .15, .31, 0, 0, 0, sx * .27);
   // rope wrap ring at 1.2 m plus a second small lashing under the wheel
   add(new T.TorusGeometry(.085, .022, 5, 10), '#c9a66b', 0, 1.2, 0, Math.PI / 2);
   add(new T.TorusGeometry(.085, .022, 5, 10), '#c9a66b', 0, 1.27, 0, Math.PI / 2);

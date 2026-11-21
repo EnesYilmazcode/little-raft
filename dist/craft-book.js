@@ -23,7 +23,7 @@ const CATEGORY_OF = Object.freeze({
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
   skyrocket: 'survival', // [fireworks]
   scarecrow: 'survival', // [scarecrow]
-  glidepost: 'decor', glidestep: 'decor', glidehandle: 'tools', // [zipline]
+  glidepost: 'building', glidestep: 'building', glidehandle: 'tools', // [zipline] (no 'decor' tab exists)
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
   researchtable: 'building', grill: 'building', smelter: 'building',
 });

@@ -100,8 +100,17 @@ export function createScarecrow(ctx, peer) {
   const isPecked = key => (guest() ? netSet.has(key) : pecked.has(key));
 
   // Nearest palm planter along the view ray (or the camera forward when no aim), within reach (from bees.js).
+  // A game aim carries `decor` (the planter the watering prompt uses): use exactly that one, so the shoo
+  // prompt and E always match the watering aim. The ray pick is only a fallback for aims without it.
   function target(aim) {
-    const w = ctx.world, p = ctx.physics, cam = ctx.camera; if (!w || !p || !cam || !Array.isArray(w.decor)) return null;
+    const w = ctx.world, p = ctx.physics; if (!w || !p || !Array.isArray(w.decor)) return null;
+    if (aim && typeof aim === 'object' && 'decor' in aim) {
+      const d = aim.decor;
+      if (!d || d.type !== 'palm' || !isInt(d.x) || !isInt(d.z) || !Number.isFinite(p.x) || !Number.isFinite(p.z)) return null;
+      if (Math.hypot(p.x - d.x * 2, p.z - d.z * 2) > REACH) return null;
+      return { x: d.x, z: d.z, key: tileKey(d.x, d.z) };
+    }
+    const cam = ctx.camera; if (!cam) return null;
     let best = null, bestScore = Infinity;
     const ox = cam.position.x, oy = cam.position.y, oz = cam.position.z;
     let dx, dy, dz;
