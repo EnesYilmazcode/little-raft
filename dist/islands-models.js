@@ -100,7 +100,7 @@ function palmGeometry(T) {
     parts.push(paint(T, g, (x, y, z, c) => { const band = Math.round(y / H * SEG) % 2; c.copy(band ? dark : light).lerp(dark, y / H * .25); }));
   }
   const top = new T.Vector3(BEND, H, 0);
-  const stem = new T.Color('#3d7a34'), mid = new T.Color('#5ea443'), tip = new T.Color('#9ccc5a');
+  const stem = new T.Color('#4c8f3c'), mid = new T.Color('#6cb84c'), tip = new T.Color('#acd96c');
   const frond = (phi, L, lift, droop, width) => {
     const N = 12, pos = [], cols = [], idx = [];
     const dx = Math.cos(phi), dz = Math.sin(phi), sx = -dz, sz = dx;
@@ -116,7 +116,11 @@ function palmGeometry(T) {
     for (let k = 0; k < N; k++) { const a = k * 3; idx.push(a, a + 3, a + 1, a + 1, a + 3, a + 4, a + 1, a + 4, a + 2, a + 2, a + 4, a + 5); }
     const g = new T.BufferGeometry();
     g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new T.Float32BufferAttribute(cols, 3));
-    g.setIndex(idx); g.computeVertexNormals(); return g;
+    g.setIndex(idx); g.computeVertexNormals();
+    // Underside: same vertices (normals still facing the sky) with reversed winding, so leaves seen
+    // from below are lit like their tops instead of going dark as a DoubleSide back face would.
+    const both = idx.slice(); for (let i = 0; i < idx.length; i += 3) both.push(idx[i], idx[i + 2], idx[i + 1]);
+    g.setIndex(both); return g;
   };
   const F = 9;
   for (let i = 0; i < F; i++) {
@@ -142,7 +146,7 @@ function bushGeometry(T) {
   };
   parts.push(blob(.55, 0, .42, 0), blob(.42, .45, .3, .15), blob(.4, -.32, .3, .34), blob(.36, -.1, .32, -.42));
   const spots = [[.3, .7, .3], [-.35, .55, .5], [.1, .9, -.2], [.65, .42, .1], [-.25, .78, -.3], [.0, .5, .58], [.45, .62, -.3]];
-  for (const [x, y, z] of spots) { const g = new T.IcosahedronGeometry(.065, 0); g.translate(x, y, z); parts.push(paint(T, g, (a, b, c2, c) => c.copy(berry))); }
+  for (const [x, y, z] of spots) { const g = new T.IcosahedronGeometry(.045, 0); g.translate(x, y, z); parts.push(paint(T, g, (a, b, c2, c) => c.copy(berry))); }
   return merge(T, parts);
 }
 
@@ -228,7 +232,7 @@ export function createIslandModels(T, ocean) {
   };
   const mats = {
     dome: new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 }),
-    palm: new T.MeshStandardMaterial({ vertexColors: true, roughness: .85, side: T.DoubleSide }),
+    palm: new T.MeshStandardMaterial({ vertexColors: true, roughness: .85 }),
     bush: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9, flatShading: true }),
     rock: new T.MeshStandardMaterial({ vertexColors: true, roughness: .95, flatShading: true }),
     sand: new T.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),

@@ -74,6 +74,9 @@ export function createIslands(ctx) {
   const waveAt = (x, z) => (ctx.ocean && typeof ctx.ocean.getHeight === 'function' ? ctx.ocean.getHeight(x, z) : baseY());
   const authority = () => ctx.role !== 'guest';
 
+  // Sand height above the island origin at a point relative to its centre (NaN past the rim).
+  const localGround = (x, z) => groundHeight(Math.sqrt(x * x + z * z), layout.R, Math.atan2(z, x) - layout.rot);
+
   function writeNode(k, pulse = 1) {
     const n = layout.nodes[k], ki = nodeKind[k], m = meshes[ki], used = st.isl.used[k], frac = used / n.max;
     let sx = n.s, sy = n.s, sz = n.s, sink = 0;
@@ -84,11 +87,9 @@ export function createIslands(ctx) {
     // Tilt bushes, rocks and sand to the dome slope; palms grow straight up.
     qA.setFromAxisAngle(UP, n.a);
     if (ki !== 0) {
-      const R = layout.R, e = .2;
-      const r0 = Math.hypot(n.x + e, n.z), r1 = Math.hypot(n.x - e, n.z), r2 = Math.hypot(n.x, n.z + e), r3 = Math.hypot(n.x, n.z - e);
-      const th = a => a - layout.rot;
-      const gx = (groundHeight(r0, R, th(Math.atan2(n.z, n.x + e))) - groundHeight(r1, R, th(Math.atan2(n.z, n.x - e)))) / (2 * e);
-      const gz = (groundHeight(r2, R, th(Math.atan2(n.z + e, n.x))) - groundHeight(r3, R, th(Math.atan2(n.z - e, n.x)))) / (2 * e);
+      const e = .2;
+      const gx = (localGround(n.x + e, n.z) - localGround(n.x - e, n.z)) / (2 * e);
+      const gz = (localGround(n.x, n.z + e) - localGround(n.x, n.z - e)) / (2 * e);
       vN.set(-gx, 1, -gz).normalize(); qB.setFromUnitVectors(UP, vN); qA.premultiply(qB);
     }
     vP.set(n.x, n.y - sink - (ki === 0 ? .1 : .04), n.z); vS.set(sx, sy, sz);
@@ -141,8 +142,7 @@ export function createIslands(ctx) {
   }
   function groundAt(x, z) { // world y of the sand, or NaN
     if (!shown) return NaN;
-    const dx = x - cx, dz = z - cz;
-    const g = groundHeight(Math.sqrt(dx * dx + dz * dz), layout.R, Math.atan2(dz, dx) - layout.rot);
+    const g = localGround(x - cx, z - cz);
     return g === g ? gy + g : NaN;
   }
   const near = p => !!p && Number.isFinite(p.x) && Number.isFinite(p.z) && (p.x - cx) ** 2 + (p.z - cz) ** 2 < (layout.R + ISLAND.NEAR) ** 2;
@@ -322,15 +322,20 @@ export function createIslands(ctx) {
       p.x = x; p.z = z; p.y = g + EYE; p.vx = p.vy = p.vz = 0; p.verticalSpeed = 0; p.grounded = true; p.swimming = false;
       sandState.onSand = true; carryX = cx; carryZ = cz; return true;
     },
-    // Stand a short step from node i, facing it along the current camera yaw. Returns its pick centre.
+    // Stand a short step from node i on its inland side. Returns the node (with its pick centre `cy`)
+    // and `yaw`, the camera yaw that faces it (scripts turn the view with a mouse drag).
     aimAt(i = 0, dist) {
-      if (!shown || !(i >= 0 && i < nodeCount) || !ctx.camera) return null;
-      const n = layout.nodes[i], ki = nodeKind[i], yaw = ctx.camera.rotation.y;
-      const d = dist ?? [2.3, 1.9, 1.7, 1.5][ki];
-      const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
-      debug.teleportAshore(n.x - fx * d, n.z - fz * d);
-      return debug.nodes()[i];
+      if (!shown || !(i >= 0 && i < nodeCount)) return null;
+      const n = layout.nodes[i], ki = nodeKind[i];
+      const d = dist ?? [2.6, 2.1, 1.9, 1.7][ki];
+      const r = Math.hypot(n.x, n.z), ux = r > .3 ? -n.x / r : 1, uz = r > .3 ? -n.z / r : 0;
+      if (!debug.teleportAshore(n.x + ux * d, n.z + uz * d)) return null;
+      const out = debug.nodes()[i];
+      out.yaw = Math.atan2(ux, uz); // forward = (-sin yaw, -cos yaw) points back along -u to the node
+      return out;
     },
+    // Camera yaw from the local player toward the island centre.
+    yawTo() { const p = ctx.physics; return p && shown ? Math.atan2(-(cx - p.x), -(cz - p.z)) : null; },
     nodes() {
       if (!layout || !st.isl) return [];
       return layout.nodes.map((n, i) => ({ i, kind: n.kind, used: st.isl.used[i], max: n.max, x: cx + n.x, y: gy + n.y, z: cz + n.z, cy: gy + n.y + PICK_Y[nodeKind[i]] * n.s }));
