@@ -2,8 +2,9 @@
 
 Background and numbers: `docs/tech/procedural-models.md`. Prototype: `sandbox/procedural-models/`.
 
-These steps were checked against the current `dist/game.js` (imports on lines 8–16, `mat()` on line 244,
-`disposeGeometry` on line 255, `rebuildRaft()` on line 351, `itemModel()` on line 371).
+These steps were re-checked against the current `dist/game.js` (imports on lines 8–16, `mat()` on line 244,
+`disposeGeometry` on line 255, `rebuildRaft()` on line 351, `itemModel()` on line 371) by applying them to a scratch
+copy of `dist/` and running the game probe.
 
 `sandbox/procedural-models/lowpoly-props.js` has no imports. THREE is passed in as `T`, the same way the
 current builders work. It exports the four game entry points with the same signatures and return contracts:
@@ -13,10 +14,10 @@ current builders work. It exports the four game entry points with the same signa
 | `createFloor(T, index, getMaterial)` (`dist/deck.js`) | `createFloor(T, index, getMaterial?)` | Returns a `Group` named `raft-floor`. Local x,z are in [-1, 1] and y is in [0, ~0.21]. The walk surface is at `FLOOR_TOP = 0.2`. `userData.{kind:'floor', index, topY, bounds, dispose()}` are set. Output is deterministic per `index`. `getMaterial` is accepted and ignored. `FLOOR_TOP` and `FLOOR_BOUNDS` are exported too. |
 | `createDebris(T, type, getMaterial, opts)` (`dist/debris.js`) | same signature, types `wood`/`leaf`/`scrap`/`barrel` | Throws on an unknown type. The root `Group` is untransformed and has one child, `debris-<type>-model`, centred on the origin. The model fits the same xz footprints (1.6/1.75/1.2/1.25). `opts.seed` and `opts.tilt` work as before. The barrel keeps its `barrel-tilt` pivot. `userData.{type, size, localMaterials: []}` are set. |
 | `createPlastic(T)` (`dist/plastic.js`) | `createPlastic(T)` | Returns a `Group` named `plastic`, about 0.6 × 0.71 × 0.38 and centred. `userData.{type:'plastic', size, dispose()}` are set. `dispose()` frees geometry only. |
-| `createCraft(T, type)` (`dist/crafts.js`) | `createCraft(T, type)`, types `sail`/`palm`/`lantern`/`net`/`bench`/`crate` | Returns `null` for an unknown type. The origin is the floor top centre, and the model builds up from y = 0 inside about 1.7 × 1.7 (the crate's rope handles reach 1.05). `userData.{craftType, size, height}` are set. Glass and flame meshes set `userData.glass = true` and have shadows off. |
+| `createCraft(T, type)` (`dist/crafts.js`) | `createCraft(T, type)`, types `sail`/`palm`/`lantern`/`net`/`bench`/`crate` | Returns `null` for an unknown type. The origin is the floor top centre, and the model builds up from y = 0 inside about 1.7 × 1.7 (the crate's rope handles reach 1.05). `userData.{craftType, size, height}` are set. The lantern's lit part (candle, flame, glowing panes) is one mesh on `lp-glow` with `userData.glass = true` and shadows off. |
 
-One behaviour changes. Materials are now **shared** at module level: 4 in total (`lp-solid`, `lp-cloth`,
-`lp-glass`, `lp-glow`), each with `material.userData.shared = true`. The old builders created materials on every
+One behaviour changes. Materials are now **shared** at module level: 3 in total (`lp-solid`, `lp-cloth`,
+`lp-glow`), each with `material.userData.shared = true`. The old builders created materials on every
 call (crafts, plastic, debris metal), and `disposeGeometry()` disposed them. That has to skip shared materials
 (step 3).
 
@@ -76,7 +77,7 @@ call (crafts, plastic, debris metal), and `disposeGeometry()` disposed them. Tha
   - Hot-swap (`live.js` update) and `dispose()` throw no errors. In devtools, `renderer.info.programs.length`
     stays flat while you pick up items. If it climbs, step 3 is missing.
 - Expected cost (gallery `scene` view, SwiftShader, relative): on the 3×3 raft with all six crafts and 7 floating
-  items, draw calls (main + shadow) drop from 271 to 52 and triangles from 251k to 57k. Materials drop from 78 to 5
-  and frame time from 6.5 ms to 1.45 ms.
+  items, draw calls (main + shadow) drop from 271 to 50 and triangles from 251k to 50k. Materials drop from 78 to 4.
 - I verified these steps on a scratch copy of `dist/` with the root `shoot.py` probe (its launch line was changed to
-  the brief's `executable_path`). There were no page or console errors, and the floor, items and HUD were intact.
+  the brief's `executable_path`). There were no page or console errors, and the floor, items and HUD were intact. Exact edits used: line 8 replaced by the
+  combined import, lines 9, 11 and 16 deleted, and the `!m.userData?.shared` guard added in `disposeGeometry`.

@@ -529,7 +529,7 @@ export function createFloor(T, index = 0, getMaterial) {
     P.add(K.box(w, th, len, 0.014), tone, { at: [xc, top - th / 2, dz], rot: [0, (r() - 0.5) * 0.012, (r() - 0.5) * 0.02], jitter: 0.006, paint: tp, tint: 0.05,
       vpaint: (c, v) => c.multiplyScalar(0.93 + 0.14 * hash4(Math.round(v.z * 3), Math.round(v.x * 40), 0, ps)) }); // weathering drift along the board
     // faint grain streaks (slightly darker slivers on the top face) and the occasional split along the grain
-    for (let k = 0, ns = 1 + Math.floor(r() * 2.5); k < ns; k++) { const sl = 0.5 + r() * 0.9, sz = (r() - 0.5) * (1.8 - sl); P.add(K.box(0.014 + r() * 0.01, 0.003, sl, 0), tone.clone().multiplyScalar(0.9), { at: [xc + (r() - 0.5) * w * 0.7, top + 0.001, sz + dz], tint: 0, occlude: false }); }
+    for (let k = 0, ns = 1 + Math.floor(r() * 2.5); k < ns; k++) { const sl = 0.5 + r() * 0.9, sz = (r() - 0.5) * (1.8 - sl); P.add(K.box(0.014 + r() * 0.01, 0.003, sl, 0), tone.clone().multiplyScalar(0.94), { at: [xc + (r() - 0.5) * w * 0.7, top + 0.001, sz + dz], tint: 0, occlude: false }); }
     if (r() < 0.3) { const cx = xc + (r() - 0.5) * w * 0.4, cl = 0.35 + r() * 0.4, cz = (r() - 0.5) * (1.6 - cl); P.add(K.box(0.008, 0.004, cl, 0), 'woodDeep', { at: [cx, top + 0.0012, cz], rot: [0, (r() - 0.5) * 0.04, 0], tint: 0, occlude: false }); }
     for (const z of logZ) {
       if (lashed.has(i)) {
