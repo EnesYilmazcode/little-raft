@@ -8,12 +8,14 @@ const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST
 const { Bag, RECIPES, ITEM_INFO, SLOT_COUNT } = await import(new URL('inventory-state.js', base));
 const { CONTENT_DECOR, CONTENT_BLOCK_RADIUS } = await import(new URL('content-items.js', base));
 const E = await import(new URL('engine.js', base));
-const { ENGINE, cleanEngine, motorKeys, wheelSpots, runningCount, engineSpeed, enginePush, burn, applyEngineAction, fmtFuel, createEngine } = E;
-const { defaultSailing } = await import(new URL('sailing-core.js', base));
+const { ENGINE, cleanEngine, motorKeys, wheelSpots, runningCount, engineSpeed, usefulMotors, hasWheel, enginePush, burn, applyEngineAction, fmtFuel, createEngine } = E;
+const SAILMOD = await import(new URL('sailing-core.js', base));
+const { defaultSailing } = SAILMOD;
 
 const near = (a, b, eps = 1e-9, msg) => assert.ok(Math.abs(a - b) <= eps, msg || `${a} !~ ${b}`);
 const bagFrom = (slots) => { const s = new Array(SLOT_COUNT).fill(null); slots.forEach((v, i) => { s[i] = v; }); return new Bag({ slots: s, selected: 0 }); };
 const M = (x, z) => ({ type: 'motor', x, z });
+const W = (x = 0, z = 1) => ({ type: 'wheel', x, z });
 const tiles = n => Array.from({ length: n }, (_, i) => [i % 10, Math.floor(i / 10)]);
 const slice = motors => ({ v: 1, motors });
 
@@ -68,23 +70,32 @@ test('motorKeys / wheelSpots', () => {
   assert.deepEqual(motorKeys(undefined), []);
 });
 
-test('engineSpeed: gain table, size factor, monotonic, capped', () => {
-  const want = [0, .7, 1.05, 1.26, 1.4, 1.4, 1.4];
+test('engineSpeed: Raft gains (1, 1.25), 100 tiles per motor, monotonic, capped', () => {
+  const { SAIL } = SAILMOD;
+  assert.deepEqual([...ENGINE.GAIN], [0, 1, 1.25]);
+  near(ENGINE.ENGINE_SPEED, 2 * SAIL.DRIFT_SPEED, 1e-12, 'one motor = 2x drift');
+  near(ENGINE.ENGINE_SPEED / SAIL.SAIL_SPEED, 4 / 3, 1e-12, 'about 1.33x a downwind sail');
+  const want = [0, .6, .75, .75, .75, .75, .75];
   for (let n = 0; n <= 6; n++) near(engineSpeed(n, 9), want[n], 1e-9, `n=${n}`);
-  near(engineSpeed(1, 9), .7); near(engineSpeed(1, 16), .7); near(engineSpeed(1, 100), .7 * .6);
-  near(engineSpeed(1, 0), .7);
+  near(engineSpeed(1, 100), .6, 1e-12, 'one motor handles 100 tiles'); near(engineSpeed(1, 0), .6);
+  near(engineSpeed(1, 200), .3); near(engineSpeed(2, 200), .75); near(engineSpeed(2, 400), .75 * .5); near(engineSpeed(4, 400), .75);
+  assert.equal(usefulMotors(9), 2); assert.equal(usefulMotors(100), 2); assert.equal(usefulMotors(301), 4); assert.equal(usefulMotors(NaN), 2);
   let prev = Infinity;
   for (let t = 1; t <= 400; t++) { const s = engineSpeed(1, t); assert.ok(s <= prev + 1e-12); prev = s; }
-  for (let n = 0; n < 10; n++) for (const t of [1, 9, 50, 500]) assert.ok(engineSpeed(n, t) <= 1.4 + 1e-12);
+  for (const t of [9, 150, 900]) { let p = 0; for (let n = 1; n < 12; n++) { const s = engineSpeed(n, t); assert.ok(s >= p - 1e-12); p = s; } }
+  for (let n = 0; n < 10; n++) for (const t of [1, 9, 50, 500]) assert.ok(engineSpeed(n, t) <= .75 + 1e-12);
   assert.equal(engineSpeed(NaN, 9), 0); assert.equal(engineSpeed(-1, 9), 0);
 });
 
 test('enginePush: along the heading; zero when anchored, off, empty or no decor', () => {
-  const decor = [M(1, 0)], s = defaultSailing(), out = { x: 9, z: 9 };
+  const decor = [M(1, 0), W()], s = defaultSailing(), out = { x: 9, z: 9 };
   const st = slice({ '1,0': { on: true, fuel: 10 } });
   s.heading = 0;
-  assert.equal(enginePush(st, decor, 9, s, out), out); near(out.x, 0); near(out.z, .7);
-  s.heading = Math.PI / 2; enginePush(st, decor, 9, s, out); near(out.x, .7); near(out.z, 0, 1e-12);
+  assert.equal(enginePush(st, decor, 9, s, out), out); near(out.x, 0); near(out.z, .6);
+  s.heading = Math.PI / 2; enginePush(st, decor, 9, s, out); near(out.x, .6); near(out.z, 0, 1e-12);
+  s.windDir = -Math.PI / 2; enginePush(st, decor, 9, s, out); near(out.x, .6, 1e-12, 'straight upwind: same push');
+  enginePush(st, [M(1, 0)], 9, s, out); assert.deepEqual(out, { x: 0, z: 0 }, 'no steering wheel');
+  assert.equal(hasWheel(decor), true); assert.equal(hasWheel([M(1, 0), null]), false); assert.equal(hasWheel(undefined), false);
   s.anchored = true; enginePush(st, decor, 9, s, out); assert.deepEqual(out, { x: 0, z: 0 }); s.anchored = false;
   enginePush(slice({ '1,0': { on: false, fuel: 10 } }), decor, 9, s, out); assert.deepEqual(out, { x: 0, z: 0 });
   enginePush(slice({ '1,0': { on: true, fuel: 0 } }), decor, 9, s, out); assert.deepEqual(out, { x: 0, z: 0 });
@@ -94,8 +105,9 @@ test('enginePush: along the heading; zero when anchored, off, empty or no decor'
 });
 
 test('burn: only running motors, clamps dt, reports dry keys, never negative', () => {
-  const decor = [M(1, 0), M(2, 0), M(3, 0)];
+  const decor = [M(1, 0), M(2, 0), M(3, 0), W()];
   const st = slice({ '1,0': { on: true, fuel: 1.5 }, '2,0': { on: false, fuel: 5 }, '3,0': { on: true, fuel: 0 }, '9,9': { on: true, fuel: 5 } });
+  assert.deepEqual(burn(st, decor.slice(0, 3), .5, false), []); near(st.motors['1,0'].fuel, 1.5, 0, 'no wheel: no burn');
   assert.deepEqual(burn(st, decor, .5, false), []);
   near(st.motors['1,0'].fuel, 1); assert.equal(st.motors['2,0'].fuel, 5); assert.equal(st.motors['9,9'].fuel, 5);
   assert.deepEqual(burn(st, decor, 100, false), ['1,0']); // dt clamped to MAX_TICK = 1 -> exactly empty
@@ -174,7 +186,7 @@ test('createEngine: actions, burn notice, prune, serialize round trip', () => {
   mod.action({ kind: 'engine', op: 'toggle', x: 1, z: 0 }, 'host', bags.host); // rate limited (OP_GAP)
   assert.equal(mod.serialize().motors['1,0'].on, true);
   const out = { x: 0, z: 0 };
-  assert.equal(mod.sailPush(world.sailing, out), true); near(out.z, .7);
+  assert.equal(mod.sailPush(world.sailing, out), true); near(out.z, .6);
   // burn to empty: notice to all, push stops
   mod.debug.fuel(1, 0, .5);
   mod.update(1);
@@ -209,7 +221,7 @@ test('co-op: guest push from synced data equals the host push; guest never burns
   guest.mod.load(JSON.parse(JSON.stringify(host.mod.serialize())), 'net');
   const a = { x: 0, z: 0 }, b = { x: 0, z: 0 };
   host.mod.sailPush(host.world.sailing, a); guest.mod.sailPush(gWorld.sailing, b);
-  assert.deepEqual(b, a); near(Math.hypot(a.x, a.z), .7);
+  assert.deepEqual(b, a); near(Math.hypot(a.x, a.z), .6);
   guest.mod.update(1); assert.equal(guest.mod.serialize().motors['1,0'].fuel, 60);
   host.mod.update(1); near(host.mod.serialize().motors['1,0'].fuel, 59);
   // guest E on the motor is sent to the host, not applied locally
@@ -252,6 +264,12 @@ test('review: prompt rows for prompts.js (the visible prompt) match the HTML pro
   assert.match(mod.prompt(motor), /Start motor · 2:10 fuel/);
   assert.deepEqual(mod.promptRows(wheel), [{ key: 'E', label: 'Start motors' }, { key: 'R', hold: true, label: 'Steer' }]);
   assert.equal(mod.promptRows(at(0, 1.6, -3)), null);
+  ctx.world.decor = [M(1, 0)];
+  assert.deepEqual(mod.promptRows(motor)[1], { label: 'Needs a steering wheel', muted: true });
+  assert.match(mod.prompt(motor), /needs a steering wheel/);
+  ctx.world.decor = [M(1, 0), M(2, 0), M(3, 0), W()];
+  for (const x of [1, 2, 3]) { mod.debug.fuel(x, 0, 60); mod.debug.set(x, 0, true); }
+  assert.deepEqual(mod.promptRows(motor)[1], { label: 'Max 2 motors help', muted: true });
   ctx.world.decor = [{ type: 'wheel', x: 0, z: 1 }];
   assert.deepEqual(mod.promptRows(wheel)[1], { label: 'No motors yet', muted: true });
 });

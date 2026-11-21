@@ -1,13 +1,13 @@
 // Sailing lane, THREE side: drives world.sailing each frame, moves scenery relative to the raft, animates sails,
 // owns the anchor fixture, points each sail's own pennant downwind, and handles aiming (E toggles sail/anchor, hold R steers the sail).
 // See docs/cloud/sailing-spec.md. The raft never moves in x/z: the world drifts past it instead.
-import { SAIL, cleanSailing, defaultSailing, stepSailing, sailTarget, applySailAction, wrapAxis, placeUpstream, driftedOut, windVector } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
+import { SAIL, cleanSailing, defaultSailing, stepSailing, sailTarget, applySailAction, wrapAxis, placeUpstream, driftedOut, windVector, currentVector } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
 import { createSailingUI } from './sailing-ui.js?build=v3-survival-ae77fa84ac2b';
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 
 const WRAP = SAIL.ISLAND_WRAP > 0 ? SAIL.ISLAND_WRAP : 150, LEASH = 10, STEER_RATE = 1.6, REACH = 3.2, MAST_H = 3.6, MAST_R = .25, ANCHOR_R = .35, DECK_Y = .22, WHEEL_Y = 1.05, WHEEL_R = .5;
 const CLOTH_R = 1.2, CLOTH_Y0 = 1, CLOTH_Y1 = 3.4; // raised cloth hit volume around the mast axis (cheap approximation)
-const FURL = .04, FURL_Z = .3, ROLL_AT = .3, ROLL_R = .07, BASE_FLOW_Z = .22, ITEM_MARGIN = 26, ROPE_DOWN = 3.4, ROPE_UP = .07, GROUND_CLEAR = 2.5, OP_GAP = 250, SNAP2 = 36;
+const FURL = .04, FURL_Z = .3, ROLL_AT = .3, ROLL_R = .07, BASE_FLOW = .22, ITEM_MARGIN = 26, ROPE_DOWN = 3.4, ROPE_UP = .07, GROUND_CLEAR = 2.5, OP_GAP = 250, SNAP2 = 36;
 const CLOTH_NAMES = new Set(['sailCloth', 'sailSeams', 'sailPatch', 'sailStitches']);
 const LIMITED_OPS = new Set(['toggle', 'raise', 'lower', 'anchor', 'unanchor', 'toggleAnchor']);
 const P_STEER = 'Steering the sail — look where to go', P_WHEEL = 'Steering — look where to go', P_RAISE = '<kbd>E</kbd>Raise sail · hold <kbd>R</kbd> to steer',
@@ -27,6 +27,7 @@ export function createSailing(T, ctx) {
   const vA = new T.Vector3(), vO = new T.Vector3(), vD = new T.Vector3(), ndc = new T.Vector2(), caster = new T.Raycaster();
   const disp = { wx: 0, wz: 0, gx: 0, gz: 0 }; // displayed offsets (guest: smoothed toward the host's state)
   const centre = { x: 0, z: 0 }, flowDir = { x: 0, z: 1 }; // raft bbox centre (world units); latched flow direction
+  const baseFlow = { x: 0, z: BASE_FLOW }; // debris baseline drift past the raft: along the current (from upwind)
   const lastOp = new Map();
   let state = defaultSailing(), speed = 0, travelDir = 0, nSails = 0, raftR = 3.5, halfDiag = 3, dispOk = false;
   let steering = false, grabYaw = 0, grabHeading = 0, steerHeading = 0, predicted = 0, predictUntil = 0, sentHeading = NaN, sendClock = 0, clock = 0;
@@ -267,8 +268,9 @@ export function createSailing(T, ctx) {
     stepOpts.push.x = stepOpts.push.z = 0; ctx.getPush?.(state, stepOpts.push); // engine: motor push (same synced data on every peer)
     stepSailing(state, dt, stepOpts, out);
     flow.x = dt > 0 ? -out.dwx / dt : 0; flow.z = dt > 0 ? -out.dwz / dt : 0;
-    const fz = BASE_FLOW_Z + flow.z, f2 = flow.x * flow.x + fz * fz;
-    if (f2 > .0025) { const f = Math.sqrt(f2); flowDir.x = flow.x / f; flowDir.z = fz / f; } // keep the last clear direction
+    currentVector(state, baseFlow); { const k = BASE_FLOW / SAIL.DRIFT_SPEED; baseFlow.x *= k; baseFlow.z *= k; }
+    const fx = baseFlow.x + flow.x, fz = baseFlow.z + flow.z, f2 = fx * fx + fz * fz;
+    if (f2 > .0025) { const f = Math.sqrt(f2); flowDir.x = fx / f; flowDir.z = fz / f; } // keep the last clear direction
     if (dt > 0) {
       const sp = Math.sqrt(out.dgx * out.dgx + out.dgz * out.dgz) / dt; speed += (sp - speed) * Math.min(1, dt * 4);
       if (sp > .01) travelDir = Math.atan2(out.dgx, out.dgz);
@@ -299,6 +301,7 @@ export function createSailing(T, ctx) {
     else { disp.gx = wrapAxis(disp.gx + out.dgx + ex * k, HG); disp.gz = wrapAxis(disp.gz + out.dgz + ez * k, HG); }
   }
   function itemFlow(o) { o.x = flow.x; o.z = flow.z; return o; }
+  function debrisBase(o) { o.x = baseFlow.x; o.z = baseFlow.z; return o; } // baseline debris drift (replaces game.js's +z .22)
   // Items spawn upstream of +z (game makeItem), get rotated about the raft centre onto the flow, and leave once they
   // are past R from the centre moving downstream. Both use the same latched unit direction, so a fresh spawn
   // (centre-relative z < 0 before rotation) always has a negative along-flow component: never instantly out.
@@ -342,9 +345,9 @@ export function createSailing(T, ctx) {
   function debug() {
     const s = ensureState(), t = { x: 0, z: 0 }, w = { x: 0, z: 0 };
     sailTarget(s, nSails, t); windVector(s, w);
-    return { ...s, nSails, steering, speed, push: { ...stepOpts.push }, motor: info.motor, grabKind, travelDir, sails: sails.length, flow: { ...flow }, flowDir: { ...flowDir }, target: t, wind: w,
+    return { ...s, nSails, steering, speed, push: { ...stepOpts.push }, motor: info.motor, grabKind, travelDir, sails: sails.length, flow: { ...flow }, flowDir: { ...flowDir }, baseFlow: { ...baseFlow }, target: t, wind: w,
       raftR, centre: { ...centre }, halfDiag, itemRange: halfDiag + ITEM_MARGIN, display: { ...disp },
-      anchorPos: anchorPos.ok ? { x: anchorPos.x, z: anchorPos.z } : null, drifters: drifters.length, current: [SAIL.CURRENT_X, SAIL.CURRENT_Z] };
+      anchorPos: anchorPos.ok ? { x: anchorPos.x, z: anchorPos.z } : null, drifters: drifters.length, current: (({ x, z }) => [x, z])(currentVector(s, {})) };
   }
   function dispose() {
     if (disposed) return; disposed = true;
@@ -355,7 +358,7 @@ export function createSailing(T, ctx) {
     for (const r of rolls) r.parent?.remove(r);
     rolls.length = 0; lastOp.clear(); drifters.length = 0; stepOpts.blockers.length = 0;
   }
-  return { update, onRaftBuilt, addDrifter, itemFlow, respawned, outOfRange, interact, grab, release, apply, debug, dispose,
+  return { update, onRaftBuilt, addDrifter, itemFlow, debrisBase, respawned, outOfRange, interact, grab, release, apply, debug, dispose,
     get steering() { return steering; } };
 }
 

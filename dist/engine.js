@@ -7,9 +7,13 @@
 import { buildMotor, buildWheel } from './engine-models.js?build=v3-survival-ae77fa84ac2b';
 
 export const ENGINE = Object.freeze({
-  ENGINE_SPEED: 0.7,          // m/s, one motor on a small raft
-  GAIN: Object.freeze([0, 1, 1.5, 1.8, 2.0]), // diminishing bonus by running motors
-  MAX_MOTORS: 4,              // a 5th+ motor still burns but adds nothing
+  // Raft-like: a motor ignores the wind and needs a Steering Wheel. One motor = 2x the ocean drift (0.30 m/s),
+  // about 1.33x a sail running straight downwind; two or more = 2.5x drift. Each motor handles TILES_PER_MOTOR
+  // floor tiles: a bigger raft with too few motors is proportionally slower.
+  ENGINE_SPEED: 0.6,          // m/s, one motor
+  GAIN: Object.freeze([0, 1, 1.25]), // by running motors (index capped at 2)
+  TILES_PER_MOTOR: 100,
+  MAX_MOTORS: 2,              // motors beyond max(MAX_MOTORS, tiles/TILES_PER_MOTOR) still burn but add nothing
   FUEL: Object.freeze({ leaf: 20, wood: 45, plastic: 60 }), // seconds of fuel per item
   FUEL_CAP: 300,
   MAX_ENTRIES: 64,
@@ -82,27 +86,40 @@ export function runningCount(slice, decor, anchored) {
   return n;
 }
 
-/** Target push speed (m/s) for n running motors on a raft of nTiles floor tiles. */
+/** Motors that still add speed on a raft of nTiles floor tiles. */
+export function usefulMotors(nTiles) {
+  const t = fin(nTiles) ? Math.max(1, nTiles) : 1;
+  return Math.max(ENGINE.MAX_MOTORS, Math.ceil(t / ENGINE.TILES_PER_MOTOR));
+}
+
+/** Target ground speed (m/s) for n running motors on a raft of nTiles floor tiles. */
 export function engineSpeed(n, nTiles) {
   if (!fin(n) || n < 1) return 0;
-  const g = ENGINE.GAIN[Math.min(Math.floor(n), ENGINE.MAX_MOTORS)];
+  n = Math.floor(n);
+  const g = ENGINE.GAIN[Math.min(n, ENGINE.GAIN.length - 1)];
   const t = fin(nTiles) ? Math.max(1, nTiles) : 1;
-  const size = Math.min(1, Math.max(0.6, Math.sqrt(16 / t)));
+  const size = Math.min(1, n * ENGINE.TILES_PER_MOTOR / t);
   return ENGINE.ENGINE_SPEED * g * size;
 }
 
-/** Push velocity along the sail heading, written into out.x/out.z. Zero when anchored or nothing runs. */
+/** True when the decor has a Steering Wheel (motors need one to push). */
+export function hasWheel(decor) {
+  if (Array.isArray(decor)) for (let i = 0; i < decor.length; i++) if (decor[i]?.type === 'wheel') return true;
+  return false;
+}
+
+/** Push (ground) velocity along the sail heading, written into out.x/out.z. Zero when anchored, without a wheel or nothing runs. */
 export function enginePush(slice, decor, nTiles, sailing, out) {
   out.x = 0; out.z = 0;
-  if (!sailing || sailing.anchored || !fin(sailing.heading)) return out;
+  if (!sailing || sailing.anchored || !fin(sailing.heading) || !hasWheel(decor)) return out;
   const sp = engineSpeed(runningCount(slice, decor, false), nTiles);
   if (sp > 0) { out.x = Math.sin(sailing.heading) * sp; out.z = Math.cos(sailing.heading) * sp; }
   return out;
 }
 
-/** Host fuel burn: 1 s per second for each running motor. Returns the keys that just ran dry. */
+/** Host fuel burn: 1 s per second for each running motor (none without a wheel). Returns the keys that just ran dry. */
 export function burn(slice, decor, dt, anchored) {
-  if (anchored || !Array.isArray(decor) || !slice?.motors) return NONE;
+  if (anchored || !Array.isArray(decor) || !slice?.motors || !hasWheel(decor)) return NONE;
   dt = fin(dt) ? Math.min(ENGINE.MAX_TICK, Math.max(0, dt)) : 0;
   if (!(dt > 0)) return NONE;
   let dry = NONE;
@@ -232,12 +249,12 @@ export function createEngine(ctx) {
     ctx.action(a);
   }
 
-  const MAX_HINT = ' · Max ' + ENGINE.MAX_MOTORS + ' motors help';
+  const tooMany = () => { const u = usefulMotors(nTiles()); return runningCount(st, decor(), anchored()) > u ? u : 0; };
   // The visible key prompt is prompts.js (#lrPrompt); game.js's #contextPrompt (fed by prompt() below) is hidden by
   // prompts.css. So the same texts are also provided to window.raftPrompts as {key,label} rows (no HTML).
   function promptRows(aim) {
     const d = target(aim); if (!d) return null;
-    const many = runningCount(st, decor(), anchored()) > ENGINE.MAX_MOTORS ? { label: 'Max ' + ENGINE.MAX_MOTORS + ' motors help', muted: true } : null;
+    const u = tooMany(), many = !hasWheel(decor()) ? { label: 'Needs a steering wheel', muted: true } : u ? { label: 'Max ' + u + ' motors help', muted: true } : null;
     const rows = [];
     if (d.type === 'wheel') {
       if (!anyMotor(decor())) return [{ key: 'R', hold: true, label: 'Steer' }, { label: 'No motors yet', muted: true }];
@@ -303,7 +320,7 @@ export function createEngine(ctx) {
     },
     prompt(aim) {
       const d = target(aim); if (!d) return null;
-      const many = runningCount(st, decor(), anchored()) > ENGINE.MAX_MOTORS ? MAX_HINT : '';
+      const u = tooMany(), many = !hasWheel(decor()) ? ' · needs a steering wheel' : u ? ' · Max ' + u + ' motors help' : '';
       if (d.type === 'wheel') {
         if (!anyMotor(decor())) return 'Hold <kbd>R</kbd> to steer · no motors yet';
         return '<kbd>E</kbd>' + (anyOn() ? 'Stop' : 'Start') + ' motors · hold <kbd>R</kbd> to steer' + many;
