@@ -21,7 +21,7 @@ import { floorTarget, decorCheck, normaliseDecor, createGhosts, tileAt, wrapRot,
 import * as Farm from './farming.js?build=v3-survival-ae77fa84ac2b'; // farming
 import { createFarmView } from './farming-view.js?build=v3-survival-ae77fa84ac2b'; // farming
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
-import { getItemIcon, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { getItemIcon, onIconReady, holdIcons } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -1083,11 +1083,13 @@ export function mount(transfer = null) {
   const propertyHandlers = [];
   const setHandler = (el, prop, fn) => { if (el) { const previous = el[prop], next = guard(fn); propertyHandlers.push([el, prop, previous, next]); el[prop] = next; } };
   function openDialog(id) { releaseLock(); const d = $('#' + id); if (d && !d.open) d.showModal(); }
-  setHandler($('#solo'), 'onclick', () => { start(); requestLock(); });
+  // Icon renders (own WebGL context + readback) wait out the first in-game frames after the title.
+  const ICON_HOLD_MS = 1000;
+  setHandler($('#solo'), 'onclick', () => { holdIcons(ICON_HOLD_MS); start(); requestLock(); });
   setHandler($('#newGame'), 'onclick', e => {
     const b = e.currentTarget;
     if (hasSave() && !b.dataset.confirm) { b.dataset.confirm = '1'; b.textContent = 'Start over? Click again'; return; }
-    newGame(); requestLock(); refreshTitle();
+    holdIcons(ICON_HOLD_MS); newGame(); requestLock(); refreshTitle();
   });
   if (!running) refreshTitle();
   setHandler($('#crewButton'), 'onclick', () => openDialog('crew'));

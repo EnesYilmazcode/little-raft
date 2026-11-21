@@ -5,7 +5,7 @@
 // the queue drains. Models come from setModelProvider(fn) (fn(kind) -> Object3D | null, e.g. models.js
 // getModel; never disposed here) and fall back to the game's own procedural models.
 // Public API: getItemIcon(kind) (sync, data URL or null while rendering / without WebGL),
-// loadItemIcon(kind) (Promise of the same), warmIcons, onIconReady, setModelProvider.
+// loadItemIcon(kind) (Promise of the same), warmIcons, holdIcons, onIconReady, setModelProvider.
 import * as T from './vendor/three.module.js';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
@@ -200,7 +200,10 @@ function encode(kind, canvas) {
 const idle = typeof requestIdleCallback === 'function' ? cb => requestIdleCallback(cb, { timeout: 1500 }) : cb => setTimeout(() => cb(null), 16);
 const SLICE_MS = 8;
 
+let holdUntil = 0; // performance.now() before which no icon renders (see holdIcons)
 function pump(deadline) {
+  const wait = holdUntil - performance.now();
+  if (wait > 0) { setTimeout(() => idle(pump), wait); return; } // still pumping: the deferred pass picks the queue up
   pumping = false;
   if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = 0; }
   const t0 = performance.now();
@@ -235,6 +238,8 @@ export function loadItemIcon(kind) {
 }
 /** Queue several kinds ahead of time (rendered in idle slices). */
 export function warmIcons(kinds) { for (const k of kinds) iconURL(k); }
+/** Render no icons for the next ms (e.g. while a game starts): queued kinds wait, then render in idle time. */
+export function holdIcons(ms) { holdUntil = Math.max(holdUntil, performance.now() + ms); }
 /** Called with (kind, url) whenever an icon (re)renders. Returns an unsubscribe function. */
 export function onIconReady(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 /** Swap the model source (e.g. hands.js buildItemModel). Re-renders every icon seen so far. */
