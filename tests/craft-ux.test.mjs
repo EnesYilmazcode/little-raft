@@ -174,6 +174,15 @@ test('tipFacts: tooltips say where to get an item and what it goes into', () => 
 
 const src = f => readFileSync(new URL(f, base), 'utf8');
 
+test('recipe rows keep their order while the bag is open (no jumping under the pointer)', () => {
+  const ui = src('survival-ui.js');
+  const paint = ui.slice(ui.indexOf('function paintRecipes'), ui.indexOf('function togglePin'));
+  assert.ok(paint.length > 100, 'found paintRecipes');
+  assert.doesNotMatch(paint, /reorderRecipes\(/, 'live repaints do not reorder');
+  assert.match(ui, /render\(true\);\s*reorderRecipes\(\);/, 'the order is set when the bag opens');
+  assert.match(ui, /activeTab = id; pickId = null; reorderRecipes\(\)/, 'and when the tab changes');
+});
+
 test('item tooltips anchor beside the element instead of trailing the pointer', () => {
   const tt = src('item-tooltips.js');
   const place = tt.slice(tt.indexOf('function place()'), tt.indexOf('function show('));

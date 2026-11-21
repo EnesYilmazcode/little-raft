@@ -198,13 +198,13 @@ const CSS = `
 #inventory .sv-rope{width:100%;height:1px;margin:2px 0;background:linear-gradient(90deg,transparent,#ffffff2e 15%,#ffffff2e 85%,transparent)}
 #inventory .sv-hint{margin:0;width:${HB * 62 - 6}px;max-width:100%;font:500 12px/1.35 ${FONT};color:#f4efe280;text-align:left}
 #inventory .sv-hint.sv-warn{color:#ffb39a}
-#inventory .sv-craft{flex:0 0 324px;width:324px;min-width:324px;box-sizing:border-box;max-height:min(560px,calc(94vh - 30px));display:flex;flex-direction:column;gap:8px;padding:9px;overflow:hidden}
+#inventory .sv-craft{flex:0 0 324px;width:324px;min-width:324px;box-sizing:border-box;height:min(540px,calc(94vh - 40px));max-height:min(560px,calc(94vh - 30px));display:flex;flex-direction:column;gap:8px;padding:9px;overflow:hidden}
 #inventory .sv-tabs{display:grid;grid-template-columns:repeat(var(--tabs,4),1fr);gap:4px;flex:none}
 #inventory .sv-tab{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;height:auto;margin:0;padding:6px 2px 5px;border:0;border-radius:4px 4px 2px 2px;
   background:linear-gradient(#1c2427,#141b1e);box-shadow:inset 0 0 0 1px #ffffff33;color:#c9cfd0;font:700 11px/1.1 ${FONT};letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
 #inventory .sv-tab .sv-icon{width:22px;height:22px;opacity:.8}
 #inventory .sv-tab:hover{color:#f8f3e6;box-shadow:inset 0 0 0 1px #fff6e0aa}
-#inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#46545a,#1c2529);color:#0b1013;box-shadow:inset 0 0 0 1px #fff6e0,0 2px 0 #fff6e0}
+#inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#46545a,#1c2529);color:#fff6e0;box-shadow:inset 0 0 0 1px #fff6e0,0 2px 0 #fff6e0}
 #inventory .sv-tab[aria-selected="true"] .sv-icon{opacity:1}
 #inventory .sv-tab:focus-visible{outline:2px solid #fff6e0;outline-offset:1px}
 #inventory .sv-tbadge{position:absolute;right:3px;top:3px;min-width:15px;padding:2px 3px;border-radius:8px;background:#6fbf4a;color:#14270b;font:800 10px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
@@ -275,7 +275,7 @@ const CSS = `
 #inventory .sv-tip[hidden]{display:none}
 #inventory .sv-tip small{display:block;margin-top:2px;font:500 12px/1.35 ${FONT};color:#c9cfd0}
 #inventory .sv-tip small em{font-style:normal;font-weight:700;color:#ffcf9a}
-@media(max-width:860px),(max-height:520px){#inventory.sv-inv{width:auto}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}#inventory .sv-craft{flex:none;width:auto;min-width:0;max-height:none;overflow:visible}#inventory .sv-rlist{max-height:30vh}#inventory .sv-bag{min-width:0}
+@media(max-width:860px),(max-height:520px){#inventory.sv-inv{width:auto}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}#inventory .sv-craft{flex:none;width:auto;min-width:0;height:auto;max-height:none;overflow:visible}#inventory .sv-rlist{max-height:30vh}#inventory .sv-bag{min-width:0}
   #inventory.sv-inv{--s:44px;--g:5px}#inventory .sv-slot .sv-art{inset:3px}}
 @media(max-width:440px){#inventory.sv-inv{--s:36px;--g:4px}#inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.sv-slot,.sv-art,.sv-cursor,.sv-label,#inventory .sv-recipe,#inventory .sv-craftbtn .sv-fill{transition:none!important;animation:none!important}}
@@ -536,7 +536,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   }
   function setTab(id, focus = false) {
     if (!groups.some(g => g.id === id)) return;
-    if (id !== activeTab) { stopHold(); activeTab = id; pickId = null; applyTab(); }
+    if (id !== activeTab) { stopHold(); activeTab = id; pickId = null; reorderRecipes(); applyTab(); }
     if (focus) tabsEl.querySelector(`.sv-tab[data-cat="${id}"]`)?.focus();
   }
   function setPick(id) {
@@ -629,7 +629,6 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       v.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${rows.map(x => `${x.need} ${itemName(x.kind)}, have ${x.have}`).join('; ') || 'nothing'}. ${v.sub.textContent}.`);
       if (tipAnchor === v.el) showTipFor(v.el);
     }
-    reorderRecipes();
     tabsEl.querySelectorAll('.sv-tab').forEach(t => {
       const n = readyPer.get(t.dataset.cat) || 0, b = t.querySelector('.sv-tbadge');
       if (b && b.textContent !== (n ? String(n) : '')) b.textContent = n ? String(n) : '';
@@ -686,7 +685,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     t.hidden = false;
   }
 
-  // Craftable recipes float to the top of each tab (craft-book.js sortCraftableFirst).
+  // Craftable recipes float to the top of each tab (craft-book.js sortCraftableFirst). The order is
+  // only redone when the bag opens or the tab changes: rows never jump under the pointer mid-craft.
   function reorderRecipes() {
     const next = groups.flatMap(g => sortCraftableFirst(recipeEls.filter(v => v.cat === g.id)));
     if (next.length !== recipeEls.length || next.every((v, i) => v === recipeEls[i])) return;
@@ -998,6 +998,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     invEls.forEach(el => { el._svCount = undefined; }); // no pop for changes made while closed
     recipeEls.forEach(v => { v.sig = null; });
     render(true);
+    reorderRecipes();
     applyTab();
     try { wrap.focus({ preventScroll: true }); } catch {}
   }
