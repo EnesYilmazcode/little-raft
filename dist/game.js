@@ -637,7 +637,7 @@ export function mount(transfer = null) {
       rebuildRaft(); emit({kind:'build'}, 'all'); // the new piece appearing is the feedback; no centre text
       return;
     }
-    if (a.kind === 'farm') { const r = Farm.applyFarmAction(world, bag, a); if (r.text) emit(r.items ? {kind:r.effect, text:r.text, items:r.items} : {kind:r.effect, text:r.text}, actor); if (r.changed) farmSeen = null; return; } // farming
+    if (a.kind === 'farm') { const r = Farm.applyFarmAction(world, bag, a); const e = Farm.farmEffect(r); if (e) emit(e, actor); if (r.changed) farmSeen = null; return; } // farming
     if (a.kind === 'fish') {
       if (bag.count('fishingrod') < 1) return;
       if (bag.add('fish', 1) > 0) { emit({kind:'full', text:'Bag full: the fish swam away'}, actor); return; }

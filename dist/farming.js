@@ -161,3 +161,9 @@ export function farmSignature(decor) {
   for (const d of decor) if (isPlot(d)) s += `${d.x},${d.z}:${d.farm ? d.farm.s : MATURE}${d.farm && d.farm.w > 0 ? 'w' : 'd'};`;
   return s;
 }
+
+// The emit payload for an applyFarmAction result: items go out as loot so the pickup feed shows them.
+export function farmEffect(r) {
+  if (!r || !r.text) return null;
+  return r.items ? { kind: r.effect, text: r.text, loot: { ...r.items } } : { kind: r.effect, text: r.text };
+}
