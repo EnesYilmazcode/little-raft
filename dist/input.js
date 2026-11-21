@@ -89,6 +89,7 @@ export function createInput({
   on(element || target, 'wheel', e => {
     if (isBlocked() || !locked()) return;
     if (element) e.preventDefault?.();
+    if (e.shiftKey || e.ctrlKey || e.altKey) return; // modifier+wheel fine-rotates a held placeable (game.js), never steps the hotbar
     wheelAcc += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
     // at most one slot per event: a mouse notch is deltaY 100 (or 3 lines) and must not skip a slot; trackpads accumulate
     if (Math.abs(wheelAcc) >= WHEEL_STEP) { tap(wheelAcc > 0 ? 'WheelDown' : 'WheelUp'); wheelAcc = 0; }
@@ -209,6 +210,7 @@ export function createInput({
     triggers: () => ({ ...trig }),
     hotbarStep: () => take(() => step, () => { step = 0; }),
     hotbarSlot: () => take(() => slot, () => { slot = -1; }),
+    shiftHeld: () => held.has('ShiftLeft') || held.has('ShiftRight'),
     dispose() { ac.abort(); clear(); connected.clear(); lastActive.clear(); padSig.clear(); },
   });
 }

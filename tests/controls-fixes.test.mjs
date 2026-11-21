@@ -1,0 +1,101 @@
+// Regression tests for the CTL-1..CTL-6 input fixes (dist/input.js, controls.js, input-map.js, game.js glue).
+// Run: node --test tests/controls-fixes.test.mjs
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
+
+// minimal DOM for build-radial.js / controls-tab.js
+class El extends EventTarget {
+  constructor() { super(); this.children = []; this.attrs = {}; const cls = new Set(); this.classList = { add: c => cls.add(c), remove: c => cls.delete(c), toggle: (c, on) => (on ?? !cls.has(c)) ? cls.add(c) : cls.delete(c), contains: c => cls.has(c) }; }
+  setAttribute(k, v) { this.attrs[k] = v; } append(...k) { this.children.push(...k); } appendChild(k) { this.children.push(k); return k; }
+  replaceChildren() { this.children = []; } remove() {}
+}
+const gdoc = new EventTarget();
+Object.assign(gdoc, { pointerLockElement: null, visibilityState: 'visible', head: new El(), body: new El(),
+  getElementById: () => null, createElement: () => new El(), createElementNS: () => new El() });
+globalThis.document = gdoc;
+const win = new EventTarget(); win.document = gdoc; globalThis.window = win; // createInput's default key/mouse target
+const gpads = [null, null, null, null];
+try { globalThis.navigator.getGamepads = () => gpads; } catch { Object.defineProperty(globalThis, 'navigator', { value: { getGamepads: () => gpads }, configurable: true }); }
+const events = [];
+globalThis.dispatchEvent = e => { events.push(e); return true; };
+
+const { createInput } = await import(new URL('input.js', base));
+const { ActionMap } = await import(new URL('input-map.js', base));
+const { createControls } = await import(new URL('controls.js', base));
+const gameSrc = readFileSync(fileURLToPath(new URL('game.js', base)), 'utf8');
+
+function fire(target, type, props = {}) {
+  const e = new Event(type, { cancelable: true });
+  for (const [k, v] of Object.entries(props)) Object.defineProperty(e, k, { value: v, configurable: true });
+  target.dispatchEvent(e);
+  return e;
+}
+const btn = (value = 0) => ({ pressed: value > 0.5, touched: value > 0, value });
+const makePad = (index = 0) => ({ index, id: `pad${index}`, mapping: 'standard', connected: true, timestamp: 0,
+  axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => btn(0)) });
+
+function inputSetup(opts = {}) {
+  const doc = new EventTarget(); doc.visibilityState = 'visible';
+  const win = new EventTarget(); win.document = doc;
+  const canvas = new EventTarget(); doc.pointerLockElement = canvas;
+  const pads = [null, null, null, null];
+  let blocked = false;
+  const actions = [];
+  const map = opts.map ?? new ActionMap();
+  const input = createInput({ target: win, element: canvas, map, doc, isBlocked: () => blocked,
+    onAction: (id, phase) => actions.push(`${id}:${phase}`), getGamepads: () => pads, now: () => 0, ...opts.input });
+  const key = (type, code, extra = {}) => fire(win, type, { code, key: code, target: win, ...extra });
+  return { win, canvas, pads, map, input, actions, tick: () => input.update(1 / 60),
+    down: (c, x) => key('keydown', c, x), up: (c, x) => key('keyup', c, x), block: v => { blocked = v; } };
+}
+
+const physics = { grounded: true, swimming: false, vx: 0, vz: 0, vy: 0 };
+function controlsSetup(extra = {}) {
+  let blocked = false;
+  const calls = [];
+  const rec = name => (...a) => { calls.push(a.length ? [name, ...a] : name); };
+  const p = makePad(); gpads[0] = p;
+  const c = createControls({ canvas: null, isBlocked: () => blocked, look: () => {}, hotbarSize: 8, slot: () => 0, selectSlot: rec('selectSlot'),
+    interact: rec('interact'), inventory: rec('inventory'), repair: rec('repair'), pause: rec('pause'), menuBack: rec('menuBack'),
+    useDown: rec('useDown'), useUp: rec('useUp'), useCancel: rec('useCancel'), reelDown: rec('reelDown'), reelUp: rec('reelUp'), ...extra });
+  return { c, p, calls, tick: () => c.movement(1 / 60, !blocked, physics), block: v => { blocked = v; },
+    done() { c.dispose(); gpads[0] = null; } };
+}
+
+// ---------------------------------------------------------------- CTL-1
+
+test('CTL-1: Shift/Ctrl/Alt + wheel never steps the hotbar; plain wheel still does', () => {
+  const s = inputSetup();
+  for (const mod of ['shiftKey', 'ctrlKey', 'altKey']) {
+    const e = fire(s.canvas, 'wheel', { deltaY: 100, deltaMode: 0, [mod]: true }); s.tick();
+    assert.equal(s.input.hotbarStep(), 0, `${mod}+wheel must not change slot`);
+    assert.equal(e.defaultPrevented, true, 'still no page scroll / browser zoom');
+  }
+  fire(s.canvas, 'wheel', { deltaY: 100, deltaMode: 0 }); s.tick();
+  assert.equal(s.input.hotbarStep(), 1);
+});
+
+test('CTL-1: game.js wheel handler fine-rotates on modifier even while controls own the locked wheel', () => {
+  const h = gameSrc.slice(gameSrc.indexOf("on(canvas, 'wheel'"), gameSrc.indexOf("on($('#resumeHint')"));
+  const fine = h.indexOf('const fine = e.shiftKey || e.ctrlKey || e.altKey');
+  const early = h.indexOf('if (controls && isLocked() && !fine) return;');
+  assert.ok(fine > 0 && early > fine, 'modifier wheel is not swallowed by the controls early-return');
+  assert.match(h, /if \(fine\) \{ if \(DECOR_TYPES\.includes\(heldKind\(\)\)\) rotatePlacement\(step \* FINE_STEP\); return; \}/);
+  assert.ok(h.indexOf('selectSlot(') > h.indexOf('if (fine)'), 'slot change only after the modifier branch returned');
+});
+
+test('CTL-1: Shift+R rotates backwards through the controls repair callback', () => {
+  const s = controlsSetup();
+  const target = win;
+  fire(target, 'keydown', { code: 'ShiftLeft', target: null }); fire(target, 'keydown', { code: 'KeyR', target: null, shiftKey: true }); s.tick();
+  fire(target, 'keyup', { code: 'KeyR' }); fire(target, 'keyup', { code: 'ShiftLeft' }); s.tick();
+  fire(target, 'keydown', { code: 'KeyR', target: null }); s.tick(); fire(target, 'keyup', { code: 'KeyR' }); s.tick();
+  const reps = s.calls.filter(c => Array.isArray(c) && c[0] === 'repair');
+  assert.deepEqual(reps, [['repair', true], ['repair', false]]);
+  assert.match(gameSrc, /repair:back => \{ if \(running && DECOR_TYPES\.includes\(heldKind\(\)\)\) rotatePlacement\(back \? -ROT_STEP : ROT_STEP\)/);
+  s.done();
+});

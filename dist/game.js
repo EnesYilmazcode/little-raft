@@ -1358,11 +1358,12 @@ export function mount(transfer = null) {
   on(canvas, 'wheel', e => {
     if (!running || uiBlocked() || (!isLocked() && !lockFallback)) return;
     e.preventDefault();
-    if (controls && isLocked()) return; // controls lane: input.js steps the hotbar while locked (was double-stepping)
+    const fine = e.shiftKey || e.ctrlKey || e.altKey; // modifier+wheel fine-rotates a held placeable and never changes slot
+    if (controls && isLocked() && !fine) return; // controls lane: input.js steps the hotbar while locked (was double-stepping)
     wheelAcc += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
     if (Math.abs(wheelAcc) < 40) return;
     const step = wheelAcc > 0 ? 1 : -1; wheelAcc = 0;
-    if ((e.shiftKey || e.ctrlKey || e.altKey) && DECOR_TYPES.includes(heldKind())) { rotatePlacement(step * FINE_STEP); return; }
+    if (fine) { if (DECOR_TYPES.includes(heldKind())) rotatePlacement(step * FINE_STEP); return; }
     selectSlot((localBag().selectedIndex + step + HOTBAR) % HOTBAR);
   }, {passive:false});
   on($('#resumeHint'), 'click', () => requestLock());
@@ -1397,7 +1398,7 @@ export function mount(transfer = null) {
     controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
       look:(dx, dy) => { if (!building?.menu.isOpen) look(dx, dy, 1); }, hotbarSize:HOTBAR, // building wheel steals mouse look while open
       slot:() => localBag().selectedIndex, selectSlot:i => running && selectSlot(i),
-      interact, inventory:openInventory, repair:() => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(ROT_STEP); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
+      interact, inventory:openInventory, repair:back => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(back ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
       pause:() => settingsController?.open(),
       useDown:() => { if (castOut()) reeling = true; else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); } },
       useUp:() => { reeling = false; if (charging) releaseCharge(pickCenter()); }, useCancel:() => { reeling = false; if (charging?.x === null) charging = null; }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});

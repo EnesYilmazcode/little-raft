@@ -33,7 +33,7 @@ export function createControls(g) {
       if (id === 'interact') call('interact');
       else if (id === 'inventory') call('inventory');
       else if (id === 'pause' && pad) call('pause'); // Escape on the keyboard is owned by settings.js / pointer lock
-      else if (id === 'rotate') { call('repair'); emit('little-raft-action', {id}); } // game's R = repair today
+      else if (id === 'rotate') { call('repair', input.shiftHeld()); emit('little-raft-action', {id}); } // game's R = repair today
       else if (id === 'drop') emit('little-raft-action', {id});
       else if (id === 'buildMenu') openRadial();
       else if ((id === 'use' || id === 'aim') && pad) return; // pad triggers handled analog in frame()
