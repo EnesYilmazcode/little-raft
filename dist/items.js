@@ -113,6 +113,8 @@ const LIST = [
     tip: 'A thick slab cut from a shark you fought off for good. Four come from every shark.' }),
   item('sharkhead', 'Shark Head', 'material', { iconTint: '#7f8f99', stack: 5,
     tip: 'A grim trophy from a beaten shark. Proof that your raft bites back.' }),
+  item('rawmeat', 'Raw Meat', 'food', { iconTint: '#d4605e', // [boar] from a beaten island tusker
+    tip: 'A raw cut from an island tusker. Edible, but grill it for a proper meal.' }),
 
   // ----- refined (hand crafted or station) -----
   item('rope', 'Rope', 'refined', { icon: 'icon-net', placeholder: true, iconTint: '#d9c38c',
@@ -194,6 +196,9 @@ const LIST = [
   item('cookedsharkmeat', 'Grilled Shark Meat', 'food', { iconTint: '#c7764a', stack: 10,
     recipe: cook('grill', 'sharkmeat', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
     tip: 'A thick, smoky steak. Click with it in hand to eat (+30 food).' }),
+  item('cookedmeat', 'Grilled Meat', 'food', { iconTint: '#a8603a', stack: 10, // [boar]
+    recipe: cook('grill', 'rawmeat', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
+    tip: 'Tusker meat grilled until it sizzles. Click with it in hand to eat (+35 food).' }),
 
   // ----- build / decor (placeable on raft tiles) -----
   item('bench', 'Bench', 'decor', { icon: 'icon-repair', placeholder: true, placeable: true,

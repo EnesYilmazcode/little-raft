@@ -179,7 +179,7 @@ test('items: legacy kinds keep their ids and Bag-compatible stack/tool shape', (
 
 test('items: no unlock/recipe cycles and every item is reachable from the start', () => {
   // Raw sources: floating debris + barrel loot. Fish comes from the fishing rod.
-  const have = new Set(['wood', 'leaf', 'plastic', 'scrap', 'sharkmeat', 'sharkhead', 'berries' /* [juicer] island bushes */, ...BARREL_LOOT.map((e) => e.kind)]); // shark loot comes from a dead shark (shark.js)
+  const have = new Set(['wood', 'leaf', 'plastic', 'scrap', 'sharkmeat', 'sharkhead', 'berries' /* [juicer] island bushes */, 'rawmeat' /* [boar] island tusker */, ...BARREL_LOOT.map((e) => e.kind)]); // shark loot comes from a dead shark (shark.js)
   const unlocked = (id) => {
     const u = ITEMS[id].unlock;
     if (u.type === 'start') return true;
