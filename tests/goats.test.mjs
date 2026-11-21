@@ -325,3 +325,19 @@ test('models: goat body + head merged, finite, ~0.55 m, <= 1500 triangles; Hay C
   assert.ok(pg.attributes.position.count / 3 <= 3000);
   assert.ok(pg.boundingBox.max.x - pg.boundingBox.min.x <= 1.7 && pg.boundingBox.max.z - pg.boundingBox.min.z <= 1.7);
 });
+
+// Review regressions
+test('picking: an empty Hay Corner in front of another goat keeps the aim (lure prompt)', () => {
+  const scene = new T.Scene(), camera = new T.PerspectiveCamera(60, 1, .1, 100);
+  camera.position.set(1, .55, 0); camera.lookAt(10, .55, 0); camera.updateMatrixWorld();
+  const s = stub({ scene, camera, physics: { x: 1, z: 0 }, world: { tiles: [[1, 0], [2, 0]], decor: [{ type: 'goatpen', x: 1, z: 0 }, { type: 'goatpen', x: 2, z: 0 }], pieces: [] } });
+  s.bag.slots[0] = { kind: 'seaweed', count: 5 };
+  const m = createAnimals(s);
+  m.load({ v: 1, r: 0, t: 1000, next: 2, list: [goat({ home: [2, 0] })], lures: [] }, 'save');
+  m.update(.016);
+  assert.equal(m.prompt({}), '<kbd>E</kbd>Set out greens to lure a Bramblegoat (3 seaweed)');
+  m.interact({});
+  assert.deepEqual(s.sent.at(-1), { kind: 'animals.lure', x: 1, z: 0 });
+  m.dispose();
+});
+

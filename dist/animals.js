@@ -342,7 +342,10 @@ export function createAnimals(ctx) {
       const t = sphere(wp.x, wp.y, wp.z, pen ? PEN_R : BOX_R, best);
       if (t < best) { best = t; hit.type = pen ? 'pen' : 'box'; hit.x = d.x; hit.z = d.z; hit.i = -1; }
     }
-    if (hit.type === 'pen' && goatI >= 0) { hit.type = 'goat'; hit.i = goatI; }
+    if (hit.type === 'pen' && goatI >= 0) { // only its own corner: an empty or other pen in front of a goat keeps the aim
+      const h = st.list[goatI].home;
+      if (h[0] === hit.x && h[1] === hit.z) { hit.type = 'goat'; hit.i = goatI; }
+    }
     return hit.type ? hit : null;
   }
   const heldKind = () => ctx.localBag?.()?.selected?.kind;
