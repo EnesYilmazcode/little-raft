@@ -10,7 +10,7 @@ export const CONTENT_ITEMS = Object.freeze({
   sand:     item('sand',     'Sand',           'icon-scrap', true),
   stone:    item('stone',    'Stone',          'icon-scrap', true),
   seed:     item('seed',     'Palm Seed',      'icon-leaf',  true),
-  research: item('research', 'Tinker\u2019s Desk', 'icon-repair', true),
+  research: item('research', 'Tinker\u2019s Desk', 'icon-research', false),
 });
 
 // Same shape as recipe() in inventory-state.js.
