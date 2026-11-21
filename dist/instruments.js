@@ -181,7 +181,7 @@ export function createInstruments(T, host) {
   }
 
   function prompt(ctx) {
-    const st = ctx?.state;
+    const st = ctx?.hud || ctx?.state; // hud: cheap live view with these keys
     if (!isInstrument(st?.heldKind)) return null;
     // priority 1 beats the built-in prompt, so step aside for its higher-value lines (pick up, climb, waiting)
     if (st.pickup || st.swimming || (st.role === 'guest' && !st.networkReady)) return null;

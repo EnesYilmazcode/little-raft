@@ -117,7 +117,7 @@ export function createTreasure(ctx) {
 
   // ---------- raftPrompts provider (the #contextPrompt text is hidden by prompts.css) ----------
   function providerPrompt(c) {
-    const s = c && c.state;
+    const s = c && (c.hud || c.state); // hud has every key read here, without building the full .state
     if (!s || !s.running || s.pickup || (s.role === 'guest' && !s.networkReady) || s.swimming || s.heldKind !== 'spade') return null;
     const now = live(); if (!canDig(now)) return null;
     const sel = selectedSlot();
