@@ -4,50 +4,61 @@
 //        optional?:bool (never blocks its chapter), show?(S) -> bool (visibility gate)}.
 // ctx = {S0, gained(k), yawTravel, walked, prev, mem, silent}. Completion reads only window.raftDebug.state (polled 250 ms).
 export const SAVE_KEY = 'little-raft-v1', KEY = 'little-raft-onboarding-v1', AUTOSTART = 'little-raft-autostart';
-const POLL_MS = 250, MAX_ROWS = 3, DIM_MS = 20000, HOLD_MS = 2000;
+const POLL_MS = 250, MAX_ROWS = 3, DIM_MS = 20000, HOLD_MS = 2000, ASIDE_MIN = 190, GUTTER = 8;
 
 const num = v => (Number.isFinite(v) ? v : 0);
 const arr = v => (Array.isArray(v) ? v : []);
 const inv = (S, k) => num(S?.stock?.[k]);
 const owns = (S, k) => arr(S.ownedTools).includes(k);
 const placed = (S, t) => arr(S.decor).some(d => d?.type === t);
+const decorCount = (S, t) => arr(S.decor).filter(d => d?.type === t).length;
+const MATS = ['wood', 'leaf', 'scrap', 'plastic'];
+// A guest playing in the host's world: world counters (collected, fish, tiles, decor) are the host's, not ours.
+export const hostWorld = S => S?.role === 'guest' && !!S.networkReady;
+const placedNow = (S, b, c, t) => (c.hostWorld ? decorCount(S, t) > num(b?.decor?.[t]) : placed(S, t));
+const fishSince = (S, b, c) => (c.hostWorld ? c.gained('fish') : num(S.fish) - num(b.fish));
+const handGrab = (S, c, type) => !!(c.prev?.pickup && c.prev.hookStage === 'idle' && num(S.collected) > num(c.prev.collected)
+  && (type ? c.prev.pickup.type === type : MATS.some(k => inv(S, k) > inv(c.prev, k))));
 const wrapPi = a => Math.atan2(Math.sin(a), Math.cos(a));
 const FRESH = Object.freeze({tiles:9, fish:0, collected:0, stock:{}, me:null, hookHealth:100});
 const played = (S, c) => c.silent && num(S.collected) > 0; // returning players skip the very first lessons
-const gainStep = (id, title, hint, k, n, needs) => ({id, title, hint, needs, count:(S, b, c) => [c.gained(k), n]});
+// or: a later milestone that proves the step (gains made before the step was on screen are not counted).
+const gainStep = (id, title, hint, k, n, needs, or) => ({id, title, hint, needs, count:(S, b, c) => [c.gained(k), n],
+  ...(or && {done:(S, b, c) => c.gained(k) >= n || or(S)})});
+const hasHammer = S => owns(S, 'hammer');
 
 export const CHAPTERS = [{id:'ch1', title:'First Ten Minutes'}, {id:'ch2', title:'Make Yourself at Home'}, {id:'ch3', title:'A Home on the Water'}];
 export const STEPS = [
   {chapter:'ch1', id:'look', title:'Look out to sea', hint:'Move the [Mouse] to look around', done:(S, b, c) => c.yawTravel >= 1.6 || played(S, c)},
   {chapter:'ch1', id:'walk', title:'Stretch your legs', hint:'[W][A][S][D] to walk, [Space] hops', done:(S, b, c) => c.walked >= 1.5 || played(S, c)},
   {chapter:'ch1', id:'throw', title:'Toss your hook', hint:'Hold [LMB] to wind up, let go to throw', done:(S, b, c) => ['flying', 'floating', 'reeling'].includes(S.hookStage) || played(S, c)},
-  {chapter:'ch1', id:'reel', title:'Reel in a treasure', hint:'Hold [LMB] while the hook floats', needs:['throw'], done:(S, b) => num(S.collected) - num(b.collected) >= 1},
-  {chapter:'ch1', ...gainStep('wood', 'Gather 6 wood', 'Planks and barrels give wood', 'wood', 6, ['reel'])},
-  {chapter:'ch1', ...gainStep('leaves', 'Gather 4 palm leaves', 'Leafy bundles drift by now and then', 'leaf', 4, ['reel'])},
+  {chapter:'ch1', id:'reel', title:'Reel in a treasure', hint:'Hold [LMB] while the hook floats', needs:['throw'],
+    done:(S, b, c) => (c.hostWorld ? MATS.some(k => c.gained(k) > 0) : num(S.collected) - num(b.collected) >= 1)},
+  {chapter:'ch1', ...gainStep('wood', 'Gather 6 wood', 'Planks and barrels give wood', 'wood', 6, ['reel'], hasHammer)},
+  {chapter:'ch1', ...gainStep('leaves', 'Gather 4 palm leaves', 'Leafy bundles drift by now and then', 'leaf', 4, ['reel'], hasHammer)},
   {chapter:'ch1', id:'bag', title:'Peek in your bag', hint:'[Tab] opens your bag', needs:['reel'], done:S => S.inventoryOpen === true},
-  {chapter:'ch1', ...gainStep('rope', 'Twist 2 rope', 'In your bag: Rope, 2 leaves each', 'rope', 2, ['bag', 'leaves'])},
+  {chapter:'ch1', ...gainStep('rope', 'Twist 2 rope', 'In your bag: Rope, 2 leaves each', 'rope', 2, ['bag', 'leaves'], hasHammer)},
   {chapter:'ch1', id:'hammer', title:'Make a hammer', hint:'Bag: 4 wood + 2 rope', needs:['rope', 'wood'], done:S => owns(S, 'hammer')},
   {chapter:'ch1', ...gainStep('plastic', 'Fish out 2 plastic', 'Hook the bobbing jugs', 'plastic', 2, ['hammer'])},
   {chapter:'ch1', id:'floor', title:'Add a floor tile', hint:'Hammer [1]–[8], aim beside the raft, [LMB]', needs:['hammer'], done:(S, b) => num(S.tiles) - num(b.tiles) >= 1},
   {chapter:'ch2', id:'grow3', title:'Grow your raft by 3', hint:'Each tile: 2 wood + 2 plastic', count:(S, b) => [num(S.tiles) - num(b.tiles), 3]},
   {chapter:'ch2', id:'grab', title:'Grab one by hand', hint:'Walk close, [E] picks it up',
-    done:(S, b, c) => !!(c.prev?.pickup && c.prev.hookStage === 'idle' && num(S.collected) > num(c.prev.collected))},
-  {chapter:'ch2', id:'barrel', title:'Hook a barrel', hint:'Barrels hold a bit of everything', done:(S, b, c) => arr(S.hookCaughtItems).some(i => i?.type === 'barrel')
-    || (!!c.prev && [['wood', 3], ['leaf', 2], ['scrap', 1], ['plastic', 1]].every(([k, n]) => inv(S, k) - inv(c.prev, k) >= n))},
-  {chapter:'ch2', id:'palm-craft', title:'Make a palm planter', hint:'Bag: 2 wood + 3 leaves', done:(S, b, c) => c.gained('palm') >= 1 || placed(S, 'palm')},
-  {chapter:'ch2', id:'plant', title:'Plant your first palm', hint:'Hold it, aim at the deck, [LMB]', done:S => placed(S, 'palm')},
-  {chapter:'ch2', id:'lantern', title:'Hang a lantern', hint:'Bag: 2 wood + 2 scrap, then place it', done:S => placed(S, 'lantern')},
-  {chapter:'ch2', id:'repair', title:'Mend your hook', hint:'[R] repairs: 2 wood + 1 scrap', optional:true, show:S => Number.isFinite(S.hookHealth) && S.hookHealth <= 50,
+    done:(S, b, c) => handGrab(S, c)},
+  {chapter:'ch2', id:'barrel', title:'Hook a barrel', hint:'Barrels hold a bit of everything', done:(S, b, c) => arr(S.hookCaughtItems).some(i => i?.type === 'barrel') || handGrab(S, c, 'barrel')},
+  {chapter:'ch2', id:'palm-craft', title:'Make a palm planter', hint:'Bag: 2 wood + 3 leaves', done:(S, b, c) => c.gained('palm') >= 1 || placedNow(S, b, c, 'palm')},
+  {chapter:'ch2', id:'plant', title:'Plant your first palm', hint:'Hold it, aim at the deck, [LMB]', done:(S, b, c) => placedNow(S, b, c, 'palm')},
+  {chapter:'ch2', id:'lantern', title:'Hang a lantern', hint:'Bag: 2 wood + 2 scrap, then place it', done:(S, b, c) => placedNow(S, b, c, 'lantern')},
+  {chapter:'ch2', id:'repair', title:'Mend your hook', hint:'[R] repairs: 2 wood + 1 scrap', optional:true, show:S => owns(S, 'hook') && Number.isFinite(S.hookHealth) && S.hookHealth <= 50,
     done:(S, b, c) => { if (num(S.hookHealth) < 100 && Number.isFinite(S.hookHealth)) c.mem.low = true; return !!c.mem.low && S.hookHealth === 100; }},
   {chapter:'ch3', id:'rope8', title:'Stock up on rope', hint:'A rod needs 8 rope (16 leaves)', done:S => inv(S, 'rope') >= 8 || owns(S, 'fishingrod'), count:S => [inv(S, 'rope'), 8]},
   {chapter:'ch3', id:'rod', title:'Make a fishing rod', hint:'Bag: 6 wood + 8 rope', done:S => owns(S, 'fishingrod')},
-  {chapter:'ch3', id:'fish1', title:'Catch a fish', hint:'Rod in hand, aim at water, [LMB]', done:(S, b) => num(S.fish) - num(b.fish) >= 1},
+  {chapter:'ch3', id:'fish1', title:'Catch a fish', hint:'Rod in hand, aim at water, [LMB]', done:(S, b, c) => fishSince(S, b, c) >= 1},
   {chapter:'ch3', id:'fish3', title:'Catch two more', hint:'Patience. Watch the bobber dip', needs:['fish1'],
-    count:(S, b, c) => [num(S.fish) - num(b.fish) - (c.silent ? 1 : 0), 2]},
-  {chapter:'ch3', id:'sail', title:'Raise a sail', hint:'Bag: 4 wood, 3 rope, 3 leaves', done:S => placed(S, 'sail')},
-  {chapter:'ch3', id:'seat', title:'Build a bench', hint:'Somewhere to watch the waves', done:S => placed(S, 'bench')},
-  {chapter:'ch3', id:'crate', title:'Make a storage crate', hint:'Bag: 4 wood + 1 scrap', done:S => placed(S, 'crate')},
-  {chapter:'ch3', id:'home', title:'Reach 16 tiles', hint:'A proper little home', count:S => [num(S.tiles), 16]},
+    count:(S, b, c) => [fishSince(S, b, c) - (c.silent ? 1 : 0), 2]},
+  {chapter:'ch3', id:'sail', title:'Raise a sail', hint:'Bag: 4 wood, 3 rope, 3 leaves', done:(S, b, c) => placedNow(S, b, c, 'sail')},
+  {chapter:'ch3', id:'seat', title:'Build a bench', hint:'Somewhere to watch the waves', done:(S, b, c) => placedNow(S, b, c, 'bench')},
+  {chapter:'ch3', id:'crate', title:'Make a storage crate', hint:'Bag: 4 wood + 1 scrap, then place it', done:(S, b, c) => placedNow(S, b, c, 'crate')},
+  {chapter:'ch3', id:'home', title:'Reach 16 tiles', hint:'A proper little home', count:S => [num(S.tiles), 16], done:(S, b, c) => !c.hostWorld && num(S.tiles) >= 16},
 ];
 
 // ---------- pure logic (node-testable) ----------
@@ -66,10 +77,11 @@ export function insertSteps(steps, chapters, {chapter, title, after, steps:add} 
   return steps;
 }
 const snap = S => ({tiles:num(S.tiles), fish:num(S.fish), collected:num(S.collected), hookHealth:num(S.hookHealth),
+  decor:Object.fromEntries(arr(S.decor).filter(d => typeof d?.type === 'string').map(d => [d.type, decorCount(S, d.type)])),
   stock:{...(S.stock && typeof S.stock === 'object' ? S.stock : {})}, me:S.me ? {x:num(S.me.x), z:num(S.me.z), yaw:num(S.me.yaw)} : null});
 function ctxFor(rec, S, prev, silent) {
   const base = rec?.base ?? FRESH, me = S.me && base.me ? Math.hypot(num(S.me.x) - base.me.x, num(S.me.z) - base.me.z) : 0;
-  return {S0:base, prev, silent, mem:rec?.mem ?? {}, yawTravel:silent ? 0 : rec?.yaw ?? 0, walked:silent ? 0 : me,
+  return {S0:base, prev, silent, hostWorld:hostWorld(S), mem:rec?.mem ?? {}, yawTravel:silent ? 0 : rec?.yaw ?? 0, walked:silent ? 0 : me,
     gained:k => (silent ? inv(S, k) : num(rec?.gained[k]))};
 }
 function check(step, S, base, ctx) {
@@ -97,17 +109,19 @@ export const createProgress = (done = []) => ({done:Object.fromEntries(arr(done)
 export function evaluate(steps, P, rawS, {silent = false} = {}) {
   const S = rawS && typeof rawS === 'object' ? rawS : {}, prev = P.prev, newly = [], silentDone = [];
   P.done ??= {}; P.track ??= {};
-  let reset = false;
-  if (prev && num(S.collected) < num(prev.collected)) { // world swapped (left a host, or New Game): re-baseline
-    P.track = {};
-    if (S.role === 'solo' && prev.role === 'solo' && num(S.tiles) <= 9 && !num(S.fish)) { P.done = {}; reset = true; }
+  let reset = false, swapped = false;
+  // World swapped (joined/left a host's world, or the counter went backwards): re-baseline and judge nothing this poll,
+  // otherwise the jump in tiles/fish/collected/bag between the two worlds reads as progress.
+  if (prev && (num(S.collected) < num(prev.collected) || !!prev.hostWorld !== hostWorld(S))) {
+    P.track = {}; swapped = true;
+    if (!prev.hostWorld && S.role === 'solo' && prev.role === 'solo' && num(S.tiles) <= 9 && !num(S.fish)) { P.done = {}; reset = true; }
   }
   if (silent) {
     const byId = new Map(steps.map(s => [s.id, s])), mark = id => { if (!P.done[id] && byId.has(id)) { P.done[id] = true; silentDone.push(id); arr(byId.get(id).needs).forEach(mark); } };
     for (const s of steps) if (check(s, S, FRESH, ctxFor(null, S, null, true))) mark(s.id);
   }
   const vis = visibleSteps(steps, P, S), keep = {};
-  for (const s of vis) {
+  for (const s of swapped ? [] : vis) {
     const rec = P.track[s.id] ?? track(s, S), now = snap(S);
     for (const k of Object.keys(now.stock)) { const d = inv(now, k) - inv(rec.last, k); if (d > 0) rec.gained[k] = num(rec.gained[k]) + d; }
     if (now.me && rec.last.me) rec.yaw += Math.abs(wrapPi(now.me.yaw - rec.last.me.yaw));
@@ -120,7 +134,7 @@ export function evaluate(steps, P, rawS, {silent = false} = {}) {
   return {newly, silentDone, visible:after.map(s => s.id), chapter:currentChapter(steps, P.done), counts, reset};
 }
 function track(s, S) { let base; try { base = s.start ? s.start(S) : null; } catch {} return {base:base ?? snap(S), gained:{}, yaw:0, mem:{}, last:snap(S)}; }
-const snapPrev = S => ({...snap(S), role:S.role, pickup:S.pickup ?? null, hookStage:S.hookStage});
+const snapPrev = S => ({...snap(S), role:S.role, hostWorld:hostWorld(S), pickup:S.pickup ?? null, hookStage:S.hookStage});
 
 export function saveSummary(raw) {
   try {
@@ -135,10 +149,12 @@ export const hintHTML = s => String(s ?? '').replace(/[&<>"]/g, c => `&#${c.char
   : `<kbd class="ob-key">${k}</kbd>`);
 
 // ---------- browser runtime ----------
+// Touching window.localStorage itself can throw (blocked site data), so resolve it inside the try.
+const area = session => (session ? window.sessionStorage : window.localStorage);
 const store = {
-  get(k, s = localStorage) { try { return s.getItem(k); } catch { return null; } },
-  set(k, v, s = localStorage) { try { s.setItem(k, v); } catch {} },
-  del(k, s = localStorage) { try { s.removeItem(k); } catch {} },
+  get(k, session) { try { return area(session).getItem(k); } catch { return null; } },
+  set(k, v, session) { try { area(session).setItem(k, v); } catch {} },
+  del(k, session) { try { area(session).removeItem(k); } catch {} },
 };
 
 function boot() {
@@ -146,7 +162,7 @@ function boot() {
   const titleOf = id => STEPS.find(s => s.id === id)?.title ?? id;
   let saved = {}; try { saved = JSON.parse(store.get(KEY)) || {}; } catch {}
   let P = createProgress(saved.done), collapsed = !!saved.collapsed, logOpen = false, wiping = false;
-  let booted = false, shownCh, holdUntil = 0, lastProgress = Date.now(), lastS = null;
+  let booted = false, silentRan = false, shownCh, holdUntil = 0, lastProgress = Date.now(), lastS = null;
   const persist = () => { if (!wiping) store.set(KEY, JSON.stringify({v:1, done:Object.keys(P.done), collapsed})); };
   const reduced = () => matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -155,6 +171,16 @@ function boot() {
   panel.id = 'obNotes'; panel.className = 'ob-notes'; panel.setAttribute('aria-label', 'Notes');
   panel.innerHTML = '<button type="button" class="ob-head" aria-expanded="true"><span class="ob-ch"></span><span class="ob-sum"></span><i class="ob-chev" aria-hidden="true"></i></button><ol class="ob-rows" aria-live="polite"></ol><div class="ob-log" hidden></div>';
   document.body.append(panel);
+  // The bag (and other dialogs) open modally in the top layer and would cover the Notes. A manual popover lives in the
+  // top layer too; re-showing it after any dialog opens stacks it above. No popover support: stays a plain fixed panel.
+  const lift = () => { try { if (panel.matches(':popover-open')) panel.hidePopover(); panel.showPopover(); } catch {} };
+  if (typeof panel.showPopover === 'function') {
+    panel.popover = 'manual'; lift();
+    if (panel.matches?.(':popover-open')) {
+      try { new MutationObserver(ms => { if (ms.some(m => m.target.localName === 'dialog' && m.target.open)) { panel.style.animation = 'none'; lift(); } }) // no fade replay
+        .observe(document.documentElement, {subtree:true, attributes:true, attributeFilter:['open']}); } catch {}
+    }
+  }
   const head = panel.querySelector('.ob-head'), rowsEl = panel.querySelector('.ob-rows'), logEl = panel.querySelector('.ob-log');
   const rows = new Map(); // id -> li
   function rowFor(id, animate) {
@@ -198,6 +224,7 @@ function boot() {
     lastProgress = Date.now(); panel.classList.remove('ob-dim'); persist(); renderHead(shownCh ?? null);
   }
   head.addEventListener('click', toggle);
+  head.addEventListener('mousedown', e => e.preventDefault()); // never keep focus: Space (hop) / Enter would re-toggle it
   window.addEventListener('keydown', e => {
     if (e.code !== 'KeyN' || e.repeat || e.ctrlKey || e.metaKey || e.altKey || !document.body.classList.contains('playing')) return;
     if (e.target?.closest?.('input, textarea, select, [contenteditable]') || $('dialog[open]')) return;
@@ -227,26 +254,42 @@ function boot() {
     const playing = !!S?.running;
     if (!playing) return;
     lastS = S;
-    const silent = !booted, r = evaluate(STEPS, P, S, {silent});
+    const silent = !silentRan && !hostWorld(S), r = evaluate(STEPS, P, S, {silent}); // returning-player pass judges our own world only
+    if (silent) silentRan = true;
     for (const id of r.newly) { tickRow(id); feed(`✓ ${titleOf(id)}`); }
     if (r.newly.length) { chime(); lastProgress = Date.now(); }
     if (r.newly.length || r.silentDone.length || r.reset) persist();
     if (r.reset) collapsed = false;
     sync(r); booted = true;
     panel.classList.toggle('ob-dim', Date.now() - lastProgress > DIM_MS && !panel.classList.contains('ob-all'));
-    let shift = 0; // slide left of an open bag panel when they overlap
-    const bag = S.inventoryOpen && $('#inventory .sv-wrap')?.getBoundingClientRect();
-    if (bag && bag.width) { const right = innerWidth - parseFloat(getComputedStyle(panel).right || 0), left = right - panel.offsetWidth;
-      if (right > bag.left && left < bag.right && bag.top < panel.offsetTop + panel.offsetHeight) shift = Math.max(0, right - bag.left + 8); if (left - shift < 8) shift = 0; }
-    panel.style.setProperty('--ob-shift', `${-shift}px`);
+    placeBesideBag(S.inventoryOpen && $('#inventory .sv-wrap')?.getBoundingClientRect());
+  }
+  // Bag open: if the Notes overlap it, move them (narrowed, >= ASIDE_MIN px) into the wider gutter beside the bag;
+  // no gutter that wide (phones, small windows) -> .ob-covered hides them rather than peeking out over the bag.
+  function placeBesideBag(bag) {
+    const st = panel.style; let tx = 0, aside = false, covered = false;
+    st.removeProperty('max-width'); // max-width is not transitioned, so the natural box is measurable right away
+    if (bag && bag.width) {
+      const r = parseFloat(getComputedStyle(panel).right) || 0, w = panel.offsetWidth, right = innerWidth - r, left = right - w;
+      const top = panel.offsetTop, bottom = top + panel.offsetHeight;
+      if (right > bag.left && left < bag.right && top < bag.bottom && bottom > bag.top) {
+        const gapR = innerWidth - bag.right - 2 * GUTTER, gapL = bag.left - 2 * GUTTER, gap = Math.max(gapR, gapL);
+        if (gap >= ASIDE_MIN) {
+          const nw = Math.min(w, gap); st.maxWidth = `${nw}px`; aside = true;
+          tx = gapR >= gapL ? (innerWidth - GUTTER) - right : GUTTER + nw - right; // translate the right edge into place
+        } else covered = true;
+      }
+    }
+    st.setProperty('--ob-shift', `${Math.round(tx)}px`);
+    panel.classList.toggle('ob-aside', aside); panel.classList.toggle('ob-covered', covered);
   }
   setInterval(tick, POLL_MS);
 
   // ----- title screen -----
   const welcome = $('#welcome'), card = welcome?.querySelector('.welcome-card');
   if (welcome && card) {
-    const raw = store.get(SAVE_KEY), auto = store.get(AUTOSTART, sessionStorage) === '1';
-    if (auto) store.del(AUTOSTART, sessionStorage);
+    const raw = store.get(SAVE_KEY), auto = store.get(AUTOSTART, true) === '1';
+    if (auto) store.del(AUTOSTART, true);
     const logo = document.createElement('div');
     logo.className = 'ob-logo';
     logo.innerHTML = '<h2 class="ob-logo-name"><svg class="ob-sail" viewBox="0 0 48 48" aria-hidden="true"><use href="icons.svg#icon-sail"></use></svg>Little Raft</h2><p class="ob-tag">A little ocean. A big adventure.</p>';
@@ -268,7 +311,7 @@ function boot() {
       wiping = true;
       const clear = () => { store.del(SAVE_KEY); store.del(KEY); };
       clear(); addEventListener('beforeunload', clear); addEventListener('pagehide', clear); // game.js saves on beforeunload; run after it
-      store.set(AUTOSTART, '1', sessionStorage); location.reload();
+      store.set(AUTOSTART, '1', true); location.reload();
     }
     menu.addEventListener('click', e => {
       const b = e.target.closest('.ob-item'); if (!b || b.disabled) return;
@@ -293,7 +336,7 @@ function boot() {
     try { (items()[0])?.focus({preventScroll:true}); } catch {}
   }
   return {
-    reset() { P = createProgress(); booted = false; rows.forEach(li => li.remove()); rows.clear(); shownCh = undefined; holdUntil = 0; persist(); },
+    reset() { P = createProgress(); booted = false; silentRan = false; rows.forEach(li => li.remove()); rows.clear(); shownCh = undefined; holdUntil = 0; persist(); },
     complete(id) { if (!STEPS.some(s => s.id === id) || P.done[id]) return false; P.done[id] = true; tickRow(id); feed(`✓ ${titleOf(id)}`); persist(); lastProgress = Date.now(); return true; },
     state: () => ({done:Object.keys(P.done), visible:lastS ? visibleSteps(STEPS, P, lastS).map(s => s.id) : [], chapter:currentChapter(STEPS, P.done), collapsed, steps:STEPS.length}),
   };

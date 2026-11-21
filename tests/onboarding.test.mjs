@@ -96,3 +96,37 @@ test('hint glyphs become keycaps', () => {
   const h = O.hintHTML('Hold [LMB] then [Tab] <b>');
   assert.match(h, /ob-mouse/); assert.match(h, /<kbd class="ob-key">Tab<\/kbd>/); assert.match(h, /&#60;b&#62;/);
 });
+
+test('joining or leaving a host world re-baselines instead of reading the jump as progress', () => {
+  const S = steps(), done = ['look', 'walk', 'throw', 'reel', 'wood', 'leaves', 'bag', 'rope', 'hammer', 'plastic'], P = O.createProgress(done);
+  O.evaluate(S, P, fresh({collected:20, stock:{hook:1, hammer:1}, ownedTools:['hook', 'hammer']}));
+  const host = {role:'guest', networkReady:true, collected:300, tiles:30, fish:9, decor:[{type:'palm', x:0, z:0}], stock:{hook:1, wood:20, hammer:1}, ownedTools:['hook', 'hammer']};
+  let r = O.evaluate(S, P, fresh(host));
+  assert.deepEqual(r.newly, []); assert.ok(!P.done.floor);
+  const P2 = O.createProgress(O.STEPS.filter(s => s.chapter !== 'ch3').map(s => s.id));
+  O.evaluate(S, P2, fresh({tiles:10}));
+  r = O.evaluate(S, P2, fresh({...host, fish:9}));
+  r = O.evaluate(S, P2, fresh({...host, fish:12})); // host's catches are not ours
+  assert.ok(!P2.done.fish1 && !P2.done.home);
+  r = O.evaluate(S, P2, fresh({...host, fish:12, stock:{...host.stock, fish:1}}));
+  assert.deepEqual(r.newly, ['fish1']);
+  r = O.evaluate(S, P2, fresh({collected:5, tiles:10, fish:0})); // back on our own raft: no reset, no completions
+  assert.ok(!r.reset && P2.done.fish1); assert.deepEqual(r.newly, []);
+});
+
+test('a hammer made before the gather counters caught up still finishes chapter one', () => {
+  const S = steps(), P = O.createProgress(['look', 'walk', 'throw', 'reel', 'bag']);
+  O.evaluate(S, P, fresh({collected:3, stock:{hook:1, leaf:2}}));
+  for (let i = 0; i < 4; i++) O.evaluate(S, P, fresh({collected:9, stock:{hook:1, hammer:1}, ownedTools:['hook', 'hammer']}));
+  for (const id of ['wood', 'leaves', 'rope', 'hammer']) assert.ok(P.done[id], id);
+});
+
+test('barrel and hand-grab need the real thing', () => {
+  const S = steps(), P = O.createProgress(O.STEPS.filter(s => s.chapter === 'ch1').map(s => s.id).concat('grow3'));
+  O.evaluate(S, P, fresh({collected:5, hookStage:'reeling'}));
+  let r = O.evaluate(S, P, fresh({collected:11, stock:{hook:1, wood:4, leaf:2, scrap:1, plastic:1}})); // a mixed hook bundle
+  assert.ok(!P.done.barrel && !P.done.grab);
+  O.evaluate(S, P, fresh({collected:11, pickup:{id:3, token:'t', type:'barrel'}, stock:{hook:1, wood:4, leaf:2, scrap:1, plastic:1}}));
+  r = O.evaluate(S, P, fresh({collected:12, stock:{hook:1, wood:7, leaf:4, scrap:2, plastic:2}}));
+  assert.ok(P.done.barrel && P.done.grab, JSON.stringify(r));
+});
