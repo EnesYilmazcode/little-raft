@@ -37,6 +37,7 @@ shots = [
     ('12-wall-legacy', 'scene=wall&mode=legacy', 1.0),
     ('13-wall-naive', 'scene=wall&mode=naive', 1.0),
     ('14-shade-vm', 'scene=shade', 1.0),
+    ('14b-shade-vm-nofill', 'scene=shade&fill=0', 1.0),
     ('15-shade-legacy', 'scene=shade&mode=legacy', 1.0),
     ('16-fov95-vm', 'scene=idle&fov=95', 1.0),
     ('17-fov95-legacy', 'scene=idle&fov=95&mode=legacy', 1.0),

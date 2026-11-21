@@ -74,6 +74,7 @@ const H = {
 let vm = null;
 if (MODE === 'vm') {
   vm = createViewmodel(T, { camera, fov: VM_FOV });
+  if (P.get('fill') === '0') vm.setFill(0, 0);
   for (const [k, h] of Object.entries(H)) vm.add(k, h, k === 'hammer' ? { use: 'strike' } : {});
 } else {
   if (MODE === 'legacy') { // verbatim from dist/game.js buildViewmodels()

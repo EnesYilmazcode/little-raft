@@ -15,7 +15,7 @@
 //   vm.update({dt, kind, yaw, pitch, walking, walkPhase, grounded, vy, charge, swing, motion});
 //   vm.shown                     -> kind whose hands are drawn now (lags `kind` during an equip swap)
 //   vm.anchor(obj, out)          -> world point that renders under obj's on-screen position (rope start)
-//   vm.setAspect(a); vm.setFov(f)
+//   vm.setAspect(a); vm.setFov(f); vm.setFill(rim, lift)   // shade fill, 0,0 = off
 
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const smooth = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
@@ -40,9 +40,9 @@ export class Spring3 {
   }
 }
 
-export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange = 0.02, near = 0.01 } = {}) {
+export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange = 0.02, near = 0.01, rim = 0.6, lift = 0.14 } = {}) {
   const projCam = new T.PerspectiveCamera(fov, camera.aspect, near, 100);
-  const uniforms = { vmProj: { value: projCam.projectionMatrix }, vmDepth: { value: depthRange } };
+  const uniforms = { vmProj: { value: projCam.projectionMatrix }, vmDepth: { value: depthRange }, vmRim: { value: rim }, vmLift: { value: lift } };
   const patched = new WeakSet();
 
   // Vertex patch: own projection + depth squash. Lighting (view-space normals, vViewPosition) is untouched.
@@ -55,6 +55,12 @@ export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', '#include <common>\nuniform mat4 vmProj;\nuniform float vmDepth;')
         .replace('#include <project_vertex>', '#include <project_vertex>\n\tgl_Position = vmProj * mvPosition;\n\tgl_Position.z = mix(-gl_Position.w, gl_Position.z, vmDepth);');
+      // Read-in-shade fill (lit materials only): a small ambient lift plus a soft view rim, both tinted by the base
+      // colour, so a fist under a sail keeps its silhouette. Added after lighting, before tone mapping.
+      if (sh.fragmentShader.includes('#include <normal_fragment_begin>') && sh.fragmentShader.includes('vViewPosition'))
+        sh.fragmentShader = sh.fragmentShader
+          .replace('#include <common>', '#include <common>\nuniform float vmRim;\nuniform float vmLift;')
+          .replace('#include <opaque_fragment>', '{ float vmF = 1.0 - abs(dot(normal, normalize(vViewPosition)));\n\toutgoingLight += diffuseColor.rgb * (vmLift + vmRim * vmF * vmF * vmF); }\n#include <opaque_fragment>');
     };
     m.customProgramCacheKey = () => 'vm|' + (prevKey ? prevKey.call(m) : '');
     m.needsUpdate = true;
@@ -172,6 +178,7 @@ export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange
   }
 
   function setAspect(a) { projCam.aspect = a; projCam.updateProjectionMatrix(); }
+  function setFill(r = rim, l = lift) { uniforms.vmRim.value = r; uniforms.vmLift.value = l; }
   function setFov(f) { if (projCam.fov !== f) { projCam.fov = f; projCam.updateProjectionMatrix(); } }
-  return { rig, add, update, anchor, setAspect, setFov, prepare, projCam, get shown() { return st.shown; }, get equip() { return st.e; } };
+  return { rig, add, update, anchor, setAspect, setFov, setFill, prepare, projCam, get shown() { return st.shown; }, get equip() { return st.e; } };
 }

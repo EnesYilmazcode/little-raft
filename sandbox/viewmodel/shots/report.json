@@ -1,17 +1,33 @@
 {
  "shots": {
-  "04-charge-full": {
+  "01-idle": {
    "mode": "vm",
-   "scene": "charge",
-   "t": 1.6,
+   "scene": "idle",
+   "t": 2.3,
    "shown": "hook",
    "equip": 1,
-   "renderAvgMs": 311.9,
-   "renderWorstMs": 311.9,
-   "updateAvgMs": 0.169,
+   "renderAvgMs": 311.2,
+   "renderWorstMs": 311.2,
+   "updateAvgMs": 0.142,
    "calls": 170,
    "triangles": 107728,
    "geometries": 120,
+   "textures": 1,
+   "programs": 5,
+   "errors": []
+  },
+  "14-shade-vm": {
+   "mode": "vm",
+   "scene": "shade",
+   "t": 1,
+   "shown": "hook",
+   "equip": 1,
+   "renderAvgMs": 161.8,
+   "renderWorstMs": 161.8,
+   "updateAvgMs": 0.335,
+   "calls": 172,
+   "triangles": 107752,
+   "geometries": 121,
    "textures": 1,
    "programs": 5,
    "errors": []
