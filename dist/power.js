@@ -256,6 +256,16 @@ export function createPower(ctx) {
       ctx.notice?.(notice(info), 2400);
       return true;
     },
+    /** Charge of the battery that would power a consumer on tile (x, z) (nearest charged one within 3 tiles), or 0. Every peer. */
+    servedCharge(x, z) { if (oldHost()) return 0; const k = servingBattery(st, decor(), x, z); return k ? st.b[k] : 0; },
+    /** Host: draw `amount` charge for a consumer on tile (x, z) (the receiver, see mast.js). false when no charged battery is in range. */
+    draw(x, z, amount) {
+      if (ctx.role === 'guest') return false;
+      const k = servingBattery(st, decor(), x, z); if (!k) return false;
+      const e = st.b[k] - Math.max(0, fin(amount, 0));
+      if (e <= 0) { delete st.b[k]; ctx.emit?.({ kind: 'notice', text: 'A battery ran out of charge' }, 'all'); } else st.b[k] = e;
+      st.r++; return true;
+    },
     decorModel(type) {
       if (!T) return null;
       if (type === 'turbine') return createTurbine(T);

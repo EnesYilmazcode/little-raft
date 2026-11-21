@@ -146,6 +146,14 @@ const LIST = [
   item('glass', 'Glass', 'refined', { iconTint: '#bfe6ef',
     recipe: cook('smelter', 'sand', { time: 25, fuel: 1 }), unlock: atStation('smelter'),
     tip: 'Sand melted into a clear little pane. Look through it and the sea sparkles.' }),
+  // story (mast.js): Vine Goo from seaweed, and the Circuit Board the Receiver and Antennas need. Raft's board
+  // takes 2 copper ingots; ours takes 1 plus 2 plastic, since copper ore is the scarcest barrel find (pity 12).
+  item('vinegoo', 'Vine Goo', 'refined', { iconTint: '#6fae4a',
+    recipe: cook('smelter', 'seaweed', { time: 25, fuel: 1 }), unlock: atStation('smelter'),
+    tip: 'Seaweed cooked down into a sticky green paste. Circuit boards are glued together with it.' }),
+  item('circuitboard', 'Circuit Board', 'refined', { iconTint: '#3f9a6a',
+    recipe: hand({ copperingot: 1, vinegoo: 1, plastic: 2 }), unlock: research('copperingot'),
+    tip: 'Copper traces on a plastic card, glued with vine goo. The Receiver and its antennas need these.' }),
   item('bolt', 'Bolt', 'refined', { iconTint: '#8d96a3',
     recipe: hand({ metalingot: 1, scrap: 1 }, 2), unlock: research('metalingot'),
     tip: 'Two sturdy bolts from one ingot. They hold the fancy stuff together.' }),

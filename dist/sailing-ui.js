@@ -28,6 +28,11 @@ const SVG = '<circle cx="0" cy="0" r="38" fill="none" stroke="rgba(246,236,214,.
   + '<path d="M.6 2.6Q1.6-.8-.2-3.8" fill="none" stroke="#c79a5e" stroke-width="1.3" stroke-linecap="round"/>'
   + '<path d="M-.2-3.8Q-3-5.6-4.9-3M-.2-3.8Q2.6-5.6 4.6-3M-.2-3.8Q-1-6.6-3-6.2" fill="none" stroke="#86d06c" stroke-width="1.5" stroke-linecap="round"/></g>';
 
+// Beacon mast (story target, mast.js): a small amber lattice tower marker, shown while the receiver tracks it.
+const BEACON = '<g data-k="b" visibility="hidden"><circle r="7" fill="#2b1e12" stroke="#ffb347" stroke-width="1.1"/>'
+  + '<path d="M-3 4.6L-1.1-2.6H1.1L3 4.6M-2.4 2.2H2.4M-1.6-.4H1.6" fill="none" stroke="#f0c9a0" stroke-width="1.1" stroke-linejoin="round"/>'
+  + '<circle cy="-4" r="1.5" fill="#ffb347"/></g>';
+
 export function createSailingUI({ signal } = {}) {
   if (typeof document === 'undefined') return { update() {}, setPrompt() {}, dispose() {} };
   // Hot reload mounts the new engine before disposing the old one, so every instance owns its own <style> and
@@ -41,8 +46,8 @@ export function createSailingUI({ signal } = {}) {
   badge.id = 'sailBadge'; badge.hidden = true;
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', '-42 -42 84 84'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false');
-  svg.innerHTML = SVG;
-  const north = svg.querySelector('[data-k="n"]'), wind = svg.querySelector('[data-k="w"]'), sail = svg.querySelector('[data-k="s"]'), isle = svg.querySelector('[data-k="i"]');
+  svg.innerHTML = SVG + BEACON;
+  const north = svg.querySelector('[data-k="n"]'), wind = svg.querySelector('[data-k="w"]'), sail = svg.querySelector('[data-k="s"]'), isle = svg.querySelector('[data-k="i"]'), beacon = svg.querySelector('[data-k="b"]');
   const label = document.createElement('div'); label.className = 'sail-label'; label.setAttribute('aria-hidden', 'true');
   const live = document.createElement('div'); live.className = 'sail-sr'; live.setAttribute('aria-live', 'polite');
   badge.append(svg, label, live);
@@ -52,7 +57,7 @@ export function createSailingUI({ signal } = {}) {
 
   // Last-written quantized values (NaN forces the first write).
   let qN = NaN, qW = NaN, qWs = NaN, qS = NaN, sDim = null, shown = null, labelText = null, liveState = null, promptHtml = null;
-  let qSpeed = NaN, mode = '', qI = NaN, iShown = false;
+  let qSpeed = NaN, mode = '', qI = NaN, iShown = false, qB = NaN, bShown = false;
   const norm = d => ((d % 360) + 360) % 360;
   // World angle a (direction (sin a, cos a)) -> clockwise screen degrees, 0 = camera forward.
   const toScreen = (a, yaw) => norm(Math.round((Math.PI + yaw - a) * DEG));
@@ -79,6 +84,12 @@ export function createSailingUI({ signal } = {}) {
     if (iOn) { // moved around the ring, kept upright
       const b = toScreen(+info.islandDir || 0, yaw);
       if (b !== qI) { qI = b; const r = b / DEG; isle.setAttribute('transform', 'translate(' + (30 * Math.sin(r)).toFixed(1) + ' ' + (-30 * Math.cos(r)).toFixed(1) + ')'); }
+    }
+    const bOn = !!info.beaconOn; // story: the beacon mast's bearing while the receiver tracks it
+    if (bOn !== bShown) { bShown = bOn; beacon.setAttribute('visibility', bOn ? 'visible' : 'hidden'); }
+    if (bOn) {
+      const b = toScreen(+info.beaconDir || 0, yaw);
+      if (b !== qB) { qB = b; const r = b / DEG; beacon.setAttribute('transform', 'translate(' + (30 * Math.sin(r)).toFixed(1) + ' ' + (-30 * Math.cos(r)).toFixed(1) + ')'); }
     }
     const hasSail = (info.nSails | 0) > 0;
     const motor = !info.anchored && +info.motor > .01; // engine: a running motor pushes along the heading

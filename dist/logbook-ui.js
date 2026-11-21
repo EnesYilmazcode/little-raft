@@ -39,6 +39,7 @@ const CSS = `
 .lb-note{background:#f3e6c4;color:#3e2a17;border-radius:3px;padding:10px 12px;box-shadow:0 2px 0 #24170c;font-style:italic}
 .lb-note .lb-no{display:inline-block;font:600 12px/1.2 ${FONT};font-variant:small-caps;letter-spacing:.04em;color:#8a663a;font-style:normal;margin-bottom:3px}
 .lb-note p{margin:0;color:inherit;font-size:14px;line-height:1.45}
+.lb-note.lb-story{background:#e4ecd9;box-shadow:0 2px 0 #24170c,inset 3px 0 0 #6f8f5e}
 .lb-note.lb-missing{background:transparent;border:1px dashed #b48d5566;box-shadow:none;color:#d6b67e99;font-style:normal}
 .lb-note.lb-missing .lb-no{color:#d6b67e99}
 .lb-new::after{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:#ffbd66;margin-left:6px;vertical-align:middle}
@@ -122,8 +123,11 @@ const readSeen = () => { try { const v = parseInt(localStorage.getItem(SEEN_KEY)
 const writeSeen = n => { try { localStorage.setItem(SEEN_KEY, String(n)); } catch {} };
 
 // Found notes in order, then one hint for the rest (not a row per missing note).
-export function notesHTML(found, newest = -1) {
+// story: landmark notes [{id, title, text}] (mast.js via content.storyNotes), listed first.
+export function notesHTML(found, newest = -1, story = null) {
   let rows = '';
+  if (Array.isArray(story)) for (const n of story) if (n && typeof n.text === 'string')
+    rows += `<li class="lb-note lb-story"><span class="lb-no">${esc(n.title || 'Logbook')}</span><p>${esc(n.text)}</p></li>`;
   for (let i = 0; i < NOTE_COUNT; i++) if (found.includes(i))
     rows += `<li class="lb-note"><span class="lb-no${i === newest ? ' lb-new' : ''}">No. ${i + 1}</span><p>${esc(NOTES[i])}</p></li>`;
   const left = NOTE_COUNT - found.filter(i => i >= 0 && i < NOTE_COUNT).length;
@@ -131,7 +135,7 @@ export function notesHTML(found, newest = -1) {
   return rows;
 }
 
-export function createLogbookUI({ getProgress, onPause, onResume, tasks } = {}) {
+export function createLogbookUI({ getProgress, onPause, onResume, tasks, story } = {}) {
   const prev = window[INST_KEY];
   const ac = new AbortController();
   const opt = { signal: ac.signal };
@@ -180,7 +184,8 @@ export function createLogbookUI({ getProgress, onPause, onResume, tasks } = {}) 
   }
 
   const progress = () => cleanProgress(safe(getProgress));
-  const sigOf = p => p.notes.join() + '|' + p.achievements.join();
+  const storyList = () => { const v = safe(story); return Array.isArray(v) ? v : null; };
+  const sigOf = p => p.notes.join() + '|' + p.achievements.join() + '|' + (storyList()?.map(n => n?.text).join() ?? '');
 
   function render() {
     const p = progress();
@@ -189,7 +194,7 @@ export function createLogbookUI({ getProgress, onPause, onResume, tasks } = {}) 
     tabs[1].textContent = `Achievements ${p.achievements.length}/${ACHIEVEMENTS.length}`;
     const seen = seenBase == null ? readSeen() : seenBase;
     const newest = p.notes.length && p.notes.length > seen ? p.notes[p.notes.length - 1] : -1;
-    list.innerHTML = notesHTML(p.notes, newest);
+    list.innerHTML = notesHTML(p.notes, newest, storyList());
     grid.innerHTML = ACHIEVEMENTS.map(a => {
       const got = p.achievements.includes(a.id);
       return `<div class="lb-card${got ? '' : ' lb-locked'}">${icon(a.icon)}<div><b>${esc(a.name)}</b><span>${esc(a.desc)}</span>${got ? '' : '<em>Locked</em>'}</div></div>`;

@@ -28,10 +28,10 @@ let tokenN = 0; const tok = () => 'tok-' + (++tokenN);
 test('items and recipes: receiver and antenna are craftable bag items', () => {
   assert.equal(ITEM_INFO.receiver.icon, 'icon-receiver'); // its own drawing (was the borrowed compass, blank in the bag)
   assert.equal(ITEM_INFO.antenna.icon, 'icon-antenna');
-  assert.deepEqual({...RECIPES.receiver.cost}, {wood:3, scrap:4, plastic:3, rope:2});
-  assert.deepEqual({...RECIPES.antenna.cost}, {wood:2, scrap:1, rope:1});
+  assert.deepEqual({...RECIPES.receiver.cost}, {wood:8, plastic:6, circuitboard:2, hinge:1}); // Raft's costs (story progression)
+  assert.deepEqual({...RECIPES.antenna.cost}, {bolt:1, scrap:4, circuitboard:1});
   assert.equal(ITEM_INFO.cache, undefined);
-  const bag = Bag.fromCounts({wood:5, scrap:5, plastic:3, rope:3});
+  const bag = Bag.fromCounts({wood:8, plastic:6, circuitboard:2, hinge:1});
   assert.equal(bag.craft('receiver').ok, true);
   assert.equal(bag.count('receiver'), 1);
 });
