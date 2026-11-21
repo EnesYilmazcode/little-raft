@@ -512,6 +512,7 @@ export function mount(transfer = null) {
     try { vitalsUI = createVitalsUI(); } catch (e) { console.warn('vitals HUD unavailable', e); vitalsUI = null; } // [vitals]
     building = createBuilding(T, scene); // building-pieces lane hook
     building.setRemoveExtra(decorRemoveTarget); // [undecor] X on decor when no piece is aimed
+    building.setPlaceExtra(p => { const w = pieceExtraBlock(p); return w ? BLOCK_TEXT[w] : ''; }); // ghost goes red where the host would refuse
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
@@ -1023,6 +1024,8 @@ export function mount(transfer = null) {
     const m = itemMeshes.get(it.token), p = m ? m.position : it;
     return Math.hypot(p.x - physics.x, p.z - physics.z) <= PICKUP_REACH ? it : null;
   }
+  // Host-only piece refusals building.js can't see: a level-0 cell piece (stairs, ladder) on a decor or grill tile. 'decor' or null.
+  function pieceExtraBlock(p) { return pieceBlock(world.decor, p) || (p && p.l === 0 && fc?.hasGrill(p.i, p.j) ? pieceBlock([{x:p.i, z:p.j}], p) : null); }
   // [undecor] hammer + hold X with no piece aimed: the decor under the crosshair (building.setRemoveExtra). Runs only
   // while X is held; reuses one hit array, one result object, and one chip text/action per target tile.
   const denyOldHost = () => notice(UNDECOR_TEXT.oldHost);
@@ -1312,7 +1315,7 @@ export function mount(transfer = null) {
       if (!isInt(a.i) || !isInt(a.j)) return;
       const who = actor === 'guest' ? other : physics, [ci, cj] = pieceCell(a); // guest pose may be missing until its first move
       if (who && !inReach(who.x, who.z, ci, cj, PIECE_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .01))) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
-      const why = a.kind === 'piece' && (pieceBlock(world.decor, a) || (a.l === 0 && a.t === 'stairs' && fc?.hasGrill(a.i, a.j) ? 'decor' : null));
+      const why = a.kind === 'piece' && pieceExtraBlock(a);
       if (why) { emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; }
       const r = building.apply(a, bag, world);
       if (r.ok) emit({kind:'build', text:r.text}, 'all'); else if (r.text) emit({kind:'notice', text:r.text}, actor);
@@ -1994,7 +1997,7 @@ export function mount(transfer = null) {
     controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
       look:(dx, dy) => { if (!building?.menu.isOpen) look(dx, dy, 1); }, hotbarSize:HOTBAR, // building wheel steals mouse look while open
       slot:() => localBag().selectedIndex, selectSlot:i => running && selectSlot(i),
-      interact, inventory:openInventory, repair:back => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(back ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
+      interact, inventory:openInventory, repair:back => { if (running && heldKind() === 'hammer' && building?.key('KeyR', true, true)) return; if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(back ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
       pause:() => settingsController?.open(), buildWheelOpen:() => !!building?.menu.isOpen, // hotbar + interact are swallowed while the build wheel is open
       buildPieces:() => PIECE_ORDER.map(id => ({id, label:PIECES[id].name})), buildPick:pickBuildPiece, // pad build radial = the hammer's wheel
       menuBack:() => { if (!running) return; if (survivalUI?.isOpen) survivalUI.close(); else if (settingsController?.isOpen) settingsController.close(); }, // pad Y/Start/B: same close + relock as the keyboard
