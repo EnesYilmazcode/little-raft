@@ -147,5 +147,4 @@ Palm planter is 90 s (dist/watering.js:5); 3 stages like `plantStage` (dist/wate
    bed tip, and leave the rain.js:84-93 extension for later.
 8. **Placement.** Add a `BLOCK_RADII` entry for the bed (dist/items.js:240), and keep beds off grill tiles
    (`fc.hasGrill`, dist/game.js:982).
-9. **Originality.** farming.js:3 names the commercial game in a comment. Keep all new names, text and art
-   original.
+9. **Originality.** farming.js:3 names the commercial game; keep new names, text and art original.
