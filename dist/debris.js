@@ -146,7 +146,7 @@ function buildWood(T, getMaterial, root, inner, r) {
   }
   p.needsUpdate = true;
   g.computeBoundingSphere();
-  mesh(T, g, getMaterial('#d5a265'), inner);
+  mesh(T, g, getMaterial('#a88d68'), inner); // sea-weathered grey-tan, darker than the fresh deck
 
   // bent rusty nail near the chipped end
   const nailMat = metalMat(T, '#6f6964', { roughness: 0.6 });
@@ -306,14 +306,14 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
     for (let i = rows; i >= 0; i--) { const y = -hh + (H * i) / rows; prof.push(new T.Vector2(rad(y) + dr - thick, y + (i === 0 || i === rows ? dy : 0))); }
     prof.push(prof[0].clone());
     const phi = (s / staves) * Math.PI * 2;
-    wood.push(tint(T, new T.LatheGeometry(prof, 3, phi + gap / 2, (Math.PI * 2) / staves - gap), s % 2 ? '#b98148' : '#a8703f'));
+    wood.push(tint(T, new T.LatheGeometry(prof, 3, phi + gap / 2, (Math.PI * 2) / staves - gap), s % 2 ? '#8e6a45' : '#7d5c3b'));
   }
 
   // recessed end caps (chime)
   const capR = rEnd - thick + 0.004, capY = hh - 0.045;
   wood.push(
-    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, capY, 0), '#9a6538'),
-    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, -capY, 0), '#9a6538'),
+    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, capY, 0), '#6f4e31'),
+    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, -capY, 0), '#6f4e31'),
   );
   // board seams on top cap
   for (const z of [-0.18, -0.06, 0.06, 0.18]) {
@@ -359,6 +359,50 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
   inner.add(pivot);
 }
 
+// ---------------------------------------------------------------- waterline foam
+// Per-type float offset (engine adds it to the ocean height) and foam ring footprint [x, z] (full size).
+const FLOAT = { wood: 0, leaf: 0, scrap: 0.06, barrel: -0.16 };
+const FOAM = { wood: [2.5, 0.7], scrap: [1.7, 1.5], barrel: [1.45, 1.45] };
+// One soft white ring (radial alpha texture on a flat quad) shared by every item: shared geometry + material.
+function foamParts(T) {
+  let cache = SHARED.get(T);
+  if (!cache) SHARED.set(T, (cache = new Map()));
+  let f = cache.get('foam');
+  if (f) return f;
+  const N = 64, data = new Uint8Array(N * N * 4);
+  const ss = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const u = (x + 0.5) / N * 2 - 1, v = (y + 0.5) / N * 2 - 1, r = Math.hypot(u, v), a = Math.atan2(v, u);
+    const breakup = 0.72 + 0.28 * Math.sin(a * 7 + Math.sin(a * 3) * 2) * Math.cos(a * 4 - 1);
+    const k = ss(0.42, 0.66, r) * (1 - ss(0.68, 0.98, r)) * breakup;
+    const i = (y * N + x) * 4;
+    data[i] = data[i + 1] = data[i + 2] = data[i + 3] = Math.round(255 * clamp01(k));
+  }
+  const tex = new T.DataTexture(data, N, N, T.RGBAFormat);
+  tex.magFilter = tex.minFilter = T.LinearFilter;
+  tex.needsUpdate = true;
+  const geo = new T.PlaneGeometry(1, 1);
+  geo.rotateX(-Math.PI / 2);
+  geo.userData.shared = true;
+  const mat = new T.MeshBasicMaterial({ color: 0xffffff, alphaMap: tex, transparent: true, opacity: 0.55, depthWrite: false });
+  mat.userData.shared = true;
+  f = { geo, mat };
+  cache.set('foam', f);
+  return f;
+}
+function addFoam(T, root, type) {
+  const fp = FOAM[type];
+  if (!fp) return;
+  const { geo, mat } = foamParts(T);
+  const ring = new T.Mesh(geo, mat);
+  ring.name = 'debris-foam';
+  ring.raycast = () => {}; // never a hook/pickup target
+  ring.scale.set(fp[0], 1, fp[1]);
+  ring.position.y = -FLOAT[type] + 0.025; // just above the waterline (root sits at ocean height + FLOAT)
+  ring.renderOrder = 1;
+  root.add(ring);
+}
+
 export function createDebris(T, type, getMaterial, opts = {}) {
   if (!TYPES.includes(type)) throw new Error(`createDebris: unknown type "${type}"`);
   const r = rng(opts.seed != null ? opts.seed : Math.floor(Math.random() * 2 ** 31));
@@ -376,6 +420,8 @@ export function createDebris(T, type, getMaterial, opts = {}) {
   inner.updateMatrixWorld(true);
   const size = new T.Box3().setFromObject(inner).getSize(new T.Vector3());
   root.userData.size = { x: size.x, y: size.y, z: size.z };
+  root.userData.float = FLOAT[type];
+  addFoam(T, root, type);
   return root;
 }
 
