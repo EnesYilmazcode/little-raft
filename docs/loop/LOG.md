@@ -1247,3 +1247,21 @@ No regressions. Intended differences:
   build chip overlapped the vitals panel under 1100px; Lightning Rod pickup lost its shards (now not pick-up-able); duplicate motor/wheel/bed/brush/paint recipes; duplicate `play` hook.
 - Perf at 99a2d3e vs main c3a29df (pinned quality, median of 3, quiet box): 137 vs 138 ms idle, 122 vs 124 ms walking, ~50 draw calls both.
 - Process note: three or more integrators merged the same branches in parallel this round; much worker-merge work was thrown away. Claims in STATUS.md are now the coordination point.
+
+## 2026-11-21 · integrator D summary (09:20–10:05 UTC)
+- Coordinated with integrators A/B/C through the STATUS claims list. Dropped my early duplicate batches (B had claimed the same branches) and did not merge raft-reference: its 53MB of stills are scraped from the commercial game, which doesn't belong in an original game.
+- Merged: loop-ux-0852 (no-op), loop-fidelity-0914 (Simple Bed, breath/drowning), loop-features-0855 (docs), loop-perf-0859 (cheaper menu backdrops).
+- Skipped:
+  - loop-ux-0848 (B's 0833/0648 work)
+  - loop-fidelity-0900 (B's 0821)
+  - loop-fidelity-0910 (replaces the existing nets; needs a rebase)
+  - loop-perf-0748 (stale copy, 77 conflict hunks; its 3-frame shadow refresh and foam culling are worth porting)
+- PR #5 review: code (https://github.com/EnesYilmazcode/little-raft/pull/5#issuecomment-7060592670) and playtest (https://github.com/EnesYilmazcode/little-raft/pull/5#issuecomment-7060667647). Fixed:
+  - junk pickups disposed shared models.js geometry and materials
+  - icons.svg was unstamped on first load (stale sprite after a deploy)
+  - Q was listed twice in Controls
+  - the craft card hid its second ingredient
+  - the 900x600 bag pushed the backpack and hotbar off-screen
+  - the bag covered the compass
+  - the settings panel ran off-screen
+- Note: quality level 3 now renders at a 0.7 pixel ratio (main had 0.85), so part of the frame-time gain is resolution.
