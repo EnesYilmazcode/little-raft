@@ -1,7 +1,8 @@
 // Placed anchor model: a short wooden post with a rope drum and a crank, an arm reaching out over the raft edge,
 // and a rope that lowers a small iron anchor into the sea (sailing-world.js animates the rope, hook and coil).
 // Cheap: geometry and materials are built once and shared by every instance (marked userData.shared, so
-// game.js rebuildRaft never frees them) and live for the page; 4 draw calls, no shadows.
+// game.js rebuildRaft never frees them) and live for the page; 4 draw calls, no shadows. The static part carries
+// two braces, a pulley at the arm tip and the rope run from the drum up to it.
 // Local origin = centre of the floor tile top (place at y = .22). The arm points along +z (rotate the group
 // so +z faces open water: anchor-rules.js outwardRot). Named parts: anchorRope, anchorHook, anchorCoil.
 
@@ -26,11 +27,23 @@ function build(T) {
     g.setAttribute('color', new T.BufferAttribute(col, 3));
     return g;
   };
-  const WOOD = '#906f48', LIGHT = '#b4824b', DARK = '#6f5235';
+  const WOOD = '#906f48', LIGHT = '#b4824b', DARK = '#6f5235', ROPE = '#b99a62';
+  // Diagonal brace from the post up to the arm's underside, at lateral offset x.
+  const brace = x => {
+    const z0 = M.POST_Z + .05, y0 = M.ARM_Y - .32, z1 = M.POST_Z + .36, y1 = M.ARM_Y - .01, len = Math.hypot(z1 - z0, y1 - y0);
+    return vc(new T.BoxGeometry(.022, len, .04).rotateX(Math.atan2(z1 - z0, y1 - y0)).translate(x, (y0 + y1) / 2, (z0 + z1) / 2), DARK);
+  };
+  // Straight rope segment in the x = const plane from (y0, z0) to (y1, z1).
+  const ropeSpan = (x, y0, z0, y1, z1) => {
+    const len = Math.hypot(z1 - z0, y1 - y0);
+    return vc(new T.CylinderGeometry(.016, .016, len, 5).rotateX(Math.atan2(z1 - z0, y1 - y0)).translate(x, (y0 + y1) / 2, (z0 + z1) / 2), ROPE);
+  };
   const parts = [
     vc(new T.CylinderGeometry(.065, .08, M.ARM_Y + .06, 8).translate(0, (M.ARM_Y + .06) / 2, M.POST_Z), WOOD),     // post
     vc(new T.BoxGeometry(.06, .06, M.ARM_Z - M.POST_Z + .06).translate(0, M.ARM_Y + .02, (M.POST_Z + M.ARM_Z) / 2), WOOD), // arm
-    vc(new T.BoxGeometry(.05, .14, .05).rotateX(-.6).translate(0, M.ARM_Y - .1, M.ARM_Z - .2), DARK),              // arm brace
+    ...[-1, 1].map(sx => brace(sx * .036)),                                                                          // two arm braces (the rope runs between them)
+    vc(new T.CylinderGeometry(.045, .045, .09, 10).rotateZ(Math.PI / 2).translate(0, M.ARM_Y - .015, M.ARM_Z), DARK), // pulley at the arm tip
+    ropeSpan(0, M.DRUM_Y + .02, M.POST_Z + .1, M.ARM_Y - .05, M.ARM_Z - .03),                                     // rope: drum up to the pulley
     vc(new T.CylinderGeometry(.075, .075, .34, 10).rotateZ(Math.PI / 2).translate(0, M.DRUM_Y, M.POST_Z), LIGHT),  // rope drum
     vc(new T.BoxGeometry(.03, .18, .03).translate(.2, M.DRUM_Y - .06, M.POST_Z), DARK),                             // crank
     vc(new T.BoxGeometry(.3, .04, .3).translate(0, .02, M.POST_Z), DARK),                                          // foot plate
@@ -105,6 +118,7 @@ function anchorGeometry(T) {
   for (const f of flat) { pos.set(f.attributes.position.array, o); nor.set(f.attributes.normal.array, o); o += f.attributes.position.array.length; f.dispose(); }
   const out = new T.BufferGeometry();
   out.setAttribute('position', new T.BufferAttribute(pos, 3)); out.setAttribute('normal', new T.BufferAttribute(nor, 3));
+  out.scale(1.2, 1.2, 1.2); // reads at a glance from across the raft (still clears the deck when raised)
   out.computeBoundingSphere();
   return out;
 }

@@ -240,7 +240,7 @@ export function createIslands(ctx) {
     const vx = s && Number.isFinite(s.vx) ? s.vx : 0, vz = s && Number.isFinite(s.vz) ? s.vz : 0;
     spawnRel(seed, vx + SAIL.CURRENT_X, vz + SAIL.CURRENT_Z, ahead, st.next === ISLAND.FIRST);
     spawnAt(seed, ahead.x, ahead.z, 0);
-    emitAll('Land ahead! Steer for it and drop anchor to stay');
+    emitAll('Land ahead! Steer in and drop anchor');
   }
   function emitAll(text) { try { ctx.emit({ kind: 'notice', text }, 'all'); } catch {} }
 

@@ -3,11 +3,11 @@
 const NS = 'http://www.w3.org/2000/svg';
 const DEG = 180 / Math.PI;
 const CSS = `
-#sailBadge{position:fixed;top:64px;right:16px;z-index:30;display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;
+#sailBadge{position:fixed;top:64px;right:16px;z-index:30;display:flex;flex-direction:column;align-items:flex-end;/* compass never shifts with the label width */gap:4px;pointer-events:none;
   color:#f6ecd6;font:600 12px/1.3 var(--ui-font,system-ui,sans-serif);user-select:none}
 #sailBadge[hidden],#sailPrompt[hidden]{display:none}
 #sailBadge svg{width:84px;height:84px;display:block;border-radius:50%;background:rgba(43,30,18,.7);box-shadow:0 0 0 1.5px rgba(246,236,214,.5),0 4px 14px rgba(43,30,18,.3)}
-#sailBadge .sail-label{padding:2px 8px;border-radius:8px;background:rgba(43,30,18,.7);box-shadow:0 0 0 1px rgba(246,236,214,.5);white-space:nowrap}
+#sailBadge .sail-label{box-sizing:border-box;min-width:84px;text-align:center;padding:2px 8px;border-radius:8px;background:rgba(43,30,18,.7);box-shadow:0 0 0 1px rgba(246,236,214,.5);white-space:nowrap}
 #sailBadge .sail-dim{opacity:.3}
 #sailPrompt{position:fixed;left:calc(50% + 22px);top:calc(50% + 84px);text-align:left;padding:3px 10px;border-radius:8px;
   background:rgba(43,30,18,.7);box-shadow:0 0 0 1px rgba(246,236,214,.5);color:#f6ecd6;font:600 13px/1.3 var(--ui-font,system-ui,sans-serif);pointer-events:none;z-index:30;white-space:nowrap}
@@ -20,9 +20,13 @@ const SVG = '<circle cx="0" cy="0" r="38" fill="none" stroke="rgba(246,236,214,.
   + '<g data-k="w"><path d="M-3 22Q2 10-2 0T2-18" fill="none" stroke="#9fd8e6" stroke-width="3" stroke-linecap="round"/>'
   + '<path d="M2-27L-5-15L8-16Z" fill="#9fd8e6"/></g>'
   + '<g data-k="s"><path d="M0-36L-6-26H6Z" fill="#ffb355" stroke="#473b26" stroke-width=".8" stroke-linejoin="round"/></g>'
-  + '<g data-k="i" visibility="hidden"><path d="M-5-29.5Q0-36.5 5-29.5Z" fill="#e8d29a" stroke="#473b26" stroke-width=".8"/>'
-  + '<path d="M0-30V-36.5M0-36.5L-3.2-35M0-36.5L3.2-35" stroke="#7fc46a" stroke-width="1.4" stroke-linecap="round"/></g>' // island: sand hump + palm
-  + '<path d="M0-6L4 5L0 3L-4 5Z" fill="#f6ecd6"/>';
+  + '<path d="M0-6L4 5L0 3L-4 5Z" fill="#f6ecd6"/>'
+  // Island: an upright round marker (sand hump + palm) moved around the ring like N; drawn last so it sits on
+  // top of the sail pointer and the ring ticks.
+  + '<g data-k="i" visibility="hidden"><circle r="7.4" fill="#2b1e12" stroke="#e8d29a" stroke-width="1.1"/>'
+  + '<path d="M-5.6 4.2Q0-.8 5.6 4.2Z" fill="#e8d29a"/>'
+  + '<path d="M.6 2.6Q1.6-.8-.2-3.8" fill="none" stroke="#c79a5e" stroke-width="1.3" stroke-linecap="round"/>'
+  + '<path d="M-.2-3.8Q-3-5.6-4.9-3M-.2-3.8Q2.6-5.6 4.6-3M-.2-3.8Q-1-6.6-3-6.2" fill="none" stroke="#86d06c" stroke-width="1.5" stroke-linecap="round"/></g>';
 
 export function createSailingUI({ signal } = {}) {
   if (typeof document === 'undefined') return { update() {}, setPrompt() {}, dispose() {} };
@@ -72,7 +76,10 @@ export function createSailingUI({ signal } = {}) {
     // Island marker on the ring: the bearing to the live island (islands.js -> sailing.markIsland).
     const iOn = !!info.islandOn;
     if (iOn !== iShown) { iShown = iOn; isle.setAttribute('visibility', iOn ? 'visible' : 'hidden'); }
-    if (iOn) { const b = toScreen(+info.islandDir || 0, yaw); if (b !== qI) { qI = b; isle.setAttribute('transform', 'rotate(' + b + ')'); } }
+    if (iOn) { // moved around the ring, kept upright
+      const b = toScreen(+info.islandDir || 0, yaw);
+      if (b !== qI) { qI = b; const r = b / DEG; isle.setAttribute('transform', 'translate(' + (30 * Math.sin(r)).toFixed(1) + ' ' + (-30 * Math.cos(r)).toFixed(1) + ')'); }
+    }
     const hasSail = (info.nSails | 0) > 0;
     const motor = !info.anchored && +info.motor > .01; // engine: a running motor pushes along the heading
     const dim = !motor && (!hasSail || !info.raised || !!info.anchored);

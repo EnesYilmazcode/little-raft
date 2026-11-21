@@ -409,4 +409,62 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M2 44 H46" fill="none"/></g>
     <g fill="none" stroke="${O}" stroke-width="1.1" stroke-opacity=".55" stroke-linecap="round"><path d="M16 9 C18 16 16 24 20 33"/><path d="M32 12 C31 20 32 28 28 38"/></g>
     <g fill="#bdeef0" stroke="${O}" stroke-width="1.2"><circle cx="40" cy="16" r="2.6"/><circle cx="42" cy="26" r="1.6"/><circle cx="8" cy="15" r="1.8"/></g>`,
+  // ---- decor pack / misc placeholders that had only initials in the crafting list ----
+  // Woven Deck Mat: a leaf-woven mat seen from above at an angle, with a fringe.
+  rug: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M10 14 H38 L44 36 H4 Z" fill="#c9b36a"/>
+    <path d="M12.5 19 H35.5 M10.5 25 H37.5 M8 31 H40" fill="none" stroke="#7fae58" stroke-width="2.6"/>
+    <path d="M17 14 L14 36 M24 14 V36 M31 14 L34 36" fill="none" stroke-width="1" stroke-opacity=".45"/>
+    <path d="M10 14 H38 L44 36 H4 Z" fill="none"/></g>
+    <path d="M7 38 V42 M12 38 V42 M17 38 V42 M22 38 V42 M27 38 V42 M32 38 V42 M37 38 V42 M42 38 V42" stroke="#c9b36a" stroke-width="1.8" stroke-linecap="round"/>`,
+
+  // Wind Pennant: a pole with a long two-tone pennant streaming in the wind.
+  pennant: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="9" y="5" width="4" height="40" rx="2" fill="#bb8650"/>
+    <path d="M13 8 C22 7 32 11 43 14 C33 16 22 19 13 22 Z" fill="#ffbd66"/>
+    <path d="M13 15 C22 13.5 32 14 43 14 C33 16 22 19 13 22 Z" fill="#d9773a" stroke="none"/>
+    <path d="M13 8 C22 7 32 11 43 14 C33 16 22 19 13 22 Z" fill="none"/>
+    <circle cx="11" cy="5" r="2.4" fill="#fff2cc"/></g>`,
+
+  // Hanging Fern Post: a post with an arm, a rope and a basket of fern fronds.
+  fern: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="7" y="4" width="4.5" height="41" rx="1.5" fill="#bb8650"/>
+    <rect x="9" y="5" width="28" height="4" rx="1.5" fill="#c99560"/>
+    <path d="M32 9 V20" fill="none" stroke="#d9c38c" stroke-width="1.8"/>
+    <path d="M18 28 C20 22 26 18 32 21 C36 17 43 20 43 26 C46 30 44 35 40 33 M24 26 C20 30 17 35 19 39" fill="#7cc47f"/>
+    <path d="M23 27 H41 L38 37 H26 Z" fill="#c4643c"/>
+    <path d="M24 30 H40" fill="none" stroke-width="1.2" stroke-opacity=".5"/></g>`,
+
+  // Rope Hammock: two posts with a sagging net sling between them.
+  hammock: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="4" y="10" width="5" height="34" rx="1.5" fill="#bb8650"/><rect x="39" y="10" width="5" height="34" rx="1.5" fill="#bb8650"/>
+    <path d="M9 16 C14 34 34 34 39 16 C34 26 14 26 9 16 Z" fill="#e8d6a4"/>
+    <path d="M14 22 L19 29 M20 24.5 L24 30.5 M26 24.5 L23 30.5 M33 22 L28 29 M17 26 H31" fill="none" stroke="#b99a62" stroke-width="1.4"/>
+    <path d="M9 16 C14 34 34 34 39 16" fill="none"/></g>`,
+
+  // Glass Lantern: metal cap and handle, a glass body with a warm flame.
+  glasslamp: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M19 9 C19 3 29 3 29 9" fill="none" stroke-width="2.4"/>
+    <path d="M15 14 L18 9 H30 L33 14 Z" fill="#6d8496"/>
+    <rect x="15" y="14" width="18" height="22" rx="3" fill="#bdeef0" fill-opacity=".85"/>
+    <path d="M24 31 C20 28 21 24 24 20 C27 24 28 28 24 31 Z" fill="#ffbd66"/>
+    <path d="M13 36 H35 V41 H13 Z" fill="#6d8496"/></g>
+    <path d="M18 17 V32" stroke="#fff" stroke-opacity=".8" stroke-width="1.6" stroke-linecap="round"/>`,
+
+  // Line Sinker: a teardrop lead weight on a ring with a tag of line.
+  sinker: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M24 2 V9" fill="none" stroke="#fff2cc" stroke-width="1.6"/>
+    <circle cx="24" cy="12" r="3.6" fill="none" stroke="#9fb1bf" stroke-width="2.2"/>
+    <path d="M24 16 C31 22 36 30 36 35 C36 41 31 45 24 45 C17 45 12 41 12 35 C12 30 17 22 24 16 Z" fill="#6d8496"/></g>
+    <path d="M17 34 C17 29 20 25 23 22" fill="none" stroke="#c6d6e0" stroke-width="2" stroke-linecap="round"/>`,
+
+  // Receiver: a radio box with a round screen showing a blip and a short antenna.
+  receiver: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M31 16 L37 4" fill="none"/><circle cx="37" cy="4" r="2" fill="#ffbd66"/>
+    <rect x="5" y="16" width="38" height="26" rx="4" fill="#6d8496"/>
+    <circle cx="19" cy="29" r="9" fill="#14270b"/>
+    <rect x="32" y="21" width="7" height="4" rx="1" fill="#c6d6e0" stroke-width="1.4"/>
+    <circle cx="35.5" cy="34" r="3" fill="#9fb1bf" stroke-width="1.4"/></g>
+    <path d="M13 29 H25 M19 23 V35" stroke="#5fae4a" stroke-width="1" stroke-opacity=".7"/>
+    <circle cx="22" cy="26" r="2" fill="#a8f07a"/>`,
 });
