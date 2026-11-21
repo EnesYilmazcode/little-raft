@@ -384,4 +384,13 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M2 44 H46" fill="none"/></g>
     <g fill="none" stroke="${O}" stroke-width="1.1" stroke-opacity=".55" stroke-linecap="round"><path d="M16 9 C18 16 16 24 20 33"/><path d="M32 12 C31 20 32 28 28 38"/></g>
     <g fill="#bdeef0" stroke="${O}" stroke-width="1.2"><circle cx="40" cy="16" r="2.6"/><circle cx="42" cy="26" r="1.6"/><circle cx="8" cy="15" r="1.8"/></g>`,
+
+  // Wooden radio box with a speaker grille, a tuning dial and a whip antenna.
+  receiver: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M30 20 L38 4" fill="none"/><circle cx="38" cy="4" r="2" fill="#ffbd66"/>
+    <rect x="6" y="19" width="36" height="23" rx="3" fill="#bb8650"/>
+    <rect x="10" y="23" width="15" height="15" rx="2" fill="#5a3f28"/>
+    <circle cx="34" cy="30.5" r="5" fill="#fff2cc"/><path d="M34 30.5 L36.5 27" fill="none"/></g>
+    <g stroke="#c99560" stroke-width="1.4" stroke-linecap="round"><path d="M12 27 H23 M12 30.5 H23 M12 34 H23"/></g>
+    <path d="M9 22 H39" fill="none" stroke="#e0b47a" stroke-width="1.4" stroke-linecap="round" stroke-opacity=".8"/>`,
 });

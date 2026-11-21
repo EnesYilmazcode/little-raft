@@ -1334,6 +1334,7 @@ export function mount(transfer = null) {
     resetHints(window.localStorage, hintsDone); // first-run hints are once per save, and this is a fresh one
     const w = newWorld(), b = bagsFromWorld(w);
     loadRaft({world:w, host:b.host.snapshot(), guest:b.guest.snapshot(), physics:null}); yaw = 0; pitch = -.28; // lanes reload from the fresh world too
+    try { fc?.reset(); } catch (e) { console.error('fishing-cooking reset failed', e); } // grills live in their own save key
     saveRev = newGameBaseRev(storedRev(), saveRev); unblockSave(); // the player chose to overwrite the stored save
     save(); start();
   }
@@ -1604,10 +1605,11 @@ export function mount(transfer = null) {
     if (vitalsUI) { vitalsUI.update(vitals, running && !disposed && fainted < 0); }
     if (!promptOff && window.raftPrompts?.provide) { try { promptOff = window.raftPrompts.provide({id:'game-context', priority:0, prompt:promptTip}); } catch { promptOff = () => {}; } } // [vitals] eat/drink + watering prompts
     updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost();
-    content?.update(dt); // content hook
+    const simDt = running ? dt : 0; // the title screen freezes the world: no day clock, no grill fuel or cooking
+    content?.update(simDt); // content hook
     if (shark) { try { shark.update(dt, elapsed, running); } catch (e) { console.error('shark update failed', e); try { shark.dispose(); } catch {} shark = null; } } // shark lane
     sky?.follow(ocean.uniforms, scene.background); sky?.update(elapsed, camera); // sky dome tracks day/night's horizon, zenith and sun
-    if (fc) { try { fc.update(dt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
+    if (fc) { try { fc.update(simDt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
     if (instruments) { try { instruments.update(dt); } catch (e) { console.error('instruments update failed', e); try { instruments.dispose(); } catch {} instruments = null; } } // [instruments]
     if (running && role !== 'guest') {
       signalOpts.held = heldTokens(); // our hook only, as before
