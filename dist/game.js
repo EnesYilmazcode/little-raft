@@ -121,7 +121,7 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
 #options .rs-menu>.feed-lane{margin-top:18px;padding:0 16px 16px 0}#options .rs-menu::before{margin-bottom:18px;padding-bottom:16px}
 #pickupFeed.docked{position:static;inset:auto;z-index:auto;max-width:100%}
 #pickupFeed.docked .pf-row{max-width:100%;white-space:normal;line-height:1.25}
-@media(max-width:760px){#contextPrompt{bottom:96px}#pickupFeed[popover]{inset:auto auto calc(232px + var(--coop-feed-h, 0px)) 10px}#options .rs-menu::before,#options .rs-menu>.feed-lane{display:none}}
+@media(max-width:760px){#contextPrompt{bottom:96px}#pickupFeed[popover]{inset:auto auto calc(232px + var(--coop-feed-h, 0px)) 10px}#pickupFeed .pf-row{max-width:calc(50vw - 30px)}#options .rs-menu::before,#options .rs-menu>.feed-lane{display:none}}
 `;
 
 export function mount(transfer = null) {
