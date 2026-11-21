@@ -9,31 +9,35 @@ const POLL_MS = 6000;
 const MAX_BACKOFF_MS = 60000;
 const FAILED_RETRY_MS = 60000;
 const CSS_TIMEOUT_MS = 15000;
+const LOAD_WAIT_MS = 5000;
 const CSS_FILES = ['style.css', 'graphics.css'];
 // Every module in game.js' static import graph (dynamic import() targets stay out). Preloading them all at once
-// flattens the 6-level import waterfall. tests/live-preload.test.mjs keeps this list in step with the imports;
-// a stale entry only costs a wasted request, a missing one just loads late via the normal import.
+// flattens the 6-level import waterfall. publish_local.py regenerates this list and the matching static
+// <link rel=modulepreload> block in index.html (`python publish_local.py dist --resync` after changing imports);
+// tests/live-preload.test.mjs checks both against the real graph. A stale entry only costs a wasted request.
 const PRELOAD = [
   'animals-core.js', 'animals-models.js', 'animals.js', 'audio.js', 'avatar.js', 'bake.js', 'bees-model.js',
-  'bees.js', 'bottle.js', 'brush-model.js', 'build-menu.js', 'build-radial.js', 'build-rules.js',
-  'building-models.js', 'building-pieces.js', 'building.js', 'content-items.js', 'content.js', 'controls.js',
-  'cooking.js', 'coop-avatar.js', 'coop-delta.js', 'coop-feed.js', 'coop-fx.js', 'coop-interp.js',
-  'coop-loopback.js', 'coop-rules.js', 'coop.js', 'craft-book.js', 'crafts.js', 'daynight.js', 'debris.js',
-  'deck.js', 'decor-pack-models.js', 'decor-pack.js', 'diving-ui.js', 'diving.js', 'engine-models.js', 'engine.js',
+  'bees.js', 'bottle.js', 'brush-model.js', 'build-radial.js', 'build-rules.js', 'building-models.js',
+  'building-pieces.js', 'building.js', 'content-items.js', 'content.js', 'controls.js', 'cooking.js',
+  'coop-avatar.js', 'coop-delta.js', 'coop-feed.js', 'coop-fx.js', 'coop-interp.js', 'coop-loopback.js',
+  'coop-rules.js', 'coop.js', 'craft-book.js', 'crafts.js', 'daynight.js', 'debris.js', 'deck.js',
+  'decor-pack-models.js', 'decor-pack.js', 'diving-ui.js', 'diving.js', 'engine-models.js', 'engine.js',
   'fish-journal.js', 'fish-models.js', 'fish-species.js', 'fishing-cooking.js', 'fishing-rules.js',
   'fishing-tool.js', 'fishing-v2.js', 'hammer.js', 'hands.js', 'held-items.js', 'hook-physics.js', 'hook.js',
   'hud.js', 'input-map.js', 'input-rules.js', 'input.js', 'instrument-models.js', 'instruments.js',
   'inventory-state.js', 'islands-layout.js', 'islands-models.js', 'islands.js', 'item-icons.js', 'item-svg.js',
-  'item-tooltips.js', 'items.js', 'kiln-core.js', 'kiln-model.js', 'kiln.js', 'lock-rules.js', 'logbook-ui.js',
-  'logbook.js', 'look-ui.js', 'look.js', 'maptable-model.js', 'maptable.js', 'materials.js', 'merge-geo.js',
-  'models.js', 'move-feel.js', 'ocean.js', 'paint.js', 'pickup-feed.js', 'placement.js', 'plastic.js',
-  'player-physics.js', 'progression-hooks.js', 'progression.js', 'purifier-model.js', 'quality.js', 'rain-model.js',
-  'rain.js', 'repair.js', 'sailing-core.js', 'sailing-ui.js', 'sailing-world.js', 'scenery-islands.js',
-  'seafloor.js', 'session-rules.js', 'settings.js', 'shark-model.js', 'shark.js', 'signal-models.js', 'signal.js',
-  'signs-core.js', 'sky.js', 'sleep-model.js', 'sleep.js', 'smelter-model.js', 'smelter-ui.js', 'smelter.js',
-  'spear-model.js', 'spear-repair-hooks.js', 'spear.js', 'storage-research-model.js', 'storage-research.js',
-  'survival-ui.js', 'textures.js', 'treasure-models.js', 'treasure-rules.js', 'treasure.js', 'underwater-fx.js',
-  'vitals-ui.js', 'vitals.js', 'waterfx.js', 'watering.js', 'wildlife-models.js', 'wildlife.js', 'wood.js',
+  'item-tooltips.js', 'items.js', 'kiln-core.js', 'kiln-model.js', 'kiln.js', 'lock-rules.js', 'logbook.js',
+  'look.js', 'maptable-model.js', 'maptable.js', 'materials.js', 'merge-geo.js', 'models.js', 'move-feel.js',
+  'ocean.js', 'paint.js', 'pickup-feed.js', 'placement.js', 'plastic.js', 'player-physics.js',
+  'progression-hooks.js', 'progression.js', 'purifier-model.js', 'quality.js', 'rain-model.js', 'rain.js',
+  'repair.js', 'sailing-core.js', 'sailing-ui.js', 'sailing-world.js', 'scenery-islands.js', 'seafloor.js',
+  'session-rules.js', 'settings.js', 'shark-model.js', 'shark.js', 'signal-models.js', 'signal.js', 'signs-core.js',
+  'sky.js', 'sleep-model.js', 'sleep.js', 'smelter-model.js', 'smelter.js', 'spear-model.js',
+  'spear-repair-hooks.js', 'spear.js', 'storage-research-model.js', 'storage-research.js', 'survival-ui.js',
+  'texgen/bark.js', 'texgen/cloth.js', 'texgen/foam.js', 'texgen/leaf.js', 'texgen/noise.js', 'texgen/plank.js',
+  'texgen/planks.js', 'texgen/plastic.js', 'texgen/rock.js', 'texgen/rope.js', 'texgen/sand.js', 'texgen/scrap.js',
+  'textures.js', 'treasure-models.js', 'treasure-rules.js', 'treasure.js', 'underwater-fx.js', 'vitals-ui.js',
+  'vitals.js', 'waterfx.js', 'watering.js', 'wildlife-models.js', 'wildlife.js', 'wood.js',
 ];
 
 const state = {
@@ -155,10 +159,12 @@ async function importGame(build, retry) {
 function preloadGraph(build) {
   if (!build || typeof document === 'undefined') return;
   const head = document.head || document.documentElement;
+  // index.html already carries static (relative-href) preloads for the baked build; compare resolved URLs.
+  const have = new Set([...document.querySelectorAll('link[rel="modulepreload"]')].map((l) => l.href));
   for (const name of PRELOAD) {
     const url = new URL('./' + name, BASE);
     url.searchParams.set('build', build);
-    if (document.querySelector('link[rel="modulepreload"][href="' + url.href + '"]')) continue;
+    if (have.has(url.href)) continue;
     const link = document.createElement('link');
     link.rel = 'modulepreload';
     link.href = url.href;
@@ -221,18 +227,29 @@ function stageCss(build) {
 // The build baked into moduleUrl() (publish_local.py rewrites it in step with version.json).
 const BAKED_BUILD = new URL(moduleUrl(null)).searchParams.get('build');
 
+function pageLoaded(ms) {
+  if (document.readyState === 'complete') return Promise.resolve();
+  return new Promise((resolve) => {
+    const t = setTimeout(resolve, ms);
+    window.addEventListener('load', () => { clearTimeout(t); resolve(); }, { once: true });
+  });
+}
+
 async function boot() {
   const retry = state.retryCount ? state.retryCount : 0;
   // Start fetching game.js and its whole import graph (in parallel) while version.json is in flight.
   preloadGraph(BAKED_BUILD);
+  const manifestP = fetchManifest().catch((e) => {
+    console.warn('[raftLive] version.json unavailable, booting unversioned game.js', e);
+    return null;
+  });
+  // index.html preloads the graph statically, so it is all in flight already. Evaluating game.js before the page's
+  // load event would hold that event back until mount had finished (mount adds elements that delay it); the modules
+  // arrive at about load time anyway, so let load fire first (capped, in case some page resource hangs).
+  await pageLoaded(LOAD_WAIT_MS);
   const early = importGame(null, retry);
   early.catch(() => {}); // only awaited if the manifest agrees (or is unavailable)
-  let manifest = null;
-  try {
-    manifest = await fetchManifest();
-  } catch (e) {
-    console.warn('[raftLive] version.json unavailable, booting unversioned game.js', e);
-  }
+  const manifest = await manifestP;
   const build = manifest ? manifest.build : null;
   try {
     if (build && build !== BAKED_BUILD) preloadGraph(build);

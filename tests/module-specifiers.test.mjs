@@ -4,25 +4,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
+import { posix } from 'node:path';
 
 const dist = new URL('../dist/', import.meta.url);
-const files = readdirSync(dist).filter(f => f.endsWith('.js'));
-const names = new Set(readdirSync(dist));
-// Same shape publish_local.py rewrites: './name.js' optionally followed by a query.
-const SPEC = /(['"])\.\/([a-z][a-z0-9-]*\.js)(\?[^'"]*)?\1/g;
+// Every dist file as a posix path ('texgen/noise.js'); vendor/ is shared across builds and never stamped.
+const names = new Set(readdirSync(dist, { recursive: true }).map(f => String(f).replaceAll('\\', '/')).filter(f => !f.startsWith('vendor/')));
+const files = [...names].filter(f => f.endsWith('.js'));
+// Same shape publish_local.py rewrites: './name.js' or './dir/name.js', optionally followed by a query.
+const SPEC = /(['"])\.\/((?:[a-z][a-z0-9-]*\/)*[a-z][a-z0-9-]*\.js)(\?[^'"]*)?\1/g;
 
 function specifiers() {
   const out = [];
   for (const f of files) {
     const src = readFileSync(new URL(f, dist), 'utf8');
     for (const m of src.matchAll(SPEC)) {
-      if (!names.has(m[2])) continue;
+      const target = posix.normalize(posix.join(posix.dirname(f), m[2]));
+      if (!names.has(target)) continue;
       const line = src.slice(0, m.index).split('\n').length;
-      out.push({ at: `${f}:${line}`, target: m[2], query: m[3] || '' });
+      out.push({ at: `${f}:${line}`, target, query: m[3] || '' });
     }
   }
   return out;
 }
+
+test('subdirectory modules (texgen/) are covered and stamped', () => {
+  const tex = specifiers().filter(s => s.target.startsWith('texgen/'));
+  assert.ok(tex.length >= 12, 'textures.js imports from texgen/ found: ' + tex.length);
+  assert.deepEqual(tex.filter(s => !s.query.startsWith('?build=')).map(s => s.at), [], 'texgen imports carry ?build=');
+});
 
 test('dist relative imports all use one build stamp', () => {
   const specs = specifiers();

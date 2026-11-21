@@ -4,7 +4,6 @@
 //   building.update(raft, aim, origin, active, bag, yaw) every frame; building.preStep/postStep around physics.update.
 import { BuildGrid, PIECES, PIECE_ORDER, LEVEL_H, cleanPieces } from './building-pieces.js?build=v3-survival-ae77fa84ac2b';
 import { createPieceGeometry, createPieceMaterial } from './building-models.js?build=v3-survival-ae77fa84ac2b';
-import { createBuildMenu } from './build-menu.js?build=v3-survival-ae77fa84ac2b';
 import { Bag } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 export { cleanPieces };
@@ -28,8 +27,30 @@ export function createBuilding(T, scene) {
   const WHITE = new T.Color(1, 1, 1), tmp = new T.Color(), tintCount = {};
   let tintOf = null; // content hook (paint): p -> T.Color instance tint or null (white = untinted)
 
-  const menu = createBuildMenu({pieces:PIECE_ORDER.map(id => ({id, name:PIECES[id].name, cost:PIECES[id].cost})), onPick:() => { rot = 0; }});
-  menu.setAfford(afford);
+  // build-menu.js (the hammer wheel DOM) loads with import() as the building glue is created, off the startup graph.
+  // Until it lands, `menu` answers like a closed wheel and keeps the chip state, which is replayed into the real one.
+  const menuState = {visible:false, chip:'', selected:PIECE_ORDER.includes('foundation') ? 'foundation' : (PIECE_ORDER[0] ?? null), wantOpen:false};
+  let wheel = null, menuGone = false;
+  const menu = {
+    open() { if (wheel) wheel.open(); else menuState.wantOpen = true; },
+    move(dx, dy) { wheel?.move(dx, dy); },
+    hoverAt(x, y) { wheel?.hoverAt(x, y); },
+    close(confirm = true) { menuState.wantOpen = false; wheel?.close(confirm); },
+    get isOpen() { return !!wheel?.isOpen; },
+    get selected() { return wheel ? wheel.selected : menuState.selected; },
+    setSelected(id) { if (wheel) wheel.setSelected(id); else if (PIECE_ORDER.includes(id)) menuState.selected = id; },
+    setAfford(fn) { wheel?.setAfford(fn); },
+    refresh() { wheel?.refresh(); },
+    setVisible(v) { menuState.visible = !!v; if (!v) menuState.wantOpen = false; wheel?.setVisible(v); },
+    setChip(text) { menuState.chip = text; wheel?.setChip(text); },
+    dispose() { menuGone = true; wheel?.dispose(); wheel = null; },
+  };
+  if (typeof document !== 'undefined') import('./build-menu.js?build=v3-survival-ae77fa84ac2b').then(m => {
+    if (menuGone) return;
+    wheel = m.createBuildMenu({pieces:PIECE_ORDER.map(id => ({id, name:PIECES[id].name, cost:PIECES[id].cost})), onPick:() => { rot = 0; }});
+    wheel.setAfford(afford); wheel.setSelected(menuState.selected); wheel.setChip(menuState.chip); wheel.setVisible(menuState.visible);
+    if (menuState.wantOpen && menuState.visible) wheel.open();
+  }).catch(e => console.error('build menu failed', e));
 
   // Instance placement in raft-local space (the group follows the raft transform every frame).
   function place(o, p) {
