@@ -142,6 +142,36 @@ GPU the whole island is a few hundred thousand vertex shader runs and about 30 d
 tuning knob on weak hardware is grass density and the grass fade distance (`DEFAULT_PARAMS.grass.fade`), not
 the palms.
 
+### Improver pass (2026-11-21)
+
+Changes: a smooth ringed trunk, crown AO and an underside/translucency tint, readable coconuts, wind normal
+tilt, a dithered palm LOD crossfade, fewer but wider grass tufts, and island `top` 0.35. Timing under load
+average 30 to 45 was too noisy to rank recipes; one grass A/B run even flipped sign between repeats. So cost is
+judged on deterministic numbers. `lab.overdraw(prefix)` re-renders only the named foliage meshes, additively
+with no depth test, and counts rasterised fragments per screen pixel. Before = commit `bbf0630`; after = the
+current branch, same views, hero-island scope:
+
+| view | calls before / after | triangles before / after | all-foliage fragments / px | grass fragments / px |
+| --- | --- | --- | --- | --- |
+| raft | 48 / 48 | 95.6k / 87.7k | 0.112 / 0.100 | 0.028 / 0.016 |
+| beach | 17 / 17 | 71.8k / 63.8k | 1.255 / 1.097 (-13%) | 0.470 / 0.271 (-42%) |
+| canopy | 16 / 13 | 82.1k / 59.4k | 0.404 / 0.444 * | 0 / 0 |
+| over | 27 / 27 | 80.5k / 72.6k | 0.104 / 0.093 | 0.016 / 0.009 |
+| far | 58 / 58 | 103k / 95.2k | 0.120 / 0.108 | 0.028 / 0.016 |
+
+\* The canopy camera stands on the ground, which is now 0.55 m lower (`top` 0.35), so the palm fills more of
+the frame. It is not a per-palm cost increase. Programs are unchanged (11 to 17). Grass depth complexity
+(fragments per covered pixel) on the beach view fell from 2.99 to 2.02, while grass screen coverage kept 88%
+(0.152 to 0.134 of the frame); the screenshots read just as lush. Grass recipes tried (beach fragments/px):
+520x10 (0.456), 300x8 wide (0.274), 340x9 (0.250), 300x7 (0.211, visibly thinner), 260x8 w1.5 s1.7 (0.271,
+chosen), 240x9 (0.301).
+
+Crossfade (`lod` view, `?lod=` metres from the hero centre, LOD at 49 m): 57 calls at 40 m, 57 at 49 m (both
+meshes in the band), 52 at 58 m. The band costs +2 calls per island only while the eye is 44 to 54 m away.
+Wind motion is unchanged: 27.8% changed pixels in the craft palm region and 10.2% in the island region.
+Triangles per palm: 2386 (trunk 196 to 406). The grass saving (520x30 to 260x24, -9.4k per island) more than
+pays for that.
+
 ## Alternatives considered
 
 | approach | verdict |
@@ -155,14 +185,17 @@ the palms.
 
 ## Weaknesses (honest)
 
-- Normals are not bent with the wind. Lighting on swaying fronds stays fixed, which is invisible at these
-  amplitudes but would show in a storm (wind of 1.0 or more).
-- The trunk is a stack of flared rings. Up close (`beach` view) it reads as chunky blocks rather than a smooth
-  ringed trunk. It is fine at 3 m and beyond.
-- From directly below (`canopy` view), the two-sided-lit fronds are bright and fairly uniform, and the crown
-  knob and coconuts are dark blobs. It is charming rather than realistic.
-- The palm near/far LOD swap is a hard pop at about 50 m. Fog (25 to 125 m) softens it, but a careful look shows
-  the change from 22 to 7 leaflets.
+- The craft (raft) palm comes from `crafts.js` and still has its own stacked-block trunk. It sways, but the
+  new smooth trunk applies only to the island palms. Porting it means editing `crafts.js`, which this module
+  avoids on purpose.
+- The crossfade is screen-door dithering. At normal FOV and 44 to 54 m it is barely visible, but zoomed in
+  (the `lod` shots use 3.5x zoom) the fronds speckle during the band. Discard disables early-z for the palm
+  program on some GPUs. The palms are small on screen at that range, so this is cheap, but it is not free.
+- The underside tint is per vertex, so on very large leaflets it would band. On these leaflets it is smooth.
+  It reads `uSunDir`, which a day/night system has to keep updated.
+- The normal tilt is an approximation (slope of the bend plus flutter), not a true derivative. That is fine at
+  wind 0.4 to 1.0. Far stronger wind would need more than a lean anyway.
+- The trunk ring bands are regular (15 equal bands). A real coconut palm has denser scars near the top.
 - Grass and fern shrink-fade happens per instance, while the island-level LOD hides whole kinds. The fade
   distances are tuned for islands of 9 m radius or less. A much larger island would need chunked
   InstancedMeshes.
@@ -170,5 +203,5 @@ the palms.
   shadow map resolution, not foliage.
 - Collisions and gather interaction are out of scope. `island.userData.palms` and `heightAt` are exposed for the
   islands module.
-- SwiftShader timing under heavy shared load is noisy. Only the A/B deltas and the triangle and call counts are
-  trustworthy.
+- SwiftShader timing under heavy shared load is noisy (the box sat at load average 30 to 45 during this pass).
+  Trust the calls, triangles and overdraw numbers. The interleaved A/B milliseconds are indicative only.
