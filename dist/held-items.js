@@ -17,6 +17,7 @@ import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createSpear } from './spear-model.js?build=v3-survival-ae77fa84ac2b'; // [spear-repair]
 import { buildInstrument } from './instrument-models.js?build=v3-survival-ae77fa84ac2b'; // [instruments]
 import { createSpade, createFinder } from './treasure-models.js?build=v3-survival-ae77fa84ac2b';
+import { createHandLantern, createFireflyJar } from './nightlight-models.js?build=v3-survival-ae77fa84ac2b'; // [nightlight]
 
 export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 // Items you aim at the raft to place: the free hand points at the spot while one of these is held.
@@ -36,6 +37,7 @@ export const HOLD = Object.freeze({
   fishingrod: { hand: 'right', pose: 'grip', rx: -0.15, rz: 0.6 },
   spade:      { hand: 'right', pose: 'grip', rx: 0.2, rz: 0.35 },
   finder:     { hand: 'right', pose: 'grip', rx: -1.1, rz: 0.25 },
+  handlantern: { hand: 'right', pose: 'grip', rx: 0.1, arm: [0, 0.02, 0] }, // [nightlight] hangs from the fist by its loop
   spear:      { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 }, // [spear-repair] point forward, a ready jab
   metalspear: { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 },
   brush:      { hand: 'right', pose: 'grip', rx: -0.25, ry: 0.35, rz: 0.35 }, // content hook (paint)
@@ -57,7 +59,8 @@ export const holdFor = (kind) => HOLD[kind] || (isPlaceable(kind) ? HOLD.crate :
 export const HELD_LEFT_MAX = 0.11;
 const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.22, fish: 0.3, sail: 0.22, palm: 0.2, lantern: 0.2, net: 0.2, bench: 0.16, crate: 0.13,
   planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11,
-  drum: 0.24, pipes: 0.2, bells: 0.26 }; // [instruments]
+  drum: 0.24, pipes: 0.2, bells: 0.26, // [instruments]
+  handlantern: 0.2, jar: 0.13, fireflyjar: 0.13 }; // [nightlight]
 
 function fit(T, model, maxDim, gripFn) {
   const root = new T.Group();
@@ -255,6 +258,12 @@ export function buildItemModel(T, kind, factory = null) {
     root.userData.size = { x: sz.x * s, y: sz.y * s, z: sz.z * s };
     root.userData.grip = [gp.x, gp.y, gp.z];
     root.userData.model = m;
+  } else if (kind === 'handlantern') { // [nightlight] fist closes on the top of the wire loop
+    root = fit(T, createHandLantern(T), SIZE.handlantern, (s) => new T.Vector3(0, s.y * 0.46, 0)); // [nightlight]
+  } else if (kind === 'jar' || kind === 'fireflyjar') { // [nightlight] held glass jar (empty: no glow, no bugs)
+    const j = createFireflyJar(T); j.name = 'heldJar'; // [nightlight] not 'craft_lantern': never a pool light
+    if (kind === 'jar') for (const c of j.children) if (c.name === 'lanternGlow' || c.name === 'jarBugs') c.visible = false; // [nightlight]
+    root = fit(T, j, SIZE[kind], () => new T.Vector3(0, 0, 0)); // [nightlight]
   } else if (kind === 'wood' || kind === 'leaf' || kind === 'scrap') {
     const d = createDebris(T, kind, matCache(T), { seed: 7 });
     const lie = new T.Group(); lie.add(d);

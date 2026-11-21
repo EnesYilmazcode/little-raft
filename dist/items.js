@@ -129,6 +129,8 @@ const LIST = [
   item('glass', 'Glass', 'refined', { iconTint: '#bfe6ef',
     recipe: cook('smelter', 'sand', { time: 25, fuel: 1 }), unlock: atStation('smelter'),
     tip: 'Sand melted into a clear little pane. Look through it and the sea sparkles.' }),
+  item('jar', 'Glass Jar', 'refined', { iconTint: '#bfe6ef', stack: 10, recipe: hand({ glass: 1, rope: 1 }), unlock: discover('glass'), // [nightlight]
+    tip: 'An empty glass jar. Hold it near an island after dusk and press E to catch fireflies.' }), // [nightlight]
   item('bolt', 'Bolt', 'refined', { iconTint: '#8d96a3',
     recipe: hand({ metalingot: 1, scrap: 1 }, 2), unlock: research('metalingot'),
     tip: 'Two sturdy bolts from one ingot. They hold the fancy stuff together.' }),
@@ -176,6 +178,9 @@ const LIST = [
   item('spade', 'Little Spade', 'tool', { iconTint: '#bb8650', tool: true, durability: 60,
     recipe: hand({ wood: 3, scrap: 2 }), unlock: discover('sand'),
     tip: 'Press E on island sand to dig. Finds bundles, or at least a handful of sand. R fixes it.' }),
+  // [nightlight] held light (dist/nightlight.js): no durability, no fuel, not placeable
+  item('handlantern', 'Hand Lantern', 'tool', { iconTint: '#ffc76a', stack: 1, recipe: hand({ wood: 1, scrap: 2, rope: 1 }), unlock: discover('scrap', 'rope'),
+    tip: 'A little tin lantern on a loop. Hold it at night and the deck glows around you.' }), // [nightlight]
 
   // ----- food -----
   item('cookedfish', 'Grilled Fish', 'food', { iconTint: '#e0a060', stack: 10,
@@ -211,6 +216,8 @@ const LIST = [
   item('lantern', 'Lantern', 'decor', { icon: 'icon-lantern', placeholder: false, placeable: true,
     recipe: hand({ wood: 2, scrap: 2 }), unlock: discover('scrap'),
     tip: 'A warm glow for quiet evenings on the water.' }),
+  item('fireflyjar', 'Firefly Jar', 'decor', { iconTint: '#d8ff6a', stack: 10, placeable: true, // [nightlight] caught, not crafted
+    tip: 'A jar of sleepy fireflies. Place it on the raft for a soft green-gold glow.' }), // [nightlight]
   item('crate', 'Crate', 'build', { icon: 'icon-barrel', placeholder: true, placeable: true,
     recipe: hand({ wood: 4, scrap: 1 }), unlock: discover('scrap'),
     tip: 'A sturdy wooden crate. Looks great stacked by the edge.' }),
@@ -244,6 +251,7 @@ export const BLOCK_RADII = deepFreeze({
   palm: 0.42, crate: 0.55, bench: 0.45, sail: 0.14, lantern: 0.12, net: 0,
   smelter: 0.5, researchtable: 0.55, grill: 0.45, maptable: 0.5,
   flowerbox: 0.3, beehive: 0.35, candle: 0.1, // [bees]
+  fireflyjar: 0.1, // [nightlight]
 });
 
 /** Damage one landed spear thrust deals (spear lane; see docs/loop/research/fidelity-r1-shark.md). */

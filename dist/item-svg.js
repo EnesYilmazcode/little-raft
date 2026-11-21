@@ -333,6 +333,26 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M10 18 V40 C10 43 13 44 16 44 H32 C35 44 38 43 38 40 V18" fill="#9fd6d0" fill-opacity=".45"/></g>
     <path d="M13 22 V37" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".8"/>`,
 
+  // [nightlight] hand lantern, glass jar, firefly jar
+  handlantern: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M18 11 C18 4 30 4 30 11" fill="none" stroke-width="2.4"/>
+    <path d="M15 17 L24 10 L33 17 Z" fill="#6d8496"/>
+    <rect x="15" y="17" width="18" height="20" rx="2" fill="#fff2cc"/>
+    <rect x="13" y="37" width="22" height="5" rx="1.5" fill="#6d8496"/></g>
+    <circle cx="24" cy="27" r="5" fill="#ffbd66"/><circle cx="24" cy="27" r="2.2" fill="#fff2cc"/>
+    <path d="M18 21 V33" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".8"/>`,
+  jar: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="16" y="5" width="16" height="7" rx="2" fill="#bb8650"/>
+    <path d="M14 12 H34 C37 16 37 38 34 43 H14 C11 38 11 16 14 12 Z" fill="#9fd6d0" fill-opacity=".45"/>
+    <path d="M14 14 H34" fill="none" stroke="#c99560" stroke-width="2.4"/></g>
+    <path d="M17 18 V37" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".8"/>`,
+  fireflyjar: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="16" y="5" width="16" height="7" rx="2" fill="#bb8650"/>
+    <path d="M14 12 H34 C37 16 37 38 34 43 H14 C11 38 11 16 14 12 Z" fill="#c8f060" fill-opacity=".5"/>
+    <path d="M14 14 H34" fill="none" stroke="#c99560" stroke-width="2.4"/></g>
+    <g fill="#fffbd0" stroke="#d8ff6a" stroke-width="1.6"><circle cx="21" cy="24" r="1.8"/><circle cx="28" cy="20" r="1.6"/><circle cx="26" cy="31" r="2"/><circle cx="19" cy="35" r="1.5"/><circle cx="30" cy="37" r="1.6"/></g>
+    <path d="M17 18 V37" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".8"/>`,
+
   honeyfish: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <path d="M6 26 C12 15 28 14 36 24 L44 17 V35 L36 28 C28 38 12 37 6 26 Z" fill="#d98a4e"/>
     <path d="M14 22 L18 31 M21 20 L25 32 M28 21 L31 30" fill="none" stroke="#8a4a22" stroke-width="2"/>

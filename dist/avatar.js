@@ -242,6 +242,7 @@ export function createAvatar(T, colorOrLook) {
     sail(g) { rod(g, 0.012, 0.5, H.wood, 0, 0, 0.15); const c = add(g, geo(new T.PlaneGeometry(0.28, 0.24)), H.cloth, 0, 0.13, 0.24); c.rotation.y = Math.PI / 2; },
     lantern(g) { box(g, 0.08, 0.11, 0.08, H.lamp, 0, -0.07, 0.03); box(g, 0.1, 0.02, 0.1, H.woodDark, 0, -0.005, 0.03); },
     crate(g) { box(g, 0.2, 0.18, 0.2, H.wood, 0, 0.02, 0.1); },
+    handlantern(g) { box(g, 0.06, 0.08, 0.06, H.lamp, 0, -0.08, 0.03); box(g, 0.075, 0.015, 0.075, H.woodDark, 0, -0.035, 0.03); }, // [nightlight]
   };
   BUILD.palm = BUILD.leaf; BUILD.net = BUILD.scrap; BUILD.bench = BUILD.crate;
   const heldModels = new Map();

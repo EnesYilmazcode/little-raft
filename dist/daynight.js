@@ -30,6 +30,9 @@ export function skipClock(clock, toPhase) {
 
 // Live read-only mirror for other content modules (sleep.js). Written by update(), no allocation.
 export const DAYNIGHT_LIVE = { phase: MORNING, optOut: false, ready: false };
+// [nightlight] carried lights (nightlight.js writes, applyVisuals reads): world positions of the local and the partner's
+// Hand Lantern. `want` attaches the pool once (when a lantern is first owned), so equipping never relinks shaders.
+export const DAYNIGHT_CARRY = { want: false, local: { on: false, x: 0, y: 0, z: 0 }, partner: { on: false, x: 0, y: 0, z: 0 } }; // [nightlight]
 // sleep.js SLEEP_START / SLEEP_END plus slack: a lie-down at .019 reaches the skip ~2 s later (after the hold and
 // fade). Still well before MORNING (.10), so a second skip right after one stays refused.
 const sleepable = p => p >= 0.66 || p < 0.04;
@@ -263,6 +266,18 @@ const SUN_RADIUS = Math.hypot(-15, 28, 12);
 // sun crosses the horizon, so its intensity fades to 0 over this band of |sunHeight| around the swap.
 export const SWAP_FADE = 0.12;
 export const POOL_PEAK = 2.8, POOL_RANGE = 4.5;
+export const CARRY_PEAK = 1.6; // [nightlight] carried lantern peak (below POOL_PEAK: the light rides near the eye)
+// [nightlight] Pool slot plan: out[0..cap) = -2 local carry, -3 partner carry, >= 0 lantern index (from picks, in order,
+// skipping -1), -1 empty. Returns the filled count. No allocation.
+export function planPool(cap, localOn, partnerOn, picks, out) {
+  let j = 0; // [nightlight]
+  if (localOn && j < cap) out[j++] = -2; // [nightlight]
+  if (partnerOn && j < cap) out[j++] = -3; // [nightlight]
+  for (let i = 0; i < picks.length && j < cap; i++) if (picks[i] >= 0) out[j++] = picks[i]; // [nightlight]
+  const n = j; // [nightlight]
+  while (j < cap) out[j++] = -1; // [nightlight]
+  return n; // [nightlight]
+}
 export const HEMI_NIGHT = 0.5, MOON_I = 0.4; // night floors: hemi intensity and moon (directional) intensity
 
 // ---------------------------------------------------------------- opt out
@@ -414,6 +429,8 @@ export function createDayNight(ctx) {
   const partColor = new Float64Array(MAX_PARTS * 3), partTint = new Uint8Array(MAX_PARTS); // base emissive rgb, 1 = glass (tinted at night)
   const lanternGroups = new Array(MAX_LANTERNS).fill(null), lanternLocal = new Float32Array(MAX_LANTERNS * 3), lanternDist = new Float32Array(MAX_LANTERNS);
   const poolPick = new Int32Array(POOL_LIGHTS).fill(-1);
+  const slotSrc = new Int32Array(POOL_LIGHTS).fill(-1); // [nightlight] planPool() output
+  let poolCarry = 0; // [nightlight]
   let partCount = 0, lanternCount = 0, signature = -1, scanClock = 0, rankClock = 0, poolLit = 0, lastNf = -1, lastGrow = -1;
   let scanRaft = null, scanFirst = null, scanLen = -1; // what raft.children looked like at the last scan
   function lanternSignature(raft, world) {
@@ -608,10 +625,18 @@ export function createDayNight(ctx) {
       rankClock += dt;
       if (rankClock >= 0.5) { rankClock = 0; rankLanterns(raft, cam); }
     }
+    if (DAYNIGHT_CARRY.want) poolWanted = true; // [nightlight]
     sizePool();
-    poolLit = 0;
+    poolLit = 0; poolCarry = 0; // [nightlight]
+    planPool(poolOn, DAYNIGHT_CARRY.local.on, DAYNIGHT_CARRY.partner.on, poolPick, slotSrc); // [nightlight]
     for (let i = 0; i < poolOn; i++) {
-      const l = pool[i], k = poolPick[i];
+      const l = pool[i], k = slotSrc[i]; // [nightlight] was poolPick[i]
+      if ((k === -2 || k === -3) && poolI > 0) { // [nightlight] carried lantern
+        const c = k === -2 ? DAYNIGHT_CARRY.local : DAYNIGHT_CARRY.partner; // [nightlight]
+        l.position.set(c.x, c.y, c.z); // [nightlight]
+        l.intensity = poolI * CARRY_PEAK / POOL_PEAK * (0.96 + 0.04 * Math.sin(time * 6.1 + i)); // [nightlight]
+        poolLit++; poolCarry++; continue; // [nightlight]
+      }
       if (k < 0 || k >= lanternCount || poolI <= 0 || !raft) { l.intensity = 0; continue; }
       l.position.set(lanternLocal[k * 3], lanternLocal[k * 3 + 1], lanternLocal[k * 3 + 2]);
       raft.localToWorld(l.position);
@@ -718,7 +743,7 @@ export function createDayNight(ctx) {
       return {
         phase: Number.isFinite(pinPhase) ? pinPhase : phaseAt(clock), day: Math.floor(clock / DAY_SECONDS), clock, seed,
         nightFactor: L.nightFactor, light: L.light, weather: W.weather, weatherNext: W.weatherNext, blend: W.blend,
-        rain: W.rain, wind: W.wind, cloud: W.cloud, lanterns: lanternCount, poolLit,
+        rain: W.rain, wind: W.wind, cloud: W.cloud, lanterns: lanternCount, poolLit, poolCarry, // [nightlight] poolCarry
         pinned: { phase: Number.isFinite(pinPhase) ? pinPhase : null, weather: pinWeather >= 0 ? WEATHERS[pinWeather] : null, optOut: false, frozen },
         role: ctx.role ?? role0,
       };

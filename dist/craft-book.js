@@ -22,6 +22,7 @@ const CATEGORY_OF = Object.freeze({
   zippost: 'building', // [zipline]
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
+  handlantern: 'tools', jar: 'survival', fireflyjar: 'survival', // [nightlight]
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
   researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
   rug: 'building', pennant: 'building', fern: 'building', chime: 'building', hammock: 'building', pots: 'building', sign: 'building', // decor pack
@@ -98,6 +99,9 @@ export const ITEM_TEXT = Object.freeze({
   honey:      { desc: 'Sweet, golden and sticky.', use: 'Glaze a grilled fish.' }, // [bees]
   wax:        { desc: 'Soft beeswax from the comb.', use: 'Make beeswax candles.' }, // [bees]
   candle:     { desc: 'A little jar candle.', use: 'Glows warmly at night; place on a tile.' }, // [bees]
+  handlantern: { desc: 'A little tin lantern on a wire loop.', use: 'Hold it at night: the deck glows around you (and your partner sees it).' }, // [nightlight]
+  jar:        { desc: 'An empty glass jar with a cork.', use: 'Hold it near an island after dusk and press E to catch fireflies.' }, // [nightlight]
+  fireflyjar: { desc: 'A corked jar of sleepy fireflies.', use: 'Place it on a tile for a soft green-gold glow at night.' }, // [nightlight]
   honeyfish:  { desc: 'Grilled fish with a honey glaze.', use: 'A sweet treat.' }, // [bees]
   finder:     { desc: 'A driftwood wand with a brass coil.', use: 'Hold it on island sand: it ticks faster near buried bundles.' },
   spade:      { desc: 'A little wooden spade with a metal blade.', use: 'E on island sand digs up bundles (or a pinch of sand).' },
@@ -352,6 +356,7 @@ export const ITEM_SOURCE = Object.freeze({
   sharkmeat:   Object.freeze({ tag: 'beaten shark', how: 'Fight off the shark with a spear, then press E on its body.' }),
   sharkhead:   Object.freeze({ tag: 'beaten shark', how: 'Harvested with the meat from a beaten shark (E).' }),
   cookedsharkmeat: Object.freeze({ tag: 'grill', how: 'Cook raw shark meat on a grill.' }),
+  fireflyjar:  Object.freeze({ tag: 'catch at night', how: 'Hold a Glass Jar near an island after dusk and press E.' }), // [nightlight]
 });
 
 /**
