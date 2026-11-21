@@ -156,3 +156,25 @@ For **each** kind, the entries needed are:
 - Co-op loopback (coop-loopback.js): the guest plants and harvests, the host sees the change within 1 s, and the
   guest at 8 m is rejected.
 - Rain: `daynight` rain forced on means every dry bed turns wet within 1 s.
+
+## Build notes
+- Files: dist/crops-rules.js (pure rules), dist/crops-models.js (bed + 9 shared stage geometries, 2 soil
+  materials), dist/crops.js (module), tests/crops.test.mjs. Hooks as listed above, plus three the spec missed:
+- **Rain getter.** `ctx.rain` did not exist (content.js:99 is the registry's `rain()`, not on ctx). Added one
+  contentCtx line in game.js: `rain: () => content?.rain() ?? 0`. crops.js reads `ctx.rain?.()` and falls back to 0.
+- **Prompts.** A held freshcup or tuber is edible, so game.js shows its `LMB Drink/Eat` tip before any content
+  prompt and `content.prompt` is never reached. crops.js registers its own `raftPrompts.provide({id:'crops',
+  priority:1})` that computes the bed prompt from `ctx.aim()` and steps aside for pickups, the guest waiting
+  prompt, swimming and open UI. E still works because the E order reaches `content.interact` regardless.
+- **Barrel odds.** Adding 3 weight-1 rows raised the treasure total to 105 and shifted every rng threshold, which
+  broke the seeded pity gap test (copper ore worst gap 16 > 15). Instead scrap (the last filler row) goes 30 -> 27:
+  the total stays 102, every pick before scrap is bit-identical and pity behaviour is unchanged. Plain rate per
+  crop seed .01 (~.005 with pity), scrap .26.
+- Target: nearest bed along the view ray (like bees), falling back to the aim point's tile; both within REACH.
+- `tests/survival.test.mjs` pins the Materials tab order; `fibrerope` and `blushpaint` were added after the paints.
+  `dist/live.js` PRELOAD lists the three new files (tests/live-preload.test.mjs).
+- Duplicate ITEM_SOURCE keys: the earlier `flowerseed`, `honey` and `wax` rows were dropped (the later ones
+  already won, so nothing visible changes).
+- Debug (host QA): `raftDebug.content.crops.{place, plant, setGrow, list, state, fastForward, grid, stand, hold}`.
+- Not done (still stretch): sprinkler feeding beds, click-to-water. Harvest also notifies 'A garden bed is ready
+  to harvest' once when a crop ripens.

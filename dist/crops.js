@@ -206,6 +206,16 @@ export function createCrops(ctx) {
         const e = st.b[tileKey(x, z)]; if (isGuest() || !e) return false;
         e.g = Math.max(0, Math.min(CROPS[e.c].T, Math.floor(g))); e.w = Math.max(0, Math.min(WET_MAX, Math.floor(w))); st.r++; return true;
       },
+      /** Host QA: make sure every deck tile within `r` of 0,0 exists (room for a test garden). */
+      grid(r = 2) {
+        const w = ctx.world; if (isGuest() || !w || !Array.isArray(w.tiles) || !isInt(r) || r < 1 || r > 6) return false;
+        for (let x = -r; x <= r; x++) for (let z = -r; z <= r; z++) if (!w.tiles.some(t => t[0] === x && t[1] === z)) w.tiles.push([x, z]);
+        ctx.rebuildRaft?.(); return true;
+      },
+      /** QA: stand the local player at raft-space metres x,z. */
+      stand(x, z) { const p = ctx.physics; if (!p || !Number.isFinite(x) || !Number.isFinite(z)) return false; p.x = x; p.z = z; p.vx = 0; p.vz = 0; return true; },
+      /** QA: select the first bag slot holding `kind`. */
+      hold(kind) { const b = ctx.localBag?.(); const i = b ? b.slots.findIndex(s => s && s.kind === kind) : -1; if (i < 0) return -1; b.select(i); return i; },
       /** Host QA: run the grow rule for `sec` seconds (in MAX_TICK chunks). */
       fastForward(sec = 60, rain = false) {
         if (isGuest()) return false;
