@@ -1,8 +1,9 @@
 // Little Raft survival UI: shared-play hotbar (.tools) + inventory/crafting dialog (#inventory).
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { iconURL, warmIcons, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
-const VERSION = 'sv1';
+const VERSION = 'sv2';
 const HB = Number(HOTBAR_SIZE) || 8;
 const TOTAL = Number(SLOT_COUNT) || 28;
 const DUR_MAX = Number(TOOL_DURABILITY) > 0 ? Number(TOOL_DURABILITY) : 0;
@@ -75,6 +76,12 @@ function durFrac(s) {
   if (max > 0) return clamp01(d / max);
   return d <= 1 ? clamp01(d) : 1;
 }
+// Rendered 3D icon when ready, flat sprite until then. data-icon lets a late render swap it in place.
+function iconHTML(kind) {
+  const url = iconURL(kind);
+  if (url) return `<img class="sv-icon sv-3d" data-icon="${esc(kind)}" src="${url}" alt="" draggable="false">`;
+  return iconSVG(kind).replace('<svg ', `<svg data-icon="${esc(kind)}" `);
+}
 function iconSVG(kind) {
   const n = norm(kind);
   const meta = info(kind);
@@ -114,28 +121,46 @@ function recipeList() {
 // ---- styles ----
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
 const CSS = `
-.tools.sv-hotbar{display:flex;flex-wrap:nowrap;gap:4px;padding:5px;border-radius:4px;max-width:96vw;overflow:visible;
-  background:repeating-linear-gradient(90deg,#0000000d 0 2px,transparent 2px 19px),linear-gradient(#9a7643,#6a4a2a);
-  border:2px solid #c9a66b;box-shadow:0 0 0 2px #3e2a17,0 4px 14px #0006}
-.tools.sv-hotbar::before,.tools.sv-hotbar::after{content:none;display:none}
+.tools.sv-hotbar{--s:60px;--g:6px;--px:10px;--py:9px;position:relative;display:flex;flex-wrap:nowrap;gap:var(--g);padding:var(--py) var(--px);border:0;border-radius:9px;max-width:96vw;overflow:visible;
+  background:repeating-linear-gradient(90deg,transparent 0 37px,#0000002e 37px 39px),repeating-linear-gradient(0deg,#ffffff07 0 1px,transparent 1px 5px),linear-gradient(#a97f4a,#7d5631 55%,#5a3c21);
+  box-shadow:inset 0 1px 0 #ffe3b070,inset 0 -2px 0 #0000005c,0 0 0 2px #3a2614,0 0 0 3px #c9a66b4d,0 10px 26px #0008}
+.tools.sv-hotbar::before,.tools.sv-hotbar::after{content:"";display:block;position:absolute;left:12px;right:12px;height:4px;border-radius:2px;pointer-events:none;opacity:1;
+  background:repeating-linear-gradient(115deg,#d6aa6a 0 3px,#7a5530 3px 5px);box-shadow:0 1px 1px #0009}
+.tools.sv-hotbar::before{top:-3px}.tools.sv-hotbar::after{bottom:-3px}
 .tools.sv-hotbar>button.sv-slot,#inventory.sv-inv button.sv-slot{
-  position:relative;display:block;flex:0 0 auto;width:58px;height:58px;min-width:0;min-height:0;margin:0;padding:0;border:0;border-radius:3px;
-  background:linear-gradient(180deg,#5a3f28e8,#3d2a19e8);box-shadow:inset 0 0 0 1px #d4b07a55,inset 0 2px 6px #0006;
-  color:#fff2cc;font:600 14px/1 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;transition:box-shadow .08s,background .08s;outline:none}
+  position:relative;display:block;flex:0 0 auto;width:var(--s);height:var(--s);min-width:0;min-height:0;margin:0;padding:0;border:0;border-radius:7px;
+  background:radial-gradient(120% 95% at 50% 25%,#4b3522,#2a1b0f 72%);
+  box-shadow:inset 0 3px 7px #000c,inset 0 -1px 0 #ffd9a024,0 1px 0 #ffe3b047,0 0 0 1px #1a0f06cc;
+  color:#fff2cc;font:600 14px/1 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;outline:none;
+  transition:transform .2s cubic-bezier(.3,1.5,.5,1),background .15s,box-shadow .15s}
 .tools.sv-hotbar>button.sv-slot::after{content:none;display:none}
 .sv-slot i{font-style:normal;pointer-events:none}
-.sv-slot .sv-num{position:absolute;left:4px;top:3px;font:700 11px/1 ${FONT};color:#f3e4c2;text-shadow:0 1px 1px #000a}
-.sv-slot .sv-art{position:absolute;inset:9px;display:block}
-.sv-slot .sv-icon{display:block;width:100%;height:100%;filter:drop-shadow(0 1px 1px #0008)}
-.sv-slot .sv-count{position:absolute;right:4px;bottom:3px;font:700 14px/1 ${FONT};color:#fff2cc;text-shadow:0 1px 0 #000,0 0 3px #000}
-.sv-slot .sv-dur{position:absolute;left:6px;right:6px;bottom:3px;height:3px;border-radius:2px;background:#0009;display:block;overflow:hidden}
+.sv-slot .sv-num{position:absolute;left:5px;top:4px;z-index:1;font:700 10px/1 ${FONT};color:#e9d6ad;opacity:.6;text-shadow:0 1px 1px #000}
+.sv-slot .sv-art{position:absolute;inset:6px;display:block;transition:scale .2s cubic-bezier(.3,1.5,.5,1)}
+.sv-icon{display:block;width:100%;height:100%;object-fit:contain;-webkit-user-drag:none;user-select:none}
+.sv-slot .sv-icon{filter:drop-shadow(0 2px 2px #000a)}
+.sv-slot .sv-count{position:absolute;right:5px;bottom:4px;z-index:1;font:800 14px/1 ${FONT};color:#fff6df;font-variant-numeric:tabular-nums;
+  text-shadow:1px 1px 0 #1a0f06,-1px 1px 0 #1a0f06,1px -1px 0 #1a0f06,-1px -1px 0 #1a0f06,0 2px 3px #000}
+.sv-slot .sv-dur{position:absolute;left:8px;right:8px;bottom:5px;z-index:1;height:4px;border-radius:2px;background:#000b;box-shadow:0 0 0 1px #0007;display:block;overflow:hidden}
 .sv-slot .sv-dur[hidden]{display:none}
-.sv-slot .sv-dur>i{display:block;height:100%;width:100%;background:#8fd36a}
-.tools.sv-hotbar>button.sv-slot:hover,#inventory.sv-inv button.sv-slot:hover{box-shadow:inset 0 0 0 1px #ffe3a6bb,inset 0 2px 6px #0005}
-.tools.sv-hotbar>button.sv-slot.sv-sel,#inventory.sv-inv button.sv-slot.sv-sel{background:linear-gradient(180deg,#b3925acc,#8a6a3ccc);box-shadow:inset 0 0 0 2px #ffe3a6,0 0 0 1px #3e2a17}
+.sv-slot .sv-dur>i{display:block;height:100%;width:100%;background:#8fd36a;box-shadow:inset 0 1px 0 #ffffff66;transition:width .3s}
+.sv-slot.sv-bumpA .sv-art{animation:svBumpA .34s ease-out}.sv-slot.sv-bumpB .sv-art{animation:svBumpB .34s ease-out}
+@keyframes svBumpA{35%{transform:scale(1.25) rotate(-6deg)}}@keyframes svBumpB{35%{transform:scale(1.25) rotate(-6deg)}}
+.tools.sv-hotbar>button.sv-slot:hover,#inventory.sv-inv button.sv-slot:hover{background:radial-gradient(120% 95% at 50% 25%,#5a4029,#33210f 72%)}
+.tools.sv-hotbar>button.sv-slot.sv-sel{transform:translateY(-6px);background:radial-gradient(120% 95% at 50% 25%,#86613a,#4b3220 75%);
+  box-shadow:inset 0 2px 5px #0008,inset 0 1px 0 #ffe8b866,0 7px 10px #000a}
+.tools.sv-hotbar>button.sv-slot.sv-sel .sv-art{scale:1.12}
+.tools.sv-hotbar>button.sv-slot.sv-sel .sv-num{opacity:1;color:#fff2cc}
 .tools.sv-hotbar>button.sv-slot:focus-visible,#inventory.sv-inv button.sv-slot:focus-visible{outline:2px solid #ffe3a6;outline-offset:1px}
-@media(max-width:760px){.tools.sv-hotbar>button.sv-slot{width:42px;height:42px}.tools.sv-hotbar .sv-art{inset:6px}.tools.sv-hotbar .sv-count{font-size:12px}}
-#inventory.sv-inv{padding:0;margin:auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#fff2cc;
+.tools.sv-hotbar>.sv-cursor{position:absolute;left:var(--px);top:var(--py);z-index:2;width:var(--s);height:var(--s);border-radius:8px;pointer-events:none;
+  transform:translate(calc(var(--i,0) * (var(--s) + var(--g))),-6px);transition:transform .22s cubic-bezier(.3,1.3,.5,1),opacity .2s;
+  box-shadow:0 0 0 2px #ffe7ad,0 0 0 3px #3a2614,0 0 16px 2px #ffd27a5c,inset 0 0 12px #ffd27a33}
+.tools.sv-hotbar>.sv-cursor.sv-off{opacity:0}
+.tools.sv-hotbar>.sv-label{position:absolute;left:calc(var(--px) + var(--s) / 2);bottom:calc(100% + 14px);z-index:2;padding:4px 10px;border-radius:4px;white-space:nowrap;pointer-events:none;
+  background:#1d130be6;color:#fff2cc;font:700 13px/1.2 ${FONT};box-shadow:0 0 0 1px #c9a66b88,0 4px 10px #0006;opacity:0;
+  transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),5px);transition:opacity .25s,transform .22s cubic-bezier(.3,1.3,.5,1)}
+.tools.sv-hotbar>.sv-label.sv-show{opacity:1;transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),0)}
+@media(max-width:760px){.tools.sv-hotbar{--s:42px;--g:4px;--px:7px;--py:7px}.tools.sv-hotbar .sv-art{inset:4px}.tools.sv-hotbar .sv-count{font-size:12px}}#inventory.sv-inv{padding:0;margin:auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#fff2cc;
   width:max-content;min-width:0;max-width:96vw;max-height:94vh;overflow:visible;font:500 14px/1.35 ${FONT}}
 #inventory.sv-inv::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
 #inventory .sv-wrap{display:flex;gap:12px;align-items:stretch;padding:12px;outline:none;border-radius:6px;
@@ -144,17 +169,19 @@ const CSS = `
 #inventory .sv-craft,#inventory .sv-bag{background:#3a2716eb;border-radius:4px;box-shadow:inset 0 0 0 2px #24170c,inset 0 0 0 3px #b48d5544}
 #inventory .sv-craft{flex:0 0 300px;width:300px;min-width:300px;box-sizing:border-box;max-height:min(520px,calc(94vh - 30px));overflow:auto;overscroll-behavior:contain;padding:9px;scrollbar-color:#b48d55 #2a1b0e}
 #inventory .sv-bag{flex:none;min-width:max-content;display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px}
-#inventory .sv-grid{display:grid;grid-template-columns:repeat(7,52px);gap:6px}
-#inventory .sv-hotrow{display:grid;grid-template-columns:repeat(${HB},52px);gap:6px}
-#inventory.sv-inv button.sv-slot{width:52px;height:52px}
-#inventory .sv-slot .sv-art{inset:8px}
-#inventory .sv-slot.sv-hot{background:linear-gradient(180deg,#664730e8,#46301ce8)}
-#inventory .sv-slot.sv-hot.sv-sel{background:linear-gradient(180deg,#b3925acc,#8a6a3ccc)}
-#inventory.sv-inv button.sv-slot.sv-src{background:linear-gradient(180deg,#8a6236,#5e4024);box-shadow:inset 0 0 0 2px #ffbd66,0 0 10px #ffbd6699}
-#inventory.sv-inv button.sv-slot.sv-over{box-shadow:inset 0 0 0 2px #9fe0d6,0 0 8px #9fe0d688}
-#inventory.sv-inv button.sv-slot.sv-deny{box-shadow:inset 0 0 0 2px #e06a4a,0 0 6px #e06a4a88}
-#inventory .sv-slot.sv-dragging{opacity:.45}
-#inventory .sv-slot[data-pick]::after{content:attr(data-pick);position:absolute;right:-5px;top:-6px;min-width:16px;padding:2px 3px;border-radius:8px;
+#inventory.sv-inv{--s:54px;--g:6px}
+#inventory .sv-grid{display:grid;grid-template-columns:repeat(7,var(--s));gap:var(--g)}
+#inventory .sv-hotrow{display:grid;grid-template-columns:repeat(${HB},var(--s));gap:var(--g)}
+#inventory .sv-h{align-self:stretch;margin:0 2px 2px;font:700 11px/1 ${FONT};letter-spacing:2px;text-transform:uppercase;color:#e2c48e;text-shadow:0 1px 0 #000}
+#inventory .sv-craft>.sv-h{margin:2px 2px 9px}
+#inventory .sv-slot.sv-hot{background:radial-gradient(120% 95% at 50% 25%,#553b25,#2f1f11 72%)}
+#inventory.sv-inv button.sv-slot.sv-sel{background:radial-gradient(120% 95% at 50% 25%,#86613a,#4b3220 75%);box-shadow:inset 0 0 0 2px #ffe3a6,inset 0 2px 5px #0008,0 0 10px #ffd27a44}
+#inventory.sv-inv button.sv-slot.sv-src{background:radial-gradient(120% 95% at 50% 25%,#8a6236,#5e4024 75%);box-shadow:inset 0 0 0 2px #ffbd66,0 0 12px #ffbd6699;transform:translateY(-3px)}
+#inventory.sv-inv button.sv-slot.sv-over{box-shadow:inset 0 0 0 2px #9fe0d6,0 0 10px #9fe0d688;transform:scale(1.06)}
+#inventory.sv-inv button.sv-slot.sv-deny{box-shadow:inset 0 0 0 2px #e06a4a,0 0 6px #e06a4a88;animation:svShake .26s}
+@keyframes svShake{25%{translate:-3px 0}75%{translate:3px 0}}
+#inventory .sv-slot.sv-dragging{opacity:.4}
+#inventory .sv-slot[data-pick]::after{content:attr(data-pick);position:absolute;right:-5px;top:-6px;z-index:2;min-width:16px;padding:2px 3px;border-radius:8px;
   background:#ffbd66;color:#2a1b0e;font:700 11px/1 ${FONT};text-align:center;box-shadow:0 1px 2px #0008}
 #inventory .sv-rope{width:100%;height:4px;border-radius:2px;background:repeating-linear-gradient(115deg,#c99560 0 3px,#6b4a2b 3px 5px);opacity:.85}
 #inventory .sv-hint{margin:2px 0 0;max-width:${HB * 58}px;font:500 12px/1.35 ${FONT};color:#d9c9a6;text-align:center}
@@ -166,13 +193,13 @@ const CSS = `
 #inventory .sv-recipe:active:not(:disabled){background:#4a3220}
 #inventory .sv-recipe:disabled{cursor:not-allowed;opacity:.6}
 #inventory .sv-recipe:focus-visible{outline:2px solid #ffe3a6;outline-offset:1px}
-#inventory .sv-rart{display:grid;place-items:center;width:44px;height:44px;border-radius:3px;background:#24170caa;box-shadow:inset 0 0 0 1px #d4b07a33}
-#inventory .sv-rart .sv-icon{width:34px;height:34px}
+#inventory .sv-rart{display:grid;place-items:center;width:44px;height:44px;border-radius:6px;background:radial-gradient(120% 95% at 50% 25%,#4b3522,#2a1b0f 72%);box-shadow:inset 0 2px 5px #000b,0 1px 0 #ffe3b03a}
+#inventory .sv-rart .sv-icon{width:38px;height:38px;filter:drop-shadow(0 2px 2px #0009)}
 #inventory .sv-rbody{display:block;min-width:0}
 #inventory .sv-rname{display:block;font:700 14px/1.2 ${FONT};color:#fff2cc}
 #inventory .sv-reqs{display:flex;flex-wrap:wrap;gap:3px 10px;margin-top:4px}
 #inventory .sv-req{display:inline-flex;align-items:center;gap:3px;font:600 13px/1 ${FONT};color:#eadcbe;font-variant-numeric:tabular-nums}
-#inventory .sv-req .sv-icon{width:18px;height:18px}
+#inventory .sv-req .sv-icon{width:20px;height:20px}
 #inventory .sv-req.sv-short{color:#ffab8f}
 #inventory .sv-why{display:block;margin-top:3px;font:600 12px/1.2 ${FONT};color:#ffcf9a}
 #inventory .sv-why:empty{display:none}
@@ -182,8 +209,8 @@ const CSS = `
 #inventory .sv-tip[hidden]{display:none}
 #inventory .sv-tip small{display:block;font:500 12px/1.3 ${FONT};color:#d9c9a6}
 @media(max-width:860px),(max-height:520px){#inventory.sv-inv{width:auto}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}#inventory .sv-craft{flex:none;width:auto;min-width:0;max-height:36vh}#inventory .sv-bag{min-width:0}
-  #inventory .sv-grid{grid-template-columns:repeat(7,44px)}#inventory .sv-hotrow{grid-template-columns:repeat(${HB},44px)}#inventory.sv-inv button.sv-slot{width:44px;height:44px}#inventory .sv-slot .sv-art{inset:6px}}
-@media(prefers-reduced-motion:reduce){.sv-slot,.sv-recipe{transition:none}}
+  #inventory.sv-inv{--s:44px;--g:5px}#inventory .sv-slot .sv-art{inset:4px}}
+@media(prefers-reduced-motion:reduce){.sv-slot,.sv-recipe,.sv-art,.sv-cursor,.sv-label{transition:none!important;animation:none!important}}
 `;
 
 function ensureStyle() {
@@ -207,8 +234,9 @@ function mountDialog() {
     for (let i = HB; i < TOTAL; i++) grid += `<button type="button" class="sv-slot" data-index="${i}">${slotInner('')}</button>`;
     for (let i = 0; i < HB; i++) hot += `<button type="button" class="sv-slot sv-hot" data-index="${i}">${slotInner(i + 1)}</button>`;
     d.innerHTML = `<div class="sv-wrap" tabindex="-1">
-      <section class="sv-craft" aria-label="Crafting"><div class="sv-rlist"></div></section>
+      <section class="sv-craft" aria-label="Crafting"><h3 class="sv-h">Crafting</h3><div class="sv-rlist"></div></section>
       <section class="sv-bag" aria-label="Inventory">
+        <h3 class="sv-h">Backpack</h3>
         <div class="sv-grid" role="group" aria-label="Backpack">${grid}</div>
         <div class="sv-rope" aria-hidden="true"></div>
         <div class="sv-hotrow" role="group" aria-label="Hotbar">${hot}</div>
@@ -240,13 +268,21 @@ function paintSlot(el, s, sig, label) {
   const r = refs(el);
   if (!sig) {
     if (el._svKind !== null) { r.art.innerHTML = ''; el._svKind = null; }
+    el._svCount = 0;
     r.cnt.textContent = '';
     if (r.dur) r.dur.hidden = true;
     el.classList.add('sv-empty');
     el.setAttribute('aria-label', label + ', empty');
     return true;
   }
-  if (el._svKind !== s.kind) { r.art.innerHTML = iconSVG(s.kind); el._svKind = s.kind; }
+  const prev = el._svKind, prevCount = el._svCount;
+  if (prev !== s.kind) { r.art.innerHTML = iconHTML(s.kind); el._svKind = s.kind; }
+  el._svCount = s.count;
+  // Pop the icon when a stack grows or a new item lands (alternating names restart the animation).
+  if (prevCount !== undefined && (prev !== s.kind || s.count > prevCount)) {
+    const a = el.classList.contains('sv-bumpA');
+    el.classList.toggle('sv-bumpA', !a); el.classList.toggle('sv-bumpB', a);
+  }
   r.cnt.textContent = s.count > 1 ? String(s.count) : '';
   const f = durFrac(s);
   if (r.dur) {
@@ -305,9 +341,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const key = recipes.map(r => r.id).join(',');
     if (dlg.dataset.svRecipes !== key || rlist.childElementCount !== recipes.length || !recipes.length) {
       rlist.innerHTML = recipes.length ? recipes.map(r => `<button type="button" class="sv-recipe" data-recipe="${esc(r.id)}">
-        <span class="sv-rart" aria-hidden="true">${iconSVG(r.out.kind)}</span>
+        <span class="sv-rart" aria-hidden="true">${iconHTML(r.out.kind)}</span>
         <span class="sv-rbody"><span class="sv-rname">${esc(r.name)}${r.out.count > 1 ? ' ×' + r.out.count : ''}</span>
-        <span class="sv-reqs">${r.reqs.map(q => `<span class="sv-req" title="${esc(itemName(q.kind))}">${iconSVG(q.kind)}<span class="sv-have">0/${q.count}</span></span>`).join('')}</span>
+        <span class="sv-reqs">${r.reqs.map(q => `<span class="sv-req" title="${esc(itemName(q.kind))}">${iconHTML(q.kind)}<span class="sv-have">0/${q.count}</span></span>`).join('')}</span>
         <span class="sv-why"></span></span></button>`).join('') : '<p class="sv-empty-list">No recipes known.</p>';
       dlg.dataset.svRecipes = key;
     }
@@ -341,22 +377,27 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   }
 
   // ---------- hotbar in .tools ----------
+  // Hotbar = HB slot buttons + a selection frame that slides between them + a name tag above it.
+  let cursor = null, label = null, labelTimer = 0, labelSel = -2, labelKind = null;
   function ensureTools() {
-    if (tools && tools.isConnected && tools.dataset.sv === VERSION && tools.childElementCount === HB) return tools;
+    if (tools && tools.isConnected && tools.dataset.sv === VERSION && hotEls.length === HB && cursor?.parentNode === tools) return tools;
     const t = document.querySelector('.tools');
     if (!t) { tools = null; hotEls = []; return null; }
-    if (t.dataset.sv !== VERSION || t.childElementCount !== HB || !t.querySelector(':scope>.sv-slot')) {
+    if (t.dataset.sv !== VERSION || t.querySelectorAll(':scope>.sv-slot').length !== HB || !t.querySelector(':scope>.sv-cursor')) {
       let html = '';
       for (let i = 0; i < HB; i++) html += `<button type="button" class="sv-slot" data-slot="${i}">${slotInner(i + 1)}</button>`;
-      t.innerHTML = html;
+      t.innerHTML = html + '<i class="sv-cursor sv-off" aria-hidden="true"></i><b class="sv-label" aria-hidden="true"></b>';
       t.dataset.sv = VERSION;
     }
     t.classList.add('sv-hotbar');
     t.setAttribute('role', 'toolbar');
     t.setAttribute('aria-label', 'Hotbar');
     tools = t;
+    cursor = t.querySelector(':scope>.sv-cursor');
+    label = t.querySelector(':scope>.sv-label');
     hotEls = [...t.querySelectorAll(':scope>.sv-slot')];
-    hotEls.forEach(el => { el._svSig = undefined; });
+    hotEls.forEach(el => { el._svSig = undefined; el._svCount = undefined; });
+    labelSel = -2;
     return t;
   }
   function paintHotbar(slots, sigs, selected) {
@@ -366,7 +407,26 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       const sel = i === selected;
       if (el._svSel !== sel) { el._svSel = sel; el.classList.toggle('sv-sel', sel); el.setAttribute('aria-pressed', String(sel)); }
     }
+    const kind = selected >= 0 && sigs[selected] ? slots[selected].kind : null;
+    if (selected === labelSel && kind === labelKind) return;
+    const first = labelSel === -2;
+    labelSel = selected; labelKind = kind;
+    const on = selected >= 0 && selected < HB;
+    tools.style.setProperty('--i', on ? selected : 0);
+    cursor.classList.toggle('sv-off', !on);
+    // Name tag over the selected slot, then fade (not on the very first paint after spawn).
+    clearTimeout(labelTimer);
+    if (!kind || first) { label.classList.remove('sv-show'); return; }
+    label.textContent = itemName(kind);
+    label.classList.add('sv-show');
+    labelTimer = setTimeout(() => label.classList.remove('sv-show'), 1400);
   }
+  // A late 3D icon render swaps itself in wherever the flat placeholder is showing.
+  const offIcons = onIconReady(kind => {
+    if (!alive) return;
+    const sel = `[data-icon="${kind}"]`;
+    for (const root of [tools, dlg]) root?.querySelectorAll(sel).forEach(n => { n.outerHTML = iconHTML(kind); });
+  });
 
   // ---------- inventory grid ----------
   function setSrc(i, amt) {
@@ -493,6 +553,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     buildRecipes();
     lastSig = null;
+    invEls.forEach(el => { el._svCount = undefined; }); // no pop for changes made while closed
     recipeEls.forEach(v => { v.sig = null; });
     render(true);
     try { wrap.focus({ preventScroll: true }); } catch {}
@@ -624,8 +685,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     open();
   }, { ...opt, capture: true });
 
-  if (isOpen) { buildRecipes(); render(true); }
-  else buildRecipes();
+  buildRecipes();
+  if (isOpen) render(true);
+  warmIcons(Object.keys(ITEM_INFO || {}));
 
   const api = {
     update() { render(false); },
@@ -635,6 +697,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       if (!alive) return;
       alive = false;
       ac.abort();
+      offIcons();
+      clearTimeout(labelTimer);
       endDrag(false);
       clearSrc();
       clearDeny();
