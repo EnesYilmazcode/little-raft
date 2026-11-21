@@ -50,9 +50,9 @@ test('CRAFT-2: recipe rows repaint when only the fitting count changes', () => {
 test('CRAFT-3: opening the bag re-picks an automatic, unready recipe once states are known', () => {
   const open = uiSrc.slice(uiSrc.indexOf('function open()'), uiSrc.indexOf('function close()'));
   const render = open.indexOf('render(true)');
-  const clear = open.indexOf("if (!pickedByUser && viewOf(pickId)?.state !== 'ready') pickId = null");
+  const clear = open.indexOf('if (!pickedByUser) pickId = null');
   const tab = open.lastIndexOf('applyTab()');
-  assert.ok(render >= 0 && clear > render && tab > clear, 'states are evaluated, then the auto pick is cleared, then applyTab picks first ready');
+  assert.ok(render >= 0 && clear > render && tab > clear, 'states are evaluated, then the auto pick is cleared, then applyTab picks the default (craft-book defaultPick)');
   assert.match(uiSrc, /function setPick\(id\) \{[^}]*pickedByUser = true/);
   assert.match(uiSrc, /activeTab = id; pickId = null; pickedByUser = false;/);
 });

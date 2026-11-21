@@ -201,3 +201,56 @@ test('item tooltips anchor beside the element instead of trailing the pointer', 
   assert.match(tt, /on\(root, 'close', hide, \{ capture: true \}\)/, 'hidden when the bag closes');
   assert.match(tt, /tipFacts\(/, 'shows where to get it and what it is used in');
 });
+
+// ---------------------------------------------------------------- new players: a carried one-off tool is not news
+test('one-off tools: a carried Hook sorts last, is not badged and is not the default pick', () => {
+  assert.equal(CB.isOneOff('hook', ITEM_INFO.hook), true);
+  assert.equal(CB.isOneOff('wood', ITEM_INFO.wood), false);
+  assert.equal(CB.ownsOneOff('hook', ITEM_INFO.hook, 1), true);
+  assert.equal(CB.ownsOneOff('hook', ITEM_INFO.hook, 0), false);
+  assert.equal(CB.ownsOneOff('wood', ITEM_INFO.wood, 5), false, 'stackables are never "owned"');
+  // A new player: carries the Hook and could make a second one; the Hammer still needs materials.
+  const row = (need, have) => ({ need, have, enough: have >= need, short: Math.max(0, need - have) });
+  const views = [
+    { id: 'hook', state: 'ready', owned: true, rows: [row(1, 1), row(2, 2)] },
+    { id: 'hammer', state: 'missing', owned: false, rows: [row(4, 1), row(2, 0)] },
+    { id: 'rod', state: 'gated', owned: false, rows: [] },
+  ];
+  const order = CB.sortCraftableFirst(views).map(v => v.id);
+  assert.equal(order.at(-1), 'hook', 'the spare sinks below everything, locked rows included');
+  assert.equal(order[0], 'hammer');
+  assert.equal(CB.badgeCount(views), 0, 'no tab badge for a spare');
+  assert.equal(CB.defaultPick(views), 'hammer', 'the recipe that advances progress is selected');
+  assert.equal(CB.defaultPick([{ id: 'a', state: 'ready', owned: false }, ...views]), 'a');
+  assert.equal(CB.defaultPick([views[0]]), 'hook', 'only a spare left: still pick something');
+  assert.equal(CB.defaultPick([]), null);
+});
+
+test('survival UI: owned one-off rows say "You have one", carry no badge and do not count toward the tab', () => {
+  const ui = src('survival-ui.js');
+  assert.match(ui, /const owned = ownsOneOff\(r\.out\.kind, info\(r\.out\.kind\), countOf\(bag, r\.out\.kind\)\)/);
+  assert.match(ui, /if \(state === 'ready' && !owned\) readyPer\.set/);
+  assert.match(ui, /: owned \? 'You have one'/);
+  assert.match(ui, /v\.badge\.textContent = state === 'ready' && !owned &&/);
+});
+
+// ---------------------------------------------------------------- docked bag
+test('dockInsets: a panel over the hotbar stops above it; one beside it reaches the edge', () => {
+  const hb = { left: 355, right: 925, top: 638, width: 570 };
+  const ins = CB.dockInsets(hb, { cb: { left: 12, right: 336 }, bb: { left: 620, right: 1268 } }, 720);
+  assert.deepEqual(ins, { cb: 12, bb: 90 });
+  const small = CB.dockInsets({ left: 227, right: 797, top: 518, width: 570 }, { cb: { left: 12, right: 336 }, bb: { left: 524, right: 1012 } }, 600);
+  assert.deepEqual(small, { cb: 90, bb: 90 }, '1024x600: both clear the hotbar');
+  assert.deepEqual(CB.dockInsets(null, { cb: { left: 0, right: 10 } }, 600), { cb: 12 }, 'no hotbar: edge inset');
+});
+
+// ---------------------------------------------------------------- 3D icons from the first paint
+test('bag icons: warmed from boot, rendered on open if missing, never swapped while the bag is open', () => {
+  const ui = src('survival-ui.js'), icons = src('item-icons.js');
+  assert.match(ui, /warmTimer = setTimeout\(warmAll, 250\);/, 'warm-up queued at boot, not 5 s into play');
+  assert.match(ui, /renderNow\(bagKinds\(\), 80\)/, 'open renders missing icons synchronously first');
+  assert.match(ui, /if \(isOpen\) lateIcons\.add\(kind\); else swapIcons\(dlg, \[kind\]\);/, 'late icons wait while the bag is open');
+  assert.match(ui, /reorderRecipes\(\); flushIcons\(\); applyTab\(\);/, 'flushed on tab switch');
+  assert.match(icons, /export function renderNow\(kinds, budgetMs = 60\)/);
+  assert.match(icons, /img\.decode\(\)/, 'a background icon is published only after it decodes');
+});
