@@ -211,6 +211,7 @@ test('night is readable: brightness floors hold and lanterns light up', () => {
   const st = m.debug.state();
   assert.equal(st.lanterns, 1); assert.equal(st.poolLit, 1);
   near(g.children.find(c => c.name === 'flame').material.emissiveIntensity, 3 * 1.6, 1e-6);
+  near(g.children.find(c => c.name === 'lanternGlow').material.emissiveIntensity, 1.6 * 2.4, 1e-6);
   const lit = ctx.scene.children.filter(o => o.isPointLight && o.intensity > 0);
   assert.equal(lit.length, 1);
   near(lit[0].position.x, 2.3, 1e-3); near(lit[0].position.y, 1.46, 1e-3);

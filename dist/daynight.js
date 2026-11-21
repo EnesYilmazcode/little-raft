@@ -220,10 +220,10 @@ void main() {
   if (aIdx > uRain) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vFade = 0.0; return; }
   vec3 drift = vec3(uWind * 3.0, -9.0, uWind * 1.2) * uTime;
   vec3 p = uCam + mod(position + drift - uCam, uBox) - uBox * 0.5;
-  p += vec3(-uWind * 0.18, 0.55, -uWind * 0.07) * aTop;
+  p += vec3(-uWind * 0.25, 0.8, -uWind * 0.1) * aTop;
   vec4 mv = viewMatrix * vec4(p, 1.0);
   float d = length(mv.xyz);
-  vFade = smoothstep(0.6, 2.0, d) * (1.0 - smoothstep(9.0, 15.0, d));
+  vFade = smoothstep(0.5, 1.6, d) * (1.0 - smoothstep(6.0, 9.0, d));
   gl_Position = projectionMatrix * mv;
 }`;
 const RAIN_FS = /* glsl */`
@@ -238,11 +238,11 @@ void main() {
 
 // Lantern mesh names and their night multipliers (base intensities are read from the model).
 const LANTERN_PARTS = ['lanternGlow', 'flame', 'lanternGlass', 'candle'];
-const LANTERN_MULT = [2.0, 1.6, 2.5, 2.0];
+const LANTERN_MULT = [2.4, 1.6, 1.6, 2.0];
 const MAX_LANTERNS = 64, MAX_PARTS = MAX_LANTERNS * 4;
 const STAR_COUNT = 450, STAR_RADIUS = 140, MOON_DIST = 120, RAIN_STREAKS = 600;
 const SUN_RADIUS = Math.hypot(-15, 28, 12);
-const POOL_PEAK = 2.4, POOL_RANGE = 7.5;
+const POOL_PEAK = 5, POOL_RANGE = 8;
 
 // ---------------------------------------------------------------- module
 export function createDayNight(ctx) {
@@ -284,10 +284,11 @@ export function createDayNight(ctx) {
     hemiColor: hemi ? hemi.color.clone() : null, hemiGround: hemi ? hemi.groundColor.clone() : null, hemiI: hemi ? hemi.intensity : 0,
     ocean: {},
   };
-  const OCEAN_KEYS = ['uSky', 'uZenith', 'uDeep', 'uShallow', 'uSunDir', 'uSunColor', 'uFadeFar'];
+  const OCEAN_KEYS = ['uSky', 'uZenith', 'uDeep', 'uShallow', 'uSunDir', 'uSunColor', 'uFadeFar', 'uFoam'];
   const ou = ocean?.uniforms ?? null;
   if (ou) for (const k of OCEAN_KEYS) if (ou[k]) orig.ocean[k] = ou[k].value?.clone ? ou[k].value.clone() : ou[k].value;
   const oceanSunColor = ou?.uSunColor?.value?.clone ? ou.uSunColor.value.clone() : new T.Color('#fff3d6');
+  const oceanFoam = ou?.uFoam?.value?.clone ? ou.uFoam.value.clone() : new T.Color('#eefbf8');
 
   // ---- clouds: one module-owned material, original materials restored on dispose
   const cloudMat = new T.MeshStandardMaterial({ color: '#e7f9eb', roughness: 0.85, metalness: 0 });
@@ -325,7 +326,7 @@ export function createDayNight(ctx) {
   moon.name = 'daynight-moon'; moon.frustumCulled = false; moon.renderOrder = -4; moon.visible = false;
 
   // ---- rain
-  const BOX_X = 30, BOX_Y = 18, BOX_Z = 30;
+  const BOX_X = 14, BOX_Y = 10, BOX_Z = 14;
   const rainGeo = new T.BufferGeometry();
   {
     const pos = new Float32Array(RAIN_STREAKS * 6), top = new Float32Array(RAIN_STREAKS * 2), idx = new Float32Array(RAIN_STREAKS * 2);
@@ -437,9 +438,9 @@ export function createDayNight(ctx) {
     // sun / moon direction
     const th = sunAngle(phaseAt(phase * DAY_SECONDS));
     const ct = Math.cos(th), st = Math.sin(th);
-    vDir.set(AXIS.x * ct + SIDE.x * -0.32, st, AXIS.z * ct + SIDE.z * -0.32).normalize();
     const up = L.sunHeight >= 0;
-    if (!up) vDir.negate(); // the moon rides opposite the sun
+    if (up) vDir.set(AXIS.x * ct - SIDE.x * 0.32, st, AXIS.z * ct - SIDE.z * 0.32).normalize();
+    else vDir.set(-AXIS.x * ct - SIDE.x * 0.6, -st * 0.5, -AXIS.z * ct - SIDE.z * 0.6).normalize(); // the moon rides low, opposite the sun
     const dayI = 2.5 * (1 - 0.15 * wet) * smooth(-0.02, 0.2, L.sunHeight);
     const moonI = 0.6 * (1 - 0.3 * wet) * smooth(-0.02, 0.2, -L.sunHeight);
     if (sun) {
@@ -458,12 +459,13 @@ export function createDayNight(ctx) {
       if (u.uFadeFar && scene?.fog) u.uFadeFar.value = scene.fog.far;
       u.uSunDir?.value.copy(vDir);
       if (u.uSunColor) {
-        const spec = (up ? smooth(-0.02, 0.15, L.sunHeight) : 0.25 * smooth(-0.02, 0.2, -L.sunHeight)) * (1 - 0.7 * wet);
+        const spec = (up ? smooth(-0.02, 0.15, L.sunHeight) : 0.18 * smooth(-0.02, 0.2, -L.sunHeight)) * (1 - 0.7 * wet);
         u.uSunColor.value.copy(oceanSunColor).multiply(cSun).multiplyScalar(spec);
       }
+      if (u.uFoam) u.uFoam.value.copy(oceanFoam).lerp(cHemiSky, 0.35 * nf).multiplyScalar(1 - 0.5 * nf); // soft moonlit foam
     }
     // clouds
-    cloudMat.color.copy(cCloud);
+    cloudMat.color.copy(cCloud); cloudMat.emissive.copy(cCloud).multiplyScalar(0.32 + 0.18 * nf); // soft self-lit undersides
     const drift = (W.wind - 0.15) * 0.9 * dt;
     for (let i = 0; i < cloudGroups.length; i++) {
       const g = cloudGroups[i];
@@ -489,8 +491,8 @@ export function createDayNight(ctx) {
     if (rain.visible) {
       rainUniforms.uTime.value = time; rainUniforms.uRain.value = wet; rainUniforms.uWind.value = W.wind;
       if (cam) rainUniforms.uCam.value.copy(cam.position);
-      cRain.copy(cHemiSky).multiplyScalar(0.55 + 0.45 * L.light);
-      rainUniforms.uColor.value.copy(cRain); rainUniforms.uAlpha.value = 0.45 * Math.min(1, wet * 1.5);
+      cRain.copy(cHemiSky).lerp(cHorizon, 0.3).multiplyScalar(0.8 + 0.6 * L.light);
+      rainUniforms.uColor.value.copy(cRain); rainUniforms.uAlpha.value = 0.85 * Math.min(1, wet * 1.5);
     }
     // lanterns
     if (raft) {

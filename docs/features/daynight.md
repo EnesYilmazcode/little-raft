@@ -1,6 +1,6 @@
 # Day, night and weather
 
-Status: design, revised for the content registry. Branch `claude/raft-content-daynight`.
+Status: **built** (see section 10 for what shipped and how to verify it). Branch `claude/raft-content-daynight`.
 Code lives only in `dist/daynight.js` (plus `dist/daynight-*.js` helpers if it grows) and
 `tests/daynight.test.mjs`. **No game.js edits are needed**: everything goes through the module
 shape in `dist/content.js` and the ctx getters listed in `docs/features/content-hooks.md`.
