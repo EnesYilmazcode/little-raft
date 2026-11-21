@@ -625,9 +625,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const rows = ingredientRows(r.reqs, k => countOf(bag, k));
     let check = null;
     if (typeof bag.canCraft === 'function') { try { check = bag.canCraft(r.id); } catch (e) { console.error(e); } }
-    const g = gate(r.id); // [progression-hook] research/station lock wins over materials
-    if (g?.locked) return { rows, state: 'gated', reason: g.reason || '', times: 0 };
-    const state = recipeState(rows, check);
+    const g = gate(r.id); // [progression-hook] research/station/study lock wins over materials
+    const state = recipeState(rows, check, g);
+    if (state === 'gated') return { rows, state, reason: g.reason || '', rank: Number(g.rank) || 0, times: 0 };
     let times = craftableTimes(rows);
     if (state === 'ready') { const fit = fittingTimes(bag, r.id, Math.min(HOLD.max, times)); if (fit != null) times = fit; }
     return { rows, state, reason: '', times };
@@ -743,10 +743,13 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function craftNow(id) {
     const v = freshView(id);
     if (!v || v.state !== 'ready') return false;
+    const bag = bagNow(), mark = b => (b && typeof b.version === 'number' ? b.version : JSON.stringify(b?.slots ?? null));
+    const before = mark(bag);
     let r;
     try { r = onCraft?.(id); } catch (e) { console.error(e); r = false; }
     lastSig = null;
-    if (r === false) return false;
+    // true: crafted (or sent to the host); otherwise only a bag that changed counts, so a refused craft denies.
+    if (r === false || (r !== true && mark(bag) === before)) return false;
     render(false);
     return true;
   }

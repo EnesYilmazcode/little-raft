@@ -14,6 +14,7 @@
 //   interact(aim)             E key. Return true if consumed (before the inventory opens).
 //   prompt(aim)               -> context prompt HTML (escaped by the module) or null
 //   craftLocked(recipe, actor)-> reason string if the recipe is locked, else null
+//   recipeGate(recipe)        -> {locked, reason, source, rank} for the crafting book, else null
 //   decorModel(type)          -> THREE.Object3D for a CONTENT_DECOR type, or null
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   dispose()
@@ -57,6 +58,7 @@ export function createContent(ctx, features = FEATURES) {
     interact: aim => !!first('interact', aim),
     prompt: aim => first('prompt', aim),
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
+    recipeGate: recipe => first('recipeGate', recipe), // crafting-book gate {locked, reason, source, rank} or null
     decorModel: type => first('decorModel', type),
     rain() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }, // rain-sprinkler: live 0..1 rain
     dispose() { for (const m of mods) call(m, 'dispose'); },

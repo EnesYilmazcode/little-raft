@@ -140,7 +140,10 @@ export function fittingTimes(bag, id, cap = 99) {
 }
 
 /** 'ready' | 'missing' | 'full' given the rows and an optional Bag.canCraft() result. */
-export function recipeState(rows, check = null) {
+/** One state for the book row, the detail card and the pinned tracker. `gate` is the host's
+ *  recipeGate(id) result ({locked, reason}): a research/station/study lock wins over materials. */
+export function recipeState(rows, check = null, gate = null) {
+  if (gate && gate.locked) return 'gated';
   if (rows.some(r => !r.enough)) return 'missing';
   if (check && check.full) return 'full';
   if (check && check.ok === false) return 'missing';
