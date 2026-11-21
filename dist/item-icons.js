@@ -12,6 +12,7 @@ import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84a
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
+import { getModel as getLibraryModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 
 const SIZE = 128;
 // Item ids whose name differs from the models.js kind.
@@ -26,12 +27,15 @@ let provider = null;
 let gl = null, scene = null, camera = null, failed = false, releaseTimer = 0, pumping = false;
 
 // Per-kind display pose (radians) so long tools read diagonally like a hotbar icon.
-const POSE = {
-  hook: [0, 0.7, -0.2], hammer: [0, 0.5, -0.75], fishingrod: [0, 0.3, -0.8],
+export const POSE = {
+  hook: [0, 0.7, -0.2], hammer: [0, 1.57, -0.75], fishingrod: [0, 1.57, -0.75], // hammer head and rod reel side-on
   plastic: [0, 0.4, 0.5], fish: [0, -0.4, 0.15], rope: [0.9, 0, 0.2],
   wood: [0, -0.35, 0.12], leaf: [0.5, 0.4, 0], scrap: [0.3, 0.4, 0],
   net: [0.55, 0.5, 0], bench: [0, 0.5, 0], crate: [0, 0.5, 0],
 };
+// Icon-only thickening of long, thin procedural tools (length on local Y): scale X/Z so the
+// silhouette still reads at hotbar size. The held model is untouched.
+export const ICON_FATTEN = { hammer: 1.4, fishingrod: 2.2 };
 // models.js tools stand upright (grip at origin, working end +Y): tilt them onto the diagonal.
 const PROVIDER_POSE = { hook: [0, 0.5, -0.75] };
 
@@ -120,14 +124,25 @@ function freeModel(root) {
   });
 }
 
+/** Model for an icon: the provider, then the procedural fallback, then models.js for kinds the
+ *  fallback lacks (cup, seed, water). own = true when the caller must free it. */
+export function resolveIconModel(kind) {
+  let model = null;
+  if (provider) { try { model = provider(MODEL_ALIAS[kind] || kind) || provider(kind) || null; } catch (e) { console.warn('item icon provider failed', kind, e); } }
+  if (model) return { model, own: false };
+  try { model = buildFallbackModel(kind); } catch (e) { console.warn('item icon model failed', kind, e); }
+  if (model) return { model, own: true };
+  try { model = getLibraryModel(kind); } catch (e) { console.warn('item icon library model failed', kind, e); }
+  return { model: model || null, own: false };   // getModel clones share cached geometry: never free
+}
+
 function renderKind(kind) {
   if (!ensureGL()) return '';
-  let model = null, own = false;
-  if (provider) { try { model = provider(MODEL_ALIAS[kind] || kind) || provider(kind) || null; } catch (e) { console.warn('item icon provider failed', kind, e); } }
-  if (!model) { try { model = buildFallbackModel(kind); own = true; } catch (e) { console.warn('item icon model failed', kind, e); } }
+  const { model, own } = resolveIconModel(kind);
   if (!model) return '';
   const pivot = new T.Group();
-  pivot.add(model);
+  const fat = own ? ICON_FATTEN[kind] : 0;
+  if (fat) { const g = new T.Group(); g.scale.set(fat, 1, fat); g.add(model); pivot.add(g); } else pivot.add(model);
   const p = (own ? null : PROVIDER_POSE[kind]) || POSE[kind]; if (p) pivot.rotation.set(p[0], p[1], p[2]);
   pivot.updateMatrixWorld(true);
   _box.setFromObject(pivot, true);

@@ -54,8 +54,8 @@ export function normalizeDecor(decor) {
 // Advances one plant by dt seconds. Mutates p. Returns true when its look changed
 // (new stage or the soil just dried), so the view and co-op sync know to refresh.
 export function tickPlant(p, dt) {
-  if (!p || !(dt > 0) || p.s < SEEDLING || p.w <= 0) return false;
-  if (p.s >= MATURE) { p.w = Math.max(0, p.w - dt); return p.w === 0; } // grown palms just let the soil dry
+  if (!p || !(dt > 0) || p.s < EMPTY || p.w <= 0) return false;
+  if (p.s >= MATURE || p.s === EMPTY) { p.w = Math.max(0, p.w - dt); return p.w === 0; } // grown palms and empty planters just let the soil dry
   const wet = Math.min(dt, p.w);
   p.w -= wet; p.g += wet;
   let changed = p.w <= 0;
@@ -94,8 +94,16 @@ export function promptFor(p, heldKind) {
   if (p.s === EMPTY) return heldKind === 'seed' ? 'Click to plant a palm seed' : 'Empty planter: plant a Palm Seed';
   if (p.s >= MATURE) return 'E  Harvest the palm';
   const name = STAGE_NAMES[p.s], pct = Math.round(progress(p) * 100);
-  if (p.w > 0) return heldKind === 'water' && p.w < WATER_SECONDS * .5 ? `${name} ${pct}%: click to water` : `${name} ${pct}%: growing`;
+  if (p.w > 0) return heldKind === 'water' ? (p.w < WATER_SECONDS * .5 ? `${name} ${pct}%: click to water` : `${name} ${pct}%: soil still wet`) : `${name} ${pct}%: growing`;
   return heldKind === 'water' ? `${name} ${pct}%: click to water` : `${name} ${pct}%: dry soil, needs fresh water`;
+}
+
+// Feed note for a click with a seed or water that did nothing. p is the plot in reach, or null.
+// Never carries the prompt's 'E  ' key prefix, which only the crosshair prompt renders as a key.
+export function useNote(p, heldKind) {
+  if (!p) return heldKind === 'water' ? 'Point at a palm planter to water it' : 'Point at a palm planter to plant the seed';
+  const t = promptFor(p, heldKind);
+  return t.startsWith('E  ') ? 'Press E to ' + t.charAt(3).toLowerCase() + t.slice(4) : t;
 }
 
 // Gives every item in loot to bag atomically (all or nothing). bag is a Bag.
@@ -160,4 +168,10 @@ export function farmSignature(decor) {
   let s = '';
   for (const d of decor) if (isPlot(d)) s += `${d.x},${d.z}:${d.farm ? d.farm.s : MATURE}${d.farm && d.farm.w > 0 ? 'w' : 'd'};`;
   return s;
+}
+
+// The emit payload for an applyFarmAction result: items go out as loot so the pickup feed shows them.
+export function farmEffect(r) {
+  if (!r || !r.text) return null;
+  return r.items ? { kind: r.effect, text: r.text, loot: { ...r.items } } : { kind: r.effect, text: r.text };
 }

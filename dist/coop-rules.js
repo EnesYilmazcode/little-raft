@@ -1,5 +1,7 @@
 // Small pure helpers for nets, co-op hook state and decor colliders. No DOM, no Three.js.
 
+import { blockerGap } from './player-physics.js';
+
 export const NET_RANGE = 4;
 export const GUEST_HELD_TTL = 1500; // ms a guest's reported hook contents stay valid without a fresh move
 const MAX_HELD = 32;
@@ -23,7 +25,13 @@ export function pickNetItem(items, net, {held = new Set(), isPending = () => fal
   return null;
 }
 
-// Cleans the optional `held` field of a guest move message. Missing or malformed means none.
+// Items a hook may sweep or keep: not pending, and not on the other player's hook unless our own hook
+// already holds it. The first claimer keeps an item; HookCast drops caught entries missing from this list.
+export function hookableItems(items, {isPending = () => false, otherHeld = new Set(), ownHeld = new Set()} = {}) {
+  return items.filter(it => !isPending(it) && (!otherHeld.has(it.token) || ownHeld.has(it.token)));
+}
+
+// Cleans the optional `held` field of a guest move message (or the host's state). Missing or malformed means none.
 export function cleanHeldTokens(v) {
   if (!Array.isArray(v)) return [];
   return v.filter(t => (typeof t === 'string' && t.length > 0 && t.length <= 64) || Number.isFinite(t)).slice(0, MAX_HELD);
@@ -49,7 +57,20 @@ export function decorBlockers(d, radii, unit = 2) {
     const yaw = Number.isFinite(d.yaw) ? d.yaw : Number.isFinite(d.rot) ? d.rot : 0, c = Math.cos(yaw), s = Math.sin(yaw);
     return BENCH_CIRCLES.map(b => ({x:cx + b.x * c + b.z * s, z:cz - b.x * s + b.z * c, r:b.r}));
   }
-  return radii[d.type] ? [{x:cx, z:cz, r:radii[d.type]}] : [];
+  const r = radii[d.type];
+  if (Array.isArray(r)) return [{x:cx, z:cz, hx:r[0], hz:r[1], rot:Number.isFinite(d.rot) ? d.rot : 0}]; // [half width, half depth]: the placement footprint
+  return r ? [{x:cx, z:cz, r}] : [];
+}
+
+// Index of the first player ({x, z} raft-local; null/stale entries skipped) whose body (radius r)
+// a new piece's blockers would overlap, or -1. Shared by the ghost check and the host's build check.
+export function playerInWay(blockers, players, r) {
+  for (let i = 0; i < players.length; i++) {
+    const p = players[i];
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.z)) continue;
+    if (blockers.some(b => b && Number.isFinite(b.x) && Number.isFinite(b.z) && blockerGap(b, p.x, p.z) < r)) return i;
+  }
+  return -1;
 }
 
 // Which hook slot R repairs: the preferred (selected) slot if it holds a hook, else the most worn

@@ -191,7 +191,7 @@ test('recipe rows keep their order while the bag is open (no jumping under the p
   assert.ok(paint.length > 100, 'found paintRecipes');
   assert.doesNotMatch(paint, /reorderRecipes\(/, 'live repaints do not reorder');
   assert.match(ui, /render\(true\);\s*reorderRecipes\(\);/, 'the order is set when the bag opens');
-  assert.match(ui, /activeTab = id; pickId = null; reorderRecipes\(\)/, 'and when the tab changes');
+  assert.match(ui, /activeTab = id; pickId = null; (?:pickedByUser = false; )?reorderRecipes\(\)/, 'and when the tab changes');
 });
 
 test('item tooltips anchor beside the element instead of trailing the pointer', () => {
