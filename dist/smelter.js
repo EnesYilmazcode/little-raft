@@ -2,7 +2,7 @@
 // Each item of a recipe takes recipe.time seconds and burns recipe.fuel fuel
 // units spread evenly over that time. Progress pauses (never resets) when fuel
 // runs out or the output slot cannot take the result.
-import { ITEMS, FUEL_VALUE } from './items.js?build=v3-survival-ae77fa84ac2b';
+import { ITEMS, FUEL_VALUE, stationExtraRecipes } from './items.js?build=v3-survival-ae77fa84ac2b';
 
 export const FUEL_CAP = 10;
 const EPS = 1e-9;
@@ -15,6 +15,8 @@ export class StationModel {
     this.items = opts.items || ITEMS;
     this.fuelValue = opts.fuelValue || FUEL_VALUE;
     this.fuelCap = opts.fuelCap ?? FUEL_CAP;
+    // [recycler] fixed recipes that are not ITEMS recipes (null for smelter/grill/purifier)
+    this.recipes = opts.recipes ?? stationExtraRecipes(this.stationId);
     this.input = null;
     this.output = null;
     this.fuelUnits = 0;
@@ -36,7 +38,18 @@ export class StationModel {
           time: Math.max(EPS, Number(r.time) || 1), fuel: Math.max(0, Number(r.fuel) || 0) };
       }
     }
-    return null;
+    const x = this.recipes && Object.hasOwn(this.recipes, kind) ? this.recipes[kind] : null;
+    return x ? { kind: x.kind, in: posInt(x.in) || 1, count: posInt(x.count) || 1,
+      time: Math.max(EPS, Number(x.time) || 1), fuel: Math.max(0, Number(x.fuel) || 0) } : null;
+  }
+
+  // Whether an extra (non-ITEMS) recipe of this station outputs `kind`.
+  _yields(kind) { return !!this.recipes && Object.values(this.recipes).some((r) => r?.kind === kind); }
+
+  // False for stations that only run fuel-free extra recipes (the Sorting Tub): they take no fuel.
+  get usesFuel() {
+    if (!this.recipes) return true;
+    return Object.values(this.items).some((it) => it?.recipe?.station === this.stationId);
   }
 
   accepts(kind) {
@@ -57,7 +70,7 @@ export class StationModel {
 
   addFuel(kind, count) {
     count = posInt(count);
-    if (!count || !this.isFuel(kind)) return 0;
+    if (!count || !this.usesFuel || !this.isFuel(kind)) return 0;
     const v = Number(this.fuelValue[kind]);
     const n = Math.min(count, Math.floor((this.fuelCap - this.fuelUnits + EPS) / v));
     if (n <= 0) return 0;
@@ -147,7 +160,7 @@ export class StationModel {
       return count > 0 ? { kind: s.kind, count } : null;
     };
     this.input = stack(snap.input, (k) => !!this.recipeFor(k));
-    this.output = stack(snap.output, (k) => this.items[k]?.recipe?.station === this.stationId);
+    this.output = stack(snap.output, (k) => this.items[k]?.recipe?.station === this.stationId || this._yields(k));
     const f = Number(snap.fuel);
     this.fuelUnits = Number.isFinite(f) ? Math.min(this.fuelCap, Math.max(0, f)) : 0;
     const r = this.recipe, p = Number(snap.progress);
