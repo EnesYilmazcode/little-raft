@@ -414,7 +414,7 @@ export function mount(transfer = null) {
     camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 200); camera.rotation.order = 'YXZ'; scene.add(camera);
     renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:devicePixelRatio < 1.5}); // dense screens get their smoothing from pixels, not MSAA
     renderer.setSize(innerWidth, innerHeight);
-    renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
+    renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.autoUpdate = false; /* refreshShadows() asks for each redraw */ renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     hemi = new T.HemisphereLight('#bfe6ff', '#2f6f7a', 1.0); scene.add(hemi); // content hook: kept for day/night; blue sky fill from above, teal sea bounce from below
     sun = new T.DirectionalLight('#ffeccb', 3.0); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.0004; sun.shadow.normalBias = .03; sun.shadow.radius = 3; scene.add(sun, sun.target); // shadow box is fitted to the raft each frame
     quality = createQuality({sun, preset:options.graphics, onChange:() => { applyUserGraphics(); warmBeforeShadowsOff(); }}); applyUserGraphics(); // owns the level (shadow map size, sun.castShadow); applyUserGraphics sets the pixel ratio once, with the render scale
@@ -483,7 +483,7 @@ export function mount(transfer = null) {
     const v = shark.view, d = Math.hypot(physics.x - e.x * 2, physics.z - e.z * 2), near = clamp(1 - d / 14, .25, 1);
     shark.markBite(e.x, e.z); shark.fx('bite', v.x + Math.sin(v.heading) * 1.3, v.z + Math.cos(v.heading) * 1.3);
     shakeAmp = Math.max(shakeAmp, (e.fx === 'broke' ? .16 : .08) * near);
-    if (raft) { raft.rotation.x += (Math.random() - .5) * .03; raft.rotation.z += (Math.random() - .5) * .03; } // the whole raft jolts; updateRaft eases it back
+    if (raft) { raft.rotation.x += (Math.random() - .5) * .03; raft.rotation.z += (Math.random() - .5) * .03; shadowDirty = true; } // the whole raft jolts; updateRaft eases it back
     beep(e.fx === 'broke' ? 90 : 120);
   }
   const canHarvestShark = () => !!shark && running && !diving?.state.diving && shark.canHarvest(physics.x, physics.z);
@@ -541,9 +541,51 @@ export function mount(transfer = null) {
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
     for (const [x, z] of world.tiles) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; }
     const cx = (x0 + x1), cz = (z0 + z1), r = clamp(Math.hypot(x1 - x0 + 1, z1 - z0 + 1) + SHADOW_MARGIN, SHADOW_MIN, SHADOW_MAX); // tiles are 2 m: centre = sum, half-diagonal = hypot(span + 1)
-    sun.target.position.set(cx, 0, cz); sun.position.set(cx + SUN_OFFSET[0], SUN_OFFSET[1], cz + SUN_OFFSET[2]);
+    shadowFit.set(cx, 0, cz); sun.target.position.copy(shadowFit); sun.position.set(cx + SUN_OFFSET[0], SUN_OFFSET[1], cz + SUN_OFFSET[2]);
     const d = Math.hypot(...SUN_OFFSET), cam = sun.shadow.camera;
     Object.assign(cam, {left:-r, right:r, top:r, bottom:-r, near:Math.max(.5, d - r - 6), far:d + r + 6}); cam.updateProjectionMatrix();
+    snapShadow(); shadowDirty = true;
+  }
+  // Keeps the shadow box centre on the shadow map's texel grid in light space (the shadow camera's lookAt basis),
+  // so a refit or a sun step moves the map by whole texels and shadow edges never crawl. Moves the target and
+  // the sun together, so the light direction is unchanged; day/night keeps the sun at its offset from the target.
+  const shadowFit = new T.Vector3(), snapX = new T.Vector3(), snapY = new T.Vector3(), snapZ = new T.Vector3(), snapUp = new T.Vector3(0, 1, 0);
+  function snapShadow() {
+    const cam = sun.shadow.camera, texel = (cam.right - cam.left) / sun.shadow.mapSize.x, t = sun.target.position;
+    snapZ.subVectors(sun.position, t); if (!(texel > 0) || snapZ.lengthSq() < 1e-9) return;
+    snapZ.normalize(); snapX.crossVectors(snapUp, snapZ).normalize(); snapY.crossVectors(snapZ, snapX);
+    const a = snapX.dot(shadowFit), b = snapY.dot(shadowFit), da = Math.round(a / texel) * texel - a, db = Math.round(b / texel) * texel - b;
+    const nx = shadowFit.x + snapX.x * da + snapY.x * db, ny = shadowFit.y + snapX.y * da + snapY.y * db, nz = shadowFit.z + snapX.z * da + snapY.z * db;
+    if (nx === t.x && ny === t.y && nz === t.z) return;
+    sun.position.x += nx - t.x; sun.position.y += ny - t.y; sun.position.z += nz - t.z; t.set(nx, ny, nz);
+  }
+  // perf: the shadow map is redrawn at 30 Hz (wall clock, so any frame rate), and at once when the scene changes or
+  // something that casts moves by half a texel or more since the last redraw: the sun (day/night, refit), the raft's
+  // bob or a shark jolt, the friend's avatar, the hook. Our own body is hidden in first person and the viewmodel
+  // casts nothing, so walking and looking around never need a redraw. Between redraws the map and its matrix stay
+  // a matched pair, so a skipped frame only shows the last frame's shadows.
+  const SHADOW_MS = 1000 / 30;
+  const shadowLast = new Float64Array(16);
+  let shadowDirty = true, shadowNext = -Infinity, shadowSig = -1;
+  function refreshShadows(now) {
+    const sm = renderer.shadowMap;
+    if (!sun?.castShadow || !sm.enabled) { shadowDirty = true; return; } // no shadow pass now: redraw as soon as it comes back
+    snapShadow();
+    const L = shadowLast, s = sun.position, t = sun.target.position, cam = sun.shadow.camera, half = (cam.right - cam.left) / sun.shadow.mapSize.x / 2;
+    const f = friend?.visible ? friend.position : null, h = hookMesh?.visible ? hookMesh.position : null;
+    const sig = raft.children.length + scene.children.length * 1000 + (f ? 1e6 : 0) + (h ? 2e6 : 0) + (bobber?.visible ? 4e6 : 0);
+    const tick = now >= shadowNext - 3; // 3 ms slack: every other frame at 60 fps even when frame times jitter
+    const due = tick || shadowDirty || sig !== shadowSig || !sun.shadow.map
+      || s.x !== L[0] || s.y !== L[1] || s.z !== L[2] || t.x !== L[3] || t.y !== L[4] || t.z !== L[5]
+      || Math.abs(raft.position.y - L[6]) > half || (Math.abs(raft.rotation.x - L[7]) + Math.abs(raft.rotation.z - L[8])) * 5 > half // ~5 m lever (sail top)
+      || (f && (Math.hypot(f.x - L[9], f.y - L[10], f.z - L[11]) > half || Math.abs(friend.rotation.y - L[12]) * .5 > half))
+      || (h && Math.hypot(h.x - L[13], h.y - L[14], h.z - L[15]) > half);
+    if (!due) return;
+    sm.needsUpdate = true; shadowDirty = false; shadowSig = sig;
+    shadowNext = tick ? Math.max(shadowNext + SHADOW_MS, now + SHADOW_MS / 2) : now + SHADOW_MS; // steady 30 Hz at any frame rate, no burst after a hitch
+    L[0] = s.x; L[1] = s.y; L[2] = s.z; L[3] = t.x; L[4] = t.y; L[5] = t.z; L[6] = raft.position.y; L[7] = raft.rotation.x; L[8] = raft.rotation.z;
+    if (f) { L[9] = f.x; L[10] = f.y; L[11] = f.z; L[12] = friend.rotation.y; }
+    if (h) { L[13] = h.x; L[14] = h.y; L[15] = h.z; }
   }
   // Compile every scene program up front (hidden viewmodels, hook, rope, ghost) so the first frame after #solo doesn't.
   // compile() walks the scene graph, so all viewmodels are attached just for the synchronous part of the call.
@@ -586,7 +628,7 @@ export function mount(transfer = null) {
     parent.add(g);
   }
   function rebuildRaft() {
-    ocean.setRaftTiles(world.tiles);
+    shadowDirty = true; ocean.setRaftTiles(world.tiles);
     for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
     wateringGroups.clear(); wateringMix = -1;
     raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat, content ? (t, c) => content.tileTint(t.x / 2, t.z / 2, c) : null, woodMat)); // content hook (paint): painted deck tiles
@@ -1227,7 +1269,7 @@ export function mount(transfer = null) {
   // switch are applied on top of whatever level it picks.
   function applyUserGraphics() {
     if (!renderer || !quality) return;
-    const l = quality.levels[quality.level], sc = clamp(options.renderScale ?? 1, .5, 1);
+    shadowDirty = true; const l = quality.levels[quality.level], sc = clamp(options.renderScale ?? 1, .5, 1);
     const pr = l ? Math.max(.5, l.pixelRatio * sc) : null;
     if (pr != null && renderer.getPixelRatio() !== pr) renderer.setPixelRatio(pr); // each call resizes the canvas and its MSAA buffers
     if (sun) sun.castShadow = options.shadows !== false && !!l?.shadows;
@@ -1533,7 +1575,7 @@ export function mount(transfer = null) {
     const veiled = dialog && !!document.querySelector('dialog[open]:not(#inventory)');
     if (veiled && now - lastDraw < 100) return;
     lastDraw = now;
-    renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
+    refreshShadows(now); renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
   }
   // Peer liveness. rAF stops in hidden tabs, so a timer keeps the channel warm and each side says when it is
   // hidden; a hidden peer is never timed out (the data channel's 'close' still ends the session).
