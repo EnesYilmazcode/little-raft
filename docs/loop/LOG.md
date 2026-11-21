@@ -240,3 +240,31 @@ Two integrator sessions are running on claude/raft-master; each merges the other
 - Next: lane agents merging the newest loop-features/perf/ux/visuals/fidelity and raft-content/tests/integration + lane-placement.
 - Still skipped: raft-reference (scraped commercial-game stills). Farming (farming.js) is merged but not reachable in play:
   it and the watering lane drive the same palm planter; it needs a design decision.
+
+## claude/loop-visuals-202611210805 (visuals, round 3)
+Base: origin/claude/raft-master (2608c32, which already has visuals round 1). Round 2 (claude/loop-visuals-202611210648) forked from an older master. Its sky, ocean and islands are superseded by master; its hook, deck-seam and warm-UI ideas were ported by hand here.
+Fleet (10 agents): critic, 6 builders (sky, water, hands-and-items, materials, UI, icons), art judge, perf checker.
+- Accepted, all 6 per the judge:
+  - Warm walnut pause menu, settings and notes card, matching the tan hotbar.
+  - Held hook is a stick with a white bottle grip and orange plastic tines; slimmer grip thumb; the co-op hook matches.
+  - Outlined, brighter item icons and a matching hook icon.
+  - Dark underlay under the deck boards, with fewer repeated lashings.
+  - Deeper cyan day sky and sea palette.
+  - Ocean mid-distance stays saturated (fresnel cap .4, zenith-weighted reflection, fadeNear 75).
+  - Soft broken foam rings around items; the raft-edge foam stays strong.
+- Judge fixes: glints restored (cap .3 -> .4), full raft-edge foam, whiter foam.
+- Perf: first A/B FAILED (deck pose +28%). Cause: the underlay plane drew with the lit, shadowed material across the whole screen. It is now its own unlit bucket (+1 draw call).
+- Re-measured ABAB, seeded probe:
+  - horizon 254 -> 241 ms
+  - deck 352 -> 335 ms
+  - first inventory open: no stall
+  - PASS
+- npm test 688/688.
+- Next:
+  - recipe-list rows still show old hook/hammer icons
+  - debris: milk jugs float high and toy-like; barrels should ride ~40% lower; add flat plastic shards
+  - raft waterline: foam band and dark wet rim on the edge boards
+  - lighting: crisper sun shadows on the deck, warm bounce
+  - islands: wider sand banks with a turquoise shallow ring
+  - hands: less saturated, some knuckle and skin variation
+  - bottle grip slightly bluish plastic
