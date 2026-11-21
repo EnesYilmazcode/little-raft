@@ -8,9 +8,9 @@
 // per call; hands.js builds held models lazily and caches them.
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 
-const SHAFT = 0.80;      // butt to blade root
-const BLADE = 0.15;      // blade length
-const GRIP_Y = 0.29;     // grip wrap centre, from the butt
+const SHAFT = 0.74;      // butt to blade root
+const BLADE = 0.21;      // blade length
+const GRIP_Y = 0.19;     // grip wrap centre, from the butt
 
 export function createSpear(T) {
   const root = new T.Group(); root.name = 'woodenSpear';
@@ -40,8 +40,8 @@ export function createSpear(T) {
   rope.push(at(new T.CylinderGeometry(0.003, 0.0025, 0.07, 5), 0.02, SHAFT - 0.075, 0.006, 0, 0, 0.35));
 
   // ---- blade: a flattened leaf of sharpened scrap, wedged into the split head
-  blade.push(at(new T.ConeGeometry(0.03, BLADE * 0.78, 4, 1), 0, SHAFT + 0.03 + BLADE * 0.39, 0, 0, 0, 0, 1, 1, 0.32));
-  blade.push(at(new T.ConeGeometry(0.03, BLADE * 0.22, 4, 1), 0, SHAFT + 0.03 - BLADE * 0.11, 0, Math.PI, 0, 0, 1, 1, 0.32));
+  blade.push(at(new T.ConeGeometry(0.043, BLADE * 0.78, 4, 1), 0, SHAFT + 0.03 + BLADE * 0.39, 0, 0, 0, 0, 1, 1, 0.32));
+  blade.push(at(new T.ConeGeometry(0.043, BLADE * 0.22, 4, 1), 0, SHAFT + 0.03 - BLADE * 0.11, 0, Math.PI, 0, 0, 1, 1, 0.32));
 
   const shaftMat = new T.MeshStandardMaterial({ color: 0xd8c39a, roughness: 0.82, metalness: 0 });
   const ropeMat = new T.MeshStandardMaterial({ color: 0x9c7c4c, roughness: 0.95, metalness: 0 });

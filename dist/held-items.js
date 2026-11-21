@@ -21,7 +21,7 @@ export const PLACEABLE_KINDS = Object.freeze(['hammer', ...DECOR_KINDS, 'planter
 export const isPlaceable = (kind) => PLACEABLE_KINDS.includes(kind);
 const TOOL_KINDS = ['hook', 'hammer', 'fishingrod', 'spear'];
 
-const SPEAR_RX = -1.2514, SPEAR_RY = -0.0409, SPEAR_RZ = 0.6314; // [spear] solved from the right fist frame: tip points just below-right of the crosshair
+const SPEAR_RX = -1.2026, SPEAR_RY = -0.0989, SPEAR_RZ = 0.6585; // [spear] solved from the right fist frame: tip points just below-right of the crosshair
 export const HOLD = Object.freeze({
   hook:       { hand: 'right', pose: 'grip' },
   hammer:     { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2 },
