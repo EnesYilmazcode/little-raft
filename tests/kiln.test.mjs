@@ -274,3 +274,19 @@ test('sinker: game.js halves hook wear when a Line Sinker is in the bag', () => 
   const src = readFileSync(new URL('game.js', base), 'utf8');
   assert.ok(src.includes("(wearPerUse(s.kind) || WEAR_PER_CATCH) * (bag.count('sinker') > 0 ? .5 : 1)")); // halves the catalogue wear too
 });
+
+test('[power-hookups] step rate: 2x adds twice, clamps dt first, bad rates count as 1; stepAll rateOf only while burning', () => {
+  const a = entry({ r: 'clay', q: 1, h: 1, f: 0 });
+  step(a, .5, 2); assert.equal(a.t, 1);
+  const b = entry({ r: 'clay', q: 1, h: 1, f: 0 });
+  step(b, 5, 2); assert.equal(b.t, 2, 'MAX_DT clamp first');
+  for (const r of [0, -1, NaN, 9, 'x', undefined]) { const c = entry({ r: 'clay', q: 1, h: 1, f: 0 }); step(c, 1, r); assert.equal(c.t, 1, String(r)); }
+  const mk = () => ({ k: { '1,0': entry({ r: 'clay', q: 1, f: 2 }) }, r: 0 });
+  const st = mk(), seen = [];
+  let calls = 0, done = 0;
+  for (; calls < 20 && !done; calls++) stepAll(st, 1, () => { done++; }, key => { seen.push([key, st.k[key].h]); return 2; });
+  assert.equal(calls, 6, '1x lighting frame + 4 x 2 = 9 < 10, sixth call finishes');
+  assert.ok(seen.every(([k, h]) => k === '1,0' && h === 1));
+  const slow = mk(); let n = 0; while (!slow.k['1,0'].n && n < 20) { stepAll(slow, 1, null); n++; }
+  assert.equal(n, 10); assert.equal(st.k['1,0'].f, slow.k['1,0'].f, 'same wood as at 1x');
+});

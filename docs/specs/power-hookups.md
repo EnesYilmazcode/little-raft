@@ -85,3 +85,14 @@ No new items, recipes, actions, save fields or slice version. One builder. Every
 - Driftwood grill (fishing-cooking): both peers simulate it, it has a separate save, and burn time is coupled to the same `t`. It would need an `update(dt, rate)` that scales only the raw phase.
 - Receiver: its "range" is the cache spawn distance, so a bigger value is a nerf. The buff (a +1 antenna tier or a shorter cooldown) needs a design call.
 - A "plug in: battery within 2 tiles" hint when a battery is in light range but not hookup range, plus a pulsing cable colour.
+
+## Build notes
+- Built as specified; every hook line is tagged `// [power-hookups]`.
+- `kiln.js` already has a local `env` (`{decorAt, pos}` for `applyKilnAction`), so the content env lives in `pwEnv` and `link(e)` sets that instead.
+- `power.js` paint: the cable is attached on the first paint (and re-attached in `afterRebuild()` or after a raft identity change). Attaching it resets the group scan once. The change gate (`rescanned`, `st.r`, `st`, decor length, old host) now runs before the "no power groups" return, so the cable step always runs, and the turbine spin/battery pips path is unchanged after it. Geometry is rewritten only when the `"bk>ak;"` signature changes, so a charge-only `r` bump leaves the position `version` alone (tested).
+- `debug.powered()` reads through the same old-host gate as `powerAt`. `debug.fastForward` also drains `pending`.
+- `pending` hovers around 1–2 on the host while appliances run: `draw` accrues every frame (kiln, grill) or second (purifier), and the 1 Hz power tick removes the whole part. That is under 2 charge in flight, never saved.
+- Progression stations get `px/pz` when they are created in `syncStations()`. Every station is created there, so no key parsing was needed.
+- At night the `#2b2b2b` cable is hard to see against the dark deck (it reads clearly by day). It is left as specified; a lighter or pulsing colour fits the "Future work" item.
+- Tests: `tests/power.test.mjs` (+4: poweringBattery, pending drain, module powerAt/draw/old host/serialize, cable), `tests/watering.test.mjs` (+1), `tests/kiln.test.mjs` (+1).
+- QA: `npm test` all pass. `shoot.py` reports `errors: []`. The close-up script `scratchpad/r4/hookups/hookups_shot.py` uses a turbine, a battery (1500 charge), a loaded purifier, a burning kiln and a Simple Grill, all within 2 tiles of the battery. It reports `cable() = {pairs: 3, visible: true, attached: true}` and the prompts "Purifying… 7s · powered", "Seaside Kiln · Brick 3 queued 40% · fuel 4 · powered" and "Use the Simple Grill · powered". The kiln's `t` advances about 2.2 per 1.1 s of wall time (2x).

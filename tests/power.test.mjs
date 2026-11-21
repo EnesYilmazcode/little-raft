@@ -12,7 +12,7 @@ const { ITEMS, BLOCK_RADII, PROGRESSION_PLAN } = await import(new URL('items.js'
 const { ITEM_INFO } = await import(new URL('inventory-state.js', base));
 const { createDayNight, UNLIT } = await import(new URL('daynight.js', base));
 const { promptFromHtml } = await import(new URL('prompts.js', base));
-const { cleanPower, turbinesNear, servingBattery, tickPower, batteryInfo, CAP, MAX_TICK, OLD_HOST, NIGHT_ON } = P;
+const { cleanPower, turbinesNear, servingBattery, tickPower, batteryInfo, CAP, MAX_TICK, OLD_HOST, NIGHT_ON, poweringBattery } = P;
 
 const bat = (x = 0, z = 0) => ({ type: 'battery', x, z });
 const tur = (x, z) => ({ type: 'turbine', x, z });
@@ -233,4 +233,80 @@ test('name sync: every power light model is accepted by the daynight scan', () =
   for (const make of [M.createTurbine, M.createBattery]) { raft.add(make(T)); m.update(1 / 30); assert.equal(m.debug.state().lanterns, n, 'turbine and battery are not lanterns'); }
   assert.equal(typeof Object.getOwnPropertyDescriptor(m, 'night').get, 'function');
   m.dispose();
+});
+
+// ---------------------------------------------------------------- [power-hookups]
+test('[power-hookups] poweringBattery: range 2 (servingBattery still 3), skips e = 0, ties by key', () => {
+  const st = fresh(); st.b = { '0,0': 10 };
+  assert.equal(poweringBattery(st, [bat()], 2, 2), '0,0');
+  assert.equal(poweringBattery(st, [bat()], 3, 0), null);
+  assert.equal(servingBattery(st, [bat()], 3, 0), '0,0');
+  st.b = {}; assert.equal(poweringBattery(st, [bat()], 1, 0), null, 'empty battery skipped');
+  st.b = { '0,0': 5, '2,0': 5 }; assert.equal(poweringBattery(st, [bat(2, 0), bat(0, 0)], 1, 0), '0,0', 'tie -> smaller key');
+});
+
+test('[power-hookups] tickPower pending: whole part drained, fraction kept, stale key dropped, emptied once, r bumps, deterministic', () => {
+  const run = () => {
+    const st = fresh(); st.b = { '0,0': 10 };
+    const pending = { '0,0': 2.5, '9,9': 3 };
+    const r0 = st.r;
+    tickPower(st, [bat()], 1, 0, 0, pending);
+    assert.equal(st.b['0,0'], 8); assert.equal(pending['0,0'], .5); assert.equal('9,9' in pending, false);
+    assert.equal(st.r, r0 + 1);
+    pending['0,0'] += 20;
+    const { emptied } = tickPower(st, [bat()], 1, 0, 0, pending);
+    assert.deepEqual(emptied, ['0,0']); assert.equal(st.b['0,0'], undefined);
+    assert.ok(Number.isInteger(st.r));
+    return { st, pending };
+  };
+  assert.deepEqual(run(), run());
+  const st = fresh(); st.b = { '0,0': 10 }; const p = { '0,0': 3 };
+  tickPower(st, [bat()], .5, 0, 0, p); assert.equal(st.b['0,0'], 10, 'a 0 s tick drains nothing'); assert.equal(p['0,0'], 3);
+});
+
+function hookCtx(role = 'solo', withT = false) {
+  const world = { decor: [bat(0, 0), { type: 'purifier', x: 2, z: 0 }, { type: 'kiln', x: 3, z: 0 }], tiles: [[0, 0], [1, 0], [2, 0], [3, 0], [0, 2]] };
+  const ctx = { T: withT ? T : null, world, role, running: true, physics: { x: 0, z: 0 }, camera: { position: { x: 0, y: 1.7, z: 3 } }, raft: withT ? new T.Group() : null, emit: () => {}, notice: () => {}, action: () => {} };
+  return ctx;
+}
+
+test('[power-hookups] module: powerAt by range/charge, draw host-only, pending never saved, old host -> 0', () => {
+  const ctx = hookCtx(); const m = P.createPower(ctx); m.load(undefined, 'save'); m.link({ wind: () => 0, night: () => 0 });
+  assert.equal(m.powerAt(2, 0), 0, 'no charge');
+  m.debug.setCharge(0, 0, 100);
+  assert.equal(m.powerAt(2, 0), 1); assert.equal(m.powerAt(3, 0), 0, '3 tiles is out of hookup range');
+  assert.deepEqual(m.debug.powered(), ['2,0']);
+  m.draw(2, 0, 1); m.draw(2, 0, 1); m.draw(3, 0, 5); m.draw(2, 0, NaN);
+  assert.deepEqual(m.debug.pending(), { '0,0': 2 });
+  m.update(1); assert.equal(m.debug.state().b['0,0'], 98);
+  assert.equal('pending' in m.serialize(), false);
+  assert.deepEqual(Object.keys(m.serialize()).sort(), ['b', 'r', 's', 'v']);
+  m.load(m.serialize(), 'save'); assert.deepEqual(m.debug.pending(), {}, 'load resets pending');
+  const g = hookCtx('guest'); const gm = P.createPower(g); gm.link({ wind: () => 0, night: () => 0 });
+  gm.load({ v: 1, s: 'h', r: 3, b: { '0,0': 50 } }, 'net');
+  assert.equal(gm.powerAt(2, 0), 1);
+  gm.draw(2, 0, 10); assert.deepEqual(gm.debug.pending(), {}, 'guest draw is a no-op');
+  gm.load(undefined, 'net'); assert.equal(gm.powerAt(2, 0), 0, 'old host -> 1x');
+});
+
+test('[power-hookups] cable: hidden with no appliance, one pair in range, charge-only bump keeps geometry, re-attach after rebuild', () => {
+  const ctx = hookCtx('solo', true); ctx.world.decor = [bat(0, 0)];
+  const m = P.createPower(ctx); m.load(undefined, 'save'); m.link({ wind: () => 0, night: () => 0 });
+  m.debug.setCharge(0, 0, 500); m.update(1 / 60);
+  assert.equal(m.debug.cable().visible, false); assert.equal(m.debug.cable().attached, true);
+  ctx.world.decor.push({ type: 'kiln', x: 2, z: 0 }); m.update(1 / 60);
+  assert.deepEqual(m.debug.cable(), { pairs: 1, visible: true, attached: true });
+  const cable = ctx.raft.children.find(c => c.name === 'power_cable');
+  assert.ok(cable.geometry.userData.shared && cable.material.userData.shared);
+  assert.deepEqual([...cable.geometry.attributes.position.array.slice(0, 6)], [0, .47, 0, 4, .47, 0].map(Math.fround));
+  const ver = cable.geometry.attributes.position.version;
+  m.debug.setCharge(0, 0, 400); m.update(1 / 60);
+  assert.equal(cable.geometry.attributes.position.version, ver, 'charge-only change does not rebuild');
+  m.debug.setCharge(0, 0, 0); m.update(1 / 60);
+  assert.equal(m.debug.cable().visible, false);
+  m.debug.setCharge(0, 0, 400); m.update(1 / 60); assert.equal(m.debug.cable().visible, true);
+  ctx.raft.remove(cable); assert.equal(m.debug.cable().attached, false);
+  m.afterRebuild(); assert.equal(m.debug.cable().attached, true);
+  assert.equal(cable.raycast(), undefined);
+  m.dispose(); assert.equal(ctx.raft.children.includes(cable), false);
 });

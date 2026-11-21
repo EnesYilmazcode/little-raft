@@ -209,3 +209,23 @@ test('purifier-model: planter stages', () => {
   assert.equal(g.getObjectByName('soil').material.color.getHex(), 0x2e1f14);
   const plain = new T.Group(); assert.doesNotThrow(() => { preparePlanter(T, plain); paintPlanter(plain, 1, false); });
 });
+
+test('[power-hookups] tick: a powered purifier (fast Set) is ready after 8 s, others after 15; t stays an int', () => {
+  const w = mkWorld({ decor: [...mkWorld().decor, { type: 'purifier', x: 2, z: 0 }] });
+  w.purifiers = { [U]: { t: 0, ready: 0 }, '2,0': { t: 0, ready: 0 } };
+  const fast = new Set([U]);
+  let doneAt = {};
+  for (let i = 1; i <= 15; i++) {
+    const r = W.tick(w, 1, null, fast);
+    for (const k of r.done) doneAt[k] = i;
+    for (const k of Object.keys(w.purifiers)) assert.ok(Number.isInteger(w.purifiers[k].t));
+    if (i <= 7) assert.equal(w.purifiers[U].t, i * 2);
+  }
+  assert.deepEqual(doneAt, { [U]: 8, '2,0': 15 });
+  assert.equal(w.purifiers[U].t, 15);
+  const w2 = mkWorld({ purifiers: { [U]: { t: 0, ready: 0 } } });
+  for (let i = 0; i < 14; i++) W.tick(w2, 1); assert.equal(w2.purifiers[U].ready, 0);
+  W.tick(w2, 1); assert.equal(w2.purifiers[U].ready, 1, 'no Set -> 1x');
+  const w3 = mkWorld({ purifiers: { [U]: { t: 0, ready: 0 } } });
+  W.tick(w3, 1, null, { has: 'x' }); assert.equal(w3.purifiers[U].t, 1, 'a junk Set counts as 1x');
+});
