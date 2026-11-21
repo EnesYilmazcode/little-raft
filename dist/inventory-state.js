@@ -1,6 +1,6 @@
 // Authoritative per-player inventory ("bag") for the raft survival game.
 // Pure ES module: no DOM, no THREE, no timers, no randomness.
-import { infoTable, recipeTable, TOOL_IDS } from './items.js'; // [progression-hook]
+import { infoTable, recipeTable, TOOL_IDS, registerBagKinds } from './items.js'; // [progression-hook]
 
 export const STACK_SIZE = 20;
 export const SLOT_COUNT = 28;
@@ -48,6 +48,7 @@ export const ITEM_INFO = Object.freeze({
 
   ...infoTable(), // [progression-hook] items.js overrides legacy rows and adds new kinds
 });
+registerBagKinds(ITEM_INFO); // keep lane-owned kinds through migrateSnapshot (save/load, co-op)
 
 export const ITEM_KINDS = Object.freeze(Object.keys(ITEM_INFO));
 
