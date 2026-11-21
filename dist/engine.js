@@ -170,7 +170,7 @@ export function createEngine(ctx) {
   let st = cleanEngine(undefined);
   const lastOp = new Map(), spots = [], models = [];
   const lastPush = { x: 0, z: 0 };
-  let motorModel = null, wheelModel = null, childCount = -1, firstChild = null, decorRef = null, decorLen = -1, clock = 0;
+  let motorModel = null, wheelModel = null, childCount = -1, firstChild = null, childRev, decorRef = null, decorLen = -1, clock = 0;
   const scratch = T ? new T.Vector3() : null;
 
   const world = () => ctx.world;
@@ -209,8 +209,8 @@ export function createEngine(ctx) {
     const raft = ctx.raft; if (!raft) return;
     // rebuildRaft() recreates every child, so a new first child means a rebuild even when the count is unchanged
     // (e.g. a crate swapped for a motor in one guest snapshot).
-    if (raft.children.length === childCount && raft.children[0] === firstChild) return;
-    childCount = raft.children.length; firstChild = raft.children[0] ?? null; models.length = 0;
+    if (raft.children.length === childCount && raft.children[0] === firstChild && raft.userData?.rev === childRev) return; // rev: game.js bumps it on every change
+    childCount = raft.children.length; firstChild = raft.children[0] ?? null; childRev = raft.userData?.rev; models.length = 0;
     for (const c of raft.children) {
       const kind = c.userData?.engine; if (!kind) continue;
       models.push({ obj: c, kind, x: Math.round(c.position.x / 2), z: Math.round(c.position.z / 2),

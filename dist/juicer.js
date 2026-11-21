@@ -92,7 +92,7 @@ export function createJuicer(ctx) {
   const seen = new Map(), spin = new Map(); // key -> last n seen; key -> seconds since the blend (view only)
   let seenSt = null, seenR = -1, seenLen = -1;
   const groups = []; // {g, k} for each craft_juicer group in ctx.raft
-  let scanLen = -1, scanFirst = null, scanRaft = null;
+  let scanLen = -1, scanFirst = null, scanRaft = null, scanRev; // scanRev: game.js raft.userData.rev (bumps when rebuildRaft adds or removes a child)
   const scratch = T ? new T.Vector3() : null;
 
   const oldHost = () => ctx.role === 'guest' && !hostHas;
@@ -144,8 +144,8 @@ export function createJuicer(ctx) {
   function scan() {
     const raft = ctx.raft; if (!raft) { groups.length = 0; return; }
     const kids = raft.children;
-    if (raft === scanRaft && kids.length === scanLen && kids[0] === scanFirst) return;
-    scanRaft = raft; scanLen = kids.length; scanFirst = kids[0];
+    if (raft === scanRaft && kids.length === scanLen && kids[0] === scanFirst && raft.userData?.rev === scanRev) return;
+    scanRaft = raft; scanLen = kids.length; scanFirst = kids[0]; scanRev = raft.userData?.rev;
     groups.length = 0;
     for (let i = 0; i < kids.length; i++) {
       const g = kids[i]; if (g.name !== 'craft_juicer') continue;

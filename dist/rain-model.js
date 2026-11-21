@@ -1,6 +1,9 @@
 // Procedural rain barrel (banded tub with a leaf funnel and a pip gauge) and sprinkler
 // (copper tank, pipe and a spinning two-arm head with a spray of points).
 // Imports nothing: callers pass THREE in as T. Origin = floor top. docs/specs/rain-sprinkler.md section 9.
+// Each model is built once per THREE; the create functions return clones sharing its geometries and
+// materials (userData.shared: the engine's disposeGeometry() skips them). What the paint functions mutate
+// stays per instance: the pip and ripple materials and the spray's point positions.
 
 const PIP_ON = 0x9ad7f0, PIP_OFF = 0x4a3a2a, SPRAY_N = 24, TAU = Math.PI * 2;
 
@@ -35,7 +38,26 @@ function roundPoints(mat) {
   return mat;
 }
 
-export function createRainBarrel(T) {
+const TEMPLATES = new WeakMap(), OWN = /Pips\d|^barrelRipple$/;
+function instance(T, type, build) {
+  let byType = TEMPLATES.get(T);
+  if (!byType) TEMPLATES.set(T, byType = new Map());
+  let tpl = byType.get(type);
+  if (!tpl) {
+    tpl = build(T);
+    tpl.traverse(o => { if (o.geometry) o.geometry.userData.shared = true; if (o.material && !OWN.test(o.name)) o.material.userData.shared = true; });
+    byType.set(type, tpl);
+  }
+  const g = tpl.clone(true);
+  g.traverse(o => {
+    if (o.material && OWN.test(o.name)) o.material = o.material.clone();
+    if (o.name === 'spray') { o.geometry = o.geometry.clone(); o.geometry.userData = {}; o.raycast = () => {}; } // clone() drops the raycast override
+  });
+  return g;
+}
+
+export function createRainBarrel(T) { const g = instance(T, 'rainbarrel', buildRainBarrel); paintRainBarrel(g, null, false, 0); return g; }
+function buildRainBarrel(T) {
   const g = new T.Group(); g.name = 'craft_rainbarrel';
   const {std, add, pips} = kit(T, g);
   add(g, new T.CylinderGeometry(.26, .23, .52, 12, 1, true), std(0x9c7649, .9, 0, {side:T.DoubleSide}), 'barrelBody', 0, .28, 0);
@@ -51,7 +73,6 @@ export function createRainBarrel(T) {
   pips('barrelPips', 4, .14, .1, .27, .05);
   g.userData.craftType = 'rainbarrel';
   g.userData.height = .8;
-  paintRainBarrel(g, null, false, 0);
   return g;
 }
 
@@ -73,7 +94,8 @@ export function paintRainBarrel(g, entry, raining, elapsed) {
   p.ripple.material.opacity = .7 * (1 - ph);
 }
 
-export function createSprinkler(T) {
+export function createSprinkler(T) { const g = instance(T, 'sprinkler', buildSprinkler); paintSprinkler(g, null, 0, false); return g; }
+function buildSprinkler(T) {
   const g = new T.Group(); g.name = 'craft_sprinkler';
   const {std, add, pips} = kit(T, g);
   add(g, new T.CylinderGeometry(.14, .14, .2, 16), std(0xb87333, .4, .6), 'sprinklerTank', 0, .1, 0);
@@ -96,7 +118,6 @@ export function createSprinkler(T) {
 
   g.userData.craftType = 'sprinkler';
   g.userData.height = .6;
-  paintSprinkler(g, null, 0, false);
   return g;
 }
 
