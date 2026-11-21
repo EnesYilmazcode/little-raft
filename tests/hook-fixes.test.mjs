@@ -1,4 +1,4 @@
-// Regression tests for hook fixes: repair picks the worn hook, a hook thrown at the deck stops on it.
+// Regression tests for hook fixes: no hook repair (hooks break), a hook thrown at the deck stops on it.
 // Run: node --test tests/hook-fixes.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,24 +7,10 @@ import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
 const T = await import(new URL('vendor/three.module.js', base));
 const { HookCast, WATER_Y } = await import(new URL('hook-physics.js', base));
-const { repairHookSlot } = await import(new URL('coop-rules.js', base));
+const coopRules = await import(new URL('coop-rules.js', base));
 
-const hook = d => ({ kind: 'hook', count: 1, durability: d });
-const hammer = { kind: 'hammer', count: 1, durability: 100 };
-
-test('repairHookSlot: a non-hook selection repairs the most worn hook, not the first', () => {
-  assert.equal(repairHookSlot([hook(100), hook(40), hammer], 2, 100), 1);
-  assert.equal(repairHookSlot([hook(70), null, hook(20), hook(50)], 1, 100), 2);
-});
-
-test('repairHookSlot: a selected hook is repaired even if another is more worn', () => {
-  assert.equal(repairHookSlot([hook(10), hook(90)], 1, 100), 1);
-});
-
-test('repairHookSlot: all hooks full gives the first hook; no hook gives -1', () => {
-  assert.equal(repairHookSlot([hammer, hook(100), { kind: 'hook', count: 1 }], 0, 100), 1);
-  assert.equal(repairHookSlot([hammer, null], 0, 100), -1);
-  assert.equal(repairHookSlot(null, 0, 100), -1);
+test('hooks are no longer repaired: coop-rules has no repairHookSlot (they break and are re-crafted)', () => {
+  assert.equal(coopRules.repairHookSlot, undefined);
 });
 
 // One 2 m tile at the origin; deck top at 0.2 (FLOOR_Y on a raft at y 0).

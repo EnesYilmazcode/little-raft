@@ -89,11 +89,14 @@ test('a world reset (New Game) clears progress', () => {
   assert.ok(r.reset); assert.deepEqual(r.visible, ['look', 'walk', 'throw']);
 });
 
-test('repair appears only after heavy wear and never blocks', () => {
+test('newhook appears only once the hook is gone, ticks when a new one is crafted, and never blocks', () => {
   const S = steps(), done = S.filter(s => s.chapter === 'ch1').map(s => s.id), P = O.createProgress(done);
-  assert.ok(!O.evaluate(S, P, fresh({hookHealth:80})).visible.includes('repair'));
+  assert.ok(!S.some(s => s.id === 'repair'), 'no hook repair step any more');
+  assert.ok(!O.evaluate(S, P, fresh({hookHealth:10})).visible.includes('newhook'), 'a worn hook is no reason to show it');
   const P2 = O.createProgress([...done, 'grow3', 'grab', 'barrel']);
-  assert.ok(O.evaluate(S, P2, fresh({hookHealth:40})).visible.includes('repair'));
+  assert.ok(O.evaluate(S, P2, fresh({ownedTools:[]})).visible.includes('newhook'));
+  O.evaluate(S, P2, fresh({ownedTools:['hook']}));
+  assert.ok(P2.done.newhook, 'crafting a new hook ticks it');
   const P3 = O.createProgress(S.filter(s => s.chapter === 'ch2' && !s.optional).map(s => s.id).concat(done));
   assert.equal(O.evaluate(S, P3, fresh()).chapter, 'ch3');
 });

@@ -10,6 +10,7 @@ const num = v => (Number.isFinite(v) ? v : 0);
 const arr = v => (Array.isArray(v) ? v : []);
 const inv = (S, k) => num(S?.stock?.[k]);
 const owns = (S, k) => arr(S.ownedTools).includes(k);
+const hasHook = S => owns(S, 'hook') || owns(S, 'metalhook');
 const placed = (S, t) => arr(S.decor).some(d => d?.type === t);
 const decorCount = (S, t) => arr(S.decor).filter(d => d?.type === t).length;
 const MATS = ['wood', 'leaf', 'scrap', 'plastic'];
@@ -59,8 +60,8 @@ export const STEPS = [
   {chapter:'ch2', id:'palm-craft', title:'Make a palm planter', hint:'Bag: 2 wood + 3 leaves', done:(S, b, c) => c.gained('palm') >= 1 || placedNow(S, b, c, 'palm')},
   {chapter:'ch2', id:'plant', title:'Plant your first palm', hint:S => use(S, 'palm', 'the planter', '[LMB] on the raft', 'Hold it, [LMB] on the raft'), done:(S, b, c) => placedNow(S, b, c, 'palm')},
   {chapter:'ch2', id:'lantern', title:'Hang a lantern', hint:S => use(S, 'lantern', 'the lantern', '[LMB] on the raft', 'Bag: 2 wood + 2 scrap, then place it'), done:(S, b, c) => placedNow(S, b, c, 'lantern')},
-  {chapter:'ch2', id:'repair', title:'Mend your hook', hint:'[R] repairs: 2 wood + 1 scrap', optional:true, show:S => owns(S, 'hook') && Number.isFinite(S.hookHealth) && S.hookHealth <= 50,
-    done:(S, b, c) => { if (num(S.hookHealth) < 100 && Number.isFinite(S.hookHealth)) c.mem.low = true; return !!c.mem.low && S.hookHealth === 100; }},
+  {chapter:'ch2', id:'newhook', title:'Craft a new hook', hint:'Hook broke? Bag: 1 wood + 2 plastic. Grab debris with [E]', optional:true, show:S => !hasHook(S),
+    done:(S, b, c) => { if (!hasHook(S)) c.mem.lost = true; return !!c.mem.lost && hasHook(S); }},
   // The rod (6 wood + 8 rope) comes after a short wood top-up; rope already twisted (or spent on the rod) counts.
   {chapter:'ch3', ...gainStep('rodwood', 'Gather 6 wood', 'For the rod. A bench is 3 wood', 'wood', 6, [], hasRod)},
   {chapter:'ch3', id:'rope8', title:'Twist 8 rope', hint:'16 leaves. Barrels give leaves too',

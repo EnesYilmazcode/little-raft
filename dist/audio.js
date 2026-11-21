@@ -21,7 +21,7 @@
 // Notes: no DOM timers. Voices clean themselves up on the sources' 'ended' event.
 
 export const EVENTS = Object.freeze(['throw', 'splash', 'collect', 'build', 'place', 'craft', 'repair', 'plant', 'water', 'jump',
-  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny', 'detect', 'chime', 'squawk']);
+  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny', 'detect', 'chime', 'squawk', 'snap']);
 // friendlier names other modules may use; play() resolves them to a recipe above
 export const ALIASES = Object.freeze({ pickup: 'collect', cast: 'throw', hook: 'throw', pour: 'water', click: 'ui' });
 export const BUSES = Object.freeze(['master', 'effects', 'ambience', 'music']);
@@ -30,7 +30,7 @@ const OUTPUT_SCALE = 0.5;       // keeps full volume comfortable
 const MAX_VOICES = 24;
 const MIN_GAP = { throw: 0.08, splash: 0.06, collect: 0.04, build: 0.05, place: 0.06, plant: 0.12, water: 0.25, craft: 0.1, repair: 0.12, jump: 0.1, land: 0.12,
   step: 0.16, swim: 0.3, reel: 0.4, catch: 0.06, bite: 0.2, ui: 0.03, open: 0.08, close: 0.08, deny: 0.15,
-  detect: 0.05, chime: 0.5, squawk: 0.6 };
+  detect: 0.05, chime: 0.5, squawk: 0.6, snap: 0.3 };
 const SILENT = 0.0001;
 // calm D-major-ish pad: Dadd9, Bm7, Gmaj7, A6 (low register so it sits under the sea)
 const CHORDS = [[146.83, 220, 329.63], [123.47, 185, 293.66], [98, 196, 246.94], [110, 164.81, 277.18]];
@@ -409,6 +409,12 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
       const f = burst(v, t, 'bandpass', 2000, 1.2, 0.12 * s, 0.02, 0.12);
       f.frequency.exponentialRampToValueAtTime(650, t + 0.14);
       knock(v, t + 0.09, s * 0.25, 220);
+    },
+    snap(v, t, s) {
+      // a hook giving out: dry crack, a twang of released line, a dull knock as the pieces drop
+      burst(v, t, 'highpass', 2400, 0.9, 0.34 * s, 0.001, 0.05);
+      tone(v, t + 0.01, 'sawtooth', 520, 0.07 * s, 0.002, 0.22, 140);
+      knock(v, t + 0.12, s * 0.45, 150);
     },
     deny(v, t, s) {
       tone(v, t, 'triangle', 330, 0.07 * s, 0.003, 0.08, 300);
