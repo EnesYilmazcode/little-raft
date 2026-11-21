@@ -616,7 +616,7 @@ test('CraftBook: a click crafts one; holding crafts more, capped', () => {
     assert.equal(CB.craftsForHold(sched[i] - 1), i);
   }
   assert.equal(CB.craftsForHold(60000, 4), 4);
-  assert.ok(CB.craftsForHold(2000) > 6, 'a two second hold crafts plenty');
+  assert.ok(CB.craftsForHold(3000) > 6, 'a three second hold crafts plenty'); // repeats start at 800 ms (was 450) so a click never makes two
 });
 
 test('CraftBook: tooltip anchors beside the element, never off-screen', () => {
