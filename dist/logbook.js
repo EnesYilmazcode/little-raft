@@ -16,6 +16,20 @@ export const NOTES = Object.freeze([
   "This is the last bottle I'm sending. Now that you've read them all, write one of your own. Someone out there is waiting for a hello. — P., and everyone",
 ]);
 export const NOTE_COUNT = 12;
+// Story notes found at landmarks (mast.js): our own words. {code} and {bearing} come from the landmark's clue.
+export const STORY_NOTES = Object.freeze({
+  mast1: Object.freeze({
+    title: 'The Old Beacon Mast · keeper’s board',
+    text: 'Chalk on a salt-white slate: “Day 212. The lamp still turns but no ship answers it, so I have rowed on to the Kelp Lantern. Whoever climbs up here next: set the old dial to {code} and steer {bearing}° from this mast. Keep the light burning for the one after you. — Wren, last keeper”',
+  }),
+});
+// One story note as {id, title, text}, the clue filled in (unknown parts read as '????').
+export function storyNote(id, clue = null) {
+  const n = STORY_NOTES[id]; if (!n) return null;
+  const code = clue && typeof clue.code === 'string' ? clue.code : '????';
+  const bearing = clue && Number.isInteger(clue.bearing) ? String(clue.bearing).padStart(3, '0') : '???';
+  return { id, title: n.title, text: n.text.replace('{code}', code).replace('{bearing}', bearing) };
+}
 export const BOTTLE_CHANCE = 1 / 25;
 export const CRAFT_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 
@@ -110,4 +124,4 @@ export function achievementName(id) {
   return hit ? hit.name : id;
 }
 
-export default { NOTES, NOTE_COUNT, BOTTLE_CHANCE, CRAFT_KINDS, ACHIEVEMENTS, ACHIEVEMENT_IDS, cleanProgress, nextNote, shouldSpawnBottle, evaluate, achievementName };
+export default { NOTES, NOTE_COUNT, STORY_NOTES, storyNote, BOTTLE_CHANCE, CRAFT_KINDS, ACHIEVEMENTS, ACHIEVEMENT_IDS, cleanProgress, nextNote, shouldSpawnBottle, evaluate, achievementName };
