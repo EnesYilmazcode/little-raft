@@ -138,7 +138,7 @@ export function createSpyglass(ctx) {
     if (forced) return true;
     const d = doc(); if (!d) return false;
     const rc = globalThis.raftControls;
-    if (d.pointerLockElement && rc?.input?.down?.('aim')) return true;
+    if (rc?.input?.down?.('aim') && (d.pointerLockElement || rc.input.activeDevice === 'pad')) return true; // pad LT works unlocked too
     return rmbDrag && (!!d.body?.classList.contains('drag-look') || !rc?.input);
   }
 
@@ -195,10 +195,11 @@ export function createSpyglass(ctx) {
   }
 
   function keyText() {
-    const code = globalThis.raftControls?.map?.bindings?.aim?.keys?.[0] ?? null;
+    const rc = globalThis.raftControls, aim = rc?.map?.bindings?.aim;
+    const code = (rc?.input?.activeDevice === 'pad' ? aim?.pad?.[0] : aim?.keys?.[0]) ?? null; // pad players see LT, not RMB
     if (code !== promptCode) {
       promptCode = code;
-      const map = globalThis.raftControls?.map;
+      const map = rc?.map;
       let txt = 'RMB';
       if (code && code !== 'Mouse2' && map && typeof map.label === 'function') { try { txt = String(map.label(code)); } catch { txt = 'RMB'; } }
       const e = ctx.esc ? ctx.esc(txt) : txt.replace(/[&<>"']/g, '');
