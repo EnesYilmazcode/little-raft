@@ -32,6 +32,10 @@ dialog{max-height:calc(100dvh - 30px);overflow:auto;overscroll-behavior:contain}
 .pf-row>b,.pf-row>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .pf-note{min-height:28px;padding-left:12px;font-weight:500;font-size:13px;line-height:1.3;color:#efe4cb;white-space:normal}
 .pf-note i{flex:none;width:6px;height:6px;transform:rotate(45deg);background:var(--amber,#e9a640)}
+/* Danger rows (pickup-feed.js kind 'danger'): red accent bar, round "!" badge, brighter text; they hide the first-run hint row */
+.pf-note.pf-danger{min-height:34px;padding-left:10px;font-weight:700;font-size:14px;color:#fff1ea;box-shadow:inset 3px 0 0 #e5483a;background:linear-gradient(90deg,#5a1410e6 0%,#3a0d0ab0 60%,#3a0d0a00 100%)}
+.pf-note.pf-danger i.pf-warn{display:grid;place-items:center;width:20px;height:20px;transform:none;border-radius:50%;background:#e5483a;color:#fff;font:800 13px/1 var(--ui-font);font-style:normal;text-shadow:none;box-shadow:0 0 0 2px #ffffff30}
+#pickupFeed:has(>.pf-danger:not(.out))>.pf-hint{display:none}
 @keyframes pf-in{from{opacity:0;transform:translateX(-22px)}to{opacity:1;transform:none}}
 @keyframes pf-bump{40%{transform:scale(1.18)}}@keyframes pf-bump2{40%{transform:scale(1.18)}}
 @media(max-width:1000px){#pickupFeed{max-width:calc(50vw - 134px)}} /* too little room beside the hotbar: still above the vitals panel, so it can run wider */

@@ -417,7 +417,7 @@ export function mount(transfer = null) {
       + '<li><kbd>X</kbd><span><b>Remove</b> the Foundation or piece you aim at while holding the Hammer. You get about half its materials back.</span></li>'
       + '<li><kbd>R</kbd><span><b>Rotate</b> the piece you are placing (<kbd>Shift</kbd> + wheel turns it finely), or <b>repair</b> a worn hook for 2 Plank and 1 Scrap.</span></li>'
       + '<li><kbd>Esc</kbd><span><b>Menu.</b> Settings, Play together and this guide.</span></li>';
-    const note = $('#help .guide-note'); if (note) note.textContent = 'Everyone has their own bag; the raft and the sea are shared. Nothing can hurt you, and your raft never sinks. Mouse won\'t lock? Drag the ocean to look instead.';
+    const note = $('#help .guide-note'); if (note) note.textContent = 'Everyone has their own bag; the raft and the sea are shared. Keep your food and water bars up: grill fish to eat, and purify sea water in a cup to drink. A shark bites edge foundations off the raft and bites swimmers: hit it with a spear to drive it off. Mouse won\'t lock? Drag the ocean to look instead.';
   }
 
   // ---------- Scene ----------
@@ -504,11 +504,11 @@ export function mount(transfer = null) {
   // The loss is named: a crate's contents sink with the foundation it stood on.
   const sharkBrokeText = sank => sank > 0 ? `The shark tore a foundation off \u2014 the crate on it sank with ${sank} item${sank === 1 ? '' : 's'}` : 'The shark tore a foundation off the raft!';
   function hurtLocal(n) {
-    shakeAmp = Math.max(shakeAmp, .2); beep(140); notice('The shark bit you!', 1400);
+    shakeAmp = Math.max(shakeAmp, .2); beep(140); notice('The shark bit you!', 3200, 'danger');
     if (typeof hurtPlayer === 'function') hurtPlayer(n, 'shark'); else window.raftDebug?.hurt?.(n, 'shark');
   }
   function sharkEffect(e) { // host and guest: cues for a bite, a broken tile or a bite on the guest
-    if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90), 2600);
+    if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90), 3600, 'danger');
     if (Number.isFinite(e.hurt) && e.hurt > 0 && role === 'guest') hurtLocal(Math.min(e.hurt, 100));
     if (!isInt(e.x) || !isInt(e.z) || !shark) return;
     const v = shark.view, d = Math.hypot(physics.x - e.x * 2, physics.z - e.z * 2), near = clamp(1 - d / 14, .25, 1);
@@ -667,7 +667,7 @@ export function mount(transfer = null) {
   const setText = (sel, v) => { const el = $(sel); if (el) el.textContent = v; };
   function setStatus(s) { setText('#networkStatus', s); }
   function feedSprite(k) { try { const t = document.createElement('template'); t.innerHTML = iconSVG(k); return t.content.firstElementChild; } catch { return null; } } // same flat sprite the hotbar shows until (or instead of) a 3D icon
-  function notice(s, ms = 1800) { if (s == null || s === '') return; noticeText = String(s).slice(0, 90); noticeUntil = performance.now() + Math.min(ms, 400); pickupFeed.note(noticeText); } // bottom-left feed, never the screen centre
+  function notice(s, ms = 1800, kind) { if (s == null || s === '') return; noticeText = String(s).slice(0, 90); noticeUntil = performance.now() + Math.min(ms, 400); if (kind === 'danger') pickupFeed.danger(noticeText, ms); else pickupFeed.note(noticeText); } // bottom-left feed, never the screen centre; 'danger' = red warning row
   function toast(s) {
     if (coop?.feed(s)) return; // coop: connection news goes to the bottom-left feed
     if (running) { notice(s, 2400); return; }
@@ -771,7 +771,7 @@ export function mount(transfer = null) {
     if (survivalUI?.isOpen) hintDone('bag');
     const bag = localBag(), has = k => { try { return bag.count(k) > 0; } catch { return false; } };
     for (const id of hintsFromState({hasRope:has('rope'), hasHammer:has('hammer'), built:(world?.tiles?.length ?? 0) > START_TILES})) hintDone(id);
-    const hint = running && !dialog && !guestWaiting() ? nextHint(hintsDone, {heldKind:heldKind(), castOut:!!hook, hasLoot:hintsDone.has('loot'), hasLeaf:has('leaf')}) : null;
+    const hint = running && !dialog && !guestWaiting() ? nextHint(hintsDone, {heldKind:heldKind(), castOut:!!hook, hasLoot:hintsDone.has('loot'), hasLeaf:has('leaf'), buildPrompt:!!building}) : null;
     const place = feedPlacement({inventoryOpen:!!survivalUI?.isOpen, optionsOpen:!!$('#options')?.open, dialog:!!dialog});
     const sig = (hint?.id ?? '') + '|' + place;
     if (sig === noticeCache) return; noticeCache = sig;

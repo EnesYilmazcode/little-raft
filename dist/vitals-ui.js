@@ -4,7 +4,7 @@
 // "You passed out" overlay. DOM is written only when a rounded value or a state flag changes.
 //
 //   const ui = createVitalsUI();
-//   ui.update(v, show)   // v = {hp, food, water, starving}; show = HUD visible (running, not title)
+//   ui.update(v, show)   // v = {hp, food, water, starving}; show = HUD visible (running, not title); posts low food/water hints
 //   ui.flash()           // one damage flash
 //   ui.faint(on)         // passed-out overlay
 //   ui.dispose()
@@ -63,7 +63,31 @@ export function hpColor(hp) { // green (full) -> amber -> red (empty)
   return `hsl(${hue} 62% ${46 + Math.round((1 - t) * 6)}%)`;
 }
 
-export function createVitalsUI(doc = document) {
+// One-time guidance when food or water first drops below WARN_BELOW; re-armed once it recovers above REARM_ABOVE.
+// A starving warning fires when an empty bar starts draining health. say(text) posts a red danger row to the feed.
+export const WARN_BELOW = 25, REARM_ABOVE = 50;
+export const VITAL_WARNINGS = Object.freeze({
+  water: 'Thirsty: drink fresh water (Cup + Water Purifier)',
+  food: 'Hungry: eat grilled fish (Grill)',
+  starving: 'Starving: your health is dropping. Eat and drink!',
+});
+const WARN_KEYS = ['water', 'food'];
+export function createVitalsWarner(say) {
+  const armed = {food:true, water:true, starving:true};
+  return function check(v) {
+    if (!v) return;
+    for (const k of WARN_KEYS) {
+      const n = Number(v[k]); if (!Number.isFinite(n)) continue;
+      if (armed[k] && n < WARN_BELOW) { armed[k] = false; say(VITAL_WARNINGS[k]); }
+      else if (!armed[k] && n > REARM_ABOVE) armed[k] = true;
+    }
+    if (armed.starving && v.starving) { armed.starving = false; say(VITAL_WARNINGS.starving); }
+    else if (!v.starving) armed.starving = true;
+  };
+}
+const feedDanger = text => { try { const f = globalThis.raftFeed; if (typeof f?.danger === 'function') f.danger(text); else f?.note?.(text, {kind:'danger'}); } catch {} };
+
+export function createVitalsUI(doc = document, {warn = feedDanger} = {}) {
   let style = doc.getElementById('lrVitalsStyle');
   if (!style) { style = doc.createElement('style'); style.id = 'lrVitalsStyle'; doc.head.appendChild(style); }
   if (style.textContent !== CSS) style.textContent = CSS;
@@ -81,6 +105,7 @@ export function createVitalsUI(doc = document) {
   const rows = {}, shown = {hp:-1, food:-1, water:-1}, low = {hp:null, food:null, water:null};
   for (const k of KEYS) { const r = root.querySelector('.lv-' + k); rows[k] = {row:r, fill:r.querySelector('.lv-fill'), num:r.querySelector('.lv-num')}; }
   let visible = false, starving = false, fainted = false;
+  const checkWarnings = createVitalsWarner(warn);
 
   function update(v, show) {
     show = !!show && !!v;
@@ -88,6 +113,7 @@ export function createVitalsUI(doc = document) {
     const st = show && !!v.starving;
     if (st !== starving) { starving = st; vignette.classList.toggle('on', st); }
     if (!show) return;
+    if (!fainted) checkWarnings(v);
     for (const k of KEYS) {
       const n = Math.max(0, Math.min(100, Math.ceil(v[k] - 1e-6)));
       if (n === shown[k]) continue;
