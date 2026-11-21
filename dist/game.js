@@ -398,11 +398,11 @@ export function mount(transfer = null) {
     camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 200); camera.rotation.order = 'YXZ'; scene.add(camera);
     renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:devicePixelRatio < 1.5}); // dense screens get their smoothing from pixels, not MSAA
     renderer.setSize(innerWidth, innerHeight);
-    renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
-    hemi = new T.HemisphereLight('#f2ead4', '#3d6b6a', 1.8); scene.add(hemi); // content hook: kept for day/night
-    sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.001; scene.add(sun, sun.target);
+    renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
+    hemi = new T.HemisphereLight('#bfe4ff', '#8a7550', .9); scene.add(hemi); // content hook: kept for day/night
+    sun = new T.DirectionalLight('#fff1d6', 3.4); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.0005; sun.shadow.normalBias = .02; scene.add(sun, sun.target);
     quality = createQuality({renderer, sun, preset:options.graphics, onChange:() => applyUserGraphics()}); // owns pixel ratio, shadow map size and sun.castShadow
-    ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
+    ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#a6e2ec', fadeNear:45, fadeFar:150}); ocean.uniforms.uDeep.value.set('#03405f'); ocean.uniforms.uShallow.value.set('#1c86a8'); ocean.uniforms.uZenith.value.set('#4fb3df'); ocean.mesh.receiveShadow = true; ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
     if (ART.artEnabled()) ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T}); // art lane hook
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
     itemsGroup = new T.Group(); scene.add(itemsGroup);
@@ -418,6 +418,7 @@ export function mount(transfer = null) {
     try { instruments?.dispose(); instruments = createInstruments(T, instHost()); } catch (e) { console.error('instruments failed', e); instruments = null; } // [instruments]
     islands.length = 0; aboveWater.length = 0; // diving lane hook: seafloor rises toward islands; these groups hide underwater
     for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); islands.push({x:g.position.x, z:g.position.z, r:5}); aboveWater.push(g); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); bakeGroup(g); scene.add(g); scenery.push([g, 6]); } // [sailing] islands drift past; diving: seafloor rises toward these
+    { const sc = scene; import('./island-model.js?build=v3-survival-ae77fa84ac2b').then(({createIsland}) => { if (scene !== sc) return; const g = createIsland(T, 7); g.position.set(40, 0, -88); g.rotation.y = .7; sc.add(singlePass(g)); aboveWater.push(g); sailing?.addDrifter(g, 20); }).catch(e => console.warn('island failed', e)); } // [visuals] one distant rocky landmark island (drifts with the sea, hidden underwater)
     for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; bakeGroup(g); scene.add(g); clouds.push(g); aboveWater.push(g); scenery.push([g, 0]); } // content + sailing: clouds
     setOwnedElsewhere(id => Object.prototype.hasOwnProperty.call(PROG_ITEMS, id)); // [progression-hook] items.js unlocks own the catalogue
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
