@@ -10,7 +10,6 @@
 //   applyLighting(scene, renderer)              -> recommended warm tropical rig (LIGHTING)
 //   artEnabled()                                -> true when the page URL has ?art (temporary hook gate)
 import { getAtlas } from './textures.js';
-import { createSky } from './sky.js';
 
 // Tuned against the research notes (sandbox/art/notes/research.md). roughness scales the map's roughness.
 // repeat = tiles per UV unit. normalScale = strength of the baked normal.
@@ -19,7 +18,7 @@ export const PRESETS = {
   plank:   { cell: 'plank',   roughness: 1,    metalness: 0,    normalScale: 0.9, repeat: [1, 3] }, // deck board: u across (0.34 m), v along
   bark:    { cell: 'bark',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [2, 4] }, // deck logs ~0.4 m round x 2 m
   plastic: { cell: 'plastic', roughness: 1,    metalness: 0,    normalScale: 0.8, repeat: [1, 1], transparent: true, opacity: 0.95, side: 'double' },
-  foliage: { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 0.7, repeat: [7, 4] }, // dense bush/island canopy, opaque
+  foliage: { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 0.7, repeat: [14, 7] }, // dense bush/island canopy, opaque
   leaf:    { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1], cutout: 0.5, side: 'double' },
   rope:    { cell: 'rope',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [3, 3] }, // tuned for deck lashing torus lay (~32 deg)
   scrap:   { cell: 'scrap',   roughness: 1,    metalness: 0.5,  normalScale: 1.0, repeat: [1, 1], metalMap: true }, // x metal mask in albedo alpha; capped: no env map in game
@@ -30,13 +29,14 @@ export const PRESETS = {
 };
 
 // Recommended rig: sky-blue hemisphere over a sea-teal bounce, warm sun about 3x the fill, fog matching
-// the horizon so the sea melts into the sky. Distances in metres. sky* = optional gradient dome (sky.js),
+// the horizon so the sea melts into the sky. Distances in metres. sky* = optional gradient dome (cheap,
+// no clouds of its own: the game's mesh clouds stay the one cloud style),
 // ocean* = ocean.js uniforms retinted by applyOceanLook().
 export const LIGHTING = {
   background: '#c6e3f0', fog: '#c6e3f0', fogNear: 38, fogFar: 150,
   hemiSky: '#bfe3ff', hemiGround: '#6f9fa4', hemiIntensity: 1.1,
   sun: '#ffe7c2', sunIntensity: 2.8, exposure: 1.0,
-  skyDome: true, skyZenith: '#6fb4e6', skyCloudLit: '#ffffff', skyCloudShade: '#d3e3ee', skyCoverage: 0.42,
+  skyDome: true, skyZenith: '#6fb4e6',
   oceanDeep: '#05497a', oceanShallow: '#13a0b0', oceanZenith: '#4f9fd6',
 };
 
@@ -125,7 +125,8 @@ export function materialForColor(T, color) {
 }
 
 // Apply LIGHTING to an existing scene (adjusts the first hemisphere/directional light it finds). With
-// L.skyDome it also adds one sky.js gradient dome (horizon = fog colour) that follows the camera.
+// L.skyDome it also adds one gradient dome (horizon = fog colour, untonemapped like the background)
+// that follows the camera.
 // extra = { ocean, T }: ocean ({uniforms}) is retinted via applyOceanLook; T (three namespace) enables the dome.
 // Idempotent, so it can be called again once the ocean exists.
 export function applyLighting(scene, renderer, L = LIGHTING, { ocean = null, T = null } = {}) {
@@ -138,11 +139,14 @@ export function applyLighting(scene, renderer, L = LIGHTING, { ocean = null, T =
   if (renderer) renderer.toneMappingExposure = L.exposure;
   let sky = scene.getObjectByName('art-sky');
   if (L.skyDome && T && !sky) {
-    const dome = createSky(T, { sunDirection: sun ? sun.position : undefined, horizon: L.fog, zenith: L.skyZenith, sunColor: L.sun, coverage: L.skyCoverage });
-    dome.uniforms.uCloudLit.value.set(L.skyCloudLit); dome.uniforms.uCloudShade.value.set(L.skyCloudShade);
-    sky = dome.group; sky.name = 'art-sky'; sky.userData.dome = dome;
-    const mesh = sky.children[0];
-    mesh.onBeforeRender = (r, s, cam) => { dome.update(performance.now() / 1000, null); sky.position.set(cam.position.x, 0, cam.position.z); sky.updateMatrixWorld(); };
+    const mat = new T.ShaderMaterial({
+      uniforms: { uHorizon: { value: new T.Color(L.fog) }, uZenith: { value: new T.Color(L.skyZenith) } },
+      vertexShader: 'varying float vY; void main() { vY = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform vec3 uHorizon, uZenith; varying float vY; void main() { gl_FragColor = vec4(mix(uHorizon, uZenith, pow(clamp(vY, 0.0, 1.0), 0.55)), 1.0); }\n#include <colorspace_fragment>',
+      side: T.BackSide, depthWrite: false, fog: false, toneMapped: false,
+    });
+    sky = new T.Mesh(new T.SphereGeometry(150, 24, 12), mat); sky.name = 'art-sky'; sky.frustumCulled = false; sky.renderOrder = -1;
+    sky.onBeforeRender = (r, s, cam) => { sky.position.set(cam.position.x, 0, cam.position.z); sky.updateMatrixWorld(); };
     scene.add(sky);
   }
   if (ocean) applyOceanLook(ocean, L);
