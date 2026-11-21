@@ -11,10 +11,11 @@
 //
 // Usage:
 //   node tools/sim-progression.mjs [--seed 1] [--runs 200] [--skill 1] [--minutes 120]
-//        [--dist path/to/dist] [--strict] [--nearest-only] [--overhead 5] [--json]
+//        [--dist path/to/dist] [--strict] [--nearest-only] [--overhead 7] [--json]
 //
 //   --runs N      run seeds seed..seed+N-1 and report p10 / median / p90
-//   --skill S     1 = attentive player; scales per-cast overhead (5 s / S) and aim
+//   --skill S     1 = attentive player; scales per-cast overhead (--overhead 7 s / S) and aim
+//   --overhead S  human time per cast at skill 1 (7 s calibrates to ~4.5-5 hooked items/min)
 //   --dist DIR    module directory (default ../dist); use a patched copy to try numbers
 //   --strict      craft goals strictly in PROGRESSION_PLAN order (no look-ahead)
 //   --nearest-only  always hook the nearest item, even if it cannot fit (default: skip debris
@@ -42,7 +43,7 @@ const OPT = {
   runs: Number(flag('runs', 1)),
   skill: Number(flag('skill', 1)),
   minutes: Number(flag('minutes', 120)),
-  overhead: Number(flag('overhead', 5)),
+  overhead: Number(flag('overhead', 7)),
   strict: !!flag('strict', false),
   nearestOnly: !!flag('nearest-only', false),
   json: !!flag('json', false),
@@ -164,6 +165,7 @@ function simulate(seed) {
   let floorsBuilt = 0, firstFloor = null;
   let caughtItems = 0, barrels = 0, netItems = 0, netBarrels = 0, casts = 0, fishCaught = 0, repairs = {};
   let hookIdle = 0, idle = 0, fullSeconds = 0;
+  const dry = []; let dryStart = null, dryWhy = '';
   const stalls = []; let stallKey = null, stallStart = 0, stallGoal = null;
   let t = 0;
 
@@ -509,7 +511,7 @@ function simulate(seed) {
 
   // ---- main loop
   const END = OPT.minutes * 60;
-  let netAcc = 0, freeAt = 0, lastPlan = null;
+  let netAcc = 0, freeAt = 0, lastPlan = null, fullAt = null; const early = {};
   for (t = 0; t < END; t++) {
     // world drift (1 s)
     for (const it of items) {
@@ -543,20 +545,26 @@ function simulate(seed) {
     }
     if (freeSlots() === 0) fullSeconds++;
     for (const g of GOALS) if (barrelsAt[g.key] == null && goalDone(g)) barrelsAt[g.key] = barrels + netBarrels;
-    if (process.env.SIM_TRACE && t % 300 === 0) console.log(`t=${t / 60}m barrels=${barrels}+${netBarrels} free=${freeSlots()} tiles=${tiles.length} gained=${JSON.stringify(gained)} goal=${lastPlan?.list.find((x) => !goalDone(x.g))?.g.key}`);
+    if (t === 30 * 60 - 1) { early.items = caughtItems; early.barrels = barrels + netBarrels; }
+    if (fullAt == null && freeSlots() === 0) fullAt = t;
+    if (process.env.SIM_TRACE && t % Number(process.env.SIM_TRACE) === 0) console.log(`t=${t / 60}m barrels=${barrels}+${netBarrels} free=${freeSlots()} tiles=${tiles.length} gained=${JSON.stringify(gained)} goal=${lastPlan?.list.find((x) => !goalDone(x.g))?.g.key}`);
     // stall tracking on the first open goal
     const P = lastPlan;
     if (P) {
       const first = P.list.find((x) => !goalDone(x.g));
       const raw = first ? Object.keys(first.ctx.raw).sort() : [];
-      if (P.list.filter((x) => !x.g.late).every((x) => !x.ready && Object.keys(x.ctx.raw).length)) idle++;
+      const open = P.list.filter((x) => !x.g.late);
+      const isIdle = open.length && open.every((x) => !x.ready && Object.keys(x.ctx.raw).length);
+      if (isIdle) { idle++; if (dryStart == null) { dryStart = t; dryWhy = Object.keys(first.ctx.raw).sort().join('+') + `(${first.g.key})`; } }
+      else if (dryStart != null) { if (t - dryStart >= 300) dry.push({ why: dryWhy, from: dryStart / 60, min: (t - dryStart) / 60 }); dryStart = null; }
       const key = raw.length === 1 ? raw[0] : null;
       if (key !== stallKey) {
-        if (stallKey && t - stallStart >= 300) stalls.push({ kind: stallKey, goal: stallGoal, from: stallStart / 60, min: (t - stallStart) / 60 });
+  if (stallKey && t - stallStart >= 300) stalls.push({ kind: stallKey, goal: stallGoal, from: stallStart / 60, min: (t - stallStart) / 60 });
         stallKey = key; stallStart = t; stallGoal = first?.g.key;
       }
     }
   }
+  if (dryStart != null && t - dryStart >= 300) dry.push({ why: dryWhy, from: dryStart / 60, min: (t - dryStart) / 60 });
   if (stallKey && t - stallStart >= 300) stalls.push({ kind: stallKey, goal: stallGoal, from: stallStart / 60, min: (t - stallStart) / 60 });
 
   const minutes = (s) => (s === undefined || s === null ? null : s / 60);
@@ -568,8 +576,9 @@ function simulate(seed) {
     goalsDone: GOALS.filter(goalDone).map((g) => g.key),
     inventory: Object.fromEntries(Object.entries(bag.counts()).filter(([, n]) => n > 0)),
     slotsUsed: 28 - freeSlots(), tiles: tiles.length, spill, spillEvents, barrelsLost, fullMin: fullSeconds / 60,
-    idleMin: idle / 60, hookIdleMin: hookIdle / 60, stalls, repairs, fishCaught,
-    rates: { hookedPerMin: caughtItems / hookedMin, castsPerMin: casts / hookedMin, barrelsHooked: barrels, barrelsNet: netBarrels, netItems, barrelsPerMin: (barrels + netBarrels) / hookedMin },
+    idleMin: idle / 60, dry, dryMaxMin: dry.reduce((m, d) => Math.max(m, d.min), 0), hookIdleMin: hookIdle / 60, stalls, repairs, fishCaught,
+    firstFullMin: minutes(fullAt),
+    rates: { early30ItemsPerMin: early.items / 30, early30BarrelsPerMin: early.barrels / 30, hookedPerMin: caughtItems / hookedMin, castsPerMin: casts / hookedMin, barrelsHooked: barrels, barrelsNet: netBarrels, netItems, barrelsPerMin: (barrels + netBarrels) / hookedMin },
   };
 }
 
@@ -619,12 +628,16 @@ for (let i = 0; i < rows.length; i += 3) console.log('  ' + rows.slice(i, i + 3)
 console.log('\nBarrels opened (hook+net) when goal done, median: ' + ['net', 'brick', 'smelter', 'metalingot', 'metalhook', 'copperingot', 'binoculars'].map((k) => `${k} ${f1(med((r) => r.barrelsAt[k]))}`).join(', '));
 const rt = (k) => f1(med((r) => r.rates[k]));
 console.log(`\nIncome: hooked items/min ${rt('hookedPerMin')}, casts/min ${rt('castsPerMin')}, barrels/min (hook+net) ${rt('barrelsPerMin')}, net items (median) ${f1(med((r) => r.rates.netItems))}, fish ${f1(med((r) => r.fishCaught))}`);
+console.log(`First 30 min: hooked items/min ${rt('early30ItemsPerMin')}, barrels/min ${rt('early30BarrelsPerMin')}; bag first full at min ${f1(med((r) => r.firstFullMin))} (p10 ${f1(q(runs.map((r) => r.firstFullMin), 0.1))})`);
 console.log(`Raft tiles (median) ${f1(med((r) => r.tiles))}; slots used at end ${f1(med((r) => r.slotsUsed))}/28 (p90 ${f1(p90((r) => r.slotsUsed))})`);
 console.log(`Bag full: median ${f1(med((r) => r.fullMin))} min (p90 ${f1(p90((r) => r.fullMin))}); rejected catches median ${f1(med((r) => r.spillEvents))} (p90 ${f1(p90((r) => r.spillEvents))}), barrels lost median ${f1(med((r) => r.barrelsLost))}`);
 console.log(`Idle (every open goal waiting on raw income): median ${f1(med((r) => r.idleMin))} min (p90 ${f1(p90((r) => r.idleMin))}); no item in reach: ${f1(med((r) => r.hookIdleMin))} min`);
+const dryCount = {}; let dryRuns = 0;
+for (const r of runs) { if (r.dry.length) dryRuns++; for (const d of r.dry) dryCount[d.why] = (dryCount[d.why] || 0) + 1; }
+console.log(`Dry spells >5 min (nothing craftable, only gathering): ${runs.reduce((s, r) => s + r.dry.length, 0)} in ${dryRuns}/${runs.length} runs; longest per run median ${f1(med((r) => r.dryMaxMin))} min, p90 ${f1(p90((r) => r.dryMaxMin))}; waiting on: ${Object.entries(dryCount).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n]) => `${k} ${n}`).join(', ')}`);
 const stallCount = {}; let stallRuns = 0;
-for (const r of runs) { if (r.stalls.length) stallRuns++; for (const s of r.stalls) stallCount[s.kind] = (stallCount[s.kind] || 0) + 1; }
-console.log(`Stalls >5 min on one material: ${runs.reduce((s, r) => s + r.stalls.length, 0)} total in ${stallRuns}/${runs.length} runs; by kind: ${Object.entries(stallCount).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'}`);
+for (const r of runs) { if (r.stalls.length) stallRuns++; for (const s of r.stalls) { const k = `${s.kind}(${s.goal})`; stallCount[k] = (stallCount[k] || 0) + 1; } }
+console.log(`Stalls >5 min on one material: ${runs.reduce((s, r) => s + r.stalls.length, 0)} total in ${stallRuns}/${runs.length} runs; by material(goal): ${Object.entries(stallCount).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'}`);
 const longest = runs.flatMap((r) => r.stalls.map((s) => ({ ...s, seed: r.seed }))).sort((a, b) => b.min - a.min).slice(0, 5);
 if (longest.length) console.log('  longest: ' + longest.map((s) => `${s.kind}/${s.goal} ${s.min.toFixed(1)}m @${s.from.toFixed(0)} (seed ${s.seed})`).join('; '));
 if (OPT.runs === 1) {
