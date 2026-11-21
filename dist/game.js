@@ -866,7 +866,7 @@ export function mount(transfer = null) {
     if (typeof a.kind === 'string' && a.kind.startsWith('fc:')) { fc?.applyAction(a, actor, {count:k => bag.count(k), remove:(k, n) => bag.remove(k, n), add:(k, n) => bag.add(k, n), emit:text => emit({kind:'notice', text}, actor)}); return; } // [fishing-cooking]
     if (a.kind === 'selectSlot') { bag.select(a.index); return; }
     if (a.kind === 'spear:wear') { if (Number.isInteger(a.slot)) spearWear(bag, a.slot, actor); return; } // [spear] a guest's spear hit
-    if (a.kind === 'sharkHit') { if (Number.isFinite(a.d) && a.d > 0) shark?.api.hit(Math.min(200, a.d)); return; } // [shark] a guest's spear hit
+    if (a.kind === 'sharkHit') { if (Number.isFinite(a.d) && a.d > 0) { spearKiller = actor; try { shark?.api.hit(Math.min(200, a.d)); } finally { spearKiller = 'host'; } } return; } // [shark] a guest's spear hit; a kill pays the guest
     if (a.kind === 'needs:eat' || a.kind === 'needs:died') { applyNeeds(a, actor, bag); return; } // [needs]
     if (a.kind === 'sail') { const t = sailing?.apply(a, actor); if (t) emit({kind:'notice', text:t}, actor); return; } // [sailing]
     if (a.kind === 'moveSlot') { bag.move(a.from, a.to, a.amount ?? undefined); return; }
@@ -993,7 +993,7 @@ export function mount(transfer = null) {
 
   // [spear] wooden spear: timing + hit maths in spear.js; the shark is whatever bus.shark holds (may be null).
   const spearStab = createStab(), spearO = new T.Vector3(), spearD = new T.Vector3(), spearP = {x:0, y:0, z:0};
-  let spearMarkT = 0, spearMarkEl = null, spearShark = null, spearLastHit = -1;
+  let spearMarkT = 0, spearMarkEl = null, spearShark = null, spearLastHit = -1, spearKiller = 'host'; // spearKiller: actor whose hit is being applied (onDeath runs inside it)
   function spearMark(kill) {
     if (!spearMarkEl?.isConnected) { spearMarkEl = $('#spearHit') ?? document.body.appendChild(Object.assign(document.createElement('div'), {id:'spearHit'})); spearMarkEl.setAttribute('aria-hidden', 'true'); }
     spearMarkEl.classList.add('on'); spearMarkEl.classList.toggle('kill', !!kill); spearMarkT = kill ? .3 : .14;
@@ -1003,12 +1003,13 @@ export function mount(transfer = null) {
     if (r.broke) emit({kind:'notice', text:'Your spear snapped!'}, actor);
     else if (r.durability <= 20 && r.durability + wearPerUse('spear') > 20) emit({kind:'notice', text:'Your spear is getting worn'}, actor);
   }
-  function spearKill() { // host only: the shark's meat goes straight into the host's bag
+  function spearKill() { // host only: the shark's meat goes straight into the killer's bag
     if (role === 'guest' || disposed) return;
-    const r = giveSharkMeat(hostBag, SPEAR.meatDrop);
-    if (r.added > 0) emit({kind:'loot', text:`+ ${r.added} ${itemName('sharkmeat')}`, loot:{sharkmeat:r.added}}, 'host');
-    if (r.lost > 0) emit({kind:'full', text:'Bag full: some shark meat sank'}, 'host');
-    if (elapsed - spearLastHit < 3) spearMark(true);
+    const who = spearKiller === 'guest' ? 'guest' : 'host';
+    const r = giveSharkMeat(actorBag(who), SPEAR.meatDrop);
+    if (r.added > 0) emit({kind:'loot', text:`+ ${r.added} ${itemName('sharkmeat')}`, loot:{sharkmeat:r.added}}, who);
+    if (r.lost > 0) emit({kind:'full', text:'Bag full: some shark meat sank'}, who);
+    if (who === 'host' && elapsed - spearLastHit < 3) spearMark(true);
   }
   function spearUpdate(dt) {
     const sh = spearBus.shark;
