@@ -199,8 +199,8 @@ function boot() {
 
   // ----- tracker -----
   const panel = document.createElement('aside');
-  panel.id = 'obNotes'; panel.className = 'ob-notes'; panel.setAttribute('aria-label', 'Notes');
-  panel.innerHTML = '<button type="button" class="ob-head" aria-expanded="true"><span class="ob-ch"></span><span class="ob-sum"></span><i class="ob-chev" aria-hidden="true"></i></button><ol class="ob-rows" aria-live="polite"></ol><div class="ob-log" hidden></div>';
+  panel.id = 'obNotes'; panel.className = 'ob-notes'; panel.setAttribute('aria-label', 'Goals');
+  panel.innerHTML = '<button type="button" class="ob-head" aria-expanded="true"><span class="ob-ch"></span><span class="ob-sum"></span><kbd class="ob-key" aria-hidden="true" title="Press N to show or hide">N</kbd><i class="ob-chev" aria-hidden="true"></i></button><ol class="ob-rows" aria-live="polite"></ol><div class="ob-log" hidden></div>';
   document.body.append(panel);
   // The bag opens modally in the top layer and would cover the Notes. A manual popover lives in the top layer too;
   // re-showing it after the bag opens stacks it above (other dialogs - pause, journal, logbook - stay on top of it). No popover support: stays a plain fixed panel.
@@ -243,7 +243,7 @@ function boot() {
   function renderHead(ch) {
     const all = ch === null, list = STEPS.filter(s => s.chapter === ch && !s.optional);
     panel.classList.toggle('ob-all', all);
-    head.querySelector('.ob-ch').textContent = all ? 'Notes' : collapsed ? 'Notes' : chName(ch);
+    head.querySelector('.ob-ch').textContent = all || collapsed ? 'Goals' : chName(ch); // Goals, not Notes: the logbook's bottle notes are a different thing
     head.querySelector('.ob-sum').textContent = all ? '' : `${collapsed ? '· ' : ''}${list.filter(s => P.done[s.id]).length}/${list.length}`;
     const open = all ? logOpen : !collapsed;
     panel.classList.toggle('ob-collapsed', !all && collapsed); panel.classList.toggle('ob-logopen', all && logOpen);

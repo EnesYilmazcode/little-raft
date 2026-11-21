@@ -16,6 +16,7 @@ import { createSmelterModel, createResearchTableModel, createGrillModel, setSmel
 import { installItemTooltips } from './item-tooltips.js';
 
 export const PROGRESSION_KEY = 'littleRaft.progression.v1';
+const AIM_SLACK = 0.8; // m: how far the aim ray may pass beside a station's centre and still name it
 const REACH = 2.2, NOTE_EVERY = 0.5, SAVE_EVERY = 2, SYNC_EVERY = 0.3;
 const COOKERS = new Set(Object.values(ITEMS).map((it) => it.recipe?.station).filter(Boolean));
 const STATIONS = new Set(Object.keys(ITEMS).filter((id) => ITEMS[id].category === 'station'));
@@ -235,8 +236,26 @@ export function attachProgression(ctx) {
     }
     return best;
   }
+  // The station the aim ray points at (horizontal miss distance from its centre), nearest first, with its distance.
+  function aimedStation(aim) {
+    const dir = aim?.dir, me = ctx.pose(), h = dir ? Math.hypot(dir.x, dir.z) : 0; if (!(h > 0.2)) return null; // looking straight up or down
+    let best = null, bestAlong = Infinity;
+    for (const d of decor()) {
+      if (!STATIONS.has(d.type)) continue;
+      const vx = d.x * 2 - me.x, vz = d.z * 2 - me.z, along = (vx * dir.x + vz * dir.z) / h, miss = Math.abs(vx * dir.z - vz * dir.x) / h;
+      if (along > -0.5 && miss <= AIM_SLACK && along < bestAlong) { bestAlong = along; best = d; }
+    }
+    return best ? { d: best, dist: Math.hypot(best.x * 2 - me.x, best.z * 2 - me.z) } : null;
+  }
+  // Look-at prompt for the crosshair (game.js passes it to raftPrompts): 'E Use Smelter' / 'E Research', or a muted
+  // 'move closer' just out of reach. Shown only while aiming at the station, so a held tool's own prompt is not hidden.
+  function prompt(aim) {
+    const a = aimedStation(aim); if (!a || a.dist > REACH + 1.5) return null;
+    if (a.dist > REACH) return `${esc(nameOf(a.d.type))}: move closer`;
+    return `<kbd>E</kbd>${a.d.type === 'researchtable' ? 'Research' : 'Use ' + esc(nameOf(a.d.type))}`;
+  }
   function interact(aim) {
-    const d = stationNear(aim); if (!d) return false;
+    const t = aimedStation(aim), d = t && t.dist <= REACH ? t.d : stationNear(aim); if (!d) return false; // the prompted station wins
     if (d.type === 'researchtable') openResearch(); else openStation(keyOf(d));
     return true;
   }
@@ -372,7 +391,7 @@ export function attachProgression(ctx) {
   }
 
   const stationAt = (x, z) => stationView(keyOf({ x, z })); // a placed cooker's contents (host model or guest mirror), or null: game.js refuses to remove a full one
-  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, reload, reset, dispose, debug, barrelLuck, stationAt, progression: (actor) => (actor ? progs[actor] : myProg()) };
+  return { apply, effect, tick, interact, prompt, modelFor, recipeGate, installUI, save, reload, reset, dispose, debug, barrelLuck, stationAt, progression: (actor) => (actor ? progs[actor] : myProg()) };
 }
 
 export default attachProgression;

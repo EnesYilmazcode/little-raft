@@ -14,6 +14,7 @@ import { Journal, createJournalPanel, BASKET_MAX } from './fish-journal.js';
 import { SPECIES, speciesById, dishName } from './fish-species.js';
 import { GrillState, COOK_TUNING, cookTime, createGrillModel, createSmoke } from './cooking.js';
 import { createFishModel, setFishState, wiggle } from './fish-models.js';
+import { topLeftColumn } from './hud.js?build=v3-survival-ae77fa84ac2b';
 
 export const FC_SAVE_KEY = 'little-raft-fc-v1';
 export const MAX_GRILLS = 6, GRILL_REACH = 2.2, GRILL_COST = Object.freeze({ wood: 4, scrap: 2 });
@@ -216,7 +217,7 @@ export function createFishingCooking(T, host) {
   if (HAS_DOC) {
     if (!document.getElementById('fc-style-glue')) { ownStyle = document.createElement('style'); ownStyle.id = 'fc-style-glue'; ownStyle.textContent = CSS; document.head.appendChild(ownStyle); }
     chip = document.createElement('div'); chip.id = 'fcChip'; chip.setAttribute('aria-hidden', 'true'); document.body.appendChild(chip);
-    toastBox = document.createElement('div'); toastBox.id = 'fcToast'; toastBox.setAttribute('role', 'status'); document.body.appendChild(toastBox);
+    toastBox = document.createElement('div'); toastBox.id = 'fcToast'; toastBox.setAttribute('role', 'status'); topLeftColumn(document).appendChild(toastBox); // stacks under the pinned recipe
   }
   function toast(text, soft = false) {
     if (!toastBox) return;

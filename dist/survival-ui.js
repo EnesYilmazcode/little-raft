@@ -2,6 +2,7 @@
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_ICONS } from './item-svg.js'; // [progression-hook]
+import { topLeftColumn } from './hud.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, craftButtonText, holdDelay, holdHint, ringOffset, ringCount, RING_LEN, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 
@@ -205,7 +206,7 @@ const CSS = `
   background:linear-gradient(#1c2427,#141b1e);box-shadow:inset 0 0 0 1px #ffffff33;color:#c9cfd0;font:700 11px/1.1 ${FONT};letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
 #inventory .sv-tab .sv-icon{width:22px;height:22px;opacity:.8}
 #inventory .sv-tab:hover{color:#f8f3e6;box-shadow:inset 0 0 0 1px #fff6e0aa}
-#inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#46545a,#1c2529);color:#0b1013;box-shadow:inset 0 0 0 1px #fff6e0,0 2px 0 #fff6e0}
+#inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#46545a,#1c2529);color:#fff6e0;font-weight:800;box-shadow:inset 0 0 0 1px #fff6e0,0 2px 0 #fff6e0}
 #inventory .sv-tab[aria-selected="true"] .sv-icon{opacity:1}
 #inventory .sv-tab:focus-visible{outline:2px solid #fff6e0;outline-offset:1px}
 #inventory .sv-tbadge{position:absolute;right:3px;top:3px;min-width:15px;padding:2px 3px;border-radius:8px;background:#6fbf4a;color:#14270b;font:800 10px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
@@ -704,7 +705,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       t = document.createElement('aside');
       t.id = 'craftTracker'; t.hidden = true;
       t.setAttribute('aria-label', 'Pinned recipe');
-      (document.getElementById('hud') || document.body).append(t);
+      topLeftColumn(document).append(t); // shared top-left column: fishing toasts stack below it
     }
     trackEl = t; trackSig = null;
     return t;

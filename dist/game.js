@@ -46,6 +46,7 @@ import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, countBarrelLuck, copyBarrelLuck, cleanBarrelLoot, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
 import { getSaveStore } from './save-store.js'; // every per-save part lives inside the world save (one guarded write)
+import { parseContextPrompt } from './prompts.js'; // same URL as index.html's script: one shared instance
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
@@ -392,6 +393,10 @@ export function mount(transfer = null) {
       + '<li><kbd>Craft</kbd><span><b>Make tools.</b> A Hammer builds raft floors (2 wood, 2 plastic each). A Fishing Rod catches fish. Crafted decorations are placed one at a time.</span></li>'
       + '<li><kbd>X</kbd><span><b>Remove</b> the floor or piece you aim at while holding the Hammer. You get about half its materials back.</span></li>'
       + '<li><kbd>R</kbd><span><b>Rotate</b> the piece you are placing (<kbd>Shift</kbd> + wheel turns it finely), or <b>repair</b> a worn hook for 2 wood and 1 scrap.</span></li>'
+      + '<li><kbd>E</kbd><span><b>Use a station</b>: look at a smelter, grill, research table or crate and press E.</span></li>'
+      + '<li><kbd>L</kbd><span><b>Logbook.</b> Messages from bottles and your raft\u2019s milestones.</span></li>'
+      + '<li><kbd>J</kbd><span><b>Fisher\u2019s notebook.</b> Every species you have caught.</span></li>'
+      + '<li><kbd>N</kbd><span><b>Goals.</b> Show or hide the goal list in the top-right corner.</span></li>'
       + '<li><kbd>Esc</kbd><span><b>Menu.</b> Settings, Play together and this guide.</span></li>';
     const note = $('#help .guide-note'); if (note) note.textContent = 'Everyone has their own bag; the raft and the sea are shared. Nothing can hurt you, and your raft never sinks. Mouse won\'t lock? Drag the ocean to look instead.';
   }
@@ -490,7 +495,10 @@ export function mount(transfer = null) {
       warmedKinds.add(k); fresh = true; hands.preload([k]);
       if (k === 'hammer') ghosts.preload(['floor']); else if (DECOR_TYPES.includes(k)) ghosts.preload([k]);
     }
-    if (fresh) { try { renderer.compileAsync(scene, camera).catch(() => {}); } catch (e) { console.warn('shader warm-up failed', e); } }
+    // Synchronous compile: compileAsync polls every scene material on a timer, and a material disposed mid-poll
+    // (a caught fish, collected debris) threw an uncaught 'reading isReady' error. Without
+    // KHR_parallel_shader_compile the async path compiled synchronously anyway.
+    if (fresh) { try { renderer.compile(scene, camera); } catch (e) { console.warn('shader warm-up failed', e); } }
   }
 
   // Fits the sun's shadow box to the raft (plus a margin for props, avatars and nearby supplies). Call after tiles change.
@@ -530,9 +538,9 @@ export function mount(transfer = null) {
   // Compile every scene program up front (hidden viewmodels, hook, rope, ghost) so the first frame after #solo doesn't.
   // compile() walks the scene graph, so all viewmodels are attached just for the synchronous part of the call.
   function warmShaders() {
-    if (typeof renderer.compileAsync !== 'function') return;
+    if (typeof renderer.compile !== 'function') return;
     hands?.preload(['hammer', 'fishingrod']);
-    try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
+    try { renderer.compile(scene, camera); } // synchronous: no timer poll that can trip over a disposed material (see warmKinds)
     catch (e) { console.warn('shader warm-up failed', e); }
   }
   function palm(parent, x, y, z, s = 1) {
@@ -610,21 +618,28 @@ export function mount(transfer = null) {
   }
   // Old tone API (fishing-cooking lane, logbook): routed to the procedural sound recipes in audio.js.
   function beep(f = 500) { play(f >= 850 ? 'bite' : f >= 600 ? 'catch' : f >= 420 ? 'collect' : f >= 260 ? 'ui' : f >= 200 ? 'throw' : 'splash', .8); }
-  let contextHtml = null;
+  let contextHtml = null, objectHtml = '', objectPromptOff = null;
+  // Object prompts (content hook: crate, tinker's desk, bees, islands; grill; purifier and planter; stations) go to the
+  // crosshair prompt through raftPrompts, above the held tool's tip. #contextPrompt is hidden (prompts.css), so they skip it.
+  function provideObjectPrompt() {
+    const rp = window.raftPrompts; if (objectPromptOff || typeof rp?.provide !== 'function') return;
+    objectPromptOff = rp.provide({id:'game-objects', priority:2, prompt:() => (running && objectHtml ? parseContextPrompt(objectHtml) : null)});
+  }
   const removeName = () => targetName(removeTarget, (k, what) => what === 'piece' ? (PIECES[k]?.name ?? k).toLowerCase() : ITEM_INFO[k]?.name ?? k);
   const laneNoRemoveHint = () => !!(building && building.piece !== 'foundation'); // placing walls etc.: the X hint shows only while X is held
   const buildPromptInfo = () => ({remove:removeTarget && !laneNoRemoveHint() ? removeName() : '', removeWhy:removeText, name:ITEM_INFO[heldKind()]?.name ?? heldKind(),
     cost:Object.entries(FLOOR_COST).map(([k, n]) => `${n} ${itemName(k)}`).join(', '), missing:heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST) ? missingText(localBag(), FLOOR_COST) : ''});
   function updateContext(dialog) {
-    let html = '';
+    let html = '', obj = '', stationHtml = null; provideObjectPrompt();
     if (running && !dialog) {
       if (guestWaiting()) html = 'Waiting for your brother’s raft…';
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
       else if (building?.removing && heldKind() === 'hammer') html = removePrompt(removeName(), removeText, true); // X held: what releasing it removes, or why not
       else if (hover?.blocked) html = placePrompt(hover, heldKind(), buildPromptInfo()); // why a red ghost is refused
-      else if (waterAim?.prompt) html = waterAim.prompt;
-      else if ((contextHtml = content?.prompt(frameAim) ?? null)) html = contextHtml; // content hook
-      else if (fc?.prompt) html = fc.prompt; // [fishing-cooking] trusted static markup from the lane module
+      else if (waterAim?.prompt) obj = waterAim.prompt;
+      else if ((contextHtml = content?.prompt(frameAim) ?? null)) obj = contextHtml; // content hook
+      else if (fc?.prompt) obj = fc.prompt; // [fishing-cooking] trusted static markup from the lane module
+      else if ((stationHtml = prog?.prompt?.(frameAim) ?? null)) obj = stationHtml; // [progression-hook] smelter / research table
       else if (hover || removeTarget) html = placePrompt(hover, heldKind(), buildPromptInfo()); // what a click does (cost, R rotate, X remove), or why it can't
       else if (hook?.fishing) html = esc(castPrompt(hook, fishWait));
       else if (hookFull && castOut()) html = 'Bag full: free a slot to reel it in';
@@ -632,6 +647,7 @@ export function mount(transfer = null) {
     }
     const usable = !!(running && !dialog && (pickTarget || waterAim?.click || waterAim?.e));
     if (usable !== crossUsable) { crossUsable = usable; $('#crosshair')?.classList.toggle('usable', usable); } // dot grows over interactables
+    objectHtml = obj;
     if (html === contextCache) return; contextCache = html;
     const el = $('#contextPrompt'); if (!el) return; el.innerHTML = html; el.hidden = !html;
   }

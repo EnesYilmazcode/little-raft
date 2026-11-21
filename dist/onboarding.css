@@ -13,6 +13,8 @@ body.playing .ob-notes{display:block;animation:obFade .5s ease-out}
 .ob-sum{font:600 11px/1 var(--ui-font,system-ui,sans-serif);color:var(--ob-dim);font-variant-numeric:tabular-nums}
 .ob-chev{width:7px;height:7px;border-right:1.5px solid var(--ob-bronze);border-bottom:1.5px solid var(--ob-bronze);transform:translateY(-2px) rotate(45deg);transition:transform .2s}
 .ob-collapsed .ob-chev{transform:translateY(1px) rotate(-135deg)}
+.ob-key{margin-left:auto;flex:none;align-self:center;min-width:15px;padding:1px 3px;box-sizing:border-box;border:1px solid var(--ob-bronze);border-bottom-width:2px;border-radius:3px;font:700 9px/1 var(--ui-font,system-ui,sans-serif);text-align:center;color:var(--ob-dim);opacity:.85}
+.ob-key+.ob-chev,.ob-collapsed .ob-key+.ob-chev{margin-left:0}.ob-all .ob-key{display:none}
 .ob-shimmer .ob-ch{background:linear-gradient(90deg,var(--ob-bronze) 0 35%,#ffc96b 50%,var(--ob-bronze) 65% 100%);background-size:300% 100%;
   -webkit-background-clip:text;background-clip:text;color:transparent;animation:obShimmer 1.2s ease-out 1}
 .ob-rows{list-style:none;margin:0;padding:0}
