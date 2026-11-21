@@ -24,11 +24,6 @@ const glslWaves = WAVES.map(([dx, dz, a, l, q]) => {
   const n = Math.hypot(dx, dz);
   return `wave(vec2(${f5(dx / n)}, ${f5(dz / n)}), ${f5(a)} * uAmp, ${f5(l)}, ${f5(q)}, p, disp, tng, bin);`;
 }).join('\n  ');
-// Per-pixel Jacobian terms (smooth crest foam; per-vertex looked blocky on the 2.8 m grid).
-const glslJac = WAVES.map(([dx, dz, a, l, q]) => {
-  const n = Math.hypot(dx, dz);
-  return `jacobian(vec2(${f5(dx / n)}, ${f5(dz / n)}), ${f5(a)} * uAmp, ${f5(l)}, ${f5(q)}, p, jac);`;
-}).join('\n  ');
 
 const vertexShader = /* glsl */`
 uniform float uTime;
@@ -36,9 +31,11 @@ uniform float uAmp;
 varying vec3 vWorld;
 varying vec3 vNormalW;
 varying float vHeight;
-varying vec2 vBase;
 varying float vViewZ;
+varying float vPinch;
 
+// Also accumulates jac = (dDx/dx, dDz/dz, dDx/dz) of the horizontal displacement for crest foam (free: reuses sin).
+vec3 jac = vec3(0.0);
 void wave(vec2 d, float a, float L, float Q, vec2 p, inout vec3 disp, inout vec3 tng, inout vec3 bin) {
   float k = 6.2831853 / L;
   float c = sqrt(9.8 / k) * ${SPEED.toFixed(3)};
@@ -49,19 +46,20 @@ void wave(vec2 d, float a, float L, float Q, vec2 p, inout vec3 disp, inout vec3
   float ka = k * a, kqa = k * qa;
   tng += vec3(-d.x * d.x * kqa * s, d.x * ka * co, -d.x * d.y * kqa * s);
   bin += vec3(-d.x * d.y * kqa * s, d.y * ka * co, -d.y * d.y * kqa * s);
+  jac += vec3(-d.x * d.x, -d.y * d.y, -d.x * d.y) * (kqa * s);
 }
 
 void main() {
   vec4 wp = modelMatrix * vec4(position, 1.0);
   vec2 p = wp.xz;
   vec3 disp = vec3(0.0);
-  vBase = p;
   vec3 tng = vec3(1.0, 0.0, 0.0), bin = vec3(0.0, 0.0, 1.0);
   ${glslWaves}
   wp.xyz += disp;
   vWorld = wp.xyz;
   vHeight = disp.y;
   vNormalW = normalize(cross(bin, tng));
+  vPinch = 1.0 - ((1.0 + jac.x) * (1.0 + jac.y) - jac.z * jac.z);   // 1 - Jacobian: > 0 where crests bunch up
   vec4 mv = viewMatrix * wp;
   vViewZ = mv.z;
   gl_Position = projectionMatrix * mv;
@@ -102,15 +100,8 @@ uniform mat4 uReflectMatrix;
 varying vec3 vWorld;
 varying vec3 vNormalW;
 varying float vHeight;
-varying vec2 vBase;
 varying float vViewZ;
-
-// jac.xyz accumulates dDx/dx, dDz/dz, dDx/dz of the Gerstner horizontal displacement.
-void jacobian(vec2 d, float a, float L, float Q, vec2 p, inout vec3 jac) {
-  float k = 6.2831853 / L;
-  float f = k * (dot(d, p) - sqrt(9.8 / k) * ${SPEED.toFixed(3)} * uTime);
-  jac += vec3(-d.x * d.x, -d.y * d.y, -d.x * d.y) * (k * Q * a * sin(f));
-}
+varying float vPinch;
 
 float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float vnoise(vec2 p) {
@@ -210,11 +201,9 @@ void main() {
   float iso = abs(fnoise - 0.5), isoAA = fwidth(fnoise) + 1e-4;
 
   // Foam 1: crests where the Gerstner map compresses (1 - J), plus the very top of tall crests.
-  vec3 jac = vec3(0.0);
-  { vec2 p = vBase; ${glslJac} }
-  float pinch = 1.0 - ((1.0 + jac.x) * (1.0 + jac.y) - jac.z * jac.z);
+  float pinch = vPinch;
   float crestMask = clamp((pinch - uFoamStart) * 7.0 + smoothstep(0.09, 0.2, vHeight / uAmp) * 0.35, 0.0, 1.0);
-  float crest = clamp((0.012 + crestMask * 0.09 - iso) / isoAA + 0.5, 0.0, 1.0) * step(0.02, crestMask);
+  float crest = clamp((0.012 + crestMask * 0.09 - iso) / isoAA + 0.5, 0.0, 1.0) * smoothstep(0.0, 0.08, crestMask);
 
   // Foam 2: hugging band on the logs + lacy wake rings that pulse outward and fade by ~1.3 m.
   float ring = 0.5 + 0.5 * sin(rd * 5.0 - uTime * 1.8 + n1 * 3.0);
