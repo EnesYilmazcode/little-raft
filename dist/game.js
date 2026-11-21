@@ -8,7 +8,7 @@ import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-surviv
 import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
-import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
+import { createCraft, createCraftBatch } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { PlayerPhysics } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
@@ -184,6 +184,7 @@ export function mount(transfer = null) {
   let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghosts, rope, ropeAttr, hookMesh, friend, player, sun;
   let hands = null, clothMat;
   let farmView = null, farmSeen = null, farmLast = 0; // farming
+  let crafts = null; // placed decor, instanced (crafts.js)
   let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
@@ -296,6 +297,7 @@ export function mount(transfer = null) {
     farmView = createFarmView(T, {getModel:k => getModel(k)}); scene.add(farmView.group); // farming
     itemsGroup = new T.Group(); scene.add(itemsGroup);
     player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
+    crafts = createCraftBatch(T); crafts.root.userData.partKey = 'crafts'; raft.add(crafts.root);
     ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => createCraft(T, k)});
     const ropeGeo = new T.BufferGeometry(); ropeAttr = new T.BufferAttribute(new Float32Array((ROPE_SEGMENTS + 1) * 3), 3); ropeAttr.setUsage(T.DynamicDrawUsage); ropeGeo.setAttribute('position', ropeAttr);
     rope = new T.Line(ropeGeo, new T.LineBasicMaterial({color:'#e9d39a'})); rope.visible = false; rope.frustumCulled = false; scene.add(rope);
@@ -351,9 +353,10 @@ export function mount(transfer = null) {
       if (raftParts.has(k)) continue;
       let g = null;
       if (Array.isArray(v)) { g = createFloor(T, v[0] * 719 + v[1] * 311, mat); g.position.set(v[0] * 2, 0, v[1] * 2); }
-      else { try { g = createCraft(T, v.type); } catch (e) { console.warn('craft model failed', e); } if (!g) continue; g.position.set(v.x, .22, v.z); g.rotation.y = v.rot; }
+      else { try { g = crafts.place(v.type); } catch (e) { console.warn('craft model failed', e); } if (!g) continue; g.position.set(v.x, .22, v.z); g.rotation.y = v.rot; }
       g.userData.partKey = k; raft.add(g); raftParts.set(k, g);
     }
+    crafts.sync([...raftParts.values()].filter(o => o.userData.batched));
     blockList = world.decor.filter(d => BLOCK_RADIUS[d.type]).map(d => ({x:d.x, z:d.z, r:BLOCK_RADIUS[d.type]}));
     fitShadow();
   }
@@ -1292,6 +1295,7 @@ export function mount(transfer = null) {
     for (const g of geos) { try { g.dispose(); } catch {} }
     for (const m of mats) { try { for (const v of Object.values(m)) if (v?.isTexture) v.dispose(); m.dispose(); } catch {} }
     try { ocean?.dispose(); } catch {}
+    try { crafts?.dispose(); } catch {} crafts = null;
     materialCache.clear(); itemMeshes.clear(); scene.clear();
     scene = null; // renderer, canvas, AudioContext, peer and conn are left untouched
   }
