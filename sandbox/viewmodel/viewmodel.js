@@ -1,28 +1,36 @@
-// Viewmodel rendering sandbox: four ways to draw first-person hands, side by side via ?mode=.
-//   naive   hands parented to the world camera, nothing special (clips into walls, inherits world FOV)
-//   marker  what dist/game.js does today: depth-clear marker mesh + renderOrder 1000 in one scene
-//   twopass separate viewmodel scene + camera, renderer.clearDepth() between two render() calls
-//   shader  single pass: hands shrunk toward the eye + own-FOV projection + depth squash in the vertex shader
-// Other params: fov (world FOV, default 95), vmfov (default 62), wall=0|1, shade=0|1, still=1 (no motion).
-import * as T from '../../dist/vendor/three.module.js';
-import { createHands } from '../../dist/hands.js';
-import { createHook } from '../../dist/hook.js';
+// First-person viewmodel layer for Little Raft (three r170, ES module). Drop-in target: dist/viewmodel.js.
+//
+// One render pass, no depth clear, no transparent-queue hack. Viewmodel meshes stay in the world scene (so they get
+// the exact world lights, tone mapping and real sun shadows), but their material vertex shader:
+//   1. projects with its own camera (own FOV, independent of the player's FOV setting), and
+//   2. squashes clip-space depth into the front `depthRange` of the depth buffer, so the world can never clip them.
+// The whole rig is scaled by `shrink` about the eye. Perspective is scale-invariant about the eye, so the picture
+// is unchanged, but the hands' true world position sits inside the player's head: shadows sampled there are the
+// shadows the player stands in, even with the face pressed against a wall.
+//
+// Usage:
+//   const vm = createViewmodel(T, {camera, fov:62});
+//   vm.add('hook', hookHands); vm.add('hammer', hammerHands); ...       // createHands() controllers
+//   each frame, after the camera transform is set and before hands.update():
+//   vm.update({dt, kind, yaw, pitch, walking, walkPhase, grounded, vy, charge, swing, motion});
+//   vm.shown                     -> kind whose hands are drawn now (lags `kind` during an equip swap)
+//   vm.anchor(obj, out)          -> world point that renders under obj's on-screen position (rope start)
+//   vm.setAspect(a); vm.setFov(f)
 
-const P = new URLSearchParams(location.search);
-const MODE = P.get('mode') || 'shader';
-const WORLD_FOV = +(P.get('fov') || 95), VM_FOV = +(P.get('vmfov') || 62);
-const WALL = P.get('wall') !== '0', SHADE = P.get('shade') === '1', STILL = P.get('still') === '1';
-const SHRINK = 0.3;      // shader mode: viewmodel scale about the eye (image is unchanged, depth shrinks)
-const DEPTH_SQUASH = 0.02; // shader mode: viewmodel uses the front 2% of the NDC depth range
+const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
+const smooth = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
+const easeOutBack = (x) => { const c = 1.4, u = x - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
+const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
-// ---------- springs: fixed-step damped springs, so sway/bob/recoil are frame-rate independent ----------
+// Fixed-step damped spring (120 Hz semi-implicit Euler): same feel at 30 and 144 fps.
 export class Spring3 {
-  constructor(stiffness = 120, damping = 14) { this.k = stiffness; this.c = damping; this.x = new T.Vector3(); this.v = new T.Vector3(); this.target = new T.Vector3(); this.acc = 0; }
-  impulse(v) { this.v.add(v); return this; }
+  constructor(T, k = 120, c = 14) { this.k = k; this.c = c; this.x = new T.Vector3(); this.v = new T.Vector3(); this.target = new T.Vector3(); this.acc = 0; }
+  impulse(x, y, z) { this.v.x += x; this.v.y += y; this.v.z += z; return this; }
+  reset() { this.x.set(0, 0, 0); this.v.set(0, 0, 0); this.acc = 0; }
   update(dt) {
-    this.acc = Math.min(this.acc + dt, 0.1);
-    while (this.acc >= 1 / 120) { // semi-implicit Euler at 120 Hz
-      const h = 1 / 120; this.acc -= h;
+    const h = 1 / 120; this.acc = Math.min(this.acc + dt, 0.1);
+    while (this.acc >= h) {
+      this.acc -= h;
       this.v.x += (this.k * (this.target.x - this.x.x) - this.c * this.v.x) * h;
       this.v.y += (this.k * (this.target.y - this.x.y) - this.c * this.v.y) * h;
       this.v.z += (this.k * (this.target.z - this.x.z) - this.c * this.v.z) * h;
@@ -32,121 +40,129 @@ export class Spring3 {
   }
 }
 
-// ---------- renderer + world ----------
-const renderer = new T.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7)); renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
-renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping;
-document.body.appendChild(renderer.domElement);
+export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange = 0.02, near = 0.01 } = {}) {
+  const projCam = new T.PerspectiveCamera(fov, camera.aspect, near, 100);
+  const uniforms = { vmProj: { value: projCam.projectionMatrix }, vmDepth: { value: depthRange } };
+  const patched = new WeakSet();
 
-const scene = new T.Scene(); scene.background = new T.Color('#cbd2c0'); scene.fog = new T.Fog('#cbd2c0', 25, 125);
-const camera = new T.PerspectiveCamera(WORLD_FOV, innerWidth / innerHeight, 0.05, 200); camera.rotation.order = 'YXZ';
-camera.position.set(0, 1.6, 0); scene.add(camera);
-const hemi = new T.HemisphereLight('#f2ead4', '#3d6b6a', 1.8); scene.add(hemi);
-const sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(-15, 28, 12); sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10 }); sun.shadow.bias = -0.001;
-scene.add(sun, sun.target);
-const std = (color, r = 0.85) => new T.MeshStandardMaterial({ color, roughness: r });
-const floor = new T.Mesh(new T.BoxGeometry(12, 0.2, 12), std('#a07a52')); floor.position.y = -0.1; floor.receiveShadow = true; scene.add(floor);
-const occluders = [];
-if (WALL) { // a plank wall 0.32 m in front of the eye: closer than the hands reach
-  const wall = new T.Mesh(new T.BoxGeometry(4, 3, 0.12), std('#7d5b3a')); wall.position.set(0, 1.5, -0.38); wall.castShadow = wall.receiveShadow = true; scene.add(wall); occluders.push(wall);
-  for (let i = -3; i <= 3; i++) { const s = new T.Mesh(new T.BoxGeometry(0.03, 3, 0.02), std('#5a3f27')); s.position.set(i * 0.55, 1.5, -0.31); scene.add(s); }
-}
-if (SHADE) { // overhead sail between the player and the sun, so the eye is in shadow
-  const dir = sun.position.clone().normalize();
-  const sail = new T.Mesh(new T.BoxGeometry(3, 0.05, 3), std('#fff3cf', 1)); sail.position.copy(camera.position).addScaledVector(dir, 2.6); sail.castShadow = true; scene.add(sail); occluders.push(sail);
-}
-for (let i = 0; i < 8; i++) { const c = new T.Mesh(new T.BoxGeometry(0.6, 0.6, 0.6), std(i % 2 ? '#4f9b72' : '#e6d7a3')); c.position.set(Math.sin(i) * 4, 0.3, -2 - i * 0.7); c.castShadow = c.receiveShadow = true; scene.add(c); }
-
-// ---------- viewmodel ----------
-const hands = createHands(T, createHook(T));
-const rig = new T.Group(); rig.add(hands.group); // springs move `rig`; hands.js poses arms inside it
-const meshes = []; hands.group.traverse(c => { if (c.isMesh) meshes.push(c); });
-for (const m of meshes) { m.castShadow = false; m.receiveShadow = false; m.frustumCulled = false; }
-
-let vmScene = null, vmCam = null, vmSun = null, vmHemi = null, vmProjCam = null, shadeProbe = 1;
-const ray = new T.Raycaster(), tmp = new T.Vector3(), q = new T.Quaternion();
-
-if (MODE === 'naive') camera.add(rig);
-if (MODE === 'marker') { // the current game: clear depth from a camera-owned marker, then draw hands in the transparent queue
-  const marker = new T.Mesh(new T.PlaneGeometry(1e-4, 1e-4), new T.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, transparent: true }));
-  marker.frustumCulled = false; marker.renderOrder = 999; marker.position.z = -0.1;
-  marker.onBeforeRender = (r, _s, cam) => { if (cam !== camera) return; r.state.buffers.depth.setMask(true); r.clearDepth(); };
-  camera.add(marker);
-  for (const m of meshes) { m.renderOrder = 1000; for (const mt of [].concat(m.material)) { mt.transparent = true; mt.needsUpdate = true; } }
-  camera.add(rig);
-}
-if (MODE === 'twopass') { // own scene, own camera, own lights mirrored from the world each frame
-  vmScene = new T.Scene(); vmCam = new T.PerspectiveCamera(VM_FOV, innerWidth / innerHeight, 0.01, 10);
-  vmHemi = new T.HemisphereLight(); vmSun = new T.DirectionalLight(); vmScene.add(vmHemi, vmSun, vmSun.target, rig);
-  renderer.autoClear = false;
-}
-if (MODE === 'shader') { // one pass: hands live in the world scene but project with their own matrix
-  vmProjCam = new T.PerspectiveCamera(VM_FOV, innerWidth / innerHeight, 0.01, 200);
-  const uniforms = { vmProj: { value: vmProjCam.projectionMatrix }, vmDepth: { value: DEPTH_SQUASH } };
-  for (const m of meshes) {
-    m.receiveShadow = true; // real world position (shrunk toward the eye) -> real sun shadows on the hands
-    for (const mt of [].concat(m.material)) {
-      mt.onBeforeCompile = (sh) => {
-        Object.assign(sh.uniforms, uniforms);
-        sh.vertexShader = sh.vertexShader
-          .replace('#include <common>', '#include <common>\nuniform mat4 vmProj;\nuniform float vmDepth;')
-          .replace('#include <project_vertex>', '#include <project_vertex>\n\tgl_Position = vmProj * mvPosition;\n\tgl_Position.z = mix(-gl_Position.w, gl_Position.z, vmDepth);');
-      };
-      mt.customProgramCacheKey = () => 'viewmodel';
-      mt.needsUpdate = true;
-    }
+  // Vertex patch: own projection + depth squash. Lighting (view-space normals, vViewPosition) is untouched.
+  function patchMaterial(m) {
+    if (!m || patched.has(m)) return; patched.add(m);
+    const prevCompile = m.onBeforeCompile, prevKey = m.customProgramCacheKey;
+    m.onBeforeCompile = (sh, r) => {
+      prevCompile?.call(m, sh, r);
+      Object.assign(sh.uniforms, uniforms);
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform mat4 vmProj;\nuniform float vmDepth;')
+        .replace('#include <project_vertex>', '#include <project_vertex>\n\tgl_Position = vmProj * mvPosition;\n\tgl_Position.z = mix(-gl_Position.w, gl_Position.z, vmDepth);');
+    };
+    m.customProgramCacheKey = () => 'vm|' + (prevKey ? prevKey.call(m) : '');
+    m.needsUpdate = true;
   }
-  rig.scale.setScalar(SHRINK); // perspective is scale-invariant about the eye: same picture, 0.3x the depth
-  camera.add(rig);
-}
-
-// ---------- loop ----------
-const sway = new Spring3(90, 12), bobS = new Spring3(160, 18), recoil = new Spring3(220, 16);
-let t = 0, last = performance.now(), yaw = 0, pitch = -0.05, prevYaw = 0, prevPitch = pitch, nextShot = 1.0, walkPhase = 0;
-const frameMs = []; let frames = 0;
-function resize() {
-  renderer.setSize(innerWidth, innerHeight);
-  for (const c of [camera, vmCam, vmProjCam]) if (c) { c.aspect = innerWidth / innerHeight; c.updateProjectionMatrix(); }
-}
-addEventListener('resize', resize);
-
-function frame() {
-  const now = performance.now(), dt = Math.min(0.05, (now - last) / 1000); last = now; t += dt;
-  // scripted look + walk so the headless run exercises the springs
-  if (!STILL) { yaw = Math.sin(t * 0.9) * 0.35; pitch = -0.05 + Math.sin(t * 1.3) * 0.08; walkPhase += dt * 9; }
-  camera.rotation.set(pitch, yaw, 0);
-  const dYaw = (yaw - prevYaw) / Math.max(dt, 1e-3), dPitch = (pitch - prevPitch) / Math.max(dt, 1e-3); prevYaw = yaw; prevPitch = pitch;
-  sway.target.set(-dYaw * 0.012, dPitch * 0.012, 0);                     // hands lag behind the look
-  bobS.target.set(Math.sin(walkPhase * 0.5) * 0.012, -Math.abs(Math.sin(walkPhase * 0.5)) * 0.016, 0); // figure-eight bob
-  if (!STILL && t > nextShot) { recoil.impulse(tmp.set(0, 0.6, 1.6)); nextShot = t + 1.4; } // swing/throw kick
-  const s = sway.update(dt), b = bobS.update(dt), r = recoil.update(dt);
-  rig.position.set(s.x + b.x, s.y + b.y + r.y * 0.02, r.z * 0.04).multiplyScalar(rig.scale.x);
-  rig.rotation.set(s.y * 2 + r.y * 0.08, s.x * 2, -s.x * 1.5);
-  hands.update({ dt, time: t, walking: !STILL, motion: 1 });
-
-  renderer.info.reset(); const t0 = performance.now();
-  if (MODE === 'twopass') {
-    // light matching: same colors/intensities, sun direction rotated into camera space, cheap shadow probe
-    vmHemi.color.copy(hemi.color); vmHemi.groundColor.copy(hemi.groundColor); vmHemi.intensity = hemi.intensity;
-    camera.getWorldQuaternion(q).invert();
-    vmSun.position.copy(sun.position).sub(sun.target.position).normalize().applyQuaternion(q); vmSun.target.position.set(0, 0, 0);
-    vmSun.color.copy(sun.color);
-    if ((frames & 7) === 0) { // every 8th frame: is the eye in the sun's shadow?
-      camera.getWorldPosition(tmp); ray.set(tmp, sun.position.clone().normalize()); ray.far = 60;
-      shadeProbe = ray.intersectObjects(occluders, false).length ? 0.25 : 1;
-    }
-    vmSun.intensity += (sun.intensity * shadeProbe - vmSun.intensity) * Math.min(1, dt * 8);
-    renderer.clear(); renderer.render(scene, camera); renderer.clearDepth(); renderer.render(vmScene, vmCam);
-  } else {
-    renderer.render(scene, camera);
+  function prepare(group) {
+    group.traverse((o) => {
+      if (!o.isMesh && !o.isLine && !o.isPoints) return;
+      o.frustumCulled = false; o.castShadow = false; o.receiveShadow = !!o.isMesh; o.renderOrder = 0;
+      for (const m of [].concat(o.material)) patchMaterial(m);
+    });
   }
-  frameMs.push(performance.now() - t0); if (frameMs.length > 120) frameMs.shift();
-  frames++;
-  window.vmDebug = { mode: MODE, frames, cpuMs: frameMs.reduce((a, b) => a + b, 0) / frameMs.length, calls: renderer.info.render.calls, programs: renderer.info.programs.length };
-  requestAnimationFrame(frame);
+
+  // rig (camera child, scaled about the eye) > motion (springs, bob, breath) > equip (raise/lower) > hands.group
+  const rig = new T.Group(); rig.name = 'viewmodelRig'; rig.scale.setScalar(shrink);
+  const motionG = new T.Group(); const equipG = new T.Group();
+  rig.add(motionG); motionG.add(equipG); camera.add(rig);
+  const slots = new Map();
+
+  function add(kind, hands) {
+    prepare(hands.group);
+    if (hands.group.parent) hands.group.parent.remove(hands.group);
+    hands.group.visible = false; equipG.add(hands.group);
+    slots.set(kind, hands);
+    return hands;
+  }
+
+  const sway = new Spring3(T, 90, 12), bob = new Spring3(T, 160, 18), kick = new Spring3(T, 220, 16), land = new Spring3(T, 140, 13);
+  const st = { shown: null, e: 0, prevYaw: null, prevPitch: 0, walkW: 0, chargeW: 0, prevSwing: 0, wasGrounded: true, t: 0, airW: 0 };
+
+  function update(p = {}) {
+    const dt = clamp(p.dt ?? 1 / 60, 0, 0.1); st.t += dt;
+    const amp = clamp(p.motion ?? 0.35, 0, 1) / 0.35;  // the game's cameraMotion comfort slider (default .35 -> 1)
+    const kind = slots.has(p.kind) ? p.kind : null;
+    const k = (rate) => 1 - Math.exp(-rate * dt);
+
+    // ---- equip state machine: lower the old tool, swap, raise the new one
+    if (kind !== st.shown) {
+      st.e = Math.max(0, st.e - dt / 0.16);
+      if (st.e === 0) { st.shown = kind; sway.reset(); }
+    } else if (kind) st.e = Math.min(1, st.e + dt / 0.30);
+    for (const [kd, h] of slots) h.group.visible = kd === st.shown && st.shown !== null;
+    const raising = kind === st.shown;
+    const down = raising ? 1 - easeOutBack(st.e) : 1 - smooth(st.e);  // 0 = in hand, 1 = lowered out of view
+    equipG.position.set(0.06 * down, -0.42 * down, 0.10 * down);
+    equipG.rotation.set(-0.85 * down, 0.15 * down, 0.35 * down);
+
+    // ---- look sway: hands lag the look, a little roll into turns
+    const yaw = p.yaw ?? 0, pitch = p.pitch ?? 0;
+    if (st.prevYaw === null) { st.prevYaw = yaw; st.prevPitch = pitch; }
+    const inv = 1 / Math.max(dt, 1e-3);
+    const yawRate = clamp(wrapPi(yaw - st.prevYaw) * inv, -8, 8), pitchRate = clamp((pitch - st.prevPitch) * inv, -8, 8);
+    st.prevYaw = yaw; st.prevPitch = pitch;
+    sway.target.set(clamp(yawRate * 0.010, -0.045, 0.045) * amp, clamp(-pitchRate * 0.010, -0.035, 0.035) * amp, 0);
+    const s = sway.update(dt);
+
+    // ---- walk bob: figure-eight, vertical in phase with the camera bob (game: sin(walkPhase))
+    st.walkW += ((p.walking ? 1 : 0) - st.walkW) * k(6);
+    const ph = p.walkPhase ?? st.t * 9;
+    const w = st.walkW * amp;
+    bob.target.set(Math.sin(ph * 0.5) * 0.014 * w, -(0.5 - 0.5 * Math.cos(ph)) * 0.014 * w, 0);
+    const b = bob.update(dt);
+
+    // ---- jump / land: lift slightly while airborne, dip on landing
+    const grounded = p.grounded ?? true;
+    st.airW += ((grounded ? 0 : 1) - st.airW) * k(5);
+    if (grounded && !st.wasGrounded) land.impulse(0, clamp(p.vy ?? -3, -9, 0) * 0.06 * amp, 0);
+    st.wasGrounded = grounded;
+    const l = land.update(dt);
+
+    // ---- use kick: rising edge of the game's swing timer
+    const swing = p.swing ?? 0;
+    if (swing > st.prevSwing + 0.3) kick.impulse(0, 0.5 * amp, 1.4 * amp);
+    st.prevSwing = swing;
+    const r = kick.update(dt);
+
+    // ---- charge: brace (hands pull in, slight tension shake on top of hands.js windup)
+    st.chargeW += ((p.charge ?? 0) - st.chargeW) * k(10);
+    const c = st.chargeW, shake = smooth((c - 0.7) / 0.3) * 0.0016 * (Math.sin(st.t * 41) + Math.sin(st.t * 27.7));
+
+    // ---- idle breathing (slow, 0.25 Hz), muted while walking
+    const br = Math.sin(st.t * Math.PI * 2 * 0.25) * (1 - 0.7 * st.walkW) * amp;
+
+    motionG.position.set(
+      s.x + b.x + shake,
+      s.y + b.y + l.y + 0.012 * st.airW * amp + 0.0030 * br + r.y * 0.02 - 0.012 * c + shake,
+      r.z * 0.04 + 0.010 * c);
+    motionG.rotation.set(
+      s.y * 1.6 + r.y * 0.06 + 0.004 * br + l.y * 0.8,
+      -s.x * 1.8,
+      -s.x * 1.2 + b.x * 0.8);
+    return { shown: st.shown, equip: st.e };
+  }
+
+  // World point that renders at obj's on-screen position, at obj's true (un-shrunk) distance from the eye.
+  // Use for world-space effects that must start at the hand: rope start, hook launch origin, fishing line tip.
+  const tmp = new T.Vector3(), eye = new T.Vector3(), camInv = new T.Matrix4();
+  function anchor(obj, out = new T.Vector3()) {
+    camera.updateMatrixWorld();
+    obj.getWorldPosition(tmp);
+    camInv.copy(camera.matrixWorld).invert(); tmp.applyMatrix4(camInv);       // camera space (shrunk)
+    const depth = tmp.length() / shrink;
+    tmp.applyMatrix4(projCam.projectionMatrix);                               // viewmodel NDC
+    tmp.z = 0.5; tmp.applyMatrix4(camera.projectionMatrixInverse).normalize(); // world-camera view ray
+    camera.getWorldPosition(eye);
+    return out.copy(tmp).transformDirection(camera.matrixWorld).multiplyScalar(depth).add(eye);
+  }
+
+  function setAspect(a) { projCam.aspect = a; projCam.updateProjectionMatrix(); }
+  function setFov(f) { if (projCam.fov !== f) { projCam.fov = f; projCam.updateProjectionMatrix(); } }
+  return { rig, add, update, anchor, setAspect, setFov, prepare, projCam, get shown() { return st.shown; }, get equip() { return st.e; } };
 }
-renderer.info.autoReset = false; // count both passes of twopass
-document.getElementById('hud').innerHTML = `<b>${MODE}</b> world FOV ${WORLD_FOV}, viewmodel FOV ${MODE === 'twopass' || MODE === 'shader' ? VM_FOV : WORLD_FOV + ' (inherited)'}<br>wall ${WALL ? 'on' : 'off'}, shade ${SHADE ? 'on' : 'off'}. Modes: naive, marker, twopass, shader`;
-requestAnimationFrame(frame);
