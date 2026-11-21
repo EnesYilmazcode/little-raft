@@ -65,13 +65,14 @@ body.playing #hud .controls,body.playing #recipes,body.playing [data-quick-recip
 /* The pickup feed is a manual popover during play; with the bag or pause menu open it docks into a lane inside that panel. */
 #pickupFeed[popover]{position:fixed;inset:auto auto 26px 22px;margin:0;padding:0;border:0;background:none;overflow:visible;width:auto;height:auto;max-width:none;max-height:none;color:#f6ecd6}
 #pickupFeed .pf-hint{white-space:normal;max-width:max(180px,min(340px,calc(50vw - 300px)));line-height:1.3}#pickupFeed .pf-hint span{color:#ffd98f}
-.feed-lane{display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;pointer-events:none}
+.feed-lane{display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(transparent,#000 22px);mask-image:linear-gradient(transparent,#000 22px)}
 #inventory .sv-bag>.feed-lane{flex:1 1 0;min-height:88px;align-self:stretch}
-#options .rs-menu{position:relative}
-#options .rs-menu>.feed-lane{position:absolute;left:clamp(28px,4vw,56px);right:16px;bottom:16px;height:clamp(0px,calc(50vh - 236px),220px)}
+/* Pause rail: the lane fills the space under "Esc Back"; an equal spacer on top keeps the menu centred. */
+#options .rs-menu::before,#options .rs-menu>.feed-lane{content:"";flex:1 1 0;min-height:0;margin:0;padding:0}
+#options .rs-menu>.feed-lane{margin-top:18px;padding:0 16px 16px 0}#options .rs-menu::before{margin-bottom:18px;padding-bottom:16px}
 #pickupFeed.docked{position:static;inset:auto;z-index:auto;max-width:100%}
 #pickupFeed.docked .pf-row{max-width:100%;white-space:normal;line-height:1.25}
-@media(max-width:760px){#contextPrompt{bottom:96px}#pickupFeed[popover]{inset:auto auto 96px 10px}#options .rs-menu>.feed-lane{display:none}}
+@media(max-width:760px){#contextPrompt{bottom:96px}#pickupFeed[popover]{inset:auto auto 96px 10px}#options .rs-menu::before,#options .rs-menu>.feed-lane{display:none}}
 `;
 
 export function mount(transfer = null) {
