@@ -218,7 +218,7 @@ export function createFishingCooking(T, host) {
     const show = host.running();
     if (Math.abs(elapsed - chipAt) >= 0.5) { // speciesSeen() allocates: poll it at 2 Hz, not per frame
       chipAt = elapsed; const n = journal.speciesSeen().length;
-      if (n !== chipN) { chipN = n; chip.textContent = `🎣 ${n}/${SPECIES.length} · J journal`; }
+      if (n !== chipN) { chipN = n; chip.textContent = `🎣 Fish ${n}/${SPECIES.length} · J`; }
     }
     if (chip.hidden === show) chip.hidden = !show;
   }

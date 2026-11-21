@@ -519,15 +519,18 @@ export function savePin(storage, id) {
 /**
  * What the HUD tracker shows for a normalised recipe: its owned/needed rows, state, how many
  * crafts the materials cover, and how many ingredient lines are complete.
- * `check` is an optional Bag.canCraft() result. Returns null without a recipe.
+ * `check` is an optional Bag.canCraft() result; `gate` an optional recipe gate
+ * ({locked|hidden, reason}) that turns the state to 'gated'. Returns null without a recipe.
  */
-export function trackerView(recipe, countOf, check = null) {
+export function trackerView(recipe, countOf, check = null, gate = null) {
   if (!recipe) return null;
   const rows = ingredientRows(recipe.reqs, countOf);
   const times = craftableTimes(rows);
+  const locked = !!(gate && (gate.locked || gate.hidden));
   return {
     id: recipe.id, name: recipe.name, kind: recipe.out?.kind ?? recipe.id, rows,
-    state: recipeState(rows, check), times: Number.isFinite(times) ? times : 0,
+    state: locked ? 'gated' : recipeState(rows, check), reason: locked ? String(gate.reason || '') : '',
+    times: locked || !Number.isFinite(times) ? 0 : times,
     met: rows.filter(r => r.enough).length, total: rows.length,
   };
 }

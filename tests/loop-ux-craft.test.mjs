@@ -73,7 +73,7 @@ test('F2: the lock reason is shown in full: detail state line, two-line row, too
   assert.match(ui, /extra = v\.state === 'gated' \? 'Locked: ' \+ \(v\.reason/, 'own recipe tooltip shows it');
   const tt = src('item-tooltips.js');
   assert.match(tt, /else if \(recipe && el\?\.dataset\.lockReason\) out \+= `<div class="it-lock">Locked: \$\{esc\(el\.dataset\.lockReason\)\}/);
-  assert.match(tt, /if \(table\[kind\] && prog && typeof prog\.isUnlocked/, 'non-catalogue kinds no longer read "Locked: Unknown item"');
+  assert.match(tt, /if \(Object\.hasOwn\(table, kind\) && prog && typeof prog\.isUnlocked/, 'non-catalogue kinds no longer read "Locked: Unknown item"');
   // Locked research rows can be hovered and picked (they used to ignore the pointer).
   assert.doesNotMatch(src('storage-research-ui.js'), /\.sv-recipe\[data-locked\]\{[^}]*pointer-events:none/);
 });
