@@ -1,14 +1,15 @@
 // Leaf: glossy palm frond tile. UV scale: one tile = one frond section (u across, v along the stem);
 // also tiled densely by the 'foliage' preset (repeat [10,5]) on island canopy domes, so column means are
 // kept flat (no dark edges / yellow tip bands) and colour variation is low-frequency and non-columnar.
-// Raised pale midrib at u=0.5, leaflets angled off it; left/right leaflets alternate (half-leaflet offset
-// at the rib), spacing and sweep angle drift along v, so the chevrons do not tick like a metronome.
+// Low, subtle pale midrib at u=0.5 (no bright meridian lines when tiled), leaflets angled off it;
+// left/right leaflets alternate (half-leaflet offset at the rib), spacing and sweep angle drift
+// along v, and leaflet shade is hashed per side, so the chevrons do not tick like a metronome.
 // Alpha slits (transparent, not dark-tinted) between some leaflets near u=0/1.
 // Seamless: leaflet phase uses integer L, periodic drift in v, and d=|u-0.5| (equal at u=0 and u=1);
 // the side offset fades to 0 at the outer edge so both sides share leaflet ids there.
 export const normalStrength = 5;
 const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
-const RIB = hex('#A2D062'), MID = hex('#62B03C'), DEEP = hex('#4C9A32'), LITE = hex('#86C24A'), TIP = hex('#9CC84C');
+const RIB = hex('#8FC856'), MID = hex('#62B03C'), DEEP = hex('#4C9A32'), LITE = hex('#86C24A'), TIP = hex('#9CC84C');
 
 export default function generate(S, N) {
   const albedo = new Float32Array(S * S * 3), height = new Float32Array(S * S), rough = new Float32Array(S * S), alpha = new Float32Array(S * S);
@@ -44,9 +45,9 @@ export default function generate(S, N) {
       const vl = vein * 0.06 * (1 - rib);
       c0 += vl; c1 += vl; c2 += vl * 0.5;
       c0 += (RIB[0] - c0) * rib; c1 += (RIB[1] - c1) * rib; c2 += (RIB[2] - c2) * rib;
-      const rs = 1 - 0.12 * (ribSh - rib);
+      const rs = 1 - 0.08 * (ribSh - rib);
       albedo[s * 3] = c0 * rs; albedo[s * 3 + 1] = c1 * rs; albedo[s * 3 + 2] = c2 * rs;
-      height[s] = 0.35 + 0.3 * blade - 0.12 * groove + 0.03 * vein + 0.3 * rib * rib;
+      height[s] = 0.35 + 0.3 * blade - 0.12 * groove + 0.03 * vein + 0.16 * rib * rib;
       rough[s] = 0.42 + 0.1 * groove + 0.05 * rib + 0.06 * tip + 0.06 * (t - 0.5);
       // Alpha slits: narrow cuts along leaflet boundaries near the outer u edges, on most leaflets.
       const slitW = (0.04 * N.smooth(0.24, 0.32, d) + 0.06 * N.smooth(0.32, 0.5, d)) * (lid2 > 0.25 ? 1 : 0);
