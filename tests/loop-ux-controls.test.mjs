@@ -131,3 +131,25 @@ test('a >300px mouse move in one event turns the camera', () => {
   assert.ok(Math.abs(l.dx - 800 * 0.0022) < 1e-9 && Math.abs(l.dy + 600 * 0.0022) < 1e-9, JSON.stringify(l));
 });
 
+// ---------------------------------------------------------------- A4: fish journal J close
+test('fish journal closes on physical J (e.code) whatever the layout, and on Escape', () => {
+  let closed = 0;
+  const p = createJournalPanel({ onClose: () => closed++ });
+  const dlg = doc.body.children.at(-1);
+  p.open(); assert.equal(p.isOpen, true);
+  const e = fire(dlg, 'keydown', { code: 'KeyJ', key: 'о' }); // e.g. Russian layout
+  assert.equal(p.isOpen, false, 'KeyJ closes');
+  assert.equal(e.defaultPrevented, true);
+  assert.equal(closed, 1);
+  p.open();
+  fire(dlg, 'keydown', { code: 'KeyN', key: 'j' }); // a layout where J sits elsewhere: the opener would not fire either
+  assert.equal(p.isOpen, true, 'key j on another physical key does not close');
+  let bubbled = false;
+  const ev = new Event('keydown', { cancelable: true });
+  Object.defineProperty(ev, 'code', { value: 'Escape' }); Object.defineProperty(ev, 'key', { value: 'Escape' });
+  const origStop = ev.stopPropagation.bind(ev);
+  ev.stopPropagation = () => { bubbled = true; origStop(); };
+  dlg.dispatchEvent(ev);
+  assert.equal(p.isOpen, false, 'Escape closes');
+  assert.equal(bubbled, true, 'stopPropagation keeps the game from seeing the key');
+});
