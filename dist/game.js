@@ -21,6 +21,8 @@ import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave } f
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { createItemIcons } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
+import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
+import { createNoticeQueue, loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, NOTICE_MS } from './hud.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -51,10 +53,17 @@ const STYLE_ID = 'little-raft-engine-style';
 const HUD_CSS = `
 body.playing header,body.playing #hud .inventory,body.playing #hud .goal,body.playing #toast,
 body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.playing [data-quick-recipe]{display:none!important}
-#contextPrompt{position:fixed;left:50%;top:calc(50% + 26px);transform:translateX(-50%);padding:3px 10px;border-radius:8px;
+#contextPrompt{position:fixed;left:50%;bottom:132px;transform:translateX(-50%);padding:3px 10px;border-radius:8px;
   background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:none;z-index:30;white-space:nowrap}
 #contextPrompt[hidden]{display:none}
 #contextPrompt kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:0 4px;border:1px solid rgba(246,236,214,.6);border-radius:4px;font:inherit;text-align:center}
+#noticeStack{position:fixed;inset:auto auto 104px 16px;margin:0;padding:0;border:0;background:none;overflow:visible;width:auto;height:auto;
+  max-width:max(200px,min(340px,calc(50vw - 175px)));display:flex;flex-direction:column;align-items:flex-start;gap:4px;pointer-events:none;z-index:31}
+#noticeStack[hidden],#noticeStack[popover]:not(:popover-open){display:none}
+#noticeStack div{padding:5px 11px;border-radius:6px;background:rgba(8,22,36,.82);color:#f6ecd6;box-shadow:0 0 0 1px rgba(201,164,107,.45);
+  font:600 13px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif}
+#noticeStack div.hint{color:#ffd98f}
+@media(max-width:760px){#contextPrompt{bottom:96px}#noticeStack{bottom:150px;left:12px}}
 `;
 
 export function mount(transfer = null) {
@@ -168,7 +177,7 @@ export function mount(transfer = null) {
   let peer = X?.peer ?? null, conn = X?.conn ?? null, role = ['solo', 'host', 'guest'].includes(X?.role) ? X.role : 'solo';
   let networkReady = !!X?.networkReady, room = typeof X?.room === 'string' ? X.room : '';
   let world, hostBag = null, guestBag = null, remoteBag = null, saveAvailable = X ? X.saveAvailable !== false : true;
-  let ownWorldBackup = normaliseBackup(X?.ownWorldBackup);
+  let ownWorldBackup = normaliseBackup(X?.ownWorldBackup), freshSave = false;
   if (X?.world && Array.isArray(X.world.tiles)) {
     world = liveWorld(X.world);
     if (X.version >= 3 && X.bags) { hostBag = snapBag(X.bags.host); guestBag = snapBag(X.bags.guest); remoteBag = snapBag(X.bags.remote); }
@@ -183,6 +192,7 @@ export function mount(transfer = null) {
     let raw = null;
     try { raw = localStorage.getItem(SAVE); } catch { saveAvailable = false; }
     if (raw) { try { const v = cleanWorld(JSON.parse(raw)); if (v) world = v; } catch {} }
+    freshSave = !raw;
     const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
   }
   // Revision of the save this tab last loaded or wrote. Another tab writing a newer one stops our autosave.
@@ -207,7 +217,7 @@ export function mount(transfer = null) {
   let castId = typeof X?.castId === 'string' ? X.castId : newToken();
   let hookSlot = isInt(X?.hookSlot) ? X.hookSlot : -1;
   let fishWait = Number.isFinite(X?.fishWait) ? X.fishWait : 0;
-  let sound = X ? X.sound !== false : true, audio = X?.audio ?? null;
+  let sound = X ? X.sound !== false : loadSoundPref(window.localStorage), audio = X?.audio ?? null, oceanAudio = null, swimClock = 0;
   let charging = X?.charging && Number.isFinite(X.charging.start) ? {...X.charging} : null, reeling = !!X?.reeling && !!hook;
   let lastCaughtCount = isInt(X?.lastCaughtCount) ? X.lastCaughtCount : (hook?.caughtItems?.length ?? (hook?.caught ? 1 : 0));
   const pending = new Map(X?.pending instanceof Map ? X.pending : []); // item token -> expiry; hides supplies we reeled in while the host confirms
@@ -217,7 +227,8 @@ export function mount(transfer = null) {
   let lastHostMessage = X?.lastHostMessage || performance.now(), lastGuestMessage = X?.lastGuestMessage || performance.now();
   let joinTimer = 0, joinDeadline = Number.isFinite(X?.joinDeadline) ? X.joinDeadline : 0;
   let netClock = 0, lastSaveAt = performance.now(), lastNetSendAt = 0, toastTimer = 0, wheelAcc = 0, peerHidden = !!X?.peerHidden, heartbeat = 0;
-  let noticeText = '', noticeUntil = 0, contextCache = null, uiFailed = false; let fishShown = null;
+  let notices = createNoticeQueue(), noticeCache = null, contextCache = null, uiFailed = false; let fishShown = null;
+  const hintsDone = X?.hintsDone instanceof Set ? X.hintsDone : freshSave ? new Set() : loadHints(window.localStorage); // first-run hint chain, once per save
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
   let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = '';
@@ -401,21 +412,21 @@ export function mount(transfer = null) {
   }
   const isPending = it => (pending.get(it.token) ?? 0) > performance.now();
 
-  // ---------- Feedback (quiet: a short line under the crosshair) ----------
+  // ---------- Feedback (notices stack at the screen edge; prompts sit just above the hotbar) ----------
   const setText = (sel, v) => { const el = $(sel); if (el) el.textContent = v; };
   function setStatus(s) { setText('#networkStatus', s); }
-  function notice(s, ms = 1800) { noticeText = String(s).slice(0, 90); noticeUntil = performance.now() + ms; }
+  function notice(s, ms = NOTICE_MS) { notices.push(s, performance.now(), ms); }
   function toast(s) {
-    if (running) { notice(s, 2400); return; }
+    if (running) { notice(s, 3000); return; }
     const el = $('#toast'); if (!el) return; el.textContent = s; el.classList.add('show');
     toastTimer = cancelTimer(toastTimer); toastTimer = later(() => { toastTimer = 0; el.classList.remove('show'); }, 2600);
   }
-  function beep(f = 500) { if (!sound || !(options?.volume > 0)) return; try { audio ??= new AudioContext(); audio.resume(); const o = audio.createOscillator(), g = audio.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(f, audio.currentTime); o.frequency.exponentialRampToValueAtTime(f * 1.4, audio.currentTime + .12); g.gain.setValueAtTime(.12 * options.volume, audio.currentTime); g.gain.exponentialRampToValueAtTime(.001, audio.currentTime + .22); o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + .23); } catch {} }
+  const audioVolume = () => (sound ? clamp(options?.volume ?? .5, 0, 1) : 0);
+  function sfx(ev, strength = 1) { if (!audioVolume()) return; try { oceanAudio?.play(ev, strength); } catch {} }
   function updateContext(dialog) {
     let html = '';
     if (running && !dialog) {
       if (guestWaiting()) html = 'Waiting for your brother’s raft…';
-      else if (performance.now() < noticeUntil) html = esc(noticeText);
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
       else if (hover?.blocked) html = esc(BLOCK_TEXT[hover.blocked]);
       else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
@@ -424,6 +435,22 @@ export function mount(transfer = null) {
     }
     if (html === contextCache) return; contextCache = html;
     const el = $('#contextPrompt'); if (!el) return; el.innerHTML = html; el.hidden = !html;
+  }
+  function hintDone(id) { if (hintsDone.has(id)) return; hintsDone.add(id); saveHints(window.localStorage, hintsDone); }
+  // Notices and hints stack at the left edge above the hotbar, and stay visible over the open bag.
+  function updateNotices(dialog) {
+    const now = performance.now(), lines = running ? notices.lines(now) : [];
+    if (survivalUI?.isOpen) hintDone('bag');
+    const hint = running && !dialog && !guestWaiting() ? nextHint(hintsDone, {heldKind:heldKind(), castOut:!!hook, hasLoot:hintsDone.has('loot')}) : null;
+    const sig = lines.join('\n') + '|' + (hint?.id ?? '') + '|' + dialog;
+    if (sig === noticeCache) return; noticeCache = sig;
+    let el = $('#noticeStack');
+    if (!el) { el = document.createElement('div'); el.id = 'noticeStack'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite'); document.body.appendChild(el); }
+    const show = lines.length > 0 || !!hint, pop = typeof el.showPopover === 'function';
+    if (pop && !el.hasAttribute('popover')) el.setAttribute('popover', 'manual');
+    el.innerHTML = lines.map(t => `<div>${esc(t)}</div>`).join('') + (hint ? `<div class="hint">${esc(hint.text)}</div>` : '');
+    if (!pop) { el.hidden = !show; return; }
+    try { if (el.matches(':popover-open')) el.hidePopover(); if (show) el.showPopover(); } catch {} // re-show so it sits above a modal dialog
   }
   const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;'}[c]));
   function updateCharge() {
@@ -546,7 +573,8 @@ export function mount(transfer = null) {
     if (!e || typeof e !== 'object') return;
     if (Array.isArray(e.tokens)) for (const t of e.tokens) if (typeof t === 'string') pending.delete(t);
     if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90));
-    beep(e.kind === 'build' ? 640 : e.kind === 'craft' ? 560 : e.kind === 'full' ? 220 : 440);
+    sfx(e.kind === 'build' ? 'build' : e.kind === 'repair' ? 'repair' : e.kind === 'craft' ? 'build' : e.kind === 'loot' ? 'collect' : 'ui', e.kind === 'craft' ? .6 : 1);
+    if (e.kind === 'loot') hintDone('loot');
   }
   function wearHook(bag, slot, actor) {
     const i = hookIndex(bag, slot); if (i < 0) return;
@@ -611,7 +639,7 @@ export function mount(transfer = null) {
       if (i < 0) { emit({kind:'notice', text:'No hook to repair'}, actor); return; }
       if ((bag.slots[i].durability ?? MAX_HEALTH) >= MAX_HEALTH) { emit({kind:'notice', text:'Your hook is in great shape'}, actor); return; }
       if (!spend(bag, REPAIR_COST)) { emit({kind:'notice', text:'Repair needs ' + missingText(bag, REPAIR_COST)}, actor); return; }
-      bag.slots[i].durability = MAX_HEALTH; emit({kind:'build', text:'Hook repaired!'}, actor); return;
+      bag.slots[i].durability = MAX_HEALTH; emit({kind:'repair', text:'Hook repaired!'}, actor); return;
     }
     // 'wear' (legacy clients wore the hook on every throw) is ignored: wear now happens only on a successful catch.
   }
@@ -620,7 +648,7 @@ export function mount(transfer = null) {
   function selectSlot(i) {
     if (!isInt(i) || i < 0 || i >= HOTBAR) return;
     const bag = localBag(); if (bag.selectedIndex === i) return;
-    charging = null; hover = null; reelCast('slot');
+    charging = null; hover = null; reelCast('slot'); if (hintsDone.has('bag')) hintDone('slots');
     if (role === 'guest') { if (!networkReady) return; bag.select(i); action({kind:'selectSlot', index:i}); }
     else action({kind:'selectSlot', index:i});
   }
@@ -631,13 +659,13 @@ export function mount(transfer = null) {
   }
   function craft(recipe) { if (typeof recipe === 'string') action({kind:'craft', recipe}); }
   function repair() { if (!running) return; const bag = localBag(); action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH)}); }
-  function openInventory() { if (!running || !survivalUI) return; clearInput(); releaseLock(); survivalUI.open?.(); }
+  function openInventory() { if (!running || !survivalUI) return; clearInput(); releaseLock(); survivalUI.open?.(); hintDone('bag'); }
   function interact() {
     if (!running || uiBlocked()) return;
     const target = pickupFrom(currentAim());
     if (target) {
       if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
-      pending.set(target.token, performance.now() + PENDING_MS); swing = .6; beep(500);
+      pending.set(target.token, performance.now() + PENDING_MS); swing = .6; sfx('collect', .7);
       action({kind:'collect', id:target.id, token:target.token});
       return;
     }
@@ -660,7 +688,7 @@ export function mount(transfer = null) {
       if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2))) { notice('Point at the water to fish'); return; }
       if (Math.hypot(p.x - physics.x, p.z - physics.z) > FISH_REACH) { notice('Try a spot a little closer'); return; }
       fishWait = 3 + Math.random() * 2; hook = {end:new T.Vector3(p.x, .1, p.z), t:0, duration:fishWait + .8, fishing:true};
-      swing = 1; noticeUntil = 0; beep(280); // the context prompt shows the wait
+      swing = 1; sfx('throw', .6); // the context prompt shows the wait
     }
   }
   function beginCharge(at) {
@@ -682,7 +710,7 @@ export function mount(transfer = null) {
     const direction = aim?.dir ?? camera.getWorldDirection(new T.Vector3());
     const deckAt = (x, z) => (hasTile(Math.round(x / 2), Math.round(z / 2)) ? deckY() : null); // stop on the planks
     hook = new HookCast(T, {origin:handPos.clone(), direction, maxRange, charge, deckAt});
-    castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; beep(230);
+    castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; sfx('throw', .4 + .6 * charge); hintDone('throw');
     if (durability <= 0) notice('Worn hook: shorter throws. R to repair');
   }
 
@@ -716,11 +744,15 @@ export function mount(transfer = null) {
   function movePlayer(dt, input) {
     if (!running) { walking = false; return; }
     const fwd = input ? held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown') : 0, side = input ? held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft') : 0;
+    const jumpFrom = physics.grounded && input && held('Space');
     const ev = physics.update(dt, {forward:fwd, strafe:side, yaw, jump:input && held('Space'), sprint:input && held('ShiftLeft', 'ShiftRight'),
       tiles:world.tiles, deckY:deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList});
     const speed = Math.hypot(physics.vx, physics.vz);
     walking = physics.grounded && speed > .4; if (walking) walkPhase += dt * 9 * Math.min(1.6, speed / 2.6);
-    if (ev?.splashed) beep(180);
+    if (ev?.splashed) sfx('splash');
+    if (jumpFrom && !physics.grounded && !physics.swimming && physics.vy > 0) sfx('jump', .7);
+    swimClock = physics.swimming && (fwd || side) ? swimClock - dt : 0;
+    if (physics.swimming && (fwd || side) && swimClock <= 0) { swimClock = .75; sfx('swim', .7); }
     if (![physics.x, physics.y, physics.z].every(Number.isFinite)) { const s = spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); }
   }
 
@@ -830,7 +862,7 @@ export function mount(transfer = null) {
     for (let i = 1; i < pts.length; i++) pts[i].y = surfaceY(pts[i].x, pts[i].z, pts[i].y);
     pts[pts.length - 1].copy(pos); setRope(pts);
     const caught = caughtList(hook);
-    if (caught.length !== lastCaughtCount) { if (caught.length > lastCaughtCount) beep(520 + caught.length * 30); lastCaughtCount = caught.length; }
+    if (caught.length !== lastCaughtCount) { if (caught.length > lastCaughtCount) sfx('splash', .5); lastCaughtCount = caught.length; }
     for (let i = 0; i < caught.length; i++) { // visual only: the whole catch trails the hook as a bundle
       const m = itemMeshes.get(caught[i].token), cp = hook.caughtPosition(i, tmpV);
       if (m && cp) { m.position.set(cp.x, surfaceY(cp.x, cp.z, cp.y) - .02, cp.z); m.scale.setScalar(clamp(hook.distance / 2.5, .35, 1)); }
@@ -842,7 +874,7 @@ export function mount(transfer = null) {
         pending.set(it.token, performance.now() + PENDING_MS);
         action({kind:'collect', id:it.id, token:it.token, cast:castId, slot:hookSlot});
       }
-    } else if (ev?.kind === 'returned') beep(300);
+    } else if (ev?.kind === 'returned') sfx('collect', .5);
     if (hook.stage === 'done') endHook();
   }
   function updateGhost() {
@@ -878,7 +910,7 @@ export function mount(transfer = null) {
     if (running) { const t = wallTick(now, lastSaveAt, 3000); lastSaveAt = t.next; if (t.due) save(); } // wall clock: dt is capped
     if (conn?.open) { const t = wallTick(now, lastNetSendAt, 120); lastNetSendAt = t.next; if (t.due) send(role === 'host' ? hostState() : {type:'move', me:pose(), held:caughtList(castOut()).map(c => c.token)}); }
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
-    refreshPointerUI(); updateCharge(); updateContext(dialog);
+    refreshPointerUI(); updateCharge(); updateContext(dialog); updateNotices(dialog);
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
     renderer.render(scene, camera);
   }
@@ -933,7 +965,7 @@ export function mount(transfer = null) {
     if (!down || isLocked()) return;
     const dx = e.clientX - down.x, dy = e.clientY - down.y;
     if (!down.moved && Math.hypot(dx, dy) > 4) { down.moved = true; if (charging && charging.x !== null) charging = null; } // a drag is a look, not a throw
-    if (down.moved) { look(dx, dy, DRAG_SENSITIVITY); down.x = e.clientX; down.y = e.clientY; }
+    if (down.moved) { look(dx, dy, dragLookScale(DRAG_SENSITIVITY, options.sensitivity)); down.x = e.clientX; down.y = e.clientY; }
   });
   on(canvas, 'pointerup', e => {
     if (e.button !== 0) return;
@@ -991,8 +1023,8 @@ export function mount(transfer = null) {
   setHandler($('#welcomeCrew'), 'onclick', () => openDialog('crew'));
   setHandler($('#helpButton'), 'onclick', () => settingsController?.open());
   document.querySelectorAll('[data-close]').forEach(b => setHandler(b, 'onclick', () => $('#' + b.dataset.close)?.close()));
-  const soundLabel = () => setText('#soundButton', 'Sound: ' + (sound ? 'on' : 'off'));
-  setHandler($('#soundButton'), 'onclick', () => { sound = !sound; soundLabel(); });
+  const soundLabel = () => setText('#soundButton', 'Sound: ' + (!sound ? 'off' : options.volume > 0 ? 'on' : 'on (volume is 0%)'));
+  setHandler($('#soundButton'), 'onclick', () => { sound = !sound; saveSoundPref(window.localStorage, sound); soundLabel(); oceanAudio?.setVolume(audioVolume()); if (sound) oceanAudio?.resume(); });
   soundLabel();
 
   // ---------- Networking (PeerJS, host authoritative) ----------
@@ -1207,7 +1239,7 @@ export function mount(transfer = null) {
     return {
       version:3, world, bags:{host:hostBag.snapshot(), guest:guestBag.snapshot(), remote:remoteBag ? remoteBag.snapshot() : null},
       physics:physics.capture(), me:{x:physics.x, y:physics.y, z:physics.z}, other:other ? {...other} : null, yaw, pitch, running, elapsed, walkPhase,
-      hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio, peer, conn, role, networkReady, room, ownWorldBackup, pending:new Map(pending),
+      hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio:oceanAudio?.context ?? audio, hintsDone, peer, conn, role, networkReady, room, ownWorldBackup, pending:new Map(pending),
       wornCasts:{...wornCasts}, seq, lastSeqSent, guestAck,
       joinDeadline:joinTimer ? joinDeadline : 0, saveAvailable, lockFallback, keys:{...keys},
       charging:charging ? {...charging} : null, reeling, down:down ? {...down} : null,
@@ -1241,6 +1273,7 @@ export function mount(transfer = null) {
     pause(); disposed = true; ac.abort();
     try { settingsController?.destroy(); } catch {}
     try { survivalUI?.destroy?.(); } catch {}
+    try { oceanAudio?.destroy(); } catch {}
     for (const id of timers) clearTimeout(id); timers.clear(); clearInterval(heartbeat);
     unlisten(bindings.splice(0));
     try { if (window.raftDebug === debugApi) delete window.raftDebug; } catch {}
@@ -1251,7 +1284,11 @@ export function mount(transfer = null) {
   try {
     if (!canvas) throw new Error('#world canvas missing');
     init();
-    settingsController = createSettings({onChange:next => { options = next; if (renderer) { renderer.setPixelRatio(Math.min(devicePixelRatio, next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3)); renderer.shadowMap.enabled = next.graphics !== 'low'; } }, onPause:clearInput, onResume:() => requestLock()});
+    settingsController = createSettings({onChange:next => { options = next; oceanAudio?.setVolume(audioVolume()); soundLabel(); if (renderer) { renderer.setPixelRatio(Math.min(devicePixelRatio, next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3)); renderer.shadowMap.enabled = next.graphics !== 'low'; } }, onPause:clearInput, onResume:() => requestLock()});
+    oceanAudio = createOceanAudio({context:audio, volume:audioVolume()});
+    if (audio && audio.state === 'running') oceanAudio.resume(); // hot reload: context already unlocked
+    const wakeAudio = () => { if (sound && !disposed) oceanAudio?.resume(); }; // browsers need a user gesture first
+    for (const t of ['pointerdown', 'keydown']) on(window, t, wakeAudio, {capture:true});
     survivalUI = createSurvivalUI({
       getBag:() => localBag(),
       onSelect:guard(i => selectSlot(i)),
