@@ -300,8 +300,7 @@ export function createStorageUI(api) {
   // ---------- craft list annotation (#inventory) ----------
   function annotate() {
     const rows = inv.querySelectorAll('.sv-recipe[data-recipe]'), seen = new Set(api.state.seen), fresh = api.takeFresh();
-    let first = null;
-    const study = new Set();
+    const firsts = new Map(); // tab (data-cat) -> {el, miss}: each craft tab gets its own header over its first locked row
     lockedRows = [];
     rows.forEach(el => {
       const id = el.dataset.recipe, r = RECIPES[id], locked = !!r && !api.isLearned(id);
@@ -318,18 +317,18 @@ export function createStorageUI(api) {
         return;
       }
       const miss = Object.keys(r.cost).filter(k => !seen.has(k)).map(k => itemName(k));
-      for (const m of miss) study.add(m);
       const text = miss.length ? 'Study ' + miss.join(' + ') : 'Study at a Tinker\u2019s Desk';
       if (!el.dataset.locked) { el.dataset.locked = '1'; el.dataset.srAria = el.getAttribute('aria-label') ?? ''; }
       el.title = 'Needs research: ' + (miss.join(', ') || 'visit a Tinker\u2019s Desk'); el.tabIndex = -1;
       el.setAttribute('aria-label', LOCKED_LABEL); lockedRows.push(el);
-      if (!first) { el.classList.add('lr-sr-first'); first = el; }
+      const cat = el.dataset.cat ?? '';
+      if (!firsts.has(cat)) { el.classList.add('lr-sr-first'); firsts.set(cat, { el, miss }); }
       if (!badge && art) { badge = document.createElement('span'); badge.className = 'lr-sr-lock'; badge.innerHTML = LOCK; art.append(badge); }
       if (!needs && body) { needs = document.createElement('span'); needs.className = 'lr-sr-needs'; body.append(needs); }
       if (needs && needs.textContent !== text) needs.textContent = text;
     });
-    const head = studyHead([...study]);
-    rows.forEach(el => { if (el === first) { if (el.dataset.srHead !== head) el.dataset.srHead = head; } else if (el.dataset.srHead) delete el.dataset.srHead; });
+    const heads = new Map([...firsts.values()].map(f => [f.el, studyHead(f.miss)]));
+    rows.forEach(el => { const h = heads.get(el); if (h) { if (el.dataset.srHead !== h) el.dataset.srHead = h; } else if (el.dataset.srHead) delete el.dataset.srHead; });
   }
 
   function unlockRow(el) {
