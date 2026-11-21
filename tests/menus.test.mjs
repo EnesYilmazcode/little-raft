@@ -52,7 +52,7 @@ test('MEN2-2: title-screen menu hides Resume / Save-and-quit, and quitToTitle is
   const s = src('settings.js');
   assert.match(s, /\[data-act="resume"\],\[data-act="quit"\]'\)\) b\.hidden = !inGame/);
   assert.match(s, /button\[hidden\]\{display:none\}/);
-  assert.match(s, /act === 'quit'\) \{ if \(!gameActive\(\)\) return;/);
+  assert.match(s, /act === 'quit'\) \{\s*if \(!gameActive\(\)\) return;/);
   assert.match(src('game.js'), /function quitToTitle\(\) \{\s*if \(!running\) return;/);
 });
 

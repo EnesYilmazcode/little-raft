@@ -16,7 +16,8 @@ import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { getModel as getLibraryModel } from './models.js?build=v3-survival-ae77fa84ac2b';
-import { buildIconModel } from './icon-models.js?build=v3-survival-ae77fa84ac2b';
+import { buildIconModel, WORLD_ICON_KINDS } from './icon-models.js?build=v3-survival-ae77fa84ac2b';
+import { fitIconFrame } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { createSignalModel } from './signal-models.js?build=v3-survival-ae77fa84ac2b';
 
 const SIZE = 128;
@@ -33,7 +34,7 @@ const encoding = new Map(); // kind -> token while its PNG encodes
 const listeners = new Set();
 const waiters = new Map(); // kind -> [resolve] for loadItemIcon
 let provider = null;
-let gl = null, scene = null, camera = null, failed = false, releaseTimer = 0, pumping = false;
+let gl = null, scene = null, camera = null, rimLight = null, failed = false, releaseTimer = 0, pumping = false;
 let hostGL = null, rt = null, pixels = null; // shared main renderer: icons draw into a render target, no second WebGL context
 /** Render icons with the game's renderer (one WebGL context) instead of a private one. */
 export function setIconRenderer(r) { if (r === hostGL) return; if (gl && gl !== hostGL) release(); hostGL = r || null; }
@@ -130,7 +131,7 @@ function ensureGL() {
     scene.add(new T.HemisphereLight(0xfff6e6, 0x4a3420, 0.8));
     const key = new T.DirectionalLight(0xfff0d8, 3.4); key.position.set(2.5, 5, 4); scene.add(key);
     const fill = new T.DirectionalLight(0xd8e8ff, 0.9); fill.position.set(-4, 1, 3); scene.add(fill);
-    const rim = new T.DirectionalLight(0x9fd8ff, 1.6); rim.position.set(-4, 2, -3); scene.add(rim);
+    rimLight = new T.DirectionalLight(0x9fd8ff, 2.2); scene.add(rimLight); // placed behind the item per render (renderKind)
     camera = new T.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
   }
   return true;
@@ -146,6 +147,31 @@ function release() {
 
 const _clear = new T.Color(), _box = new T.Box3(), _sphere = new T.Sphere(), _v = new T.Vector3(), _dir = new T.Vector3(1, 0.85, 1.35).normalize();
 
+const _m = new T.Matrix4(), MAX_POINTS = 6000;
+// Camera-space (x, y) of the model's vertices (strided past MAX_POINTS), for framing the icon on its real
+// silhouette. Instanced meshes use their box corners.
+function silhouettePoints(root) {
+  const meshes = [];
+  let total = 0;
+  root.traverse(o => { if (o.isMesh && o.visible !== false && o.geometry?.attributes?.position) { meshes.push(o); total += o.geometry.attributes.position.count; } });
+  const stride = Math.max(1, Math.ceil(total / MAX_POINTS)), out = [];
+  for (const o of meshes) {
+    _m.multiplyMatrices(camera.matrixWorldInverse, o.matrixWorld);
+    if (o.isInstancedMesh) {
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      const b = o.geometry.boundingBox, im = new T.Matrix4();
+      for (let k = 0; k < o.count; k++) {
+        o.getMatrixAt(k, im); im.premultiply(_m);
+        for (let i = 0; i < 8; i++) { _v.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).applyMatrix4(im); out.push(_v.x, _v.y); }
+      }
+      continue;
+    }
+    const pos = o.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i += stride) { _v.fromBufferAttribute(pos, i).applyMatrix4(_m); out.push(_v.x, _v.y); }
+  }
+  return out;
+}
+
 function freeModel(root) {
   root.traverse(o => {
     if (o.geometry) o.geometry.dispose();
@@ -154,12 +180,25 @@ function freeModel(root) {
   });
 }
 
-/** Model for an icon: the provider, then the procedural fallback, then icon-models.js (progression
- *  and content items), then models.js for kinds the fallback lacks (cup, seed, water). own = true when the caller must free it. */
+// Placed gear and instruments (icon-models.js builds their in-world models): each is built once per page
+// and kept (own = false), like the provider's cached clones, so re-renders reuse it and nothing leaks.
+const stations = new Map(); // kind -> Object3D (or null when its builder failed)
+export const STATION_KINDS = WORLD_ICON_KINDS;
+/** The cached station model for kind (built on first use), or null. Never freed: callers must not dispose it. */
+export function stationModel(kind) {
+  if (!STATION_KINDS.includes(kind)) return null;
+  if (!stations.has(kind)) stations.set(kind, buildIconModel(T, kind) || null);
+  return stations.get(kind);
+}
+
+/** Model for an icon: the provider, then a cached station model, then the procedural fallback, then icon-models.js
+ *  (progression and content items), then models.js for kinds the fallback lacks (cup, seed, water). own = true when the caller must free it. */
 export function resolveIconModel(kind) {
   let model = null;
   if (provider && !FRAME[kind]?.own) { try { model = provider(MODEL_ALIAS[kind] || kind) || provider(kind) || null; } catch (e) { console.warn('item icon provider failed', kind, e); } }
   if (model) return { model, own: false };
+  model = stationModel(kind);
+  if (model) return { model, own: false };   // cached per kind (see STATION_KINDS)
   try { model = buildFallbackModel(kind); } catch (e) { console.warn('item icon model failed', kind, e); }
   if (model) return { model, own: true };
   model = buildIconModel(T, kind); // progression and content items: ores, ingots, parts, stations, gear
@@ -191,16 +230,25 @@ function renderKind(kind) {
   else camera.position.copy(_dir).multiplyScalar(r * 4);
   camera.lookAt(0, 0, 0);
   camera.updateMatrixWorld(true);
-  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-  for (let i = 0; i < 8; i++) {
-    _v.set(i & 1 ? _box.max.x : _box.min.x, i & 2 ? _box.max.y : _box.min.y, i & 4 ? _box.max.z : _box.min.z).applyMatrix4(camera.matrixWorldInverse);
-    x0 = Math.min(x0, _v.x); x1 = Math.max(x1, _v.x); y0 = Math.min(y0, _v.y); y1 = Math.max(y1, _v.y);
+  let half, cx, cy;
+  if (f.crop) { // hand-tuned crop of the projected bounds (FRAME)
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (let i = 0; i < 8; i++) {
+      _v.set(i & 1 ? _box.max.x : _box.min.x, i & 2 ? _box.max.y : _box.min.y, i & 4 ? _box.max.z : _box.min.z).applyMatrix4(camera.matrixWorldInverse);
+      x0 = Math.min(x0, _v.x); x1 = Math.max(x1, _v.x); y0 = Math.min(y0, _v.y); y1 = Math.max(y1, _v.y);
+    }
+    const w = x1 - x0, h = y1 - y0, c = f.crop; x1 = x0 + w * c[1]; x0 += w * c[0]; y1 = y0 + h * c[3]; y0 += h * c[2];
+    half = Math.max(x1 - x0, y1 - y0) * 0.5 * 1.12; cx = (x0 + x1) / 2; cy = (y0 + y1) / 2;
+  } else { // framed on the real projected silhouette (not the loose box of a diagonal tool), so every item fills its tile
+    pivot.updateMatrixWorld(true);
+    const fit = fitIconFrame(silhouettePoints(pivot), { pad: 0.12, long: Infinity }) || { cx: 0, cy: 0, half: r };
+    half = fit.half; cx = fit.cx; cy = fit.cy;
   }
-  if (f.crop) { const w = x1 - x0, h = y1 - y0, c = f.crop; x1 = x0 + w * c[1]; x0 += w * c[0]; y1 = y0 + h * c[3]; y0 += h * c[2]; }
-  const half = Math.max(x1 - x0, y1 - y0) * 0.5 * 1.12, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
   camera.left = cx - half; camera.right = cx + half; camera.top = cy + half; camera.bottom = cy - half;
   camera.near = r; camera.far = r * 7;
   camera.updateProjectionMatrix();
+  // Rim light from behind the item, opposite the camera, so dark edges separate from the slot tile.
+  rimLight.position.copy(camera.position).multiplyScalar(-1).add(_v.set(0, r * 3, 0));
   scene.add(pivot);
   let out = null;
   try {
@@ -264,6 +312,8 @@ function stylize(src) {
 
 const stale = new Map();    // kind -> blob URL replaced by setModelProvider, revoked once the new icon lands
 function finish(kind, url) {
+  const had = stale.get(kind);
+  if (!url && had) { stale.delete(kind); url = had; } // a failed re-render keeps the icon it had
   cache.set(kind, url);
   const w = waiters.get(kind); if (w) { waiters.delete(kind); for (const r of w) r(url || null); }
   if (url) for (const fn of listeners) { try { fn(kind, url); } catch (e) { console.error(e); } }
@@ -331,8 +381,11 @@ export function loadItemIcon(kind) {
   if (url || !kind || cache.has(kind) || failed) return Promise.resolve(url);
   return new Promise(r => { let w = waiters.get(kind); if (!w) waiters.set(kind, w = []); w.push(r); });
 }
-/** Queue several kinds ahead of time (rendered in idle slices). */
-export function warmIcons(kinds) { for (const k of kinds) request(k, false); }
+/** Queue several kinds ahead of time (rendered in idle slices). first = true puts them ahead of the
+ *  rest of the warm-up (the kinds in the bag render before the rest of the catalogue). */
+export function warmIcons(kinds, first = false) { for (const k of kinds || []) request(k, !!first); }
+/** Kinds waiting to render, in render order (for tests and the QA debug panel). */
+export const queuedIcons = () => [...urgent, ...queued];
 /** Render kinds right now (e.g. the starting hotbar and common pickups at mount), ahead of the idle warm-up. */
 export function primeIcons(kinds) {
   for (const k of kinds) {
@@ -344,13 +397,18 @@ export function primeIcons(kinds) {
 }
 /** Called with (kind, url) whenever an icon (re)renders. Returns an unsubscribe function. */
 export function onIconReady(fn) { listeners.add(fn); return () => listeners.delete(fn); }
-/** Swap the model source (e.g. hands.js buildItemModel). Re-renders every icon seen so far. */
+/** Swap the model source (e.g. hands.js buildItemModel). Re-renders every icon seen so far.
+ *  Icons already made stay on screen until their re-render lands, then swap once (no flash back to the
+ *  flat sprite, no two different looks in a row); finish() revokes the replaced blob URL. */
 export function setModelProvider(fn) {
-  provider = typeof fn === 'function' ? fn : null;
+  const next = typeof fn === 'function' ? fn : null;
+  if (next === provider) return;
+  provider = next;
   const kinds = [...cache.keys(), ...encoding.keys()];
-  for (const [k, u] of cache) if (u.startsWith('blob:')) { if (stale.has(k)) URL.revokeObjectURL(stale.get(k)); stale.set(k, u); }
-  cache.clear(); encoding.clear();
-  warmIcons(kinds);
+  for (const [k, u] of cache) if (u && u.startsWith('blob:')) { if (stale.has(k)) URL.revokeObjectURL(stale.get(k)); stale.set(k, u); }
+  encoding.clear();
+  for (const k of kinds) if (!urgent.has(k)) queued.add(k);
+  if ((urgent.size || queued.size) && !failed) schedule();
 }
 
 /** Facade over the shared cache, e.g. for callers that want an object: get(kind) is sync (null while rendering). */

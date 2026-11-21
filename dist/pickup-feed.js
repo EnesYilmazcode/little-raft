@@ -2,7 +2,7 @@
 // Repeats of one kind inside MERGE_MS fold into one row; rows hold, then fade. No per-frame work.
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
-export const HOLD_MS = 3000, MERGE_MS = 2000, FADE_MS = 450, MAX_ROWS = 5;
+export const HOLD_MS = 3000, MERGE_MS = 2000, FADE_MS = 450, MAX_ROWS = 3; // a short stack at the left edge (UX3-3)
 const SVG = 'http://www.w3.org/2000/svg';
 
 // doc and clock are injectable so the merge/cap logic runs under node tests.

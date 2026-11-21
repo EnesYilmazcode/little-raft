@@ -1197,3 +1197,59 @@ No regressions. Intended differences:
 - Lower the net rope segment count (about 5k tris).
 - Measure decor and deck chunk culling on rafts of 144+ tiles.
 - Check whether three.js's `setValueV3f` boxing (8–11 KB/frame) can be avoided.
+
+## Round 3: claude/loop-ux-202611210743 (base: origin/claude/raft-master e8b7251 + round 2 merged in ead02a0)
+
+Fleet:
+- 3 hunters: cursor/focus with real X11 input, other-lane panels, crafting with the new items.
+- 2 adversarial verifiers per hunter report, 6 in total.
+- 3 fixers.
+- 1 new-player UX reviewer, reading screenshots.
+- 1 crafting UX builder.
+- 1 merge agent.
+
+### Merge
+Round 2 was merged into raft-master, which had absorbed a parallel UX round (loop-ux-202611210603).
+- Crafting features were kept once, with raft-master's extras folded in: research gating, fittingTimes and source tags.
+- raft-master had moved prompts and the throw meter beside the crosshair. Because of the owner's rule, they were docked back in the bottom-left stack.
+- 4 more panels now call `exitPointerLock` through `exitLock`.
+
+### Fixed (each confirmed by both verifiers)
+- **Cursor (CUR3-1..4).** Tested with real XTest input in headful Chrome.
+  - When Chrome eats the Esc, a second Esc no longer closes the pause menu to a free cursor. The menu stays open with Resume focused and "Click Resume or press Enter"; if a relock is refused after closing, the menu reopens. Before → after: 5/8 free → 8/8 ok, and 4/4 free → 8/8 ok.
+  - The page-release mark is event-based, and an unlock that arrives while a panel is open never pauses: 7/7 bad → 3/3 ok.
+  - Quit needs a second click, and clicks are ignored for 400 ms after the menu opens. Clicking the empty area of the pause screen resumes. The quit button used to sit under the cursor: 5/5 accidental quits → 0/15.
+  - The logbook opened from pause returns to pause: 5/5 free → 5/5 ok.
+  - Alt-tab was confirmed fine in real Chrome (11/11). The round 2 suspicion was a Playwright artifact.
+- **Crafting (CRA3-1..5, plus the builder):**
+  - Tinker's Desk locks now reach the bag: badges, opening pick, a disabled Craft button and the tracker.
+  - A hold stops when nothing is crafted.
+  - The storage-research row CSS conflict is removed, and keyboard order follows the visual order.
+  - Station and instrument 3D icons are cached; flat drawings cover the rest, so there are no blank tiles.
+  - Framed and rim-lit icons; locked rows show "Unlock: …".
+  - A search box, a ready pulse and a "Ready to craft" notice.
+  - New Music tab; the Sail sits under Tools.
+  - Naming is unified to "plank".
+  - The Craft button is simplified, and Tab closes the bag.
+- **Panels and tutorial (PAN3-1..6, UX3-1/2/3/4/8):**
+  - Feed rows are capped to the stack width, and nothing draws over the hotbar.
+  - #lrFeed is removed, and onboarding ticks flash in the checklist row.
+  - The binoculars readout is docked in the edge stack.
+  - One notice per catch.
+  - The build chip is aligned to the measured 10-slot hotbar.
+  - The hint chain defers to the onboarding tracker.
+  - The feed is hidden over panels and capped at 3 rows.
+  - The right column is compact at 900px.
+  - The logbook is a left side panel.
+  - E and Tab close the station panels, which now use the shared palette.
+
+### Checks
+- `npm test`: 720 pass, 0 fail.
+- `python tests/e2e/escape_lock.py --trials 2`: inv, locked and pause each 2/2.
+- `shoot.py`: no page errors.
+
+### Open for next round
+- None of the Electron paths have been run, on any OS.
+- The fish journal and the station panels are still centred modals; they pause the game.
+- The water item is unobtainable, and both water items are named "Cup of Fresh Water".
+- A long "Unlock:" reason is cut off in the recipe list row.

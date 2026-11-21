@@ -1,4 +1,4 @@
-// Raft logbook view: bottled notes and achievements in a wood-panel dialog, plus unlock toasts.
+// Raft logbook view: bottled notes, achievements and crew tasks in a left-edge side panel (a dialog for focus/Esc), plus unlock toasts.
 // createLogbookUI({getProgress, onPause, onResume, tasks}) -> {open, close, toggle, update, celebrate, destroy, isOpen}
 // tasks (optional, [tasks]): {view: () => taskView object | null, claim: id => void}; null view hides the Tasks tab.
 import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
@@ -7,7 +7,7 @@ import { NOTES, NOTE_COUNT, ACHIEVEMENTS, cleanProgress } from './logbook.js?bui
 const INST_KEY = '__littleRaftLogbookUI';
 const STYLE_ID = 'little-raft-logbook-style';
 const SEEN_KEY = 'little-raft-logbook-seen';
-const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
+const FONT = "var(--ui-font,'Segoe UI',system-ui,-apple-system,sans-serif)"; // shared HUD font (graphics.css)
 const BUILD = (() => { try { return new URL(import.meta.url).searchParams.get('build') || 'dev'; } catch { return 'dev'; } })();
 const SPRITE_URL = (() => {
   try { const u = new URL('icons.svg', import.meta.url); u.search = '?build=' + encodeURIComponent(BUILD); return u.href; }
@@ -16,66 +16,78 @@ const SPRITE_URL = (() => {
 const icon = (id, cls = 'lb-icon') => `<svg class="${cls}" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><use href="${SPRITE_URL}#icon-${id}"></use></svg>`;
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
-const WOOD = 'repeating-linear-gradient(90deg,#00000012 0 2px,transparent 2px 23px),linear-gradient(#b48d55,#8a663a)';
+// A side panel at the left edge (like the pause rail), never a centred modal over play. Shared slate palette and
+// --ui-font from graphics.css; the unlock toast sits at the top-left edge, clear of the compass/sail badge column.
 const CSS = `
-#logbook.lb{padding:0;margin:auto;border:0;background:transparent;box-shadow:none;color:#fff2cc;width:min(640px,calc(100vw - 32px));max-height:88dvh;overflow:visible;font:500 14px/1.45 ${FONT}}
-#logbook.lb::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
-#logbook .lb-wrap{display:flex;flex-direction:column;gap:10px;padding:12px;max-height:88dvh;box-sizing:border-box;border-radius:6px;outline:none;
-  background:${WOOD};border:3px solid #3e2a17;box-shadow:0 0 0 2px #d6b67e,0 18px 50px #000a}
+#logbook.lb{position:fixed;inset:0 auto 0 0;padding:0;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;color:var(--cream,#f4efe2);
+  width:min(400px,calc(100vw - 24px));height:100dvh;max-width:none;max-height:none;overflow:visible;font:500 14px/1.45 ${FONT}}
+#logbook.lb::backdrop{background:rgba(6,10,12,.3);-webkit-backdrop-filter:none;backdrop-filter:none}
+#logbook .lb-wrap{display:flex;flex-direction:column;gap:12px;height:100%;padding:22px 20px 18px;box-sizing:border-box;outline:none;
+  background:linear-gradient(180deg,#141b1ef2,#0b1012f7);box-shadow:inset -1px 0 0 var(--line,#ffffff17),18px 0 50px rgba(0,0,0,.3)}
 #logbook .lb-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.lb h2{font:700 20px/1.2 ${FONT};margin:0;color:#fff2cc;letter-spacing:0;text-shadow:0 1px 0 #3e2a17}
-#logbook .lb-close{width:32px;height:32px;min-width:32px;padding:0;display:grid;place-items:center;background:transparent;border:0;border-radius:4px;color:#fff2cc;cursor:pointer;box-shadow:none}
-#logbook .lb-close:hover{transform:none;background:#00000022}
-#logbook .lb-close svg{width:22px;height:22px}
-#logbook .lb-close:focus-visible{outline:2px solid #ffe3a6;outline-offset:1px}
-#logbook .lb-tabs{display:flex;gap:6px}
-.lb [role=tab]{background:linear-gradient(180deg,#5a3f28e8,#3d2a19e8);box-shadow:inset 0 0 0 1px #d4b07a55;border:0;border-radius:4px;padding:8px 14px;color:#fff2cc;font:600 14px/1.2 ${FONT};cursor:pointer;transform:none}
-.lb [role=tab]:hover{transform:none;filter:brightness(1.08)}
-.lb [role=tab][aria-selected=true]{background:linear-gradient(180deg,#b3925acc,#8a6a3ccc);box-shadow:inset 0 0 0 2px #ffe3a6}
-.lb [role=tab]:focus-visible{outline:2px solid #ffe3a6;outline-offset:1px}
-.lb [role=tabpanel]{background:#3a2716eb;border-radius:4px;box-shadow:inset 0 0 0 2px #24170c,inset 0 0 0 3px #b48d5544;padding:10px;overflow:auto;overscroll-behavior:contain;scrollbar-color:#b48d55 #2a1b0e;min-height:0;flex:1}
+.lb h2{font:800 22px/1.2 ${FONT};margin:0;color:var(--cream-hi,#fff6e0);letter-spacing:-.2px}
+#logbook .lb-close{width:32px;height:32px;min-width:32px;padding:0;display:grid;place-items:center;background:#ffffff0d;border:0;border-radius:6px;color:var(--cream,#f4efe2);cursor:pointer;box-shadow:none}
+#logbook .lb-close:hover{transform:none;background:#ffffff22}
+#logbook .lb-close svg{width:20px;height:20px}
+#logbook .lb-close:focus-visible{outline:2px solid var(--cream-hi,#fff6e0);outline-offset:1px}
+#logbook .lb-tabs{display:flex;gap:4px}
+.lb [role=tab]{flex:1;background:#ffffff0b;box-shadow:inset 0 0 0 1px #ffffff12;border:0;border-radius:6px;padding:9px 10px;color:var(--cream-dim,#f4efe2b3);font:700 13px/1 ${FONT};cursor:pointer;transform:none}
+.lb [role=tab]:hover{transform:none;color:var(--cream-hi,#fff6e0);background:#ffffff17}
+.lb [role=tab][aria-selected=true]{color:var(--cream-hi,#fff6e0);background:linear-gradient(180deg,#46545ad0,#1c2529dc);box-shadow:inset 0 0 0 1px #fff6e0a8}
+.lb [role=tab]:focus-visible{outline:2px solid var(--cream-hi,#fff6e0);outline-offset:1px}
+.lb [role=tabpanel]{overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#ffffff52 transparent;min-height:0;flex:1;padding:2px 2px 0}
 .lb [role=tabpanel][hidden]{display:none}
 .lb-notes{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-.lb-note{background:#f3e6c4;color:#3e2a17;border-radius:3px;padding:10px 12px;box-shadow:0 2px 0 #24170c;font-style:italic}
-.lb-note .lb-no{display:inline-block;font:600 12px/1.2 ${FONT};font-variant:small-caps;letter-spacing:.04em;color:#8a663a;font-style:normal;margin-bottom:3px}
+.lb-note{background:#ffffff0a;color:var(--cream,#f4efe2);border-radius:6px;padding:10px 12px;box-shadow:inset 0 0 0 1px var(--line,#ffffff17);font-style:italic}
+.lb-note .lb-no{display:inline-block;font:800 10px/1.2 ${FONT};letter-spacing:1.4px;text-transform:uppercase;color:var(--amber,#ffc66e);font-style:normal;margin-bottom:4px}
 .lb-note p{margin:0;color:inherit;font-size:14px;line-height:1.45}
-.lb-note.lb-missing{background:transparent;border:1px dashed #b48d5566;box-shadow:none;color:#d6b67e99;font-style:normal}
-.lb-note.lb-missing .lb-no{color:#d6b67e99}
-.lb-new::after{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:#ffbd66;margin-left:6px;vertical-align:middle}
-.lb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
-.lb-card{display:flex;gap:10px;align-items:flex-start;padding:8px;background:linear-gradient(180deg,#664730e8,#46301ce8);border-radius:4px;box-shadow:inset 0 0 0 1px #d4b07a44}
-.lb-card .lb-icon{width:36px;height:36px;flex:none}
-.lb-card b{display:block;font:600 14px/1.25 ${FONT};color:#fff2cc}
-.lb-card span{display:block;font-size:12px;line-height:1.35;color:#e8d3a8}
-.lb-card em{display:inline-block;margin-top:3px;font:600 11px/1 ${FONT};font-style:normal;text-transform:uppercase;letter-spacing:.06em;color:#d6b67e}
-.lb-card.lb-locked{opacity:.5}
+.lb-sum{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:2px 2px 4px;font:800 10px/1.2 ${FONT};letter-spacing:1.4px;text-transform:uppercase;color:var(--muted,#f4efe280)}
+.lb-sum b{font:700 15px/1 ${FONT};letter-spacing:0;text-transform:none;color:var(--cream-hi,#fff6e0);font-variant-numeric:tabular-nums}
+.lb-tip{display:flex;gap:9px;align-items:flex-start;padding:7px 10px;border-radius:6px;background:#ffffff06;color:var(--cream-dim,#f4efe2b3);font-size:13px;line-height:1.4}
+.lb-tip::before{content:'';flex:none;width:6px;height:6px;margin-top:6px;transform:rotate(45deg);background:var(--amber,#ffc66e)}
+.lb-new::after{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--amber,#ffc66e);margin-left:6px;vertical-align:middle}
+.lb-grid{display:grid;grid-template-columns:1fr;gap:6px}
+.lb-card{display:flex;gap:10px;align-items:center;padding:7px 9px;background:#ffffff0a;border-radius:6px;box-shadow:inset 0 0 0 1px var(--line,#ffffff17)}
+.lb-card .lb-icon{width:32px;height:32px;flex:none}
+.lb-card b{display:block;font:700 13px/1.25 ${FONT};color:var(--cream-hi,#fff6e0)}
+.lb-card span{display:block;font-size:12px;line-height:1.35;color:var(--cream-dim,#f4efe2b3)}
+.lb-card em{display:inline-block;margin-top:3px;font:800 10px/1 ${FONT};font-style:normal;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted,#f4efe280)}
+.lb-card.lb-locked{opacity:.55}
 .lb-card.lb-locked .lb-icon{filter:grayscale(1)}
-#lb-toast{position:fixed;top:16px;right:16px;z-index:40;max-width:min(380px,calc(50vw - 130px));max-height:40px;overflow:hidden;white-space:nowrap;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:4px 10px;
-  background:linear-gradient(180deg,#664730f2,#46301cf2);border:2px solid #3e2a17;border-radius:4px;box-shadow:0 0 0 2px #d6b67e,0 8px 24px #0008;
-  color:#fff2cc;font:600 14px/1.35 ${FONT};pointer-events:none;opacity:0;transform:translateY(-6px);transition:opacity .2s,transform .2s}
+/* One line, at most 40px tall, at the top-left edge: clear of the compass / sail badge column and the centred signal pill. */
+#lb-toast{position:fixed;top:16px;left:16px;z-index:40;max-width:min(360px,calc(50vw - 130px));max-height:40px;overflow:hidden;white-space:nowrap;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:4px 12px 4px 8px;
+  background:var(--plate-hud,rgba(16,22,25,.9));border-radius:8px;box-shadow:var(--frame,inset 0 0 0 1px #ffffff17,0 10px 28px rgba(0,0,0,.45));
+  color:var(--cream,#f4efe2);font:600 14px/1.35 ${FONT};pointer-events:none;opacity:0;transform:translateY(-6px);transition:opacity .2s,transform .2s}
 #lb-toast.lb-show{opacity:1;transform:none}
 #lb-toast[hidden]{display:none}
-#lb-toast .lb-icon{width:24px;height:24px;flex:none}#lb-toast span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+#lb-toast .lb-icon{width:26px;height:26px;flex:none}#lb-toast span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 @media (prefers-reduced-motion:reduce){#lb-toast{transition:none;transform:none}}
-/* One line, at most 40px tall: ends above #sailBadge (top:64px, sailing-ui.js); the width cap keeps it right of the centred signal pill. */
-.lb-tk-head{margin:0 0 8px;font:600 12px/1.3 ${FONT};letter-spacing:.06em;text-transform:uppercase;color:#d6b67e}
-.lb-tk-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-.lb-tk{padding:8px 10px;background:linear-gradient(180deg,#664730e8,#46301ce8);border-radius:4px;box-shadow:inset 0 0 0 1px #d4b07a44}
-.lb-tk.lb-tk-done{box-shadow:inset 0 0 0 2px #ffcf7d99}
+/* [tasks] crew tasks tab, same slate cards as the notes */
+.lb-tk-head{margin:0 0 8px;font:800 10px/1.3 ${FONT};letter-spacing:1.4px;text-transform:uppercase;color:var(--muted,#f4efe280)}
+.lb-tk-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.lb-tk{padding:8px 10px;background:#ffffff0a;border-radius:6px;box-shadow:inset 0 0 0 1px var(--line,#ffffff17)}
+.lb-tk.lb-tk-done{box-shadow:inset 0 0 0 1px var(--amber,#ffc66e),inset 3px 0 0 var(--amber,#ffc66e)}
 .lb-tk-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.lb-tk-top b{font:600 14px/1.3 ${FONT};color:#fff2cc}
-.lb-tk-top span{font:600 13px/1 ${FONT};color:#e8d3a8;font-variant-numeric:tabular-nums;white-space:nowrap}
-.lb-tk-bar{height:8px;margin:6px 0;border-radius:4px;background:#24170c;box-shadow:inset 0 0 0 1px #b48d5544;overflow:hidden}
-.lb-tk-bar i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,#c58f32,#ffcf7d);transition:width .3s}
-.lb-tk-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:#e8d3a8}
-.lb-tk-foot em{font:600 11px/1 ${FONT};font-style:normal;text-transform:uppercase;letter-spacing:.06em;color:#d6b67e}
-.lb button.lb-claim{min-height:30px;padding:5px 12px;border:0;border-radius:3px;background:linear-gradient(#ffcf7d,#e9a24a);color:#2a1b0e;font:800 12px/1 ${FONT};cursor:pointer;box-shadow:0 2px 0 #8a5a26;transform:none}
-.lb button.lb-claim:disabled{opacity:.35;cursor:default;box-shadow:none}
-.lb button.lb-claim:focus-visible{outline:2px solid #ffe3a6;outline-offset:1px}
-.lb-tk.lb-tk-extra{background:#2a1b0ecc}
-.lb-tk-streak{margin:10px 0 0;font-size:13px;color:#e8d3a8;text-align:center}
-@media (max-width:520px){.lb [role=tab]{flex:1}.lb-grid{grid-template-columns:1fr}.lb [role=tabpanel]{padding:8px}}
+.lb-tk-top b{font:700 13px/1.3 ${FONT};color:var(--cream-hi,#fff6e0)}
+.lb-tk-top span{font:700 12px/1 ${FONT};color:var(--cream-dim,#f4efe2b3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.lb-tk-bar{height:6px;margin:6px 0;border-radius:3px;background:#00000059;box-shadow:inset 0 0 0 1px var(--line,#ffffff17);overflow:hidden}
+.lb-tk-bar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#c58f32,var(--amber,#ffc66e));transition:width .3s}
+.lb-tk-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:var(--cream-dim,#f4efe2b3)}
+.lb-tk-foot em{font:800 10px/1 ${FONT};font-style:normal;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted,#f4efe280)}
+.lb button.lb-claim{min-height:28px;padding:5px 12px;border:0;border-radius:6px;background:linear-gradient(180deg,#ffd98f,#e9a24a);color:#2a1b0e;font:800 12px/1 ${FONT};cursor:pointer;box-shadow:none;transform:none}
+.lb button.lb-claim:disabled{opacity:.35;cursor:default}
+.lb button.lb-claim:focus-visible{outline:2px solid var(--cream-hi,#fff6e0);outline-offset:1px}
+.lb-tk.lb-tk-extra{background:#ffffff05}
+.lb-tk-streak{margin:10px 0 0;font-size:13px;color:var(--cream-dim,#f4efe2b3);text-align:center}
+@media (max-width:520px){.lb [role=tabpanel]{padding:0}#logbook .lb-wrap{padding:16px 14px}}
 `;
+
+// Where the rest of the notes come from (shown instead of a wall of empty placeholders).
+export const NOTE_TIPS = Object.freeze([
+  'Bottles drift in with the other flotsam: hook one like a plank.',
+  'About one piece of flotsam in 25 is a bottle. Keep fishing supplies out.',
+  'Each bottle holds the next note in the series.',
+]);
 
 function ensureStyle() {
   let st = document.getElementById(STYLE_ID);
@@ -121,13 +133,14 @@ function mountToast() {
 const readSeen = () => { try { const v = parseInt(localStorage.getItem(SEEN_KEY), 10); return Number.isFinite(v) ? v : 0; } catch { return 0; } };
 const writeSeen = n => { try { localStorage.setItem(SEEN_KEY, String(n)); } catch {} };
 
-// Found notes in order, then one hint for the rest (not a row per missing note).
+// Found notes in order after a compact "n/12 found" line, then a few hints for the rest (never twelve identical placeholders).
 export function notesHTML(found, newest = -1) {
-  let rows = '';
-  for (let i = 0; i < NOTE_COUNT; i++) if (found.includes(i))
+  const p = { notes: found.filter(i => Number.isInteger(i) && i >= 0 && i < NOTE_COUNT) };
+  let rows = `<li class="lb-sum">Notes found<b>${p.notes.length}/${NOTE_COUNT}</b></li>`;
+  for (let i = 0; i < NOTE_COUNT; i++) if (p.notes.includes(i))
     rows += `<li class="lb-note"><span class="lb-no${i === newest ? ' lb-new' : ''}">No. ${i + 1}</span><p>${esc(NOTES[i])}</p></li>`;
-  const left = NOTE_COUNT - found.filter(i => i >= 0 && i < NOTE_COUNT).length;
-  if (left > 0) rows += `<li class="lb-note lb-missing lb-hint"><p>Hook floating bottles to find notes${found.length ? ` · ${left} still adrift` : ''}</p></li>`;
+  const left = NOTE_COUNT - p.notes.length;
+  if (left > 0) rows += (p.notes.length ? [`${left} more note${left === 1 ? '' : 's'} still drifting out there.`] : NOTE_TIPS).map(t => `<li class="lb-tip">${esc(t)}</li>`).join('');
   return rows;
 }
 

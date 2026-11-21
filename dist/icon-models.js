@@ -199,6 +199,7 @@ const SMALL = {
 
 /** Kinds this module can build. */
 export const ICON_MODEL_KINDS = Object.freeze([...Object.keys(WORLD), ...Object.keys(SMALL)]);
+export const WORLD_ICON_KINDS = Object.freeze(Object.keys(WORLD)); // placed gear and instruments (item-icons.js caches these)
 
 /** A fresh icon model for kind (caller owns it), or null. Effects that would blow up the framing
  *  (sprinkler spray points, glow sprites, lines) are removed. */

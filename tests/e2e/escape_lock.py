@@ -7,6 +7,10 @@ then these bugs never show.
 Scenarios:
   inv     open the bag, press Esc: the bag closes and the game stays locked for 3 s.
   locked  locked play, press Esc: the pause menu is open.
+  pause   locked play, Esc to the pause menu, wait out user activation (6 s), Esc again: either locked play,
+          or the menu stays open with the "Click Resume or press Enter" hint (when Chrome itself took the
+          lock), then Enter relocks. Never a closed menu with a free cursor (CUR3-1).
+          Note: Playwright cannot emulate focus loss, so the alt-tab variant needs real X11 input.
 
 Usage: python3 tests/e2e/escape_lock.py [--dist DIST] [--trials N] [--hold MS] [--chrome PATH] [--headful] [inv] [locked]
 Needs Python Playwright and Chrome or Chromium. Exits 1 if any trial fails.
@@ -16,7 +20,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 ap = argparse.ArgumentParser()
-ap.add_argument('scenarios', nargs='*', default=['inv', 'locked'])
+ap.add_argument('scenarios', nargs='*', default=['inv', 'locked', 'pause'])
 ap.add_argument('--dist', default=str(Path(__file__).resolve().parents[2] / 'dist'))
 ap.add_argument('--trials', type=int, default=5)
 ap.add_argument('--hold', type=int, default=120, help='ms between the Escape keydown and keyup')
@@ -34,7 +38,8 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 
 STATE = """JSON.stringify({locked:!!document.pointerLockElement,
   open:[...document.querySelectorAll('dialog[open]')].map(d=>d.id||d.className),
-  bag:!!(window.raftShell&&raftShell.panelOpen()), focus:document.hasFocus()})"""
+  bag:!!(window.raftShell&&raftShell.panelOpen()), focus:document.hasFocus(),
+  hint:!!document.querySelector('#options .rs-hint:not([hidden])')})"""
 # nativeVirtualKeyCode is the platform key code: X11 keycode 9 on Linux, VK_ESCAPE elsewhere.
 # Event log printed with failing trials: lock requests and results, page exits, lock changes, Escape keys.
 TRACE = r"""(()=>{const L=window.__trace=[];const t=()=>performance.now()|0;
@@ -46,6 +51,11 @@ document.addEventListener('pointerlockchange',()=>L.push({t:t(),plc:!!document.p
 for(const ty of ['keydown','keyup'])addEventListener(ty,e=>{if(e.key==='Escape')L.push({t:t(),[ty]:e.key})},true);
 addEventListener('blur',e=>{if(e.target===window)L.push({t:t(),blur:1})},true);})();"""
 ESC = dict(key='Escape', code='Escape', windowsVirtualKeyCode=27, nativeVirtualKeyCode=9 if sys.platform.startswith('linux') else 27)
+ENTER = dict(key='Enter', code='Enter', text='\r', windowsVirtualKeyCode=13, nativeVirtualKeyCode=36 if sys.platform.startswith('linux') else 13)
+
+def press(cdp, pg, k, hold):
+    cdp.send('Input.dispatchKeyEvent', dict(type='keyDown' if 'text' in k else 'rawKeyDown', **k)); pg.wait_for_timeout(hold)  # keyDown with text activates the button
+    cdp.send('Input.dispatchKeyEvent', dict(type='keyUp', **k))
 
 def trial(p, scenario):
     launch = dict(headless=not args.headful, args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--window-size=1280,800'])
@@ -72,6 +82,20 @@ def trial(p, scenario):
         cdp = ctx.new_cdp_session(pg)
         cdp.send('Input.dispatchKeyEvent', dict(type='rawKeyDown', **ESC)); pg.wait_for_timeout(args.hold)
         cdp.send('Input.dispatchKeyEvent', dict(type='keyUp', **ESC))
+        if scenario == 'pause':
+            for _ in range(10):
+                pg.wait_for_timeout(300)
+                if 'options' in st()['open']: break
+            mid = st()
+            if 'options' not in mid['open']: return False, 'first Esc did not pause', mid, trace()
+            pg.wait_for_timeout(6000)  # past transient user activation from the start click
+            press(cdp, pg, ESC, args.hold); pg.wait_for_timeout(3000); s = st()
+            if s['locked'] and not s['open']: return True, 'Esc resumed locked play', s, trace()
+            if 'options' in s['open'] and s['hint'] and not s['locked']:
+                press(cdp, pg, ENTER, 60); pg.wait_for_timeout(2500); e = st()
+                ok = e['locked'] and not e['open']
+                return ok, 'menu kept open with hint, Enter relocked' if ok else 'Enter did not relock', {'esc': s, 'enter': e}, trace()
+            return False, 'free cursor or stuck after the second Esc', s, trace()
         if scenario == 'inv':
             samples = []
             for _ in range(8):  # about 4 s, sampled every 500 ms; the last 3 s must all be locked

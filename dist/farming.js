@@ -132,7 +132,7 @@ export function applyFarmAction(world, bag, a) {
   const fail = (text, effect = 'notice') => ({ ok: false, text, effect, changed: false });
   if (!a || typeof a.op !== 'string') return fail('');
   if (a.op === 'fill') { // the cup's leaf filter turns a scoop of sea into fresh water
-    if (bag.count('cup') < 1) return fail('Craft a cup first');
+    if (bag.count('cup') < 1) return fail('Craft a Cup first');
     const scratch = new bag.constructor(bag.snapshot());
     if (!takeOne(scratch, 'cup') || scratch.add('water', 1) > 0) return fail('Your bag is full', 'full');
     for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i];
@@ -153,7 +153,7 @@ export function applyFarmAction(world, bag, a) {
     if (p.w >= WATER_SECONDS * .5) return fail('The soil is still wet');
     const scratch = new bag.constructor(bag.snapshot());
     const from = takeOneAt(scratch, 'water');
-    if (from < 0) return fail('Fill a cup at the sea first');
+    if (from < 0) return fail('Scoop sea water with a Cup first');
     // The empty cup goes back where the water was; with no room at all nothing is used up.
     const kept = !scratch.slots[from] ? (scratch.slots[from] = { kind: 'cup', count: 1 }, true) : scratch.add('cup', 1) === 0;
     if (!kept) return fail('Your bag is full', 'full');

@@ -61,10 +61,10 @@ test('statePrompt: built-in providers', () => {
   assert.equal(s({heldKind:'hook', me:{pitch:-0.9}}), null);
   assert.equal(s({heldKind:'hook', hookStage:'floating'})[0].label, 'Reel in');
   assert.equal(s({heldKind:'hammer', build:{hover:{x:1, z:0}, affordable:true}})[0].label, 'Build floor');
-  assert.deepEqual(s({heldKind:'hammer', build:{hover:{x:1, z:0}, affordable:true}})[1], {key:'', label:'2 wood · 2 plastic', hold:false, muted:true});
+  assert.deepEqual(s({heldKind:'hammer', build:{hover:{x:1, z:0}, affordable:true}})[1], {key:'', label:'2 planks · 2 plastic', hold:false, muted:true});
   const need = s({heldKind:'hammer', stock:{wood:1}, build:{hover:{x:1, z:0}, affordable:false}});
-  assert.equal(need[0].label, 'Needs 2 wood · 2 plastic'); assert.ok(need[0].muted && need[1].muted);
-  assert.equal(need[1].label, 'Missing 1 wood · 2 plastic');
+  assert.equal(need[0].label, 'Needs 2 planks · 2 plastic'); assert.ok(need[0].muted && need[1].muted);
+  assert.equal(need[1].label, 'Missing 1 plank · 2 plastic');
   assert.equal(s({heldKind:'hammer', stock:{}, build:{hover:{x:1, z:0}, affordable:false}}).length, 1); // missing == cost: no duplicate line
   assert.equal(s({heldKind:'hammer', stock:{wood:5, plastic:5}, build:{hover:{x:1, z:0}, affordable:false}}).length, 1); // nothing computably missing
   assert.deepEqual(s({heldKind:'hammer', build:{hover:null}}), [{key:'', label:'Aim at the raft edge', hold:false, muted:true}]);
@@ -99,9 +99,9 @@ test('raftDistance + swimming prompts', () => {
 });
 
 test('costText / missingText', () => {
-  assert.equal(P.costText({wood:2, plastic:2}), '2 wood · 2 plastic');
+  assert.equal(P.costText({wood:2, plastic:2}), '2 planks · 2 plastic');
   assert.equal(P.missingText({wood:2, plastic:0}, {wood:2, plastic:2}), '2 plastic');
-  assert.equal(P.missingText({wood:'x'}, {wood:2}), '2 wood');
+  assert.equal(P.missingText({wood:'x'}, {wood:2}), '2 planks');
   assert.equal(P.missingText({wood:3, plastic:3}, {wood:2, plastic:2}), '');
 });
 

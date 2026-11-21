@@ -54,7 +54,7 @@ export const HINTS = Object.freeze([
   // Loot -> rope -> hammer -> first floor. Each is also marked done from bag/world state (hintsFromState),
   // so a player who already has rope or a hammer, or has built, never gets stuck on an earlier step.
   {id:'rope', text:'Open your bag (Tab) → Materials → craft Rope from palm leaves', when:c => c.hasLeaf},
-  {id:'hammer', text:'Craft a Hammer in Tools: 4 wood, 2 rope', when:() => true},
+  {id:'hammer', text:'Craft a Hammer in Tools: 4 planks, 2 rope', when:() => true},
   {id:'build', text:'With the Hammer, click the water beside the raft to add floor', when:c => c.heldKind === 'hammer'},
 ]);
 // Hint ids already satisfied by what the player owns or has built (c: {hasRope, hasHammer, built}).
@@ -65,6 +65,11 @@ export function hintsFromState(c) {
   if (c?.built) out.push('build');
   return out;
 }
+// While the onboarding "First Ten Minutes" tracker (onboarding.js) teaches a step, the chain must not say it again:
+// steps the tracker owns wait for the tracker (game.js marks them done from its progress), so the chain never
+// runs ahead of the list or repeats it. The tracker calls the first floor tile 'floor'.
+export const TRACKED_HINTS = Object.freeze(['look', 'walk', 'throw', 'bag', 'rope', 'hammer', 'build']);
+const TRACKER_ID = Object.freeze({floor:'build'});
 // A save from before the look/walk hints already threw a hook: it has nothing left to learn there.
 export function loadHints(storage) {
   let done;
@@ -77,10 +82,22 @@ export function saveHints(storage, done) {
 }
 // New game starts a new save, so the hint chain starts over too (in place: the engine keeps one Set).
 export function resetHints(storage, done) { done.clear(); return saveHints(storage, done); }
+// Copy the tracker's finished steps into the chain (a continued save never restarts it at "look").
+export function syncHintsFromTracker(done, trackerDone) {
+  let changed = false;
+  for (const t of Array.isArray(trackerDone) ? trackerDone : []) {
+    const id = TRACKER_ID[t] ?? t;
+    if (TRACKED_HINTS.includes(id) && !done.has(id)) { done.add(id); changed = true; }
+  }
+  if (changed && done.has('throw')) { done.add('look'); done.add('walk'); }
+  return changed;
+}
 // The first unfinished hint, if its condition holds now. Later hints wait for earlier ones.
+// ctx.tracker: the onboarding tracker is active, so hints it teaches stay quiet (and later hints keep waiting).
 export function nextHint(done, ctx) {
-  const h = HINTS.find(x => !done.has(x.id));
-  return h && h.when(ctx || {}) ? h : null;
+  const c = ctx || {}, h = HINTS.find(x => !done.has(x.id));
+  if (!h || (c.tracker && TRACKED_HINTS.includes(h.id))) return null;
+  return h.when(c) ? h : null;
 }
 
 // Where the bottom-left feed lives while a panel is open. The bag and the pause rail each have a lane

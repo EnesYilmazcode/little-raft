@@ -43,36 +43,36 @@ export const STEPS = [
   {chapter:'ch1', id:'throw', title:'Toss your hook', hint:'Hold [LMB] to wind up, let go. Aim above far debris, it arcs', done:(S, b, c) => ['flying', 'floating', 'reeling'].includes(S.hookStage) || played(S, c)},
   {chapter:'ch1', id:'reel', title:'Reel in a treasure', hint:'Hold [LMB] while the hook floats', needs:['throw'],
     done:(S, b, c) => (c.hostWorld ? MATS.some(k => c.gained(k) > 0) : num(S.collected) - num(b.collected) >= 1)},
-  {chapter:'ch1', ...gainStep('wood', 'Gather 6 planks', 'Planks and barrels give planks', 'wood', 6, ['reel'], hasHammer)},
+  {chapter:'ch1', ...gainStep('wood', 'Gather 6 planks', 'Hook floating planks; barrels hold more', 'wood', 6, ['reel'], hasHammer)},
   {chapter:'ch1', ...gainStep('leaves', 'Gather 4 palm leaves', 'Leafy bundles drift by now and then', 'leaf', 4, ['reel'], hasHammer)},
   {chapter:'ch1', id:'bag', title:'Peek in your bag', hint:'[Tab] opens your bag', needs:['reel'], done:S => S.inventoryOpen === true},
   {chapter:'ch1', ...gainStep('rope', 'Twist 2 rope', 'In your bag: Rope, 2 leaves each', 'rope', 2, ['bag', 'leaves'], hasHammer)},
   {chapter:'ch1', id:'swim', title:'Climb back aboard', hint:'Fell in? Hold [Space] at the edge to climb up', optional:true, every:true, show:S => S.swimming === true,
     done:(S, b, c) => { if (S.swimming) c.mem.wet = true; return !!c.mem.wet && !S.swimming && !!S.grounded; }},
-  {chapter:'ch1', id:'hammer', title:'Make a hammer', hint:'Bag: 4 plank + 2 rope', needs:['rope', 'wood'], done:S => owns(S, 'hammer')},
+  {chapter:'ch1', id:'hammer', title:'Make a hammer', hint:'Bag: 4 planks + 2 rope', needs:['rope', 'wood'], done:S => owns(S, 'hammer')},
   {chapter:'ch1', ...gainStep('plastic', 'Fish out 2 plastic', 'Hook the bobbing jugs', 'plastic', 2, ['hammer'])},
-  {chapter:'ch1', id:'floor', title:'Build a floor tile', hint:S => '2 plank + 2 plastic. ' + use(S, 'hammer', 'your hammer', '[LMB] beside the raft', 'Hammer in hand, [LMB] beside the raft'), needs:['hammer'], done:(S, b) => num(S.tiles) - num(b.tiles) >= 1},
-  {chapter:'ch2', id:'grow3', title:'Grow your raft by 3', hint:'Each tile: 2 plank + 2 plastic', count:(S, b) => [num(S.tiles) - num(b.tiles), 3]},
+  {chapter:'ch1', id:'floor', title:'Build a floor tile', hint:S => '2 planks + 2 plastic. ' + use(S, 'hammer', 'your hammer', '[LMB] beside the raft', 'Hammer in hand, [LMB] beside the raft'), needs:['hammer'], done:(S, b) => num(S.tiles) - num(b.tiles) >= 1},
+  {chapter:'ch2', id:'grow3', title:'Grow your raft by 3', hint:'Each tile: 2 planks + 2 plastic', count:(S, b) => [num(S.tiles) - num(b.tiles), 3]},
   {chapter:'ch2', id:'grab', title:'Grab one by hand', hint:'Wait for debris to drift close, then [E]',
     done:(S, b, c) => handGrab(S, c)},
   {chapter:'ch2', id:'barrel', title:'Hook a barrel', hint:'Barrels hold a bit of everything', done:(S, b, c) => arr(S.hookCaughtItems).some(i => i?.type === 'barrel') || handGrab(S, c, 'barrel')},
-  {chapter:'ch2', id:'palm-craft', title:'Make a palm planter', hint:'Bag: 2 plank + 3 leaves', done:(S, b, c) => c.gained('palm') >= 1 || placedNow(S, b, c, 'palm')},
+  {chapter:'ch2', id:'palm-craft', title:'Make a palm planter', hint:'Bag: 2 planks + 3 leaves', done:(S, b, c) => c.gained('palm') >= 1 || placedNow(S, b, c, 'palm')},
   {chapter:'ch2', id:'plant', title:'Plant your first palm', hint:S => use(S, 'palm', 'the planter', '[LMB] on the raft', 'Hold it, [LMB] on the raft'), done:(S, b, c) => placedNow(S, b, c, 'palm')},
-  {chapter:'ch2', id:'lantern', title:'Hang a lantern', hint:S => use(S, 'lantern', 'the lantern', '[LMB] on the raft', 'Bag: 2 plank + 2 scrap, then place it'), done:(S, b, c) => placedNow(S, b, c, 'lantern')},
-  {chapter:'ch2', id:'repair', title:'Mend your hook', hint:'[R] repairs: 2 plank + 1 scrap', optional:true, show:S => owns(S, 'hook') && Number.isFinite(S.hookHealth) && S.hookHealth <= 50,
+  {chapter:'ch2', id:'lantern', title:'Hang a lantern', hint:S => use(S, 'lantern', 'the lantern', '[LMB] on the raft', 'Bag: 2 planks + 2 scrap, then place it'), done:(S, b, c) => placedNow(S, b, c, 'lantern')},
+  {chapter:'ch2', id:'repair', title:'Mend your hook', hint:'[R] repairs: 2 planks + 1 scrap', optional:true, show:S => owns(S, 'hook') && Number.isFinite(S.hookHealth) && S.hookHealth <= 50,
     done:(S, b, c) => { if (num(S.hookHealth) < 100 && Number.isFinite(S.hookHealth)) c.mem.low = true; return !!c.mem.low && S.hookHealth === 100; }},
   // The rod (6 planks + 8 rope) comes after a short plank top-up; rope already twisted (or spent on the rod) counts.
   {chapter:'ch3', ...gainStep('rodwood', 'Gather 6 planks', 'For the rod. A bench is 3 planks', 'wood', 6, [], hasRod)},
   {chapter:'ch3', id:'rope8', title:'Twist 8 rope', hint:'16 leaves. Barrels give leaves too',
     count:(S, b, c) => [most(c, hasRod(S) ? 8 : inv(S, 'rope')), 8]},
-  {chapter:'ch3', id:'rod', title:'Make a fishing rod', hint:'Bag: 6 plank + 8 rope', needs:['rodwood', 'rope8'], done:hasRod},
+  {chapter:'ch3', id:'rod', title:'Make a fishing rod', hint:'Bag: 6 planks + 8 rope', needs:['rodwood', 'rope8'], done:hasRod},
   {chapter:'ch3', id:'fish1', title:'Catch a fish', hint:S => use(S, 'fishingrod', 'the rod', '[LMB] at the water', 'Rod in hand, [LMB] at the water'), needs:['rod'],
     done:(S, b, c) => fishSince(S, b, c) >= 1},
   {chapter:'ch3', id:'fish3', title:'Catch two more', hint:'Cast and wait, the fish comes to you', needs:['fish1'],
     count:(S, b, c) => [fishSince(S, b, c) - (c.silent ? 1 : 0), 2]},
-  {chapter:'ch3', id:'sail', title:'Raise a sail', hint:'Bag: 10 wood, 20 leaves, 3 scrap', needs:['rod'], done:(S, b, c) => placedNow(S, b, c, 'sail')},
+  {chapter:'ch3', id:'sail', title:'Raise a sail', hint:'Bag: 10 planks, 20 leaves, 3 scrap', needs:['rod'], done:(S, b, c) => placedNow(S, b, c, 'sail')},
   {chapter:'ch3', id:'seat', title:'Build a bench', hint:'Somewhere to watch the waves', done:(S, b, c) => placedNow(S, b, c, 'bench')},
-  {chapter:'ch3', id:'crate', title:'Make a storage crate', hint:S => use(S, 'crate', 'the crate', '[LMB] on the raft', 'Bag: 4 plank + 1 scrap, then place it'), done:(S, b, c) => placedNow(S, b, c, 'crate')},
+  {chapter:'ch3', id:'crate', title:'Make a storage crate', hint:S => use(S, 'crate', 'the crate', '[LMB] on the raft', 'Bag: 4 planks + 1 scrap, then place it'), done:(S, b, c) => placedNow(S, b, c, 'crate')},
   {chapter:'ch3', id:'home', title:'Reach 16 tiles', hint:'A proper little home', count:S => [num(S.tiles), 16], done:(S, b, c) => !c.hostWorld && num(S.tiles) >= 16},
 ];
 
@@ -231,7 +231,7 @@ function boot() {
       o.connect(g).connect(ac.destination); o.start(t); o.stop(t + .4);
     } catch {}
   }
-  const feed = t => { try { window.raftPrompts?.feed?.(t); } catch {} };
+  const feed = t => { try { window.raftPrompts?.feed?.(t); } catch {} }; // -> the bottom-left pickup feed (chapter lines only)
   // The tick re-renders 4x/s: write only values that changed (every write is a DOM mutation plus style work).
   const setText = (el, t) => { if (el.textContent !== t) el.textContent = t; };
   let logHTML = '';
@@ -288,7 +288,7 @@ function boot() {
     lastS = S;
     const silent = !silentRan && !hostWorld(S), r = evaluate(STEPS, P, S, {silent}); // returning-player pass judges our own world only
     if (silent) silentRan = true;
-    for (const id of r.newly) { tickRow(id); feed(`✓ ${titleOf(id)}`); }
+    for (const id of r.newly) tickRow(id); // the tick plays inside its checklist row, never as a floating line
     if (r.newly.length) { chime(); lastProgress = Date.now(); }
     if (r.newly.length || r.silentDone.length || r.reset) persist();
     if (r.reset) collapsed = false;
@@ -394,7 +394,7 @@ function boot() {
   }
   return {
     reset() { P = createProgress(); booted = false; silentRan = false; rows.forEach(li => li.remove()); rows.clear(); shownCh = undefined; holdUntil = 0; persist(); },
-    complete(id) { if (!STEPS.some(s => s.id === id) || P.done[id]) return false; P.done[id] = true; tickRow(id); feed(`✓ ${titleOf(id)}`); persist(); lastProgress = Date.now(); return true; },
+    complete(id) { if (!STEPS.some(s => s.id === id) || P.done[id]) return false; P.done[id] = true; tickRow(id); persist(); lastProgress = Date.now(); return true; },
     state: () => ({done:Object.keys(P.done), visible:lastS ? visibleSteps(STEPS, P, lastS).map(s => s.id) : [], chapter:currentChapter(STEPS, P.done), collapsed, steps:STEPS.length}),
   };
 }

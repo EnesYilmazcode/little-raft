@@ -1,7 +1,7 @@
 // Little Raft item tooltips: one floating card for hotbar/inventory slots, crafting rows and any
 // [data-item-kind] element. Read-only view over ITEMS + bag + progression; never mutates anything.
 import { ITEMS } from './items.js?build=v3-survival-ae77fa84ac2b';
-import { ITEM_TEXT, anchorTip, anchorVisible, catalogueRecipes, tipFacts } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // craft-book text covers every ITEM_INFO kind (content, diving, signal...)
+import { ITEM_TEXT, anchorTip, anchorVisible, catalogueRecipes, tipFacts, unlockInfo } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // craft-book text covers every ITEM_INFO kind (content, diving, signal...)
 import { ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 const STYLE_ID = 'item-tooltips-style';
@@ -27,13 +27,14 @@ const CSS = `
 .it-tip .it-facts p{margin:0}.it-tip .it-facts p+p{margin-top:3px}
 .it-tip .it-facts em{font-style:normal;font-weight:700;color:#ffcf9a}
 .it-tip .it-lock{margin-top:6px;padding:4px 6px;border-radius:3px;background:#5a2a1a99;color:#ffcf9a;font:600 12px/1.3 ${FONT}}
+.it-tip .it-lock small{display:block;margin-top:3px;font:500 12px/1.35 ${FONT};color:#f3e3c2}
 #inventory .sv-tip{display:none!important}
 @media(prefers-reduced-motion:reduce){.it-tip{transition:none}}
 `;
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const title = k => String(k ?? '').replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-const SEL = '.sv-slot[data-index],.sv-slot[data-slot],.sv-recipe[data-recipe],[data-item-kind],#inventory [data-tip-kind]'; // data-tip-kind: craft-book ingredient rows (their own .sv-tip is hidden below)
+const SEL = '.sv-slot[data-index],.sv-slot[data-slot],.sv-recipe[data-recipe],[data-item-kind],#inventory [data-tip-kind],#inventory [data-tip-unlock]'; // data-tip-kind: craft-book ingredient rows (their own .sv-tip is hidden below)
 
 export function installItemTooltips({ getBag, getProgression, items, root = document } = {}) {
   const table = items || ITEMS || {};
@@ -65,6 +66,8 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
 
   // Element -> { kind, slot } (slot only for bag slots, so live durability/count can be shown).
   function resolve(el) {
+    if (el.dataset.tipUnlock) return { kind: el.dataset.tipUnlock, slot: null, el, unlock: true }; // the card's "Unlock: …" line
+    if (el.matches('.sv-recipe.sv-pick')) return null; // the detail card beside it already says all of this
     if (el.dataset.itemKind) return { kind: el.dataset.itemKind, slot: null, el };
     if (el.dataset.tipKind && el.dataset.recipe == null) return { kind: el.dataset.tipKind, slot: null, el };
     if (el.dataset.recipe != null) {
@@ -77,9 +80,19 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     return s && s.kind && s.count > 0 ? { kind: s.kind, slot: s, el } : null;
   }
 
-  function html({ kind, slot, recipe, el }) {
+  // Locked catalogue item: the one-line requirement ("Unlock: ...") and what to do about it.
+  function lockInfo(prog, kind) {
+    if (!Object.hasOwn(table, kind) || !prog || typeof prog.isUnlocked !== 'function' || call(() => prog.isUnlocked(kind)) !== false) return null; // catalogue items only: others are not progression's ('Unknown item')
+    return unlockInfo({ locked: true, reason: call(() => prog.whyLocked?.(kind)) || '' });
+  }
+
+  function html({ kind, slot, recipe, el, unlock }) {
     const it = table[kind] || {};
     const bag = call(getBag), prog = call(getProgression);
+    if (unlock) { // the detail card's "Unlock: …" line (data-lock-reason carries station / desk locks)
+      const u = lockInfo(prog, kind) || (el?.dataset.lockReason ? unlockInfo({ locked: true, reason: el.dataset.lockReason }) : null);
+      return u ? `<div class="it-head"><span class="it-name">How to unlock</span></div><p class="it-txt">${esc(u.how)}</p>` : '';
+    }
     const cat = it.category || (it.tool || ITEM_INFO[kind]?.tool ? 'tool' : '');
     let meta = '';
     if (it.tool && it.durability > 0 && !slot) meta = `Lasts <b>${esc(it.durability)}</b> uses`;
@@ -109,10 +122,8 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
       const lines = (f.get ? `<p><em>Get it:</em> ${esc(f.get)}</p>` : '') + (f.uses.length ? `<p><em>Used in:</em> ${esc(f.uses.join(', '))}</p>` : '');
       if (lines) out += `<div class="it-facts">${lines}</div>`;
     }
-    if (Object.hasOwn(table, kind) && prog && typeof prog.isUnlocked === 'function' && call(() => prog.isUnlocked(kind)) === false) { // catalogue items only: others are not progression's ('Unknown item')
-      const why = call(() => prog.whyLocked?.(kind));
-      out += `<div class="it-lock">Locked${why ? ': ' + esc(why) : ''}</div>`;
-    } else if (recipe && el?.dataset.lockReason) out += `<div class="it-lock">Locked: ${esc(el.dataset.lockReason)}</div>`; // survival-ui gated row (e.g. not studied yet)
+    const u = lockInfo(prog, kind) || (recipe && el?.dataset.lockReason ? unlockInfo({ locked: true, reason: el.dataset.lockReason }) : null); // survival-ui gated row (e.g. not studied yet)
+    if (u) out += `<div class="it-lock">${esc(u.line)}<small>${esc(u.how)}</small></div>`;
     return out;
   }
 
@@ -140,6 +151,7 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     if (!cur || cur.el !== el) { prevDesc = el.getAttribute('aria-describedby'); el.setAttribute('aria-describedby', tip.id); }
     cur = res; px = x; py = y;
     tip.innerHTML = html(res);
+    if (!tip.innerHTML) { hide(); return; }
     tip.hidden = false; place();
     requestAnimationFrame(() => { if (cur) tip.classList.add('it-on'); });
   }

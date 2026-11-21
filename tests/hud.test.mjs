@@ -93,9 +93,10 @@ test('first-run hints go look -> walk -> throw -> bag -> slots and are stored on
 test('game.js routes notices to the edge stack, not under the crosshair', async () => {
   const src = await readFile(new URL('game.js', base), 'utf8');
   assert.doesNotMatch(src, /#contextPrompt\{[^}]*top:calc\(50%/);
-  // Integration routes notices to the bottom-left pickup feed (pickup-feed.js); it is raised as a popover over panels.
+  // Integration routes notices to the bottom-left pickup feed (pickup-feed.js), the bottom row of the #noticeStack popover.
   assert.match(src, /function notice\([^)]*\) \{[^\n]*pickupFeed\.note\(/);
-  assert.match(src, /#pickupFeed\[popover\]\{/);
+  assert.match(src, /#noticeStack\{position:fixed;/);
+  assert.match(src, /el\.setAttribute\('popover', 'manual'\)/);
   assert.match(src, /dragLookScale\(DRAG_SENSITIVITY, options\.sensitivity\)/);
   assert.match(src, /createOceanAudio\(/);
   // beep() survives only as the old tone API for lane hooks; it plays the audio.js recipes, never a raw oscillator.

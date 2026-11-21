@@ -2,16 +2,17 @@
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, holdDelay, holdHint, holdLabel, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, anchorVisible, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, holdDelay, holdHint, holdLabel, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, anchorVisible, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal, craftCaption, unlockInfo, searchMatches, searchEscape, readyTransitions, readyNotice } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_ICONS } from './item-svg.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
-const VERSION = 'sv5';
+const VERSION = 'sv6';
 const HB = Number(HOTBAR_SIZE) || 8;
 const TOTAL = Number(SLOT_COUNT) || 28;
 const DUR_MAX = Number(TOOL_DURABILITY) > 0 ? Number(TOOL_DURABILITY) : 0;
 const TRANSIENT = ['sv-src', 'sv-over', 'sv-dragging', 'sv-deny'];
 const INST_KEY = '__littleRaftSurvivalUI';
+const CONFIRM_MS = 1500; // a guest's held craft stops if the first one has not landed by then (host refused it)
 /** Fired on document whenever the local bag's contents or selection change (item-tooltips.js listens). */
 export const BAG_EVENT = 'littleraft:bagchange';
 
@@ -335,9 +336,7 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-craftbtn[aria-disabled="true"] .sv-fill{transition:none;transform:scaleX(0)}
 #inventory .sv-craftbtn.sv-holding .sv-clabel,#inventory .sv-craftbtn.sv-done .sv-clabel{font-variant-numeric:tabular-nums}
 #inventory .sv-craftbtn.sv-done[aria-disabled="true"]{color:#c8f7a0}
-#inventory .sv-clabel,#inventory .sv-chint,#inventory .sv-ccount{position:relative;pointer-events:none}
-#inventory .sv-chint{font:600 11px/1 ${FONT};letter-spacing:0;color:#e6f7d4;opacity:.9}
-#inventory .sv-chint:empty{display:none}
+#inventory .sv-clabel,#inventory .sv-ccount{position:relative;pointer-events:none}
 #inventory .sv-ccount{min-width:26px;padding:3px 5px;border-radius:9px;background:#14270bcc;color:#c8f7a0;font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums}
 #inventory .sv-ccount:empty{display:none}
 #inventory .sv-empty-list{margin:6px;color:#f6e8c6;font-size:14px}
@@ -354,7 +353,49 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
   #inventory .sv-craft{height:auto;max-height:none;overflow:visible}#inventory .sv-cbody{grid-template-columns:76px minmax(0,1fr)}#inventory .sv-rlist{max-height:40vh}
   #inventory .sv-side{flex:none}#inventory .sv-detail{flex:none}#inventory .sv-bag{min-width:0}#inventory .sv-slot .sv-art{inset:3px}}
 @media(max-width:560px){#inventory.sv-inv{--s:min(36px,calc((92vw - 75px) / ${HB}));--g:4px}#inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}}
-@media(prefers-reduced-motion:reduce){.sv-slot,.sv-art,.sv-cursor,.sv-label,#inventory .sv-recipe,#inventory .sv-craftbtn .sv-fill{transition:none!important;animation:none!important}}
+/* recipe search (every tab): typing filters the list, tabs without a match dim */
+#inventory .sv-chead{display:flex;align-items:center;gap:10px;flex:none;margin:2px 2px 0}
+#inventory .sv-chead>.sv-h{flex:none;align-self:center;margin:0}
+#inventory .sv-search{position:relative;flex:1 1 auto;min-width:0;display:flex;align-items:center;height:26px;margin:0;border-radius:4px;background:#e6d6ad;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 3px #3e2a1733;color:#6b5638;cursor:text}
+#inventory .sv-search:focus-within{box-shadow:inset 0 0 0 2px #3e2a17,0 0 0 2px #fff3d655;color:#3e2a17}
+#inventory .sv-qicon{flex:none;width:14px;height:14px;margin:0 6px 0 8px}
+#inventory .sv-q{flex:1 1 auto;min-width:0;width:auto;height:100%;margin:0;padding:0 4px 0 0;border:0;border-radius:0;outline:none;background:transparent;box-shadow:none;color:#3e2a17;font:600 13px/1 ${FONT};letter-spacing:0;text-transform:none;text-align:left;min-height:0}
+#inventory .sv-q::placeholder{color:#6b5638b0;text-transform:none;letter-spacing:0;opacity:1}
+#inventory .sv-qx{display:grid;place-items:center;flex:none;width:20px;height:20px;margin:0 3px 0 0;padding:0;border:0;border-radius:3px;background:#3e2a1714;color:#3e2a17b3;cursor:pointer;transform:none}
+#inventory .sv-qx[hidden]{display:none}
+#inventory .sv-qx svg{width:11px;height:11px;display:block;pointer-events:none}
+#inventory .sv-qx:hover{background:#3e2a1726;color:#3e2a17}
+#inventory .sv-qx:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
+#inventory .sv-nohits{flex:none;margin:4px;font:600 13px/1.3 ${FONT};color:#f6e8c6}
+#inventory .sv-nohits[hidden]{display:none}
+#inventory .sv-tabs.sv-searching .sv-tab[aria-selected="true"]{background:linear-gradient(#b8a173,#a68e60);box-shadow:inset 0 0 0 1px #7a5a34}
+#inventory .sv-tabs.sv-searching .sv-tab:not([data-hits="0"]){box-shadow:inset 0 0 0 2px #4a3520}
+#inventory .sv-tabs.sv-searching .sv-tab[data-hits="0"]{opacity:.45}
+/* newly craftable: the tab badge pulses once */
+#inventory .sv-tab.sv-pulse{animation:svTabPulse 1.6s ease-out}
+#inventory .sv-tab.sv-pulse .sv-tbadge{animation:svBadgePulse .8s cubic-bezier(.3,1.6,.5,1)}
+@keyframes svTabPulse{0%{box-shadow:inset 0 0 0 2px #5f9c3a,0 0 0 0 #8fd36a99}30%{box-shadow:inset 0 0 0 2px #5f9c3a,0 0 14px 3px #8fd36a88}100%{box-shadow:inset 0 0 0 1px #7a5a34,0 0 0 0 #8fd36a00}}
+@keyframes svBadgePulse{40%{transform:scale(1.5)}}
+/* locked rows: a lock badge on the icon and the "Unlock: …" line */
+#inventory .sv-lock{display:none;position:absolute;right:-4px;bottom:-4px;z-index:1;width:18px;height:18px;border-radius:50%;place-items:center;background:#ffc66e;color:#2a1d0a;box-shadow:0 0 0 2px #5e4426,0 1px 3px #000a}
+#inventory .sv-gated .sv-lock{display:grid}
+#inventory .sv-lock svg{width:11px;height:11px;display:block}
+#inventory .sv-lock .sv-lockic circle{fill:#ffc66e}
+#inventory .sv-recipe.sv-gated .sv-rart>:not(.sv-lock){filter:grayscale(1) brightness(.6)}
+#inventory .sv-gated .sv-rsub{color:#8a4410}
+#inventory .sv-dstate[data-tip-unlock]{display:flex;align-items:flex-start;gap:7px;background:#ffc66e33;box-shadow:inset 3px 0 0 #c46a1c;color:#6a3408;cursor:help}
+#inventory .sv-dstate .sv-lockic{flex:none;width:14px;height:14px;margin-top:1px;color:#c46a1c}
+#inventory .sv-dstate .sv-lockic circle{fill:#e6d6ad}
+#inventory .sv-dstate:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
+/* the key legend sits under the Craft button, not on it */
+#inventory .sv-ccap{flex:none;min-height:14px;margin:-3px 0 0;font:600 11.5px/1.25 ${FONT};color:#6b5638;text-align:center}
+#inventory .sv-ccap:empty{display:none}
+#craftTracker.ct-justready{animation:ctReady 1.6s ease-out}
+@keyframes ctReady{0%{translate:0 0}12%{translate:-8px 0;box-shadow:inset 0 0 0 2px #8fd36a,0 0 28px 8px #8fd36a8c,0 6px 18px #0006}45%{translate:0 0}100%{translate:0 0}}
+#craftTracker li span{min-width:0;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:normal} /* long names wrap to a second line */
+#craftTracker .ct-why{margin:6px 0 0;font:700 11px/1.25 ${FONT};color:#ffcf9a;overflow-wrap:anywhere}
+#craftTracker .ct-why[hidden]{display:none}
+@media(prefers-reduced-motion:reduce){.sv-slot,.sv-art,.sv-cursor,.sv-label,#inventory .sv-recipe,#inventory .sv-craftbtn .sv-fill,#inventory .sv-tab,#inventory .sv-tbadge,#craftTracker{transition:none!important;animation:none!important}}
 /* pin a recipe to the HUD edge (craft-book.js trackerView) */
 #inventory button.sv-pinbtn{align-self:start;width:auto;height:auto;margin:0;padding:4px 8px;border:0;border-radius:5px;background:#3e2a1712;box-shadow:inset 0 0 0 1px #3e2a1759;color:#3e2a17cc;
   font:700 11px/1.2 ${FONT};letter-spacing:.3px;text-transform:none;cursor:pointer;transform:none}
@@ -380,7 +421,7 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #craftTracker li.ct-ok{box-shadow:inset 2px 0 0 #8fd36a}
 #craftTracker li .sv-icon{width:20px;height:20px}
 #craftTracker li svg.sv-icon{width:16px;height:16px;margin:2px}
-#craftTracker li span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#e9e3d3;font-weight:600}
+#craftTracker li span{color:#e9e3d3;font-weight:600}
 #craftTracker li b{font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums;color:#ff8a73}
 #craftTracker li.ct-ok b{color:#9ee07a}
 #craftTracker .ct-foot{margin-top:6px;font:600 11px/1.3 ${FONT};color:#f4efe299}
@@ -396,6 +437,9 @@ function ensureStyle() {
 
 const slotInner = num => `${num ? `<i class="sv-num">${num}</i>` : ''}<i class="sv-art"></i><i class="sv-count"></i><i class="sv-dur" hidden><i></i></i>`;
 
+const X_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>';
+const SEARCH_SVG = '<svg class="sv-qicon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M10.4 10.4L14 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+const LOCK_SVG = '<svg class="sv-lockic" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M5 7V5.2a3 3 0 0 1 6 0V7" stroke="currentColor" stroke-width="1.8" fill="none"/><rect x="3" y="7" width="10" height="7.5" rx="1.6" fill="currentColor"/><circle cx="8" cy="10.6" r="1.2" fill="#1a1208"/></svg>';
 const HINT = 'Click a stack to pick it up, then a slot to place it, or drag it. Right-click a stack to take half; right-click while holding to place one. Arrow keys move between slots; Tab, E, I or Esc closes.';
 function mountDialog() {
   let d = document.getElementById('inventory');
@@ -411,10 +455,11 @@ function mountDialog() {
     for (let i = 0; i < HB; i++) hot += `<button type="button" class="sv-slot sv-hot" data-index="${i}">${slotInner(String((i + 1) % 10))}</button>`;
     d.innerHTML = `<div class="sv-wrap" tabindex="-1">
       <section class="sv-craft" aria-label="Crafting">
-        <h3 class="sv-h">Crafting</h3>
+        <div class="sv-chead"><h3 class="sv-h">Crafting</h3>
+          <label class="sv-search">${SEARCH_SVG}<input type="text" class="sv-q" placeholder="Search recipes" aria-label="Search recipes in every tab" autocomplete="off" spellcheck="false" enterkeyhint="search"><button type="button" class="sv-qx" aria-label="Clear search" title="Clear (Esc)" hidden>${X_SVG}</button></label></div>
         <div class="sv-cbody">
           <div class="sv-tabs" role="tablist" aria-label="Recipe categories" aria-orientation="vertical"></div>
-          <div class="sv-rcol"><div class="sv-rlist" role="tabpanel"></div></div>
+          <div class="sv-rcol"><div class="sv-rlist" role="tabpanel"></div><p class="sv-nohits" role="status" hidden></p></div>
         </div>
       </section>
       <div class="sv-side">
@@ -424,7 +469,8 @@ function mountDialog() {
           <p class="sv-dstate" hidden></p>
           <span class="sv-dlabel">Requires <i>have / need</i></span>
           <ul class="sv-ings"></ul>
-          <button type="button" class="sv-craftbtn"><i class="sv-fill"></i><span class="sv-clabel">Craft</span><small class="sv-chint"></small><b class="sv-ccount" aria-hidden="true"></b></button>
+          <button type="button" class="sv-craftbtn"><i class="sv-fill"></i><span class="sv-clabel">Craft</span><b class="sv-ccount" aria-hidden="true"></b></button>
+          <p class="sv-ccap" aria-hidden="true"></p>
         </div>
         <section class="sv-bag" aria-label="Inventory">
           <h3 class="sv-h">Backpack</h3>
@@ -495,7 +541,9 @@ function readSnap(bag) {
 
 // getModel (optional): (kind) -> Object3D, e.g. models.js getModel; icons are rendered from it.
 // iconFor (optional): (kind) -> data URL; overrides the rendered icon for that kind.
-export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause, iconFor, recipeGate, getModel } = {}) {
+// onNotice (optional): (text) -> void, a short edge notice (the game's notice stack), e.g. "Ready to craft: Sail".
+// onSfx (optional): () -> void, a soft tick per item crafted while the Craft button is held.
+export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause, iconFor, recipeGate, getModel, onNotice, onSfx } = {}) {
   if (typeof getModel === 'function') setModelProvider(getModel);
   const gate = id => { try { return recipeGate?.(id) || null; } catch { return null; } }; // [progression-hook] {hidden, locked, reason}
   // Hot reload: DOM is adopted, not rebuilt; the previous instance releases its listeners only once
@@ -515,10 +563,11 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   const D = {
     art: detail.querySelector('.sv-dart'), name: detail.querySelector('.sv-dname'), desc: detail.querySelector('.sv-ddesc'),
     ings: detail.querySelector('.sv-ings'), btn: detail.querySelector('.sv-craftbtn'), label: detail.querySelector('.sv-clabel'),
-    hint: detail.querySelector('.sv-chint'), count: detail.querySelector('.sv-ccount'), pin: detail.querySelector('.sv-pinbtn'),
+    cap: detail.querySelector('.sv-ccap'), count: detail.querySelector('.sv-ccount'), pin: detail.querySelector('.sv-pinbtn'),
     state: detail.querySelector('.sv-dstate'), use: detail.querySelector('.sv-duse'),
   };
   const rcol = rlist.parentElement;
+  const qEl = dlg.querySelector('.sv-q'), qClear = dlg.querySelector('.sv-qx'), noHits = dlg.querySelector('.sv-nohits');
   // Bottom fade on the recipe list while more rows sit below the fold.
   const paintMore = () => { const more = rlist.scrollHeight - rlist.scrollTop - rlist.clientHeight > 2; if (rcol.classList.contains('sv-more') !== more) rcol.classList.toggle('sv-more', more); };
   const tip = dlg.querySelector('.sv-tip');
@@ -570,7 +619,12 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let hold = null, btnDenyTimer = 0, countTimer = 0, flashUntil = 0;
   let pickedByUser = false; // false: pickId is an automatic default, re-chosen on open once states are known
   let tipAnchor = null;
-  let pinId = null, trackEl = null, trackSig = null;
+  let pinId = null, trackEl = null, trackSig = null, trackPulse = false, trackPulseT = 0;
+  let query = '';       // recipe search text (filters across every tab)
+  // Newly craftable recipes: ready ids at the last check (null = not checked yet for this bag), ids seen
+  // ready this session, tabs waiting to pulse until the bag opens.
+  let readyPrev = null, readySeen = new Set(), readyBag = null, readySig = null;
+  const pulseCats = new Set();
   const store = () => { try { return window.localStorage; } catch { return null; } };
 
   const safe = (fn, ...a) => { try { return fn?.(...a); } catch (e) { console.error(e); } };
@@ -599,7 +653,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       // Rows in tab order so the list reads naturally inside each category.
       const ordered = groups.flatMap(g => g.recipes);
       rlist.innerHTML = ordered.length ? ordered.map(r => `<button type="button" class="sv-recipe sv-locked" data-recipe="${esc(r.id)}" data-cat="${esc(catOf.get(r.id))}" data-tip-kind="${esc(r.out.kind)}">
-        <span class="sv-rart" aria-hidden="true">${art(r.out.kind)}</span>
+        <span class="sv-rart" aria-hidden="true">${art(r.out.kind)}<i class="sv-lock">${LOCK_SVG}</i></span>
         <span class="sv-rbody"><span class="sv-rname">${esc(r.name)}${r.out.count > 1 ? ' ×' + r.out.count : ''}</span><span class="sv-rsub"></span></span>
         <span class="sv-rbadge" aria-hidden="true"></span></button>`).join('') : '<p class="sv-empty-list">No recipes known.</p>';
       dlg.dataset.svRecipes = key;
@@ -612,23 +666,46 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     })).filter(v => v.r);
     applyTab();
   }
+  // With a search, the list shows the matches from every tab (tabs without one dim); without, the active tab.
   function applyTab() {
+    const hits = query ? searchMatches(recipeEls.map(v => ({ id: v.r.id, cat: v.cat, recipe: v.r })), query, itemName) : null;
+    tabsEl.classList.toggle('sv-searching', !!hits);
     tabsEl.querySelectorAll('.sv-tab').forEach(t => {
       const on = t.dataset.cat === activeTab;
       t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1;
+      if (hits) t.dataset.hits = String(hits.perCat.get(t.dataset.cat) || 0); else delete t.dataset.hits;
     });
-    for (const v of recipeEls) v.el.hidden = v.cat !== activeTab;
-    const inTab = recipeEls.filter(v => v.cat === activeTab);
-    if (!inTab.some(v => v.r.id === pickId)) pickId = (inTab.find(v => v.state === 'ready') || inTab.find(v => v.state !== 'gated') || inTab[0])?.r.id ?? null;
+    for (const v of recipeEls) v.el.hidden = hits ? !hits.ids.has(v.r.id) : v.cat !== activeTab;
+    const shown = recipeEls.filter(v => !v.el.hidden);
+    if (!shown.some(v => v.r.id === pickId)) pickId = (shown.find(v => v.state === 'ready') || shown.find(v => v.state !== 'gated') || shown[0])?.r.id ?? null;
     if (activeTab) dlg.dataset.svTab = activeTab;
     const tabEl = tabsEl.querySelector(`.sv-tab[data-cat="${activeTab}"]`);
-    if (tabEl) rlist.setAttribute('aria-label', tabEl.textContent.trim() + ' recipes');
+    if (hits) rlist.setAttribute('aria-label', `Recipes matching ${query}`);
+    else if (tabEl) rlist.setAttribute('aria-label', tabEl.textContent.trim() + ' recipes');
+    const none = !!hits && !hits.ids.size;
+    noHits.hidden = !none;
+    if (none) noHits.textContent = `No recipe matches “${query.trim()}”`;
+    qClear.hidden = !query;
     applyPick();
     paintMore();
   }
+  // Search text changed: filter now; clearing it returns to the tab of whatever is picked.
+  function setQuery(q, focusField = false) {
+    const next = String(q ?? '');
+    if (qEl.value !== next) qEl.value = next;
+    if ((next.trim() ? next : '') === query) return;
+    hideTip();
+    stopHold();
+    if (!next.trim() && query) { const v = viewOf(pickId); if (v && v.cat !== activeTab) activeTab = v.cat; }
+    query = next.trim() ? next : '';
+    applyTab();
+    rlist.scrollTop = 0; paintMore();
+    if (focusField) { try { qEl.focus({ preventScroll: true }); } catch {} }
+  }
   function setTab(id, focus = false) {
     if (!groups.some(g => g.id === id)) return;
-    if (id !== activeTab) { stopHold(); hideTip(); flashUntil = 0; activeTab = id; pickId = null; pickedByUser = false; reorderRecipes(); applyTab(); rlist.scrollTop = 0; paintMore(); }
+    if (query && id === activeTab) { query = ''; qEl.value = ''; applyTab(); } // a tab click leaves the search
+    if (id !== activeTab) { stopHold(); hideTip(); flashUntil = 0; query = ''; qEl.value = ''; activeTab = id; pickId = null; pickedByUser = false; reorderRecipes(); applyTab(); rlist.scrollTop = 0; paintMore(); }
     if (focus) tabsEl.querySelector(`.sv-tab[data-cat="${id}"]`)?.focus();
   }
   function setPick(id) {
@@ -639,7 +716,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function jumpTo(id) {
     const v = viewOf(id); if (!v) return;
     hideTip();
-    setTab(v.cat); setPick(id);
+    if (query) { query = ''; qEl.value = ''; }
+    setTab(v.cat); setPick(id); applyTab();
     try { v.el.focus({ preventScroll: true }); v.el.scrollIntoView({ block: 'nearest' }); } catch {}
   }
   function applyPick() {
@@ -680,15 +758,26 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       e.el.setAttribute('aria-label', `${itemName(row.kind)}: have ${row.have}, need ${row.need}${src ? '. ' + src.how : ''}`);
     });
     const ready = v.state === 'ready';
-    // Why it cannot be made, in full (the list row only has room for two lines).
-    const why = v.state === 'gated' ? 'Locked: ' + (v.reason || 'not learned yet') : v.state === 'full' ? 'No room in your bag for it' : '';
-    if (D.state && D.state.textContent !== why) D.state.textContent = why;
-    if (D.state) D.state.hidden = !why;
+    // Why it cannot be made, in full (the list row only has room for two lines). A lock says how to unlock it
+    // ("Unlock: …"; hovering or focusing the line shows what to do, item-tooltips.js).
+    const un = v.state === 'gated' ? v.unlock : null;
+    const why = un ? un.line : v.state === 'full' ? 'No room in your bag for it' : '';
+    if (D.state) {
+      const sig = (un ? 'L' : '') + why;
+      if (D.state.dataset.sig !== sig) {
+        D.state.dataset.sig = sig;
+        if (un) D.state.innerHTML = `${LOCK_SVG}<span>${esc(why)}</span>`; else D.state.textContent = why;
+      }
+      if (un) { D.state.dataset.tipUnlock = v.r.id; D.state.dataset.lockReason = v.reason || ''; D.state.tabIndex = 0; D.state.setAttribute('aria-label', `${un.line}. ${un.how}`); }
+      else if (D.state.dataset.tipUnlock) { delete D.state.dataset.tipUnlock; delete D.state.dataset.lockReason; D.state.removeAttribute('tabindex'); D.state.removeAttribute('aria-label'); }
+      D.state.hidden = !why;
+    }
     D.btn.setAttribute('aria-disabled', String(!ready));
     if (!hold && performance.now() >= flashUntil) {
       D.btn.classList.remove('sv-done');
       D.label.textContent = ready ? 'Craft' : v.state === 'gated' ? 'Locked' : v.state === 'full' ? 'Bag is full' : 'Missing materials'; // [progression-hook]
-      D.hint.textContent = ready ? holdHint(v.times) : '';
+      const cap = ready ? craftCaption(Math.min(HOLD.max, Number.isFinite(v.times) ? v.times : HOLD.max), stackMax(v.r.out.kind) <= 1) : ''; // the key legend sits under the button
+      if (D.cap.textContent !== cap) D.cap.textContent = cap;
     }
     D.btn.setAttribute('aria-label', ready ? `Craft ${v.r.name}. Hold to craft several.` : `${v.r.name}: ${D.label.textContent}`);
   }
@@ -713,6 +802,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       const r = v.r;
       const { rows, state, times, reason } = evaluate(bag, r);
       v.rows = rows; v.state = state; v.times = times; v.reason = reason; // [progression-hook] reason
+      v.unlock = state === 'gated' ? unlockInfo({ locked: true, reason }) : null;
       if (state === 'ready') readyPer.set(v.cat, (readyPer.get(v.cat) || 0) + 1);
       const sig = state + times + ':' + (v.reason || '') + rows.map(x => x.have).join(','); // [progression-hook] reason
       if (v.sig === sig) continue;
@@ -723,12 +813,12 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       v.el.classList.toggle('sv-gated', state === 'gated'); // [progression-hook]
       if (state === 'gated') v.el.dataset.lockReason = v.reason || 'not learned yet'; else delete v.el.dataset.lockReason; // item tooltips show it
       const lacking = rows.filter(x => !x.enough);
-      v.sub.textContent = state === 'gated' ? 'Locked: ' + (v.reason || 'not learned yet') // [progression-hook]
+      v.sub.textContent = state === 'gated' ? v.unlock.line // [progression-hook] "Unlock: Research Plastic at a Tinker's Desk"
         : state === 'ready' ? 'Ready to craft'
         : state === 'full' ? 'No room in your bag'
         : 'Need ' + lacking.map(x => `${x.short} ${itemName(x.kind)}`).join(', ');
       v.badge.textContent = state === 'ready' && Number.isFinite(times) && times > 0 ? '×' + Math.min(times, 99) : '';
-      v.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${rows.map(x => `${x.need} ${itemName(x.kind)}, have ${x.have}`).join('; ') || 'nothing'}. ${v.sub.textContent}.`);
+      v.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${rows.map(x => `${x.need} ${itemName(x.kind)}, have ${x.have}`).join('; ') || 'nothing'}. ${state === 'gated' ? `Locked. ${v.unlock.line}. ${v.unlock.how}` : v.sub.textContent}.`);
       if (tipAnchor === v.el) { if (anchorVisible(v.el)) showTipFor(v.el); else hideTip(); }
     }
     paintMore();
@@ -783,11 +873,19 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const ready = tv.state === 'ready';
     t.classList.toggle('ct-ready', ready);
     t.classList.toggle('ct-gated', tv.state === 'gated');
-    const state = ready ? `Ready${tv.times > 1 ? ' ×' + Math.min(tv.times, 99) : ''}` : tv.state === 'gated' ? 'Locked: ' + (tv.reason || 'not learned yet') : tv.state === 'full' ? 'Bag is full' : `${tv.met} of ${tv.total} gathered`;
+    const locked = tv.state === 'gated', un = locked ? unlockInfo({ locked: true, reason: tv.reason }) : null;
+    const state = ready ? `Ready${tv.times > 1 ? ' ×' + Math.min(tv.times, 99) : ''}` : locked ? 'Locked' : tv.state === 'full' ? 'Bag is full' : `${tv.met} of ${tv.total} gathered`;
     t.innerHTML = `<div class="ct-head"><span class="ct-art" aria-hidden="true">${art(tv.kind)}</span><span><b class="ct-name">${esc(tv.name)}</b><small class="ct-state">${esc(state)}</small></span></div>`
       + `<ul>${tv.rows.map(x => `<li class="${x.enough ? 'ct-ok' : ''}" aria-label="${esc(itemName(x.kind))}: have ${x.have}, need ${x.need}">${art(x.kind)}<span>${esc(itemName(x.kind))}</span><b>${esc(amountLabel(x))}</b></li>`).join('')}</ul>`
+      + (un ? `<p class="ct-why">${esc(un.line)}</p>` : '') // the lock and what unlocks it, wrapped, never cut off
       + (ready ? '<div class="ct-foot">Open your bag with <kbd>Tab</kbd> to craft</div>' : '');
     t.hidden = false;
+    if (trackPulse) { // it just became craftable: one green flash
+      trackPulse = false;
+      clearTimeout(trackPulseT);
+      t.classList.remove('ct-justready'); void t.offsetWidth; t.classList.add('ct-justready');
+      trackPulseT = setTimeout(() => t.classList.remove('ct-justready'), 1800);
+    }
   }
 
   // Craftable recipes float to the top of each tab (craft-book.js sortCraftableFirst). The order is
@@ -820,12 +918,22 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function craftNow(id) {
     const v = freshView(id);
     if (!v || v.state !== 'ready') return false;
+    const bag = bagNow(), kind = v.r.out.kind, had = bag ? countOf(bag, kind) : 0;
     let r;
     try { r = onCraft?.(id); } catch (e) { console.error(e); r = false; }
     lastSig = null;
-    if (r === false) return false;
+    if (r === false) return false; // refused (host / solo: nothing was crafted)
+    // undefined: sent to the host. The hold keeps going only while the crafts land (see unconfirmed()).
+    if (r === undefined && hold && hold.id === id && hold.sent == null) hold.sent = { kind, had, t: performance.now() };
+    safe(onSfx);
     render(false);
     return true;
+  }
+  // A guest's hold: nothing of the output arrived a round trip after the first craft was sent, so the host refused it.
+  function unconfirmed(now) {
+    const s = hold?.sent; if (!s || now - s.t < CONFIRM_MS) return false;
+    const bag = bagNow();
+    return !bag || countOf(bag, s.kind) <= s.had;
   }
   function setFill(p) { D.btn.style.setProperty('--fill', p.toFixed(3)); }
   // While held the label counts up ('Crafting 2 / 4'); on release it says what was made ('Crafted 4').
@@ -834,10 +942,10 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     clearTimeout(countTimer);
     // The first craft says what a longer hold does while the bar fills toward the second.
     D.label.textContent = n === 1 ? holdLabel(1, 0, false, viewOf(hold.id)?.r.out.count || 1) : holdLabel(n, hold.cap, true);
-    D.hint.textContent = n === 1 && hold.cap > 1 ? 'keep holding for more' : '';
+    D.cap.textContent = n === 1 && hold.cap > 1 ? 'Keep holding to make more' : '';
     D.count.textContent = '';
   }
-  function startHold() {
+  function startHold(all = false) {
     if (!pickId) return;
     stopHold();
     clearTimeout(countTimer);
@@ -845,11 +953,13 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!v || v.state !== 'ready') { denyBtn(); paintDetail(); return; }
     // Cap at what the materials on hand cover, so a lagging (networked) bag cannot overshoot.
     const cap = Math.max(1, Math.min(HOLD.max, Number.isFinite(v.times) ? v.times : HOLD.max));
-    if (!craftNow(pickId)) { denyBtn(); return; }
-    hold = { id: pickId, done: 1, cap, t0: performance.now(), wait: holdDelay(1), raf: 0 };
+    hold = { id: pickId, done: 0, cap, t0: performance.now(), wait: holdDelay(1), raf: 0, sent: null };
+    if (!craftNow(pickId)) { hold = null; denyBtn(); paintDetail(); return; }
+    hold.done = 1;
+    // Shift: make all the materials cover at once (tools and other one-per-stack items stay one per press).
+    if (all && stackMax(v.r.out.kind) > 1) while (hold.done < hold.cap && craftNow(hold.id)) hold.done++;
     D.btn.classList.add('sv-holding');
-    D.hint.textContent = holdHint(cap); // what this batch will make, not what is left after the first craft
-    showCount(1);
+    showCount(hold.done);
     if (hold.done >= hold.cap) { stopHold(); return; }
     hold.raf = requestAnimationFrame(tick);
   }
@@ -857,8 +967,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!hold || !alive) return;
     const p = clamp01((now - hold.t0) / hold.wait);
     setFill(p);
+    if (unconfirmed(now)) { const id = hold.id; stopHold(); denyBtn(); freshView(id); paintDetail(); return; }
     if (p >= 1) {
-      if (!craftNow(hold.id)) { stopHold(); return; }
+      if (!craftNow(hold.id)) { stopHold(); denyBtn(); return; }
       hold.done++; hold.t0 = now; hold.wait = holdDelay(hold.done);
       showCount(hold.done);
       if (hold.done >= hold.cap) { stopHold(); return; }
@@ -875,7 +986,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     clearTimeout(countTimer);
     flashUntil = performance.now() + 1100;
     D.label.textContent = holdLabel(made, 0, false, out);
-    D.hint.textContent = '';
+    D.cap.textContent = '';
     D.btn.classList.add('sv-done');
     countTimer = setTimeout(() => { flashUntil = 0; paintDetail(); }, 1100);
     paintDetail();
@@ -1088,6 +1199,47 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     recipeEls.forEach(v => { v.sig = null; });
     return true;
   }
+  // ---------- newly craftable ----------
+  // On every bag change (open or not): recipes whose materials just became enough. A recipe ready for
+  // the first time this session pulses its tab badge once (now, or when the bag next opens); the pinned
+  // recipe also flashes the tracker green and posts an edge notice.
+  function checkReady(bag) {
+    // A new or loaded bag, or changes on the title / pause screens, are not "while playing": they only
+    // move the baseline (no pulse, no notice).
+    const quiet = bag !== readyBag || !(isOpen || document.body?.classList.contains('playing'));
+    readyBag = bag;
+    const now = new Set();
+    for (const r of recipes) {
+      if (gate(r.id)?.locked) continue;
+      const rows = ingredientRows(r.reqs, k => countOf(bag, k));
+      if (rows.length && rows.every(x => x.enough)) now.add(r.id);
+    }
+    const t = readyTransitions(quiet ? null : readyPrev, now, readySeen);
+    readyPrev = now; readySeen = t.seen;
+    for (const id of t.first) { const v = viewOf(id); if (v) pulseCats.add(v.cat); }
+    if (isOpen) flushPulse();
+    if (pinId && !isOpen && t.crossed.includes(pinId)) {
+      const r = recipes.find(x => x.id === pinId);
+      trackPulse = true; trackSig = null;
+      if (r) safe(onNotice, readyNotice(r.name));
+    }
+  }
+  function flushPulse() {
+    for (const cat of pulseCats) {
+      const t = tabsEl.querySelector(`.sv-tab[data-cat="${cat}"]`); if (!t) continue;
+      clearTimeout(t._svPulseT);
+      t.classList.remove('sv-pulse'); void t.offsetWidth; t.classList.add('sv-pulse');
+      t._svPulseT = setTimeout(() => t.classList.remove('sv-pulse'), 1800);
+    }
+    pulseCats.clear();
+  }
+  // The bag's own items render their 3D icons before the rest of the catalogue.
+  function warmBag() {
+    const slots = bagNow()?.slots; if (!slots) return;
+    const kinds = []; for (const s of slots) if (s && s.kind && !kinds.includes(s.kind)) kinds.push(s.kind);
+    warmIcons(kinds, true);
+  }
+
   function render(force) {
     if (!alive) return;
     if (!iconsLive && document.body?.classList.contains('playing')) liveIcons();
@@ -1109,6 +1261,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     all += selected;
     curSlots = slots; curSelected = selected;
     if (all !== bagSig) { const first = bagSig === null; bagSig = all; if (!first) document.dispatchEvent(new CustomEvent(BAG_EVENT)); } // item-tooltips.js re-reads its open card
+    if (all !== readySig || bag !== readyBag) { readySig = all; checkReady(bag); }
     if (hotEls.length) paintHotbar(slots, sigs, selected);
     paintTracker(bag, all);
     if (isOpen && !dragging && (force || all !== lastSig)) {
@@ -1132,7 +1285,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     warmIcons(curSlots.slice(0, HB).map(s => s?.kind).filter(Boolean));
     if (!warmTimer) warmTimer = setTimeout(warmAll, 5000);
   }
-  function warmAll() { warmTimer = -1; iconsLive = true; warmIcons(Object.keys(ITEM_INFO || {})); }
+  function warmAll() { warmTimer = -1; iconsLive = true; warmBag(); warmIcons(Object.keys(ITEM_INFO || {})); }
   function open() {
     if (!alive || isOpen) return;
     isOpen = true;
@@ -1152,6 +1305,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     reorderRecipes();
     if (!pickedByUser && viewOf(pickId)?.state !== 'ready') pickId = null; // default to the first ready recipe
     applyTab();
+    flushPulse();
     try { wrap.focus({ preventScroll: true }); } catch {}
   }
   function close() {
@@ -1159,6 +1313,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     isOpen = false;
     stopHold();
     endDrag(false);
+    query = ''; qEl.value = ''; // the next open starts on the plain tabs
     clearSrc(); clearDeny(); clearSay();
     hideTip(); hoverIdx = null;
     if (dlg.open) { try { dlg.close(); } catch { dlg.removeAttribute('open'); } }
@@ -1178,6 +1333,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   dlg.addEventListener('close', () => {
     if (!isOpen) return;
     isOpen = false; stopHold(); endDrag(false); clearSrc(); clearDeny(); hideTip(); hoverIdx = null;
+    query = ''; qEl.value = '';
     safe(onResume);
   }, opt);
   // Backdrop: close only when the press started and ended there (Chrome sends a click that
@@ -1196,7 +1352,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (rb) { setPick(rb.dataset.recipe); return; }
     if (e.target.closest?.('.sv-craftbtn')) {
       // Pointer presses are handled on pointerdown; detail 0 = keyboard / assistive activation.
-      if (e.detail === 0 && !hold) { startHold(); stopHold(); }
+      if (e.detail === 0 && !hold) { startHold(e.shiftKey); stopHold(); }
       return;
     }
     const el = slotFrom(e); if (!el) return;
@@ -1290,16 +1446,31 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     e.preventDefault();
     try { D.btn.setPointerCapture(e.pointerId); } catch {}
     try { D.btn.focus({ preventScroll: true }); } catch {}
-    startHold();
+    startHold(e.shiftKey);
   }, opt);
   for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) D.btn.addEventListener(ev, stopHold, opt);
   D.btn.addEventListener('keydown', e => {
     if (e.code !== 'Enter' && e.code !== 'Space' && e.code !== 'NumpadEnter') return;
     e.preventDefault();
-    if (!e.repeat && !hold) startHold();
+    if (!e.repeat && !hold) startHold(e.shiftKey);
   }, opt);
   D.btn.addEventListener('keyup', e => { if (e.code === 'Enter' || e.code === 'Space' || e.code === 'NumpadEnter') stopHold(); }, opt);
   D.btn.addEventListener('blur', stopHold, opt);
+  // Recipe search. Esc with text only clears the field (it must not reach the dialog, which would
+  // close the bag); with an empty field Esc does what it always does.
+  qEl.addEventListener('input', () => setQuery(qEl.value), opt);
+  qEl.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (searchEscape(qEl.value) === 'clear') { e.preventDefault(); e.stopPropagation(); setQuery('', true); }
+      return;
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'Enter') return;
+    const first = rlist.querySelector(':scope>.sv-recipe:not([hidden])'); if (!first) return;
+    e.preventDefault();
+    if (e.key === 'Enter') setPick(first.dataset.recipe);
+    try { first.focus({ preventScroll: false }); } catch {}
+  }, opt);
+  qClear.addEventListener('click', () => setQuery('', true), opt);
   // Arrow keys move between tabs (roving tabindex).
   tabsEl.addEventListener('keydown', e => {
     const t = e.target.closest?.('.sv-tab'); if (!t) return;
@@ -1341,10 +1512,10 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (e.detail > 0) b.blur();
   }, opt);
 
-  // Tab / I open while playing; Tab / I / E close.
+  // Tab / I open while playing; Tab / I / E close. Inside a slot grid Tab keeps moving focus between slots.
   document.addEventListener('keydown', e => {
     if (!alive || e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
-    const act = bagKeyAction(e.code, isOpen);
+    const act = bagKeyAction(e.code, isOpen, !!e.target?.closest?.('#inventory .sv-grid, #inventory .sv-hotrow'));
     if (!act) return;
     const t = e.target;
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
@@ -1370,7 +1541,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       ac.abort();
       offIcons();
       if (warmTimer > 0) clearTimeout(warmTimer);
-      clearTimeout(labelTimer);
+      clearTimeout(labelTimer); clearTimeout(trackPulseT);
       endDrag(false);
       clearSrc();
       clearDeny();

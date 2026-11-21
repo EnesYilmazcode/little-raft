@@ -9,14 +9,14 @@ const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST
 const src = f => readFileSync(new URL(f, base), 'utf8');
 const { Progression } = await import(new URL('progression.js', base));
 const { studyHead } = await import(new URL('storage-research-ui.js', base));
-const { notesHTML } = await import(new URL('logbook-ui.js', base));
+const { notesHTML, NOTE_TIPS } = await import(new URL('logbook-ui.js', base));
 const { NOTE_COUNT } = await import(new URL('logbook.js', base));
 
 test('Tinker\'s Desk header is one line that names what to study', () => {
   assert.equal(studyHead(['Plastic']), 'Study Plastic at a Tinker’s Desk to unlock');
   assert.equal(studyHead(['Rope', 'Scrap']), 'Study Rope and Scrap at a Tinker’s Desk to unlock');
   assert.equal(studyHead([]), 'Study at a Tinker’s Desk to unlock');
-  const css = src('storage-research-ui.js').match(/\.sv-recipe\.lr-sr-first::before\{[^}]*\}/)[0];
+  const css = src('storage-research-ui.js').match(/\.sv-recipe\.lr-sr-first::after\{[^}]*\}/)[0]; // ::after: survival-ui owns ::before (ready bar)
   assert.match(css, /content:attr\(data-sr-head\)/);
   assert.match(css, /white-space:nowrap/);
   assert.match(css, /right:2px/); // spans the row width instead of shrinking to one word per line
@@ -46,22 +46,22 @@ test('How to play fits a short window and the logbook returns to pause', () => {
   assert.match(src('logbook-ui.js'), /if \(!dlg\.dataset\.fromPause\) safe\(onResume\)/);
 });
 
-test('logbook shows one hint instead of a row per missing note', () => {
+test('logbook shows a found count and a few hints instead of a row per missing note', () => {
   const empty = notesHTML([]);
-  assert.equal((empty.match(/<li/g) || []).length, 1);
-  assert.match(empty, /Hook floating bottles to find notes/);
-  assert.doesNotMatch(empty, /Still adrift/);
+  assert.equal((empty.match(/<li/g) || []).length, 1 + NOTE_TIPS.length, 'the n/12 line and the tips');
+  assert.match(empty, new RegExp(`0/${NOTE_COUNT}`));
+  assert.doesNotMatch(empty, /Still adrift|lb-missing/);
   const some = notesHTML([0, 2], 2);
-  assert.equal((some.match(/<li/g) || []).length, 3);
-  assert.match(some, new RegExp(`${NOTE_COUNT - 2} still adrift`));
-  assert.equal((notesHTML([...Array(NOTE_COUNT).keys()]).match(/lb-missing/g) || []).length, 0);
+  assert.equal((some.match(/<li/g) || []).length, 4, 'count, two notes, one "still drifting" line');
+  assert.match(some, new RegExp(`${NOTE_COUNT - 2} more notes still drifting`));
+  assert.equal((notesHTML([...Array(NOTE_COUNT).keys()]).match(/lb-tip/g) || []).length, 0);
 });
 
 test('HUD chips: no sail chip waits for a sail to be makeable; fish chip is short', () => {
   assert.match(src('sailing-ui.js'), /m === 'none' && info\.sailKnown === false/);
   assert.match(src('sailing-world.js'), /info\.sailKnown = !!ctx\.sailKnown\(\)/);
   assert.match(src('game.js'), /const sailKnown = \(\) =>[^\n]*isUnlocked\?\.\('sail'\)[^\n]*'scrap'/);
-  assert.match(src('fishing-cooking.js'), /`🎣 Fish \$\{n\}\/\$\{SPECIES\.length\} · J`/);
+  assert.match(src('fishing-cooking.js'), /`Fish \$\{n\}\/\$\{SPECIES\.length\}<kbd>J<\/kbd>journal`/); // short, J as a key cap (shared palette)
   const fresh = new Progression();
   assert.equal(fresh.isUnlocked('sail'), false); // a new player does not see "craft one" yet
   fresh.noteItems(['leaf', 'scrap']);

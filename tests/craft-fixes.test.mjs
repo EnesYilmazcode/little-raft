@@ -33,7 +33,7 @@ const CB = await import(new URL('craft-book.js', base));
 
 test('CRAFT-1: the bag UI gate folds in content (research) locks and craft() reports refusals', () => {
   const g = src('game.js');
-  assert.match(g, /recipeGate:id => mergeGate\(prog\?\.recipeGate\(id\), content\?\.craftLocked\(id, myActor\(\)\)\)/, 'survival UI gate = progression + content locks');
+  assert.match(g, /recipeGate:id => prog\?\.recipeGate\(id\) \|\| content\?\.craftGate\?\.\(id\) \|\| mergeGate\(null, content\?\.craftLocked\(id, myActor\(\)\)\)/, 'survival UI gate = progression + content (desk) locks');
   assert.equal(CB.mergeGate(null, 'Study it first')?.locked, true, 'content lock becomes {locked, reason}');
   assert.equal(CB.mergeGate(null, 'Study it first')?.reason, 'Study it first');
   assert.equal(CB.mergeGate(null, null), null);
@@ -43,7 +43,7 @@ test('CRAFT-1: the bag UI gate folds in content (research) locks and craft() rep
   assert.match(s, /if \(g\?\.locked\) return \{ rows, state: 'gated'/, 'evaluate: gated beats ready');
   assert.match(s, /if \(r === false\) return false;/, 'craftNow: a refused craft is not counted');
   assert.match(s, /v\.state !== 'gated' \|\| v\.el === rec/, 'arrow keys skip locked rows');
-  assert.match(s, /inTab\.find\(v => v\.state !== 'gated'\)/, 'auto-pick prefers an unlocked row');
+  assert.match(s, /shown\.find\(v => v\.state !== 'gated'\)/, 'auto-pick prefers an unlocked row');
 });
 
 test('CRAFT-2: the pinned tracker shows a locked recipe as locked', () => {
@@ -59,7 +59,8 @@ test('CRAFT-2: the pinned tracker shows a locked recipe as locked', () => {
   const s = src('survival-ui.js');
   const fn = s.slice(s.indexOf('function paintTracker('), s.indexOf('function reorderRecipes('));
   assert.match(fn, /trackerView\(r, k => countOf\(bag, k\), check, g\)/, 'tracker passes the gate');
-  assert.match(fn, /'Locked: ' \+/, 'tracker says Locked: reason');
+  assert.match(fn, /: locked \? 'Locked'/, 'tracker says Locked');
+  assert.match(fn, /class="ct-why">\$\{esc\(un\.line\)\}/, 'and the unlock line (the reason)');
   assert.match(fn, /const key = sig \+ '\|' \+ pinId \+ '\|' \+ \(g \?/, 'gate change repaints the tracker');
 });
 
@@ -117,7 +118,7 @@ test('CRAFT-4: no "Locked" line for kinds outside the item catalogue', () => {
   assert.ok(doc.tip() && !doc.tip().hidden, 'card shown');
   assert.doesNotMatch(doc.tip().innerHTML, /it-lock|Unknown item/);
   doc.hover(kindEl('bolt'));
-  assert.match(doc.tip().innerHTML, /class="it-lock">Locked: Research it/, 'catalogue items still show their lock');
+  assert.match(doc.tip().innerHTML, /class="it-lock">Unlock: Research it<small>/, 'catalogue items still show their lock and how to unlock it');
   doc.hover(kindEl('toString'));
   assert.doesNotMatch(doc.tip().innerHTML, /it-lock/, 'prototype keys are not catalogue items');
   tt.dispose();

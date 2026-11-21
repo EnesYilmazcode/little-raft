@@ -96,20 +96,10 @@ const CSS = `
 .lr-sr-lock{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#3e2a17;box-shadow:0 0 0 1.5px #ffcf9a,0 1px 3px #000a}
 .lr-sr-lock svg{display:block;width:15px;height:15px}
 /* craft list in #inventory */
-#inventory .sv-rlist{display:flex;flex-direction:column}
-#inventory .sv-recipe[data-locked]{order:1;opacity:1!important;background:linear-gradient(#3f2b1a,#33231a);box-shadow:inset 0 0 0 1px #d4b07a22}
-#inventory .sv-recipe[data-locked] .sv-rart{position:relative}
-#inventory .sv-recipe[data-locked] .sv-rart .sv-icon{filter:grayscale(1) brightness(.75);opacity:.6}
-#inventory .sv-recipe[data-locked] .sv-rname{color:#d9c9a6}
-#inventory .sv-recipe[data-locked] .sv-reqs{opacity:.5}
-#inventory .sv-recipe[data-locked] .sv-why{display:none}
-#inventory .sv-recipe[data-locked] .sv-rart::after{content:'';position:absolute;right:-6px;bottom:-6px;width:22px;height:22px;border-radius:50%;
-  background:#3e2a17 ${LOCK_URL} center/15px 15px no-repeat;box-shadow:0 0 0 1.5px #ffcf9a,0 1px 3px #000a}
-#inventory .sv-recipe.sv-locked[data-locked] .sv-rart::after{filter:grayscale(.85) brightness(.7);opacity:.75}
-#inventory .sv-recipe.sv-gated[data-locked] .sv-rart::after{filter:grayscale(1) brightness(.55)}
-#inventory .sv-recipe .sv-rbody[data-needs]::after{content:attr(data-needs);display:block;margin-top:4px;font:700 12px/1.2 ${FONT};color:#ffcf9a}
-#inventory .sv-recipe.lr-sr-first{position:relative;margin-top:30px}
-#inventory .sv-recipe.lr-sr-first::before{content:attr(data-sr-head);position:absolute;left:2px;right:2px;top:-21px;width:auto;height:14px;grid-column:1/-1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:700 12px/14px ${FONT};letter-spacing:.2px;color:#d9c9a6;pointer-events:none}
+/* The bag (survival-ui) draws the lock itself (badge, "Unlock:" line, sorted last), so only a group label
+   is added here, on ::after: survival-ui owns .sv-recipe::before (the 3 px ready bar). */
+#inventory .sv-recipe.lr-sr-first{margin-top:22px;overflow:visible}
+#inventory .sv-recipe.lr-sr-first::after{content:attr(data-sr-head);position:absolute;left:2px;right:2px;top:-17px;bottom:auto;width:auto;height:auto;background:none;box-shadow:none;letter-spacing:.2px;color:#d9c9a6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;font:700 12px/14px ${FONT}}
 #inventory .sv-recipe.lr-sr-fresh{animation:lrSrFresh 2.4s ease-out}
 #inventory .lr-sr-more{display:block;width:100%;margin:0 0 8px;padding:6px 8px;border:0;border-radius:4px;background:#24170caa;box-shadow:inset 0 0 0 1px #ffbd6655;color:#ffcf9a;font:700 12px/1.2 ${FONT};text-align:left;letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
 #inventory .lr-sr-more:hover{box-shadow:inset 0 0 0 1px #ffe3a6}
@@ -185,11 +175,10 @@ export function createStorageUI(api) {
 
   let mode = null, tx = 0, tz = 0, isOpen = false, lastRev = -1, prevKnown = null, prevSeen = null, bannerTimer = 0;
   const prevKind = new Array(SLOT_COUNT).fill(null), prevCount = new Int32Array(SLOT_COUNT), prevDur = new Float64Array(SLOT_COUNT);
-  let inv = null, invWasOpen = false, invRev = -1, invRow = null, invTable = false;
-  let lockedRows = []; // craft-list rows we marked locked (aria-label is re-applied if survival-ui repaints it)
+  let inv = null, invWasOpen = false;
+  let invKey = ''; // what the craft-list annotation was last painted for (tab, search, row order, locks)
   const timers = new Set(); // craft-list glow timeouts
   const ac = new AbortController(), on = { signal: ac.signal };
-  const LOCKED_LABEL = 'Locked — needs research';
 
   // ---------- painting ----------
   function bagChanged(bag) {
@@ -362,69 +351,49 @@ export function createStorageUI(api) {
   }
 
   // ---------- craft list annotation (#inventory) ----------
-  const setAttr = (el, k, v) => { if (el.getAttribute(k) !== v) el.setAttribute(k, v); };
   const setClass = (el, c, on) => { if (el.classList.contains(c) !== on) el.classList.toggle(c, on); };
+  // Visible rows of the bag's craft list (the active tab, or the search matches) in their on-screen order.
+  const shownRows = () => [...(inv?.querySelectorAll('.sv-rlist>.sv-recipe[data-recipe]:not([hidden])') ?? [])];
+  const isGated = el => el.classList.contains('sv-gated');
   function annotate() {
-    const rows = inv.querySelectorAll('.sv-recipe[data-recipe]'), seen = new Set(api.state.seen), fresh = api.takeFresh();
-    const beckon = api.locked().length > 0 && !api.hasTable();
-    const firsts = new Map(); // tab (data-cat) -> {el, miss}: each craft tab gets its own header over its first locked row
-    lockedRows = [];
-    rows.forEach(el => {
-      const id = el.dataset.recipe, r = RECIPES[id], locked = !!r && !api.isLearned(id);
-      const body = el.querySelector('.sv-rbody');
+    const fresh = api.takeFresh(), beckon = api.locked().length > 0 && !api.hasTable();
+    inv.querySelectorAll('.sv-recipe[data-recipe]').forEach(el => {
+      const id = el.dataset.recipe;
       setClass(el, 'lr-sr-beckon', beckon && id === 'research');
-      if (!locked) {
-        if (el.dataset.locked) unlockRow(el);
-        setClass(el, 'lr-sr-first', false);
-        if (body?.dataset.needs != null) delete body.dataset.needs;
-        if (fresh.includes(id)) {
-          el.classList.remove('lr-sr-fresh'); void el.offsetWidth; el.classList.add('lr-sr-fresh');
-          const t = setTimeout(() => { timers.delete(t); el.classList.remove('lr-sr-fresh'); }, 2500); timers.add(t);
-        }
-        return;
+      if (fresh.includes(id)) {
+        el.classList.remove('lr-sr-fresh'); void el.offsetWidth; el.classList.add('lr-sr-fresh');
+        const t = setTimeout(() => { timers.delete(t); el.classList.remove('lr-sr-fresh'); }, 2500); timers.add(t);
       }
-      const miss = Object.keys(r.cost).filter(k => !seen.has(k)).map(k => itemName(k));
-      const text = miss.length ? 'Study ' + miss.join(' + ') : 'Study at a Tinker\u2019s Desk';
-      if (!el.dataset.locked) { el.dataset.locked = '1'; el.dataset.srAria = el.getAttribute('aria-label') ?? ''; }
-      setAttr(el, 'title', 'Needs research: ' + (miss.join(', ') || 'visit a Tinker\u2019s Desk'));
-      setAttr(el, 'tabindex', '-1'); setAttr(el, 'aria-label', LOCKED_LABEL); lockedRows.push(el);
-      const cat = el.dataset.cat ?? '', head = !firsts.has(cat);
-      setClass(el, 'lr-sr-first', head); if (head) firsts.set(cat, { el, miss });
-      if (body && body.dataset.needs !== text) body.dataset.needs = text; // shown by .sv-rbody[data-needs]::after, the lock badge by .sv-rart::after
     });
-    const heads = new Map([...firsts.values()].map(f => [f.el, studyHead(f.miss)]));
-    rows.forEach(el => { const h = heads.get(el); if (h) { if (el.dataset.srHead !== h) el.dataset.srHead = h; } else if (el.dataset.srHead) delete el.dataset.srHead; });
-    // "N more recipes to discover" at the top of the craft list (outside .sv-rlist, which survival-ui owns)
+    // One "Still to discover" label above the first locked row of the rows on screen (locked rows sort last).
+    const shown = shownRows(), gated = shown.filter(isGated), first = gated[0] ?? null;
+    inv.querySelectorAll('.sv-recipe.lr-sr-first').forEach(el => { if (el !== first) { el.classList.remove('lr-sr-first'); delete el.dataset.srHead; } });
+    if (first) { // what to study, when the first locked row is a desk lock; otherwise a plain group label
+      const id = first.dataset.recipe, r = RECIPES[id], seen = new Set(api.state.seen);
+      const head = r && !api.isLearned(id) ? studyHead(Object.keys(r.cost || {}).filter(k => !seen.has(k)).map(k => itemName(k))) : 'Still to discover';
+      if (first.dataset.srHead !== head) first.dataset.srHead = head;
+      setClass(first, 'lr-sr-first', true);
+    }
+    // "N more recipes to discover" for the rows on screen (outside .sv-rlist, which survival-ui owns)
     const list = inv.querySelector('.sv-rlist'), box = list?.parentElement;
     let more = box?.querySelector(':scope>.lr-sr-more');
-    if (!lockedRows.length || !box) { more?.remove(); return; }
+    if (!gated.length || !box) { more?.remove(); return; }
     if (!more) {
       more = document.createElement('button'); more.type = 'button'; more.className = 'lr-sr-more';
-      more.addEventListener('click', () => { box.querySelector('.sv-recipe[data-locked]')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); });
+      more.addEventListener('click', () => { shownRows().find(isGated)?.scrollIntoView({ block: 'start', behavior: 'smooth' }); });
       box.insertBefore(more, list);
     }
-    const n = lockedRows.length, label = `${n} more recipe${n > 1 ? 's' : ''} to discover ↓`;
+    const n = gated.length, label = `${n} more recipe${n > 1 ? 's' : ''} to discover ↓`;
     if (more.textContent !== label) more.textContent = label;
-  }
-  function unlockRow(el) {
-    const aria = el.dataset.srAria;
-    delete el.dataset.locked; delete el.dataset.srAria;
-    el.removeAttribute('title'); el.removeAttribute('tabindex');
-    if (aria) el.setAttribute('aria-label', aria); else el.removeAttribute('aria-label');
   }
   function unannotate() {
     const host = inv?.isConnected ? inv : document.getElementById('inventory'); if (!host) return;
-    host.querySelectorAll('.sv-recipe').forEach(el => {
-      if (el.dataset.locked) unlockRow(el);
-      const body = el.querySelector('.sv-rbody'); if (body?.dataset.needs != null) delete body.dataset.needs;
-      el.classList.remove('lr-sr-first', 'lr-sr-fresh', 'lr-sr-beckon'); delete el.dataset.srHead;
-    });
+    host.querySelectorAll('.sv-recipe').forEach(el => { el.classList.remove('lr-sr-first', 'lr-sr-fresh', 'lr-sr-beckon'); delete el.dataset.srHead; });
     host.querySelectorAll('.lr-sr-more').forEach(el => el.remove());
-    lockedRows = [];
+    invKey = '';
   }
 
   // ---------- per frame ----------
-  let preAnnotated = false;
   function update() {
     if (isOpen) {
       const want = mode === 'crate' ? 'crate' : 'research', p = ctx.physics;
@@ -433,12 +402,12 @@ export function createStorageUI(api) {
     }
     if (!inv || !inv.isConnected) inv = document.getElementById('inventory');
     const invOpen = !!inv && inv.open;
-    if (invOpen) { // re-annotate only when something it shows changed (or survival-ui rebuilt the rows)
-      const row = inv.querySelector('.sv-recipe'), table = api.hasTable();
-      if (!invWasOpen || invRev !== api.rev || invRow !== row || invTable !== table) { invRev = api.rev; invRow = row; invTable = table; annotate(); }
+    if (invOpen) { // re-annotate only when something it shows changed: rows, order, tab/search, locks, desk
+      const shown = shownRows();
+      let key = api.rev + '|' + api.hasTable() + '|';
+      for (let i = 0; i < shown.length; i++) key += shown[i].dataset.recipe + (isGated(shown[i]) ? '*' : '') + ',';
+      if (!invWasOpen || key !== invKey) { invKey = key; annotate(); }
     }
-    else if (!preAnnotated && inv && inv.querySelector('.sv-recipe')) { preAnnotated = true; annotate(); } // build lock badges up front, not on the first bag open
-    if (invOpen) for (let i = 0; i < lockedRows.length; i++) if (lockedRows[i].getAttribute('aria-label') !== LOCKED_LABEL) lockedRows[i].setAttribute('aria-label', LOCKED_LABEL);
     invWasOpen = invOpen;
   }
 

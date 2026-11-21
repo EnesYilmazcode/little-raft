@@ -118,10 +118,10 @@ test('E2 dive gather label sits in the crosshair-side prompt column, not centred
   ui.dispose();
 });
 
-test('E2 binoculars readout and reel HUD join the prompt column (no centred boxes)', () => {
-  const bino = /hud\.id = 'binocularsHud'[^\n]*\n[^\n]*/.exec(src('progression-hooks.js'))[0];
-  assert.match(bino, /left:calc\(50% \+ 34px\)/); assert.match(bino, /transform:none/);
-  assert.doesNotMatch(bino, /left:50%|translateX\(-50%\)|background/);
+test('E2 binoculars readout docks in the bottom-left notice stack; the reel HUD sits beside the crosshair (no centred boxes)', () => {
+  const bino = /hud\.id = 'binocularsHud'[^\n]*\n[^\n]*\n[^\n]*/.exec(src('progression-hooks.js'))[0];
+  assert.match(bino, /getElementById\('noticeStack'\)/);
+  assert.doesNotMatch(bino, /left:50%|translateX\(-50%\)/);
   const reel = /#fcReelHud\{[^}]*\}/.exec(src('fishing-v2.js'))[0];
   assert.match(reel, /left:calc\(50% \+ 34px\)/); assert.match(reel, /transform:none/); assert.match(reel, /text-align:left/);
   assert.doesNotMatch(reel, /left:50%;|translateX\(-50%\)/);
@@ -163,7 +163,7 @@ test('E3 coop feed still works standalone (no shared stack): own box', async () 
 test('E3 the shared stack is published and the prompt feed posts into it', () => {
   assert.match(src('pickup-feed.js'), /window\.raftPickupFeed = pickupFeed/);
   const p = src('prompts.js');
-  assert.match(p, /win\.raftPickupFeed/); assert.match(p, /sink\.note\(t\)/);
+  assert.match(p, /win\.raftPickupFeed/); assert.match(p, /pf\.note\(t\)/);
   assert.match(src('style.css'), /\.pf-emote i\{/);
   // narrower than ~1180px the 5-row stack lifts above the centred hotbar instead of running into its left end
   assert.match(src('style.css'), /@media\(max-width:1100px\) and \(min-width:761px\)\{#pickupFeed\{bottom:calc\(232px/);

@@ -45,7 +45,8 @@ test('HUD-2/HUD-4: the feed docks into the bag or pause rail, and hides under re
 test('HUD-2/HUD-4: a docked feed is an in-flow box inside the panel lane, not a top-layer popover', () => {
   const fn = gameSrc.slice(gameSrc.indexOf('function updateNotices('), gameSrc.indexOf('const esc = s =>'));
   assert.match(fn, /feedLane\(place\)/);
-  assert.match(fn, /removeAttribute\('popover'\); el\.classList\.add\('docked'\)/);
+  assert.match(fn, /feed\.classList\.add\('docked'\); if \(feed\.parentNode !== lane\) lane\.appendChild\(feed\)/, 'the feed leaves the stack for the lane');
+  assert.match(fn, /feed\.removeAttribute\('popover'\)/, 'the feed itself is never a top-layer popover (the stack is)');
   assert.match(fn, /if \(place === 'hud'\) el\.showPopover\(\)/, 'only the play HUD re-raises the popover');
   assert.match(gameSrc, /\$\('#inventory \.sv-bag'\) : place === 'options' \? \$\('#options \.rs-menu'\)/);
   assert.match(gameSrc, /#pickupFeed\.docked\{position:static/);
@@ -53,13 +54,14 @@ test('HUD-2/HUD-4: a docked feed is an in-flow box inside the panel lane, not a 
 
 // ---------------------------------------------------------------- HUD-3 feed vs hotbar
 
-test('HUD-3: feed rows stay left of the hotbar, and lift above it below 1000px wide', () => {
-  assert.match(gameSrc, /#pickupFeed \.pf-row\{max-width:max\(200px,calc\(50vw - 287px\)\);white-space:normal/);
-  assert.match(gameSrc, /@media\(max-width:1000px\)\{#pickupFeed\[popover\]\{inset:auto auto (?:\d+px|calc\(\d+px \+ var\(--coop-feed-h, 0px\)\)) 10px\}/); // height clears the vitals panel (182px at 1000px and below)
-  // The hotbar is 506px wide and centred, so its left edge is 50vw - 253px; the feed sits at left 22px.
-  for (let w = 1001; w <= 3840; w++) {
-    const right = 22 + Math.max(200, w / 2 - 287), hotbarLeft = w / 2 - 253;
-    assert.ok(right < hotbarLeft, `row right edge ${right} clears the hotbar at ${hotbarLeft} (width ${w})`);
+test('HUD-3: the notice stack (feed rows included) sits above the vitals panel and never reaches the screen centre', () => {
+  assert.match(gameSrc, /#noticeStack\{position:fixed;inset:auto auto calc\(178px \+ var\(--coop-feed-h, 0px\)\) 22px;/); // clears the vitals panel
+  assert.match(gameSrc, /max-width:min\(380px,calc\(50vw - 60px\)\)/);
+  assert.match(gameSrc, /@media\(max-width:1100px\)\{#noticeStack\{bottom:calc\(232px \+ var\(--coop-feed-h, 0px\)\)\}\}/); // the vitals panel lifts there too
+  assert.match(gameSrc, /#noticeStack>#pickupFeed\{position:static;inset:auto;margin:0;max-width:100%\}/);
+  for (let w = 761; w <= 3840; w++) {
+    const right = 22 + Math.min(380, w / 2 - 60);
+    assert.ok(right < w / 2 - 30, `stack right edge ${right} stays left of the centre (width ${w})`);
   }
 });
 

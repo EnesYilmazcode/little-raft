@@ -539,7 +539,8 @@ test('CraftBook: every recipe lands in exactly one known tab, in CATEGORIES orde
   assert.equal(seen.length, recipes.length);
   assert.deepEqual([...seen].sort(), recipes.map(r => r.id).sort());
   for (const g of groups) assert.ok(g.recipes.length > 0, `${g.id} not empty`);
-  assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod', 'brush', 'fins', 'airjug', 'goggles', 'scraper', 'driftboard', 'metalhook', 'spear', 'metalspear', 'paddle', 'axe', 'binoculars', 'spyglass', 'drum', 'pipes', 'bells', 'finder', 'spade', 'camera', 'glidehandle']); // [instruments] [treasure] [camera] [zipline] [spyglass]
+  assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod', 'sail', 'brush', 'fins', 'airjug', 'goggles', 'scraper', 'driftboard', 'metalhook', 'spear', 'metalspear', 'paddle', 'axe', 'binoculars', 'spyglass', 'finder', 'spade', 'camera', 'glidehandle']); // [treasure] [camera] [zipline] [spyglass]
+  assert.deepEqual(groups.find(g => g.id === 'music').recipes.map(r => r.id), ['drum', 'pipes', 'bells']); // [instruments]
   assert.deepEqual(groups.find(g => g.id === 'materials').recipes.map(r => r.id), ['rope', 'paint_seafoam', 'paint_coral', 'paint_sunshell', 'paint_lagoon', 'paint_pebble', 'nail', 'bolt', 'hinge']);
 });
 
@@ -859,10 +860,8 @@ test('pickup feed: no borrowed sprite for placeholder items (water is not a barr
   const doc = fakeDoc(), c = fakeClock(), feed = createFeed({ doc, ...c });
   feed.add('water', 1); feed.add('seed', 1);
   const box = r => doc.getElementById('pickupFeed').children[r].children[0];
-  for (const r of [0, 1]) { // a neutral tile, never an empty gap or another item's sprite
-    const svg = box(r).children[0];
-    assert.equal(svg.tagName, 'SVG'); assert.deepEqual(svg.children.map(e => e.tagName), ['RECT']);
-  }
+  // Their own drawings (item-svg.js), never a borrowed icons.svg <use> sprite.
+  for (const r of [0, 1]) { const svg = box(r).children[0]; assert.equal(svg?.tagName, 'SVG'); assert.ok(![...(svg.children || [])].some(c => c.tagName === 'USE')); }
 });
 
 test('pickup feed: refresh swaps in an icon that finished rendering late', () => {

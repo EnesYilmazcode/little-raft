@@ -648,4 +648,56 @@ export const ITEM_ICONS = Object.freeze({
     <circle cx="12" cy="4" r="2.4" fill="#ffbd66"/></g>
     <g fill="none" stroke="#f1c84d" stroke-width="1.1" stroke-linecap="round"><path d="M26.5 12 V20"/><path d="M23 13.5 L24.8 20"/><path d="M30 13.5 L28.2 20"/></g>
     <path d="M16 9 C20 7.5 24 9 28 8.6" fill="none" stroke="#fff2cc" stroke-width="1.5" stroke-linecap="round"/>`, // [flags]
+  // Palm seed: a coconut with its three eyes and a green sprout.
+  seed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M24 17 C22 11 17 7 11 7 C13 12 17 15 23 17 M25 17 C27 10 32 6 39 6 C37 12 32 15 26 17.5" fill="#7cc47f"/>
+    <ellipse cx="24" cy="30" rx="15" ry="13" fill="#8a5a33"/>
+    <path d="M13 24 C17 20 22 19 27 19.5" fill="none" stroke="#c99560" stroke-width="1.8"/>
+    <path d="M14 36 C18 39 25 40 31 38 M17 29 C20 31 24 31.5 28 31" fill="none" stroke-width="1.1" stroke-opacity=".55"/></g>
+    <g fill="${O}"><circle cx="20" cy="26" r="1.7"/><circle cx="26" cy="25" r="1.7"/><circle cx="23" cy="30" r="1.7"/></g>`,
+
+  // Cup of fresh water: a wooden cup filled to the brim with clear blue water.
+  water: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M10 13 H38 L35 41 C35 43 33 44 31 44 H17 C15 44 13 43 13 41 Z" fill="#c99560"/>
+    <ellipse cx="24" cy="14" rx="14" ry="4" fill="#6fc6e8"/>
+    <path d="M12.5 26 H35.5 M14 35 H34" fill="none" stroke-width="1.2" stroke-opacity=".55"/></g>
+    <path d="M17 13 C20 12 24 12 27 12.6" fill="none" stroke="#e8fbff" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M24 3 C26.5 6 27.5 8 27.5 9.3 A3.5 3.5 0 0 1 20.5 9.3 C20.5 8 21.5 6 24 3 Z" fill="#6fc6e8" stroke="${O}" stroke-width="1.6" stroke-linejoin="round"/>`,
+
+  // Decor pack and kiln goods: their icons.svg symbols are borrowed placeholders, so each gets a drawing.
+  rug: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M6 14 H42 V36 H6 Z" fill="#c9a24a"/>
+    <path d="M6 20 H42 M6 30 H42" fill="none" stroke="#7a9a3a" stroke-width="3"/>
+    <path d="M6 25 H42" fill="none" stroke="#e7d28a" stroke-width="2"/></g>
+    <path d="M9 36 V41 M15 36 V41 M21 36 V41 M27 36 V41 M33 36 V41 M39 36 V41 M9 9 V14 M15 9 V14 M21 9 V14 M27 9 V14 M33 9 V14 M39 9 V14" stroke="${O}" stroke-width="1.6" stroke-linecap="round"/>`,
+
+  pennant: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M12 6 V44" fill="none" stroke-width="3"/>
+    <path d="M13 8 L40 15 L13 22 Z" fill="#e8574a"/>
+    <path d="M7 44 H17" fill="none"/></g>
+    <path d="M16 11 L30 14.5" stroke="#ffd0c4" stroke-width="1.5" stroke-linecap="round"/>`,
+
+  fern: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M10 44 V5 H34 V10" fill="none" stroke-width="2.6"/>
+    <path d="M25 18 C25 28 43 28 43 18 Z" fill="#a8743f"/>
+    <path d="M34 18 C30 26 26 32 22 36 M34 18 C36 26 38 32 41 37 M34 18 C33 27 33 33 34 40" fill="none" stroke="#3f8f4a" stroke-width="2.4"/>
+    <path d="M30 10 V18 M38 10 V18" fill="none" stroke-width="1.4"/></g>`,
+
+  hammock: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M6 10 V42 M42 10 V42" fill="none" stroke-width="3"/>
+    <path d="M7 16 C14 34 34 34 41 16 C34 26 14 26 7 16 Z" fill="#e7d28a"/></g>
+    <path d="M12 22 C18 30 30 30 36 22" fill="none" stroke="#c46a1c" stroke-width="1.6" stroke-linecap="round"/>`,
+
+  glasslamp: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M20 4 H28 L30 9 H18 Z" fill="#8a8f93"/>
+    <path d="M16 9 H32 V37 H16 Z" fill="#bfe8f2" fill-opacity=".85"/>
+    <path d="M14 37 H34 V42 H14 Z" fill="#8a8f93"/>
+    <path d="M24 9 V37" fill="none" stroke-width="1.2"/></g>
+    <ellipse cx="24" cy="25" rx="4" ry="6" fill="#ffbd66"/><ellipse cx="24" cy="26" rx="2" ry="3.4" fill="#fff2cc"/>`,
+
+  sinker: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M24 4 V14" fill="none" stroke="#d9d2bf" stroke-width="1.6"/>
+    <circle cx="24" cy="12" r="3" fill="none"/>
+    <path d="M24 15 C33 21 34 34 24 44 C14 34 15 21 24 15 Z" fill="#7d8489"/></g>
+    <path d="M20 24 C19 28 19.5 32 21.5 36" fill="none" stroke="#c9d0d4" stroke-width="1.8" stroke-linecap="round"/>`,
 });

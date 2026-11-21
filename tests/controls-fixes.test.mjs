@@ -146,9 +146,11 @@ test('CTL-2: controls routes pad menu presses to menuBack and game.js closes + r
   const cb = /menuBack:\(\) => \{([^\n]*)\}, \/\//.exec(gameSrc)?.[1] ?? '';
   assert.match(cb, /survivalUI\?\.isOpen\) survivalUI\.close\(\)/);
   assert.match(cb, /settingsController\?\.isOpen\) settingsController\.close\(\)/);
-  // those close() calls run the same onResume -> requestLock path the keyboard close uses
-  assert.match(gameSrc, /onResume:guard\(\(\) => \{ play\('close'\); requestLock\(\); \}\)/);
-  assert.match(gameSrc, /createSettings\(\{[^\n]*onResume:\(\) => \{ quality\?\.reset\(\); requestLock\(\); \}/);
+  // those close() calls run the same onResume -> resumeLock path the keyboard close uses (resumeLock = requestLock that
+  // reopens the pause menu if the relock is refused)
+  assert.match(gameSrc, /onResume:guard\(\(\) => \{ play\('close'\); resumeLock\(\); \}\)/);
+  assert.match(gameSrc, /createSettings\(\{[^\n]*onResume:\(\) => \{ quality\?\.reset\(\); resumeLock\(\); \}/);
+  assert.match(gameSrc, /function resumeLock\(\) \{ resumeAt = performance\.now\(\); requestLock\(\); \}/);
 });
 
 // ---------------------------------------------------------------- CTL-3

@@ -6,12 +6,12 @@ const CSS = `
 #sailBadge{position:fixed;top:64px;right:16px;z-index:30;display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;
   color:#f6ecd6;font:600 12px/1.3 var(--ui-font,system-ui,sans-serif);user-select:none}
 #sailBadge[hidden],#sailPrompt[hidden]{display:none}
-#sailBadge svg{width:84px;height:84px;display:block;border-radius:50%;background:rgba(43,30,18,.7);box-shadow:0 0 0 1.5px rgba(246,236,214,.5),0 4px 14px rgba(43,30,18,.3)}
-#sailBadge .sail-label{padding:2px 8px;border-radius:8px;background:rgba(43,30,18,.7);box-shadow:0 0 0 1px rgba(246,236,214,.5);white-space:nowrap}
+#sailBadge svg{width:84px;height:84px;display:block;border-radius:50%;background:var(--plate-hud,rgba(16,22,25,.9));box-shadow:0 0 0 1px var(--line-strong,#ffffff2e),0 4px 14px rgba(0,0,0,.3)}
+#sailBadge .sail-label{padding:2px 8px;border-radius:6px;background:var(--plate-hud,rgba(16,22,25,.9));box-shadow:0 0 0 1px var(--line,#ffffff17);white-space:nowrap}
 #sailBadge .sail-dim{opacity:.3}
-#sailPrompt{position:fixed;left:calc(50% + 22px);top:calc(50% + 84px);text-align:left;padding:3px 10px;border-radius:8px;
-  background:rgba(43,30,18,.7);box-shadow:0 0 0 1px rgba(246,236,214,.5);color:#f6ecd6;font:600 13px/1.3 var(--ui-font,system-ui,sans-serif);pointer-events:none;z-index:30;white-space:nowrap}
-#sailPrompt kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:0 4px;border:1px solid rgba(246,236,214,.6);border-radius:4px;font:inherit;text-align:center}
+#sailPrompt{position:fixed;left:22px;bottom:180px;text-align:left;padding:3px 10px;border-radius:8px;
+  background:var(--plate-hud,rgba(16,22,25,.9));box-shadow:0 0 0 1px var(--line,#ffffff17);color:#f6ecd6;font:600 13px/1.3 var(--ui-font,system-ui,sans-serif);pointer-events:none;z-index:30;white-space:nowrap}
+#sailPrompt kbd{display:inline-block;min-width:1.4em;margin-right:7px;padding:1px 5px;border-radius:4px;font:700 12px/1.2 var(--ui-font,system-ui,sans-serif);text-align:center;color:#fff6e0;background:#0008;box-shadow:inset 0 0 0 1px #fff6e099}
 .sail-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 `;
 const SVG = '<circle cx="0" cy="0" r="38" fill="none" stroke="rgba(246,236,214,.35)" stroke-width="1.5"/>'

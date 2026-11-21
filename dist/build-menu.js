@@ -6,7 +6,7 @@
 const STYLE_ID = 'lr-build-menu-style';
 const SPRITE = (() => { try { return new URL('icons.svg', import.meta.url).href; } catch { return 'icons.svg'; } })();
 const MAT_SPRITE = { wood: 'wood', leaf: 'leaf', scrap: 'scrap' };
-const MAT_NAME = { wood: 'plank', leaf: 'leaf', plastic: 'plastic', scrap: 'scrap', rope: 'rope' };
+const MAT_NAME = { wood: 'planks', leaf: 'leaf', plastic: 'plastic', scrap: 'scrap', rope: 'rope' };
 
 // Original 24x24 line icons (stroke = currentColor).
 const ICONS = {
@@ -30,7 +30,7 @@ const FALLBACK_ICON = '<rect x="5" y="5" width="14" height="14" rx="2"/>';
 const VB = 200, R_OUT = 192, R_IN = 82, R_ICON = 137, PAD_DEG = 1.4;
 const DEAD = 25, CLAMP = 140;
 
-const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
+const FONT = "var(--ui-font,'Segoe UI',system-ui,-apple-system,sans-serif)"; // shared HUD font (graphics.css)
 const CSS = `
 .bm-wheel{position:fixed;left:50%;top:50%;z-index:31;width:min(380px,92vw,66vh);aspect-ratio:1;transform:translate(-50%,-50%) scale(.94);
   opacity:0;pointer-events:none;transition:opacity .12s,transform .12s;font:500 13px/1.25 ${FONT};color:#fff2cc;user-select:none;-webkit-user-select:none}
@@ -66,23 +66,33 @@ const CSS = `
 .bm-tag[hidden]{display:none}
 /* the hammer's "Aim at the raft edge" prompt sits under the hub: hide it while the wheel is up */
 body.bm-wheel-up #lrPrompt,body.bm-wheel-up #contextPrompt{visibility:hidden}
-.bm-chip{position:fixed;left:max(16px,calc(50% - 253px));bottom:var(--bm-chip-bottom,112px);z-index:3;text-align:left;display:flex;align-items:center;gap:10px;
-  padding:7px 14px 7px 7px;border-radius:12px;pointer-events:none;max-width:calc(100vw - 32px);
+/* left is measured from the hotbar at show time (placeChip); the calc is only the first-frame fallback */
+.bm-chip{position:fixed;left:max(16px,calc(50% - 287px));bottom:var(--bm-chip-bottom,112px);z-index:3;text-align:left;display:flex;align-items:center;gap:10px;
+  padding:7px 14px 7px 7px;border-radius:12px;pointer-events:none;max-width:calc(100vw - 32px);box-sizing:border-box;
   background:repeating-linear-gradient(90deg,#0000000f 0 2px,transparent 2px 21px),linear-gradient(#5d4129f0,#3d2a19f0);
   border:1.5px solid #c9a66b;box-shadow:0 0 0 1.5px #3e2a17,0 4px 14px #0006;color:#fff2cc;font:500 13px/1.25 ${FONT};transition:opacity .12s}
 .bm-chip.bm-dim{opacity:0}
-.bm-chip>i{flex:0 0 auto;display:grid;place-items:center;width:38px;height:38px;border-radius:8px;background:#24170caa;box-shadow:inset 0 0 0 1px #d4b07a44;color:#ffe3a6}
+.bm-chip>i{flex:0 0 auto;display:grid;place-items:center;width:38px;height:38px;border-radius:6px;background:radial-gradient(circle at 50% 42%,#56656bd0,#1f282cd8 72%);box-shadow:inset 0 0 0 1px #ffffff1c;color:var(--amber-lt,#ffd98f)}
 .bm-chip>i svg{width:26px;height:26px}
 .bm-chip>div{min-width:0}
 .bm-row{display:flex;align-items:center;gap:10px}
 .bm-row b{font:700 14px/1.1 ${FONT};white-space:nowrap}
-.bm-hint{display:block;margin-top:3px;font:500 11px/1.2 ${FONT};color:#d9c9a6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bm-hint kbd{font:700 10px/1 ${FONT};color:#ffdd95;border:1px solid #e0bd7155;border-radius:3px;padding:1px 3px}
+.bm-hint{display:block;margin-top:3px;font:500 11px/1.2 ${FONT};color:var(--cream-dim,#f4efe2b3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bm-hint kbd{font:700 10px/1 ${FONT};color:var(--cream-hi,#fff6e0);border:1px solid #fff6e066;border-radius:3px;padding:1px 3px}
 .bm-status{display:block;margin-top:3px;font:700 12px/1.2 ${FONT};color:#ffab8f}
 .bm-status:empty{display:none}
 @media(max-width:760px){.bm-chip{--bm-chip-bottom:118px;gap:8px;padding:5px 10px 5px 5px}.bm-chip>i{width:32px;height:32px}.bm-chip>i svg{width:22px;height:22px}
   .bm-mid b{font-size:14px;margin:3px 0 5px}.bm-req{font-size:12px}.bm-req em{display:none}.bm-mid small{font-size:8.5px}}
 @media(prefers-reduced-motion:reduce){.bm-wheel{transition:none}}`;
+
+// The chip's left edge: the hotbar's left edge (measured, so it follows the 10-slot bar), pushed right of the
+// bottom-left notice stack's widest extent when the stack sits above the hotbar (narrow windows), kept on screen.
+export function chipLeft({ hotbarLeft, stackRight = 0, vw, chipW = 0, gap = 8, margin = 16 }) {
+  let x = Number.isFinite(hotbarLeft) ? hotbarLeft : margin;
+  if (Number.isFinite(stackRight) && stackRight + gap > x) x = stackRight + gap;
+  if (Number.isFinite(vw) && chipW > 0) x = Math.min(x, vw - margin - chipW);
+  return Math.max(margin, Math.round(x));
+}
 
 const NS = 'http://www.w3.org/2000/svg';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -147,6 +157,25 @@ export function createBuildMenu({ pieces, onPick, root = document.body, countOf 
   const chipIcon = chip.querySelector('i'), chipName = chip.querySelector('b'), chipCost = chip.querySelector('.bm-cost'), chipStatus = chip.querySelector('.bm-status');
   root.appendChild(chip);
   let chipShown = false, chipText = '', chipSig = '';
+  // Left edge from the measured hotbar, pushed right of whatever bottom-left HUD shares the chip's height band:
+  // the notice stack (its widest extent, max-width, not just today's rows) and the vitals panel.
+  function placeChip() {
+    if (!chipShown) return;
+    try {
+      const bar = document.querySelector('.tools.sv-hotbar') || document.querySelector('.bottom .tools');
+      const br = bar?.getBoundingClientRect(); if (!br || !br.width) { chip.style.removeProperty('left'); return; }
+      const cr = chip.getBoundingClientRect(); let stackRight = 0;
+      const stack = document.getElementById('noticeStack');
+      if (stack && !stack.hidden) {
+        const cs = getComputedStyle(stack), bottomY = innerHeight - (parseFloat(cs.bottom) || 0), max = parseFloat(cs.maxWidth);
+        if (bottomY > cr.top + 1) stackRight = (parseFloat(cs.left) || 0) + (Number.isFinite(max) ? max : stack.getBoundingClientRect().width);
+      }
+      const vit = document.getElementById('lrVitals');
+      if (vit && !vit.hidden) { const vr = vit.getBoundingClientRect(); if (vr.width && vr.bottom > cr.top + 1 && vr.top < cr.bottom - 1) stackRight = Math.max(stackRight, vr.right); }
+      const px = chipLeft({ hotbarLeft: br.left, stackRight, vw: innerWidth, chipW: chip.offsetWidth }) + 'px';
+      if (chip.style.left !== px) chip.style.left = px;
+    } catch {}
+  }
 
   // Cheap to call every frame: the DOM is only touched when the piece or a count changed.
   function renderChip() {
@@ -202,7 +231,7 @@ export function createBuildMenu({ pieces, onPick, root = document.body, countOf 
     setHot(+g.dataset.i); api.close(true);
   };
   const onCtx = e => { if (open) e.preventDefault(); };
-  const onResize = () => { if (open) measure(); };
+  const onResize = () => { if (open) measure(); placeChip(); };
   wheel.addEventListener('click', onClick);
   wheel.addEventListener('contextmenu', onCtx);
   addEventListener('resize', onResize);
@@ -239,7 +268,7 @@ export function createBuildMenu({ pieces, onPick, root = document.body, countOf 
     setAfford(fn) { canAfford = typeof fn === 'function' ? fn : () => true; api.refresh(); },
     setCount(fn) { haveOf = typeof fn === 'function' ? fn : null; api.refresh(); },
     refresh() { if (chipShown) renderChip(); if (open) { refreshAfford(); renderMid(); } },
-    setVisible(v) { v = !!v; if (v === chipShown) return; chipShown = v; chip.hidden = !v; if (v) renderChip(); },
+    setVisible(v) { v = !!v; if (v === chipShown) return; chipShown = v; chip.hidden = !v; if (v) { renderChip(); placeChip(); } },
     setChip(text) { text = text ? String(text) : ''; if (text !== chipText) { chipText = text; chipStatus.textContent = text; } },
     dispose() {
       wheel.removeEventListener('click', onClick); wheel.removeEventListener('contextmenu', onCtx);

@@ -18,6 +18,7 @@
 //   claims(kind, aim)         true when use(kind, aim) would consume the click (hides the eat/drink tip)
 //   prompt(aim)               -> context prompt HTML (escaped by the module) or null
 //   craftLocked(recipe, actor)-> reason string if the recipe is locked, else null
+//   craftGate(recipe)         -> {locked:true, reason} for the bag's craft list (shown before a craft is tried), or null
 //   decorModel(type, d)       -> THREE.Object3D for a CONTENT_DECOR type, or null (d = the world.decor entry, read-only)
 //   placeBlock(kind, x, z)    -> BLOCK_TEXT reason a decor kind can't go on that tile, else null // [fishtrap]
 //   sailPush(sailing, out)    write an extra water-relative push (m/s) into out.x/out.z; return true if non-zero.
@@ -164,6 +165,7 @@ export function createContent(ctx, features = FEATURES) {
     decorModel: (type, d) => first('decorModel', type, d),
     sailPush: (s, out) => !!first('sailPush', s, out),
     steerTargets: () => first('steerTargets'),
+    craftGate: recipe => first('craftGate', recipe), // {locked, reason} for the craft list, or null
     rain() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }, // rain-sprinkler: live 0..1 rain
     pecked() { const m = peer('scarecrow'); return m?.pecked ?? null; }, // [scarecrow] palm keys paused by a pecking gull (host)
     palmPrompt(aim, base) { const m = peer('scarecrow'); try { return m?.palmPrompt?.(aim, base) ?? null; } catch (e) { console.error('content scarecrow.palmPrompt failed', e); off(m); return null; } }, // [scarecrow]

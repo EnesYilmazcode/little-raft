@@ -31,7 +31,7 @@ test('C1: SecurityError well after a user exit (or with none) still counts, thre
 test('C1: game.js records user lock losses (not page-caused ones) for the post-Esc cooldown', () => {
   const g = read('game.js');
   assert.match(g, /function releaseLock\(\) \{ if \(isLocked\(\)\) exitLock\(document\); \}/);
-  assert.match(g, /if \(pageLock\.selfCaused\(now\)[^\n]*return; \}/);
+  assert.match(g, /if \(pageLock\.lost\(now, \{blocked:uiBlocked\(\)\}\)[^\n]*return; \}/); // event-based page-release mark (lock-rules.js)
   assert.match(g, /lostAt = escapeUnlockAt = now;/);
 });
 

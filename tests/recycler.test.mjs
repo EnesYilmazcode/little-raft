@@ -25,7 +25,7 @@ test('recycler: junk items are START materials with stack 20 and real tips', () 
     assert.ok(it.tip.length > 10, id + ' tip');
     assert.ok(ITEM_ICONS[id], id + ' icon');
     assert.ok(ITEM_TEXT[id]?.desc && ITEM_TEXT[id]?.use, id + ' text');
-    assert.equal(ITEM_SOURCE[id]?.tag, 'found floating');
+    assert.equal(ITEM_SOURCE[id]?.tag, 'floating');
   }
   assert.ok(!ITEMS.bottle && !ITEMS.can && !ITEMS.junk);
 });

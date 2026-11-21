@@ -53,27 +53,28 @@ test('F1: mergeGate keeps progression hide/lock, else adds the content lock', ()
 
 test('F1: game.js gates the panel with content locks and craft() reports refusals', () => {
   const g = src('game.js');
-  assert.match(g, /recipeGate:id => mergeGate\(prog\?\.recipeGate\(id\), content\?\.craftLocked\(id, myActor\(\)\)\)/);
+  assert.match(g, /recipeGate:id => prog\?\.recipeGate\(id\) \|\| content\?\.craftGate\?\.\(id\) \|\| mergeGate\(null, content\?\.craftLocked\(id, myActor\(\)\)\)/);
   const craft = g.slice(g.indexOf('  function craft(recipe) {'), g.indexOf('  function repair()'));
   assert.match(craft, /content\?\.craftLocked\(recipe, myActor\(\)\); if \(locked\) \{[^}]*return false; \}/, 'a locked craft returns false');
-  assert.match(craft, /return action\(\{kind:'craft', recipe\}\) !== false;/, 'a refused action returns false too');
+  assert.match(craft, /const sent = action\(\{kind:'craft', recipe\}\) !== false;/, 'a refused action returns false too');
   // survival-ui stops the hold when onCraft returns false
   const ui = src('survival-ui.js');
   assert.match(ui.slice(ui.indexOf('function craftNow('), ui.indexOf('function setFill(')), /if \(r === false\) return false;/);
-  assert.match(ui.slice(ui.indexOf('function tick('), ui.indexOf('function stopHold(')), /if \(!craftNow\(hold\.id\)\) \{ stopHold\(\); return; \}/);
+  assert.match(ui.slice(ui.indexOf('function tick('), ui.indexOf('function stopHold(')), /if \(!craftNow\(hold\.id\)\) \{ stopHold\(\); denyBtn\(\); return; \}/);
 });
 
 // ---------------------------------------------------------------- F2
 test('F2: the lock reason is shown in full: detail state line, two-line row, tooltips', () => {
   const ui = src('survival-ui.js');
   assert.match(ui, /<p class="sv-dstate" hidden><\/p>/, 'detail pane has a state line');
-  assert.match(ui, /const why = v\.state === 'gated' \? 'Locked: ' \+ \(v\.reason/, 'it shows the gate reason');
+  assert.match(ui, /const why = un \? un\.line :/, 'it shows the gate reason as "Unlock: …"');
+  assert.match(ui, /v\.unlock = state === 'gated' \? unlockInfo\(\{ locked: true, reason \}\) : null;/);
   assert.match(ui, /#inventory \.sv-gated \.sv-rsub\{white-space:normal;[^}]*-webkit-line-clamp:2/, 'gated rows wrap to two lines');
   assert.match(ui, /v\.el\.dataset\.lockReason = v\.reason/, 'rows carry the reason for item tooltips');
   assert.match(ui, /extra = v\.state === 'gated' \? 'Locked: ' \+ \(v\.reason/, 'own recipe tooltip shows it');
   const tt = src('item-tooltips.js');
-  assert.match(tt, /else if \(recipe && el\?\.dataset\.lockReason\) out \+= `<div class="it-lock">Locked: \$\{esc\(el\.dataset\.lockReason\)\}/);
-  assert.match(tt, /if \(Object\.hasOwn\(table, kind\) && prog && typeof prog\.isUnlocked/, 'non-catalogue kinds no longer read "Locked: Unknown item"');
+  assert.match(tt, /\(recipe && el\?\.dataset\.lockReason \? unlockInfo\(\{ locked: true, reason: el\.dataset\.lockReason \}\) : null\)/);
+  assert.match(tt, /if \(!Object\.hasOwn\(table, kind\) \|\| !prog \|\| typeof prog\.isUnlocked/, 'non-catalogue kinds no longer read "Locked: Unknown item"');
   // Locked research rows can be hovered and picked (they used to ignore the pointer).
   assert.doesNotMatch(src('storage-research-ui.js'), /\.sv-recipe\[data-locked\]\{[^}]*pointer-events:none/);
 });
@@ -87,7 +88,8 @@ test('F3: the receiver has its own icon: sprite, inline drawing and 3D model', a
   const icons = await import(new URL('item-icons.js', base));
   const { model, own } = icons.resolveIconModel('receiver');
   assert.ok(model && model.isObject3D, 'a 3D model to render the icon from');
-  assert.equal(own, true, 'built fresh, so the icon renderer frees it');
+  assert.equal(own, false, 'a cached station model: built once, never freed by the icon renderer');
+  assert.equal(icons.resolveIconModel('receiver').model, model, 're-renders reuse it');
   assert.match(src('survival-ui.js'), /receiver: 'receiver',/, 'flat fallback uses the receiver sprite, not the compass');
 });
 
@@ -148,7 +150,7 @@ test('hold to craft: a click makes exactly one; repeats start after ~800 ms, the
   for (let i = 2; i < s.length; i++) assert.ok(s[i] - s[i - 1] < s[i - 1] - s[i - 2], 'each repeat comes sooner');
   assert.ok(CB.craftsForHold(1600) <= 3, 'a 1.6 s hold no longer runs away');
   const ui = src('survival-ui.js');
-  assert.match(ui, /D\.hint\.textContent = n === 1 && hold\.cap > 1 \? 'keep holding for more' : '';/, 'the first press says what holding does');
+  assert.match(ui, /D\.cap\.textContent = n === 1 && hold\.cap > 1 \? 'Keep holding to make more' : '';/, 'the first press says what holding does');
   assert.match(ui, /const p = clamp01\(\(now - hold\.t0\) \/ hold\.wait\);\s*setFill\(p\);/, 'the button fills toward the next craft');
 });
 
@@ -158,7 +160,7 @@ test('layout: vertical category column, tall recipe list with a scroll cue, deta
   assert.match(ui, /class="sv-tabs" role="tablist" aria-label="Recipe categories" aria-orientation="vertical"/);
   assert.match(ui, /#inventory \.sv-tabs\{display:flex;flex-direction:column;/);
   assert.match(ui, /e\.code === 'ArrowDown' \|\| e\.code === 'ArrowRight'/, 'up/down (and left/right) move between categories');
-  assert.match(ui, /<div class="sv-rcol"><div class="sv-rlist" role="tabpanel"><\/div><\/div>/);
+  assert.match(ui, /<div class="sv-rcol"><div class="sv-rlist" role="tabpanel"><\/div><p class="sv-nohits" role="status" hidden><\/p><\/div>/);
   assert.match(ui, /#inventory \.sv-rcol\.sv-more::after\{opacity:1\}/, 'bottom fade while more rows are below');
   assert.match(ui, /#inventory \.sv-craft\{flex:none;box-sizing:border-box;height:var\(--ph\);/, 'fixed-height crafting column: tabs never resize the panel');
   const order = ['class="sv-craft"', 'class="sv-side"', 'class="sv-detail"', 'class="sv-bag"'].map(k => ui.indexOf(k));

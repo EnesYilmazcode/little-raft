@@ -1,8 +1,9 @@
-/* Little Raft interaction prompts (prompts.js): crosshair-side key prompt + bottom-left event feed. */
+/* Little Raft interaction prompts (prompts.js): key prompt (docked in the bottom-left edge stack). Feed lines go to the shared pickup feed.
+   game.js's own #contextPrompt never shows: prompts.js renders its markup as #lrPrompt rows (promptFromHtml). */
 #contextPrompt{display:none!important}
-#lrPrompt,#lrFeed{position:fixed;z-index:30;pointer-events:none;color:#f6ecd6;font:600 14px/1.25 var(--ui-font,system-ui,-apple-system,'Segoe UI',sans-serif);
+#lrPrompt{position:fixed;z-index:30;pointer-events:none;color:#f6ecd6;font:600 14px/1.25 var(--ui-font,system-ui,-apple-system,'Segoe UI',sans-serif);
   text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 8px rgba(0,0,0,.55);text-align:left;user-select:none}
-#lrPrompt{left:calc(50% + 34px);top:calc(50% + 26px);opacity:0;transform:translateY(2px);transition:opacity .18s ease,transform .18s ease;white-space:nowrap}
+#lrPrompt{left:22px;bottom:calc(178px + var(--coop-feed-h, 0px));opacity:0;transform:translateY(2px);transition:opacity .18s ease,transform .18s ease;white-space:nowrap}
 #lrPrompt.lr-on{opacity:1;transform:none;transition-duration:.12s}
 #lrPrompt .lr-row{display:flex;align-items:center;gap:6px;min-height:20px}
 #lrPrompt .lr-row+.lr-row{margin-top:3px}
@@ -14,10 +15,12 @@
 #lrPrompt .lr-hold{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-variant:small-caps;opacity:.85}
 #lrPrompt .lr-glyph{display:inline-flex;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.7))}
 #lrPrompt .lr-mouse{display:block;fill:currentColor}
-#lrFeed{left:28px;bottom:318px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;max-width:min(360px,calc(100vw - 56px))}
-#lrFeed .lr-line{animation:lrIn .16s ease-out;transition:opacity .4s ease,transform .4s ease;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-#lrFeed .lr-line.lr-out{opacity:0;transform:translateX(-6px)}
-@keyframes lrIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-@media(max-width:760px){#lrFeed{left:16px;bottom:336px;font-size:13px}#lrPrompt{font-size:13px}}
-@media(prefers-reduced-motion:reduce){#lrPrompt,#lrPrompt.lr-on,#lrFeed .lr-line{transition:none;animation:none;transform:none}}
-/* The resume hint sits at the top edge (graphics.css); the throw charge is a thin ring on the reticle (graphics.css). */
+@media(max-width:760px){#lrPrompt{font-size:13px}}
+@media(prefers-reduced-motion:reduce){#lrPrompt,#lrPrompt.lr-on{transition:none;animation:none;transform:none}}
+/* No popups near the screen centre (owner rule): game.js docks #lrPrompt in the bottom-left #noticeStack, above the
+   pickup feed; the throw meter stays above the hotbar and the resume hint at the top edge (graphics.css / style.css).
+   While #lrPrompt shows a prompt, game.js's plain #contextPrompt (same stack) steps aside so nothing is said twice. */
+#noticeStack>#lrPrompt{position:static;left:auto;top:auto;transform:none;margin:0;padding:6px 34px 6px 12px;border-radius:7px 0 0 7px;
+  background:linear-gradient(90deg,#1a120bc8 0%,#1a120b88 60%,#1a120b00 100%);white-space:normal;font-size:13px}
+#noticeStack>#lrPrompt:not(.lr-on){display:none}
+#noticeStack>#lrPrompt.lr-on~#contextPrompt{display:none}

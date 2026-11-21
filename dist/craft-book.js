@@ -8,17 +8,18 @@ export const CATEGORIES = Object.freeze([
   Object.freeze({ id: 'materials', name: 'Materials', icon: 'wood' }),
   Object.freeze({ id: 'survival',  name: 'Survival',  icon: 'net' }),
   Object.freeze({ id: 'building',  name: 'Building',  icon: 'floor' }),
+  Object.freeze({ id: 'music',     name: 'Music',     icon: 'drum' }), // icon: the drum's item drawing
 ]);
 
 // Recipe output kind -> category id. Unknown kinds fall back by shape (see categoryOf).
 const CATEGORY_OF = Object.freeze({
-  hook: 'tools', hammer: 'tools', fishingrod: 'tools',
+  hook: 'tools', hammer: 'tools', fishingrod: 'tools', sail: 'tools', // the sail is how you steer
   rope: 'materials',
   net: 'survival', palm: 'survival', lantern: 'survival',
-  sail: 'building', bench: 'building', crate: 'building',
+  bench: 'building', crate: 'building',
   // progression catalogue (items.js)
   metalhook: 'tools', binoculars: 'tools', spyglass: 'tools', spear: 'tools', metalspear: 'tools', finder: 'tools', spade: 'tools', paddle: 'tools', axe: 'tools', // [spyglass] spyglass
-  drum: 'tools', pipes: 'tools', bells: 'tools', // [instruments]
+  drum: 'music', pipes: 'music', bells: 'music', // [instruments]
   camera: 'tools', photoframe: 'survival', // [camera]
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
@@ -63,9 +64,9 @@ export const ITEM_TEXT = Object.freeze({
   rope:       { desc: 'Palm fibre twisted into a sturdy cord.', use: 'Binds hammers, rods and nets.' },
   fish:       { desc: 'A fresh catch from the open water.', use: 'Proof of a good day out on the waves.' },
   hook:       { desc: 'A scrap hook on a rope. Throw it at floating supplies.', use: 'Pulls in floating wood, leaves, plastic and barrels.' },
-  hammer:     { desc: 'A rope-bound building hammer.', use: 'Adds raft floor tiles (2 plank + 2 plastic each).' },
+  hammer:     { desc: 'A rope-bound building hammer.', use: 'Adds raft floor tiles (2 planks + 2 plastic each).' },
   fishingrod: { desc: 'A bamboo rod with a float and line.', use: 'Cast into the sea and wait for a bite to catch fish.' },
-  sail:       { desc: 'A tall mast with a woven sail.', use: 'Decorates the raft; place it on a floor tile.' },
+  sail:       { desc: 'A tall mast with a woven sail that catches the wind.', use: 'Place it on a floor tile, then hold R beside it to steer and sail the raft.' },
   palm:       { desc: 'A clay pot with a small palm tree.', use: 'A bit of island on your raft; place on a tile.' },
   lantern:    { desc: 'A post lantern with a warm glow.', use: 'Lights the raft at night; place on a tile.' },
   net:        { desc: 'A wooden frame of rope netting that hangs off the raft edge.', use: 'Debris that drifts into it stays put (up to 10). Press E to empty it.' },
@@ -180,7 +181,7 @@ export const ITEM_TEXT = Object.freeze({
   glidepost:  { desc: 'A tall mast with a grooved wheel on top.', use: 'Hold a Glide Handle and press E on two posts to string a line.' }, // [zipline]
   glidestep:  { desc: 'A shorter glide post.', use: 'Run a line down to it from a tall post for a speedy glide.' }, // [zipline]
   glidehandle: { desc: 'A wooden T-bar with a little wheel.', use: 'E links posts or hooks you on a line; Space lets go.' }, // [zipline]
-  researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
+  researchtable: { desc: 'A table for showing off new finds (not the Tinker\u2019s Desk).', use: 'Place it and research ore, metal and other finds to unlock the smelter, metal tools and instruments.' },
   grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },
   fins:       { desc: 'Webbed fins stitched with puff feathers.', use: 'Works from your bag: swim 30% faster underwater.' },
@@ -370,11 +371,12 @@ export const backdropCloses = (downOnBackdrop, upOnBackdrop) => !!downOnBackdrop
 
 /**
  * What a key press does to the bag: 'open', 'close' or null (leave it alone).
- * Tab / I open it from play. While open, I / E close it and Tab is left to move focus.
+ * Tab / I open it from play. While open, I / E close it, and so does Tab (it toggles), unless focus is
+ * inside a slot grid (`inGrid`), where Tab keeps moving focus between slots.
  * E never opens here: in play it is the pick-up key and the game opens the bag itself.
  */
-export function bagKeyAction(code, isOpen) {
-  if (isOpen) return code === 'Tab' || code === 'KeyI' || code === 'KeyE' ? 'close' : null; // Tab toggles the bag; arrows move focus
+export function bagKeyAction(code, isOpen, inGrid = false) {
+  if (isOpen) return code === 'KeyI' || code === 'KeyE' || (code === 'Tab' && !inGrid) ? 'close' : null;
   return code === 'Tab' || code === 'KeyI' ? 'open' : null;
 }
 
@@ -416,7 +418,7 @@ export function placeRefusal(kind, t, max) {
 // Inside a tab, recipes you can make right now come first, then ones blocked only by bag space,
 // then the rest, closest-to-done first (fewest ingredients short, then fewest units short).
 // The sort is stable, so recipes keep their book order within each group.
-const STATE_RANK = Object.freeze({ ready: 0, full: 1, missing: 2 });
+const STATE_RANK = Object.freeze({ ready: 0, full: 1, missing: 2, gated: 3 }); // gated = research / station lock
 
 /** views: [{state, rows}] (rows from ingredientRows). Returns a new, sorted array. */
 export function sortCraftableFirst(views) {
@@ -431,40 +433,41 @@ export function sortCraftableFirst(views) {
 }
 
 // ---- where items come from ----
-// `tag` is the short text beside a missing ingredient; `how` is the tooltip line.
+// `tag` is the short text beside a missing ingredient (one or two short words, never cut off);
+// `how` is the full tooltip line.
 export const ITEM_SOURCE = Object.freeze({
-  flowerseed: Object.freeze({ tag: 'island bushes', how: 'Pick bushes on islands; some drop flower seeds.' }),
+  flowerseed: Object.freeze({ tag: 'islands', how: 'Pick bushes on islands; some drop flower seeds.' }),
   honey:   Object.freeze({ tag: 'beehive', how: 'Put a beehive near flower boxes, then press E on it to collect honeycomb.' }),
   wax:     Object.freeze({ tag: 'beehive', how: 'Collected with honey from a full beehive (E).' }),
-  berries:    Object.freeze({ tag: 'island bushes', how: 'Pick bushes on islands; some drop berries.' }), // [juicer]
-  coconut:    Object.freeze({ tag: 'palm planter, island palms', how: 'Harvest a ripe palm planter, or chop island palms with a Stone Axe.' }), // [juicer] [axe]
+  berries:    Object.freeze({ tag: 'islands', how: 'Pick bushes on islands; some drop berries.' }), // [juicer]
+  coconut:    Object.freeze({ tag: 'palms', how: 'Harvest a ripe palm planter, or chop island palms with a Stone Axe.' }), // [juicer] [axe]
   berrycup:   Object.freeze({ tag: 'juicer', how: 'Press E on a juicer with a cup of fresh water and 2 fruit.' }), // [juicer]
   coconutcup: Object.freeze({ tag: 'juicer', how: 'Press E on a juicer with a cup of fresh water and 2 fruit.' }), // [juicer]
   mixcup:     Object.freeze({ tag: 'juicer', how: 'Press E on a juicer with a cup of fresh water and 2 fruit.' }), // [juicer]
-  wood:    Object.freeze({ tag: 'found floating', how: 'Hook floating planks. Barrels hold more, and a Stone Axe fells island palms for 5.' }),
-  leaf:    Object.freeze({ tag: 'floating, palm', how: 'Hook floating leaf bundles, harvest a grown palm, or chop an island palm.' }),
-  plastic: Object.freeze({ tag: 'found floating', how: 'Hook floating plastic jugs. Barrels hold some too, or sort junk in a Sorting Tub.' }),
-  scrap:   Object.freeze({ tag: 'found floating', how: 'Hook floating scrap. Barrels hold some too, or sort junk in a Sorting Tub.' }),
-  seed:    Object.freeze({ tag: 'barrels, palm', how: 'Hook floating barrels, harvest a grown palm, or chop island palms.' }),
+  wood:    Object.freeze({ tag: 'floating', how: 'Hook floating planks. Barrels hold more, and a Stone Axe fells island palms for 5.' }),
+  leaf:    Object.freeze({ tag: 'floating', how: 'Hook floating leaf bundles, harvest a grown palm, or chop an island palm.' }),
+  plastic: Object.freeze({ tag: 'floating', how: 'Hook floating plastic jugs. Barrels hold some too, or sort junk in a Sorting Tub.' }),
+  scrap:   Object.freeze({ tag: 'floating', how: 'Hook floating scrap. Barrels hold some too, or sort junk in a Sorting Tub.' }),
+  seed:    Object.freeze({ tag: 'barrels', how: 'Hook floating barrels, harvest a grown palm, or chop island palms.' }),
   fish:    Object.freeze({ tag: 'fishing rod', how: 'Cast the Fishing Rod into the sea and wait for a bite.' }),
-  water:   Object.freeze({ tag: 'fill a cup', how: 'Fill a cup at the sea.' }),
+  water:   Object.freeze({ tag: 'fill a cup', how: 'Scoop sea water with a Cup, then purify it.' }),
   // raft-master materials (items.js): barrels, islands, the seafloor and the stations
-  sand:        Object.freeze({ tag: 'barrels, islands', how: 'Hook floating barrels, scoop it on an island or dive for it, or sort junk in a Sorting Tub.' }),
-  clay:        Object.freeze({ tag: 'barrels, seafloor', how: 'Hook floating barrels or dive to the seafloor.' }),
-  stone:       Object.freeze({ tag: 'barrels, islands', how: 'Hook floating barrels or gather rocks on an island.' }),
-  metalore:    Object.freeze({ tag: 'barrels, seafloor', how: 'Hook floating barrels or dive to the seafloor.' }),
+  sand:        Object.freeze({ tag: 'barrels', how: 'Hook floating barrels, scoop it on an island or dive for it, or sort junk in a Sorting Tub.' }),
+  clay:        Object.freeze({ tag: 'barrels', how: 'Hook floating barrels or dive to the seafloor.' }),
+  stone:       Object.freeze({ tag: 'barrels', how: 'Hook floating barrels or gather rocks on an island.' }),
+  metalore:    Object.freeze({ tag: 'barrels', how: 'Hook floating barrels or dive to the seafloor.' }),
   copperore:   Object.freeze({ tag: 'barrels', how: 'Hook floating barrels; copper ore is rare.' }),
   seaweed:     Object.freeze({ tag: 'barrels', how: 'Hook floating barrels.' }),
   brick:       Object.freeze({ tag: 'grill, kiln', how: 'Fire clay on a grill or in a Seaside Kiln.' }),
-  metalingot:  Object.freeze({ tag: 'smelter, kiln', how: 'Smelt metal ore in a smelter or a Seaside Kiln.' }),
+  metalingot:  Object.freeze({ tag: 'smelter', how: 'Smelt metal ore in a smelter or a Seaside Kiln.' }),
   copperingot: Object.freeze({ tag: 'smelter', how: 'Smelt copper ore in a smelter.' }),
-  glass:       Object.freeze({ tag: 'smelter, kiln', how: 'Melt sand in a smelter or a Seaside Kiln.' }),
-  stormshard:  Object.freeze({ tag: 'lightning rod', how: 'Place a Lightning Rod; storms charge it with shards (E to collect).' }),
+  glass:       Object.freeze({ tag: 'smelter', how: 'Melt sand in a smelter or a Seaside Kiln.' }),
+  stormshard:  Object.freeze({ tag: 'storm rod', how: 'Place a Lightning Rod; storms charge it with shards (E to collect).' }),
   saltcup:     Object.freeze({ tag: 'fill a cup', how: 'Hold an empty cup and click the sea.' }),
   freshcup:    Object.freeze({ tag: 'purifier', how: 'Pour sea water into a purifier and wait.' }),
   cookedfish:  Object.freeze({ tag: 'grill', how: 'Cook a fish on a grill.' }),
   // [bees] gathered from flower bushes and beehives
-  flowerseed:  Object.freeze({ tag: 'bushes, barrels', how: 'Harvest bushes on islands, or open floating barrels.' }),
+  flowerseed:  Object.freeze({ tag: 'islands', how: 'Harvest bushes on islands, or open floating barrels.' }),
   honey:       Object.freeze({ tag: 'beehive', how: 'Press E at a full beehive placed near flower boxes.' }),
   wax:         Object.freeze({ tag: 'beehive', how: 'Collected with honey from a beehive (E).' }),
   // raft animals (animals.js)
@@ -477,8 +480,8 @@ export const ITEM_SOURCE = Object.freeze({
   cookedsharkmeat: Object.freeze({ tag: 'grill', how: 'Cook raw shark meat on a grill.' }),
   cookedbeet:  Object.freeze({ tag: 'grill', how: 'Grill a beet.' }), // [crops]
   cookedpotato: Object.freeze({ tag: 'grill', how: 'Grill a potato.' }), // [crops]
-  beet:        Object.freeze({ tag: 'barrels, crop plot', how: 'Hook floating barrels, or grow beets in a crop plot.' }), // [crops]
-  potato:      Object.freeze({ tag: 'barrels, crop plot', how: 'Hook floating barrels, or grow potatoes in a crop plot.' }), // [crops]
+  beet:        Object.freeze({ tag: 'barrels', how: 'Hook floating barrels, or grow beets in a crop plot.' }), // [crops]
+  potato:      Object.freeze({ tag: 'barrels', how: 'Hook floating barrels, or grow potatoes in a crop plot.' }), // [crops]
   // Pim's trading barge (trader.js)
   shell:       Object.freeze({ tag: 'trader', how: 'Trade fish or puff eggs to Pim at his trading barge.' }),
   glassfloat:  Object.freeze({ tag: 'trader', how: 'A rare offer at Pim\u2019s trading barge; pay in Bright Shells.' }),
@@ -490,9 +493,9 @@ export const ITEM_SOURCE = Object.freeze({
   meal_custard:  Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: puff egg + seed + fresh water; collect with a bowl.' }),
   meal_stew:     Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: cooked fish + puff egg + seaweed; collect with a bowl.' }),
 
-  oldboot:     Object.freeze({ tag: 'found floating', how: 'Hook it as it drifts by. Nets catch it too.' }), // [recycler]
-  tincan:      Object.freeze({ tag: 'found floating', how: 'Hook it as it drifts by. Nets catch it too.' }),
-  seajar:      Object.freeze({ tag: 'found floating', how: 'Hook it as it drifts by. Nets catch it too.' }),
+  oldboot:     Object.freeze({ tag: 'floating', how: 'Hook it as it drifts by. Nets catch it too.' }), // [recycler]
+  tincan:      Object.freeze({ tag: 'floating', how: 'Hook it as it drifts by. Nets catch it too.' }),
+  seajar:      Object.freeze({ tag: 'floating', how: 'Hook it as it drifts by. Nets catch it too.' }),
 });
 
 /**
@@ -620,3 +623,156 @@ export function tipFacts(kind, recipes, nameOf = k => k, max = 4) {
   }
   return { get, uses };
 }
+
+/** Caption under the Craft button: how hold and Shift work, with what Shift would make ('' for one-at-a-time items). */
+export function craftCaption(max, one = false) {
+  const n = Math.max(0, Math.floor(Number(max) || 0));
+  return !one && n > 1 ? `Hold to make more · Shift makes all (${n})` : '';
+}
+
+// ---- recipe list ordering, compact amounts, craft counts ----
+
+/**
+ * Display order for one tab: craftable first, then "no room", then locked. Stable: recipes with the
+ * same state keep their original order. items = [{id, state}]; returns the ids in display order.
+ */
+export function sortByCraftable(items) {
+  return (items || [])
+    .map((it, i) => ({ id: it.id, rank: STATE_RANK[it.state] ?? 2, i }))
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map(x => x.id);
+}
+
+/**
+ * Recipe the bag opens on: the first ready recipe whose output the player has none of, else the
+ * first ready one, else the first one that is not locked, else the first listed.
+ * items = [{id, cat, state, owned}] in display order. @returns {{id, cat}|null}
+ */
+export function openingPick(items) {
+  const list = items || [];
+  const hit = list.find(x => x.state === 'ready' && !(x.owned > 0)) || list.find(x => x.state === 'ready') || list.find(x => x.state !== 'gated') || list[0];
+  return hit ? { id: hit.id, cat: hit.cat } : null;
+}
+
+/** Short "owned/needed" for the inline ingredient chips in the recipe list (owned capped at 999+). */
+export const chipLabel = row => `${row.have > 999 ? '999+' : row.have}/${row.need}`;
+
+// ---- item icon framing (item-icons.js) ----
+/**
+ * Frame a projected item silhouette for a square icon. pts = flat [x0, y0, x1, y1, ...] in camera
+ * space (y up). Long items (extent along the main axis >= `long` x the extent across it) are rolled about the view
+ * axis so their main axis runs along the lower-left -> upper-right diagonal, keeping whichever end
+ * already pointed up-right. Returns {roll, cx, cy, half, aspect}: rotate the points by `roll`
+ * (counter-clockwise, radians), then the square [cx - half, cx + half] x [cy - half, cy + half] holds
+ * them with `pad` (fraction of the half size) to spare. `axis` (radians) overrides the main-axis
+ * search. null for no points.
+ */
+export function fitIconFrame(pts, { pad = 0.1, long = 1.8, diag = Math.PI / 4, axis } = {}) {
+  const n = Math.floor((pts?.length || 0) / 2);
+  if (!n) return null;
+  const ext = a => {
+    const c = Math.cos(a), s = Math.sin(a);
+    let lo = Infinity, hi = -Infinity, lo2 = Infinity, hi2 = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const x = pts[2 * i], y = pts[2 * i + 1], u = x * c + y * s, v = -x * s + y * c;
+      if (u < lo) lo = u; if (u > hi) hi = u; if (v < lo2) lo2 = v; if (v > hi2) hi2 = v;
+    }
+    return [hi - lo, hi2 - lo2];
+  };
+  // Main axis: the direction across which the silhouette is narrowest (a hammer's handle, not its
+  // vertex-heavy head), searched in 3 degree steps.
+  // A caller that knows the item's axis (its model's long side, projected) passes it as `axis`.
+  let theta = 0, best = Infinity;
+  if (Number.isFinite(axis)) theta = axis;
+  else for (let k = 0; k < 60; k++) {
+    const a = k * Math.PI / 60, [, w] = ext(a);
+    if (w < best - 1e-12) { best = w; theta = a; }
+  }
+  const [along, across] = ext(theta);
+  const aspect = along / Math.max(across, 1e-9);
+  let roll = 0;
+  if (aspect >= long) {
+    // The axis is undirected: of theta and theta + PI, take the one nearer the up-right diagonal.
+    const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+    const r1 = wrap(diag - theta), r2 = wrap(diag - theta - Math.PI);
+    roll = Math.abs(r1) <= Math.abs(r2) ? r1 : r2;
+  }
+  const c = Math.cos(roll), s = Math.sin(roll);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const x = pts[2 * i], y = pts[2 * i + 1], u = x * c - y * s, v = x * s + y * c;
+    if (u < x0) x0 = u; if (u > x1) x1 = u; if (v < y0) y0 = v; if (v > y1) y1 = v;
+  }
+  const half = Math.max(x1 - x0, y1 - y0, 1e-6) * 0.5 * (1 + Math.max(0, pad));
+  return { roll, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, half, aspect };
+}
+
+// ---- research-gated recipes ----
+const article = s => (/^(an?|the) /i.test(s) ? s : (/^[aeiou]/i.test(s) ? 'an ' : 'a ') + s);
+/**
+ * What a locked recipe shows, from a recipeGate() result ({locked, reason}): `line` is the one-line
+ * requirement for the row and card ("Unlock: Research Glass at a Research Table"), `how` the tooltip
+ * sentence saying what to do. null when the gate does not lock the recipe.
+ */
+export function unlockInfo(gate) {
+  if (!gate || !gate.locked) return null;
+  const reason = String(gate.reason || '').trim().replace(/\.$/, '');
+  if (!reason) return { line: 'Unlock: not learned yet', how: 'Keep exploring: new finds and research teach new recipes.' };
+  let how = reason + '.', m;
+  if ((m = /^Research (.+) at (?:an? )?(.+)$/i.exec(reason))) how = `Place ${article(m[2])} on your raft, press E on it and research ${m[1]}. The recipe unlocks right away.`;
+  else if ((m = /^Build (?:an? )?(.+)$/i.exec(reason))) how = `Build ${article(m[1])} and place it on your raft. The recipe unlocks once it stands.`;
+  else if ((m = /^Find (.+?)(?: first)?$/i.exec(reason))) how = `Pick up ${m[1]} once (hook it from the sea, open barrels or dive). The recipe is learned as soon as you hold it.`;
+  return { line: 'Unlock: ' + reason, how };
+}
+
+// ---- recipe search ----
+/** Lower-cased search words; '' or only spaces gives []. */
+export const searchTerms = q => String(q ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+
+/**
+ * Does a normalised recipe match the search? Every word must appear in the recipe name, its output
+ * item's name or an ingredient's name (case-insensitive). An empty query matches everything.
+ */
+export function matchRecipe(recipe, query, nameOf = k => k) {
+  const words = Array.isArray(query) ? query : searchTerms(query);
+  if (!words.length) return true;
+  if (!recipe) return false;
+  const hay = [recipe.name, nameOf(recipe.out?.kind ?? recipe.id), ...(recipe.reqs || []).map(q => nameOf(q.kind))]
+    .map(s => String(s ?? '').toLowerCase()).join('\n');
+  return words.every(w => hay.includes(w));
+}
+
+/** Search matches across all tabs: {ids: Set of matching recipe ids, perCat: Map cat -> count}. items = [{id, cat, recipe}]. */
+export function searchMatches(items, query, nameOf = k => k) {
+  const words = searchTerms(query), ids = new Set(), perCat = new Map();
+  for (const it of items || []) {
+    if (!it || !matchRecipe(it.recipe, words, nameOf)) continue;
+    ids.add(it.id); perCat.set(it.cat, (perCat.get(it.cat) || 0) + 1);
+  }
+  return { ids, perCat };
+}
+
+/**
+ * What Esc does in the search field: with text it only clears the field ('clear'; the key must not
+ * reach the dialog), when empty it is left to the normal Esc handling ('pass').
+ */
+export const searchEscape = value => (String(value ?? '') ? 'clear' : 'pass');
+
+// ---- newly craftable recipes ----
+/**
+ * Compare the recipes ready now with the previous check. prev = Set of ids ready last time, or null on
+ * the first check (nothing counts as new then, so loading a save is quiet). seen = ids that have been
+ * ready before this session. Returns {crossed, first, seen}: crossed = ids that just became ready,
+ * first = those of them ready for the first time, seen = the updated seen set (a new Set).
+ */
+export function readyTransitions(prev, now, seen = new Set()) {
+  const next = new Set(seen), crossed = [], first = [];
+  for (const id of now || []) {
+    if (prev && !prev.has(id)) { crossed.push(id); if (!next.has(id)) first.push(id); }
+    next.add(id);
+  }
+  return { crossed, first, seen: next };
+}
+
+/** Edge notice for a pinned recipe that just became craftable. */
+export const readyNotice = name => `Ready to craft: ${name}`;
