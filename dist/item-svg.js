@@ -147,6 +147,17 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M4 42 H44" fill="none"/></g>
     <path d="M11 22 C12 17 15 13.5 19 11.5" fill="none" stroke="#fff2cc" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".8"/>`,
 
+  maptable: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <rect x="8" y="27" width="5" height="16" rx="1" fill="#bb8650"/><rect x="35" y="27" width="5" height="16" rx="1" fill="#bb8650"/>
+    <path d="M3 21 H45 V27 H3 Z" fill="#c99560"/>
+    <path d="M6 21 L9 10 H33 L30 21 Z" fill="#fff2cc"/>
+    <path d="M12 18 C15 14 18 17 21 13.5 S27 14 29 12" fill="none" stroke="#bb8650" stroke-width="1.4" stroke-dasharray="2 2"/>
+    <path d="M22.5 15.2 L25.5 12.2 M22.5 12.2 L25.5 15.2" fill="none" stroke="#e85a4f" stroke-width="1.6" stroke-linecap="round"/>
+    <rect x="34" y="14" width="10" height="5" rx="2.5" fill="#e8d6a8"/>
+    <ellipse cx="13.5" cy="16" rx="2.6" ry="1.8" fill="#9fd6d0" stroke-width="1.2"/></g>
+    <circle cx="40" cy="11" r="2.4" fill="#d9773a" stroke="${O}" stroke-width="1.4"/>
+    <path d="M10 12.5 L17 12.5" stroke="#fff" stroke-width="1.2" stroke-linecap="round" stroke-opacity=".7"/>`,
+
   researchtable: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <rect x="8" y="26" width="5" height="17" rx="1" fill="#bb8650"/><rect x="35" y="26" width="5" height="17" rx="1" fill="#bb8650"/>
     <rect x="3" y="20" width="42" height="7" rx="1.5" fill="#c99560"/>

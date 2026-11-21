@@ -168,6 +168,9 @@ const LIST = [
   item('net', 'Collection Net', 'build', { icon: 'icon-net', placeholder: false, placeable: true,
     recipe: hand({ wood: 3, rope: 3, nail: 2 }), unlock: discover('nail'),
     tip: 'Place it near the edge and it scoops up passing debris (even barrels!) for you.' }),
+  item('maptable', 'Map Table', 'decor', { iconTint: '#c9a46a', stack: 5, placeable: true,
+    recipe: hand({ wood: 6, rope: 3, nail: 2, copperingot: 1 }), unlock: research('copperingot'),
+    tip: 'A little chart table. It remembers the islands you meet and points the sail where you like.' }),
 
   // ----- stations -----
   item('researchtable', 'Research Table', 'station', { iconTint: '#c69860', stack: 5, placeable: true,
@@ -190,7 +193,7 @@ export const PLACEABLE_IDS = Object.freeze(ITEM_IDS.filter((id) => ITEMS[id].pla
 /** Collision radius (metres) of each placed item; 0 = walk-through (net lies flat). */
 export const BLOCK_RADII = deepFreeze({
   palm: 0.42, crate: 0.55, bench: 0.45, sail: 0.14, lantern: 0.12, net: 0,
-  smelter: 0.5, researchtable: 0.55, grill: 0.45,
+  smelter: 0.5, researchtable: 0.55, grill: 0.45, maptable: 0.5,
 });
 
 /** Fuel units per item put into a station. Plastic is never burned (friendly seas). */

@@ -19,7 +19,7 @@ const CATEGORY_OF = Object.freeze({
   // progression catalogue (items.js)
   metalhook: 'tools', binoculars: 'tools',
   nail: 'materials', bolt: 'materials', hinge: 'materials',
-  researchtable: 'building', grill: 'building', smelter: 'building',
+  researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
@@ -66,6 +66,7 @@ export const ITEM_TEXT = Object.freeze({
   metalhook:  { desc: 'A heavy metal hook that lasts much longer.', use: 'Throw it like the hook; wears far slower.' },
   binoculars: { desc: 'Glass lenses in a copper tube.', use: 'Hold to spot barrels and islands far away.' },
   cookedfish: { desc: 'A fish grilled golden.', use: 'A hearty snack.' },
+  maptable:   { desc: 'A little driftwood chart table with brass fittings.', use: 'Place it, press E: see charted islands, drop pins, set a course.' },
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
   grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },
