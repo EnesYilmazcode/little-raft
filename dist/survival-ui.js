@@ -1,7 +1,7 @@
 // Little Raft survival UI: shared-play hotbar (.tools) + inventory/crafting dialog (#inventory).
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { iconURL, primeIcons, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
 const VERSION = 'sv3';
 const HB = Number(HOTBAR_SIZE) || 8;
@@ -53,6 +53,7 @@ const CUSTOM = {
 const norm = k => String(k ?? '').toLowerCase().replace(/[\s_\-]/g, '');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clamp01 = v => Math.max(0, Math.min(1, v));
+const PRIME_KINDS = ['hook', 'wood', 'leaf', 'scrap', 'plastic'];
 const info = kind => (ITEM_INFO && ITEM_INFO[kind]) || null;
 
 function itemName(kind) {
@@ -88,7 +89,8 @@ function iconSVG(kind) {
   // Placeholder (borrowed) sprite + a dedicated inline drawing -> prefer the drawing.
   const custom = meta?.placeholder && CUSTOM[n];
   // A borrowed sprite would show the wrong item (water as a barrel), so wait on a blank tile instead.
-  if (meta?.placeholder && !custom) return '<svg class="sv-icon sv-blank" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><circle cx="24" cy="24" r="8" fill="#ffffff12"/></svg>';
+  // Neutral tile (rounded box + initials) so the slot never looks empty while the 3D icon renders.
+  if (meta?.placeholder && !custom) return `<svg class="sv-icon sv-blank" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><rect x="9" y="9" width="30" height="30" rx="6" fill="#ffffff14" stroke="#ffffff40" stroke-width="1.5"/><text x="24" y="29" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="13" font-weight="700" fill="#ffffffa0">${esc(itemName(kind).replace(/\s+/g, '').slice(0, 2))}</text></svg>`;
   let id = custom ? null : meta?.icon;
   if (typeof id === 'string') id = id.replace(/^icon-/, ''); else id = null;
   if (!custom && (!id || !SPRITES.has(id))) id = SPRITE_FOR[n];
@@ -308,6 +310,8 @@ function readSnap(bag) {
 // getModel (optional): (kind) -> Object3D, e.g. models.js getModel; icons are rendered from it.
 export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause, getModel } = {}) {
   if (typeof getModel === 'function') setModelProvider(getModel);
+  // The starting hotbar (hook) and the common pickups are drawn at mount so play never starts on blank slots/rows.
+  primeIcons(PRIME_KINDS);
   // Hot reload: DOM is adopted, not rebuilt; the previous instance releases its listeners only once
   // this one is fully built (see below), so an early throw leaves the old UI working.
   const prev = window[INST_KEY];
@@ -725,7 +729,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
 
   buildRecipes();
   if (isOpen) render(true);
-  warmIcons(Object.keys(ITEM_INFO || {}));
+  warmIcons(Object.keys(ITEM_INFO || {}).filter(k => !PRIME_KINDS.includes(k)));
 
   const api = {
     update() { render(false); },
