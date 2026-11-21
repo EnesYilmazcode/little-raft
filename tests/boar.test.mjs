@@ -199,7 +199,7 @@ test('wiring: content.js loads boar.js after islands with the same ?build= token
   assert.ok(src.includes(`'./islands.js${tok}'`));
   const feats = con.match(/const FEATURES = \[([^\]]+)\]/)[1].split(',').map(s => s.trim());
   assert.ok(feats.indexOf('createBoar') > feats.indexOf('createIslands'));
-  assert.ok(readFileSync(resolve(dist, 'spear-repair-hooks.js'), 'utf8').includes('tryMelee(camPos, camDir, SPEAR_REACH, dmg)'));
+  assert.ok(readFileSync(resolve(dist, 'spear-repair-hooks.js'), 'utf8').includes('trySpearTargets(camPos, camDir, SPEAR_REACH, dmg)'));
 });
 
 test('module: tusker appears on a big island, charges the player ashore, hurts through hurtPlayer', () => {

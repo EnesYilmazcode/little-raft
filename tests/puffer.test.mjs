@@ -162,6 +162,21 @@ test('spear target list: registered targets take hits, removed ones do not', () 
   try { assert.equal(ST.trySpearTargets({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }, 1, 1), false); } finally { console.error = orig; bad(); }
 });
 
+test('spear and melee targets share one list: one jab lands on one creature only', async () => {
+  const MT = await import(new URL('melee-targets.js' + STAMP, base));
+  const calls = [];
+  const offA = ST.addSpearTarget(() => { calls.push('puffer'); return true; });
+  const offB = MT.addMeleeTarget(() => { calls.push('boar'); return true; });
+  assert.equal(ST.trySpearTargets({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }, 2.8, 5), true);
+  assert.deepEqual(calls, ['puffer'], 'the first hit ends the jab');
+  assert.equal(MT.tryMelee, ST.trySpearTargets);
+  offA();
+  calls.length = 0; ST.trySpearTargets({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }, 2.8, 5);
+  assert.deepEqual(calls, ['boar']);
+  offB(); offB();
+  assert.equal(ST.trySpearTargets({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }, 2.8, 5), false, 'disposed targets are gone');
+});
+
 test('step ignores bad input', () => {
   const sim = setup(), f = first(sim);
   sim.step(NaN, 0, 0, 0, true, null); sim.step(-1, 0, 0, 0, true, null);
