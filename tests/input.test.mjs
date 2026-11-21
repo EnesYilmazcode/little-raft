@@ -23,7 +23,7 @@ test('actions and defaults are consistent', () => {
   assert.deepEqual(m.bindingsFor('moveForward'), { keys: ['KeyW', 'ArrowUp'], pad: ['PadAxis1-'] });
   assert.equal(m.bindingsFor('hotbar0').keys[0], 'Digit0');
   assert.equal(m.bindingsFor('pause').pad[0], 'Pad9');
-  assert.equal(m.bindingsFor('drop').pad[0], 'Pad8');
+  assert.equal(m.bindingsFor('drop'), null, 'no drop feature, no dead binding');
   assert.deepEqual(m.settings, SETTINGS_DEFAULTS);
   assert.equal(m.bindingsFor('nope'), null);
 });
@@ -49,9 +49,9 @@ test('rebind swaps conflicting code into the freed slot', () => {
   assert.equal(m.rebind('jump', 'Pad3').swappedWith, 'inventory');
   assert.equal(m.bindingsFor('inventory').pad[0], 'Pad0');
   // into an empty slot: conflicting action just loses the code
-  const r2 = m.rebind('interact', 'KeyQ', { slot: 1 });
-  assert.equal(r2.swappedWith, 'drop');
-  assert.equal(m.bindingsFor('drop').keys[0], null);
+  const r2 = m.rebind('interact', 'KeyR', { slot: 1 });
+  assert.equal(r2.swappedWith, 'rotate');
+  assert.equal(m.bindingsFor('rotate').keys[0], null);
 });
 
 test('rebinding to the same action is a no-op', () => {

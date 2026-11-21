@@ -14,11 +14,11 @@
 //              about half of the real draw calls); we switch info.autoReset off and reset in begin().
 //   geo/tex/prog: live GPU resources (leak watch: these should be flat while playing)
 //   dpr: current pixel ratio (moves when dynamic resolution is on)
-export function createPerfOverlay({ renderer, maxPixelRatio = 1.7, minPixelRatio = 0.6, dynamic = false, key = 'F3', parent = document.body } = {}) {
+export function createPerfOverlay({ renderer, maxPixelRatio = 1.7, minPixelRatio = 0.6, dynamic = false, key = 'F3', visible = false, parent = document.body } = {}) {
   const el = document.createElement('div');
   el.id = 'perfOverlay';
   el.style.cssText = 'position:fixed;right:8px;top:8px;z-index:50;pointer-events:none;white-space:pre;font:11px/1.35 ui-monospace,Menlo,monospace;color:#eaf2ee;background:rgba(14,26,28,.72);padding:6px 8px;border-radius:6px';
-  let shown = /[?&]perf\b/.test(location.search);
+  let shown = visible || /[?&]perf\b/.test(location.search);
   el.hidden = !shown; parent.appendChild(el);
   const onKey = e => { if (e.code === key) { shown = !shown; el.hidden = !shown; e.preventDefault(); } };
   addEventListener('keydown', onKey);
@@ -59,6 +59,7 @@ export function createPerfOverlay({ renderer, maxPixelRatio = 1.7, minPixelRatio
   }
   return {
     begin, end, el,
+    show(v = true) { shown = !!v; el.hidden = !shown; },
     setDynamic(v) { dynamic = !!v; if (!v) { dpr = Math.min(devicePixelRatio, maxPixelRatio); renderer.setPixelRatio(dpr); } },
     // call after the game applies its own pixel-ratio cap (settings change); dynamic mode then works under the new cap
     setMaxPixelRatio(v) { maxPixelRatio = v; if (dynamic) { dpr = Math.min(dpr, v, devicePixelRatio); renderer.setPixelRatio(dpr); } else dpr = Math.min(devicePixelRatio, v); },

@@ -16,7 +16,7 @@
 //   placeholder: true when the icon is not a dedicated icons.svg symbol
 //   tool:      true only for durability items (Bag keeps durability 0..100 percent)
 //   durability: tools only: number of uses from 100% to 0% (wear per use = 100 / uses)
-//   actsAs:    optional tool role ('hook' | 'fishingrod' | 'hammer'); see toolRole()
+//   actsAs:    optional tool role ('hook' | 'fishingrod' | 'hammer' | 'spear'); see toolRole()
 //   placeable: true when the item is put on a raft tile as a decor/station
 //   recipe:    null (gathered) | {
 //                cost:   {kind: n}  (station recipes have exactly one cost key = input)
@@ -41,7 +41,7 @@
 
 const STACK = 20;
 const SLOT_COUNT = 28;   // mirrors inventory-state.js
-const HOTBAR_SIZE = 8;   // mirrors inventory-state.js
+const HOTBAR_SIZE = 10;  // mirrors inventory-state.js
 const MAX_DURABILITY = 100;
 
 const deepFreeze = (o) => {
@@ -96,8 +96,19 @@ const LIST = [
     tip: 'A chunky grey rock full of metal. The smelter turns it into ingots.' }),
   item('seaweed', 'Seaweed', 'material', { iconTint: '#4f9a5c',
     tip: 'Slippery seaweed tangled in a barrel. Dried out, it burns slow and gentle as fuel.' }),
+  // [bees] flower seed (bushes, barrels), honey and beeswax (beehive harvest), see dist/bees.js
+  item('flowerseed', 'Flower Seed', 'material', { iconTint: '#ff7aa2',
+    tip: 'A tiny seed from an island bush. Plant it in a flower box.' }),
+  item('honey', 'Honey', 'material', { iconTint: '#f2b134',
+    tip: 'Sweet, golden and sticky.' }),
+  item('wax', 'Beeswax', 'material', { iconTint: '#f3e2a4',
+    tip: 'Soft beeswax from the comb. Good for candles.' }),
   item('fish', 'Fish', 'food', { icon: 'icon-fish', placeholder: false,
-    tip: 'A shiny catch from your fishing rod. Grill it for a tasty treat.' }),
+    tip: 'A shiny catch from your fishing rod. Edible raw, but salty: grill it to fill up properly.' }),
+  item('sharkmeat', 'Raw Shark Meat', 'food', { iconTint: '#d97a7a',
+    tip: 'A thick slab cut from a shark you fought off for good. Four come from every shark.' }),
+  item('sharkhead', 'Shark Head', 'material', { iconTint: '#7f8f99', stack: 5,
+    tip: 'A grim trophy from a beaten shark. Proof that your raft bites back.' }),
 
   // ----- refined (hand crafted or station) -----
   item('rope', 'Rope', 'refined', { icon: 'icon-net', placeholder: true, iconTint: '#d9c38c',
@@ -140,14 +151,39 @@ const LIST = [
     tool: true, durability: 40,
     recipe: hand({ wood: 6, rope: 8 }), unlock: discover('rope'),
     tip: 'Cast, wait for a nibble, and reel in a fish. Good for about 40 catches between repairs.' }),
+  item('spear', 'Wooden Spear', 'tool', { iconTint: '#bb8650', tool: true, durability: 20,
+    recipe: hand({ wood: 8, rope: 3 }), unlock: discover('rope'),
+    tip: 'A long pole with a sharp lashed tip. Click to jab at things in the water; wears only when it lands.' }),
+  item('metalspear', 'Metal Spear', 'tool', { iconTint: '#9fb1bf', tool: true, durability: 40, actsAs: 'spear',
+    recipe: hand({ wood: 6, rope: 2, metalingot: 2, bolt: 1 }), unlock: research('metalingot', 'bolt'),
+    tip: 'A heavy metal point on a sturdy shaft. Twice the bite of the wooden one and lasts twice as long.' }),
   item('binoculars', 'Binoculars', 'tool', { iconTint: '#5d6b78', stack: 1,
     recipe: hand({ glass: 2, copperingot: 1, hinge: 2, bolt: 1 }), unlock: research('glass', 'copperingot'),
     tip: 'Hold them to spot the nearest barrel: bearing and distance. They never wear out.' }),
+  // [instruments] held instruments (dist/instruments.js): no durability, no world state
+  item('drum', 'Tide Drum', 'tool', { iconTint: '#b0805a', stack: 1, recipe: hand({ wood: 3, leaf: 2, rope: 1 }), unlock: discover('rope'),
+    tip: 'A palm-leaf hand drum. Click to thump; look up or down to change the note.' }),
+  item('pipes', 'Reed Pipes', 'tool', { iconTint: '#8fc3c9', stack: 1, recipe: hand({ plastic: 3, rope: 1 }), unlock: discover('rope', 'plastic'),
+    tip: 'Breathy little tubes tied in a row. Look up for high notes, down for low ones.' }),
+  item('bells', 'Bell Bars', 'tool', { iconTint: '#c9b26a', stack: 1, recipe: hand({ wood: 2, scrap: 3, nail: 2 }), unlock: research('nail'),
+    tip: 'Scrap-metal bars on a little frame. They ring bright and fade out softly.' }),
+  item('finder', 'Seashell Finder', 'tool', { iconTint: '#c99560', stack: 1,
+    recipe: hand({ scrap: 4, wood: 2, rope: 2 }), unlock: discover('sand', 'scrap'),
+    tip: 'A driftwood wand with a brass coil. It ticks faster near buried bundles. Never wears out.' }),
+  item('spade', 'Little Spade', 'tool', { iconTint: '#bb8650', tool: true, durability: 60,
+    recipe: hand({ wood: 3, scrap: 2 }), unlock: discover('sand'),
+    tip: 'Press E on island sand to dig. Finds bundles, or at least a handful of sand. R fixes it.' }),
 
   // ----- food -----
   item('cookedfish', 'Grilled Fish', 'food', { iconTint: '#e0a060', stack: 10,
     recipe: cook('grill', 'fish', { time: 15, fuel: 0.5 }), unlock: atStation('grill'),
-    tip: 'A cosy, smoky snack. Nobody is hungry here, but the seagull would love a treat.' }),
+    tip: 'A cosy, smoky meal. Click with it in hand to eat (+35 food).' }),
+  item('honeyfish', 'Honey Glazed Fish', 'food', { iconTint: '#e8a83a', stack: 10, // [bees]
+    recipe: hand({ cookedfish: 1, honey: 1 }), unlock: discover('honey'),
+    tip: 'Grilled fish with a honey glaze. The seagull is very jealous.' }),
+  item('cookedsharkmeat', 'Grilled Shark Meat', 'food', { iconTint: '#c7764a', stack: 10,
+    recipe: cook('grill', 'sharkmeat', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
+    tip: 'A thick, smoky steak. Click with it in hand to eat (+30 food).' }),
 
   // ----- build / decor (placeable on raft tiles) -----
   item('bench', 'Bench', 'decor', { icon: 'icon-repair', placeholder: true, placeable: true,
@@ -156,6 +192,16 @@ const LIST = [
   item('palm', 'Palm Planter', 'decor', { icon: 'icon-palm', placeholder: false, placeable: true,
     recipe: hand({ wood: 2, leaf: 3 }), unlock: START,
     tip: 'A little potted palm. Every raft deserves some green.' }),
+  // [bees] flower box, beehive and beeswax candle (models in dist/bees-model.js)
+  item('flowerbox', 'Flower Box', 'decor', { placeable: true, iconTint: '#ff7aa2',
+    recipe: hand({ wood: 2, flowerseed: 1 }), unlock: discover('flowerseed'),
+    tip: 'A box of bright blooms. Bees love it.' }),
+  item('beehive', 'Beehive', 'decor', { placeable: true, iconTint: '#d9a441',
+    recipe: hand({ wood: 4, rope: 2, leaf: 2 }), unlock: discover('flowerseed'),
+    tip: 'A cosy hive. Put flower boxes close by and the bees make honeycomb.' }),
+  item('candle', 'Beeswax Candle', 'decor', { placeable: true, iconTint: '#ffd27a',
+    recipe: hand({ wax: 2, rope: 1 }), unlock: discover('wax'),
+    tip: 'A little jar candle that glows warmly at night.' }),
   item('sail', 'Sail', 'build', { icon: 'icon-sail', placeholder: false, placeable: true,
     recipe: hand({ wood: 4, rope: 3, leaf: 3 }), unlock: discover('rope', 'plastic'),
     tip: 'Catch the breeze and look the part of a proper sea captain.' }),
@@ -168,6 +214,9 @@ const LIST = [
   item('net', 'Collection Net', 'build', { icon: 'icon-net', placeholder: false, placeable: true,
     recipe: hand({ wood: 3, rope: 3, nail: 2 }), unlock: discover('nail'),
     tip: 'Place it near the edge and it scoops up passing debris (even barrels!) for you.' }),
+  item('maptable', 'Map Table', 'decor', { iconTint: '#c9a46a', stack: 5, placeable: true,
+    recipe: hand({ wood: 6, rope: 3, nail: 2, copperingot: 1 }), unlock: research('copperingot'),
+    tip: 'A little chart table. It remembers the islands you meet and points the sail where you like.' }),
 
   // ----- stations -----
   item('researchtable', 'Research Table', 'station', { iconTint: '#c69860', stack: 5, placeable: true,
@@ -190,8 +239,12 @@ export const PLACEABLE_IDS = Object.freeze(ITEM_IDS.filter((id) => ITEMS[id].pla
 /** Collision radius (metres) of each placed item; 0 = walk-through (net lies flat). */
 export const BLOCK_RADII = deepFreeze({
   palm: 0.42, crate: 0.55, bench: 0.45, sail: 0.14, lantern: 0.12, net: 0,
-  smelter: 0.5, researchtable: 0.55, grill: 0.45,
+  smelter: 0.5, researchtable: 0.55, grill: 0.45, maptable: 0.5,
+  flowerbox: 0.3, beehive: 0.35, candle: 0.1, // [bees]
 });
+
+/** Damage one landed spear thrust deals (spear lane; see docs/loop/research/fidelity-r1-shark.md). */
+export const SPEAR_DAMAGE = deepFreeze({ spear: 5, metalspear: 10 });
 
 /** Fuel units per item put into a station. Plastic is never burned (friendly seas). */
 export const FUEL_VALUE = deepFreeze({ wood: 1, leaf: 0.5, seaweed: 0.5 });
@@ -202,6 +255,9 @@ const REPAIRS = deepFreeze({
   metalhook: { scrap: 2, nail: 2 },
   hammer: { wood: 2, rope: 1 },
   fishingrod: { wood: 1, rope: 2 },
+  spade: { wood: 2, scrap: 1 },
+  spear: { wood: 2, rope: 1 },
+  metalspear: { metalingot: 1, rope: 1 },
 });
 
 /** Alternate / older names that may appear in saves or network messages. */
@@ -254,9 +310,9 @@ export const PROGRESSION_PLAN = deepFreeze([
  * Barrel loot: BARREL_ROLLS.basic picks from the 'basic' pool (min..max each)
  * plus BARREL_ROLLS.treasure picks from the 'treasure' pool (always 1 of the
  * kind, so mid-game materials trickle in steadily with low variance).
- * Picks of the same kind add up. Plain weighted odds per barrel (treasure total 96): ~5.3
- * basics plus clay .19, stone .13, metal ore .10, sand .13, seaweed .08 (x1.5), copper ore
- * .06, scrap .31. With the caller's luck state (BARREL_PITY) the mid-game kinds come at
+ * Picks of the same kind add up. Plain weighted odds per barrel (treasure total 102): ~5.3
+ * basics plus clay .18, stone .12, metal ore .10, sand .12, seaweed .08 (x1.5), copper ore
+ * .06, flower seed .06, scrap .29. With the caller's luck state (BARREL_PITY) the mid-game kinds come at
  * least every 5-13 barrels (a few more when two are overdue at once), so the real rates are
  * clay .24, stone .19, metal ore .18, sand .14, copper ore .09, seaweed .05 (x1.5).
  */
@@ -272,6 +328,7 @@ export const BARREL_LOOT = deepFreeze([
   { kind: 'sand', min: 1, max: 1, weight: 12, pool: 'treasure' },
   { kind: 'seaweed', min: 1, max: 2, weight: 8, pool: 'treasure' },
   { kind: 'copperore', min: 1, max: 1, weight: 6, pool: 'treasure' },
+  { kind: 'flowerseed', min: 1, max: 1, weight: 6, pool: 'treasure' }, // [bees]
   { kind: 'scrap', min: 1, max: 1, weight: 30, pool: 'treasure' },
 ]);
 const POOLS = Object.freeze(Object.fromEntries(['basic', 'treasure'].map((p) => {
@@ -422,13 +479,17 @@ function resolveKind(kind) {
  * fit is dropped), tool durability filled/clamped to 0..100, non-tool
  * durability removed, duplicate ids removed, `selected` kept when valid.
  * Non-object input returns null (new Bag(null) = fresh starter bag).
+ * `extraStack(kind)` (optional) keeps non-catalogue kinds the engine still knows (cups, purifier…):
+ * it returns their max stack (> 0) or 0/undefined to drop them.
  */
-export function migrateSnapshot(snap) {
+export function migrateSnapshot(snap, extraStack = null) {
   if (!snap || typeof snap !== 'object' || Array.isArray(snap)) return null;
   const src = Array.isArray(snap.slots) ? snap.slots : [];
   const slots = new Array(SLOT_COUNT).fill(null);
   const overflow = [];
   const ids = new Set();
+  const extra = (k) => { if (typeof extraStack !== 'function' || typeof k !== 'string' || !k) return 0; let n; try { n = Math.floor(num(extraStack(k))); } catch { return 0; } return Number.isFinite(n) && n > 0 ? n : 0; };
+  const stackOf = (k) => (isItem(k) ? ITEMS[k].stack : EXTRA_KINDS.has(k) ? EXTRA_KINDS.get(k).stack : extra(k));
   const durOf = (raw) => {
     const d = num(raw);
     return raw === undefined || raw === null || !Number.isFinite(d) ? MAX_DURABILITY : Math.min(MAX_DURABILITY, Math.max(0, d));
@@ -436,14 +497,13 @@ export function migrateSnapshot(snap) {
   for (let i = 0; i < src.length; i++) {
     const raw = src[i];
     if (!raw || typeof raw !== 'object') continue;
-    const kind = resolveKind(raw.kind);
+    const kind = resolveKind(raw.kind) ?? (extra(raw.kind) ? raw.kind : null);
     let count = toCount(raw.count);
     if (!kind || count === 0) continue;
-    const it = ITEMS[kind] || EXTRA_KINDS.get(kind);
     const base = { kind };
-    if (it.tool) base.durability = durOf(raw.durability);
+    if (isItem(kind) ? ITEMS[kind].tool : EXTRA_KINDS.get(kind)?.tool) base.durability = durOf(raw.durability);
     if (typeof raw.id === 'string' && raw.id && !ids.has(raw.id)) { ids.add(raw.id); base.id = raw.id; }
-    const put = Math.min(count, it.stack);
+    const put = Math.min(count, stackOf(kind));
     if (i < SLOT_COUNT) slots[i] = { ...base, count: put };
     else overflow.push({ ...base, count: put });
     count -= put;
@@ -453,7 +513,7 @@ export function migrateSnapshot(snap) {
     }
   }
   for (const o of overflow) {
-    const max = (ITEMS[o.kind] || EXTRA_KINDS.get(o.kind)).stack;
+    const max = stackOf(o.kind);
     let left = o.count;
     if (max > 1) {
       for (const s of slots) {

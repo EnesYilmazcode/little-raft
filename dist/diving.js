@@ -3,7 +3,7 @@
 // seafloor, underwater fx and diving UI together; it touches THREE/DOM only when called.
 //
 // game.js hooks:
-//   import { createDiving } from './diving.js';
+//   import { createDiving } from './diving.js?build=v3-survival-ae77fa84ac2b';
 //   init:   diving = createDiving({T, scene, camera, ocean, islands, getTiles:() => world.tiles, getDeckY:deckY,
 //             onGather:id => action({kind:'gather', id}), restore:savedDiveState});
 //   gather success (host): broadcast so EVERY client (host too) calls diving.markGathered(id).
@@ -13,9 +13,9 @@
 //   beep:   o.connect(g).connect(diving ? diving.audioOut(audio) : audio.destination)
 //   hot-swap: const saved = diving?.capture(); diving?.dispose(); ... createDiving({..., restore:saved})
 //   'raft:underwater' event / onChange detail: {underwater, depth, mount} (mount = unique per-instance token).
-import { createSeafloor } from './seafloor.js';
-import { createUnderwaterFx } from './underwater-fx.js';
-import { createDivingUI } from './diving-ui.js';
+import { createSeafloor } from './seafloor.js?build=v3-survival-ae77fa84ac2b';
+import { createUnderwaterFx } from './underwater-fx.js?build=v3-survival-ae77fa84ac2b';
+import { createDivingUI } from './diving-ui.js?build=v3-survival-ae77fa84ac2b';
 
 export const DIVE = Object.freeze({ SPEED: 2.4, FAST: 3.4, VERTICAL: 2.2, BUOYANCY: 0.15, OXY_SECONDS: 45,
   REFILL_RATE: 6, GATHER_SECONDS: 1.0, GATHER_SLOW: Object.freeze({ metalore: 1.4 }), REACH: 2.8, EYE_FLOOR_CLEAR: 0.6,
@@ -291,7 +291,10 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
       fxState.underwater = underwater; fxState.depth = depth; fxState.time = time; fxState.lowOxygen = lowOxygen; fxState.breath01 = oxygen;
       try { fx.update(dt, fxState); } catch (e) { killFx(e); }
     }
-    const show = underwater || p.y < surf + 0.5;
+    // The ocean is opaque from above, so the floor only matters once the eye nears the surface: the margin covers the
+    // near plane (0.05 m) and mesh-vs-getHeight error, and stays under the 0.45 m swim eye height, so surface
+    // swimmers skip the floor's draw calls and recentre rebuilds.
+    const show = underwater || p.y < surf + 0.25;
     if (show !== floorShown) { floorShown = show; seafloor.group.visible = show; }
     if (show && !failed.has('seafloor')) { try { seafloor.update(dt, camera, time); } catch (e) { fail('seafloor', e); } }
     if (ui && !failed.has('ui')) {

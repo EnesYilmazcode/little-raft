@@ -3,12 +3,12 @@
 // ingredient kinds you feed it. Slice: world.ext.storage. Host-authoritative actions 'storage.*'.
 // The top half of this file is pure (no DOM, no THREE) and exported for tests.
 import { Bag, RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { buildResearchTable } from './storage-research-model.js';
+import { buildResearchTable } from './storage-research-model.js?build=v3-survival-ae77fa84ac2b';
 
 export const CHEST_SLOTS = 12;
 export const MAX_CHESTS = 400;
 export const REACH = 3.2;             // metres from the actor to the tile centre
-export const STARTER = Object.freeze(['rope', 'hook', 'hammer', 'crate', 'research']);
+export const STARTER = Object.freeze(['rope', 'hook', 'hammer', 'crate', 'research', 'nestbox']);
 export const LOCK_REASON = 'Study it first at a Tinker\u2019s Desk';
 export const MAX_SLICE_CHARS = 150000; // a put that would grow the JSON slice past this is refused (content.js caps all of ext at 200k)
 export const OLD_HOST = 'Your friend’s raft doesn’t have chests yet';
@@ -171,7 +171,7 @@ export function moveStack(src, i, dst, to, amount) {
   }
   return want - left;
 }
-/** Every non-hotbar bag stack (8..27) into the chest while it fits. Returns the count moved. */
+/** Every non-hotbar bag stack (HOTBAR_SIZE..27) into the chest while it fits. Returns the count moved. */
 export function putAll(bagSlots, chest) {
   let n = 0;
   for (let i = HOTBAR_SIZE; i < bagSlots.length; i++) if (bagSlots[i]) n += moveStack(bagSlots, i, chest, null, null);
@@ -299,7 +299,7 @@ export function createStorage(ctx) {
 
   function loadUI() {
     if (ui || uiLoading || uiFailed || typeof document === 'undefined') return uiLoading;
-    uiLoading = import('./storage-research-ui.js').then(m => { ui = m.createStorageUI(api); return ui; })
+    uiLoading = import('./storage-research-ui.js?build=v3-survival-ae77fa84ac2b').then(m => { ui = m.createStorageUI(api); return ui; })
       .catch(e => { console.error('storage ui failed', e); uiFailed = true; uiLoading = null; return null; }); // no retry every frame
     return uiLoading;
   }
@@ -340,6 +340,11 @@ export function createStorage(ctx) {
     researchable: () => researchableKinds(st),
     locked: () => lockedRecipes(st),
     isLearned: id => isLearned(st, id),
+    hasTable: () => { // a Research Table placed on the raft or carried in the local bag (no allocations)
+      const d = ctx.world?.decor; if (Array.isArray(d)) for (let i = 0; i < d.length; i++) if (d[i].type === 'research') return true;
+      const s = ctx.localBag()?.slots; if (s) for (let i = 0; i < s.length; i++) if (s[i] && s[i].kind === 'research') return true;
+      return false;
+    },
     takeFresh: () => { const out = [...fresh]; fresh.clear(); return out; },
     nameOf,
     reach: REACH,
@@ -375,6 +380,8 @@ export function createStorage(ctx) {
       run(a, actor, bag);
       return true;
     },
+    // A foundation the shark tore off takes its crate's contents with it (game.js calls this on the host).
+    dropTile(x, z) { const k = keyOf(x, z); if (ctx.role === 'guest' || !st.chests[k]) return false; delete st.chests[k]; bump(); return true; },
     craftLocked(recipe) {
       if (typeof recipe !== 'string' || !hasOwn(RECIPES, recipe)) return null;
       return isLearned(st, recipe) ? null : LOCK_REASON;
@@ -387,7 +394,7 @@ export function createStorage(ctx) {
     prompt(aim) {
       const d = target(aim); if (!d) return null;
       if (oldHost()) return OLD_HOST;
-      return d.type === 'crate' ? '<kbd>E</kbd>Open crate' : '<kbd>E</kbd>Use research table';
+      return d.type === 'crate' ? '<kbd>E</kbd>Open crate' : '<kbd>E</kbd>Use tinker\u2019s desk';
     },
     decorModel(type) {
       if (type !== 'research' || !T) return null;

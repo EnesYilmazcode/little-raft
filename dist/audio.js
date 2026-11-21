@@ -12,6 +12,8 @@
 //   setMusic(on)     toggles the calm music bed (fades); music getter reports it
 //   play(ev, s=1)    ev in EVENTS (or ALIASES, e.g. 'pickup'); s clamped 0..1; true if scheduled (never throws). Repeat calls
 //                    inside MIN_GAP are dropped, so 'reel' can be called every frame while reeling.
+//   note(i, step, s=1) [instruments] i in drum|pipes|bells, step integer 0..7 (D4..F#5); true if scheduled (never
+//                    throws). 50 ms gap per instrument; at most 10 live instrument voices inside MAX_VOICES.
 //   tick(dt, st)     drives ambient one-shots (lapping, plank creaks) and music chord changes;
 //                    st.swimming muffles the wind and drops creaks. Allocation-free when idle.
 //   destroy()        stops + disconnects only this instance's nodes; never closes the context
@@ -19,7 +21,7 @@
 // Notes: no DOM timers. Voices clean themselves up on the sources' 'ended' event.
 
 export const EVENTS = Object.freeze(['throw', 'splash', 'collect', 'build', 'place', 'craft', 'repair', 'plant', 'water', 'jump',
-  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny']);
+  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny', 'detect', 'chime']);
 // friendlier names other modules may use; play() resolves them to a recipe above
 export const ALIASES = Object.freeze({ pickup: 'collect', cast: 'throw', hook: 'throw', pour: 'water', click: 'ui' });
 export const BUSES = Object.freeze(['master', 'effects', 'ambience', 'music']);
@@ -27,11 +29,13 @@ export const BUSES = Object.freeze(['master', 'effects', 'ambience', 'music']);
 const OUTPUT_SCALE = 0.5;       // keeps full volume comfortable
 const MAX_VOICES = 24;
 const MIN_GAP = { throw: 0.08, splash: 0.06, collect: 0.04, build: 0.05, place: 0.06, plant: 0.12, water: 0.25, craft: 0.1, repair: 0.12, jump: 0.1, land: 0.12,
-  step: 0.16, swim: 0.3, reel: 0.075, catch: 0.06, bite: 0.2, ui: 0.03, open: 0.08, close: 0.08, deny: 0.15 };
+  step: 0.16, swim: 0.3, reel: 0.4, catch: 0.06, bite: 0.2, ui: 0.03, open: 0.08, close: 0.08, deny: 0.15,
+  detect: 0.05, chime: 0.5 };
 const SILENT = 0.0001;
 // calm D-major-ish pad: Dadd9, Bm7, Gmaj7, A6 (low register so it sits under the sea)
 const CHORDS = [[146.83, 220, 329.63], [123.47, 185, 293.66], [98, 196, 246.94], [110, 164.81, 277.18]];
 const SCALE = [587.33, 659.25, 739.99, 880, 987.77, 1174.66]; // D pentatonic for soft plucks
+const NOTE_HZ = Object.freeze([293.66, 329.63, 369.99, 440, 493.88, 587.33, 659.25, 739.99]); // [instruments] same as SCALE_HZ in instruments.js
 
 const clamp01 = (v, d = 0) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -53,22 +57,28 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     return globalThis.AudioContext || globalThis.webkitAudioContext || null;
   }
 
+  // Built on the first gesture, before the JIT has warmed up, so each buffer is one short pass with few operations
+  // per sample (cold-loop double math boxes every intermediate: the old 6 s, three-pass brown loop made MBs of garbage).
+  // Brown: leaky-integrated white noise (leak .998, ~10 ms memory, so it is stationary and needs no drift removal),
+  // scaled by a fixed gain that gives the old peak-normalised loudness (RMS ~.24). The integrator runs on for FADE
+  // samples past the end and that continuation is equal-power crossfaded into the head: d[0] is then the natural
+  // successor of d[len - 1], so the loop seam is click-free.
+  const BROWN_GAIN = 1.32, LEAK = 0.998, KICK = 0.04 * LEAK * BROWN_GAIN, FADE_S = 0.05; // x = G*y, y' = (y + .02*(2r-1)) * LEAK
   function makeNoise(seconds, brown) {
-    const len = Math.max(1, Math.floor(ctx.sampleRate * seconds));
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const rate = ctx.sampleRate, len = Math.max(1, Math.floor(rate * seconds));
+    const buf = ctx.createBuffer(1, len, rate);
     const d = buf.getChannelData(0);
     if (!brown) {
       for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
       return buf;
     }
-    let last = 0;
-    for (let i = 0; i < len; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) * 0.998; d[i] = last; }
-    // remove drift so the loop point is continuous, then normalise
-    const start = d[0], drift = (d[len - 1] - start) / (len - 1);
-    let peak = 0;
-    for (let i = 0; i < len; i++) { d[i] -= start + drift * i; peak = Math.max(peak, Math.abs(d[i])); }
-    const k = peak > 0 ? 0.9 / peak : 0;
-    for (let i = 0; i < len; i++) d[i] *= k;
+    let x = 0;
+    for (let i = 0; i < len; i++) { x = x * LEAK + (Math.random() - 0.5) * KICK; d[i] = x; }
+    const fade = Math.min(len >> 1, Math.floor(rate * FADE_S)), step = Math.PI / 2 / Math.max(1, fade);
+    for (let i = 0; i < fade; i++) {
+      x = x * LEAK + (Math.random() - 0.5) * KICK;
+      d[i] = d[i] * Math.sin(i * step) + x * Math.cos(i * step);
+    }
     return buf;
   }
 
@@ -89,7 +99,7 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
       const fx = ctx.createGain(), am = ctx.createGain(), mu = ctx.createGain();
       fx.gain.value = busGain('effects'); am.gain.value = busGain('ambience'); mu.gain.value = busGain('music');
       fx.connect(tone); am.connect(tone); mu.connect(tone);
-      graph = { master, tone, limiter, effects: fx, ambience: am, music: mu, noise: makeNoise(1.5, false), brown: makeNoise(6, true) };
+      graph = { master, tone, limiter, effects: fx, ambience: am, music: mu, noise: makeNoise(1.5, false), brown: makeNoise(2, true) };
       return true;
     } catch (_) { graph = null; return false; }
   }
@@ -356,6 +366,9 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
       tone(v, t + 0.04, 'triangle', base, 0.1 * s, 0.004, 0.12, 0, lp);
       tone(v, t + 0.1, 'triangle', base * 1.5, 0.09 * s, 0.004, 0.16, 0, lp);
     },
+    // Seashell Finder tick (pitch and level rise with closeness s) and the soft lock-on chime (treasure.js)
+    detect(v, t, s) { const f = 700 + 500 * s; tone(v, t, 'sine', f, 0.05 + 0.04 * s, 0.002, 0.05); tone(v, t, 'triangle', f * 2, 0.015 * s, 0.001, 0.03); },
+    chime(v, t, s) { tone(v, t, 'sine', 880, 0.09 * s, 0.002, 0.4); tone(v, t + 0.07, 'sine', 1318.5, 0.06 * s, 0.002, 0.35); tone(v, t + 0.14, 'sine', 1760, 0.04 * s, 0.002, 0.3); },
     repair(v, t, s) {
       // scrape: grainy band noise with fast tremolo, ending on a soft knock
       const g = gain(v, v.bus);
@@ -420,6 +433,26 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     },
   };
   const AMBIENT = new Set(['lap', 'creak']);
+  // [instruments] note recipes (v, t, s, f): every tail is 1.5 s or less
+  const lastNote = Object.create(null);
+  const NOTES = Object.freeze({
+    drum(v, t, s, f) {
+      tone(v, t, 'sine', f / 2, 0.28 * s, 0.002, 0.55, f / 2 * 0.6);
+      burst(v, t, 'lowpass', 900, 0.7, 0.35 * s, 0.001, 0.06);
+    },
+    pipes(v, t, s, f) {
+      const o = tone(v, t, 'triangle', f, 0.22 * s, 0.04, 0.5);
+      o.frequency.linearRampToValueAtTime(f * 1.008, t + 0.25);
+      o.frequency.linearRampToValueAtTime(f, t + 0.5);
+      tone(v, t, 'sine', f * 2, 0.05 * s, 0.05, 0.35);
+      burst(v, t, 'bandpass', f * 2, 1.2, 0.08 * s, 0.03, 0.25);
+    },
+    bells(v, t, s, f) {
+      tone(v, t, 'sine', f * 2, 0.3 * s, 0.002, 1.2);
+      tone(v, t, 'sine', f * 2 * 2.76, 0.12 * s, 0.002, 0.6);
+      tone(v, t, 'sine', f * 2 * 5.4, 0.06 * s, 0.002, 0.3);
+    },
+  });
 
   function voice(name, s, bus) {
     if (voices.size >= MAX_VOICES) return false;
@@ -487,6 +520,31 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     } catch (_) { return false; }
   }
 
+  // [instruments] held instruments: pitched one-shots on the effects bus (see dist/instruments.js)
+  function note(instr, step, strength = 1) {
+    try {
+      if (!ready()) return false;
+      if (typeof instr !== 'string' || !Object.prototype.hasOwnProperty.call(NOTES, instr)) return false;
+      if (!Number.isInteger(step) || step < 0 || step > 7) return false;
+      const s = clamp01(strength, 1);
+      if (s <= 0.001) return false;
+      const now = ctx.currentTime;
+      if (now - (lastNote[instr] ?? -1) < 0.05) return false;
+      if (voices.size >= MAX_VOICES) return false;
+      let inst = 0;
+      for (const v of voices) if (v.inst) inst++;
+      if (inst >= 10) return false;
+      lastNote[instr] = now;
+      const v = newVoice(graph.effects);
+      v.inst = true;
+      voices.add(v);
+      try { NOTES[instr](v, now + 0.005, s, NOTE_HZ[step]); }
+      catch (_) { killVoice(v); return false; }
+      if (v.live === 0) finishVoice(v);
+      return true;
+    } catch (_) { return false; }
+  }
+
   function tick(dt, st) {
     if (!(dt > 0) || !ready()) return;
     try {
@@ -542,6 +600,7 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     getBus,
     setMusic,
     play,
+    note, // [instruments]
     tick,
     destroy,
   };

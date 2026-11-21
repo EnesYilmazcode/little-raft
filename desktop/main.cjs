@@ -6,7 +6,7 @@ const origin=config.origin||'http://127.0.0.1:41896';
 app.setName('Little Raft');
 app.setPath('userData',path.join(app.getPath('appData'),'Little Raft'));
 app.setAppUserModelId('local.littleraft.game');
-let win,retry,escClaimed=false; // escClaimed: the page routes Escape via window.raftEscape()
+let win,retry,escClaimed=false,escDown=false; // escClaimed: the page routes Escape via window.raftEscape()
 if(!app.requestSingleInstanceLock())app.quit();else{
 app.on('second-instance',()=>{if(win){if(win.isMinimized())win.restore();win.show();win.focus();}});
 app.whenReady().then(()=>{
@@ -19,8 +19,21 @@ app.whenReady().then(()=>{
  win.webContents.on('before-input-event',(event,input)=>{
   if(!escClaimed||input.key!=='Escape'||(input.type!=='keyDown'&&input.type!=='keyUp'))return;
   event.preventDefault();
-  if(input.type==='keyDown'&&!input.isAutoRepeat)win.webContents.executeJavaScript('window.raftEscape&&window.raftEscape()',true).catch(()=>{});
+  const wc=win.webContents;
+  if(input.type==='keyDown'){
+   if(input.isAutoRepeat||escDown)return;
+   escDown=true; // the page holds any relock until the key is released
+   wc.executeJavaScript('window.raftShell&&window.raftShell.hold&&window.raftShell.hold();window.raftEscape&&window.raftEscape()',true).catch(()=>{});
+  }else if(!escDown){
+   // Chromium eats the keyDown that ends pointer lock, so only this keyUp arrives: treat it as the press (opens pause).
+   wc.executeJavaScript('window.raftEscape&&window.raftEscape()',true).catch(()=>{});
+  }else{
+   // Relock on release, with a gesture: relocking while Escape is still held would count as leaving the lock.
+   escDown=false;
+   wc.executeJavaScript('window.raftShell&&window.raftShell.released&&window.raftShell.released()',true).catch(()=>{});
+  }
  });
+ win.on('blur',()=>{escDown=false;}); // the page drops its held-Escape state on blur too; the next click relocks
  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
  win.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith(origin+'/')&&!url.startsWith('data:'))event.preventDefault();});
  win.webContents.session.setPermissionRequestHandler((wc,permission,callback)=>callback(permission==='pointerLock'||permission==='fullscreen'));

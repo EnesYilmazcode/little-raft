@@ -60,7 +60,8 @@ body.playing .ob-notes{display:block;animation:obFade .5s ease-out}
   background:linear-gradient(90deg,rgba(6,13,20,.78) 0%,rgba(6,13,20,.45) 32%,rgba(6,13,20,0) 58%),
              linear-gradient(0deg,rgba(6,13,20,.5) 0%,rgba(6,13,20,0) 35%)}
 #welcome.ob-on .welcome-card{max-width:360px;text-align:left}
-#welcome.ob-on .welcome-card>:not(.ob-menu):not(#loadError),#welcome.ob-on .welcome-caption{display:none!important}
+#welcome.ob-on .welcome-card>:not(.ob-menu):not(#loadError):not(#titleSaveStatus),#welcome.ob-on .welcome-caption{display:none!important}
+#welcome.ob-on #titleSaveStatus{margin-top:14px;max-width:340px} /* another tab saved this raft: said inline, never a popup */
 body:has(#welcome.ob-on:not([hidden])) header{display:none!important}
 #welcome.ob-on #loadError{margin-top:16px;max-width:340px;font-size:13px;line-height:1.5;color:#f0907a}
 #welcome.ob-on #loadError:empty{display:none}

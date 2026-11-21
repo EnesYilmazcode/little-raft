@@ -7,9 +7,17 @@ export const TILE = 2;
 export const ROT_STEP = Math.PI / 4, FINE_STEP = Math.PI / 12;
 export const DECOR_REACH = 6, FLOOR_REACH = 8;
 // [half width, half depth, share of the footprint that must rest on deck (0 = centre only)].
+// Matches each model's below-head bounds; crate, sail and lantern also collide with this rect.
 export const FOOTPRINT = Object.freeze({
-  sail:[.4, .4, .8], palm:[.42, .42, .8], lantern:[.24, .24, .8], net:[.84, .84, 0], bench:[.72, .2, .8], crate:[.49, .42, .8],
+  sail:[.8, .76, .8], palm:[.42, .42, .8], lantern:[.59, .37, .8], net:[.84, .84, 0], bench:[.72, .2, .8], crate:[.49, .42, .8],
 });
+
+// Wheel travel in pixels for slot picking and fine rotation. Chromium (and macOS) turn Shift+wheel
+// into a horizontal scroll (deltaY 0, deltaX set), so with Shift held deltaX counts too.
+export function wheelDelta(e) {
+  const d = e.deltaY || (e.shiftKey ? e.deltaX : 0) || 0;
+  return e.deltaMode === 1 ? d * 33 : d;
+}
 
 const TAU = Math.PI * 2;
 export const tileAt = v => Math.round(v / TILE);
@@ -59,6 +67,54 @@ export function decorCheck(hasTile, decor, d) {
   return 'ok';
 }
 
+// ---------- Removal (hammer + X) ----------
+// Height of each piece's pick box above its base, in metres (roughly the model's solid part).
+export const PICK_HEIGHT = Object.freeze({sail:1.9, palm:.6, lantern:1.9, net:.25, bench:.55, crate:.85});
+const DECOR_BASE_Y = .22;
+
+// Nearest decor whose footprint box (rotated, PICK_HEIGHT tall) the raft-local ray o + t*d crosses
+// within maxT metres, or null. o and d are {x, y, z}.
+export function decorOnRay(decor, o, d, maxT = DECOR_REACH + 2) {
+  let best = null, bestT = maxT;
+  for (const p of decor) {
+    const f = FOOTPRINT[p.type]; if (!f) continue;
+    const c = Math.cos(p.rot || 0), s = Math.sin(p.rot || 0), ox = o.x - p.x, oz = o.z - p.z;
+    const lo = [ox * c - oz * s, o.y - DECOR_BASE_Y, ox * s + oz * c], ld = [d.x * c - d.z * s, d.y, d.x * s + d.z * c];
+    const hi = [f[0], PICK_HEIGHT[p.type] ?? 1, f[1]], low = [-f[0], 0, -f[1]];
+    let t0 = 0, t1 = bestT;
+    for (let i = 0; i < 3 && t0 <= t1; i++) {
+      if (Math.abs(ld[i]) < 1e-9) { if (lo[i] < low[i] || lo[i] > hi[i]) t0 = Infinity; continue; }
+      let a = (low[i] - lo[i]) / ld[i], b = (hi[i] - lo[i]) / ld[i]; if (a > b) [a, b] = [b, a];
+      t0 = Math.max(t0, a); t1 = Math.min(t1, b);
+    }
+    if (t0 <= t1 && t0 < bestT) { bestT = t0; best = p; }
+  }
+  return best;
+}
+
+// Why floor cell (tx, tz) can't be removed: 'missing' | 'last' (the raft's only tile) | 'decor'
+// (something stands on it) | 'split' (the raft would break in two), or null when it can.
+export function floorRemoveBlock(tiles, decor, tx, tz) {
+  const key = (x, z) => x + ',' + z, all = new Set(tiles.map(t => key(t[0], t[1])));
+  if (!all.has(key(tx, tz))) return 'missing';
+  if (all.size <= 1) return 'last';
+  const rest = new Set(all); rest.delete(key(tx, tz));
+  const now = (x, z) => all.has(key(x, z)), after = (x, z) => rest.has(key(x, z));
+  for (const d of decor) {
+    if (tileAt(d.x) === tx && tileAt(d.z) === tz) return 'decor';
+    if (decorCheck(now, [], d) === 'ok' && decorCheck(after, [], d) !== 'ok') return 'decor'; // its footprint rests partly on this tile
+  }
+  const start = rest.values().next().value, seen = new Set([start]), queue = [start];
+  while (queue.length) {
+    const [x, z] = queue.pop().split(',').map(Number);
+    for (const [a, b] of ADJ) { const k = key(x + a, z + b); if (rest.has(k) && !seen.has(k)) { seen.add(k); queue.push(k); } }
+  }
+  return seen.size === rest.size ? null : 'split';
+}
+
+// About half of a build cost back (at least one of each ingredient).
+export const refundOf = cost => Object.fromEntries(Object.entries(cost || {}).map(([k, n]) => [k, Math.max(1, Math.floor(n / 2))]));
+
 // Validates one saved decor entry. Current entries carry rot and raft-local metres; older saves
 // stored integer tile cells with no rot and are moved to that tile's centre.
 export function normaliseDecor(d, types, hasTile) {
@@ -76,8 +132,8 @@ export function normaliseDecor(d, types, hasTile) {
 // material that turns red when the spot is invalid. Follows the raft's sway.
 export function createGhosts(T, scene, raft, {floor, craft}) {
   const OK = new T.Color('#4dff8f'), BAD = new T.Color('#ff4a3a');
-  const mat = new T.MeshLambertMaterial({color:OK, emissive:OK.clone(), emissiveIntensity:.55, transparent:true, opacity:.5, depthWrite:false});
-  const depth = new T.MeshBasicMaterial({colorWrite:false, transparent:true}); // depth pre-pass after the opaque scene: only the ghost's front surface is tinted
+  const mat = new T.MeshLambertMaterial({color:OK, emissive:OK.clone(), emissiveIntensity:.55, transparent:true, opacity:.5, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1});
+  const depth = new T.MeshBasicMaterial({colorWrite:false, transparent:true, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1}); // offset: a ghost over a coincident placed piece wins cleanly instead of z-fighting // depth pre-pass after the opaque scene: only the ghost's front surface is tinted
   const root = new T.Group(); root.name = 'build-ghost'; scene.add(root);
   const cache = new Map();
   let shown = null, wasOk = true;
@@ -106,5 +162,13 @@ export function createGhosts(T, scene, raft, {floor, craft}) {
     if (ok !== wasOk) { wasOk = ok; mat.color.copy(ok ? OK : BAD); mat.emissive.copy(ok ? OK : BAD); }
     mat.opacity = .5 + Math.sin(time * 4) * .06;
   }
-  return {show, hide, get visible() { return !!shown; }};
+  // Builds ghosts ahead (e.g. for every placeable in the bag) so the first preview does no mesh work.
+  function preload(kinds) { for (const k of kinds) model(k); }
+  // Runs fn (a shader compile) with every built ghost visible: three's compile skips hidden objects.
+  function warm(fn) {
+    const hidden = [...cache.values()].filter(g => g && !g.visible);
+    for (const g of hidden) g.visible = true;
+    try { fn(); } finally { for (const g of hidden) g.visible = false; }
+  }
+  return {show, hide, preload, warm, get visible() { return !!shown; }};
 }

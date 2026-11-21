@@ -4,6 +4,9 @@
 // In the desktop app the main process claims Escape and calls window.raftEscape() with a user gesture,
 // so closing a menu can relock the mouse without a click.
 
+import { createEscGate, relockPending, RELOCK_TIMEOUT } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { restoreGlobal } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
+
 const STORAGE_KEY = 'little-raft-settings';
 const DIALOG_ID = 'options';
 const STYLE_ID = 'little-raft-settings-style';
@@ -28,7 +31,7 @@ const DEFAULTS = Object.freeze(Object.fromEntries(Object.entries(SPEC).map(([k, 
 const KEYS = Object.keys(SPEC);
 const TABS = [['controls', 'Controls'], ['graphics', 'Graphics'], ['audio', 'Audio']];
 const KEYMAP = [['W A S D', 'Walk'], ['Space', 'Jump'], ['Shift', 'Sprint'], ['Click', 'Use tool / charge throw'], ['Hold click', 'Reel in'],
-  ['1 - 8 / Wheel', 'Pick hotbar slot'], ['Tab / I', 'Inventory'], ['E', 'Interact'], ['R', 'Repair hook'], ['L', 'Logbook'], ['Esc', 'Back / pause']];
+  ['1 - 0 / Wheel', 'Pick hotbar slot'], ['Tab / I', 'Inventory'], ['E', 'Interact'], ['R', 'Rotate piece / repair hook'], ['Shift + wheel', 'Fine rotate piece'], ['X', 'Remove piece (Hammer)'], ['L', 'Logbook'], ['Esc', 'Back / pause']];
 
 export function validateSettings(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
@@ -74,6 +77,7 @@ const CSS = `
 #options .rs-menu button:hover,#options .rs-menu button:focus-visible,#options .rs-menu button[aria-expanded=true]{color:var(--amber-lt,#ffc96b);padding-left:28px;transform:none;outline:0;
   background:linear-gradient(90deg,rgba(233,166,64,.14),rgba(233,166,64,0) 85%)}
 #options .rs-menu button:hover::before,#options .rs-menu button:focus-visible::before,#options .rs-menu button[aria-expanded=true]::before{opacity:1;transform:translateY(-50%) scaleX(1)}
+#options .rs-title [data-act=resume],#options .rs-title [data-act=quit]{display:none}
 #options .rs-menu .rs-quit{margin-top:22px;border-top:1px solid rgba(201,164,107,.18);padding-top:20px;font-size:clamp(16px,1.5vw,19px);color:var(--muted,#8f9aa0)}
 #options .rs-panel{width:min(520px,100%);max-height:calc(100vh - 80px);overflow:auto;padding:22px 24px 24px;border-radius:6px;background:var(--plate-strong,rgba(8,17,26,.92));
   box-shadow:0 0 0 1px var(--bronze-lt,#c9a46b),0 0 0 4px var(--navy-0,#070f17),0 24px 70px rgba(0,0,0,.55)}
@@ -105,8 +109,8 @@ const CSS = `
   #options .rs-menu{width:auto;padding:20px 0 20px 20px;border-radius:6px}#options .rs-foot{display:none}
   #options h2{margin-bottom:14px}#options .rs-menu button{padding:6px 0 6px 18px}#options .rs-panel{max-height:none;margin-top:0}#options .rs-keys{grid-template-columns:auto 1fr}}
 /* Waiting to relock after a menu closed without a gesture (browser Esc): no cursor, no centred hint. */
-body.relock #world{cursor:none}
-body.relock #resumeHint{display:none!important}
+body.relock:not(.drag-look) #world{cursor:none}
+body.relock:not(.drag-look) #resumeHint{display:none!important}
 `;
 
 function ensureStyle() {
@@ -133,13 +137,14 @@ function markup() {
   const pages = TABS.map(([id]) => `<div class="rs-page" role="tabpanel" data-page="${id}" hidden>` +
     (id === 'controls' ? `<div class="rs-keys">${keys}</div>` : '') + page(id) +
     (id === 'graphics' ? '<button type="button" class="rs-wide" data-act="fullscreen">Enter fullscreen</button>' : '') + '</div>').join('');
-  return `<form class="rs-form" method="dialog" data-raft-settings="3">
+  return `<form class="rs-form" method="dialog" data-raft-settings="4">
 <nav class="rs-menu"><div class="rs-eyebrow">PAUSED</div><h2>Little Raft</h2>
 <button type="button" data-act="resume">Resume</button>
 <button type="button" data-act="settings" aria-expanded="false">Settings</button>
 <button type="button" data-act="help">How to play</button>
 <button type="button" data-act="crew">Play together</button>
 <button type="button" data-act="logbook">Raft logbook</button>
+<button type="button" data-act="look">Change look</button>
 <button type="button" class="rs-quit" data-act="quit">Save and quit to title</button>
 <div class="rs-foot"><kbd>Esc</kbd>Back</div></nav>
 <section class="rs-panel" aria-label="Settings" hidden><div class="rs-tabs" role="tablist">${tabs}</div>${pages}</section></form>`;
@@ -153,7 +158,7 @@ function ensureDialog() {
     dialog.id = DIALOG_ID;
     document.body.appendChild(dialog);
   }
-  if (dialog.querySelector('[data-raft-settings]')?.dataset.raftSettings !== '3') { // missing or an older layout
+  if (dialog.querySelector('[data-raft-settings]')?.dataset.raftSettings !== '4') { // missing or an older layout
     reused = false;
     dialog.replaceChildren();
     dialog.insertAdjacentHTML('beforeend', markup());
@@ -186,8 +191,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   const owns = () => !destroyed && dialog.dataset.owner === token;
   const guard = (fn) => (event) => { if (owns()) fn(event); };
   const sig = { signal: ac.signal };
-  let lockLostAt = -Infinity;   // when pointer lock was released while the game was active
-  let escHandledAt = -Infinity; // last time a keydown Escape was handled (to avoid double handling on keyup)
+  const esc = createEscGate(); // Escape keydown/keyup/lock-loss bookkeeping (lock-rules.js)
   let returnToPause = null;     // sub-menu (help/crew) opened from the pause menu
 
   // Hot creation: the live controls are the freshest truth; otherwise storage.
@@ -228,7 +232,9 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   const panelOpen = () => !panel.hidden;
   function setPanel(open) {
     panel.hidden = !open;
-    form.querySelector('[data-act="settings"]')?.setAttribute('aria-expanded', String(open));
+    const btn = form.querySelector('[data-act="settings"]');
+    btn?.setAttribute('aria-expanded', String(open));
+    if (open && dialog.contains(document.activeElement) && document.activeElement !== btn) btn?.focus({ preventScroll: true }); // one highlight, not two
     if (open && !form.querySelector('[data-tab][aria-selected=true]')) showTab('controls');
   }
 
@@ -247,8 +253,14 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     syncControls(); syncFullscreen();
     if (!dialog.open) {
       setPanel(false);
+      // From the title screen there is no game to resume or quit: show a plain menu.
+      const title = !gameActive();
+      form.classList.toggle('rs-title', title);
+      const eyebrow = form.querySelector('.rs-eyebrow');
+      if (eyebrow) eyebrow.textContent = title ? 'MENU' : 'PAUSED';
+      dialog.setAttribute('aria-label', title ? 'Menu' : 'Paused');
       try { dialog.showModal(); } catch { dialog.setAttribute('open', ''); }
-      form.querySelector('[data-act="resume"]')?.focus({ preventScroll: true });
+      form.querySelector(title ? '[data-act="settings"]' : '[data-act="resume"]')?.focus({ preventScroll: true });
     }
     call(onPause);
   }
@@ -263,7 +275,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   // One Escape press. Returns true when something consumed it.
   function escape() {
     if (!owns()) return false;
-    escHandledAt = performance.now();
+    esc.keydown(performance.now(), { handled: true });
     const inv = document.getElementById('inventory');
     if (inv?.open) { inv.dispatchEvent(new Event('cancel', { cancelable: true })); return true; } // survival UI closes and relocks
     if (dialog.open) { if (panelOpen()) { setPanel(false); form.querySelector('[data-act="settings"]')?.focus({ preventScroll: true }); } else close(true); return true; }
@@ -281,43 +293,71 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
 
   // --- Escape handling -----------------------------------------------------
   // Desktop app: main process claims Escape and calls this with a user gesture.
-  window.raftEscape = () => { if (owns()) escape(); };
+  const previousEscape = Object.getOwnPropertyDescriptor(window, 'raftEscape'), raftEscape = () => { if (owns()) escape(); };
+  window.raftEscape = raftEscape;
   try { window.raftDesktop?.claimEscape?.(true); } catch { /* not in the desktop app */ }
 
   // Browser: Escape arrives as a normal keydown when the pointer is free.
   window.addEventListener('keydown', guard((event) => {
     if (event.key !== 'Escape') return;
-    if (event.repeat) { if (dialog.open) event.preventDefault(); return; }
+    const now = performance.now();
+    // Held Escape: repeats keep this press "handled" so its late keyup never opens the pause menu.
+    if (event.repeat) { esc.keydown(now, { repeat: true }); if (dialog.open) event.preventDefault(); return; }
     // Other dialogs (inventory/crew/help) close natively through their own cancel; we only remember it.
-    if (dialog.open || !otherDialogs().length) { if (escape()) event.preventDefault(); }
-    else escHandledAt = performance.now();
+    // The build wheel closes through the game's own key handler; that press is still handled, so its keyup never pauses.
+    if (dialog.open || !otherDialogs().length) { const wheel = buildWheelOpen(); if (escape()) event.preventDefault(); else esc.keydown(now, { handled: wheel }); }
+    else esc.keydown(now, { handled: true });
   }), { capture: true, signal: ac.signal });
 
   // Browsers often swallow the keydown that ends pointer lock; the keyup still arrives.
   window.addEventListener('keyup', guard((event) => {
     if (event.key !== 'Escape') return;
-    const now = performance.now();
-    if (now - escHandledAt < 600) return;
-    if (now - lockLostAt > 1500) return; // only pause for the Escape that just released the lock
-    lockLostAt = -Infinity;
+    // Only pause for an unhandled Escape that just released the lock.
+    if (!esc.keyupOpensPause(performance.now(), { locked: !!document.pointerLockElement })) return;
     if (!dialog.open && !otherDialogs().length && !buildWheelOpen() && gameActive()) { event.preventDefault(); open(); }
   }), { capture: true, signal: ac.signal });
 
+  // body.relock is a short pending state: a granted-then-revoked or refused relock brings the resume hint back.
+  let relockTimer = 0;
+  function endRelock(event) {
+    const locked = !!document.pointerLockElement;
+    if (relockPending({ locked, event, elapsed: event ? 0 : RELOCK_TIMEOUT })) return;
+    clearTimeout(relockTimer); relockTimer = 0;
+    document.body.classList.remove('relock');
+  }
+  function startRelock() {
+    document.body.classList.add('relock');
+    clearTimeout(relockTimer); relockTimer = setTimeout(guard(() => endRelock(null)), RELOCK_TIMEOUT);
+  }
+  ac.signal.addEventListener('abort', () => clearTimeout(relockTimer));
+
   // Remember lock loss only; never pause from lock loss alone (build mode, menus release it on purpose).
   document.addEventListener('pointerlockchange', guard(() => {
-    if (document.pointerLockElement) document.body.classList.remove('relock');
-    else if (gameActive() && !dialog.open) lockLostAt = performance.now();
+    if (document.pointerLockElement) endRelock('locked');
+    else {
+      endRelock('unlocked');
+      // A release caused by the page opening a menu (inventory, crew, help) is not an Escape.
+      if (gameActive() && !dialog.open) esc.lockLost(performance.now(), { selfCaused: otherDialogs().length > 0 });
+    }
   }), sig);
+  document.addEventListener('pointerlockerror', guard(() => endRelock('error')), sig);
+  // The Escape that ends pointer lock with the build wheel open is swallowed as a keydown, and the game's own
+  // lock-loss handler closes the wheel before the keyup. Window capture runs before both, so mark that press
+  // handled here while the wheel is still open: its keyup closes the wheel only, never pauses.
+  window.addEventListener('pointerlockchange', guard(() => {
+    if (!document.pointerLockElement && buildWheelOpen()) esc.keydown(performance.now(), { handled: true });
+  }), { capture: true, signal: ac.signal });
 
   // A menu closed while playing but the browser refused to relock (Escape is not a user gesture):
   // hide the cursor and the centred hint; the next click relocks.
   document.addEventListener('close', guard((event) => {
     const d = event.target;
     if (!(d instanceof HTMLDialogElement)) return;
-    if (d !== dialog && d === returnToPause) { returnToPause = null; if (gameActive()) { open(); return; } }
+    // Help returns to the menu on the title too; crew may close because a game is starting.
+    if (d !== dialog && d === returnToPause) { delete d.dataset.fromPause; returnToPause = null; if (gameActive() || d.id === 'help') { open(); return; } }
     if (d.id !== 'inventory' && d !== dialog) return;
     setTimeout(guard(() => {
-      if (gameActive() && !document.pointerLockElement && !document.querySelector('dialog[open]')) document.body.classList.add('relock');
+      if (gameActive() && !document.body.classList.contains('drag-look') && !document.pointerLockElement && !document.querySelector('dialog[open]')) startRelock();
     }), 150);
   }), { capture: true, signal: ac.signal });
   window.addEventListener('pointerdown', () => document.body.classList.remove('relock'), { capture: true, signal: ac.signal });
@@ -325,7 +365,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   // Native dialog Escape: route through our escape so the engine resumes.
   dialog.addEventListener('cancel', guard((event) => {
     event.preventDefault();
-    if (performance.now() - escHandledAt < 100) return; // already handled by keydown
+    if (performance.now() - esc.handledAt < 100) return; // already handled by keydown
     escape();
   }), sig);
 
@@ -355,11 +395,13 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
       return;
     }
     if (act === 'logbook') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-logbook')); return; }
+    if (act === 'look') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-look')); return; }
     if (act === 'help' || act === 'crew') {
       const target = document.getElementById(act);
       if (!(target instanceof HTMLDialogElement)) return;
       close(false); // stay paused; Escape or close returns to this menu
       returnToPause = target;
+      target.dataset.fromPause = '1'; // game.js: do not relock when this closes
       try { target.showModal(); } catch { target.setAttribute('open', ''); }
     }
   }), sig);
@@ -381,6 +423,8 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
       destroyed = true;
       ac.abort();
       // #options, its <style> and window.raftEscape are shared: a newer instance may already own them.
+      // If none has, hand raftEscape back to the instance we replaced (a failed hot-swap resumes that engine).
+      restoreGlobal(window, 'raftEscape', previousEscape, raftEscape);
     },
   };
 }
