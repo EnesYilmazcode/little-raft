@@ -42,6 +42,16 @@ const HALF = C.TILE_SIZE / 2;
 const fin = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const isTile = t => Array.isArray(t) && Number.isFinite(t[0]) && Number.isFinite(t[1]);
+const NONE = Object.freeze([]); // shared stand-in for missing tiles/blocked arrays
+// Math.hypot is a varargs builtin that allocates on every call. This is a scalar copy of V8's
+// algorithm (max-scaled, Kahan-summed), so results stay bit-identical to Math.hypot in V8.
+function hypot2(a, b) {
+  a = Math.abs(a); b = Math.abs(b);
+  const m = a > b ? a : b;
+  if (!(m > 0 && m < Infinity)) return a === Infinity || b === Infinity ? Infinity : a + b; // 0 / NaN
+  const x = a / m, y = b / m;
+  return Math.sqrt(x * x + y * y) * m;
+}
 
 export class PlayerPhysics {
   constructor({x = 0, y = 1.8, z = 1.2, vx = 0, vy = 0, vz = 0, swimming = false} = {}) {
@@ -53,6 +63,11 @@ export class PlayerPhysics {
     this.climbing = false;
     this._climb = null;
     this._prevJump = false;
+    // Per-update scratch: doubles passed as arguments to non-inlined calls get boxed, so the
+    // per-frame helpers read dt/deckY/candidate positions from fields instead.
+    this._dt = 0.01; this._deckY = 0.2; this._nx = 0.5; this._nz = 0.5;
+    // Reused result of _nearest() (consumed immediately by its callers; never escapes).
+    this._near = {tx: 0, tz: 0, px: 0.5, pz: 0.5, cx: 0.5, cz: 0.5, dist: 0.5};
     // First update decides grounded: if standing exactly at deck height over a tile we snap to it.
     this._fresh = true;
   }
@@ -80,32 +95,33 @@ export class PlayerPhysics {
     const yaw = fin(inp.yaw, 0);
     const jump = !!inp.jump;
     const sprint = !!inp.sprint;
-    const tiles = Array.isArray(inp.tiles) ? inp.tiles : [];
-    const blocked = Array.isArray(inp.blocked) ? inp.blocked : [];
+    const tiles = Array.isArray(inp.tiles) ? inp.tiles : NONE;
+    const blocked = Array.isArray(inp.blocked) ? inp.blocked : NONE;
     const deckY = fin(inp.deckY, 0.2);
+    this._dt = dt; this._deckY = deckY;
     const waterY = fin(inp.waterY, -0.24);
     const jumpPressed = jump && !this._prevJump;
     this._prevJump = jump;
 
-    this._sanitize(tiles, deckY);
+    this._sanitize(tiles);
 
     if (this._fresh) {
       this._fresh = false;
       const feet = this.y - C.EYE_OFFSET;
-      if (!this.swimming && Math.abs(feet - deckY) < 0.05 && this._supported(tiles, this.x, this.z)) {
+      if (!this.swimming && Math.abs(feet - deckY) < 0.05 && this._supported(tiles)) {
         this.grounded = true; this.y = deckY + C.EYE_OFFSET; this.vy = 0;
       }
     }
 
     // ---- Auto clamber in progress ----
     if (this._climb) {
-      this._stepClimb(dt, deckY, out);
+      this._stepClimb(out);
       this.verticalSpeed = this.vy;
       return out;
     }
 
     // ---- Stuck below the deck inside a tile footprint (spawn / deck shift): lift onto deck ----
-    if (this.y - C.EYE_OFFSET < deckY - 0.05 && this._inside(tiles, this.x, this.z)) {
+    if (this.y - C.EYE_OFFSET < deckY - 0.05 && this._inside(tiles)) {
       this.y = deckY + C.EYE_OFFSET; this.vy = 0;
       if (!this.grounded) out.landed = true;
       if (this.swimming) { this.swimming = false; out.leftWater = true; }
@@ -113,7 +129,7 @@ export class PlayerPhysics {
     }
 
     // ---- Horizontal ----
-    const len = Math.hypot(forward, strafe);
+    const len = hypot2(forward, strafe);
     if (len > 1) { forward /= len; strafe /= len; }
     const s = Math.sin(yaw), c = Math.cos(yaw);
     const dirX = -s * forward + c * strafe;
@@ -130,14 +146,14 @@ export class PlayerPhysics {
       this.vz += (dirZ * speed - this.vz) * k;
     }
 
-    this._moveHorizontal(this.vx * dt, this.vz * dt, blocked);
+    this._moveHorizontal(blocked);
 
     // Raft hull sides are solid below deck level (swimming or falling past an edge).
     if (this.y - C.EYE_OFFSET < deckY - 0.05) this._pushOutOfTiles(tiles);
 
     // ---- Vertical ----
     if (this.grounded) {
-      if (this._supported(tiles, this.x, this.z)) {
+      if (this._supported(tiles)) {
         this.y = deckY + C.EYE_OFFSET; this.vy = 0;
         if (jumpPressed) { this.vy = C.JUMP_IMPULSE; this.grounded = false; }
       } else {
@@ -160,7 +176,7 @@ export class PlayerPhysics {
       const feet = this.y - C.EYE_OFFSET;
 
       // Land on deck only when falling and feet cross the deck plane over a tile.
-      if (this.vy <= 0 && prevFeet >= deckY - 0.02 && feet <= deckY && this._supported(tiles, this.x, this.z)) {
+      if (this.vy <= 0 && prevFeet >= deckY - 0.02 && feet <= deckY && this._supported(tiles)) {
         this.y = deckY + C.EYE_OFFSET; this.vy = 0; this.grounded = true; out.landed = true;
         if (this.swimming) { this.swimming = false; out.leftWater = true; }
       } else if (!this.swimming && feet < waterY + C.WATER_ENTER) {
@@ -174,12 +190,12 @@ export class PlayerPhysics {
 
     // ---- Friendly auto clamber: hold jump in water near the raft ----
     if (this.swimming && jump && !this._climb) {
-      const n = this._nearest(tiles, this.x, this.z);
+      const n = this._nearest(tiles);
       if (n && n.dist - C.BODY_RADIUS <= C.CLAMBER_REACH) this._beginClimb(n, deckY, blocked);
     }
 
     // ---- Safety: absurd distance from the raft ----
-    this._safety(tiles, deckY);
+    this._safety(tiles);
 
     this.verticalSpeed = this.vy;
     return out;
@@ -187,8 +203,9 @@ export class PlayerPhysics {
 
   // ---------- internals ----------
 
-  _sanitize(tiles, deckY) {
-    if (![this.x, this.y, this.z].every(Number.isFinite)) {
+  _sanitize(tiles) {
+    const deckY = this._deckY;
+    if (!Number.isFinite(this.x) || !Number.isFinite(this.y) || !Number.isFinite(this.z)) {
       const n = this._nearest(tiles, 0, 0);
       this.x = n ? n.tx * C.TILE_SIZE : 0; this.z = n ? n.tz * C.TILE_SIZE : 0;
       this.y = deckY + C.EYE_OFFSET; this.grounded = !!n; this.swimming = false; this._climb = null; this.climbing = false;
@@ -199,8 +216,9 @@ export class PlayerPhysics {
     if (!Number.isFinite(this.vz)) this.vz = 0;
   }
 
-  _safety(tiles, deckY) {
-    const n = this._nearest(tiles, this.x, this.z);
+  _safety(tiles) {
+    const deckY = this._deckY;
+    const n = this._nearest(tiles);
     if (n && n.dist > C.MAX_RAFT_DISTANCE) {
       this.x = n.tx * C.TILE_SIZE; this.z = n.tz * C.TILE_SIZE; this.y = deckY + C.EYE_OFFSET;
       this.vx = this.vy = this.vz = 0; this.grounded = true; this.swimming = false;
@@ -208,7 +226,7 @@ export class PlayerPhysics {
   }
 
   // Feet supported by any tile (footprint expanded by SUPPORT_MARGIN).
-  _supported(tiles, x, z) {
+  _supported(tiles, x = this.x, z = this.z) {
     const h = HALF + C.SUPPORT_MARGIN;
     for (let i = 0; i < tiles.length; i++) {
       const t = tiles[i];
@@ -218,7 +236,7 @@ export class PlayerPhysics {
     return false;
   }
 
-  _inside(tiles, x, z) {
+  _inside(tiles, x = this.x, z = this.z) {
     const h = HALF - 0.02;
     for (let i = 0; i < tiles.length; i++) {
       const t = tiles[i];
@@ -228,19 +246,23 @@ export class PlayerPhysics {
     return false;
   }
 
-  // Nearest point on any tile footprint to (x, z).
-  _nearest(tiles, x, z) {
-    let best = null, bestD2 = Infinity;
+  // Nearest point on any tile footprint to (x, z). Returns a reused object (this._near) or null.
+  _nearest(tiles, x = this.x, z = this.z) {
+    let bi = -1, bestD2 = Infinity;
     for (let i = 0; i < tiles.length; i++) {
       const t = tiles[i];
       if (!isTile(t)) continue;
       const cx = t[0] * C.TILE_SIZE, cz = t[1] * C.TILE_SIZE;
       const px = clamp(x, cx - HALF, cx + HALF), pz = clamp(z, cz - HALF, cz + HALF);
       const d2 = (x - px) * (x - px) + (z - pz) * (z - pz);
-      if (d2 < bestD2) { bestD2 = d2; best = {tx: t[0], tz: t[1], px, pz, cx, cz}; }
+      if (d2 < bestD2) { bestD2 = d2; bi = i; }
     }
-    if (best) best.dist = Math.sqrt(bestD2);
-    return best;
+    if (bi < 0) return null;
+    const t = tiles[bi], n = this._near;
+    n.tx = t[0]; n.tz = t[1]; n.cx = t[0] * C.TILE_SIZE; n.cz = t[1] * C.TILE_SIZE;
+    n.px = clamp(x, n.cx - HALF, n.cx + HALF); n.pz = clamp(z, n.cz - HALF, n.cz + HALF);
+    n.dist = Math.sqrt(bestD2);
+    return n;
   }
 
   _pushOutOfTiles(tiles) {
@@ -252,7 +274,7 @@ export class PlayerPhysics {
         const cx = t[0] * C.TILE_SIZE, cz = t[1] * C.TILE_SIZE;
         if (Math.abs(this.x - cx) > HALF + R || Math.abs(this.z - cz) > HALF + R) continue;
         const px = clamp(this.x, cx - HALF, cx + HALF), pz = clamp(this.z, cz - HALF, cz + HALF);
-        const dx = this.x - px, dz = this.z - pz, d = Math.hypot(dx, dz);
+        const dx = this.x - px, dz = this.z - pz, d = hypot2(dx, dz);
         if (d >= R || d < 1e-6) continue; // d ~ 0 means centre inside; handled by lift-to-deck
         const push = R / d;
         const nx = px + dx * push, nz = pz + dz * push;
@@ -264,16 +286,20 @@ export class PlayerPhysics {
     }
   }
 
-  // Axis-separated movement against circular props; escape allowed if starting inside.
-  _moveHorizontal(mx, mz, blocked) {
+  // Axis-separated movement (velocity * this._dt) against circular props; escape allowed if
+  // starting inside. Candidate positions go through this._nx/_nz rather than double arguments.
+  _moveHorizontal(blocked) {
+    const mx = this.vx * this._dt, mz = this.vz * this._dt;
     if (!blocked.length) { this.x += mx; this.z += mz; return; }
-    const nx = this.x + mx;
-    if (this._propOk(this.x, this.z, nx, this.z, blocked)) this.x = nx; else this.vx = 0;
-    const nz = this.z + mz;
-    if (this._propOk(this.x, this.z, this.x, nz, blocked)) this.z = nz; else this.vz = 0;
+    this._nx = this.x + mx; this._nz = this.z;
+    if (this._propOk(blocked)) this.x = this._nx; else this.vx = 0;
+    this._nx = this.x; this._nz = this.z + mz;
+    if (this._propOk(blocked)) this.z = this._nz; else this.vz = 0;
   }
 
-  _propOk(ox, oz, nx, nz, blocked) {
+  // Is moving from (this.x, this.z) to (this._nx, this._nz) allowed?
+  _propOk(blocked) {
+    const ox = this.x, oz = this.z, nx = this._nx, nz = this._nz;
     for (let i = 0; i < blocked.length; i++) {
       const b = blocked[i];
       if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
@@ -299,8 +325,8 @@ export class PlayerPhysics {
 
   _beginClimb(n, deckY, blocked) {
     // Target: just inside the tile edge nearest to the swimmer.
-    let dx = n.px - this.x, dz = n.pz - this.z, d = Math.hypot(dx, dz);
-    if (d < 1e-6) { dx = n.cx - this.x; dz = n.cz - this.z; d = Math.hypot(dx, dz) || 1; }
+    let dx = n.px - this.x, dz = n.pz - this.z, d = hypot2(dx, dz);
+    if (d < 1e-6) { dx = n.cx - this.x; dz = n.cz - this.z; d = hypot2(dx, dz) || 1; }
     const lim = HALF - 0.3;
     let tx = clamp(n.px + dx / d * C.CLAMBER_INSET, n.cx - lim, n.cx + lim);
     let tz = clamp(n.pz + dz / d * C.CLAMBER_INSET, n.cz - lim, n.cz + lim);
@@ -310,7 +336,8 @@ export class PlayerPhysics {
     this.vx = this.vz = 0; this.vy = 0;
   }
 
-  _stepClimb(dt, deckY, out) {
+  _stepClimb(out) {
+    const dt = this._dt, deckY = this._deckY;
     const cl = this._climb;
     cl.t += dt;
     const u = clamp(cl.t / C.CLAMBER_TIME, 0, 1);
