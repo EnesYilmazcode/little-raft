@@ -49,8 +49,10 @@ export function createTasks(ctx) {
   }
   function observe(ev) {
     if (isGuest()) return;
-    const wasAll = allDone(st);
-    celebrate(observeTasks(st, ev), wasAll);
+    const wasAll = allDone(st), before = st.prog[0] + st.prog[1] + st.prog[2];
+    const fin = observeTasks(st, ev);
+    if (st.prog[0] + st.prog[1] + st.prog[2] !== before) rev++; // partial progress refreshes the view too
+    celebrate(fin, wasAll);
   }
 
   // Host clock: advance by day deltas from daynight, or by play time when daynight is off.

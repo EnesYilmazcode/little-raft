@@ -189,3 +189,11 @@ test('content registry: observe fans out and swallows a throwing module; day() a
     assert.equal(createContent({}, []).day(), null); assert.equal(createContent({}, []).tasksView(), null);
   } finally { console.error = errors; }
 });
+
+test('module view refreshes on partial progress', () => {
+  const ctx = fakeCtx();
+  const m = createTasks(ctx); m.load({ seed: 1, day: 0, ids: ['planks', 'decor', 'island'] }, 'save');
+  assert.equal(m.view().rows[0].n, 0);
+  m.observe({ kind: 'collect', type: 'wood', loot: { wood: 2 } });
+  assert.equal(m.view().rows[0].n, 2);
+});
