@@ -19,7 +19,7 @@ export const NET_CAPACITY = 10;
 export const NET_DIRS = Object.freeze([[1, 0], [-1, 0], [0, 1], [0, -1]].map(v => Object.freeze(v)));
 export const NET_HALF_W = 0.9;   // half the width along the raft edge (m)
 export const NET_DEPTH = 1.05;   // how far the frame sticks out over the water (m)
-export const NET_REACH = 3;      // metres from the player to the net centre for E
+export const NET_REACH = 2.2;    // metres from the player to the net frame for E
 export const NET_CATCH = Object.freeze(['wood', 'leaf', 'scrap', 'plastic', 'barrel']); // never the signal cache or a bottle
 const TILE = 2, HALF = TILE / 2, BOUND = 26;
 const isInt = Number.isInteger;
@@ -89,6 +89,11 @@ export function netAt(nets, x, z, pad = 0.3) {
     if (x >= r.minX - pad && x <= r.maxX + pad && z >= r.minZ - pad && z <= r.maxZ + pad) return i;
   }
   return -1;
+}
+// Horizontal distance (m) from (x, z) to the net's frame (0 inside it).
+export function netDistance(n, x, z) {
+  const r = netRect(n, scratchRect);
+  return Math.hypot(Math.max(0, r.minX - x, x - r.maxX), Math.max(0, r.minZ - z, z - r.maxZ));
 }
 export const findNet = (nets, x, z, d) => (nets || []).findIndex(n => n.x === x && n.z === z && n.d === d);
 const cellTaken = (nets, cx, cz) => (nets || []).some(n => netCellX(n) === cx && netCellZ(n) === cz);

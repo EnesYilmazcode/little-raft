@@ -61,7 +61,7 @@ import { newVitals, tickVitals, damage as damageVitals, consume as consumeVitals
 import { createVitalsUI } from './vitals-ui.js'; // [vitals] HUD bars, damage vignette, faint overlay
 import { createShark, cleanShark, cleanTileHp, lootable, SHARK, SHARK_LOOT } from './shark.js?build=v3-survival-ae77fa84ac2b'; // shark lane (dist/shark.js)
 import { createWaterEffects } from './waterfx.js?build=v3-survival-ae77fa84ac2b'; // shark lane: bite splashes
-import { cleanNets, copyNets, migrateDeckNets, netSpot, netBlock, netOnCell, catchNet, netAt, findNet, emptyNet, createNetView, createNetModel, netEdgeX, netEdgeZ, netYaw, netCenterX, netCenterZ, NET_CAPACITY, NET_REACH } from './nets.js?build=v3-survival-ae77fa84ac2b'; // [nets] edge collection nets
+import { cleanNets, copyNets, migrateDeckNets, netSpot, netBlock, netOnCell, catchNet, netAt, findNet, netDistance, emptyNet, createNetView, createNetModel, netEdgeX, netEdgeZ, netYaw, netCenterX, netCenterZ, NET_CAPACITY, NET_REACH } from './nets.js?build=v3-survival-ae77fa84ac2b'; // [nets] edge collection nets
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -293,7 +293,7 @@ export function mount(transfer = null) {
   let lastHostMessage = X?.lastHostMessage || performance.now(), lastGuestMessage = X?.lastGuestMessage || performance.now();
   let joinTimer = 0, joinDeadline = Number.isFinite(X?.joinDeadline) ? X.joinDeadline : 0;
   let waterClock = 0, waterAim = null; const wateringGroups = new Map(); // tileKey -> palm/purifier group
-  let netView = null, netAim = -1; const NET_TIPS = Array.from({length:NET_CAPACITY + 1}, (_, n) => ({key:'E', label:`Empty net (${n})`})); // [nets]
+  let netView = null, netAim = -1; const NET_TIPS = Array.from({length:NET_CAPACITY + 1}, (_, n) => (n ? {key:'E', label:`Empty net (${n})`} : {label:'The net is empty', muted:true})); // [nets]
   let lastSaveAt = performance.now(), lastNetSendAt = 0, toastTimer = 0, wheelAcc = 0, peerHidden = !!X?.peerHidden, heartbeat = 0;
   let noticeText = '', noticeUntil = 0, contextCache = null, uiFailed = false; let fishShown = null;
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
@@ -1019,7 +1019,7 @@ export function mount(transfer = null) {
     }
     if (a.kind === 'emptyNet') { // [nets] host-authoritative: loot goes into the actor's bag, leftovers stay in the net
       const i = findNet(world.nets, a.x, a.z, a.d), p = actor === 'guest' ? other : physics; if (i < 0 || !p) return;
-      const n = world.nets[i]; if (Math.hypot(netCenterX(n) - p.x, netCenterZ(n) - p.z) > NET_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .5)) return;
+      const n = world.nets[i]; if (netDistance(n, p.x, p.z) > NET_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .5)) return;
       if (!n.items.length) { emit({kind:'notice', text:'The net is empty'}, actor); return; }
       const r = emptyNet(n, bag, type => (type === 'barrel' ? rollBarrel(Math.random, prog?.barrelLuck) : LOOT[type]));
       if (r.taken) { world.collected += r.taken; emit({kind:'loot', text:'+ ' + Object.entries(r.loot).map(([k, c]) => `${c} ${itemName(k)}`).join(' · '), loot:r.loot}, actor); award({kind:'collect'}); netView?.sync(world.nets); }
@@ -1460,7 +1460,7 @@ export function mount(transfer = null) {
     frameAim = running && !dialog ? currentAim(aimScratch) : null;
     pickTarget = pickupFrom(frameAim);
     netAim = pickTarget || !frameAim?.point ? -1 : netAt(world.nets, frameAim.point.x, frameAim.point.z); // [nets] E empties the aimed net in reach
-    if (netAim >= 0 && Math.hypot(netCenterX(world.nets[netAim]) - physics.x, netCenterZ(world.nets[netAim]) - physics.z) > NET_REACH) netAim = -1;
+    if (netAim >= 0 && netDistance(world.nets[netAim], physics.x, physics.z) > NET_REACH) netAim = -1;
     waterAim = pickTarget || netAim >= 0 ? null : wateringTarget(frameAim);
     updateVitals(dt, dialog); updateEatTip(dialog); // [vitals]
     if (vitalsUI) { vitalsUI.update(vitals, running && !disposed && fainted < 0); }
@@ -1950,6 +1950,11 @@ export function mount(transfer = null) {
     spearTestHit() { return spearRep?.testHit() ?? false; }, // [spear-repair] test helper: fake a landed thrust
     spearPose(p) { spearRep?.pinPoke(p); }, // [spear-repair] test helper: freeze the jab for screenshots
     get spear() { return spearRep?.debug() ?? null; }, // [spear-repair]
+    netFeed(i = 0, n = 1) { // [nets] test helper (host/solo): line up n free supplies just upstream of net i so the current carries them in
+      const t = world.nets?.[i]; if (!t || role === 'guest') return 0; let k = 0;
+      for (const it of world.items) { if (k >= n) break; if (it.type === 'cache' || it.type === 'bottle' || isPending(it)) continue; it.x = netCenterX(t) + ((k % 3) - 1) * .25; it.z = t.d === 2 ? netCenterZ(t) : netCenterZ(t) - .7 - k * .3; k++; } // the back side: drop them in
+      return k;
+    },
     get shark() { return sharkDebug; }, // shark lane
     get targets() {
       return world.items.map(it => {
