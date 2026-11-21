@@ -120,8 +120,9 @@ test('clean fixes or drops bad fields', () => {
 // ---------------------------------------------------------------- loot and the host gather check
 
 test('lootFor table', () => {
-  assert.deepEqual(lootFor('palm', 1, 0, 0), [['wood', 1], ['leaf', 1]]);
-  assert.deepEqual(lootFor('palm', 1, 0, 2), [['wood', 1], ['leaf', 1], ['seed', 1]]);
+  // palms: one chop; the fifth (felling) chop always brings 5 planks + 2 leaves (see tests/axe.test.mjs)
+  assert.deepEqual(lootFor('palm', 1, 0, 4).slice(0, 2), [['wood', 5], ['leaf', 2]]);
+  assert.ok(lootFor('palm', 1, 0, 0).every(([k]) => k === 'coconut' || k === 'seed'));
   assert.deepEqual(lootFor('rock', 1, 0, 0), [['stone', 1]]);
   assert.deepEqual(lootFor('sand', 1, 0, 3), [['sand', 1]]);
   for (let s = 0; s < 50; s++) assert.deepEqual(lootFor('bush', s, 2, 1), lootFor('bush', s, 2, 1));
@@ -149,11 +150,12 @@ test('applyGather grants loot and counts the gather', () => {
   assert.equal(r.ok, true);
   assert.equal(bag.count('stone'), 1);
   assert.equal(st.isl.used[k], 1);
-  // palm on the third gather gives a seed
+  // bare hands get nothing from a palm any more
   const p = st.layout.nodes.findIndex(n => n.kind === 'palm'), pn = st.layout.nodes[p];
   const ppos = { x: st.cx + pn.x, z: st.cz + pn.z + 1 };
-  for (let i = 0; i < 3; i++) { st.clock += 1; assert.equal(applyGather(st, { kind: 'islands.gather', seed: 1234, node: p }, 'host', ppos, bag).ok, true); }
-  assert.equal(bag.count('wood'), 3); assert.equal(bag.count('leaf'), 3); assert.equal(bag.count('seed'), 1);
+  st.clock += 1;
+  assert.equal(applyGather(st, { kind: 'islands.gather', seed: 1234, node: p }, 'host', ppos, bag).reason, 'axe');
+  assert.equal(bag.count('wood'), 0); assert.equal(st.isl.used[p], 0);
 });
 
 test('applyGather rejects bad requests without changes', () => {
@@ -190,12 +192,13 @@ test('applyGather rejects bad requests without changes', () => {
 test('applyGather with a full bag is atomic', () => {
   const { st, pos } = gatherSetup();
   const p = st.layout.nodes.findIndex(n => n.kind === 'palm'), pn = st.layout.nodes[p];
-  const bag = fullBag(); bag.slots[0] = { kind: 'wood', count: 1 }; // wood fits, leaf does not
+  const bag = fullBag(); bag.slots[0] = { kind: 'wood', count: 1 }; bag.slots[1] = { kind: 'axe', count: 1, durability: 100 }; // wood fits, leaf does not
+  st.isl.used[p] = 4; // the felling chop
   const before = JSON.stringify(bag.snapshot());
-  const r = applyGather(st, { kind: 'islands.gather', seed: 1234, node: p }, 'host', { x: st.cx + pn.x, z: st.cz + pn.z }, bag);
+  const r = applyGather(st, { kind: 'islands.chop', seed: 1234, node: p, slot: 1 }, 'host', { x: st.cx + pn.x, z: st.cz + pn.z }, bag);
   assert.equal(r.ok, false); assert.equal(r.reason, 'full');
   assert.equal(JSON.stringify(bag.snapshot()), before);
-  assert.equal(st.isl.used[p], 0);
+  assert.equal(st.isl.used[p], 4);
   void pos;
 });
 

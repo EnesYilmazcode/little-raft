@@ -28,8 +28,8 @@ export function createAnimalsUI(ctx, { title = 'Name your Puffhen', kind = 'anim
     <div class="lr-an-row"><button type="button" class="lr-an-cancel">Cancel</button><button type="button" class="lr-an-save">Save</button></div>
   </form>`;
   document.body.append(dlg);
-  dlg.querySelector('h2').textContent = String(title); // [gull] never innerHTML
-  const input = dlg.querySelector('input');
+  const input = dlg.querySelector('input'), heading = dlg.querySelector('h2');
+  heading.textContent = String(title); // [gull] never innerHTML
   input.setAttribute('aria-label', String(label)); // [gull]
   let id = null;
 
@@ -48,8 +48,10 @@ export function createAnimalsUI(ctx, { title = 'Name your Puffhen', kind = 'anim
   dlg.addEventListener('close', () => { id = null; if (ctx.running) ctx.requestLock?.(); });
 
   return {
-    open(animalId, name) {
+    open(animalId, name, species) { // species label (Puffhen, Bramblegoat); omitted: keep the dialog's own title (gull)
       id = animalId;
+      if (species) { const l = String(species); heading.textContent = `Name your ${l}`; input.setAttribute('aria-label', `${l} name`); }
+      else { heading.textContent = String(title); input.setAttribute('aria-label', String(label)); }
       input.value = String(name ?? '');
       ctx.releaseLock?.();
       if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }

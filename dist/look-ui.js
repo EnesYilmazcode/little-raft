@@ -4,6 +4,7 @@
 //   onChange(look) runs on every pick (game.js recolours hands/player and saves);
 //   onSend() tells the co-op partner, debounced 400 ms and flushed on close.
 // Opened by the pause menu ('littleraft:open-look' event) and the welcome card. Spec: docs/specs/customise.md.
+import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { PALETTE, SLOTS, HATS, cleanLook, lookColors, lookKey, hatAvailable } from './look.js?build=v3-survival-ae77fa84ac2b';
 import { ACHIEVEMENTS } from './logbook.js?build=v3-survival-ae77fa84ac2b';
 
@@ -210,7 +211,7 @@ export function createLookUI({ getState, onChange, onSend, onPause, onResume } =
     if (!alive || isOpen) return;
     isOpen = true;
     safe(onPause);
-    if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
+    exitLock(document);
     paint();
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     try { dlg.querySelector('.lk-sw [aria-checked=true]')?.focus({ preventScroll: true }); } catch {}

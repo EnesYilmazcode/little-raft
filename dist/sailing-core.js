@@ -16,7 +16,7 @@ export const SAIL = Object.freeze({
   WIND_STR_TAU: 20,         // windStr eases toward windStrTarget (s)
   WIND_MIN: 0.55, WIND_MAX: 1,
   WIND_CLOCK_MIN: 70, WIND_CLOCK_MAX: 140, WIND_CLOCK_CAP: 200,
-  PADDLE_IMPULSE: 0.25, PADDLE_CAP: 0.9, PADDLE_COOLDOWN: 0.8, // paddling alone never exceeds PADDLE_CAP
+  PADDLE_IMPULSE: 0.25, PADDLE_CAP: 1.1, PADDLE_COOLDOWN: 0.8, // paddling alone never exceeds PADDLE_CAP
   V_CLAMP: 3,               // validator clamp on |vx|,|vz|
   // Offsets wrap per axis into [-W/2, W/2). Water offsets feed a float32 shader (hash noise) so they
   // stay small; seabed offsets only need bounded float64 precision.
@@ -150,7 +150,9 @@ export function stepSailing(state, dt, opts, out) {
   state.vz += (_t.z - state.vz) * k;
 
   if (state.anchored) {
-    out.dwx = -CX * dt; out.dwz = -CZ * dt;
+    // Anchored: the raft holds still and so does the water around it (dw = dg = 0), so the current no longer
+    // carries debris past (Raft: no flotsam while anchored). The ocean shader keeps its own wave motion.
+    out.dwx = 0; out.dwz = 0;
   } else {
     // Grounding: remove seabed-velocity components pointing toward nearby blockers.
     // b.r is the full stop distance (island radius + clearance + raft radius).

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import * as T from '../dist/vendor/three.module.js';
 import { buildModel, getModel, hasModel, MODEL_KINDS, MODEL_ALIASES } from '../dist/models.js';
 
-const BUDGET = { seed: 600, plank: 600, scrap: 600, beet: 600, potato: 600, plastic: 1500, leaf: 1500, rope: 1500, barrel: 1500,
+const BUDGET = { seed: 600, coconut: 600, plank: 600, scrap: 600, beet: 600, potato: 600, plastic: 1500, leaf: 1500, rope: 1500, barrel: 1500,
   hook: 2500, hammer: 2500, rod: 2500, wateringCan: 2500, sprout: 1200, young: 1200, mature: 1200, harvestable: 1200,
   fish: 1500, nails: 600, cup: 600, water: 600, palmSeedling: 1200, palmSprout: 1200, palmYoung: 3000, palmMature: 5000, planter: 3000,
   crate: 3000, bench: 3000, cropPlot: 3000, lantern: 3000, sail: 5000, net: 5000, palmPlanter: 5000, foundation: 5000,
