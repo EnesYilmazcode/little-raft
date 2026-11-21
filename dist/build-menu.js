@@ -55,7 +55,7 @@ const CSS = `
 .bm-req.bm-short{color:#ff9f86}
 .bm-req.bm-short svg{opacity:.5;filter:grayscale(.7)}
 .bm-free{font:600 12px/1 ${FONT};color:#d9c9a6}
-.bm-chip{position:fixed;left:50%;bottom:var(--bm-chip-bottom,178px);z-index:3;transform:translateX(-50%);display:flex;align-items:center;gap:10px;
+.bm-chip{position:fixed;left:50%;bottom:var(--bm-chip-bottom,104px);z-index:3;transform:translateX(-50%);display:flex;align-items:center;gap:10px;
   padding:7px 14px 7px 7px;border-radius:12px;pointer-events:none;max-width:calc(100vw - 32px);
   background:repeating-linear-gradient(90deg,#0000000f 0 2px,transparent 2px 21px),linear-gradient(#5d4129f0,#3d2a19f0);
   border:1.5px solid #c9a66b;box-shadow:0 0 0 1.5px #3e2a17,0 4px 14px #0006;color:#fff2cc;font:500 13px/1.25 ${FONT};transition:opacity .12s}
@@ -69,7 +69,7 @@ const CSS = `
 .bm-hint kbd{font:700 10px/1 ${FONT};color:#ffdd95;border:1px solid #e0bd7155;border-radius:3px;padding:1px 3px}
 .bm-status{display:block;margin-top:3px;font:700 12px/1.2 ${FONT};color:#ffab8f}
 .bm-status:empty{display:none}
-@media(max-width:760px){.bm-chip{--bm-chip-bottom:150px;gap:8px;padding:5px 10px 5px 5px}.bm-chip>i{width:32px;height:32px}.bm-chip>i svg{width:22px;height:22px}
+@media(max-width:760px){.bm-chip{--bm-chip-bottom:118px;gap:8px;padding:5px 10px 5px 5px}.bm-chip>i{width:32px;height:32px}.bm-chip>i svg{width:22px;height:22px}
   .bm-mid b{font-size:14px;margin:3px 0 5px}.bm-req{font-size:12px}.bm-req em{display:none}.bm-mid small{font-size:8.5px}}
 @media(prefers-reduced-motion:reduce){.bm-wheel{transition:none}}`;
 

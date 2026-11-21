@@ -13,6 +13,7 @@ export const LEVEL_H = 2.2;
 const PLANKS = ['#bb8a53', '#c69860', '#ad7c4a'];
 const BEAM = '#5e4029', POST = '#6e4a2e', BATTEN = '#946640', ROPE = '#a8946c', NAIL = '#4b4844';
 const STRAW = ['#c9a85a', '#b8954a', '#d4b46a'], LEAF = ['#6f8f3a', '#5c7a30', '#86a04a'];
+const UNDER = [2.6, 1.05, 1.0]; // per-channel boost for downward faces (offsets the teal hemisphere ground light)
 const WALL_T = 0.07, POST_X = 0.15, POST_Z = 0.145, EDGE_IN = 0.925;
 
 function makeRng(key) {
@@ -35,8 +36,13 @@ function kit(T, type) {
     if (pos) n.translate(pos[0], pos[1], pos[2]);
     n.computeVertexNormals(); // flat faces: low-poly look
     col.set(hex).multiplyScalar(1 + jit(vary * 2));
-    const c = new Float32Array(n.attributes.position.count * 3);
-    for (let i = 0; i < c.length; i += 3) { c[i] = col.r; c[i + 1] = col.g; c[i + 2] = col.b; }
+    const c = new Float32Array(n.attributes.position.count * 3), ny = n.attributes.normal;
+    for (let i = 0, v = 0; i < c.length; i += 3, v++) {
+      // Downward faces only ever see the hemisphere's sea-teal ground light, which turns timber
+      // ceilings green; warm them so floor/roof undersides read as shaded wood.
+      const k = Math.max(0, -ny.getY(v));
+      c[i] = col.r * (1 + k * (UNDER[0] - 1)); c[i + 1] = col.g * (1 + k * (UNDER[1] - 1)); c[i + 2] = col.b * (1 + k * (UNDER[2] - 1));
+    }
     n.setAttribute('color', new T.BufferAttribute(c, 3));
     parts.push(n);
     return n;
@@ -170,11 +176,14 @@ function buildPillar(K, T) {
 
 function buildFloor(K, T) {
   const top = 0, TH = 0.045;
-  for (const [a, b] of columns(K, -1, 1, 8)) {
-    const a1 = a + (a <= -1 ? 0.003 : 0), b1 = b - (b >= 1 ? 0.003 : 0), xc = (a1 + b1) / 2, t = top - K.rng() * 0.008;
-    K.box(b1 - a1, TH, 1.994 - K.rng() * 0.01, xc, t - TH / 2, K.jit(0.004), K.pick(PLANKS), [0, K.jit(0.004), K.jit(0.02)]);
+  columns(K, -1, 1, 8).forEach(([a, b], k) => {
+    // Inner plank edges overlap their neighbour (alternately stepped 4 mm) so no light shows through the
+    // ceiling below; the outer edges stay inside the cell.
+    const a1 = a <= -1 ? a + 0.003 : a - 0.006, b1 = b >= 1 ? b - 0.003 : b + 0.006, xc = (a1 + b1) / 2;
+    const t = top - (k % 2 ? 0.004 : 0) - K.rng() * 0.003;
+    K.box(b1 - a1, TH, 1.994 - K.rng() * 0.01, xc, t - TH / 2, K.jit(0.004), K.pick(PLANKS), [0, K.jit(0.004), K.jit(0.008)]);
     for (const z of [-0.72, 0.72]) nail(K, xc + K.jit(0.06), t + 0.002, z + K.jit(0.04), true);
-  }
+  });
   for (const z of [-0.72, 0.72]) {
     const g = new T.CylinderGeometry(0.042, 0.045, 1.98, 7, 1);
     const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 1.5, uv.getY(i));
