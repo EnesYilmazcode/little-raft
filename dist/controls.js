@@ -21,16 +21,21 @@ const emit = (type, detail) => { try { globalThis.dispatchEvent?.(new CustomEven
 // g: {canvas, isBlocked, sensitivity, motion, look(dx,dy), hotbarSize, slot(), selectSlot(i), interact(),
 //     inventory(), repair(back), pause(), menuBack(id) (pad closes the open menu), useDown(), useUp(), useCancel(), reelDown(), reelUp(),
 //     buildPieces? (list or () => list of {id,label}), buildPick?(id),
-//     buildWheelOpen?() (hammer build wheel open: hotbar and interact are swallowed, movement still works)}
+//     buildWheelOpen?() (hammer build wheel open: hotbar and interact are swallowed, movement still works),
+//     menuNav?(id, phase) (pad focus layer while a panel is open: navUp/navDown/navLeft/navRight/activate/tabPrev/tabNext)}
 export function createControls(g) {
   const map = new ActionMap({storage:storage()});
   const feel = new MoveFeel({motionScale:1});
   let idle = true, radial = null, cursor = [0, 0], tabs = new Set(), fx = {bobY:0, bobX:0, roll:0, eyeOffset:0, footstep:false}, padUse = false, padReel = false;
   const call = (name, ...a) => { try { return g[name]?.(...a); } catch (e) { console.error('controls:', name, e); } };
 
+  const clock = () => globalThis.performance?.now?.() ?? Date.now();
+  let navQuietUntil = 0; // a rebind just took a pad press: that press must not also drive the menu
   const onAction = (id, phase, info) => {
     if (info?.blocked) { // pad Y / Start / B while a menu is open: close it (never while a rebind is listening)
-      if (![...tabs].some(t => t.capturing)) { call('menuBack', id); input.clear(); }
+      if (tabCapturing() || clock() < navQuietUntil) return;
+      if (info.nav) { call('menuNav', id, phase); return; } // D-pad / stick / A / LB / RB move the panel's focus
+      call('menuBack', id); input.clear();
       return;
     }
     const pad = input.activeDevice === 'pad';
@@ -45,7 +50,7 @@ export function createControls(g) {
     else if (id === 'rotate') call('release'); // let go of a steered sail on any device
   };
   const tabCapturing = () => { for (const t of tabs) if (t.capturing) return true; return false; }; // per frame: no array copy
-  const input = createInput({element:g.canvas, map, onAction, sensitivity:g.sensitivity, blockedActions:['inventory', 'pause'],
+  const input = createInput({element:g.canvas, map, onAction, sensitivity:g.sensitivity, blockedActions:['inventory', 'pause'], menuNav:!!g.menuNav,
     isBlocked:() => tabCapturing() || (!!g.isBlocked?.() && !radial?.isOpen)});
 
   function openRadial() {
@@ -56,9 +61,11 @@ export function createControls(g) {
   }
 
   // Call once per frame before physics. Returns the shaped input for physics.update().
-  function movement(dt, active, physics) {
+  // lookDt: real frame time (game.js clamps it to 0.25 s) for pad look and menu repeat; dt stays the capped sim step.
+  function movement(dt, active, physics, lookDt = dt) {
     if (radial?.isOpen && g.isBlocked?.()) radial.close(); // a dialog opened over the radial: cancel, never pick behind it
-    input.update(dt);
+    if (tabCapturing()) navQuietUntil = clock() + 300;
+    input.update(dt, lookDt);
     const {dx, dy} = input.lookDelta();
     if (radial?.isOpen) { // look input steers a virtual stick (works for right stick and locked mouse)
       input.hotbarStep(); input.hotbarSlot(); // drain: bumpers pressed while choosing must not fire on close
@@ -97,6 +104,7 @@ export function createControls(g) {
 
   const api = {map, input, feel, movement, afterMove, camera,
     get radialOpen() { return !!radial?.isOpen; },
+    get capturing() { return tabCapturing(); }, // a controls tab is waiting for a key/button to bind
     clear() { input.clear(); padUse = padReel = false; radial?.close(); },
     // controls-tab.js is only fetched the first time a menu mounts the tab. mountTab() returns a handle at once
     // (capturing/refresh/dispose work before the module arrives); handle.ready resolves to the real tab.
@@ -104,9 +112,9 @@ export function createControls(g) {
       let tab = null, gone = false;
       const handle = {
         get element() { return tab?.element ?? null; },
-    get capturing() { return tabCapturing(); }, // a controls tab is waiting for a key/button to bind
         get capturing() { return !!tab?.capturing; },
         refresh() { tab?.refresh(); },
+        cancel() { tab?.cancel?.(); },
         dispose() { gone = true; tab?.dispose?.(); tab = null; },
         ready: import('./controls-tab.js?build=v3-survival-ae77fa84ac2b').then(m => {
           if (gone) return null;
@@ -114,7 +122,6 @@ export function createControls(g) {
         }).catch(e => { console.error('controls: tab failed to load', e); return null; }),
       };
       tabs.add(handle); return handle; },
-        cancel() { tab?.cancel?.(); },
     unmountTab(t) { tabs.delete(t); t?.dispose?.(); },
     dispose() { input.dispose(); radial?.dispose(); for (const t of tabs) t.dispose?.(); tabs.clear(); if (globalThis.raftControls === api) delete globalThis.raftControls; }};
   globalThis.raftControls = api; // menus lane: raftControls.mountTab(el); QA: raftControls.feel / .input

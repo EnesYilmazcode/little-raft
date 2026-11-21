@@ -143,7 +143,7 @@ test('CTL-2: controls routes pad menu presses to menuBack and game.js closes + r
   s.p.buttons[9] = btn(1); s.tick(); s.p.buttons[9] = btn(0); s.tick();
   assert.deepEqual(s.calls, [['menuBack', 'pause']]);
   s.done();
-  const cb = /menuBack:\(\) => \{([^\n]*)\}, \/\//.exec(gameSrc)?.[1] ?? '';
+  const cb = /menuBack:(?:\(\)|id) => \{([^\n]*)\}, \/\//.exec(gameSrc)?.[1] ?? '';
   assert.match(cb, /survivalUI\?\.isOpen\) survivalUI\.close\(\)/);
   assert.match(cb, /settingsController\?\.isOpen\) settingsController\.close\(\)/);
   // those close() calls run the same onResume -> requestLock path the keyboard close uses

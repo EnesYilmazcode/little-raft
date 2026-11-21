@@ -21,6 +21,7 @@ import { CONTENT_DECOR, CONTENT_BLOCK_RADIUS } from './content-items.js?build=v3
 import { createBuilding, cleanPieces } from './building.js?build=v3-survival-ae77fa84ac2b'; // building-pieces lane hook (docs/cloud/building-pieces.md)
 import { PIECES, PIECE_ORDER } from './building-pieces.js?build=v3-survival-ae77fa84ac2b'; // controls lane: pad build radial lists the hammer's pieces
 import { createControls } from './controls.js?build=v3-survival-ae77fa84ac2b'; // controls lane: input map, gamepad, movement feel (docs/cloud/controls.md)
+import { createPadNav } from './pad-nav.js?build=v3-survival-ae77fa84ac2b'; // controls lane: gamepad focus inside open panels // controls lane: input map, gamepad, movement feel (docs/cloud/controls.md)
 import { createSailing } from './sailing-world.js?build=v3-survival-ae77fa84ac2b'; // [sailing] see docs/cloud/sailing.md
 import { cleanSailing } from './sailing-core.js?build=v3-survival-ae77fa84ac2b'; // [sailing]
 import { createCoop } from './coop.js?build=v3-survival-ae77fa84ac2b'; // coop: co-op layer (docs/cloud/coop.md)
@@ -1387,7 +1388,7 @@ export function mount(transfer = null) {
   function movePlayer(frameDt, input) {
     splitSteps(frameDt, .05, .25, steps); // real frame time in equal steps; a long stall must not teleport the player
     const dt = steps.n * steps.step, laneDt = Math.min(dt, .05); // lane hooks keep the old capped frame step
-    const ci = controls?.movement(laneDt, running && input, physics); // controls lane: polls input, applies look, shapes movement
+    const ci = controls?.movement(laneDt, running && input, physics, Math.min(dt, .25)); // controls lane: polls input, applies look (real frame time: pad look keeps its speed at low fps), shapes movement
     if (!running) { walking = false; return; }
     const fwd = ci ? ci.forward : input ? held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown') : 0, side = ci ? ci.strafe : input ? held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft') : 0;
     const surf = building ? building.preStep(physics, deckY()) : null; // building-pieces lane hook
@@ -1775,6 +1776,9 @@ export function mount(transfer = null) {
   on(window, 'blur', () => { clearInput(); escHeld = relockOnEscUp = false; document.body.classList.toggle('away', running); refreshPointerUI(true); }); on(window, 'blur', () => sailing?.release()); // [sailing]
   on(window, 'focus', () => { document.body.classList.remove('away'); refreshPointerUI(true); });
   // controls lane: one input layer for keyboard/mouse/gamepad; falls back to the legacy handlers above if it fails to start.
+  const topDialog = () => [...document.querySelectorAll('dialog[open]')].pop() ?? null;
+  // pad focus scope: the bag/crafting panel, else the pause/settings menu, else the topmost open dialog
+  const padNav = createPadNav({doc:document, scope:() => survivalUI?.isOpen ? $('#inventory') : settingsController?.isOpen ? $('#options') : topDialog()});
   try {
     controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
       look:(dx, dy) => { if (!building?.menu.isOpen) look(dx, dy, 1, true); }, hotbarSize:HOTBAR, // building wheel steals mouse look while open
@@ -1782,7 +1786,8 @@ export function mount(transfer = null) {
       interact, inventory:openInventory, repair:back => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(back ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
       pause:() => settingsController?.open(), buildWheelOpen:() => !!building?.menu.isOpen, // hotbar + interact are swallowed while the build wheel is open
       buildPieces:() => PIECE_ORDER.map(id => ({id, label:PIECES[id].name})), buildPick:pickBuildPiece, // pad build radial = the hammer's wheel
-      menuBack:() => { if (!running) return; if (survivalUI?.isOpen) survivalUI.close(); else if (settingsController?.isOpen) settingsController.close(); }, // pad Y/Start/B: same close + relock as the keyboard
+      menuBack:id => { if (!running) return; if (survivalUI?.isOpen) survivalUI.close(); else if (id === 'back' && settingsController?.back()) return; else if (settingsController?.isOpen) settingsController.close(); else topDialog()?.close(); }, // pad Y/Start/B: same close + relock as the keyboard (B first folds the settings panel; other dialogs close and relock, or return to pause, in their close handlers)
+      menuNav:(id, phase) => padNav.handle(id, phase), // pad D-pad/stick/A/LB/RB move focus inside the open panel (pad-nav.js)
       useDown:() => { if (fc?.pointerDown()) return; if (reelCast('click')) return; if (castOut()) reeling = true; else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); } },
       useUp:() => { reeling = false; if (fc?.pointerUp()) return; if (charging) releaseCharge(pickCenter()); }, useCancel:() => { reeling = false; if (charging?.x === null) charging = null; fc?.releaseInput(); }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});
     signal.addEventListener('abort', () => controls?.dispose());
