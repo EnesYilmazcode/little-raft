@@ -1,7 +1,7 @@
-// Held scrap hook model (first-person). ES module.
+// Held plastic grapple hook (first-person): pale-teal plastic hook lashed to a wooden stick. ES module.
 // Usage: import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b'; const g = createHook(THREE);
 import { mergeChildMeshes } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
-// Group is re-centered on its bounding box: ~0.70 wide (X), ~0.84 tall (Y), ~0.40 deep (Z).
+// Group is re-centered on its bounding box: ~0.75 wide (X), ~0.93 tall (Y), ~0.41 deep (Z); ~4.8k tris, 7 draw calls.
 // Handle at bottom (-Y), curved hook with point at top (+Y), hook bend leans toward -Z (front).
 export function createHook(T) {
   const root = new T.Group();
@@ -54,7 +54,7 @@ export function createHook(T) {
   {
     // squash across the bend (normal) so it reads as a moulded strip, not a round rod; tint per vertex
     const pos = hookGeo.attributes.position, cols = [], c = new T.Color(), P = new T.Vector3(), v = new T.Vector3();
-    const pale = new T.Color(0xa9dcd3), white = new T.Color(0xeef0e6), scuff = new T.Color(0x7fa9a2);
+    const pale = new T.Color(0x86cbc0), white = new T.Color(0xeceee2), scuff = new T.Color(0x6f9c94), patch = new T.Color(0xf0c95a);
     for (let i = 0; i <= TS; i++) {
       const t = i / TS; curve.getPointAt(t, P);
       const N = hookGeo.normals[i];
@@ -67,6 +67,8 @@ export function createHook(T) {
         v.multiplyScalar(taper);
         pos.setXYZ(k, P.x + v.x, P.y + v.y, P.z + v.z);
         c.copy(pale).lerp(white, Math.min(1, Math.max(0, (t - 0.15) * 1.6)) * 0.75);
+        // a sun-faded yellow scrap patch spliced into the bend (taped at both ends below)
+        if (t > 0.5 && t < 0.62) c.lerp(patch, 0.8);
         c.lerp(scuff, 0.25 * (0.5 + 0.5 * Math.sin(t * 47 + j * 1.7)) * (0.5 + 0.5 * Math.sin(t * 13)));
         cols.push(c.r, c.g, c.b);
       }
@@ -98,9 +100,9 @@ export function createHook(T) {
   spur(0.95, 0.07, 0.016);
 
   // ---------- 4. second teal tine on the back of the crown (grapple look) ----------
-  const tinePts = [[0.1, 0.31, -0.08], [0.15, 0.39, -0.1], [0.16, 0.46, -0.08], [0.13, 0.5, -0.05]].map(p => new T.Vector3(...p));
+  const tinePts = [[0.1, 0.3, -0.08], [0.14, 0.36, -0.1], [0.15, 0.415, -0.085], [0.13, 0.45, -0.06]].map(p => new T.Vector3(...p));
   const tineCurve = new T.CatmullRomCurve3(tinePts);
-  add(new T.TubeGeometry(tineCurve, 10, 0.02, 7, false), teal);
+  add(new T.TubeGeometry(tineCurve, 8, 0.019, 7, false), teal);
   const tE = tineCurve.getPoint(1), tT = tineCurve.getTangent(1).normalize();
   const tTip = add(new T.CylinderGeometry(0.004, 0.02, 0.05, 7), teal);
   tTip.quaternion.setFromUnitVectors(up, tT);
@@ -111,7 +113,12 @@ export function createHook(T) {
     const m = add(new T.CylinderGeometry(R + 0.006, R + 0.006, 0.022, 10, 1, true), tape);
     m.quaternion.setFromUnitVectors(up, tjT);
     m.position.copy(tjP).addScaledVector(tjT, d);
-    m.scale.set(1.0, 1, 0.75);
+  }
+
+  for (const u of [0.5, 0.62]) {
+    const m = add(new T.CylinderGeometry(R + 0.005, R + 0.005, 0.03, 10, 1, true), tape);
+    m.quaternion.setFromUnitVectors(up, curve.getTangent(u).normalize());
+    m.position.copy(curve.getPoint(u));
   }
 
   // ---------- 5. wooden stick handle (warm driftwood, irregular) ----------
