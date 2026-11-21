@@ -1,8 +1,8 @@
-"""Scripted bug-hunt playthrough. Usage: python tests/playtest.py <dist_dir> <out_dir>
+"""Scripted bug-hunt playthrough. Usage: python3 tests/playtest.py <dist_dir> <out_dir>
 Copies dist to a temp dir (so hot-swap can rewrite version.json), seeds a save, plays through
 crafting, stacking, splitting, dragging, hooking, swimming, saving and a live swap. Prints JSON;
 every entry in "fails" is a bug."""
-import sys, json, shutil, tempfile, threading, functools, http.server, socketserver
+import os, sys, time, json, shutil, tempfile, threading, functools, http.server, socketserver
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
@@ -22,6 +22,14 @@ def check(ok, what):
     if not ok: R['fails'].append(what)
 def st(page): return page.evaluate('raftDebug.state')
 def counts(page): return st(page)['stock']
+def wait_js(page, expr, timeout):  # Python-side poll: in-page rAF/timer polling stalls under software GL
+    end = time.monotonic() + timeout / 1000
+    while True:
+        try:
+            if page.evaluate('() => !!(' + expr + ')'): return
+        except Exception: pass
+        if time.monotonic() > end: raise TimeoutError(expr)
+        page.wait_for_timeout(200)
 def shot(page, name): page.screenshot(path=str(out / f'{name}.png'))
 
 slots = [None] * 28
@@ -32,14 +40,20 @@ SAVE = {'tiles': [[x, z] for z in (-1, 0, 1) for x in (-1, 0, 1)], 'decor': [], 
         'items': [], 'hostInventory': {'slots': slots, 'selected': 0}, 'guestInventory': None}
 
 with sync_playwright() as p:
-    b = p.chromium.launch(channel='chrome', headless=True, args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'])
-    page = b.new_context(viewport={'width': 1280, 'height': 720}).new_page()
+    args = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--disable-dev-shm-usage']
+    try: b = p.chromium.launch(headless=True, args=args)
+    except Exception:  # bundled browser missing: fall back to any installed headless shell / chromium
+        root = Path(os.environ.get('PLAYWRIGHT_BROWSERS_PATH', Path.home() / '.cache/ms-playwright'))
+        exe = next(iter(sorted(root.glob('chromium-*/chrome-linux64/chrome')) + sorted(root.glob('chromium_headless_shell-*/*/chrome-headless-shell'))), None)
+        if not exe: raise
+        b = p.chromium.launch(headless=True, args=args, executable_path=str(exe))
+    page = b.new_context(viewport={'width': 960, 'height': 540}).new_page()
     page.on('pageerror', lambda e: R['errors'].append(str(e)))
     page.on('console', lambda m: m.type == 'error' and R['errors'].append(m.text[:300]))
     # Seed before the game boots (a reload would let beforeunload save over it).
     page.add_init_script('if (!sessionStorage.seeded) { sessionStorage.seeded = 1; localStorage.setItem("little-raft-v1", ' + json.dumps(json.dumps(SAVE)) + ') }')
-    page.goto(url); page.wait_for_function('!!window.raftDebug', timeout=20000)
-    page.locator('#solo').click(); page.wait_for_function('raftDebug.state.running', timeout=15000); page.wait_for_timeout(600)
+    page.goto(url); wait_js(page, '!!window.raftDebug', 20000)
+    page.evaluate("document.querySelector('#solo').click()"); wait_js(page, 'raftDebug.state.running', 15000); page.wait_for_timeout(600)
     c = counts(page)
     if c['wood'] != 67: print(json.dumps({'seedFailed': c})); sys.exit(1)
     check(c['wood'] == 67 and c['leaf'] == 40 and c['hook'] == 1, f'save load counts {c}')
@@ -123,14 +137,14 @@ with sync_playwright() as p:
     page.keyboard.press('Digit1')
     # headless GL runs ~3 fps with dt clamped, so wait on state instead of wall time
     page.keyboard.down('KeyS')
-    try: page.wait_for_function('raftDebug.state.swimming', timeout=30000)
+    try: wait_js(page, 'raftDebug.state.swimming', 30000)
     except Exception: pass
     page.keyboard.up('KeyS'); page.wait_for_timeout(300)
     s = st(page); R['notes']['afterWalkOff'] = {'swimming': s['swimming'], 'me': s['me']}
     check(s['swimming'], 'walking off the raft swims')
     shot(page, '03-swimming')
     page.keyboard.down('KeyW'); page.keyboard.down('Space')
-    try: page.wait_for_function('!raftDebug.state.swimming && raftDebug.state.grounded', timeout=30000)
+    try: wait_js(page, '!raftDebug.state.swimming && raftDebug.state.grounded', 30000)
     except Exception: pass
     page.keyboard.up('Space'); page.keyboard.up('KeyW'); page.wait_for_timeout(300)
     s = st(page); R['notes']['afterClimb'] = {'swimming': s['swimming'], 'grounded': s['grounded'], 'me': s['me']}
@@ -148,8 +162,8 @@ with sync_playwright() as p:
 
     # --- save and reload ---
     snap = st(page)['inventory']; page.wait_for_timeout(3500)
-    page.reload(); page.wait_for_function('!!window.raftDebug', timeout=20000)
-    page.locator('#solo').click(); page.wait_for_function('raftDebug.state.running', timeout=15000)
+    page.reload(); wait_js(page, '!!window.raftDebug', 20000)
+    page.evaluate("document.querySelector('#solo').click()"); wait_js(page, 'raftDebug.state.running', 15000)
     check(st(page)['inventory'] == snap, 'inventory survives reload')
 
     # --- live hot swap ---
