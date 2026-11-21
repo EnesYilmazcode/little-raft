@@ -36,7 +36,7 @@ export const LIGHTING = {
   background: '#c6e3f0', fog: '#c6e3f0', fogNear: 38, fogFar: 150,
   hemiSky: '#bfe3ff', hemiGround: '#6f9fa4', hemiIntensity: 1.1,
   sun: '#ffe7c2', sunIntensity: 2.8, exposure: 1.0,
-  skyDome: true, skyZenith: '#6fb4e6',
+  skyDome: true, skyZenith: '#5aa6e0',
   oceanDeep: '#05497a', oceanShallow: '#13a0b0', oceanZenith: '#4f9fd6',
 };
 
@@ -142,7 +142,7 @@ export function applyLighting(scene, renderer, L = LIGHTING, { ocean = null, T =
     const mat = new T.ShaderMaterial({
       uniforms: { uHorizon: { value: new T.Color(L.fog) }, uZenith: { value: new T.Color(L.skyZenith) } },
       vertexShader: 'varying float vY; void main() { vY = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: 'uniform vec3 uHorizon, uZenith; varying float vY; void main() { gl_FragColor = vec4(mix(uHorizon, uZenith, pow(clamp(vY, 0.0, 1.0), 0.55)), 1.0); }\n#include <colorspace_fragment>',
+      fragmentShader: 'uniform vec3 uHorizon, uZenith; varying float vY; void main() { gl_FragColor = vec4(mix(uHorizon, uZenith, pow(clamp(vY * 1.6, 0.0, 1.0), 0.6)), 1.0); }\n#include <colorspace_fragment>',
       side: T.BackSide, depthWrite: false, fog: false, toneMapped: false,
     });
     sky = new T.Mesh(new T.SphereGeometry(150, 24, 12), mat); sky.name = 'art-sky'; sky.frustumCulled = false; sky.renderOrder = -1;
