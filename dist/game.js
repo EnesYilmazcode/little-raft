@@ -45,6 +45,7 @@ import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
 import { attachSpearRepair } from './spear-repair-hooks.js'; // [spear-repair]
+import { attachPaddle } from './paddle.js'; // [paddle] LMB at the raft edge sends the 'paddle' sail op
 import { DEBRIS, debrisSpeed, stepDebrisBudget, spendDebris } from './debris-budget.js'; // [debris-budget] flotsam follows raft motion
 import { newVitals, tickVitals, damage as damageVitals, consume as consumeVitals, cleanVitals, saveVitals, isEdible, eatLabel, FOOD, SPRINT_MULT, EAT_SECONDS, RESPAWN } from './vitals.js'; // [vitals] hunger, thirst, health
 import { createVitalsUI } from './vitals-ui.js'; // [vitals] HUD bars, damage vignette, faint overlay
@@ -313,6 +314,7 @@ export function mount(transfer = null) {
   let prog = null; // [progression-hook]
   // shark lane (dist/shark.js): host/solo simulate, the guest shows the host's pose. shark.trySpear(origin, dir, reach, dmg) -> boolean
   let shark = null, sharkFx = null, wildlifeMod = null, shakeAmp = 0; const sharkHitAt = {host:0, guest:0};
+  let paddle = null; // [paddle] dist/paddle.js glue
   let spearRep = null; // [spear-repair] spear viewmodels/thrust + hammer foundation repair (dist/spear-repair-hooks.js)
 
   function makePhysics(src) {
@@ -512,6 +514,9 @@ export function mount(transfer = null) {
   function buildViewmodels() {
     hands = createHands(T, {modelFactory:modelOf}); hands.preload(['hook']); // 3D models from models.js, built-ins as fallback
     spearRep = attachSpearRepair({T, camera:() => camera, raft:() => raft, world:() => world, physics:() => physics, other:() => other, localBag, role:() => role, elapsed:() => elapsed, shark:() => shark, action, emit, notice, beep, setSwing:v => { swing = v; }}); // [spear-repair] spear models live in held-items.js; this adds the jab, thrust and repair
+    paddle = attachPaddle({localBag, physics:() => physics, other:() => other, tiles:() => world.tiles, yaw:() => yaw, elapsed:() => elapsed, anchored:() => !!world.sailing?.anchored,
+      action, notice, emit, sound:n => play(n, 1), splash:(x, z, k) => sharkFx?.splash(x, ocean.getHeight(x, z), z, k),
+      sailReady:() => !!sailing?.paddleReady(), sailApply:(a, actor) => sailing?.apply(a, actor)}); // [paddle]
     // Viewmodels draw last (transparent queue, renderOrder 1000) after a camera-owned marker clears depth, so the
     // world never clips them while fingers and tools still depth-sort correctly against each other.
     const depthClear = new T.Mesh(new T.PlaneGeometry(1e-4, 1e-4), new T.MeshBasicMaterial({colorWrite:false, depthWrite:false, depthTest:false, transparent:true}));
@@ -560,7 +565,7 @@ export function mount(transfer = null) {
   // compile() walks the scene graph, so all viewmodels are attached just for the synchronous part of the call.
   function warmShaders() {
     if (typeof renderer.compileAsync !== 'function') return;
-    hands?.preload(['hammer', 'fishingrod', 'spear']);
+    hands?.preload(['hammer', 'fishingrod', 'spear', 'paddle']);
     try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
     catch (e) { console.warn('shader warm-up failed', e); }
   }
@@ -997,6 +1002,7 @@ export function mount(transfer = null) {
     if (spearRep?.apply(a, actor, bag)) return; // [spear-repair] 'spearHit' / 'repairTile'
     if (typeof a.kind === 'string' && a.kind.startsWith('fc:')) { fc?.applyAction(a, actor, {count:k => bag.count(k), remove:(k, n) => bag.remove(k, n), add:(k, n) => bag.add(k, n), emit:text => emit({kind:'notice', text}, actor)}); return; } // [fishing-cooking]
     if (a.kind === 'selectSlot') { bag.select(a.index); return; }
+    if (paddle?.apply(a, actor, bag)) return; // [paddle] validates the stroker, applies the sail op, wears the paddle
     if (a.kind === 'sail') { const t = sailing?.apply(a, actor); if (t) emit({kind:'notice', text:t}, actor); return; } // [sailing]
     if (a.kind === 'moveSlot') { bag.move(a.from, a.to, a.amount ?? undefined); return; }
     if (a.kind === 'craft') {
@@ -1148,6 +1154,7 @@ export function mount(transfer = null) {
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
     const kind = selectedKind(), bag = localBag(), p = aim?.point ?? null;
     if (instruments?.use(kind)) { swing = .7; return; } // [instruments]
+    if (kind === 'paddle' && paddle?.use()) return; // [paddle] stroke at the raft edge
     if (kind === 'spear' ? spearRep?.use() : kind === 'hammer' && spearRep?.useHammer()) return; // [spear-repair] thrust / repair a damaged tile
     if (isEdible(kind)) { // [vitals] a fresh cup on a planter still waters it, a salt cup at a purifier still loads it
       const w = CUP_KINDS.includes(kind) ? wateringTarget(aim) : null;
@@ -1322,12 +1329,13 @@ export function mount(transfer = null) {
     const ch = charging ? clamp((performance.now() - charging.start) / CHARGE_MS, 0, 1) : 0;
     const vmKind = running ? spearRep?.viewmodelFor(kind) ?? kind : null; // [spear-repair] spear vs metal spear model
     hands.setHeld(vmKind);
+    const paddleStroke = paddle?.update(dt) ?? 0; // [paddle] 1 -> 0 over a stroke
     const jab = spearRep?.updateViewmodel(hands, vmKind, dt) ?? false; // [spear-repair] lunge + spear slide; no hook-cast swing while jabbing
     pointing = running && isPlaceable(kind);           // the one place the pointing-finger pose is decided
     hands.setPose(pointing ? 'point' : null);
     const rod = kind === 'fishingrod' ? hands.itemModel('fishingrod') : null, out = !!hook?.fishing;
     if (rod?.userData.float) { rod.userData.float.visible = !out; rod.userData.leader.visible = !out; }
-    hands.update({dt, time:elapsed, charge:ch, reeling:rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(), casting:jab ? 0 : swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch, fov:camera.fov}); // [fishing-cooking] rod reel pose from the lane
+    hands.update({dt, time:elapsed, charge:ch, reeling:rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(), casting:jab ? 0 : swing, paddle:vmKind === 'paddle' ? paddleStroke : 0, walking, hasHookOut:!!castOut(), motion, yaw, pitch, fov:camera.fov}); // [fishing-cooking] rod reel pose from the lane
     camera.updateMatrixWorld(true);
     hands.ropeAnchor().getWorldPosition(handPos);
   }
@@ -1943,6 +1951,7 @@ export function mount(transfer = null) {
     spearTestHit() { return spearRep?.testHit() ?? false; }, // [spear-repair] test helper: fake a landed thrust
     spearPose(p) { spearRep?.pinPoke(p); }, // [spear-repair] test helper: freeze the jab for screenshots
     get spear() { return spearRep?.debug() ?? null; }, // [spear-repair]
+    paddlePose(p) { paddle?.pin(p); }, // [paddle] test helper: freeze the stroke for screenshots
     get shark() { return sharkDebug; }, // shark lane
     get targets() {
       return world.items.map(it => {
@@ -2029,6 +2038,7 @@ export function mount(transfer = null) {
     for (const id of ['signalReadout', 'signalMarker']) { const el = document.getElementById(id); if (el) el.hidden = true; }
     try { logbookUI?.destroy?.(); } catch {}
     try { prog?.dispose(); } catch {} // [progression-hook]
+    try { paddle?.dispose(); } catch {} paddle = null; // [paddle]
     try { spearRep?.dispose(); } catch {} spearRep = null; // [spear-repair]
     try { vitalsUI?.dispose(); } catch {} vitalsUI = null; try { promptOff?.(); } catch {} promptOff = null; // [vitals]
     for (const id of timers) clearTimeout(id); timers.clear(); clearInterval(heartbeat);

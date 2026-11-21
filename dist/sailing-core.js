@@ -16,7 +16,7 @@ export const SAIL = Object.freeze({
   WIND_STR_TAU: 20,         // windStr eases toward windStrTarget (s)
   WIND_MIN: 0.55, WIND_MAX: 1,
   WIND_CLOCK_MIN: 70, WIND_CLOCK_MAX: 140, WIND_CLOCK_CAP: 200,
-  PADDLE_IMPULSE: 0.25, PADDLE_CAP: 0.9, PADDLE_COOLDOWN: 0.8, // paddling alone never exceeds PADDLE_CAP
+  PADDLE_IMPULSE: 0.25, PADDLE_CAP: 1.1, PADDLE_COOLDOWN: 0.8, // paddling alone never exceeds PADDLE_CAP
   V_CLAMP: 3,               // validator clamp on |vx|,|vz|
   // Offsets wrap per axis into [-W/2, W/2). Water offsets feed a float32 shader (hash noise) so they
   // stay small; seabed offsets only need bounded float64 precision.

@@ -335,6 +335,8 @@ export function createSailing(T, ctx) {
     }
     return text;
   }
+  /** True when a paddle stroke would push now (not anchored, shared stroke cooldown over). */
+  function paddleReady() { const s = ensureState(); return !s.anchored && !(s.paddleClock > 0); }
   function debug() {
     const s = ensureState(), t = { x: 0, z: 0 }, w = { x: 0, z: 0 };
     sailTarget(s, nSails, t); windVector(s, w);
@@ -351,7 +353,7 @@ export function createSailing(T, ctx) {
     for (const r of rolls) r.parent?.remove(r);
     rolls.length = 0; lastOp.clear(); drifters.length = 0; stepOpts.blockers.length = 0;
   }
-  return { update, onRaftBuilt, addDrifter, itemFlow, respawned, outOfRange, interact, grab, release, apply, debug, dispose,
+  return { update, onRaftBuilt, addDrifter, itemFlow, respawned, outOfRange, interact, grab, release, apply, paddleReady, debug, dispose,
     get steering() { return steering; } };
 }
 
