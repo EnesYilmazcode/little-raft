@@ -3,7 +3,7 @@ import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
 import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
-import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
+import { HookCast, WATER_Y, catchLoot, holdForFullBag } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-survival-ae77fa84ac2b';
 import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
@@ -215,7 +215,7 @@ export function mount(transfer = null) {
   let hookSlot = isInt(X?.hookSlot) ? X.hookSlot : -1;
   let fishWait = Number.isFinite(X?.fishWait) ? X.fishWait : 0;
   let sound = X ? X.sound !== false : loadSoundPref(window.localStorage), audio = X?.audio ?? null, oceanAudio = null, swimClock = 0;
-  let charging = X?.charging && Number.isFinite(X.charging.start) ? {...X.charging} : null, reeling = !!X?.reeling && !!hook;
+  let charging = X?.charging && Number.isFinite(X.charging.start) ? {...X.charging} : null, reeling = !!X?.reeling && !!hook, hookFull = false; // hookFull: the catch will not fit, so the reel stops short
   let lastCaughtCount = isInt(X?.lastCaughtCount) ? X.lastCaughtCount : (hook?.caughtItems?.length ?? (hook?.caught ? 1 : 0));
   const pending = new Map(X?.pending instanceof Map ? X.pending : []); // item token -> expiry; hides supplies we reeled in while the host confirms
   const guestHeld = createGuestHeld(); // host only: tokens on the guest's hook, from its move messages
@@ -412,6 +412,7 @@ export function mount(transfer = null) {
       else if (hover?.blocked) html = esc(BLOCK_TEXT[hover.blocked]);
       else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
       else if (hook?.fishing) html = esc(castPrompt(hook, fishWait));
+      else if (hookFull && castOut()) html = 'Bag full: free a slot to reel it in';
       else if (castOut() && castOut().stage === 'floating') html = caughtList(castOut()).length ? 'Hold click to reel it in' : 'Hold click to reel';
     }
     if (html === contextCache) return; contextCache = html;
@@ -881,7 +882,7 @@ export function mount(transfer = null) {
       m.rotation.set(-s.z * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.x * 1.2 + Math.sin(elapsed + it.phase) * .05);
     }
   }
-  function endHook() { hook = null; lastCaughtCount = 0; reeling = false; rope.visible = false; hookMesh.visible = false; if (bobber) bobber.visible = false; }
+  function endHook() { hook = null; lastCaughtCount = 0; reeling = false; hookFull = false; rope.visible = false; hookMesh.visible = false; if (bobber) bobber.visible = false; }
   // A click or slot change while the rod line is out reels it in: a fish only if it is biting on a click.
   function reelCast(source) {
     const r = castInput(hook, fishWait, source); if (r === 'none') return false;
@@ -900,7 +901,8 @@ export function mount(transfer = null) {
       return;
     }
     const guestTokens = role === 'guest' ? null : new Set(guestHeld.tokens(performance.now())); // host skips the guest's catch
-    const ev = hook.update(dt, {hand:handPos, items:world.items.filter(it => !isPending(it) && !guestTokens?.has(it.token)), reeling, time:elapsed});
+    hookFull = holdForFullBag(hook, c => lootFits(localBag(), catchLoot(c, LOOT))); // full bag: keep the catch on the hook in the water
+    const ev = hook.update(dt, {hand:handPos, items:world.items.filter(it => !isPending(it) && !guestTokens?.has(it.token)), reeling:reeling && !hookFull, time:elapsed});
     const hp = hook.position, pos = new T.Vector3(hp.x, surfaceY(hp.x, hp.z, hp.y), hp.z);
     hookMesh.visible = true; hookMesh.position.copy(pos); bobber.visible = false;
     if (hook.stage === 'flying') hookMesh.rotation.set(-hook.flightT * Math.PI * 2, yaw, 0);

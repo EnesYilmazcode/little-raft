@@ -339,3 +339,19 @@ export class HookCast {
 }
 
 export default HookCast;
+
+// ---------- bag-full reel stop (used by game.js) ----------
+export const FULL_HOLD_DIST = 2; // m: a catch that will not fit stops this far out, still in the water
+
+/** Sums the loot of every caught item (table: type -> {kind: count}). Pure. */
+export function catchLoot(items, table) {
+  const out = {};
+  for (const it of items || []) for (const [k, n] of Object.entries(table?.[it?.type] || {})) out[k] = (out[k] || 0) + n;
+  return out;
+}
+
+/** True when the reel must stop short of the hand because the catch will not fit. fits(caughtItems) -> bool. */
+export function holdForFullBag(hook, fits) {
+  const c = hook?.caughtItems;
+  return !!c?.length && fin(hook.distance) && hook.distance <= FULL_HOLD_DIST && !fits(c);
+}
