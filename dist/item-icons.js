@@ -14,6 +14,7 @@ import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { getModel as getLibraryModel } from './models.js?build=v3-survival-ae77fa84ac2b';
+import { createSignalModel } from './signal-models.js?build=v3-survival-ae77fa84ac2b';
 
 const SIZE = 128;
 // Item ids whose name differs from the models.js kind.
@@ -37,7 +38,7 @@ export const POSE = {
   hook: [0, 0.7, -0.2], hammer: [0, 1.57, -0.75], fishingrod: [0, 1.57, -0.75], // hammer head and rod reel side-on
   plastic: [0, 0.4, 0.5], fish: [0, -0.4, 0.15], rope: [0.9, 0, 0.2],
   wood: [0, -0.35, 0.12], leaf: [0.5, 0.4, 0], scrap: [0.3, 0.4, 0],
-  net: [0.55, 0.5, 0], bench: [0, 0.5, 0], crate: [0, 0.5, 0],
+  net: [0.55, 0.5, 0], bench: [0, 0.5, 0], crate: [0, 0.5, 0], receiver: [0, -0.35, 0],
 };
 // Icon-only thickening of long, thin procedural tools (length on local Y): scale X/Z so the
 // silhouette still reads at hotbar size. The held model is untouched.
@@ -96,6 +97,7 @@ export function buildFallbackModel(kind) {
     case 'fish': return fishModel();
     case 'wood': return woodModel();
     case 'leaf': case 'scrap': return createDebris(T, kind, mat, { seed: 7, tilt: 0 });
+    case 'receiver': return createSignalModel(T, 'receiver'); // the deck receiver (owns its materials)
     default: return createCraft(T, kind);
   }
 }

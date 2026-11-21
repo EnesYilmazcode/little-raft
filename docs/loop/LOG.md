@@ -624,3 +624,33 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
 - Open nits: "Discover at a Tinker's Desk" ::before header shows above the detail card when locked rows are scrolled out of view;
   co-op HELD lacks metalhook/sharkmeat/brush/decor kinds; content.js EXT_MAX drops all world.ext at once when exceeded;
   per-frame stroke closure in hands.update; adaptive quality starts later after New game (check for an extra reset on that path).
+
+## loop-ux round 5: claude/loop-ux-202611210748 (base: origin/claude/raft-master 7294e26)
+Merged the unmerged round-4 branch (loop-ux-202611210648: steady recipe order and panel height, hold counter, tooltips beside their element) first. Fleet of 7 subsystem hunters, a new-player screenshot reviewer, 2 adversarial verifiers per cluster (14), and 7 fixers, each fix with a regression test.
+
+Fixed (confirmed by both verifiers unless noted):
+- **Cursor and lock:** Chrome's post-Esc SecurityError no longer counts toward drag-look fallback. The cursor stays visible in drag-look after a panel closes. `relock` is cleared on blur so the away hint shows. `acceptFirstMouse` is set in Electron. Desktop Esc now closes the hammer build wheel and keeps the lock: `raftShell.closeBuildWheel()` is called from `raftEscape`.
+- **Controls:** keys held through a panel resume when it closes, with no false press edge. A sub-frame Space tap jumps. Mouse flicks over 300px go through the look spike filter instead of being dropped. The fish journal closes on physical KeyJ.
+- **Build wheel:** holding Q no longer flickers it open and shut. While it is open, digits, the mouse wheel and E are swallowed. WASD still works, which is intended. R is consumed only for pieces that rotate.
+- **Fishing:** a rod charge or reel hold is released on blur and lock loss, so there is no stale full-power cast. E follows the prompt order. Gamepad RT uses fishing v2. Clicking during the post-catch linger recasts. Grills don't cook on the title screen.
+- **HUD:** the crosshair prompt follows the fishing stage and grill, rain and content prompts. The dive label, binoculars readout and reel bar moved out of screen centre into the crosshair-side column. The three bottom-left feeds are now one stack. Notes and achievements show once, and the toast queue is FIFO. The help text gives the right bag-close keys.
+- **Inventory:** a metal hook is repaired with R. A cast retracts when its hook leaves the slot. Barrel pity counters advance only when the loot is taken, and nets back off for 6s after a refused roll.
+- **Crafting (Raft-like):**
+  - Layout: a vertical category column, a tall scrolling recipe list with a fade, and a detail pane (big icon, used-for, have/need rows, Craft) above a 10-column backpack. The panel is the same size on every tab.
+  - Locked recipes: recipes locked behind the Tinker's Desk show as locked with the full reason, instead of "Ready" while the host refuses them.
+  - Crafting and icons: a click crafts exactly 1, and a hold repeats after 800ms with a fill. The receiver has a real icon. Tooltips never jump to the top-left or cover the Craft button.
+  - Build costs and categories: costs show per-material have/need using bag names. Cup and purifier are in Survival.
+- Refuted: Tab-to-close bag (Tab moves focus by design; help text fixed).
+
+Gate: npm test 695/695. `tests/art.test.mjs` "atlas build stays fast" is load-sensitive: it fails sometimes with ~20 agents on 4 cores and passes alone. shoot.py: no page errors; Esc from inventory leaves the game locked with no pause; Esc closes the settings panel first.
+
+Open / next:
+- Gamepad build menu (Pad12) lists decor and emits an unhandled `buildPick`.
+- Rebinding UI is not mounted in settings; several keys bypass input-map.
+- Two Invert Y settings.
+- Ctrl+W crouch-walk closes the browser tab.
+- Pieces and decor don't check each other for overlap.
+- The host does no reach check on piece and unpiece.
+- Fish journal chip overlaps the hotbar at 390px.
+- Grill progress is lost on tab discard.
+- Icon style still swaps from flat SVG to 3D mid-session.

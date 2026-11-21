@@ -8,6 +8,20 @@ const O = '#153e49';
 const BAR = (front, end, top) => `<path d="M4 38 H40 L35 24 H9 Z" fill="${front}"/><path d="M40 38 L44 34 L39 21 L35 24 Z" fill="${end}"/><path d="M9 24 H35 L39 21 H13 Z" fill="${top}"/>`;
 
 export const ITEM_ICONS = Object.freeze({
+  receiver: `<path d="M30 21 L37 4" stroke="${O}" stroke-width="4" stroke-linecap="round"/>
+    <path d="M30 21 L37 4" stroke="#c0c6c8" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="37" cy="4.5" r="2.4" fill="#ffbd66" stroke="${O}" stroke-width="1.6"/>
+    <g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+      <rect x="5" y="19" width="38" height="23" rx="3" fill="#8c6745"/>
+      <path d="M5 24 H43" fill="none" stroke-width="1.2" stroke-opacity=".5"/>
+      <rect x="9" y="26" width="19" height="11" rx="1.5" fill="#1f4a52"/>
+      <circle cx="35.5" cy="31.5" r="4.6" fill="#ffbd66"/>
+      <path d="M35.5 31.5 L37.8 28.6" fill="none" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M9 42 V45 M39 42 V45" fill="none" stroke-width="3" stroke-linecap="round"/>
+    </g>
+    <path d="M12 33.5 C14 29 16 29 18 32 C20 35 22 35 25 29" fill="none" stroke="#7fe0c8" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M8 21.5 H24" stroke="#fff2cc" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".6"/>`,
+
   sand: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <path d="M4 41 C8 30 15 20 24 19 C33 20 40 30 44 41 Z" fill="#e9b85a"/>
     <path d="M12 31 C16 25 20 22 24 22 C28 22 33 25 37 31 C30 28 19 28 12 31 Z" fill="#f7d98a" stroke="none"/>

@@ -29,6 +29,8 @@ const CATEGORY_OF = Object.freeze({
   // content (engine, sleep, paint)
   motor: 'building', wheel: 'building', bed: 'building', brush: 'tools',
   paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
+  cup: 'survival', purifier: 'survival', // water gear sits with the rain barrel and sprinkler
+  research: 'building', antenna: 'building', receiver: 'building',
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
@@ -40,7 +42,7 @@ export const ITEM_TEXT = Object.freeze({
   rope:       { desc: 'Palm fibre twisted into a sturdy cord.', use: 'Binds hammers, rods, nets and sails.' },
   fish:       { desc: 'A fresh catch from the open water.', use: 'Proof of a good day out on the waves.' },
   hook:       { desc: 'A scrap hook on a rope. Throw it at floating supplies.', use: 'Pulls in floating wood, leaves, plastic and barrels.' },
-  hammer:     { desc: 'A rope-bound building hammer.', use: 'Adds raft floor tiles (2 wood + 2 plastic each).' },
+  hammer:     { desc: 'A rope-bound building hammer.', use: 'Adds raft floor tiles (2 planks + 2 plastic each).' },
   fishingrod: { desc: 'A bamboo rod with a float and line.', use: 'Cast into the sea and wait for a bite to catch fish.' },
   sail:       { desc: 'A tall mast with a woven sail.', use: 'Decorates the raft; place it on a floor tile.' },
   palm:       { desc: 'A clay pot with a small palm tree.', use: 'A bit of island on your raft; place on a tile.' },
@@ -205,9 +207,10 @@ export function stackLabel(count, max) {
 }
 
 // ---- hold-to-craft schedule ----
-// A press crafts one immediately. Keep holding: the 2nd craft lands after HOLD.first ms, then each
-// interval shrinks by HOLD.decay down to HOLD.min ms.
-export const HOLD = Object.freeze({ first: 450, decay: 0.78, min: 90, max: 99 });
+// A press crafts one immediately, and a plain click never makes more than that. Keep holding: the
+// button fills for HOLD.first ms before the 2nd craft, then each interval shrinks by HOLD.decay
+// down to HOLD.min ms.
+export const HOLD = Object.freeze({ first: 800, decay: 0.7, min: 90, max: 99 });
 
 /** Milliseconds to wait after the `done`-th craft (done >= 1) before the next one. */
 export function holdDelay(done) {
@@ -231,19 +234,49 @@ export function craftsForHold(ms, cap = HOLD.max) {
 }
 
 // ---- tooltip anchoring ----
+const usableRect = r => !!r && [r.left, r.top, r.right, r.bottom].every(Number.isFinite) && (r.right - r.left > 0 || r.bottom - r.top > 0);
 /**
  * Place a tooltip of size w x h beside an anchor rect {left, top, right, bottom} inside a
  * vw x vh viewport. Prefers the right side, then left, then below, then above; always clamped.
- * @returns {{x:number, y:number, side:'right'|'left'|'below'|'above'}}
+ * opts.beside: a column rect; the tooltip goes beside the whole column (row-aligned) instead of
+ * just beside the anchor. opts.avoid: a rect it must not cover (the Craft button); the tooltip
+ * slides above or below it when it can.
+ * Returns null when the anchor has no box (hidden or detached), so callers hide the tooltip
+ * instead of pinning it to the top-left corner.
+ * @returns {{x:number, y:number, side:'right'|'left'|'below'|'above'}|null}
  */
-export function anchorTip(rect, w, h, vw, vh, gap = 8, pad = 6) {
+export function anchorTip(rect, w, h, vw, vh, gap = 8, pad = 6, opts = null) {
+  if (!usableRect(rect)) return null;
+  const col = usableRect(opts?.beside) ? opts.beside : null;
+  const L = col ? Math.min(col.left, rect.left) : rect.left, R = col ? Math.max(col.right, rect.right) : rect.right;
   const clampV = (v, lo, hi) => Math.max(lo, Math.min(v, Math.max(lo, hi)));
   const yAligned = clampV(rect.top, pad, vh - h - pad);
   const xAligned = clampV(rect.left, pad, vw - w - pad);
-  if (rect.right + gap + w <= vw - pad) return { x: rect.right + gap, y: yAligned, side: 'right' };
-  if (rect.left - gap - w >= pad) return { x: rect.left - gap - w, y: yAligned, side: 'left' };
-  if (rect.bottom + gap + h <= vh - pad) return { x: xAligned, y: rect.bottom + gap, side: 'below' };
-  return { x: xAligned, y: clampV(rect.top - gap - h, pad, vh - h - pad), side: 'above' };
+  let p;
+  if (R + gap + w <= vw - pad) p = { x: R + gap, y: yAligned, side: 'right' };
+  else if (L - gap - w >= pad) p = { x: L - gap - w, y: yAligned, side: 'left' };
+  else if (rect.bottom + gap + h <= vh - pad) p = { x: xAligned, y: rect.bottom + gap, side: 'below' };
+  else p = { x: xAligned, y: clampV(rect.top - gap - h, pad, vh - h - pad), side: 'above' };
+  const a = usableRect(opts?.avoid) ? opts.avoid : null;
+  if (a && p.x < a.right && p.x + w > a.left && p.y < a.bottom && p.y + h > a.top) {
+    if (a.top - gap - h >= pad) p.y = a.top - gap - h;
+    else if (a.bottom + gap + h <= vh - pad) p.y = a.bottom + gap;
+  }
+  return p;
+}
+
+/** True when a box can anchor a tooltip: it is laid out (not hidden, not detached). */
+export const anchorVisible = el => !!el && el.isConnected !== false && usableRect(el.getBoundingClientRect?.());
+
+/**
+ * One recipe gate for the crafting panel from the progression gate ({hidden} | {locked, reason} |
+ * null) and a host-side lock reason (string | null, e.g. storage-research craftLocked: the host
+ * refuses those crafts, so the panel must not offer them). Hidden wins, then the first lock.
+ */
+export function mergeGate(prog, lockReason) {
+  if (prog && (prog.hidden || prog.locked)) return prog;
+  if (lockReason) return { locked: true, reason: String(lockReason) };
+  return prog || null;
 }
 
 // ---- bag open/close and keyboard ----

@@ -38,7 +38,7 @@ export const ITEM_INFO = Object.freeze({
   // Shark (dist/shark.js): harvested from a dead shark with E.
   sharkmeat:  Object.freeze({ kind: 'sharkmeat',  name: 'Raw Shark Meat', icon: 'icon-sharkmeat', maxStack: STACK_SIZE, tool: false, placeholder: true }),
   sharkhead:  Object.freeze({ kind: 'sharkhead',  name: 'Shark Head',   icon: 'icon-sharkhead', maxStack: 5,          tool: false, placeholder: true }),
-  receiver:   Object.freeze({ kind: 'receiver',   name: 'Receiver',     icon: 'icon-compass', maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  receiver:   Object.freeze({ kind: 'receiver',   name: 'Receiver',     icon: 'icon-receiver', maxStack: STACK_SIZE, tool: false, placeholder: false }),
   antenna:    Object.freeze({ kind: 'antenna',    name: 'Antenna',      icon: 'icon-antenna', maxStack: STACK_SIZE, tool: false, placeholder: false }),
   cup:        Object.freeze({ kind: 'cup',        name: 'Cup',          icon: 'icon-cup',     maxStack: 5,          tool: false, placeholder: false }),
   saltcup:    Object.freeze({ kind: 'saltcup',    name: 'Cup of Sea Water', icon: 'icon-saltcup', maxStack: 5,      tool: false, placeholder: false }),

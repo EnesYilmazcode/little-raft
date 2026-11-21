@@ -91,9 +91,13 @@ test('HUD-6/UX-7: the header sits above the welcome overlay so the brand is read
 test('UX-2: the bag keeps its top edge across crafting tabs (pinned top, fixed-height craft column)', () => {
   const ui = src('survival-ui.js');
   assert.match(ui, /#inventory\.sv-inv\{[^}]*margin:max\(16px,calc\(50vh - 300px\)\) auto auto;/, 'top edge pinned, not margin:auto');
-  const book = [...ui.matchAll(/^#inventory \.sv-craft\{flex:0 0 324px;[^}]*\}/gm)].at(-1)?.[0];
+  // loop-ux round 5 split the panel into a [categories | recipes] column and a [detail over backpack] side, so the
+  // crafting column is sized by its grid and takes its fixed height from --ph on #inventory.sv-inv.
+  const book = [...ui.matchAll(/^#inventory \.sv-craft\{[^}]*\}/gm)].at(-1)?.[0];
   assert.ok(book, 'crafting-book column rule');
-  assert.match(book, /;height:min\(560px,calc\(94vh - 30px\)\)/, 'fixed height, so the panel height does not follow the tab');
+  const ph = ui.match(/#inventory\.sv-inv\{[^}]*--ph:([^;]+);/)?.[1];
+  assert.equal(ph, 'min(560px,calc(94vh - 30px))');
+  assert.match(book, /;height:var\(--ph\);/, 'fixed height, so the panel height does not follow the tab');
   assert.match(ui, /@media\(max-width:860px\),\(max-height:520px\)\{#inventory \.sv-craft\{[^}]*height:auto;max-height:none/, 'stacked layout resets the height');
 });
 
@@ -108,8 +112,9 @@ test('co-op: the pickup feed stacks above #coopFeed instead of overlapping it', 
     documentElement: { style: { setProperty: (k, v) => props.set(k, v), removeProperty: k => props.delete(k) } },
     defaultView: { setTimeout: () => 0, clearTimeout() {} } };
   const feed = createFeed({ doc });
+  feed.push('Brother joined', 'join'); // the standalone box mounts lazily on the first line (loop-ux round 5)
   const box = doc.body.children.find(c => c.tagName === 'div');
-  box.offsetHeight = 40; feed.push('Brother joined', 'join');
+  box.offsetHeight = 40; feed.push('Brother is waving', 'emote');
   assert.equal(props.get('--coop-feed-h'), '46px');
   feed.dispose();
   assert.equal(props.has('--coop-feed-h'), false);

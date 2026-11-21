@@ -96,19 +96,20 @@ const CSS = `
 .lr-sr-lock svg{display:block;width:15px;height:15px}
 /* craft list in #inventory */
 #inventory .sv-rlist{display:flex;flex-direction:column}
-#inventory .sv-recipe[data-locked]{order:1;pointer-events:none;cursor:default;opacity:1!important;background:linear-gradient(#3f2b1a,#33231a);box-shadow:inset 0 0 0 1px #d4b07a22}
+#inventory .sv-recipe[data-locked]{order:1;opacity:1!important;background:linear-gradient(#3f2b1a,#33231a);box-shadow:inset 0 0 0 1px #d4b07a22}
 #inventory .sv-recipe[data-locked] .sv-rart{position:relative}
 #inventory .sv-recipe[data-locked] .sv-rart .sv-icon{filter:grayscale(1) brightness(.75);opacity:.6}
 #inventory .sv-recipe[data-locked] .sv-rname{color:#d9c9a6}
 #inventory .sv-recipe[data-locked] .sv-reqs{opacity:.5}
-#inventory .sv-recipe[data-locked] .sv-why{display:none}
+#inventory .sv-recipe[data-locked] .sv-why,#inventory .sv-recipe[data-locked] .sv-rsub{display:none}
+#inventory .sv-recipe[data-locked]:hover,#inventory .sv-recipe[data-locked].sv-pick{box-shadow:inset 0 0 0 2px #ffcf9a}
 #inventory .sv-recipe[data-locked] .sv-rart::after{content:'';position:absolute;right:-6px;bottom:-6px;width:22px;height:22px;border-radius:50%;
   background:#3e2a17 ${LOCK_URL} center/15px 15px no-repeat;box-shadow:0 0 0 1.5px #ffcf9a,0 1px 3px #000a}
 #inventory .sv-recipe.sv-locked[data-locked] .sv-rart::after{filter:grayscale(.85) brightness(.7);opacity:.75}
 #inventory .sv-recipe.sv-gated[data-locked] .sv-rart::after{filter:grayscale(1) brightness(.55)}
 #inventory .sv-recipe .sv-rbody[data-needs]::after{content:attr(data-needs);display:block;margin-top:4px;font:700 12px/1.2 ${FONT};color:#ffcf9a}
 #inventory .sv-recipe.lr-sr-first{position:relative;margin-top:30px}
-#inventory .sv-recipe.lr-sr-first::before{content:'Discover at a Tinker\\2019s Desk';position:absolute;left:2px;top:-22px;width:max-content;white-space:nowrap;font:800 11px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#d9c9a6}
+#inventory .sv-recipe.lr-sr-first::before{content:'Discover at a Tinker\\2019s Desk';position:absolute;left:2px;top:-22px;bottom:auto;width:max-content;height:auto;background:none!important;box-shadow:none!important;white-space:nowrap;font:800 11px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#d9c9a6}
 #inventory .sv-recipe.lr-sr-fresh{animation:lrSrFresh 2.4s ease-out}
 #inventory .lr-sr-more{display:block;width:100%;margin:0 0 8px;padding:6px 8px;border:0;border-radius:4px;background:#24170caa;box-shadow:inset 0 0 0 1px #ffbd6655;color:#ffcf9a;font:700 12px/1.2 ${FONT};text-align:left;letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
 #inventory .lr-sr-more:hover{box-shadow:inset 0 0 0 1px #ffe3a6}
