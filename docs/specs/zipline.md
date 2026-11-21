@@ -191,3 +191,20 @@ Screenshot recipe: `place('glidepost',0,0)`, `place('glidestep',3,0)` (6 m), `li
 9. **Models** with the vendored THREE: posts are named `craft_glidepost` / `craft_glidestep` with heights within ±.1 of `POSTS`; `createRopeLines(T,64)` draws 2·n vertices; `buildItemModel(T,'glidehandle')` returns a Group; every placeable has a `BLOCK_RADII` entry; the items craft from their costs.
 
 Run `npm test` and shoot.py. The `errors` list must be empty.
+
+## Build notes
+These are the places where the build differs from the spec above, or adds to it.
+- **HELD index**: the coop.js `HELD` list had 17 entries (0..16), so `glidehandle` went in at index **17** as the spec assumed.
+- **Craft-book tab**: craft-book.js has no `decor` tab (its tabs are tools, materials, survival and building), so the posts go under `building` and the handle under `tools`. `tests/survival.test.mjs` lists the tools tab exactly, so `glidehandle` was added to that list.
+- **Rope visuals**: `createRopeLines(T, max)` returns an `InstancedMesh` of thin rope cylinders, one instance per line, named `glide_lines`, instead of `LineSegments`. One-pixel GL lines barely show up and look out of place next to the bevelled props. The draw call is still a single one. Each frame `userData.set(i, a, b)` rewrites the instance matrices in place, with no allocation, and `count` is set to the number of lines. The tests check `count` and the instance positions.
+- **game.js ride hook**: game.js passes a reused `rideIn` object (`{forward, jump, crouch}`) instead of an object literal, so it allocates nothing per frame. It passes the real frame `dt`, and `stepRide` clamps and substeps it.
+- **coop.js**: there are two small exported pure helpers, `poseFlags(l)` (used by `snapshot`) and `readFlags(f)`, so the tests can check bit 8 without starting a hub. `onPose` reads `riding:!!(f & 8)` inline.
+- **`canLink`** returns `{ok:true, len, cost, linked:true}` for a pair that is already linked, and the caller unlinks it. **`lineWorld`** also writes `l3` into `out`. **`nearestOnLine`** takes an optional `out` and otherwise reuses a module scratch object. `TEXT` and `ropeCost` are exported.
+- **Post targeting**: the aim test measures the horizontal miss distance to the mast and allows ±1.6 m vertically around mid-mast (`deckY + 1.4`), so you can aim anywhere on a tall, thin mast.
+- **E key**: while riding, E is consumed and does nothing. If you are not holding the handle, or you hold it but aim at nothing, E falls through to the rest of the chain (so the inventory still opens), and the prompt explains what to do.
+- **Dismount**: dismounting also sets `physics._prevJump` and clears `_jumpBuffer`, so the Space press that let go does not queue a second jump on landing.
+- **Debug helpers**: `debug.ride` skips the handle-held check (screenshots). `debug.link` on a pair that is already linked returns the `canLink` result without unlinking.
+- **Prompt text**: the unlink prompt has an E key: `<kbd>E</kbd>Unlink (get N rope back)`.
+- **Skipped**: the optional first-person hand raise while riding. No third-person debug camera exists, so the QA screenshot is first person: riding up the line toward the tall post, with the deck view of both posts and the line as a second shot.
+- **Icons**: there are inline SVG icons for all three items in item-svg.js.
+- **Mixed versions**: mixed-version co-op is unsupported (see §9).
