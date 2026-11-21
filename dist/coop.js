@@ -64,7 +64,12 @@ export function createCoop(ctx, saved = null) {
   }
 
   // ---------- outgoing (game.js send() hook) ----------
-  function encode(m) {
+  function encode(m) { // counts what game.js will actually send
+    const out = encodeMsg(m);
+    if (out && ctx.conn()?.open) { stats.sent++; stats.bytesOut += JSON.stringify(out).length; }
+    return out;
+  }
+  function encodeMsg(m) {
     track();
     if (!peer || !m || typeof m !== 'object') return m;
     if (m.type === 'move') return null; // replaced by 'cp'
@@ -170,15 +175,21 @@ export function createCoop(ctx, saved = null) {
   function tickRejoin(t) {
     if (!rejoin) return;
     if (ctx.role() !== 'guest') { rejoin = null; aboard = false; return; }
-    if (ctx.ready()) { rejoin = null; return; }
+    if (ctx.ready() && rejoin.attempt > 0) { rejoin = null; return; } // attempt 0: silence while still "ready" must dial first (e2e)
     if (t - rejoin.since > RECONNECT_WINDOW_MS) { rejoin = null; aboard = false; feed.push('Could not reach your brother. Back on your own raft.', 'leave'); ctx.giveUp(); return; }
     if (t >= rejoin.next) { rejoin.attempt++; rejoin.next = t + ATTEMPT_MS; ctx.reconnect(); }
   }
 
   // ---------- input: middle-click ping, Z/X emotes ----------
+  // game.js aims at a plane at deck height; while swimming the eye is below it, so fall back to the sea surface (y≈0).
+  function waterPoint(d) {
+    const o = ctx.camera?.position; if (!o || !d) return null;
+    const t = d.y < -0.02 && o.y > 0 ? Math.min(PING_RANGE * 0.8, o.y / -d.y) : 12;
+    return {x:o.x + d.x * t, y:Math.max(0, o.y + d.y * t), z:o.z + d.z * t};
+  }
   function ping() {
     const a = ctx.aim(); if (!a) return;
-    const it = a.item, p = it ? {x:it.x, y:ctx.deckY(), z:it.z} : a.point;
+    const it = a.item, p = it ? {x:it.x, y:ctx.deckY(), z:it.z} : a.point ?? waterPoint(a.dir);
     if (!p || !Number.isFinite(p.x)) return;
     const l = ctx.local(), d = Math.hypot(p.x - l.x, p.z - l.z);
     if (d > PING_RANGE) return;
@@ -219,7 +230,8 @@ export function createCoop(ctx, saved = null) {
 
   const debug = {
     get stats() { const s = (now() - stats.since) / 1000; return {...stats, outBps:stats.bytesOut / s, inBps:stats.bytesIn / s, interp:buffer.stats}; },
-    get remote() { const p = avatar.group.position; return {x:p.x, y:p.y, z:p.z, visible:avatar.group.visible, name:peerName}; },
+    get remote() { const p = avatar.group.position, h = rope.hook; return {x:p.x, y:p.y, z:p.z, visible:avatar.group.visible, name:peerName,
+      hook:h?.visible ? {x:h.position.x, y:h.position.y, z:h.position.z, stage:lastHook, ropeVisible:!!rope.line?.visible} : null}; },
     get peer() { return peer ? {...peer} : null; }, get rejoin() { return rejoin ? {...rejoin} : null; },
   };
   globalThis.coopDebug = debug;
