@@ -475,7 +475,7 @@ export function mount(transfer = null) {
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
       getPush:(s, o) => { content?.sailPush(s, o); }, steerTargets:() => content?.steerTargets() ?? null, sailKnown}); /* engine: motor push + wheel grab points */ for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
-    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
+    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id}), ground:() => sailing?.ground ?? null, wrap:sailing?.islandWrap ?? 0}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     initShark(); // shark lane
     rebuildRaft(); fitShadow();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
@@ -1162,9 +1162,9 @@ export function mount(transfer = null) {
       return;
     }
     if (a.kind === 'gather') { // diving lane hook: seafloor node, validated by id + diver distance
-      const n = nodeById(a.id, islands), p = actor === 'guest' ? other : physics; if (!n || !p || p.y == null) return;
+      const f = diving?.seafloor?.frame ?? null, n = nodeById(a.id, islands, f), p = actor === 'guest' ? other : physics; if (!n || !p || p.y == null) return; // ground-space node (seafloor drifts with sailing)
       if (gatheredIds.has(n.id) || diving?.seafloor?.isGathered?.(n.id)) { nodeTaken(n.id, actor); return; } // tell a stale client it is gone
-      if (Math.hypot(n.x - p.x, n.y - p.y, n.z - p.z) > DIVE.REACH + 1.5) return;
+      if (Math.hypot(n.x - (f?.gx ?? 0) - p.x, n.y - p.y, n.z - (f?.gz ?? 0) - p.z) > DIVE.REACH + 1.5) return; // reach in scene space
       const scratch = new Bag(bag.snapshot()), loot = NODE_LOOT[n.type];
       for (const [k, c] of Object.entries(loot)) if (scratch.add(k, c) > 0) { emit({kind:'full', text:'Your bag is full'}, actor); return; }
       commit(bag, scratch); gatheredIds.add(n.id); later(() => gatheredIds.delete(n.id), DIVE.REGROW * 1000); nodeTaken(n.id, 'all');

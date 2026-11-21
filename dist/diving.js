@@ -5,7 +5,8 @@
 // game.js hooks:
 //   import { createDiving } from './diving.js?build=v3-survival-ae77fa84ac2b';
 //   init:   diving = createDiving({T, scene, camera, ocean, islands, getTiles:() => world.tiles, getDeckY:deckY,
-//             onGather:id => action({kind:'gather', id}), restore:savedDiveState});
+//             onGather:id => action({kind:'gather', id}), restore:savedDiveState, ground:() => sailing.ground, wrap:sailing.islandWrap});
+//   (ground/wrap: the seafloor stays in ground space; validate gathers with nodeById(id, islands, diving.seafloor.frame).)
 //   gather success (host): broadcast so EVERY client (host too) calls diving.markGathered(id).
 //   movePlayer: if (!diving?.move(dt, physics, {forward, strafe, yaw, pitch, up, down, fast, gather})) physics.update(...)
 //             (replacing `physics` mid-dive drops the dive automatically; diving.cancel() forces it.)
@@ -157,11 +158,11 @@ export class DiveBody {
 const NAMES = { sand: 'Sand', clay: 'Clay', scrap: 'Scrap', metalore: 'Metal ore' };
 const token = () => `${Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) * 1000).toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-export function createDiving({ T, scene, camera, ocean, islands = [], getTiles = () => [], getDeckY = () => 0.2, onGather, restore, hideAbove = [] } = {}) {
+export function createDiving({ T, scene, camera, ocean, islands = [], getTiles = () => [], getDeckY = () => 0.2, onGather, restore, hideAbove = [], ground = null, wrap = 0 } = {}) {
   const mount = token();
   let seafloor = null, fx = null, ui = null;
   try {
-    seafloor = createSeafloor(T, { islands });
+    seafloor = createSeafloor(T, { islands, ground, wrap }); // ground() = sailing displacement: the floor drifts with the islands
     seafloor.group.visible = false; scene?.add(seafloor.group); // hidden until update() shows it (title screen was black)
     fx = createUnderwaterFx(T, { scene, camera, ocean, seafloor, hideAbove, getTiles, getDeckY });
     ui = typeof document !== 'undefined' ? createDivingUI(document) : null;
