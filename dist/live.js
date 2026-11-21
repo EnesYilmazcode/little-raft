@@ -303,6 +303,10 @@ async function check() {
 }
 
 async function swap(manifest) {
+  // Two checks can overlap (poll tick, visibilitychange, raftLive.check()): both pass check()'s guard before their
+  // fetch resolves. A second swap would mount the same build again over the same old engine and never dispose the
+  // first new one (two engines running, one leaked per swap).
+  if (state.updating) return { status: 'busy', build: state.build };
   state.updating = true;
   const retry = manifest.build === state.failedBuild ? ++state.retryCount : 0;
   const old = state.engine;

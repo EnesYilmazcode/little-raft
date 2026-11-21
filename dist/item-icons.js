@@ -410,6 +410,20 @@ export function loadItemIcon(kind) {
 export function warmIcons(kinds) { for (const k of kinds) request(k, false); }
 /** Called with (kind, url) whenever an icon (re)renders. Returns an unsubscribe function. */
 export function onIconReady(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+/** Drop everything this module instance holds: provider, queue, icons, GL context, fallback materials. Only for
+ *  an instance nobody uses any more (game.js dispose: an old ?build= graph stays loaded after a live swap). */
+export function resetItemIcons() {
+  provider = null; queued.clear(); urgent.clear(); encoding.clear(); listeners.clear();
+  for (const w of waiters.values()) for (const r of w) r(null);
+  waiters.clear();
+  for (const u of [...cache.values(), ...stale.values()]) if (u.startsWith('blob:')) URL.revokeObjectURL(u);
+  cache.clear(); stale.clear();
+  clearTimeout(releaseTimer); release();
+  setIconRenderer(null); // drop the shared renderer's render target and context listeners (the next build injects it again)
+  scene = camera = null;
+  for (const m of mats.values()) m.dispose();
+  mats.clear(); shared.clear();
+}
 /** Swap the model source (e.g. hands.js buildItemModel). Re-renders every icon seen so far. */
 export function setModelProvider(fn) {
   provider = typeof fn === 'function' ? fn : null;
