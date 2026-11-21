@@ -73,14 +73,19 @@ function mergeByMaterial(T, root) {
   return made;
 }
 
-const smoothK = (rate, dt) => 1 - Math.exp(-rate * dt); // frame-rate independent smoothing (no per-frame closure)
+// Per-frame math helpers live at module scope (no closures created per frame or per createHands).
+const smoothK = (rate, dt) => 1 - Math.exp(-rate * dt); // frame-rate independent smoothing
+const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+const smooth = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const easeOutBack = (x) => { const c = 1.6, u = x - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
+// reel stroke: 0 = reached forward, 1 = pulled in to the body
+const stroke = (q) => { q = ((q % 1) + 1) % 1; return q < 0.5 ? smooth(0, 0.5, q) : 1 - smooth(0.5, 1, q); };
+const ZERO3 = Object.freeze([0, 0, 0]);
+const NO_HOLD = Object.freeze({});
 export function createHands(T, { modelFactory = null } = {}) {
   const V = (x = 0, y = 0, z = 0) => new T.Vector3(x, y, z);
   const UP = V(0, 1, 0);
   const DEG = Math.PI / 180;
-  const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
-  const smooth = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
-  const easeOutBack = (x) => { const c = 1.6, u = x - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
 
   const VM_TAN = Math.tan(30 * DEG);                    // viewmodel vertical FOV 60 degrees
   const root = new T.Group();
@@ -369,7 +374,7 @@ export function createHands(T, { modelFactory = null } = {}) {
   // dip: 0 = arms up, 1 = lowered out of view. A swap lowers, switches model/pose at the bottom, raises.
   const REEL_HZ = 2.5;
   const st = { hookOut: false, walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0,
-    shown: null, target: null, poseOverride: null, ptR: 0, ptL: 0, lowering: false, dip: 1, down: 1, raise: 1, lagX: 0, lagY: 0, lastYaw: null, lastPitch: 0 };
+    shown: null, target: null, poseOverride: null, ptR: 0, ptL: 0, lowering: false, dip: 1, down: 1, raise: 1, lagX: 0, lagY: 0, lastYaw: NaN, lastPitch: NaN };   // NaN = no look sample yet (keeps the fields double)
   const qOff = new T.Quaternion(), eul = new T.Euler(0, 0, 0, 'XYZ'), qSwing = new T.Quaternion(), AX = V(1, 0, 0);
   const last = { lag: [0, 0] };
   setPose(L.H, 'grip');
@@ -396,14 +401,20 @@ export function createHands(T, { modelFactory = null } = {}) {
 
   const qA = new T.Quaternion(), pA = V();
   const qB = new T.Quaternion();
-  function applyArm(A, px, py, pz, rx, ry, rz, wx, wy, wz, w = 0, wRope = 0) {
+  // applyArm(A) reads its offsets from ARM (filled in place by armSet): no 12-double argument list per call.
+  const ARM = new Float64Array(11);
+  function armSet(px, py, pz, rx, ry, rz, wx, wy, wz, w, wRope) {
+    ARM[0] = px; ARM[1] = py; ARM[2] = pz; ARM[3] = rx; ARM[4] = ry; ARM[5] = rz; ARM[6] = wx; ARM[7] = wy; ARM[8] = wz; ARM[9] = w; ARM[10] = wRope;
+  }
+  function applyArm(A) {
+    const w = ARM[9], wRope = ARM[10];
     pA.lerpVectors(A.basePos, A.pointPos, w);
     qB.slerpQuaternions(A.qBase, A.qPoint, w);
     if (wRope > 0) { pA.lerp(A.ropePos, wRope); qB.slerp(A.qRope, wRope); }
-    A.pose.position.set(pA.x + px, pA.y + py, pA.z + pz);
-    eul.set(rx, ry, rz); qOff.setFromEuler(eul);
+    A.pose.position.set(pA.x + ARM[0], pA.y + ARM[1], pA.z + ARM[2]);
+    eul.set(ARM[3], ARM[4], ARM[5]); qOff.setFromEuler(eul);
     A.pose.quaternion.copy(qOff).multiply(qB);
-    A.wrist.rotation.set(wx, wy, wz);
+    A.wrist.rotation.set(ARM[6], ARM[7], ARM[8]);
   }
 
   function update(params = {}) {
@@ -441,7 +452,7 @@ export function createHands(T, { modelFactory = null } = {}) {
 
     // ---- look lag: hands trail camera turns a little, then settle
     if (Number.isFinite(params.yaw) && Number.isFinite(params.pitch)) {
-      if (st.lastYaw === null) { st.lastYaw = params.yaw; st.lastPitch = params.pitch; }
+      if (Number.isNaN(st.lastYaw)) { st.lastYaw = params.yaw; st.lastPitch = params.pitch; }
       let dy = params.yaw - st.lastYaw; dy -= Math.round(dy / (Math.PI * 2)) * Math.PI * 2;
       const dp = params.pitch - st.lastPitch;
       st.lastYaw = params.yaw; st.lastPitch = params.pitch;
@@ -477,11 +488,10 @@ export function createHands(T, { modelFactory = null } = {}) {
 
     // ---- reel rhythm: hand over hand, one pull stroke every 0.4 s (2.5 Hz), the hands half a cycle apart.
     // stroke 0 = reached forward, 1 = pulled in to the body.
-    const stroke = (q) => { q = ((q % 1) + 1) % 1; return q < 0.5 ? smooth(0, 0.5, q) : 1 - smooth(0.5, 1, q); };
     const pullR = stroke(t * REEL_HZ / 2), pull = stroke(t * REEL_HZ / 2 + 0.5);
     const rW = st.reelW, oW = st.outW, tw = st.toolW;
     const catchDip = hasHookOut ? 0 : (1 - tw);
-    const hold = st.shown ? holdFor(st.shown) : {}, nW = (1 - oW) * (1 - st.ptR), arm = hold.arm || [0, 0, 0];
+    const hold = st.shown ? holdFor(st.shown) : NO_HOLD, nW = (1 - oW) * (1 - st.ptR), arm = hold.arm || ZERO3;
 
     // ---- right arm
     // hook out: the fist closes on the line and comes in toward the middle; reeling pulls it back and down
@@ -493,7 +503,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     const rrz = -0.20 * ce + 0.25 * a + 0.03 * wA * Math.sin(ph) + 0.15 * pullR * rW + 0.25 * down;
     const rwx = 0.30 * ce - 0.45 * a - 0.10 * oW + 0.22 * pullR * rW - (hold.tilt || 0) * nW;
     const rwz = -0.15 * ce + 0.12 * a;
-    applyArm(R, rpx + arm[0] * nW, rpy + arm[1] * nW, rpz + arm[2] * nW, rrx, rry, rrz, rwx, 0, rwz, smooth(0, 1, st.ptR));
+    armSet(rpx + arm[0] * nW, rpy + arm[1] * nW, rpz + arm[2] * nW, rrx, rry, rrz, rwx, 0, rwz, smooth(0, 1, st.ptR), 0); applyArm(R);
 
     // ---- left arm
     const lw = rW * oW;                                          // left fist on the line, reaching and pulling in turn
@@ -503,8 +513,9 @@ export function createHands(T, { modelFactory = null } = {}) {
     const lrx = -0.10 * ce + 0.30 * pull * rW + 0.008 * amp * brL - 0.4 * down;
     const lry = 0.08 * ce;
     const lrz = -0.15 * pull * rW - 0.03 * wA * Math.sin(ph) - 0.2 * down;
-    applyArm(L, lpx + lw * 0.03 * pull, lpy - lw * 0.04 * pull, lpz + lw * 0.08 * pull, lrx - lw * 0.25 * pull, lry, lrz + lw * 0.10 * pull,
+    armSet(lpx + lw * 0.03 * pull, lpy - lw * 0.04 * pull, lpz + lw * 0.08 * pull, lrx - lw * 0.25 * pull, lry, lrz + lw * 0.10 * pull,
       0.22 * pull * rW * (1 - lw) - 0.08 * ce, 0, -0.10 * ce + 0.12 * a, smooth(0, 1, st.ptL), lw);
+    applyArm(L);
 
     // ---- coil: spool turns while reeling (in) / casting (out); pendulum swing about grip axis
     if (isHook) {
