@@ -365,7 +365,7 @@ export function createDayNight(ctx) {
   const partMat = new Array(MAX_PARTS).fill(null), partBase = new Float32Array(MAX_PARTS), partMult = new Float32Array(MAX_PARTS);
   const lanternGroups = new Array(MAX_LANTERNS).fill(null), lanternLocal = new Float32Array(MAX_LANTERNS * 3), lanternDist = new Float32Array(MAX_LANTERNS);
   const poolPick = new Int32Array(POOL_LIGHTS).fill(-1);
-  let partCount = 0, lanternCount = 0, signature = -1, scanClock = 0, rankClock = 0, poolLit = 0;
+  let partCount = 0, lanternCount = 0, signature = -1, scanClock = 0, rankClock = 0, poolLit = 0, lastNf = -1, lastGrow = -1;
   function lanternSignature(raft, world) {
     let n = raft.children.length * 131;
     const decor = world?.decor;
@@ -467,13 +467,13 @@ export function createDayNight(ctx) {
     }
     // clouds
     cloudMat.color.copy(cCloud); cloudMat.emissive.copy(cCloud).multiplyScalar(0.32 + 0.18 * nf); // soft self-lit undersides
-    const drift = (W.wind - 0.15) * 0.9 * dt;
+    const drift = (W.wind - 0.15) * 0.9 * dt, grow = 1 + (W.cloud - 0.25) * 0.5;
     for (let i = 0; i < cloudGroups.length; i++) {
       const g = cloudGroups[i];
       if (drift > 0) { g.position.x += drift; if (g.position.x > 85) g.position.x -= 170; }
-      const grow = 1 + (W.cloud - 0.25) * 0.5;
-      g.scale.x = cloudBase[i * 3 + 1] * grow; g.scale.z = cloudBase[i * 3 + 2] * grow;
+      if (grow !== lastGrow) { g.scale.x = cloudBase[i * 3 + 1] * grow; g.scale.z = cloudBase[i * 3 + 2] * grow; }
     }
+    lastGrow = grow;
     // stars and moon
     const starA = nf * (1 - 0.85 * W.cloud * W.cloud);
     starUniforms.uTime.value = time; starUniforms.uOpacity.value = starA;
@@ -502,9 +502,9 @@ export function createDayNight(ctx) {
         let stale = false;
         for (let i = 0; i < lanternCount; i++) if (lanternGroups[i].parent !== raft) { stale = true; break; }
         const sig = lanternSignature(raft, ctx.world);
-        if (stale || sig !== signature) { signature = sig; scanLanterns(raft); }
+        if (stale || sig !== signature) { signature = sig; scanLanterns(raft); lastNf = -1; }
       }
-      for (let i = 0; i < partCount; i++) partMat[i].emissiveIntensity = partBase[i] * (1 + (partMult[i] - 1) * nf);
+      if (nf !== lastNf) { lastNf = nf; for (let i = 0; i < partCount; i++) partMat[i].emissiveIntensity = partBase[i] * (1 + (partMult[i] - 1) * nf); }
       rankClock += dt;
       if (rankClock >= 0.5) { rankClock = 0; rankLanterns(raft, cam); }
     }
