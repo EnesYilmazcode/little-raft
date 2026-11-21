@@ -28,6 +28,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const posInt = (n) => (Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0);
 // Hand recipes every pre-progression build offered; old raft saves keep them learned.
 const LEGACY_RECIPES = ['rope', 'hook', 'hammer', 'fishingrod', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate'];
+// The live instance that may write PROGRESSION_KEY (hot reload mounts the new engine before disposing the old one).
+const OWNER = Symbol.for('littleRaft.progression.owner');
 
 function load() {
   try { const v = JSON.parse(localStorage.getItem(PROGRESSION_KEY) || 'null'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
@@ -38,8 +40,12 @@ function load() {
  *        notice(text, ms), pose() -> {x, z, yaw}, resume(), pause() }
  */
 export function attachProgression(ctx) {
+  const prevOwner = globalThis[OWNER];
+  try { prevOwner?.flush?.(); } catch {} // hot reload: the old engine's latest state, not its last autosave
   const saved = load();
   const progs = { host: new Progression(saved.host), guest: new Progression(saved.guest) };
+  const self = { flush: () => save() };
+  globalThis[OWNER] = self;
   const stations = new Map(); // key -> StationModel (host only)
   const pendingStations = saved.stations && typeof saved.stations === 'object' ? { ...saved.stations } : {};
   const remote = { prog: null, stations: {}, views: new Map() }; // guest-side mirror of the host
@@ -77,7 +83,7 @@ export function attachProgression(ctx) {
   const stationSnaps = () => Object.fromEntries([...stations].map(([k, s]) => [k, s.snapshot()]));
 
   function save() {
-    if (!isHost()) return;
+    if (!isHost() || globalThis[OWNER] !== self) return;
     dirty = false;
     try {
       localStorage.setItem(PROGRESSION_KEY, JSON.stringify({ v: 1, host: progs.host.snapshot(), guest: progs.guest.snapshot(), stations: { ...pendingStations, ...stationSnaps() } }));
@@ -104,7 +110,7 @@ export function attachProgression(ctx) {
     const bag = ctx.bag(actor), p = progs[actor] ?? progs.host;
     if (a.kind === 'prog:research') {
       const r = p.research(String(a.item), { has: bag });
-      if (r.ok) { ctx.emit({ kind: 'craft', text: `Researched ${nameOf(a.item)}` }, actor); announce(r.unlocked, actor); dirty = true; }
+      if (r.ok) { ctx.emit({ kind: 'craft', text: `Researched ${nameOf(a.item)}` }, actor); announce(r.unlocked, actor); dirty = true; gateCache = null; }
       else say(r.reason, actor);
       return true;
     }
@@ -311,6 +317,8 @@ export function attachProgression(ctx) {
 
   function dispose() {
     save();
+    self.flush = null;
+    if (globalThis[OWNER] === self) globalThis[OWNER] = prevOwner;
     try { panel?.dispose(); } catch {}
     try { tooltips?.dispose(); } catch {}
     try { research?.remove(); hud?.remove(); } catch {}

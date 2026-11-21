@@ -693,6 +693,24 @@ test('hooks: an old raft save keeps every legacy recipe; a fresh raft does not a
   c.dispose();
 });
 
+test('hooks: hot reload hands over live station contents (no loss, no duplication)', () => {
+  const store = fakeStorage();
+  const g = fakeGame({ world: { tiles: [[0, 0]], decor: [{ type: 'smelter', x: 0, z: 0 }], items: [], collected: 1 } });
+  g.bags.host.add('metalore', 5);
+  const a = H.attachProgression(g.ctx);
+  a.tick(0.016);
+  a.apply({ kind: 'prog:insert', key: '0,0', item: 'metalore', n: 99 }, 'host'); // more than owned
+  assert.equal(g.bags.host.count('metalore'), 0);
+  // live.js: capture old -> mount new -> dispose old, all before the old autosave runs
+  const b = H.attachProgression(g.ctx);
+  a.dispose();
+  b.tick(0.016);
+  assert.equal(b.debug.state().stations['0,0'].input?.count, 5, 'new engine sees the inserted ore');
+  b.save();
+  assert.equal(JSON.parse(store.get(H.PROGRESSION_KEY)).stations['0,0'].input.count, 5);
+  b.dispose();
+});
+
 test('hooks: prog take with a full bag keeps the output; partial take returns the rest', () => {
   fakeStorage();
   const g = fakeGame({ world: { tiles: [[0, 0]], decor: [{ type: 'smelter', x: 0, z: 0 }], items: [], collected: 1 } });
