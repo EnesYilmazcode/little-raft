@@ -7,7 +7,11 @@
 export const FLOOR_TOP = 0.2;
 export const FLOOR_BOUNDS = Object.freeze({minX:-1, maxX:1, minY:0, maxY:0.2, minZ:-1, maxZ:1});
 
-const PLANK_COLORS = ['#bb8a53', '#c69860', '#ad7c4a'];
+// Weathered grey-olive tan boards. All planks share one material (PLANK_COLORS[0]); each board's own tone
+// is a per-vertex multiplier, so tone variety costs no draw calls.
+const PLANK_COLORS = ['#a68e66', '#988160', '#b0986c', '#8b7655'];
+const UNDERLAY_COLOR = '#2a241a'; // dark quad under the boards so the gaps read as shadow, not water
+const UNDERLAY_Y = 0.135;
 const BEAM_COLOR = '#5e4029', BEAM_END_COLOR = '#9c7649', ROPE_COLOR = '#a8946c', NAIL_COLOR = '#4b4844';
 const BEV = 0.011, BEV_T = 0.01, THICK = 0.052;
 const BEAM_R = 0.064, BEAM_Y = 0.072, BEAM_HALF = 0.985;
@@ -24,6 +28,7 @@ function merge(T, geos) {
   let count = 0;
   const parts = geos.map(g => { const n = g.index ? g.toNonIndexed() : g; if (n !== g) g.dispose(); count += n.attributes.position.count; return n; });
   const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3), uv = new Float32Array(count * 2);
+  const col = parts.some(g => g.attributes.color) ? new Float32Array(count * 3).fill(1) : null;
   let o = 0;
   for (const g of parts) {
     const c = g.attributes.position.count;
@@ -31,6 +36,7 @@ function merge(T, geos) {
       pos[(o + i) * 3] = g.attributes.position.getX(i); pos[(o + i) * 3 + 1] = g.attributes.position.getY(i); pos[(o + i) * 3 + 2] = g.attributes.position.getZ(i);
       if (g.attributes.normal) { nor[(o + i) * 3] = g.attributes.normal.getX(i); nor[(o + i) * 3 + 1] = g.attributes.normal.getY(i); nor[(o + i) * 3 + 2] = g.attributes.normal.getZ(i); }
       if (g.attributes.uv) { uv[(o + i) * 2] = g.attributes.uv.getX(i); uv[(o + i) * 2 + 1] = g.attributes.uv.getY(i); }
+      if (col && g.attributes.color) { col[(o + i) * 3] = g.attributes.color.getX(i); col[(o + i) * 3 + 1] = g.attributes.color.getY(i); col[(o + i) * 3 + 2] = g.attributes.color.getZ(i); }
     }
     o += c; g.dispose();
   }
@@ -38,6 +44,7 @@ function merge(T, geos) {
   out.setAttribute('position', new T.BufferAttribute(pos, 3));
   out.setAttribute('normal', new T.BufferAttribute(nor, 3));
   out.setAttribute('uv', new T.BufferAttribute(uv, 2));
+  if (col) out.setAttribute('color', new T.BufferAttribute(col, 3));
   out.computeBoundingBox(); out.computeBoundingSphere();
   return out;
 }
@@ -83,11 +90,32 @@ function plankGeometry(T, rng, p) {
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i);
     pos.setY(i, pos.getY(i) + p.warp * (1 - z * z));
-    let u = 0.5 + (x - xc) / 0.34 + p.uOff, v = 0.03 + (z + 1) * 0.47;
+    let u = 0.5 + (x - xc) / (p.x1 - p.x0 - 2 * BEV), v = 0.03 + (z + 1) * 0.47 + p.uOff;
     if (p.flipU) u = 1 - u; if (p.flipV) v = 1 - v;
     uv.setXY(i, u, v);
   }
   g.clearGroups(); g.computeVertexNormals();
+  // Per-board tone (relative to the shared plank material) with darker worn sides and faint grime mottling.
+  const nor = g.attributes.normal, col = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const up = nor.getY(i), k = (up > 0.9 ? 0.93 + rng() * 0.07 : up > 0.2 ? 0.78 : 0.55);
+    col[i * 3] = p.tone[0] * k; col[i * 3 + 1] = p.tone[1] * k; col[i * 3 + 2] = p.tone[2] * k;
+  }
+  g.setAttribute('color', new T.BufferAttribute(col, 3));
+  return g;
+}
+
+// Linear-space multiplier taking PLANK_COLORS[0] to the given colour (vertex colours multiply in linear).
+function toneOf(T, hex) {
+  const a = new T.Color(hex), b = new T.Color(PLANK_COLORS[0]);
+  return [a.r / b.r, a.g / b.g, a.b / b.b];
+}
+
+function underlay(T) {
+  const g = new T.PlaneGeometry(2, 2); g.rotateX(-Math.PI / 2); g.translate(0, UNDERLAY_Y, 0);
+  const t = toneOf(T, UNDERLAY_COLOR), c = new Float32Array(g.attributes.position.count * 3);
+  for (let i = 0; i < c.length; i += 3) c.set(t, i);
+  g.setAttribute('color', new T.BufferAttribute(c, 3));
   return g;
 }
 
@@ -146,27 +174,32 @@ function floorParts(T, index) {
   const splits = new Set(); const splitCount = rng() < 0.5 ? 1 : 2;
   while (splits.size < splitCount) splits.add(Math.floor(rng() * n));
 
+  // Neighbouring boards never share a tone; each board also gets a small random brightness jitter.
+  let lastTone = -1;
+  const pickTone = () => {
+    let k = Math.floor(rng() * PLANK_COLORS.length); if (k === lastTone) k = (k + 1 + Math.floor(rng() * (PLANK_COLORS.length - 1))) % PLANK_COLORS.length;
+    lastTone = k; const j = 0.94 + rng() * 0.1;
+    return toneOf(T, PLANK_COLORS[k]).map(v => v * j);
+  };
   const pieces = [];
   for (let i = 0; i < n; i++) {
     const x0 = bounds[i] + (i === 0 ? 0.003 : 0.005 + rng() * 0.006);
     const x1 = bounds[i + 1] - (i === n - 1 ? 0.003 : 0.005 + rng() * 0.006);
     const base = {i, x0, x1, top:0.197 - rng() * 0.011, roll:(rng() - 0.5) * 0.016, warp:(rng() - 0.5) * 0.004,
-      uOff:(rng() - 0.5) * 0.08, flipU:rng() < 0.5, flipV:rng() < 0.5, color:PLANK_COLORS[Math.floor(rng() * PLANK_COLORS.length)]};
+      uOff:(rng() - 0.5) * 0.08, flipU:rng() < 0.5, flipV:rng() < 0.5, tone:pickTone()};
     if (splits.has(i)) {
       const seam = (rng() < 0.5 ? -1 : 1) * (0.15 + rng() * 0.4), slope = (rng() - 0.5) * 0.5;
       const seamEnd = () => ({slope, depth:0.008, chip:true});
       pieces.push({...base, za:-0.997, zb:seam - 0.005, endA:tileEnd(), endB:seamEnd()});
       const other = {...base, top:0.197 - rng() * 0.011, roll:(rng() - 0.5) * 0.016, flipV:!base.flipV,
-        color:PLANK_COLORS[Math.floor(rng() * PLANK_COLORS.length)]};
+        tone:pickTone()};
       pieces.push({...other, za:seam + 0.005, zb:0.997, endA:seamEnd(), endB:tileEnd()});
     } else pieces.push({...base, za:-0.997, zb:0.997, endA:tileEnd(), endB:tileEnd()});
   }
 
-  const byColor = new Map(), nails = [], ropes = [], beams = [], caps = [];
-  for (const p of pieces) {
-    if (!byColor.has(p.color)) byColor.set(p.color, []);
-    byColor.get(p.color).push(plankGeometry(T, rng, p));
-  }
+  const nails = [], ropes = [], beams = [], caps = [];
+  const planks = pieces.map(p => plankGeometry(T, rng, p));
+  planks.push(underlay(T));
 
   // Logs underneath, parallel to X.
   for (const z of beamZ) { const b = beamParts(T, rng, z); beams.push(b.beam); caps.push(...b.caps); }
@@ -202,7 +235,7 @@ function floorParts(T, index) {
 
   const parts = [];
   const add = (geos, color, name, castShadow = true) => parts.push({name, color, geometry:merge(T, geos), castShadow});
-  for (const [color, list] of byColor) add(list, color, 'floor-planks');
+  add(planks, PLANK_COLORS[0], 'floor-planks');
   add(beams, BEAM_COLOR, 'floor-logs');
   add(caps, BEAM_END_COLOR, 'floor-log-ends');
   if (ropes.length) add(ropes, ROPE_COLOR, 'floor-lashings', false); // thin rope: shadow is invisible, skip the shadow pass
@@ -210,13 +243,19 @@ function floorParts(T, index) {
   return parts;
 }
 
-const defaultMat = T => c => new T.MeshStandardMaterial({color:c, roughness:0.86});
+const defaultMat = T => c => new T.MeshStandardMaterial({color:c, roughness:0.95});
+// Plank geometry carries per-board tones as vertex colours. The plank material is used only for the deck
+// colour, so it is switched to vertex colours here; shared see-through materials (build ghosts) are left alone.
+function withVertexColors(m, geometry) {
+  if (geometry.attributes.color && m && !m.transparent && !m.vertexColors && 'vertexColors' in m) { m.vertexColors = true; m.needsUpdate = true; }
+  return m;
+}
 
 export function createFloor(T, index = 0, getMaterial) {
   const mat = getMaterial || defaultMat(T);
   const g = new T.Group(); g.name = 'raft-floor';
   for (const p of floorParts(T, index)) {
-    const mesh = new T.Mesh(p.geometry, mat(p.color)); mesh.name = p.name;
+    const mesh = new T.Mesh(p.geometry, withVertexColors(mat(p.color), p.geometry)); mesh.name = p.name;
     mesh.castShadow = p.castShadow; mesh.receiveShadow = true; g.add(mesh);
   }
   g.userData.kind = 'floor';
@@ -244,7 +283,7 @@ export function createRaftMesh(T, tiles, getMaterial) {
   }
   const g = new T.Group(); g.name = 'raft-floors';
   for (const b of buckets.values()) {
-    const mesh = new T.Mesh(merge(T, b.list), mat(b.color)); mesh.name = b.name;
+    const geo = merge(T, b.list), mesh = new T.Mesh(geo, withVertexColors(mat(b.color), geo)); mesh.name = b.name;
     mesh.castShadow = b.castShadow; mesh.receiveShadow = true; g.add(mesh);
   }
   g.userData.kind = 'floors';

@@ -44,7 +44,7 @@ export const LIGHTING = {
 export const COLOR_PRESETS = {
   planks: [],
   plank: ['#bb8a53', '#c69860', '#ad7c4a', '#9c7649', '#c8995f', '#d3a368', '#8c6745', '#d5a265', '#a97d4c', '#b4824b', '#906f48', '#725942', '#756a49', '#ad8153',
-    '#a8703f', '#b98148', '#9a6538', '#6b4426'],
+    '#a8703f', '#b98148', '#9a6538', '#6b4426', '#a68e66', '#988160', '#b0986c', '#8b7655'], // last four: weathered deck boards (deck.js)
   bark: ['#5e4029', '#5e3b20'],
   rope: ['#a8946c', '#b89a64', '#e9d39a'],
   scrap: ['#4b4844', '#8e9aa2', '#6f6964', '#6d757b', '#9a5a32'],
