@@ -416,10 +416,11 @@ export function createRaiders(ctx) {
       hitAt[actor === 'guest' ? 'guest' : 'host'] = now;
       const res = hitRaider(state, a.i, a.dmg, Math.atan2(pose.x - p.x, pose.z - p.z));
       if (res.killed && bag) {
-        const loot = raiderLoot(), got = {};
-        for (const [k, n] of Object.entries(loot)) { const put = n - bag.add(k, n); if (put > 0) got[k] = put; }
+        const loot = raiderLoot(), got = {}; let lost = false;
+        for (const [k, n] of Object.entries(loot)) { const put = n - bag.add(k, n); if (put > 0) got[k] = put; if (put < n) lost = true; }
         const parts = Object.entries(got).map(([k, n]) => `${n} ${k === 'feather' ? (n > 1 ? 'Feathers' : 'Feather') : 'Raw Drumstick'}`);
         ctx.emit?.(parts.length ? { kind: 'loot', text: '+ ' + parts.join(' · '), loot: got } : { kind: 'full', text: TEXT.full }, actor);
+        if (lost && parts.length) ctx.emit?.({ kind: 'full', text: TEXT.full }, actor); // the rest went overboard: say so
       }
       return true;
     },
