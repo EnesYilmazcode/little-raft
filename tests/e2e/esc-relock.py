@@ -52,7 +52,7 @@ with sync_playwright() as p:
         errors = []; pg.on('pageerror', lambda e: errors.append(str(e)))
         try:
             pg.goto(url); pg.wait_for_function('!!window.raftDebug', timeout=20000)
-            pg.locator('#newGame' if pg.locator('#newGame').count() else '#solo').click()
+            pg.locator('.ob-item[data-act="new"]:visible, #newGame:visible, #solo:visible').first.click()
             pg.wait_for_function('raftDebug.state.running', timeout=15000); pg.wait_for_timeout(800)
             if not pg.evaluate('!!document.pointerLockElement'): pg.mouse.click(320, 180); pg.wait_for_timeout(500)
             cdp = ctx.new_cdp_session(pg)
@@ -71,7 +71,7 @@ with sync_playwright() as p:
     ctx = b.new_context(viewport={'width': 640, 'height': 360}); pg = ctx.new_page()
     try:
         pg.goto(url); pg.wait_for_function('!!window.raftDebug', timeout=20000)
-        pg.locator('#newGame' if pg.locator('#newGame').count() else '#solo').click()
+        pg.locator('.ob-item[data-act="new"]:visible, #newGame:visible, #solo:visible').first.click()
         pg.wait_for_function('raftDebug.state.running', timeout=15000); pg.wait_for_timeout(800)
         if not pg.evaluate('!!document.pointerLockElement'): pg.mouse.click(320, 180); pg.wait_for_timeout(500)
         cdp = ctx.new_cdp_session(pg)
