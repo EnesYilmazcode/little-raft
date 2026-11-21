@@ -13,6 +13,7 @@ import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84a
 import { PlayerPhysics } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -41,8 +42,8 @@ const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const TIMBER = new Set(['#bb8a53','#c69860','#ad7c4a','#5e4029','#9c7649', '#c8995f', '#d3a368', '#8c6745', '#d5a265', '#a97d4c', '#b4824b', '#906f48', '#725942', '#756a49', '#ad8153']);
 const STYLE_ID = 'little-raft-engine-style';
 const HUD_CSS = `
-body.playing header,body.playing #hud .inventory,body.playing #hud .goal,body.playing #durability,body.playing #toast,
-body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.playing [data-quick-recipe]{display:none!important}
+body.playing header,body.playing #hud .inventory,body.playing #durability,
+body.playing #hud .controls,body.playing #recipes,body.playing [data-quick-recipe]{display:none!important}
 #contextPrompt{position:fixed;left:50%;top:calc(50% + 26px);transform:translateX(-50%);padding:3px 10px;border-radius:8px;
   background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:none;z-index:30;white-space:nowrap}
 #contextPrompt[hidden]{display:none}
@@ -202,8 +203,8 @@ export function mount(transfer = null) {
   let seq = isInt(X?.seq) ? X.seq : 0, lastSeqSent = Number.isFinite(X?.lastSeqSent) ? X.lastSeqSent : 0, guestAck = isInt(X?.guestAck) ? X.guestAck : 0;
   let lastHostMessage = X?.lastHostMessage || performance.now(), lastGuestMessage = X?.lastGuestMessage || performance.now();
   let joinTimer = 0, joinDeadline = Number.isFinite(X?.joinDeadline) ? X.joinDeadline : 0;
-  let netClock = 0, saveClock = 0, networkTick = 0, toastTimer = 0, wheelAcc = 0;
-  let noticeText = '', noticeUntil = 0, contextCache = null, uiFailed = false;
+  let netClock = 0, saveClock = 0, networkTick = 0, wheelAcc = 0;
+  let contextCache = null, uiFailed = false;
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
   let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = '';
@@ -372,21 +373,15 @@ export function mount(transfer = null) {
   }
   const isPending = it => (pending.get(it.token) ?? 0) > performance.now();
 
-  // ---------- Feedback (quiet: a short line under the crosshair) ----------
+  // ---------- Feedback: pickups and notes go to the bottom-left feed, never the screen centre ----------
   const setText = (sel, v) => { const el = $(sel); if (el) el.textContent = v; };
   function setStatus(s) { setText('#networkStatus', s); }
-  function notice(s, ms = 1800) { noticeText = String(s).slice(0, 90); noticeUntil = performance.now() + ms; }
-  function toast(s) {
-    if (running) { notice(s, 2400); return; }
-    const el = $('#toast'); if (!el) return; el.textContent = s; el.classList.add('show');
-    toastTimer = cancelTimer(toastTimer); toastTimer = later(() => { toastTimer = 0; el.classList.remove('show'); }, 2600);
-  }
+  const notice = s => pickupFeed.note(s);
   function beep(f = 500) { if (!sound || !(options?.volume > 0)) return; try { audio ??= new AudioContext(); audio.resume(); const o = audio.createOscillator(), g = audio.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(f, audio.currentTime); o.frequency.exponentialRampToValueAtTime(f * 1.4, audio.currentTime + .12); g.gain.setValueAtTime(.12 * options.volume, audio.currentTime); g.gain.exponentialRampToValueAtTime(.001, audio.currentTime + .22); o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + .23); } catch {} }
   function updateContext(dialog) {
     let html = '';
     if (running && !dialog) {
       if (guestWaiting()) html = 'Waiting for your brother’s raft…';
-      else if (performance.now() < noticeUntil) html = esc(noticeText);
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
       else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
       else if (castOut() && castOut().stage === 'floating') html = caughtList(castOut()).length ? 'Hold click to reel it in' : 'Hold click to reel';
@@ -510,7 +505,8 @@ export function mount(transfer = null) {
   function effect(e) {
     if (!e || typeof e !== 'object') return;
     if (Array.isArray(e.tokens)) for (const t of e.tokens) if (typeof t === 'string') pending.delete(t);
-    if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90));
+    if (e.loot && typeof e.loot === 'object') { for (const [k, n] of Object.entries(e.loot)) if (ITEM_INFO[k] && isInt(n) && n > 0) pickupFeed.add(k, n); }
+    else if (typeof e.text === 'string' && e.text) notice(e.text);
     beep(e.kind === 'build' ? 640 : e.kind === 'craft' ? 560 : e.kind === 'full' ? 220 : 440);
   }
   function wearHook(bag, slot, actor) {
@@ -527,7 +523,7 @@ export function mount(transfer = null) {
     if (a.kind === 'moveSlot') { bag.move(a.from, a.to, a.amount ?? undefined); return; }
     if (a.kind === 'craft') {
       const r = bag.craft(a.recipe);
-      if (r.ok) emit({kind:'craft', text:`Crafted ${ITEM_INFO[r.crafted.kind]?.name ?? r.crafted.kind}`}, actor);
+      if (r.ok) emit({kind:'craft', text:`Crafted ${ITEM_INFO[r.crafted.kind]?.name ?? r.crafted.kind}`, loot:{[r.crafted.kind]:r.crafted.count}}, actor);
       else if (r.reason === 'full') emit({kind:'full', text:'Your bag is full'}, actor);
       else if (r.reason === 'missing') emit({kind:'notice', text:'Need ' + r.missing.map(m => `${m.count} more ${itemName(m.kind)}`).join(' and ')}, actor);
       return;
@@ -543,7 +539,7 @@ export function mount(transfer = null) {
       commit(bag, scratch);
       world.collected++; world.items.splice(i, 1); world.items.push(makeItem(a.id)); syncItems();
       if (typeof a.cast === 'string' && a.cast && wornCasts[actor] !== a.cast) { wornCasts[actor] = a.cast; wearHook(bag, a.slot, actor); }
-      if (!a.net) emit({kind:'loot', text:'+ ' + Object.entries(loot).map(([k, n]) => `${n} ${itemName(k)}`).join(' · ')}, actor);
+      if (!a.net) emit({kind:'loot', text:'+ ' + Object.entries(loot).map(([k, n]) => `${n} ${itemName(k)}`).join(' · '), loot}, actor);
       return;
     }
     if (a.kind === 'build') {
@@ -560,13 +556,13 @@ export function mount(transfer = null) {
         else if (!bag.remove(a.recipe, 1)) { emit({kind:'notice', text:`Craft a ${itemName(a.recipe)} first`}, actor); return; }
         world.decor.push({type:a.recipe, x:a.x, z:a.z});
       } else return;
-      rebuildRaft(); emit({kind:'build', text:a.recipe === 'floor' ? 'A little more room!' : `${ITEM_INFO[a.recipe].name} placed`}, 'all');
+      rebuildRaft(); emit({kind:'build'}, 'all');
       return;
     }
     if (a.kind === 'fish') {
       if (bag.count('fishingrod') < 1) return;
       if (bag.add('fish', 1) > 0) { emit({kind:'full', text:'Bag full: the fish swam away'}, actor); return; }
-      world.fish++; emit({kind:'loot', text:'You caught a fish!'}, actor); return;
+      world.fish++; emit({kind:'loot', text:'You caught a fish!', loot:{fish:1}}, actor); return;
     }
     if (a.kind === 'repair') {
       const i = hookIndex(bag, a.slot);
@@ -800,7 +796,7 @@ export function mount(transfer = null) {
   function frame() {
     const now = performance.now(), dt = Math.min((now - last) / 1000, .05); last = now; elapsed += dt;
     const dialog = uiBlocked();
-    if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { closeConnection(); toast('Host disconnected. You are back on your own raft.'); }
+    if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { closeConnection(); notice('Host disconnected. You are back on your own raft.'); }
     if (role === 'host' && conn?.open && now - lastGuestMessage > 8000) { const stale = conn; conn = null; unbindTarget(stale); stale.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); }
     ocean.update(elapsed, camera);
     updateRaft(dt); movePlayer(dt, running && !dialog);
@@ -977,12 +973,12 @@ export function mount(transfer = null) {
       if (isHost) {
         lastGuestMessage = performance.now(); guestAck = 0; wornCasts.guest = null;
         networkReady = true; setStatus('Connected! Your brother is aboard.'); setConnectionLabel(`TWO ABOARD · ${room.toUpperCase()}`);
-        $('#crew')?.close(); start(); toast('Your brother joined the raft!'); send(hostState());
+        $('#crew')?.close(); start(); notice('Your brother joined the raft!'); send(hostState());
       } else setStatus('Connected. Loading your brother’s raft…'); // ready only after the first valid state
     });
     listen(c, 'data', data => {
       if (conn !== c || !data || typeof data !== 'object') return;
-      if (data.type === 'leaving') { if (isHost) { const old = conn; conn = null; unbindTarget(old); old.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); } else closeConnection(); toast('Your brother left the raft.'); return; }
+      if (data.type === 'leaving') { if (isHost) { const old = conn; conn = null; unbindTarget(old); old.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); } else closeConnection(); notice('Your brother left the raft.'); return; }
       if (isHost) {
         lastGuestMessage = performance.now();
         if (data.type === 'action' && data.a && typeof data.a === 'object') { applyAction(data.a, 'guest'); if (isInt(data.a.seq) && data.a.seq > guestAck) guestAck = data.a.seq; }
@@ -1007,7 +1003,7 @@ export function mount(transfer = null) {
           networkReady = true; joinTimer = cancelTimer(joinTimer); joinDeadline = 0;
           setStatus('Connected! You are aboard your brother’s raft.'); setConnectionLabel(`TWO ABOARD · ${room.toUpperCase()}`);
           const s = spawnPoint(1.2, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z});
-          $('#crew')?.close(); start(); toast('You joined your brother’s raft!');
+          $('#crew')?.close(); start(); notice('You joined your brother’s raft!');
         }
       }
       if (data.type === 'effect') effect(data.e);
@@ -1015,11 +1011,11 @@ export function mount(transfer = null) {
     listen(c, 'close', () => {
       if (conn !== c) return;
       unbindTarget(c); conn = null; networkReady = false; other = null;
-      if (isHost) { setConnectionLabel('BROTHER LEFT · ROOM OPEN'); toast('Your brother left. Your raft is still here.'); return; }
+      if (isHost) { setConnectionLabel('BROTHER LEFT · ROOM OPEN'); notice('Your brother left. Your raft is still here.'); return; }
       joinTimer = cancelTimer(joinTimer); joinDeadline = 0;
       const p = peer; peer = null; unlisten(bindings.splice(0)); try { p?.destroy(); } catch {}
       restoreOwnRaft(); role = 'solo'; setConnectionLabel('DISCONNECTED');
-      setStatus('Host disconnected. Rejoin when their tab is open.'); toast('Host disconnected. You are back on your own raft.');
+      setStatus('Host disconnected. Rejoin when their tab is open.'); notice('Host disconnected. You are back on your own raft.');
     });
     listen(c, 'error', () => { if (conn === c) setStatus('Connection failed. Check the code and try again.'); });
   }
@@ -1086,7 +1082,7 @@ export function mount(transfer = null) {
         fishWait, hookStage:hook ? (hook.fishing ? 'fishing' : hook.stage) : 'idle', hookCaught:hc?.caught ? {...hc.caught} : null, hookCaughtItems:caughtList(hc).map(c => ({...c})),
         hookHealth:hookDurability(bag), hookRange:16 + hookDurability(bag) * .16, charge:chargeValue(), charging:!!charging, reeling,
         build:{active:mode === 'build' || mode === 'place', recipe:kind, hover:hover ? {...hover} : null, candidates:scene ? placementCandidates(kind).length : 0, affordable:mode === 'build' ? canAfford(bag, FLOOR_COST) : mode === 'place'},
-        pickup:pickTarget ? {id:pickTarget.id, token:pickTarget.token, type:pickTarget.type} : null,
+        pickup:pickTarget ? {id:pickTarget.id, token:pickTarget.token, type:pickTarget.type} : null, feed:pickupFeed.rows,
         me:{x:physics.x, y:physics.y, z:physics.z, yaw, pitch}, other:other ? {...other} : null,
         avatars:{local:worldPos(player), remote:worldPos(friend)},
         camera:camera ? {x:camera.position.x, y:camera.position.y, z:camera.position.z, yaw, pitch, roll:camera.rotation.z, fov:camera.fov} : null,
@@ -1170,7 +1166,6 @@ export function mount(transfer = null) {
       onPause:guard(clearInput),
     });
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
-    if ($('#toast')?.classList.contains('show')) toastTimer = later(() => { toastTimer = 0; $('#toast')?.classList.remove('show'); }, 2600);
     active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
   } catch (e) {
     console.error(e); dispose();

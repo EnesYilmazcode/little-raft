@@ -521,3 +521,71 @@ test('loadItemIcon resolves null without WebGL and getItemIcon is the sync acces
   assert.equal(await icons.loadItemIcon('hammer'), null);
   assert.equal(await icons.loadItemIcon(''), null);
 });
+
+// ---------------------------------------------------------------- pickup feed
+
+const { createFeed, MAX_ROWS, MERGE_MS, HOLD_MS, FADE_MS } = await import(new URL('pickup-feed.js', base));
+function fakeDoc() {
+  const mk = tag => {
+    const el = { tagName: tag.toUpperCase(), nodeType: 1, children: [], parent: null, attrs: {}, textContent: '', offsetWidth: 0,
+      get isConnected() { let e = this; while (e.parent) e = e.parent; return e === body; },
+      classList: { s: new Set(), add(c) { this.s.add(c); }, remove(c) { this.s.delete(c); }, contains(c) { return this.s.has(c); } },
+      setAttribute(k, v) { this.attrs[k] = v; },
+      appendChild(c) { c.remove(); c.parent = this; this.children.push(c); return c; },
+      append(...cs) { cs.forEach(c => this.appendChild(c)); },
+      replaceChildren(...cs) { [...this.children].forEach(c => c.remove()); this.append(...cs); },
+      remove() { if (this.parent) { this.parent.children.splice(this.parent.children.indexOf(this), 1); this.parent = null; } },
+      set className(v) { v.split(' ').forEach(c => this.classList.add(c)); },
+    };
+    return el;
+  };
+  const body = mk('body');
+  return { body, createElement: mk, createElementNS: (_, t) => mk(t),
+    getElementById(id) { const walk = e => e.id === id ? e : e.children.map(walk).find(Boolean); return walk(body) ?? null; } };
+}
+function fakeClock() {
+  let t = 0, id = 0; const q = new Map();
+  return { now: () => t, timer: (fn, ms) => { q.set(++id, { fn, at: t + ms }); return id; }, clear: i => q.delete(i),
+    tick(ms) { t += ms; for (const [i, j] of [...q]) if (j.at <= t && q.delete(i)) j.fn(); } };
+}
+
+test('pickup feed: repeats of one kind merge into one row with a summed count', () => {
+  const doc = fakeDoc(), c = fakeClock(), feed = createFeed({ doc, ...c });
+  feed.add('wood', 2); c.tick(500); feed.add('wood', 1); feed.add('leaf', 1);
+  assert.deepEqual(feed.rows, ['+3 Wood', '+1 Palm Leaf']);
+  const host = doc.getElementById('pickupFeed');
+  assert.equal(host.children.length, 2);
+  c.tick(MERGE_MS + 10); feed.add('wood', 2); // outside the merge window: a fresh row
+  assert.deepEqual(feed.rows, ['+1 Palm Leaf', '+2 Wood']);
+  c.tick(HOLD_MS + 10); c.tick(FADE_MS + 10);
+  assert.deepEqual(feed.rows, []); assert.equal(host.children.length, 0);
+});
+
+test('pickup feed: caps visible rows and ignores junk input', () => {
+  const doc = fakeDoc(), c = fakeClock(), feed = createFeed({ doc, ...c });
+  for (const k of ['wood', 'leaf', 'scrap', 'plastic', 'fish', 'rope', 'sail']) feed.add(k, 1);
+  assert.equal(feed.rows.length, MAX_ROWS);
+  assert.equal(feed.add('wood', 0), null); assert.equal(feed.add('', 2), null); assert.equal(feed.note('  '), null);
+  feed.note('Your bag is full'); feed.note('Your bag is full');
+  assert.equal(feed.rows.filter(r => r === 'Your bag is full').length, 1);
+});
+
+test('pickup feed: icon provider wins, svg sprite is the fallback', () => {
+  const doc = fakeDoc(), c = fakeClock(), feed = createFeed({ doc, ...c });
+  feed.add('wood', 1);
+  const icon = r => doc.getElementById('pickupFeed').children[r].children[0].children[0];
+  assert.equal(icon(0).tagName, 'SVG');
+  feed.setIconProvider(k => k === 'scrap' ? 'data:image/png;base64,AA' : null);
+  feed.add('scrap', 1);
+  assert.equal(icon(1).tagName, 'IMG'); assert.equal(icon(1).src, 'data:image/png;base64,AA');
+});
+
+test('pickup feed: refresh swaps in an icon that finished rendering late', () => {
+  const doc = fakeDoc(), c = fakeClock(), feed = createFeed({ doc, ...c });
+  let ready = null; feed.setIconProvider(() => ready);
+  feed.add('wood', 1);
+  const icon = () => doc.getElementById('pickupFeed').children[0].children[0].children;
+  assert.equal(icon()[0].tagName, 'SVG'); // sprite placeholder while the 3D icon renders
+  ready = 'data:image/png;base64,BB'; feed.refresh('wood'); feed.refresh('leaf');
+  assert.equal(icon().length, 1); assert.equal(icon()[0].src, 'data:image/png;base64,BB');
+});

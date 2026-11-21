@@ -97,15 +97,6 @@ body.playing header{opacity:.9}
 .inventory strong{font:600 22px/1.1 var(--ui-font);color:var(--cream);font-variant-numeric:tabular-nums;text-shadow:0 1px 0 rgba(0,0,0,.6)}
 .inventory small{font:500 11px/1.2 var(--ui-font);letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-top:4px}
 
-/* ---------- Goal ---------- */
-.goal{top:84px;right:28px;width:260px;padding:12px 16px 14px}
-.goal>span{font:500 14px/1.4 var(--ui-font);color:var(--cream);margin:10px 0 12px}
-.progress{
-  height:6px;border-radius:1px;background:rgba(0,0,0,.55);
-  box-shadow:inset 0 1px 2px rgba(0,0,0,.7),0 0 0 1px rgba(201,164,107,.3);overflow:hidden;
-}
-.progress i{background:linear-gradient(180deg,var(--amber-lt),var(--amber) 55%,#b8772a);box-shadow:0 0 8px var(--amber-glow)}
-
 /* ---------- Hotbar ---------- */
 /* The hotbar itself is styled by survival-ui.js (sv-hotbar). */
 .bottom{bottom:20px;gap:10px}
@@ -146,23 +137,6 @@ body.playing header{opacity:.9}
 #recipes button.active small{color:var(--cream-dim)}
 #recipes button:disabled{opacity:.45}
 
-/* ---------- Hints & toast (kept off-center) ---------- */
-#aimHint{
-  bottom:168px;padding:7px 14px;border-radius:3px;
-  background:rgba(7,15,23,.62);color:var(--cream);
-  font:500 12px/1.2 var(--ui-font);letter-spacing:.8px;
-  box-shadow:0 0 0 1px rgba(201,164,107,.3);text-shadow:0 1px 0 rgba(0,0,0,.6);
-}
-body.build #aimHint{bottom:268px}
-#toast{
-  top:18%;border-radius:4px;padding:10px 20px;
-  background:var(--plate-strong);color:var(--cream);
-  font:600 13px/1.35 var(--ui-font);letter-spacing:.6px;
-  box-shadow:var(--frame),var(--edge);
-}
-#toast::before,#toast::after{content:"";display:inline-block;width:5px;height:5px;transform:rotate(45deg);background:var(--amber);vertical-align:2px}
-#toast::before{margin-right:10px}
-#toast::after{margin-left:10px}
 
 /* ---------- Crosshair: four ticks + 2px center ---------- */
 #crosshair{
@@ -288,9 +262,6 @@ input::placeholder{color:#6f7b82;letter-spacing:1.5px}
   .inventory small{font-size:10px}
   .inventory>span,.goal small{font-size:10px;letter-spacing:2px;padding-bottom:6px}
 
-  /* stack goal beneath inventory so the two plates never collide */
-  .goal{top:152px;left:12px;right:auto;width:min(250px,calc(100vw - 24px));padding:9px 12px 11px}
-  .goal>span{font-size:12px;margin:7px 0 9px}
 
   .bottom{bottom:14px;gap:8px}
   .controls{gap:12px;font-size:10px}
@@ -299,8 +270,6 @@ input::placeholder{color:#6f7b82;letter-spacing:1.5px}
   #recipes button{min-width:74px;font-size:11px}
   #recipes button small{font-size:10px}
 
-  #aimHint{font-size:11px;bottom:140px;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
-  body.build #aimHint{bottom:252px}
 
   #durability,.durability-meter{left:12px;bottom:178px;width:150px;padding:8px 10px 10px}
   body.build #durability,body.build .durability-meter{bottom:290px}

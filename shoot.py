@@ -41,6 +41,11 @@ with sync_playwright() as p:
     for k in '2345': page.keyboard.press(k); page.wait_for_timeout(250)
     page.keyboard.press('1')
     page.keyboard.down('w'); page.wait_for_timeout(900); page.keyboard.up('w'); shot(page, '08-walked')
+    # pickup feed: drive the game's own feed instance (same module URL the engine loaded)
+    feed_js = "(async()=>{const u=performance.getEntriesByType('resource').map(e=>e.name).find(n=>n.includes('/pickup-feed.js'));if(!u)return 'no feed';const {pickupFeed:f}=await import(u);f.add('wood',2);f.add('wood',1);f.add('leaf',1);f.add('scrap',1);f.note('Your bag is full');return f.rows})()"
+    try: report['feedRows'] = page.evaluate(feed_js); page.wait_for_timeout(450); shot(page, '09-pickup-feed')
+    except Exception as e: report['errors'].append('feed: ' + str(e))
+    page.wait_for_timeout(4000); report['feedRowsLater'] = page.evaluate("document.querySelectorAll('#pickupFeed .pf-row').length")
     # frame time probe (software GL, so relative numbers only)
     report['frameMs'] = page.evaluate("""new Promise(r=>{let n=0,t0=performance.now(),worst=0,last=t0;function f(t){worst=Math.max(worst,t-last);last=t;if(++n<120)requestAnimationFrame(f);else r({avg:(t-t0)/n,worst})}requestAnimationFrame(f)})""")
     report['heapMB'] = page.evaluate('performance.memory ? performance.memory.usedJSHeapSize/1048576 : null')
