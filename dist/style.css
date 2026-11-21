@@ -9,7 +9,7 @@
 #crosshair:before{content:'';position:absolute;inset:0;border-radius:50%;border:2px solid #fffdf4cc;box-shadow:0 0 0 1px #113e4740;opacity:.75}
 body.build #crosshair i{background:#bff3c6}
 body.playing #crosshair,#crosshair.show{display:block}
-#resumeHint{position:fixed;left:50%;top:calc(50% + 34px);transform:translateX(-50%);z-index:3;pointer-events:auto;cursor:pointer;display:none;background:#123f48e6;color:#f4fcf8;font-size:13px;font-weight:500;padding:9px 16px;border-radius:30px;white-space:nowrap;box-shadow:0 6px 20px #0a3b4630}
+#resumeHint{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:3;pointer-events:auto;cursor:pointer;display:none;background:#123f48e6;color:#f4fcf8;font-size:13px;font-weight:500;padding:9px 16px;border-radius:30px;white-space:nowrap;box-shadow:0 6px 20px #0a3b4630}
 #resumeHint b{color:var(--orange);font-weight:700}body.away #resumeHint{top:14px;font-size:12px;padding:6px 13px}
 body.playing:not(.locked) #resumeHint,#resumeHint.show{display:block}
 dialog{max-height:calc(100dvh - 30px);overflow:auto;overscroll-behavior:contain}
@@ -32,9 +32,6 @@ dialog{max-height:calc(100dvh - 30px);overflow:auto;overscroll-behavior:contain}
 @keyframes pf-bump{40%{transform:scale(1.18)}}
 @media(max-width:760px){#pickupFeed{left:10px;bottom:96px;font-size:13px}.pf-icon{width:28px;height:28px}.pf-icon>*{width:22px;height:22px}}
 @media(prefers-reduced-motion:reduce){.pf-row,.pf-row.bump .pf-icon{animation:none;transition:opacity .2s}}
-/* Interaction prompt sits just above the hotbar, never on the reticle */
-body #contextPrompt{top:auto;bottom:108px;padding:5px 12px;border-radius:6px;background:#1a120b99;font-size:13px;text-shadow:0 1px 1px #000a}
 /* Click-to-look reminder: a small top pill, out of the line of sight */
 body #resumeHint{top:16px;bottom:auto;padding:6px 14px;font-size:12px;letter-spacing:.4px;text-transform:none;background:#1a120bb3;box-shadow:none;border-radius:6px}
-@media(max-width:760px){body #contextPrompt{bottom:96px}}
 .title-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}

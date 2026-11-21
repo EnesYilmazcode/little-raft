@@ -23,7 +23,7 @@ import { getItemIcon, onIconReady } from './item-icons.js?build=v3-survival-ae77
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
-import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint } from './hud.js?build=v3-survival-ae77fa84ac2b';
+import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, BAG_OPEN_KEYS, BAG_CLOSE_KEYS, REEL_PROMPT, LOOK_DONE_RAD, WALK_DONE_S } from './hud.js?build=v3-survival-ae77fa84ac2b';
 import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
@@ -55,18 +55,23 @@ const STYLE_ID = 'little-raft-engine-style';
 const HUD_CSS = `
 body.playing header,body.playing #hud .inventory,body.playing #hud .goal,body.playing #durability,body.playing #toast,
 body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.playing [data-quick-recipe]{display:none!important}
-#contextPrompt{position:fixed;left:50%;bottom:132px;transform:translateX(-50%);padding:3px 10px;border-radius:8px;
-  background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:none;z-index:30;white-space:nowrap}
-#contextPrompt[hidden]{display:none}
-#contextPrompt kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:0 4px;border:1px solid rgba(246,236,214,.6);border-radius:4px;font:inherit;text-align:center}
+/* One edge stack at the bottom-left holds the action prompt, the first-run hint and the pickup feed. Wide screens keep it
+   beside the hotbar (hotbar is about 506px wide, centred); narrower ones lift it above the hotbar and keep it left of the
+   centred throw meter, so it never covers slot 1. */
 #noticeStack{position:fixed;inset:auto auto 26px 22px;margin:0;padding:0;border:0;background:none;overflow:visible;width:auto;height:auto;color:#f6ecd6;
-  max-width:max(200px,min(380px,calc(50vw - 290px)));display:flex;flex-direction:column;align-items:flex-start;gap:5px;pointer-events:none;z-index:40}
+  max-width:min(380px,calc(50vw - 300px));display:flex;flex-direction:column;align-items:flex-start;gap:5px;pointer-events:none;z-index:40}
 #noticeStack[hidden]{display:none}
 #noticeStack>#pickupFeed{position:static;inset:auto;margin:0}
-#noticeStack>.hint{padding:6px 34px 6px 12px;border-radius:7px 0 0 7px;background:linear-gradient(90deg,#1a120bc8 0%,#1a120b88 60%,#1a120b00 100%);color:#ffd98f;
-  text-shadow:0 1px 2px #000d;font:600 13px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif}
+#noticeStack>.hint,#contextPrompt{padding:6px 34px 6px 12px;border-radius:7px 0 0 7px;background:linear-gradient(90deg,#1a120bc8 0%,#1a120b88 60%,#1a120b00 100%);
+  text-shadow:0 1px 2px #000d;font:600 13px/1.35 var(--ui-font,system-ui,sans-serif)}
+#noticeStack>.hint{color:#ffd98f}
 #noticeStack>.hint[hidden]{display:none}
-@media(max-width:760px){#contextPrompt{bottom:96px}#noticeStack{bottom:96px;left:10px}}
+#contextPrompt{position:static;inset:auto;transform:none;margin:0;color:#f6ecd6;pointer-events:none;white-space:normal}
+#contextPrompt[hidden]{display:none}
+#contextPrompt kbd{display:inline-block;min-width:1.4em;margin-right:7px;padding:1px 5px;border-radius:4px;font:700 12px/1.2 var(--ui-font,system-ui,sans-serif);text-align:center;
+  color:#fff6e0;background:#0008;box-shadow:inset 0 0 0 1px #fff6e099}
+@media(max-width:1100px){#noticeStack{bottom:96px;max-width:min(380px,calc(50vw - 122px))}}
+@media(max-width:760px){#noticeStack{bottom:96px;left:10px;max-width:calc(50vw - 100px)}}
 `;
 
 export function mount(transfer = null) {
@@ -230,7 +235,7 @@ export function mount(transfer = null) {
   let lastHostMessage = X?.lastHostMessage || performance.now(), lastGuestMessage = X?.lastGuestMessage || performance.now();
   let joinTimer = 0, joinDeadline = Number.isFinite(X?.joinDeadline) ? X.joinDeadline : 0;
   let netClock = 0, lastSaveAt = performance.now(), lastNetSendAt = 0, wheelAcc = 0, peerHidden = !!X?.peerHidden, heartbeat = 0;
-  let offFeedIcons = null, noticeCache = null, contextCache = null, uiFailed = false; let fishShown = null;
+  let offFeedIcons = null, noticeCache = null, contextCache = null, uiFailed = false; let fishShown = null, lookTaught = 0, walkTaught = 0, walkSeen = 0;
   const hintsDone = X?.hintsDone instanceof Set ? X.hintsDone : freshSave ? new Set() : loadHints(window.localStorage); // first-run hint chain, once per save
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
@@ -289,13 +294,14 @@ export function mount(transfer = null) {
     document.querySelectorAll('[data-quick-recipe]').forEach(b => b.remove()); // old pseudo-inventory buttons
     document.body.classList.remove('build');
     const recipes = $('#recipes'); if (recipes) { recipes.hidden = true; recipes.innerHTML = ''; }
-    const controls = $('.controls'); if (controls) controls.innerHTML = '<span><kbd>W A S D</kbd> Walk</span><span><kbd>Space</kbd> Jump</span><span><kbd>1–8</kbd> Hotbar</span><span><kbd>E</kbd> Pick up / bag</span><span><kbd>Esc</kbd> Menu</span><span id="fishCount"></span>';
+    const controls = $('.controls'); if (controls) controls.innerHTML = '<span><kbd>W A S D</kbd> Walk</span><span><kbd>Space</kbd> Jump</span><span><kbd>1–8</kbd> Hotbar</span><span><kbd>E</kbd> Pick up</span><span><kbd>Tab</kbd> Bag</span><span><kbd>Esc</kbd> Menu</span><span id="fishCount"></span>';
     const guide = $('#help .guide');
     if (guide) guide.innerHTML = '<li><kbd>Mouse</kbd><span><b>Look around.</b> Click the sea to capture your mouse.</span></li>'
-      + '<li><kbd>W A S D</kbd><span><b>Walk</b>, hold <kbd>Shift</kbd> to run, <kbd>Space</kbd> to jump. Fell in? Swim to the raft and hold <kbd>Space</kbd> to climb aboard.</span></li>'
+      + '<li><kbd>W A S D</kbd><span><b>Walk.</b> Hold Shift to run, Space to jump. Fell in? Swim to the raft and hold Space to climb aboard.</span></li>'
       + '<li><kbd>1–8</kbd><span><b>Hotbar.</b> Number keys or the mouse wheel choose a slot. Click uses what you are holding.</span></li>'
-      + '<li><kbd>Hook</kbd><span><b>Throw.</b> Hold click to power up, aim higher to throw farther, release. Hold again to reel in everything it touches.</span></li>'
-      + '<li><kbd>E</kbd><span><b>Pick up</b> a supply right beside you, or open your bag to craft. <kbd>Tab</kbd> / <kbd>I</kbd> open the bag too; <kbd>E</kbd>, <kbd>I</kbd> or <kbd>Esc</kbd> close it. Inside, <kbd>Tab</kbd> and the arrow keys move between slots.</span></li>'
+      + `<li><kbd>Hook</kbd><span><b>Throw.</b> Hold click to power up, aim higher to throw farther, release. ${REEL_PROMPT} everything it touches.</span></li>`
+      + '<li><kbd>E</kbd><span><b>Pick up</b> a supply right beside you.</span></li>'
+      + `<li><kbd>Tab</kbd><span><b>Bag.</b> ${BAG_OPEN_KEYS} opens the bag to craft; ${BAG_CLOSE_KEYS} closes it. Inside, Tab and the arrow keys move between slots.</span></li>`
       + '<li><kbd>Craft</kbd><span><b>Make tools.</b> A Hammer builds raft floors (2 wood, 2 plastic each). A Fishing Rod catches fish. Crafted decorations are placed one at a time.</span></li>'
       + '<li><kbd>R</kbd><span><b>Repair</b> a worn hook for 2 wood and 1 scrap.</span></li>'
       + '<li><kbd>Esc</kbd><span><b>Menu.</b> Settings, Play together and this guide.</span></li>';
@@ -418,7 +424,7 @@ export function mount(transfer = null) {
       else if (hover?.blocked) html = esc(BLOCK_TEXT[hover.blocked]);
       else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
       else if (hook?.fishing) html = esc(castPrompt(hook, fishWait));
-      else if (castOut() && castOut().stage === 'floating') html = caughtList(castOut()).length ? 'Hold click to reel it in' : 'Hold click to reel';
+      else if (castOut() && castOut().stage === 'floating') html = REEL_PROMPT;
     }
     if (html === contextCache) return; contextCache = html;
     const el = $('#contextPrompt'); if (!el) return; el.innerHTML = html; el.hidden = !html;
@@ -436,6 +442,7 @@ export function mount(transfer = null) {
     let feed = $('#pickupFeed');
     if (!feed) { feed = document.createElement('div'); feed.id = 'pickupFeed'; feed.setAttribute('role', 'status'); feed.setAttribute('aria-live', 'polite'); }
     if (feed.parentNode !== el) el.appendChild(feed);
+    const prompt = $('#contextPrompt'); if (prompt && prompt.parentNode !== el) el.prepend(prompt); // action prompts live in the edge stack too
     let h = el.querySelector(':scope>.hint');
     if (!h) { h = document.createElement('div'); h.className = 'hint'; h.setAttribute('role', 'status'); el.prepend(h); }
     h.textContent = hint?.text ?? ''; h.hidden = !hint;
@@ -448,7 +455,13 @@ export function mount(transfer = null) {
     if (!chargeMeter) return;
     const show = !!charging && running;
     if (chargeMeter.hidden === show) chargeMeter.hidden = !show;
-    if (show && chargeFill) chargeFill.style.width = (chargeValue() * 100).toFixed(1) + '%';
+    if (!show || !chargeFill) return;
+    const v = chargeValue(), full = v >= .999;
+    chargeFill.style.width = (v * 100).toFixed(1) + '%';
+    if (chargeMeter.classList.contains('full') !== full) {
+      chargeMeter.classList.toggle('full', full);
+      const label = chargeMeter.querySelector('span'); if (label) label.textContent = full ? 'Full power · release' : 'Throw power';
+    }
   }
   const inShell = /\bElectron\//.test(navigator.userAgent); let shellPanel = null;
   // Body classes, crosshair and resume hint follow running and pointer-lock state.
@@ -494,7 +507,10 @@ export function mount(transfer = null) {
     if (!wasFallback && running) notice('Mouse lock unavailable: drag to look, click to use', 3000);
   }
   function releaseLock() { if (isLocked()) document.exitPointerLock?.(); }
-  function look(dx, dy, k) { yaw -= dx * k; pitch = clamp(pitch - (options.invertY ? -dy : dy) * k, -PITCH_LIMIT, PITCH_LIMIT); }
+  function look(dx, dy, k) {
+    yaw -= dx * k; pitch = clamp(pitch - (options.invertY ? -dy : dy) * k, -PITCH_LIMIT, PITCH_LIMIT);
+    if (running && !hintsDone.has('look') && (lookTaught += Math.hypot(dx, dy) * k) >= LOOK_DONE_RAD) hintDone('look');
+  }
   function clearInput() { keys = {}; charging = null; reeling = false; down = null; }
 
   // ---------- Aiming ----------
@@ -775,6 +791,9 @@ export function mount(transfer = null) {
       tiles:world.tiles, deckY:deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList});
     const speed = Math.hypot(physics.vx, physics.vz);
     walking = physics.grounded && speed > .4; if (walking) walkPhase += dt * 9 * Math.min(1.6, speed / 2.6);
+    // walk hint: about a second of held movement keys, in wall-clock time (slow frames clamp dt)
+    if (!(fwd || side) || hintsDone.has('walk')) walkSeen = 0;
+    else { const t = performance.now(); walkTaught += walkSeen ? Math.min((t - walkSeen) / 1000, .25) : 0; walkSeen = t; if (walkTaught >= WALK_DONE_S) hintDone('walk'); }
     if (ev?.splashed) sfx('splash');
     if (jumpFrom && !physics.grounded && !physics.swimming && physics.vy > 0) sfx('jump', .7);
     swimClock = physics.swimming && (fwd || side) ? swimClock - dt : 0;
@@ -808,7 +827,9 @@ export function mount(transfer = null) {
       camera.position.set(physics.x, physics.y + bob, physics.z);
       camera.rotation.set(pitch, yaw, physics.grounded ? raft.rotation.z * CAMERA_ROLL * options.cameraMotion : 0, 'YXZ');
     } else { // gentle cinematic view for the welcome screen
-      const focus = new T.Vector3(-5, 0, 2), d = 23, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .77;
+      // Under 1000px the title card takes more of the width: aim further left so the raft sits right of the copy.
+      const narrow = innerWidth < 1000 && innerWidth > 760;
+      const focus = narrow ? new T.Vector3(-8.2, 0, 4.2) : new T.Vector3(-5, 0, 2), d = narrow ? 26 : 23, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .77;
       camera.position.set(focus.x + Math.sin(cy) * d * Math.cos(cp), d * Math.sin(cp), focus.z + Math.cos(cy) * d * Math.cos(cp)); camera.lookAt(focus);
     }
     swing = Math.max(0, swing - dt * 3);
