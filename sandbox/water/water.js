@@ -9,7 +9,7 @@
 //   tier 'c' b + quarter-res planar reflection. Same verdict.
 // API = dist/ocean.js { mesh, update(t, camera), getHeight, getSlope, uniforms, material, dispose }
 //   + setRaft(tiles, x, z, yaw), setRaftPose(x, z, yaw), setFloaters([[x, z, r, hx?, hz?], ...], camX, camZ),
-//   + footprint(object3d) -> [x, z, r, hx, hz] capsule for setFloaters, setBobber(position | null),
+//   + footprint(object3d) -> [x, z, r, hx, hz] capsule for setFloaters, setBobber(position | null) (before setFloaters),
 //   + setAmp(a) (GPU waves + CPU getHeight together), render(renderer, scene, camera) (tiers b/c only).
 //   createOcean() = tier 'a' drop-in.
 // Cost notes (SwiftShader, where the fragment shader dominates): work that only matters near the raft or an
@@ -30,8 +30,29 @@ const SDF_MAX = 8;        // distance encoded in [-2, SDF_MAX] metres
 const FLOAT_RES = 256;    // floater distance map: texels per side, camera-centred
 const FLOAT_SPAN = 64;    // metres covered (0.25 m texels); items further than ~32 m get no foam (it fades by 30-90 m)
 const FLOAT_LO = -0.3, FLOAT_HI = 0.9;   // encoded distance range (m)
+const BOBBER_R = 0.16;    // hook bobber footprint radius (m): the scrap hook at scale .5 is ~.35 m across
+const NOISE_CELLS = 64, NOISE_TEXELS = 8;  // baked lace noise: tiling period (lattice cells), texels per cell
+
+// Value noise baked into a tiling R8 texture (smoothstep-interpolated lattice, sampled NOISE_TEXELS times per
+// cell). Bilinear lookups of it match the procedural vnoise closely, at one fetch instead of four hashes.
+let noiseData = null;
+function bakeNoise() {
+  if (noiseData) return noiseData;
+  const n = NOISE_CELLS, res = n * NOISE_TEXELS, lat = new Float32Array(n * n);
+  let seed = 1234567;
+  for (let i = 0; i < lat.length; i++) { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; lat[i] = (seed >>> 8) / 16777216; }
+  const L = (x, y) => lat[(y % n) * n + (x % n)];
+  noiseData = new Uint8Array(res * res);
+  for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) {
+    const x = (i + 0.5) / NOISE_TEXELS, y = (j + 0.5) / NOISE_TEXELS, xi = Math.floor(x), yi = Math.floor(y);
+    let u = x - xi, v = y - yi; u = u * u * (3 - 2 * u); v = v * v * (3 - 2 * v);
+    const a = L(xi, yi) + (L(xi + 1, yi) - L(xi, yi)) * u, b = L(xi, yi + 1) + (L(xi + 1, yi + 1) - L(xi, yi + 1)) * u;
+    noiseData[j * res + i] = Math.round((a + (b - a) * v) * 255);
+  }
+  return noiseData;
+}
 const RAFT_REACH = 1.1;   // furthest raft effect (lace rings); shadow and occlusion stay inside it
-const FLOAT_REACH = 0.55; // furthest item lace
+const FLOAT_REACH = 0.7;  // furthest item lace
 
 const f5 = (v) => v.toFixed(5);
 const glslWaves = WAVES.map(([dx, dz, a, l, q]) => {
@@ -42,30 +63,31 @@ const glslWaves = WAVES.map(([dx, dz, a, l, q]) => {
 const common = /* glsl */`
 uniform float uTime;
 uniform float uAmp;
-uniform sampler2D tRaftSdf;
+uniform sampler2D tRaftSdf;  // R: raft SDF, G: the SDF one deck height toward the sun (fake deck shadow)
 uniform vec4 uRaft;          // x, z, cos(yaw), sin(yaw)
-uniform vec3 uSdfBox;        // raft-local centre x, z and side length (m) of the baked square
+uniform vec3 uSdfBox;        // raft-local centre x, z and 1 / side length (m) of the baked square
 uniform sampler2D tFloatMap; // distance to the nearest floating item, CPU-stamped capsules (setFloaters)
-uniform vec3 uFloatBox;      // world centre x, z and side length of the floater map
+uniform sampler2D tNoise;    // baked tiling value noise (lace)
+uniform vec3 uFloatBox;      // world corner x, z of the floater map and 1 / side length
+// Float-only hash: an integer (uint multiply/xor) hash measured ~2.8x slower for the lace noise in SwiftShader.
 float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float tnoise(vec2 p) { return texture2D(tNoise, p * ${(1 / NOISE_CELLS).toFixed(6)}).r; }   // ~vnoise(p), one fetch
 float vnoise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
   vec2 u = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0)), u.x), u.y);
 }
-// Signed distance (metres) to the raft footprint, from the CPU-baked texture.
-float raftDist(vec2 world) {
+// Signed distances (metres) to the raft footprint (x) and to it shifted toward the sun (y, shadow), from the
+// CPU-baked texture. Its border texels are always >= SDF_MAX away, so clamped lookups outside it read 'far'.
+vec2 raftDist(vec2 world) {
   vec2 l = world - uRaft.xy;
   l = vec2(uRaft.z * l.x - uRaft.w * l.y, uRaft.w * l.x + uRaft.z * l.y);
-  vec2 uv = (l - uSdfBox.xy) / uSdfBox.z + 0.5;
-  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return ${SDF_MAX.toFixed(1)};
-  return texture2D(tRaftSdf, uv).r * ${(SDF_MAX + 2).toFixed(1)} - 2.0;
+  return texture2D(tRaftSdf, (l - uSdfBox.xy) * uSdfBox.z + 0.5).rg * ${(SDF_MAX + 2).toFixed(1)} - 2.0;
 }
 // Distance (metres) to the nearest floating item, from the per-frame map: one fetch instead of a loop.
 // The map's border texels are never stamped, so clamped lookups outside it read 'far'.
 float floatDist(vec2 p) {
-  vec2 uv = (p - uFloatBox.xy) / uFloatBox.z + 0.5;
-  return texture2D(tFloatMap, uv).r * ${(FLOAT_HI - FLOAT_LO).toFixed(2)} + ${FLOAT_LO.toFixed(2)};
+  return texture2D(tFloatMap, (p - uFloatBox.xy) * uFloatBox.z).r * ${(FLOAT_HI - FLOAT_LO).toFixed(2)} + ${FLOAT_LO.toFixed(2)};
 }
 `;
 
@@ -107,7 +129,7 @@ void main() {
   vPinch = 1.0 - ((1.0 + jac.x) * (1.0 + jac.y) - jac.z * jac.z);   // 1 - Jacobian: > 0 where crests bunch up
   // Slow body-colour patches (7-22 m features) are smooth enough to interpolate across the 2.8 m grid.
   vPatch = vnoise(wp.xz * 0.045 + uTime * 0.01) * 0.6 + vnoise(wp.xz * 0.13 - uTime * 0.02) * 0.4;
-  vGate = raftDist(wp.xz);
+  vGate = raftDist(wp.xz).x;
   vec4 mv = viewMatrix * wp;
   vViewZ = mv.z;
   gl_Position = projectionMatrix * mv;
@@ -117,7 +139,9 @@ void main() {
 const fragmentShader = /* glsl */`
 #include <packing>
 ${common}
-uniform vec3 uSunDir;
+uniform vec3 uSunDir;        // normalised
+uniform vec2 uSunXZ;         // horizontal sun direction, normalised
+uniform float uPixelAngle;   // radians per pixel (2 tan(fov / 2) / height), for the lace anti-aliasing
 uniform vec3 uSunColor;
 uniform vec3 uSky;
 uniform vec3 uZenith;
@@ -128,8 +152,6 @@ uniform float uFadeNear;
 uniform float uFadeFar;
 uniform float uFoamStart;    // 1 - J where crest foam begins (absolute, so calm seas stay clean)
 uniform int uDebug;          // 1 planar refl, 2 water thickness, 3 crest pinch, 4 raft sdf
-uniform float uDeckLift;     // deck height above water for the fake shadow
-uniform vec4 uBobber;        // x, z, on (0/1), time it touched the water
 #ifdef USE_PREPASS
 uniform sampler2D tScene;
 uniform sampler2D tDepth;
@@ -151,28 +173,23 @@ varying float vGate;
 
 void ripple(vec2 d, float a, float k, float w, vec2 p, inout vec2 g) { g += d * (a * k * cos(k * dot(d, p) - w * uTime)); }
 
-// Glitter: one random point per ~11 cm cell, each with its own flash cycle (quick on, slower off, then dark),
+// Glitter: one random point per ~11 cm cell, each with its own flash cycle (on at once, fades, then dark),
 // so the sun path twinkles point by point instead of showing a fixed pattern. One hash per pixel.
 float glitter(vec2 p) {
   vec2 q = p * 9.0 + vec2(uTime * 0.55, uTime * 0.2);
   vec2 ci = floor(q), cf = fract(q) - 0.5;
   float r = hash(ci);
   vec2 o = (vec2(r, fract(r * 37.13)) - 0.5) * 0.45;
-  float life = fract(uTime * (0.6 + 0.8 * r) + r * 11.0);
-  float flash = smoothstep(0.0, 0.07, life) * (1.0 - smoothstep(0.07, 0.45, life));
-  return (1.0 - smoothstep(0.08, 0.34, length(cf - o))) * flash * 5.0;
+  float flash = max(1.0 - fract(uTime * (0.6 + 0.8 * r) + r * 11.0) * 2.5, 0.0);   // on at once, off over 40% of its cycle
+  vec2 d = cf - o;
+  return max(1.0 - dot(d, d) * 14.0, 0.0) * flash * 5.0;
 }
 
 void main() {
   vec3 toCam = cameraPosition - vWorld;
   float dist = length(toCam.xz);
-  if (dist > uFadeFar && uDebug == 0) {   // fully faded: same result as the fade at the end, minus all the work
-    gl_FragColor = vec4(uSky, 1.0);
-    #include <colorspace_fragment>
-    return;
-  }
   vec3 V = normalize(toCam);
-  vec3 L = normalize(uSunDir);
+  vec3 L = uSunDir;
   vec2 p = vWorld.xz;
 
   vec2 g = vec2(0.0);
@@ -203,7 +220,7 @@ void main() {
   // Body colour + Sea of Thieves style subsurface: crest mask x view-against-sun x grazing view.
   float h = clamp(vHeight / 0.2 * 0.5 + 0.5, 0.0, 1.0);
   vec3 body = mix(uDeep, uShallow, clamp(h * 0.5 + vPatch * 0.3, 0.0, 1.0));
-  float bl = clamp(dot(normalize(vec3(-V.x, 0.0, -V.z)), normalize(vec3(L.x, 0.0, L.z))), 0.0, 1.0);
+  float bl = clamp(-dot(toCam.xz, uSunXZ) / dist, 0.0, 1.0);
   float sssMask = smoothstep(0.35, 1.0, h) * (0.35 + 0.65 * bl * bl * bl) * (1.0 - ndv * 0.6);
   body += uShallow * sssMask * 0.55;
   body *= 0.75 + 0.25 * max(dot(n, L), 0.0);
@@ -211,9 +228,9 @@ void main() {
   // Raft: SDF, fake deck shadow (SDF sampled toward the sun at deck height). Skipped where the vertex says far.
   float rd = ${SDF_MAX.toFixed(1)}, shadow = 1.0;
   if (vGate < ${RAFT_REACH.toFixed(2)} + GATE_SLACK) {
-    rd = raftDist(p);
-    float sd = raftDist(p + L.xz / max(L.y, 0.2) * uDeckLift);
-    shadow = 1.0 - (1.0 - smoothstep(-0.15, 0.35, sd)) * 0.45;
+    vec2 rs = raftDist(p);
+    rd = rs.x;
+    shadow = 0.55 + 0.45 * smoothstep(-0.15, 0.35, rs.y);
   }
 
 #ifdef USE_PREPASS
@@ -237,11 +254,10 @@ void main() {
   // runs where the tight lobe is visible at all (pow(.985, 700) ~ 3e-5).
   vec3 H = normalize(L + V);
   float ndh = max(dot(n, H), 0.0);
-  float spec = pow(ndh, 70.0) * 0.10;
+  float s70 = pow(ndh, 70.0), spec = s70 * 0.10;
   if (ndh > 0.985) {
-    float far = smoothstep(14.0, 55.0, dist);
-    float sparkle = far < 1.0 ? mix(glitter(p), 0.6, far) : 0.6;
-    spec += pow(ndh, 700.0) * sparkle;
+    float s140 = s70 * s70, s560 = s140 * s140; s560 *= s560;   // ndh^700 from ndh^70 with 4 multiplies
+    spec += s560 * s140 * mix(glitter(p), 0.6, smoothstep(14.0, 55.0, dist));
   }
   col += uSunColor * min(spec, 1.2) * shadow * (1.0 - smoothstep(60.0, 125.0, dist) * 0.6);
 
@@ -250,42 +266,40 @@ void main() {
   float crestMask = clamp((vPinch - uFoamStart) * 7.0 + smoothstep(0.09, 0.2, vHeight / uAmp) * 0.35, 0.0, 1.0);
   // 2: raft wake rings that pulse outward and fade by ~1.1 m (the ragged collar on the logs is added below).
   float raftLace = 0.0;
-  if (rd < ${RAFT_REACH.toFixed(2)}) raftLace = (1.0 - smoothstep(0.0, ${RAFT_REACH.toFixed(2)}, rd)) * (0.35 + 0.65 * (0.5 + 0.5 * sin(rd * 5.0 - uTime * 1.8 + vPatch * 6.0)));
+  if (rd < ${RAFT_REACH.toFixed(2)}) raftLace = (1.0 - smoothstep(0.0, ${RAFT_REACH.toFixed(2)}, rd)) * (0.35 + 1.3 * abs(fract(rd * 0.8 - uTime * 0.29 + vPatch) - 0.5));   // triangle wave: sin costs more
   // 3: items, as capsules shaped by their footprint.
-  float floatLace = 1.0 - smoothstep(-0.1, ${FLOAT_REACH.toFixed(2)}, floatDist(p));
-  // 4: hook bobber: a tight collar, bobbing ripple rings, and one splash ring when it lands.
-  float bobLace = 0.0, bobCore = 0.0;
-  float bd = length(p - uBobber.xy);
-  if (uBobber.z > 0.0 && bd < 2.2) {
-    float age = uTime - uBobber.w;
-    float rings = 0.5 + 0.5 * sin(bd * 16.0 - uTime * 5.0);
-    bobLace = (1.0 - smoothstep(0.05, 0.75, bd)) * (0.25 + 0.75 * rings);
-    bobLace = max(bobLace, (1.0 - smoothstep(0.0, 0.07, abs(bd - 0.15 - age * 1.1))) * (1.0 - smoothstep(0.2, 1.6, age)));
-    bobCore = 1.0 - smoothstep(0.1, 0.16, bd);
-  }
-  float laceMask = max(max(raftLace, floatLace * 0.8), max(bobLace, contact));
+  // Ripple rings run outward from every item (and the hook bobber, which is stamped into the same map).
+  float fd = floatDist(p);
+  float floatLace = (1.0 - smoothstep(-0.1, ${FLOAT_REACH.toFixed(2)}, fd)) * (0.45 + 1.1 * abs(fract(fd * 2.5 - uTime * 0.8) - 0.5));
+  float laceMask = max(max(raftLace, floatLace), contact);
 
   // Lace: thin contour lines of a two-octave noise (scrolled with the swell) that widen as the mask grows.
   // Coverage is anti-aliased by the noise's screen footprint, so far-away lines thin out instead of sparkling.
   // The noise only runs where some mask is on, which is a small part of the screen on a calm sea.
-  vec2 dp = fwidth(p);                   // in uniform control flow (derivatives inside the branch are undefined)
+  // Screen footprint of a pixel on the water, from distance and grazing angle (cheaper than fwidth, and valid
+  // inside the branch below).
+  float foot = uPixelAngle * dot(toCam, toCam) / max(toCam.y, 0.05 * dist);
   float foam = 0.0;
-  if (laceMask > 0.02 || crestMask > 0.0 || rd < 0.3 || bobCore > 0.0) {
+  if (laceMask > 0.02 || crestMask > 0.0 || rd < 0.3) {
     vec2 fp = p + vec2(uTime * 0.35, uTime * 0.12);
-    float n1 = vnoise(fp * 2.1), n2 = vnoise(fp * 4.6 + vec2(uTime * -0.2, uTime * 0.15));
-    float iso = abs(n1 * 0.6 + n2 * 0.4 - 0.5), isoAA = (dp.x + dp.y) * 0.8 + 1e-4;
-    float crest = clamp((0.012 + crestMask * 0.09 - iso) / isoAA + 0.5, 0.0, 1.0) * smoothstep(0.0, 0.08, crestMask);
-    float lace = clamp((0.003 + laceMask * 0.017 - iso) / isoAA + 0.5, 0.0, 1.0) * step(0.02, laceMask);
-    float raftCore = 1.0 - smoothstep(0.0, 0.05 + 0.1 * n1, rd);   // thin ragged collar where logs meet water
-    foam = max(max(crest * 0.85, lace * 0.66), max(raftCore * 0.85, bobCore * 0.8));
+    float n1 = tnoise(fp * 2.1), n2 = tnoise(fp * 4.6 + vec2(uTime * -0.2, uTime * 0.15));
+    float iso = abs(n1 * 0.6 + n2 * 0.4 - 0.5), isoAA = foot * 1.2 + 1e-4;
+    // Coverage of a contour band of half-width w: AA'd edges, and lines thinner than a pixel dim instead of
+    // staying half-covered, so distant lace thins out rather than turning into soft blobs.
+    float wc = 0.012 + crestMask * 0.09, wl = 0.004 + laceMask * 0.022;
+    float crest = clamp((wc - iso) / isoAA + 0.5, 0.0, 1.0) * min(wc * 3.0 / isoAA + 0.5, 1.0) * smoothstep(0.0, 0.08, crestMask);
+    float lace = clamp((wl - iso) / isoAA + 0.5, 0.0, 1.0) * min(wl * 3.0 / isoAA + 0.5, 1.0) * smoothstep(0.02, 0.12, laceMask);
+    float raftCore = 1.0 - smoothstep(0.0, 0.06 + 0.12 * n1, rd);   // thin ragged collar where logs meet water
+    foam = max(max(crest * 0.85, lace * 0.75), raftCore * 0.85);
     foam *= (1.0 - smoothstep(30.0, 90.0, dist)) * smoothstep(-0.7, -0.3, rd);   // none deep under the deck (plank gaps)
   }
   col *= mix(0.55, 1.0, smoothstep(-1.2, 0.1, rd));                               // occluded water under the raft
   col = mix(col, uFoam * (0.8 + 0.2 * shadow), foam);
 
   gl_FragColor = vec4(col, 1.0);
+#ifdef WATER_DEBUG   // compiled in only when created with options.debug
   if (uDebug == 3) gl_FragColor = vec4(vec3(clamp(vPinch * 8.0, 0.0, 1.0)), 1.0);
-  if (uDebug == 4) gl_FragColor = vec4(vec3(clamp(raftDist(p) / 4.0, 0.0, 1.0)), 1.0);
+  if (uDebug == 4) gl_FragColor = vec4(vec3(clamp(rd / 4.0, 0.0, 1.0)), 1.0);
   if (uDebug == 5) gl_FragColor = vec4(step(0.02, laceMask) + step(0.0001, crestMask), step(${RAFT_REACH.toFixed(2)} + GATE_SLACK, vGate), 0.0, 1.0);
 #ifdef USE_PREPASS
   if (uDebug == 2) gl_FragColor = vec4(vec3(clamp(thick / 3.0, 0.0, 1.0)), 1.0);
@@ -294,6 +308,7 @@ void main() {
   if (uDebug == 1) gl_FragColor = vec4(planar.rgb * planar.a, 1.0);
 #endif
   if (uDebug > 0) return;
+#endif
   #include <tonemapping_fragment>
   float fade = smoothstep(uFadeNear, uFadeFar, dist);
   gl_FragColor.rgb = mix(gl_FragColor.rgb, uSky, fade);
@@ -308,22 +323,31 @@ export function createWater(T, options = {}) {
   const geometry = new T.PlaneGeometry(size, size, segments, segments);
   geometry.rotateX(-Math.PI / 2);
 
-  const sdfData = new Uint8Array(SDF_RES * SDF_RES), sdfDist = new Float32Array(SDF_RES * SDF_RES);
-  const sdfTex = new T.DataTexture(sdfData, SDF_RES, SDF_RES, T.RedFormat, T.UnsignedByteType);
+  const sdfData = new Uint8Array(SDF_RES * SDF_RES * 2).fill(255);
+  const sdfDist = new Float32Array(SDF_RES * SDF_RES), sdfShadow = new Float32Array(SDF_RES * SDF_RES);
+  const sdfTex = new T.DataTexture(sdfData, SDF_RES, SDF_RES, T.RGFormat, T.UnsignedByteType);
   sdfTex.magFilter = sdfTex.minFilter = T.LinearFilter;
   sdfTex.needsUpdate = true;
   const floatData = new Uint8Array(FLOAT_RES * FLOAT_RES).fill(255);
   const floatTex = new T.DataTexture(floatData, FLOAT_RES, FLOAT_RES, T.RedFormat, T.UnsignedByteType);
   floatTex.magFilter = floatTex.minFilter = T.LinearFilter;
   floatTex.needsUpdate = true;
+  const noiseTex = new T.DataTexture(bakeNoise(), NOISE_CELLS * NOISE_TEXELS, NOISE_CELLS * NOISE_TEXELS, T.RedFormat, T.UnsignedByteType);
+  noiseTex.wrapS = noiseTex.wrapT = T.RepeatWrapping;
+  noiseTex.magFilter = noiseTex.minFilter = T.LinearFilter;
+  noiseTex.needsUpdate = true;
 
   const amp = options.amp ?? 1;
+  const sunDir = (options.sunDirection ?? new T.Vector3(-15, 28, 12)).clone().normalize();
+  const deckLift = options.deckLift ?? 0.45;   // deck height above water for the fake shadow (baked by setRaft)
   const uniforms = {
     uTime: { value: 0 },
     uAmp: { value: amp },
     uFoamStart: { value: options.foamStart ?? 0.04 },
     uDebug: { value: options.debug ?? 0 },
-    uSunDir: { value: (options.sunDirection ?? new T.Vector3(-15, 28, 12)).clone().normalize() },
+    uSunDir: { value: sunDir },
+    uSunXZ: { value: new T.Vector2(sunDir.x, sunDir.z).normalize() },
+    uPixelAngle: { value: 0.0016 },
     uSunColor: { value: new T.Color('#fff3d6') },
     uSky: { value: new T.Color(options.skyColor ?? '#cbd2c0') },
     uZenith: { value: new T.Color(options.zenithColor ?? '#a9c1c0') },
@@ -334,11 +358,10 @@ export function createWater(T, options = {}) {
     uFadeFar: { value: options.fadeFar ?? 125 },
     tRaftSdf: { value: sdfTex },
     uRaft: { value: new T.Vector4(0, 0, 1, 0) },
-    uSdfBox: { value: new T.Vector3(0, 0, 32) },
-    uDeckLift: { value: options.deckLift ?? 0.45 },
+    uSdfBox: { value: new T.Vector3(0, 0, 1 / 32) },
     tFloatMap: { value: floatTex },
-    uFloatBox: { value: new T.Vector3(0, 0, FLOAT_SPAN) },
-    uBobber: { value: new T.Vector4(1e4, 1e4, 0, -100) },
+    tNoise: { value: noiseTex },
+    uFloatBox: { value: new T.Vector3(-FLOAT_SPAN / 2, -FLOAT_SPAN / 2, 1 / FLOAT_SPAN) },
     tScene: { value: null },
     tDepth: { value: null },
     uResolution: { value: new T.Vector2(1, 1) },
@@ -352,6 +375,7 @@ export function createWater(T, options = {}) {
   // interpolant over-estimates by at most half the longest triangle edge (the grid diagonal); add a little for
   // the Gerstner horizontal shift and SDF texel error.
   const defines = { GATE_SLACK: (step * Math.SQRT1_2 + 0.25).toFixed(3) };
+  if (options.debug) defines.WATER_DEBUG = '';
   if (tier !== 'a') defines.USE_PREPASS = '';
   if (tier === 'c') defines.USE_REFLECTION = '';
   Object.assign(defines, options.defines);   // lab knock-outs for profiling
@@ -361,6 +385,12 @@ export function createWater(T, options = {}) {
   mesh.name = 'ocean';
   mesh.position.y = BASE_Y;
   mesh.frustumCulled = false;
+  const bufSize = new T.Vector2();
+  mesh.onBeforeRender = (renderer, scene, camera) => {   // pixel footprint for the lace anti-aliasing
+    if (!camera.isPerspectiveCamera) return;
+    renderer.getDrawingBufferSize(bufSize);
+    uniforms.uPixelAngle.value = (2 * Math.tan((camera.fov * Math.PI) / 360)) / (camera.zoom * Math.max(1, bufSize.y));
+  };
   let time = 0;
 
   // ---- tier b: half-res opaque prepass (scene colour + depth) ----
@@ -439,16 +469,14 @@ export function createWater(T, options = {}) {
 
   // Bake the raft footprint (2 m tiles centred at tile*2, raft-local) into a signed distance texture.
   // Runs only when tiles change (see sandbox/water/cpu-cost.mjs for timings).
-  function setRaft(tiles, x = 0, z = 0, yaw = 0) {
-    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-    for (const [tx, tz] of tiles) { x0 = Math.min(x0, tx * 2 - 1); x1 = Math.max(x1, tx * 2 + 1); z0 = Math.min(z0, tz * 2 - 1); z1 = Math.max(z1, tz * 2 + 1); }
-    if (!tiles.length) { x0 = z0 = -1; x1 = z1 = 1; }
-    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, span = Math.max(x1 - x0, z1 - z0) + SDF_MAX * 2;
-    const texel = span / SDF_RES, ox = cx - span / 2, oz = cz - span / 2, reach = 1 + SDF_MAX;
-    sdfDist.fill(SDF_MAX);
-    // Stamp each tile into the texels within its reach (min-combine), instead of every texel testing every tile.
-    for (const [tx, tz] of tiles) {
-      const wx = tx * 2, wz = tz * 2;
+  // Channel R is the raft SDF; channel G is the same footprint shifted by the deck's shadow offset (sun direction x
+  // deck height, turned into raft space), so the shader gets the fake deck shadow from the same fetch.
+  let raftTiles = [], raftYaw = 0;
+  function stampTiles(tiles, dist, ox, oz, texel, shiftX, shiftZ) {
+    const reach = 1 + SDF_MAX;
+    dist.fill(SDF_MAX);
+    for (const [tx, tz] of tiles) {   // stamp each tile into the texels within its reach (min-combine)
+      const wx = tx * 2 - shiftX, wz = tz * 2 - shiftZ;
       const i0 = Math.max(0, Math.floor((wx - reach - ox) / texel)), i1 = Math.min(SDF_RES - 1, Math.ceil((wx + reach - ox) / texel));
       const j0 = Math.max(0, Math.floor((wz - reach - oz) / texel)), j1 = Math.min(SDF_RES - 1, Math.ceil((wz + reach - oz) / texel));
       for (let j = j0; j <= j1; j++) {
@@ -458,16 +486,33 @@ export function createWater(T, options = {}) {
           const inside = qx > qz ? qx : qz;
           const d = Math.sqrt(mx * mx + mz * mz) + (inside < 0 ? inside : 0);
           const k = j * SDF_RES + i;
-          if (d < sdfDist[k]) sdfDist[k] = d;
+          if (d < dist[k]) dist[k] = d;
         }
       }
     }
-    for (let k = 0; k < sdfData.length; k++) sdfData[k] = Math.round(Math.min(Math.max((sdfDist[k] + 2) / (SDF_MAX + 2), 0), 1) * 255);
-    sdfTex.needsUpdate = true;
-    uniforms.uSdfBox.value.set(cx, cz, span);
-    setRaftPose(x, z, yaw);
   }
-  function setRaftPose(x, z, yaw) { uniforms.uRaft.value.set(x, z, Math.cos(yaw), Math.sin(yaw)); }
+  function setRaft(tiles, x = 0, z = 0, yaw = 0) {
+    raftTiles = tiles.map((t) => [t[0], t[1]]); raftYaw = yaw;
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const [tx, tz] of tiles) { x0 = Math.min(x0, tx * 2 - 1); x1 = Math.max(x1, tx * 2 + 1); z0 = Math.min(z0, tz * 2 - 1); z1 = Math.max(z1, tz * 2 + 1); }
+    if (!tiles.length) { x0 = z0 = -1; x1 = z1 = 1; }
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, span = Math.max(x1 - x0, z1 - z0) + SDF_MAX * 2;
+    const texel = span / SDF_RES, ox = cx - span / 2, oz = cz - span / 2;
+    // World shadow offset o = sun.xz / sun.y * deckLift, in raft space R(yaw) o (same rotation as the shader).
+    const k = deckLift / Math.max(sunDir.y, 0.2), wx = sunDir.x * k, wz = sunDir.z * k, c = Math.cos(yaw), sn = Math.sin(yaw);
+    stampTiles(tiles, sdfDist, ox, oz, texel, 0, 0);
+    stampTiles(tiles, sdfShadow, ox, oz, texel, c * wx - sn * wz, sn * wx + c * wz);
+    const enc = (d) => Math.round(Math.min(Math.max((d + 2) / (SDF_MAX + 2), 0), 1) * 255);
+    for (let i = 0; i < sdfDist.length; i++) { sdfData[2 * i] = enc(sdfDist[i]); sdfData[2 * i + 1] = enc(sdfShadow[i]); }
+    sdfTex.needsUpdate = true;
+    uniforms.uSdfBox.value.set(cx, cz, 1 / span);
+    uniforms.uRaft.value.set(x, z, c, sn);
+  }
+  // Move/turn the raft without changing tiles. A new yaw re-bakes (the shadow offset is baked in raft space).
+  function setRaftPose(x, z, yaw) {
+    if (yaw !== raftYaw) setRaft(raftTiles, x, z, yaw);
+    else uniforms.uRaft.value.set(x, z, Math.cos(yaw), Math.sin(yaw));
+  }
   // list: [[x, z, radius, hx, hz], ...]: a capsule around the segment centre +- (hx, hz), or a circle when hx/hz
   // are left out (footprint(object) builds one from a mesh). Every item is stamped into a camera-centred
   // distance map (FLOAT_SPAN m, FLOAT_RES texels), so the shader does one fetch however many items float.
@@ -475,11 +520,13 @@ export function createWater(T, options = {}) {
   let floatDirty = [];   // texel rects stamped last time, reset to 'far' before the next stamp
   function setFloaters(list, cx, cz) {
     const box = uniforms.uFloatBox.value, texel = FLOAT_SPAN / FLOAT_RES;
-    if (cx !== undefined) box.set(Math.round(cx / texel) * texel, Math.round(cz / texel) * texel, FLOAT_SPAN);
+    if (cx !== undefined) box.set(Math.round(cx / texel) * texel - FLOAT_SPAN / 2, Math.round(cz / texel) * texel - FLOAT_SPAN / 2, 1 / FLOAT_SPAN);
     for (const [i0, i1, j0, j1] of floatDirty) for (let j = j0; j <= j1; j++) floatData.fill(255, j * FLOAT_RES + i0, j * FLOAT_RES + i1 + 1);
     floatDirty = [];
-    const ox = box.x - FLOAT_SPAN / 2, oz = box.y - FLOAT_SPAN / 2, scale = 255 / (FLOAT_HI - FLOAT_LO);
-    for (const f of list) {
+    const ox = box.x, oz = box.y, scale = 255 / (FLOAT_HI - FLOAT_LO);
+    const n = list.length + (bobberOn ? 1 : 0);
+    for (let fi = 0; fi < n; fi++) {
+      const f = fi < list.length ? list[fi] : bobber;
       const x = f[0], z = f[1], r = f[2], hx = f[3] ?? 0, hz = f[4] ?? 0, l2 = hx * hx + hz * hz, il2 = l2 > 1e-6 ? 1 / l2 : 0;
       const ex = Math.abs(hx) + r + FLOAT_HI, ez = Math.abs(hz) + r + FLOAT_HI;
       // One texel ring at the border is never stamped, so clamped lookups outside the map read 'far'.
@@ -528,13 +575,14 @@ export function createWater(T, options = {}) {
     o[3] = fpAxis.x * s; o[4] = fpAxis.z * s;
     return o;
   }
-  // Hook bobber (Vector3-like or null): foam collar and ripple rings while it sits on the water, plus one
-  // splash ring from the moment it lands.
+  // Hook bobber (Vector3-like or null): while it sits on the water (within .25 m of the surface) it is stamped
+  // into the floater map by the next setFloaters, so it gets the same lace and outward ripple rings as items.
+  // Call it before setFloaters each frame.
+  const bobber = [0, 0, BOBBER_R];
+  let bobberOn = false;
   function setBobber(pos) {
-    const b = uniforms.uBobber.value;
-    const on = !!pos && pos.y - getHeight(pos.x, pos.z) < 0.25;
-    if (on && b.z === 0) b.w = time;
-    if (on) b.set(pos.x, pos.z, 1, b.w); else b.z = 0;
+    bobberOn = !!pos && pos.y - getHeight(pos.x, pos.z) < 0.25;
+    if (bobberOn) { bobber[0] = pos.x; bobber[1] = pos.z; }
   }
   // Wave amplitude scale for weather. Updates the shader and the CPU wave table together, so the raft, the
   // swimmer and floating items stay on the drawn surface. (Never set uniforms.uAmp alone.)
@@ -570,7 +618,7 @@ export function createWater(T, options = {}) {
     };
   }
   function dispose() {
-    geometry.dispose(); material.dispose(); sdfTex.dispose(); floatTex.dispose();
+    geometry.dispose(); material.dispose(); sdfTex.dispose(); floatTex.dispose(); noiseTex.dispose();
     prepRT?.depthTexture?.dispose(); prepRT?.dispose(); reflRT?.dispose();
   }
 
