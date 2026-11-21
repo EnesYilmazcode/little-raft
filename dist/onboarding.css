@@ -104,3 +104,10 @@ body:has(#welcome.ob-on:not([hidden])) header{display:none!important}
 /* --- Notes as a manual popover (onboarding.js, review lane): undo the UA [popover] box (inset:0;margin:auto;border;
    overflow) so it stays top-right above the modal bag. :where() = zero specificity, so any .ob-notes rule above wins. --- */
 :where(#obNotes[popover]){inset:auto;margin:0;border:0;overflow:visible;height:auto;max-height:none}
+
+/* --- one right-hand column (onboarding.js layoutColumn): the Notes stop above the pinned-recipe tracker and the
+   crosshair-side prompt column instead of running under them (.ob-capped, max-height set inline), hide while something
+   covers their header (.ob-clear), and the tracker hides while a prompt runs over it ([data-ob-yield]). --- */
+.ob-notes.ob-capped{overflow:hidden}
+.ob-notes.ob-clear{opacity:0;visibility:hidden}
+#craftTracker[data-ob-yield]{opacity:0;visibility:hidden}

@@ -5,6 +5,22 @@
 // count may add a unit: [n, of, '°']. ctx = {S0, gained(k), yawTravel, walked (path metres), prev, mem, silent}. Completion reads only window.raftDebug.hud (a light live view; .state if absent), polled 250 ms.
 export const SAVE_KEY = 'little-raft-v1', KEY = 'little-raft-onboarding-v1', AUTOSTART = 'little-raft-autostart';
 const POLL_MS = 250, MAX_ROWS = 3, DIM_MS = 20000, HOLD_MS = 2000, ASIDE_MIN = 190, GUTTER = 8;
+// the crosshair-side prompt column (prompts.css #lrPrompt and the tool readouts that sit above / below the crosshair)
+export const PROMPT_COL = ['#lrPrompt.lr-on', '#binocularsHud', '#treasureHud', '#fcReelHud.show', '#sailPrompt', '#resumeHint'];
+const COL_MS = 100, COL_HOLD_MS = 1200;
+/** Height the Notes may take (px from their top) so they stop gap px above every rect under them that shares their
+ *  column; null = nothing in the way. span: {left, right, top, bottom} with bottom = the Notes' natural (uncut) bottom. */
+export function notesCap(span, rects, gap = 8) {
+  let bound = Infinity;
+  for (const r of rects || []) if (r && r.left < span.right + gap && r.right > span.left - gap && r.bottom > span.top && r.top < span.bottom + gap) bound = Math.min(bound, r.top - gap);
+  return bound === Infinity ? null : Math.floor(bound - span.top);
+}
+/** Cut between whole rows: the tallest of headH and the row bottoms (panel-relative, padding included) that fit in cap. */
+export function fitRows(cap, headH, rowBottoms) {
+  let fit = headH;
+  for (const b of rowBottoms || []) if (b <= cap) fit = Math.max(fit, b);
+  return fit;
+}
 
 const num = v => (Number.isFinite(v) ? v : 0);
 const arr = v => (Array.isArray(v) ? v : []);
@@ -332,6 +348,44 @@ function boot() {
     panel.classList.toggle('ob-aside', aside); panel.classList.toggle('ob-covered', covered);
   }
   setInterval(tick, POLL_MS);
+  setInterval(() => { try { layoutColumn(); } catch {} }, COL_MS);
+
+  // Bag closed: the Notes share the right side with the pinned-recipe tracker (#craftTracker, below them) and, on
+  // narrow windows, with the crosshair-side prompt column. Nothing may overlap: the Notes stop above whatever sits
+  // under them (cut to fit, then just the header strip), and hide while something covers their top; the tracker hides
+  // while a prompt runs over it. A cap is held a moment after the prompt goes, so the Notes do not pump per glance.
+  let capUntil = 0, capPx = null;
+  const visRect = el => {
+    if (!el || el.hidden || el.closest('[hidden]')) return null;
+    const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity < .05) return null;
+    const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 ? r : null;
+  };
+  const crosses = (a, b, pad = 0) => a.left < b.right + pad && a.right > b.left - pad && a.top < b.bottom + pad && a.bottom > b.top - pad;
+  function layoutColumn() {
+    const body = document.body, trk = $('#craftTracker');
+    const on = body.classList.contains('playing') && placedOpen !== true && !panel.classList.contains('ob-all');
+    const col = on ? PROMPT_COL.map(s => visRect($(s))).filter(Boolean) : [];
+    // tracker vs prompt column (the tracker is the quieter of the two)
+    if (trk) {
+      if (trk.hasAttribute('data-ob-yield')) trk.removeAttribute('data-ob-yield'); // measure it where it really is
+      const tr = on ? visRect(trk) : null, y = !!tr && col.some(c => crosses(c, tr, GUTTER));
+      if (y) trk.setAttribute('data-ob-yield', '');
+    }
+    const st = panel.style, now = Date.now();
+    if (!on) { if (capPx !== null) { capPx = null; st.removeProperty('max-height'); panel.classList.remove('ob-capped', 'ob-clear'); } return; }
+    const pr = panel.getBoundingClientRect(), top = pr.top, natural = panel.scrollHeight + 2; // + border
+    const headH = (head.offsetHeight || 22) + 14; // header strip with the panel padding
+    const span = {left:pr.left, right:pr.right, top, bottom:top + natural};
+    const tr = trk && !trk.hasAttribute('data-ob-yield') ? visRect(trk) : null;
+    let cap = notesCap(span, [tr, ...col], GUTTER);
+    if (cap === null && capPx !== null && now < capUntil) cap = capPx; // hold the last cap briefly
+    else if (cap !== null) capUntil = now + COL_HOLD_MS;
+    capPx = cap;
+    const clear = cap !== null && cap < headH, capped = cap !== null && !clear && cap < natural;
+    const mh = capped ? `${fitRows(cap, headH, [...rowsEl.children].map(li => li.offsetTop + li.offsetHeight + 10))}px` : '';
+    if (st.maxHeight !== mh) { if (mh) st.maxHeight = mh; else st.removeProperty('max-height'); }
+    panel.classList.toggle('ob-capped', capped); panel.classList.toggle('ob-clear', clear);
+  }
 
   // ----- title screen -----
   const welcome = $('#welcome'), card = welcome?.querySelector('.welcome-card');
