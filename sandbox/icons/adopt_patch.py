@@ -1,6 +1,7 @@
 """Exact drop-in patches for adopting baked item icons into dist/ (see docs/tech/icons-ADOPT.md).
 
   python sandbox/icons/adopt_patch.py --check   # verify every patch anchor matches current dist/ exactly once
+  python sandbox/icons/adopt_patch.py --check --dist <path>   # same, against another dist/ copy
   python sandbox/icons/adopt_patch.py --apply   # write dist/icon-atlas.js, dist/item-icons.js, patch survival-ui.js + game.js
 
 shoot.py imports patched_survival_ui() to run the sandbox UI shots against a patched copy of the
@@ -106,11 +107,25 @@ def dist_item_icons(b):
     src = re.sub(r"from '\.\./\.\./dist/([a-z-]+)\.js'", lambda m: f"from './{m.group(1)}.js?build={b}'", src)
     return src.replace("from './icon-atlas.js'", f"from './icon-atlas.js?build={b}'")
 
+def missing_imports(items, dist):
+    """Modules that item-icons.js imports but the target dist/ lacks. game.js imports item-icons.js
+    statically, so any missing one (e.g. plastic.js deleted after procedural-models) breaks boot.
+    icon-atlas.js is written by --apply itself, so it only has to exist in sandbox/icons/."""
+    mods = re.findall(r"^import [^;]*? from '\./([A-Za-z0-9_.-]+\.js)(?:\?[^']*)?';", items, re.M)
+    if not mods: raise SystemExit('item-icons.js: no relative imports found (regex out of date?)')
+    return mods, [m for m in mods if m != 'icon-atlas.js' and not (dist / m).is_file()]
+
 if __name__ == '__main__':
+    if '--dist' in sys.argv:  # target another dist/ (e.g. a scratch copy); default: the repo's dist/
+        DIST = Path(sys.argv[sys.argv.index('--dist') + 1]).resolve()
     b = build_id()
     ui = patched_survival_ui()
     game = apply((DIST / 'game.js').read_text(), game_patches(b), 'game.js')
     items = dist_item_icons(b)
+    mods, missing = missing_imports(items, DIST)
+    if missing:
+        raise SystemExit(f'item-icons.js imports modules missing from {DIST}: {", ".join(missing)}\n'
+                         '(procedural-models adopted and old builders deleted? see "With procedural-models" in icons-ADOPT.md)')
     if '--apply' in sys.argv:
         (DIST / 'survival-ui.js').write_text(ui)
         (DIST / 'game.js').write_text(game)
@@ -118,4 +133,4 @@ if __name__ == '__main__':
         (DIST / 'item-icons.js').write_text(items)
         print('applied: dist/icon-atlas.js, dist/item-icons.js, dist/survival-ui.js, dist/game.js (build', b + ')')
     else:
-        print('ok: all anchors match current dist/ exactly once (build', b + ')')
+        print('ok: all anchors match', DIST, 'exactly once; item-icons.js imports present:', ' '.join(mods), '(build', b + ')')
