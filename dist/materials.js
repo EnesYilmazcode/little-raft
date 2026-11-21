@@ -78,8 +78,9 @@ function patch(T, shader, u) {
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', '#include <common>' + FRAG_HEAD)
     .replace('#include <map_fragment>', C.map_fragment.replace('texture2D( map, vMapUv )', 'lrTex( map, vMapUv )') + '\nif (diffuseColor.a < lrCut) discard;')
-    .replace('#include <normal_fragment_maps>', C.normal_fragment_maps.replace(/texture2D\( normalMap, vNormalMapUv \)/g, 'lrTex( normalMap, vNormalMapUv )'))
-    .replace('#include <roughnessmap_fragment>', C.roughnessmap_fragment.replace('texture2D( roughnessMap, vRoughnessMapUv )', 'lrTex( roughnessMap, vRoughnessMapUv )').replace('texelRoughness.g', 'texelRoughness.a'))
+    .replace('#include <normal_fragment_maps>', C.normal_fragment_maps.replace(/texture2D\( normalMap, vNormalMapUv \)/g, 'lrN'))
+    // roughness lives in the normal atlas alpha: fetch that texel once (lrN) for both chunks
+    .replace('#include <roughnessmap_fragment>', 'vec4 lrN = lrTex( normalMap, vNormalMapUv );\n' + C.roughnessmap_fragment.replace('texture2D( roughnessMap, vRoughnessMapUv )', 'lrN').replace('texelRoughness.g', 'texelRoughness.a'))
     .replace('#include <metalnessmap_fragment>', C.metalnessmap_fragment.replace('texture2D( metalnessMap, vMetalnessMapUv )', 'lrTex( metalnessMap, vMetalnessMapUv )').replace('texelMetalness.b', 'texelMetalness.a'));
 }
 
@@ -107,7 +108,7 @@ export function getMaterial(T, name, opts = {}) {
   const u = { cut: { value: p.cutout ?? 0 }, cell: { value: new T.Vector4(...cell.uv) }, scale: { value: new T.Vector4(rx, ry, (h & 1023) / 1024, ((h >>> 10) & 1023) / 1024) } };
   m.userData.lr.uniforms = u;
   m.onBeforeCompile = sh => patch(T, sh, u);
-  m.customProgramCacheKey = () => 'lr-atlas-2'; // bump whenever patch() output changes (programs are shared by key)
+  m.customProgramCacheKey = () => 'lr-atlas-3'; // bump whenever patch() output changes (programs are shared by key)
   m.name = 'lr-' + name;
   cache.set(key, m);
   return m;
@@ -142,7 +143,7 @@ export function applyLighting(scene, renderer, L = LIGHTING, { ocean = null, T =
     const mat = new T.ShaderMaterial({
       uniforms: { uHorizon: { value: new T.Color(L.fog) }, uZenith: { value: new T.Color(L.skyZenith) } },
       vertexShader: 'varying float vY; void main() { vY = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: 'uniform vec3 uHorizon, uZenith; varying float vY; void main() { gl_FragColor = vec4(mix(uHorizon, uZenith, pow(clamp(vY * 1.6, 0.0, 1.0), 0.6)), 1.0); }\n#include <colorspace_fragment>',
+      fragmentShader: 'uniform vec3 uHorizon, uZenith; varying float vY; void main() { gl_FragColor = vec4(mix(uHorizon, uZenith, pow(clamp(vY * 1.6, 0.0, 1.0), 0.6)), 1.0);\n#include <colorspace_fragment>\n}',
       side: T.BackSide, depthWrite: false, fog: false, toneMapped: false,
     });
     sky = new T.Mesh(new T.SphereGeometry(150, 24, 12), mat); sky.name = 'art-sky'; sky.frustumCulled = false; sky.renderOrder = -1;
