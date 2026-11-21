@@ -51,6 +51,8 @@ import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { createGhosts, wrapRot, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { getItemIcon, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint } from './hud.js?build=v3-survival-ae77fa84ac2b'; // loop-ux: saved sound toggle, drag-look sensitivity, first-run hints
+import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -82,10 +84,13 @@ const STYLE_ID = 'little-raft-engine-style';
 const HUD_CSS = `
 body.playing header,body.playing #hud .inventory,body.playing #hud .goal,body.playing #toast,
 body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.playing [data-quick-recipe]{display:none!important}
-#contextPrompt{position:fixed;left:50%;top:calc(50% + 26px);transform:translateX(-50%);padding:3px 10px;border-radius:8px;
+#contextPrompt{position:fixed;left:50%;bottom:132px;transform:translateX(-50%);padding:3px 10px;border-radius:8px;
   background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:none;z-index:30;white-space:nowrap}
 #contextPrompt[hidden]{display:none}
 #contextPrompt kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:0 4px;border:1px solid rgba(246,236,214,.6);border-radius:4px;font:inherit;text-align:center}
+/* The pickup feed is a manual popover so notices stay visible above the open bag or pause menu; it keeps style.css's place. */
+#pickupFeed[popover]{top:auto;right:auto;margin:0;padding:0;border:0;background:none;overflow:visible;width:auto;height:auto;max-width:none;max-height:none;color:#f6ecd6}
+#pickupFeed .pf-hint{white-space:normal;max-width:max(180px,min(340px,calc(50vw - 300px)));line-height:1.3}#pickupFeed .pf-hint span{color:#ffd98f}
 #signalReadout{position:fixed;top:14px;left:50%;transform:translateX(-50%);padding:4px 12px;border-radius:999px;
   background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.05em;
   pointer-events:none;z-index:30;white-space:nowrap}
@@ -213,7 +218,7 @@ export function mount(transfer = null) {
   let peer = X?.peer ?? null, conn = X?.conn ?? null, role = ['solo', 'host', 'guest'].includes(X?.role) ? X.role : 'solo';
   let networkReady = !!X?.networkReady, room = typeof X?.room === 'string' ? X.room : '';
   let world, hostBag = null, guestBag = null, remoteBag = null, saveAvailable = X ? X.saveAvailable !== false : true;
-  let ownWorldBackup = normaliseBackup(X?.ownWorldBackup);
+  let ownWorldBackup = normaliseBackup(X?.ownWorldBackup), freshSave = false;
   if (X?.world && Array.isArray(X.world.tiles)) {
     world = liveWorld(X.world);
     if (X.version >= 3 && X.bags) { hostBag = snapBag(X.bags.host); guestBag = snapBag(X.bags.guest); remoteBag = snapBag(X.bags.remote); }
@@ -228,6 +233,7 @@ export function mount(transfer = null) {
     let raw = null;
     try { raw = localStorage.getItem(SAVE); } catch { saveAvailable = false; }
     if (raw) { try { const v = cleanWorld(JSON.parse(raw)); if (v) world = v; } catch {} }
+    freshSave = !raw;
     const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
   }
   // Revision of the save this tab last loaded or wrote. Another tab writing a newer one stops our autosave.
@@ -257,7 +263,7 @@ export function mount(transfer = null) {
   let castId = typeof X?.castId === 'string' ? X.castId : newToken();
   let hookSlot = isInt(X?.hookSlot) ? X.hookSlot : -1;
   let fishWait = Number.isFinite(X?.fishWait) ? X.fishWait : 0;
-  let sound = X ? X.sound !== false : true;
+  let sound = X ? X.sound !== false : loadSoundPref(window.localStorage); // loop-ux: sound on/off survives reloads
   const sfx = createOceanAudio({context:X?.audio ?? null, volume:sound ? options.volume : 0, output:ctx => diving?.audioOut(ctx) ?? null}); // diving lane hook: muffled underwater
   const play = (ev, s) => sfx.play(ev, s);
   const note = (i, n, s) => sfx.note?.(i, n, s) ?? false; // [instruments]
@@ -273,7 +279,8 @@ export function mount(transfer = null) {
   let joinTimer = 0, joinDeadline = Number.isFinite(X?.joinDeadline) ? X.joinDeadline : 0;
   let waterClock = 0, waterAim = null; const wateringGroups = new Map(); // tileKey -> palm/purifier group
   let netClock = 0, lastSaveAt = performance.now(), lastNetSendAt = 0, toastTimer = 0, wheelAcc = 0, peerHidden = !!X?.peerHidden, heartbeat = 0;
-  let noticeText = '', noticeUntil = 0, contextCache = null, uiFailed = false; let fishShown = null;
+  let noticeText = '', noticeUntil = 0, noticeCache = null, contextCache = null, uiFailed = false; let fishShown = null;
+  const hintsDone = X?.hintsDone instanceof Set ? X.hintsDone : freshSave ? new Set() : loadHints(window.localStorage); // loop-ux: first-run hint chain, once per save
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
   let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = -1;
@@ -355,7 +362,7 @@ export function mount(transfer = null) {
       + '<li><kbd>W A S D</kbd><span><b>Walk</b>, hold <kbd>Shift</kbd> to run, <kbd>Space</kbd> to jump. Fell in? Swim to the raft and hold <kbd>Space</kbd> to climb aboard.</span></li>'
       + '<li><kbd>1–8</kbd><span><b>Hotbar.</b> Number keys or the mouse wheel choose a slot. Click uses what you are holding.</span></li>'
       + '<li><kbd>Hook</kbd><span><b>Throw.</b> Hold click to power up, aim higher to throw farther, release. Hold again to reel in everything it touches.</span></li>'
-      + '<li><kbd>E</kbd><span><b>Pick up</b> a supply right beside you, or open your bag to craft. <kbd>Tab</kbd> / <kbd>I</kbd> open the bag too.</span></li>'
+      + '<li><kbd>E</kbd><span><b>Pick up</b> a supply right beside you, or open your bag to craft. <kbd>Tab</kbd> / <kbd>I</kbd> open the bag too; <kbd>E</kbd>, <kbd>I</kbd> or <kbd>Esc</kbd> close it. Inside, <kbd>Tab</kbd> and the arrow keys move between slots.</span></li>'
       + '<li><kbd>E</kbd><span><b>Sail.</b> Look at a sail and press E to raise or lower it; hold <kbd>R</kbd> and turn to steer it. The pennant shows the wind. E at the anchor post stops the raft.</span></li>' // [sailing]
       + '<li><kbd>Craft</kbd><span><b>Make tools.</b> A Hammer builds raft floors (2 wood, 2 plastic each). A Fishing Rod catches fish. Crafted decorations are placed one at a time.</span></li>'
       + '<li><kbd>R</kbd><span><b>Repair</b> a worn hook for 2 wood and 1 scrap.</span></li>'
@@ -572,6 +579,25 @@ export function mount(transfer = null) {
     if (html === contextCache) return; contextCache = html;
     const el = $('#contextPrompt'); if (!el) return; el.innerHTML = html; el.hidden = !html;
   }
+  function hintDone(id) { if (hintsDone.has(id)) return; hintsDone.add(id); saveHints(window.localStorage, hintsDone); }
+  // loop-ux: first-run hints sit at the top of the bottom-left pickup feed. The feed is re-raised whenever a
+  // panel opens so notices stay visible over the open bag (a modal dialog would otherwise cover it).
+  function updateNotices(dialog) {
+    if (survivalUI?.isOpen) hintDone('bag');
+    const hint = running && !dialog && !guestWaiting() ? nextHint(hintsDone, {heldKind:heldKind(), castOut:!!hook, hasLoot:hintsDone.has('loot')}) : null;
+    const sig = (hint?.id ?? '') + '|' + dialog;
+    if (sig === noticeCache) return; noticeCache = sig;
+    let el = $('#pickupFeed');
+    if (!el) { el = document.createElement('div'); el.id = 'pickupFeed'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite'); document.body.appendChild(el); }
+    let row = el.querySelector(':scope>.pf-hint');
+    if (hint) {
+      if (!row) { row = document.createElement('div'); row.className = 'pf-row pf-note pf-hint'; row.append(document.createElement('i'), document.createElement('span')); }
+      row.lastChild.textContent = hint.text; if (el.firstChild !== row) el.prepend(row);
+    } else row?.remove();
+    if (typeof el.showPopover !== 'function') return;
+    if (!el.hasAttribute('popover')) el.setAttribute('popover', 'manual');
+    try { if (el.matches(':popover-open')) el.hidePopover(); el.showPopover(); } catch {} // re-show so it sits above the newest modal
+  }
   let lastReadout = null, signalHtml = null, markerCss = null;
   function updateSignalHud() { // receiver pill + cache marker (see signal.js)
     const n = countAntennas(world.decor), r = signalReadout(world.signal, {x:physics.x, z:physics.z, yaw}, n, elapsed); lastReadout = r;
@@ -612,35 +638,36 @@ export function mount(transfer = null) {
   }
 
   // ---------- Pointer lock ----------
-  let lockPromisePending = false, lockHasPromise = false, lockEventFailures = 0, lockNoGesture = false;
+  let lockPromisePending = false, lockHasPromise = false, lockFailures = 0, lockNoGesture = false;
+  const windowFocused = () => { try { return document.hasFocus(); } catch { return true; } };
+  // Always ask (no navigator.userActivation pre-gate): after the page itself released the lock (inventory,
+  // crafting, crew) Chrome relocks without a gesture. Refusals are handled in lockFailed (lock-rules.js).
+  // While Escape is still held (it just closed a panel), Chrome may treat the held key as the user leaving
+  // the new lock, so the relock waits for the release (no gesture needed: the page released the lock itself).
+  let escHeld = false, relockOnEscUp = false;
+  function escReleased() { escHeld = false; if (relockOnEscUp) { relockOnEscUp = false; requestLock(); } }
   function requestLock() {
-    if (!running || !lockSupported || uiBlocked()) return;
+    if (!shouldRequestLock({running, supported:lockSupported, blocked:uiBlocked()}) || isLocked()) return;
+    if (escHeld) { relockOnEscUp = true; return; }
     // Without a user gesture (e.g. Esc closing the inventory) browsers still relock when the page itself released the
     // lock. If they refuse, stay in click-to-look quietly: the next click retries, and it never counts as unsupported.
     lockNoGesture = !!navigator.userActivation && !navigator.userActivation.isActive;
     try {
       const p = canvas.requestPointerLock();
-      if (p && typeof p.then === 'function') { lockPromisePending = lockHasPromise = true; p.then(() => { lockPromisePending = false; lockEventFailures = 0; }, guard(err => { lockPromisePending = false; lockFailed(err); })); }
+      if (p && typeof p.then === 'function') { lockPromisePending = lockHasPromise = true; p.then(() => { lockPromisePending = false; lockFailures = 0; }, guard(err => { lockPromisePending = false; lockFailed(err); })); }
     } catch (err) { lockFailed(err); }
   }
-  // Lock refused. Transient refusals (Escape cooldown, NotAllowedError, missing gesture) keep click-to-look so the next
-  // canvas click retries. Only genuinely unsupported cases switch permanently to drag-look. The click that asked for lock never acts.
-  function lockUnsupported(err) {
-    if (!lockSupported) return true;
-    if (!err || typeof err !== 'object') return false;
-    const isDom = typeof DOMException !== 'undefined' && err instanceof DOMException;
-    if (isDom) return err.name === 'NotSupportedError' || err.name === 'WrongDocumentError' || err.name === 'SecurityError';
-    return err instanceof Error; // non-DOM rejection: the environment cannot provide pointer lock
-  }
+  // Lock refused. Escape cooldown (SecurityError), unfocused window (WrongDocumentError) and missing gesture are
+  // transient: the next click or focus retries. Only NotSupportedError, a missing API, or repeated refusals while
+  // focused switch to drag-look. The click that asked for lock never acts.
   function lockFailed(err) {
     if (isLocked()) return;
     if (lockNoGesture) { lockNoGesture = false; refreshPointerUI(true); return; } // a gestureless retry may be refused
     const isEvent = typeof Event !== 'undefined' && err instanceof Event;
-    if (isEvent) {
-      if (lockPromisePending || lockHasPromise) { refreshPointerUI(true); return; } // the promise rejection carries the real reason
-      // Legacy event-only API gives no reason: treat as transient, but repeated refusals mean it is unavailable.
-      if (++lockEventFailures < 3) { refreshPointerUI(true); return; }
-    } else if (!lockUnsupported(err)) { refreshPointerUI(true); return; }
+    if (isEvent && (lockPromisePending || lockHasPromise)) { refreshPointerUI(true); return; } // the promise rejection carries the real reason
+    const verdict = lockFailureVerdict({supported:lockSupported, err:isEvent ? null : err, focused:windowFocused(), failures:lockFailures});
+    lockFailures = verdict.failures;
+    if (!verdict.fallback) { refreshPointerUI(true); return; }
     const wasFallback = lockFallback; lockFallback = true; refreshPointerUI(true);
     if (!wasFallback && running) notice('Mouse lock unavailable: drag to look, click to use', 3000);
   }
@@ -782,6 +809,7 @@ export function mount(transfer = null) {
     else if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90));
     if (e.kind === 'note' || e.kind === 'achievement') logbookUI?.celebrate?.(e);
     play(typeof e.sound === 'string' ? e.sound : e.kind === 'signal' || e.kind === 'note' || e.kind === 'achievement' ? 'catch' : e.kind === 'build' ? 'build' : e.kind === 'craft' ? 'craft' : e.kind === 'loot' ? 'collect' : 'deny', e.kind === 'notice' ? .6 : 1);
+    if (e.kind === 'loot') hintDone('loot');
   }
   function collectBottle(i, a, bag, actor) { // no bag space needed; does not count toward world.collected
     const n = nextNote(world.notes); if (n >= 0) world.notes.push(n); // before makeItem: the 12th note must not respawn a (now empty) bottle
@@ -935,7 +963,7 @@ export function mount(transfer = null) {
   function selectSlot(i) {
     if (!isInt(i) || i < 0 || i >= HOTBAR) return;
     const bag = localBag(); if (bag.selectedIndex === i) return;
-    charging = null; hover = null; play('ui', .5);
+    charging = null; hover = null; play('ui', .5); if (hintsDone.has('bag')) hintDone('slots');
     if (!reelCast('slot') && hook && !hook.fishing) { hook.cancel?.(); endHook(); } // switching away retracts the hook; its catch stays in the sea
     if (role === 'guest') { if (!networkReady) return; bag.select(i); action({kind:'selectSlot', index:i}); }
     else action({kind:'selectSlot', index:i});
@@ -947,7 +975,7 @@ export function mount(transfer = null) {
   }
   function craft(recipe) { if (typeof recipe === 'string') action({kind:'craft', recipe}); }
   function repair() { if (!running) return; const bag = localBag(); action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH)}); }
-  function openInventory() { if (!running || !survivalUI) return; clearInput(); releaseLock(); survivalUI.open?.(); play('open'); }
+  function openInventory() { if (!running || !survivalUI) return; clearInput(); releaseLock(); survivalUI.open?.(); play('open'); hintDone('bag'); }
   function interact() {
     if (!running || uiBlocked() || diving?.state.diving) return; // diving lane hook: E gathers underwater
     if (!pickupFrom(currentAim()) && sailing?.interact()) return; // [sailing] E on a sail / anchor (pick-up wins)
@@ -1008,7 +1036,7 @@ export function mount(transfer = null) {
     const durability = clamp(slot.durability ?? MAX_HEALTH, 0, MAX_HEALTH), maxRange = 16 + durability * .16;
     const direction = aim?.dir ?? camera.getWorldDirection(new T.Vector3());
     hook = new HookCast(T, {origin:handPos.clone(), direction, maxRange, charge, deck:deckAt});
-    castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; play('throw', charge);
+    castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; play('throw', charge); hintDone('throw');
     if (durability <= 0) notice('Worn hook: shorter throws. R to repair');
   }
 
@@ -1026,7 +1054,7 @@ export function mount(transfer = null) {
     if (sun) sun.castShadow = options.shadows !== false && !!l?.shadows;
   }
   function applyOptions(next) {
-    options = next; applyVolume();
+    options = next; applyVolume(); soundLabel(); // loop-ux: label notes a 0% volume
     if (quality && quality.info.preset !== next.graphics) quality.setCap(next.graphics);
     applyUserGraphics();
   }
@@ -1267,7 +1295,7 @@ export function mount(transfer = null) {
     try { prog?.tick(dt); } catch (e) { console.error('progression tick failed', e); } // [progression-hook]
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     try { logbookUI?.update?.(); } catch (e) { console.error('logbook update failed', e); logbookUI = null; }
-    refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud();
+    refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud(); updateNotices(dialog);
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
     renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
   }
@@ -1296,7 +1324,7 @@ export function mount(transfer = null) {
   // ---------- Input ----------
   const on = (target, type, fn, opts = {}) => target?.addEventListener(type, guard(fn), {...opts, signal});
   on(document, 'pointerlockchange', () => {
-    if (isLocked()) { lockFallback = false; lockEventFailures = 0; lockNoGesture = false; }
+    if (isLocked()) { lockFallback = false; lockFailures = 0; lockNoGesture = false; }
     else { if (charging && charging.x === null) charging = null; reeling = false; }
     if (!isLocked() && !lockFallback && building?.menu.isOpen) building.menu.close(false); // building-pieces lane hook
     down = null; refreshPointerUI(true);
@@ -1330,7 +1358,7 @@ export function mount(transfer = null) {
     if (!down || isLocked()) return;
     const dx = e.clientX - down.x, dy = e.clientY - down.y;
     if (!down.moved && Math.hypot(dx, dy) > 4) { down.moved = true; if (charging && charging.x !== null) charging = null; } // a drag is a look, not a throw
-    if (down.moved) { look(dx, dy, DRAG_SENSITIVITY); down.x = e.clientX; down.y = e.clientY; }
+    if (down.moved) { look(dx, dy, dragLookScale(DRAG_SENSITIVITY, options.sensitivity)); down.x = e.clientX; down.y = e.clientY; }
   });
   on(window, 'pointerup', e => { if (e.button === 2 && building?.menu.isOpen) building.menu.close(true); }); // building-pieces lane hook
   on(canvas, 'pointerup', e => {
@@ -1379,7 +1407,12 @@ export function mount(transfer = null) {
     keys[e.code] = false; if (e.code === 'KeyR') sailing?.release(); // [sailing]
     if (e.code === 'KeyX' && building?.removing) { const a = building.removeAction(); if (a && running) { swing = 1; action(a); } } // building-pieces lane hook
   });
-  on(window, 'blur', clearInput); on(window, 'blur', () => sailing?.release()); // [sailing]
+  on(window, 'keydown', e => { if (e.key === 'Escape' && !e.repeat) { escHeld = true; relockOnEscUp = false; } }, {capture:true});
+  on(window, 'keyup', e => { if (e.key === 'Escape') escReleased(); }, {capture:true});
+  on(window, 'pointerdown', () => { escHeld = relockOnEscUp = false; }, {capture:true}); // a click relocks on its own
+  // Focus loss (alt-tab): drop held input and show the hint at the top edge; one click on return relocks.
+  on(window, 'blur', () => { clearInput(); escHeld = relockOnEscUp = false; document.body.classList.toggle('away', running); refreshPointerUI(true); }); on(window, 'blur', () => sailing?.release()); // [sailing]
+  on(window, 'focus', () => { document.body.classList.remove('away'); refreshPointerUI(true); });
   // controls lane: one input layer for keyboard/mouse/gamepad; falls back to the legacy handlers above if it fails to start.
   try {
     controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
@@ -1413,8 +1446,12 @@ export function mount(transfer = null) {
   setHandler($('#welcomeCrew'), 'onclick', () => openDialog('crew'));
   setHandler($('#helpButton'), 'onclick', () => settingsController?.open());
   document.querySelectorAll('[data-close]').forEach(b => setHandler(b, 'onclick', () => $('#' + b.dataset.close)?.close()));
-  const soundLabel = () => setText('#soundButton', 'Sound: ' + (sound ? 'on' : 'off'));
-  setHandler($('#soundButton'), 'onclick', () => { sound = !sound; applyVolume(); soundLabel(); });
+  // Crew/Help closed during play go back to locked play; opened from the pause menu, settings.js reopens it instead.
+  for (const id of ['crew', 'help']) on($('#' + id), 'close', e => {
+    if (shouldRelockAfterClose({running, locked:isLocked(), blocked:uiBlocked(), returnToPause:!!e.target?.dataset?.fromPause})) requestLock();
+  });
+  const soundLabel = () => setText('#soundButton', 'Sound: ' + (!sound ? 'off' : options.volume > 0 ? 'on' : 'on (volume is 0%)'));
+  setHandler($('#soundButton'), 'onclick', () => { sound = !sound; saveSoundPref(window.localStorage, sound); applyVolume(); soundLabel(); if (sound) sfx.resume(); });
   soundLabel();
 
   // ---------- Networking (PeerJS, host authoritative) ----------
@@ -1702,6 +1739,13 @@ export function mount(transfer = null) {
     },
   });
   const previousDebug = Object.getOwnPropertyDescriptor(window, 'raftDebug'); // restored if this mount fails
+  // Desktop shell hook (desktop/main.cjs). The shell claims Escape and runs window.raftEscape() (settings.js) with a
+  // user gesture; hold() first marks the key as held so a relock waits for released(), sent on the key's release.
+  const shellApi = {
+    hold:guard(() => { escHeld = true; relockOnEscUp = false; }),
+    released:guard(() => escReleased()),
+  };
+  window.raftShell = shellApi;
   window.raftDebug = debugApi;
 
   // ---------- Lifecycle ----------
@@ -1711,7 +1755,7 @@ export function mount(transfer = null) {
     return {
       version:3, world, bags:{host:hostBag.snapshot(), guest:guestBag.snapshot(), remote:remoteBag ? remoteBag.snapshot() : null},
       physics:physics.capture(), me:{x:physics.x, y:physics.y, z:physics.z}, other:other ? {...other} : null, yaw, pitch, running, elapsed, walkPhase,
-      hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio:sfx.context, peer, conn, role, networkReady, room, ownWorldBackup, pending:new Map(pending),
+      hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio:sfx.context, hintsDone, peer, conn, role, networkReady, room, ownWorldBackup, pending:new Map(pending),
       dive:diving?.capture?.() ?? null, // diving lane hook
       wornCasts:{...wornCasts}, seq, lastSeqSent, guestAck,
       joinDeadline:joinTimer ? joinDeadline : 0, saveAvailable, lockFallback, keys:{...keys},
@@ -1759,6 +1803,7 @@ export function mount(transfer = null) {
     for (const id of timers) clearTimeout(id); timers.clear(); clearInterval(heartbeat);
     unlisten(bindings.splice(0));
     try { if (window.raftDebug === debugApi) delete window.raftDebug; } catch {}
+    try { if (window.raftShell === shellApi) delete window.raftShell; } catch {}
     disposeScene();
   }
 
