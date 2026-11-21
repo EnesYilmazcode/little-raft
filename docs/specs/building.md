@@ -67,10 +67,10 @@ Pillow/numpy (scratch work is in the scratchpad under `building/`).
     Luminance mean is 202, with p5–p95 of only 199–209. The real deck beside it has mean 98.
   - So the ghost is about 2x brighter than lit wood and almost unshaded. Water does not show through,
     so its opacity is high (≥ 0.85, estimated).
-    **[CORRECTED: opacity ≥ 0.85 not supported. In iVT88Yq-PU0_0020 the same pillar ghost reads #8ee8b7 over sky (#80f9fa) and #9ad077 over deck (#b79b73), so the background bleeds through; a two-background estimate gives alpha roughly 0.55–0.8 (motion blur makes it loose). Over dark water in M4_0118 the tint just looks opaque. Fill samples #bde97a/#bee97b, luminance 202 with p5–p95 199–209, deck 98–100 all re-measured and verified]**
+    **[CORRECTED: opacity ≥ 0.85 not supported. In iVT88Yq-PU0_0020 the same pillar ghost reads #8ee8b7 over sky (#80f9fa) and #9ad077 over deck (#b79b73), so the background bleeds through; a two-background estimate gives alpha roughly 0.55–0.8 (motion blur makes it loose). Over dark water in M4_0118 the tint just looks opaque. Fill samples #bde97a/#bee97b, luminance 202 with p5–p95 199–209, deck 98–100 re-measured and verified; all five shapes seen in the cited frames]**
   - Shapes match the final piece exactly: a beam (M4AhtY9BB1I_0318), a pillar (iVT88Yq-PU0_0020), a stair
     wedge (YSMrrtHtpIc_0115), a floor slab (YSMrrtHtpIc_0345), and a sloped thatch roof with its straw
-    detail (2rqSgyWX6N0_0930). **[VERIFIED]** (all five shapes seen in the cited frames)
+    detail (2rqSgyWX6N0_0930).
 - **C7 Valid colour is a yellow-green.** It ranges #93d668–#d2e782 depending on light:
   - #93d668 / #98d56d indoors (M4AhtY9BB1I_0318)
   - #96d76f (YSMrrtHtpIc_0115)
@@ -109,11 +109,10 @@ Pillow/numpy (scratch work is in the scratchpad under `building/`).
   - Pillars stand on a tile corner and are about 3+ tile-widths tall on screen (iVT88Yq-PU0_0020, the ghost
     runs off the top of the frame).
   - Beams span pillar tops (M4AhtY9BB1I_0318: a T-shaped beam on two pillar stubs, 22 % W wide).
-    **[CORRECTED: the two legs are green too, so the whole ghost is a Π shape (bar plus two short legs), not a beam on placed stubs. Green bbox is x 440–603 = 163 px = 17 % W (was 22 % W)]**
   - Walls snap to tile edges (YSMrrtHtpIc_0315 and iVT88Yq-PU0_0104 captions).
   - Upper floors need support from pillars, walls or beams. screenshot_pillars-supporting-floors.jpg shows
     a 4x2 upper floor held by 2 pillars, with the slab overhanging the pillars by about 1 tile.
-  **[UNSURE: the pillar ghost in iVT88Yq-PU0_0020 does run off the top. "Stands on a tile corner" cannot be seen (the caption says edge). The wall-to-edge snap is caption-only; YSMrrtHtpIc_0315 shows a wall ghost filling a gap in a wall line. The 4x2 / 2-pillar / about-1-tile overhang count matches the screenshot approximately]**
+  **[CORRECTED: the beam ghost in M4AhtY9BB1I_0318 has green legs too, so the whole ghost is a Π shape (bar plus two short legs), not a beam on placed stubs. Its green bbox is x 440–603 = 163 px = 17 % W (was 22 % W). Unsure parts: the pillar ghost in iVT88Yq-PU0_0020 does run off the top. "Stands on a tile corner" cannot be seen (the caption says edge). The wall-to-edge snap is caption-only; YSMrrtHtpIc_0315 shows a wall ghost filling a gap in a wall line. The 4x2 / 2-pillar / about-1-tile overhang count matches the screenshot approximately]**
 - **C13 Stairs are a single wedge piece that spans one tile, rising to the next floor.**
   YSMrrtHtpIc_0115 shows the green stair ghost against a wall, next to placed stairs and railings, with
   a cost of 1 plank type. **[UNSURE: the wedge ghost, the placed stair and railings, and the single plank chip are verified. "Spans one tile, rising to the next floor" is not visible in the frame. Note that the menu's Stair entry (iVT88Yq-PU0_0048) costs plank 6 + nail 3, so the one-chip wedge may be a different stair variant]**
@@ -137,7 +136,7 @@ Pillow/numpy (scratch work is in the scratchpad under `building/`).
   - "R Rotate" appears only for rotatable pieces. The foundation in M4AhtY9BB1I_0118 shows it; the
     Fortify upgrade in M4AhtY9BB1I_0154 does not.
     **[CORRECTED: the boxes are verified (x 410–549, y 414–450; three-hint row x 377–580). But R is also missing for the beam ghost in M4AhtY9BB1I_0318, while the floor, stair, pillar and roof ghosts show it, so the rule is not determinable from stills. Do not claim "only rotatable pieces". MMB "Block pick" seems to appear when the crosshair is on an existing piece]**
-  - Decorations show "R press or hold to rotate smoothly" (9vVu3idmeV4_0736). **[VERIFIED]** (shelf ghost re-sampled at #acd88d–#b5db90)
+  - Decorations show "R press or hold to rotate smoothly" (9vVu3idmeV4_0736). (shelf ghost re-sampled at #acd88d–#b5db90; see the C16 tag above)
 - **C17 A short text label floats just above the crosshair for special modes.** In M4AhtY9BB1I_0154,
   "FORTIFY" is at y ≈ 232, 7 % H above the crosshair. **[VERIFIED]** (bright text row at y 232; crosshair at y 270)
 - **C18 The hammer itself is a chunky, stylised mallet.** It has a block head made of stacked planks
@@ -173,63 +172,66 @@ Pillow/numpy (scratch work is in the scratchpad under `building/`).
    ~407, dist/style.css, dist/index.html.) Add a small `#buildCost` element centred about 9 % H below the
    crosshair. It gets one chip per material (an icon from our own `icons.svg` plus "have/need"), and the
    number turns warm red when have < need. Keep the "needs N more" text as the secondary line.
-   Impact H, effort S.
+   Impact H, effort S. **[VERIFIED]** (`updateContext` at 401, line 407 correct. Note: `#contextPrompt` already sits at 50 % + 26 px (game.js:48), so put the chips below it or move the prompt)
 2. **#2 Keep the ghost visible when placement is invalid, and use one clear two-state colour scheme.**
    (dist/game.js `placementFor` 499 and `updateGhost` 807–813.) Return `{x, z, ok:false, reason}`
    instead of null for blocked or unreachable cells, so the ghost can turn red. Use a valid green in our
    own palette (in the #9fe08a–#c8ee8a range) and an invalid warm red/rose (in the #d0455f–#e06070
    range). Show red for both blocked and unaffordable cells. Put the reason in the context prompt.
-   Impact H, effort S.
+   Impact H, effort S. **[VERIFIED]** (lines 499–505 and 807–813 correct. The red-for-unaffordable part rests on one frame; see C8. It is still a sound original design choice)
 3. **#3 Make the ghost the real piece mesh, flush with the deck and parented to the raft.**
-   (dist/game.js:294 and 811, dist/deck.js `createFloor`.) Build the ghost from `createFloor(T, 0, ghostMat)`
-   with an unlit tinted material at opacity about 0.8 and `depthWrite:false`. Add it to `raft` at
+   (dist/game.js:294 and 811, dist/deck.js `createFloor`.) Build the ghost from `createFloor(T, 0, () => ghostMat)`
+   with an unlit tinted material at opacity about 0.65–0.8 and `depthWrite:false`. Add it to `raft` at
    y = 0, so it follows the raft's roll and matches the final tile one-to-one. Impact H, effort S.
+   **[CORRECTED: was `createFloor(T, 0, ghostMat)`. The third argument is a callback `color => material` (dist/deck.js:3, 135), so pass a function. The opacity range widens to fit the corrected C6 estimate]**
 4. **#4 Add a build reach limit and snap from the view ray.** (dist/game.js `pickNdc` 467–484,
    `placementFor`.) Only offer cells within about 4–5 units of the player (a new `BUILD_REACH`
    constant beside `PICKUP_REACH`, dist/game.js:37). When aiming past the edge, clamp to the nearest
    free neighbour cell along the ray, so the ghost "sticks" to the raft edge instead of vanishing.
-   Impact M, effort S.
+   Impact M, effort S. **[VERIFIED]** (code refs correct: `pickNdc` 467–484, `PICKUP_REACH` 2.5 at 37. That Raft's reach is short is from memory, wiki unreachable)
 5. **#5 Add a hammer build menu: hold the right mouse button for a compact centred panel.**
    (dist/game.js input plus a new small module or dist/survival-ui.js.) The panel is about 20 % W by
    55 % H, has a category column on its right, and has a detail card with the piece name, a one-line
    description and have/need rows. Release to select. Start with 4 categories: Foundation, Floor (upper),
    Pillar, Wall. Use our own rounded, light HUD style (the current `--paper`/`--ink` tokens in
-   dist/style.css:2), not a parchment skin. Impact H, effort M.
+   dist/style.css:2), not a parchment skin. Impact H, effort M. **[VERIFIED]** (tokens exist at style.css:2. RMB is free: the canvas `contextmenu` is prevented at game.js:892 and `pointerdown` handles only button 0 at 863. Panel size matches C1. Category order in C2 was corrected, but this item picks its own 4 categories, so the rank is unchanged)
 6. **#6 Add walls and pillars as edge and corner pieces.** (dist/game.js world schema 114–139 and
    `rebuildRaft` 351, plus a new `dist/pieces.js` built on `createWoodMaterial` from dist/wood.js.)
    - Add `world.pieces: [{type, x, z, edge|corner, rot}]` and validate it in `liveWorld`, as tiles are.
    - A pillar snaps to a tile corner (a 0.12-unit square post, about 2.4 units tall).
    - A wall snaps to a tile edge (2 units wide, 2.4 tall).
    - Give each a new action recipe validated on the host (dist/game.js:565–579).
-   - Impact H, effort M.
+   - Impact H, effort M. **[VERIFIED]** (`liveWorld` at game.js:146 → `cleanWorld` 117; `rebuildRaft` 351; `createWoodMaterial(T, color)` in wood.js:2)
 7. **#7 Add the key-hint row at the bottom centre.** (dist/index.html, dist/style.css; reuse the hidden
    `#aimHint` slot.) While the hammer is held, show keycap-over-label hints at about 77–83 % H:
    "RMB hold: pieces", "R: rotate" (only for rotatable pieces), "Click: build". Impact M, effort S.
+   **[CORRECTED: `#aimHint` is not just hidden; it is force-hidden by `body.playing #aimHint{display:none!important}` in the CSS injected at dist/game.js:47. That rule must change, or use a new element. The "only for rotatable pieces" rule is our own choice, not an observed Raft rule (see C16)]**
 8. **#8 Turn on the build crosshair state.** (dist/game.js `heldKind` and `updateGhost`; dist/style.css:10.)
    Toggle `document.body.classList.toggle('build', kind==='hammer')` every frame, so the existing green
-   crosshair rule works. Optionally tint it red while invalid. Impact L, effort S.
+   crosshair rule works. Optionally tint it red while invalid. Impact L, effort S. **[VERIFIED]** (rule at style.css:10; only `classList.remove('build')` at game.js:264)
 9. **#9 Add a remove mode with an amber highlight and refund.** (dist/game.js.) Use the hammer's
    alt-action, or hold a key, to tint the aimed placed piece amber (#e0b060 range: warm, clearly
    different from the valid and invalid colours). Remove it on click with a 50–100 % refund. Never allow
    removing the last tile or one that strands other tiles. Impact M, effort M.
+   **[CORRECTED: the Raft frames show the amber target only with the axe selected (C9), never the hammer. Using a hammer alt-action or a held key is fine as our own design, but it is not a copy of Raft's flow. Amber measured about #e3b363; #e0b060 is a reasonable original pick]**
 10. **#10 Add upper floors and stairs, with support rules.** (dist/game.js, dist/pieces.js.) An upper
     floor needs ≥ 1 pillar or wall under one of its edges or corners, with up to 1 tile of overhang
     (screenshot_pillars-supporting-floors.jpg). A stair is a single wedge spanning one tile and rising one
-    level. Impact M, effort L.
+    level. Impact M, effort L. **[UNSURE: wiki unreachable for Raft's exact support rules; the overhang is only approximately supported by the screenshot. The stair geometry is unverified (C13)]**
 11. **#11 Add R to rotate for edge and decor pieces.** (dist/game.js keydown.) Turn in 90° steps.
     Store `rot` in the piece record, and show the "R: rotate" hint only for those pieces.
-    Impact M, effort S.
+    Impact M, effort S. **[CORRECTED: KeyR is already bound to hook repair (dist/game.js:909 calls `repair()`, and the HUD shows "Repair R" in dist/index.html:9). Route R to rotate only while the hammer or a decor item is held, or pick another key]**
 12. **#12 Make placement feel solid.** (dist/game.js:530 and 634, dist/audio.js 'build' event.) Use a
     0.25–0.35 s hammer swing that lands on placement, a short low "thunk" instead of the 640 Hz sine,
-    and a 0.15 s scale-in pop (0.9→1.0) on the new piece. Impact M, effort S.
+    and a 0.15 s scale-in pop (0.9→1.0) on the new piece. Impact M, effort S. **[VERIFIED]** (beep 640 at 530, `swing = 1` at 634, `'build'` in audio.js EVENTS at line 18. Timings are proposals)
 13. **#13 Rebalance costs per piece and display them consistently.** (dist/game.js:33,
     dist/inventory-state.js:42.) For example: foundation 2 wood + 2 plastic, wall 3 wood, pillar 2 wood,
     floor 2 wood, stair 3 wood. Keep one cost table as the source for the menu, the chips and the host
-    check. Impact M, effort S.
+    check. Impact M, effort S. **[VERIFIED]** (game.js:33 and inventory-state.js:42–43 correct; the host check uses FLOOR_COST at 570)
 
 ## 5. Open questions / UNSURE
 
-- What the amber tint means (C9). It appears with the axe or hammer selected and might be "remove
+- What the amber tint means (C9). It appears with the axe selected (all 6 amber frames; skeptic check) and might be "remove
   target" or "paint/replace target". That it means removal is from memory, unverified.
 - Menu open and select timing: does it open on hold or on press, and does it select on release?
   The hint text says "Hold", but frames can't show input timing.
@@ -242,3 +244,53 @@ Pillow/numpy (scratch work is in the scratchpad under `building/`).
   tune in game.
 - Whether the in-world cost chips show for pieces you cannot afford in red. In M4AhtY9BB1I_0154 the
   "0/1" chip's text colour was not legible at 480p.
+
+## Verification log
+
+Skeptic pass on the claims C1–C19 and change items #1–#13. Table cells in section 3 are tagged too, but are
+not counted here.
+
+| Tag | Claims | Change items | Total |
+|---|---|---|---|
+| VERIFIED | 7 (C1, C3, C5, C7, C15, C17, C18) | 8 (#1, #2, #4, #5, #6, #8, #12, #13) | 15 |
+| CORRECTED | 8 (C2, C4, C6, C8, C9, C11, C12, C16) | 4 (#3, #7, #9, #11) | 12 |
+| UNSURE | 4 (C10, C13, C14, C19) | 1 (#10) | 5 |
+
+In the section 3 table, two file:line references were corrected (style.css:47 → game.js:47, and 566 → 567);
+the rest verified.
+
+**Most important corrections**
+- C2: the category order was wrong. It is foundation/floor, roof, pillar, wall, triangular wall, fence,
+  stair, repair/replace.
+- C6: the ghost is not ≥ 0.85 opaque. Background bleeds through, so alpha is about 0.55–0.8.
+- C9: the amber tint appears only with the axe selected.
+- #3: `createFloor` takes a material callback, not a material.
+- #11: R is already the hook-repair key.
+
+**Re-ranking:** none needed. The corrected claims change details of #3, #7, #9 and #11, but not their
+impact or effort.
+
+**Originality guardrail:** no change item tells us to copy Raft's logo, icons, item art, UI skin, fonts or
+creatures. #1 uses our own icons.svg, #5 says no parchment skin, C18 copies scale only, and dist/hammer.js
+is already original. Colours are sampled only as reference ranges. No guardrail rewrites were needed.
+
+**Method:** I opened every cited frame with Read and re-measured with Pillow/numpy in
+`scratchpad/building-skeptic/`:
+- 9x9 median hex samples
+- gradient-profile panel edges and slot gaps
+- colour-mask bounding boxes for the ghost, beam and amber tint
+- luminance mean and percentiles
+- a two-background alpha estimate
+- bright-text rows for hints and labels
+
+I read the dist/ references with sed and grep (game.js, style.css, deck.js, wood.js, inventory-state.js,
+index.html, audio.js, hammer.js). Network was not used; wiki-only facts are left UNSURE (wiki unreachable).
+
+**Images re-checked:**
+- Panel and menu: M4AhtY9BB1I_0018, _0024, _0030, _0036, _0042, _0048
+- Ghosts and hints: M4AhtY9BB1I_0118, _0154, _0318
+- iVT88Yq-PU0_0004, _0020, _0040, _0044, _0048, _0052, _0116
+- YSMrrtHtpIc_0100, _0115, _0130, _0315, _0345, _0445, _0745
+- 2rqSgyWX6N0_0100, _0215, _0400, _0930
+- 9vVu3idmeV4_0436, _0736, _0812
+- wiki-building/piece-render_building-hammer-full.jpg, screenshot_pillars-supporting-floors.jpg
