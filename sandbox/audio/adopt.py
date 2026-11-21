@@ -21,6 +21,7 @@ EDITS = [
     ("  let sound = X ? X.sound !== false : true, audio = X?.audio ?? null;\n",
      "  let sound = X ? X.sound !== false : true, audio = X?.audio ?? null;\n"
      "  const sfx = createOceanAudio({context:audio, volume:options.volume});\n"
+     "  if (sound && audio?.state === 'running') sfx.resume(); // hot update: context already unlocked, keep the ocean going\n"
      "  let reelSound = false, lastHookStage = null; const earDir = new T.Vector3();\n"),
     # 3. beep(f) -> sfxPlay(event, strength, pos?)
     ("  function beep(f = 500) {",
@@ -127,7 +128,7 @@ def check():
         page.on('console', lambda m: m.type in ('error', 'warning') and rep['console'].append(m.text[:300]))
         page.goto(f'http://127.0.0.1:{port}/')
         page.wait_for_function('!!window.raftDebug', timeout=30000)
-        page.locator('#solo').click()
+        page.locator('#solo').click(no_wait_after=True)
         page.wait_for_function('raftDebug.state.running', timeout=30000)
         page.mouse.click(550, 350)                       # user gesture -> wakeAudio()
         page.keyboard.press('KeyR')                      # repair -> emit() effect -> sfxPlay(...)

@@ -1,4 +1,4 @@
-"""Headless check for the audio lab. Usage: python sandbox/audio/shoot.py [--out DIR] [case ...]
+"""Headless check for the audio lab. Usage: python sandbox/audio/shoot.py [--out DIR] [--bench | case ...]
 Serves the repo root, renders every case in sandbox/audio/render-lab.js through OfflineAudioContext
 (48 kHz stereo, volume 1 = worst case level), writes <case>.wav + <case>.png (waveform + spectrogram)
 and prints JSON: render ms per second of audio, peak/RMS dBFS, DC, tail, warnings, play() JS cost.
@@ -32,6 +32,16 @@ with sync_playwright() as p:
     page.goto(f'http://127.0.0.1:{port}/sandbox/audio/index.html')
     page.wait_for_function('window.lab && window.lab.ready', timeout=20000)
     names = page.evaluate('lab.cases')
+    if '--bench' in only:
+        # interleaved repeats so box contention hits every engine equally; min and median ms per audio second
+        report['bench'] = page.evaluate('''async () => {
+          const { renderCase } = await import('./render-lab.js');
+          const names = ['ambience-calm', 'ambience-fallback', 'ambience-rough', 'stress-24', 'hammer', 'splash'], ms = {};
+          for (let i = 0; i < 7; i++) for (const n of names) (ms[n] ||= []).push((await renderCase(n, { repeats: 1 })).msPerSec);
+          const out = {}; for (const n of names) { const a = ms[n].sort((x, y) => x - y); out[n] = { min: +a[0].toFixed(1), median: +a[a.length >> 1].toFixed(1) }; }
+          return out;
+        }''')
+        only = {'--none--'}
     for name in names:
         if only and name not in only:
             continue
