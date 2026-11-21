@@ -113,6 +113,7 @@ export function createPaint(ctx) {
     c.setRGB(Math.min(TINT_CAP, c.r / base.r), Math.min(TINT_CAP, c.g / base.g), Math.min(TINT_CAP, c.b / base.b));
     return c;
   });
+  const PREVIEW = PALETTE.map(p => new T.Color(p.hex ?? '#ffffff')); // ghost colours, so update() never parses a hex string
   let state = blank(), netRev = -1, colour = 0, tipShown = -1;
   let seenPieces = null, seenTiles = null, seenTilesN = -1, tintBuilding = null;
   let target = null, targetAim = null;
@@ -163,7 +164,8 @@ export function createPaint(ctx) {
     if (p) { tgt.key = pieceKeyOf(p); tgt.name = PIECES[p.t].name.toLowerCase(); tgt.rec = p; return tgt; }
     const pt = aim.point; if (!pt || pt.distanceTo?.(cam) > REACH) return null;
     const x = Math.round(pt.x / 2), z = Math.round(pt.z / 2), tiles = ctx.world.tiles;
-    if (!tiles.some(t => t[0] === x && t[1] === z)) return null;
+    let hit = false; for (const t of tiles) if (t[0] === x && t[1] === z) { hit = true; break; } // no per-frame closure
+    if (!hit) return null;
     tgt.key = tileKeyOf(x, z); tgt.name = 'deck'; tgt.rec = null; return tgt;
   }
   const targetFor = aim => { if (aim !== targetAim) { targetAim = aim; target = findTarget(aim); } return target; };
@@ -179,8 +181,10 @@ export function createPaint(ctx) {
   const label = () => { const n = potsOf(ctx.localBag(), colour); return PALETTE[colour].name + (n === Infinity ? '' : ' (' + n + ')'); };
   function provide() {
     const P = globalThis.raftPrompts; if (unprovide || typeof P?.provide !== 'function') return;
-    unprovide = P.provide({ id: 'paint', priority: 1, prompt: () => {
+    unprovide = P.provide({ id: 'paint', priority: 1, prompt: pc => {
       if (!holding()) return null;
+      const s = pc?.state; // yield to the built-in pickup / waiting prompts (priority 0), which this provider would otherwise hide
+      if (s?.pickup || (s?.role === 'guest' && !s.networkReady)) return null;
       return target ? [{ key: 'LMB', label: 'Paint ' + target.name + ' · ' + label() }, { key: 'RMB', label: 'Colour', muted: true }]
         : [{ label: 'Brush: ' + label(), muted: true }, { key: 'RMB', label: 'Colour', muted: true }];
     } });
@@ -209,7 +213,7 @@ export function createPaint(ctx) {
       if (!unprovide) provide();
       if (!holding()) { targetAim = null; target = null; return; }
       const t = targetFor(ctx.aim?.() ?? null);
-      if (t?.rec && ctx.building) ctx.building.preview(t.rec, hexOf(colour) ?? '#ffffff');
+      if (t?.rec && ctx.building) ctx.building.preview(t.rec, PREVIEW[colour]);
     },
     afterRebuild() { applyTint(); },
     action(a, actor, bag) {

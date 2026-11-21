@@ -204,3 +204,23 @@ test('recipes and items: pots make 4, brush is a 1-stack non-tool, icons exist',
   for (const k of ['brush', ...PAINT_KINDS]) assert.ok(svg.includes(`id="${ITEM_INFO[k].icon}"`), ITEM_INFO[k].icon);
   assert.equal(PALETTE.length, 6); assert.equal(SLOT_COUNT > 0, true);
 });
+
+test('prompt provider yields to the pickup and waiting prompts; preview gets a Color', () => {
+  let provided = null; const prev = globalThis.raftPrompts;
+  globalThis.raftPrompts = { provide: o => { provided = o; return () => {}; } };
+  try {
+    const { mod, ctx, bags } = makeCtx();
+    bags.host.select(bags.host.slots.findIndex(s => s?.kind === 'brush'));
+    const shown = [];
+    ctx.building.preview = (rec, c) => shown.push(c);
+    ctx.building.grid.pick = () => ({ ...wall });
+    ctx.camera = { position: new T.Vector3(0, 1.6, 0) };
+    ctx.aim = () => ({ dir: new T.Vector3(1, 0, 0), point: null });
+    mod.update(0.016);
+    assert.ok(provided);
+    assert.ok(provided.prompt({ state: { running: true } }));
+    assert.equal(provided.prompt({ state: { pickup: { id: 1, type: 'wood' } } }), null);
+    assert.equal(provided.prompt({ state: { role: 'guest', networkReady: false } }), null);
+    assert.ok(shown.length > 0 && shown[0].isColor);
+  } finally { globalThis.raftPrompts = prev; }
+});
