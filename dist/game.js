@@ -11,6 +11,7 @@ import { createHands } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { PlayerPhysics } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
+import { floorBlock, decorBlock, inReach, BUILD_REACH, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
@@ -406,6 +407,7 @@ export function mount(transfer = null) {
       if (guestWaiting()) html = 'Waiting for your brother’s raft…';
       else if (performance.now() < noticeUntil) html = esc(noticeText);
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
+      else if (hover?.blocked) html = esc(BLOCK_TEXT[hover.blocked]);
       else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
       else if (castOut() && castOut().stage === 'floating') html = caughtList(castOut()).length ? 'Hold click to reel it in' : 'Hold click to reel';
     }
@@ -498,17 +500,21 @@ export function mount(transfer = null) {
     const m = itemMeshes.get(it.token), p = m ? m.position : it;
     return Math.hypot(p.x - physics.x, p.z - physics.z) <= PICKUP_REACH ? it : null;
   }
+  // Returns null when the cell is not a build spot at all, else {x, z} plus `blocked` ('bound' | 'cap' | 'reach') when refused.
   function placementFor(kind, p) {
     if (!p) return null; const x = Math.round(p.x / 2), z = Math.round(p.z / 2);
-    if (kind === 'hammer') { if (hasTile(x, z) || !NEIGHBOURS.some(([a, b]) => hasTile(x + a, z + b))) return null; }
-    else if (DECOR_TYPES.includes(kind)) { if (!hasTile(x, z) || world.decor.some(d => d.x === x && d.z === z)) return null; }
+    let why;
+    if (kind === 'hammer') why = floorBlock(world.tiles, x, z);
+    else if (DECOR_TYPES.includes(kind)) why = decorBlock(world.tiles, world.decor, x, z);
     else return null;
-    return {x, z};
+    if (why && !BLOCK_TEXT[why]) return null;
+    if (!why && !inReach(physics.x, physics.z, x, z)) why = 'reach';
+    return why ? {x, z, blocked:why} : {x, z};
   }
   function placementCandidates(kind) {
-    const out = [];
-    if (kind === 'hammer') { const seen = new Set(); for (const [tx, tz] of world.tiles) for (const [a, b] of NEIGHBOURS) { const x = tx + a, z = tz + b, k = x + ',' + z; if (!seen.has(k) && !hasTile(x, z)) { seen.add(k); out.push({x, z}); } } }
-    else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (!world.decor.some(d => d.x === x && d.z === z)) out.push({x, z});
+    const out = [], ok = (x, z) => inReach(physics.x, physics.z, x, z);
+    if (kind === 'hammer') { const seen = new Set(); for (const [tx, tz] of world.tiles) for (const [a, b] of NEIGHBOURS) { const x = tx + a, z = tz + b, k = x + ',' + z; if (!seen.has(k) && !floorBlock(world.tiles, x, z) && ok(x, z)) { seen.add(k); out.push({x, z}); } } }
+    else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (!decorBlock(world.tiles, world.decor, x, z) && ok(x, z)) out.push({x, z});
     return out;
   }
 
@@ -565,14 +571,17 @@ export function mount(transfer = null) {
       return;
     }
     if (a.kind === 'build') {
-      if (!isInt(a.x) || !isInt(a.z) || Math.abs(a.x) > 25 || Math.abs(a.z) > 25) return;
+      if (!isInt(a.x) || !isInt(a.z)) return;
+      const who = actor === 'guest' ? other : physics; // guest pose may be missing until its first move
+      if (who && !inReach(who.x, who.z, a.x, a.z, BUILD_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .01))) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
       if (a.recipe === 'floor') {
-        if (world.tiles.length >= 400 || hasTile(a.x, a.z) || !NEIGHBOURS.some(([x, z]) => hasTile(a.x + x, a.z + z))) return;
+        const why = floorBlock(world.tiles, a.x, a.z);
+        if (why) { if (BLOCK_TEXT[why]) emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; }
         if (bag.count('hammer') < 1) { emit({kind:'notice', text:'Craft a hammer first'}, actor); return; }
         if (!spend(bag, FLOOR_COST)) { emit({kind:'notice', text:'Floor needs ' + missingText(bag, FLOOR_COST)}, actor); return; }
         world.tiles.push([a.x, a.z]);
       } else if (DECOR_TYPES.includes(a.recipe)) {
-        if (!hasTile(a.x, a.z) || world.decor.some(d => d.x === a.x && d.z === a.z)) return;
+        if (decorBlock(world.tiles, world.decor, a.x, a.z)) return;
         const sel = bag.slots[bag.selectedIndex];
         if (sel?.kind === a.recipe) { sel.count--; if (sel.count <= 0) bag.slots[bag.selectedIndex] = null; }
         else if (!bag.remove(a.recipe, 1)) { emit({kind:'notice', text:`Craft a ${itemName(a.recipe)} first`}, actor); return; }
@@ -632,6 +641,7 @@ export function mount(transfer = null) {
     if (kind === 'hammer' || DECOR_TYPES.includes(kind)) {
       const v = placementFor(kind, p);
       if (!v) { notice(kind === 'hammer' ? 'Point at an empty space beside the raft' : 'Point at an empty raft floor'); return; }
+      if (v.blocked) { notice(BLOCK_TEXT[v.blocked]); return; }
       if (kind === 'hammer' && !canAfford(bag, FLOOR_COST)) { notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
       swing = 1; action({kind:'build', recipe:kind === 'hammer' ? 'floor' : kind, ...v}); return;
     }
@@ -814,7 +824,7 @@ export function mount(transfer = null) {
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook ? placementFor(kind, frameAim.point) : null;
     ghost.visible = !!hover; if (!hover) return;
     ghost.position.set(hover.x * 2, raft.position.y + .29, hover.z * 2);
-    ghost.material.color.set(kind === 'hammer' && !canAfford(localBag(), FLOOR_COST) ? '#ee8e75' : '#b6ffd0');
+    ghost.material.color.set(hover.blocked || (kind === 'hammer' && !canAfford(localBag(), FLOOR_COST)) ? '#ee8e75' : '#b6ffd0');
   }
   function hostState() {
     const c = guestBag.counts();
