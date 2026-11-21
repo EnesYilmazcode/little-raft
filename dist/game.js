@@ -480,7 +480,11 @@ export function mount(transfer = null) {
   function warmShaders() {
     if (typeof renderer.compileAsync !== 'function') return;
     hands?.preload(['hammer', 'fishingrod']);
-    try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
+    try {
+      // Also build the no-shadow variant (adaptive floor / Shadows off), else that switch relinks every lit program mid-game.
+      if (sun?.castShadow) { sun.castShadow = false; renderer.compileAsync(scene, camera).catch(() => {}); sun.castShadow = true; }
+      renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e));
+    }
     catch (e) { console.warn('shader warm-up failed', e); }
   }
   function palm(parent, x, y, z, s = 1) {
