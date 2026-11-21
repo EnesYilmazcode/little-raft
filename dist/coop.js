@@ -24,7 +24,7 @@ import { createFeed } from './coop-feed.js';
 import { loadLook, cleanLook, createLookGate, PARTNER_DEFAULT } from './look.js?build=v3-survival-ae77fa84ac2b';
 
 export const COOP_VERSION = 1;
-const HELD = [null, 'hook', 'hammer', 'fishingrod', 'wood', 'leaf', 'scrap', 'plastic', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate'];
+const HELD = [null, 'hook', 'hammer', 'fishingrod', 'wood', 'leaf', 'scrap', 'plastic', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'spade', 'finder']; // append only: index-coded on the wire (older peers read new indices as null)
 const STAGES = ['flying', 'floating', 'reeling', 'done', 'fishing'];
 const SEND_MS = 1000 / 15, IDLE_MS = 250, ITEMS_MS = 500;
 const SILENCE_MS = 3000, RECONNECT_WINDOW_MS = 30000, ATTEMPT_MS = 12000; // an attempt in flight gets 12 s (ICE can be slow)
