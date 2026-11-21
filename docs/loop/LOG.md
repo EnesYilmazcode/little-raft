@@ -939,6 +939,43 @@ Next ideas: decor pickup with refunds, achievement hooks for content modules, fl
   hook-only spawn, Esc from inventory keeps the lock, no page errors, shoot.py 159 vs 156 ms on main = +2%).
   PR #4 merged dbf2ca9 into main. PR #5 (round 6) is the open PR now.
 
+
+## 2026-11-21 · loop-features-202611210749 (features)
+Base: origin/claude/raft-master (7294e26). Merging rounds 0548/0703 into the base hit 10 conflicting files, so that is left to the integrator. Not redone: everything listed in rounds 0548/0703 plus the other branches' diving gear, trader, cookpot, fish trap, power chain and display shelf.
+
+Features (research in docs/features, specs in docs/specs):
+- **Junk debris + Sorting Tub**: `oldboot`, `tincan` and `seajar` are about 1 in 11 floating spawns (re-rolled in makeItem, so the spawn table is unchanged). Hooks and nets collect them. The Sorting Tub is a fuel-free progression station (6 wood, 2 rope, 3 nail, unlocked after nails) that sorts tin into 2 scrap, boot into 2 plastic and jar into 2 sand. It reuses StationModel through a `stationExtraRecipes` fallback, so the smelter and grill are unchanged. The tub has a crank animation and an output pile. Files: dist/recycler-model.js plus hooks in items.js, smelter.js, smelter-ui.js, progression-hooks.js and models.js.
+- **Daily crew tasks**: 3 tasks a day from a pool of 16, picked from (seed, day) and skipping tasks whose prerequisites are missing. Counting is host-only, through a new `observe(ev, actor)` content hook placed after every successful action. Small rewards, an all-three bonus and a streak with a best. Each player claims their own reward, unclaimed rewards carry over as `owed`, and the day falls back to a play-time clock when day/night is off. The logbook has a "Tasks" tab and there is a Task Board decor. Files: dist/tasks.js, tasks-rules.js, tasks-model.js.
+- **Little Camera + photo album + Photo Frame**: click to snap. The capture hides hands and ghosts, crops to 256x144 and saves a JPEG to IndexedDB, falling back to localStorage and then memory. The album holds 24 photos and refuses new shots when full. P opens the album (also from the pause menu). The Photo Frame decor shows a chosen photo; the owner sends the JPEG once over co-op, the message is validated and capped at 24k chars, and image data never goes in saves. Files: dist/camera.js, photo-store.js, photo-album-ui.js, camera-models.js, photo-frame.js.
+- Also fixed on the base: holding a seed threw a ReferenceError every frame, because `farmPlot` is undefined at game.js:1158.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (13 agents).
+Review/QA fixes:
+- **Station take (serious):** the recycler change had made "take output" also empty the smelter/grill input, which could also duplicate items.
+- **Pickup feed:** icons for placeholder items were missing.
+- **Station node lookups:** were repeated every frame.
+- **Tasks:** solo games owed rewards to the empty guest seat; a guest briefly showed stale tasks; the Claim button re-armed early.
+- **Camera:** pose was hidden behind the hotbar; the flash was barely visible; a hung save could lock the camera; co-op photo asks were slow; moved frames left stale entries in the save.
+- **Phone layout:** the journal chip overlapped the hotbar, and the bag hotbar row was clipped.
+
+Checks: `npm test` 660/660; shoot.py `errors: []`. A two-tab loopback co-op run of the photo frame passed.
+Known limits:
+- An intermittent three.js `compileAsync` "isReady" error comes from warmShaders in game.js (existing).
+- One headless run produced a solid-teal photo (not reproduced), and once only 3 of 4 snaps were saved.
+- Capture while diving is unverified.
+- Junk items get 3D icons while the new stations have flat icons (mixed styles).
+Next ideas: merge rounds 0548/0703/0749 into master; look into the warmShaders race; snap/save reliability; a richer camera model.
+
+## 2026-11-21 · integrator B round 4 (alongside the parallel integrator, which shipped PRs #3 and #4)
+- Clean merges: loop-fidelity-202611210821, raft-tech, fleet-tech perf/water. Sky dome now disposed on hot swap.
+- One subagent per conflicting branch, each pushing straight to raft-master after tests, shoot.py and perf:
+  - merged loop-features-202611210722 (diving gear, Pim's trader barge, cooking pot) and 0648; loop-ux-202611210743 (menu restyle, help panel, sound settings);
+    loop-perf-202611210708 (partial: quality ladder, fog cache, cached models) and 0648; loop-visuals-202611210648 (new held hook only).
+  - skipped loop-fidelity-202611210747 (second copy of vitals/shark with a different save format; its game-mode and death card would need porting),
+    loop-perf-202611210720 (stale), loop-ux-202611210742 (redoes lock rows, still being pushed). raft-integration was already in.
+- Gate at 9b3ba49: 1023/1023, no page errors, hook-only spawn, Esc OK, perf 133 ms / 43 calls (main 912d941: 229 ms / 49 calls).
+- Recurring flake: tests/art.test.mjs atlas build-time (<1500 ms) fails under machine load (load avg > 15); passes alone.
+
 ## 2026-11-21 · integrator D: loop-ux-202611210848, loop-ux-202611210852
 - Skipped claude/loop-ux-202611210848: its new work is loop-ux-202611210833 (plus loop-ux-0648 commits) with an older raft-master merged in; both are claimed by integrator B, and it conflicts in 16 files.
 - Merged claude/loop-ux-202611210852 with no content change: its only new commit merges loop-ux-202611210748, which raft-master already has; kept raft-master's side.

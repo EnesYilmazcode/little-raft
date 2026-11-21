@@ -17,6 +17,7 @@ import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createSpear } from './spear-model.js?build=v3-survival-ae77fa84ac2b'; // [spear-repair]
 import { buildInstrument } from './instrument-models.js?build=v3-survival-ae77fa84ac2b'; // [instruments]
 import { createSpade, createFinder } from './treasure-models.js?build=v3-survival-ae77fa84ac2b';
+import { buildCameraModel } from './camera-models.js?build=v3-survival-ae77fa84ac2b'; // [camera]
 
 export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 // Items you aim at the raft to place: the free hand points at the spot while one of these is held.
@@ -48,6 +49,7 @@ export const HOLD = Object.freeze({
   cup:        { hand: 'right', pose: 'grip', ry: 0.3 },
   water:      { hand: 'right', pose: 'grip', ry: 0.3 },
   drum: { hand: 'right', pose: 'grip', rx: 0.75 }, pipes: { hand: 'right', pose: 'grip', rx: 0.2 }, bells: { hand: 'right', pose: 'grip', rx: 1.2, rz: 0.1 }, // [instruments] right fist, clear of the hotbar
+  camera: { hand: 'right', pose: 'grip', rx: 0.1, rz: -1 }, // [camera] lens faces forward; tilted up so the body clears the hotbar
   ...Object.fromEntries(PLACEABLE_KINDS.filter((k) => k !== 'hammer').map((k) => [k, { hand: 'left', pose: SEED_KINDS.includes(k) ? 'grip' : 'point' }])),
 });
 // Unknown kinds (other lanes may add items): carried on the left fist if placeable, else gripped.
@@ -57,7 +59,8 @@ export const holdFor = (kind) => HOLD[kind] || (isPlaceable(kind) ? HOLD.crate :
 export const HELD_LEFT_MAX = 0.11;
 const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.22, fish: 0.3, sail: 0.22, palm: 0.2, lantern: 0.2, net: 0.2, bench: 0.16, crate: 0.13,
   planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11,
-  drum: 0.15, pipes: 0.2, bells: 0.2 }; // [instruments]
+  drum: 0.15, pipes: 0.2, bells: 0.2, // [instruments]
+  camera: 0.13 }; // [camera]
 
 function fit(T, model, maxDim, gripFn) {
   const root = new T.Group();
@@ -276,6 +279,7 @@ export function buildItemModel(T, kind, factory = null) {
   } else if (kind === 'planter') {
     root = fit(T, createCraft(T, 'palm'), dim('planter'), (s) => new T.Vector3(0, -s.y / 2, 0));
   }
+  if (!root && kind === 'camera') { const cm = buildCameraModel(T), gf = cm.userData.gripFrac; root = fit(T, cm, SIZE.camera, (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z)); } // [camera]
   if (!root) { const ins = buildInstrument(T, kind), gf = ins?.userData.gripFrac; if (ins) root = fit(T, ins, SIZE[kind], gf ? (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z) : null); } // [instruments]
   if (!root) root = fit(T, buildBundle(T), left ? HELD_LEFT_MAX : 0.12, (s) => new T.Vector3(0, left ? -s.y / 2 : 0, 0));
   root.name = 'item_' + kind;

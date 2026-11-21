@@ -8,7 +8,8 @@ import { buildModel, getModel, hasModel, MODEL_KINDS, MODEL_ALIASES } from '../d
 const BUDGET = { seed: 600, plank: 600, scrap: 600, beet: 600, potato: 600, plastic: 1500, leaf: 1500, rope: 1500, barrel: 1500,
   hook: 2500, hammer: 2500, rod: 2500, wateringCan: 2500, sprout: 1200, young: 1200, mature: 1200, harvestable: 1200,
   fish: 1500, nails: 600, cup: 600, water: 600, palmSeedling: 1200, palmSprout: 1200, palmYoung: 3000, palmMature: 5000, planter: 3000,
-  crate: 3000, bench: 3000, cropPlot: 3000, lantern: 3000, sail: 5000, net: 5000, palmPlanter: 5000, foundation: 5000 };
+  crate: 3000, bench: 3000, cropPlot: 3000, lantern: 3000, sail: 5000, net: 5000, palmPlanter: 5000, foundation: 5000,
+  oldboot: 1500, tincan: 600, seajar: 600 }; // [recycler] junk
 const TOOLS = ['hook', 'hammer', 'rod'];
 const tris = g => { let t = 0; g.traverse(o => { if (o.isMesh) t += o.geometry.index.count / 3; }); return t; };
 
