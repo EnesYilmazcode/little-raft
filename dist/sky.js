@@ -14,8 +14,28 @@
 // fog and the ocean's distance fade should use; day/night (daynight.js)
 // rewrites it and the other uniforms every frame through sky.uniforms.
 
+// Everything that varies smoothly over the dome (gradient, sun glow and
+// bloom, cloud colours, the cumulus cluster mask and the azimuth, read from
+// the sphere's seamless u) is evaluated per vertex on a dome with fine rings.
+// Per pixel that leaves two texture reads, a little ALU and the sun disk:
+// the sky covers a big share of the screen, and software GL pays per pixel.
 const vertexShader = /* glsl */ `
+uniform sampler2D uNoise;
+uniform float uTime;
+uniform float uCoverage;
+uniform vec3 uHorizon;
+uniform vec3 uZenith;
+uniform vec3 uMid;
+uniform vec3 uSunColor;
+uniform vec3 uSunDir;
+uniform float uSunVis;
+uniform vec3 uCloudLit;
+uniform vec3 uCloudShade;
 varying vec3 vWorldPos;
+varying vec3 vSky;
+varying vec3 vWisp;
+varying vec3 vCuCol;
+varying vec3 vCu;
 void main() {
   vec4 wp = modelMatrix * vec4(position, 1.0);
   vWorldPos = wp.xyz;
@@ -23,87 +43,88 @@ void main() {
   // Pin to the far plane so the dome sits behind everything and, drawn after
   // the opaque scene, only shades pixels nothing else covered.
   gl_Position.z = gl_Position.w * 0.99999;
+
+  // Saturated tropical gradient: the horizon haze colour exactly at y = 0 (so
+  // fog, background and the sea's far fade meet it), then a quick step to a
+  // more saturated low sky so sky and sea separate, bright mid blue, deep blue
+  // overhead. Below the horizon (rarely visible behind the ocean) stay hazy.
+  vec3 dir = normalize(wp.xyz - cameraPosition);
+  float up = clamp(dir.y, 0.0, 1.0);
+  vec3 low = mix(uHorizon, uMid, 0.4);
+  vec3 col = mix(uHorizon, low, smoothstep(0.0, 0.035, up));
+  col = mix(col, uMid, smoothstep(0.03, 0.24, up));
+  col = mix(col, uZenith, smoothstep(0.12, 0.85, up));
+  // Sun: wide soft glow and tighter bloom (the crisp disk is per pixel).
+  float sd = max(dot(dir, uSunDir), 0.0);
+  float s2 = sd * sd, s4 = s2 * s2, s8 = s4 * s4, s16 = s8 * s8, s64 = s16 * s16; s64 *= s64;
+  col = mix(col, uSunColor, clamp((s8 * 0.22 + s64 * 0.38) * uSunVis, 0.0, 1.0));
+  vSky = mix(col, uHorizon * 0.96, smoothstep(0.0, -0.08, dir.y));
+
+  // High wisps: bright white with a warm sheen toward the sun.
+  vWisp = uCloudLit + uSunColor * (s8 * s4) * 0.25 * uSunVis;
+
+  // Low cumulus: shaded flat base, bright heaped tops, warm rim toward the
+  // sun, a touch of distance haze. vCu = (azimuth 0..1, cluster threshold
+  // bias, opacity). u has a duplicated seam column, so no wrap jump; the
+  // cluster mask is 3 tiles around against 8 for the puffs, so the pattern
+  // only repeats once a full turn.
+  float h = dir.y / 0.09;
+  vec3 cu = mix(uCloudShade, uCloudLit, 0.3 + 0.7 * smoothstep(0.0, 0.6, h));
+  vCuCol = mix(cu + uSunColor * (s4 * s2) * 0.2 * uSunVis, uHorizon, 0.2);
+  float a = uv.x + uTime * 0.00015;
+  vCu = vec3(a, 5.0 * texture2D(uNoise, vec2(a * 3.0, 0.41)).r - 3.03, 0.7 + 0.5 * uCoverage);
 }
 `;
 
 const fragmentShader = /* glsl */ `
-uniform vec3 uHorizon;
-uniform vec3 uZenith;
-uniform vec3 uMid;
 uniform vec3 uSunColor;
 uniform vec3 uSunDir;
-uniform vec3 uCloudLit;
 uniform vec3 uCloudShade;
 uniform float uTime;
 uniform float uCoverage;
 uniform float uSunVis;
 uniform sampler2D uNoise;
 varying vec3 vWorldPos;
+varying vec3 vSky;
+varying vec3 vWisp;
+varying vec3 vCuCol;
+varying vec3 vCu;
 
-float hash(vec2 p) {
-  p = fract(p * vec2(123.34, 456.21));
-  p += dot(p, p + 45.32);
-  return fract(p.x * p.y);
-}
+// Interleaved gradient noise: a few ALU ops of dither against banding.
+float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
 
 void main() {
   vec3 dir = normalize(vWorldPos - cameraPosition);
   float y = dir.y;
 
-  // Saturated tropical gradient: the horizon haze colour exactly at y = 0 (so
-  // fog, background and the sea's far fade meet it), then a quick step to a
-  // more saturated low sky so sky and sea separate, bright mid blue, deep blue
-  // overhead.
-  float up = clamp(y, 0.0, 1.0);
-  vec3 low = mix(uHorizon, uMid, 0.4);
-  vec3 col = mix(uHorizon, low, smoothstep(0.0, 0.035, up));
-  col = mix(col, uMid, smoothstep(0.03, 0.24, up));
-  col = mix(col, uZenith, smoothstep(0.12, 0.85, up));
+  vec3 col = vSky;
+  col += uSunColor * (clamp((dot(dir, uSunDir) - 0.9988) * 1428.6, 0.0, 1.0) * 1.2 * uSunVis); // crisp sun disk
 
-  // Sun: wide soft glow, tighter bloom, crisp bright disk (fades out below the horizon).
-  float sd = max(dot(dir, uSunDir), 0.0);
-  float glow = (pow(sd, 8.0) * 0.22 + pow(sd, 64.0) * 0.38) * uSunVis;
-  col = mix(col, uSunColor, clamp(glow, 0.0, 1.0));
-  col += uSunColor * smoothstep(0.9988, 0.9995, sd) * 1.2 * uSunVis;
-
-  if (y > 0.002) {
+  if (y > 0.02) {
     // High wisps: thin bright streaks on a flat layer, stretched along the
     // wind, fading into the horizon haze. One lookup into a baked fbm tile.
     vec2 cp = dir.xz / (y + 0.10) * 0.55;
-    vec2 drift = vec2(uTime * 0.004, uTime * 0.0015);
-    vec2 sp = vec2(cp.x * 0.45 + cp.y * 0.2, cp.y * 1.6 - cp.x * 0.3); // anisotropic stretch
-    float shape = texture2D(uNoise, (sp + drift) * 0.25).r;
+    vec2 sp = vec2(cp.x * 0.45 + cp.y * 0.2, cp.y * 1.6 - cp.x * 0.3) + vec2(uTime * 0.004, uTime * 0.0015); // anisotropic stretch + drift
+    float shape = texture2D(uNoise, sp * 0.25).r;
     float thr = 1.0 - uCoverage;
-    float density = smoothstep(thr, thr + 0.3, shape);
-    density *= smoothstep(0.02, 0.2, y);
-    vec3 cloudCol = mix(uCloudLit, uCloudShade, smoothstep(0.55, 1.0, density) * 0.35);
-    cloudCol += uSunColor * pow(sd, 12.0) * 0.25 * uSunVis;
+    float density = smoothstep(thr, thr + 0.3, shape) * clamp((y - 0.02) * 5.56, 0.0, 1.0);
+    vec3 cloudCol = mix(vWisp, uCloudShade, max(density - 0.55, 0.0) * 0.78); // faint cool tint in the thickest cores
     col = mix(col, cloudCol, density * 0.85);
-
-    // Low cumulus: a sparse band of soft puffs sitting on the horizon. The
-    // azimuth wraps the noise tile a whole number of times (seamless); two
-    // coarse lookups (2 and 3 tiles around) cluster them so most of the
-    // horizon stays clear, and the threshold rises with height so each puff
-    // heaps up from a flat base.
-    if (y < 0.13) {
-      float a = atan(dir.z, dir.x) * 0.15915494 + uTime * 0.00015; // 0..1 around the horizon
-      float cluster = 0.5 * texture2D(uNoise, vec2(a * 2.0, 0.73)).r + 0.5 * texture2D(uNoise, vec2(a * 3.0, 0.41)).r;
-      float puff = texture2D(uNoise, vec2(a * 8.0, y * 1.3 + 0.21)).r;
-      float h = y / 0.09;                                  // 0 at the base, 1 near the tallest tops
-      float cu = smoothstep(0.0, 0.09, puff + 1.2 * cluster - 1.19 - 0.3 * h * h) * smoothstep(0.002, 0.01, y);
-      cu *= 0.7 + 0.5 * uCoverage;                         // a little bolder when it clouds over
-      vec3 cuCol = mix(uCloudShade, uCloudLit, 0.3 + 0.7 * smoothstep(0.0, 0.6, h)); // shaded base, bright tops
-      cuCol += uSunColor * pow(sd, 6.0) * 0.2 * uSunVis;  // warm rim toward the sun
-      cuCol = mix(cuCol, uHorizon, 0.2);                  // distant: a touch of haze
-      col = mix(col, cuCol, clamp(cu, 0.0, 0.92));
-    }
   }
 
-  // Below the horizon (rarely visible behind the ocean fade) stay hazy.
-  col = mix(col, uHorizon * 0.96, smoothstep(0.0, -0.08, y));
+  // Low cumulus: a sparse band of soft puffs sitting on the horizon; the
+  // threshold rises with height so each heaps up from a flat base. The puff
+  // noise never exceeds ~0.74, so where the cluster bias is below -0.74
+  // nothing can show (most of the horizon) and tops stay under y ~ 0.09.
+  if (y > 0.002 && y < 0.095 && vCu.y > -0.74) {
+    float puff = texture2D(uNoise, vec2(vCu.x * 8.0, y * 1.3 + 0.21)).r;
+    float h = y * 11.1; // 0 at the base, 1 near the tallest tops
+    float cu = clamp((puff + vCu.y - 0.3 * h * h) * 11.1, 0.0, 1.0) * clamp((y - 0.002) * 125.0, 0.0, 1.0) * vCu.z;
+    col = mix(col, vCuCol, min(cu, 0.92));
+  }
 
   // Tiny dither against gradient banding.
-  col += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
+  col += (ign(gl_FragCoord.xy) - 0.5) / 255.0;
 
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
@@ -160,7 +181,7 @@ export function createSky(T, options = {}) {
     uCoverage: { value: options.coverage ?? 0.56 }, // fbm threshold control
   };
 
-  const geometry = new T.SphereGeometry(150, 48, 24);
+  const geometry = new T.SphereGeometry(150, 96, 64);
   const material = new T.ShaderMaterial({
     uniforms,
     vertexShader,
