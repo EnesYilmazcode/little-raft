@@ -874,7 +874,8 @@ export function mount(transfer = null) {
     if (!wasFallback && running) notice('Mouse lock unavailable: drag to look, click to use', 3000);
   }
   function releaseLock() { if (isLocked()) { pageReleaseAt = performance.now(); document.exitPointerLock?.(); } }
-  function look(dx, dy, k) { yaw -= dx * k; pitch = clamp(pitch - (options.invertY ? -dy : dy) * k, -PITCH_LIMIT, PITCH_LIMIT); }
+  // raw: dy already carries the player's Invert Y (controls lane: input.js applies map.settings.invertY, which settings.js writes)
+  function look(dx, dy, k, raw = false) { yaw -= dx * k; pitch = clamp(pitch - (!raw && options.invertY ? -dy : dy) * k, -PITCH_LIMIT, PITCH_LIMIT); }
   function clearInput() { keys = {}; charging = null; reeling = false; down = null; lookFilter.reset(); controls?.clear(); fc?.releaseInput(); } // controls lane: also release the input layer
   // A panel opening keeps held keys (keyup still arrives); only window blur really loses keyups. The controls lane drops its own while blocked.
   function pauseInput() { charging = null; reeling = false; down = null; lookFilter.reset(); }
@@ -1776,7 +1777,7 @@ export function mount(transfer = null) {
   // controls lane: one input layer for keyboard/mouse/gamepad; falls back to the legacy handlers above if it fails to start.
   try {
     controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
-      look:(dx, dy) => { if (!building?.menu.isOpen) look(dx, dy, 1); }, hotbarSize:HOTBAR, // building wheel steals mouse look while open
+      look:(dx, dy) => { if (!building?.menu.isOpen) look(dx, dy, 1, true); }, hotbarSize:HOTBAR, // building wheel steals mouse look while open
       slot:() => localBag().selectedIndex, selectSlot:i => running && selectSlot(i),
       interact, inventory:openInventory, repair:back => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(back ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
       pause:() => settingsController?.open(), buildWheelOpen:() => !!building?.menu.isOpen, // hotbar + interact are swallowed while the build wheel is open

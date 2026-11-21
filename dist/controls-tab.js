@@ -1,5 +1,5 @@
 // Little Raft controls tab: rebinding list + input feel settings. DOM ES module, nothing happens on import.
-// createControlsTab({map: ActionMap, input?, container?, onChange?}) -> {element, mount(el), refresh(), capturing, dispose()}
+// createControlsTab({map: ActionMap, input?, container?, onChange?, hide?: setting keys to leave out}) -> {element, mount(el), refresh(), capturing, dispose()}
 import { ACTIONS } from './input-map.js?build=v3-survival-ae77fa84ac2b';
 
 const STYLE_ID = 'lrc-style';
@@ -87,7 +87,7 @@ function padSnapshot() {
   return out;
 }
 
-export function createControlsTab({ map, input = null, container = null, onChange = null } = {}) {
+export function createControlsTab({ map, input = null, container = null, onChange = null, hide = [] } = {}) {
   if (!map) throw new Error('createControlsTab: map (ActionMap) is required');
   ensureStyle();
   const settings = () => map.settings || {};
@@ -145,6 +145,7 @@ export function createControlsTab({ map, input = null, container = null, onChang
   // ---- options ----------------------------------------------------------
   const optGrid = h('div', { class: 'lrc-opts' });
   for (const [k, text] of Object.entries(CHECKS)) {
+    if (hide?.includes?.(k)) continue; // the host menu owns this one (settings.js: Invert mouse Y)
     const box = h('input', { type: 'checkbox', id: `lrc-${k}` });
     box.addEventListener('change', () => { map.setSetting(k, box.checked); changed(); refresh(); });
     optionEls[k] = { box };

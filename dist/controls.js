@@ -100,19 +100,21 @@ export function createControls(g) {
     clear() { input.clear(); padUse = padReel = false; radial?.close(); },
     // controls-tab.js is only fetched the first time a menu mounts the tab. mountTab() returns a handle at once
     // (capturing/refresh/dispose work before the module arrives); handle.ready resolves to the real tab.
-    mountTab(container) { // the handle's dispose() should be paired with api.unmountTab(handle)
+    mountTab(container, opts = {}) { // the handle's dispose() should be paired with api.unmountTab(handle); opts.hide: setting keys the host shows itself
       let tab = null, gone = false;
       const handle = {
         get element() { return tab?.element ?? null; },
+    get capturing() { return tabCapturing(); }, // a controls tab is waiting for a key/button to bind
         get capturing() { return !!tab?.capturing; },
         refresh() { tab?.refresh(); },
         dispose() { gone = true; tab?.dispose?.(); tab = null; },
         ready: import('./controls-tab.js?build=v3-survival-ae77fa84ac2b').then(m => {
           if (gone) return null;
-          tab = m.createControlsTab({map, input}); tab.mount(container); return tab;
+          tab = m.createControlsTab({map, input, hide:opts.hide}); tab.mount(container); return tab;
         }).catch(e => { console.error('controls: tab failed to load', e); return null; }),
       };
       tabs.add(handle); return handle; },
+        cancel() { tab?.cancel?.(); },
     unmountTab(t) { tabs.delete(t); t?.dispose?.(); },
     dispose() { input.dispose(); radial?.dispose(); for (const t of tabs) t.dispose?.(); tabs.clear(); if (globalThis.raftControls === api) delete globalThis.raftControls; }};
   globalThis.raftControls = api; // menus lane: raftControls.mountTab(el); QA: raftControls.feel / .input
