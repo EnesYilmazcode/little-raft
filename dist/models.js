@@ -20,6 +20,7 @@ const C = {
 // ------------------------------------------------------------------ shared materials (lazy, never disposed)
 let MATS = null;
 function grainTexture() {
+  if (typeof document === 'undefined') return null; // node tests
   const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128;
   const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 256, 128);
   const r = rng(77);
@@ -318,7 +319,7 @@ const B = {
   hook(K) {
     // plastic grapple: rope-wrapped handle, coiled rope, 3 plastic prongs
     K.add(rbox(0.05, 0.3, 0.05, 0.02, K.hero), C.white, { m: 'plastic', p: [0, -0.02, 0] });
-    ropeWrap(K, 0, -0.14, 0.08, 0, 0.029, 7, 0.0085);
+    ropeWrap(K, 0, -0.14, 0.08, 0, 0.03, 5.5, 0.0105);
     K.add(rbox(0.07, 0.04, 0.07, 0.016, K.bev), C.teal, { m: 'plastic', p: [0, -0.18, 0] });
     K.add(rbox(0.06, 0.04, 0.06, 0.015, K.bev), C.teal, { m: 'plastic', p: [0, 0.14, 0] });
     K.add(cyl(0.024, 0.03, 0.3, K.seg(10)), C.white, { m: 'plastic', p: [0, 0.31, 0] });
@@ -328,13 +329,13 @@ const B = {
     const prong = [[0.02, 0.36], [0.09, 0.35], [0.15, 0.39], [0.172, 0.46], [0.155, 0.525], [0.12, 0.54]];
     for (let k = 0; k < 3; k++) {
       const a = k * Math.PI * 2 / 3 + Math.PI / 2, ca = Math.cos(a), sa = Math.sin(a);
-      K.add(tube(prong.map(([r, y]) => [r * ca, y, r * sa]), 0.02, K.seg(14), K.lod ? 5 : 7), C.white, { m: 'plastic' });
+      K.add(tube(prong.map(([r, y]) => [r * ca, y, r * sa]), 0.02, K.seg(12), K.lod ? 5 : 6), C.white, { m: 'plastic' });
       const tip = prong[prong.length - 1];
       K.add(along(cyl(0.004, 0.024, 0.08, K.seg(8)), [tip[0] * ca, tip[1] - 0.01, tip[0] * sa], [(tip[0] - 0.07) * ca, tip[1] - 0.035, (tip[0] - 0.07) * sa]), C.teal, { m: 'plastic' });
     }
     // rope coil hanging off the butt
-    K.add(new T.TorusGeometry(0.085, 0.014, K.lod ? 5 : 6, K.seg(24)), C.rope, { p: [0.02, -0.29, 0], r: [0, Math.PI / 2, 0.2], col: ropeCol(0.53, 0.03) });
-    K.add(new T.TorusGeometry(0.075, 0.014, K.lod ? 5 : 6, K.seg(24)), C.rope, { p: [0.0, -0.3, 0.01], r: [0, Math.PI / 2 - 0.3, -0.1], col: ropeCol(0.47, 0.03) });
+    K.add(new T.TorusGeometry(0.085, 0.014, 5, K.seg(20)), C.rope, { p: [0.02, -0.29, 0], r: [0, Math.PI / 2, 0.2], col: ropeCol(0.53, 0.03) });
+    K.add(new T.TorusGeometry(0.075, 0.014, 5, K.seg(20)), C.rope, { p: [0.0, -0.3, 0.01], r: [0, Math.PI / 2 - 0.3, -0.1], col: ropeCol(0.47, 0.03) });
     K.add(tube([[0, -0.2, 0], [0.01, -0.22, 0], [0.02, -0.215, 0.0]], 0.012, 6, 5), C.rope, {});
     K.ud.grip = [0, 0, 0]; K.ud.tip = [0, 0.58, 0]; K.ud.iconRot = [0, 0, -0.6];
   },
