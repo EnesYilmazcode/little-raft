@@ -1,14 +1,14 @@
 // Kelp Line model (see docs/specs/kelp.md section 8). Given THREE, imports nothing.
 // Local origin = centre of the floor tile top (game.js places decor at y = .22); the open water is local +z.
 // A short post with a cleat near the tile edge, a rope sloping down to three floats on the waterline, and
-// seaweed strands (the seafloor's seaweed geometry, passed in) hanging under each float. A small upright tuft
-// above the middle float shows only when the line is Lush.
+// seaweed strands (the seafloor's seaweed geometry, passed in) hanging under each float. Above the water (what the
+// deck sees): nothing when Bare, a small sprig on the middle float when Leafy, and a tuft on every float when Lush.
 
 export const OVERHANG = 1.2;
 const POST_Z = .6, CLEAT_Y = .38, FLOAT_Y = -.2, FLOAT_R = .09;
 const FLOAT_Z = [OVERHANG, OVERHANG + .3, OVERHANG + .6];
 const FLOAT_HEX = ['#e9e4d4', '#d9774a', '#e9e4d4'];
-const SCALE_Y = [.18, .4, .6]; // strand length by stage (Bare, Leafy, Lush); xz stays .5
+const SCALE_Y = [.18, .4, .6], SCALE_XZ = [.35, .5, .6]; // strand size by stage (Bare, Leafy, Lush)
 
 function bake(T, parts) {
   const geos = [];
@@ -69,13 +69,18 @@ export function createKelpLine(T, weedGeo) {
     const f = new T.Mesh(floatGeo, fmats[hex] ??= new T.MeshStandardMaterial({ color: hex, roughness: .55 }));
     f.position.set(0, FLOAT_Y, FLOAT_Z[i]); f.castShadow = true; f.userData.baseY = FLOAT_Y; floats.add(f);
     const s = new T.Mesh(weedGeo, weedMat); s.name = 'strand' + i;
-    s.position.set(0, FLOAT_Y, FLOAT_Z[i]); s.rotation.set(Math.PI, i * Math.PI / 2, 0); s.scale.set(.5, SCALE_Y[0], .5); // quarter turns keep the strands within the tile width
+    s.position.set(0, FLOAT_Y, FLOAT_Z[i]); s.rotation.set(Math.PI, i * Math.PI / 2, 0); s.scale.set(SCALE_XZ[0], SCALE_Y[0], SCALE_XZ[0]); // quarter turns keep the strands within the tile width
     strands.add(s);
   }
-  const tuft = new T.Mesh(weedGeo, weedMat); tuft.name = 'tuft';
-  tuft.position.set(0, FLOAT_Y + FLOAT_R * .5, FLOAT_Z[1]); tuft.scale.set(.3, .16, .3); tuft.visible = false;
-  g.add(tuft);
-  g.userData.floats = floats; g.userData.strands = strands; g.userData.tuft = tuft; g.userData.sig = -1;
+  // Lush: an upright tuft on each float; Leafy: one small sprig on the middle float
+  const tuft = new T.Group(); tuft.name = 'tuft'; tuft.visible = false; g.add(tuft);
+  for (let i = 0; i < 3; i++) {
+    const m = new T.Mesh(weedGeo, weedMat); m.position.set(0, FLOAT_Y + FLOAT_R * .4, FLOAT_Z[i]); m.rotation.y = i * 1.3;
+    const k = i === 1 ? 1 : .8; m.scale.set(.3 * k, .2 * k, .3 * k); tuft.add(m);
+  }
+  const sprig = new T.Mesh(weedGeo, weedMat); sprig.name = 'sprig'; sprig.visible = false;
+  sprig.position.set(0, FLOAT_Y + FLOAT_R * .4, FLOAT_Z[1]); sprig.scale.set(.2, .09, .2); g.add(sprig);
+  g.userData.floats = floats; g.userData.strands = strands; g.userData.tuft = tuft; g.userData.sprig = sprig; g.userData.sig = -1;
   return g;
 }
 
@@ -86,14 +91,15 @@ export function paintKelp(g, stage, elapsed = 0, phase = 0, move = true) {
   const ss = u.strands.children, fs = u.floats.children;
   if (u.sig !== st) {
     u.sig = st;
-    for (let i = 0; i < ss.length; i++) ss[i].scale.set(.5, SCALE_Y[st], .5);
-    u.tuft.visible = st === 2;
+    for (let i = 0; i < ss.length; i++) ss[i].scale.set(SCALE_XZ[st], SCALE_Y[st], SCALE_XZ[st]);
+    u.tuft.visible = st === 2; u.sprig.visible = st === 1;
   }
   if (!move) return;
   for (let i = 0; i < fs.length; i++) {
     const y = fs[i].userData.baseY + .025 * Math.sin(elapsed * 1.3 + phase + i * .9);
     fs[i].position.y = y;
     if (ss[i]) { ss[i].position.y = y; ss[i].rotation.z = .08 * Math.sin(elapsed * .8 + phase + i); }
-    if (i === 1) u.tuft.position.y = y + FLOAT_R * .5;
+    const t = u.tuft.children[i]; if (t) t.position.y = y + FLOAT_R * .4;
+    if (i === 1) u.sprig.position.y = y + FLOAT_R * .4;
   }
 }

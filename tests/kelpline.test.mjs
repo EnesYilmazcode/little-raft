@@ -213,7 +213,8 @@ test('model: floats, strands, tuft, paint, bounds; module decorModel', () => {
   const c = new T.Box3().setFromObject(floats).getCenter(new T.Vector3()); assert.ok(c.z > 1, `floats centre z ${c.z}`);
   const len0 = strands.children[0].scale.y;
   M.paintKelp(g, 2, 1.2, .5); assert.equal(tuft.visible, true); assert.ok(strands.children[0].scale.y > len0);
-  M.paintKelp(g, 1, 1.3, .5, false); assert.equal(tuft.visible, false);
+  M.paintKelp(g, 1, 1.3, .5, false); assert.equal(tuft.visible, false); assert.equal(g.getObjectByName('sprig').visible, true, 'Leafy: a sprig above the water');
+  M.paintKelp(g, 0, 1.3, .5, false); assert.equal(g.getObjectByName('sprig').visible, false);
   const y0 = floats.children[0].position.y; M.paintKelp(g, 1, 7, .5); assert.notEqual(floats.children[0].position.y, y0);
   assert.equal(strands.children[0].position.y, floats.children[0].position.y, 'strands follow their float');
   const m = Mod.createKelpLine({ T, world: { decor: [], tiles: [] }, role: 'solo' });
