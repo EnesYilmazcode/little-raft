@@ -4,6 +4,7 @@
 //   const v = newVitals();               // {hp:100, food:100, water:100, hurtAt:-Infinity, clock:0, starving:false}
 //   tickVitals(v, dt, {mult})            // mult: 1 normal, SPRINT_MULT while sprinting/swimming. Returns v.
 //   damage(v, n, cause)                  // -> HP actually lost; blocks regen for REGEN_DELAY seconds
+//   adjust(v, dHp, dFood, dWater)       // [bed] add to the bars at once (sleeping); never kills (hp stays >= 1). -> v
 //   consume(v, kind)                     // -> {food, water, returns} applied deltas, or null if not edible
 //   FOOD[kind] = {food, water, returns?} // other lanes may add entries (addFood helper validates)
 //   cleanVitals(raw)                     // save validation: -> {hp, food, water} (missing/invalid -> full)
@@ -36,6 +37,7 @@ export const FOOD = {
   berrycup:        {food:10,   water:35, returns:'cup'},  // [juicer]
   coconutcup:      {food:6,    water:45, returns:'cup'},  // [juicer]
   mixcup:          {food:14,   water:38, returns:'cup'},  // [juicer]
+  milk:            {food:10,   water:25, returns:'bucket', drink:true}, // Bramblegoat milk; the pail comes back
 };
 
 const num = (x, d = 0) => (typeof x === 'number' && Number.isFinite(x) ? x : d);
@@ -76,6 +78,13 @@ export function damage(v, n, cause = 'hit') { // eslint-disable-line no-unused-v
   return before - v.hp;
 }
 
+/** [bed] Adds to the bars at once (a night's sleep). A sleeper never dies of it: hp stays at least 1. No-op at hp 0. */
+export function adjust(v, dHp, dFood, dWater) {
+  if (!v || !(v.hp > 0)) return v;
+  v.hp = Math.max(1, clampBar(num(v.hp) + num(dHp))); v.food = clampBar(num(v.food) + num(dFood)); v.water = clampBar(num(v.water) + num(dWater));
+  return v;
+}
+
 /** Applies an edible item to the bars. Returns the entry used ({food, water, returns}) or null. */
 export function consume(v, kind) {
   if (!isEdible(kind)) return null;
@@ -86,7 +95,7 @@ export function consume(v, kind) {
 }
 
 /** True for drinks: water-only items, anything that hands a cup back, and *cup kinds. [juicer] */
-export const isDrink = kind => { const e = isEdible(kind) ? FOOD[kind] : null; return !!e && (!e.food && e.water !== 0 || !!e.returns || kind.endsWith('cup')); };
+export const isDrink = kind => { const e = isEdible(kind) ? FOOD[kind] : null; return !!e && (!!e.drink || !e.food && e.water !== 0 || !!e.returns || kind.endsWith('cup')); };
 
 /** Short prompt label, e.g. "Eat (+35 food)" / "Drink (+40 water)". */
 export function eatLabel(kind) {

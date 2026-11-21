@@ -2,9 +2,11 @@
 // position, normal and color attributes, so all creatures share one vertex-coloured Lambert material.
 // Conventions: nose points +z, up is +y. Built once at startup, never per frame.
 
-function tri(T, pts) { // pts: flat [x,y,z, ...] list of triangles -> geometry with face normals
+function tri(T, pts) { // pts: flat [x,y,z, ...] list of triangles -> two-sided geometry with face normals
+  const both = pts.slice(); // each triangle again with reversed winding, so thin sheets show from both sides on a FrontSide material
+  for (let i = 0; i < pts.length; i += 9) both.push(pts[i], pts[i + 1], pts[i + 2], pts[i + 6], pts[i + 7], pts[i + 8], pts[i + 3], pts[i + 4], pts[i + 5]);
   const g = new T.BufferGeometry();
-  g.setAttribute('position', new T.Float32BufferAttribute(pts, 3));
+  g.setAttribute('position', new T.Float32BufferAttribute(both, 3));
   g.computeVertexNormals();
   return g;
 }
@@ -70,7 +72,7 @@ export function gullBodyGeometry(T) {
 export const GULL_HIP = [0.13, 0.01]; // y, z of the leg pivot used by the tuck
 
 // Gull wing: pivot at the shoulder, extends +x, leading edge toward +z. Grey with a black, white-spotted tip on
-// top, and a pale underside as a second layer 8 mm below (DoubleSide, so this survives the mirrored left wing).
+// top, and a pale underside as a second layer 8 mm below (tri() is two-sided, so this survives the mirrored left wing).
 export function gullWingGeometry(T) {
   const grey = 0xa9b3bc, dark = 0x8d97a1, black = 0x23262b, white = 0xf2f2ee, pale = 0xe6eaec, paleTip = 0x4a4f55;
   const P = [];

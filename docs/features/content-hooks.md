@@ -27,10 +27,20 @@ lines in `dist/game.js` marked `// content hook`. There are 31 of these lines, a
 | canvas `pointerdown` | `content.alt(aim, heldKind())` | right click while holding an item (brush colour) |
 | `rebuildRaft()` | `content.afterRebuild()` | after deck/decor meshes are recreated (re-tint painted planks) |
 | `contentCtx` | `building`, `brush`, `woodMat(hex)`, `aim()` | piece grid + tint hooks, held brush model, cached tinted wood, this frame's aim |
+| `updateCamera()` (`// [spyglass]`) | `viewZoom = content.zoom()` | view zoom (spyglass/binoculars, first module wins, 1..8, default 1): FOV is `options.fov / viewZoom`, bob/roll/sway and bite shake scale by `1 / viewZoom`, the viewmodel hides while `viewZoom > 1.6` |
+| `look()` (`// [spyglass]`) | `k /= viewZoom` | look speed follows the zoom on every path (controls lane, legacy mouse, drag-look, pad) |
+| `contentCtx` | `note(i, n, s)`, `content` | buoy course: bell chime per ring (`sfx.note`) and a read-only registry view (paddleboard `riding()` fallback) |
+| `movePlayer()` | `content.ride(dt, physics, rideIn)` | a module owns the local player this frame (driftboard paddling; zipline) and PlayerPhysics is skipped |
 
 Item kinds `sand`, `stone`, `seed`, `research` and the `research` recipe live in
 `dist/content-items.js`. `inventory-state.js` spreads them into `ITEM_INFO` and `RECIPES` in two
 lines marked `// content hook`.
+
+**Spyglass zoom.** `zoom()` is the only spyglass hook: `dist/spyglass.js` returns its eased zoom while a
+Spyglass or the Binoculars is held and Aim (RMB / pad LT) is down, and 1 the same frame a menu opens, the item
+changes, the player swims or dives, or the tab is hidden. Nothing is saved or sent. `let viewZoom = 1` sits beside
+`lockFallback`; `grep -n "\[spyglass\]" dist/game.js` lists the hook lines (five hooks, eight lines). `globalThis.raftSpyglass.zoomed` is
+true while the lens is up (progression-hooks.js hides `#binocularsHud` then). Screenshots: `docs/cloud/shots/spyglass/`.
 
 **Backward compatibility.** An old save has no `ext`, so every module gets `load(undefined)` and
 uses its defaults. Older builds drop `ext`, because their `cleanWorld` ignores unknown keys.

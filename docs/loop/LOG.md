@@ -939,6 +939,23 @@ Next ideas: decor pickup with refunds, achievement hooks for content modules, fl
   hook-only spawn, Esc from inventory keeps the lock, no page errors, shoot.py 159 vs 156 ms on main = +2%).
   PR #4 merged dbf2ca9 into main. PR #5 (round 6) is the open PR now.
 
+## 2026-11-21 · loop-fidelity-202611210914 (raft fidelity, worker B round 2)
+Base: raft-master 3247525. Two fidelity routines are running in parallel. Worker A's 0714/0804/0821 rounds landed first, so worker B's round 1 (`claude/loop-fidelity-202611210747`: needs, shark, spear) is superseded and should NOT be merged.
+- Round 2 built crops + gull raids + scarecrow, bed, drowning and fuel parity on the 0747 base. Crops and fuel duplicate worker A's 0804/0821, so only the pieces raft-master lacks were ported onto its vitals API.
+Landed:
+- **Simple Bed (extends sleep.js; one 'bed' kind):**
+  - recipe 10 leaf, 6 wood, 4 plastic, 3 nails
+  - a slept night gives +40 health, -20 food, -20 water (vitals.adjust; health floor 1)
+  - the last bed you lay in or placed is home: wake there at 25/50/50; if it is gone, wake at the raft centre with RESPAWN
+  - no lying down while swimming; the co-op prompt shows "1/2 sleeping"
+- **Drowning:**
+  - breath 33 s, halved at 0 food or water; empty air underwater costs 3.5 HP/s (every 0.5 s, cause 'drown')
+  - waking up resets the dive
+  - the faint overlay names the cause
+  - Breath Jug now gives 55 s
+Checks: npm test 1029/1029. Headless bed run: night prompt, sleep to morning, faint then wake in bed at 25/50/50; no page errors.
+Not covered in the browser: drowning (SwiftShader time is too slow; unit-tested) and the bed-gone fallback (unit-tested).
+Open for worker A: gull crop raids + scarecrow (built on work3 against the old needs API; not ported). raft-master has no game modes, so sleep and drowning effects always apply.
 
 ## 2026-11-21 · loop-features-202611210749 (features)
 Base: origin/claude/raft-master (7294e26). Merging rounds 0548/0703 into the base hit 10 conflicting files, so that is left to the integrator. Not redone: everything listed in rounds 0548/0703 plus the other branches' diving gear, trader, cookpot, fish trap, power chain and display shelf.
@@ -976,6 +993,16 @@ Next ideas: merge rounds 0548/0703/0749 into master; look into the warmShaders r
 - Gate at 9b3ba49: 1023/1023, no page errors, hook-only spawn, Esc OK, perf 133 ms / 43 calls (main 912d941: 229 ms / 49 calls).
 - Recurring flake: tests/art.test.mjs atlas build-time (<1500 ms) fails under machine load (load avg > 15); passes alone.
 
+## 2026-11-21 · loop-features-202611210814 (features, round 4)
+Base: origin/claude/raft-master (77b1cb6) + round 3 branch (rounds 1–3) merged in; master did not yet hold round 2, it comes with this merge. Avoided features other loop runs already covered (shelf, fish trap, wind power, crew tasks, camera, recycler, fireworks, zipline, scarecrow, treasure, map table, customise…).
+- **Driftboard paddleboard** (`paddleboard`) — craft, launch from the deck edge, ride at ~3.6 m/s (4.5 sprint) with mouse steering, tethered under 45 m, tie/pick up/drift home, co-op riders visible. Adds the zipline-compatible `ride`/`riding` content hook (byte-identical to loop-features-202611210753-zfs) + extra rideIn fields in game.js.
+- **Driftwood Game Table** (`gametable`) — draughts (forced captures, multi-jumps, kings) and noughts & crosses vs the crewmate or the Gull AI (Easy/Clever minimax); 2D board dialog + instanced 3D pieces; host-authoritative moves with stale-move counter.
+- **Buoy ring course** (`buoycourse`) — Start Flag with course board, four preset shapes, countdown, ring crossing detection (swim and board bands), timer pill, bell per ring (contentCtx `note`), top-5 scoreboard per shape/mode with host-validated finishes.
+Fleet: merge agent, 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (14 agents).
+Fixes: icons.svg was invalid XML on master (unclosed sprinkler symbol) — closed; course timer now on the movement clock and generous host min-time; game table save validation, gull/dialog after table removal, instanced buffer leak; driftboard orphaned guest ride, held Space after UI, per-frame scan; course flag answers E while riding (FEATURES order); X pieces no longer inherit the close-button style; course beam no longer blinds riders; phone timer pill clear of compass; riding prompt wording.
+Checks: npm test 835/835; shoot2.py errors []; coop2 loopback base failures only (3, 4, 6; 2b flaky under load); loopback verified guest board, guest draughts moves, guest course finish.
+Observed: master now shows health/hunger/thirst vitals bars — a design change from the original "no damage, no hunger" brief made in another lane; not touched here.
+Known limits: held driftboard viewmodel is a plain box; noughts winning line not highlighted; chest/trader/sleep take E before the board while riding.
 
 ## 2026-11-21 · loop-features-202611210753-zfs (features)
 
@@ -1015,3 +1042,18 @@ Open for next round:
 - Skipped claude/loop-ux-202611210848: its new work is loop-ux-202611210833 (plus loop-ux-0648 commits) with an older raft-master merged in; both are claimed by integrator B, and it conflicts in 16 files.
 - Merged claude/loop-ux-202611210852 with no content change: its only new commit merges loop-ux-202611210748, which raft-master already has; kept raft-master's side.
 - Gate after merging raft-master: 1138/1138 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text; 166 ms/frame, 37 draw calls.
+
+## 2026-11-21 · integrator F (scheduled run, 09:34 UTC)
+- Merged loop-features-202611210926 (biofuel and power-hookup specs, research notes; docs only). npm test 1270/1270.
+- Skipped loop-visuals-202611210548: 1624 commits behind, conflicts in sky.js and hands.js, and baking the sky once would freeze
+  the daynight-driven sky on raft-master.
+- Still skipped: loop-perf-0720, loop-fidelity-0747 (large stale branches, need worker rebases). Everything else with new commits
+  is claimed by integrators B-E in STATUS.md, so this run left those and PR #5 (gated by B) alone.
+- Screenshot gate tool unavailable here (no Python playwright); not a blocker for a docs-only merge.
+
+## 2026-11-21 · integrator D: loop-fidelity-202611210900, -0910, -0914; loop-features-202611210855
+- Merged loop-fidelity-202611210914: Simple Bed (Raft recipe, sleep effect on vitals, home-bed respawn) and Raft breath (33 s, halved when starving) with drowning damage.
+- Merged loop-features-202611210855: docs only, research notes and specs for zipline, night light (hand lantern, firefly jar) and crops.
+- Skipped loop-fidelity-202611210900: it is loop-fidelity-202611210821 (paddle, stone axe) merged with raft-master, and integrator B claimed -0821.
+- Skipped loop-fidelity-202611210910: conflicts in 11 dist files, and its edge collection nets (nets.js, world.nets) replace raft-master's decor net collection. Needs a rebase by its worker. It also brings crops, foundation armor, a 2x2 start and Raft costs.
+- Gate after merging raft-master: 1277/1277 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text, 198 ms/frame, 46 draw calls. Kept the raft-master zipline spec over the older one in -0855.

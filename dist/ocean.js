@@ -29,8 +29,10 @@ uniform vec2 uFlow; // [sailing] raft travel relative to the water (sailing-worl
 varying vec3 vWorld;
 varying vec3 vNormalW;
 varying float vHeight;
+uniform float uAmp; // [storm] wave amplitude scale, mirrored on the CPU by setAmp()
 
 void wave(vec2 d, float a, float L, float Q, vec2 p, inout vec3 disp, inout vec3 tng, inout vec3 bin) {
+  a *= uAmp;
   float k = 6.2831853 / L;
   float c = sqrt(9.8 / k) * ${SPEED.toFixed(3)};
   float f = k * (dot(d, p) - c * uTime);
@@ -268,6 +270,7 @@ export function createOcean(T, options = {}) {
     uFadeFar: { value: options.fadeFar ?? 135 },
     uRaftMask: { value: mask },
     uFoamPts: { value: foamPts },
+    uAmp: { value: 1 }, // [storm]
   };
 
   const material = new T.ShaderMaterial({
@@ -383,6 +386,16 @@ export function createOcean(T, options = {}) {
     W[o + 4] = ndx * q * a; W[o + 5] = ndz * q * a;
   });
   const AMP = new Float64Array(WAVES.map((w) => w[2]));
+  // [storm] setAmp(a) scales the shader uniform and the CPU tables together (never uAmp alone); a = 1 is bit-identical.
+  const AMP0 = AMP.slice(), QA0 = new Float64Array(NW * 2);
+  for (let i = 0; i < NW; i++) { QA0[i * 2] = W[i * 6 + 4]; QA0[i * 2 + 1] = W[i * 6 + 5]; }
+  let amp = 1;
+  function setAmp(a) {
+    a = Number.isFinite(a) ? Math.min(1.6, Math.max(0.5, a)) : 1;
+    if (a === amp) return;
+    amp = a; uniforms.uAmp.value = a;
+    for (let i = 0; i < NW; i++) { AMP[i] = AMP0[i] * a; W[i * 6 + 4] = QA0[i * 2] * a; W[i * 6 + 5] = QA0[i * 2 + 1] * a; }
+  }
   function getHeight(x, z, t = time) {
     const fl = uniforms.uFlow.value; x += fl.x; z += fl.y; // [sailing] match shader offset
     let px = x, pz = z;
@@ -429,5 +442,5 @@ export function createOcean(T, options = {}) {
     mask.dispose();
   }
 
-  return { mesh, update, getHeight, getSlope, sample, setRaftTiles, trackFoam, uniforms, material, dispose };
+  return { mesh, update, getHeight, getSlope, sample, setRaftTiles, trackFoam, setAmp, uniforms, material, dispose };
 }
