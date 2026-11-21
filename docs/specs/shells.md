@@ -155,3 +155,26 @@ New: `dist/shells-rules.js`, `dist/shells.js`, `dist/shells-book.js` (imports wi
 6. Dive and gather sand nodes (`debug` forced chance): sea kinds appear, crown only deep.
 7. Co-op (tests/coop-e2e.mjs style): guest takes a sparkle, both books match, double-take refused.
 8. Logbook at 360 px and desktop: 12 cards, silhouettes, sets; Tasks tab unchanged; arrow keys cycle.
+
+## Build notes
+- The generic logbook extra-tabs hook landed with the stars feature (`79289bd1`, already with `badge`,
+  `render`, `act`); shells only registers `{id:'shells', label:'Shells', view, render}` through
+  `logbookTabs(out)` and changes nothing in `logbook-ui.js`.
+- Sparkle band: `y >= 0.05` put spots under the waves (island origin sits ~0.2 m below mean water, waves
+  +-0.25 m; seen in the first screenshot), so `MIN_Y = 0.3` (as treasure) and `u` in
+  `[SHORE_U - 0.22, SHORE_U]`. On small, crowded islands the 2.2 m / 3 m gaps left ~0.5% of seeds with
+  0-1 sparkles, so after 240 tries a spot may use relaxed gaps (1.4 m from nodes, 2.2 m from dig spots
+  and other sparkles); 2-4 sparkles on every seed, >85% of sparkles keep the full gaps (tested).
+- Host reach is 2.0 m plus `ISLAND.GUEST_SLACK` for the guest (the host sees an older guest pose, as in
+  treasure); E claims at 1.6 m.
+- `sea` gained `p` (Bright Shells paid today with no island in view) for the daily cap of 3; `clean`
+  defaults it to 0 for older slices. `applySeaFind(st, node, actor, bag, day, {cond, force})`: `force`
+  is the QA hook (`debug.forceSea()` / `debug.seaFind()`).
+- Toasts: repeats past the cap say "<name> again · Your pockets are full of shells for this island";
+  a finished set says "<Set> complete! A gift for the crew" and the gift shows as a pickup-feed row.
+- No own `raftPrompts` provider: the `content` provider shows "E Pick up shell" in `#lrPrompt`
+  (checked in the browser). Bushes/rocks aimed at keep E (islands comes first in FEATURES).
+- Book day is shown 1-based ("day 1" = `dayIndex()` 0), like the Tasks tab.
+- Logbook DOM behaviour (tab label `Shells n/12`, `littleraft:open-logbook {tab:'shells'}`, arrow keys)
+  was checked in Chrome; node tests cover the module/registry side (`logbookTabs` fan-out, cached view,
+  `render`), since the shared fake DOM cannot parse the logbook markup.
