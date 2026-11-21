@@ -8,7 +8,8 @@
 //     left hand when the right holds a tool such as the hammer). Blends in, no lower/raise.
 //     'throw': forces the wind-up (full charge) pose.
 //   hands.setModelFactory(fn | null);              // swap the model source later; rebuilds cached models
-//   hands.update({ dt, time, charge, reeling, casting, walking, hasHookOut, motion, yaw, pitch, fov });
+//   hands.update({ dt, time, charge, reeling, casting, walking, hasHookOut, motion, yaw, pitch, fov, paddle });
+//     paddle: 1 -> 0 over one paddle stroke (dist/paddle.js): the right arm reaches forward and down, then pulls back.
 //   hands.ropeAnchor().getWorldPosition(v);        // rope start: rod tip, right fist while the hook is out, else left hand
 //   hands.itemModel('fishingrod')                  // the held model (rod userData: float, leader, tipNode)
 //
@@ -430,6 +431,8 @@ export function createHands(T, { modelFactory = null } = {}) {
     const t = params.time ?? st.t;
     const charge0 = clamp01(params.charge || 0);
     const casting = clamp01(params.casting || 0);
+    const pq = clamp01(params.paddle || 0) > 0 ? 1 - clamp01(params.paddle) : 1; // paddle stroke phase 0 -> 1
+    const pDip = Math.sin(Math.PI * pq), pSweep = pDip * (2 * pq - 1);       // dip in, then sweep back (-z = forward)
     const reeling = !!params.reeling, walking = !!params.walking;
     const amp = clamp01(params.motion ?? 0.35) / 0.35;
 
@@ -521,7 +524,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     const rrz = -0.20 * ce + 0.25 * a + 0.03 * wA * Math.sin(ph) + 0.15 * pullR * rW + 0.25 * down;
     const rwx = 0.30 * ce - 0.45 * a - 0.10 * oW + 0.22 * pullR * rW - (hold.tilt || 0) * nW;
     const rwz = -0.15 * ce + 0.12 * a;
-    applyArm(R, rpx + arm[0] * nW - 0.10 * zW, rpy + arm[1] * nW + 0.44 * zW, rpz + arm[2] * nW - 0.06 * zW, rrx + 0.75 * zW, rry, rrz, rwx, 0, rwz, smooth(0, 1, st.ptR)); // [zipline] zW raises the fist
+    applyArm(R, rpx + arm[0] * nW - 0.04 * pDip - 0.10 * zW, rpy + arm[1] * nW - 0.035 * pDip + 0.44 * zW, rpz + arm[2] * nW + 0.09 * pSweep - 0.06 * zW, rrx - 0.12 * pDip + 0.75 * zW, rry, rrz + 0.12 * pDip, rwx + 0.22 * pSweep, 0, rwz, smooth(0, 1, st.ptR)); // [paddle] dip + sweep; [zipline] zW raises the fist
     // [zipline] on the line the handle swings round so its wheel stem points up at the rope (and the strap shows)
     const gh = st.shown === 'glidehandle' ? mounts.get('glidehandle') : null;
     if (gh) {

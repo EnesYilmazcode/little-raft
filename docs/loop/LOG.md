@@ -910,6 +910,18 @@ Features (research in docs/features, specs in docs/specs):
   - The stand mounts a cosmetic trophy of a fish species from your journal, with a plaque.
   - State in `world.ext.display`. Shared per-kind model templates; 48-model cap. Files: dist/display.js, display-model.js.
 
+## 2026-11-21 · loop-features-202611210831 (features)
+Base: origin/claude/raft-master (1636dfe). Branch: claude/loop-features-202611210831.
+Round 2 (loop-features-202611210735) is not in raft-master yet. It conflicts with raft-master's own content-prompt routing and the vitals lane, so it needs an integrator merge.
+
+Features (research in docs/features, specs in docs/specs):
+- **Juicer and smoothies**: berries come from island bushes (25% of plain-leaf picks; seed and flower rates unchanged), and coconuts from ripe palm planters. E on the Juicer blends 1 fresh cup and 2 fruit into a berry, coconut or island smoothie. It is host-checked and all-or-nothing. The drinks feed vitals and give the cup back. Also: a `honeyfish` FOOD row (it could not be eaten before), an `isDrink` cue, and an E content prompt now beats the eat hint. Files: dist/juicer.js, juicer-model.js.
+- **Companion Gull**: on a Gull Perch, treats on a 90 s visit schedule (3 points to move in). Rest, loop and follow modes run on the host clock; only the clock is synced. Pet and name it, with a heart burst. Finds go into a 3-slot tray, collected all-or-nothing. The rename dialog is shared with the Puffhen. State is in `world.ext.gull`. Files: dist/gull.js, gull-models.js.
+- **Building pack**:
+  - Railing (1.2 m collision so a bobbing jump can't clear it), Hatch and Gate (E toggles, `o:1` only while open, so closed records are unchanged), and Ladder (MoveFeel climb with a virtual ground in preStep).
+  - The host `piecetoggle` checks `expect`, reach and occupancy, and is rate-limited.
+  - The open variants are instanced meshes.
+
 Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA, 1 QA fixer (14 agents).
 
 Review fixes:
@@ -939,6 +951,23 @@ Next ideas: decor pickup with refunds, achievement hooks for content modules, fl
   hook-only spawn, Esc from inventory keeps the lock, no page errors, shoot.py 159 vs 156 ms on main = +2%).
   PR #4 merged dbf2ca9 into main. PR #5 (round 6) is the open PR now.
 
+## 2026-11-21 · loop-fidelity-202611210914 (raft fidelity, worker B round 2)
+Base: raft-master 3247525. Two fidelity routines are running in parallel. Worker A's 0714/0804/0821 rounds landed first, so worker B's round 1 (`claude/loop-fidelity-202611210747`: needs, shark, spear) is superseded and should NOT be merged.
+- Round 2 built crops + gull raids + scarecrow, bed, drowning and fuel parity on the 0747 base. Crops and fuel duplicate worker A's 0804/0821, so only the pieces raft-master lacks were ported onto its vitals API.
+Landed:
+- **Simple Bed (extends sleep.js; one 'bed' kind):**
+  - recipe 10 leaf, 6 wood, 4 plastic, 3 nails
+  - a slept night gives +40 health, -20 food, -20 water (vitals.adjust; health floor 1)
+  - the last bed you lay in or placed is home: wake there at 25/50/50; if it is gone, wake at the raft centre with RESPAWN
+  - no lying down while swimming; the co-op prompt shows "1/2 sleeping"
+- **Drowning:**
+  - breath 33 s, halved at 0 food or water; empty air underwater costs 3.5 HP/s (every 0.5 s, cause 'drown')
+  - waking up resets the dive
+  - the faint overlay names the cause
+  - Breath Jug now gives 55 s
+Checks: npm test 1029/1029. Headless bed run: night prompt, sleep to morning, faint then wake in bed at 25/50/50; no page errors.
+Not covered in the browser: drowning (SwiftShader time is too slow; unit-tested) and the bed-gone fallback (unit-tested).
+Open for worker A: gull crop raids + scarecrow (built on work3 against the old needs API; not ported). raft-master has no game modes, so sleep and drowning effects always apply.
 
 ## 2026-11-21 · loop-features-202611210749 (features)
 Base: origin/claude/raft-master (7294e26). Merging rounds 0548/0703 into the base hit 10 conflicting files, so that is left to the integrator. Not redone: everything listed in rounds 0548/0703 plus the other branches' diving gear, trader, cookpot, fish trap, power chain and display shelf.
@@ -1025,3 +1054,146 @@ Open for next round:
 - Skipped claude/loop-ux-202611210848: its new work is loop-ux-202611210833 (plus loop-ux-0648 commits) with an older raft-master merged in; both are claimed by integrator B, and it conflicts in 16 files.
 - Merged claude/loop-ux-202611210852 with no content change: its only new commit merges loop-ux-202611210748, which raft-master already has; kept raft-master's side.
 - Gate after merging raft-master: 1138/1138 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text; 166 ms/frame, 37 draw calls.
+
+## 2026-11-21 · integrator F (scheduled run, 09:34 UTC)
+- Merged loop-features-202611210926 (biofuel and power-hookup specs, research notes; docs only). npm test 1270/1270.
+- Skipped loop-visuals-202611210548: 1624 commits behind, conflicts in sky.js and hands.js, and baking the sky once would freeze
+  the daynight-driven sky on raft-master.
+- Still skipped: loop-perf-0720, loop-fidelity-0747 (large stale branches, need worker rebases). Everything else with new commits
+  is claimed by integrators B-E in STATUS.md, so this run left those and PR #5 (gated by B) alone.
+- Screenshot gate tool unavailable here (no Python playwright); not a blocker for a docs-only merge.
+
+## 2026-11-21 · integrator D: loop-fidelity-202611210900, -0910, -0914; loop-features-202611210855
+- Merged loop-fidelity-202611210914: Simple Bed (Raft recipe, sleep effect on vitals, home-bed respawn) and Raft breath (33 s, halved when starving) with drowning damage.
+- Merged loop-features-202611210855: docs only, research notes and specs for zipline, night light (hand lantern, firefly jar) and crops.
+- Skipped loop-fidelity-202611210900: it is loop-fidelity-202611210821 (paddle, stone axe) merged with raft-master, and integrator B claimed -0821.
+- Skipped loop-fidelity-202611210910: conflicts in 11 dist files, and its edge collection nets (nets.js, world.nets) replace raft-master's decor net collection. Needs a rebase by its worker. It also brings crops, foundation armor, a 2x2 start and Raft costs.
+- Gate after merging raft-master: 1277/1277 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text, 198 ms/frame, 46 draw calls. Kept the raft-master zipline spec over the older one in -0855.
+- Juicer: open hopper funnel.
+- Gull:
+  - prototype-key treats
+  - junk timestamps that blocked treats forever
+  - a rebuild after dispose
+  - culling
+  - its own slimmer wing and a neck
+- Building:
+  - The new thin-wall sweep froze players sliding along walls at low fps; it was rewritten.
+  - A guest no longer drops off the ladder on every pieces resend.
+  - The hatch prompt now beats the eat hint.
+  - A double press can no longer re-toggle.
+- QA fixes:
+  - The pickup feed covered the new vitals panel; the pickup and notice feeds are lifted above it.
+  - One post per railing corner.
+  - Lighter hatch underside.
+  - Shaped gull finds.
+
+Checks: `npm test` 857/857 (was 816); shoot.py `errors: []`.
+Known limits:
+- Live two-peer co-op not run; mixed-version co-op is unsupported.
+- Stepping backward off a ladder top drops a storey.
+- A ladder placed under a painted hatch loses the tint.
+Note for the owner: raft-master now has hunger/thirst/health, sharks and a spear (the "fidelity" lane). The README still says "No hunger or damage".
+## Perf round, 2026-11-21 07:08 UTC
+
+Branch `claude/loop-perf-202611210708`, from `origin/claude/raft-master` 6ab9b24.
+
+**Who ran it:**
+- 6 profilers: world, building, environment, alloc, startup, hud+viewmodel.
+- 9 optimizers: debris, scenery, deck, decor, viewmodel, hud, startup, alloc, quality.
+- 1 regression checker, who read every before/after pair. Pairs are side by side in `r2-regress/cmp/`.
+- 1 measurer.
+
+**Probe setup:** headless SwiftShader at 1280x720, load average 2.5–12. perf_probe used 3 interleaved runs per tree. Frame ms is noise.
+
+| Metric | Before | After | Change |
+|---|---|---|---|
+| perf_probe draw calls, idle (pinQuality + seed) | 148 | 35 | **−76%** |
+| perf_probe draw calls, walk | 147 | 35 | −76% |
+| perf_probe triangles, idle | 116.2k | 109.2k | −6% |
+| perf_gate draw calls, p50 / p95 / max | 136 / 147 / 150 | 32 / 37 / 37 | −76% |
+| perf_gate result | FAIL (2 WebGL contexts) | PASS | |
+| perf_gate GL object growth | 135 | 1 | −99% |
+| JS allocation, idle (KB/frame, CDP sampling) | 134.7 | 87.1 | **−35%** |
+| Heap after forced GC at 60 s (MB) | 29.1 | 28.9 | −1% |
+| WebGL contexts | 2 | 1 | −50% |
+| Live programs at 30 s | 43 | 170 | +295% (shader variants warmed on purpose) |
+| Draw calls, night + lantern | 158 | 44 | −72% |
+| Draw calls, island ashore | 105 | 32 | −70% |
+| Draw calls, underwater (regression checker's dive) | 78 | 23 | −71% |
+| Big raft draw calls, spawn / outside | 425 / 509 | 184 / 225 | **−57%** |
+| Big raft triangles | 710k | 527k | −26% |
+| Big raft materials | 142 | 56 | −61% |
+| Big raft shadow casters | 157 | 58 | −63% |
+| Placing one decor piece on the big raft | 625–899 ms, +36–53 MB | 1–2 ms, +0.1 MB | **−99.7%** |
+| Startup: game.js request start | 1442 ms | 26 ms | −98% (all 103 modules preloaded) |
+| Startup: raftDebug ready | 2332 ms | 1837 ms | −21% |
+| Startup: modules loaded twice | 5 | 0 | |
+
+The big raft is 49 tiles, 26 decor items and 58 building pieces. The startup rows are medians of 3 interleaved runs taken at load average about 45.
+
+### What changed
+
+- **Floating items:**
+  - Models are merged: plastic 2→1, scrap 3→1, wood 2→1, bottle 6→2, signal models down to 2 meshes each.
+  - Shapes are cached, 3 per type.
+  - New `dist/item-instancer.js` draws one InstancedMesh per geometry and material. It runs its own culling, and picking still uses the hidden source meshes.
+  - Result: about 56 item draws drop to about 12.
+- **Scenery:** the 12 islands and 24 clouds are each drawn as one InstancedMesh, fed from proxy groups (new `dist/scenery-instances.js`), so sailing drift and day/night are unchanged.
+- **Seafloor:** its decor is drawn only underwater.
+- **Islands:** coconuts are merged into the palm.
+- **Viewmodel:** ported `dist/bake.js`, which bakes hands into one mesh per pose and the hook, hammer and rod into single meshes. Holding the hook went from 47 draw calls to 7.
+- **Decor:**
+  - One cached model per type; placed copies are clones that share geometry and materials (palm soil and smelter glow stay per instance).
+  - Parts are merged by material class, and tessellation is trimmed.
+  - Purifier went from 21 meshes to 2.
+- **Deck:**
+  - Tile parts are cached, and merging is a plain array copy.
+  - Timber and fittings use 2 vertex-coloured meshes per chunk, with 4x4-tile chunks on rafts of 26+ tiles.
+  - `rebuildRaft` keeps the floor when tiles are unchanged and only adds or removes decor that changed. That is why placing decor no longer rebuilds the raft.
+- **HUD:**
+  - Item icons now render on the main renderer into an atlas, encoded asynchronously with `toBlob`, and only for the hotbar and bag. This removed the second WebGL context and 19 synchronous `toDataURL` calls.
+  - The world redraws at 10 Hz behind menu dialogs.
+  - Backdrop blurs are removed.
+  - New slim `raftDebug.hud` for the prompt and onboarding pollers.
+- **Startup:**
+  - Fonts no longer block.
+  - The whole static module graph is modulepreloaded, generated by `publish_local.py`, with a `--sync` mode.
+  - Every relative specifier is stamped with `?build=`, so no module loads twice.
+  - `tests/module-graph.test.mjs` enforces both.
+- **Allocation:**
+  - `input.update` no longer allocates.
+  - three.js fog colour conversion is cached.
+  - Wildlife fish and gull constants are precomputed.
+  - `ocean.sample` uses scratch storage.
+  - The hook-out paths use scratch objects.
+- **Quality:**
+  - The ladder now steps render scale before turning shadows off; the old 512-map step saved nothing.
+  - The ocean has an `OCEAN_LOW` shader at the bottom two levels.
+  - Shadows are off underwater.
+  - Shader warm-up also compiles the shadows-off and lantern-light variants, so the first lantern and the shadows-off step no longer cause a compile hitch.
+- **Sailing:** the anchor winch is merged.
+- **Harness:** perf_gate and playbot now click the onboarding title menu. `#solo` is hidden on this build, so the gate had been timing out.
+
+### Regression check
+
+No regressions. Intended differences:
+- Dialogs are not blurred.
+- Shadows are crisper on fewer casters.
+- Net and rope no longer cast shadows.
+- Purifier embers flicker together.
+- Lowest quality has less fine ripple detail.
+
+### Caveats
+
+- The live program count roughly quadruples because of the warmed variants. This is fine with `KHR_parallel_shader_compile` (ANGLE D3D and Metal), but needs checking on a laptop without it.
+- Headless frames are too slow for the quality scaler to step on its own.
+- `raftDebug` has no quality setter; the regression checker patched one in for testing.
+- The `art.test.mjs` atlas build-time check flakes when the box is loaded.
+
+### Next ideas
+
+- A `raftDebug.quality` setter for probes.
+- The grill's PointLight still changes the light count.
+- Lower the net rope segment count (about 5k tris).
+- Measure decor and deck chunk culling on rafts of 144+ tiles.
+- Check whether three.js's `setValueV3f` boxing (8–11 KB/frame) can be avoided.

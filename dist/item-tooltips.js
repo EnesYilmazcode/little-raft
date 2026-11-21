@@ -5,6 +5,7 @@ import { ITEM_TEXT, anchorTip, anchorVisible, catalogueRecipes, tipFacts } from 
 import { ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 const STYLE_ID = 'item-tooltips-style';
+const BAG_EVENT = 'littleraft:bagchange'; // survival-ui.js BAG_EVENT (not imported: keeps this module DOM-light)
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
 const CATS = { material: 'Material', refined: 'Refined', tool: 'Tool', station: 'Station', build: 'Building', food: 'Food', decor: 'Decor' };
 const CSS = `
@@ -108,7 +109,7 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
       const lines = (f.get ? `<p><em>Get it:</em> ${esc(f.get)}</p>` : '') + (f.uses.length ? `<p><em>Used in:</em> ${esc(f.uses.join(', '))}</p>` : '');
       if (lines) out += `<div class="it-facts">${lines}</div>`;
     }
-    if (table[kind] && prog && typeof prog.isUnlocked === 'function' && call(() => prog.isUnlocked(kind)) === false) { // catalogue items only: others are not progression's ('Unknown item')
+    if (Object.hasOwn(table, kind) && prog && typeof prog.isUnlocked === 'function' && call(() => prog.isUnlocked(kind)) === false) { // catalogue items only: others are not progression's ('Unknown item')
       const why = call(() => prog.whyLocked?.(kind));
       out += `<div class="it-lock">Locked${why ? ': ' + esc(why) : ''}</div>`;
     } else if (recipe && el?.dataset.lockReason) out += `<div class="it-lock">Locked: ${esc(el.dataset.lockReason)}</div>`; // survival-ui gated row (e.g. not studied yet)
@@ -167,6 +168,7 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
   on(doc, 'scroll', () => { if (cur) hide(); }, { capture: true, passive: true });
   on(doc, 'keydown', e => { if (e.key === 'Escape' && cur) hide(); }, { capture: true });
   on(doc.defaultView || window, 'blur', hide);
+  on(doc, BAG_EVENT, () => { if (cur) refresh(); }); // survival-ui.js: bag changed (craft, pickup, move...)
 
   // Re-render the open card (e.g. after a craft/move changes counts); hides if the slot emptied.
   function refresh() { if (cur && anchorVisible(cur.el)) show(cur.el, px, py); else if (cur) hide(); }

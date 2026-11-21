@@ -100,7 +100,7 @@ test('velocity converges to sail target (framerate independent)', () => {
   assert.ok(SAIL.TAU_DOWN < SAIL.TAU_UP);
 });
 
-test('free: dw = v*dt, dg = (v+current)*dt; anchored: dg = 0, dw = -current*dt', () => {
+test('free: dw = v*dt, dg = (v+current)*dt; anchored: dg = 0, dw = 0 (water rests with the raft)', () => {
   const s = defaultSailing(); s.vx = 1; s.vz = 0.5;
   const o = out(); stepSailing(s, 0.05, { nSails: 0, host: false }, o);
   near(o.dgx - o.dwx, SAIL.CURRENT_X * 0.05); near(o.dgz - o.dwz, SAIL.CURRENT_Z * 0.05);
@@ -109,7 +109,7 @@ test('free: dw = v*dt, dg = (v+current)*dt; anchored: dg = 0, dw = -current*dt',
   const g = [s.gx, s.gz];
   stepSailing(s, 0.05, { nSails: 1, host: true }, o);
   assert.equal(o.dgx, 0); assert.equal(o.dgz, 0);
-  near(o.dwx, -SAIL.CURRENT_X * 0.05); near(o.dwz, -SAIL.CURRENT_Z * 0.05);
+  assert.equal(o.dwx, 0); assert.equal(o.dwz, 0);
   assert.deepEqual([s.gx, s.gz], g);
   run(s, 30, { nSails: 1, host: false });
   near(Math.hypot(s.vx, s.vz), 0, 1e-3, 'anchored raft comes to rest');
