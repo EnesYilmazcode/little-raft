@@ -27,6 +27,7 @@ export function createBuilding(T, scene) {
   const okColor = new T.Color(GHOST_OK), badColor = new T.Color(GHOST_BAD);
 
   const menu = createBuildMenu({pieces:PIECE_ORDER.map(id => ({id, name:PIECES[id].name, cost:PIECES[id].cost})), onPick:() => { rot = 0; }});
+  try { globalThis.raftBuildMenu = menu; } catch {} // settings.js Escape routing closes the build wheel before pausing
   menu.setAfford(afford);
 
   // Instance placement in raft-local space (the group follows the raft transform every frame).
