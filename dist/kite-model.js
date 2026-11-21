@@ -43,6 +43,10 @@ export function buildKiteGeometry(T, p) {
   g.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new T.Float32BufferAttribute(col, 3));
   g.computeVertexNormals();
+  // The sail faces the flyer, so seen from the deck it is mostly back-lit. Tilt its normals toward the nose
+  // (kite +Y points up and away) so the sky light reads the pattern colours instead of a dark silhouette.
+  const nrm = g.attributes.normal.array;
+  for (let i = 0; i < 12 * 3; i += 3) { nrm[i] = 0; nrm[i + 1] = 0.8; nrm[i + 2] = 0.6; }
   g.computeBoundingSphere();
   return g;
 }
@@ -86,15 +90,15 @@ export function createKiteHeld(T, p) {
   const wood = new T.MeshStandardMaterial({ color: 0xbb8650, roughness: 0.85 });
   const twine = new T.MeshStandardMaterial({ color: 0xd9c38c, roughness: 0.95 });
   const cloth = new T.MeshStandardMaterial({ color: new T.Color(P.a), roughness: 0.9 });
-  const spool = new T.Mesh(new T.CylinderGeometry(0.09, 0.09, 0.12, 12), twine); // 48 tris
-  spool.rotation.z = Math.PI / 2; inner.add(spool);
-  const bar = new T.Mesh(new T.BoxGeometry(0.2, 0.025, 0.025), wood); bar.position.y = 0.0; inner.add(bar); // 12 tris
+  const bar = new T.Mesh(new T.BoxGeometry(0.03, 0.2, 0.03), wood); inner.add(bar); // 12 tris: the handle the fist closes on
+  const spool = new T.Mesh(new T.CylinderGeometry(0.08, 0.08, 0.11, 12), twine); // 48 tris
+  spool.rotation.z = Math.PI / 2; spool.position.y = 0.17; inner.add(spool);
   const sail = new T.Mesh(new T.OctahedronGeometry(0.1, 0), cloth); // 8 tris: a slim folded diamond
-  sail.scale.set(0.9, 3, 0.18); sail.position.set(0, 0.38, -0.02); sail.rotation.x = -0.15; inner.add(sail);
+  sail.scale.set(0.7, 2.1, 0.16); sail.position.set(0, 0.42, -0.03); sail.rotation.x = -0.12; inner.add(sail);
   root.updateMatrixWorld(true);
   const box = new T.Box3().setFromObject(inner), c = box.getCenter(new T.Vector3()), s = box.getSize(new T.Vector3());
   inner.position.sub(c);
-  root.userData.grip = new T.Vector3(0, 0, 0).sub(c);
+  root.userData.grip = new T.Vector3(0, -0.02, 0).sub(c);
   root.userData.size = { x: s.x, y: s.y, z: s.z };
   root.userData.sail = sail;
   return root;

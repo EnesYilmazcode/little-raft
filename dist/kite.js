@@ -22,7 +22,6 @@ export function createKite(ctx) {
   const A = { x: 0, y: 0, z: 0 }, K = { x: 0, y: 0, z: 0 }, B = { x: 0, y: 0, z: 0 };
   const v = T ? new T.Vector3() : null, bottom = T ? new T.Vector3() : null;
   const tgt = { rec: null, key: '' }, TIED = { L: 16, steer: 0, dSteer: 0, tug: 0, launch: 1 };
-  let target = null, targetAim = null;
   const host = () => ctx.role !== 'guest';
   const mySlot = () => (host() ? 'h' : 'g');
   const fail = (text, actor) => { ctx.emit({ kind: 'notice', text }, actor); return true; };
@@ -59,7 +58,6 @@ export function createKite(ctx) {
     if (!rec || TIE_TYPES[rec.t] !== 1) return null;
     tgt.rec = rec; tgt.key = pieceKey(rec); return tgt;
   }
-  const targetFor = aim => { if (aim !== targetAim) { targetAim = aim; target = findTarget(aim); } return target; };
 
   function slot(i, p) {
     if (!kit) kit = createKiteKit(T);
@@ -250,7 +248,7 @@ export function createKite(ctx) {
   // ---------------------------------------------------------------- prompts
   let unprovide = null;
   function rows(aim) {
-    const k = heldKind(), p = kiteIndex(k), t = targetFor(aim), tied = t ? tiedAt(t.key) >= 0 : false;
+    const k = heldKind(), p = kiteIndex(k), t = findTarget(aim), tied = t ? tiedAt(t.key) >= 0 : false;
     if (tied) return [{ key: 'E', label: 'Untie kite' }];
     if (p < 0 && !st) return null;
     if (!st) return [{ key: 'LMB', label: 'Launch kite' }];
@@ -271,6 +269,7 @@ export function createKite(ctx) {
   // ---------------------------------------------------------------- module
   const mod = {
     name: 'kite',
+    pulling: () => (pull ? pull.token : null), // [dolphin] the debris token being kited in (the dolphin leaves it alone)
     serialize: () => ext,
     load(d, from) {
       if (from === 'net') {
@@ -300,7 +299,7 @@ export function createKite(ctx) {
       return true;
     },
     interact(aim) {
-      const t = findTarget(aim); targetAim = null; if (!t) return false;
+      const t = findTarget(aim); if (!t) return false;
       if (tiedAt(t.key) >= 0) { ctx.action({ kind: 'kite.untie', k: t.key }); return true; }
       if (st && !st.landing) return tie(t.key);
       return false;
@@ -350,6 +349,7 @@ export function createKite(ctx) {
       state: () => ({ fly: { h: ext.fly.h && { ...ext.fly.h }, g: ext.fly.g && { ...ext.fly.g } }, tied: ext.tied.map(e => ({ ...e })), rev: ext.rev,
         st: st ? { L: st.L, Lt: st.Lt, steer: st.steer, steerT: st.steerT, launch: st.launch, tug: st.tug, landing: st.landing } : null, spotClock, pull: pull && { ...pull }, wind: { ...W } }),
       pose: () => (last.ok ? { ...last } : null),
+      poses: () => slots.map((s, i) => (s?.kite.visible ? { i, x: s.kite.position.x, y: s.kite.position.y, z: s.kite.position.z } : null)).filter(Boolean),
       skip(sec = 3) { if (st) for (let i = 0; i < sec * 20; i++) easeInputs(st, 0.05); return !!st; },
     },
   };

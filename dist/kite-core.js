@@ -150,8 +150,8 @@ export function linePoints(A, K, L, s, out) {
 export function tailPoints(K, W, t, out) {
   const a = num(W?.az, 0), sx = Math.sin(a), sz = Math.cos(a), tt = num(t, 0) % 1e5, n = TAIL_N - 1;
   for (let i = 0; i <= n; i++) {
-    const w = Math.sin(tt * 4 - i * 0.9) * 0.14 * (i / n), k = i * 3;
-    out[k] = K.x + sx * i * 0.3 + sz * w; out[k + 1] = K.y - i * 0.12; out[k + 2] = K.z + sz * i * 0.3 - sx * w;
+    const w = Math.sin(tt * 4 - i * 0.9) * 0.2 * (i / n), k = i * 3;
+    out[k] = K.x + sx * i * 0.42 + sz * w; out[k + 1] = K.y - i * 0.16; out[k + 2] = K.z + sz * i * 0.42 - sx * w;
   }
   return out;
 }

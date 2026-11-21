@@ -54,6 +54,8 @@ export function createDolphin(ctx, opts = {}) {
   const esc = s => (ctx.esc ? ctx.esc(s) : String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])));
   const friendName = () => st.name || 'Your dolphin';
   const wildlife = () => { const ms = ctx.content?.mods; if (!Array.isArray(ms)) return null; for (let i = 0; i < ms.length; i++) if (ms[i].name === 'wildlife' && !ms[i].dead) return ms[i]; return null; };
+  const kitePull = () => { const ms = ctx.content?.mods; if (Array.isArray(ms)) for (let i = 0; i < ms.length; i++) if (ms[i].name === 'kite' && !ms[i].dead && typeof ms[i].pulling === 'function') return ms[i].pulling(); return null; }; // never push what the kite is pulling
+  const shipwreckOn = () => { const ms = ctx.content?.mods; if (Array.isArray(ms)) for (let i = 0; i < ms.length; i++) if (ms[i].name === 'shipwreck' && !ms[i].dead) return true; return false; };
   const wildCircler = () => { const c = wildlife()?.circler; return c && c.kind === 'dolphin' ? c : null; };
   const waterH = (x, z) => (ctx.ocean && typeof ctx.ocean.getHeight === 'function' ? ctx.ocean.getHeight(x, z) : -0.24);
   const heldFish = () => ctx.localBag?.()?.selected?.kind === 'fish';
@@ -77,7 +79,7 @@ export function createDolphin(ctx, opts = {}) {
   }
   function hasPoint() { // a docked wreck beats the signal cache
     const w = wreckNow ? wreckNow() : null;
-    if (w && w.phase === 'docked' && !w.cleared && fin(w.x) && fin(w.z) && ctx.content?.mods?.some(m => m.name === 'shipwreck' && !m.dead)) { point.x = w.x; point.z = w.z; return true; }
+    if (w && w.phase === 'docked' && !w.cleared && fin(w.x) && fin(w.z) && shipwreckOn()) { point.x = w.x; point.z = w.z; return true; }
     const c = ctx.world?.signal?.cache;
     if (c && fin(c.x) && fin(c.z)) { point.x = c.x; point.z = c.z; return true; }
     return false;
@@ -198,7 +200,8 @@ export function createDolphin(ctx, opts = {}) {
   }
   function render(dt) {
     const show = st.friend && !oldHost();
-    if (!wildMesh && ctx.scene) wildMesh = ctx.scene.getObjectByName('wildlife')?.getObjectByName('dolphin') ?? null;
+    if (wildMesh && !wildMesh.parent) wildMesh = null; // wildlife was rebuilt or disposed
+    if (!wildMesh && show && ctx.scene && wildlife()) wildMesh = ctx.scene.getObjectByName('wildlife')?.getObjectByName('dolphin') ?? null;
     if (wildMesh && show) wildMesh.visible = false; // the visitor is your friend now: one dolphin, not two
     mesh.visible = show; world3.vis = show;
     if (show) {
@@ -253,10 +256,10 @@ export function createDolphin(ctx, opts = {}) {
       if (b !== 'call' && b !== 'escort') {
         players[0] = p ?? null; players[1] = o ?? null;
         const it = pickNudge(ctx.world?.items, centre, players, nets, ctx.heldTokens?.() ?? null);
-        if (it) st.nudge = { tok: it.token, at: t };
+        if (it && it.token !== kitePull()) st.nudge = { tok: it.token, at: t };
         st.nextNudge = nextNudgeAt(st.seed, t, st.r);
         bump();
-        return it ? it.token : null;
+        return st.nudge ? st.nudge.tok : null;
       }
     }
     return null;
@@ -266,7 +269,7 @@ export function createDolphin(ctx, opts = {}) {
     const it = findItem(st.nudge.tok);
     players[0] = ctx.physics ?? null; players[1] = ctx.other ?? null;
     const held = ctx.heldTokens?.();
-    if (nudgeAbort(st, it, st.t, players, nets) || (held && held.has?.(st.nudge.tok)) || !stepNudge(it, centre, dt)) { st.nudge = null; bump(); }
+    if (nudgeAbort(st, it, st.t, players, nets) || (held && held.has?.(st.nudge.tok)) || kitePull() === st.nudge.tok || !stepNudge(it, centre, dt)) { st.nudge = null; bump(); }
   }
 
   function update(dt) {
