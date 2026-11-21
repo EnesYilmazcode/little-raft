@@ -19,7 +19,7 @@ const CATEGORY_OF = Object.freeze({
   // progression catalogue (items.js)
   metalhook: 'tools', binoculars: 'tools', spear: 'tools', metalspear: 'tools', finder: 'tools', spade: 'tools',
   drum: 'tools', pipes: 'tools', bells: 'tools', // [instruments]
-  nail: 'materials', bolt: 'materials', hinge: 'materials',
+  nail: 'materials', bolt: 'materials', hinge: 'materials', blastpowder: 'materials', // [puffer]
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
   juicer: 'survival', berrycup: 'survival', coconutcup: 'survival', mixcup: 'survival', // [juicer]
   perch: 'survival', // [gull]
@@ -130,6 +130,8 @@ export const ITEM_TEXT = Object.freeze({
   cookedsharkmeat: { desc: 'A shark steak grilled through.', use: 'A filling meal (+30 food).' },
   sharkmeat:  { desc: 'A raw slab of shark meat.', use: 'Grill it for a proper meal; four come from every shark.' },
   sharkhead:  { desc: 'The head of a shark you beat.', use: 'A trophy, and proof the raft is safe for a while.' },
+  goo:        { desc: 'Sticky green goo from a Bloatfish.', use: 'Cook it in the smelter into Blast Powder.' }, // [puffer]
+  blastpowder: { desc: 'A gritty powder that fizzes when shaken.', use: 'Keep it for things that go bang.' }, // [puffer]
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
   grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },
@@ -382,6 +384,8 @@ export const ITEM_SOURCE = Object.freeze({
   // shark lane (shark.js): harvest the beaten shark with E
   sharkmeat:   Object.freeze({ tag: 'beaten shark', how: 'Fight off the shark with a spear, then press E on its body.' }),
   sharkhead:   Object.freeze({ tag: 'beaten shark', how: 'Harvested with the meat from a beaten shark (E).' }),
+  goo:         Object.freeze({ tag: 'Bloatfish', how: 'Spear a Bloatfish near an island before it bursts.' }), // [puffer]
+  blastpowder: Object.freeze({ tag: 'smelter', how: 'Cook Puffer Goo in a smelter.' }), // [puffer]
   cookedsharkmeat: Object.freeze({ tag: 'grill', how: 'Cook raw shark meat on a grill.' }),
   // Pim's trading barge (trader.js)
   shell:       Object.freeze({ tag: 'trader', how: 'Trade fish or puff eggs to Pim at his trading barge.' }),
