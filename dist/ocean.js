@@ -73,6 +73,7 @@ uniform vec3 uFarSea; // far water colour: the sea darkens to this at the horizo
 uniform vec3 uZenith;
 uniform vec3 uDeep;
 uniform vec3 uShallow;
+uniform vec3 uCrest;
 uniform vec3 uFoam;
 uniform float uFadeNear;
 uniform float uFadeFar;
@@ -131,13 +132,15 @@ void main() {
   vec3 skyRefl = mix(uSky, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.25));
 
   // Water body: looking steeply down near the raft you see clear turquoise; grazing and far
-  // away the light path is long, so it sinks to deep blue. Crests glow where sun passes through.
+  // away the light path is long, so it sinks to deep teal. Crests glow aqua where sun passes through.
   float h = clamp(vHeight / 0.2 * 0.5 + 0.5, 0.0, 1.0);
   float clear = pow(ndv, 1.4) * (1.0 - smoothstep(4.0, 45.0, dist));
   float patches = vnoise(p * 0.05 + uTime * 0.01);
   vec3 body = mix(uDeep, uShallow, clamp(clear * 0.85 + h * 0.25 + patches * 0.12, 0.0, 1.0));
   float sss = smoothstep(0.5, 1.0, h) * pow(max(dot(-V, L) * 0.5 + 0.5, 0.0), 2.0) * 0.45;
-  body += uShallow * sss;
+  const vec3 LUM = vec3(0.2126, 0.7152, 0.0722);
+  vec3 crest = mix(uShallow, uCrest * (dot(uShallow, LUM) / max(dot(uCrest, LUM), 1e-4)) * 1.25, 0.65);
+  body += crest * sss;
   body *= mix(0.75, 1.0, ndv); // grazing water darkens toward deep blue
   vec3 col = mix(body * (0.78 + 0.22 * max(dot(n, L), 0.0)), skyRefl, fresnel);
 
@@ -259,10 +262,11 @@ export function createOcean(T, options = {}) {
     uSunDir: { value: sun.clone().normalize() },
     uSunColor: { value: new T.Color('#fff3d6') },
     uSky: { value: new T.Color(options.skyColor ?? '#86dcef') },
-    uFarSea: { value: new T.Color(options.farSeaColor ?? '#3d97c8') },
+    uFarSea: { value: new T.Color(options.farSeaColor ?? '#4aa8be') },
     uZenith: { value: new T.Color(options.zenith ?? '#2a8fd6') },
-    uDeep: { value: new T.Color('#08355f') },
-    uShallow: { value: new T.Color('#1a78b0') },
+    uDeep: { value: new T.Color('#05435a') },
+    uShallow: { value: new T.Color('#0e8c9a') },
+    uCrest: { value: new T.Color('#36bdb4') }, // hue of sunlit crests; brightness follows uShallow so dusk/night stay dim
     uFoam: { value: new T.Color('#f4fbfc') },
     uFadeNear: { value: options.fadeNear ?? 52 },
     uFadeFar: { value: options.fadeFar ?? 135 },
