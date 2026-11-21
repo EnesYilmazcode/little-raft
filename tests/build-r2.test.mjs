@@ -146,3 +146,103 @@ test('BUILD-5: the hammer prompt offers X Remove', () => {
   assert.equal(placePrompt({kind:'floor', ok:true, blocked:''}, 'hammer', {cost:'2 wood, 2 plastic', remove:'floor'}), '<kbd>Click</kbd>Build floor · 2 wood, 2 plastic · <kbd>X</kbd>Remove floor');
   assert.equal(placePrompt(null, 'crate', {remove:'Crate'}), '', 'only with the hammer');
 });
+
+// ============================================================= round 3: one removal targeter
+const { nearestTarget, targetName, removeWhy, removeAction, removePrompt } = await import(new URL('remove-target.js', base));
+const { decorHit, pickBox, PICK_DEFAULT } = await import(new URL('placement.js', base));
+const { BuildGrid } = await import(new URL('building-pieces.js', base));
+const { PLACEABLE_IDS } = await import(new URL('items.js', base));
+const { CONTENT_DECOR } = await import(new URL('content-items.js', base));
+const START = [[-1, -1], [0, -1], [1, -1], [-1, 0], [0, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
+const metres = decor => decor.map(d => ({type:d.type, x:d.x * 2, z:d.z * 2, rot:d.rot || 0, src:d}));
+const ctxOf = (o = {}) => {
+  const decor = o.decor ?? [], grid = o.grid ?? null;
+  if (grid && !o.keepTiles) grid.setTiles(o.tiles ?? START);
+  return {tiles:o.tiles ?? START, decor, decorM:metres(decor), grid, players:o.players ?? [{x:-2, z:-2}, null], bodyRadius:PC.BODY_RADIUS, slack:0, ...o.extra};
+};
+
+test('BUILD-1 r3: X on the tile a player stands on is refused (self / brother), the prompt says so', () => {
+  const me = {x:0, z:2}, far = {x:-2, z:-2}; // spawn: standing on tile (0,1)
+  assert.equal(removeWhy({what:'floor', x:1, z:1}, ctxOf({players:[{x:2, z:2}, null]})), BLOCK_TEXT.self);
+  assert.equal(removeWhy({what:'floor', x:0, z:1}, ctxOf({players:[me, null]})), BLOCK_TEXT.self);
+  assert.equal(removeWhy({what:'floor', x:0, z:1}, ctxOf({players:[far, me]})), BLOCK_TEXT.brother, 'the other player too');
+  assert.equal(removeWhy({what:'floor', x:1, z:1}, ctxOf({players:[{x:2, z:1.1}, null]})), BLOCK_TEXT.self, 'on the seam: refused for both tiles');
+  assert.equal(removeWhy({what:'floor', x:1, z:0}, ctxOf({players:[{x:2, z:1.1}, null]})), BLOCK_TEXT.self, 'on the seam: refused for both tiles');
+  assert.equal(removeWhy({what:'floor', x:1, z:1}, ctxOf({players:[far, null]})), null, 'nobody on it: ok');
+  assert.equal(removePrompt('floor', BLOCK_TEXT.self, true), BLOCK_TEXT.self);
+});
+
+test('BUILD-2 / CRAFT-4 r3: every placeable decor has a pick box and can be aimed at', () => {
+  const types = [...new Set(['sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'receiver', 'antenna', 'purifier', 'rainbarrel', 'sprinkler', ...CONTENT_DECOR, ...PLACEABLE_IDS])];
+  for (const type of types) {
+    const b = pickBox(type);
+    assert.ok(b[0] > 0 && b[1] > 0 && b[2] > 0, type);
+    const d = {x:2, y:.22 + Math.min(b[2], .4) / 2 - 1.7, z:0}, n = Math.hypot(d.x, d.y, d.z);
+    const hit = decorHit([{type, x:2, z:0, rot:0}], {x:0, y:1.7, z:0}, {x:d.x / n, y:d.y / n, z:d.z / n});
+    assert.ok(hit && hit.t > 0, 'aimable: ' + type);
+  }
+  for (const s of ['smelter', 'grill', 'researchtable', 'research', 'candle', 'beehive']) assert.notEqual(pickBox(s), PICK_DEFAULT, s + ' sized from its model');
+});
+
+test('CRAFT-4 r3: a station is removable when empty and refused while it holds items; chests too', () => {
+  const smelter = {type:'smelter', x:1, z:0}, crate = {type:'crate', x:-1, z:0};
+  let contents = null, chest = false;
+  const extra = {stationAt:(x, z) => x === 1 && z === 0 ? contents : null, chestFull:() => chest, nameOf:k => ({smelter:'Smelter'}[k] ?? k)};
+  const ctx = () => ctxOf({decor:[smelter, crate], extra});
+  const t = {what:'decor', x:1, z:0, type:'smelter'};
+  assert.equal(removeWhy(t, ctx()), null, 'no station state: removable');
+  contents = {input:null, output:null, fuel:3}; assert.equal(removeWhy(t, ctx()), null, 'fuel cannot be taken out, so it does not block');
+  contents = {input:{kind:'sand', count:2}, output:null}; assert.equal(removeWhy(t, ctx()), 'Empty the Smelter first');
+  contents = {input:null, output:{kind:'glass', count:1}}; assert.equal(removeWhy(t, ctx()), 'Empty the Smelter first');
+  chest = true; assert.equal(removeWhy({what:'decor', x:-1, z:0, type:'crate'}, ctx()), 'Empty the chest first');
+  assert.equal(removeWhy({what:'decor', x:0, z:1, type:'crate'}, ctx()), 'Nothing to remove', 'stale target');
+  assert.equal(removeWhy({what:'decor', x:1, z:0, type:'smelter'}, ctxOf({decor:[smelter], players:[{x:20, z:0}, null], extra:{...extra, stationAt:() => null}})), BLOCK_TEXT.reach);
+  assert.equal(removeWhy({what:'floor', x:1, z:0}, ctx()), BLOCK_TEXT.decor, 'its floor still needs clearing first');
+  assert.equal(removeWhy({what:'floor', x:0, z:-1}, ctxOf({extra:{hasGrill:(x, z) => x === 0 && z === -1}})), BLOCK_TEXT.decor, 'a grill tile too');
+});
+
+test('BUILD-3 r3: a floor tile holding up an edge wall or corner pillar is refused; a shared edge is not', () => {
+  const g = new BuildGrid(); g.setTiles(START);
+  assert.ok(g.place({t:'wall', i:1, j:2, l:0, r:0}), 'outer +z edge of corner tile (1,1)');
+  assert.equal(g.canRemoveTile(1, 1), 'Something rests on this');
+  assert.equal(removeWhy({what:'floor', x:1, z:1}, ctxOf({grid:g, keepTiles:true})), 'Something rests on this');
+  const h = new BuildGrid(); h.setTiles(START); h.place({t:'pillar', i:2, j:2, l:0, r:0});
+  assert.equal(h.canRemoveTile(1, 1), 'Something rests on this', 'outer corner pillar');
+  const k = new BuildGrid(); k.setTiles(START); k.place({t:'wall', i:1, j:1, l:0, r:0}); // edge between (1,1) and (1,0)
+  assert.equal(k.canRemoveTile(1, 1), '', 'the neighbour tile still holds it');
+  assert.equal(g.canRemoveTile(1, 1), 'Something rests on this', 'the check restores the tile');
+  assert.equal(g.canRemoveTile(9, 9), '');
+});
+
+test('BUILD-4 / BUILD-6 r3: the nearest of piece, decor and floor is the one target, and X sends only its action', () => {
+  const wall = {t:'wall', i:2, j:0, l:0, r:1};
+  assert.equal(nearestTarget({what:'piece', rec:wall, t:3}, {what:'decor', x:1, z:0, type:'bench', t:1.6}, {what:'floor', x:1, z:0, t:2.4}).what, 'decor', 'bench in front of the wall (BUILD-6)');
+  assert.equal(nearestTarget(null, {what:'decor', t:Infinity}, {what:'floor', x:0, z:0, t:2}).what, 'floor');
+  assert.equal(nearestTarget(null, undefined), null);
+  // grid.pick reports its distance so it can be compared
+  const g = new BuildGrid(); g.setTiles(START); g.place(wall); const out = {};
+  assert.equal(g.pick(0, 1.2, 0, 1, 0, 0, .2, 7, out), g.find(wall)); assert.ok(Math.abs(out.t - (3 - .07)) < 1e-6, String(out.t));
+  g.pick(0, 1.2, 0, -1, 0, 0, .2, 7, out); assert.equal(out.t, Infinity);
+  assert.deepEqual(removeAction({what:'piece', rec:wall}), {kind:'unpiece', t:'wall', i:2, j:0, l:0, r:1});
+  assert.deepEqual(removeAction({what:'floor', x:1, z:0, t:2}), {kind:'remove', what:'floor', x:1, z:0});
+  assert.deepEqual(removeAction({what:'decor', x:1, z:0, type:'bench'}), {kind:'remove', what:'decor', x:1, z:0});
+  assert.equal(removeAction(null), null);
+  assert.equal(targetName({what:'piece', rec:wall}, k => k.toUpperCase()), 'WALL');
+  assert.equal(removePrompt('Smelter', '', true), 'Release X to remove Smelter');
+  assert.equal(removePrompt('Smelter', 'Empty the Smelter first', true), 'Empty the Smelter first');
+  assert.equal(removePrompt('', '', true), 'Point at something to remove');
+  assert.equal(removePrompt('floor', '', false), '<kbd>X</kbd>Remove floor');
+  assert.equal(placePrompt(null, 'hammer', {remove:'floor', removeWhy:BLOCK_TEXT.self}), '<kbd>X</kbd>' + BLOCK_TEXT.self, 'a refused target shows why, not Remove');
+  // the piece rule is grid.canRemove, cached per target and world version
+  const memo = {}; let calls = 0; const spy = {version:1, canRemove:() => { calls++; return 'Something rests on this'; }, canRemoveTile:() => ''};
+  const t = {what:'piece', rec:wall}, none = [];
+  for (let n = 0; n < 3; n++) assert.equal(removeWhy(t, {grid:spy, memo, tiles:START, decor:none}), 'Something rests on this');
+  assert.equal(calls, 1); spy.version++; removeWhy(t, {grid:spy, memo, tiles:START, decor:none}); assert.equal(calls, 2);
+});
+
+test('BUILD-4 r3: holding X hides the "Aim at the raft edge" hint so only the removal prompt speaks', async () => {
+  const P = await import(new URL('prompts.js', base));
+  const s = {running:true, heldKind:'hammer', build:{hover:null}, tileList:[[0, 0]], me:{x:0, z:0, pitch:0}};
+  assert.equal(P.statePrompt(s).label, 'Aim at the raft edge');
+  assert.equal(P.statePrompt({...s, pieces:{removing:true}}), null);
+});

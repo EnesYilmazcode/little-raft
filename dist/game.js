@@ -12,12 +12,14 @@ import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84a
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { PlayerPhysics, PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
-import { floorBlock, decorBlock, inReach, BUILD_REACH, GUEST_REACH_SLACK, BLOCK_TEXT, placePrompt } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
+import { floorBlock, decorBlock, inReach, BUILD_REACH, GUEST_REACH_SLACK, BLOCK_TEXT, placePrompt, removePrompt } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
+import { nearestTarget, targetName, removeWhy, removeAction } from './remove-target.js?build=v3-survival-ae77fa84ac2b'; // hammer + X: one target, one rule set (prompt, ghost, host)
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createContent, cleanExt } from './content.js?build=v3-survival-ae77fa84ac2b'; // content hook (islands, wildlife, storage, day/night)
 import { CONTENT_DECOR, CONTENT_BLOCK_RADIUS } from './content-items.js?build=v3-survival-ae77fa84ac2b'; // content hook
 import { createBuilding, cleanPieces } from './building.js?build=v3-survival-ae77fa84ac2b'; // building-pieces lane hook (docs/cloud/building-pieces.md)
+import { PIECES } from './building-pieces.js?build=v3-survival-ae77fa84ac2b'; // piece names for the X prompt
 import { createControls } from './controls.js'; // controls lane: input map, gamepad, movement feel (docs/cloud/controls.md)
 import { createSailing } from './sailing-world.js?build=v3-survival-ae77fa84ac2b'; // [sailing] see docs/cloud/sailing.md
 import { cleanSailing } from './sailing-core.js?build=v3-survival-ae77fa84ac2b'; // [sailing]
@@ -48,7 +50,7 @@ import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lan
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
-import { createGhosts, FOOTPRINT, wheelDelta, decorOnRay, floorRemoveBlock, refundOf, wrapRot, ROT_STEP, FINE_STEP, DECOR_REACH, FLOOR_REACH } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
+import { createGhosts, FOOTPRINT, wheelDelta, decorHit, refundOf, wrapRot, ROT_STEP, FINE_STEP, DECOR_REACH, FLOOR_REACH } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints, feedPlacement, hintsFromState } from './hud.js?build=v3-survival-ae77fa84ac2b';
@@ -269,7 +271,7 @@ export function mount(transfer = null) {
   let yaw = Number.isFinite(X?.yaw) ? X.yaw : 0, pitch = Number.isFinite(X?.pitch) ? X.pitch : 0;
   let walking = false, walkPhase = Number.isFinite(X?.walkPhase) ? X.walkPhase : 0, swing = 0;
   const pointer = new T.Vector2(), ray = new T.Raycaster(), plane = new T.Plane(new T.Vector3(0, 1, 0), -.22);
-  let removeTarget = null; // hammer: what X would remove (prompt only)
+  let removeTarget = null, removeText = ''; // hammer: what X would remove (remove-target.js) and why it can't ('' = it can)
   let hover = null, mouse = {x:0, y:0, inside:false}, frameAim = null, pickTarget = null;
   const raftPose = {y:X?.raftPose?.y ?? 0, rx:X?.raftPose?.rx ?? 0, rz:X?.raftPose?.rz ?? 0};
   let physics = makePhysics(X);
@@ -594,13 +596,16 @@ export function mount(transfer = null) {
   // Old tone API (fishing-cooking lane, logbook): routed to the procedural sound recipes in audio.js.
   function beep(f = 500) { play(f >= 850 ? 'bite' : f >= 600 ? 'catch' : f >= 420 ? 'collect' : f >= 260 ? 'ui' : f >= 200 ? 'throw' : 'splash', .8); }
   let contextHtml = null;
-  const buildPromptInfo = () => ({remove:removeTarget ? (removeTarget.what === 'floor' ? 'floor' : ITEM_INFO[removeTarget.type]?.name ?? removeTarget.type) : '', name:ITEM_INFO[heldKind()]?.name ?? heldKind(),
+  const removeName = () => targetName(removeTarget, (k, what) => what === 'piece' ? (PIECES[k]?.name ?? k).toLowerCase() : ITEM_INFO[k]?.name ?? k);
+  const laneNoRemoveHint = () => !!(building && building.piece !== 'foundation'); // placing walls etc.: the X hint shows only while X is held
+  const buildPromptInfo = () => ({remove:removeTarget && !laneNoRemoveHint() ? removeName() : '', removeWhy:removeText, name:ITEM_INFO[heldKind()]?.name ?? heldKind(),
     cost:Object.entries(FLOOR_COST).map(([k, n]) => `${n} ${itemName(k)}`).join(', '), missing:heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST) ? missingText(localBag(), FLOOR_COST) : ''});
   function updateContext(dialog) {
     let html = '';
     if (running && !dialog) {
       if (guestWaiting()) html = 'Waiting for your brother’s raft…';
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
+      else if (building?.removing && heldKind() === 'hammer') html = removePrompt(removeName(), removeText, true); // X held: what releasing it removes, or why not
       else if (hover?.blocked) html = placePrompt(hover, heldKind(), buildPromptInfo()); // why a red ghost is refused
       else if (waterAim?.prompt) html = waterAim.prompt;
       else if ((contextHtml = content?.prompt(frameAim) ?? null)) html = contextHtml; // content hook
@@ -865,26 +870,32 @@ export function mount(transfer = null) {
     if (decorMetresSrc !== world.decor || decorMetresLen !== world.decor.length || !decorMetres) { decorMetresSrc = world.decor; decorMetresLen = world.decor.length; decorMetres = world.decor.map(d => ({type:d.type, x:d.x * 2, z:d.z * 2, rot:d.rot || 0, src:d})); }
     return decorMetres;
   }
-  function removalFor(aim) { // {what:'decor'|'floor', x, z, type} in tile cells, or null
+  // The one removal target: the nearest of piece, decor or floor tile on the aim ray (remove-target.js), or null.
+  const pieceHit = {t:Infinity};
+  function removalFor(aim) {
     if (!aim) return null;
-    const hit = aim.lray ? decorOnRay(decorInMetres(), aim.lray.o, aim.lray.d) : null;
-    if (hit) { const d = hit.src; return inReach(physics.x, physics.z, d.x, d.z) ? {what:'decor', x:d.x, z:d.z, type:d.type} : null; }
-    const p = aim.point; if (!p) return null;
-    const tx = Math.round(p.x / 2), tz = Math.round(p.z / 2);
-    return hasTile(tx, tz) && Math.hypot(tx * 2 - physics.x, tz * 2 - physics.z) <= FLOOR_REACH ? {what:'floor', x:tx, z:tz, type:'floor'} : null;
+    const rec = building && aim.dir && camera ? building.pick(camera.position, aim.dir, deckY(), pieceHit) : null;
+    const hit = aim.lray ? decorHit(decorInMetres(), aim.lray.o, aim.lray.d) : null;
+    const p = aim.point; let floor = null;
+    if (p && camera) { const tx = Math.round(p.x / 2), tz = Math.round(p.z / 2); if (hasTile(tx, tz) && Math.hypot(tx * 2 - physics.x, tz * 2 - physics.z) <= FLOOR_REACH) floor = {what:'floor', x:tx, z:tz, t:camera.position.distanceTo(p)}; }
+    return nearestTarget(rec && {what:'piece', rec, t:pieceHit.t}, hit && {what:'decor', x:hit.p.src.x, z:hit.p.src.z, type:hit.p.type, rot:hit.p.rot, t:hit.t}, floor);
   }
-  function floorRemoveWhy(tx, tz) { // placement.js rules on metres, plus building-lane pieces standing on the tile
-    if (Array.isArray(world.pieces) && world.pieces.some(q => q && q.i === tx && q.j === tz)) return 'decor';
-    if (fc?.hasGrill(tx, tz)) return 'decor'; // a grill would hover over the sea and be dropped on load
-    return floorRemoveBlock(world.tiles, decorInMetres(), tx, tz);
+  const removeMemo = {}; // structural part of removeWhy for the aimed target, per world change (not per frame)
+  // Why t can't be removed (text) or null. actor null: the local player's own check (prompt, before sending);
+  // 'host' | 'guest': the host validating that actor's action. Poses go [actor, other] for self / brother.
+  function removeWhyFor(t, actor = null) {
+    const me = actor === 'guest' ? other : physics, them = actor === 'guest' ? physics : other;
+    return removeWhy(t, {tiles:world.tiles, decor:world.decor, decorM:decorInMetres(), grid:building?.grid ?? null, players:[me, them],
+      bodyRadius:PLAYER_CONSTANTS.BODY_RADIUS, slack:actor === 'guest' ? GUEST_REACH_SLACK : .01, memo:actor ? null : removeMemo,
+      stationAt:(x, z) => prog?.stationAt?.(x, z) ?? null, hasGrill:(x, z) => !!fc?.hasGrill(x, z), nameOf:k => ITEM_INFO[k]?.name ?? k,
+      chestFull:(x, z) => !!content?.mods?.find(m => m.name === 'storage' && !m.dead)?.serialize?.()?.chests?.[x + ',' + z]}); // content storage: never destroy stored items
   }
-  function removePiece() {
+  function removePiece(t) { // X: remove the target, or say why not
     if (!running || uiBlocked() || heldKind() !== 'hammer') return false;
     if (guestWaiting()) { notice('Wait for your raft to connect'); return false; }
-    const t = removalFor(currentAim());
     if (!t) { notice('Aim at a floor or a placed piece to remove it'); return false; }
-    if (t.what === 'floor') { const why = floorRemoveWhy(t.x, t.z); if (why) { notice(BLOCK_TEXT[why] ?? 'Can’t remove that'); return false; } }
-    swing = 1; action({kind:'remove', what:t.what, x:t.x, z:t.z}); return true;
+    const why = removeWhyFor(t); if (why) { notice(why); return false; }
+    swing = 1; action(removeAction(t)); return true;
   }
 
   // ---------- Actions (host is authoritative; actor = 'host' | 'guest') ----------
@@ -1044,24 +1055,20 @@ export function mount(transfer = null) {
       emit({kind:'loot', text:'+ ' + Object.entries(loot).map(([k, c]) => `${c} ${itemName(k)}`).join(' · ')}, actor); return;
     }
     if (a.kind === 'remove') { // hammer + X: take a placed piece or a bare floor tile back for about half its cost (tile cells)
-      const who = actor === 'guest' ? other : physics, slack = actor === 'guest' ? GUEST_REACH_SLACK : .01;
       if (bag.count('hammer') < 1 || !isInt(a.x) || !isInt(a.z)) return;
-      let i = -1, refund, name, reach;
+      let t, refund, name;
       if (a.what === 'decor') {
-        i = world.decor.findIndex(d => d.x === a.x && d.z === a.z); if (i < 0) return;
-        const d = world.decor[i]; refund = refundOf(RECIPES[d.type]?.cost); name = ITEM_INFO[d.type]?.name ?? d.type; reach = DECOR_REACH;
-        if (d.type === 'crate' && content?.mods?.find(m => m.name === 'storage' && !m.dead)?.serialize?.()?.chests?.[a.x + ',' + a.z]) { emit({kind:'notice', text:'Empty the chest first'}, actor); return; } // content storage: never destroy stored items
-      } else if (a.what === 'floor') {
-        const why = floorRemoveWhy(a.x, a.z);
-        if (why) { if (BLOCK_TEXT[why]) emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; }
-        i = world.tiles.findIndex(t => t[0] === a.x && t[1] === a.z); refund = refundOf(FLOOR_COST); name = 'Floor'; reach = FLOOR_REACH;
-      } else return;
-      if (who && Math.hypot(a.x * 2 - who.x, a.z * 2 - who.z) > reach + slack) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
+        const d = world.decor.find(d => d.x === a.x && d.z === a.z); if (!d) return;
+        t = {what:'decor', x:a.x, z:a.z, type:d.type}; refund = refundOf(RECIPES[d.type]?.cost); name = ITEM_INFO[d.type]?.name ?? d.type;
+      } else if (a.what === 'floor') { t = {what:'floor', x:a.x, z:a.z}; refund = refundOf(FLOOR_COST); name = 'Floor'; }
+      else return;
+      const why = removeWhyFor(t, actor); // the same rules the prompt showed: reach, poses, contents, support
+      if (why) { emit({kind:'notice', text:why}, actor); return; }
       const scratch = new Bag(bag.snapshot());
       for (const [k, n] of Object.entries(refund)) if (scratch.add(k, n) > 0) { emit({kind:'full', text:'Your bag is full'}, actor); return; }
       commit(bag, scratch);
-      if (a.what === 'floor') world.tiles.splice(i, 1);
-      else { world.decor.splice(i, 1); const k = tileKey(a.x, a.z); for (const m of [world.garden, world.purifiers, world.collectors, world.sprinklers]) if (m && typeof m === 'object') delete m[k]; } // watering lane state of that tile
+      if (a.what === 'floor') world.tiles.splice(world.tiles.findIndex(t => t[0] === a.x && t[1] === a.z), 1);
+      else { world.decor.splice(world.decor.findIndex(d => d.x === a.x && d.z === a.z), 1); const k = tileKey(a.x, a.z); for (const m of [world.garden, world.purifiers, world.collectors, world.sprinklers]) if (m && typeof m === 'object') delete m[k]; } // watering lane state of that tile
       rebuildRaft(); fitShadow();
       emit({kind:'build', text:`Removed ${name}`, loot:refund}, actor); if (actor === 'guest') emit({kind:'build'}, 'host');
       return;
@@ -1430,9 +1437,18 @@ export function mount(transfer = null) {
   function updateGhost() {
     const kind = heldKind();
     const pieces = kind === 'hammer' && !hook && building && building.piece !== 'foundation'; // building-pieces lane hook
-    building?.update(raft, frameAim, camera.position, running && kind === 'hammer' && !hook && !uiBlocked(), localBag(), yaw, deckY());
+    const hammerOn = running && kind === 'hammer' && !hook && !uiBlocked();
+    removeTarget = frameAim && hammerOn ? removalFor(frameAim) : null; // the one X target: piece, decor or floor, whatever piece is selected
+    removeText = removeTarget ? removeWhyFor(removeTarget) ?? '' : '';
+    const holdX = !!building?.removing;
+    building?.setRemove(holdX && removeTarget?.what === 'piece' ? removeTarget.rec : null); // its red ghost; decor / floor below
+    building?.update(raft, frameAim, camera.position, hammerOn, localBag(), yaw, deckY());
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing ? placementFor(kind, frameAim.point) : null;
-    removeTarget = frameAim && kind === 'hammer' && !hook && !pieces ? removalFor(frameAim) : null; // X Remove prompt (decor or a bare floor tile)
+    if (building?.removing && removeTarget && removeTarget.what !== 'piece') { // X held: red ghost on exactly what releasing X removes
+      const f = removeTarget.what === 'floor';
+      ghosts.show(f ? 'floor' : removeTarget.type, removeTarget.x * 2, f ? .03 : .22, removeTarget.z * 2, f ? 0 : removeTarget.rot || 0, false, elapsed, 1.04);
+      return;
+    }
     if (!hover) { ghosts.hide(); return; }
     const floor = kind === 'hammer';
     ghosts.show(floor ? 'floor' : kind, hover.x * 2, floor ? .015 : .22, hover.z * 2, floor ? 0 : placeRot, !hover.blocked && !(floor && !canAfford(localBag(), FLOOR_COST)), elapsed);
@@ -1585,7 +1601,7 @@ export function mount(transfer = null) {
     if (kd.record && !controls) keys[e.code] = true; // held keys survive a panel; movePlayer gets input=false meanwhile
     if (!kd.act) return;
     if (running && building?.key(e.code, true, heldKind() === 'hammer', e.repeat)) { e.stopImmediatePropagation(); if (e.code === 'KeyX' || e.code === 'KeyR') e.preventDefault(); return; } // building-pieces lane hook (X: released below)
-    if (e.code === 'KeyX' && !e.repeat && !building) removePiece(); // hammer + X without the building lane: remove decor or a bare floor tile
+    if (e.code === 'KeyX' && !e.repeat && !building) removePiece(removalFor(currentAim())); // hammer + X without the building lane: remove what is aimed
     if (controls) { if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault(); return; } // controls lane: actions come from the action map
     const m = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
     if (m && running) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
@@ -1595,7 +1611,7 @@ export function mount(transfer = null) {
   });
   on(window, 'keyup', e => {
     keys[e.code] = false; if (e.code === 'KeyR') sailing?.release(); // [sailing]
-    if (e.code === 'KeyX' && building?.removing) { const a = building.removeAction(); if (a && running) { swing = 1; action(a); } else if (running) removePiece(); } // building-pieces lane hook; no piece aimed: decor or floor
+    if (e.code === 'KeyX' && building?.endRemove() && running) removePiece(removalFor(currentAim())); // X released: remove the one shown target (piece, decor or floor) or say why not
   });
   on(window, LIVE_STATUS_EVENT, e => { if (!running || !e.detail?.text) return; notice(e.detail.text); e.preventDefault(); }); // live.js update notices -> feed
   on(window, 'keydown', e => { if (e.key === 'Escape' && !e.repeat) { escHeld = true; relockOnEscUp = false; } }, {capture:true});

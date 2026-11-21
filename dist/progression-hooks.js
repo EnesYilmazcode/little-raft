@@ -346,7 +346,8 @@ export function attachProgression(ctx) {
     save();
   }
 
-  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, dispose, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()) };
+  const stationAt = (x, z) => stationView(keyOf({ x, z })); // a placed cooker's contents (host model or guest mirror), or null: game.js refuses to remove a full one
+  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, dispose, debug, barrelLuck, stationAt, progression: (actor) => (actor ? progs[actor] : myProg()) };
 }
 
 export default attachProgression;

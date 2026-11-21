@@ -195,6 +195,18 @@ export class BuildGrid {
     return ok ? '' : 'Something rests on this';
   }
 
+  // Why deck tile (i, j) can't go: '' or 'Something rests on this' when a piece would lose its support
+  // (edge and corner pieces rest on either touching tile, so this is not an i,j match). BUILD-3.
+  canRemoveTile(i, j) {
+    const key = tileKey(i, j);
+    if (!this._tiles.has(key)) return '';
+    this._tiles.delete(key);
+    let ok = true;
+    for (let k = 0; k < this.list.length && ok; k++) { const q = this.list[k]; if (!this._supported(q.t, q.i, q.j, q.l, q.r)) ok = false; }
+    this._tiles.add(key);
+    return ok ? '' : 'Something rests on this';
+  }
+
   remove(p) {
     if (this.canRemove(p) !== '') return false;
     const rec = this.find(p);
@@ -244,13 +256,15 @@ export class BuildGrid {
   }
 
   // ---------- aiming ----------
-  pick(ox, oy, oz, dx, dy, dz, deckY, reach) {
+  // Nearest piece on the ray within reach, or null. out (optional) gets out.t = its distance.
+  pick(ox, oy, oz, dx, dy, dz, deckY, reach, out = null) {
     this._rebuild();
     let best = reach, rec = null;
     for (let n = 0; n < this._pickN; n++) {
       const t = rayBox(ox, oy, oz, dx, dy, dz, this._pick, n * 6, deckY);
       if (t >= 0 && t <= best) { best = t; rec = this._pickRec[n]; }
     }
+    if (out) out.t = rec ? best : Infinity;
     return rec;
   }
 
