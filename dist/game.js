@@ -1044,7 +1044,7 @@ export function mount(transfer = null) {
     }
     if (a.kind === 'shark:hit') { // shark lane: a guest's spear hit (the host's own hits go straight to the sim)
       const p = actor === 'guest' ? other : physics, now = performance.now();
-      if (!shark || !p || !Number.isFinite(a.dmg) || now - sharkHitAt[actor] < 450 || shark.distanceTo(p.x, p.z) > 6) return;
+      if (!shark || !p || !Number.isFinite(a.dmg) || now - sharkHitAt[actor] < 250 || shark.distanceTo(p.x, p.z) > 6) return;
       sharkHitAt[actor] = now; shark.applyHit(a.dmg); return;
     }
     if (content?.action(a, actor, bag)) return; // content hook: module actions (chest, research, gather…)
