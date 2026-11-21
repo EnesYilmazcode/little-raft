@@ -1,119 +1,160 @@
 # Adopting the new water (tier A)
 
-Checked against `dist/` at `claude/raft-tech` 745f663. You replace one file and add 5 lines to
-`dist/game.js`. No new files, no new imports, and no change to any physics consumer.
+Checked against `dist/` at `claude/raft-tech` 20fed47 (`game.js` 1780 lines, sailing, day/night, diving,
+islands, wildlife, `quality.js`). You replace one file and add 9 lines to `dist/game.js`. No new files, no
+new imports, and no change to any physics consumer.
 
 Short version, from the repo root:
 
 ```sh
 cp sandbox/water/water.js dist/ocean.js
-git apply sandbox/water/adopt-game.diff   # steps 2 and 3 below; verified with git apply --check
+git apply sandbox/water/adopt-game.diff   # steps 2 to 5 below; git apply --check passes on this dist
+node sandbox/water/parity.mjs             # must print "ok":true
 ```
 
 ## 1. Replace `dist/ocean.js`
 
-```sh
-cp sandbox/water/water.js dist/ocean.js
-```
+`water.js` exports `createOcean(T, options)`, which is `createWater(T, { tier: 'a', ...options })`. It keeps
+everything the current `dist/ocean.js` offers, checked by `parity.mjs` (it fails if any key of the old
+object or of `old.uniforms` is missing):
 
-`water.js` exports `createOcean(T, options)`, which is `createWater(T, { tier: 'a', ...options })`.
-It keeps the contract that `dist/game.js` already uses:
+| contract (users in dist) | new |
+|---|---|
+| `createOcean(T, {sunDirection, skyColor, fadeNear, fadeFar})` (game.js 384) | same options |
+| `uniforms.uDeep/uShallow/uZenith/uSky/uSunColor/uFadeNear/uFadeFar` (game.js 384, materials.js `applyOceanLook`) | same names |
+| `uniforms.uSky/uZenith/uDeep/uShallow/uSunDir/uSunColor/uFadeFar/uFoam` retinted every frame by daynight.js | same names; the deck shadow and the backlit tint follow `uSunDir` (see below) |
+| `uniforms.uFlow` (vec2) written each frame by sailing-world.js | same: waves, `getHeight` and the drifting detail (ripples, glitter, lace, colour patches) all use it, exactly as dist |
+| `uniforms.uTime/uSky/uSunDir/uFadeNear/uFadeFar/uShallow/uDeep/uSunColor/uFoam` shared by the lagoon (islands-models.js) | same names and types |
+| `material.vertexShader` reused by the lagoon (islands-models.js) | still self-contained; see "Lagoon" below |
+| `mesh` (`renderOrder = 10`, `scene.add`, `position.y`, `.visible` toggled by diving.js) | same; `position.y` is still -.24 |
+| `update(t[, camera])` (game.js 384, 1222) | same; also re-centres the plane on the camera, snapped to the grid |
+| `getHeight(x, z)` (game.js, coop-fx, diving, underwater-fx, fishing-v2, islands, wildlife) | **bit-identical**, with any `uFlow` |
+| `getSlope(x, z[, t, e, out])` | bit-identical, incl. the `out` form |
+| `sample(x, z, out?, t?, e?)` (game.js `updateRaft`, `updateItems`) | bit-identical |
+| `dispose()` (game.js 1719) | same; also frees the three textures |
 
-| used in game.js                                     | old ocean.js | new                                                                   |
-|-----------------------------------------------------|--------------|-----------------------------------------------------------------------|
-| `createOcean(T, {sunDirection, skyColor, fadeNear, fadeFar})` | yes | same options                                               |
-| `ocean.uniforms.uDeep/uShallow/uZenith.value.set()` (line 290) | yes | same uniform names; new defaults already equal these values |
-| `ocean.mesh` (`receiveShadow`, `scene.add`, `.position.y`)     | yes | same; `position.y` is still -.24                             |
-| `ocean.update(elapsed[, camera])` (lines 290, 825)  | yes | same; now also re-centres the plane on the camera, snapped to the grid, so it can never be outrun |
-| `ocean.getHeight(x, z)` (lines 687, 698, 707, 766, 776) | yes | **bit-identical** (`node sandbox/water/parity.mjs`)             |
-| `ocean.getSlope(x, z[, t, e])` (lines 707, 765)     | yes | bit-identical                                                         |
-| `ocean.dispose()` (line 1164)                       | yes | same; also frees the SDF texture                                      |
+`parity.mjs` compares 100,800 points over 36 time steps and four `uFlow` offsets (0, small, ~1000 m and
+near the +-65536 wrap): worst difference 0. The CPU wave code is the current dist code (flat table, no
+allocation); `setAmp` only rescales its amplitude columns.
 
-New methods (all optional to call): `setRaft`, `setRaftPose`, `setFloaters`, `footprint(object3d)`,
-`setBobber(position | null)`, and `setAmp(a)`. The uniforms `uFloaters`, `uDeckLift` and the vec3 `uRaft`
-from earlier drafts of this file are gone (now the `tFloatMap` texture, the `deckLift` option baked by
-`setRaft`, and a vec4 `uRaft`); `game.js` never used them.
+New methods (all optional): `setRaft`, `setRaftPose`, `setFloaters`, `footprint(object3d)`,
+`setBobber(position | null)`, `setAmp(a)`, `setQuality(preset)`.
 
-The import line stays as it is:
+The import line stays as it is (`publish_local.py` rewrites the `?build=` query; do not hand-edit it):
 
 ```js
 import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
 ```
 
-`publish_local.py` rewrites every `./x.js?build=` query when it promotes a candidate, so do not
-hand-edit the build string.
+Physics and render dependents, checked, needing no change:
 
-Physics dependents, checked and needing no change:
+- `hook-physics.js` (flat `WATER_Y`), `player-physics.js` (gets `waterY` from `getHeight`), `debris.js`
+  (`height()` is mesh shaping).
+- `diving.js` / `underwater-fx.js`: read `getHeight` only, and hide `ocean.mesh` while the camera is
+  underwater (the fx draws its own ceiling). The new material is front-side like the old one, so if the fx
+  fails and diving gives the surface back, the view from below is the same as today (culled).
+- `daynight.js`: copies its originals of the 8 ocean uniforms at start and restores them on dispose; all
+  exist with the same types.
+- `sailing-world.js`: writes `uniforms.uFlow` only. The raft group never moves in x/z or turns (the world
+  and the water move past it), so the raft SDF stays at the origin; `setRaftPose` (step 4) costs nothing.
+- `islands.js`, `wildlife.js`, `coop-fx.js`, `fishing-v2.js`: `getHeight` / `mesh.position.y` only.
 
-- `dist/hook-physics.js`: flat `WATER_Y = 0.05`; never reads the ocean.
-- `dist/player-physics.js`: gets `waterY` from `ocean.getHeight` (game.js line 687), which is
-  unchanged.
-- `dist/debris.js`: its `height()` is debris mesh shaping, not water.
-- `dist/waterfx.js` and `dist/sky.js` are not imported by `game.js`. Leave them alone.
+### Day/night: moving sun
 
-## 2. Tell the ocean where the raft is (`dist/game.js`, `rebuildRaft()`, line 353)
+`daynight.js` rewrites `uSunDir` every frame (sun by day, moon by night). The water reads it in
+`mesh.onBeforeRender`, after every system has written its uniforms: it renormalises it, derives the
+horizontal sun direction for the backlit crest tint, and re-bakes the fake deck shadow once the light has
+turned by 1.5 degrees (every ~5 s of a 20 minute day, plus once when the light swaps to the moon). The re-bake
+stamps the shadow channel only, within 1.5 m of each tile: ~0.3 ms for the starter raft.
 
-After the `world.tiles.forEach(... createFloor ...)` line, add:
+### Lagoon (islands-models.js)
+
+The lagoon is a `ShaderMaterial` built from `ocean.material.vertexShader` with only its own uniforms and no
+defines. The water's vertex shader keeps that working: the ocean's own material has the define
+`WATER_OCEAN`; without it the waves use amplitude 1 (instead of `uAmp`) and the vertex skips the raft
+texture, so the lagoon rides on the same default sea as today.
+
+## 2. Tell the ocean where the raft is (`rebuildRaft()`, line 494)
+
+After `raft.add(createRaftMesh(...))`:
 
 ```js
-    ocean?.setRaft?.(world.tiles);
+    ocean?.setRaft?.(world.tiles); // water: contact foam + deck shadow follow the deck
 ```
 
-`rebuildRaft()` runs from `init()` (after the ocean is created at line 290), after every build
-action (line 579), and after host and guest world syncs (lines 949 and 1025), so the foam always
-matches the deck. The bake (raft SDF plus the baked deck shadow) takes a few ms for 7 to 400 tiles and runs only on those
-events. The raft group never moves in x/z (it only bobs and tilts), so the pose stays (0, 0, 0).
+`rebuildRaft()` runs from `init()` (line 407, after the ocean exists), after every build action (877), on
+world load (1420) and on guest world syncs (1505).
 
-## 3. Feed floating items and the hook bobber (`dist/game.js`, `updateItems()`)
-
-Next to `const itemMeshes = new Map();` (line 376), add:
+## 3. Graphics preset (`init()` line 384 and `applyOptions()` line 1010)
 
 ```js
-  const floaters = []; // capsule footprints [x, z, r, hx, hz] fed to the ocean for contact foam
+    ocean.setQuality?.(options.graphics); // after createOcean
+    ocean?.setQuality?.(next.graphics);   // in applyOptions, after quality.setCap
 ```
 
-At the end of `updateItems(dt)`, right after the `for (const it of world.items) { ... m.rotation.set(...); }`
-loop closes (after line 768) and before the function's closing brace, add:
+`quality.js` has user presets `low / medium / high` and an adaptive ladder inside each (pixel ratio, shadow
+map size, shadows on/off). Water mapping:
+
+| preset | water |
+|---|---|
+| high, medium | full tier A |
+| low | `WATER_LOW`: no crest lace, no glitter (constant sun path), 2 of 5 ripple normals. Contact foam, deck shadow, item lace and colour stay |
+
+`setQuality` recompiles the shader, so it is tied to the user preset (a menu action), not to the adaptive
+ladder that steps every few seconds; the ladder's pixel-ratio steps already scale the water's cost, which is
+all per pixel.
+
+## 4. Raft pose (`updateRaft()`, after the tilt lines)
+
+```js
+    ocean.setRaftPose?.(raft.position.x, raft.position.z, raft.rotation.y); // water: returns at once while the raft only bobs
+```
+
+Today it always returns at once (x, z and yaw never change). If a future sailing pass turns or moves the raft
+group, the foam and shadow follow: a move only updates a uniform, a turn re-bakes the shadow once per degree.
+
+## 5. Floating items and bobbers (`updateItems()`)
+
+Next to `const itemMeshes = new Map();` (line 524):
+
+```js
+  const floaters = []; let fcBobber; // water: capsule footprints [x, z, r, hx, hz] for contact foam; the rod bobber of fishing-v2
+```
+
+At the end of `updateItems(dt)`, after the item loop:
 
 ```js
     floaters.length = 0; for (const m of itemMeshes.values()) if (m.visible) floaters.push(ocean.footprint?.(m) ?? [m.position.x, m.position.z, .35]);
-    ocean.setBobber?.(hookMesh?.visible ? hookMesh.position : null);
+    if (fcBobber === undefined) fcBobber = scene.getObjectByName('fcBobber') ?? null;
+    ocean.setBobber?.(bobber?.visible ? bobber.position : hookMesh?.visible ? hookMesh.position : fcBobber?.visible && fcBobber.parent ? fcBobber.position : null);
     ocean.setFloaters?.(floaters, camera.position.x, camera.position.z);
 ```
 
-`footprint(m)` measures the item model's local bounding box once (cached in `m.userData`) and
-returns a reused `[x, z, r, hx, hz]` capsule: the long horizontal side, turned by the mesh's current
-rotation and scale, so a plank gets an elongated band of foam and a jug a small round one. It
-assumes `itemsGroup` is untransformed, which it is (line 292). `setFloaters` stamps every item (no
-slot limit) into a 64 m distance map centred on the camera; footprints plus stamping cost about 0.02
-to 0.1 ms a frame with 30 items. It runs on host and guest, because it uses the mesh positions that
-both already update.
+Items drift with `sailFlow` in world space, so their foam follows them. Three things can float on a line: the
+game's rod float (`bobber`), the scrap hook (`hookMesh`), and fishing-v2's `fcBobber` (looked up once by
+name). The ocean decides "on the water" itself (within .25 m of `getHeight`), so a flying or reeled hook gets
+no foam. Positions are from the previous frame (`updateHook` and `fc.update` run after), which does not show.
+Footprints plus stamping cost about 0.02 to 0.1 ms a frame with 30 items.
 
-`setBobber` must come before `setFloaters`, which stamps the bobber into the same map. It gets the
-hook mesh from the previous frame (`updateHook` runs right after `updateItems`, line 830), which is
-invisible at this scale. The ocean decides "on the water" itself (within .25 m of `getHeight`), so the
-flying and reeled-in hook get no foam. While it floats it gets lace and ripple rings like an item.
+## 6. Verify
 
-## 4. Verify
-
-1. `node sandbox/water/parity.mjs` should print `"ok":true` (heights, slopes and `setAmp`).
-2. Patch a copy of `dist`, then shoot it and the original:
-   `python sandbox/water/shoot_game.py <patched_dist> /tmp/w new` and
-   `python sandbox/water/shoot_game.py dist /tmp/w cur`. Expect no errors. Expect
-   `new-down.png` to show a thin collar and fine lace at the raft edge, lace shaped like each
-   item around it, and shaded water (not foam) in the plank gaps; `new-cast.png` shows the thrown
-   hook floating with lace around it. `gpuCpuMs` should be within about 10% of `cur`'s (it was
-   1140 against 1090 on the loaded lab box).
-3. In the game: build a floor tile. The foam band should move to the new edge right away. Swim
-   (fall off). The swim test still uses the same `getHeight`, so nothing changes.
-4. Run the existing checks (`check_game.py`, `check_survival.py`). They do not touch the
-   ocean API beyond what is listed above.
+1. `node sandbox/water/parity.mjs` prints `"ok":true`.
+2. `python sandbox/water/shoot_game.py cur <out>` and `python sandbox/water/shoot_game.py new <out>` (`new`
+   copies `dist/` to a temp dir, drops in `water.js` and applies the diff). Expect no errors. Compare
+   `*-down` (collar, lace and shaded plank gaps at the raft edge, lace around items), `*-cast`,
+   `*-noon / -dusk / -night` (the deck shadow moves with the sun; at night the sea follows the palette),
+   `*-under / -under-up` (identical: the fx hides the ocean), `*-sail` (no seams, foam stays on the raft
+   while the water drifts). `gpuCpuMs` should be within ~10% of `cur`.
+3. `npm test`: same result patched and unpatched (see `docs/tech/water.md` for the last run).
 
 ## Optional follow-ups
 
-- Rough weather: call `ocean.setAmp(a)` (1 = today's sea, 2.6 = the lab's rough sea). It scales the
-  GPU waves and the CPU `getHeight`/`getSlope` table together, so the raft, swimmer and items stay on
-  the drawn surface. Never set `ocean.uniforms.uAmp.value` alone. To ease into a storm, call it every
-  frame with a lerped value; it is a 4-element loop.
-- Graphics "low": `ocean.uniforms.uFoamStart.value = 1` removes the Jacobian part of the crest
-  lace. Tall crests still get a little from the height term. Contact foam stays.
+- Rough weather: `ocean.setAmp(a)` scales the GPU waves and the CPU tables together (never set
+  `uniforms.uAmp` alone). `daynight.js` has a wind value per weather that could drive it. The lagoon would
+  stay at amplitude 1, so pass `uAmp` through to it first (one shared uniform in islands-models.js plus
+  defining `WATER_OCEAN` there).
+- The lagoon does not share `uFlow`, so while sailing its waves are offset from the sea's (an existing
+  dist issue, unchanged by this). Sharing `uFlow: shared('uFlow', new T.Vector2())` in
+  `islands-models.js` fixes it.
+- Wake lace for wildlife at the surface (dolphin, turtle): pass their meshes through `footprint` into the
+  same `floaters` list.

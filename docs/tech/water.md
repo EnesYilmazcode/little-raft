@@ -13,9 +13,11 @@ Checks:
 
 - `python sandbox/water/shoot.py [out] [cur,a,b,c]`: shots for every tier and view, plus
   interleaved timing (`FRAMES`, `ROUNDS` env vars).
-- `python sandbox/water/shoot_game.py <dist_dir> <out> <prefix>`: the real game (title, spawn,
-  looking at the raft edge). Use it for an A/B of `dist/` against a patched copy.
-- `node sandbox/water/parity.mjs`: physics parity with `dist/ocean.js` (heights and slopes).
+- `python sandbox/water/shoot_game.py cur|new|<dist_dir> <out> [prefix]`: the real game (title, spawn,
+  raft edge, cast, noon / dusk / night, swim, underwater, sailing). `new` patches a temp copy of
+  `dist/` with `water.js` and `adopt-game.diff`, so `cur` against `new` is the A/B.
+- `node sandbox/water/parity.mjs`: physics parity with `dist/ocean.js` (heights, slopes, `sample`,
+  with the sailing offset `uFlow`).
 - `node sandbox/water/parity.mjs` also checks that `setAmp(a)` moves the CPU heights with the shader.
 - `node sandbox/water/cpu-cost.mjs`: JS cost of the raft SDF bake, floater stamping, `footprint` and
   `getHeight`.
@@ -220,14 +222,75 @@ Tiers B and C stay in `water.js` behind `#define`s for reference. They cost noth
   ripple and landing-splash code cost ~6% of the lab frame on SwiftShader and was folded into
   the floater map. The bobber is stamped by `setFloaters`, so `setBobber` must come first.
 - Lace anti-aliasing uses an analytic pixel footprint rather than `fwidth`, tuned by eye
-  (`isoAA = foot * 1.2`, coverage floors .5). Lines far away are dimmer and thinner than in the
+  (`isoAA = foot * 1.2`, coverage floors .5, falling to 0 at grazing views). Lines far away are dimmer and thinner than in the
   first pass, by design.
 - The baked noise tiles every 64 cells (30 m for the first lace octave); with two octaves at a
   non-integer ratio and different drifts, no repeat was visible in the shots.
 - Contact foam knows only the raft tiles, the items and the bobber. Swimmers and the islands'
   shores get none (that needs tier B).
-- The raft SDF assumes the raft does not move or turn in x/z, which is true today. If the raft
-  ever drifts, call `setRaftPose(x, z, yaw)`; a new yaw re-bakes, because the shadow offset is
-  baked in raft space. The shadow also bakes the sun direction and `deckLift` at `setRaft` time.
+- The raft never moves or turns in x/z in the current game (sailing moves the water and the world
+  instead), and `setRaftPose` is called every frame anyway: it returns at once while the pose is
+  unchanged; a turn re-bakes the shadow channel once per degree. The shadow follows the sun by
+  re-baking every 1.5 degrees of sun movement; between re-bakes it lags by up to 1.5 degrees.
+- The lace noise and ripples use `mod(uFlow, 512)` like `dist/ocean.js`, so after every 512 m of
+  sailing the fine detail jumps once (the waves themselves do not).
 - Glitter is a per-cell flash (one point per ~11 cm cell), so up close it can read as a regular
   dot field, especially in the high `over` view.
+
+## Retarget onto the current dist (sailing, day/night, diving, islands, quality)
+
+Checked against `claude/raft-tech` 20fed47 (`game.js` 1780 lines). What changed in `dist/` and what the
+water does about it:
+
+- **`dist/ocean.js` itself** gained `uniforms.uFlow` (sailing offset, added to the wave coordinates in the
+  vertex shader and in `getHeight`), an allocation-free CPU wave table, `getSlope(..., out)` and
+  `sample(x, z, out, t, e)`, and lost `uCamera`. `water.js` now carries the same CPU code (with `setAmp`
+  rescaling its amplitude columns) and the same `uFlow` path; `parity.mjs` checks every key of the old
+  object and of its uniforms, and heights, slopes and `sample` over four `uFlow` offsets up to the
+  +-65536 wrap: worst difference 0 in 100,800 samples.
+- **Sailing** (`sailing-world.js`) writes `uFlow` every frame; the raft group stays at the origin. Waves,
+  crest lace, ripples, glitter and colour patches drift with `uFlow`; raft and item foam stay in world
+  space, so the raft visibly moves through drifting lace. `setRaftPose` is wired per frame for a future
+  moving raft (no cost today).
+- **Day/night** (`daynight.js`) rewrites `uSunDir`, `uSunColor`, `uFoam`, palette and `uFadeFar` every
+  frame. The water renormalises `uSunDir` and derives the horizontal sun direction in
+  `mesh.onBeforeRender` and re-bakes the shadow channel every 1.5 degrees (~0.3 to 0.6 ms for the
+  starter raft, every ~5 s; once when the light swaps to the moon).
+- **Lagoon** (`islands-models.js`) builds a material from `ocean.material.vertexShader` with only a few
+  shared uniforms and no defines. The water's own material now has the define `WATER_OCEAN`; without
+  it the vertex shader uses amplitude 1 and skips the raft texture, so the lagoon still rides the
+  default sea. The lagoon's own shore foam already marks the islands, so no island stamp was added
+  to the water (cheap to add later through `setFloaters`).
+- **Diving** (`diving.js`, `underwater-fx.js`) hides `ocean.mesh` while underwater and draws its own
+  ceiling; underwater shots are identical with and without the new water. The material is front-side
+  as before, so the fallback (fx failed, surface given back) looks as it does today.
+- **Quality** (`quality.js`): presets low / medium / high and an adaptive ladder of pixel ratio and
+  shadow map steps. `setQuality(preset)` maps `low` to `WATER_LOW` (no crest lace, no glitter, 2 of 5
+  ripple normals; contact foam, shadow and colour stay), wired to the user preset only because it
+  recompiles the shader.
+- **Fishing**: three things float on a line now (game rod float `bobber`, scrap `hookMesh`,
+  fishing-v2's `fcBobber`); the first visible one gets bobber lace.
+- **Bugs found and fixed while shooting the bigger default raft**: the raft SDF was the min of per-tile
+  boxes, which is ~0 along every internal tile seam, so the water seen through plank gaps showed white
+  foam lines; the bake now computes the true inside distance (minus the distance to the nearest
+  empty cell), and foam stops at the deck edge. At a swimmer's eye the lace coverage floor turned the
+  whole raft lace band into a white sheet; the floor now drops to 0 at grazing views.
+
+Numbers (same box, load average 35 to 50, SwiftShader, GPU-process CPU ms per frame):
+
+| | cur (dist/ocean.js) | new | x |
+|---|---:|---:|---:|
+| lab `fp`, interleaved (cur / a before retarget / a / a + `WATER_LOW`) | 335 | 253 (prev 258, low 224) | 0.75 (low 0.67) |
+| game, `down` (deck, raft edge and items), 40 frames | 1189 | 1134 | 0.95 |
+| game, night, 20 frames | 1066 | 1066 | 1.00 |
+| game, underwater, 20 frames (ocean hidden) | 323 | 309 | 0.96 |
+
+The current dist ocean got slower in the lab than when tier A was first measured (236 then, 335 now
+against tier A's ~250): its new early `return` past `uFadeFar` and the `if` around the ripples and lace
+run both paths on SwiftShader, which does not skip untaken branches. Game draw calls 140 to 148 either
+way (they vary with visible items), programs 38 both, textures +3 (raft SDF, floater map, noise).
+`npm test`: 532 / 533 pass patched and unpatched; the one failure (`atlas: ... the build stays fast`) is a
+timing test that fails on this loaded box either way.
+
+Shots (`python sandbox/water/shoot_game.py cur|new <out>`): `*-title, -spawn, -down, -cast, -noon,
+-dusk, -night, -swim, -under, -under-up, -sail`.
