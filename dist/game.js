@@ -223,7 +223,7 @@ export function mount(transfer = null) {
     resCheckAt = now + (next < resScale ? 1000 : 3000);
     if (next !== resScale) { resScale = +next.toFixed(2); renderer.setPixelRatio(baseRatio * resScale); }
   }
-  let netClock = 0, saveClock = 0, networkTick = 0, wheelAcc = 0;
+  let netClock = 0, saveClock = 0, networkTick = 0, wheelAcc = 0, lastDraw = 0;
   let contextCache = null, uiFailed = false;
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
@@ -989,9 +989,13 @@ export function mount(transfer = null) {
     if (conn?.open) { networkTick += dt; if (networkTick > .12) { networkTick = 0; send(role === 'host' ? hostState() : {type:'move', me:pose()}); } }
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     refreshPointerUI(); updateCharge(); updateContext(dialog); warmKinds();
+    // Behind a blurred pause/settings backdrop the world only redraws at ~10 fps (the inventory has no blur).
+    const veiled = dialog && !!document.querySelector('dialog[open]:not(#inventory)');
+    if (veiled && now - lastDraw < 100) return;
+    lastDraw = now;
     renderer.render(scene, camera);
     cpuMsAvg += (performance.now() - now - cpuMsAvg) * .05;
-    adaptResolution(now);
+    if (!veiled) adaptResolution(now);
   }
   function animate() {
     if (!active || disposed) return;
