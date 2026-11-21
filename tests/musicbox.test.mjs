@@ -330,7 +330,7 @@ test('9. items, craft book, icon, settings and content hooks', async () => {
   assert.equal(BLOCK_RADII.musicbox, 0.2);
   const { ITEM_TEXT, categoryOf } = await import(new URL('craft-book.js', base));
   assert.ok(ITEM_TEXT.musicbox?.desc && ITEM_TEXT.musicbox?.use);
-  assert.equal(categoryOf('musicbox'), 'survival');
+  assert.equal(categoryOf('musicbox'), 'other');
   const { ITEM_ICONS } = await import(new URL('item-svg.js', base));
   assert.ok(ITEM_ICONS.musicbox && ITEM_ICONS.musicbox.includes('#ffbd66'));
   const { validateSettings } = await import(new URL('settings.js', base));
