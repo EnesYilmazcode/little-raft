@@ -9,6 +9,7 @@
 //   - toasts (optional, `toasts:false` turns them off): pooled stack with merging ("Wood +2" -> "Wood +6")
 //   - stat bars: transform-only fill with a delayed lag trail on damage and a lead ghost on heal
 //   - crosshair: hover / charge ring / hit markers, built inside the existing #crosshair
+//     (`reticle:'markers'` keeps the host's own reticle and adds only the hit markers)
 //   - inventory dialog open/close and button press states (pure CSS, see CSS below)
 //
 // Rules: anything that MOVES (fly, bounce, slide, shake, fill, trail) animates transform/opacity only.
@@ -111,9 +112,13 @@ const STYLE = `
 @keyframes uf-low{to{opacity:.45}}
 
 /* ---- crosshair (built inside the existing #crosshair) ---- */
-#crosshair.uf-xh{width:40px;height:40px;margin:0;border:0;border-radius:0;background:none!important;filter:none;opacity:1;transform:translate(-50%,-50%)}
+#crosshair.uf-xh{width:40px;height:40px;margin:0;border:0;border-radius:0;background:none!important;box-shadow:none;filter:none;transition:none;opacity:1;transform:translate(-50%,-50%)}
+/* the host's own dot rules (e.g. graphics.css 4px dot + box-shadow, .usable growth) must not draw on the 40px box */
+#crosshair.uf-xh.usable{width:40px;height:40px;background:none!important}
 #crosshair.uf-xh::before,#crosshair.uf-xh::after{display:none}
 #crosshair.uf-xh>i:not(.uf-x){display:none}
+/* reticle:'markers': the host keeps its own reticle (dot, hover growth, charge ring); only the hit marker is added */
+#crosshair.uf-xm>.uf-x-hit{display:block;position:absolute;left:50%;top:50%;padding:0;background:none;box-shadow:none;border:0;border-radius:0;pointer-events:none}
 /* dist/style.css styles every "#crosshair i" as an 8px dot: reset it for our parts */
 #crosshair.uf-xh>.uf-x{display:block;position:absolute;left:50%;top:50%;margin:0;padding:0;background:none;box-shadow:none;border:0;border-radius:0;pointer-events:none}
 #crosshair.uf-xh>.uf-x-ring{width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;
@@ -125,7 +130,7 @@ const STYLE = `
 .uf-x-arc circle{fill:none;stroke-width:3}
 .uf-x-arc .bg{stroke:#0005}
 .uf-x-arc .fg{stroke:var(--uf-amber);stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;transform:rotate(-90deg);transform-origin:20px 20px}
-#crosshair.uf-xh>.uf-x-hit{width:34px;height:34px;margin:-17px 0 0 -17px;opacity:0}
+#crosshair.uf-xh>.uf-x-hit,#crosshair.uf-xm>.uf-x-hit{width:34px;height:34px;margin:-17px 0 0 -17px;opacity:0}
 .uf-x-hit>b{position:absolute;left:50%;top:50%;width:2px;height:8px;margin:-4px 0 0 -1px;border-radius:1px;background:var(--uf-cream);box-shadow:0 0 0 1px #0007}
 .uf-x-hit>b:nth-child(1){transform:rotate(45deg) translateY(-14px)}
 .uf-x-hit>b:nth-child(2){transform:rotate(135deg) translateY(-14px)}
@@ -215,6 +220,8 @@ export function createUIFeel({
   reducedMotion = 'auto',   // 'auto' | true | false
   toasts = true,            // false: no toast stack at all (the host game has its own feed); toast() is then a no-op
   hotbarCursor = 'auto',    // 'auto': own selection cursor + paint bumps only if the hotbar has no .sv-cursor | true | false
+  reticle = 'full',         // 'full': ring + dot + charge arc + hit markers replace #crosshair's look
+                            // 'markers': leave the host's reticle alone, add only the hit/gold/deny markers
 } = {}) {
   const prev = window[INST_KEY];
   if (prev && typeof prev.destroy === 'function') { try { prev.destroy(); } catch (e) { console.error(e); } }
@@ -489,7 +496,7 @@ export function createUIFeel({
       const u = i / N, t = u * u; // ease-in along the curve
       const x = (1 - t) * (1 - t) * sx + 2 * (1 - t) * t * cx + t * t * tx;
       const y = (1 - t) * (1 - t) * (sy - 32) + 2 * (1 - t) * t * cy + t * t * ty;
-      const s = 1.1 + (endScale - 1.1) * t;
+      const s = 1.1 + (endScale - 1.1) * t * t; // shrink only in the last stretch: still ~3/4 size 600 ms in, not a speck
       out.push({ transform: `translate3d(${x.toFixed(1)}px,${y.toFixed(1)}px,0) scale(${s.toFixed(3)})`, opacity: i === N ? .0 : 1, offset: .3 + .7 * u });
     }
     out[out.length - 2].opacity = 1;
@@ -692,11 +699,13 @@ export function createUIFeel({
 
   // ---------- crosshair ----------
   let xh = null, xhArc = null, xhHit = null, xhHover = false, xhCharge = -1, xhFull = false;
+  const markersOnly = reticle === 'markers';
   function attachCrosshair(c = document.getElementById('crosshair')) {
     if (!c) return false;
     xh = c;
-    c.classList.add('uf-xh');
     c.querySelectorAll(':scope>.uf-x').forEach(n => n.remove());
+    if (markersOnly) { c.classList.add('uf-xm'); c.insertAdjacentHTML('beforeend', '<i class="uf-x uf-x-hit"><b></b><b></b><b></b><b></b></i>'); xhHit = c.querySelector('.uf-x-hit'); xhArc = null; return true; }
+    c.classList.add('uf-xh');
     c.insertAdjacentHTML('beforeend', '<i class="uf-x uf-x-ring"></i><i class="uf-x uf-x-dot"></i>' +
       '<svg class="uf-x uf-x-arc" viewBox="0 0 40 40"><circle class="bg" cx="20" cy="20" r="16"/><circle class="fg" cx="20" cy="20" r="16" pathLength="100"/></svg>' +
       '<i class="uf-x uf-x-hit"><b></b><b></b><b></b><b></b></i>');
@@ -705,10 +714,10 @@ export function createUIFeel({
     return true;
   }
   const crosshairRaw = {
-    hover(on) { on = !!on; if (!xh || on === xhHover) return; xhHover = on; xh.classList.toggle('uf-hover', on); },
+    hover(on) { on = !!on; if (!xh || markersOnly || on === xhHover) return; xhHover = on; xh.classList.toggle('uf-hover', on); },
     // v in 0..1 while charging, null/negative when not
     charge(v) {
-      if (!xh) return;
+      if (!xh || markersOnly) return;
       const c = v == null || v < 0 ? -1 : clamp01(v);
       if (c === xhCharge) return;
       if ((c < 0) !== (xhCharge < 0)) xh.classList.toggle('uf-charging', c >= 0);
@@ -728,7 +737,12 @@ export function createUIFeel({
         ? [{ opacity: 1 }, { opacity: 0 }]
         : [{ opacity: 1, transform: 'scale(.55) rotate(0deg)' }, { opacity: 1, transform: 'scale(1.08) rotate(0deg)', offset: .35 }, { opacity: 0, transform: 'scale(1.25) rotate(0deg)' }],
       { duration: rm ? 200 : 300, easing: 'ease-out' });
-      if (!rm) xh.querySelector('.uf-x-ring').animate(kind === 'deny'
+      // markers mode: nudge the host's own reticle with the independent `scale`/`translate` properties, so its
+      // transform (graphics.css centres #crosshair with translate(-50%,-50%)) is never touched
+      if (!rm && markersOnly) xh.animate(kind === 'deny'
+        ? [{ translate: '0 0' }, { translate: '-3px 0' }, { translate: '3px 0' }, { translate: '0 0' }]
+        : [{ scale: '1.6' }, { scale: '1' }], { duration: 240, easing: kind === 'deny' ? 'linear' : BACK });
+      else if (!rm) xh.querySelector('.uf-x-ring').animate(kind === 'deny'
         ? [{ transform: 'translateX(0)' }, { transform: 'translateX(-3px)' }, { transform: 'translateX(3px)' }, { transform: 'translateX(0)' }]
         : [{ transform: 'scale(1.45)' }, { transform: 'scale(1)' }], { duration: 240, easing: kind === 'deny' ? 'linear' : BACK, composite: 'add' });
     },
@@ -775,7 +789,7 @@ export function createUIFeel({
       layer.remove(); stack?.remove(); st.remove();
       for (const k of ['--uf-hbx', '--uf-hbw', '--uf-hbt']) document.documentElement.style.removeProperty(k);
       tools?.classList.remove('uf-has-cursor');
-      if (xh) { xh.classList.remove('uf-xh', 'uf-hover', 'uf-charging', 'uf-full'); xh.querySelectorAll(':scope>.uf-x').forEach(n => n.remove()); }
+      if (xh) { xh.classList.remove('uf-xh', 'uf-xm', 'uf-hover', 'uf-charging', 'uf-full'); xh.querySelectorAll(':scope>.uf-x').forEach(n => n.remove()); }
       document.documentElement.classList.remove('uf-rm');
       if (window[INST_KEY] === api) window[INST_KEY] = null;
     },
