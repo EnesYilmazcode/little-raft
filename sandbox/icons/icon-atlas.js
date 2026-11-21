@@ -135,7 +135,7 @@ export async function bakeIconAtlas(T, renderer, items, {
   size = 96, ss = 2, pad = 1.1, cols = 0,
   outlinePx = 2.6, outline = [0.055, 0.15, 0.18, 0.95],   // navy #0e2630-ish, same family as icons.svg #153e49
   shadow = [0.0, 0.0, 0.0, 0.38], shadowOff = [2.2, 2.6, 1.3],
-  exposure = 0.9, cacheKey = '', yieldEvery = 1, onTile = null,
+  exposure = 0.9, cacheKey = '', yieldEvery = 1, onTile = null, precompile = false,
 } = {}) {
   const t0 = performance.now();
   const cached = readIconCache(cacheKey);
@@ -159,6 +159,16 @@ export async function bakeIconAtlas(T, renderer, items, {
   const quad = new T.Mesh(new T.PlaneGeometry(2, 2), quadMat); quad.frustumCulled = false;
   const quadScene = new T.Scene(); quadScene.add(quad);
   const quadCam = new T.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  // Build every model up front and compile all their programs (plus the resolve quad) with
+  // compileAsync, so shader compiles happen off the frame (KHR_parallel_shader_compile) instead of
+  // inside the first tiles' draws. Off by default: on SwiftShader (no parallel compile) it turned
+  // one 11 s hitch into one 17 s hitch. Worth enabling where KHR_parallel_shader_compile exists.
+  const built = precompile && renderer.compileAsync ? items.map(it => it.make()) : null;
+  if (built) {
+    built.forEach(o => o && stage.pivot.add(o));
+    try { await renderer.compileAsync(stage.scene, stage.camera); await renderer.compileAsync(quadScene, quadCam); } catch {}
+    stage.pivot.clear();
+  }
   const setupMs = performance.now() - t0;
 
   const info = renderer.info, prevAuto = info.autoReset;
@@ -177,7 +187,7 @@ export async function bakeIconAtlas(T, renderer, items, {
 
   for (let i = 0; i < n; i++) {
     const it = items[i], ti = performance.now();
-    const obj = it.make();
+    const obj = built ? built[i] : it.make();
     if (!obj) continue;
     frame(T, stage, obj, it.pose || {}, pad);
     const col = i % cols, row = Math.floor(i / cols);

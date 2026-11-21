@@ -3,7 +3,7 @@ import { createWoodMaterial } from '../../dist/wood.js';
 import { createCraft } from '../../dist/crafts.js';
 import { ITEM_INFO } from '../../dist/inventory-state.js';
 import { bakeIconAtlas, readIconCache } from './icon-atlas.js';
-import { makeIconItems } from './item-models.js';
+import { makeIconItems, bakeItemIcons } from './item-models.js';
 
 const q = new URLSearchParams(location.search);
 const MODE = q.get('mode') || 'sheet';
@@ -65,13 +65,14 @@ async function bake() {
   tag = 'post';
   await wait(600);
   report.stats = res.stats;
-  report.frames = { steady: frameStats('steady'), duringBake: frameStats('bake'), afterBake: frameStats('post') };
+  report.frames = { steady: frameStats('steady'), duringBake: frameStats('bake'), afterBake: frameStats('post'), bakeFrameList: frames.filter(x => x[0] === 'bake').map(x => Math.round(x[1])) };
   report.infoAfterBake = infoSnap();
-  // cache round trip: write once, time a hit
+  // engine entry point + cache round trip: first call bakes and stores, second is a cache hit
   try { localStorage.clear(); } catch {}
-  await bakeIconAtlas(T, renderer, makeIconItems(T, mat), { size: SIZE, cacheKey: 'sandbox' });
-  const tc = performance.now(); const hit = readIconCache('sandbox');
-  report.cacheHitMs = +(performance.now() - tc).toFixed(2); report.cacheHit = !!hit;
+  await bakeItemIcons(T, renderer, mat, 'sandbox', KINDS);
+  const tc = performance.now(); const urls = await bakeItemIcons(T, renderer, mat, 'sandbox', KINDS);
+  report.cacheHitMs = +(performance.now() - tc).toFixed(2); report.cacheHit = !!readIconCache('sandbox');
+  res.blobUrls = urls;
   return res;
 }
 
@@ -117,7 +118,7 @@ function fakeBag() {
 }
 async function buildUI(res) {
   const ui = await import('./_patched/survival-ui.js');
-  if (res && !q.has('svg')) ui.setItemIcons(res.urls);
+  if (res && !q.has('svg')) ui.setItemIcons(res.blobUrls);
   const bag = fakeBag();
   const api = ui.createSurvivalUI({ getBag: () => bag });
   api.update();

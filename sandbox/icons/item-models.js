@@ -18,7 +18,16 @@ import { bakeIconAtlas } from './icon-atlas.js';
 export async function bakeItemIcons(T, renderer, getMaterial, build = 'dev', kinds = null) {
   const items = makeIconItems(T, getMaterial).filter(it => !kinds || kinds.includes(it.kind));
   const res = await bakeIconAtlas(T, renderer, items, { cacheKey: build && build !== 'dev' ? build : '' });
-  return res.urls;
+  // data: URLs are what gets cached; hand the DOM short blob: URLs so innerHTML stays small.
+  const out = {};
+  for (const [k, u] of Object.entries(res.urls)) {
+    try {
+      const bin = atob(u.slice(u.indexOf(',') + 1)), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      out[k] = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
+    } catch { out[k] = u; }
+  }
+  return out;
 }
 
 // Icon pose per kind (degrees, applied in ZXY order with the camera fixed on +Z).
