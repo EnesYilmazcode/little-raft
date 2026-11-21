@@ -167,6 +167,7 @@ const CSS = `
 #inventory .sv-recipe:hover:not(:disabled){background:linear-gradient(#7a5631,#5d4026);box-shadow:inset 0 0 0 1px #ffe3a6}
 #inventory .sv-recipe:active:not(:disabled){background:#4a3220}
 #inventory .sv-recipe:disabled{cursor:not-allowed;opacity:.6}
+#inventory .sv-recipe.sv-locked{opacity:.42;filter:grayscale(.85)} /* [progression-hook] */
 #inventory .sv-recipe:focus-visible{outline:2px solid #ffe3a6;outline-offset:1px}
 #inventory .sv-rart{display:grid;place-items:center;width:44px;height:44px;border-radius:3px;background:#24170caa;box-shadow:inset 0 0 0 1px #d4b07a33}
 #inventory .sv-rart .sv-icon{width:34px;height:34px}
@@ -339,6 +340,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       });
       view.el.disabled = !ok;
       const lacking = r.reqs.some((q, k) => owned[k] < q.count);
+      view.el?.classList?.toggle('sv-locked', locked); // [progression-hook]
       view.why.textContent = locked ? 'Locked: ' + (g.reason || 'not learned yet') : !ok && !lacking && full ? 'No room in inventory' : ''; // [progression-hook]
       view.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${r.reqs.map((q, k) => `${q.count} ${itemName(q.kind)}, have ${owned[k]}`).join('; ') || 'nothing'}.${ok ? ' Craft.' : full && !lacking ? ' Inventory full.' : ' Missing materials.'}`);
     });
