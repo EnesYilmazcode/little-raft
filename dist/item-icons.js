@@ -1,154 +1,206 @@
-// Little Raft item icons: renders each item's real Three.js model once to a small offscreen canvas
-// and caches the PNG data URL. One short-lived WebGL context per batch; it is released right after.
-// Usage: const icons = createItemIcons(THREE); icons.get('hammer') -> 'data:image/png;...' | null.
-// null (unknown kind, no WebGL, model failure) means the caller should fall back to an SVG icon.
-import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
+// Little Raft item icons: each item kind is rendered ONCE as a lit 3/4 view on a transparent
+// background by a small dedicated WebGL renderer, then cached as a PNG data URL.
+// The renderer is created lazily, works through a queue in idle time, and is released once the
+// queue drains. Models come from setModelProvider(fn) (fn(kind) -> Object3D | null, e.g. models.js
+// getModel; never disposed here) and fall back to the game's own procedural models.
+// Public API: getItemIcon(kind) (sync, data URL or null while rendering / without WebGL),
+// loadItemIcon(kind) (Promise of the same), warmIcons, onIconReady, setModelProvider.
+import * as T from './vendor/three.module.js';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
+import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 
-const DECOR = new Set(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
-export const ICON_KINDS = Object.freeze(['wood', 'leaf', 'plastic', 'scrap', 'rope', 'fish', 'hook', 'hammer', 'fishingrod', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
+const SIZE = 128;
+// Item ids whose name differs from the models.js kind.
+const MODEL_ALIAS = { fishingrod: 'rod' };
+const RELEASE_MS = 2500;
 
-// Small procedural stand-ins for items that have no world model of their own.
-function ropeCoil(T) {
-  const g = new T.Group();
-  const m = new T.MeshStandardMaterial({ color: 0xb58a55, roughness: 0.95 });
-  const dark = new T.MeshStandardMaterial({ color: 0x8a6640, roughness: 1 });
-  for (let i = 0; i < 4; i++) {
-    const t = new T.Mesh(new T.TorusGeometry(0.34 - i * 0.012, 0.055, 10, 40), i % 2 ? dark : m);
-    t.rotation.x = Math.PI / 2; t.position.y = i * 0.09; g.add(t);
+const cache = new Map();   // kind -> data URL ('' = failed, use the SVG)
+const queued = new Set();
+const listeners = new Set();
+const waiters = new Map(); // kind -> [resolve] for loadItemIcon
+let provider = null;
+let gl = null, scene = null, camera = null, failed = false, releaseTimer = 0, pumping = false;
+
+// Per-kind display pose (radians) so long tools read diagonally like a hotbar icon.
+const POSE = {
+  hook: [0, 0.7, -0.2], hammer: [0, 0.5, -0.75], fishingrod: [0, 0.3, -0.8],
+  plastic: [0, 0.4, 0.5], fish: [0, -0.4, 0.15], rope: [0.9, 0, 0.2],
+  wood: [0, -0.35, 0.12], leaf: [0.5, 0.4, 0], scrap: [0.3, 0.4, 0],
+  net: [0.55, 0.5, 0], bench: [0, 0.5, 0], crate: [0, 0.5, 0],
+};
+// models.js tools stand upright (grip at origin, working end +Y): tilt them onto the diagonal.
+const PROVIDER_POSE = { hook: [0, 0.5, -0.75] };
+
+// ---------- fallback models ----------
+const mats = new Map(), shared = new Set();
+const mat = c => { let m = mats.get(c); if (!m) { mats.set(c, m = new T.MeshStandardMaterial({ color: c, roughness: 0.8 })); shared.add(m); } return m; };
+
+function ropeModel() {
+  const g = new T.Group(), a = mat('#c99a5c'), b = mat('#8f6a3c');
+  for (let i = 0; i < 3; i++) {
+    const t = new T.Mesh(new T.TorusGeometry(0.34 - i * 0.015, 0.055, 8, 28), i % 2 ? b : a);
+    t.position.y = i * 0.09; t.rotation.x = Math.PI / 2; g.add(t);
   }
-  const tail = new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3([
-    new T.Vector3(0.33, 0.27, 0), new T.Vector3(0.45, 0.2, 0.15), new T.Vector3(0.5, 0.02, 0.32)]), 16, 0.05, 8), m);
-  g.add(tail);
+  const tail = new T.Mesh(new T.CylinderGeometry(0.05, 0.05, 0.4, 8), a);
+  tail.position.set(0.38, 0.05, 0.12); tail.rotation.z = 1.2; g.add(tail);
   return g;
 }
-function fishModel(T) {
+function woodModel() {
   const g = new T.Group();
-  const body = new T.MeshStandardMaterial({ color: 0x6aa6b4, roughness: 0.45, metalness: 0.2 });
-  const belly = new T.MeshStandardMaterial({ color: 0xe8e0c4, roughness: 0.6 });
-  const fin = new T.MeshStandardMaterial({ color: 0x3f7b8c, roughness: 0.6, side: T.DoubleSide });
-  const b = new T.Mesh(new T.SphereGeometry(0.3, 24, 16), body); b.scale.set(1.6, 0.85, 0.5); g.add(b);
-  const u = new T.Mesh(new T.SphereGeometry(0.28, 24, 16, 0, Math.PI * 2, Math.PI * 0.55, Math.PI * 0.45), belly); u.scale.set(1.55, 0.8, 0.48); g.add(u);
-  const tail = new T.Mesh(new T.ConeGeometry(0.22, 0.32, 3), fin); tail.rotation.z = Math.PI / 2; tail.scale.z = 0.25; tail.position.x = -0.58; g.add(tail);
-  const top = new T.Mesh(new T.ConeGeometry(0.12, 0.22, 3), fin); top.scale.z = 0.2; top.position.set(0.02, 0.27, 0); g.add(top);
-  const eye = new T.Mesh(new T.SphereGeometry(0.04, 10, 8), new T.MeshStandardMaterial({ color: 0x14232a, roughness: 0.2 }));
-  eye.position.set(0.33, 0.06, 0.13); g.add(eye);
+  [[-0.13, 0, 0.04, '#bb8a53'], [0.13, 0, -0.05, '#ad7c4a'], [0.01, 0.1, 0.22, '#c69860']].forEach(([z, y, ry, c]) => {
+    const p = new T.Mesh(new T.BoxGeometry(1.2, 0.09, 0.22), mat(c)); p.position.set(0, y, z); p.rotation.y = ry; g.add(p);
+  });
+  return g;
+}
+function fishModel() {
+  const g = new T.Group(), skin = mat('#6f9fb4'), fin = mat('#4e7d92');
+  const body = new T.Mesh(new T.SphereGeometry(0.5, 16, 12), skin); body.scale.set(1, 0.46, 0.26); g.add(body);
+  const belly = new T.Mesh(new T.SphereGeometry(0.42, 14, 10), mat('#e8dfc4')); belly.scale.set(0.9, 0.3, 0.22); belly.position.y = -0.07; g.add(belly);
+  const tail = new T.Mesh(new T.ConeGeometry(0.2, 0.3, 4), fin); tail.rotation.z = Math.PI / 2; tail.scale.z = 0.25; tail.position.x = -0.6; g.add(tail);
+  const dorsal = new T.Mesh(new T.ConeGeometry(0.12, 0.2, 3), fin); dorsal.scale.z = 0.2; dorsal.position.set(0.02, 0.24, 0); g.add(dorsal);
+  for (const z of [-0.12, 0.12]) { const eye = new T.Mesh(new T.SphereGeometry(0.045, 8, 6), mat('#1b2328')); eye.position.set(0.34, 0.06, z); g.add(eye); }
   return g;
 }
 
-function buildModel(T, kind, mat) {
-  if (DECOR.has(kind)) return createCraft(T, kind);
-  if (kind === 'hook') return createHook(T);
-  if (kind === 'hammer') { const g = createHammer(T); g.rotation.z = -0.6; return g; }
-  if (kind === 'fishingrod') { const g = createFishingTool(T); g.rotation.z = -0.75; return g; }
-  if (kind === 'plastic') return createPlastic(T);
-  if (kind === 'wood' || kind === 'leaf' || kind === 'scrap') return createDebris(T, kind, mat, { seed: 11 });
-  if (kind === 'rope') return ropeCoil(T);
-  if (kind === 'fish') return fishModel(T);
+export function buildFallbackModel(kind) {
+  switch (kind) {
+    case 'hook': return createHook(T);
+    case 'hammer': return createHammer(T);
+    case 'fishingrod': return createFishingTool(T);
+    case 'plastic': return createPlastic(T);
+    case 'rope': return ropeModel();
+    case 'fish': return fishModel();
+    case 'wood': return woodModel();
+    case 'leaf': case 'scrap': return createDebris(T, kind, mat, { seed: 7, tilt: 0 });
+    default: return createCraft(T, kind);
+  }
+}
+
+// ---------- renderer ----------
+function ensureGL() {
+  if (gl || failed) return !!gl;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = SIZE;
+    gl = new T.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true, powerPreference: 'low-power' });
+    gl.setPixelRatio(1);
+    gl.setSize(SIZE, SIZE, false);
+    gl.setClearColor(0x000000, 0);
+    gl.toneMapping = T.ACESFilmicToneMapping;
+    gl.toneMappingExposure = 1.15;
+  } catch (e) { failed = true; gl = null; console.warn('item icons: no WebGL, using flat icons', e); return false; }
+  if (!scene) {
+    scene = new T.Scene();
+    scene.add(new T.HemisphereLight(0xfff3dc, 0x3b2a1a, 1.5));
+    const key = new T.DirectionalLight(0xfff0d8, 2.6); key.position.set(3, 5, 4); scene.add(key);
+    const rim = new T.DirectionalLight(0x9fd8ff, 1.3); rim.position.set(-4, 2, -3); scene.add(rim);
+    camera = new T.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+  }
+  return true;
+}
+
+function release() {
+  releaseTimer = 0;
+  if (!gl) return;
+  try { gl.dispose(); gl.forceContextLoss(); } catch {}
+  gl = null;
+}
+
+const _box = new T.Box3(), _sphere = new T.Sphere(), _v = new T.Vector3(), _dir = new T.Vector3(1, 0.85, 1.35).normalize();
+
+function freeModel(root) {
+  root.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    const m = o.material; if (!m) return;
+    for (const x of Array.isArray(m) ? m : [m]) if (!shared.has(x)) { x.map?.dispose(); x.dispose(); }
+  });
+}
+
+function renderKind(kind) {
+  if (!ensureGL()) return '';
+  let model = null, own = false;
+  if (provider) { try { model = provider(MODEL_ALIAS[kind] || kind) || provider(kind) || null; } catch (e) { console.warn('item icon provider failed', kind, e); } }
+  if (!model) { try { model = buildFallbackModel(kind); own = true; } catch (e) { console.warn('item icon model failed', kind, e); } }
+  if (!model) return '';
+  const pivot = new T.Group();
+  pivot.add(model);
+  const p = (own ? null : PROVIDER_POSE[kind]) || POSE[kind]; if (p) pivot.rotation.set(p[0], p[1], p[2]);
+  pivot.updateMatrixWorld(true);
+  _box.setFromObject(pivot, true);
+  if (_box.isEmpty()) { if (own) freeModel(model); return ''; }
+  _box.getBoundingSphere(_sphere);
+  pivot.position.sub(_sphere.center);
+  _box.translate(_v.copy(_sphere.center).negate());
+  // Orthographic 3/4 view framed tightly on the item's projected bounds, so long tools fill the slot.
+  const r = _sphere.radius;
+  camera.position.copy(_dir).multiplyScalar(r * 4);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let i = 0; i < 8; i++) {
+    _v.set(i & 1 ? _box.max.x : _box.min.x, i & 2 ? _box.max.y : _box.min.y, i & 4 ? _box.max.z : _box.min.z).applyMatrix4(camera.matrixWorldInverse);
+    x0 = Math.min(x0, _v.x); x1 = Math.max(x1, _v.x); y0 = Math.min(y0, _v.y); y1 = Math.max(y1, _v.y);
+  }
+  const half = Math.max(x1 - x0, y1 - y0) * 0.5 * 1.06, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  camera.left = cx - half; camera.right = cx + half; camera.top = cy + half; camera.bottom = cy - half;
+  camera.near = r; camera.far = r * 7;
+  camera.updateProjectionMatrix();
+  scene.add(pivot);
+  let url = '';
+  try { gl.render(scene, camera); url = gl.domElement.toDataURL('image/png'); }
+  catch (e) { console.warn('item icon render failed', kind, e); }
+  scene.remove(pivot);
+  if (own) freeModel(model);
+  return url;
+}
+
+// ---------- queue ----------
+const idle = typeof requestIdleCallback === 'function' ? cb => requestIdleCallback(cb, { timeout: 120 }) : cb => setTimeout(cb, 16);
+
+function pump() {
+  pumping = false;
+  const it = queued.values().next();
+  if (it.done) return;
+  const kind = it.value;
+  queued.delete(kind);
+  if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = 0; }
+  const url = renderKind(kind);
+  cache.set(kind, url);
+  const w = waiters.get(kind); if (w) { waiters.delete(kind); for (const r of w) r(url || null); }
+  if (url) for (const fn of listeners) { try { fn(kind, url); } catch (e) { console.error(e); } }
+  if (queued.size) schedule();
+  else if (gl) releaseTimer = setTimeout(release, RELEASE_MS);
+}
+function schedule() { if (!pumping) { pumping = true; idle(pump); } }
+
+/** Cached icon URL for kind, or null while it renders (it is queued; listeners fire when ready). */
+export function iconURL(kind) {
+  if (!kind) return null;
+  const hit = cache.get(kind);
+  if (hit !== undefined) return hit || null;
+  if (failed) return null;
+  if (!queued.has(kind)) { queued.add(kind); schedule(); }
   return null;
 }
-
-// Per-kind view tweaks: [yaw, pitch] of the camera direction.
-const VIEW = { net: [0.6, 0.95], wood: [0.7, 0.75], leaf: [0.5, 0.9], scrap: [0.6, 0.7], rope: [0.4, 0.65], fish: [0.0, 0.15], hook: [-0.35, 0.15], hammer: [1.2, 0.2], fishingrod: [0.6, 0.1] };
-
-function disposeTree(o) {
-  const mats = new Set();
-  o.traverse(c => {
-    try { c.geometry?.dispose(); } catch {}
-    for (const m of [].concat(c.material || [])) mats.add(m);
-  });
-  for (const m of mats) { try { for (const v of Object.values(m)) if (v && v.isTexture) v.dispose(); m.dispose(); } catch {} }
+export const getItemIcon = iconURL;
+/** Promise of the icon URL (null if it cannot be rendered, e.g. no WebGL). */
+export function loadItemIcon(kind) {
+  const url = iconURL(kind);
+  if (url || !kind || cache.has(kind) || failed) return Promise.resolve(url);
+  return new Promise(r => { let w = waiters.get(kind); if (!w) waiters.set(kind, w = []); w.push(r); });
 }
-
-export function createItemIcons(T, { size = 96 } = {}) {
-  const cache = new Map(); // kind -> dataURL | null
-  let failed = false;
-
-  function renderBatch(kinds) {
-    const todo = kinds.filter(k => !cache.has(k));
-    if (!todo.length) return;
-    if (failed || typeof document === 'undefined') { for (const k of todo) cache.set(k, null); return; }
-    let renderer = null, envTarget = null;
-    const shared = new Map();
-    const mat = color => { if (!shared.has(color)) shared.set(color, new T.MeshStandardMaterial({ color, roughness: 0.85, metalness: 0 })); return shared.get(color); };
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = canvas.height = size;
-      renderer = new T.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true, powerPreference: 'low-power' });
-      renderer.setPixelRatio(1);
-      renderer.setSize(size, size, false);
-      renderer.setClearColor(0x000000, 0);
-      renderer.outputColorSpace = T.SRGBColorSpace;
-      renderer.toneMapping = T.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.05;
-      const scene = new T.Scene();
-      scene.add(new T.HemisphereLight(0xfff4dc, 0x6a5a48, 1.5));
-      const key = new T.DirectionalLight(0xffffff, 2.4); key.position.set(3, 5, 4); scene.add(key);
-      const rim = new T.DirectionalLight(0xbfe6ff, 1.4); rim.position.set(-4, 2, -3); scene.add(rim);
-      // Soft studio environment so metal parts reflect something instead of rendering black.
-      try {
-        const envScene = new T.Scene();
-        const geo = new T.SphereGeometry(5, 24, 12), cols = [], pos = geo.attributes.position;
-        const top = new T.Color(0xfff3dc), mid = new T.Color(0xb9c8cc), low = new T.Color(0x5a4636), c = new T.Color();
-        for (let i = 0; i < pos.count; i++) {
-          const y = pos.getY(i) / 5;
-          if (y > 0) c.copy(mid).lerp(top, y); else c.copy(mid).lerp(low, -y);
-          cols.push(c.r, c.g, c.b);
-        }
-        geo.setAttribute('color', new T.Float32BufferAttribute(cols, 3));
-        const envMat = new T.MeshBasicMaterial({ vertexColors: true, side: T.BackSide });
-        envScene.add(new T.Mesh(geo, envMat));
-        const pmrem = new T.PMREMGenerator(renderer);
-        envTarget = pmrem.fromScene(envScene, 0.04);
-        scene.environment = envTarget.texture;
-        scene.environmentIntensity = 0.6;
-        pmrem.dispose(); geo.dispose(); envMat.dispose();
-      } catch (e) { console.warn('icon environment', e); }
-      const cam = new T.PerspectiveCamera(28, 1, 0.01, 100);
-      const box = new T.Box3(), sphere = new T.Sphere(), dir = new T.Vector3();
-      for (const kind of todo) {
-        let model = null, url = null;
-        try {
-          model = buildModel(T, kind, mat);
-          if (model) {
-            const holder = new T.Group(); holder.add(model); scene.add(holder);
-            holder.updateMatrixWorld(true);
-            box.setFromObject(holder); box.getBoundingSphere(sphere);
-            const [yaw, pitch] = VIEW[kind] || [0.65, 0.42];
-            dir.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
-            const dist = sphere.radius / Math.sin((cam.fov * Math.PI / 180) / 2) * 0.92;
-            cam.position.copy(sphere.center).addScaledVector(dir, dist);
-            cam.near = Math.max(0.01, dist - sphere.radius * 2); cam.far = dist + sphere.radius * 2;
-            cam.updateProjectionMatrix(); cam.lookAt(sphere.center);
-            renderer.render(scene, cam);
-            url = canvas.toDataURL('image/png');
-            scene.remove(holder);
-          }
-        } catch (e) { console.warn('item icon failed', kind, e); url = null; }
-        if (model) disposeTree(model);
-        cache.set(kind, url);
-      }
-    } catch (e) {
-      console.warn('item icons unavailable', e);
-      failed = true;
-      for (const k of todo) if (!cache.has(k)) cache.set(k, null);
-    } finally {
-      for (const m of shared.values()) m.dispose();
-      if (envTarget) envTarget.dispose();
-      if (renderer) { try { renderer.dispose(); renderer.forceContextLoss(); } catch {} }
-    }
-  }
-
-  return {
-    get(kind) { const k = String(kind ?? ''); if (!cache.has(k)) renderBatch(ICON_KINDS.includes(k) ? ICON_KINDS : [k]); return cache.get(k) ?? null; },
-    prime(kinds = ICON_KINDS) { renderBatch([...kinds]); },
-    has(kind) { return cache.has(String(kind)); },
-    dispose() { cache.clear(); },
-  };
+/** Queue several kinds ahead of time (one render per idle slice). */
+export function warmIcons(kinds) { for (const k of kinds) iconURL(k); }
+/** Called with (kind, url) whenever an icon (re)renders. Returns an unsubscribe function. */
+export function onIconReady(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+/** Swap the model source (e.g. hands.js buildItemModel). Re-renders every icon seen so far. */
+export function setModelProvider(fn) {
+  provider = typeof fn === 'function' ? fn : null;
+  const kinds = [...cache.keys()];
+  cache.clear();
+  warmIcons(kinds);
 }
-
-export default createItemIcons;

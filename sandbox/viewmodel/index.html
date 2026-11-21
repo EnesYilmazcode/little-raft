@@ -3,16 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
 <title>Viewmodel Sandbox</title>
 <style>
+  body.nohud #hud { display: none; }
   html, body { margin: 0; height: 100%; background: #111; overflow: hidden; font: 13px/1.4 system-ui, sans-serif; color: #eee; }
   canvas { display: block; }
-  #hud { position: fixed; left: 12px; top: 10px; background: rgba(0,0,0,.55); padding: 8px 10px; border-radius: 6px; max-width: 420px; }
+  #hud { position: fixed; left: 12px; top: 10px; background: rgba(0,0,0,.55); padding: 8px 10px; border-radius: 6px; max-width: 420px; pointer-events: none; }
   #hud b { color: #ffd27a; }
 </style>
 </head>
 <body>
 <div id="hud"></div>
-<script type="module" src="./viewmodel.js"></script>
+<script type="module" src="./main.js"></script>
 </body>
 </html>

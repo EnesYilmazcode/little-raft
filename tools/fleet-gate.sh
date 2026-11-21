@@ -87,9 +87,7 @@ if has visual; then
   run_check visual "$PYTHON" "$here/tools/visual-diff.py" "${vargs[@]}" --out "$out/visual"
 fi
 if has perf; then
-  pargs=()
-  if [ -d "$work/base/dist" ] && "$PYTHON" "$here/tests/e2e/perf_gate.py" "$work/base/dist" --json "$out/perf-base.json" > "$out/perf-base.log" 2>&1; then pargs=(--baseline "$out/perf-base.json"); fi
-  run_check perf "$PYTHON" "$here/tests/e2e/perf_gate.py" "$head_dist" --json "$out/perf.json" "${pargs[@]}"
+  run_check perf "$PYTHON" "$here/tests/e2e/perf_gate.py" --dist "$head_dist" --out "$out/perf"
 fi
 if has electron; then
   run_check electron "$PYTHON" "$here/tests/e2e/electron_check.py" --dist "$head_dist" --out "$out/electron"
@@ -102,6 +100,6 @@ checks = [json.loads(l) for l in open(results) if l.strip()]
 statuses = {c['status'] for c in checks}
 status = 'fail' if 'fail' in statuses else 'infra' if 'infra' in statuses else 'pass'
 print(json.dumps({'ref': ref, 'sha': sha, 'base': base, 'pass': status == 'pass', 'status': status,
-                  'artifacts': out, 'checks': {c.pop('check'): c for c in checks}}))
+                  'artifacts': out, 'replay': f'GATE_KEEP=1 tools/fleet-gate.sh {sha}  # keeps the exported tree so tool repro paths stay valid', 'checks': {c.pop('check'): c for c in checks}}))
 sys.exit({'pass': 0, 'fail': 1, 'infra': 2}[status])
 PY

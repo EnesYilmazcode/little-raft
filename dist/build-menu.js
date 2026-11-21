@@ -69,7 +69,7 @@ const CSS = `
 .bm-hint kbd{font:700 10px/1 ${FONT};color:#ffdd95;border:1px solid #e0bd7155;border-radius:3px;padding:1px 3px}
 .bm-status{display:block;margin-top:3px;font:700 12px/1.2 ${FONT};color:#ffab8f}
 .bm-status:empty{display:none}
-@media(max-width:760px){.bm-chip{--bm-chip-bottom:150px;gap:8px;padding:5px 10px 5px 5px}.bm-chip>i{width:32px;height:32px}.bm-chip>i svg{width:22px;height:22px}
+@media(max-width:760px){.bm-chip{--bm-chip-bottom:118px;gap:8px;padding:5px 10px 5px 5px}.bm-chip>i{width:32px;height:32px}.bm-chip>i svg{width:22px;height:22px}
   .bm-mid b{font-size:14px;margin:3px 0 5px}.bm-req{font-size:12px}.bm-req em{display:none}.bm-mid small{font-size:8.5px}}
 @media(prefers-reduced-motion:reduce){.bm-wheel{transition:none}}`;
 

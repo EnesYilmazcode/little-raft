@@ -3,7 +3,10 @@
 //   T     : the THREE namespace (import * as T from './vendor/three.module.js')
 //   color : shirt / hat-band colour (any value accepted by THREE.Color)
 // Feet rest at y = 0, head centred at y ~1.6, eyes at y ~1.65, facing +Z.
-// All geometries and materials are created per avatar and owned by it;
+// group.userData.setHeld(kind)  shows a small model of the held item in the right hand
+//   (hook, hammer, fishingrod, wood, leaf, scrap, plastic, fish, decor kinds; anything else -> empty hand)
+// group.userData.animate(dt, {speed, swimming, pitch})  walk / swim cycle, arm raised while holding.
+// All geometries and materials are created per avatar and owned by it (held models lazily, once per kind);
 // call group.userData.dispose() to free them.
 
 export function createAvatar(T, color) {
@@ -91,8 +94,9 @@ export function createAvatar(T, color) {
     const sleeve = add(shoulder, sleeveGeo, M.shirt, 0, -0.03, 0);
     sleeve.scale.set(1, 1.25, 1);
     add(shoulder, armGeo, M.skin, 0, -0.25, 0);
-    add(shoulder, handGeo, M.skin, 0, -0.5, 0.01);
+    const hand = add(shoulder, handGeo, M.skin, 0, -0.5, 0.01);
     root.add(shoulder);
+    shoulder.userData.hand = hand;
     return shoulder;
   };
   const leftArm = makeArm(1);
@@ -154,7 +158,83 @@ export function createAvatar(T, color) {
     strap.rotation.x = -0.05;
   }
 
+  // ---- held item (third-person scale, built on first use, kept per kind) ----
+  // Grip space: hand at origin, handle along +Z (a closed fist), so with the arm raised forward
+  // tools point up and ahead of the avatar.
+  const grip = new T.Group();
+  grip.name = 'held';
+  grip.position.set(0, -0.52, 0.03);
+  grip.scale.setScalar(1.35);
+  rightArm.add(grip);
+  const H = {
+    wood: mat('#b98a55', { roughness: 0.9 }), woodDark: mat('#8a6239', { roughness: 0.9 }),
+    rope: mat('#d8c28a', { roughness: 1 }), metal: mat('#9aa4ab', { roughness: 0.4, metalness: 0.6 }),
+    leaf: mat('#5f9f4f', { roughness: 0.8, side: T.DoubleSide }), plastic: mat('#e6eef2', { roughness: 0.5 }),
+    fish: mat('#6fa3c7', { roughness: 0.5 }), cloth: mat('#f3ead6', { roughness: 0.9, side: T.DoubleSide }),
+    lamp: mat('#ffd27a', { emissive: '#ffb347', emissiveIntensity: 0.8 }),
+  };
+  const box = (g, w, h, d, m, x, y, z) => add(g, geo(new T.BoxGeometry(w, h, d)), m, x, y, z);
+  const rod = (g, r, len, m, x, y, z, rx = Math.PI / 2) => { const c = add(g, geo(new T.CylinderGeometry(r, r, len, 6)), m, x, y, z); c.rotation.x = rx; return c; };
+  const BUILD = {
+    hook(g) { // plank handle, rope wrap, three metal tines
+      rod(g, 0.022, 0.42, H.wood, 0, 0, 0.12);
+      rod(g, 0.026, 0.1, H.rope, 0, 0, 0);
+      for (let i = -1; i <= 1; i++) { const t = box(g, 0.018, 0.018, 0.12, H.metal, i * 0.035, 0.03, 0.36); t.rotation.x = -0.5; }
+    },
+    hammer(g) {
+      rod(g, 0.02, 0.36, H.wood, 0, 0, 0.1);
+      box(g, 0.06, 0.07, 0.17, H.metal, 0, 0.05, 0.28).rotation.x = Math.PI / 2;
+    },
+    fishingrod(g) {
+      rod(g, 0.022, 0.16, H.woodDark, 0, 0, 0);
+      const r = rod(g, 0.009, 0.95, H.wood, 0, 0.2, 0.42); r.rotation.x = Math.PI / 2 - 0.45;
+      rod(g, 0.035, 0.03, H.metal, 0.04, 0, 0.03, 0);
+    },
+    wood(g) { box(g, 0.11, 0.035, 0.42, H.wood, 0, 0.02, 0.1); },
+    leaf(g) { const l = add(g, geo(new T.PlaneGeometry(0.16, 0.42)), H.leaf, 0, 0.02, 0.18); l.rotation.x = -1.2; },
+    scrap(g) { box(g, 0.12, 0.08, 0.1, H.metal, 0, 0.03, 0.06).rotation.set(0.4, 0.3, 0.2); },
+    plastic(g) { add(g, geo(new T.CylinderGeometry(0.06, 0.07, 0.17, 8)), H.plastic, 0, 0.07, 0.06); },
+    fish(g) { const f = add(g, geo(new T.SphereGeometry(0.07, 8, 6)), H.fish, 0, 0, 0.12); f.scale.set(0.6, 1, 2.2); },
+    sail(g) { rod(g, 0.012, 0.5, H.wood, 0, 0, 0.15); const c = add(g, geo(new T.PlaneGeometry(0.28, 0.24)), H.cloth, 0, 0.13, 0.24); c.rotation.y = Math.PI / 2; },
+    lantern(g) { box(g, 0.08, 0.11, 0.08, H.lamp, 0, -0.07, 0.03); box(g, 0.1, 0.02, 0.1, H.woodDark, 0, -0.005, 0.03); },
+    crate(g) { box(g, 0.2, 0.18, 0.2, H.wood, 0, 0.02, 0.1); },
+  };
+  BUILD.palm = BUILD.leaf; BUILD.net = BUILD.scrap; BUILD.bench = BUILD.crate;
+  const heldModels = new Map();
+  let heldKind = null;
+  function setHeld(kind) {
+    kind = Object.prototype.hasOwnProperty.call(BUILD, kind) ? kind : null;
+    if (kind === heldKind) return;
+    heldKind = kind;
+    for (const [k, g] of heldModels) g.visible = k === kind;
+    if (kind && !heldModels.has(kind)) { const g = new T.Group(); BUILD[kind](g); grip.add(g); heldModels.set(kind, g); }
+  }
+
+  // ---- animation: walk / swim cycle, eased so network jitter never pops ----
+  let phase = 0, stride = 0, swim = 0, raise = 0;
+  function animate(dt, { speed = 0, swimming = false, pitch = 0 } = {}) {
+    if (!(dt > 0)) return;
+    const k = Math.min(1, dt * 8);
+    stride += (Math.min(1, speed / 3) - stride) * k;
+    swim += ((swimming ? 1 : 0) - swim) * k;
+    raise += ((heldKind ? 1 : 0) - raise) * k;
+    phase += dt * (swimming ? 5 : 3 + speed * 2.4);
+    const s = Math.sin(phase), legs = 0.65 * stride * (1 - swim);
+    leftLeg.rotation.x = s * legs + Math.sin(phase * 1.3) * 0.35 * swim;
+    rightLeg.rotation.x = -s * legs - Math.sin(phase * 1.3) * 0.35 * swim;
+    // left arm swings; right arm swings when empty, holds the item forward otherwise
+    const armSwing = -s * 0.5 * stride * (1 - swim), stroke = (Math.cos(phase) * 0.9 - 2.2) * swim;
+    leftArm.rotation.x = armSwing + stroke;
+    rightArm.rotation.x = (-armSwing * (1 - raise) + (-0.75 - Math.max(-0.6, Math.min(0.6, pitch)) * 0.6) * raise) * (1 - swim) + stroke;
+    leftArm.rotation.z = 0.12 + 0.5 * swim * (1 + Math.sin(phase));
+    rightArm.rotation.z = -0.12 - 0.5 * swim * (1 + Math.sin(phase));
+    grip.visible = swim < 0.5;
+    head.rotation.x = -Math.max(-0.6, Math.min(0.6, pitch)) * 0.5 * (1 - swim) - 0.6 * swim;
+  }
+
   root.userData.parts = { head, leftArm, rightArm, leftLeg, rightLeg };
+  root.userData.setHeld = setHeld;
+  root.userData.animate = animate;
   root.userData.eyeHeight = 1.65;
   root.userData.dispose = () => {
     for (const g of geos) g.dispose();

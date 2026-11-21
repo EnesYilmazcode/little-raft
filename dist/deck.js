@@ -192,7 +192,7 @@ function floorParts(T, index) {
       const xs = lashed.has(i + ':' + bi) ? [xc - hw * 0.62, xc + hw * 0.62] : rng() < 0.4 ? [xc + (rng() - 0.5) * hw * 0.5] : [xc - hw * 0.5, xc + hw * 0.5];
       for (const x of xs) {
         const z = z0 + (rng() - 0.5) * 0.03;
-        const h = new T.CylinderGeometry(0.0105, 0.012, 0.008, 4);
+        const h = new T.CylinderGeometry(0.0105, 0.012, 0.008, 6);
         h.setIndex(Array.from(h.index.array.slice(0, h.groups[2].start))); // bottom cap is buried in the plank
         h.rotateY(rng() * 1.05); h.translate(x, plankSurface(p, x, z) + 0.0005, z);
         nails.push(h);

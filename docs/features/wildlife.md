@@ -15,7 +15,7 @@ raft.wiki.gg could not be reached. An earlier pass got HTTP 401 (Cloudflare). Th
 
 ## Our friendlier version
 
-- **Gulls (3 to 6).** They glide on wide circles 6.5 to 11.5 m above the raft, 7 to 12 m out (further on a big raft). Every 20 to 50 s a gull picks a free perch (a raft tile with no decor, or the top of a `sail`, `crate` or `bench`), glides down, folds its wings, and hops around for 6 to 15 s before leaving. If either player comes within 2.25 m it takes off early. Gulls never touch items, crops or inventory.
+- **Gulls (3 to 6).** They glide on wide circles 6.5 to 11.5 m above the raft, 7 to 12 m out (further on a big raft). Every 20 to 50 s a gull picks a free perch (a raft tile with no decor, or the top of a `sail`, `crate` or `bench`), glides down, folds its wings, and hops around for 6 to 15 s before leaving. If either player comes within 3 m it takes off early. Gulls never touch items, crops or inventory.
 - **Fish schools (2 of 12).** Each school swims a loose loop 0.4 to 1.2 m under the surface, 6 to 18 m out, and shows through the shallow water colour.
 - **Friendly circler (one at a time).** This takes the shark's place. Every 90 to 180 s a dolphin (70%) or a turtle (30%) makes one or two slow laps at 9 to 14 m, never closer than 7 m, then leaves.
 - Nothing has collision or any gameplay effect.
@@ -32,28 +32,51 @@ geometries). No game.js, content.js or inventory-state.js edits; no new hooks.
   Perches: free tiles (deck y .2), the sail mast top (3.84), a crate lid (1.07) or a bench seat (.69). In
   one slot, gulls take consecutive perch indices from a shared base, so two never share a perch. A gull with
   no free perch (index >= perch count) keeps circling. Perched gulls take the raft's bob and tilt.
+- **Perch choice at visit start.** The scheduled perch is used unless another gull already holds it or either
+  player stands within 3.5 m of it (horizontal). Then the gull takes the next free index, or skips the visit.
+  Both clients see both players and the same latches, so they choose alike. `debug.landGull` also skips
+  perches another gull holds. This keeps gulls from landing beside the spawn point and filling the view.
+- **Wings near the deck.** The height above the perch drives the wings. Below 0.8 m they are fully folded
+  (they open between 0.8 and 1.5 m), the flap amplitude shrinks as they fold, and a downstroke is clamped so
+  the tip stays above the deck (`asin((h + 0.24) / 0.68)`). A folded wing swings back along the flank, stands
+  on edge with the grey top facing out, sits 9 cm lower at the shoulder and is shortened to 70%, so the black
+  tips just cross the tail. The perched hop only twitches the wings.
+- **Underwing and legs.** The wing has a second, pale layer 8 mm under the top, so it shows from below even on
+  the mirrored left wing. From below only the dim teal ground light reaches it, so its vertex colours are
+  boosted above 1 (warm, `x3.0/2.35/2.25`, not clamped by the shader) to read pale. The legs fold back under
+  the belly in flight: gull bodies use their own copy of the Lambert material with a 3-line `onBeforeCompile`
+  vertex tweak that swings and shrinks leg vertices (`legW = 1`) about the hip by a per-instance `tuck`
+  attribute. `tuck = 1 - fold` in the air and 0 when perched, so the legs come down as the gull lands. This is
+  one extra program compiled at startup, with no extra draw calls.
 - **Perch latch.** When a visit begins, the module copies that perch as `{key, x, y, z}` and keeps it for the
   whole visit, so a perch-list rebuild (a tile or decor change shifts the indices) never moves a gull. If the
   latched key disappears from the new list, or its height changes (a crate or palm placed on it), the gull
   takes off from where it is, like a scare. A gull that sees no perch at its visit start skips that visit.
-- **Scare.** When either player is within 2.25 m (horizontal, and within 3 m vertically) of a perched gull,
+- **Scare.** When either player is within 3 m (horizontal, and within 3 m vertically) of a perched gull,
   that gull leaves early. The local player is `ctx.physics`, the friend is `ctx.other` (`{x, y, z}`; a null `y`
   counts as `ctx.deckY() + 1.6`). Both clients see both poses, so they agree on the scare without sending
   anything. A scare during the glide down also works and turns the gull back up from its current height.
+  A gull spooked by a player swerves up to 5 m away from that player and 1.5 m up (`sin` bump over the
+  climb, heading follows the bumped path), so it never flies through the camera.
 - **Big rafts.** `raftExtent(tiles)` = max |tile coord| * 2 + 1 (shared tiles, so both clients agree). Each
   path's base radius is pushed out so its closest point stays past the edge: the gull sky circle by
   `ext + 2.5`, fish schools by `ext + 4`, the circler by `ext + 5`. The starter 3x3 raft (ext 3) is unchanged.
-- **Fish.** Two schools of 12 dark fish silhouettes (one on `low`). The ocean shader is opaque, so fish can't
+- **Fish.** Two schools of 12 dark fish silhouettes (one on `low`), ~0.7 m long (1.3x the 0.55 m model) at
+  opacity .6, so they read beyond 6 m without stacking into dark blotches. The ocean shader is opaque, so fish can't
   be drawn below it: each fish is a flat, transparent silhouette laid 3.5 cm over the CPU wave height
   (`ocean.getHeight` per fish, 24 calls a frame). Its plan depth (-1.15 to -0.45 m) tints it toward the
   water colour through `instanceColor`, so deeper fish look fainter. Tail wiggle is a fast yaw (off on `low`).
 - **Circler.** A 180 s window holds at most one visit: dolphin 70% (r 10 to 14 m, 2.6 m/s, 1 or 2 laps) or
   turtle 30% (r 9 to 12 m, 0.9 m/s, 1 lap), arriving and leaving over 10 s from 25 m further out. It is
-  present ~40% of the time and never closer than 7 m. The dolphin cruises with its back and fin showing and
-  leaps in an arc every 5.2 s. The 2.1 m turtle paddles at the surface with a gentle roll. The faceted shell
-  uses four greens like scutes.
-- **Materials.** One `MeshLambertMaterial({vertexColors, flatShading, DoubleSide})` shared by gulls, wings,
-  dolphin and turtle. One `MeshBasicMaterial` (transparent, opacity .7, no depth write) for fish.
+  present ~40% of the time and never closer than 7 m. The dolphin moves in a 3 s rhythm: a 1 s leap out
+  of the water, then a 2 s porpoising roll where the head and rounded back break the surface (nose up rising,
+  nose down going under, pitch eased into and out of each leap). Its dorsal fin is the same blue-grey as the
+  back and falcate (curved back, hooked trailing edge), so it never reads as a shark's straight dark fin. The
+  turtle is 1.3 m from head to tail (model x0.73) and floats low: the waterline cuts mid-shell, with the head
+  raised just clear. Its faceted shell uses four muted olive greens like scutes.
+- **Materials.** One `MeshLambertMaterial({vertexColors, flatShading, DoubleSide})` shared by wings, dolphin
+  and turtle, a copy of it with the leg tuck for gull bodies, and one `MeshBasicMaterial` (transparent,
+  opacity .6, no depth write) for fish.
 
 ## Module shape (content registry)
 
@@ -87,13 +110,13 @@ Everything is created once and cached. Per-frame work writes only to scratch `Ma
 
 | Mesh | Geometry | Material | Instances |
 |---|---|---|---|
-| `gullBody` InstancedMesh | merged body, mantle, head, beak, eyes, tail, legs and feet, 424 tris, vertex colours | shared `MeshLambertMaterial({vertexColors:true, flatShading:true, side:DoubleSide})` | 6 |
-| `gullWing` InstancedMesh | 3-panel wing with a black tip and white mirror spot, 6 tris, pivot at the shoulder | same material | 12 (2 per gull; the left wing is mirrored with `scale.x = -1`). The flap is a roll in the matrix, folded when perched. |
-| `fish` InstancedMesh | 8-tri diamond with a tail notch | `MeshBasicMaterial`, `transparent`, opacity .7, `depthWrite:false`, depth tint through `instanceColor` | 24. Laid on the wave surface (the ocean is opaque). The tail wiggle is a yaw in the matrix. |
-| `dolphin` Mesh | merged body, tail stock, rostrum, dorsal fin, flukes, pectoral fins, eyes, 479 tris | shared Lambert | 1 |
-| `turtle` Mesh | merged faceted shell, rim, plastron, neck, head, eyes, 4 flippers, tail, 537 tris (scaled 1.5x) | shared Lambert | 1 (only one circler is visible at a time) |
+| `gullBody` InstancedMesh | merged body, mantle, head, beak, eyes, tail, legs and feet, 424 tris, vertex colours, `legW` per vertex, instanced `tuck` | own `MeshLambertMaterial({vertexColors:true, flatShading:true, side:DoubleSide})` with the leg-tuck vertex tweak | 6 |
+| `gullWing` InstancedMesh | 3-panel wing with a black tip and white mirror spot on top, pale boosted underside layer, 11 tris, pivot at the shoulder | shared `MeshLambertMaterial({vertexColors:true, flatShading:true, side:DoubleSide})` | 12 (2 per gull; the left wing is mirrored with `scale.x = -1`). The flap is a roll in the matrix; folding swings, twists and shortens it. |
+| `fish` InstancedMesh | 8-tri diamond with a tail notch | `MeshBasicMaterial`, `transparent`, opacity .6, `depthWrite:false`, depth tint through `instanceColor` | 24. Laid on the wave surface (the ocean is opaque). The tail wiggle is a yaw in the matrix. |
+| `dolphin` Mesh | merged body, tail stock, rostrum, falcate dorsal fin, flukes, pectoral fins, eyes | shared Lambert | 1 |
+| `turtle` Mesh | merged faceted shell, rim, plastron, neck, head, eyes, 4 flippers, tail, 537 tris (scaled 0.73x, 1.3 m) | shared Lambert | 1 (only one circler is visible at a time) |
 
-**Draw calls: 4** (gull bodies, gull wings, fish, the visible circler). There are no new lights and no shader edits, so nothing recompiles. Wildlife casts no shadows. The instanced meshes use `frustumCulled = false`, because their bounds would otherwise need per-frame updates.
+**Draw calls: 4** (gull bodies, gull wings, fish, the visible circler). There are no new lights. The one shader edit (the gull leg tuck) is fixed at startup, so nothing recompiles at runtime. Wildlife casts no shadows. The instanced meshes use `frustumCulled = false`, because their bounds would otherwise need per-frame updates.
 
 **Graphics.** `ctx.options.graphics` is read every frame with a string compare, so changes apply live.
 
@@ -154,12 +177,13 @@ Overrides are local and are never serialized.
 4. Draw calls: `w.renderCalls()`, then `w.setVisible(false)`, wait a frame, and `w.renderCalls()` again.
 5. Co-op: host and guest should see the same gulls on the same tiles (the guest's clock follows `ext.wildlife.t`).
 
-Screenshots (headless Chromium, software GL, taken with `landGull`, `schoolHere` and `summonCircler`):
+Screenshots (headless Chromium, software GL, taken with `landGull`, `schoolHere` and `summonCircler`). The
+gull shot is the full view at 1024 px. The fish, dolphin and turtle shots are 2x crops of the centre of the view:
 
 | | |
 |---|---|
-| ![Gulls perched on the deck](../cloud/shots/content/wildlife-gull.png) | ![A school of fish past the deck edge](../cloud/shots/content/wildlife-fish.png) |
-| ![A dolphin leaping](../cloud/shots/content/wildlife-dolphin.png) | ![A sea turtle paddling by](../cloud/shots/content/wildlife-turtle.png) |
+| ![Two gulls perched on the far tiles, wings folded along the flank](../cloud/shots/content/wildlife-gull.png) | ![A school of fish past the deck edge](../cloud/shots/content/wildlife-fish.png) |
+| ![A dolphin leaping, curved blue-grey fin](../cloud/shots/content/wildlife-dolphin.png) | ![A small sea turtle low in the water](../cloud/shots/content/wildlife-turtle.png) |
 
 **Measured draw calls** (`renderer.info.render.calls`, solo spawn, medium graphics, no circler on screen):
 317 with the wildlife group hidden and 320 with it shown, so +3 (gull bodies, gull wings, fish). A visible
@@ -184,6 +208,10 @@ Perch choice:
 - A perched gull sits exactly on a perch, and two gulls never share a perch in the same window.
 - After a tile is removed, the next window picks only from the new list. With no perches, gulls keep circling.
 - A gull mid-visit keeps its latched perch through a rebuild; it leaves when that perch is gone.
+- Gulls never perch within 3.5 m of a player, a spooked gull ends up away from the player and higher, and
+  `landGull` never stacks two gulls on one perch.
+- Wings are folded below 0.8 m above the perch and the wing tip never dips under the deck.
+- The dolphin leaps every 3 s cycle and is never under for more than 2 s.
 
 Module (stub ctx, no scene):
 - `load(undefined)`, `load('junk')`, `load({t:NaN}, 'net')` and `load({t:1e308}, 'net')` never throw.

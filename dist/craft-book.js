@@ -50,6 +50,8 @@ export const ITEM_TEXT = Object.freeze({
   cup:        { desc: 'An empty plastic cup.', use: 'Click the sea to scoop water.' },
   saltcup:    { desc: 'A cup of salty sea water.', use: 'Pour it into a water purifier.' },
   freshcup:   { desc: 'A cup of clean fresh water.', use: 'Water a palm planter.' },
+  seed:       { desc: 'A palm seed.', use: 'Plant it in an empty palm planter.' },
+  water:      { desc: 'A filtered cup of fresh water.', use: 'Water a palm planter.' },
   purifier:   { desc: 'A small still that boils off the salt.', use: 'Turns sea water into fresh water.' },
   // progression catalogue (items.js; its tooltips also show the item's own tip)
   copperore:  { desc: 'Green-flecked ore from a lucky barrel.', use: 'Smelt it into copper ingots.' },

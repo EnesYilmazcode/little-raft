@@ -41,6 +41,10 @@ export const ITEM_INFO = Object.freeze({
   saltcup:    Object.freeze({ kind: 'saltcup',    name: 'Cup of Sea Water', icon: 'icon-saltcup', maxStack: 5,      tool: false, placeholder: false }),
   freshcup:   Object.freeze({ kind: 'freshcup',   name: 'Cup of Fresh Water', icon: 'icon-freshcup', maxStack: 5,   tool: false, placeholder: false }),
   purifier:   Object.freeze({ kind: 'purifier',   name: 'Water Purifier', icon: 'icon-purifier', maxStack: STACK_SIZE, tool: false, placeholder: false }),
+  // farming.js (raft-integration) kinds. Palm planters run on the watering lane above (cup -> saltcup -> purifier ->
+  // freshcup), so the farming rules' 'cup' is this Cup; seed/water are known to the bag but not dropped in play yet.
+  seed:       Object.freeze({ kind: 'seed',       name: 'Palm Seed',    icon: 'icon-leaf',    maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  water:      Object.freeze({ kind: 'water',      name: 'Cup of Fresh Water', icon: 'icon-freshcup', maxStack: 5, tool: false, placeholder: true }),
 
   ...infoTable(), // [progression-hook] items.js overrides legacy rows and adds new kinds
 });
@@ -194,6 +198,24 @@ export class Bag {
       const qty = toCount(src[kind]);
       if (qty > 0) bag.add(kind, qty);
     }
+    return bag;
+  }
+
+  /**
+   * Lenient load for saves and hot-swap transfers: keeps every usable slot and
+   * repairs or drops the rest (unknown kinds from other builds, over-cap stacks,
+   * bad durability), so one bad slot never wipes the whole bag. Null if hopeless.
+   */
+  static salvage(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.slots)) return null;
+    const bag = new Bag({ slots: emptySlots(), selected: 0 });
+    for (let i = 0; i < SLOT_COUNT; i++) {
+      const raw = snapshot.slots[i];
+      if (!raw || typeof raw !== 'object' || !isKind(raw.kind)) continue;
+      const count = Math.min(toCount(raw.count), maxStackOf(raw.kind));
+      if (count > 0) bag.slots[i] = makeSlot(raw.kind, count, raw);
+    }
+    if (isIndex(snapshot.selected, HOTBAR_SIZE)) bag.selectedIndex = snapshot.selected;
     return bag;
   }
 

@@ -6,14 +6,15 @@
 export const DAY_SECONDS = 1200;
 export const NIGHT_FLOOR = 0.38;
 export const WEATHERS = Object.freeze(['calm', 'breezy', 'rain']);
-export const POOL_LIGHTS = 4;
+export const POOL_LIGHTS = 4;     // most pool lights (graphics 'high')
+export const POOL_CAP = Object.freeze({ low: 1, medium: 2, high: 4 });
+export const poolCap = graphics => POOL_CAP[graphics] ?? POOL_CAP.medium;
 export const MAX_CLOCK = 1.2e9;
 export const SEGMENT_STEP = 270;   // mean segment length; real lengths are 180 to 360 s
 export const SEGMENT_JITTER = 90;  // start of segment i = i*STEP + (hash - .5) * JITTER
 export const BLEND_SECONDS = 25;
 export const SNAP_SECONDS = 5;
 export const MORNING = 0.10;       // default phase for a new world
-export const PINNED_DAY = 0.15;    // ?daynight=off pins this phase
 
 // ---------------------------------------------------------------- pure helpers
 
@@ -146,7 +147,8 @@ export function paletteAt(phase, rain, out) {
 // ---------------------------------------------------------------- save and sync
 export function cleanDayNight(v) {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
-  if (v.v !== undefined && v.v !== 0 && v.v !== 1) return null;
+  const ver = v.v; // missing or 0 migrates; any later version is read as long as clock and seed validate
+  if (ver !== undefined && ver !== 0 && !(typeof ver === 'number' && ver >= 1 && ver < Infinity)) return null;
   const { clock, seed } = v;
   if (typeof clock !== 'number' || !Number.isFinite(clock) || clock < 0 || clock > MAX_CLOCK) return null;
   if (typeof seed !== 'number' || !Number.isInteger(seed) || seed < 0 || seed >= 4294967296) return null;
@@ -242,29 +244,48 @@ const LANTERN_MULT = [2.4, 1.6, 1.6, 2.0];
 const MAX_LANTERNS = 64, MAX_PARTS = MAX_LANTERNS * 4;
 const STAR_COUNT = 450, STAR_RADIUS = 140, MOON_DIST = 120, RAIN_STREAKS = 600;
 const SUN_RADIUS = Math.hypot(-15, 28, 12);
+// The one shadow-casting light is the sun by day and the moon by night. Its direction swaps when the
+// sun crosses the horizon, so its intensity fades to 0 over this band of |sunHeight| around the swap.
+export const SWAP_FADE = 0.12;
 const POOL_PEAK = 5, POOL_RANGE = 8;
+
+// ---------------------------------------------------------------- opt out
+export function dayNightOptedOut() {
+  try {
+    const q = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('daynight') : null;
+    if (q === 'off') return true;
+  } catch {}
+  try { if (typeof localStorage !== 'undefined' && localStorage.getItem('little-raft.daynight') === 'day') return true; } catch {}
+  return false;
+}
+
+// ?daynight=off: a true no-op. It touches no light, colour, ocean or cloud and adds no objects;
+// it only keeps the last valid slice so the save (and a host's state) passes through unchanged.
+export function createDayNightOff(ctx) {
+  let kept = null;
+  return {
+    name: 'daynight',
+    load(data) { const d = cleanDayNight(data); if (d) kept = d; },
+    serialize() { return kept ? { v: kept.v, clock: kept.clock, seed: kept.seed } : undefined; },
+    debug: { state: () => ({ optOut: true, kept: kept ? { ...kept } : null, role: ctx?.role }) },
+  };
+}
 
 // ---------------------------------------------------------------- module
 export function createDayNight(ctx) {
+  if (dayNightOptedOut()) return createDayNightOff(ctx);
   const T = ctx.T;
   const role0 = ctx.role;
-  let optOut = false;
-  try {
-    const q = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('daynight') : null;
-    if (q === 'off') optOut = true;
-  } catch {}
-  try { if (typeof localStorage !== 'undefined' && localStorage.getItem('little-raft.daynight') === 'day') optOut = true; } catch {}
 
   // ---- state
   let clock = MORNING * DAY_SECONDS;
   let seed = (Math.random() * 4294967296) >>> 0;
-  let target = clock, hasTarget = false, lastNetClock = NaN;
+  let target = clock, hasTarget = false, lastNetClock = NaN, netAge = 0, hostStill = false;
   let time = 0, frozen = false;
   let pinPhase = NaN, pinWeather = -1;
   const L = { sunHeight: 0, nightFactor: 0, light: 1 };
   const W = { weather: 'calm', weatherNext: 'calm', blend: 0, rain: 0, wind: 0.15, cloud: 0.25 };
   const PAL = new Float32Array(N_COLORS * 3);
-  const saved = { v: 1, clock: 0, seed: 0 };
 
   // ---- scratch
   const cHorizon = new T.Color(), cZenith = new T.Color(), cDeep = new T.Color(), cShallow = new T.Color();
@@ -345,19 +366,29 @@ export function createDayNight(ctx) {
   const rain = new T.LineSegments(rainGeo, rainMat);
   rain.name = 'daynight-rain'; rain.frustumCulled = false; rain.visible = false; rain.renderOrder = 5;
 
-  // ---- lantern pool lights (fixed count, added before the first render)
+  // ---- lantern pool lights. Built once, but only added to the scene after the first lantern is found
+  // (the first scan runs in the first update, before the first render, so existing lanterns cause no
+  // extra shader compile). From then on the count only changes with the graphics setting, never by time.
   const pool = [];
   for (let i = 0; i < POOL_LIGHTS; i++) {
     const l = new T.PointLight('#ffb35c', 0, POOL_RANGE, 2);
     l.castShadow = false; l.name = 'daynight-lantern-light'; pool.push(l);
   }
-  const owned = [stars, moon, rain, ...pool];
-  let attached = null;
+  const owned = [stars, moon, rain];
+  let attached = null, poolOn = 0, poolWanted = false, poolGraphics = '';
   function attach(scene) {
     if (attached === scene) return;
-    if (attached) for (const o of owned) attached.remove(o);
+    if (attached) { for (const o of owned) attached.remove(o); for (let i = 0; i < poolOn; i++) attached.remove(pool[i]); }
     attached = scene;
-    if (scene) for (const o of owned) scene.add(o);
+    if (scene) { for (const o of owned) scene.add(o); for (let i = 0; i < poolOn; i++) scene.add(pool[i]); }
+  }
+  function sizePool() {
+    const g = ctx.options?.graphics;
+    if (g === poolGraphics && !(poolWanted && poolOn === 0)) return;
+    poolGraphics = g;
+    const n = poolWanted ? poolCap(g) : 0;
+    while (poolOn > n) { poolOn--; pool[poolOn].intensity = 0; attached?.remove(pool[poolOn]); }
+    while (poolOn < n) { attached?.add(pool[poolOn]); poolOn++; }
   }
   attach(scene0);
 
@@ -366,6 +397,7 @@ export function createDayNight(ctx) {
   const lanternGroups = new Array(MAX_LANTERNS).fill(null), lanternLocal = new Float32Array(MAX_LANTERNS * 3), lanternDist = new Float32Array(MAX_LANTERNS);
   const poolPick = new Int32Array(POOL_LIGHTS).fill(-1);
   let partCount = 0, lanternCount = 0, signature = -1, scanClock = 0, rankClock = 0, poolLit = 0, lastNf = -1, lastGrow = -1;
+  let scanRaft = null, scanFirst = null, scanLen = -1; // what raft.children looked like at the last scan
   function lanternSignature(raft, world) {
     let n = raft.children.length * 131;
     const decor = world?.decor;
@@ -398,6 +430,8 @@ export function createDayNight(ctx) {
     }
     for (let i = lanternCount; i < MAX_LANTERNS; i++) lanternGroups[i] = null;
     for (let i = partCount; i < MAX_PARTS; i++) partMat[i] = null;
+    scanRaft = raft; scanFirst = raft.children.length ? raft.children[0] : null; scanLen = raft.children.length;
+    if (lanternCount > 0) poolWanted = true;
     rankClock = 1e9;
   }
   function rankLanterns(raft, cam) {
@@ -418,10 +452,9 @@ export function createDayNight(ctx) {
   function applyVisuals(dt) {
     const scene = ctx.scene, cam = ctx.camera, raft = ctx.raft;
     attach(scene);
-    const phase = Number.isFinite(pinPhase) ? pinPhase : optOut ? PINNED_DAY : phaseAt(clock);
+    const phase = Number.isFinite(pinPhase) ? pinPhase : phaseAt(clock);
     lightAt(phase, L);
     if (pinWeather >= 0) { W.weather = W.weatherNext = WEATHERS[pinWeather]; W.blend = 0; weatherParams(pinWeather, pinWeather, 0, W); }
-    else if (optOut) { W.weather = W.weatherNext = 'calm'; W.blend = 0; weatherParams(0, 0, 0, W); }
     else weatherAt(seed, clock, W);
     paletteAt(phase, W.rain, PAL);
     const nf = L.nightFactor, wet = W.rain;
@@ -444,9 +477,10 @@ export function createDayNight(ctx) {
     else vDir.copy(vMoon);
     const dayI = 2.5 * (1 - 0.15 * wet) * smooth(-0.02, 0.2, L.sunHeight);
     const moonI = 0.6 * (1 - 0.3 * wet) * smooth(-0.02, 0.2, -L.sunHeight);
+    const swap = smooth(0, SWAP_FADE, Math.abs(L.sunHeight)); // 0 exactly where sun and moon trade places
     if (sun) {
       sun.position.set(vDir.x * SUN_RADIUS, Math.max(vDir.y, 0.42) * SUN_RADIUS, vDir.z * SUN_RADIUS).add(sun.target.position); // offset from the shadow-fitted target
-      sun.color.copy(cSun); sun.intensity = Math.max(dayI + moonI, nf > 0.5 ? 0.55 : 0);
+      sun.color.copy(cSun); sun.intensity = Math.max(dayI + moonI, 0.55 * smooth(0.3, 0.7, nf)) * swap;
     }
     if (hemi) {
       hemi.color.copy(cHemiSky); hemi.groundColor.copy(cHemiGround);
@@ -460,7 +494,7 @@ export function createDayNight(ctx) {
       if (u.uFadeFar && scene?.fog) u.uFadeFar.value = scene.fog.far;
       u.uSunDir?.value.copy(vDir);
       if (u.uSunColor) {
-        const spec = (up ? smooth(-0.02, 0.15, L.sunHeight) : 0.18 * smooth(-0.02, 0.2, -L.sunHeight)) * (1 - 0.7 * wet);
+        const spec = (up ? smooth(-0.02, 0.15, L.sunHeight) : 0.18 * smooth(-0.02, 0.2, -L.sunHeight)) * (1 - 0.7 * wet) * swap;
         u.uSunColor.value.copy(oceanSunColor).multiply(cSun).multiplyScalar(spec);
       }
       if (u.uFoam) u.uFoam.value.copy(oceanFoam).lerp(cHemiSky, 0.35 * nf).multiplyScalar(1 - 0.5 * nf); // soft moonlit foam
@@ -496,8 +530,14 @@ export function createDayNight(ctx) {
     }
     // lanterns
     if (raft) {
+      // O(1) every frame: rebuildRaft() replaces every child, so the first child or the child count
+      // changes (or our first lantern lost its parent). Rescan at once so new lanterns never show a dim frame.
+      const n = raft.children.length;
+      if (raft !== scanRaft || n !== scanLen || (n ? raft.children[0] : null) !== scanFirst || (lanternCount > 0 && lanternGroups[0].parent !== raft)) {
+        scanClock = 0; signature = lanternSignature(raft, ctx.world); scanLanterns(raft); lastNf = -1;
+      }
       scanClock += dt;
-      if (scanClock >= 0.5 || signature < 0) {
+      if (scanClock >= 0.5) { // slow path: decor list changed without touching the raft children
         scanClock = 0;
         let stale = false;
         for (let i = 0; i < lanternCount; i++) if (lanternGroups[i].parent !== raft) { stale = true; break; }
@@ -508,12 +548,11 @@ export function createDayNight(ctx) {
       rankClock += dt;
       if (rankClock >= 0.5) { rankClock = 0; rankLanterns(raft, cam); }
     }
+    sizePool();
     const poolI = nf < 0.15 ? 0 : POOL_PEAK * smooth(0.15, 1, nf);
     poolLit = 0;
-    const poolOn = poolI > 0 && lanternCount > 0 && !!raft; // perf: idle point lights still cost every lit fragment; all-or-none so shaders recompile only at dusk/dawn
-    for (let i = 0; i < POOL_LIGHTS; i++) {
+    for (let i = 0; i < poolOn; i++) {
       const l = pool[i], k = poolPick[i];
-      l.visible = poolOn;
       if (k < 0 || k >= lanternCount || poolI <= 0 || !raft) { l.intensity = 0; continue; }
       l.position.set(lanternLocal[k * 3], lanternLocal[k * 3 + 1], lanternLocal[k * 3 + 2]);
       raft.localToWorld(l.position);
@@ -526,7 +565,9 @@ export function createDayNight(ctx) {
     if (!(dt > 0)) dt = 0; else if (dt > 0.25) dt = 0.25;
     time += dt;
     if (ctx.role === 'guest') {
-      if (hasTarget) { clock = driftStep(clock, target, dt); target += dt; } // both measured at frame start
+      netAge += dt;
+      if (hostStill) clock = target; // host clock stopped (frozen): hold it, do not run ahead
+      else if (hasTarget) { clock = driftStep(clock, target, dt); target += dt; } // both measured at frame start
       else clock += dt;
     } else if (!frozen) clock += dt;
     if (clock > MAX_CLOCK) clock = 0;
@@ -535,20 +576,29 @@ export function createDayNight(ctx) {
 
   function load(data, from) {
     const d = cleanDayNight(data);
-    if (!d) return;
+    if (!d) {
+      // back on our own raft with no usable slice: start a fresh morning instead of keeping the host's sky
+      if (from === 'restore') { clock = MORNING * DAY_SECONDS; seed = (Math.random() * 4294967296) >>> 0; resetNet(); }
+      return;
+    }
     if (from === 'net') {
-      if (d.clock === lastNetClock && d.seed === seed) return; // same message twice: no-op
-      lastNetClock = d.clock;
+      if (d.clock === lastNetClock && d.seed === seed) {
+        // Same message again. Within one send interval it is a plain duplicate: no-op. If the host keeps
+        // sending the same clock for longer, its clock has stopped, so stop advancing the target too.
+        if (netAge > 0.2) { hostStill = true; target = d.clock; }
+        return;
+      }
+      lastNetClock = d.clock; netAge = 0; hostStill = false;
       if (!hasTarget || d.seed !== seed || Math.abs(d.clock - clock) > SNAP_SECONDS) { clock = d.clock; seed = d.seed; }
       target = d.clock; hasTarget = true;
       return;
     }
-    clock = d.clock; seed = d.seed; target = clock; hasTarget = false; lastNetClock = NaN;
+    clock = d.clock; seed = d.seed; resetNet();
   }
+  function resetNet() { target = clock; hasTarget = false; lastNetClock = NaN; netAge = 0; hostStill = false; }
 
   function serialize() {
-    saved.clock = Math.round(clock * 100) / 100; saved.seed = seed;
-    return saved;
+    return { v: 1, clock: Math.round(clock * 100) / 100, seed };
   }
 
   function dispose() {
@@ -592,10 +642,10 @@ export function createDayNight(ctx) {
     renderInfo() { const r = ctx.renderer?.info?.render; return r ? { calls: r.calls, triangles: r.triangles, points: r.points, lines: r.lines } : null; },
     state() {
       return {
-        phase: Number.isFinite(pinPhase) ? pinPhase : optOut ? PINNED_DAY : phaseAt(clock), day: Math.floor(clock / DAY_SECONDS), clock, seed,
+        phase: Number.isFinite(pinPhase) ? pinPhase : phaseAt(clock), day: Math.floor(clock / DAY_SECONDS), clock, seed,
         nightFactor: L.nightFactor, light: L.light, weather: W.weather, weatherNext: W.weatherNext, blend: W.blend,
         rain: W.rain, wind: W.wind, cloud: W.cloud, lanterns: lanternCount, poolLit,
-        pinned: { phase: Number.isFinite(pinPhase) ? pinPhase : null, weather: pinWeather >= 0 ? WEATHERS[pinWeather] : null, optOut, frozen },
+        pinned: { phase: Number.isFinite(pinPhase) ? pinPhase : null, weather: pinWeather >= 0 ? WEATHERS[pinWeather] : null, optOut: false, frozen },
         role: ctx.role ?? role0,
       };
     },
