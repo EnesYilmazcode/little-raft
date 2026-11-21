@@ -287,7 +287,7 @@ void main() {
     // Coverage of a contour band of half-width w: AA'd edges, and lines thinner than a pixel dim instead of
     // staying half-covered, so distant lace thins out rather than turning into soft blobs.
     float wc = 0.012 + crestMask * 0.09, wl = 0.003 + laceMask * 0.017;
-    float crest = clamp((wc - iso) / isoAA + 0.5, 0.0, 1.0) * min(wc * 3.0 / isoAA + 0.3, 1.0) * smoothstep(0.0, 0.08, crestMask);
+    float crest = clamp((wc - iso) / isoAA + 0.5, 0.0, 1.0) * min(wc * 3.0 / isoAA + 0.5, 1.0) * smoothstep(0.0, 0.08, crestMask);
     float lace = clamp((wl - iso) / isoAA + 0.5, 0.0, 1.0) * min(wl * 3.0 / isoAA + 0.3, 1.0) * smoothstep(0.02, 0.12, laceMask);
     float raftCore = 1.0 - smoothstep(0.0, 0.05 + 0.1 * n1, rd);   // thin ragged collar where logs meet water
     foam = max(max(crest * 0.85, lace * 0.66), raftCore * 0.85);
