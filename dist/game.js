@@ -898,6 +898,7 @@ export function mount(transfer = null) {
   on(canvas, 'wheel', e => {
     if (!running || uiBlocked() || (!isLocked() && !lockFallback)) return;
     e.preventDefault();
+    if (controls && isLocked()) return; // controls lane: input.js steps the hotbar while locked (was double-stepping)
     wheelAcc += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
     if (Math.abs(wheelAcc) < 40) return;
     const step = wheelAcc > 0 ? 1 : -1; wheelAcc = 0;

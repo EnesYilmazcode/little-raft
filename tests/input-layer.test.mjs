@@ -198,10 +198,34 @@ test('mouse buttons need lock; lock loss releases them; wheel steps hotbar', () 
   assert.equal(s.input.down('use'), false);
   s.lock();
   fire(s.canvas, 'wheel', { deltaY: 100, deltaMode: 0 }); s.tick();
-  assert.equal(s.input.hotbarStep(), 2);
+  assert.equal(s.input.hotbarStep(), 1, 'one mouse notch = one slot');
   assert.equal(s.input.hotbarStep(), 0);
   fire(s.canvas, 'wheel', { deltaY: -2, deltaMode: 1 }); s.tick();
   assert.equal(s.input.hotbarStep(), -1);
+});
+
+test('regression: wheel notches never skip slots; small trackpad deltas accumulate', () => {
+  const s = setup(); s.lock();
+  fire(s.canvas, 'wheel', { deltaY: 3, deltaMode: 1 }); s.tick(); // Firefox line-mode notch
+  assert.equal(s.input.hotbarStep(), 1);
+  fire(s.canvas, 'wheel', { deltaY: 100, deltaMode: 0 }); fire(s.canvas, 'wheel', { deltaY: 100, deltaMode: 0 }); s.tick();
+  assert.equal(s.input.hotbarStep(), 2, 'two notches in one frame = two slots');
+  for (let i = 0; i < 9; i++) fire(s.canvas, 'wheel', { deltaY: -5, deltaMode: 0 });
+  s.tick();
+  assert.equal(s.input.hotbarStep(), -1);
+});
+
+test('regression: crouch (Ctrl) + S/D/A blocks browser save/bookmark shortcuts; plain Ctrl chords pass', () => {
+  const s = setup();
+  assert.equal(s.down('KeyR', { ctrlKey: true }).defaultPrevented, false, 'Ctrl+R with Ctrl unheld (e.g. rebound) passes');
+  s.up('KeyR');
+  s.down('ControlLeft', { ctrlKey: true });
+  assert.equal(s.down('KeyD', { ctrlKey: true }).defaultPrevented, true);
+  assert.equal(s.down('KeyS', { ctrlKey: true }).defaultPrevented, true);
+  assert.equal(s.down('KeyI', { ctrlKey: true, shiftKey: true }).defaultPrevented, false, 'Ctrl+Shift+I devtools passes');
+  s.tick();
+  assert.equal(s.input.down('crouch'), true);
+  assert.equal(s.input.down('moveRight'), true);
 });
 
 // ---------------------------------------------------------------- gamepad

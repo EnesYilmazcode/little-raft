@@ -63,7 +63,10 @@ export function createInput({
     if (e.repeat) return;                       // never an edge; also keeps a cleared key released until re-pressed
     if (e.metaKey && !/^Meta/.test(e.code)) return; // Cmd+X: macOS swallows the keyup, so never record it
     press(e.code);
-    if (!e.ctrlKey && !e.altKey && map.actionFor?.(e.code)?.length && e.code !== 'Escape') e.preventDefault?.();
+    // Ctrl chords pass through (Ctrl+R, devtools) unless Ctrl is itself a held binding (crouch): then crouch+S/D/A
+    // must not open the browser's save/bookmark/select-all, which also blurs the window mid-move.
+    const ctrlBound = e.ctrlKey && !e.shiftKey && ['ControlLeft', 'ControlRight'].some(c => held.has(c) && map.actionFor?.(c)?.length);
+    if ((!e.ctrlKey || ctrlBound) && !e.altKey && map.actionFor?.(e.code)?.length && e.code !== 'Escape') e.preventDefault?.();
   });
   on(target, 'keyup', e => {                    // always honoured, even from form fields, so nothing sticks
     if (/^Meta/.test(e.code)) { held.clear(); return; } // mac: keyups for other keys were lost while Meta was down
@@ -87,7 +90,8 @@ export function createInput({
     if (isBlocked() || !locked()) return;
     if (element) e.preventDefault?.();
     wheelAcc += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
-    while (Math.abs(wheelAcc) >= WHEEL_STEP) { const dn = wheelAcc > 0; tap(dn ? 'WheelDown' : 'WheelUp'); wheelAcc -= dn ? WHEEL_STEP : -WHEEL_STEP; }
+    // at most one slot per event: a mouse notch is deltaY 100 (or 3 lines) and must not skip a slot; trackpads accumulate
+    if (Math.abs(wheelAcc) >= WHEEL_STEP) { tap(wheelAcc > 0 ? 'WheelDown' : 'WheelUp'); wheelAcc = 0; }
     api.activeDevice = 'kbm';
   }, { passive: false });
   on(doc, 'pointerlockchange', () => {
