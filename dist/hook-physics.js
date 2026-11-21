@@ -16,7 +16,8 @@
 //                 item drift (z += .22/s, x += sin(time*.13)*.04/s) so hook and supplies co-drift.
 //     deckAt    : optional (x, z) -> deck top y over a raft tile, or null over open water. A flying
 //                 hook that comes down onto the deck stops there (onDeck = true, stage 'done') and
-//                 that update returns { kind:'returned' }.
+//                 that update returns { kind:'returned' }, or { kind:'collected', ... } when it
+//                 snagged supplies on the way down (they landed on the raft, so they are kept).
 //
 //   Public fields
 //     position    : Vector3  current hook position
@@ -263,24 +264,26 @@ export class HookCast {
       arrived = Math.hypot(this._hand.x - this.position.x, this._hand.z - this.position.z) <= COLLECT_DIST;
     }
 
-    if (this.onDeck && !this._emitted) { // came down on the deck this update: end the cast once, nothing caught
+    if (this.onDeck && !this._emitted) { // came down on the deck this update: end the cast once, keeping any catch
       this._emitted = true;
       this._updateMetrics();
-      return { kind: 'returned' };
+      return this._result();
     }
     if (arrived) {
       this.stage = 'done';
       this._updateMetrics();
       if (this._emitted) return null;
       this._emitted = true;
-      if (this.caughtItems.length) {
-        const out = this.caughtItems.map(({ id, token, type }) => ({ id, token, type }));
-        return { kind: 'collected', items: out, id: out[0].id, token: out[0].token };
-      }
-      return { kind: 'returned' };
+      return this._result();
     }
     this._updateMetrics();
     return null;
+  }
+
+  _result() {
+    if (!this.caughtItems.length) return { kind: 'returned' };
+    const out = this.caughtItems.map(({ id, token, type }) => ({ id, token, type }));
+    return { kind: 'collected', items: out, id: out[0].id, token: out[0].token };
   }
 
   _updateMetrics() {

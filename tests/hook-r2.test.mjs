@@ -73,3 +73,20 @@ test('HOOK-2: a deck-height hand is left alone', () => {
   const o = throwOrigin({ x: 0, y: 1.2, z: 0 });
   assert.equal(o.y, 1.2);
 });
+
+test('HOOK-5: a hook that snags a supply and lands on the far deck keeps the catch', () => {
+  // L/U raft: the player's deck at z in (-1,3), a far arm at z in (-13,-9), water between.
+  const deckAt = (x, z) => ((z > -1 && z < 3) || (z < -9 && z > -13) ? 0.22 : null);
+  const items = [{ id: 1, token: 'a', type: 'barrel', x: 0, z: -8.6 }];
+  let found = null;
+  for (let up = -0.3; up <= 0.4 && !found; up += 0.01) for (let c = 0; c <= 1 && !found; c += 0.05) {
+    const h = new HookCast(T, { origin: { x: 0, y: 1.25, z: 1 }, direction: { x: 0, y: up, z: -1 }, charge: c, deckAt });
+    const events = [];
+    for (let i = 0; i < 400 && h.stage !== 'done' && h.stage !== 'floating'; i++) { const e = h.update(1 / 60, { hand: { x: 0, y: 1.25, z: 1 }, items }); if (e) events.push(e); }
+    if (h.onDeck && h.caughtItems.length) found = events;
+  }
+  assert.ok(found, 'a throw that snags then lands on the deck exists');
+  assert.equal(found.length, 1);
+  assert.equal(found[0].kind, 'collected');
+  assert.deepEqual(found[0].items, [{ id: 1, token: 'a', type: 'barrel' }]);
+});
