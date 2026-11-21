@@ -1,19 +1,22 @@
 """Adopt the merged item icons into dist/ (see docs/tech/icons-ADOPT.md).
 
-The merge keeps main's dist/item-icons.js public API byte-for-byte (iconURL, getItemIcon, loadItemIcon,
-warmIcons, onIconReady, setModelProvider, buildFallbackModel), so NO caller changes: game.js and
-survival-ui.js keep their import lines. The patch is two files:
+The merge keeps main's dist/item-icons.js public API (iconURL, getItemIcon, loadItemIcon, warmIcons,
+onIconReady, setModelProvider, setIconRenderer, resolveIconModel, buildFallbackModel, POSE, ICON_FATTEN),
+so NO caller changes: game.js and survival-ui.js keep their import lines. The patch is:
   dist/item-icons.js        <- sandbox/icons/item-icons.js        (replaces main's renderer)
   dist/item-icon-models.js  <- sandbox/icons/item-icon-models.js  (new: icon-only stand-in models)
+  dist/live.js              one PRELOAD entry added ('item-icon-models.js'), so the preload list stays
+                            equal to game.js' static import graph (tests/live-preload.test.mjs)
 with the ?build= id rewritten to the target dist's id.
 
-  python sandbox/icons/adopt_patch.py --check  [--dist D] [--no-game] [--no-tests]
+  python sandbox/icons/adopt_patch.py --check  [--dist D] [--no-game] [--no-tests] [--baseline]
       Copies D (default: repo dist/) to a temp dir, asserts every anchor exactly once there, applies,
-      boots the REAL game headless through index.html / live.js (Solo, seeded save), screenshots the
-      hotbar and the open bag into sandbox/icons/shots/adopt-*.png, and runs `node --test tests/` with
-      RAFT_DIST pointing at the patched copy. D itself is never written.
+      node --check's the written files, boots the REAL game headless through index.html / live.js
+      (Solo, seeded save), screenshots the hotbar and the open bag into sandbox/icons/shots/adopt-*.png,
+      and runs `node --test tests/` with RAFT_DIST pointing at the patched copy (--baseline: also at
+      unpatched D first). D itself is never written.
   python sandbox/icons/adopt_patch.py --apply  [--dist D]
-      Same anchor checks, then writes the two files into D.
+      Same anchor checks, then writes the three files into D.
 """
 import re, sys, json, shutil, tempfile, subprocess, threading, functools, http.server, socketserver, time
 from pathlib import Path
@@ -25,31 +28,45 @@ CHROME = '/opt/pw-browsers/chromium-1243/chrome-linux64/chrome'
 ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']
 
 # Each anchor must occur exactly once in the target file before the patch is allowed.
+PRELOAD_OLD = "'item-icons.js', 'item-svg.js',"
+PRELOAD_NEW = "'item-icon-models.js', 'item-icons.js', 'item-svg.js',"
 ANCHORS = {
     # main's item-icons.js: the public API the merged file preserves (proves we replace the right file)
     'item-icons.js': [
-        "export function iconURL(kind) {\n",
+        "export function setIconRenderer(r) {",
+        "export const POSE = {\n",
+        "export const ICON_FATTEN = { hammer: 1.4, fishingrod: 2.2 };\n",
+        "export function buildFallbackModel(kind) {\n",
+        "export function resolveIconModel(kind) {\n",
+        "export function iconURL(kind) { return request(kind, true); }\n",
         "export const getItemIcon = iconURL;\n",
         "export function loadItemIcon(kind) {\n",
-        "export function warmIcons(kinds) { for (const k of kinds) iconURL(k); }\n",
+        "export function warmIcons(kinds) { for (const k of kinds) request(k, false); }\n",
         "export function onIconReady(fn) { listeners.add(fn); return () => listeners.delete(fn); }\n",
         "export function setModelProvider(fn) {\n",
-        "export function buildFallbackModel(kind) {\n",
     ],
     # callers: unchanged by the patch, asserted so a caller-side API change is caught
     'game.js': [
-        "import { getItemIcon, onIconReady } from './item-icons.js?build={B}';\n",
+        "import { iconURL, onIconReady, setIconRenderer } from './item-icons.js?build={B}';\n",
+        "    try { setIconRenderer(renderer); } catch {} // item icons share this WebGL context\n",
         "      getModel:modelOf, // 3D icons rendered from models.js\n",
-        "    pickupFeed.setIconProvider(getItemIcon); offIconReady = onIconReady(k => pickupFeed.refresh(k));",
+        "    pickupFeed.setIconProvider(k => iconURL(k) || feedSprite(k)); offIconReady = onIconReady(k => pickupFeed.refresh(k));",
     ],
     'survival-ui.js': [
         "import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build={B}';\n",
         "  if (typeof getModel === 'function') setModelProvider(getModel);\n",
         "  const offIcons = onIconReady(kind => {\n",
-        "  const url = iconURL(kind);\n",
+        "  const url = iconsLive ? iconURL(kind) : null;\n",
+    ],
+    # live.js PRELOAD must equal game.js' static import graph (tests/live-preload.test.mjs): the new
+    # item-icon-models.js is inserted before item-icons.js (alphabetical). This anchor is rewritten.
+    'live.js': [
+        PRELOAD_OLD,
     ],
 }
-API = ['iconURL', 'getItemIcon', 'loadItemIcon', 'warmIcons', 'onIconReady', 'setModelProvider', 'buildFallbackModel']
+API = ['iconURL', 'getItemIcon', 'loadItemIcon', 'warmIcons', 'onIconReady', 'setModelProvider', 'buildFallbackModel',
+       'setIconRenderer', 'resolveIconModel', 'POSE', 'ICON_FATTEN']
+CALLERS = ('game.js', 'survival-ui.js')
 
 
 def build_id(dist):
@@ -58,12 +75,14 @@ def build_id(dist):
     return m.group(1)
 
 
-def new_files(b):
+def new_files(b, dist):
     out = {}
     for name in ('item-icons.js', 'item-icon-models.js'):
         src = (HERE / name).read_text()
         if SRC_BUILD not in src: raise SystemExit(f'sandbox/icons/{name}: source build id {SRC_BUILD} not found')
         out[name] = src.replace(SRC_BUILD, b)
+    live = (dist / 'live.js').read_text()
+    out['live.js'] = live.replace(PRELOAD_OLD, PRELOAD_NEW)
     return out
 
 
@@ -83,11 +102,12 @@ def check(dist):
             if n != 1: raise SystemExit(f'{name}: anchor found {n} times, expected 1:\n{a}')
     if (dist / 'item-icon-models.js').exists():
         raise SystemExit('item-icon-models.js already exists in target dist (already adopted?)')
-    files = new_files(b)
+    files = new_files(b, dist)
     old_api, new_api = exports((dist / 'item-icons.js').read_text()), exports(files['item-icons.js'])
     missing = [x for x in API if x not in new_api]
     if missing or not set(API) <= old_api: raise SystemExit(f'API mismatch: merged lacks {missing}; main has {sorted(old_api)}')
     for name, src in files.items():
+        if name == 'live.js': continue
         for mod in re.findall(r"^import [^;]*? from '\./([A-Za-z0-9_./-]+\.js)(?:\?[^']*)?';", src, re.M):
             if mod in files: continue
             if not (dist / mod).is_file(): raise SystemExit(f'{name} imports ./{mod}, missing from {dist}')
@@ -155,7 +175,7 @@ if __name__ == '__main__':
     dist = Path(argv[argv.index('--dist') + 1]).resolve() if '--dist' in argv else ROOT / 'dist'
     if '--apply' in argv:
         b, files = check(dist); apply(dist, files)
-        print(f'applied to {dist}: item-icons.js (replaced), item-icon-models.js (new), build {b}')
+        print(f'applied to {dist}: item-icons.js (replaced), item-icon-models.js (new), live.js (PRELOAD +1), build {b}')
         sys.exit(0)
     if '--check' not in argv: print(__doc__); sys.exit(2)
     tmp = Path(tempfile.mkdtemp(prefix='icons-adopt-')) / 'dist'
@@ -165,20 +185,29 @@ if __name__ == '__main__':
         print(f'ok: {sum(len(v) for v in ANCHORS.values())} anchors matched exactly once; API {", ".join(API)} preserved; imports present (build {b})', flush=True)
         apply(tmp, files)
         for name, anchors in ANCHORS.items():   # callers untouched after apply
-            if name == 'item-icons.js': continue
+            if name not in CALLERS: continue
             src = (tmp / name).read_text()
             assert all(src.count(a.replace('{B}', b)) == 1 for a in anchors), name
+        assert (tmp / 'live.js').read_text().count(PRELOAD_NEW) == 1, 'live.js PRELOAD'
+        for name in files:   # every written file parses
+            r = subprocess.run(['node', '--check', str(tmp / name)], capture_output=True, text=True)
+            if r.returncode: raise SystemExit(f'node --check {name}: {r.stderr[:400]}')
+        print('node --check ok:', ', '.join(files), flush=True)
         report = {'build': b}
         if '--no-game' not in argv:
             shots = HERE / 'shots'; shots.mkdir(exist_ok=True)
             report['game'] = boot_game(tmp, shots)
             print('game:', json.dumps(report['game']), flush=True)
-        if '--no-tests' not in argv:
+
+        def run_tests(d, label):
             r = subprocess.run('node --test tests/*.test.mjs', shell=True, cwd=ROOT, capture_output=True, text=True,
-                               env={**__import__('os').environ, 'RAFT_DIST': str(tmp)}, timeout=1500)
+                               env={**__import__('os').environ, 'RAFT_DIST': str(d)}, timeout=1500)
             tail = [l for l in r.stdout.splitlines() if re.match(r'# (tests|pass|fail)', l) or l.startswith('not ok')]
-            report['tests'] = tail
-            print('tests (patched):', ' | '.join(tail), flush=True)
+            print(f'tests ({label}):', ' | '.join(tail), flush=True)
+            return tail
+        if '--no-tests' not in argv:
+            if '--baseline' in argv: report['testsBase'] = run_tests(dist, 'unpatched')
+            report['tests'] = run_tests(tmp, 'patched')
         if report.get('game', {}).get('pageErrors'): raise SystemExit('page errors in patched game')
     finally:
         shutil.rmtree(tmp.parent, ignore_errors=True)
