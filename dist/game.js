@@ -2087,6 +2087,8 @@ export function mount(transfer = null) {
     get hookHealth() { return hookDurability(localBag()); },
     get pickup() {
       if (!pickTarget) return null;
+  const hudPieces = {get piece() { return building?.piece ?? null; }, get chip() { return building?.chip ?? ''; }, get ready() { return !!building?.ready; }, get aiming() { return !!building?.aiming; }, get removing() { return !!building?.removing; },
+    get name() { const d = PIECES[building?.piece]; return d ? d.name : ''; }, get cost() { return PIECES[building?.piece]?.cost ?? null; }}; // building-pieces lane hook: prompts.js
       if (pickTarget !== hudPickSrc || pickTarget.type !== hudPickType) { hudPickSrc = pickTarget; hudPickType = pickTarget.type; hudPick = Object.freeze({type:hudPickType}); }
       return hudPick;
     },
@@ -2096,7 +2098,7 @@ export function mount(transfer = null) {
     get tiles() { return world.tiles.length; }, get tileList() { return world.tiles; }, get decor() { return world.decor; },
     get fish() { return world.fish; }, get collected() { return world.collected; },
     get swimming() { return physics.swimming; }, get grounded() { return physics.grounded; }, get physics() { return hudPhysics; },
-    get me() { return hudMe; }, get build() { return hudBuild; },
+    get me() { return hudMe; }, get build() { return hudBuild; }, get pieces() { return hudPieces; },
   });
   // shark lane: QA helpers (forceAttack/kill/hit act on the host or solo simulation only)
   const sharkDebug = Object.freeze({
@@ -2140,7 +2142,7 @@ export function mount(transfer = null) {
         fishWait, hookStage:hook ? (hook.fishing ? 'fishing' : hook.stage) : 'idle', hookCaught:hc?.caught ? {...hc.caught} : null, hookCaughtItems:caughtList(hc).map(c => ({...c})),
         hookHealth:hookDurability(bag), hookRange:16 + hookDurability(bag) * .16, charge:chargeValue(), charging:!!charging, reeling,
         build:{active:mode === 'build' || mode === 'place', recipe:kind, rot:placeRot, pointing, ghost:!!ghosts?.visible, hover:hover ? {...hover} : null, candidates:scene ? placementCandidates(kind).length : 0, affordable:mode === 'build' ? canAfford(bag, FLOOR_COST) : mode === 'place'},
-        pieces:{list:(world.pieces || []).map(p => ({...p})), piece:building?.piece ?? null, rotation:building?.rotation ?? 0, removing:!!building?.removing}, // building-pieces lane hook
+        pieces:{list:(world.pieces || []).map(p => ({...p})), piece:building?.piece ?? null, rotation:building?.rotation ?? 0, removing:!!building?.removing, chip:building?.chip ?? '', ready:!!building?.ready, aiming:!!building?.aiming, name:hudPieces.name, cost:hudPieces.cost ? {...hudPieces.cost} : null}, // building-pieces lane hook
         pickup:pickTarget ? {id:pickTarget.id, token:pickTarget.token, type:pickTarget.type} : null, feed:pickupFeed.rows,
         me:{x:physics.x, y:physics.y, z:physics.z, yaw, pitch}, other:other ? {...other} : null,
         avatars:{local:worldPos(player), remote:worldPos(friend)},

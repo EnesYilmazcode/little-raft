@@ -5,6 +5,7 @@
 //   provide({id, priority, prompt}) -> unregister, current(), refresh(), feed(text).
 // prompt(ctx, hit) returns {key:'E', label:'Pick up', hold?, muted?} | up to 2 of them | null.
 // ctx = {state (full raftDebug.state, built lazily on first read), camera, T, scene}. Highest priority wins; raycast beats provider at equal priority; nearest hit next.
+import { BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 
 const SAMPLE_MS = 100, FEED_MAX = 4, FEED_MS = 4000, DUP_MS = 600;
 const PICK_NAMES = {wood:'plank', leaf:'leaves', plastic:'plastic jug', scrap:'scrap', barrel:'barrel'};
@@ -73,6 +74,8 @@ export function labelPrompt(text) {
 }
 export function shouldPost(last, text, now) { return !(last && last.text === text && now - last.at < DUP_MS); }
 const have = (stock, k) => { const n = Number(stock?.[k]); return Number.isFinite(n) && n > 0 ? n : 0; };
+const MAT_NAME = {wood:'plank', leaf:'palm leaf'}; // as the build chip names them (build-menu.js MAT_NAME)
+export const pieceCostText = cost => Object.entries(cost).map(([k, n]) => `${n} ${MAT_NAME[k] ?? k}`).join(' · ');
 export const costText = cost => Object.entries(cost).map(([k, n]) => `${n} ${k}`).join(' · ');
 export const missingText = (stock, cost) => Object.entries(cost).filter(([k, n]) => have(stock, k) < n).map(([k, n]) => `${n - have(stock, k)} ${k}`).join(' · ');
 // Horizontal distance (m) from (x, z) to the nearest raft tile's edge; 0 when over a tile, Infinity with no tiles.
@@ -117,6 +120,13 @@ export function statePrompt(s, opt = {}) {
     return null;
   }
   if (held === 'hammer') {
+    const pc = s.pieces; // building pieces (wall, stairs…): building.js aims its own ghost; s.build.hover is the foundation's
+    if (pc?.piece && pc.piece !== 'foundation') {
+      if (pc.ready) return [{key:'LMB', label:'Build ' + (pc.name || 'piece')}, ...(pc.cost ? [{label:pieceCostText(pc.cost), muted:true}] : [])];
+      if (pc.chip) return {label:pc.chip, muted:true}; // the build chip's refusal ("You’re standing there", "Needs support below"…)
+      return {label:'Aim where the ' + (pc.name || 'piece').toLowerCase() + ' goes', muted:true};
+    }
+    if (s.build?.hover?.blocked) return {label:BLOCK_TEXT[s.build.hover.blocked] || 'Can’t build there', muted:true};
     if (!s.build?.hover) return {label:'Aim at the raft edge', muted:true};
     if (s.build.affordable) return [{key:'LMB', label:'Build floor'}, {label:costText(FLOOR_COST), muted:true}];
     const m = missingText(s.stock, FLOOR_COST);
@@ -127,7 +137,11 @@ export function statePrompt(s, opt = {}) {
     if (stage === 'fishing' || s.fishWait) return {label:'Waiting for a bite…', muted:true}; // bites land automatically (game.js fishWait)
     return stage === 'idle' ? {key:'LMB', label:'Cast line'} : null;
   }
-  if (DECOR_NAMES[held] && s.tool === 'place') return s.build?.hover && s.build.hover.blocked !== 'nofloor' ? {key:'LMB', label:'Place ' + DECOR_NAMES[held]} : {label:'Aim at the raft floor', muted:true}; // nofloor: red ghost just off the deck
+  if (DECOR_NAMES[held] && s.tool === 'place') {
+    const h = s.build?.hover, why = h?.blocked;
+    if (!h || why === 'nofloor') return {label:'Aim at the raft floor', muted:true}; // nofloor: red ghost just off the deck
+    return why ? {label:BLOCK_TEXT[why] || 'Can’t place it there', muted:true} : {key:'LMB', label:'Place ' + DECOR_NAMES[held]}; // red ghost: say why, never "Place"
+  }
   return null;
 }
 
