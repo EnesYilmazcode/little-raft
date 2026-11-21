@@ -4,11 +4,12 @@
 //   addEventListener('pointerdown', () => audio.resume());   // user gesture
 //   audio.play('build', 1);  audio.tick(dt, {swimming});   // tick once per frame
 //
-// API: createOceanAudio({context=null, volume=.5, ambience=true, music=false}={}) ->
+// API: createOceanAudio({context=null, volume=.5, ambience=true, music=false}={}) ->   (ambience: false = no surf, number = surf level 0..1)
 //   context          getter, latest AudioContext (null until resume() creates one)
 //   resume()         creates (lazily) / resumes the context, starts ambience; Promise<boolean>
 //   setVolume(v)     master volume 0..1 (same as setBus('master', v)); returns the clamped value
 //   setBus(n, v)     n in BUSES: master | effects | ambience | music; getBus(n) reads it back
+//   setAmbience(v)   surf/wind level after the swell, clamped 0..1 (0 = silent; the Ocean ambience slider)
 //   setMusic(on)     toggles the calm music bed (fades); music getter reports it
 //   play(ev, s=1)    ev in EVENTS (or ALIASES, e.g. 'pickup'); s clamped 0..1; true if scheduled (never throws). Repeat calls
 //                    inside MIN_GAP are dropped, so 'reel' can be called every frame while reeling.
@@ -43,6 +44,7 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
   let ctx = context && typeof context.createGain === 'function' ? context : null;
   const level = { master: clamp01(volume, 0.5), effects: 1, ambience: 1, music: 0.7 };
   let musicOn = !!music;
+  let ambLevel = typeof ambience === 'number' ? clamp01(ambience, 1) : 1; // surf level 0..1 (Ocean ambience slider)
   let destroyed = false;
   let graph = null;          // { master, limiter, tone, fx, amb, mus, noise, brown }
   let amb = null;            // { nodes, sources, wind }
@@ -99,7 +101,7 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
 
   // ---- ambience: surf bed + wind, both looping noise with slow LFOs ---------
   function startAmbience() {
-    if (!ambience || amb || !graph || destroyed) return;
+    if (ambience === false || amb || !graph || destroyed) return;
     try {
       const t = ctx.currentTime, nodes = [], sources = [];
       const node = (n) => { nodes.push(n); return n; };
@@ -108,6 +110,7 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
         const g = node(ctx.createGain()); g.gain.value = depth;
         o.connect(g); g.connect(target); sources.push(o); return o;
       };
+      const lvl = node(ctx.createGain()); lvl.gain.value = ambLevel; lvl.connect(graph.ambience); // Ocean ambience slider, after the swell
       // surf: brown noise, low-passed, breathing with two slow swells
       const surf = node(ctx.createBufferSource()); surf.buffer = graph.brown; surf.loop = true; sources.push(surf);
       const hp = node(ctx.createBiquadFilter()); hp.type = 'highpass'; hp.frequency.value = 60;
@@ -115,16 +118,16 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
       const swell = node(ctx.createGain());
       swell.gain.setValueAtTime(0, t); swell.gain.linearRampToValueAtTime(0.022, t + 3);   // fade in, no pop
       lfo(0.071, 0.007, swell.gain); lfo(0.127, 0.005, swell.gain); lfo(0.071, 140, lp.frequency);
-      surf.connect(hp); hp.connect(lp); lp.connect(swell); swell.connect(graph.ambience);
+      surf.connect(hp); hp.connect(lp); lp.connect(swell); swell.connect(lvl);
       // wind: white noise through a wandering band, gusting slowly
       const wn = node(ctx.createBufferSource()); wn.buffer = graph.noise; wn.loop = true; sources.push(wn);
       const band = node(ctx.createBiquadFilter()); band.type = 'bandpass'; band.frequency.value = 720; band.Q.value = 0.8;
       const wind = node(ctx.createGain());
       wind.gain.setValueAtTime(0, t); wind.gain.linearRampToValueAtTime(0.007, t + 5);
       lfo(0.043, 0.004, wind.gain); lfo(0.031, 260, band.frequency); lfo(0.19, 60, band.frequency);
-      wn.connect(band); band.connect(wind); wind.connect(graph.ambience);
+      wn.connect(band); band.connect(wind); wind.connect(lvl);
       for (const s of sources) s.start(t, s.buffer ? Math.random() * s.buffer.duration * 0.8 : 0);
-      amb = { nodes, sources, wind, lp };
+      amb = { nodes, sources, wind, lp, level: lvl };
     } catch (_) { amb = null; }
   }
   function stopNodes(set) {
@@ -496,6 +499,15 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
 
   function ready() { return !destroyed && graph && ctx && ctx.state === 'running' && level.master > 0; }
 
+  function setAmbience(v) {
+    ambLevel = clamp01(v, ambLevel);
+    if (amb && ctx) {
+      try { amb.level.gain.setTargetAtTime(ambLevel, ctx.currentTime, 0.05); }
+      catch (_) { try { amb.level.gain.value = ambLevel; } catch (__) {} }
+    }
+    return ambLevel;
+  }
+
   function play(event, strength = 1) {
     try {
       if (!ready()) return false;
@@ -545,7 +557,7 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
         amb.wind.gain.setTargetAtTime(sw ? 0.002 : 0.007, t, 0.4);
         amb.lp.frequency.setTargetAtTime(sw ? 300 : 460, t, 0.4);
       }
-      if (amb && level.ambience > 0) {
+      if (amb && level.ambience > 0 && ambLevel > 0) {
         if ((lapIn -= dt) <= 0) { lapIn = rand(1.4, 3.8); voice('lap', rand(0.5, 1), graph.ambience); }
         if ((creakIn -= dt) <= 0) { creakIn = rand(6, 15); if (!sw) voice('creak', rand(0.4, 0.9), graph.ambience); }
       }
@@ -589,6 +601,7 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     setBus,
     getBus,
     setMusic,
+    setAmbience,
     play,
     note, // [instruments]
     tick,

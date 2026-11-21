@@ -50,9 +50,10 @@ test('CRAFT-2: recipe rows repaint when only the fitting count changes', () => {
 test('CRAFT-3: opening the bag re-picks an automatic, unready recipe once states are known', () => {
   const open = uiSrc.slice(uiSrc.indexOf('function open()'), uiSrc.indexOf('function close()'));
   const render = open.indexOf('render(true)');
-  const clear = open.indexOf("if (!pickedByUser && viewOf(pickId)?.state !== 'ready') pickId = null");
+  // merged with loop-ux round 2: an automatic pick is re-chosen by pickOnOpen (first ready recipe the player has none of)
+  const clear = open.indexOf('if (!pickedByUser) pickOnOpen();');
   const tab = open.lastIndexOf('applyTab()');
-  assert.ok(render >= 0 && clear > render && tab > clear, 'states are evaluated, then the auto pick is cleared, then applyTab picks first ready');
+  assert.ok(render >= 0 && clear > render && tab > clear, 'states are evaluated, then the auto pick is re-chosen, then applyTab shows it');
   assert.match(uiSrc, /function setPick\(id\) \{[^}]*pickedByUser = true/);
   assert.match(uiSrc, /activeTab = id; pickId = null; pickedByUser = false;/);
 });

@@ -1,5 +1,5 @@
-// Little Raft interaction prompts: a small key prompt just bottom-right of the crosshair (#lrPrompt)
-// plus a bottom-left event feed (#lrFeed) that takes over game.js's centred #contextPrompt notices.
+// Little Raft interaction prompts: a small key prompt (#lrPrompt, docked by game.js in the bottom-left edge stack;
+// in drag-look it is placed by the cursor) plus a bottom-left event feed (#lrFeed) fed from game.js #contextPrompt notices.
 // API (window.raftPrompts): register({id, object?, test?, range, priority, prompt}) -> unregister,
 //   provide({id, priority, prompt}) -> unregister, current(), refresh(), feed(text).
 // prompt(ctx, hit) returns {key:'E', label:'Pick up', hold?, muted?} | up to 2 of them | null.

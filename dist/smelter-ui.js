@@ -1,5 +1,6 @@
 // Little Raft cooking-station panel (smelter, grill, ...). Pure view: reads the StationModel and
 // the Bag, and routes every change through the callbacks. Styled to match survival-ui.js.
+import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SPRITE_URL = (() => { try { return new URL('icons.svg', import.meta.url).href; } catch { return 'icons.svg'; } })();
@@ -142,7 +143,7 @@ export function createStationPanel({ getStation, getBag, items = {}, fuelValue =
     if (!isOpen) {
       isOpen = true;
       safe(onOpen, sid);
-      if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
+      exitLock(document); // marked page-initiated (lock-rules.js), so the game does not pause on it
       if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
       try { $('.st-wrap').focus({ preventScroll: true }); } catch {}
     }

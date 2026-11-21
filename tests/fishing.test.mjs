@@ -41,14 +41,15 @@ test('castInput: a slot change always reels in empty; no cast means nothing', ()
   assert.equal(castInput({ stage: 'flying' }, 0, 'click'), 'none'); // a hook throw is not a rod cast
 });
 
-test('castPrompt: tells the player how to reel in', () => {
-  assert.match(castPrompt({ fishing: true, t: 1 }, 4), /Waiting for a bite.*click to reel in/);
+test('castPrompt: a click while waiting cancels; a bite reels in by itself', () => {
+  assert.match(castPrompt({ fishing: true, t: 1 }, 4), /Waiting for a bite.*click to cancel/);
+  assert.doesNotMatch(castPrompt({ fishing: true, t: 4.5 }, 4), /click/i);
   assert.match(castPrompt({ fishing: true, t: 4.5 }, 4), /bite/i);
   assert.equal(castPrompt(null, 0), '');
 });
 
 test('fishing rod has its own drawn icon, not the hook or fish sprite', () => {
-  const src = readFileSync(fileURLToPath(new URL('survival-ui.js', base)), 'utf8');
+  const src = readFileSync(fileURLToPath(new URL('item-sprites.js', base)), 'utf8');
   const custom = src.slice(src.indexOf('const CUSTOM = {'), src.indexOf('\n};', src.indexOf('const CUSTOM = {')));
   assert.match(custom, /\n {2}fishingrod: `/);
   assert.equal(ITEM_INFO.fishingrod.placeholder, true); // placeholder makes iconSVG prefer the CUSTOM drawing

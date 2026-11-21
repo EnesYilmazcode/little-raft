@@ -222,3 +222,80 @@ Fleet: 8 subsystem bug hunters, 2 independent adversarial verifiers per bug repo
 - In plain Chrome, Esc from the pause menu still needs one click to relock. The Electron shell covers it.
 - The inventory and pause panels are still centred modals (UX-2/UX-8). Consider docked or side-sheet layouts.
 - Title screen copy and the pause menu styling (UX-7/UX-8).
+
+## Round 2: claude/loop-ux-202611210547 (base: origin/claude/raft-integration 7d19797 + round 1 merged in e4c3aee)
+
+Fleet:
+- 4 subsystem hunters: cursor/Electron, crafting/backpack, menus/settings, tools/viewmodel.
+- 2 adversarial verifiers per hunter report (8).
+- 5 fixers.
+- 1 new-player UX reviewer, reading screenshots.
+- 1 crafting UX builder.
+- 1 merge agent.
+
+### Merge
+Round 1 was merged into raft-integration, keeping both sides:
+- integration's dark translucent restyle, menus, pickup feed and hands viewmodel;
+- loop-ux's lock rules, edge notices and crafting features.
+
+The two item-icon modules became one shared cache.
+
+### Fixed (each confirmed by both verifiers)
+- **Cursor (CUR2-1..5)**, found with real X11 keys in headful Chrome:
+  - A relock made inside the Esc keyup was granted and then dropped by Chrome's Escape key-release shortcut. The relock is now deferred 250 ms, with guards.
+  - Chrome sometimes eats the Esc in locked play. Any lock loss the page didn't cause now opens the pause menu if the window is focused.
+  - Electron:
+    - on an eaten-Esc keyUp, `raftShell.escapedLock()` runs with a gesture;
+    - on window focus, `raftShell.focusRelock()` relocks after alt-tab, but only if play was locked and nothing is open;
+    - a gesture retry covers the Escape cooldown;
+    - the extra key-release round trip is gone.
+  - In the desktop app, Esc while holding a stack in the bag now puts the stack back first.
+- **Menus (MEN2-1..5):**
+  - The ambience slider is wired up, with its gain after the swell.
+  - The title help button no longer shows Resume or Quit, and quit-to-title is a no-op on the title screen.
+  - The shell Escape goes through settings' stepwise routing.
+  - The default renderScale is now 0.85.
+  - The Audio tab has a Sound toggle.
+- **Tools (TOOL2-1..5):**
+  - A cancelled hand swap rises back instead of staying half-lowered.
+  - A pose override waits for its own item.
+  - models.js is wired into held items and icons, with a fallback.
+  - Rod prompts no longer invite a losing click.
+  - Switching slots pulls the hook back, ported from lane-bugs 53426f0.
+- **Crafting (CRA2-1..6 + builder):**
+  - The crafting panel no longer jumps between tabs.
+  - Esc or a backdrop click while holding a stack puts it back.
+  - A stack picked up with the keyboard sits on its slot.
+  - No overflow between 861 and 923 px.
+  - The icon fallback is shared with the pickup feed.
+  - Tooltips show on focus.
+  - Inline ingredient counts.
+  - Craftable recipes sort first.
+  - A pinned-recipe tracker sits at the top-right edge.
+  - Shift crafts the maximum.
+  - Tools craft one at a time.
+  - The bag opens on the first ready recipe the player doesn't own yet.
+  - Counts read "have X · need Y".
+  - Clicking an ingredient jumps to its recipe.
+  - A slot flashes after crafting.
+- **UX (UX2-2/3/6/7/8):**
+  - Help shows in the pause side panel.
+  - Action prompts are in the edge stack.
+  - The hint chain teaches look → walk → throw → bag → slots.
+  - Key and reel wording is unified.
+  - The throw meter has a gradient fill and a full-power cue.
+  - One palette and font across all menus.
+  - Segmented preset picker.
+  - Title: a legible logo and a single "Play together" button.
+
+### Checks
+- `npm test`: 166 pass, 0 fail.
+- `python shoot.py dist <out>`: no page or console errors. The pause menu is a left rail; the bag shows inline counts.
+- `python tests/e2e/escape_lock.py`: the Esc-from-inventory relock and locked-play Esc → pause pass with native key codes, 3/3 in my run and 5/5 in the fixer's. The fixer measured HEAD before the fix at 0/5.
+- XTest real-key trials: 15/15, from the fixer.
+
+### Open for next round
+- None of the Electron main.cjs paths have ever run. They have only been reasoned from source and checked in a node sim. A real desktop run is needed.
+- The focus relock also fires when the player returns by clicking the title bar or taskbar, which is debatable.
+- Play together is still a separate centred dialog.
+- The Hammer and Fishing Rod icons are still dim on their tiles.

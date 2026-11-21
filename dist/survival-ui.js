@@ -1,9 +1,10 @@
 // Little Raft survival UI: shared-play hotbar (.tools) + inventory/crafting dialog (#inventory).
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
+import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, holdDelay, holdHint, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
-import { ITEM_ICONS } from './item-svg.js'; // [progression-hook]
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { iconSVG, itemName } from './item-sprites.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal, fittingTimes, sourceOf, loadPin, savePin, sortByCraftable, chipLabel, maxCraftable, clickCrafts, cleanPin, trackerModel, dockTop, gainedSlots, haveNeedLabel, singleCraft, pressCap, openingPick, recipeFor, dismissAction, slotCentre } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 
 const VERSION = 'sv4';
 const HB = Number(HOTBAR_SIZE) || 8;
@@ -12,68 +13,10 @@ const DUR_MAX = Number(TOOL_DURABILITY) > 0 ? Number(TOOL_DURABILITY) : 0;
 const TRANSIENT = ['sv-src', 'sv-over', 'sv-dragging', 'sv-deny'];
 const INST_KEY = '__littleRaftSurvivalUI';
 
-const BUILD = (() => { try { return new URL(import.meta.url).searchParams.get('build') || 'dev'; } catch { return 'dev'; } })();
-const SPRITE_URL = (() => {
-  try { const u = new URL('icons.svg', import.meta.url); u.search = '?build=' + encodeURIComponent(BUILD); return u.href; }
-  catch { return 'icons.svg'; }
-})();
-
-// Symbols that actually exist in icons.svg.
-const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'crew', 'help', 'sound', 'close', 'repair', 'hammer', 'compass', 'antenna', 'cup', 'saltcup', 'freshcup', 'purifier', 'rainbarrel', 'sprinkler', 'research']); // + rain-sprinkler, research (storage-research)
-// Item kind (normalised) -> sprite symbol.
-const SPRITE_FOR = {
-  hook: 'hook', plastichook: 'hook', grapplinghook: 'hook',
-  hammer: 'hammer', buildhammer: 'hammer',
-  fishingrod: 'fish', rod: 'fish', fish: 'fish', rawfish: 'fish', cookedfish: 'fish',
-  wood: 'wood', plank: 'wood', planks: 'wood', log: 'wood',
-  floor: 'floor', foundation: 'floor', raft: 'floor',
-  leaf: 'leaf', leaves: 'leaf', palmleaf: 'leaf', thatch: 'leaf',
-  scrap: 'scrap', metal: 'scrap',
-  barrel: 'barrel', net: 'net', collectionnet: 'net', sail: 'sail',
-  lantern: 'lantern', compass: 'compass', repair: 'repair', palm: 'palm',
-  antenna: 'antenna', receiver: 'compass',
-};
-// Hand-drawn fallbacks for kinds without a sprite (same palette as icons.svg).
-const CUSTOM = {
-  plastic: `<g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
-    <rect x="20" y="4" width="8" height="5.5" rx="1" fill="#ffbd66"/>
-    <path d="M21 9.5 H27 V13 C33 15 35 19 35 24 V40 C35 42.5 33 44 30.5 44 H17.5 C15 44 13 42.5 13 40 V24 C13 19 15 15 21 13 Z" fill="#9fd6d0"/>
-    <rect x="13" y="27" width="22" height="7" fill="#54a6a4"/>
-    <path d="M21 9.5 H27 V13 C33 15 35 19 35 24 V40 C35 42.5 33 44 30.5 44 H17.5 C15 44 13 42.5 13 40 V24 C13 19 15 15 21 13 Z" fill="none"/>
-    <path d="M28 18 L31 22 M24 37 L27 40" fill="none" stroke-width="1.2" stroke-opacity=".6"/></g>
-    <path d="M17 19 C16 23 16 30 17 39" fill="none" stroke="#fff2cc" stroke-width="1.8" stroke-linecap="round" stroke-opacity=".85"/>`,
-  rope: `<g fill="none" stroke-linecap="round">
-    <ellipse cx="23" cy="25" rx="17" ry="14" stroke="#153e49" stroke-width="7.5"/>
-    <ellipse cx="23" cy="25" rx="17" ry="14" stroke="#bb8650" stroke-width="4.2"/>
-    <ellipse cx="23" cy="25" rx="17" ry="14" stroke="#153e49" stroke-width="1.1" stroke-dasharray="2 3.5" stroke-opacity=".55"/>
-    <ellipse cx="23" cy="25" rx="9.5" ry="7.5" stroke="#153e49" stroke-width="7.5"/>
-    <ellipse cx="23" cy="25" rx="9.5" ry="7.5" stroke="#c99560" stroke-width="4.2"/>
-    <ellipse cx="23" cy="25" rx="9.5" ry="7.5" stroke="#153e49" stroke-width="1.1" stroke-dasharray="2 3.5" stroke-opacity=".55"/>
-    <path d="M35 35 C38 40 42 42 45 41" stroke="#153e49" stroke-width="6"/>
-    <path d="M35 35 C38 40 42 42 45 41" stroke="#bb8650" stroke-width="3"/></g>`,
-  fishingrod: `<g stroke-linecap="round" stroke-linejoin="round">
-    <path d="M7 43 L40 6" stroke="#153e49" stroke-width="6"/>
-    <path d="M7 43 L40 6" stroke="#d9b36a" stroke-width="3.4"/>
-    <path d="M7 43 L14 35" stroke="#7a4a2a" stroke-width="3.6"/>
-    <path d="M19 31.5 L21 29.3 M27 22.5 L29 20.3 M34 14.6 L35.6 12.8" stroke="#153e49" stroke-width="1.3" stroke-opacity=".7"/>
-    <circle cx="15.5" cy="37.5" r="4.2" fill="#9ba5a7" stroke="#153e49" stroke-width="2"/>
-    <path d="M40 6 C43 14 42 22 38 29" fill="none" stroke="#153e49" stroke-width="1.4"/>
-    <circle cx="38" cy="33" r="4.2" fill="#f0e4c6" stroke="#153e49" stroke-width="2"/>
-    <path d="M33.8 33 A4.2 4.2 0 0 1 42.2 33 Z" fill="#c8352b" stroke="#153e49" stroke-width="2"/>
-    <path d="M38 27.5 V29" stroke="#153e49" stroke-width="1.6"/></g>`,
-};
-
-Object.assign(CUSTOM, ITEM_ICONS); // [progression-hook] dedicated drawings for placeholder kinds
-const norm = k => String(k ?? '').toLowerCase().replace(/[\s_\-]/g, '');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clamp01 = v => Math.max(0, Math.min(1, v));
 const info = kind => (ITEM_INFO && ITEM_INFO[kind]) || null;
 
-function itemName(kind) {
-  const i = info(kind);
-  if (i && (i.name || i.label)) return String(i.name || i.label);
-  return String(kind ?? '').replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\b\w/g, c => c.toUpperCase());
-}
 function stackMax(kind) {
   const m = Number(info(kind)?.maxStack);
   if (m > 0) return m;
@@ -96,23 +39,6 @@ function iconHTML(kind) {
   if (url) return `<img class="sv-icon sv-3d" data-icon="${esc(kind)}" src="${url}" alt="" draggable="false">`;
   return iconSVG(kind).replace('<svg ', `<svg data-icon="${esc(kind)}" `);
 }
-function iconSVG(kind) {
-  const n = norm(kind);
-  const meta = info(kind);
-  // Placeholder (borrowed) sprite + a dedicated inline drawing -> prefer the drawing.
-  const custom = meta?.placeholder && CUSTOM[n];
-  // A borrowed sprite would show the wrong item (water as a barrel), so wait on a blank tile instead.
-  if (meta?.placeholder && !custom) return '<svg class="sv-icon sv-blank" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><circle cx="24" cy="24" r="8" fill="#ffffff12"/></svg>';
-  let id = custom ? null : meta?.icon;
-  if (typeof id === 'string') id = id.replace(/^icon-/, ''); else id = null;
-  if (!custom && (!id || !SPRITES.has(id))) id = SPRITE_FOR[n];
-  if (!custom && id && SPRITES.has(id)) return `<svg class="sv-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><use href="${SPRITE_URL}#icon-${id}"></use></svg>`;
-  const body = CUSTOM[n] || `<rect x="7" y="9" width="34" height="30" rx="3" fill="#bb8650" stroke="#153e49" stroke-width="2"/>
-    <path d="M7 17 H41 M7 31 H41" stroke="#153e49" stroke-width="1.3" stroke-opacity=".55"/>
-    <text x="24" y="29" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="13" font-weight="700" fill="#fff2cc" stroke="#153e49" stroke-width=".7">${esc(itemName(kind).replace(/\s+/g, '').slice(0, 2))}</text>`;
-  return `<svg class="sv-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false">${body}</svg>`;
-}
-
 // ---- recipe normalisation (tolerant of a few shapes) ----
 function reqsOf(r) {
   const c = r.cost ?? r.inputs ?? r.ingredients ?? r.requires ?? r.needs ?? {};
@@ -135,7 +61,7 @@ function recipeList() {
 }
 
 // ---- styles ----
-const FONT = "var(--ui-font,'Segoe UI',system-ui,sans-serif)";
+const FONT = "'Segoe UI Variable Text','Segoe UI',system-ui,-apple-system,'Helvetica Neue',Roboto,'Noto Sans','Liberation Sans',Arial,sans-serif";
 const CSS = `
 .tools.sv-hotbar{--s:52px;--g:6px;--px:0px;--py:0px;position:relative;display:flex;flex-wrap:nowrap;gap:var(--g);padding:0;border:0;border-radius:0;max-width:96vw;overflow:visible;background:none;box-shadow:none}
 .tools.sv-hotbar::before,.tools.sv-hotbar::after{content:none;display:none}
@@ -176,7 +102,7 @@ const CSS = `
 #inventory.sv-inv{--s:56px;--g:6px;padding:0;margin:auto;border:0;border-radius:12px;background:transparent;box-shadow:none;color:#f4efe2;
   width:max-content;min-width:0;max-width:96vw;max-height:94vh;overflow:visible;font:500 14px/1.35 ${FONT}}
 #inventory.sv-inv::backdrop{background:radial-gradient(ellipse at center,#0610144d,#061014a6);-webkit-backdrop-filter:none;backdrop-filter:none}
-#inventory .sv-wrap{display:flex;gap:14px;align-items:stretch;padding:14px;outline:none;border-radius:12px;
+#inventory .sv-wrap{display:flex;gap:14px;align-items:stretch;padding:14px;outline:none;border-radius:12px;user-select:none;-webkit-user-select:none;
   background:linear-gradient(180deg,#1a2226e6,#0e1417ee);box-shadow:inset 0 0 0 1px #ffffff17,inset 0 1px 0 #ffffff12,0 20px 60px #000a}
 #inventory .sv-craft,#inventory .sv-bag{background:#00000038;border-radius:9px;box-shadow:inset 0 0 0 1px #ffffff0d}
 #inventory .sv-bag{flex:none;min-width:max-content;display:flex;flex-direction:column;align-items:center;gap:9px;padding:10px 12px 12px}
@@ -198,118 +124,133 @@ const CSS = `
 #inventory .sv-slot[data-pick]::after{content:attr(data-pick);position:absolute;right:-5px;top:-6px;z-index:2;min-width:16px;padding:2px 3px;border-radius:8px;
   background:#ffc66e;color:#1d1608;font:700 11px/1 ${FONT};text-align:center;box-shadow:0 1px 2px #0008}
 #inventory .sv-rope{width:100%;height:1px;margin:2px 0;background:linear-gradient(90deg,transparent,#ffffff2e 15%,#ffffff2e 85%,transparent)}
-#inventory .sv-hint{margin:0;width:${HB * 62 - 6}px;max-width:100%;font:500 12px/1.35 ${FONT};color:#f4efe280;text-align:left}
-#inventory .sv-craft{flex:0 0 324px;width:324px;min-width:324px;box-sizing:border-box;max-height:min(560px,calc(94vh - 30px));display:flex;flex-direction:column;gap:8px;padding:9px;overflow:hidden}
+#inventory .sv-hint{margin:0;max-width:calc(${HB} * var(--s) + ${HB - 1} * var(--g));font:500 12px/1.35 ${FONT};color:#f4efe280;text-align:center}
+#inventory .sv-recipe:focus-visible{outline:2px solid #fff3d6;outline-offset:1px}
+#inventory .sv-rbody{display:block;min-width:0}
+#inventory .sv-empty-list{margin:6px;color:#f4efe299;font-size:14px}
+#inventory .sv-tip[hidden]{display:none}
+#inventory .sv-craft{flex:0 0 324px;width:324px;min-width:324px;box-sizing:border-box;height:min(560px,calc(94vh - 30px));max-height:min(560px,calc(94vh - 30px));display:flex;flex-direction:column;gap:8px;padding:10px;overflow:hidden}
+#inventory .sv-craft>.sv-h{margin:4px 2px 2px}
 #inventory .sv-hint.sv-warn{color:#ffb39a}
 #inventory .sv-tabs{display:grid;grid-template-columns:repeat(var(--tabs,4),1fr);gap:4px;flex:none}
-#inventory .sv-tab{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;height:auto;margin:0;padding:6px 2px 5px;border:0;border-radius:4px 4px 2px 2px;
-  background:linear-gradient(#1c2427,#141b1e);box-shadow:inset 0 0 0 1px #ffffff33;color:#c9cfd0;font:700 11px/1.1 ${FONT};letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
+#inventory .sv-tab{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;height:auto;margin:0;padding:6px 2px 5px;border:0;border-radius:6px;
+  background:#ffffff0b;box-shadow:inset 0 0 0 1px #ffffff12;color:#f4efe2b3;font:700 11px/1.1 ${FONT};letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
 #inventory .sv-tab .sv-icon{width:22px;height:22px;opacity:.8}
-#inventory .sv-tab:hover{color:#f8f3e6;box-shadow:inset 0 0 0 1px #fff6e0aa}
-#inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#46545a,#1c2529);color:#0b1013;box-shadow:inset 0 0 0 1px #fff6e0,0 2px 0 #fff6e0}
+#inventory .sv-tab:hover{color:#f8f3e6;background:#ffffff17}
+#inventory .sv-tab[aria-selected="true"]{background:linear-gradient(180deg,#46545ad0,#1c2529dc);color:#fff6e0;box-shadow:inset 0 0 0 1px #fff6e0a8}
 #inventory .sv-tab[aria-selected="true"] .sv-icon{opacity:1}
-#inventory .sv-tab:focus-visible{outline:2px solid #fff6e0;outline-offset:1px}
-#inventory .sv-tbadge{position:absolute;right:3px;top:3px;min-width:15px;padding:2px 3px;border-radius:8px;background:#6fbf4a;color:#14270b;font:800 10px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
+#inventory .sv-tab:focus-visible{outline:2px solid #fff3d6;outline-offset:1px}
+#inventory .sv-tbadge{position:absolute;right:3px;top:3px;min-width:15px;padding:2px 3px;border-radius:8px;background:#8fd36a;color:#14270b;font:800 10px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
 #inventory .sv-tbadge:empty{display:none}
-#inventory .sv-rlist{flex:1 1 auto;min-height:62px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:5px;padding-right:2px;scrollbar-color:#46545a #0b1013}
+#inventory .sv-rlist{flex:1 1 auto;min-height:62px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:5px;padding-right:2px;scrollbar-width:thin;scrollbar-color:#ffffff38 transparent}
 #inventory .sv-recipe{position:relative;display:grid;grid-template-columns:42px 1fr auto;gap:9px;align-items:center;flex:none;width:100%;height:auto;min-height:0;margin:0;padding:5px 8px 5px 6px;
-  border:0;border-radius:4px;text-align:left;background:linear-gradient(#232c30,#1c2427);box-shadow:inset 0 0 0 1px #ffffff44;
-  color:#f8f3e6;font:600 14px/1.25 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;transition:background .08s,box-shadow .08s}
+  border:0;border-radius:7px;text-align:left;background:#ffffff0b;box-shadow:inset 0 0 0 1px #ffffff12;
+  color:#f4efe2;font:600 14px/1.25 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;transition:background .12s,box-shadow .12s}
 #inventory .sv-recipe[hidden]{display:none}
-#inventory .sv-recipe::before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:3px;border-radius:2px;background:transparent}
+#inventory .sv-recipe::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;border-radius:2px;background:transparent}
 #inventory .sv-recipe.sv-ready::before{background:#8fd36a;box-shadow:0 0 6px #8fd36a99}
-#inventory .sv-recipe.sv-ready{background:linear-gradient(#2c383d,#263034)}
-#inventory .sv-recipe:hover{background:linear-gradient(#343f44,#263034);box-shadow:inset 0 0 0 1px #fff6e0}
-#inventory .sv-recipe.sv-pick{background:linear-gradient(#46545a,#1c2529);box-shadow:inset 0 0 0 2px #fff6e0,0 0 0 1px #0b1013}
-#inventory .sv-recipe.sv-locked .sv-rart>*{filter:grayscale(.85) brightness(.7);opacity:.75}
-#inventory .sv-recipe.sv-locked .sv-rname{color:#a9b0b2}
+#inventory .sv-recipe.sv-ready{background:#ffffff10}
+#inventory .sv-recipe:hover{background:#ffffff17;box-shadow:inset 0 0 0 1px #fff6e0a8}
+#inventory .sv-recipe.sv-pick{background:linear-gradient(180deg,#46545ad0,#1c2529dc);box-shadow:inset 0 0 0 2px #fff6e0,0 0 12px #fff3d633}
+#inventory .sv-recipe.sv-locked .sv-rart>*{filter:grayscale(.6) drop-shadow(0 0 1.5px #ffffff59);opacity:.85}
+#inventory .sv-recipe.sv-locked .sv-rname{color:#f4efe2a6}
 #inventory .sv-recipe.sv-gated .sv-rart>*{filter:grayscale(1) brightness(.55)} /* [progression-hook] research-locked */
-#inventory .sv-recipe:focus-visible{outline:2px solid #fff6e0;outline-offset:1px}
-#inventory .sv-rart{display:grid;place-items:center;width:42px;height:42px;border-radius:3px;background:radial-gradient(circle at 50% 40%,#20282c,#0d1215 75%);box-shadow:inset 0 0 0 1px #ffffff55}
-#inventory .sv-rart .sv-icon{width:36px;height:36px}
-#inventory .sv-rbody{display:block;min-width:0}
+#inventory .sv-recipe:focus-visible{outline:2px solid #fff3d6;outline-offset:1px}
+#inventory .sv-rart{display:grid;place-items:center;width:42px;height:42px;border-radius:6px;background:radial-gradient(circle at 50% 42%,#56656bd0,#1f282cd8 72%);box-shadow:inset 0 0 0 1px #ffffff1c}
+#inventory .sv-rart .sv-icon{width:36px;height:36px;filter:drop-shadow(0 0 1.5px #ffffff66) drop-shadow(0 2px 2px #0009)}
+#inventory .sv-rart svg.sv-icon{width:28px;height:28px}
 #inventory .sv-rname{display:block;font:700 14px/1.2 ${FONT};color:#f8f3e6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#inventory .sv-rsub{display:block;margin-top:2px;font:600 12px/1.2 ${FONT};color:#c9cfd0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#inventory .sv-rsub{display:block;margin-top:2px;font:600 12px/1.2 ${FONT};color:#f4efe299;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #inventory .sv-ready .sv-rsub{color:#a9e48a}
-#inventory .sv-full .sv-rsub{color:#ffcf9a}
-#inventory .sv-locked .sv-rsub{color:#ff9a85}
+#inventory .sv-full .sv-rsub{color:#ffc98f}
+#inventory .sv-locked .sv-rsub{color:#ff9c84}
 #inventory .sv-rbadge{font:800 12px/1 ${FONT};color:#a9e48a;font-variant-numeric:tabular-nums}
-#inventory .sv-detail{flex:none;display:flex;flex-direction:column;gap:7px;padding:9px;border-radius:4px;background:#0b1013d9;box-shadow:inset 0 0 0 1px #ffffff44}
+#inventory .sv-rsub.sv-chips{display:flex;flex-wrap:nowrap;align-items:center;gap:7px;margin-top:3px;overflow:hidden}
+#inventory .sv-chip{display:inline-flex;align-items:center;gap:2px;flex:none;font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums;color:#ff9c84}
+#inventory .sv-chip.sv-ok{color:#a9e48a}
+#inventory .sv-chip .sv-icon{width:18px;height:18px;filter:drop-shadow(0 1px 1px #000a)}
+#inventory .sv-chip svg.sv-icon{width:15px;height:15px;margin:1px}
+#inventory .sv-locked .sv-chip .sv-icon{filter:grayscale(.6) drop-shadow(0 1px 1px #000a)}
+#inventory .sv-rnote{flex:none;font:600 11px/1 ${FONT};font-style:normal;color:#ffc98f}
+#inventory .sv-rnote:empty{display:none}
+#inventory .sv-pinbtn{align-self:start;display:grid;place-items:center;width:30px;height:30px;margin:0;padding:0;border:0;border-radius:6px;background:#ffffff0b;box-shadow:inset 0 0 0 1px #ffffff17;color:#f4efe2a6;cursor:pointer;transform:none}
+#inventory .sv-pinbtn:hover{background:#ffffff1c;color:#fff6e0}
+#inventory .sv-pinbtn[aria-pressed="true"]{background:linear-gradient(180deg,#5d4a2ad0,#2b2214dc);box-shadow:inset 0 0 0 1px #ffc66e;color:#ffc66e}
+#inventory .sv-pinbtn:focus-visible{outline:2px solid #fff3d6;outline-offset:1px}
+#inventory .sv-pinbtn svg,#craftPin .sv-unpin svg{width:16px;height:16px;display:block;pointer-events:none}
+#inventory .sv-cmax{position:relative;pointer-events:none;font:700 12px/1 ${FONT};color:#e6f7d4;opacity:.85;font-variant-numeric:tabular-nums}
+#inventory .sv-cmax:empty{display:none}
+.sv-slot.sv-flash::before{content:"";position:absolute;inset:0;z-index:0;border-radius:inherit;pointer-events:none;animation:svFlash 1.1s ease-out forwards}
+@keyframes svFlash{0%{box-shadow:inset 0 0 0 2px #ffe08a,0 0 0 0 #ffe08a00;background:#ffe08a40}25%{box-shadow:inset 0 0 0 2px #ffe08a,0 0 16px 3px #ffe08a99;background:#ffe08a30}100%{box-shadow:inset 0 0 0 2px #ffe08a00,0 0 0 0 #ffe08a00;background:#ffe08a00}}
+#craftPin{position:fixed;right:14px;top:14px;z-index:4;box-sizing:border-box;width:216px;padding:8px 9px 9px;border-radius:9px;color:#f4efe2;font:600 13px/1.2 ${FONT};
+  background:linear-gradient(180deg,#1a2226d4,#0e1417e0);box-shadow:inset 0 0 0 1px #ffffff17,inset 3px 0 0 #e06a4a,0 8px 24px #0006;pointer-events:none;transition:box-shadow .25s}
+#craftPin.sv-ready{box-shadow:inset 0 0 0 1px #8fd36a8c,inset 3px 0 0 #8fd36a,0 0 14px #8fd36a40,0 8px 24px #0006}
+#craftPin .sv-ph{display:grid;grid-template-columns:34px 1fr 24px;gap:7px;align-items:center}
+#craftPin .sv-part{display:grid;place-items:center;width:34px;height:34px;border-radius:6px;background:radial-gradient(circle at 50% 42%,#56656bd0,#1f282cd8 72%);box-shadow:inset 0 0 0 1px #ffffff1c}
+#craftPin .sv-part .sv-icon{width:30px;height:30px;filter:drop-shadow(0 1px 2px #0009)}
+#craftPin .sv-part svg.sv-icon{width:24px;height:24px}
+#craftPin .sv-pname{display:block;font:700 13px/1.15 ${FONT};color:#f8f3e6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#craftPin .sv-pstate{display:block;margin-top:2px;font:800 9px/1 ${FONT};letter-spacing:1.4px;text-transform:uppercase;color:#ff9c84}
+#craftPin.sv-ready .sv-pstate{color:#a9e48a}
+#craftPin .sv-unpin{display:grid;place-items:center;width:24px;height:24px;margin:0;padding:0;border:0;border-radius:5px;background:#ffffff0d;color:#f4efe299;cursor:pointer;pointer-events:auto;transform:none}
+#craftPin .sv-unpin:hover{background:#ffffff22;color:#fff}
+#craftPin .sv-unpin:focus-visible{outline:2px solid #fff3d6;outline-offset:1px}
+#craftPin ul{list-style:none;margin:7px 0 0;padding:0;display:flex;flex-direction:column;gap:3px}
+#craftPin li{display:grid;grid-template-columns:20px 1fr auto;gap:6px;align-items:center;padding:2px 6px 2px 4px;border-radius:5px;background:#ffffff0a}
+#craftPin li .sv-icon{width:20px;height:20px}
+#craftPin li svg.sv-icon{width:16px;height:16px;margin:2px}
+#craftPin li span{font:600 12px/1.2 ${FONT};color:#e9e3d3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#craftPin li b{font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums;color:#ff9c84}
+#craftPin li.sv-ok b{color:#9ee07a}
+@media(max-width:760px){#craftPin{right:8px;width:172px;padding:6px 7px 7px}#craftPin .sv-ph{grid-template-columns:28px 1fr 22px}#craftPin .sv-part{width:28px;height:28px}#craftPin .sv-part .sv-icon{width:24px;height:24px}}
+#inventory .sv-detail{flex:none;display:flex;flex-direction:column;gap:7px;padding:9px;border-radius:9px;background:#00000038;box-shadow:inset 0 0 0 1px #ffffff12}
 #inventory .sv-detail[hidden]{display:none}
-#inventory .sv-dhead{display:grid;grid-template-columns:60px 1fr auto;gap:10px;align-items:center}
-#inventory .sv-dart{display:grid;place-items:center;width:60px;height:60px;border-radius:4px;background:radial-gradient(circle at 50% 40%,#262f33,#0d1215 75%);box-shadow:inset 0 0 0 1px #ffffff77}
-#inventory .sv-dart .sv-icon{width:54px;height:54px}
+#inventory .sv-dhead{display:grid;grid-template-columns:60px 1fr 30px;gap:10px;align-items:center}
+#inventory .sv-dart{display:grid;place-items:center;width:60px;height:60px;border-radius:7px;background:radial-gradient(circle at 50% 42%,#5a6a70d0,#1f282cd8 72%);box-shadow:inset 0 0 0 1px #ffffff26}
+#inventory .sv-dart .sv-icon{width:54px;height:54px;filter:drop-shadow(0 0 1.5px #ffffff66) drop-shadow(0 2px 3px #0009)}
+#inventory .sv-dart svg.sv-icon{width:40px;height:40px}
 #inventory .sv-dname{display:block;font:700 16px/1.2 ${FONT};color:#f8f3e6}
-#inventory .sv-ddesc{display:block;margin-top:2px;font:500 12px/1.3 ${FONT};color:#c9cfd0}
-#inventory .sv-dlabel{font:700 10px/1 ${FONT};letter-spacing:1.5px;text-transform:uppercase;color:#9aa3a6}
+#inventory .sv-ddesc{display:block;margin-top:2px;font:500 12px/1.3 ${FONT};color:#f4efe299}
+#inventory .sv-dlabel{font:800 10px/1 ${FONT};letter-spacing:1.8px;text-transform:uppercase;color:#f4efe280}
 #inventory .sv-ings{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
-#inventory .sv-ing{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:3px 8px 3px 4px;border-radius:3px;background:#141b1e;box-shadow:inset 3px 0 0 #e06a4a}
+#inventory .sv-ing{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:3px 8px 3px 5px;border-radius:5px;background:#ffffff0b;box-shadow:inset 3px 0 0 #e06a4a}
 #inventory .sv-ing.sv-ok{box-shadow:inset 3px 0 0 #8fd36a}
+#inventory .sv-ing.sv-link{cursor:pointer}#inventory .sv-ing.sv-link:hover{background:#ffffff17}#inventory .sv-ing.sv-link .sv-iname{text-decoration:underline dotted #f4efe266;text-underline-offset:3px}
+#inventory .sv-ing:focus-visible{outline:2px solid #fff3d6;outline-offset:1px}
 #inventory .sv-ing .sv-icon{width:24px;height:24px}
-#inventory .sv-iname{font:600 13px/1.2 ${FONT};color:#e9e3d3}
-#inventory .sv-iname{display:flex;align-items:baseline;gap:7px;min-width:0}
+#inventory .sv-ing svg.sv-icon{width:20px;height:20px;margin:2px}
+#inventory .sv-iname{display:flex;align-items:baseline;gap:7px;min-width:0;font:600 13px/1.2 ${FONT};color:#e9e3d3}
 #inventory .sv-iname>span{white-space:nowrap}
 #inventory .sv-isrc{font:600 11px/1.2 ${FONT};color:#f4efe280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #inventory .sv-ok .sv-isrc{display:none}
-#inventory button.sv-ijump{flex:none;width:auto;height:auto;margin:0;padding:2px 6px;border:0;border-radius:4px;background:#ffc98f24;box-shadow:inset 0 0 0 1px #ffc98f66;color:#ffd7a8;
-  font:700 11px/1.2 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none}
-#inventory button.sv-ijump:hover{background:#ffc98f40;color:#fff0dc}
-#inventory button.sv-ijump:focus-visible{outline:2px solid #fff3d6;outline-offset:1px}
-#inventory .sv-iamt{font:800 13px/1 ${FONT};font-variant-numeric:tabular-nums;color:#ff8a73}
+#inventory .sv-link .sv-isrc{color:#ffd7a8}
+#inventory .sv-iamt{font:800 13px/1 ${FONT};font-variant-numeric:tabular-nums;color:#ff9c84}
 #inventory .sv-ok .sv-iamt{color:#9ee07a}
-#inventory .sv-craftbtn{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;margin:0;padding:0 12px;overflow:hidden;border:0;border-radius:4px;
-  background:linear-gradient(#5c8a3a,#3f6a26);box-shadow:inset 0 0 0 1px #c8f0a0aa,0 2px 0 #1f3612;color:#f4ffe6;font:800 15px/1 ${FONT};letter-spacing:.5px;text-transform:none;cursor:pointer;transform:none;
+#inventory .sv-craftbtn{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;margin:0;padding:0 12px;overflow:hidden;border:0;border-radius:7px;
+  background:linear-gradient(180deg,#4f7d36e6,#335a22ee);box-shadow:inset 0 0 0 1px #c8f0a066,0 2px 8px #0005;color:#f4ffe6;font:800 15px/1 ${FONT};letter-spacing:.5px;text-transform:none;cursor:pointer;transform:none;
   user-select:none;-webkit-user-select:none;touch-action:none}
-#inventory .sv-craftbtn:hover{background:linear-gradient(#6c9c46,#4a7a2e)}
-#inventory .sv-craftbtn:focus-visible{outline:2px solid #fff6e0;outline-offset:2px}
-#inventory .sv-craftbtn[aria-disabled="true"]{background:linear-gradient(#2a3236,#1e2629);box-shadow:inset 0 0 0 1px #ffffff44;color:#8d9598;cursor:not-allowed}
+#inventory .sv-craftbtn:hover{background:linear-gradient(180deg,#5e8f42ee,#3d6a28f2)}
+#inventory .sv-craftbtn:focus-visible{outline:2px solid #fff3d6;outline-offset:2px}
+#inventory .sv-craftbtn[aria-disabled="true"]{background:#ffffff0b;box-shadow:inset 0 0 0 1px #ffffff12;color:#f4efe280;cursor:not-allowed}
 #inventory .sv-craftbtn.sv-deny{box-shadow:inset 0 0 0 2px #e06a4a,0 0 6px #e06a4a88}
-#inventory .sv-fill{position:absolute;inset:0;transform-origin:left center;transform:scaleX(var(--fill,0));background:linear-gradient(90deg,#d8f7a066,#f4ffd0aa);pointer-events:none}
+#inventory .sv-fill{position:absolute;inset:0;transform-origin:left center;transform:scaleX(var(--fill,0));background:linear-gradient(90deg,#d8f7a040,#f4ffd088);pointer-events:none}
 #inventory .sv-craftbtn:not(.sv-holding) .sv-fill{transition:transform .25s ease-out}
 #inventory .sv-clabel,#inventory .sv-chint,#inventory .sv-ccount{position:relative;pointer-events:none}
 #inventory .sv-chint{font:600 11px/1 ${FONT};letter-spacing:0;color:#e6f7d4;opacity:.9}
 #inventory .sv-chint:empty{display:none}
-#inventory .sv-ccount{min-width:26px;padding:3px 5px;border-radius:9px;background:#14270bcc;color:#c8f7a0;font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums}
+#inventory .sv-ccount{min-width:26px;padding:3px 5px;border-radius:9px;background:#0b1013cc;color:#c8f7a0;font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums}
 #inventory .sv-ccount:empty{display:none}
-#inventory .sv-empty-list{margin:6px;color:#c9cfd0;font-size:14px}
-#inventory .sv-tip{position:fixed;left:0;top:0;z-index:10;pointer-events:none;box-sizing:border-box;width:max-content;max-width:250px;padding:7px 10px;border-radius:4px;white-space:normal;
-  background:#0b1013f5;border:1px solid #ffffff40;color:#f8f3e6;font:700 14px/1.3 ${FONT};box-shadow:0 4px 12px #0008}
-#inventory .sv-tip[hidden]{display:none}
-#inventory .sv-tip small{display:block;margin-top:2px;font:500 12px/1.35 ${FONT};color:#c9cfd0}
-#inventory .sv-tip small em{font-style:normal;font-weight:700;color:#ffcf9a}
-@media(max-width:860px),(max-height:520px){#inventory.sv-inv{width:auto}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}#inventory .sv-craft{flex:none;width:auto;min-width:0;max-height:none;overflow:visible}#inventory .sv-rlist{max-height:30vh}#inventory .sv-bag{min-width:0}
+#inventory .sv-tip{position:fixed;left:0;top:0;z-index:10;pointer-events:none;box-sizing:border-box;width:max-content;max-width:250px;padding:7px 10px;border-radius:6px;white-space:normal;
+  background:#0b1013f0;box-shadow:inset 0 0 0 1px #ffffff26,0 4px 12px #0008;color:#f8f3e6;font:700 14px/1.3 ${FONT}}
+#inventory .sv-tip small{display:block;margin-top:2px;font:500 12px/1.35 ${FONT};color:#f4efe299}
+#inventory .sv-tip small em{font-style:normal;font-weight:700;color:#ffc98f}
+/* Between the stacked layout (860px) and where full-size slots fit (1046px with a ${HB}-slot row), slots shrink so the bag fits its panel. */
+@media(max-width:1045px) and (min-width:960px) and (min-height:521px){#inventory.sv-inv{--s:48px;--g:5px}#inventory .sv-slot .sv-art{inset:4px}}
+@media(max-width:959px) and (min-width:861px) and (min-height:521px){#inventory.sv-inv{--s:40px;--g:4px}#inventory .sv-slot .sv-art{inset:3px}}
+@media(max-width:860px),(max-height:520px){#inventory.sv-inv{width:auto}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}#inventory .sv-craft{flex:none;width:auto;min-width:0;height:auto;max-height:none;overflow:visible}#inventory .sv-rlist{max-height:30vh}#inventory .sv-bag{min-width:0}
   #inventory.sv-inv{--s:44px;--g:5px}#inventory .sv-slot .sv-art{inset:3px}}
 @media(max-width:440px){#inventory.sv-inv{--s:36px;--g:4px}#inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}}
-@media(prefers-reduced-motion:reduce){.sv-slot,.sv-art,.sv-cursor,.sv-label,#inventory .sv-recipe,#inventory .sv-craftbtn .sv-fill{transition:none!important;animation:none!important}}
-/* pin a recipe to the HUD edge (craft-book.js trackerView) */
-#inventory button.sv-pinbtn{align-self:start;width:auto;height:auto;margin:0;padding:4px 8px;border:0;border-radius:5px;background:#ffffff0f;box-shadow:inset 0 0 0 1px #ffffff26;color:#f4efe2b3;
-  font:700 11px/1.2 ${FONT};letter-spacing:.3px;text-transform:none;cursor:pointer;transform:none}
-#inventory button.sv-pinbtn:hover{background:#ffffff1f;color:#fff6e0}
-#inventory button.sv-pinbtn[aria-pressed="true"]{background:#ffc98f2e;box-shadow:inset 0 0 0 1px #ffc98fa0;color:#ffd7a8}
-#inventory button.sv-pinbtn:focus-visible{outline:2px solid #fff3d6;outline-offset:1px}
-#inventory .sv-recipe.sv-pinned .sv-rname::after{content:"  \\2022 pinned";font:700 10px/1 ${FONT};letter-spacing:.3px;color:#ffc98f}
-#craftTracker{position:fixed;right:16px;top:96px;z-index:4;width:220px;padding:9px 10px 8px;border-radius:9px;pointer-events:none;
-  background:linear-gradient(180deg,#1a2226d9,#0e1417e0);box-shadow:inset 0 0 0 1px #ffffff17,0 6px 18px #0006;color:#f4efe2;font:500 13px/1.25 ${FONT}}
-#craftTracker[hidden]{display:none}
-#craftTracker .ct-head{display:grid;grid-template-columns:34px 1fr;gap:8px;align-items:center;margin-bottom:6px}
-#craftTracker .ct-art{display:grid;place-items:center;width:34px;height:34px;border-radius:5px;background:#0000004d;box-shadow:inset 0 0 0 1px #ffffff1c}
-#craftTracker .ct-art .sv-icon{width:30px;height:30px;filter:drop-shadow(0 1px 1px #0009)}
-#craftTracker .ct-art svg.sv-icon{width:24px;height:24px}
-#craftTracker .ct-name{display:block;font:700 14px/1.15 ${FONT};color:#f8f3e6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#craftTracker .ct-state{display:block;margin-top:2px;font:700 10px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#f4efe280}
-#craftTracker.ct-ready .ct-state{color:#a9e48a}
-#craftTracker.ct-ready{box-shadow:inset 0 0 0 1px #8fd36a88,0 0 12px #8fd36a33,0 6px 18px #0006}
-#craftTracker ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
-#craftTracker li{display:grid;grid-template-columns:20px 1fr auto;gap:7px;align-items:center;padding:2px 6px 2px 3px;border-radius:4px;background:#ffffff0a;box-shadow:inset 2px 0 0 #e06a4a}
-#craftTracker li.ct-ok{box-shadow:inset 2px 0 0 #8fd36a}
-#craftTracker li .sv-icon{width:20px;height:20px}
-#craftTracker li svg.sv-icon{width:16px;height:16px;margin:2px}
-#craftTracker li span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#e9e3d3;font-weight:600}
-#craftTracker li b{font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums;color:#ff8a73}
-#craftTracker li.ct-ok b{color:#9ee07a}
-#craftTracker .ct-foot{margin-top:6px;font:600 11px/1.3 ${FONT};color:#f4efe299}
-#craftTracker .ct-foot kbd{font:800 10px/1 ${FONT};padding:1px 4px;border-radius:3px;box-shadow:inset 0 0 0 1px #ffffff40;color:#fff6e0}
-@media(max-width:760px){#craftTracker{top:70px;right:10px;width:180px}}
+@media(prefers-reduced-motion:reduce){.sv-slot,.sv-recipe,.sv-art,.sv-cursor,.sv-label,#inventory .sv-craftbtn .sv-fill{transition:none!important;animation:none!important}}
 `;
 
 function ensureStyle() {
@@ -320,6 +261,8 @@ function ensureStyle() {
 
 const slotInner = num => `${num ? `<i class="sv-num">${num}</i>` : ''}<i class="sv-art"></i><i class="sv-count"></i><i class="sv-dur" hidden><i></i></i>`;
 
+const PIN_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 1.5h4l-.6 4.2 2.6 2.3v1.2H8.6V15h-1.2V9.2H4V8l2.6-2.3z" fill="currentColor"/></svg>';
+const X_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>';
 const HINT = 'Click a stack to pick it up, then a slot to place it, or drag it. Right-click a stack to take half; right-click while holding to place one. Tab or arrows move between slots; E, I or Esc closes.';
 function mountDialog() {
   let d = document.getElementById('inventory');
@@ -334,15 +277,14 @@ function mountDialog() {
     for (let i = HB; i < TOTAL; i++) grid += `<button type="button" class="sv-slot" data-index="${i}">${slotInner('')}</button>`;
     for (let i = 0; i < HB; i++) hot += `<button type="button" class="sv-slot sv-hot" data-index="${i}">${slotInner(String((i + 1) % 10))}</button>`;
     d.innerHTML = `<div class="sv-wrap" tabindex="-1">
-      <section class="sv-craft" aria-label="Crafting">
-        <h3 class="sv-h">Crafting</h3>
+      <section class="sv-craft" aria-label="Crafting"><h3 class="sv-h">Crafting</h3>
         <div class="sv-tabs" role="tablist" aria-label="Recipe categories"></div>
         <div class="sv-rlist" role="tabpanel"></div>
         <div class="sv-detail" hidden>
-          <div class="sv-dhead"><span class="sv-dart" aria-hidden="true"></span><span><b class="sv-dname"></b><small class="sv-ddesc"></small></span><button type="button" class="sv-pinbtn" aria-pressed="false">Pin</button></div>
+          <div class="sv-dhead"><span class="sv-dart" aria-hidden="true"></span><span><b class="sv-dname"></b><small class="sv-ddesc"></small></span><button type="button" class="sv-pinbtn" aria-pressed="false" aria-label="Pin recipe" title="Pin: track this recipe while you play">${PIN_SVG}</button></div>
           <span class="sv-dlabel">Requires</span>
           <ul class="sv-ings"></ul>
-          <button type="button" class="sv-craftbtn"><i class="sv-fill"></i><span class="sv-clabel">Craft</span><small class="sv-chint"></small><b class="sv-ccount" aria-hidden="true"></b></button>
+          <button type="button" class="sv-craftbtn"><i class="sv-fill"></i><span class="sv-clabel">Craft</span><small class="sv-chint"></small><b class="sv-ccount" aria-hidden="true"></b><small class="sv-cmax" aria-hidden="true"></small></button>
         </div>
       </section>
       <section class="sv-bag" aria-label="Inventory">
@@ -412,8 +354,12 @@ function readSnap(bag) {
 }
 
 // getModel (optional): (kind) -> Object3D, e.g. models.js getModel; icons are rendered from it.
-// iconFor (optional): (kind) -> data URL; overrides the rendered icon for that kind.
-export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause, iconFor, recipeGate, getModel } = {}) {
+// iconFor (optional): (kind) -> data URL; overrides the shared 3D icon cache.
+// onSfx (optional): (event) -> void, a short UI sound ('craft' per crafted item while holding).
+// getPin / setPin (optional): read / store the pinned recipe id (null = none) with the save; without them the pin
+// is kept in localStorage (craft-book.js PIN_KEY).
+// recipeGate (optional): (id) -> {hidden, locked, reason} | null, research / station locks (progression lane).
+export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause, getModel, iconFor, onSfx, getPin, setPin, recipeGate } = {}) {
   if (typeof getModel === 'function') setModelProvider(getModel);
   const gate = id => { try { return recipeGate?.(id) || null; } catch { return null; } }; // [progression-hook] {hidden, locked, reason}
   // Hot reload: DOM is adopted, not rebuilt; the previous instance releases its listeners only once
@@ -433,11 +379,12 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   const D = {
     art: detail.querySelector('.sv-dart'), name: detail.querySelector('.sv-dname'), desc: detail.querySelector('.sv-ddesc'),
     ings: detail.querySelector('.sv-ings'), btn: detail.querySelector('.sv-craftbtn'), label: detail.querySelector('.sv-clabel'),
-    hint: detail.querySelector('.sv-chint'), count: detail.querySelector('.sv-ccount'), pin: detail.querySelector('.sv-pinbtn'),
+    hint: detail.querySelector('.sv-chint'), count: detail.querySelector('.sv-ccount'), max: detail.querySelector('.sv-cmax'),
+    pin: detail.querySelector('.sv-pinbtn'),
   };
   const tip = dlg.querySelector('.sv-tip');
   const held = dlg.querySelector('.sv-held'), heldArt = held.firstElementChild, heldCnt = held.lastElementChild;
-  let heldKind = null, px = 0, py = 0;
+  let heldKind = null, px = NaN, py = NaN, kbdHeld = false; // px/py NaN until the pointer moves inside the bag
   const hintEl = dlg.querySelector('.sv-hint');
   const invEls = [];
   dlg.querySelectorAll('.sv-slot[data-index]').forEach(el => {
@@ -482,19 +429,20 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let hold = null, btnDenyTimer = 0, countTimer = 0;
   let pickedByUser = false; // false: pickId is an automatic default, re-chosen on open once states are known
   let tipAnchor = null;
-  let pinId = null, trackEl = null, trackSig = null;
+  let flash = null;     // {kind, before, t}: the crafted item's slot flashes once it lands
   const store = () => { try { return window.localStorage; } catch { return null; } };
+  let localPin = typeof getPin === 'function' ? null : loadPin(store()); // used when the host does not store the pin (getPin/setPin missing)
 
   const safe = (fn, ...a) => { try { return fn?.(...a); } catch (e) { console.error(e); } };
   const bagNow = () => { try { return getBag?.() || null; } catch (e) { console.error(e); return null; } };
 
   // ---------- recipes ----------
-  // Host icon override, else the rendered 3D icon (item-icons.js), else the SVG sprite.
+  // Real 3D icon when available (host override, else the shared cache), else the SVG sprite.
   function art(kind) {
     let url = null;
     try { url = iconFor?.(kind); } catch (e) { url = null; }
     if (typeof url === 'string' && /^data:image\//.test(url)) return `<img class="sv-icon sv-3d" src="${esc(url)}" alt="" draggable="false">`;
-    return iconHTML(kind);
+    return iconHTML(kind); // shared 3D icon cache; a late render swaps in via data-icon
   }
   const viewOf = id => recipeEls.find(v => v.r.id === id) || null;
   function buildRecipes() {
@@ -504,7 +452,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     for (const g of groups) for (const r of g.recipes) catOf.set(r.id, g.id);
     if (!groups.some(g => g.id === activeTab)) activeTab = groups[0]?.id ?? null;
     if (!recipes.some(r => r.id === pickId)) pickId = null;
-    const key = recipes.map(r => r.id).join(',') + '|' + (iconFor ? 3 : 2);
+    const key = recipes.map(r => r.id).join(',') + '|' + (iconFor ? 3 : 2) + VERSION;
     if (dlg.dataset.svRecipes !== key || rlist.childElementCount !== recipes.length || !recipes.length) {
       tabsEl.style.setProperty('--tabs', String(Math.max(1, groups.length)));
       tabsEl.innerHTML = groups.map(g => `<button type="button" class="sv-tab" role="tab" data-cat="${esc(g.id)}" aria-selected="false" tabindex="-1">${iconSVG(g.icon)}<span>${esc(g.name)}</span><i class="sv-tbadge"></i></button>`).join('');
@@ -512,7 +460,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       const ordered = groups.flatMap(g => g.recipes);
       rlist.innerHTML = ordered.length ? ordered.map(r => `<button type="button" class="sv-recipe sv-locked" data-recipe="${esc(r.id)}" data-cat="${esc(catOf.get(r.id))}" data-tip-kind="${esc(r.out.kind)}">
         <span class="sv-rart" aria-hidden="true">${art(r.out.kind)}</span>
-        <span class="sv-rbody"><span class="sv-rname">${esc(r.name)}${r.out.count > 1 ? ' ×' + r.out.count : ''}</span><span class="sv-rsub"></span></span>
+        <span class="sv-rbody"><span class="sv-rname">${esc(r.name)}${r.out.count > 1 ? ' ×' + r.out.count : ''}</span><span class="sv-rsub sv-chips">${r.reqs.map(q => `<span class="sv-chip" data-k="${esc(q.kind)}">${art(q.kind)}<b></b></span>`).join('')}<em class="sv-rnote"></em></span></span>
         <span class="sv-rbadge" aria-hidden="true"></span></button>`).join('') : '<p class="sv-empty-list">No recipes known.</p>';
       dlg.dataset.svRecipes = key;
       shownPick = null;
@@ -520,6 +468,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const byId = new Map(recipes.map(r => [r.id, r]));
     recipeEls = [...rlist.querySelectorAll('.sv-recipe')].map(el => ({
       el, r: byId.get(el.dataset.recipe), cat: el.dataset.cat, sub: el.querySelector('.sv-rsub'), badge: el.querySelector('.sv-rbadge'),
+      chips: [...el.querySelectorAll('.sv-chip')].map(c => ({ el: c, amt: c.querySelector('b') })), note: el.querySelector('.sv-rnote'),
       sig: null, rows: [], state: 'missing', times: 0,
     })).filter(v => v.r);
     applyTab();
@@ -546,17 +495,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (id === pickId) return;
     stopHold(); pickId = id; pickedByUser = true; applyPick();
   }
-  // Open the recipe that makes an ingredient (its tab, picked, focused and scrolled into view).
-  function jumpTo(id) {
-    const v = viewOf(id); if (!v) return;
-    hideTip();
-    setTab(v.cat); setPick(id);
-    try { v.el.focus({ preventScroll: true }); v.el.scrollIntoView({ block: 'nearest' }); } catch {}
-  }
   function applyPick() {
     for (const v of recipeEls) { const on = v.r.id === pickId; v.el.classList.toggle('sv-pick', on); v.el.setAttribute('aria-current', String(on)); }
     if (pickId) dlg.dataset.svPick = pickId;
-    paintPin();
     const v = viewOf(pickId);
     detail.hidden = !v;
     if (!v) { shownPick = null; return; }
@@ -564,16 +505,15 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       shownPick = pickId;
       const t = ITEM_TEXT[v.r.out.kind];
       D.art.innerHTML = art(v.r.out.kind);
-      D.art.dataset.tipKind = v.r.out.kind;
+      delete D.art.dataset.tipKind; // the card already shows name and use
       D.name.textContent = v.r.name + (v.r.out.count > 1 ? ' ×' + v.r.out.count : '');
       D.desc.textContent = t?.use || t?.desc || '';
-      // Each ingredient says where to get more when short; a craftable one links to its recipe.
+      // Each ingredient row is focusable; one another recipe makes links to it, a gathered one says where it comes from.
       D.ings.innerHTML = v.r.reqs.map(q => {
-        const src = sourceOf(q.kind, recipes, itemName);
-        const tag = !src ? '' : src.recipe && src.recipe !== v.r.id
-          ? `<button type="button" class="sv-isrc sv-ijump" data-jump="${esc(src.recipe)}" aria-label="Go to the ${esc(itemName(q.kind))} recipe">craft it ›</button>`
-          : `<small class="sv-isrc">${esc(src.tag)}</small>`;
-        return `<li class="sv-ing" data-tip-kind="${esc(q.kind)}">${art(q.kind)}<span class="sv-iname"><span>${esc(itemName(q.kind))}</span>${tag}</span><b class="sv-iamt"></b></li>`;
+        const goto = recipeFor(q.kind, recipes), to = goto && goto !== v.r.id ? goto : '';
+        const src = to ? null : sourceOf(q.kind, recipes, itemName);
+        const tag = to ? '<small class="sv-isrc">craft it ›</small>' : src ? `<small class="sv-isrc">${esc(src.tag)}</small>` : '';
+        return `<li class="sv-ing${to ? ' sv-link' : ''}" tabindex="0" data-tip-kind="${esc(q.kind)}" data-goto="${esc(to)}">${art(q.kind)}<span class="sv-iname"><span>${esc(itemName(q.kind))}</span>${tag}</span><b class="sv-iamt"></b></li>`;
       }).join('') || '<li class="sv-ing sv-ok"><span></span><span class="sv-iname">Nothing</span><b class="sv-iamt"></b></li>';
       ingEls = [...D.ings.querySelectorAll('.sv-ing')].map(el => ({ el, amt: el.querySelector('.sv-iamt') }));
       D.count.textContent = '';
@@ -584,18 +524,23 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const v = viewOf(pickId); if (!v || detail.hidden) return;
     v.rows.forEach((row, k) => {
       const e = ingEls[k]; if (!e) return;
-      e.amt.textContent = amountLabel(row);
+      e.amt.textContent = haveNeedLabel(row);
       e.el.classList.toggle('sv-ok', row.enough);
-      const src = row.enough ? null : sourceOf(row.kind, recipes, itemName);
-      e.el.setAttribute('aria-label', `${itemName(row.kind)}: have ${row.have}, need ${row.need}${src ? '. ' + src.how : ''}`);
+      const src = row.enough || e.el.dataset.goto ? null : sourceOf(row.kind, recipes, itemName);
+      e.el.setAttribute('aria-label', `${itemName(row.kind)}: have ${row.have}, need ${row.need}${e.el.dataset.goto ? '. Press to open its recipe' : src ? '. ' + src.how : ''}`);
     });
     const ready = v.state === 'ready';
     D.btn.setAttribute('aria-disabled', String(!ready));
+    const one = singleCraft(info(v.r.out.kind));
+    const max = ready ? pressCap(v.times, info(v.r.out.kind)) : 0;
     if (!hold) {
       D.label.textContent = ready ? 'Craft' : v.state === 'gated' ? 'Locked' : v.state === 'full' ? 'Bag is full' : 'Missing materials'; // [progression-hook]
-      D.hint.textContent = ready ? holdHint(v.times) : '';
+      D.hint.textContent = max > 1 ? 'hold · shift = all' : '';
     }
-    D.btn.setAttribute('aria-label', ready ? `Craft ${v.r.name}. Hold to craft several.` : `${v.r.name}: ${D.label.textContent}`);
+    const mx = max > 0 && !one ? `max ${max}` : '';
+    if (D.max.textContent !== mx) D.max.textContent = mx;
+    D.btn.setAttribute('aria-label', ready ? (one ? `Craft one ${v.r.name}.` : `Craft ${v.r.name}. Up to ${max}. Hold to craft several, Shift to craft all.`) : `${v.r.name}: ${D.label.textContent}`);
+    paintPinBtn();
   }
   function countOf(bag, kind) {
     if (typeof bag.count === 'function') { try { return Number(bag.count(kind)) || 0; } catch {} }
@@ -627,15 +572,18 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       v.el.classList.toggle('sv-locked', state === 'missing' || state === 'gated');
       v.el.classList.toggle('sv-gated', state === 'gated'); // [progression-hook]
       const lacking = rows.filter(x => !x.enough);
-      v.sub.textContent = state === 'gated' ? 'Locked: ' + (v.reason || 'not learned yet') // [progression-hook]
+      // Inline ingredient chips: [icon] owned/needed, green when covered.
+      rows.forEach((x, k) => { const c = v.chips[k]; if (!c) return; c.amt.textContent = chipLabel(x); c.el.classList.toggle('sv-ok', x.enough); });
+      v.note.textContent = state === 'gated' ? 'Locked' : state === 'full' ? 'No room' : ''; // [progression-hook]
+      const say = state === 'gated' ? 'Locked: ' + (v.reason || 'not learned yet') // [progression-hook]
         : state === 'ready' ? 'Ready to craft'
         : state === 'full' ? 'No room in your bag'
         : 'Need ' + lacking.map(x => `${x.short} ${itemName(x.kind)}`).join(', ');
-      v.badge.textContent = state === 'ready' && Number.isFinite(times) && times > 0 ? '×' + Math.min(times, 99) : '';
-      v.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${rows.map(x => `${x.need} ${itemName(x.kind)}, have ${x.have}`).join('; ') || 'nothing'}. ${v.sub.textContent}.`);
+      v.badge.textContent = state === 'ready' && Number.isFinite(times) && times > 1 && !singleCraft(info(r.out.kind)) ? '×' + Math.min(times, 99) : '';
+      v.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${rows.map(x => `${x.need} ${itemName(x.kind)}, have ${x.have}`).join('; ') || 'nothing'}. ${say}.`);
       if (tipAnchor === v.el) showTipFor(v.el);
     }
-    reorderRecipes();
+    sortRows();
     tabsEl.querySelectorAll('.sv-tab').forEach(t => {
       const n = readyPer.get(t.dataset.cat) || 0, b = t.querySelector('.sv-tbadge');
       if (b && b.textContent !== (n ? String(n) : '')) b.textContent = n ? String(n) : '';
@@ -644,63 +592,112 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     paintDetail();
   }
 
-  // ---------- pinned recipe tracker (HUD edge, shown while the bag is closed) ----------
-  function togglePin() {
-    if (!pickId) return;
-    pinId = pinId === pickId ? null : pickId;
-    savePin(store(), pinId);
-    trackSig = null;
-    paintPin();
-  }
-  function paintPin() {
-    const on = !!pickId && pinId === pickId;
-    if (D.pin) {
-      D.pin.setAttribute('aria-pressed', String(on));
-      D.pin.textContent = on ? 'Pinned' : 'Pin';
-      D.pin.title = on ? 'Stop tracking this recipe' : 'Track this recipe on screen while you gather';
-    }
-    for (const v of recipeEls) v.el.classList.toggle('sv-pinned', v.r.id === pinId);
-  }
-  function ensureTracker() {
-    if (trackEl && trackEl.isConnected) return trackEl;
-    let t = document.getElementById('craftTracker');
-    if (!t) {
-      t = document.createElement('aside');
-      t.id = 'craftTracker'; t.hidden = true;
-      t.setAttribute('aria-label', 'Pinned recipe');
-      (document.getElementById('hud') || document.body).append(t);
-    }
-    trackEl = t; trackSig = null;
-    return t;
-  }
-  function paintTracker(bag, sig) {
-    const t = ensureTracker();
-    const r = pinId && !isOpen ? recipes.find(x => x.id === pinId) : null;
-    if (!r) { if (!t.hidden) t.hidden = true; trackSig = null; return; }
-    const key = sig + '|' + pinId;
-    if (key === trackSig) return;
-    trackSig = key;
-    let check = null;
-    if (typeof bag.canCraft === 'function') { try { check = bag.canCraft(r.id); } catch {} }
-    const tv = trackerView(r, k => countOf(bag, k), check);
-    const ready = tv.state === 'ready';
-    t.classList.toggle('ct-ready', ready);
-    const state = ready ? `Ready${tv.times > 1 ? ' ×' + Math.min(tv.times, 99) : ''}` : tv.state === 'full' ? 'Bag is full' : `${tv.met} of ${tv.total} gathered`;
-    t.innerHTML = `<div class="ct-head"><span class="ct-art" aria-hidden="true">${art(tv.kind)}</span><span><b class="ct-name">${esc(tv.name)}</b><small class="ct-state">${esc(state)}</small></span></div>`
-      + `<ul>${tv.rows.map(x => `<li class="${x.enough ? 'ct-ok' : ''}" aria-label="${esc(itemName(x.kind))}: have ${x.have}, need ${x.need}">${art(x.kind)}<span>${esc(itemName(x.kind))}</span><b>${esc(amountLabel(x))}</b></li>`).join('')}</ul>`
-      + (ready ? '<div class="ct-foot">Open your bag with <kbd>Tab</kbd> to craft</div>' : '');
-    t.hidden = false;
+  // Within each tab: craftable first, then no-room, then locked (stable). Rows are moved, not rebuilt,
+  // so the selection, focus and scroll position survive count changes.
+  function sortRows() {
+    const want = groups.flatMap(g => sortByCraftable(recipeEls.filter(v => v.cat === g.id).map(v => ({ id: v.r.id, state: v.state }))));
+    const now = [...rlist.querySelectorAll(':scope>.sv-recipe')].map(el => el.dataset.recipe);
+    if (now.join(',') === want.join(',')) return;
+    const focus = document.activeElement, top = rlist.scrollTop;
+    const elOf = new Map(recipeEls.map(v => [v.r.id, v.el]));
+    for (const id of want) { const el = elOf.get(id); if (el) rlist.append(el); }
+    rlist.scrollTop = top;
+    if (focus && rlist.contains(focus) && document.activeElement !== focus) { try { focus.focus({ preventScroll: true }); } catch {} }
   }
 
-  // Craftable recipes float to the top of each tab (craft-book.js sortCraftableFirst).
-  function reorderRecipes() {
-    const next = groups.flatMap(g => sortCraftableFirst(recipeEls.filter(v => v.cat === g.id)));
-    if (next.length !== recipeEls.length || next.every((v, i) => v === recipeEls[i])) return;
-    const focused = document.activeElement;
-    for (const v of next) rlist.append(v.el);
-    recipeEls = next;
-    if (focused && focused !== document.activeElement && rlist.contains(focused)) { try { focused.focus({ preventScroll: true }); } catch {} }
-    if (tipAnchor && rlist.contains(tipAnchor)) placeTipAt(tipAnchor);
+  // Jump from an ingredient to the recipe that makes it (switching tab when needed).
+  function gotoRecipe(id, focus = false) {
+    const v = viewOf(id); if (!v) return;
+    hideTip();
+    if (v.cat !== activeTab) setTab(v.cat);
+    setPick(id);
+    try { v.el.scrollIntoView({ block: 'nearest' }); } catch {}
+    if (focus) { try { v.el.focus({ preventScroll: true }); } catch {} }
+  }
+  // On open: the first ready recipe the player has none of yet (else first ready, else first).
+  function pickOnOpen() {
+    const bag = bagNow(); if (!bag) return;
+    const order = [...rlist.querySelectorAll(':scope>.sv-recipe')].map(el => viewOf(el.dataset.recipe)).filter(Boolean);
+    const catRank = new Map(groups.map((g, i) => [g.id, i]));
+    order.sort((a, b) => catRank.get(a.cat) - catRank.get(b.cat));
+    const hit = openingPick(order.map(v => ({ id: v.r.id, cat: v.cat, state: v.state, owned: countOf(bag, v.r.out.kind) })));
+    if (hit) { activeTab = hit.cat; pickId = hit.id; }
+  }
+
+  // ---------- pinned recipe ----------
+  function readPin() {
+    let p = localPin;
+    if (typeof getPin === 'function') { try { p = getPin(); } catch { p = null; } }
+    return cleanPin(p, recipes.map(r => r.id));
+  }
+  function togglePin(id) {
+    const next = id && readPin() !== id ? id : null;
+    localPin = next;
+    if (typeof setPin === 'function') safe(setPin, next); else savePin(store(), next);
+    paintPinBtn();
+    paintTracker(true);
+  }
+  function paintPinBtn() {
+    const on = !!pickId && readPin() === pickId;
+    if (D.pin.getAttribute('aria-pressed') !== String(on)) D.pin.setAttribute('aria-pressed', String(on));
+    const v = viewOf(pickId), name = v ? v.r.name : 'recipe';
+    D.pin.setAttribute('aria-label', on ? `Unpin ${name}` : `Pin ${name} to the screen`);
+    D.pin.title = on ? 'Unpin' : 'Pin: track this recipe while you play';
+  }
+  // Compact tracker docked at the top-right edge during play: item icon + each ingredient owned/needed.
+  const DOCK_AVOID = 'header,.header-right,#hud .inventory,#toast,.goal,#netStatus,#connection,#sailBadge,#obNotes,#signalReadout';
+  let pinEl = null, pinShown = null, pinSig = '', pinRows = [], pinTopAt = 0;
+  function ensurePinEl() {
+    if (pinEl && pinEl.isConnected) return pinEl;
+    pinEl = document.getElementById('craftPin');
+    if (!pinEl) { pinEl = document.createElement('aside'); pinEl.id = 'craftPin'; pinEl.hidden = true; document.body.append(pinEl); }
+    pinEl.setAttribute('aria-label', 'Pinned recipe');
+    pinShown = null;
+    return pinEl;
+  }
+  function placeTracker() {
+    const rects = [];
+    document.querySelectorAll(DOCK_AVOID).forEach(n => {
+      if (pinEl.contains(n) || n.contains(pinEl)) return;
+      const r = n.getBoundingClientRect(); if (r.width > 0 && r.height > 0) rects.push(r);
+    });
+    const right = parseFloat(getComputedStyle(pinEl).right) || 14;
+    const top = dockTop(rects, innerWidth, pinEl.offsetWidth || 200, { right });
+    const px = top + 'px'; if (pinEl.style.top !== px) pinEl.style.top = px;
+  }
+  function paintTracker(force = false) {
+    const el = ensurePinEl();
+    const id = readPin(), r = id ? recipes.find(x => x.id === id) : null;
+    const bag = r && !isOpen && document.body?.classList.contains('playing') ? bagNow() : null;
+    if (!bag) { if (!el.hidden) el.hidden = true; return; }
+    if (force || pinShown !== id) {
+      pinShown = id; pinSig = '';
+      el.innerHTML = `<div class="sv-ph"><span class="sv-part" aria-hidden="true">${art(r.out.kind)}</span><span><b class="sv-pname">${esc(r.name)}</b><small class="sv-pstate"></small></span>`
+        + `<button type="button" class="sv-unpin" aria-label="Unpin ${esc(r.name)}" title="Unpin">${X_SVG}</button></div>`
+        + `<ul>${r.reqs.map(q => `<li>${art(q.kind)}<span>${esc(itemName(q.kind))}</span><b></b></li>`).join('')}</ul>`;
+      pinRows = [...el.querySelectorAll('li')].map(li => ({ li, amt: li.querySelector('b') }));
+    }
+    const m = trackerModel(r.reqs, k => countOf(bag, k));
+    const sig = m.rows.map(x => x.have).join(',');
+    if (sig !== pinSig) {
+      pinSig = sig;
+      m.rows.forEach((x, k) => { const p = pinRows[k]; if (!p) return; p.amt.textContent = haveNeedLabel(x); p.li.classList.toggle('sv-ok', x.enough); });
+      el.classList.toggle('sv-ready', m.ready);
+      const st = el.querySelector('.sv-pstate'); if (st) st.textContent = m.ready ? 'Ready to craft' : 'Pinned';
+    }
+    if (el.hidden) { el.hidden = false; pinTopAt = 0; }
+    const t = performance.now();
+    if (t - pinTopAt > 500) { pinTopAt = t; placeTracker(); }
+  }
+
+  // ---------- post-craft slot flash ----------
+  function flashSlots(idx) {
+    for (const i of idx) for (const el of [invEls[i], i < HB ? hotEls[i] : null]) {
+      if (!el) continue;
+      clearTimeout(el._svFlashT);
+      el.classList.remove('sv-flash'); void el.offsetWidth; el.classList.add('sv-flash');
+      el._svFlashT = setTimeout(() => el.classList.remove('sv-flash'), 1200);
+    }
   }
 
   // ---------- hold to craft ----------
@@ -720,6 +717,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function craftNow(id) {
     const v = freshView(id);
     if (!v || v.state !== 'ready') return false;
+    flash = { kind: v.r.out.kind, before: curSlots, t: performance.now() };
     let r;
     try { r = onCraft?.(id); } catch (e) { console.error(e); r = false; }
     lastSig = null;
@@ -738,8 +736,10 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const v = freshView(pickId);
     if (!v || v.state !== 'ready') { denyBtn(); paintDetail(); return; }
     // Cap at what the materials on hand cover, so a lagging (networked) bag cannot overshoot.
-    const cap = Math.max(1, Math.min(HOLD.max, Number.isFinite(v.times) ? v.times : HOLD.max));
+    // Tools (non-stacking) are one per press, so a long press cannot burn scarce plastic on spares.
+    const cap = Math.max(1, pressCap(v.times, info(v.r.out.kind)));
     if (!craftNow(pickId)) { denyBtn(); return; }
+    safe(onSfx, 'craft');
     hold = { id: pickId, done: 1, cap, t0: performance.now(), wait: holdDelay(1), raf: 0 };
     D.btn.classList.add('sv-holding');
     showCount(1);
@@ -752,6 +752,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     setFill(p);
     if (p >= 1) {
       if (!craftNow(hold.id)) { stopHold(); return; }
+      safe(onSfx, 'craft');
       hold.done++; hold.t0 = now; hold.wait = holdDelay(hold.done);
       showCount(hold.done);
       if (hold.done >= hold.cap) { stopHold(); return; }
@@ -766,6 +767,23 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     setFill(0);
     clearTimeout(countTimer);
     countTimer = setTimeout(() => { D.count.textContent = ''; }, 1100);
+    paintDetail();
+  }
+
+  // Shift+click (or Shift+Enter): craft as many as the materials cover, in one go.
+  function craftMax() {
+    if (!pickId) return;
+    stopHold();
+    const v = freshView(pickId);
+    const n = v && v.state === 'ready' ? Math.min(clickCrafts(v.times, true), pressCap(v.times, info(v.r.out.kind))) : 0;
+    if (!n) { denyBtn(); paintDetail(); return; }
+    let done = 0;
+    while (done < n && craftNow(pickId)) done++;
+    if (!done) { denyBtn(); return; }
+    safe(onSfx, 'craft');
+    showCount(done);
+    countTimer = setTimeout(() => { D.count.textContent = ''; }, 1400);
+    setFill(1); requestAnimationFrame(() => setFill(0));
     paintDetail();
   }
 
@@ -820,7 +838,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   const offIcons = onIconReady(kind => {
     if (!alive) return;
     const sel = `[data-icon="${kind}"]`;
-    if (trackEl?.querySelector(sel)) trackSig = null;
+    if (pinEl?.querySelector(sel)) pinShown = null; // tracker rebuilds with the new icon
     for (const root of [tools, dlg]) root?.querySelectorAll(sel).forEach(n => { n.outerHTML = iconHTML(kind); });
   });
 
@@ -843,7 +861,11 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     heldCnt.textContent = srcAmt > 1 ? String(srcAmt) : '';
     held.hidden = false; placeHeld();
   }
-  function placeHeld() { held.style.transform = `translate(${px - 26}px,${py - 26}px)`; }
+  function heldToSlot(el) { if (!el) return; const c = slotCentre(el.getBoundingClientRect()); px = c.x; py = c.y; }
+  function placeHeld() {
+    if (!Number.isFinite(px) || !Number.isFinite(py)) heldToSlot(src != null ? invEls[src] : null);
+    held.style.transform = `translate(${px - 26}px,${py - 26}px)`;
+  }
   function clearSrc() {
     if (src != null && invEls[src]) {
       const el = invEls[src];
@@ -935,6 +957,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!el || dragging) { hideTip(); return; }
     const kind = el.dataset.tipKind;
     if (!kind) { hideTip(); return; }
+    if (el.classList.contains('sv-recipe') && el.dataset.recipe === pickId) { hideTip(); return; }
     let extra = '';
     const v = el.classList.contains('sv-recipe') ? viewOf(el.dataset.recipe) : null;
     if (v) extra = v.r.reqs.length ? 'Needs ' + v.r.reqs.map(q => `${q.count} ${itemName(q.kind)}`).join(', ') : '';
@@ -973,9 +996,15 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     let all = '';
     for (let i = 0; i < TOTAL; i++) { sigs[i] = slotSig(slots[i]); all += sigs[i] + '|'; }
     all += selected;
+    const prevSlots = curSlots;
     curSlots = slots; curSelected = selected;
     if (hotEls.length) paintHotbar(slots, sigs, selected);
-    paintTracker(bag, all);
+    if (flash && slots !== prevSlots) {
+      const got = gainedSlots(flash.before, slots, flash.kind);
+      if (got.length) { flash = null; flashSlots(got); }
+      else if (performance.now() - flash.t > 4000) flash = null;
+    }
+    paintTracker(false);
     if (isOpen && !dragging && (force || all !== lastSig)) {
       lastSig = all;
       paintInventory(slots, sigs, selected);
@@ -994,17 +1023,18 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!alive || isOpen) return;
     isOpen = true;
     downOnBackdrop = upOnBackdrop = false;
+    px = py = NaN; kbdHeld = false; // stale pointer position from the last time the bag was open
     clearSrc(); clearSay();
     safe(onPause);
-    if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
+    exitLock(document); // marked as page-initiated (lock-rules.js)
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
-    if (trackEl) trackEl.hidden = true;
+    if (pinEl) pinEl.hidden = true;
     buildRecipes();
     invalidate();
     invEls.forEach(el => { el._svCount = undefined; }); // no pop for changes made while closed
     recipeEls.forEach(v => { v.sig = null; });
     render(true);
-    if (!pickedByUser && viewOf(pickId)?.state !== 'ready') pickId = null; // default to the first ready recipe
+    if (!pickedByUser) pickOnOpen(); // an automatic pick is re-chosen once states are known: first ready recipe not owned yet
     applyTab();
     try { wrap.focus({ preventScroll: true }); } catch {}
   }
@@ -1028,7 +1058,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   }
   const slotFrom = e => e.target?.closest?.('#inventory .sv-slot[data-index]') || null;
 
-  dlg.addEventListener('cancel', e => { e.preventDefault(); close(); }, opt);
+  dlg.addEventListener('cancel', e => { e.preventDefault(); if (dismissAction(src != null) === 'drop') { clearSrc(); return; } close(); }, opt);
   dlg.addEventListener('close', () => {
     if (!isOpen) return;
     isOpen = false; stopHold(); endDrag(false); clearSrc(); clearDeny(); hideTip(); hoverIdx = null;
@@ -1039,15 +1069,15 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   dlg.addEventListener('pointerdown', e => { downOnBackdrop = e.target === dlg; upOnBackdrop = false; }, opt);
   dlg.addEventListener('pointerup', e => { upOnBackdrop = e.target === dlg; }, opt);
   dlg.addEventListener('click', e => {
-    if (e.target === dlg) { const shut = backdropCloses(downOnBackdrop, upOnBackdrop); downOnBackdrop = upOnBackdrop = false; if (shut) close(); return; }
+    if (e.target === dlg) { const shut = backdropCloses(downOnBackdrop, upOnBackdrop); downOnBackdrop = upOnBackdrop = false; if (shut) { if (dismissAction(src != null) === 'drop') clearSrc(); else close(); } return; }
     downOnBackdrop = upOnBackdrop = false;
-    if (e.target.closest?.('.sv-pinbtn')) { togglePin(); return; }
     const tb = e.target.closest?.('.sv-tab');
     if (tb) { setTab(tb.dataset.cat); return; }
-    const jb = e.target.closest?.('.sv-ijump');
-    if (jb) { jumpTo(jb.dataset.jump); return; }
     const rb = e.target.closest?.('.sv-recipe');
-    if (rb) { setPick(rb.dataset.recipe); return; }
+    if (rb) { setPick(rb.dataset.recipe); if (tipAnchor === rb) hideTip(); return; }
+    const ing = e.target.closest?.('.sv-ing.sv-link');
+    if (ing) { gotoRecipe(ing.dataset.goto); return; }
+    if (e.target.closest?.('.sv-pinbtn')) { if (pickId) togglePin(pickId); return; }
     if (e.target.closest?.('.sv-craftbtn')) {
       // Pointer presses are handled on pointerdown; detail 0 = keyboard / assistive activation.
       if (e.detail === 0 && !hold) { startHold(); stopHold(); }
@@ -1055,6 +1085,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     }
     const el = slotFrom(e); if (!el) return;
     const i = +el.dataset.index, s = curSlots[i], has = !!slotSig(s);
+    if (e.detail === 0) { kbdHeld = true; heldToSlot(el); } // Enter / Space: no pointer to follow
     if (src == null) { if (has) setSrc(i, s.count); return; }
     if (i === src) { clearSrc(); return; }
     if (!slotSig(curSlots[src])) { clearSrc(); return; }
@@ -1123,7 +1154,6 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     }
   }, opt);
   dlg.addEventListener('dragend', () => { if (dragging) endDrag(); if (src != null) held.hidden = false; }, opt);
-  dlg.addEventListener('pointermove', e => { px = e.clientX; py = e.clientY; if (src != null) placeHeld(); }, opt); // picked stack follows the pointer
   dlg.addEventListener('pointerover', e => {
     const el = slotFrom(e);
     if (el) {
@@ -1136,7 +1166,24 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (k) { if (k !== tipAnchor) showTipFor(k); return; }
     if (tipAnchor) hideTip();
   }, opt);
+  dlg.addEventListener('pointermove', e => {
+    px = e.clientX; py = e.clientY; kbdHeld = false;
+    if (src != null) placeHeld();
+  }, opt);
   dlg.addEventListener('pointerleave', () => { hoverIdx = null; hideTip(); }, opt);
+  dlg.addEventListener('focusin', e => {
+    if (dragging) return;
+    const el = slotFrom(e);
+    if (el) {
+      const i = +el.dataset.index; hoverIdx = i; showTip(i);
+      if (src != null && kbdHeld) { heldToSlot(el); placeHeld(); } // the held stack follows keyboard focus
+      return;
+    }
+    hoverIdx = null;
+    const k = e.target?.closest?.('#inventory [data-tip-kind]');
+    if (k) showTipFor(k); else hideTip();
+  }, opt);
+  dlg.addEventListener('focusout', e => { if (!e.relatedTarget || !dlg.contains(e.relatedTarget)) { hoverIdx = null; hideTip(); } }, opt);
   rlist.addEventListener('scroll', () => { if (tipAnchor && rlist.contains(tipAnchor)) placeTipAt(tipAnchor); }, { ...opt, passive: true });
   // Hold-to-craft on the craft button (mouse, touch, pen; Enter / Space).
   D.btn.addEventListener('pointerdown', e => {
@@ -1144,16 +1191,21 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     e.preventDefault();
     try { D.btn.setPointerCapture(e.pointerId); } catch {}
     try { D.btn.focus({ preventScroll: true }); } catch {}
-    startHold();
+    if (e.shiftKey) craftMax(); else startHold();
   }, opt);
   for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) D.btn.addEventListener(ev, stopHold, opt);
   D.btn.addEventListener('keydown', e => {
     if (e.code !== 'Enter' && e.code !== 'Space' && e.code !== 'NumpadEnter') return;
     e.preventDefault();
-    if (!e.repeat && !hold) startHold();
+    if (!e.repeat && !hold) { if (e.shiftKey) craftMax(); else startHold(); }
   }, opt);
   D.btn.addEventListener('keyup', e => { if (e.code === 'Enter' || e.code === 'Space' || e.code === 'NumpadEnter') stopHold(); }, opt);
   D.btn.addEventListener('blur', stopHold, opt);
+  D.ings.addEventListener('keydown', e => {
+    const ing = e.target.closest?.('.sv-ing.sv-link');
+    if (!ing || (e.code !== 'Enter' && e.code !== 'Space' && e.code !== 'NumpadEnter')) return;
+    e.preventDefault(); gotoRecipe(ing.dataset.goto, true);
+  }, opt);
   // Arrow keys move between tabs (roving tabindex).
   tabsEl.addEventListener('keydown', e => {
     const t = e.target.closest?.('.sv-tab'); if (!t) return;
@@ -1175,7 +1227,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       const n = arrowNeighbor(rects, +slot.dataset.index, e.code);
       if (n >= 0) next = invEls[n];
     } else if (rec && (e.code === 'ArrowDown' || e.code === 'ArrowUp')) {
-      const vis = recipeEls.map(v => v.el).filter(el => !el.hidden), i = vis.indexOf(rec);
+      const vis = [...rlist.querySelectorAll(':scope>.sv-recipe:not([hidden])')], i = vis.indexOf(rec);
       next = vis[i + (e.code === 'ArrowDown' ? 1 : -1)] || null;
     }
     if (!next) return;
@@ -1184,6 +1236,13 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   }, opt);
   // Keep scroll inside the panel from reaching the engine's hotbar wheel handler.
   dlg.addEventListener('wheel', e => e.stopPropagation(), { ...opt, passive: true });
+
+  // Unpin from the tracker (only clickable while the mouse is free).
+  document.addEventListener('click', e => {
+    if (!alive || !e.target?.closest?.('#craftPin .sv-unpin')) return;
+    e.preventDefault(); e.stopPropagation();
+    togglePin(null);
+  }, opt);
 
   // Hotbar clicks (delegated so a replaced .tools node needs no rebinding).
   document.addEventListener('click', e => {
@@ -1208,8 +1267,6 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   }, { ...opt, capture: true });
 
   buildRecipes();
-  pinId = loadPin(store(), recipes.map(r => r.id));
-  paintPin();
   if (isOpen) render(true);
   warmIcons(Object.keys(ITEM_INFO || {}));
 
@@ -1228,7 +1285,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       clearSrc();
       clearDeny();
       hideTip(); hoverIdx = null;
-      if (trackEl) trackEl.hidden = true;
+      if (pinEl) pinEl.hidden = true;
       if (window[INST_KEY] === api) window[INST_KEY] = null;
     },
     get isOpen() { return isOpen; },

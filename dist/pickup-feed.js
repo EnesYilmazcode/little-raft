@@ -1,6 +1,7 @@
 // Bottom-left pickup feed: "+3 Wood" rows with the item's icon, plus short text notes.
 // Repeats of one kind inside MERGE_MS fold into one row; rows hold, then fade. No per-frame work.
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { iconParts } from './item-sprites.js?build=v3-survival-ae77fa84ac2b';
 
 export const HOLD_MS = 3000, MERGE_MS = 2000, FADE_MS = 450, MAX_ROWS = 5;
 const SVG = 'http://www.w3.org/2000/svg';
@@ -31,10 +32,12 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
       }
       return got.isConnected ? got.cloneNode(true) : got;
     }
-    const sym = ITEM_INFO[kind]?.icon;
-    if (!sym || ITEM_INFO[kind].placeholder) return null; // a borrowed sprite would name the wrong item
+    // Same flat fallback as the bag: hand-drawn art for placeholder items, build-stamped sprite URL.
+    const part = iconParts(kind);
+    if (part.blank) return null; // a borrowed sprite would name the wrong item
     const svg = doc.createElementNS(SVG, 'svg'); svg.setAttribute('viewBox', '0 0 48 48'); svg.setAttribute('aria-hidden', 'true');
-    const use = doc.createElementNS(SVG, 'use'); use.setAttribute('href', `icons.svg#${sym}`); svg.appendChild(use);
+    if (part.href) { const use = doc.createElementNS(SVG, 'use'); use.setAttribute('href', part.href); svg.appendChild(use); }
+    else svg.innerHTML = part.body;
     return svg;
   }
 

@@ -5,7 +5,9 @@
 // the queue drains. Models come from setModelProvider(fn) (fn(kind) -> Object3D | null, e.g. models.js
 // getModel; never disposed here) and fall back to the game's own procedural models.
 // Public API: getItemIcon(kind) (sync, data URL or null while rendering / without WebGL),
-// loadItemIcon(kind) (Promise of the same), warmIcons, onIconReady, setModelProvider.
+// loadItemIcon(kind) (Promise of the same), warmIcons, onIconReady, setModelProvider, ICON_KINDS.
+// createItemIcons() is a small facade over the same shared cache ({get, prime, has, dispose}).
+// null always means "use the SVG sprite" (unknown kind, no WebGL, model failure).
 import * as T from './vendor/three.module.js';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
@@ -16,6 +18,8 @@ import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { getModel as getLibraryModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 
 const SIZE = 128;
+// Every bag item kind; warmIcons(ICON_KINDS) renders the full set ahead of the first bag open.
+export const ICON_KINDS = Object.freeze(['wood', 'leaf', 'plastic', 'scrap', 'rope', 'fish', 'hook', 'hammer', 'fishingrod', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 // Item ids whose name differs from the models.js kind.
 const MODEL_ALIAS = { fishingrod: 'rod' };
 const RELEASE_MS = 2500;
@@ -26,7 +30,7 @@ const encoding = new Map(); // kind -> token while its PNG encodes
 const listeners = new Set();
 const waiters = new Map(); // kind -> [resolve] for loadItemIcon
 let provider = null;
-let gl = null, scene = null, camera = null, failed = false, releaseTimer = 0, pumping = false;
+let gl = null, scene = null, camera = null, envTarget = null, failed = false, releaseTimer = 0, pumping = false;
 
 // Per-kind display pose (radians) so long tools read diagonally like a hotbar icon.
 const POSE = {
@@ -35,6 +39,8 @@ const POSE = {
   wood: [0, -0.35, 0.12], leaf: [0.5, 0.4, 0], scrap: [0.3, 0.4, 0],
   net: [0.55, 0.5, 0], bench: [0, 0.5, 0], crate: [0, 0.5, 0],
 };
+// Thin, dark tools get a brighter exposure so they read on the dark slot tiles.
+const EXPOSURE = { hammer: 1.75, fishingrod: 1.75, hook: 1.35 };
 // models.js tools stand upright (grip at origin, working end +Y): tilt them onto the diagonal.
 const PROVIDER_POSE = { hook: [0, 0.5, -0.75] };
 
@@ -93,15 +99,37 @@ function ensureGL() {
     gl.setPixelRatio(1);
     gl.setSize(SIZE, SIZE, false);
     gl.setClearColor(0x000000, 0);
+    gl.outputColorSpace = T.SRGBColorSpace;
     gl.toneMapping = T.ACESFilmicToneMapping;
-    gl.toneMappingExposure = 1.15;
+    gl.toneMappingExposure = 1.1;
   } catch (e) { failed = true; gl = null; console.warn('item icons: no WebGL, using flat icons', e); return false; }
   if (!scene) {
     scene = new T.Scene();
-    scene.add(new T.HemisphereLight(0xfff3dc, 0x3b2a1a, 1.5));
-    const key = new T.DirectionalLight(0xfff0d8, 2.6); key.position.set(3, 5, 4); scene.add(key);
-    const rim = new T.DirectionalLight(0x9fd8ff, 1.3); rim.position.set(-4, 2, -3); scene.add(rim);
+    scene.add(new T.HemisphereLight(0xfff4dc, 0x6a5a48, 1.5));
+    const key = new T.DirectionalLight(0xfff0d8, 2.5); key.position.set(3, 5, 4); scene.add(key);
+    const rim = new T.DirectionalLight(0xbfe6ff, 1.4); rim.position.set(-4, 2, -3); scene.add(rim);
     camera = new T.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+  }
+  // Soft studio environment (per context) so metal parts reflect something instead of rendering black.
+  if (!envTarget) {
+    try {
+      const envScene = new T.Scene();
+      const geo = new T.SphereGeometry(5, 24, 12), cols = [], pos = geo.attributes.position;
+      const top = new T.Color(0xfff3dc), mid = new T.Color(0xb9c8cc), low = new T.Color(0x5a4636), c = new T.Color();
+      for (let i = 0; i < pos.count; i++) {
+        const y = pos.getY(i) / 5;
+        if (y > 0) c.copy(mid).lerp(top, y); else c.copy(mid).lerp(low, -y);
+        cols.push(c.r, c.g, c.b);
+      }
+      geo.setAttribute('color', new T.Float32BufferAttribute(cols, 3));
+      const envMat = new T.MeshBasicMaterial({ vertexColors: true, side: T.BackSide });
+      envScene.add(new T.Mesh(geo, envMat));
+      const pmrem = new T.PMREMGenerator(gl);
+      envTarget = pmrem.fromScene(envScene, 0.04);
+      scene.environment = envTarget.texture;
+      scene.environmentIntensity = 0.6;
+      pmrem.dispose(); geo.dispose(); envMat.dispose();
+    } catch (e) { console.warn('item icon environment', e); }
   }
   return true;
 }
@@ -109,6 +137,7 @@ function ensureGL() {
 function release() {
   releaseTimer = 0;
   if (!gl) return;
+  if (envTarget) { try { envTarget.dispose(); } catch {} envTarget = null; if (scene) scene.environment = null; }
   try { gl.dispose(); gl.forceContextLoss(); } catch {}
   gl = null;
 }
@@ -163,6 +192,7 @@ function renderKind(kind) {
   camera.near = r; camera.far = r * 7;
   camera.updateProjectionMatrix();
   scene.add(pivot);
+  gl.toneMappingExposure = EXPOSURE[kind] || 1.1;
   let out = null;
   try {
     gl.render(scene, camera);
@@ -240,3 +270,16 @@ export function setModelProvider(fn) {
   cache.clear(); encoding.clear();
   warmIcons(kinds);
 }
+
+/** Facade over the shared cache, e.g. for callers that want an object: get(kind) is sync (null while rendering). */
+export function createItemIcons() {
+  return {
+    get: kind => iconURL(String(kind ?? '')),
+    load: kind => loadItemIcon(String(kind ?? '')),
+    prime: (kinds = ICON_KINDS) => warmIcons([...kinds]),
+    has: kind => cache.has(String(kind ?? '')),
+    onReady: onIconReady,
+    dispose() {},
+  };
+}
+export default createItemIcons;
