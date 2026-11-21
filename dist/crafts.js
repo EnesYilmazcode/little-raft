@@ -639,7 +639,7 @@ function buildCrate(T, K, g) {
     K.paint(geo, (px, py, pz, c) => c.copy(tint));
     return K.bake(geo, x, y, z, rx, ry, rz);
   };
-  const tones = [0xc99d69, 0xb98d5b, 0xd2a873], DARK = 0x80593a, MID = 0xa97d4e;
+  const tones = [0xd09a62, 0xc08a55, 0xd8a56c], DARK = 0x845736, MID = 0xb07b4a; // a touch red: the cool sky fill greens shaded faces
   for (const s of [-1, 1]) W.push(board(0.09, 0.06, 0.84, DARK, s * 0.28, 0.03, 0));
   W.push(board(0.8, 0.03, 0.8, MID, 0, 0.075, 0));
   [0.1975, 0.4325, 0.6675].forEach((y, i) => {
@@ -660,7 +660,7 @@ function buildCrate(T, K, g) {
   const bdx = 0.58, bdy = 0.55, blen = Math.hypot(bdx, bdy), ba = Math.atan2(bdx, bdy);
   for (const s of [-1, 1]) W.push(board(0.08, blen, 0.025, MID, 0, 0.435, s * 0.41, 0, 0, -s * ba)); // diagonal brace
   [-0.3, -0.1, 0.1, 0.3].forEach((z, i) => {
-    W.push(board(0.82, 0.035, 0.19, tones[(i + 1) % 3], 0, 0.7925, z));
+    W.push(board(0.82, 0.035, 0.196, tones[(i + 1) % 3], 0, 0.7925, z));
     for (const sx of [-1, 1]) ST.push(K.nail(sx * 0.3, 0.841, z));
   });
   for (const sx of [-1, 1]) W.push(board(0.08, 0.03, 0.78, DARK, sx * 0.3, 0.825, 0)); // lid cleats
