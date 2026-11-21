@@ -16,6 +16,7 @@ import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { getModel as getLibraryModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 
 const SIZE = 128;
+const TONE = T.ACESFilmicToneMapping, EXPOSURE = 1.15;
 // Item ids whose name differs from the models.js kind.
 const MODEL_ALIAS = { fishingrod: 'rod' };
 const RELEASE_MS = 60000; // long enough that the hotbar bake and the warm-all pass ~5 s later share one context
@@ -44,6 +45,8 @@ export const POSE = {
 export const ICON_FATTEN = { hammer: 1.4, fishingrod: 2.2 };
 // models.js tools stand upright (grip at origin, working end +Y): tilt them onto the diagonal.
 const PROVIDER_POSE = { hook: [0, 0.5, -0.75] };
+// Same thickening for the models.js tools (upright on local Y), so hook and hammer read chunky in a slot.
+const PROVIDER_FATTEN = { hook: 1.6, hammer: 1.35, fishingrod: 1.8 };
 // Per-kind framing for models.js items: pose, view direction, crop of the projected bounds
 // ([x0, x1, y0, y1] as fractions) and exposure, so thin or dark items still read in a slot.
 const FRAME = {
@@ -111,13 +114,13 @@ function ensureGL() {
     gl.setPixelRatio(1);
     gl.setSize(SIZE, SIZE, false);
     gl.setClearColor(0x000000, 0);
-    gl.toneMapping = T.ACESFilmicToneMapping;
-    gl.toneMappingExposure = 1.15;
+    gl.toneMapping = TONE;
+    gl.toneMappingExposure = EXPOSURE;
   } catch (e) { failed = true; gl = null; console.warn('item icons: no WebGL, using flat icons', e); return false; }
   if (!scene) {
     scene = new T.Scene();
-    scene.add(new T.HemisphereLight(0xfff3dc, 0x3b2a1a, 1.5));
-    const key = new T.DirectionalLight(0xfff0d8, 2.6); key.position.set(3, 5, 4); scene.add(key);
+    scene.add(new T.HemisphereLight(0xfff3dc, 0x3b2a1a, 1.1));
+    const key = new T.DirectionalLight(0xfff0d8, 3.2); key.position.set(0.5, 4.5, 6); scene.add(key);
     const rim = new T.DirectionalLight(0x9fd8ff, 1.3); rim.position.set(-4, 2, -3); scene.add(rim);
     camera = new T.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
   }
@@ -154,12 +157,50 @@ export function resolveIconModel(kind) {
   return { model: model || null, own: false };   // getModel clones share cached geometry: never free
 }
 
+// ---------- 2D finish ----------
+// Raft-style slot art: the item fills ~86% of the frame, colours a touch punchier, a dark-brown rim
+// (alpha dilated in 16 directions) and a soft drop shadow. Runs once per icon on 128 px canvases.
+const FILL = 0.86, RIM = 4, RIM_COLOR = '#2a180b';
+const canvas2d = n => { const c = document.createElement('canvas'); c.width = c.height = n; return c; };
+/** Tight alpha bounds of an RGBA buffer (N x N, top-down), or null when empty. */
+export function alphaBounds(d, N, min = 16) {
+  let x0 = N, y0 = N, x1 = -1, y1 = -1;
+  for (let y = 0; y < N; y++) {
+    const r = y * N * 4;
+    for (let x = 0; x < N; x++) if (d[r + x * 4 + 3] > min) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; y1 = y; }
+  }
+  return x1 < 0 ? null : { x0, y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+function decorate(src, data, N) {
+  const b = alphaBounds(data, N);
+  if (!b) return null;
+  const k = Math.min(SIZE * FILL / Math.max(b.w, b.h), 3 * SIZE / N); // never blow a speck up past 3x
+  const dw = b.w * k, dh = b.h * k, dx = (SIZE - dw) / 2, dy = (SIZE - dh) / 2 - 1.5; // leave the shadow room below
+  const body = canvas2d(SIZE), bc = body.getContext('2d');
+  bc.imageSmoothingQuality = 'high';
+  bc.filter = 'saturate(1.3) contrast(1.12)';
+  bc.drawImage(src, b.x0, b.y0, b.w, b.h, dx, dy, dw, dh);
+  bc.filter = 'none';
+  const sil = canvas2d(SIZE), sc = sil.getContext('2d');
+  sc.drawImage(body, 0, 0); sc.globalCompositeOperation = 'source-in'; sc.fillStyle = RIM_COLOR; sc.fillRect(0, 0, SIZE, SIZE);
+  const out = canvas2d(SIZE), ctx = out.getContext('2d');
+  // Rim: the silhouette stamped around a ring, so thin parts (hook claw, rod line) get a solid dark edge.
+  for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8; ctx.drawImage(sil, Math.cos(a) * RIM, Math.sin(a) * RIM); }
+  // Soft drop shadow under the rimmed shape.
+  ctx.globalCompositeOperation = 'destination-over';
+  ctx.filter = 'blur(2px)'; ctx.globalAlpha = 0.55;
+  ctx.drawImage(out, 2, 4);
+  ctx.filter = 'none'; ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(body, 0, 0);
+  return out;
+}
+
 function renderKind(kind) {
   if (!ensureGL()) return null;
   const { model, own } = resolveIconModel(kind);
   if (!model) return null;
   const pivot = new T.Group();
-  const fat = own ? ICON_FATTEN[kind] : 0;
+  const fat = own ? ICON_FATTEN[kind] : PROVIDER_FATTEN[kind];
   if (fat) { const g = new T.Group(); g.scale.set(fat, 1, fat); g.add(model); pivot.add(g); } else pivot.add(model);
   const f = (!own && FRAME[kind]) || {};
   const p = f.pose || (own ? null : PROVIDER_POSE[kind]) || POSE[kind]; if (p) pivot.rotation.set(p[0], p[1], p[2]);
@@ -188,11 +229,11 @@ function renderKind(kind) {
   scene.add(pivot);
   let out = null;
   try {
-    out = document.createElement('canvas'); out.width = out.height = SIZE;
+    let src, data, N;
     if (gl === hostGL) {
       const prevRT = gl.getRenderTarget(), prevExp = gl.toneMappingExposure, prevTM = gl.toneMapping, prevAlpha = gl.getClearAlpha(), prevClear = gl.getClearColor(_clear), prevAuto = gl.autoClear, prevShadow = gl.shadowMap.enabled;
       try {
-        gl.toneMapping = T.ACESFilmicToneMapping; gl.toneMappingExposure = f.exp || 1.15; gl.autoClear = true; gl.shadowMap.enabled = false;
+        gl.toneMapping = TONE; gl.toneMappingExposure = f.exp || EXPOSURE; gl.autoClear = true; gl.shadowMap.enabled = false;
         // A fresh target per icon (a few dozen, once): a reused one looks like a per-frame pass to frame-skipping probes.
         rt = new T.WebGLRenderTarget(SIZE * 2, SIZE * 2); // no MSAA (the XR flag below skips its resolve): supersample 2x instead
         rt.texture.colorSpace = T.SRGBColorSpace;
@@ -202,15 +243,16 @@ function renderKind(kind) {
       } finally {
         gl.setRenderTarget(prevRT); try { rt?.dispose(); } catch {} rt = null; gl.toneMapping = prevTM; gl.toneMappingExposure = prevExp; gl.setClearColor(prevClear, prevAlpha); gl.autoClear = prevAuto; gl.shadowMap.enabled = prevShadow;
       }
-      const N = SIZE * 2, img = new ImageData(N, N), row = N * 4;
+      N = SIZE * 2; const img = new ImageData(N, N), row = N * 4;
       for (let y = 0; y < N; y++) img.data.set(pixels.subarray((N - 1 - y) * row, (N - y) * row), y * row); // GL rows are bottom-up
-      const big = document.createElement('canvas'); big.width = big.height = N; big.getContext('2d').putImageData(img, 0, 0);
-      const ctx = out.getContext('2d'); ctx.imageSmoothingQuality = 'high'; ctx.drawImage(big, 0, 0, SIZE, SIZE);
+      src = canvas2d(N); src.getContext('2d').putImageData(img, 0, 0); data = img.data;
     } else {
-      gl.toneMappingExposure = f.exp || 1.15;
+      gl.toneMappingExposure = f.exp || EXPOSURE;
       gl.render(scene, camera);
-      out.getContext('2d').drawImage(gl.domElement, 0, 0);       // GPU copy; the PNG encode happens later, async
+      N = SIZE; src = canvas2d(N); const c = src.getContext('2d', { willReadFrequently: true });
+      c.drawImage(gl.domElement, 0, 0); data = c.getImageData(0, 0, N, N).data;
     }
+    out = decorate(src, data, N);
   } catch (e) { out = null; console.warn('item icon render failed', kind, e); }
   scene.remove(pivot);
   if (own) freeModel(model);
