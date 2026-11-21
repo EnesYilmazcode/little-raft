@@ -511,9 +511,11 @@ export function mount(transfer = null) {
     for (let i = 0; i < 7; i++) { const l = new T.Mesh(new T.ConeGeometry(.28, 1.5, 4), mat(i % 2 ? '#519b55' : '#72ae59')); l.rotation.z = 1.2; l.rotation.y = i * Math.PI * 2 / 7; l.position.set(Math.sin(i * Math.PI * 2 / 7) * .5, 1.65, Math.cos(i * Math.PI * 2 / 7) * .5); g.add(l); }
     parent.add(g);
   }
-  // [shark] tiles the shark must leave alone: under either player, or holding a grill
+  // [shark] tiles the shark must leave alone: under either player, or holding a grill or a crate (a chest's contents live
+  // in content ext keyed by tile, so tearing it would orphan them and a new crate there would bring them back)
   function sharkProtected(tx, tz) {
     for (const p of [physics, other]) if (p && Number.isFinite(p.x) && Number.isFinite(p.z) && Math.abs(p.x - tx * 2) <= 1.4 && Math.abs(p.z - tz * 2) <= 1.4) return true;
+    if (world.decor.some(d => d.type === 'crate' && d.x === tx && d.z === tz)) return true;
     return !!fc?.hasGrill?.(tx, tz);
   }
   // [shark] host: remove one foundation tile with everything on it (decor, its garden/purifier entry, pieces it held up)
