@@ -134,10 +134,10 @@ function buildWood(T, getMaterial, root, inner, r) {
 
 // ---------------------------------------------------------------- palm leaves
 function leafletGeo(T, base, dir, len, wid, droop, out) {
-  // out = {pos:[], idx:[]} single-sided top; mirrored later
+  // out = {pos:[], uv:[], idx:[]} single-sided top
   const up = new T.Vector3(0, 1, 0);
   const perp = new T.Vector3().crossVectors(up, dir).normalize();
-  const rows = 6, start = out.pos.length / 3;
+  const rows = 4, start = out.pos.length / 3;
   for (let i = 0; i <= rows; i++) {
     const t = i / rows;
     const prof = Math.pow(Math.sin(Math.PI * Math.min(1, t * 0.92 + 0.08)), 0.8) * (1 - 0.35 * t);
@@ -170,17 +170,11 @@ function frondGeo(T, r, length, count) {
       leafletGeo(T, base.clone().add(new T.Vector3(0, 0, side * 0.006)), dir, len, 0.022 + 0.018 * (len / 0.34), 0.35 + r() * 0.2, out);
     }
   }
-  // build double-sided indexed geometry (smooth normals per side)
-  const n = out.pos.length / 3;
-  const pos = new Float32Array(n * 6), uv = new Float32Array(n * 4);
-  pos.set(out.pos, 0); pos.set(out.pos, n * 3);
-  uv.set(out.uv, 0); uv.set(out.uv, n * 2);
-  const idx = out.idx.slice();
-  for (let i = 0; i < out.idx.length; i += 3) idx.push(out.idx[i] + n, out.idx[i + 2] + n, out.idx[i + 1] + n);
+  // one-sided: the baked leaf material is DoubleSide, so a mirrored back copy is redundant
   const blades = new T.BufferGeometry();
-  blades.setAttribute('position', new T.BufferAttribute(pos, 3));
-  blades.setAttribute('uv', new T.BufferAttribute(uv, 2));
-  blades.setIndex(idx);
+  blades.setAttribute('position', new T.Float32BufferAttribute(out.pos, 3));
+  blades.setAttribute('uv', new T.Float32BufferAttribute(out.uv, 2));
+  blades.setIndex(out.idx);
   blades.computeVertexNormals();
   // rachis (midrib of the frond)
   const curve = new T.CatmullRomCurve3([0, 0.25, 0.5, 0.75, 1].map(P));
