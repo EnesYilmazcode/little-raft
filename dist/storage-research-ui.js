@@ -4,6 +4,7 @@
 // update() runs per frame; it only compares numbers/strings and repaints on change.
 import { iconSVG, slotSig, paintSlot, itemName } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { arrowNeighbor } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 
 const CHEST = 12;
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
@@ -244,7 +245,13 @@ export function createStorageUI(api) {
     paint();
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     isOpen = true;
-    try { $('.lr-sr-wrap').focus({ preventScroll: true }); } catch {}
+    focusFirst();
+  }
+  // Keyboard focus: the visible, enabled crate/bag slots or study tiles, in DOM order.
+  const navEls = () => [...dlg.querySelectorAll('[data-chest],[data-bag],[data-study]')].filter(el => !el.disabled && !el.closest('[hidden]'));
+  function focusFirst() {
+    const el = navEls()[0] ?? $('.lr-sr-wrap');
+    try { el.focus({ preventScroll: true }); } catch {}
   }
   function close() { if (dlg.open) { try { dlg.close(); } catch { dlg.removeAttribute('open'); } } else onClosed(); }
   function onClosed() {
@@ -254,7 +261,16 @@ export function createStorageUI(api) {
   }
   dlg.addEventListener('close', onClosed, on);
   dlg.addEventListener('cancel', e => { e.preventDefault(); close(); }, on);
-  dlg.addEventListener('keydown', e => { if ((e.code === 'KeyE' || e.code === 'Tab') && !e.repeat) { e.preventDefault(); e.stopPropagation(); close(); } }, on);
+  dlg.addEventListener('keydown', e => { if (e.code === 'KeyE' && !e.repeat) { e.preventDefault(); e.stopPropagation(); close(); } }, on);
+  // Arrow keys move focus across slots / study tiles by layout (like the bag); from the panel itself they enter the first one.
+  dlg.addEventListener('keydown', e => {
+    if (!isOpen || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || !e.code.startsWith('Arrow')) return;
+    const els = navEls(); if (!els.length) return;
+    const i = els.indexOf(e.target.closest?.('[data-chest],[data-bag],[data-study]'));
+    const n = i < 0 ? 0 : arrowNeighbor(els.map(el => el.getBoundingClientRect()), i, e.code);
+    e.preventDefault();
+    if (n >= 0) try { els[n].focus({ preventScroll: false }); } catch {}
+  }, on);
   dlg.addEventListener('wheel', e => e.stopPropagation(), { passive: true, signal: ac.signal });
   dlg.addEventListener('click', e => {
     if (e.target === dlg) { close(); return; }
