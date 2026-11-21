@@ -144,14 +144,14 @@ let mounts = 0;
 export function createDiving({ T, scene, camera, ocean, islands = [], getTiles = () => [], getDeckY = () => 0.2, onGather, restore } = {}) {
   const mount = ++mounts;
   const seafloor = createSeafloor(T, { islands });
-  scene?.add(seafloor.group);
+  seafloor.group.visible = false; scene?.add(seafloor.group); // hidden until update() shows it (title screen was black)
   const fx = createUnderwaterFx(T, { scene, camera, ocean, seafloor });
   const ui = typeof document !== 'undefined' ? createDivingUI(document) : null;
   const failed = new Set();
   const fail = (name, e) => { failed.add(name); console.error(`diving ${name} failed`, e); };
 
   let body = null, owner = null, oxygen = clamp(fin(restore?.oxygen, 1), 0, 1), rising = false, lastInput = {};
-  let underwater = false, depth = 0, floorShown = true, oceanHidden = false, oceanVis = true;
+  let underwater = false, depth = 0, floorShown = false, oceanHidden = false, oceanVis = true;
   let gather = 0, targetId = null, targetType = null, needRelease = false, labelId = null, label = '';
   const regrow = new Map(), pending = new Map(), listeners = new Set(), filters = new Map();
   const env = { waterY: 0, floorY: 0, tiles: null, deckY: 0 };
