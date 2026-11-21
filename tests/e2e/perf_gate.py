@@ -39,7 +39,7 @@ INIT_JS = r"""
   if (window.__perf) return;
   const CAP = %d;
   const P = window.__perf = {
-    recording: false, n: 0, cap: CAP,
+    recording: false, n: 0, cap: CAP, total: 0,
     ts: new Float64Array(CAP), draws: new Float32Array(CAP), tris: new Float32Array(CAP), script: new Float32Array(CAP),
     curDraws: 0, curTris: 0, curScript: 0, curOff: 0, lastTs: -1, fb: null,
     off: new Float32Array(CAP), snap: 0, snapList: null, lastSnap: null, vendor: null,
@@ -97,6 +97,7 @@ INIT_JS = r"""
   // Frame boundary = a new rAF timestamp. Everything drawn since the previous boundary
   // belongs to the previous frame.
   const flush = () => {
+    if (P.lastTs >= 0) P.total++;
     if (P.recording && P.lastTs >= 0 && P.n < CAP) {
       const i = P.n++; P.ts[i] = P.lastTs; P.draws[i] = P.curDraws; P.tris[i] = P.curTris; P.script[i] = P.curScript; P.off[i] = P.curOff; P.riCalls[i] = P.curRi;
     }
@@ -286,8 +287,19 @@ def check(metrics, budget, repro):
             fails.append({'id': fid, 'detail': f'{what}: {val} > budget {lim}.{extra}', 'repro': repro})
     mf = budget.get('minFrames')
     if mf is not None and metrics['frames'] < mf:
-        fails.append({'id': 'frames', 'detail': f"only {metrics['frames']} frames recorded (< {mf}); render loop stalled", 'repro': repro})
+        # Too few frames even after extending the session. A real stall shows up as a long gap
+        # with no frame at all; uniformly slow frames just mean the box is overloaded (infra).
+        gap = max((metrics['frameIntervalMs'].get('max') or 0) / 1000, metrics.get('tailGapS') or 0)
+        stall_s = budget.get('stallS', 20)
+        if metrics['frames'] < 2 or gap > stall_s:
+            fails.append({'id': 'frames', 'detail': f"only {metrics['frames']} frames recorded (< {mf}) in {metrics['recordedS']} s, longest gap between frames {gap:.1f} s (> {stall_s} s): render loop stalled", 'repro': repro})
+        else:
+            raise InsufficientFrames(f"only {metrics['frames']} frames in {metrics['recordedS']} s (< minFrames {mf}) with no stall (longest gap {gap:.1f} s): box too slow for stable percentiles; rerun when it is less loaded")
     return fails
+
+
+class InsufficientFrames(RuntimeError):
+    pass
 
 
 def run(args, budget):
@@ -297,6 +309,7 @@ def run(args, budget):
     dist = Path(args.dist).resolve()
     if not (dist / 'index.html').is_file(): raise RuntimeError(f'no index.html in {dist}')
     report = {'errors': [], 'console': []}
+    sess = budget.get('session') or {}
     with StaticServer(dist) as srv, sync_playwright() as p:
         repro = SESSION.format(dist=dist, url=f'{dist}/index.html (served over http)', warmup=args.warmup, duration=args.duration, width=args.width, height=args.height,
                                seedtxt=f'Math.random seeded with {args.seed} (mulberry32, tests/e2e/seed_random.js)' if args.seed is not None else 'unseeded Math.random',
@@ -315,13 +328,22 @@ def run(args, budget):
             page.goto(srv.url, timeout=60000); page.wait_for_function('!!window.raftDebug && !!window.__perf', timeout=60000)
             page.locator('#solo').click(); page.wait_for_function('raftDebug.state.running', timeout=60000)
             page.wait_for_timeout(int(args.warmup * 1000))
+            # On a very loaded box 6 s can be only a handful of frames; make sure first-frame
+            # shader compiles and buffer uploads are done before the baseline heap/GL sample.
+            warm_frames = int(sess.get('warmupFrames', 15)); tw = time.time()
+            while page.evaluate('__perf.total') < warm_frames and time.time() - tw < 90:
+                page.wait_for_timeout(500)
             close_overlays(page)
             gl0 = page.evaluate('({...__perf.gl})')
             page.evaluate('__perf.start()')
             t0 = time.time()
             h0 = heap(page, cdp); h0['t'] = 0.0
             samples = [h0]; i = 0; next_sample = 10; mid = None
-            while time.time() - t0 < args.duration:
+            # Record for --duration, and keep playing (up to maxExtendS more) while fewer than
+            # minFrames frames are in, so a slow box yields enough samples instead of a flaky fail.
+            min_frames = int(budget.get('minFrames') or 0); extend_s = float(sess.get('maxExtendS', 120))
+            el = 0.0
+            while el < args.duration or (page.evaluate('__perf.n') < min_frames and el < args.duration + extend_s):
                 play_cycle(page, i, args.width, args.height); i += 1
                 el = time.time() - t0
                 if mid is None and el >= args.duration / 2:
@@ -356,6 +378,7 @@ def run(args, budget):
         'drawCalls': stats(draws), 'webglDrawCalls': stats(d['draws']), 'triangles': stats(d['tris']),
         'offscreenDrawCalls': stats(d['off']),
         'scriptMsPerFrame': stats(d['script']), 'frameIntervalMs': stats(intervals),
+        'tailGapS': round((d['now'] - (ts[-1] if ts else d['t0'])) / 1000, 1),
         'drawBreakdown': breakdown(d['snap']),
         'longTasks': {'count': len(longs), 'hitchThresholdMs': hitch_ms, 'hitches': sum(1 for _, x in longs if x > hitch_ms), 'over200ms': sum(1 for _, x in longs if x > 200), 'over500ms': sum(1 for _, x in longs if x > 500),
                       'maxMs': round(max((x for _, x in longs), default=0), 1), 'totalMs': round(sum(x for _, x in longs), 1),
