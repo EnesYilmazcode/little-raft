@@ -1081,7 +1081,16 @@ export function mount(transfer = null) {
     if (role === 'guest') { if (!networkReady) return; localBag().move(from, to, a.amount); }
     action(a);
   }
-  function craft(recipe) { if (typeof recipe === 'string') action({kind:'craft', recipe}); }
+  // true/false: host or solo, the craft ran (the output count went up) or was refused. A guest's craft is
+  // decided by the host, so it returns undefined (sent) and the bag watches for the result.
+  function craft(recipe) {
+    if (typeof recipe !== 'string') return false;
+    const kind = RECIPES[recipe]?.output?.kind, bag = localBag();
+    const before = kind && bag ? bag.count(kind) : 0;
+    const sent = action({kind:'craft', recipe});
+    if (role === 'guest') return sent ? undefined : false;
+    return !!kind && !!bag && bag.count(kind) > before;
+  }
   function repair() { if (!running) return; const bag = localBag(); action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH)}); }
   function openInventory() { if (!running || !survivalUI) return; pauseInput(); releaseLock(); survivalUI.open?.(); play('open'); hintDone('bag'); }
   function interact() {
@@ -1983,7 +1992,7 @@ export function mount(transfer = null) {
       onResume:guard(() => { play('close'); requestLock(); }),
       onPause:guard(pauseInput),
       getModel:modelOf, // 3D icons rendered from models.js
-      recipeGate:id => prog?.recipeGate(id), // [progression-hook]
+      recipeGate:id => prog?.recipeGate(id) || content?.craftGate?.(id) || ((r => r ? {locked:true, reason:String(r)} : null)(content?.craftLocked(id, role === 'guest' ? 'guest' : 'host'))), // [progression-hook] + content (Tinker's Desk) locks
       onSfx:() => play('ui', .3), // soft tick per crafted item while holding Craft
       onNotice:guard(text => notice(text, 2600)), // "Ready to craft: X" for the pinned recipe
       // Pinned recipe lives in the save (solo / host); a guest keeps its own for the session.

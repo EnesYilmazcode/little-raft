@@ -12,6 +12,7 @@ const TOTAL = Number(SLOT_COUNT) || 28;
 const DUR_MAX = Number(TOOL_DURABILITY) > 0 ? Number(TOOL_DURABILITY) : 0;
 const TRANSIENT = ['sv-src', 'sv-over', 'sv-dragging', 'sv-deny'];
 const INST_KEY = '__littleRaftSurvivalUI';
+const CONFIRM_MS = 1500; // a guest's held craft stops if the first one has not landed by then (host refused it)
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clamp01 = v => Math.max(0, Math.min(1, v));
@@ -805,12 +806,21 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const v = freshView(id);
     if (!v || v.state !== 'ready') return false;
     flash = { kind: v.r.out.kind, before: curSlots, t: performance.now() };
+    const bag = bagNow(), kind = v.r.out.kind, had = bag ? countOf(bag, kind) : 0;
     let r;
     try { r = onCraft?.(id); } catch (e) { console.error(e); r = false; }
     lastSig = null;
-    if (r === false) return false;
+    if (r === false) return false; // refused (host / solo: nothing was crafted)
+    // undefined: sent to the host. The hold keeps going only while the crafts land (see unconfirmed()).
+    if (r === undefined && hold && hold.id === id && hold.sent == null) hold.sent = { kind, had, t: performance.now() };
     render(false);
     return true;
+  }
+  // A guest's hold: nothing of the output arrived a round trip after the first craft was sent, so the host refused it.
+  function unconfirmed(now) {
+    const s = hold?.sent; if (!s || now - s.t < CONFIRM_MS) return false;
+    const bag = bagNow();
+    return !bag || countOf(bag, s.kind) <= s.had;
   }
   function setFill(p) { D.btn.style.setProperty('--fill', p.toFixed(3)); }
   function showCount(n) {
@@ -825,9 +835,10 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     // Cap at what the materials on hand cover, so a lagging (networked) bag cannot overshoot.
     // Tools (non-stacking) are one per press, so a long press cannot burn scarce plastic on spares.
     const cap = Math.max(1, pressCap(v.times, info(v.r.out.kind)));
-    if (!craftNow(pickId)) { denyBtn(); return; }
+    hold = { id: pickId, done: 0, cap, t0: performance.now(), wait: holdDelay(1), raf: 0, sent: null };
+    if (!craftNow(pickId)) { hold = null; denyBtn(); paintDetail(); return; }
     safe(onSfx, 'craft');
-    hold = { id: pickId, done: 1, cap, t0: performance.now(), wait: holdDelay(1), raf: 0 };
+    hold.done = 1;
     D.btn.classList.add('sv-holding');
     showCount(1);
     if (hold.done >= hold.cap) { stopHold(); return; }
@@ -837,8 +848,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!hold || !alive) return;
     const p = clamp01((now - hold.t0) / hold.wait);
     setFill(p);
+    if (unconfirmed(now)) { const id = hold.id; stopHold(); denyBtn(); freshView(id); paintDetail(); return; }
     if (p >= 1) {
-      if (!craftNow(hold.id)) { stopHold(); return; }
+      if (!craftNow(hold.id)) { stopHold(); denyBtn(); return; }
       safe(onSfx, 'craft');
       hold.done++; hold.t0 = now; hold.wait = holdDelay(hold.done);
       showCount(hold.done);

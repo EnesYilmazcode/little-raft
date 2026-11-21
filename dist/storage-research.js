@@ -50,6 +50,16 @@ export const isLearned = (state, id) => STARTER.includes(id) || state.all === tr
 export function lockedRecipes(state) {
   return Object.keys(RECIPES).filter(id => !isLearned(state, id));
 }
+/**
+ * Lock state for the craft list: null when learned, else {locked, reason} with the kinds still to study,
+ * worded "Research Plastic and Scrap at a Tinker's Desk" (craft-book unlockInfo turns that into a how-to).
+ */
+export function lockGate(state, id) {
+  if (typeof id !== 'string' || !hasOwn(RECIPES, id) || isLearned(state, id)) return null;
+  const miss = Object.keys(RECIPES[id].cost || {}).filter(k => !state.seen.includes(k)).map(nameOf);
+  const what = miss.length ? miss.length > 1 ? miss.slice(0, -1).join(', ') + ' and ' + miss[miss.length - 1] : miss[0] : 'it';
+  return { locked: true, reason: `Research ${what} at a Tinker\u2019s Desk` };
+}
 /** Kinds the table accepts right now: ingredients of a locked recipe that are not yet seen. */
 export function researchableKinds(state) {
   const out = new Set();
@@ -384,6 +394,7 @@ export function createStorage(ctx) {
       if (typeof recipe !== 'string' || !hasOwn(RECIPES, recipe)) return null;
       return isLearned(st, recipe) ? null : LOCK_REASON;
     },
+    craftGate: recipe => lockGate(st, recipe), // the bag shows the lock (and what to study) before a craft is tried
     interact(aim) {
       const d = target(aim); if (!d) return false;
       if (oldHost()) { ctx.notice?.(OLD_HOST, 2400); return true; }
