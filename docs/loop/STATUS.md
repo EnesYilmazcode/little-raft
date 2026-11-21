@@ -1,8 +1,20 @@
 # Integration status
 
+Updated: 2026-11-21 08:55 UTC, round 4 (integrator B). PR #3 merged into main at 8d21618 (raft-master 29a11fd).
+Gate: 910/910 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, Esc ending lock with the
+build wheel open never pauses, no centred text. Perf vs main 3031d67 with ?pinQuality (median of 3, two interleaved runs):
+242 vs 226 ms idle (+7%), 183 vs 180 ms walking (+2%), ~52 draw calls both.
+No open PR: raft-master == main; the next one opens when new worker merges land.
+
+Skipped this round (need a rebase by their workers): loop-perf-0720, loop-ux-0547, loop-ux-0743, lane-models (older copy), raft-reference (docs).
+
+Previous round:
 Updated: 2026-11-21 08:10 UTC, round 3 (integrator B, alongside a parallel integrator on raft-master).
 PR #2 merged into main at 1636dfe (merge 3031d67). Gate: 816/816, no page errors, hook-only spawn, Esc OK, perf 229 vs 311 ms and 44 vs 148 draw calls.
 Review fixes in the round: inventory fits 900px, recipe tracker moved to the bottom-right (it overlapped the compass/Notes), readable Pin button.
+
+Gate update 2026-11-21 (integrator C): full fleet-gate PASS at c7a8293 — unit, playbot, visual, perf and electron all green
+(Tab closes the bag, one WebGL context, no DOM growth, deterministic icons, desktop Esc opens pause). Open PR: #3 (round 4).
 
 | Check | State |
 |---|---|

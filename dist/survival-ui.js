@@ -138,7 +138,8 @@ function iconSVG(kind) {
   // Placeholder (borrowed) sprite + a dedicated inline drawing -> prefer the drawing.
   const custom = meta?.placeholder && CUSTOM[n];
   // A borrowed sprite would show the wrong item (water as a barrel), so wait on a blank tile instead.
-  if (meta?.placeholder && !custom) return '<svg class="sv-icon sv-blank" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><circle cx="24" cy="24" r="8" fill="#ffffff12"/></svg>';
+  // Neutral tile (rounded box + initials) so the slot never looks empty while the 3D icon renders.
+  if (meta?.placeholder && !custom) return `<svg class="sv-icon sv-blank" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><rect x="9" y="9" width="30" height="30" rx="6" fill="#3e2a1714" stroke="#3e2a1766" stroke-width="1.5"/><text x="24" y="29" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="13" font-weight="700" fill="#3e2a17b0">${esc(itemName(kind).replace(/\s+/g, '').slice(0, 2))}</text></svg>`;
   let id = custom ? null : meta?.icon;
   if (typeof id === 'string') id = id.replace(/^icon-/, ''); else id = null;
   if (!custom && (!id || !SPRITES.has(id))) id = SPRITE_FOR[n];
@@ -783,7 +784,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function startHold() {
     if (!pickId) return;
     stopHold();
-    justMade = null; clearTimeout(countTimer);
+    clearTimeout(countTimer);
     const v = freshView(pickId);
     if (!v || v.state !== 'ready') { denyBtn(); paintDetail(); return; }
     // Cap at what the materials on hand cover, so a lagging (networked) bag cannot overshoot.
@@ -813,7 +814,6 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     cancelAnimationFrame(hold.raf);
     const made = hold.done, out = viewOf(hold.id)?.r.out.count || 1;
     hold = null;
-    justMade = made > 0 && v ? { id: v.r.id, n: made * (v.r.out.count || 1), name: v.r.name } : null;
     D.btn.classList.remove('sv-holding');
     setFill(0);
     clearTimeout(countTimer);

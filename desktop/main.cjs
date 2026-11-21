@@ -24,7 +24,10 @@ app.whenReady().then(()=>{
    if(input.isAutoRepeat||escDown)return;
    escDown=true; // the page holds any relock until the key is released
    wc.executeJavaScript('window.raftShell&&window.raftShell.hold&&window.raftShell.hold();window.raftEscape&&window.raftEscape()',true).catch(()=>{});
-  }else if(escDown){
+  }else if(!escDown){
+   // Chromium eats the keyDown that ends pointer lock, so only this keyUp arrives: treat it as the press (opens pause).
+   wc.executeJavaScript('window.raftEscape&&window.raftEscape()',true).catch(()=>{});
+  }else{
    // Relock on release, with a gesture: relocking while Escape is still held would count as leaving the lock.
    escDown=false;
    wc.executeJavaScript('window.raftShell&&window.raftShell.released&&window.raftShell.released()',true).catch(()=>{});

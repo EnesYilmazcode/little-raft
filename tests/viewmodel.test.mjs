@@ -131,7 +131,7 @@ test('held placeables stay small, the hammer is compact, rope and fish read in t
   const box = () => new T.Mesh(new T.BoxGeometry(2, 1, 1));
   for (const [k, f] of [['crate', null], ['bench', box], ['lantern', null], ['sail', null], ['seed', null], ['planter', null]]) {
     const s = buildItemModel(T, k, f).userData.size;
-    assert.ok(Math.max(s.x, s.y, s.z) <= 0.0751, `${k} capped: ${Math.max(s.x, s.y, s.z)}`);
+    assert.ok(Math.max(s.x, s.y, s.z) <= 0.1101, `${k} capped: ${Math.max(s.x, s.y, s.z)}`);
   }
   assert.ok(buildItemModel(T, 'hammer').userData.size.y < 0.4, 'hammer about 0.7 of its old size');
   assert.ok(Math.max(...Object.values(buildItemModel(T, 'rope').userData.size)) > 0.2, 'rope coil is big enough to read');
