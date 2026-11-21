@@ -127,6 +127,6 @@ game.js gets exactly two edited lines (the effect hook and contentCtx). `award` 
 - **Sound gain** is recomputed from the local player's current distance at each stage (fizz, whistle, pop, crackle), not only once at launch.
 - **Gate clock:** `effect` feeds `windowGate` with `performance.now()`. Frame `dt` is clamped to .25 s.
 - **Extra debug helpers:** `flash()` (peaks, peakAt, owed), `budget()`, `px()` (point-size uniforms) and `target(aim)`.
-- **tests/logbook.test.mjs** now expects 16 achievements, with `firework1` before `homestead`. `raftDebug.logbook.totals.achievements` in game.js is still a hard-coded 15. I left it alone because the spec allows only two game.js edits.
+- **tests/logbook.test.mjs** now expects 16 achievements, with `firework1` before `homestead`. The reviewer changed `raftDebug.logbook.totals.achievements` in game.js to use `ACHIEVEMENTS.length`.
 - **Smoke test** used Python Playwright (the Node package is not installed). It loaded a save with rockets, set night, lit a real rocket with E (`n` went to 1 and `firework1` was awarded), then froze sphere, ring and willow bursts. No page errors.
 - **Not done:** the two-browser co-op e2e (the guest lights a rocket and both peers see it). That path is covered only by unit tests: emit `'all'`, the `effect` hook and `sound:'none'`.
