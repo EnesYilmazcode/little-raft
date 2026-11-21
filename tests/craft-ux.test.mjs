@@ -59,3 +59,26 @@ test('holdHint previews how many a hold makes, capped', () => {
   assert.equal(CB.holdHint(Infinity), `hold: up to ${CB.HOLD.max}`);
   assert.equal(CB.holdHint(7, 5), 'hold: up to 5');
 });
+
+test('sourceOf: gathered items say where they float, crafted ones link to their recipe', () => {
+  const recipes = normRecipes();
+  const name = k => ITEM_INFO[k]?.name ?? k;
+  assert.deepEqual(CB.sourceOf('wood', recipes, name), { tag: 'found floating', how: CB.ITEM_SOURCE.wood.how, recipe: null });
+  assert.match(CB.sourceOf('leaf', recipes, name).tag, /palm/);
+  const rope = CB.sourceOf('rope', recipes, name);
+  assert.equal(rope.recipe, 'rope');
+  assert.equal(rope.tag, 'craft it');
+  assert.equal(rope.how, 'Craft it from 2 Palm Leaf.');
+  assert.equal(CB.sourceOf('hammer', recipes, name).how, 'Craft it from 4 Wood + 2 Rope.');
+  assert.equal(CB.sourceOf('mystery', recipes, name), null);
+  assert.equal(CB.sourceOf('wood', null).recipe, null);
+});
+
+test('sourceOf: every item and recipe ingredient has a source the player can act on', () => {
+  const recipes = normRecipes();
+  for (const r of recipes) for (const q of r.reqs) {
+    const s = CB.sourceOf(q.kind, recipes);
+    assert.ok(s && s.tag && s.how, `${q.kind} (in ${r.id}) has a source`);
+  }
+  for (const k of Object.keys(ITEM_INFO)) assert.ok(CB.sourceOf(k, recipes), `${k} has a source`);
+});

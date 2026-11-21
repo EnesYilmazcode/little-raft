@@ -208,6 +208,32 @@ export function sortCraftableFirst(views) {
     .map(x => x.v);
 }
 
+// ---- where items come from ----
+// `tag` is the short text beside a missing ingredient; `how` is the tooltip line.
+export const ITEM_SOURCE = Object.freeze({
+  wood:    Object.freeze({ tag: 'found floating', how: 'Hook floating planks. Barrels hold more.' }),
+  leaf:    Object.freeze({ tag: 'floating, palm', how: 'Hook floating leaf bundles, or harvest a grown palm.' }),
+  plastic: Object.freeze({ tag: 'found floating', how: 'Hook floating plastic jugs. Barrels hold some too.' }),
+  scrap:   Object.freeze({ tag: 'found floating', how: 'Hook floating scrap. Barrels hold some too.' }),
+  seed:    Object.freeze({ tag: 'barrels, palm', how: 'Hook floating barrels, or harvest a grown palm.' }),
+  fish:    Object.freeze({ tag: 'fishing rod', how: 'Cast the Fishing Rod into the sea and wait for a bite.' }),
+  water:   Object.freeze({ tag: 'fill a cup', how: 'Fill a Filter Cup at the sea.' }),
+});
+
+/**
+ * Where to get `kind`: {tag, how, recipe}. `recipe` is the id of a recipe that makes it, or null.
+ * Gathered items use ITEM_SOURCE; crafted ones describe their own recipe. Otherwise null.
+ * @param {string} kind @param {Array} recipes normalised recipes @param {(k:string)=>string} [nameOf]
+ */
+export function sourceOf(kind, recipes, nameOf = k => k) {
+  const made = (recipes || []).find(r => r && (r.out?.kind ?? r.id) === kind) || null;
+  const known = ITEM_SOURCE[kind];
+  if (known) return { tag: known.tag, how: known.how, recipe: made ? made.id : null };
+  if (!made) return null;
+  const cost = (made.reqs || []).map(q => `${q.count} ${nameOf(q.kind)}`).join(' + ');
+  return { tag: 'craft it', how: cost ? `Craft it from ${cost}.` : 'Craft it.', recipe: made.id };
+}
+
 /** Craft button hint: how many a hold would make right now ('' when one or none). */
 export function holdHint(times, cap = HOLD.max) {
   const n = Math.min(Number.isFinite(times) ? Math.floor(times) : cap, cap);

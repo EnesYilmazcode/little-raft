@@ -2,7 +2,7 @@
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, holdHint, sortCraftableFirst, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, holdHint, sortCraftableFirst, sourceOf, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 
 const VERSION = 'sv3';
 const HB = Number(HOTBAR_SIZE) || 8;
@@ -273,6 +273,14 @@ const CSS = `
 #inventory .sv-ing .sv-icon{width:24px;height:24px}
 #inventory .sv-ing svg.sv-icon{width:18px;height:18px;margin:3px}
 #inventory .sv-iname{font:600 13px/1.2 ${FONT};color:#e9e3d3}
+#inventory .sv-iname{display:flex;align-items:baseline;gap:7px;min-width:0}
+#inventory .sv-iname>span{white-space:nowrap}
+#inventory .sv-isrc{font:600 11px/1.2 ${FONT};color:#f4efe280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#inventory .sv-ok .sv-isrc{display:none}
+#inventory button.sv-ijump{flex:none;width:auto;height:auto;margin:0;padding:2px 6px;border:0;border-radius:4px;background:#ffc98f24;box-shadow:inset 0 0 0 1px #ffc98f66;color:#ffd7a8;
+  font:700 11px/1.2 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none}
+#inventory button.sv-ijump:hover{background:#ffc98f40;color:#fff0dc}
+#inventory button.sv-ijump:focus-visible{outline:2px solid #fff3d6;outline-offset:1px}
 #inventory .sv-iamt{font:800 13px/1 ${FONT};font-variant-numeric:tabular-nums;color:#ff8a73}
 #inventory .sv-ok .sv-iamt{color:#9ee07a}
 #inventory .sv-craftbtn{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;margin:0;padding:0 12px;overflow:hidden;border:0;border-radius:7px;
@@ -498,6 +506,13 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (id === pickId) return;
     stopHold(); pickId = id; applyPick();
   }
+  // Open the recipe that makes an ingredient (its tab, picked, focused and scrolled into view).
+  function jumpTo(id) {
+    const v = viewOf(id); if (!v) return;
+    hideTip();
+    setTab(v.cat); setPick(id);
+    try { v.el.focus({ preventScroll: true }); v.el.scrollIntoView({ block: 'nearest' }); } catch {}
+  }
   function applyPick() {
     for (const v of recipeEls) { const on = v.r.id === pickId; v.el.classList.toggle('sv-pick', on); v.el.setAttribute('aria-current', String(on)); }
     if (pickId) dlg.dataset.svPick = pickId;
@@ -511,7 +526,14 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       D.art.dataset.tipKind = v.r.out.kind;
       D.name.textContent = v.r.name + (v.r.out.count > 1 ? ' ×' + v.r.out.count : '');
       D.desc.textContent = t?.use || t?.desc || '';
-      D.ings.innerHTML = v.r.reqs.map(q => `<li class="sv-ing" data-tip-kind="${esc(q.kind)}">${art(q.kind)}<span class="sv-iname">${esc(itemName(q.kind))}</span><b class="sv-iamt"></b></li>`).join('') || '<li class="sv-ing sv-ok"><span></span><span class="sv-iname">Nothing</span><b class="sv-iamt"></b></li>';
+      // Each ingredient says where to get more when short; a craftable one links to its recipe.
+      D.ings.innerHTML = v.r.reqs.map(q => {
+        const src = sourceOf(q.kind, recipes, itemName);
+        const tag = !src ? '' : src.recipe && src.recipe !== v.r.id
+          ? `<button type="button" class="sv-isrc sv-ijump" data-jump="${esc(src.recipe)}" aria-label="Go to the ${esc(itemName(q.kind))} recipe">craft it ›</button>`
+          : `<small class="sv-isrc">${esc(src.tag)}</small>`;
+        return `<li class="sv-ing" data-tip-kind="${esc(q.kind)}">${art(q.kind)}<span class="sv-iname"><span>${esc(itemName(q.kind))}</span>${tag}</span><b class="sv-iamt"></b></li>`;
+      }).join('') || '<li class="sv-ing sv-ok"><span></span><span class="sv-iname">Nothing</span><b class="sv-iamt"></b></li>';
       ingEls = [...D.ings.querySelectorAll('.sv-ing')].map(el => ({ el, amt: el.querySelector('.sv-iamt') }));
       D.count.textContent = '';
     }
@@ -523,7 +545,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       const e = ingEls[k]; if (!e) return;
       e.amt.textContent = amountLabel(row);
       e.el.classList.toggle('sv-ok', row.enough);
-      e.el.setAttribute('aria-label', `${itemName(row.kind)}: have ${row.have}, need ${row.need}`);
+      const src = row.enough ? null : sourceOf(row.kind, recipes, itemName);
+      e.el.setAttribute('aria-label', `${itemName(row.kind)}: have ${row.have}, need ${row.need}${src ? '. ' + src.how : ''}`);
     });
     const ready = v.state === 'ready';
     D.btn.setAttribute('aria-disabled', String(!ready));
@@ -793,12 +816,14 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
 
   // ---------- tooltip ----------
   // Always anchored beside the hovered element (never follows the pointer, never centred).
-  function tipHTML(kind, extra = '') {
+  function tipHTML(kind, extra = '', withSource = true) {
     const t = ITEM_TEXT[kind];
     const uses = usedIn(kind, recipes);
+    const src = withSource ? sourceOf(kind, recipes, itemName) : null;
     return `<b>${esc(itemName(kind))}</b>${extra ? `<small>${esc(extra)}</small>` : ''}`
       + (t?.desc ? `<small>${esc(t.desc)}</small>` : '')
       + (t?.use ? `<small><em>Used for:</em> ${esc(t.use)}</small>` : '')
+      + (src ? `<small><em>Get it:</em> ${esc(src.how)}</small>` : '')
       + (uses.length ? `<small><em>Ingredient in:</em> ${esc(uses.join(', '))}</small>` : '');
   }
   function placeTipAt(el) {
@@ -815,7 +840,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const v = el.classList.contains('sv-recipe') ? viewOf(el.dataset.recipe) : null;
     if (v) extra = v.r.reqs.length ? 'Needs ' + v.r.reqs.map(q => `${q.count} ${itemName(q.kind)}`).join(', ') : '';
     tipAnchor = el;
-    tip.innerHTML = tipHTML(kind, extra);
+    tip.innerHTML = tipHTML(kind, extra, !v);
     tip.hidden = false;
     placeTipAt(el);
   }
@@ -909,6 +934,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     downOnBackdrop = upOnBackdrop = false;
     const tb = e.target.closest?.('.sv-tab');
     if (tb) { setTab(tb.dataset.cat); return; }
+    const jb = e.target.closest?.('.sv-ijump');
+    if (jb) { jumpTo(jb.dataset.jump); return; }
     const rb = e.target.closest?.('.sv-recipe');
     if (rb) { setPick(rb.dataset.recipe); return; }
     if (e.target.closest?.('.sv-craftbtn')) {
