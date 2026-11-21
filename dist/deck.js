@@ -115,7 +115,7 @@ function beamParts(T, rng, z) {
 }
 
 function lashing(T, rng, x, zb, surf, out) {
-  const R = BEAM_R + 0.008, tube = 0.0055;
+  const R = BEAM_R + 0.008, tube = 0.0065; // two wraps, a touch thicker than the old three
   const bottomC = BEAM_Y - BEAM_R - 0.006, topC = surf + 0.007;
   const Ry = (topC - bottomC) / 2, yc = (topC + bottomC) / 2, ky = Ry / R;
   const wraps = 2;
