@@ -227,7 +227,7 @@ function boot() {
       o.connect(g).connect(ac.destination); o.start(t); o.stop(t + .4);
     } catch {}
   }
-  const feed = t => { try { window.raftPrompts?.feed?.(t); } catch {} };
+  const feed = t => { try { window.raftPrompts?.feed?.(t); } catch {} }; // -> the bottom-left pickup feed (chapter lines only)
   function renderHead(ch) {
     const all = ch === null, list = STEPS.filter(s => s.chapter === ch && !s.optional);
     panel.classList.toggle('ob-all', all);
@@ -276,7 +276,7 @@ function boot() {
     lastS = S;
     const silent = !silentRan && !hostWorld(S), r = evaluate(STEPS, P, S, {silent}); // returning-player pass judges our own world only
     if (silent) silentRan = true;
-    for (const id of r.newly) { tickRow(id); feed(`✓ ${titleOf(id)}`); }
+    for (const id of r.newly) tickRow(id); // the tick plays inside its checklist row, never as a floating line
     if (r.newly.length) { chime(); lastProgress = Date.now(); }
     if (r.newly.length || r.silentDone.length || r.reset) persist();
     if (r.reset) collapsed = false;
@@ -357,7 +357,7 @@ function boot() {
   }
   return {
     reset() { P = createProgress(); booted = false; silentRan = false; rows.forEach(li => li.remove()); rows.clear(); shownCh = undefined; holdUntil = 0; persist(); },
-    complete(id) { if (!STEPS.some(s => s.id === id) || P.done[id]) return false; P.done[id] = true; tickRow(id); feed(`✓ ${titleOf(id)}`); persist(); lastProgress = Date.now(); return true; },
+    complete(id) { if (!STEPS.some(s => s.id === id) || P.done[id]) return false; P.done[id] = true; tickRow(id); persist(); lastProgress = Date.now(); return true; },
     state: () => ({done:Object.keys(P.done), visible:lastS ? visibleSteps(STEPS, P, lastS).map(s => s.id) : [], chapter:currentChapter(STEPS, P.done), collapsed, steps:STEPS.length}),
   };
 }

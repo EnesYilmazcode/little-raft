@@ -1,5 +1,5 @@
-/* Little Raft interaction prompts (prompts.js): key prompt (docked in the bottom-left edge stack) + bottom-left event feed. */
-#lrPrompt,#lrFeed{position:fixed;z-index:30;pointer-events:none;color:#f6ecd6;font:600 14px/1.25 var(--ui-font,system-ui,-apple-system,'Segoe UI',sans-serif);
+/* Little Raft interaction prompts (prompts.js): key prompt (docked in the bottom-left edge stack). Feed lines go to the shared pickup feed. */
+#lrPrompt{position:fixed;z-index:30;pointer-events:none;color:#f6ecd6;font:600 14px/1.25 var(--ui-font,system-ui,-apple-system,'Segoe UI',sans-serif);
   text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 8px rgba(0,0,0,.55);text-align:left;user-select:none}
 #lrPrompt{left:22px;bottom:180px;opacity:0;transform:translateY(2px);transition:opacity .18s ease,transform .18s ease;white-space:nowrap}
 #lrPrompt.lr-on{opacity:1;transform:none;transition-duration:.12s}
@@ -12,12 +12,8 @@
 #lrPrompt .lr-hold{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-variant:small-caps;opacity:.85}
 #lrPrompt .lr-glyph{display:inline-flex;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.7))}
 #lrPrompt .lr-mouse{display:block;fill:currentColor}
-#lrFeed{left:28px;bottom:272px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;max-width:min(360px,calc(100vw - 56px))}
-#lrFeed .lr-line{animation:lrIn .16s ease-out;transition:opacity .4s ease,transform .4s ease;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-#lrFeed .lr-line.lr-out{opacity:0;transform:translateX(-6px)}
-@keyframes lrIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-@media(max-width:760px){#lrFeed{left:16px;bottom:290px;font-size:13px}#lrPrompt{font-size:13px}}
-@media(prefers-reduced-motion:reduce){#lrPrompt,#lrPrompt.lr-on,#lrFeed .lr-line{transition:none;animation:none;transform:none}}
+@media(max-width:760px){#lrPrompt{font-size:13px}}
+@media(prefers-reduced-motion:reduce){#lrPrompt,#lrPrompt.lr-on{transition:none;animation:none;transform:none}}
 /* No popups near the screen centre (owner rule): game.js docks #lrPrompt in the bottom-left #noticeStack, above the
    pickup feed; the throw meter stays above the hotbar and the resume hint at the top edge (graphics.css / style.css).
    While #lrPrompt shows a prompt, game.js's plain #contextPrompt (same stack) steps aside so nothing is said twice. */

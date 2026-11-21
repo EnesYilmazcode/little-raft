@@ -1,11 +1,12 @@
 // Little Raft interaction prompts: a small key prompt (#lrPrompt, docked by game.js in the bottom-left edge stack;
-// in drag-look it is placed by the cursor) plus a bottom-left event feed (#lrFeed) fed from game.js #contextPrompt notices.
+// in drag-look it is placed by the cursor). feed(text) forwards a short line to the shared bottom-left pickup feed
+// (window.raftPickupFeed, set by game.js); there is no second floating feed.
 // API (window.raftPrompts): register({id, object?, test?, range, priority, prompt}) -> unregister,
 //   provide({id, priority, prompt}) -> unregister, current(), refresh(), feed(text).
 // prompt(ctx, hit) returns {key:'E', label:'Pick up', hold?, muted?} | up to 2 of them | null.
 // ctx = {state, camera, T, scene}. Highest priority wins; raycast beats provider at equal priority; nearest hit next.
 
-const SAMPLE_MS = 100, FEED_MAX = 4, FEED_MS = 4000, DUP_MS = 600;
+const SAMPLE_MS = 100, DUP_MS = 600;
 const PICK_NAMES = {wood:'plank', leaf:'leaves', plastic:'plastic jug', scrap:'scrap', barrel:'barrel'};
 const DECOR_NAMES = {sail:'sail', palm:'palm planter', lantern:'lantern', net:'net', bench:'bench', crate:'crate'};
 const FLOOR_COST = {wood:2, plastic:2};
@@ -97,7 +98,7 @@ const MOUSE = side => `<svg class="lr-mouse" viewBox="0 0 12 16" width="11" heig
 
 function createPrompts(win, doc) {
   const rays = new Map(), providers = new Map(); let order = 0, shown = null, sig = null, visible = false, lastFeed = null;
-  let promptEl = null, feedEl = null, ctxEl = null, observer = null, ray = null, rayT = null, aimAt = null, placed = '';
+  let promptEl = null, ray = null, rayT = null, aimAt = null, placed = '';
   let throws = 0, lastStage; // undefined until the first sample, so a restored in-flight hook is not counted
   let mouse = null; win.addEventListener('pointermove', e => { mouse = {x:e.clientX, y:e.clientY}; }, {passive:true, capture:true});
   win.addEventListener('pointerout', e => { if (!e.relatedTarget) mouse = null; }, {passive:true, capture:true});
@@ -109,27 +110,12 @@ function createPrompts(win, doc) {
       promptEl = doc.getElementById('lrPrompt') || doc.createElement('div');
       promptEl.id = 'lrPrompt'; promptEl.setAttribute('aria-hidden', 'true'); if (!promptEl.isConnected) doc.body.appendChild(promptEl);
     }
-    if (!feedEl || !feedEl.isConnected) {
-      feedEl = doc.getElementById('lrFeed') || doc.createElement('div');
-      feedEl.id = 'lrFeed'; feedEl.setAttribute('role', 'status'); feedEl.setAttribute('aria-live', 'polite'); if (!feedEl.isConnected) doc.body.appendChild(feedEl);
-    }
-    const c = doc.getElementById('contextPrompt');
-    if (c && c !== ctxEl) { // game.js (re)created it: re-attach
-      safe(() => observer?.disconnect()); ctxEl = c; let lastText = '';
-      observer = new win.MutationObserver(() => safe(() => {
-        const t = formatFeed(ctxEl.textContent);
-        if (t !== lastText) { lastText = t; if (!ctxEl.hidden && isNotice(t, !!ctxEl.querySelector('kbd'))) feed(t); }
-      }));
-      observer.observe(ctxEl, {childList:true, characterData:true, subtree:true, attributes:true, attributeFilter:['hidden']});
-    }
   }
   function feed(text) {
     return safe(() => {
       const t = formatFeed(text), now = Date.now(); if (!t || !shouldPost(lastFeed, t, now)) return false;
-      lastFeed = {text:t, at:now}; ensureEls();
-      const line = doc.createElement('div'); line.className = 'lr-line'; line.textContent = t; // untrusted: textContent only
-      feedEl.appendChild(line); while (feedEl.children.length > FEED_MAX) feedEl.firstElementChild.remove();
-      win.setTimeout(() => line.classList.add('lr-out'), FEED_MS); win.setTimeout(() => line.remove(), FEED_MS + 450);
+      const pf = win.raftPickupFeed; if (!pf?.note) return false;
+      lastFeed = {text:t, at:now}; pf.note(t); // the one bottom-left notice stack
       return true;
     }, false);
   }
