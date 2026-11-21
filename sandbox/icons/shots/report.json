@@ -1,0 +1,206 @@
+{
+ "sheet-1x": {
+  "bakeTotalMs": 35249.9,
+  "setupMs": 119.2,
+  "drawMs": 34888.3,
+  "readbackMs": 216.5,
+  "encodeMs": 16.6,
+  "perTileMs": [
+   377.1,
+   43,
+   169.3,
+   66.1,
+   24.7,
+   95.3,
+   36.9,
+   116.3,
+   366.2,
+   273.6,
+   608.7,
+   170.3,
+   161.5,
+   13.5,
+   522.7
+  ],
+  "bakeRender": {
+   "calls": 128,
+   "triangles": 115598
+  },
+  "atlasPx": [
+   384,
+   384
+  ],
+  "transientVRAMBytes": {
+   "hiMSAA": 1179648,
+   "hiResolve": 294912,
+   "atlas": 589824,
+   "pmrem": null
+  },
+  "dataUrlBytes": 224766,
+  "atlasDataUrlBytes": 225030,
+  "cacheHitMs": 0.2,
+  "cacheHit": true,
+  "frames": {
+   "steady": {
+    "n": 5,
+    "avgMs": 571.3,
+    "worstMs": 2233.3
+   },
+   "duringBake": {
+    "n": 16,
+    "avgMs": 2200.5,
+    "worstMs": 16582.4
+   },
+   "afterBake": {
+    "n": 5,
+    "avgMs": 143.6,
+    "worstMs": 280.1
+   },
+   "bakeFrameList": [
+    608,
+    16582,
+    2675,
+    505,
+    436,
+    695,
+    377,
+    697,
+    2021,
+    1706,
+    1464,
+    2883,
+    1228,
+    585,
+    2650,
+    99
+   ]
+  },
+  "rendererInfoBefore": {
+   "calls": 25,
+   "triangles": 41734,
+   "geometries": 25,
+   "textures": 2,
+   "programs": 6
+  },
+  "rendererInfoAfter": {
+   "calls": 25,
+   "triangles": 41734,
+   "geometries": 25,
+   "textures": 4,
+   "programs": 8
+  },
+  "errors": []
+ },
+ "sheet-2x": {
+  "bakeTotalMs": 20960.5,
+  "setupMs": 58.3,
+  "drawMs": 20743.8,
+  "readbackMs": 144.1,
+  "encodeMs": 13.8,
+  "perTileMs": [
+   660.7,
+   42.3,
+   254.1,
+   7.4,
+   19.5,
+   503.5,
+   20.7,
+   133.2,
+   109,
+   594.5,
+   504,
+   135.3,
+   29.9,
+   25.4,
+   21
+  ],
+  "bakeRender": {
+   "calls": 128,
+   "triangles": 115598
+  },
+  "atlasPx": [
+   384,
+   384
+  ],
+  "transientVRAMBytes": {
+   "hiMSAA": 1179648,
+   "hiResolve": 294912,
+   "atlas": 589824,
+   "pmrem": null
+  },
+  "dataUrlBytes": 224766,
+  "atlasDataUrlBytes": 225030,
+  "cacheHitMs": 5.5,
+  "cacheHit": true,
+  "frames": {
+   "steady": {
+    "n": 7,
+    "avgMs": 116.8,
+    "worstMs": 151.7
+   },
+   "duringBake": {
+    "n": 15,
+    "avgMs": 1394.8,
+    "worstMs": 8755.2
+   },
+   "afterBake": {
+    "n": 2,
+    "avgMs": 173.3,
+    "worstMs": 187.2
+   },
+   "bakeFrameList": [
+    841,
+    8755,
+    1286,
+    379,
+    419,
+    1021,
+    527,
+    456,
+    553,
+    1783,
+    2093,
+    993,
+    911,
+    361,
+    545
+   ]
+  },
+  "rendererInfoBefore": {
+   "calls": 25,
+   "triangles": 41734,
+   "geometries": 25,
+   "textures": 2,
+   "programs": 6
+  },
+  "rendererInfoAfter": {
+   "calls": 25,
+   "triangles": 41734,
+   "geometries": 25,
+   "textures": 4,
+   "programs": 8
+  },
+  "errors": []
+ },
+ "pageErrors": [
+  "sheet-1x: [.WebGL-0x3c9400176c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+  "sheet-1x: Failed to load resource: the server responded with a status of 404 (File not found)",
+  "sheet-1x: [.WebGL-0x3c9400176c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+  "sheet-1x: [.WebGL-0x3c9400176c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+  "sheet-1x: [.WebGL-0x3c9400176c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+ ],
+ "shots": [
+  "/home/user/little-raft/.claude/worktrees/agent-a5ed79912e2073696/sandbox/icons/shots/sheet-1x.png",
+  "/home/user/little-raft/.claude/worktrees/agent-a5ed79912e2073696/sandbox/icons/shots/sheet-2x.png",
+  "/home/user/little-raft/.claude/worktrees/agent-a5ed79912e2073696/sandbox/icons/shots/sheet-2x-native.png",
+  "/home/user/little-raft/.claude/worktrees/agent-a5ed79912e2073696/sandbox/icons/shots/sheet-2x-hotbar58.png",
+  "/home/user/little-raft/.claude/worktrees/agent-a5ed79912e2073696/sandbox/icons/shots/sheet-2x-chip18.png",
+  "/home/user/little-raft/.claude/worktrees/agent-a5ed79912e2073696/sandbox/icons/shots/sheet-2x-compare.png",
+  "/home/user/little-raft/.claude/worktrees/agent-a5ed79912e2073696/sandbox/icons/shots/ui-inventory-1x.png",
+  "/home/user/little-raft/.claude/worktrees/agent-a5ed79912e2073696/sandbox/icons/shots/ui-inventory-2x.png",
+  "/home/user/little-raft/.claude/worktrees/agent-a5ed79912e2073696/sandbox/icons/shots/ui-inventory-2x-panel.png",
+  "/home/user/little-raft/.claude/worktrees/agent-a5ed79912e2073696/sandbox/icons/shots/ui-hotbar-2x.png",
+  "/home/user/little-raft/.claude/worktrees/agent-a5ed79912e2073696/sandbox/icons/shots/ui-hotbar-2x-bar.png",
+  "/home/user/little-raft/.claude/worktrees/agent-a5ed79912e2073696/sandbox/icons/shots/ui-inventory-svg-1x.png"
+ ]
+}
