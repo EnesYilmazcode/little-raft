@@ -1065,7 +1065,7 @@ export function mount(transfer = null) {
   function frame() {
     const now = performance.now(), dt = Math.min((now - last) / 1000, .05); last = now; elapsed += dt;
     const dialog = uiBlocked();
-    if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { if (coop?.lost()) coopRejoin(); else { closeConnection(); toast('Host disconnected. You are back on your own raft.'); } } // coop: try to rejoin first
+    if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { if (!coop?.lost()) { closeConnection(); toast('Host disconnected. You are back on your own raft.'); } } // coop: try to rejoin first
     if (role === 'host' && conn?.open && now - lastGuestMessage > 8000) { const stale = conn; conn = null; unbindTarget(stale); stale.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); }
     ocean.update(elapsed, camera);
     updateRaft(dt); if (sailing) sailing.update(dt, elapsed); // [sailing]
@@ -1325,7 +1325,7 @@ export function mount(transfer = null) {
       if (conn !== c) return;
       unbindTarget(c); conn = null; networkReady = false; other = null;
       if (isHost) { setConnectionLabel('BROTHER LEFT · ROOM OPEN'); toast('Your brother left. Your raft is still here.'); return; }
-      if (coop?.lost()) { coopRejoin(); return; } // coop: dropped, not left: reconnect to the same room
+      if (coop?.lost()) return; // coop: dropped, not left: coop.js redials the same room
       joinTimer = cancelTimer(joinTimer); joinDeadline = 0;
       const p = peer; peer = null; unlisten(bindings.splice(0)); try { p?.destroy(); } catch {}
       restoreOwnRaft(); role = 'solo'; setConnectionLabel('DISCONNECTED');
@@ -1338,7 +1338,7 @@ export function mount(transfer = null) {
     const oc = conn, op = peer; conn = null; peer = null; networkReady = false; other = null;
     unlisten(bindings.splice(0)); try { oc?.close(); } catch {} try { op?.destroy(); } catch {}
     if (role !== 'guest' || typeof globalThis.Peer !== 'function') return;
-    setStatus('Reconnecting to your brother…');
+    setStatus('Reconnecting to your brother…'); setConnectionLabel('RECONNECTING…');
     try { peer = new globalThis.Peer(); bindPeer(peer, false); } catch {}
   }
   // coop: read-only window into the engine for coop.js
@@ -1381,7 +1381,7 @@ export function mount(transfer = null) {
       if (peer.disconnected) { const p = peer; later(() => { if (peer === p && !p.destroyed && p.disconnected) { try { p.reconnect(); } catch {} } }, 1500); } // old engine's retry timer is disposed
     } else if (peer?.destroyed) peer = null;
     if (conn) bindConn(conn, role === 'host');
-    if (role === 'guest' && !networkReady) {
+    if (role === 'guest' && !networkReady && !X.coop?.rejoin) { // coop: a rejoin has its own window
       if (!peer && !conn) { role = 'guest'; closeConnection(); }
       else { const left = joinDeadline ? joinDeadline - performance.now() : JOIN_TIMEOUT; if (!joinDeadline) joinDeadline = performance.now() + left; joinTimer = later(joinTimedOut, Math.max(0, left)); }
     }

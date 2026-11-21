@@ -4,7 +4,7 @@
 // Chaos + byte stats live on window.coopChaos and apply to messages this page SENDS.
 
 const CHANNEL = 'little-raft-loopback';
-const CLAIM_MS = 120, EXPIRE_MS = 300;
+const CLAIM_MS = 120, EXPIRE_MS = 3000; // generous: slow headless machines stall the main thread
 
 function flagged() {
   try { if (new URLSearchParams(globalThis.location?.search ?? '').has('loopback')) return true; } catch {}

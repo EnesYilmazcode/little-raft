@@ -25,7 +25,7 @@ export const COOP_VERSION = 1;
 const HELD = [null, 'hook', 'hammer', 'fishingrod', 'wood', 'leaf', 'scrap', 'plastic', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate'];
 const STAGES = ['flying', 'floating', 'reeling', 'done', 'fishing'];
 const SEND_MS = 1000 / 15, IDLE_MS = 250, ITEMS_MS = 500;
-const SILENCE_MS = 3000, RECONNECT_WINDOW_MS = 30000, ATTEMPT_MS = 4000;
+const SILENCE_MS = 3000, RECONNECT_WINDOW_MS = 30000, ATTEMPT_MS = 12000; // an attempt in flight gets 12 s (ICE can be slow)
 const EMOTE_KEYS = {KeyZ:'wave', KeyX:'point'}, EMOTE_S = 1.6, PING_RANGE = 60;
 const FEED_RE = /joined|left|disconnected|reconnect|aboard/i;
 const r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
@@ -43,7 +43,7 @@ export function createCoop(ctx, saved = null) {
   avatar.group.visible = false; ctx.scene.add(avatar.group);
   const buffer = new SnapshotBuffer();
   const enc = new DeltaEncoder(), dec = new DeltaDecoder();
-  const hand = new T.Vector3(), sample = {};
+  const hand = new T.Vector3(), sample = {}, kfAsked = new Set();
   const ac = new AbortController();
   let conn = null, peer = null;            // peer = their hello, once received on this connection
   let helloAt = -1e9, settled = false, lastSend = 0, lastSent = null, lastRecv = now(), lastItems = null, lastItemsAt = 0, itemKey = '';
@@ -60,11 +60,16 @@ export function createCoop(ctx, saved = null) {
     const c = ctx.conn();
     if (c === conn) return;
     if (!rejoin) aboard = false; // a brand-new join is not a rejoin
-    conn = c; peer = null; helloAt = -1e9; enc.reset(); dec.reset(); buffer.reset(); lastSent = null; lastItems = null; itemKey = ''; lastRecv = now();
+    conn = c; peer = null; helloAt = -1e9; kfAsked.clear(); enc.reset(); dec.reset(); buffer.reset(); lastSent = null; lastItems = null; itemKey = ''; lastRecv = now();
   }
 
   // ---------- outgoing (game.js send() hook) ----------
-  function encode(m) {
+  function encode(m) { // counts what game.js will actually send
+    const out = encodeMsg(m);
+    if (out && ctx.conn()?.open) { stats.sent++; stats.bytesOut += JSON.stringify(out).length; }
+    return out;
+  }
+  function encodeMsg(m) {
     track();
     if (!peer || !m || typeof m !== 'object') return m;
     if (m.type === 'move') return null; // replaced by 'cp'
@@ -73,7 +78,7 @@ export function createCoop(ctx, saved = null) {
       if (key === itemKey && now() - lastItemsAt < ITEMS_MS && lastItems) m = {...m, world:{...m.world, items:lastItems}};
       else { itemKey = key; lastItemsAt = now(); lastItems = quantize(items, 2); m = {...m, world:{...m.world, items:lastItems}}; }
       const {other, ...rest} = m; // the guest rebuilds `other` from our cp stream
-      return enc.encode(quantize(rest, 3));
+      return enc.encode(quantize(rest, 3), {owned:true}); // quantize() already made a private copy
     }
     return m;
   }
@@ -86,16 +91,17 @@ export function createCoop(ctx, saved = null) {
     if (m.type === 'coop') { onEvent(m); return null; }
     if (m.type !== 'Δ') return m;
     const full = dec.decode(m);
-    if (!full) { event('kf', {kk:m.k}); return null; }
+    if (!full) { if (!kfAsked.has(m.k)) { kfAsked.add(m.k); event('kf', {kk:m.k}); } return null; } // one request per gap
+    kfAsked.delete(m.k);
     if (full.type === 'cp') return onPose(full);
     if (full.type === 'state') full.other = lastPose ? {...lastPose} : null;
     return full;
   }
   function onEvent(m) {
     if (m.k === 'hello') {
-      const first = !peer; peer = {v:m.v, id:String(m.id ?? '')};
+      peer = {v:m.v, id:String(m.id ?? '')};
       peerName = String(m.name ?? 'Brother').slice(0, 16) || 'Brother'; avatar.setName(peerName);
-      if (first) event('hello', {v:COOP_VERSION, id:coopId, name:readName()}); // answer once so both sides know
+      if (!m.re) event('hello', {v:COOP_VERSION, id:coopId, name:readName(), re:1}); // answer every non-reply (a hot-swapped hub starts over)
     } else if (m.k === 'kf') enc.forceKeyframe(m.kk);
     else if (m.k === 'ping' && Array.isArray(m.p) && m.p.every(Number.isFinite)) {
       pings.add({x:m.p[0], y:m.p[1], z:m.p[2], mine:false, label:peerName});
@@ -128,7 +134,7 @@ export function createCoop(ctx, saved = null) {
     if (t - lastSend < (moving || !settled ? SEND_MS : IDLE_MS)) return;
     settled = !moving;
     lastSend = t; lastSent = key; s.t = Math.round(t);
-    sendRaw(enc.encode(s));
+    sendRaw(enc.encode(s, {owned:true}));
   }
 
   // ---------- remote rendering ----------
@@ -150,14 +156,17 @@ export function createCoop(ctx, saved = null) {
   }
 
   // ---------- reconnect (guest) ----------
-  function lost() { // the host went quiet or the channel closed: try the same room again before giving up
+  // Reconnect is owned here: lost() is called by game.js when the channel closes, when the host goes silent, or when
+  // a dial fails. The first loss dials at once; a failed attempt redials with backoff; an attempt in flight gets ATTEMPT_MS.
+  function lost() {
     if (ctx.role() !== 'guest' || !aboard) return false;
-    if (rejoin) return true;
-    rejoin = {since:now(), attempt:1, next:now() + ATTEMPT_MS}; // the caller dials attempt 1 right away
-    feed.push('Connection lost. Reconnecting…', 'warn');
+    const t = now();
+    if (!rejoin) { rejoin = {since:t, attempt:0, next:t}; feed.push('Connection lost. Reconnecting…', 'warn'); }
+    else rejoin.next = Math.min(rejoin.next, t + Math.min(4000, 500 * 2 ** rejoin.attempt)); // that attempt failed
+    tickRejoin(t);
     return true;
   }
-  function retry() { return !!rejoin && now() - rejoin.since < RECONNECT_WINDOW_MS; }
+  const retry = () => lost() && !!rejoin; // dial error while not ready
   function rejoined() {
     if (!rejoin) return false;
     rejoin = null; feed.push('Reconnected. Your bag is safe.', 'join');
@@ -166,15 +175,21 @@ export function createCoop(ctx, saved = null) {
   function tickRejoin(t) {
     if (!rejoin) return;
     if (ctx.role() !== 'guest') { rejoin = null; aboard = false; return; }
-    if (ctx.ready()) { rejoin = null; return; }
+    if (ctx.ready() && rejoin.attempt > 0) { rejoin = null; return; } // attempt 0: silence while still "ready" must dial first (e2e)
     if (t - rejoin.since > RECONNECT_WINDOW_MS) { rejoin = null; aboard = false; feed.push('Could not reach your brother. Back on your own raft.', 'leave'); ctx.giveUp(); return; }
     if (t >= rejoin.next) { rejoin.attempt++; rejoin.next = t + ATTEMPT_MS; ctx.reconnect(); }
   }
 
   // ---------- input: middle-click ping, Z/X emotes ----------
+  // game.js aims at a plane at deck height; while swimming the eye is below it, so fall back to the sea surface (y≈0).
+  function waterPoint(d) {
+    const o = ctx.camera?.position; if (!o || !d) return null;
+    const t = d.y < -0.02 && o.y > 0 ? Math.min(PING_RANGE * 0.8, o.y / -d.y) : 12;
+    return {x:o.x + d.x * t, y:Math.max(0, o.y + d.y * t), z:o.z + d.z * t};
+  }
   function ping() {
     const a = ctx.aim(); if (!a) return;
-    const it = a.item, p = it ? {x:it.x, y:ctx.deckY(), z:it.z} : a.point;
+    const it = a.item, p = it ? {x:it.x, y:ctx.deckY(), z:it.z} : a.point ?? waterPoint(a.dir);
     if (!p || !Number.isFinite(p.x)) return;
     const l = ctx.local(), d = Math.hypot(p.x - l.x, p.z - l.z);
     if (d > PING_RANGE) return;
@@ -200,7 +215,7 @@ export function createCoop(ctx, saved = null) {
       if (peer && conn?.open) sendPose(t);
       const role = ctx.role();
       if (role === 'guest' && ctx.ready()) aboard = true; else if (role === 'solo') aboard = false;
-      if (peer && role === 'guest' && ctx.ready() && t - lastRecv > SILENCE_MS && lost()) ctx.reconnect(); // host went quiet
+      if (peer && role === 'guest' && ctx.ready() && t - lastRecv > SILENCE_MS) lost(); // host went quiet
       tickRejoin(t);
       renderRemote(dt, t, time);
       pings.update(dt, time, ctx.camera);
@@ -215,7 +230,8 @@ export function createCoop(ctx, saved = null) {
 
   const debug = {
     get stats() { const s = (now() - stats.since) / 1000; return {...stats, outBps:stats.bytesOut / s, inBps:stats.bytesIn / s, interp:buffer.stats}; },
-    get remote() { const p = avatar.group.position; return {x:p.x, y:p.y, z:p.z, visible:avatar.group.visible, name:peerName}; },
+    get remote() { const p = avatar.group.position, h = rope.hook; return {x:p.x, y:p.y, z:p.z, visible:avatar.group.visible, name:peerName,
+      hook:h?.visible ? {x:h.position.x, y:h.position.y, z:h.position.z, stage:lastHook, ropeVisible:!!rope.line?.visible} : null}; },
     get peer() { return peer ? {...peer} : null; }, get rejoin() { return rejoin ? {...rejoin} : null; },
   };
   globalThis.coopDebug = debug;

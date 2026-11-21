@@ -137,3 +137,22 @@ test('size: realistic hostState with 2 item moves per tick < 25% of full JSON', 
   console.log(`full ≈ ${Math.round(full / 49)} B/tick, delta ≈ ${Math.round(sent / 48)} B/tick, ratio ${(ratio * 100).toFixed(1)}%`);
   assert.ok(ratio < .25, `ratio ${ratio}`);
 });
+
+test('encode(msg, {owned:true}) skips the copy and round-trips identically', () => {
+  const r = prng(11), encA = new DeltaEncoder({keyframeEvery: 7}), encB = new DeltaEncoder({keyframeEvery: 7});
+  const decA = new DeltaDecoder(), decB = new DeltaDecoder();
+  let v = {type: 'cp', p: [1, 2, 3], o: {a: 1}};
+  for (let i = 0; i < 300; i++) {
+    v = {...wire(mutate(r, v)), type: 'cp'};
+    const msg = wire(v);                       // fresh object per send, never touched again
+    const wb = encB.encode(msg, {owned: true}), wa = encA.encode(wire(v));
+    assert.deepEqual(wire(wb), wire(wa));      // same wire bytes as the copying path
+    assert.deepEqual(decB.decode(wire(wb)), v);
+    assert.deepEqual(decA.decode(wire(wa)), v);
+    if ('f' in wb) assert.equal(wb.f, msg);    // keyframe carries the handed-over object itself (no clone)
+  }
+  const enc = new DeltaEncoder(), m = {type: 'x', a: {b: 1}};
+  assert.equal(enc.encode(m, {owned: true}).f, m);
+  assert.notEqual(enc.encode(m).b, undefined); // default still works after an owned call
+  assert.notEqual(new DeltaEncoder().encode(m).f, m); // default path still copies
+});
