@@ -1211,26 +1211,46 @@ export function mount(transfer = null) {
     });
     listen(c, 'error', () => { if (conn === c) setStatus('Connection failed. Check the code and try again.'); });
   }
-  setHandler($('#host'), 'onclick', () => {
+  // PeerJS (~93 KB) is only fetched on the first host/join; solo play never loads it. Shared across hot-swapped engines.
+  function loadPeer() {
+    if (typeof globalThis.Peer === 'function') return Promise.resolve(globalThis.Peer);
+    return globalThis.__littleRaftPeerJs ??= new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = new URL('./vendor/peerjs.min.js', import.meta.url).href;
+      s.onload = () => typeof globalThis.Peer === 'function' ? resolve(globalThis.Peer) : reject(new Error('PeerJS missing'));
+      s.onerror = () => { s.remove(); reject(new Error('PeerJS failed to load')); };
+      document.head.appendChild(s);
+    }).catch(e => { globalThis.__littleRaftPeerJs = null; throw e; }); // allow a retry on the next click
+  }
+  let netAttempt = 0; // the latest host/join click wins while PeerJS is loading
+  setHandler($('#host'), 'onclick', async () => {
     if (role === 'host' && peer && !peer.destroyed) { setStatus('Your room is open. Share the code below.'); return; }
+    const attempt = ++netAttempt;
     closeConnection();
-    if (typeof globalThis.Peer !== 'function') { setStatus('Online play is unavailable. Solo play still works.'); return; }
-    role = 'host'; room = Array.from(crypto.getRandomValues(new Uint8Array(6)), v => 'abcdefghjkmnpqrstuvwxyz'[v % 22]).join('');
     setStatus('Opening your room…');
-    try { peer = new globalThis.Peer('little-raft-' + room); bindPeer(peer, true); }
+    let Peer; try { Peer = await loadPeer(); } catch { Peer = null; }
+    if (disposed || attempt !== netAttempt) return;
+    if (!Peer) { setStatus('Online play is unavailable. Solo play still works.'); return; }
+    closeConnection();
+    role = 'host'; room = Array.from(crypto.getRandomValues(new Uint8Array(6)), v => 'abcdefghjkmnpqrstuvwxyz'[v % 22]).join('');
+    try { peer = new Peer('little-raft-' + room); bindPeer(peer, true); }
     catch { closeConnection(); setStatus('Online play is unavailable. Solo play still works.'); }
   });
-  setHandler($('#joinForm'), 'onsubmit', e => {
+  setHandler($('#joinForm'), 'onsubmit', async e => {
     e.preventDefault(); const code = ($('#roomInput')?.value ?? '').trim().toLowerCase();
     if (!/^[a-z]{6}$/.test(code)) return setStatus('Enter the six letters from your brother’s screen.');
+    const attempt = ++netAttempt;
     closeConnection();
-    if (typeof globalThis.Peer !== 'function') { setStatus('Online play is unavailable. Try solo for now.'); return; }
+    setStatus('Finding your brother’s raft…');
+    let Peer; try { Peer = await loadPeer(); } catch { Peer = null; }
+    if (disposed || attempt !== netAttempt) return;
+    if (!Peer) { setStatus('Online play is unavailable. Try solo for now.'); return; }
+    closeConnection();
     save(); // role is still solo here: persist our own raft before leaving it
     ownWorldBackup = {world, host:hostBag.snapshot(), guest:guestBag.snapshot(), physics:physics.capture()};
     role = 'guest'; room = code; hook = null; fishWait = 0; charging = null; reeling = false; remoteBag = null; seq = 0; lastSeqSent = 0;
-    setStatus('Finding your brother’s raft…');
     try {
-      peer = new globalThis.Peer(); bindPeer(peer, false);
+      peer = new Peer(); bindPeer(peer, false);
       joinDeadline = performance.now() + JOIN_TIMEOUT; joinTimer = later(joinTimedOut, JOIN_TIMEOUT); // stays until the first state
     } catch { closeConnection(); setStatus('Online play is unavailable. Try solo for now.'); }
   });
