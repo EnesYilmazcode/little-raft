@@ -50,6 +50,28 @@ with sync_playwright() as p:
         }
     if not only:
         report['play_js_cost'] = page.evaluate('lab.scheduleCost(60)')
+        # realtime smoke: real AudioContext, worklet load, play()/reel/spatial, destroy + re-create on the same context
+        page.click('#start')
+        page.wait_for_function("document.querySelector('#start').textContent !== 'Start audio'", timeout=10000)
+        page.wait_for_timeout(1500)
+        report['realtime'] = page.evaluate('''async () => {
+          const { createOceanAudio, EVENTS } = await import('./audio.js');
+          const a = createOceanAudio({ volume: 0.5 });
+          const ok = await a.resume();
+          await new Promise(r => setTimeout(r, 600));
+          a.setListener(0, 1.6, 0, 0, 0, -1); a.setOcean({ swell: 0.8, wind: 0.6 });
+          const played = {}; for (const ev of EVENTS) played[ev] = a.play(ev, 1, ev === 'gull' ? { x: 10, y: 8, z: -10 } : null);
+          const reel = a.setReel(true, 0.5); await new Promise(r => setTimeout(r, 300)); a.setReel(false);
+          const s1 = a.stats(), ctx = a.context, t0 = ctx.currentTime;
+          await new Promise(r => setTimeout(r, 1500));
+          const s2 = a.stats();
+          a.destroy();
+          const b = createOceanAudio({ context: ctx, workletUrl: new URL('./audio-worklet.js?build=hot2', location.href).href }); /* new build query: module re-evaluated, registerProcessor must not break it */ const ok2 = await b.resume(); await new Promise(r => setTimeout(r, 400));
+          const s3 = b.stats(); b.destroy();
+          return { resumed: ok, state: ctx.state, sampleRate: ctx.sampleRate, baseLatency: ctx.baseLatency, clockAdvanced: +(ctx.currentTime - t0).toFixed(2),
+                   played, reel, afterPlay: s1, after1500ms: s2, hotSwap: { resumed: ok2, sameContext: b.context === ctx, stats: s3 },
+                   legacyPlayResult: createOceanAudio().play('ui') };
+        }''')
     b.close()
 srv.shutdown()
 amb = [v['ms_per_audio_s'] for k, v in report['cases'].items() if k.startswith('ambience')]
@@ -59,4 +81,5 @@ report['summary'] = {
     'max_peak_dbfs': max((v['peak_dbfs'] for v in report['cases'].values()), default=None),
     'ambience_ms_per_audio_s': amb,
 }
+(out / 'report.json').write_text(json.dumps(report, indent=1))
 print(json.dumps(report, indent=1))

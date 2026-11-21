@@ -44,7 +44,7 @@ export const CASES = {
   'ambience-rough': { seconds: 12, ambience: true, run: (e) => e.setOcean({ swell: 1, wind: 1, speed: 0.8, creak: 1 }) },
   'ambience-creaky': { seconds: 12, ambience: true, run: (e) => e.setOcean({ swell: 0.7, wind: 0, speed: 1, creak: 1 }) },
   // ducking check: sfx bus muted, so only the ambience dip from play('catch') at 4 s is heard
-  'duck-only': { seconds: 7, ambience: true, windows: [[3, 4], [4.1, 4.4], [5.5, 6.5]], run: (e) => { e.setOcean({ swell: 0.5, wind: 0.3 }); e.setBus('sfx', 0); e.play('catch', 1, { at: 4 }); } },
+  'duck-only': { seconds: 7, ambience: true, windows: [[3.5, 3.95], [4.05, 4.3], [5.0, 5.45]], run: (e) => { e.setOcean({ swell: 0, wind: 0, creak: 0 }); e.setBus('sfx', 0); e.play('catch', 1, { at: 4 }); } },
   'ambience-fallback': { seconds: 12, ambience: true, worklet: false, run: (e) => e.setOcean({ swell: 0.5, wind: 0.4 }) },
   'mix-ducking': {
     seconds: 8, ambience: true,

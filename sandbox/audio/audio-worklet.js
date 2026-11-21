@@ -177,7 +177,7 @@ class RaftOcean extends AudioWorkletProcessor {
         if (v.next <= 0) {               // one stick-slip release
           const m = p < 0.6 ? 1 + (v.rise - 1) * (p / 0.6) : v.rise + (1 - v.rise) * ((p - 0.6) / 0.4);
           v.next = (1 / (v.rate * m)) * this.r(0.75, 1.25);
-          x = 40;                        // narrow resonators: a unit impulse is ~-50 dB
+          x = 60;                        // narrow resonators: a unit impulse is ~-50 dB
         }
         const env = Math.min(1, p / 0.08, (1 - p) / 0.25);
         const y = (v.a.bp(x) * 1.0 + v.b.bp(x) * 0.6 + v.c.bp(x) * 0.35) * v.amp * env;
