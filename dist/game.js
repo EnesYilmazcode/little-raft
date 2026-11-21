@@ -15,6 +15,7 @@ import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+import { createControls } from './controls.js'; // controls lane: input map, gamepad, movement feel (docs/cloud/controls.md)
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -211,6 +212,7 @@ export function mount(transfer = null) {
   let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = '';
   const chargeMeter = $('#chargeMeter'), chargeFill = chargeMeter?.querySelector('i');
   let blockList = [];
+  let controls = null; // controls lane: set in the Input section
 
   function makePhysics(src) {
     const deck = raftPose.y + FLOOR_Y + EYE_OFFSET;
@@ -461,7 +463,7 @@ export function mount(transfer = null) {
   }
   function releaseLock() { if (isLocked()) document.exitPointerLock?.(); }
   function look(dx, dy, k) { yaw -= dx * k; pitch = clamp(pitch - dy * k, -PITCH_LIMIT, PITCH_LIMIT); }
-  function clearInput() { keys = {}; charging = null; reeling = false; down = null; }
+  function clearInput() { keys = {}; charging = null; reeling = false; down = null; controls?.clear(); } // controls lane: also release the input layer
 
   // ---------- Aiming ----------
   function pickNdc(nx, ny) {
@@ -681,10 +683,12 @@ export function mount(transfer = null) {
   // ---------- Movement ----------
   const held = (...codes) => codes.some(c => keys[c]);
   function movePlayer(dt, input) {
+    const ci = controls?.movement(dt, running && input, physics); // controls lane: polls input, applies look, shapes movement
     if (!running) { walking = false; return; }
-    const fwd = input ? held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown') : 0, side = input ? held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft') : 0;
-    const ev = physics.update(dt, {forward:fwd, strafe:side, yaw, jump:input && held('Space'), sprint:input && held('ShiftLeft', 'ShiftRight'),
+    const fwd = ci ? ci.forward : input ? held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown') : 0, side = ci ? ci.strafe : input ? held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft') : 0;
+    const ev = physics.update(dt, {forward:fwd, strafe:side, yaw, jump:ci ? ci.jump : input && held('Space'), sprint:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'),
       tiles:world.tiles, deckY:deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList});
+    controls?.afterMove(dt, physics, ev); // controls lane: footstep bob, crouch, landing dip
     const speed = Math.hypot(physics.vx, physics.vz);
     walking = physics.grounded && speed > .4; if (walking) walkPhase += dt * 9 * Math.min(1.6, speed / 2.6);
     if (ev?.splashed) beep(180);
@@ -713,9 +717,10 @@ export function mount(transfer = null) {
   function updateCamera(dt) {
     const fov = running ? options.fov : 48; if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
     if (running) {
-      const bob = walking ? Math.sin(walkPhase) * .025 * options.cameraMotion : 0;
-      camera.position.set(physics.x, physics.y + bob, physics.z);
-      camera.rotation.set(pitch, yaw, physics.grounded ? raft.rotation.z * CAMERA_ROLL * options.cameraMotion : 0, 'YXZ');
+      const cf = controls?.camera(yaw); // controls lane: replaces the old sine bob with footstep bob + crouch + landing dip
+      const bob = cf ? cf.y : walking ? Math.sin(walkPhase) * .025 * options.cameraMotion : 0;
+      camera.position.set(physics.x + (cf?.x ?? 0), physics.y + bob, physics.z + (cf?.z ?? 0));
+      camera.rotation.set(pitch, yaw, (physics.grounded ? raft.rotation.z * CAMERA_ROLL * options.cameraMotion : 0) + (cf?.roll ?? 0), 'YXZ');
     } else { // gentle cinematic view for the welcome screen
       const focus = new T.Vector3(-5, 0, 2), d = 23, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .77;
       camera.position.set(focus.x + Math.sin(cy) * d * Math.cos(cp), d * Math.sin(cp), focus.z + Math.cos(cy) * d * Math.cos(cp)); camera.lookAt(focus);
@@ -856,7 +861,7 @@ export function mount(transfer = null) {
   });
   on(document, 'pointerlockerror', lockFailed);
   on(document, 'mousemove', e => {
-    if (!isLocked() || uiBlocked()) return;
+    if (controls || !isLocked() || uiBlocked()) return; // controls lane: input.js owns mouse look
     look(clamp(e.movementX, -200, 200), clamp(e.movementY, -200, 200), LOOK_SENSITIVITY * options.sensitivity);
   });
   on(canvas, 'pointerdown', e => {
@@ -902,6 +907,7 @@ export function mount(transfer = null) {
 
   on(window, 'keydown', e => {
     if (e.target?.matches?.('input, textarea, select') || uiBlocked()) return;
+    if (controls) { if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault(); return; } // controls lane: actions come from the action map
     keys[e.code] = true;
     const m = /^(?:Digit|Numpad)([1-8])$/.exec(e.code);
     if (m && running) selectSlot(+m[1] - 1);
@@ -911,6 +917,15 @@ export function mount(transfer = null) {
   });
   on(window, 'keyup', e => { keys[e.code] = false; });
   on(window, 'blur', clearInput);
+  // controls lane: one input layer for keyboard/mouse/gamepad; falls back to the legacy handlers above if it fails to start.
+  try {
+    controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
+      look:(dx, dy) => look(dx, dy, 1), hotbarSize:HOTBAR, slot:() => localBag().selectedIndex, selectSlot:i => running && selectSlot(i),
+      interact, inventory:openInventory, repair, pause:() => settingsController?.open(),
+      useDown:() => { if (castOut()) reeling = true; else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); } },
+      useUp:() => { reeling = false; if (charging) releaseCharge(pickCenter()); }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});
+    signal.addEventListener('abort', () => controls?.dispose());
+  } catch (e) { console.error('controls lane failed to start', e); controls = null; }
   on(window, 'beforeunload', () => { save(); send({type:'leaving'}); try { conn?.close(); peer?.destroy(); } catch {} });
   on(window, 'resize', () => { if (!camera) return; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
