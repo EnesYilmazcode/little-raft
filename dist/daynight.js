@@ -270,7 +270,7 @@ export function createDayNight(ctx) {
   const cHorizon = new T.Color(), cZenith = new T.Color(), cDeep = new T.Color(), cShallow = new T.Color();
   const cSun = new T.Color(), cHemiSky = new T.Color(), cHemiGround = new T.Color(), cCloud = new T.Color();
   const cRain = new T.Color();
-  const vDir = new T.Vector3(), vTmp = new T.Vector3();
+  const vDir = new T.Vector3(), vMoon = new T.Vector3(), vTmp = new T.Vector3();
   const AXIS = new T.Vector3(-0.78, 0, 0.62).normalize(), SIDE = new T.Vector3(0.62, 0, 0.78).normalize();
   const setSRGB = (c, o) => c.setRGB(PAL[o], PAL[o + 1], PAL[o + 2], T.SRGBColorSpace);
 
@@ -439,8 +439,9 @@ export function createDayNight(ctx) {
     const th = sunAngle(phaseAt(phase * DAY_SECONDS));
     const ct = Math.cos(th), st = Math.sin(th);
     const up = L.sunHeight >= 0;
+    vMoon.set(-AXIS.x * ct - SIDE.x * 0.6, -st * 0.5, -AXIS.z * ct - SIDE.z * 0.6).normalize(); // the moon rides low, opposite the sun
     if (up) vDir.set(AXIS.x * ct - SIDE.x * 0.32, st, AXIS.z * ct - SIDE.z * 0.32).normalize();
-    else vDir.set(-AXIS.x * ct - SIDE.x * 0.6, -st * 0.5, -AXIS.z * ct - SIDE.z * 0.6).normalize(); // the moon rides low, opposite the sun
+    else vDir.copy(vMoon);
     const dayI = 2.5 * (1 - 0.15 * wet) * smooth(-0.02, 0.2, L.sunHeight);
     const moonI = 0.6 * (1 - 0.3 * wet) * smooth(-0.02, 0.2, -L.sunHeight);
     if (sun) {
@@ -477,13 +478,12 @@ export function createDayNight(ctx) {
     const starA = nf * (1 - 0.85 * W.cloud * W.cloud);
     starUniforms.uTime.value = time; starUniforms.uOpacity.value = starA;
     stars.visible = starA > 0.01;
-    const moonA = smooth(0.1, 0.7, nf) * (1 - 0.75 * wet);
+    const moonA = smooth(0.1, 0.7, nf) * smooth(-0.02, 0.1, vMoon.y) * (1 - 0.75 * wet);
     moonUniforms.uOpacity.value = moonA;
     moon.visible = moonA > 0.01;
     if (cam) {
       stars.position.copy(cam.position);
-      moon.position.copy(cam.position).addScaledVector(vDir, MOON_DIST);
-      if (!up) moon.position.y = cam.position.y + Math.max(vDir.y, 0.12) * MOON_DIST;
+      moon.position.copy(cam.position).addScaledVector(vMoon, MOON_DIST);
       moon.lookAt(cam.position);
     }
     // rain
