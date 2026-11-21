@@ -13,7 +13,12 @@ folders, pixel-diff them with numpy and write a labelled contact sheet (PNG + HT
 Every scene runs in a fresh browser context with tools/determinism.js injected and the page opened at
 ?seed=<n>&freeze=1: Math.random is seeded; performance.now, Date, setTimeout/setInterval and
 requestAnimationFrame run on a virtual clock advanced only by window.__det.step(); pointer lock and Web Audio
-are removed (the game falls back to drag-to-look); any request that is not to the local server is blocked.
+are removed (the game falls back to drag-to-look); WebGL draws are skipped on every stepped frame except the
+last one before a screenshot; any request that is not to the local server is blocked (today only the Google
+Fonts stylesheet, so text uses fallback fonts). live.js still polls version.json, but on the virtual clock, and
+an unchanged build never swaps. Runs go side by side in --jobs browsers. Same build twice is byte-identical
+under swiftshader, across runs and processes. Timing on a loaded 4-core box: about 3.5 min for --dist or
+--base/--head, about 7 min with --check-determinism.
 
 Last stdout line is one JSON object {tool, pass, failures, metrics, artifacts}. Exit 0 pass, 1 failure
 (nondeterminism, page error, scene unreachable, or --fail-on-diff diff), 2 harness/infra error.
