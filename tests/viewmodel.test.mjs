@@ -71,3 +71,21 @@ test('pointing blends without a lower/raise; the hammer points with the left han
   h.setModelFactory(() => null); step(); assert.equal(h.state.models, 1);
   h.dispose();
 });
+
+test('hands are baked into a few draw calls and leave shared factory materials alone', () => {
+  const shared = new T.MeshStandardMaterial({ color: 0x996633 });
+  const factory = (k) => (k === 'crate' ? new T.Group().add(new T.Mesh(new T.BoxGeometry(1, 1, 1), shared), new T.Mesh(new T.BoxGeometry(0.2, 1.2, 0.2), shared)) : null);
+  const h = createHands(T, { modelFactory: factory });
+  const visibleMeshes = () => { let n = 0; h.group.traverse((c) => { if (!c.isMesh) return; for (let p = c; p; p = p.parent) if (!p.visible) return; n++; }); return n; };
+  const step = (n = 30) => { for (let i = 0; i < n; i++) h.update({ dt: 1 / 30 }); };
+  h.preload(['hook', 'crate']); h.update({ dt: 0 });
+  assert.equal(h.state.models, 2, 'preload builds held models ahead');
+  h.setHeld('hook'); step();
+  assert.ok(visibleMeshes() <= 16, `hook + hands: ${visibleMeshes()} draws`);
+  h.setHeld('crate'); step();
+  assert.ok(visibleMeshes() <= 8, `crate + pointing hands: ${visibleMeshes()} draws`);
+  assert.equal(shared.transparent, false, 'held copy never edits the cached model material');
+  assert.equal(shared.renderOrder ?? 0, 0);
+  const lag = h.state.lag; step(2); assert.equal(h.state.lag, lag, 'no per-frame lag array');
+  h.dispose();
+});
