@@ -15,6 +15,9 @@ import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { floorTarget, decorCheck, normaliseDecor, createGhosts, tileAt, wrapRot, ROT_STEP, FINE_STEP, DECOR_REACH, FLOOR_REACH } from './placement.js?build=v3-survival-ae77fa84ac2b';
+import * as Farm from './farming.js?build=v3-survival-ae77fa84ac2b'; // farming
+import { createFarmView } from './farming-view.js?build=v3-survival-ae77fa84ac2b'; // farming
+import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -28,7 +31,7 @@ const DECOR_TYPES = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'c
 const ITEM_TYPES = Object.freeze(['wood', 'leaf', 'scrap', 'barrel', 'plastic']);         // floating debris kinds
 const ITEM_NAMES = Object.freeze({wood:'plank', leaf:'bundle of leaves', scrap:'piece of scrap', barrel:'barrel', plastic:'plastic jug'});
 const SPAWN_TABLE = Object.freeze(['wood', 'wood', 'wood', 'plastic', 'plastic', 'plastic', 'leaf', 'leaf', 'leaf', 'scrap', 'barrel']);
-const LOOT = Object.freeze({wood:{wood:2}, leaf:{leaf:1}, scrap:{scrap:1}, plastic:{plastic:1}, barrel:{wood:3, leaf:2, scrap:1, plastic:1}});
+const LOOT = Object.freeze({wood:{wood:2}, leaf:{leaf:1}, scrap:{scrap:1}, plastic:{plastic:1}, barrel:{wood:3, leaf:2, scrap:1, plastic:1, seed:1}});
 const STOCK_KEYS = Object.freeze(['wood', 'leaf', 'scrap', 'plastic']); // legacy world.stock (derived)
 const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
@@ -125,7 +128,7 @@ export function mount(transfer = null) {
     const stock = {};
     for (const k of STOCK_KEYS) { const n = s[k]; stock[k] = isInt(n) && n >= 0 && n <= 1e6 ? n : 0; }
     const decor = [], onTile = (x, z) => seen.has(x + ',' + z);
-    for (const d of Array.isArray(v.decor) ? v.decor.slice(0, 400) : []) { const n = normaliseDecor(d, DECOR_TYPES, onTile); if (n) decor.push(n); }
+    for (const d of Array.isArray(v.decor) ? v.decor.slice(0, 400) : []) { const n = normaliseDecor(d, DECOR_TYPES, onTile); if (!n) continue; if (Farm.isPlot(n)) n.farm = Farm.cleanPlant(d.farm); decor.push(n); } // farming
     const count = n => (isInt(n) && n >= 0 ? n : 0);
     const items = [];
     if (withItems && Array.isArray(v.items)) for (const it of v.items.slice(0, 80)) {
@@ -177,6 +180,7 @@ export function mount(transfer = null) {
   }
   let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghosts, rope, ropeAttr, hookMesh, friend, player, sun;
   let hands = null, clothMat;
+  let farmView = null, farmSeen = null, farmLast = 0; // farming
   let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
@@ -286,6 +290,7 @@ export function mount(transfer = null) {
     sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(-15, 28, 12); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, {left:-25, right:25, top:25, bottom:-25}); sun.shadow.bias = -.001; scene.add(sun);
     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.receiveShadow = true; scene.add(ocean.mesh); ocean.update(elapsed);
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
+    farmView = createFarmView(T, {getModel:k => getModel(k)}); scene.add(farmView.group); // farming
     itemsGroup = new T.Group(); scene.add(itemsGroup);
     player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
     ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => createCraft(T, k)});
@@ -335,7 +340,8 @@ export function mount(transfer = null) {
   function rebuildRaft() {
     const want = new Map();
     for (const [x, z] of world.tiles) want.set('t' + x + ',' + z, [x, z]);
-    for (const d of world.decor) want.set(d.type + ':' + d.x + ',' + d.z + ',' + d.rot, d);
+    farmSeen = null; // farming
+    for (const d of world.decor) if (!(farmView && Farm.isPlot(d))) want.set(d.type + ':' + d.x + ',' + d.z + ',' + d.rot, d);
     for (const [k, o] of raftParts) if (!want.has(k) || o.parent !== raft) { o.removeFromParent(); disposeGeometry(o); raftParts.delete(k); }
     for (const c of [...raft.children]) if (!c.userData.partKey) { raft.remove(c); disposeGeometry(c); }
     for (const [k, v] of want) {
@@ -380,6 +386,7 @@ export function mount(transfer = null) {
     if (running && !dialog) {
       if (guestWaiting()) html = 'Waiting for your brother’s raft…';
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
+      else if (farmPlot(frameAim)) { const t = Farm.promptFor(farmPlot(frameAim).farm, heldKind()); html = t.startsWith('E  ') ? '<kbd>E</kbd>' + esc(t.slice(3)) : esc(t); } // farming
       else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
       else if (castOut() && castOut().stage === 'floating') html = caughtList(castOut()).length ? 'Hold click to reel it in' : 'Hold click to reel';
     }
@@ -576,11 +583,12 @@ export function mount(transfer = null) {
         const sel = bag.slots[bag.selectedIndex];
         if (sel?.kind === a.recipe) { sel.count--; if (sel.count <= 0) bag.slots[bag.selectedIndex] = null; }
         else if (!bag.remove(a.recipe, 1)) { emit({kind:'notice', text:`Craft a ${itemName(a.recipe)} first`}, actor); return; }
-        world.decor.push(d);
+        world.decor.push(Farm.isPlot(d) ? {...d, farm:Farm.newPlanter()} : d); // farming: empty planter, plant a seed in it
       } else return;
       rebuildRaft(); emit({kind:'build'}, 'all'); // the new piece appearing is the feedback; no centre text
       return;
     }
+    if (a.kind === 'farm') { const r = Farm.applyFarmAction(world, bag, a); if (r.text) emit(r.items ? {kind:r.effect, text:r.text, items:r.items} : {kind:r.effect, text:r.text}, actor); if (r.changed) farmSeen = null; return; } // farming
     if (a.kind === 'fish') {
       if (bag.count('fishingrod') < 1) return;
       if (bag.add('fish', 1) > 0) { emit({kind:'full', text:'Bag full: the fish swam away'}, actor); return; }
@@ -621,6 +629,7 @@ export function mount(transfer = null) {
       action({kind:'collect', id:target.id, token:target.token});
       return;
     }
+    if (farmUse(currentAim(), true)) return; // farming: E harvests
     openInventory();
   }
 
@@ -629,6 +638,7 @@ export function mount(transfer = null) {
     if (!running || hook || fishWait) return;
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
     const kind = selectedKind(), bag = localBag(), p = aim?.point ?? null;
+    if (farmUse(aim, false)) return; // farming
     if (kind === 'hammer' || DECOR_TYPES.includes(kind)) {
       const v = placementFor(kind, aim?.local ?? null);
       if (!v || (!v.ok && kind !== 'hammer')) { beep(190); return; }
@@ -641,6 +651,16 @@ export function mount(transfer = null) {
       fishWait = 3 + Math.random() * 2; hook = {end:new T.Vector3(p.x, .1, p.z), t:0, duration:fishWait + .8, fishing:true};
       swing = 1; notice('Wait for a bite…', 2500); beep(280);
     }
+  }
+  // ---------- Farming (rules in farming.js, meshes in farming-view.js) ----------
+  function farmPlot(aim) { const d = farmView?.plotAt(world.decor, aim?.local ?? aim?.point, aim?.dir); return d && Math.hypot(d.x - physics.x, d.z - physics.z) <= PICKUP_REACH + 1.6 ? d : null; }
+  const farmNotify = text => notice(text); // farming hints: one hook for the notification feed
+  function farmUse(aim, interacting) {
+    const kind = selectedKind(), d = farmPlot(aim);
+    if (d) { const op = Farm.plotAction(d.farm, kind, interacting); if (op) { swing = .6; action({kind:'farm', op, x:d.x, z:d.z}); return true; } if (!interacting && (kind === 'seed' || kind === 'water')) { farmNotify(Farm.promptFor(d.farm, kind)); return true; } }
+    if (interacting || kind !== 'cup') return false;
+    const p = aim?.point; if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2)) || Math.hypot(p.x - physics.x, p.z - physics.z) > 6) { farmNotify('Point at the sea next to the raft to fill the cup'); return true; }
+    swing = .6; action({kind:'farm', op:'fill'}); return true;
   }
   function beginCharge(at) {
     if (!running || hook || fishWait || selectedKind() !== 'hook') return;
@@ -857,6 +877,8 @@ export function mount(transfer = null) {
     frameAim = running && !dialog ? currentAim() : null;
     pickTarget = pickupFrom(frameAim);
     updateItems(dt); updateHook(dt); updateGhost();
+    if (farmView) { const fdt = Math.min((now - (farmLast || now)) / 1000, 5); farmLast = now; if (role !== 'guest' && running && Farm.tickFarm(world.decor, fdt)) farmSeen = null; // wall clock: growth takes real minutes even at low fps
+      if (farmSeen !== world.decor) { farmSeen = world.decor; farmView.sync(world.decor); } farmView.update(elapsed, raft); } // farming
     if (running && role !== 'guest') {
       netClock += dt;
       if (netClock > .8) { // nets gather into the host's bag (trusted shared machine) and never consume when full
@@ -1049,7 +1071,7 @@ export function mount(transfer = null) {
         lastHostMessage = performance.now();
         const w = cleanWorld(data.world, true); if (!w) return;
         const first = !networkReady;
-        const changed = first || JSON.stringify([world.tiles, world.decor]) !== JSON.stringify([w.tiles, w.decor]);
+        const changed = first || JSON.stringify([world.tiles, world.decor.map(d => [d.type, d.x, d.z, d.rot])]) !== JSON.stringify([w.tiles, w.decor.map(d => [d.type, d.x, d.z, d.rot])]); // farming: growth ticks do not rebuild
         world = w; other = validPose(data.other);
         if (data.bag) { // canonical bag once the host has applied all of our sent actions
           const acked = first || !isInt(data.ack) || data.ack >= seq || performance.now() - lastSeqSent > ACK_TIMEOUT;
@@ -1148,6 +1170,7 @@ export function mount(transfer = null) {
         camera:camera ? {x:camera.position.x, y:camera.position.y, z:camera.position.z, yaw, pitch, roll:camera.rotation.z, fov:camera.fov} : null,
         raft:raft ? {y:raft.position.y, pitch:raft.rotation.x, roll:raft.rotation.z} : null,
         hand:{x:handPos.x, y:handPos.y, z:handPos.z}, hover:hover ? {...hover} : null,
+        farm:world.decor.filter(Farm.isPlot).map(d => ({x:d.x, z:d.z, ...d.farm, shown:farmView?.stageOf(d.x, d.z) ?? null})), // farming
       };
     },
     project,
