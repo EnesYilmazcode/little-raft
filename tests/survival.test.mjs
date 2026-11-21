@@ -514,6 +514,7 @@ function fakeDoc() {
       setAttribute(k, v) { this.attrs[k] = v; },
       appendChild(c) { c.remove(); c.parent = this; this.children.push(c); return c; },
       append(...cs) { cs.forEach(c => this.appendChild(c)); },
+      replaceChildren(...cs) { [...this.children].forEach(c => c.remove()); this.append(...cs); },
       remove() { if (this.parent) { this.parent.children.splice(this.parent.children.indexOf(this), 1); this.parent = null; } },
       set className(v) { v.split(' ').forEach(c => this.classList.add(c)); },
     };
@@ -558,4 +559,14 @@ test('pickup feed: icon provider wins, svg sprite is the fallback', () => {
   feed.setIconProvider(k => k === 'scrap' ? 'data:image/png;base64,AA' : null);
   feed.add('scrap', 1);
   assert.equal(icon(1).tagName, 'IMG'); assert.equal(icon(1).src, 'data:image/png;base64,AA');
+});
+
+test('pickup feed: refresh swaps in an icon that finished rendering late', () => {
+  const doc = fakeDoc(), c = fakeClock(), feed = createFeed({ doc, ...c });
+  let ready = null; feed.setIconProvider(() => ready);
+  feed.add('wood', 1);
+  const icon = () => doc.getElementById('pickupFeed').children[0].children[0].children;
+  assert.equal(icon()[0].tagName, 'SVG'); // sprite placeholder while the 3D icon renders
+  ready = 'data:image/png;base64,BB'; feed.refresh('wood'); feed.refresh('leaf');
+  assert.equal(icon().length, 1); assert.equal(icon()[0].src, 'data:image/png;base64,BB');
 });

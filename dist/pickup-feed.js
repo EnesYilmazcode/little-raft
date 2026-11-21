@@ -68,10 +68,10 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
       const n = Math.floor(Number(count)); if (!kind || !(n > 0)) return null;
       return push('k:' + kind, row => {
         row.el.classList.add('pf-item');
-        const box = doc.createElement('span'); box.className = 'pf-icon';
-        const ic = icon(kind); if (ic) box.appendChild(ic);
+        row.box = doc.createElement('span'); row.box.className = 'pf-icon';
+        const ic = icon(kind); if (ic) row.box.appendChild(ic);
         row.label = doc.createElement('b');
-        row.el.append(box, row.label);
+        row.el.append(row.box, row.label);
       }, row => { row.count += n; row.label.textContent = `+${row.count} ${ITEM_INFO[kind]?.name ?? kind}`; });
     },
     /** A short text line in the same corner (replaces centred toasts). Same text merges. */
@@ -83,7 +83,13 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
         row.el.append(dot, row.label);
       }, () => {});
     },
+    /** fn(kind) -> data URL | canvas | element | null (null: sprite fallback, or the bare swatch tile). */
     setIconProvider(fn) { iconProvider = typeof fn === 'function' ? fn : null; },
+    /** Re-ask the provider for a live row's icon, e.g. when an async 3D icon finishes rendering. */
+    refresh(kind) {
+      const row = rows.get('k:' + kind); if (!row?.box) return;
+      const ic = icon(kind); if (ic) row.box.replaceChildren(ic);
+    },
     clear() { for (const [k, r] of [...rows]) { rows.delete(k); clear(r.hold); r.el.remove(); } },
     get rows() { return [...rows.values()].map(r => r.label.textContent); },
   };
@@ -96,6 +102,7 @@ export const pickupFeed = Object.freeze({
   add: (kind, count) => feed().add(kind, count),
   note: text => feed().note(text),
   setIconProvider: fn => feed().setIconProvider(fn),
+  refresh: kind => shared?.refresh(kind),
   clear: () => feed().clear(),
   get rows() { return shared ? shared.rows : []; },
 });
