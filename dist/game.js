@@ -41,7 +41,7 @@ const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
 const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12});
 const SAVE = 'little-raft-v1';
-const THROW_LOFT = .2, FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 10, PICKUP_REACH = 2.5;
+const THROW_LOFT = .12, FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 10, PICKUP_REACH = 2.5;
 const LOOK_SENSITIVITY = .0022, DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
 const FISH_REACH = 26, PENDING_MS = 2500, JOIN_TIMEOUT = 15000, ACK_TIMEOUT = 2000;
 const CHARGE_MS = 900, MIN_CHARGE = .15, WEAR_PER_CATCH = 2, MAX_HEALTH = 100;
