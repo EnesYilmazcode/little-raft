@@ -5,6 +5,7 @@
 //   scene.add(ocean.mesh);
 //   ocean.update(timeSeconds);               // each frame (optionally ocean.update(t, camera))
 //   ocean.getHeight(x, z)                    // CPU wave height (world y) for bobbing items/raft
+//   ocean.setDetail(low)                     // true: cheaper fragment shader (OCEAN_LOW) for slow devices
 
 // Shared wave set (dirX, dirZ, amplitude, wavelength, steepness). Sum of amplitudes = .255,
 // so with base y -.24 crests peak near y = .015 — well under the raft floor at .2.
@@ -109,9 +110,11 @@ void main() {
   if (dist < 60.0) { // near == 0 from 60 on, so the ripple gradient would be zeroed anyway
     ripple(normalize(vec2(0.8, 0.6)), 0.010, 2.10, 1.30, p, g);
     ripple(normalize(vec2(-0.5, 0.9)), 0.008, 2.90, 1.70, p, g);
+    #ifndef OCEAN_LOW // low detail (bottom quality levels): the three finest ripples go
     ripple(normalize(vec2(0.95, -0.3)), 0.006, 4.30, 2.10, p, g);
     ripple(normalize(vec2(-0.9, -0.4)), 0.004, 6.70, 2.60, p, g);
     ripple(normalize(vec2(0.2, 1.0)), 0.003, 9.10, 3.10, p, g);
+    #endif
     g *= near;
   }
   vec3 n = normalize(vec3(vNormalW.x - g.x, vNormalW.y, vNormalW.z - g.y));
@@ -124,7 +127,11 @@ void main() {
   vec3 skyRefl = mix(uSky, uZenith, smoothstep(0.0, 0.6, R.y));
 
   // Body colour: deep teal in troughs, turquoise on crests and in slow patches.
+  #ifdef OCEAN_LOW
+  float patches = vnoise(p * 0.045 + uTime * 0.01) * 0.6 + 0.2;
+  #else
   float patches = vnoise(p * 0.045 + uTime * 0.01) * 0.6 + vnoise(p * 0.13 - uTime * 0.02) * 0.4;
+  #endif
   float h = clamp(vHeight / 0.2 * 0.5 + 0.5, 0.0, 1.0);
   float shallowMix = clamp(h * 0.55 + patches * 0.35 + (1.0 - ndv) * 0.15, 0.0, 1.0);
   vec3 body = mix(uDeep, uShallow, shallowMix);
@@ -137,7 +144,11 @@ void main() {
   // Sun highlights: sharp glint + broad sheen, clamped and faded to avoid flashing.
   vec3 H = normalize(L + V);
   float ndh = max(dot(n, H), 0.0);
+  #ifdef OCEAN_LOW
+  float spec = pow(ndh, 260.0) * 1.6;
+  #else
   float spec = pow(ndh, 260.0) * 1.6 + pow(ndh, 36.0) * 0.12;
+  #endif
   spec = min(spec, 1.4) * (1.0 - smoothstep(40.0, 120.0, dist) * 0.7);
   col += uSunColor * spec;
 
@@ -148,8 +159,12 @@ void main() {
     float n2 = vnoise(fp * 2.6 + vec2(uTime * -0.2, uTime * 0.15));
     float lace = 1.0 - smoothstep(0.0, 0.035, abs(n1 * 0.7 + n2 * 0.3 - 0.5));
     float crest = smoothstep(0.06, 0.17, vHeight);
+    #ifdef OCEAN_LOW
+    float foam = clamp(lace * crest * 0.55, 0.0, 0.6);
+    #else
     float speck = smoothstep(0.86, 0.93, vnoise(fp * 3.7)) * smoothstep(0.0, 0.12, vHeight);
     float foam = clamp(lace * crest * 0.55 + speck * 0.35, 0.0, 0.6);
+    #endif
     foam *= 1.0 - smoothstep(30.0, 90.0, dist);
     col = mix(col, uFoam, foam);
   }
@@ -266,10 +281,23 @@ export function createOcean(T, options = {}) {
     return r;
   }
 
+  // Low detail drops the finest ripples, the second colour-patch noise, the broad sun sheen and the
+  // foam specks (game.js turns it on for the bottom quality levels). Only the define changes, so
+  // both programs stay cached once compiled and switching back and forth costs nothing.
+  let low = false;
+  function setDetail(isLow) {
+    isLow = !!isLow;
+    if (isLow === low) return;
+    low = isLow;
+    if (low) material.defines.OCEAN_LOW = '';
+    else delete material.defines.OCEAN_LOW;
+    material.needsUpdate = true;
+  }
+
   function dispose() {
     geometry.dispose();
     material.dispose();
   }
 
-  return { mesh, update, getHeight, getSlope, sample, uniforms, material, dispose };
+  return { mesh, update, getHeight, getSlope, sample, uniforms, material, setDetail, get lowDetail() { return low; }, dispose };
 }
