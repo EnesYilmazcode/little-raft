@@ -90,6 +90,16 @@ PAGE_INIT = r"""
     build: {active: s.build.active, candidates: s.build.candidates, affordable: s.build.affordable, hover: s.build.hover},
     probe: pb.read(), now: performance.now()};
   };
+  // Aim the camera at a world point / set an absolute view in ONE round-trip (each Playwright call costs ~1 s here).
+  // Mirrors game.js look(): yaw -= dx*k, pitch -= dy*k, with the game clamping each event to +-200 px.
+  const look = (dx, dy) => { const n = Math.max(1, Math.floor(Math.max(Math.abs(dx), Math.abs(dy)) / 150) + 1);
+    for (let i = 0; i < n; i++) document.dispatchEvent(new MouseEvent('mousemove', {movementX: dx / n, movementY: dy / n, bubbles: true})); };
+  const wrap = a => { a = (a + Math.PI) %% (2 * Math.PI); if (a < 0) a += 2 * Math.PI; return a - Math.PI; };
+  pb.view = (yaw, pitch) => { const me = raftDebug.state.me;
+    look(wrap(me.yaw - yaw) / %(look_k)s, (me.pitch - pitch) / %(look_k)s); return raftDebug.state; };
+  pb.aim = (x, y, z) => { const s = raftDebug.state, c = s.camera, dx = x - c.x, dy = y - c.y, dz = z - c.z;
+    const lim = %(pitch_limit)s - .02, pitch = Math.max(-lim, Math.min(lim, Math.atan2(dy, Math.hypot(dx, dz))));
+    return pb.view(Math.atan2(-dx, -dz), pitch); };
   %(save)s
 })();
 """
@@ -111,10 +121,6 @@ def starter_save():
 
 def finite(*v):
     return all(isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) for x in v)
-
-
-def wrap(a):
-    return (a + math.pi) % (2 * math.pi) - math.pi
 
 
 class InfraError(Exception):
@@ -173,7 +179,7 @@ class Bot:
         self.frozen_since = None
         self.active_bad = 0
         self.max_tiles = None
-        self.m = {'actions': {}, 'throws': 0, 'catches': 0, 'builds_tried': 0, 'tiles_built': 0, 'fish_casts': 0,
+        self.m = {'actions': {}, 'action_s': {}, 'throws': 0, 'catches': 0, 'builds_tried': 0, 'tiles_built': 0, 'fish_casts': 0,
                   'fish_caught': 0, 'collected': 0, 'menus': 0, 'max_raf_gap_ms': 0, 'raf_frames': 0,
                   'min_y': None, 'max_dist': 0, 'swim_samples': 0, 'pause_open_after_inv_esc': None,
                   'relock_failures': 0}
@@ -447,23 +453,12 @@ class Bot:
             self.m['state_calls'] = self.m.get('state_calls', 0) + 1
             self.m['state_s'] = round(self.m.get('state_s', 0) + time.monotonic() - t, 2)
 
-    def look(self, dx, dy):
-        """Relative mouse look, sent in <=150 px events (the game clamps each to +-200)."""
-        n = max(1, int(max(abs(dx), abs(dy)) // 150) + 1)
-        self.page.evaluate("""([dx, dy, n]) => { for (let i = 0; i < n; i++)
-            document.dispatchEvent(new MouseEvent('mousemove', {movementX: dx / n, movementY: dy / n, bubbles: true})); }""", [dx, dy, n])
-
     def aim_at(self, wx, wy, wz):
-        st = self.state()
-        cam = st['camera']
-        dx, dy, dz = wx - cam['x'], wy - cam['y'], wz - cam['z']
-        tyaw = math.atan2(-dx, -dz)
-        tpitch = max(-PITCH_LIMIT + .02, min(PITCH_LIMIT - .02, math.atan2(dy, math.hypot(dx, dz))))
-        self.look(wrap(st['me']['yaw'] - tyaw) / LOOK_K, (st['me']['pitch'] - tpitch) / LOOK_K)
+        """Point the camera at a world point (computed in-page: one round-trip). Returns the state after aiming."""
+        return self.page.evaluate('([x, y, z]) => window.__playbot.aim(x, y, z)', [wx, wy, wz])
 
     def set_view(self, yaw, pitch):
-        st = self.state()
-        self.look(wrap(st['me']['yaw'] - yaw) / LOOK_K, (st['me']['pitch'] - pitch) / LOOK_K)
+        return self.page.evaluate('([y, p]) => window.__playbot.view(y, p)', [yaw, pitch])
 
     def ensure_lock(self):
         """Close stray menus and get pointer lock back (first canvas click only locks)."""
@@ -507,8 +502,8 @@ class Bot:
         st = self.state()
         me = st['me']
         if math.hypot(me['x'], me['z']) > 2.2 or st['swimming']:   # head back to the raft centre
-            self.aim_at(0, me['y'], 0)
-            self.set_view(self.state()['me']['yaw'], -.2)
+            me2 = self.aim_at(0, me['y'], 0)['me']
+            self.set_view(me2['yaw'], -.2)
             key, ms = 'KeyW', 1500 + self.rng.randint(0, 1500)
             self.act(f'walk home {key} {ms}ms')
         else:
@@ -680,7 +675,9 @@ class Bot:
     ACTIONS = [('walk', 5), ('look', 4), ('hotbar', 2), ('jump', 1), ('throw', 3), ('collect', 1),
                ('inventory', 2), ('pause', 1), ('build', 2), ('fish', 1)]
 
-    FIRST_PASS = ['look', 'hotbar', 'walk', 'inventory', 'pause', 'jump', 'build', 'throw', 'collect', 'fish', 'inventory']
+    # Every action once first, highest-value checks first (a 90 s gate on a ~1 fps box only fits ~10 actions):
+    # inventory+Esc, pause, build, throw, then inventory+Tab and the rest.
+    FIRST_PASS = ['inventory', 'pause', 'build', 'throw', 'inventory', 'hotbar', 'look', 'walk', 'jump', 'fish', 'collect']
 
     def plan(self):
         names = [n for n, w in self.ACTIONS for _ in range(w)]
@@ -696,6 +693,7 @@ class Bot:
                 break
             self.m['actions'][name] = self.m['actions'].get(name, 0) + 1
             self.stopping = True
+            ta = self.el()
             try:
                 self.ensure_lock()
                 getattr(self, 'a_' + name)()
@@ -704,6 +702,7 @@ class Bot:
                 self.act(f'time up during {name}')
                 break
             finally:
+                self.m['action_s'][name] = round(self.m['action_s'].get(name, 0) + self.el() - ta, 1)
                 self.stopping = False
                 for k in list(self.held):
                     self.key_up(k)
@@ -721,9 +720,9 @@ def main():
     ap.add_argument('--seed', type=int, default=1)
     ap.add_argument('--kit', choices=['starter', 'fresh'], default='starter')
     ap.add_argument('--check-interval', type=float, default=.5, help='in-page invariant sample period (s)')
-    ap.add_argument('--drain-interval', type=float, default=2.0, help='how often Python drains/checks the samples (s)')
+    ap.add_argument('--drain-interval', type=float, default=4.0, help='how often Python drains/checks the samples (s)')
     ap.add_argument('--viewport', default='960x540', help='WxH; smaller keeps swiftshader responsive')
-    ap.add_argument('--shot-interval', type=float, default=None, help='seconds between screenshots (default duration/14)')
+    ap.add_argument('--shot-interval', type=float, default=None, help='seconds between screenshots (default max(30, duration/10))')
     ap.add_argument('--stall-ms', type=float, default=8000, help='max rAF gap before frame_stall (swiftshader-generous)')
     ap.add_argument('--y-floor', type=float, default=-4.0, help='player eye y below this is a failure')
     ap.add_argument('--hook-wait-s', type=float, default=None, help='max wait for hook flight / reel (default min(25, duration/6))')
@@ -732,7 +731,8 @@ def main():
     ap.add_argument('--fish-wait-s', type=float, default=None, help='max wait for a bite (default min(15, duration/10))')
     ap.add_argument('--headed', action='store_true')
     args = ap.parse_args()
-    args.shot_interval = args.shot_interval or max(12.0, args.duration / 10)
+    # each screenshot costs ~5 s on swiftshader (it waits for a composited frame), so keep periodic ones sparse
+    args.shot_interval = args.shot_interval or max(30.0, args.duration / 10)
     # keep slow hook/fish waits proportional so a short run is not one long wait
     args.hook_wait_s = args.hook_wait_s or min(25.0, max(8.0, args.duration / 6))
     args.fish_wait_s = args.fish_wait_s or min(15.0, max(6.0, args.duration / 10))
@@ -760,7 +760,8 @@ def main():
                 vw, vh = (int(v) for v in args.viewport.lower().split('x'))
                 page = browser.new_page(viewport={'width': vw, 'height': vh})
                 page.set_default_timeout(60000)
-                page.add_init_script(PAGE_INIT % {'seed': args.seed, 'save': save, 'interval': max(50, int(args.check_interval * 1000))})
+                page.add_init_script(PAGE_INIT % {'seed': args.seed, 'save': save, 'interval': max(50, int(args.check_interval * 1000)),
+                                                   'look_k': LOOK_K, 'pitch_limit': PITCH_LIMIT})
                 bot = Bot(page, args, out)
                 page.on('pageerror', lambda e: bot.page_errors.append((round(bot.el(), 2), f'{e}\n{(getattr(e, "stack", None) or "")[:300]}'.strip())))
 
