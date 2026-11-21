@@ -3,6 +3,13 @@
 Checked against `dist/` at `claude/raft-tech` 745f663. You replace one file and add 4 lines to
 `dist/game.js`. No new files, no new imports, and no change to any physics consumer.
 
+Short version, from the repo root:
+
+```sh
+cp sandbox/water/water.js dist/ocean.js
+git apply sandbox/water/adopt-game.diff   # steps 2 and 3 below; verified with git apply --check
+```
+
 ## 1. Replace `dist/ocean.js`
 
 ```sh
