@@ -82,7 +82,7 @@ export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange
   }
 
   const sway = new Spring3(T, 90, 12), bob = new Spring3(T, 160, 18), kick = new Spring3(T, 220, 16), land = new Spring3(T, 140, 13);
-  const st = { shown: null, e: 0, prevYaw: null, prevPitch: 0, walkW: 0, chargeW: 0, prevSwing: 0, wasGrounded: true, t: 0, airW: 0 };
+  const st = { shown: null, e: 0, prevYaw: null, prevPitch: 0, walkW: 0, chargeW: 0, prevSwing: 0, wasGrounded: true, t: 0, airW: 0, airVy: 0 };
 
   function update(p = {}) {
     const dt = clamp(p.dt ?? 1 / 60, 0, 0.1); st.t += dt;
@@ -120,7 +120,8 @@ export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange
     // ---- jump / land: lift slightly while airborne, dip on landing
     const grounded = p.grounded ?? true;
     st.airW += ((grounded ? 0 : 1) - st.airW) * k(5);
-    if (grounded && !st.wasGrounded) land.impulse(0, clamp(p.vy ?? -3, -9, 0) * 0.06 * amp, 0);
+    if (!grounded) st.airVy = p.vy ?? -3;                  // physics zeroes vy on the landing frame, keep the last airborne value
+    if (grounded && !st.wasGrounded) land.impulse(0, clamp(st.airVy, -9, 0) * 0.06 * amp, 0);
     st.wasGrounded = grounded;
     const l = land.update(dt);
 

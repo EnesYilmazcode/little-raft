@@ -1,8 +1,8 @@
 """Headless check of the viewmodel lab. Usage: python sandbox/viewmodel/shoot.py [out_dir]
 Serves the repo root, drives each scripted scene on a fixed 60 Hz clock through window.vmLab, screenshots it,
 then renders 120 frames per perf case and prints avg/worst frame ms + renderer.info as JSON.
-Default out_dir: sandbox/viewmodel/shots/"""
-import sys, json, threading, functools, http.server, socketserver
+Default out_dir: sandbox/viewmodel/shots/. Env ONLY=substr1,substr2 limits shots and skips perf (quick iteration)."""
+import os, sys, json, threading, functools, http.server, socketserver
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
@@ -28,6 +28,7 @@ shots = [
     ('07-equip-hammer', 'scene=swap', 2.0),
     ('08-equip-rod', 'scene=swap', 3.0),
     ('09-use-hammer-kick', 'scene=use', 1.08),
+    ('09b-use-hammer-kick-legacy', 'scene=use&mode=legacy', 1.08),
     ('10-look-sway', 'scene=look', 1.2),
     ('11-wall-vm', 'scene=wall', 1.0),
     ('12-wall-legacy', 'scene=wall&mode=legacy', 1.0),
@@ -38,7 +39,10 @@ shots = [
     ('17-fov95-legacy', 'scene=idle&fov=95&mode=legacy', 1.0),
     ('18-rope-anchor-vm', 'scene=rope', 1.0),
 ]
-perf = [('vm', 'scene=walk'), ('legacy', 'scene=walk&mode=legacy'), ('naive', 'scene=walk&mode=naive')]
+only = [x for x in os.environ.get('ONLY', '').split(',') if x]
+if only: shots = [s for s in shots if any(o in s[0] for o in only)]
+perf = [] if only else [('vm', 'scene=walk'), ('legacy', 'scene=walk&mode=legacy'), ('naive', 'scene=walk&mode=naive'),
+                             ('vm-noocean', 'scene=walk&ocean=0'), ('legacy-noocean', 'scene=walk&mode=legacy&ocean=0'), ('naive-noocean', 'scene=walk&mode=naive&ocean=0')]
 
 report = {'shots': {}, 'perf': {}}
 with sync_playwright() as p:

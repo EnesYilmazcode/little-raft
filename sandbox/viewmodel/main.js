@@ -36,7 +36,7 @@ sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, { left: -25
 scene.add(sun);
 const ocean = createOcean(T, { sunDirection: sun.position.clone(), skyColor: '#cbd2c0', fadeNear: 28, fadeFar: 125 });
 ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0');
-ocean.mesh.receiveShadow = true; scene.add(ocean.mesh);
+ocean.mesh.receiveShadow = true; if (P.get('ocean') !== '0') scene.add(ocean.mesh); // ocean=0: isolate viewmodel cost
 const matCache = new Map();
 const mat = (c) => { if (!matCache.has(c)) matCache.set(c, new T.MeshStandardMaterial({ color: c, roughness: 0.85 })); return matCache.get(c); };
 const raft = new T.Group(); scene.add(raft);
