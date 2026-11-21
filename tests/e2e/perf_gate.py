@@ -491,9 +491,9 @@ def run(args, budget):
             cdp = ctx.new_cdp_session(page)
             cdp.send('Performance.enable'); cdp.send('HeapProfiler.enable')
             chunks = []; cdp.on('HeapProfiler.addHeapSnapshotChunk', lambda e: chunks.append(e['chunk']))
-            # ?pinQuality: builds with adaptive quality (quality.js) hold the preset's top level, so a
-            # fast or slow box measures the same scene; older builds ignore the parameter.
-            boot(page, srv.url + '?pinQuality', report, repro)
+            # pinQuality holds the adaptive scaler at the preset's top level, so draw calls and triangles compare like for like
+            # across builds (on SwiftShader the scaler would otherwise drop shadows and hide real rendering cost).
+            boot(page, srv.url + ('?pinQuality' if args.pin_quality else ''), report, repro)
             page.wait_for_timeout(int(args.warmup * 1000))
             # On a very loaded box 6 s can be only a handful of frames; make sure first-frame
             # shader compiles and buffer uploads are done before the baseline heap/GL sample.
@@ -598,6 +598,7 @@ def run(args, budget):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--no-pin-quality', dest='pin_quality', action='store_false', help='let the adaptive quality scaler run (default: pinned at the top level)')
     ap.add_argument('--dist', default=str(ROOT / 'dist'), help='built game folder containing index.html (any path)')
     ap.add_argument('--budget', default=str(DEFAULT_BUDGET))
     ap.add_argument('--out', help='artifact dir; writes perf_gate.json (full report with per-sample heap) there')
