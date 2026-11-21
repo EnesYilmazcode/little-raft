@@ -388,10 +388,11 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 @media(max-width:760px){#craftTracker{bottom:110px;right:10px;width:180px}}
 `;
 
+const BAG_HUD = 'body:has(#inventory[open]) :is(#sailBadge,#lrVitals,#fcChip){visibility:hidden}'; // the open bag covers their edges
 function ensureStyle() {
   let st = document.getElementById('survival-style');
   if (!st) { st = document.createElement('style'); st.id = 'survival-style'; document.head.append(st); }
-  if (st.textContent !== CSS) st.textContent = CSS;
+  if (st.textContent !== CSS + BAG_HUD) st.textContent = CSS + BAG_HUD;
 }
 
 const slotInner = num => `${num ? `<i class="sv-num">${num}</i>` : ''}<i class="sv-art"></i><i class="sv-count"></i><i class="sv-dur" hidden><i></i></i>`;
