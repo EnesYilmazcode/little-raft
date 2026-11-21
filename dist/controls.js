@@ -20,14 +20,18 @@ function storage() { try { return globalThis.localStorage ?? null; } catch { ret
 const emit = (type, detail) => { try { globalThis.dispatchEvent?.(new CustomEvent(type, {detail})); } catch {} };
 
 // g: {canvas, isBlocked, sensitivity, motion, look(dx,dy), hotbarSize, slot(), selectSlot(i), interact(),
-//     inventory(), repair(), pause(), useDown(), useUp(), useCancel(), reelDown(), reelUp(), buildPieces?}
+//     inventory(), repair(back), pause(), menuBack(id) (pad closes the open menu), useDown(), useUp(), useCancel(), reelDown(), reelUp(), buildPieces?}
 export function createControls(g) {
   const map = new ActionMap({storage:storage()});
   const feel = new MoveFeel({motionScale:1});
   let idle = true, radial = null, cursor = [0, 0], tabs = new Set(), fx = {bobY:0, bobX:0, roll:0, eyeOffset:0, footstep:false}, padUse = false, padReel = false;
   const call = (name, ...a) => { try { return g[name]?.(...a); } catch (e) { console.error('controls:', name, e); } };
 
-  const onAction = (id, phase) => {
+  const onAction = (id, phase, info) => {
+    if (info?.blocked) { // pad Y / Start / B while a menu is open: close it (never while a rebind is listening)
+      if (![...tabs].some(t => t.capturing)) { call('menuBack', id); input.clear(); }
+      return;
+    }
     const pad = input.activeDevice === 'pad';
     if (phase === 'down') {
       if (id === 'interact') call('interact');
@@ -40,7 +44,7 @@ export function createControls(g) {
     } else if (id === 'buildMenu') radial?.confirm();
     else if (id === 'rotate') call('release'); // let go of a steered sail on any device
   };
-  const input = createInput({element:g.canvas, map, onAction, sensitivity:g.sensitivity,
+  const input = createInput({element:g.canvas, map, onAction, sensitivity:g.sensitivity, blockedActions:['inventory', 'pause'],
     isBlocked:() => [...tabs].some(t => t.capturing) || (!!g.isBlocked?.() && !radial?.isOpen)});
 
   function openRadial() {

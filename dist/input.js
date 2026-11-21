@@ -12,6 +12,7 @@ const ACTIVE_AXIS = 0.3;            // stick deflection that marks a pad as "in 
 const FIELD = 'input, textarea, select, [contenteditable], [contenteditable="true"]';
 const HOTBAR_IDS = ['hotbar1', 'hotbar2', 'hotbar3', 'hotbar4', 'hotbar5', 'hotbar6', 'hotbar7', 'hotbar8', 'hotbar9', 'hotbar0'];
 const MOUSE_CODES = ['Mouse0', 'Mouse1', 'Mouse2', 'Mouse3', 'Mouse4'];
+const PAD_BACK = 'Pad1';            // standard-mapping B / cancel: closes menus while input is blocked
 
 const isField = t => !!t && (t.isContentEditable === true || (typeof t.closest === 'function' && !!t.closest(FIELD)));
 const len = (x, y) => Math.hypot(x, y);
@@ -22,9 +23,13 @@ export function createInput({
   getGamepads = () => globalThis.navigator?.getGamepads?.() ?? [],
   now = () => globalThis.performance?.now?.() ?? Date.now(),
   doc = target?.document ?? globalThis.document,
+  // action ids whose pad bindings still fire a 'down' edge while blocked (onAction(id, 'down', {blocked:true})),
+  // plus PAD_BACK as 'back', so a gamepad can close the menu it opened. Nothing else reacts while blocked.
+  blockedActions = [],
 } = {}) {
   if (!map) throw new Error('createInput: map (ActionMap) required');
   const ids = ACTIONS.map(a => a.id);
+  const menuIds = new Set(blockedActions);
   const ac = new AbortController(), signal = ac.signal;
   const on = (t, type, fn, opts = {}) => t?.addEventListener?.(type, fn, { ...opts, signal });
 
@@ -159,8 +164,17 @@ export function createInput({
   // ---------- frame ----------
   function update(dt = 0) {
     const s = settings(), blocked = isBlocked();
-    if (blocked) clear();
-    const padLook = !blocked && connected.size ? pollPad(dt, s) : [0, 0];
+    if (blocked) clear();                          // held pad buttons become suppressed: the opening press never closes
+    let padLook = [0, 0];
+    if (connected.size && (!blocked || menuIds.size)) {
+      padLook = pollPad(dt, s);
+      if (blocked) { padLook = [0, 0]; leftStick = [0, 0]; trig = { throw: 0, reel: 0 }; }
+    }
+    const menu = [];
+    if (blocked && menuIds.size) {
+      for (const id of menuIds) if ((map.bindingsFor(id)?.pad || []).some(c => taps.get(c))) menu.push(id);
+      if (taps.get(PAD_BACK) && !menu.length) menu.push('back');
+    }
     const isOn = c => held.has(c) || padHeld.has(c);
     const tapsOf = list => list.reduce((n, c) => n + (taps.get(c) || 0), 0);
     let stepNow = 0;
@@ -176,6 +190,7 @@ export function createInput({
     taps.clear();
     step += stepNow;
     for (let i = 0; i < HOTBAR_IDS.length; i++) if (state.get(HOTBAR_IDS[i])?.pressed) slot = i;
+    if (onAction) for (const id of menu) { try { onAction(id, 'down', { blocked: true }); } catch (e) { console.error('onAction', id, e); } }
     if (onAction) for (const id of ids) {
       const st = state.get(id);
       try { if (st.pressed) onAction(id, 'down'); if (st.released) onAction(id, 'up'); } catch (e) { console.error('onAction', id, e); }

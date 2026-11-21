@@ -99,3 +99,54 @@ test('CTL-1: Shift+R rotates backwards through the controls repair callback', ()
   assert.match(gameSrc, /repair:back => \{ if \(running && DECOR_TYPES\.includes\(heldKind\(\)\)\) rotatePlacement\(back \? -ROT_STEP : ROT_STEP\)/);
   s.done();
 });
+
+// ---------------------------------------------------------------- CTL-2
+
+test('CTL-2: while blocked, pad Y / Start / B fire menu edges; the opening press does not close', () => {
+  const s = inputSetup({ input: { blockedActions: ['inventory', 'pause'] } });
+  const p = makePad(); s.pads[0] = p; fire(s.win, 'gamepadconnected', { gamepad: p });
+  const press = (i, ticks = 1) => { p.buttons[i] = btn(1); for (let k = 0; k < ticks; k++) s.tick(); p.buttons[i] = btn(0); s.tick(); };
+  p.buttons[3] = btn(1); s.tick();
+  assert.deepEqual(s.actions, ['inventory:down']);
+  s.block(true); s.actions.length = 0; // inventory opened by that press
+  s.tick(); s.tick(); p.buttons[3] = btn(0); s.tick();
+  assert.deepEqual(s.actions.filter(a => a.endsWith(':down')), [], 'held opening Y is suppressed while blocked');
+  s.actions.length = 0;
+  press(3); assert.deepEqual(s.actions, ['inventory:down']); s.actions.length = 0;
+  press(9); assert.deepEqual(s.actions, ['pause:down']); s.actions.length = 0;
+  press(1, 3); assert.deepEqual(s.actions, ['back:down'], 'B is back, one edge for a held press'); s.actions.length = 0;
+  press(0); press(7); p.axes[0] = 1; s.tick(); p.axes[0] = 0; s.tick();
+  assert.deepEqual(s.actions, [], 'nothing else reacts while blocked');
+  assert.deepEqual(s.input.triggers(), { throw: 0, reel: 0 });
+  assert.deepEqual(s.input.move(), { forward: 0, strafe: 0 });
+});
+
+test('CTL-2: without blockedActions the pad stays fully ignored while blocked', () => {
+  const s = inputSetup();
+  const p = makePad(); s.pads[0] = p; fire(s.win, 'gamepadconnected', { gamepad: p });
+  s.block(true);
+  for (const i of [3, 9, 1]) { p.buttons[i] = btn(1); s.tick(); p.buttons[i] = btn(0); s.tick(); }
+  assert.deepEqual(s.actions, []);
+});
+
+test('CTL-2: controls routes pad menu presses to menuBack and game.js closes + relocks', () => {
+  const s = controlsSetup();
+  s.p.buttons[3] = btn(1); s.tick();
+  assert.deepEqual(s.calls, ['inventory']);
+  s.block(true); s.tick(); s.p.buttons[3] = btn(0); s.tick();
+  assert.ok(!s.calls.some(c => c[0] === 'menuBack'), 'opening press must not close');
+  s.p.buttons[1] = btn(1); s.tick();
+  assert.deepEqual(s.calls.filter(c => c[0] === 'menuBack'), [['menuBack', 'back']]);
+  s.block(false); s.tick(); s.tick(); // B still held after the menu closed: no crouch
+  assert.equal(s.c.input.down('crouch'), false);
+  s.p.buttons[1] = btn(0); s.tick(); s.block(true); s.calls.length = 0;
+  s.p.buttons[9] = btn(1); s.tick(); s.p.buttons[9] = btn(0); s.tick();
+  assert.deepEqual(s.calls, [['menuBack', 'pause']]);
+  s.done();
+  const cb = /menuBack:\(\) => \{([^\n]*)\}, \/\//.exec(gameSrc)?.[1] ?? '';
+  assert.match(cb, /survivalUI\?\.isOpen\) survivalUI\.close\(\)/);
+  assert.match(cb, /settingsController\?\.isOpen\) settingsController\.close\(\)/);
+  // those close() calls run the same onResume -> requestLock path the keyboard close uses
+  assert.match(gameSrc, /onResume:guard\(\(\) => \{ play\('close'\); requestLock\(\); \}\)/);
+  assert.match(gameSrc, /createSettings\(\{[^\n]*onResume:\(\) => \{ quality\?\.reset\(\); requestLock\(\); \}/);
+});
