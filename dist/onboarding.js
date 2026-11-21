@@ -30,7 +30,7 @@ const gainStep = (id, title, hint, k, n, needs, or) => ({id, title, hint, needs,
 const hasHammer = S => owns(S, 'hammer'), hasRod = S => owns(S, 'fishingrod');
 // Hotbar key for an item: 'Press [6] to hold your hammer, then ' ('' when it is already in hand, null when not in the bag).
 const slotOf = (S, k) => arr(S?.inventory?.slots).findIndex(x => x?.kind === k);
-const hold = (S, k, what) => { const i = slotOf(S, k); return i < 0 ? null : i === S.selectedIndex ? '' : i >= 8 ? `[Tab], drag ${what} to the hotbar, then ` : `Press [${i + 1}] to hold ${what}, then `; };
+const hold = (S, k, what) => { const i = slotOf(S, k); return i < 0 ? null : i === S.selectedIndex ? '' : i >= 10 ? `[Tab], drag ${what} to the hotbar, then ` : `Press [${(i + 1) % 10}] to hold ${what}, then `; };
 const use = (S, k, what, rest, fallback) => { const h = hold(S, k, what); return h === null ? fallback : h ? h + rest : rest[0].toUpperCase() + rest.slice(1); };
 const LOOK = 1.4, WALK = 4; // rad of yaw sweep (~80°), metres walked
 

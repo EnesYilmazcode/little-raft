@@ -41,7 +41,7 @@
 
 const STACK = 20;
 const SLOT_COUNT = 28;   // mirrors inventory-state.js
-const HOTBAR_SIZE = 8;   // mirrors inventory-state.js
+const HOTBAR_SIZE = 10;  // mirrors inventory-state.js
 const MAX_DURABILITY = 100;
 
 const deepFreeze = (o) => {
