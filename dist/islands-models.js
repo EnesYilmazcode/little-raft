@@ -261,8 +261,10 @@ export function createIslandModels(T, ocean) {
     palm: new T.MeshStandardMaterial({ vertexColors: true, roughness: .85 }),
     palmSpent: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9 }),
     nuts: new T.MeshStandardMaterial({ vertexColors: true, roughness: .7 }),
-    bush: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9, flatShading: true }),
-    rock: new T.MeshStandardMaterial({ vertexColors: true, roughness: .95, flatShading: true }),
+    // bush and rock are non-indexed polyhedra, so their vertex normals are already face normals (flat look) without
+    // flatShading: dome, palm, nuts, bush, rock and sand share one lit program
+    bush: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9 }),
+    rock: new T.MeshStandardMaterial({ vertexColors: true, roughness: .95 }),
     sand: new T.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),
     lagoon: new T.ShaderMaterial({ uniforms: lagoonUniforms, vertexShader: vert, fragmentShader: LAGOON_FRAG, transparent: true, depthWrite: false, fog: false, lights: false,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),

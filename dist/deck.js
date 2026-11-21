@@ -19,11 +19,12 @@ function makeRng(index) {
   return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
-// Merge geometries into one non-indexed BufferGeometry (position/normal/uv). Sources are disposed.
+// Merge geometries into one non-indexed BufferGeometry (position/normal/uv, plus color when the first has one). Sources are disposed.
 function merge(T, geos) {
   let count = 0;
   const parts = geos.map(g => { const n = g.index ? g.toNonIndexed() : g; if (n !== g) g.dispose(); count += n.attributes.position.count; return n; });
   const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3), uv = new Float32Array(count * 2);
+  const col = parts[0]?.attributes.color ? new Float32Array(count * 3) : null;
   let o = 0;
   for (const g of parts) {
     const c = g.attributes.position.count;
@@ -31,6 +32,7 @@ function merge(T, geos) {
       pos[(o + i) * 3] = g.attributes.position.getX(i); pos[(o + i) * 3 + 1] = g.attributes.position.getY(i); pos[(o + i) * 3 + 2] = g.attributes.position.getZ(i);
       if (g.attributes.normal) { nor[(o + i) * 3] = g.attributes.normal.getX(i); nor[(o + i) * 3 + 1] = g.attributes.normal.getY(i); nor[(o + i) * 3 + 2] = g.attributes.normal.getZ(i); }
       if (g.attributes.uv) { uv[(o + i) * 2] = g.attributes.uv.getX(i); uv[(o + i) * 2 + 1] = g.attributes.uv.getY(i); }
+      if (col && g.attributes.color) { col[(o + i) * 3] = g.attributes.color.getX(i); col[(o + i) * 3 + 1] = g.attributes.color.getY(i); col[(o + i) * 3 + 2] = g.attributes.color.getZ(i); }
     }
     o += c; g.dispose();
   }
@@ -38,6 +40,7 @@ function merge(T, geos) {
   out.setAttribute('position', new T.BufferAttribute(pos, 3));
   out.setAttribute('normal', new T.BufferAttribute(nor, 3));
   out.setAttribute('uv', new T.BufferAttribute(uv, 2));
+  if (col) out.setAttribute('color', new T.BufferAttribute(col, 3));
   out.computeBoundingBox(); out.computeBoundingSphere();
   return out;
 }
@@ -162,11 +165,10 @@ function floorParts(T, index) {
     } else pieces.push({...base, za:-0.997, zb:0.997, endA:tileEnd(), endB:tileEnd()});
   }
 
-  const byColor = new Map(), nails = [], ropes = [], beams = [], caps = [];
-  for (const p of pieces) {
-    if (!byColor.has(p.color)) byColor.set(p.color, []);
-    byColor.get(p.color).push(plankGeometry(T, rng, p));
-  }
+  // Every plank is drawn with PLANK_COLORS[0]'s material; each plank's own colour is a vertex-colour multiplier
+  // (its colour / the base colour, linear), so the planks cost one draw instead of one per colour.
+  const planks = [], nails = [], ropes = [], beams = [], caps = [];
+  for (const p of pieces) planks.push(tint(T, plankGeometry(T, rng, p), p.color));
 
   // Logs underneath, parallel to X.
   for (const z of beamZ) { const b = beamParts(T, rng, z); beams.push(b.beam); caps.push(...b.caps); }
@@ -202,7 +204,7 @@ function floorParts(T, index) {
 
   const parts = [];
   const add = (geos, color, name, castShadow = true) => parts.push({name, color, geometry:merge(T, geos), castShadow});
-  for (const [color, list] of byColor) add(list, color, 'floor-planks');
+  add(planks, PLANK_COLORS[0], 'floor-planks');
   add(beams, BEAM_COLOR, 'floor-logs');
   add(caps, BEAM_END_COLOR, 'floor-log-ends');
   if (ropes.length) add(ropes, ROPE_COLOR, 'floor-lashings', false); // thin rope: shadow is invisible, skip the shadow pass
@@ -212,11 +214,31 @@ function floorParts(T, index) {
 
 const defaultMat = T => c => new T.MeshStandardMaterial({color:c, roughness:0.86});
 
+function tint(T, g, color) {
+  const c = new T.Color(color), b = new T.Color(PLANK_COLORS[0]), n = g.attributes.position.count, a = new Float32Array(n * 3);
+  const r = c.r / b.r, gg = c.g / b.g, bb = c.b / b.b;
+  for (let i = 0; i < n; i++) { a[i * 3] = r; a[i * 3 + 1] = gg; a[i * 3 + 2] = bb; }
+  g.setAttribute('color', new T.BufferAttribute(a, 3));
+  return g;
+}
+// The base plank material with vertexColors on (a clone sharing its textures; cached per source material, never disposed here).
+const plankMats = new WeakMap();
+function partMaterial(mat, p) {
+  const m = mat(p.color);
+  if (p.name !== 'floor-planks') return m;
+  if (!plankMats.has(m)) { // shared: raft rebuilds keep it (and its textures)
+    const v = m.clone(); v.vertexColors = true; v.userData.shared = true;
+    if (m.onBeforeCompile !== v.onBeforeCompile) { v.onBeforeCompile = m.onBeforeCompile; v.customProgramCacheKey = m.customProgramCacheKey; } // clone() drops shader patches (wood bump)
+    plankMats.set(m, v);
+  }
+  return plankMats.get(m);
+}
+
 export function createFloor(T, index = 0, getMaterial) {
   const mat = getMaterial || defaultMat(T);
   const g = new T.Group(); g.name = 'raft-floor';
   for (const p of floorParts(T, index)) {
-    const mesh = new T.Mesh(p.geometry, mat(p.color)); mesh.name = p.name;
+    const mesh = new T.Mesh(p.geometry, partMaterial(mat, p)); mesh.name = p.name;
     mesh.castShadow = p.castShadow; mesh.receiveShadow = true; g.add(mesh);
   }
   g.userData.kind = 'floor';
@@ -244,7 +266,7 @@ export function createRaftMesh(T, tiles, getMaterial) {
   }
   const g = new T.Group(); g.name = 'raft-floors';
   for (const b of buckets.values()) {
-    const mesh = new T.Mesh(merge(T, b.list), mat(b.color)); mesh.name = b.name;
+    const mesh = new T.Mesh(merge(T, b.list), partMaterial(mat, b)); mesh.name = b.name;
     mesh.castShadow = b.castShadow; mesh.receiveShadow = true; g.add(mesh);
   }
   g.userData.kind = 'floors';

@@ -33,7 +33,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother' } = 
     wood: M('#9a6b3f'), woodDark: M('#6e4a2b'), steel: M('#9fb3b6', { metalness: 0.6, roughness: 0.4 }),
     rope: M('#c9a76a'), leaf: M('#5fae4a'), leafDark: M('#3f8a3a'), scrap: M('#8c969a', { metalness: 0.5, roughness: 0.5 }),
     rust: M('#a8643a'), plastic: M('#dfeef5', { roughness: 0.5 }), cap: M('#e2574c'), cloth: M('#f3ead2'),
-    glow: M('#ffd27a', { emissive: '#ffb347', emissiveIntensity: 1.2 }), net: M('#d9c48f', { side: T.DoubleSide, transparent: true, opacity: 0.7 }),
+    glow: M('#ffd27a', { emissive: '#ffb347', emissiveIntensity: 1.2 }), net: M('#d9c48f', { side: T.DoubleSide, transparent: true, opacity: 0.7, forceSinglePass: true }),
   });
   // part(parent, geometry, material, x,y,z, rx,ry,rz)
   const part = (p, g, m, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => {

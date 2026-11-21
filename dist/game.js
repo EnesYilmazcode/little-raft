@@ -7,7 +7,7 @@ import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
 import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-survival-ae77fa84ac2b';
 import { createRaftMesh, createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
-import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
+import { createDebris, createItemBatch } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
@@ -400,8 +400,18 @@ export function mount(transfer = null) {
     try { fc = createFishingCooking(T, fcHost()); } catch (e) { console.error('fishing-cooking failed', e); fc = null; } // [fishing-cooking]
     try { instruments?.dispose(); instruments = createInstruments(T, instHost()); } catch (e) { console.error('instruments failed', e); instruments = null; } // [instruments]
     islands.length = 0; aboveWater.length = 0; // diving lane hook: seafloor rises toward islands; these groups hide underwater
-    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); islands.push({x:g.position.x, z:g.position.z, r:5}); aboveWater.push(g); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); bakeGroup(g); scene.add(g); scenery.push([g, 6]); } // [sailing] islands drift past; diving: seafloor rises toward these
-    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; bakeGroup(g); scene.add(g); clouds.push(g); aboveWater.push(g); scenery.push([g, 0]); } // content + sailing: clouds
+    // [sailing] islands drift past; diving: seafloor rises toward these. Every island is the same model, so one
+    // vertex-coloured geometry is drawn once for all of them; the empty groups stay as drift handles (see instanceProxies).
+    const isleModel = new T.Group(); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, isleModel); sphere(3.4, '#4f9b72', 0, 1.4, 0, isleModel); palm(isleModel, 0, 1, 0, 1.4);
+    const isleProxies = [];
+    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); islands.push({x:g.position.x, z:g.position.z, r:5}); g.name = 'island'; scene.add(g); isleProxies.push(g); scenery.push([g, 6]); }
+    aboveWater.push(instanceProxies(bakeColors(isleModel), new T.MeshStandardMaterial({vertexColors:true, roughness:.85, metalness:0}), isleProxies, false)); // diving hides it underwater
+    // content + sailing: clouds. Each cloud group keeps one hidden stub mesh so day/night can swap its material; the
+    // instanced mesh drawing all 24 picks that material up every frame. Day/night still moves and scales the groups.
+    const cloudModel = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, cloudModel);
+    const cloudGeo = bakeColors(cloudModel);
+    for (let i = 0; i < 24; i++) { const g = new T.Group(), stub = new T.Mesh(cloudGeo, mat('#e7f9eb')); stub.visible = false; g.add(stub); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; g.name = 'cloud'; scene.add(g); clouds.push(g); scenery.push([g, 0]); }
+    aboveWater.push(instanceProxies(cloudGeo, mat('#e7f9eb'), clouds, true));
     setOwnedElsewhere(id => Object.prototype.hasOwnProperty.call(PROG_ITEMS, id)); // [progression-hook] items.js unlocks own the catalogue
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
     building = createBuilding(T, scene); // building-pieces lane hook
@@ -458,28 +468,37 @@ export function mount(transfer = null) {
     const d = Math.hypot(...SUN_OFFSET), cam = sun.shadow.camera;
     Object.assign(cam, {left:-r, right:r, top:r, bottom:-r, near:Math.max(.5, d - r - 6), far:d + r + 6}); cam.updateProjectionMatrix();
   }
-  // Bakes a drifting scenery group (island or cloud) into one mesh per material, kept local so sailing can still move the group.
-  function bakeGroup(g) {
-    const pos = g.position.clone(), scl = g.scale.clone(); g.position.set(0, 0, 0); g.scale.set(1, 1, 1);
-    const holder = new T.Group(); holder.add(g); g.scale.copy(scl); // scale is baked in, position stays on the group
-    const merged = mergeStatic(holder); holder.remove(g);
-    for (const c of [...g.children]) g.remove(c);
-    g.scale.set(1, 1, 1); g.position.copy(pos); for (const m of merged) g.add(m);
-    return g;
-  }
-  // Bakes every mesh under `root` (world transforms) into one non-shadow-casting mesh per material; disposes the parts.
-  function mergeStatic(root) {
+  // Bakes every mesh under `root` into one geometry in root's own space, each part's mat() colour written as a vertex
+  // colour (wood parts take their base timber colour). Source geometries are disposed.
+  function bakeColors(root) {
     root.updateMatrixWorld(true);
-    const byMat = new Map();
-    root.traverse(o => { if (!o.isMesh) return; if (!byMat.has(o.material)) byMat.set(o.material, []); byMat.get(o.material).push(o); });
-    const out = [];
-    for (const [material, meshes] of byMat) {
-      const parts = meshes.map(m => { const g = m.geometry.clone().applyMatrix4(m.matrixWorld); for (const n of Object.keys(g.attributes)) if (n !== 'position' && n !== 'normal' && n !== 'uv') g.deleteAttribute(n); return g; });
-      const merged = new T.Mesh(mergeGeometries(T, parts), material); merged.castShadow = false; merged.receiveShadow = false; merged.matrixAutoUpdate = false;
-      for (const g of parts) g.dispose(); for (const m of meshes) m.geometry.dispose();
-      out.push(merged);
-    }
-    return out;
+    const inv = root.matrixWorld.clone().invert(), rel = new T.Matrix4(), col = new T.Color(), parts = [];
+    const hexOf = new Map([...materialCache].map(([hex, m]) => [m, hex]));
+    root.traverse(o => {
+      if (!o.isMesh) return;
+      const g = o.geometry.clone().applyMatrix4(rel.multiplyMatrices(inv, o.matrixWorld));
+      for (const n of Object.keys(g.attributes)) if (n !== 'position' && n !== 'normal') g.deleteAttribute(n);
+      col.set(hexOf.get(o.material) ?? o.material.color); const n = g.attributes.position.count, c = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { c[i * 3] = col.r; c[i * 3 + 1] = col.g; c[i * 3 + 2] = col.b; }
+      g.setAttribute('color', new T.BufferAttribute(c, 3)); parts.push(g); o.geometry.dispose();
+    });
+    const out = mergeGeometries(T, parts); for (const g of parts) g.dispose(); return out;
+  }
+  // One InstancedMesh draws `geo` at every proxy group's transform. The proxies stay ordinary scene children, so sailing
+  // can drift them and day/night can move/scale clouds; it is added after them and copies their transforms during the
+  // scene's matrix walk each frame. stubMaterial: follow the material of proxies[0]'s first child (day/night swaps it).
+  // Distant scenery never casts or receives shadows.
+  function instanceProxies(geo, material, proxies, stubMaterial) {
+    const im = new T.InstancedMesh(geo, material, proxies.length); im.name = 'scenery-instances';
+    im.castShadow = false; im.receiveShadow = false; im.frustumCulled = false; im.matrixAutoUpdate = false; im.instanceMatrix.setUsage(T.DynamicDrawUsage);
+    const base = im.updateMatrixWorld;
+    im.updateMatrixWorld = function (force) {
+      for (let i = 0; i < proxies.length; i++) { const p = proxies[i]; p.updateMatrix(); this.setMatrixAt(i, p.matrix); }
+      this.instanceMatrix.needsUpdate = true;
+      if (stubMaterial) { const m = proxies[0]?.children[0]?.material; if (m && m !== this.material) this.material = m; }
+      base.call(this, force);
+    };
+    scene.add(im); return im;
   }
   // Compile every scene program up front (hidden viewmodels, hook, rope, ghost) so the first frame after #solo doesn't.
   // compile() walks the scene graph, so all viewmodels are attached just for the synchronous part of the call.
@@ -532,13 +551,14 @@ export function mount(transfer = null) {
   function itemModel(item) {
     if (item.type === 'cache') return createSignalModel(T, 'cache');
     if (item.type === 'bottle') { const g = new T.Group(), b = createBottle(T); b.position.y = .04; b.rotation.y = (item.id % 7) * .9; g.add(b); return singlePass(g); }
-    if (item.type !== 'plastic') { const d = createDebris(T, item.type, mat, {seed:item.id}); if (ART.artEnabled() && item.type === 'scrap') d.traverse(o => { if (o.isMesh && o.material.vertexColors) { o.material.dispose(); o.material = mat('#8e9aa2'); } }); /* art lane hook */ return singlePass(d); }
+    if (item.type !== 'plastic') { const d = createDebris(T, item.type, mat, {seed:item.id, pool:4}); if (ART.artEnabled() && item.type === 'scrap') d.traverse(o => { if (o.isMesh && o.material.vertexColors) { o.material.dispose(); o.material = mat('#8e9aa2'); } }); /* art lane hook */ return singlePass(d); } // pooled geometry, drawn instanced by the item batch
     const g = new T.Group(), jug = createPlastic(T); if (ART.artEnabled()) { const b = jug.getObjectByName('jugBody'); if (b) { b.material.dispose(); b.material = mat('#f2f0e6'); } } /* art lane hook */ singlePass(jug); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
   }
   // Meshes are keyed by token, not id: a respawned item keeps its id but may change type.
   const itemMeshes = new Map();
   function syncItems() {
     if (!itemsGroup) return;
+    if (!itemsGroup.userData.batch) itemsGroup.add(itemsGroup.userData.batch = createItemBatch(T)); // one instanced draw per item variant
     const live = new Set(world.items.map(x => x.token));
     for (const [token, m] of itemMeshes) if (!live.has(token)) { itemsGroup.remove(m); disposeGeometry(m); itemMeshes.delete(token); }
     for (const token of pending.keys()) if (!live.has(token)) pending.delete(token);
