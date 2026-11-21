@@ -27,11 +27,11 @@ const PRELOAD = [
   'item-tooltips.js', 'items.js', 'juicer-model.js', 'juicer.js' /* [juicer] */, 'kiln-core.js', 'kiln-model.js', 'kiln.js', 'lock-rules.js', 'logbook-ui.js',
   'logbook.js', 'look-ui.js', 'look.js', 'maptable-model.js', 'maptable.js', 'materials.js', 'merge-geo.js',
   'models.js', 'move-feel.js', 'ocean.js', 'paint.js', 'pickup-feed.js', 'placement.js', 'plastic.js',
-  'player-physics.js', 'progression-hooks.js', 'progression.js', 'purifier-model.js', 'quality.js', 'rain-model.js',
+  'player-physics.js', 'progression-hooks.js', 'progression.js', 'puffer-core.js', 'puffer-model.js', 'puffer.js' /* [puffer] */, 'purifier-model.js', 'quality.js', 'rain-model.js',
   'rain.js', 'repair.js', 'sailing-core.js', 'sailing-ui.js', 'sailing-world.js', 'scenery-islands.js',
   'seafloor.js', 'session-rules.js', 'settings.js', 'shark-model.js', 'shark.js', 'signal-models.js', 'signal.js',
   'signs-core.js', 'sky.js', 'sleep-model.js', 'sleep.js', 'smelter-model.js', 'smelter-ui.js', 'smelter.js',
-  'spear-model.js', 'spear-repair-hooks.js', 'spear.js', 'storage-research-model.js', 'storage-research.js',
+  'spear-model.js', 'spear-repair-hooks.js', 'spear-targets.js' /* [puffer] */, 'spear.js', 'storage-research-model.js', 'storage-research.js',
   'survival-ui.js', 'textures.js', 'trader-core.js', 'trader-model.js', 'trader.js', 'treasure-models.js', 'treasure-rules.js', 'treasure.js', 'underwater-fx.js',
   'vitals-ui.js', 'vitals.js', 'waterfx.js', 'watering.js', 'wildlife-models.js', 'wildlife.js', 'wood.js',
 ];
