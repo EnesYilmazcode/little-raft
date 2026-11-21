@@ -9,6 +9,8 @@ Known flake: art atlas build-time test under heavy machine load.
 
 
 ## Claims (to avoid double merges between integrators)
+Integrator B, round 6 (from 09:30 UTC), in worktrees: loop-fidelity-202611210804, -0821; loop-features-202611210814; loop-perf-202611210708;
+loop-ux-202611210648, -0742, -0743, -0833; loop-visuals-202611210805. Also gating and merging PR #5.
 Integrator B, round 5 (from 09:10 UTC), merging in worktrees; please skip these or coordinate here:
 loop-fidelity-202611210804, -0821 (0747 skipped: duplicate shark/needs systems); loop-features-202611210735, -0749, -0753-zfs, -0814;
 loop-perf-202611210708; loop-ux-202611210648 (new commits), -0742, -0748, -0833; loop-visuals-202611210748, -0558.
