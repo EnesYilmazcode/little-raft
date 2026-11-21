@@ -375,6 +375,8 @@ export function createStorage(ctx) {
       run(a, actor, bag);
       return true;
     },
+    // A foundation the shark tore off takes its crate's contents with it (game.js calls this on the host).
+    dropTile(x, z) { const k = keyOf(x, z); if (ctx.role === 'guest' || !st.chests[k]) return false; delete st.chests[k]; bump(); return true; },
     craftLocked(recipe) {
       if (typeof recipe !== 'string' || !hasOwn(RECIPES, recipe)) return null;
       return isLearned(st, recipe) ? null : LOCK_REASON;
