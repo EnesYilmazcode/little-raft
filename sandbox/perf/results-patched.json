@@ -3,17 +3,17 @@
  "scenarios": {
   "stock dist": {
    "frames": 12,
-   "frameMs": 2394.32,
-   "frameP95": 3399.9,
-   "frameWorst": 3399.9,
-   "renderMs": 2393.22,
-   "submitMs": 8.3,
-   "submitMin": 3.6,
-   "logicMs": 1.1,
-   "logicP95": 2.6,
-   "rafGapMs": 2498.39,
-   "calls": 541,
-   "triangles": 258546,
+   "frameMs": 3890.72,
+   "frameP95": 5908.7,
+   "frameWorst": 5908.7,
+   "renderMs": 3889.41,
+   "submitMs": 8,
+   "submitMin": 3.8,
+   "logicMs": 1.32,
+   "logicP95": 6.7,
+   "rafGapMs": 4102.87,
+   "calls": 542,
+   "triangles": 258626,
    "geometries": 356,
    "textures": 8,
    "programs": 10,
@@ -22,13 +22,14 @@
     1280,
     720
    ],
-   "heapDeltaKB": 54,
+   "heapDeltaKB": 315,
    "shadow": "every frame",
    "cpuMsPerFrame": {
-    "browser": 1.4,
-    "renderer": 25.9,
-    "gpu-process": 1405.9,
-    "total": 1433.2
+    "browser": 2.3,
+    "utility": 0.5,
+    "renderer": 21.8,
+    "gpu-process": 1359.1,
+    "total": 1383.7
    },
    "census": {
     "meshes": 478,
@@ -90,19 +91,20 @@
    "shot": "sandbox/perf/shots/game-stock-baseline.png",
    "errors": [
     "Failed to load resource: the server responded with a status of 404 (File not found)"
-   ]
+   ],
+   "freezeFrame": 40
   },
   "patched dist": {
    "frames": 12,
-   "frameMs": 2173.77,
-   "frameP95": 4405.9,
-   "frameWorst": 4405.9,
-   "renderMs": 2172.78,
-   "submitMs": 5.1,
-   "submitMin": 2.7,
-   "logicMs": 0.98,
-   "logicP95": 3.5,
-   "rafGapMs": 2140.82,
+   "frameMs": 2927.11,
+   "frameP95": 5277.1,
+   "frameWorst": 5277.1,
+   "renderMs": 2923.41,
+   "submitMs": 6.5,
+   "submitMin": 3.7,
+   "logicMs": 3.7,
+   "logicP95": 26.8,
+   "rafGapMs": 2946.85,
    "calls": 253,
    "triangles": 201542,
    "geometries": 255,
@@ -113,14 +115,13 @@
     1280,
     720
    ],
-   "heapDeltaKB": -12264,
+   "heapDeltaKB": 143,
    "shadow": "every frame",
    "cpuMsPerFrame": {
-    "browser": 2.3,
-    "utility": 0.5,
-    "renderer": 17.7,
-    "gpu-process": 1090.9,
-    "total": 1111.4
+    "browser": 1.4,
+    "renderer": 20.0,
+    "gpu-process": 1166.8,
+    "total": 1188.2
    },
    "census": {
     "meshes": 237,
@@ -175,7 +176,8 @@
    "shot": "sandbox/perf/shots/game-patched-baseline.png",
    "errors": [
     "Failed to load resource: the server responded with a status of 404 (File not found)"
-   ]
+   ],
+   "freezeFrame": 40
   }
  }
 }

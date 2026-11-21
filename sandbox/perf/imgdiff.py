@@ -1,7 +1,8 @@
 """Mean absolute pixel difference between game screenshots (0-255 scale), by region. No PIL needed.
 Usage: python sandbox/perf/imgdiff.py [ref.png] other.png ...   (default ref: shots/game-baseline.png)
+changedPct: share of pixels where any channel differs by more than 8/255.
 Regions: deck strip (y 420-620, the planks between the hands), sky (y 0-230), full frame.
-Reference noise: baseline vs baseline-2 (same build, different run) shows how much waves/items/hands move."""
+shoot.py freezes the game clock, so the same build screenshots pixel-identically run to run (baseline vs baseline-2 = 0)."""
 import sys, zlib, struct, json
 from pathlib import Path
 import numpy as np
@@ -32,7 +33,10 @@ def read_png(path):
     return out.reshape(h, w, ch)[:, :, :3]
 
 REGIONS = {'deck': (420, 620, 100, 1180), 'sky': (0, 230, 0, 1280), 'full': (0, 720, 0, 1280)}
-def diff(a, b): return {k: round(float(np.abs(a[y0:y1, x0:x1] - b[y0:y1, x0:x1]).mean()), 2) for k, (y0, y1, x0, x1) in REGIONS.items()}
+def diff(a, b):
+    out = {k: round(float(np.abs(a[y0:y1, x0:x1] - b[y0:y1, x0:x1]).mean()), 2) for k, (y0, y1, x0, x1) in REGIONS.items()}
+    out['changedPct'] = round(100 * float((np.abs(a - b).max(axis=2) > 8).mean()), 2)  # pixels off by more than 8/255
+    return out
 
 if __name__ == '__main__':
     args = sys.argv[1:]; here = Path(__file__).resolve().parent

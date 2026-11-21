@@ -23,6 +23,8 @@ ap.add_argument('--no-cdp', action='store_true')
 ap.add_argument('--out', default=str(HERE / 'shots'))
 ap.add_argument('--json', default=str(HERE / 'results.json'))
 ap.add_argument('--tag', default='')
+ap.add_argument('--look', type=int, default=0, help='mouse pixels to look down after spawn (pointer lock works headless): 400 = feet')
+ap.add_argument('--append', action='store_true', help='keep scenarios already in --json')
 ap.add_argument('--freeze', type=int, default=40, help='game clock stops this many frames after Play (deterministic scene); -1 = live clock')
 ap.add_argument('--big', action='store_true', help='late-game save: 7x7 deck (49 tiles) with 12 decorations')
 args = ap.parse_args()
@@ -119,6 +121,10 @@ def start_game(b):
     else:
         page.wait_for_function('__perf.frozen()', timeout=600000, polling=500)
     page.evaluate("__perf.install(new URL('vendor/three.module.js', location.href).href)")
+    if args.look:
+        page.mouse.move(640, 360)
+        for k in range(1, 11): page.mouse.move(640, 360 + args.look * k / 10)
+        page.wait_for_function('raftDebug.state.camera.pitch < -0.5', timeout=180000, polling=500)
     return ctx, page, errs
 
 def cdp_profile(page, ms=4000):
@@ -156,28 +162,37 @@ def cdp_profile(page, ms=4000):
     }
 
 report = {'dist': str(dist), 'dsf': args.dsf, 'frames': args.frames, 'scenarios': {}}
+if args.append and Path(args.json).exists(): report['scenarios'] = json.loads(Path(args.json).read_text())['scenarios']
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path='/opt/pw-browsers/chromium-1243/chrome-linux64/chrome',
                           args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-precise-memory-info'])
     for name in only:
-        ctx, page, errs = start_game(b)
-        js = SCENARIOS[name]
-        if js:
-            page.evaluate("async () => { const F = await import('/perf/fixes.js'); const P = window.__perf; %s }" % js)
-            page.wait_for_timeout(300)
-        r = measure(page, args.frames)
-        r['census'] = page.evaluate('__perf.census()')
-        r['state'] = page.evaluate("(()=>{const s=raftDebug.state;return {pointerLocked:s.pointerLocked,tiles:s.tiles,items:s.items}})()")
-        if name == 'baseline' and not args.no_cdp:
-            r['mainPassOnly'] = page.evaluate('__perf.mainOnly()')
-            if not args.no_cdp: r['cdp'] = cdp_profile(page)
-        # freeze the scene for comparable stills: pause via raftDebug is not exposed, so shoot immediately
-        shotp = out / f"game-{args.tag + '-' if args.tag else ''}{'big-' if args.big else ''}{name}{'-dsf' + str(args.dsf) if args.dsf != 1 else ''}.png"
-        page.screenshot(path=str(shotp)); r['shot'] = str(shotp.relative_to(ROOT)) if shotp.is_relative_to(ROOT) else str(shotp)
-        r['errors'] = errs; r['freezeFrame'] = args.freeze
-        report['scenarios'][name] = r
-        print(name, json.dumps({k: r[k] for k in ('cpuMsPerFrame', 'submitMs', 'submitMin', 'logicMs', 'calls', 'triangles', 'programs', 'pixelRatio')}), file=sys.stderr, flush=True)
-        ctx.close()
+      for attempt in (1, 2):  # the shared machine sometimes starves a page; retry once
+        try:
+            ctx, page, errs = start_game(b)
+            js = SCENARIOS[name]
+            if js:
+                page.evaluate("async () => { const F = await import('/perf/fixes.js'); const P = window.__perf; %s }" % js)
+                page.wait_for_timeout(300)
+            r = measure(page, args.frames)
+            r['census'] = page.evaluate('__perf.census()')
+            r['state'] = page.evaluate("(()=>{const s=raftDebug.state;return {pointerLocked:s.pointerLocked,tiles:s.tiles,items:s.items}})()")
+            if name == 'baseline' and not args.no_cdp:
+                r['mainPassOnly'] = page.evaluate('__perf.mainOnly()')
+                if not args.no_cdp: r['cdp'] = cdp_profile(page)
+            # the game clock is frozen (--freeze), so every scenario screenshots the same scene state
+            shotp = out / f"game-{args.tag + '-' if args.tag else ''}{'big-' if args.big else ''}{'look-' if args.look else ''}{name}{'-dsf' + str(args.dsf) if args.dsf != 1 else ''}.png"
+            page.screenshot(path=str(shotp)); r['shot'] = str(shotp.relative_to(ROOT)) if shotp.is_relative_to(ROOT) else str(shotp)
+            r['errors'] = errs; r['freezeFrame'] = args.freeze
+            report['scenarios'][name] = r
+            print(name, json.dumps({k: r[k] for k in ('cpuMsPerFrame', 'submitMs', 'submitMin', 'logicMs', 'calls', 'triangles', 'programs', 'pixelRatio')}), file=sys.stderr, flush=True)
+            ctx.close()
+            Path(args.json).write_text(json.dumps(report, indent=1))  # partial results survive a crash
+            break
+        except Exception as e:
+            print(name, 'attempt', attempt, 'failed:', str(e).splitlines()[0], file=sys.stderr, flush=True)
+            try: ctx.close()
+            except Exception: pass
     b.close()
 srv.shutdown()
 Path(args.json).write_text(json.dumps(report, indent=1))
