@@ -89,12 +89,13 @@ export function addFuel(e) {
   e.f += KILN.PER_WOOD; return true;
 }
 
-/** Advance one entry by dt seconds. Returns batches finished (0|1). No allocations. */
-export function step(e, dt) {
+const BOOST_MAX = 4; // [power-hookups] highest accepted speed-up rate
+/** Advance one entry by dt seconds (times `rate`, 1 unless 0 < rate <= BOOST_MAX). Returns batches finished (0|1). No allocations. */
+export function step(e, dt, rate = 1) { // [power-hookups] rate
   const d = dt > 0 ? (dt < KILN.MAX_DT ? dt : KILN.MAX_DT) : 0; // NaN -> 0
   if (e.q > 0 && e.h === 0 && e.f > 0) { e.f--; e.h = 1; } // the only place fuel is spent
   if (e.h !== 1 || e.r === null) return 0;
-  e.t += d;
+  e.t += d * (rate > 0 && rate <= BOOST_MAX ? rate : 1); // [power-hookups] fuel stays per batch
   const s = SMELT[e.r];
   if (e.t < s.secs) return 0;
   e.t = 0; e.h = 0; e.q--; e.o = s.out; e.n++;
@@ -102,13 +103,14 @@ export function step(e, dt) {
   return 1;
 }
 
-/** Step every kiln. onDone(key, e) when a queue empties. True if anything visible changed. */
-export function stepAll(st, dt, onDone) {
+/** Step every kiln. onDone(key, e) when a queue empties. True if anything visible changed.
+ *  [power-hookups] rateOf(key) -> speed-up, asked only while the kiln burns (h === 1). */
+export function stepAll(st, dt, onDone, rateOf) {
   let changed = false;
   for (const key in st.k) {
     const e = st.k[key]; if (!e || e.q === 0) continue;
     const h0 = e.h, t0 = Math.round(e.t * 10);
-    const done = step(e, dt);
+    const done = step(e, dt, rateOf && e.h === 1 ? rateOf(key) : 1); // [power-hookups]
     if (done || e.h !== h0 || Math.round(e.t * 10) !== t0) changed = true;
     if (done && e.q === 0 && onDone) onDone(key, e);
   }

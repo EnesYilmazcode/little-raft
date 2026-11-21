@@ -93,7 +93,7 @@ function prune(world) {
 }
 
 /** Advances timers by whole seconds (floored, clamped 0..MAX_TICK). Host only. */
-export function tick(world, dt, skip) { // [scarecrow] optional skip: Set of garden keys paused this tick
+export function tick(world, dt, skip, fast) { // [scarecrow] optional skip: Set of garden keys paused this tick; [power-hookups] fast: Set of purifier keys at 2x
   prune(world);
   const s = Math.min(MAX_TICK, Math.max(0, Math.floor(Number.isFinite(dt) ? dt : 0)));
   const out = {grown:[], ripe:[], done:[]};
@@ -110,7 +110,7 @@ export function tick(world, dt, skip) { // [scarecrow] optional skip: Set of gar
   for (const k of Object.keys(world.purifiers)) {
     const e = world.purifiers[k];
     if (e.ready) continue;
-    e.t = Math.min(PURIFY_SECONDS, e.t + s);
+    e.t = Math.min(PURIFY_SECONDS, e.t + s * (fast && typeof fast.has === 'function' && fast.has(k) ? 2 : 1)); // [power-hookups] stays an int
     if (e.t >= PURIFY_SECONDS) { e.ready = 1; out.done.push(k); }
   }
   return out;

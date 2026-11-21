@@ -25,6 +25,7 @@
 //   tileTint(x, z, base)      plank colour for deck tile x,z (base = the plank's own colour) or null (paint)
 //   diveMods(m)               multiply m.swim/oxy/fog/gather in place (local player, per frame, no allocations; docs/specs/diving-gear.md)
 //   link(env)                 optional: env.wind() / env.night() live daynight getters // [power]
+//                             … env.powerAt(x,z) / env.draw(x,z,sec) [power-hookups]
 //   effect(e)                 a host/peer effect message; return true if consumed (game.js then skips its notice/sound) [fireworks]
 //   ride(dt, p, inp) / riding() [zipline] glide line ride (game.js movePlayer)
 // Second make() argument: peer(name) -> another live module (scarecrow), with peer.peek(name) -> its serialize().
@@ -104,7 +105,9 @@ export function createContent(ctx, features = FEATURES) {
   const debug = {};
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
   const dn = () => mods.find(m => m.name === 'daynight' && !m.dead), num = (v, d) => (Number.isFinite(v) ? v : d); // [power]
-  const env = { wind: () => num(dn()?.wind, .15), night: () => num(dn()?.night, 0) }; // [power] live getters, never spread
+  const env = { wind: () => num(dn()?.wind, .15), night: () => num(dn()?.night, 0), // [power] live getters, never spread
+    powerAt: (x, z) => { const m = peer('power'); return m ? num(call(m, 'powerAt', x, z), 0) : 0; }, // [power-hookups] 1 = battery within 2 tiles
+    draw: (x, z, s) => { const m = peer('power'); if (m) call(m, 'draw', x, z, s); } }; // [power-hookups] host: powered appliance seconds
   for (const m of mods) call(m, 'link', env); // [power] optional link(env) hook
   return {
     mods, debug,
@@ -131,6 +134,7 @@ export function createContent(ctx, features = FEATURES) {
     palmPrompt(aim, base) { const m = peer('scarecrow'); try { return m?.palmPrompt?.(aim, base) ?? null; } catch (e) { console.error('content scarecrow.palmPrompt failed', e); off(m); return null; } }, // [scarecrow]
     effect(e) { for (const m of mods) if (call(m, 'effect', e)) return true; return false; }, // [fireworks]
     wind: () => env.wind(), night: () => env.night(), // [power] live daynight wind / nightFactor (fallbacks .15 / 0)
+    powerAt: (x, z) => env.powerAt(x, z), powerDraw: (x, z, s) => env.draw(x, z, s), // [power-hookups] appliance speed-up bridge
     diveMods(out) { out.swim = out.oxy = out.fog = out.gather = 1; for (let i = 0; i < mods.length; i++) { const m = mods[i]; if (!m.dead && typeof m.diveMods === 'function') call1(m, out); } return out; }, // shared dive modifier hook (no per-frame rest-arg arrays)
     day() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const d = m?.day; return Number.isInteger(d) ? d : null; }, // [tasks] in-game day index
     tasksView() { const m = mods.find(m => m.name === 'tasks' && !m.dead); if (!m) return null; try { return m.view?.() ?? null; } catch { return null; } }, // [tasks] logbook tab

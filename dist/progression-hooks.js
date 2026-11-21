@@ -100,7 +100,8 @@ export function attachProgression(ctx) {
       if (cur && cur.stationId === d.type) continue;
       const snap = pendingStations[key]?.station === d.type ? pendingStations[key] : null;
       delete pendingStations[key];
-      stations.set(key, new StationModel(d.type, snap)); dirty = true;
+      const sm = new StationModel(d.type, snap); sm.px = d.x; sm.pz = d.z; // [power-hookups] transient tile, not in snapshot()
+      stations.set(key, sm); dirty = true;
     }
     for (const key of [...stations.keys()]) if (!live.has(key)) { stations.delete(key); dirty = true; if (panel?.isOpen && panel.stationId === key) panel.close(); }
   }
@@ -289,7 +290,12 @@ export function attachProgression(ctx) {
     time += dt;
     if (isHost()) {
       syncStations();
-      for (const st of stations.values()) { const was = st.cooking; if (was) dirty = true; st.tick(dt); }
+      for (const st of stations.values()) {
+        const was = st.cooking; if (was) dirty = true;
+        const m = st.stationId === 'grill' && st.cooking && ctx.powerAt?.(st.px, st.pz) ? 2 : 1; // [power-hookups] battery within 2 tiles
+        if (m > 1) ctx.powerDraw?.(st.px, st.pz, dt); // [power-hookups]
+        st.tick(dt * m); // [power-hookups] fuel per item unchanged
+      }
       if ((noteClock += dt) >= NOTE_EVERY) {
         noteClock = 0;
         for (const actor of ['host', 'guest']) { const bag = ctx.bag(actor); if (bag) announce(progs[actor].noteItems(bag), actor); }
@@ -376,7 +382,7 @@ export function attachProgression(ctx) {
   // content hook: show "E Use the <station>" in main's #lrPrompt while aimed at one in reach (prompts.js samples at 10 Hz).
   // Registered lazily from tick(), since prompts.js may load after this module.
   let promptOff = null;
-  const stationPrompt = () => { const d = ctx.running() && ctx.aim ? stationNear(ctx.aim(), true) : null; return d ? { key: 'E', label: 'Use the ' + nameOf(d.type) } : null; };
+  const stationPrompt = () => { const d = ctx.running() && ctx.aim ? stationNear(ctx.aim(), true) : null; return d ? { key: 'E', label: 'Use the ' + nameOf(d.type) + (d.type === 'grill' && ctx.powerAt?.(d.x, d.z) ? ' · powered' : '') } : null; }; // [power-hookups]
   const disposeAll = () => { try { promptOff?.(); } catch {} dispose(); }; // content hook
 
   return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, dispose: disposeAll, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()) };

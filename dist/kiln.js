@@ -11,7 +11,7 @@ export function createKiln(ctx) {
   let cache = null, cacheSt = null, cacheR = -1, netR = -1;
   let model = null, lamp = null, dirty = false, childCount = -1, shownR = -1, shownSt = null, anyBurning = false;
   let clock = 0, pruneClock = 0;
-  let pKey = null, pR = -1, pSel = null, pPct = -1, pSt = null, pOut = null;
+  let pKey = null, pR = -1, pSel = null, pPct = -1, pSt = null, pOut = null, pPw = -1; // [power-hookups] pPw
   const groups = new Array(MAX_SHOWN).fill(null), gKeys = new Array(MAX_SHOWN).fill(null);
   let shown = 0;
   const scratch = T ? new T.Vector3() : null;
@@ -21,6 +21,13 @@ export function createKiln(ctx) {
   const posOf = actor => { if (actor === 'guest') return ctx.other ?? null; const p = ctx.physics; return p ? { x: p.x, z: p.z } : null; };
   const env = { decorAt, pos: posOf };
   const host = () => ctx.role !== 'guest';
+  let pwEnv = null, frameDt = 0; // [power-hookups] content env (powerAt / draw), this frame's clamped dt
+  // [power-hookups] host: a burning kiln with a charged battery within 2 tiles runs at 2x and draws charge.
+  const rateOf = key => {
+    const c = key.indexOf(','), x = +key.slice(0, c), z = +key.slice(c + 1);
+    if (!pwEnv?.powerAt?.(x, z)) return 1;
+    pwEnv.draw?.(x, z, frameDt); return 2;
+  };
   const onDone = (key, e) => { ctx.emit({ kind: 'loot', text: `The kiln is done: ${e.n} ${NAMES[e.o]} ready` }, 'all'); };
 
   // Nearest kiln along the view ray (or the camera forward when no aim), within reach.
@@ -98,7 +105,8 @@ export function createKiln(ctx) {
 
   function update(dt) {
     if (host()) {
-      if (stepAll(st, dt, onDone)) st.r++;
+      frameDt = dt > 0 ? Math.min(dt, KILN.MAX_DT) : 0; // [power-hookups]
+      if (stepAll(st, dt, onDone, rateOf)) st.r++; // [power-hookups] rateOf
       pruneClock += dt > 0 ? dt : 0;
       if (pruneClock >= 1) {
         pruneClock = 0;
@@ -116,7 +124,8 @@ export function createKiln(ctx) {
   function prompt(aim) {
     const d = target(aim); if (!d) return null;
     const key = keyOf(d.x, d.z), e = st.k[key] ?? BLANK, sel = selKind(), pct = Math.round(progress(e) * 100);
-    if (pOut !== null && key === pKey && st.r === pR && sel === pSel && pct === pPct && st === pSt) return pOut;
+    const pw = pwEnv?.powerAt?.(d.x, d.z) ? 1 : 0; // [power-hookups]
+    if (pOut !== null && key === pKey && st.r === pR && sel === pSel && pct === pPct && st === pSt && pw === pPw) return pOut; // [power-hookups] pw
     let verb;
     if (INPUTS.includes(sel)) verb = `Load ${SMELT[sel].need} ${NAMES[sel]}`;
     else if (sel === 'wood') verb = 'Add wood';
@@ -126,9 +135,10 @@ export function createKiln(ctx) {
     if (e.q > 0) parts.push(`${NAMES[SMELT[e.r].out]} ${e.q} queued ${pct}%`);
     if (e.q > 0 && e.h === 0 && e.f === 0) parts.push('needs wood'); else parts.push(`fuel ${e.f}`);
     if (e.n > 0) parts.push(`${e.n} ready`);
+    if (pw) parts.push('powered'); // [power-hookups]
     const esc = ctx.esc ?? (s => String(s));
     pOut = '<kbd>E</kbd>' + esc(verb) + ' · ' + esc(parts.join(' · '));
-    pKey = key; pR = st.r; pSel = sel; pPct = pct; pSt = st;
+    pKey = key; pR = st.r; pSel = sel; pPct = pct; pSt = st; pPw = pw; // [power-hookups] pPw
     return pOut;
   }
 
@@ -190,6 +200,7 @@ export function createKiln(ctx) {
   return {
     name: 'kiln',
     serialize, load, action, interact, prompt, update, debug,
+    link(e) { pwEnv = e && typeof e === 'object' ? e : null; }, // [power-hookups] content env: powerAt / draw
     decorModel(type) {
       if (!T) return null;
       if (type === 'kiln') { model ??= buildKiln(T); dirty = true; return model.instance(); }
