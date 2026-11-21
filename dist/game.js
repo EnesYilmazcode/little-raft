@@ -590,7 +590,7 @@ export function mount(transfer = null) {
   function rebuildRaft() {
     ocean.setRaftTiles(world.tiles);
     for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
-    wateringGroups.clear();
+    wateringGroups.clear(); wateringMix = -1;
     raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat, content ? (t, c) => content.tileTint(t.x / 2, t.z / 2, c) : null, woodMat)); // content hook (paint): painted deck tiles
     for (const d of world.decor) {
       let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'rainbarrel' ? createRainBarrel(T) : d.type === 'sprinkler' ? createSprinkler(T) : d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type, d) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
@@ -888,9 +888,22 @@ export function mount(transfer = null) {
     return null;
   }
   const rainFrustum = new T.Frustum(), rainMat = new T.Matrix4(), rainSphere = new T.Sphere(new T.Vector3(), 1.2); // rain-sprinkler: spray only in view
+  const rainCamW = new T.Matrix4(), rainCamP = new T.Matrix4(); let rainCamOk = false; // camera matrices rainFrustum was built from
+  let wateringMix = -1; // bit 1: a rain barrel, bit 2: a sprinkler among wateringGroups (-1: recount after rebuildRaft)
   function updateWateringVisuals() {
+    if (!wateringGroups.size) return;
+    if (wateringMix < 0) { wateringMix = 0; for (const g of wateringGroups.values()) { const t = g.userData.craftType; if (t === 'rainbarrel') wateringMix |= 1; else if (t === 'sprinkler') wateringMix |= 2; } }
     let raining = false;
-    if (camera && (world.collectors || world.sprinklers)) { raining = (content?.rain() ?? 0) > .2; camera.updateMatrixWorld(); rainFrustum.setFromProjectionMatrix(rainMat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)); }
+    if (camera && (world.collectors || world.sprinklers)) {
+      if (wateringMix & 1) raining = (content?.rain() ?? 0) > .2;
+      if (wateringMix & 2) { // frustum only for sprinklers, rebuilt only when the camera moved or its projection changed
+        camera.updateMatrixWorld();
+        if (!rainCamOk || !rainCamW.equals(camera.matrixWorld) || !rainCamP.equals(camera.projectionMatrix)) {
+          rainCamOk = true; rainCamW.copy(camera.matrixWorld); rainCamP.copy(camera.projectionMatrix);
+          rainFrustum.setFromProjectionMatrix(rainMat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+        }
+      }
+    }
     for (const [k, g] of wateringGroups) {
       if (g.userData.craftType === 'rainbarrel') { paintRainBarrel(g, world.collectors?.[k], raining, elapsed); continue; } // rain-sprinkler
       if (g.userData.craftType === 'sprinkler') { g.getWorldPosition(rainSphere.center); paintSprinkler(g, world.sprinklers?.[k], elapsed, !!camera && rainFrustum.intersectsSphere(rainSphere)); continue; } // rain-sprinkler
