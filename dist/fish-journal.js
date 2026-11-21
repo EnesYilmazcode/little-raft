@@ -123,7 +123,7 @@ export function fishSvg(look, uid = 'x') {
 }
 
 const CSS = `#fcJournal{padding:0;border:0;background:transparent;width:min(880px,96vw);max-height:92vh;color:#3b2a1a;font:500 14px/1.35 'Segoe UI',system-ui,sans-serif}
-#fcJournal::backdrop{background:rgba(12,9,5,.45)}
+#fcJournal::backdrop{background:rgba(12,9,5,.6);-webkit-backdrop-filter:none;backdrop-filter:none}
 #fcJournal .fj-book{display:flex;flex-direction:column;max-height:92vh;border-radius:10px;border:3px solid #5a3d22;box-shadow:0 0 0 2px #c9a66b,0 18px 50px #000a;
  background:repeating-linear-gradient(#0000 0 25px,#8fb3c422 25px 26px),radial-gradient(circle at 30% 20%,#fffaf0,#f1e2c2 70%,#e6d1a8);overflow:hidden}
 #fcJournal .fj-head{display:flex;align-items:center;gap:12px;padding:14px 18px 8px;border-bottom:2px dashed #b9976455;flex-wrap:wrap}

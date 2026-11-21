@@ -59,7 +59,7 @@ const CSS = `
 #options{position:fixed;inset:0;width:100vw;height:100vh;max-width:none;max-height:none;margin:0;padding:0;border:0;border-radius:0;
   overflow:hidden;background:transparent;box-shadow:none;color:var(--cream,#f1e7d0);font:15px/1.4 var(--ui-font,system-ui,sans-serif)}
 #options[open]{display:flex}
-#options::backdrop{background:rgba(4,10,16,.42);backdrop-filter:blur(4px) saturate(.8)}
+#options::backdrop{background:rgba(4,10,16,.55);-webkit-backdrop-filter:none;backdrop-filter:none}
 #options .rs-form{display:flex;align-items:stretch;gap:clamp(24px,5vw,72px);width:100%;height:100%;margin:0;padding:0 clamp(16px,5vw,80px) 0 0}
 #options .rs-menu{display:flex;flex-direction:column;justify-content:center;align-items:stretch;flex:none;width:clamp(280px,26vw,360px);padding:0 0 0 clamp(28px,4vw,56px);
   background:linear-gradient(90deg,rgba(5,11,17,.94),rgba(5,11,17,.82));box-shadow:1px 0 0 rgba(201,164,107,.28),18px 0 50px rgba(0,0,0,.35)}

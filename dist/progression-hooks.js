@@ -161,7 +161,7 @@ export function attachProgression(ctx) {
   }
 
   const RCSS = `#researchPanel{padding:0;margin:auto;border:0;background:transparent;width:min(420px,94vw);color:#fff2cc;font:500 14px/1.35 'Segoe UI',system-ui,sans-serif}
-#researchPanel::backdrop{background:rgba(12,9,5,.42)}
+#researchPanel::backdrop{background:rgba(12,9,5,.57);-webkit-backdrop-filter:none;backdrop-filter:none}
 #researchPanel .rp-wrap{padding:12px;border-radius:6px;background:linear-gradient(#b48d55,#8a663a);border:3px solid #3e2a17;box-shadow:0 0 0 2px #d6b67e,0 18px 50px #000a;outline:none}
 #researchPanel .rp-head{display:flex;justify-content:space-between;align-items:center;margin:-2px 2px 10px}
 #researchPanel h2{margin:0;font:800 19px/1.1 system-ui,sans-serif;font-family:inherit;color:#2a1b0e}
