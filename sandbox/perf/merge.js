@@ -7,7 +7,7 @@
 // - Each mesh's transform is baked relative to `relativeTo` (default: the roots' own world space, i.e. roots that
 //   are not in the scene are baked in their local space), so results go under `relativeTo` with identity transform.
 // - Output is non-indexed position/normal/uv (+color when every source in the bucket has it); uv is zero-filled
-//   where a source has none. mergeMeshesByMaterial leaves sources alone; createStaticBatch.add disposes them.
+//   where a source has none (in a static batch, pieces without colour get white, i.e. untinted). mergeMeshesByMaterial leaves sources alone; createStaticBatch.add disposes them.
 // - Only visible meshes are merged; skinned/instanced/multi-material meshes are skipped (they stay unmerged).
 
 function bake(T, roots, relativeTo) {
@@ -81,24 +81,52 @@ export function mergeMeshesByMaterial(T, roots, { name = 'merged', relativeTo = 
   return bake(T, roots, relativeTo).map(b => toMesh(T, b, name));
 }
 
-// A growable static batch: add() appends new pieces to the existing per-material meshes (typed-array concat), so
-// adding one raft tile costs one tile of work instead of rebuilding every tile.
+// A growable static batch. Each (material, shadow flags) bucket is one mesh whose vertex arrays have spare capacity:
+// add() writes the new pieces after the used part and uploads only that range (addUpdateRange), and reallocates
+// (to 1.5x what is used) only when full. Adding one tile to a 49-tile deck therefore costs one tile of work and one tile of upload,
+// not a copy and re-upload of the whole deck. Unused capacity is outside drawRange, so it is never drawn.
 export function createStaticBatch(T, name = 'batch') {
   const group = new T.Group(); group.name = name;
   const keys = new Set();
-  const cat = (a, b) => { if (!a) return b; const r = new Float32Array(a.length + b.length); r.set(a); r.set(b, a.length); return r; };
-  function add(roots, rootKeys = []) {
-    if (!roots.length) return;
-    for (const b of bake(T, roots, null)) {
-      const old = group.children.find(m => m.userData.batchKey === b.key);
-      if (old) {
-        const A = old.geometry.attributes;
-        b.pos = cat(A.position.array, b.pos); b.nor = cat(A.normal.array, b.nor); b.uv = cat(A.uv.array, b.uv);
-        b.col = b.col && A.color ? cat(A.color.array, b.col) : null;
-        group.remove(old); old.geometry.dispose();
-      }
-      group.add(toMesh(T, b, name));
+  const ATTRS = [['position', 'pos', 3], ['normal', 'nor', 3], ['uv', 'uv', 2], ['color', 'col', 3]];
+  function realloc(mesh, cap, color) { // new arrays with room for `cap` vertices; keeps the used part
+    const old = mesh.geometry, used = mesh.userData.used, geo = new T.BufferGeometry();
+    for (const [a, , size] of ATTRS) {
+      if (a === 'color' && !color) continue;
+      const arr = new Float32Array(cap * size), src = old?.attributes[a];
+      if (src) arr.set(src.array.subarray(0, used * size));
+      else if (a === 'color') arr.fill(1, 0, used * size); // pieces added before any had colours: white = untinted
+      geo.setAttribute(a, new T.BufferAttribute(arr, size));
     }
+    geo.setDrawRange(0, used); geo.boundingBox = mesh.userData.box.clone(); geo.boundingSphere = mesh.userData.box.getBoundingSphere(new T.Sphere());
+    mesh.geometry = geo; old?.dispose(); mesh.userData.fresh = true; // a fresh geometry uploads whole; no ranges needed
+  }
+  function append(b) {
+    let mesh = group.children.find(m => m.userData.batchKey === b.key);
+    const n = b.pos.length / 3;
+    if (!mesh) {
+      mesh = new T.Mesh(undefined, b.material); mesh.geometry.dispose();
+      Object.assign(mesh, { name, castShadow: b.cast, receiveShadow: b.receive, renderOrder: b.order, matrixAutoUpdate: false });
+      mesh.userData = { batchKey: b.key, used: 0, box: new T.Box3() }; mesh.geometry = null;
+      realloc(mesh, Math.ceil(n * 1.5), !!b.col); group.add(mesh);
+    } else {
+      const want = mesh.userData.used + n, color = !!(b.col || mesh.geometry.attributes.color);
+      if (want > mesh.geometry.attributes.position.count || color !== !!mesh.geometry.attributes.color)
+        realloc(mesh, Math.ceil(want * 1.5), color);
+    }
+    const geo = mesh.geometry, used = mesh.userData.used, fresh = mesh.userData.fresh;
+    for (const [a, k, size] of ATTRS) {
+      const attr = geo.attributes[a]; if (!attr) continue;
+      if (b[k]) attr.array.set(b[k], used * size); else attr.array.fill(1, used * size, (used + n) * size);
+      if (!fresh) attr.addUpdateRange(used * size, n * size);
+      attr.needsUpdate = true;
+    }
+    const box = new T.Box3().setFromArray(b.pos);
+    mesh.userData.box.union(box); mesh.userData.used = used + n; mesh.userData.fresh = false;
+    geo.setDrawRange(0, used + n); geo.boundingBox = mesh.userData.box.clone(); geo.boundingSphere = mesh.userData.box.getBoundingSphere(new T.Sphere());
+  }
+  function add(roots, rootKeys = []) {
+    if (roots.length) for (const b of bake(T, roots, null)) append(b);
     for (const r of roots) r.traverse(o => o.geometry?.dispose());
     for (const k of rootKeys) keys.add(k);
   }
