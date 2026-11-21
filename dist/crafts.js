@@ -1,11 +1,14 @@
-// Raft craft models (ES module, no imports, no textures).
+// Raft craft models (ES module). Timber uses the shared driftwood grain from wood.js; everything else is
+// vertex/flat colour with no textures.
 // Usage: import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b'; const g = createCraft(THREE, 'sail');
 // Returns a THREE.Group (or null for an unknown type). Local origin = centre of the 2x2 raft
 // floor top surface; place the group at the floor (y = .22). Everything builds upward from y = 0
 // inside a ~1.7 x 1.7 footprint. Every call creates its own geometries and materials, so the
-// caller may dispose them freely. Meshes are merged per material to keep draw calls low.
+// caller may dispose them freely, except the shared timber material (userData.shared, no-op dispose). Meshes are merged per material to keep draw calls low.
 //
 // Types: sail (~3.76 tall), palm (~2.25), lantern (~1.2), net (~0.21), bench (~0.9), crate (~0.84).
+
+import { driftwood, sharedTintedWood } from './wood.js?build=v3-survival-ae77fa84ac2b';
 
 export function createCraft(T, type) {
   const key = String(type || '').toLowerCase();
@@ -30,6 +33,8 @@ export function createCraft(T, type) {
   g.userData.height = box.max.y;
   return g;
 }
+
+const DECK = [0x9c, 0x8a, 0x5e]; // wood.js deck plank tone
 
 // Thin or flush parts whose shadow is below shadow-map resolution: they only receive.
 const THIN = /Rope|Lashing|Knots|Nails|Stitches|Seams|Patch|pennant|frondRibs|^(sail|net|crate)Steel$/;
@@ -73,23 +78,43 @@ function makeKit(T) {
     geo.setAttribute('color', new T.BufferAttribute(arr, 3));
     return geo;
   };
-  // worn timber: grain streaks along the long axis, knots, sun-greyed patches
+  // Driftwood timber, matching the deck: the shared wood.js grain map (sharedTintedWood) tinted by
+  // vertex colour. Each board takes its key's wood.js driftwood tone, ~25% lighter, +-8% per board, with a
+  // faint sun-bleach drift and grime toward the ends. UVs run the grain along the board's long axis:
+  // u across the face (0..1, like the deck boards), v along the length (one map per ~2.1 m).
   const woodify = (geo, hex, weather = 0.3) => {
     geo.computeBoundingBox();
-    const sz = geo.boundingBox.getSize(new T.Vector3());
+    const bb = geo.boundingBox, sz = bb.getSize(new T.Vector3());
+    const S = [sz.x, sz.y, sz.z], MIN = [bb.min.x, bb.min.y, bb.min.z];
     const ax = sz.x >= sz.y && sz.x >= sz.z ? 0 : (sz.y >= sz.z ? 1 : 2);
-    const base = new T.Color(hex).multiplyScalar(0.9 + rnd() * 0.2);
-    const dark = new T.Color(hex).multiplyScalar(0.56);
-    const grey = new T.Color(0x9b9486);
-    const ph = rnd() * 50, wk = weather * (0.6 + rnd() * 0.8);
-    return paint(geo, (x, y, z, c) => {
-      const L = ax === 0 ? x : ax === 1 ? y : z;
-      const A = ax === 0 ? y * 0.7 + z : ax === 1 ? x + z * 0.7 : x + y * 0.7;
-      const grain = 0.5 + 0.5 * Math.sin(A * 70 + Math.sin(L * 5 + ph) * 2.2 + ph);
-      const knot = Math.pow(Math.max(0, Math.sin(L * 6.1 + ph * 1.3) * Math.sin(A * 20 + ph)), 6);
-      const wx = 0.5 + 0.5 * Math.sin(L * 2.3 + ph * 0.7 + A * 3);
-      c.copy(base).lerp(dark, grain * 0.32 + knot * 0.5).lerp(grey, 0.4 + wk * wx * 0.4);
+    const k = 1.25 * (0.92 + rnd() * 0.16), n = parseInt(driftwood('#' + hex.toString(16).padStart(6, '0')).slice(1), 16);
+    const rgb = [n >> 16 & 255, n >> 8 & 255, n & 255], lum = (0.3 * rgb[0] + 0.59 * rgb[1] + 0.11 * rgb[2]) / 138.5;
+    // keep the tone's value, take 60% of its hue from the deck's olive-tan driftwood (#9c8a5e, luminance 138.5)
+    const ch = j => Math.min(1, ((rgb[j] * 0.4 + DECK[j] * lum * 0.6) / 255) * k);
+    const base = new T.Color().setRGB(ch(0), ch(1), ch(2), T.SRGBColorSpace);
+    const pale = base.clone().lerp(new T.Color(0xb9b49f), 0.35), grime = base.clone().multiplyScalar(0.72);
+    const ph = rnd() * 50, wk = weather * (0.6 + rnd() * 0.8), uo = rnd(), vo = rnd();
+    const nrm = geo.attributes.normal, uv = geo.attributes.uv;
+    const q = [0, 0, 0];
+    paint(geo, (x, y, z, c, i) => {
+      q[0] = x; q[1] = y; q[2] = z;
+      const L = q[ax], t = S[ax] > 0 ? (L - MIN[ax]) / S[ax] : 0.5;
+      const wx = 0.5 + 0.5 * Math.sin(L * 2.3 + ph * 0.7 + (q[(ax + 1) % 3] + q[(ax + 2) % 3]) * 3);
+      const end = Math.pow(Math.abs(t - 0.5) * 2, 6);
+      c.copy(base).lerp(pale, wk * wx * 0.6).lerp(grime, end * 0.5);
+      if (!uv || !nrm) return;
+      const ax2 = Math.abs(nrm.getX(i)), ay2 = Math.abs(nrm.getY(i)), az2 = Math.abs(nrm.getZ(i));
+      const nd = ax2 >= ay2 && ax2 >= az2 ? 0 : (ay2 >= az2 ? 1 : 2);
+      if (nd === ax) { // end grain: squash the map across the cut
+        const a = (ax + 1) % 3, b = (ax + 2) % 3;
+        uv.setXY(i, (q[a] - MIN[a]) / (S[a] || 1) * 0.3 + uo, (q[b] - MIN[b]) * 0.08 + vo);
+      } else {
+        const ac = 3 - ax - nd;
+        uv.setXY(i, (q[ac] - MIN[ac]) / (S[ac] || 1) + uo, (L - MIN[ax]) / 2.1 + vo);
+      }
     });
+    if (uv) uv.needsUpdate = true;
+    return geo;
   };
   // full subdivision only along the long axis (grain, knots); two rows across the face keep a grain
   // streak, and the thin edge needs none
@@ -153,7 +178,7 @@ function makeKit(T) {
   };
   const std = (hex, rough = 0.8, metal = 0, extra = {}) =>
     new T.MeshStandardMaterial(Object.assign({ color: hex, roughness: rough, metalness: metal }, extra));
-  const woodMat = () => std(0xffffff, 0.88, 0, { vertexColors: true });
+  const woodMat = () => sharedTintedWood(T); // one cached material for every craft's timber (never disposed)
   const addTo = (parent, geos, mat, name, glass = false) => {
     const list = Array.isArray(geos) ? geos : [geos];
     if (!list.length) { mat.dispose(); return null; }
@@ -627,10 +652,26 @@ function buildCrate(T, K, g) {
     for (const sx of [-1, 1]) ST.push(K.nail(sx * 0.3, 0.841, z));
   });
   for (const sx of [-1, 1]) W.push(K.plank(0.08, 0.03, 0.78, 0x6a4a2e, sx * 0.3, 0.825, 0));
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) for (const y of [0.72, 0.14]) {
-    ST.push(K.box(0.1, 0.1, 0.006, sx * 0.35, y, sz * 0.403));
-    ST.push(K.box(0.006, 0.1, 0.1, sx * 0.403, y, sz * 0.35));
-  }
+  // two rope lashings round the walls (rounded at the corners), each with a knot at one corner
+  const lash = (y, r) => {
+    const pts = [], E = 0.404, C = 0.03;
+    for (const [cx, cz, a] of [[1, 1, 0], [-1, 1, 1], [-1, -1, 2], [1, -1, 3]]) {
+      for (let j = 0; j <= 2; j++) {
+        const t = (a + j / 2) * Math.PI / 2;
+        pts.push(V(cx * (E - C) + Math.cos(t) * C, y + 0.004 * Math.sin(t * 3 + y * 20), cz * (E - C) + Math.sin(t) * C));
+      }
+    }
+    R.push(new T.TubeGeometry(new T.CatmullRomCurve3(pts, true), 36, r, 5, true));
+  };
+  lash(0.2, 0.013); lash(0.66, 0.013);
+  R.push(K.bake(new T.SphereGeometry(0.022, 8, 6), 0.396, 0.2, 0.396, 0, 0, 0, 1, 0.8, 1));
+  R.push(K.bake(new T.SphereGeometry(0.022, 8, 6), -0.396, 0.66, -0.396, 0, 0, 0, 1, 0.8, 1));
+  R.push(K.tube([V(0.398, 0.19, 0.402), V(0.405, 0.13, 0.407), V(0.402, 0.09, 0.408)], 0.01, 8));
+  // one rusty scrap hasp: plate over the lid edge, staple and pin on the front wall
+  ST.push(K.box(0.1, 0.13, 0.008, 0, 0.765, 0.406, -0.06, 0, 0.05));
+  ST.push(K.box(0.1, 0.008, 0.05, 0, 0.826, 0.385, 0, 0, 0.05));
+  ST.push(K.torus(0.022, 0.006, 0, 0.7, 0.412, 0, 0, 0, Math.PI));
+  ST.push(K.rod(V(-0.035, 0.708, 0.414), V(0.04, 0.712, 0.414), 0.005, 0.005, 5));
   for (const sx of [-1, 1]) {
     R.push(K.tube([V(sx * 0.4, 0.56, -0.13), V(sx * 0.46, 0.5, -0.08), V(sx * 0.48, 0.47, 0), V(sx * 0.46, 0.5, 0.08), V(sx * 0.4, 0.56, 0.13)], 0.014, 24));
     for (const sz of [-1, 1]) {
@@ -639,6 +680,6 @@ function buildCrate(T, K, g) {
     }
   }
   K.addTo(g, W, K.woodMat(), 'crateTimber');
-  K.addTo(g, ST, K.std(0x76838a, 0.42, 0.75), 'crateSteel');
+  K.addTo(g, ST, K.std(0x8a4f2c, 0.78, 0.35, { flatShading: true }), 'crateSteel'); // rusty scrap: nails, brackets, hasp
   K.addTo(g, R, K.std(0xb99a62, 0.95), 'crateRope');
 }
