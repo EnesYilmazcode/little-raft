@@ -340,6 +340,9 @@ export const ITEM_SOURCE = Object.freeze({
   freshcup:    Object.freeze({ tag: 'purifier', how: 'Pour sea water into a purifier and wait.' }),
   cookedfish:  Object.freeze({ tag: 'grill', how: 'Cook a fish on a grill.' }),
   // [bees] beehive harvest and island bushes
+  flowerseed:  Object.freeze({ tag: 'island bushes', how: 'Pick island bushes. Barrels hold some too.' }),
+  honey:       Object.freeze({ tag: 'beehive', how: 'Collect honeycomb from a beehive with E.' }),
+  wax:         Object.freeze({ tag: 'beehive', how: 'Collect honeycomb from a beehive with E.' }),
   // raft animals (animals.js)
   puffegg:     Object.freeze({ tag: 'puffhen', how: 'Place a Nest Box; a puffhen moves in and lays eggs. Press E on the nest to collect.' }),
   feather:     Object.freeze({ tag: 'puffhen', how: 'Sometimes left with the eggs in a puffhen nest box; collect with E.' }),
