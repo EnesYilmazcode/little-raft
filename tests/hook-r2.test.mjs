@@ -167,3 +167,9 @@ test('HOOK-R3-1: quitting to the title mid-dive cancels the dive and clears the 
   assert.doesNotMatch(gameSrc, /if \(running\) diving\?\.update/, 'diving.update runs on the title too');
   assert.match(gameSrc, /updateCamera\(dt\); diving\?\.update\(dt, elapsed\);/);
 });
+
+test('HOOK-R3-3: diving reads the raw crouch hold, not the latched crouch toggle', () => {
+  const at = gameSrc.indexOf('const dive = diving?.move('), move = gameSrc.slice(at, gameSrc.indexOf('\n', at));
+  assert.match(move, /down:!!input && \(controls \? controls\.input\.down\('crouch'\) : held\('KeyC'\)\)/);
+  assert.doesNotMatch(move, /ci\.crouch/, 'toggle mode would keep down latched and re-dive at every surfacing');
+});
