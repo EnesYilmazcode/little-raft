@@ -1,5 +1,4 @@
 # Spec: Sandy Secrets (Seashell Finder, Little Spade, buried bundles)
-
 Research: docs/features/treasure-research.md. Anchors checked @ `97cdd29`. coop-avatar.js is also edited by customise.md: merge, do not overwrite.
 A held **Seashell Finder** beeps faster as you get near a buried bundle on the visiting island. A held
 **Little Spade** digs it up with E. Every island hides 1 or 2 bundles. Each one is dug once, and they all
