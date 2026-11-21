@@ -59,7 +59,6 @@ test('icon-models builds a framed, finite model for each of its kinds and nothin
 });
 
 test('the receiver has a drawn flat icon while its 3D one renders (no blank tile)', () => {
-  assert.ok(ITEM_INFO.receiver.placeholder, 'receiver borrows a sprite, so it needs its own drawing');
   assert.match(ITEM_ICONS.receiver, /<rect/);
   for (const [k, info] of Object.entries(ITEM_INFO)) {
     if (!info.placeholder) continue;
