@@ -64,7 +64,10 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
   const recipesNow = () => book || (book = catalogueRecipes(RECIPES, table));
 
   // Element -> { kind, slot } (slot only for bag slots, so live durability/count can be shown).
+  // Crafting-panel recipe rows get no card: the detail card beside them already shows the item and
+  // its needed/owned counts, and a card here would cover those counts (survival-ui .sv-craft).
   function resolve(el) {
+    if (el.dataset.recipe != null && el.closest?.('#inventory .sv-craft')) return null;
     if (el.dataset.itemKind) return { kind: el.dataset.itemKind, slot: null, el };
     if (el.dataset.tipKind && el.dataset.recipe == null) return { kind: el.dataset.tipKind, slot: null, el };
     if (el.dataset.recipe != null) {

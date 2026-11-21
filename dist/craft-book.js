@@ -11,7 +11,7 @@ export const CATEGORIES = Object.freeze([
 ]);
 
 // Recipe output kind -> category id. Unknown kinds fall back by shape (see categoryOf).
-const CATEGORY_OF = Object.freeze({
+export const CATEGORY_OF = Object.freeze({
   hook: 'tools', hammer: 'tools', fishingrod: 'tools',
   rope: 'materials',
   net: 'survival', palm: 'survival', lantern: 'survival',
@@ -29,6 +29,9 @@ const CATEGORY_OF = Object.freeze({
   // content (engine, sleep, paint)
   motor: 'building', wheel: 'building', bed: 'building', brush: 'tools',
   paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
+  // water and farming (cups, purifier, seeds sit beside the palm planter); signal and the tinker's desk
+  cup: 'survival', saltcup: 'survival', freshcup: 'survival', water: 'survival', purifier: 'survival', seed: 'survival',
+  receiver: 'building', antenna: 'building', research: 'building',
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
@@ -190,8 +193,11 @@ export function usedIn(kind, recipes) {
   return out;
 }
 
-/** "owned / needed" label for an ingredient row. */
+/** "owned / needed" label for an ingredient row (compact; the crafting panel uses needHaveLabel). */
 export const amountLabel = row => `${row.have} / ${row.need}`;
+
+/** Ingredient count that can't be misread as "have out of need": "need 2 · have 12". */
+export const needHaveLabel = row => `need ${row.need} \u00b7 have ${row.have}`;
 
 /** Recipe tooltip line: owned/needed for every ingredient, e.g. "Have/need: 20/4 Wood · 0/2 Rope". */
 export function haveNeedLine(rows, nameOf = k => k) {
@@ -252,13 +258,20 @@ export const backdropCloses = (downOnBackdrop, upOnBackdrop) => !!downOnBackdrop
 
 /**
  * What a key press does to the bag: 'open', 'close' or null (leave it alone).
- * Tab / I open it from play. While open, I / E close it and Tab is left to move focus.
+ * Tab / I open it from play. While open, Tab / I / E close it (Tab is the bag toggle); arrow keys
+ * move focus instead. Shift+Tab is left alone while open so it can still walk focus backwards.
  * E never opens here: in play it is the pick-up key and the game opens the bag itself.
  */
-export function bagKeyAction(code, isOpen) {
-  if (isOpen) return code === 'Tab' || code === 'KeyI' || code === 'KeyE' ? 'close' : null; // Tab toggles the bag; arrows move focus
+export function bagKeyAction(code, isOpen, shift = false) {
+  if (isOpen) {
+    if (code === 'Tab') return shift ? null : 'close';
+    return code === 'KeyI' || code === 'KeyE' ? 'close' : null;
+  }
   return code === 'Tab' || code === 'KeyI' ? 'open' : null;
 }
+
+/** The bag's keyboard help line (kept in step with bagKeyAction and the panel's key handlers). */
+export const BAG_KEYS_HINT = 'Arrow keys move between recipes and slots; Enter crafts the picked recipe (hold for more). Tab, E, I or Esc closes.';
 
 const ARROWS = { ArrowRight: [1, 0], ArrowLeft: [-1, 0], ArrowDown: [0, 1], ArrowUp: [0, -1] };
 /**
@@ -442,22 +455,33 @@ export function craftButtonText(state, done = null) {
   return state === 'ready' ? 'Craft' : state === 'full' ? 'Bag is full' : 'Missing materials';
 }
 
-/** Craft button hint: how many a hold would make right now ('' when one or none). */
+/**
+ * What the craft button says when nothing is being held. After a batch (`done` = { id, n })
+ * for the picked recipe it keeps saying 'Crafted 4 ✓' while the recipe can't be made again,
+ * instead of falling back to a grey 'Missing materials'; once it is craftable again it says 'Craft'.
+ * `flashing` = still inside the short success flash (shown even when more could be made).
+ */
+export function idleButton(state, pickId, done = null, flashing = false) {
+  if (done && done.n > 0 && done.id === pickId && (flashing || state !== 'ready')) return { text: `Crafted ${done.n} \u2713`, done: true };
+  return { text: state === 'ready' ? 'Craft' : state === 'gated' ? 'Locked' : state === 'full' ? 'Bag is full' : 'Missing materials', done: false };
+}
+
+/** Craft button hint: how many a hold would make right now ('' when one or none), in plain words. */
 export function holdHint(times, cap = HOLD.max) {
   const n = Math.min(Number.isFinite(times) ? Math.floor(times) : cap, cap);
-  return n > 1 ? `hold: up to ${n}` : '';
+  return n > 1 ? `Hold to craft up to ${n}` : '';
 }
 
 /**
- * Craft button text while a hold is running ('Crafting 2 / 4') and just after it ends ('Crafted 4').
+ * Craft button text while a hold is running ('Crafting 2/4…') and after it ends ('Crafted 4 ✓').
  * `out` = items each craft makes, so a nail recipe (x3) reads 'Crafted 12' after 4 crafts.
  */
 export function holdLabel(done, cap, holding = true, out = 1) {
   const d = Math.max(0, Math.floor(Number(done) || 0));
   const per = Math.max(1, Math.floor(Number(out) || 1));
-  if (!holding) return d > 0 ? `Crafted ${d * per}` : '';
+  if (!holding) return d > 0 ? `Crafted ${d * per} \u2713` : '';
   const c = Math.max(d, Math.floor(Number(cap) || 0));
-  return c > 1 ? `Crafting ${d} / ${c}` : 'Crafting';
+  return c > 1 ? `Crafting ${d}/${c}\u2026` : 'Crafting\u2026';
 }
 
 // ---- tooltip facts ----

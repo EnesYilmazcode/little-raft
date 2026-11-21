@@ -57,11 +57,11 @@ test('sortCraftableFirst: the building tab puts what wood alone makes above the 
 test('holdHint previews how many a hold makes, capped', () => {
   assert.equal(CB.holdHint(0), '');
   assert.equal(CB.holdHint(1), '');
-  assert.equal(CB.holdHint(4), 'hold: up to 4');
-  assert.equal(CB.holdHint(4.9), 'hold: up to 4');
-  assert.equal(CB.holdHint(500), `hold: up to ${CB.HOLD.max}`);
-  assert.equal(CB.holdHint(Infinity), `hold: up to ${CB.HOLD.max}`);
-  assert.equal(CB.holdHint(7, 5), 'hold: up to 5');
+  assert.equal(CB.holdHint(4), 'Hold to craft up to 4');
+  assert.equal(CB.holdHint(4.9), 'Hold to craft up to 4');
+  assert.equal(CB.holdHint(500), `Hold to craft up to ${CB.HOLD.max}`);
+  assert.equal(CB.holdHint(Infinity), `Hold to craft up to ${CB.HOLD.max}`);
+  assert.equal(CB.holdHint(7, 5), 'Hold to craft up to 5');
 });
 
 test('sourceOf: gathered items say where they float, crafted ones link to their recipe', () => {
@@ -135,12 +135,12 @@ const book = () => CB.catalogueRecipes(RECIPES, ITEMS);
 const nameOfItem = k => ITEMS[k]?.name ?? ITEM_INFO[k]?.name ?? k;
 
 test('holdLabel counts up while held and says what was made on release', () => {
-  assert.equal(CB.holdLabel(1, 4), 'Crafting 1 / 4');
-  assert.equal(CB.holdLabel(3, 4), 'Crafting 3 / 4');
-  assert.equal(CB.holdLabel(5, 4), 'Crafting 5 / 5', 'never shows more done than the total');
-  assert.equal(CB.holdLabel(1, 1), 'Crafting', 'a single craft has no counter');
-  assert.equal(CB.holdLabel(4, 0, false), 'Crafted 4');
-  assert.equal(CB.holdLabel(4, 0, false, 3), 'Crafted 12', 'counts items, not crafts (nail makes 3)');
+  assert.equal(CB.holdLabel(1, 4), 'Crafting 1/4…');
+  assert.equal(CB.holdLabel(3, 4), 'Crafting 3/4…');
+  assert.equal(CB.holdLabel(5, 4), 'Crafting 5/5…', 'never shows more done than the total');
+  assert.equal(CB.holdLabel(1, 1), 'Crafting…', 'a single craft has no counter');
+  assert.equal(CB.holdLabel(4, 0, false), 'Crafted 4 ✓');
+  assert.equal(CB.holdLabel(4, 0, false, 3), 'Crafted 12 ✓', 'counts items, not crafts (nail makes 3)');
   assert.equal(CB.holdLabel(0, 0, false), '');
   assert.equal(CB.holdLabel('x', null, false), '');
 });
