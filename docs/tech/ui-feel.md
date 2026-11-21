@@ -23,25 +23,32 @@ Adoption steps are in `docs/tech/ui-feel-ADOPT.md`.
 
 | Feature | How | Where it hooks in |
 |---|---|---|
-| Hotbar select | A single gold cursor in a fixed overlay slides between cached slot positions (`transform` transition, back-ease overshoot) and squashes in the direction of travel. The new icon hops (scale 1.22 and -7 px), the old one dips. | A MutationObserver on `.tools` sees `.sv-sel` move. survival-ui is untouched. |
-| Pickup fly | Pooled icons (8) pop out of the reticle, hang for a beat, then accelerate along a quadratic curve into the slot that received the item, with `+N` riding along. On landing the slot icon bumps, the count text pops gold, and a ring flashes. Items bound for the backpack fly to the hotbar's right end and fade. | `uiFeel.pickup(items)` from `effect()` on `loot`. The target slot comes from the live Bag, so it is correct before survival-ui repaints. |
+| Hotbar select | A single gold cursor in a fixed overlay slides between cached slot positions (`transform` transition, back-ease overshoot) and squashes in the direction of travel. The new icon hops (scale 1.22 and -7 px). | A MutationObserver on `.tools` sees `.sv-sel` move. survival-ui is untouched. |
+| Pickup fly | Pooled icons (8) pop out of the reticle, hang for a beat, then accelerate along a quadratic curve into the slot that received the item, with `+N` riding along. On landing the slot icon bumps, the count text pops, and a ring flashes. When no hotbar slot shows the gain (the item went to the backpack, or a guest's predicted bag does not have it yet) the icon flies to a **generic target**, the middle of the hotbar's top edge, and shrinks into the bar. The real slot then bumps through the observer whenever it is painted. | `uiFeel.pickup(items)` from `effect()` on `loot`. The target is the hotbar stack whose count in the live Bag differs from the last observed paint, so it is correct before survival-ui repaints, and it never guesses. |
 | Count bumps | Any hotbar or inventory count change outside a fly gets a small pop (up) or dip (down). | The same observers. |
-| Toast stack | Five pooled rows at bottom right, newest at the bottom. Older rows slide up and dim to 60%. A repeat merges into the visible row (`Wood +2` becomes `Wood +6` with a number pop) and resets its 3.2 s life. Each kind has its own accent stripe: loot is amber, craft gold, build teal, full/warn red. | `uiFeel.toast(text, {kind, icon, amount, key})` |
+| Toast stack | Desktop: five pooled rows at bottom right, newest at the bottom. Phone (760 px wide or less): three rows dropping from the top centre, newest on top. Older rows slide away and dim to 60%. The stack is a `popover="manual"` in the **top layer**, re-raised when the inventory dialog opens, so a craft toast reads above the panel and its backdrop. A repeat merges into the visible row (`Wood +2` becomes `Wood +6` with a number pop and an opacity glow) and resets its 3.2 s life. Each kind has its own accent stripe: loot is amber, craft gold, build teal, full/warn red. | `uiFeel.toast(text, {kind, icon, amount, key})` |
 | Stat bars | The fill and trail are full-width layers scaled with `scaleX`. On **damage** the fill drops in 110 ms, a pale-amber trail holds for 420 ms and then drains over 520 ms, the track flashes, and the icon shakes when the hit is above 12%. On **heal** a green ghost snaps ahead and the fill catches up. At 25% or less the bar pulses (opacity). Re-targeting mid-animation starts from the *visual* value, computed from `getComputedTiming().progress` without reading styles. | `uiFeel.statBar(container, {tone})`, then `.set(v)` |
 | Crosshair | Built inside the existing `#crosshair`: ring, dot, an SVG charge arc and four hit ticks. **Hover** grows the ring to 1.32x and turns it gold. **Charge** fills an amber arc (via `stroke-dashoffset`), and at full charge it turns gold, glows and pops. **Hit** variants: `hit` (cream), `gold` (catch or pickup) and `deny` (red ticks with a ring shake). | `crosshair.hover(bool)`, `crosshair.charge(v or null)` and `crosshair.hit(kind)` from `frame()`, `updateHook()` and `effect()` |
 | Inventory open/close | Pure CSS. The panel fades in from 0.96 scale and +14 px, the craft column slides in from the left and the bag from the right, and the backdrop fades. On close it fades out over 120 ms. `@starting-style` plus `overlay`/`display` `allow-discrete` keep the dialog in the top layer while it animates out, *after* `open` is already gone, so `dialog[open]` checks in game.js do not change. | None. |
-| Craft | The recipe row gets a gold flash and its icon pops. The output slot bumps through the observer. | `uiFeel.crafted(recipeId)` |
-| Press states | Slots scale to 0.9 and darken. Recipes sink 1 px with an inset shadow, and their icons tilt on hover. `.primary` drops onto its 3 px base. `.secondary`, header buttons, Repair, Copy and Close press too. | None (CSS). |
+| Craft | The recipe row gets a gold flash (opacity on its `::after`) and its icon pops. The output slot bumps through the observer. | `uiFeel.crafted(recipeId)` |
+| Press states | Slots sink 2 px, scale to 0.88, darken to 70% and show a gold inner ring with an inset shadow. They spring back with the back-ease on release. Recipes sink 1 px with an inset shadow, and their icons tilt on hover. `.primary` drops onto its 3 px base. `.secondary`, header buttons, Repair, Copy and Close press too. | None (CSS). |
 | Reduced motion | `matchMedia('(prefers-reduced-motion: reduce)')` toggles `html.uf-rm`, and every effect has a no-motion branch. The cursor jumps, nothing flies (the target slot gets a quiet glow instead), the trail fades instead of draining, the inventory only fades, toasts fade in place, and there is no shake and no pulse. `setReducedMotion(true/false/'auto')` lets a settings toggle override the OS setting. | None. |
 
 ## Rules that keep it cheap
 
-1. **Only `transform` and `opacity` move.** The few exceptions are tiny, paint-only and one-shot. The
-   charge arc animates `stroke-dashoffset` on a 40 px SVG. The count pop animates `color`. The craft flash
-   animates `box-shadow` on one recipe row. The flash and hit ticks use `opacity`.
+1. **Only `transform` and `opacity` move.** The one exception is the charge arc's `stroke-dashoffset` on a
+   40 px SVG, written while charging. The count pop is transform only. The craft flash and the toast merge
+   glow animate the `opacity` of an overlay (`::after` / a pooled `<i>`), not `box-shadow` or `filter`.
+1b. **No permanent layers, no layout on animation start.** Only the cursor keeps `will-change: transform`.
+   Every other animated node (slot art and counts, fly icons, rings, hit ticks, toast numbers, stat icons,
+   recipe art) carries a static 2D identity `transform: translate(0)`. It costs no layer, and it means the
+   node is already a containing block, so a WAAPI transform starting or ending does not trigger layout.
+   Removing the old `will-change` without this took `select` from 2 to 64 layouts. The animation promotes
+   the node to a compositor layer only while it runs.
 2. **Layout is read in one place**: the `ResizeObserver` callback on `.tools`, which runs after layout and
    before paint, so the read is already clean. That callback, plus `resize`, caches the 8 slot rects.
-   Selection, fly and ring motion all use the cached numbers. No action path calls
+   Selection, fly and ring motion all use the cached numbers. The same callback publishes the hotbar box as
+   `--uf-hbx/--uf-hbw/--uf-hbt` on `<html>`. The phone stat strip is positioned from those. No action path calls
    `getBoundingClientRect`, `offsetWidth` or `getComputedStyle`.
 3. **No reflow tricks to restart animations.** WAAPI `el.animate()` restarts cleanly. The naive version,
    `animation:none; void el.offsetWidth; animation:...`, is the `naive-select` row below.
@@ -134,11 +141,14 @@ microtask. This pauses WAAPI animations, CSS transitions and CSS animations alik
 | `11-heal-380ms.png` | The water heal ghost ahead of the fill |
 | `12-low-pulse.png` | Hunger at 18%, pulsing |
 | `13-inv-open-70ms.png`, `14-inv-open.png`, `17-inv-close-60ms.png` | The inventory transition in, at rest and out |
-| `15-recipe-pressed.png`, `16-craft-140ms.png` | Recipe press state and craft flash |
-| `18-slot-pressed.png` | Hotbar slot 6 held down |
+| `15-recipe-pressed.png`, `16-craft-140ms.png` | Recipe press state and craft flash (the toast is still fading in at 140 ms) |
+| `24-inv-craft-toast-rest.png` | The "Crafted Rope" toast at rest, above the inventory backdrop (top layer) |
+| `18-slot-pressed.png` | Hotbar slot 6 held down: sunk, darkened, gold inner ring |
 | `19-crosshair-states.png` | Idle, hover, charge 40%, charge full, hit, catch and deny (3x zoom) |
 | `20-reduced-motion-150ms.png` | The same pickup, select and damage with `reduced_motion='reduce'`: nothing in flight, the cursor already moved, the trail fading |
-| `21-phone-pickup-300ms.png` | 390x844: stats move to the top left and toasts sit above the hotbar |
+| `21-phone-pickup-300ms.png` | 390x844: toasts drop from the top centre (3 max, equal width), stats become one strip sitting on the hotbar |
+| `22-guest-generic-590ms.png` | Effect for loot the bag does not show yet (fish, wood): both icons head to the hotbar's top-centre and shrink in, not to a guessed slot |
+| `23-phone-inv-craft.png` | 390x844 with the inventory open after a craft: the toasts sit above the panel's backdrop |
 
 ## Decisions and alternatives considered
 
@@ -159,7 +169,19 @@ microtask. This pauses WAAPI animations, CSS transitions and CSS animations alik
 - **No `@property`-registered custom properties for the charge ring.** A conic-gradient driven by an
   animated custom property repaints the same way, but needs a registration and is harder to freeze in
   tests. `stroke-dashoffset` on `pathLength=100` is simpler.
-- **Toasts at the bottom right, stats at the bottom left.** The middle of the screen belongs to the reticle
+- **A top-layer popover for the toast stack rather than a high z-index.** No z-index beats a modal dialog's
+  `::backdrop`. `popover="manual"` puts the stack in the top layer, which stacks in show order, so the
+  feel layer re-shows it (`hidePopover(); showPopover()`) when the observer sees `#inventory` gain `open`.
+  This is one attribute observer and two calls per inventory open. It changes no `dialog[open]` check,
+  because the stack is a `<div>`, not a dialog. Without popover support (Safari before 17, Firefox before
+  125), the stack falls back to `z-index: 5` under the backdrop. The hotbar cursor and fly layer stay below
+  the backdrop on purpose: they belong to the hotbar, which is dimmed too, and the dialog has its own hotbar
+  row with its own selection.
+- **Phone: toasts at the top, stats on the hotbar.** At 390 px the old bottom-right stack covered a third of
+  the deck, and the stat panel was a large box in the top left. Top centre is empty while playing,
+  because HUD_CSS hides the header. A stat strip sized to the hotbar box reads as part of it, as in
+  Minecraft-style hotbars.
+- **Toasts at the bottom right, stats at the bottom left (desktop).** The middle of the screen belongs to the reticle
   and to the game's own `#contextPrompt` (`E Pick up`, hints), which stays as it is. While playing,
   `#toast` is already hidden by HUD_CSS, and game.js routes `toast()` to `notice()`. With ui-feel adopted,
   loot, craft, build and full events go to the stack and hints stay under the reticle.

@@ -18,6 +18,12 @@ Copy it unchanged. It has no imports and only targets selectors that dist alread
 `.sv-slot`, `.sv-art`, `.sv-count`, `#inventory.sv-inv`, `.sv-recipe`, `#crosshair`, `.primary`,
 `.secondary`, `.header-right button`, `#repairButton`, `#copyRoom`, `.close`).
 
+It adds three things to the page: `#uf-layer` (cursor, rings, fly icons), and `#uf-toasts`, a
+`popover="manual"` in the top layer that is re-shown whenever `#inventory` opens, so toasts read above the
+modal and its backdrop. It also adds the `--uf-hbx/--uf-hbw/--uf-hbt` custom properties on `<html>` (the
+hotbar box, written only from the ResizeObserver/`resize`), which the phone stat strip uses. None of them is
+a `<dialog>`, so `dialogOpen()` (`dialog[open]`) and `uiBlocked()` are unaffected.
+
 ## 2. dist/survival-ui.js: export the icon renderer
 
 Line 78:
@@ -179,6 +185,8 @@ HUD_CSS's `display:none` list:
 `.set(hookDurability(localBag()) / MAX_HEALTH)`.
 
 Add `body:not(.playing) .uf-stats{display:none}` to graphics.css so the panel hides on the welcome screen.
+On screens 760 px wide or less, the panel turns into one strip that sits on top of the hotbar automatically,
+using the `--uf-hb*` properties. No extra CSS is needed.
 
 ## What you get with no further code
 
@@ -195,6 +203,11 @@ Add `body:not(.playing) .uf-stats{display:none}` to graphics.css so the panel hi
 
 ## Verify
 
+0. `python sandbox/ui-feel/realgame.py`. It copies `dist/` to a scratch folder and applies every step above
+   as exact string replacements. Each one must match exactly once, or it stops and names the step. It then
+   drives the real game headless: it lands a hook catch, freezes the loot fly mid-air and writes
+   `sandbox/ui-feel/shots/rg-*.png`. If dist has moved, this is the quickest way to see which line no
+   longer matches.
 1. `python sandbox/ui-feel/shoot.py`. It should print `"errors": []`. Compare the PNGs in
    `sandbox/ui-feel/shots/` to the ones described in `docs/tech/ui-feel.md`.
 2. In the game (serve the repo root and open `/dist/`), check each of these:

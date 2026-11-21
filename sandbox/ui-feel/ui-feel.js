@@ -504,12 +504,14 @@ export function createUIFeel({
     row.n.getAnimations().forEach(a => a.cancel());
     shown.unshift(row);
     restack();
+    const g = row.gen;
     row.n.animate(rm
       ? [{ opacity: 0 }, { opacity: 1 }]
       : narrow
         ? [{ opacity: 0, transform: 'translate3d(0,-18px,0) scale(.94)' }, { opacity: 1, transform: 'translate3d(0,2px,0)', offset: .7 }, { opacity: 1, transform: 'translate3d(0,0,0)' }]
         : [{ opacity: 0, transform: 'translate3d(24px,0,0) scale(.96)' }, { opacity: 1, transform: 'translate3d(-4px,0,0)', offset: .7 }, { opacity: 1, transform: 'translate3d(0,0,0)' }],
-    { duration: rm ? 120 : 260, easing: OUT });
+    { duration: rm ? 120 : 260, easing: OUT })
+      .ready.then(() => { if (row.gen === g && !row.dying) row.born = performance.now(); }, () => {}); // life starts when it is on screen (stalled frames)
     armTick();
   }
   function restack() {
