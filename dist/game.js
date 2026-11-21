@@ -869,6 +869,7 @@ export function mount(transfer = null) {
   on(document, 'pointerlockchange', () => {
     if (isLocked()) { lockFallback = false; lockEventFailures = 0; }
     else { if (charging && charging.x === null) charging = null; reeling = false; }
+    if (!isLocked() && !lockFallback && building?.menu.isOpen) building.menu.close(false); // building-pieces lane hook
     down = null; refreshPointerUI(true);
   });
   on(document, 'pointerlockerror', lockFailed);
