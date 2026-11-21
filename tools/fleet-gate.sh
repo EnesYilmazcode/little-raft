@@ -100,6 +100,6 @@ checks = [json.loads(l) for l in open(results) if l.strip()]
 statuses = {c['status'] for c in checks}
 status = 'fail' if 'fail' in statuses else 'infra' if 'infra' in statuses else 'pass'
 print(json.dumps({'ref': ref, 'sha': sha, 'base': base, 'pass': status == 'pass', 'status': status,
-                  'artifacts': out, 'checks': {c.pop('check'): c for c in checks}}))
+                  'artifacts': out, 'replay': f'GATE_KEEP=1 tools/fleet-gate.sh {sha}  # keeps the exported tree so tool repro paths stay valid', 'checks': {c.pop('check'): c for c in checks}}))
 sys.exit({'pass': 0, 'fail': 1, 'infra': 2}[status])
 PY
