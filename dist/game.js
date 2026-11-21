@@ -1403,7 +1403,8 @@ export function mount(transfer = null) {
   }
   function unblockSave() { if (!saveBlocked) return; saveBlocked = false; setText('#saveStatus', SAVE_STATUS); }
   // Leaving the title for play while another tab has saved since: continue from that newer save, not our stale copy.
-  function adoptStoredSave() { loadRaft(savedOwnRaft()); saveRev = storedRev(); unblockSave(); }
+  function adoptStoredSave() { loadRaft(savedOwnRaft()); resetVitals(); saveRev = storedRev(); unblockSave(); }
+  function resetVitals() { Object.assign(vitals, newVitals(world.vitals)); fainted = -1; eating = null; } // [vitals] loadRaft keeps the body; a different world brings its own
   function save() {
     if (role === 'guest' || disposed || saveBlocked) return;
     syncWorldInventories();
