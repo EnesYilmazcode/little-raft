@@ -5,7 +5,7 @@
 // inside a ~1.7 x 1.7 footprint. Every call creates its own geometries and materials, so the
 // caller may dispose them freely. Meshes are merged per material to keep draw calls low.
 //
-// Types: sail (~3.76 tall), palm (~2.25), lantern (~1.9), net (~0.21), bench (~0.9), crate (~0.84).
+// Types: sail (~3.76 tall), palm (~2.25), lantern (~1.2), net (~0.21), bench (~0.9), crate (~0.84).
 
 export function createCraft(T, type) {
   const key = String(type || '').toLowerCase();
@@ -515,6 +515,7 @@ function buildLantern(T, K, g) {
   K.addTo(g, ST, K.std(0x3e4548, 0.5, 0.7), 'lanternSteel');
   K.addTo(g, BR, K.std(0xb48b3c, 0.35, 0.8), 'lanternBrass');
   K.addTo(g, R, K.std(0xb99a62, 0.95), 'lanternRope');
+  g.scale.setScalar(0.65); // a waist-high post lantern (~1.2 m), well below eye level
 }
 
 // ---------------------------------------------------------------- NET (1.62 x 1.62, ~0.21 tall)

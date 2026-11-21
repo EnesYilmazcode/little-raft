@@ -171,7 +171,7 @@ export function moveStack(src, i, dst, to, amount) {
   }
   return want - left;
 }
-/** Every non-hotbar bag stack (8..27) into the chest while it fits. Returns the count moved. */
+/** Every non-hotbar bag stack (HOTBAR_SIZE..27) into the chest while it fits. Returns the count moved. */
 export function putAll(bagSlots, chest) {
   let n = 0;
   for (let i = HOTBAR_SIZE; i < bagSlots.length; i++) if (bagSlots[i]) n += moveStack(bagSlots, i, chest, null, null);

@@ -32,7 +32,7 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
       return got.isConnected ? got.cloneNode(true) : got;
     }
     const sym = ITEM_INFO[kind]?.icon;
-    if (!sym) return null;
+    if (!sym || ITEM_INFO[kind].placeholder) return null; // a borrowed sprite would name the wrong item
     const svg = doc.createElementNS(SVG, 'svg'); svg.setAttribute('viewBox', '0 0 48 48'); svg.setAttribute('aria-hidden', 'true');
     const use = doc.createElementNS(SVG, 'use'); use.setAttribute('href', `icons.svg#${sym}`); svg.appendChild(use);
     return svg;
@@ -45,11 +45,18 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
   }
   function arm(key, row) { clear(row.hold); row.hold = timer(() => drop(key, row), HOLD_MS); }
 
+  // Restart the icon pop: Web Animations when available (no forced layout), else re-add the CSS class.
+  function bump(el) {
+    const icon = el.querySelector?.('.pf-icon');
+    if (!icon?.animate) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); return; }
+    if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    icon.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.18)', offset: 0.4 }, { transform: 'scale(1)' }], { duration: 250, easing: 'ease-out' });
+  }
   function push(key, build, update) {
     const t = now(), old = rows.get(key);
     if (old && t - old.at < MERGE_MS) {
       old.at = t; update(old);
-      old.el.classList.remove('bump'); void old.el.offsetWidth; old.el.classList.add('bump'); // restart the pop
+      bump(old.el);
       root().appendChild(old.el); rows.delete(key); rows.set(key, old); // newest sits at the bottom
       arm(key, old); return old;
     }

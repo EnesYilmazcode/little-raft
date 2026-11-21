@@ -217,13 +217,13 @@ test('two players clicking the same stack: exactly one gets it', () => {
   assert.equal(host.count('scrap') + guest.count('scrap'), 6);
 });
 
-test('putAll stores every backpack stack but leaves the hotbar alone', () => {
+test('putAll stores every backpack stack but leaves the hotbar (slots 0-9) alone', () => {
   const st = emptyState();
   const bag = bagFrom([{ kind: 'hook', count: 1 }, { kind: 'wood', count: 2 }]);
-  bag.slots[9] = { kind: 'wood', count: 4 }; bag.slots[20] = { kind: 'leaf', count: 7 }; bag.slots[27] = { kind: 'hammer', count: 1, durability: 80 };
+  bag.slots[10] = { kind: 'wood', count: 4 }; bag.slots[20] = { kind: 'leaf', count: 7 }; bag.slots[27] = { kind: 'hammer', count: 1, durability: 80 };
   const r = applyStorageAction(st, { kind: 'storage.putAll', x: 1, z: 0 }, 'host', bag, env(crate));
   assert.equal(r.ok, true); assert.equal(r.moved, 12);
-  assert.deepEqual(bag.slots.slice(8).filter(Boolean), []);
+  assert.deepEqual(bag.slots.slice(10).filter(Boolean), []);
   assert.equal(bag.slots[1].count, 2);
   assert.deepEqual(total(st.chests['1,0']), { wood: 4, leaf: 7, hammer: 1 });
   const again = applyStorageAction(st, { kind: 'storage.putAll', x: 1, z: 0 }, 'host', bag, env(crate));
@@ -417,7 +417,7 @@ test('put and putAll are refused when the slice would grow past MAX_SLICE_CHARS;
   const st = stateFrom({ v: 1, chests, seen: [], learned: [], r: 0 }, 'save', freshWorld());
   assert.ok(SR.sliceChars(st, '1,0', null) > SR.MAX_SLICE_CHARS);
   const anyCrate = { decorAt: () => 'crate', pos: () => null };
-  const bag = bagFrom([{ kind: 'wood', count: 3 }]); bag.slots[9] = { kind: 'leaf', count: 2 };
+  const bag = bagFrom([{ kind: 'wood', count: 3 }]); bag.slots[10] = { kind: 'leaf', count: 2 };
   const before = JSON.stringify([st, bag.slots]);
   const r1 = applyStorageAction(st, { kind: 'storage.put', x: 1, z: 0, from: 0, expect: { kind: 'wood', count: 3 } }, 'host', bag, anyCrate);
   const r2 = applyStorageAction(st, { kind: 'storage.putAll', x: 1, z: 0 }, 'host', bag, anyCrate);
@@ -469,6 +469,6 @@ test('setOwnedElsewhere: recipes owned by the progression catalogue are never lo
     assert.ok(locked.length > 0);
     for (const id of locked) assert.ok(!ITEMS[id], `${id} is a catalogue recipe`);
     assert.equal(SR.isLearned(st, 'sail'), true);
-    assert.deepEqual(SR.learnedFrom(['wood', 'rope', 'leaf']), []);
+    assert.deepEqual(SR.learnedFrom(['wood', 'rope', 'leaf']), ['bed', 'brush', 'wheel']); // content recipes (sleep, paint, engine) are the table's own
   } finally { SR.setOwnedElsewhere(id => !TABLE_TREE.has(id)); }
 });
