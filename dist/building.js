@@ -20,8 +20,8 @@ export function createBuilding(T, scene) {
   const ghostMat = new T.MeshBasicMaterial({color:GHOST_OK, transparent:true, opacity:.45, depthWrite:false});
   const ghost = new T.Mesh(geos.wall, ghostMat); ghost.visible = false; ghost.renderOrder = 2; group.add(ghost);
   const dummy = new T.Object3D(), aimOut = {}, origin = new T.Vector3();
-  let rot = 0, version = -1, removing = false, removeTarget = null, chipText = '';
-  let remRec = null, remVer = -1, remText = '';
+  let rot = 0, version = -1, removing = false, chipText = '';
+  let remPiece = null, remText = ''; // the removal target game.js picked (remove-target.js): drawn, never re-picked here
   let curBag = null; // the local bag of the last update(); afford() is one function, not a per-frame closure
   const afford = cost => { if (!curBag) return true; for (const k in cost) if (curBag.count(k) < cost[k]) return false; return true; };
   const okColor = new T.Color(GHOST_OK), badColor = new T.Color(GHOST_BAD);
@@ -73,23 +73,15 @@ export function createBuilding(T, scene) {
     curBag = bag;
     menu.setVisible(active);
     if (!active) { removing = false; if (menu.isOpen) menu.close(false); } // hammer put away / UI opened: no stuck wheel or X mode
-    ghost.visible = false; removeTarget = null;
+    ghost.visible = false;
     let text = '';
-    if (active && aim?.dir && !menu.isOpen) {
+    if (active && removing && !menu.isOpen) { // X held: one target for pieces, decor and floor alike (game.js setRemove)
+      if (remPiece && grid.find(remPiece) === remPiece) showGhost(remPiece, badColor);
+      text = remText;
+    } else if (active && aim?.dir && !menu.isOpen) {
       origin.copy(camPos);
       const d = aim.dir;
-      if (removing) {
-        removeTarget = grid.pick(origin.x, origin.y, origin.z, d.x, d.y, d.z, deckY, REACH);
-        if (removeTarget) {
-          showGhost(removeTarget, badColor);
-          if (removeTarget !== remRec || grid.version !== remVer) { // canRemove re-validates every piece: once per target/change, not per frame
-            remRec = removeTarget; remVer = grid.version;
-            remText = grid.canRemove(removeTarget) || 'Release X to remove ' + PIECES[removeTarget.t].name.toLowerCase();
-          }
-          text = remText;
-        }
-        else text = 'Point at a piece to remove';
-      } else if (freePiece()) {
+      if (freePiece()) {
         const r = grid.aim(origin.x, origin.y, origin.z, d.x, d.y, d.z, piece(), (yawDir(yaw) + rot) % 4, deckY, REACH, aimOut);
         if (r) { showGhost(r, r.ok && afford(PIECES[r.t].cost) ? okColor : badColor); text = r.ok ? (afford(PIECES[r.t].cost) ? '' : 'Not enough materials') : r.reason; }
       }
@@ -105,10 +97,10 @@ export function createBuilding(T, scene) {
     if (!freePiece() || !ghost.visible || !aimOut.ok) return null;
     return {kind:'piece', t:aimOut.t, i:aimOut.i, j:aimOut.j, l:aimOut.l, r:aimOut.r};
   }
-  function removeAction() {
-    const p = removeTarget; removing = false;
-    return p ? {kind:'unpiece', t:p.t, i:p.i, j:p.j, l:p.l, r:p.r} : null;
-  }
+  // The removal target to draw while X is held: a piece record (red ghost here) or null, and the prompt text for the chip.
+  function setRemove(rec, text = '') { remPiece = rec || null; remText = text; }
+  function endRemove() { const was = removing; removing = false; return was; } // X released
+  const pick = (o, d, deckY, out) => grid.pick(o.x, o.y, o.z, d.x, d.y, d.z, deckY, REACH, out); // nearest piece on the ray (out.t = distance)
 
   // Host-authoritative: validate, charge or refund the actor's bag, mutate world.pieces. Returns {ok, text}.
   function apply(a, bag, world) {
@@ -153,7 +145,7 @@ export function createBuilding(T, scene) {
     ghostMat.dispose(); material.map?.dispose(); material.dispose();
   }
 
-  return {grid, menu, group, sync, update, use, removeAction, apply, key, dispose,
+  return {grid, menu, group, sync, update, use, setRemove, endRemove, pick, apply, key, dispose,
     get removing() { return removing; }, get piece() { return piece(); }, get rotation() { return rot; },
     preStep:(phys, deckY) => grid.preStep(phys, deckY), postStep:(phys, deckY) => grid.postStep(phys, deckY)};
 }

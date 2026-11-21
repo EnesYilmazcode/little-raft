@@ -51,12 +51,21 @@ const escHtml = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;', '<':'&lt;'
 // null; held: 'hammer' or a decor kind; name: the decor's display name; cost: 'n item, n item';
 // missing: what the floor still needs ('' when affordable). Plain-text inputs are escaped here.
 // remove: the display name of what X would remove with the hammer ('' for nothing).
-export function placePrompt(hover, held, {name = '', cost = '', missing = '', remove = ''} = {}) {
-  const rm = held === 'hammer' && remove ? '<kbd>X</kbd>Remove ' + escHtml(remove) : '';
+// removeWhy: why X would refuse it (shown in place of 'Remove <name>').
+export function placePrompt(hover, held, {name = '', cost = '', missing = '', remove = '', removeWhy = ''} = {}) {
+  const rm = held === 'hammer' && remove ? removePrompt(remove, removeWhy, false) : '';
   if (!hover) return rm;
   if (rm) return placePrompt(hover, held, {name, cost, missing}) + ' · ' + rm;
   const rot = held === 'hammer' ? '' : '<kbd>R</kbd>Rotate';
   if (hover.blocked) return escHtml(BLOCK_TEXT[hover.blocked] ?? '') + (rot && ' · ' + rot);
   if (held === 'hammer') return missing ? 'Floor needs ' + escHtml(missing) : '<kbd>Click</kbd>Build floor · ' + escHtml(cost);
   return hover.ok ? `<kbd>Click</kbd>Place ${escHtml(name)} · ${rot}` : rot;
+}
+
+// Hammer + X prompt for the one removal target (remove-target.js). name: what X removes ('' for
+// nothing aimed); why: refusal text or ''; holding: X is down, so releasing it removes.
+export function removePrompt(name, why, holding) {
+  if (!name) return holding ? 'Point at something to remove' : '';
+  if (why) return holding ? escHtml(why) : '<kbd>X</kbd>' + escHtml(why);
+  return holding ? 'Release X to remove ' + escHtml(name) : '<kbd>X</kbd>Remove ' + escHtml(name);
 }

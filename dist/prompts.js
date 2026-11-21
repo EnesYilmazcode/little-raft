@@ -76,6 +76,7 @@ export function statePrompt(s, opt = {}) {
     return null;
   }
   if (held === 'hammer') {
+    if (s.pieces?.removing) return null; // X held: the context prompt names the one removal target (or why not)
     if (!s.build?.hover) return {label:'Aim at the raft edge', muted:true};
     if (s.build.affordable) return [{key:'LMB', label:'Build floor'}, {label:costText(FLOOR_COST), muted:true}];
     const m = missingText(s.stock, FLOOR_COST);

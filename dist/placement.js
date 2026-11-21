@@ -70,17 +70,31 @@ export function decorCheck(hasTile, decor, d) {
 // ---------- Removal (hammer + X) ----------
 // Height of each piece's pick box above its base, in metres (roughly the model's solid part).
 export const PICK_HEIGHT = Object.freeze({sail:1.9, palm:.6, lantern:1.9, net:.25, bench:.55, crate:.85});
+// Pick boxes [half width, half depth, height] for decor without a placement FOOTPRINT, from each
+// model's bounds (stations, signal parts, water and bee kit). Any other type gets PICK_DEFAULT, so
+// every placed thing can be aimed at and removed (BUILD-2 / CRAFT-4).
+export const PICK_BOX = Object.freeze({
+  smelter:[.64, .66, 1.27], grill:[.42, .4, .55], researchtable:[.56, .34, .94], research:[.55, .4, 1],
+  purifier:[.5, .3, .75], rainbarrel:[.34, .34, .72], sprinkler:[.2, .2, .58], receiver:[.35, .3, .95],
+  antenna:[.3, .2, 2.3], flowerbox:[.35, .2, .42], beehive:[.3, .33, .8], candle:[.15, .15, .3],
+});
+export const PICK_DEFAULT = Object.freeze([.45, .45, 1]);
+export function pickBox(type) {
+  const f = FOOTPRINT[type];
+  if (f) return [f[0], f[1], PICK_HEIGHT[type] ?? 1];
+  return PICK_BOX[type] ?? PICK_DEFAULT;
+}
 const DECOR_BASE_Y = .22;
 
-// Nearest decor whose footprint box (rotated, PICK_HEIGHT tall) the raft-local ray o + t*d crosses
-// within maxT metres, or null. o and d are {x, y, z}.
-export function decorOnRay(decor, o, d, maxT = DECOR_REACH + 2) {
+// Nearest decor whose pick box (rotated) the raft-local ray o + t*d crosses within maxT metres:
+// {p, t} or null. o and d are {x, y, z}.
+export function decorHit(decor, o, d, maxT = DECOR_REACH + 2) {
   let best = null, bestT = maxT;
   for (const p of decor) {
-    const f = FOOTPRINT[p.type]; if (!f) continue;
+    const f = pickBox(p.type);
     const c = Math.cos(p.rot || 0), s = Math.sin(p.rot || 0), ox = o.x - p.x, oz = o.z - p.z;
     const lo = [ox * c - oz * s, o.y - DECOR_BASE_Y, ox * s + oz * c], ld = [d.x * c - d.z * s, d.y, d.x * s + d.z * c];
-    const hi = [f[0], PICK_HEIGHT[p.type] ?? 1, f[1]], low = [-f[0], 0, -f[1]];
+    const hi = [f[0], f[2], f[1]], low = [-f[0], 0, -f[1]];
     let t0 = 0, t1 = bestT;
     for (let i = 0; i < 3 && t0 <= t1; i++) {
       if (Math.abs(ld[i]) < 1e-9) { if (lo[i] < low[i] || lo[i] > hi[i]) t0 = Infinity; continue; }
@@ -89,8 +103,9 @@ export function decorOnRay(decor, o, d, maxT = DECOR_REACH + 2) {
     }
     if (t0 <= t1 && t0 < bestT) { bestT = t0; best = p; }
   }
-  return best;
+  return best ? {p:best, t:bestT} : null;
 }
+export const decorOnRay = (decor, o, d, maxT) => decorHit(decor, o, d, maxT)?.p ?? null;
 
 // Why floor cell (tx, tz) can't be removed: 'missing' | 'last' (the raft's only tile) | 'decor'
 // (something stands on it) | 'split' (the raft would break in two), or null when it can.
@@ -154,11 +169,11 @@ export function createGhosts(T, scene, raft, {floor, craft}) {
     return g;
   }
   function hide() { if (shown) shown.visible = false; shown = null; }
-  function show(kind, x, y, z, rot, ok, time) {
+  function show(kind, x, y, z, rot, ok, time, scale = 1) {
     const g = model(kind); if (!g) { hide(); return; }
     if (shown !== g) { hide(); shown = g; g.visible = true; }
     root.position.copy(raft.position); root.quaternion.copy(raft.quaternion);
-    g.position.set(x, y, z); g.rotation.y = rot;
+    g.position.set(x, y, z); g.rotation.y = rot; g.userData.ghostScale ??= g.scale.x; g.scale.setScalar(g.userData.ghostScale * scale); // > 1 for a removal ghost over the real model
     if (ok !== wasOk) { wasOk = ok; mat.color.copy(ok ? OK : BAD); mat.emissive.copy(ok ? OK : BAD); }
     mat.opacity = .5 + Math.sin(time * 4) * .06;
   }

@@ -120,9 +120,14 @@ test('SURV-2 r3: fc.reset clears every grill and rewrites the save; New game cal
   assert.match(ng, /fc\?\.reset\(\)/);
 });
 
-test('SURV-3 r3: the floor under a grill cannot be removed (client and host share floorRemoveWhy)', () => {
-  const fn = gameSrc.slice(gameSrc.indexOf('function floorRemoveWhy('), gameSrc.indexOf('function removePiece('));
-  assert.match(fn, /fc\?\.hasGrill\(tx, tz\)\) return 'decor'/);
+test('SURV-3 r3: the floor under a grill cannot be removed (client and host share removeWhy)', async () => {
+  const fn = gameSrc.slice(gameSrc.indexOf('function removeWhyFor('), gameSrc.indexOf('function removePiece('));
+  assert.match(fn, /hasGrill:\(x, z\) => !!fc\?\.hasGrill\(x, z\)/);
+  const { removeWhy } = await import(new URL('remove-target.js', base));
+  const { BLOCK_TEXT } = await import(new URL('build-rules.js', base));
+  const tiles = [[0, 0], [1, 0], [2, 0]];
+  assert.equal(removeWhy({ what: 'floor', x: 2, z: 0 }, { tiles, decor: [], decorM: [], players: [], hasGrill: (x, z) => x === 2 && z === 0 }), BLOCK_TEXT.decor);
+  assert.equal(removeWhy({ what: 'floor', x: 2, z: 0 }, { tiles, decor: [], decorM: [], players: [], hasGrill: () => false }), null);
   const h = fcMount(); h.action({ kind: 'fc:placeGrill', x: 2, z: 0 });
   assert.equal(h.api.hasGrill(2, 0), true); assert.equal(h.api.hasGrill(1, 0), false);
   h.api.dispose();
