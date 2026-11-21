@@ -85,6 +85,7 @@ SNAP = r"""(() => {
     pageErrors: P.errors.slice(0, 5),
     focused: document.hasFocus(), visibility: document.visibilityState,
     shellClaimsEsc: typeof window.raftDesktop?.claimEscape === 'function',
+    relockWait: document.body.classList.contains('relock'),
   };
 })()"""
 
@@ -495,11 +496,24 @@ class Run:
         if not s['options']:
             self.check(f'{cid}.open-eventually', 'pause menu opens within two Esc presses', False, s); return
         self.screenshot(f'{cid}-menu')
+        exits0 = self.js('__lrProbe.exits')
         self.key('Escape', 'Esc (in pause menu)'); self.settle(700)
         s = self.snap()
         self.window_alive(f'{cid}.window2', 'Esc in the pause menu')
         self.check(f'{cid}.resume', 'second Esc closes the pause menu and resumes the game',
                    not s['options'] and not s['dialogs'] and s['running'] and s['active'] is not False, s)
+        if self.real and s['shellClaimsEsc']:
+            # A shell that claims Escape hands the page a gesture for this press, so resuming can (and is meant to) relock.
+            ev = [e for e in s['events'] if e['type'] == 'change']
+            bounced = len(ev) >= 2 and ev[-2]['locked'] == 'world' and ev[-1]['locked'] is None
+            self.check(f'{cid}.relocked', 'Esc in the pause menu resumes into locked play when the shell claims Escape', self.has_lock(s),
+                       {'locked': s['locked'], 'resumeHint': s['resumeHint'], 'events': s['events'], 'exits': s['exits']},
+                       repro_extra='desktop/main.cjs claims Escape and calls window.raftEscape() with a user gesture; pause closes and the game re-requests lock; '
+                                   + (f'lock engages, then is dropped {ev[-1]["t"] - ev[-2]["t"]} ms later '
+                                      + ('(the page called exitPointerLock())' if s['exits'] != exits0 else 'with no exitPointerLock() call from the page')
+                                      + '; player is left unlocked'
+                                      + (' with no cursor or resume hint (body.relock) until the next click' if s['relockWait'] else '')
+                                      if bounced else 'lock was not re-acquired'))
         self.settle(800)
         self.check(f'{cid}.no-reopen', 'pause menu does not reopen on its own after resume', not self.snap()['options'])
         self.metrics.setdefault('after_pause_resume', {})[cid] = {'locked': s['locked'], 'resumeHint': s['resumeHint'], 'lockRequests': s['calls']}
@@ -545,6 +559,7 @@ class Run:
                 self.settle(dwell_ms)
                 self.key('Escape', f'Esc held {hold} ms ({where})', hold=hold, flush=False); held = hold; relocked_while_down = None
             self.settle(800)
+            self.flush()  # the hint/crosshair follow lock and dialog state on the next frame (~1 fps under swiftshader)
             s = self.snap()
             g = self.js(self.ACT_GAP); gap, claimed = g['gap'], g['claimed']
             self.metrics.setdefault('inventory_esc', {})[cid] = {'open_to_esc_ms': gap, 'held_ms': held, 'locked_before_release': relocked_while_down,
@@ -566,17 +581,20 @@ class Run:
             via = (f'desktop/main.cjs claims Escape and calls window.raftEscape() with a user gesture; the inventory closes '
                    f'{gap} ms after {key} and the game re-requests lock')
             page_exit = s['exits'] != exits0
+            left = ('body.relock: no cursor and no resume hint until the next click' if s['relockWait'] else
+                    'with the click-to-resume hint' if s['resumeHint'] else 'no resume hint shown')
             why = (f'{via}; lock engages, then is dropped {ev[-1]["t"] - ev[-2]["t"]} ms later '
                    + ('(the page called exitPointerLock())' if page_exit else
                       'with no exitPointerLock() call from the page: the browser ends it for the Escape press even though main.cjs '
                       'preventDefaults Escape in before-input-event')
-                   + '; player is left unlocked with the resume hint') if bounced else f'{via}; lock was not re-acquired'
+                   + f'; player is left unlocked ({left})') if bounced else f'{via}; lock was not re-acquired ({left})'
             if quick:
                 self.check(f'{cid}.relocked', 'closing the inventory with Esc puts the player back in locked play (lock holds after Esc is released)',
                            self.has_lock(s), {**detail, 'locked_before_release': relocked_while_down, 'shell_claims_esc': True}, repro_extra=why)
             else:
-                self.check(f'{cid}.resume-hint', 'closing the inventory after a long dwell relocks or shows the click-to-resume hint (no drag-look latch)',
-                           self.has_lock(s) or (s['resumeHint'] and not s['lockFallback']), {**detail, 'shell_claims_esc': True}, repro_extra=why)
+                # Relocking or waiting for a click (hint or settings.js body.relock) are both fine; latching drag-look is not.
+                self.check(f'{cid}.no-fallback', 'closing the inventory after a long dwell does not latch drag-look lockFallback',
+                           self.has_lock(s) or not s['lockFallback'], {**detail, 'shell_claims_esc': True, 'relockWait': s['relockWait']}, repro_extra=why)
         elif gap is not None and gap < self.ACTIVATION_MS - 500:
             detail['locked_before_release'] = relocked_while_down
             self.check(f'{cid}.relocked', 'closing the inventory with Esc puts the player back in locked play (lock holds after Esc is released)',
