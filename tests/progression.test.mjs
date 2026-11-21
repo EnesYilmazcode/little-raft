@@ -189,6 +189,9 @@ test('items: no unlock/recipe cycles and every item is reachable from the start'
     changed = false;
     if (have.has('fishingrod') && !have.has('fish')) { have.add('fish'); changed = true; }
     if (have.has('beehive') && have.has('flowerbox') && !have.has('honey')) { have.add('honey'); have.add('wax'); changed = true; } // [bees] hive harvest
+    if (!have.has('berries')) { have.add('berries'); changed = true; } // [juicer] island bushes (islands-layout lootFor)
+    if (have.has('palm') && !have.has('coconut')) { have.add('coconut'); changed = true; } // [juicer] palm planter harvest
+    if (have.has('juicer') && !have.has('mixcup')) { for (const k of ['berrycup', 'coconutcup', 'mixcup']) have.add(k); changed = true; } // [juicer] juicer output (cups of fresh water come from the watering lane's purifier)
     for (const id of ITEM_IDS) {
       const r = ITEMS[id].recipe;
       if (have.has(id) || !r || !unlocked(id)) continue;

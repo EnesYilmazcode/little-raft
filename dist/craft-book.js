@@ -41,7 +41,7 @@ export const ITEM_TEXT = Object.freeze({
   rope:       { desc: 'Palm fibre twisted into a sturdy cord.', use: 'Binds hammers, rods, nets and sails.' },
   fish:       { desc: 'A fresh catch from the open water.', use: 'Proof of a good day out on the waves.' },
   hook:       { desc: 'A scrap hook on a rope. Throw it at floating supplies.', use: 'Pulls in floating wood, leaves, plastic and barrels.' },
-  hammer:     { desc: 'A rope-bound building hammer.', use: 'Adds raft floor tiles (2 wood + 2 plastic each).' },
+  hammer:     { desc: 'A rope-bound building hammer.', use: 'Adds raft floor tiles (2 plank + 2 plastic each).' },
   fishingrod: { desc: 'A bamboo rod with a float and line.', use: 'Cast into the sea and wait for a bite to catch fish.' },
   sail:       { desc: 'A tall mast with a woven sail.', use: 'Decorates the raft; place it on a floor tile.' },
   palm:       { desc: 'A clay pot with a small palm tree.', use: 'A bit of island on your raft; place on a tile.' },
@@ -92,6 +92,12 @@ export const ITEM_TEXT = Object.freeze({
   bells:      { desc: 'Brass-bright scrap bars on a small frame.', use: 'Click to ring a note that fades out softly.' }, // [instruments]
   cookedfish: { desc: 'A fish grilled golden.', use: 'A hearty snack.' },
   flowerseed: { desc: 'A tiny seed from an island bush.', use: 'Plant it in a flower box.' }, // [bees]
+  berries:    { desc: 'Tart little berries from an island bush.', use: 'Snack on them, or juice them at a juicer.' }, // [juicer]
+  coconut:    { desc: 'A hairy brown coconut from your palm planter.', use: 'Juice it at a juicer with a cup of fresh water.' }, // [juicer]
+  berrycup:   { desc: 'A pink berry smoothie.', use: 'Drink it for food and water; you keep the cup.' }, // [juicer]
+  coconutcup: { desc: 'Cool, milky coconut in a cup.', use: 'Drink it for food and water; you keep the cup.' }, // [juicer]
+  mixcup:     { desc: 'Berries and coconut together.', use: 'The most filling drink; you keep the cup.' }, // [juicer]
+  juicer:     { desc: 'A hand-crank juicer.', use: 'Bring a cup of fresh water and two fruit, then press E.' }, // [juicer]
   flowerbox:  { desc: 'A planter full of bright blooms.', use: 'Place near a beehive; bees love it.' }, // [bees]
   beehive:    { desc: 'A cosy straw hive of friendly bees.', use: 'Place by flower boxes; collect honeycomb with E.' }, // [bees]
   honey:      { desc: 'Sweet, golden and sticky.', use: 'Glaze a grilled fish.' }, // [bees]
@@ -317,6 +323,11 @@ export function sortCraftableFirst(views) {
 // ---- where items come from ----
 // `tag` is the short text beside a missing ingredient; `how` is the tooltip line.
 export const ITEM_SOURCE = Object.freeze({
+  berries:    Object.freeze({ tag: 'island bushes', how: 'Pick bushes on islands; some give berries.' }), // [juicer]
+  coconut:    Object.freeze({ tag: 'palm planter', how: 'Harvest a ripe palm planter; it sometimes drops a coconut.' }), // [juicer]
+  berrycup:   Object.freeze({ tag: 'juicer', how: 'Use a juicer with a cup of fresh water and two berries.' }), // [juicer]
+  coconutcup: Object.freeze({ tag: 'juicer', how: 'Use a juicer with a cup of fresh water and two coconuts.' }), // [juicer]
+  mixcup:     Object.freeze({ tag: 'juicer', how: 'Use a juicer with a cup of fresh water, a berry and a coconut.' }), // [juicer]
   flowerseed: Object.freeze({ tag: 'island bushes', how: 'Pick bushes on islands; some drop flower seeds.' }),
   honey:   Object.freeze({ tag: 'beehive', how: 'Put a beehive near flower boxes, then press E on it to collect honeycomb.' }),
   wax:     Object.freeze({ tag: 'beehive', how: 'Collected with honey from a full beehive (E).' }),
