@@ -35,7 +35,7 @@ sys.path.insert(0, str(HERE.parent.parent / 'tools'))
 TOOL = 'playbot'
 LOOK_K = .0022            # game.js LOOK_SENSITIVITY (options.sensitivity defaults to 1)
 PITCH_LIMIT = 1.35        # game.js PITCH_LIMIT
-FOV_RANGE = (60, 95)      # settings.js fov min/max while running
+FOV_RANGE = (60, 100)     # settings.js fov min/max while running (95 before the onboarding build, 100 since)
 # Game seconds a hook may legitimately sit in a stage (hook-physics MAX_FLIGHT_TIME = 8; 'done' is ended next frame).
 HOOK_STUCK_SIM_S = {'flying': 12, 'done': 2}
 HOOK_STAGES = {'idle', 'flying', 'floating', 'reeling', 'done', 'fishing'}
@@ -276,6 +276,7 @@ class Bot:
 
     sample_t = None
     crashed = False
+    prev_bad_fov = False
 
     def check_sample(self, s, el):
         self.samples += 1
@@ -330,8 +331,12 @@ class Bot:
         if not finite(cam.get('x'), cam.get('y'), cam.get('z'), cam.get('fov'), cam.get('pitch'), cam.get('roll')):
             self.fail('camera_nonfinite', f'camera not finite: {cam}')
         else:
-            if not FOV_RANGE[0] - .01 <= cam['fov'] <= FOV_RANGE[1] + .01:
-                self.fail('camera_fov', f'camera fov {cam["fov"]} outside {FOV_RANGE} while running')
+            # game.js applies options.fov (vs the title's 48) in its own frame loop, so the sample taken in the frame
+            # where running flips can still see 48: only a value that persists into a second sample is a bug.
+            bad_fov = not FOV_RANGE[0] - .01 <= cam['fov'] <= FOV_RANGE[1] + .01
+            if bad_fov and self.prev_bad_fov:
+                self.fail('camera_fov', f'camera fov {cam["fov"]} outside {FOV_RANGE} while running (two samples in a row)')
+            self.prev_bad_fov = bad_fov
             if abs(cam['pitch']) > PITCH_LIMIT + 1e-6:
                 self.fail('camera_pitch', f'camera pitch {cam["pitch"]:.3f} beyond +-{PITCH_LIMIT}')
             if abs(cam['roll']) > .35:
