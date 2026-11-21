@@ -121,7 +121,7 @@ export function createSmelterModel(T) {
   // wooden pallet: two runners, four deck planks
   for (const x of [-0.46, 0.46]) W.push(K.plank(0.12, 0.08, 1.22, 0x6f4f31, x, 0.04, 0));
   [-0.45, -0.15, 0.15, 0.45].forEach((z, i) => W.push(K.plank(1.24, 0.05, 0.27, i % 2 ? 0x8e6b45 : 0x9a774c, 0, 0.105, z, 0, (K.rnd() - 0.5) * 0.04, 0)));
-  const B = 0.13, BZ = -0.08;
+  const B = 0.13, BZ = -0.12;
 
   // beehive body: rough lathe with coiled-clay colour bands and soot creeping up the top
   const prof = [[0, 0], [0.47, 0], [0.52, 0.1], [0.53, 0.3], [0.49, 0.5], [0.39, 0.66], [0.24, 0.78], [0.1, 0.83], [0, 0.84]]
@@ -150,9 +150,9 @@ export function createSmelterModel(T) {
     else if (inHole) c.lerp(new T.Color(0x3a2a22), 0.5);
     if (y > MH - 0.06) c.multiplyScalar(0.85);
   });
-  C.push(K.bake(collar, 0, B, BZ + 0.38));
+  C.push(K.bake(collar, 0, B, BZ + 0.44));
   // stone sill under the mouth + a couple of loose stones and a chimney
-  S.push(K.solid(new T.BoxGeometry(0.42, 0.05, 0.14), 0x8a857c, 0, B + 0.025, BZ + 0.6));
+  S.push(K.solid(new T.BoxGeometry(0.44, 0.05, 0.1), 0x8a857c, 0, B + 0.025, BZ + 0.68));
   S.push(K.pebble(0.09, 0x8c877d, -0.47, B + 0.05, 0.42));
   S.push(K.pebble(0.07, 0x7d786f, 0.5, B + 0.04, -0.46));
   S.push(K.pebble(0.06, 0x938d82, -0.42, B + 0.035, -0.48));
@@ -168,8 +168,8 @@ export function createSmelterModel(T) {
   // glow: the back of the mouth plus a little ember heap, one emissive mesh
   const glowShape = new T.Shape();
   glowShape.moveTo(-HW, HS); glowShape.lineTo(HW, HS); glowShape.lineTo(HW, HC); glowShape.absarc(0, HC, HW, 0, Math.PI, false); glowShape.lineTo(-HW, HS);
-  GL.push(K.bake(new T.ShapeGeometry(glowShape, 4), 0, B, BZ + 0.44));
-  for (const [x, s] of [[-0.07, 0.06], [0.05, 0.07], [0, 0.05]]) GL.push(K.bake(new T.IcosahedronGeometry(s, 0), x, B + HS + 0.02, BZ + 0.5, K.rnd(), K.rnd(), 0, 1, 0.6, 1));
+  GL.push(K.bake(new T.ShapeGeometry(glowShape, 4), 0, B, BZ + 0.56));
+  for (const [x, s] of [[-0.07, 0.06], [0.05, 0.07], [0, 0.05]]) GL.push(K.bake(new T.IcosahedronGeometry(s, 0), x, B + HS + 0.02, BZ + 0.6, K.rnd(), K.rnd(), 0, 1, 0.6, 1));
 
   K.add(g, W, M.wood, 'smelterPallet');
   K.add(g, C, M.clay, 'smelterClay');
