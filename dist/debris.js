@@ -2,7 +2,7 @@
 // export createDebris(T, type, getMaterial, opts?) -> THREE.Group
 //   type: 'wood' | 'leaf' | 'scrap' | 'barrel'
 //   getMaterial(colorString) -> shared MeshStandardMaterial (owned by engine, never disposed here)
-//   opts (optional): { seed:number, tilt:number (barrel axis tilt, radians; default ~0.2) }
+//   opts (optional): { seed:number, tilt:number (barrel axis tilt, radians; default ~0.2), lazy:boolean (see buildLater) }
 // Root is untransformed (engine positions/rotates it). Content is centered on the origin.
 // Each item is ONE mesh whose geometry and material are shared and cached per engine (flagged
 // userData.shared: the engine must not dispose them per item). seed picks one of 3 variants.
@@ -395,7 +395,7 @@ function cacheFor(T, getMaterial) {
   const plain = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, side: T.DoubleSide });
   const metal = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.15, side: T.DoubleSide });
   for (const m of [timber, plain, metal]) m.userData.shared = true;
-  c = { geos: new Map(), mats: { wood: timber, barrel: plain, leaf: plain, scrap: metal } };
+  c = { geos: new Map(), waiting: new Map(), mats: { wood: timber, barrel: plain, leaf: plain, scrap: metal } };
   caches.set(getMaterial, c);
   return c;
 }
@@ -416,6 +416,28 @@ function build(T, type, getMaterial, r, opts) {
   return geo;
 }
 
+// opts.lazy: a missing variant is built when the main thread is idle, one per callback, and the item
+// borrows an already built variant of its type until then (its mesh's geometry is swapped in place).
+// Boot spawns ~30 items, and building all twelve variants up front cost a few hundred milliseconds.
+const idle = (f) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(f, { timeout: 1500 }) : setTimeout(f, 30));
+function buildLater(T, c, type, v, getMaterial, opts) {
+  const key = type + v;
+  if (c.waiting.has(key)) return c.waiting.get(key);
+  const list = [];
+  c.waiting.set(key, list);
+  idle(() => {
+    c.waiting.delete(key);
+    let geo = c.geos.get(key); // a non-lazy call may have built it meanwhile
+    if (!geo) { geo = build(T, type, getMaterial, rng(v * 7919 + 17), opts); c.geos.set(key, geo); }
+    for (const m of list) m.geometry = geo;
+  });
+  return list;
+}
+function builtVariant(c, type) {
+  for (let v = 0; v < VARIANTS; v++) { const g = c.geos.get(type + v); if (g) return g; }
+  return null;
+}
+
 // Rough half-width on the water, for the ocean's foam collar.
 const FOAM_RADIUS = { wood: 0.95, leaf: 0.95, scrap: 0.75, barrel: 0.7 };
 
@@ -424,7 +446,8 @@ export function createDebris(T, type, getMaterial, opts = {}) {
   const c = cacheFor(T, getMaterial);
   const v = ((opts.seed != null ? opts.seed : Math.floor(Math.random() * 1e9)) >>> 0) % VARIANTS;
   const key = type + v;
-  let geo = c.geos.get(key);
+  let geo = c.geos.get(key), later = null;
+  if (!geo && opts.lazy && (geo = builtVariant(c, type))) later = buildLater(T, c, type, v, getMaterial, opts);
   if (!geo) { geo = build(T, type, getMaterial, rng(v * 7919 + 17), opts); c.geos.set(key, geo); }
   const root = new T.Group();
   root.name = `debris-${type}`;
@@ -434,6 +457,7 @@ export function createDebris(T, type, getMaterial, opts = {}) {
   m.name = `debris-${type}-model`;
   m.receiveShadow = true; // no castShadow: the water never receives it, so it only doubled draw calls
   root.add(m);
+  if (later) later.push(m);
   const size = geo.boundingBox.getSize(new T.Vector3());
   root.userData.size = { x: size.x, y: size.y, z: size.z };
   return root;
