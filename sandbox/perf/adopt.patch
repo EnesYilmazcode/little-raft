@@ -1,0 +1,256 @@
+diff --git a/dist/game.js b/dist/game.js
+index a43eafc..7fe9e8c 100644
+--- a/dist/game.js
++++ b/dist/game.js
+@@ -15,6 +15,8 @@ import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
+ import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
+ import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
+ import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
++import { mergeMeshesByMaterial } from './merge.js?build=v3-survival-ae77fa84ac2b';
++import { createPerfOverlay } from './perf-overlay.js?build=v3-survival-ae77fa84ac2b';
+ 
+ // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
+ // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
+@@ -58,7 +60,7 @@ export function mount(transfer = null) {
+   const clamp = T.MathUtils.clamp;
+   const ac = new AbortController(), signal = ac.signal;
+   const timers = new Set();
+-  let disposed = false, active = false, rafId = 0;
++  let disposed = false, active = false, rafId = 0, perf = null;
+ 
+   // ---------- Small utilities ----------
+   const newToken = () => crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36);
+@@ -297,8 +299,11 @@ export function mount(transfer = null) {
+     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
+     clothMat = new T.MeshStandardMaterial({color:'#fff3cf', side:T.DoubleSide, roughness:1});
+     buildViewmodels();
+-    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scene.add(g); }
+-    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; scene.add(g); }
++    const scenery = []; // islands and clouds never move: bake ~190 meshes into one mesh per material (perf)
++    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scenery.push(g); }
++    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; scenery.push(g); }
++    for (const m of mergeMeshesByMaterial(T, scenery, {name:'scenery'})) scene.add(m);
++    for (const g of scenery) g.traverse(c => c.geometry?.dispose());
+     rebuildRaft();
+     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
+     syncItems(); refreshPointerUI(true);
+@@ -348,9 +353,20 @@ export function mount(transfer = null) {
+     for (let i = 0; i < 7; i++) { const l = new T.Mesh(new T.ConeGeometry(.28, 1.5, 4), mat(i % 2 ? '#519b55' : '#72ae59')); l.rotation.z = 1.2; l.rotation.y = i * Math.PI * 2 / 7; l.position.set(Math.sin(i * Math.PI * 2 / 7) * .5, 1.65, Math.cos(i * Math.PI * 2 / 7) * .5); g.add(l); }
+     parent.add(g);
+   }
++  // The sun's shadow only lands on the deck, decor and avatars (the ocean shader ignores lights), so fit the
++  // shadow camera to the raft and size the map to keep roughly the old texel density.
++  function fitShadow() {
++    const r = Math.max(1, ...world.tiles.map(([x, z]) => Math.max(Math.abs(x), Math.abs(z)))) * 2 + 5, size = r > 14 ? 1024 : 512;
++    Object.assign(sun.shadow.camera, {left:-r, right:r, top:r, bottom:-r}); sun.shadow.camera.updateProjectionMatrix();
++    if (sun.shadow.mapSize.x !== size) { sun.shadow.mapSize.set(size, size); sun.shadow.map?.dispose(); sun.shadow.map = null; }
++  }
+   function rebuildRaft() {
+     for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
+-    world.tiles.forEach(([x, z]) => { const g = createFloor(T, x * 719 + z * 311, mat); g.position.set(x * 2, 0, z * 2); raft.add(g); });
++    // Deck tiles are static relative to the raft: bake all of them into one mesh per material (perf).
++    const floors = world.tiles.map(([x, z]) => { const g = createFloor(T, x * 719 + z * 311, mat); g.position.set(x * 2, 0, z * 2); return g; });
++    for (const m of mergeMeshesByMaterial(T, floors, {name:'raft-deck'})) raft.add(m);
++    for (const g of floors) g.userData.dispose();
++    fitShadow();
+     for (const d of world.decor) {
+       let detailed = null; try { detailed = createCraft(T, d.type); } catch (e) { console.warn('craft model failed', e); }
+       if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); raft.add(detailed); continue; }
+@@ -369,8 +385,11 @@ export function mount(transfer = null) {
+   // ---------- Floating supplies ----------
+   function makeItem(id) { const edge = Math.min(...world.tiles.map(t => t[1])) * 2 - 1, spread = Math.max(11, Math.max(...world.tiles.map(t => Math.abs(t[0]))) * 2 + 6); return {id, token:newToken(), type:SPAWN_TABLE[Math.floor(Math.random() * SPAWN_TABLE.length)], x:(Math.random() - .5) * spread * 2, z:edge - 3 - Math.random() * 17, phase:Math.random() * 6}; }
+   function itemModel(item) {
+-    if (item.type !== 'plastic') return createDebris(T, item.type, mat, {seed:item.id});
+-    const g = new T.Group(), jug = createPlastic(T); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
++    let g;
++    if (item.type !== 'plastic') g = createDebris(T, item.type, mat, {seed:item.id});
++    else { const jug = createPlastic(T); g = new T.Group(); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); }
++    g.traverse(o => { if (o.isMesh) o.castShadow = false; }); // nothing out at sea receives shadows: skip ~160 shadow draws
++    return g;
+   }
+   // Meshes are keyed by token, not id: a respawned item keeps its id but may change type.
+   const itemMeshes = new Map();
+@@ -818,6 +837,7 @@ export function mount(transfer = null) {
+   }
+   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, swimming:physics.swimming});
+   function frame() {
++    perf?.begin();
+     const now = performance.now(), dt = Math.min((now - last) / 1000, .05); last = now; elapsed += dt;
+     const dialog = uiBlocked();
+     if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { closeConnection(); toast('Host disconnected. You are back on your own raft.'); }
+@@ -840,6 +860,7 @@ export function mount(transfer = null) {
+     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
+     refreshPointerUI(); updateCharge(); updateContext(dialog);
+     renderer.render(scene, camera);
++    perf?.end();
+   }
+   function animate() {
+     if (!active || disposed) return;
+@@ -1169,6 +1190,7 @@ export function mount(transfer = null) {
+     if (disposed) return;
+     pause(); disposed = true; ac.abort();
+     try { settingsController?.destroy(); } catch {}
++    try { perf?.dispose(); } catch {}
+     try { survivalUI?.destroy?.(); } catch {}
+     for (const id of timers) clearTimeout(id); timers.clear();
+     unlisten(bindings.splice(0));
+@@ -1180,7 +1202,8 @@ export function mount(transfer = null) {
+   try {
+     if (!canvas) throw new Error('#world canvas missing');
+     init();
+-    settingsController = createSettings({onChange:next => { options = next; if (renderer) { renderer.setPixelRatio(Math.min(devicePixelRatio, next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3)); renderer.shadowMap.enabled = next.graphics !== 'low'; } }, onPause:clearInput, onResume:() => requestLock()});
++    perf = createPerfOverlay({renderer, maxPixelRatio:1.3, dynamic:/[?&]dynres\b/.test(location.search)}); // F3 or ?perf shows it
++    settingsController = createSettings({onChange:next => { options = next; if (renderer) { const cap = next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3; renderer.setPixelRatio(Math.min(devicePixelRatio, cap)); perf?.setMaxPixelRatio(cap); renderer.shadowMap.enabled = next.graphics !== 'low'; } }, onPause:clearInput, onResume:() => requestLock()});
+     survivalUI = createSurvivalUI({
+       getBag:() => localBag(),
+       onSelect:guard(i => selectSlot(i)),
+diff --git a/dist/merge.js b/dist/merge.js
+new file mode 100644
+index 0000000..1a7b495
+--- /dev/null
++++ b/dist/merge.js
+@@ -0,0 +1,57 @@
++// Static batching for Little Raft: bake many meshes into one mesh per (material, shadow flags).
++// Drop-in for dist/ (no imports; pass the three namespace like the other dist modules):
++//   import { mergeMeshesByMaterial } from './merge.js?build=...';
++//   const meshes = mergeMeshesByMaterial(T, [groupA, groupB], {name:'scenery'});
++// - Bakes each mesh's transform relative to `relativeTo` (default: world space), so the result is added to
++//   `relativeTo` (or the scene) with an identity transform.
++// - Output is non-indexed position/normal/uv (+color when every source in the bucket has it); uv is zero-filled
++//   where a source has none. Source geometries are NOT disposed (callers own them; dispose when replacing).
++// - Only visible meshes are merged; lines/points/skinned meshes are skipped.
++export function mergeMeshesByMaterial(T, roots, { name = 'merged', relativeTo = null } = {}) {
++  const inv = new T.Matrix4(), m = new T.Matrix4(), nm = new T.Matrix3(), v = new T.Vector3();
++  if (relativeTo) { relativeTo.updateMatrixWorld(true); inv.copy(relativeTo.matrixWorld).invert(); }
++  const buckets = new Map();
++  for (const root of roots) {
++    root.updateMatrixWorld(true);
++    root.traverseVisible(o => {
++      if (!o.isMesh || o.isSkinnedMesh || o.isInstancedMesh || Array.isArray(o.material)) return;
++      const key = o.material.uuid + (o.castShadow ? 'C' : '-') + (o.receiveShadow ? 'R' : '-') + (o.renderOrder | 0);
++      let b = buckets.get(key);
++      if (!b) buckets.set(key, b = { material: o.material, cast: o.castShadow, receive: o.receiveShadow, order: o.renderOrder, list: [], count: 0, color: true });
++      const g = o.geometry, n = g.index ? g.index.count : g.attributes.position.count;
++      b.list.push({ g, matrix: m.multiplyMatrices(inv, o.matrixWorld).clone() });
++      b.count += n; if (!g.attributes.color) b.color = false;
++    });
++  }
++  const out = [];
++  for (const b of buckets.values()) {
++    const pos = new Float32Array(b.count * 3), nor = new Float32Array(b.count * 3), uv = new Float32Array(b.count * 2);
++    const col = b.color ? new Float32Array(b.count * 3) : null;
++    let o = 0;
++    for (const { g, matrix } of b.list) {
++      nm.getNormalMatrix(matrix);
++      const P = g.attributes.position, N = g.attributes.normal, U = g.attributes.uv, C = g.attributes.color, I = g.index;
++      const n = I ? I.count : P.count, flip = matrix.determinant() < 0;
++      for (let k = 0; k < n; k++) {
++        // keep triangle winding when the transform mirrors
++        const kk = flip ? k - (k % 3) + [0, 2, 1][k % 3] : k, i = I ? I.getX(kk) : kk, w = o + k;
++        v.fromBufferAttribute(P, i).applyMatrix4(matrix); pos[w * 3] = v.x; pos[w * 3 + 1] = v.y; pos[w * 3 + 2] = v.z;
++        if (N) { v.fromBufferAttribute(N, i).applyMatrix3(nm).normalize(); nor[w * 3] = v.x; nor[w * 3 + 1] = v.y; nor[w * 3 + 2] = v.z; }
++        if (U) { uv[w * 2] = U.getX(i); uv[w * 2 + 1] = U.getY(i); }
++        if (col) { col[w * 3] = C.getX(i); col[w * 3 + 1] = C.getY(i); col[w * 3 + 2] = C.getZ(i); }
++      }
++      o += n;
++    }
++    const geo = new T.BufferGeometry();
++    geo.setAttribute('position', new T.BufferAttribute(pos, 3));
++    geo.setAttribute('normal', new T.BufferAttribute(nor, 3));
++    geo.setAttribute('uv', new T.BufferAttribute(uv, 2));
++    if (col) geo.setAttribute('color', new T.BufferAttribute(col, 3));
++    geo.computeBoundingBox(); geo.computeBoundingSphere();
++    const mesh = new T.Mesh(geo, b.material);
++    mesh.name = name; mesh.castShadow = b.cast; mesh.receiveShadow = b.receive; mesh.renderOrder = b.order;
++    mesh.matrixAutoUpdate = false; mesh.updateMatrix();
++    out.push(mesh);
++  }
++  return out;
++}
+diff --git a/dist/perf-overlay.js b/dist/perf-overlay.js
+new file mode 100644
+index 0000000..9287461
+--- /dev/null
++++ b/dist/perf-overlay.js
+@@ -0,0 +1,68 @@
++// Lightweight in-game perf overlay + optional dynamic resolution. Proposal for dist/perf-overlay.js.
++//   import { createPerfOverlay } from './perf-overlay.js?build=...';
++//   const perf = createPerfOverlay({renderer, maxPixelRatio:1.7, dynamic:false});
++//   // in frame(): perf.begin(); ...update + renderer.render(...)...; perf.end();
++//   // F3 (or ?perf in the URL) toggles the panel. perf.dispose() on unmount.
++// Cost when hidden: two performance.now() calls and an EMA per frame; no DOM writes, no allocations.
++// Cost when shown: one textContent write every 500 ms.
++//
++// Numbers shown:
++//   fps / frame: from rAF-to-rAF gaps (what the player feels, includes GPU stalls and vsync)
++//   cpu: begin()->end() time on the main thread (JS + WebGL command submission, not GPU time)
++//   p95: 95th percentile frame gap over the last 120 frames
++//   calls/tris: INCLUDING the shadow pass (three resets renderer.info after the shadow pass by default, which hides
++//              about half of the real draw calls); we switch info.autoReset off and reset in begin().
++//   geo/tex/prog: live GPU resources (leak watch: these should be flat while playing)
++//   dpr: current pixel ratio (moves when dynamic resolution is on)
++export function createPerfOverlay({ renderer, maxPixelRatio = 1.7, minPixelRatio = 0.6, dynamic = false, key = 'F3', parent = document.body } = {}) {
++  const el = document.createElement('div');
++  el.id = 'perfOverlay';
++  el.style.cssText = 'position:fixed;right:8px;top:8px;z-index:50;pointer-events:none;white-space:pre;font:11px/1.35 ui-monospace,Menlo,monospace;color:#eaf2ee;background:rgba(14,26,28,.72);padding:6px 8px;border-radius:6px';
++  let shown = /[?&]perf\b/.test(location.search);
++  el.hidden = !shown; parent.appendChild(el);
++  const onKey = e => { if (e.code === key) { shown = !shown; el.hidden = !shown; e.preventDefault(); } };
++  addEventListener('keydown', onKey);
++  renderer.info.autoReset = false;
++
++  const gaps = new Float32Array(120); let gi = 0, filled = 0;
++  let last = 0, t0 = 0, cpuEma = 0, gapEma = 16.7, minGap = 1000, hudClock = 0;
++  // dynamic resolution: hysteresis on the frame-gap EMA against the display's own refresh budget
++  let over = 0, under = 0, dpr = Math.min(devicePixelRatio, maxPixelRatio);
++
++  function begin() { t0 = performance.now(); renderer.info.reset(); }
++  function end() {
++    const now = performance.now(), cpu = now - t0;
++    const gap = last ? now - last : 16.7; last = now;
++    if (gap > 250) return; // tab was hidden / paused: ignore
++    cpuEma += (cpu - cpuEma) * 0.05; gapEma += (gap - gapEma) * 0.05;
++    minGap = Math.min(minGap * 1.0005, gap); // slowly forget: tracks the display refresh interval
++    gaps[gi] = gap; gi = (gi + 1) % gaps.length; filled = Math.min(filled + 1, gaps.length);
++    if (dynamic) {
++      const budget = Math.max(minGap, 1000 / 144);
++      if (gapEma > budget * 1.25) { over += gap; under = 0; } else if (gapEma < budget * 1.08) { under += gap; over = 0; } else over = under = 0;
++      let next = dpr;
++      if (over > 1000) next = Math.max(minPixelRatio, dpr - 0.15);
++      else if (under > 4000) next = Math.min(Math.min(devicePixelRatio, maxPixelRatio), dpr + 0.1);
++      if (next !== dpr) { dpr = +next.toFixed(2); renderer.setPixelRatio(dpr); over = under = 0; }
++    }
++    hudClock += gap;
++    if (shown && hudClock > 500) {
++      hudClock = 0;
++      const s = Array.from(gaps.subarray(0, filled)).sort((a, b) => a - b), p95 = s[Math.floor(s.length * 0.95)] ?? 0;
++      const i = renderer.info, mem = performance.memory ? (performance.memory.usedJSHeapSize / 1048576).toFixed(0) + 'MB' : '-';
++      el.textContent = `${(1000 / gapEma).toFixed(0)} fps  ${gapEma.toFixed(1)} ms  p95 ${p95.toFixed(1)}\n`
++        + `cpu ${cpuEma.toFixed(2)} ms  heap ${mem}\n`
++        + `calls ${i.render.calls}  tris ${(i.render.triangles / 1000).toFixed(1)}k\n`
++        + `geo ${i.memory.geometries}  tex ${i.memory.textures}  prog ${i.programs?.length ?? 0}\n`
++        + `dpr ${renderer.getPixelRatio().toFixed(2)}${dynamic ? ' auto' : ''}  shadow ${renderer.shadowMap.enabled ? (renderer.shadowMap.autoUpdate ? 'on' : 'cached') : 'off'}`;
++    }
++  }
++  return {
++    begin, end, el,
++    setDynamic(v) { dynamic = !!v; if (!v) { dpr = Math.min(devicePixelRatio, maxPixelRatio); renderer.setPixelRatio(dpr); } },
++    // call after the game applies its own pixel-ratio cap (settings change); dynamic mode then works under the new cap
++    setMaxPixelRatio(v) { maxPixelRatio = v; if (dynamic) { dpr = Math.min(dpr, v, devicePixelRatio); renderer.setPixelRatio(dpr); } else dpr = Math.min(devicePixelRatio, v); },
++    get pixelRatio() { return dpr; },
++    dispose() { removeEventListener('keydown', onKey); el.remove(); renderer.info.autoReset = true; },
++  };
++}
+diff --git a/dist/wood.js b/dist/wood.js
+index 4a15e07..528a479 100644
+--- a/dist/wood.js
++++ b/dist/wood.js
+@@ -13,5 +13,7 @@ export function createWoodMaterial(T, color) {
+   for(let r=1;r<6;r++){ctx.beginPath();ctx.ellipse(x,y,r*1.4,r*4.7,.1,0,Math.PI*2);ctx.strokeStyle=`rgba(68,37,19,${.18-r*.02})`;ctx.lineWidth=.7;ctx.stroke();}
+  }
+  const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=4;
+- return new T.MeshStandardMaterial({map:texture,bumpMap:texture,bumpScale:.018,roughness:.86,metalness:0});
++ // Bump reads 3 taps per pixel for its derivative: give it its own sampler without anisotropic filtering (perf).
++ const bump=texture.clone();bump.anisotropy=1;
++ return new T.MeshStandardMaterial({map:texture,bumpMap:bump,bumpScale:.018,roughness:.86,metalness:0});
+ }

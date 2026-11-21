@@ -58,3 +58,18 @@ export function mergeRaft(P) {
   for (const m of merged) raft.add(m);
   return { tiles: floors.length, meshes: merged.length };
 }
+
+// Wood materials from dist/wood.js (map + bumpMap of the same canvas texture).
+export const woodMaterials = P => { const s = new Set(); P.R.scene.traverse(o => { for (const m of [].concat(o.material || [])) if (m.bumpMap && m.map === m.bumpMap) s.add(m); }); return [...s]; };
+
+// 6. Keep the colour map's anisotropic filtering but sample the bump map (3 extra fetches per pixel for the
+//    derivative) with plain trilinear: a second texture object over the SAME canvas, anisotropy 1.
+export function woodBumpCheap(P) {
+  const seen = new Map();
+  for (const m of woodMaterials(P)) {
+    let b = seen.get(m.map);
+    if (!b) { b = m.map.clone(); b.anisotropy = 1; b.needsUpdate = true; seen.set(m.map, b); }
+    m.bumpMap = b; m.needsUpdate = true;
+  }
+  return seen.size;
+}

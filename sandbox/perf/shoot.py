@@ -7,7 +7,7 @@ Usage: python sandbox/perf/shoot.py [--dist DIR] [--only a,b] [--frames N] [--ds
 Writes PNGs to sandbox/perf/shots/ and sandbox/perf/results.json, prints the same JSON.
 SwiftShader renders on the CPU: compare scenarios to each other, never to a real GPU.
 """
-import sys, json, threading, functools, http.server, socketserver, argparse, shutil, os
+import re, sys, json, threading, functools, http.server, socketserver, argparse, shutil, os
 from pathlib import Path
 from collections import defaultdict
 from playwright.sync_api import sync_playwright
@@ -57,7 +57,12 @@ SCENARIOS = {
     'hide-ocean':      "P.R.scene.getObjectByName('ocean').visible = false;",
     'hide-viewmodels': "P.R.camera.children.forEach(o => o.visible = false); P.R.camera.children.forEach(o => Object.defineProperty(o, 'visible', {get: () => false, set() {}}));",
     'hide-raft':       "P.R.scene.children.filter(o => o.isGroup && o.children.some(c => c.name === 'raft-floor')).forEach(o => o.visible = false);",
-    'all-safe':        'F.itemsNoShadow(P); F.shadowFit(P); F.mergeScenery(P); F.mergeRaft(P);',
+    'wood-no-bump':    "F.woodMaterials(P).forEach(m => { m.bumpMap = null; m.needsUpdate = true; });",
+    'wood-aniso-1':    "F.woodMaterials(P).forEach(m => { m.map.anisotropy = 1; m.map.needsUpdate = true; });",
+    'wood-bump-aniso1': "F.woodBumpCheap(P);",
+    'raft-no-receive': "P.R.scene.children.filter(o => o.isGroup && o.children.some(c => c.name === 'raft-floor')).forEach(o => o.traverse(c => { c.receiveShadow = false; }));",
+    'all-safe':        'F.itemsNoShadow(P); F.shadowFit(P); F.mergeScenery(P); F.mergeRaft(P); F.woodBumpCheap(P);',
+    'baseline-2':      '',
 }
 only = [s for s in args.only.split(',') if s] or list(SCENARIOS)
 
@@ -71,9 +76,10 @@ def tree_cpu():
         try:
             st = open(f'/proc/{d}/stat').read(); rest = st[st.rindex(')') + 2:].split()
             ppid, ut, stt = int(rest[1]), int(rest[11]), int(rest[12])
-            cmd = open(f'/proc/{d}/cmdline', 'rb').read().split(b'\0')
+            cmd = open(f'/proc/{d}/cmdline', 'rb').read().replace(b'\0', b' ').decode('latin1')
         except Exception: continue
-        typ = next((c.decode()[7:] for c in cmd if c.startswith(b'--type=')), 'browser' if b'chrome' in cmd[0] else 'other')
+        mt = re.search(r'--type=(\S+)', cmd)
+        typ = mt.group(1) if mt else ('browser' if 'chrome' in cmd.split(' ')[0] else 'other')
         kids[ppid].append(int(d)); info[int(d)] = (typ, (ut + stt) / TICK)
     out = defaultdict(float); stack = [os.getpid()]
     while stack:
@@ -150,17 +156,15 @@ with sync_playwright() as p:
         r = measure(page, args.frames)
         r['census'] = page.evaluate('__perf.census()')
         r['state'] = page.evaluate("(()=>{const s=raftDebug.state;return {pointerLocked:s.pointerLocked,tiles:s.tiles,items:s.items}})()")
-        if name == 'baseline':
+        if name == 'baseline' and not args.no_cdp:
             r['mainPassOnly'] = page.evaluate('__perf.mainOnly()')
             if not args.no_cdp: r['cdp'] = cdp_profile(page)
-            # JS-only cost: same frames without gl.finish (render submit cost only)
-            page.evaluate('__perf.setFinish(false)'); r['noFinish'] = measure(page, args.frames); page.evaluate('__perf.setFinish(true)')
         # freeze the scene for comparable stills: pause via raftDebug is not exposed, so shoot immediately
         shotp = out / f"game-{args.tag + '-' if args.tag else ''}{name}{'-dsf' + str(args.dsf) if args.dsf != 1 else ''}.png"
         page.screenshot(path=str(shotp)); r['shot'] = str(shotp.relative_to(ROOT)) if shotp.is_relative_to(ROOT) else str(shotp)
         r['errors'] = errs
         report['scenarios'][name] = r
-        print(name, json.dumps({k: r[k] for k in ('cpuMsPerFrame', 'frameMs', 'logicMs', 'calls', 'triangles', 'programs', 'pixelRatio')}), file=sys.stderr, flush=True)
+        print(name, json.dumps({k: r[k] for k in ('cpuMsPerFrame', 'submitMs', 'submitMin', 'logicMs', 'calls', 'triangles', 'programs', 'pixelRatio')}), file=sys.stderr, flush=True)
         ctx.close()
     b.close()
 srv.shutdown()

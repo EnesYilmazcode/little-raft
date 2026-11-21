@@ -60,7 +60,8 @@ export function createPerfOverlay({ renderer, maxPixelRatio = 1.7, minPixelRatio
   return {
     begin, end, el,
     setDynamic(v) { dynamic = !!v; if (!v) { dpr = Math.min(devicePixelRatio, maxPixelRatio); renderer.setPixelRatio(dpr); } },
-    setMaxPixelRatio(v) { maxPixelRatio = v; dpr = Math.min(dpr, v, devicePixelRatio); renderer.setPixelRatio(dpr); },
+    // call after the game applies its own pixel-ratio cap (settings change); dynamic mode then works under the new cap
+    setMaxPixelRatio(v) { maxPixelRatio = v; if (dynamic) { dpr = Math.min(dpr, v, devicePixelRatio); renderer.setPixelRatio(dpr); } else dpr = Math.min(devicePixelRatio, v); },
     get pixelRatio() { return dpr; },
     dispose() { removeEventListener('keydown', onKey); el.remove(); renderer.info.autoReset = true; },
   };

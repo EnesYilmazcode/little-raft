@@ -7,6 +7,8 @@
 //    numbers hide shadow draw calls).
 // window.__perf.measure(n) -> {frameMs, renderMs, logicMs, calls, callsMain, triangles, ...}
 (() => {
+  // Deterministic world: the game spawns floating items with Math.random. Seed it so every scenario sees the same sea.
+  if (!/[?&]noseed\b/.test(location.search)) { let a = 12345; Math.random = () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
   const px = new Uint8Array(4);
   const P = window.__perf = { frames: [], recording: false, finish: true, R: null };
   const raf = window.requestAnimationFrame.bind(window);
@@ -26,6 +28,7 @@
       r.info.reset();
       const t0 = performance.now();
       orig.call(r, s, c);
+      if (P.cur) P.cur.submit = (P.cur.submit || 0) + performance.now() - t0; // JS + WebGL command encoding only
       if (P.recording && P.finish) { const gl = P.R.gl; gl.finish(); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); } // 1px readback blocks until the GPU (SwiftShader) is done
       const dt = performance.now() - t0;
       if (P.cur) {
@@ -58,7 +61,7 @@
       res({
         frames: f.length,
         frameMs: avg(f.map(x => x.total)), frameP95: q(f.map(x => x.total), 0.95), frameWorst: +Math.max(...f.map(x => x.total)).toFixed(2),
-        renderMs: avg(f.map(x => x.render)), logicMs: avg(f.map(x => x.total - x.render)), logicP95: q(f.map(x => x.total - x.render), 0.95),
+        renderMs: avg(f.map(x => x.render)), submitMs: q(f.map(x => x.submit || 0), 0.5), submitMin: +Math.min(...f.map(x => x.submit || 0)).toFixed(2), logicMs: avg(f.map(x => x.total - x.render)), logicP95: q(f.map(x => x.total - x.render), 0.95),
         rafGapMs: avg(gaps),
         calls: Math.round(avg(f.map(x => x.calls ?? 0))), triangles: Math.round(avg(f.map(x => x.triangles ?? 0))),
         geometries: info.memory.geometries, textures: info.memory.textures, programs: info.programs.length,
