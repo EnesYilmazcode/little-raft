@@ -26,10 +26,10 @@ test('help opened from the title menu returns to the menu', () => {
 });
 
 test('inventory slots shrink to fit a 900px window', () => {
-  // 10 slots + gaps + 300px crafting column + padding must fit inside 96vw at Electron's minWidth.
-  assert.match(read('survival-ui.js'), /#inventory\.sv-inv\{--s:min\(56px,calc\(\(96vw - 380px\) \/ 10 - 6px\)\)/);
-  const s = Math.min(56, (0.96 * 900 - 380) / 10 - 6);
-  assert.ok(10 * s + 9 * 6 + 24 + 300 + 14 + 28 <= 0.96 * 900);
+  // 10 slots + gaps + 324px crafting column + padding must fit inside 96vw at Electron's minWidth.
+  assert.match(read('survival-ui.js'), /#inventory\.sv-inv\{--s:min\(56px,calc\(\(96vw - 410px\) \/ 10 - 6px\)\)/);
+  const s = Math.min(56, (0.96 * 900 - 410) / 10 - 6);
+  assert.ok(10 * s + 9 * 6 + 24 + 324 + 14 + 28 <= 0.96 * 900);
 });
 
 test('water icon differs from the empty cup', () => {
