@@ -17,6 +17,8 @@ import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84a
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
+import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
+export { PROTOCOL }; // live.js reads the running engine's protocol from here
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -181,6 +183,10 @@ export function mount(transfer = null) {
     if (raw) { try { const v = cleanWorld(JSON.parse(raw)); if (v) world = v; } catch {} }
     const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
   }
+  // Revision of the save this tab last loaded or wrote. Another tab writing a newer one stops our autosave.
+  const storedRev = () => { try { return saveRevision(localStorage.getItem(SAVE)); } catch { return 0; } };
+  let saveRev = isInt(X?.saveRev) ? X.saveRev : storedRev();
+  let saveBlocked = !!X?.saveBlocked;
   let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghost, rope, ropeAttr, hookMesh, friend, player, sun;
   let hookHands = null, hammerHands = null, rodHands = null, rodModel = null, rodTip = null, clothMat;
   let survivalUI = null, settingsController = null, options = {sensitivity:1, fov:75, cameraMotion:.35, volume:.5, graphics:'medium'};
@@ -207,7 +213,7 @@ export function mount(transfer = null) {
   let seq = isInt(X?.seq) ? X.seq : 0, lastSeqSent = Number.isFinite(X?.lastSeqSent) ? X.lastSeqSent : 0, guestAck = isInt(X?.guestAck) ? X.guestAck : 0;
   let lastHostMessage = X?.lastHostMessage || performance.now(), lastGuestMessage = X?.lastGuestMessage || performance.now();
   let joinTimer = 0, joinDeadline = Number.isFinite(X?.joinDeadline) ? X.joinDeadline : 0;
-  let netClock = 0, saveClock = 0, networkTick = 0, toastTimer = 0, wheelAcc = 0;
+  let netClock = 0, lastSaveAt = performance.now(), lastNetSendAt = 0, toastTimer = 0, wheelAcc = 0, peerHidden = !!X?.peerHidden, heartbeat = 0;
   let noticeText = '', noticeUntil = 0, contextCache = null, uiFailed = false;
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
@@ -684,10 +690,19 @@ export function mount(transfer = null) {
     world.hostInventory = hostBag.snapshot(); world.guestInventory = guestBag.snapshot();
     world.stock = legacyStock(hostBag); world.hookHealth = hookDurability(hostBag);
   }
+  function blockSave() {
+    if (saveBlocked) return; saveBlocked = true;
+    setText('#saveStatus', 'This raft was saved in another tab. This tab stopped saving so it will not overwrite it. Reload to continue from that save.');
+    notice('Saved in another tab. This tab stopped saving', 3200);
+  }
   function save() {
-    if (role === 'guest' || disposed) return;
+    if (role === 'guest' || disposed || saveBlocked) return;
     syncWorldInventories();
-    try { localStorage.setItem(SAVE, JSON.stringify({...world, items:[]})); }
+    try {
+      const plan = planSave(localStorage.getItem(SAVE), saveRev);
+      if (!plan.ok) { blockSave(); return; }
+      localStorage.setItem(SAVE, JSON.stringify({...world, items:[], rev:plan.rev, savedAt:Date.now()})); saveRev = plan.rev;
+    }
     catch { saveAvailable = false; setText('#saveStatus', 'Browser storage is full or unavailable. This session will not be saved.'); }
   }
 
@@ -835,8 +850,7 @@ export function mount(transfer = null) {
   function frame() {
     const now = performance.now(), dt = Math.min((now - last) / 1000, .05); last = now; elapsed += dt;
     const dialog = uiBlocked();
-    if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { closeConnection(); toast('Host disconnected. You are back on your own raft.'); }
-    if (role === 'host' && conn?.open && now - lastGuestMessage > 8000) { const stale = conn; conn = null; unbindTarget(stale); stale.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); }
+    checkPeerStale(now);
     ocean.update(elapsed, camera);
     updateRaft(dt); movePlayer(dt, running && !dialog);
     updateAvatars(dt); updateCamera(dt);
@@ -850,12 +864,27 @@ export function mount(transfer = null) {
         for (const net of world.decor.filter(d => d.type === 'net')) { const it = pickNetItem(world.items, net, {held:heldTokens, isPending, fits}); if (it) applyAction({kind:'collect', id:it.id, token:it.token, net:true}, 'host'); }
       }
     }
-    if (running) { saveClock += dt; if (saveClock > 3) { saveClock = 0; save(); } }
-    if (conn?.open) { networkTick += dt; if (networkTick > .12) { networkTick = 0; send(role === 'host' ? hostState() : {type:'move', me:pose(), held:caughtList(castOut()).map(c => c.token)}); } }
+    if (running) { const t = wallTick(now, lastSaveAt, 3000); lastSaveAt = t.next; if (t.due) save(); } // wall clock: dt is capped
+    if (conn?.open) { const t = wallTick(now, lastNetSendAt, 120); lastNetSendAt = t.next; if (t.due) send(role === 'host' ? hostState() : {type:'move', me:pose(), held:caughtList(castOut()).map(c => c.token)}); }
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     refreshPointerUI(); updateCharge(); updateContext(dialog);
     renderer.render(scene, camera);
   }
+  // Peer liveness. rAF stops in hidden tabs, so a timer keeps the channel warm and each side says when it is
+  // hidden; a hidden peer is never timed out (the data channel's 'close' still ends the session).
+  function checkPeerStale(now) {
+    if (role === 'guest' && networkReady && peerStale(now, lastHostMessage, peerHidden)) { closeConnection(); toast('Host disconnected. You are back on your own raft.'); }
+    if (role === 'host' && conn?.open && peerStale(now, lastGuestMessage, peerHidden)) { const stale = conn; conn = null; unbindTarget(stale); stale.close(); other = null; networkReady = false; peerHidden = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); }
+  }
+  function pulse() {
+    if (disposed || !conn?.open) return;
+    const now = performance.now();
+    if (document.hidden) { // no frames here: keep the peer fed (the host's world still changes from guest actions)
+      send(role === 'host' && networkReady ? hostState() : {type:'hidden'}); lastNetSendAt = now;
+    } else if (now - lastNetSendAt > HEARTBEAT_MS) { send({type:'ping'}); lastNetSendAt = now; }
+    checkPeerStale(now);
+  }
+  heartbeat = setInterval(pulse, HEARTBEAT_MS);
   function animate() {
     if (!active || disposed) return;
     rafId = requestAnimationFrame(animate);
@@ -927,6 +956,15 @@ export function mount(transfer = null) {
   on(window, 'keyup', e => { keys[e.code] = false; });
   on(window, 'blur', clearInput);
   on(window, 'beforeunload', () => { save(); send({type:'leaving'}); try { conn?.close(); peer?.destroy(); } catch {} });
+  on(document, 'visibilitychange', () => {
+    send({type:document.hidden ? 'hidden' : 'visible'}); lastNetSendAt = performance.now();
+    if (document.hidden && running) save(); // a hidden tab may be discarded without beforeunload
+  });
+  on(window, 'pagehide', () => { if (running) save(); });
+  on(window, 'storage', e => { // another tab wrote our save key
+    if (e.key !== SAVE || role === 'guest') return;
+    if (saveRevision(e.newValue) > saveRev) blockSave();
+  });
   on(window, 'resize', () => { if (!camera) return; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
   // DOM property handlers: a newer mount simply overwrites these; a failed mount restores the previous ones.
@@ -955,7 +993,9 @@ export function mount(transfer = null) {
     return {world:w, host:bags.host.snapshot(), guest:bags.guest.snapshot(), physics:null};
   }
   function restoreOwnRaft() {
-    const b = normaliseBackup(ownWorldBackup) ?? savedOwnRaft(); ownWorldBackup = null; remoteBag = null;
+    const newer = storedRev() > saveRev; // another tab (e.g. the host in this browser) saved since we joined: never restore over it
+    const b = (newer ? null : normaliseBackup(ownWorldBackup)) ?? savedOwnRaft(); ownWorldBackup = null; remoteBag = null;
+    if (newer) { saveRev = storedRev(); saveBlocked = false; }
     hook = null; fishWait = 0; charging = null; reeling = false; lastCaughtCount = 0; pending.clear();
     world = b.world; hostBag = snapBag(b.host) ?? new Bag(); guestBag = snapBag(b.guest) ?? new Bag();
     if (b.physics) physics = new PlayerPhysics(b.physics); else { const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); }
@@ -963,7 +1003,7 @@ export function mount(transfer = null) {
     if (scene) { syncItems(); rebuildRaft(); }
   }
   function closeConnection() {
-    joinTimer = cancelTimer(joinTimer); joinDeadline = 0; networkReady = false;
+    joinTimer = cancelTimer(joinTimer); joinDeadline = 0; networkReady = false; peerHidden = false;
     const oldConn = conn, oldPeer = peer; conn = null; peer = null; other = null;
     unlisten(bindings.splice(0));
     try { oldConn?.close(); } catch {} try { oldPeer?.destroy(); } catch {}
@@ -1009,13 +1049,14 @@ export function mount(transfer = null) {
     listen(c, 'open', () => {
       if (conn !== c) return;
       if (isHost) {
-        lastGuestMessage = performance.now(); guestAck = 0; wornCasts.guest = null;
+        lastGuestMessage = performance.now(); guestAck = 0; wornCasts.guest = null; peerHidden = false;
         networkReady = true; setStatus('Connected! Your brother is aboard.'); setConnectionLabel(`TWO ABOARD · ${room.toUpperCase()}`);
         $('#crew')?.close(); start(); toast('Your brother joined the raft!'); send(hostState());
       } else setStatus('Connected. Loading your brother’s raft…'); // ready only after the first valid state
     });
     listen(c, 'data', data => {
       if (conn !== c || !data || typeof data !== 'object') return;
+      if (data.type === 'hidden' || data.type === 'visible') peerHidden = data.type === 'hidden';
       if (data.type === 'leaving') { if (isHost) { const old = conn; conn = null; unbindTarget(old); old.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); } else closeConnection(); toast('Your brother left the raft.'); return; }
       if (isHost) {
         lastGuestMessage = performance.now();
@@ -1023,6 +1064,7 @@ export function mount(transfer = null) {
         if (data.type === 'move') { other = validPose(data.me) ?? other; guestHeld.note(cleanHeldTokens(data.held), performance.now()); }
         return;
       }
+      if (data.type === 'ping' || data.type === 'hidden' || data.type === 'visible') { lastHostMessage = performance.now(); return; }
       if (data.type === 'state') {
         lastHostMessage = performance.now();
         const w = cleanWorld(data.world, true); if (!w) return;
@@ -1048,7 +1090,7 @@ export function mount(transfer = null) {
     });
     listen(c, 'close', () => {
       if (conn !== c) return;
-      unbindTarget(c); conn = null; networkReady = false; other = null;
+      unbindTarget(c); conn = null; networkReady = false; other = null; peerHidden = false;
       if (isHost) { setConnectionLabel('BROTHER LEFT · ROOM OPEN'); toast('Your brother left. Your raft is still here.'); return; }
       joinTimer = cancelTimer(joinTimer); joinDeadline = 0;
       const p = peer; peer = null; unlisten(bindings.splice(0)); try { p?.destroy(); } catch {}
@@ -1071,7 +1113,7 @@ export function mount(transfer = null) {
     if (!/^[a-z]{6}$/.test(code)) return setStatus('Enter the six letters from your brother’s screen.');
     closeConnection();
     if (typeof globalThis.Peer !== 'function') { setStatus('Online play is unavailable. Try solo for now.'); return; }
-    save(); // role is still solo here: persist our own raft before leaving it
+    if (storedRev() <= saveRev) save(); // role is still solo here: persist our own raft, unless another tab saved newer
     ownWorldBackup = {world, host:hostBag.snapshot(), guest:guestBag.snapshot(), physics:physics.capture()};
     role = 'guest'; room = code; hook = null; fishWait = 0; charging = null; reeling = false; remoteBag = null; seq = 0; lastSeqSent = 0;
     setStatus('Finding your brother’s raft…');
@@ -1154,7 +1196,7 @@ export function mount(transfer = null) {
       wornCasts:{...wornCasts}, seq, lastSeqSent, guestAck,
       joinDeadline:joinTimer ? joinDeadline : 0, saveAvailable, lockFallback, keys:{...keys},
       charging:charging ? {...charging} : null, reeling, down:down ? {...down} : null,
-      bindings:bindings.slice(), renderer, lastHostMessage, lastGuestMessage,
+      bindings:bindings.slice(), renderer, lastHostMessage, lastGuestMessage, peerHidden, saveRev, saveBlocked,
       raftPose:raft ? {y:raft.position.y, rx:raft.rotation.x, rz:raft.rotation.z} : {...raftPose},
     };
   }
@@ -1184,7 +1226,7 @@ export function mount(transfer = null) {
     pause(); disposed = true; ac.abort();
     try { settingsController?.destroy(); } catch {}
     try { survivalUI?.destroy?.(); } catch {}
-    for (const id of timers) clearTimeout(id); timers.clear();
+    for (const id of timers) clearTimeout(id); timers.clear(); clearInterval(heartbeat);
     unlisten(bindings.splice(0));
     try { if (window.raftDebug === debugApi) delete window.raftDebug; } catch {}
     disposeScene();
