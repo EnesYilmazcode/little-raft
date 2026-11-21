@@ -481,6 +481,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let curSelected = -1;
   let tools = null, hotEls = [];
   let recipes = [], recipeEls = [], groups = [];
+  let markedPick; // recipe id whose row carries .sv-pick; undefined after a rebuild (every row gets repainted)
   let activeTab = dlg.dataset.svTab || null, pickId = dlg.dataset.svPick || null, shownPick = null, ingEls = [];
   let hold = null, btnDenyTimer = 0, countTimer = 0;
   let pickedByUser = false; // false: pickId is an automatic default, re-chosen on open once states are known
@@ -521,6 +522,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       shownPick = null;
     }
     const byId = new Map(recipes.map(r => [r.id, r]));
+    markedPick = undefined;
     recipeEls = [...rlist.querySelectorAll('.sv-recipe')].map(el => ({
       el, r: byId.get(el.dataset.recipe), cat: el.dataset.cat, sub: el.querySelector('.sv-rsub'), badge: el.querySelector('.sv-rbadge'),
       sig: null, rows: [], state: 'missing', times: 0,
@@ -557,7 +559,10 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     try { v.el.focus({ preventScroll: true }); v.el.scrollIntoView({ block: 'nearest' }); } catch {}
   }
   function applyPick() {
-    for (const v of recipeEls) { const on = v.r.id === pickId; v.el.classList.toggle('sv-pick', on); v.el.setAttribute('aria-current', String(on)); }
+    const mark = (v, on) => { v.el.classList.toggle('sv-pick', on); v.el.setAttribute('aria-current', String(on)); };
+    if (markedPick === undefined) for (const v of recipeEls) mark(v, v.r.id === pickId);
+    else if (markedPick !== pickId) { const was = viewOf(markedPick), now = viewOf(pickId); if (was) mark(was, false); if (now) mark(now, true); }
+    markedPick = pickId;
     if (pickId) dlg.dataset.svPick = pickId;
     paintPin();
     const v = viewOf(pickId);
