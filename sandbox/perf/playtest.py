@@ -3,6 +3,7 @@ through dist/live.js, and check that the incremental deck batch matches a from-s
 
 Usage: python sandbox/perf/playtest.py --dist DIR [--out DIR] [--tag NAME] [--swaps 4]
 DIR is copied to a temp folder first (hot-swap rewrites version.json there), so dist/ is never touched.
+The deck is the 'raft-floors' group (deck.js createRaftMesh on stock, deck-cache.js when patched).
 Prints JSON: per step tiles/decor, renderer.info.memory (geometries, textures), programs, main-pass draw calls,
 JS heap, long tasks during each action, and a deck checksum (vertex count and position sums per deck mesh, raft
 space) taken after the incremental builds and again after each hot swap (a full rebuild from world.tiles).
@@ -15,6 +16,7 @@ from playwright.sync_api import sync_playwright
 ap = argparse.ArgumentParser()
 ap.add_argument('--dist', required=True); ap.add_argument('--out', default=str(Path(__file__).resolve().parent / 'shots'))
 ap.add_argument('--tag', default='patched'); ap.add_argument('--swaps', type=int, default=4); ap.add_argument('--floors', type=int, default=8)
+ap.add_argument('--big', action='store_true', help='start from a 5x5 raft with 8 decorations (rebuild cost grows with both)')
 a = ap.parse_args()
 out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
 tmp = Path(tempfile.mkdtemp(prefix='raft-play-')); dist = tmp / 'dist'
@@ -35,10 +37,16 @@ slots[2] = {'kind': 'sail', 'count': 2}; slots[3] = {'kind': 'lantern', 'count':
 for i, k in enumerate(['wood', 'wood', 'plastic', 'plastic']): slots[8 + i] = {'kind': k, 'count': 20}
 SAVE = {'tiles': [[x, z] for z in [-1, 0, 1] for x in [-1, 0, 1]], 'decor': [], 'stock': {}, 'fish': 0, 'collected': 0,
         'hostInventory': {'slots': slots, 'selected': 0}}
+if a.big:
+    SAVE['tiles'] = [[x, z] for z in range(-2, 3) for x in range(-2, 3)]
+    SAVE['decor'] = [{'type': t, 'x': x, 'z': z} for t, x, z in [('sail', -2, 2), ('palm', 2, 2), ('lantern', -2, -2), ('crate', 2, -2), ('bench', -2, 0), ('net', 2, 0), ('sail', 0, 2), ('crate', 1, -2)]]
 
 HOOK = """
 window.__longtasks = [];
 try { new PerformanceObserver(l => { for (const e of l.getEntries()) __longtasks.push(Math.round(e.duration)); }).observe({entryTypes:['longtask']}); } catch {}
+// Build hitch: time spent in input handlers (a floor or decoration is built synchronously inside the click).
+window.__handlerMs = [];
+for (const t of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click']) { let t0 = 0; addEventListener(t, () => { t0 = performance.now(); }, true); addEventListener(t, () => { const d = performance.now() - t0; if (d > 3) __handlerMs.push(Math.round(d)); }, false); }
 HTMLCanvasElement.prototype.requestPointerLock = function () { return Promise.reject(new Error('headless')); };
 """
 # Capture the live renderer/scene each frame (survives hot swaps: same vendor module instance, new renderer).
@@ -51,21 +59,21 @@ CAPTURE = """async () => { const T = await import(new URL('vendor/three.module.j
 LEAKS = """() => { const out = {}; for (const [g, path] of window.__before) if (!g.__gone) out[path] = (out[path] || 0) + 1; window.__before = new Map(window.__seen); return out; }"""
 SAMPLE = """() => { const r = __R, s = __S, st = raftDebug.state;
   const deck = []; let floorGroups = 0, meshes = 0;
-  s.traverse(o => { if (o.isMesh) meshes++; if (o.name === 'raft-floor') floorGroups++; });
-  const batch = s.getObjectByName('raft-deck');
+  s.traverse(o => { if (o.isMesh) meshes++; if (o.name === 'raft-floors') floorGroups++; });
+  const batch = s.getObjectByName('raft-floors');
   // checksum of every deck vertex in raft space: order-independent, so incremental == from-scratch iff same geometry
   const src = batch ? batch.children : []; for (const m of src) { const p = m.geometry.attributes.position.array, used = Math.min(p.length, m.geometry.drawRange.count * 3); let sx = 0, sy = 0, sz = 0, sq = 0; for (let i = 0; i < used; i += 3) { sx += p[i]; sy += p[i+1]; sz += p[i+2]; sq += p[i]*p[i] + p[i+1]*p[i+1] + p[i+2]*p[i+2]; } deck.push({mat: m.material.name || m.material.type, verts: used / 3, sum: [sx, sy, sz, sq].map(v => +v.toFixed(2))}); }
   deck.sort((a, b) => (a.mat + a.verts).localeCompare(b.mat + b.verts));
-  const lt = __longtasks.splice(0), now = performance.now(), live = [...(window.__scenes ?? new Map()).values()].filter(t => now - t < 3000).length;
+  const lt = __longtasks.splice(0), hm = __handlerMs.splice(0), now = performance.now(), live = [...(window.__scenes ?? new Map()).values()].filter(t => now - t < 3000).length;
   return {tiles: st.tiles, decor: st.decor.length, collected: st.collected, geometries: r.info.memory.geometries, textures: r.info.memory.textures,
     programs: r.info.programs.length, callsMain: r.info.render.calls, meshes, floorGroups, deckMeshes: src.length, deck,
-    heapMB: +(performance.memory.usedJSHeapSize / 1048576).toFixed(1), longtasks: lt, scenesRendering: live, build: window.raftLive?.build ?? null}; }"""
+    heapMB: +(performance.memory.usedJSHeapSize / 1048576).toFixed(1), longtasks: lt, handlerMs: hm, scenesRendering: live, build: window.raftLive?.build ?? null}; }"""
 
 log = []; errors = []
 def step(page, name, shot=False):
     page.wait_for_timeout(400)
     s = page.evaluate(SAMPLE); s['step'] = name; log.append(s)
-    print(name, json.dumps({k: s[k] for k in ('tiles', 'decor', 'collected', 'geometries', 'textures', 'programs', 'callsMain', 'deckMeshes', 'heapMB', 'scenesRendering')}), file=sys.stderr, flush=True)
+    print(name, json.dumps({k: s[k] for k in ('tiles', 'decor', 'collected', 'geometries', 'textures', 'programs', 'callsMain', 'deckMeshes', 'heapMB', 'scenesRendering', 'handlerMs')}), file=sys.stderr, flush=True)
     if shot:
         page.mouse.move(640, 60); page.wait_for_timeout(150)  # no hover ghost in the picture
         page.screenshot(path=str(out / f'play-{a.tag}-{name}.png'))
@@ -88,7 +96,8 @@ with sync_playwright() as p:
     page.on('pageerror', lambda e: errors.append(str(e)[:300]))
     page.on('console', lambda m: m.type == 'error' and errors.append(m.text[:300]))
     page.goto(URL); page.wait_for_function('!!window.raftDebug'); page.evaluate(CAPTURE)
-    page.locator('#solo').click(no_wait_after=True); page.wait_for_function('raftDebug.state.running'); page.wait_for_function('!!window.__R')
+    page.wait_for_function("!!document.querySelector('#solo') && !document.querySelector('#solo').disabled")
+    page.evaluate("document.querySelector('#solo').click()"); page.wait_for_function('raftDebug.state.running')  # the title menu hides #solo; page.wait_for_function('!!window.__R')
     page.wait_for_timeout(1500)
     step(page, '0-spawn', shot=True)
 
@@ -109,6 +118,11 @@ with sync_playwright() as p:
     step(page, '1-hooked', shot=True)
 
     # 2. hammer: build floor tiles in front of the raft, one click at a time
+    if a.big:  # the front edge of a 5x5 raft is out of build reach from the middle: walk up to it first
+        z0 = page.evaluate('raftDebug.state.me.z'); page.keyboard.down('w')
+        try: page.wait_for_function(f'raftDebug.state.me.z < {z0 - 2.6}', timeout=300000, polling=200)
+        finally: page.keyboard.up('w')
+        page.wait_for_timeout(500); print('walked to', page.evaluate('raftDebug.state.me'), file=sys.stderr)
     page.keyboard.press('2'); page.wait_for_timeout(300)
     assert page.evaluate('raftDebug.state.heldKind') == 'hammer', page.evaluate('raftDebug.state.heldKind')
     built = 0
@@ -151,7 +165,8 @@ srv.shutdown(); shutil.rmtree(tmp, ignore_errors=True)
 
 same = all(s['deck'] == inc['deck'] for s in swaps)
 mem = [(s['geometries'], s['textures'], s['programs']) for s in swaps]
-report = {'tag': a.tag, 'floorsBuilt': built, 'incrementalDeckEqualsFullRebuild': same,
+hm = lambda pre: [x for s in log if s['step'].startswith(pre) for x in s['handlerMs']]
+report = {'tag': a.tag, 'floorsBuilt': built, 'buildHandlerMs': {'floors': hm('2-floor'), 'decor': hm('3-decor')}, 'incrementalDeckEqualsFullRebuild': same,
           'memoryAfterSwaps': mem, 'memoryFlatAcrossSwaps': all(max(m[i] for m in mem) - min(m[i] for m in mem) <= 2 for i in range(3)),  # +-2: e.g. the rope is uploaded on first use
           'undisposedAfterSwap': leaks, 'errors': errors, 'log': log}
 print(json.dumps(report, indent=1))
