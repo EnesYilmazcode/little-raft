@@ -122,7 +122,7 @@ function buildJug(T) {
   creaseGeo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
   creaseGeo.computeVertexNormals();
   const creaseMat = new T.MeshStandardMaterial({
-    color: 0xa9d2ec, transparent: true, opacity: 0.55, side: T.DoubleSide, roughness: 0.7, metalness: 0,
+    color: 0xa9d2ec, transparent: true, opacity: 0.55, side: T.DoubleSide, forceSinglePass: true, roughness: 0.7, metalness: 0,
     polygonOffset: true, polygonOffsetFactor: -2, depthWrite: false,
   });
   for (const x of [solidGeo, creaseGeo, solidMat, creaseMat]) x.userData.shared = true;
