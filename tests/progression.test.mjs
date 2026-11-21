@@ -189,6 +189,7 @@ test('items: no unlock/recipe cycles and every item is reachable from the start'
     changed = false;
     if (have.has('fishingrod') && !have.has('fish')) { have.add('fish'); changed = true; }
     if (have.has('beehive') && have.has('flowerbox') && !have.has('honey')) { have.add('honey'); have.add('wax'); changed = true; } // [bees] hive harvest
+    if (have.has('cropplot') && have.has('spear') && !have.has('drumstick')) { have.add('drumstick'); changed = true; } // [raiders] spear a crop-raiding seagull
     for (const id of ITEM_IDS) {
       const r = ITEMS[id].recipe;
       if (have.has(id) || !r || !unlocked(id)) continue;

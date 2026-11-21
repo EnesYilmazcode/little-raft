@@ -24,7 +24,7 @@ export const CONTENT_ITEMS = Object.freeze({
   sinker:    item('sinker',    'Line Sinker',   'icon-ingot',   true),
   // raft animals (animals.js)
   puffegg:  item('puffegg', 'Puff Egg',        'icon-egg',     false),
-  feather:  item('feather', 'Puff Feather',    'icon-feather', false),
+  feather:  item('feather', 'Feather',         'icon-feather', false),
   nestbox:  item('nestbox', 'Nest Box',        'icon-nest',    false),
   cushion:  item('cushion', 'Feather Cushion', 'icon-cushion', false),
   research: item('research', 'Tinker\u2019s Desk', 'icon-research', false),
