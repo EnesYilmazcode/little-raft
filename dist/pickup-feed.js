@@ -9,6 +9,7 @@ const SVG = 'http://www.w3.org/2000/svg';
 export function createFeed({ doc = globalThis.document, now = () => performance.now(), timer = setTimeout, clear = clearTimeout } = {}) {
   let iconProvider = null, host = null;
   const rows = new Map(); // key -> row, insertion order = oldest first
+  const fading = new Set(); // dropped rows still on screen for FADE_MS: they count toward MAX_ROWS too
 
   function root() {
     if (host?.isConnected) return host;
@@ -45,8 +46,16 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
 
   function drop(key, row) {
     if (rows.get(key) === row) rows.delete(key);
-    clear(row.hold); row.el.classList.add('out');
-    row.hold = timer(() => row.el.remove(), FADE_MS);
+    clear(row.hold); row.el.classList.add('out'); fading.add(row);
+    row.hold = timer(() => { fading.delete(row); row.el.remove(); }, FADE_MS);
+  }
+  function gone(row) { fading.delete(row); clear(row.hold); row.el.remove(); }
+  // game.js puts a first-run hint row (.pf-hint) at the top of the same box: it takes a slot as well.
+  const hintRows = () => { try { return Array.from(root().children ?? []).filter(c => c?.classList?.contains?.('pf-hint')).length; } catch { return 0; } };
+  function trim() { // everything on screen (live, fading, hint) stays within MAX_ROWS; the newest row always stays
+    const extra = hintRows();
+    while (fading.size && rows.size + fading.size + extra > MAX_ROWS) gone(fading.values().next().value);
+    while (rows.size > 1 && rows.size + extra > MAX_ROWS) { const [k, r] = rows.entries().next().value; rows.delete(k); gone(r); }
   }
   function arm(key, row) { clear(row.hold); row.hold = timer(() => drop(key, row), HOLD_MS); }
 
@@ -70,7 +79,7 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
     const row = { el, at: t, hold: 0, count: 0 };
     build(row); update(row);
     root().appendChild(el); rows.set(key, row); arm(key, row);
-    while (rows.size > MAX_ROWS) { const [k, r] = rows.entries().next().value; drop(k, r); }
+    trim();
     return row;
   }
 
@@ -103,7 +112,7 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
       const row = rows.get('k:' + kind); if (!row?.box) return;
       const ic = icon(kind); if (ic) row.box.replaceChildren(ic);
     },
-    clear() { for (const [k, r] of [...rows]) { rows.delete(k); clear(r.hold); r.el.remove(); } },
+    clear() { for (const [k, r] of [...rows]) { rows.delete(k); clear(r.hold); r.el.remove(); } for (const r of [...fading]) gone(r); },
     get rows() { return [...rows.values()].map(r => r.label.textContent); },
   };
 }

@@ -103,7 +103,7 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
 #contextPrompt[hidden]{display:none}
 #contextPrompt kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:0 4px;border:1px solid rgba(246,236,214,.6);border-radius:4px;font:inherit;text-align:center}
 /* The pickup feed is a manual popover so notices stay visible above the open bag or pause menu; it keeps style.css's place. */
-#pickupFeed[popover]{top:auto;right:auto;margin:0;padding:0;border:0;background:none;overflow:visible;width:auto;height:auto;max-width:none;max-height:none;color:#f6ecd6}
+#pickupFeed[popover]{top:auto;right:auto;margin:0;padding:0;border:0;background:none;overflow:hidden;overflow:visible clip;width:auto;height:auto;max-width:none;max-height:var(--pf-max, none);color:#f6ecd6}
 #pickupFeed .pf-hint{white-space:normal;max-width:max(180px,min(340px,calc(50vw - 300px)));line-height:1.3}#pickupFeed .pf-hint span{color:#ffd98f}
 #signalReadout{position:fixed;top:14px;left:50%;transform:translateX(-50%);padding:4px 12px;border-radius:999px;
   background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.05em;
@@ -115,15 +115,15 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
 #signalReadout[hidden],#signalMarker[hidden]{display:none}
 /* Rows wrap inside the gutter left of the hotbar (its left edge is 50vw - 253px); below 1000px wide that gutter is too narrow, so the feed lifts above the hotbar. */
 #pickupFeed .pf-row{max-width:max(200px,calc(50vw - 287px));white-space:normal;line-height:1.25}
-@media(max-width:1000px){#pickupFeed[popover]{inset:auto auto calc(182px + var(--coop-feed-h, 0px)) 10px}#pickupFeed .pf-row{max-width:calc(50vw - 120px)}}
+@media(max-width:1000px){#pickupFeed[popover]{inset:auto auto calc(182px + var(--coop-feed-h, 0px)) 10px}#pickupFeed[popover]{--pf-max:calc(100vh - 182px - var(--coop-feed-h, 0px) - 80px)}#pickupFeed .pf-row{max-width:calc(50vw - 120px)}}
 .feed-lane{display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(transparent,#000 22px);mask-image:linear-gradient(transparent,#000 22px)}
 #inventory .sv-bag>.feed-lane{flex:1 1 0;min-height:88px;align-self:stretch}
 /* Pause rail: the lane fills the space under "Esc Back"; an equal spacer on top keeps the menu centred. */
 #options .rs-menu::before,#options .rs-menu>.feed-lane{content:"";flex:1 1 0;min-height:0;margin:0;padding:0}
 #options .rs-menu>.feed-lane{margin-top:18px;padding:0 16px 16px 0}#options .rs-menu::before{margin-bottom:18px;padding-bottom:16px}
-#pickupFeed.docked{position:static;inset:auto;z-index:auto;max-width:100%}
+#pickupFeed.docked{position:static;inset:auto;z-index:auto;max-width:100%;max-height:none}
 #pickupFeed.docked .pf-row{max-width:100%;white-space:normal;line-height:1.25}
-@media(max-width:760px){#contextPrompt{bottom:96px}#pickupFeed[popover]{inset:auto auto calc(232px + var(--coop-feed-h, 0px)) 10px}#options .rs-menu::before,#options .rs-menu>.feed-lane{display:none}}
+@media(max-width:760px){#contextPrompt{bottom:96px}#pickupFeed[popover]{inset:auto auto calc(232px + var(--coop-feed-h, 0px)) 10px}#pickupFeed[popover]{--pf-max:calc(100vh - 232px - var(--coop-feed-h, 0px) - 80px)}#options .rs-menu::before,#options .rs-menu>.feed-lane{display:none}}
 `;
 
 export function mount(transfer = null) {
@@ -522,7 +522,7 @@ export function mount(transfer = null) {
     return {scene, raft, ocean, camera, signal, get rodModel() { return hands?.itemModel('fishingrod') ?? null; }, role:() => role, netReady:() => networkReady, send, action, notice, beep,
       selectedKind, aim:() => currentAim(), rodTip:() => handPos, player:() => ({x:physics.x, y:physics.y, z:physics.z, yaw}),
       hasTile, decorAt:(x, z) => world.decor.some(d => d.x === x && d.z === z), bagCount:k => localBag().count(k),
-      running:() => running, uiBlocked, resume:() => requestLock(), busy:() => !!hook || !!fishWait || !!charging};
+      running:() => running, uiBlocked, resume:() => requestLock(), busy:() => !!hook || !!fishWait || !!charging, saveBlocked:() => saveBlocked};
   }
   function fallbackAvatar(color) {
     if (color && typeof color === 'object') color = lookColors(color).shirt; // [look]
@@ -1119,8 +1119,20 @@ export function mount(transfer = null) {
     if (before > 0 && s.durability === 0) emit({kind:'notice', text:'Hook worn out: shorter throws. R to repair'}, actor);
     else if (before > 25 && s.durability <= 25) emit({kind:'notice', text:'Hook getting worn. R repairs: ' + Object.entries(repairCost(s.kind) ?? REPAIR_COST).map(([k, n]) => n + ' ' + itemName(k)).join(', ')}, actor); // [progression-hook]
   }
+  // [fishing-cooking] / [progression-hook] tile a guest's fc:* / prog:* action works on (null: none to check).
+  function laneActionTile(a) {
+    if (a.kind === 'fc:placeGrill') return {x:Math.round(Number(a.x)), z:Math.round(Number(a.z))};
+    if (a.kind.startsWith('fc:')) { const g = fc?.grills?.get(a.id); return g ? {x:g.st.x, z:g.st.z} : null; } // a missing grill: fc refunds
+    if (a.kind === 'prog:research') { const ts = world.decor.filter(d => d.type === 'researchtable'); return ts.find(d => inReach(other.x, other.z, d.x, d.z, BUILD_REACH + GUEST_REACH_SLACK)) ?? ts[0] ?? null; } // no table: progression explains
+    if (a.kind.startsWith('prog:')) { const [x, z] = String(a.key ?? '').split(',').map(Number); return {x, z}; }
+    return null;
+  }
   function applyAction(a, actor = 'host') {
     if (!a || typeof a !== 'object' || role === 'guest') return;
+    if (actor === 'guest' && other && typeof a.kind === 'string' && (a.kind.startsWith('fc:') || a.kind.startsWith('prog:'))) { // host reach check, like build
+      const t = laneActionTile(a);
+      if (t && !inReach(other.x, other.z, t.x, t.z, BUILD_REACH + GUEST_REACH_SLACK)) { fc?.refund?.(a, actor); emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
+    }
     if (prog?.apply(a, actor)) return; // [progression-hook] locked crafts + 'prog:*' actions
     const bag = actorBag(actor);
     if (spearRep?.apply(a, actor, bag)) return; // [spear-repair] 'spearHit' / 'repairTile'
@@ -1401,6 +1413,9 @@ export function mount(transfer = null) {
     resetHints(window.localStorage, hintsDone); // first-run hints are once per save, and this is a fresh one
     const w = newWorld(), b = bagsFromWorld(w);
     loadRaft({world:w, host:b.host.snapshot(), guest:b.guest.snapshot(), physics:null}); yaw = 0; pitch = -.28; // lanes reload from the fresh world too
+    Object.assign(vitals, newVitals()); fainted = -1; eating = null; // [vitals] a fresh run starts fed and awake
+    try { prog?.reset(); } catch (e) { console.warn('progression reset failed', e); } try { fc?.reset(); } catch (e) { console.warn('fishing-cooking reset failed', e); } // grills, research, stations, barrel luck: the old run's
+    try { localStorage.removeItem('little-raft-logbook-seen'); } catch {} // logbook-ui.js SEEN_KEY: the new run's notes are unread
     saveRev = newGameBaseRev(storedRev(), saveRev); unblockSave(); // the player chose to overwrite the stored save
     save(); start();
   }
@@ -1426,7 +1441,11 @@ export function mount(transfer = null) {
   }
   function unblockSave() { if (!saveBlocked) return; saveBlocked = false; setText('#saveStatus', SAVE_STATUS); }
   // Leaving the title for play while another tab has saved since: continue from that newer save, not our stale copy.
-  function adoptStoredSave() { loadRaft(savedOwnRaft()); saveRev = storedRev(); unblockSave(); }
+  function adoptStoredSave() {
+    loadRaft(savedOwnRaft()); saveRev = storedRev(); unblockSave();
+    Object.assign(vitals, newVitals(world.vitals)); fainted = -1; eating = null; // [vitals] the adopted world's
+    try { prog?.reload(); } catch (e) { console.warn('progression reload failed', e); } try { fc?.reload(); } catch (e) { console.warn('fishing-cooking reload failed', e); } // their saves are that tab's too
+  }
   function save() {
     if (role === 'guest' || disposed || saveBlocked) return;
     syncWorldInventories();
@@ -1436,6 +1455,7 @@ export function mount(transfer = null) {
       localStorage.setItem(SAVE, JSON.stringify({...world, items:[], rev:plan.rev, savedAt:Date.now()})); saveRev = plan.rev;
     }
     catch { saveAvailable = false; setText('#saveStatus', 'Browser storage is full or unavailable. This session will not be saved.'); }
+    try { prog?.save(); } catch {} try { fc?.save(); } catch {} // lane saves: unload / hidden tab must not lose research, grills or cook progress
   }
 
   // ---------- Movement ----------
@@ -2339,7 +2359,7 @@ export function mount(transfer = null) {
   const optionsDialog = document.getElementById('options'), previousSettingsOwner = optionsDialog?.dataset.owner;
   try {
     if (!canvas) throw new Error('#world canvas missing');
-    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), aim:() => frameAim, resume:() => requestLock(), pause:clearInput}); // [progression-hook]
+    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), aim:() => frameAim, resume:() => requestLock(), pause:clearInput, saveBlocked:() => saveBlocked}); // [progression-hook]
     init();
     try { coop = createCoop(coopContext(), X?.coop); } catch (e) { console.warn('co-op layer unavailable', e); coop = null; } // coop
     settingsController = createSettings({onChange:next => { applyOptions(next); soundLabel(); }, onPause:pauseInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});

@@ -48,7 +48,7 @@ function load() {
 
 /**
  * ctx: { T, role(), ready(), running(), world(), bag(actor), localBag(), action(a), emit(e, to),
- *        notice(text, ms), pose() -> {x, z, yaw}, resume(), pause() }
+ *        notice(text, ms), pose() -> {x, z, yaw}, resume(), pause(), saveBlocked()? }
  */
 export function attachProgression(ctx) {
   const prevOwner = globalThis[OWNER];
@@ -57,18 +57,29 @@ export function attachProgression(ctx) {
   const progs = { host: new Progression(saved.host), guest: new Progression(saved.guest) };
   // Per-world barrel bad-luck counters; rollBarrel(rand, barrelLuck) mutates them in place.
   const barrelLuck = { misses: {} };
-  if (saved.barrelLuck?.misses && typeof saved.barrelLuck.misses === 'object') {
-    for (const [k, n] of Object.entries(saved.barrelLuck.misses)) if (Number.isFinite(n) && n > 0) barrelLuck.misses[k] = Math.floor(n);
-  }
   const self = { flush: () => save() };
   globalThis[OWNER] = self;
   const stations = new Map(); // key -> StationModel (host only)
-  const pendingStations = saved.stations && typeof saved.stations === 'object' ? { ...saved.stations } : {};
+  let pendingStations = {};
+  // Take on a stored state (or {} for a fresh run): progression, station contents and barrel luck.
+  function adopt(s) {
+    progs.host = new Progression(s.host); progs.guest = new Progression(s.guest);
+    for (const k of Object.keys(barrelLuck.misses)) delete barrelLuck.misses[k]; // same object: game.js holds prog.barrelLuck
+    if (s.barrelLuck?.misses && typeof s.barrelLuck.misses === 'object') {
+      for (const [k, n] of Object.entries(s.barrelLuck.misses)) if (Number.isFinite(n) && n > 0) barrelLuck.misses[k] = Math.floor(n);
+    }
+    stations.clear();
+    pendingStations = s.stations && typeof s.stations === 'object' ? { ...s.stations } : {};
+  }
+  adopt(saved);
   const remote = { prog: null, stations: {}, views: new Map() }; // guest-side mirror of the host
   const models = new Map(); // key -> THREE.Group (glowing stations), pruned when detached
   const glow = new Map();
   let noteClock = NOTE_EVERY, saveClock = 0, syncClock = 0, time = 0, dirty = false, nearKey = null;
   let savedLuckSig = JSON.stringify(barrelLuck.misses);
+  // game.js adoptStoredSave (another tab saved newer state) and newGame (a fresh run keeps nothing of the old one).
+  function reload() { adopt(load()); savedLuckSig = JSON.stringify(barrelLuck.misses); gateCache = null; remote.prog = null; remote.stations = {}; dirty = false; panel?.close?.(); }
+  function reset() { adopt({}); savedLuckSig = JSON.stringify(barrelLuck.misses); gateCache = null; dirty = true; panel?.close?.(); }
   let panel = null, research = null, tooltips = null, hud = null, gateCache = null;
 
   const isRemote = () => ctx.role() === 'guest' && !!ctx.ready();
@@ -100,7 +111,7 @@ export function attachProgression(ctx) {
   const stationSnaps = () => Object.fromEntries([...stations].map(([k, s]) => [k, s.snapshot()]));
 
   function save() {
-    if (!isHost() || globalThis[OWNER] !== self) return;
+    if (!isHost() || globalThis[OWNER] !== self || ctx.saveBlocked?.()) return; // another tab owns the save: never overwrite it
     dirty = false;
     try {
       localStorage.setItem(PROGRESSION_KEY, JSON.stringify({ v: 1, host: progs.host.snapshot(), guest: progs.guest.snapshot(), stations: { ...pendingStations, ...stationSnaps() }, barrelLuck }));
@@ -367,7 +378,7 @@ export function attachProgression(ctx) {
 
   // Hammer + X on a station decor: its input / output would be lost, so it must be emptied first.
   const removeBlock = (d) => { if (!d || !COOKERS.has(d.type)) return null; const s = stationView(keyOf(d)); return s && (s.input || s.output) ? `Empty the ${nameOf(d.type).toLowerCase()} first` : null; };
-  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, removeBlock, dispose: disposeAll, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()) };
+  return { apply, effect, tick, interact, modelFor, recipeGate, installUI, save, reload, reset, removeBlock, dispose: disposeAll, debug, barrelLuck, progression: (actor) => (actor ? progs[actor] : myProg()) };
 }
 
 export default attachProgression;

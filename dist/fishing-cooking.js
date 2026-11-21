@@ -130,6 +130,8 @@ export function createFishingCooking(T, host) {
   const give = (actor, item) => { if (actor === 'guest') host.send({ type: 'fc', took: item }); else receive(item); };
 
   // ---------- host-authoritative actions ----------
+  // An fc:cook the host cannot carry out: the sender already took the fish out of its basket, so hand it back raw.
+  function refund(a, actor) { const f = a && a.kind === 'fc:cook' ? cleanFish(a.fish) : null; if (f) give(actor, { ...f, state: 'raw' }); return !!f; }
   function applyAction(a, actor, bag) {
     if (!a || typeof a.kind !== 'string' || isGuest(host.role())) return;
     const say = (t) => bag?.emit?.(t);
@@ -142,7 +144,8 @@ export function createFishingCooking(T, host) {
       if (!bag.remove('scrap', GRILL_COST.scrap)) { bag.add('wood', GRILL_COST.wood); return say('Need 4 wood and 2 scrap for a grill'); }
       addGrill({ x, z }); markChanged(); return say('Grill placed');
     }
-    const g = grills.get(a.id); if (!g) return;
+    const g = grills.get(a.id);
+    if (!g) { if (a.kind === 'fc:cook') { refund(a, actor); say('That grill is gone'); } return; } // shark/another player took it: the fish comes back
     const st = g.st;
     if (a.kind === 'fc:fuel') {
       if (st.fuel >= FUEL_CAP - 1e-6) return say('Fuel is full');
@@ -188,8 +191,24 @@ export function createFishingCooking(T, host) {
   // ---------- save ----------
   let saveClock = 0;
   function save() {
+    if (host.saveBlocked?.()) return; // another tab owns the save (game.js blockSave): never overwrite it
     dirty = false; syncRole();
     try { store()?.setItem(FC_SAVE_KEY, JSON.stringify({ v: 1, journal: journal.snapshot(), grills: isGuest(host.role()) ? (stash || []) : snapshots() })); } catch {}
+  }
+
+  // game.js adoptStoredSave: another tab saved newer state; take its journal and grills.
+  function reload() {
+    let s = null; try { const raw = store()?.getItem(FC_SAVE_KEY); if (raw) s = JSON.parse(raw); } catch { s = null; }
+    Object.assign(journal, new Journal(s && s.journal));
+    lastRole = host.role(); clearGrills();
+    if (isGuest(lastRole)) stash = Array.isArray(s && s.grills) ? s.grills : []; else { stash = null; loadGrills(s && s.grills); }
+    chipN = -1; changed = true; dirty = false;
+  }
+  // New game: grills and the carried basket belong to the old run. The journal's species and dishes are a
+  // collection that outlives a run, so they stay.
+  function reset() {
+    clearGrills(); stash = isGuest(host.role()) ? [] : null; journal.basket.length = 0;
+    session?.cancel(); markChanged();
   }
 
   // ---------- DOM: chip, toast, journal ----------
@@ -201,6 +220,8 @@ export function createFishingCooking(T, host) {
     toastBox = document.createElement('div'); toastBox.id = 'fcToast'; toastBox.setAttribute('role', 'status'); document.body.appendChild(toastBox);
   }
   function toast(text, soft = false) {
+    let sink = null; try { sink = typeof window !== 'undefined' ? window.raftPickupFeed : null; } catch {}
+    if (typeof sink?.note === 'function') { sink.note(text, soft ? 'info' : undefined); return; } // one notice system: the bottom-left feed
     if (!toastBox) return;
     while (toasts.length >= 2) toasts.shift().el.remove();
     const el = document.createElement('div'); el.textContent = text; if (soft) el.className = 'soft';
@@ -407,6 +428,7 @@ export function createFishingCooking(T, host) {
         }
       }
       const burning = st.burning;
+      if (burning && sim && cookDt > 0) dirty = true; // cook and fuel progress move every frame: the 3 s autosave keeps it
       g.model.userData.setFire?.(burning ? 0.35 + 0.65 * Math.min(1, st.fuel / FUEL_CAP) : 0);
       g.model.userData.update?.(dt, time);
       if (burning) {
@@ -470,6 +492,6 @@ export function createFishingCooking(T, host) {
     get rodReeling() { return !!session && session.stage === 'reeling' && session.holding; },
     capture() { save(); return { v: 1, journal: journal.snapshot(), grills: isGuest(lastRole) ? (stash || []) : snapshots() }; },
     // test/QA helpers
-    journal, grills, save,
+    journal, grills, save, reload, reset, refund,
   };
 }
