@@ -324,7 +324,7 @@ function ensureStyle() {
 
 const slotInner = num => `${num ? `<i class="sv-num">${num}</i>` : ''}<i class="sv-art"></i><i class="sv-count"></i><i class="sv-dur" hidden><i></i></i>`;
 
-const HINT = 'Click a stack to pick it up, then a slot to place it, or drag it. Right-click a stack to take half; right-click while holding to place one. Tab or arrows move between slots; E, I or Esc closes.';
+const HINT = 'Click a stack to pick it up, then a slot to place it, or drag it. Right-click a stack to take half; right-click while holding to place one. Arrow keys move between slots; Tab, E, I or Esc closes.';
 function mountDialog() {
   let d = document.getElementById('inventory');
   if (!d || d.tagName !== 'DIALOG') {
@@ -1198,7 +1198,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (e.detail > 0) b.blur();
   }, opt);
 
-  // Tab / I open while playing; I / E close. While open, Tab is left alone so it moves focus.
+  // Tab / I open while playing; Tab / I / E close.
   document.addEventListener('keydown', e => {
     if (!alive || e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
     const act = bagKeyAction(e.code, isOpen);

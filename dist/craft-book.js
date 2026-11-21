@@ -221,7 +221,7 @@ export const backdropCloses = (downOnBackdrop, upOnBackdrop) => !!downOnBackdrop
  * E never opens here: in play it is the pick-up key and the game opens the bag itself.
  */
 export function bagKeyAction(code, isOpen) {
-  if (isOpen) return code === 'KeyI' || code === 'KeyE' ? 'close' : null;
+  if (isOpen) return code === 'Tab' || code === 'KeyI' || code === 'KeyE' ? 'close' : null; // Tab toggles the bag; arrows move focus
   return code === 'Tab' || code === 'KeyI' ? 'open' : null;
 }
 
