@@ -53,3 +53,21 @@ def launch_chromium(p, headless=True, extra_args=()):
             if exe and Path(exe).exists():
                 return p.chromium.launch(headless=headless, args=args, executable_path=exe)
         raise first
+
+
+# Title-screen controls differ between builds: main's onboarding menu hides #solo and starts from
+# .ob-item[data-act="new"]; wip/fleet/menus uses #newGame; older builds use #solo. Tools click the
+# first VISIBLE match, in this order.
+START_SELECTORS = ['.ob-item[data-act="new"]', '#newGame', '#solo']
+
+FIRST_VISIBLE_JS = """sels => { for (const s of sels) { for (const el of document.querySelectorAll(s)) {
+  const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+  if (r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && !el.disabled) return s; } } return null; }"""
+
+
+def click_start(page, selectors=START_SELECTORS):
+    """Click the first visible start control. Returns the selector used, or None if none is visible."""
+    sel = page.evaluate(FIRST_VISIBLE_JS, list(selectors))
+    if sel:
+        page.evaluate('s => { const el = [...document.querySelectorAll(s)].find(e => e.getBoundingClientRect().width > 0); el.click(); }', sel)
+    return sel
