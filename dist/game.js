@@ -27,6 +27,7 @@ import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 // (the brother's, persisted in the save) and applies every action against the actor's bag.
 
 // ---------- Immutable configuration ----------
+const WAVE_SAMPLE = {h:0, sx:0, sz:0}; // reused ocean.sample() output (no per-frame allocation)
 const DECOR_TYPES = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']); // placeable bag items
 const ITEM_TYPES = Object.freeze(['wood', 'leaf', 'scrap', 'barrel', 'plastic']);         // floating debris kinds
 const ITEM_NAMES = Object.freeze({wood:'plank', leaf:'bundle of leaves', scrap:'piece of scrap', barrel:'barrel', plastic:'plastic jug'});
@@ -757,11 +758,11 @@ export function mount(transfer = null) {
     ropeAttr.needsUpdate = true; rope.geometry.setDrawRange(0, n); rope.visible = true;
   }
   function updateRaft(dt) {
-    const base = ocean.mesh.position.y, h = ocean.getHeight(0, 0) - base, s = ocean.getSlope(0, 0, undefined, 2.2);
+    const s = ocean.sample(0, 0, WAVE_SAMPLE, undefined, 2.2), h = s.h - ocean.mesh.position.y;
     const ky = Math.min(1, dt * 2), kr = Math.min(1, dt * 1.5);
     raft.position.y += (h * .3 - raft.position.y) * ky;
-    raft.rotation.x += (-s.z * .35 - raft.rotation.x) * kr;
-    raft.rotation.z += (s.x * .35 + Math.sin(elapsed * .7) * .003 - raft.rotation.z) * kr;
+    raft.rotation.x += (-s.sz * .35 - raft.rotation.x) * kr;
+    raft.rotation.z += (s.sx * .35 + Math.sin(elapsed * .7) * .003 - raft.rotation.z) * kr;
   }
   function updateCamera(dt) {
     const fov = running ? options.fov : 48; if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
@@ -812,9 +813,9 @@ export function mount(transfer = null) {
       const u = m.userData;
       if (role === 'guest' && u.sx !== undefined && Math.hypot(it.x - u.sx, it.z - u.sz) < 3) { const k = Math.min(1, dt * 8); u.sx += (it.x - u.sx) * k; u.sz += (it.z - u.sz) * k; }
       else { u.sx = it.x; u.sz = it.z; }
-      const s = ocean.getSlope(u.sx, u.sz);
-      m.position.set(u.sx, ocean.getHeight(u.sx, u.sz) + ITEM_FLOAT, u.sz);
-      m.rotation.set(-s.z * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.x * 1.2 + Math.sin(elapsed + it.phase) * .05);
+      const s = ocean.sample(u.sx, u.sz, WAVE_SAMPLE);
+      m.position.set(u.sx, s.h + ITEM_FLOAT, u.sz);
+      m.rotation.set(-s.sz * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.sx * 1.2 + Math.sin(elapsed + it.phase) * .05);
     }
   }
   function endHook() { hook = null; lastCaughtCount = 0; reeling = false; rope.visible = false; hookMesh.visible = false; }
