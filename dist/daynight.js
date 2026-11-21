@@ -319,6 +319,7 @@ export function createDayNight(ctx) {
     cloudGroups.push(g); cloudBase.push(g.position.x, g.scale.x, g.scale.z);
     for (const m of g.children) if (m.isMesh) { cloudMeshes.push(m); cloudOrig.push(m.material); m.material = cloudMat; }
   }
+  for (const m of ctx.cloudMeshes ?? []) if (m?.isMesh && !cloudMeshes.includes(m)) { cloudMeshes.push(m); cloudOrig.push(m.material); m.material = cloudMat; } // instanced cloud copies (game.js)
 
   // ---- stars
   const starGeo = new T.BufferGeometry();
