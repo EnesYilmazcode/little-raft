@@ -596,6 +596,25 @@ const B = {
     for (let i = 0; i < 3; i++) K.add(between([0, 0.055, 0], [Math.cos(i * 2.1) * 0.02, 0.12, Math.sin(i * 2.1) * 0.02], 0.007, 0.006, 5), i ? C.stem : C.beetLight, {});
     K.pop();
   },
+  // [fruit] watermelon: a long striped melon (wavy pale stripes painted round its long axis)
+  watermelon(K) {
+    const g = new T.IcosahedronGeometry(0.1, K.lod ? 2 : 3);
+    K.add(g, 0x2f6b2c, { m: 'plastic', p: [0, 0.09, 0], s: [1.3, 0.9, 0.95], col: (c, x, y, z) => { const a = Math.atan2(z, y); if (Math.sin(a * 8 + Math.sin(x * 40) * 0.8) > 0.35) c.lerp(_c2.set(0x8fc463), 0.75); } });
+    K.add(cyl(0.006, 0.009, 0.03, 5), C.stem, { p: [-0.13, 0.1, 0], r: [0, 0, 1.3] });
+  },
+  // [fruit] the second half of a watermelon: a half-dome, red flesh with seeds, pale rind ring
+  watermelonslice(K) {
+    const dome = new T.SphereGeometry(0.1, K.seg(16), K.seg(8), 0, Math.PI * 2, 0, Math.PI / 2);
+    K.add(dome, 0x2f6b2c, { m: 'plastic', p: [0, 0, 0], r: [Math.PI, 0, 0], s: [1.3, 0.9, 0.95], col: (c, x, y, z) => { if (Math.sin(Math.atan2(z, -y) * 8) > 0.35) c.lerp(_c2.set(0x8fc463), 0.75); } });
+    K.add(new T.CircleGeometry(0.1, K.seg(16)), 0xe0465a, { p: [0, 0.001, 0], r: [-Math.PI / 2, 0, 0], s: [1.3, 0.95, 1], col: (c, x, y) => { const r = Math.hypot(x / 1.0, y); if (r > 0.085) c.set(0xf3f0c8); else if (Math.sin(x * 140) * Math.sin(y * 130) > 0.93) c.set(0x1b1b1b); } });
+    K.ud.floatY = 0.02;
+  },
+  // [fruit] pineapple: a golden diamond-patterned fruit under a crown of stiff leaves
+  pineapple(K) {
+    const g = new T.IcosahedronGeometry(0.06, K.lod ? 1 : 2);
+    K.add(g, 0xe0a030, { m: 'flat', p: [0, 0.085, 0], s: [1, 1.45, 1], perFace: true, col: (c, x, y, z) => { const u = Math.atan2(z, x) / Math.PI * 5; if ((Math.floor(u + y * 55) + Math.floor(u - y * 55)) & 1) c.lerp(_c2.set(0x9a6420), 0.45); } }); // diamond checker
+    for (let i = 0; i < 9; i++) { const a = i * 2.4, t = 0.15 + (i % 3) * 0.25; K.add(new T.ConeGeometry(0.014, 0.09 + (i % 2) * 0.03, 3), i % 2 ? 0x4f8a52 : 0x3f7a44, { p: [Math.sin(a) * 0.012, 0.2, Math.cos(a) * 0.012], r: [t, a, 0], order: 'YXZ', s: [1, 1, 0.4] }); }
+  },
   // [recycler] floating junk: soggy but cheerful, sized like the plastic jug
   oldboot(K) {
     K.push([0, 0, 0], [0, 0.3, 0.06]);

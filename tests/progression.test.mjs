@@ -191,6 +191,7 @@ test('items: no unlock/recipe cycles and every item is reachable from the start'
     if (have.has('fishingrod') && !have.has('fish')) { have.add('fish'); changed = true; }
     if (have.has('axe') && !have.has('coconut')) { have.add('coconut'); changed = true; } // [axe] chopped island palms
     if (have.has('beehive') && have.has('flowerbox') && !have.has('honey')) { have.add('honey'); have.add('wax'); changed = true; } // [bees] hive harvest
+    if (!have.has('watermelon')) { for (const k of ['watermelon', 'watermelonslice', 'pineapple', 'melonseed', 'pineseed']) have.add(k); changed = true; } // [fruit] island fruit patches (by hand); the slice is the first bite
     if (have.has('palm') && !have.has('coconut')) { have.add('coconut'); changed = true; } // [juicer] planter harvest
     if (have.has('juicer') && !have.has('berrycup')) { for (const k of ['berrycup', 'coconutcup', 'mixcup']) have.add(k); changed = true; } // [juicer] blend
     for (const id of ITEM_IDS) {

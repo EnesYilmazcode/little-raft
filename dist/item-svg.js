@@ -650,6 +650,50 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M3 24 H45 V28 H3 Z" fill="#3b291b"/></g>
     <path d="M3 33 H45" stroke="${O}" stroke-width="1.2" stroke-opacity=".5"/>
     <g fill="#21160d"><ellipse cx="10" cy="26" rx="4" ry="1.3"/><ellipse cx="24" cy="26" rx="4" ry="1.3"/><ellipse cx="38" cy="26" rx="4" ry="1.3"/></g>`,
+  // [fruit] medium crop plot, watermelon (+ slice), pineapple and their seeds
+  cropplot2: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M9 21 C5 17 6 13 9 12 C12 14 12 18 11 21 Z M14 21 C16 16 20 15 22 17 C20 20 17 21 14 21 Z" fill="#5fae6b"/>
+    <ellipse cx="14" cy="20" rx="6.5" ry="4.5" fill="#2f6b2c"/>
+    <path d="M30 21 L32 9 L34 21 Z M34 21 L39 11 L37 21 Z M30 21 L26 12 L31 21 Z" fill="#4f8a52"/>
+    <ellipse cx="33" cy="18" rx="3.6" ry="5" fill="#e8b23a"/>
+    <path d="M2 22 H46 V42 H2 Z" fill="#8d5f36"/>
+    <path d="M2 22 H46 V27 H2 Z" fill="#3b291b"/>
+    <path d="M2 22 H46" fill="none" stroke="#9fb1bf" stroke-width="2.6"/></g>
+    <path d="M10 18.5 C11.5 16.5 14 16 16.5 16.5" fill="none" stroke="#8fc463" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M2 32 H46 M2 37 H46" stroke="${O}" stroke-width="1.1" stroke-opacity=".45"/>
+    <g fill="#21160d"><ellipse cx="14" cy="25" rx="6" ry="1.5"/><ellipse cx="33" cy="25" rx="6" ry="1.5"/></g>`,
+
+  watermelon: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <ellipse cx="24" cy="27" rx="19" ry="14" fill="#2f6b2c"/></g>
+    <g fill="none" stroke="#8fc463" stroke-width="2.4" stroke-linecap="round"><path d="M10 20 C14 25 14 30 10 35"/><path d="M17 15 C21 22 21 32 17 39"/><path d="M24 13.5 V40.5"/><path d="M31 15 C27 22 27 32 31 39"/><path d="M38 20 C34 25 34 30 38 35"/></g>
+    <path d="M11 22 C13 18 17 15.5 21 15" fill="none" stroke="#c6eaa0" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M42 22 C44 19 45 16 44 13" fill="none" stroke="${O}" stroke-width="2" stroke-linecap="round"/>`,
+
+  watermelonslice: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M4 16 H44 C44 30 35 40 24 40 C13 40 4 30 4 16 Z" fill="#2f6b2c"/>
+    <path d="M7 16 H41 C41 28 33 36 24 36 C15 36 7 28 7 16 Z" fill="#f3f0c8" stroke="none"/>
+    <path d="M9 16 H39 C39 27 32 34 24 34 C16 34 9 27 9 16 Z" fill="#e0465a"/></g>
+    <g fill="#1b1b1b"><ellipse cx="16" cy="22" rx="1.1" ry="1.7"/><ellipse cx="24" cy="25" rx="1.1" ry="1.7"/><ellipse cx="32" cy="22" rx="1.1" ry="1.7"/><ellipse cx="20" cy="29" rx="1" ry="1.5"/><ellipse cx="28" cy="29" rx="1" ry="1.5"/></g>
+    <path d="M12 18.5 H22" stroke="#ff9aa8" stroke-width="1.6" stroke-linecap="round"/>`,
+
+  pineapple: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M24 17 L20 3 L25 12 L28 2 L28 13 L34 5 L29 17 Z" fill="#4f8a52"/>
+    <path d="M24 17 L14 8 L22 18 Z" fill="#6aa05a"/>
+    <ellipse cx="24" cy="31" rx="11" ry="14" fill="#e8b23a"/></g>
+    <g fill="none" stroke="#a8681c" stroke-width="1.4" stroke-linecap="round"><path d="M15 24 L29 43"/><path d="M14 32 L23 44"/><path d="M19 18 L34 38"/><path d="M33 24 L19 43"/><path d="M34 32 L25 44"/><path d="M29 18 L14 38"/></g>
+    <path d="M17 24 C18 21 20 19 22 18.5" fill="none" stroke="#fff2cc" stroke-width="1.8" stroke-linecap="round"/>`,
+
+  melonseed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M14 14 C20 11 25 16 24 23 C23 30 17 33 13 30 C9 26 9 17 14 14 Z" fill="#2b2b2b"/>
+    <path d="M30 20 C36 18 40 23 38 29 C36 35 31 37 28 34 C25 31 25 22 30 20 Z" fill="#3a332a"/>
+    <path d="M18 31 C24 30 28 35 26 40 C24 44 19 44 17 42 C15 39 14 33 18 31 Z" fill="#2b2b2b"/></g>
+    <g fill="none" stroke="#9fd6d0" stroke-width="1.5" stroke-linecap="round" stroke-opacity=".8"><path d="M13 18 C14 16.5 16 16 17.5 16.3"/><path d="M29 24 C30 23 31.5 22.5 33 22.8"/><path d="M18 35 C19 34 20.5 33.6 22 34"/></g>`,
+
+  pineseed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M24 32 L17 6 L24 19 L27 4 L28 20 L35 9 L29 32 Z" fill="#4f8a52"/>
+    <path d="M24 32 L10 16 L22 30 Z M29 32 L40 19 L30 30 Z" fill="#6aa05a"/>
+    <path d="M17 32 H36 C36 39 32 43 26.5 43 C21 43 17 39 17 32 Z" fill="#c9a04a"/></g>
+    <path d="M20 36 L24 41 M26 35 L30 40 M31 35 L33 38" fill="none" stroke="#8a5a1c" stroke-width="1.3" stroke-linecap="round"/>`,
   flagpole: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <path d="M13 6 C20 4 26 8 33 6 C36 5.4 38.5 5.6 40 6 V24 C38.5 23.6 36 23.4 33 24 C26 26 20 22 13 24 Z" fill="#f1c84d"/>
     <path d="M26.5 10.5 C22 10.5 19.5 14 20 17.5 C20.5 20 23 21 26.5 21 C30 21 32.5 20 33 17.5 C33.5 14 31 10.5 26.5 10.5 Z" fill="#24456b" stroke-width="1.3"/>

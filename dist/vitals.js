@@ -6,7 +6,8 @@
 //   damage(v, n, cause)                  // -> HP actually lost; blocks regen for REGEN_DELAY seconds
 //   adjust(v, dHp, dFood, dWater)       // [bed] add to the bars at once (sleeping); never kills (hp stays >= 1). -> v
 //   consume(v, kind)                     // -> {food, water, returns} applied deltas, or null if not edible
-//   FOOD[kind] = {food, water, returns?} // other lanes may add entries (addFood helper validates)
+//   FOOD[kind] = {food, water, returns?} // other lanes may add entries (addFood helper validates); returns: what is
+//                                         left in the hand (a cup, or the second bite of a watermelon)
 //   cleanVitals(raw)                     // save validation: -> {hp, food, water} (missing/invalid -> full)
 //   saveVitals(v)                        // -> {hp, food, water} rounded to 0.1 for the save
 //
@@ -35,6 +36,9 @@ export const FOOD = {
   potato:          {food:10,   water:0},  // [crops] Raft: raw potato +10
   cookedbeet:      {food:15,   water:0},  // [crops]
   cookedpotato:    {food:15,   water:0},  // [crops] Raft: cooked potato +15
+  watermelon:      {food:10,   water:15, returns:'watermelonslice'}, // [fruit] two bites: the first leaves a slice
+  watermelonslice: {food:10,   water:15},                  // [fruit]
+  pineapple:       {food:10,   water:10},                  // [fruit]
   coconut:         {food:5,    water:20}, // chopped from island palms (r1: Raft +5 / +20)
   honeyfish:       {food:45,   water:0},                  // [juicer] bug fix: was not edible
   berries:         {food:4,    water:2},                  // [juicer]
@@ -99,7 +103,7 @@ export function consume(v, kind) {
 }
 
 /** True for drinks: water-only items, anything that hands a cup back, and *cup kinds. [juicer] */
-export const isDrink = kind => { const e = isEdible(kind) ? FOOD[kind] : null; return !!e && (!!e.drink || !e.food && e.water !== 0 || !!e.returns || kind.endsWith('cup')); };
+export const isDrink = kind => { const e = isEdible(kind) ? FOOD[kind] : null; return !!e && (!!e.drink || !e.food && e.water !== 0 || (!!e.returns && !isEdible(e.returns)) || kind.endsWith('cup')); }; // [fruit] a bite that leaves food (melon -> slice) is eating
 
 /** Short prompt label, e.g. "Eat (+35 food)" / "Drink (+40 water)". */
 export function eatLabel(kind) {

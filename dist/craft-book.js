@@ -33,6 +33,7 @@ const CATEGORY_OF = Object.freeze({
   nestbox: 'food', // raft animals (puff eggs)
   goatpen: 'food', bucket: 'food', // raft goats (pen and milk pail)
   cropplot: 'food', cookedbeet: 'food', cookedpotato: 'food', // [crops]
+  cropplot2: 'food', watermelon: 'food', watermelonslice: 'food', pineapple: 'food', // [fruit]
   scarecrow: 'food', // [scarecrow] guards the crop plots
   fishtrap: 'food', // [fishtrap]
   // materials: crafted parts that go into other recipes
@@ -170,6 +171,12 @@ export const ITEM_TEXT = Object.freeze({
   cookedbeet: { desc: 'A beet grilled sweet and soft.', use: 'A tasty snack (+15 food).' }, // [crops]
   cookedpotato: { desc: 'A potato baked on the grill.', use: 'A warm, filling snack (+15 food).' }, // [crops]
   cropplot:   { desc: 'A three-slot box of dark soil.', use: 'Plant beets or potatoes; water each slot with fresh water.' }, // [crops]
+  cropplot2:  { desc: 'A big two-slot box of deep soil, banded with scrap.', use: 'Plant watermelon or pineapple seeds (or beets and potatoes); water each slot with fresh water.' }, // [fruit]
+  watermelon: { desc: 'A heavy striped melon.', use: 'Eat it in two bites (+10 food, +15 water each), or grow more from its seeds.' }, // [fruit]
+  watermelonslice: { desc: 'Half a watermelon, still dripping.', use: 'One more bite (+10 food, +15 water).' }, // [fruit]
+  pineapple:  { desc: 'A spiky, golden island pineapple.', use: 'Eat it raw (+10 food, +10 water).' }, // [fruit]
+  melonseed:  { desc: 'A flat black watermelon seed.', use: 'Plant it in a Medium Crop Plot.' }, // [fruit]
+  pineseed:   { desc: 'A leafy pineapple crown, ready to root.', use: 'Plant it in a Medium Crop Plot.' }, // [fruit]
   goatpen:    { desc: 'A cosy fenced corner with a pile of hay.', use: 'Place it on the raft and set out greens; a bramblegoat may come to stay.' },
   bucket:     { desc: 'A little wooden pail with a rope handle.', use: 'Hold it and press E on a bramblegoat with milk.' },
   milk:       { desc: 'A pail of fresh, creamy goat milk.', use: 'Drink it (+10 food, +25 water); the pail comes back.' },
@@ -488,6 +495,11 @@ export const ITEM_SOURCE = Object.freeze({
   cookedpotato: Object.freeze({ tag: 'grill', how: 'Grill a potato.' }), // [crops]
   beet:        Object.freeze({ tag: 'barrels, crop plot', how: 'Hook floating barrels, or grow beets in a crop plot.' }), // [crops]
   potato:      Object.freeze({ tag: 'barrels, crop plot', how: 'Hook floating barrels, or grow potatoes in a crop plot.' }), // [crops]
+  watermelon:  Object.freeze({ tag: 'islands, crop plot', how: 'Pick fruit patches on islands (E), or grow it from a seed in a Medium Crop Plot.' }), // [fruit]
+  pineapple:   Object.freeze({ tag: 'islands, crop plot', how: 'Pick fruit patches on islands (E), or grow it from a seed in a Medium Crop Plot.' }), // [fruit]
+  watermelonslice: Object.freeze({ tag: 'watermelon', how: 'Take the first bite of a watermelon.' }), // [fruit]
+  melonseed:   Object.freeze({ tag: 'islands, crop plot', how: 'Sometimes comes with a watermelon picked on an island; a ripe one in a Medium Crop Plot often gives one back.' }), // [fruit]
+  pineseed:    Object.freeze({ tag: 'islands, crop plot', how: 'Sometimes comes with a pineapple picked on an island; a ripe one in a Medium Crop Plot often gives one back.' }), // [fruit]
   // Pim's trading barge (trader.js)
   shell:       Object.freeze({ tag: 'trader', how: 'Trade fish or puff eggs to Pim at his trading barge.' }),
   glassfloat:  Object.freeze({ tag: 'trader', how: 'A rare offer at Pim\u2019s trading barge; pay in Bright Shells.' }),

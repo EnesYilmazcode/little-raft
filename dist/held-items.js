@@ -75,7 +75,8 @@ const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.22, fi
   drum: 0.24, pipes: 0.2, bells: 0.26, // [instruments]
   camera: 0.13, // [camera]
   glidehandle: 0.24, // [zipline]
-  skyrocket: 0.2, scarecrow: 0.24, glidepost: 0.24, glidestep: 0.2, candle: 0.11, beehive: 0.18, flowerbox: 0.2 };
+  skyrocket: 0.2, scarecrow: 0.24, glidepost: 0.24, glidestep: 0.2, candle: 0.11, beehive: 0.18, flowerbox: 0.2,
+  watermelon: 0.22, watermelonslice: 0.19, pineapple: 0.2, melonseed: 0.09, pineseed: 0.11 }; // [fruit] a melon fills the fist, seeds are a pinch
 // Kind -> its own world model (one fresh copy per held build; hands.js caches the held model per kind).
 const MODEL_KINDS = {
   skyrocket: (T) => createRocket(T),
@@ -306,7 +307,7 @@ export function buildItemModel(T, kind, factory = null) {
     if (c) root = fit(T, c, dim(kind), (s) => new T.Vector3(0, -s.y / 2, 0)); // grip = base centre
   } else if (kind === 'cup' || kind === 'water') {
     root = fit(T, buildCup(T, kind === 'water'), SIZE[kind], () => new T.Vector3(0, 0, 0));
-  } else if (kind === 'seed' || kind === 'seeds') {
+  } else if (kind === 'seed' || kind === 'seeds' || kind === 'melonseed' || kind === 'pineseed') { // [fruit] crop seeds: the seed pouch
     root = fit(T, buildSeeds(T), dim(kind), (s) => new T.Vector3(0, -s.y / 2, 0));
   } else if (kind === 'glidehandle') { // [zipline]
     root = fit(T, createHandle(T), dim('glidehandle'), (s) => new T.Vector3(-s.x * 0.24, -s.y * 0.38, 0)); // grip = one half of the bar, stem beside the fist

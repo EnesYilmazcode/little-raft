@@ -124,6 +124,17 @@ const LIST = [
     tip: 'A crunchy red beet. Eat it raw (+10 food), grill it, or plant it in a crop plot for two more.' }),
   item('potato', 'Potato', 'food', { iconTint: '#c9a46a',
     tip: 'A knobbly potato. Eat it raw (+10 food), grill it, or plant it in a crop plot: slow, but two come back.' }),
+  // [fruit] Medium Crop Plot crops (dist/crops.js): picked on islands, grown from their own seeds
+  item('watermelon', 'Watermelon', 'food', { iconTint: '#3f8f4a', stack: 10,
+    tip: 'A heavy striped melon from an island patch. Two big juicy bites (+10 food, +15 water each).' }),
+  item('watermelonslice', 'Watermelon Slice', 'food', { iconTint: '#e0465a', stack: 10,
+    tip: 'The second half of a watermelon. One more juicy bite (+10 food, +15 water).' }),
+  item('pineapple', 'Pineapple', 'food', { iconTint: '#e8b23a', stack: 10,
+    tip: 'A spiky, sweet island pineapple. Eat it raw (+10 food, +10 water).' }),
+  item('melonseed', 'Watermelon Seed', 'material', { iconTint: '#2b2b2b',
+    tip: 'A flat black seed. Plant it in a Medium Crop Plot and keep it watered.' }),
+  item('pineseed', 'Pineapple Seed', 'material', { iconTint: '#c9a04a',
+    tip: 'A pineapple crown cutting. Plant it in a Medium Crop Plot and keep it watered.' }),
   item('sharkhead', 'Shark Head', 'material', { iconTint: '#7f8f99', stack: 5,
     tip: 'A grim trophy from a beaten shark. Proof that your raft bites back.' }),
 
@@ -240,6 +251,9 @@ const LIST = [
   item('cropplot', 'Small Crop Plot', 'decor', { placeable: true, iconTint: '#7a5232', // [crops]
     recipe: hand({ wood: 6, rope: 4 }), unlock: discover('rope'),
     tip: 'A long box of dark soil with three slots. Plant beets or potatoes, water them, harvest with E.' }),
+  item('cropplot2', 'Medium Crop Plot', 'decor', { placeable: true, iconTint: '#7a5232', // [fruit]
+    recipe: hand({ wood: 8, scrap: 4 }), unlock: discover('rope', 'scrap'),
+    tip: 'A big two-slot box of soil. Grows watermelons and pineapples from their seeds (beets and potatoes too).' }),
   // [bees] flower box, beehive and beeswax candle (models in dist/bees-model.js)
   item('flowerbox', 'Flower Box', 'decor', { placeable: true, iconTint: '#ff7aa2',
     recipe: hand({ wood: 2, flowerseed: 1 }), unlock: discover('flowerseed'),
@@ -347,6 +361,7 @@ export const BLOCK_RADII = deepFreeze({
   smelter: 0.5, researchtable: 0.55, grill: 0.45, maptable: 0.5,
   flowerbox: 0.3, beehive: 0.35, candle: 0.1, // [bees]
   cropplot: 0.45, // [crops]
+  cropplot2: 0.5, // [fruit]
   perch: 0.2, // [gull]
   juicer: 0.3, // [juicer]
   shelf: 0.45, trophystand: 0.25, // [display]
