@@ -429,11 +429,12 @@ export function mount(transfer = null) {
   }
 
   // ---------- Pointer lock ----------
-  let lockPromisePending = false, lockHasPromise = false, lockEventFailures = 0;
+  let lockPromisePending = false, lockHasPromise = false, lockEventFailures = 0, lockNoGesture = false;
   function requestLock() {
     if (!running || !lockSupported || uiBlocked()) return;
-    // Without a fresh user gesture the browser will refuse; stay in click-to-look and let the next click retry.
-    if (navigator.userActivation && !navigator.userActivation.isActive) { refreshPointerUI(true); return; }
+    // Without a user gesture (e.g. Esc closing the inventory) browsers still relock when the page itself released the
+    // lock. If they refuse, stay in click-to-look quietly: the next click retries, and it never counts as unsupported.
+    lockNoGesture = !!navigator.userActivation && !navigator.userActivation.isActive;
     try {
       const p = canvas.requestPointerLock();
       if (p && typeof p.then === 'function') { lockPromisePending = lockHasPromise = true; p.then(() => { lockPromisePending = false; lockEventFailures = 0; }, guard(err => { lockPromisePending = false; lockFailed(err); })); }
@@ -450,6 +451,7 @@ export function mount(transfer = null) {
   }
   function lockFailed(err) {
     if (isLocked()) return;
+    if (lockNoGesture) { lockNoGesture = false; refreshPointerUI(true); return; } // a gestureless retry may be refused
     const isEvent = typeof Event !== 'undefined' && err instanceof Event;
     if (isEvent) {
       if (lockPromisePending || lockHasPromise) { refreshPointerUI(true); return; } // the promise rejection carries the real reason
@@ -881,7 +883,7 @@ export function mount(transfer = null) {
   // ---------- Input ----------
   const on = (target, type, fn, opts = {}) => target?.addEventListener(type, guard(fn), {...opts, signal});
   on(document, 'pointerlockchange', () => {
-    if (isLocked()) { lockFallback = false; lockEventFailures = 0; }
+    if (isLocked()) { lockFallback = false; lockEventFailures = 0; lockNoGesture = false; }
     else { if (charging && charging.x === null) charging = null; reeling = false; }
     down = null; refreshPointerUI(true);
   });
