@@ -1,6 +1,8 @@
 # Adopting the procedural audio engine (against the current dist/)
 
-Checked against the current `dist/` on `claude/raft-tech` (= origin/main): build token `v3-survival-ae77fa84ac2b`, `dist/game.js` 1780 lines, `dist/audio.js` 550 lines.
+Checked against the current `dist/` on `claude/raft-tech` (= origin/main 8d21618): build token `v3-survival-ae77fa84ac2b`, `dist/game.js` 2284 lines, `dist/audio.js` 609 lines.
+
+**Drift since the 3c62305 retarget (refreshed against 8d21618).** Main's `dist/audio.js` gained the Seashell Finder events `detect` and `chime` (`treasure.js` plays them through `ctx.play`, and as `e.sound` on dig-up notices), a `note(i, step, s)` member for the held instruments (`game.js:303` `sfx.note?.(…)`, used by `instruments.js`), a slower reel ratchet (`MIN_GAP.reel` 0.075 → 0.4 s, 2.5 clicks/s) and a single-pass crossfaded brown loop (the new engine's ocean is the worklet, so that one needs no port). All of it is ported, so the engine stays a strict superset. In `game.js` only one anchor moved: the transfer line now has `hintsDone` after `audio:sfx.context`, so adopt.py matches `fishWait, sound, audio:sfx.context,` instead. The line numbers below are refreshed. `dist/live.js` now has a `PRELOAD` list; `audio-worklet.js` stays out of it (see Files).
 
 Main has already done the wiring: `game.js` imports `createOceanAudio` from `./audio.js`, calls `play()`, `tick()`, `setBus()`, `setVolume()`, `resume()` and `destroy()`, hands its AudioContext to the next build as `X.audio`, and passes diving's low-pass through the `output` option. **So the adoption is a file swap.** `sandbox/audio/audio.js` becomes `dist/audio.js` and is a strict superset of the API that `game.js` uses today. The four `game.js` edits in step 3 are optional extras. The default mix keeps main's in-game levels (see "In-game levels vs current main").
 
@@ -18,12 +20,12 @@ python sandbox/audio/adopt.py --apply   # same edits on dist/ in place
 | line | text | why |
 |---|---|---|
 | 3 | `import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';` | the import; the token is reused for the worklet URL |
-| 258 | `const sfx = createOceanAudio({context:X?.audio ?? null, volume:sound ? options.volume : 0, output:ctx => diving?.audioOut(ctx) ?? null});` | `context`, `volume` and `output` options |
-| 261 | `if (X?.audio) sfx.resume(); // hot swap: …` | the hot-update mount takes the playing ocean over here |
-| 1690 | `…, sound, audio:sfx.context, peer, …` | hands the context to the next build |
-| 1725 | `pause(); disposed = true; ac.abort(); sfx.destroy(); …` | destroy (also runs when a mount fails) |
+| 301 | `const sfx = createOceanAudio({context:X?.audio ?? null, volume:sound ? options.volume : 0, output:ctx => diving?.audioOut(ctx) ?? null});` | `context`, `volume` and `output` options |
+| 305 | `if (X?.audio) sfx.resume(); // hot swap: …` | the hot-update mount takes the playing ocean over here |
+| 2183 | `…, fishWait, sound, audio:sfx.context, hintsDone, …` | hands the context to the next build |
+| 2221 | `pause(); disposed = true; ac.abort(); sfx.destroy(); …` | destroy (also runs when a mount fails) |
 
-Every other call site keeps working unchanged: `play(ev, s)` at 551 (the `beep(f)` mapping for fishing-cooking), 750, 772 (`e.sound` / effect kinds), 919, 931, 969, 991, 1059–1062, 1184, 1196–1198, 1345 and 1752; `tick` at 1222; `resume` at 1343–1344; `setVolume` and `setBus('effects' | 'ambience')` in `applyVolume` at 260; and `raftDebug.audio` (1618) for the menus (`setBus`, `getBus`, `setMusic`).
+Every other call site keeps working unchanged: `play` through the `play` wrapper at 302 (handed to the feature modules: fishing-cooking's `beep(f)` mapping, `treasure.js`'s `detect` / `chime`), and direct calls at 670, 996, 1020 (`e.sound` / effect kinds), 1200, 1221, 1267, 1291, 1394–1397, 1535, 1547–1549 (`reel` every frame while reeling, kept to 2.5 clicks/s by the 0.4 s gap) and 2253; `note(i, n, s)` through the wrapper at 303 (`instruments.js`); `tick` at 1585; `resume` at 1724–1726 and 1799; `setVolume` and `setBus('effects' | 'ambience')` in `applyVolume` at 304; and `raftDebug.audio` (2085) for the menus (`setBus`, `getBus`, `setMusic`).
 
 ## 2. Files
 
@@ -31,6 +33,7 @@ Every other call site keeps working unchanged: `play(ev, s)` at 551 (the `beep(f
 |---|---|
 | `dist/audio.js` | replace with `sandbox/audio/audio.js`, changing the one literal `'./audio-worklet.js'` to `'./audio-worklet.js?build=v3-survival-ae77fa84ac2b'` (the same token as the import on line 3). `publish_local.py` restamps it on every release like any other `./x.js` literal. |
 | `dist/audio-worklet.js` | add: a copy of `sandbox/audio/audio-worklet.js` |
+| `dist/live.js` | no change. Its `PRELOAD` list is `game.js`'s static import graph, which `tests/live-preload.test.mjs` asserts is exact (an extra entry fails as `stale`). The worklet is not in that graph: `audioWorklet.addModule()` loads it into the audio thread's own global scope, which a `<link rel=modulepreload>` on the document cannot fill, so preloading it would only cost a request. |
 
 With only step 2 done, the game runs on the new engine. The checks below were also run in that state (the `tests/` suite passes, see Verify).
 
@@ -38,11 +41,11 @@ With only step 2 done, the game runs on the new engine. The checks below were al
 
 | dist/audio.js | new engine |
 |---|---|
-| `EVENTS` (20 names) | the same 20 first, in the same order, then `hammer grab error return creak gull hover` and the feature events `sizzle stoke clank ingot sail anchor dive surface` |
+| `EVENTS` (22 names) | the same 22 first, in the same order (`… close deny detect chime`), then `hammer grab error return creak gull hover` and the feature events `sizzle stoke clank ingot sail anchor dive surface` |
 | `ALIASES` `{pickup: collect, cast/hook: throw, pour: water, click: ui}` | identical (the round-2 sandbox's own `pickup` recipe is now `grab`) |
 | `BUSES` `master effects ambience music` | identical. `setBus` returns the clamped value or `null`; `getBus` reads it back. `'sfx'` and `'ui'` still work as sub-buses under `'effects'`. |
 | options `context, volume, ambience, music, output` | identical. `output(ctx)` is also retried from `tick()` every 0.5 s until it returns a node (see the fix below). |
-| `resume, setVolume, setMusic, play(ev, s), tick(dt, {swimming}), destroy, context, music` | identical signatures and return values. `play` takes an optional third argument `{x, y, z}`. `tick` reads optional `underwater`, `sail` and `flow`. |
+| `resume, setVolume, setMusic, play(ev, s), note(i, step, s), tick(dt, {swimming}), destroy, context, music` | identical signatures and return values. `note` keeps main's rules: `drum pipes bells`, integer step 0..7 (D4..F#5), 50 ms gap per instrument, at most 10 instrument voices inside the 24-voice cap, on the effects bus. `MIN_GAP` matches main for `reel` (0.4 s), `detect` (0.05 s) and `chime` (0.5 s). `play` takes an optional third argument `{x, y, z}`. `tick` reads optional `underwater`, `sail` and `flow`. |
 | music bed (pad + plucks, chord change every 10 s) | ported unchanged onto the music bus |
 | `tick` lapping/creak one-shots | done by the worklet ocean (slaps, creaks) on the audio thread |
 | ambience level | the ambience bus defaults to 0.7, which is `settings.js`'s default. With the default `mix: 'main'` the sea plays at main's level (see the next section). |
@@ -81,26 +84,38 @@ Measured in the game, at the default settings (master 0.5, effects 1, ambience 0
 
 All 20 of main's events are within 1.2 dB, and the bed is within 0.3 dB. The judge's own `levels.py` (3 s bed, one-shots over the sea) gives the same picture: catch 0.0, build −0.1, collect +0.7, splash −0.9, step +0.7, ui +0.9, deny +0.3 and craft +0.2 dB against main. The bed reads −68.2 there against −64.0, which is the spread of a 3 s window on a slow swell (p10–p90 over 12 s is −64.4 to −59.4 dB).
 
+**Main's newer sounds (refresh against 8d21618).** Same recorder and method (ambience bus at 0, median of 3 plays of the 100 ms RMS peak). `detect` and `chime` are main's recipes on the engine's dry `ui` bus with no trim. `note()` plays main's three instrument recipes on the `sfx` bus with a `note: −2 dB` trim in `MIX.main.events`.
+
+| sound | main engine (dB) | new engine, default `mix: 'main'` (dB) | default vs main |
+|---|---|---|---|
+| detect (finder tick) | −44.1 | −44.8 | −0.7 |
+| chime (lock-on / dig-up) | −35.0 | −35.7 | −0.7 |
+| note drum, step 0 / 4 | −25.7 / −25.6 | −25.8 / −24.5 | −0.1 / +1.1 |
+| note pipes, step 2 / 6 | −28.2 / −28.1 | −28.0 / −26.8 | +0.2 / +1.3 |
+| note bells, step 0 / 5 | −22.3 / −22.2 | −22.6 / −22.4 | −0.3 / −0.2 |
+
+The control events in the same runs (build −29.5 → −29.1, catch −30.9 → −30.2, ui −47.1 → −45.8) and the bed (−62.0 → −62.9) agree with the table above.
+
 The events main does not have (`sizzle stoke clank ingot sail anchor dive surface hammer grab error return creak gull hover`) and the sail luff loop get −3 dB, the median shift of main's events, so they keep their place among the sounds they sit next to.
 
 **Tuning.**
-- Per player: the settings sliders call `setBus('effects', v)` and `setBus('ambience', v)` (`applyVolume`, game.js:260), exactly as on main. They scale down from the default only: `setBus` clamps to 0..1, so the slider cannot bring the sea back to the engine's own level.
-- Per game: for the sandbox balance, pass `mix: 'engine'` in the factory call at game.js:258 (`createOceanAudio({…, output:…, mix:'engine'})`). That gives a sea about 24 dB louder and one-shots 6–10 dB above it, with the catch as the loudest cue. In between: edit `MIX.main` in `audio.js`, where the `ambience` and `other` trims and the `events` table are in dB.
+- Per player: the settings sliders call `setBus('effects', v)` and `setBus('ambience', v)` (`applyVolume`, game.js:304), exactly as on main. They scale down from the default only: `setBus` clamps to 0..1, so the slider cannot bring the sea back to the engine's own level.
+- Per game: for the sandbox balance, pass `mix: 'engine'` in the factory call at game.js:301 (`createOceanAudio({…, output:…, mix:'engine'})`). That gives a sea about 24 dB louder and one-shots 6–10 dB above it, with the catch as the loudest cue. In between: edit `MIX.main` in `audio.js`, where the `ambience` and `other` trims and the `events` table are in dB.
 - One sound: `setBus('sfx', v)` or `setBus('ui', v)` scale the two halves of `effects`.
 
 ### Bugs on main that this fixes without any game.js change
 
-- **No underwater muffling after a hot update.** `let diving` is declared at line 320, after `sfx` is created at 258. In a hot-update mount, `sfx.resume()` (line 261) builds the graph before `diving` exists: `output()` throws a TDZ error, which gets swallowed, so the limiter goes straight to `ctx.destination` for the rest of the session. The new engine retries `output` from `tick()` and re-routes once `diving` exists. `--check` asserts `stats().routed` after a hot update.
-- **The `reel` spam** keeps main's 75 ms gap. `game.js:1198` calls `play('reel')` every frame.
+- **No underwater muffling after a hot update.** `let diving` is declared at line 370, after `sfx` is created at 301. In a hot-update mount, `sfx.resume()` (line 305) builds the graph before `diving` exists: `output()` throws a TDZ error, which gets swallowed, so the limiter goes straight to `ctx.destination` for the rest of the session. The new engine retries `output` from `tick()` and re-routes once `diving` exists. `--check` asserts `stats().routed` after a hot update.
+- **The `reel` spam** keeps main's 0.4 s gap. `game.js:1549` calls `play('reel', .7)` every frame.
 
 ## 3. Optional game.js edits (all applied by adopt.py)
 
-1. **Reusable tick state and listener scratch** (after line 279, the `[sailing]` declarations):
+1. **Reusable tick state and listener scratch** (after line 326, the `[sailing]` declarations):
    ```js
    let sailing = null; const scenery = [], sailFlow = {x:0, z:0}, aimNdc = {x:0, y:0}; // [sailing]
    const sfxSt = {swimming:false, sail:null, flow:sailFlow}, earDir = new T.Vector3(); // [audio] tick state + listener scratch
    ```
-2. **Sailing into tick()** (line 1222, replace):
+2. **Sailing into tick()** (line 1585, replace):
    ```js
    ocean.update(elapsed, camera); sfxSt.swimming = physics.swimming; sfxSt.sail = sailing ? world.sailing : null; sfx.tick(dt, sfxSt); // [audio]
    ```
@@ -110,12 +125,12 @@ The events main does not have (`sizzle stoke clank ingot sail anchor dive surfac
    - `sail` on the raise/lower edge and `anchor` on the anchor edge. The first tick only records the state, so there is no sound at load.
 
    `sailFlow` (raft speed through the water) drives the hull wash and the creak rate. Nothing is allocated per frame.
-3. **Spatial listener** (after line 1225, `updateAvatars(dt); updateCamera(dt); …diving?.update…`):
+3. **Spatial listener** (after line 1588, `updateAvatars(dt); updateCamera(dt); …diving?.update…`):
    ```js
    if (sfx.context) { camera.getWorldDirection(earDir); sfx.setListener(camera.position.x, camera.position.y, camera.position.z, earDir.x, earDir.y, earDir.z); } // [audio]
    ```
-   The camera is a direct child of the scene (line 377), so `camera.position` is its world position.
-4. **Station and cooking sounds, after the host accepts the action** (four anchors: insert a `stationCue` helper before `function applyAction(a, actor = 'host') {` at line 820; wrap the `prog?.apply` line at 822 and the `fc:` line at 824 in `applyAction`; add one line after `if (prog?.effect(e)) return;` at 768 in `effect()`):
+   The camera is a direct child of the scene (line 436), so `camera.position` is its world position.
+4. **Station and cooking sounds, after the host accepts the action** (four anchors: insert a `stationCue` helper before `function applyAction(a, actor = 'host') {` at line 1076; wrap the `prog?.apply` line at 1078 and the `fc:` line at 1081 in `applyAction`; add one line after `if (prog?.effect(e)) return;` at 1016 in `effect()`):
    ```js
    function stationCue(a, actor) { /* fingerprint before, emit {kind:'sfx'} if it changed */ }   // [audio]
    function applyAction(a, actor = 'host') {
@@ -138,10 +153,10 @@ Diving needs no edit. `diving.js` dispatches `raft:underwater` `{underwater}` on
 
 ## 4. Hot update and failed hot update
 
-- **Good update.** The new build's `sfx.resume()` (line 261) takes over the ocean worklet node that is playing: the node and its fade gain move onto the new engine's ambience bus in that task. The old build's `destroy()` then leaves the ocean alone and fades its own master out over 80 ms. The result is one context, no second worklet node, no module load, and no hole.
-- **Failed update.** `live.js` mounts the new build. If its `mount()` throws after line 261, `game.js` disposes it (`sfx.destroy()`), and `live.js` keeps the old build ("Update paused — still playing this version"). The handle the new engine took records the engine it took it from (`from`). Because that engine is still alive, `destroy()` first hands the ocean back: the fade gain moves onto the old engine's ambience bus in the same task, the old engine marks it as its own again, and only then does the failed engine fade out its own master. A second safety net covers the case where an owner dies without handing back: the old engine's `tick()` sees the handle's shared `core.dead` flag and starts a fresh ocean.
+- **Good update.** The new build's `sfx.resume()` (line 305) takes over the ocean worklet node that is playing: the node and its fade gain move onto the new engine's ambience bus in that task. The old build's `destroy()` then leaves the ocean alone and fades its own master out over 80 ms. The result is one context, no second worklet node, no module load, and no hole.
+- **Failed update.** `live.js` mounts the new build. If its `mount()` throws after line 305, `game.js` disposes it (`sfx.destroy()`), and `live.js` keeps the old build ("Update paused — still playing this version"). The handle the new engine took records the engine it took it from (`from`). Because that engine is still alive, `destroy()` first hands the ocean back: the fade gain moves onto the old engine's ambience bus in the same task, the old engine marks it as its own again, and only then does the failed engine fade out its own master. A second safety net covers the case where an owner dies without handing back: the old engine's `tick()` sees the handle's shared `core.dead` flag and starts a fresh ocean.
 - **Version field.** The per-context shared record (`Symbol.for('little-raft.audio.shared')` → WeakMap) and every ocean handle carry `v: SHARED_VERSION` (2). A build takes over or reuses only a record and handle of its own version. Otherwise it starts its own and leaves the foreign one to its owner, so a future build that changes the shape is never handed one it misreads.
-- **The one-time switch from main's engine (the first live update after adoption).** Tabs that are open on the current main build get the new engine by hot update, like any release. Main's `destroy()` (`dist/audio.js:521`) does not hand its ocean over: it hard-stops its surf and wind sources (`stopNodes(amb)`) with no fade, and it disconnects its buses. The new engine finds no shared ocean record of its own version, so it does what a first start does. It runs `addModule` for the worklet (about 0.1–0.5 s on a normal machine; this box's 23 s under load is the extreme), then fades its ocean in over 0.15 s, which is its swap fade, because the context is already running. Open tabs therefore hear one small click and a short gap in the sea, once. One-shots still sounding on main's engine are cut. With the default `mix: 'main'`, both seas sit near −62 dB, so the click is from a quiet bed into the same quiet bed. Every later update is engine to engine and goes through the handover above, with no gap. A page load (new tabs, or a reload) never hears the switch. This cannot be fixed from the new engine's side: main's `destroy()` runs in main's code, and no handover protocol exists there to answer.
+- **The one-time switch from main's engine (the first live update after adoption).** Tabs that are open on the current main build get the new engine by hot update, like any release. Main's `destroy()` (`dist/audio.js:579`) does not hand its ocean over: it hard-stops its surf and wind sources (`stopNodes(amb)`) with no fade, and it disconnects its buses. The new engine finds no shared ocean record of its own version, so it does what a first start does. It runs `addModule` for the worklet (about 0.1–0.5 s on a normal machine; this box's 23 s under load is the extreme), then fades its ocean in over 0.15 s, which is its swap fade, because the context is already running. Open tabs therefore hear one small click and a short gap in the sea, once. One-shots still sounding on main's engine are cut. With the default `mix: 'main'`, both seas sit near −62 dB, so the click is from a quiet bed into the same quiet bed. Every later update is engine to engine and goes through the handover above, with no gap. A page load (new tabs, or a reload) never hears the switch. This cannot be fixed from the new engine's side: main's `destroy()` runs in main's code, and no handover protocol exists there to answer.
 - Worklet DSP changes still need a page load: the first `registerProcessor('raft-ocean')` on a context wins, and the ocean node is handed over.
 
 ## Verify
@@ -165,3 +180,5 @@ Diving needs no edit. `diving.js` dispatches `raft:underwater` `{underwater}` on
 Then run `node --test tests/*.test.mjs` with and without `RAFT_DIST=<patched copy>`. `tests/survival.test.mjs` has two audio API tests (buses, gesture, voice cleanup, music, cap, destroy) that run the engine against a fake Web Audio graph.
 
 Results from the run on this branch are in `docs/tech/audio.md` → "Retarget to main".
+
+Refresh against 8d21618 (this box, load average 35–50): `adopt.py --check` passes all 20 checks: no page errors, the worklet came up after 8.2 s, every one of the 37 EVENTS schedules in the game, and the station cue was silent on the refused take and played one spatial `stoke` on the fuel. The failed hot update dipped at most 1.8 dB (minimum −65.4 dB), and the good hot update at most 5.0 dB (minimum −69.4 dB). `node --test tests/*.test.mjs` gives 909/910 both unpatched and with `RAFT_DIST=<patched copy>`. The one failure in both is the `art.test.mjs` atlas build-time limit (6.2 s on this loaded box), which has nothing to do with audio. With the engine in, `instruments.test.mjs`'s `audio note()` test and the three `live-preload.test.mjs` tests pass.
