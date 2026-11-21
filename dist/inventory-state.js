@@ -6,6 +6,9 @@ export const SLOT_COUNT = 28;
 export const HOTBAR_SIZE = 8;
 export const TOOL_DURABILITY = 100;
 
+// content hook: islands/storage item kinds and recipes live in content-items.js
+import { CONTENT_ITEMS, CONTENT_RECIPES } from './content-items.js';
+
 const TOOL_KINDS = new Set(['hook', 'hammer', 'fishingrod']);
 
 // icon = symbol id in dist/icons.svg. placeholder:true means the icon is
@@ -26,6 +29,7 @@ export const ITEM_INFO = Object.freeze({
   net:        Object.freeze({ kind: 'net',        name: 'Net',          icon: 'icon-net',     maxStack: STACK_SIZE, tool: false, placeholder: false }),
   bench:      Object.freeze({ kind: 'bench',      name: 'Bench',        icon: 'icon-repair',  maxStack: STACK_SIZE, tool: false, placeholder: true }),
   crate:      Object.freeze({ kind: 'crate',      name: 'Crate',        icon: 'icon-barrel',  maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  ...CONTENT_ITEMS, // content hook
 });
 
 export const ITEM_KINDS = Object.freeze(Object.keys(ITEM_INFO));
@@ -52,6 +56,7 @@ export const RECIPES = Object.freeze({
   net:        recipe('net',        'Net',          1, { wood: 3, rope: 3 }),
   bench:      recipe('bench',      'Bench',        1, { wood: 3 }),
   crate:      recipe('crate',      'Crate',        1, { wood: 4, scrap: 1 }),
+  ...CONTENT_RECIPES, // content hook
 });
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
