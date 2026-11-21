@@ -86,6 +86,9 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
 #contextPrompt{position:fixed;left:50%;bottom:132px;transform:translateX(-50%);padding:3px 10px;border-radius:8px;
   background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:none;z-index:30;white-space:nowrap}
 #contextPrompt[hidden]{display:none}
+/* How to play fits a 720p window: wider rows wrap less, a short window tightens spacing, anything left scrolls */
+#help{width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow:auto;overscroll-behavior:contain}
+@media(max-height:760px){#help{padding:20px 28px}#help .guide{gap:5px;margin:10px 0 8px}#help .guide li{line-height:1.35}#help .guide-note{margin-bottom:10px}}
 #contextPrompt kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:0 4px;border:1px solid rgba(246,236,214,.6);border-radius:4px;font:inherit;text-align:center}
 /* The pickup feed is a manual popover so notices stay visible above the open bag or pause menu; it keeps style.css's place. */
 #pickupFeed[popover]{top:auto;right:auto;margin:0;padding:0;border:0;background:none;overflow:hidden;width:auto;height:auto;color:#f6ecd6}
@@ -292,6 +295,8 @@ export function mount(transfer = null) {
   }
   let coop = null; // coop: hub from coop.js, created after init(); every use is optional (coop?.)
   let prog = null; // [progression-hook]
+  // The "No sail — craft one" chip waits until a sail can be made: its recipe is unlocked or rope has been in the bag.
+  const sailKnown = () => { const p = prog?.progression?.(); return !p || !!p.isUnlocked?.('sail') || !!p.discovered?.has?.('rope') || localBag().count?.('rope') > 0; };
 
   function makePhysics(src) {
     const deck = raftPose.y + FLOOR_Y + EYE_OFFSET;
@@ -361,8 +366,8 @@ export function mount(transfer = null) {
       + '<li><kbd>Hook</kbd><span><b>Throw.</b> Hold click to power up, aim higher to throw farther, release. Hold again to reel in everything it touches.</span></li>'
       + '<li><kbd>E</kbd><span><b>Pick up</b> a supply right beside you, or open your bag to craft. <kbd>Tab</kbd> / <kbd>I</kbd> open the bag too; <kbd>E</kbd>, <kbd>I</kbd> or <kbd>Esc</kbd> close it. Inside, <kbd>Tab</kbd> and the arrow keys move between slots.</span></li>'
       + '<li><kbd>E</kbd><span><b>Sail.</b> Look at a sail and press E to raise or lower it; hold <kbd>R</kbd> and turn to steer it. The pennant shows the wind. E at the anchor post stops the raft.</span></li>' // [sailing]
-      + '<li><kbd>Craft</kbd><span><b>Make tools.</b> A Hammer builds raft floors (2 wood, 2 plastic each). A Fishing Rod catches fish. Crafted decorations are placed one at a time.</span></li>'
-      + '<li><kbd>R</kbd><span><b>Repair</b> a worn hook for 2 wood and 1 scrap.</span></li>'
+      + '<li><kbd>Craft</kbd><span><b>Make tools.</b> A Hammer builds Foundations (2 Plank, 2 Plastic each). A Fishing Rod catches fish. Crafted decorations are placed one at a time.</span></li>'
+      + '<li><kbd>R</kbd><span><b>Repair</b> a worn hook for 2 Plank and 1 Scrap.</span></li>'
       + '<li><kbd>Esc</kbd><span><b>Menu.</b> Settings, Play together and this guide.</span></li>';
     const note = $('#help .guide-note'); if (note) note.textContent = 'Everyone has their own bag; the raft and the sea are shared. Nothing can hurt you, and your raft never sinks. Mouse won\'t lock? Drag the ocean to look instead.';
   }
@@ -410,7 +415,7 @@ export function mount(transfer = null) {
     building = createBuilding(T, scene); // building-pieces lane hook
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
-      action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging}); for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
+      action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging, sailKnown}); for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
     try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); diving?.warm(renderer); } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     rebuildRaft();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));

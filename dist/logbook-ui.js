@@ -101,6 +101,16 @@ function mountToast() {
 const readSeen = () => { try { const v = parseInt(localStorage.getItem(SEEN_KEY), 10); return Number.isFinite(v) ? v : 0; } catch { return 0; } };
 const writeSeen = n => { try { localStorage.setItem(SEEN_KEY, String(n)); } catch {} };
 
+// Found notes in order, then one hint for the rest (not a row per missing note).
+export function notesHTML(found, newest = -1) {
+  let rows = '';
+  for (let i = 0; i < NOTE_COUNT; i++) if (found.includes(i))
+    rows += `<li class="lb-note"><span class="lb-no${i === newest ? ' lb-new' : ''}">No. ${i + 1}</span><p>${esc(NOTES[i])}</p></li>`;
+  const left = NOTE_COUNT - found.filter(i => i >= 0 && i < NOTE_COUNT).length;
+  if (left > 0) rows += `<li class="lb-note lb-missing lb-hint"><p>Hook floating bottles to find notes${found.length ? ` · ${left} still adrift` : ''}</p></li>`;
+  return rows;
+}
+
 export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
   const prev = window[INST_KEY];
   const ac = new AbortController();
@@ -128,14 +138,7 @@ export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
     tabs[1].textContent = `Achievements ${p.achievements.length}/${ACHIEVEMENTS.length}`;
     const seen = seenBase == null ? readSeen() : seenBase;
     const newest = p.notes.length && p.notes.length > seen ? p.notes[p.notes.length - 1] : -1;
-    let rows = '';
-    for (let i = 0; i < NOTE_COUNT; i++) {
-      const found = p.notes.includes(i);
-      rows += found
-        ? `<li class="lb-note"><span class="lb-no${i === newest ? ' lb-new' : ''}">No. ${i + 1}</span><p>${esc(NOTES[i])}</p></li>`
-        : `<li class="lb-note lb-missing"><span class="lb-no">No. ${i + 1}</span><p>Still adrift…</p></li>`;
-    }
-    list.innerHTML = rows;
+    list.innerHTML = notesHTML(p.notes, newest);
     grid.innerHTML = ACHIEVEMENTS.map(a => {
       const got = p.achievements.includes(a.id);
       return `<div class="lb-card${got ? '' : ' lb-locked'}">${icon(a.icon)}<div><b>${esc(a.name)}</b><span>${esc(a.desc)}</span>${got ? '' : '<em>Locked</em>'}</div></div>`;
@@ -175,12 +178,12 @@ export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
     isOpen = false;
     seenBase = null;
     if (dlg.open) { try { dlg.close(); } catch { dlg.removeAttribute('open'); } }
-    safe(onResume);
+    if (!dlg.dataset.fromPause) safe(onResume); // opened from the pause menu: settings.js reopens it instead
   }
   const toggle = () => (isOpen ? close() : open());
 
   dlg.addEventListener('cancel', e => { e.preventDefault(); close(); }, opt);
-  dlg.addEventListener('close', () => { if (isOpen) { isOpen = false; seenBase = null; safe(onResume); } }, opt);
+  dlg.addEventListener('close', () => { if (isOpen) { isOpen = false; seenBase = null; if (!dlg.dataset.fromPause && !document.getElementById('options')?.open) safe(onResume); } }, opt);
   dlg.addEventListener('click', e => {
     if (e.target?.closest?.('.lb-close')) { close(); return; }
     const t = e.target?.closest?.('[role=tab]');

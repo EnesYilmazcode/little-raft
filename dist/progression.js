@@ -117,7 +117,12 @@ export class Progression {
     const names = joinAnd(miss.map((m) => nameOf(this.items, m.kind)));
     if (miss[0].type === 'station') return `Build ${article(names)}`;
     if (miss[0].type === 'research') return `Research ${names} at ${article(nameOf(this.items, RESEARCH_TABLE))}`;
-    return `Find ${names} first`;
+    // Something the player can make in the bag (Rope) reads "Craft", things only found at sea read "Find".
+    const craftable = (k) => hasOwn(this.items, k) && !!this.items[k].recipe && this.items[k].recipe.station == null;
+    const make = miss.filter((m) => craftable(m.kind)).map((m) => nameOf(this.items, m.kind));
+    const find = miss.filter((m) => !craftable(m.kind)).map((m) => nameOf(this.items, m.kind));
+    if (!make.length) return `Find ${names} first`;
+    return find.length ? `Craft ${joinAnd(make)} and find ${joinAnd(find)} first` : `Craft ${names} first`;
   }
 
   available() {
