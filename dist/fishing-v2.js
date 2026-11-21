@@ -123,8 +123,9 @@ export class FishingSession {
 }
 
 // ---------------------------------------------------------------- visuals
-const CSS = `#fcReelHud{position:fixed;left:50%;top:calc(50% + 58px);transform:translateX(-50%);width:150px;z-index:4;
-pointer-events:none;display:none;font:600 12px/1.2 system-ui,sans-serif;color:#fffdf4;text-align:center;text-shadow:0 1px 2px #0b3a44}
+// Sits in the crosshair's right-hand prompt column, under the #lrPrompt row (prompts.css), never centred on the aim.
+const CSS = `#fcReelHud{position:fixed;left:calc(50% + 34px);top:calc(50% + 52px);transform:none;width:120px;z-index:30;
+pointer-events:none;display:none;font:600 12px/1.2 system-ui,sans-serif;color:#fffdf4;text-align:left;text-shadow:0 1px 2px #0b3a44}
 #fcReelHud.show{display:block}#fcReelHud .bar{height:8px;border-radius:5px;background:#0d3d4766;box-shadow:0 0 0 1.5px #fffdf4aa;overflow:hidden;margin-top:5px}
 #fcReelHud .bar i{display:block;height:100%;width:0;border-radius:5px;background:#fffdf4}
 #fcReelHud .t i{background:#7ed69a}#fcReelHud .t.amber i{background:#f5b94a}#fcReelHud .t.red i{background:#ef5d4a}

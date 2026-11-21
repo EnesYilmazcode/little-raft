@@ -33,7 +33,7 @@ const check = (name, pass, detail = {}) => { results.push({name, pass:!!pass, ..
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const st = p => p.evaluate(() => window.raftDebug.state);
 const dbg = p => p.evaluate(() => { const d = window.coopDebug; return d ? {peer:d.peer, remote:d.remote, rejoin:d.rejoin, stats:d.stats} : null; });
-const feedText = p => p.evaluate(() => [...document.querySelectorAll('#coopFeed .cf-line')].map(l => l.textContent));
+const feedText = p => p.evaluate(() => [...document.querySelectorAll('#pickupFeed .cf-line, #coopFeed .cf-line')].map(l => l.textContent));
 const waitFor = (p, fn, arg, timeout = 15000) => p.waitForFunction(fn, arg, {timeout, polling:50}).then(() => true, () => false);
 
 // Feed lines fade after ~6 s, so each page records every line ever pushed (read-only MutationObserver).
@@ -51,7 +51,7 @@ HTMLCanvasElement.prototype.requestPointerLock = function () { return Promise.re
 try { localStorage.setItem('little-raft-settings', JSON.stringify({graphics:'low', volume:0})); } catch {}
 window.__feedLog = []; window.__promptLog = [];
 new MutationObserver(() => {
-  for (const l of document.querySelectorAll('#coopFeed .cf-line')) if (!l.__seen) { l.__seen = 1; window.__feedLog.push(l.textContent); }
+  for (const l of document.querySelectorAll('#pickupFeed .cf-line, #coopFeed .cf-line')) if (!l.__seen) { l.__seen = 1; window.__feedLog.push(l.textContent); }
   const cp = document.getElementById('contextPrompt'); if (cp && !cp.hidden && cp.textContent && window.__promptLog.at(-1) !== cp.textContent) window.__promptLog.push(cp.textContent);
 }).observe(document, {subtree:true, childList:true, characterData:true, attributes:true});
 `;
@@ -109,8 +109,8 @@ async function main() {
   // ---------- (3) join notice in the feed, not the centred prompt ----------
   await sleep(300);
   const hFeed = await feedLog(host), hPrompt = await host.evaluate(() => window.__promptLog.slice());
-  const feedBox = await host.evaluate(() => { const r = document.getElementById('coopFeed')?.getBoundingClientRect(); return r ? {left:r.left, bottom:r.bottom, right:r.right} : null; });
-  check('3 join in #coopFeed not #contextPrompt', hFeed.some(t => /brother joined/i.test(t)) && !hPrompt.some(t => /joined/i.test(t)) && feedBox && feedBox.left < 200 && feedBox.bottom > 400,
+  const feedBox = await host.evaluate(() => { const r = (document.getElementById('pickupFeed') || document.getElementById('coopFeed'))?.getBoundingClientRect(); return r ? {left:r.left, bottom:r.bottom, right:r.right} : null; });
+  check('3 join in the left feed not #contextPrompt', hFeed.some(t => /brother joined/i.test(t)) && !hPrompt.some(t => /joined/i.test(t)) && feedBox && feedBox.left < 200 && feedBox.bottom > 400,
     {hostFeed:hFeed, hostPrompts:hPrompt, feedBox, guestFeed:await feedLog(guest), guestPrompts:await guest.evaluate(() => window.__promptLog.slice())});
 
   // ---------- (2a) guest walks, host's remote avatar converges ----------
