@@ -106,11 +106,15 @@ function giveAll(bag, loot) {
   return true;
 }
 // Takes one of kind, preferring the selected slot so the held stack shrinks.
-function takeOne(bag, kind) {
-  const sel = bag.slots[bag.selectedIndex];
-  if (sel?.kind === kind) { sel.count--; if (sel.count <= 0) bag.slots[bag.selectedIndex] = null; return true; }
-  return bag.remove(kind, 1);
+// Returns the slot index it took from, or -1 (falsy-safe callers compare with >= 0).
+function takeOneAt(bag, kind) {
+  let i = bag.slots[bag.selectedIndex]?.kind === kind ? bag.selectedIndex : -1;
+  if (i < 0) for (let j = bag.slots.length - 1; j >= 0; j--) if (bag.slots[j]?.kind === kind) { i = j; break; }
+  if (i < 0) return -1;
+  const s = bag.slots[i]; s.count--; if (s.count <= 0) bag.slots[i] = null;
+  return i;
 }
+const takeOne = (bag, kind) => takeOneAt(bag, kind) >= 0;
 
 // Host-authoritative farm action. a = {kind:'farm', op, x, z}; op is plant | water | harvest | fill.
 // Mutates world.decor and bag. Returns {ok, text, effect, changed} where effect is the emit kind
@@ -140,11 +144,15 @@ export function applyFarmAction(world, bag, a) {
     if (p.s === EMPTY) return fail('Plant a seed first');
     if (p.w >= WATER_SECONDS * .5) return fail('The soil is still wet');
     const scratch = new bag.constructor(bag.snapshot());
-    if (!takeOne(scratch, 'water')) return fail('Fill a Filter Cup at the sea first');
-    if (scratch.add('cup', 1) > 0) return fail('Your bag is full', 'full');
+    const from = takeOneAt(scratch, 'water');
+    if (from < 0) return fail('Fill a Filter Cup at the sea first');
+    // The empty cup goes back where the water was; with no room at all nothing is used up.
+    const kept = !scratch.slots[from] ? (scratch.slots[from] = { kind: 'cup', count: 1 }, true) : scratch.add('cup', 1) === 0;
+    if (!kept) return fail('Your bag is full', 'full');
     for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i];
     const wasDry = p.w <= 0; p.w = WATER_SECONDS;
-    return { ok: true, text: p.s >= MATURE ? 'Watered the palm' : 'Watered! It will grow while the soil is wet', effect: 'build', changed: wasDry };
+    const text = p.s >= MATURE ? 'Watered the palm' : 'Watered! It will grow while the soil is wet';
+    return { ok: true, text, effect: 'build', changed: wasDry };
   }
   if (a.op === 'harvest') {
     if (p.s < MATURE) return fail(p.s === EMPTY ? 'Nothing to harvest' : 'Not ready yet');

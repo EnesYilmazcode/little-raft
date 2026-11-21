@@ -13,9 +13,9 @@ const LOCK = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" widt
 const CHECK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="#9fe07a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 const CSS = `
-#lrStorage.lr-sr{padding:0;margin:auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#fff2cc;width:max-content;max-width:96vw;max-height:94vh;overflow:visible;font:500 14px/1.35 ${FONT}}
+#lrStorage.lr-sr{padding:0;margin:min(10vh,72px) auto auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#fff2cc;width:max-content;max-width:96vw;max-height:calc(100vh - min(10vh,72px) - 12px);overflow:visible;font:500 14px/1.35 ${FONT}}
 #lrStorage.lr-sr::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
-#lrStorage .lr-sr-wrap{display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:6px;outline:none;max-height:calc(94vh - 6px);box-sizing:border-box;overflow:auto;
+#lrStorage .lr-sr-wrap{display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:6px;outline:none;max-height:calc(100vh - min(10vh,72px) - 18px);box-sizing:border-box;overflow:hidden;
   background:repeating-linear-gradient(90deg,#00000012 0 2px,transparent 2px 23px),linear-gradient(#b48d55,#8a663a);border:3px solid #3e2a17;box-shadow:0 0 0 2px #d6b67e,0 18px 50px #000a}
 #lrStorage .lr-sr-head{display:flex;align-items:center;gap:10px;padding:2px 2px 0}
 #lrStorage .lr-sr-hicon{display:grid;place-items:center;width:40px;height:40px;border-radius:4px;background:#3a2716eb;box-shadow:inset 0 0 0 2px #24170c,inset 0 0 0 3px #b48d5544}
@@ -24,7 +24,8 @@ const CSS = `
 #lrStorage .lr-sr-sub{display:block;margin-top:2px;font:700 12px/1.2 ${FONT};color:#3e2a17cc}
 #lrStorage .lr-sr-x{margin-left:auto;width:32px;height:32px;padding:0;border:0;border-radius:4px;background:#3a2716eb;color:#fff2cc;font:700 18px/1 ${FONT};box-shadow:inset 0 0 0 1px #d4b07a55;cursor:pointer;transform:none}
 #lrStorage .lr-sr-x:hover{box-shadow:inset 0 0 0 1px #ffe3a6}
-#lrStorage .lr-sr-body{display:flex;gap:12px;align-items:stretch}
+#lrStorage .lr-sr-head,#lrStorage .lr-sr-banner{flex:none}
+#lrStorage .lr-sr-body{display:flex;gap:12px;align-items:stretch;flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-color:#b48d55 #2a1b0e}
 #lrStorage[data-mode=crate] .lr-sr-body{flex-direction:column;align-items:center}
 #lrStorage .lr-sr-panel{background:#3a2716eb;border-radius:4px;box-shadow:inset 0 0 0 2px #24170c,inset 0 0 0 3px #b48d5544;padding:10px 12px;box-sizing:border-box}
 #lrStorage[data-mode=crate] .lr-sr-panel{width:100%;display:flex;flex-direction:column;align-items:center;gap:8px}
@@ -52,7 +53,7 @@ const CSS = `
 /* research */
 #lrStorage .lr-sr-next{width:320px;max-height:min(470px,70vh);overflow:auto;overscroll-behavior:contain;scrollbar-color:#b48d55 #2a1b0e}
 #lrStorage .lr-sr-study{width:300px;display:flex;flex-direction:column;gap:10px}
-#lrStorage .lr-sr-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+#lrStorage .lr-sr-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,96px));justify-content:center;gap:8px}
 #lrStorage .lr-sr-tile{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;min-height:96px;padding:8px 4px 7px;border:0;border-radius:4px;
   background:linear-gradient(#5d4129,#4a3220);box-shadow:inset 0 0 0 1px #d4b07a44;color:#fff2cc;font:700 12px/1.15 ${FONT};text-transform:none;letter-spacing:0;cursor:pointer;transform:none}
 #lrStorage .lr-sr-tile .sv-icon{width:38px;height:38px;filter:drop-shadow(0 1px 1px #0008)}
@@ -79,8 +80,15 @@ const CSS = `
 #lrStorage .lr-sr-rname{display:block;margin-bottom:5px;font:700 14px/1.2 ${FONT};color:#fff2cc}
 #lrStorage .lr-sr-row.lr-sr-close{box-shadow:inset 0 0 0 1px #ffbd6688}
 #lrStorage .lr-sr-row.lr-sr-close .lr-sr-rname::after{content:'almost!';margin-left:7px;padding:1px 6px;border-radius:8px;background:#ffbd66;color:#2a1b0e;font:800 10px/1.4 ${FONT};vertical-align:2px}
-#lrStorage .lr-sr-banner{display:none;align-items:center;gap:8px;padding:8px 12px;border-radius:4px;background:linear-gradient(#ffe3a6,#ffbd66);color:#2a1b0e;font:800 14px/1.2 ${FONT};box-shadow:0 0 0 2px #3e2a17,0 0 18px #ffbd66aa}
-#lrStorage .lr-sr-banner.show{display:flex;animation:lrSrGlow 1.6s ease-out}
+#lrStorage .lr-sr-banner{display:none;align-items:center;min-height:42px;box-sizing:border-box;gap:8px;padding:8px 12px;border-radius:4px;background:linear-gradient(#ffe3a6,#ffbd66);color:#2a1b0e;font:800 14px/1.2 ${FONT};box-shadow:0 0 0 2px #3e2a17,0 0 18px #ffbd66aa}
+#lrStorage[data-mode=research] .lr-sr-banner{display:flex;visibility:hidden} /* space kept so the panel does not jump */
+#lrStorage .lr-sr-banner.show{display:flex;visibility:visible;animation:lrSrGlow 1.6s ease-out}
+#lrStorage .lr-sr-banner.lr-sr-soft{background:linear-gradient(#5d4129,#4a3220);color:#fff2cc;font-weight:700;box-shadow:0 0 0 2px #3e2a17,inset 0 0 0 1px #ffbd6688;animation:none}
+#lrStorage .lr-sr-done{grid-column:1/-1;margin:6px 2px 2px;font:800 16px/1.3 ${FONT};color:#ffcf9a}
+#lrStorage[data-done] .lr-sr-rhint,#lrStorage[data-done] .lr-sr-slabel{display:none}
+#lrStorage[data-done] .lr-sr-study{width:auto;min-width:300px}
+#lrStorage[data-done] .lr-sr-tiles{display:block}
+#lrStorage[data-done] .lr-sr-banner:not(.show){display:none}
 #lrStorage .lr-sr-banner .sv-icon{width:26px;height:26px}
 @keyframes lrSrGlow{0%{transform:scale(.96);box-shadow:0 0 0 2px #3e2a17,0 0 0 #ffbd6600}30%{transform:scale(1.02);box-shadow:0 0 0 2px #3e2a17,0 0 28px #ffe3a6}100%{transform:none;box-shadow:0 0 0 2px #3e2a17,0 0 18px #ffbd66aa}}
 .lr-sr-lock{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#3e2a17;box-shadow:0 0 0 1.5px #ffcf9a,0 1px 3px #000a}
@@ -96,11 +104,17 @@ const CSS = `
 #inventory .sv-recipe .lr-sr-lock{position:absolute;right:-6px;bottom:-6px}
 #inventory .sv-recipe .lr-sr-needs{display:block;margin-top:4px;font:700 12px/1.2 ${FONT};color:#ffcf9a}
 #inventory .sv-recipe.lr-sr-first{position:relative;margin-top:30px}
-#inventory .sv-recipe.lr-sr-first::before{content:'Discover at a Tinker\\2019s Desk';position:absolute;left:2px;top:-22px;font:800 11px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#d9c9a6}
+#inventory .sv-recipe.lr-sr-first::before{content:'Discover at a Tinker\\2019s Desk';position:absolute;left:2px;top:-22px;width:max-content;white-space:nowrap;font:800 11px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#d9c9a6}
 #inventory .sv-recipe.lr-sr-fresh{animation:lrSrFresh 2.4s ease-out}
+#inventory .lr-sr-more{display:block;width:100%;margin:0 0 8px;padding:6px 8px;border:0;border-radius:4px;background:#24170caa;box-shadow:inset 0 0 0 1px #ffbd6655;color:#ffcf9a;font:700 12px/1.2 ${FONT};text-align:left;letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
+#inventory .lr-sr-more:hover{box-shadow:inset 0 0 0 1px #ffe3a6}
+#inventory .sv-recipe.lr-sr-beckon{animation:lrSrBeckon 2.6s ease-in-out infinite}
+@keyframes lrSrBeckon{0%,100%{box-shadow:inset 0 0 0 1px #d4b07a44}50%{box-shadow:inset 0 0 0 1px #ffbd66,0 0 10px #ffbd6688}}
+body.lr-sr-open .tools.sv-hotbar{visibility:hidden}
 @keyframes lrSrFresh{0%,30%{box-shadow:inset 0 0 0 2px #ffe3a6,0 0 16px #ffbd66}100%{box-shadow:inset 0 0 0 1px #d4b07a44}}
-@media(max-width:860px),(max-height:560px){#lrStorage .lr-sr-body{flex-direction:column}#lrStorage .lr-sr-next,#lrStorage .lr-sr-study{width:auto;max-height:none}
-  #lrStorage .lr-sr-cgrid{grid-template-columns:repeat(6,44px)}#lrStorage .lr-sr-grid{grid-template-columns:repeat(7,44px)}#lrStorage .lr-sr-hotrow{grid-template-columns:repeat(${HOTBAR_SIZE},44px)}
+@media(max-width:700px){#lrStorage .lr-sr-body{flex-direction:column}#lrStorage .lr-sr-next,#lrStorage .lr-sr-study{width:auto;max-height:none;overflow:visible}
+  #lrStorage .lr-sr-tiles{grid-template-columns:repeat(auto-fill,minmax(84px,96px))}}
+@media(max-width:700px),(max-height:600px){#lrStorage .lr-sr-cgrid{grid-template-columns:repeat(6,44px)}#lrStorage .lr-sr-grid{grid-template-columns:repeat(7,44px)}#lrStorage .lr-sr-hotrow{grid-template-columns:repeat(${HOTBAR_SIZE},44px)}
   #lrStorage button.sv-slot{width:44px;height:44px}#lrStorage .sv-slot .sv-art{inset:6px}}
 @media(prefers-reduced-motion:reduce){#lrStorage *,#inventory .sv-recipe{animation:none!important;transition:none!important}}
 `;
@@ -138,7 +152,7 @@ export function createStorageUI(api) {
         <p class="lr-sr-hint">Click a stack to move it across. <kbd>Shift</kbd>+click moves half. Put all keeps your hotbar.</p>
       </section>
       <section class="lr-sr-panel lr-sr-study" aria-label="Study an item">
-        <div class="lr-sr-label"><span>Study an item</span></div>
+        <div class="lr-sr-label lr-sr-slabel"><span>Study an item</span></div>
         <div class="lr-sr-tiles"></div>
         <p class="lr-sr-hint lr-sr-rhint">Studying uses up one item. A recipe is learned once you have studied everything it needs.</p>
         <div class="lr-sr-label"><span>Studied</span></div>
@@ -158,9 +172,9 @@ export function createStorageUI(api) {
   const panels = { chest: $('.lr-sr-chest'), bag: $('.lr-sr-bag'), study: $('.lr-sr-study'), next: $('.lr-sr-next') };
   const tilesEl = $('.lr-sr-tiles'), seenEl = $('.lr-sr-seen'), listEl = $('.lr-sr-list');
 
-  let mode = null, tx = 0, tz = 0, isOpen = false, lastRev = -1, prevKnown = null, bannerTimer = 0;
+  let mode = null, tx = 0, tz = 0, isOpen = false, lastRev = -1, prevKnown = null, prevSeen = null, bannerTimer = 0;
   const prevKind = new Array(SLOT_COUNT).fill(null), prevCount = new Int32Array(SLOT_COUNT), prevDur = new Float64Array(SLOT_COUNT);
-  let inv = null, invWasOpen = false, invRev = -1;
+  let inv = null, invWasOpen = false, invRev = -1, invRow = null, invTable = false;
   let lockedRows = []; // craft-list rows we marked locked (aria-label is re-applied if survival-ui repaints it)
   const timers = new Set(); // craft-list glow timeouts
   const ac = new AbortController(), on = { signal: ac.signal };
@@ -192,39 +206,60 @@ export function createStorageUI(api) {
     return false;
   }
   function countIn(bag, kind) { let n = 0; if (bag) for (const s of bag.slots) if (s && s.kind === kind) n += s.count; return n; }
+  // How to get one of `k`: a recipe output says what to craft it from, a raw material says find one.
+  function getHint(k) {
+    const r = Object.values(RECIPES).find(x => x.output.kind === k);
+    if (!r) return { short: 'Find one first', long: 'Find some ' + itemName(k) + ' first' };
+    const cost = Object.entries(r.cost).map(([c, n]) => `${n} ${itemName(c)}`).join(', ');
+    return { short: `Craft one first (${cost})`, long: `Craft one first from ${cost}` };
+  }
   function paintResearch() {
     const bag = api.bag(), st = api.state, seen = new Set(st.seen), want = api.researchable(), locked = api.locked();
     const total = Object.keys(RECIPES).length, known = total - locked.length;
-    head.sub.textContent = locked.length ? `${known} of ${total} recipes known` : `All ${total} recipes known. Bookworm!`;
-    // study tiles: every kind the table wants, usable when it is in the bag
-    tilesEl.innerHTML = want.length ? want.map(k => {
-      const have = countIn(bag, k);
+    head.sub.textContent = locked.length ? `${known} of ${total} recipes known` : `All ${total} recipes known`;
+    if (locked.length) delete dlg.dataset.done; else dlg.dataset.done = '1';
+    panels.next.hidden = !locked.length;
+    // study tiles: every kind the table wants, usable when it is in the bag; ones that unlock something first
+    const tiles = want.map(k => {
       const opens = locked.filter(id => Object.keys(RECIPES[id].cost).every(c => seen.has(c) || c === k)).map(id => api.nameOf(id));
-      const helps = !opens.length && locked.some(id => k in RECIPES[id].cost);
-      const sub = opens.length ? 'Unlocks ' + opens.join(', ') : helps ? 'A step closer' : '';
-      return `<button type="button" class="lr-sr-tile${have && opens.length ? ' lr-sr-ready' : ''}" data-study="${esc(k)}"${have ? '' : ' disabled'} title="${esc(have ? 'Study one ' + itemName(k) : 'Find some ' + itemName(k) + ' first')}">
-        ${have ? `<b>${have}</b>` : ''}${iconSVG(k)}<span>${esc(itemName(k))}</span><small>${esc(have ? sub : 'Find one first')}</small></button>`;
-    }).join('') : `<p class="lr-sr-empty" style="grid-column:1/-1">${locked.length ? 'Nothing left to study right now.' : 'You have learned every recipe. Lovely work!'}</p>`;
+      const helps = locked.filter(id => k in RECIPES[id].cost).map(id => api.nameOf(id));
+      return { k, have: countIn(bag, k), opens, helps };
+    }).sort((a, b) => (b.opens.length > 0) - (a.opens.length > 0));
+    tilesEl.innerHTML = !locked.length ? '<p class="lr-sr-done">Bookworm! You know every recipe.</p>'
+      : tiles.length ? tiles.map(({ k, have, opens, helps }) => {
+        const sub = opens.length ? 'Unlocks ' + opens.join(', ') : helps.length ? 'Helps: ' + helps.join(', ') : '';
+        const get = getHint(k);
+        return `<button type="button" class="lr-sr-tile${have && opens.length ? ' lr-sr-ready' : ''}" data-study="${esc(k)}"${have ? '' : ' disabled'} title="${esc(have ? 'Study one ' + itemName(k) : get.long)}">
+        ${have ? `<b>${have}</b>` : ''}${iconSVG(k)}<span>${esc(itemName(k))}</span><small>${esc(have ? sub : get.short)}</small></button>`;
+      }).join('') : '<p class="lr-sr-empty" style="grid-column:1/-1">Nothing left to study right now.</p>';
     seenEl.innerHTML = st.seen.length ? st.seen.map(k => `<span class="lr-sr-chip">${iconSVG(k)}${esc(itemName(k))}</span>`).join('') : '<p class="lr-sr-empty">Nothing yet. Pick an item above!</p>';
-    listEl.innerHTML = locked.length ? locked.map(id => {
+    listEl.innerHTML = locked.map(id => {
       const r = RECIPES[id], kinds = Object.keys(r.cost), missing = kinds.filter(k => !seen.has(k));
       const chips = kinds.map(k => seen.has(k) ? `<span class="lr-sr-chip">${CHECK}${esc(itemName(k))}</span>`
         : `<span class="lr-sr-chip lr-sr-need${countIn(bag, k) ? ' lr-sr-have' : ''}">${iconSVG(k)}${esc(itemName(k))}</span>`).join('');
-      return `<div class="lr-sr-row${missing.length === 1 ? ' lr-sr-close' : ''}"><span class="lr-sr-rart">${iconSVG(r.output.kind)}<span class="lr-sr-lock">${LOCK}</span></span>
+      const almost = missing.length === 1 && kinds.length > 1; // at least one ingredient already studied
+      return `<div class="lr-sr-row${almost ? ' lr-sr-close' : ''}"><span class="lr-sr-rart">${iconSVG(r.output.kind)}<span class="lr-sr-lock">${LOCK}</span></span>
         <span><span class="lr-sr-rname">${esc(r.name)}</span><span class="lr-sr-chips">${chips}</span></span></div>`;
-    }).join('') : '<p class="lr-sr-empty">Every recipe is in your craft list.</p>';
-    // celebrate recipes learned while the table is open
+    }).join('');
+    // celebrate recipes learned while the table is open; a study that unlocks nothing gets a soft note
     const now = Object.keys(RECIPES).filter(id => !locked.includes(id));
     if (prevKnown) {
       const fresh = now.filter(id => !prevKnown.includes(id));
+      const studied = prevSeen ? st.seen.filter(k => !prevSeen.includes(k)) : [];
       if (fresh.length) showBanner(`New recipe${fresh.length > 1 ? 's' : ''}: ${fresh.map(id => api.nameOf(id)).join(', ')}! Find ${fresh.length > 1 ? 'them' : 'it'} in your craft list.`, fresh[0]);
+      else if (studied.length) {
+        const k = studied[0], helps = locked.filter(id => k in RECIPES[id].cost).map(id => api.nameOf(id));
+        showBanner(`Studied ${itemName(k)}.${helps.length ? ' One step closer to ' + helps.join(', ') + '.' : ''}`, null, k);
+      }
     }
-    prevKnown = now;
+    prevKnown = now; prevSeen = st.seen.slice();
   }
-  function showBanner(text, kind) {
-    head.banner.innerHTML = (kind ? iconSVG(RECIPES[kind]?.output.kind ?? kind) : '') + `<span>${esc(text)}</span>`;
+  function showBanner(text, recipe, kind) {
+    const icon = recipe ? iconSVG(RECIPES[recipe]?.output.kind ?? recipe) : kind ? iconSVG(kind) : '';
+    head.banner.innerHTML = icon + `<span>${esc(text)}</span>`;
+    head.banner.classList.toggle('lr-sr-soft', !recipe);
     head.banner.classList.remove('show'); void head.banner.offsetWidth; head.banner.classList.add('show');
-    clearTimeout(bannerTimer); bannerTimer = setTimeout(() => head.banner.classList.remove("show"), 6500);
+    clearTimeout(bannerTimer); bannerTimer = setTimeout(() => head.banner.classList.remove('show'), 6500);
   }
   function paint() {
     lastRev = api.rev; bagChanged(api.bag());
@@ -239,17 +274,18 @@ export function createStorageUI(api) {
     panels.study.hidden = panels.next.hidden = mode !== 'research';
     head.icon.innerHTML = iconSVG(mode === 'crate' ? 'crate' : 'research');
     head.title.textContent = mode === 'crate' ? 'Crate' : 'Tinker\u2019s Desk';
-    head.banner.classList.remove('show'); prevKnown = null;
+    head.banner.classList.remove('show'); prevKnown = null; prevSeen = null;
+    if (mode !== 'research') { panels.next.hidden = true; delete dlg.dataset.done; }
     for (const el of [...chestEls, ...bagEls]) el._svSig = undefined;
     paint();
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
-    isOpen = true;
+    isOpen = true; document.body.classList.add('lr-sr-open');
     try { $('.lr-sr-wrap').focus({ preventScroll: true }); } catch {}
   }
   function close() { if (dlg.open) { try { dlg.close(); } catch { dlg.removeAttribute('open'); } } else onClosed(); }
   function onClosed() {
     if (!isOpen) return;
-    isOpen = false; mode = null;
+    isOpen = false; mode = null; document.body.classList.remove('lr-sr-open');
     if (ctx.running) ctx.requestLock?.();
   }
   dlg.addEventListener('close', onClosed, on);
@@ -292,17 +328,21 @@ export function createStorageUI(api) {
   }
 
   // ---------- craft list annotation (#inventory) ----------
+  const setAttr = (el, k, v) => { if (el.getAttribute(k) !== v) el.setAttribute(k, v); };
+  const setClass = (el, c, on) => { if (el.classList.contains(c) !== on) el.classList.toggle(c, on); };
   function annotate() {
     const rows = inv.querySelectorAll('.sv-recipe[data-recipe]'), seen = new Set(api.state.seen), fresh = api.takeFresh();
-    let first = true;
+    const beckon = api.locked().length > 0 && !api.hasTable();
+    let first = null;
     lockedRows = [];
     rows.forEach(el => {
       const id = el.dataset.recipe, r = RECIPES[id], locked = !!r && !api.isLearned(id);
-      el.classList.remove('lr-sr-first');
       const body = el.querySelector('.sv-rbody'), art = el.querySelector('.sv-rart');
       let badge = el.querySelector('.lr-sr-lock'), needs = el.querySelector('.lr-sr-needs');
+      setClass(el, 'lr-sr-beckon', beckon && id === 'research');
       if (!locked) {
         if (el.dataset.locked) unlockRow(el);
+        setClass(el, 'lr-sr-first', false);
         badge?.remove(); needs?.remove();
         if (fresh.includes(id)) {
           el.classList.remove('lr-sr-fresh'); void el.offsetWidth; el.classList.add('lr-sr-fresh');
@@ -313,15 +353,25 @@ export function createStorageUI(api) {
       const miss = Object.keys(r.cost).filter(k => !seen.has(k)).map(k => itemName(k));
       const text = miss.length ? 'Study ' + miss.join(' + ') : 'Study at a Tinker\u2019s Desk';
       if (!el.dataset.locked) { el.dataset.locked = '1'; el.dataset.srAria = el.getAttribute('aria-label') ?? ''; }
-      el.title = 'Needs research: ' + (miss.join(', ') || 'visit a Tinker\u2019s Desk'); el.tabIndex = -1;
-      el.setAttribute('aria-label', LOCKED_LABEL); lockedRows.push(el);
-      if (first) { el.classList.add('lr-sr-first'); first = false; }
+      setAttr(el, 'title', 'Needs research: ' + (miss.join(', ') || 'visit a Tinker\u2019s Desk'));
+      setAttr(el, 'tabindex', '-1'); setAttr(el, 'aria-label', LOCKED_LABEL); lockedRows.push(el);
+      setClass(el, 'lr-sr-first', !first); first ??= el;
       if (!badge && art) { badge = document.createElement('span'); badge.className = 'lr-sr-lock'; badge.innerHTML = LOCK; art.append(badge); }
       if (!needs && body) { needs = document.createElement('span'); needs.className = 'lr-sr-needs'; body.append(needs); }
       if (needs && needs.textContent !== text) needs.textContent = text;
     });
+    // "N more recipes to discover" at the top of the craft list (outside .sv-rlist, which survival-ui owns)
+    const list = inv.querySelector('.sv-rlist'), box = list?.parentElement;
+    let more = box?.querySelector(':scope>.lr-sr-more');
+    if (!lockedRows.length || !box) { more?.remove(); return; }
+    if (!more) {
+      more = document.createElement('button'); more.type = 'button'; more.className = 'lr-sr-more';
+      more.addEventListener('click', () => { box.querySelector('.sv-recipe[data-locked]')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); });
+      box.insertBefore(more, list);
+    }
+    const n = lockedRows.length, label = `${n} more recipe${n > 1 ? 's' : ''} to discover ↓`;
+    if (more.textContent !== label) more.textContent = label;
   }
-
   function unlockRow(el) {
     const aria = el.dataset.srAria;
     delete el.dataset.locked; delete el.dataset.srAria;
@@ -333,8 +383,9 @@ export function createStorageUI(api) {
     host.querySelectorAll('.sv-recipe').forEach(el => {
       if (el.dataset.locked) unlockRow(el);
       el.querySelector('.lr-sr-lock')?.remove(); el.querySelector('.lr-sr-needs')?.remove();
-      el.classList.remove('lr-sr-first', 'lr-sr-fresh');
+      el.classList.remove('lr-sr-first', 'lr-sr-fresh', 'lr-sr-beckon');
     });
+    host.querySelectorAll('.lr-sr-more').forEach(el => el.remove());
     lockedRows = [];
   }
 
@@ -347,8 +398,11 @@ export function createStorageUI(api) {
     }
     if (!inv || !inv.isConnected) inv = document.getElementById('inventory');
     const invOpen = !!inv && inv.open;
-    if (invOpen && (!invWasOpen || invRev !== api.rev)) { invRev = api.rev; annotate(); }
-    else if (invOpen) for (let i = 0; i < lockedRows.length; i++) if (lockedRows[i].getAttribute('aria-label') !== LOCKED_LABEL) lockedRows[i].setAttribute('aria-label', LOCKED_LABEL);
+    if (invOpen) { // re-annotate only when something it shows changed (or survival-ui rebuilt the rows)
+      const row = inv.querySelector('.sv-recipe'), table = api.hasTable();
+      if (!invWasOpen || invRev !== api.rev || invRow !== row || invTable !== table) { invRev = api.rev; invRow = row; invTable = table; annotate(); }
+    }
+    if (invOpen) for (let i = 0; i < lockedRows.length; i++) if (lockedRows[i].getAttribute('aria-label') !== LOCKED_LABEL) lockedRows[i].setAttribute('aria-label', LOCKED_LABEL);
     invWasOpen = invOpen;
   }
 
@@ -357,7 +411,7 @@ export function createStorageUI(api) {
     openInfo: () => (isOpen ? { mode, x: tx, z: tz } : null),
     destroy() {
       clearTimeout(bannerTimer); for (const t of timers) clearTimeout(t); timers.clear();
-      isOpen = false; mode = null; ac.abort(); // no onClosed -> no requestLock while the game is disposing
+      isOpen = false; mode = null; ac.abort(); document.body.classList.remove('lr-sr-open'); // no onClosed -> no requestLock while the game is disposing
       if (dlg.open) { try { dlg.close(); } catch { dlg.removeAttribute('open'); } }
       dlg.remove(); unannotate();
       document.getElementById('lr-sr-style')?.remove();

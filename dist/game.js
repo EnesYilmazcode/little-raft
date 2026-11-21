@@ -1,6 +1,7 @@
 import * as T from './vendor/three.module.js';
 import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
+import { createSky } from './sky.js?build=v3-survival-ae77fa84ac2b';
 import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
@@ -45,6 +46,9 @@ const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); 
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
+import { loadSoundPref, saveSoundPref, dragLookScale } from './hud.js?build=v3-survival-ae77fa84ac2b';
+import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
@@ -53,6 +57,7 @@ import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { createGhosts, wrapRot, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { getItemIcon, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { createIsland } from './scenery-islands.js?build=v3-survival-ae77fa84ac2b'; // decorative distant islands (islands.js is the content lane's dockable islands)
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -72,7 +77,7 @@ const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
 const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12, receiver:.35, antenna:.1, purifier:.3, rainbarrel:.3, sprinkler:.12, ...CONTENT_BLOCK_RADIUS, ...BLOCK_RADII}); // content hook, [progression-hook]
 const SAVE = 'little-raft-v1';
-const FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 8, PICKUP_REACH = 2.5;
+const THROW_LOFT = .2, FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 10, PICKUP_REACH = 2.5;
 const LOOK_SENSITIVITY = .0022, DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
 const FISH_REACH = 26, PENDING_MS = 2500, JOIN_TIMEOUT = 15000, ACK_TIMEOUT = 2000;
 const CHARGE_MS = 900, MIN_CHARGE = .15, WEAR_PER_CATCH = 2, MAX_HEALTH = 100;
@@ -84,8 +89,8 @@ const STYLE_ID = 'little-raft-engine-style';
 const HUD_CSS = `
 body.playing header,body.playing #hud .inventory,body.playing #hud .goal,body.playing #toast,
 body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.playing [data-quick-recipe]{display:none!important}
-#contextPrompt{position:fixed;left:50%;top:calc(50% + 26px);transform:translateX(-50%);padding:3px 10px;border-radius:8px;
-  background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:none;z-index:30;white-space:nowrap}
+#contextPrompt{position:fixed;left:calc(50% + 22px);bottom:calc(50% - 40px);padding:3px 10px;border-radius:8px;
+  background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 var(--ui-font,system-ui,sans-serif);pointer-events:none;z-index:30;white-space:nowrap}
 #contextPrompt[hidden]{display:none}
 #contextPrompt kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:0 4px;border:1px solid rgba(246,236,214,.6);border-radius:4px;font:inherit;text-align:center}
 #signalReadout{position:fixed;top:14px;left:50%;transform:translateX(-50%);padding:4px 12px;border-radius:999px;
@@ -237,7 +242,7 @@ export function mount(transfer = null) {
   let saveRev = isInt(X?.saveRev) ? X.saveRev : storedRev();
   let saveBlocked = !!X?.saveBlocked;
   let building = null, sentPieces = null; // building-pieces lane hook (sentPieces: last pieces array sent to the guest)
-  let scene = null, camera = null, renderer = null, quality = null, ocean = null, raft, itemsGroup, ghosts, rope, ropeAttr, hookMesh, bobber, friend, player, sun;
+  let scene = null, camera = null, renderer = null, quality = null, ocean = null, sky = null, raft, itemsGroup, ghosts, rope, ropeAttr, hookMesh, bobber, friend, player, sun;
   let hemi = null, clouds = [], content = null; // content hook: lights/clouds handed to content modules
   let hands = null, offIconReady = null, clothMat; // one hands controller swaps the held item model per hotbar kind
   const modelOf = k => { try { return getModel(k); } catch (e) { console.warn('model failed', k, e); return null; } };
@@ -248,7 +253,7 @@ export function mount(transfer = null) {
   let survivalUI = null, settingsController = null, options = {...SETTINGS_DEFAULTS};
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
-  let yaw = Number.isFinite(X?.yaw) ? X.yaw : 0, pitch = Number.isFinite(X?.pitch) ? X.pitch : -.28;
+  let yaw = Number.isFinite(X?.yaw) ? X.yaw : 0, pitch = Number.isFinite(X?.pitch) ? X.pitch : 0;
   let walking = false, walkPhase = Number.isFinite(X?.walkPhase) ? X.walkPhase : 0, swing = 0;
   const pointer = new T.Vector2(), ray = new T.Raycaster(), plane = new T.Plane(new T.Vector3(0, 1, 0), -.22);
   let hover = null, mouse = {x:0, y:0, inside:false}, frameAim = null, pickTarget = null;
@@ -256,11 +261,12 @@ export function mount(transfer = null) {
   let physics = makePhysics(X);
   let other = X?.other ? validPose(X.other) : null;
   let keys = X?.keys && typeof X.keys === 'object' ? {...X.keys} : {};
+  const lookFilter = createLookFilter(); // drops pointer-lock spikes without cutting real flicks short
   let hook = X?.hook && (X.hook.fishing || typeof X.hook.update === 'function') ? X.hook : null;
   let castId = typeof X?.castId === 'string' ? X.castId : newToken();
   let hookSlot = isInt(X?.hookSlot) ? X.hookSlot : -1;
   let fishWait = Number.isFinite(X?.fishWait) ? X.fishWait : 0;
-  let sound = X ? X.sound !== false : true;
+  let sound = X ? X.sound !== false : loadSoundPref(window.localStorage);
   const sfx = createOceanAudio({context:X?.audio ?? null, volume:sound ? options.volume : 0, output:ctx => diving?.audioOut(ctx) ?? null}); // diving lane hook: muffled underwater
   const play = (ev, s) => sfx.play(ev, s);
   const note = (i, n, s) => sfx.note?.(i, n, s) ?? false; // [instruments]
@@ -280,7 +286,8 @@ export function mount(transfer = null) {
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
   let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = -1;
-  const chargeMeter = $('#chargeMeter'), chargeFill = chargeMeter?.querySelector('i');
+  const chargeMeter = $('#chargeMeter'); // thin ring around the crosshair, filled by --c
+  let crossUsable = false, lastDraw = 0;
   let blockList = [];
   let controls = null; // controls lane: set in the Input section
   let sailing = null; const scenery = [], sailFlow = {x:0, z:0}, aimNdc = {x:0, y:0}; // [sailing]
@@ -340,6 +347,11 @@ export function mount(transfer = null) {
   // rebuild) around each; these thin, depth-tested parts look the same in one pass.
   function singlePass(o) { o.traverse(c => { for (const m of [].concat(c.material || [])) if (m.transparent && m.side === T.DoubleSide) m.forceSinglePass = true; }); return o; }
   function disposeGeometry(o) { const cached = new Set(materialCache.values()), materials = new Set(); o.traverse(c => { if (!c.geometry?.userData.shared) c.geometry?.dispose(); for (const m of [].concat(c.material || [])) if (!cached.has(m) && m !== clothMat && !m.userData.shared) materials.add(m); }); for (const m of materials) { m.map?.dispose(); m.dispose(); } }
+  function woodMat(hex) { // content hook (paint): tinted plank materials, cached forever (disposeGeometry skips them)
+    const k = 'wood:' + hex;
+    if (!materialCache.has(k)) { let m = null; try { m = createWoodMaterial(T, hex); } catch (e) { console.warn('wood material failed', e); } materialCache.set(k, m ?? new T.MeshStandardMaterial({color:hex, roughness:.85, metalness:0})); }
+    return materialCache.get(k);
+  }
 
   // ---------- DOM adoption (stable nodes shared across hot swaps) ----------
   function prepareDom() {
@@ -352,13 +364,13 @@ export function mount(transfer = null) {
     document.querySelectorAll('[data-quick-recipe]').forEach(b => b.remove()); // old pseudo-inventory buttons
     document.body.classList.remove('build');
     const recipes = $('#recipes'); if (recipes) { recipes.hidden = true; recipes.innerHTML = ''; }
-    const controls = $('.controls'); if (controls) controls.innerHTML = '<span><kbd>W A S D</kbd> Walk</span><span><kbd>Space</kbd> Jump</span><span><kbd>1–8</kbd> Hotbar</span><span><kbd>E</kbd> Pick up / bag</span><span><kbd>Esc</kbd> Menu</span><span id="fishCount"></span>';
+    const controls = $('.controls'); if (controls) controls.innerHTML = '<span><kbd>W A S D</kbd> Walk</span><span><kbd>Space</kbd> Jump</span><span><kbd>1–0</kbd> Hotbar</span><span><kbd>E</kbd> Pick up / bag</span><span><kbd>Esc</kbd> Menu</span><span id="fishCount"></span>';
     const guide = $('#help .guide');
     if (guide) guide.innerHTML = '<li><kbd>Mouse</kbd><span><b>Look around.</b> Click the sea to capture your mouse.</span></li>'
       + '<li><kbd>W A S D</kbd><span><b>Walk</b>, hold <kbd>Shift</kbd> to run, <kbd>Space</kbd> to jump. Fell in? Swim to the raft and hold <kbd>Space</kbd> to climb aboard.</span></li>'
-      + '<li><kbd>1–8</kbd><span><b>Hotbar.</b> Number keys or the mouse wheel choose a slot. Click uses what you are holding.</span></li>'
+      + '<li><kbd>1–0</kbd><span><b>Hotbar.</b> Number keys or the mouse wheel choose a slot. Click uses what you are holding.</span></li>'
       + '<li><kbd>Hook</kbd><span><b>Throw.</b> Hold click to power up, aim higher to throw farther, release. Hold again to reel in everything it touches.</span></li>'
-      + '<li><kbd>E</kbd><span><b>Pick up</b> a supply right beside you, or open your bag to craft. <kbd>Tab</kbd> / <kbd>I</kbd> open the bag too.</span></li>'
+      + '<li><kbd>E</kbd><span><b>Pick up</b> a supply right beside you, or open your bag to craft. <kbd>Tab</kbd> / <kbd>I</kbd> open the bag too; <kbd>E</kbd>, <kbd>I</kbd> or <kbd>Esc</kbd> close it. Inside, <kbd>Tab</kbd> and the arrow keys move between slots.</span></li>'
       + '<li><kbd>E</kbd><span><b>Sail.</b> Look at a sail and press E to raise or lower it; hold <kbd>R</kbd> and turn to steer it. The pennant shows the wind. E at the anchor post stops the raft.</span></li>' // [sailing]
       + '<li><kbd>Craft</kbd><span><b>Make tools.</b> A Hammer builds raft floors (2 wood, 2 plastic each). A Fishing Rod catches fish. Crafted decorations are placed one at a time.</span></li>'
       + '<li><kbd>R</kbd><span><b>Repair</b> a worn hook for 2 wood and 1 scrap.</span></li>'
@@ -376,23 +388,24 @@ export function mount(transfer = null) {
     localBag: () => localBag(), actorBag: a => actorBag(a), action: a => action(a), emit: (e, to) => emit(e, to), notice: (s, ms) => notice(s, ms),
     play: (ev, s) => play(ev, s), // [treasure-hook] local sound only (finder beeps), never sent
     esc: s => esc(s), mat: c => mat(c), rebuildRaft: () => rebuildRaft(), deckY: () => deckY(), uiOpen: () => uiBlocked(), hasGrill: (x, z) => !!fc?.hasGrill(x, z),
+    get building() { return building; }, get brush() { return hands?.itemModel('brush') ?? null; }, woodMat: c => woodMat(c), aim: () => frameAim, // content hook (paint)
     openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
   };
   function init() {
     const assetBuild = new URL(import.meta.url).searchParams.get('build') || 'dev'; document.querySelectorAll('use[href*="icons.svg"]').forEach(el => el.setAttribute('href', 'icons.svg?build=' + assetBuild + '#' + el.getAttribute('href').split('#')[1]));
     prepareDom();
-    scene = new T.Scene(); scene.background = new T.Color('#cbd2c0'); scene.fog = new T.Fog('#cbd2c0', 25, 125);
+    scene = new T.Scene(); sky = createSky(T, {sunDirection:new T.Vector3(-15, 28, 12)}); scene.add(sky.group); scene.background = sky.horizonColor.clone(); scene.fog = new T.Fog(sky.horizonColor.clone(), 60, 260);
     camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 200); camera.rotation.order = 'YXZ'; scene.add(camera);
     renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:devicePixelRatio < 1.5}); // dense screens get their smoothing from pixels, not MSAA
     renderer.setSize(innerWidth, innerHeight);
-    renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
-    hemi = new T.HemisphereLight('#f2ead4', '#3d6b6a', 1.8); scene.add(hemi); // content hook: kept for day/night
-    sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.001; scene.add(sun, sun.target);
+    renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
+    hemi = new T.HemisphereLight('#bfe6ff', '#2f6f7a', 1.0); scene.add(hemi); // content hook: kept for day/night; blue sky fill from above, teal sea bounce from below
+    sun = new T.DirectionalLight('#ffeccb', 3.0); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.0004; sun.shadow.normalBias = .03; sun.shadow.radius = 3; scene.add(sun, sun.target); // shadow box is fitted to the raft each frame
     quality = createQuality({renderer, sun, preset:options.graphics, onChange:() => applyUserGraphics()}); // owns pixel ratio, shadow map size and sun.castShadow
-    ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
+    ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#a6e9f2', fadeNear:28, fadeFar:190}); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
     if (ART.artEnabled()) ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T}); // art lane hook
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
-    itemsGroup = new T.Group(); scene.add(itemsGroup);
+    itemsGroup = new T.Group(); scene.add(itemsGroup); ocean.trackFoam(itemsGroup);
     player = makeAvatar(lookState.look); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
     ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => { try { return prog?.modelFor(k, {type:k}) ?? (k === 'rainbarrel' ? createRainBarrel(T) : k === 'sprinkler' ? createSprinkler(T) : k === 'purifier' ? createPurifier(T) : createCraft(T, k) ?? createSignalModel(T, k) ?? content?.decorModel(k) ?? null); } catch { return null; } }}); // see-through real models, red when blocked
     const ropeGeo = new T.BufferGeometry(); ropeAttr = new T.BufferAttribute(new Float32Array((ROPE_SEGMENTS + 1) * 3), 3); ropeAttr.setUsage(T.DynamicDrawUsage); ropeGeo.setAttribute('position', ropeAttr);
@@ -404,14 +417,18 @@ export function mount(transfer = null) {
     try { fc = createFishingCooking(T, fcHost()); } catch (e) { console.error('fishing-cooking failed', e); fc = null; } // [fishing-cooking]
     try { instruments?.dispose(); instruments = createInstruments(T, instHost()); } catch (e) { console.error('instruments failed', e); instruments = null; } // [instruments]
     islands.length = 0; aboveWater.length = 0; // diving lane hook: seafloor rises toward islands; these groups hide underwater
-    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); islands.push({x:g.position.x, z:g.position.z, r:5}); aboveWater.push(g); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); bakeGroup(g); scene.add(g); scenery.push([g, 6]); } // [sailing] islands drift past; diving: seafloor rises toward these
-    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; bakeGroup(g); scene.add(g); clouds.push(g); aboveWater.push(g); scenery.push([g, 0]); } // content + sailing: clouds
+    // A few islands at varied distances [angle, distance, radius]; draws 12 rand() values so later world seeding is unchanged.
+    const isl = [[3.6, 62, 11], [2.55, 96, 15], [.75, 80, 9], [-1.75, 112, 13]];
+    for (let i = 0; i < 12; i++) { const j = rand(); if (i < isl.length) { const [a, d, r] = isl[i], rr = r * (.9 + j * .2), g = createIsland(T, {seed:i + 1, radius:rr}); g.position.set(Math.sin(a) * d, 0, Math.cos(a) * d); g.rotation.y = j * 6.28; islands.push({x:g.position.x, z:g.position.z, r:rr * .6}); aboveWater.push(g); scene.add(g); scenery.push([g, rr * .7]); } } // [sailing] islands drift past; diving: seafloor rises toward these (createIsland merges its own meshes)
+    // Clouds are wisps in the sky dome (sky.js); the old puffy cloud groups are gone, so content's day/night gets clouds = [].
+    aboveWater.push(sky.group); // diving lane hook: no sky dome underwater
     setOwnedElsewhere(id => Object.prototype.hasOwnProperty.call(PROG_ITEMS, id)); // [progression-hook] items.js unlocks own the catalogue
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
     building = createBuilding(T, scene); // building-pieces lane hook
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
-      action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging}); for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
+      action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
+      getPush:(s, o) => { content?.sailPush(s, o); }, steerTargets:() => content?.steerTargets() ?? null}); /* engine: motor push + wheel grab points */ for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
     try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); diving?.warm(renderer); } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     rebuildRaft();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
@@ -462,6 +479,18 @@ export function mount(transfer = null) {
     camera.add(depthClear);
     camera.add(hands.group);
   }
+  // Held models and build ghosts for every kind in the bag are built ahead and their shaders compiled
+  // (renderer.compile covers hidden meshes), so the first switch to an item never links programs mid-play.
+  const warmedKinds = new Set();
+  function warmKinds() {
+    const slots = localBag().slots; let fresh = false;
+    for (let i = 0; i < slots.length; i++) {
+      const k = slots[i]?.kind; if (!k || warmedKinds.has(k)) continue;
+      warmedKinds.add(k); fresh = true; hands.preload([k]);
+      if (k === 'hammer') ghosts.preload(['floor']); else if (DECOR_TYPES.includes(k)) ghosts.preload([k]);
+    }
+    if (fresh) { try { renderer.compileAsync(scene, camera).catch(() => {}); } catch (e) { console.warn('shader warm-up failed', e); } }
+  }
 
   // Fits the sun's shadow box to the raft (plus a margin for props, avatars and nearby supplies). Call after tiles change.
   // The box never grows past the old fixed ±25 m, so texels are never coarser than before.
@@ -511,9 +540,10 @@ export function mount(transfer = null) {
     parent.add(g);
   }
   function rebuildRaft() {
+    ocean.setRaftTiles(world.tiles);
     for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
     wateringGroups.clear();
-    raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat));
+    raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat, content ? (t, c) => content.tileTint(t.x / 2, t.z / 2, c) : null, woodMat)); // content hook (paint): painted deck tiles
     for (const d of world.decor) {
       let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'rainbarrel' ? createRainBarrel(T) : d.type === 'sprinkler' ? createSprinkler(T) : d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type, d) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
       if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); if (d.rot) detailed.rotation.y = d.rot; raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier' || d.type === 'rainbarrel' || d.type === 'sprinkler') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; } // decor-pack models keep their own quarter-turn unless placement rotated them
@@ -528,6 +558,7 @@ export function mount(transfer = null) {
     }
     blockList = world.decor.flatMap(d => decorBlockers(d, BLOCK_RADIUS));
     building?.sync(world); // building-pieces lane hook
+    content?.afterRebuild(); // content hook (paint): re-tint the new deck planks
     sailing?.onRaftBuilt(); // [sailing] re-find sail models
   }
 
@@ -583,8 +614,9 @@ export function mount(transfer = null) {
       else if (fc?.prompt) html = fc.prompt; // [fishing-cooking] trusted static markup from the lane module
       else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
       else if (hook?.fishing) html = esc(castPrompt(hook, fishWait));
-      else if (castOut() && castOut().stage === 'floating') html = caughtList(castOut()).length ? 'Hold click to reel it in' : 'Hold click to reel';
     }
+    const usable = !!(running && !dialog && (pickTarget || waterAim?.click || waterAim?.e));
+    if (usable !== crossUsable) { crossUsable = usable; $('#crosshair')?.classList.toggle('usable', usable); } // dot grows over interactables
     if (html === contextCache) return; contextCache = html;
     const el = $('#contextPrompt'); if (!el) return; el.innerHTML = html; el.hidden = !html;
   }
@@ -613,8 +645,8 @@ export function mount(transfer = null) {
     if (!chargeMeter) return;
     const show = !!charging && running;
     if (chargeMeter.hidden === show) chargeMeter.hidden = !show;
-    const w = show ? (chargeValue() * 100).toFixed(1) + '%' : '';
-    if (show && chargeFill && w !== chargeWidth) chargeFill.style.width = chargeWidth = w; // only write the DOM on change
+    const w = show ? chargeValue().toFixed(3) : '';
+    if (show && w !== chargeWidth) chargeMeter.style.setProperty('--c', chargeWidth = w); // only write the DOM on change
   }
   // Body classes, crosshair and resume hint follow running and pointer-lock state.
   function refreshPointerUI(force = false) {
@@ -628,41 +660,40 @@ export function mount(transfer = null) {
   }
 
   // ---------- Pointer lock ----------
-  let lockPromisePending = false, lockHasPromise = false, lockEventFailures = 0, lockNoGesture = false;
+  let lockPromisePending = false, lockHasPromise = false, lockFailures = 0;
+  const windowFocused = () => { try { return document.hasFocus(); } catch { return true; } };
+  // Always ask (no navigator.userActivation pre-gate): after the page itself released the lock (inventory,
+  // crafting, crew) Chrome relocks without a gesture. Refusals are handled in lockFailed (lock-rules.js).
+  // While Escape is still held (it just closed a panel), Chrome may treat the held key as the user leaving
+  // the new lock, so the relock waits for the release (no gesture needed: the page released the lock itself).
+  let escHeld = false, relockOnEscUp = false;
+  function escReleased() { escHeld = false; if (relockOnEscUp) { relockOnEscUp = false; requestLock(); } }
   function requestLock() {
-    if (!running || !lockSupported || uiBlocked()) return;
-    // Without a user gesture (e.g. Esc closing the inventory) browsers still relock when the page itself released the
-    // lock. If they refuse, stay in click-to-look quietly: the next click retries, and it never counts as unsupported.
-    lockNoGesture = !!navigator.userActivation && !navigator.userActivation.isActive;
+    if (!shouldRequestLock({running, supported:lockSupported, blocked:uiBlocked()}) || isLocked()) return;
+    if (escHeld) { relockOnEscUp = true; return; }
     try {
       const p = canvas.requestPointerLock();
-      if (p && typeof p.then === 'function') { lockPromisePending = lockHasPromise = true; p.then(() => { lockPromisePending = false; lockEventFailures = 0; }, guard(err => { lockPromisePending = false; lockFailed(err); })); }
+      if (p && typeof p.then === 'function') { lockPromisePending = lockHasPromise = true; p.then(() => { lockPromisePending = false; lockFailures = 0; }, guard(err => { lockPromisePending = false; lockFailed(err); })); }
     } catch (err) { lockFailed(err); }
   }
-  // Lock refused. Transient refusals (Escape cooldown, NotAllowedError, missing gesture) keep click-to-look so the next
-  // canvas click retries. Only genuinely unsupported cases switch permanently to drag-look. The click that asked for lock never acts.
-  function lockUnsupported(err) {
-    if (!lockSupported) return true;
-    if (!err || typeof err !== 'object') return false;
-    const isDom = typeof DOMException !== 'undefined' && err instanceof DOMException;
-    if (isDom) return err.name === 'NotSupportedError' || err.name === 'WrongDocumentError' || err.name === 'SecurityError';
-    return err instanceof Error; // non-DOM rejection: the environment cannot provide pointer lock
-  }
+  // Lock refused. Escape cooldown (SecurityError), unfocused window (WrongDocumentError) and missing gesture are
+  // transient: the next click or focus retries. Only NotSupportedError, a missing API, or repeated refusals while
+  // focused switch to drag-look. The click that asked for lock never acts.
   function lockFailed(err) {
     if (isLocked()) return;
-    if (lockNoGesture) { lockNoGesture = false; refreshPointerUI(true); return; } // a gestureless retry may be refused
     const isEvent = typeof Event !== 'undefined' && err instanceof Event;
-    if (isEvent) {
-      if (lockPromisePending || lockHasPromise) { refreshPointerUI(true); return; } // the promise rejection carries the real reason
-      // Legacy event-only API gives no reason: treat as transient, but repeated refusals mean it is unavailable.
-      if (++lockEventFailures < 3) { refreshPointerUI(true); return; }
-    } else if (!lockUnsupported(err)) { refreshPointerUI(true); return; }
+    if (isEvent && (lockPromisePending || lockHasPromise)) { refreshPointerUI(true); return; } // the promise rejection carries the real reason
+    const verdict = lockFailureVerdict({supported:lockSupported, err:isEvent ? null : err, focused:windowFocused(), failures:lockFailures});
+    lockFailures = verdict.failures;
+    if (!verdict.fallback) { refreshPointerUI(true); return; }
     const wasFallback = lockFallback; lockFallback = true; refreshPointerUI(true);
     if (!wasFallback && running) notice('Mouse lock unavailable: drag to look, click to use', 3000);
   }
   function releaseLock() { if (isLocked()) document.exitPointerLock?.(); }
   function look(dx, dy, k) { yaw -= dx * k; pitch = clamp(pitch - (options.invertY ? -dy : dy) * k, -PITCH_LIMIT, PITCH_LIMIT); }
-  function clearInput() { keys = {}; charging = null; reeling = false; down = null; controls?.clear(); } // controls lane: also release the input layer
+  function clearInput() { keys = {}; charging = null; reeling = false; down = null; lookFilter.reset(); controls?.clear(); } // controls lane: also release the input layer
+  // A panel opening keeps held keys (keyup still arrives); only window blur really loses keyups. The controls lane drops its own while blocked.
+  function pauseInput() { charging = null; reeling = false; down = null; lookFilter.reset(); }
 
   // ---------- Aiming ----------
   const hits = [], aimScratch = {point:null, item:null, dir:new T.Vector3(), at:new T.Vector3()};
@@ -965,7 +996,7 @@ export function mount(transfer = null) {
   function repair() { if (!running) return; const bag = localBag();
     const sel = bag.slots[bag.selectedIndex]; if (sel?.kind === 'spade') { action({kind:'treasure.repair'}); return; } // [treasure-hook] R on a held spade
     action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH)}); }
-  function openInventory() { if (!running || !survivalUI) return; clearInput(); releaseLock(); survivalUI.open?.(); play('open'); }
+  function openInventory() { if (!running || !survivalUI) return; pauseInput(); releaseLock(); survivalUI.open?.(); play('open'); }
   function interact() {
     if (!running || uiBlocked() || diving?.state.diving) return; // diving lane hook: E gathers underwater
     if (!pickupFrom(currentAim()) && sailing?.interact()) return; // [sailing] E on a sail / anchor (pick-up wins)
@@ -1006,6 +1037,7 @@ export function mount(transfer = null) {
       fishWait = 3 + Math.random() * 2; hook = {end:new T.Vector3(p.x, .1, p.z), t:0, duration:fishWait + .8, fishing:true};
       swing = 1; noticeUntil = 0; play('throw', .5); // the context prompt shows the wait
     }
+    if (content?.use(aim, kind)) { swing = 1; return; } // content hook (paint brush)
     if (kind === 'cup' || kind === 'saltcup' || kind === 'freshcup') { const w = wateringTarget(aim); if (w?.click) { swing = 1; action(w.click); } else notice(w?.why ?? WATER_WHY[kind]); return; }
   }
   function beginCharge(at) {
@@ -1024,7 +1056,8 @@ export function mount(transfer = null) {
     const bag = localBag(), idx = bag.selectedIndex, slot = bag.slots[idx];
     if (toolRole(slot?.kind) !== 'hook') return; // [progression-hook] metalhook throws too
     const durability = clamp(slot.durability ?? MAX_HEALTH, 0, MAX_HEALTH), maxRange = 16 + durability * .16;
-    const direction = aim?.dir ?? camera.getWorldDirection(new T.Vector3());
+    const direction = (aim?.dir ?? camera.getWorldDirection(new T.Vector3())).clone();
+    direction.y += THROW_LOFT; direction.normalize(); // a little loft so a level throw carries
     hook = new HookCast(T, {origin:handPos.clone(), direction, maxRange, charge, deck:deckAt});
     castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; play('throw', charge);
     if (durability <= 0) notice('Worn hook: shorter throws. R to repair');
@@ -1080,17 +1113,26 @@ export function mount(transfer = null) {
   let swimStroke = 0; // swim stroke sound timer
   const held = (a, b) => !!(keys[a] || (b && keys[b]));
   const moveInput = {forward:0, strafe:0, yaw:0, jump:false, sprint:false, tiles:null, deckY:0, waterY:0, blocked:null}; // reused every frame
-  function movePlayer(dt, input) {
-    const ci = controls?.movement(dt, running && input, physics); // controls lane: polls input, applies look, shapes movement
+  const steps = {n:0, step:0}; // splitSteps fills this every frame (no allocation)
+  function movePlayer(frameDt, input) {
+    splitSteps(frameDt, .05, .25, steps); // real frame time in equal steps; a long stall must not teleport the player
+    const dt = steps.n * steps.step, laneDt = Math.min(dt, .05); // lane hooks keep the old capped frame step
+    const ci = controls?.movement(laneDt, running && input, physics); // controls lane: polls input, applies look, shapes movement
     if (!running) { walking = false; return; }
     const fwd = ci ? ci.forward : input ? held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown') : 0, side = ci ? ci.strafe : input ? held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft') : 0;
     const surf = building ? building.preStep(physics, deckY()) : null; // building-pieces lane hook
-    const dive = diving?.move(dt, physics, {forward:fwd, strafe:side, yaw, pitch, up:ci ? ci.jump : input && held('Space'), down:ci ? !!ci.crouch : input && held('KeyC'), fast:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'), gather:input && (controls ? controls.input.down('interact') : held('KeyE'))}); // diving lane hook
-    const ev = dive ? null : physics.update(dt, {forward:fwd, strafe:side, yaw, jump:ci ? ci.jump : input && held('Space'), sprint:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'),
-      tiles:surf ? surf.tiles : world.tiles, deckY:surf ? surf.deckY : deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList});
-    controls?.afterMove(dt, physics, ev); // controls lane: footstep bob, crouch, landing dip
+    const dive = diving?.move(laneDt, physics, {forward:fwd, strafe:side, yaw, pitch, up:ci ? ci.jump : input && held('Space'), down:ci ? !!ci.crouch : input && held('KeyC'), fast:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'), gather:input && (controls ? controls.input.down('interact') : held('KeyE'))}); // diving lane hook
+    // Real frame time in equal substeps (<= .05 s) so walking speed holds at low fps. Jump stays held on every
+    // substep: PlayerPhysics fires the impulse only on the press edge, i.e. the first substep, never again.
+    let ev = null;
+    if (!dive) for (let i = 0; i < steps.n; i++) {
+      const e = physics.update(steps.step, {forward:fwd, strafe:side, yaw, jump:ci ? ci.jump : input && held('Space'), sprint:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'),
+        tiles:surf ? surf.tiles : world.tiles, deckY:surf ? surf.deckY : deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList});
+      if (e) { if (!ev) ev = e; else for (const k in e) if (e[k] === true) ev[k] = true; } // keep one-shot flags (splashed, landed) from any substep
+    }
+    controls?.afterMove(laneDt, physics, ev); // controls lane: footstep bob, crouch, landing dip
     building?.postStep(physics, deckY()); // building-pieces lane hook
-    content?.afterMove(physics, dt); // content hook: e.g. stand on island sand
+    content?.afterMove(physics, laneDt); // content hook: e.g. stand on island sand
     const speed = Math.hypot(physics.vx, physics.vz);
     const wasGrounded = physics.grounded, stepFrom = Math.floor(walkPhase / Math.PI);
     walking = physics.grounded && speed > .4; if (walking) walkPhase += dt * 9 * Math.min(1.6, speed / 2.6);
@@ -1140,11 +1182,11 @@ export function mount(transfer = null) {
     const kind = heldKind(), motion = options.cameraMotion;
     const ch = charging ? clamp((performance.now() - charging.start) / CHARGE_MS, 0, 1) : 0;
     hands.setHeld(running ? kind : null);
-    pointing = running && isPlaceable(kind);           // the one place the pointing-finger pose is decided
+    pointing = running && isPlaceable(kind) && (kind !== 'seed' || !!farmPlot(frameAim)); // the one place the pointing-finger pose is decided; seeds point only at a planter
     hands.setPose(pointing ? 'point' : null);
     const rod = kind === 'fishingrod' ? hands.itemModel('fishingrod') : null, out = !!hook?.fishing;
     if (rod?.userData.float) { rod.userData.float.visible = !out; rod.userData.leader.visible = !out; }
-    hands.update({dt, time:elapsed, charge:ch, reeling:rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch}); // [fishing-cooking] rod reel pose from the lane
+    hands.update({dt, time:elapsed, charge:ch, reeling:rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch, fov:camera.fov}); // [fishing-cooking] rod reel pose from the lane
     camera.updateMatrixWorld(true);
     hands.ropeAnchor().getWorldPosition(handPos);
   }
@@ -1253,13 +1295,13 @@ export function mount(transfer = null) {
   }
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, held:heldKind()});
   function frame() {
-    const now = performance.now(), rawMs = now - last, dt = Math.min(rawMs / 1000, .05); last = now; elapsed += dt;
+    const now = performance.now(), rawMs = now - last, realDt = rawMs / 1000, dt = Math.min(realDt, .05); last = now; elapsed += dt;
     const dialog = uiBlocked();
     if (running && !dialog && !document.hidden && !PIN_QUALITY) quality.tick(rawMs);
     checkPeerStale(now);
     ocean.update(elapsed, camera); sfx.tick(dt, {swimming:physics.swimming});
     updateRaft(dt); if (sailing) sailing.update(dt, elapsed); // [sailing]
-    movePlayer(dt, running && !dialog);
+    movePlayer(realDt, running && !dialog); // player substeps the real frame time
     updateAvatars(dt); updateCamera(dt); if (running) diving?.update(dt, elapsed); // diving lane hook
     coop?.update(dt, elapsed); // coop: interpolated remote avatar, rope, ghost, pings, pose stream, reconnect
     frameAim = running && !dialog ? currentAim(aimScratch) : null;
@@ -1267,6 +1309,7 @@ export function mount(transfer = null) {
     waterAim = pickTarget ? null : wateringTarget(frameAim);
     updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost();
     content?.update(dt); // content hook
+    sky?.follow(ocean.uniforms, scene.background); sky?.update(elapsed, camera); // sky dome tracks day/night's horizon, zenith and sun
     if (fc) { try { fc.update(dt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
     if (instruments) { try { instruments.update(dt); } catch (e) { console.error('instruments update failed', e); try { instruments.dispose(); } catch {} instruments = null; } } // [instruments]
     if (running && role !== 'guest') {
@@ -1287,8 +1330,12 @@ export function mount(transfer = null) {
     try { logbookUI?.update?.(); } catch (e) { console.error('logbook update failed', e); logbookUI = null; }
     const achList = Array.isArray(world.achievements) ? world.achievements : [];
     if (achList.length !== seenAch || achList !== seenAchList) { seenAch = achList.length; seenAchList = achList; const n = noteAchievements(lookState.unlocked, achList); if (n.length) { saveLook(lookState.look, lookState.unlocked); lookUI?.refresh(); notice('New hat for your Look: ' + n.map(id => LOOK_HATS.find(h => h.id === id)?.label ?? id).join(', ')); } } // [look] hat unlocks (host or guest view of the list)
-    refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud();
+    refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud(); warmKinds();
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
+    // Behind a blurred pause/settings backdrop the world only redraws at ~10 fps (the inventory has no blur).
+    const veiled = dialog && !!document.querySelector('dialog[open]:not(#inventory)');
+    if (veiled && now - lastDraw < 100) return;
+    lastDraw = now;
     renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
   }
   // Peer liveness. rAF stops in hidden tabs, so a timer keeps the channel warm and each side says when it is
@@ -1316,7 +1363,8 @@ export function mount(transfer = null) {
   // ---------- Input ----------
   const on = (target, type, fn, opts = {}) => target?.addEventListener(type, guard(fn), {...opts, signal});
   on(document, 'pointerlockchange', () => {
-    if (isLocked()) { lockFallback = false; lockEventFailures = 0; lockNoGesture = false; }
+    lookFilter.reset({dropFirst:isLocked()}); // the first move after lock is often a bogus jump
+    if (isLocked()) { lockFallback = false; lockFailures = 0; }
     else { if (charging && charging.x === null) charging = null; reeling = false; }
     if (!isLocked() && !lockFallback && building?.menu.isOpen) building.menu.close(false); // building-pieces lane hook
     down = null; refreshPointerUI(true);
@@ -1325,10 +1373,12 @@ export function mount(transfer = null) {
   on(document, 'mousemove', e => {
     if (building?.menu.isOpen) { if (isLocked()) building.menu.move(e.movementX, e.movementY); else building.menu.hoverAt(e.clientX, e.clientY); return; } // building-pieces lane hook
     if (controls || !isLocked() || uiBlocked()) return; // controls lane: input.js owns mouse look
-    look(clamp(e.movementX, -200, 200), clamp(e.movementY, -200, 200), LOOK_SENSITIVITY * options.sensitivity);
+    const [dx, dy] = lookFilter.filter(e.movementX, e.movementY);
+    look(dx, dy, LOOK_SENSITIVITY * options.sensitivity);
   });
   on(canvas, 'pointerdown', e => {
     if (e.button === 2 && running && building && heldKind() === 'hammer' && !uiBlocked()) { building.menu.open(); return; } // building-pieces lane hook
+    if (e.button === 2 && running && !uiBlocked() && content?.alt(isLocked() ? pickCenter() : currentAim(), heldKind())) return; // content hook (paint: brush colour)
     if (!running || !scene || e.button !== 0 || uiBlocked()) return;
     if (building?.menu.isOpen) { building.menu.close(isLocked()); return; } // building-pieces lane hook (unlocked: a click off the wheel cancels)
     if (controls?.radialOpen) return; // controls lane: a click while the build radial is open picks a piece, not the tool
@@ -1350,7 +1400,7 @@ export function mount(transfer = null) {
     if (!down || isLocked()) return;
     const dx = e.clientX - down.x, dy = e.clientY - down.y;
     if (!down.moved && Math.hypot(dx, dy) > 4) { down.moved = true; if (charging && charging.x !== null) charging = null; } // a drag is a look, not a throw
-    if (down.moved) { look(dx, dy, DRAG_SENSITIVITY); down.x = e.clientX; down.y = e.clientY; }
+    if (down.moved) { look(dx, dy, dragLookScale(DRAG_SENSITIVITY, options.sensitivity)); down.x = e.clientX; down.y = e.clientY; }
   });
   on(window, 'pointerup', e => { if (e.button === 2 && building?.menu.isOpen) building.menu.close(true); }); // building-pieces lane hook
   on(canvas, 'pointerup', e => {
@@ -1368,8 +1418,8 @@ export function mount(transfer = null) {
   on(canvas, 'pointerleave', () => { mouse.inside = false; });
   on(canvas, 'pointercancel', () => { down = null; reeling = false; if (charging && charging.x !== null) charging = null; });
   on(canvas, 'contextmenu', e => e.preventDefault());
-  on(canvas, 'wheel', e => {
-    if (!running || uiBlocked() || (!isLocked() && !lockFallback)) return;
+  on(window, 'wheel', e => { // window, not canvas: in drag-look the hotbar sits over the canvas and must scroll slots too
+    if (!running || uiBlocked() || (!isLocked() && !lockFallback) || !wheelForGame(e.target)) return;
     e.preventDefault();
     if (controls && isLocked()) return; // controls lane: input.js steps the hotbar while locked (was double-stepping)
     wheelAcc += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
@@ -1385,12 +1435,13 @@ export function mount(transfer = null) {
   on(window, 'keydown', () => { sfx.resume(); }, {capture:true});
   on(document, 'click', e => { if (e.target?.closest?.('button, [role=button], .slot')) play('ui', .8); });
   on(window, 'keydown', e => {
-    if (e.target?.matches?.('input, textarea, select') || uiBlocked()) return;
+    const kd = keyDecision({inField:!!e.target?.matches?.('input, textarea, select'), blocked:uiBlocked()});
+    if (!kd.act) { if (kd.record && !controls) keys[e.code] = true; return; } // held keys survive a panel; movePlayer gets input=false meanwhile
     if (running && building?.key(e.code, true, heldKind() === 'hammer', e.repeat)) { e.stopImmediatePropagation(); if (e.code === 'KeyX' || e.code === 'KeyR') e.preventDefault(); return; } // building-pieces lane hook
     if (controls) { if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault(); return; } // controls lane: actions come from the action map
     keys[e.code] = true;
-    const m = /^(?:Digit|Numpad)([1-8])$/.exec(e.code);
-    if (m && running) selectSlot(+m[1] - 1);
+    const m = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
+    if (m && running) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
     if (e.code === 'KeyE' && !e.repeat) interact();
     if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
@@ -1399,7 +1450,13 @@ export function mount(transfer = null) {
     keys[e.code] = false; if (e.code === 'KeyR') sailing?.release(); // [sailing]
     if (e.code === 'KeyX' && building?.removing) { const a = building.removeAction(); if (a && running) { swing = 1; action(a); } } // building-pieces lane hook
   });
-  on(window, 'blur', clearInput); on(window, 'blur', () => sailing?.release()); // [sailing]
+  on(window, 'keydown', e => { if (e.key === 'Escape' && !e.repeat) { escHeld = true; relockOnEscUp = false; } }, {capture:true});
+  on(window, 'keyup', e => { if (e.key === 'Escape') escReleased(); }, {capture:true});
+  on(window, 'pointerdown', () => { escHeld = relockOnEscUp = false; }, {capture:true}); // a click relocks on its own
+  // Focus loss (alt-tab): drop held input and show the hint at the top edge; one click on return relocks.
+  on(window, 'blur', () => { clearInput(); escHeld = relockOnEscUp = false; document.body.classList.toggle('away', running); refreshPointerUI(true); });
+  on(window, 'focus', () => { document.body.classList.remove('away'); refreshPointerUI(true); });
+  on(window, 'blur', () => sailing?.release()); // [sailing]
   // controls lane: one input layer for keyboard/mouse/gamepad; falls back to the legacy handlers above if it fails to start.
   try {
     controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
@@ -1434,8 +1491,12 @@ export function mount(transfer = null) {
   setHandler($('#welcomeLook'), 'onclick', () => lookUI?.open()); // [look]
   setHandler($('#helpButton'), 'onclick', () => settingsController?.open());
   document.querySelectorAll('[data-close]').forEach(b => setHandler(b, 'onclick', () => $('#' + b.dataset.close)?.close()));
-  const soundLabel = () => setText('#soundButton', 'Sound: ' + (sound ? 'on' : 'off'));
-  setHandler($('#soundButton'), 'onclick', () => { sound = !sound; applyVolume(); soundLabel(); });
+  // Crew/Help closed during play go back to locked play; opened from the pause menu, settings.js reopens it instead.
+  for (const id of ['crew', 'help']) on($('#' + id), 'close', e => {
+    if (shouldRelockAfterClose({running, locked:isLocked(), blocked:uiBlocked(), returnToPause:!!e.target?.dataset?.fromPause})) requestLock();
+  });
+  const soundLabel = () => setText('#soundButton', 'Sound: ' + (!sound ? 'off' : options.volume > 0 ? 'on' : 'on (volume is 0%)'));
+  setHandler($('#soundButton'), 'onclick', () => { sound = !sound; saveSoundPref(window.localStorage, sound); applyVolume(); soundLabel(); if (sound) sfx.resume(); });
   soundLabel();
 
   // ---------- Networking (PeerJS, host authoritative) ----------
@@ -1725,6 +1786,13 @@ export function mount(transfer = null) {
     },
   });
   const previousDebug = Object.getOwnPropertyDescriptor(window, 'raftDebug'); // restored if this mount fails
+  // Desktop shell hook (desktop/main.cjs). The shell claims Escape and runs window.raftEscape() (settings.js) with a
+  // user gesture; hold() first marks the key as held so a relock waits for released(), sent on the key's release.
+  const shellApi = {
+    hold:guard(() => { escHeld = true; relockOnEscUp = false; }),
+    released:guard(() => escReleased()),
+  };
+  window.raftShell = shellApi;
   window.raftDebug = debugApi;
 
   // ---------- Lifecycle ----------
@@ -1783,6 +1851,7 @@ export function mount(transfer = null) {
     for (const id of timers) clearTimeout(id); timers.clear(); clearInterval(heartbeat);
     unlisten(bindings.splice(0));
     try { if (window.raftDebug === debugApi) delete window.raftDebug; } catch {}
+    try { if (window.raftShell === shellApi) delete window.raftShell; } catch {}
     disposeScene();
   }
 
@@ -1792,20 +1861,20 @@ export function mount(transfer = null) {
     prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), resume:() => requestLock(), pause:clearInput}); // [progression-hook]
     init();
     try { coop = createCoop(coopContext(), X?.coop); } catch (e) { console.warn('co-op layer unavailable', e); coop = null; } // coop
-    settingsController = createSettings({onChange:applyOptions, onPause:clearInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});
+    settingsController = createSettings({onChange:next => { applyOptions(next); soundLabel(); }, onPause:pauseInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});
     survivalUI = createSurvivalUI({
       getBag:() => localBag(),
       onSelect:guard(i => selectSlot(i)),
       onMove:guard((from, to, amount) => moveSlot(from, to, amount)),
       onCraft:guard(id => craft(id)),
       onResume:guard(() => { play('close'); requestLock(); }),
-      onPause:guard(clearInput),
+      onPause:guard(pauseInput),
       getModel:modelOf, // 3D icons rendered from models.js
       recipeGate:id => prog?.recipeGate(id), // [progression-hook]
     });
     prog.installUI(); // [progression-hook]
-    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(clearInput), onResume:guard(() => requestLock())});
-    try { lookUI = createLookUI({getState:() => lookState, onChange:guard(applyLook), onSend:guard(() => coop?.sendLook?.()), onPause:guard(clearInput), onResume:guard(() => { if (running) requestLock(); })}); } catch (e) { console.error('look UI failed', e); lookUI = null; } // [look]
+    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock())});
+    try { lookUI = createLookUI({getState:() => lookState, onChange:guard(applyLook), onSend:guard(() => coop?.sendLook?.()), onPause:guard(pauseInput), onResume:guard(() => { if (running) requestLock(); })}); } catch (e) { console.error('look UI failed', e); lookUI = null; } // [look]
     if (role !== 'guest') retroAward();
     pickupFeed.setIconProvider(getItemIcon); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }

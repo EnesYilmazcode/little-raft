@@ -1,4 +1,4 @@
-// Original procedural raft foundation tile: hand-cut weathered planks lashed onto two round logs.
+// Original procedural raft foundation tile: wide hand-cut weathered boards lashed onto two round logs.
 // Usage: import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
 //        const g = createFloor(T, index, color => material); g.position.set(x * 2, 0, z * 2);
 // Local bounds: x,z in [-1, 1], y in [0, ~0.2]. Walkable top surface FLOOR_TOP = 0.20 (unevenness <= 0.017).
@@ -7,6 +7,7 @@
 export const FLOOR_TOP = 0.2;
 export const FLOOR_BOUNDS = Object.freeze({minX:-1, maxX:1, minY:0, maxY:0.2, minZ:-1, maxZ:1});
 
+// Material keys (game.js TIMBER); wood.js draws them as bleached olive-tan driftwood (#9c8a5e / #a6956e / #8e7f57).
 const PLANK_COLORS = ['#bb8a53', '#c69860', '#ad7c4a'];
 const BEAM_COLOR = '#5e4029', BEAM_END_COLOR = '#9c7649', ROPE_COLOR = '#a8946c', NAIL_COLOR = '#4b4844';
 const BEV = 0.011, BEV_T = 0.01, THICK = 0.052;
@@ -83,7 +84,7 @@ function plankGeometry(T, rng, p) {
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i);
     pos.setY(i, pos.getY(i) + p.warp * (1 - z * z));
-    let u = 0.5 + (x - xc) / 0.34 + p.uOff, v = 0.03 + (z + 1) * 0.47;
+    let u = 0.5 + (x - xc) / ((p.x1 - p.x0) * 1.08) + p.uOff, v = 0.03 + (z + 1) * 0.47;
     if (p.flipU) u = 1 - u; if (p.flipV) v = 1 - v;
     uv.setXY(i, u, v);
   }
@@ -115,7 +116,7 @@ function beamParts(T, rng, z) {
 }
 
 function lashing(T, rng, x, zb, surf, out) {
-  const R = BEAM_R + 0.008, tube = 0.0055;
+  const R = BEAM_R + 0.008, tube = 0.0075;
   const bottomC = BEAM_Y - BEAM_R - 0.006, topC = surf + 0.007;
   const Ry = (topC - bottomC) / 2, yc = (topC + bottomC) / 2, ky = Ry / R;
   const wraps = 3;
@@ -123,7 +124,7 @@ function lashing(T, rng, x, zb, surf, out) {
     const t = new T.TorusGeometry(R, tube, 3, 8);
     t.rotateY(Math.PI / 2); t.scale(1, ky, 1);
     t.rotateZ((rng() - 0.5) * 0.12);
-    t.translate(x + (w - (wraps - 1) / 2) * 0.016, yc, zb);
+    t.translate(x + (w - (wraps - 1) / 2) * 0.019, yc, zb);
     out.push(t);
   }
   const side = rng() < 0.5 ? -1 : 1;
@@ -136,22 +137,22 @@ function lashing(T, rng, x, zb, surf, out) {
 function floorParts(T, index) {
   const rng = makeRng(index);
 
-  // Plank layout: 7 or 8 planks running along Z, uneven widths, gaps <= ~0.022.
-  const n = rng() < 0.3 ? 7 : 8, pitch = 2 / n;
+  // Plank layout: 3 or 4 wide boards running along Z, uneven widths, gaps ~0.016-0.03.
+  const n = rng() < 0.35 ? 3 : 4, pitch = 2 / n;
   const bounds = [-1];
-  for (let k = 1; k < n; k++) bounds.push(-1 + k * pitch + (rng() - 0.5) * 0.05);
+  for (let k = 1; k < n; k++) bounds.push(-1 + k * pitch + (rng() - 0.5) * 0.12);
   bounds.push(1);
   const beamZ = [-0.78 + (rng() - 0.5) * 0.03, 0.78 + (rng() - 0.5) * 0.03];
   const tileEnd = () => ({slope:0, depth:0.01, chip:false});
-  const splits = new Set(); const splitCount = rng() < 0.5 ? 1 : 2;
+  const splits = new Set(); const splitCount = rng() < 0.6 ? 1 : 2;
   while (splits.size < splitCount) splits.add(Math.floor(rng() * n));
 
   const pieces = [];
   for (let i = 0; i < n; i++) {
-    const x0 = bounds[i] + (i === 0 ? 0.003 : 0.005 + rng() * 0.006);
-    const x1 = bounds[i + 1] - (i === n - 1 ? 0.003 : 0.005 + rng() * 0.006);
+    const x0 = bounds[i] + (i === 0 ? 0.003 : 0.008 + rng() * 0.007);
+    const x1 = bounds[i + 1] - (i === n - 1 ? 0.003 : 0.008 + rng() * 0.007);
     const base = {i, x0, x1, top:0.197 - rng() * 0.011, roll:(rng() - 0.5) * 0.016, warp:(rng() - 0.5) * 0.004,
-      uOff:(rng() - 0.5) * 0.08, flipU:rng() < 0.5, flipV:rng() < 0.5, color:PLANK_COLORS[Math.floor(rng() * PLANK_COLORS.length)]};
+      uOff:(rng() - 0.5) * 0.06, flipU:rng() < 0.5, flipV:rng() < 0.5, color:PLANK_COLORS[Math.floor(rng() * PLANK_COLORS.length)]};
     if (splits.has(i)) {
       const seam = (rng() < 0.5 ? -1 : 1) * (0.15 + rng() * 0.4), slope = (rng() - 0.5) * 0.5;
       const seamEnd = () => ({slope, depth:0.008, chip:true});
@@ -189,10 +190,10 @@ function floorParts(T, index) {
     for (const [bi, z0] of beamZ.entries()) {
       if (z0 < p.za + 0.06 || z0 > p.zb - 0.06) continue;
       const hw = (p.x1 - p.x0) / 2, xc = (p.x0 + p.x1) / 2;
-      const xs = lashed.has(i + ':' + bi) ? [xc - hw * 0.62, xc + hw * 0.62] : rng() < 0.4 ? [xc + (rng() - 0.5) * hw * 0.5] : [xc - hw * 0.5, xc + hw * 0.5];
+      const xs = lashed.has(i + ':' + bi) ? [xc - hw * 0.7, xc + hw * 0.7] : rng() < 0.5 ? [xc - hw * 0.55, xc + hw * 0.55] : [xc - hw * 0.62, xc + (rng() - 0.5) * hw * 0.2, xc + hw * 0.62];
       for (const x of xs) {
         const z = z0 + (rng() - 0.5) * 0.03;
-        const h = new T.CylinderGeometry(0.0105, 0.012, 0.008, 6);
+        const h = new T.CylinderGeometry(0.012, 0.0135, 0.007, 10);
         h.setIndex(Array.from(h.index.array.slice(0, h.groups[2].start))); // bottom cap is buried in the plank
         h.rotateY(rng() * 1.05); h.translate(x, plankSurface(p, x, z) + 0.0005, z);
         nails.push(h);
@@ -210,7 +211,7 @@ function floorParts(T, index) {
   return parts;
 }
 
-const defaultMat = T => c => new T.MeshStandardMaterial({color:c, roughness:0.86});
+const defaultMat = T => c => new T.MeshStandardMaterial({color:c, roughness:0.95});
 
 export function createFloor(T, index = 0, getMaterial) {
   const mat = getMaterial || defaultMat(T);
@@ -218,6 +219,7 @@ export function createFloor(T, index = 0, getMaterial) {
   for (const p of floorParts(T, index)) {
     const mesh = new T.Mesh(p.geometry, mat(p.color)); mesh.name = p.name;
     mesh.castShadow = p.castShadow; mesh.receiveShadow = true; g.add(mesh);
+    if (p.name === 'floor-planks') mesh.userData.color = p.color; // paint: base colour for tinting
   }
   g.userData.kind = 'floor';
   g.userData.index = index;
@@ -230,21 +232,23 @@ export function createFloor(T, index = 0, getMaterial) {
 // Whole raft floor in as few draw calls as possible: every tile is built, its transform baked in,
 // and all parts sharing a material and shadow mode are merged into one mesh.
 // tiles: [{index, x, z}] (x,z = tile origin in raft-local units). Returns a Group; dispose via userData.dispose().
-export function createRaftMesh(T, tiles, getMaterial) {
+// tint(t, plankColor) -> hex|null (optional, paint): painted tiles' planks go in their own bucket, drawn with tintMat(hex).
+export function createRaftMesh(T, tiles, getMaterial, tint = null, tintMat = null) {
   const mat = getMaterial || defaultMat(T);
   const buckets = new Map(), m4 = new T.Matrix4();
   for (const t of tiles) {
     m4.makeTranslation(t.x, 0, t.z);
     for (const p of floorParts(T, t.index)) {
       p.geometry.applyMatrix4(m4);
-      const key = p.color + '|' + p.castShadow;
-      if (!buckets.has(key)) buckets.set(key, {name:p.name, color:p.color, castShadow:p.castShadow, list:[]});
+      const hex = tint && p.name === 'floor-planks' ? tint(t, p.color) : null;
+      const key = hex ? 'tint|' + hex : p.color + '|' + p.castShadow;
+      if (!buckets.has(key)) buckets.set(key, {name:p.name, color:hex || p.color, tinted:!!hex, castShadow:p.castShadow, list:[]});
       buckets.get(key).list.push(p.geometry);
     }
   }
   const g = new T.Group(); g.name = 'raft-floors';
   for (const b of buckets.values()) {
-    const mesh = new T.Mesh(merge(T, b.list), mat(b.color)); mesh.name = b.name;
+    const mesh = new T.Mesh(merge(T, b.list), b.tinted && tintMat ? tintMat(b.color) : mat(b.color)); mesh.name = b.name;
     mesh.castShadow = b.castShadow; mesh.receiveShadow = true; g.add(mesh);
   }
   g.userData.kind = 'floors';

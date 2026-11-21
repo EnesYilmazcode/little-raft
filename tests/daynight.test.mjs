@@ -209,12 +209,12 @@ test('night is readable: brightness floors hold and lanterns light up', () => {
   const g = addLantern(ctx, 2, 0);
   m.debug.setPhase(0.82); m.debug.freeze(true);
   for (let i = 0; i < 40; i++) m.update(1 / 30);
-  assert.ok(ctx.hemi.intensity >= 0.75 - 1e-9, `hemi ${ctx.hemi.intensity}`);
-  assert.ok(ctx.sun.intensity >= 0.55 - 1e-9, `sun ${ctx.sun.intensity}`);
+  assert.ok(ctx.hemi.intensity >= DN.HEMI_NIGHT - 1e-9 && DN.HEMI_NIGHT >= 0.5, `hemi ${ctx.hemi.intensity}`);
+  assert.ok(ctx.sun.intensity >= DN.MOON_I - 1e-9 && DN.MOON_I >= 0.4, `sun ${ctx.sun.intensity}`);
   assert.ok(ctx.renderer.toneMappingExposure >= 0.85 - 1e-9);
   const st = m.debug.state();
   assert.equal(st.lanterns, 1); assert.equal(st.poolLit, 1);
-  near(g.children.find(c => c.name === 'flame').material.emissiveIntensity, 3 * 1.6, 1e-6);
+  near(g.children.find(c => c.name === 'flame').material.emissiveIntensity, 3 * 2.2, 1e-6);
   near(g.children.find(c => c.name === 'lanternGlow').material.emissiveIntensity, 1.6 * 2.4, 1e-6);
   const lit = ctx.scene.children.filter(o => o.isPointLight && o.intensity > 0);
   assert.equal(lit.length, 1);
@@ -364,7 +364,7 @@ test('P1-2: the shadow light (direction * intensity) has no pop at sunset or sun
     assert.ok(minI < 1e-3, 'fades out through the swap');
   }
   // the floor still holds away from the swap
-  m.debug.setPhase(0.82); m.update(0); assert.ok(ctx.sun.intensity >= 0.55 - 1e-9);
+  m.debug.setPhase(0.82); m.update(0); assert.ok(ctx.sun.intensity >= DN.MOON_I - 1e-9);
   m.debug.setPhase(0.31); m.update(0); assert.ok(ctx.sun.intensity > 2);
   m.dispose();
 });
@@ -449,6 +449,21 @@ test('P2-4: restore with a missing or broken slice resets to a fresh morning', (
   m.load('x', 'save'); m.load('x', 'net');
   assert.equal(m.debug.state().clock, 3000); assert.equal(m.debug.state().seed, 5);
   m.dispose();
+});
+
+test('night tints lantern glass amber and dispose puts the colour back', () => {
+  const ctx = stubCtx();
+  const m = createDayNight(ctx);
+  const g = addLantern(ctx, 0, 0), glass = g.children.find(c => c.name === 'lanternGlass').material;
+  const base = glass.emissive.clone(), amber = new T.Color('#ffb35c');
+  m.debug.freeze(true); m.debug.setPhase(0.31); m.update(1 / 60);
+  assert.ok(glass.emissive.equals(base), 'untouched by day');
+  m.debug.setPhase(0.82); m.update(1 / 60);
+  const want = base.clone().lerp(amber, 0.7);
+  near(glass.emissive.r, want.r, 1e-6); near(glass.emissive.g, want.g, 1e-6); near(glass.emissive.b, want.b, 1e-6);
+  near(glass.emissiveIntensity, 0.6 * 1.1, 1e-6);
+  m.dispose();
+  assert.ok(glass.emissive.equals(base)); near(glass.emissiveIntensity, 0.6, 1e-9);
 });
 
 test('co-op: a guest holds still while the host clock is stopped', () => {
