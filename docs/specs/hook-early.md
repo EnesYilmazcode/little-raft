@@ -1,0 +1,155 @@
+# Spec: hook-early (hook, rope, floating debris, starting raft, shark)
+
+Scope: throwing and reeling the hook, the rope line, which debris floats by and how much, its spacing and drift, the size of the starting raft, and whether a shark is around. This compares the real game Raft (Redbeet Interactive) with Little Raft. The reference images are for internal study only. The change list recommends feel and function changes, never copied art.
+
+Units: screen positions are % of image width (x) and height (y), measured on gridded crops made with the scratchpad venv (Pillow/numpy). Colours are medians of small patches; each gives the image and its pixel coordinates or window. Scratch crops are in `/tmp/claude-0/-home-user-little-raft/357b287e-6b25-59b7-a94d-bb803559ea72/scratchpad/hook-early/`.
+
+Known gaps: none of the images shows the hook mid-flight, the rope going slack while the hook flies, or the reeling animation over time. None shows a clean top-down view of the exact starting raft. Claims about those are marked "(from memory, unverified)".
+
+## 1. Images examined (all paths under references/raft/)
+
+Viewed and measured (SELECTED.md rank in brackets):
+- [1] stills/steam/store_01.jpg (1280x720): debris count, taut rope to a hooked barrel, barrel size
+- [2] stills/steam/community_097.jpg (1280x720): hook-in-hand box, tiny raft, debris
+- [3] stills/press/2021-04-01-devblog-46-03.jpg (909x508): starting state, raft vs player size, debris ring
+- [4] stills/wiki-building/screenshot_raft-pre-release-v1-01.jpg: old large hook framing
+- [5] stills/press/2018-10-11-the-large-island-update-06.jpg (800x450): spawn view, debris mix, shark shadow
+- [6] inventory-crafting/yt/qVVltzNBaGw_0135.jpg (960x540): hook box, plank vs foundation
+- [7] inventory-crafting/yt/68lj91mBrDI_0009.jpg (960x540): hook box
+- [8] stills/steam/community_087.jpg: shark underwater, early hotbar
+- [9] stills/press/2019-02-07-the-domesticated-update-out-now-07.jpg (813x451): debris distances
+- [10] stills/steam/store_06.jpg: shark biting the raft edge
+- [11] building/yt/YSMrrtHtpIc_0030.jpg: shark under the raft
+- [12] stills/wiki-building/screenshot_collection-net-spacing.jpg: top-down shark
+- [13] stills/steam/community_134.jpg: debris along the horizon
+- [15] stills/press/2018-07-26-update-5-new-building-blocks-shark-balan-04.jpg: plastic vs foundation size
+- [19] stills/steam/community_106.jpg: debris in rain
+- [20] stills/wiki-items/hook-plastic-inhand.jpg: rope coil on the hook (third person)
+- [23] inventory-crafting/yt/qVVltzNBaGw_0030.jpg: horizon debris
+- [24] stills/press/2019-02-28-update-9-hotfix-3-01.jpg: debris around a small raft
+- [25] building/yt/M4AhtY9BB1I_0100.jpg: barrel in a collection net, +1 pickup toast
+- [42] stills/wiki-building/screenshot_triangle-foundations.jpg (600x451): shark length vs foundation
+- [44] farming/yt/Dle8DwL05lw_0450.jpg: debris in open water
+- [45] stills/press/2021-06-21-update-13-the-renovation-update-out-now-18.jpg: barrel next to the raft
+- [47] stills/steam/store_22.jpg: shark fin near a built raft
+
+Total: 23 images viewed, of which 12 were cropped and gridded or pixel-sampled.
+
+## 2. Observations / spec
+
+### Hook in hand (first person)
+- **C1 Hook box on screen.** The held hook fills a tall strip at the right edge of the screen. Measured boxes:
+  - community_097: x 76-93%, y 25-100%
+  - qVVltzNBaGw_0135: x 76-92%, y 26-100%
+  - 68lj91mBrDI_0009: x 77-93%, y 24-100%
+
+  Mean: x 76-93% (about 16% wide), y 25-100% (about 75% tall). The bottom is cut off by the screen edge. The head reaches about a quarter of the way down the screen, well above the crosshair row (50%) but right of it.
+- **C2 Grip hand position.** The hand grips the handle low: x 76-90%, y 85-100% (community_097, qVVltzNBaGw_0135). The hook head (the coloured crossbar) sits at x 77-86%, y 25-40%. Its colour is a saturated orange, #aa5a39 (community_097, window x 80-86%, y 30-40%). It sits above a pale wrapped grip, #abb79e (x 86-91%, y 45-60%), and a dark handle, #44463e.
+- **C3 Pose.** The hook leans about 10-15° right of vertical, with the head angled towards the screen centre (all three frames). Only one hand shows; the free hand is off screen (community_097, 68lj91mBrDI_0009).
+- **C4 Old version.** In the pre-release build the hook was even bigger: x 83-100%, y 33-100% (screenshot_raft-pre-release-v1-01.jpg). So a large, edge-cropped hook has been a constant in Raft.
+
+### Rope
+- **C5 A taut rope to a hooked item is visible.** In store_01 a straight line runs from the rope coil at the player's hip (52.3%, 55.6%) to the hooked barrel (58.5%, 63.0%). It is 96 px long and has no sag. Against the water it reads as a dark line, #263b47 (darkest pixel, median of 15 samples along it), about 3 px thick at 720p (0.4% of screen height). The barrel is lifted with a splash crown at its top (x 57-61%, y 55-58%). This is the only rope-under-load evidence in the set.
+- **C6 Rope colour and the coil.** The rope is a muted tan-brown, not a pale cream:
+  - coil on the player: #82664f (store_01, window x 29-33%, y 55-65%)
+  - rope in hand: #726553 (store_01, x 33-35%, y 40-47%)
+  - coil in hook-plastic-inhand.jpg: #7d6354
+  - single strand in hook-plastic-inhand.jpg: #a48b6d
+
+  A big coil (about 0.35x the character's torso height) is worn at the hip or carried, and the line pays out from it (store_01, hook-plastic-inhand.jpg).
+- **C7 Throw and reel feel (from memory, unverified).** You hold to charge, and a power bar fills. The hook flies in a short arc of roughly 5-15 m. While you hold to reel, the hook skims back across the surface in steady pulls and catches whatever it crosses. The rope sags in flight and goes straight while reeling.
+
+### Floating debris
+- **C8 Items visible per screen.** I counted floating items in normal first-person sea views:
+
+  | Image | Items |
+  |---|---|
+  | store_01 (staged promo) | 17 |
+  | 2018-10-11 | 8 |
+  | devblog-46-03 | 8 |
+  | community_106 | 9 |
+  | community_134 | 9 |
+  | hotfix-3-01 | 8 |
+  | Dle8DwL05lw_0450 | 6 |
+  | domesticated-07 | 6 |
+  | community_097 (looking down) | 5 |
+
+  Median: 8 items per screen (n = 9 frames). Range: 5-17.
+- **C9 Most items are far away.** Most items sit in the 5-10% band of the screen just below the horizon: y 44-50% in store_01 and y 26-36% in 2018-10-11. Only 1-3 are close.
+
+  Distance estimate for domesticated-07: horizon at y 163 px, assumed vertical FOV of 60° (focal length about 390 px) and assumed eye height of 2.0 m. On those assumptions the nearest plank (y 236) is about 11 m away, the small items (y 200-208) 17-21 m, and the barrel (y 192) about 27 m. So the nearest catchable item is typically about 10 m off, and the rest are spread to the horizon. The distances depend on the assumed FOV and eye height.
+- **C10 Spacing.** Items are scattered singly with no clumps; the gap between neighbours is usually 3-10% of screen width near the horizon (store_01, 2018-10-11). In devblog-46-03, 8 items lie within about 7 raft-widths of the raft. The nearest is 0.7 raft-widths from the raft edge, at (44%, 77%) against a raft spanning x 47.2-52.2%.
+- **C11 Type mix (observed, n ≈ 45 items over 6 frames; my rough classification).** Plastic is the most common, about 40% (white jugs, white or blue sheets, pink sheets). Planks are about 30%, palm leaves about 15% and barrels about 10%. No free-floating scrap was clearly seen (store_01, 2018-10-11, domesticated-07, hotfix-3-01, community_106, Dle8DwL05lw_0450).
+- **C12 Sizes relative to a foundation (estimates from perspective).**
+  - Plank: about 0.9 of a foundation's length, and about 1/6 as wide as it is long. It floats flush with the water. (qVVltzNBaGw_0135: plank x 4-21% against a nearby tile of about 18% at the same depth.)
+  - Plastic sheet: 0.3 of a foundation or less. (2018-07-26: plastic about 5% wide against ghost tiles of about 14% that are farther away.)
+  - Barrel: about 0.4-0.5 of a foundation across. It floats upright and half submerged. (store_01: barrel x 56-61% = 67 px; domesticated-07; renovation-18.)
+  - Palm leaf: about 0.6 of a foundation, flat on the water (2018-10-11).
+  - In the devblog-46-03 overview, the items are 1-1.5% of screen width against a raft of 5%.
+- **C13 Debris colours read clearly against the water.**
+  - Ocean: #012d51 near (2018-10-11, window x 45-55%, y 70-75%) and #2f91aa in the bright start scene (devblog-46-03).
+  - Plank: #8d8977 (2018-10-11) and #8e8576 (domesticated-07). These are desaturated grey-tan from haze.
+  - Plastic jug: #b1b5a1.
+  - Barrel: #706556 to #7d7364.
+
+  The contrast comes from value (light items on dark water), not from saturation.
+- **C14 Drift (from memory, unverified).** Debris drifts past the raft on the current, from ahead to behind, slowly enough that you can walk along the raft edge while you aim. The raft itself drifts too.
+- **C15 Pickup feedback.** Catching or collecting pops a small "+1 Plank" label at the right edge of the screen, at x 87-100%, y 59-63% (M4AhtY9BB1I_0100).
+
+### Starting raft
+- **C16 Raft size.** The starting raft is tiny: about 1.8x the player's height wide (devblog-46-03: raft 45 px wide at x 47.2-52.2%; player 25 px tall at y 73.5-78.5%). In community_097 the raft is about 2 tiles wide and 2-3 deep, with scuffed, broken-edged foundations and light gaps between the plates. It is a 2x2 of foundations (from memory, unverified). Early on, the hook is the only tool in the hotbar (devblog-46-03 slot 1; community_097 slot 1 plus two loot slots).
+
+### Shark
+- **C17 Shark presence.** A shark circles close to the raft from the first minutes (2018-10-11: faint underwater shadow at (46%, 74%), #043256 against ocean #012d51, which is barely darker). It also shows under the raft in YSMrrtHtpIc_0030 and near the surface off a built raft in store_22.
+- **C18 Shark scale.** From top-down views the shark is about 3 foundations long (triangle-foundations: tail (83%, 11%) to nose (97%, 33%) = about 130 px; foundation ≈ 44 px). Because the shark is deeper than the deck, this is a lower bound.
+- **C19 Shark threat.** The shark bites the raft edge in a lunge with a large splash (store_06) and charges divers underwater (community_087, store_08). It removes foundations and can be driven off with a spear (from memory, unverified).
+
+## 3. Little Raft today (dist/)
+
+- **Hook model.** `hook.js:5-160` builds a curved steel "scrap hook" with a wood handle, about 0.70x0.84x0.40 before scaling.
+  - In hand: `hands.js:15` TOOL_SCALE 0.55, giving about 0.40x0.46 m. The right arm base sits in camera space at (0.38, -0.32, -0.80) (`hands.js:131`). At FOV 75 (`game.js:184`) and 16:9, I computed the grip at about x 67%, y 76% of the screen. The hook spans about 37% of the screen's height. This is a computed approximation; the pose offsets were not rendered. The hook is therefore smaller and more central than Raft's 16% x 75% strip at x 76-93% (C1).
+  - Thrown hook: scaled 0.5 (`game.js:297`).
+- **Throw.** Charge time is CHARGE_MS 900 with MIN_CHARGE .15 (`game.js:40`). Launch speed is 7 + 11 × charge m/s, plus 1 m/s up (`hook-physics.js:203-205`). Rope length is `maxRange = 16 + durability × .16`, so 16-32 m (`game.js:658`). A full-charge throw at 45° flies about 33 m and is clamped by the tether. This is about 2-3x the reach of the nearest debris in Raft (C9) and of the remembered throw (C7).
+- **Reel.** REEL_SPEED is 8 m/s (`hook-physics.js:209`). CATCH_RADIUS is 1.0 m, or 0.65 m in flight (`:210-211`). Up to 8 items can be caught per cast (`:214`). Reeling is a constant-speed lerp; there is no pull rhythm in the hook motion itself, though the hands do animate pulls (`hands.js:236-238`). Wear is 2 per catch (`game.js:40`).
+- **Rope rendering.** `game.js:295-296` draws the rope as a 1-px `T.Line` with colour `#e9d39a`, a pale cream, using 16 segments. `rope.js` (`createRope`: 6-sided tube, radius .012, tan #dbbd85/#a1805a, parallel-transport frames) exists but is never imported anywhere (`grep createRope dist/*.js` finds only `rope.js` itself). In the sim, sag is `span × .12 × slack` (`hook-physics.js:456-473`). The slack is 0.15 in flight and 0 once tethered.
+- **Debris types and sizes.** ITEM_TYPES are wood, leaf, scrap, barrel and plastic (`game.js:28`). SPAWN_TABLE has 11 entries: wood 3, plastic 3, leaf 3, scrap 1, barrel 1 (`game.js:30`), which is 27/27/27/9/9%. Model sizes from `debris.js:355-358` and `game.js:373`, against a foundation of 2 m (`deck.js:4`):
+
+  | Item | Size | Fraction of a foundation |
+  |---|---|---|
+  | Plank | about 1.5 m | 0.75 |
+  | Leaf bundle | up to 1.75 m | 0.88 |
+  | Scrap | 0.95 x 0.65 m | 0.48 |
+  | Barrel | 1.0 m tall, 0.87 m across | 0.44 |
+  | Plastic jug | 0.65 x 0.85 ≈ 0.55 m | 0.28 |
+
+  Items float at ITEM_FLOAT .05 above the wave (`game.js:41`), sitting on top of the water rather than in it.
+- **Density and spacing.** There are 30 items (`game.js:303`, `:948`). `makeItem` (`game.js:370`) places them at x in ±11 m and z from the upwind edge minus 3 to minus 20. For the 3x3 start raft that is z −6 to −23, a band of about 22 x 17 m, so the mean spacing is about √(374/30) ≈ 3.5 m. When you face upwind, nearly all 30 are in view at once, about 4x Raft's median of 8 per screen (C8). In steady state they spread over z −23 to +26 (`game.js:751`), which gives about 5.7 m spacing and about 15 items on the upwind side.
+- **Drift.** Items move at +0.22 m/s in z, plus a sway of sin(t·.13)×.04 m/s (`game.js:754`). They respawn upwind when they pass z > maxZ + 24 or touch a tile (`game.js:755`). A collected item respawns immediately (`game.js:560`). The hook copies the same drift (`hook-physics.js:362-363`).
+- **Starting raft.** `newWorld()` creates 9 tiles in a 3x3 grid, each 2 m, so the raft is 6 x 6 m (`game.js:114`). Tiles come from `createFloor` (`deck.js:135`): planks on two logs, FLOOR_TOP .2. The starting bag holds only the hook (`game.js:103`), which matches Raft (C16). The raft itself is 2.25x Raft's tile count (9 against 4) and, at 6 m, about 1.7x Raft's 2-tile width.
+- **Shark.** There is none. The in-game guide states "Nothing can hurt you, and your raft never sinks" (`game.js:276`).
+
+## 4. Ranked change list
+
+1. **Render the rope with the existing tube** (`dist/game.js:295-296, 701-705`). Replace the 1-px `T.Line #e9d39a` with `createRope(T, {segments: 16, radius: .012})` from `dist/rope.js`, and darken its tan towards a weathered mid-brown. Raft's rope samples are #726553 to #a48b6d; Little Raft should choose its own value in that dark-mid range so the line reads as a dark stroke on bright water (C5, C6). Impact H; effort S.
+2. **Thin the debris field to about 8-12 visible items, spread to 10-40 m.** In `dist/game.js:303, 948` and `makeItem` at `:370`: lower the count from 30 to about 18-20. Spawn over a wider and deeper band, x ±20 m and z from edge −8 to −45. Keep 1-2 items within 6-12 m so the first throw always has a target (C8-C10). Impact H; effort S.
+3. **Shrink the starting raft to 2x2 tiles** (`dist/game.js:114` `newWorld`). Use tiles [[0,0],[1,0],[0,1],[1,1]] or a centred equivalent, and check `spawnPoint` (`:222-225`) and the save guard `w.tiles.length > 9` (`:98`). A smaller raft makes the first planks feel earned and puts the edge within one step (C16) (from memory, unverified for the exact 2x2). Impact H; effort S.
+4. **Shorten throw reach to match the debris band.** In `dist/game.js:658`, set `maxRange` to about 10 + durability × .08 (10-18 m). In `dist/hook-physics.js:203-204`, use BASE_SPEED 5 and CHARGE_SPEED 8. A full throw then lands at about 12-15 m, where the nearest debris is (C9). Impact H; effort S.
+5. **Make the held hook bigger and move it to the right edge.** In `dist/hands.js:131`, move the right arm basePos to about (0.50, -0.42, -0.72), and raise TOOL_SCALE (`:15`) from 0.55 to about 0.7. The tool should then fill about x 75-93%, y 25-100%, with the bottom cropped (C1-C3). Verify with a screenshot at 16:9 and FOV 75. Keep Little Raft's own scrap-hook design. Impact M-H; effort S.
+6. **Change the debris mix towards plastic and drop free-floating scrap.** In `dist/game.js:30`, use a SPAWN_TABLE of about plastic 4, wood 3, leaf 2, barrel 1, scrap 0-1, and keep scrap mainly as barrel loot (`LOOT.barrel`, `:31`) (C11). Impact M; effort S.
+7. **Let items sit in the water, not on it** (`dist/game.js:41` ITEM_FLOAT, and `:764` positioning). Set ITEM_FLOAT to about −0.02 for planks, leaves and plastic so they float flush. Sink the barrel by about 45% of its height so it rides upright and half submerged (C12). Impact M; effort S.
+8. **Give the rope real sag in flight and a taut snap on catch.** In `dist/hook-physics.js:465`, raise the flight slack from 0.15 to about 0.5 and let it fall to 0 when the tether goes tight. When reeling with a catch, keep the rope dead straight (tension 1, already at `:432`). Add a short splash crown when the hook first bites an item (C5) (from memory, unverified for the throw arc). Impact M; effort S-M.
+9. **Add a pull rhythm to the reel.** In `dist/hook-physics.js:372-382` `_stepReel`, multiply REEL_SPEED by a 0.4-1.4 pulse locked to the hands' pull cycle (`hands.js:236`, 1.5 Hz), so the hook surges with each pull (C7, from memory, unverified). Impact M; effort S.
+10. **Add an original, gentle predator presence.** Add a new `dist/predator.js`, wired into `dist/game.js` `updateItems` or the frame loop. A dark shape about 3 foundations long circles 6-12 m out at about 1.5 m depth. It is shown as a barely darker underwater silhouette plus an occasional fin (C17, C18). To keep the "nothing can hurt you" promise (`game.js:276`), it should only nudge or steal one floating item now and then, or tug a cast rope, and never destroy tiles. Put it behind a settings toggle. Use our own creature design, not a copy of Raft's shark. Impact M; effort M-L.
+11. **Rescale debris models to the foundation.** Planks are already 0.75 of a foundation, which is fine. Shrink the leaf bundle from 1.75 m to about 1.2 m (`dist/debris.js:356` fit 1.75 → 1.2) and the barrel from 1.25 to about 1.0 (`:358`). The plastic jug at 0.28 is fine (C12). Impact L-M; effort S.
+12. **Slow the respawn of collected items.** At `dist/game.js:560`, a collected item reappears instantly upwind. Delay it by 10-30 s, or spawn it beyond the visible ring (at least 30 m), so the sea does not visibly refill (C9). Impact L; effort S.
+13. **Show a pickup line at the right edge.** On collect (`dist/game.js:802` and the 'collect' action), stack short "+2 wood" style lines at about x 85-100%, y 58-64% for 1.5 s, in Little Raft's own UI style (C15). Impact L; effort S.
+
+## 5. Open questions / UNSURE
+
+- **Exact Raft throw distance, flight time and reel speed.** The images give no timing (no video frames of a throw). C7 is from memory. Tune #4, #8 and #9 by feel.
+- **Starting raft.** "2x2" is from memory. devblog-46-03 only supports "about 2 tiles wide" (1.8x the player's height). Raft's foundation edge length is not measurable from these images; it is about 1.5 m (from memory, unverified). Little Raft tiles are 2 m, so a 2x2 here is 4 m, a bit larger than Raft's.
+- **Item distances (C9).** These assume a vertical FOV of 60° and an eye height of 2 m. A wider FOV would make the items closer than estimated.
+- **Type-mix shares (C11).** These come from a hand count of about 45 small, hazy items; plastic and paler planks can be confused at a distance.
+- **Shark size (C18).** This comes from two top-down wiki shots of uncertain depth. The collection-net shot suggests up to about 6 tiles, which is inconsistent, so I trust the triangle shot. The shark-related changes (#10) depend on the game's no-harm promise; this is a design decision for the owner.
+- **Little Raft hook framing.** The screen box in section 3 was computed from `hands.js` constants and not rendered. Take a screenshot before and after #5.
+- **store_01 framing.** store_01 shows the rope paying out from a hip coil rather than the hand. It is a staged multiplayer promo, so it may not reflect the single-player first-person view.
