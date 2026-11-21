@@ -1015,3 +1015,43 @@ Open for next round:
 - Skipped claude/loop-ux-202611210848: its new work is loop-ux-202611210833 (plus loop-ux-0648 commits) with an older raft-master merged in; both are claimed by integrator B, and it conflicts in 16 files.
 - Merged claude/loop-ux-202611210852 with no content change: its only new commit merges loop-ux-202611210748, which raft-master already has; kept raft-master's side.
 - Gate after merging raft-master: 1138/1138 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text; 166 ms/frame, 37 draw calls.
+
+## 2026-11-21 · loop-features-202611210926 (features)
+Base: origin/claude/raft-master (1ba50d8), which already includes round 2 (0735). Round 3 (0831) is not merged yet.
+Branch: claude/loop-features-202611210926.
+
+Features (research in docs/features, specs in docs/specs):
+- **Power hookups**: a charged Battery within 2 tiles doubles the speed of the Water Purifier, Seaside Kiln and Simple Grill. Each working second drains 1 charge.
+  - `power.powerAt` is a pure read on every peer; `power.draw` runs on the host only.
+  - Purifiers use a host `fast` set; the kiln and grill take a rate.
+  - Prompts get a "· powered" suffix, and one shared copper LineSegments cable shows the links.
+  - No new save fields.
+- **Biofuel**: a Biofuel Refiner (a copper still) turns raw organics into Biofuel Jugs, 30 s each.
+  - The Fuel Tank holds 8 jugs and tops up adjacent running motors through a new engine `pour`. The motor fuel cap is respected, so no jug is wasted.
+  - `FUEL.biofuel` is 150.
+  - Files: dist/biofuel.js, biofuel-core.js, biofuel-model.js.
+- **Water tank and pipes**: a Water Tank holds 12 cups. Water Pipes are a `world.ext.pipes` overlay: click lays one, right click lifts it with a refund.
+  - Rain barrels fill tanks; tanks water palms and top up sprinklers on the network.
+  - Purifiers are deliberately not a source, because their cup would vanish.
+  - Rendered as instanced copper joints (elbow and tee by neighbour mask).
+  - Files: dist/pipes.js, pipes-model.js.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA, 1 QA fixer (14 agents).
+
+Review fixes:
+- Hookups: the empty-battery notice repeated every second by day; the cable is now copper so it reads at night.
+- Biofuel: refuses new busy stations past the save caps (contents would have been dropped on load); `refundBiofuel`/`beforeRemove` ready for decor removal; bubbles only animate when near.
+- Pipes: the prune uses fresh tile and decor sets, so a pipe can no longer survive over open water; no per-frame tile array; lighter tank.
+
+QA fixes:
+- held models for the jug and the pipe
+- real icons for the jug, pipe, refiner, fuel tank and water tank
+- capped cylinder jugs on the refiner tray
+- an aimed content readout (e.g. "fresh water only") now beats the drink hint
+
+Checks: `npm test` 1232/1232 (was 1193); shoot.py `errors: []`.
+Known limits:
+- Live two-peer co-op not run; mixed-version co-op is unsupported.
+- Shark-eaten tiles still destroy contents (same as chests and the kiln).
+- Pipe lay and lift make no sound.
+Next ideas: decor removal wired to the refund hooks, pipe sounds, a night pass in the QA scripts, a powered receiver tier.
