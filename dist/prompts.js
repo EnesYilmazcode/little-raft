@@ -165,7 +165,7 @@ function createPrompts(win, doc) {
       const hud = safe(() => debug?.hud) || null;
       let full = hud ? undefined : safe(() => debug?.state);
       const state = hud || full;
-      const ctx = {get state() { if (full === undefined) full = safe(() => debug?.state); return full; }, camera:m?.camera ?? null, T:m?.T ?? null, scene:m?.scene ?? null};
+      const ctx = {get state() { if (full === undefined) full = safe(() => debug?.state); return full; }, hud, camera:m?.camera ?? null, T:m?.T ?? null, scene:m?.scene ?? null};
       const stage = state?.hookStage ?? null;
       if (state?.running && lastStage !== undefined && isThrow(lastStage, stage) && throws < 1e6) { throws++; safe(() => win.localStorage.setItem(STORE_KEY, JSON.stringify({throws}))); }
       lastStage = stage;

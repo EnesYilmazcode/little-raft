@@ -182,7 +182,7 @@ export function createPaint(ctx) {
     const P = globalThis.raftPrompts; if (unprovide || typeof P?.provide !== 'function') return;
     unprovide = P.provide({ id: 'paint', priority: 1, prompt: pc => {
       if (!holding()) return null;
-      const s = pc?.state; // yield to the built-in pickup / waiting prompts (priority 0), which this provider would otherwise hide
+      const s = pc?.hud ?? pc?.state; // yield to the built-in pickup / waiting prompts (priority 0), which this provider would otherwise hide
       if (s?.pickup || (s?.role === 'guest' && !s.networkReady)) return null;
       return target ? [{ key: 'LMB', label: 'Paint ' + target.name + ' · ' + label() }, { key: 'RMB', label: 'Colour', muted: true }]
         : [{ label: 'Brush: ' + label(), muted: true }, { key: 'RMB', label: 'Colour', muted: true }];

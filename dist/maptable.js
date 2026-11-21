@@ -258,7 +258,7 @@ export function createMapTable(ctx, opts = {}) {
     const P = safe(() => window.raftPrompts, null);
     if (!P || typeof P.provide !== 'function') return;
     unprovide = P.provide({ id: 'maptable', priority: 1, prompt: c => {
-      const s = c?.state;
+      const s = c?.hud ?? c?.state;
       if (!s?.running || s.pickup || (s.role === 'guest' && !s.networkReady) || ctx.uiOpen?.() || !target(null)) return null;
       return { key: 'E', label: 'Read the chart' };
     } });
