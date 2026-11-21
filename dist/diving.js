@@ -15,8 +15,9 @@
 //   hot-swap: const saved = diving?.capture(); diving?.dispose(); ... createDiving({..., restore:saved})
 //   'raft:underwater' event / onChange detail: {underwater, depth, mount} (mount = instance counter).
 import { createSeafloor } from './seafloor.js?build=v3-survival-ae77fa84ac2b';
-import { createUnderwaterFx } from './underwater-fx.js?build=v3-survival-ae77fa84ac2b';
-import { createDivingUI } from './diving-ui.js?build=v3-survival-ae77fa84ac2b';
+// underwater-fx.js and diving-ui.js are fetched with import() once the browser is idle after mount, or at once
+// when the camera nears the water: nothing of theirs is visible above the surface.
+const loadFxModules = () => Promise.all([import('./underwater-fx.js?build=v3-survival-ae77fa84ac2b'), import('./diving-ui.js?build=v3-survival-ae77fa84ac2b')]);
 
 export const DIVE = Object.freeze({ SPEED: 2.4, FAST: 3.4, VERTICAL: 2.2, BUOYANCY: 0.15, OXY_SECONDS: 45,
   REFILL_RATE: 6, GATHER_SECONDS: 1.0, GATHER_SLOW: Object.freeze({ metalore: 1.4 }), REACH: 2.8, EYE_FLOOR_CLEAR: 0.6,
@@ -146,10 +147,20 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
   const mount = ++mounts;
   const seafloor = createSeafloor(T, { islands });
   seafloor.group.visible = false; scene?.add(seafloor.group); // hidden until update() shows it (title screen was black)
-  const fx = createUnderwaterFx(T, { scene, camera, ocean, seafloor });
-  const ui = typeof document !== 'undefined' ? createDivingUI(document) : null;
+  let fx = null, ui = null, fxLoading = false, disposed = false, idle = null;
   const failed = new Set();
   const fail = (name, e) => { failed.add(name); console.error(`diving ${name} failed`, e); };
+  function loadFx() {
+    if (fxLoading || disposed) return;
+    fxLoading = true; try { idle?.(); } catch {} idle = null;
+    loadFxModules().then(([fxm, uim]) => {
+      if (disposed) return;
+      try { fx = fxm.createUnderwaterFx(T, { scene, camera, ocean, seafloor }); } catch (e) { fail('fx', e); }
+      try { ui = typeof document !== 'undefined' ? uim.createDivingUI(document) : null; } catch (e) { fail('ui', e); }
+    }).catch(e => { fail('fx', e); fail('ui', e); });
+  }
+  if (typeof requestIdleCallback === 'function') { const id = requestIdleCallback(() => { idle = null; loadFx(); }, { timeout: 3000 }); idle = () => cancelIdleCallback(id); }
+  else if (typeof setTimeout === 'function') { const id = setTimeout(() => { idle = null; loadFx(); }, 1000); idle = () => clearTimeout(id); }
 
   let body = null, owner = null, oxygen = clamp(fin(restore?.oxygen, 1), 0, 1), rising = false, lastInput = {};
   let underwater = false, depth = 0, floorShown = false, oceanHidden = false, oceanVis = true;
@@ -253,7 +264,8 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
     updateGather(dt);
     tick(regrow, dt, unGather); tick(pending, dt, null);
     const lowOxygen = !!body && oxygen < 0.25;
-    if (!failed.has('fx')) {
+    if (!fx && p.y < surf + 2) loadFx();
+    if (fx && !failed.has('fx')) {
       fxState.underwater = underwater; fxState.depth = depth; fxState.time = time; fxState.lowOxygen = lowOxygen; fxState.breath01 = oxygen;
       try { fx.update(dt, fxState); } catch (e) {
         fail('fx', e);
@@ -287,7 +299,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
 
   return {
     move, update, audioOut, markGathered, cancel, mount,
-    render(renderer) { if (!failed.has('fx')) { try { fx.render(renderer); } catch (e) { fail('fx', e); } } },
+    render(renderer) { if (fx && !failed.has('fx')) { try { fx.render(renderer); } catch (e) { fail('fx', e); } } },
     /** Compile the dive programs up front (call while on the surface): the seafloor group (hidden until the first
      *  dive) and the underwater overlay, which lives in fx's own scene. fx.render() gets a stand-in renderer whose
      *  render() only compiles, so nothing is drawn; fx is entered for that call and exited again right after. */
@@ -297,6 +309,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
         ? renderer.compileAsync(s, c).catch(e => console.warn('dive shader warm-up failed', e))
         : renderer.compile?.(s, c);
       try { seafloor.warm?.(renderer, camera, scene); } catch (e) { console.warn('seafloor warm-up failed', e); }
+      if (!fx) return; // lazy-loaded fx: its overlay compiles on first dive instead
       const off = { underwater: false, depth: 0, time: 0, lowOxygen: false, breath01: 1 };
       try {
         fx.update(1e-3, { ...off, underwater: true });
@@ -317,8 +330,9 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
       listeners.clear(); regrow.clear(); pending.clear(); body = owner = null;
       for (const f of filters.values()) { try { f.disconnect(); } catch {} }
       filters.clear();
-      try { fx.update(0, { underwater: false, depth: 0, time: 0, lowOxygen: false, breath01: 1 }); } catch {}
-      try { fx.dispose(); } catch (e) { console.error(e); }
+      disposed = true; try { idle?.(); } catch {} idle = null;
+      try { fx?.update(0, { underwater: false, depth: 0, time: 0, lowOxygen: false, breath01: 1 }); } catch {}
+      try { fx?.dispose(); } catch (e) { console.error(e); }
       try { ui?.dispose(); } catch (e) { console.error(e); }
       try { scene?.remove(seafloor.group); } catch {}
       try { seafloor.dispose(); } catch (e) { console.error(e); }
