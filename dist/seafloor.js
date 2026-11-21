@@ -5,7 +5,7 @@
 // host can validate a gather request with nodeById(id) + distance alone.
 //
 // Usage:
-//   import { createSeafloor, nodeById } from './seafloor.js';
+//   import { createSeafloor, nodeById } from './seafloor.js?build=v3-survival-ae77fa84ac2b';
 //   const floor = createSeafloor(THREE, { islands });
 //   scene.add(floor.group);
 //   // every frame: floor.update(dt, camera, time);  floor.uniforms.uCaustic.value = 0..1

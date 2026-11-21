@@ -3,7 +3,7 @@
 // createRemoteRope:  the brother's hook + rope line, same look as the local one, tinted toward his blue.
 // createRemoteGhost: the brother's build preview tile with a pulsing outline.
 // Nothing touches the DOM; all geometry/materials are created once and reused (no per-frame allocation).
-import { createHook } from './hook.js';
+import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 
 const MINE = '#efae55', THEIRS = '#70a7e4';
 const ROPE = '#e9d39a', GHOST_OK = '#b6ffd0', GHOST_BAD = '#ee8e75';

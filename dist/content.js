@@ -22,10 +22,10 @@
 // running, physics, elapsed, options, localBag(), actorBag(actor), action(a), emit(e, to), notice(s),
 // esc(s), mat(color), rebuildRaft(), deckY(), uiOpen().
 
-import { createIslands } from './islands.js';
-import { createWildlife } from './wildlife.js';
-import { createStorage } from './storage-research.js';
-import { createDayNight } from './daynight.js';
+import { createIslands } from './islands.js?build=v3-survival-ae77fa84ac2b';
+import { createWildlife } from './wildlife.js?build=v3-survival-ae77fa84ac2b';
+import { createStorage } from './storage-research.js?build=v3-survival-ae77fa84ac2b';
+import { createDayNight } from './daynight.js?build=v3-survival-ae77fa84ac2b';
 
 const FEATURES = [createIslands, createWildlife, createStorage, createDayNight];
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network

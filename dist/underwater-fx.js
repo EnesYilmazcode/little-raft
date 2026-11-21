@@ -2,7 +2,7 @@
 // one fullscreen overlay (tint, vignette, light shafts) and rising bubbles.
 // THREE r170 is passed in as T (never imported). No render targets, no passes.
 // Usage:
-//   import { createUnderwaterFx } from './underwater-fx.js';
+//   import { createUnderwaterFx } from './underwater-fx.js?build=v3-survival-ae77fa84ac2b';
 //   const fx = createUnderwaterFx(T, { scene, camera, ocean, seafloor });
 //   // each frame, after the camera moved:
 //   fx.update(dt, { underwater, depth, time, lowOxygen, breath01 });

@@ -1,6 +1,6 @@
 // Islands: pure logic (no THREE, no DOM). Layout from a uint32 seed, the drift timeline, save
 // validation, loot rules, the host gather check and the stand-on-sand step. See docs/features/islands.md.
-import { PLAYER_CONSTANTS } from './player-physics.js';
+import { PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 
 export const ISLAND = Object.freeze({
   FIRST: 90,            // first island in a fresh world (s)

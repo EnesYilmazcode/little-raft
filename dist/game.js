@@ -18,13 +18,13 @@ import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2
 import { createContent, cleanExt } from './content.js?build=v3-survival-ae77fa84ac2b'; // content hook (islands, wildlife, storage, day/night)
 import { CONTENT_DECOR, CONTENT_BLOCK_RADIUS } from './content-items.js?build=v3-survival-ae77fa84ac2b'; // content hook
 import { createBuilding, cleanPieces } from './building.js?build=v3-survival-ae77fa84ac2b'; // building-pieces lane hook (docs/cloud/building-pieces.md)
-import { createControls } from './controls.js'; // controls lane: input map, gamepad, movement feel (docs/cloud/controls.md)
+import { createControls } from './controls.js?build=v3-survival-ae77fa84ac2b'; // controls lane: input map, gamepad, movement feel (docs/cloud/controls.md)
 import { createSailing } from './sailing-world.js?build=v3-survival-ae77fa84ac2b'; // [sailing] see docs/cloud/sailing.md
 import { cleanSailing } from './sailing-core.js?build=v3-survival-ae77fa84ac2b'; // [sailing]
 import { createCoop } from './coop.js?build=v3-survival-ae77fa84ac2b'; // coop: co-op layer (docs/cloud/coop.md)
 import { createDiving, DIVE } from './diving.js?build=v3-survival-ae77fa84ac2b'; // diving lane hook (docs/cloud/diving.md)
 import { nodeById, NODE_LOOT } from './seafloor.js?build=v3-survival-ae77fa84ac2b'; // diving lane hook
-import { createFishingCooking } from './fishing-cooking.js'; // [fishing-cooking] lane hook, see docs/cloud/fishing-cooking.md
+import { createFishingCooking } from './fishing-cooking.js?build=v3-survival-ae77fa84ac2b'; // [fishing-cooking] lane hook, see docs/cloud/fishing-cooking.md
 import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';

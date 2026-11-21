@@ -4,12 +4,12 @@
 import {
   ISLAND, NODE_MAX, SHORE_U, layoutFor, pathAt, clean, lootFor, groundHeight, nextDelay, dockOffset,
   applyGather, standOnSand, DEFAULTS,
-} from './islands-layout.js';
-import { createIslandModels } from './islands-models.js';
-import { ITEM_INFO } from './inventory-state.js';
-import { PLAYER_CONSTANTS } from './player-physics.js';
+} from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
+import { createIslandModels } from './islands-models.js?build=v3-survival-ae77fa84ac2b';
+import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 
-export * from './islands-layout.js';
+export * from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
 
 const EYE = PLAYER_CONSTANTS.EYE_OFFSET;
 const KINDS = ['palm', 'bush', 'rock', 'sand'];

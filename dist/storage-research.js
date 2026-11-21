@@ -2,8 +2,8 @@
 // The placed Crate decor becomes a 12-slot chest; the Research Table decor learns recipes from the
 // ingredient kinds you feed it. Slice: world.ext.storage. Host-authoritative actions 'storage.*'.
 // The top half of this file is pure (no DOM, no THREE) and exported for tests.
-import { Bag, RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js';
-import { buildResearchTable } from './storage-research-model.js';
+import { Bag, RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { buildResearchTable } from './storage-research-model.js?build=v3-survival-ae77fa84ac2b';
 
 export const CHEST_SLOTS = 12;
 export const MAX_CHESTS = 400;
@@ -273,7 +273,7 @@ export function createStorage(ctx) {
 
   function loadUI() {
     if (ui || uiLoading || typeof document === 'undefined') return uiLoading;
-    uiLoading = import('./storage-research-ui.js').then(m => { ui = m.createStorageUI(api); return ui; }).catch(e => { console.error('storage ui failed', e); uiLoading = null; return null; });
+    uiLoading = import('./storage-research-ui.js?build=v3-survival-ae77fa84ac2b').then(m => { ui = m.createStorageUI(api); return ui; }).catch(e => { console.error('storage ui failed', e); uiLoading = null; return null; });
     return uiLoading;
   }
   function open(type, x, z) {

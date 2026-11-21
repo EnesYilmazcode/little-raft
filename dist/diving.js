@@ -3,7 +3,7 @@
 // seafloor, underwater fx and diving UI together; it touches THREE/DOM only when called.
 //
 // game.js hooks:
-//   import { createDiving } from './diving.js';
+//   import { createDiving } from './diving.js?build=v3-survival-ae77fa84ac2b';
 //   init:   diving = createDiving({T, scene, camera, ocean, islands, getTiles:() => world.tiles, getDeckY:deckY,
 //             onGather:id => action({kind:'gather', id}), restore:savedDiveState});
 //   gather success (host): broadcast so EVERY client (host too) calls diving.markGathered(id).
@@ -13,9 +13,9 @@
 //   beep:   o.connect(g).connect(diving ? diving.audioOut(audio) : audio.destination)
 //   hot-swap: const saved = diving?.capture(); diving?.dispose(); ... createDiving({..., restore:saved})
 //   'raft:underwater' event / onChange detail: {underwater, depth, mount} (mount = instance counter).
-import { createSeafloor } from './seafloor.js';
-import { createUnderwaterFx } from './underwater-fx.js';
-import { createDivingUI } from './diving-ui.js';
+import { createSeafloor } from './seafloor.js?build=v3-survival-ae77fa84ac2b';
+import { createUnderwaterFx } from './underwater-fx.js?build=v3-survival-ae77fa84ac2b';
+import { createDivingUI } from './diving-ui.js?build=v3-survival-ae77fa84ac2b';
 
 export const DIVE = Object.freeze({ SPEED: 2.4, FAST: 3.4, VERTICAL: 2.2, BUOYANCY: 0.15, OXY_SECONDS: 45,
   REFILL_RATE: 6, GATHER_SECONDS: 1.0, GATHER_SLOW: Object.freeze({ metalore: 1.4 }), REACH: 2.8, EYE_FLOOR_CLEAR: 0.6,

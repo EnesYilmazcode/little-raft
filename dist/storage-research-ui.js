@@ -2,8 +2,8 @@
 // Table, plus lock badges on the inventory craft list. It reads state through the small `api` object
 // from storage-research.js and changes nothing itself: every click becomes a ctx.action().
 // update() runs per frame; it only compares numbers/strings and repaints on change.
-import { iconSVG, slotSig, paintSlot, itemName } from './survival-ui.js';
-import { RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js';
+import { iconSVG, slotSig, paintSlot, itemName } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+import { RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 const CHEST = 12;
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";

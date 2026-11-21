@@ -1,8 +1,8 @@
 // Sailing lane, THREE side: drives world.sailing each frame, moves scenery relative to the raft, animates sails,
 // owns the anchor fixture + wind pennants, and handles aiming (E toggles sail/anchor, hold R steers the sail).
 // See docs/cloud/sailing-spec.md. The raft never moves in x/z: the world drifts past it instead.
-import { SAIL, cleanSailing, defaultSailing, stepSailing, sailTarget, applySailAction, wrapAxis, placeUpstream, driftedOut, windVector } from './sailing-core.js';
-import { createSailingUI } from './sailing-ui.js';
+import { SAIL, cleanSailing, defaultSailing, stepSailing, sailTarget, applySailAction, wrapAxis, placeUpstream, driftedOut, windVector } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
+import { createSailingUI } from './sailing-ui.js?build=v3-survival-ae77fa84ac2b';
 
 const WRAP = SAIL.ISLAND_WRAP > 0 ? SAIL.ISLAND_WRAP : 150, LEASH = 10, STEER_RATE = 1.6, REACH = 3.2, MAST_H = 3.6, MAST_R = .6, ANCHOR_R = .6, DECK_Y = .22;
 const FURL = .12, BASE_FLOW_Z = .22, ITEM_RANGE = 34, ROPE_DOWN = 3.4, ROPE_UP = .22;

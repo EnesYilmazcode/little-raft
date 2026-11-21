@@ -1,5 +1,5 @@
 // Procedural building-piece models (ES module; THREE is passed in as T, never imported).
-// Usage: import { createPieceGeometry, createPieceMaterial } from './building-models.js';
+// Usage: import { createPieceGeometry, createPieceMaterial } from './building-models.js?build=v3-survival-ae77fa84ac2b';
 //        const geo = createPieceGeometry(T, 'wall'), mat = createPieceMaterial(T);
 //        new T.InstancedMesh(geo, mat, n)   // one material for every piece type
 // Each geometry is ONE merged non-indexed BufferGeometry (position/normal/uv/color), seeded so
@@ -7,7 +7,7 @@
 //  edge pieces (wall/halfwall/window/door): x in [-1,1], centred on z=0 (~0.14 thick), bottom y=0
 //  floor: x,z in [-1,1], top y=0, bottom -0.12   pillar: centred at origin, 0.22 square, 2.2 tall
 //  stairs: y=0 at z=-1 rising to 2.2 at z=+1     roof: y=0 at z=-1 (eave -1.1) rising to 1.0 at z=+1
-import { createWoodMaterial } from './wood.js';
+import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
 
 export const LEVEL_H = 2.2;
 const PLANKS = ['#bb8a53', '#c69860', '#ad7c4a'];

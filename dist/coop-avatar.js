@@ -5,7 +5,7 @@
 // Built on createAvatar (./avatar.js). Held items are tiny own low-poly models (~40-250 tris each; the
 // first-person hook/hammer/rod factories are 6-13k tris, too heavy for a third-person prop), built lazily
 // and cached per kind. update() allocates nothing. Name tag needs a DOM (or OffscreenCanvas); skipped in Node.
-import { createAvatar } from './avatar.js';
+import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
