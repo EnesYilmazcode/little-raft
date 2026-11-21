@@ -16,6 +16,7 @@ import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+import { createIsland } from './island-art.js?build=v3-survival-ae77fa84ac2b'; // scenery islands (visual only)
 import { createContent, cleanExt } from './content.js?build=v3-survival-ae77fa84ac2b'; // content hook (islands, wildlife, storage, day/night)
 import { CONTENT_DECOR, CONTENT_BLOCK_RADIUS } from './content-items.js?build=v3-survival-ae77fa84ac2b'; // content hook
 import { createBuilding, cleanPieces } from './building.js?build=v3-survival-ae77fa84ac2b'; // building-pieces lane hook (docs/cloud/building-pieces.md)
@@ -385,7 +386,7 @@ export function mount(transfer = null) {
     buildViewmodels();
     try { fc = createFishingCooking(T, fcHost()); } catch (e) { console.error('fishing-cooking failed', e); fc = null; } // [fishing-cooking]
     islands.length = 0; aboveWater.length = 0; // diving lane hook: seafloor rises toward islands; these groups hide underwater
-    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); islands.push({x:g.position.x, z:g.position.z, r:5}); aboveWater.push(g); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); bakeGroup(g); scene.add(g); scenery.push([g, 6]); } // [sailing] islands drift past; diving: seafloor rises toward these
+    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, 0, Math.cos(a) * d); islands.push({x:g.position.x, z:g.position.z, r:5}); aboveWater.push(g); g.add(createIsland(T, {seed:i + 1, radius:5.2 + (i * 7 % 5) * .3})); g.rotation.y = i * 1.7; scene.add(g); scenery.push([g, 6]); } // [sailing] islands drift past; diving: seafloor rises toward these
     for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; bakeGroup(g); scene.add(g); clouds.push(g); aboveWater.push(g); scenery.push([g, 0]); } // content + sailing: clouds
     setOwnedElsewhere(id => Object.prototype.hasOwnProperty.call(PROG_ITEMS, id)); // [progression-hook] items.js unlocks own the catalogue
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
