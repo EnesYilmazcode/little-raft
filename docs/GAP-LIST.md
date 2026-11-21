@@ -1,36 +1,41 @@
-# Gap list: Little Raft baseline vs the Raft reference
+# Gap list: Little Raft main vs the Raft reference
 
-Compared the baseline shots in `.qa/baseline/` (1280x720, fresh solo game) against `docs/RAFT-REFERENCE.md`. Ranked by how visible each gap is to the owner. Each row gives what we see now, the target, and where the fix lives.
+Main at `bc5df84`, checked against `docs/RAFT-REFERENCE.md` (rule IDs in brackets). Grounded in the code in `dist/` and headless shots of a fresh solo game at 1280x720 (`shoot.py`: 01 title, 02 spawn, 03 charging, 04 thrown, 05 inventory, 06 Esc from inventory, 07 pause, 08 walked). Ranked by how soon the owner notices. Each row: what main does now, the target, where the fix lives, and which lane owns it.
 
-## P0: the owner will notice in the first ten seconds
+## P0: visible in the first ten seconds
 
-1. **Text in the centre of the screen.** `04-thrown` and `06/08` show a "Hold click to reel" pill at y=397, 37px under the crosshair. `03-charging` shows a "THROW POWER" bar at y=415. The `#toast` pill sits at `top:25%` centred (`style.css`). Target: nothing in the middle 40% but the crosshair (ref 3.4). Reel hint goes away (the hands show it), charge becomes a 2px arc round the crosshair, toasts move to the pickup feed. Files: `game.js` (`aimHint` text at line ~408), `index.html` `#chargeMeter`, `style.css` `#toast`, `#aimHint`.
-2. **No pickup feed.** Catches never show `+N Item`. Target: bottom-left feed with a 3D icon, 180ms in, 2.5 s hold, 600ms fade, merging counts, pool of 5 rows (ref 3.3). Hook it to the `collected` event in `updateHook` and to hand pickups. Files: `game.js`, `survival-ui.js`, `style.css`.
-3. **Empty open hands after the throw.** In `04-thrown`, `06` and `08` the right hand is an open flat palm with nothing in it and the left hand holds only the rope coil. Target: while the hook is out the right hand keeps a reel/rope grip; when reeling both hands pull hand-over-hand at about 2.5 Hz (ref 5.4). File: `hands.js`.
-4. **Hotbar reads as a flat 2D wooden panel.** Thick brown frame, 8 slots of 58px, flat SVG icons. Target: 10 plain dark see-through 52px slots, no frame, warm 2px selected border, icons rendered once from the 3D item models (ref 3.1). Files: `survival-ui.js`, `style.css`, `game.js` `HOTBAR = 8` (going to 10 touches tests and the saved bag shape, so do it in one focused change or keep 8 and match the look only).
-5. **Sky is grey-green and looks overcast.** Every in-game shot has a flat `~#cdd5c4` sky with dark teal cloud undersides. Target: blue zenith `#5fa8e0` fading to `#cfe6f3` at the horizon, white clouds with light grey bellies (ref 9.1). Files: `sky.js`, possibly fog colour in `game.js`.
+1. **Text near the screen centre** [R3.0, R3.3.4-5]. Every `notice()`/`toast()` while playing ("Wood placed", "Need 2 more wood", "Hold click to reel", "E Pick up Plank") goes to `#contextPrompt` at `top:calc(50% + 26px)` (`game.js` inline CSS line 48, text from `updateContext` line ~402). Shot 03 shows a "THROW POWER" bar at y=405-427 right under the crosshair (`#chargeMeter`, `graphics.css` line 367). Target: key prompts on one line above the hotbar, status text in the pickup feed, charge as a 2px arc round the crosshair. Lanes: feed, hotbar.
+2. **No pickup feed** [R3.2]. Catches only change slot counts; nothing shows `+3 Wood` and nothing lives bottom-left. Target: 40px 3D icon + text rows, 180ms in, 2.5 s hold, 600ms fade, merge counts, pool of 5. Hook it to the hook `collected` path, E pick-ups and crafting. Lane: feed (`dist/pickup-feed.js`).
+3. **Hotbar is a wooden panel with flat SVG icons** [R3.1.2-7]. Shots 02-08: 8 slots of 58px inside a brown striped frame with a 2px tan border (`survival-ui.js` CSS lines 117-124), selected slot is a tan gradient, icons from `icons.svg`. Target: 10 plain dark 52px slots, no frame, `#f1e4c3` 2px selected border, 3D-rendered icons shared with bag, recipes and feed. `HOTBAR = 8` in `game.js` line 37 and `HOTBAR_SIZE` in `inventory-state.js`; going to 10 touches tests and saved bags. Lane: hotbar (`dist/item-icons.js`).
+4. **Hand is an open empty palm after the throw** [R5.4]. Shot 04: right hand is a flat open palm with nothing in it, left holds a rope coil. Target: right hand keeps a rope grip while the hook is out; hand-over-hand pull at 2.5 Hz while reeling. Lane: viewmodel (`hands.js`).
+5. **Overcast grey-green sky** [R10.1, R10.4]. Shots 02-04: flat `~#cdd5c4` sky, clouds with dark teal bellies. Code: `scene.background`/fog `#cbd2c0`, sky defaults zenith `#9ebabb`, horizon `#cbd2c0`, cloud shade `#b9c4c0` (`sky.js` lines 113-118), ocean `uZenith #a9c1c0` (`game.js` line ~291). Target zenith `#5fa8e0`, horizon `#cfe6f3`, white clouds with `#c9d3db` bellies, fog = horizon. Lane: world.
+6. **Pause menu is a settings form** [R8]. Shot 07: centred navy card with gold border, Resume plus Fullscreen / How to play / Play together, then five sliders and a select on the first screen (`settings.js` lines 42-61). Target: left column of large text buttons (Resume, Options, Controls, Invite brother, Exit to title) over a dimmed blurred world; sliders inside Options tabs; Esc in Options goes back one level. Lane: menus.
 
 ## P1: core Raft feel
 
-6. **Start raft is 3x3 tiles (6x6 m).** `game.js` line ~114 builds 9 tiles. Raft starts at 2x2. Target: 4 tiles, so the first foundation built feels like progress (ref 1.1). Check `tests/survival.test.mjs` and the save migration before changing, since old saves already have 9 tiles.
-7. **Decorations snap to tile centres and one per tile.** `placementFor` rounds to the tile and rejects any tile that already has decor. Target: free placement at the ray hit, footprint over tiles, overlap test against other decor, R/scroll rotate in 15 degree steps, Shift for a 0.5 m grid (ref 6.2). Saved decor needs float `x,z` plus `rot`; keep reading old integer saves. Files: `game.js` (`placementFor`, `placementCandidates`, decor render and save).
-8. **Ghost is a plain mint box.** `ghost` is a 1.9x0.13x1.9 `BoxGeometry`, mint or salmon, for every kind. Target: the real foundation or decor mesh, see-through, valid `#b6ffd0` and invalid `#ff6a55`, slow opacity pulse (ref 6.1.4). Invalid also needs to show when the spot is bad, not only when the player cannot afford it. File: `game.js` `updateGhost`.
-9. **No pointing hand while placing.** Target: index-finger pose aimed at the ghost when the hammer or a placeable is held (ref 4.7). File: `hands.js`.
-10. **Pause menu is a settings form.** `07-pause`: navy card, Resume plus three small buttons, then five sliders on the first screen. Target: left column of big text buttons over a dimmed, blurred world, sliders moved into an Options tab view (ref 8). Files: `index.html`, `style.css`, `settings.js`.
-11. **Crosshair ring is too big.** 22px ring in every shot. Target: 4px dot that grows to 8px over usable targets (ref 3.4.1). File: `style.css`.
+7. **Held hook is oversized and enters the centre box** [R4.1, R4.3]. Shot 02: the hook head reaches x 730, y 335 (inside the centre 40%); shot 03: the drawn-back hook fills the right third and is cut by the screen edge. Viewmodels share the world camera FOV (75, `game.js` line ~714); depth is already cleared before them (`viewmodelDepthClear`), so clipping is solved but FOV stretch is not. Target: own pass at fixed 60 degree FOV, item within the lower-right 30%. Lane: viewmodel.
+8. **No pointing pose while placing** [R4.8]. `hands.js` has no `setPose`; there are only hook, hammer and rod viewmodels (`buildViewmodels`, `game.js` line ~327). Decor items in hand show no held model at all [R4.4]. Lanes: viewmodel, models.
+9. **Decor snaps to tile centres, one per tile** [R6.2.2-4]. `placementFor` (`game.js` line 499) rounds to the tile and refuses a tile that has decor; `applyAction` stores integer `x,z` with no rotation (line ~577); `cleanWorld` drops non-integer decor. Target: free placement at the hit point, footprint and overlap tests, 15 degree rotation, Shift 0.5 m grid, saves with float `x,z` and `rot`, still reading old saves. Lane: placement.
+10. **Ghost is a mint box for everything** [R6.1.4, R6.2.5]. `ghost` is one `BoxGeometry(1.9,.13,1.9)` at opacity .55 (`game.js` line 294); turns `#ee8e75` only when a floor is unaffordable, never for a bad spot. Target: real piece mesh, `#b6ffd0` / `#ff6a55` at 40% with a 1.2 Hz pulse. Lane: placement.
+11. **No farming** [R9]. Palm Planter is a decor item; there are no seeds, crop plots, seedlings, watering or growth stages anywhere in `dist/`. Target: crop plot placed freely, seed plants a seedling, growth only while watered, 3 stages over 4-6 min, E to harvest into the feed. Lane: farming.
+12. **Start raft is 3x3** [R1.1]. `newWorld()` builds 9 tiles (`game.js` line ~113). Target 2x2. Old saves keep their tiles; check `tests/` before changing. Lane: world or placement.
+13. **Crosshair is a ring** [R3.3.1-2]. Shots 02-08: about 22px ring with a centre dot (`graphics.css` line 384). Target 4px dot, 8px over usable targets. Lane: hotbar/HUD.
+14. **Islands ring the horizon** [R10.6]. 12 islands at 65-90 m in a full circle (`game.js` line ~300); shots 02-04 show 3-4 at once. Target: open sea in most directions. Lane: world.
+15. **Esc in the Electron app** [R2.6]. `desktop/main.cjs` has no `before-input-event` handler, so Esc from the inventory can drop pointer lock or fullscreen before the page sees it. Browser behaviour is right (shot 06, `pauseOpenAfterInvEsc` false). Target: intercept Esc in main and forward it with `webContents.executeJavaScript(code, true)`. Lane: menus.
 
 ## P2: polish
 
-12. **Inventory layout.** `05-inventory` is close to Raft already: recipes left, bag right, hotbar row under the bag. Gaps: no category tabs on the recipes, the help sentence sits in the middle of the panel, the bag grid is 7+7+6 (ragged last row, use 5x4), and the panel's wood frame is heavy. Esc closing it is correct in `06` (no pause, no cursor visible), keep it that way. Files: `survival-ui.js`, `style.css`.
-13. **No item switch animation.** Target: 120ms drop, 180ms rise with overshoot (ref 4.4). File: `hands.js`.
-14. **Viewmodel shares the world FOV.** In `03-charging` the hook fills the right third of the screen and is cut off. Target: separate viewmodel pass at fixed 60 degree FOV (ref 4.1). Files: `game.js` render loop, `hands.js`.
-15. **Islands ring the horizon.** Four or five green islands are always in view. Target: rare landmarks, open sea most of the time (ref 9.5). File: `game.js` or `sky.js`, wherever islands are placed.
-16. **Ocean colour.** Close to target but a little pale and grey near the horizon because of the fog colour. Target deep `#1d5f7a`, crests `#3aa6b8`, a clear sun glint (ref 9.2). File: `ocean.js`.
-17. **Survival stats are missing.** Raft has health, thirst and hunger. Not asked for yet; if added, bottom-right so the pickup feed keeps bottom-left (ref 3.2).
+16. **Inventory layout** [R7]. Shot 05: recipes left and bag right is right. Gaps: no category tabs; bag is 7+7+6 (`grid-template-columns:repeat(7,52px)`, `survival-ui.js` line 147), target 5x4; heavy wooden frame and brown panels; a help sentence under the hotbar row; recipe icons are flat SVG. Lane: hotbar.
+17. **Audio is one sine beep** [R11]. `game.js` plays `beep()` (an oscillator) for every effect. `dist/audio.js` (`createOceanAudio`: ambience, throw, splash, collect, build) exists but is **not imported**. Target: ocean ambience plus per-action sounds, pickup pop rate-limited. Lane: audio (wire `audio.js`).
+18. **No item switch animation or look lag** [R4.5, R4.7]. Viewmodels swap visibility instantly. Lane: viewmodel.
+19. **Ocean a little pale and grey** [R10.2]. Deep `#14505a`, shallow `#3f8c88`, fog washes the far water grey. Target deep `#1d5f7a`, crests `#3aa6b8`, sun glint. Lane: world.
+20. **No hammer build menu** [R6.1.1]. The hammer only places floors; structural pieces beyond foundations do not exist. Not asked for yet.
+21. **Title screen brand text** is near-invisible dark-on-dark top-left (shot 01). Lane: menus.
 
 ## Already right
 
-- Spawn holds only the hook in slot 1, matching Raft.
-- Charge time `CHARGE_MS = 900` and catch radius 1 m match the Raft feel.
-- Hook durability bar under the slot exists; only its colours need the green, amber, red steps.
-- Esc from the inventory returns to play without the pause menu.
+- Spawn holds only the hook in slot 1 with an empty bag [R1.2].
+- Charge `CHARGE_MS = 900`, `MIN_CHARGE = .15`, catch radius about 1 m [R5.1, R5.5].
+- Esc from the inventory in the browser closes it without opening pause (shot 06) [R2.6].
+- Viewmodels draw after a depth clear, so hands never clip into the world [R4.1, partial].
+- Hook durability bar under slot 1 exists; only the three colour steps are missing [R3.1.6].
