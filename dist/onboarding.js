@@ -228,15 +228,23 @@ function boot() {
     } catch {}
   }
   const feed = t => { try { window.raftPrompts?.feed?.(t); } catch {} };
+  // The tick re-renders 4x/s: write only values that changed (every write is a DOM mutation plus style work).
+  const setText = (el, t) => { if (el.textContent !== t) el.textContent = t; };
+  let logHTML = '';
   function renderHead(ch) {
     const all = ch === null, list = STEPS.filter(s => s.chapter === ch && !s.optional);
     panel.classList.toggle('ob-all', all);
-    head.querySelector('.ob-ch').textContent = all ? 'Notes' : collapsed ? 'Notes' : chName(ch);
-    head.querySelector('.ob-sum').textContent = all ? '' : `${collapsed ? '· ' : ''}${list.filter(s => P.done[s.id]).length}/${list.length}`;
-    const open = all ? logOpen : !collapsed;
+    setText(head.querySelector('.ob-ch'), all ? 'Notes' : collapsed ? 'Notes' : chName(ch));
+    setText(head.querySelector('.ob-sum'), all ? '' : `${collapsed ? '· ' : ''}${list.filter(s => P.done[s.id]).length}/${list.length}`);
+    const open = String(all ? logOpen : !collapsed), hide = !(all && logOpen);
     panel.classList.toggle('ob-collapsed', !all && collapsed); panel.classList.toggle('ob-logopen', all && logOpen);
-    head.setAttribute('aria-expanded', String(open)); logEl.hidden = !(all && logOpen);
-    if (all && logOpen) logEl.innerHTML = [...new Set(STEPS.map(s => s.chapter))].map(c => `<section><h3>${hintHTML(chName(c))}</h3><ul>${STEPS.filter(s => s.chapter === c && (!s.optional || P.done[s.id])).map(s => `<li class="${P.done[s.id] ? 'ob-tick' : ''}">${hintHTML(s.title)}</li>`).join('')}</ul></section>`).join('');
+    if (head.getAttribute('aria-expanded') !== open) head.setAttribute('aria-expanded', open);
+    if (logEl.hidden !== hide) logEl.hidden = hide;
+    if (hide) logHTML = '';
+    else {
+      const html = [...new Set(STEPS.map(s => s.chapter))].map(c => `<section><h3>${hintHTML(chName(c))}</h3><ul>${STEPS.filter(s => s.chapter === c && (!s.optional || P.done[s.id])).map(s => `<li class="${P.done[s.id] ? 'ob-tick' : ''}">${hintHTML(s.title)}</li>`).join('')}</ul></section>`).join('');
+      if (html !== logHTML) logEl.innerHTML = logHTML = html;
+    }
   }
   function toggle() {
     if (panel.classList.contains('ob-all')) logOpen = !logOpen; else collapsed = !collapsed;
@@ -264,7 +272,7 @@ function boot() {
     for (const [id, li] of rows) if (!vis.has(id) && !li.classList.contains('ob-done')) { li.remove(); rows.delete(id); }
     for (const id of r.visible) {
       const li = rows.get(id) ?? rowFor(id, animate), c = r.counts[id], h = r.hints[id] ?? '';
-      li.querySelector('.ob-count').textContent = c ? `${c[0]}/${c[1]}${c[2] ?? ''}` : '';
+      setText(li.querySelector('.ob-count'), c ? `${c[0]}/${c[1]}${c[2] ?? ''}` : '');
       if (li.dataset.hint !== h) { li.dataset.hint = h; li.querySelector('.ob-hint').innerHTML = hintHTML(h); }
     }
     renderHead(shownCh);
