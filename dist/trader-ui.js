@@ -69,7 +69,7 @@ export function createTraderUI(api) {
   const $ = s => dlg.querySelector(s);
   const title = $('.lr-tr-title'), sub = $('.lr-tr-sub'), list = $('.lr-tr-list'), count = $('.lr-tr-count');
   title.textContent = 'Pim’s Barge';
-  let isOpen = false, rowsSeed = null, rows = [], sig = '';
+  let isOpen = false, rowsSeed = null, rows = [];
 
   const chip = (k, n, short) => `<span class="lr-tr-chip${short ? ' lr-tr-short' : ''}" title="${esc(itemName(k))}">${iconSVG(k)}${esc(n)}</span>`;
   function build() {
@@ -101,15 +101,15 @@ export function createTraderUI(api) {
       r.el.classList.toggle('lr-tr-out', left <= 0);
     }
   }
+  let sRev = NaN, sVer = NaN, sSec = NaN, sSeed, sBag; // last painted inputs: numbers only, so tick() allocates nothing
   function tick() {
     if (!isOpen) return;
-    const bag = api.bag();
-    const s = api.rev() + '|' + (bag ? bag.version : -1) + '|' + Math.ceil(api.left()) + '|' + api.visitSeed();
-    if (s === sig && bag === tick.bag) return;
-    sig = s; tick.bag = bag; paint();
+    const bag = api.bag(), rev = api.rev(), ver = bag ? bag.version : -1, sec = Math.ceil(api.left()), seed = api.visitSeed();
+    if (rev === sRev && ver === sVer && sec === sSec && seed === sSeed && bag === sBag) return;
+    sRev = rev; sVer = ver; sSec = sec; sSeed = seed; sBag = bag; paint();
   }
   function open() {
-    sig = ''; rowsSeed = undefined; paint(); sig = '';
+    sRev = NaN; rowsSeed = undefined; paint(); sRev = NaN;
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     isOpen = true; tick();
     try { $('.lr-tr-wrap').focus({ preventScroll: true }); } catch {}

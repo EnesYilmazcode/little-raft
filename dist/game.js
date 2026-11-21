@@ -1752,7 +1752,7 @@ export function mount(transfer = null) {
       onResume:guard(() => { play('close'); requestLock(); }),
       onPause:guard(clearInput),
       getModel:modelOf, // 3D icons rendered from models.js
-      recipeGate:id => prog?.recipeGate(id), // [progression-hook]
+      recipeGate:id => prog?.recipeGate(id) ?? (id === 'shellwreath' && content?.craftLocked(id) ? {locked:true, reason:String(content.craftLocked(id))} : null), // [progression-hook] + content hook: trader plan greys the wreath row
     });
     prog.installUI(); // [progression-hook]
     logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(clearInput), onResume:guard(() => requestLock())});

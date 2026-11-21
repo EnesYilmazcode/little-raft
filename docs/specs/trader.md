@@ -147,7 +147,8 @@ and the module dispose frees them. `instance()` returns a new Group, origin at t
 Replace the line tagged `[progression-hook] items.js unlocks own the catalogue` with:
 `setOwnedElsewhere(id => Object.prototype.hasOwnProperty.call(PROG_ITEMS, id) || id === 'shellwreath'); // ... + trader plan gates shellwreath`
 - **Why**: storage-research comes earlier in FEATURES, so without this it answers craftLocked first ("Study it first").
-- **Accepted wart**: the craft list shows the wreath unlocked before the plan; crafting it then shows the plan notice.
+- **Wart fixed (review)**: a second tiny game.js edit on the `recipeGate` line asks `content.craftLocked('shellwreath')`, so the craft list greys
+  the wreath row ("Locked: Buy the plan from Pim’s barge") until the plan is bought.
 - **If it can't stay one line**: drop the plan row, the recipe and craftLocked.
 
 ## 10. Co-op and save compat
@@ -193,3 +194,6 @@ choices where the spec was silent:
 - **QA**: npm test green; shoot2.py errors []; Playwright flow (summon, approach, dock, E opens, real-click trades, plan + float,
   craft the wreath, place the float, skip closes the dialog); coop2.mjs only the known 3 and 6 fail; a loopback guest trade
   (E + click) moved the guest's fish to shells and dropped the host stock 4 -> 3, and the guest dialog closed when the host's visit ended.
+- **Review**: the "wreath placement click failed" seen in QA was the script, not the game: while the pointer is locked a click acts at
+  the crosshair, which still pointed at the tile the float had just taken. Aimed at a free tile, the wreath places. The dialog's
+  per-frame tick() now compares numbers instead of building a signature string.
