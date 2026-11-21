@@ -12,7 +12,7 @@
 //   frame:  diving?.update(dt, elapsed) after updateCamera(dt); diving?.render(renderer) after renderer.render.
 //   beep:   o.connect(g).connect(diving ? diving.audioOut(audio) : audio.destination)
 //   hot-swap: const saved = diving?.capture(); diving?.dispose(); ... createDiving({..., restore:saved})
-//   'raft:underwater' event / onChange detail: {underwater, depth, mount} (mount = instance counter).
+//   'raft:underwater' event / onChange detail: {underwater, depth, mount} (mount = unique per-instance token).
 import { createSeafloor } from './seafloor.js';
 import { createUnderwaterFx } from './underwater-fx.js';
 import { createDivingUI } from './diving-ui.js';
@@ -34,6 +34,19 @@ export function underTile(tiles, x, z, margin = DIVE.RAFT_MARGIN) {
     if (Math.abs(x - t[0] * 2) < h && Math.abs(z - t[1] * 2) < h) return true;
   }
   return false;
+}
+
+const nearPt = [0, 0];
+/** Nearest point on any 2x2 tile footprint to (x, z) (shared scratch array), or null without tiles. */
+function nearestTilePoint(tiles, x, z) {
+  let best = Infinity;
+  for (const t of tiles) {
+    if (!Array.isArray(t) || !Number.isFinite(t[0]) || !Number.isFinite(t[1])) continue;
+    const px = clamp(x, t[0] * 2 - 1, t[0] * 2 + 1), pz = clamp(z, t[1] * 2 - 1, t[1] * 2 + 1);
+    const d2 = (x - px) * (x - px) + (z - pz) * (z - pz);
+    if (d2 < best) { best = d2; nearPt[0] = px; nearPt[1] = pz; }
+  }
+  return best < Infinity ? nearPt : null;
 }
 
 const oxyOut = { oxygen: 1, empty: false };
@@ -119,10 +132,13 @@ export class DiveBody {
     this.vy += (ty - this.vy) * (this.rising ? 1 - Math.exp(-8 * dt) : k);
     this.x += this.vx * dt; this.y += this.vy * dt; this.z += this.vz * dt;
 
-    const d = Math.hypot(this.x, this.z);
+    // Leash: MAX_DISTANCE from the nearest raft tile footprint (same rule as PlayerPhysics._safety),
+    // or from the origin when there are no tiles.
+    const n = nearestTilePoint(tiles, this.x, this.z), ax = n ? n[0] : 0, az = n ? n[1] : 0;
+    const rx = this.x - ax, rz = this.z - az, d = Math.hypot(rx, rz);
     if (d > DIVE.MAX_DISTANCE) {
-      const ux = this.x / d, uz = this.z / d, vn = this.vx * ux + this.vz * uz;
-      this.x = ux * DIVE.MAX_DISTANCE; this.z = uz * DIVE.MAX_DISTANCE;
+      const ux = rx / d, uz = rz / d, vn = this.vx * ux + this.vz * uz;
+      this.x = ax + ux * DIVE.MAX_DISTANCE; this.z = az + uz * DIVE.MAX_DISTANCE;
       if (vn > 0) { this.vx -= vn * ux; this.vz -= vn * uz; }
     }
     const minY = floorY + DIVE.EYE_FLOOR_CLEAR;
@@ -139,24 +155,38 @@ export class DiveBody {
 }
 
 const NAMES = { sand: 'Sand', clay: 'Clay', scrap: 'Scrap', metalore: 'Metal ore' };
-let mounts = 0;
+const token = () => `${Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) * 1000).toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
 export function createDiving({ T, scene, camera, ocean, islands = [], getTiles = () => [], getDeckY = () => 0.2, onGather, restore, hideAbove = [] } = {}) {
-  const mount = ++mounts;
-  const seafloor = createSeafloor(T, { islands });
-  scene?.add(seafloor.group);
-  const fx = createUnderwaterFx(T, { scene, camera, ocean, seafloor, hideAbove, getTiles, getDeckY });
-  const ui = typeof document !== 'undefined' ? createDivingUI(document) : null;
+  const mount = token();
+  let seafloor = null, fx = null, ui = null;
+  try {
+    seafloor = createSeafloor(T, { islands });
+    scene?.add(seafloor.group);
+    fx = createUnderwaterFx(T, { scene, camera, ocean, seafloor, hideAbove, getTiles, getDeckY });
+    ui = typeof document !== 'undefined' ? createDivingUI(document) : null;
+  } catch (e) { // partial construction: undo what was built, then rethrow
+    try { fx?.dispose(); } catch {}
+    if (seafloor) { try { scene?.remove(seafloor.group); } catch {} try { seafloor.dispose(); } catch {} }
+    throw e;
+  }
   const failed = new Set();
   const fail = (name, e) => { failed.add(name); console.error(`diving ${name} failed`, e); };
+  // fx broke: switch its look off for good and give the ocean surface back.
+  function killFx(e) {
+    fail('fx', e);
+    try { fx.update(0, { underwater: false, depth: 0, time: 0, lowOxygen: false, breath01: 1 }); } catch {}
+    setOcean(false);
+  }
 
   let body = null, owner = null, oxygen = clamp(fin(restore?.oxygen, 1), 0, 1), rising = false, lastInput = {};
   let underwater = false, depth = 0, floorShown = true, oceanHidden = false, oceanVis = true;
   let gather = 0, targetId = null, targetType = null, needRelease = false, labelId = null, label = '';
+  let completed = false, needDownRelease = false; // completed: a gather finished since the last UI update
   const regrow = new Map(), pending = new Map(), listeners = new Set(), filters = new Map();
   const env = { waterY: 0, floorY: 0, tiles: null, deckY: 0 };
   const fxState = { underwater: false, depth: 0, time: 0, lowOxygen: false, breath01: 1 };
-  const uiState = { underwater: false, oxygen01: 1, gather01: 0, rising: false, lowOxygen: false, gatherLabel: '' };
+  const uiState = { underwater: false, oxygen01: 1, gather01: 0, rising: false, lowOxygen: false, gatherLabel: '', completed: false };
   const detail = { underwater: false, depth: 0, mount };
 
   function resetGather() {
@@ -169,12 +199,14 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
     lastInput = input || {};
     if (body && physics !== owner) { cancel(); return false; }
     if (!body) {
-      if (!(physics?.swimming && lastInput.down && !physics.climbing && oxygen > 0.05)) return false;
+      if (!lastInput.down) needDownRelease = false; // after an out-of-breath surface, C must be released first
+      if (needDownRelease || !(physics?.swimming && lastInput.down && !physics.climbing && oxygen >= 0.3)) return false;
       body = new DiveBody({ x: physics.x, y: physics.y, z: physics.z, vx: physics.vx, vy: Math.min(physics.vy, -1.2), vz: physics.vz, oxygen });
       body.grace = DIVE.ENTRY_GRACE; owner = physics;
     }
     env.waterY = ocean.getHeight(body.x, body.z); env.floorY = seafloor.heightAt(body.x, body.z);
     env.tiles = getTiles(); env.deckY = getDeckY();
+    const wasRising = body.rising;
     const ev = body.step(dt, lastInput, env);
     oxygen = body.oxygen; rising = body.rising;
     physics.x = body.x; physics.y = body.y; physics.z = body.z;
@@ -182,12 +214,14 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
     physics.grounded = false; physics.swimming = true;
     if (ev.surfaced) {
       physics.y = ocean.getHeight(body.x, body.z) + 0.25; physics.vy = 0.5;
+      if (wasRising && lastInput.down) needDownRelease = true;
       cancel();
     }
     return true;
   }
 
   function setOcean(hide) {
+    hide = hide && !failed.has('fx'); // without the fx the ocean surface is the only water cue
     const m = ocean?.mesh; if (!m || hide === oceanHidden) return;
     if (hide) { oceanVis = m.visible; m.visible = false; } else m.visible = oceanVis;
     oceanHidden = hide;
@@ -226,6 +260,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
     if (gather >= 1) {
       gather = 0; needRelease = true; pending.set(id, DIVE.PENDING);
       targetId = targetType = null; try { seafloor.highlight?.(null); } catch {}
+      completed = true;
       try { onGather?.(id); } catch (e) { console.error('gather failed', e); }
     }
   }
@@ -254,10 +289,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
     const lowOxygen = !!body && oxygen < 0.25;
     if (!failed.has('fx')) {
       fxState.underwater = underwater; fxState.depth = depth; fxState.time = time; fxState.lowOxygen = lowOxygen; fxState.breath01 = oxygen;
-      try { fx.update(dt, fxState); } catch (e) {
-        fail('fx', e);
-        try { fx.update(0, { underwater: false, depth: 0, time, lowOxygen: false, breath01: 1 }); } catch {}
-      }
+      try { fx.update(dt, fxState); } catch (e) { killFx(e); }
     }
     const show = underwater || p.y < surf + 0.5;
     if (show !== floorShown) { floorShown = show; seafloor.group.visible = show; }
@@ -265,9 +297,10 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
     if (ui && !failed.has('ui')) {
       if (labelId !== targetId) { labelId = targetId; label = targetId ? `Hold E · ${NAMES[targetType] ?? targetType}` : ''; }
       uiState.underwater = underwater; uiState.oxygen01 = oxygen; uiState.gather01 = gather; uiState.rising = rising;
-      uiState.lowOxygen = lowOxygen; uiState.gatherLabel = label;
-      try { ui.update(uiState); } catch (e) { fail('ui', e); }
+      uiState.lowOxygen = lowOxygen; uiState.gatherLabel = label; uiState.completed = completed;
+      try { ui.update(uiState); } catch (e) { fail('ui', e); try { ui.dispose(); } catch {} }
     }
+    completed = false;
   }
 
   function audioOut(ctx) {
@@ -284,7 +317,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
   return {
     warm(r) { try { fx.warm?.(r); } catch (e) { console.error('dive warm failed', e); } }, // optional shader pre-compile
     move, update, audioOut, markGathered, cancel, mount,
-    render(renderer) { if (!failed.has('fx')) { try { fx.render(renderer); } catch (e) { fail('fx', e); } } },
+    render(renderer) { if (!failed.has('fx')) { try { fx.render(renderer); } catch (e) { killFx(e); } } },
     onChange(fn) { if (typeof fn === 'function') listeners.add(fn); return () => listeners.delete(fn); },
     capture() { return { oxygen, regrow: [...regrow] }; },
     get state() {
