@@ -104,3 +104,15 @@ test('costText / missingText', () => {
   assert.equal(P.missingText({wood:'x'}, {wood:2}), '2 wood');
   assert.equal(P.missingText({wood:3, plastic:3}, {wood:2, plastic:2}), '');
 });
+
+test('promptFromHtml: game.js / content-module prompt strings become prompt rows', () => {
+  assert.deepEqual(P.promptFromHtml('<kbd>E</kbd>Collect honeycomb (2)'), {key:'E', label:'Collect honeycomb (2)'});
+  assert.deepEqual(P.promptFromHtml('<kbd>E</kbd> Take grilled cod &amp; chips'), {key:'E', label:'Take grilled cod & chips'});
+  assert.deepEqual(P.promptFromHtml('<kbd>Click</kbd>Water the planter'), {key:'LMB', label:'Water the planter'});
+  assert.deepEqual(P.promptFromHtml('Rain barrel: 4/4 cups · hold a cup'), {label:'Rain barrel: 4/4 cups · hold a cup', muted:true});
+  assert.deepEqual(P.promptFromHtml('Bees are busy… 40%'), {label:'Bees are busy… 40%', muted:true});
+  assert.equal(P.promptFromHtml(''), null);
+  assert.equal(P.promptFromHtml(null), null);
+  assert.equal(P.promptFromHtml('<kbd>E</kbd>'), null);
+  assert.deepEqual(P.normalizePrompt(P.promptFromHtml('<kbd>E</kbd>Fill cup (4/4)')), [{key:'E', label:'Fill cup (4/4)', hold:false, muted:false}]);
+});

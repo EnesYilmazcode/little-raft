@@ -2,7 +2,8 @@
 // (copper tank, pipe and a spinning two-arm head with a spray of points).
 // Imports nothing: callers pass THREE in as T. Origin = floor top. docs/specs/rain-sprinkler.md section 9.
 
-const PIP_ON = 0x9ad7f0, PIP_OFF = 0x4a3a2a, SPRAY_N = 24, TAU = Math.PI * 2;
+// Pip gauge: off = dull pale water-blue (an empty glass), on = bright water with a deep-blue glow.
+const PIP_ON = 0x9ad7f0, PIP_OFF = 0x7f9faa, PIP_GLOW = 0x1c78b4, SPRAY_N = 24, TAU = Math.PI * 2;
 
 function kit(T, g) {
   const std = (hex, rough = .8, metal = 0, extra = {}) => new T.MeshStandardMaterial({color:hex, roughness:rough, metalness:metal, ...extra});
@@ -14,7 +15,7 @@ function kit(T, g) {
     const grp = new T.Group(); grp.name = name; g.add(grp);
     // One material per pip, recoloured in place: swapping shared on/off materials would leave the unused
     // one outside the scene graph, where rebuildRaft's disposeGeometry never finds it (leak per rebuild).
-    for (let i = 0; i < n; i++) add(grp, new T.BoxGeometry(size, size, .02), std(PIP_OFF, .9, 0, {emissive:PIP_ON, emissiveIntensity:0}), name + i, 0, y0 + i * dy, z, false);
+    for (let i = 0; i < n; i++) add(grp, new T.BoxGeometry(size, size, .02), std(PIP_OFF, .9, 0, {emissive:PIP_GLOW, emissiveIntensity:0}), name + i, 0, y0 + i * dy, z, false);
     return grp;
   };
   return {std, add, pips};
@@ -24,7 +25,7 @@ function lightPips(grp, n) {
   const c = grp.children;
   for (let i = 0; i < c.length; i++) {
     const m = c[i].material, on = i < n;
-    m.color.setHex(on ? PIP_ON : PIP_OFF); m.emissiveIntensity = on ? .6 : 0; m.roughness = on ? .3 : .9;
+    m.color.setHex(on ? PIP_ON : PIP_OFF); m.emissiveIntensity = on ? .45 : 0; m.roughness = on ? .3 : .9; // deep-blue glow keeps a lit pip watery, not white
   }
 }
 
