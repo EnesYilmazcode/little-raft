@@ -1,6 +1,7 @@
 // Procedural low-poly prop models for Little Raft. No assets; see docs/MODEL-STYLE.md.
 // buildModel(kind, {lod}) -> new THREE.Group that owns its geometry (userData.dispose() frees it).
 // getModel(kind, {lod})   -> clone of a cached template (shared geometry; do not dispose).
+// disposeModel(root)      -> frees a buildModel result (uncached path for one-off renders such as icons).
 // Materials are shared module-wide and never disposed. Placeables/items stand on y = 0,
 // handheld tools (hook, hammer, rod) have their grip at the origin, working end +Y, face -Z.
 import * as T from './vendor/three.module.js';
@@ -632,4 +633,8 @@ export function getModel(kind, { lod = 0 } = {}) {
   delete c.userData.dispose;
   return c;
 }
+// Frees a buildModel() result (its own merged geometry, which also drops every renderer's 'dispose' listener on it).
+// No-op for getModel clones. One-off renders (item icons) should use buildModel + disposeModel, not getModel:
+// that keeps icon-only kinds out of the template cache and keeps the icon renderer off shared geometry.
+export function disposeModel(root) { root?.userData?.dispose?.(); }
 export default buildModel;
