@@ -138,6 +138,8 @@ class Run:
         self.t0 = time.time()
         self.last_esc = 0.0
         self.real = False  # True while the session plays with real pointer lock (not lockFallback)
+        nonce = os.urandom(4).hex()  # per-run build ids, so a run can tell its own server from a parallel run's
+        self.build_a, self.build_b = f'electron-check-a-{nonce}', f'electron-check-b-{nonce}'
 
     # ---------- setup ----------
     def publish(self, build: str):
@@ -146,16 +148,8 @@ class Run:
 
     def start(self):
         shutil.copytree(self.candidate, self.dist, ignore=shutil.ignore_patterns('*.tmp'))
-        self.publish('electron-check-a')
-        self.port = free_port(); self.origin = f'http://127.0.0.1:{self.port}'
-        env = {**os.environ, 'RAFT_DIST': str(self.dist), 'RAFT_PORT': str(self.port), 'RAFT_RELEASE_MODE': '1', 'PYTHONDONTWRITEBYTECODE': '1'}
-        self.server = subprocess.Popen([sys.executable, str(ROOT / 'desktop' / 'server.py')], env=env, stdin=subprocess.DEVNULL,
-                                       stdout=subprocess.DEVNULL, stderr=open(self.work / 'server.log', 'wb'))
-        for _ in range(100):
-            try:
-                if http_json(self.origin + '/health').get('app') == 'little-raft': break
-            except Exception: time.sleep(.1)
-        else: raise Infra('desktop/server.py did not start: ' + (self.work / 'server.log').read_text(errors='replace')[-1000:])
+        self.publish(self.build_a)
+        self.start_server()
         # Unmodified main.cjs next to a config.json that points it at our server.
         self.app.mkdir(); self.user.mkdir()
         shutil.copy2(ROOT / 'desktop' / 'main.cjs', self.app / 'main.cjs')
@@ -180,6 +174,27 @@ class Run:
             if any(h.get('harness') == 'did-navigate' for h in self.harness_log): return
             time.sleep(.1)
         raise Infra('electron never loaded the game page: ' + self.err_tail())
+
+    def start_server(self):
+        # free_port() releases the port before server.py binds it, so a parallel run can grab the same one: then our
+        # server.py dies on bind and /health would answer from the OTHER run's server. Require our process to be alive
+        # and serving our own per-run build id, else retry on a fresh port.
+        for attempt in range(5):
+            self.port = free_port(); self.origin = f'http://127.0.0.1:{self.port}'
+            env = {**os.environ, 'RAFT_DIST': str(self.dist), 'RAFT_PORT': str(self.port), 'RAFT_RELEASE_MODE': '1', 'PYTHONDONTWRITEBYTECODE': '1'}
+            self.server = subprocess.Popen([sys.executable, str(ROOT / 'desktop' / 'server.py')], env=env, stdin=subprocess.DEVNULL,
+                                           stdout=subprocess.DEVNULL, stderr=open(self.work / 'server.log', 'ab'))
+            for _ in range(150):
+                if self.server.poll() is not None: break
+                try:
+                    if http_json(self.origin + '/health').get('app') == 'little-raft' and http_json(self.origin + '/version.json').get('build') == self.build_a:
+                        if self.server.poll() is None: return
+                        break
+                except Exception: pass
+                time.sleep(.1)
+            if self.server.poll() is None: self.server.kill(); self.server.wait(5)
+            self.notes.append(f'server start attempt {attempt + 1} on port {self.port} failed; retrying')
+        raise Infra('desktop/server.py did not start: ' + (self.work / 'server.log').read_text(errors='replace')[-1000:])
 
     def err_tail(self, n=1500):
         try: return (self.work / 'electron.err').read_text(errors='replace')[-n:]
@@ -290,7 +305,7 @@ class Run:
         self.cmd('focus'); self.settle(400)
         s = self.snap()
         self.check('shell.origin', 'shell loads the candidate from the configured origin',
-                   boot['url'].startswith(self.origin + '/') and s['build'] == 'electron-check-a', {'url': boot['url'], 'build': s['build']})
+                   boot['url'].startswith(self.origin + '/') and s['build'] == self.build_a, {'url': boot['url'], 'build': s['build']})
         self.check('shell.sandbox', 'page runs sandboxed with no node integration', self.js("typeof require === 'undefined' && typeof process === 'undefined'"))
 
         # Solo with a real mouse click (trusted gesture through sendInputEvent).
@@ -415,8 +430,8 @@ class Run:
         state_js = "({tiles: raftDebug.state.tiles, inv: JSON.stringify(raftDebug.state.inventory)})"
         state0 = self.js(state_js)
         self.steps.append('publish a new version.json (live hot-swap)')
-        self.publish('electron-check-b')
-        swapped = self.wait_for("raftLive.build === 'electron-check-b'", timeout=30)
+        self.publish(self.build_b)
+        swapped = self.wait_for(f"raftLive.build === {json.dumps(self.build_b)}", timeout=30)
         self.settle(800)
         s = self.snap()
         if not self.check('swap.mount', 'hot-swap: new build mounts without navigation', swapped and s['nav'] == 1 and not s['liveError'],
