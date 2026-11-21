@@ -1,9 +1,9 @@
 // Little Raft survival UI: shared-play hotbar (.tools) + inventory/crafting dialog (#inventory).
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, HOLD, anchorTip } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 
-const VERSION = 'sv2';
+const VERSION = 'sv3';
 const HB = Number(HOTBAR_SIZE) || 8;
 const TOTAL = Number(SLOT_COUNT) || 28;
 const DUR_MAX = Number(TOOL_DURABILITY) > 0 ? Number(TOOL_DURABILITY) : 0;
@@ -149,7 +149,7 @@ const CSS = `
 #inventory.sv-inv{padding:0;margin:auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#fff2cc;
   width:max-content;min-width:0;max-width:96vw;max-height:94vh;overflow:visible;font:500 14px/1.35 ${FONT}}
 #inventory.sv-inv::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
-#inventory .sv-wrap{display:flex;gap:12px;align-items:stretch;padding:12px;outline:none;border-radius:6px;
+#inventory .sv-wrap{display:flex;gap:12px;align-items:stretch;padding:12px;outline:none;border-radius:6px;user-select:none;-webkit-user-select:none;
   background:repeating-linear-gradient(90deg,#00000012 0 2px,transparent 2px 23px),linear-gradient(#b48d55,#8a663a);
   border:3px solid #3e2a17;box-shadow:0 0 0 2px #d6b67e,0 18px 50px #000a}
 #inventory .sv-craft,#inventory .sv-bag{background:#3a2716eb;border-radius:4px;box-shadow:inset 0 0 0 2px #24170c,inset 0 0 0 3px #b48d5544}
@@ -169,6 +169,7 @@ const CSS = `
   background:#ffbd66;color:#2a1b0e;font:700 11px/1 ${FONT};text-align:center;box-shadow:0 1px 2px #0008}
 #inventory .sv-rope{width:100%;height:4px;border-radius:2px;background:repeating-linear-gradient(115deg,#c99560 0 3px,#6b4a2b 3px 5px);opacity:.85}
 #inventory .sv-hint{margin:2px 0 0;max-width:${HB * 58}px;font:500 12px/1.35 ${FONT};color:#d9c9a6;text-align:center}
+#inventory .sv-hint.sv-warn{color:#ffb39a}
 #inventory .sv-tabs{display:grid;grid-template-columns:repeat(var(--tabs,4),1fr);gap:4px;flex:none}
 #inventory .sv-tab{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;height:auto;margin:0;padding:6px 2px 5px;border:0;border-radius:4px 4px 2px 2px;
   background:linear-gradient(#4a3220,#3a2716);box-shadow:inset 0 0 0 1px #d4b07a33;color:#d9c9a6;font:700 11px/1.1 ${FONT};letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
@@ -249,6 +250,7 @@ function ensureStyle() {
 
 const slotInner = num => `${num ? `<i class="sv-num">${num}</i>` : ''}<i class="sv-art"></i><i class="sv-count"></i><i class="sv-dur" hidden><i></i></i>`;
 
+const HINT = 'Click a stack to pick it up, then a slot to place it, or drag it. Right-click a stack to take half; right-click while holding to place one. Tab or arrows move between slots; E, I or Esc closes.';
 function mountDialog() {
   let d = document.getElementById('inventory');
   if (!d || d.tagName !== 'DIALOG') {
@@ -276,7 +278,7 @@ function mountDialog() {
         <div class="sv-grid" role="group" aria-label="Backpack">${grid}</div>
         <div class="sv-rope" aria-hidden="true"></div>
         <div class="sv-hotrow" role="group" aria-label="Hotbar">${hot}</div>
-        <p class="sv-hint">Click a stack to pick it up, then click a slot to place it. Right-click takes half. Drag to move.</p>
+        <p class="sv-hint" role="status" aria-live="polite">${HINT}</p>
       </section>
       <div class="sv-tip" role="tooltip" hidden></div>
     </div>`;
@@ -349,6 +351,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     hint: detail.querySelector('.sv-chint'), count: detail.querySelector('.sv-ccount'),
   };
   const tip = dlg.querySelector('.sv-tip');
+  const hintEl = dlg.querySelector('.sv-hint');
   const invEls = [];
   dlg.querySelectorAll('.sv-slot[data-index]').forEach(el => {
     invEls[+el.dataset.index] = el; el._svSig = undefined;
@@ -358,7 +361,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
 
   let isOpen = dlg.open;
   let src = null, srcAmt = 0, srcKind = null;
-  let denyEl = null, denyTimer = 0;
+  let denyEl = null, denyTimer = 0, sayTimer = 0;
+  let downOnBackdrop = false, upOnBackdrop = false;
   let dragging = false, dragFrom = null, dragAmt = 0, overEl = null;
   let hoverIdx = null;
   let lastSig = null;
@@ -626,12 +630,23 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (denyTimer) { clearTimeout(denyTimer); denyTimer = 0; }
     if (denyEl) { denyEl.classList.remove('sv-deny'); denyEl = null; }
   }
-  function deny(el) {
+  // The hint line briefly says why a placement was refused, then goes back to the hint.
+  function clearSay() {
+    if (sayTimer) { clearTimeout(sayTimer); sayTimer = 0; }
+    if (hintEl) { hintEl.classList.remove('sv-warn'); if (hintEl.textContent !== HINT) hintEl.textContent = HINT; }
+  }
+  function deny(el, reason = '') {
     clearDeny();
     if (!alive || !el) return;
     denyEl = el; el.classList.add('sv-deny');
     denyTimer = setTimeout(clearDeny, 280);
+    if (reason && hintEl) {
+      if (sayTimer) clearTimeout(sayTimer);
+      hintEl.textContent = reason; hintEl.classList.add('sv-warn');
+      sayTimer = setTimeout(clearSay, 1800);
+    }
   }
+  const refusal = (from, to) => { const s = curSlots[from]; return s ? placeRefusal(s.kind, curSlots[to], stackMax(s.kind)) : ''; };
   // Predict what Bag.move() will do with the currently known (authoritative) slots.
   // put = how many leave the held stack; ok=false = Bag would refuse.
   function planMove(from, to, amt) {
@@ -652,8 +667,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     let r;
     try { r = onMove?.(from, to, amt); } catch (e) { console.error(e); r = false; }
     lastSig = null;
-    if (r === false) { deny(el); return false; }
-    if (r && typeof r.then === 'function') r.then(v => { if (v === false) deny(el); }, e => console.error(e));
+    if (r === false) { deny(el, 'Can\u2019t place that there'); return false; }
+    if (r && typeof r.then === 'function') r.then(v => { if (v === false) deny(el, 'Can\u2019t place that there'); }, e => console.error(e));
     return true;
   }
   function paintInventory(slots, sigs, selected) {
@@ -741,7 +756,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function open() {
     if (!alive || isOpen) return;
     isOpen = true;
-    clearSrc();
+    downOnBackdrop = upOnBackdrop = false;
+    clearSrc(); clearSay();
     safe(onPause);
     if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
@@ -757,7 +773,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     isOpen = false;
     stopHold();
     endDrag(false);
-    clearSrc(); clearDeny();
+    clearSrc(); clearDeny(); clearSay();
     hideTip(); hoverIdx = null;
     if (dlg.open) { try { dlg.close(); } catch { dlg.removeAttribute('open'); } }
     safe(onResume);
@@ -778,8 +794,13 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     isOpen = false; stopHold(); endDrag(false); clearSrc(); clearDeny(); hideTip(); hoverIdx = null;
     safe(onResume);
   }, opt);
+  // Backdrop: close only when the press started and ended there (Chrome sends a click that
+  // starts inside the panel and ends outside it, or the reverse, to the dialog itself).
+  dlg.addEventListener('pointerdown', e => { downOnBackdrop = e.target === dlg; upOnBackdrop = false; }, opt);
+  dlg.addEventListener('pointerup', e => { upOnBackdrop = e.target === dlg; }, opt);
   dlg.addEventListener('click', e => {
-    if (e.target === dlg) { close(); return; } // backdrop
+    if (e.target === dlg) { const shut = backdropCloses(downOnBackdrop, upOnBackdrop); downOnBackdrop = upOnBackdrop = false; if (shut) close(); return; }
+    downOnBackdrop = upOnBackdrop = false;
     const tb = e.target.closest?.('.sv-tab');
     if (tb) { setTab(tb.dataset.cat); return; }
     const rb = e.target.closest?.('.sv-recipe');
@@ -797,7 +818,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const from = src, amt = srcAmt;
     const p = planMove(from, i, amt);
     // Partial stack onto a different kind / full stack: keep holding, flag the slot.
-    if (!p.ok) { deny(el); return; }
+    if (!p.ok) { deny(el, refusal(from, i)); return; }
     if (!sendMove(from, i, amt, el)) return; // sync rejection: selection untouched
     if (src !== from) return;                 // a synchronous update already cleared it
     const left = amt - p.put;
@@ -817,7 +838,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     // Place a single item; only into an empty slot or a same-kind stack with room.
     const max = stackMax(hs.kind);
     const fits = !slotSig(s) || (s.kind === hs.kind && max > 1 && s.count < max);
-    if (!fits) { deny(el); return; }
+    if (!fits) { deny(el, refusal(from, i)); return; }
     if (!sendMove(from, i, 1, el)) return;
     if (src !== from) return;
     const left = srcAmt - 1;
@@ -851,7 +872,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     clearSrc();
     if (el && from != null) {
       const to = +el.dataset.index;
-      if (to !== from && amt > 0) { if (planMove(from, to, amt).ok) sendMove(from, to, amt, el); else deny(el); }
+      if (to !== from && amt > 0) { if (planMove(from, to, amt).ok) sendMove(from, to, amt, el); else deny(el, refusal(from, to)); }
     }
   }, opt);
   dlg.addEventListener('dragend', () => { if (dragging) endDrag(); }, opt);
@@ -896,6 +917,23 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (n < 0) return;
     e.preventDefault(); setTab(ids[n], true);
   }, opt);
+  // Arrow keys move focus across the slots (by layout) and up/down the visible recipe list.
+  dlg.addEventListener('keydown', e => {
+    if (!isOpen || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+    const slot = e.target.closest?.('.sv-slot[data-index]'), rec = e.target.closest?.('.sv-recipe');
+    let next = null;
+    if (slot) {
+      const rects = invEls.map(el => el ? el.getBoundingClientRect() : null);
+      const n = arrowNeighbor(rects, +slot.dataset.index, e.code);
+      if (n >= 0) next = invEls[n];
+    } else if (rec && (e.code === 'ArrowDown' || e.code === 'ArrowUp')) {
+      const vis = recipeEls.map(v => v.el).filter(el => !el.hidden), i = vis.indexOf(rec);
+      next = vis[i + (e.code === 'ArrowDown' ? 1 : -1)] || null;
+    }
+    if (!next) return;
+    e.preventDefault();
+    try { next.focus({ preventScroll: false }); } catch {}
+  }, opt);
   // Keep scroll inside the panel from reaching the engine's hotbar wheel handler.
   dlg.addEventListener('wheel', e => e.stopPropagation(), { ...opt, passive: true });
 
@@ -908,13 +946,14 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (e.detail > 0) b.blur();
   }, opt);
 
-  // Tab / I toggle while playing.
+  // Tab / I open while playing; I / E close. While open, Tab is left alone so it moves focus.
   document.addEventListener('keydown', e => {
     if (!alive || e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
-    if (e.code !== 'Tab' && e.code !== 'KeyI') return;
+    const act = bagKeyAction(e.code, isOpen);
+    if (!act) return;
     const t = e.target;
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
-    if (isOpen) { e.preventDefault(); e.stopPropagation(); close(); return; }
+    if (act === 'close') { e.preventDefault(); e.stopPropagation(); close(); return; }
     if (!canOpenNow()) return;
     e.preventDefault(); e.stopPropagation();
     open();

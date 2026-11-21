@@ -138,3 +138,51 @@ export function anchorTip(rect, w, h, vw, vh, gap = 8, pad = 6) {
   if (rect.bottom + gap + h <= vh - pad) return { x: xAligned, y: rect.bottom + gap, side: 'below' };
   return { x: xAligned, y: clampV(rect.top - gap - h, pad, vh - h - pad), side: 'above' };
 }
+
+// ---- bag open/close and keyboard ----
+/** A backdrop click closes the bag only when the press both started and ended on the backdrop. */
+export const backdropCloses = (downOnBackdrop, upOnBackdrop) => !!downOnBackdrop && !!upOnBackdrop;
+
+/**
+ * What a key press does to the bag: 'open', 'close' or null (leave it alone).
+ * Tab / I open it from play. While open, I / E close it and Tab is left to move focus.
+ * E never opens here: in play it is the pick-up key and the game opens the bag itself.
+ */
+export function bagKeyAction(code, isOpen) {
+  if (isOpen) return code === 'KeyI' || code === 'KeyE' ? 'close' : null;
+  return code === 'Tab' || code === 'KeyI' ? 'open' : null;
+}
+
+const ARROWS = { ArrowRight: [1, 0], ArrowLeft: [-1, 0], ArrowDown: [0, 1], ArrowUp: [0, -1] };
+/**
+ * Arrow-key focus move across laid-out buttons. rects[i] = {left, top, width, height} (null = skip).
+ * Returns the index of the nearest rect whose centre lies within 45° of the arrow's direction, or -1.
+ */
+export function arrowNeighbor(rects, from, code) {
+  const d = ARROWS[code], a = rects[from];
+  if (!d || !a) return -1;
+  const cx = r => r.left + r.width / 2, cy = r => r.top + r.height / 2;
+  const ax = cx(a), ay = cy(a), tol = Math.min(a.width, a.height) / 4;
+  let best = -1, bestScore = Infinity;
+  rects.forEach((r, i) => {
+    if (!r || i === from) return;
+    const dx = cx(r) - ax, dy = cy(r) - ay;
+    const along = dx * d[0] + dy * d[1], across = Math.abs(dx * d[1] - dy * d[0]);
+    if (along <= tol || across > along) return; // only within a 45° cone
+    const score = along + across * 2;
+    if (score < bestScore) { bestScore = score; best = i; }
+  });
+  return best;
+}
+
+/**
+ * Why a held stack of `kind` cannot go onto target slot t, or '' when it can.
+ * max = stack limit of the held kind (1 = does not stack).
+ */
+export function placeRefusal(kind, t, max) {
+  if (!t || !t.kind || !(t.count > 0)) return '';
+  if (t.kind !== kind) return 'Different item there';
+  if (!(max > 1)) return 'Doesn’t stack';
+  if (t.count >= max) return 'That stack is full';
+  return '';
+}
