@@ -661,7 +661,7 @@ export function mount(transfer = null) {
   // Ballistic: the camera ray is the throw direction. Aim up + charge decide the arc. Misses are real.
   function throwHook(aim, charge) {
     const bag = localBag(), idx = bag.selectedIndex, slot = bag.slots[idx];
-    if (slot?.kind !== 'hook') return;
+    if (toolRole(slot?.kind) !== 'hook') return; // [progression-hook] metalhook throws too
     const durability = clamp(slot.durability ?? MAX_HEALTH, 0, MAX_HEALTH), maxRange = 16 + durability * .16;
     const direction = aim?.dir ?? camera.getWorldDirection(new T.Vector3());
     hook = new HookCast(T, {origin:handPos.clone(), direction, maxRange, charge});
