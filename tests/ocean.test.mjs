@@ -30,3 +30,28 @@ test('foam points are the nearest 8 visible items within 15 m, nearest first', (
   assert.ok(Math.abs(pts[0].w - 0.5) < 1e-9, 'fades between 12 and 15 m');
   ocean.dispose();
 });
+
+test('ocean grid is dense on the old 2.8 m lattice near the centre and coarser out to the edge', async () => {
+  const { oceanGridLines } = await import(new URL('ocean.js?build=v3-survival-ae77fa84ac2b', base));
+  const lines = oceanGridLines(140, 2.8, 9, 1.15);
+  assert.equal(lines[0], -140); assert.equal(lines.at(-1), 140);
+  for (let i = 1; i < lines.length; i++) assert.ok(lines[i] > lines[i - 1]);
+  for (const x of lines) assert.ok(lines.includes(-x), 'symmetric');
+  const core = lines.filter(x => Math.abs(x) <= 25.2 + 1e-9);
+  assert.equal(core.length, 19);
+  for (const x of core) assert.ok(Math.abs(x / 2.8 - Math.round(x / 2.8)) < 1e-9, 'core lines sit on the 2.8 m lattice');
+  assert.equal(oceanGridLines(140, 70, 9, 1.15).join(), '-140,-70,0,70,140', 'coarse grids clamp the core');
+  const ocean = createOcean(T);
+  assert.ok(ocean.mesh.geometry.index.count / 3 < 5000, 'far fewer triangles than the old 100x100 plane');
+  ocean.dispose();
+});
+
+test('ocean grid follows a camera that swims far from the raft, snapped to the lattice', () => {
+  const ocean = createOcean(T), camera = new T.PerspectiveCamera();
+  camera.position.set(6, 2, -5); ocean.update(0, camera);
+  assert.deepEqual([ocean.mesh.position.x, ocean.mesh.position.z], [0, 0], 'stays put near the raft');
+  camera.position.set(40, 2, -30); ocean.update(0, camera);
+  assert.ok(Math.abs(ocean.mesh.position.x - 39.2) < 1e-9 && Math.abs(ocean.mesh.position.z + 30.8) < 1e-9);
+  assert.equal(ocean.mesh.position.y, -0.24);
+  ocean.dispose();
+});

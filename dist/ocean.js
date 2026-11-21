@@ -188,11 +188,58 @@ void main() {
 }
 `;
 
+// Grid lines along one axis: uniform `step` out to `core` cells each side of the centre, then cells that grow
+// by `grow` each until the half-size edge. The same lines serve x and z (a tensor-product grid).
+export function oceanGridLines(half, step, core, grow) {
+  const pos = [];
+  core = Math.min(core, Math.floor(half / step + 1e-6));
+  for (let i = 0; i <= core; i++) pos.push(i * step);
+  let x = core * step, st = step;
+  while (x < half - 1e-6) {
+    st *= grow;
+    x = x + st > half - st * 0.35 ? half : x + st; // no sliver cell at the edge
+    pos.push(x);
+  }
+  const neg = pos.slice(1).reverse().map((v) => -v);
+  return neg.concat(pos);
+}
+
+// Centre-dense water grid: full density (the old uniform 2.8 m spacing) within ~25 m of the centre, where
+// the waves are seen up close, coarser further out where they are a few pixels tall and fade into the sky.
+// Waves are evaluated per vertex in world space, so the core lines sit on the old lattice.
+function oceanGeometry(T, size, step, core, grow) {
+  const lines = oceanGridLines(size / 2, step, core, grow), n = lines.length, half = size / 2;
+  const pos = new Float32Array(n * n * 3), uv = new Float32Array(n * n * 2), nor = new Float32Array(n * n * 3);
+  for (let j = 0, v = 0; j < n; j++) {
+    for (let i = 0; i < n; i++, v++) {
+      pos[v * 3] = lines[i]; pos[v * 3 + 2] = lines[j];
+      nor[v * 3 + 1] = 1;
+      uv[v * 2] = lines[i] / size + 0.5; uv[v * 2 + 1] = 0.5 - lines[j] / size;
+    }
+  }
+  const idx = [];
+  for (let j = 0; j < n - 1; j++) {
+    for (let i = 0; i < n - 1; i++) {
+      const a = j * n + i, b = a + n; // counter-clockwise seen from above (+y): front faces point up
+      idx.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+  }
+  const g = new T.BufferGeometry();
+  g.setIndex(idx);
+  g.setAttribute('position', new T.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new T.BufferAttribute(nor, 3));
+  g.setAttribute('uv', new T.BufferAttribute(uv, 2));
+  g.boundingSphere = new T.Sphere(new T.Vector3(), half * Math.SQRT2);
+  return g;
+}
+
+const RECENTER = 8.4; // camera this far (m, per axis) from the grid centre moves the dense core under it
+
 export function createOcean(T, options = {}) {
   const size = options.size ?? 280;
   const segments = options.segments ?? 100;
-  const geometry = new T.PlaneGeometry(size, size, segments, segments);
-  geometry.rotateX(-Math.PI / 2);
+  const step = size / segments;
+  const geometry = oceanGeometry(T, size, step, options.core ?? 9, options.grow ?? 1.15);
 
   const sun = options.sunDirection ?? new T.Vector3(-15, 28, 12);
   const maskData = new Uint8Array(GRID * GRID);
@@ -229,7 +276,6 @@ export function createOcean(T, options = {}) {
   mesh.position.y = BASE_Y;
   mesh.frustumCulled = false; // displaced vertices; plane always surrounds the player
 
-  const step = size / segments;
   let time = 0;
   let foamGroup = null;
   const camPos = new T.Vector3(); // last camera passed to update(); collars beyond 48 m are skipped
@@ -283,8 +329,9 @@ export function createOcean(T, options = {}) {
     time = t;
     uniforms.uTime.value = t;
     if (camera) camPos.copy(camera.position);
-    if (camera && options.followCamera) {
-      // Snap to grid spacing so vertices never swim (waves use world coords).
+    if (camera && (options.followCamera || Math.abs(camera.position.x - mesh.position.x) > RECENTER || Math.abs(camera.position.z - mesh.position.z) > RECENTER)) {
+      // Keep the dense core under the camera (a swimmer far from the raft). Snap to the core spacing so the
+      // near vertices stay on the same world lattice (waves use world coords) and nothing swims.
       mesh.position.x = Math.round(camera.position.x / step) * step;
       mesh.position.z = Math.round(camera.position.z / step) * step;
     }
