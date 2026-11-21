@@ -4,7 +4,7 @@
 // and do not claim to reproduce, any other game's internals.
 //
 // API
-//   new HookCast(T, { origin, direction, target, maxRange = 32, charge = 1, drift, deckAt })
+//   new HookCast(T, { origin, direction, target, maxRange = 32, charge = 1, drift, deck })
 //     T         : the THREE namespace (only T.Vector3 is used)
 //     origin    : Vector3-like throw start (player hand, y ~ 1.2). Copied, never mutated.
 //     direction : Vector3-like camera aim. Copied and normalized. Elevation decides the arc/range.
@@ -14,9 +14,9 @@
 //     charge    : [0,1]; launch speed = 7 + charge * 11 m/s (+1.0 m/s upward throw boost).
 //     drift     : optional {x,z} m/s water drift for the floating hook. Default mirrors game.js
 //                 item drift (z += .22/s, x += sin(time*.13)*.04/s) so hook and supplies co-drift.
-//     deckAt    : optional (x, z) -> deck top y over a raft tile, or null over open water. A flying
-//                 hook that comes down onto the deck stops there (onDeck = true, stage 'done') and
-//                 that update returns { kind:'returned' }.
+//     deck      : optional (x, z) -> deck surface y, or null over water. A hook coming down onto
+//                 the raft rests on the planks (onDeck) instead of falling through to the water.
+//                 `deckAt` is accepted as an older name for the same callback.
 //
 //   Public fields
 //     position    : Vector3  current hook position
@@ -27,9 +27,10 @@
 //     distance    : horizontal distance from last known hand to hook
 //     tension     : [0,1] rope tension (0 slack, 1 taut)
 //     tethered    : true once the rope hit maxRange during flight (horizontal motion stopped)
-//     landing     : null while flying, then Vector3 splash point (actual ballistic x/z, y = WATER_Y)
+//     landing     : null while flying, then Vector3 splash point (actual ballistic x/z, y = WATER_Y
+//                   or the deck height when it landed on the raft)
+//     onDeck      : true while the hook rests on (or is reeled across) the deck
 //     flightT     : seconds spent in flight (used by game.js for the spin animation)
-//     onDeck      : true when the flight ended on a raft tile instead of the water
 //
 //   update(dt, { hand, items, reeling = false, time, skip })
 //     -> null | { kind:'collected', items:[{id,token,type}...], id, token } | { kind:'returned' }
@@ -75,7 +76,7 @@ const len2 = (x, z) => Math.sqrt(x * x + z * z);
 const len3 = (x, y, z) => Math.sqrt(x * x + y * y + z * z);
 
 export class HookCast {
-  constructor(T, { origin, direction, target, maxRange = 32, charge = 1, drift, deckAt } = {}) {
+  constructor(T, { origin, direction, target, maxRange = 32, charge = 1, drift, deck, deckAt } = {}) {
     this.T = T;
     const o = finVec(origin) ? origin : { x: 0, y: 1.2, z: 0 };
     this.origin = new T.Vector3(o.x, o.y, o.z);
@@ -98,6 +99,7 @@ export class HookCast {
     this.drift = drift && (fin(drift.x) || fin(drift.z))
       ? { x: fin(drift.x) ? drift.x : 0, z: fin(drift.z) ? drift.z : 0 } : null;
 
+    this.deck = typeof deck === 'function' ? deck : typeof deckAt === 'function' ? deckAt : null; // deckAt: older name
     this.position = this.origin.clone();
     this.stage = 'flying';
     this.caughtItems = [];
@@ -107,7 +109,6 @@ export class HookCast {
     this.landing = null;
     this.flightT = 0;
     this.onDeck = false;
-    this.deckAt = typeof deckAt === 'function' ? deckAt : null;
     this.floatTime = 0;
     this.base = this.origin.clone(); // floating anchor on the water (bob applied on top)
     this._hand = this.origin.clone();
@@ -188,13 +189,21 @@ export class HookCast {
     return true;
   }
 
-  _splash(x, z, items) {
-    this.position.set(x, WATER_Y, z);
+  /** Deck surface y at (x,z), or null over water. */
+  _deckAt(x, z) {
+    if (!this.deck) return null;
+    const y = this.deck(x, z);
+    return fin(y) && y > WATER_Y ? y : null;
+  }
+
+  _splash(x, z, items, y = WATER_Y) {
+    this.onDeck = y > WATER_Y;
+    this.position.set(x, y, z);
     this.base.set(x, WATER_Y, z);
-    this.landing = new this.T.Vector3(x, WATER_Y, z);
+    this.landing = new this.T.Vector3(x, y, z);
     this.velocity.set(0, 0, 0);
     this.stage = 'floating';
-    if (items) this._sweep(items, x, z, x, z, CATCH_RADIUS);
+    if (items && !this.onDeck) this._sweep(items, x, z, x, z, CATCH_RADIUS);
   }
 
   _stepFlight(items) {
@@ -213,19 +222,13 @@ export class HookCast {
       }
     }
     this.flightT += h;
-    const top = this.deckAt ? this.deckAt(nx, nz) : null;
-    if (fin(top) && top > WATER_Y && ny <= top && py > top) { // came down on the raft: stop on the planks
-      p.set(nx, top, nz);
-      v.set(0, 0, 0);
-      this.onDeck = true;
-      this.stage = 'done';
-      return;
-    }
-    if (ny <= WATER_Y || this.flightT >= MAX_FLIGHT_TIME) {
-      const f = ny <= WATER_Y && py > ny ? clamp((py - WATER_Y) / (py - ny), 0, 1) : 1;
+    // Only a hook coming down from above the planks can land on them.
+    const dy = this._deckAt(nx, nz), floor = dy !== null && py >= dy ? dy : WATER_Y;
+    if (ny <= floor || this.flightT >= MAX_FLIGHT_TIME) {
+      const f = ny <= floor && py > ny ? clamp((py - floor) / (py - ny), 0, 1) : 1;
       const sx = px + (nx - px) * f, sz = pz + (nz - pz) * f;
-      this._sweepFlight(items, px, py, pz, sx, WATER_Y, sz);
-      this._splash(sx, sz, items);
+      if (floor === WATER_Y) this._sweepFlight(items, px, py, pz, sx, WATER_Y, sz);
+      this._splash(sx, sz, items, floor);
       return;
     }
     // Guarded here so the common high-flight substep makes no call (double args would be boxed).
@@ -237,10 +240,22 @@ export class HookCast {
   _stepFloat(items) {
     const h = this._h, time = this._t;
     const b = this.base, ax = b.x, az = b.z;
+    if (this.onDeck) { // resting on the planks: no drift, no bob, only the rope can drag it
+      this._tether(b);
+      const dy = this._deckAt(b.x, b.z);
+      if (dy !== null) { this.position.set(b.x, dy, b.z); return; }
+      this.onDeck = false; // dragged off the edge: back in the water
+    }
     const vx = this.drift ? this.drift.x : Math.sin(time * 0.13) * 0.04;
     const vz = this.drift ? this.drift.z : 0.22;
     b.x += vx * h; b.z += vz * h;
-    this._tether(b); // a walking player drags the floating hook along
+    const dragged = this._tether(b); // a walking player drags the floating hook along
+    const dy = this._deckAt(b.x, b.z);
+    if (dy !== null) {
+      // The rope hauls it up onto the planks; plain drift just bumps it against the hull.
+      if (dragged) { this.onDeck = true; this.position.set(b.x, dy, b.z); return; }
+      b.x = ax; b.z = az;
+    }
     this.floatTime += h;
     this._sweep(items, ax, az, b.x, b.z, CATCH_RADIUS);
     this.position.set(b.x, WATER_Y + Math.sin(this.floatTime * BOB_FREQ) * BOB_AMP + BOB_LIFT, b.z);
@@ -255,7 +270,9 @@ export class HookCast {
     this._sweep(items, ax, az, p.x, p.z, CATCH_RADIUS);
     const rem = len2(hd.x - p.x, hd.z - p.z);
     const rise = clamp(1 - rem / REEL_RISE_DIST, 0, 1);
-    p.y = Math.max(WATER_Y, WATER_Y + REEL_SKIM + (hd.y - WATER_Y) * rise);
+    const dy = this._deckAt(p.x, p.z), floor = dy !== null ? dy : WATER_Y;
+    this.onDeck = dy !== null;
+    p.y = Math.max(floor, floor + REEL_SKIM + (hd.y - floor) * rise);
     this.base.set(p.x, WATER_Y, p.z);
     return rem <= COLLECT_DIST;
   }
@@ -275,6 +292,7 @@ export class HookCast {
     else if (this.stage === 'reeling' && !reeling) { // let go: float where it is
       this.stage = 'floating';
       this.base.set(this.position.x, WATER_Y, this.position.z);
+      this.onDeck = this._deckAt(this.position.x, this.position.z) !== null;
     }
 
     let arrived = false;
@@ -292,11 +310,6 @@ export class HookCast {
     }
 
     this._skip = null; // don't retain the caller's closure between frames
-    if (this.onDeck && !this._emitted) { // came down on the deck this update: end the cast once, nothing caught
-      this._emitted = true;
-      this._updateMetrics();
-      return { kind: 'returned' };
-    }
     if (arrived) {
       this.stage = 'done';
       this._updateMetrics();

@@ -757,3 +757,324 @@ test('Ocean: allocation-free getHeight/getSlope/sample match the reference Gerst
     assert.ok(Math.abs(out.h - h) <= 1e-9 && Math.abs(out.sx - s.x) <= 1e-9 && Math.abs(out.sz - s.z) <= 1e-9);
   }
 });
+
+test('item icons degrade to flat sprites when WebGL is unavailable', async () => {
+  const icons = await import(new URL('item-icons.js', base));
+  const seen = [];
+  const off = icons.onIconReady(k => seen.push(k));
+  assert.equal(icons.iconURL('wood'), null);           // queued, nothing cached yet
+  await new Promise(r => setTimeout(r, 60));           // queue drains; no document -> no WebGL
+  assert.equal(icons.iconURL('wood'), null);
+  assert.deepEqual(seen, []);
+  icons.setModelProvider(() => null);                  // swapping providers must not throw
+  off();
+});
+
+test('loadItemIcon resolves null without WebGL and getItemIcon is the sync accessor', async () => {
+  const icons = await import(new URL('item-icons.js', base));
+  assert.equal(icons.getItemIcon, icons.iconURL);
+  assert.equal(await icons.loadItemIcon('hammer'), null);
+  assert.equal(await icons.loadItemIcon(''), null);
+});
+
+// ---------------------------------------------------------------- pickup feed
+
+const { createFeed, MAX_ROWS, MERGE_MS, HOLD_MS, FADE_MS } = await import(new URL('pickup-feed.js', base));
+function fakeDoc() {
+  const mk = tag => {
+    const el = { tagName: tag.toUpperCase(), nodeType: 1, children: [], parent: null, attrs: {}, textContent: '', offsetWidth: 0,
+      get isConnected() { let e = this; while (e.parent) e = e.parent; return e === body; },
+      classList: { s: new Set(), add(c) { this.s.add(c); }, remove(c) { this.s.delete(c); }, contains(c) { return this.s.has(c); } },
+      setAttribute(k, v) { this.attrs[k] = v; },
+      appendChild(c) { c.remove(); c.parent = this; this.children.push(c); return c; },
+      append(...cs) { cs.forEach(c => this.appendChild(c)); },
+      replaceChildren(...cs) { [...this.children].forEach(c => c.remove()); this.append(...cs); },
+      remove() { if (this.parent) { this.parent.children.splice(this.parent.children.indexOf(this), 1); this.parent = null; } },
+      set className(v) { v.split(' ').forEach(c => this.classList.add(c)); },
+    };
+    return el;
+  };
+  const body = mk('body');
+  return { body, createElement: mk, createElementNS: (_, t) => mk(t),
+    getElementById(id) { const walk = e => e.id === id ? e : e.children.map(walk).find(Boolean); return walk(body) ?? null; } };
+}
+function fakeClock() {
+  let t = 0, id = 0; const q = new Map();
+  return { now: () => t, timer: (fn, ms) => { q.set(++id, { fn, at: t + ms }); return id; }, clear: i => q.delete(i),
+    tick(ms) { t += ms; for (const [i, j] of [...q]) if (j.at <= t && q.delete(i)) j.fn(); } };
+}
+
+test('pickup feed: repeats of one kind merge into one row with a summed count', () => {
+  const doc = fakeDoc(), c = fakeClock(), feed = createFeed({ doc, ...c });
+  feed.add('wood', 2); c.tick(500); feed.add('wood', 1); feed.add('leaf', 1);
+  const W = ITEM_INFO.wood.name, L = ITEM_INFO.leaf.name; // merged: progression's items.js names the kinds (wood = 'Plank')
+  assert.deepEqual(feed.rows, [`+3 ${W}`, `+1 ${L}`]);
+  const host = doc.getElementById('pickupFeed');
+  assert.equal(host.children.length, 2);
+  c.tick(MERGE_MS + 10); feed.add('wood', 2); // outside the merge window: a fresh row
+  assert.deepEqual(feed.rows, [`+1 ${L}`, `+2 ${W}`]);
+  c.tick(HOLD_MS + 10); c.tick(FADE_MS + 10);
+  assert.deepEqual(feed.rows, []); assert.equal(host.children.length, 0);
+});
+
+test('pickup feed: caps visible rows and ignores junk input', () => {
+  const doc = fakeDoc(), c = fakeClock(), feed = createFeed({ doc, ...c });
+  for (const k of ['wood', 'leaf', 'scrap', 'plastic', 'fish', 'rope', 'sail']) feed.add(k, 1);
+  assert.equal(feed.rows.length, MAX_ROWS);
+  assert.equal(feed.add('wood', 0), null); assert.equal(feed.add('', 2), null); assert.equal(feed.note('  '), null);
+  feed.note('Your bag is full'); feed.note('Your bag is full');
+  assert.equal(feed.rows.filter(r => r === 'Your bag is full').length, 1);
+});
+
+test('pickup feed: icon provider wins, svg sprite is the fallback', () => {
+  const doc = fakeDoc(), c = fakeClock(), feed = createFeed({ doc, ...c });
+  feed.add('wood', 1);
+  const icon = r => doc.getElementById('pickupFeed').children[r].children[0].children[0];
+  assert.equal(icon(0).tagName, 'SVG');
+  feed.setIconProvider(k => k === 'scrap' ? 'data:image/png;base64,AA' : null);
+  feed.add('scrap', 1);
+  assert.equal(icon(1).tagName, 'IMG'); assert.equal(icon(1).src, 'data:image/png;base64,AA');
+});
+
+test('pickup feed: refresh swaps in an icon that finished rendering late', () => {
+  const doc = fakeDoc(), c = fakeClock(), feed = createFeed({ doc, ...c });
+  let ready = null; feed.setIconProvider(() => ready);
+  feed.add('wood', 1);
+  const icon = () => doc.getElementById('pickupFeed').children[0].children[0].children;
+  assert.equal(icon()[0].tagName, 'SVG'); // sprite placeholder while the 3D icon renders
+  ready = 'data:image/png;base64,BB'; feed.refresh('wood'); feed.refresh('leaf');
+  assert.equal(icon().length, 1); assert.equal(icon()[0].src, 'data:image/png;base64,BB');
+});
+
+test('settings validation clamps ranges, keeps booleans strict and falls back to defaults', async () => {
+  const { validateSettings, SETTINGS_DEFAULTS: D } = await import(new URL('settings.js', base));
+  assert.deepEqual(validateSettings(null), { ...D });
+  const v = validateSettings({ sensitivity: 99, fov: 'x', invertY: 'yes', shadows: false, graphics: 'ultra', renderScale: 0.1, ambience: 0 });
+  assert.equal(v.sensitivity, 3); assert.equal(v.fov, D.fov); assert.equal(v.invertY, false);
+  assert.equal(v.shadows, false); assert.equal(v.graphics, D.graphics); assert.equal(v.renderScale, 0.5); assert.equal(v.ambience, 0);
+});
+
+test('a fresh bag (new game) holds only the hook', () => {
+  const kinds = new Bag().slots.filter(Boolean).map(s => s.kind);
+  assert.deepEqual(kinds, ['hook']);
+});
+
+// ---------------------------------------------------------------- placement
+
+const { floorTarget, decorCheck, normaliseDecor } = await import(new URL('placement.js', base));
+const DECOR = ['sail', 'palm', 'lantern', 'net', 'bench', 'crate'];
+const tilesOf = list => { const s = new Set(list.map(([x, z]) => x + ',' + z)); return (x, z) => s.has(x + ',' + z); };
+const raft2 = tilesOf([[-1, 0], [0, 0], [-1, 1], [0, 1]]);
+
+test('placement: foundations snap next to the raft, aiming near an edge picks the neighbour', () => {
+  assert.deepEqual(floorTarget(raft2, 2.1, 0.2), { x: 1, z: 0 }, 'water beside the raft');
+  assert.deepEqual(floorTarget(raft2, 0.8, 0.1), { x: 1, z: 0 }, 'near the +x edge of tile 0,0');
+  assert.equal(floorTarget(raft2, 0.1, 0.1), null, 'middle of an existing tile');
+  assert.equal(floorTarget(raft2, 6, 6), null, 'not adjacent');
+});
+
+test('placement: decor sits anywhere on deck, near edges, but not off it or on other decor', () => {
+  const crate = (x, z, rot = 0) => ({ type: 'crate', x, z, rot });
+  assert.equal(decorCheck(raft2, [], crate(0.37, 0.1)), 'ok', 'off-centre, close to the edge');
+  assert.equal(decorCheck(raft2, [], crate(0.95, 0.1)), 'air', 'hangs over the water');
+  assert.equal(decorCheck(raft2, [], crate(-1, 1)), 'ok', 'straddling four tiles');
+  const placed = [crate(0, 0)];
+  assert.equal(decorCheck(raft2, placed, crate(0.5, 0.2)), 'blocked');
+  assert.equal(decorCheck(raft2, placed, crate(-1.1, 0)), 'ok', 'side by side');
+  const bench = { type: 'bench', x: -1, z: 1, rot: 0 };
+  assert.equal(decorCheck(raft2, [bench], crate(-1, 1.75)), 'ok', 'thin bench leaves room in front');
+  assert.equal(decorCheck(raft2, [{ ...bench, rot: Math.PI / 2 }], crate(-1, 1.75)), 'blocked', 'rotated bench does not');
+  assert.equal(decorCheck(raft2, [], { type: 'net', x: 0.9, z: 0, rot: 0 }), 'ok', 'nets may hang over the side');
+});
+
+test('placement: old tile-centred decor still loads, new entries keep floats and rotation', () => {
+  assert.deepEqual(normaliseDecor({ type: 'palm', x: 0, z: 1 }, DECOR, raft2), { type: 'palm', x: 0, z: 2, rot: 0 });
+  assert.deepEqual(normaliseDecor({ type: 'crate', x: 0.4567, z: 1.2, rot: -Math.PI / 2 }, DECOR, raft2), { type: 'crate', x: 0.457, z: 1.2, rot: 4.712 });
+  assert.equal(normaliseDecor({ type: 'crate', x: 9, z: 9 }, DECOR, raft2), null, 'off the raft');
+  assert.equal(normaliseDecor({ type: 'crate', x: 0.5, z: 0 }, DECOR, raft2), null, 'float without rot is not a legacy cell');
+  assert.equal(normaliseDecor({ type: 'rocket', x: 0, z: 0, rot: 0 }, DECOR, raft2), null);
+});
+
+// ============================================================ bug fixes
+
+test('HookCast: a throw aimed at the deck lands on the deck, not in the water under it', () => {
+  const DECK = 0.26; // deck surface over a 3x3 raft of 2 m tiles centred on the origin
+  const deck = (x, z) => (Math.abs(x) <= 3 && Math.abs(z) <= 3 ? DECK : null);
+  const c = cast({ origin: new T.Vector3(0, 1.8, 0), direction: elevDir(-55), charge: 0.15, deck });
+  flyOut(c);
+  assert.equal(c.stage, 'floating');
+  assert.ok(Math.hypot(c.landing.x, c.landing.z) < 3, 'landed within the raft');
+  assert.equal(c.landing.y, DECK, 'rests on the planks');
+  assert.equal(c.onDeck, true);
+  const { x, z } = c.position;
+  run(c, 2, [], false);
+  assert.equal(c.position.x, x, 'no water drift or bob on the deck');
+  assert.equal(c.position.z, z);
+  assert.equal(c.position.y, DECK);
+  // Reeling home along the deck never sinks below the planks.
+  let low = Infinity;
+  for (let i = 0; i < 300 && c.stage !== 'done'; i++) {
+    c.update(0.02, { hand: new T.Vector3(0, 1.8, 0), items: [], reeling: true });
+    low = Math.min(low, c.position.y);
+  }
+  assert.equal(c.stage, 'done');
+  assert.ok(low >= DECK, `dipped to ${low}`);
+});
+
+test('HookCast: a throw from beside the raft out to sea still lands in the water', () => {
+  const deck = (x, z) => (Math.abs(x) <= 3 && Math.abs(z) <= 3 ? 0.26 : null);
+  const c = cast({ origin: new T.Vector3(0, 1.8, 2.5), direction: elevDir(10).negate().setY(0.17), charge: 0.5, deck });
+  flyOut(c);
+  assert.ok(c.landing.z > 3);
+  assert.equal(c.landing.y, WATER_Y);
+  assert.equal(c.onDeck, false);
+});
+
+test('Bag.salvage keeps every valid slot of a slightly malformed save instead of wiping it', () => {
+  const s = new Array(SLOT_COUNT).fill(null);
+  s[0] = { kind: 'hook', count: 1, durability: 40 };
+  s[1] = { kind: 'wood', count: 35 };             // over the stack cap: clamp
+  s[2] = { kind: 'warpdrive', count: 3 };         // kind from another build: drop (merged: 'nail' is a real progression item now)
+  s[3] = { kind: 'hammer', count: 1, durability: 250 };
+  s[4] = { kind: 'leaf', count: 4, durability: 9 };
+  s[5] = 'junk';
+  const bag = Bag.salvage({ slots: s.concat([{ kind: 'wood', count: 2 }]), selected: 12 });
+  assert.equal(bag.slots[0].durability, 40);
+  assert.equal(bag.slots[1].count, STACK_SIZE);
+  assert.equal(bag.slots[2], null);
+  assert.equal(bag.slots[3].durability, TOOL_DURABILITY);
+  assert.deepEqual(bag.slots[4], { kind: 'leaf', count: 4 });
+  assert.equal(bag.slots[5], null);
+  assert.equal(bag.slots.length, SLOT_COUNT);
+  assert.equal(bag.selectedIndex, 0);
+  assertStacksValid(bag);
+  assert.equal(Bag.salvage(null), null);
+  assert.equal(Bag.salvage({ slots: 'x' }), null);
+  const good = bagFrom([{ kind: 'wood', count: 3 }], 2).snapshot();
+  assert.deepEqual(Bag.salvage(good).snapshot(), good);
+});
+
+test('HookCast: drifting water never carries a floating hook in under the raft', () => {
+  const deck = (x, z) => (Math.abs(x) <= 3 && Math.abs(z) <= 3 ? 0.26 : null);
+  // Floating just off the -Z edge, the current pushes it toward the hull.
+  const c = cast({ origin: new T.Vector3(0, 1.2, -3.4), direction: elevDir(-80), charge: 0, drift: { x: 0, z: 0.5 }, deck });
+  flyOut(c);
+  assert.equal(c.onDeck, false);
+  for (let i = 0; i < 300; i++) {
+    c.update(0.02, { hand: new T.Vector3(0, 1.2, -3.4), items: [] });
+    assert.equal(deck(c.position.x, c.position.z), null, `hook slid under the deck at z=${c.position.z}`);
+  }
+  assert.equal(c.stage, 'floating');
+});
+
+test('HookCast: a player walking across the raft hauls a floating hook onto the planks', () => {
+  const DECK = 0.26, deck = (x, z) => (Math.abs(x) <= 3 && Math.abs(z) <= 3 ? DECK : null);
+  const c = cast({ origin: new T.Vector3(0, 1.2, -2), direction: elevDir(0), charge: 0, maxRange: 4, deck });
+  flyOut(c);
+  assert.ok(c.landing.z < -3, 'landed in the water off the edge');
+  // Walk to the far side of the raft: the taut rope drags the hook across the deck.
+  for (let i = 0; i < 200; i++) c.update(0.02, { hand: new T.Vector3(0, 1.2, -2 + i * 0.02), items: [] });
+  assert.equal(c.onDeck, true);
+  assert.equal(c.position.y, DECK, 'rests on the deck, not under it');
+  const events = run(c, 3, [], true); // and it still reels home
+  assert.equal(c.stage, 'done');
+  assert.deepEqual(events, [{ kind: 'returned' }]);
+});
+
+test('Bag.salvage repairs a snapshot with the wrong slot count or selection', () => {
+  const short = { slots: [{ kind: 'wood', count: 5 }, { kind: 'hook', count: 1 }], selected: 1 };
+  const bag = Bag.salvage(short);
+  assert.equal(bag.slots.length, SLOT_COUNT);
+  assert.deepEqual(bag.slots[0], { kind: 'wood', count: 5 });
+  assert.equal(bag.slots[1].durability, TOOL_DURABILITY);
+  assert.equal(bag.selectedIndex, 1);
+  assert.throws(() => new Bag(short), TypeError, 'strict constructor still rejects it');
+  assert.equal(Bag.salvage({ slots: [], selected: HOTBAR_SIZE }).selectedIndex, 0);
+});
+
+// ---- feel: audio buses + co-op avatar held item ----
+test('audio buses clamp, unknown names are rejected, play is silent without a context', async () => {
+  const { createOceanAudio, BUSES, EVENTS } = await import(new URL('audio.js', base));
+  const a = createOceanAudio({ volume: 2 });
+  assert.deepEqual([...BUSES], ['master', 'effects', 'ambience', 'music']);
+  assert.equal(a.getBus('master'), 1);
+  assert.equal(a.setBus('ambience', -1), 0);
+  assert.equal(a.setBus('nope', 1), null);
+  assert.equal(a.setMusic(true), true);
+  for (const e of EVENTS) assert.equal(a.play(e), false);
+  a.tick(0.016, { swimming: true });
+  a.destroy();
+});
+
+test('avatar shows one held model per kind and animates without NaN', async () => {
+  const { createAvatar } = await import(new URL('avatar.js', base));
+  const g = createAvatar(T, '#70a7e4'), held = g.getObjectByName('held');
+  g.userData.setHeld('hammer'); g.userData.setHeld('hook'); g.userData.setHeld('hammer');
+  assert.equal(held.children.length, 2);
+  assert.equal(held.children.filter(c => c.visible).length, 1);
+  g.userData.setHeld('not-a-thing');
+  assert.equal(held.children.filter(c => c.visible).length, 0);
+  for (let i = 0; i < 20; i++) g.userData.animate(1 / 60, { speed: 3, swimming: i > 10, pitch: 0.4 });
+  const { rightArm, leftLeg } = g.userData.parts;
+  assert.ok(Number.isFinite(rightArm.rotation.x) && Number.isFinite(leftLeg.rotation.x));
+  g.userData.dispose();
+});
+
+// Minimal fake Web Audio graph: counts live connections and lets the test end sources on demand.
+function fakeAudioContext() {
+  const live = new Set(), sources = new Set();
+  const param = v => ({ value: v, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {}, setTargetAtTime() {}, cancelScheduledValues() {} });
+  const node = (extra = {}) => {
+    const n = { connect(d) { live.add(n); return d; }, disconnect() { live.delete(n); }, ...extra };
+    return n;
+  };
+  const source = extra => {
+    const s = node({ stopped: false, onended: null, start() { sources.add(s); }, stop() { s.stopped = true; }, ...extra });
+    return s;
+  };
+  const ctx = {
+    state: 'suspended', currentTime: 0, sampleRate: 8000, destination: node(),
+    resume() { ctx.state = 'running'; return Promise.resolve(); },
+    createGain: () => node({ gain: param(1) }),
+    createBiquadFilter: () => node({ frequency: param(350), Q: param(1), type: 'lowpass' }),
+    createDynamicsCompressor: () => node({ threshold: param(0), knee: param(0), ratio: param(1), attack: param(0), release: param(0) }),
+    createOscillator: () => source({ frequency: param(440), detune: param(0), type: 'sine' }),
+    createBufferSource: () => source({ buffer: null, loop: false }),
+    createBuffer: (c, len, rate) => { const d = new Float32Array(len); return { duration: len / rate, getChannelData: () => d }; },
+    endOneShots() { for (const s of [...sources]) if (!s.loop && s.stopped) { sources.delete(s); s.onended?.(); } },
+  };
+  return { ctx, live, sources };
+}
+
+test('audio waits for a gesture, starts ambience once and frees every one-shot voice', async () => {
+  const { createOceanAudio, EVENTS, ALIASES } = await import(new URL('audio.js', base));
+  const { ctx, live, sources } = fakeAudioContext();
+  const a = createOceanAudio({ context: ctx, volume: 0.5 });
+  assert.equal(a.play('pickup'), false, 'silent before resume()');
+  assert.equal(await a.resume(), true);
+  const base0 = live.size, loops0 = sources.size;
+  assert.ok(loops0 > 0, 'ambience loops started');
+  await a.resume(); await a.resume();
+  assert.equal(sources.size, loops0, 'ambience created once');
+  for (const name of ['pickup', 'throw', 'reel', 'build', 'place', 'plant', 'water', 'catch', 'splash']) {
+    assert.ok(EVENTS.includes(name) || ALIASES[name], name);
+  }
+  for (const e of [...EVENTS, ...Object.keys(ALIASES)]) { ctx.currentTime += 1; assert.equal(a.play(e), true, e); if (e === 'deny') ctx.endOneShots(); }
+  ctx.endOneShots();
+  assert.equal(live.size, base0, 'effect voices disconnected after ending');
+  let capped = 0;
+  for (let i = 0; i < 40; i++) capped += a.play(EVENTS[i % EVENTS.length]) ? 0 : 1, ctx.currentTime += 0.5;
+  assert.ok(capped > 0, 'voice cap drops excess sounds');
+  ctx.endOneShots();
+  a.setMusic(true);
+  for (let i = 0; i < 400; i++) { ctx.currentTime += 0.05; a.tick(0.05, { swimming: i > 200 }); }
+  a.setMusic(false);
+  assert.ok(live.size > base0);
+  ctx.endOneShots();
+  assert.equal(live.size, base0, 'one-shot voices disconnected after ending');
+  assert.equal(a.setBus('effects', 0.3), 0.3);
+  a.setVolume(0);
+  assert.equal(a.play('build'), false, 'muted master skips scheduling');
+  a.destroy();
+  assert.equal(live.size, 0, 'destroy disconnects the whole graph');
+});

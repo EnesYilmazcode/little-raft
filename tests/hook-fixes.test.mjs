@@ -39,15 +39,21 @@ const run = (cast, seconds = 3) => {
   return events;
 };
 
+// Merged behaviour (raft-integration deck landing): the hook rests on the planks as a floating hook
+// instead of ending the cast at once; reeling brings it home and only then reports 'returned'.
 test('HookCast: a throw at your feet stops on the deck instead of sinking under the tiles', () => {
   for (const charge of [0.15, 1]) {
     const cast = new HookCast(T, { origin: { x: 0, y: 1.45, z: 0.6 }, direction: { x: 0, y: -0.95, z: -0.3 }, charge, deckAt });
-    const events = run(cast);
+    const events = run(cast, 1);
     assert.equal(cast.onDeck, true);
-    assert.equal(cast.stage, 'done');
+    assert.equal(cast.stage, 'floating');
     assert.ok(Math.abs(cast.position.y - DECK) < 1e-9, `hook y ${cast.position.y}`);
     assert.ok(deckAt(cast.position.x, cast.position.z) !== null, 'stopped over the tile');
-    assert.deepEqual(events, [{ kind: 'returned' }]);
+    assert.deepEqual(events, []);
+    const reeled = [];
+    for (let i = 0; i < 300 && cast.stage !== 'done'; i++) { const ev = cast.update(1 / 60, { hand: { x: 0, y: 1.45, z: 0.6 }, items: [], reeling: true }); if (ev) reeled.push(ev); }
+    assert.equal(cast.stage, 'done');
+    assert.deepEqual(reeled, [{ kind: 'returned' }]);
     assert.equal(cast.update(1 / 60, { items: [] }), null);
   }
 });

@@ -3,8 +3,9 @@
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, HOLD, anchorTip } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_ICONS } from './item-svg.js'; // [progression-hook]
+import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
-const VERSION = 'sv2';
+const VERSION = 'sv3';
 const HB = Number(HOTBAR_SIZE) || 8;
 const TOTAL = Number(SLOT_COUNT) || 28;
 const DUR_MAX = Number(TOOL_DURABILITY) > 0 ? Number(TOOL_DURABILITY) : 0;
@@ -89,6 +90,12 @@ function durFrac(s) {
   if (max > 0) return clamp01(d / max);
   return d <= 1 ? clamp01(d) : 1;
 }
+// Rendered 3D icon when ready, flat sprite until then. data-icon lets a late render swap it in place.
+function iconHTML(kind) {
+  const url = iconURL(kind);
+  if (url) return `<img class="sv-icon sv-3d" data-icon="${esc(kind)}" src="${url}" alt="" draggable="false">`;
+  return iconSVG(kind).replace('<svg ', `<svg data-icon="${esc(kind)}" `);
+}
 function iconSVG(kind) {
   const n = norm(kind);
   const meta = info(kind);
@@ -128,104 +135,123 @@ function recipeList() {
 // ---- styles ----
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
 const CSS = `
-.tools.sv-hotbar{display:flex;flex-wrap:nowrap;gap:4px;padding:5px;border-radius:4px;max-width:96vw;overflow:visible;
-  background:repeating-linear-gradient(90deg,#0000000d 0 2px,transparent 2px 19px),linear-gradient(#9a7643,#6a4a2a);
-  border:2px solid #c9a66b;box-shadow:0 0 0 2px #3e2a17,0 4px 14px #0006}
+.tools.sv-hotbar{--s:58px;--g:6px;--px:0px;--py:0px;position:relative;display:flex;flex-wrap:nowrap;gap:var(--g);padding:0;border:0;border-radius:0;max-width:96vw;overflow:visible;background:none;box-shadow:none}
 .tools.sv-hotbar::before,.tools.sv-hotbar::after{content:none;display:none}
 .tools.sv-hotbar>button.sv-slot,#inventory.sv-inv button.sv-slot{
-  position:relative;display:block;flex:0 0 auto;width:58px;height:58px;min-width:0;min-height:0;margin:0;padding:0;border:0;border-radius:3px;
-  background:linear-gradient(180deg,#5a3f28e8,#3d2a19e8);box-shadow:inset 0 0 0 1px #d4b07a55,inset 0 2px 6px #0006;
-  color:#fff2cc;font:600 14px/1 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;transition:box-shadow .08s,background .08s;outline:none}
+  position:relative;display:block;flex:0 0 auto;width:var(--s);height:var(--s);min-width:0;min-height:0;margin:0;padding:0;border:0;border-radius:6px;
+  background:linear-gradient(180deg,#20282cb0,#0d1215c4);
+  box-shadow:inset 0 0 0 1px #ffffff1c,inset 0 1px 0 #ffffff14,0 2px 8px #0005;
+  color:#f4efe2;font:600 14px/1 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;outline:none;
+  transition:transform .18s cubic-bezier(.3,1.5,.5,1),background .15s,box-shadow .15s}
 .tools.sv-hotbar>button.sv-slot::after{content:none;display:none}
 .sv-slot i{font-style:normal;pointer-events:none}
-.sv-slot .sv-num{position:absolute;left:4px;top:3px;font:700 11px/1 ${FONT};color:#f3e4c2;text-shadow:0 1px 1px #000a}
-.sv-slot .sv-art{position:absolute;inset:9px;display:block}
-.sv-slot .sv-icon{display:block;width:100%;height:100%;filter:drop-shadow(0 1px 1px #0008)}
-.sv-slot .sv-count{position:absolute;right:4px;bottom:3px;font:700 14px/1 ${FONT};color:#fff2cc;text-shadow:0 1px 0 #000,0 0 3px #000}
-.sv-slot .sv-dur{position:absolute;left:6px;right:6px;bottom:3px;height:3px;border-radius:2px;background:#0009;display:block;overflow:hidden}
+.sv-slot .sv-num{position:absolute;left:5px;top:4px;z-index:1;font:700 10px/1 ${FONT};color:#f4efe2;opacity:.45;text-shadow:0 1px 1px #000}
+.sv-slot .sv-art{position:absolute;inset:5px;display:block;transition:scale .2s cubic-bezier(.3,1.5,.5,1)}
+.sv-icon{display:block;width:100%;height:100%;object-fit:contain;-webkit-user-drag:none;user-select:none}
+.sv-slot .sv-icon{filter:drop-shadow(0 2px 2px #0009)}
+.sv-slot svg.sv-icon{scale:.78}
+.sv-slot .sv-count{position:absolute;right:5px;bottom:4px;z-index:1;font:800 14px/1 ${FONT};color:#fff;font-variant-numeric:tabular-nums;
+  text-shadow:1px 1px 0 #000,-1px 1px 0 #000,1px -1px 0 #000,-1px -1px 0 #000,0 2px 3px #000}
+.sv-slot .sv-dur{position:absolute;left:8px;right:8px;bottom:5px;z-index:1;height:3px;border-radius:2px;background:#000a;display:block;overflow:hidden}
 .sv-slot .sv-dur[hidden]{display:none}
-.sv-slot .sv-dur>i{display:block;height:100%;width:100%;background:#8fd36a}
-.tools.sv-hotbar>button.sv-slot:hover,#inventory.sv-inv button.sv-slot:hover{box-shadow:inset 0 0 0 1px #ffe3a6bb,inset 0 2px 6px #0005}
-.tools.sv-hotbar>button.sv-slot.sv-sel,#inventory.sv-inv button.sv-slot.sv-sel{background:linear-gradient(180deg,#b3925acc,#8a6a3ccc);box-shadow:inset 0 0 0 2px #ffe3a6,0 0 0 1px #3e2a17}
-.tools.sv-hotbar>button.sv-slot:focus-visible,#inventory.sv-inv button.sv-slot:focus-visible{outline:2px solid #ffe3a6;outline-offset:1px}
-@media(max-width:760px){.tools.sv-hotbar>button.sv-slot{width:42px;height:42px}.tools.sv-hotbar .sv-art{inset:6px}.tools.sv-hotbar .sv-count{font-size:12px}}
-#inventory.sv-inv{padding:0;margin:auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#fff2cc;
+.sv-slot .sv-dur>i{display:block;height:100%;width:100%;background:#8fd36a;transition:width .3s}
+.sv-slot.sv-bumpA .sv-art{animation:svBumpA .34s ease-out}.sv-slot.sv-bumpB .sv-art{animation:svBumpB .34s ease-out}
+@keyframes svBumpA{35%{transform:scale(1.22) rotate(-6deg)}}@keyframes svBumpB{35%{transform:scale(1.22) rotate(-6deg)}}
+.tools.sv-hotbar>button.sv-slot:hover,#inventory.sv-inv button.sv-slot:hover{background:linear-gradient(180deg,#323d42c0,#151c20d0)}
+.tools.sv-hotbar>button.sv-slot.sv-sel{transform:translateY(-4px);background:linear-gradient(180deg,#46545ad0,#1c2529dc);box-shadow:inset 0 1px 0 #ffffff26,0 6px 14px #0007}
+.tools.sv-hotbar>button.sv-slot.sv-sel .sv-art{scale:1.1}
+.tools.sv-hotbar>button.sv-slot.sv-sel .sv-num{opacity:.95}
+.tools.sv-hotbar>button.sv-slot:focus-visible,#inventory.sv-inv button.sv-slot:focus-visible{outline:2px solid #fff3d6;outline-offset:1px}
+.tools.sv-hotbar>.sv-cursor{position:absolute;left:var(--px);top:var(--py);z-index:2;width:var(--s);height:var(--s);border-radius:6px;pointer-events:none;
+  transform:translate(calc(var(--i,0) * (var(--s) + var(--g))),-4px);transition:transform .2s cubic-bezier(.3,1.3,.5,1),opacity .2s;
+  box-shadow:inset 0 0 0 2px #fff6e0,0 0 0 1px #0008,0 0 14px #fff3d64d}
+.tools.sv-hotbar>.sv-cursor.sv-off{opacity:0}
+.tools.sv-hotbar>.sv-label{position:absolute;left:calc(var(--px) + var(--s) / 2);bottom:calc(100% + 12px);z-index:2;padding:5px 11px;border-radius:5px;white-space:nowrap;pointer-events:none;
+  background:#0c1114d0;color:#f8f3e6;font:700 13px/1.2 ${FONT};box-shadow:inset 0 0 0 1px #ffffff1f,0 4px 10px #0005;opacity:0;
+  transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),5px);transition:opacity .25s,transform .22s cubic-bezier(.3,1.3,.5,1)}
+.tools.sv-hotbar>.sv-label.sv-show{opacity:1;transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),0)}
+@media(max-width:760px){.tools.sv-hotbar{--s:42px;--g:4px}.tools.sv-hotbar .sv-art{inset:3px}.tools.sv-hotbar .sv-count{font-size:12px}}
+#inventory.sv-inv{--s:56px;--g:6px;padding:0;margin:auto;border:0;border-radius:12px;background:transparent;box-shadow:none;color:#f4efe2;
   width:max-content;min-width:0;max-width:96vw;max-height:94vh;overflow:visible;font:500 14px/1.35 ${FONT}}
-#inventory.sv-inv::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
-#inventory .sv-wrap{display:flex;gap:12px;align-items:stretch;padding:12px;outline:none;border-radius:6px;
-  background:repeating-linear-gradient(90deg,#00000012 0 2px,transparent 2px 23px),linear-gradient(#b48d55,#8a663a);
-  border:3px solid #3e2a17;box-shadow:0 0 0 2px #d6b67e,0 18px 50px #000a}
-#inventory .sv-craft,#inventory .sv-bag{background:#3a2716eb;border-radius:4px;box-shadow:inset 0 0 0 2px #24170c,inset 0 0 0 3px #b48d5544}
+#inventory.sv-inv::backdrop{background:radial-gradient(ellipse at center,#0610144d,#061014a6);-webkit-backdrop-filter:none;backdrop-filter:none}
+#inventory .sv-wrap{display:flex;gap:14px;align-items:stretch;padding:14px;outline:none;border-radius:12px;
+  background:linear-gradient(180deg,#1a2226e6,#0e1417ee);box-shadow:inset 0 0 0 1px #ffffff17,inset 0 1px 0 #ffffff12,0 20px 60px #000a}
+#inventory .sv-craft,#inventory .sv-bag{background:#00000038;border-radius:9px;box-shadow:inset 0 0 0 1px #ffffff0d}
+#inventory .sv-bag{flex:none;min-width:max-content;display:flex;flex-direction:column;align-items:center;gap:9px;padding:10px 12px 12px}
+#inventory .sv-grid{display:grid;grid-template-columns:repeat(7,var(--s));gap:var(--g)}
+#inventory .sv-hotrow{display:grid;grid-template-columns:repeat(${HB},var(--s));gap:var(--g)}
+#inventory .sv-h{align-self:stretch;margin:2px 2px 1px;font:800 11px/1 ${FONT};letter-spacing:2.2px;text-transform:uppercase;color:#f4efe2b3}
+#inventory .sv-craft>.sv-h{margin:4px 2px 10px}
+#inventory .sv-slot.sv-hot{background:linear-gradient(180deg,#26313690,#10171ab0)}
+#inventory.sv-inv button.sv-slot.sv-sel{background:linear-gradient(180deg,#46545ad0,#1c2529dc);box-shadow:inset 0 0 0 2px #fff6e0,0 0 12px #fff3d633}
+#inventory.sv-inv button.sv-slot.sv-src{background:linear-gradient(180deg,#5d4a2ad0,#2b2214dc);box-shadow:inset 0 0 0 2px #ffc66e,0 0 12px #ffc66e66;transform:translateY(-3px)}
+#inventory.sv-inv button.sv-slot.sv-over{box-shadow:inset 0 0 0 2px #9fe0d6,0 0 10px #9fe0d677;transform:scale(1.06)}
+#inventory.sv-inv button.sv-slot.sv-deny{box-shadow:inset 0 0 0 2px #e06a4a,0 0 6px #e06a4a88;animation:svShake .26s}
+@keyframes svShake{25%{translate:-3px 0}75%{translate:3px 0}}
+#inventory .sv-slot.sv-dragging{opacity:.4}
+#inventory .sv-slot.sv-src:not([data-pick]) .sv-art,#inventory .sv-slot.sv-src:not([data-pick]) .sv-count{opacity:.3}
+#inventory .sv-held{position:fixed;left:0;top:0;z-index:11;width:52px;height:52px;pointer-events:none;filter:drop-shadow(0 6px 6px #000a)}
+#inventory .sv-held .sv-art{position:absolute;inset:0;display:block;scale:1.15}
+#inventory .sv-held .sv-count{position:absolute;right:0;bottom:0;font:800 14px/1 ${FONT};color:#fff;text-shadow:1px 1px 0 #000,-1px 1px 0 #000,1px -1px 0 #000,-1px -1px 0 #000}
+#inventory .sv-slot[data-pick]::after{content:attr(data-pick);position:absolute;right:-5px;top:-6px;z-index:2;min-width:16px;padding:2px 3px;border-radius:8px;
+  background:#ffc66e;color:#1d1608;font:700 11px/1 ${FONT};text-align:center;box-shadow:0 1px 2px #0008}
+#inventory .sv-rope{width:100%;height:1px;margin:2px 0;background:linear-gradient(90deg,transparent,#ffffff2e 15%,#ffffff2e 85%,transparent)}
+#inventory .sv-hint{margin:0;max-width:${HB * 62}px;font:500 12px/1.35 ${FONT};color:#f4efe280;text-align:center}
 #inventory .sv-craft{flex:0 0 324px;width:324px;min-width:324px;box-sizing:border-box;max-height:min(560px,calc(94vh - 30px));display:flex;flex-direction:column;gap:8px;padding:9px;overflow:hidden}
-#inventory .sv-bag{flex:none;min-width:max-content;display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px}
-#inventory .sv-grid{display:grid;grid-template-columns:repeat(7,52px);gap:6px}
-#inventory .sv-hotrow{display:grid;grid-template-columns:repeat(${HB},52px);gap:6px}
-#inventory.sv-inv button.sv-slot{width:52px;height:52px}
-#inventory .sv-slot .sv-art{inset:8px}
-#inventory .sv-slot.sv-hot{background:linear-gradient(180deg,#664730e8,#46301ce8)}
-#inventory .sv-slot.sv-hot.sv-sel{background:linear-gradient(180deg,#b3925acc,#8a6a3ccc)}
-#inventory.sv-inv button.sv-slot.sv-src{background:linear-gradient(180deg,#8a6236,#5e4024);box-shadow:inset 0 0 0 2px #ffbd66,0 0 10px #ffbd6699}
-#inventory.sv-inv button.sv-slot.sv-over{box-shadow:inset 0 0 0 2px #9fe0d6,0 0 8px #9fe0d688}
-#inventory.sv-inv button.sv-slot.sv-deny{box-shadow:inset 0 0 0 2px #e06a4a,0 0 6px #e06a4a88}
-#inventory .sv-slot.sv-dragging{opacity:.45}
-#inventory .sv-slot[data-pick]::after{content:attr(data-pick);position:absolute;right:-5px;top:-6px;min-width:16px;padding:2px 3px;border-radius:8px;
-  background:#ffbd66;color:#2a1b0e;font:700 11px/1 ${FONT};text-align:center;box-shadow:0 1px 2px #0008}
-#inventory .sv-rope{width:100%;height:4px;border-radius:2px;background:repeating-linear-gradient(115deg,#c99560 0 3px,#6b4a2b 3px 5px);opacity:.85}
-#inventory .sv-hint{margin:2px 0 0;max-width:${HB * 58}px;font:500 12px/1.35 ${FONT};color:#d9c9a6;text-align:center}
 #inventory .sv-tabs{display:grid;grid-template-columns:repeat(var(--tabs,4),1fr);gap:4px;flex:none}
 #inventory .sv-tab{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;height:auto;margin:0;padding:6px 2px 5px;border:0;border-radius:4px 4px 2px 2px;
-  background:linear-gradient(#4a3220,#3a2716);box-shadow:inset 0 0 0 1px #d4b07a33;color:#d9c9a6;font:700 11px/1.1 ${FONT};letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
+  background:linear-gradient(#1c2427,#141b1e);box-shadow:inset 0 0 0 1px #ffffff33;color:#c9cfd0;font:700 11px/1.1 ${FONT};letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
 #inventory .sv-tab .sv-icon{width:22px;height:22px;opacity:.8}
-#inventory .sv-tab:hover{color:#fff2cc;box-shadow:inset 0 0 0 1px #ffe3a6aa}
-#inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#b48d55,#8a663a);color:#2a1b0e;box-shadow:inset 0 0 0 1px #ffe3a6,0 2px 0 #ffe3a6}
+#inventory .sv-tab:hover{color:#f8f3e6;box-shadow:inset 0 0 0 1px #fff6e0aa}
+#inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#46545a,#1c2529);color:#0b1013;box-shadow:inset 0 0 0 1px #fff6e0,0 2px 0 #fff6e0}
 #inventory .sv-tab[aria-selected="true"] .sv-icon{opacity:1}
-#inventory .sv-tab:focus-visible{outline:2px solid #ffe3a6;outline-offset:1px}
+#inventory .sv-tab:focus-visible{outline:2px solid #fff6e0;outline-offset:1px}
 #inventory .sv-tbadge{position:absolute;right:3px;top:3px;min-width:15px;padding:2px 3px;border-radius:8px;background:#6fbf4a;color:#14270b;font:800 10px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
 #inventory .sv-tbadge:empty{display:none}
-#inventory .sv-rlist{flex:1 1 auto;min-height:62px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:5px;padding-right:2px;scrollbar-color:#b48d55 #2a1b0e}
+#inventory .sv-rlist{flex:1 1 auto;min-height:62px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:5px;padding-right:2px;scrollbar-color:#46545a #0b1013}
 #inventory .sv-recipe{position:relative;display:grid;grid-template-columns:42px 1fr auto;gap:9px;align-items:center;flex:none;width:100%;height:auto;min-height:0;margin:0;padding:5px 8px 5px 6px;
-  border:0;border-radius:4px;text-align:left;background:linear-gradient(#5d4129,#4a3220);box-shadow:inset 0 0 0 1px #d4b07a44;
-  color:#fff2cc;font:600 14px/1.25 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;transition:background .08s,box-shadow .08s}
+  border:0;border-radius:4px;text-align:left;background:linear-gradient(#232c30,#1c2427);box-shadow:inset 0 0 0 1px #ffffff44;
+  color:#f8f3e6;font:600 14px/1.25 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;transition:background .08s,box-shadow .08s}
 #inventory .sv-recipe[hidden]{display:none}
 #inventory .sv-recipe::before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:3px;border-radius:2px;background:transparent}
 #inventory .sv-recipe.sv-ready::before{background:#8fd36a;box-shadow:0 0 6px #8fd36a99}
-#inventory .sv-recipe.sv-ready{background:linear-gradient(#6a4a2c,#523823)}
-#inventory .sv-recipe:hover{background:linear-gradient(#7a5631,#5d4026);box-shadow:inset 0 0 0 1px #ffe3a6}
-#inventory .sv-recipe.sv-pick{background:linear-gradient(#8e6a3e,#6c4d2c);box-shadow:inset 0 0 0 2px #ffe3a6,0 0 0 1px #24170c}
+#inventory .sv-recipe.sv-ready{background:linear-gradient(#2c383d,#263034)}
+#inventory .sv-recipe:hover{background:linear-gradient(#343f44,#263034);box-shadow:inset 0 0 0 1px #fff6e0}
+#inventory .sv-recipe.sv-pick{background:linear-gradient(#46545a,#1c2529);box-shadow:inset 0 0 0 2px #fff6e0,0 0 0 1px #0b1013}
 #inventory .sv-recipe.sv-locked .sv-rart>*{filter:grayscale(.85) brightness(.7);opacity:.75}
-#inventory .sv-recipe.sv-locked .sv-rname{color:#cdbb98}
+#inventory .sv-recipe.sv-locked .sv-rname{color:#a9b0b2}
 #inventory .sv-recipe.sv-gated .sv-rart>*{filter:grayscale(1) brightness(.55)} /* [progression-hook] research-locked */
-#inventory .sv-recipe:focus-visible{outline:2px solid #ffe3a6;outline-offset:1px}
-#inventory .sv-rart{display:grid;place-items:center;width:42px;height:42px;border-radius:3px;background:radial-gradient(circle at 50% 40%,#9a7a52,#4a3420 75%);box-shadow:inset 0 0 0 1px #d4b07a55}
+#inventory .sv-recipe:focus-visible{outline:2px solid #fff6e0;outline-offset:1px}
+#inventory .sv-rart{display:grid;place-items:center;width:42px;height:42px;border-radius:3px;background:radial-gradient(circle at 50% 40%,#20282c,#0d1215 75%);box-shadow:inset 0 0 0 1px #ffffff55}
 #inventory .sv-rart .sv-icon{width:36px;height:36px}
 #inventory .sv-rbody{display:block;min-width:0}
-#inventory .sv-rname{display:block;font:700 14px/1.2 ${FONT};color:#fff2cc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#inventory .sv-rsub{display:block;margin-top:2px;font:600 12px/1.2 ${FONT};color:#d9c9a6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#inventory .sv-rname{display:block;font:700 14px/1.2 ${FONT};color:#f8f3e6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#inventory .sv-rsub{display:block;margin-top:2px;font:600 12px/1.2 ${FONT};color:#c9cfd0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #inventory .sv-ready .sv-rsub{color:#a9e48a}
 #inventory .sv-full .sv-rsub{color:#ffcf9a}
 #inventory .sv-locked .sv-rsub{color:#ff9a85}
 #inventory .sv-rbadge{font:800 12px/1 ${FONT};color:#a9e48a;font-variant-numeric:tabular-nums}
-#inventory .sv-detail{flex:none;display:flex;flex-direction:column;gap:7px;padding:9px;border-radius:4px;background:#24170cd9;box-shadow:inset 0 0 0 1px #d4b07a44}
+#inventory .sv-detail{flex:none;display:flex;flex-direction:column;gap:7px;padding:9px;border-radius:4px;background:#0b1013d9;box-shadow:inset 0 0 0 1px #ffffff44}
 #inventory .sv-detail[hidden]{display:none}
 #inventory .sv-dhead{display:grid;grid-template-columns:60px 1fr;gap:10px;align-items:center}
-#inventory .sv-dart{display:grid;place-items:center;width:60px;height:60px;border-radius:4px;background:radial-gradient(circle at 50% 40%,#a8875c,#4a3420 75%);box-shadow:inset 0 0 0 1px #d4b07a77}
+#inventory .sv-dart{display:grid;place-items:center;width:60px;height:60px;border-radius:4px;background:radial-gradient(circle at 50% 40%,#262f33,#0d1215 75%);box-shadow:inset 0 0 0 1px #ffffff77}
 #inventory .sv-dart .sv-icon{width:54px;height:54px}
-#inventory .sv-dname{display:block;font:700 16px/1.2 ${FONT};color:#fff2cc}
-#inventory .sv-ddesc{display:block;margin-top:2px;font:500 12px/1.3 ${FONT};color:#d9c9a6}
-#inventory .sv-dlabel{font:700 10px/1 ${FONT};letter-spacing:1.5px;text-transform:uppercase;color:#b9a27a}
+#inventory .sv-dname{display:block;font:700 16px/1.2 ${FONT};color:#f8f3e6}
+#inventory .sv-ddesc{display:block;margin-top:2px;font:500 12px/1.3 ${FONT};color:#c9cfd0}
+#inventory .sv-dlabel{font:700 10px/1 ${FONT};letter-spacing:1.5px;text-transform:uppercase;color:#9aa3a6}
 #inventory .sv-ings{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
-#inventory .sv-ing{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:3px 8px 3px 4px;border-radius:3px;background:#3a2716;box-shadow:inset 3px 0 0 #e06a4a}
+#inventory .sv-ing{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:3px 8px 3px 4px;border-radius:3px;background:#141b1e;box-shadow:inset 3px 0 0 #e06a4a}
 #inventory .sv-ing.sv-ok{box-shadow:inset 3px 0 0 #8fd36a}
 #inventory .sv-ing .sv-icon{width:24px;height:24px}
-#inventory .sv-iname{font:600 13px/1.2 ${FONT};color:#eadcbe}
+#inventory .sv-iname{font:600 13px/1.2 ${FONT};color:#e9e3d3}
 #inventory .sv-iamt{font:800 13px/1 ${FONT};font-variant-numeric:tabular-nums;color:#ff8a73}
 #inventory .sv-ok .sv-iamt{color:#9ee07a}
 #inventory .sv-craftbtn{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;margin:0;padding:0 12px;overflow:hidden;border:0;border-radius:4px;
   background:linear-gradient(#5c8a3a,#3f6a26);box-shadow:inset 0 0 0 1px #c8f0a0aa,0 2px 0 #1f3612;color:#f4ffe6;font:800 15px/1 ${FONT};letter-spacing:.5px;text-transform:none;cursor:pointer;transform:none;
   user-select:none;-webkit-user-select:none;touch-action:none}
 #inventory .sv-craftbtn:hover{background:linear-gradient(#6c9c46,#4a7a2e)}
-#inventory .sv-craftbtn:focus-visible{outline:2px solid #ffe3a6;outline-offset:2px}
-#inventory .sv-craftbtn[aria-disabled="true"]{background:linear-gradient(#5a4632,#47372a);box-shadow:inset 0 0 0 1px #d4b07a44;color:#bfae8e;cursor:not-allowed}
+#inventory .sv-craftbtn:focus-visible{outline:2px solid #fff6e0;outline-offset:2px}
+#inventory .sv-craftbtn[aria-disabled="true"]{background:linear-gradient(#2a3236,#1e2629);box-shadow:inset 0 0 0 1px #ffffff44;color:#8d9598;cursor:not-allowed}
 #inventory .sv-craftbtn.sv-deny{box-shadow:inset 0 0 0 2px #e06a4a,0 0 6px #e06a4a88}
 #inventory .sv-fill{position:absolute;inset:0;transform-origin:left center;transform:scaleX(var(--fill,0));background:linear-gradient(90deg,#d8f7a066,#f4ffd0aa);pointer-events:none}
 #inventory .sv-craftbtn:not(.sv-holding) .sv-fill{transition:transform .25s ease-out}
@@ -234,16 +260,16 @@ const CSS = `
 #inventory .sv-chint:empty{display:none}
 #inventory .sv-ccount{min-width:26px;padding:3px 5px;border-radius:9px;background:#14270bcc;color:#c8f7a0;font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums}
 #inventory .sv-ccount:empty{display:none}
-#inventory .sv-empty-list{margin:6px;color:#d9c9a6;font-size:14px}
+#inventory .sv-empty-list{margin:6px;color:#c9cfd0;font-size:14px}
 #inventory .sv-tip{position:fixed;left:0;top:0;z-index:10;pointer-events:none;box-sizing:border-box;width:max-content;max-width:250px;padding:7px 10px;border-radius:4px;white-space:normal;
-  background:#24170cf5;border:1px solid #c9a66b;color:#fff2cc;font:700 14px/1.3 ${FONT};box-shadow:0 4px 12px #0008}
+  background:#0b1013f5;border:1px solid #ffffff40;color:#f8f3e6;font:700 14px/1.3 ${FONT};box-shadow:0 4px 12px #0008}
 #inventory .sv-tip[hidden]{display:none}
-#inventory .sv-tip small{display:block;margin-top:2px;font:500 12px/1.35 ${FONT};color:#d9c9a6}
+#inventory .sv-tip small{display:block;margin-top:2px;font:500 12px/1.35 ${FONT};color:#c9cfd0}
 #inventory .sv-tip small em{font-style:normal;font-weight:700;color:#ffcf9a}
 @media(max-width:860px),(max-height:520px){#inventory.sv-inv{width:auto}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}#inventory .sv-craft{flex:none;width:auto;min-width:0;max-height:none;overflow:visible}#inventory .sv-rlist{max-height:30vh}#inventory .sv-bag{min-width:0}
-  #inventory .sv-grid{grid-template-columns:repeat(7,44px)}#inventory .sv-hotrow{grid-template-columns:repeat(${HB},44px)}#inventory.sv-inv button.sv-slot{width:44px;height:44px}#inventory .sv-slot .sv-art{inset:6px}}
-@media(max-width:440px){#inventory .sv-grid{grid-template-columns:repeat(7,36px);gap:4px}#inventory .sv-hotrow{grid-template-columns:repeat(${HB},36px);gap:4px}#inventory.sv-inv button.sv-slot{width:36px;height:36px}#inventory .sv-slot .sv-art{inset:5px}#inventory .sv-slot .sv-count{font-size:12px}}
-@media(prefers-reduced-motion:reduce){.sv-slot,#inventory .sv-recipe,#inventory .sv-craftbtn .sv-fill{transition:none!important}}
+  #inventory.sv-inv{--s:44px;--g:5px}#inventory .sv-slot .sv-art{inset:3px}}
+@media(max-width:440px){#inventory.sv-inv{--s:36px;--g:4px}#inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}}
+@media(prefers-reduced-motion:reduce){.sv-slot,.sv-art,.sv-cursor,.sv-label,#inventory .sv-recipe,#inventory .sv-craftbtn .sv-fill{transition:none!important;animation:none!important}}
 `;
 
 function ensureStyle() {
@@ -268,6 +294,7 @@ function mountDialog() {
     for (let i = 0; i < HB; i++) hot += `<button type="button" class="sv-slot sv-hot" data-index="${i}">${slotInner(i + 1)}</button>`;
     d.innerHTML = `<div class="sv-wrap" tabindex="-1">
       <section class="sv-craft" aria-label="Crafting">
+        <h3 class="sv-h">Crafting</h3>
         <div class="sv-tabs" role="tablist" aria-label="Recipe categories"></div>
         <div class="sv-rlist" role="tabpanel"></div>
         <div class="sv-detail" hidden>
@@ -278,12 +305,14 @@ function mountDialog() {
         </div>
       </section>
       <section class="sv-bag" aria-label="Inventory">
+        <h3 class="sv-h">Backpack</h3>
         <div class="sv-grid" role="group" aria-label="Backpack">${grid}</div>
         <div class="sv-rope" aria-hidden="true"></div>
         <div class="sv-hotrow" role="group" aria-label="Hotbar">${hot}</div>
-        <p class="sv-hint">Click a stack to pick it up, then click a slot to place it. Right-click takes half. Drag to move.</p>
+        <p class="sv-hint">Click to pick up and place · Right-click takes half · Drag to move</p>
       </section>
       <div class="sv-tip" role="tooltip" hidden></div>
+      <div class="sv-held" aria-hidden="true" hidden><i class="sv-art"></i><i class="sv-count"></i></div>
     </div>`;
     d.dataset.sv = VERSION;
     delete d.dataset.svRecipes;
@@ -309,13 +338,21 @@ function paintSlot(el, s, sig, label) {
   const r = refs(el);
   if (!sig) {
     if (el._svKind !== null) { r.art.innerHTML = ''; el._svKind = null; }
+    el._svCount = 0;
     r.cnt.textContent = '';
     if (r.dur) r.dur.hidden = true;
     el.classList.add('sv-empty');
     el.setAttribute('aria-label', label + ', empty');
     return true;
   }
-  if (el._svKind !== s.kind) { r.art.innerHTML = iconSVG(s.kind); el._svKind = s.kind; }
+  const prev = el._svKind, prevCount = el._svCount;
+  if (prev !== s.kind) { r.art.innerHTML = iconHTML(s.kind); el._svKind = s.kind; }
+  el._svCount = s.count;
+  // Pop the icon when a stack grows or a new item lands (alternating names restart the animation).
+  if (prevCount !== undefined && (prev !== s.kind || s.count > prevCount)) {
+    const a = el.classList.contains('sv-bumpA');
+    el.classList.toggle('sv-bumpA', !a); el.classList.toggle('sv-bumpB', a);
+  }
   r.cnt.textContent = s.count > 1 ? String(s.count) : '';
   const f = durFrac(s);
   if (r.dur) {
@@ -333,7 +370,10 @@ function readSnap(bag) {
   return s && Array.isArray(s.slots) ? s : null;
 }
 
-export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause, iconFor, recipeGate } = {}) {
+// getModel (optional): (kind) -> Object3D, e.g. models.js getModel; icons are rendered from it.
+// iconFor (optional): (kind) -> data URL; overrides the rendered icon for that kind.
+export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, onPause, iconFor, recipeGate, getModel } = {}) {
+  if (typeof getModel === 'function') setModelProvider(getModel);
   const gate = id => { try { return recipeGate?.(id) || null; } catch { return null; } }; // [progression-hook] {hidden, locked, reason}
   // Hot reload: DOM is adopted, not rebuilt; the previous instance releases its listeners only once
   // this one is fully built (see below), so an early throw leaves the old UI working.
@@ -355,6 +395,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     hint: detail.querySelector('.sv-chint'), count: detail.querySelector('.sv-ccount'),
   };
   const tip = dlg.querySelector('.sv-tip');
+  const held = dlg.querySelector('.sv-held'), heldArt = held.firstElementChild, heldCnt = held.lastElementChild;
+  let heldKind = null, px = 0, py = 0;
   const invEls = [];
   dlg.querySelectorAll('.sv-slot[data-index]').forEach(el => {
     invEls[+el.dataset.index] = el; el._svSig = undefined;
@@ -401,12 +443,12 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   const bagNow = () => { try { return getBag?.() || null; } catch (e) { console.error(e); return null; } };
 
   // ---------- recipes ----------
-  // Real 3D icon (data URL from the host) when available, else the SVG sprite.
+  // Host icon override, else the rendered 3D icon (item-icons.js), else the SVG sprite.
   function art(kind) {
     let url = null;
     try { url = iconFor?.(kind); } catch (e) { url = null; }
     if (typeof url === 'string' && /^data:image\//.test(url)) return `<img class="sv-icon sv-3d" src="${esc(url)}" alt="" draggable="false">`;
-    return iconSVG(kind);
+    return iconHTML(kind);
   }
   const viewOf = id => recipeEls.find(v => v.r.id === id) || null;
   function buildRecipes() {
@@ -603,23 +645,28 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   }
 
   // ---------- hotbar in .tools ----------
+  // Hotbar = HB slot buttons + a selection frame that slides between them + a name tag above it.
+  let cursor = null, label = null, labelTimer = 0, labelSel = -2, labelKind = null;
   function ensureTools() {
-    if (tools && tools.isConnected && tools.dataset.sv === VERSION && tools.childElementCount === HB) return tools;
+    if (tools && tools.isConnected && tools.dataset.sv === VERSION && hotEls.length === HB && cursor?.parentNode === tools) return tools;
     const t = document.querySelector('.tools');
     if (!t) { tools = null; hotEls = []; return null; }
     invalidate();
-    if (t.dataset.sv !== VERSION || t.childElementCount !== HB || !t.querySelector(':scope>.sv-slot')) {
+    if (t.dataset.sv !== VERSION || t.querySelectorAll(':scope>.sv-slot').length !== HB || !t.querySelector(':scope>.sv-cursor')) {
       let html = '';
       for (let i = 0; i < HB; i++) html += `<button type="button" class="sv-slot" data-slot="${i}">${slotInner(i + 1)}</button>`;
-      t.innerHTML = html;
+      t.innerHTML = html + '<i class="sv-cursor sv-off" aria-hidden="true"></i><b class="sv-label" aria-hidden="true"></b>';
       t.dataset.sv = VERSION;
     }
     t.classList.add('sv-hotbar');
     t.setAttribute('role', 'toolbar');
     t.setAttribute('aria-label', 'Hotbar');
     tools = t;
+    cursor = t.querySelector(':scope>.sv-cursor');
+    label = t.querySelector(':scope>.sv-label');
     hotEls = [...t.querySelectorAll(':scope>.sv-slot')];
-    hotEls.forEach(el => { el._svSig = undefined; });
+    hotEls.forEach(el => { el._svSig = undefined; el._svCount = undefined; });
+    labelSel = -2;
     return t;
   }
   function paintHotbar(slots, sigs, selected) {
@@ -629,7 +676,27 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       const sel = i === selected;
       if (el._svSel !== sel) { el._svSel = sel; el.classList.toggle('sv-sel', sel); el.setAttribute('aria-pressed', String(sel)); }
     }
+    if (!cursor || !label) return;
+    const kind = selected >= 0 && sigs[selected] ? slots[selected].kind : null;
+    if (selected === labelSel && kind === labelKind) return;
+    const first = labelSel === -2;
+    labelSel = selected; labelKind = kind;
+    const on = selected >= 0 && selected < HB;
+    tools.style.setProperty('--i', on ? selected : 0);
+    cursor.classList.toggle('sv-off', !on);
+    // Name tag over the selected slot, then fade (not on the very first paint after spawn).
+    clearTimeout(labelTimer);
+    if (!kind || first) { label.classList.remove('sv-show'); return; }
+    label.textContent = itemName(kind);
+    label.classList.add('sv-show');
+    labelTimer = setTimeout(() => label.classList.remove('sv-show'), 1400);
   }
+  // A late 3D icon render swaps itself in wherever the flat placeholder is showing.
+  const offIcons = onIconReady(kind => {
+    if (!alive) return;
+    const sel = `[data-icon="${kind}"]`;
+    for (const root of [tools, dlg]) root?.querySelectorAll(sel).forEach(n => { n.outerHTML = iconHTML(kind); });
+  });
 
   // ---------- inventory grid ----------
   function setSrc(i, amt) {
@@ -645,13 +712,19 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!el) return;
     const s = curSlots[src];
     if (s && srcAmt < s.count) el.dataset.pick = String(srcAmt); else delete el.dataset.pick;
+    // The picked stack rides under the pointer until it is placed.
+    if (heldKind !== srcKind) { heldArt.innerHTML = iconHTML(srcKind); heldKind = srcKind; }
+    heldCnt.textContent = srcAmt > 1 ? String(srcAmt) : '';
+    held.hidden = false; placeHeld();
   }
+  function placeHeld() { held.style.transform = `translate(${px - 26}px,${py - 26}px)`; }
   function clearSrc() {
     if (src != null && invEls[src]) {
       const el = invEls[src];
       el.classList.remove('sv-src'); el.removeAttribute('aria-pressed'); delete el.dataset.pick;
     }
     src = null; srcAmt = 0; srcKind = null;
+    held.hidden = true;
   }
   // Brief, subtle red outline on a slot that refused the held stack.
   function clearDeny() {
@@ -786,6 +859,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     buildRecipes();
     invalidate();
+    invEls.forEach(el => { el._svCount = undefined; }); // no pop for changes made while closed
     recipeEls.forEach(v => { v.sig = null; });
     render(true);
     applyTab();
@@ -873,7 +947,11 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     dragAmt = src === i ? srcAmt : e.shiftKey ? Math.ceil(s.count / 2) : s.count;
     hideTip();
     el.classList.add('sv-dragging');
-    try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(i)); } catch {}
+    held.hidden = true;
+    try {
+      e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(i));
+      const img = el.querySelector('.sv-icon'); if (img) e.dataTransfer.setDragImage(img, img.offsetWidth / 2, img.offsetHeight / 2);
+    } catch {}
   }, opt);
   dlg.addEventListener('dragover', e => {
     if (!dragging) return;
@@ -893,7 +971,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       if (to !== from && amt > 0) { if (planMove(from, to, amt).ok) sendMove(from, to, amt, el); else deny(el); }
     }
   }, opt);
-  dlg.addEventListener('dragend', () => { if (dragging) endDrag(); }, opt);
+  dlg.addEventListener('dragend', () => { if (dragging) endDrag(); if (src != null) held.hidden = false; }, opt);
+  dlg.addEventListener('pointermove', e => { px = e.clientX; py = e.clientY; if (src != null) placeHeld(); }, opt); // picked stack follows the pointer
   dlg.addEventListener('pointerover', e => {
     const el = slotFrom(e);
     if (el) {
@@ -959,8 +1038,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     open();
   }, { ...opt, capture: true });
 
-  if (isOpen) { buildRecipes(); render(true); }
-  else buildRecipes();
+  buildRecipes();
+  if (isOpen) render(true);
+  warmIcons(Object.keys(ITEM_INFO || {}));
 
   const api = {
     update() { render(false); },
@@ -971,6 +1051,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       stopHold();
       alive = false;
       ac.abort();
+      offIcons();
+      clearTimeout(labelTimer);
       endDrag(false);
       clearSrc();
       clearDeny();
