@@ -8,8 +8,8 @@ const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST
 const T = await import(new URL('vendor/three.module.js', base));
 const DN = await import(new URL('daynight.js', base));
 const {
-  DAY_SECONDS: DAY, NIGHT_FLOOR, WEATHERS, POOL_LIGHTS, N_COLORS, PALETTE_KEYS, RAIN_MIX,
-  phaseAt, lightAt, segmentAt, segmentIndexAt, weatherAt, paletteAt, cleanDayNight, driftStep, createDayNight, rainBlend,
+  DAY_SECONDS: DAY, NIGHT_FLOOR, WEATHERS, POOL_LIGHTS, POOL_CAP, N_COLORS, PALETTE_KEYS, RAIN_MIX, MORNING,
+  phaseAt, lightAt, segmentAt, segmentIndexAt, weatherAt, paletteAt, cleanDayNight, driftStep, createDayNight, rainBlend, poolCap,
 } = DN;
 
 const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) <= eps, `${msg ?? ''} expected ${b} got ${a}`);
@@ -143,7 +143,8 @@ test('night palette is a cosy blue, not black', () => {
 // ---------------------------------------------------------------- validation
 test('cleanDayNight rejects garbage and never throws', () => {
   const bad = [undefined, null, 'x', 3, [], [1, 2], {}, { clock: NaN, seed: 1 }, { clock: Infinity, seed: 1 }, { clock: -1, seed: 1 }, { clock: 1.3e9, seed: 1 },
-    { clock: 10, seed: 1.5 }, { clock: 10, seed: -1 }, { clock: 10, seed: 2 ** 32 }, { clock: '10', seed: 1 }, { clock: 10 }, { seed: 4 }, { v: 2, clock: 1, seed: 1 }];
+    { clock: 10, seed: 1.5 }, { clock: 10, seed: -1 }, { clock: 10, seed: 2 ** 32 }, { clock: '10', seed: 1 }, { clock: 10 }, { seed: 4 },
+    { v: 'x', clock: 1, seed: 1 }, { v: -1, clock: 1, seed: 1 }, { v: 0.5, clock: 1, seed: 1 }, { v: NaN, clock: 1, seed: 1 }, { v: Infinity, clock: 1, seed: 1 }, { v: 2, clock: -1, seed: 1 }];
   for (const v of bad) assert.equal(cleanDayNight(v), null, JSON.stringify(v));
   const good = { v: 1, clock: 123.45, seed: 4000000000, extra: 'drop me' };
   const c = cleanDayNight(good);
@@ -151,6 +152,9 @@ test('cleanDayNight rejects garbage and never throws', () => {
   assert.notEqual(c, good);
   assert.deepEqual(cleanDayNight({ clock: 5, seed: 0 }), { v: 1, clock: 5, seed: 0 });
   assert.deepEqual(cleanDayNight({ v: 0, clock: 5, seed: 0 }), { v: 1, clock: 5, seed: 0 });
+  // a newer version is read as long as clock and seed validate
+  assert.deepEqual(cleanDayNight({ v: 2, clock: 1, seed: 1, more: [1] }), { v: 1, clock: 1, seed: 1 });
+  assert.deepEqual(cleanDayNight({ v: 7, clock: 9, seed: 3 }), { v: 1, clock: 9, seed: 3 });
 });
 
 // ---------------------------------------------------------------- stub ctx
@@ -186,7 +190,7 @@ test('module runs headless without throwing; light and child counts stay fixed',
   m.load(undefined, 'save'); m.load('garbage', 'net'); m.load({ clock: 'x' }, 'restore');
   m.update(1 / 60);
   const nLights = lights(), nChildren = ctx.scene.children.length;
-  assert.equal(nLights, 2 + POOL_LIGHTS);
+  assert.equal(nLights, 2, 'no pool lights without a lantern');
   m.debug.setPhase(0.31); m.update(1 / 60);
   assert.equal(m.debug.state().poolLit, 0);
   for (const l of ctx.scene.children) if (l.isPointLight) assert.equal(l.intensity, 0, 'pool lights off at noon');
@@ -244,7 +248,8 @@ test('serialize round trips through JSON and load', () => {
   const a = createDayNight(ctx);
   for (let i = 0; i < 100; i++) a.update(0.05);
   const s = a.serialize();
-  assert.equal(a.serialize(), s, 'reused object');
+  assert.notEqual(a.serialize(), s, 'fresh object each call');
+  assert.deepEqual(Object.keys(s), ['v', 'clock', 'seed']);
   const back = cleanDayNight(JSON.parse(JSON.stringify(s)));
   assert.deepEqual(back, { v: 1, clock: s.clock, seed: s.seed });
   const b = createDayNight(stubCtx());
@@ -306,5 +311,158 @@ test('co-op: guest clock tracks the host smoothly through jittery state messages
   host.debug.setPhase(0.82); host.update(dt);
   guest.load(cleanDayNight(JSON.parse(JSON.stringify(host.serialize()))), 'net'); guest.update(dt);
   near(guest.debug.state().phase, 0.82, 0.01);
+  host.dispose(); guest.dispose();
+});
+
+// ---------------------------------------------------------------- review fixes
+function rebuild(ctx) { // what game.js rebuildRaft() does: drop every child, build fresh ones with fresh materials
+  for (const c of [...ctx.raft.children]) ctx.raft.remove(c);
+  const decor = ctx.world.decor.slice(); ctx.world.decor.length = 0;
+  ctx.raft.add(new T.Group()); // a floor tile
+  for (const d of decor) addLantern(ctx, d.x * 2, d.z * 2);
+}
+const glowOf = g => g.children.find(c => c.name === 'lanternGlow').material.emissiveIntensity;
+
+test('P1-1: lanterns never show a dim frame after a raft rebuild', () => {
+  const ctx = stubCtx();
+  const m = createDayNight(ctx);
+  ctx.raft.add(new T.Group());
+  addLantern(ctx, 2, 0);
+  m.debug.setPhase(0.82); m.debug.freeze(true);
+  for (let i = 0; i < 5; i++) m.update(1 / 60);
+  for (let k = 0; k < 6; k++) {
+    rebuild(ctx);
+    if (k === 3) addLantern(ctx, -2, 0); // a new lantern placed
+    m.update(1 / 60); // the very first frame after the rebuild
+    for (const g of ctx.raft.children.filter(c => c.name === 'craft_lantern')) near(glowOf(g), 1.6 * 2.4, 1e-6, `rebuild ${k}`);
+    assert.equal(m.debug.state().lanterns, k >= 3 ? 2 : 1);
+  }
+  // same child count and decor: the identity of the first child still catches it
+  const before = ctx.raft.children.length;
+  rebuild(ctx); assert.equal(ctx.raft.children.length, before);
+  m.update(1 / 60);
+  for (const g of ctx.raft.children.filter(c => c.name === 'craft_lantern')) near(glowOf(g), 1.6 * 2.4, 1e-6, 'same shape rebuild');
+  m.dispose();
+});
+
+test('P1-2: the shadow light (direction * intensity) has no pop at sunset or sunrise', () => {
+  const ctx = stubCtx();
+  const m = createDayNight(ctx);
+  m.debug.freeze(true);
+  const vec = new T.Vector3(), prev = new T.Vector3();
+  const sample = p => { m.debug.setPhase(p); m.update(0); return vec.copy(ctx.sun.position).normalize().multiplyScalar(ctx.sun.intensity); };
+  const STEP = 0.0001; // 0.12 s of game time
+  for (const [a, b] of [[0.66, 0.74], [0.90, 1.04]]) {
+    let maxD = 0, minI = Infinity;
+    prev.copy(sample(a));
+    for (let p = a + STEP; p <= b; p += STEP) {
+      sample(p % 1);
+      maxD = Math.max(maxD, vec.distanceTo(prev)); minI = Math.min(minI, ctx.sun.intensity);
+      prev.copy(vec);
+    }
+    assert.ok(maxD < 0.02, `[${a}, ${b}] largest step ${maxD}`);
+    assert.ok(minI < 1e-3, 'fades out through the swap');
+  }
+  // the floor still holds away from the swap
+  m.debug.setPhase(0.82); m.update(0); assert.ok(ctx.sun.intensity >= 0.55 - 1e-9);
+  m.debug.setPhase(0.31); m.update(0); assert.ok(ctx.sun.intensity > 2);
+  m.dispose();
+});
+
+test('P2-1: pool lights appear with the first lantern, capped by graphics, never toggled by time', () => {
+  assert.deepEqual({ ...POOL_CAP }, { low: 1, medium: 2, high: 4 });
+  assert.equal(poolCap(undefined), 2); assert.equal(poolCap('ultra'), 2); assert.equal(POOL_LIGHTS, 4);
+  const points = c => c.scene.children.filter(o => o.isPointLight).length;
+  const ctx = stubCtx(); ctx.options = { graphics: 'high' };
+  const m = createDayNight(ctx);
+  m.debug.freeze(true); m.debug.setPhase(0.82);
+  for (let i = 0; i < 40; i++) m.update(1 / 30);
+  assert.equal(points(ctx), 0, 'no point lights without a lantern, even at night');
+  for (let i = 0; i < 6; i++) addLantern(ctx, i * 2 - 4, 2);
+  m.update(1 / 60);
+  assert.equal(points(ctx), 4); assert.equal(m.debug.state().poolLit, 4);
+  ctx.options = { graphics: 'low' }; m.update(1 / 60);
+  assert.equal(points(ctx), 1); assert.equal(m.debug.state().poolLit, 1);
+  ctx.options = { graphics: 'medium' }; m.update(1 / 60);
+  assert.equal(points(ctx), 2);
+  // through a full day and with every lantern gone, the count holds
+  for (let k = 0; k < 100; k++) { m.debug.setPhase(k / 100); m.update(1 / 60); assert.equal(points(ctx), 2, `phase ${k / 100}`); }
+  m.debug.setPhase(0.31); m.update(1 / 60);
+  for (const l of ctx.scene.children) if (l.isPointLight) assert.equal(l.intensity, 0, 'off by day');
+  ctx.raft.clear(); ctx.world.decor.length = 0; m.update(1 / 60);
+  assert.equal(points(ctx), 2);
+  // a world that starts with lanterns has its lights in the first update, before the first render
+  const ctx2 = stubCtx(); ctx2.options = { graphics: 'low' }; addLantern(ctx2, 0, 0);
+  const m2 = createDayNight(ctx2); m2.update(1 / 60);
+  assert.equal(points(ctx2), 1);
+  m.dispose(); m2.dispose();
+  assert.equal(points(ctx), 0); assert.equal(points(ctx2), 0);
+});
+
+test('P2-2: opting out is a true no-op that only passes the save through', () => {
+  for (const setup of [
+    () => { globalThis.location = { search: '?daynight=off' }; },
+    () => { globalThis.localStorage = { getItem: k => (k === 'little-raft.daynight' ? 'day' : null) }; },
+  ]) {
+    setup();
+    try {
+      const ctx = stubCtx();
+      const cloudMats = ctx.clouds.map(g => g.children[0].material);
+      const snap = () => JSON.stringify([ctx.scene.children.length, ctx.sun.position, ctx.sun.intensity, ctx.sun.color, ctx.hemi.intensity, ctx.scene.fog.color, ctx.scene.fog.far, ctx.scene.background, ctx.ocean.uniforms.uSky.value, ctx.ocean.uniforms.uSunDir.value, ctx.renderer.toneMappingExposure, ctx.clouds.map(g => [g.position.x, g.scale.x])]);
+      const before = snap();
+      const m = createDayNight(ctx);
+      assert.equal(m.name, 'daynight');
+      assert.equal(m.serialize(), undefined, 'nothing to pass through yet');
+      m.load({ v: 1, clock: 777.5, seed: 9 }, 'save');
+      m.load('garbage', 'net'); m.load(undefined, 'restore');
+      for (let i = 0; i < 50; i++) m.update?.(0.1);
+      const s = m.serialize();
+      assert.deepEqual(s, { v: 1, clock: 777.5, seed: 9 });
+      assert.notEqual(m.serialize(), s, 'fresh object');
+      m.load({ v: 1, clock: 800, seed: 9 }, 'net');
+      assert.deepEqual(m.serialize(), { v: 1, clock: 800, seed: 9 });
+      assert.equal(snap(), before);
+      ctx.clouds.forEach((g, i) => assert.equal(g.children[0].material, cloudMats[i]));
+      m.dispose?.();
+      assert.equal(snap(), before);
+      assert.equal(m.debug.state().optOut, true);
+    } finally { delete globalThis.location; delete globalThis.localStorage; }
+  }
+});
+
+test('P2-4: restore with a missing or broken slice resets to a fresh morning', () => {
+  for (const bad of [undefined, null, 'x', { clock: -1, seed: 1 }]) {
+    const ctx = stubCtx('guest');
+    const m = createDayNight(ctx);
+    m.load({ v: 1, clock: 5000, seed: 1234 }, 'net'); // on the host's raft
+    m.update(1 / 60);
+    m.load(bad, 'restore');
+    const st = m.debug.state();
+    near(st.clock, MORNING * DAY, 1e-9);
+    assert.notEqual(st.seed, 1234);
+    m.update(0.1); // hasTarget is cleared: the clock just runs, no pull toward the old host clock
+    near(m.debug.state().clock, MORNING * DAY + 0.1, 1e-9);
+    m.dispose();
+  }
+  // a broken 'save' or 'net' slice still keeps the current state
+  const m = createDayNight(stubCtx()); m.load({ v: 1, clock: 3000, seed: 5 }, 'save');
+  m.load('x', 'save'); m.load('x', 'net');
+  assert.equal(m.debug.state().clock, 3000); assert.equal(m.debug.state().seed, 5);
+  m.dispose();
+});
+
+test('co-op: a guest holds still while the host clock is stopped', () => {
+  const host = createDayNight(stubCtx('host')), guest = createDayNight(stubCtx('guest'));
+  host.load({ v: 1, clock: 900, seed: 77 }, 'save');
+  const dt = 1 / 60;
+  let send = 0;
+  const step = () => { host.update(dt); send += dt; if (send >= 0.12) { send = 0; guest.load(JSON.parse(JSON.stringify(host.serialize())), 'net'); } guest.update(dt); };
+  for (let f = 0; f < 120; f++) step();
+  host.debug.freeze(true);
+  for (let f = 0; f < 600; f++) step(); // ten seconds frozen
+  near(guest.debug.state().clock, host.debug.state().clock, 0.05, 'guest did not run ahead');
+  host.debug.freeze(false);
+  for (let f = 0; f < 600; f++) step();
+  near(guest.debug.state().clock, host.debug.state().clock, 0.4, 'and follows again');
   host.dispose(); guest.dispose();
 });
