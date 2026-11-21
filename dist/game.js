@@ -1,5 +1,6 @@
 import * as T from './vendor/three.module.js';
 import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
+import { bakeAvatar } from './coop-avatar.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { createSky } from './sky.js?build=v3-survival-ae77fa84ac2b';
 import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
@@ -536,8 +537,14 @@ export function mount(transfer = null) {
     scene.remove(old); try { old.userData.dispose?.(); } catch {}
     player = next; scene.add(next);
   }
+  // ~36 part meshes -> one merged mesh per limb pivot (limbs still pose; held items mount on the empty grip later)
+  function bakeOwn(g) {
+    if (!g.userData.parts) return;
+    try { const b = bakeAvatar(T, g), free = g.userData.dispose; g.userData.dispose = () => { free?.(); b.dispose(); }; }
+    catch (e) { console.warn('avatar bake failed', e); }
+  }
   function makeAvatar(color) {
-    try { const g = createAvatar(T, color); if (g?.isObject3D) { g.traverse(c => { if (c.isMesh) c.castShadow = true; }); return g; } }
+    try { const g = createAvatar(T, color); if (g?.isObject3D) { bakeOwn(g); g.traverse(c => { if (c.isMesh) c.castShadow = true; }); return g; } }
     catch (e) { console.warn('createAvatar failed, using fallback avatar', e); }
     return fallbackAvatar(color);
   }

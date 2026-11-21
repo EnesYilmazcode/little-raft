@@ -314,7 +314,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', loo
 const PLAIN = (m) => m.isMeshStandardMaterial && !m.flatShading && !m.map && !m.transparent && m.metalness === 0 &&
   m.emissive.r === 0 && m.emissive.g === 0 && m.emissive.b === 0;
 
-function bakeAvatar(T, body) {
+export function bakeAvatar(T, body) {
   const P = body.userData.parts;
   const pivots = [body, P.head, P.leftArm, P.rightArm, P.leftLeg, P.rightLeg];
   const owned = [];
