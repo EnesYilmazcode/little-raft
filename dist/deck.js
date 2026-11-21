@@ -7,7 +7,7 @@
 export const FLOOR_TOP = 0.2;
 export const FLOOR_BOUNDS = Object.freeze({minX:-1, maxX:1, minY:0, maxY:0.2, minZ:-1, maxZ:1});
 
-// Material keys (game.js TIMBER); wood.js draws them as bleached olive-tan driftwood (#9c8a5e / #a6956e / #8e7f57).
+// Material keys (game.js TIMBER); wood.js draws them as warm weathered driftwood (#a58c66 / #ae9775 / #957d5b).
 const PLANK_COLORS = ['#bb8a53', '#c69860', '#ad7c4a'];
 const BEAM_COLOR = '#5e4029', BEAM_END_COLOR = '#9c7649', ROPE_COLOR = '#a8946c', NAIL_COLOR = '#4b4844';
 const BEV = 0.011, BEV_T = 0.01, THICK = 0.052;
@@ -169,7 +169,8 @@ function floorParts(T, index) {
   // Every plank is drawn with PLANK_COLORS[0]'s material; each plank's own colour is a vertex-colour multiplier
   // (its colour / the base colour, linear), so the planks cost one draw instead of one per colour.
   const planks = [], nails = [], ropes = [], beams = [], caps = [];
-  for (const p of pieces) planks.push(tint(T, plankGeometry(T, rng, p), p.color));
+  const shade = makeRng('shade:' + (index ?? 0)); // own stream: per-plank shading never moves the layout
+  for (const p of pieces) planks.push(tint(T, plankGeometry(T, rng, p), p, shade));
 
   // Logs underneath, parallel to X.
   for (const z of beamZ) { const b = beamParts(T, rng, z); beams.push(b.beam); caps.push(...b.caps); }
@@ -215,10 +216,28 @@ function floorParts(T, index) {
 
 const defaultMat = T => c => new T.MeshStandardMaterial({color:c, roughness:0.95});
 
-function tint(T, g, color) {
-  const c = new T.Color(color), b = new T.Color(PLANK_COLORS[0]), n = g.attributes.position.count, a = new Float32Array(n * 3);
-  const r = c.r / b.r, gg = c.g / b.g, bb = c.b / b.b;
-  for (let i = 0; i < n; i++) { a[i * 3] = r; a[i * 3 + 1] = gg; a[i * 3 + 2] = bb; }
+// Per-vertex plank colour: its colour / the base colour (linear), times a per-plank shade and warmth, a slow
+// along-the-grain variation, grime toward the board ends, and baked contact shade (bevels, sides and the
+// underside darken with depth below the walking surface, so seams between boards read dark).
+function tint(T, g, p, rnd) {
+  const c = new T.Color(p.color), b = new T.Color(PLANK_COLORS[0]), pos = g.attributes.position, nor = g.attributes.normal;
+  const n = pos.count, a = new Float32Array(n * 3);
+  const lum = 0.88 + rnd() * 0.2, warm = (rnd() - 0.35) * 0.08, ph = rnd() * 6.28, fq = 2 + rnd() * 3;
+  const r = c.r / b.r * lum * (1 + warm), gg = c.g / b.g * lum, bb = c.b / b.b * lum * (1 - warm * 1.4);
+  const xc = (p.x0 + p.x1) / 2;
+  const endZ = (e, z0, x) => z0 + e.slope * (x - xc);
+  for (let i = 0; i < n; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), ny = nor.getY(i);
+    let f = 1 + 0.06 * Math.sin(z * fq + ph);
+    if (ny > 0.97) { // walking surface: grime on the end-grain vertices (fades over the first stretch of board)
+      const dEnd = Math.min(Math.abs(z - endZ(p.endA, p.za, x)), Math.abs(z - endZ(p.endB, p.zb, x)));
+      if (dEnd < 0.035) f *= 0.8;
+    } else { // bevel, sides, underside: contact shade by depth below the surface
+      const d = Math.max(0, plankSurface(p, x, z) - y);
+      f *= Math.max(0.24, 0.86 - d * 32);
+    }
+    a[i * 3] = r * f; a[i * 3 + 1] = gg * f; a[i * 3 + 2] = bb * f;
+  }
   g.setAttribute('color', new T.BufferAttribute(a, 3));
   return g;
 }
