@@ -204,7 +204,7 @@ export function createSitting(ctx) {
       return true;
     },
     prompt(aim) { lastAim = aim ?? null; return TEXT[promptKey(aim)] ?? null; },
-    ride(physics, dt, input) {
+    ride(dt, physics, input) { // content.ride(dt, physics, input), same order as zipline
       if (!physics || !seated()) return false;
       if (input) inMax = Math.max(inMax, Math.abs(input.forward), Math.abs(input.strafe));
       if (input && (Math.abs(input.forward) > MOVE || Math.abs(input.strafe) > MOVE || input.jump)) { standUp(); return false; }

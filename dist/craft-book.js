@@ -29,6 +29,9 @@ const CATEGORY_OF = Object.freeze({
   fishtrap: 'survival', // [fishtrap]
 
   taskboard: 'survival', // [tasks]
+  skyrocket: 'survival', // [fireworks]
+  scarecrow: 'survival', // [scarecrow]
+  glidepost: 'building', glidestep: 'building', glidehandle: 'tools', // [zipline] (no 'decor' tab exists)
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
   researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
   rug: 'building', pennant: 'building', fern: 'building', chime: 'building', hammock: 'building', pots: 'building', sign: 'building', // decor pack
@@ -150,6 +153,11 @@ export const ITEM_TEXT = Object.freeze({
   stringlights: { desc: 'A post with a wire of warm little bulbs.', use: 'Glows at night near a charged battery.' }, // [power]
   lamppost:   { desc: 'A tall lamp with a glass head.', use: 'Lights the deck at night near a charged battery.' }, // [power]
   fishtrap:   { desc: 'A woven fish basket on a little arm.', use: 'Place on an edge tile. Seaweed bait helps. Collect with E.' }, // [fishtrap]
+  skyrocket:  { desc: 'A little sky rocket on a stand.', use: 'Place on a tile, then press E to launch it.' }, // [fireworks]
+  scarecrow:  { desc: 'A driftwood post in a leaf skirt and a bucket hat.', use: 'Place it near palm planters; gulls will not peck within about two tiles.' }, // [scarecrow]
+  glidepost:  { desc: 'A tall mast with a grooved wheel on top.', use: 'Hold a Glide Handle and press E on two posts to string a line.' }, // [zipline]
+  glidestep:  { desc: 'A shorter glide post.', use: 'Run a line down to it from a tall post for a speedy glide.' }, // [zipline]
+  glidehandle: { desc: 'A wooden T-bar with a little wheel.', use: 'E links posts or hooks you on a line; Space lets go.' }, // [zipline]
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
   grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },

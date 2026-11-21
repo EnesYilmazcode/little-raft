@@ -524,6 +524,52 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M38 27 H42 V17" fill="none" stroke-width="2.4"/>
     <circle cx="42" cy="15" r="2.6" fill="#e8792e"/></g>`,
 
+  // [fireworks] sky rocket: striped coral tube, cone cap, stick stand and a little four-point star
+  skyrocket: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M30 22 L27 45 M24 38 L18 45 M24 38 L30 45" fill="none" stroke="#9c7649" stroke-width="2.2"/>
+    <rect x="17" y="17" width="10" height="21" rx="1.5" fill="#fff3cf"/>
+    <path d="M17 24 H27 V31 H17 Z" fill="#e9a08c"/><path d="M17 17 H27 V20 H17 Z" fill="#e9a08c"/>
+    <path d="M15.5 17 L22 6 L28.5 17 Z" fill="#f1d78d"/>
+    <path d="M22 38 C21 41 19.5 42 18 42" fill="none" stroke-width="1.5"/></g>
+    <path d="M19.5 21 V36" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-opacity=".8"/>
+    <path d="M38 6 L39.4 10.6 L44 12 L39.4 13.4 L38 18 L36.6 13.4 L32 12 L36.6 10.6 Z" fill="#ffe08a" stroke="${O}" stroke-width="1.2" stroke-linejoin="round"/>`,
+
+  // [scarecrow] driftwood post, crossbar with rags, leaf skirt, sack head and a bucket hat
+  scarecrow: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M22.5 18 H25.5 V44 H22.5 Z" fill="#cdbb9a"/>
+    <path d="M14 44 H34" fill="none" stroke="#9e8e73" stroke-width="3"/>
+    <rect x="7" y="22" width="34" height="3.4" rx="1.2" fill="#cdbb9a"/>
+    <path d="M9 25 L7.5 32 L11 31 Z" fill="#8fb8d8" stroke-width="1.4"/><path d="M39 25 L40.5 32 L37 31 Z" fill="#e8d6a8" stroke-width="1.4"/>
+    <path d="M17 27 H31 L34 38 L29 36 L27 39 L24 36 L21 39 L19 36 L14 38 Z" fill="#6fae4f"/>
+    <circle cx="24" cy="14.5" r="5.5" fill="#d8c08e"/>
+    <path d="M13 10 H35 C34 11.8 14 11.8 13 10 Z" fill="#e07a4f"/>
+    <path d="M18 10 C18 5 20 3.5 24 3.5 C28 3.5 30 5 30 10 Z" fill="#e07a4f"/></g>
+    <g fill="${O}"><circle cx="22" cy="14" r=".9"/><circle cx="26" cy="14" r=".9"/></g>
+    <path d="M21.5 16.8 C23 18.3 25 18.3 26.5 16.8" fill="none" stroke="#fff" stroke-width="1.2" stroke-linecap="round" stroke-dasharray=".1 1.3"/>`,
+
+  // [zipline] glide post (mast + wheel), low glide post, glide handle (T-bar with a wheel)
+  glidepost: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="14" y="40" width="20" height="4" rx="1" fill="#8b6a43"/>
+    <path d="M22 41 L22.8 11 H25.2 L26 41 Z" fill="#bb8650"/>
+    <path d="M18 40 L23 30 M30 40 L25 30" fill="none" stroke="#8b6a43"/>
+    <rect x="21.5" y="24" width="5" height="3" rx="1" fill="#c9a66b"/>
+    <ellipse cx="24" cy="8" rx="8" ry="3.5" fill="#6b5a4c"/><ellipse cx="24" cy="7.5" rx="3" ry="1.4" fill="#c9a66b"/></g>
+    <path d="M2 9 C10 8 15 8 16 8" fill="none" stroke="#c9a66b" stroke-width="1.6" stroke-linecap="round"/>`,
+  glidestep: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="12" y="39" width="24" height="5" rx="1" fill="#8b6a43"/>
+    <path d="M19.5 40 L21 27 H27 L28.5 40 Z" fill="#c99560"/>
+    <rect x="20" y="32" width="8" height="3" rx="1" fill="#c9a66b"/>
+    <ellipse cx="24" cy="24" rx="9" ry="4" fill="#2fa39a"/><ellipse cx="24" cy="23.5" rx="3.2" ry="1.5" fill="#c9a66b"/></g>
+    <path d="M2 8 C9 12 13 18 15 23" fill="none" stroke="#c9a66b" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M38 4 V15 M33.5 11 L38 15.5 L42.5 11" fill="none" stroke="${O}" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M38 4 V15 M33.5 11 L38 15.5 L42.5 11" fill="none" stroke="#2fa39a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+  glidehandle: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <circle cx="24" cy="10" r="6" fill="#6b5a4c"/><circle cx="24" cy="10" r="2" fill="#c9a66b"/>
+    <rect x="22" y="15" width="4" height="16" rx="1" fill="#c9a66b"/>
+    <rect x="6" y="30" width="36" height="6" rx="3" fill="#bb8650"/>
+    <rect x="8" y="29.5" width="4" height="7" rx="1" fill="#c9a66b"/><rect x="36" y="29.5" width="4" height="7" rx="1" fill="#c9a66b"/></g>
+    <path d="M2 10 H46" fill="none" stroke="#c9a66b" stroke-width="1.4" stroke-opacity=".7"/>`,
+
   seaweed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <path d="M16 44 C8 36 18 29 12 21 C8 15 11 9 14 4 C23 9 21 16 25 22 C29 30 22 36 24 44 Z" fill="#3f8f5a"/>
     <path d="M25 44 C21 35 30 30 27 20 C26 14 30 9 36 7 C39 15 35 19 37 25 C39 33 32 37 33 44 Z" fill="#5fae6b"/>

@@ -120,27 +120,27 @@ test('host update: decor gone clears seat, no guest clears guest, award once at 
 test('ride: pins to the seat, stands up on input, clamps yaw', () => {
   const { mod, ctx, calls, faces } = makeSit();
   const p = ctx.physics, inp = { forward: 0, strafe: 0, jump: false, yaw: Math.PI };
-  assert.equal(mod.ride(p, .016, inp), false, 'not seated');
+  assert.equal(mod.ride(.016, p, inp), false, 'not seated');
   assert.equal(mod.interact(null), false, 'no aim, no camera: nothing');
   mod.debug.sit(0, 0, 0); mod.update(.016);
   assert.equal(mod.seated(), true); near(faces.at(-1), Math.PI, 1e-9, 'faced the seat once');
-  assert.equal(mod.ride(p, .016, inp), true);
+  assert.equal(mod.ride(.016, p, inp), true);
   near(p.x, -.36); near(p.z, .04); near(p.y, .2 + 1.25); assert.equal(p.vx + p.vy + p.vz, 0); assert.equal(p.grounded, true);
   const n = faces.length;
-  inp.yaw = Math.PI + 150 * Math.PI / 180; assert.equal(mod.ride(p, .016, inp), true);
+  inp.yaw = Math.PI + 150 * Math.PI / 180; assert.equal(mod.ride(.016, p, inp), true);
   assert.equal(faces.length, n + 1); near(faces.at(-1), Math.PI + YAW_LIM);
   inp.yaw = Math.PI; inp.forward = 1;
-  assert.equal(mod.ride(p, .016, inp), false);
+  assert.equal(mod.ride(.016, p, inp), false);
   assert.equal(calls.at(-1).kind, 'sit.up');
   const s = standSpot(ctx.world, ctx.world.decor[0], 0, {}); near(p.x, s.x); near(p.z, s.z); near(p.y, .2 + 1.6);
   inp.forward = 0; mod.update(.016);
-  assert.equal(mod.ride(p, .016, inp), false, 'next frame: standing'); assert.equal(mod.seated(), false);
+  assert.equal(mod.ride(.016, p, inp), false, 'next frame: standing'); assert.equal(mod.seated(), false);
   // E while seated stands up too
   mod.debug.sit(0, 0, 0); mod.update(.016); assert.equal(mod.seated(), true);
   assert.equal(mod.interact(null), true); assert.equal(mod.seated(), false); assert.equal(calls.at(-1).kind, 'sit.up');
   // cushion eye height
   const c = makeSit({ decor: [{ type: 'cushion', x: 0, z: 0 }] }); c.mod.debug.sit(0, 0, 0); c.mod.update(.016);
-  c.mod.ride(c.ctx.physics, .016, { forward: 0, strafe: 0, jump: false, yaw: Math.PI }); near(c.ctx.physics.y, .2 + .95);
+  c.mod.ride(.016, c.ctx.physics, { forward: 0, strafe: 0, jump: false, yaw: Math.PI }); near(c.ctx.physics.y, .2 + .95);
 });
 
 test('local: host clears my seat (bench removed) -> I stand at a fallback spot', () => {
@@ -187,10 +187,10 @@ test('registry: ride is first-wins, seated is exposed', () => {
   const b = () => ({ name: 'b', ride: () => { seen.push('b'); return true; } });
   const none = () => ({ name: 'n', ride: () => { seen.push('n'); return false; } });
   const c1 = createContent({}, [a, b]);
-  assert.equal(c1.ride({}, .016, {}), true); assert.deepEqual(seen, ['a']); assert.equal(c1.seated(), true);
+  assert.equal(c1.ride(.016, {}, {}), true); assert.deepEqual(seen, ['a']); assert.equal(c1.seated(), true);
   seen.length = 0; const c2 = createContent({}, [none, b]);
-  assert.equal(c2.ride({}, .016, {}), true); assert.deepEqual(seen, ['n', 'b']); assert.equal(c2.seated(), false);
-  seen.length = 0; const c3 = createContent({}, [none]); assert.equal(c3.ride({}, .016, {}), false);
+  assert.equal(c2.ride(.016, {}, {}), true); assert.deepEqual(seen, ['n', 'b']); assert.equal(c2.seated(), false);
+  seen.length = 0; const c3 = createContent({}, [none]); assert.equal(c3.ride(.016, {}, {}), false);
 });
 
 test('decor pickup hooks: occupied seat vetoed, afterUndecor clears', () => {
@@ -207,7 +207,7 @@ test('decor pickup hooks: occupied seat vetoed, afterUndecor clears', () => {
 test('coop pose flags: bit 16 seated, old bits unchanged', () => {
   assert.equal(poseFlags({ seated: true, grounded: true }) & 16, 16);
   assert.equal(poseFlags({ swimming: true, grounded: true, reeling: true }), 7);
-  assert.deepEqual(readFlags(16 | 2), { swimming: false, grounded: true, reeling: false, seated: true });
+  assert.deepEqual(readFlags(16 | 2), { swimming: false, grounded: true, reeling: false, riding: false, seated: true });
   assert.equal(readFlags(2).seated, false);
 });
 
