@@ -27,6 +27,8 @@ lines in `dist/game.js` marked `// content hook`. There are 31 of these lines, a
 | canvas `pointerdown` | `content.alt(aim, heldKind())` | right click while holding an item (brush colour) |
 | `rebuildRaft()` | `content.afterRebuild()` | after deck/decor meshes are recreated (re-tint painted planks) |
 | `contentCtx` | `building`, `brush`, `woodMat(hex)`, `aim()` | piece grid + tint hooks, held brush model, cached tinted wood, this frame's aim |
+| `contentCtx` | `note(i, n, s)`, `content` | buoy course: bell chime per ring (`sfx.note`) and a read-only registry view (paddleboard `riding()` fallback) |
+| `movePlayer()` | `content.ride(dt, physics, rideIn)` | a module owns the local player this frame (driftboard paddling; zipline) and PlayerPhysics is skipped |
 
 Item kinds `sand`, `stone`, `seed`, `research` and the `research` recipe live in
 `dist/content-items.js`. `inventory-state.js` spreads them into `ITEM_INFO` and `RECIPES` in two

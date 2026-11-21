@@ -23,6 +23,8 @@
 //   afterRebuild()            after rebuildRaft() recreated the deck/decor meshes (paint: re-tint planks)
 //   tileTint(x, z, base)      plank colour for deck tile x,z (base = the plank's own colour) or null (paint)
 //   diveMods(m)               multiply m.swim/oxy/fog/gather in place (local player, per frame, no allocations; docs/specs/diving-gear.md)
+//   ride(dt, physics, inp)    local player, every frame (not while diving). Return true to skip PlayerPhysics (driftboard; zipline)
+//   riding()                  -> true while ride() owns the player
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   dispose()
 //
@@ -48,9 +50,12 @@ import { createGull } from './gull.js?build=v3-survival-ae77fa84ac2b'; // [gull]
 import { createJuicer } from './juicer.js?build=v3-survival-ae77fa84ac2b'; // [juicer]
 import { createDivingGear } from './diving-gear.js?build=v3-survival-ae77fa84ac2b';
 import { createTrader } from './trader.js?build=v3-survival-ae77fa84ac2b';
+import { createGameTable } from './gametable.js?build=v3-survival-ae77fa84ac2b'; // game table
+import { createPaddleboard } from './paddleboard.js?build=v3-survival-ae77fa84ac2b'; // [paddleboard]
+import { createBuoyCourse } from './buoycourse.js?build=v3-survival-ae77fa84ac2b'; // [buoycourse]
 import { createCookpot } from './cookpot.js?build=v3-survival-ae77fa84ac2b';
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createJuicer, createGull, createDivingGear, createTrader, createCookpot]; // [bees] + createBees; round 3 diving gear, trader, cookpot; [juicer] + createJuicer [gull] + createGull
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createJuicer, createGull, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createCookpot]; // [bees] + createBees; round 3 diving gear, trader, cookpot; [juicer] + createJuicer [gull] + createGull; round 4 game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); cookpot stays last
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -95,6 +100,7 @@ export function createContent(ctx, features = FEATURES) {
     action(a, actor, bag) { for (const m of mods) if (call(m, 'action', a, actor, bag)) return true; return false; },
     interact: aim => !!first('interact', aim),
     prompt: aim => first('prompt', aim),
+    ride: (dt, p, inp) => !!first('ride', dt, p, inp), riding: () => !!first('riding'), // [zipline] content hook: glide line ride (game.js movePlayer)
     use: (aim, kind) => !!first('use', aim, kind), // content hook (paint)
     alt: (aim, kind) => !!first('alt', aim, kind), // content hook (paint)
     afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)

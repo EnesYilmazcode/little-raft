@@ -428,6 +428,7 @@ export function mount(transfer = null) {
     get building() { return building; }, get brush() { return hands?.itemModel('brush') ?? null; }, woodMat: c => woodMat(c), aim: () => frameAim, // content hook (paint)
     openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
     hurtPlayer: (n, cause) => hurtPlayer(n, cause), get vitals() { return vitals; }, // [vitals] damage the LOCAL player; vitals is read-only for modules
+    note: (i, n, s) => note(i, n, s), get content() { return content; }, // [buoycourse] bell chime + registry view (board mode)
   };
   function init() {
     const assetBuild = new URL(import.meta.url).searchParams.get('build') || 'dev'; document.querySelectorAll('use[href*="icons.svg"]').forEach(el => el.setAttribute('href', 'icons.svg?build=' + assetBuild + '#' + el.getAttribute('href').split('#')[1]));
@@ -615,7 +616,7 @@ export function mount(transfer = null) {
     raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat, content ? (t, c) => content.tileTint(t.x / 2, t.z / 2, c) : null, woodMat)); // content hook (paint): painted deck tiles
     for (const d of world.decor) {
       let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'rainbarrel' ? createRainBarrel(T) : d.type === 'sprinkler' ? createSprinkler(T) : d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type, d) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
-      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); if (d.rot) detailed.rotation.y = d.rot; raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier' || d.type === 'rainbarrel' || d.type === 'sprinkler') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; } // decor-pack models keep their own quarter-turn unless placement rotated them
+      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); if (d.rot && !detailed.userData.ownRot) detailed.rotation.y = d.rot; /* [buoycourse] ownRot: model keeps default facing */ raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier' || d.type === 'rainbarrel' || d.type === 'sprinkler') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; } // decor-pack models keep their own quarter-turn unless placement rotated them
       const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2); g.rotation.y = d.rot || 0;
       if (d.type === 'sail') { cylinder(.065, .08, 3.8, '#906f48', 0, 1.9, 0, g); box(2.5, .07, .07, '#906f48', 0, 3.2, 0, g); const s = new T.Mesh(new T.PlaneGeometry(2.35, 2.1), clothMat); s.position.set(0, 2.15, .06); g.add(s); }
       if (d.type === 'palm') { cylinder(.38, .28, .5, '#db8764', 0, .25, 0, g); palm(g, 0, .5, 0); }
@@ -1377,6 +1378,7 @@ export function mount(transfer = null) {
   const moveInput = {forward:0, strafe:0, yaw:0, jump:false, sprint:false, tiles:null, deckY:0, waterY:0, blocked:null}; // reused every frame
   const climbIn = {forward:0, jump:false, yaw:0}; // [buildpack] ladder input, reused every frame
   const steps = {n:0, step:0}; // splitSteps fills this every frame (no allocation)
+  const rideIn = {forward:0, jump:false, crouch:false}; // [zipline] reused ride input
   function movePlayer(frameDt, input) {
     splitSteps(frameDt, .05, .25, steps); // real frame time in equal steps; a long stall must not teleport the player
     const dt = steps.n * steps.step, laneDt = Math.min(dt, .05); // lane hooks keep the old capped frame step
@@ -1388,10 +1390,12 @@ export function mount(transfer = null) {
     const surf = building ? building.preStep(physics, deckY(), climb) : null; // building-pieces lane hook [buildpack] climb
     const dive = diving?.move(laneDt, physics, {forward:fwd, strafe:side, yaw, pitch, up:ci ? ci.jump : input && held('Space'), down:ci ? !!ci.crouch : input && held('KeyC'), fast:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'), gather:input && (controls ? controls.input.down('interact') : held('KeyE'))}); // diving lane hook
     if (dive && !diveWarmed) warmDive(); // first dive before the idle warm-up ran: compile now, before its first underwater frame
+    rideIn.strafe = side; rideIn.sprint = !!(ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight')); rideIn.yaw = yaw; rideIn.interact = !!(input && (controls ? controls.input.down('interact') : held('KeyE'))); // [paddleboard] extra ride input
+    rideIn.forward = fwd; rideIn.jump = !!(ci ? ci.jump : input && held('Space')); rideIn.crouch = !!(ci ? ci.crouch : input && held('KeyC')); const ride = !dive && !!content?.ride?.(dt, physics, rideIn); // [zipline] content hook: hanging on a glide line skips PlayerPhysics
     // Real frame time in equal substeps (<= .05 s) so walking speed holds at low fps. Jump stays held on every
     // substep: PlayerPhysics fires the impulse only on the press edge, i.e. the first substep, never again.
     let ev = null;
-    if (!dive) for (let i = 0; i < steps.n; i++) {
+    if (!dive && !ride) for (let i = 0; i < steps.n; i++) { // [zipline] && !ride
       const e = physics.update(steps.step, {forward:fwd, strafe:side, yaw, jump:ci ? ci.jump : input && held('Space'), sprint:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'),
         tiles:surf ? surf.tiles : world.tiles, deckY:surf ? surf.deckY : deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList});
       if (e) { if (!ev) ev = e; else for (const k in e) if (e[k] === true) ev[k] = true; } // keep one-shot flags (splashed, landed) from any substep
