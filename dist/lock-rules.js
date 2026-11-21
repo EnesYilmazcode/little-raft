@@ -91,6 +91,10 @@ export function createEscGate({ handledWindow = 600, lockWindow = 1500 } = {}) {
   };
 }
 
+// body.relock is tied to a real lock request (game.js requestLock): set when the request is made, cleared
+// when it settles. This long timeout is only a safety net for a browser whose requestPointerLock has no promise.
+export const RELOCK_SAFETY_TIMEOUT = 3000;
+
 // Soft drag-look (entered after repeated refusals, not a missing API): a plain canvas click retries the lock,
 // at most once per interval ms. Hard fallback (no API, NotSupportedError) never retries.
 export function softRelockTry({ fallback = false, hard = false, now = 0, lastTry = -Infinity, interval = 1500 } = {}) {

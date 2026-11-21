@@ -10,6 +10,22 @@ const rules = await import(new URL('lock-rules.js', base));
 const src = (f) => readFile(new URL(f, base), 'utf8');
 const dom = (name) => Object.assign(new Error(name), { name });
 
+// ---- LOCK-R3-2: body.relock follows the lock request for every panel ----
+test('LOCK-R3-2: the relock safety timeout is long enough for a slow grant', () => {
+  assert.ok(rules.RELOCK_SAFETY_TIMEOUT >= 2000 && rules.RELOCK_SAFETY_TIMEOUT <= 5000);
+  assert.equal(rules.relockPending({ elapsed: 1500, timeout: rules.RELOCK_SAFETY_TIMEOUT }), true);
+  assert.equal(rules.relockPending({ elapsed: rules.RELOCK_SAFETY_TIMEOUT, timeout: rules.RELOCK_SAFETY_TIMEOUT }), false);
+});
+
+test('LOCK-R3-2: requestLock sets body.relock synchronously; settings.js no longer lists dialog ids', async () => {
+  const game = await src('game.js'), settings = await src('settings.js');
+  const fn = game.slice(game.indexOf('function requestLock()'), game.indexOf('function lockFailed('));
+  assert.match(fn, /setRelock\(true\)[\s\S]*canvas\.requestPointerLock\(\)/, 'relock is set before the request');
+  assert.match(fn, /escHeld\) \{ relockOnEscUp = true; if \(pending\) setRelock\(true\)/, 'also while waiting for the Escape release');
+  assert.doesNotMatch(settings, /d\.id !== 'inventory'/);
+  assert.doesNotMatch(settings, /startRelock/);
+});
+
 // ---- LOCK-R3-3: the Escape cooldown never switches to drag-look ----
 test('LOCK-R3-3: after the first lock, SecurityError never counts as a failure', () => {
   let v = { failures: 0 };

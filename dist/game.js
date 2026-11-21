@@ -55,7 +55,7 @@ import { createGhosts, FOOTPRINT, wheelDelta, decorHit, refundOf, wrapRot, ROT_S
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints, feedPlacement, hintsFromState } from './hud.js?build=v3-survival-ae77fa84ac2b';
-import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, escReleasePlan, dragLook, softRelockTry } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, escReleasePlan, dragLook, relockPending, RELOCK_SAFETY_TIMEOUT, softRelockTry } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { keyDecision, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
@@ -732,13 +732,29 @@ export function mount(transfer = null) {
     if (plan.relock === 'defer') setTimeout(guard(requestLock), 0); else if (plan.relock === 'now') requestLock();
     return plan;
   }
+  // body.relock (settings.js CSS: no cursor, no resume hint) marks a pending relock request, so no frame shows the
+  // cursor between a panel closing and the lock coming back. It is set when requestLock() asks (or waits for the
+  // Escape release) and cleared when the request settles, the page ends up unlocked, or after a safety timeout.
+  let relockTimer = 0, relockSince = 0;
+  function setRelock(on) {
+    clearTimeout(relockTimer); relockTimer = 0;
+    document.body.classList.toggle('relock', !!on);
+    if (on) { relockSince = performance.now(); relockTimer = setTimeout(guard(() => endRelock(null)), RELOCK_SAFETY_TIMEOUT); }
+  }
+  function endRelock(event) {
+    if (!relockTimer && !document.body.classList.contains('relock')) return;
+    if (relockPending({locked:isLocked(), event, elapsed:performance.now() - relockSince, timeout:RELOCK_SAFETY_TIMEOUT}) && event !== 'settled') return;
+    setRelock(false); refreshPointerUI(true);
+  }
   function requestLock() {
     if (!shouldRequestLock({running, supported:lockSupported, blocked:uiBlocked()}) || isLocked()) return;
-    if (escHeld) { relockOnEscUp = true; return; }
+    const pending = !lockFallback && !document.body.classList.contains('away'); // drag-look keeps its cursor; alt-tab keeps its top-edge hint
+    if (escHeld) { relockOnEscUp = true; if (pending) setRelock(true); return; }
+    if (pending) setRelock(true);
     try {
       const p = canvas.requestPointerLock();
-      if (p && typeof p.then === 'function') { lockPromisePending = lockHasPromise = true; p.then(() => { lockPromisePending = false; lockFailures = 0; }, guard(err => { lockPromisePending = false; lockFailed(err); })); }
-    } catch (err) { lockFailed(err); }
+      if (p && typeof p.then === 'function') { lockPromisePending = lockHasPromise = true; p.then(guard(() => { lockPromisePending = false; lockFailures = 0; endRelock('settled'); }), guard(err => { lockPromisePending = false; endRelock('error'); lockFailed(err); })); }
+    } catch (err) { endRelock('error'); lockFailed(err); }
   }
   // Lock refused. Escape cooldown (SecurityError), unfocused window (WrongDocumentError) and missing gesture are
   // transient: the next click or focus retries. Only NotSupportedError, a missing API, or repeated refusals while
@@ -1548,12 +1564,12 @@ export function mount(transfer = null) {
   // ---------- Input ----------
   const on = (target, type, fn, opts = {}) => target?.addEventListener(type, guard(fn), {...opts, signal});
   on(document, 'pointerlockchange', () => {
-    if (isLocked()) { lockFallback = false; lockFallbackHard = !lockSupported; lockFailures = 0; everLocked = true; }
-    else { if (charging && charging.x === null) charging = null; reeling = false; }
+    if (isLocked()) { lockFallback = false; lockFallbackHard = !lockSupported; lockFailures = 0; everLocked = true; endRelock('locked'); }
+    else { endRelock('unlocked'); if (charging && charging.x === null) charging = null; reeling = false; }
     if (!isLocked() && !lockFallback && building?.menu.isOpen) building.menu.close(false); // building-pieces lane hook
     down = null; refreshPointerUI(true);
   });
-  on(document, 'pointerlockerror', lockFailed);
+  on(document, 'pointerlockerror', e => { endRelock('error'); lockFailed(e); });
   on(document, 'mousemove', e => {
     if (building?.menu.isOpen) { if (isLocked()) building.menu.move(e.movementX, e.movementY); else building.menu.hoverAt(e.clientX, e.clientY); return; } // building-pieces lane hook
     // locked mouse look is input.js's (its look filter drops spikes, keeps flicks); drag-look is pointermove below
@@ -2032,7 +2048,7 @@ export function mount(transfer = null) {
   }
   function dispose() {
     if (disposed) return;
-    pause(); disposed = true; ac.abort(); sfx.destroy(); offIconReady?.();
+    pause(); disposed = true; ac.abort(); clearTimeout(relockTimer); sfx.destroy(); offIconReady?.();
     try { coop?.dispose(); } catch {} coop = null; // coop
     try { settingsController?.destroy(); } catch {}
     try { survivalUI?.destroy?.(); } catch {}
