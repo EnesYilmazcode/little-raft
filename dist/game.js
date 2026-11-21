@@ -32,7 +32,7 @@ import { createLogbookUI } from './logbook-ui.js?build=v3-survival-ae77fa84ac2b'
 import { createBottle } from './bottle.js?build=v3-survival-ae77fa84ac2b';
 import { cleanSignal, countAntennas, signalTick, onCacheCollected, cacheLoot, signalReadout, edgePoint } from './signal.js?build=v3-survival-ae77fa84ac2b';
 import { createSignalModel } from './signal-models.js?build=v3-survival-ae77fa84ac2b';
-import { cleanWatering, copyWatering, plantStage, tick as tickWatering, tileKey, fillCup, loadPurifier, takeWater, water as waterPlant, harvest as harvestPlant, WATER_ACTIONS, FILL_REACH, USE_REACH, HOST_SLACK, PURIFY_SECONDS } from './watering.js?build=v3-survival-ae77fa84ac2b';
+import { cleanWatering, copyWatering, plantStage, tick as tickWatering, tileKey, fillCup, loadPurifier, takeWater, water as waterPlant, harvest as harvestPlant, fuelPurifier, purifierFuel, clockText, FUEL_CAP, WATER_ACTIONS, FILL_REACH, USE_REACH, HOST_SLACK, PURIFY_SECONDS } from './watering.js?build=v3-survival-ae77fa84ac2b';
 import { createPurifier, paintPurifier, preparePlanter, paintPlanter } from './purifier-model.js?build=v3-survival-ae77fa84ac2b';
 import { cleanRain, copyRain, tickRain, takeRain, fillSprinkler, rainTarget, RAIN_ACTIONS } from './rain.js?build=v3-survival-ae77fa84ac2b'; import { createRainBarrel, paintRainBarrel, createSprinkler, paintSprinkler } from './rain-model.js?build=v3-survival-ae77fa84ac2b'; // rain-sprinkler (docs/specs/rain-sprinkler.md)
 import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
@@ -837,6 +837,7 @@ export function mount(transfer = null) {
   // ---------- Watering (cups, purifier, palm planters) ----------
   const WATER_WHY = {cup:'Point at the sea to scoop water', saltcup:'Pour it into a water purifier', freshcup:'Point at a palm planter'};
   const CUP_KINDS = ['cup', 'saltcup', 'freshcup'];
+  const FUEL_NAMES = {wood:'plank', leaf:'palm leaf', seaweed:'seaweed'};
   function pickWateringDecor(point) {
     if (wateringGroups.size) {
       for (const hit of ray.intersectObjects([...wateringGroups.values()], true)) {
@@ -857,11 +858,17 @@ export function mount(transfer = null) {
       if (d.type === 'rainbarrel' || d.type === 'sprinkler') return rainTarget(world, d, kind, (content?.rain() ?? 0) > .2); // rain-sprinkler
       const at = {x:d.x, z:d.z}, none = {prompt:'', click:null, e:null, why:null};
       if (d.type === 'purifier') {
-        const e = world.purifiers?.[d.key];
-        if (!e) return kind === 'saltcup' ? {prompt:'<kbd>E</kbd>Pour in sea water', click:{kind:'loadPurifier', ...at}, e:{kind:'loadPurifier', ...at}, why:null}
-          : {...none, prompt:'Purifier: needs a cup of sea water', why:'Purifier: needs a cup of sea water'};
-        if (!e.ready) { const t = `Purifying… ${PURIFY_SECONDS - e.t}s`; return {...none, prompt:t, why:t}; }
-        return {prompt:'<kbd>E</kbd>Take fresh water', click:cupHeld ? {kind:'takeWater', ...at} : null, e:{kind:'takeWater', ...at}, why:null};
+        const e = world.purifiers?.[d.key], cupIn = !!e && e.cup !== 0, fuel = e?.fuel ?? 0, burn = purifierFuel(kind);
+        if (cupIn && e.ready) return {prompt:'<kbd>E</kbd>Take fresh water', click:cupHeld ? {kind:'takeWater', ...at} : null, e:{kind:'takeWater', ...at}, why:null};
+        if (burn) { // plank / palm leaf in hand: feed the fire (Raft: 1 plank = 50 s)
+          const name = FUEL_NAMES[kind] ?? kind;
+          if (fuel + burn > FUEL_CAP) { const t = `Fire is full (fuel ${clockText(fuel)})`; return {...none, prompt:t, why:t}; }
+          return {prompt:`<kbd>E</kbd>Add ${esc(name)} (fuel ${clockText(fuel)})`, click:null, e:{kind:'fuelPurifier', item:kind, ...at}, why:null};
+        }
+        if (!cupIn) return kind === 'saltcup' ? {prompt:'<kbd>E</kbd>Pour in sea water', click:{kind:'loadPurifier', ...at}, e:{kind:'loadPurifier', ...at}, why:null}
+          : {...none, prompt:fuel ? `Purifier: needs a cup of sea water (fuel ${clockText(fuel)})` : 'Purifier: needs sea water and a plank', why:'Purifier: needs a cup of sea water'};
+        const t = fuel > 0 ? `Purifying… ${clockText(PURIFY_SECONDS - e.t)} (fuel ${clockText(fuel)})` : 'Purifier: needs fuel (hold a plank)';
+        return {...none, prompt:t, why:t};
       }
       const g = world.garden?.[d.key], stage = plantStage(g);
       if (stage === 2) return {prompt:'<kbd>E</kbd>Harvest palm', click:cupHeld ? {kind:'harvestPlant', ...at} : null, e:{kind:'harvestPlant', ...at}, why:null};
@@ -967,6 +974,7 @@ export function mount(transfer = null) {
       if (!isInt(a.x) || !isInt(a.z) || Math.hypot(a.x * 2 - p.x, a.z * 2 - p.z) > USE_REACH + HOST_SLACK) return;
       const key = tileKey(a.x, a.z);
       r = a.kind === 'loadPurifier' ? loadPurifier(world, key, bag) : a.kind === 'takeWater' ? takeWater(world, key, bag)
+        : a.kind === 'fuelPurifier' ? fuelPurifier(world, key, bag, typeof a.item === 'string' ? a.item : '')
         : a.kind === 'waterPlant' ? waterPlant(world, key, bag) : harvestPlant(world, key, bag, rand);
     }
     emit({kind:r.ok ? r.kind : (r.reason === 'full' ? 'full' : 'notice'), text:r.text}, actor);
@@ -1949,7 +1957,7 @@ export function mount(transfer = null) {
         const k = tileKey(d.x, d.z), g = d.type === 'palm' ? world.garden?.[k] : null, pu = d.type === 'purifier' ? world.purifiers?.[k] : null;
         const rn = d.type === 'rainbarrel' ? (world.collectors?.[k] ?? {w:0}) : d.type === 'sprinkler' ? (world.sprinklers?.[k] ?? {w:0, s:0}) : null; // rain-sprinkler
         return {key:k, type:d.type, x:d.x, z:d.z, stage:d.type === 'palm' ? plantStage(g) : null, water:d.type === 'palm' ? (g?.water ?? 0) : null,
-          t:d.type === 'purifier' ? (pu?.t ?? null) : null, ready:d.type === 'purifier' ? (pu?.ready ?? null) : null, w:rn ? rn.w : null, s:d.type === 'sprinkler' ? rn.s : null,
+          t:d.type === 'purifier' ? (pu?.t ?? null) : null, ready:d.type === 'purifier' ? (pu?.ready ?? null) : null, fuel:d.type === 'purifier' ? (pu?.fuel ?? 0) : null, cup:d.type === 'purifier' ? (pu ? (pu.cup === 0 ? 0 : 1) : 0) : null, w:rn ? rn.w : null, s:d.type === 'sprinkler' ? rn.s : null,
           distance:Math.hypot(d.x * 2 - physics.x, d.z * 2 - physics.z), screen:project(d.x * 2, .9, d.z * 2)};
       });
     },
