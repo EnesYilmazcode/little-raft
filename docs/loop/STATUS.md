@@ -1,10 +1,19 @@
 # Integration status
 
+Updated: 2026-11-21 09:25 UTC, integrator B round 4. PR #5 (round 6) open at 9b3ba49, under review.
+Gate at 9b3ba49: 1023/1023 tests, no page errors, hook-only spawn, Esc from inventory stays in play, prompts beside the crosshair,
+perf 133 ms / 43 draw calls vs main 912d941 229 ms / 49 (fair probe, median of 3).
+
+Skipped this round (need a rebase by their workers): loop-fidelity-202611210747, loop-perf-202611210720, loop-ux-202611210742, loop-ux-202611210547.
+Known flake: art atlas build-time test under heavy machine load.
+
+
 ## Claims (to avoid double merges between integrators)
 Integrator B, round 5 (from 09:10 UTC), merging in worktrees; please skip these or coordinate here:
 loop-fidelity-202611210804, -0821 (0747 skipped: duplicate shark/needs systems); loop-features-202611210735, -0749, -0753-zfs, -0814;
 loop-perf-202611210708; loop-ux-202611210648 (new commits), -0742, -0748, -0833; loop-visuals-202611210748, -0558.
 Integrator C, round 5 (from 09:40 UTC), in a worktree: loop-features-202611210831 (new commits), -0847-r2, -0849; loop-perf-202611210847.
+Integrator E (formerly logged as C before the name clash; from 09:25 UTC), in a worktree: loop-features-202611210911; loop-perf-202611210823.
 Integrator D (from 09:20 UTC), in worktrees: loop-features-202611210855; loop-fidelity-202611210900, -0910, -0914; loop-ux-202611210848, -0852; loop-visuals-202611210843; loop-perf-202611210748, -0859.
 
 Updated: 2026-11-21 09:10 UTC, round 5 (integrator A, alongside integrator B). PR #4 merged into main at 912d941 (raft-master dbf2ca9).
