@@ -766,7 +766,7 @@ export function mount(transfer = null) {
     if (survivalUI?.isOpen) hintDone('bag');
     const bag = localBag(), has = k => { try { return bag.count(k) > 0; } catch { return false; } };
     for (const id of hintsFromState({hasRope:has('rope'), hasHammer:has('hammer'), built:(world?.tiles?.length ?? 0) > START_TILES})) hintDone(id);
-    const hint = running && !dialog && !guestWaiting() ? nextHint(hintsDone, {heldKind:heldKind(), castOut:!!hook, hasLoot:hintsDone.has('loot'), hasLeaf:has('leaf')}) : null;
+    const hint = running && !dialog && !guestWaiting() ? nextHint(hintsDone, {heldKind:heldKind(), castOut:!!hook, hasLoot:hintsDone.has('loot'), hasLeaf:has('leaf'), buildPrompt:!!building}) : null;
     const place = feedPlacement({inventoryOpen:!!survivalUI?.isOpen, optionsOpen:!!$('#options')?.open, dialog:!!dialog});
     const sig = (hint?.id ?? '') + '|' + place;
     if (sig === noticeCache) return; noticeCache = sig;

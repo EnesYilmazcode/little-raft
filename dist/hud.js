@@ -44,7 +44,8 @@ export const HINTS = Object.freeze([
   // so a player who already has rope or a hammer, or has built, never gets stuck on an earlier step.
   {id:'rope', text:'Open your bag (Tab) → Materials → craft Rope from palm leaves', when:c => c.hasLeaf},
   {id:'hammer', text:'Craft a Hammer in Tools: 4 wood, 2 rope', when:() => true},
-  {id:'build', text:'With the Hammer, click the water beside the raft to add floor', when:c => c.heldKind === 'hammer'},
+  // c.buildPrompt: the hammer's build chip + crosshair prompt already say this, so the feed line stays quiet while they show.
+  {id:'build', text:'With the Hammer, click the water beside the raft to add floor', when:c => c.heldKind === 'hammer' && !c.buildPrompt},
 ]);
 // Hint ids already satisfied by what the player owns or has built (c: {hasRope, hasHammer, built}).
 export function hintsFromState(c) {
