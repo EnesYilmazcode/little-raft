@@ -8,11 +8,16 @@
 //   createDebris(T, type, getMaterial?, opts?)  'wood' | 'leaf' | 'scrap' | 'barrel'   (dist/debris.js)
 //   createPlastic(T)                                                               (dist/plastic.js)
 //   createCraft(T, type)  'sail' | 'palm' | 'lantern' | 'net' | 'bench' | 'crate'      (dist/crafts.js)
-//   createFloor(T, index, getMaterial?), FLOOR_TOP, FLOOR_BOUNDS                    (dist/deck.js)
+//     keeps the named child meshes other dist lanes look up: sail 'sailCloth' + 'pennant' (sailing-world.js furl /
+//     flag), lantern 'lanternGlow' with an emissiveIntensity material (daynight.js night ramp + point light),
+//     palm 'soil' (own material, colour set by purifier-model.js paintPlanter) + 'trunk' / 'coconuts' / 'fronds'
+//     (preparePlanter growth pivot, coconut visibility).
+//   createFloor(T, index, getMaterial?), createRaftMesh(T, tiles, getMaterial?), FLOOR_TOP, FLOOR_BOUNDS (dist/deck.js)
 // Extra: lowpoly(T) -> kit, createProp(T, name, opts) for galleries, PALETTE.
 //
 // Materials are shared module-wide and flagged material.userData.shared = true. Callers must not dispose
-// them (game.js disposeGeometry needs a one-line skip, see ADOPT). Geometry is created per call and owned
+// them (dist/game.js disposeGeometry already skips userData.shared; dist/placement.js ghosts need a one-line
+// skip, see ADOPT). The palm's 'soil' material is the one per-instance material (it is recoloured per planter). Geometry is created per call and owned
 // by the returned group (dispose freely).
 
 export const PALETTE = Object.freeze({
@@ -306,16 +311,21 @@ export function lowpoly(T) {
   const materials = {
     solid: share(new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.84, metalness: 0 })),
     cloth: share(new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, side: T.DoubleSide })),
-    // Unlit, translucent via vertex alpha: candle + flame (alpha 1) are drawn first, then the front faces of the
-    // glowing panes blend over them. One draw call for the whole lit part of a lantern.
-    glow: share(new T.MeshBasicMaterial({ vertexColors: true, toneMapped: false, transparent: true, depthWrite: false })),
+    // Self-lit, translucent via vertex alpha: candle + flame (alpha 1) are drawn first, then the front faces of the
+    // glowing panes blend over them. One draw call for the whole lit part of a lantern. A black standard material
+    // whose emissive is tinted by the vertex colour, so it glows like an unlit material but still has the
+    // emissiveIntensity that dist/daynight.js ramps up at night.
+    glow: share(new T.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveIntensity: 1, roughness: 1, metalness: 0, vertexColors: true, toneMapped: false, transparent: true, depthWrite: false })),
   };
+  materials.glow.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('vec3 totalEmissiveRadiance = emissive;', 'vec3 totalEmissiveRadiance = emissive * vColor.rgb;'); };
+  materials.glow.customProgramCacheKey = () => 'lp-glow-1';
   materials.solid.name = 'lp-solid'; materials.cloth.name = 'lp-cloth'; materials.glow.name = 'lp-glow';
 
+  // matKey: 'solid' | 'cloth' | 'glow', or a Material (per-instance, e.g. the palm soil)
   function mesh(parent, geo, matKey, name) {
     if (!geo) return null;
-    const m = new T.Mesh(geo, materials[matKey]);
-    m.name = name || matKey;
+    const m = new T.Mesh(geo, typeof matKey === 'string' ? materials[matKey] : matKey);
+    m.name = name || (typeof matKey === 'string' ? matKey : 'part');
     const glass = matKey === 'glow';
     m.castShadow = !glass; m.receiveShadow = !glass;
     if (glass) m.userData.glass = true;
@@ -573,6 +583,30 @@ export function createFloor(T, index = 0, getMaterial) {
   return g;
 }
 
+// Whole raft floor (dist/deck.js createRaftMesh contract): tiles [{index, x, z}] in raft-local units. Every tile is
+// built, its transform baked in, and all of them merged into ONE mesh (one shared material). getMaterial is ignored.
+export function createRaftMesh(T, tiles, getMaterial) {
+  const K = lowpoly(T), parts = [], m4 = new T.Matrix4();
+  let n = 0;
+  for (const t of tiles) {
+    const f = createFloor(T, t.index); const geo = f.children[0].geometry;
+    geo.applyMatrix4(m4.makeTranslation(t.x, 0, t.z)); parts.push(geo); n += geo.attributes.position.count;
+  }
+  const g = new T.Group(); g.name = 'raft-floors';
+  if (parts.length) {
+    const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3);
+    let o = 0;
+    for (const geo of parts) { const c = geo.attributes.position.count; pos.set(geo.attributes.position.array, o * 3); nor.set(geo.attributes.normal.array, o * 3); col.set(geo.attributes.color.array, o * 3); o += c; geo.dispose(); }
+    const out = new T.BufferGeometry();
+    out.setAttribute('position', new T.BufferAttribute(pos, 3)); out.setAttribute('normal', new T.BufferAttribute(nor, 3)); out.setAttribute('color', new T.BufferAttribute(col, 3));
+    out.computeBoundingBox(); out.computeBoundingSphere();
+    K.mesh(g, out, 'solid', 'floor-planks');
+  }
+  g.userData.kind = 'floors'; g.userData.topY = FLOOR_TOP; g.userData.tiles = tiles.map(t => ({ ...t }));
+  g.userData.dispose = () => g.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
+  return g;
+}
+
 // ================================================================== CRAFTS
 function craftCrate(T, K, S) {
   const P = S.solid, tp = timberPaint(T, 'x'), tz = timberPaint(T, 'z'), ty = timberPaint(T, 'y');
@@ -694,8 +728,10 @@ function craftLantern(T, K, S) {
 }
 
 function craftPalm(T, K, S) {
-  const P = S.solid, L = S.cloth;
-  const B = 0.05;
+  const P = S.solid, B = 0.05;
+  // named parts for dist/purifier-model.js (preparePlanter pivots trunk/coconuts/fronds, paintPlanter recolours soil)
+  const TR = S.part('trunk'), NUT = S.part('coconuts'), L = S.part('fronds', 'cloth');
+  const SOIL = S.part('soil', new T.MeshStandardMaterial({ vertexColors: true, color: 0x4a3322, roughness: 1, metalness: 0, flatShading: true }));
   for (const z of [-0.3, 0, 0.3]) P.add(K.box(0.92, 0.05, 0.27, 0.012), z ? 'woodMid' : 'woodLight', { at: [0, 0.025, z], paint: timberPaint(T, 'x'), jitter: 0.006 });
   for (const z of [-0.3, 0, 0.3]) for (const x of [-0.38, 0.38]) nail(K, P, x, 0.052, z);
   // terracotta pot with rolled rim
@@ -708,7 +744,7 @@ function craftPalm(T, K, S) {
   });
   const soil = K.cyl(0.33, 0.33, 0.06, 8);
   K.warp(soil, v => { if (v.y > 0) v.y += 0.03 * (1 - Math.hypot(v.x, v.z) / 0.33); });
-  P.add(soil, 'soil', { at: [0, B + 0.5, 0], tint: 0.08 });
+  SOIL.add(soil, '#ffffff', { at: [0, B + 0.5, 0], tint: 0.08 }); // white vertex colour: the material colour is the soil
   for (let i = 0; i < 5; i++) { const a = i * 1.3 + 0.4, rr = 0.18 + 0.1 * ((i * 7) % 3) / 2; P.add(K.ico(0.03, 0), 'pebble', { at: [Math.cos(a) * rr, B + 0.545, Math.sin(a) * rr], rot: [i, i * 2, 0], scale: [1.2, 0.6, 1] }); }
   // curved, ringed trunk: stacked tapered hexagonal segments
   const curve = new T.CatmullRomCurve3([K.V(0, B + 0.5, 0), K.V(0.02, B + 0.9, 0.01), K.V(0.06, B + 1.3, 0.025), K.V(0.1, B + 1.62, 0.04), K.V(0.12, B + 1.86, 0.045)]);
@@ -717,11 +753,11 @@ function craftPalm(T, K, S) {
     const t0 = i / NS, t1 = (i + 1) / NS, p0 = curve.getPointAt(t0), p1 = curve.getPointAt(t1);
     const r0 = 0.095 - 0.03 * t0, r1 = 0.095 - 0.03 * t1, len = p0.distanceTo(p1) * 1.06;
     const seg = K.lathe([[0, -len / 2], [r0 * 1.12, -len / 2], [r1 * 0.9, len / 2], [0, len / 2]], 6, i * 0.35);
-    P.add(seg, i % 2 ? 'bark' : 'barkLight', { from: p0, to: p1, tint: 0.07, paint: (c, m, n) => { if (Math.abs(n.dot(K.V().subVectors(p1, p0).normalize())) > 0.7) c.set(PALETTE.barkDark); } });
+    TR.add(seg, i % 2 ? 'bark' : 'barkLight', { from: p0, to: p1, tint: 0.07, paint: (c, m, n) => { if (Math.abs(n.dot(K.V().subVectors(p1, p0).normalize())) > 0.7) c.set(PALETTE.barkDark); } });
   }
   const top = curve.getPointAt(1);
-  P.add(K.ico(0.1, 0), 'barkDark', { at: [top.x, top.y + 0.02, top.z], scale: [1, 0.7, 1] });
-  for (let k = 0; k < 3; k++) { const a = 0.4 + k * 2.1; P.add(K.ico(0.07, 1), 'woodDeep', { at: [top.x + Math.cos(a) * 0.085, top.y - 0.06, top.z + Math.sin(a) * 0.085], tint: 0.1 }); }
+  TR.add(K.ico(0.1, 0), 'barkDark', { at: [top.x, top.y + 0.02, top.z], scale: [1, 0.7, 1] });
+  for (let k = 0; k < 3; k++) { const a = 0.4 + k * 2.1; NUT.add(K.ico(0.07, 1), 'woodDeep', { at: [top.x + Math.cos(a) * 0.085, top.y - 0.06, top.z + Math.sin(a) * 0.085], tint: 0.1 }); }
   // fronds: arching midrib + pinnate, V-folded leaflets that droop away from the rib
   const NF = 9, C0 = top.clone().add(K.V(0, 0.04, 0));
   const deep = new T.Color(PALETTE.leafDeep), mid = new T.Color(PALETTE.leaf), lite = new T.Color(PALETTE.leafLight);
@@ -732,7 +768,7 @@ function craftPalm(T, K, S) {
     const dir = K.V(Math.cos(ang), 0, Math.sin(ang)), side = K.V(-dir.z, 0, dir.x);
     const at = t => C0.clone().addScaledVector(dir, len * t).add(K.V(0, len * (pitchUp * t * (1 - t) * 1.2 - droop * t * t), 0));
     const rib = []; for (let k = 0; k <= 6; k++) rib.push(at(k / 6));
-    P.add(K.tube(rib, 0.012, 3, 10), 'stem', { tint: 0.04 });
+    TR.add(K.tube(rib, 0.012, 3, 10), 'stem', { tint: 0.04 });
     const NL = 11, shade = upper ? 1 : 0.86;
     for (let i = 0; i < NL; i++) {
       const t = 0.12 + 0.86 * i / (NL - 1), base = at(t), tan = at(Math.min(1, t + 0.02)).sub(at(Math.max(0, t - 0.02))).normalize();
@@ -752,7 +788,7 @@ function craftPalm(T, K, S) {
 }
 
 function craftSail(T, K, S) {
-  const P = S.solid, L = S.cloth, V = K.V;
+  const P = S.solid, V = K.V;
   const tx = timberPaint(T, 'x'), tz = timberPaint(T, 'z'), ty = timberPaint(T, 'y');
   P.add(K.box(1.5, 0.08, 0.2, 0.016), 'woodDark', { at: [0, 0.04, 0], paint: tx, jitter: 0.008 });
   P.add(K.box(0.2, 0.08, 1.5, 0.016), 'woodMid', { at: [0, 0.12, 0], paint: tz, jitter: 0.008 });
@@ -771,10 +807,11 @@ function craftSail(T, K, S) {
   spar(1.66, 0.048, YARD_Y); spar(1.58, 0.05, BOOM_Y);
   // canvas: a coarse bowed sheet so the facets catch the light; cream with a red stripe and a patch
   const SW = 1.44, Y0 = 1.09, Y1 = 3.17, SH = Y1 - Y0, BOW = 0.3;
+  const CL = S.part('sailCloth', 'cloth'), PEN = S.part('pennant', 'cloth'); // dist/sailing-world.js furls 'sailCloth', turns 'pennant'
   const bow = (x, y) => { const u = x / (SW / 2), v = clamp01((y - Y0) / SH); return BOW * (1 - 0.55 * u * u) * Math.pow(Math.sin(Math.PI * v), 0.8); };
   const cloth = K.sheet(SW, SH, 7, 12, (x, z) => { const y = Y0 + SH / 2 - z; return [x, y, CZ + bow(x, y)]; });
   const stripe = new T.Color(PALETTE.stripe), stain = new T.Color(PALETTE.canvasStain), patch = new T.Color(PALETTE.patch);
-  L.add(cloth, 'canvas', {
+  CL.add(cloth, 'canvas', {
     tint: 0, smooth: true, // smooth-shaded, no per-facet tint: reads as one bellied canvas, not grey triangles
     paint: (c, m) => {
       if (Math.abs(m.x) < SW / 14) c.copy(stripe);
@@ -799,7 +836,7 @@ function craftSail(T, K, S) {
   // pennant
   P.add(K.cyl(0.008, 0.008, 0.2, 4), 'iron', { at: [0, 3.68, 0] });
   const flag = K.sheet(0.42, 0.12, 4, 1, (x, z, i) => { const s = i / 4; return [0.01 + s * 0.42, 3.72 - s * 0.02 + z * (1 - s * 0.9), 0.05 * Math.sin(s * 5.5) * s]; });
-  L.add(flag, 'stripe', { tint: 0.08 });
+  PEN.add(flag, 'stripe', { tint: 0.08 });
 }
 
 const CRAFTS = { sail: craftSail, palm: craftPalm, lantern: craftLantern, net: craftNet, bench: craftBench, crate: craftCrate };
@@ -809,13 +846,15 @@ export function createCraft(T, type) {
   if (!build) return null;
   const K = lowpoly(T);
   const g = new T.Group(); g.name = 'craft_' + key;
-  const S = { solid: K.parts(), cloth: K.parts(), glow: K.parts() };
+  const named = [];
+  const S = { solid: K.parts(), cloth: K.parts(), glow: K.parts(), part: (name, mat = 'solid') => { const p = K.parts(); named.push([name, mat, p]); return p; } };
   build(T, K, S);
   g.updateMatrixWorld(true);
   const ao = { y0: 0, y1: 0.5, lo: 0.68, contact: 0.45, radius: 0.07 };
   K.mesh(g, S.solid.build(ao), 'solid', key + 'Solid');
   K.mesh(g, S.cloth.build(ao), 'cloth', key + 'Cloth');
-  K.mesh(g, S.glow.build(), 'glow', key + 'Glow');
+  for (const [name, mat, p] of named) { const geo = p.build(ao); if (geo) K.mesh(g, geo, mat, name); else if (typeof mat !== 'string') mat.dispose(); }
+  K.mesh(g, S.glow.build(), 'glow', key === 'lantern' ? 'lanternGlow' : key + 'Glow'); // dist/daynight.js LANTERN_PARTS[0]
   g.updateMatrixWorld(true);
   const box = new T.Box3().setFromObject(g), size = box.getSize(new T.Vector3());
   g.userData.craftType = key;
