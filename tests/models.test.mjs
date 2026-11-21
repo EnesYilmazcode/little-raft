@@ -3,10 +3,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as T from '../dist/vendor/three.module.js';
-import { buildModel, getModel, MODEL_KINDS } from '../dist/models.js';
+import { buildModel, getModel, hasModel, MODEL_KINDS, MODEL_ALIASES } from '../dist/models.js';
 
 const BUDGET = { seed: 600, plank: 600, scrap: 600, beet: 600, potato: 600, plastic: 1500, leaf: 1500, rope: 1500, barrel: 1500,
   hook: 2500, hammer: 2500, rod: 2500, wateringCan: 2500, sprout: 1200, young: 1200, mature: 1200, harvestable: 1200,
+  fish: 1500, nails: 600, cup: 600, water: 600, palmSeedling: 1200, palmSprout: 1200, palmYoung: 3000, palmMature: 5000, planter: 3000,
   crate: 3000, bench: 3000, cropPlot: 3000, lantern: 3000, sail: 5000, net: 5000, palmPlanter: 5000, foundation: 5000 };
 const TOOLS = ['hook', 'hammer', 'rod'];
 const tris = g => { let t = 0; g.traverse(o => { if (o.isMesh) t += o.geometry.index.count / 3; }); return t; };
@@ -40,4 +41,15 @@ test('getModel shares geometry and aliases resolve', () => {
   assert.equal(getModel('wood').userData.kind, 'plank');
   assert.equal(buildModel('nope'), null);
   assert.equal(getModel('cropPlot').userData.slots.length, 2);
+});
+
+test('every game item and farming stage has a model', async () => {
+  const { ITEM_KINDS } = await import('../dist/inventory-state.js');
+  const farm = ['seed', 'cup', 'water', 'planter', 'palm-0', 'palm-1', 'palm-2', 'palm-3', 'nails', 'planks', 'fishingrod', 'wateringcan'];
+  for (const k of [...ITEM_KINDS, ...farm]) {
+    assert.ok(hasModel(k), 'no model for ' + k);
+    assert.equal(getModel(k).userData.kind, MODEL_ALIASES[k] || k);
+  }
+  const h = ['palm-0', 'palm-1', 'palm-2', 'palm-3'].map(k => getModel(k).userData.height);
+  for (let i = 1; i < h.length; i++) assert.ok(h[i] > h[i - 1], 'palm stages grow taller');
 });
