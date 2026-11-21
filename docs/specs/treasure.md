@@ -171,7 +171,9 @@ Deviations from the spec above, as built:
 - The HUD hides via `style.display`, not `hidden`: the inline `display:flex` would override the `hidden` attribute.
 - No brass band on the chest (7 meshes: 2 holes, 2 mounds, chest box + lid, puff). The mound is a low-poly, flat-shaded half sphere
   (scale .38×.16×.38, `#dcb877`) so it reads as a heap; the spec's `.45×.14×.45` smooth one looked like a flat disc.
-- `userData.bead` exists on the finder model, but nothing drives its glow yet: treasure.js cannot reach the hands' model.
+- The finder bead glow is driven by `setFinderGlow(v)` in treasure-models.js (all bead materials it made, capped at 4), which
+  treasure.js calls from the finder proximity each frame. The hole colour is `#6e5230`.
+- Host dig cooldowns use wall time (`performance.now`), since a hidden host tab has no frames but still applies guest actions.
 - `HOLD.finder.rx` is -1.1 (not -0.5), with the coil tilted in the model, so it leans forward over the sand.
 - `coop.js` `HELD` gains `'spade', 'finder'` (appended, so older peers read them as null) so the partner sees them in hand.
 - Debug adds `chestUp()`; the islands `now` object also carries `phase`.

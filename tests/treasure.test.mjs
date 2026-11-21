@@ -268,3 +268,48 @@ test('stub ctx: guests send actions and only follow host state', () => {
   assert.equal(g.tre.debug.state().dug[0], 1);
   g.dispose();
 });
+
+test('stub ctx: host digs for the guest at the guest pose, into the guest bag', () => {
+  const w = stubWorld('host');
+  w.isl.debug.spawnNear(1234, 30); w.isl.update(0); w.tre.update(1 / 60);
+  const now = I.islandNow(), s = spotsFor(1234)[0], kind0 = s.kind;
+  const gBag = bagWith([null, spade()], 1);
+  const hostBefore = JSON.stringify(w.bag.snapshot());
+  const dig = spot => w.tre.action({ kind: 'treasure.dig', seed: 1234, spot }, 'guest', gBag);
+  // guest far away (host physics stands right on the spot: must not count)
+  w.isl.debug.teleportAshore(s.x, s.z);
+  w.ctx.other = { x: now.cx + s.x + 6, z: now.cz + s.z };
+  assert.equal(dig(0), true);
+  assert.equal(w.tre.debug.state().dug[0], 0, 'reach uses the guest pose, not the host');
+  assert.deepEqual(w.emits.at(-1), { e: { kind: 'notice', text: 'Get a little closer' }, to: 'guest' });
+  // within guest reach (2 m + 1 m slack) but beyond the host's 2 m
+  w.ctx.other = { x: now.cx + s.x + 2.6, z: now.cz + s.z };
+  assert.equal(dig(0), true);
+  assert.equal(w.tre.debug.state().dug[0], 1);
+  for (const [k, n] of lootForSpot(1234, 0, kind0)) assert.ok(gBag.count(k) >= n, `guest got ${k}`);
+  assert.ok(gBag.slots[1].durability < 100, 'guest spade worn');
+  assert.equal(JSON.stringify(w.bag.snapshot()), hostBefore, 'host bag untouched');
+  assert.ok(w.emits.filter(x => x.e.kind === 'loot').every(x => x.to === 'guest'), 'loot rows go to the guest');
+  // the same spot again (double E / host racing for it) is refused, nothing added
+  const after = JSON.stringify(gBag.snapshot());
+  assert.equal(dig(0), true);
+  assert.equal(JSON.stringify(gBag.snapshot()), after);
+  // a stale seed from the guest's old view is refused with a notice to the guest
+  w.tre.action({ kind: 'treasure.dig', seed: 999, spot: 0 }, 'guest', gBag);
+  assert.deepEqual(w.emits.at(-1), { e: { kind: 'notice', text: 'The island drifted off' }, to: 'guest' });
+  // the guest sees the host's slice
+  const g = stubWorld('guest'); g.tre.load(JSON.parse(JSON.stringify(w.tre.serialize())), 'net');
+  assert.equal(g.tre.debug.state().dug[0], 1);
+  g.dispose(); w.dispose();
+});
+
+test('finder bead glow follows setFinderGlow; dug holes are a dark sand', async () => {
+  const M = await import(new URL('treasure-models.js', base));
+  const f = M.createFinder(T), mat = f.userData.bead.material;
+  M.setFinderGlow(2); assert.equal(mat.emissiveIntensity, 2);
+  M.setFinderGlow(0.25); assert.equal(mat.emissiveIntensity, 0.25);
+  M.setFinderGlow(0.6);
+  const kit = M.createMoundKit(T), c = kit.mats.hole.color;
+  assert.ok(c.r + c.g + c.b < 0.4, 'hole reads darker than the sand');
+  kit.dispose();
+});

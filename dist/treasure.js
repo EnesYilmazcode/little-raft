@@ -8,13 +8,13 @@ import { layoutFor, groundHeight } from './islands-layout.js';
 import {
   TREASURE, spotsFor, beepInterval, closeness, warmth, DEFAULTS, clean, nearestSpot, applyDig, applyRepair,
 } from './treasure-rules.js';
-import { createMoundKit } from './treasure-models.js';
+import { createMoundKit, setFinderGlow } from './treasure-models.js';
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { repairCost } from './items.js';
 
 const itemName = k => (ITEM_INFO[k] && ITEM_INFO[k].name) || k;
 const COST_TEXT = Object.entries(repairCost('spade') || {}).map(([k, n]) => `${n} ${itemName(k)}`).join(', ');
-const RING = 2 * Math.PI * 8; // HUD arc circumference (r = 8)
+const RING = 2 * Math.PI * 8, RING_TXT = RING.toFixed(2); // HUD arc circumference (r = 8)
 const PUFF_T = 0.4, RISE_T = 0.5, HOLD_T = 1.0, SHRINK_T = 0.3;
 
 export function createTreasure(ctx) {
@@ -69,6 +69,8 @@ export function createTreasure(ctx) {
   }
 
   const authority = () => ctx.role !== 'guest';
+  // Dig cooldowns run on wall time: a hidden host tab has no frames (clock stops) but still applies guest actions.
+  const wallClock = () => (typeof performance !== 'undefined' && performance.now ? performance.now() / 1000 : clock);
   const selectedSlot = () => { const b = ctx.localBag ? ctx.localBag() : null; return b && b.slots ? b.slots[b.selectedIndex] || null : null; };
   const heldKind = () => { const s = selectedSlot(); return s ? s.kind : null; };
   const live = () => { const n = islandNow(); return n && st.seed !== null && n.seed === st.seed ? n : null; };
@@ -87,7 +89,7 @@ export function createTreasure(ctx) {
   const nearHere = now => { const p = ctx.physics; return p ? nearestSpot(spotsFor(st.seed), st.dug, p.x - now.cx, p.z - now.cz, TREASURE.DIG_REACH) : -1; };
 
   // ---------- HUD (#treasureHud), built lazily ----------
-  let hud = null, hudText = null, hudArc = null, hudDot = null, hudShown = false, hudStr = '', hudDash = '', hudScale = '';
+  let hud = null, hudText = null, hudArc = null, hudDot = null, hudShown = false, hudStr = '', hudDash = -1, hudScale = -1;
   function showHud(on) {
     if (!hud || on === hudShown) return;
     hudShown = on; hud.style.display = on ? 'flex' : 'none';
@@ -105,10 +107,11 @@ export function createTreasure(ctx) {
     }
     const text = warmth(d);
     if (text !== hudStr) { hudStr = text; hudText.textContent = text; }
-    const arc = (closeness(d === null ? Infinity : d) * RING).toFixed(1);
-    if (arc !== hudDash) { hudDash = arc; hudArc.setAttribute('stroke-dasharray', `${arc} ${RING.toFixed(2)}`); }
-    const sc = (1 + 0.5 * pulse).toFixed(2);
-    if (sc !== hudScale) { hudScale = sc; hudDot.style.transform = `scale(${sc})`; }
+    // compare rounded numbers, build strings only on a change (no per-frame garbage)
+    const arc = Math.round(closeness(d === null ? Infinity : d) * RING * 10);
+    if (arc !== hudDash) { hudDash = arc; hudArc.setAttribute('stroke-dasharray', `${arc / 10} ${RING_TXT}`); }
+    const sc = Math.round(pulse * 50); // scale 1 + .5 * pulse to 2 decimals
+    if (sc !== hudScale) { hudScale = sc; hudDot.style.transform = `scale(${1 + sc / 100})`; }
     showHud(true);
   }
 
@@ -172,6 +175,7 @@ export function createTreasure(ctx) {
     const d = now ? nearestDist(now) : null;
     const iv = d === null ? Infinity : beepInterval(d);
     lastD = d; lastIv = iv; acc += dt;
+    setFinderGlow(0.25 + 1.6 * closeness(d === null ? Infinity : d) + 0.8 * pulse); // held bead glows warmer when near
     if (iv === 0) { if (acc >= 1.2) { acc = 0; pulse = 1; if (ctx.play) ctx.play('chime', 0.8); } }
     else if (iv > 0 && iv !== Infinity && acc >= iv) { acc = 0; pulse = 1; if (ctx.play) ctx.play('detect', closeness(d)); }
     else if (iv === Infinity) acc = 0;
@@ -201,7 +205,7 @@ export function createTreasure(ctx) {
     if (a.kind === 'treasure.dig') {
       const now = live(), pos = actor === 'guest' ? ctx.other : ctx.physics;
       digSt.seed = now ? st.seed : null; digSt.spots = now ? spotsFor(st.seed) : null; digSt.dug = st.dug;
-      digSt.cx = now ? now.cx : 0; digSt.cz = now ? now.cz : 0; digSt.groundAt = now ? now.groundAt : null; digSt.clock = clock;
+      digSt.cx = now ? now.cx : 0; digSt.cz = now ? now.cz : 0; digSt.groundAt = now ? now.groundAt : null; digSt.clock = wallClock();
       const r = applyDig(digSt, a, actor, pos, bag);
       if (r.ok) {
         syncMounds(true);

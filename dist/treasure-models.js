@@ -43,13 +43,25 @@ export function createSpade(T) {
   return recentre(T, root, inner, new T.Vector3(0, 0.2, 0));
 }
 
+// Every finder bead glow material made here (the first-person and any spare held model), capped so
+// rebuilt models do not pile up. treasure.js drives them with setFinderGlow(closeness) each frame.
+const beadMats = new Set();
+let beadGlow = 0.6;
+export function setFinderGlow(v) {
+  if (!(v >= 0)) v = 0.6;
+  if (Math.abs(v - beadGlow) < 0.01) return;
+  beadGlow = v;
+  for (const m of beadMats) m.emissiveIntensity = v;
+}
+
 export function createFinder(T) {
   const root = new T.Group(); root.name = 'seashellFinder';
   const inner = new T.Group(); root.add(inner);
   const wood = new T.MeshStandardMaterial({ color: 0xc99560, roughness: 0.85 });
   const rope = new T.MeshStandardMaterial({ color: 0x8a6e44, roughness: 0.95 });
   const brass = new T.MeshStandardMaterial({ color: 0xd7a446, roughness: 0.35, metalness: 0.7 });
-  const glow = new T.MeshStandardMaterial({ color: 0xffd9a0, emissive: 0xffbd66, emissiveIntensity: 0.6, roughness: 0.3 });
+  const glow = new T.MeshStandardMaterial({ color: 0xffd9a0, emissive: 0xffbd66, emissiveIntensity: beadGlow, roughness: 0.3 });
+  beadMats.add(glow); if (beadMats.size > 4) beadMats.delete(beadMats.values().next().value);
   const wrap = new T.Mesh(new T.CylinderGeometry(0.021, 0.021, 0.14, 10), rope);
   wrap.position.y = 0.08; inner.add(wrap);
   const wand = new T.Mesh(new T.CylinderGeometry(0.012, 0.016, 0.5, 10), wood);
@@ -71,7 +83,7 @@ export function createMoundKit(T) {
     puff: new T.SphereGeometry(0.3, 10, 6),
   };
   const mats = {
-    hole: new T.MeshStandardMaterial({ color: 0x9c7a45, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+    hole: new T.MeshStandardMaterial({ color: 0x6e5230, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     mound: new T.MeshStandardMaterial({ color: 0xdcb877, roughness: 1, flatShading: true }),
     wood: new T.MeshStandardMaterial({ color: 0xbb8650, roughness: 0.85 }),
     lid: new T.MeshStandardMaterial({ color: 0x9a6b3f, roughness: 0.85 }),
