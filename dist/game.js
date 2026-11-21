@@ -41,7 +41,7 @@ import { cleanRain, copyRain, tickRain, takeRain, fillSprinkler, rainTarget, RAI
 import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, hookableItems, decorBlockers, playerInWay, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
 import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan, LIVE_STATUS_EVENT } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
-import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
+import { releaseShouldFire, castInput, castPrompt, rodSlot, wearRod } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
@@ -1179,8 +1179,11 @@ export function mount(transfer = null) {
       emit({kind:'loot', text:'+ ' + Object.entries(loot).map(([k, c]) => `${c} ${itemName(k)}`).join(' · ')}, actor); return;
     }
     if (a.kind === 'fish') {
-      if (bag.count('fishingrod') < 1) return;
+      const ri = rodSlot(bag.slots, bag.selectedIndex); if (ri < 0) return;
       if (bag.add('fish', 1) > 0) { emit({kind:'full', text:'Bag full: the fish swam away'}, actor); return; }
+      const rw = wearRod(bag.slots[ri], wearPerUse('fishingrod')); // Raft: 10 catches, then the rod snaps
+      if (rw?.broke) { bag.slots[ri] = null; bag.version++; emit({kind:'notice', text:'Your fishing rod broke!'}, actor); }
+      else if (rw && rw.before > 25 && rw.after <= 25) emit({kind:'notice', text:'Fishing rod getting worn: about ' + Math.round(rw.after / wearPerUse('fishingrod')) + ' catches left'}, actor);
       world.fish++; emit({kind:'loot', text:'You caught a fish!', loot:{fish:1}}, actor);
       award({kind:'fish'}); return;
     }

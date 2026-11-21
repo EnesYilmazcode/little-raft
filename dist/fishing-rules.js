@@ -20,3 +20,21 @@ export function castPrompt(cast, fishWait) {
   if (!cast?.fishing) return '';
   return cast.t > fishWait ? 'A bite! Click to reel in' : 'Waiting for a bite… click to reel in';
 }
+
+// Fishing rod wear (Raft: a wooden rod lasts 10 catches). Which slot a catch wears: the selected slot when it
+// holds a rod, else the first rod in the bag; -1 when there is none.
+export function rodSlot(slots, prefer) {
+  if (!Array.isArray(slots)) return -1;
+  if (Number.isInteger(prefer) && slots[prefer]?.kind === 'fishingrod') return prefer;
+  for (let i = 0; i < slots.length; i++) if (slots[i]?.kind === 'fishingrod') return i;
+  return -1;
+}
+
+// One catch of wear on a rod slot (mutates slot.durability, 0..100). Returns {before, after, broke} or null.
+export function wearRod(slot, wear) {
+  if (!slot || slot.kind !== 'fishingrod' || !(wear > 0)) return null;
+  const before = Math.min(100, Math.max(0, Number.isFinite(slot.durability) ? slot.durability : 100));
+  const after = Math.max(0, before - wear);
+  slot.durability = after < 1e-9 ? 0 : after;
+  return { before, after: slot.durability, broke: before > 0 && slot.durability === 0 };
+}

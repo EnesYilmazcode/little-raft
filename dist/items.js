@@ -152,9 +152,9 @@ const LIST = [
     recipe: hand({ wood: 4, rope: 2 }), unlock: START,
     tip: 'Builds new floor tiles (2 planks + 2 plastic each). Make room for friends!' }),
   item('fishingrod', 'Fishing Rod', 'tool', { icon: 'icon-hook', placeholder: true, iconTint: '#c69860',
-    tool: true, durability: 40,
+    tool: true, durability: 10, // Raft: a wooden rod lasts 10 catches, then snaps
     recipe: hand({ wood: 6, rope: 8 }), unlock: discover('rope'),
-    tip: 'Cast, wait for a nibble, and reel in a fish. Good for about 40 catches between repairs.' }),
+    tip: 'Cast, wait for a nibble, and reel in a fish. Good for about 10 catches before it snaps.' }),
   item('spear', 'Wooden Spear', 'tool', { iconTint: '#bb8650', tool: true, durability: 20,
     recipe: hand({ wood: 8, rope: 3 }), unlock: discover('rope'),
     tip: 'A long pole with a sharp lashed tip. Click to jab at things in the water; wears only when it lands.' }),
