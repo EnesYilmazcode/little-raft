@@ -389,9 +389,9 @@ export function createFishingCooking(T, host) {
     if (out && ud) { if (ud.float) ud.float.visible = false; if (ud.leader) ud.leader.visible = false; }
     if (held) { heldT -= dt; wiggle(held, time, 1.2); if (heldT <= 0) dropHeld(); }
     // grills
-    const sim = !isGuest(role);
+    const sim = !isGuest(role), cookDt = host.running() ? dt : 0; // title screen / paused: food and fuel hold, fire still flickers
     for (const g of grills.values()) {
-      const st = g.st, evs = st.update(dt);
+      const st = g.st, evs = st.update(cookDt);
       if (evs.length) {
         syncFish(g);
         if (sim) {

@@ -130,3 +130,22 @@ test('D4: a click during the caught linger also recasts', () => {
   assert.equal(h.api.pointerDown(), true);
   assert.equal(h.debug.session.stage, 'charging');
 });
+
+test('D5: grills do not cook, burn or use fuel while the game is not running (title screen)', () => {
+  const h = mount({ kind: 'hammer' });
+  h.action({ kind: 'fc:placeGrill', x: 0, z: 0 });
+  const g = [...h.api.grills.values()][0], id = g.st.id;
+  h.action({ kind: 'fc:fuel', id });
+  h.action({ kind: 'fc:cook', id, fish: { species: 'pomfret', cm: 30 } });
+  const before = JSON.stringify(g.st.snapshot());
+  let flicker = 0; const upd = g.model.userData.update;
+  g.model.userData.update = (dt, t) => { if (dt > 0) flicker++; return upd?.(dt, t); };
+  h._running = false;
+  h.step(120);
+  assert.equal(JSON.stringify(g.st.snapshot()), before, 'fish and fuel frozen on the title screen');
+  assert.ok(flicker > 0, 'fire visuals keep animating');
+  h._running = true;
+  h.step(2);
+  assert.ok(g.st.fuel < JSON.parse(before).fuel, 'cooking resumes once back in the game');
+  assert.ok(g.st.slots.some((f) => f && f.t > 0));
+});
