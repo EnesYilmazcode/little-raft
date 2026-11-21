@@ -92,10 +92,13 @@ export function createFarmView(T, { getModel = null } = {}) {
     group.removeFromParent(); plots.clear(); templates.clear();
     for (const g of Object.values(G)) g.dispose(); for (const m of Object.values(M)) m.dispose();
   }
-  // Tile under the plant the camera can reach, from a world-space aim point.
-  const plotAt = (decor, point) => {
-    if (!point) return null; const x = Math.round(point.x / 2), z = Math.round(point.z / 2);
-    return decor.find((d) => isPlot(d) && d.x === x && d.z === z) ?? null;
+  // Planter the aim ray points at. point is the ray's hit on the deck plane; stepping back
+  // along dir to soil height first lets players aim at the pot itself, not the deck behind it.
+  const find = (decor, px, pz) => { const x = Math.round(px / 2), z = Math.round(pz / 2); return decor.find((d) => isPlot(d) && d.x === x && d.z === z) ?? null; };
+  const plotAt = (decor, point, dir) => {
+    if (!point) return null;
+    if (dir && dir.y < -.05) { const k = POT_H / -dir.y, hit = find(decor, point.x - dir.x * k, point.z - dir.z * k); if (hit) return hit; }
+    return find(decor, point.x, point.z);
   };
   return { group, sync, update, dispose, plotAt, stageOf: (x, z) => plots.get(x + ',' + z)?.stage ?? null };
 }

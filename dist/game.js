@@ -183,7 +183,7 @@ export function mount(transfer = null) {
   }
   let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghost, rope, ropeAttr, hookMesh, friend, player, sun;
   let hookHands = null, hammerHands = null, rodHands = null, rodModel = null, rodTip = null, clothMat;
-  let farmView = null, farmSeen = null; // farming
+  let farmView = null, farmSeen = null, farmLast = 0; // farming
   let survivalUI = null, settingsController = null, options = {sensitivity:1, fov:75, cameraMotion:.35, volume:.5, graphics:'medium'};
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
@@ -651,10 +651,10 @@ export function mount(transfer = null) {
     }
   }
   // ---------- Farming (rules in farming.js, meshes in farming-view.js) ----------
-  function farmPlot(aim) { const d = farmView?.plotAt(world.decor, aim?.point); return d && Math.hypot(d.x * 2 - physics.x, d.z * 2 - physics.z) <= PICKUP_REACH + 1 ? d : null; }
+  function farmPlot(aim) { const d = farmView?.plotAt(world.decor, aim?.point, aim?.dir); return d && Math.hypot(d.x * 2 - physics.x, d.z * 2 - physics.z) <= PICKUP_REACH + 1.6 ? d : null; }
   function farmUse(aim, interacting) {
     const kind = selectedKind(), d = farmPlot(aim);
-    if (d) { const op = Farm.plotAction(d.farm, kind, interacting); if (op) { swing = .6; action({kind:'farm', op, x:d.x, z:d.z}); return true; } if (!interacting && (kind === 'seed' || kind === 'water')) { notice(Farm.promptFor(d.farm, kind)); return true; } return false; }
+    if (d) { const op = Farm.plotAction(d.farm, kind, interacting); if (op) { swing = .6; action({kind:'farm', op, x:d.x, z:d.z}); return true; } if (!interacting && (kind === 'seed' || kind === 'water')) { notice(Farm.promptFor(d.farm, kind)); return true; } }
     if (interacting || kind !== 'cup') return false;
     const p = aim?.point; if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2)) || Math.hypot(p.x - physics.x, p.z - physics.z) > 6) { notice('Point at the sea next to the raft to fill the cup'); return true; }
     swing = .6; action({kind:'farm', op:'fill'}); return true;
@@ -847,7 +847,8 @@ export function mount(transfer = null) {
     frameAim = running && !dialog ? currentAim() : null;
     pickTarget = pickupFrom(frameAim);
     updateItems(dt); updateHook(dt); updateGhost();
-    if (farmView) { if (role !== 'guest' && running && Farm.tickFarm(world.decor, dt)) farmSeen = null; if (farmSeen !== world.decor) { farmSeen = world.decor; farmView.sync(world.decor); } farmView.update(elapsed, raft); } // farming
+    if (farmView) { const fdt = Math.min((now - (farmLast || now)) / 1000, 5); farmLast = now; if (role !== 'guest' && running && Farm.tickFarm(world.decor, fdt)) farmSeen = null; // wall clock: growth takes real minutes even at low fps
+      if (farmSeen !== world.decor) { farmSeen = world.decor; farmView.sync(world.decor); } farmView.update(elapsed, raft); } // farming
     if (running && role !== 'guest') {
       netClock += dt;
       if (netClock > .8) { // nets gather into the host's bag (trusted shared machine) and never consume when full
