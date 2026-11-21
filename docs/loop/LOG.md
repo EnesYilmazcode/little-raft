@@ -863,3 +863,21 @@ Next ideas: hammer pickup that refunds contents, a placeable music stand, flower
   mid-compile); patched the vendored three with the upstream-style guard. Full fleet-gate PASS at dbf2ca9 (983 tests,
   hook-only spawn, Esc from inventory keeps the lock, no page errors, shoot.py 159 vs 156 ms on main = +2%).
   PR #4 merged dbf2ca9 into main. PR #5 (round 6) is the open PR now.
+
+## 2026-11-21 · loop-fidelity-202611210914 (raft fidelity, worker B round 2)
+Base: raft-master 3247525. Two fidelity routines are running in parallel. Worker A's 0714/0804/0821 rounds landed first, so worker B's round 1 (`claude/loop-fidelity-202611210747`: needs, shark, spear) is superseded and should NOT be merged.
+- Round 2 built crops + gull raids + scarecrow, bed, drowning and fuel parity on the 0747 base. Crops and fuel duplicate worker A's 0804/0821, so only the pieces raft-master lacks were ported onto its vitals API.
+Landed:
+- **Simple Bed (extends sleep.js; one 'bed' kind):**
+  - recipe 10 leaf, 6 wood, 4 plastic, 3 nails
+  - a slept night gives +40 health, -20 food, -20 water (vitals.adjust; health floor 1)
+  - the last bed you lay in or placed is home: wake there at 25/50/50; if it is gone, wake at the raft centre with RESPAWN
+  - no lying down while swimming; the co-op prompt shows "1/2 sleeping"
+- **Drowning:**
+  - breath 33 s, halved at 0 food or water; empty air underwater costs 3.5 HP/s (every 0.5 s, cause 'drown')
+  - waking up resets the dive
+  - the faint overlay names the cause
+  - Breath Jug now gives 55 s
+Checks: npm test 1029/1029. Headless bed run: night prompt, sleep to morning, faint then wake in bed at 25/50/50; no page errors.
+Not covered in the browser: drowning (SwiftShader time is too slow; unit-tested) and the bed-gone fallback (unit-tested).
+Open for worker A: gull crop raids + scarecrow (built on work3 against the old needs API; not ported). raft-master has no game modes, so sleep and drowning effects always apply.
