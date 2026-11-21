@@ -47,6 +47,8 @@ export function loadHints(storage) {
 export function saveHints(storage, done) {
   try { storage?.setItem(HINT_KEY, JSON.stringify([...done])); return true; } catch { return false; }
 }
+// New game starts a new save, so the hint chain starts over too (in place: the engine keeps one Set).
+export function resetHints(storage, done) { done.clear(); return saveHints(storage, done); }
 // The first unfinished hint, if its condition holds now. Later hints wait for earlier ones.
 export function nextHint(done, ctx) {
   const h = HINTS.find(x => !done.has(x.id));

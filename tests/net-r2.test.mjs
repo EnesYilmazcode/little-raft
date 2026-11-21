@@ -125,3 +125,17 @@ test('NET-4: a guest leaving while the host tab saved newer stays blocked and ke
   assert.match(body, /if \(plan\.block\) blockSave\(\);/);
   assert.doesNotMatch(body, /saveBlocked = false|saveRev = storedRev\(\)/);
 });
+
+const H = await import(new URL('hud.js', base));
+
+test('NET-5: New game resets the first-run hint chain and its stored copy', () => {
+  const mem = {}, storage = {getItem:k => mem[k] ?? null, setItem:(k, v) => { mem[k] = v; }};
+  const done = new Set(['throw', 'loot', 'bag', 'slots']); H.saveHints(storage, done);
+  assert.equal(H.nextHint(done, {heldKind:'hook', castOut:false}), null);
+  assert.equal(H.resetHints(storage, done), true);
+  assert.equal(done.size, 0);
+  assert.equal(H.loadHints(storage).size, 0);
+  assert.equal(H.nextHint(done, {heldKind:'hook', castOut:false})?.id, 'throw');
+  const g = src('game.js'), body = g.slice(g.indexOf('function newGame()'), g.indexOf('const hasSave'));
+  assert.match(body, /resetHints\(window\.localStorage, hintsDone\)/);
+});
