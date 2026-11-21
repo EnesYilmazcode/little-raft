@@ -588,7 +588,7 @@ export function mount(transfer = null) {
   }
   function rebuildRaft() {
     ocean.setRaftTiles(world.tiles);
-    for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
+    const old = [...raft.children]; for (const c of old) raft.remove(c); // freed at the end, see below
     wateringGroups.clear();
     raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat, content ? (t, c) => content.tileTint(t.x / 2, t.z / 2, c) : null, woodMat)); // content hook (paint): painted deck tiles
     for (const d of world.decor) {
@@ -607,6 +607,10 @@ export function mount(transfer = null) {
     building?.sync(world); // building-pieces lane hook
     content?.afterRebuild(); // content hook (paint): re-tint the new deck planks
     sailing?.onRaftBuilt(); // [sailing] re-find sail models
+    // Bind the new decor's materials to their programs before the old copies are freed: three drops a program when its
+    // last material is disposed, so a model with a program of its own (the flat double-sided barrel funnel) relinked on
+    // every rebuild. compile() binds culled meshes too and links nothing new here that the next render would not.
+    if (old.length) { try { renderer?.compile(raft, camera, scene); } catch (e) { console.warn('decor compile failed', e); } for (const c of old) disposeGeometry(c); }
   }
 
   // ---------- Floating supplies ----------
