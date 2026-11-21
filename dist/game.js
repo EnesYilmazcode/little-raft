@@ -81,6 +81,7 @@ const STOCK_KEYS = Object.freeze(['wood', 'leaf', 'scrap', 'plastic']); // legac
 const START_TILES = 9; // newWorld() raft size (3x3); more tiles means the player has built a floor
 const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
+const REPAIR_PICK = Object.freeze({costOf: repairCost, roleOf: toolRole}); // R repairs any repairable tool (selected first), else a worn hook
 const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12, receiver:.35, antenna:.1, purifier:.3, rainbarrel:.3, sprinkler:.12, ...CONTENT_BLOCK_RADIUS, ...BLOCK_RADII}); // content hook, [progression-hook]
 const SAVE = 'little-raft-v1';
 const SAVE_STATUS = "Solo and hosted rafts save automatically. Joining uses the host's world."; // #saveStatus default
@@ -150,6 +151,7 @@ export function mount(transfer = null) {
   const commit = (bag, scratch) => { for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i]; };
   const canAfford = (bag, cost) => Object.entries(cost).every(([k, n]) => bag.count(k) >= n);
   const itemName = k => (ITEM_INFO[k]?.name ?? k).toLowerCase();
+  const toolName = k => ITEM_INFO[k]?.name ?? k;
   const missingText = (bag, cost) => Object.entries(cost).filter(([k, n]) => bag.count(k) < n).map(([k, n]) => `${n - bag.count(k)} more ${itemName(k)}`).join(' and ');
   function spend(bag, cost) { // atomic
     const s = new Bag(bag.snapshot());
@@ -1174,12 +1176,13 @@ export function mount(transfer = null) {
       award({kind:'fish'}); return;
     }
     if (a.kind === 'repair') {
-      const i = repairHookSlot(bag.slots, a.slot, MAX_HEALTH);
-      if (i < 0) { emit({kind:'notice', text:'No hook to repair'}, actor); return; }
-      if ((bag.slots[i].durability ?? MAX_HEALTH) >= MAX_HEALTH) { emit({kind:'notice', text:'Your hook is in great shape'}, actor); return; }
+      const i = repairHookSlot(bag.slots, a.slot, MAX_HEALTH, REPAIR_PICK);
+      if (i < 0) { emit({kind:'notice', text:'No worn tool to repair'}, actor); return; }
+      const name = toolName(bag.slots[i].kind);
+      if ((bag.slots[i].durability ?? MAX_HEALTH) >= MAX_HEALTH) { emit({kind:'notice', text:'Your ' + name + ' is in great shape'}, actor); return; }
       const cost = repairCost(bag.slots[i].kind) ?? REPAIR_COST; // [progression-hook]
-      if (!spend(bag, cost)) { emit({kind:'notice', text:'Repair needs ' + missingText(bag, cost)}, actor); return; }
-      bag.slots[i].durability = MAX_HEALTH; emit({kind:'build', text:'Hook repaired!', sound:'repair'}, actor);
+      if (!spend(bag, cost)) { emit({kind:'notice', text:name + ' repair needs ' + missingText(bag, cost)}, actor); return; }
+      bag.slots[i].durability = MAX_HEALTH; emit({kind:'build', text:name + ' repaired!', sound:'repair'}, actor);
       award({kind:'repair'}); return;
     }
     if (a.kind === 'eat') { // [vitals] host removes the item (and gives the cup back); the eater applies the bars on 'ate'
@@ -1232,7 +1235,7 @@ export function mount(transfer = null) {
   function craft(recipe) { if (typeof recipe !== 'string') return false; const g = craftGate(recipe); action({kind:'craft', recipe}); return !g; }
   function repair() { if (!running) return; const bag = localBag();
     const sel = bag.slots[bag.selectedIndex]; if (sel?.kind === 'spade') { action({kind:'treasure.repair'}); return; } // [treasure-hook] R on a held spade
-    action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH)}); }
+    action({kind:'repair', slot:bag.selectedIndex}); } // host picks the slot (repairHookSlot + REPAIR_PICK), same rule for host and guest
   // Pad build radial pick: hold the hammer (from the hotbar) and select that piece on the building wheel.
   function pickBuildPiece(id) {
     if (!running || !building || !Object.hasOwn(PIECES, id)) return;

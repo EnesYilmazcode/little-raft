@@ -73,16 +73,30 @@ export function playerInWay(blockers, players, r) {
   return -1;
 }
 
-// Which hook slot R repairs: the preferred (selected) slot if it holds a hook, else the most worn
-// hook below `max`, else the first hook (already in great shape). -1 when there is no hook.
-export function repairHookSlot(slots, prefer, max = 100) {
+// Which slot R repairs. Without options (legacy): the preferred (selected) slot if it holds a hook,
+// else the most worn hook below `max`, else the first hook (already in great shape); -1 when none.
+// With {costOf, roleOf} (any repairable tool): the selected slot when it is repairable and worn;
+// else the most worn hook-role tool; else the selected repairable tool (in great shape); else the
+// first hook-role tool; else -1. Host and guest both call this, so they always pick the same slot.
+export function repairHookSlot(slots, prefer, max = 100, opts = null) {
   if (!Array.isArray(slots)) return -1;
-  if (Number.isInteger(prefer) && slots[prefer]?.kind === 'hook') return prefer;
+  const costOf = opts?.costOf, roleOf = opts?.roleOf ?? (k => k);
+  const dur = s => Number.isFinite(s?.durability) ? s.durability : max;
+  const isHook = s => !!s && roleOf(s.kind) === 'hook';
+  const sel = Number.isInteger(prefer) ? slots[prefer] : null;
+  const fixable = !!(costOf && sel && costOf(sel.kind));
+  if (fixable && dur(sel) < max) return prefer;
+  if (!costOf && isHook(sel)) return prefer;
   let best = -1, worst = max;
   slots.forEach((s, i) => {
-    if (s?.kind !== 'hook') return;
-    const d = Number.isFinite(s.durability) ? s.durability : max;
+    if (!isHook(s)) return;
+    const d = dur(s);
     if (best < 0 || d < worst) { best = i; worst = d; }
   });
+  if (costOf) {
+    if (best >= 0 && worst < max) return best;
+    if (fixable) return prefer;
+    if (isHook(sel)) return prefer;
+  }
   return best;
 }
