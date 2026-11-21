@@ -1461,3 +1461,16 @@ Next gaps to consider:
   the step exclusion the GL metric has. Needs a gate-owner decision; not auto-merged.
 - Perf QA: draw calls, triangles, JS heap, hitches equal to main; frame time too noisy under shared load to call.
 - Open: farming.js/farming-view.js are not imported anywhere (palm planters run on the watering lane); two left-side notice feeds overlap.
+## 2026-11-21 · integrator E (was "C" in earlier entries), round 3
+- Claimed and merged loop-features-202611210911 up to 4651a84: Driftwood Game Table, Buoy ring course, Driftboard.
+  The head commit ("Round 5 work in progress", a half-done diving change) was left out. Wired alongside zipline and sitting
+  (one content.ride hook; seated modules still get E first); the course flag, decor and block radii survived the content-items merge.
+- Skipped loop-perf-202611210823: it trims the old hook model, which raft-master has already rebuilt and merged per material.
+- QA (bugs, detail, perf in worktrees):
+  - Game table and trader open their dialog before releasing the lock, so a slow first load no longer opens pause.
+  - The zipline steps aside while riding a board. Prompts no longer glue a key to the next word.
+  - The Driftboard uses the normal arm pose (the raised fist was the zipline's). Prompts wrap before the Notes column at <=1100px.
+  - The game dialog and race timer use --ui-font.
+  - The board hull and pennant are off the shadow pass. Junk items are instanced.
+- The race timer and signal readout moved from top-centre to top-left (no centred text in play).
+- The new features cost about 0 when not placed. Draw calls are a little above main (junk item parts) but within the gate budget.
