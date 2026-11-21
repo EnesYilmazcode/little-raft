@@ -298,7 +298,7 @@ export function createSailing(T, ctx) {
     if (ex * ex + ez * ez > SNAP2) { disp.gx = state.gx; disp.gz = state.gz; }
     else { disp.gx = wrapAxis(disp.gx + out.dgx + ex * k, HG); disp.gz = wrapAxis(disp.gz + out.dgz + ez * k, HG); }
   }
-  function itemFlow(o) { o.x = flow.x; o.z = flow.z; return o; }
+  function itemFlow(o) { o.x = flow.x; o.z = flow.z; o.b = state.anchored ? 0 : BASE_FLOW_Z; return o; } // b: base debris drift (+z), none while anchored
   // Items spawn upstream of +z (game makeItem), get rotated about the raft centre onto the flow, and leave once they
   // are past R from the centre moving downstream. Both use the same latched unit direction, so a fresh spawn
   // (centre-relative z < 0 before rotation) always has a negative along-flow component: never instantly out.
@@ -339,6 +339,8 @@ export function createSailing(T, ctx) {
     }
     return text;
   }
+  /** True when a paddle stroke would push now (not anchored, shared stroke cooldown over). */
+  function paddleReady() { const s = ensureState(); return !s.anchored && !(s.paddleClock > 0); }
   function debug() {
     const s = ensureState(), t = { x: 0, z: 0 }, w = { x: 0, z: 0 };
     sailTarget(s, nSails, t); windVector(s, w);
@@ -355,7 +357,7 @@ export function createSailing(T, ctx) {
     for (const r of rolls) r.parent?.remove(r);
     rolls.length = 0; lastOp.clear(); drifters.length = 0; stepOpts.blockers.length = 0;
   }
-  return { update, onRaftBuilt, addDrifter, itemFlow, respawned, outOfRange, interact, grab, release, apply, debug, dispose,
+  return { update, onRaftBuilt, addDrifter, itemFlow, respawned, outOfRange, interact, grab, release, apply, paddleReady, debug, dispose,
     get steering() { return steering; } };
 }
 

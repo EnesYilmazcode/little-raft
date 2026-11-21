@@ -16,7 +16,7 @@
 //   placeholder: true when the icon is not a dedicated icons.svg symbol
 //   tool:      true only for durability items (Bag keeps durability 0..100 percent)
 //   durability: tools only: number of uses from 100% to 0% (wear per use = 100 / uses)
-//   actsAs:    optional tool role ('hook' | 'fishingrod' | 'hammer' | 'spear'); see toolRole()
+//   actsAs:    optional tool role ('hook' | 'fishingrod' | 'hammer' | 'spear' | 'paddle' | 'axe'); see toolRole()
 //   placeable: true when the item is put on a raft tile as a decor/station
 //   recipe:    null (gathered) | {
 //                cost:   {kind: n}  (station recipes have exactly one cost key = input)
@@ -40,8 +40,10 @@
 // plus BARREL_PITY is tuned for ~43 barrels -> smelter (~66 min) and ~48 -> metal hook.
 
 const STACK = 20;
-const SLOT_COUNT = 28;   // mirrors inventory-state.js
-const HOTBAR_SIZE = 10;  // mirrors inventory-state.js
+// These mirror inventory-state.js (which imports this file, so it cannot be imported back here).
+// tests/items-hotbar.test.mjs keeps them in sync.
+export const SLOT_COUNT = 28;
+export const HOTBAR_SIZE = 10;
 const MAX_DURABILITY = 100;
 
 const deepFreeze = (o) => {
@@ -162,6 +164,12 @@ const LIST = [
   item('metalspear', 'Metal Spear', 'tool', { iconTint: '#9fb1bf', tool: true, durability: 40, actsAs: 'spear',
     recipe: hand({ wood: 6, rope: 2, metalingot: 2, bolt: 1 }), unlock: research('metalingot', 'bolt'),
     tip: 'A heavy metal point on a sturdy shaft. Twice the bite of the wooden one and lasts twice as long.' }),
+  item('paddle', 'Paddle', 'tool', { iconTint: '#c29462', tool: true, durability: 60,
+    recipe: hand({ wood: 4, rope: 2, plastic: 2 }), unlock: discover('rope'),
+    tip: 'Stand at the raft edge and click to push the raft the way you face. Good for about 60 strokes.' }),
+  item('axe', 'Stone Axe', 'tool', { iconTint: '#8f9aa0', tool: true, durability: 50,
+    recipe: hand({ wood: 6, stone: 3, rope: 2 }), unlock: discover('stone', 'rope'),
+    tip: 'A sharp stone head lashed to a sturdy handle. Click a palm five times to fell it; good for about 50 chops.' }),
   item('binoculars', 'Binoculars', 'tool', { iconTint: '#5d6b78', stack: 1,
     recipe: hand({ glass: 2, copperingot: 1, hinge: 2, bolt: 1 }), unlock: research('glass', 'copperingot'),
     tip: 'Hold them to spot the nearest barrel: bearing and distance. They never wear out.' }),
@@ -180,8 +188,10 @@ const LIST = [
     tip: 'Press E on island sand to dig. Finds bundles, or at least a handful of sand. R fixes it.' }),
 
   // ----- food -----
+  item('coconut', 'Coconut', 'food', { iconTint: '#6b4a2a',
+    tip: 'A hairy brown nut knocked loose from an island palm. Crack it open for a cool drink (+5 food, +20 water).' }),
   item('cookedfish', 'Grilled Fish', 'food', { iconTint: '#e0a060', stack: 10,
-    recipe: cook('grill', 'fish', { time: 15, fuel: 0.5 }), unlock: atStation('grill'),
+    recipe: cook('grill', 'fish', { time: 40, fuel: 0.8 }), unlock: atStation('grill'), // = cooking.js cookTime at 30 cm; 1 plank burns 50 s
     tip: 'A cosy, smoky meal. Click with it in hand to eat (+35 food).' }),
   item('cookedbeet', 'Grilled Beet', 'food', { iconTint: '#7e2438', stack: 10, // [crops]
     recipe: cook('grill', 'beet', { time: 15, fuel: 0.5 }), unlock: atStation('grill'),
@@ -193,7 +203,7 @@ const LIST = [
     recipe: hand({ cookedfish: 1, honey: 1 }), unlock: discover('honey'),
     tip: 'Grilled fish with a honey glaze. The seagull is very jealous.' }),
   item('cookedsharkmeat', 'Grilled Shark Meat', 'food', { iconTint: '#c7764a', stack: 10,
-    recipe: cook('grill', 'sharkmeat', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
+    recipe: cook('grill', 'sharkmeat', { time: 60, fuel: 1.2 }), unlock: atStation('grill'), // Raft: big cuts take ~60 s
     tip: 'A thick, smoky steak. Click with it in hand to eat (+30 food).' }),
 
   // ----- build / decor (placeable on raft tiles) -----
@@ -277,6 +287,8 @@ const REPAIRS = deepFreeze({
   spade: { wood: 2, scrap: 1 },
   spear: { wood: 2, rope: 1 },
   metalspear: { metalingot: 1, rope: 1 },
+  paddle: { wood: 2, rope: 1 },
+  axe: { wood: 2, stone: 1 },
 });
 
 /** Alternate / older names that may appear in saves or network messages. */

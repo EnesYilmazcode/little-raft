@@ -34,6 +34,7 @@ export const FOOD = {
   potato:          {food:10,   water:0},  // [crops] Raft: raw potato +10
   cookedbeet:      {food:15,   water:0},  // [crops]
   cookedpotato:    {food:15,   water:0},  // [crops] Raft: cooked potato +15
+  coconut:         {food:5,    water:20}, // chopped from island palms (r1: Raft +5 / +20)
 };
 
 const num = (x, d = 0) => (typeof x === 'number' && Number.isFinite(x) ? x : d);

@@ -21,7 +21,7 @@
 // Notes: no DOM timers. Voices clean themselves up on the sources' 'ended' event.
 
 export const EVENTS = Object.freeze(['throw', 'splash', 'collect', 'build', 'place', 'craft', 'repair', 'plant', 'water', 'jump',
-  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny', 'detect', 'chime']);
+  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny', 'detect', 'chime', 'chop']);
 // friendlier names other modules may use; play() resolves them to a recipe above
 export const ALIASES = Object.freeze({ pickup: 'collect', cast: 'throw', hook: 'throw', pour: 'water', click: 'ui' });
 export const BUSES = Object.freeze(['master', 'effects', 'ambience', 'music']);
@@ -30,7 +30,7 @@ const OUTPUT_SCALE = 0.5;       // keeps full volume comfortable
 const MAX_VOICES = 24;
 const MIN_GAP = { throw: 0.08, splash: 0.06, collect: 0.04, build: 0.05, place: 0.06, plant: 0.12, water: 0.25, craft: 0.1, repair: 0.12, jump: 0.1, land: 0.12,
   step: 0.16, swim: 0.3, reel: 0.4, catch: 0.06, bite: 0.2, ui: 0.03, open: 0.08, close: 0.08, deny: 0.15,
-  detect: 0.05, chime: 0.5 };
+  detect: 0.05, chime: 0.5, chop: 0.2 };
 const SILENT = 0.0001;
 // calm D-major-ish pad: Dadd9, Bm7, Gmaj7, A6 (low register so it sits under the sea)
 const CHORDS = [[146.83, 220, 329.63], [123.47, 185, 293.66], [98, 196, 246.94], [110, 164.81, 277.18]];
@@ -290,6 +290,15 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
       nailHit(v, t + 0.14, s * 0.85, f * 1.04);
       nailHit(v, t + 0.27, s * 0.95, f * 0.96);
       knock(v, t + 0.36, s * 0.6, f * 0.62);
+    },
+    chop(v, t, s) {
+      // stone axe into a palm trunk: a dull woody thunk, a short crack of fibres and a faint frond rustle
+      const lp = filter(v, 'lowpass', 2200, 0.7, v.bus); v.bus = lp;
+      const f = rand(105, 125);
+      knock(v, t, s * 1.1, f);
+      knock(v, t + 0.012, s * 0.5, f * 1.9);
+      burst(v, t + 0.004, 'bandpass', rand(1300, 1600), 1.4, 0.18 * s, 0.002, 0.07);
+      burst(v, t + 0.06, 'highpass', 3200, 0.5, 0.05 * s, 0.03, 0.25);
     },
     craft(v, t, s) {
       // rustle of materials + two light taps

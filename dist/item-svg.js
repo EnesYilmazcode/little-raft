@@ -163,13 +163,34 @@ export const ITEM_ICONS = Object.freeze({
     <g fill="#fff2cc" stroke-width="1.5"><rect x="20" y="13.5" width="8" height="3" rx="1.5"/><rect x="20" y="16.8" width="8" height="3" rx="1.5"/></g>
     <path d="M24 24 V31 M24 37 V44" fill="none" stroke-width="1" stroke-opacity=".45"/></g>`,
 
+  // Paddle: driftwood shaft with a T-grip, plank blade with a plastic wear patch.
+  paddle: `<g transform="rotate(40 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M18 1 H30" fill="none" stroke-width="5" stroke-linecap="round"/><path d="M18 1 H30" fill="none" stroke="#bb8650" stroke-width="2.4" stroke-linecap="round"/>
+    <rect x="22" y="1" width="4" height="28" rx="2" fill="#bb8650"/>
+    <rect x="21" y="8" width="6" height="6" rx="2" fill="#d9c38c" stroke-width="1.5"/>
+    <path d="M22 27 C17 29 16 33 16 40 C16 46 19 49 24 49 C29 49 32 46 32 40 C32 33 31 29 26 27 Z" fill="#c99560"/>
+    <rect x="19.5" y="35" width="9" height="8" rx="1.5" fill="#fff2cc" stroke-width="1.5"/>
+    <path d="M19 31 C18 34 18 38 18.5 41" fill="none" stroke="#fff2cc" stroke-width="1.3" stroke-linecap="round"/></g>`,
+
+  // Stone axe: driftwood handle, chipped grey stone head lashed on with rope.
   axe: `<g transform="rotate(25 24 24)" stroke="${O}" stroke-width="2" stroke-linejoin="round">
-    <rect x="21" y="8" width="6" height="38" rx="3" fill="#c99560"/>
-    <path d="M22 9 C15 7 9 8 5 10 C4 16 4.5 23 7 29 C11 25 16 22 22 21 Z" fill="#9fb1bf"/>
-    <path d="M26.5 10 H31 V19 H26.5 Z" fill="#7d93a3"/>
-    <path d="M7.5 12 C6.8 17 7.2 22 8.8 26" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>
-    <g fill="#bb8650" stroke-width="1.5"><rect x="19.5" y="9" width="9" height="3" rx="1.5"/><rect x="19.5" y="18" width="9" height="3" rx="1.5"/></g>
-    <path d="M24 27 V33 M24 38 V42" fill="none" stroke-width="1" stroke-opacity=".45"/></g>`,
+    <path d="M22 8 L21.2 45 Q24 47 26.8 45 L26 8 Z" fill="#bb8650"/>
+    <path d="M22.5 10 L13 6 L5.5 9 L4 17 L6.5 25 L13 24 L22.5 20 Z" fill="#8f9aa0"/>
+    <path d="M13 6 L5.5 9 L4 17 L9 15 L13 10 Z" fill="#c1c9cc" stroke-width="1.2"/>
+    <path d="M6.2 11 L5.2 18" fill="none" stroke="#fff2cc" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M12 13 L16 15 M10 20 L14 19" fill="none" stroke-width="1" stroke-opacity=".5"/>
+    <g fill="#d9c38c" stroke-width="1.4"><path d="M20 9 L28 11.5 V14 L20 11.5 Z"/><path d="M20 14 L28 16.5 V19 L20 16.5 Z"/><path d="M20 19 L28 21.5 V24 L20 21.5 Z"/></g>
+    <path d="M23 30 V36 M25 39 V43" fill="none" stroke-width="1" stroke-opacity=".45"/>
+    <path d="M22.8 27 V43" fill="none" stroke="#c99560" stroke-width="1.2" stroke-linecap="round"/></g>`,
+
+  // Coconut: hairy brown husk with three dark eyes and a highlight.
+  coconut: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M24 7 C35 7 42 15 42 26 C42 36 34 42 24 42 C14 42 6 36 6 26 C6 15 13 7 24 7 Z" fill="#7a5130"/>
+    <path d="M24 10 C32 10 38 16 39 23 C33 19 15 19 9 23 C10 16 16 10 24 10 Z" fill="#9a6a40" stroke="none"/>
+    <g fill="#3e2716" stroke-width="1"><circle cx="19" cy="15.5" r="2.2"/><circle cx="29" cy="15.5" r="2.2"/><circle cx="24" cy="21" r="2.2"/></g></g>
+    <path d="M12 28 L15 31 M17 34 L20 36 M31 34 L28 36.5 M36 28 L33 31 M24 37 V39.5" stroke="#4e321c" stroke-width="1.3" stroke-linecap="round"/>
+    <path d="M11 20 C12.5 16 15.5 13 19 11.5" fill="none" stroke="#fff2cc" stroke-width="1.8" stroke-linecap="round" stroke-opacity=".8"/>`,
+
 
   binoculars: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <rect x="9" y="5" width="10" height="11" rx="2" fill="#2f6f73"/><rect x="29" y="5" width="10" height="11" rx="2" fill="#2f6f73"/>
