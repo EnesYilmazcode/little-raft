@@ -13,6 +13,12 @@ and 0.36% of pixels differ on the big raft, all at deck shadow edges. A second, 
 is a hitch: `rebuildRaft()` regenerates every tile's procedural geometry whenever anything is built, about 300 ms
 of CPU on a 49-tile raft. The adopt patch makes rebuilds incremental.
 
+**With the other topics.** After procedural-models' low-poly props (which already cut draw calls from 542 to 188), the
+patch still halves them (188 -> 99 on the fresh raft, 273 -> 124 on the 49-tile raft) and still removes the rebuild
+hitch (the low-poly `createFloor` costs as much CPU as the old one). Its pixel-cost win does not carry over: that came
+from the old textured, bump-mapped deck. Water and viewmodel do not change any of this. Order, conflicts and numbers:
+`docs/tech/perf-ADOPT.md` section 8.
+
 ## How it was measured
 
 `python sandbox/perf/shoot.py` runs the REAL `dist/` game in headless Chromium (SwiftShader, 1280x720, pixel ratio 1)
@@ -157,6 +163,41 @@ Screenshots: `shots/game-stock-baseline.png` / `shots/game-patched-baseline.png`
 are pixel-identical. On the big raft the only differences are the sail and palm shadow edges on the deck. The
 512² fitted map is 4.3 cm per texel there against 4.9 cm before, so the edges are marginally crisper.
 
+**Re-measured after the follow-up fixes** (scenery no longer casts shadows, the deck batch grows in place):
+fresh raft 542 -> 251 calls, 49-tile raft 1026 -> 360, same screenshots. On top of procedural-models: 188 -> 99 and
+273 -> 124 (`docs/tech/perf-ADOPT.md` section 8).
+
+## Playtest of the patched game
+
+`python sandbox/perf/playtest.py --dist <patched copy>` plays the real game headless with a seeded bag (hook, hammer,
+sail, lantern, crate, palm, wood, plastic): three hook throws, floor tiles with the hammer, the four decorations, three
+live.js hot swaps, then one more floor on the remounted engine. Run on the patched `dist/` and on
+`combine.py pm vm perf water` (all four topics), with stock as reference:
+
+| | patched dist | pm + vm + perf + water | stock |
+|---|---|---|---|
+| floors built by clicking, decor placed | 4 + 4 | 4 + 4 | 8 + 4 |
+| geometries while building 4 floors | 306 flat | 177 flat | +7 per tile (each tile keeps its own meshes) |
+| deck meshes | 7 | 1 | 7 per tile |
+| deck built tile by tile == deck a fresh mount builds | yes (vertex sums identical) | yes | n/a |
+| geometries / textures / programs after swaps 1-3 | 248/8/11, 247/8/11, 247/8/11 | 96/5/9, 95/5/9, 95/5/9 | 399/8/11 x3 |
+| old-engine geometries left undisposed after a swap | none | none | none |
+| page errors | none | none | none |
+
+Screenshots (`play-<tag>-*.png`, read): deck, decor and sail shadows look the same as stock; the floor built after a
+swap joins the deck seamlessly. Two things this found that are not caused by the patch:
+
+- **live.js can mount two engines.** `check()` only sets `state.updating` inside `swap()`, after
+  `await fetchManifest()`. Two overlapping checks (the 6 s poll plus a manual `raftLive.check()`, or the poll plus the
+  `visibilitychange` reschedule) both pass the guard and both swap: one new engine is orphaned, keeps rendering into
+  the same canvas and is never disposed (+170 geometries and +8 textures per occurrence; seen on stock too). The fix
+  is a `checking` flag set before the first `await` in `check()`. playtest.py now lets the poll do the swaps.
+- **The hook lands about 4.5 m out headless**, so the items (7+ m away) are never caught, on stock too: SwiftShader
+  runs at 1-3 s per frame here and the game clamps `dt` to 50 ms, which shortens the throw. So pickup was not exercised here; the 30 items the
+  patched `itemModel` builds at start render without errors, and pickup does not touch any patched code.
+- The JS heap grows by 10-40 MB per hot swap on stock and patched alike (probably the new `game.js?build=` module
+  per swap, which the page never unloads). Not a GPU leak; worth a look by whoever owns live.js.
+
 ## Ranked findings
 
 | # | finding | fix | gain | looks | effort |
@@ -201,10 +242,10 @@ grow to hundreds, but it needs the 83 per-item materials folded into a few share
 ## Follow-ups not done here
 
 - **Viewmodel draw calls** (60 meshes for the hook hands): skin the fingers, or merge the rigid segments per bone.
-  This is hands.js work and belongs to the viewmodel topic.
-- **Leaf debris is 4.5k triangles per item** (debris.js `buildLeaf`), and items have 83 unique materials. Sharing the
-  per-item metal and plastic materials through `getMaterial`, plus a 2-level LOD for items beyond about 25 m, would
-  cut submit cost further, but changes debris.js and plastic.js internals.
+  This is hands.js work; the viewmodel topic's adopt keeps the 60 meshes, so it is still open there. Not touched here
+  to avoid two topics editing hands.js at once.
+- **Leaf debris is 4.5k triangles per item** (debris.js `buildLeaf`), and items have 83 unique materials. Solved by
+  procedural-models: its items share 3 materials and are 1-2 meshes each, so nothing is left to do in perf.
 - **One wood texture, tinted**, instead of 15 canvases (wood.js). This saves uploads and memory, but the grain strokes
   are alpha-blended over the base colour, so a tinted version would look slightly different. Art call.
 - **Merged meshes lose per-object frustum culling.** On the big raft the patched build draws about 5% more triangles
@@ -220,6 +261,7 @@ grow to hundreds, but it needs the 83 per-item materials folded into a few share
   more islands or a crowded sea are not covered.
 - Wall-clock `submit ms` is still affected by preemption. Read it as a direction, not a precise number.
 - The runtime A/B (`fixes.js`) patches the live scene from outside. The adopt patch was verified separately, end to
-  end, on a patched copy of `dist/`, but only headless: building tiles and multiplayer rebuilds were checked through
-  unit tests (`merge.test.mjs`) and code reading, not by playing.
+  end, on a patched copy of `dist/`. `playtest.py` then played it headless (hammer floors, decor, hook, hot swaps; see
+  below). Multiplayer rebuilds (guest receiving a different raft, `deckBatch.clear()`) were still only checked by
+  code reading.
 - A static 404 (favicon) shows in both stock and patched runs. It is not from this work.

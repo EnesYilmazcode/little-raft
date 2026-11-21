@@ -29,10 +29,48 @@ test('static batch grows incrementally and matches a full merge', () => {
   batch.add([tile(-1, 2)], ['-1,2']);
   const ref = vertsByMat([tile(0, 0), tile(1, 0), tile(-1, 2)]);
   assert.equal(batch.group.children.length, ref.size);
-  for (const m of batch.group.children) assert.equal(m.geometry.attributes.position.count, ref.get(m.material));
+  for (const m of batch.group.children) assert.equal(m.geometry.drawRange.count, ref.get(m.material));
   assert.deepEqual([...batch.keys].sort(), ['-1,2', '0,0', '1,0']);
   batch.clear();
   assert.equal(batch.group.children.length, 0); assert.equal(batch.keys.size, 0);
+});
+
+test('batch grows in place: one tile at a time equals one full merge, only the new range is uploaded', () => {
+  const at = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [2, 2], [-1, -1], [2, 0], [0, 2], [-2, 0], [1, -1]];
+  const batch = createStaticBatch(T, 'deck');
+  let grew = 0, ranged = 0;
+  for (const [x, z] of at) {
+    const before = new Map(batch.group.children.map(m => [m.userData.batchKey, m.geometry]));
+    batch.add([tile(x, z)], [x + ',' + z]);
+    for (const m of batch.group.children) {
+      if (!before.has(m.userData.batchKey)) continue;
+      if (before.get(m.userData.batchKey) !== m.geometry) grew++; else if (m.geometry.attributes.position.updateRanges.length) ranged++;
+    }
+  }
+  assert.ok(ranged > grew, `most adds write into spare capacity (in place ${ranged}, reallocated ${grew})`);
+  const ref = mergeMeshesByMaterial(T, at.map(([x, z]) => tile(x, z)));
+  for (const r of ref) {
+    const m = batch.group.children.find(c => c.userData.batchKey === r.userData.batchKey);
+    const n = r.geometry.attributes.position.count;
+    assert.equal(m.geometry.drawRange.count, n);
+    for (const a of ['position', 'normal', 'uv']) {
+      const s = r.geometry.attributes[a].itemSize;
+      assert.deepEqual(m.geometry.attributes[a].array.subarray(0, n * s), r.geometry.attributes[a].array);
+    }
+    r.geometry.computeBoundingBox();
+    assert.ok(m.geometry.boundingBox.equals(r.geometry.boundingBox));
+    assert.ok(m.geometry.boundingSphere.distanceToPoint(r.geometry.boundingBox.max) < 1e-5);
+  }
+});
+
+test('batch keeps vertex colours when a later piece has none (white, not dropped)', () => {
+  const m = new T.MeshStandardMaterial({ vertexColors: true });
+  const piece = color => { const g = new T.BoxGeometry(1, 1, 1).toNonIndexed(); if (color) g.setAttribute('color', new T.BufferAttribute(new Float32Array(g.attributes.position.count * 3).fill(.5), 3)); const r = new T.Group(); r.add(new T.Mesh(g, m)); return r; };
+  const batch = createStaticBatch(T, 'b');
+  batch.add([piece(true)]); batch.add([piece(false)]);
+  const [mesh] = batch.group.children, c = mesh.geometry.attributes.color.array, n = mesh.geometry.drawRange.count;
+  assert.equal(n, 72);
+  assert.equal(c[0], .5); assert.equal(c[n * 3 - 1], 1);
 });
 
 test('mirrored transforms keep front faces', () => {

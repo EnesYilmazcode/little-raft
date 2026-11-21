@@ -78,7 +78,7 @@ test('two tabs: the first to save wins, the other stops instead of overwriting',
 test('game.js: guest join does not save over a newer save, and leaving does not restore a stale backup over it', () => {
   const g = src('game.js');
   assert.match(g, /if \(storedRev\(\) <= saveRev\) save\(\);/);
-  assert.match(g, /const newer = storedRev\(\) > saveRev;[\s\S]{0,300}\(newer \? null : normaliseBackup\(ownWorldBackup\)\) \?\? savedOwnRaft\(\)/);
+  assert.match(g, /const plan = guestLeavePlan\(storedRev\(\), saveRev\);[\s\S]{0,300}\(plan\.useBackup \? normaliseBackup\(ownWorldBackup\) : null\) \?\? savedOwnRaft\(\)/);
   assert.match(g, /on\(window, 'storage'/);
   assert.match(g, /rev:plan\.rev, savedAt:Date\.now\(\)/);
 });

@@ -42,6 +42,17 @@ export const PLAYER_CONSTANTS = Object.freeze({
 const C = PLAYER_CONSTANTS;
 const HALF = C.TILE_SIZE / 2;
 const fin = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+
+// Distance from (x, z) to the edge of one prop blocker; negative inside. A blocker is a circle
+// {x, z, r} or a rotated rectangle {x, z, hx, hz, rot} (three.js rotation.y, like the decor footprint).
+export function blockerGap(b, x, z) {
+  const dx = x - b.x, dz = z - b.z;
+  if (!Number.isFinite(b.hx)) return Math.sqrt(dx * dx + dz * dz) - Math.max(0, fin(b.r, 0)); // not Math.hypot: it allocates
+  const rot = fin(b.rot, 0), c = Math.cos(rot), s = Math.sin(rot);
+  const qx = Math.abs(dx * c - dz * s) - Math.max(0, b.hx), qz = Math.abs(dx * s + dz * c) - Math.max(0, fin(b.hz, 0));
+  if (qx > 0 || qz > 0) { const ex = Math.max(qx, 0), ez = Math.max(qz, 0); return Math.sqrt(ex * ex + ez * ez); }
+  return Math.max(qx, qz);
+}
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const isTile = t => Array.isArray(t) && Number.isFinite(t[0]) && Number.isFinite(t[1]);
 // Math.hypot is a varargs builtin that V8 does not lower: it allocates on every call.
@@ -284,7 +295,7 @@ export class PlayerPhysics {
     }
   }
 
-  // Axis-separated movement (velocity * this._dt) against circular props; escape allowed if starting inside.
+  // Axis-separated movement (velocity * this._dt) against prop circles and rectangles; escape allowed if starting inside.
   // Candidate positions go through this._nx/_nz: double args to non-inlined calls get boxed.
   _moveHorizontal(blocked) {
     const mx = this.vx * this._dt, mz = this.vz * this._dt;
@@ -301,11 +312,10 @@ export class PlayerPhysics {
     for (let i = 0; i < blocked.length; i++) {
       const b = blocked[i];
       if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
-      const r = Math.max(0, fin(b.r, 0)) + C.BODY_RADIUS;
-      const d2n = (nx - b.x) * (nx - b.x) + (nz - b.z) * (nz - b.z);
-      if (d2n >= r * r) continue;
-      const d2o = (ox - b.x) * (ox - b.x) + (oz - b.z) * (oz - b.z);
-      if (d2o < r * r && d2n > d2o) continue; // escaping outward
+      const gn = blockerGap(b, nx, nz);
+      if (gn >= C.BODY_RADIUS) continue;
+      const go = blockerGap(b, ox, oz);
+      if (go < C.BODY_RADIUS && gn > go) continue; // escaping outward
       return false;
     }
     return true;
@@ -315,8 +325,7 @@ export class PlayerPhysics {
     for (let i = 0; i < blocked.length; i++) {
       const b = blocked[i];
       if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
-      const r = Math.max(0, fin(b.r, 0)) + C.BODY_RADIUS;
-      if ((x - b.x) * (x - b.x) + (z - b.z) * (z - b.z) < r * r) return false;
+      if (blockerGap(b, x, z) < C.BODY_RADIUS) return false;
     }
     return true;
   }

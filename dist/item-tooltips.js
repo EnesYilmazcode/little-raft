@@ -1,8 +1,8 @@
 // Little Raft item tooltips: one floating card for hotbar/inventory slots, crafting rows and any
 // [data-item-kind] element. Read-only view over ITEMS + bag + progression; never mutates anything.
 import { ITEMS } from './items.js?build=v3-survival-ae77fa84ac2b';
-import { ITEM_TEXT } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // craft-book text covers every ITEM_INFO kind (content, diving, signal...)
-import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { ITEM_TEXT, anchorTip, catalogueRecipes, tipFacts } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // craft-book text covers every ITEM_INFO kind (content, diving, signal...)
+import { ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 const STYLE_ID = 'item-tooltips-style';
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
@@ -22,6 +22,9 @@ const CSS = `
 .it-tip .it-cost{margin-top:6px;padding-top:6px;border-top:1px solid #c9a66b55;font:600 12px/1.45 ${FONT};color:#eadcbe;font-variant-numeric:tabular-nums}
 .it-tip .it-cost span{white-space:nowrap}.it-tip .it-cost .it-short{color:#ffab8f}
 .it-tip .it-st{display:block;color:#ffcf9a}
+.it-tip .it-facts{margin-top:6px;padding-top:6px;border-top:1px solid #c9a66b55;font:500 12px/1.4 ${FONT};color:#eadcbe}
+.it-tip .it-facts p{margin:0}.it-tip .it-facts p+p{margin-top:3px}
+.it-tip .it-facts em{font-style:normal;font-weight:700;color:#ffcf9a}
 .it-tip .it-lock{margin-top:6px;padding:4px 6px;border-radius:3px;background:#5a2a1a99;color:#ffcf9a;font:600 12px/1.3 ${FONT}}
 #inventory .sv-tip{display:none!important}
 @media(prefers-reduced-motion:reduce){.it-tip{transition:none}}
@@ -56,6 +59,8 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     return slotsOf(bag).reduce((n, s) => n + (s && s.kind === kind ? s.count || 0 : 0), 0);
   };
   const nameOf = k => table[k]?.name || ITEM_INFO[k]?.name || title(k);
+  let book = null; // hand + station recipes, for the "get it" and "used in" lines (built on first show)
+  const recipesNow = () => book || (book = catalogueRecipes(RECIPES, table));
 
   // Element -> { kind, slot } (slot only for bag slots, so live durability/count can be shown).
   function resolve(el) {
@@ -97,6 +102,12 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
       const st = r.station ? `<span class="it-st">${esc(nameOf(r.station))}${r.time ? ` · ${esc(r.time)}s each` : ''}${r.fuel ? ` · ${esc(r.fuel)} fuel` : ''}</span>` : '';
       out += `<div class="it-cost">${st}Needs ${parts.join(', ') || 'nothing'}${made}</div>`;
     }
+    // Where to get it and what it goes into (not on recipe rows: the panel beside them says that).
+    if (!recipe) {
+      const f = tipFacts(kind, recipesNow(), nameOf);
+      const lines = (f.get ? `<p><em>Get it:</em> ${esc(f.get)}</p>` : '') + (f.uses.length ? `<p><em>Used in:</em> ${esc(f.uses.join(', '))}</p>` : '');
+      if (lines) out += `<div class="it-facts">${lines}</div>`;
+    }
     if (prog && typeof prog.isUnlocked === 'function' && call(() => prog.isUnlocked(kind)) === false) {
       const why = call(() => prog.whyLocked?.(kind));
       out += `<div class="it-lock">Locked${why ? ': ' + esc(why) : ''}</div>`;
@@ -104,13 +115,13 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     return out;
   }
 
+  // Anchored beside the hovered element (craft-book anchorTip: right, else left, below, above), so it
+  // never trails the pointer over the craft button or drifts to the middle of the screen.
   function place() {
     if (tip.hidden || !cur) return;
-    const w = tip.offsetWidth, h = tip.offsetHeight, vw = innerWidth, vh = innerHeight;
-    let x = px + 16, y = py + 20;
-    if (x + w > vw - 6) x = px - w - 12;
-    if (y + h > vh - 6) y = py - h - 12;
-    tip.style.transform = `translate(${Math.round(Math.max(6, Math.min(x, vw - w - 6)))}px,${Math.round(Math.max(6, Math.min(y, vh - h - 6)))}px)`;
+    const p = anchorTip(cur.el.getBoundingClientRect(), tip.offsetWidth, tip.offsetHeight, innerWidth, innerHeight);
+    tip.style.transform = `translate(${Math.round(p.x)}px,${Math.round(p.y)}px)`;
+    tip.dataset.side = p.side;
   }
 
   function show(el, x, y) {
@@ -138,7 +149,6 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
 
   on(root, 'pointerover', e => { const el = target(e); if (el) show(el, e.clientX, e.clientY); else if (cur) hide(); });
   on(root, 'pointerout', e => { if (cur && !cur.el.contains(e.relatedTarget)) hide(); });
-  on(root, 'pointermove', e => { if (cur) { px = e.clientX; py = e.clientY; place(); } }, { passive: true });
   on(root, 'pointerdown', () => { if (cur) requestAnimationFrame(refresh); });
   on(root, 'dragstart', hide);
   on(root, 'focusin', e => {
