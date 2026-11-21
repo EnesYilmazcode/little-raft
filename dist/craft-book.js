@@ -367,3 +367,20 @@ export function holdHint(times, cap = HOLD.max) {
   const n = Math.min(Number.isFinite(times) ? Math.floor(times) : cap, cap);
   return n > 1 ? `hold: up to ${n}` : '';
 }
+
+// ---- hold-to-craft ring ----
+// The ring's arc uses pathLength = RING_LEN, so the stroke-dashoffset for progress p is linear.
+export const RING_LEN = 100;
+
+/** stroke-dashoffset for progress p (0 = empty, 1 = closed ring); NaN and out-of-range values clamp. */
+export function ringOffset(p, len = RING_LEN) {
+  const v = Number(p);
+  const c = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
+  return len * (1 - c);
+}
+
+/** Count shown inside the ring: '' for none, the number up to 99, then '99+'. */
+export function ringCount(n) {
+  const k = Math.floor(Number(n) || 0);
+  return k <= 0 ? '' : k > 99 ? '99+' : String(k);
+}

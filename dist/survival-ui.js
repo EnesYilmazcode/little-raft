@@ -3,9 +3,9 @@
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_ICONS } from './item-svg.js'; // [progression-hook]
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, craftButtonText, holdDelay, holdHint, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, craftButtonText, holdDelay, holdHint, ringOffset, ringCount, RING_LEN, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 
-const VERSION = 'sv5'; // bumped: merged markup (raft-master hotbar + loop crafting book)
+const VERSION = 'sv6'; // bumped: hold-to-craft ring replaces the fill bar
 const HB = Number(HOTBAR_SIZE) || 8;
 const TOTAL = Number(SLOT_COUNT) || 28;
 const DUR_MAX = Number(TOOL_DURABILITY) > 0 ? Number(TOOL_DURABILITY) : 0;
@@ -248,7 +248,7 @@ const CSS = `
 #inventory .sv-iname{font:600 13px/1.2 ${FONT};color:#e9e3d3;display:flex;align-items:baseline;gap:7px;min-width:0}
 #inventory .sv-iamt{font:800 13px/1 ${FONT};font-variant-numeric:tabular-nums;color:#ff8a73}
 #inventory .sv-ok .sv-iamt{color:#9ee07a}
-#inventory .sv-craftbtn{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;margin:0;padding:0 12px;overflow:hidden;border:0;border-radius:4px;
+#inventory .sv-craftbtn{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:46px;margin:0;padding:0 12px 0 48px;overflow:hidden;border:0;border-radius:4px;
   background:linear-gradient(#5c8a3a,#3f6a26);box-shadow:inset 0 0 0 1px #c8f0a0aa,0 2px 0 #1f3612;color:#f4ffe6;font:800 15px/1 ${FONT};letter-spacing:.5px;text-transform:none;cursor:pointer;transform:none;
   user-select:none;-webkit-user-select:none;touch-action:none}
 #inventory .sv-craftbtn:hover{background:linear-gradient(#6c9c46,#4a7a2e)}
@@ -256,13 +256,17 @@ const CSS = `
 #inventory .sv-craftbtn[aria-disabled="true"]{background:linear-gradient(#2a3236,#1e2629);box-shadow:inset 0 0 0 1px #ffffff44;color:#8d9598;cursor:not-allowed}
 #inventory .sv-craftbtn.sv-done{background:linear-gradient(#5c8a3a,#3f6a26);box-shadow:inset 0 0 0 1px #c8f0a0aa,0 2px 0 #1f3612;color:#f4ffe6}
 #inventory .sv-craftbtn.sv-deny{box-shadow:inset 0 0 0 2px #e06a4a,0 0 6px #e06a4a88}
-#inventory .sv-fill{position:absolute;inset:0;transform-origin:left center;transform:scaleX(var(--fill,0));background:linear-gradient(90deg,#d8f7a066,#f4ffd0aa);pointer-events:none}
-#inventory .sv-craftbtn:not(.sv-holding) .sv-fill{transition:transform .25s ease-out}
-#inventory .sv-clabel,#inventory .sv-chint,#inventory .sv-ccount{position:relative;pointer-events:none}
+#inventory .sv-ring{position:absolute;left:7px;top:50%;width:34px;height:34px;margin-top:-17px;display:grid;place-items:center;pointer-events:none;opacity:.55;transition:opacity .15s}
+#inventory .sv-ring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);overflow:visible}
+#inventory .sv-rtrack{fill:#14270b66;stroke:#14270b99;stroke-width:4}
+#inventory .sv-rarc{fill:none;stroke:#f4ffd0;stroke-width:4;stroke-linecap:round;stroke-dasharray:${RING_LEN} ${RING_LEN};stroke-dashoffset:var(--ring,${RING_LEN});filter:drop-shadow(0 0 2px #d8f7a0aa)}
+#inventory .sv-craftbtn:not(.sv-holding) .sv-rarc{transition:stroke-dashoffset .25s ease-out}
+#inventory .sv-craftbtn.sv-holding .sv-ring,#inventory .sv-craftbtn.sv-done .sv-ring{opacity:1}
+#inventory .sv-craftbtn[aria-disabled="true"]:not(.sv-done) .sv-ring{display:none}
+#inventory .sv-clabel,#inventory .sv-chint{position:relative;pointer-events:none}
 #inventory .sv-chint{font:600 11px/1 ${FONT};letter-spacing:0;color:#e6f7d4;opacity:.9}
 #inventory .sv-chint:empty{display:none}
-#inventory .sv-ccount{min-width:26px;padding:3px 5px;border-radius:9px;background:#14270bcc;color:#c8f7a0;font:800 12px/1 ${FONT};font-variant-numeric:tabular-nums}
-#inventory .sv-ccount:empty{display:none}
+#inventory .sv-ccount{position:relative;color:#f4ffe6;font:800 12px/1 ${FONT};letter-spacing:-.3px;font-variant-numeric:tabular-nums;text-shadow:0 1px 1px #14270b}
 #inventory .sv-empty-list{margin:6px;color:#c9cfd0;font-size:14px}
 #inventory .sv-tip{position:fixed;left:0;top:0;z-index:10;pointer-events:none;box-sizing:border-box;width:max-content;max-width:250px;padding:7px 10px;border-radius:4px;white-space:normal;
   background:#0b1013f5;border:1px solid #ffffff40;color:#f8f3e6;font:700 14px/1.3 ${FONT};box-shadow:0 4px 12px #0008}
@@ -282,7 +286,7 @@ const CSS = `
 @media(max-width:860px),(max-height:520px){#inventory.sv-inv{width:auto}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}#inventory .sv-craft{flex:none;width:auto;min-width:0;height:auto;max-height:none;overflow:visible}#inventory .sv-rlist{max-height:30vh}#inventory .sv-bag{min-width:0}
   #inventory.sv-inv{--s:44px;--g:5px}#inventory .sv-slot .sv-art{inset:3px}}
 @media(max-width:440px){#inventory.sv-inv{--s:36px;--g:4px}#inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}}
-@media(prefers-reduced-motion:reduce){.sv-slot,.sv-art,.sv-cursor,.sv-label,#inventory .sv-recipe,#inventory .sv-craftbtn .sv-fill{transition:none!important;animation:none!important}}
+@media(prefers-reduced-motion:reduce){.sv-slot,.sv-art,.sv-cursor,.sv-label,#inventory .sv-recipe,#inventory .sv-craftbtn .sv-rarc{transition:none!important;animation:none!important}}
 /* crafting book additions from the bugs/UX loop (sources, readable icons, pin tracker) */
 #inventory .sv-wrap{user-select:none;-webkit-user-select:none}
 #inventory .sv-hint.sv-warn{color:#ffb39a}
@@ -337,6 +341,8 @@ function ensureStyle() {
 
 const slotInner = num => `${num ? `<i class="sv-num">${num}</i>` : ''}<i class="sv-art"></i><i class="sv-count"></i><i class="sv-dur" hidden><i></i></i>`;
 
+// Hold-to-craft ring: the arc sweeps once per craft (pathLength = RING_LEN) and the count sits inside.
+const RING = `<span class="sv-ring" aria-hidden="true"><svg viewBox="0 0 36 36" focusable="false"><circle class="sv-rtrack" cx="18" cy="18" r="15"/><circle class="sv-rarc" cx="18" cy="18" r="15" pathLength="${RING_LEN}"/></svg><b class="sv-ccount"></b></span>`;
 const HINT = 'Click a stack to pick it up, then a slot to place it, or drag it. Right-click a stack to take half; right-click while holding to place one. Tab or arrows move between slots; E, I or Esc closes.';
 function mountDialog() {
   let d = document.getElementById('inventory');
@@ -359,7 +365,7 @@ function mountDialog() {
           <div class="sv-dhead"><span class="sv-dart" aria-hidden="true"></span><span><b class="sv-dname"></b><small class="sv-ddesc"></small></span><button type="button" class="sv-pinbtn" aria-pressed="false">Pin</button></div>
           <span class="sv-dlabel">Requires</span>
           <ul class="sv-ings"></ul>
-          <button type="button" class="sv-craftbtn"><i class="sv-fill"></i><span class="sv-clabel">Craft</span><small class="sv-chint"></small><b class="sv-ccount" aria-hidden="true"></b></button>
+          <button type="button" class="sv-craftbtn">${RING}<span class="sv-clabel">Craft</span><small class="sv-chint"></small></button>
         </div>
       </section>
       <section class="sv-bag" aria-label="Inventory">
@@ -613,7 +619,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!hold) {
       D.label.textContent = v.state === 'gated' && !done ? 'Locked' : craftButtonText(v.state, done); // [progression-hook]
       D.hint.textContent = ready && !done ? holdHint(v.times) : '';
-      if (done) D.count.textContent = '';
+      if (done) D.count.textContent = ringCount(done.n); // the closed ring keeps the batch total
     }
     D.btn.setAttribute('aria-label', ready ? `Craft ${v.r.name}. Hold to craft several.` : `${v.r.name}: ${D.label.textContent}`);
   }
@@ -750,10 +756,10 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     render(false);
     return true;
   }
-  function setFill(p) { D.btn.style.setProperty('--fill', p.toFixed(3)); }
-  function showCount(n) {
+  function setFill(p) { D.btn.style.setProperty('--ring', ringOffset(p).toFixed(2)); }
+  function showCount(n) { // n crafts so far; the ring counts items (Nail makes 3 a craft)
     clearTimeout(countTimer);
-    D.count.textContent = n > 0 ? '+' + n : '';
+    D.count.textContent = ringCount(n * (viewOf(hold?.id ?? pickId)?.r.out.count || 1));
   }
   function startHold() {
     if (!pickId) return;
@@ -790,9 +796,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     hold = null;
     justMade = made > 0 && v ? { id: v.r.id, n: made * (v.r.out.count || 1), name: v.r.name } : null;
     D.btn.classList.remove('sv-holding');
-    setFill(0);
+    setFill(made > 0 ? 1 : 0); // a closed ring with the batch count, until the "Crafted N" moment ends
     clearTimeout(countTimer);
-    countTimer = setTimeout(() => { D.count.textContent = ''; justMade = null; if (alive) paintDetail(); }, 1100);
+    countTimer = setTimeout(() => { D.count.textContent = ''; justMade = null; setFill(0); if (alive) paintDetail(); }, 1100);
     paintDetail();
   }
 
