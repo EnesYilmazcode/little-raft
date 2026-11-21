@@ -298,13 +298,13 @@ class Run:
             self.xdo('keydown', self.XKEYS[key]); time.sleep(hold / 1000); self.xdo('keyup', self.XKEYS[key])
         else: self.cmd('key', key=key, hold=hold)
 
-    def key_until(self, key, label, until, min_ms=100, max_ms=None):
+    def key_until(self, key, label, until, min_ms=100, max_ms=None, flush=True):
         """Press key, keep it down until JS `until` is true (at least min_ms, at most max_ms), release. Returns
         (held_ms, until_was_true_at_release). Used where the outcome depends on the release landing after a page reaction
         (a fast machine reacts within a few ms of keydown; swiftshader here can take longer than a 100 ms tap)."""
         # sendInputEvent has no autorepeat, so a long hold is safe; X autorepeats after ~600 ms.
         if max_ms is None: max_ms = 600 if self.input == 'xtest' else 4000
-        self.flush()
+        if flush: self.flush()
         t0 = time.time()
         if self.input == 'xtest': self.xdo('keydown', self.XKEYS[key])
         else: self.cmd('down', key=key)
@@ -475,38 +475,67 @@ class Run:
         self.check(f'{cid}.no-reopen', 'pause menu does not reopen on its own after resume', not self.snap()['options'])
         self.metrics.setdefault('after_pause_resume', {})[cid] = {'locked': s['locked'], 'resumeHint': s['resumeHint'], 'lockRequests': s['calls']}
 
+    # Page-time gap between the key that opened the inventory and the Esc that closed it. Chromium's transient user
+    # activation lasts 5 s and Esc does not grant one, so this decides whether the game CAN relock on that Esc.
+    ACT_GAP = r"""(() => { const k = (window.__lrProbe && __lrProbe.keys) || []; let esc = null, open = null;
+      for (let i = k.length - 1; i >= 0; i--) { const e = k[i]; if (e.type !== 'keydown') continue;
+        if (esc === null) { if (e.key === 'Escape') esc = e.t; } else if (['Tab', 'i', 'I'].includes(e.key)) { open = e.t; break; } }
+      return esc !== null && open !== null ? esc - open : null; })()"""
+    ACTIVATION_MS = 5000
+
     def inventory_cycle(self, cid, key, dwell_ms=400, hold=100):
-        s = self.relock('to resume play')
-        if self.real and not self.has_lock(s): return
-        real = self.real
-        self.key(key, f'{key} (open inventory)'); self.settle(500)
-        s = self.snap()
-        if not self.check(f'{cid}.open', f'{key} opens the inventory and frees the cursor', s['inventory'] and not s['locked'] and not s['options'], s): return
-        self.settle(max(0, dwell_ms - 500))
-        where = 'in inventory' + (f', after {dwell_ms // 1000}s' if dwell_ms >= 1000 else '')
-        if real:
-            # Hold Esc until the game's relock lands (as it does within a normal key press on real hardware), then release.
-            held, relocked_while_down = self.key_until('Escape', f'Esc down ({where}), held {{ms}} ms until the game re-locked, Esc up',
-                                                       'document.pointerLockElement')
-            self.metrics.setdefault('inventory_esc', {})[cid] = {'held_ms': held, 'locked_before_release': relocked_while_down}
-        else:
-            self.key('Escape', f'Esc held {hold} ms ({where})', hold=hold)
-        self.settle(800)
-        s = self.snap()
+        """Open the inventory with `key`, close it with Esc. A quick close (Esc well inside the 5 s activation window of the
+        opening key) must put the player back in locked play; a slow close (activation expired) cannot relock and must leave
+        the game waiting for a click with the resume hint. Under load a quick close can drift past 5 s; it is then retried."""
+        quick = dwell_ms < 1000
+        for attempt in range(3 if quick else 1):
+            s = self.relock('to resume play')
+            if self.real and not self.has_lock(s): return
+            real = self.real
+            self.key(key, f'{key} (open inventory)')
+            opened = self.wait_for("document.querySelector('#inventory')?.open && !document.pointerLockElement && !document.querySelector('#options')?.open",
+                                   timeout=8, poll=.05)
+            if not self.check(f'{cid}.open', f'{key} opens the inventory and frees the cursor', opened, None if opened else self.snap()): return
+            where = 'in inventory' + (f', after {dwell_ms // 1000}s' if not quick else '')
+            if quick:
+                self.settle(max(0, dwell_ms - 300))
+                # No frame wait: stay inside the activation window. Hold Esc until the game's relock lands (on real hardware
+                # it lands within a normal key press), then release.
+                held, relocked_while_down = self.key_until('Escape', f'Esc down ({where}), held {{ms}} ms until the game re-locked, Esc up',
+                                                           'document.pointerLockElement', flush=False) if real else (None, None)
+                if not real: self.key('Escape', f'Esc held {hold} ms ({where})', hold=hold, flush=False)
+            else:
+                self.settle(dwell_ms)
+                self.key('Escape', f'Esc held {hold} ms ({where})', hold=hold, flush=False); held = hold; relocked_while_down = None
+            self.settle(800)
+            s = self.snap()
+            gap = self.js(self.ACT_GAP)
+            self.metrics.setdefault('inventory_esc', {})[cid] = {'open_to_esc_ms': gap, 'held_ms': held, 'locked_before_release': relocked_while_down, 'attempts': attempt + 1}
+            if not (real and quick) or (gap is not None and gap < self.ACTIVATION_MS - 500): break
+            self.notes.append(f'{cid}: Esc came {gap} ms after {key} (load), outside the activation window; retrying')
+            if s['inventory']: self.key('Escape', 'Esc (close inventory)')
         self.window_alive(f'{cid}.window', f'Esc in the inventory ({key})')
         self.check(f'{cid}.close', 'Esc closes the inventory', not s['inventory'] and not s['engineInventoryOpen'], s)
         self.check(f'{cid}.no-pause', 'that Esc does not leave the pause menu open', not s['options'] and not s['dialogs'], s['dialogs'])
         self.check(f'{cid}.running', 'game is running again after closing the inventory', s['running'] and s['active'] is not False, s)
-        if real:
+        if not real: return
+        detail = {'locked': s['locked'], 'resumeHint': s['resumeHint'], 'lockFallback': s['lockFallback'], 'open_to_esc_ms': gap,
+                  'lastCall': s['lastCall'], 'events': s['events'], 'keys': s['keys']}
+        if gap is not None and gap < self.ACTIVATION_MS - 500:
             ev = [e for e in s['events'] if e['type'] == 'change']
             bounced = len(ev) >= 2 and ev[-2]['locked'] == 'world' and ev[-1]['locked'] is None
+            detail['locked_before_release'] = relocked_while_down
             self.check(f'{cid}.relocked', 'closing the inventory with Esc puts the player back in locked play (lock holds after Esc is released)',
-                       self.has_lock(s), {'locked': s['locked'], 'resumeHint': s['resumeHint'], 'lastCall': s['lastCall'], 'events': s['events'], 'keys': s['keys'],
-                                          'locked_before_release': relocked_while_down},
-                       repro_extra=('the game re-requests lock on Esc keydown (inventory close -> resume), lock engages before the key is released, then '
-                                    f'Electron treats the Esc keyup as "leave pointer lock" and drops it ({ev[-1]["t"] - ev[-2]["t"]} ms after it engaged); '
-                                    'player is left unlocked with the resume hint') if bounced and relocked_while_down else
-                                   'the game never re-requested/re-acquired lock while Esc was held' if not relocked_while_down else '')
+                       self.has_lock(s), detail,
+                       repro_extra=(f'Esc pressed {gap} ms after {key}; the game re-requests lock on Esc keydown (inventory close -> resume), lock engages '
+                                    f'before the key is released, then Electron treats the Esc keyup as "leave pointer lock" and drops it '
+                                    f'({ev[-1]["t"] - ev[-2]["t"]} ms after it engaged); player is left unlocked with the resume hint') if bounced and relocked_while_down else
+                                   f'Esc pressed {gap} ms after {key}; the game did not re-acquire lock while Esc was held')
+        elif gap is not None and gap > self.ACTIVATION_MS:
+            self.check(f'{cid}.resume-hint', 'closing the inventory after the activation window shows the click-to-resume hint (no lock possible, no drag-look latch)',
+                       not s['locked'] and s['resumeHint'] and not s['lockFallback'], detail)
+        else:
+            self.notes.append(f'{cid}: Esc came {gap} ms after {key}, at the activation boundary; lock outcome not asserted')
 
     def hot_swap(self):
         self.relock('to resume play')
