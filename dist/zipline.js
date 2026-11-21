@@ -399,7 +399,7 @@ export function createZipline(ctx) {
   }
 
   function prompt(aim) {
-    if (R.on) return null;
+    if (R.on || ctx.physics?.mount) return null; // on another ride (driftboard): its own E prompt applies
     const t = target(aim);
     if (!holding()) return t ? TEXT.nohandle : null;
     if (oldHost()) return t ? OLD_HOST : null;
@@ -412,14 +412,14 @@ export function createZipline(ctx) {
       if (have < c.cost) return `Needs ${num(c.cost)} rope`;
       return `<kbd>E</kbd>Link line here (${num(c.cost)} rope)`;
     }
-    if (t) return countAt(st.l, t.x, t.z) ? '<kbd>E</kbd>Glide · <kbd>C</kbd>+<kbd>E</kbd>new line' : '<kbd>E</kbd>Start a glide line';
+    if (t) return countAt(st.l, t.x, t.z) ? '<kbd>E</kbd>Glide · <kbd>C</kbd>+<kbd>E</kbd> new line' : '<kbd>E</kbd>Start a glide line';
     if (!pending && lineTarget(aim) >= 0) return '<kbd>E</kbd>Hook on';
     return null;
   }
 
   function interact(aim) {
     if (R.on) return true; // E does nothing on the line (Space lets go)
-    if (!holding()) return false;
+    if (!holding() || ctx.physics?.mount) return false; // riding a driftboard: E is the board's (hooking on dragged the board along the line)
     const t = target(aim);
     if (oldHost()) { if (t) { say(OLD_HOST, 2400); return true; } return false; }
     const physics = ctx.physics;
