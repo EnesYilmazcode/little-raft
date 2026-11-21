@@ -48,19 +48,34 @@ EDITS = [
     ("    updateAvatars(dt); updateCamera(dt); if (running) diving?.update(dt, elapsed); // diving lane hook\n",
      "    updateAvatars(dt); updateCamera(dt); if (running) diving?.update(dt, elapsed); // diving lane hook\n"
      "    if (sfx.context) { camera.getWorldDirection(earDir); sfx.setListener(camera.position.x, camera.position.y, camera.position.z, earDir.x, earDir.y, earDir.z); } // [audio]\n"),
-    # 4. smelter / grill / driftwood-grill sounds for the local player's own actions (both roles: a guest's
-    #    action() sends to the host, so the guest hears its own action and the host does not hear it twice)
-    ("  function action(a) {\n    if (role === 'guest') {\n",
-     "  function actionSound(a) { // [audio] station + cooking cues at the station's tile\n"
+    # 4. smelter / grill / driftwood-grill sounds, only once the host has accepted the action. The host's
+    #    applyAction() fingerprints what the action would change (the actor's bag for prog:*, the grill's
+    #    slots for fc:cook) before the hook runs, and if it changed, emits a {kind:'sfx'} effect to the actor:
+    #    played locally for the host, sent to a guest (a rejected or unconnected action stays silent).
+    ("  function applyAction(a, actor = 'host') {\n",
+     "  function stationCue(a, actor) { // [audio] station + cooking cue, emitted to the actor once the action took\n"
      "    try {\n"
-     "      if (a.kind === 'fc:cook') { sfx.play('sizzle'); return; }\n"
-     "      if (a.kind !== 'prog:fuel' && a.kind !== 'prog:insert' && a.kind !== 'prog:take') return;\n"
-     "      const [kx, kz] = String(a.key).split(',').map(Number), d = world.decor.find(o => o.x === kx && o.z === kz); if (!d) return;\n"
-     "      const ev = a.kind === 'prog:fuel' ? 'stoke' : a.kind === 'prog:take' ? (d.type === 'smelter' ? 'ingot' : 'grab') : d.type === 'smelter' ? 'clank' : 'sizzle';\n"
-     "      sfx.play(ev, 1, {x:kx * 2, y:.6, z:kz * 2});\n"
-     "    } catch {}\n"
+     "      let ev, x, z, sig;\n"
+     "      if (a.kind === 'fc:cook') { const g = fc?.grills?.get(a.id); if (!g) return null; ev = 'sizzle'; x = g.st.x; z = g.st.z; sig = () => g.st.slots.filter(Boolean).length; }\n"
+     "      else if (a.kind === 'prog:fuel' || a.kind === 'prog:insert' || a.kind === 'prog:take') {\n"
+     "        [x, z] = String(a.key).split(',').map(Number); const d = world.decor.find(o => o.x === x && o.z === z); if (!d) return null;\n"
+     "        ev = a.kind === 'prog:fuel' ? 'stoke' : a.kind === 'prog:take' ? (d.type === 'smelter' ? 'ingot' : 'grab') : d.type === 'smelter' ? 'clank' : 'sizzle';\n"
+     "        const bag = actorBag(actor); sig = () => JSON.stringify(bag.snapshot());\n"
+     "      } else return null;\n"
+     "      const before = sig();\n"
+     "      return () => { try { if (sig() !== before) emit({kind:'sfx', sound:ev, x:x * 2, z:z * 2}, actor); } catch {} };\n"
+     "    } catch { return null; }\n"
      "  }\n"
-     "  function action(a) {\n    actionSound(a);\n    if (role === 'guest') {\n"),
+     "  function applyAction(a, actor = 'host') {\n"),
+    ("    if (prog?.apply(a, actor)) return; // [progression-hook] locked crafts + 'prog:*' actions\n",
+     "    const cue = stationCue(a, actor); // [audio]\n"
+     "    if (prog?.apply(a, actor)) { cue?.(); return; } // [progression-hook] locked crafts + 'prog:*' actions\n"),
+    ("emit:text => emit({kind:'notice', text}, actor)}); return; } // [fishing-cooking]\n",
+     "emit:text => emit({kind:'notice', text}, actor)}); cue?.(); return; } // [fishing-cooking] [audio] cue\n"),
+    # the cue on both roles: spatial at the station's tile, nothing else (no notice, no fallback 'deny')
+    ("    if (prog?.effect(e)) return; // [progression-hook]\n",
+     "    if (prog?.effect(e)) return; // [progression-hook]\n"
+     "    if (e.kind === 'sfx') { if (typeof e.sound === 'string') sfx.play(e.sound, 1, Number.isFinite(e.x) && Number.isFinite(e.z) ? {x:e.x, y:.6, z:e.z} : undefined); return; } // [audio] stationCue\n"),
 ]
 
 
@@ -258,6 +273,25 @@ def check():
           await new Promise(r => setTimeout(r, 400));
           return { stats: s0, played, underwater_seen: under, after: a.stats(), buses: ['master', 'effects', 'ambience', 'music'].map(n => a.getBus?.(n) ?? null) };
         }''' % json.dumps(build))
+        # station cue (edit 4): a smelter on the raft; 'Take' with an empty output is refused by the host
+        # (silent), adding wood as fuel is accepted (one spatial 'stoke'), through the real station panel
+        rep['station'] = page.evaluate('''async () => {
+          const P = raftDebug.progression, a = raftDebug.audio, orig = a.play, heard = [];
+          if (!P) return { skipped: 'no progression' };
+          a.play = (ev, s, o) => { heard.push([ev, !!(o && Number.isFinite(o.x))]); return orig.call(a, ev, s, o); };
+          try {
+            const key = P.place('smelter'); if (!key) return { skipped: 'no free tile' };
+            P.grant('wood', 3); P.open(key); await new Promise(r => setTimeout(r, 300));
+            heard.length = 0;
+            document.querySelector('.st-dlg [data-act=take]')?.click(); await new Promise(r => setTimeout(r, 300));
+            const refused = heard.filter(h => h[0] !== 'ui').map(h => h[0]);
+            heard.length = 0;
+            document.querySelector('.st-dlg .st-chip[data-role=fuel][data-item-kind=wood]')?.click(); await new Promise(r => setTimeout(r, 300));
+            const accepted = heard.filter(h => h[0] !== 'ui');
+            document.querySelector('.st-dlg .st-x')?.click(); await new Promise(r => setTimeout(r, 200));
+            return { key, refused, accepted };
+          } finally { a.play = orig; }
+        }''')
         rep['audio'] = page.evaluate('({...window.__aud, ctxs: undefined, level: undefined})')
         page.wait_for_timeout(1500)
 
@@ -296,6 +330,9 @@ def check():
         'every_event_schedules': all(bt['played'].values()),
         'underwater_event_seen': bt['underwater_seen'] and not bt['after'].get('underwater'),
         'buses_default': bt['buses'][1:] == [1, 0.7, 0.7],
+        # station sounds only after the host accepted the action, spatial at the station
+        'station_cue_refused_silent': rep['station'].get('refused') == [],
+        'station_cue_accepted_once': rep['station'].get('accepted') == [['stoke', True]],
         # failed mount: live.js kept the old build, the old engine owns the ocean again, the sea never dropped
         'failed_mount_kept_old': fm['live']['build'] == build and 'injected mount failure' in (fm['live']['lastError'] or ''),
         'failed_mount_ocean_back': fm['stats'].get('worklet') and fm['stats'].get('ambience') == 'worklet',
