@@ -249,7 +249,7 @@ export function createHands(T, hookModel, { use = 'throw' } = {}) {
     const rpx = 0.10 * ce - 0.12 * a + 0.010 * wA * Math.sin(ph) + 0.002 * amp * Math.sin(t * 0.7) + 0.008 * oW - 0.008 * rW + trem
       + 0.02 * sUp - 0.03 * sHit;
     const rpy = -0.10 * ce + 0.07 * a - 0.012 * wA * bob + 0.0045 * amp * br - 0.022 * oW + 0.005 * rW * Math.sin(t * 9.42 + Math.PI) - 0.025 * catchDip + trem * 0.7
-      + 0.05 * sUp - 0.09 * sHit + 0.012 * sReb;
+      + 0.05 * sUp - 0.065 * sHit + 0.012 * sReb;
     const rpz = 0.20 * ce - 0.24 * a + 0.025 * oW - 0.012 * rW * (pull - 0.5) + 0.02 * sUp - 0.04 * sHit;
     const rrx = 0.40 * ce - 0.75 * a + 0.010 * amp * br + 0.10 * oW + 0.12 * catchDip + 0.20 * sUp - 0.70 * sHit + 0.10 * sReb;
     const rry = 0.25 * ce - 0.15 * a;
