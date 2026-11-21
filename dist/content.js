@@ -40,7 +40,7 @@
 //                             Delete this module's slice key for d's tile, bump its rev so guests resync, close any
 //                             open UI for that tile. Must not throw. No return value.
 //   effect(e)                 a host/peer effect message; return true if consumed (game.js then skips its notice/sound) [fireworks]
-//   ride(dt, p, inp) / riding() [zipline] glide line ride (game.js movePlayer)
+//   ride(dt, p, inp) / riding() [zipline] glide line ride, [paddleboard] driftboard (game.js movePlayer); return true to skip PlayerPhysics
 // Second make() argument: peer(name) -> another live module (scarecrow), with peer.peek(name) -> its serialize().
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   observe(ev, actor)        host only: game events after success ({kind:'craft'|'collect'|'fish'|'build'|
@@ -72,6 +72,9 @@ import { createGull } from './gull.js?build=v3-survival-ae77fa84ac2b'; // [gull]
 import { createJuicer } from './juicer.js?build=v3-survival-ae77fa84ac2b'; // [juicer]
 import { createDivingGear } from './diving-gear.js?build=v3-survival-ae77fa84ac2b';
 import { createTrader } from './trader.js?build=v3-survival-ae77fa84ac2b';
+import { createGameTable } from './gametable.js?build=v3-survival-ae77fa84ac2b'; // game table
+import { createPaddleboard } from './paddleboard.js?build=v3-survival-ae77fa84ac2b'; // [paddleboard]
+import { createBuoyCourse } from './buoycourse.js?build=v3-survival-ae77fa84ac2b'; // [buoycourse]
 import { createCookpot } from './cookpot.js?build=v3-survival-ae77fa84ac2b';
 import { createDisplay } from './display.js?build=v3-survival-ae77fa84ac2b'; // [display]
 import { createPower } from './power.js?build=v3-survival-ae77fa84ac2b'; // [power]
@@ -83,7 +86,7 @@ import { createScarecrow } from './scarecrow.js?build=v3-survival-ae77fa84ac2b';
 import { createFireworks } from './fireworks.js?build=v3-survival-ae77fa84ac2b'; // [fireworks]
 import { createZipline } from './zipline.js?build=v3-survival-ae77fa84ac2b'; // [zipline]
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createCrops, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createCookpot]; // [bees] + createBees; [scarecrow] after wildlife; [sit] + createSitting; [flags] + createFlags; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [juicer] + createJuicer [gull] + createGull; [crops] + createCrops
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createCrops, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createCookpot]; // round 4: game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); // [bees] + createBees; [scarecrow] after wildlife; [sit] + createSitting; [flags] + createFlags; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [juicer] + createJuicer [gull] + createGull; [crops] + createCrops
 // [undecor] decor whose module stores items per tile but has no beforeUndecor/undecorLoot/afterUndecor yet:
 // picking it up would lose what it holds, so the host refuses (display, fish trap, cooking pot, gull perch tray).
 const NO_UNDECOR = new Set(['shelf', 'trophystand', 'fishtrap', 'cookpot', 'perch', 'cropplot']); // [crops] slots live on the decor entry
@@ -143,7 +146,7 @@ export function createContent(ctx, features = FEATURES) {
     alt: (aim, kind) => !!first('alt', aim, kind), // content hook (paint)
     afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)
     tileTint: (x, z, base) => first('tileTint', x, z, base), // content hook (paint): plank hex for a painted deck tile, else null
-    ride: (dt, p, inp) => !!first('ride', dt, p, inp), riding: () => !!first('riding'), // [zipline] [sit] content hook: first module to take over motion wins (glide line, seat)
+    ride: (dt, p, inp) => !!first('ride', dt, p, inp), riding: () => !!first('riding'), // [zipline] [sit] content hook: first module to take over motion wins (glide line, seat, driftboard)
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
     placeBlock: (kind, x, z) => first('placeBlock', kind, x, z), // [fishtrap] reason a decor can't go on (x, z), or null
     beforeUndecor: (d, actor) => first('beforeUndecor', d, actor) || (NO_UNDECOR.has(d?.type) ? 'Empty it first: this one can’t be picked up yet' : null), // [undecor] + modules without undecor hooks keep their stored items
