@@ -26,7 +26,7 @@ const LOCAL_COOLDOWN = 0.35;
 const SLEW_SNAP = 1, SLEW_RATE = 4; // guest clock: snap past 1 s of error, else ease at 4/s
 
 // Prompt text, built once: PROMPTS[kind][left].
-const LABEL = { palm: 'Gather palm: wood and leaves', bush: 'Pick from bush: leaves, maybe a seed, a flower or berries', /* [juicer] */ rock: 'Gather stone', sand: 'Scoop sand' };
+const LABEL = { palm: 'Gather palm: wood and leaves', bush: 'Pick from bush: leaves, maybe a seed or a flower', rock: 'Gather stone', sand: 'Scoop sand' };
 const PROMPTS = {};
 for (const k of KINDS) {
   PROMPTS[k] = [];

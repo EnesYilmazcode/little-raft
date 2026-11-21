@@ -103,10 +103,6 @@ const LIST = [
     tip: 'Sweet, golden and sticky.' }),
   item('wax', 'Beeswax', 'material', { iconTint: '#f3e2a4',
     tip: 'Soft beeswax from the comb. Good for candles.' }),
-  item('berries', 'Island Berries', 'material', { iconTint: '#c2335a', // [juicer]
-    tip: 'Tart little berries from an island bush.' }),
-  item('coconut', 'Coconut', 'material', { iconTint: '#7a5232', // [juicer]
-    tip: 'A hairy brown coconut from your palm planter.' }),
   item('fish', 'Fish', 'food', { icon: 'icon-fish', placeholder: false,
     tip: 'A shiny catch from your fishing rod. Edible raw, but salty: grill it to fill up properly.' }),
   item('sharkmeat', 'Raw Shark Meat', 'food', { iconTint: '#d97a7a',
@@ -185,12 +181,6 @@ const LIST = [
   item('honeyfish', 'Honey Glazed Fish', 'food', { iconTint: '#e8a83a', stack: 10, // [bees]
     recipe: hand({ cookedfish: 1, honey: 1 }), unlock: discover('honey'),
     tip: 'Grilled fish with a honey glaze. The seagull is very jealous.' }),
-  item('berrycup', 'Berry Smoothie', 'food', { iconTint: '#c2335a', stack: 5, // [juicer] made on the juicer
-    tip: 'A pink berry smoothie. Drink it, keep the cup.' }),
-  item('coconutcup', 'Coconut Smoothie', 'food', { iconTint: '#f1e8d6', stack: 5, // [juicer]
-    tip: 'Cool, milky coconut. Very refreshing.' }),
-  item('mixcup', 'Island Smoothie', 'food', { iconTint: '#e9835f', stack: 5, // [juicer]
-    tip: 'Berries and coconut together. The best of both.' }),
   item('cookedsharkmeat', 'Grilled Shark Meat', 'food', { iconTint: '#c7764a', stack: 10,
     recipe: cook('grill', 'sharkmeat', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
     tip: 'A thick, smoky steak. Click with it in hand to eat (+30 food).' }),
@@ -212,12 +202,6 @@ const LIST = [
   item('candle', 'Beeswax Candle', 'decor', { placeable: true, iconTint: '#ffd27a',
     recipe: hand({ wax: 2, rope: 1 }), unlock: discover('wax'),
     tip: 'A little jar candle that glows warmly at night.' }),
-  item('perch', 'Gull Perch', 'decor', { placeable: true, iconTint: '#c9a46a', // [gull] model in dist/gull-models.js
-    recipe: hand({ wood: 3, rope: 2, leaf: 1 }), unlock: discover('cookedfish'),
-    tip: 'A driftwood perch with a woven tray. Seagulls like a good lookout.' }), // [gull]
-  item('juicer', 'Juicer', 'decor', { placeable: true, iconTint: '#a9b4c2', // [juicer] not 'station' (no slot panel)
-    recipe: hand({ wood: 4, scrap: 2, rope: 1 }), unlock: discover('berries'),
-    tip: 'A hand-crank juicer. Bring a cup of fresh water and two fruit.' }),
   item('sail', 'Sail', 'build', { icon: 'icon-sail', placeholder: false, placeable: true,
     recipe: hand({ wood: 4, rope: 3, leaf: 3 }), unlock: discover('rope', 'plastic'),
     tip: 'Catch the breeze and look the part of a proper sea captain.' }),
@@ -257,8 +241,6 @@ export const BLOCK_RADII = deepFreeze({
   palm: 0.42, crate: 0.55, bench: 0.45, sail: 0.14, lantern: 0.12, net: 0,
   smelter: 0.5, researchtable: 0.55, grill: 0.45, maptable: 0.5,
   flowerbox: 0.3, beehive: 0.35, candle: 0.1, // [bees]
-  perch: 0.2, // [gull]
-  juicer: 0.3, // [juicer]
 });
 
 /** Damage one landed spear thrust deals (spear lane; see docs/loop/research/fidelity-r1-shark.md). */
