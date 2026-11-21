@@ -264,7 +264,7 @@ export function sharkPose(state, t, timer, out) {
 // Original low-poly shark, ~3.9 m nose to tail tip. Nose +z, up +y, origin at the body centre. One merged geometry with
 // position, normal, color and `swayW` (0 at the head, 1 at the tail tip) for the vertex-shader tail sway.
 export function sharkGeometry(T) {
-  const back = 0x56697c, flank = 0x6f8396, belly = 0xe4e9ea, finC = 0x4b5d6f, dark = 0x1a1e24, mouth = 0x6b3a3c;
+  const back = 0x56697c, flank = 0x6f8396, belly = 0xe4e9ea, finC = 0x4b5d6f, dark = 0x1a1e24;
   const P = [];
   const add = (geo, color, place) => {
     const g = geo.index ? geo.toNonIndexed() : geo; if (g !== geo) geo.dispose();
@@ -283,11 +283,19 @@ export function sharkGeometry(T) {
   };
   const tri = pts => { const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pts, 3)); g.computeVertexNormals(); return g; };
   // body: a lathe profile (radius by length), turned to lie along z, slightly taller than wide. Counter-shaded.
-  const prof = [[0, -1.75], [0.08, -1.6], [0.16, -1.25], [0.28, -0.7], [0.4, -0.1], [0.45, 0.35], [0.42, 0.8], [0.34, 1.15], [0.22, 1.42], [0.08, 1.6], [0, 1.66]];
+  const prof = [[0, -1.75], [0.08, -1.6], [0.16, -1.25], [0.28, -0.7], [0.39, -0.1], [0.43, 0.3], [0.39, 0.75], [0.3, 1.1], [0.18, 1.42], [0.07, 1.66], [0, 1.78]];
   const lathe = new T.LatheGeometry(prof.map(([r, y]) => new T.Vector2(r, y)), 12);
   const shade = (x, y, z) => (y > 0.12 ? back : y > -0.12 ? flank : belly);
   lathe.rotateX(Math.PI / 2); // lathe y (length) -> z
   lathe.scale(0.92, 1.05, 1);
+  { // wedge the head: flatter, with the snout tip dropped a touch, so it reads as a shark (not a ball) head-on
+    const a = lathe.attributes.position;
+    for (let i = 0; i < a.count; i++) {
+      const z = a.getZ(i), u = Math.min(1, Math.max(0, (z - 0.55) / 1.2));
+      if (u > 0) { a.setY(i, a.getY(i) * (1 - 0.3 * u) - 0.06 * u * u); a.setX(i, a.getX(i) * (1 + 0.08 * u)); }
+    }
+    lathe.computeVertexNormals();
+  }
   add(lathe, shade);
   // dorsal fin: tall, straight leading edge raked back, slightly concave trailing edge. A thin wedge.
   const D = [[0, 0.55], [0.62, -0.12], [0.5, -0.2], [0.18, -0.25], [0, -0.32]]; // [y, z] outline: base front, tip, trailing edge, base rear
@@ -304,10 +312,26 @@ export function sharkGeometry(T) {
   add(tri([0, 0, 0.05, 0, -0.5, -0.32, 0, -0.38, -0.4, 0, 0, 0.05, 0, -0.38, -0.4, 0, 0, -0.18]), finC, [0, 0.02, -1.62]);
   // pectoral fins: long, swept back and angled down
   for (const s of [-1, 1]) add(tri([0, 0, 0.3, s * 0.85, -0.05, -0.45, s * 0.7, -0.03, -0.55, 0, 0, 0.3, s * 0.7, -0.03, -0.55, 0, 0, -0.08]), finC, [s * 0.32, -0.18, 0.55, 0, 0, s * -0.38]);
-  // eyes, mouth line, gill slits
-  for (const s of [-1, 1]) add(new T.SphereGeometry(0.045, 6, 4), dark, [s * 0.25, 0.1, 1.15]);
-  add(tri([-0.26, -0.13, 1.05, 0.26, -0.13, 1.05, 0, -0.17, 1.48, 0, -0.17, 1.48, 0.26, -0.13, 1.05, -0.26, -0.13, 1.05]), mouth, [0, 0, 0]);
-  for (const s of [-1, 1]) for (let k = 0; k < 3; k++) add(new T.BoxGeometry(0.02, 0.22, 0.025), 0x3f4e5d, [s * 0.4, 0.0, 0.72 - k * 0.09]);
+  // eyes and gill slits
+  for (const s of [-1, 1]) add(new T.SphereGeometry(0.05, 6, 4), dark, [s * 0.255, 0.05, 1.12]);
+  // gaping jaw under the snout: a dark gape hanging below the head with white teeth round both rims (reads head-on while it bites)
+  const under = (x, z) => -0.36 + (z - 0.9) * 0.42 + x * x * 0.9; // just outside the flattened underside
+  const M = [[-0.27, 0.9], [-0.19, 1.12], [0, 1.26], [0.19, 1.12], [0.27, 0.9]], gape = 0.16, recess = 0.1;
+  const jaw = [], teeth = [];
+  const up = (x, z) => [x, under(x, z), z], lo = (x, z) => [x * 0.85, under(x, z) - gape, z - recess];
+  for (let k = 0; k < M.length - 1; k++) {
+    const [x0, z0] = M[k], [x1, z1] = M[k + 1];
+    jaw.push(...up(x0, z0), ...up(x1, z1), ...lo(x1, z1), ...up(x0, z0), ...lo(x1, z1), ...lo(x0, z0));
+  }
+  for (let k = 0; k <= 8; k++) {
+    const f = k / 8, a = (f - 0.5) * 2.2, x = Math.sin(a) * 0.26, z = 0.9 + Math.cos(a) * 0.36, w = 0.028, tx = Math.cos(a) * w, tz = -Math.sin(a) * w;
+    const [ux, uy, uz] = up(x, z), [lx, ly, lz] = lo(x, z);
+    teeth.push(ux - tx, uy, uz - tz, ux + tx, uy, uz + tz, ux, uy - 0.07, uz - 0.02);   // upper row, pointing down
+    teeth.push(lx - tx, ly, lz - tz, lx + tx, ly, lz + tz, lx, ly + 0.06, lz + 0.02);   // lower row, pointing up
+  }
+  add(tri(jaw), 0x3a1c22, [0, 0, 0]);
+  add(tri(teeth), 0xf4f1e6, [0, 0, 0]);
+  for (const s of [-1, 1]) for (let k = 0; k < 3; k++) add(new T.BoxGeometry(0.02, 0.2, 0.022), 0x3f4e5d, [s * 0.365, 0.0, 0.72 - k * 0.09]);
   // merge + sway weight
   let n = 0; for (const g of P) n += g.attributes.position.count;
   const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3), sw = new Float32Array(n);
