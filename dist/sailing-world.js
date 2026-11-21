@@ -1,12 +1,12 @@
 // Sailing lane, THREE side: drives world.sailing each frame, moves scenery relative to the raft, animates sails,
-// owns the anchor fixture + wind pennants, and handles aiming (E toggles sail/anchor, hold R steers the sail).
+// owns the anchor fixture, points each sail's own pennant downwind, and handles aiming (E toggles sail/anchor, hold R steers the sail).
 // See docs/cloud/sailing-spec.md. The raft never moves in x/z: the world drifts past it instead.
 import { SAIL, cleanSailing, defaultSailing, stepSailing, sailTarget, applySailAction, wrapAxis, placeUpstream, driftedOut, windVector } from './sailing-core.js';
 import { createSailingUI } from './sailing-ui.js';
 
 const WRAP = SAIL.ISLAND_WRAP > 0 ? SAIL.ISLAND_WRAP : 150, LEASH = 10, STEER_RATE = 1.6, REACH = 3.2, MAST_H = 3.6, MAST_R = .25, ANCHOR_R = .35, DECK_Y = .22;
 const CLOTH_R = 1.2, CLOTH_Y0 = 1, CLOTH_Y1 = 3.4; // raised cloth hit volume around the mast axis (cheap approximation)
-const FURL = .12, BASE_FLOW_Z = .22, ITEM_MARGIN = 26, ROPE_DOWN = 3.4, ROPE_UP = .22, GROUND_CLEAR = 2.5, OP_GAP = 250, SNAP2 = 36;
+const FURL = .04, FURL_Z = .3, ROLL_AT = .3, ROLL_R = .07, BASE_FLOW_Z = .22, ITEM_MARGIN = 26, ROPE_DOWN = 3.4, ROPE_UP = .07, GROUND_CLEAR = 2.5, OP_GAP = 250, SNAP2 = 36;
 const CLOTH_NAMES = new Set(['sailCloth', 'sailSeams', 'sailPatch', 'sailStitches']);
 const LIMITED_OPS = new Set(['toggle', 'raise', 'lower', 'anchor', 'unanchor', 'toggleAnchor']);
 const P_STEER = 'Steering the sail — look where to go', P_RAISE = '<kbd>E</kbd>Raise sail · hold <kbd>R</kbd> to steer',
@@ -22,7 +22,7 @@ export function createSailing(T, ctx) {
   const flow = { x: 0, z: 0 }, info = { running: false, yaw: 0, windDir: 0, windStr: 0, heading: 0, raised: false, anchored: false, nSails: 0, speed: 0, travelDir: 0 };
   const stepOpts = { nSails: 0, host: true, rng: Math.random, blockers: [] };
   const localAct = { kind: 'sail', op: 'heading', heading: 0 };
-  const drifters = [], sails = [], pennants = [], hiddenParts = [];
+  const drifters = [], sails = [], rolls = [];
   const vA = new T.Vector3(), vO = new T.Vector3(), vD = new T.Vector3(), ndc = new T.Vector2(), caster = new T.Raycaster();
   const disp = { wx: 0, wz: 0, gx: 0, gz: 0 }; // displayed offsets (guest: smoothed toward the host's state)
   const centre = { x: 0, z: 0 }, flowDir = { x: 0, z: 1 }; // raft bbox centre (world units); latched flow direction
@@ -36,20 +36,17 @@ export function createSailing(T, ctx) {
   const M = {
     wood: new T.MeshStandardMaterial({ color: '#906f48', roughness: .9 }),
     woodLight: new T.MeshStandardMaterial({ color: '#b4824b', roughness: .9 }),
-    rope: new T.MeshStandardMaterial({ color: '#e9d39a', roughness: 1 }),
+    rope: new T.MeshStandardMaterial({ color: '#b99a62', roughness: 1 }),
     iron: new T.MeshStandardMaterial({ color: '#5e5a52', roughness: .6, metalness: .3 }),
-    flag: new T.MeshStandardMaterial({ vertexColors: true, side: T.DoubleSide, roughness: 1 }),
+    canvas: new T.MeshStandardMaterial({ color: '#e6dcc1', roughness: .95 }),
+    tie: new T.MeshStandardMaterial({ color: '#87683f', roughness: 1 }),
   };
   const ropeGeo = new T.CylinderGeometry(.022, .022, 1, 6); ropeGeo.translate(0, -.5, 0);
-  const flagGeo = new T.BufferGeometry();
-  flagGeo.setAttribute('position', new T.Float32BufferAttribute([0, .09, 0, 0, -.09, 0, 0, 0, .55, 0, .09, 0, 0, -.09, 0, 0, 0, .55], 3));
-  flagGeo.setAttribute('color', new T.Float32BufferAttribute([1, .95, .81, 1, .95, .81, .78, .29, .2, 1, .95, .81, 1, .95, .81, .78, .29, .2], 3));
-  flagGeo.setIndex([0, 1, 2]); flagGeo.computeVertexNormals();
+  const rollGeo = new T.CylinderGeometry(ROLL_R, ROLL_R, 1, 10); rollGeo.rotateZ(Math.PI / 2); // unit length along x, scaled per sail
   const G = {
     post: new T.CylinderGeometry(.065, .08, 1, 8), drum: new T.CylinderGeometry(.075, .075, .34, 10),
     coil: new T.CylinderGeometry(.08, .08, .24, 10), crank: new T.BoxGeometry(.03, .18, .03), arm: new T.BoxGeometry(.06, .06, .6),
-    shank: new T.BoxGeometry(.05, .34, .05), fluke: new T.BoxGeometry(.3, .05, .05), spindle: new T.CylinderGeometry(.012, .012, .3, 5),
-    rope: ropeGeo, flag: flagGeo,
+    anchor: anchorGeometry(T), rope: ropeGeo, roll: rollGeo, tie: new T.TorusGeometry(ROLL_R + .004, .009, 5, 12).rotateY(Math.PI / 2),
   };
   const mesh = (geo, mat, x, y, z, parent, shadow = true) => { const m = new T.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = shadow; parent.add(m); return m; };
 
@@ -62,16 +59,17 @@ export function createSailing(T, ctx) {
   mesh(G.arm, M.wood, 0, .97, .3, anchorRoot);
   const anchorRope = mesh(G.rope, M.rope, 0, .95, .57, anchorRoot, false);
   const hook = new T.Group(); anchorRoot.add(hook);
-  mesh(G.shank, M.iron, 0, -.17, 0, hook, false); mesh(G.fluke, M.iron, 0, -.32, 0, hook, false);
+  mesh(G.anchor, M.iron, 0, 0, 0, hook, false);
   hook.position.set(0, .95 - ROPE_UP, .57);
 
-  function pennant(i) {
-    while (pennants.length <= i) {
-      const g = new T.Group(); mesh(G.spindle, M.wood, 0, .15, 0, g, false);
-      const f = mesh(G.flag, M.flag, 0, .22, 0, g, false); g.userData.flag = f;
-      fixture.add(g); pennants.push(g);
+  // Furled-canvas roll (pooled, one per sail): a cream cylinder with two ties, re-parented onto each sail group.
+  function roll(i) {
+    while (rolls.length <= i) {
+      const r = new T.Mesh(G.roll, M.canvas); r.castShadow = true; r.visible = false;
+      for (const x of [-.32, .32]) { const t = new T.Mesh(G.tie, M.tie); t.position.x = x; r.add(t); }
+      rolls.push(r);
     }
-    return pennants[i];
+    return rolls[i];
   }
 
   // ---------- state ----------
@@ -124,12 +122,12 @@ export function createSailing(T, ctx) {
       const ct = c.userData?.craftType;
       if (ct !== undefined && ct !== 'sail') continue;
       if (!decor.some(d => d?.type === 'sail' && d.x === Math.round(c.position.x / 2) && d.z === Math.round(c.position.z / 2))) continue;
-      const cloth = []; let main = null;
+      const cloth = []; let main = null, flag = null;
       for (const m of c.children) {
         if (!m.isMesh) continue;
         if (ct === 'sail') {
           if (CLOTH_NAMES.has(m.name)) { cloth.push(m); if (m.name === 'sailCloth') main = m; }
-          else if (m.name === 'pennant' && m.visible) { m.visible = false; hiddenParts.push(m); } // we add a wind pennant
+          else if (m.name === 'pennant') flag = m;
         } else if (m.geometry?.type === 'PlaneGeometry') cloth.push(m);
       }
       main ??= cloth[0];
@@ -137,11 +135,14 @@ export function createSailing(T, ctx) {
       main.geometry.computeBoundingBox?.(); const bb = main.geometry.boundingBox;
       if (!bb) continue;
       // Furl toward the cloth's top edge (the yard); billow about the cloth's own plane so its edges stay on yard/boom.
-      sails.push({ group: c, cloth, py: cloth.map(m => m.position.y), pz: cloth.map(m => m.position.z),
-        top: main.position.y + bb.max.y, zp: main.position.z + bb.min.z, h: state.heading, s: state.raised ? 1 : FURL, bz: 1 });
+      // The model's pennant extends along its local +x from the mast axis (x = z = 0): +x sits a quarter turn
+      // clockwise of +z, so 'downwind' in the group frame is windDir - heading - PI/2.
+      const top = main.position.y + bb.max.y, zp = main.position.z + bb.min.z;
+      const r = roll(sails.length); c.add(r);
+      r.position.set((bb.min.x + bb.max.x) / 2 + main.position.x, top - ROLL_R * .8, zp + .01); r.scale.x = bb.max.x - bb.min.x; r.visible = false;
+      sails.push({ group: c, cloth, py: cloth.map(m => m.position.y), pz: cloth.map(m => m.position.z), top, zp, roll: r,
+        flag, flagRot: flag ? flag.rotation.y : 0, h: state.heading, s: state.raised ? 1 : FURL, bz: state.raised ? 1 : FURL_Z });
     }
-    for (let i = 0; i < pennants.length; i++) pennants[i].visible = false;
-    for (let i = 0; i < sails.length; i++) { const p = pennant(i), g = sails[i].group.position; p.position.set(g.x, DECK_Y + MAST_H + .02, g.z); p.visible = true; }
     let best = null;
     for (const t of tiles) if (Array.isArray(t) && (!best || t[1] > best[1] || (t[1] === best[1] && t[0] < best[0]))) best = t;
     anchorPos.ok = !!best; anchorRoot.visible = !!best;
@@ -152,9 +153,9 @@ export function createSailing(T, ctx) {
     for (const e of sails) {
       e.group.rotation.y = 0;
       for (let i = 0; i < e.cloth.length; i++) { const m = e.cloth[i]; m.scale.set(1, 1, 1); m.position.y = e.py[i]; m.position.z = e.pz[i]; }
+      if (e.flag) e.flag.rotation.y = e.flagRot;
+      e.roll.parent?.remove(e.roll); e.roll.visible = false;
     }
-    for (const m of hiddenParts) m.visible = true;
-    hiddenParts.length = 0;
   }
   function animateSails(dt, elapsed) {
     const target = shownHeading(), raised = state.raised, k = Math.min(1, dt * 3), kf = Math.min(1, dt * 2.2);
@@ -163,21 +164,26 @@ export function createSailing(T, ctx) {
       const e = sails[i];
       e.h += angDiff(target, e.h) * k; e.group.rotation.y = e.h;
       e.s += ((raised ? 1 : FURL) - e.s) * kf;
-      e.bz += ((raised ? .9 + .25 * push + .03 * Math.sin(elapsed * 2.3 + i) * push : 1) - e.bz) * kf;
+      e.bz += ((raised ? .9 + .25 * push + .03 * Math.sin(elapsed * 2.3 + i) * push : FURL_Z) - e.bz) * kf;
       for (let j = 0; j < e.cloth.length; j++) {
         const m = e.cloth[j];
         m.scale.y = e.s; m.position.y = e.top - e.s * (e.top - e.py[j]);
         m.scale.z = e.bz; m.position.z = e.zp - e.bz * (e.zp - e.pz[j]);
       }
-      const f = pennants[i]?.userData.flag;
-      if (f) { const amp = .06 + .4 * state.windStr * state.windStr; f.rotation.y = state.windDir + amp * Math.sin(elapsed * (5 + 4 * state.windStr) + i * 1.7); f.rotation.x = .25 * amp * Math.sin(elapsed * 5.1 + i); }
+      const rk = (ROLL_AT - e.s) / (ROLL_AT - FURL); // 0 at ROLL_AT, 1 when fully furled
+      if (rk > 0) { const q = Math.min(1, rk) * .85 + .15; e.roll.scale.y = e.roll.scale.z = q; e.roll.visible = true; }
+      else if (e.roll.visible) e.roll.visible = false;
+      if (e.flag) {
+        const amp = .08 + .3 * state.windStr * state.windStr;
+        e.flag.rotation.y = e.flagRot + state.windDir - e.h - Math.PI / 2 + amp * Math.sin(elapsed * (5 + 4 * state.windStr) + i * 1.7);
+      }
     }
   }
   function animateAnchor(dt) {
     anchorShown += ((state.anchored ? 1 : 0) - anchorShown) * Math.min(1, dt * 1.6);
     const len = ROPE_UP + (ROPE_DOWN - ROPE_UP) * anchorShown;
     anchorRope.scale.y = len; hook.position.y = .95 - len;
-    coil.scale.x = coil.scale.z = 1.6 - .6 * anchorShown;
+    coil.scale.x = coil.scale.z = 1.2 - .45 * anchorShown;
   }
 
   // ---------- aiming ----------
@@ -218,7 +224,7 @@ export function createSailing(T, ctx) {
   }
   function updatePrompt() {
     let p = null;
-    if (ctx.isRunning() && ctx.canInput()) {
+    if (ctx.isRunning() && ctx.canInput() && !ctx.isBusy?.()) { // busy: the player's own hook/rope is out
       if (steering) p = P_STEER;
       else if (aimKind === 1) p = state.raised ? P_LOWER : P_RAISE;
       else if (aimKind === 2) p = state.anchored ? P_WEIGH : P_DROP;
@@ -332,8 +338,31 @@ export function createSailing(T, ctx) {
     scene.remove(fixture); ui.dispose(); abort.abort();
     for (const k in G) G[k].dispose();
     for (const k in M) M[k].dispose();
-    lastOp.clear(); drifters.length = 0; stepOpts.blockers.length = 0;
+    for (const r of rolls) r.parent?.remove(r);
+    rolls.length = 0; lastOp.clear(); drifters.length = 0; stepOpts.blockers.length = 0;
   }
   return { update, onRaftBuilt, addDrifter, itemFlow, respawned, outOfRange, interact, grab, release, apply, debug, dispose,
     get steering() { return steering; } };
+}
+
+// Anchor (one merged geometry, ring at the origin, hanging down -y): top ring, stock bar, shank, two flukes in a V.
+function anchorGeometry(T) {
+  const parts = [
+    new T.TorusGeometry(.045, .012, 6, 14),
+    new T.CylinderGeometry(.014, .014, .26, 6).rotateX(Math.PI / 2).translate(0, -.08, 0),
+    new T.CylinderGeometry(.022, .026, .36, 8).translate(0, -.23, 0),
+  ];
+  for (const s of [-1, 1]) {
+    parts.push(new T.CylinderGeometry(.016, .022, .2, 6).translate(0, .1, 0).rotateZ(s * .95).translate(0, -.4, 0));
+    parts.push(new T.ConeGeometry(.034, .08, 4).rotateZ(s * .5).translate(-s * .17, -.27, 0)); // fluke tips
+  }
+  let n = 0;
+  const flat = parts.map(g => { const f = g.index ? g.toNonIndexed() : g; if (f !== g) g.dispose(); n += f.attributes.position.count; return f; });
+  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3);
+  let o = 0;
+  for (const f of flat) { pos.set(f.attributes.position.array, o); nor.set(f.attributes.normal.array, o); o += f.attributes.position.array.length; f.dispose(); }
+  const out = new T.BufferGeometry();
+  out.setAttribute('position', new T.BufferAttribute(pos, 3)); out.setAttribute('normal', new T.BufferAttribute(nor, 3));
+  out.computeBoundingSphere();
+  return out;
 }
