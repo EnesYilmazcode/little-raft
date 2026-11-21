@@ -3,7 +3,7 @@
 // API (window.raftPrompts): register({id, object?, test?, range, priority, prompt}) -> unregister,
 //   provide({id, priority, prompt}) -> unregister, current(), refresh(), feed(text).
 // prompt(ctx, hit) returns {key:'E', label:'Pick up', hold?, muted?} | up to 2 of them | null.
-// ctx = {state (full raftDebug.state, built lazily on first read), camera, T, scene}. Highest priority wins; raycast beats provider at equal priority; nearest hit next.
+// ctx = {hud (raftDebug.hud: light live view, null on an older game.js), state (full raftDebug.state, built lazily on first read), camera, T, scene}. Highest priority wins; raycast beats provider at equal priority; nearest hit next.
 
 const SAMPLE_MS = 100, FEED_MAX = 4, FEED_MS = 4000, DUP_MS = 600;
 const PICK_NAMES = {wood:'plank', leaf:'leaves', plastic:'plastic jug', scrap:'scrap', barrel:'barrel'};
@@ -93,7 +93,7 @@ export function statePrompt(s, opt = {}) {
 const MOUSE = side => `<svg class="lr-mouse" viewBox="0 0 12 16" width="11" height="15" aria-hidden="true"><rect x=".75" y=".75" width="10.5" height="14.5" rx="5.25" fill="none" stroke="currentColor" stroke-width="1.5"/>${side === 'L' ? '<path d="M6 1.5A4.5 4.5 0 0 0 1.5 6v1H6z"/>' : '<path d="M6 1.5A4.5 4.5 0 0 1 10.5 6v1H6z"/>'}<path d="M6 1v6" stroke="currentColor" stroke-width="1"/></svg>`;
 
 function createPrompts(win, doc) {
-  const rays = new Map(), providers = new Map(); let order = 0, shown = null, sig = null, visible = false, lastFeed = null;
+  const rays = new Map(), providers = new Map(); let provList = [], rayList = [], order = 0, shown = null, sig = null, visible = false, lastFeed = null;
   let promptEl = null, feedEl = null, ctxEl = null, observer = null, ray = null, rayT = null, aimAt = null, placed = '';
   let throws = 0, lastStage; // undefined until the first sample, so a restored in-flight hook is not counted
   let mouse = null; win.addEventListener('pointermove', e => { mouse = {x:e.clientX, y:e.clientY}; }, {passive:true, capture:true});
@@ -143,9 +143,9 @@ function createPrompts(win, doc) {
   }
   function rayHits(ctx) {
     const out = [], {T, camera} = ctx; if (!rays.size || !T || !camera) return out;
-    if (rayT !== T) { ray = new T.Raycaster(); rayT = T; }
-    ray.setFromCamera(new T.Vector2(aimAt ? aimAt.x / win.innerWidth * 2 - 1 : 0, aimAt ? 1 - aimAt.y / win.innerHeight * 2 : 0), camera);
-    for (const r of rays.values()) safe(() => {
+    if (rayT !== T) { ray = new T.Raycaster(); ray.ndc = new T.Vector2(); rayT = T; }
+    ray.setFromCamera(ray.ndc.set(aimAt ? aimAt.x / win.innerWidth * 2 - 1 : 0, aimAt ? 1 - aimAt.y / win.innerHeight * 2 : 0), camera);
+    for (let i = 0; i < rayList.length; i++) { const r = rayList[i]; safe(() => {
       let d = null;
       if (r.test) d = r.test(ray.ray, ctx);
       else if (r.object) {
@@ -153,7 +153,7 @@ function createPrompts(win, doc) {
         const h = ray.intersectObject(r.object, true)[0]; d = h ? h.distance : null; }
       if (!Number.isFinite(d) || d > r.range) return;
       out.push({prompts:r.prompt(ctx, {distance:d}), priority:r.priority, ray:true, distance:d, order:r.order});
-    });
+    }); }
     return out;
   }
   function tick() {
@@ -165,7 +165,7 @@ function createPrompts(win, doc) {
       const hud = safe(() => debug?.hud) || null;
       let full = hud ? undefined : safe(() => debug?.state);
       const state = hud || full;
-      const ctx = {get state() { if (full === undefined) full = safe(() => debug?.state); return full; }, camera:m?.camera ?? null, T:m?.T ?? null, scene:m?.scene ?? null};
+      const ctx = {hud, get state() { if (full === undefined) full = safe(() => debug?.state); return full; }, camera:m?.camera ?? null, T:m?.T ?? null, scene:m?.scene ?? null};
       const stage = state?.hookStage ?? null;
       if (state?.running && lastStage !== undefined && isThrow(lastStage, stage) && throws < 1e6) { throws++; safe(() => win.localStorage.setItem(STORE_KEY, JSON.stringify({throws}))); }
       lastStage = stage;
@@ -178,7 +178,7 @@ function createPrompts(win, doc) {
       let list = null;
       if (show) {
         const cands = rayHits(ctx);
-        for (const p of providers.values()) safe(() => cands.push({prompts:p.prompt(ctx), priority:p.priority, ray:false, order:p.order}));
+        for (let i = 0; i < provList.length; i++) { const p = provList[i]; try { cands.push({prompts:p.prompt(ctx), priority:p.priority, ray:false, order:p.order}); } catch {} }
         cands.push({prompts:statePrompt(state, {throws}), priority:0, ray:false}); // built-ins lose ties to registered providers
         list = pickPrompt(cands);
       }
@@ -190,7 +190,8 @@ function createPrompts(win, doc) {
   const add = (map, o, extra) => {
     if (!o || typeof o.prompt !== 'function') throw new TypeError('raftPrompts: prompt(ctx) function required');
     const id = String(o.id ?? 'p' + order), rec = {priority:Number(o.priority) || 0, prompt:o.prompt, order:order++, ...extra(o)};
-    map.set(id, rec); return () => { if (map.get(id) === rec) map.delete(id); };
+    const relist = () => { if (map === providers) provList = [...providers.values()]; else rayList = [...rays.values()]; }; // indexed per tick, no iterator
+    map.set(id, rec); relist(); return () => { if (map.get(id) === rec) { map.delete(id); relist(); } };
   };
   const api = Object.freeze({
     register: o => add(rays, o, x => ({object:x.object ?? null, test:typeof x.test === 'function' ? x.test : null, range:Number.isFinite(x.range) ? x.range : 3})),
