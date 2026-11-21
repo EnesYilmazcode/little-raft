@@ -410,7 +410,7 @@ export function mount(transfer = null) {
     renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:devicePixelRatio < 1.5}); // dense screens get their smoothing from pixels, not MSAA
     renderer.setSize(innerWidth, innerHeight);
     renderer.debug.checkShaderErrors = DEBUG_SHADERS; // the per-program log queries stall on links; ?debug brings them back
-    renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
+    renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.autoUpdate = false; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     hemi = new T.HemisphereLight('#bfe6ff', '#2f6f7a', 1.0); scene.add(hemi); // content hook: kept for day/night; blue sky fill from above, teal sea bounce from below
     sun = new T.DirectionalLight('#ffeccb', 3.0); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.0004; sun.shadow.normalBias = .03; sun.shadow.radius = 3; scene.add(sun, sun.target); // shadow box is fitted to the raft each frame
     quality = createQuality({renderer, sun, preset:options.graphics, onChange:() => applyUserGraphics()}); // owns pixel ratio, shadow map size and sun.castShadow
@@ -418,7 +418,7 @@ export function mount(transfer = null) {
     if (ART.artEnabled()) ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T}); // art lane hook
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
     itemsGroup = new T.Group(); scene.add(itemsGroup); ocean.trackFoam(itemsGroup);
-    itemBatches = createItemBatches(T, itemsGroup); scene.add(itemBatches.root); scene.onBeforeRender = (_r, _s, cam) => itemBatches?.update(cam); // perf: floating items sharing a geometry draw as one instanced mesh
+    itemBatches = createItemBatches(T, itemsGroup); scene.add(itemBatches.root); scene.onBeforeRender = (_r, _s, cam) => { itemBatches?.update(cam); scheduleShadow(); }; // perf: floating items sharing a geometry draw as one instanced mesh; shadow map redraw decision (autoUpdate is off)
     player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
     ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => { try { return prog?.modelFor(k, {type:k}) ?? (k === 'rainbarrel' ? createRainBarrel(T) : k === 'sprinkler' ? createSprinkler(T) : k === 'purifier' ? createPurifier(T) : createCraft(T, k) ?? createSignalModel(T, k) ?? content?.decorModel(k) ?? null); } catch { return null; } }}); // see-through real models, red when blocked
     const ropeGeo = new T.BufferGeometry(); ropeAttr = new T.BufferAttribute(new Float32Array((ROPE_SEGMENTS + 1) * 3), 3); ropeAttr.setUsage(T.DynamicDrawUsage); ropeGeo.setAttribute('position', ropeAttr);
@@ -502,6 +502,43 @@ export function mount(transfer = null) {
     sun.target.position.set(cx, 0, cz); sun.position.set(cx + SUN_OFFSET[0], SUN_OFFSET[1], cz + SUN_OFFSET[2]);
     const d = Math.hypot(...SUN_OFFSET), cam = sun.shadow.camera;
     Object.assign(cam, {left:-r, right:r, top:r, bottom:-r, near:Math.max(.5, d - r - 6), far:d + r + 6}); cam.updateProjectionMatrix();
+    shadowDirty();
+  }
+  // Shadow map refresh (renderer.shadowMap.autoUpdate is off). The map is redrawn every SHADOW_EVERY-th render,
+  // at once after shadowDirty() (shadow box refit, graphics/quality change), and at once when the light or any
+  // caster drawn into the last map moved or turned enough to show (a walking friend, a big low-fps raft roll).
+  // Runs as scene.onBeforeRender: world matrices are current there and three's shadow pass comes right after.
+  const SHADOW_EVERY = 3, SHADOW_MOVE = .01, SHADOW_TURN = .004, SHADOW_LIGHT_MOVE = .05;
+  let shadowStale = true, shadowAge = 0, shadowPose = new Float32Array(0);
+  const shadowCasters = [];
+  function shadowDirty() { shadowStale = true; }
+  function shadowMoved() {
+    const n = shadowCasters.length;
+    for (let i = 0; i < n; i++) {
+      const e = shadowCasters[i].matrixWorld.elements, o = i * 12, lim = i < 2 ? SHADOW_LIGHT_MOVE : SHADOW_MOVE;
+      if (Math.abs(e[12] - shadowPose[o + 9]) > lim || Math.abs(e[13] - shadowPose[o + 10]) > lim || Math.abs(e[14] - shadowPose[o + 11]) > lim) return true;
+      if (i >= 2) for (let k = 0; k < 9; k++) if (Math.abs(e[k + (k >= 6 ? 2 : k >= 3 ? 1 : 0)] - shadowPose[o + k]) > SHADOW_TURN) return true;
+    }
+    return false;
+  }
+  // Remembers the light and the casters inside the light's frustum (three culls the shadow pass the same way).
+  function snapshotShadow() {
+    const sh = sun.shadow; sh.updateMatrices(sun); const fr = sh.getFrustum();
+    shadowCasters.length = 0; shadowCasters.push(sun, sun.target);
+    scene.traverseVisible(o => { if (o.castShadow && (o.isMesh || o.isLine || o.isPoints) && (!o.frustumCulled || fr.intersectsObject(o))) shadowCasters.push(o); });
+    if (shadowPose.length < shadowCasters.length * 12) shadowPose = new Float32Array(shadowCasters.length * 24);
+    for (let i = 0; i < shadowCasters.length; i++) {
+      const e = shadowCasters[i].matrixWorld.elements, o = i * 12;
+      shadowPose[o] = e[0]; shadowPose[o + 1] = e[1]; shadowPose[o + 2] = e[2]; shadowPose[o + 3] = e[4]; shadowPose[o + 4] = e[5]; shadowPose[o + 5] = e[6];
+      shadowPose[o + 6] = e[8]; shadowPose[o + 7] = e[9]; shadowPose[o + 8] = e[10]; shadowPose[o + 9] = e[12]; shadowPose[o + 10] = e[13]; shadowPose[o + 11] = e[14];
+    }
+  }
+  function scheduleShadow() {
+    if (!sun?.castShadow || !renderer.shadowMap.enabled) { shadowStale = true; return; }
+    if (shadowStale || ++shadowAge >= SHADOW_EVERY || shadowMoved()) {
+      renderer.shadowMap.needsUpdate = true; shadowStale = false; shadowAge = 0;
+      snapshotShadow();
+    }
   }
   // Bakes a drifting scenery group (island or cloud) into one mesh per material, kept local so sailing can still move the group.
   function bakeGroup(g) {
@@ -1088,6 +1125,7 @@ export function mount(transfer = null) {
     const l = quality.levels[quality.level], sc = clamp(options.renderScale ?? 1, .5, 1);
     if (l) renderer.setPixelRatio(Math.max(.5, l.pixelRatio * sc));
     if (sun) sun.castShadow = options.shadows !== false && !!l?.shadows;
+    shadowDirty(); // a new map size or shadow switch needs a fresh map
   }
   function applyOptions(next) {
     options = next; applyVolume();
