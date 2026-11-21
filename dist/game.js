@@ -51,7 +51,7 @@ import { createGhosts, wrapRot, ROT_STEP, FINE_STEP } from './placement.js?build
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { getItemIcon, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint } from './hud.js?build=v3-survival-ae77fa84ac2b'; // loop-ux: saved sound toggle, drag-look sensitivity, first-run hints
-import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, lockedAtBlur as wasLockedAtBlur, refocusAction, escapeIsForBuild } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -628,8 +628,9 @@ export function mount(transfer = null) {
     if (!force && signature === uiSignature) return; uiSignature = signature;
     const b = document.body.classList;
     b.toggle('pointer-locked', locked); b.toggle('locked', locked); b.toggle('first-person', running); b.toggle('playing', running);
+    b.toggle('lock-fallback', running && lockFallback); // drag-look: menus closing must not hide the cursor (settings.js)
     const crosshair = $('#crosshair'); if (crosshair) crosshair.hidden = !(running && locked);
-    const resume = $('#resumeHint'); if (resume) resume.hidden = !(running && !locked && lockSupported && !dialog);
+    const resume = $('#resumeHint'); if (resume) resume.hidden = !(running && !locked && lockSupported && !lockFallback && !dialog); // drag-look never asks to click for lock
   }
 
   // ---------- Pointer lock ----------
@@ -640,6 +641,10 @@ export function mount(transfer = null) {
   // While Escape is still held (it just closed a panel), Chrome may treat the held key as the user leaving
   // the new lock, so the relock waits for the release (no gesture needed: the page released the lock itself).
   let escHeld = false, relockOnEscUp = false;
+  // Focus/Escape bookkeeping for the shell hooks below: when the lock was last lost, whether play was locked when the
+  // window lost focus (alt-tab), and when the build wheel was closed by a lock loss (an Escape that hit the wheel).
+  let lockLostAt = -Infinity, lockedAtBlur = false, buildClosedByLockAt = -Infinity;
+  const BUILD_ESC_MS = 1000, BLUR_LOCK_MS = 1000; // generous: page events lag under load
   function escReleased() { escHeld = false; if (relockOnEscUp) { relockOnEscUp = false; requestLock(); } }
   function requestLock() {
     if (!shouldRequestLock({running, supported:lockSupported, blocked:uiBlocked()}) || isLocked()) return;
@@ -1318,9 +1323,9 @@ export function mount(transfer = null) {
   // ---------- Input ----------
   const on = (target, type, fn, opts = {}) => target?.addEventListener(type, guard(fn), {...opts, signal});
   on(document, 'pointerlockchange', () => {
-    if (isLocked()) { lockFallback = false; lockFailures = 0; lockNoGesture = false; }
-    else { if (charging && charging.x === null) charging = null; reeling = false; }
-    if (!isLocked() && !lockFallback && building?.menu.isOpen) building.menu.close(false); // building-pieces lane hook
+    if (isLocked()) { lockFallback = false; lockFailures = 0; lockNoGesture = false; lockedAtBlur = false; }
+    else { if (charging && charging.x === null) charging = null; reeling = false; lockLostAt = performance.now(); }
+    if (!isLocked() && !lockFallback && building?.menu.isOpen) { building.menu.close(false); buildClosedByLockAt = performance.now(); } // building-pieces lane hook
     down = null; refreshPointerUI(true);
   });
   on(document, 'pointerlockerror', lockFailed);
@@ -1406,8 +1411,28 @@ export function mount(transfer = null) {
   on(window, 'keyup', e => { if (e.key === 'Escape') escReleased(); }, {capture:true});
   on(window, 'pointerdown', () => { escHeld = relockOnEscUp = false; }, {capture:true}); // a click relocks on its own
   // Focus loss (alt-tab): drop held input and show the hint at the top edge; one click on return relocks.
-  on(window, 'blur', () => { clearInput(); escHeld = relockOnEscUp = false; document.body.classList.toggle('away', running); refreshPointerUI(true); }); on(window, 'blur', () => sailing?.release()); // [sailing]
-  on(window, 'focus', () => { document.body.classList.remove('away'); refreshPointerUI(true); });
+  on(window, 'blur', () => { lockedAtBlur = wasLockedAtBlur({running, locked:isLocked(), now:performance.now(), lockLostAt, graceMs:BLUR_LOCK_MS}); clearInput(); escHeld = relockOnEscUp = false; document.body.classList.toggle('away', running); refreshPointerUI(true); }); on(window, 'blur', () => sailing?.release()); // [sailing]
+  // In a browser, try to relock on return (refused without a gesture: harmless). The desktop shell calls refocus()
+  // itself with a gesture; a gestureless request first would only race it and be refused, so skip it there.
+  const shellRefocuses = () => { try { return !!window.raftDesktop; } catch { return false; } };
+  on(window, 'focus', () => { document.body.classList.remove('away'); refreshPointerUI(true); if (!shellRefocuses()) refocus(); });
+  on(document, 'visibilitychange', () => { if (!document.hidden && windowFocused() && !shellRefocuses()) refocus(); });
+  // Back from alt-tab: relock only if play was locked when focus left and no menu is up. A refusal (no gesture in a
+  // browser) is quiet; the click hint stays and the next click relocks.
+  function refocus() {
+    const act = refocusAction({lockedAtBlur, focused:windowFocused(), running, blocked:uiBlocked(), locked:isLocked()});
+    if (act === 'done') lockedAtBlur = false;
+    if (act !== 'relock') return false;
+    requestLock(); return true;
+  }
+  // Escape with the hammer wheel open closes just the wheel and keeps the lock. During locked play the browser spends
+  // the keydown on leaving the lock (and closes the wheel above), so a recent lock-loss close counts too.
+  function escapeBuild() {
+    const wheelOpen = !!building?.menu.isOpen;
+    if (!escapeIsForBuild({running, blocked:uiBlocked(), wheelOpen, now:performance.now(), closedByLockAt:buildClosedByLockAt, windowMs:BUILD_ESC_MS})) return false;
+    if (wheelOpen) building.menu.close(false);
+    buildClosedByLockAt = -Infinity; requestLock(); return true;
+  }
   // controls lane: one input layer for keyboard/mouse/gamepad; falls back to the legacy handlers above if it fails to start.
   try {
     controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
@@ -1738,6 +1763,8 @@ export function mount(transfer = null) {
   const shellApi = {
     hold:guard(() => { escHeld = true; relockOnEscUp = false; }),
     released:guard(() => escReleased()),
+    refocus:guard(() => refocus()), // desktop/main.cjs, on window focus, with a gesture
+    escapeBuild:guard(() => escapeBuild()), // settings.js escape(): true when Escape belonged to the build wheel
   };
   window.raftShell = shellApi;
   window.raftDebug = debugApi;

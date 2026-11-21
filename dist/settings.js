@@ -4,7 +4,7 @@
 // In the desktop app the main process claims Escape and calls window.raftEscape() with a user gesture,
 // so closing a menu can relock the mouse without a click.
 
-import { createEscGate } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { createEscGate, shouldMarkRelock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 
 const STORAGE_KEY = 'little-raft-settings';
 const DIALOG_ID = 'options';
@@ -106,9 +106,10 @@ const CSS = `
 @media (max-width:760px){#options .rs-form{flex-direction:column;align-items:stretch;justify-content:center;gap:18px;overflow:auto;padding:24px 16px}
   #options .rs-menu{width:auto;padding:20px 0 20px 20px;border-radius:6px}#options .rs-foot{display:none}
   #options h2{margin-bottom:14px}#options .rs-menu button{padding:6px 0 6px 18px}#options .rs-panel{max-height:none;margin-top:0}#options .rs-keys{grid-template-columns:auto 1fr}}
-/* Waiting to relock after a menu closed without a gesture (browser Esc): no cursor, no centred hint. */
-body.relock #world{cursor:none}
-body.relock #resumeHint{display:none!important}
+/* Waiting to relock after a menu closed without a gesture (browser Esc): no cursor, no centred hint.
+   Never in drag-look (body.lock-fallback, game.js): there the cursor is the only way to aim. */
+body.playing.relock:not(.lock-fallback) #world{cursor:none}
+body.playing.relock:not(.lock-fallback) #resumeHint{display:none!important}
 `;
 
 function ensureStyle() {
@@ -236,6 +237,19 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   const gameActive = () => document.body.classList.contains('playing') || document.body.classList.contains('first-person');
   const otherDialogs = () => [...document.querySelectorAll('dialog[open]')].filter((d) => d !== dialog);
 
+  // A menu closed (or Escape left the build wheel) during play: until the lock is back, hide the cursor and the
+  // centred hint; pointerlockchange or the next click clears it. Not in drag-look, where the cursor aims.
+  function markRelock() {
+    const b = document.body.classList;
+    if (shouldMarkRelock({ playing: gameActive(), fallback: b.contains('lock-fallback'), locked: !!document.pointerLockElement, dialogOpen: !!document.querySelector('dialog[open]') })) b.add('relock');
+  }
+  // game.js hook: Escape that belongs to the hammer's build wheel (open, or just closed by the lock loss).
+  function escapeBuild() {
+    try { if (!gameActive() || !window.raftShell?.escapeBuild?.()) return false; } catch { return false; }
+    markRelock();
+    return true;
+  }
+
   function releasePointer() {
     if (document.pointerLockElement) { try { document.exitPointerLock?.(); } catch { /* ignore */ } }
   }
@@ -269,6 +283,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     if (dialog.open) { if (panelOpen()) { setPanel(false); form.querySelector('[data-act="settings"]')?.focus({ preventScroll: true }); } else close(true); return true; }
     const others = otherDialogs();
     if (others.length) { others[others.length - 1].close(); return true; }
+    if (escapeBuild()) return true; // the wheel closes and the lock comes back; no pause menu
     if (!gameActive()) { // title screen: Escape only leaves fullscreen (the desktop app swallows the native one)
       if (!document.fullscreenElement) return false;
       Promise.resolve(document.exitFullscreen?.()).catch(() => {});
@@ -299,7 +314,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     if (event.key !== 'Escape') return;
     // Only pause for an unhandled Escape that just released the lock.
     if (!esc.keyupOpensPause(performance.now())) return;
-    if (!dialog.open && !otherDialogs().length && gameActive()) { event.preventDefault(); open(); }
+    if (!dialog.open && !otherDialogs().length && gameActive()) { event.preventDefault(); if (!escapeBuild()) open(); }
   }), { capture: true, signal: ac.signal });
 
   // Remember lock loss only; never pause from lock loss alone (build mode, menus release it on purpose).
@@ -315,10 +330,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     const d = event.target;
     if (!(d instanceof HTMLDialogElement)) return;
     if (d !== dialog && d === returnToPause) { returnToPause = null; delete d.dataset.fromPause; if (gameActive()) { open(); return; } }
-    if (d.id !== 'inventory' && d !== dialog) return;
-    setTimeout(guard(() => {
-      if (gameActive() && !document.pointerLockElement && !document.querySelector('dialog[open]')) document.body.classList.add('relock');
-    }), 150);
+    markRelock(); // any panel (inventory, pause, logbook, journal, crew, help, storage, station, research)
   }), { capture: true, signal: ac.signal });
   window.addEventListener('pointerdown', () => document.body.classList.remove('relock'), { capture: true, signal: ac.signal });
 

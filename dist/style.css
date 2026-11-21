@@ -10,7 +10,7 @@ body.build #crosshair i{background:#bff3c6}
 body.playing #crosshair,#crosshair.show{display:block}
 #resumeHint{position:fixed;left:50%;top:calc(50% + 34px);transform:translateX(-50%);z-index:3;pointer-events:auto;cursor:pointer;display:none;background:#123f48e6;color:#f4fcf8;font-size:13px;font-weight:500;padding:9px 16px;border-radius:30px;white-space:nowrap;box-shadow:0 6px 20px #0a3b4630}
 #resumeHint b{color:var(--orange);font-weight:700}body.away #resumeHint{top:14px;font-size:12px;padding:6px 13px}
-body.playing:not(.locked) #resumeHint,#resumeHint.show{display:block}
+body.playing:not(.locked):not(.lock-fallback) #resumeHint,#resumeHint.show{display:block}
 dialog{max-height:calc(100dvh - 30px);overflow:auto;overscroll-behavior:contain}
 .guide{list-style:none;padding:0;margin:20px 0 14px;display:grid;gap:9px}.guide li{display:flex;align-items:center;gap:13px;font-size:14px;line-height:1.45;color:#2f5f60}.guide b{color:var(--ink)}
 .guide kbd,.controls kbd{white-space:nowrap}.guide kbd{flex:0 0 74px;text-align:center;font:700 12px 'DM Sans';background:#fff;border:1px solid #bad5cb;border-bottom-width:3px;border-radius:8px;padding:6px 4px;color:var(--ink)}
