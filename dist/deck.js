@@ -144,6 +144,15 @@ function nailHead(T, rot, x, y, z) {
   return h;
 }
 
+// Shadow stand-in for one plank piece: a 12-tri box with the plank's bottom face (the shadow pass draws back faces)
+// and its gaps, its top kept below the board's walkable surface so the planks never shade themselves.
+function plankProxy(T, p) {
+  const h = THICK - 0.016, xc = (p.x0 + p.x1) / 2;
+  const b = new T.BoxGeometry(p.x1 - p.x0, h, p.zb - p.za);
+  b.translate(0, p.top - THICK + h / 2, (p.za + p.zb) / 2); b.rotateZ(p.roll); b.translate(xc, 0, 0);
+  return b;
+}
+
 // Builds one tile's merged parts: [{name, color, geometry, castShadow}] in tile-local space.
 function floorParts(T, index) {
   const rng = makeRng(index);
@@ -211,11 +220,24 @@ function floorParts(T, index) {
   const parts = [];
   const add = (geos, color, name, castShadow = true) => parts.push({name, color, geometry:merge(T, geos), castShadow});
   add(planks, PLANK_COLORS[0], 'floor-planks');
-  add(beams, BEAM_COLOR, 'floor-logs');
-  add(caps, BEAM_END_COLOR, 'floor-log-ends');
+  parts[0].shadow = merge(T, pieces.map(p => plankProxy(T, p))); // the planks cast through these boxes (see shadowProxy)
+  add(beams, BEAM_COLOR, 'floor-logs', false); // under the planks: their shadow only fell on the sea, which takes none
+  add(caps, BEAM_END_COLOR, 'floor-log-ends', false);
   if (ropes.length) add(ropes, ROPE_COLOR, 'floor-lashings', false); // thin rope: shadow is invisible, skip the shadow pass
   if (nails.length) add(nails, NAIL_COLOR, 'floor-nails', false);
   return parts;
+}
+
+// geometry = [detail vertices | shadow proxy vertices from n on]: the main pass draws only the detail (drawRange),
+// the shadow pass only the proxy (layers cannot split the passes in r170: the shadow map tests the main camera's).
+function shadowProxy(mesh, n) {
+  const r = mesh.geometry.drawRange; r.start = 0; r.count = n;
+  mesh.onBeforeShadow = () => { r.start = n; r.count = Infinity; };
+  mesh.onAfterShadow = () => { r.start = 0; r.count = n; };
+}
+function mergeWithProxy(T, detail, proxies) {
+  const n = detail.reduce((a, g) => a + g.attributes.position.count, 0); // all non-indexed (merge output)
+  return {geometry:merge(T, [...detail, ...proxies]), n};
 }
 
 const defaultMat = T => c => new T.MeshStandardMaterial({color:c, roughness:0.95});
@@ -244,7 +266,9 @@ export function createFloor(T, index = 0, getMaterial) {
   const mat = getMaterial || defaultMat(T);
   const g = new T.Group(); g.name = 'raft-floor';
   for (const p of floorParts(T, index)) {
-    const mesh = new T.Mesh(p.geometry, partMaterial(mat, p)); mesh.name = p.name;
+    const m = p.shadow ? mergeWithProxy(T, [p.geometry], [p.shadow]) : null;
+    const mesh = new T.Mesh(m ? m.geometry : p.geometry, partMaterial(mat, p)); mesh.name = p.name;
+    if (m) shadowProxy(mesh, m.n);
     mesh.castShadow = p.castShadow; mesh.receiveShadow = true; g.add(mesh);
     if (p.name === 'floor-planks') mesh.userData.color = p.color; // paint: base colour for tinting
   }
@@ -266,16 +290,18 @@ export function createRaftMesh(T, tiles, getMaterial, tint = null, tintMat = nul
   for (const t of tiles) {
     m4.makeTranslation(t.x, 0, t.z);
     for (const p of floorParts(T, t.index)) {
-      p.geometry.applyMatrix4(m4);
+      p.geometry.applyMatrix4(m4); p.shadow?.applyMatrix4(m4);
       const hex = tint && p.name === 'floor-planks' ? tint(t, p.color) : null;
       const key = hex ? 'tint|' + hex : p.color + '|' + p.castShadow;
-      if (!buckets.has(key)) buckets.set(key, {name:p.name, color:hex || p.color, tinted:!!hex, castShadow:p.castShadow, list:[]});
-      buckets.get(key).list.push(p.geometry);
+      if (!buckets.has(key)) buckets.set(key, {name:p.name, color:hex || p.color, tinted:!!hex, castShadow:p.castShadow, list:[], shadow:[]});
+      buckets.get(key).list.push(p.geometry); if (p.shadow) buckets.get(key).shadow.push(p.shadow);
     }
   }
   const g = new T.Group(); g.name = 'raft-floors';
   for (const b of buckets.values()) {
-    const mesh = new T.Mesh(merge(T, b.list), partMaterial(b.tinted && tintMat ? tintMat : mat, b)); mesh.name = b.name; // painted planks keep their per-plank vertex shades
+    const m = b.shadow.length ? mergeWithProxy(T, b.list, b.shadow) : null;
+    const mesh = new T.Mesh(m ? m.geometry : merge(T, b.list), partMaterial(b.tinted && tintMat ? tintMat : mat, b)); mesh.name = b.name; // painted planks keep their per-plank vertex shades
+    if (m) shadowProxy(mesh, m.n);
     mesh.castShadow = b.castShadow; mesh.receiveShadow = true; g.add(mesh);
   }
   g.userData.kind = 'floors';
