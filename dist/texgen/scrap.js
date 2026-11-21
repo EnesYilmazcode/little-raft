@@ -1,10 +1,10 @@
-// Scrap metal sheet: grey steel (#7D8288) with soft-haloed, pitted rust patches (#8A4A24-#A85D2E),
+// Scrap metal sheet: friendly weathered steel (#8C9094) with soft-haloed brown rust patches (#6E4A35-#8C6145)
+// and thin rust run-off streaks hanging below them, sparse faded chipped paint (mostly slate blue #5F7F95,
+// rarely a dusty red), fine diagonal scratches, a riveted overlap strip (v 0..0.15) with a panel line, one dent.
 // panelEdge: the riveted overlap strip ends at the tile wrap on purpose (seam test skips it).
 export const panelEdge = true;
-// faded chipped paint (mostly blue #4F7EA0, some red #A23A2A), fine diagonal scratches that brighten the
-// bare metal, a riveted overlap strip (v 0..0.15) with a panel line, and one shallow dent.
 // UV scale: one tile ~ 1 m of sheet (8 rivets, ~12 cm apart). Seamless on S; deterministic.
-// Roughness: steel ~0.42-0.52, scratches ~0.38, rust 0.88-0.94, paint ~0.86.
+// Roughness: steel ~0.46-0.62, scratches ~0.4, rust ~0.84-0.9, paint ~0.68-0.74. Metalness mask in `metal`.
 export const normalStrength = 7;
 
 const STEEL = [0.55, 0.565, 0.58], RUST_D = [0.43, 0.29, 0.21], RUST_L = [0.55, 0.38, 0.27], DRIPC = [0.52, 0.37, 0.27];

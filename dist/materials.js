@@ -21,7 +21,7 @@ export const PRESETS = {
   plastic: { cell: 'plastic', roughness: 1,    metalness: 0,    normalScale: 0.8, repeat: [1, 1], transparent: true, opacity: 0.95, side: 'double' },
   foliage: { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 0.7, repeat: [10, 5] }, // dense bush/island canopy, opaque
   leaf:    { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1], cutout: 0.5, side: 'double' },
-  rope:    { cell: 'rope',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [1, 3] },
+  rope:    { cell: 'rope',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [3, 3] }, // tuned for deck lashing torus lay (~32 deg)
   scrap:   { cell: 'scrap',   roughness: 1,    metalness: 0.5,  normalScale: 1.0, repeat: [1, 1], metalMap: true }, // x metal mask in albedo alpha; capped: no env map in game
   sand:    { cell: 'sand',    roughness: 1,    metalness: 0,    normalScale: 0.8, repeat: [3, 3] },
   rock:    { cell: 'rock',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [2, 2] },
