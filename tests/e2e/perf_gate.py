@@ -1,23 +1,31 @@
 """Perf budget gate for Little Raft.
 
-Plays a scripted solo session in headless Chrome (SwiftShader) and fails when the game
-goes over the budgets in tests/e2e/perf_budget.json.
+Plays a scripted solo session in headless Chromium (SwiftShader, via tests/e2e/harness.py) and
+fails when the game goes over the budgets in tests/e2e/perf_budget.json.
 
-Measures, per rendered frame: WebGL draw calls, triangles, and script time inside the
-requestAnimationFrame callback (performance.mark/measure "raft:frame"). Over the whole
-run: long tasks, JS heap growth after forced GC, DOM node / listener growth and live WebGL
-object growth (buffers, textures, programs...), all game-agnostic (no game hooks needed).
+Measured:
+  * draw calls per frame: raftDebug.renderInfo (three.js renderer.info) when the game exposes it,
+    otherwise every WebGL drawArrays/drawElements(/Instanced) call wrapped by an init script and
+    bucketed per requestAnimationFrame. Triangles and offscreen-pass draws come from the wrapper.
+  * JS heap growth: Runtime.getHeapUsage (+ performance.memory with --enable-precise-memory-info)
+    sampled right after CDP HeapProfiler.collectGarbage at start, middle and end of the session.
+    Also DOM element, listener and live WebGL object (create* minus delete*) growth.
+  * long tasks (PerformanceObserver 'longtask') after warmup. Budgeted only as "hitches": tasks
+    above max(hitchMinMs, hitchFactor x median long task), because on SwiftShader every frame is
+    itself a long task and absolute frame times depend entirely on the box.
+Hardware-independent metrics (draws, triangles, heap/DOM/GL growth) get strict-ish budgets;
+time-based ones are reported (scriptMsPerFrame, frameIntervalMs, fps) but not budgeted.
 
 Usage:
-  python tests/e2e/perf_gate.py                      # serves ./dist (or $RAFT_DIST) itself
-  python tests/e2e/perf_gate.py --url http://127.0.0.1:41902/
-  python tests/e2e/perf_gate.py --duration 30 --out .qa/perf/quick.json
+  python3.13 tests/e2e/perf_gate.py --dist <dist_dir> [--budget tests/e2e/perf_budget.json] [--out <dir>]
+         [--duration S] [--warmup S] [--width W --height H]
 
-Under release_queue.py it picks up RAFT_QA_URL automatically.
-Exit codes: 0 within budget, 1 over budget, 2 harness error (page never booted etc).
-SwiftShader numbers are only comparable to other SwiftShader runs, not to real GPUs.
+Prints one JSON object as the last stdout line: {"tool","pass","failures","metrics","artifacts"}.
+--out writes <dir>/perf_gate.json with the full report (heap samples, draw breakdown, budget).
+Exit codes: 0 within budget, 1 over budget (game perf bug), 2 harness error (could not run).
+See perf_budget.json "_calibration" for how the budgets were derived.
 """
-import argparse, functools, http.server, json, os, socketserver, sys, threading, time
+import argparse, json, sys, time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -36,7 +44,7 @@ INIT_JS = r"""
     off: new Float32Array(CAP), snap: 0, snapList: null, lastSnap: null, vendor: null,
     gl: {buffer: 0, texture: 0, program: 0, shader: 0, framebuffer: 0, renderbuffer: 0, vertexArray: 0},
     longCount: 0, longTotal: 0, longMax: 0, loafCount: 0, loafBlockMax: 0, loafBlockTotal: 0,
-    contexts: 0,
+    contexts: 0, longList: [], riCalls: new Float32Array(CAP), riSeen: 0, curRi: -1,
   };
   const triCount = (mode, count, inst) => {
     const per = mode === 4 ? Math.floor(count / 3) : (mode === 5 || mode === 6) ? Math.max(0, count - 2) : 0;
@@ -89,11 +97,19 @@ INIT_JS = r"""
   // belongs to the previous frame.
   const flush = () => {
     if (P.recording && P.lastTs >= 0 && P.n < CAP) {
-      const i = P.n++; P.ts[i] = P.lastTs; P.draws[i] = P.curDraws; P.tris[i] = P.curTris; P.script[i] = P.curScript; P.off[i] = P.curOff;
+      const i = P.n++; P.ts[i] = P.lastTs; P.draws[i] = P.curDraws; P.tris[i] = P.curTris; P.script[i] = P.curScript; P.off[i] = P.curOff; P.riCalls[i] = P.curRi;
     }
     if (P.snapList) { P.lastSnap = P.snapList; P.snapList = null; }
     if (P.snap > 0 && P.lastTs >= 0) { P.snap--; P.snapList = []; }
-    P.curDraws = 0; P.curTris = 0; P.curScript = 0; P.curOff = 0;
+    P.curDraws = 0; P.curTris = 0; P.curScript = 0; P.curOff = 0; P.curRi = -1;
+  };
+  // Optional game hook: raftDebug.renderInfo (three.js renderer.info). Read after each rAF callback.
+  const readRi = () => {
+    try {
+      const ri = window.raftDebug && window.raftDebug.renderInfo; if (!ri) return;
+      const r = ri.render || ri; const c = +r.calls;
+      if (Number.isFinite(c)) { P.riSeen = 1; P.curRi = Math.max(P.curRi, 0) + c; }
+    } catch (e) {}
   };
   const raf = window.requestAnimationFrame.bind(window);
   window.requestAnimationFrame = function (cb) {
@@ -103,6 +119,7 @@ INIT_JS = r"""
       try { cb(ts); } finally {
         const m = performance.measure('raft:frame', 'raft:frame:start');
         P.curScript += m ? m.duration : 0;
+        if (P.recording) readRi();
         performance.clearMarks('raft:frame:start'); performance.clearMeasures('raft:frame');
       }
     });
@@ -110,7 +127,7 @@ INIT_JS = r"""
   try {
     new PerformanceObserver(list => {
       if (!P.recording) return;
-      for (const e of list.getEntries()) { P.longCount++; P.longTotal += e.duration; if (e.duration > P.longMax) P.longMax = e.duration; }
+      for (const e of list.getEntries()) { if (P.longList.length < 5000) P.longList.push([e.startTime, e.duration]); }
     }).observe({type: 'longtask', buffered: false});
   } catch (e) {}
   try {
@@ -119,29 +136,21 @@ INIT_JS = r"""
       for (const e of list.getEntries()) { P.loafCount++; const b = e.blockingDuration || 0; P.loafBlockTotal += b; if (b > P.loafBlockMax) P.loafBlockMax = b; }
     }).observe({type: 'long-animation-frame', buffered: false});
   } catch (e) {}
-  P.start = () => { P.n = 0; P.longCount = P.longTotal = P.longMax = 0; P.loafCount = P.loafBlockTotal = P.loafBlockMax = 0; P.recording = true; };
+  P.start = () => { P.n = 0; P.longList = []; P.t0 = performance.now(); P.loafCount = P.loafBlockTotal = P.loafBlockMax = 0; P.recording = true; };
   P.stop = () => { flush(); P.recording = false; };
   P.dump = () => ({
     n: P.n, ts: Array.from(P.ts.subarray(0, P.n)), draws: Array.from(P.draws.subarray(0, P.n)),
     tris: Array.from(P.tris.subarray(0, P.n)), script: Array.from(P.script.subarray(0, P.n)), off: Array.from(P.off.subarray(0, P.n)),
     vendor: P.vendor, snap: P.lastSnap,
     gl: {...P.gl}, contexts: P.contexts,
-    long: {count: P.longCount, totalMs: P.longTotal, maxMs: P.longMax},
+    long: P.longList.slice(), t0: P.t0, now: performance.now(),
+    riSeen: P.riSeen, riCalls: P.riSeen ? Array.from(P.riCalls.subarray(0, P.n)) : null,
     loaf: {count: P.loafCount, blockingTotalMs: P.loafBlockTotal, blockingMaxMs: P.loafBlockMax},
   });
   // Pointer lock never works headless; force the drag-to-look fallback deterministically.
   HTMLCanvasElement.prototype.requestPointerLock = function () { return Promise.reject(new Error('perf gate')); };
 })();
 """ % MAX_FRAMES
-
-
-def serve(dist: Path):
-    class Quiet(http.server.SimpleHTTPRequestHandler):
-        def log_message(self, *a): pass
-    srv = socketserver.ThreadingTCPServer(('127.0.0.1', 0), functools.partial(Quiet, directory=str(dist)))
-    srv.daemon_threads = True
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    return srv, f'http://127.0.0.1:{srv.server_address[1]}/'
 
 
 def pct(vals, q):
@@ -156,13 +165,20 @@ def stats(vals):
             'p95': round(pct(vals, .95), 3), 'p99': round(pct(vals, .99), 3), 'max': round(max(vals), 3)}
 
 
-def heap(cdp, gc=True):
+def heap(page, cdp, gc=True):
+    """Heap sample. With gc=True, forces two full GCs over CDP first and returns the page-clock
+    window the GC took so long tasks it caused can be excluded."""
+    w0 = page.evaluate('performance.now()')
     if gc:
         cdp.send('HeapProfiler.collectGarbage'); cdp.send('HeapProfiler.collectGarbage')
+    w1 = page.evaluate('performance.now()')
     h = cdp.send('Runtime.getHeapUsage')
+    pm, glLive, domNow = page.evaluate('[performance.memory ? performance.memory.usedJSHeapSize : null, Object.values(__perf.gl).reduce((a, b) => a + b, 0), document.getElementsByTagName("*").length]')
     m = {x['name']: x['value'] for x in cdp.send('Performance.getMetrics')['metrics']}
     return {'usedMB': round(h['usedSize'] / 1048576, 3), 'totalMB': round(h['totalSize'] / 1048576, 3),
-            'nodes': m.get('Nodes'), 'listeners': m.get('JSEventListeners'), 'documents': m.get('Documents')}
+            'perfMemoryMB': round(pm / 1048576, 3) if pm else None,
+            'glLive': glLive, 'domInTree': domNow, 'nodes': m.get('Nodes'), 'listeners': m.get('JSEventListeners'), 'documents': m.get('Documents'),
+            'gc': gc, '_win': (w0, w1 + 50)}
 
 
 def close_overlays(page):
@@ -211,44 +227,68 @@ def breakdown(snap):
             'top10': [{'tris': x[0], 'count': x[1], 'instances': x[2], 'offscreen': bool(x[4]), 'shareOfFrame': round(x[0] / tot, 3)} for x in top]}
 
 
-def check(metrics, budget):
-    v = []
-    def over(name, val, lim):
-        if lim is None or val is None: return
-        if val > lim: v.append({'metric': name, 'value': val, 'budget': lim})
-    for key in ('drawCalls', 'offscreenDrawCalls', 'triangles', 'scriptMsPerFrame', 'frameIntervalMs'):
-        for q, lim in (budget.get(key) or {}).items():
-            over(f'{key}.{q}', metrics[key].get(q), lim)
-    lt = budget.get('longTasks') or {}
-    over('longTasks.count', metrics['longTasks']['count'], lt.get('count'))
-    over('longTasks.maxMs', round(metrics['longTasks']['maxMs'], 1), lt.get('maxMs'))
-    over('longTasks.perMinute', metrics['longTasks']['perMinute'], lt.get('perMinute'))
-    g = metrics['growth']
-    for key in ('heapMB', 'domNodes', 'listeners', 'glObjects'):
-        over(f'growth.{key}', g[key], (budget.get('growth') or {}).get(key))
-    over('webglContexts', metrics['webglContexts'], budget.get('webglContexts'))
+SESSION = ('open {url}, click #solo, wait {warmup:g}s warmup, then for {duration:g}s repeat a ~8s cycle: '
+           'press 1 (hook), hold W 0.9s, hold A/D 0.5s, right-drag to look, hold LMB 0.7s to throw the hook, wait 1.4s, '
+           'hold LMB 1.2s to reel, press 2,3,4,1, every 3rd cycle Tab (inventory) then Tab to close, hold S 0.5s, Space; '
+           'viewport {width}x{height}, SwiftShader Chromium')
+
+
+def get(d, path):
+    for k in path.split('.'):
+        if not isinstance(d, dict) or k not in d: return None
+        d = d[k]
+    return d
+
+
+# (metric path in metrics, budget path in budget json, human explanation)
+CHECKS = [
+    ('drawCalls.p50', 'drawCalls.p50', 'median WebGL draw calls per frame'),
+    ('drawCalls.p95', 'drawCalls.p95', '95th percentile WebGL draw calls per frame'),
+    ('drawCalls.max', 'drawCalls.max', 'worst-frame WebGL draw calls'),
+    ('triangles.p95', 'triangles.p95', '95th percentile triangles per frame'),
+    ('growth.heapMB', 'growth.heapMB', 'JS heap growth (post-GC end minus post-GC start)'),
+    ('growth.heapMBLateHalf', 'growth.heapMBLateHalf', 'JS heap growth over the second half of the session (post-GC mid to end); steady growth here is a leak'),
+    ('growth.domNodes', 'growth.domNodes', 'growth of elements in the document tree'),
+    ('growth.listeners', 'growth.listeners', 'JS event listener growth after GC'),
+    ('growth.glObjects', 'growth.glObjects', 'live WebGL object growth (create* minus delete*)'),
+    ('growth.glObjectsLateHalf', 'growth.glObjectsLateHalf', 'live WebGL object growth over the second half (first-use allocations excluded); steady growth is a GPU leak'),
+    ('webglContexts', 'webglContexts', 'WebGL contexts created'),
+    ('longTasks.hitches', 'longTasks.hitches', 'main-thread hitches after warmup: tasks longer than max(hitchMinMs, hitchFactor x median long task) (forced-GC windows excluded)'),
+]
+
+
+def check(metrics, budget, repro):
+    fails = []
+    for mpath, bpath, what in CHECKS:
+        val, lim = get(metrics, mpath), get(budget, bpath)
+        if lim is None or val is None: continue
+        if val > lim:
+            fid = 'budget.' + mpath
+            extra = ''
+            if mpath.startswith('growth.heap'):
+                extra = ' heap samples (t s: MB): ' + ', '.join(f"{x['t']}:{x['usedMB']}{'*' if x['gc'] else ''}" for x in metrics['heap']['samples']) + ' (* = after forced GC)'
+            if mpath.startswith('longTasks'):
+                extra = ' worst tasks (start s after warmup, ms): ' + ', '.join(f'{t}:{d}' for t, d in metrics['longTasks']['worst'])
+            if mpath == 'growth.glObjects':
+                extra = ' by kind: ' + json.dumps(metrics['growth']['glByKind'])
+            fails.append({'id': fid, 'detail': f'{what}: {val} > budget {lim}.{extra}', 'repro': repro})
     mf = budget.get('minFrames')
     if mf is not None and metrics['frames'] < mf:
-        v.append({'metric': 'frames', 'value': metrics['frames'], 'budget': f'>= {mf}', 'note': 'too few frames recorded; render loop stalled or hook missed'})
-    return v
+        fails.append({'id': 'frames', 'detail': f"only {metrics['frames']} frames recorded (< {mf}); render loop stalled", 'repro': repro})
+    return fails
 
 
-def run(args):
+def run(args, budget):
+    sys.path.insert(0, str(HERE))
+    from harness import StaticServer, launch_chromium
     from playwright.sync_api import sync_playwright
-    budget = json.loads(Path(args.budget).read_text('utf-8'))
-    srv = None
-    url = args.url or os.environ.get('RAFT_QA_URL')
-    if not url:
-        dist = Path(args.dist or os.environ.get('RAFT_DIST') or ROOT / 'dist').resolve()
-        if not (dist / 'index.html').is_file(): raise SystemExit(f'no index.html in {dist}')
-        srv, url = serve(dist)
-    report = {'tool': 'perf_gate', 'url': url, 'durationS': args.duration, 'budgetFile': str(args.budget),
-              'renderer': 'swiftshader', 'errors': [], 'console': []}
-    t_start = time.time()
-    try:
-        with sync_playwright() as p:
-            b = p.chromium.launch(channel='chrome', headless=True,
-                                  args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'])
+    dist = Path(args.dist).resolve()
+    if not (dist / 'index.html').is_file(): raise RuntimeError(f'no index.html in {dist}')
+    report = {'errors': [], 'console': []}
+    with StaticServer(dist) as srv, sync_playwright() as p:
+        repro = SESSION.format(url=f'{dist}/index.html (served over http)', warmup=args.warmup, duration=args.duration, width=args.width, height=args.height)
+        b = launch_chromium(p, extra_args=['--enable-precise-memory-info'])
+        try:
             ctx = b.new_context(viewport={'width': args.width, 'height': args.height})
             ctx.add_init_script(INIT_JS)
             page = ctx.new_page()
@@ -256,83 +296,109 @@ def run(args):
             page.on('console', lambda m: m.type == 'error' and report['console'].append(m.text[:300]))
             cdp = ctx.new_cdp_session(page)
             cdp.send('Performance.enable'); cdp.send('HeapProfiler.enable')
-            page.goto(url); page.wait_for_function('!!window.raftDebug && !!window.__perf', timeout=30000)
-            page.locator('#solo').click(); page.wait_for_function('raftDebug.state.running', timeout=20000)
+            page.goto(srv.url, timeout=60000); page.wait_for_function('!!window.raftDebug && !!window.__perf', timeout=60000)
+            page.locator('#solo').click(); page.wait_for_function('raftDebug.state.running', timeout=60000)
             page.wait_for_timeout(int(args.warmup * 1000))
             close_overlays(page)
-            h0 = heap(cdp); gl0 = page.evaluate('({...__perf.gl})')
-            samples = [{'t': 0, **heap(cdp, gc=False)}]
+            gl0 = page.evaluate('({...__perf.gl})')
             page.evaluate('__perf.start()')
-            t0 = time.time(); i = 0; next_sample = 10
+            t0 = time.time()
+            h0 = heap(page, cdp); h0['t'] = 0.0
+            samples = [h0]; i = 0; next_sample = 10; mid = None
             while time.time() - t0 < args.duration:
                 play_cycle(page, i, args.width, args.height); i += 1
                 el = time.time() - t0
-                if el >= next_sample:
-                    samples.append({'t': round(el, 1), **heap(cdp, gc=False)}); next_sample += 10
+                if mid is None and el >= args.duration / 2:
+                    close_overlays(page); mid = heap(page, cdp); mid['t'] = round(el, 1); samples.append(mid)
+                elif el >= next_sample:
+                    x = heap(page, cdp, gc=False); x['t'] = round(el, 1); samples.append(x)
+                if el >= next_sample: next_sample += 10
             page.evaluate('__perf.snap = 1'); page.wait_for_timeout(1500)
-            page.evaluate('__perf.stop()')
-            recorded_s = time.time() - t0
             close_overlays(page); page.wait_for_timeout(500)
+            h1 = heap(page, cdp); h1['t'] = round(time.time() - t0, 1); samples.append(h1)
+            page.evaluate('__perf.stop()')
             d = page.evaluate('__perf.dump()')
-            h1 = heap(cdp); samples.append({'t': round(time.time() - t0, 1), 'gc': True, **h1})
-            report['endState'] = page.evaluate("""(() => { const s = raftDebug.state; return {items: s.items, tiles: s.tiles, collected: s.collected, inventoryOpen: s.inventoryOpen}; })()""")
+            report['endState'] = page.evaluate("""(() => { const s = raftDebug.state; return {running: s.running, items: s.items, tiles: s.tiles, collected: s.collected, inventoryOpen: s.inventoryOpen, stock: s.stock}; })()""")
+        finally:
             b.close()
-    finally:
-        if srv: srv.shutdown()
 
-    report['glRenderer'] = d['vendor']
+    recorded_s = (d['now'] - d['t0']) / 1000
+    gcwins = [x['_win'] for x in samples if x['gc']]
+    for x in samples: x.pop('_win', None)
+    longs = [(st, du) for st, du in d['long'] if not any(st < w1 and st + du > w0 for w0, w1 in gcwins)]
     ts = d['ts']; intervals = [b - a for a, b in zip(ts, ts[1:])]
     live0 = sum(gl0.values()); live1 = sum(d['gl'].values())
+    # SwiftShader rasterises on the CPU and the main thread waits for it, so on a slow box every
+    # frame is itself a 200-300 ms "long task". A hitch is a task far above that baseline.
+    lt = budget.get('longTasks') or {}
+    med = pct([x for _, x in longs], .5) or 0
+    hitch_ms = round(max(lt.get('hitchMinMs', 500), lt.get('hitchFactor', 4) * med), 1)
+    draws = d['riCalls'] if d['riSeen'] else d['draws']
     metrics = {
         'frames': d['n'], 'recordedS': round(recorded_s, 1), 'fps': round(d['n'] / recorded_s, 2) if recorded_s else None,
-        'playCycles': i,
-        'drawCalls': stats(d['draws']), 'triangles': stats(d['tris']), 'scriptMsPerFrame': stats(d['script']),
+        'playCycles': i, 'drawCallSource': 'raftDebug.renderInfo' if d['riSeen'] else 'webgl-wrap',
+        'drawCalls': stats(draws), 'webglDrawCalls': stats(d['draws']), 'triangles': stats(d['tris']),
         'offscreenDrawCalls': stats(d['off']),
-        'frameIntervalMs': stats(intervals),
+        'scriptMsPerFrame': stats(d['script']), 'frameIntervalMs': stats(intervals),
         'drawBreakdown': breakdown(d['snap']),
-        'longTasks': {'count': d['long']['count'], 'totalMs': round(d['long']['totalMs'], 1), 'maxMs': round(d['long']['maxMs'], 1),
-                      'perMinute': round(d['long']['count'] / (recorded_s / 60), 2) if recorded_s else None},
+        'longTasks': {'count': len(longs), 'hitchThresholdMs': hitch_ms, 'hitches': sum(1 for _, x in longs if x > hitch_ms), 'over200ms': sum(1 for _, x in longs if x > 200), 'over500ms': sum(1 for _, x in longs if x > 500),
+                      'maxMs': round(max((x for _, x in longs), default=0), 1), 'totalMs': round(sum(x for _, x in longs), 1),
+                      'blockedShare': round(sum(x for _, x in longs) / (recorded_s * 1000), 3) if recorded_s else None,
+                      'excludedGcTasks': len(d['long']) - len(longs),
+                      'worst': [[round((st - d['t0']) / 1000, 1), round(du)] for st, du in sorted(longs, key=lambda e: -e[1])[:5]]},
         'longAnimationFrames': {k: round(v, 1) for k, v in d['loaf'].items()},
-        'heap': {'startMB': h0['usedMB'], 'endMB': h1['usedMB'], 'samples': samples},
-        'growth': {'heapMB': round(h1['usedMB'] - h0['usedMB'], 3), 'domNodes': (h1['nodes'] or 0) - (h0['nodes'] or 0),
+        'heap': {'startMB': h0['usedMB'], 'midMB': mid['usedMB'] if mid else None, 'endMB': h1['usedMB'],
+                 'perfMemoryStartMB': h0['perfMemoryMB'], 'perfMemoryEndMB': h1['perfMemoryMB'], 'samples': samples},
+        'growth': {'heapMB': round(h1['usedMB'] - h0['usedMB'], 3),
+                   'heapMBLateHalf': round(h1['usedMB'] - mid['usedMB'], 3) if mid else None,
+                   'glObjectsLateHalf': h1['glLive'] - mid['glLive'] if mid else None,
+                   'domNodes': h1['domInTree'] - h0['domInTree'],
+                   'allNodes': (h1['nodes'] or 0) - (h0['nodes'] or 0), 'documents': (h1['documents'] or 0) - (h0['documents'] or 0),
                    'listeners': (h1['listeners'] or 0) - (h0['listeners'] or 0), 'glObjects': live1 - live0,
                    'glByKind': {k: d['gl'][k] - gl0.get(k, 0) for k in d['gl']}},
-        'glLiveObjects': d['gl'], 'webglContexts': d['contexts'],
+        'glLiveObjects': d['gl'], 'webglContexts': d['contexts'], 'glRenderer': d['vendor'],
+        'endState': report['endState'],
     }
-    report['metrics'] = metrics
-    report['violations'] = check(metrics, budget)
+    fails = check(metrics, budget, repro)
     if report['errors']:
-        report['violations'].append({'metric': 'pageErrors', 'value': len(report['errors']), 'budget': 0})
-    report['ok'] = not report['violations']
-    report['wallS'] = round(time.time() - t_start, 1)
-    return report
+        fails.append({'id': 'pageErrors', 'detail': f"{len(report['errors'])} uncaught page error(s), first: {report['errors'][0]}", 'repro': repro})
+    return metrics, fails, report
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--url'); ap.add_argument('--dist')
-    ap.add_argument('--duration', type=float, default=90.0, help='seconds of recorded play (default 90)')
-    ap.add_argument('--warmup', type=float, default=4.0)
+    ap.add_argument('--dist', default=str(ROOT / 'dist'), help='built game folder containing index.html (any path)')
     ap.add_argument('--budget', default=str(DEFAULT_BUDGET))
-    ap.add_argument('--out', default=str(ROOT / '.qa' / 'perf' / 'perf_gate.json'))
-    # Small viewport on purpose: SwiftShader is fill-rate bound and draw/triangle/script metrics
+    ap.add_argument('--out', help='artifact dir; writes perf_gate.json (full report with per-sample heap) there')
+    ap.add_argument('--duration', type=float, default=None, help='seconds of recorded play (default from budget, else 90)')
+    ap.add_argument('--warmup', type=float, default=None, help='seconds of idle play before recording (default from budget, else 6)')
+    # Small viewport on purpose: SwiftShader is fill-rate bound and draw/triangle/heap metrics
     # do not depend on resolution, so this just buys more frames per second of wall time.
     ap.add_argument('--width', type=int, default=640); ap.add_argument('--height', type=int, default=360)
     args = ap.parse_args()
+    t_start = time.time()
+    out = {'tool': 'perf_gate', 'pass': False, 'failures': [], 'metrics': {}, 'artifacts': []}
     try:
-        report = run(args)
-    except SystemExit: raise
+        budget = json.loads(Path(args.budget).read_text('utf-8'))
+        if args.duration is None: args.duration = float(budget.get('session', {}).get('durationS', 90))
+        if args.warmup is None: args.warmup = float(budget.get('session', {}).get('warmupS', 6))
+        metrics, fails, report = run(args, budget)
     except Exception as e:  # harness failure, not a budget failure
-        print(json.dumps({'tool': 'perf_gate', 'ok': False, 'harnessError': f'{type(e).__name__}: {e}'}))
-        return 2
-    out = Path(args.out); out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(report, indent=1), 'utf-8')
-    summary = {k: report[k] for k in ('ok', 'violations', 'url', 'wallS')}
-    summary['metrics'] = {k: v for k, v in report['metrics'].items() if k != 'heap'}
-    summary['heap'] = {k: v for k, v in report['metrics']['heap'].items() if k != 'samples'}
-    summary['out'] = str(out)
-    print(json.dumps(summary, indent=1))
-    return 0 if report['ok'] else 1
+        out['failures'] = [{'id': 'harness', 'detail': f'{type(e).__name__}: {str(e)[:500]}', 'repro': f'python3.13 tests/e2e/perf_gate.py --dist {args.dist}'}]
+        out['metrics'] = {'wallS': round(time.time() - t_start, 1)}
+        print(json.dumps(out)); return 2
+    metrics['wallS'] = round(time.time() - t_start, 1)
+    out['pass'] = not fails; out['failures'] = fails
+    if args.out:
+        od = Path(args.out); od.mkdir(parents=True, exist_ok=True)
+        f = od / 'perf_gate.json'
+        f.write_text(json.dumps({**out, 'metrics': metrics, 'budget': budget, 'errors': report['errors'], 'console': report['console']}, indent=1), 'utf-8')
+        out['artifacts'].append(str(f))
+    slim = {k: v for k, v in metrics.items() if k not in ('heap', 'drawBreakdown', 'longAnimationFrames', 'glLiveObjects')}
+    slim['heap'] = {k: v for k, v in metrics['heap'].items() if k != 'samples'}
+    out['metrics'] = slim
+    print(json.dumps(out))
+    return 0 if out['pass'] else 1
 
 
 if __name__ == '__main__':
