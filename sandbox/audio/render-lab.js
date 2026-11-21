@@ -30,7 +30,7 @@ export const CASES = {
   'hammer-left': { seconds: 0.6, run: (e) => { e.setListener(0, 1.6, 0, 0, 0, -1); e.play('hammer', 1, { at: 0.05, x: -6, y: 1, z: 0 }); } },
   'gull-far': { seconds: 4, run: (e) => { e.setListener(0, 1.6, 0, 0, 0, -1); e.play('gull', 0.8, { at: 0.05, x: 18, y: 12, z: -20 }); } },
   gull: one('gull', 1, 4),
-  pickup: one('pickup', 1, 0.5),
+  grab: one('grab', 1, 0.5),
   collect: one('collect', 1, 0.5),
   build: one('build', 1, 0.6),
   craft: one('craft', 1, 1.0),
@@ -43,6 +43,53 @@ export const CASES = {
   ui: one('ui', 1, 0.2),
   hover: one('hover', 1, 0.15),
   error: one('error', 1, 0.5),
+  // dist/audio.js events the engine now covers
+  place: one('place', 1, 0.5),
+  plant: one('plant', 1, 0.5),
+  water: one('water', 1, 1.2),
+  land: one('land', 1, 0.5),
+  step: one('step', 1, 0.3),
+  open: one('open', 1, 0.4),
+  close: one('close', 1, 0.4),
+  deny: one('deny', 1, 0.5),
+  // feature events: cooking, smelter, sailing, diving
+  sizzle: one('sizzle', 1, 1.8),
+  stoke: one('stoke', 1, 1.1),
+  clank: one('clank', 1, 0.7),
+  ingot: one('ingot', 1, 1.0),
+  sail: one('sail', 1, 0.8),
+  anchor: one('anchor', 1, 1.8),
+  dive: one('dive', 1, 1.3),
+  surface: one('surface', 1, 0.8),
+  // sail raised at 0.5 s in a fresh wind (luff loop), lowered at 3.5 s; tick() drives both edges
+  'sail-luff': {
+    seconds: 4.6,
+    run: (e, ctx) => {
+      const st = { sail: { raised: false, anchored: false, windStr: 0.9 } };
+      e.tick(0.016, st);
+      ctx.suspend(0.5).then(() => { st.sail.raised = true; e.tick(0.016, st); ctx.resume(); });
+      ctx.suspend(3.5).then(() => { st.sail.raised = false; e.tick(0.016, st); ctx.resume(); });
+    },
+  },
+  // sea + a hammer every second; under water from 3 s to 6.5 s ('dive', 'surface', tone closes, no wind)
+  'underwater': {
+    seconds: 8, ambience: true, windows: [[1.8, 2.8, 2000, 8000], [4.5, 6.0, 2000, 8000]],
+    run: (e, ctx) => {
+      e.setOcean({ swell: 0.5, wind: 0.5 });
+      for (let t = 1; t < 8; t++) e.play('hammer', 0.7, { at: t + 0.4 });
+      e.tick(0.016, { underwater: false });
+      ctx.suspend(3).then(() => { e.tick(0.016, { underwater: true }); ctx.resume(); });
+      ctx.suspend(6.5).then(() => { e.tick(0.016, { underwater: false }); ctx.resume(); });
+    },
+  },
+  // dist/audio.js's music bed (setMusic + tick): pad fades in over 4 s, chord change at 10 s, plucks
+  music: {
+    seconds: 12, ambience: false,
+    run: (e, ctx) => {
+      e.setMusic(true);
+      for (let i = 1; i <= 23; i++) ctx.suspend(i * 0.5).then(() => { e.tick(0.5, {}); ctx.resume(); });
+    },
+  },
   'ambience-calm': { seconds: 12, ambience: true, run: (e) => e.setOcean({ swell: 0.3, wind: 0.15, speed: 0.1, creak: 0.4 }) },
   'ambience-rough': { seconds: 12, ambience: true, run: (e) => e.setOcean({ swell: 1, wind: 1, speed: 0.8, creak: 1 }) },
   'ambience-creaky': { seconds: 12, ambience: true, run: (e) => e.setOcean({ swell: 0.7, wind: 0, speed: 1, creak: 1 }) },
