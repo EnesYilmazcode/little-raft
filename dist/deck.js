@@ -141,8 +141,34 @@ function lashing(T, rng, x, zb, surf, out) {
   out.push(k);
 }
 
+// Wet fascia board along one outer tile edge (axis 'x': runs along x at z = side*off; 'z': along z at x = side*off),
+// spanning [a,b]. Vertex colours carry a soaked look: darker, cooler and greener toward the waterline.
+const FASCIA_T = 0.028, FASCIA_TOP = 0.152, FASCIA_BOT = 0.06, FASCIA_OFF = 1 - FASCIA_T / 2 - 0.002;
+function fascia(T, rng, axis, side, a, b) {
+  const L = b - a, H = FASCIA_TOP - FASCIA_BOT;
+  const g = new T.BoxGeometry(L, H, FASCIA_T, Math.max(2, Math.round(L * 3)), 2, 1);
+  const pos = g.attributes.position, ph = rng() * 6.28;
+  for (let i = 0; i < pos.count; i++) { // sagging, hand-cut lower edge; top stays tucked under the boards
+    const x = pos.getX(i), y = pos.getY(i);
+    if (y < 0) pos.setY(i, y + 0.006 * Math.sin(x * 4.1 + ph) + 0.004);
+  }
+  g.translate((a + b) / 2, (FASCIA_TOP + FASCIA_BOT) / 2, 0);
+  if (axis === 'z') { g.rotateY(Math.PI / 2); g.translate(side * FASCIA_OFF, 0, 0); } else g.translate(0, 0, side * FASCIA_OFF);
+  const uv = g.attributes.uv, u0 = rng();
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, u0 + uv.getX(i) * 0.15, 0.2 + uv.getY(i) * L * 0.45);
+  const c = new Float32Array(pos.count * 3), lum = 0.9 + rng() * 0.12;
+  for (let i = 0; i < pos.count; i++) {
+    const w = Math.min(1, Math.max(0, (FASCIA_TOP - pos.getY(i)) / H)); // 0 top .. 1 waterline
+    const f = lum * (0.66 - 0.36 * w); // x~0.45 at the waterline, shifted green-grey (soaked)
+    c[i * 3] = f * (1 - 0.36 * w); c[i * 3 + 1] = f * (1 - 0.12 * w); c[i * 3 + 2] = f * (1 - 0.04 * w);
+  }
+  g.setAttribute('color', new T.BufferAttribute(c, 3));
+  return g;
+}
+
 // Builds one tile's merged parts: [{name, color, geometry, castShadow}] in tile-local space.
-function floorParts(T, index) {
+// edges: which tile sides are on the raft's outer rim ({nx, px, nz, pz}; default all), and get a wet fascia board.
+function floorParts(T, index, edges = {nx:true, px:true, nz:true, pz:true}) {
   const rng = makeRng(index);
 
   // Plank layout: 3 or 4 wide boards running along Z, uneven widths, gaps ~0.016-0.03.
@@ -176,6 +202,14 @@ function floorParts(T, index) {
   const planks = [], nails = [], ropes = [], beams = [], caps = [];
   const shade = makeRng('shade:' + (index ?? 0)); // own stream: per-plank shading never moves the layout
   for (const p of pieces) planks.push(tint(T, plankGeometry(T, rng, p), p, shade));
+  // Outer rim: fascia boards under the board ends (z sides) and between the log ends (x sides, so the logs still show).
+  const frng = makeRng('fascia:' + (index ?? 0));
+  for (const [k, s] of [['nz', -1], ['pz', 1]]) if (edges[k]) planks.push(fascia(T, frng, 'x', s, -1, 1));
+  const gapA = BEAM_R + 0.02;
+  for (const [k, s] of [['nx', -1], ['px', 1]]) if (edges[k]) {
+    const zs = [-1 + FASCIA_T + 0.004, beamZ[0] - gapA, beamZ[0] + gapA, beamZ[1] - gapA, beamZ[1] + gapA, 1 - FASCIA_T - 0.004];
+    for (let j = 0; j < 6; j += 2) planks.push(fascia(T, frng, 'z', s, zs[j], zs[j + 1]));
+  }
 
   // Logs underneath, parallel to X.
   for (const z of beamZ) { const b = beamParts(T, rng, z); beams.push(b.beam); caps.push(...b.caps); }
@@ -237,12 +271,15 @@ function tint(T, g, p, rnd) {
   for (let i = 0; i < n; i++) {
     const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), ny = nor.getY(i);
     let f = 1 + 0.06 * Math.sin(z * fq + ph);
-    if (ny > 0.97) { // walking surface: grime on the end-grain vertices (fades over the first stretch of board)
+    if (ny > 0.97) { // walking surface (+10% albedo): grime on the end-grain vertices (fades over the first stretch of board)
+      f *= 1.1;
       const dEnd = Math.min(Math.abs(z - endZ(p.endA, p.za, x)), Math.abs(z - endZ(p.endB, p.zb, x)));
       if (dEnd < 0.035) f *= 0.8;
     } else { // bevel, sides, underside: contact shade by depth below the surface
-      const d = Math.max(0, plankSurface(p, x, z) - y);
+      const d = Math.max(0, plankSurface(p, x, z) - y), w = Math.min(1, d / THICK); // w: 0 top .. 1 underside (damp)
       f *= Math.max(0.24, 0.86 - d * 32);
+      a[i * 3] = r * f * (1 - 0.22 * w); a[i * 3 + 1] = gg * f * (1 - 0.06 * w); a[i * 3 + 2] = bb * f;
+      continue;
     }
     a[i * 3] = r * f; a[i * 3 + 1] = gg * f; a[i * 3 + 2] = bb * f;
   }
@@ -285,9 +322,11 @@ export function createFloor(T, index = 0, getMaterial) {
 export function createRaftMesh(T, tiles, getMaterial, tint = null, tintMat = null) {
   const mat = getMaterial || defaultMat(T);
   const buckets = new Map(), m4 = new T.Matrix4();
+  const at = new Set(tiles.map(t => t.x + ',' + t.z)), open = (x, z) => !at.has(x + ',' + z); // tiles sit on a 2-unit grid
   for (const t of tiles) {
     m4.makeTranslation(t.x, 0, t.z);
-    for (const p of floorParts(T, t.index)) {
+    const edges = {nx:open(t.x - 2, t.z), px:open(t.x + 2, t.z), nz:open(t.x, t.z - 2), pz:open(t.x, t.z + 2)};
+    for (const p of floorParts(T, t.index, edges)) {
       p.geometry.applyMatrix4(m4);
       const hex = tint && p.name === 'floor-planks' ? tint(t, p.color) : null;
       const key = hex ? 'tint|' + hex : p.color + '|' + p.castShadow;
