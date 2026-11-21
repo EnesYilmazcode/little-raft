@@ -500,11 +500,11 @@ export function mount(transfer = null) {
     } catch (e) { console.error('shark failed', e); shark = null; }
   }
   function hurtLocal(n) {
-    shakeAmp = Math.max(shakeAmp, .2); beep(140); notice('The shark bit you!', 1400);
+    shakeAmp = Math.max(shakeAmp, .2); beep(140); notice('The shark bit you!', 3200, 'danger');
     if (typeof hurtPlayer === 'function') hurtPlayer(n, 'shark'); else window.raftDebug?.hurt?.(n, 'shark');
   }
   function sharkEffect(e) { // host and guest: cues for a bite, a broken tile or a bite on the guest
-    if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90), 2600);
+    if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90), 3600, 'danger');
     if (Number.isFinite(e.hurt) && e.hurt > 0 && role === 'guest') hurtLocal(Math.min(e.hurt, 100));
     if (!isInt(e.x) || !isInt(e.z) || !shark) return;
     const v = shark.view, d = Math.hypot(physics.x - e.x * 2, physics.z - e.z * 2), near = clamp(1 - d / 14, .25, 1);
@@ -663,7 +663,7 @@ export function mount(transfer = null) {
   const setText = (sel, v) => { const el = $(sel); if (el) el.textContent = v; };
   function setStatus(s) { setText('#networkStatus', s); }
   function feedSprite(k) { try { const t = document.createElement('template'); t.innerHTML = iconSVG(k); return t.content.firstElementChild; } catch { return null; } } // same flat sprite the hotbar shows until (or instead of) a 3D icon
-  function notice(s, ms = 1800) { if (s == null || s === '') return; noticeText = String(s).slice(0, 90); noticeUntil = performance.now() + Math.min(ms, 400); pickupFeed.note(noticeText); } // bottom-left feed, never the screen centre
+  function notice(s, ms = 1800, kind) { if (s == null || s === '') return; noticeText = String(s).slice(0, 90); noticeUntil = performance.now() + Math.min(ms, 400); if (kind === 'danger') pickupFeed.danger(noticeText, ms); else pickupFeed.note(noticeText); } // bottom-left feed, never the screen centre; 'danger' = red warning row
   function toast(s) {
     if (coop?.feed(s)) return; // coop: connection news goes to the bottom-left feed
     if (running) { notice(s, 2400); return; }

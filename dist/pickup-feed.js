@@ -3,6 +3,9 @@
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 export const HOLD_MS = 3000, MERGE_MS = 2000, FADE_MS = 450, MAX_ROWS = 5;
+// Danger rows (shark, hunger, thirst): red accent and icon, held longer, evicted last, and they hide the
+// first-run hint row (style.css) so a warning never competes with a tutorial line.
+export const DANGER_MS = 3600;
 const SVG = 'http://www.w3.org/2000/svg';
 
 // doc and clock are injectable so the merge/cap logic runs under node tests.
@@ -47,12 +50,14 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
   // One left stack: CSS caps the host's height; when rows overflow it, the oldest go at once (fading rows first).
   // The host is justify-content:flex-end, so overflow spills off the top: a negative first offsetTop, not scrollHeight.
   const overflowing = host => host.clientHeight > 0 && (host.scrollHeight > host.clientHeight + 1 || (host.firstElementChild?.offsetTop ?? 0) < -1);
+  // The oldest row to evict: ordinary rows go before danger rows.
+  const oldest = () => { for (const e of rows) if (!e[1].danger) return e; return rows.entries().next().value; };
   function fit(host) {
     for (let i = 0; i < 12 && overflowing(host); i++) {
       const fading = host.querySelector?.(':scope>.pf-row.out');
       if (fading) { fading.remove(); continue; }
       if (rows.size <= 1) break;
-      const [k, r] = rows.entries().next().value; rows.delete(k); clear(r.hold); r.el.remove();
+      const [k, r] = oldest(); rows.delete(k); clear(r.hold); r.el.remove();
     }
   }
 
@@ -76,7 +81,7 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
     const row = { el, at: t, hold: 0, count: 0, life };
     build(row); update(row);
     const host = root(); host.appendChild(el); rows.set(key, row); arm(key, row);
-    while (rows.size > MAX_ROWS) { const [k, r] = rows.entries().next().value; drop(k, r); }
+    while (rows.size > MAX_ROWS) { const [k, r] = oldest(); drop(k, r); }
     fit(host);
     return row;
   }
@@ -94,15 +99,18 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
       }, row => { row.count += n; row.label.textContent = `+${row.count} ${ITEM_INFO[kind]?.name ?? kind}`; });
     },
     /** A short text line in the same corner (replaces centred toasts). Same text merges.
-     *  opt.cls: extra row classes (e.g. the co-op feed's 'cf-line cf-join'); opt.color: dot colour; opt.life: hold ms. */
+     *  opt.cls: extra row classes (e.g. the co-op feed's 'cf-line cf-join'); opt.color: dot colour; opt.life: hold ms;
+     *  opt.kind 'danger': a red warning row with a "!" badge, held DANGER_MS unless opt.life says otherwise. */
     note(text, opt = {}) {
       const s = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 90); if (!s) return null;
       const cls = typeof opt?.cls === 'string' ? opt.cls.split(/\s+/).filter(c => /^[\w-]+$/.test(c)) : [];
       const color = typeof opt?.color === 'string' && /^#[0-9a-f]{3,8}$/i.test(opt.color) ? opt.color : '';
-      const life = Number.isFinite(opt?.life) ? Math.min(Math.max(opt.life, 500), 15000) : 0;
+      const danger = opt?.kind === 'danger';
+      const life = Number.isFinite(opt?.life) ? Math.min(Math.max(opt.life, danger ? DANGER_MS : 500), 15000) : danger ? DANGER_MS : 0;
       return push('t:' + s, row => {
         row.el.classList.add('pf-note'); for (const c of cls) row.el.classList.add(c);
-        const dot = doc.createElement('i'); if (color && dot.style) dot.style.background = color;
+        if (danger) { row.danger = true; row.el.classList.add('pf-danger'); row.el.setAttribute?.('role', 'alert'); }
+        const dot = doc.createElement('i'); if (danger) { dot.className = 'pf-warn'; dot.textContent = '!'; dot.setAttribute?.('aria-hidden', 'true'); } else if (color && dot.style) dot.style.background = color;
         row.label = doc.createElement('span'); row.label.textContent = s;
         row.el.append(dot, row.label);
       }, () => {}, life);
@@ -125,6 +133,7 @@ const feed = () => (shared ??= createFeed());
 export const pickupFeed = Object.freeze({
   add: (kind, count) => feed().add(kind, count),
   note: (text, opt) => feed().note(text, opt),
+  danger: (text, life) => feed().note(text, { kind: 'danger', life }),
   setIconProvider: fn => feed().setIconProvider(fn),
   refresh: kind => shared?.refresh(kind),
   clear: () => feed().clear(),
