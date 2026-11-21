@@ -119,7 +119,7 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
 #pickupFeed .pf-row{max-width:max(200px,calc(50vw - 287px));white-space:normal;line-height:1.25}
 @media(max-width:1000px){#pickupFeed[popover]{inset:auto auto calc(182px + var(--coop-feed-h, 0px)) 10px}#pickupFeed .pf-row{max-width:calc(50vw - 120px)}}
 .feed-lane{display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(transparent,#000 22px);mask-image:linear-gradient(transparent,#000 22px)}
-#inventory .sv-bag>.feed-lane{flex:1 1 0;min-height:88px;align-self:stretch}
+#inventory .sv-bag>.feed-lane{flex:1 1 0;min-height:40px;align-self:stretch}
 /* Pause rail: the lane fills the space under "Esc Back"; an equal spacer on top keeps the menu centred. */
 #options .rs-menu::before,#options .rs-menu>.feed-lane{content:"";flex:1 1 0;min-height:0;margin:0;padding:0}
 #options .rs-menu>.feed-lane{margin-top:18px;padding:0 16px 16px 0}#options .rs-menu::before{margin-bottom:18px;padding-bottom:16px}
