@@ -49,7 +49,6 @@ const CATEGORY_OF = Object.freeze({
   fins: 'tools', airjug: 'tools', goggles: 'tools', scraper: 'tools',
   cookpot: 'building', bowl: 'survival',
   shellwreath: 'building',
-  cup: 'survival', purifier: 'survival', // water gear sits with the rain barrel and sprinkler
   research: 'building', antenna: 'building', receiver: 'building',
   courseflag: 'building', scoreboard: 'building', // buoy ring course (buoycourse.js)
   gametable: 'building', // game table (gametable.js)

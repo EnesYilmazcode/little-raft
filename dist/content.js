@@ -128,7 +128,7 @@ export function createContent(ctx, features = FEATURES) {
   for (const make of features) {
     try { const m = make(ctx, peer); if (m) mods.push(m); } catch (e) { console.error('content module failed to start', e); }
   }
-  const first = (fn, ...a) => { for (const m of mods) { const r = call(m, fn, ...a); if (r) return r; } return null; };
+  const first = (fn, ...a) => { for (const m of mods) { if (m.dead || typeof m[fn] !== 'function') continue; const r = call(m, fn, ...a); if (r) return r; } return null; };
   const seatedMod = () => { for (const m of mods) if (!m.dead && typeof m.seated === 'function' && call(m, 'seated')) return m; return null; }; // [sit]
   const debug = {}; let loaded = {};
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
