@@ -7,8 +7,9 @@
 //   2. setModelProvider(fn) (fn(kind) -> Object3D | null, e.g. models.js getModel; never disposed here);
 //   3. the game's own procedural builders (buildFallbackModel).
 // A kind with no model, or whose render comes out blank, stays null and the UI keeps its SVG.
-// Every icon gets the sprite set's navy outline (thin dark tools also a light rim) so 3D icons sit
-// next to the flat SVG ones on the dark slots. The outline is a 2D-canvas pass: no extra GL program.
+// Thin dark tools (ICON_MODELS look.rim) get a light cream rim so they read on the dark slots; that is
+// a 2D-canvas pass (no extra GL program). Every other icon is encoded straight from the GL canvas: a
+// dark navy outline was invisible on the navy slots and cost a second readback per icon.
 // Public API: getItemIcon(kind) (sync, data URL or null while rendering / without WebGL),
 // loadItemIcon(kind) (Promise of the same), warmIcons, onIconReady, setModelProvider.
 import * as T from './vendor/three.module.js';
@@ -21,9 +22,12 @@ import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { ICON_MODELS } from './item-icon-models.js?build=v3-survival-ae77fa84ac2b';
 
 const SIZE = 128;
-const MARGIN = 7;              // px kept clear around the art for outline + rim
-const OUTLINE_PX = 3.5, RIM_PX = 2;
-const OUTLINE = 'rgba(14,38,48,0.95)', RIM = 'rgba(246,230,196,0.85)';   // icons.svg navy #153e49 family
+const MARGIN = 7;              // px kept clear around the art for the rim
+const RIM_PX = 3.5;
+const RIM = 'rgba(246,230,196,0.85)';   // cream, reads on the navy slots
+// A 128 px PNG with (almost) nothing drawn encodes to a few hundred bytes; the smallest real icon
+// (thin nail) is several KB. Checking the URL length detects a blank render without a pixel readback.
+const BLANK_URL_LEN = 1500;
 const METAL_CAP = 0.35;        // no env map in the icon rig: capped metal still reads as metal, not black
 // Item ids whose name differs from the models.js kind.
 const MODEL_ALIAS = { fishingrod: 'rod' };
@@ -214,31 +218,29 @@ function pickModel(kind) {
   return null;
 }
 
-// Outline (+ optional rim) around the rendered silhouette, in 2D. Returns null for a blank render.
+// Encodes the rendered icon (cream rim around the silhouette for thin dark tools). Returns null for a
+// blank render (empty model, lost context): the UI keeps its SVG.
 function compose(src, rim) {
-  if (!out) {
-    out = document.createElement('canvas'); out.width = out.height = SIZE;
-    tmp = document.createElement('canvas'); tmp.width = tmp.height = SIZE;
-  }
-  const o = out.getContext('2d'), t = tmp.getContext('2d', { willReadFrequently: true });
-  t.globalCompositeOperation = 'source-over'; t.clearRect(0, 0, SIZE, SIZE); t.drawImage(src, 0, 0);
-  const a = t.getImageData(0, 0, SIZE, SIZE).data;
-  let solid = 0; for (let i = 3; i < a.length; i += 4) if (a[i] > 24) solid++;
-  if (solid < 12) return null;   // nothing visible (empty model, lost context): keep the SVG
-  o.clearRect(0, 0, SIZE, SIZE);
-  const ring = (color, r) => {
+  let url;
+  if (!rim) url = src.toDataURL('image/png');
+  else {
+    if (!out) {
+      out = document.createElement('canvas'); out.width = out.height = SIZE;
+      tmp = document.createElement('canvas'); tmp.width = tmp.height = SIZE;
+    }
+    const o = out.getContext('2d'), t = tmp.getContext('2d');
     t.globalCompositeOperation = 'source-over'; t.clearRect(0, 0, SIZE, SIZE); t.drawImage(src, 0, 0);
-    t.globalCompositeOperation = 'source-in'; t.fillStyle = color; t.fillRect(0, 0, SIZE, SIZE);
+    t.globalCompositeOperation = 'source-in'; t.fillStyle = RIM; t.fillRect(0, 0, SIZE, SIZE);
+    o.clearRect(0, 0, SIZE, SIZE);
     for (let i = 0; i < 16; i++) {
       const ang = i * Math.PI / 8;
-      o.drawImage(tmp, Math.cos(ang) * r, Math.sin(ang) * r);
-      o.drawImage(tmp, Math.cos(ang) * r * 0.5, Math.sin(ang) * r * 0.5);
+      o.drawImage(tmp, Math.cos(ang) * RIM_PX, Math.sin(ang) * RIM_PX);
+      o.drawImage(tmp, Math.cos(ang) * RIM_PX * 0.5, Math.sin(ang) * RIM_PX * 0.5);
     }
-  };
-  if (rim) ring(RIM, OUTLINE_PX + RIM_PX);
-  ring(OUTLINE, OUTLINE_PX);
-  o.drawImage(src, 0, 0);
-  return out.toDataURL('image/png');
+    o.drawImage(src, 0, 0);
+    url = out.toDataURL('image/png');
+  }
+  return url.length < BLANK_URL_LEN ? null : url;
 }
 
 // Renders one kind. Returns a data URL, '' (no icon: keep the SVG) or null (context lost: retry).
