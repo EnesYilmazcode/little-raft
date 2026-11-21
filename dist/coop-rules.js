@@ -51,7 +51,9 @@ export function decorBlockers(d, radii, unit = 2) {
     const yaw = Number.isFinite(d.yaw) ? d.yaw : Number.isFinite(d.rot) ? d.rot : 0, c = Math.cos(yaw), s = Math.sin(yaw);
     return BENCH_CIRCLES.map(b => ({x:cx + b.x * c + b.z * s, z:cz - b.x * s + b.z * c, r:b.r}));
   }
-  return radii[d.type] ? [{x:cx, z:cz, r:radii[d.type]}] : [];
+  const r = radii[d.type];
+  if (Array.isArray(r)) return [{x:cx, z:cz, hx:r[0], hz:r[1], rot:Number.isFinite(d.rot) ? d.rot : 0}]; // [half width, half depth]: the placement footprint
+  return r ? [{x:cx, z:cz, r}] : [];
 }
 
 // Index of the first player ({x, z} raft-local; null/stale entries skipped) whose body (radius r)

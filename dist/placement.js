@@ -7,8 +7,9 @@ export const TILE = 2;
 export const ROT_STEP = Math.PI / 4, FINE_STEP = Math.PI / 12;
 export const DECOR_REACH = 6, FLOOR_REACH = 8;
 // [half width, half depth, share of the footprint that must rest on deck (0 = centre only)].
+// Matches each model's below-head bounds; crate, sail and lantern also collide with this rect.
 export const FOOTPRINT = Object.freeze({
-  sail:[.4, .4, .8], palm:[.42, .42, .8], lantern:[.24, .24, .8], net:[.84, .84, 0], bench:[.72, .2, .8], crate:[.49, .42, .8],
+  sail:[.8, .76, .8], palm:[.42, .42, .8], lantern:[.59, .37, .8], net:[.84, .84, 0], bench:[.72, .2, .8], crate:[.49, .42, .8],
 });
 
 const TAU = Math.PI * 2;

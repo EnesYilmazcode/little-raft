@@ -43,9 +43,14 @@ const C = PLAYER_CONSTANTS;
 const HALF = C.TILE_SIZE / 2;
 const fin = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 
-// Distance from (x, z) to the edge of one prop blocker ({x, z, r} circle); negative inside.
+// Distance from (x, z) to the edge of one prop blocker; negative inside. A blocker is a circle
+// {x, z, r} or a rotated rectangle {x, z, hx, hz, rot} (three.js rotation.y, like the decor footprint).
 export function blockerGap(b, x, z) {
-  return Math.hypot(x - b.x, z - b.z) - Math.max(0, fin(b.r, 0));
+  const dx = x - b.x, dz = z - b.z;
+  if (!Number.isFinite(b.hx)) return Math.hypot(dx, dz) - Math.max(0, fin(b.r, 0));
+  const rot = fin(b.rot, 0), c = Math.cos(rot), s = Math.sin(rot);
+  const qx = Math.abs(dx * c - dz * s) - Math.max(0, b.hx), qz = Math.abs(dx * s + dz * c) - Math.max(0, fin(b.hz, 0));
+  return qx > 0 || qz > 0 ? Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) : Math.max(qx, qz);
 }
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const isTile = t => Array.isArray(t) && Number.isFinite(t[0]) && Number.isFinite(t[1]);
@@ -274,7 +279,7 @@ export class PlayerPhysics {
     }
   }
 
-  // Axis-separated movement against circular props; escape allowed if starting inside.
+  // Axis-separated movement against prop circles and rectangles; escape allowed if starting inside.
   _moveHorizontal(mx, mz, blocked) {
     if (!blocked.length) { this.x += mx; this.z += mz; return; }
     const nx = this.x + mx;
@@ -287,11 +292,10 @@ export class PlayerPhysics {
     for (let i = 0; i < blocked.length; i++) {
       const b = blocked[i];
       if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
-      const r = Math.max(0, fin(b.r, 0)) + C.BODY_RADIUS;
-      const d2n = (nx - b.x) * (nx - b.x) + (nz - b.z) * (nz - b.z);
-      if (d2n >= r * r) continue;
-      const d2o = (ox - b.x) * (ox - b.x) + (oz - b.z) * (oz - b.z);
-      if (d2o < r * r && d2n > d2o) continue; // escaping outward
+      const gn = blockerGap(b, nx, nz);
+      if (gn >= C.BODY_RADIUS) continue;
+      const go = blockerGap(b, ox, oz);
+      if (go < C.BODY_RADIUS && gn > go) continue; // escaping outward
       return false;
     }
     return true;
@@ -301,8 +305,7 @@ export class PlayerPhysics {
     for (let i = 0; i < blocked.length; i++) {
       const b = blocked[i];
       if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.z)) continue;
-      const r = Math.max(0, fin(b.r, 0)) + C.BODY_RADIUS;
-      if ((x - b.x) * (x - b.x) + (z - b.z) * (z - b.z) < r * r) return false;
+      if (blockerGap(b, x, z) < C.BODY_RADIUS) return false;
     }
     return true;
   }
