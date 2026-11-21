@@ -1,5 +1,5 @@
 """Headless check of the ui-feel sandbox.
-Usage: python sandbox/ui-feel/shoot.py [out_dir] [--cost-only] [--reps N]   (default: sandbox/ui-feel/shots, 3 reps)
+Usage: python sandbox/ui-feel/shoot.py [out_dir] [--cost-only | --shots-only] [--reps N]   (default: sandbox/ui-feel/shots, 3 reps)
 
 1. Key frames, frozen mid-animation: every running animation (WAAPI, CSS transition, CSS animation) is paused
    and its currentTime set, so a PNG shows e.g. the select cursor 90 ms into its slide.
@@ -15,6 +15,7 @@ from playwright.sync_api import sync_playwright
 root = Path(__file__).resolve().parents[2]
 argv = sys.argv[1:]
 COST_ONLY = '--cost-only' in argv
+SHOTS_ONLY = '--shots-only' in argv
 REPS = int(argv[argv.index('--reps') + 1]) if '--reps' in argv else 3
 pos = [a for i, a in enumerate(argv) if not a.startswith('--') and (i == 0 or argv[i - 1] != '--reps')]
 out = Path(pos[0]).resolve() if pos else Path(__file__).resolve().parent / 'shots'
@@ -109,6 +110,7 @@ def key_frames(b):
     pg.mouse.up(); pg.wait_for_timeout(30)
     pg.evaluate('document.getAnimations().forEach(a => { a.pause(); a.currentTime = 140; })')
     shot(pg, '16-craft-140ms'); unfreeze(pg); pg.wait_for_timeout(300)
+    shot(pg, '24-inv-craft-toast-rest', clip={'x': 760, 'y': 470, 'width': 520, 'height': 250})
     act_freeze(pg, 'feelDemo.ui.close()', 60); shot(pg, '17-inv-close-60ms')
     unfreeze(pg); pg.wait_for_timeout(300)
 
@@ -160,6 +162,16 @@ def key_frames(b):
     pg.wait_for_timeout(1200)
     act_freeze(pg, "feelDemo.pickup('wood')", 300)
     shot(pg, '21-phone-pickup-300ms')
+    unfreeze(pg); pg.wait_for_timeout(300)
+    pg.evaluate("feelDemo.ui.open()"); pg.wait_for_timeout(400)
+    pg.locator('#inventory .sv-recipe:not([disabled])').first.click(); pg.wait_for_timeout(250)
+    shot(pg, '23-phone-inv-craft')
+    pg.context.close()
+
+    # ---------- guest fallback: the effect arrives before the predicted bag has the item ----------
+    pg = open_page(b)
+    act_freeze(pg, "feelDemo.feel.pickup([{kind:'fish', count:1}, {kind:'wood', count:2}])", 590)
+    shot(pg, '22-guest-generic-590ms')
     pg.context.close()
 
 def cost(b):
@@ -206,7 +218,8 @@ with sync_playwright() as p:
     b = p.chromium.launch(executable_path=CHROME, args=ARGS)
     if not COST_ONLY:
         key_frames(b)
-    cost(b)
+    if not SHOTS_ONLY:
+        cost(b)
     b.close()
 srv.shutdown()
 report['shots'] = sorted(x.name for x in out.glob('*.png'))

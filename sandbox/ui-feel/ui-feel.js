@@ -17,15 +17,16 @@ const INST_KEY = '__littleRaftUIFeel';
 const BACK = 'cubic-bezier(.34,1.56,.64,1)';
 const OUT = 'cubic-bezier(.22,1,.36,1)';
 const IN_OUT = 'cubic-bezier(.65,0,.35,1)';
+const PSEUDO = typeof KeyframeEffect !== 'undefined' && 'pseudoElement' in KeyframeEffect.prototype;
 
 const CSS = `
 :root{--uf-cream:#fff2cc;--uf-gold:#ffe3a6;--uf-amber:#ffbd66;--uf-wood:#3a2716;--uf-wood-lt:#c9a66b;--uf-ink:#24170c;
   --uf-teal:#9fe0d6;--uf-red:#e06a4a;--uf-green:#8fd36a;--uf-back:${BACK};--uf-out:${OUT}}
 #uf-layer{position:fixed;inset:0;pointer-events:none;z-index:6;contain:strict}
-#uf-layer>*{position:absolute;left:0;top:0;will-change:transform}
+#uf-layer>*{position:absolute;left:0;top:0}
 
 /* ---- hotbar cursor (slides between cached slot positions) ---- */
-.uf-cursor{width:var(--uf-cw,64px);height:var(--uf-ch,64px);opacity:0;transition:transform .22s var(--uf-back),opacity .15s}
+.uf-cursor{width:var(--uf-cw,64px);height:var(--uf-ch,64px);opacity:0;transition:transform .22s var(--uf-back),opacity .15s;will-change:transform}
 .uf-cursor.on{opacity:1}
 .uf-cursor>i{position:absolute;inset:0;border-radius:5px;
   box-shadow:inset 0 0 0 2px var(--uf-gold),inset 0 0 0 3px #3e2a1799,0 0 0 1px #3e2a17,0 0 12px 1px #ffd58a88}
@@ -34,7 +35,6 @@ const CSS = `
 .uf-cursor>i::before{top:-7px}
 .uf-cursor>i::after{bottom:-7px;transform:scaleY(-1)}
 .tools.sv-hotbar.uf-has-cursor>button.sv-slot.sv-sel{box-shadow:inset 0 0 0 1px #ffe3a655,0 0 0 1px #3e2a17}
-.tools.sv-hotbar .sv-art,.tools.sv-hotbar .sv-count{will-change:transform}
 .tools.sv-hotbar .sv-count{transform-origin:100% 100%}
 
 /* ---- slot landing ring / flash ---- */
@@ -49,16 +49,18 @@ const CSS = `
   text-shadow:0 1px 0 #3e2a17,0 0 3px #000,0 0 6px #000a;white-space:nowrap}
 
 /* ---- toast stack ---- */
-#uf-toasts{position:fixed;right:20px;bottom:104px;width:230px;height:0;pointer-events:none;z-index:5}
+#uf-toasts{position:fixed;inset:auto 20px 104px auto;width:230px;height:0;margin:0;padding:0;border:0;background:none;overflow:visible;color:inherit;pointer-events:none;z-index:5}
+#uf-toasts::backdrop{display:none}
 .uf-toast{position:absolute;right:0;bottom:0;display:flex;align-items:center;gap:8px;height:34px;min-width:180px;max-width:230px;padding:0 12px 0 8px;
   border-radius:4px;background:linear-gradient(90deg,#3a2716f2,#2a1b0ee6);color:var(--uf-cream);
   box-shadow:inset 0 0 0 1px #c9a66b55,0 0 0 1px #24170c,0 4px 10px #0006;
-  font:600 13px/1 'Segoe UI',system-ui,sans-serif;white-space:nowrap;opacity:0;will-change:transform,opacity}
+  font:600 13px/1 'Segoe UI',system-ui,sans-serif;white-space:nowrap;opacity:0}
 .uf-toast::before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:3px;border-radius:0 2px 2px 0;background:var(--uf-acc,var(--uf-wood-lt))}
 .uf-toast>.uf-ti{flex:none;width:24px;height:24px;display:grid;place-items:center;filter:drop-shadow(0 1px 1px #0008)}
 .uf-toast>.uf-ti svg{width:24px;height:24px;display:block}
 .uf-toast>.uf-ti:empty{width:6px}
 .uf-toast>.uf-tt{overflow:hidden;text-overflow:ellipsis}
+.uf-toast>.uf-tg{position:absolute;inset:0;border-radius:inherit;opacity:0;background:linear-gradient(90deg,#ffe3a640,#ffe3a610);box-shadow:inset 0 0 0 1px #ffe3a6}
 .uf-toast>.uf-tn{margin-left:auto;padding-left:10px;color:var(--uf-gold);font-weight:800;font-variant-numeric:tabular-nums;display:inline-block}
 .uf-toast[data-kind=loot]{--uf-acc:var(--uf-amber)}
 .uf-toast[data-kind=craft]{--uf-acc:var(--uf-gold)}
@@ -75,7 +77,7 @@ const CSS = `
 .uf-stat>.uf-si svg{width:18px;height:18px;display:block}
 .uf-track{position:relative;height:10px;border-radius:2px;overflow:hidden;background:#140c06;
   box-shadow:inset 0 1px 2px #000c,0 0 0 1px #c9a66b55;contain:strict}
-.uf-track>i{position:absolute;inset:0;transform-origin:0 50%;will-change:transform}
+.uf-track>i{position:absolute;inset:0;transform-origin:0 50%}
 .uf-track>.uf-trail{background:#ffd9a0}
 .uf-track.uf-up>.uf-trail{background:#d9f7b4;opacity:.75}
 .uf-track>.uf-fill{background:linear-gradient(180deg,color-mix(in srgb,var(--uf-tone) 70%,#fff) 0 30%,var(--uf-tone) 30% 70%,color-mix(in srgb,var(--uf-tone) 70%,#000) 70%)}
@@ -135,8 +137,10 @@ const CSS = `
 
 /* ---- press states ---- */
 .tools.sv-hotbar>button.sv-slot,#inventory.sv-inv button.sv-slot{transition:transform .18s var(--uf-back),box-shadow .08s,background .08s}
-.tools.sv-hotbar>button.sv-slot:active,#inventory.sv-inv button.sv-slot:active{transform:scale(.9);filter:brightness(.88);transition-duration:.05s}
-#inventory .sv-recipe{transition:transform .16s var(--uf-back),background .08s,box-shadow .08s}
+.tools.sv-hotbar>button.sv-slot:active,#inventory.sv-inv button.sv-slot:active{transform:translateY(2px) scale(.88);filter:brightness(.7);transition-duration:.05s;
+  box-shadow:inset 0 0 0 2px #ffe3a6b0,inset 0 5px 10px #000c,0 0 0 1px #24170c}
+#inventory .sv-recipe{position:relative;transition:transform .16s var(--uf-back),background .08s,box-shadow .08s}
+#inventory .sv-recipe::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;box-shadow:inset 0 0 0 2px #ffe3a6,0 0 16px #ffd58aaa;background:#ffe3a61a}
 #inventory .sv-recipe .sv-rart{transition:transform .18s var(--uf-back)}
 #inventory .sv-recipe:hover:not(:disabled) .sv-rart{transform:scale(1.08) rotate(-3deg)}
 #inventory .sv-recipe:active:not(:disabled){transform:translateY(1px) scale(.98);background:linear-gradient(#4a3220,#5d4129);box-shadow:inset 0 0 0 1px #ffe3a6,inset 0 2px 6px #000a;transition-duration:.04s}
@@ -155,12 +159,18 @@ html.uf-rm .uf-stat.uf-low>.uf-track>.uf-fill,html.uf-rm .uf-stat.uf-low>.uf-si{
 @starting-style{html.uf-rm #inventory.sv-inv[open]{transform:none}html.uf-rm #inventory.sv-inv[open] .sv-craft,html.uf-rm #inventory.sv-inv[open] .sv-bag{transform:none;opacity:1}}
 
 @media(max-width:760px){
-  #uf-toasts{right:10px;bottom:96px;width:200px}
-  .uf-toast{height:30px;font-size:12px}
-  .uf-stats{left:10px;bottom:auto;top:14px;padding:7px 9px}
-  .uf-stat{grid-template-columns:16px 110px;gap:6px}
-  .uf-stat>.uf-si svg{width:15px;height:15px}
-  .uf-track{height:8px}
+  /* phone: toasts drop from the top centre (newest on top, 3 max), stats become one strip sitting on the hotbar */
+  #uf-toasts{inset:calc(env(safe-area-inset-top,0px) + 12px) auto auto 50%;width:0}
+  .uf-toast{left:0;right:auto;top:0;bottom:auto;translate:-50% 0;height:30px;min-width:0;width:min(64vw,250px);max-width:none;
+    padding:0 11px 0 7px;gap:6px;border-radius:6px;font-size:12px}
+  .uf-toast>.uf-ti,.uf-toast>.uf-ti svg{width:20px;height:20px}
+  .uf-toast>.uf-tn{padding-left:8px}
+  .uf-stats{left:var(--uf-hbx,10px);right:auto;width:var(--uf-hbw,auto);top:auto;bottom:calc(var(--uf-hbt,84px) + 12px);box-sizing:border-box;
+    grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:10px;padding:5px 9px;border-radius:6px}
+  .uf-stat{grid-template-columns:14px minmax(0,1fr);gap:5px}
+  .uf-stat>.uf-si{width:14px;height:14px}
+  .uf-stat>.uf-si svg{width:14px;height:14px}
+  .uf-track{height:7px}
 }
 `;
 
@@ -223,6 +233,11 @@ export function createUIFeel({
     const r0 = slotRects[0];
     toolsVisible = !!r0 && r0.width > 0;
     if (r0) { layer.style.setProperty('--uf-cw', r0.width + 8 + 'px'); layer.style.setProperty('--uf-ch', r0.height + 8 + 'px'); }
+    if (toolsVisible) { // hotbar box, used by the phone stat strip (written on resize only)
+      const tb = tools.getBoundingClientRect(), ds = document.documentElement.style;
+      ds.setProperty('--uf-hbx', tb.left.toFixed(1) + 'px'); ds.setProperty('--uf-hbw', tb.width.toFixed(1) + 'px');
+      ds.setProperty('--uf-hbt', (innerHeight - tb.top).toFixed(1) + 'px');
+    }
     placeCursor(false);
   }
   function placeCursor(animate) {
@@ -265,12 +280,13 @@ export function createUIFeel({
     d.querySelectorAll('.sv-slot').forEach(e => counts.set(e, readCount(e)));
     mo2?.disconnect();
     mo2 = new MutationObserver(onMutations);
-    mo2.observe(d, { subtree: true, childList: true, characterData: true });
+    mo2.observe(d, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['open'] });
     return true;
   }
 
   function onMutations(list) {
     if (!alive) return;
+    if (list.some(m => m.attributeName === 'open' && m.target === invEl && invEl.open)) raiseToasts();
     let rebuilt = false, newSel = -1;
     const touched = new Set();
     for (const m of list) {
@@ -311,8 +327,6 @@ export function createUIFeel({
       { transform: 'translateY(1px) scale(.96)', offset: .7 },
       { transform: 'translateY(0) scale(1)' },
     ], { duration: 320, easing: 'ease-out' });
-    const old = hotEls[from]?.querySelector('.sv-art');
-    old?.animate([{ transform: 'scale(.9)' }, { transform: 'scale(1)' }], { duration: 180, easing: OUT });
   }
 
   function bumpSlot(slot, fresh) {
@@ -322,7 +336,7 @@ export function createUIFeel({
       ? [{ transform: 'scale(.4)', opacity: 0 }, { transform: 'scale(1.18)', opacity: 1, offset: .55 }, { transform: 'scale(1)' }]
       : [{ transform: 'scale(1)' }, { transform: 'scale(1.18) rotate(-4deg)', offset: .4 }, { transform: 'scale(1)' }],
     { duration: 300, easing: 'ease-out' });
-    cnt?.animate([{ transform: 'scale(1.7)', color: '#ffe3a6' }, { transform: 'scale(1)', color: '#fff2cc' }], { duration: 320, easing: BACK });
+    cnt?.animate([{ transform: 'scale(1.7)' }, { transform: 'scale(1)' }], { duration: 320, easing: BACK });
     flashRing(slot, false);
   }
   function dipSlot(slot) {
@@ -344,27 +358,28 @@ export function createUIFeel({
   function crafted(id) {
     const b = invEl?.querySelector(`.sv-recipe[data-recipe="${String(id).replace(/["\\]/g, '')}"]`);
     if (!b) return;
-    b.animate([{ boxShadow: 'inset 0 0 0 2px #ffe3a6,0 0 16px #ffd58aaa' }, { boxShadow: 'inset 0 0 0 1px #d4b07a44,0 0 0 #ffd58a00' }], { duration: rm ? 250 : 520, easing: 'ease-out' });
+    if (PSEUDO) b.animate([{ opacity: 1 }, { opacity: 0 }], { duration: rm ? 250 : 520, easing: 'ease-out', pseudoElement: '::after' });
     if (!rm) b.querySelector('.sv-rart')?.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.28) rotate(-6deg)', offset: .35 }, { transform: 'scale(1)' }], { duration: 380, easing: 'ease-out' });
   }
 
   // ---------- pickup: icon flies into its slot ----------
+  // The hotbar slot that just received `kind`: the stack whose count in the Bag differs from the last paint we
+  // observed (Bag.add tops up the first non-full stack, then fills empties). The bag is authoritative before
+  // survival-ui repaints. No such slot means the item went to the backpack, or (guest) the predicted bag does not
+  // have it yet: the caller then flies to a generic hotbar target and the real slot bumps when it is painted.
   function targetSlotFor(kind) {
-    // The bag is authoritative even before survival-ui repaints (paint happens in the next frame).
-    const bag = safe(getBag);
-    const slots = bag?.slots;
-    if (Array.isArray(slots)) {
-      // Prefer the hotbar stack whose count moved since the last paint we observed (Bag.add tops up the first
-      // non-full stack, then fills empties), else the first stack of that kind.
-      let first = -1;
-      for (let i = 0; i < hotbarSize; i++) {
-        const s = slots[i]; if (!s || s.kind !== kind) continue;
-        if (first < 0) first = i;
-        if (hotEls[i] && counts.has(hotEls[i]) && counts.get(hotEls[i]) !== s.count) return hotEls[i];
-      }
-      return first >= 0 ? hotEls[first] || null : null;
+    const slots = safe(getBag)?.slots;
+    if (!Array.isArray(slots)) return hotEls.find(e => (e.dataset.kind || e._svKind) === kind) || null; // no bag: DOM guess
+    for (let i = 0; i < hotbarSize; i++) {
+      const s = slots[i]; if (!s || s.kind !== kind || !hotEls[i]) continue;
+      if (counts.has(hotEls[i]) && counts.get(hotEls[i]) !== s.count) return hotEls[i];
     }
-    return hotEls.find(e => (e.dataset.kind || e._svKind) === kind) || null;
+    return null;
+  }
+  function slotOfKind(kind) {
+    const slots = safe(getBag)?.slots;
+    const i = Array.isArray(slots) ? slots.findIndex((s, i) => i < hotbarSize && s?.kind === kind) : -1;
+    return i >= 0 ? hotEls[i] : hotEls.find(e => (e.dataset.kind || e._svKind) === kind) || null;
   }
   function artFor(kind, slot) {
     const h = safe(iconHTML, kind);
@@ -384,13 +399,14 @@ export function createUIFeel({
       if (rm || !toolsVisible) { if (slot) flashRing(slot, true); return; }
       const fly = flyPool.find(f => !f.anim) || flyPool[k % flyPool.length];
       fly.anim?.cancel();
-      if (fly.kind !== it.kind) { fly.art.innerHTML = artFor(it.kind, slot); fly.kind = it.kind; }
+      if (fly.kind !== it.kind) { fly.art.innerHTML = artFor(it.kind, slot || slotOfKind(it.kind)); fly.kind = it.kind; }
       fly.label.textContent = it.count > 1 ? '+' + it.count : '';
-      // Destination: the slot centre, or (backpack) the hotbar's right end where it fades out.
-      const last = slotRects[slotRects.length - 1];
-      const tx = r ? r.left + r.width / 2 : last.right + 18, ty = r ? r.top + r.height / 2 : last.top + last.height / 2;
+      // Destination: the slot centre, or (backpack / not in the bag yet) the middle of the hotbar's top edge,
+      // where it shrinks into the bar. A slot that changes later bumps through the observer when it is painted.
+      const first = slotRects[0], last = slotRects[slotRects.length - 1];
+      const tx = r ? r.left + r.width / 2 : (first.left + last.right) / 2, ty = r ? r.top + r.height / 2 : first.top + 6;
       const sx = fx + (k - (items.length - 1) / 2) * 30, sy = fy - 8;
-      const keys = arc(sx, sy, tx, ty, r ? .62 : .5);
+      const keys = arc(sx, sy, tx, ty, r ? .62 : .4);
       if (slot) pendingLand.set(slot, (pendingLand.get(slot) || 0) + 1);
       fly.anim = fly.node.animate(keys, { duration: 640, delay: k * 70, easing: 'linear', fill: 'backwards' });
       const a = fly.anim;
@@ -428,17 +444,35 @@ export function createUIFeel({
   }
 
   // ---------- toasts ----------
-  const MAXT = 5, ROW = 40, LIFE = 3200; // a row merges repeats for as long as it is on screen
+  // Desktop: bottom right, newest at the bottom, 5 rows. Phone (<=760px): top centre, newest on top, 3 rows.
+  const LIFE = 3200; // a row merges repeats for as long as it is on screen
+  const narrowMQ = matchMedia('(max-width:760px)');
+  let narrow = narrowMQ.matches;
+  const maxRows = () => narrow ? 3 : 5;
+  const rowY = i => narrow ? i * 34 : -i * 40;
   const stack = document.getElementById('uf-toasts') || Object.assign(document.createElement('div'), { id: 'uf-toasts' });
   stack.textContent = '';
   stack.setAttribute('role', 'status'); stack.setAttribute('aria-live', 'polite');
   document.body.append(stack);
-  const tpool = Array.from({ length: MAXT + 1 }, () => {
-    const n = el('div', 'uf-toast', '<i class="uf-ti"></i><span class="uf-tt"></span><b class="uf-tn"></b>', stack);
-    return { n, ti: n.children[0], tt: n.children[1], tn: n.children[2], key: '', amount: 0, born: 0, slot: -1, dying: false, gen: 0 };
+  // The stack lives in the top layer (popover=manual), so it can be raised above the modal inventory and its
+  // ::backdrop: a craft toast is then readable over the open panel. Without popover support it stays at z-index 5.
+  const canPop = typeof stack.showPopover === 'function';
+  if (canPop) { stack.popover = 'manual'; try { if (!stack.matches(':popover-open')) stack.showPopover(); } catch {} }
+  function raiseToasts() { // top layer order = order shown: re-show after a modal opens to sit above it
+    if (!canPop || !stack.isConnected) return;
+    try { if (stack.matches(':popover-open')) stack.hidePopover(); stack.showPopover(); } catch {}
+  }
+  const tpool = Array.from({ length: 6 }, () => {
+    const n = el('div', 'uf-toast', '<i class="uf-tg"></i><i class="uf-ti"></i><span class="uf-tt"></span><b class="uf-tn"></b>', stack);
+    return { n, tg: n.children[0], ti: n.children[1], tt: n.children[2], tn: n.children[3], key: '', amount: 0, born: 0, slot: -1, dying: false, gen: 0 };
   });
-  const shown = []; // index 0 = newest (bottom)
+  const shown = []; // index 0 = newest
   let tickTimer = 0;
+  narrowMQ.addEventListener?.('change', () => {
+    narrow = narrowMQ.matches;
+    while (shown.length > maxRows()) expire(shown[shown.length - 1], true);
+    shown.forEach(r => { r.slot = -1; }); restack(); // re-place without animating
+  }, opt);
 
   // toast(text, {kind:'loot'|'craft'|'build'|'full'|'warn'|'info', icon:'<svg>', amount:n, key:'merge-key'})
   function toast(text, o = {}) {
@@ -452,11 +486,11 @@ export function createUIFeel({
         hit.amount += amount; hit.tn.textContent = '+' + hit.amount;
         if (!rm) hit.tn.animate([{ transform: 'scale(1.6)', color: '#fff' }, { transform: 'scale(1)' }], { duration: 260, easing: BACK });
       }
-      if (!rm) hit.n.animate([{ filter: 'brightness(1.5)' }, { filter: 'brightness(1)' }], { duration: 300 });
+      if (!rm) hit.tg.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, easing: 'ease-out' });
       armTick();
       return;
     }
-    if (shown.length >= MAXT) expire(shown[shown.length - 1], true);
+    if (shown.length >= maxRows()) expire(shown[shown.length - 1], true);
     const row = tpool.find(r => !shown.includes(r) && !r.dying) || tpool.find(r => !shown.includes(r));
     row.gen++; row.dying = false; row.key = key; row.amount = amount; row.born = now;
     row.n.dataset.kind = kind;
@@ -468,15 +502,17 @@ export function createUIFeel({
     restack();
     row.n.animate(rm
       ? [{ opacity: 0 }, { opacity: 1 }]
-      : [{ opacity: 0, transform: 'translate3d(24px,0,0) scale(.96)' }, { opacity: 1, transform: 'translate3d(-4px,0,0)', offset: .7 }, { opacity: 1, transform: 'translate3d(0,0,0)' }],
+      : narrow
+        ? [{ opacity: 0, transform: 'translate3d(0,-18px,0) scale(.94)' }, { opacity: 1, transform: 'translate3d(0,2px,0)', offset: .7 }, { opacity: 1, transform: 'translate3d(0,0,0)' }]
+        : [{ opacity: 0, transform: 'translate3d(24px,0,0) scale(.96)' }, { opacity: 1, transform: 'translate3d(-4px,0,0)', offset: .7 }, { opacity: 1, transform: 'translate3d(0,0,0)' }],
     { duration: rm ? 120 : 260, easing: OUT });
     armTick();
   }
   function restack() {
     shown.forEach((r, i) => {
-      const y = -i * ROW;
+      const y = rowY(i);
       if (r.slot === i) return;
-      const from = r.slot < 0 ? y : -r.slot * ROW;
+      const from = r.slot < 0 ? y : rowY(r.slot);
       r.slot = i;
       r.n.style.transform = `translate3d(0,${y}px,0)`;
       r.n.style.opacity = String(Math.max(.6, 1 - i * .1));
@@ -488,8 +524,8 @@ export function createUIFeel({
     row.dying = true;
     const gen = row.gen, i = shown.indexOf(row);
     if (i >= 0) shown.splice(i, 1);
-    const y = -row.slot * ROW;
-    const a = row.n.animate(rm ? [{ opacity: 0 }] : [{ opacity: 0, transform: `translate3d(28px,${y}px,0)` }], { duration: fast ? 120 : 220, easing: 'ease-in', fill: 'forwards' });
+    const y = rowY(row.slot);
+    const a = row.n.animate(rm ? [{ opacity: 0 }] : [{ opacity: 0, transform: narrow ? `translate3d(0,${y - 12}px,0)` : `translate3d(28px,${y}px,0)` }], { duration: fast ? 120 : 220, easing: 'ease-in', fill: 'forwards' });
     a.onfinish = () => { if (row.gen !== gen) return; row.dying = false; row.slot = -1; row.n.style.opacity = '0'; a.cancel(); };
     restack();
   }
@@ -614,14 +650,16 @@ export function createUIFeel({
 
   const api = {
     attachHotbar, attachInventory, attachCrosshair, measure, select, pickup, crafted, toast, statBar, crosshair,
-    iconFor: kind => artFor(kind, targetSlotFor(kind)),
+    iconFor: kind => artFor(kind, slotOfKind(kind)),
     get reducedMotion() { return rm; },
     setReducedMotion(v) { reducedMotion = v; applyRM(); },
     destroy() {
       if (!alive) return;
       alive = false; ac.abort(); ro?.disconnect(); mo?.disconnect(); mo2?.disconnect();
       clearTimeout(tickTimer);
+      try { if (canPop && stack.matches(':popover-open')) stack.hidePopover(); } catch {}
       layer.remove(); stack.remove();
+      for (const k of ['--uf-hbx', '--uf-hbw', '--uf-hbt']) document.documentElement.style.removeProperty(k);
       tools?.classList.remove('uf-has-cursor');
       if (xh) { xh.classList.remove('uf-xh', 'uf-hover', 'uf-charging', 'uf-full'); xh.querySelectorAll(':scope>.uf-x').forEach(n => n.remove()); }
       document.documentElement.classList.remove('uf-rm');
