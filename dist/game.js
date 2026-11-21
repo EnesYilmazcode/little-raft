@@ -1205,6 +1205,7 @@ export function mount(transfer = null) {
     const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); yaw = 0; pitch = -.28;
     for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     if (scene) { syncItems(); rebuildRaft(); }
+    try { fc?.reset(); } catch (e) { console.error('fishing-cooking reset failed', e); } // grills live in their own save key
     saveRev = newGameBaseRev(storedRev(), saveRev); unblockSave(); // the player chose to overwrite the stored save
     save(); start();
   }

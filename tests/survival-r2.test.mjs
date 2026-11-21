@@ -81,3 +81,41 @@ test('SURV-1 r3: palm seeds no longer drop, the kind stays registered and the co
   assert.match(gameSrc, /kind === 'seed'\) \{ notice\('Planters grow from fresh water/);
   assert.doesNotMatch(gameSrc, /farmPlot/);
 });
+
+// Fishing & cooking with real three and a small fake host (see tests/fc-glue.test.mjs for the full one).
+const T = await import(new URL('vendor/three.module.js', base));
+const { createFishingCooking, FC_SAVE_KEY } = await import(new URL('fishing-cooking.js', base));
+const mem = new Map();
+Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+  getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) } });
+globalThis.window ??= {};
+function fcMount({ tiles = [[0, 0], [1, 0], [2, 0]], running = true } = {}) {
+  const counts = { wood: 50, scrap: 20 };
+  const scene = new T.Scene(), raft = new T.Group(), camera = new T.PerspectiveCamera(70, 1, 0.05, 200);
+  scene.add(raft, camera);
+  const bagApi = { count: (k) => counts[k] || 0, remove: (k, n) => ((counts[k] || 0) >= n ? ((counts[k] -= n), true) : false), add: (k, n) => ((counts[k] = (counts[k] || 0) + n), 0), emit() {} };
+  const h = {
+    scene, raft, camera, ocean: { getHeight: () => 0, getSlope: () => ({ x: 0, z: 0 }) },
+    signal: new AbortController().signal, rodModel: new T.Group(), role: () => 'solo', netReady: () => false, send() {}, notice() {}, beep() {},
+    selectedKind: () => 'wood', aim: () => ({ point: null, dir: new T.Vector3(0, 0, -1) }), rodTip: () => new T.Vector3(), player: () => ({ x: 0, y: 0.3, z: 0, yaw: 0 }),
+    hasTile: (x, z) => tiles.some(([a, b]) => a === x && b === z), decorAt: () => false,
+    bagCount: (k) => counts[k] || 0, running: () => h._running, _running: running, uiBlocked: () => false, busy: () => false,
+    action(a) { if (a.kind.startsWith('fc:')) h.api.applyAction(a, 'host', bagApi); return true; },
+  };
+  h.api = createFishingCooking(T, h);
+  return h;
+}
+
+test('SURV-2 r3: fc.reset clears every grill and rewrites the save; New game calls it', () => {
+  mem.clear();
+  const h = fcMount();
+  h.action({ kind: 'fc:placeGrill', x: 0, z: 0 }); h.action({ kind: 'fc:placeGrill', x: 2, z: 0 });
+  assert.equal(h.api.grills.size, 2);
+  h.api.reset();
+  assert.equal(h.api.grills.size, 0);
+  assert.deepEqual(JSON.parse(mem.get(FC_SAVE_KEY)).grills, []);
+  assert.ok(JSON.parse(mem.get(FC_SAVE_KEY)).journal, 'the journal is kept');
+  h.api.dispose();
+  const ng = gameSrc.slice(gameSrc.indexOf('function newGame()'), gameSrc.indexOf('const hasSave'));
+  assert.match(ng, /fc\?\.reset\(\)/);
+});
