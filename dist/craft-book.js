@@ -26,7 +26,6 @@ const CATEGORY_OF = Object.freeze({
   rug: 'building', pennant: 'building', fern: 'building', chime: 'building', hammock: 'building', pots: 'building', sign: 'building', // decor pack
   kiln: 'building', glasslamp: 'survival', sinker: 'survival', // kiln
   nestbox: 'survival', cushion: 'building', // raft animals
-  researchtable: 'building', grill: 'building', smelter: 'building',
   // content (engine, sleep, paint)
   motor: 'building', wheel: 'building', bed: 'building', brush: 'tools',
   paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
@@ -51,7 +50,6 @@ export const ITEM_TEXT = Object.freeze({
   crate:      { desc: 'A nailed wooden crate.', use: 'Decorates the raft; place it on a floor tile.' },
   sand:       { desc: 'Fine sand from barrels and the seafloor.', use: 'Melt it into glass in the smelter.' },
   stone:      { desc: 'A smooth, heavy stone.', use: 'Part of the smelter; sturdier builds and island tools.' },
-  seed:       { desc: 'A palm seed washed up on an island.', use: 'Plant it in a palm planter.' },
   research:   { desc: 'A tinker\u2019s desk for studying finds.', use: 'Place it, then study parts to learn signal and water gear.' },
   motor:      { desc: 'A little outboard motor that burns leaves, wood or plastic.', use: 'Place it, fuel it, and it pushes the raft along.' },
   wheel:      { desc: 'A rope-lashed steering wheel.', use: 'Place it, then grab it to steer the raft.' },
@@ -342,9 +340,6 @@ export const ITEM_SOURCE = Object.freeze({
   freshcup:    Object.freeze({ tag: 'purifier', how: 'Pour sea water into a purifier and wait.' }),
   cookedfish:  Object.freeze({ tag: 'grill', how: 'Cook a fish on a grill.' }),
   // [bees] beehive harvest and island bushes
-  flowerseed: Object.freeze({ tag: 'bushes, barrels', how: 'Pick it from island bushes, or find it in floating barrels.' }),
-  honey:     Object.freeze({ tag: 'beehive', how: 'Put a beehive near flower boxes, then collect the honeycomb with E.' }),
-  wax:       Object.freeze({ tag: 'beehive', how: 'Collect honeycomb from a beehive with E; each comb gives honey and beeswax.' }),
   // raft animals (animals.js)
   puffegg:     Object.freeze({ tag: 'puffhen', how: 'Place a Nest Box; a puffhen moves in and lays eggs. Press E on the nest to collect.' }),
   feather:     Object.freeze({ tag: 'puffhen', how: 'Sometimes left with the eggs in a puffhen nest box; collect with E.' }),
