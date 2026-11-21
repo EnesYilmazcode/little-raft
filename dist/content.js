@@ -44,14 +44,15 @@ export function createContent(ctx, features = FEATURES) {
   const off = m => { if (m.dead) return; m.dead = true; console.error('content module disabled:', m.name); try { m.dispose?.(); } catch (e) { console.error(`content ${m.name}.dispose failed`, e); } };
   const call = (m, fn, ...a) => { if (m.dead || typeof m[fn] !== 'function') return undefined; try { return m[fn](...a); } catch (e) { console.error(`content ${m.name}.${fn} failed`, e); off(m); return undefined; } };
   const first = (fn, ...a) => { for (const m of mods) { const r = call(m, fn, ...a); if (r) return r; } return null; };
-  const debug = {};
+  const debug = {}; let loaded = {};
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
   return {
     mods, debug,
     update(dt) { for (const m of mods) call(m, 'update', dt); },
     afterMove(physics, dt) { for (const m of mods) call(m, 'afterMove', physics, dt); },
-    serialize() { const out = {}; for (const m of mods) { const d = call(m, 'serialize'); if (d !== undefined && m.name) out[m.name] = d; } return out; },
-    load(ext, from) { const e = ext && typeof ext === 'object' ? ext : {}; for (const m of mods) call(m, 'load', e[m.name], from); },
+    // Start from the last loaded/serialized ext so a disabled (or never-started) module keeps its last good slice instead of the autosave wiping it.
+    serialize() { const out = {...loaded}; for (const m of mods) { if (m.dead || !m.name) continue; const d = call(m, 'serialize'); if (d !== undefined) out[m.name] = d; } loaded = out; return {...out}; },
+    load(ext, from) { const e = ext && typeof ext === 'object' ? ext : {}; loaded = {...e}; for (const m of mods) call(m, 'load', e[m.name], from); },
     action(a, actor, bag) { for (const m of mods) if (call(m, 'action', a, actor, bag)) return true; return false; },
     interact: aim => !!first('interact', aim),
     prompt: aim => first('prompt', aim),
