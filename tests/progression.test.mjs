@@ -18,7 +18,7 @@ const { Bag, SLOT_COUNT, HOTBAR_SIZE } = Inv;
 
 const LEGACY = ['wood', 'leaf', 'plastic', 'scrap', 'rope', 'fish', 'hook', 'hammer', 'fishingrod', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate'];
 const CATEGORIES = new Set(['material', 'refined', 'tool', 'station', 'build', 'food', 'decor']);
-const STATIONS_WITH_RECIPES = new Set(['smelter', 'grill', 'purifier']);
+const STATIONS_WITH_RECIPES = new Set(['smelter', 'grill', 'purifier', 'recycler']);
 const INFO = infoTable();
 const BAG_KNOWS_ALL = ITEM_IDS.every((k) => Inv.ITEM_KINDS.includes(k));
 
@@ -178,7 +178,7 @@ test('items: legacy kinds keep their ids and Bag-compatible stack/tool shape', (
 
 test('items: no unlock/recipe cycles and every item is reachable from the start', () => {
   // Raw sources: floating debris + barrel loot. Fish comes from the fishing rod.
-  const have = new Set(['wood', 'leaf', 'plastic', 'scrap', ...BARREL_LOOT.map((e) => e.kind)]);
+  const have = new Set(['wood', 'leaf', 'plastic', 'scrap', ...(I.JUNK_IDS ?? []), ...BARREL_LOOT.map((e) => e.kind)]); // [recycler] junk floats too
   const unlocked = (id) => {
     const u = ITEMS[id].unlock;
     if (u.type === 'start') return true;
