@@ -282,16 +282,26 @@ the exposure; it is already a getter in `contentCtx`.
    should see a blue night with stars, a moon up and to the left of the start view, readable deck
    and a warm pool around the lantern. `d.setWeather('rain')` shows streaks and a closer fog;
    `d.setPhase(0.655)` is dusk; `d.setPhase(null); d.setWeather(null); d.freeze(false)` resumes.
-3. A playwright script that does this headless is described in the report: it seeds
-   `localStorage['little-raft-v1']` with three lanterns and a bench in `decor`, clicks `#solo`,
-   freezes the clock and walks through the phases.
+3. Headless shots (playwright, modelled on `tools/shoot_headless.py`, same `PW_CHROME`): an init
+   script seeds `localStorage['little-raft-v1']` with the 3x3 starter tiles and
+   `decor: [{type:'lantern',x:1,z:-1}, {type:'lantern',x:-1,z:-1}, {type:'bench',x:0,z:-1},
+   {type:'lantern',x:1,z:0}]`, clicks `#solo`, presses `3` (empty hotbar slot so a drag does not
+   throw the hook), calls `freeze(true)`, then for each shot `setPhase(p); setWeather(w)`, waits
+   2.5 s (software GL runs at ~1 fps) and screenshots. Mouse drags on the canvas turn the view.
+   Phases used: morning 0.05, dusk 0.655, night 0.82, rain 0.30.
 
 Screenshots: `docs/cloud/shots/content/daynight-morning.png`, `daynight-dusk.png`,
 `daynight-night.png` (lanterns), `daynight-rain.png`.
 
-**Cost** (measured, see report): stars +1 draw call at night, moon +1, rain +1 only while
-raining. Four point lights are always present, so every lit material evaluates four extra lights
-(the main frame-time cost, fixed and shader-stable). The per-frame update does no allocation.
+**Cost.** Draw calls from `renderInfo()` in the same view: day 272, dusk 274 (+stars, +moon),
+rain 215 vs 214 in the same view (+1 line draw), rain at night 217. So it is +0 by day, +2 at
+night and +1 more while raining. Stars add 450 points and rain adds 600 lines. Four point lights
+are always present, so every lit material evaluates four extra lights. That is the main
+frame-time cost; it is fixed and never recompiles shaders. Frame time under headless SwiftShader
+on a heavily loaded 4-core sandbox (load average ~15, so the numbers are noisy): baseline stub
+~1.1 to 1.7 s per frame, this module ~1.8 s by day and ~2.0 s at night with three lanterns. That is
+roughly +10 to 30%, almost all from per-fragment lighting in software GL. The per-frame update
+does no allocation and stays well under 0.1 ms of JS.
 
 **Known issues**
 
