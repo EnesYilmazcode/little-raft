@@ -52,6 +52,18 @@ test('C4: desktop window accepts the first click (macOS) and does not relock on 
   assert.doesNotMatch(m, /on\('focus'[^\n]*requestPointerLock/);
 });
 
+test('B4: desktop Esc closes the hammer build wheel through the game and keeps the lock', () => {
+  const g = read('game.js'), s = read('settings.js');
+  const api = g.slice(g.indexOf('const shellApi = {'), g.indexOf('window.raftShell = shellApi;'));
+  assert.match(api, /closeBuildWheel:guard\(\(\) => \{ if \(!building\?\.menu\.isOpen\) return false; building\.menu\.close\(false\); return true; \}\)/);
+  assert.doesNotMatch(api, /exitPointerLock|releaseLock/);
+  const esc = s.slice(s.indexOf('function escape()'), s.indexOf('window.raftEscape ='));
+  assert.match(esc, /if \(buildWheelOpen\(\)\) \{[^}]*window\.raftShell\?\.closeBuildWheel\?\.\(\)\) return true;/);
+  assert.doesNotMatch(esc, /if \(buildWheelOpen\(\)\) return false;/);
+  // Browser keydown: the wheel is left to the game's key handler, so escape() is not also run for it.
+  assert.match(s, /if \(!dialog\.open && !otherDialogs\(\)\.length && buildWheelOpen\(\)\) esc\.keydown\(now, \{ handled: true \}\);\n\s*else if/);
+});
+
 test('C3: window blur drops body.relock so the away resume hint is visible', () => {
   const s = read('settings.js');
   assert.match(s, /window\.addEventListener\('blur', \(\) => document\.body\.classList\.remove\('relock'\)/);

@@ -1766,6 +1766,9 @@ export function mount(transfer = null) {
   const shellApi = {
     hold:guard(() => { escHeld = true; relockOnEscUp = false; }),
     released:guard(() => escReleased()),
+    // Escape with the hammer wheel open (the shell swallows the keydown the game would see). Cancels the wheel
+    // only; pointer lock is untouched, so play continues with no cursor. True when a wheel was open.
+    closeBuildWheel:guard(() => { if (!building?.menu.isOpen) return false; building.menu.close(false); return true; }),
   };
   window.raftShell = shellApi;
   window.raftDebug = debugApi;
