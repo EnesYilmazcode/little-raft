@@ -51,6 +51,9 @@ const PRELOAD = [
   './texgen/sand.js', './texgen/scrap.js', './textures.js', './underwater-fx.js', './vendor/three.module.js',
   './watering.js?build=v3-survival-ae77fa84ac2b', './wildlife-models.js',
   './wildlife.js?build=v3-survival-ae77fa84ac2b', './wood.js?build=v3-survival-ae77fa84ac2b',
+  './bees-model.js?build=v3-survival-ae77fa84ac2b', './bees.js?build=v3-survival-ae77fa84ac2b', './hud.js?build=v3-survival-ae77fa84ac2b', './input-rules.js?build=v3-survival-ae77fa84ac2b',
+  './instrument-models.js?build=v3-survival-ae77fa84ac2b', './instruments.js?build=v3-survival-ae77fa84ac2b', './lock-rules.js?build=v3-survival-ae77fa84ac2b', './rain-model.js?build=v3-survival-ae77fa84ac2b',
+  './rain.js?build=v3-survival-ae77fa84ac2b', './scenery-islands.js?build=v3-survival-ae77fa84ac2b', './sky.js?build=v3-survival-ae77fa84ac2b',
 ];
 
 const state = {
