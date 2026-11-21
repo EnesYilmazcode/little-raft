@@ -87,7 +87,7 @@ export function edgeStart(tileKeys, hx, hz)   // -> [x, z] first off-raft cell f
 | goat, leaf/seaweed held, content < 300 | `<kbd>E</kbd>Feed ${name} (Seaweed)` / `(Palm Leaf)` | `animals.feed {id, food}` |
 | goat, food held, content ≥ 300 | `${name} is full and happy` | nothing |
 | goat, pail held, milk ready | `<kbd>E</kbd>Milk ${name}` | `animals.milk {id}` |
-| goat, otherwise | `<kbd>E</kbd>Pet ${name} ♥ ${hearts}` + ` · has milk (hold a Wooden Pail)` if ready and no pail, else ` · milk soon` if pail held, else ` · content` if content > 0 | `animals.pet {id}` |
+| goat, otherwise | `<kbd>E</kbd>Pet ${name} ♥ ${hearts}` + ` · has milk (hold a pail)` if ready (fits the 48-char prompt label with a 14-char name and 10 hearts) and no pail, else ` · milk soon` if pail held, else ` · content` if content > 0 | `animals.pet {id}` |
 | pen, resident, pail held, milk ready | `<kbd>E</kbd>Milk ${name}` | `animals.milk {id}` |
 | pen, resident | `<kbd>E</kbd>Rename ${name}` | opens dialog with label `Bramblegoat` |
 | pen, lure pending | `Hay Corner · a Bramblegoat is on its way…` | consumes E |

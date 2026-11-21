@@ -26,6 +26,8 @@
 //   zoom()                    -> view zoom factor 1..8 this frame (spyglass); game.js divides the FOV, look speed and camera motion by it
 //   afterRebuild()            after rebuildRaft() recreated the deck/decor meshes (paint: re-tint planks)
 //   tileTint(x, z, base)      plank colour for deck tile x,z (base = the plank's own colour) or null (paint)
+//   placed(type, x, z, actor) host, after a decor piece was built on tile x,z ([bed]: a new bed is its placer's home)
+//   respawnSpot(out)          -> {x, z} (raft metres) where the LOCAL player wakes after passing out, or null ([bed])
 //   diveMods(m)               multiply m.swim/oxy/fog/gather in place (local player, per frame, no allocations; docs/specs/diving-gear.md)
 //   link(env)                 optional: env.wind() / env.night() live daynight getters // [power]
 //   beforeUndecor(d, actor)   [undecor] host only. d = the world.decor entry {type,x,z,rot?} (read-only), actor 'host'|'guest'.
@@ -125,7 +127,7 @@ export function createContent(ctx, features = FEATURES) {
   }
   const first = (fn, ...a) => { for (const m of mods) { if (m.dead || typeof m[fn] !== 'function') continue; const r = call(m, fn, ...a); if (r) return r; } return null; };
   const seatedMod = () => { for (const m of mods) if (!m.dead && typeof m.seated === 'function' && call(m, 'seated')) return m; return null; }; // [sit]
-  const debug = {};
+  const debug = {}; let loaded = {};
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
   const dn = () => mods.find(m => m.name === 'daynight' && !m.dead), num = (v, d) => (Number.isFinite(v) ? v : d); // [power]
   const env = { wind: () => num(dn()?.wind, .15), night: () => num(dn()?.night, 0) }; // [power] live getters, never spread
@@ -134,8 +136,9 @@ export function createContent(ctx, features = FEATURES) {
     mods, debug,
     update(dt) { for (const m of mods) call(m, 'update', dt); },
     afterMove(physics, dt) { for (const m of mods) call(m, 'afterMove', physics, dt); },
-    serialize() { const out = {}; for (const m of mods) { const d = call(m, 'serialize'); if (d !== undefined && m.name) out[m.name] = d; } return out; },
-    load(ext, from) { const e = ext && typeof ext === 'object' ? ext : {}; for (const m of mods) call(m, 'load', e[m.name], from); },
+    // Start from the last loaded/serialized ext so a disabled (or never-started) module keeps its last good slice instead of the autosave wiping it.
+    serialize() { const out = {...loaded}; for (const m of mods) { if (m.dead || !m.name) continue; const d = call(m, 'serialize'); if (d !== undefined) out[m.name] = d; } loaded = out; return {...out}; },
+    load(ext, from) { const e = ext && typeof ext === 'object' ? ext : {}; loaded = {...e}; for (const m of mods) call(m, 'load', e[m.name], from); },
     action(a, actor, bag) { for (const m of mods) if (call(m, 'action', a, actor, bag)) return true; return false; },
     observe(ev, actor) { for (const m of mods) call(m, 'observe', ev, actor); }, // [tasks] host-side game events
     interact: aim => { const m = seatedMod(); return !!(m && call(m, 'interact', aim)) || !!first('interact', aim); }, // [sit] a seated module gets E first (stand up)
@@ -146,6 +149,8 @@ export function createContent(ctx, features = FEATURES) {
     zoom() { const z = first('zoom'); return Number.isFinite(z) && z >= 1 && z <= 8 ? z : 1; }, // [spyglass] view zoom, default 1
     afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)
     tileTint: (x, z, base) => first('tileTint', x, z, base), // content hook (paint): plank hex for a painted deck tile, else null
+    placed(type, x, z, actor) { for (const m of mods) call(m, 'placed', type, x, z, actor); }, // [bed]
+    respawnSpot: out => first('respawnSpot', out), // [bed]
     ride: (dt, p, inp) => !!first('ride', dt, p, inp), riding: () => !!first('riding'), // [zipline] [sit] content hook: first module to take over motion wins (glide line, seat, driftboard)
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
     placeBlock: (kind, x, z) => first('placeBlock', kind, x, z), // [fishtrap] reason a decor can't go on (x, z), or null

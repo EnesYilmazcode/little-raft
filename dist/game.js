@@ -13,7 +13,7 @@ import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84a
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { PlayerPhysics, PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
-import { floorBlock, decorBlock, inReach, BUILD_REACH, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
+import { floorBlock, decorBlock, pieceBlock, pieceCell, inReach, BUILD_REACH, PIECE_REACH, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createContent, cleanExt, promptParts } from './content.js?build=v3-survival-ae77fa84ac2b'; // content hook (islands, wildlife, storage, day/night)
 import { CONTENT_DECOR, CONTENT_BLOCK_RADIUS } from './content-items.js?build=v3-survival-ae77fa84ac2b'; // content hook
@@ -44,13 +44,14 @@ import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, hookableItems,
 import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan, LIVE_STATUS_EVENT } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
-import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
+import { createQuality, setShadows } from './quality.js?build=v3-survival-ae77fa84ac2b';
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrelTrial, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { attachSpearRepair } from './spear-repair-hooks.js?build=v3-survival-ae77fa84ac2b'; // [spear-repair]
-import { newVitals, tickVitals, damage as damageVitals, consume as consumeVitals, cleanVitals, saveVitals, isEdible, isDrink /* [juicer] */, eatLabel, FOOD, SPRINT_MULT, EAT_SECONDS, RESPAWN } from './vitals.js?build=v3-survival-ae77fa84ac2b'; // [vitals] hunger, thirst, health
+import { newVitals, tickVitals, damage as damageVitals, adjust as adjustVitals /* [bed] */, consume as consumeVitals, cleanVitals, saveVitals, isEdible, isDrink /* [juicer] */, eatLabel, FOOD, SPRINT_MULT, EAT_SECONDS, RESPAWN } from './vitals.js?build=v3-survival-ae77fa84ac2b'; // [vitals] hunger, thirst, health
 import { createVitalsUI } from './vitals-ui.js?build=v3-survival-ae77fa84ac2b'; // [vitals] HUD bars, damage vignette, faint overlay
+import { BED_RESPAWN } from './sleep.js?build=v3-survival-ae77fa84ac2b'; // [bed] wake-up bars at your bed
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
@@ -104,6 +105,9 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
 #contextPrompt{position:fixed;left:50%;bottom:132px;transform:translateX(-50%);padding:3px 10px;border-radius:8px;
   background:rgba(8,22,36,.55);color:#f6ecd6;font:600 13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;pointer-events:none;z-index:30;white-space:nowrap}
 #contextPrompt[hidden]{display:none}
+/* How to play fits a 720p window: wider rows wrap less, a short window tightens spacing, anything left scrolls */
+#help{width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow:auto;overscroll-behavior:contain}
+@media(max-height:760px){#help{padding:20px 28px}#help .guide{gap:5px;margin:10px 0 8px}#help .guide li{line-height:1.35}#help .guide-note{margin-bottom:10px}}
 #contextPrompt kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:0 4px;border:1px solid rgba(246,236,214,.6);border-radius:4px;font:inherit;text-align:center}
 /* The pickup feed is a manual popover so notices stay visible above the open bag or pause menu; it keeps style.css's place. */
 #pickupFeed[popover]{top:auto;right:auto;margin:0;padding:0;border:0;background:none;overflow:visible;width:auto;height:auto;max-width:none;max-height:none;color:#f6ecd6}
@@ -147,8 +151,7 @@ export function mount(transfer = null) {
   let seed = 20240917; const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
 
   // ---------- Bags ----------
-  const engineStack = k => (Object.prototype.hasOwnProperty.call(ITEM_INFO, k) ? ITEM_INFO[k].maxStack : 0); // keeps cups/purifier (outside items.js) across reloads
-  const snapBag = s => { if (!s || typeof s !== 'object') return null; let m = s; try { m = migrateSnapshot(s, engineStack) ?? s; } catch {} try { return new Bag(m); } catch { return Bag.salvage(m); } }; // [progression-hook] migrate (engine kinds kept); one bad slot never wipes a bag
+  const snapBag = s => { if (!s || typeof s !== 'object') return null; let m = s; try { m = migrateSnapshot(s, ITEM_INFO) ?? s; } catch {} try { return new Bag(m); } catch { return Bag.salvage(m); } }; // [progression-hook] migrate (bag-only kinds kept via ITEM_INFO: cups, purifier, receiver...); one bad slot never wipes a bag
   const validSnapshot = s => snapBag(s)?.snapshot() ?? null;
   const commit = (bag, scratch) => { for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i]; };
   const canAfford = (bag, cost) => Object.entries(cost).every(([k, n]) => bag.count(k) >= n);
@@ -275,6 +278,7 @@ export function mount(transfer = null) {
   // [vitals] The local player's own hunger/thirst/health. Solo/host persist it in world.vitals; a guest keeps
   // its own in memory (and in its own save once back home). Never sent over the network.
   const vitals = newVitals(X?.vitals ?? world.vitals);
+  let hurtCause = null, faintHome = false; const wakeSpot = {x:0, z:0, bed:false}; // [bed] [drown]
   let vitalsUI = null, eating = null, fainted = Number.isFinite(X?.fainted) ? X.fainted : -1, exertion = 1; // eating {item, slot, t}; fainted: seconds into the faint, -1 = awake
   const vitalsOpts = {mult:1};
   let building = null, sentPieces = null; // building-pieces lane hook (sentPieces: last pieces array sent to the guest)
@@ -345,6 +349,8 @@ export function mount(transfer = null) {
   // shark lane (dist/shark.js): host/solo simulate, the guest shows the host's pose. shark.trySpear(origin, dir, reach, dmg) -> boolean
   let shark = null, sharkFx = null, wildlifeMod = null, shakeAmp = 0; const sharkHitAt = {host:0, guest:0};
   let spearRep = null; // [spear-repair] spear viewmodels/thrust + hammer foundation repair (dist/spear-repair-hooks.js)
+  // The "No sail — craft one" chip waits until a sail can be made: its recipe is unlocked or rope has been in the bag.
+  const sailKnown = () => { const p = prog?.progression?.(); return !p || !!p.isUnlocked?.('sail') || !!p.discovered?.has?.('rope') || localBag().count?.('rope') > 0; };
 
   function makePhysics(src) {
     const deck = raftPose.y + FLOOR_Y + EYE_OFFSET;
@@ -443,6 +449,7 @@ export function mount(transfer = null) {
     get building() { return building; }, get brush() { return hands?.itemModel('brush') ?? null; }, woodMat: c => woodMat(c), aim: () => frameAim, // content hook (paint)
     openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
     hurtPlayer: (n, cause) => hurtPlayer(n, cause), get vitals() { return vitals; }, // [vitals] damage the LOCAL player; vitals is read-only for modules
+    adjustVitals: (hp, food, water) => { if (running && fainted < 0) adjustVitals(vitals, hp, food, water); }, // [bed] a slept night: +40 health, -20 food, -20 water
     note: (i, n, s) => note(i, n, s), get content() { return content; }, // [buoycourse] bell chime + registry view (board mode)
     faceYaw: y => { if (Number.isFinite(y)) yaw = y; }, // [sit] seat facing
     award: ev => award(ev), night: () => content?.night?.() ?? 0, // [sit] host achievements, [fireworks] content hook
@@ -461,7 +468,7 @@ export function mount(transfer = null) {
     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     hemi = new T.HemisphereLight('#bfe6ff', '#2f6f7a', 1.0); scene.add(hemi); // content hook: kept for day/night; blue sky fill from above, teal sea bounce from below
     sun = new T.DirectionalLight('#ffeccb', 3.0); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.0004; sun.shadow.normalBias = .03; sun.shadow.radius = 3; scene.add(sun, sun.target); // shadow box is fitted to the raft each frame
-    quality = createQuality({sun, preset:options.graphics, onChange:() => { applyUserGraphics(); warmBeforeShadowsOff(); }}); applyUserGraphics(); // owns the level (shadow map size, sun.castShadow); applyUserGraphics sets the pixel ratio once, with the render scale
+    quality = createQuality({sun, shadowMap:renderer.shadowMap, preset:options.graphics, onChange:() => applyUserGraphics()}); applyUserGraphics(); // owns the level (shadow map size, shadow pass on/off); applyUserGraphics sets the pixel ratio once, with the render scale
     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#86dcef', fadeNear:28, fadeFar:140}); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
     if (ART.artEnabled()) ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T}); // art lane hook
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
@@ -491,8 +498,9 @@ export function mount(transfer = null) {
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
-      getPush:(s, o) => { content?.sailPush(s, o); }, steerTargets:() => content?.steerTargets() ?? null}); /* engine: motor push + wheel grab points */ for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
-    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id}), getMods:out => content?.diveMods?.(out)}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
+      getPush:(s, o) => { content?.sailPush(s, o); }, steerTargets:() => content?.steerTargets() ?? null, sailKnown}); /* engine: motor push + wheel grab points */ for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
+    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id}), getMods:out => content?.diveMods?.(out),
+      breath:() => (vitals.food <= 0 || vitals.water <= 0 ? DIVE.STARVED_BREATH : 1), onDrown:hp => hurtPlayer(hp, 'drown')}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     initShark(); // shark lane
     rebuildRaft(); fitShadow();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
@@ -600,20 +608,6 @@ export function mount(transfer = null) {
     try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
     catch (e) { console.warn('shader warm-up failed', e); }
   }
-  // Also build the no-shadow variant (adaptive floor / Shadows off), else that switch relinks every lit program mid-game.
-  // Warm it only when the scaler is one step from turning shadows off, so fast machines never pay for the extra programs.
-  let noShadowWarmed = false;
-  function warmBeforeShadowsOff() {
-    if (noShadowWarmed || !quality) return;
-    const L = quality.levels, i = quality.level;
-    if (L[i]?.shadows && L[i + 1] && !L[i + 1].shadows) { noShadowWarmed = true; warmNoShadow(); }
-  }
-  function warmNoShadow() {
-    if (!sun?.castShadow || typeof renderer?.compileAsync !== 'function') return;
-    sun.castShadow = false;
-    try { renderer.compileAsync(scene, camera).catch(() => {}); } catch {}
-    sun.castShadow = true;
-  }
   // Held models and build ghosts for every kind in the bag are built ahead and their shaders compiled
   // (ghosts are shown for the call: renderer.compile skips hidden meshes), so the first switch never links programs mid-play.
   const warmedKinds = new Set();
@@ -706,7 +700,7 @@ export function mount(transfer = null) {
   function hurtPlayer(n, cause = 'hit') {
     if (!running || fainted >= 0) return 0;
     const lost = damageVitals(vitals, Number(n), String(cause ?? 'hit'));
-    if (lost > 0) vitalsUI?.flash();
+    if (lost > 0) { vitalsUI?.flash(); hurtCause = String(cause ?? 'hit'); } // [drown] the faint overlay names the last hurt
     return lost;
   }
   const eatKind = () => { const k = localBag().slots[localBag().selectedIndex]?.kind ?? null; return isEdible(k) ? k : null; };
@@ -718,11 +712,13 @@ export function mount(transfer = null) {
   function updateVitals(dt, dialog) {
     if (!running) { eating = null; return; }
     if (fainted >= 0) { // passed out: a short dark beat, then wake up on the raft
-      fainted += dt; vitalsUI?.faint(true);
+      fainted += dt; vitalsUI?.faint(true, hurtCause, faintHome);
       if (fainted >= 2.6) {
-        fainted = -1; const c = cleanVitals(RESPAWN); vitals.hp = c.hp; vitals.food = c.food; vitals.water = c.water; vitals.hurtAt = -Infinity; vitals.starving = false;
-        diving?.cancel(); const s = spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); pitch = -.28; // fresh physics: dry, grounded, not diving
-        vitalsUI?.faint(false); notice('You wake up on the raft, hungry and thirsty', 3200);
+        // [bed] wake beside your last used / placed bed with 25 health, 50 food, 50 water; no bed (or it is gone) -> raft centre, RESPAWN bars
+        const bed = content?.respawnSpot?.(wakeSpot) ?? null;
+        fainted = -1; const c = cleanVitals(bed ? BED_RESPAWN : RESPAWN); vitals.hp = c.hp; vitals.food = c.food; vitals.water = c.water; vitals.hurtAt = -Infinity; vitals.starving = false;
+        diving?.reset(); const s = bed ?? spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); pitch = -.28; // fresh physics: dry, grounded, not diving [drown] reset: full lungs
+        vitalsUI?.faint(false); notice(bed ? 'You wake up in your bed, hungry and thirsty' : 'You wake up on the raft, hungry and thirsty', 3200); hurtCause = null;
       }
       return;
     }
@@ -734,7 +730,7 @@ export function mount(transfer = null) {
     }
     if (role === 'solo' && dialog && dialogOpen()) return; // the solo pause menu stops the clock
     vitalsOpts.mult = exertion; tickVitals(vitals, dt, vitalsOpts);
-    if (vitals.hp <= 0) { fainted = 0; eating = null; charging = null; reeling = false; if (hook) { fishWait = 0; endHook(); } clearInput(); } // drop the line: it must not stay out from the old spot
+    if (vitals.hp <= 0) { if (vitals.starving) hurtCause = vitals.water <= 0 ? 'thirst' : 'hunger'; faintHome = !!content?.respawnSpot?.(wakeSpot); fainted = 0; eating = null; charging = null; reeling = false; if (hook) { fishWait = 0; endHook(); } clearInput(); } // drop the line: it must not stay out from the old spot
   }
   // Crosshair prompts (dist/prompts.js provider): eat/drink, else the cup/purifier/planter prompt (game.js markup).
   const tipCache = new Map(), eatTips = new Map(), EATING_TIP = {key:'', label:'…', muted:true};
@@ -1089,7 +1085,7 @@ export function mount(transfer = null) {
     if (!p) return null; const x = Math.round(p.x / 2), z = Math.round(p.z / 2);
     let why;
     if (kind === 'hammer') why = floorBlock(world.tiles, x, z);
-    else if (DECOR_TYPES.includes(kind)) { if (fc?.hasGrill(x, z)) return null; why = decorBlock(world.tiles, world.decor, x, z) || content?.placeBlock(kind, x, z) || null; } // [fishing-cooking] grill tiles // [fishtrap] placeBlock
+    else if (DECOR_TYPES.includes(kind)) { if (fc?.hasGrill(x, z)) return null; why = decorBlock(world.tiles, world.decor, x, z, world.pieces) || content?.placeBlock(kind, x, z) || null; } // [fishing-cooking] grill tiles // [fishtrap] placeBlock
     else return null;
     if (why === 'nofloor' && !nearDeck(x, z)) return null; // just off the deck edge still shows a red ghost instead of nothing
     if (why && !BLOCK_TEXT[why]) return null;
@@ -1104,7 +1100,7 @@ export function mount(transfer = null) {
   function placementCandidates(kind) {
     const out = [], ok = (x, z) => inReach(physics.x, physics.z, x, z);
     if (kind === 'hammer') { const seen = new Set(); for (const [tx, tz] of world.tiles) for (const [a, b] of NEIGHBOURS) { const x = tx + a, z = tz + b, k = x + ',' + z; if (!seen.has(k) && !floorBlock(world.tiles, x, z) && ok(x, z)) { seen.add(k); out.push({x, z}); } } }
-    else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (!decorBlock(world.tiles, world.decor, x, z) && !fc?.hasGrill(x, z) && !content?.placeBlock(kind, x, z) && ok(x, z)) out.push({x, z}); // [fishtrap] placeBlock
+    else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (!decorBlock(world.tiles, world.decor, x, z, world.pieces) && !fc?.hasGrill(x, z) && !content?.placeBlock(kind, x, z) && ok(x, z)) out.push({x, z}); // [fishtrap] placeBlock
     return out;
   }
   let placeRot = 0, pointing = false; // decor placement rotation (radians) and the pointing-hand pose
@@ -1243,7 +1239,8 @@ export function mount(transfer = null) {
         if (!spend(bag, FLOOR_COST)) { emit({kind:'notice', text:'Floor needs ' + missingText(bag, FLOOR_COST)}, actor); return; }
         world.tiles.push([a.x, a.z]);
       } else if (DECOR_TYPES.includes(a.recipe)) {
-        if (decorBlock(world.tiles, world.decor, a.x, a.z)) return; if (fc?.hasGrill(a.x, a.z)) return; // [fishing-cooking] grill tiles
+        const why = decorBlock(world.tiles, world.decor, a.x, a.z, world.pieces);
+        if (why) { if (BLOCK_TEXT[why]) emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; } if (fc?.hasGrill(a.x, a.z)) return; // [fishing-cooking] grill tiles
         const inWay = playerInWay(decorBlockers({type:a.recipe, x:a.x, z:a.z, rot:a.rot}, BLOCK_RADIUS), [physics, other], PLAYER_CONSTANTS.BODY_RADIUS); // host pose, guest pose
         if (inWay >= 0) { emit({kind:'notice', text:BLOCK_TEXT[(inWay === 0) === (actor === 'host') ? 'self' : 'brother']}, actor); return; }
         { const eb = content?.placeBlock(a.recipe, a.x, a.z); if (eb) { emit({kind:'notice', text:BLOCK_TEXT[eb] ?? 'Can’t place that here'}, actor); return; } } // [fishtrap]
@@ -1254,6 +1251,7 @@ export function mount(transfer = null) {
         const antennasBefore = countAntennas(world.decor);
         const rot = Number.isFinite(a.rot) ? Math.round(wrapRot(a.rot) * 1000) / 1000 : 0;
         world.decor.push(rot ? {type:a.recipe, x:a.x, z:a.z, rot} : {type:a.recipe, x:a.x, z:a.z});
+        content?.placed?.(a.recipe, a.x, a.z, actor); // [bed] a new bed is its placer's wake-up spot
         if (a.recipe === 'antenna') { const n = countAntennas(world.decor); placedText = n > antennasBefore ? `Antenna placed · signal ${n}/3` : antennasBefore >= 3 ? 'Antenna placed' : 'Antenna placed (put it 2+ tiles from the receiver)'; }
       } else return;
       rebuildRaft(); fitShadow(); emit({kind:'build', text:placedText ?? (a.recipe === 'floor' ? 'A little more room!' : `${ITEM_INFO[a.recipe].name} placed`), sound:a.recipe === 'floor' ? 'build' : 'place'}, 'all');
@@ -1262,6 +1260,11 @@ export function mount(transfer = null) {
     }
     if (a.kind === 'piecetoggle' && building) { const r = building.toggle(a, world, actor === 'guest' ? other : physics, [physics, other], deckY()); if (r.ok) emit({kind:'build', text:r.text, sound:'place'}, 'all'); else if (r.text) emit({kind:'notice', text:r.text}, actor); return; } // [buildpack] host opens / closes a hatch or gate
     if ((a.kind === 'piece' || a.kind === 'unpiece') && building) { // building-pieces lane hook
+      if (!isInt(a.i) || !isInt(a.j)) return;
+      const who = actor === 'guest' ? other : physics, [ci, cj] = pieceCell(a); // guest pose may be missing until its first move
+      if (who && !inReach(who.x, who.z, ci, cj, PIECE_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .01))) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
+      const why = a.kind === 'piece' && (pieceBlock(world.decor, a) || (a.l === 0 && a.t === 'stairs' && fc?.hasGrill(a.i, a.j) ? 'decor' : null));
+      if (why) { emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; }
       const r = building.apply(a, bag, world);
       if (r.ok) emit({kind:'build', text:r.text}, 'all'); else if (r.text) emit({kind:'notice', text:r.text}, actor);
       return;
@@ -1311,7 +1314,7 @@ export function mount(transfer = null) {
     if (a.kind === 'eat') { // [vitals] host removes the item (and gives the cup back); the eater applies the bars on 'ate'
       const k = a.item; if (!isEdible(k) || bag.count(k) < 1) return;
       const s = new Bag(bag.snapshot()); if (!s.remove(k, 1)) return;
-      const back = FOOD[k].returns; if (back && s.add(back, 1) > 0) { emit({kind:'full', text:'No room for the empty cup'}, actor); return; }
+      const back = FOOD[k].returns; if (back && s.add(back, 1) > 0) { emit({kind:'full', text:`No room for the empty ${itemName(back).replace(/^empty /, '')}`}, actor); return; }
       commit(bag, s); emit({kind:'ate', item:k}, actor); return;
     }
     if (a.kind === 'shark:loot') { // shark lane: harvest the floating body (E)
@@ -1392,6 +1395,7 @@ export function mount(transfer = null) {
     if (!running || hook || fishWait || eating || fainted >= 0) return;
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
     const kind = selectedKind(), bag = localBag(), p = aim?.point ?? null;
+    if (kind === 'hammer' && building?.removing) return; // X held: remove mode never builds (not even a foundation floor)
     if (instruments?.use(kind)) { swing = .7; return; } // [instruments]
     if (kind === 'spear' ? spearRep?.use() : kind === 'hammer' && spearRep?.useHammer()) return; // [spear-repair] thrust / repair a damaged tile
     if (isEdible(kind)) { // [vitals] a fresh cup on a planter still waters it, a salt cup at a purifier still loads it
@@ -1401,7 +1405,6 @@ export function mount(transfer = null) {
     }
     if (camTool?.use(kind)) { swing = .3; return; } // [camera]
     if (kind === 'hammer' && building && building.piece !== 'foundation') { // building-pieces lane hook
-      if (building.removing) return;
       const a = building.use(); if (a) { swing = 1; action(a); } else notice('Point at a green spot'); return;
     }
     if (kind === 'hammer' || DECOR_TYPES.includes(kind)) {
@@ -1456,7 +1459,7 @@ export function mount(transfer = null) {
     const l = quality.levels[quality.level], sc = clamp(options.renderScale ?? 1, .5, 1);
     const pr = l ? Math.max(.5, l.pixelRatio * sc) : null;
     if (pr != null && renderer.getPixelRatio() !== pr) renderer.setPixelRatio(pr); // each call resizes the canvas and its MSAA buffers
-    if (sun) sun.castShadow = options.shadows !== false && !!l?.shadows;
+    setShadows(renderer.shadowMap, sun, options.shadows !== false && !!l?.shadows); // keeps castShadow on: no program change
   }
   function applyOptions(next) {
     options = next; applyVolume(); soundLabel(); // loop-ux: label notes a 0% volume
@@ -1721,7 +1724,7 @@ export function mount(transfer = null) {
     spearRep?.updateAim(hook ? null : kind, frameAim); spearRep?.tick(); // [spear-repair]
     const undecorEx = building?.removing ? building.removeExtra : null; // [undecor] red see-through ghost of the aimed decor
     if (undecorEx?.d) { const d = undecorEx.d; hover = null; ghostHold = null; ghosts.show(d.type, d.x * 2, .22, d.z * 2, d.rot || 0, false, elapsed); return; }
-    hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing ? placementFor(kind, frameAim.point) : null;
+    hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing && !building?.menu.isOpen ? placementFor(kind, frameAim.point) : null;
     const floor = kind === 'hammer';
     if (!hover || ghostHold && (ghostHold.kind !== kind || ghostHold.rot !== (floor ? 0 : placeRot) || hover.x !== ghostHold.x || hover.z !== ghostHold.z)) ghostHold = null; // keep the ghost off the piece just placed until the aim moves
     if (!hover || ghostHold) { ghosts.hide(); return; }
@@ -2260,7 +2263,7 @@ export function mount(transfer = null) {
       if (!renderer) return null;
       const i = renderer.info, c = {meshes:0, visible:0, lights:0, shadowCasters:0};
       scene?.traverse(o => { if (o.isMesh || o.isLine || o.isPoints) { c.meshes++; if (o.visible) c.visible++; if (o.castShadow) c.shadowCasters++; } if (o.isLight) c.lights++; });
-      return {calls:i.render.calls, triangles:i.render.triangles, lines:i.render.lines, points:i.render.points, geometries:i.memory.geometries, textures:i.memory.textures, programs:i.programs?.length ?? null, pixelRatio:renderer.getPixelRatio(), shadows:renderer.shadowMap.enabled && !!sun?.castShadow, quality:quality ? {level:quality.level, levels:quality.levels.length, preset:quality.info.preset, pixelRatio:quality.info.pixelRatio, shadowMapSize:quality.info.shadowMapSize, ema:quality.info.ema} : null, ...c};
+      return {calls:i.render.calls, triangles:i.render.triangles, lines:i.render.lines, points:i.render.points, geometries:i.memory.geometries, textures:i.memory.textures, programs:i.programs?.length ?? null, pixelRatio:renderer.getPixelRatio(), shadows:renderer.shadowMap.enabled && renderer.shadowMap.autoUpdate && !!sun?.castShadow && sun.shadow.intensity > 0, quality:quality ? {level:quality.level, levels:quality.levels.length, preset:quality.info.preset, pixelRatio:quality.info.pixelRatio, shadowMapSize:quality.info.shadowMapSize, ema:quality.info.ema} : null, ...c};
     },
     audio:sfx, // volume buses (setBus/getBus master|effects|ambience|music) and setMusic for the menus
     get state() {

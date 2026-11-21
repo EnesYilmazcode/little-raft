@@ -453,7 +453,12 @@ export function createSettings({ onChange, onResume, onPause, onQuit, initial } 
       Promise.resolve(req).catch(() => {}).finally(syncFullscreen);
       return;
     }
-    if (act === 'logbook') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-logbook')); return; }
+    if (act === 'logbook') {
+      close(false); document.dispatchEvent(new CustomEvent('littleraft:open-logbook'));
+      const lb = document.getElementById('logbook'); // like Crew/Help: closing it comes back to this menu
+      if (lb instanceof HTMLDialogElement && lb.open) { returnToPause = lb; lb.dataset.fromPause = '1'; }
+      return;
+    }
     if (act === 'look') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-look')); return; }
     if (act === 'album') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-album')); return; } // [camera]
     if (act === 'crew') {

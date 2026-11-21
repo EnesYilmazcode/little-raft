@@ -325,3 +325,49 @@ test('models: goat body + head merged, finite, ~0.55 m, <= 1500 triangles; Hay C
   assert.ok(pg.attributes.position.count / 3 <= 3000);
   assert.ok(pg.boundingBox.max.x - pg.boundingBox.min.x <= 1.7 && pg.boundingBox.max.z - pg.boundingBox.min.z <= 1.7);
 });
+
+// Review regressions
+test('picking: an empty Hay Corner in front of another goat keeps the aim (lure prompt)', () => {
+  const scene = new T.Scene(), camera = new T.PerspectiveCamera(60, 1, .1, 100);
+  camera.position.set(1, .55, 0); camera.lookAt(10, .55, 0); camera.updateMatrixWorld();
+  const s = stub({ scene, camera, physics: { x: 1, z: 0 }, world: { tiles: [[1, 0], [2, 0]], decor: [{ type: 'goatpen', x: 1, z: 0 }, { type: 'goatpen', x: 2, z: 0 }], pieces: [] } });
+  s.bag.slots[0] = { kind: 'seaweed', count: 5 };
+  const m = createAnimals(s);
+  m.load({ v: 1, r: 0, t: 1000, next: 2, list: [goat({ home: [2, 0] })], lures: [] }, 'save');
+  m.update(.016);
+  assert.equal(m.prompt({}), '<kbd>E</kbd>Set out greens to lure a Bramblegoat (3 seaweed)');
+  m.interact({});
+  assert.deepEqual(s.sent.at(-1), { kind: 'animals.lure', x: 1, z: 0 });
+  m.dispose();
+});
+
+test('prompts: the longest goat prompt fits the 48-char prompt label', () => {
+  const scene = new T.Scene(), camera = new T.PerspectiveCamera(60, 1, .1, 100);
+  camera.position.set(2, .9, 3.6); camera.lookAt(2, .5, 2); camera.updateMatrixWorld();
+  const s = stub({ scene, camera }), m = createAnimals(s);
+  m.load(save({ name: 'Abcdefghijklmn', hearts: 10 }), 'save');
+  s.bag.selectedIndex = 2; // holding milk at a goat with milk: the "has milk" tail
+  m.update(.016);
+  const label = m.prompt({}).replace(/^<kbd>E<\/kbd>/, '');
+  assert.match(label, /· has milk/);
+  assert.ok(label.length <= 48, `${label.length}: ${label}`);
+  m.dispose();
+});
+
+test('Hay Corner removed: the goat leaves, its instance is cleared, hens and eggs keep theirs', () => {
+  const scene = new T.Scene();
+  const s = stub({ scene, world: { tiles: grid(3, 2), decor: [{ type: 'nestbox', x: 0, z: 0 }, { type: 'goatpen', x: 1, z: 0 }, { type: 'nestbox', x: 2, z: 0 }], pieces: [] } });
+  const m = createAnimals(s);
+  m.load({ v: 1, r: 0, t: 1000, next: 9, list: [hen({ home: [0, 0], eggs: 2 }), goat({ home: [1, 0] }), hen({ id: 'p2', home: [2, 0], eggs: 2 })], lures: [] }, 'save');
+  for (let i = 0; i < 3; i++) m.update(.016);
+  const goats = scene.getObjectByName('bramblegoats'), heads = scene.getObjectByName('bramblegoatHeads'), birds = scene.getObjectByName('puffhens'), eggs = scene.getObjectByName('puffEggs');
+  const on = (mesh, k) => { const mm = new T.Matrix4(); mesh.getMatrixAt(k, mm); return mm.determinant() !== 0; };
+  assert.deepEqual([on(goats, 0), on(heads, 0), on(birds, 0), on(birds, 1), on(birds, 2)], [true, true, true, true, false]);
+  s.world.decor = s.world.decor.filter(d => d.type !== 'goatpen');
+  for (let i = 0; i < 120; i++) m.update(.016);
+  assert.deepEqual(m.debug.state().list.map(a => a.id), ['p1', 'p2']);
+  assert.equal(goats.visible, false);
+  assert.deepEqual([on(goats, 0), on(heads, 0), on(birds, 0), on(birds, 1), on(birds, 2)], [false, false, true, true, false]);
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map(k => on(eggs, k)), [true, true, false, true, true, false]);
+  m.dispose();
+});
