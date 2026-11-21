@@ -44,7 +44,10 @@ const MIN_GAP = {
   creak: 0.15, gull: 0.3, hover: 0.04,
 };
 const UI_EVENTS = new Set(['ui', 'hover', 'error', 'craft']);
-const REF_DISTANCE = { gull: 10, creak: 3 };       // metres at which a spatial voice is at full level
+// metres at which a spatial voice is at full level (inverse model: gain = ref / d beyond it; default 2 m).
+// The hook works 8-32 m out, so its cues get large refs: the catch is the reward and must stay one of the
+// loudest sounds wherever the hook is (-1.2 dB at 16 m); the hook splash and bite still read as "out there".
+const REF_DISTANCE = { gull: 10, creak: 3, catch: 14, splash: 8, bite: 8 };
 const DUCK = { splash: 0.35, catch: 0.4, hammer: 0.25, build: 0.25, craft: 0.2, jump: 0.15 };
 
 const clamp01 = (v, d = 0) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
@@ -54,12 +57,26 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const workletDefault = (() => {
   try { return new URL('./audio-worklet.js', import.meta.url).href; } catch (_) { return null; }
 })();
+// Noise buffers, the air IR and the gull wave depend only on the context, so they are built once per
+// AudioContext and reused by every engine on it. The WeakMap hangs off a global registry symbol, not a
+// module variable: a hot update evaluates a new copy of this module (new ?build=), and it must find the
+// buffers the previous build made, so its mount() does no DSP work on the main thread.
+const SHARED = (() => {
+  const key = Symbol.for('little-raft.audio.shared');
+  try { return (globalThis[key] ||= new WeakMap()); } catch (_) { return new WeakMap(); }
+})();
+// fade times (s): first start after the user gesture / ambience into a context that is already playing
+// (hot update) / master fade-out on destroy() before anything is stopped or disconnected
+const AMB_FADE_IN = 2.5, AMB_FADE_SWAP = 0.15, DESTROY_FADE = 0.08;
 
 export function createOceanAudio({
   context = null, volume = 0.5, ambience = true, worklet = true, workletUrl = workletDefault,
   hrtf = false, gulls = true, reverb = true, seed = null,
 } = {}) {
   let ctx = context && typeof context.createGain === 'function' ? context : null;
+  // handed a context that is already playing (hot update): the previous build's ocean is fading out
+  // under us, so ours fades in quickly instead of over 2.5 s
+  const handover = !!ctx && ctx.state === 'running';
   let vol = clamp01(volume, 0.5);
   let destroyed = false, wantRun = false;
   let graph = null;          // buses + shared buffers
@@ -91,20 +108,32 @@ export function createOceanAudio({
         d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.25;
       } else d[i] = w;
     }
-    // remove mean (no DC), crossfade tail into head for click-free loops, normalise
-    let mean = 0; for (let i = 0; i < len; i++) mean += d[i]; mean /= len;
-    for (let i = 0; i < len; i++) d[i] -= mean;
+    // crossfade tail into head (click-free loops), then remove the mean (no DC) and normalise
     const xf = Math.min(2048, len >> 2);
     for (let i = 0; i < xf; i++) { const k = i / xf; d[i] = d[i] * k + d[len - xf + i] * (1 - k); }
-    let peak = 0; for (let i = 0; i < len; i++) peak = Math.max(peak, Math.abs(d[i]));
+    let mean = 0; for (let i = 0; i < len; i++) mean += d[i]; mean /= len;
+    let peak = 0; for (let i = 0; i < len; i++) { const x = d[i] - mean; d[i] = x; if (x > peak) peak = x; else if (-x > peak) peak = -x; }
     const k = peak > 0 ? 0.95 / peak : 0;
     for (let i = 0; i < len; i++) d[i] *= k;
     return buf;
   }
 
+  // per-context shared buffers (see SHARED); built on first use, then free for every later engine
+  function shared() {
+    let sh = SHARED.get(ctx);
+    if (!sh) {
+      // white covers the short one-shots, pink the swishes and reel hiss, brown the gull pitch wobble and
+      // the fallback bed; noise() loops a buffer when a voice outlasts it (the loop seam is crossfaded)
+      sh = { white: makeNoise(1, 'white'), pink: makeNoise(1.5, 'pink'), brown: makeNoise(4, 'brown'), ir: null, gullWave: undefined };
+      SHARED.set(ctx, sh);
+    }
+    return sh;
+  }
+
   function buildGraph() {
     if (graph || !ctx) return !!graph;
     try {
+      const sh = shared();
       const g = (v) => { const n = ctx.createGain(); n.gain.value = v; return n; };
       const master = g(vol * OUTPUT_SCALE);
       const limiter = ctx.createDynamicsCompressor();
@@ -116,10 +145,7 @@ export function createOceanAudio({
       const ambBus = g(1), ambDuck = g(1), sfxBus = g(1), uiBus = g(0.8);
       ambBus.connect(ambDuck); ambDuck.connect(mix); sfxBus.connect(mix); uiBus.connect(mix);
       mix.connect(tone); tone.connect(master); master.connect(limiter); limiter.connect(ctx.destination);
-      graph = {
-        master, limiter, tone, mix, ambBus, ambDuck, sfxBus, uiBus,
-        white: makeNoise(2, 'white'), pink: makeNoise(3, 'pink'), brown: makeNoise(6, 'brown'),
-      };
+      graph = { master, limiter, tone, mix, ambBus, ambDuck, sfxBus, uiBus, sh, white: sh.white, pink: sh.pink, brown: sh.brown };
       nodeCount += 9;
       graph.spatial = buildCrossfeed(sfxBus);
       if (reverb) buildAir(sfxBus, mix);
@@ -155,6 +181,14 @@ export function createOceanAudio({
   // the water surface ~9-12 ms, barrels/mast/sail 17-40 ms) and a short, dark, diffuse 0.3 s tail.
   // One ConvolverNode fed by a send from the sfx bus (UI and ambience stay dry).
   function buildAir(src, dest) {
+    const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = graph.sh.ir ||= airIR();
+    const send = ctx.createGain(); send.gain.value = 0.16;            // about -16 dB wet
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 220; hp.Q.value = 0.6;  // keep lows dry
+    src.connect(send); send.connect(hp); hp.connect(conv); conv.connect(dest);
+    graph.air = [send, hp, conv];
+    nodeCount += 3;
+  }
+  function airIR() {
     const sr = ctx.sampleRate, len = Math.floor(sr * 0.32), ir = ctx.createBuffer(2, len, sr);
     const taps = [[0.0032, 0.55, 0.35], [0.0047, 0.4, 0.6], [0.0094, 0.5, 0.45], [0.0118, 0.35, 0.5],
       [0.0171, 0.22, 0.3], [0.0236, 0.2, 0.25], [0.0312, 0.14, 0.18], [0.0395, 0.12, 0.1]];  // [s, L, R]
@@ -171,32 +205,55 @@ export function createOceanAudio({
       const f = Math.min(len, Math.floor(sr * 0.004));                 // fade the tail end to exactly 0
       for (let i = 0; i < f; i++) d[len - 1 - i] *= i / f;
     }
-    const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = ir;
-    const send = ctx.createGain(); send.gain.value = 0.16;            // about -16 dB wet
-    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 220; hp.Q.value = 0.6;  // keep lows dry
-    src.connect(send); send.connect(hp); hp.connect(conv); conv.connect(dest);
-    graph.air = [send, hp, conv];
-    nodeCount += 3;
+    return ir;
   }
 
   // ---- ambience -------------------------------------------------------------
   async function startAmbience() {
     if (!ambience || amb || ambPromise || !graph || destroyed) return ambPromise;
+    const canWorklet = worklet && workletUrl && ctx.audioWorklet && typeof AudioWorkletNode === 'function';
+    // Hot update: live.js mounts the new build before it disposes the old one, both on this context.
+    // Take over the ocean that is already playing (its node and fade gain move from the old engine's
+    // ambience bus to ours in this task) instead of starting a second one: the sea never stops, never
+    // doubles, and nothing depends on when a new worklet processor gets its first render quantum (on a
+    // busy main thread that took ~2 s in the game, which left a hole). The old engine's destroy() then
+    // leaves it alone. The processor is the same code either way: the first registerProcessor() wins.
+    const prev = graph.sh.ocean;
+    if (prev && !prev.handedOff && !prev.dead && (prev.kind !== 'worklet' || canWorklet)) {
+      try {
+        prev.fade.disconnect(); prev.fade.connect(graph.ambBus);
+        prev.handedOff = true;
+        amb = { ...prev, handedOff: false };
+        graph.sh.ocean = amb;
+        nodeCount += amb.nodes.length;
+        applyOcean(0.3);
+        return null;
+      } catch (_) { amb = null; }
+    }
+    const mkNode = () => new AudioWorkletNode(ctx, 'raft-ocean', {
+      numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
+      processorOptions: { seed: Number.isFinite(seed) ? seed | 0 : (Math.random() * 2 ** 31) | 0 },
+    });
+    const attach = (node) => {
+      const fade = ctx.createGain(), t = ctx.currentTime;
+      fade.gain.setValueAtTime(0, t);
+      fade.gain.linearRampToValueAtTime(AMB_LEVEL, t + (handover && ctx.state === 'running' ? AMB_FADE_SWAP : AMB_FADE_IN));  // no pop
+      node.connect(fade); fade.connect(graph.ambBus);
+      amb = { kind: 'worklet', node, fade, sources: [], nodes: [node, fade], params: node.parameters };
+      graph.sh.ocean = amb;
+      nodeCount += 2;
+      applyOcean(0.01);
+    };
+    // No ocean to take over, but 'raft-ocean' is already registered on this context (an earlier engine
+    // loaded it; the first registration wins anyway): build the node now, no module load. The constructor
+    // throws if the processor is not registered yet: then load the module.
+    if (canWorklet) { try { attach(mkNode()); return null; } catch (_) { amb = null; } }
     ambPromise = (async () => {
-      if (worklet && workletUrl && ctx.audioWorklet && typeof AudioWorkletNode === 'function') {
+      if (canWorklet) {
         try {
           await ctx.audioWorklet.addModule(workletUrl);
           if (destroyed || !graph) return;
-          const node = new AudioWorkletNode(ctx, 'raft-ocean', {
-            numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
-            processorOptions: { seed: Number.isFinite(seed) ? seed | 0 : (Math.random() * 2 ** 31) | 0 },
-          });
-          const fade = ctx.createGain(); fade.gain.setValueAtTime(0, ctx.currentTime);
-          fade.gain.linearRampToValueAtTime(AMB_LEVEL, ctx.currentTime + 2.5);    // fade in, no pop
-          node.connect(fade); fade.connect(graph.ambBus);
-          amb = { kind: 'worklet', node, sources: [], nodes: [node, fade], params: node.parameters };
-          nodeCount += 2;
-          applyOcean(0.01);
+          attach(mkNode());
           return;
         } catch (e) { /* fall through to the node graph */ amb = null; }
       }
@@ -210,7 +267,7 @@ export function createOceanAudio({
     try {
       const t = ctx.currentTime, nodes = [], sources = [];
       const mk = (n) => { nodes.push(n); return n; };
-      const fade = mk(ctx.createGain()); fade.gain.setValueAtTime(0, t); fade.gain.linearRampToValueAtTime(AMB_LEVEL, t + 2.5);
+      const fade = mk(ctx.createGain()); fade.gain.setValueAtTime(0, t); fade.gain.linearRampToValueAtTime(AMB_LEVEL, t + (handover && ctx.state === 'running' ? AMB_FADE_SWAP : AMB_FADE_IN));
       fade.connect(graph.ambBus);
       const loop = (buf, dest) => { const s = mk(ctx.createBufferSource()); s.buffer = buf; s.loop = true; s.connect(dest); s.start(t, Math.random() * buf.duration); sources.push(s); };
       const lfo = (hz, depth, param) => { const o = mk(ctx.createOscillator()); o.frequency.value = hz; const d = mk(ctx.createGain()); d.gain.value = depth; o.connect(d); d.connect(param); o.start(t); sources.push(o); };
@@ -227,14 +284,15 @@ export function createOceanAudio({
       const windBp = bq('bandpass', 500, 3, windG);
       lfo(0.19, 120, windBp.frequency); lfo(0.053, 200, windBp.frequency); lfo(0.07, 0.015, windG.gain);
       loop(graph.white, windBp);
-      amb = { kind: 'nodes', sources, nodes, params: { bed: bedG.gain, wash: washG.gain, wind: windG.gain, windF: windBp.frequency } };
+      amb = { kind: 'nodes', fade, sources, nodes, params: { bed: bedG.gain, wash: washG.gain, wind: windG.gain, windF: windBp.frequency } };
+      graph.sh.ocean = amb;
       nodeCount += nodes.length;
       applyOcean(0.01);
     } catch (_) { amb = null; }
   }
 
   function applyOcean(tc = 1) {
-    if (!amb || !ctx) return;
+    if (!amb || !ctx || amb.handedOff) return;
     const t = ctx.currentTime, p = amb.params;
     const set = (param, v) => { try { param.setTargetAtTime(v, t, tc); } catch (_) {} };
     if (amb.kind === 'worklet') {
@@ -247,6 +305,8 @@ export function createOceanAudio({
 
   function stopAmbience() {
     if (!amb) return;
+    if (amb.handedOff) { amb = null; return; }       // a newer engine on this context owns it now
+    amb.dead = true;
     if (amb.node) { try { amb.node.port.postMessage({ type: 'stop' }); } catch (_) {} }
     for (const s of amb.sources) { try { s.stop(); } catch (_) {} }
     for (const n of amb.nodes) { try { n.disconnect(); } catch (_) {} }
@@ -344,6 +404,7 @@ export function createOceanAudio({
     src.buffer = buf;
     src.connect(dest);
     const room = buf.duration - dur - 0.05;
+    if (room <= 0) src.loop = true;                   // longer than the buffer: loop (seam is crossfaded)
     startSource(v, src, t, t + dur + 0.02, room > 0 ? Math.random() * room : 0);
     return src;
   }
@@ -394,57 +455,63 @@ export function createOceanAudio({
     osc(v, 'sine', rand(3100, 3500), t, env(pg, t, 0.0005, 0.05 * s, 0.09) - t, pg);
   }
   // Gull: one voice = one oscillator for the whole call series (calls never overlap), so the cost is
-  // ~14 nodes however many calls. Nasal source (weak fundamental, strong 2nd-4th harmonics) into two
+  // ~17 nodes however many calls. Nasal source (weak fundamental, strong 2nd-4th harmonics) into two
   // formants that track the pitch a little, an irregular pitch wobble from low-passed noise (not a
-  // periodic FM sine, which reads as a toy whistle), and a breathy noise layer on the same envelope.
+  // periodic FM sine, which reads as a toy whistle), and a breathy noise layer under the same envelope.
   function gullWave() {
-    if (graph.gullWave) return graph.gullWave;
+    const sh = graph.sh;
+    if (sh.gullWave !== undefined) return sh.gullWave;
     const amp = [0, 0.3, 1, 0.85, 0.6, 0.42, 0.26, 0.16, 0.1, 0.06, 0.035, 0.02];
     const re = new Float32Array(amp.length), im = Float32Array.from(amp);
-    try { graph.gullWave = ctx.createPeriodicWave(re, im); } catch (_) { graph.gullWave = null; }
-    return graph.gullWave;
+    try { sh.gullWave = ctx.createPeriodicWave(re, im); } catch (_) { sh.gullWave = null; }
+    return sh.gullWave;
   }
   // series: [[start, len, f0, amp, shape], ...]; shape: 'kyow' (rise then long fall), 'ha' (short, flat-ish), 'mew' (slow fall)
   function gullSeries(v, t, series) {
+    // Scheduling cost: 8 automation events per call (3 on the pitch, 5 on the envelope); it was 20 when
+    // each formant and the breath had their own ramps. One ConstantSource carries the pitch contour and
+    // feeds the oscillator and, scaled, both formant frequencies, so the formants track 40 % of every
+    // pitch move for free. The breath layer rides the main envelope through a fixed gain.
     const end = series.reduce((m, c) => Math.max(m, c[0] + c[1]), 0) + 0.03;
+    const f0 = series[0][2];
     const g = gain(v, v.out);
     const hi = filter(v, 'lowpass', 5200, 0.6, g);
     const f1g = track(v, ctx.createGain()); f1g.gain.value = 1; f1g.connect(hi);
     const f2g = track(v, ctx.createGain()); f2g.gain.value = 0.55; f2g.connect(hi);
-    const F1 = filter(v, 'bandpass', 1700, 3, f1g), F2 = filter(v, 'bandpass', 3100, 4, f2g);
+    const F1 = filter(v, 'bandpass', 1700 * 0.6, 3, f1g), F2 = filter(v, 'bandpass', 3100 * 0.6, 4, f2g);
     const o = track(v, ctx.createOscillator());
     const wave = gullWave(); if (wave) o.setPeriodicWave(wave); else o.type = 'sawtooth';
+    o.frequency.value = 0;
     o.connect(F1); o.connect(F2);
     startSource(v, o, t, t + end);
-    // pitch wobble: brown noise -> 18 Hz low-pass -> a few % of f0 into the frequency (irregular, not periodic)
-    const jit = track(v, ctx.createGain());
+    const pitch = track(v, ctx.createConstantSource());              // Hz, drives o + formants
+    pitch.offset.value = f0;
+    pitch.connect(o.frequency);
+    for (const [fl, base] of [[F1, 1700], [F2, 3100]]) {              // formant = base * (0.6 + 0.4 f / 880)
+      const k = track(v, ctx.createGain()); k.gain.value = base * 0.4 / 880; pitch.connect(k); k.connect(fl.frequency);
+    }
+    startSource(v, pitch, t, t + end);
+    // pitch wobble: brown noise -> 18 Hz low-pass -> ~3 % of f0 into the frequency (irregular, not periodic)
+    const jit = track(v, ctx.createGain()); jit.gain.value = f0 * 0.1;   // low-passed brown noise rms is ~0.3
     jit.connect(o.frequency);
     noise(v, t, end, filter(v, 'lowpass', 18, 0.7, jit), graph.brown);
-    // breath: band-passed noise riding a quieter copy of the amplitude envelope
-    const bg = gain(v, hi);
+    // breath: band-passed noise under the same envelope, at the same ratio to the tone as before (0.09 x call amp)
+    const bg = track(v, ctx.createGain()); bg.gain.value = 0.09 * series[0][3]; bg.connect(hi);
     noise(v, t, end, filter(v, 'bandpass', 2600, 0.9, bg), graph.white);
-    const F = o.frequency;
-    for (const [dt, len, f0, a, shape] of series) {
+    const F = pitch.offset;
+    for (const [dt, len, fc, a, shape] of series) {
       const c = t + dt, peak = Math.max(SILENT, a);
       const rise = shape === 'kyow' ? rand(0.14, 0.24) : shape === 'ha' ? rand(0.3, 0.45) : rand(0.06, 0.12);
       const top = shape === 'mew' ? rand(1.04, 1.1) : rand(1.12, 1.25), fall = shape === 'ha' ? rand(0.85, 0.95) : rand(0.62, 0.75);
-      F.setValueAtTime(f0 * (shape === 'ha' ? 0.92 : rand(0.72, 0.82)), c);
-      F.exponentialRampToValueAtTime(f0 * top, c + len * rise);
-      F.exponentialRampToValueAtTime(f0 * fall, c + len);
-      jit.gain.setValueAtTime(f0 * 0.1, c);                              // low-passed brown noise rms is ~0.3
-      for (const [fl, base] of [[F1, 1700], [F2, 3100]]) {              // formants follow pitch at 40 %
-        fl.frequency.setValueAtTime(base * (0.6 + 0.4 * f0 / 880) * 0.95, c);
-        fl.frequency.linearRampToValueAtTime(base * (0.6 + 0.4 * f0 * top / 880), c + len * rise);
-        fl.frequency.linearRampToValueAtTime(base * (0.6 + 0.4 * f0 * fall / 880) * 0.97, c + len);
-      }
-      const att = Math.min(0.03, len * 0.2);
-      for (const [p, k] of [[g.gain, 1], [bg.gain, 0.09]]) {
-        p.setValueAtTime(0, c);
-        p.linearRampToValueAtTime(peak * k, c + att);
-        p.linearRampToValueAtTime(peak * k * rand(0.8, 1), c + len * 0.45);
-        p.exponentialRampToValueAtTime(SILENT, c + len);
-        p.linearRampToValueAtTime(0, c + len + 0.008);
-      }
+      F.setValueAtTime(fc * (shape === 'ha' ? 0.92 : rand(0.72, 0.82)), c);
+      F.exponentialRampToValueAtTime(fc * top, c + len * rise);
+      F.exponentialRampToValueAtTime(fc * fall, c + len);
+      const p = g.gain, att = Math.min(0.03, len * 0.2);
+      p.setValueAtTime(0, c);
+      p.linearRampToValueAtTime(peak, c + att);
+      p.linearRampToValueAtTime(peak * rand(0.8, 1), c + len * 0.45);
+      p.exponentialRampToValueAtTime(SILENT, c + len);
+      p.linearRampToValueAtTime(0, c + len + 0.008);
     }
   }
 
@@ -675,7 +742,7 @@ export function createOceanAudio({
         const nb = mk(ctx.createBiquadFilter()); nb.type = 'bandpass'; nb.frequency.value = 2000; nb.Q.value = 1.2;
         const ng = mk(ctx.createGain()); ng.gain.value = 0.08;
         ns.connect(nb); nb.connect(ng); ng.connect(out);
-        sq.start(t); ns.start(t, Math.random() * 2);
+        sq.start(t); ns.start(t, Math.random() * graph.pink.duration);
         reel = { out, sq, ns, ng, nodes };
       }
       if (!reel) return false;
@@ -719,11 +786,26 @@ export function createOceanAudio({
 
   function setVolume(v) {
     vol = clamp01(v, vol);
-    if (graph && ctx) {
+    if (graph && ctx && !destroyed) {
       try { graph.master.gain.setTargetAtTime(vol * OUTPUT_SCALE, ctx.currentTime, 0.03); }
       catch (_) { try { graph.master.gain.value = vol * OUTPUT_SCALE; } catch (__) {} }
     }
+    idle();
     return vol;
+  }
+
+  // Volume 0 (sound toggled off, slider at 0): once the master has faded, suspend the context so the
+  // always-on worklet, convolver and crossfeed stop costing audio-thread CPU. Any volume above 0 resumes it.
+  let idleTimer = null;
+  function idle() {
+    if (!ctx || isOffline() || destroyed || !wantRun) return;
+    try { clearTimeout(idleTimer); } catch (_) {}
+    idleTimer = null;
+    try {
+      if (vol <= 0 && ctx.state === 'running') {
+        idleTimer = setTimeout(() => { idleTimer = null; if (vol <= 0 && !destroyed && ctx.state === 'running') ctx.suspend().catch(() => {}); }, 200);
+      } else if (vol > 0 && ctx.state === 'suspended') ctx.resume().catch(() => {});
+    } catch (_) {}
   }
 
   function setOcean(p = {}) {
@@ -775,24 +857,53 @@ export function createOceanAudio({
     } catch (_) { return false; }
   }
 
-  function killVoice(v) {
-    for (const src of v.sources) { src.onended = null; try { src.stop(); } catch (_) {} }
-    finishVoice(v);
+  // stop a voice's sources at `when` (ctx time; default now) and free its nodes then
+  function killVoice(v, when = 0) {
+    for (const src of v.sources) { src.onended = null; try { src.stop(when); } catch (_) {} }
+    if (!(when > 0)) finishVoice(v);
   }
 
+  // destroy(): silence first, then free. The master gain ramps to 0 over DESTROY_FADE (80 ms) and every
+  // source is told to stop at the end of the ramp; the nodes are disconnected only once the ramp is over,
+  // so a hot update (live.js disposes the old build right after mounting the new one) never clicks and
+  // the new build's ocean fades in under the old one. With a context that is not running (suspended,
+  // offline, closed) nothing is audible, so it frees everything at once.
   function destroy() {
     if (destroyed) return;
     destroyed = true;
-    for (const v of [...voices]) killVoice(v);
-    voices.clear();
-    if (reel) { const r = reel; reel = null; try { r.sq.stop(); r.ns.stop(); } catch (_) {} for (const n of r.nodes) { try { n.disconnect(); } catch (_) {} } }
+    try { clearTimeout(idleTimer); } catch (_) {}
     if (gullClock) { gullClock.onended = null; try { gullClock.stop(); } catch (_) {} gullClock = null; }
-    stopAmbience();
-    if (graph) {
-      for (const k of ['ambBus', 'ambDuck', 'sfxBus', 'uiBus', 'mix', 'tone', 'master', 'limiter']) { try { graph[k].disconnect(); } catch (_) {} }
-      for (const n of [...(graph.xf || []), ...(graph.air || [])]) { try { n.disconnect(); } catch (_) {} }
-      graph = null;
+    const live = !!graph && !!ctx && ctx.state === 'running' && !isOffline();
+    let end = 0;
+    if (live) {
+      try {
+        const t = ctx.currentTime, p = graph.master.gain;
+        p.cancelScheduledValues(t); p.setValueAtTime(p.value, t); p.linearRampToValueAtTime(0, t + DESTROY_FADE);
+        end = t + DESTROY_FADE + 0.01;
+      } catch (_) { end = 0; }
     }
+    const vs = [...voices], r = reel, g = graph;
+    reel = null;
+    for (const v of vs) killVoice(v, end);
+    if (r) { try { r.sq.stop(end); r.ns.stop(end); } catch (_) {} }
+    let freed = false;
+    const free = () => {
+      if (freed) return; freed = true;
+      for (const v of vs) finishVoice(v);
+      voices.clear();
+      if (r) for (const n of r.nodes) { try { n.disconnect(); } catch (_) {} }
+      stopAmbience();
+      if (g) {
+        for (const k of ['ambBus', 'ambDuck', 'sfxBus', 'uiBus', 'mix', 'tone', 'master', 'limiter']) { try { g[k].disconnect(); } catch (_) {} }
+        for (const n of [...(g.xf || []), ...(g.air || [])]) { try { n.disconnect(); } catch (_) {} }
+      }
+      graph = null;
+    };
+    if (!(end > 0)) { free(); return; }
+    // audio-clock timer for the free (a context suspended mid-fade frees on resume); a DOM timer backs it
+    // up in case the context is closed before it fires
+    try { const c = ctx.createConstantSource(); c.offset.value = 0; c.onended = free; c.start(); c.stop(end + 0.01); } catch (_) { free(); return; }
+    try { setTimeout(free, 1000); } catch (_) {}
     // The AudioContext (supplied or lazily created) is intentionally left open so a
     // hot-updated module can reuse it via `instance.context`.
   }
@@ -800,7 +911,7 @@ export function createOceanAudio({
   // the raft was jolted (wave hit, someone landed on it): one creak from the ambience, pitched by force
   function creak(force = 0.7) {
     const f = clamp01(force, 0.7);
-    if (amb?.node) { try { amb.node.port.postMessage({ type: 'creak', force: f }); return true; } catch (_) { return false; } }
+    if (amb?.node && !amb.handedOff) { try { amb.node.port.postMessage({ type: 'creak', force: f }); return true; } catch (_) { return false; } }
     return play('creak', 0.4 + 0.5 * f);
   }
 
