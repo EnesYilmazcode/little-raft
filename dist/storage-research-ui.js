@@ -2,8 +2,8 @@
 // Table, plus lock badges on the inventory craft list. It reads state through the small `api` object
 // from storage-research.js and changes nothing itself: every click becomes a ctx.action().
 // update() runs per frame; it only compares numbers/strings and repaints on change.
-import { iconSVG, slotSig, paintSlot, itemName } from './survival-ui.js';
-import { RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js';
+import { iconSVG, slotSig, paintSlot, itemName } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+import { RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 const CHEST = 12;
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
@@ -161,6 +161,10 @@ export function createStorageUI(api) {
   let mode = null, tx = 0, tz = 0, isOpen = false, lastRev = -1, prevKnown = null, bannerTimer = 0;
   const prevKind = new Array(SLOT_COUNT).fill(null), prevCount = new Int32Array(SLOT_COUNT), prevDur = new Float64Array(SLOT_COUNT);
   let inv = null, invWasOpen = false, invRev = -1;
+  let lockedRows = []; // craft-list rows we marked locked (aria-label is re-applied if survival-ui repaints it)
+  const timers = new Set(); // craft-list glow timeouts
+  const ac = new AbortController(), on = { signal: ac.signal };
+  const LOCKED_LABEL = 'Locked — needs research';
 
   // ---------- painting ----------
   function bagChanged(bag) {
@@ -248,13 +252,16 @@ export function createStorageUI(api) {
     isOpen = false; mode = null;
     if (ctx.running) ctx.requestLock?.();
   }
-  dlg.addEventListener('close', onClosed);
-  dlg.addEventListener('cancel', e => { e.preventDefault(); close(); });
-  dlg.addEventListener('keydown', e => { if ((e.code === 'KeyE' || e.code === 'Tab') && !e.repeat) { e.preventDefault(); e.stopPropagation(); close(); } });
-  dlg.addEventListener('wheel', e => e.stopPropagation(), { passive: true });
+  dlg.addEventListener('close', onClosed, on);
+  dlg.addEventListener('cancel', e => { e.preventDefault(); close(); }, on);
+  dlg.addEventListener('keydown', e => { if ((e.code === 'KeyE' || e.code === 'Tab') && !e.repeat) { e.preventDefault(); e.stopPropagation(); close(); } }, on);
+  dlg.addEventListener('wheel', e => e.stopPropagation(), { passive: true, signal: ac.signal });
   dlg.addEventListener('click', e => {
     if (e.target === dlg) { close(); return; }
     const t = e.target.closest?.('button'); if (!t) return;
+    // A mouse click leaves focus on the button, and Space/Enter would then click it again. Hand focus back
+    // to the panel after pointer clicks; keyboard activation (detail 0) keeps its focus.
+    if (e.detail > 0) { t.blur(); try { $('.lr-sr-wrap').focus({ preventScroll: true }); } catch {} }
     if (t.classList.contains('lr-sr-x')) { close(); return; }
     if (t.classList.contains('lr-sr-putall')) { api.send({ kind: 'storage.putAll', x: tx, z: tz }); paint(); return; }
     if (t.dataset.study) { study(t.dataset.study); return; }
@@ -271,8 +278,8 @@ export function createStorageUI(api) {
       if (half && s.count > 1) a.amount = Math.ceil(s.count / 2);
       api.send(a); pop(t); paint();
     }
-  });
-  dlg.addEventListener('contextmenu', e => { if (e.target.closest?.('.sv-slot')) e.preventDefault(); });
+  }, on);
+  dlg.addEventListener('contextmenu', e => { if (e.target.closest?.('.sv-slot')) e.preventDefault(); }, on);
   function pop(el) { el.classList.remove('lr-sr-pop'); void el.offsetWidth; el.classList.add('lr-sr-pop'); }
   function study(kind) {
     const bag = api.bag(); if (!bag) return;
@@ -288,25 +295,47 @@ export function createStorageUI(api) {
   function annotate() {
     const rows = inv.querySelectorAll('.sv-recipe[data-recipe]'), seen = new Set(api.state.seen), fresh = api.takeFresh();
     let first = true;
+    lockedRows = [];
     rows.forEach(el => {
       const id = el.dataset.recipe, r = RECIPES[id], locked = !!r && !api.isLearned(id);
       el.classList.remove('lr-sr-first');
       const body = el.querySelector('.sv-rbody'), art = el.querySelector('.sv-rart');
       let badge = el.querySelector('.lr-sr-lock'), needs = el.querySelector('.lr-sr-needs');
       if (!locked) {
-        if (el.dataset.locked) { delete el.dataset.locked; el.removeAttribute('title'); el.tabIndex = 0; }
+        if (el.dataset.locked) unlockRow(el);
         badge?.remove(); needs?.remove();
-        if (fresh.includes(id)) { el.classList.remove('lr-sr-fresh'); void el.offsetWidth; el.classList.add('lr-sr-fresh'); setTimeout(() => el.classList.remove('lr-sr-fresh'), 2500); }
+        if (fresh.includes(id)) {
+          el.classList.remove('lr-sr-fresh'); void el.offsetWidth; el.classList.add('lr-sr-fresh');
+          const t = setTimeout(() => { timers.delete(t); el.classList.remove('lr-sr-fresh'); }, 2500); timers.add(t);
+        }
         return;
       }
       const miss = Object.keys(r.cost).filter(k => !seen.has(k)).map(k => itemName(k));
       const text = miss.length ? 'Study ' + miss.join(' + ') : 'Study at a Research Table';
-      el.dataset.locked = '1'; el.title = 'Needs research: ' + (miss.join(', ') || 'visit a Research Table'); el.tabIndex = -1;
+      if (!el.dataset.locked) { el.dataset.locked = '1'; el.dataset.srAria = el.getAttribute('aria-label') ?? ''; }
+      el.title = 'Needs research: ' + (miss.join(', ') || 'visit a Research Table'); el.tabIndex = -1;
+      el.setAttribute('aria-label', LOCKED_LABEL); lockedRows.push(el);
       if (first) { el.classList.add('lr-sr-first'); first = false; }
       if (!badge && art) { badge = document.createElement('span'); badge.className = 'lr-sr-lock'; badge.innerHTML = LOCK; art.append(badge); }
       if (!needs && body) { needs = document.createElement('span'); needs.className = 'lr-sr-needs'; body.append(needs); }
       if (needs && needs.textContent !== text) needs.textContent = text;
     });
+  }
+
+  function unlockRow(el) {
+    const aria = el.dataset.srAria;
+    delete el.dataset.locked; delete el.dataset.srAria;
+    el.removeAttribute('title'); el.removeAttribute('tabindex');
+    if (aria) el.setAttribute('aria-label', aria); else el.removeAttribute('aria-label');
+  }
+  function unannotate() {
+    const host = inv?.isConnected ? inv : document.getElementById('inventory'); if (!host) return;
+    host.querySelectorAll('.sv-recipe').forEach(el => {
+      if (el.dataset.locked) unlockRow(el);
+      el.querySelector('.lr-sr-lock')?.remove(); el.querySelector('.lr-sr-needs')?.remove();
+      el.classList.remove('lr-sr-first', 'lr-sr-fresh');
+    });
+    lockedRows = [];
   }
 
   // ---------- per frame ----------
@@ -319,12 +348,19 @@ export function createStorageUI(api) {
     if (!inv || !inv.isConnected) inv = document.getElementById('inventory');
     const invOpen = !!inv && inv.open;
     if (invOpen && (!invWasOpen || invRev !== api.rev)) { invRev = api.rev; annotate(); }
+    else if (invOpen) for (let i = 0; i < lockedRows.length; i++) if (lockedRows[i].getAttribute('aria-label') !== LOCKED_LABEL) lockedRows[i].setAttribute('aria-label', LOCKED_LABEL);
     invWasOpen = invOpen;
   }
 
   return {
     open, close, update,
     openInfo: () => (isOpen ? { mode, x: tx, z: tz } : null),
-    destroy() { clearTimeout(bannerTimer); close(); dlg.remove(); },
+    destroy() {
+      clearTimeout(bannerTimer); for (const t of timers) clearTimeout(t); timers.clear();
+      isOpen = false; mode = null; ac.abort(); // no onClosed -> no requestLock while the game is disposing
+      if (dlg.open) { try { dlg.close(); } catch { dlg.removeAttribute('open'); } }
+      dlg.remove(); unannotate();
+      document.getElementById('lr-sr-style')?.remove();
+    },
   };
 }
