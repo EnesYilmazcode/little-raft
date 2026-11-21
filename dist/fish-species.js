@@ -60,10 +60,11 @@ const clamp01 = (v) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.5);
 const r01 = (rand) => { const v = Number(rand()); return Number.isFinite(v) ? Math.min(0.999999, Math.max(0, v)) : 0.5; };
 
 /** Per-species weight: rarity weight split across its species; time-of-day mismatch x0.3; charge boosts rare. */
-function weightOf(s, charge, night, perRarity) {
+function weightOf(s, charge, night, perRarity, boost = null) {
   let w = RARITY[s.rarity].weight / perRarity[s.rarity];
   if (s.rarity === 'rare' || s.rarity === 'legendary') w *= 1 + 0.5 * charge;
   if ((s.time === 'night' && !night) || (s.time === 'day' && night)) w *= 0.3;
+  const m = Number(boost?.[s.rarity]); if (m > 0 && Number.isFinite(m)) w *= m; // [bait] rarity multiplier
   return w;
 }
 
@@ -75,9 +76,9 @@ export function starsFor(species, cm) {
   return f >= 0.85 ? 3 : f >= 0.5 ? 2 : 1;
 }
 
-export function rollCatch(rand = Math.random, { charge = 0.5, night = false } = {}) {
+export function rollCatch(rand = Math.random, { charge = 0.5, night = false, boost = null } = {}) { // [bait] boost {rarity: x}
   const c = clamp01(Number(charge));
-  const ws = SPECIES.map((s) => weightOf(s, c, !!night, PER_RARITY));
+  const ws = SPECIES.map((s) => weightOf(s, c, !!night, PER_RARITY, boost));
   let pick = r01(rand) * ws.reduce((a, b) => a + b, 0);
   let species = SPECIES[SPECIES.length - 1];
   for (let i = 0; i < SPECIES.length; i++) { pick -= ws[i]; if (pick < 0) { species = SPECIES[i]; break; } }

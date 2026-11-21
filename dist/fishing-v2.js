@@ -6,11 +6,13 @@
 //     .stage  'idle'|'charging'|'flying'|'waiting'|'nibble'|'bite'|'reeling'|'caught'|'escaped'|'done'
 //     .charge .castDistance .catch {species,cm,stars}|null .progress .tension .pulling .holding
 //     .stageT (s in stage) .flightTime .reason ('early'|'missed'|'snapped' once escaped)
+//     .bait (frozen bait id|null) setBait(id)  [bait]
 //     startCharge() releaseCast()->m press()->bool release() cancel() debugForceBite(speciesId?)
 //     update(dt) -> null | {kind:'landed'|'nibble'|'bite'|'missed'|'caught'|'escaped'|'done', catch?, reason?}
 //   createFishingV2(T, { scene, ocean }) -> { bobber, line, hud:{el, update(session)}, splash(x,y,z),
 //     update(dt, session, { tip, origin, dir, time }), dispose() }
 import { rollCatch, biteDelay, speciesById } from './fish-species.js?build=v3-survival-ae77fa84ac2b';
+import { BAIT, isBait, baitWait } from './bait.js?build=v3-survival-ae77fa84ac2b'; // [bait]
 
 export const FISHING_TUNING = {
   chargeMs: 1100, minCast: 4, maxCast: 18, bobberFlight: 0.9, nibbleCount: [0, 2], nibbleTime: 0.28,
@@ -28,7 +30,10 @@ export class FishingSession {
     this.stage = 'idle'; this.stageT = 0; this.charge = 0; this.castDistance = 0; this.flightTime = F.bobberFlight;
     this.catch = null; this.progress = 0; this.tension = 0; this.pulling = false; this.holding = false; this.reason = null;
     this._wait = 0; this._nibbles = []; this._misses = 0; this._pullT = 0; this._pending = null;
+    this.bait = null; // [bait] frozen at release by the glue; null = unbaited (identical draws and timings)
   }
+  setBait(id) { this.bait = isBait(id) ? id : null; }
+  get _boost() { return BAIT[this.bait]?.boost ?? null; }
   _range(r) { return r[0] + (r[1] - r[0]) * this.rand(); }
   _set(stage) { this.stage = stage; this.stageT = 0; }
   _startWait(sec) {
@@ -40,7 +45,7 @@ export class FishingSession {
   }
   _escape(reason) { this.reason = reason; this.pulling = false; this.holding = false; this._set('escaped'); return { kind: 'escaped', reason }; }
   _bite() {
-    if (!this.catch) this.catch = rollCatch(this.rand, { charge: this.charge, night: this.night });
+    if (!this.catch) this.catch = rollCatch(this.rand, { charge: this.charge, night: this.night, boost: this._boost });
     this._set('bite'); return { kind: 'bite' };
   }
   startCharge() { if (this.stage !== 'idle') return false; this.charge = 0; this._set('charging'); return true; }
@@ -64,7 +69,7 @@ export class FishingSession {
   debugForceBite(speciesId) {
     if (!['flying', 'waiting', 'nibble', 'bite'].includes(this.stage)) return false;
     if (this.stage === 'flying' && !this.castDistance) this.releaseCast();
-    this.catch = rollCatch(this.rand, { charge: this.charge, night: this.night });
+    this.catch = rollCatch(this.rand, { charge: this.charge, night: this.night, boost: this._boost });
     const sp = speciesById(speciesId);
     if (sp) this.catch = { species: sp.id, cm: Math.round((sp.minCm + sp.maxCm) * 5) / 10, stars: 2 };
     this._pending = this._bite(); return true;
@@ -77,7 +82,7 @@ export class FishingSession {
       case 'charging': this.charge = clamp01(this.charge + dt * 1000 / F.chargeMs); return null;
       case 'flying':
         if (this.stageT < this.flightTime) return null;
-        this._startWait(this._range(F.wait) * (1 - 0.3 * this.charge)); return { kind: 'landed' };
+        this._startWait(baitWait(this._range(F.wait) * (1 - 0.3 * this.charge), this.bait)); return { kind: 'landed' };
       case 'waiting':
         this._waitT += dt;
         if (this._waitT >= this._wait) return this._bite();
@@ -92,7 +97,7 @@ export class FishingSession {
       case 'bite':
         if (this.stageT < F.biteWindow) return null;
         if (++this._misses >= 2) return this._escape('missed');
-        this._startWait(biteDelay(this.rand, this.catch.species) * 0.6); return { kind: 'missed' };
+        this._startWait(baitWait(biteDelay(this.rand, this.catch.species) * 0.6, this.bait)); return { kind: 'missed' };
       case 'reeling': return this._reel(dt);
       case 'caught': case 'escaped':
         if (this.stageT < F.endLinger) return null;
