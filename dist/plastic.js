@@ -100,10 +100,8 @@ function buildJug(T) {
   seamPts.push(new T.Vector3(0, -0.352, 0), new T.Vector3(radiusAt(-0.34), -0.352, 0));
   parts.push(tint(T, new T.TubeGeometry(new T.CatmullRomCurve3(seamPts), 12, 0.0035, 3, false), 0xdcdacb));
 
-  const solidGeo = merge(T, parts);
-  const solidMat = new T.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, side: T.DoubleSide, roughness: 0.7, metalness: 0 });
-
-  // 7. Light-blue creased plastic triangles on the front/back faces.
+  // 7. Light-blue creased plastic triangles on the front/back faces. They used to be a separate 55% transparent
+  // overlay; baked in as opaque triangles carrying the colour that blend produced over the weathered body.
   const tris = [
     [[-0.12, 0.02], [0.02, -0.08], [-0.05, 0.07]],
     [[0.02, -0.08], [0.13, -0.02], [0.06, 0.05]],
@@ -121,12 +119,12 @@ function buildJug(T) {
   const creaseGeo = new T.BufferGeometry();
   creaseGeo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
   creaseGeo.computeVertexNormals();
-  const creaseMat = new T.MeshStandardMaterial({
-    color: 0xa9d2ec, transparent: true, opacity: 0.55, side: T.DoubleSide, forceSinglePass: true, roughness: 0.7, metalness: 0,
-    polygonOffset: true, polygonOffsetFactor: -2, depthWrite: false,
-  });
-  for (const x of [solidGeo, creaseGeo, solidMat, creaseMat]) x.userData.shared = true;
-  return { solidGeo, solidMat, creaseGeo, creaseMat };
+  parts.push(tint(T, creaseGeo, 0xc3d8e0)); // 0.55 * #a9d2ec + 0.45 * body (~#e3e0d1), blended in display space
+
+  const solidGeo = merge(T, parts);
+  const solidMat = new T.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, side: T.DoubleSide, roughness: 0.7, metalness: 0 });
+  for (const x of [solidGeo, solidMat]) x.userData.shared = true;
+  return { solidGeo, solidMat };
 }
 
 export function createPlastic(T) {
@@ -137,9 +135,7 @@ export function createPlastic(T) {
   const body = new T.Mesh(jug.solidGeo, jug.solidMat);
   body.name = 'jugBody';
   body.castShadow = true; body.receiveShadow = true;
-  const creases = new T.Mesh(jug.creaseGeo, jug.creaseMat);
-  creases.castShadow = false; creases.receiveShadow = true;
-  root.add(body, creases);
+  root.add(body);
   root.userData.type = 'plastic';
   root.userData.size = { x: 0.65, y: 0.7, z: 0.4 };
   root.userData.dispose = () => {}; // shared resources: nothing per-jug to free

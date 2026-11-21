@@ -33,12 +33,14 @@ function merge(T, geos, withColor = false) {
   for (const p of parts) count += p.attributes.position.count;
   const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3), uv = new Float32Array(count * 2);
   const col = withColor ? new Float32Array(count * 3) : null;
+  const uv1 = parts.some((p) => p.attributes.uv1) ? new Float32Array(count * 2) : null;
   let o = 0;
   for (const p of parts) {
     const c = p.attributes.position.count;
     pos.set(p.attributes.position.array.subarray(0, c * 3), o * 3);
     nor.set(p.attributes.normal.array.subarray(0, c * 3), o * 3);
     if (p.attributes.uv) uv.set(p.attributes.uv.array.subarray(0, c * 2), o * 2);
+    if (uv1 && p.attributes.uv1) uv1.set(p.attributes.uv1.array.subarray(0, c * 2), o * 2);
     if (col) {
       if (p.attributes.color) col.set(p.attributes.color.array.subarray(0, c * 3), o * 3);
       else col.fill(1, o * 3, (o + c) * 3);
@@ -51,6 +53,7 @@ function merge(T, geos, withColor = false) {
   g.setAttribute('normal', new T.BufferAttribute(nor, 3));
   g.setAttribute('uv', new T.BufferAttribute(uv, 2));
   if (col) g.setAttribute('color', new T.BufferAttribute(col, 3));
+  if (uv1) g.setAttribute('uv1', new T.BufferAttribute(uv1, 2));
   g.computeBoundingSphere();
   return g;
 }
@@ -83,9 +86,13 @@ function tint(T, g, hex) {
 
 // Module-level material cache (one set per THREE namespace). Shared across items: never dispose per item.
 const SHARED = new WeakMap();
-function sharedMat(T, key, opts) {
+function cacheFor(T) {
   let cache = SHARED.get(T);
   if (!cache) SHARED.set(T, (cache = new Map()));
+  return cache;
+}
+function sharedMat(T, key, opts) {
+  const cache = cacheFor(T);
   let m = cache.get(key);
   if (!m) {
     m = new T.MeshStandardMaterial(opts);
@@ -95,12 +102,45 @@ function sharedMat(T, key, opts) {
   return m;
 }
 
-function metalMat(T, color, extra = {}) {
-  return sharedMat(T, `metal|${color}|${JSON.stringify(extra)}`, { color, metalness: 0.55, roughness: 0.5, ...extra });
-}
 // Plain engine-like (roughness .85) material that takes its colors from the geometry.
 const paintMat = (T, side) =>
   sharedMat(T, `paint|${side}`, { color: 0xffffff, vertexColors: true, roughness: 0.85, metalness: 0, side });
+
+// Per-part roughness/metalness lookup (G = roughness, B = metalness), sampled through a constant uv1 per part,
+// so parts that used to need their own material share one vertex-coloured mesh and still shade the same.
+const PBR = { paint: [0.85, 0], metal: [0.5, 0.55], bolt: [0.45, 0.55], bracket: [0.75, 0.4] };
+const PBR_KEYS = Object.keys(PBR);
+function pbrTex(T) {
+  const cache = cacheFor(T);
+  let t = cache.get('tex|pbr');
+  if (!t) {
+    const d = new Uint8Array(PBR_KEYS.length * 4);
+    PBR_KEYS.forEach((k, i) => { d[i * 4 + 1] = Math.round(PBR[k][0] * 255); d[i * 4 + 2] = Math.round(PBR[k][1] * 255); d[i * 4 + 3] = 255; });
+    t = new T.DataTexture(d, PBR_KEYS.length, 1);
+    t.magFilter = t.minFilter = T.NearestFilter;
+    t.channel = 1;
+    t.needsUpdate = true;
+    cache.set('tex|pbr', t);
+  }
+  return t;
+}
+const pbrMat = (T, side) =>
+  sharedMat(T, `pbr|${side}`, { color: 0xffffff, vertexColors: true, roughness: 1, metalness: 1, roughnessMap: pbrTex(T), metalnessMap: pbrTex(T), side });
+// Tag a geometry with its lookup slot (and optionally a flat colour).
+function slot(T, g, key, hex) {
+  if (hex != null) tint(T, g, hex);
+  const n = g.attributes.position.count, a = new Float32Array(n * 2), u = (PBR_KEYS.indexOf(key) + 0.5) / PBR_KEYS.length;
+  for (let i = 0; i < n; i++) { a[i * 2] = u; a[i * 2 + 1] = 0.5; }
+  g.setAttribute('uv1', new T.BufferAttribute(a, 2));
+  return g;
+}
+// The engine's plank material plus vertex colours, so small dark parts can ride along in the plank mesh.
+const TINTED = new WeakMap();
+function tintedMat(base) {
+  let m = TINTED.get(base);
+  if (!m) { m = base.clone(); m.vertexColors = true; m.userData.shared = true; TINTED.set(base, m); }
+  return m;
+}
 
 // Center content on origin; uniformly shrink if xz footprint exceeds maxXZ.
 function fit(T, inner, maxXZ) {
@@ -145,15 +185,21 @@ function buildWood(T, getMaterial, root, inner, r) {
     p.setY(i, p.getY(i) + bow * u * u + twist * z * u);
   }
   p.needsUpdate = true;
-  g.computeBoundingSphere();
-  mesh(T, g, getMaterial('#d5a265'), inner);
+  const plankMat = getMaterial('#d5a265');
 
-  // bent rusty nail near the chipped end
-  const nailMat = metalMat(T, '#6f6964', { roughness: 0.6 });
-  const shaft = place(T, new T.CylinderGeometry(0.006, 0.006, 0.07, 6), 0.6, 0.065, 0.06, 0, 0, 0.35);
-  const tip = place(T, new T.CylinderGeometry(0.005, 0.002, 0.045, 6), 0.627, 0.11, 0.06, 0, 0, 1.25);
-  const head = place(T, new T.CylinderGeometry(0.014, 0.014, 0.005, 8), 0.588, 0.034, 0.06);
-  mesh(T, merge(T, [shaft, tip, head]), nailMat, inner, false);
+  // bent rusty nail near the chipped end, baked into the plank mesh: its vertex colour cancels the plank
+  // albedo (the timber texture is filled with the plank colour) and folds in the old 0.55 metalness' darkening
+  const nail = merge(T, [
+    place(T, new T.CylinderGeometry(0.006, 0.006, 0.07, 6), 0.6, 0.065, 0.06, 0, 0, 0.35),
+    place(T, new T.CylinderGeometry(0.005, 0.002, 0.045, 6), 0.627, 0.11, 0.06, 0, 0, 1.25),
+    place(T, new T.CylinderGeometry(0.014, 0.014, 0.005, 8), 0.588, 0.034, 0.06),
+  ]);
+  const base = plankMat.map ? new T.Color('#d5a265') : plankMat.color, nc = new T.Color('#6f6964');
+  const k = [nc.r / base.r, nc.g / base.g, nc.b / base.b].map((v) => Math.min(1, v * 0.45));
+  const nn = nail.attributes.position.count, ncol = new Float32Array(nn * 3);
+  for (let i = 0; i < nn; i++) { ncol.set(k, i * 3); nail.attributes.uv.setXY(i, 0.5, 0.5); }
+  nail.setAttribute('color', new T.BufferAttribute(ncol, 3));
+  mesh(T, merge(T, [tint(T, g, 0xffffff), nail], true), tintedMat(plankMat), inner);
 }
 
 // ---------------------------------------------------------------- palm leaves
@@ -271,25 +317,24 @@ function buildScrap(T, getMaterial, root, inner, r) {
   p.needsUpdate = true;
   g.setAttribute('color', new T.BufferAttribute(col, 3));
   g.computeVertexNormals();
-  const sheetMat = metalMat(T, '#ffffff', { vertexColors: true, side: T.DoubleSide });
-  mesh(T, g, sheetMat, inner);
+  slot(T, g, 'metal');
 
   // bolts/rivets along the crease and the near edge
   const spots = [[foldX - 0.03, -0.2], [foldX - 0.03, -0.04], [foldX - 0.03, 0.12], [-0.33, -0.05], [-0.33, 0.1], [0.32, 0.02]];
   const bolts = spots.map(([x, z]) => {
     const b = new T.CylinderGeometry(0.017, 0.019, 0.014, 6);
-    return place(T, b, x, height(x, z) + 0.008, z, 0, r() * 1.0, x > foldX ? foldK * 0.8 : 0);
+    return slot(T, place(T, b, x, height(x, z) + 0.008, z, 0, r() * 1.0, x > foldX ? foldK * 0.8 : 0), 'bolt', '#8e9aa2');
   });
-  mesh(T, merge(T, bolts), metalMat(T, '#8e9aa2', { roughness: 0.45 }), inner);
 
   // small bent rusty bracket bolted to the sheet
   const bx = -0.2, bz = 0.02, by = height(bx, bz) + 0.01;
-  const bracket = merge(T, [
+  const bracket = [
     place(T, new T.BoxGeometry(0.2, 0.012, 0.055), bx, by, bz),
     place(T, new T.BoxGeometry(0.012, 0.09, 0.055), bx + 0.104, by + 0.04, bz, 0, 0, -0.25),
     place(T, new T.CylinderGeometry(0.012, 0.012, 0.012, 6), bx - 0.06, by + 0.01, bz),
-  ]);
-  mesh(T, bracket, metalMat(T, '#9a5a32', { metalness: 0.4, roughness: 0.75 }), inner);
+  ].map((b) => slot(T, b, 'bracket', '#9a5a32'));
+  // sheet, bolts and bracket: one mesh, per-part roughness/metalness from the lookup texture
+  mesh(T, merge(T, [g, ...bolts, ...bracket], true), pbrMat(T, T.DoubleSide), inner);
 }
 
 // ---------------------------------------------------------------- barrel
@@ -347,8 +392,7 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
     tint(T, place(T, new T.CylinderGeometry(0.036, 0.04, 0.035, 12), bx, capY + 0.03, bz), '#6b4426'),
     tint(T, place(T, new T.BoxGeometry(0.05, 0.012, 0.012), bx, capY + 0.052, bz), '#6b4426'),
   );
-  mesh(T, merge(T, wood, true), paintMat(T, T.FrontSide), body);
-  mesh(T, merge(T, metal, true), metalMat(T, '#ffffff', { vertexColors: true }), body);
+  mesh(T, merge(T, [...wood.map((g) => slot(T, g, 'paint')), ...metal.map((g) => slot(T, g, 'metal'))], true), pbrMat(T, T.FrontSide), body);
 
   // tilt pivot (root stays untransformed for the engine)
   const tilt = opts.tilt != null ? opts.tilt : 0.14 + r() * 0.14;
