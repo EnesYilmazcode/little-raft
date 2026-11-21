@@ -11,11 +11,13 @@ Instead the raft has a *virtual* velocity and everything else moves relative to 
   `windStr` in 0.55..1 (visual only). The wind never changes (Raft-like, `WIND_SWING = 0`); `windTarget`,
   `windStrTarget`, `windClock` are legacy keys kept for old saves (cleanSailing copies windDir/windStr into them).
 - Current: `DRIFT_SPEED = 0.30` m/s along `windDir`: an unsailed raft drifts downwind.
+  Floating debris (and a floating hook) drift past the raft at 0.22 m/s along the current too, so they arrive from
+  upwind (`sailing.debrisBase(o)`, used by game.js in place of its old fixed +z drift).
 - Sail: shared state for all placed `sail` decor: `raised` (bool), `heading` (radians; cloth normal points to
   `(sin h, cos h)`; the raft is pushed along that direction).
 - Sail (seabed ground-velocity target) when raised, not anchored, nSails >= 1:
-  `G = dir(heading) * DRIFT_SPEED * 1.5 * (0.2 + 0.8 * cos(heading - windDir))` up to 90 deg off the wind; past
-  90 deg the sail gives nothing (plain drift). Extra sails do not stack (`sailFactor(n) = 1`). The water-relative
+  `off = clamp(heading - windDir, -90 deg, +90 deg)` (no upwind sailing: the best is sideways),
+  `G = dir(windDir + off) * DRIFT_SPEED * 1.5 * (0.5 + 0.5 * cos(off))`: 0.45 m/s downwind, 0.225 m/s abeam, continuous. Extra sails do not stack (`sailFactor(n) = 1`). The water-relative
   target is `G - CURRENT`. Motors (engine.js) give a ground target that ignores the wind; the faster of sail and
   motor wins (no stacking), capped at TARGET_CAP.
   The water-relative velocity `vx, vz` eases toward the target with time-constant ~3.5 s (raft inertia).
