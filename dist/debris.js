@@ -364,8 +364,8 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
   // recessed end caps (chime)
   const capR = rEnd - thick + 0.004, capY = hh - 0.045;
   wood.push(
-    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, capY, 0), '#9a6538'),
-    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, -capY, 0), '#9a6538'),
+    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 14), 0, capY, 0), '#9a6538'),
+    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 14), 0, -capY, 0), '#9a6538'),
   );
   // board seams on top cap
   for (const z of [-0.18, -0.06, 0.06, 0.18]) {
@@ -382,7 +382,7 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
       new T.Vector2(R + 0.015, y), new T.Vector2(R + 0.012, y + w - 0.004),
       new T.Vector2(R - 0.004, y + w), new T.Vector2(R - 0.004, y - w),
     ];
-    metal.push(tint(T, new T.LatheGeometry(prof, 32), '#3a3f44'));
+    metal.push(tint(T, new T.LatheGeometry(prof, 14), '#3a3f44'));
   }
   for (const y of hoopYs) {
     const R = rad(y) + 0.014;
