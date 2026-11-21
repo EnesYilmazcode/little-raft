@@ -11,6 +11,8 @@ const TOTAL = Number(SLOT_COUNT) || 28;
 const DUR_MAX = Number(TOOL_DURABILITY) > 0 ? Number(TOOL_DURABILITY) : 0;
 const TRANSIENT = ['sv-src', 'sv-over', 'sv-dragging', 'sv-deny'];
 const INST_KEY = '__littleRaftSurvivalUI';
+/** Fired on document whenever the local bag's contents or selection change (item-tooltips.js listens). */
+export const BAG_EVENT = 'littleraft:bagchange';
 
 const BUILD = (() => { try { return new URL(import.meta.url).searchParams.get('build') || 'dev'; } catch { return 'dev'; } })();
 const SPRITE_URL = (() => {
@@ -453,7 +455,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let downOnBackdrop = false, upOnBackdrop = false;
   let dragging = false, dragFrom = null, dragAmt = 0, overEl = null;
   let hoverIdx = null;
-  let lastSig = null;
+  let lastSig = null, bagSig = null;
   // Per-frame fast path: skip snapshot + string signatures when nothing visible changed.
   // Bag.version catches method mutations; the typed-array shadow catches direct .slots writes
   // (game.js edits counts/durability in place), so the HUD never goes stale.
@@ -981,6 +983,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     for (let i = 0; i < TOTAL; i++) { sigs[i] = slotSig(slots[i]); all += sigs[i] + '|'; }
     all += selected;
     curSlots = slots; curSelected = selected;
+    if (all !== bagSig) { const first = bagSig === null; bagSig = all; if (!first) document.dispatchEvent(new CustomEvent(BAG_EVENT)); } // item-tooltips.js re-reads its open card
     if (hotEls.length) paintHotbar(slots, sigs, selected);
     paintTracker(bag, all);
     if (isOpen && !dragging && (force || all !== lastSig)) {
