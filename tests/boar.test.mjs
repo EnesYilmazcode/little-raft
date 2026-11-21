@@ -235,6 +235,12 @@ test('module: guest is hurt when the host counts a goring of the guest; guests n
   const before = g.boar.debug.state();
   g.tick(30);
   assert.equal(g.boar.debug.state().x, before.x, 'guest only draws the host pose');
+  // the next host pose of the same tusker is eased toward, not snapped to
+  g.boar.load({ ...st, hg: st.hg + 1, x: st.x + 1 }, 'net'); g.tick();
+  const moved = g.boar.debug.state().wx - before.wx;
+  assert.ok(moved > 0.05 && moved < 0.5, `eased: ${moved}`);
+  g.tick(120);
+  assert.ok(Math.abs(g.boar.debug.state().wx - before.wx - 1) < 0.01, 'catches up');
   g.dispose();
 });
 

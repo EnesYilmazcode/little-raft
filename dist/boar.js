@@ -198,13 +198,17 @@ export function createBoar(ctx) {
   // ---------- save / net ----------
   function serialize() { return packBoar(st, out); }
   function load(data, from) {
+    const prevSeed = st.s;
     cleanBoar(data, st);
     if (from === 'net') {
       // Guest: a rising gore count for this tusker means the host saw it hit us.
       if (seenSeed === st.s && st.hg > seenHg) gored();
       seenSeed = st.s; seenHg = st.hg;
-    } else if (st.a === LIFE.alive) { st.m = MODE.idle; st.t = 1; }
-    view.ok = false;
+      if (st.s !== prevSeed) view.ok = false; // a new tusker snaps; the same one keeps easing toward each ~8 Hz pose
+    } else {
+      if (st.a === LIFE.alive) { st.m = MODE.idle; st.t = 1; }
+      view.ok = false;
+    }
   }
 
   function dispose() {
