@@ -149,7 +149,15 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
   }
   const target = e => e.target?.closest?.(SEL) || null;
 
-  on(root, 'pointerover', e => { const el = target(e); if (el) show(el, e.clientX, e.clientY); else if (cur) hide(); });
+  // After a key press (Tab opening the bag), a cursor left resting where the panel appears gets
+  // pointerover with no movement: no card until the pointer really moves, so nothing covers the
+  // recipe detail on open.
+  let still = false;
+  const over = e => { const el = target(e); if (el) show(el, e.clientX, e.clientY); else if (cur) hide(); };
+  on(root, 'pointerover', e => { if (!still) over(e); });
+  on(root, 'mousemove', e => { if (still && (e.movementX || e.movementY)) { still = false; over(e); } }); // only arms; the card stays anchored
+  on(root, 'pointerdown', () => { still = false; }, { capture: true }); // a tap or click counts as moving
+  on(doc, 'keydown', () => { still = true; }, { capture: true });
   on(root, 'pointerout', e => { if (cur && !cur.el.contains(e.relatedTarget)) hide(); });
   on(root, 'pointerdown', () => { if (cur) requestAnimationFrame(refresh); });
   on(root, 'dragstart', hide);
