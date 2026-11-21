@@ -850,7 +850,8 @@ test('pickup feed: no borrowed sprite for placeholder items (water is not a barr
   const doc = fakeDoc(), c = fakeClock(), feed = createFeed({ doc, ...c });
   feed.add('water', 1); feed.add('seed', 1);
   const box = r => doc.getElementById('pickupFeed').children[r].children[0];
-  assert.equal(box(0).children.length, 0); assert.equal(box(1).children.length, 0);
+  // Their own drawings (item-svg.js), never a borrowed icons.svg <use> sprite.
+  for (const r of [0, 1]) { const svg = box(r).children[0]; assert.equal(svg?.tagName, 'SVG'); assert.ok(![...(svg.children || [])].some(c => c.tagName === 'USE')); }
 });
 
 test('pickup feed: refresh swaps in an icon that finished rendering late', () => {

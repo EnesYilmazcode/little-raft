@@ -63,7 +63,7 @@ test('R3-1: icon renderer uses the fit, a rim light, a halo and thicker thin too
   assert.match(s, /rimLight/);
   assert.match(s, /shadowBlur/);
   assert.match(s, /THICK = \{[^}]*fishingrod/);
-  assert.match(s, /case 'receiver'/, 'the receiver has a 3D icon (it had no drawing)');
+  assert.match(s, /receiver: \(\) => createSignalModel/, 'the receiver has a 3D icon (cached station model)');
 });
 
 test('R3-2: unlockInfo turns a gate into a one-line requirement and a how-to', () => {

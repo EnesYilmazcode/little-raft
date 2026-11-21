@@ -274,4 +274,30 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M2 44 H46" fill="none"/></g>
     <g fill="none" stroke="${O}" stroke-width="1.1" stroke-opacity=".55" stroke-linecap="round"><path d="M16 9 C18 16 16 24 20 33"/><path d="M32 12 C31 20 32 28 28 38"/></g>
     <g fill="#bdeef0" stroke="${O}" stroke-width="1.2"><circle cx="40" cy="16" r="2.6"/><circle cx="42" cy="26" r="1.6"/><circle cx="8" cy="15" r="1.8"/></g>`,
+
+  // Palm seed: a coconut with its three eyes and a green sprout.
+  seed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M24 17 C22 11 17 7 11 7 C13 12 17 15 23 17 M25 17 C27 10 32 6 39 6 C37 12 32 15 26 17.5" fill="#7cc47f"/>
+    <ellipse cx="24" cy="30" rx="15" ry="13" fill="#8a5a33"/>
+    <path d="M13 24 C17 20 22 19 27 19.5" fill="none" stroke="#c99560" stroke-width="1.8"/>
+    <path d="M14 36 C18 39 25 40 31 38 M17 29 C20 31 24 31.5 28 31" fill="none" stroke-width="1.1" stroke-opacity=".55"/></g>
+    <g fill="${O}"><circle cx="20" cy="26" r="1.7"/><circle cx="26" cy="25" r="1.7"/><circle cx="23" cy="30" r="1.7"/></g>`,
+
+  // Signal receiver: a small radio box with a dial, a speaker grille and a stub aerial.
+  receiver: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M33 17 L40 4" fill="none" stroke-width="2.4"/><circle cx="40" cy="4.5" r="2" fill="#ffbd66"/>
+    <rect x="5" y="17" width="38" height="25" rx="3.5" fill="#54a6a4"/>
+    <rect x="9" y="21" width="17" height="17" rx="2" fill="#9fd6d0"/>
+    <circle cx="34" cy="26" r="4.6" fill="#ffbd66"/><path d="M34 26 L36.6 23.4" fill="none"/>
+    <path d="M30 35.5 H38" fill="none"/></g>
+    <g fill="${O}" fill-opacity=".6"><circle cx="13" cy="25" r="1"/><circle cx="17.5" cy="25" r="1"/><circle cx="22" cy="25" r="1"/><circle cx="13" cy="29.5" r="1"/><circle cx="17.5" cy="29.5" r="1"/><circle cx="22" cy="29.5" r="1"/><circle cx="13" cy="34" r="1"/><circle cx="17.5" cy="34" r="1"/><circle cx="22" cy="34" r="1"/></g>
+    <path d="M44 10 C46 12 46 15 44 17 M41 12 C42 13 42 14 41 15" fill="none" stroke="#fff2cc" stroke-width="1.5" stroke-linecap="round"/>`,
+
+  // Cup of fresh water: a wooden cup filled to the brim with clear blue water.
+  water: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M10 13 H38 L35 41 C35 43 33 44 31 44 H17 C15 44 13 43 13 41 Z" fill="#c99560"/>
+    <ellipse cx="24" cy="14" rx="14" ry="4" fill="#6fc6e8"/>
+    <path d="M12.5 26 H35.5 M14 35 H34" fill="none" stroke-width="1.2" stroke-opacity=".55"/></g>
+    <path d="M17 13 C20 12 24 12 27 12.6" fill="none" stroke="#e8fbff" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M24 3 C26.5 6 27.5 8 27.5 9.3 A3.5 3.5 0 0 1 20.5 9.3 C20.5 8 21.5 6 24 3 Z" fill="#6fc6e8" stroke="${O}" stroke-width="1.6" stroke-linejoin="round"/>`,
 });

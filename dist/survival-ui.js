@@ -620,6 +620,12 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     D.btn.setAttribute('aria-label', ready ? (one ? `Craft one ${v.r.name}.` : `Craft ${v.r.name}. Up to ${max}. Hold to craft several, Shift to craft all.`) : `${v.r.name}: ${D.label.textContent}`);
     paintPinBtn();
   }
+  // The bag's own items render their 3D icons before the rest of the catalogue.
+  function warmBag() {
+    const slots = bagNow()?.slots; if (!slots) return;
+    const kinds = []; for (const s of slots) if (s && s.kind && !kinds.includes(s.kind)) kinds.push(s.kind);
+    warmIcons(kinds, true);
+  }
   function countOf(bag, kind) {
     if (typeof bag.count === 'function') { try { return Number(bag.count(kind)) || 0; } catch {} }
     let n = 0; for (const s of curSlots) if (s && s.kind === kind) n += s.count || 0; return n;
@@ -1179,6 +1185,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     invalidate();
     invEls.forEach(el => { el._svCount = undefined; }); // no pop for changes made while closed
     recipeEls.forEach(v => { v.sig = null; });
+    warmBag();
     render(true);
     if (!pickedByUser) pickOnOpen(); // an automatic pick is re-chosen once states are known: first ready recipe not owned yet
     applyTab();
@@ -1437,6 +1444,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
 
   buildRecipes();
   if (isOpen) render(true);
+  warmBag();
   warmIcons(Object.keys(ITEM_INFO || {}));
 
   const api = {

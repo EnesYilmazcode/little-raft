@@ -17,6 +17,12 @@ import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { getModel as getLibraryModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { createSignalModel } from './signal-models.js?build=v3-survival-ae77fa84ac2b';
+import { createPurifier } from './purifier-model.js?build=v3-survival-ae77fa84ac2b';
+import { createRainBarrel, createSprinkler } from './rain-model.js?build=v3-survival-ae77fa84ac2b';
+import { createSmelterModel, createResearchTableModel, createGrillModel } from './smelter-model.js';
+import { createHive, createFlowerBox, createCandle } from './bees-model.js?build=v3-survival-ae77fa84ac2b';
+import { buildInstrument } from './instrument-models.js?build=v3-survival-ae77fa84ac2b';
+import { buildResearchTable } from './storage-research-model.js';
 import { fitIconFrame } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 
 const SIZE = 128;
@@ -97,7 +103,6 @@ export function buildFallbackModel(kind) {
     case 'fish': return fishModel();
     case 'wood': return woodModel();
     case 'leaf': case 'scrap': return createDebris(T, kind, mat, { seed: 7, tilt: 0 });
-    case 'receiver': return createSignalModel(T, 'receiver'); // no flat drawing exists for it
     default: return createCraft(T, kind);
   }
 }
@@ -207,12 +212,37 @@ function freeModel(root) {
   });
 }
 
+// Placeables whose world models live in other modules (models.js getModel does not know them). Each is
+// built once and kept (own = false), like the provider's cached clones: re-renders reuse it, nothing leaks.
+const STATION_BUILDERS = {
+  receiver: () => createSignalModel(T, 'receiver'), antenna: () => createSignalModel(T, 'antenna'),
+  purifier: () => createPurifier(T), rainbarrel: () => createRainBarrel(T), sprinkler: () => createSprinkler(T),
+  smelter: () => createSmelterModel(T), researchtable: () => createResearchTableModel(T), grill: () => createGrillModel(T),
+  beehive: () => createHive(T), flowerbox: () => createFlowerBox(T), candle: () => createCandle(T),
+  drum: () => buildInstrument(T, 'drum'), pipes: () => buildInstrument(T, 'pipes'), bells: () => buildInstrument(T, 'bells'),
+  research: () => buildResearchTable(T).instance(),
+};
+const stations = new Map(); // kind -> Object3D (or null when its builder failed)
+export const STATION_KINDS = Object.freeze(Object.keys(STATION_BUILDERS));
+/** The cached station model for kind (built on first use), or null. Never freed: callers must not dispose it. */
+export function stationModel(kind) {
+  if (!Object.prototype.hasOwnProperty.call(STATION_BUILDERS, kind)) return null;
+  if (!stations.has(kind)) {
+    let m = null;
+    try { m = STATION_BUILDERS[kind]() || null; } catch (e) { console.warn('item icon station model failed', kind, e); }
+    stations.set(kind, m);
+  }
+  return stations.get(kind);
+}
+
 /** Model for an icon: the provider, then the procedural fallback, then models.js for kinds the
  *  fallback lacks (cup, seed, water). own = true when the caller must free it. */
 export function resolveIconModel(kind) {
   let model = null;
   if (provider) { try { model = provider(MODEL_ALIAS[kind] || kind) || provider(kind) || null; } catch (e) { console.warn('item icon provider failed', kind, e); } }
   if (model) return { model, own: false };
+  model = stationModel(kind);
+  if (model) return { model, own: false };   // cached per kind (see STATION_BUILDERS)
   try { model = buildFallbackModel(kind); } catch (e) { console.warn('item icon model failed', kind, e); }
   if (model) return { model, own: true };
   try { model = getLibraryModel(kind); } catch (e) { console.warn('item icon library model failed', kind, e); }
@@ -329,8 +359,20 @@ export function loadItemIcon(kind) {
   if (url || !kind || cache.has(kind) || failed) return Promise.resolve(url);
   return new Promise(r => { let w = waiters.get(kind); if (!w) waiters.set(kind, w = []); w.push(r); });
 }
-/** Queue several kinds ahead of time (rendered in idle slices). */
-export function warmIcons(kinds) { for (const k of kinds) iconURL(k); }
+/** Queue several kinds ahead of time (rendered in idle slices). first = true moves them to the front
+ *  of the queue (the kinds in the bag render before the rest of the catalogue). */
+export function warmIcons(kinds, first = false) {
+  const list = [...(kinds || [])];
+  for (const k of list) iconURL(k);
+  if (!first) return;
+  const lead = list.filter(k => queued.has(k));
+  if (!lead.length) return;
+  const rest = [...queued].filter(k => !lead.includes(k));
+  queued.clear();
+  for (const k of [...lead, ...rest]) queued.add(k);
+}
+/** Kinds waiting to render, in render order (for tests and the QA debug panel). */
+export const queuedIcons = () => [...queued];
 /** Called with (kind, url) whenever an icon (re)renders. Returns an unsubscribe function. */
 export function onIconReady(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 /** Swap the model source (e.g. hands.js buildItemModel). Re-renders every icon seen so far. */
