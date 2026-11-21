@@ -152,9 +152,9 @@ const _box = new T.Box3(), _sphere = new T.Sphere(), _v = new T.Vector3(), _dir 
 
 function freeModel(root) {
   root.traverse(o => {
-    if (o.geometry) o.geometry.dispose();
+    if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose(); // shared: cached model geometry the game also draws
     const m = o.material; if (!m) return;
-    for (const x of Array.isArray(m) ? m : [m]) if (!shared.has(x)) { x.map?.dispose(); x.dispose(); }
+    for (const x of Array.isArray(m) ? m : [m]) if (!shared.has(x) && !x.userData.shared) { x.map?.dispose(); x.dispose(); }
   });
 }
 

@@ -45,6 +45,7 @@ import { attachProgression } from './progression-hooks.js?build=v3-survival-ae77
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
+import { createItemInstancer } from './item-instancer.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { createGhosts, wrapRot, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
@@ -234,7 +235,7 @@ export function mount(transfer = null) {
   let saveRev = isInt(X?.saveRev) ? X.saveRev : storedRev();
   let saveBlocked = !!X?.saveBlocked;
   let building = null, sentPieces = null; // building-pieces lane hook (sentPieces: last pieces array sent to the guest)
-  let scene = null, camera = null, renderer = null, quality = null, ocean = null, raft, itemsGroup, ghosts, rope, ropeAttr, hookMesh, bobber, friend, player, sun;
+  let scene = null, camera = null, renderer = null, quality = null, ocean = null, raft, itemsGroup, itemInstances = null, ghosts, rope, ropeAttr, hookMesh, bobber, friend, player, sun;
   let hemi = null, clouds = [], cloudMeshes = [], sceneryMat = null, content = null; const sceneryInst = []; // content hook: lights/clouds handed to content modules
   let hands = null, offIconReady = null, clothMat; // one hands controller swaps the held item model per hotbar kind
   const handsParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0, yaw:0, pitch:0}; // reused every frame
@@ -386,7 +387,7 @@ export function mount(transfer = null) {
     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
     if (ART.artEnabled()) ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T}); // art lane hook
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
-    itemsGroup = new T.Group(); scene.add(itemsGroup);
+    itemsGroup = new T.Group(); scene.add(itemsGroup); itemInstances = createItemInstancer(T, scene); // floating supplies draw instanced; per-item meshes stay for picking
     player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
     ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => { try { return prog?.modelFor(k, {type:k}) ?? (k === 'purifier' ? createPurifier(T) : createCraft(T, k) ?? createSignalModel(T, k) ?? content?.decorModel(k) ?? null); } catch { return null; } }}); // see-through real models, red when blocked
     const ropeGeo = new T.BufferGeometry(); ropeAttr = new T.BufferAttribute(new Float32Array((ROPE_SEGMENTS + 1) * 3), 3); ropeAttr.setUsage(T.DynamicDrawUsage); ropeGeo.setAttribute('position', ropeAttr);
@@ -566,7 +567,7 @@ export function mount(transfer = null) {
   function itemModel(item) {
     if (item.type === 'cache') return createSignalModel(T, 'cache');
     if (item.type === 'bottle') { const g = new T.Group(), b = createBottle(T); b.position.y = .04; b.rotation.y = (item.id % 7) * .9; g.add(b); return singlePass(g); }
-    if (item.type !== 'plastic') { const d = createDebris(T, item.type, mat, {seed:item.id}); if (ART.artEnabled() && item.type === 'scrap') d.traverse(o => { if (o.isMesh && o.material.vertexColors) { o.material.dispose(); o.material = mat('#8e9aa2'); } }); /* art lane hook */ return singlePass(d); }
+    if (item.type !== 'plastic') { const d = createDebris(T, item.type, mat, {seed:1 + item.id % 3}); /* 3 cached shapes per type, cloned */ if (ART.artEnabled() && item.type === 'scrap') d.traverse(o => { if (o.isMesh && o.material.vertexColors) { o.material.dispose(); o.material = mat('#8e9aa2'); } }); /* art lane hook */ return singlePass(d); }
     const g = new T.Group(), jug = createPlastic(T); if (ART.artEnabled()) { const b = jug.getObjectByName('jugBody'); if (b) { b.material.dispose(); b.material = mat('#f2f0e6'); } } /* art lane hook */ singlePass(jug); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
   }
   // Meshes are keyed by token, not id: a respawned item keeps its id but may change type.
@@ -581,7 +582,7 @@ export function mount(transfer = null) {
       const g = itemModel(item); g.userData.token = item.token; singlePass(g);
       g.traverse(o => { o.castShadow = false; }); // the ocean takes no shadows, so floating supplies skip the shadow pass
       g.position.set(item.x, ITEM_FLOAT, item.z);
-      itemsGroup.add(g); itemMeshes.set(item.token, g);
+      itemsGroup.add(g); itemMeshes.set(item.token, g); itemInstances?.adopt(g);
     }
   }
   const isPending = it => (pending.get(it.token) ?? 0) > performance.now();
@@ -1177,7 +1178,13 @@ export function mount(transfer = null) {
       friend.userData.animate?.(dt, {speed:Math.min(6, Math.hypot(friend.position.x - before.x, friend.position.z - before.z) / dt), swimming:other.swimming, pitch:other.pitch});
     }
   }
-  const allHeldTokens = () => new Set([...caughtList(castOut()).map(c => c.token), ...(role === 'guest' ? [] : guestHeld.tokens(performance.now()))]);
+  const heldScratch = new Set(); // reused every call: read it before the next allHeldTokens()
+  function allHeldTokens() {
+    heldScratch.clear();
+    for (const c of caughtList(castOut())) heldScratch.add(c.token);
+    if (role !== 'guest') for (const t of guestHeld.tokens(performance.now())) heldScratch.add(t);
+    return heldScratch;
+  }
   function updateItems(dt) {
     const heldTokens = allHeldTokens();
     if (sailing) sailing.itemFlow(sailFlow); // [sailing]
@@ -1305,6 +1312,7 @@ export function mount(transfer = null) {
     try { logbookUI?.update?.(); } catch (e) { console.error('logbook update failed', e); logbookUI = null; }
     refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud();
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
+    itemInstances?.update(itemsGroup, camera); // after updateItems and the hook carry moved the items
     for (const si of sceneryInst) si.sync(); // drifting island/cloud proxies -> instances
     // perf: a menu dialog dims the world behind it, so redraw it at 10 Hz there (the bag keeps full rate: it shows the world lightly dimmed)
     const menu = dialog && !!document.querySelector('dialog[open]:not(#inventory)');
