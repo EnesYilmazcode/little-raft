@@ -345,7 +345,12 @@ export function createHands(T, { modelFactory = null } = {}) {
       }
       pivot.add(item); prep(pivot); pivot.visible = false;
       (h.hand === 'left' ? leftHolder : toolHolder).add(pivot);
-      m = { pivot, item, own };
+      m = { pivot, item, own, qBase: pivot.quaternion.clone(), rope: null };
+      const hg = kind === 'glidehandle' && item.getObjectByName('glidehandle');
+      if (hg) { // [zipline] a short strap from the wheel up to the line, shown while riding (own geometry + material)
+        const rope = new T.Mesh(new T.CylinderGeometry(0.014, 0.014, 1.1, 6).translate(0, 0.25 + 0.55, 0), ropeMat.clone());
+        rope.name = 'rideStrap'; rope.visible = false; hg.add(rope); prep(rope); m.rope = rope;
+      }
     }
     mounts.set(kind, m);
     return m;
@@ -380,7 +385,7 @@ export function createHands(T, { modelFactory = null } = {}) {
   // ---------------- animation state (weights only; transforms are rebuilt every frame) ----------------
   // dip: 0 = arms up, 1 = lowered out of view. A swap lowers, switches model/pose at the bottom, raises.
   const REEL_HZ = 2.5;
-  const st = { hookOut: false, leftW: 0, walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0,
+  const st = { hookOut: false, leftW: 0, walkW: 0, reelW: 0, rideW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0,
     shown: null, target: null, poseOverride: null, pendingPose: null, ptR: 0, ptL: 0, lowering: false, dip: 1, down: 1, raise: 1, lagX: 0, lagY: 0, lastYaw: null, lastPitch: 0 };
   const qOff = new T.Quaternion(), eul = new T.Euler(0, 0, 0, 'XYZ'), qSwing = new T.Quaternion(), AX = V(1, 0, 0);
   const last = { lag: [0, 0] };
@@ -408,6 +413,7 @@ export function createHands(T, { modelFactory = null } = {}) {
 
   const qA = new T.Quaternion(), pA = V();
   const qB = new T.Quaternion();
+  const qRideA = new T.Quaternion(), qRideB = new T.Quaternion(), vRideUp = V(), vRideStem = V(), Y_UP = V(0, 1, 0), RIDE_UP = V(0, 1, -0.2).normalize(); // [zipline]
   function applyArm(A, px, py, pz, rx, ry, rz, wx, wy, wz, w = 0, wRope = 0) {
     pA.lerpVectors(A.basePos, A.pointPos, w);
     qB.slerpQuaternions(A.qBase, A.qPoint, w);
@@ -474,6 +480,7 @@ export function createHands(T, { modelFactory = null } = {}) {
 
     st.walkW += ((walking ? 1 : 0) - st.walkW) * smoothK(5, dt);
     st.reelW += ((reeling ? 1 : 0) - st.reelW) * smoothK(9, dt);
+    st.rideW += ((params.riding ? 1 : 0) - st.rideW) * smoothK(8, dt); // [zipline] fist up on the glide line
     st.outW += ((hasHookOut ? 1 : 0) - st.outW) * smoothK(7, dt);
     st.toolW = hasHookOut ? 0 : st.toolW + (1 - st.toolW) * smoothK(8, dt);
     if (casting > 0 && (st.lastCasting <= 0 || casting > st.lastCasting + 0.25)) st.releaseCharge = Math.max(st.chargeS, charge, 0.35);
@@ -500,7 +507,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     // stroke 0 = reached forward, 1 = pulled in to the body.
     const stroke = (q) => { q = ((q % 1) + 1) % 1; return q < 0.5 ? smooth(0, 0.5, q) : 1 - smooth(0.5, 1, q); };
     const pullR = stroke(t * REEL_HZ / 2), pull = stroke(t * REEL_HZ / 2 + 0.5);
-    const rW = st.reelW, oW = st.outW, tw = st.toolW;
+    const rW = st.reelW, oW = st.outW, tw = st.toolW, zW = st.rideW;
     const catchDip = hasHookOut ? 0 : (1 - tw);
     const hold = st.shown ? holdFor(st.shown) : {}, nW = (1 - oW) * (1 - st.ptR), arm = hold.arm || [0, 0, 0];
 
@@ -514,7 +521,20 @@ export function createHands(T, { modelFactory = null } = {}) {
     const rrz = -0.20 * ce + 0.25 * a + 0.03 * wA * Math.sin(ph) + 0.15 * pullR * rW + 0.25 * down;
     const rwx = 0.30 * ce - 0.45 * a - 0.10 * oW + 0.22 * pullR * rW - (hold.tilt || 0) * nW;
     const rwz = -0.15 * ce + 0.12 * a;
-    applyArm(R, rpx + arm[0] * nW, rpy + arm[1] * nW, rpz + arm[2] * nW, rrx, rry, rrz, rwx, 0, rwz, smooth(0, 1, st.ptR));
+    applyArm(R, rpx + arm[0] * nW - 0.10 * zW, rpy + arm[1] * nW + 0.44 * zW, rpz + arm[2] * nW - 0.06 * zW, rrx + 0.75 * zW, rry, rrz, rwx, 0, rwz, smooth(0, 1, st.ptR)); // [zipline] zW raises the fist
+    // [zipline] on the line the handle swings round so its wheel stem points up at the rope (and the strap shows)
+    const gh = st.shown === 'glidehandle' ? mounts.get('glidehandle') : null;
+    if (gh) {
+      if (zW > 0.01) {
+        toolHolder.updateWorldMatrix(true, false);
+        root.getWorldQuaternion(qRideA).invert().multiply(toolHolder.getWorldQuaternion(qRideB)).invert(); // eye space -> holder space
+        vRideUp.copy(RIDE_UP).applyQuaternion(qRideA);
+        vRideStem.copy(Y_UP).applyQuaternion(gh.qBase);
+        qRideB.setFromUnitVectors(vRideStem, vRideUp).multiply(gh.qBase);
+        gh.pivot.quaternion.slerpQuaternions(gh.qBase, qRideB, smooth(0, 1, zW));
+      } else gh.pivot.quaternion.copy(gh.qBase);
+      if (gh.rope) gh.rope.visible = zW > 0.6;
+    }
 
     // ---- left arm
     const lw = rW * oW;                                          // left fist on the line, reaching and pulling in turn

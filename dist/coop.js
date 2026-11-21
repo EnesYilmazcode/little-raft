@@ -25,8 +25,11 @@ import { loadLook, cleanLook, createLookGate, PARTNER_DEFAULT } from './look.js?
 
 export const COOP_VERSION = 1;
 export const HELD = Object.freeze([null, 'hook', 'hammer', 'fishingrod', 'wood', 'leaf', 'scrap', 'plastic', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate',
-  'drum', 'pipes', 'bells', 'spade', 'finder', 'spear', 'metalspear']); // append only: index is the wire format ([instruments] 14-16, [treasure] 17-18, [spear-repair] 19-20)
+  'drum', 'pipes', 'bells', 'spade', 'finder', 'spear', 'metalspear', 'glidehandle']); // append only: index is the wire format ([instruments] 14-16, [treasure] 17-18, [spear-repair] 19-20, [zipline] 21)
 const STAGES = ['flying', 'floating', 'reeling', 'done', 'fishing'];
+// [zipline] pose flag bits: 1 swimming, 2 grounded, 4 reeling, 8 riding a glide line (old peers read 1/2/4 only)
+export const poseFlags = l => (l.swimming ? 1 : 0) | (l.grounded ? 2 : 0) | (l.reeling ? 4 : 0) | (l.riding ? 8 : 0);
+export const readFlags = (f, out = {}) => { out.swimming = !!(f & 1); out.grounded = !!(f & 2); out.reeling = !!(f & 4); out.riding = !!(f & 8); return out; };
 const SEND_MS = 1000 / 15, IDLE_MS = 250, ITEMS_MS = 500;
 const SILENCE_MS = 3000, RECONNECT_WINDOW_MS = 30000, ATTEMPT_MS = 12000; // an attempt in flight gets 12 s (ICE can be slow)
 const EMOTE_KEYS = {KeyZ:'wave', KeyX:'point'}, EMOTE_S = 1.6, PING_RANGE = 60;
@@ -136,7 +139,7 @@ export function createCoop(ctx, saved = null) {
     if (!p || p.length < 5 || !p.every(Number.isFinite) || !Number.isFinite(cp.t)) return null;
     const k = Array.isArray(cp.k) ? cp.k : null, g = Array.isArray(cp.g) ? cp.g : null, f = cp.f | 0;
     buffer.push({t:cp.t, x:p[0], y:p[1], z:p[2], yaw:p[3], pitch:p[4],
-      swimming:!!(f & 1), grounded:!!(f & 2), reeling:!!(f & 4), held:HELD[cp.h | 0] ?? null, charge:(cp.c | 0) / 100,
+      swimming:!!(f & 1), grounded:!!(f & 2), reeling:!!(f & 4), riding:!!(f & 8), /* [zipline] */ held:HELD[cp.h | 0] ?? null, charge:(cp.c | 0) / 100,
       hook:k ? {x:k[1], y:k[2], z:k[3]} : null, stage:k ? STAGES[k[0]] ?? null : null,
       ghost:g ? {x:g[0], z:g[1], kind:HELD[g[2]] ?? null, ok:!!g[3]} : null}, now());
     lastPose = {x:p[0], y:p[1], z:p[2], yaw:p[3], swimming:!!(f & 1)};
@@ -147,7 +150,7 @@ export function createCoop(ctx, saved = null) {
   function snapshot(l) {
     const hook = l.hook ? [Math.max(0, STAGES.indexOf(l.hook.stage)), r2(l.hook.x), r2(l.hook.y), r2(l.hook.z)] : 0;
     const g = l.ghost ? [l.ghost.x, l.ghost.z, Math.max(0, HELD.indexOf(l.ghost.kind)), l.ghost.ok ? 1 : 0] : 0;
-    return {type:'cp', p:[r2(l.x), r2(l.y), r2(l.z), r3(l.yaw), r2(l.pitch)], f:(l.swimming ? 1 : 0) | (l.grounded ? 2 : 0) | (l.reeling ? 4 : 0),
+    return {type:'cp', p:[r2(l.x), r2(l.y), r2(l.z), r3(l.yaw), r2(l.pitch)], f:poseFlags(l), /* [zipline] bit 8 = riding */
       h:Math.max(0, HELD.indexOf(l.held ?? null)), c:Math.round((l.charge || 0) * 100), k:hook, g};
   }
   function sendPose(t) {
@@ -172,7 +175,7 @@ export function createCoop(ctx, saved = null) {
     lastHook = L.stage ?? null;
     const em = emote && (t - emote.at) / 1000 < EMOTE_S ? {kind:emote.kind, age:(t - emote.at) / 1000} : null;
     avatar.update(dt, {x:s.x, y:s.y - 1.6, z:s.z, yaw:s.yaw, pitch:s.pitch, speed:s.speed ?? 0, swimming:L.swimming, grounded:L.grounded,
-      held:L.held, charge:L.charge, reeling:L.reeling, hookOut:!!L.hook, stage:L.stage, emote:em, throwAge:throwAt >= 0 ? (t - throwAt) / 1000 : null}, time, ctx.camera);
+      held:L.held, charge:L.charge, reeling:L.reeling, riding:L.riding, /* [zipline] */ hookOut:!!L.hook, stage:L.stage, emote:em, throwAge:throwAt >= 0 ? (t - throwAt) / 1000 : null}, time, ctx.camera);
     avatar.handWorld(hand);
     if (s.hook) s.hook.stage = L.stage; // s.hook is the buffer's reusable sample object
     rope.update(dt, hand, s.hook, ctx.ocean, time);
