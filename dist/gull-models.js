@@ -57,14 +57,29 @@ export function createPerch(T) {
   const mat = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   const body = new T.Mesh(bake(T, parts), mat); body.name = 'perchBody'; body.castShadow = true; body.receiveShadow = true;
   g.add(body);
-  const box = new T.BoxGeometry(.07, .04, .05), finds = [];
+  // One cheap shape per find kind, built once per perch; paintPerch only swaps geometry + colour (no allocation).
+  // Every shape rests its underside at local y = -.02 (on the tray's bottom disc).
+  const shapes = findShapes(T), finds = [];
   SLOTS.forEach(([x, z], i) => {
-    const m = new T.Mesh(box, new T.MeshLambertMaterial({ color: '#9c7649' })); m.name = 'find' + i;
+    const m = new T.Mesh(shapes.wood, new T.MeshLambertMaterial({ color: FIND_COLOR.wood, flatShading: true })); m.name = 'find' + i;
     m.position.set(TRAY.x + x, TRAY.y - .002, TRAY.z + z); m.rotation.y = i * 1.3 + .4;
     m.visible = false; m.castShadow = true; g.add(m); finds.push(m);
   });
+  g.userData.findShapes = shapes;
   g.userData.finds = finds; g.userData.sig = '';
   return g;
+}
+
+// Find shapes: a thin plank (wood), a flat bottle (plastic), a flat coil (rope), a seed ellipsoid (seed).
+function findShapes(T) {
+  const wood = new T.BoxGeometry(.12, .016, .034); wood.translate(0, -.012, 0);
+  const prof = [[0, -.04], [.02, -.04], [.023, -.032], [.023, .012], [.011, .027], [.008, .036], [.009, .046], [0, .046]].map(([x, y]) => new T.Vector2(x, y));
+  const plastic = new T.LatheGeometry(prof, 7); plastic.rotateZ(Math.PI / 2); plastic.scale(1, .55, 1); plastic.translate(0, -.02 + .023 * .55, 0);
+  const pts = [];
+  for (let k = 0; k <= 22; k++) { const t = k / 22, a = t * Math.PI * 2 * 1.9, r = .01 + .026 * t; pts.push(new T.Vector3(Math.cos(a) * r, -.012, Math.sin(a) * r)); }
+  const rope = new T.TubeGeometry(new T.CatmullRomCurve3(pts), 30, .0075, 4, false);
+  const seed = new T.SphereGeometry(.02, 7, 5); seed.scale(1.45, .65, 1); seed.translate(0, -.02 + .013, 0);
+  return { wood, plastic, rope, seed };
 }
 
 // ------------------------------------------------------------------ the companion gull (its own, softer low-poly model)
@@ -146,7 +161,7 @@ export function companionWingGeometry(T) {
   return join(T, P);
 }
 
-/** Show one slot per find, coloured by its kind. Cached on the joined list. */
+/** Show one slot per find, shaped and coloured by its kind. Cached on the joined list. */
 export function paintPerch(g, finds) {
   const u = g?.userData; if (!u || !u.finds) return;
   const list = Array.isArray(finds) ? finds : [], sig = list.join();
@@ -155,6 +170,6 @@ export function paintPerch(g, finds) {
   for (let i = 0; i < u.finds.length; i++) {
     const m = u.finds[i], k = list[i];
     m.visible = i < list.length && !!FIND_COLOR[k];
-    if (m.visible) m.material.color.set(FIND_COLOR[k]);
+    if (m.visible) { m.material.color.set(FIND_COLOR[k]); if (u.findShapes?.[k]) m.geometry = u.findShapes[k]; }
   }
 }
