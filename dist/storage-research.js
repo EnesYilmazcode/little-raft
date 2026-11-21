@@ -60,10 +60,13 @@ export function researchableKinds(state) {
 // ------------------------------------------------------------------ validation
 
 const BLANK = new Array(SLOT_COUNT).fill(null);
-/** One slot through Bag's own rules (kind, count, maxStack, durability). Bad -> null. */
+/** One slot through Bag's own rules (kind, count, maxStack, durability). Over-stack is clamped; bad -> null. */
 export function cleanSlot(raw) {
   if (raw === null || raw === undefined) return null;
-  try { const snap = BLANK.slice(); snap[0] = raw; return new Bag({ slots: snap, selected: 0 }).slots[0]; } catch { return null; }
+  const snap = BLANK.slice(); snap[0] = raw;
+  const strict = () => { try { return new Bag({ slots: snap, selected: 0 }).slots[0]; } catch { return null; } };
+  const ok = strict(), cap = ok ? null : Bag.salvage({ slots: snap, selected: 0 })?.slots[0]; // over-stack: retry clamped to maxStack
+  if (ok || !cap || typeof raw !== 'object') return ok; snap[0] = { ...raw, count: cap.count }; return strict();
 }
 export function cleanChest(raw) {
   const out = new Array(CHEST_SLOTS).fill(null);

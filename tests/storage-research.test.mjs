@@ -59,7 +59,7 @@ test('cleanSlice: slots go through Bag rules, tools gain durability, arrays pad/
   const a = c.chests['1,0'];
   assert.equal(a.length, CHEST_SLOTS);
   assert.deepEqual(a[0], { kind: 'wood', count: 5 });
-  assert.equal(a[1], null); assert.equal(a[2], null); assert.equal(a[4], null);
+  assert.equal(a[1], null); assert.deepEqual(a[2], { kind: 'wood', count: 20 }, 'over-stack is clamped, not dropped'); assert.equal(a[4], null);
   assert.deepEqual(a[3], { kind: 'hammer', count: 1, durability: TOOL_DURABILITY });
   assert.equal(c.chests['2,0'].length, CHEST_SLOTS);
   assert.ok(!('3,0' in c.chests)); assert.ok(!('99,0' in c.chests));
