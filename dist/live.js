@@ -172,7 +172,14 @@ function stageCss(build) {
 }
 
 // ---------- boot ----------
+// The build baked into moduleUrl() (publish_local.py rewrites it in step with version.json).
+const BAKED_BUILD = new URL(moduleUrl(null)).searchParams.get('build');
+
 async function boot() {
+  const retry = state.retryCount ? state.retryCount : 0;
+  // Start fetching game.js and its import graph while version.json is in flight.
+  const early = importGame(null, retry);
+  early.catch(() => {}); // only awaited if the manifest agrees (or is unavailable)
   let manifest = null;
   try {
     manifest = await fetchManifest();
@@ -181,7 +188,7 @@ async function boot() {
   }
   const build = manifest ? manifest.build : null;
   try {
-    const mod = await importGame(build, state.retryCount ? state.retryCount : 0);
+    const mod = await (!build || build === BAKED_BUILD ? early : importGame(build, retry));
     const engine = mod.mount(null);
     if (!validEngine(engine)) throw new Error('mount() did not return { capture, dispose }');
     state.engine = engine;
