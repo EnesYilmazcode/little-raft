@@ -143,6 +143,7 @@ export function createPower(ctx) {
   let env = null, clock = 0;
   const warned = new Set(); // battery keys already announced empty this night
   let pending = {}; // [power-hookups] host: appliance drain owed per battery key, never serialized
+  let wasDark = false; const REARM = 60; // [power-hookups] review: "ran out" re-arms at nightfall, or by day once a battery is back to 60
   let cable = null, cableSig = '', cablePairs = 0; // [power-hookups] one LineSegments battery -> appliance
   const groups = []; // {g, x, z, type, k} for every craft_<power type> group in ctx.raft
   let scanLen = -1, scanFirst = null, scanRaft = null;
@@ -198,7 +199,7 @@ export function createPower(ctx) {
     const geo = new T.BufferGeometry();
     geo.setAttribute('position', new T.BufferAttribute(new Float32Array(MAX_CABLES * 6), 3));
     geo.setDrawRange(0, 0);
-    const mat = new T.LineBasicMaterial({ color: '#2b2b2b' });
+    const mat = new T.LineBasicMaterial({ color: '#7a4c2e' }); // [power-hookups] review: dark copper, reads on the night deck, subtle by day
     geo.userData.shared = mat.userData.shared = true;
     cable = new T.LineSegments(geo, mat);
     cable.name = 'power_cable'; cable.castShadow = false; cable.frustumCulled = false; cable.visible = false;
@@ -295,7 +296,11 @@ export function createPower(ctx) {
       if (clock >= 1) {
         const n = Math.floor(clock); clock -= n;
         const nf = night();
-        if (nf < NIGHT_ON) warned.clear();
+        // [power-hookups] review: hookups drain by day too, so a battery hovering at empty (turbine +1, appliances -2)
+        // would re-announce every second if day cleared the whole set. By day, re-arm only keys that recharged a little.
+        // Each nightfall still re-arms everything, so lights keep their once-per-night notice.
+        const dark = nf >= NIGHT_ON; if (dark && !wasDark) warned.clear(); wasDark = dark;
+        if (!dark) for (const k of warned) if ((st.b[k] || 0) >= REARM) warned.delete(k);
         const r = tickPower(st, ctx.world?.decor, n, wind(), nf, pending); // [power-hookups] pending
         for (const k of r.emptied) if (!warned.has(k)) { warned.add(k); ctx.emit?.({ kind: 'notice', text: 'A battery ran out of charge' }, 'all'); }
       }

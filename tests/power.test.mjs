@@ -289,6 +289,18 @@ test('[power-hookups] module: powerAt by range/charge, draw host-only, pending n
   gm.load(undefined, 'net'); assert.equal(gm.powerAt(2, 0), 0, 'old host -> 1x');
 });
 
+test('[power-hookups] review: a battery hovering at empty by day announces once, re-arms after recharging', () => {
+  const emits = []; const ctx = hookCtx(); ctx.emit = (...a) => emits.push(a);
+  const m = P.createPower(ctx); m.load(undefined, 'save'); let nf = 0; m.link({ wind: () => 0, night: () => nf });
+  const ranOut = () => emits.filter(e => e[0].text === 'A battery ran out of charge').length;
+  for (let i = 0; i < 5; i++) { m.debug.setCharge(0, 0, 1); m.draw(2, 0, 2); m.update(1); }
+  assert.equal(ranOut(), 1, 'no notice spam by day');
+  m.debug.setCharge(0, 0, 100); m.update(1); m.debug.setCharge(0, 0, 1); m.draw(2, 0, 2); m.update(1);
+  assert.equal(ranOut(), 2, 're-armed after recharging');
+  nf = 1; m.debug.setCharge(0, 0, 1); m.draw(2, 0, 2); m.update(1);
+  assert.equal(ranOut(), 3, 'nightfall re-arms');
+});
+
 test('[power-hookups] cable: hidden with no appliance, one pair in range, charge-only bump keeps geometry, re-attach after rebuild', () => {
   const ctx = hookCtx('solo', true); ctx.world.decor = [bat(0, 0)];
   const m = P.createPower(ctx); m.load(undefined, 'save'); m.link({ wind: () => 0, night: () => 0 });
