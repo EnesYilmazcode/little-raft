@@ -4,7 +4,6 @@
 // floor top surface; place the group at the floor (y = .22). Everything builds upward from y = 0
 // inside a ~1.7 x 1.7 footprint. Every call creates its own geometries and materials, so the
 // caller may dispose them freely. Meshes are merged per material to keep draw calls low.
-// createCraftBatch(THREE) is the shared, instanced variant for decor placed on the raft.
 //
 // Types: sail (~3.76 tall), palm (~2.25), lantern (~1.2), net (~0.21), bench (~0.9), crate (~0.84).
 
@@ -30,87 +29,6 @@ export function createCraft(T, type) {
   g.userData.size = { x: size.x, y: size.y, z: size.z };
   g.userData.height = box.max.y;
   return g;
-}
-
-// Placed decor on the raft. Each type is built once (a template) and every placed copy is drawn
-// through one InstancedMesh per template part, so copies share geometry and materials and a part
-// costs one draw call however many copies exist. place(type) returns an empty Group standing for
-// one copy (null for an unknown type): position/rotate it as a sibling of `root` (same parent, so
-// both live in one space), and call sync(handles) with all live handles whenever the set changes.
-// Handles own nothing; template resources belong to the batch and are freed only by dispose().
-export function createCraftBatch(T) {
-  const root = new T.Group();
-  root.name = 'craft-batch';
-  const kinds = new Map(); // type -> {data, parts:[{src, local, inst}], cap} | null
-  const _m = new T.Matrix4();
-  function kind(type) {
-    const key = String(type || '').toLowerCase();
-    if (kinds.has(key)) return kinds.get(key);
-    const tpl = createCraft(T, key);
-    let k = null;
-    if (tpl) {
-      k = { data: tpl.userData, parts: [], cap: 0 };
-      tpl.traverse(o => { if (o.isMesh) k.parts.push({ src: o, local: o.matrixWorld.clone(), inst: null }); });
-    }
-    kinds.set(key, k);
-    return k;
-  }
-  function grow(k, n) {
-    k.cap = Math.max(4, n, k.cap * 2);
-    for (const p of k.parts) {
-      const inst = new T.InstancedMesh(p.src.geometry, p.src.material, k.cap);
-      inst.name = p.src.name;
-      inst.castShadow = p.src.castShadow;
-      inst.receiveShadow = p.src.receiveShadow;
-      if (p.inst) { root.remove(p.inst); p.inst.dispose(); }
-      p.inst = inst;
-      root.add(inst);
-    }
-  }
-  function place(type) {
-    const k = kind(type);
-    if (!k) return null;
-    const h = new T.Group();
-    h.name = 'craft_' + k.data.craftType;
-    h.userData = { ...k.data, batched: true };
-    return h;
-  }
-  function sync(handles) {
-    const by = new Map();
-    for (const h of handles) {
-      const t = h.userData.craftType;
-      if (!by.has(t)) by.set(t, []);
-      by.get(t).push(h);
-    }
-    for (const [type, k] of kinds) {
-      if (!k) continue;
-      const list = by.get(type) || [];
-      if (list.length > k.cap) grow(k, list.length);
-      for (const h of list) h.updateMatrix();
-      for (const p of k.parts) {
-        if (!p.inst) continue;
-        list.forEach((h, i) => p.inst.setMatrixAt(i, _m.multiplyMatrices(h.matrix, p.local)));
-        p.inst.count = list.length;
-        p.inst.visible = list.length > 0;
-        p.inst.instanceMatrix.needsUpdate = true;
-        p.inst.computeBoundingSphere();
-        p.inst.computeBoundingBox();
-      }
-    }
-  }
-  function dispose() {
-    for (const k of kinds.values()) {
-      if (!k) continue;
-      for (const p of k.parts) {
-        p.inst?.dispose();
-        p.src.geometry.dispose();
-        p.src.material.dispose();
-      }
-    }
-    kinds.clear();
-    root.clear();
-  }
-  return { root, place, sync, dispose };
 }
 
 // Thin or flush parts whose shadow is below shadow-map resolution: they only receive.

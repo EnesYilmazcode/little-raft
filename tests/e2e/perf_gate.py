@@ -1,6 +1,6 @@
 """Perf budget gate for Little Raft.
 
-Plays a scripted solo session in headless Chromium (SwiftShader, via tests/e2e/harness.py) and
+Plays a scripted single-player session in headless Chromium (SwiftShader, via tests/e2e/harness.py) and
 fails when the game goes over the budgets in tests/e2e/perf_budget.json.
 
 Measured:
@@ -51,6 +51,8 @@ ROOT = HERE.parent.parent
 DEFAULT_BUDGET = HERE / 'perf_budget.json'
 MAX_FRAMES = 20000  # ring capacity; preallocated so recording never grows the heap
 SEED_JS = (HERE / 'seed_random.js').read_text('utf-8')
+sys.path.insert(0, str(HERE))
+from harness import START_SELECTORS, click_start  # noqa: E402
 
 INIT_JS = r"""
 (() => {
@@ -344,7 +346,7 @@ def breakdown(snap):
             'top10': [{'tris': x[0], 'count': x[1], 'instances': x[2], 'offscreen': bool(x[4]), 'shareOfFrame': round(x[0] / tot, 3)} for x in top]}
 
 
-SESSION = ('open {url}, click #solo, wait {warmup:g}s warmup, then for {duration:g}s repeat a ~8s cycle: '
+SESSION = ('open {url}, click the start control (title menu "New Game", else #solo), wait {warmup:g}s warmup, then for {duration:g}s repeat a ~8s cycle: '
            'press 1 (hook), hold W 0.9s, hold A/D 0.5s, right-drag to look, hold LMB 0.7s to throw the hook, wait 1.4s, '
            'hold LMB 1.2s to reel, press 2,3,4,1, every 3rd cycle Tab (inventory) then Tab to close, hold S 0.5s, Space; '
            'viewport {width}x{height}, SwiftShader Chromium, {seedtxt}. '
@@ -368,11 +370,13 @@ CHECKS = [
     ('growth.heapMBLateHalf', 'growth.heapMBLateHalf', 'raw JS heap growth over the second half (post-GC mid to end; includes V8 compiled code)'),
     ('growth.jsHeapMBLateHalf', 'growth.jsHeapMBLateHalf', 'heap-snapshot JS object growth over the second half (V8 code and native excluded); steady growth here is a leak'),
     ('growth.domNodes', 'growth.domNodes', 'growth of elements in the document tree'),
+    ('growth.domNodesLateHalf', 'growth.domNodesLateHalf', 'growth of elements in the document over the second half (first-use UI excluded); steady growth is a DOM leak'),
     ('growth.listeners', 'growth.listeners', 'JS event listener growth after GC'),
     ('growth.glObjects', 'growth.glObjects', 'live WebGL object growth (create* minus delete*)'),
     ('growth.glObjectsLateHalf', 'growth.glObjectsLateHalf', 'steady live WebGL object growth over the second half: min(mid->end, 3/4->end scaled to the half), so one-off first-use steps are excluded; steady growth is a GPU leak'),
     ('webglContexts', 'webglContexts', 'WebGL contexts created in total'),
     ('webglContextsPeak', 'webglContextsPeak', 'most WebGL contexts live at once (lost contexts excluded)'),
+    ('webglContextsPeakLive', 'webglContextsPeakLive', 'most WebGL contexts alive at once (same as webglContextsPeak; name used by older budgets)'),
     ('longTasks.hitches', 'longTasks.hitches', 'main-thread hitches after warmup: tasks longer than max(hitchMinMs, hitchFactor x median long task) (forced-GC windows excluded)'),
 ]
 
@@ -423,14 +427,23 @@ class GameBootFailure(RuntimeError):
         super().__init__(failure['detail']); self.failure = failure
 
 
+def click_start_wait(page, timeout_s=60):
+    """Click the first visible start control (onboarding menu 'New Game', a #newGame button or the
+    legacy #solo), retrying until one is visible and enabled."""
+    t = time.time()
+    while time.time() - t < timeout_s:
+        if click_start(page): return
+        page.wait_for_timeout(500)
+    raise RuntimeError(f'no visible start control after {timeout_s}s')
+
+
 def boot(page, url, report, repro):
     """Load the page and start a solo game. Raises GameBootFailure (exit 1) when the game threw
     uncaught errors on the way, otherwise RuntimeError with the step that failed (exit 2)."""
     steps = [
         ('load page', lambda: page.goto(url, timeout=120000)),
         ('wait for window.raftDebug', lambda: page.wait_for_function('!!window.raftDebug && !!window.__perf', timeout=120000)),
-        # The onboarding title menu hides #solo and forwards its "new" item to #solo.click() synchronously.
-        ('click New Game', lambda: page.locator('.ob-menu .ob-item[data-act="new"]:visible, #newGame:visible, #solo:visible').first.click(timeout=60000)),
+        ('click a start control (' + ' / '.join(START_SELECTORS) + ')', lambda: click_start_wait(page)),
         ('wait for raftDebug.state.running', lambda: page.wait_for_function('!!(window.raftDebug && raftDebug.state && raftDebug.state.running)', timeout=120000)),
     ]
     for name, fn in steps:
@@ -463,7 +476,7 @@ def run(args, budget):
     report = {'errors': [], 'console': []}
     sess = budget.get('session') or {}
     with StaticServer(dist) as srv, sync_playwright() as p:
-        repro = SESSION.format(dist=dist, url=f'{dist}/index.html (served over http)', warmup=args.warmup, duration=args.duration, width=args.width, height=args.height,
+        repro = SESSION.format(dist=dist, url=f'{dist}/index.html?pinQuality (served over http)', warmup=args.warmup, duration=args.duration, width=args.width, height=args.height,
                                seedtxt=f'Math.random seeded with {args.seed} (mulberry32, tests/e2e/seed_random.js)' if args.seed is not None else 'unseeded Math.random',
                                seedarg='' if args.seed == 1 else (' --no-seed' if args.seed is None else f' --seed {args.seed}'))
         b = launch_chromium(p, extra_args=['--enable-precise-memory-info'])
@@ -478,7 +491,9 @@ def run(args, budget):
             cdp = ctx.new_cdp_session(page)
             cdp.send('Performance.enable'); cdp.send('HeapProfiler.enable')
             chunks = []; cdp.on('HeapProfiler.addHeapSnapshotChunk', lambda e: chunks.append(e['chunk']))
-            boot(page, srv.url, report, repro)
+            # ?pinQuality: builds with adaptive quality (quality.js) hold the preset's top level, so a
+            # fast or slow box measures the same scene; older builds ignore the parameter.
+            boot(page, srv.url + '?pinQuality', report, repro)
             page.wait_for_timeout(int(args.warmup * 1000))
             # On a very loaded box 6 s can be only a handful of frames; make sure first-frame
             # shader compiles and buffer uploads are done before the baseline heap/GL sample.
@@ -509,6 +524,7 @@ def run(args, budget):
             h1 = heap(page, cdp, chunks=chunks); h1['t'] = round(time.time() - t0, 1); samples.append(h1)
             page.evaluate('__perf.stop()')
             d = page.evaluate('__perf.dump()')
+            report['renderQuality'] = page.evaluate("(() => { try { const r = window.raftDebug && window.raftDebug.renderInfo; return r ? {shadows: r.shadows, pixelRatio: r.pixelRatio, quality: r.quality, meshes: r.meshes, shadowCasters: r.shadowCasters} : null; } catch (e) { return null; } })()")
             report['endState'] = page.evaluate("""(() => { const s = window.raftDebug?.state || {}; return {running: s.running, items: s.items, tiles: s.tiles, collected: s.collected, inventoryOpen: s.inventoryOpen, stock: s.stock}; })()""")
         finally:
             b.close()
@@ -567,10 +583,11 @@ def run(args, budget):
                    'glObjectsLateHalf': min(gl_late, gl_q3_scaled) if gl_q3_scaled is not None else gl_late,
                    'glObjectsMidToEnd': gl_late, 'glObjectsQ3ToEnd': gl_q3, 'glObjectsQ3ToEndScaled': gl_q3_scaled,
                    'domNodes': h1['domInTree'] - h0['domInTree'],
+                   'domNodesLateHalf': h1['domInTree'] - mid['domInTree'] if mid else None,
                    'allNodes': (h1['nodes'] or 0) - (h0['nodes'] or 0), 'documents': (h1['documents'] or 0) - (h0['documents'] or 0),
                    'listeners': (h1['listeners'] or 0) - (h0['listeners'] or 0), 'glObjects': gl_all, 'glByKind': gl_kinds},
         'glLiveObjects': d['gl'], 'glByContext': d['glByContext'],
-        'webglContexts': d['contexts'], 'webglContextsPeak': d['contextsPeak'], 'webglContextsLost': d['lostContexts'], 'glRenderer': d['vendor'],
+        'webglContexts': d['contexts'], 'webglContextsPeak': d['contextsPeak'], 'webglContextsLost': d['lostContexts'], 'webglContextsPeakLive': d['contextsPeak'], 'webglContextsLiveAtEnd': d['liveContexts'], 'renderQuality': report.get('renderQuality'), 'glRenderer': d['vendor'],
         'endState': report['endState'],
     }
     fails = check(metrics, budget, repro)

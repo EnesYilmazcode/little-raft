@@ -117,13 +117,21 @@ export function createHands(T, { modelFactory = null } = {}) {
   const ropeDarkMat = mat(0x8a6e44, 1.0, { map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
   // Baked parts: one vertex-coloured material per surface type (the flat ones above only supply the colours;
   // the baked ones carry the surface textures and the key shade).
-  const skinV = keyShade(mat(0xffffff, 0.6, { emissive: 0x160805, vertexColors: true, map: tx.skin }));
-  const clothV = keyShade(mat(0xffffff, 1.0, { vertexColors: true, map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
+  // [look] skin and cloth bake their colour RELATIVE to a base (vertex colour = part / base) and the shared material
+  // carries the base, so setLook() recolours every baked hand and sleeve by setting one material colour.
+  const BODY_SKIN = new T.Color('#f2c29b');           // avatar.js default skin (dist/look.js PALETTE.skin[0])
+  const toneOf = (m) => { const c = m.color.clone(); return new T.Color(c.r / BODY_SKIN.r, c.g / BODY_SKIN.g, c.b / BODY_SKIN.b); };
+  const skinTones = [skin, skinPalm, nail, crease].map((m) => [m, toneOf(m)]);
+  const SLEEVE_BASE = sleeveMat.color.clone();
+  const skinV = keyShade(mat(0xffffff, 0.6, { emissive: 0x160805, vertexColors: true, map: tx.skin })); skinV.color.copy(BODY_SKIN);
+  const clothV = keyShade(mat(0xffffff, 1.0, { vertexColors: true, map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 })); clothV.color.copy(SLEEVE_BASE);
   const ropeV = mat(0xffffff, 1.0, { vertexColors: true, map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
   const tint = (m) => m.material.color;
+  const relTo = (base) => (m) => { const c = m.material.color; return new T.Color(c.r / base.r, c.g / base.g, c.b / base.b); };
+  const TINT_FOR = new Map([[skinV, relTo(BODY_SKIN)], [clothV, relTo(SLEEVE_BASE)]]);
   const meshesOf = (...objs) => { const out = []; for (const o of objs) o.traverse((c) => { if (c.isMesh) out.push(c); }); return out; };
   const bake = (owner, objs, material) => {
-    const mesh = new T.Mesh(G(mergeGeometry(T, owner, meshesOf(...objs), tint)), material);
+    const mesh = new T.Mesh(G(mergeGeometry(T, owner, meshesOf(...objs), TINT_FOR.get(material) ?? tint)), material);
     owner.add(mesh); return mesh;
   };
 
@@ -553,5 +561,14 @@ export function createHands(T, { modelFactory = null } = {}) {
       return st.hookOut ? ropeTip : handTip;                    // line runs out of the right fist while the hook is out
     },
     preload(kinds) { for (const k of kinds) mountFor(k); },
+    setLook(colors) {
+      const { skin: skinHex, shirt } = colors && typeof colors === 'object' ? colors : {};
+      // The viewmodel skin keeps its own darker, warmer shading: each skin material is the chosen tone scaled per
+      // channel by (old hard-coded colour / default body skin), so the default tone gives exactly the old colours.
+      if (typeof skinHex === 'string') for (const [m, c] of skinTones) m.color.set(skinHex).multiply(c);
+      if (typeof shirt === 'string') { sleeveMat.color.set(shirt); cuffMat.color.set(shirt).multiplyScalar(0.75); }
+      if (typeof skinHex === 'string') skinV.color.set(skinHex);   // baked hands (vertex colours are relative to BODY_SKIN)
+      if (typeof shirt === 'string') clothV.color.set(shirt);      // baked sleeve + cuff (relative to the default sleeve)
+    },
   };
 }
