@@ -131,3 +131,33 @@ meteor k's head. `stars.wish(k)` sends the action for the current day.
   the item icon. Check that `stars.state()` reports wishes 1 and `wish1` is in `world.achievements`.
 - A day shot (phase .3) shows no meteors. An underwater shot shows none. `?daynight=off` loads with no errors and
   no mesh. A guest probe, if the harness supports co-op, gets the same `alive` k list as the host at the same clock.
+
+## Build notes
+- **Logbook extra tabs hook** (commit "Add generic logbook extra tabs hook"): implemented to the shells spec's superset
+  contract, so both features share it. `createLogbookUI({tabs:{list}})`; entries `{id, label, view, render?, act?}`,
+  ids `/^[a-z][a-z0-9-]{0,15}$/` (not notes/ach/tasks), first wins, max 4; `view()` -> null hides the tab,
+  `{sig, html, badge?}` renders only on a sig change; a throwing view/render hides that tab only. `[data-lb-act]`
+  clicks call `act(name, el)`. Tabs and panels are created by JS after Tasks and removed on `destroy()`. The tab
+  row now wraps (`flex-wrap`) so 5+ tabs fit at 360 px. content.js `logbookTabs()` reuses one array and try/catches each
+  module without disabling it.
+- **Shower rate**: `P` is **0.45**, not 0.3. About 42% of nights have rain at one of the three lookups, so P = .3 gave
+  a measured 0.17 to 0.18 after rain, below the spec's own .2 to .3 test. With .45 the measured rate is about .26 (1 in 4
+  clear nights).
+- **Extra salts**: the radiant elevation uses salt 71 (per day) and the start offset from the radiant uses salt 72 (per
+  meteor). The spec named no salts for these.
+- **Shader time**: float32 cannot hold absolute clocks (up to 1.2e9 s), so the CPU computes each slot's head progress
+  and the uniform is `uT = (u, fade, tint, flare)`, not `(t0, life, tint, flare)`. There is no `uClock`.
+- `aliveAt(seed, clock, list, force)` takes the QA force set. `list = {n, day, m:[3 meteors]}` comes from `makeAlive()`.
+  `isShowerNight(seed, day, force)` works the same way.
+- The aim test also needs `skyA > .15`, so a meteor hidden by cloud cannot be wished on. When the 5-wish cap is
+  reached, the prompt becomes the muted hint "Five wishes tonight. Just enjoy the sky" and E is not claimed.
+- Wish loot carries `wish:1`. The module's `effect()` adds a "A wish came true!" feed line, then the generic loot path
+  adds the "+1 <item>" icon row and plays `twinkle`. The guest's ready check is `hostV1`, which is true only when the
+  net slice has `v:1`.
+- Debug also has `next()`, `meteor(k)`, `unforce()` and `slots()`. `aimAt(k, u=.5)` uses `raftDebug.aim(pitch, yaw)`,
+  and pitch is clamped at 1.35 rad, so pick meteors below about 75° when aiming by script.
+- QA (swiftshader, 1280x720 and 390x760): an aimed meteor shows its tail, glow and `E Make a wish`. Wishing adds the
+  feed rows "A wish came true!" and "+1 <item>", raises the achievement toast "Wish Upon a Star" and sets
+  `wishes.host` to 1. The Night Sky tab works on desktop and mobile. There are no meteors by day, and `?daynight=off`
+  loads with no errors and no mesh. The 3x press flash is hard to see in swiftshader stills. No co-op guest probe was
+  run: guests use the same pure schedule, and the action goes through the existing path.
