@@ -275,10 +275,12 @@ export function createWildlife(ctx) {
   const last = { gx: new Float32Array(GULL_MAX * 3), gs: new Array(GULL_MAX).fill('hidden'), sx: new Float32Array(SCHOOL_MAX * 2), nG: 0, nS: 0 };
 
   let built = false, disposed = false, group = null, gullBody = null, gullWing = null, fish = null, dolphin = null, turtle = null, material = null, gullMat = null, fishMat = null, tuck = null;
+  let wingM = []; const wingKey = new Float64Array(GULL_MAX * 4); // per wing: local matrix cached by (flap, fold)
   let m4, mA, mB, mC, mD, mE, vP, v3, v3b, sc3, q4, qR, eul, col, zero, UP, fishDark, fishWater;
 
   function build() {
     const T = ctx.T;
+    wingM = Array.from({ length: GULL_MAX * 2 }, () => new T.Matrix4()); wingKey.fill(NaN);
     m4 = new T.Matrix4(); mA = new T.Matrix4(); mB = new T.Matrix4(); mC = new T.Matrix4(); mD = new T.Matrix4(); mE = new T.Matrix4(); vP = new T.Vector3();
     v3 = new T.Vector3(); v3b = new T.Vector3(); sc3 = new T.Vector3(1, 1, 1); q4 = new T.Quaternion(); qR = new T.Quaternion();
     eul = new T.Euler(0, 0, 0, 'YXZ'); col = new T.Color(); zero = new T.Matrix4().makeScale(0, 0, 0); UP = new T.Vector3(0, 1, 0);
@@ -363,6 +365,12 @@ export function createWildlife(ctx) {
   // Folding swings the wing back (Y), turns it on edge along the flank with the grey top facing out (X twist
   // about its own length), and drops the shoulder so the wing lies along the flank instead of standing above it.
   function setWing(index, side, flap, fold) {
+    const w = wingM[index], k = index * 2;
+    if (wingKey[k] !== flap || wingKey[k + 1] !== fold) { wingKey[k] = flap; wingKey[k + 1] = fold; wingLocal(w, side, flap, fold); } // perched gulls hold still most of the time
+    mB.multiplyMatrices(m4, w);
+    gullWing.setMatrixAt(index, mB);
+  }
+  function wingLocal(out, side, flap, fold) {
     mA.makeTranslation(side * (GULL_SHOULDER[0] + 0.035 * fold), GULL_SHOULDER[1] - 0.09 * fold, GULL_SHOULDER[2]);
     mB.makeScale(side, 1, 1);
     mC.makeRotationY(fold * 1.55);
@@ -370,8 +378,7 @@ export function createWildlife(ctx) {
     mE.makeRotationZ(flap * (1 - 0.8 * fold));
     mA.multiply(mB).multiply(mC).multiply(mD).multiply(mE);
     mC.makeScale(1 - 0.3 * fold, 1, 1); mA.multiply(mC); // folded, the hand tucks under: the tips just cross the tail
-    mB.multiplyMatrices(m4, mA);
-    gullWing.setMatrixAt(index, mB);
+    out.copy(mA);
   }
 
   // The visit and latched perch gull i uses at t. Returns the perch ({key,x,y,z}) or null; fills vis[i].
