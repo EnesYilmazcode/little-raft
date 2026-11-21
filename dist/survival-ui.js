@@ -1,7 +1,7 @@
 // Little Raft survival UI: shared-play hotbar (.tools) + inventory/crafting dialog (#inventory).
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, holdHint, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, holdHint, holdLabel, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_ICONS } from './item-svg.js'; // [progression-hook]
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
@@ -264,6 +264,9 @@ const CSS = `
 #inventory .sv-craftbtn.sv-deny{box-shadow:inset 0 0 0 2px #e06a4a,0 0 6px #e06a4a88}
 #inventory .sv-fill{position:absolute;inset:0;transform-origin:left center;transform:scaleX(var(--fill,0));background:linear-gradient(90deg,#d8f7a066,#f4ffd0aa);pointer-events:none}
 #inventory .sv-craftbtn:not(.sv-holding) .sv-fill{transition:transform .25s ease-out}
+#inventory .sv-craftbtn[aria-disabled="true"] .sv-fill{transition:none;transform:scaleX(0)}
+#inventory .sv-craftbtn.sv-holding .sv-clabel,#inventory .sv-craftbtn.sv-done .sv-clabel{font-variant-numeric:tabular-nums}
+#inventory .sv-craftbtn.sv-done[aria-disabled="true"]{color:#c8f7a0}
 #inventory .sv-clabel,#inventory .sv-chint,#inventory .sv-ccount{position:relative;pointer-events:none}
 #inventory .sv-chint{font:600 11px/1 ${FONT};letter-spacing:0;color:#e6f7d4;opacity:.9}
 #inventory .sv-chint:empty{display:none}
@@ -477,7 +480,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let tools = null, hotEls = [];
   let recipes = [], recipeEls = [], groups = [];
   let activeTab = dlg.dataset.svTab || null, pickId = dlg.dataset.svPick || null, shownPick = null, ingEls = [];
-  let hold = null, btnDenyTimer = 0, countTimer = 0;
+  let hold = null, btnDenyTimer = 0, countTimer = 0, flashUntil = 0;
   let tipAnchor = null;
   let pinId = null, trackEl = null, trackSig = null;
   const store = () => { try { return window.localStorage; } catch { return null; } };
@@ -536,12 +539,12 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   }
   function setTab(id, focus = false) {
     if (!groups.some(g => g.id === id)) return;
-    if (id !== activeTab) { stopHold(); activeTab = id; pickId = null; reorderRecipes(); applyTab(); }
+    if (id !== activeTab) { stopHold(); flashUntil = 0; activeTab = id; pickId = null; reorderRecipes(); applyTab(); }
     if (focus) tabsEl.querySelector(`.sv-tab[data-cat="${id}"]`)?.focus();
   }
   function setPick(id) {
     if (id === pickId) return;
-    stopHold(); pickId = id; applyPick();
+    stopHold(); flashUntil = 0; pickId = id; applyPick();
   }
   // Open the recipe that makes an ingredient (its tab, picked, focused and scrolled into view).
   function jumpTo(id) {
@@ -588,7 +591,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     });
     const ready = v.state === 'ready';
     D.btn.setAttribute('aria-disabled', String(!ready));
-    if (!hold) {
+    if (!hold && performance.now() >= flashUntil) {
+      D.btn.classList.remove('sv-done');
       D.label.textContent = ready ? 'Craft' : v.state === 'gated' ? 'Locked' : v.state === 'full' ? 'Bag is full' : 'Missing materials'; // [progression-hook]
       D.hint.textContent = ready ? holdHint(v.times) : '';
     }
@@ -722,9 +726,13 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     return true;
   }
   function setFill(p) { D.btn.style.setProperty('--fill', p.toFixed(3)); }
+  // While held the label counts up ('Crafting 2 / 4'); on release it says what was made ('Crafted 4').
   function showCount(n) {
+    if (!hold) return;
     clearTimeout(countTimer);
-    D.count.textContent = n > 0 ? '+' + n : '';
+    D.label.textContent = holdLabel(n, hold.cap, true);
+    D.hint.textContent = '';
+    D.count.textContent = '';
   }
   function startHold() {
     if (!pickId) return;
@@ -755,11 +763,16 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function stopHold() {
     if (!hold) return;
     cancelAnimationFrame(hold.raf);
+    const made = hold.done, out = viewOf(hold.id)?.r.out.count || 1;
     hold = null;
     D.btn.classList.remove('sv-holding');
     setFill(0);
     clearTimeout(countTimer);
-    countTimer = setTimeout(() => { D.count.textContent = ''; }, 1100);
+    flashUntil = performance.now() + 1100;
+    D.label.textContent = holdLabel(made, 0, false, out);
+    D.hint.textContent = '';
+    D.btn.classList.add('sv-done');
+    countTimer = setTimeout(() => { flashUntil = 0; paintDetail(); }, 1100);
     paintDetail();
   }
 

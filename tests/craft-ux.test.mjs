@@ -135,6 +135,17 @@ const { ITEMS } = await import(new URL('items.js', base));
 const book = () => CB.catalogueRecipes(RECIPES, ITEMS);
 const nameOfItem = k => ITEMS[k]?.name ?? ITEM_INFO[k]?.name ?? k;
 
+test('holdLabel counts up while held and says what was made on release', () => {
+  assert.equal(CB.holdLabel(1, 4), 'Crafting 1 / 4');
+  assert.equal(CB.holdLabel(3, 4), 'Crafting 3 / 4');
+  assert.equal(CB.holdLabel(5, 4), 'Crafting 5 / 5', 'never shows more done than the total');
+  assert.equal(CB.holdLabel(1, 1), 'Crafting', 'a single craft has no counter');
+  assert.equal(CB.holdLabel(4, 0, false), 'Crafted 4');
+  assert.equal(CB.holdLabel(4, 0, false, 3), 'Crafted 12', 'counts items, not crafts (nail makes 3)');
+  assert.equal(CB.holdLabel(0, 0, false), '');
+  assert.equal(CB.holdLabel('x', null, false), '');
+});
+
 test('catalogueRecipes: hand recipes plus station recipes, hand ones win', () => {
   const all = book();
   const ids = all.map(r => r.id);

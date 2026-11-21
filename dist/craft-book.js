@@ -321,6 +321,18 @@ export function holdHint(times, cap = HOLD.max) {
   return n > 1 ? `hold: up to ${n}` : '';
 }
 
+/**
+ * Craft button text while a hold is running ('Crafting 2 / 4') and just after it ends ('Crafted 4').
+ * `out` = items each craft makes, so a nail recipe (x3) reads 'Crafted 12' after 4 crafts.
+ */
+export function holdLabel(done, cap, holding = true, out = 1) {
+  const d = Math.max(0, Math.floor(Number(done) || 0));
+  const per = Math.max(1, Math.floor(Number(out) || 1));
+  if (!holding) return d > 0 ? `Crafted ${d * per}` : '';
+  const c = Math.max(d, Math.floor(Number(cap) || 0));
+  return c > 1 ? `Crafting ${d} / ${c}` : 'Crafting';
+}
+
 // ---- tooltip facts ----
 /**
  * Hand recipes (RECIPES-like: {id, name, output:{kind,count}, cost}) plus station and catalogue
