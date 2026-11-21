@@ -68,15 +68,16 @@ export function createSailingUI({ signal } = {}) {
     const s = toScreen(+info.heading || 0, yaw);
     if (s !== qS) { qS = s; sail.setAttribute('transform', 'rotate(' + s + ')'); }
     const hasSail = (info.nSails | 0) > 0;
-    const dim = !hasSail || !info.raised || !!info.anchored;
+    const motor = !info.anchored && +info.motor > .01; // engine: a running motor pushes along the heading
+    const dim = !motor && (!hasSail || !info.raised || !!info.anchored);
     if (dim !== sDim) { sDim = dim; sail.classList.toggle('sail-dim', dim); }
 
-    const m = !hasSail ? 'none' : info.anchored ? 'anchor' : info.raised ? 'up' : 'drift';
+    const m = motor ? (hasSail && info.raised ? 'sailmotor' : 'motor') : !hasSail ? 'none' : info.anchored ? 'anchor' : info.raised ? 'up' : 'drift';
     const sp = Math.round(Math.max(0, +info.speed || 0) * 10);
-    if (m !== mode || (sp !== qSpeed && (m === 'up' || m === 'drift'))) {
+    if (m !== mode || (sp !== qSpeed && m !== 'none' && m !== 'anchor')) {
       mode = m; qSpeed = sp;
       const t = m === 'none' ? 'No sail — craft one' : m === 'anchor' ? 'Anchored'
-        : (m === 'up' ? 'Sail up · ' : 'Drifting · ') + (sp / 10).toFixed(1) + ' m/s';
+        : (m === 'up' ? 'Sail up · ' : m === 'motor' ? 'Motor · ' : m === 'sailmotor' ? 'Sail + motor · ' : 'Drifting · ') + (sp / 10).toFixed(1) + ' m/s';
       if (t !== labelText) { labelText = t; label.textContent = t; }
     }
     const ls = !hasSail ? '' : info.anchored ? 'Anchor dropped' : info.raised ? 'Sail raised' : 'Sail lowered';

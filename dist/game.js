@@ -362,7 +362,8 @@ export function mount(transfer = null) {
     building = createBuilding(T, scene); // building-pieces lane hook
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
-      action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging}); for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
+      action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
+      getPush:(s, o) => { content?.sailPush(s, o); }, steerTargets:() => content?.steerTargets() ?? null}); /* engine: motor push + wheel grab points */ for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
     try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     rebuildRaft();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
