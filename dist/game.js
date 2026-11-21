@@ -2,6 +2,7 @@ import * as T from './vendor/three.module.js';
 import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
+import { createSky, SKY } from './sky.js?build=v3-survival-ae77fa84ac2b';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
 import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
@@ -181,7 +182,7 @@ export function mount(transfer = null) {
     if (raw) { try { const v = cleanWorld(JSON.parse(raw)); if (v) world = v; } catch {} }
     const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
   }
-  let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghosts, rope, ropeAttr, hookMesh, friend, player, sun;
+  let scene = null, camera = null, renderer = null, ocean = null, sky = null, raft, itemsGroup, ghosts, rope, ropeAttr, hookMesh, friend, player, sun;
   let hands = null, offIconReady = null;
   const modelOf = k => { try { return getModel(k); } catch (e) { console.warn('model failed', k, e); return null; } };
   let farmView = null, farmSeen = null, farmLast = 0; // farming
@@ -300,7 +301,7 @@ export function mount(transfer = null) {
       for (const g of parts) g.dispose();
       merged.computeBoundingSphere();
       const mesh = new T.Mesh(merged, list[0].material); mesh.castShadow = castShadow ?? list[0].castShadow; mesh.receiveShadow = list[0].receiveShadow;
-      for (const m of list) { m.parent.remove(m); m.geometry.dispose(); }
+      for (const m of list) { m.parent.remove(m); if (!m.geometry.userData.shared) m.geometry.dispose(); }
       root.add(mesh); out.push(mesh);
     }
     const prune = o => { for (const c of [...o.children]) { prune(c); if (c.type === 'Group' && !c.children.length) o.remove(c); } }; // emptied wrappers
@@ -310,7 +311,7 @@ export function mount(transfer = null) {
   // three renders transparent DoubleSide materials as two passes by flipping side + needsUpdate every frame, which
   // re-resolves the shader program per object per frame. One pass looks the same on these small props.
   const singlePass = root => root.traverse(o => { for (const m of [].concat(o.material || [])) if (m.transparent && m.side === T.DoubleSide) m.forceSinglePass = true; });
-  function disposeGeometry(o) { const cached = new Set(materialCache.values()), materials = new Set(); o.traverse(c => { c.geometry?.dispose(); for (const m of [].concat(c.material || [])) if (!cached.has(m)) materials.add(m); }); for (const m of materials) { m.map?.dispose(); m.dispose(); } }
+  function disposeGeometry(o) { const cached = new Set(materialCache.values()), materials = new Set(); o.traverse(c => { if (!c.geometry?.userData.shared) c.geometry?.dispose(); for (const m of [].concat(c.material || [])) if (!cached.has(m) && !m.userData.shared) materials.add(m); }); for (const m of materials) { m.map?.dispose(); m.dispose(); } }
 
   // ---------- DOM adoption (stable nodes shared across hot swaps) ----------
   function prepareDom() {
@@ -338,26 +339,26 @@ export function mount(transfer = null) {
   function init() {
     const assetBuild = new URL(import.meta.url).searchParams.get('build') || 'dev'; document.querySelectorAll('use[href*="icons.svg"]').forEach(el => el.setAttribute('href', 'icons.svg?build=' + assetBuild + '#' + el.getAttribute('href').split('#')[1]));
     prepareDom();
-    scene = new T.Scene(); scene.background = new T.Color('#cbd2c0'); scene.fog = new T.Fog('#cbd2c0', 25, 125);
+    scene = new T.Scene(); scene.background = new T.Color(SKY.horizon); scene.fog = new T.Fog(SKY.horizon, 40, 140);
     camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 200); camera.rotation.order = 'YXZ'; scene.add(camera);
     renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:true});
     renderer.setPixelRatio(baseRatio * resScale); renderer.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
-    scene.add(new T.HemisphereLight('#f2ead4', '#3d6b6a', 1.8));
+    scene.add(new T.HemisphereLight('#eef6f8', '#3a7479', 1.8));
     sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(-15, 28, 12); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, {left:-25, right:25, top:25, bottom:-25}); sun.shadow.bias = -.001; scene.add(sun);
-    ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.receiveShadow = true; scene.add(ocean.mesh); ocean.update(elapsed);
+    sky = createSky(T, {sunDirection:sun.position}); scene.add(sky.group);
+    ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:SKY.horizon, fadeNear:40, fadeFar:130}); scene.add(ocean.mesh); ocean.update(elapsed);
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
     farmView = createFarmView(T, {getModel:modelOf}); scene.add(farmView.group); // farming
-    itemsGroup = new T.Group(); scene.add(itemsGroup);
+    itemsGroup = new T.Group(); scene.add(itemsGroup); ocean.trackFoam(itemsGroup);
     player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
     ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => k === Farm.PLOT_TYPE ? farmView.ghostModel() : createCraft(T, k)}); // planter ghost = the placed empty pot
     const ropeGeo = new T.BufferGeometry(); ropeAttr = new T.BufferAttribute(new Float32Array((ROPE_SEGMENTS + 1) * 3), 3); ropeAttr.setUsage(T.DynamicDrawUsage); ropeGeo.setAttribute('position', ropeAttr);
     rope = new T.Line(ropeGeo, new T.LineBasicMaterial({color:'#e9d39a'})); rope.visible = false; rope.frustumCulled = false; scene.add(rope);
     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
     buildViewmodels();
-    const scenery = new T.Group(); scenery.name = 'scenery'; // far islands and clouds, baked to a handful of draw calls
+    const scenery = new T.Group(); scenery.name = 'scenery'; // far islands (clouds live in the sky shader), baked to a handful of draw calls
     for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scenery.add(g); }
-    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; scenery.add(g); }
     scene.add(scenery); bakeStatic(scenery, {castShadow:false}); // islands sit far outside the shadow camera anyway
     rebuildRaft();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
@@ -397,6 +398,7 @@ export function mount(transfer = null) {
   // Incremental: only parts whose key changed are built or disposed, so placing one thing never rebuilds the raft.
   const raftParts = new Map();
   function rebuildRaft() {
+    ocean.setRaftTiles(world.tiles);
     const want = new Map();
     if (world.tiles.length) want.set('deck:' + world.tiles.join(';'), world.tiles); // all tiles bake into one deck part
     farmSeen = null; // farming
@@ -960,7 +962,7 @@ export function mount(transfer = null) {
     const dialog = uiBlocked();
     if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { closeConnection(); notice('Host disconnected. You are back on your own raft.'); }
     if (role === 'host' && conn?.open && now - lastGuestMessage > 8000) { const stale = conn; conn = null; unbindTarget(stale); stale.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); }
-    ocean.update(elapsed, camera); sfx.tick(dt, {swimming:physics.swimming});
+    ocean.update(elapsed, camera); sky.update(elapsed, camera); sfx.tick(dt, {swimming:physics.swimming});
     updateRaft(dt); movePlayer(dt, running && !dialog);
     updateAvatars(dt); updateCamera(dt);
     frameAim = running && !dialog ? currentAim() : null;
@@ -1319,7 +1321,7 @@ export function mount(transfer = null) {
     for (const m of materialCache.values()) mats.add(m);
     for (const g of geos) { try { g.dispose(); } catch {} }
     for (const m of mats) { try { for (const v of Object.values(m)) if (v?.isTexture) v.dispose(); m.dispose(); } catch {} }
-    try { ocean?.dispose(); } catch {}
+    try { ocean?.dispose(); sky?.dispose(); } catch {}
     materialCache.clear(); itemMeshes.clear(); scene.clear();
     scene = null; // renderer, canvas, AudioContext, peer and conn are left untouched
   }
