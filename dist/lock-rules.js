@@ -37,6 +37,14 @@ export function shouldRelockAfterClose({ running, locked, blocked, returnToPause
   return !!running && !locked && !blocked && !returnToPause;
 }
 
+// Escape released with a relock waiting on it. A browser keyup (fromShell=false) is preventDefaulted while
+// running, because Chrome revokes a lock granted inside an unhandled Escape keyup, and the relock is deferred
+// past the keyup. The desktop shell's released() relocks synchronously to keep its user gesture.
+// Returns { preventDefault, relock: 'now' | 'defer' | null }.
+export function escReleasePlan({ running, pending, fromShell = false } = {}) {
+  return { preventDefault: !fromShell && !!running, relock: !pending ? null : fromShell ? 'now' : 'defer' };
+}
+
 // Escape bookkeeping for the pause menu's keyup fallback (browsers often swallow the keydown that
 // ends pointer lock). A press whose keydown was handled never pauses on keyup, however long it is
 // held: key-repeat keeps it handled. Lock losses the page caused itself are not recorded.
