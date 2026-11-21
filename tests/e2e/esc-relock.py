@@ -67,8 +67,29 @@ with sync_playwright() as p:
             results[name] = {'ok': False, 'exc': str(e)}
         if not results[name]['ok']: failed.append(name)
         ctx.close()
+    # LOCK-3: holding Esc in locked play for 2.4 s must still open the pause menu on release.
+    ctx = b.new_context(viewport={'width': 640, 'height': 360}); pg = ctx.new_page()
+    try:
+        pg.goto(url); pg.wait_for_function('!!window.raftDebug', timeout=20000)
+        pg.locator('#newGame' if pg.locator('#newGame').count() else '#solo').click()
+        pg.wait_for_function('raftDebug.state.running', timeout=15000); pg.wait_for_timeout(800)
+        if not pg.evaluate('!!document.pointerLockElement'): pg.mouse.click(320, 180); pg.wait_for_timeout(500)
+        cdp = ctx.new_cdp_session(pg)
+        start = pg.evaluate(STATE)
+        key(cdp, 'rawKeyDown', 'Escape', 27)
+        for _ in range(30):
+            pg.wait_for_timeout(80)
+            cdp.send('Input.dispatchKeyEvent', {'type': 'rawKeyDown', 'key': 'Escape', 'code': 'Escape', 'autoRepeat': True,
+                                                'windowsVirtualKeyCode': 27, 'nativeVirtualKeyCode': 27})
+        key(cdp, 'keyUp', 'Escape', 27); pg.wait_for_timeout(1500)
+        end = pg.evaluate(STATE)
+        results['held_esc_pauses'] = {'ok': start['locked'] and 'options' in end['dialogs'], 'start': start, 'end': end}
+    except Exception as e:
+        results['held_esc_pauses'] = {'ok': False, 'exc': str(e)}
+    if not results['held_esc_pauses']['ok']: failed.append('held_esc_pauses')
+    ctx.close()
     b.close()
 srv.shutdown()
 print(json.dumps(results, indent=1))
-print('FAIL: ' + ', '.join(failed) if failed else 'PASS: pointer still locked 3 s after Esc from inventory, pause and crew')
+print('FAIL: ' + ', '.join(failed) if failed else 'PASS: pointer still locked 3 s after Esc from inventory, pause and crew; held Esc opens pause')
 sys.exit(1 if failed else 0)

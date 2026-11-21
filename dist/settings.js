@@ -297,7 +297,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   window.addEventListener('keyup', guard((event) => {
     if (event.key !== 'Escape') return;
     // Only pause for an unhandled Escape that just released the lock.
-    if (!esc.keyupOpensPause(performance.now())) return;
+    if (!esc.keyupOpensPause(performance.now(), { locked: !!document.pointerLockElement })) return;
     if (!dialog.open && !otherDialogs().length && gameActive()) { event.preventDefault(); open(); }
   }), { capture: true, signal: ac.signal });
 

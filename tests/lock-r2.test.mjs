@@ -29,3 +29,34 @@ test('LOCK-2: body.relock ends on lock loss, lock error and after the timeout', 
   assert.equal(rules.relockPending({ locked: true }), false, 'lock arrived');
   assert.ok(rules.RELOCK_TIMEOUT >= 400 && rules.RELOCK_TIMEOUT <= 1000);
 });
+
+test('LOCK-3: holding the Escape that ended the lock for 2.4 s still opens pause on release', () => {
+  const g = rules.createEscGate();
+  g.lockLost(0); // Chrome swallowed the first keydown to exit the lock
+  for (let t = 500; t <= 2400; t += 80) g.keydown(t, { repeat: true });
+  assert.equal(g.keyupOpensPause(2400), true);
+  const quick = rules.createEscGate(); quick.lockLost(0);
+  assert.equal(quick.keyupOpensPause(120), true);
+});
+
+test('LOCK-3: repeats with no recent lock loss do not invent one', () => {
+  const g = rules.createEscGate();
+  for (let t = 0; t <= 2400; t += 80) g.keydown(t, { repeat: true });
+  assert.equal(g.keyupOpensPause(2400), false);
+});
+
+test('LOCK-3: an unhandled keyup while the page still holds the lock pauses (lock loss reported late)', () => {
+  const g = rules.createEscGate();
+  for (let t = 0; t <= 2400; t += 80) g.keydown(t, { repeat: true });
+  assert.equal(g.keyupOpensPause(2400, { locked: true }), true);
+  const unlocked = rules.createEscGate();
+  assert.equal(unlocked.keyupOpensPause(2400, { locked: false }), false, 'no lock and no recent loss');
+});
+
+test('LOCK-3: holding Esc after it closed the inventory still never pauses', () => {
+  const g = rules.createEscGate();
+  g.lockLost(0, { selfCaused: true });
+  g.keydown(200, { handled: true });
+  for (let t = 230; t < 2600; t += 33) g.keydown(t, { repeat: true });
+  assert.equal(g.keyupOpensPause(2600, { locked: true }), false, 'handled press never pauses, even after a relock');
+});
