@@ -28,7 +28,7 @@
 //   cancel() -> stage = 'done' (no event)
 //
 // Integration example (coordinator side):
-//   import { HookCast } from './hook-physics.js';
+//   import { HookCast } from './hook-physics.js?build=38a181a923a6';
 //   // on release of charge button:
 //   hook = new HookCast(THREE, { origin: handPos, target: aimPoint, charge });
 //   // every frame:

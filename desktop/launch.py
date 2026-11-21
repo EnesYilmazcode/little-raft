@@ -10,7 +10,8 @@ def healthy():
 def main():
  if not healthy():
   with (ROOT/'desktop/server.log').open('ab') as log:
-   subprocess.Popen([str(Path(sys.executable).with_name('python.exe')),str(ROOT/'desktop/server.py')],cwd=ROOT,stdin=subprocess.DEVNULL,stdout=log,stderr=log,creationflags=subprocess.CREATE_NO_WINDOW|subprocess.DETACHED_PROCESS,close_fds=True)
+   server_env={**os.environ,'RAFT_RELEASE_MODE':'1'}
+   subprocess.Popen([str(Path(sys.executable).with_name('python.exe')),str(ROOT/'desktop/server.py')],cwd=ROOT,stdin=subprocess.DEVNULL,stdout=log,stderr=log,env=server_env,creationflags=subprocess.CREATE_NO_WINDOW|subprocess.DETACHED_PROCESS,close_fds=True)
   for _ in range(40):
    if healthy():break
    time.sleep(.15)

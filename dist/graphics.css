@@ -367,3 +367,22 @@ input::placeholder{color:#6f7b82;letter-spacing:1.5px}
 #chargeMeter{position:fixed;left:50%;top:calc(50% + 44px);transform:translateX(-50%);width:158px;height:23px;background:#11252ad9;border:1px solid #d3ae70;border-radius:3px;pointer-events:none;overflow:hidden;z-index:4}
 #chargeMeter span{position:absolute;inset:0;display:grid;place-items:center;color:#fff4d6;font-size:10px;font-weight:700;letter-spacing:1.5px;z-index:1;text-shadow:0 1px 3px #000}#chargeMeter i{display:block;height:100%;width:0;background:#b8833e;transition:width .04s linear}
 .close .icon{width:20px;height:20px}.guide-note{font-size:12px}#resumeHint{max-width:90vw;white-space:normal;text-align:center}
+
+body.playing header{justify-content:flex-end}body.playing .brand,body.playing .goal{display:none}
+.playing .inventory{padding:11px 16px;background:#273732c9}.playing .inventory>span{font-size:10px}.playing .inventory small{font-size:12px}
+.tools{gap:5px;padding:7px;background:linear-gradient(#987944,#6f4e2c);border:2px solid #c4ac71;border-radius:5px;box-shadow:0 0 0 2px #51391e,0 4px 14px #0005}
+.tools button{width:66px;height:70px;padding:5px 2px;background:#4b3525cc;box-shadow:inset 0 0 0 1px #c1a66b44;border-radius:2px}
+.tools button.selected{background:#b19759aa;box-shadow:inset 0 0 0 2px #ffdfa0,0 0 0 1px #4b3726}
+.tools button>span{margin-top:2px}.tools button em{font:600 10px/1.15 'Segoe UI',sans-serif;color:#fff1d1;letter-spacing:0;text-transform:none;max-width:64px}.tools .icon{width:31px;height:31px}
+.controls{background:#142d30c9!important;color:#f5e9ca!important;border-radius:3px;padding:7px 13px;font-size:12px;gap:19px}.controls kbd{color:#ffdd95;border-color:#e0bd7144;font-size:11px}
+.playing #durability{left:auto;right:28px;width:176px}.playing #aimHint{font-size:14px;letter-spacing:.2px;text-transform:none;bottom:137px}.playing.locked.build #aimHint{bottom:137px}
+body.locked #recipes{display:none!important}#recipes button.unaffordable{opacity:.52}#recipes button small{font-size:12px}#recipes button{min-width:106px;font-size:13px}
+#resumeHint{font-size:13px;letter-spacing:.4px;text-transform:none;max-width:440px}
+@media(max-width:760px){.tools{max-width:94vw;overflow-x:auto}.tools button{min-width:49px;width:49px;height:65px}.tools button em{font-size:9px}.tools .icon{width:25px;height:25px}.playing #durability{right:12px;bottom:160px;width:146px}.controls{font-size:10px;gap:9px}.playing #aimHint{font-size:11px}.playing .inventory{top:65px}}
+body.playing header,body.playing .goal,body.playing #toast,body.playing .controls{display:none!important}
+.playing .inventory{top:14px;left:14px}.playing #aimHint{bottom:112px;background:#162e3199;padding:7px 13px;font-size:13px;color:#f4eddd;box-shadow:none}
+#crosshair{width:23px;height:23px;border:1px solid #fff9;border-radius:50%;background:none!important;filter:drop-shadow(0 1px 1px #0005)}#crosshair::after{background:#fff9;border-radius:50%}
+
+/* live-qa */
+
+/* live-qa */

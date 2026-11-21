@@ -12,10 +12,21 @@ Online play uses PeerJS's public signaling broker and browser WebRTC data channe
 
 ## Controls
 
-- Click supplies: automatically throw and reel the hook.
-- WASD / arrows: move; drag: orbit; scroll: zoom.
+- Hold left mouse to charge, release to throw, then hold left mouse to reel.
+- WASD / arrows: walk in first person; mouse: look.
 - 1 / 2 / 3: hook / build / fish.
 - Build: choose a recipe, then an adjacent cell (floor) or empty existing floor (decoration).
 - Fish: click water and wait for a catch.
+- Escape: release the cursor and open settings; Resume returns to play.
 
 Supplies regenerate indefinitely. Nets automatically gather nearby supplies. Building consumes the shared stock. No paid services or keys are required to play solo.
+
+## Desktop and live releases
+
+Windows starts with `python desktop/launch.py` or the Little Raft desktop shortcut. The launcher serves the live `dist/` folder on port 41896 and opens the Electron app. The Mac app connects to the same Windows LAN server. Windows must remain awake and reachable for the Mac to load updates.
+
+Active apps poll `/version.json` every six seconds. A changed compatible build stages its JavaScript and CSS, captures the current world and connection, then swaps engines without navigating the page. Failed mounts keep the previous engine. Desktop shell updates and incompatible network protocol changes require a later restart.
+
+Worker checkouts under `.team/` and QA builds under `.qa/` are separate from the live feed. Publish an already tested candidate with `python publish_local.py <candidate-dist> --label <release>`. The publisher writes the manifest last; the server uses `RAFT_RELEASE_MODE=1` to advertise only committed releases. `check_live_feed.py` exercises a real automatic publication with two connected headless clients and checks connection, supplies, and raft preservation.
+
+The currently published visual release has first-person controls, detailed deck/tools/hands, charged hook throws, durability, and pause settings. Hook-only spawning, personal inventory stacks, jumping/swimming, and fully ballistic multicatch are being integrated separately and are not yet part of that release.

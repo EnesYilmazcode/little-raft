@@ -6,3 +6,5 @@ node_modules/
 desktop/runtime/
 desktop/*.log
 desktop/*.pid
+desktop/last-release.json
+.releases/

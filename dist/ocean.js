@@ -1,6 +1,6 @@
 // Procedural Gerstner ocean for Little Raft (THREE r170, ShaderMaterial, no textures).
 // Usage:
-//   import { createOcean } from './ocean.js';
+//   import { createOcean } from './ocean.js?build=ee7b7091cb95';
 //   const ocean = createOcean(T);            // T = THREE namespace
 //   scene.add(ocean.mesh);
 //   ocean.update(timeSeconds);               // each frame (optionally ocean.update(t, camera))

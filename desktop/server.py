@@ -2,10 +2,13 @@
 from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlsplit,parse_qs,unquote
-import hashlib,json,mimetypes,re,sys
-ROOT=Path(__file__).resolve().parents[1]/'dist'
+import hashlib,json,mimetypes,re,sys,os
+ROOT=Path(os.environ.get('RAFT_DIST',str(Path(__file__).resolve().parents[1]/'dist'))).resolve()
 
 def version():
+ if os.environ.get('RAFT_RELEASE_MODE')=='1':
+  try:return json.loads((ROOT/'version.json').read_text(encoding='utf-8'))['build']
+  except Exception:pass
  h=hashlib.sha256()
  for p in sorted(ROOT.iterdir()):
   if p.suffix in ('.js','.css','.svg','.html'):
@@ -35,5 +38,5 @@ class Handler(BaseHTTPRequestHandler):
  def log_message(self,*args):pass
 
 if __name__=='__main__':
- try:ThreadingHTTPServer(('0.0.0.0',41896),Handler).serve_forever()
+ try:ThreadingHTTPServer(('0.0.0.0',int(os.environ.get('RAFT_PORT','41896'))),Handler).serve_forever()
  except OSError as e:print(e,file=sys.stderr);sys.exit(1)

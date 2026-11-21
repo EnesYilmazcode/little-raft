@@ -1,5 +1,5 @@
 // Held scrap hook model (first-person). ES module.
-// Usage: import { createHook } from './hook.js'; const g = createHook(THREE);
+// Usage: import { createHook } from './hook.js?build=3aba5f23ef8a'; const g = createHook(THREE);
 // Group is re-centered on its bounding box: ~0.70 wide (X), ~0.84 tall (Y), ~0.40 deep (Z).
 // Handle at bottom (-Y), curved hook with point at top (+Y), hook bend leans toward -Z (front).
 export function createHook(T) {
