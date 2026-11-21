@@ -7,7 +7,7 @@ const CSS = `
 #lrAnimals .lr-an-wrap{display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:6px;box-sizing:border-box;
   background:repeating-linear-gradient(90deg,#00000012 0 2px,transparent 2px 23px),linear-gradient(#b48d55,#8a663a);border:3px solid #3e2a17;box-shadow:0 0 0 2px #d6b67e,0 18px 50px #000a}
 #lrAnimals h2{margin:0;font:800 19px/1.1 ${FONT};color:#2a1b0e;text-shadow:0 1px 0 #d6b67e88}
-#lrAnimals input{box-sizing:border-box;width:100%;padding:8px 10px;border:0;border-radius:4px;background:#3a2716eb;color:#fff2cc;font:600 16px/1.2 ${FONT};box-shadow:inset 0 0 0 2px #24170c,inset 0 0 0 3px #b48d5544;outline:none}
+#lrAnimals input{box-sizing:border-box;text-transform:none;letter-spacing:normal;width:100%;padding:8px 10px;border:0;border-radius:4px;background:#3a2716eb;color:#fff2cc;font:600 16px/1.2 ${FONT};box-shadow:inset 0 0 0 2px #24170c,inset 0 0 0 3px #b48d5544;outline:none}
 #lrAnimals input:focus{box-shadow:inset 0 0 0 2px #ffe3a6}
 #lrAnimals .lr-an-row{display:flex;gap:8px;justify-content:flex-end}
 #lrAnimals button{padding:7px 14px;border:0;border-radius:4px;background:linear-gradient(#7a5631,#5d4026);color:#fff2cc;font:700 13px/1 ${FONT};box-shadow:inset 0 0 0 1px #d4b07a77,0 1px 0 #0006;cursor:pointer;transform:none;text-transform:none}

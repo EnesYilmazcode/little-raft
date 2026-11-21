@@ -164,3 +164,17 @@ In addition, `dlg.addEventListener('keydown', e => { e.stopPropagation(); if (e.
 9. Recipes: `RECIPES.egglamp.output.kind === 'lantern'`; `nestbox` is in STARTER; `cushion`/`egglamp` unlock via learnedFrom with feather/puffegg seen.
 10. The module with a stub ctx: guest `action` returns true without changes; serialize is cached by r; `load(undefined,'save')` is ok.
 Also run: `npm test`, shoot.py (`errors: []`), and `node tests/coop-e2e.mjs` (ignore test 4). A Playwright pass: spawn via debug, `ff(300)`, collect eggs, craft Egg Lantern and Feather Cushion, and rename with "<b>x" (it shows literally).
+
+## Implementation notes
+Built as specified. Where the code forced or favoured a small change:
+- **Jitter per axis.** The spec gives one seed index per hop (`k*8+4+h`) but a point needs two values. x uses `rnd(seed, k*8+4+h)` and z uses `rnd(seed ^ 0x5bd1e995, k*8+4+h)`.
+- **Plan start point.** To keep `pose` continuous across beats, `plan` carries the landing point of the last hop through the replay. `out` also gets `beat`, `sx`, `sz` (the start point), and `pose` also returns `f` (hop fraction) and `lift` (0..1, 1 = on the box, used for the +.18 m).
+- **Arrival.** During the 2 s descent the bird stays over its box. The wander starts once it lands.
+- **cleanName.** Whitespace (including tab/newline, which are `Cc`) is turned into spaces before `\p{Cc}\p{Cf}` are stripped, so `"a\tb"` becomes `"a b"` and not `"ab"`. A non-string returns `''`.
+- **Pet feather.** A pet feather is given only while `feather < FEATHER_CAP`, so a full nest does not use up the 120 s feather timer.
+- **Clock.** On the host, `st.t` and `tick` advance only while `ctx.running` (the pause menu freezes the birds). Guests always advance their local clock.
+- **serialize.** `born` is rounded to 0.1 s, like `t`, not to whole seconds, so a guest's wander stays in phase with the host. The other timers are rounded to whole seconds.
+- **Reach.** The distance is measured on xz (`ctx.other.y` may be null). The lure/collect `notarget` check (the tile is a `nestbox`) lives in the module, because the core has no decor.
+- **Idle frames.** With no animals, the module skips graph upkeep and rendering and hides the two instanced meshes. Without this, the co-op e2e "2b smooth motion" check got noticeably flakier under swiftshader.
+- **Rename dialog.** It also stops `keypress`. The input sets `text-transform:none` because a global style uppercases inputs. Escape closes the dialog natively.
+- **Extra debug helpers:** `lures()`, `state()`, `pick()` (current target and prompt), `closeRename()`, `clock`.
