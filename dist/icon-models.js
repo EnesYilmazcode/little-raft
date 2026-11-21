@@ -1,7 +1,8 @@
 // Little Raft: 3D icon models for the progression and content items that have no procedural model
 // of their own (ores, ingots, parts, stations, instruments, bees, signal and water gear).
 // buildIconModel(T, kind) -> a fresh THREE.Group the caller owns and frees, or null for unknown kinds.
-// Placed gear reuses the in-world models from their own modules; small materials are built here.
+// Placed gear and held tools reuse the in-world models from their own modules; small materials and
+// items with no world model (paint pots, sinker, pail, diving gear, bowl, armor) are built here.
 // Pure: no DOM and no renderer, so node tests can build every kind.
 import { createSmelterModel, createResearchTableModel, createGrillModel } from './smelter-model.js?build=v3-survival-ae77fa84ac2b';
 import { buildResearchTable } from './storage-research-model.js?build=v3-survival-ae77fa84ac2b';
@@ -10,6 +11,59 @@ import { createPurifier } from './purifier-model.js?build=v3-survival-ae77fa84ac
 import { createRainBarrel, createSprinkler } from './rain-model.js?build=v3-survival-ae77fa84ac2b';
 import { createHive, createFlowerBox, createCandle } from './bees-model.js?build=v3-survival-ae77fa84ac2b';
 import { buildInstrument } from './instrument-models.js?build=v3-survival-ae77fa84ac2b';
+import { createSpear } from './spear-model.js?build=v3-survival-ae77fa84ac2b';
+import { createAxe } from './axe-model.js?build=v3-survival-ae77fa84ac2b';
+import { createPaddle } from './paddle-model.js?build=v3-survival-ae77fa84ac2b';
+import { createBrush } from './brush-model.js?build=v3-survival-ae77fa84ac2b';
+import { createSpyglassModel } from './spyglass-model.js?build=v3-survival-ae77fa84ac2b';
+import { createSpade, createFinder } from './treasure-models.js?build=v3-survival-ae77fa84ac2b';
+import { buildCameraModel, buildFrameModel } from './camera-models.js?build=v3-survival-ae77fa84ac2b';
+import { createHandle, createGlidePost } from './zipline-model.js?build=v3-survival-ae77fa84ac2b';
+import { createRocket } from './fireworks-model.js?build=v3-survival-ae77fa84ac2b';
+import { createScarecrow3D } from './scarecrow-model.js?build=v3-survival-ae77fa84ac2b';
+import { buildMotor, buildWheel } from './engine-models.js?build=v3-survival-ae77fa84ac2b';
+import { buildBed } from './sleep-model.js?build=v3-survival-ae77fa84ac2b';
+import { buildDecorPack } from './decor-pack-models.js?build=v3-survival-ae77fa84ac2b';
+import { buildKiln, buildGlassLamp } from './kiln-model.js?build=v3-survival-ae77fa84ac2b';
+import { stormMaterials, buildRod, buildLamp, buildStormGlass } from './storm-model.js?build=v3-survival-ae77fa84ac2b';
+import { nestBoxModel, cushionModel, goatPenModel } from './animals-models.js?build=v3-survival-ae77fa84ac2b';
+import { buildShellWreath } from './trader-model.js?build=v3-survival-ae77fa84ac2b';
+import { buildCookpot } from './cookpot-model.js?build=v3-survival-ae77fa84ac2b';
+import { buildCourseModels } from './buoycourse-model.js?build=v3-survival-ae77fa84ac2b';
+import { buildGameTable } from './gametable-model.js?build=v3-survival-ae77fa84ac2b';
+import { createDriftboard } from './paddleboard-model.js?build=v3-survival-ae77fa84ac2b';
+import { buildFlagModel } from './flags-model.js?build=v3-survival-ae77fa84ac2b';
+import { createCropPlot } from './crops-model.js?build=v3-survival-ae77fa84ac2b';
+import { createPerch } from './gull-models.js?build=v3-survival-ae77fa84ac2b';
+import { createJuicerModel } from './juicer-model.js?build=v3-survival-ae77fa84ac2b';
+import { createTurbine, createBattery, createStringLights, createLampPost } from './power-model.js?build=v3-survival-ae77fa84ac2b';
+import { createFishTrap } from './fish-trap-model.js?build=v3-survival-ae77fa84ac2b';
+import { createShelf, createTrophyStand } from './display-model.js?build=v3-survival-ae77fa84ac2b';
+import { createTaskBoard } from './tasks-model.js?build=v3-survival-ae77fa84ac2b';
+import { createMapTableModel } from './maptable-model.js?build=v3-survival-ae77fa84ac2b';
+import { createRecyclerModel } from './recycler-model.js?build=v3-survival-ae77fa84ac2b';
+
+// Shared-geometry kits (instance() + dispose()): one fresh kit per icon; userData.iconFree frees it
+// once the icon is drawn (the kit's shared geometry ignores the per-mesh dispose).
+function fromKit(kit, ...args) {
+  const g = kit.instance(...args);
+  if (g) g.userData.iconFree = () => kit.dispose?.();
+  else kit.dispose?.();
+  return g;
+}
+// Fresh flat materials for builders that take a material cache (engine models).
+const freshMat = T => { const m = new Map(); return c => { if (!m.has(c)) m.set(c, new T.MeshStandardMaterial({ color: c, roughness: 0.8 })); return m.get(c); }; };
+function storm(T, build) {
+  const M = stormMaterials(T), g = fromKit(build(T, M));
+  const free = g?.userData.iconFree;
+  if (g) g.userData.iconFree = () => { free?.(); M.dispose?.(); };
+  return g;
+}
+function course(T, type) {
+  const k = buildCourseModels(T), g = type === 'courseflag' ? k.flag() : k.scoreboard();
+  if (g) g.userData.iconFree = () => k.dispose();
+  return g;
+}
 
 // Builds the in-world model for placed gear and held instruments.
 const WORLD = {
@@ -28,6 +82,61 @@ const WORLD = {
   drum: T => buildInstrument(T, 'drum'),
   pipes: T => buildInstrument(T, 'pipes'),
   bells: T => buildInstrument(T, 'bells'),
+  // tools and held gear
+  spear: T => createSpear(T),
+  metalspear: T => createSpear(T, { metal: true }),
+  axe: T => createAxe(T),
+  paddle: T => createPaddle(T),
+  brush: T => createBrush(T),
+  spyglass: T => createSpyglassModel(T),
+  spade: T => createSpade(T),
+  finder: T => createFinder(T),
+  camera: T => buildCameraModel(T),
+  glidehandle: T => createHandle(T),
+  driftboard: T => createDriftboard(T),
+  skyrocket: T => createRocket(T),
+  // placed gear and decor
+  motor: T => fromKit(buildMotor(T, freshMat(T))),
+  wheel: T => fromKit(buildWheel(T, freshMat(T))),
+  bed: T => fromKit(buildBed(T)),
+  rug: T => fromKit(buildDecorPack(T), 'rug'),
+  pennant: T => fromKit(buildDecorPack(T), 'pennant'),
+  fern: T => fromKit(buildDecorPack(T), 'fern'),
+  chime: T => fromKit(buildDecorPack(T), 'chime'),
+  hammock: T => fromKit(buildDecorPack(T), 'hammock'),
+  pots: T => fromKit(buildDecorPack(T), 'pots'),
+  sign: T => fromKit(buildDecorPack(T), 'sign'),
+  kiln: T => fromKit(buildKiln(T)),
+  glasslamp: T => fromKit(buildGlassLamp(T)),
+  stormrod: T => storm(T, buildRod),
+  stormlamp: T => storm(T, buildLamp),
+  stormglass: T => storm(T, buildStormGlass),
+  nestbox: T => nestBoxModel(T),
+  cushion: T => cushionModel(T),
+  goatpen: T => goatPenModel(T),
+  shellwreath: T => fromKit(buildShellWreath(T)),
+  cookpot: T => fromKit(buildCookpot(T)),
+  courseflag: T => course(T, 'courseflag'),
+  scoreboard: T => course(T, 'scoreboard'),
+  gametable: T => fromKit(buildGameTable(T)),
+  flagpole: T => fromKit(buildFlagModel(T)),
+  cropplot: T => createCropPlot(T),
+  perch: T => createPerch(T),
+  juicer: T => createJuicerModel(T),
+  turbine: T => createTurbine(T),
+  battery: T => createBattery(T),
+  stringlights: T => createStringLights(T),
+  lamppost: T => createLampPost(T),
+  fishtrap: T => createFishTrap(T),
+  shelf: T => createShelf(T),
+  trophystand: T => createTrophyStand(T),
+  taskboard: T => createTaskBoard(T),
+  photoframe: T => buildFrameModel(T),
+  scarecrow: T => createScarecrow3D(T),
+  maptable: T => createMapTableModel(T),
+  glidepost: T => createGlidePost(T, 3.4),
+  glidestep: T => createGlidePost(T, 2.4),
+  recycler: T => createRecyclerModel(T),
 };
 
 // Tiny kit: flat-shaded materials (fresh per model, so freeing the icon frees them) and a mesh helper.
@@ -185,6 +294,79 @@ function cup(T, water, salt) {
   return g;
 }
 
+// Simple stand-ins for items with no world model of their own (a handful of meshes each).
+function paintPot(T, color) {
+  const { g, mat, add } = kit(T);
+  add(new T.CylinderGeometry(0.3, 0.28, 0.5, 16), mat('#b9c1c6', { metalness: 0.45, roughness: 0.4 }), [0, 0.25, 0]);
+  add(new T.CylinderGeometry(0.27, 0.27, 0.04, 16), mat(color, { roughness: 0.35 }), [0, 0.5, 0]);
+  add(new T.BoxGeometry(0.1, 0.24, 0.04), mat(color, { roughness: 0.35 }), [0.12, 0.4, 0.27], [0, 0, 0.1]); // drip down the side
+  add(new T.TorusGeometry(0.22, 0.02, 6, 16, Math.PI), mat('#6f777c', { metalness: 0.5 }), [0, 0.5, 0], [0, 0.4, 0]);
+  return g;
+}
+function sinker(T) {
+  const { g, mat, add } = kit(T);
+  const lead = mat('#6d7479', { metalness: 0.6, roughness: 0.45 });
+  add(new T.SphereGeometry(0.28, 14, 10), lead, [0, -0.1, 0], [0, 0, 0], [1, 1.1, 1]);
+  add(new T.ConeGeometry(0.2, 0.36, 14), lead, [0, 0.24, 0]);
+  add(new T.TorusGeometry(0.08, 0.025, 6, 14), mat('#a9b2b8', { metalness: 0.7, roughness: 0.3 }), [0, 0.48, 0]);
+  add(new T.SphereGeometry(0.06, 8, 6), mat('#8c949a', { metalness: 0.6 }), [0.3, -0.36, 0.1]);
+  return g;
+}
+function bucket(T) {
+  const { g, mat, add } = kit(T);
+  add(new T.CylinderGeometry(0.34, 0.28, 0.56, 14, 1, true), mat('#b98a55', { side: T.DoubleSide }), [0, 0.28, 0]);
+  add(new T.CircleGeometry(0.28, 14), mat('#8f6a3c'), [0, 0.01, 0], [-Math.PI / 2, 0, 0]);
+  for (const y of [0.1, 0.46]) add(new T.TorusGeometry(y > 0.3 ? 0.33 : 0.29, 0.02, 4, 18), mat('#6f777c', { metalness: 0.4 }), [0, y, 0], [Math.PI / 2, 0, 0]);
+  add(new T.TorusGeometry(0.32, 0.02, 5, 16, Math.PI), mat('#c99a5c'), [0, 0.56, 0]);
+  return g;
+}
+function fins(T) {
+  const { g, mat, add } = kit(T);
+  for (const [x, c] of [[-0.18, '#4fa3c4'], [0.2, '#5ab3a0']]) {
+    add(new T.BoxGeometry(0.3, 0.06, 0.8), mat(c), [x, 0, 0.1], [0, x * 0.4, 0]);
+    add(new T.CylinderGeometry(0.13, 0.15, 0.2, 10), mat('#f1e4c6'), [x - 0.02, 0.1, -0.25]);
+  }
+  return g;
+}
+function airjug(T) {
+  const { g, mat, add } = kit(T);
+  add(new T.CylinderGeometry(0.3, 0.32, 0.62, 14), mat('#8fd0d6', { roughness: 0.4 }), [0, 0.31, 0]);
+  add(new T.CylinderGeometry(0.12, 0.28, 0.16, 14), mat('#8fd0d6', { roughness: 0.4 }), [0, 0.7, 0]);
+  add(new T.CylinderGeometry(0.13, 0.13, 0.1, 12), mat('#e07a5f'), [0, 0.82, 0]);
+  add(new T.TorusGeometry(0.32, 0.03, 5, 18), mat('#a8b6c2', { metalness: 0.6, roughness: 0.35 }), [0, 0.35, 0], [Math.PI / 2, 0, 0]);
+  return g;
+}
+function goggles(T) {
+  const { g, mat, add } = kit(T);
+  for (const x of [-0.22, 0.22]) {
+    add(new T.TorusGeometry(0.17, 0.05, 8, 18), mat('#3f6f7a'), [x, 0, 0]);
+    add(new T.CircleGeometry(0.16, 16), mat('#9fe0e8', { transparent: true, opacity: 0.85, roughness: 0.05, metalness: 0.2 }), [x, 0, 0.01]);
+  }
+  add(new T.TorusGeometry(0.48, 0.025, 4, 24, Math.PI), mat('#c99a5c'), [0, 0, -0.05], [Math.PI / 2, 0, 0]);
+  return g;
+}
+function scraper(T) {
+  const { g, mat, add } = kit(T);
+  add(new T.CylinderGeometry(0.06, 0.07, 0.7, 8), mat('#a57a4c'), [0, -0.2, 0], [0, 0, 0.6]);
+  add(new T.BoxGeometry(0.5, 0.26, 0.04), mat('#b8c4cc', { metalness: 0.6, roughness: 0.3 }), [0.24, 0.22, 0], [0, 0, 0.6]);
+  add(new T.BoxGeometry(0.1, 0.12, 0.08), mat('#6f777c', { metalness: 0.5 }), [0.07, 0.05, 0], [0, 0, 0.6]);
+  return g;
+}
+function bowl(T) {
+  const { g, mat, add } = kit(T);
+  add(new T.SphereGeometry(0.45, 18, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), mat('#b98a55', { side: T.DoubleSide }), [0, 0.4, 0]);
+  add(new T.TorusGeometry(0.44, 0.03, 6, 24), mat('#8f6a3c'), [0, 0.4, 0], [Math.PI / 2, 0, 0]);
+  add(new T.CylinderGeometry(0.16, 0.18, 0.05, 14), mat('#8f6a3c'), [0, 0.0, 0]);
+  return g;
+}
+function armor(T) {
+  const { g, mat, add } = kit(T);
+  add(new T.BoxGeometry(0.9, 0.12, 0.5), mat('#aab5be', { metalness: 0.5, roughness: 0.45 }), [0, 0, 0]);
+  add(new T.BoxGeometry(0.9, 0.4, 0.08), mat('#98a4ad', { metalness: 0.5, roughness: 0.45 }), [0, -0.14, 0.27]);
+  for (const x of [-0.34, 0, 0.34]) add(new T.CylinderGeometry(0.04, 0.04, 0.04, 8), mat('#6f777c', { metalness: 0.6 }), [x, -0.14, 0.32], [Math.PI / 2, 0, 0]);
+  return g;
+}
+
 const SMALL = {
   metalore: T => ore(T, '#6f6a66', ['#c6d6e0', '#9fb1bf']),
   copperore: T => ore(T, '#6a6058', ['#4fb08a', '#d9823e']),
@@ -195,13 +377,20 @@ const SMALL = {
   honeyfish: T => grilledFish(T, '#d9952e', '#ffcf4a'),
   saltcup: T => cup(T, '#4f93b8', true),
   freshcup: T => cup(T, '#8fd8f2', false),
+  paint_seafoam: T => paintPot(T, '#9fd3c1'),
+  paint_coral: T => paintPot(T, '#e9a08c'),
+  paint_sunshell: T => paintPot(T, '#f1d78d'),
+  paint_lagoon: T => paintPot(T, '#86b3d6'),
+  paint_pebble: T => paintPot(T, '#c9c3b8'),
+  sinker, bucket, fins, airjug, goggles, scraper, bowl, armor,
 };
 
 /** Kinds this module can build. */
 export const ICON_MODEL_KINDS = Object.freeze([...Object.keys(WORLD), ...Object.keys(SMALL)]);
 
 /** A fresh icon model for kind (caller owns it), or null. Effects that would blow up the framing
- *  (sprinkler spray points, glow sprites, lines) are removed. */
+ *  (sprinkler spray points, glow sprites, lines, hidden parts) are removed. Kit-built models carry
+ *  userData.iconFree, which the caller runs after freeing the meshes. */
 export function buildIconModel(T, kind) {
   const make = WORLD[kind] || SMALL[kind];
   if (!make) return null;
@@ -209,7 +398,7 @@ export function buildIconModel(T, kind) {
   try { g = make(T); } catch (e) { console.warn('icon model failed', kind, e); return null; }
   if (!g) return null;
   const drop = [];
-  g.traverse(o => { if (o.isPoints || o.isSprite || o.isLine) drop.push(o); });
+  g.traverse(o => { if (o !== g && (o.isPoints || o.isSprite || o.isLine || !o.visible)) drop.push(o); }); // hidden parts (glow, text) would skew the framing
   for (const o of drop) { o.removeFromParent(); o.geometry?.dispose?.(); }
   return g;
 }

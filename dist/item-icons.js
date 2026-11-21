@@ -44,10 +44,13 @@ export const POSE = {
   plastic: [0, 0.4, 0.5], fish: [0, -0.4, 0.15], rope: [0.9, 0, 0.2],
   wood: [0, -0.35, 0.12], leaf: [0.5, 0.4, 0], scrap: [0.3, 0.4, 0],
   net: [0.55, 0.5, 0], bench: [0, 0.5, 0], crate: [0, 0.5, 0], receiver: [0, -0.35, 0],
+  // upright tools and posts from icon-models.js: lean onto the diagonal so they fill the slot
+  spear: [0, 0.6, -0.8], metalspear: [0, 0.6, -0.8], paddle: [0, 0.6, -0.75], brush: [0, 0.6, -0.75], spade: [0, 0.6, -0.75],
+  axe: [0, -0.3, -0.6], hammock: [0, 0.8, 0], glidepost: [0, 0.5, -0.6], glidestep: [0, 0.5, -0.6], glidehandle: [0, 0.4, 0],
 };
 // Icon-only thickening of long, thin procedural tools (length on local Y): scale X/Z so the
 // silhouette still reads at hotbar size. The held model is untouched.
-export const ICON_FATTEN = { hammer: 1.4, fishingrod: 2.2 };
+export const ICON_FATTEN = { hammer: 1.4, fishingrod: 2.2, spear: 2, metalspear: 2, paddle: 1.4, brush: 1.5, spade: 1.4, glidepost: 1.5, glidestep: 1.5 };
 // models.js tools stand upright (grip at origin, working end +Y): tilt them onto the diagonal.
 const PROVIDER_POSE = { hook: [0, 0.5, -0.75] };
 const EXPOSURE = 0.95;
@@ -60,6 +63,7 @@ const FRAME = {
   lantern: { view: [0.35, 0.3, 1], crop: [0.5, 1, 0.48, 0.96], exp: 1.35 },  // the lamp, not the post
   fishingrod: { crop: [0, 0.7, 0, 0.7], exp: 1.2 },                          // grip, reel and float
   net: { view: [0.3, 0.45, 1], exp: 1.3 },
+  wood: { pose: [0, 0.75, 0], view: [0.2, 1, 0.45], exp: 1.15 },              // the plank's broad face, not its thin edge
 };
 
 // ---------- fallback models ----------
@@ -152,6 +156,7 @@ function freeModel(root) {
     const m = o.material; if (!m) return;
     for (const x of Array.isArray(m) ? m : [m]) if (!shared.has(x)) { x.map?.dispose(); x.dispose(); }
   });
+  try { root.userData.iconFree?.(); } catch (e) { console.warn('item icon free failed', e); } // shared-geometry kits (icon-models.js)
 }
 
 /** Model for an icon: the provider, then the procedural fallback, then icon-models.js (progression
