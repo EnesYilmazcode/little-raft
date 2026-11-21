@@ -55,3 +55,18 @@ Review fixes: last-bottle respawn, sanitized logbook progress on hot-swap fallba
 Checks: `npm test` 61/61 (was 22; npm test now runs tests/*.test.mjs); shoot.py `errors: []`.
 Known limits: live two-peer co-op not run (PeerJS broker blocked from the sandbox; co-op reviewed by code). Older builds reject bags holding the new item kinds (mixed-version co-op unsupported; downgrading drops new decor).
 Next ideas: nicer receiver model, ripe-palm cue, logbook tab height jump; more building pieces/decorations once the building-pieces lane lands.
+
+## 2026-11-21 · loop-features-202611210548 (features)
+Base: origin/claude/raft-master (5cbc67b; raft-integration lacked the round-1 features). Branch: claude/loop-features-202611210548.
+Skipped as covered elsewhere: raft animals, kiln/smelter, decor signs (concurrent loop-features-202611210534).
+
+Features (research in docs/features, specs in docs/specs):
+- **Bed + sleep through the night**: Bed decor (6 wood + 4 leaf, research). E at dusk/night to lie down; when everyone is in bed (host, plus guest if connected) the screen fades and the host skips the clock to morning (new host-only `daynight.skipTo` action). In-bed state is never saved. The guest's fade follows synced `ext.sleep`. Files: dist/sleep.js, dist/sleep-model.js.
+- **Little Motor + Steering Wheel**: the motor (wood/scrap/rope) is toggled with E and fuelled with leaf/wood/plastic (20/45/60 s, 300 s cap). It pushes 0.7 m/s along the heading with diminishing returns up to 4 motors, sail + motor capped at 2 m/s, and stops when anchored. The wheel is a new hold-R steering point that works without a sail, and E on it toggles all motors. State in `world.ext.engine`; guests compute the same push from synced data. Files: dist/engine.js, dist/engine-models.js; small hook in sailing-core `stepSailing(opts.push)`.
+- **Paint + brush**: Paint Brush (stack 1, not a tool) and 5 pot colours (4 pots per craft, 1 pot per piece). Driftwood scrapes a piece back for free. Left click paints a building piece or deck tile, right click changes colour. State in `world.ext.paint` with a rev counter; stale keys are pruned when pieces or tiles change. Pieces are tinted through instance colours and deck planks through cached materials, so painting adds no draw calls. Files: dist/paint.js, dist/brush-model.js.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (13 agents).
+Review/QA fixes: content `prompt()` text was hidden by prompts.css, so all three modules now also feed raftPrompts; those providers step aside for pickup/connecting prompts. Also fixed: sleep teleport after a world swap, dawn-edge "Good morning" without a skip, the fade not covering the compass, wheel/sail grab release rules, motor models lost after a same-count rebuild, the "Anchored" HUD without a sail, per-frame allocations, letter-box icons for bed/motor/wheel (new SVG icons + test), the onboarding panel covering the compass label, and the journal chip over the phone hotbar.
+Checks: `npm test` 397/397 (was 342); shoot.py `errors: []`. Solo and loopback two-page co-op sleep probes ran clean.
+Known limits: no lying pose on the partner's avatar; E while lying and aiming at a sail toggles the sail; motor prompt ignores walls in between; other content modules' `prompt()` text (chests, research table) is still hidden. A general game.js bridge to raftPrompts is the follow-up. No gamepad colour cycling.
+Next ideas: general content-prompt bridge, a lying pose over the network, a "well rested" speed perk (needs a speedMul in PlayerPhysics), decor removal so motors and beds can be moved.
