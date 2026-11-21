@@ -1,7 +1,7 @@
 // Little Raft - controls glue. Wires input.js (keyboard/mouse/gamepad action map) and move-feel.js
 // (accel ramp, footstep bob, crouch, landing dip) into game.js through a handful of callbacks, so
-// game.js only needs tiny hooks (search "controls lane" there). Discrete actions the game has no
-// handler for (drop, rotate, buildPick) are re-emitted as window 'little-raft-action' CustomEvents,
+// game.js only needs tiny hooks (search "controls lane" there). rotate (and buildPick when g.buildPick is missing)
+// is also emitted as a window 'little-raft-action' CustomEvent,
 // footfalls as 'little-raft-footstep', so other lanes can listen without touching this file.
 import { ActionMap } from './input-map.js';
 import { createInput } from './input.js';
@@ -20,7 +20,8 @@ function storage() { try { return globalThis.localStorage ?? null; } catch { ret
 const emit = (type, detail) => { try { globalThis.dispatchEvent?.(new CustomEvent(type, {detail})); } catch {} };
 
 // g: {canvas, isBlocked, sensitivity, motion, look(dx,dy), hotbarSize, slot(), selectSlot(i), interact(),
-//     inventory(), repair(back), pause(), menuBack(id) (pad closes the open menu), useDown(), useUp(), useCancel(), reelDown(), reelUp(), buildPieces?}
+//     inventory(), repair(back), pause(), menuBack(id) (pad closes the open menu), useDown(), useUp(), useCancel(), reelDown(), reelUp(),
+//     buildPieces? (list or () => list of {id,label}), buildPick?(id)}
 export function createControls(g) {
   const map = new ActionMap({storage:storage()});
   const feel = new MoveFeel({motionScale:1});
@@ -38,7 +39,6 @@ export function createControls(g) {
       else if (id === 'inventory') call('inventory');
       else if (id === 'pause' && pad) call('pause'); // Escape on the keyboard is owned by settings.js / pointer lock
       else if (id === 'rotate') { call('repair', input.shiftHeld()); emit('little-raft-action', {id}); } // game's R = repair today
-      else if (id === 'drop') emit('little-raft-action', {id});
       else if (id === 'buildMenu') openRadial();
       else if ((id === 'use' || id === 'aim') && pad) return; // pad triggers handled analog in frame()
     } else if (id === 'buildMenu') radial?.confirm();
@@ -49,7 +49,8 @@ export function createControls(g) {
 
   function openRadial() {
     if (g.isBlocked?.()) return;
-    radial ??= createBuildRadial({items:g.buildPieces ?? BUILD_PIECES, onPick:it => emit('little-raft-action', {id:'buildPick', piece:it?.id})});
+    const items = (typeof g.buildPieces === 'function' ? g.buildPieces() : g.buildPieces) ?? BUILD_PIECES;
+    radial ??= createBuildRadial({items, onPick:it => g.buildPick ? call('buildPick', it?.id) : emit('little-raft-action', {id:'buildPick', piece:it?.id})});
     cursor = [0, 0]; radial.open();
   }
 

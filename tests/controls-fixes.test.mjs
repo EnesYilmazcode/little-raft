@@ -162,6 +162,42 @@ test('CTL-3: pad RT runs rod fishing v2 (fc.pointerDown/pointerUp) before the le
   assert.ok(mouse.indexOf('fc?.pointerDown()') < mouse.indexOf('useSelected('), 'mouse path is the reference');
 });
 
+// ---------------------------------------------------------------- CTL-4
+
+test('CTL-4: pad build radial picks call the host buildPick with the host piece list', () => {
+  const picks = [];
+  const pieces = [{ id: 'foundation', label: 'Foundation' }, { id: 'floor', label: 'Floor' }, { id: 'wall', label: 'Wall' }, { id: 'halfwall', label: 'Half wall' }];
+  let asked = 0;
+  const s = controlsSetup({ buildPieces: () => { asked++; return pieces; }, buildPick: id => picks.push(id) });
+  events.length = 0;
+  s.p.buttons[12] = btn(1); s.tick();
+  s.p.axes[2] = 1; for (let i = 0; i < 10; i++) s.tick(); // right = index 1 of 4
+  s.p.axes[2] = 0; s.p.buttons[12] = btn(0); s.tick();
+  assert.deepEqual(picks, ['floor']);
+  assert.equal(asked, 1, 'list read lazily when the radial first opens');
+  assert.equal(events.filter(e => e.detail?.id === 'buildPick').length, 0, 'no orphan event when the host handles it');
+  s.done();
+});
+
+test('CTL-4: game.js wires the radial to the hammer wheel pieces and selects them', () => {
+  assert.match(gameSrc, /import \{ PIECES, PIECE_ORDER \} from '\.\/building-pieces\.js\?build=v3-survival-ae77fa84ac2b'/, 'same module instance as building.js');
+  assert.match(gameSrc, /buildPieces:\(\) => PIECE_ORDER\.map\(id => \(\{id, label:PIECES\[id\]\.name\}\)\), buildPick:pickBuildPiece/);
+  const fn = gameSrc.slice(gameSrc.indexOf('function pickBuildPiece('), gameSrc.indexOf('function openInventory('));
+  assert.match(fn, /toolRole\(s\?\.kind \?\? null\) === 'hammer'/, 'finds the hammer on the hotbar');
+  assert.ok(fn.indexOf('selectSlot(i)') < fn.indexOf('building.menu.setSelected(id)'), 'holds the hammer, then picks the piece');
+});
+
+test('CTL-4: the dead drop action and its Q / Back default are gone', async () => {
+  const { ACTIONS, DEFAULT_BINDINGS } = await import(new URL('input-map.js', base));
+  assert.ok(!ACTIONS.some(a => a.id === 'drop'));
+  assert.equal(DEFAULT_BINDINGS.drop, undefined);
+  const m = new ActionMap();
+  assert.deepEqual(m.actionFor('KeyQ'), [], 'Q stays free for the hammer build wheel');
+  assert.deepEqual(m.actionFor('Pad8'), []);
+  const stale = { getItem: () => JSON.stringify({ v: 1, bindings: { drop: { keys: ['KeyQ', null], pad: ['Pad8'] } }, settings: {} }), setItem() {} };
+  assert.equal(new ActionMap({ storage: stale }).bindingsFor('drop'), null, 'old saves load without it');
+});
+
 // ---------------------------------------------------------------- CTL-5
 
 test('CTL-5: crouch defaults to C only, so crouch-walk is never Ctrl+W', () => {

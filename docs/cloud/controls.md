@@ -29,7 +29,6 @@ Branch: `claude/raft-controls`. All of the lane's code is in new files under `di
 | Hotbar 1–0 | 1…0 | — |
 | Hotbar next/prev | Wheel | RB / LB |
 | Rotate | R | R3 |
-| Drop | Q | Back |
 | Pause | Esc | Start |
 | Build radial | — | D-pad up (hold) |
 
@@ -51,7 +50,7 @@ Branch: `claude/raft-controls`. All of the lane's code is in new files under `di
 ### For other lanes
 - **Menus:** call `raftControls.mountTab(container)` to mount the tab, and `raftControls.unmountTab(tab)` to remove it. The dialog must call `document.exitPointerLock()` when it opens.
 - **Audio:** listen for the `window` event `little-raft-footstep` (`{side, sprint, crouch}`).
-- **Building:** listen for the `window` event `little-raft-action`, which carries `{id:'drop'}`, `{id:'rotate'}` or `{id:'buildPick', piece}`. R still runs the game's existing repair action.
+- **Building:** listen for the `window` event `little-raft-action`, which carries `{id:'rotate'}` (and `{id:'buildPick', piece}` only when the host passes no `buildPick` callback; game.js does, and selects the hammer plus that piece). R still runs the game's existing repair action.
 - **Ladders:** call `raftControls.feel.setLadder({bottomY, topY, x, z, normal:[nx,nz]})`, then use `ladderInput()` to get climb `vy` and when to detach.
 - **Physics:** for crisper stops, a separate ground deceleration rate in `player-physics.js` (about 20/s) could replace the brake in `controls.js`.
 
