@@ -26,8 +26,9 @@ export const PIECES = Object.freeze({
 });
 export const PIECE_ORDER = Object.freeze(['foundation', 'floor', 'wall', 'halfwall', 'window', 'door', 'pillar', 'stairs', 'roof']);
 
-const SLOT_OF = {floor: 0, roof: 0, stairs: 1, wall: 2, halfwall: 2, window: 2, door: 2, pillar: 3};
-const ORDER_OF = {};
+// Null-prototype lookups: `t in SLOT_OF` must not accept 'constructor' / '__proto__' / 'toString' from saves or guests.
+const SLOT_OF = Object.assign(Object.create(null), {floor: 0, roof: 0, stairs: 1, wall: 2, halfwall: 2, window: 2, door: 2, pillar: 3});
+const ORDER_OF = Object.create(null);
 PIECE_ORDER.forEach((t, k) => { ORDER_OF[t] = k; });
 
 // Integer slot key (no strings). t_or_slot: a piece type or a SLOT code; sub = edge axis (ignored otherwise).
@@ -109,7 +110,7 @@ export class BuildGrid {
   _pillar(i, j, l) { return !!this._get(3, i, j, l, 0); }
 
   find(p) {
-    if (!p || !(p.t in SLOT_OF) || !isInt(p.i) || !isInt(p.j) || !isInt(p.l)) return null;
+    if (!p || typeof p.t !== 'string' || !(p.t in SLOT_OF) || !isInt(p.i) || !isInt(p.j) || !isInt(p.l)) return null;
     if (Math.abs(p.i) > MAX_IJ + 1 || Math.abs(p.j) > MAX_IJ + 1) return null;
     return this._get(SLOT_OF[p.t], p.i, p.j, p.l, p.r | 0) || null;
   }
@@ -151,7 +152,7 @@ export class BuildGrid {
 
   // ---------- rules ----------
   canPlace(p) {
-    if (!p || typeof p !== 'object' || !(p.t in SLOT_OF)) return 'Unknown piece';
+    if (!p || typeof p !== 'object' || typeof p.t !== 'string' || !(p.t in SLOT_OF)) return 'Unknown piece';
     const {t, i, j, l} = p, r = p.r === undefined ? 0 : p.r, s = SLOT_OF[t];
     if (!isInt(i) || !isInt(j) || !isInt(l) || !isInt(r) || l < 0) return 'Bad position';
     if (Math.abs(i) > MAX_IJ || Math.abs(j) > MAX_IJ) return 'Too far out';
@@ -383,10 +384,13 @@ export class BuildGrid {
   }
 }
 
+let cleanGrid = null; // reused: the guest cleans every host snapshot
 export function cleanPieces(raw, tiles) {
-  const g = new BuildGrid();
+  const g = cleanGrid ??= new BuildGrid();
   g.setTiles(tiles);
-  return g.load(raw);
+  const out = g.load(raw);
+  g.setTiles(null); g.load(null); // drop references to the caller's arrays
+  return out;
 }
 
 export default BuildGrid;
