@@ -340,6 +340,16 @@ export class HookCast {
 
 export default HookCast;
 
+// ---------- throw start (used by game.js) ----------
+export const MIN_THROW_Y = WATER_Y + 0.3; // a swimmer's hand sits under the 0.05 plane: start the throw above it
+
+/** Throw origin from the hand: same x/z, y lifted to at least MIN_THROW_Y. Pure. */
+export function throwOrigin(hand, out) {
+  const o = out || { x: 0, y: 0, z: 0 };
+  o.x = hand.x; o.y = Math.max(hand.y, MIN_THROW_Y); o.z = hand.z;
+  return o;
+}
+
 // ---------- bag-full reel stop (used by game.js) ----------
 export const FULL_HOLD_DIST = 2; // m: a catch that will not fit stops this far out, still in the water
 

@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
 const T = await import(new URL('vendor/three.module.js', base));
 const HP = await import(new URL('hook-physics.js', base));
-const { HookCast, WATER_Y, catchLoot, holdForFullBag, FULL_HOLD_DIST } = HP;
+const { HookCast, WATER_Y, catchLoot, holdForFullBag, FULL_HOLD_DIST, throwOrigin, MIN_THROW_Y } = HP;
 
 const hand = new T.Vector3(0, 1.2, 0);
 // A hook already floating 8 m out with one barrel caught.
@@ -55,4 +55,21 @@ test('HOOK-1: no catch or far away never holds the reel', () => {
   assert.equal(holdForFullBag({ caughtItems: [{ type: 'wood' }], distance: 5 }, () => false), false);
   assert.equal(holdForFullBag({ caughtItems: [{ type: 'wood' }], distance: 1 }, () => true), false);
   assert.equal(holdForFullBag(null, () => false), false);
+});
+
+test('HOOK-2: a swimmer\'s throw starts above the water and flies', () => {
+  assert.ok(MIN_THROW_Y >= WATER_Y + 0.3);
+  for (const y of [-0.29, -0.18, 0.04]) {
+    const origin = throwOrigin({ x: 1, y, z: 2 }, new T.Vector3());
+    assert.deepEqual([origin.x, origin.y, origin.z], [1, MIN_THROW_Y, 2]);
+    const h = new HookCast(T, { origin, direction: { x: 0, y: 0.3, z: -1 }, charge: 1 });
+    assert.equal(h.stage, 'flying', `hand y ${y} must not splash at the hand`);
+    for (let i = 0; i < 200 && h.stage === 'flying'; i++) h.update(0.05, { hand: origin, items: [], time: i * 0.05 });
+    assert.ok(h.distance > 5, `throw from y ${y} went ${h.distance} m`);
+  }
+});
+
+test('HOOK-2: a deck-height hand is left alone', () => {
+  const o = throwOrigin({ x: 0, y: 1.2, z: 0 });
+  assert.equal(o.y, 1.2);
 });

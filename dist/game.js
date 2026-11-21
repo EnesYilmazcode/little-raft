@@ -3,7 +3,7 @@ import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
 import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
-import { HookCast, WATER_Y, catchLoot, holdForFullBag } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
+import { HookCast, WATER_Y, catchLoot, holdForFullBag, throwOrigin } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-survival-ae77fa84ac2b';
 import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
@@ -730,7 +730,7 @@ export function mount(transfer = null) {
     const durability = clamp(slot.durability ?? MAX_HEALTH, 0, MAX_HEALTH), maxRange = 16 + durability * .16;
     const direction = aim?.dir ?? camera.getWorldDirection(new T.Vector3());
     const deckAt = (x, z) => (hasTile(Math.round(x / 2), Math.round(z / 2)) ? deckY() : null); // stop on the planks
-    hook = new HookCast(T, {origin:handPos.clone(), direction, maxRange, charge, deckAt});
+    hook = new HookCast(T, {origin:throwOrigin(handPos, new T.Vector3()), direction, maxRange, charge, deckAt});
     castId = newToken(); hookSlot = idx; lastCaughtCount = 0; reeling = false; swing = 1; sfx('throw', .4 + .6 * charge); hintDone('throw');
     if (durability <= 0) notice('Worn hook: shorter throws. R to repair');
   }
