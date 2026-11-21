@@ -61,3 +61,66 @@ test('E1 state prompts are never posted to the event feed as news', () => {
   assert.ok(!/MutationObserver/.test(s), 'no #contextPrompt observer feeding #lrFeed');
   assert.match(s, /raftFC\?\.session\?\.stage/);
 });
+
+// ---------------------------------------------------------------- tiny fake DOM (shared by the DOM tests below)
+class El {
+  constructor(tag, doc) {
+    this.tagName = tag.toUpperCase(); this.nodeType = 1; this.ownerDocument = doc; this.children = []; this.parent = null; this.id = '';
+    this.style = {}; this.hidden = false; this.attrs = {}; this._text = ''; this._html = ''; this.className = '';
+    const cl = this._cl = new Set();
+    this.classList = {add: (...c) => c.forEach(x => cl.add(x)), remove: (...c) => c.forEach(x => cl.delete(x)), contains: c => cl.has(c),
+      toggle: (c, on = !cl.has(c)) => (on ? cl.add(c) : cl.delete(c), on)};
+  }
+  get isConnected() { let e = this; while (e.parent) e = e.parent; return e === this.ownerDocument?.body || e === this.ownerDocument?.head; }
+  get textContent() { return this._text + this.children.map(c => c.textContent).join(''); }
+  set textContent(v) { this._text = String(v); this.children = []; }
+  get innerHTML() { return this._html; }
+  set innerHTML(v) { this._html = String(v); this.children = []; this._text = ''; }
+  get firstChild() { return this.children[0] ?? null; }
+  get firstElementChild() { return this.children[0] ?? null; }
+  appendChild(c) { c.remove?.(); c.parent = this; this.children.push(c); return c; }
+  append(...cs) { cs.forEach(c => this.appendChild(c)); }
+  remove() { if (this.parent) { this.parent.children.splice(this.parent.children.indexOf(this), 1); this.parent = null; } }
+  setAttribute(k, v) { this.attrs[k] = String(v); }
+  getAttribute(k) { return this.attrs[k] ?? null; }
+  addEventListener() {} removeEventListener() {}
+  getBoundingClientRect() { return this.rect ?? {left:0, top:0, width:0, height:0}; }
+  querySelector(sel) { return this._q?.(sel) ?? (this._stub ??= new Map()).get(sel) ?? (this._stub.set(sel, new El('div', this.ownerDocument)), this._stub.get(sel)); }
+  querySelectorAll() { return []; }
+}
+function fakeDoc() {
+  const doc = {};
+  doc.head = new El('head', doc); doc.body = new El('body', doc);
+  const all = (e, out = []) => { out.push(e); e.children.forEach(c => all(c, out)); return out; };
+  doc.createElement = t => new El(t, doc);
+  doc.createElementNS = (_, t) => new El(t, doc);
+  doc.getElementById = id => [...all(doc.head), ...all(doc.body)].find(e => e.id === id) ?? null;
+  doc.querySelector = sel => (sel[0] === '#' ? doc.getElementById(sel.slice(1)) : null);
+  doc.addEventListener = () => {};
+  doc.defaultView = {addEventListener() {}, removeEventListener() {}, setTimeout, clearTimeout};
+  return doc;
+}
+
+// ---------------------------------------------------------------- E2 no centred panels in play
+test('E2 dive gather label sits in the crosshair-side prompt column, not centred under it', async () => {
+  const { createDivingUI } = await import(new URL('diving-ui.js', base));
+  const doc = fakeDoc(), cross = doc.createElement('div'); cross.id = 'crosshair'; cross.rect = {left:630, top:350, width:20, height:20}; doc.body.appendChild(cross);
+  const ui = createDivingUI(doc);
+  ui.update({underwater:true, gatherLabel:'Hold E · Kelp', gather01:0.3});
+  const label = doc.body.children.find(e => e.className === 'diveRingLabel');
+  assert.equal(label.textContent, 'Hold E · Kelp');
+  assert.equal(label.style.left, 'calc(640px + 34px)');
+  assert.equal(label.style.top, 'calc(360px + 52px)');
+  const css = doc.getElementById('divingStyle').textContent, rule = /\.diveRingLabel\{[^}]*\}/.exec(css)[0];
+  assert.match(rule, /transform:none/); assert.doesNotMatch(rule, /background|translateX\(-50%\)/);
+  ui.dispose();
+});
+
+test('E2 binoculars readout and reel HUD join the prompt column (no centred boxes)', () => {
+  const bino = /hud\.id = 'binocularsHud'[^\n]*\n[^\n]*/.exec(src('progression-hooks.js'))[0];
+  assert.match(bino, /left:calc\(50% \+ 34px\)/); assert.match(bino, /transform:none/);
+  assert.doesNotMatch(bino, /left:50%|translateX\(-50%\)|background/);
+  const reel = /#fcReelHud\{[^}]*\}/.exec(src('fishing-v2.js'))[0];
+  assert.match(reel, /left:calc\(50% \+ 34px\)/); assert.match(reel, /transform:none/); assert.match(reel, /text-align:left/);
+  assert.doesNotMatch(reel, /left:50%;|translateX\(-50%\)/);
+});

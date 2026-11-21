@@ -31,9 +31,9 @@ const CSS = `
   filter:drop-shadow(0 0 2px rgba(9,107,130,.9))}
 .diveRing.flash{display:block}
 .diveRing.flash circle{stroke:#bff3ea;stroke-dashoffset:0}
-.diveRingLabel{position:fixed;left:50%;top:calc(50% + 30px);transform:translateX(-50%);z-index:3;pointer-events:none;display:none;
-  padding:4px 11px;border-radius:12px;background:rgba(9,20,30,.62);color:#fff3cf;white-space:nowrap;
-  font:600 12px/1.2 var(--ui-font,'Segoe UI',system-ui,sans-serif);box-shadow:0 0 0 1px rgba(201,164,107,.3)}
+.diveRingLabel{position:fixed;left:calc(50% + 34px);top:calc(50% + 52px);transform:none;z-index:3;pointer-events:none;display:none;
+  color:#fff3cf;white-space:nowrap;text-align:left;text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 8px rgba(0,0,0,.55);
+  font:600 13px/1.25 var(--ui-font,'Segoe UI',system-ui,sans-serif)} /* side prompt column (prompts.css), never a centred panel */
 @media(max-width:760px){.diveO2{bottom:110px}.diveO2Pill{width:180px}}
 @media(prefers-reduced-motion:reduce){.diveO2,.diveO2Fill{transition:none}.diveO2.low .diveO2Pill{animation:none;
   box-shadow:0 0 0 2px #ffc96b,0 4px 14px rgba(0,0,0,.35)}}
@@ -82,9 +82,8 @@ export function createDivingUI(doc = document) {
     const r = doc.querySelector('#crosshair')?.getBoundingClientRect();
     const ok = r && r.width > 0;
     const x = ok ? `${r.left + r.width / 2}px` : '50%', y = ok ? `${r.top + r.height / 2}px` : '50%';
-    ring.style.left = label.style.left = x;
-    ring.style.top = y;
-    label.style.top = `calc(${y} + 30px)`;
+    ring.style.left = x; ring.style.top = y;
+    label.style.left = `calc(${x} + 34px)`; label.style.top = `calc(${y} + 52px)`; // prompt column, under #lrPrompt
   }
   const onResize = () => { if (last.label) place(); };
   win?.addEventListener('resize', onResize);
