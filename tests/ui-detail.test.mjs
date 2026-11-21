@@ -17,6 +17,14 @@ test('title menu hides Resume and Quit when no game is running', () => {
   assert.match(s, /classList\.toggle\('rs-title', title\)/);
 });
 
+test('controls list the 10-slot hotbar keys', () => {
+  assert.match(read('settings.js'), /\['1 - 0 \/ Wheel', 'Pick hotbar slot'\]/);
+});
+
+test('help opened from the title menu returns to the menu', () => {
+  assert.match(read('settings.js'), /returnToPause = null; if \(gameActive\(\) \|\| d\.id === 'help'\) \{ open\(\);/);
+});
+
 test('water icon differs from the empty cup', () => {
   const s = read('models.js');
   const water = s.slice(s.indexOf('  water(K) {'), s.indexOf('  planter(K) {'));
