@@ -119,7 +119,7 @@ export function createContent(ctx, features = FEATURES) {
   }
   const first = (fn, ...a) => { for (const m of mods) { const r = call(m, fn, ...a); if (r) return r; } return null; };
   const seatedMod = () => { for (const m of mods) if (!m.dead && typeof m.seated === 'function' && call(m, 'seated')) return m; return null; }; // [sit]
-  const debug = {};
+  const debug = {}; let loaded = {};
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
   const dn = () => mods.find(m => m.name === 'daynight' && !m.dead), num = (v, d) => (Number.isFinite(v) ? v : d); // [power]
   const env = { wind: () => num(dn()?.wind, .15), night: () => num(dn()?.night, 0) }; // [power] live getters, never spread
@@ -128,8 +128,9 @@ export function createContent(ctx, features = FEATURES) {
     mods, debug,
     update(dt) { for (const m of mods) call(m, 'update', dt); },
     afterMove(physics, dt) { for (const m of mods) call(m, 'afterMove', physics, dt); },
-    serialize() { const out = {}; for (const m of mods) { const d = call(m, 'serialize'); if (d !== undefined && m.name) out[m.name] = d; } return out; },
-    load(ext, from) { const e = ext && typeof ext === 'object' ? ext : {}; for (const m of mods) call(m, 'load', e[m.name], from); },
+    // Start from the last loaded/serialized ext so a disabled (or never-started) module keeps its last good slice instead of the autosave wiping it.
+    serialize() { const out = {...loaded}; for (const m of mods) { if (m.dead || !m.name) continue; const d = call(m, 'serialize'); if (d !== undefined) out[m.name] = d; } loaded = out; return {...out}; },
+    load(ext, from) { const e = ext && typeof ext === 'object' ? ext : {}; loaded = {...e}; for (const m of mods) call(m, 'load', e[m.name], from); },
     action(a, actor, bag) { for (const m of mods) if (call(m, 'action', a, actor, bag)) return true; return false; },
     observe(ev, actor) { for (const m of mods) call(m, 'observe', ev, actor); }, // [tasks] host-side game events
     interact: aim => { const m = seatedMod(); return !!(m && call(m, 'interact', aim)) || !!first('interact', aim); }, // [sit] a seated module gets E first (stand up)

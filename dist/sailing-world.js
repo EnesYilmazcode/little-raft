@@ -283,6 +283,7 @@ export function createSailing(T, ctx) {
     updateAim(); updatePrompt();
     info.running = !!ctx.isRunning(); info.yaw = ctx.getYaw(); info.windDir = state.windDir; info.windStr = state.windStr;
     info.heading = shownHeading(); info.raised = state.raised; info.anchored = state.anchored; info.nSails = nSails;
+    if (!nSails && ctx.sailKnown) { try { info.sailKnown = !!ctx.sailKnown(); } catch { info.sailKnown = true; } }
     info.speed = speed; info.travelDir = travelDir; info.motor = Math.hypot(stepOpts.push.x, stepOpts.push.z);
     ui.update(info);
   }
