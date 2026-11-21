@@ -216,3 +216,15 @@ test('receiver removed mid-drift: the cache keeps coming, then the signal goes q
   assert.equal(w.signal, null);
   assert.equal(cacheItems(w).length, 0);
 });
+
+test('signalTick drift: a long thin raft still pulls the cache within hook reach of the deck', () => {
+  const tiles = []; for (let x = -20; x <= 20; x++) tiles.push([x, 0]);
+  const w = {tiles, decor:[{type:'receiver', x:0, z:0}], items:[], signal:null};
+  run(w, 20, {rng:() => 0, token:tok}); // angle 0: spawns straight off the long side (+z)
+  run(w, 600, {rng:() => 0, token:tok}, .5);
+  const c = w.signal.cache, C = raftCentre(tiles);
+  assert.ok(Math.hypot(c.x - C.x, c.z - C.z) < C.r + STOP_GAP, 'moved past the centre-radius stop');
+  const gap = Math.abs(c.z) - 1;
+  assert.ok(gap <= STOP_GAP + 2 + 1e-6 && gap > 0, `parked near the deck edge: ${gap}`);
+  assert.equal(c.near, true);
+});

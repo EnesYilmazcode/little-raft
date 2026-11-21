@@ -9,6 +9,7 @@ export const TIERS = Object.freeze([ // index = antenna count
   Object.freeze({range:70, wobble:0,  step:5,  marker:'always', speed:.40, cooldown:120}),
   Object.freeze({range:75, wobble:0,  step:1,  marker:'always', speed:.45, cooldown:90, beam:true}),
 ]);
+const DECK_GAP = STOP_GAP + 2; // max water gap to the nearest tile once parked
 const BASE_LOOT = Object.freeze({wood:6, plastic:4, scrap:3, rope:2});
 const POINTS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const DEG = 180 / Math.PI;
@@ -77,8 +78,11 @@ export function signalTick(world, dt, {rng = Math.random, token, held = new Set(
   const stop = C.r + STOP_GAP;
   let dist = Math.hypot(C.x - c.x, C.z - c.z);
   if (!held.has(c.token)) {
-    if (dist > stop) {
-      const move = Math.min(tier.speed * step, dist - stop);
+    // Centre rule (r + STOP_GAP) for compact rafts; long or L-shaped rafts keep pulling it in until it is
+    // within DECK_GAP of the nearest deck tile, so it never parks out of hook reach.
+    const far = deckGap(world.tiles, c.x, c.z) > DECK_GAP;
+    if (dist > stop || (far && dist > 1)) {
+      const move = Math.min(tier.speed * step, far ? dist - 1 : dist - stop);
       c.x += (C.x - c.x) / dist * move; c.z += (C.z - c.z) / dist * move;
       dist -= move;
     }
@@ -86,6 +90,16 @@ export function signalTick(world, dt, {rng = Math.random, token, held = new Set(
   }
   if (!c.near && dist <= C.r + NEAR_GAP) { c.near = true; events.push({kind:'near'}); }
   return events;
+}
+// Distance from (x, z) to the nearest deck tile square (tiles are 2 u wide, centred on tile * 2).
+function deckGap(tiles, x, z) {
+  let best = Infinity;
+  if (Array.isArray(tiles)) for (const t of tiles) {
+    if (!Array.isArray(t)) continue;
+    const g = Math.hypot(Math.max(0, Math.abs(x - t[0] * 2) - 1), Math.max(0, Math.abs(z - t[1] * 2) - 1));
+    if (g < best) best = g;
+  }
+  return best === Infinity ? 0 : best; // no tiles: fall back to the centre rule
 }
 function removeStale(world, keep) {
   const items = itemsOf(world);

@@ -163,3 +163,6 @@ Own `MeshStandardMaterial`s (roughness .8; disposeGeometry frees them), castShad
 - Antenna toast: "counts" is decided by comparing `countAntennas` before/after the push; with no receiver on the raft the
   "(put it 2+ tiles from the receiver)" hint is shown.
 - cleanWorld item-type check was already extended by the logbook lane (`|| it.type === 'bottle'`); `'cache'` is in ITEM_TYPES, compatible.
+- Review fix: the centre rule (`r + STOP_GAP`) alone parks the cache far off the deck on long/L-shaped rafts (a 41×1 raft left it
+  ~25 u off the long side, beyond a worn hook's 16 u reach). Drift now also continues while the gap to the nearest tile square
+  exceeds `STOP_GAP + 2`; compact rafts are unchanged. The HUD marker only writes its transform/class when the value changes.
