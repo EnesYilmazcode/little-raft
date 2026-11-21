@@ -49,6 +49,8 @@ export const HOLD = Object.freeze({
   fish:       { hand: 'right', pose: 'grip', rx: 0.1, ry: 0.35, rz: 0.25, arm: [-0.02, 0.06, 0] },      // by the tail, body across the view
   cup:        { hand: 'right', pose: 'grip', ry: 0.3 },
   water:      { hand: 'right', pose: 'grip', ry: 0.3 },
+  bucket:     { hand: 'right', pose: 'grip', rx: 0.15, ry: 0.5 }, // [goats] pail hugged by its side, mouth up so the milk shows
+  milk:       { hand: 'right', pose: 'grip', rx: 0.15, ry: 0.5 },
   drum: { hand: 'left', pose: 'grip', rx: -0.7 }, pipes: { hand: 'right', pose: 'grip', rx: 0.2 }, bells: { hand: 'left', pose: 'grip', rx: -1.25 }, // [instruments]
   ...Object.fromEntries(PLACEABLE_KINDS.filter((k) => k !== 'hammer').map((k) => [k, { hand: 'left', pose: SEED_KINDS.includes(k) ? 'grip' : 'point' }])),
 });
@@ -58,7 +60,7 @@ export const holdFor = (kind) => HOLD[kind] || (isPlaceable(kind) ? HOLD.crate :
 // Left-fist (placeable) models are capped to a small carried size so they never fill the lower left.
 export const HELD_LEFT_MAX = 0.075;
 const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.22, fish: 0.3, sail: 0.22, palm: 0.2, lantern: 0.2, net: 0.2, bench: 0.16, crate: 0.13,
-  planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11,
+  planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11, bucket: 0.15, milk: 0.15,
   drum: 0.24, pipes: 0.2, bells: 0.26 }; // [instruments]
 
 function fit(T, model, maxDim, gripFn) {
@@ -200,6 +202,27 @@ function buildCup(T, full) {
   return g;
 }
 
+// [goats] Wooden Pail (and the Pail of Milk): tapered staves, two teal hoops and a rope bail, matching icon-pail / icon-milk.
+function buildPail(T, milk) {
+  const g = new T.Group();
+  const wood = new T.MeshStandardMaterial({ color: 0xbb8650, roughness: 0.85, side: T.DoubleSide });
+  const inner = new T.MeshStandardMaterial({ color: 0x6b4526, roughness: 0.9, side: T.BackSide });
+  const hoop = new T.MeshStandardMaterial({ color: 0x54a6a4, roughness: 0.5, metalness: 0.2 });
+  const rope = new T.MeshStandardMaterial({ color: 0xe7c48a, roughness: 1 });
+  const body = new T.Mesh(new T.CylinderGeometry(0.06, 0.048, 0.1, 12, 1, true), wood); g.add(body);
+  const inside = new T.Mesh(new T.CylinderGeometry(0.058, 0.046, 0.098, 12, 1, true), inner); g.add(inside);
+  const base = new T.Mesh(new T.CircleGeometry(0.048, 12), wood); base.rotation.x = Math.PI / 2; base.position.y = -0.05; g.add(base);
+  for (const [y, r] of [[0.022, 0.0565], [-0.028, 0.0505]]) { const h = new T.Mesh(new T.TorusGeometry(r, 0.004, 5, 20), hoop); h.rotation.x = Math.PI / 2; h.position.y = y; g.add(h); }
+  const rim = new T.Mesh(new T.TorusGeometry(0.06, 0.0035, 5, 20), wood); rim.rotation.x = Math.PI / 2; rim.position.y = 0.05; g.add(rim);
+  const bail = new T.Mesh(new T.TorusGeometry(0.06, 0.004, 5, 16, Math.PI), rope); bail.position.y = 0.045; bail.rotation.y = 0.4; g.add(bail);
+  if (milk) {
+    const m = new T.MeshStandardMaterial({ color: 0xfff6e2, roughness: 0.35 });
+    const top = new T.Mesh(new T.SphereGeometry(0.057, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2), m); top.scale.y = 0.18; top.position.y = 0.04; g.add(top);
+    const drip = new T.Mesh(new T.SphereGeometry(0.008, 8, 6), m); drip.scale.y = 1.8; drip.position.set(0.026, 0.038, 0.052); g.add(drip);
+  }
+  return g;
+}
+
 function buildSeeds(T) {
   const g = new T.Group(), m = new T.MeshStandardMaterial({ color: 0xb98d4f, roughness: 0.7 });
   const s = new T.SphereGeometry(1, 10, 8);
@@ -273,6 +296,8 @@ export function buildItemModel(T, kind, factory = null) {
     if (c) root = fit(T, c, dim(kind), (s) => new T.Vector3(0, -s.y / 2, 0)); // grip = base centre
   } else if (kind === 'cup' || kind === 'water') {
     root = fit(T, buildCup(T, kind === 'water'), SIZE[kind], () => new T.Vector3(0, 0, 0));
+  } else if (kind === 'bucket' || kind === 'milk') { // [goats]
+    root = fit(T, buildPail(T, kind === 'milk'), SIZE[kind], () => new T.Vector3(0, 0, 0));
   } else if (kind === 'seed' || kind === 'seeds') {
     root = fit(T, buildSeeds(T), dim(kind), (s) => new T.Vector3(0, -s.y / 2, 0));
   } else if (kind === 'planter') {
