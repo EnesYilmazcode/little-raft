@@ -96,12 +96,14 @@ flying and reeled-in hook get no foam. While it floats it gets lace and ripple r
 
 ## 4. Verify
 
-1. `node sandbox/water/parity.mjs` should print `"ok":true`.
+1. `node sandbox/water/parity.mjs` should print `"ok":true` (heights, slopes and `setAmp`).
 2. Patch a copy of `dist`, then shoot it and the original:
    `python sandbox/water/shoot_game.py <patched_dist> /tmp/w new` and
    `python sandbox/water/shoot_game.py dist /tmp/w cur`. Expect no errors. Expect
-   `new-down.png` to show white collars and lace rings around the raft edge and every item,
-   shaded water (not foam) in the plank gaps, and a glittering sun path.
+   `new-down.png` to show a thin collar and fine lace at the raft edge, lace shaped like each
+   item around it, and shaded water (not foam) in the plank gaps; `new-cast.png` shows the thrown
+   hook floating with lace around it. `gpuCpuMs` should be within about 10% of `cur`'s (it was
+   1140 against 1090 on the loaded lab box).
 3. In the game: build a floor tile. The foam band should move to the new edge right away. Swim
    (fall off). The swim test still uses the same `getHeight`, so nothing changes.
 4. Run the existing checks (`check_game.py`, `check_survival.py`). They do not touch the
