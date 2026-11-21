@@ -290,7 +290,23 @@ function boot() {
     if (r.reset) collapsed = false;
     sync(r); booted = true;
     panel.classList.toggle('ob-dim', Date.now() - lastProgress > DIM_MS && !panel.classList.contains('ob-all'));
-    placeBesideBag(S.inventoryOpen && $('#inventory .sv-wrap')?.getBoundingClientRect());
+    placeBag(!!S.inventoryOpen);
+  }
+  // Placement reads layout (forced sync reflow), so it runs once per bag open and again only when the window, the
+  // Notes or the bag change size (ResizeObserver / resize mark it dirty), not on every tick.
+  let placedOpen = null, placeDirty = true, bagEl = null;
+  const markPlace = () => { placeDirty = true; };
+  const sizeObs = typeof ResizeObserver === 'function' ? new ResizeObserver(markPlace) : null;
+  sizeObs?.observe(panel); window.addEventListener('resize', markPlace);
+  function placeBag(open) {
+    if (open) {
+      const el = $('#inventory .sv-wrap');
+      if (el !== bagEl) { if (bagEl) sizeObs?.unobserve(bagEl); bagEl = el; if (el) sizeObs?.observe(el); placeDirty = true; }
+      if (!sizeObs) placeDirty = true; // no observer: measure every tick as before
+    }
+    if (open === placedOpen && (!placeDirty || !open)) return;
+    placedOpen = open; placeDirty = false;
+    placeBesideBag(open && bagEl?.getBoundingClientRect());
   }
   // Bag open: if the Notes overlap it, move them (narrowed, >= ASIDE_MIN px) into the wider gutter beside the bag;
   // no gutter that wide (phones, small windows) -> .ob-covered hides them rather than peeking out over the bag.
