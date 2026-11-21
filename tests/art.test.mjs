@@ -27,10 +27,11 @@ test('atlas: cells tile seamlessly (edge steps look like interior steps)', () =>
     const x0 = Math.round(c.uv[0] * A), y0 = Math.round(c.uv[1] * A);
     const px = (buf, x, y, k) => buf[((y0 + y) * A + x0 + x) * 4 + k];
     for (const [label, buf] of [['albedo', data.albedo], ['normal', data.normal]]) {
+      // edge step vs the average step over every interior column/row pair (content-independent)
       let edge = 0, inner = 0;
       for (let i = 0; i < S; i++) for (let k = 0; k < 3; k++) {
         edge += Math.abs(px(buf, S - 1, i, k) - px(buf, S, i, k)) + Math.abs(px(buf, i, S - 1, k) - px(buf, i, S, k));
-        inner += Math.abs(px(buf, S / 2 - 1, i, k) - px(buf, S / 2, i, k)) + Math.abs(px(buf, i, S / 2 - 1, k) - px(buf, i, S / 2, k));
+        for (let j = 0; j < S - 1; j += 7) inner += (Math.abs(px(buf, j, i, k) - px(buf, j + 1, i, k)) + Math.abs(px(buf, i, j, k) - px(buf, i, j + 1, k))) / Math.ceil((S - 1) / 7);
       }
       assert.ok(edge <= inner * 2.5 + S * 6, `${name} ${label} seam: edge ${edge} vs interior ${inner}`);
     }

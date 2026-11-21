@@ -33,7 +33,8 @@ export default function generate(S, N) {
   const n = S * S, albedo = new Float32Array(n * 3), height = new Float32Array(n), rough = new Float32Array(n), alpha = new Float32Array(n);
   const TB = LAYERS.map(([p, sd]) => sites(N, p, sd));
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const i = y * S + x, u = x / S, v = y / S;
+    // half-tile shift: the densest patch sits on the tile centre lines, not the wrap (pattern is periodic either way)
+    const i = y * S + x, u = ((x + S / 2) % S) / S, v = ((y + S / 2) % S) / S;
     // coverage: warped periodic fbm -> ragged patches with dense cores and lacy fringes
     const wu = (N.vnoise(u * 4, v * 4, 4, 4, 21) - 0.5) * 0.16, wv = (N.vnoise(u * 4, v * 4, 4, 4, 22) - 0.5) * 0.16;
     const cov = N.fbm((u + wu + 1) % 1 * 4, (v + wv + 1) % 1 * 4, 4, 4, 4, 31);
