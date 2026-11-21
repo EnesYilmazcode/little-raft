@@ -8,6 +8,19 @@ export const CONTENT_ADD = 180, CONTENT_MAX = 360, FULL_AT = 300, BOND_CD = 60, 
 export const LURE_MIN = 20, LURE_MAX = 40, LURE_COST = [['seed', 1], ['leaf', 3]], NAME_MAX = 14, REACH = 3.2;
 export const NAMES = Object.freeze(['Biscuit', 'Dumpling', 'Pip', 'Marlo', 'Sprout', 'Tuffet', 'Nib', 'Clover', 'Bun', 'Pebble', 'Waffle', 'Moppet']);
 export const FOODS = Object.freeze(['seed', 'leaf']);
+// Bramblegoat (docs/specs/goats.md): a second species sharing the graph, clock and save slice.
+export const MAX_SLOTS = 6; // all species; sizes the module's preallocated arrays (MAX_ANIMALS stays the Puffhen cap)
+export const MILK_BASE = 300, MILK_CONTENT = 120, MILK_CAP = 1, GOAT_BEAT = 9, GOAT_HOP_T = 2.4, ARRIVE_GOAT_T = 4;
+export const GOAT_NAMES = Object.freeze(['Bramble', 'Nutmeg', 'Tansy', 'Barley', 'Hazel', 'Mallow', 'Thistle', 'Pudding', 'Juniper', 'Oats', 'Fennel', 'Clove']);
+const deepFreeze = o => { for (const v of Object.values(o)) if (v && typeof v === 'object' && !Object.isFrozen(v)) deepFreeze(v); return Object.freeze(o); };
+export const SPECIES = deepFreeze({
+  puffhen: { prefix: 'p', home: 'nestbox', code: 1, cap: 4, label: 'Puffhen', plural: 'Puffhens', names: NAMES, foods: ['seed', 'leaf'], lure: [['seed', 1], ['leaf', 3]], lureMin: 20, lureMax: 40, beat: BEAT, hopT: HOP_T },
+  goat: { prefix: 'g', home: 'goatpen', code: 2, cap: 2, label: 'Bramblegoat', plural: 'Bramblegoats', names: GOAT_NAMES, foods: ['leaf', 'seaweed'], lure: [['seaweed', 3], ['leaf', 4]], lureMin: 30, lureMax: 50, beat: GOAT_BEAT, hopT: GOAT_HOP_T },
+});
+export const HOME_CODE = Object.freeze({ nestbox: 1, goatpen: 2 });
+const own = (o, k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(o, k);
+const speciesOf = k => (own(SPECIES, k) ? SPECIES[k] : null);
+const ID_RE = { puffhen: /^p\d{1,6}$/, goat: /^g\d{1,6}$/ };
 const TAU = Math.PI * 2;
 const T_MAX = 1e9, FAR_PAST = -1e9;
 
@@ -51,19 +64,28 @@ export function cleanAnimals(v, decor) {
   st.r = isInt(v.r) && v.r >= 0 && v.r < Number.MAX_SAFE_INTEGER ? v.r : 0;
   st.t = num(v.t, 0, T_MAX, 0);
   const t = st.t;
-  let boxes = null;
-  if (Array.isArray(decor)) { boxes = new Set(); for (const d of decor) if (d && d.type === 'nestbox' && isInt(d.x) && isInt(d.z)) boxes.add(keyOf(d.x, d.z)); }
-  const ids = new Set(), homes = new Set();
+  let boxes = null; // "x,z" -> home decor type
+  if (Array.isArray(decor)) { boxes = new Map(); for (const d of decor) if (d && own(HOME_CODE, d.type) && isInt(d.x) && isInt(d.z)) boxes.set(keyOf(d.x, d.z), d.type); }
+  const ids = new Set(), homes = new Set(), per = { puffhen: 0, goat: 0 };
   let maxId = 0;
   if (Array.isArray(v.list)) for (const e of v.list) {
-    if (st.list.length >= MAX_ANIMALS) break;
-    if (!e || typeof e !== 'object' || e.kind !== 'puffhen' || typeof e.id !== 'string' || !/^p\d{1,6}$/.test(e.id)) continue;
+    if (!e || typeof e !== 'object') continue;
+    const S = speciesOf(e.kind);
+    if (!S || per[e.kind] >= S.cap || typeof e.id !== 'string' || !ID_RE[e.kind].test(e.id)) continue;
     const home = cleanHome(e.home); if (!home) continue;
     const hk = keyOf(home[0], home[1]);
-    if (ids.has(e.id) || homes.has(hk) || (boxes && !boxes.has(hk))) continue;
+    if (ids.has(e.id) || homes.has(hk) || (boxes && boxes.get(hk) !== S.home)) continue;
     const seed = isInt(e.seed) && e.seed >= 0 && e.seed <= 0xffffffff ? e.seed : idSeed(e.id);
-    const name = cleanName(e.name) || NAMES[seed % NAMES.length];
-    ids.add(e.id); homes.add(hk); maxId = Math.max(maxId, +e.id.slice(1));
+    const name = cleanName(e.name) || S.names[seed % S.names.length];
+    ids.add(e.id); homes.add(hk); per[e.kind]++; maxId = Math.max(maxId, +e.id.slice(1));
+    if (e.kind === 'goat') {
+      st.list.push({
+        id: e.id, kind: 'goat', name, seed, home, born: num(e.born, 0, t, t),
+        hearts: int(e.hearts, 0, MAX_HEARTS, 0), content: num(e.content, 0, CONTENT_MAX, 0), prod: num(e.prod, 0, MILK_BASE, 0),
+        milk: int(e.milk, 0, MILK_CAP, 0), bondAt: num(e.bondAt, FAR_PAST, t, FAR_PAST),
+      });
+      continue;
+    }
     st.list.push({
       id: e.id, kind: 'puffhen', name, seed, home, born: num(e.born, 0, t, t),
       hearts: int(e.hearts, 0, MAX_HEARTS, 0), content: num(e.content, 0, CONTENT_MAX, 0), prod: num(e.prod, 0, EGG_BASE, 0),
@@ -72,13 +94,16 @@ export function cleanAnimals(v, decor) {
     });
   }
   if (Array.isArray(v.lures)) for (const l of v.lures) {
-    if (st.list.length + st.lures.length >= MAX_ANIMALS) break;
     if (!l || typeof l !== 'object') continue;
+    const kind = l.kind === undefined ? 'puffhen' : l.kind, S = speciesOf(kind);
+    if (!S || per[kind] >= S.cap) continue;
     const home = cleanHome(l.home); if (!home) continue;
     const hk = keyOf(home[0], home[1]);
-    if (homes.has(hk) || (boxes && !boxes.has(hk))) continue;
-    homes.add(hk);
-    st.lures.push({ home, at: num(l.at, t, t + LURE_MAX, t + LURE_MIN) });
+    if (homes.has(hk) || (boxes && boxes.get(hk) !== S.home)) continue;
+    homes.add(hk); per[kind]++;
+    const lu = { home, at: num(l.at, t, t + S.lureMax, t + S.lureMin) };
+    if (kind === 'goat') lu.kind = 'goat';
+    st.lures.push(lu);
   }
   st.next = Math.max(isInt(v.next) && v.next > 0 && v.next < 1e7 ? v.next : 1, maxId + 1);
   return st;
@@ -91,7 +116,7 @@ const WALLS = new Set(['wall', 'halfwall', 'window', 'railing']); // [buildpack]
 const DX = [1, -1, 0, 0], DZ = [0, 0, 1, -1];
 const edgeOf = (x, z, d) => (d === 0 ? (x + 1) + ',' + z + ',1' : d === 1 ? x + ',' + z + ',1' : d === 2 ? x + ',' + (z + 1) + ',0' : x + ',' + z + ',0');
 
-/** Walkable deck cells: tiles with no decor (or a nest box), minus grill and level-0 stairs cells. */
+/** Walkable deck cells: tiles with no decor (or a home: nest box box=1, hay corner box=2), minus grill and level-0 stairs cells. */
 export function buildGraph(tiles, decor, pieces, hasGrill) {
   const held = new Map();
   if (Array.isArray(decor)) for (const d of decor) if (d && isInt(d.x) && isInt(d.z)) held.set(keyOf(d.x, d.z), d.type);
@@ -107,9 +132,9 @@ export function buildGraph(tiles, decor, pieces, hasGrill) {
     const x = tl[0], z = tl[1], k = keyOf(x, z);
     if (seen.has(k)) continue; seen.add(k);
     const type = held.get(k);
-    if (type !== undefined && type !== 'nestbox') continue;
+    if (type !== undefined && !own(HOME_CODE, type)) continue;
     if (stairs.has(k) || (hasGrill && hasGrill(x, z))) continue;
-    cells.push([x, z, type === 'nestbox' ? 1 : 0]);
+    cells.push([x, z, type === undefined ? 0 : HOME_CODE[type]]);
   }
   cells.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const n = cells.length;
@@ -204,15 +229,15 @@ export function plan(seed, beat, graph, dist, homeIdx, out) {
   return out;
 }
 
-/** Pose u seconds into the planned beat: p.{x,z,yaw,hop,moving,f,lift} in raft-local metres. lift 1 = on the nest box. */
-export function pose(out, graph, seed, beat, u, p) {
+/** Pose u seconds into the planned beat: p.{x,z,yaw,hop,moving,f,lift} in raft-local metres. lift 1 = on the home tile. ht: seconds per step. */
+export function pose(out, graph, seed, beat, u, p, ht = HOP_T) {
   const k = out.beat >= 0 ? out.beat : beat;
   if (!graph || out.cells[0] < 0) { p.x = out.sx; p.z = out.sz; p.yaw = out.yaw0; p.hop = 0; p.moving = false; p.f = 0; p.lift = 1; return p; }
   const cells = out.cells;
-  if (!out.n) { p.x = out.sx; p.z = out.sz; p.yaw = out.yaw0; p.hop = 0; p.moving = false; p.f = 0; p.lift = graph.box[cells[0]]; return p; }
-  let h = Math.floor((u - HOP_START) / HOP_T);
+  if (!out.n) { p.x = out.sx; p.z = out.sz; p.yaw = out.yaw0; p.hop = 0; p.moving = false; p.f = 0; p.lift = graph.box[cells[0]] ? 1 : 0; return p; }
+  let h = Math.floor((u - HOP_START) / ht);
   if (h < 0) h = 0;
-  let f = (u - HOP_START - h * HOP_T) / HOP_T;
+  let f = (u - HOP_START - h * ht) / ht;
   if (h >= out.n) { h = out.n - 1; f = 1; }
   if (f < 0) f = 0;
   const a = cells[h], b = cells[h + 1];
@@ -223,27 +248,50 @@ export function pose(out, graph, seed, beat, u, p) {
   p.moving = f > 0 && f < 1;
   p.hop = p.moving ? Math.abs(Math.sin(Math.PI * 3 * f)) : 0;
   p.f = f;
-  p.lift = graph.box[a] + (graph.box[b] - graph.box[a]) * s;
+  const la = graph.box[a] ? 1 : 0, lb = graph.box[b] ? 1 : 0;
+  p.lift = la + (lb - la) * s;
   const dx = bx - ax, dz = bz - az;
   p.yaw = dx * dx + dz * dz > 1e-8 ? Math.atan2(dx, dz) : out.yaw0;
   return p;
 }
 
+/** First off-raft cell from home along +x,-x,+z,-z (fewest steps, first in order on ties): where a goat wades in. */
+export function edgeStart(tileKeys, hx, hz) {
+  let best = null, bestN = Infinity;
+  for (let d = 0; d < 4; d++) {
+    for (let n = 1; n <= 25 && n < bestN; n++) {
+      const x = hx + DX[d] * n, z = hz + DZ[d] * n;
+      if (!tileKeys || !tileKeys.has(keyOf(x, z))) { best = [x, z]; bestN = n; break; }
+    }
+  }
+  return best || [hx + 1, hz];
+}
+
 // ------------------------------------------------------------------ production
 
 export const eggPeriod = a => (a.content > 0 ? EGG_CONTENT : EGG_BASE) * (1 - HEART_CUT * a.hearts);
+export const milkPeriod = a => (a.content > 0 ? MILK_CONTENT : MILK_BASE) * (1 - HEART_CUT * a.hearts);
+export const gone = id => `That ${typeof id === 'string' && id[0] === 'g' ? 'Bramblegoat' : 'Puffhen'} wandered off`;
+const labelOf = a => (a && a.kind === 'goat' ? SPECIES.goat.label : SPECIES.puffhen.label);
+export const kindCount = (st, kind, lures) => { let n = 0; for (const a of st.list) if (a.kind === kind) n++; if (lures) for (const l of st.lures) if ((l.kind || 'puffhen') === kind) n++; return n; };
 const homeKey = h => h[0] + ',' + h[1];
 const findId = (st, id) => { for (const a of st.list) if (a.id === id) return a; return null; };
 const findHome = (st, x, z) => { for (const a of st.list) if (a.home[0] === x && a.home[1] === z) return a; return null; };
 const lureAt = (st, x, z) => { for (const l of st.lures) if (l.home[0] === x && l.home[1] === z) return l; return null; };
 
-const RES = { laid: [], arrived: [] };
-/** Host tick: content wears off, eggs are laid, lures arrive. Returns a reused {laid, arrived} (ids). */
+const RES = { laid: [], arrived: [], ready: [] };
+/** Host tick: content wears off, eggs are laid, milk gets ready, lures arrive. Returns a reused {laid, arrived, ready} (ids). */
 export function tick(state, dt, rng) {
-  RES.laid.length = 0; RES.arrived.length = 0;
+  RES.laid.length = 0; RES.arrived.length = 0; RES.ready.length = 0;
   const d = fin(dt) ? clamp(dt, 0, 60) : 0;
   for (const a of state.list) {
     a.content = Math.max(0, a.content - d);
+    if (a.kind === 'goat') {
+      const period = milkPeriod(a);
+      if (a.milk < MILK_CAP) { a.prod += d; if (a.prod >= period) { a.milk = MILK_CAP; a.prod = 0; RES.ready.push(a.id); } }
+      else a.prod = period;
+      continue;
+    }
     const period = eggPeriod(a);
     if (a.eggs < EGG_CAP) {
       a.prod += d;
@@ -258,10 +306,13 @@ export function tick(state, dt, rng) {
     const l = state.lures[i];
     if (state.t < l.at) continue;
     state.lures.splice(i--, 1);
-    if (state.list.length >= MAX_ANIMALS || findHome(state, l.home[0], l.home[1])) continue;
-    const name = NAMES[Math.floor(rng() * NAMES.length) % NAMES.length];
+    const kind = l.kind === 'goat' ? 'goat' : 'puffhen', S = SPECIES[kind];
+    if (kindCount(state, kind, false) >= S.cap || findHome(state, l.home[0], l.home[1])) continue;
+    const name = S.names[Math.floor(rng() * S.names.length) % S.names.length];
     const seed = Math.floor(rng() * 2 ** 32) >>> 0;
-    const a = { id: 'p' + state.next++, kind: 'puffhen', name, seed, home: [l.home[0], l.home[1]], born: state.t, hearts: 0, content: 0, prod: 0, eggs: 0, feather: 0, bondAt: FAR_PAST, featherAt: FAR_PAST };
+    const a = kind === 'goat'
+      ? { id: 'g' + state.next++, kind: 'goat', name, seed, home: [l.home[0], l.home[1]], born: state.t, hearts: 0, content: 0, prod: 0, milk: 0, bondAt: FAR_PAST }
+      : { id: 'p' + state.next++, kind: 'puffhen', name, seed, home: [l.home[0], l.home[1]], born: state.t, hearts: 0, content: 0, prod: 0, eggs: 0, feather: 0, bondAt: FAR_PAST, featherAt: FAR_PAST };
     state.list.push(a);
     RES.arrived.push(a.id);
   }
@@ -274,33 +325,40 @@ const no = (reason, text) => ({ ok: false, reason, text });
 const commit = (bag, scratch) => { for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i]; };
 const count = (bag, k) => (bag && typeof bag.count === 'function' ? bag.count(k) : 0);
 
-export function lure(state, x, z, bag, t, rng) {
-  if (findHome(state, x, z) || lureAt(state, x, z)) return no('busy', 'This nest box already has a guest');
-  if (state.list.length + state.lures.length >= MAX_ANIMALS) return no('cap', `The raft has ${MAX_ANIMALS} Puffhens`);
+export function lure(state, x, z, bag, t, rng, kind = 'puffhen') {
+  const S = speciesOf(kind); if (!S) return no('bad', 'Nothing wants to live here');
+  const goat = kind === 'goat';
+  if (findHome(state, x, z) || lureAt(state, x, z)) return no('busy', goat ? 'This hay corner already has a guest' : 'This nest box already has a guest');
+  if (kindCount(state, kind, true) >= S.cap) return no('cap', `The raft has ${S.cap} ${S.plural}`);
   let food = null;
-  for (const [k, n] of LURE_COST) if (count(bag, k) >= n) { food = [k, n]; break; }
-  if (!food || !bag.remove(food[0], food[1])) return no('nofood', 'Needs 1 Palm Seed or 3 Leaves');
-  state.lures.push({ home: [x, z], at: t + LURE_MIN + rng() * (LURE_MAX - LURE_MIN) });
-  return { ok: true, kind: 'build', food: food[0], text: 'You scatter seeds… listen for a chirp' };
+  for (const [k, n] of S.lure) if (count(bag, k) >= n) { food = [k, n]; break; }
+  if (!food || !bag.remove(food[0], food[1])) return no('nofood', goat ? 'Needs 3 Seaweed or 4 Leaves' : 'Needs 1 Palm Seed or 3 Leaves');
+  const lu = { home: [x, z], at: t + S.lureMin + rng() * (S.lureMax - S.lureMin) };
+  if (goat) lu.kind = 'goat';
+  state.lures.push(lu);
+  return { ok: true, kind: 'build', food: food[0], text: goat ? 'You set out some greens… listen for a bleat' : 'You scatter seeds… listen for a chirp' };
 }
 
 export function feed(state, id, food, bag, t) {
-  const a = findId(state, id); if (!a) return no('notarget', 'That Puffhen wandered off');
-  if (!FOODS.includes(food)) return no('bad', 'That is not Puffhen food');
-  if (count(bag, food) < 1) return no('nofood', 'You need a Palm Seed or a Leaf');
+  const a = findId(state, id); if (!a) return no('notarget', gone(id));
+  const goat = a.kind === 'goat', S = SPECIES[a.kind];
+  if (!S.foods.includes(food)) return no('bad', `That is not ${S.label} food`);
+  const needs = goat ? 'You need Seaweed or a Leaf' : 'You need a Palm Seed or a Leaf';
+  if (count(bag, food) < 1) return no('nofood', needs);
   if (a.content >= FULL_AT) return no('full', `${a.name} is full and happy`);
-  if (!bag.remove(food, 1)) return no('nofood', 'You need a Palm Seed or a Leaf');
+  if (!bag.remove(food, 1)) return no('nofood', needs);
   a.content = Math.min(CONTENT_MAX, a.content + CONTENT_ADD);
   let heart = false;
   if (t - a.bondAt >= BOND_CD) { a.hearts = Math.min(MAX_HEARTS, a.hearts + 1); a.bondAt = t; heart = true; }
-  return { ok: true, kind: 'loot', heart, text: `${a.name} gobbles it up · content` };
+  return { ok: true, kind: 'loot', heart, text: goat ? `${a.name} munches happily · content` : `${a.name} gobbles it up · content` };
 }
 
 export function pet(state, id, t) {
-  const a = findId(state, id); if (!a) return no('notarget', 'That Puffhen wandered off');
+  const a = findId(state, id); if (!a) return no('notarget', gone(id));
   if (t - a.bondAt < BOND_CD) return { ok: true, kind: 'notice', heart: false, text: '' };
   a.hearts = Math.min(MAX_HEARTS, a.hearts + 1); a.bondAt = t;
   let text = `${a.name} ♥ ${a.hearts}`, feather = false;
+  if (a.kind === 'goat') return { ok: true, kind: 'notice', heart: true, feather, text };
   if (a.hearts >= PET_FEATHER_HEARTS && t - a.featherAt >= PET_FEATHER_CD && a.feather < FEATHER_CAP) {
     a.feather = Math.min(FEATHER_CAP, a.feather + 1); a.featherAt = t; feather = true;
     text += ' · a feather drifts into the nest';
@@ -325,9 +383,26 @@ export function collect(state, x, z, bag) {
 
 export function rename(state, id, name) {
   const n = cleanName(name); if (!n) return no('badname', 'Try another name');
-  const a = findId(state, id); if (!a) return no('notarget', 'That Puffhen wandered off');
+  const a = findId(state, id); if (!a) return no('notarget', gone(id));
   a.name = n;
   return { ok: true, kind: 'notice', text: `Renamed to ${n}` };
 }
 
-export { homeKey, findId, findHome, lureAt };
+/** Host: swap one held Wooden Pail for a Pail of Milk from a ready goat. A failure changes nothing. */
+export function milk(state, id, bag) {
+  const a = findId(state, id); if (!a) return no('notarget', gone(id));
+  if (a.kind !== 'goat') return no('bad', 'Only goats give milk');
+  if (!(a.milk >= 1)) return no('notyet', `${a.name} has no milk yet · soon`);
+  if (count(bag, 'bucket') < 1) return no('nopail', 'Hold a Wooden Pail to milk');
+  const sel = bag.slots[bag.selectedIndex];
+  if (sel && sel.kind === 'bucket' && sel.count === 1) bag.slots[bag.selectedIndex] = { kind: 'milk', count: 1 };
+  else {
+    const scratch = new bag.constructor(bag.snapshot());
+    if (!scratch.remove('bucket', 1) || scratch.add('milk', 1) !== 0) return no('full', 'Your bag is full');
+    commit(bag, scratch);
+  }
+  a.milk = 0; a.prod = 0;
+  return { ok: true, kind: 'loot', text: `+1 Pail of Milk · thank you, ${a.name}` };
+}
+
+export { homeKey, findId, findHome, lureAt, labelOf };

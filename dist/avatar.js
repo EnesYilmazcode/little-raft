@@ -17,10 +17,12 @@ import { cleanLook, lookColors } from './look.js?build=v3-survival-ae77fa84ac2b'
 // tipped back 0.12 rad). Own low-poly art, plain or flatShading materials only so bakeAvatar keeps ~8 draw calls.
 const FLOWER_PETALS = ['#f59ab8', '#ffe27a', '#fdfaf2'];
 const lit = (T, c, k) => { const o = new T.Color(c).multiplyScalar(k); o.r = Math.min(1, o.r); o.g = Math.min(1, o.g); o.b = Math.min(1, o.b); return o; };
+// Non-indexed copy with per-face normals: looks exactly like flatShading on a plain material, so it shares that program.
+const flat = (g) => { const n = g.toNonIndexed(); g.dispose(); n.computeVertexNormals(); return n; };
 const HAT_BUILD = {
-  straw(T, hat, add, geo, M) { // today's sunhat, verbatim
-    add(hat, geo(new T.CylinderGeometry(0.34, 0.35, 0.025, 14)), M.straw, 0, 0, 0, 'brim');
-    add(hat, geo(new T.CylinderGeometry(0.15, 0.18, 0.15, 12)), M.straw, 0, 0.085, 0, 'crown');
+  straw(T, hat, add, geo, M) { // today's sunhat, verbatim; faceted via per-face normals (flat()), not a flatShading program
+    add(hat, geo(flat(new T.CylinderGeometry(0.34, 0.35, 0.025, 14))), M.straw, 0, 0, 0, 'brim');
+    add(hat, geo(flat(new T.CylinderGeometry(0.15, 0.18, 0.15, 12))), M.straw, 0, 0.085, 0, 'crown');
     add(hat, geo(new T.CylinderGeometry(0.183, 0.186, 0.045, 12)), M.band, 0, 0.04, 0, 'band');
   },
   none() {},
@@ -83,7 +85,7 @@ export function createAvatar(T, colorOrLook) {
     cheek: mat('#f39b93', { roughness: 0.9 }),
     smile: mat('#a8433a', { roughness: 0.6 }),
     hair: mat(C.hair, { roughness: 0.9 }),
-    straw: mat('#ecc96f', { roughness: 0.95, flatShading: true }),
+    straw: mat('#ecc96f', { roughness: 0.95 }),   // faceted by its geometry (flat() above)
     band: mat(bandColor),
     pack: mat('#d9833f', { roughness: 0.85 }),
     packDark: mat('#a85f2a', { roughness: 0.85 }),

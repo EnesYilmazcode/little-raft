@@ -183,6 +183,9 @@ const LIST = [
   item('binoculars', 'Binoculars', 'tool', { iconTint: '#5d6b78', stack: 1,
     recipe: hand({ glass: 2, copperingot: 1, hinge: 2, bolt: 1 }), unlock: research('glass', 'copperingot'),
     tip: 'Hold them to spot the nearest barrel: bearing and distance. They never wear out.' }),
+  item('spyglass', 'Spyglass', 'tool', { iconTint: '#c9a15a', stack: 1, // [spyglass]
+    recipe: hand({ wood: 3, rope: 1, plastic: 2, scrap: 1 }), unlock: discover('rope', 'plastic', 'scrap'),
+    tip: 'A little brass-and-wood telescope. Hold right click to look far away. Never wears out.' }),
   // [instruments] held instruments (dist/instruments.js): no durability, no world state
   item('drum', 'Tide Drum', 'tool', { iconTint: '#b0805a', stack: 1, recipe: hand({ wood: 3, leaf: 2, rope: 1 }), unlock: discover('rope'),
     tip: 'A palm-leaf hand drum. Click to thump; look up or down to change the note.' }),

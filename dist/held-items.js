@@ -24,6 +24,7 @@ import { createHandle, createGlidePost } from './zipline-model.js?build=v3-survi
 import { createRocket } from './fireworks-model.js?build=v3-survival-ae77fa84ac2b'; // [fireworks]
 import { createScarecrow3D } from './scarecrow-model.js?build=v3-survival-ae77fa84ac2b'; // [scarecrow]
 import { createHive, createFlowerBox, createCandle } from './bees-model.js?build=v3-survival-ae77fa84ac2b'; // [bees]
+import { createSpyglassModel } from './spyglass-model.js?build=v3-survival-ae77fa84ac2b'; // [spyglass]
 
 export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 // Items you aim at the raft to place: the free hand points at the spot while one of these is held.
@@ -45,6 +46,7 @@ export const HOLD = Object.freeze({
   fishingrod: { hand: 'right', pose: 'grip', rx: -0.15, rz: 0.6 },
   spade:      { hand: 'right', pose: 'grip', rx: 0.2, rz: 0.35 },
   finder:     { hand: 'right', pose: 'grip', rx: -1.1, rz: 0.25 },
+  spyglass:   { hand: 'right', pose: 'grip', rx: -0.85, rz: 0.3 }, // [spyglass]
   spear:      { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 }, // [spear-repair] point forward, a ready jab
   metalspear: { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 },
   paddle:     { hand: 'right', pose: 'grip', rx: -1.45, ry: 0, rz: 0.6, arm: [-0.02, 0.03, 0] }, // [paddle] blade reaches forward and down past the edge
@@ -279,8 +281,8 @@ export function buildItemModel(T, kind, factory = null) {
     root.userData.size = { x: sz.x * s, y: sz.y * s, z: sz.z * s };
     root.userData.grip = [gp.x, gp.y, gp.z];
     root.userData.model = m;                                     // rod: userData.float/leader/tipNode live here
-  } else if (kind === 'spade' || kind === 'finder') {
-    const m = kind === 'spade' ? createSpade(T) : createFinder(T), s = 0.55;
+  } else if (kind === 'spade' || kind === 'finder' || kind === 'spyglass') { // [spyglass]
+    const m = kind === 'spade' ? createSpade(T) : kind === 'finder' ? createFinder(T) : createSpyglassModel(T), s = kind === 'spyglass' ? 0.85 : 0.55; // [spyglass]
     m.scale.setScalar(s);
     root = new T.Group(); root.add(m);
     const gp = m.userData.grip.clone().multiplyScalar(s), sz = m.userData.size;

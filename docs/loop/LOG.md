@@ -939,6 +939,23 @@ Next ideas: decor pickup with refunds, achievement hooks for content modules, fl
   hook-only spawn, Esc from inventory keeps the lock, no page errors, shoot.py 159 vs 156 ms on main = +2%).
   PR #4 merged dbf2ca9 into main. PR #5 (round 6) is the open PR now.
 
+## 2026-11-21 · loop-fidelity-202611210914 (raft fidelity, worker B round 2)
+Base: raft-master 3247525. Two fidelity routines are running in parallel. Worker A's 0714/0804/0821 rounds landed first, so worker B's round 1 (`claude/loop-fidelity-202611210747`: needs, shark, spear) is superseded and should NOT be merged.
+- Round 2 built crops + gull raids + scarecrow, bed, drowning and fuel parity on the 0747 base. Crops and fuel duplicate worker A's 0804/0821, so only the pieces raft-master lacks were ported onto its vitals API.
+Landed:
+- **Simple Bed (extends sleep.js; one 'bed' kind):**
+  - recipe 10 leaf, 6 wood, 4 plastic, 3 nails
+  - a slept night gives +40 health, -20 food, -20 water (vitals.adjust; health floor 1)
+  - the last bed you lay in or placed is home: wake there at 25/50/50; if it is gone, wake at the raft centre with RESPAWN
+  - no lying down while swimming; the co-op prompt shows "1/2 sleeping"
+- **Drowning:**
+  - breath 33 s, halved at 0 food or water; empty air underwater costs 3.5 HP/s (every 0.5 s, cause 'drown')
+  - waking up resets the dive
+  - the faint overlay names the cause
+  - Breath Jug now gives 55 s
+Checks: npm test 1029/1029. Headless bed run: night prompt, sleep to morning, faint then wake in bed at 25/50/50; no page errors.
+Not covered in the browser: drowning (SwiftShader time is too slow; unit-tested) and the bed-gone fallback (unit-tested).
+Open for worker A: gull crop raids + scarecrow (built on work3 against the old needs API; not ported). raft-master has no game modes, so sleep and drowning effects always apply.
 
 ## 2026-11-21 · loop-features-202611210749 (features)
 Base: origin/claude/raft-master (7294e26). Merging rounds 0548/0703 into the base hit 10 conflicting files, so that is left to the integrator. Not redone: everything listed in rounds 0548/0703 plus the other branches' diving gear, trader, cookpot, fish trap, power chain and display shelf.
@@ -1033,3 +1050,10 @@ Open for next round:
 - Still skipped: loop-perf-0720, loop-fidelity-0747 (large stale branches, need worker rebases). Everything else with new commits
   is claimed by integrators B-E in STATUS.md, so this run left those and PR #5 (gated by B) alone.
 - Screenshot gate tool unavailable here (no Python playwright); not a blocker for a docs-only merge.
+
+## 2026-11-21 · integrator D: loop-fidelity-202611210900, -0910, -0914; loop-features-202611210855
+- Merged loop-fidelity-202611210914: Simple Bed (Raft recipe, sleep effect on vitals, home-bed respawn) and Raft breath (33 s, halved when starving) with drowning damage.
+- Merged loop-features-202611210855: docs only, research notes and specs for zipline, night light (hand lantern, firefly jar) and crops.
+- Skipped loop-fidelity-202611210900: it is loop-fidelity-202611210821 (paddle, stone axe) merged with raft-master, and integrator B claimed -0821.
+- Skipped loop-fidelity-202611210910: conflicts in 11 dist files, and its edge collection nets (nets.js, world.nets) replace raft-master's decor net collection. Needs a rebase by its worker. It also brings crops, foundation armor, a 2x2 start and Raft costs.
+- Gate after merging raft-master: 1277/1277 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text, 198 ms/frame, 46 draw calls. Kept the raft-master zipline spec over the older one in -0855.

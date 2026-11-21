@@ -25,7 +25,7 @@ import { loadLook, cleanLook, createLookGate, PARTNER_DEFAULT } from './look.js?
 
 export const COOP_VERSION = 1;
 export const HELD = Object.freeze([null, 'hook', 'hammer', 'fishingrod', 'wood', 'leaf', 'scrap', 'plastic', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate',
-  'drum', 'pipes', 'bells', 'spade', 'finder', 'spear', 'metalspear', 'glidehandle', 'paddle', 'axe']); // append only: index is the wire format ([instruments] 14-16, [treasure] 17-18, [spear-repair] 19-20, [zipline] 21, [paddle] 22, [axe] 23)
+  'drum', 'pipes', 'bells', 'spade', 'finder', 'spear', 'metalspear', 'glidehandle', 'spyglass', 'paddle', 'axe']); // append only: index is the wire format ([instruments] 14-16, [treasure] 17-18, [spear-repair] 19-20, [zipline] 21, [spyglass] 22, [paddle] 23, [axe] 24)
 const STAGES = ['flying', 'floating', 'reeling', 'done', 'fishing'];
 // Pose flags: 1 swimming | 2 grounded | 4 reeling | 8 riding a glide line [zipline] | 16 seated [sit]. Old peers ignore unknown bits.
 export const poseFlags = l => (l.swimming ? 1 : 0) | (l.grounded ? 2 : 0) | (l.reeling ? 4 : 0) | (l.riding ? 8 : 0) | (l.seated ? 16 : 0);

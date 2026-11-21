@@ -92,7 +92,7 @@ existing HUD (cream #fff3cf text, teal #096b82, soft shadows).
 
 ## dist/diving.js (controller)
 ```js
-export const DIVE = { SPEED: 2.4, FAST: 3.4, VERTICAL: 2.2, BUOYANCY: 0.15, OXY_SECONDS: 45,
+export const DIVE = { SPEED: 2.4, FAST: 3.4, VERTICAL: 2.2, BUOYANCY: 0.15, OXY_SECONDS: 33,
   REFILL_RATE: 4, GATHER_SECONDS: 1.0, REACH: 2.8, EYE_FLOOR_CLEAR: 0.6, RAFT_CLEAR: 0.75,
   SURFACE_EXIT: 0.15, MAX_DISTANCE: 50 };
 export class DiveBody { ... }   // pure (no THREE/DOM): step(dt, input, env) -> events

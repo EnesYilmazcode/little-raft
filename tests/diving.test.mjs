@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
-const { DIVE, DiveBody, stepOxygen, airSeconds } = await import(new URL('diving.js', base));
+const { DIVE, DiveBody, stepOxygen, DrownMeter } = await import(new URL('diving.js', base));
 
 const ENV = { waterY: -0.24, floorY: -11, tiles: [], deckY: 0.2 };
 const run = (body, secs, input, env = ENV) => {
@@ -130,33 +130,46 @@ test('stepOxygen: drains over OXY_SECONDS, refills faster, clamps', () => {
   assert.equal(stepOxygen(NaN, NaN, true).oxygen, 1);
 });
 
-test('air: Raft 33 s, 17 s when hunger or thirst is empty', () => {
-  assert.equal(DIVE.OXY_SECONDS, 33); assert.equal(DIVE.OXY_SECONDS_WEAK, 17); assert.equal(DIVE.DROWN_HP, 3.5);
-  assert.equal(airSeconds({ food: 50, water: 50 }), 33);
-  assert.equal(airSeconds({ food: 0, water: 50 }), 17);
-  assert.equal(airSeconds({ food: 50, water: 0 }), 17);
-  assert.equal(airSeconds(null), 33); assert.equal(airSeconds({ food: NaN }), 33);
-  let o = 1; for (let i = 0; i < 16; i++) o = stepOxygen(o, 1, true, 17).oxygen;
-  assert.ok(o > 0 && o < 0.1, `o ${o}`);
-  assert.equal(stepOxygen(o, 1, true, 17).empty, true);
-  // refill speed does not depend on the weak breath
-  assert.equal(stepOxygen(0, 1, false, 17).oxygen, stepOxygen(0, 1, false).oxygen);
-  const weak = new DiveBody({ x: 10, y: -5, z: 0 }), strong = new DiveBody({ x: 10, y: -5, z: 0 });
-  for (let i = 0; i < 60; i++) { weak.step(1 / 60, {}, { ...ENV, airSeconds: 17 }); strong.step(1 / 60, {}, ENV); }
-  assert.ok(weak.oxygen < strong.oxygen);
+test('parity: Raft breath is 33 s, halved when starving; refill is gradual', () => {
+  assert.equal(DIVE.OXY_SECONDS, 33);
+  assert.equal(DIVE.DROWN_HP, 3.5);
+  let o = 1, t = 0;
+  while (o > 0 && t < 100) { o = stepOxygen(o, 0.1, true).oxygen; t += 0.1; }
+  assert.ok(Math.abs(t - 33) < 0.2, `full breath ${t}`);
+  o = 1; t = 0;
+  while (o > 0 && t < 100) { o = stepOxygen(o, 0.1, true, DIVE.OXY_SECONDS * DIVE.STARVED_BREATH).oxygen; t += 0.1; }
+  assert.ok(Math.abs(t - 16.5) < 0.2, `starved breath ${t}`);
+  const r = stepOxygen(0, 1, false, DIVE.OXY_SECONDS * DIVE.STARVED_BREATH); // refill never depends on hunger
+  assert.ok(r.oxygen > 0.1 && r.oxygen < 0.5, `1 s of refill ${r.oxygen}`);
+  assert.equal(stepOxygen(1, 1, true, NaN).oxygen, 1 - 1 / 33, 'bad breath falls back to 1');
+  const b = new DiveBody({ x: 10, y: -5, z: 0 }); // DiveBody reads env.breath and stacks it with the gear multiplier
+  for (let i = 0; i < 60; i++) b.step(1 / 60, {}, { ...ENV, breath: DIVE.STARVED_BREATH });
+  assert.ok(Math.abs(b.oxygen - (1 - 1 / 16.5)) < 1e-6, `starved body ${b.oxygen}`);
+  const c = new DiveBody({ x: 10, y: -5, z: 0 });
+  for (let i = 0; i < 60; i++) c.step(1 / 60, {}, { ...ENV, breath: 'x' });
+  assert.ok(Math.abs(c.oxygen - (1 - 1 / 33)) < 1e-6, `junk breath ${c.oxygen}`);
 });
 
-test('drowning: no damage with air, 3.5 HP/s once empty, stops when surfaced', () => {
-  // step() returns a reused scratch object, so read it inside the loop
-  const sim = (body, secs, input) => { let hp = 0, steps = 0, surfaced = false, lastDrown = 0;
-    for (let t = 0; t < secs && !surfaced; t += 1 / 60) { const ev = body.step(1 / 60, input, ENV); hp += ev.drown; if (ev.drown > 0) steps++; surfaced = ev.surfaced; lastDrown = ev.drown; }
-    return { hp, steps, surfaced, lastDrown }; };
-  assert.equal(sim(new DiveBody({ x: 10, y: -3, z: 0, oxygen: 0.5 }), 1, { down: true }).hp, 0);
-  const r = sim(new DiveBody({ x: 10, y: -9, z: 0, oxygen: 0 }), 30, { down: true });
-  assert.equal(r.surfaced, true); assert.equal(r.lastDrown, 0);
-  assert.ok(r.steps > 30, `drowned for ${r.steps} steps`);
-  assert.ok(Math.abs(r.hp - r.steps / 60 * 3.5) < 1e-6, `hp ${r.hp}`);
-  assert.ok(r.hp > 3.5 && r.hp < 20, `a forced rise from ~9 m costs some but not all HP: ${r.hp}`);
+test('parity: out of air the diver drowns at DROWN_HP/s until surfacing', () => {
+  const b = new DiveBody({ x: 10, y: -8, z: 0, oxygen: 0.0001 });
+  let hp = 0, steps = 0, ev;
+  do { ev = b.step(1 / 60, { down: true }, ENV); hp += ev.drown; steps++; } while (!ev.surfaced && steps < 1200);
+  assert.ok(ev.surfaced, 'auto-rise still surfaces');
+  assert.equal(ev.drown, 0, 'no drowning on the surfacing step');
+  const secs = (steps - 1) / 60;
+  assert.ok(Math.abs(hp - secs * DIVE.DROWN_HP) < DIVE.DROWN_HP / 30, `hp ${hp} over ${secs}s`);
+  const full = new DiveBody({ x: 10, y: -5, z: 0 });
+  assert.equal(full.step(1 / 60, {}, ENV).drown, 0, 'no damage with air left');
+});
+
+test('parity: DrownMeter pays out in DROWN_TICK chunks and resets', () => {
+  const m = new DrownMeter(), dt = 1 / 60;
+  let paid = 0, hits = 0;
+  for (let i = 0; i < 120; i++) { const hp = m.add(DIVE.DROWN_HP * dt); if (hp) { paid += hp; hits++; } }
+  assert.equal(hits, Math.round(2 / DIVE.DROWN_TICK), 'about two hits a second');
+  assert.ok(Math.abs(paid - 2 * DIVE.DROWN_HP) < 1e-6, `paid ${paid}`);
+  m.add(1); m.add(0); assert.equal(m.acc, 0, 'surfacing clears the partial chunk');
+  assert.equal(m.add(NaN), 0);
 });
 
 const seafloorPath = fileURLToPath(new URL('seafloor.js', base));

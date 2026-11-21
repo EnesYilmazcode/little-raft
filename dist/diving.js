@@ -1,15 +1,13 @@
-// Little Raft - diving controller. Raft air: 33 s (17 s while starving or parched); out of air you float up and
-// drown at 3.5 HP/s until you surface (docs/loop/research/fidelity-r2b-stations.md).
+// Little Raft - diving controller. Raft-style breath: 33 s (half when starving or parched); out of air
+// you float up and drown at DROWN_HP per second until you surface (onDrown -> game.js hurtPlayer(hp, 'drown')).
 // DIVE, DiveBody and stepOxygen are pure (no THREE, no DOM). createDiving wires the
 // seafloor, underwater fx and diving UI together; it touches THREE/DOM only when called.
 //
 // game.js hooks:
 //   import { createDiving } from './diving.js?build=v3-survival-ae77fa84ac2b';
 //   init:   diving = createDiving({T, scene, camera, ocean, islands, getTiles:() => world.tiles, getDeckY:deckY,
-//             onGather:id => action({kind:'gather', id}), restore:savedDiveState,
-//             getVitals:() => vitals, onDrown:(hp, first) => hurtPlayer(hp, 'drown'),
-//             getMods:out => content?.diveMods?.(out)});
-//   onDrown gets whole-HP chunks (about 3 calls per second at DROWN_HP 3.5); `first` is true once per dive.
+//             onGather:id => action({kind:'gather', id}), restore:savedDiveState, getMods:out => content?.diveMods?.(out),
+//             breath:() => 1 | 0.5 (breath multiplier), onDrown:hp => hurtPlayer(hp, 'drown')});
 //   getMods(out): fills a {swim, oxy, fog, gather} multiplier object (1 = neutral) each frame; clamped here (docs/specs/diving-gear.md).
 //   gather success (host): broadcast so EVERY client (host too) calls diving.markGathered(id).
 //   movePlayer: if (!diving?.move(dt, physics, {forward, strafe, yaw, pitch, up, down, fast, gather})) physics.update(...)
@@ -23,8 +21,7 @@ import { createUnderwaterFx } from './underwater-fx.js?build=v3-survival-ae77fa8
 import { createDivingUI } from './diving-ui.js?build=v3-survival-ae77fa84ac2b';
 
 export const DIVE = Object.freeze({ SPEED: 2.4, FAST: 3.4, VERTICAL: 2.2, BUOYANCY: 0.15, OXY_SECONDS: 33,
-  OXY_SECONDS_WEAK: 17, DROWN_HP: 3.5,
-  REFILL_RATE: 6, GATHER_SECONDS: 1.0, GATHER_SLOW: Object.freeze({ metalore: 1.4 }), REACH: 2.8, EYE_FLOOR_CLEAR: 0.6,
+  REFILL_RATE: 6, STARVED_BREATH: 0.5, DROWN_HP: 3.5, DROWN_TICK: 0.5, GATHER_SECONDS: 1.0, GATHER_SLOW: Object.freeze({ metalore: 1.4 }), REACH: 2.8, EYE_FLOOR_CLEAR: 0.6,
   RAFT_CLEAR: 0.75, SURFACE_EXIT: 0.15, MAX_DISTANCE: 50, RISE_SPEED: 3, ACCEL: 4, RAFT_MARGIN: 0.25, ENTRY_GRACE: 0.4,
   GATHER_CONE: 30 * Math.PI / 180, REGROW: 120, DRIFT: 1.5, PENDING: 1.5 });
 
@@ -55,21 +52,29 @@ function nearestTilePoint(tiles, x, z) {
   return best < Infinity ? nearPt : null;
 }
 
-/** Seconds a full breath lasts: OXY_SECONDS, or OXY_SECONDS_WEAK when the food or water bar is empty. */
-export function airSeconds(vitals) {
-  const v = vitals && typeof vitals === 'object' ? vitals : null;
-  return v && (fin(v.food, 1) <= 0 || fin(v.water, 1) <= 0) ? DIVE.OXY_SECONDS_WEAK : DIVE.OXY_SECONDS;
-}
-
 const oxyOut = { oxygen: 1, empty: false };
-/** Pure oxygen step: drains over `seconds` (default OXY_SECONDS) underwater, refills REFILL_RATE times faster
- *  than a full OXY_SECONDS breath above. Returns a shared scratch object (copy the fields if you keep them). */
-export function stepOxygen(o, dt, underwater, seconds = DIVE.OXY_SECONDS) {
+/** Pure oxygen step: drains over `secs` underwater (OXY_SECONDS times the gear and breath multipliers;
+ *  breath is 0.5 while hunger or thirst is empty), refills gradually above at REFILL_RATE times the base drain.
+ *  Returns a shared scratch object (copy the fields if you keep them). */
+export function stepOxygen(o, dt, underwater, secs = DIVE.OXY_SECONDS) {
   o = clamp(fin(o, 1), 0, 1); dt = Math.max(0, fin(dt, 0));
-  const air = Math.max(1, fin(seconds, DIVE.OXY_SECONDS));
-  o = clamp(underwater ? o - dt / air : o + dt * DIVE.REFILL_RATE / DIVE.OXY_SECONDS, 0, 1);
+  o = clamp(underwater ? o - dt / Math.max(1, fin(secs, DIVE.OXY_SECONDS)) : o + dt * DIVE.REFILL_RATE / DIVE.OXY_SECONDS, 0, 1);
   oxyOut.oxygen = o; oxyOut.empty = o <= 0;
   return oxyOut;
+}
+
+/** Pure drowning meter: collects per-step drown HP and pays it out in DROWN_TICK-sized chunks
+ *  (so the hurt flash pulses about twice a second instead of every frame). */
+export class DrownMeter {
+  constructor() { this.acc = 0; }
+  /** Adds hp (0 = not drowning: resets). Returns the HP to deal now, or 0. */
+  add(hp) {
+    if (!(hp > 0)) { this.acc = 0; return 0; }
+    this.acc += hp;
+    if (this.acc < DIVE.DROWN_HP * DIVE.DROWN_TICK - 1e-9) return 0;
+    const out = this.acc; this.acc = 0; return out;
+  }
+  reset() { this.acc = 0; }
 }
 
 const DIRS = Array.from({ length: 16 }, (_, i) => [Math.cos(i * Math.PI / 8), Math.sin(i * Math.PI / 8)]);
@@ -83,7 +88,7 @@ export class DiveBody {
     this.rising = this.oxygen <= 0;
     this.grace = 0;
     this.dx = 0; this.dz = 0; this.driftT = 0;
-    this.ev = { surfaced: false, hitFloor: false, drown: 0 }; // drown: HP lost to drowning this step
+    this.ev = { surfaced: false, hitFloor: false, drown: 0 };
   }
 
   /** Unit direction toward the nearest point outside the raft (sampled); falls back to away-from-centroid. */
@@ -102,7 +107,8 @@ export class DiveBody {
     }
   }
 
-  // input {forward, strafe, yaw, pitch, up, down, fast, gather}; env {waterY, floorY, tiles, deckY, airSeconds?}
+  // input {forward, strafe, yaw, pitch, up, down, fast, gather}; env {waterY, floorY, tiles, deckY, breath}
+  // ev.drown = HP of drowning this step (DROWN_HP * dt while out of air and still under).
   // Returns a scratch event object reused across calls.
   step(dt, input, env) {
     const ev = this.ev; ev.surfaced = false; ev.hitFloor = false; ev.drown = 0;
@@ -115,7 +121,7 @@ export class DiveBody {
     if (!(Number.isFinite(this.x) && Number.isFinite(this.y) && Number.isFinite(this.z))) { this.x = 0; this.z = 0; this.y = waterY - 1; }
     if (!(Number.isFinite(this.vx) && Number.isFinite(this.vy) && Number.isFinite(this.vz))) this.vx = this.vy = this.vz = 0;
 
-    const ox = stepOxygen(this.oxygen, dt, true, fin(e.airSeconds, DIVE.OXY_SECONDS) * om); // vitals-adjusted air x diving-gear multiplier
+    const ox = stepOxygen(this.oxygen, dt, true, DIVE.OXY_SECONDS * om * clamp(fin(e.breath, 1), 0.05, 1));
     this.oxygen = ox.oxygen;
     if (ox.empty) this.rising = true;
     this.grace = Math.max(0, this.grace - dt);
@@ -163,8 +169,7 @@ export class DiveBody {
 
     if (!covered && this.grace <= 0 && this.vy > 0 && this.y >= waterY - DIVE.SURFACE_EXIT) {
       ev.surfaced = true; this.rising = false;
-    }
-    if (!ev.surfaced && this.oxygen <= 0) ev.drown = dt * DIVE.DROWN_HP; // out of air: the forced rise still hurts
+    } else if (ox.empty) ev.drown = DIVE.DROWN_HP * dt;
     return ev;
   }
 }
@@ -172,7 +177,7 @@ export class DiveBody {
 const NAMES = { sand: 'Sand', clay: 'Clay', scrap: 'Scrap', metalore: 'Metal ore' };
 const token = () => `${Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) * 1000).toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-export function createDiving({ T, scene, camera, ocean, islands = [], getTiles = () => [], getDeckY = () => 0.2, onGather, restore, hideAbove = [], getVitals = null, onDrown = null, getMods = null } = {}) {
+export function createDiving({ T, scene, camera, ocean, islands = [], getTiles = () => [], getDeckY = () => 0.2, onGather, restore, hideAbove = [], getMods = null, breath = null, onDrown = null } = {}) {
   const mount = token();
   let seafloor = null, fx = null, ui = null;
   try {
@@ -197,10 +202,10 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
   let body = null, owner = null, oxygen = clamp(fin(restore?.oxygen, 1), 0, 1), rising = false, lastInput = {};
   let underwater = false, depth = 0, floorShown = false, oceanHidden = false, oceanVis = true;
   let gather = 0, targetId = null, targetType = null, needRelease = false, labelId = null, label = '';
-  let completed = false, needDownRelease = false; // completed: a gather finished since the last UI update
+  let completed = false, needDownRelease = false;
+  const drown = new DrownMeter(); // completed: a gather finished since the last UI update
   const regrow = new Map(), pending = new Map(), listeners = new Set(), filters = new Map();
-  const env = { waterY: 0, floorY: 0, tiles: null, deckY: 0, airSeconds: DIVE.OXY_SECONDS, swimMul: 1, oxyMul: 1 };
-  let drownAcc = 0, drowned = false; // HP owed to drowning (paid out in whole HP), and whether this dive has drowned yet
+  const env = { waterY: 0, floorY: 0, tiles: null, deckY: 0, swimMul: 1, oxyMul: 1, breath: 1 };
   const fxState = { underwater: false, depth: 0, time: 0, lowOxygen: false, breath01: 1, fogMul: 1 };
   const uiState = { underwater: false, oxygen01: 1, gather01: 0, rising: false, lowOxygen: false, gatherLabel: '', completed: false };
   const detail = { underwater: false, depth: 0, mount };
@@ -212,7 +217,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
     gather = 0; needRelease = false;
     if (targetId !== null) { targetId = targetType = null; try { seafloor.highlight?.(null); } catch {} }
   }
-  function cancel() { body = null; owner = null; rising = false; drownAcc = 0; drowned = false; resetGather(); }
+  function cancel() { body = null; owner = null; rising = false; drown.reset(); resetGather(); }
 
   function move(dt, physics, input) {
     lastInput = input || {};
@@ -224,16 +229,12 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
       body.grace = DIVE.ENTRY_GRACE; owner = physics;
     }
     env.waterY = ocean.getHeight(body.x, body.z); env.floorY = seafloor.heightAt(body.x, body.z);
-    env.tiles = getTiles(); env.deckY = getDeckY(); env.swimMul = mods.swim; env.oxyMul = mods.oxy;
-    let vit = null; try { vit = getVitals?.() ?? null; } catch {}
-    env.airSeconds = airSeconds(vit);
+    env.tiles = getTiles(); env.deckY = getDeckY(); env.swimMul = mods.swim; env.oxyMul = mods.oxy; env.breath = breathScale();
     const wasRising = body.rising;
     const ev = body.step(dt, lastInput, env);
-    if (ev.drown > 0) {
-      drownAcc += ev.drown;
-      if (drownAcc >= 1) { const n = Math.floor(drownAcc); drownAcc -= n; const first = !drowned; drowned = true; try { onDrown?.(n, first); } catch (e) { console.error('drown hook failed', e); } }
-    }
     oxygen = body.oxygen; rising = body.rising;
+    const hp = drown.add(ev.drown);
+    if (hp > 0) { try { onDrown?.(hp); } catch (e) { console.error('drown failed', e); } }
     physics.x = body.x; physics.y = body.y; physics.z = body.z;
     physics.vx = body.vx; physics.vy = body.vy; physics.vz = body.vz;
     physics.grounded = false; physics.swimming = true;
@@ -244,6 +245,8 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
     }
     return true;
   }
+
+  function breathScale() { try { return breath ? fin(breath(), 1) : 1; } catch { return 1; } }
 
   function setOcean(hide) {
     hide = hide && !failed.has('fx'); // without the fx the ocean surface is the only water cue
@@ -347,6 +350,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
   return {
     warm(r) { try { fx.warm?.(r); } catch (e) { console.error('dive warm failed', e); } }, // optional shader pre-compile
     move, update, audioOut, markGathered, cancel, mount,
+    reset() { cancel(); oxygen = 1; needDownRelease = false; }, // respawn: end any dive with full lungs
     render(renderer) { if (!failed.has('fx')) { try { fx.render(renderer); } catch (e) { killFx(e); } } },
     onChange(fn) { if (typeof fn === 'function') listeners.add(fn); return () => listeners.delete(fn); },
     capture() { return { oxygen, regrow: [...regrow] }; },
