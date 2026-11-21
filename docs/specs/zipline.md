@@ -158,3 +158,30 @@ Constants: `MAX_POSTS 16`, `MAX_LINES 12`, `MAX_PER_POST 2`, `SPAN_MIN 2`, `SPAN
   (y ≈ deckY+2.2+1.6). Removing the l=1 floor prunes the post and the line, refunds the items and drops the
   rider if one is on it. Save/reload keeps posts and line. The guest sees the line and a remote rider
   in the air pose. Steering (hold R) or opening the inventory refuses or ends the ride.
+
+## Build notes
+- Feet never dip below the walk surface (owner request; replaces the "acceptable dip" note above).
+  `riderEye(pieces, x, z, ropeY)` in zipline-rules.js hangs the eye HANG below the rope but clamps it so the
+  feet stay FOOT_CLEAR (.05 m) above the deck plane or above a floor slab under the rider that lies below the
+  rope. On a 14 m level deck line this lifts the rider up to ~.5 m at mid-span (the body then sits a little
+  above the hang point; first person never sees it). Arriving onto an upper floor, the rider pops up a few
+  tenths of a metre when entering the far post's cell, since that slab is skipped by `lineBlocked`.
+- Placement aims with its own cast: the game's `aim.point` only hits the deck plane, so `pickPlace` casts the
+  camera ray against each walk level below the eye (deck, then l=1..5) and takes the nearest supported one;
+  with none in reach the deck-plane hit shows the red ghost. The `|y-(deckY+l*2.2)|<.35` check is implied.
+- `landSpot` also skips neighbour cells holding another post, so the rider is never set down inside one.
+- Let go: at low fps the frame's physics substeps use up the 0.12 s jump buffer before `afterMove` runs, so the
+  module also dismounts on the rising edge of `physics._prevJump` (the held-jump flag).
+- No "world identity change" auto-drop: a guest's `world` object is replaced on every host snapshot (~8x/s).
+  Instead `load(…, 'save'|'restore')` drops the rider, and a `'net'` load drops it when the ridden line is gone.
+- Post and line meshes live in their own scene group that copies the raft transform each frame (like
+  building.js), because `rebuildRaft()` disposes every raft child. The post is one merged vertex-coloured
+  geometry shared by all posts; lines are TubeGeometry rebuilt only when rev changes.
+- Prompts without a `<kbd>` become feed notices in prompts.js (`isNotice`), so the muted reason prompt and
+  "Now press E on another post" are not returned as prompts: the ghost turns red and the reason arrives as a
+  notice on click (the E notice already covers the pending link).
+- E while riding is swallowed (nothing happens, the inventory does not open). Steering mid-ride also drops.
+- Refunds use `bag.add`; a full bag loses the overflow (same as other modules).
+- Extra boilerplate: craft-book category and text, an item-svg icon, and live.js PRELOAD entries.
+- QA helpers: `raftDebug.content.zipline.demo()` (deck strip, l=1 floor on pillars at cells 4..5, linked posts),
+  `standAt(x, y, z)`, `seek(t)`, `hold(bool)`, `grant()`, plus the spec's `place/link/grab/ropeAt`.
