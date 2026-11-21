@@ -85,13 +85,21 @@ export function perchesFrom(tiles, decor) {
   return out;
 }
 
+// Per-gull sky constants (r, h, w, ph, 2ph, 3ph, bank), seeded: computed once per seed, so the per-frame path calls no rnd.
+const SKY_N = 7, skyK = new Float64Array((GULL_MAX + 1) * SKY_N), skySeed = new Float64Array(GULL_MAX).fill(NaN);
+function skyConsts(seed, i, o) { // writes gull i's constants at skyK[o..]
+  const s = gullKey(seed, i), dir = rnd(s, 3) < 0.5 ? -1 : 1, ph = TAU * rnd(s, 4);
+  skyK[o] = 7 + 5 * rnd(s, 0); skyK[o + 1] = 6.5 + 4 * rnd(s, 1); skyK[o + 2] = (0.17 + 0.1 * rnd(s, 2)) * dir;
+  skyK[o + 3] = ph; skyK[o + 4] = ph * 2; skyK[o + 5] = ph * 3; skyK[o + 6] = -dir * 0.32;
+}
 function gullSky(seed, i, t, o, ext) { // continuous circling path, raft frame
-  const s = gullKey(seed, i);
-  const r = 7 + 5 * rnd(s, 0) + pushOut(ext, GULL_MARGIN, GULL_R0), h = 6.5 + 4 * rnd(s, 1), dir = rnd(s, 3) < 0.5 ? -1 : 1;
-  const w = (0.17 + 0.1 * rnd(s, 2)) * dir, ph = TAU * rnd(s, 4);
-  const a = ph + w * t, rr = r + 1.5 * Math.sin(t * 0.07 + ph);
-  o.sx = Math.cos(a) * rr; o.sz = Math.sin(a) * rr; o.sy = h + 0.8 * Math.sin(t * 0.23 + ph * 2);
-  o.bank = -dir * 0.32; o.ph = ph;
+  let k = GULL_MAX * SKY_N; // spare row for an out-of-range i
+  if (i >= 0 && i < GULL_MAX) { k = i * SKY_N; if (skySeed[i] !== seed) { skyConsts(seed, i, k); skySeed[i] = seed; } }
+  else skyConsts(seed, i, k);
+  const r = skyK[k] + pushOut(ext, GULL_MARGIN, GULL_R0), ph = skyK[k + 3];
+  const a = ph + skyK[k + 2] * t, rr = r + 1.5 * Math.sin(t * 0.07 + ph);
+  o.sx = Math.cos(a) * rr; o.sz = Math.sin(a) * rr; o.sy = skyK[k + 1] + 0.8 * Math.sin(t * 0.23 + skyK[k + 4]);
+  o.bank = skyK[k + 6]; o.ph = ph; o.ph3 = skyK[k + 5];
 }
 
 // Fills v with gull i's perch visit for its slot: {on, start, stay, perch, yaw}. Two gulls never share
@@ -106,8 +114,22 @@ export function gullVisit(seed, i, slot, n, v) {
   return v;
 }
 
-const _sky = { sx: 0, sy: 0, sz: 0, bank: 0, ph: 0 }, _sky2 = { sx: 0, sy: 0, sz: 0, bank: 0, ph: 0 };
-const _visit = { on: false, start: 0, stay: 0, perch: -1, yaw: 0 };
+const _sky = { sx: 0.5, sy: 0.5, sz: 0.5, bank: 0.5, ph: 0.5, ph3: 0.5 }, _sky2 = { sx: 0.5, sy: 0.5, sz: 0.5, bank: 0.5, ph: 0.5, ph3: 0.5 };
+const _visit = { on: false, start: 0.5, stay: 0.5, perch: -1, yaw: 0.5 };
+// gullVisit only changes with (seed, slot, n): cached per gull. Key: seed, slot, n; value: on, start, stay, perch, yaw.
+const visKey = new Float64Array(GULL_MAX * 3).fill(NaN), visVal = new Float64Array(GULL_MAX * 5);
+function cachedVisit(seed, i, slot, n, v) {
+  if (!(i >= 0 && i < GULL_MAX)) return gullVisit(seed, i, slot, n, v);
+  const k = i * 3, o = i * 5;
+  if (visKey[k] !== seed || visKey[k + 1] !== slot || visKey[k + 2] !== n) {
+    gullVisit(seed, i, slot, n, v);
+    visKey[k] = seed; visKey[k + 1] = slot; visKey[k + 2] = n;
+    visVal[o] = v.on ? 1 : 0; visVal[o + 1] = v.start; visVal[o + 2] = v.stay; visVal[o + 3] = v.perch; visVal[o + 4] = v.yaw;
+    return v;
+  }
+  v.on = visVal[o] === 1; v.start = visVal[o + 1]; v.stay = visVal[o + 2]; v.perch = visVal[o + 3]; v.yaw = visVal[o + 4];
+  return v;
+}
 
 function baseBlend(v, t, leaveAt) {
   if (t < v.start + GULL_DESCEND) return smooth((t - v.start) / GULL_DESCEND);
@@ -129,7 +151,7 @@ function gullBlend(v, t, scareAt) { // 0 = in the sky, 1 = on the perch
 // ext: raft half-size (raftExtent), pushes the sky circle out on big rafts.
 export function gullPlan(seed, i, t, perches, out, scareAt = -Infinity, visit = null, perch = undefined, ext = 0) {
   const n = Array.isArray(perches) ? perches.length : 0;
-  const v = visit && visit.on ? visit : gullVisit(seed, i, Math.floor(t / GULL_SLOT), n, _visit);
+  const v = visit && visit.on ? visit : cachedVisit(seed, i, Math.floor(t / GULL_SLOT), n, _visit);
   gullSky(seed, i, t, _sky, ext);
   const p = perch !== undefined ? (v.on && perch ? perch : null) : v.on && v.perch >= 0 && v.perch < n ? perches[v.perch] : null;
   const b = p ? gullBlend(v, t, scareAt) : 0;
@@ -160,7 +182,7 @@ export function gullPlan(seed, i, t, perches, out, scareAt = -Infinity, visit = 
     out.yaw = flyYaw + dyaw * landing;
     out.pitch = hz > 1e-4 ? Math.max(-0.5, Math.min(0.5, -Math.atan2(dy, hz))) * (1 - landing) : 0;
     out.roll = state === 'circle' ? _sky.bank : _sky.bank * (1 - b);
-    const burst = Math.max(0, Math.sin(t * 0.45 + _sky.ph * 3)); // glide most of the time, flap in bursts
+    const burst = Math.max(0, Math.sin(t * 0.45 + _sky.ph3)); // glide most of the time, flap in bursts
     const amp = state === 'circle' ? 0.12 + 0.55 * burst : 0.75;
     out.flap = 0.08 + amp * Math.sin(t * (state === 'circle' ? 8 : 11) + i * 1.7);
     out.fold = landing;
@@ -389,7 +411,7 @@ export function createWildlife(ctx) {
     const L = lat[i], V = vis[i], n = perches.length;
     if (L.slot !== slot) { L.slot = slot; L.done = false; L.on = false; }
     if (!L.done) {
-      gullVisit(seed, i, slot, n, V);
+      cachedVisit(seed, i, slot, n, V);
       if (t >= V.start) { // the visit begins: latch its perch and keep it to the end
         L.done = true;
         if (V.on && V.perch >= 0 && V.perch < n) { // the scheduled perch, or the next free one after it
