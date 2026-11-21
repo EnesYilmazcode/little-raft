@@ -99,16 +99,16 @@ export function buildBarge(T) {
   const FUR = 0x8b5e3c, PALE = 0xe2c49a, DARK = 0x2a1b12;
   otter.add(new T.SphereGeometry(.26, 14, 10), FUR, 0, .42, 0, 0, 0, 0, .05, [1, 1.55, .9]);
   otter.add(new T.SphereGeometry(.2, 12, 8), PALE, 0, .45, .09, 0, 0, 0, .04, [1, 1.5, .7]);
-  otter.add(new T.SphereGeometry(.19, 14, 10), FUR, 0, .93, 0, 0, 0, 0, .05);
-  otter.add(new T.SphereGeometry(.12, 12, 8), PALE, 0, .88, .13, 0, 0, 0, .03, [1.15, .8, .8]);
+  otter.add(new T.SphereGeometry(.19, 14, 10), FUR, 0, .92, 0, 0, 0, 0, .05, [1.18, .86, 1]);
+  otter.add(new T.SphereGeometry(.13, 12, 8), PALE, 0, .87, .12, 0, 0, 0, .03, [1.45, .78, .85]);
   otter.add(new T.SphereGeometry(.035, 8, 6), DARK, 0, .91, .23, 0, 0, 0, .02);
   for (const s of [-1, 1]) {
-    otter.add(new T.SphereGeometry(.026, 8, 6), DARK, s * .075, .99, .16, 0, 0, 0, .02);
-    otter.add(new T.SphereGeometry(.05, 8, 6), FUR, s * .15, 1.06, -.02, 0, 0, 0, .04, [1, 1, .6]);
+    otter.add(new T.SphereGeometry(.026, 8, 6), DARK, s * .085, .965, .165, 0, 0, 0, .02);
+    otter.add(new T.SphereGeometry(.032, 8, 6), 0x6e4a2e, s * .2, .99, -.03, 0, 0, 0, .04, [1, 1, .6]);
     otter.add(new T.CapsuleGeometry(.05, .2, 4, 8), FUR, s * .2, .55, .2, -1.1, 0, s * .25, .05);
     otter.add(new T.SphereGeometry(.055, 8, 6), 0x6e4a2e, s * .2, .55, .32, 0, 0, 0, .04);
   }
-  for (let i = 0; i < 4; i++) otter.add(new T.SphereGeometry(.012, 5, 4), 0xf5eadc, (i < 2 ? -1 : 1) * (.06 + (i % 2) * .02), .87 - (i % 2) * .015, .225, 0, 0, 0, 0);
+  for (let i = 0; i < 4; i++) { const s = i < 2 ? -1 : 1; otter.add(new T.CylinderGeometry(.004, .004, .16, 4), 0xf5eadc, s * .14, .875 - (i % 2) * .025, .2, 0, 0, Math.PI / 2 + s * (i % 2 ? -.15 : .1), 0); }
   otter.add(new T.CylinderGeometry(.2, .22, .03, 16), 0xe2c072, 0, 1.08, 0, -.08, 0, 0, .08);
   otter.add(new T.CylinderGeometry(.1, .12, .09, 14), 0xd8b462, 0, 1.13, -.01, -.08, 0, 0, .08);
   otter.add(new T.CylinderGeometry(.122, .122, .025, 14), 0x3fa7a0, 0, 1.1, -.005, -.08, 0, 0, .03);

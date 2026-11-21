@@ -243,14 +243,14 @@ export function createTrader(ctx) {
       return true;
     },
     clear() { if (!host()) return false; st.visit = null; st.next = st.clock + C.FIRST; st.r++; uiVer++; return true; },
-    give(kind, n = 10) { if (!host()) return false; const b = ctx.localBag?.(); return b ? n - b.add(kind, n) : 0; },
+    give(kind, n = 10, who = 'host') { if (!host()) return false; const b = who === 'guest' ? ctx.actorBag?.('guest') : ctx.localBag?.(); return b ? n - b.add(kind, n) : 0; }, // who 'guest': QA for co-op trades
     trade(i) { if (!st.visit) return false; ctx.action({ kind: 'trader.trade', offer: i, visit: st.visit.seed }); return true; },
     aimAt() {
       const p = ctx.physics; if (!p || !st.visit) return false;
       place(0);
-      p.x = stall.x; p.z = stall.z + 2;
+      p.x = shown.x; p.z = shown.z + C.HALF_BEAM + 2; // 2 m from the docked stall, on the bow row
       const dbg = globalThis.raftDebug, eye = (ctx.deckY ? ctx.deckY() : .2) + 1.6;
-      dbg?.aim?.(Math.atan2(stall.y - eye, 2), 0); // yaw 0 looks toward -z, the bow
+      dbg?.aim?.(Math.atan2(stall.y - eye, Math.max(.5, Math.hypot(stall.x - p.x, stall.z - p.z))), Math.atan2(-(stall.x - p.x), -(stall.z - p.z))); // yaw 0 looks toward -z
       return true;
     },
     open() { return docked() && localInReach() ? openUI() : false; },

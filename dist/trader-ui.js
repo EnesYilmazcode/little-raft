@@ -132,7 +132,7 @@ export function createTraderUI(api) {
     if (e.target === dlg) { close(); return; }
     const t = e.target.closest?.('button'); if (!t) return;
     if (t.classList.contains('lr-tr-x')) { close(); return; }
-    if (t.dataset.i !== undefined && !t.disabled) { api.trade(+t.dataset.i); t.blur(); }
+    if (t.dataset.i !== undefined && !t.disabled) { api.trade(+t.dataset.i); t.blur(); try { $('.lr-tr-wrap').focus({ preventScroll: true }); } catch {} } // keys stay in the dialog
   }, on);
 
   return {
