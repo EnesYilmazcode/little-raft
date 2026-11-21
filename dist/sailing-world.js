@@ -3,6 +3,7 @@
 // See docs/cloud/sailing-spec.md. The raft never moves in x/z: the world drifts past it instead.
 import { SAIL, cleanSailing, defaultSailing, stepSailing, sailTarget, applySailAction, wrapAxis, placeUpstream, driftedOut, windVector } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
 import { createSailingUI } from './sailing-ui.js?build=v3-survival-ae77fa84ac2b';
+import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 
 const WRAP = SAIL.ISLAND_WRAP > 0 ? SAIL.ISLAND_WRAP : 150, LEASH = 10, STEER_RATE = 1.6, REACH = 3.2, MAST_H = 3.6, MAST_R = .6, ANCHOR_R = .6, DECK_Y = .22;
 const FURL = .12, BASE_FLOW_Z = .22, ITEM_RANGE = 34, ROPE_DOWN = 3.4, ROPE_UP = .22;
@@ -26,10 +27,10 @@ export function createSailing(T, ctx) {
   // ---------- shared geometry / materials (created once) ----------
   const M = {
     wood: new T.MeshStandardMaterial({ color: '#906f48', roughness: .9 }),
-    woodLight: new T.MeshStandardMaterial({ color: '#b4824b', roughness: .9 }),
     rope: new T.MeshStandardMaterial({ color: '#e9d39a', roughness: 1 }),
     iron: new T.MeshStandardMaterial({ color: '#5e5a52', roughness: .6, metalness: .3 }),
     flag: new T.MeshStandardMaterial({ vertexColors: true, side: T.DoubleSide, roughness: 1 }),
+    woodV: new T.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: .9 }), // post + drum + crank + arm, baked
   };
   const ropeGeo = new T.CylinderGeometry(.022, .022, 1, 6); ropeGeo.translate(0, -.5, 0);
   const flagGeo = new T.BufferGeometry();
@@ -46,14 +47,24 @@ export function createSailing(T, ctx) {
 
   const fixture = new T.Group(); fixture.name = 'sailingFixture'; scene.add(fixture);
   const anchorRoot = new T.Group(); fixture.add(anchorRoot);
-  mesh(G.post, M.wood, 0, .5, 0, anchorRoot);
-  mesh(G.drum, M.woodLight, 0, .9, 0, anchorRoot).rotation.z = Math.PI / 2;
+  // Parts that never move relative to the post are baked into one vertex-coloured mesh (one draw + one shadow draw);
+  // the coil (scaled), the rope (stretched) and the hook (raised/lowered) stay separate.
+  const bake = (parts) => {
+    const m4 = new T.Matrix4(), q = new T.Quaternion(), e = new T.Euler(), one = new T.Vector3(1, 1, 1), c = new T.Color();
+    const list = parts.map(([geo, color, x, y, z, rz = 0]) => {
+      const g = geo.clone().applyMatrix4(m4.compose(new T.Vector3(x, y, z), q.setFromEuler(e.set(0, 0, rz)), one));
+      if (color) { c.set(color); const n = g.attributes.position.count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; } g.setAttribute('color', new T.BufferAttribute(a, 3)); }
+      return g;
+    });
+    const out = mergeGeometries(T, list); for (const g of list) g.dispose(); return out;
+  };
+  G.anchorStatic = bake([[G.post, '#906f48', 0, .5, 0], [G.drum, '#b4824b', 0, .9, 0, Math.PI / 2], [G.crank, '#906f48', .2, .84, 0], [G.arm, '#906f48', 0, .97, .3]]);
+  G.anchorHook = bake([[G.shank, null, 0, -.17, 0], [G.fluke, null, 0, -.32, 0]]);
+  mesh(G.anchorStatic, M.woodV, 0, 0, 0, anchorRoot);
   const coil = mesh(G.coil, M.rope, 0, .9, 0, anchorRoot); coil.rotation.z = Math.PI / 2;
-  mesh(G.crank, M.wood, .2, .84, 0, anchorRoot);
-  mesh(G.arm, M.wood, 0, .97, .3, anchorRoot);
   const anchorRope = mesh(G.rope, M.rope, 0, .95, .57, anchorRoot); anchorRope.castShadow = false;
   const hook = new T.Group(); anchorRoot.add(hook);
-  mesh(G.shank, M.iron, 0, -.17, 0, hook); mesh(G.fluke, M.iron, 0, -.32, 0, hook);
+  mesh(G.anchorHook, M.iron, 0, 0, 0, hook);
   hook.position.set(0, .95 - ROPE_UP, .57);
 
   function pennant(i) {
