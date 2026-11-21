@@ -1,8 +1,10 @@
 // Little Raft item icons: each item kind is rendered ONCE as a lit 3/4 view on a transparent
 // background by a small dedicated WebGL renderer, then cached as a PNG data URL.
 // The renderer is created lazily, works through a queue in idle time, and is released once the
-// queue drains. Models come from setModelProvider(fn) (fn(kind) -> Object3D | null) and fall
-// back to the game's own procedural models.
+// queue drains. Models come from setModelProvider(fn) (fn(kind) -> Object3D | null, e.g. models.js
+// getModel; never disposed here) and fall back to the game's own procedural models.
+// Public API: getItemIcon(kind) (sync, data URL or null while rendering / without WebGL),
+// loadItemIcon(kind) (Promise of the same), warmIcons, onIconReady, setModelProvider.
 import * as T from './vendor/three.module.js';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
@@ -12,11 +14,14 @@ import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 
 const SIZE = 128;
+// Item ids whose name differs from the models.js kind.
+const MODEL_ALIAS = { fishingrod: 'rod' };
 const RELEASE_MS = 2500;
 
 const cache = new Map();   // kind -> data URL ('' = failed, use the SVG)
 const queued = new Set();
 const listeners = new Set();
+const waiters = new Map(); // kind -> [resolve] for loadItemIcon
 let provider = null;
 let gl = null, scene = null, camera = null, failed = false, releaseTimer = 0, pumping = false;
 
@@ -27,6 +32,8 @@ const POSE = {
   wood: [0, -0.35, 0.12], leaf: [0.5, 0.4, 0], scrap: [0.3, 0.4, 0],
   net: [0.55, 0.5, 0], bench: [0, 0.5, 0], crate: [0, 0.5, 0],
 };
+// models.js tools stand upright (grip at origin, working end +Y): tilt them onto the diagonal.
+const PROVIDER_POSE = { hook: [0, 0.5, -0.75] };
 
 // ---------- fallback models ----------
 const mats = new Map(), shared = new Set();
@@ -116,12 +123,12 @@ function freeModel(root) {
 function renderKind(kind) {
   if (!ensureGL()) return '';
   let model = null, own = false;
-  if (provider) { try { model = provider(kind) || null; } catch (e) { console.warn('item icon provider failed', kind, e); } }
+  if (provider) { try { model = provider(MODEL_ALIAS[kind] || kind) || provider(kind) || null; } catch (e) { console.warn('item icon provider failed', kind, e); } }
   if (!model) { try { model = buildFallbackModel(kind); own = true; } catch (e) { console.warn('item icon model failed', kind, e); } }
   if (!model) return '';
   const pivot = new T.Group();
   pivot.add(model);
-  const p = POSE[kind]; if (p) pivot.rotation.set(p[0], p[1], p[2]);
+  const p = (own ? null : PROVIDER_POSE[kind]) || POSE[kind]; if (p) pivot.rotation.set(p[0], p[1], p[2]);
   pivot.updateMatrixWorld(true);
   _box.setFromObject(pivot, true);
   if (_box.isEmpty()) { if (own) freeModel(model); return ''; }
@@ -163,6 +170,7 @@ function pump() {
   if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = 0; }
   const url = renderKind(kind);
   cache.set(kind, url);
+  const w = waiters.get(kind); if (w) { waiters.delete(kind); for (const r of w) r(url || null); }
   if (url) for (const fn of listeners) { try { fn(kind, url); } catch (e) { console.error(e); } }
   if (queued.size) schedule();
   else if (gl) releaseTimer = setTimeout(release, RELEASE_MS);
@@ -177,6 +185,13 @@ export function iconURL(kind) {
   if (failed) return null;
   if (!queued.has(kind)) { queued.add(kind); schedule(); }
   return null;
+}
+export const getItemIcon = iconURL;
+/** Promise of the icon URL (null if it cannot be rendered, e.g. no WebGL). */
+export function loadItemIcon(kind) {
+  const url = iconURL(kind);
+  if (url || !kind || cache.has(kind) || failed) return Promise.resolve(url);
+  return new Promise(r => { let w = waiters.get(kind); if (!w) waiters.set(kind, w = []); w.push(r); });
 }
 /** Queue several kinds ahead of time (one render per idle slice). */
 export function warmIcons(kinds) { for (const k of kinds) iconURL(k); }

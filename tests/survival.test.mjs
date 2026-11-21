@@ -514,3 +514,10 @@ test('item icons degrade to flat sprites when WebGL is unavailable', async () =>
   icons.setModelProvider(() => null);                  // swapping providers must not throw
   off();
 });
+
+test('loadItemIcon resolves null without WebGL and getItemIcon is the sync accessor', async () => {
+  const icons = await import(new URL('item-icons.js', base));
+  assert.equal(icons.getItemIcon, icons.iconURL);
+  assert.equal(await icons.loadItemIcon('hammer'), null);
+  assert.equal(await icons.loadItemIcon(''), null);
+});
