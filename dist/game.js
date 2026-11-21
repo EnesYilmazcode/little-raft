@@ -15,6 +15,7 @@ import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+import { createCoop } from './coop.js?build=v3-survival-ae77fa84ac2b'; // coop: co-op layer (docs/cloud/coop.md)
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -211,6 +212,7 @@ export function mount(transfer = null) {
   let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = '';
   const chargeMeter = $('#chargeMeter'), chargeFill = chargeMeter?.querySelector('i');
   let blockList = [];
+  let coop = null; // coop: hub from coop.js, created after init(); every use is optional (coop?.)
 
   function makePhysics(src) {
     const deck = raftPose.y + FLOOR_Y + EYE_OFFSET;
@@ -393,6 +395,7 @@ export function mount(transfer = null) {
   function setStatus(s) { setText('#networkStatus', s); }
   function notice(s, ms = 1800) { noticeText = String(s).slice(0, 90); noticeUntil = performance.now() + ms; }
   function toast(s) {
+    if (coop?.feed(s)) return; // coop: connection news goes to the bottom-left feed
     if (running) { notice(s, 2400); return; }
     const el = $('#toast'); if (!el) return; el.textContent = s; el.classList.add('show');
     toastTimer = cancelTimer(toastTimer); toastTimer = later(() => { toastTimer = 0; el.classList.remove('show'); }, 2600);
@@ -511,7 +514,7 @@ export function mount(transfer = null) {
   }
 
   // ---------- Actions (host is authoritative; actor = 'host' | 'guest') ----------
-  function send(data) { if (conn?.open) { try { conn.send(data); } catch {} } }
+  function send(data) { if (coop) data = coop.encode(data); if (data && conn?.open) { try { conn.send(data); } catch {} } } // coop: delta-encode
   function action(a) {
     if (role === 'guest') {
       if (!networkReady) { notice('Wait for your raft to connect'); return false; }
@@ -820,11 +823,12 @@ export function mount(transfer = null) {
   function frame() {
     const now = performance.now(), dt = Math.min((now - last) / 1000, .05); last = now; elapsed += dt;
     const dialog = uiBlocked();
-    if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { closeConnection(); toast('Host disconnected. You are back on your own raft.'); }
+    if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { if (coop?.lost()) coopRejoin(); else { closeConnection(); toast('Host disconnected. You are back on your own raft.'); } } // coop: try to rejoin first
     if (role === 'host' && conn?.open && now - lastGuestMessage > 8000) { const stale = conn; conn = null; unbindTarget(stale); stale.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); }
     ocean.update(elapsed, camera);
     updateRaft(dt); movePlayer(dt, running && !dialog);
     updateAvatars(dt); updateCamera(dt);
+    coop?.update(dt, elapsed); // coop: interpolated remote avatar, rope, ghost, pings, pose stream, reconnect
     frameAim = running && !dialog ? currentAim() : null;
     pickTarget = pickupFrom(frameAim);
     updateItems(dt); updateHook(dt); updateGhost();
@@ -969,11 +973,11 @@ export function mount(transfer = null) {
         setText('#roomCode', room.toUpperCase()); const rd = $('#roomDisplay'); if (rd) rd.hidden = false;
         if (!conn?.open) setConnectionLabel('ROOM ' + room.toUpperCase());
         setStatus('Room ready. Send this code to your brother.'); start();
-      } else if (!conn) bindConn(p.connect('little-raft-' + room, {reliable:true}), false);
+      } else if (!conn) bindConn(p.connect('little-raft-' + room, {reliable:true, metadata:coop?.meta()}), false); // coop: identity for rejoin
     });
     if (isHost) listen(p, 'connection', c => {
       if (peer !== p) return;
-      if (conn?.open) { c.on('open', () => c.close()); return; } // room is full
+      if (conn?.open && !coop?.isRejoin(c)) { c.on('open', () => c.close()); return; } // room is full (coop: unless the same brother is rejoining)
       if (conn && conn !== c) { const old = conn; unbindTarget(old); try { old.close(); } catch {} }
       bindConn(c, true);
     });
@@ -981,6 +985,7 @@ export function mount(transfer = null) {
       if (peer !== p) return;
       const type = e?.type ?? 'error';
       if (isHost && !p.open && !conn) { closeConnection(); setStatus('Could not open room: ' + type + '. Solo play still works.'); }
+      else if (!isHost && !networkReady && coop?.retry()) setStatus('Reconnecting to your brother…'); // coop: keep trying
       else if (!isHost && !networkReady) { closeConnection(); setStatus('Could not connect: ' + type + '. Check the code and host’s tab.'); }
       else setStatus('Connection hiccup: ' + type + '.');
     });
@@ -1002,6 +1007,7 @@ export function mount(transfer = null) {
     });
     listen(c, 'data', data => {
       if (conn !== c || !data || typeof data !== 'object') return;
+      if (coop) { data = coop.decode(data); if (!data) return; } // coop: delta decode + coop events
       if (data.type === 'leaving') { if (isHost) { const old = conn; conn = null; unbindTarget(old); old.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); } else closeConnection(); toast('Your brother left the raft.'); return; }
       if (isHost) {
         lastGuestMessage = performance.now();
@@ -1026,8 +1032,9 @@ export function mount(transfer = null) {
         if (first) {
           networkReady = true; joinTimer = cancelTimer(joinTimer); joinDeadline = 0;
           setStatus('Connected! You are aboard your brother’s raft.'); setConnectionLabel(`TWO ABOARD · ${room.toUpperCase()}`);
-          const s = spawnPoint(1.2, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z});
-          $('#crew')?.close(); start(); toast('You joined your brother’s raft!');
+          const back = !!coop?.rejoined(); // coop: a rejoin keeps our place on the raft
+          if (!back) { const s = spawnPoint(1.2, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); }
+          $('#crew')?.close(); start(); if (!back) toast('You joined your brother’s raft!');
         }
       }
       if (data.type === 'effect') effect(data.e);
@@ -1036,6 +1043,7 @@ export function mount(transfer = null) {
       if (conn !== c) return;
       unbindTarget(c); conn = null; networkReady = false; other = null;
       if (isHost) { setConnectionLabel('BROTHER LEFT · ROOM OPEN'); toast('Your brother left. Your raft is still here.'); return; }
+      if (coop?.lost()) { coopRejoin(); return; } // coop: dropped, not left: reconnect to the same room
       joinTimer = cancelTimer(joinTimer); joinDeadline = 0;
       const p = peer; peer = null; unlisten(bindings.splice(0)); try { p?.destroy(); } catch {}
       restoreOwnRaft(); role = 'solo'; setConnectionLabel('DISCONNECTED');
@@ -1043,6 +1051,21 @@ export function mount(transfer = null) {
     });
     listen(c, 'error', () => { if (conn === c) setStatus('Connection failed. Check the code and try again.'); });
   }
+  // coop: guest reconnect keeps the host's world, our bag and our position on screen while a new peer dials the room.
+  function coopRejoin() {
+    const oc = conn, op = peer; conn = null; peer = null; networkReady = false; other = null;
+    unlisten(bindings.splice(0)); try { oc?.close(); } catch {} try { op?.destroy(); } catch {}
+    if (role !== 'guest' || typeof globalThis.Peer !== 'function') return;
+    setStatus('Reconnecting to your brother…');
+    try { peer = new globalThis.Peer(); bindPeer(peer, false); } catch {}
+  }
+  // coop: read-only window into the engine for coop.js
+  const coopContext = () => ({T, scene, camera, canvas, ocean, friend,
+    role:() => role, conn:() => conn, ready:() => networkReady, blocked:() => !running || uiBlocked(), aim:() => frameAim, deckY,
+    local:() => { const k = heldKind(); return {x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, grounded:physics.grounded, held:k, charge:charging ? chargeValue() : 0, reeling:reeling && !!castOut(),
+      hook:hookMesh.visible && hook ? {stage:hook.fishing ? 'fishing' : hook.stage, ...(hook.fishing ? {x:hookMesh.position.x, y:.05, z:hookMesh.position.z} : {x:hook.position.x, y:hook.position.y, z:hook.position.z})} : null, // physics height; remote maps it onto waves
+      ghost:hover ? {x:hover.x, z:hover.z, kind:k, ok:k !== 'hammer' || canAfford(localBag(), FLOOR_COST)} : null}; },
+    reconnect:coopRejoin, giveUp:() => { closeConnection(); setStatus('Host disconnected. Rejoin when their tab is open.'); }});
   setHandler($('#host'), 'onclick', () => {
     if (role === 'host' && peer && !peer.destroyed) { setStatus('Your room is open. Share the code below.'); return; }
     closeConnection();
@@ -1140,7 +1163,7 @@ export function mount(transfer = null) {
       wornCasts:{...wornCasts}, seq, lastSeqSent, guestAck,
       joinDeadline:joinTimer ? joinDeadline : 0, saveAvailable, lockFallback, keys:{...keys},
       charging:charging ? {...charging} : null, reeling, down:down ? {...down} : null,
-      bindings:bindings.slice(), renderer, lastHostMessage, lastGuestMessage,
+      bindings:bindings.slice(), renderer, lastHostMessage, lastGuestMessage, coop:coop?.capture(), // coop: rejoin state
       raftPose:raft ? {y:raft.position.y, rx:raft.rotation.x, rz:raft.rotation.z} : {...raftPose},
     };
   }
@@ -1168,6 +1191,7 @@ export function mount(transfer = null) {
   function dispose() {
     if (disposed) return;
     pause(); disposed = true; ac.abort();
+    try { coop?.dispose(); } catch {} coop = null; // coop
     try { settingsController?.destroy(); } catch {}
     try { survivalUI?.destroy?.(); } catch {}
     for (const id of timers) clearTimeout(id); timers.clear();
@@ -1180,6 +1204,7 @@ export function mount(transfer = null) {
   try {
     if (!canvas) throw new Error('#world canvas missing');
     init();
+    try { coop = createCoop(coopContext(), X?.coop); } catch (e) { console.warn('co-op layer unavailable', e); coop = null; } // coop
     settingsController = createSettings({onChange:next => { options = next; if (renderer) { renderer.setPixelRatio(Math.min(devicePixelRatio, next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3)); renderer.shadowMap.enabled = next.graphics !== 'low'; } }, onPause:clearInput, onResume:() => requestLock()});
     survivalUI = createSurvivalUI({
       getBag:() => localBag(),
