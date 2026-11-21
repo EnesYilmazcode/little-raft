@@ -321,7 +321,7 @@ export function createZipline(ctx) {
     return true;
   }
 
-  // ---- visuals: one LineSegments for every line, rewritten in place each frame ----
+  // ---- visuals: one InstancedMesh of rope cylinders for every line, rewritten in place each frame ----
   function refreshHeights() {
     const d = decor();
     if (hSt === st && hR === st.r && hDecor === d && hLen === d.length) return;
@@ -336,17 +336,15 @@ export function createZipline(ctx) {
     if (!ropes) ropes = createRopeLines(T, MAX_LINES);
     if (ropeScene !== scene) { ropes.removeFromParent?.(); scene.add(ropes); ropeScene = scene; }
     refreshHeights();
-    const arr = ropes.geometry.attributes.position.array, y = deckY();
+    const y = deckY();
     let n = 0;
     for (let i = 0; i < st.l.length && i < MAX_LINES; i++) {
       if (!Number.isFinite(hA[i])) continue;
-      const e = st.l[i], o = n * 6;
-      arr[o] = e[0] * 2; arr[o + 1] = y + hA[i]; arr[o + 2] = e[1] * 2;
-      arr[o + 3] = e[2] * 2; arr[o + 4] = y + hB[i]; arr[o + 5] = e[3] * 2;
-      n++;
+      const e = st.l[i];
+      ropes.userData.set(n++, e[0] * 2, y + hA[i], e[1] * 2, e[2] * 2, y + hB[i], e[3] * 2);
     }
-    ropes.geometry.setDrawRange(0, n * 2);
-    ropes.geometry.attributes.position.needsUpdate = true;
+    ropes.count = n;
+    ropes.instanceMatrix.needsUpdate = true;
     ropes.visible = n > 0;
   }
 

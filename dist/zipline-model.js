@@ -68,16 +68,21 @@ export function createGlidePost(T, top, name = top < 3 ? 'craft_glidestep' : 'cr
   return g;
 }
 
-/** All glide lines as one LineSegments; game code rewrites positions in place and sets drawRange = 2 * count. */
+/** All glide lines as one InstancedMesh of thin rope cylinders (one draw call). userData.set(i, ax,ay,az, bx,by,bz) places
+ *  rope i between two wheel points without allocating; game code then sets mesh.count = number of lines. */
 export function createRopeLines(T, max) {
-  const geo = new T.BufferGeometry();
-  const attr = new T.BufferAttribute(new Float32Array(max * 6), 3); attr.setUsage(T.DynamicDrawUsage);
-  geo.setAttribute('position', attr);
-  geo.setDrawRange(0, 0);
-  const lines = new T.LineSegments(geo, new T.LineBasicMaterial({ color: '#c9a66b' }));
-  lines.name = 'glide_lines'; lines.frustumCulled = false;
-  lines.userData.max = max;
-  return lines;
+  const geo = new T.CylinderGeometry(.022, .022, 1, 6, 1, true); geo.translate(0, .5, 0); // unit length along +Y from the origin
+  const mesh = new T.InstancedMesh(geo, new T.MeshStandardMaterial({ color: '#c9a66b', roughness: .9, metalness: 0 }), max);
+  mesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
+  mesh.name = 'glide_lines'; mesh.frustumCulled = false; mesh.castShadow = true; mesh.count = 0;
+  const m4 = new T.Matrix4(), p = new T.Vector3(), q = new T.Quaternion(), sc = new T.Vector3(), d = new T.Vector3(), up = new T.Vector3(0, 1, 0);
+  mesh.userData.max = max;
+  mesh.userData.set = (i, ax, ay, az, bx, by, bz) => {
+    d.set(bx - ax, by - ay, bz - az); const len = d.length(); if (len > 1e-6) d.multiplyScalar(1 / len); else d.copy(up);
+    q.setFromUnitVectors(up, d); p.set(ax, ay, az); sc.set(1, len, 1);
+    mesh.setMatrixAt(i, m4.compose(p, q, sc));
+  };
+  return mesh;
 }
 
 /** Glide Handle: a T-bar grip with a short stem and a little wheel on top. Grip at the origin, long axis +Y. */

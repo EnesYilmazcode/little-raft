@@ -270,11 +270,13 @@ test('models: posts, rope lines, handle; decorModel', () => {
   }
   const h = harness({ three: T }); h.m.debug.link(0, 0, 3, 0); h.ctx.world.decor.push(post(0, 3)); h.m.debug.link(0, 0, 0, 3);
   h.m.update(.016);
-  const lines = h.ctx.scene.getObjectByName('glide_lines'); assert.ok(lines); assert.equal(lines.geometry.drawRange.count, 4);
-  const arr = lines.geometry.attributes.position.array; close(arr[1], h.deck + POSTS.glidepost, 1e-6); close(arr[4], h.deck + POSTS.glidestep, 1e-6);
-  h.deck = 1; h.m.update(.016); close(arr[1], 1 + POSTS.glidepost, 1e-6);
+  const lines = h.ctx.scene.getObjectByName('glide_lines'); assert.ok(lines); assert.equal(lines.count, 2);
+  const at = (i, v) => { const m = new T.Matrix4(); lines.getMatrixAt(i, m); return v.setFromMatrixPosition(m); };
+  close(at(0, new T.Vector3()).y, h.deck + POSTS.glidepost, 1e-6);
+  const top = new T.Vector3(0, 1, 0).applyMatrix4((() => { const m = new T.Matrix4(); lines.getMatrixAt(0, m); return m; })()); close(top.y, h.deck + POSTS.glidestep, 1e-5); close(top.x, 6, 1e-5);
+  h.deck = 1; h.m.update(.016); close(at(0, new T.Vector3()).y, 1 + POSTS.glidepost, 1e-6);
   assert.equal(h.m.decorModel('glidepost').name, 'craft_glidepost'); assert.equal(h.m.decorModel('glidestep').name, 'craft_glidestep'); assert.equal(h.m.decorModel('palm'), null);
-  assert.equal(M.createRopeLines(T, 64).geometry.attributes.position.array.length, 64 * 6);
+  assert.equal(M.createRopeLines(T, 64).instanceMatrix.count, 64);
   const hm = buildItemModel(T, 'glidehandle'); assert.ok(hm.isGroup); assert.equal(hm.name, 'item_glidehandle');
   assert.ok(M.createHandle(T).isGroup);
   h.m.dispose(); assert.equal(h.ctx.scene.getObjectByName('glide_lines'), undefined);
