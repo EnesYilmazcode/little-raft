@@ -150,7 +150,9 @@ export function stepSailing(state, dt, opts, out) {
   state.vz += (_t.z - state.vz) * k;
 
   if (state.anchored) {
-    out.dwx = -CX * dt; out.dwz = -CZ * dt;
+    // Anchored: the raft holds still and so does the water around it (dw = dg = 0), so the current no longer
+    // carries debris past (Raft: no flotsam while anchored). The ocean shader keeps its own wave motion.
+    out.dwx = 0; out.dwz = 0;
   } else {
     // Grounding: remove seabed-velocity components pointing toward nearby blockers.
     // b.r is the full stop distance (island radius + clearance + raft radius).

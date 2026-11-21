@@ -45,6 +45,7 @@ import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
 import { attachSpearRepair } from './spear-repair-hooks.js'; // [spear-repair]
+import { DEBRIS, debrisSpeed, stepDebrisBudget, spendDebris } from './debris-budget.js'; // [debris-budget] flotsam follows raft motion
 import { newVitals, tickVitals, damage as damageVitals, consume as consumeVitals, cleanVitals, saveVitals, isEdible, eatLabel, FOOD, SPRINT_MULT, EAT_SECONDS, RESPAWN } from './vitals.js'; // [vitals] hunger, thirst, health
 import { createVitalsUI } from './vitals-ui.js'; // [vitals] HUD bars, damage vignette, faint overlay
 import { loadSoundPref, saveSoundPref, dragLookScale } from './hud.js?build=v3-survival-ae77fa84ac2b';
@@ -301,7 +302,8 @@ export function mount(transfer = null) {
   let crossUsable = false, lastDraw = 0;
   let blockList = [];
   let controls = null; // controls lane: set in the Input section
-  let sailing = null; const scenery = [], sailFlow = {x:0, z:0}, aimNdc = {x:0, y:0}; // [sailing]
+  const debrisBank = {budget:0}; // [debris-budget] whole items allowed to respawn upstream
+  let sailing = null; const scenery = [], sailFlow = {x:0, z:0, b:.22}, aimNdc = {x:0, y:0}; // [sailing]
   function getAimNdc() { // [sailing] same aim point as currentAim(): screen centre when locked, else the drag-mode mouse
     if (isLocked()) { aimNdc.x = 0; aimNdc.y = 0; return aimNdc; }
     if (!lockFallback || !mouse.inside) return null;
@@ -447,7 +449,7 @@ export function mount(transfer = null) {
     try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); diving?.warm(renderer); } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     initShark(); // shark lane
     rebuildRaft();
-    if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
+    if (!world.items.length && role !== 'guest') for (let i = 0; i < DEBRIS.POOL; i++) world.items.push(makeItem(i));
     syncItems(); singlePass(scene); refreshPointerUI(true);
   }
 
@@ -1350,15 +1352,19 @@ export function mount(transfer = null) {
       let respawned = false, maxZ = -Infinity, maxX = -Infinity;
       for (const t of world.tiles) { if (t[1] > maxZ) maxZ = t[1]; const ax = Math.abs(t[0]); if (ax > maxX) maxX = ax; }
       const end = maxZ * 2 + 24, side = maxX * 2 + 24;
+      debrisBank.budget = stepDebrisBudget(debrisBank.budget, dt, debrisSpeed(sailFlow.x, sailFlow.z, sailFlow.b)); // [debris-budget]
       for (const it of world.items) {
         if (it.type === 'cache') continue; // the signal cache drifts in signalTick, never respawns
         if (heldTokens.has(it.token)) continue; // a hook (ours or the guest's) holds it; don't let it drift away or respawn
-        it.z += dt * .22; it.x += Math.sin(elapsed * .13 + it.phase) * dt * .04;
+        it.z += dt * sailFlow.b; it.x += Math.sin(elapsed * .13 + it.phase) * dt * .04;
         it.x += sailFlow.x * dt; it.z += sailFlow.z * dt; // [sailing] water flows past a sailing/anchored raft
-        if ((sailing ? sailing.outOfRange(it) : it.z > end || Math.abs(it.x) > side) || hasTile(Math.round(it.x / 2), Math.round(it.z / 2))) { Object.assign(it, makeItem(it.id)); sailing?.respawned(it); respawned = true; } // [sailing] flow-aware despawn replaces the +z box
+        const bumped = hasTile(Math.round(it.x / 2), Math.round(it.z / 2)); // [debris-budget] a bump always clears the deck (spending budget if any)
+        const gone = !bumped && (sailing ? sailing.outOfRange(it) : it.z > end || Math.abs(it.x) > side);
+        if (bumped) spendDebris(debrisBank);
+        if (bumped || (gone && spendDebris(debrisBank))) { Object.assign(it, makeItem(it.id)); sailing?.respawned(it); respawned = true; } // [sailing] flow-aware despawn replaces the +z box; [debris-budget] out of range waits for the budget
       }
       if (respawned) syncItems();
-    } else for (const it of world.items) if (!heldTokens.has(it.token)) { it.x += sailFlow.x * dt; it.z += (sailFlow.z + .22) * dt; } // [sailing] guest dead-reckons debris between host snapshots
+    } else for (const it of world.items) if (!heldTokens.has(it.token)) { it.x += sailFlow.x * dt; it.z += (sailFlow.z + sailFlow.b) * dt; } // [sailing] guest dead-reckons debris between host snapshots
     for (const it of world.items) {
       const m = itemMeshes.get(it.token); if (!m) continue;
       m.visible = !isPending(it); m.scale.setScalar(1);
@@ -1660,7 +1666,7 @@ export function mount(transfer = null) {
     hook = null; fishWait = 0; charging = null; reeling = false; lastCaughtCount = 0; pending.clear();
     world = b.world; hostBag = snapBag(b.host) ?? new Bag(); guestBag = snapBag(b.guest) ?? new Bag();
     if (b.physics) physics = new PlayerPhysics(b.physics); else { const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); }
-    if (!world.items.length) for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
+    if (!world.items.length) for (let i = 0; i < DEBRIS.POOL; i++) world.items.push(makeItem(i));
     content?.load(world.ext, 'restore'); // content hook
     shark?.clearNet(); shark?.load(world.shark); // shark lane: our own shark again
     if (scene) { syncItems(); rebuildRaft(); fitShadow(); }
