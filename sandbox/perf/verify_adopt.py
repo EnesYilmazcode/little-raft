@@ -7,12 +7,15 @@ Usage: python sandbox/perf/verify_adopt.py [--frames 8] [--skip shoot,node,gate,
             imgdiff.py compares the screenshots (expect 0.0: the patch changes no pixel). READ the PNGs it lists.
 3. node:    `node --test tests/*.test.mjs` on a temp repo root holding stock vs patched dist/.
 4. gate:    tests/e2e/perf_gate.py (the budgeted perf gate) on stock and patched.
-5. audit:   tests/audit/live3_concurrent_checks_double_swap.py and perf1_hotswap_leaks_old_engine.py on stock and
-            patched (live3 fails on stock: that is the live.js double-mount race the patch fixes).
+5. race:    live_race.py (live.js double mount: fails on stock, passes patched) and the hot-swap leak audit
+            tests/audit/perf1_hotswap_leaks_old_engine.py on stock and patched.
+Steps 4-5 run COPIES of tests/: the gate and the audits click #solo with a Playwright locator, which times out on
+the current title screen (onboarding.js hides #solo behind its own menu). The copies click it from JS instead
+(one-line substitution, SOLO_FIX below); nothing else in them changes.
 6. play:    playtest.py --big on stock and patched: hammer floors, decor, hook, hot swaps through live.js's poll;
             build handler time, deck checksum incremental == full rebuild, memory flat across swaps.
 Prints one JSON summary; writes it to <out>/verify.json."""
-import argparse, json, shutil, subprocess, sys, tempfile
+import argparse, json, re, shutil, subprocess, sys, tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent; ROOT = HERE.parents[1]
@@ -36,8 +39,14 @@ for s, edits in make_adopt.STEPS.items():
 bad = [x for x in anchors if x['occurrences'] != 1]
 report['anchors'] = {'checked': len(anchors), 'bad': bad}
 if bad: print(json.dumps(report, indent=1)); sys.exit('anchors do not match the current dist/')
+SOLO_FIX = (re.compile(r"page\.locator\('#solo'\)\.click\([^)]*\)"), "(page.wait_for_function(\"!!document.querySelector('#solo') && !document.querySelector('#solo').disabled\", timeout=120000), page.evaluate(\"document.querySelector('#solo').click()\"))")
+fixed = []
 for tag in ('stock', 'patched'):
     (tmp / tag).mkdir(); shutil.copytree(stock_dist, tmp / tag / 'dist'); shutil.copytree(ROOT / 'tests', tmp / tag / 'tests')
+    for f in list((tmp / tag / 'tests').rglob('*.py')):
+        t = f.read_text(); u = SOLO_FIX[0].sub(SOLO_FIX[1], t)
+        if u != t: f.write_text(u); fixed.append(f.name) if tag == 'stock' else None
+report['testCopiesWithSoloClickFix'] = sorted(fixed)
 r = subprocess.run(['git', 'apply', '-p1', str(HERE / 'adopt.patch')], cwd=tmp / 'patched', capture_output=True, text=True)
 if r.returncode:  # git apply refuses paths when cwd is inside another repo's ignored dir; fall back to patch(1)
     r = subprocess.run(['patch', '-p1', '-F0', '-s', '-i', str(HERE / 'adopt.patch')], cwd=tmp / 'patched', capture_output=True, text=True)
@@ -81,13 +90,14 @@ if 'gate' not in skip:
                                    'growth': m.get('growth'), 'hitches': (m.get('longTasks') or {}).get('hitches')}
         except Exception: report['gate'][tag] = {'exit': c, 'tail': (o + e)[-600:]}
 
-# 5. audit tests touching live.js and hot swaps
+# 5. live.js race + hot-swap leak audit
 if 'audit' not in skip:
-    report['audit'] = {}
-    for t in ('live3_concurrent_checks_double_swap.py', 'perf1_hotswap_leaks_old_engine.py'):
-        for tag in ('stock', 'patched'):
-            c, o, e = run([PY, f'tests/audit/{t}'], cwd=tmp / tag, env={'RAFT_DIST': str(tmp / tag / 'dist')}, timeout=1200)
-            report['audit'][f'{t} {tag}'] = {'exit': c, 'tail': o.strip().splitlines()[-2:]}
+    report['race'] = {}
+    for tag in ('stock', 'patched'):
+        c, o, e = run([PY, str(HERE / 'live_race.py'), '--dist', str(tmp / tag / 'dist')], timeout=1200)
+        report['race'][tag] = {'exit': c, 'result': o.strip().splitlines()[-1] if o.strip() else (e or '')[-300:]}
+        c, o, e = run([PY, 'tests/audit/perf1_hotswap_leaks_old_engine.py'], cwd=tmp / tag, env={'RAFT_DIST': str(tmp / tag / 'dist')}, timeout=1800)
+        report['race'][tag + ' perf1_hotswap_leaks_old_engine'] = {'exit': c, 'tail': (o.strip().splitlines() or [''])[-2:] if o.strip() else (e or '')[-300:]}
 
 # 6. playtest
 if 'play' not in skip:
@@ -96,7 +106,7 @@ if 'play' not in skip:
         c, o, e = run([PY, str(HERE / 'playtest.py'), '--dist', str(tmp / tag / 'dist'), '--big', '--tag', tag, '--swaps', '2', '--floors', '4', '--out', str(out)], timeout=5400)
         try:
             p = json.loads(o)
-            report['play'][tag] = {k: p[k] for k in ('floorsBuilt', 'buildHandlerMs', 'incrementalDeckEqualsFullRebuild', 'memoryAfterSwaps', 'memoryFlatAcrossSwaps', 'undisposedAfterSwap', 'errors')}
+            report['play'][tag] = {k: p[k] for k in ('floorsBuilt', 'buildHandlerMs', 'incrementalDeckEqualsFullRebuild', 'incrementalDecorEqualsFullRebuild', 'decorModels', 'memoryAfterSwaps', 'memoryFlatAcrossSwaps', 'undisposedAfterSwap', 'errors')}
             report['play'][tag]['decorAfterBuild'] = next((s['decor'] for s in p['log'] if s['step'] == '3-decor'), None)
             report['play'][tag]['scenesRenderingAfterSwaps'] = [s['scenesRendering'] for s in p['log'] if s['step'].startswith('4-swap')]
         except Exception: report['play'][tag] = {'exit': c, 'tail': (o + e)[-800:]}

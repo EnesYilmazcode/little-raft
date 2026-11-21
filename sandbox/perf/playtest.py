@@ -64,9 +64,12 @@ SAMPLE = """() => { const r = __R, s = __S, st = raftDebug.state;
   // checksum of every deck vertex in raft space: order-independent, so incremental == from-scratch iff same geometry
   const src = batch ? batch.children : []; for (const m of src) { const p = m.geometry.attributes.position.array, used = Math.min(p.length, m.geometry.drawRange.count * 3); let sx = 0, sy = 0, sz = 0, sq = 0; for (let i = 0; i < used; i += 3) { sx += p[i]; sy += p[i+1]; sz += p[i+2]; sq += p[i]*p[i] + p[i+1]*p[i+1] + p[i+2]*p[i+2]; } deck.push({mat: m.material.name || m.material.type, verts: used / 3, sum: [sx, sy, sz, sq].map(v => +v.toFixed(2))}); }
   deck.sort((a, b) => (a.mat + a.verts).localeCompare(b.mat + b.verts));
+  // decor on the raft (everything but the deck): model name, place, vertex count and position sum, order-independent
+  const decorSum = []; for (const c of (batch?.parent?.children ?? [])) { if (c === batch) continue; let v = 0, sx = 0; c.traverse(o => { if (o.isMesh && o.visible) { const a = o.geometry.attributes.position; v += a.count; for (let i = 0; i < a.count; i++) sx += a.getX(i) + a.getY(i) + a.getZ(i); } }); decorSum.push([c.name || c.type, +c.position.x.toFixed(2), +c.position.z.toFixed(2), +c.rotation.y.toFixed(3), v, +sx.toFixed(1)].join(' ')); }
+  decorSum.sort();
   const lt = __longtasks.splice(0), hm = __handlerMs.splice(0), now = performance.now(), live = [...(window.__scenes ?? new Map()).values()].filter(t => now - t < 3000).length;
   return {tiles: st.tiles, decor: st.decor.length, collected: st.collected, geometries: r.info.memory.geometries, textures: r.info.memory.textures,
-    programs: r.info.programs.length, callsMain: r.info.render.calls, meshes, floorGroups, deckMeshes: src.length, deck,
+    programs: r.info.programs.length, callsMain: r.info.render.calls, meshes, floorGroups, deckMeshes: src.length, deck, decorSum,
     heapMB: +(performance.memory.usedJSHeapSize / 1048576).toFixed(1), longtasks: lt, handlerMs: hm, scenesRendering: live, build: window.raftLive?.build ?? null}; }"""
 
 log = []; errors = []
@@ -164,9 +167,10 @@ with sync_playwright() as p:
 srv.shutdown(); shutil.rmtree(tmp, ignore_errors=True)
 
 same = all(s['deck'] == inc['deck'] for s in swaps)
+sameDecor = all(s['decorSum'] == inc['decorSum'] for s in swaps)
 mem = [(s['geometries'], s['textures'], s['programs']) for s in swaps]
 hm = lambda pre: [x for s in log if s['step'].startswith(pre) for x in s['handlerMs']]
-report = {'tag': a.tag, 'floorsBuilt': built, 'buildHandlerMs': {'floors': hm('2-floor'), 'decor': hm('3-decor')}, 'incrementalDeckEqualsFullRebuild': same,
+report = {'tag': a.tag, 'floorsBuilt': built, 'buildHandlerMs': {'floors': hm('2-floor'), 'decor': hm('3-decor')}, 'incrementalDeckEqualsFullRebuild': same, 'incrementalDecorEqualsFullRebuild': sameDecor, 'decorModels': len(inc['decorSum']),
           'memoryAfterSwaps': mem, 'memoryFlatAcrossSwaps': all(max(m[i] for m in mem) - min(m[i] for m in mem) <= 2 for i in range(3)),  # +-2: e.g. the rope is uploaded on first use
           'undisposedAfterSwap': leaks, 'errors': errors, 'log': log}
 print(json.dumps(report, indent=1))
