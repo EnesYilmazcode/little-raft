@@ -89,7 +89,7 @@ test('drop: game.js wires a host-validated action through the debris pickup path
   assert.match(fn, /planDrop\(a, bag, p, world\.items, hasTile\)/);
   assert.match(fn, /world\.items\.push\(makeDrop\(/, 'spawns into world.items: hook + E + snapshot reuse it');
   assert.match(gameSrc, /isDrop \? dropLoot\(it\)/, 'collect gives the dropped stack back');
-  assert.match(gameSrc, /else if \(!isDrop\) world\.items\.push\(makeItem\(a\.id\)\)/, 'a picked-up drop does not respawn a debris lane');
+  assert.match(gameSrc, /else if \(!isDrop\) world\.items\.push\(spawnItem\(a\.id\)\)/, 'a picked-up drop does not respawn a debris lane');
   assert.match(gameSrc, /tickDrops\(world\.items, dt, heldTokens\)/, 'host sinks drops after the ttl');
   assert.match(gameSrc, /item\.type === 'drop' \? dropVisual\(item\.kind\) : item\.type/, 'pooled debris model, no new draw calls');
   const held = gameSrc.slice(gameSrc.indexOf('function dropHeld('), gameSrc.indexOf('function dropHeld(') + 300);

@@ -500,7 +500,7 @@ export function mount(transfer = null) {
     try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id}), getMods:out => content?.diveMods?.(out)}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     initShark(); // shark lane
     rebuildRaft(); fitShadow();
-    if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
+    if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(spawnItem(i));
     syncItems(); singlePass(scene); refreshPointerUI(true);
   }
 
@@ -666,6 +666,7 @@ export function mount(transfer = null) {
     if (it.type !== 'bottle' && Math.random() < JUNK_CHANCE) it.type = JUNK_TYPES[Math.floor(Math.random() * 3)]; // [recycler]
     return it;
   }
+  function spawnItem(id) { const it = makeItem(id); sailing?.respawned(it); return it; } // [sailing] a fresh supply starts upstream of the current (the wind need not blow along +z)
   function itemModel(item) {
     if (item.type === 'cache') return createSignalModel(T, 'cache');
     if (item.type === 'bottle') { const g = new T.Group(), b = createBottle(T); b.position.y = .04; b.rotation.y = (item.id % 7) * .9; g.add(b); return singlePass(g); }
@@ -1147,7 +1148,7 @@ export function mount(transfer = null) {
   }
   function collectBottle(i, a, bag, actor) { // no bag space needed; does not count toward world.collected
     const n = nextNote(world.notes); if (n >= 0) world.notes.push(n); // before makeItem: the 12th note must not respawn a (now empty) bottle
-    world.items.splice(i, 1); world.items.push(makeItem(a.id)); syncItems();
+    world.items.splice(i, 1); world.items.push(spawnItem(a.id)); syncItems();
     if (typeof a.cast === 'string' && a.cast && wornCasts[actor] !== a.cast) { wornCasts[actor] = a.cast; wearHook(bag, a.slot, actor); }
     if (n < 0) { emit({kind:'notice', text:'An empty bottle. Someone out there says hi!'}, actor); return; }
     emit({kind:'note', note:n, text:`Message in a bottle! (${world.notes.length}/${NOTE_COUNT}) · L to read`}, 'all');
@@ -1235,7 +1236,7 @@ export function mount(transfer = null) {
         return;
       }
       commit(bag, scratch); barrel?.keep();
-      if (!isDrop) world.collected++; world.items.splice(i, 1); if (isCache) onCacheCollected(world); else if (!isDrop) world.items.push(makeItem(a.id)); syncItems(); // [drop] no respawn lane
+      if (!isDrop) world.collected++; world.items.splice(i, 1); if (isCache) onCacheCollected(world); else if (!isDrop) world.items.push(spawnItem(a.id)); syncItems(); // [drop] no respawn lane
       if (typeof a.cast === 'string' && a.cast && wornCasts[actor] !== a.cast) { wornCasts[actor] = a.cast; wearHook(bag, a.slot, actor); }
       if (isCache) emit({kind:'build', text:'Signal cache recovered!'}, actor === 'host' ? 'guest' : 'host');
       if (!a.net) emit({kind:'loot', text:(isCache ? 'Signal cache! + ' : '+ ') + Object.entries(loot).map(([k, n]) => `${n} ${itemName(k)}`).join(' · '), loot}, actor);
@@ -2041,7 +2042,7 @@ export function mount(transfer = null) {
     hook = null; fishWait = 0; charging = null; reeling = false; lastCaughtCount = 0; pending.clear();
     world = b.world; hostBag = snapBag(b.host) ?? new Bag(); guestBag = snapBag(b.guest) ?? new Bag();
     if (b.physics) physics = new PlayerPhysics(b.physics); else { const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); }
-    if (!world.items.length) for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
+    if (!world.items.length) for (let i = 0; i < 30; i++) world.items.push(spawnItem(i));
     content?.load(world.ext, 'restore'); // content hook
     shark?.clearNet(); shark?.load(world.shark); // shark lane: our own shark again
     if (scene) { syncItems(); rebuildRaft(); fitShadow(); }
