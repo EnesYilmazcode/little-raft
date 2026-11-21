@@ -51,6 +51,17 @@ SAMPLE = r"""(ms) => new Promise(res => {
   requestAnimationFrame(f);
 })"""
 
+START = r"""(sel) => new Promise((res, rej) => {
+  const el = document.querySelector(sel), t = performance.now(), end = t + 30000;
+  el.click();
+  // Done when the game reports running and the next animation frame after that has fired.
+  (function poll() {
+    if (raftDebug.state.running) requestAnimationFrame(() => res(performance.now() - t));
+    else if (performance.now() > end) rej(new Error('game did not start'));
+    else setTimeout(poll, 0);
+  })();
+})"""
+
 def one(b):
     ctx = b.new_context(viewport={'width': 1280, 'height': 720}); ctx.add_init_script(HOOK)
     page = ctx.new_page(); errs = []
@@ -59,10 +70,8 @@ def one(b):
     r = {'debugReadyMs': page.evaluate('performance.now() - __perf.t0')}
     r['dcl'] = page.evaluate("performance.getEntriesByType('navigation')[0].domContentLoadedEventEnd")
     page.wait_for_timeout(500)
-    t = page.evaluate('performance.now()')
-    page.locator('#newGame' if page.locator('#newGame').count() else '#solo').click()
-    page.wait_for_function('raftDebug.state.running', timeout=30000)
-    r['soloToRunningMs'] = page.evaluate('performance.now()') - t
+    # Click and time inside the page: Playwright's actionability checks wait on (slow, software GL) frames.
+    r['soloToRunningMs'] = page.evaluate(START, '#newGame' if page.locator('#newGame').count() else '#solo')
     page.wait_for_timeout(2500)
     r['idle'] = page.evaluate(SAMPLE, 5000)
     page.keyboard.down('w'); page.keyboard.down('a')
