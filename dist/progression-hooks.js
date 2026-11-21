@@ -8,6 +8,7 @@
 // guest only renders the snapshots the host sends ({kind:'prog:sync'} effects) and sends
 // 'prog:*' actions. Limits: guest progression is tied to the host's save (a guest starts fresh on
 // another host's raft), and guest station/research views lag by one sync (~0.3 s).
+import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS, FUEL_VALUE, toolRole } from './items.js?build=v3-survival-ae77fa84ac2b';
 import { Progression } from './progression.js?build=v3-survival-ae77fa84ac2b';
 import { StationModel } from './smelter.js?build=v3-survival-ae77fa84ac2b';
@@ -216,7 +217,7 @@ export function attachProgression(ctx) {
       document.body.append(research);
     }
     ctx.pause?.();
-    if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
+    exitLock(document); // marked page-initiated (lock-rules.js), so the game does not pause on it
     if (!research.open) { try { research.showModal(); } catch { research.setAttribute('open', ''); } }
     renderResearch(true);
   }

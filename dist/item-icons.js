@@ -5,7 +5,9 @@
 // the queue drains. Models come from setModelProvider(fn) (fn(kind) -> Object3D | null, e.g. models.js
 // getModel; never disposed here) and fall back to the game's own procedural models.
 // Public API: getItemIcon(kind) (sync, data URL or null while rendering / without WebGL),
-// loadItemIcon(kind) (Promise of the same), primeIcons (render now), warmIcons, onIconReady, setModelProvider.
+// loadItemIcon(kind) (Promise of the same), primeIcons (render now), warmIcons, onIconReady, setModelProvider, ICON_KINDS.
+// createItemIcons() is a small facade over the same shared cache ({get, prime, has, dispose}).
+// null always means "use the SVG sprite" (unknown kind, no WebGL, model failure).
 import * as T from './vendor/three.module.js';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
@@ -18,6 +20,8 @@ import { buildIconModel } from './icon-models.js?build=v3-survival-ae77fa84ac2b'
 import { createSignalModel } from './signal-models.js?build=v3-survival-ae77fa84ac2b';
 
 const SIZE = 128;
+// Every bag item kind; warmIcons(ICON_KINDS) renders the full set ahead of the first bag open.
+export const ICON_KINDS = Object.freeze(['wood', 'leaf', 'plastic', 'scrap', 'rope', 'fish', 'hook', 'hammer', 'fishingrod', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 // Item ids whose name differs from the models.js kind.
 const MODEL_ALIAS = { fishingrod: 'rod' };
 const RELEASE_MS = 60000; // long enough that the hotbar bake and the warm-all pass ~5 s later share one context
@@ -316,3 +320,16 @@ export function setModelProvider(fn) {
   cache.clear(); encoding.clear();
   warmIcons(kinds);
 }
+
+/** Facade over the shared cache, e.g. for callers that want an object: get(kind) is sync (null while rendering). */
+export function createItemIcons() {
+  return {
+    get: kind => iconURL(String(kind ?? '')),
+    load: kind => loadItemIcon(String(kind ?? '')),
+    prime: (kinds = ICON_KINDS) => warmIcons([...kinds]),
+    has: kind => cache.has(String(kind ?? '')),
+    onReady: onIconReady,
+    dispose() {},
+  };
+}
+export default createItemIcons;

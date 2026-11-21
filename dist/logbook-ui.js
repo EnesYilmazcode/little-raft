@@ -1,5 +1,6 @@
 // Raft logbook view: bottled notes and achievements in a wood-panel dialog, plus unlock toasts.
 // createLogbookUI({getProgress, onPause, onResume}) -> {open, close, toggle, update, celebrate, destroy, isOpen}
+import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { NOTES, NOTE_COUNT, ACHIEVEMENTS, cleanProgress } from './logbook.js?build=v3-survival-ae77fa84ac2b';
 
 const INST_KEY = '__littleRaftLogbookUI';
@@ -167,7 +168,7 @@ export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
     isOpen = true;
     seenBase = null;
     safe(onPause);
-    if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }
+    exitLock(document); // marked page-initiated (lock-rules.js), so the game does not pause on it
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     select(tab, true);
     render();

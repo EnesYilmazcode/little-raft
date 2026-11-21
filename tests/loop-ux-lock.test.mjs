@@ -28,11 +28,11 @@ test('C1: SecurityError well after a user exit (or with none) still counts, thre
   assert.equal(lockFailureVerdict({ err: dom('NotSupportedError'), sinceUserExit: 10 }).fallback, true);
 });
 
-test('C1: game.js records user lock losses, resets failures on them, and feeds the cooldown to the verdict', () => {
+test('C1: game.js records user lock losses (not page-caused ones) for the post-Esc cooldown', () => {
   const g = read('game.js');
-  assert.match(g, /sinceUserExit:performance\.now\(\) - userExitAt/);
-  assert.match(g, /userExitAt = now; lockFailures = 0;/);
-  assert.match(g, /pageReleaseAt = performance\.now\(\); document\.exitPointerLock/);
+  assert.match(g, /function releaseLock\(\) \{ if \(isLocked\(\)\) exitLock\(document\); \}/);
+  assert.match(g, /if \(pageLock\.selfCaused\(now\)[^\n]*return; \}/);
+  assert.match(g, /lostAt = escapeUnlockAt = now;/);
 });
 
 test('C2: drag-look fallback never hides the cursor waiting for a relock', () => {
@@ -61,7 +61,7 @@ test('B4: desktop Esc closes the hammer build wheel through the game and keeps t
   assert.match(esc, /if \(buildWheelOpen\(\)\) \{[^}]*window\.raftShell\?\.closeBuildWheel\?\.\(\)\) return true;/);
   assert.doesNotMatch(esc, /if \(buildWheelOpen\(\)\) return false;/);
   // Browser keydown: the wheel is left to the game's key handler, so escape() is not also run for it.
-  assert.match(s, /if \(!dialog\.open && !otherDialogs\(\)\.length && buildWheelOpen\(\)\) esc\.keydown\(now, \{ handled: true \}\);\n\s*else if/);
+  assert.match(s, /if \(!dialog\.open && buildWheelOpen\(\)\) \{ esc\.keydown\(now, \{ handled: true \}\); return; \}/);
 });
 
 test('C3: window blur drops body.relock so the away resume hint is visible', () => {
