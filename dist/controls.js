@@ -73,7 +73,8 @@ export function createControls(g) {
     const crouch = active && input.crouching();
     const shaped = feel.shapeInput(dt, {forward:m.forward, strafe:m.strafe, sprint:active && input.sprinting(), crouch,
       grounded:physics.grounded, swimming:physics.swimming});
-    return {...shaped, jump:active && input.down('jump'), crouch};
+    // pressed too: a tap that starts and ends inside one slow frame still jumps (physics fires on the edge, once)
+    return {...shaped, jump:active && (input.down('jump') || input.pressed('jump')), crouch};
   }
   // Call after physics.update(); ev is its return value.
   function afterMove(dt, physics, ev) {

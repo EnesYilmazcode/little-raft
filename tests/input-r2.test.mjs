@@ -187,6 +187,37 @@ test('INPUT-3: holding jump through a slow multi-substep frame jumps once, on th
   assert.match(gameSrc, /movePlayer\(realDt,/);
 });
 
+// ---------------------------------------------------------------- INPUT3-3 sub-frame Space tap (createControls)
+
+const { El } = (() => { class El extends EventTarget {
+  constructor() { super(); this.children = []; this.attrs = {}; this.style = {}; const cls = new Set(); this.classList = {add:c => cls.add(c), remove:c => cls.delete(c), toggle:(c, on) => (on ?? !cls.has(c)) ? cls.add(c) : cls.delete(c), contains:c => cls.has(c)}; }
+  setAttribute(k, v) { this.attrs[k] = v; } append(...k) { this.children.push(...k); } appendChild(k) { this.children.push(k); return k; }
+  replaceChildren() { this.children = []; } remove() {} } return {El}; })();
+if (!globalThis.document) { const d = new EventTarget(); Object.assign(d, {pointerLockElement:null, visibilityState:'visible', head:new El(), body:new El(), getElementById:() => null, createElement:() => new El(), createElementNS:() => new El()}); globalThis.document = d; }
+const { createControls } = await import(new URL('controls.js', base));
+function liveControls(g = {}) {
+  const win = new EventTarget(); win.document = globalThis.document; globalThis.window = win; // createInput listens on window
+  const c = createControls({canvas:null, isBlocked:() => false, look() {}, hotbarSize:8, slot:() => 0, selectSlot() {}, ...g});
+  const key = (type, code) => fire(win, type, {code, key:code, target:win});
+  delete globalThis.window;
+  return {c, win, down:code => key('keydown', code), up:code => key('keyup', code)};
+}
+
+test('INPUT3-3: a Space tap inside one 15 fps frame jumps once (createControls -> PlayerPhysics)', () => {
+  const {c, down, up} = liveControls();
+  const p = new PlayerPhysics({x:0, y:.2 + PC.EYE_OFFSET, z:0}), tiles = raft();
+  for (let i = 0; i < 3; i++) p.update(1 / 60, {yaw:0, tiles, deckY:.2, waterY:-.24});
+  down('Space'); up('Space');
+  const ci = c.movement(1 / 15, true, p);
+  assert.equal(ci.jump, true);
+  const {n, step} = R.splitSteps(1 / 15);
+  let jumps = 0;
+  for (let i = 0; i < n; i++) { const g = p.grounded; p.update(step, {yaw:0, tiles, deckY:.2, waterY:-.24, jump:ci.jump}); if (g && !p.grounded && p.vy > 0) jumps++; }
+  assert.equal(jumps, 1);
+  assert.equal(c.movement(1 / 15, true, p).jump, false, 'the tap is consumed');
+  c.dispose();
+});
+
 // ---------------------------------------------------------------- INPUT-4 wheel over the hotbar
 
 const el = (...inside) => ({closest: sel => inside.some(s => sel.split(',').map(x => x.trim()).includes(s)) ? {} : null});
