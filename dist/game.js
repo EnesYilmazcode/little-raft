@@ -1618,7 +1618,46 @@ export function mount(transfer = null) {
     return {x:r.left + (v.x + 1) / 2 * r.width, y:r.top + (1 - v.y) / 2 * r.height, visible:inFront && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1, inFront};
   }
   const worldPos = o => { if (!o) return null; const p = o.getWorldPosition(new T.Vector3()); return {x:p.x, y:p.y, z:p.z, visible:o.visible}; };
+  // raftDebug.hud: a light live view for the timer-driven HUD readers (onboarding 4 Hz, prompts 10 Hz), holding only
+  // the keys they read from .state. No deep copies: arrays are the live world/bag lists (read only); bag counts and
+  // ownedTools are rebuilt at most once per rendered frame (or every 100 ms while rAF is idle). Objects handed out are
+  // never mutated after the fact, so a reader may keep them (onboarding keeps the last pickup).
+  let hudAt = -1, hudBuilt = 0, hudBag = null, hudStock = null, hudOwned = null, hudInv = null, hudPick = null, hudPickSrc = null, hudPickType = null;
+  const hudModeOf = kind => (kind === 'hammer' ? 'build' : kind === 'fishingrod' ? 'fish' : kind === 'hook' ? 'hook' : DECOR_TYPES.includes(kind) ? 'place' : 'none');
+  const hudCounts = () => {
+    const bag = localBag(), now = performance.now();
+    if (bag !== hudBag || hudAt !== last || now - hudBuilt > 100) {
+      hudBag = bag; hudAt = last; hudBuilt = now; hudStock = bag.counts();
+      hudOwned = []; if (hudStock.hook > 0) hudOwned.push('hook'); if (hudStock.hammer > 0) hudOwned.push('hammer'); if (hudStock.fishingrod > 0) hudOwned.push('fishingrod');
+    }
+    return hudStock;
+  };
+  const hudAffords = () => { const bag = localBag(); for (const k in FLOOR_COST) if (bag.count(k) < FLOOR_COST[k]) return false; return true; };
+  const hudPhysics = {get climbing() { return !!physics.climbing; }};
+  const hudMe = {get x() { return physics.x; }, get y() { return physics.y; }, get z() { return physics.z; }, get yaw() { return yaw; }, get pitch() { return pitch; }};
+  const hudBuild = {get hover() { return !!hover; }, get affordable() { const m = hudModeOf(heldKind()); return m === 'build' ? hudAffords() : m === 'place'; }};
+  const hudView = Object.freeze({
+    get running() { return running; }, get disposed() { return disposed; }, get role() { return role; }, get networkReady() { return networkReady; },
+    get pointerLocked() { return isLocked(); }, get lockFallback() { return lockFallback; }, get inventoryOpen() { return !!survivalUI?.isOpen; },
+    get heldKind() { return heldKind(); }, get tool() { return hudModeOf(heldKind()); }, get fishWait() { return fishWait; },
+    get hookStage() { return hook ? (hook.fishing ? 'fishing' : hook.stage) : 'idle'; },
+    get hookCaughtItems() { return caughtList(castOut()); },
+    get hookHealth() { return hookDurability(localBag()); },
+    get pickup() {
+      if (!pickTarget) return null;
+      if (pickTarget !== hudPickSrc || pickTarget.type !== hudPickType) { hudPickSrc = pickTarget; hudPickType = pickTarget.type; hudPick = Object.freeze({type:hudPickType}); }
+      return hudPick;
+    },
+    get stock() { return hudCounts(); }, get ownedTools() { hudCounts(); return hudOwned; },
+    get inventory() { const bag = localBag(); if (hudInv?.bag !== bag) hudInv = {bag, get slots() { return this.bag.slots; }}; return hudInv; },
+    get selectedIndex() { return localBag().selectedIndex; },
+    get tiles() { return world.tiles.length; }, get tileList() { return world.tiles; }, get decor() { return world.decor; },
+    get fish() { return world.fish; }, get collected() { return world.collected; },
+    get swimming() { return physics.swimming; }, get grounded() { return physics.grounded; }, get physics() { return hudPhysics; },
+    get me() { return hudMe; }, get build() { return hudBuild; },
+  });
   const debugApi = Object.freeze({
+    get hud() { return hudView; },
     get renderInfo() {
       if (!renderer) return null;
       const i = renderer.info, c = {meshes:0, visible:0, lights:0, shadowCasters:0};
