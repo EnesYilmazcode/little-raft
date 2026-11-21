@@ -449,6 +449,10 @@ export function createAnimals(ctx) {
 
   return {
     name: 'animals',
+    beforeUndecor(d) { // [undecor] a hen (or a lure waiting for one) calls this nest box home
+      if (d?.type !== 'nestbox') return null; const at = h => Array.isArray(h) && h[0] === d.x && h[1] === d.z;
+      return st.list.some(e => at(e.home)) || st.lures.some(l => at(l.home)) ? 'Your puffhen lives here' : null;
+    },
     update,
     serialize,
     load,

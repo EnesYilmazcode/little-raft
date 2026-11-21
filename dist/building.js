@@ -26,6 +26,7 @@ export function createBuilding(T, scene) {
   const dummy = new T.Object3D(), aimOut = {}, origin = new T.Vector3();
   let rot = 0, version = -1, removing = false, removeTarget = null, chipText = '';
   let remRec = null, remVer = -1, remText = '';
+  let removeExtraFn = null, removeExtra = null; // [undecor] game.js decor target when no piece is aimed: {text, action, d, deny?}
   let curBag = null; // the local bag of the last update(); afford() is one function, not a per-frame closure
   const afford = cost => { if (!curBag) return true; for (const k in cost) if (curBag.count(k) < cost[k]) return false; return true; };
   const okColor = new T.Color(GHOST_OK), badColor = new T.Color(GHOST_BAD);
@@ -81,7 +82,7 @@ export function createBuilding(T, scene) {
     menu.setVisible(active);
     if (active) menu.refresh(); // cost lines follow the bag (only repaints when a count changed)
     if (!active) { removing = false; if (menu.isOpen) menu.close(false); } // hammer put away / UI opened: no stuck wheel or X mode
-    ghost.visible = false; removeTarget = null;
+    ghost.visible = false; removeTarget = null; removeExtra = null; // [undecor]
     let text = '';
     if (active && aim?.dir && !menu.isOpen) {
       origin.copy(camPos);
@@ -96,7 +97,7 @@ export function createBuilding(T, scene) {
           }
           text = remText;
         }
-        else text = 'Point at a piece to remove';
+        else { removeExtra = removeExtraFn ? removeExtraFn(origin, d) : null; text = removeExtra?.text ?? 'Point at a piece to remove'; } // [undecor]
       } else if (freePiece()) {
         const r = grid.aim(origin.x, origin.y, origin.z, d.x, d.y, d.z, piece(), (yawDir(yaw) + rot) % 4, deckY, REACH, aimOut);
         if (r) { showGhost(r, r.ok && afford(PIECES[r.t].cost) ? okColor : badColor); text = r.ok ? (afford(PIECES[r.t].cost) ? '' : 'Not enough materials') : r.reason; }
@@ -123,8 +124,9 @@ export function createBuilding(T, scene) {
     return {kind:'piece', t:aimOut.t, i:aimOut.i, j:aimOut.j, l:aimOut.l, r:aimOut.r};
   }
   function removeAction() {
-    const p = removeTarget; removing = false;
-    return p ? {kind:'unpiece', t:p.t, i:p.i, j:p.j, l:p.l, r:p.r} : null;
+    const p = removeTarget, ex = removeExtra; removing = false; removeExtra = null; // [undecor]
+    if (!p && ex && !ex.action) ex.deny?.(); // [undecor] e.g. an old host: say why on release, send nothing
+    return p ? {kind:'unpiece', t:p.t, i:p.i, j:p.j, l:p.l, r:p.r} : ex?.action ?? null;
   }
 
   // Host-authoritative: validate, charge or refund the actor's bag, mutate world.pieces. Returns {ok, text}.
@@ -193,7 +195,7 @@ export function createBuilding(T, scene) {
   }
 
   const blur = new AbortController(); // a lost keyup (alt-tab while holding X) must not leave remove mode stuck on
-  addEventListener('blur', () => { removing = false; }, {signal:blur.signal});
+  addEventListener('blur', () => { removing = false; removeExtra = null; }, {signal:blur.signal}); // [undecor] removeExtra
 
   function dispose() {
     blur.abort(); menu.dispose(); scene.remove(group);
@@ -203,6 +205,7 @@ export function createBuilding(T, scene) {
 
   return {grid, menu, group, sync, update, use, removeAction, apply, key, dispose, setTint, retint, preview, // setTint/retint/preview: content hook (paint)
     target, prompt, promptOf, interact, toggle, climb:(...a) => grid.climb(...a),
+    setRemoveExtra(fn) { removeExtraFn = typeof fn === 'function' ? fn : null; }, get removeExtra() { return removeExtra; }, // [undecor]
     get removing() { return removing; }, get piece() { return piece(); }, get rotation() { return rot; },
     preStep:(phys, deckY, c) => grid.preStep(phys, deckY, c), postStep:(phys, deckY) => grid.postStep(phys, deckY)};
 }

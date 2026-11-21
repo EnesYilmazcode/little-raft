@@ -8,6 +8,8 @@
 //   name                      string, used for save/net keys and raftDebug.content[name]
 //   update(dt)                per frame, after items/hook updates. No allocations.
 //   afterMove(physics, dt)    after player physics (islands: stand on sand)
+//   ride(physics, dt, input)  takes over player motion this frame; return true to skip physics.update (sit, zipline)
+//   seated()                  -> true while the local player sits
 //   serialize()               -> JSON-safe data. Host saves it in world.ext[name] and sends it in state.
 //   load(data, from)          from: 'save' | 'net' | 'restore'. data may be undefined (old save).
 //   action(a, actor, bag)     host only. Return true if a.kind was handled. Guests reach it via ctx.action().
@@ -25,6 +27,16 @@
 //   tileTint(x, z, base)      plank colour for deck tile x,z (base = the plank's own colour) or null (paint)
 //   diveMods(m)               multiply m.swim/oxy/fog/gather in place (local player, per frame, no allocations; docs/specs/diving-gear.md)
 //   link(env)                 optional: env.wind() / env.night() live daynight getters // [power]
+//   beforeUndecor(d, actor)   [undecor] host only. d = the world.decor entry {type,x,z,rot?} (read-only), actor 'host'|'guest'.
+//                             -> veto string (shown as a notice to the actor) when this module's state on d's tile
+//                             is busy, else null. Must not mutate anything. Called for every decor type: ignore
+//                             types you don't own.
+//   undecorLoot(d)            [undecor] host only. -> array of [kind, n] or [kind, n, meta] that this module stores on d's tile
+//                             (contents, NOT the item itself: the host adds {d.type:1}). [] or null when nothing.
+//                             Must not mutate. Called only after every beforeUndecor returned null.
+//   afterUndecor(d, actor)    [undecor] host only, after the bag is committed and d is spliced out of world.decor.
+//                             Delete this module's slice key for d's tile, bump its rev so guests resync, close any
+//                             open UI for that tile. Must not throw. No return value.
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   observe(ev, actor)        host only: game events after success ({kind:'craft'|'collect'|'fish'|'build'|
 //                             'bottle'|'cook'|'water'|'harvest'|'gather'|'repair', ...}). Never from net/effects.
@@ -43,6 +55,7 @@ import { createDecorPack } from './decor-pack.js?build=v3-survival-ae77fa84ac2b'
 import { createDayNight } from './daynight.js?build=v3-survival-ae77fa84ac2b';
 import { createEngine } from './engine.js?build=v3-survival-ae77fa84ac2b';
 import { createSleep } from './sleep.js?build=v3-survival-ae77fa84ac2b';
+import { createSitting } from './sitting.js?build=v3-survival-ae77fa84ac2b'; // [sit]
 import { createPaint } from './paint.js?build=v3-survival-ae77fa84ac2b'; // content hook (paint)
 import { createKiln } from './kiln.js?build=v3-survival-ae77fa84ac2b';
 import { createAnimals } from './animals.js?build=v3-survival-ae77fa84ac2b';
@@ -59,8 +72,12 @@ import { createPower } from './power.js?build=v3-survival-ae77fa84ac2b'; // [pow
 import { createFishTrap } from './fish-trap.js?build=v3-survival-ae77fa84ac2b'; // [fishtrap]
 import { createPhotoFrame } from './photo-frame.js?build=v3-survival-ae77fa84ac2b'; // [camera] photo frame decor
 import { createTasks } from './tasks.js?build=v3-survival-ae77fa84ac2b'; // [tasks]
+import { createFlags } from './flags.js?build=v3-survival-ae77fa84ac2b'; // [flags]
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createPower, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createDivingGear, createTrader, createCookpot]; // [bees] + createBees; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [juicer] + createJuicer [gull] + createGull
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createDivingGear, createTrader, createCookpot]; // [bees] + createBees; [power] after bees; [sit] + createSitting; [flags] + createFlags; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [juicer] + createJuicer [gull] + createGull
+// [undecor] decor whose module stores items per tile but has no beforeUndecor/undecorLoot/afterUndecor yet:
+// picking it up would lose what it holds, so the host refuses (display, fish trap, cooking pot, gull perch tray).
+const NO_UNDECOR = new Set(['shelf', 'trophystand', 'fishtrap', 'cookpot', 'perch']);
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -94,6 +111,7 @@ export function createContent(ctx, features = FEATURES) {
     try { const m = make(ctx, { peek }); if (m) mods.push(m); } catch (e) { console.error('content module failed to start', e); }
   }
   const first = (fn, ...a) => { for (const m of mods) { const r = call(m, fn, ...a); if (r) return r; } return null; };
+  const seatedMod = () => { for (const m of mods) if (!m.dead && typeof m.seated === 'function' && call(m, 'seated')) return m; return null; }; // [sit]
   const debug = {};
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
   const dn = () => mods.find(m => m.name === 'daynight' && !m.dead), num = (v, d) => (Number.isFinite(v) ? v : d); // [power]
@@ -107,14 +125,19 @@ export function createContent(ctx, features = FEATURES) {
     load(ext, from) { const e = ext && typeof ext === 'object' ? ext : {}; for (const m of mods) call(m, 'load', e[m.name], from); },
     action(a, actor, bag) { for (const m of mods) if (call(m, 'action', a, actor, bag)) return true; return false; },
     observe(ev, actor) { for (const m of mods) call(m, 'observe', ev, actor); }, // [tasks] host-side game events
-    interact: aim => !!first('interact', aim),
-    prompt: aim => first('prompt', aim),
+    interact: aim => { const m = seatedMod(); return !!(m && call(m, 'interact', aim)) || !!first('interact', aim); }, // [sit] a seated module gets E first (stand up)
+    ride: (p, dt, i) => !!first('ride', p, dt, i), // content hook (sit, zipline): first module to take over motion wins
+    seated: () => !!first('seated'), // [sit]
+    prompt: aim => { const m = seatedMod(); return (m && call(m, 'prompt', aim)) || first('prompt', aim); }, // [sit] a seated module's prompt wins (E gets you up)
     use: (aim, kind) => !!first('use', aim, kind), // content hook (paint)
     alt: (aim, kind) => !!first('alt', aim, kind), // content hook (paint)
     afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)
     tileTint: (x, z, base) => first('tileTint', x, z, base), // content hook (paint): plank hex for a painted deck tile, else null
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
     placeBlock: (kind, x, z) => first('placeBlock', kind, x, z), // [fishtrap] reason a decor can't go on (x, z), or null
+    beforeUndecor: (d, actor) => first('beforeUndecor', d, actor) || (NO_UNDECOR.has(d?.type) ? 'Empty it first: this one can’t be picked up yet' : null), // [undecor] + modules without undecor hooks keep their stored items
+    undecorLoot: d => { const out = []; for (const m of mods) { const r = call(m, 'undecorLoot', d); if (Array.isArray(r)) out.push(...r); } return out; }, // [undecor]
+    afterUndecor: (d, actor) => { for (const m of mods) call(m, 'afterUndecor', d, actor); }, // [undecor]
     decorModel: (type, d) => first('decorModel', type, d),
     sailPush: (s, out) => !!first('sailPush', s, out),
     steerTargets: () => first('steerTargets'),

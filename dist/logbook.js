@@ -32,6 +32,7 @@ export const ACHIEVEMENTS = Object.freeze([
   a('supplies100', 'Beachcomber', 'Fish 100 supplies out of the sea.', 'barrel'),
   ...CRAFT_KINDS.map(k => a('craft_' + k, CRAFT_META[k][0], `Craft a ${k}.`, CRAFT_META[k][1])),
   a('homestead', 'Home Sweet Raft', 'Have all six decorations on deck at once.', 'compass'),
+  a('sit1', 'Sit a While', 'Sit down for 30 seconds.', 'compass'), // [sit]
   a('repair1', 'Good as New', 'Repair a worn hook.', 'repair'),
   a('note1', 'Message Received', 'Find a message in a bottle.', 'bottle'),
   a('notes_all', 'Pen Pals', 'Read all 12 messages.', 'bottle'),
@@ -88,6 +89,7 @@ export function evaluate(world, bags, event) {
       case 'supplies100': return num(w.collected) >= 100;
       case 'homestead': return CRAFT_KINDS.every(k => decor.has(k));
       case 'repair1': return ev.kind === 'repair';
+      case 'sit1': return ev.kind === 'sit'; // [sit]
       case 'note1': return notes >= 1;
       case 'notes_all': return notes === NOTE_COUNT;
     }

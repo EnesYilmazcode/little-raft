@@ -35,6 +35,10 @@ const r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000
 const coopId = (globalThis.__littleRaftCoopId ??= Math.random().toString(36).slice(2, 10)); // per tab, survives hot swaps
 const readName = () => { try { return (localStorage.getItem('little-raft-name') || '').trim().slice(0, 16) || 'Brother'; } catch { return 'Brother'; } };
 
+// Pose flags: 1 swimming | 2 grounded | 4 reeling | 8 reserved (zipline) | 16 seated [sit]. Old peers ignore unknown bits.
+export const poseFlags = l => (l.swimming ? 1 : 0) | (l.grounded ? 2 : 0) | (l.reeling ? 4 : 0) | (l.seated ? 16 : 0);
+export const readFlags = f => ({swimming:!!(f & 1), grounded:!!(f & 2), reeling:!!(f & 4), seated:!!(f & 16)});
+
 export function createCoop(ctx, saved = null) {
   const {T} = ctx;
   const now = () => performance.now();
@@ -136,7 +140,7 @@ export function createCoop(ctx, saved = null) {
     if (!p || p.length < 5 || !p.every(Number.isFinite) || !Number.isFinite(cp.t)) return null;
     const k = Array.isArray(cp.k) ? cp.k : null, g = Array.isArray(cp.g) ? cp.g : null, f = cp.f | 0;
     buffer.push({t:cp.t, x:p[0], y:p[1], z:p[2], yaw:p[3], pitch:p[4],
-      swimming:!!(f & 1), grounded:!!(f & 2), reeling:!!(f & 4), held:HELD[cp.h | 0] ?? null, charge:(cp.c | 0) / 100,
+      ...readFlags(f), held:HELD[cp.h | 0] ?? null, charge:(cp.c | 0) / 100,
       hook:k ? {x:k[1], y:k[2], z:k[3]} : null, stage:k ? STAGES[k[0]] ?? null : null,
       ghost:g ? {x:g[0], z:g[1], kind:HELD[g[2]] ?? null, ok:!!g[3]} : null}, now());
     lastPose = {x:p[0], y:p[1], z:p[2], yaw:p[3], swimming:!!(f & 1)};
@@ -147,7 +151,7 @@ export function createCoop(ctx, saved = null) {
   function snapshot(l) {
     const hook = l.hook ? [Math.max(0, STAGES.indexOf(l.hook.stage)), r2(l.hook.x), r2(l.hook.y), r2(l.hook.z)] : 0;
     const g = l.ghost ? [l.ghost.x, l.ghost.z, Math.max(0, HELD.indexOf(l.ghost.kind)), l.ghost.ok ? 1 : 0] : 0;
-    return {type:'cp', p:[r2(l.x), r2(l.y), r2(l.z), r3(l.yaw), r2(l.pitch)], f:(l.swimming ? 1 : 0) | (l.grounded ? 2 : 0) | (l.reeling ? 4 : 0),
+    return {type:'cp', p:[r2(l.x), r2(l.y), r2(l.z), r3(l.yaw), r2(l.pitch)], f:poseFlags(l),
       h:Math.max(0, HELD.indexOf(l.held ?? null)), c:Math.round((l.charge || 0) * 100), k:hook, g};
   }
   function sendPose(t) {
@@ -172,7 +176,7 @@ export function createCoop(ctx, saved = null) {
     lastHook = L.stage ?? null;
     const em = emote && (t - emote.at) / 1000 < EMOTE_S ? {kind:emote.kind, age:(t - emote.at) / 1000} : null;
     avatar.update(dt, {x:s.x, y:s.y - 1.6, z:s.z, yaw:s.yaw, pitch:s.pitch, speed:s.speed ?? 0, swimming:L.swimming, grounded:L.grounded,
-      held:L.held, charge:L.charge, reeling:L.reeling, hookOut:!!L.hook, stage:L.stage, emote:em, throwAge:throwAt >= 0 ? (t - throwAt) / 1000 : null}, time, ctx.camera);
+      held:L.held, charge:L.charge, reeling:L.reeling, seated:L.seated, hookOut:!!L.hook, stage:L.stage, emote:em, throwAge:throwAt >= 0 ? (t - throwAt) / 1000 : null}, time, ctx.camera);
     avatar.handWorld(hand);
     if (s.hook) s.hook.stage = L.stage; // s.hook is the buffer's reusable sample object
     rope.update(dt, hand, s.hook, ctx.ocean, time);
