@@ -2,7 +2,7 @@
 // Usage: import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
 //        const g = createFloor(T, index, color => material); g.position.set(x * 2, 0, z * 2);
 // Local bounds: x,z in [-1, 1], y in [0, ~0.2]. Walkable top surface FLOOR_TOP = 0.20 (unevenness <= 0.017).
-// All geometry is created per tile (dispose via g.userData.dispose()). Materials come from getMaterial and are never disposed here.
+// createFloor builds fresh geometry per call (dispose via g.userData.dispose()). Materials come from getMaterial and are never disposed here.
 
 export const FLOOR_TOP = 0.2;
 export const FLOOR_BOUNDS = Object.freeze({minX:-1, maxX:1, minY:0, maxY:0.2, minZ:-1, maxZ:1});
@@ -19,25 +19,25 @@ function makeRng(index) {
   return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
-// Merge geometries into one non-indexed BufferGeometry (position/normal/uv). Sources are disposed.
-function merge(T, geos) {
+// Flatten geometries into one non-indexed set of position/normal/uv arrays. Sources are disposed.
+function flatten(geos) {
   let count = 0;
   const parts = geos.map(g => { const n = g.index ? g.toNonIndexed() : g; if (n !== g) g.dispose(); count += n.attributes.position.count; return n; });
   const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3), uv = new Float32Array(count * 2);
   let o = 0;
   for (const g of parts) {
-    const c = g.attributes.position.count;
-    for (let i = 0; i < c; i++) {
-      pos[(o + i) * 3] = g.attributes.position.getX(i); pos[(o + i) * 3 + 1] = g.attributes.position.getY(i); pos[(o + i) * 3 + 2] = g.attributes.position.getZ(i);
-      if (g.attributes.normal) { nor[(o + i) * 3] = g.attributes.normal.getX(i); nor[(o + i) * 3 + 1] = g.attributes.normal.getY(i); nor[(o + i) * 3 + 2] = g.attributes.normal.getZ(i); }
-      if (g.attributes.uv) { uv[(o + i) * 2] = g.attributes.uv.getX(i); uv[(o + i) * 2 + 1] = g.attributes.uv.getY(i); }
-    }
+    const a = g.attributes, c = a.position.count;
+    pos.set(a.position.array.subarray(0, c * 3), o * 3);
+    if (a.normal) nor.set(a.normal.array.subarray(0, c * 3), o * 3);
+    if (a.uv) uv.set(a.uv.array.subarray(0, c * 2), o * 2);
     o += c; g.dispose();
   }
+  return {count, pos, nor, uv};
+}
+
+function toGeometry(T, attrs) {
   const out = new T.BufferGeometry();
-  out.setAttribute('position', new T.BufferAttribute(pos, 3));
-  out.setAttribute('normal', new T.BufferAttribute(nor, 3));
-  out.setAttribute('uv', new T.BufferAttribute(uv, 2));
+  for (const [k, n] of [['position', 3], ['normal', 3], ['uv', 2], ['color', 3]]) if (attrs[k]) out.setAttribute(k, new T.BufferAttribute(attrs[k], n));
   out.computeBoundingBox(); out.computeBoundingSphere();
   return out;
 }
@@ -118,12 +118,12 @@ function lashing(T, rng, x, zb, surf, out) {
   const R = BEAM_R + 0.008, tube = 0.0055;
   const bottomC = BEAM_Y - BEAM_R - 0.006, topC = surf + 0.007;
   const Ry = (topC - bottomC) / 2, yc = (topC + bottomC) / 2, ky = Ry / R;
-  const wraps = 3;
+  const wraps = 2;
   for (let w = 0; w < wraps; w++) {
-    const t = new T.TorusGeometry(R, tube, 3, 8);
+    const t = new T.TorusGeometry(R, tube, 3, 6);
     t.rotateY(Math.PI / 2); t.scale(1, ky, 1);
     t.rotateZ((rng() - 0.5) * 0.12);
-    t.translate(x + (w - (wraps - 1) / 2) * 0.016, yc, zb);
+    t.translate(x + (w - (wraps - 1) / 2) * 0.02, yc, zb);
     out.push(t);
   }
   const side = rng() < 0.5 ? -1 : 1;
@@ -132,7 +132,7 @@ function lashing(T, rng, x, zb, surf, out) {
   out.push(k);
 }
 
-// Builds one tile's merged parts: [{name, color, geometry, castShadow}] in tile-local space.
+// Builds one tile's merged parts: [{name, color, castShadow, count, pos, nor, uv}] (flat arrays, tile-local space).
 function floorParts(T, index) {
   const rng = makeRng(index);
 
@@ -201,7 +201,7 @@ function floorParts(T, index) {
   }
 
   const parts = [];
-  const add = (geos, color, name, castShadow = true) => parts.push({name, color, geometry:merge(T, geos), castShadow});
+  const add = (geos, color, name, castShadow = true) => parts.push({name, color, castShadow, ...flatten(geos)});
   for (const [color, list] of byColor) add(list, color, 'floor-planks');
   add(beams, BEAM_COLOR, 'floor-logs');
   add(caps, BEAM_END_COLOR, 'floor-log-ends');
@@ -216,7 +216,7 @@ export function createFloor(T, index = 0, getMaterial) {
   const mat = getMaterial || defaultMat(T);
   const g = new T.Group(); g.name = 'raft-floor';
   for (const p of floorParts(T, index)) {
-    const mesh = new T.Mesh(p.geometry, mat(p.color)); mesh.name = p.name;
+    const mesh = new T.Mesh(toGeometry(T, {position:p.pos, normal:p.nor, uv:p.uv}), mat(p.color)); mesh.name = p.name;
     mesh.castShadow = p.castShadow; mesh.receiveShadow = true; g.add(mesh);
   }
   g.userData.kind = 'floor';
@@ -227,25 +227,83 @@ export function createFloor(T, index = 0, getMaterial) {
   return g;
 }
 
-// Whole raft floor in as few draw calls as possible: every tile is built, its transform baked in,
-// and all parts sharing a material and shadow mode are merged into one mesh.
-// tiles: [{index, x, z}] (x,z = tile origin in raft-local units). Returns a Group; dispose via userData.dispose().
-export function createRaftMesh(T, tiles, getMaterial) {
-  const mat = getMaterial || defaultMat(T);
-  const buckets = new Map(), m4 = new T.Matrix4();
+// Tile parts are pure functions of the tile index: build each once and keep the flat tile-local arrays.
+// Entries for tiles no longer on the raft are dropped once the cache grows well past the raft.
+const partCache = new Map();
+function cachedParts(T, index) {
+  let p = partCache.get(index);
+  if (!p) { p = floorParts(T, index); partCache.set(index, p); }
+  return p;
+}
+const linear = new Map(); // part hex -> [r, g, b] linear, for the vertex-coloured meshes
+function linearRGB(T, hex) {
+  if (!linear.has(hex)) { const c = new T.Color(hex); linear.set(hex, [c.r, c.g, c.b]); }
+  return linear.get(hex);
+}
+
+// Rafts above this many tiles are split into CHUNK x CHUNK-tile meshes so the camera and shadow frustums can
+// cull them, and placing a tile re-merges only its chunk.
+export const CHUNK = 4, CHUNK_MIN_TILES = 26;
+
+const TIMBER_PARTS = new Set(['floor-planks', 'floor-logs', 'floor-log-ends']), TRIM_PARTS = new Set(['floor-lashings', 'floor-nails']);
+
+// One chunk: every part sharing a material and shadow mode merged into one mesh, tile offsets added while copying.
+// With opts.timberMaterial / opts.trimMaterial (vertexColors) the part colours become vertex colours instead.
+function buildChunk(T, tiles, mat, opts) {
+  const buckets = new Map();
   for (const t of tiles) {
-    m4.makeTranslation(t.x, 0, t.z);
-    for (const p of floorParts(T, t.index)) {
-      p.geometry.applyMatrix4(m4);
-      const key = p.color + '|' + p.castShadow;
-      if (!buckets.has(key)) buckets.set(key, {name:p.name, color:p.color, castShadow:p.castShadow, list:[]});
-      buckets.get(key).list.push(p.geometry);
+    for (const p of cachedParts(T, t.index)) {
+      const shared = opts.timberMaterial && TIMBER_PARTS.has(p.name) ? opts.timberMaterial : opts.trimMaterial && TRIM_PARTS.has(p.name) ? opts.trimMaterial : null;
+      const key = shared ? shared.uuid : p.color + '|' + p.castShadow;
+      let b = buckets.get(key);
+      if (!b) buckets.set(key, b = {name:shared ? (shared === opts.timberMaterial ? 'floor-timber' : 'floor-trim') : p.name, color:p.color, castShadow:p.castShadow, shared, count:0, list:[]});
+      b.list.push({p, x:t.x, z:t.z}); b.count += p.count;
     }
   }
-  const g = new T.Group(); g.name = 'raft-floors';
+  const g = new T.Group(); g.name = 'raft-chunk';
   for (const b of buckets.values()) {
-    const mesh = new T.Mesh(merge(T, b.list), mat(b.color)); mesh.name = b.name;
+    const pos = new Float32Array(b.count * 3), nor = new Float32Array(b.count * 3), uv = new Float32Array(b.count * 2);
+    const col = b.shared ? new Float32Array(b.count * 3) : null;
+    let o = 0;
+    for (const {p, x, z} of b.list) {
+      const c = p.count, src = p.pos, base = o * 3;
+      for (let i = 0; i < c * 3; i += 3) { pos[base + i] = src[i] + x; pos[base + i + 1] = src[i + 1]; pos[base + i + 2] = src[i + 2] + z; }
+      nor.set(p.nor, base); uv.set(p.uv, o * 2);
+      if (col) { const [r, gg, bb] = linearRGB(T, p.color); for (let i = 0; i < c * 3; i += 3) { col[base + i] = r; col[base + i + 1] = gg; col[base + i + 2] = bb; } }
+      o += c;
+    }
+    const mesh = new T.Mesh(toGeometry(T, {position:pos, normal:nor, uv, color:col}), b.shared || mat(b.color)); mesh.name = b.name;
     mesh.castShadow = b.castShadow; mesh.receiveShadow = true; g.add(mesh);
+  }
+  return g;
+}
+
+// Whole raft floor in few draw calls. tiles: [{index, x, z}] (x,z = tile origin in raft-local units).
+// opts.timberMaterial: a vertexColors timber material for planks, logs and log ends (one shadow-casting mesh per chunk);
+// opts.trimMaterial: a vertexColors plain material for rope lashings and nail heads (one mesh per chunk, no shadow).
+// opts.prev: the previous createRaftMesh group; chunks whose tiles are unchanged move over instead of being rebuilt
+// (call prev.userData.dispose() afterwards to free the rest). Returns a Group; dispose via userData.dispose().
+export function createRaftMesh(T, tiles, getMaterial, opts = {}) {
+  const mat = getMaterial || defaultMat(T), timberMaterial = opts.timberMaterial || null, trimMaterial = opts.trimMaterial || null, prev = opts.prev || null;
+  const chunked = tiles.length >= CHUNK_MIN_TILES, size = 2 * CHUNK, chunks = new Map();
+  for (const t of tiles) {
+    const k = chunked ? Math.floor(t.x / size) + ',' + Math.floor(t.z / size) : '*';
+    if (!chunks.has(k)) chunks.set(k, []);
+    chunks.get(k).push(t);
+  }
+  const old = new Map();
+  if (prev) for (const c of prev.children) if (c.userData.timberMaterial === timberMaterial && c.userData.trimMaterial === trimMaterial && c.userData.mat === mat) old.set(c.userData.chunk, c);
+  const g = new T.Group(); g.name = 'raft-floors';
+  for (const [k, list] of chunks) {
+    const sig = list.map(t => t.index + ':' + t.x + ':' + t.z).join(';'), o = old.get(k);
+    if (o && o.userData.sig === sig) { g.add(o); continue; } // add() detaches it from prev
+    const c = buildChunk(T, list, mat, {timberMaterial, trimMaterial});
+    Object.assign(c.userData, {chunk:k, sig, timberMaterial, trimMaterial, mat});
+    g.add(c);
+  }
+  if (partCache.size > tiles.length * 2 + 32) { // drop tiles that left the raft (lazily: other callers share the cache)
+    const keep = new Set(tiles.map(t => t.index));
+    for (const i of partCache.keys()) if (!keep.has(i)) partCache.delete(i);
   }
   g.userData.kind = 'floors';
   g.userData.topY = FLOOR_TOP;
