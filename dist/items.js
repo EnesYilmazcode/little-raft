@@ -16,7 +16,7 @@
 //   placeholder: true when the icon is not a dedicated icons.svg symbol
 //   tool:      true only for durability items (Bag keeps durability 0..100 percent)
 //   durability: tools only: number of uses from 100% to 0% (wear per use = 100 / uses)
-//   actsAs:    optional tool role ('hook' | 'fishingrod' | 'hammer' | 'spear'); see toolRole()
+//   actsAs:    optional tool role ('hook' | 'fishingrod' | 'hammer' | 'spear' | 'paddle'); see toolRole()
 //   placeable: true when the item is put on a raft tile as a decor/station
 //   recipe:    null (gathered) | {
 //                cost:   {kind: n}  (station recipes have exactly one cost key = input)
@@ -159,6 +159,9 @@ const LIST = [
   item('metalspear', 'Metal Spear', 'tool', { iconTint: '#9fb1bf', tool: true, durability: 40, actsAs: 'spear',
     recipe: hand({ wood: 6, rope: 2, metalingot: 2, bolt: 1 }), unlock: research('metalingot', 'bolt'),
     tip: 'A heavy metal point on a sturdy shaft. Twice the bite of the wooden one and lasts twice as long.' }),
+  item('paddle', 'Paddle', 'tool', { iconTint: '#c29462', tool: true, durability: 60,
+    recipe: hand({ wood: 4, rope: 2, plastic: 2 }), unlock: discover('rope'),
+    tip: 'Stand at the raft edge and click to push the raft the way you face. Good for about 60 strokes.' }),
   item('binoculars', 'Binoculars', 'tool', { iconTint: '#5d6b78', stack: 1,
     recipe: hand({ glass: 2, copperingot: 1, hinge: 2, bolt: 1 }), unlock: research('glass', 'copperingot'),
     tip: 'Hold them to spot the nearest barrel: bearing and distance. They never wear out.' }),
@@ -250,6 +253,7 @@ const REPAIRS = deepFreeze({
   fishingrod: { wood: 1, rope: 2 },
   spear: { wood: 2, rope: 1 },
   metalspear: { metalingot: 1, rope: 1 },
+  paddle: { wood: 2, rope: 1 },
 });
 
 /** Alternate / older names that may appear in saves or network messages. */
