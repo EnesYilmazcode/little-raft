@@ -74,7 +74,6 @@ export function mount(transfer = null) {
   function later(fn, ms) { const id = setTimeout(() => { timers.delete(id); if (!disposed) fn(); }, ms); timers.add(id); return id; }
   function cancelTimer(id) { if (id) { clearTimeout(id); timers.delete(id); } return 0; }
   const guard = fn => (...a) => (disposed ? undefined : fn(...a));
-  let seed = 20240917; const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
 
   // ---------- Bags ----------
   const snapBag = s => { if (!s || typeof s !== 'object') return null; try { return new Bag(s); } catch { return Bag.salvage(s); } }; // one bad slot never wipes a bag
@@ -402,11 +401,6 @@ export function mount(transfer = null) {
     if (fresh) { try { renderer.compileAsync(scene, camera).catch(() => {}); } catch (e) { console.warn('shader warm-up failed', e); } }
   }
 
-  function palm(parent, x, y, z, s = 1) {
-    const g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); cylinder(.09, .17, 1.6, '#ad8153', 0, .8, 0, g);
-    for (let i = 0; i < 7; i++) { const l = new T.Mesh(new T.ConeGeometry(.28, 1.5, 4), mat(i % 2 ? '#519b55' : '#72ae59')); l.rotation.z = 1.2; l.rotation.y = i * Math.PI * 2 / 7; l.position.set(Math.sin(i * Math.PI * 2 / 7) * .5, 1.65, Math.cos(i * Math.PI * 2 / 7) * .5); g.add(l); }
-    parent.add(g);
-  }
   // Incremental: only parts whose key changed are built or disposed, so placing one thing never rebuilds the raft.
   const raftParts = new Map();
   function rebuildRaft() {
