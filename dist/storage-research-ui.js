@@ -107,7 +107,9 @@ const CSS = `
   background:#3e2a17 ${LOCK_URL} center/15px 15px no-repeat;box-shadow:0 0 0 1.5px #ffcf9a,0 1px 3px #000a}
 #inventory .sv-recipe.sv-locked[data-locked] .sv-rart::after{filter:grayscale(.85) brightness(.7);opacity:.75}
 #inventory .sv-recipe.sv-gated[data-locked] .sv-rart::after{filter:grayscale(1) brightness(.55)}
-#inventory .sv-recipe .sv-rbody[data-needs]::after{content:attr(data-needs);display:block;margin-top:4px;font:700 12px/1.2 ${FONT};color:#ffcf9a}
+#inventory .sv-recipe .sv-rbody[data-needs]::after{content:attr(data-needs);display:block;margin-top:3px;font:700 12px/1.2 ${FONT};color:#ffcf9a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#inventory .sv-recipe[data-locked] .sv-rsub{display:none}
+#inventory .sv-rcol:not(.sv-searching) .sv-recipe.lr-sr-fold{display:none}
 #inventory .sv-recipe.lr-sr-first{position:relative;margin-top:30px}
 #inventory .sv-recipe.lr-sr-first::before{content:attr(data-sr-head);position:absolute;left:2px;right:2px;top:-21px;width:auto;height:14px;grid-column:1/-1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:700 12px/14px ${FONT};letter-spacing:.2px;color:#d9c9a6;pointer-events:none}
 #inventory .sv-recipe.lr-sr-fresh{animation:lrSrFresh 2.4s ease-out}
@@ -131,6 +133,9 @@ function ensureStyle() {
 }
 
 // One-line header over the locked rows: what to study, and where.
+/** Header over a tab's locked recipes while there is no desk to study at (the rest are folded). */
+export const foldHead = n => `${n} locked \u00b7 build a Tinker\u2019s Desk`;
+
 export function studyHead(names) {
   const what = names.length < 2 ? names.join('') : names.length === 2 ? names.join(' and ') : 'items';
   return `Study ${what ? what + ' ' : ''}at a Tinker\u2019s Desk to unlock`;
@@ -366,7 +371,7 @@ export function createStorageUI(api) {
   const setClass = (el, c, on) => { if (el.classList.contains(c) !== on) el.classList.toggle(c, on); };
   function annotate() {
     const rows = inv.querySelectorAll('.sv-recipe[data-recipe]'), seen = new Set(api.state.seen), fresh = api.takeFresh();
-    const beckon = api.locked().length > 0 && !api.hasTable();
+    const table = api.hasTable(), beckon = api.locked().length > 0 && !table;
     const firsts = new Map(); // tab (data-cat) -> {el, miss}: each craft tab gets its own header over its first locked row
     lockedRows = [];
     rows.forEach(el => {
@@ -375,7 +380,7 @@ export function createStorageUI(api) {
       setClass(el, 'lr-sr-beckon', beckon && id === 'research');
       if (!locked) {
         if (el.dataset.locked) unlockRow(el);
-        setClass(el, 'lr-sr-first', false);
+        setClass(el, 'lr-sr-first', false); setClass(el, 'lr-sr-fold', false);
         if (body?.dataset.needs != null) delete body.dataset.needs;
         if (fresh.includes(id)) {
           el.classList.remove('lr-sr-fresh'); void el.offsetWidth; el.classList.add('lr-sr-fresh');
@@ -389,10 +394,12 @@ export function createStorageUI(api) {
       setAttr(el, 'title', 'Needs research: ' + (miss.join(', ') || 'visit a Tinker\u2019s Desk'));
       setAttr(el, 'tabindex', '-1'); setAttr(el, 'aria-label', LOCKED_LABEL); lockedRows.push(el);
       const cat = el.dataset.cat ?? '', head = !firsts.has(cat);
-      setClass(el, 'lr-sr-first', head); if (head) firsts.set(cat, { el, miss });
+      setClass(el, 'lr-sr-first', head); if (head) firsts.set(cat, { el, miss, n: 0 });
+      firsts.get(cat).n++;
+      setClass(el, 'lr-sr-fold', !head && !table); // no desk yet: one sample card per tab, the rest folded into its header
       if (body && body.dataset.needs !== text) body.dataset.needs = text; // shown by .sv-rbody[data-needs]::after, the lock badge by .sv-rart::after
     });
-    const heads = new Map([...firsts.values()].map(f => [f.el, studyHead(f.miss)]));
+    const heads = new Map([...firsts.values()].map(f => [f.el, !table && f.n > 1 ? foldHead(f.n) : studyHead(f.miss)]));
     rows.forEach(el => { const h = heads.get(el); if (h) { if (el.dataset.srHead !== h) el.dataset.srHead = h; } else if (el.dataset.srHead) delete el.dataset.srHead; });
     // "N more recipes to discover" at the top of the craft list (outside .sv-rlist, which survival-ui owns)
     const list = inv.querySelector('.sv-rlist'), box = list?.parentElement;
@@ -417,7 +424,7 @@ export function createStorageUI(api) {
     host.querySelectorAll('.sv-recipe').forEach(el => {
       if (el.dataset.locked) unlockRow(el);
       const body = el.querySelector('.sv-rbody'); if (body?.dataset.needs != null) delete body.dataset.needs;
-      el.classList.remove('lr-sr-first', 'lr-sr-fresh', 'lr-sr-beckon'); delete el.dataset.srHead;
+      el.classList.remove('lr-sr-first', 'lr-sr-fresh', 'lr-sr-beckon', 'lr-sr-fold'); delete el.dataset.srHead;
     });
     host.querySelectorAll('.lr-sr-more').forEach(el => el.remove());
     lockedRows = [];
