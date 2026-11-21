@@ -40,8 +40,9 @@ export function createControls(g) {
     } else if (id === 'buildMenu') radial?.confirm();
     else if (id === 'rotate') call('release'); // let go of a steered sail on any device
   };
+  const tabCapturing = () => { for (const t of tabs) if (t.capturing) return true; return false; }; // per frame: no array copy
   const input = createInput({element:g.canvas, map, onAction, sensitivity:g.sensitivity,
-    isBlocked:() => [...tabs].some(t => t.capturing) || (!!g.isBlocked?.() && !radial?.isOpen)});
+    isBlocked:() => tabCapturing() || (!!g.isBlocked?.() && !radial?.isOpen)});
 
   function openRadial() {
     if (g.isBlocked?.()) return;
