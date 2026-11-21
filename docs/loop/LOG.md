@@ -1015,3 +1015,15 @@ Open for next round:
 - Skipped claude/loop-ux-202611210848: its new work is loop-ux-202611210833 (plus loop-ux-0648 commits) with an older raft-master merged in; both are claimed by integrator B, and it conflicts in 16 files.
 - Merged claude/loop-ux-202611210852 with no content change: its only new commit merges loop-ux-202611210748, which raft-master already has; kept raft-master's side.
 - Gate after merging raft-master: 1138/1138 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text; 166 ms/frame, 37 draw calls.
+
+## 2026-11-21 · claude/loop-visuals-202611210927 (visuals, round 4)
+Base: origin/claude/raft-master 23bfb35 (the integrator already took round 3's icons/onboarding/gulls and kept raft-master's own pause menu, Notes plate, hook and islands, so this round targets other gaps). Fleet: critic, 7 builders, art judge, perf checker.
+- Debris: pooled sea items sink to a set share of their height with a darker wet band at the waterline (held items and icons unchanged).
+- Hands: muted warm-tan skin, faint emissive, slimmer palm and fingers, knuckle caps (poses untouched).
+- Hook rope: braided brown camera-facing ribbon (new dist/rope-mesh.js) instead of a 1-px white line.
+- Vitals: slim bars on dark tracks with round icon tabs, no board; muted red health, cream food, cool pale water.
+- Plastic: flatter, lower, glossy jugs in pale blue / mint / off-white colourways, picked per item id.
+- Deck/wood: warm weathered driftwood, per-plank brightness, end grime, dark seams and contact shade.
+- Ocean: teal body and turquoise far sea (daynight midday keys), aqua crest glow (uCrest).
+- Judge: 7/7 accepted. Perf: PASS (spawn median 106.4 vs 106.4 ms; rope ~+4k tris, no cost). Note: ?fixedres is not read by any module.
+- Next: sink jugs ~15% deeper, more saturated colourways, rounder cap; rope narrower near camera + hemp colour + sag; vitals order and number legibility; deck albedo +10%; ocean darker at steep angles, softer horizon band; raft edge at the waterline (thickness, foam, wetness); forearm taper and thumb; HUD style clash (light hotbar vs dark vitals, slate quest panel/compass); crate material.
