@@ -159,8 +159,9 @@ function createPrompts(win, doc) {
   function tick() {
     safe(() => {
       if (!doc.body) return; ensureEls();
-      const m = mount(), debug = safe(() => win.raftDebug) || m?.debug, state = safe(() => debug?.state);
-      const ctx = {state, camera:m?.camera ?? null, T:m?.T ?? null, scene:m?.scene ?? null};
+      // The slim debug.hud snapshot drives the built-ins; registered prompts still get the full debug.state, built on first read.
+      const m = mount(), debug = safe(() => win.raftDebug) || m?.debug, state = safe(() => debug?.hud ?? debug?.state);
+      let full; const ctx = {get state() { return full === undefined ? (full = (debug && 'hud' in debug ? safe(() => debug.state) : state) ?? null) : full; }, camera:m?.camera ?? null, T:m?.T ?? null, scene:m?.scene ?? null};
       const stage = state?.hookStage ?? null;
       if (state?.running && lastStage !== undefined && isThrow(lastStage, stage) && throws < 1e6) { throws++; safe(() => win.localStorage.setItem(STORE_KEY, JSON.stringify({throws}))); }
       lastStage = stage;
