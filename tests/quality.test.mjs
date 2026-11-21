@@ -111,7 +111,23 @@ test('reverted step-up doubles the up-wait, capped at 60 s', () => {
   cycle(); assert.equal(q.upAfter, 16000);
   const waited = cycle(); assert.equal(q.upAfter, 32000);
   assert.ok(waited >= 16000, `waited ${waited}`);
-  cycle(); cycle(); assert.equal(q.upAfter, 60000);
+});
+
+test('three reverts at one level stop stepping up until a full reset', () => {
+  const { q, renderer, changes } = make();
+  run(q, 30, 2100); assert.equal(q.level, 1);
+  for (let i = 0; i < 3; i++) {
+    let t = 0; while (q.level !== 0) { q.tick(10); if ((t += 10) > 120000) throw new Error('no step up'); }
+    run(q, 40, 7100); assert.equal(q.level, 1);
+  }
+  assert.equal(q.upAfter, Infinity);
+  const n = changes.length, calls = renderer.calls;
+  run(q, 10, 10 * 60000);
+  assert.equal(q.level, 1, 'no more flips in 10 min'); assert.equal(changes.length, n); assert.equal(renderer.calls, calls);
+  q.reset(); run(q, 10, 120000); assert.equal(q.level, 1, 'soft reset (tab return) keeps the block');
+  q.reset({ full: true }); assert.equal(q.upAfter, C.UP_AFTER_MS);
+  run(q, 30, 7100); assert.equal(q.level, 1);
+  run(q, 10, 13000); assert.equal(q.level, 0, 'steps up again after a full reset');
 });
 
 test('step-down long after a step-up is not a revert', () => {
