@@ -631,13 +631,13 @@ export function mount(transfer = null) {
     for (const token of pending.keys()) if (!live.has(token)) pending.delete(token);
     for (const item of world.items) {
       if (itemMeshes.has(item.token)) continue;
-      const g = itemModel(item); g.userData.token = item.token; singlePass(g);
+      const g = itemModel(item); g.userData.token = item.token; g.userData.fp = {x:0, z:0, ok:false}; singlePass(g); // fp: smoothed float spot, one shape for every item type
       g.traverse(o => { o.castShadow = false; }); // the ocean takes no shadows, so floating supplies skip the shadow pass
       g.position.set(item.x, ITEM_FLOAT, item.z);
       itemsGroup.add(g); itemMeshes.set(item.token, g);
     }
   }
-  const isPending = it => (pending.get(it.token) ?? 0) > performance.now();
+  const isPending = it => pending.size !== 0 && (pending.get(it.token) ?? 0) > performance.now(); // empty map: skip the per-item clock read
 
   // ---------- Feedback: pickups and notes go to the bottom-left feed, never the screen centre ----------
   const setText = (sel, v) => { const el = $(sel); if (el) el.textContent = v; };
@@ -1309,9 +1309,10 @@ export function mount(transfer = null) {
   let chargeWidth = '', hookStage = '';
   const TITLE_FOCUS = new T.Vector3(-5, 0, 2), vmParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0};
   const fishPos = new T.Vector3(), hookPos = new T.Vector3(), fishRope = Array.from({length:ROPE_SEGMENTS + 1}, () => new T.Vector3()), freeItems = [], ropeScratch = [];
+  let freeXZ = new Float64Array(64); // x,z of freeItems[i] at [2i], [2i+1]: HookCast sweeps read these instead of the item records
   const handParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0, yaw:0, pitch:0};
-  const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3(), oceanSample = {h:0, sx:0, sz:0};
-  const hookParams = {hand:handPos, items:freeItems, reeling:false, time:0}; // freeItems is already filtered for pending items
+  const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3(), oceanSample = {h:0, sx:0, sz:0, x:0, z:0}; // x/z: query point for ocean.sampleXZ
+  const hookParams = {hand:handPos, items:freeItems, xz:freeXZ, reeling:false, time:0}; // freeItems is already filtered for pending items
   // Hook physics floats at a flat WATER_Y; map heights near the water onto the visible waves.
   const deckAt = (x, z) => (hasTile(Math.round(x / 2), Math.round(z / 2)) ? deckY() + .06 : null);
   function surfaceY(x, z, y) {
@@ -1397,11 +1398,12 @@ export function mount(transfer = null) {
     for (const it of world.items) {
       const m = itemMeshes.get(it.token); if (!m) continue;
       m.visible = !isPending(it); m.scale.setScalar(1);
-      const u = m.userData;
-      if (role === 'guest' && u.sx !== undefined && Math.hypot(it.x - u.sx, it.z - u.sz) < 3) { const k = Math.min(1, dt * 8); u.sx += (it.x - u.sx) * k; u.sz += (it.z - u.sz) * k; }
-      else { u.sx = it.x; u.sz = it.z; }
-      const s = ocean.sample(u.sx, u.sz, oceanSample);
-      m.position.set(u.sx, s.h + ITEM_FLOAT, u.sz);
+      const u = m.userData.fp ?? (m.userData.fp = {x:0, z:0, ok:false});
+      const ix = it.x, iz = it.z;
+      if (role === 'guest' && u.ok && Math.hypot(ix - u.x, iz - u.z) < 3) { const k = Math.min(1, dt * 8); u.x += (ix - u.x) * k; u.z += (iz - u.z) * k; }
+      else { u.x = ix; u.z = iz; u.ok = true; }
+      oceanSample.x = u.x; oceanSample.z = u.z; const s = ocean.sampleXZ(oceanSample);
+      m.position.set(u.x, s.h + ITEM_FLOAT, u.z);
       m.rotation.set(-s.sz * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.sx * 1.2 + Math.sin(elapsed + it.phase) * .05);
     }
   }
@@ -1427,6 +1429,8 @@ export function mount(transfer = null) {
     const guestTokens = role === 'guest' ? null : guestHeld.tokens(performance.now()); // host skips the guest's catch
     freeItems.length = 0;
     for (const it of world.items) if (!isPending(it) && !guestTokens?.includes(it.token)) freeItems.push(it);
+    if (freeXZ.length < freeItems.length * 2) hookParams.xz = freeXZ = new Float64Array(freeItems.length * 4);
+    for (let i = 0; i < freeItems.length; i++) { const it = freeItems[i], x = it.x, z = it.z; freeXZ[2 * i] = typeof x === 'number' ? x : NaN; freeXZ[2 * i + 1] = typeof z === 'number' ? z : NaN; }
     hookParams.reeling = reeling; hookParams.time = elapsed;
     const ev = hook.update(dt, hookParams);
     freeItems.length = 0; // don't keep item references between frames

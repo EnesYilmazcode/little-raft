@@ -32,13 +32,16 @@
 //     onDeck      : true while the hook rests on (or is reeled across) the deck
 //     flightT     : seconds spent in flight (used by game.js for the spin animation)
 //
-//   update(dt, { hand, items, reeling = false, time, skip })
+//   update(dt, { hand, items, xz, reeling = false, time, skip })
 //     -> null | { kind:'collected', items:[{id,token,type}...], id, token } | { kind:'returned' }
 //     items: Array of { id, token, type, x, z } (or with .position). Never mutated.
 //     skip : optional predicate skip(item) -> truthy to ignore that item, exactly as if it were
 //            absent from `items` (not catchable; a caught entry matching only skipped items is
 //            dropped). Lets callers pass their live item array instead of a filtered copy, e.g.
 //            hook.update(dt, { hand, items: world.items, skip: isPending, reeling, time }).
+//     xz   : optional Float64Array (length >= 2 * items.length) holding items[i]'s x/z at [2i]/[2i+1].
+//            When given, sweeps read positions from it instead of the item objects (monomorphic,
+//            no per-item property loads); it must mirror the items' current x/z (NaN = no position).
 //     When `items` is an array, caught entries whose id/token vanished are dropped.
 //     The per-frame path (update/ropePoints with `out`) allocates nothing.
 //     The event is emitted EXACTLY ONCE, when a reeling hook comes within 0.7 m of the hand.
@@ -116,6 +119,7 @@ export class HookCast {
     this._emitted = false;
     this._ropePts = [];
     this._skip = null; // per-update skip predicate (see update)
+    this._xz = null;   // per-update packed item x/z (see update)
     this._h = 0.01;    // current substep length (s) and its sim time, set by update()
     this._t = 0.01;
 
@@ -137,15 +141,19 @@ export class HookCast {
   /** Catch every not-yet-caught item within `radius` of the horizontal segment A->B. */
   _sweep(items, ax, az, bx, bz, radius) {
     if (!items || this.caughtItems.length >= MAX_CAUGHT) return;
-    const r2 = radius * radius, skip = this._skip;
+    const r2 = radius * radius, skip = this._skip, xz = this._xz;
     // Segment terms hoisted out of the item loop (squared point-to-segment distance, inlined).
     const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz, il2 = l2 > 1e-12 ? 1 / l2 : 0;
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       if (!it) continue;
-      const pos = it.position;
-      const x = pos ? pos.x : it.x, z = pos ? pos.z : it.z;
-      if (!fin(x) || !fin(z)) continue;
+      let x, z;
+      if (xz) { x = xz[2 * i]; z = xz[2 * i + 1]; if (!(x - x === 0 && z - z === 0)) continue; } // finite check on doubles
+      else {
+        const pos = it.position;
+        x = pos ? pos.x : it.x; z = pos ? pos.z : it.z;
+        if (!fin(x) || !fin(z)) continue;
+      }
       let t = ((x - ax) * dx + (z - az) * dz) * il2;
       t = t < 0 ? 0 : t > 1 ? 1 : t;
       const ex = ax + dx * t - x, ez = az + dz * t - z;
@@ -277,7 +285,7 @@ export class HookCast {
     return rem <= COLLECT_DIST;
   }
 
-  update(dt, { hand, items, reeling = false, time, skip } = {}) {
+  update(dt, { hand, items, xz, reeling = false, time, skip } = {}) {
     if (this.stage === 'done') return null;
     this._skip = typeof skip === 'function' ? skip : null;
     dt = clamp(fin(dt) ? dt : 0, 0, MAX_DT);
@@ -285,6 +293,7 @@ export class HookCast {
     this._clock += dt;
     const t = fin(time) ? time : this._clock;
     const list = Array.isArray(items) ? items : null;
+    this._xz = list && xz instanceof Float64Array && xz.length >= list.length * 2 ? xz : null;
     if (list) this._prune(list);
 
     // Reel input only matters once the hook is in the water.
@@ -309,7 +318,7 @@ export class HookCast {
       arrived = len2(this._hand.x - this.position.x, this._hand.z - this.position.z) <= COLLECT_DIST;
     }
 
-    this._skip = null; // don't retain the caller's closure between frames
+    this._skip = null; this._xz = null; // don't retain the caller's closure/buffer between frames
     if (arrived) {
       this.stage = 'done';
       this._updateMetrics();
@@ -371,8 +380,10 @@ export class HookCast {
     const floorY = WATER_Y - MAX_SAG_BELOW;
     for (let i = 0; i <= n; i++) {
       const t = i / n, q = pts[i];
-      q.set(h.x + (p.x - h.x) * t, h.y + (p.y - h.y) * t, h.z + (p.z - h.z) * t);
-      if (i > 0 && i < n) q.y = Math.max(floorY, q.y - sag * 4 * t * (1 - t));
+      const y = h.y + (p.y - h.y) * t; // components assigned directly (no per-point set() call)
+      q.x = h.x + (p.x - h.x) * t;
+      q.y = i > 0 && i < n ? Math.max(floorY, y - sag * 4 * t * (1 - t)) : y;
+      q.z = h.z + (p.z - h.z) * t;
     }
     return pts;
   }

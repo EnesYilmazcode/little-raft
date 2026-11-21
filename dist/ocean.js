@@ -348,6 +348,7 @@ export function createOcean(T, options = {}) {
     W[o + 4] = ndx * q * a; W[o + 5] = ndz * q * a;
   });
   const AMP = new Float64Array(WAVES.map((w) => w[2]));
+  const _H5 = new Float64Array(5), _IN = new Float64Array(4); // sample5 heights / inputs (x, z, t, e)
   function getHeight(x, z, t = time) {
     const fl = uniforms.uFlow.value; x += fl.x; z += fl.y; // [sailing] match shader offset
     let px = x, pz = z;
@@ -382,10 +383,49 @@ export function createOcean(T, options = {}) {
   // Replaces a getHeight + getSlope pair with one call; pass a reused `out` to avoid allocation.
   function sample(x, z, out, t = time, e = 0.6) {
     const r = out ?? { h: 0, sx: 0, sz: 0 };
-    r.h = getHeight(x, z, t);
-    r.sx = (getHeight(x + e, z, t) - getHeight(x - e, z, t)) / (2 * e);
-    r.sz = (getHeight(x, z + e, t) - getHeight(x, z - e, t)) / (2 * e);
+    _IN[0] = x; _IN[1] = z; _IN[2] = t; _IN[3] = e;
+    sample5();
+    r.h = _H5[0];
+    r.sx = (_H5[1] - _H5[2]) / (2 * e);
+    r.sz = (_H5[3] - _H5[4]) / (2 * e);
     return r;
+  }
+  // Field-based sample for hot per-item loops: reads q.x/q.z, writes q.h/q.sx/q.sz exactly as
+  // sample(q.x, q.z, q) would (t = now, e = 0.6). No double arguments, so nothing gets boxed.
+  function sampleXZ(q) {
+    _IN[0] = q.x; _IN[1] = q.z; _IN[2] = time; _IN[3] = 0.6;
+    sample5();
+    q.h = _H5[0];
+    q.sx = (_H5[1] - _H5[2]) / (2 * 0.6);
+    q.sz = (_H5[3] - _H5[4]) / (2 * 0.6);
+    return q;
+  }
+  // 5-point getHeight (centre, +x, -x, +z, -z) inlined into one loop with no nested calls: inputs
+  // come from _IN (x, z, t, e), heights go to _H5. Offsets are built as (x + off) + flow exactly
+  // like getHeight(x + off, z), so every height is bit-identical to the getHeight-based version.
+  function sample5() {
+    const x = _IN[0], z = _IN[1], t = _IN[2], e = _IN[3];
+    const fl = uniforms.uFlow.value, fx = fl.x, fz = fl.y, y0 = mesh.position.y;
+    for (let s = 0; s < 5; s++) {
+      const X = s === 1 ? (x + e) + fx : s === 2 ? (x - e) + fx : x + fx;
+      const Z = s === 3 ? (z + e) + fz : s === 4 ? (z - e) + fz : z + fz;
+      let px = X, pz = Z;
+      for (let it = 0; it < 2; it++) {
+        let ox = 0, oz = 0;
+        for (let i = 0, o = 0; i < NW; i++, o += 6) {
+          const co = Math.cos(W[o] * (W[o + 1] * px + W[o + 2] * pz - W[o + 3] * t));
+          ox += W[o + 4] * co;
+          oz += W[o + 5] * co;
+        }
+        px = X - ox;
+        pz = Z - oz;
+      }
+      let oy = 0;
+      for (let i = 0, o = 0; i < NW; i++, o += 6) {
+        oy += AMP[i] * Math.sin(W[o] * (W[o + 1] * px + W[o + 2] * pz - W[o + 3] * t));
+      }
+      _H5[s] = y0 + oy;
+    }
   }
 
   function dispose() {
@@ -394,5 +434,5 @@ export function createOcean(T, options = {}) {
     mask.dispose();
   }
 
-  return { mesh, update, getHeight, getSlope, sample, setRaftTiles, trackFoam, uniforms, material, dispose };
+  return { mesh, update, getHeight, getSlope, sample, sampleXZ, setRaftTiles, trackFoam, uniforms, material, dispose };
 }

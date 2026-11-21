@@ -73,3 +73,30 @@ test('HookCast: a level throw clears the raft and splashes in open water', () =>
   assert.equal(cast.stage, 'floating');
   assert.equal(deckAt(cast.landing.x, cast.landing.z), null);
 });
+
+test('HookCast: packed xz positions give the same casts, catches and rope as reading item objects', () => {
+  let seed = 5; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+  let caughtAny = 0;
+  for (let run = 0; run < 60; run++) {
+    const items = Array.from({ length: 40 }, (_, i) => ({ id: i, token: 't' + i, type: 'wood', x: (rnd() - .5) * 30, z: -rnd() * 25 }));
+    if (run % 4 === 0) { items[3].x = NaN; items[5].z = undefined; items[7] = null; }
+    const opts = { origin: { x: 0, y: 1.2, z: 0 }, direction: { x: rnd() - .5, y: rnd() * .8, z: -1 }, charge: rnd(), maxRange: 10 + rnd() * 20, deckAt };
+    const a = new HookCast(T, opts), b = new HookCast(T, opts);
+    const xz = new Float64Array(items.length * 2);
+    const hand = { x: 0, y: 1.2, z: 0 }, ra = [], rb = [];
+    for (let f = 0; f < 400; f++) {
+      const reeling = f > 150 && f % 90 < 70, dt = 1 / 60 + (f % 7) * .003;
+      for (const it of items) if (it && typeof it.x === 'number') { it.z += dt * .22; it.x += Math.sin(f * .01) * dt * .04; }
+      items.forEach((it, i) => { xz[2 * i] = it && typeof it.x === 'number' ? it.x : NaN; xz[2 * i + 1] = it && typeof it.z === 'number' ? it.z : NaN; });
+      const ea = a.update(dt, { hand, items, reeling, time: f * dt });
+      const eb = b.update(dt, { hand, items, xz, reeling, time: f * dt });
+      assert.deepEqual(eb, ea);
+      assert.deepEqual(b.caughtItems, a.caughtItems);
+      assert.deepEqual([b.position.x, b.position.y, b.position.z, b.stage, b.tension], [a.position.x, a.position.y, a.position.z, a.stage, a.tension]);
+      const pa = a.ropePoints(hand, 16, ra), pb = b.ropePoints(hand, 16, rb);
+      assert.deepEqual(pb.map(v => [v.x, v.y, v.z]), pa.map(v => [v.x, v.y, v.z]));
+      if (a.stage === 'done') { caughtAny += a.caughtItems.length; break; }
+    }
+  }
+  assert.ok(caughtAny > 0, 'the scenario actually catches items');
+});
