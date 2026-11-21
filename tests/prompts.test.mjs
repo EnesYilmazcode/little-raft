@@ -70,6 +70,7 @@ test('statePrompt: built-in providers', () => {
   assert.deepEqual(s({heldKind:'hammer', build:{hover:null}}), [{key:'', label:'Aim at the raft edge', hold:false, muted:true}]);
   assert.equal(s({heldKind:'fishingrod'})[0].label, 'Cast line');
   assert.deepEqual(s({heldKind:'fishingrod', hookStage:'fishing', fishWait:3})[0], {key:'', label:'Waiting for a bite…', hold:false, muted:true});
+  assert.equal(s({heldKind:'sharkbait'})[0].label, 'Throw bait'); // [bait]
   assert.equal(s({heldKind:'lantern', tool:'place', build:{hover:{x:0, z:0}}})[0].label, 'Place lantern');
   assert.equal(s({heldKind:'lantern', tool:'place', build:{hover:null}})[0].label, 'Aim at the raft floor');
   assert.ok(s({role:'guest', networkReady:false})[0].muted);
