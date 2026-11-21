@@ -21,6 +21,7 @@ const SPEC = {
   graphics: { tab: 'graphics', label: 'Quality preset', type: 'select', options: ['low', 'medium', 'high'], def: 'medium' },
   renderScale: { tab: 'graphics', label: 'Render scale', type: 'range', min: 0.5, max: 1, step: 0.05, def: 1, fmt: pct },
   shadows: { tab: 'graphics', label: 'Shadows', type: 'toggle', def: true },
+  stormFlash: { tab: 'graphics', label: 'Lightning flashes', type: 'select', options: ['full', 'soft', 'off'], def: 'full' },
   volume: { tab: 'audio', label: 'Master volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.5, fmt: pct },
   effects: { tab: 'audio', label: 'Effects', type: 'range', min: 0, max: 1, step: 0.05, def: 1, fmt: pct },
   ambience: { tab: 'audio', label: 'Ocean ambience', type: 'range', min: 0, max: 1, step: 0.05, def: 0.7, fmt: pct },
