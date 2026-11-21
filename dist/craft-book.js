@@ -349,3 +349,63 @@ export function holdHint(times, cap = HOLD.max) {
   const n = Math.min(Number.isFinite(times) ? Math.floor(times) : cap, cap);
   return n > 1 ? `hold: up to ${n}` : '';
 }
+
+/**
+ * Craft button text while a hold is running ('Crafting 2 / 4') and just after it ends ('Crafted 4').
+ * `out` = items each craft makes, so a nail recipe (x3) reads 'Crafted 12' after 4 crafts.
+ */
+export function holdLabel(done, cap, holding = true, out = 1) {
+  const d = Math.max(0, Math.floor(Number(done) || 0));
+  const per = Math.max(1, Math.floor(Number(out) || 1));
+  if (!holding) return d > 0 ? `Crafted ${d * per}` : '';
+  const c = Math.max(d, Math.floor(Number(cap) || 0));
+  return c > 1 ? `Crafting ${d} / ${c}` : 'Crafting';
+}
+
+// ---- tooltip facts ----
+/**
+ * Hand recipes (RECIPES-like: {id, name, output:{kind,count}, cost}) plus station and catalogue
+ * recipes (ITEMS-like: {id, name, recipe:{cost, count, station}}) as one normalised list
+ * ({id, name, out:{kind,count}, reqs, station}). A hand recipe wins over a catalogue one with the same id.
+ */
+export function catalogueRecipes(recipes, items) {
+  const out = [], seen = new Set();
+  const reqsOf = cost => Object.entries(cost || {}).map(([kind, count]) => ({ kind, count: Number(count) || 0 }));
+  for (const [key, r] of Object.entries(recipes || {})) {
+    if (!r || typeof r !== 'object') continue;
+    const id = String(r.id ?? key);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name: String(r.name ?? id), out: { kind: r.output?.kind ?? id, count: r.output?.count ?? 1 }, reqs: reqsOf(r.cost), station: null });
+  }
+  for (const [key, it] of Object.entries(items || {})) {
+    const r = it && it.recipe;
+    if (!r || typeof r !== 'object') continue;
+    const id = String(it.id ?? key);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name: String(it.name ?? id), out: { kind: id, count: r.count ?? 1 }, reqs: reqsOf(r.cost), station: r.station ?? null });
+  }
+  return out;
+}
+
+/**
+ * The "where to get it" and "used in" lines for an item tooltip.
+ * get: one sentence or null. uses: names of recipes that consume the item, at most `max`
+ * entries (the last one becomes '+N more' when the list is longer).
+ * @param {string} kind @param {Array} recipes normalised recipes @param {(k:string)=>string} [nameOf]
+ */
+export function tipFacts(kind, recipes, nameOf = k => k, max = 4) {
+  const src = sourceOf(kind, recipes, nameOf);
+  const all = [...new Set((recipes || []).filter(r => r && (r.reqs || []).some(q => q.kind === kind))
+    .map(r => r.station ? `${r.name} (${nameOf(r.station)})` : r.name))];
+  const m = Math.max(1, Math.floor(max));
+  const uses = all.length > m ? [...all.slice(0, m - 1), `+${all.length - (m - 1)} more`] : all;
+  let get = src ? src.how : null;
+  const made = src && src.recipe ? (recipes || []).find(r => r && r.id === src.recipe) : null;
+  if (made && made.station && !ITEM_SOURCE[kind]) {
+    const cost = (made.reqs || []).map(q => `${q.count} ${nameOf(q.kind)}`).join(' + ');
+    get = `Make it at the ${nameOf(made.station)}${cost ? ` from ${cost}` : ''}.`;
+  }
+  return { get, uses };
+}
