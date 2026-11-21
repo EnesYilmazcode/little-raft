@@ -1205,3 +1205,10 @@ No regressions. Intended differences:
 - PR #5 review (2 reviewers, comments on the PR). Fixed: juicer hopper never added to the model; string lights turned on the point-light pool (19 shader links mid-game); photo frame cast 9 shadows; picking up a linked glide post dropped its rope (posts now refuse pickup); misleading "Empty it first" text. The photo album's exit-lock fix had already landed.
 - Gate at fd3724d: 1398/1398, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause. Perf vs main: 99-103 vs 185-197 ms, 45-49 vs 46-52 draw calls.
 - Merged PR #5 into main (c3a29df).
+
+## 2026-11-21 · integrator D: loop-perf-202611210859, loop-perf-202611210748, loop-visuals-202611210843
+- Merged loop-perf-202611210859 (drop backdrop blurs). raft-master already had the blur removals in graphics.css, settings.js and coop-feed.js, so those conflicts keep raft-master. This adds the fish journal, research panel and style.css backdrops.
+- Skipped loop-perf-202611210748: a stale parallel copy of perf work raft-master already has (quality ladder, shadow camera fit, pre-warm, pinned quality). It hit 77 conflict hunks across 28 files. Its every-third-frame shadow redraw and frustum-culled foam need a rebase by their worker.
+- Not merged by D: loop-visuals-202611210843 was already on raft-master (cd51bb0f) from another integrator, so D's own merge of it was dropped.
+- Gate: npm test 1402/1402. shoot.py errors [], hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text.
+- Perf, final vs raft-master, six interleaved pairs, medians: 146 vs 141 ms (+3.5%), 46.5 vs 46.5 draw calls, 97 shadow casters on both.
