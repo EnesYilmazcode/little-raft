@@ -629,4 +629,6 @@ export function getModel(kind, { lod = 0 } = {}) {
   delete c.userData.dispose;
   return c;
 }
+// The shared materials, for shader warm-up (game.js compiles them before any decor using them is built).
+export const modelMaterials = () => Object.values(mats());
 export default buildModel;
