@@ -253,7 +253,7 @@ export function mount(transfer = null) {
   function box(w, h, d, c, x = 0, y = 0, z = 0, parent) { const m = new T.Mesh(new T.BoxGeometry(w, h, d), mat(c)); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; parent?.add(m); return m; }
   function cylinder(rt, rb, h, c, x, y, z, parent, n = 8) { const m = new T.Mesh(new T.CylinderGeometry(rt, rb, h, n), mat(c)); m.position.set(x, y, z); m.castShadow = true; parent?.add(m); return m; }
   function sphere(r, c, x, y, z, parent) { const m = new T.Mesh(new T.IcosahedronGeometry(r, 1), mat(c)); m.position.set(x, y, z); parent?.add(m); return m; }
-  function disposeGeometry(o) { const cached = new Set(materialCache.values()), materials = new Set(); o.traverse(c => { c.geometry?.dispose(); for (const m of [].concat(c.material || [])) if (!cached.has(m)) materials.add(m); }); for (const m of materials) { m.map?.dispose(); m.dispose(); } }
+  function disposeGeometry(o) { const cached = new Set(materialCache.values()), materials = new Set(); o.traverse(c => { if (c.userData.shared) return; c.geometry?.dispose(); for (const m of [].concat(c.material || [])) if (!cached.has(m)) materials.add(m); }); for (const m of materials) { m.map?.dispose(); m.dispose(); } }
 
   // ---------- DOM adoption (stable nodes shared across hot swaps) ----------
   function prepareDom() {
@@ -357,8 +357,8 @@ export function mount(transfer = null) {
   // ---------- Floating supplies ----------
   function makeItem(id) { const edge = Math.min(...world.tiles.map(t => t[1])) * 2 - 1, spread = Math.max(11, Math.max(...world.tiles.map(t => Math.abs(t[0]))) * 2 + 6); return {id, token:newToken(), type:SPAWN_TABLE[Math.floor(Math.random() * SPAWN_TABLE.length)], x:(Math.random() - .5) * spread * 2, z:edge - 3 - Math.random() * 17, phase:Math.random() * 6}; }
   function itemModel(item) {
-    if (item.type !== 'plastic') return createDebris(T, item.type, mat, {seed:item.id});
-    const g = new T.Group(), jug = createPlastic(T); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
+    if (item.type !== 'plastic') return createDebris(T, item.type, mat, {seed:item.id, shared:true}); // cached geometry + shared materials
+    const g = new T.Group(), jug = createPlastic(T, {shared:true}); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
   }
   // Meshes are keyed by token, not id: a respawned item keeps its id but may change type.
   const itemMeshes = new Map();
@@ -449,6 +449,7 @@ export function mount(transfer = null) {
   function clearInput() { keys = {}; charging = null; reeling = false; down = null; }
 
   // ---------- Aiming ----------
+  const pickTmp = new T.Vector3();
   function pickNdc(nx, ny) {
     pointer.set(nx, ny); ray.setFromCamera(pointer, camera);
     plane.constant = -deckY() - .02;
@@ -463,7 +464,7 @@ export function mount(transfer = null) {
       let best = Infinity;
       for (const it of world.items) {
         if (isPending(it) || held.has(it.token)) continue; const m = itemMeshes.get(it.token); if (!m) continue;
-        const along = m.position.clone().sub(ray.ray.origin).dot(ray.ray.direction);
+        const along = pickTmp.copy(m.position).sub(ray.ray.origin).dot(ray.ray.direction);
         if (along > 0 && along < 5 && along < best && ray.ray.distanceSqToPoint(m.position) < .2) { best = along; item = it; }
       }
     }
