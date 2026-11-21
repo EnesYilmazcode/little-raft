@@ -5,7 +5,7 @@ import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
 import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings } from './settings.js?build=v3-survival-ae77fa84ac2b';
-import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
+import { createRaftMesh } from './deck.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createHands } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
@@ -350,7 +350,7 @@ export function mount(transfer = null) {
   }
   function rebuildRaft() {
     for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
-    world.tiles.forEach(([x, z]) => { const g = createFloor(T, x * 719 + z * 311, mat); g.position.set(x * 2, 0, z * 2); raft.add(g); });
+    raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat));
     for (const d of world.decor) {
       let detailed = null; try { detailed = createCraft(T, d.type); } catch (e) { console.warn('craft model failed', e); }
       if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); raft.add(detailed); continue; }
