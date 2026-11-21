@@ -129,21 +129,25 @@ It is called from step 4's `rebuildRaft()`. Without step 4, call `fitShadow()` a
 The +5 m margin covers a 3.8 m sail's shadow at this sun elevation (about 56 degrees). The camera stays centred on the
 origin like today, because the raft is always built around tile (0,0).
 
-## 6. Bump map without anisotropic filtering (wood.js lines 15-16)
+## 6. Drop the wood bump map (wood.js line 16)
 
-**Why:** every plank pixel samples the bump map 3 times for its derivative, and it shares the colour texture's
-`anisotropy = 4` sampler. The deck covers about a third of the screen. **Gain: about -20% SwiftShader raster CPU,
-the single largest pixel cost found. No visible change in the pixel diff (perf.md).**
+**Why:** the deck covers a third to all of the screen, and each plank pixel samples the bump map 3 extra times (the
+derivative), through the colour map's `anisotropy = 4` sampler. At `bumpScale: .018` the result cannot be seen. With and
+without the bump map, frozen-scene screenshots differ by 0.01 mean (0-255) and **no pixel by more than 8/255**,
+both at the spawn view and looking straight down at the deck from standing height (`shoot.py --look 400`).
+**Gain: -32% SwiftShader raster CPU at spawn, -40% looking down. This is the largest single pixel cost found.**
 
 ```js
  const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=4;
- // Bump reads 3 taps per pixel for its derivative: give it its own sampler without anisotropic filtering (perf).
- const bump=texture.clone();bump.anisotropy=1;
- return new T.MeshStandardMaterial({map:texture,bumpMap:bump,bumpScale:.018,roughness:.86,metalness:0});
+ // No bumpMap: at bumpScale .018 it changed no pixel by more than 8/255 even looking straight down at the deck, but its
+ // 3 extra taps per pixel were ~1/3 of the deck's shading cost (docs/tech/perf.md).
+ return new T.MeshStandardMaterial({map:texture,roughness:.86,metalness:0});
 ```
 
-The clone shares the same canvas `Source`, so the upload costs one more 128x512 texture per timber colour.
-`disposeScene()` disposes it because it walks every texture property on each material.
+If art wants the grain relief kept for a future close-up use, there is a conservative alternative: keep the bump map
+but give it its own sampler (`const bump = texture.clone(); bump.anisotropy = 1;` and `bumpMap:bump`). That measured -20%
+raster at the spawn view, also pixel-identical. Making the relief actually visible would mean raising `bumpScale`,
+which is a look change and an art decision.
 
 ## 7. Optional: perf overlay and dynamic resolution (game.js lines 61, 820, 842, 1171, 1182-1183)
 
@@ -176,8 +180,8 @@ To make dynamic resolution a player-facing option later, add `'auto'` to `GRAPHI
 
 - **Shadow map at 10 Hz** (`shadowMap.autoUpdate = false`): -100 calls, but deck shadows visibly step while the raft
   rocks, and step 5 gets most of the gain without that artefact.
-- **Anisotropy 1 on the colour map, or no bump map:** -27% and -34% raster, but planks blur at grazing angles or lose
-  their grain relief. Keep these as `graphics:'low'` options if needed: `material.bumpMap = null` for low.
+- **Anisotropy 1 on the colour map:** -25% raster, but planks blur at grazing angles (deck diff 0.76, visible on
+  the far planks). It could become a `graphics:'low'` option.
 - **Lower default pixel ratio:** the biggest raster lever (0.75 gives -28%), but it softens the image. Use step 7's
   dynamic resolution instead of a lower fixed cap.
 
