@@ -148,7 +148,8 @@ void main() {
     float m = mix(mix(texture2D(uRaftMask, i0).r, texture2D(uRaftMask, i0 + vec2(k, 0.0)).r, fr.x),
                   mix(texture2D(uRaftMask, i0 + vec2(0.0, k)).r, texture2D(uRaftMask, i0 + vec2(k)).r, fr.x), fr.y);
     edge = m * (0.85 + 0.15 * sin(uTime * 1.7 + p.x * 2.0 + p.y * 1.3));
-    for (int i = 0; i < ${MAX_FOAM}; i++) {
+    // Foam points live within FOAM_FAR (15 m) of the camera, rings are under 1 m: skip the loop beyond.
+    if (dist < ${(FOAM_FAR + 2).toFixed(1)}) for (int i = 0; i < ${MAX_FOAM}; i++) {
       vec4 f = uFoamPts[i];
       if (f.z <= 0.0) break;  // live points are packed first
       vec2 dv = p - f.xy;
