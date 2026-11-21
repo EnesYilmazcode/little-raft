@@ -55,11 +55,12 @@ const EXPOSURE = 0.95;
 // ([x0, x1, y0, y1] as fractions) and exposure, so thin or dark items still read in a slot.
 // own: render from the game's own model instead of the provider (the hook in hand is hook.js's metal hook).
 const FRAME = {
-  hook: { own: true, pose: [0.15, -0.5, 0.85], view: [0.15, 0.2, 1], crop: [0, 0.88, 0.12, 1], exp: 1.7 },  // the dark steel J, as held
-  hammer: { pose: [-0.75, 0, 0], view: [1, 0.3, 0.2], exp: 1.2 },           // head in profile
-  lantern: { view: [0.35, 0.3, 1], crop: [0.5, 1, 0.48, 0.96], exp: 1.35 },  // the lamp, not the post
-  fishingrod: { crop: [0, 0.7, 0, 0.7], exp: 1.2 },                          // grip, reel and float
-  net: { view: [0.3, 0.45, 1], exp: 1.3 },
+  hook: { own: true, pose: [0.15, -0.5, 0.85], view: [0.15, 0.2, 1], crop: [0, 0.88, 0.12, 1], exp: 2.1 },  // the dark steel J, as held
+  hammer: { pose: [-0.75, 0, 0], view: [1, 0.3, 0.2], exp: 1.5 },           // head in profile
+  lantern: { view: [0.35, 0.3, 1], crop: [0.5, 1, 0.48, 0.96], exp: 1.7 },  // the lamp, not the post
+  fishingrod: { crop: [0, 0.7, 0, 0.7], exp: 1.5 },                          // grip, reel and float
+  net: { view: [0.3, 0.45, 1], exp: 1.6 },
+  coconut: { view: [0.3, 1, 0.55], exp: 1.55 },                             // from above, so the three eyes read (else a brown rock)
 };
 
 // ---------- fallback models ----------

@@ -41,7 +41,9 @@ export function formatFeed(text) { return String(text ?? '').replace(/\s+/g, ' '
 export function isNotice(text, hasKbd) {
   const t = formatFeed(text);
   // "Floor needs" doubles as game.js's hover prompt; the muted "Needs …" prompt already covers it.
-  return !!t && !hasKbd && !/^(Hold click to reel|Waiting for your brother|Floor needs)/i.test(t);
+  // Purifier status lines are hover prompts (game.js promptTip) whose fuel/boil clock ticks every second: feeding them
+  // stacked a new feed line per second.
+  return !!t && !hasKbd && !/^(Hold click to reel|Waiting for your brother|Floor needs|Purifying|Purifier:|Fire is full)/i.test(t);
 }
 // Converts a game.js/content-module prompt string ('<kbd>E</kbd>Label', escaped HTML) into prompt rows:
 // a leading <kbd> becomes the key ('Click' -> the LMB glyph); text without a key becomes a muted status line.

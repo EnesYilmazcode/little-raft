@@ -21,6 +21,7 @@ export const BLOCK_TEXT = Object.freeze({
   net: 'A collection net hangs there',
   trapedge: 'Fish traps hang on an edge tile, next to open water', // [fishtrap]
   piece: 'Stairs are in the way',
+  rim: 'Place it at the raft edge',
 });
 // Building pieces that fill a deck cell (stairs at level 0; floor/roof only sit higher up, but count them too).
 const CELL_PIECES = ['floor', 'stairs', 'roof'];
@@ -44,12 +45,18 @@ export function deckPieceAt(pieces, x, z) {
   return Array.isArray(pieces) && pieces.some(p => p && p.l === 0 && p.i === x && p.j === z && CELL_PIECES.includes(p.t));
 }
 
-// Why decor can't go at (x, z): 'invalid' | 'nofloor' | 'occupied' | 'piece', or null when it can.
-export function decorBlock(tiles, decor, x, z, pieces) {
+// Kinds that must stand on an edge tile (one side open to the sea): the anchor drops its rope over that side.
+export const EDGE_ONLY = Object.freeze(['anchor']);
+
+// Why decor can't go at (x, z): 'invalid' | 'nofloor' | 'occupied' | 'piece' | 'rim' (type needs an edge tile), or null when it can.
+// decorBlock(tiles, decor, x, z, pieces?, type?); a string 5th argument is the type (older call shape).
+export function decorBlock(tiles, decor, x, z, pieces = null, type = null) {
+  if (typeof pieces === 'string') { type = pieces; pieces = null; }
   if (!isInt(x) || !isInt(z)) return 'invalid';
   if (!hasTile(tiles, x, z)) return 'nofloor';
   if (decor.some(d => d.x === x && d.z === z)) return 'occupied';
   if (deckPieceAt(pieces, x, z)) return 'piece';
+  if (type !== null && EDGE_ONLY.includes(type) && NEIGHBOURS.every(([a, b]) => hasTile(tiles, x + a, z + b))) return 'rim';
   return null;
 }
 

@@ -43,7 +43,9 @@ import { cleanRain, copyRain, tickRain, takeRain, fillSprinkler, rainTarget, RAI
 import { lootFits, createGuestHeld, cleanHeldTokens, hookableItems, decorBlockers, playerInWay, repairHookSlot, castHookGone } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
 import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan, LIVE_STATUS_EVENT } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
-import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
+import { releaseShouldFire, castInput, castPrompt, rodSlot, wearRod } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
+import { createAnchorModel } from './anchor-model.js?build=v3-survival-ae77fa84ac2b'; // [anchor] placed anchor (crafted item)
+import { ANCHOR_TEXT, migrateAnchor, outwardRot, anchorCount } from './anchor-rules.js?build=v3-survival-ae77fa84ac2b'; // [anchor]
 import { createQuality, setShadows } from './quality.js?build=v3-survival-ae77fa84ac2b';
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrelTrial, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
@@ -205,7 +207,7 @@ export function mount(transfer = null) {
     return {tiles:STARTER_TILES.map(t => [t[0], t[1]]), decor:[], stock:{wood:0, leaf:0, scrap:0, plastic:0}, fish:0, collected:0, hookHealth:MAX_HEALTH, items:[], hostInventory:fresh, guestInventory:new Bag().snapshot(), signal:null, notes:[], achievements:[], garden:{}, purifiers:{}, collectors:{}, sprinklers:{}, pieces:[], tileHp:{}, tileArmor:{}, shark:cleanShark(null), nets:[]};
   }
   // Validates a saved world or a host snapshot. Returns a fresh clean object or null.
-  function cleanWorld(v, withItems = false) {
+  function cleanWorld(v, withItems = false, fromNet = false) {
     if (!v || typeof v !== 'object' || !Array.isArray(v.tiles) || !v.tiles.length || v.tiles.length > 400) return null;
     const tiles = [], seen = new Set();
     for (const t of v.tiles) {
@@ -233,12 +235,14 @@ export function mount(transfer = null) {
         items.push({id:it.id, token:it.token, type:it.type, x:it.x, z:it.z, phase:Number.isFinite(it.phase) ? it.phase : 0});
     }
     const progress = cleanProgress(v);
-    return {tiles, decor, stock, fish:count(v.fish), collected:count(v.collected), hookHealth:Number.isFinite(v.hookHealth) ? clamp(Math.round(v.hookHealth), 0, MAX_HEALTH) : MAX_HEALTH, items,
+    const out = {tiles, decor, stock, fish:count(v.fish), collected:count(v.collected), hookHealth:Number.isFinite(v.hookHealth) ? clamp(Math.round(v.hookHealth), 0, MAX_HEALTH) : MAX_HEALTH, items,
       hostInventory:validSnapshot(v.hostInventory), guestInventory:validSnapshot(v.guestInventory), signal:cleanSignal(v.signal), ext:cleanExt(v.ext), pieces:cleanPieces(v.pieces, tiles), sailing:cleanSailing(v.sailing), // content + building-pieces + sailing hooks
       notes:progress.notes, achievements:progress.achievements, vitals:v.vitals ? cleanVitals(v.vitals) : null, // [vitals] old saves: null -> start full
       tileHp:cleanTileHp(v.tileHp, tiles), tileArmor:cleanTileArmor(v.tileArmor, tiles), shark:cleanShark(v.shark), nets, // [nets] // [armor]
       // shark lane: foundation HP + saved shark (old saves: full HP, fresh 300 s timer)
       ...cleanWatering(v, decor, {seedMissing:true}), ...cleanRain(v, decor)};
+    if (!fromNet) migrateAnchor(out); // [anchor] an old save anchored with the free anchor post gets a placed anchor (host's own world only)
+    return out;
   }
   function copyWorld(w) { // isolation from the previous engine's live object (rollback safety)
     return {...w, tiles:w.tiles.map(t => [t[0], t[1]]), decor:Array.isArray(w.decor) ? w.decor.map(d => (d.crop ? {...d, crop:cleanCrop(d.crop)} : {...d})) : [], items:Array.isArray(w.items) ? w.items.map(i => ({...i})) : [], stock:{...(w.stock || {})}, pieces:Array.isArray(w.pieces) ? w.pieces.map(p => ({...p})) : [],
@@ -440,7 +444,7 @@ export function mount(transfer = null) {
       + `<li><kbd>Hook</kbd><span><b>Throw.</b> Hold click to power up, aim higher to throw farther, release. ${REEL_PROMPT} everything it touches.</span></li>`
       + '<li><kbd>E</kbd><span><b>Pick up</b> a supply right beside you.</span></li>'
       + `<li><kbd>Tab</kbd><span><b>Bag.</b> ${BAG_OPEN_KEYS} opens the bag to craft; ${BAG_CLOSE_KEYS} closes it. Inside, the arrow keys move between slots.</span></li>`
-      + '<li><kbd>E</kbd><span><b>Sail.</b> Look at a sail and press E to raise or lower it; hold <kbd>R</kbd> and turn to steer it. The pennant shows the wind. E at the anchor post stops the raft.</span></li>' // [sailing]
+      + '<li><kbd>E</kbd><span><b>Sail.</b> Look at a sail and press E to raise or lower it; hold <kbd>R</kbd> and turn to steer it. The pennant shows the wind. Craft an anchor, place it at the raft edge and press E on it to stop the raft.</span></li>' // [sailing]
       + '<li><kbd>Craft</kbd><span><b>Make tools.</b> A Hammer builds raft floors (2 wood, 2 plastic each). A Fishing Rod catches fish. Crafted decorations are placed one at a time.</span></li>'
       + '<li><kbd>X</kbd><span><b>Remove</b> the floor or piece you aim at while holding the Hammer. You get about half its materials back.</span></li>'
       + '<li><kbd>R</kbd><span><b>Rotate</b> the piece you are placing (<kbd>Shift</kbd> + wheel turns it finely), or <b>repair</b> a worn hook for 2 wood and 1 scrap.</span></li>'
@@ -456,6 +460,7 @@ export function mount(transfer = null) {
     get sun() { return sun; }, get hemi() { return hemi; }, get clouds() { return clouds; }, get renderer() { return renderer; },
     get world() { return world; }, get role() { return role; }, get running() { return running; }, get physics() { return physics; },
     get elapsed() { return elapsed; }, get options() { return options; }, get other() { return other; },
+    get sailing() { return sailing; }, // [islands] seabed offset + grounding blocker (sailing-world.js); may be null
     localBag: () => localBag(), actorBag: a => actorBag(a), action: a => action(a), emit: (e, to) => emit(e, to), notice: (s, ms) => notice(s, ms),
     play: (ev, s) => play(ev, s), // [treasure-hook] local sound only (finder beeps), never sent
     esc: s => esc(s), mat: c => mat(c), rebuildRaft: () => rebuildRaft(), deckY: () => deckY(), uiOpen: () => uiBlocked(),
@@ -490,7 +495,7 @@ export function mount(transfer = null) {
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
     itemsGroup = new T.Group(); scene.add(itemsGroup); ocean.trackFoam(itemsGroup);
     player = makeAvatar(lookState.look); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
-    ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => { try { if (k === 'net') return createNetModel(T, mergeGeometries, {ownMaterials:true}); return prog?.modelFor(k, {type:k}) ?? (k === 'rainbarrel' ? createRainBarrel(T) : k === 'sprinkler' ? createSprinkler(T) : k === 'purifier' ? createPurifier(T) : createCraft(T, k) ?? createSignalModel(T, k) ?? content?.decorModel(k) ?? null); } catch { return null; } }}); // see-through real models, red when blocked
+    ghosts = createGhosts(T, scene, raft, {floor:m => createFloor(T, 0, m), craft:k => { try { if (k === 'net') return createNetModel(T, mergeGeometries, {ownMaterials:true}); return prog?.modelFor(k, {type:k}) ?? (k === 'anchor' ? createAnchorModel(T) : k === 'rainbarrel' ? createRainBarrel(T) : k === 'sprinkler' ? createSprinkler(T) : k === 'purifier' ? createPurifier(T) : createCraft(T, k) ?? createSignalModel(T, k) ?? content?.decorModel(k) ?? null); } catch { return null; } }}); // see-through real models, red when blocked
     const ropeGeo = new T.BufferGeometry(); ropeAttr = new T.BufferAttribute(new Float32Array((ROPE_SEGMENTS + 1) * 3), 3); ropeAttr.setUsage(T.DynamicDrawUsage); ropeGeo.setAttribute('position', ropeAttr);
     rope = new T.Line(ropeGeo, new T.LineBasicMaterial({color:'#e9d39a'})); rope.visible = false; rope.frustumCulled = false; scene.add(rope);
     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
@@ -513,7 +518,7 @@ export function mount(transfer = null) {
     building.setRemoveExtra(decorRemoveTarget); // [undecor] X on decor when no piece is aimed
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
-      action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
+      action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging, getHeld:() => toolRole(heldKind()), // [anchor] hammer: X takes it up
       getPush:(s, o) => { content?.sailPush(s, o); }, steerTargets:() => content?.steerTargets() ?? null, sailKnown}); /* engine: motor push + wheel grab points */ for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
     try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id}), getMods:out => content?.diveMods?.(out),
       breath:() => (vitals.food <= 0 || vitals.water <= 0 ? DIVE.STARVED_BREATH : 1), onDrown:hp => hurtPlayer(hp, 'drown')}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
@@ -652,7 +657,7 @@ export function mount(transfer = null) {
     wateringGroups.clear(); decorGroups.length = 0; // [undecor]
     raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat, content ? (t, c) => content.tileTint(t.x / 2, t.z / 2, c) : null, woodMat)); // content hook (paint): painted deck tiles
     for (const d of world.decor) {
-      let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'rainbarrel' ? createRainBarrel(T) : d.type === 'sprinkler' ? createSprinkler(T) : d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type, d) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
+      let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'anchor' ? createAnchorModel(T) : d.type === 'rainbarrel' ? createRainBarrel(T) : d.type === 'sprinkler' ? createSprinkler(T) : d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type, d) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
       if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); if (d.rot && !detailed.userData.ownRot) detailed.rotation.y = d.rot; /* [buoycourse] ownRot: model keeps default facing */ raft.add(detailed); detailed.userData.tileKey = tileKey(d.x, d.z); decorGroups.push(detailed); /* [undecor] tag every decor */ if (d.type === 'palm' || d.type === 'purifier' || d.type === 'rainbarrel' || d.type === 'sprinkler') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; } // decor-pack models keep their own quarter-turn unless placement rotated them
       const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2); g.rotation.y = d.rot || 0;
       if (d.type === 'sail') { cylinder(.065, .08, 3.8, '#906f48', 0, 1.9, 0, g); box(2.5, .07, .07, '#906f48', 0, 3.2, 0, g); const s = new T.Mesh(new T.PlaneGeometry(2.35, 2.1), clothMat); s.position.set(0, 2.15, .06); g.add(s); }
@@ -768,11 +773,12 @@ export function mount(transfer = null) {
     if (eating) { EATING_TIP.label = isDrink(k) ? 'Drinking…' : 'Eating…' /* [juicer] */; eatTip = EATING_TIP; return; }
     eatTip = eatTips.get(k); if (!eatTip) { eatTip = {key:'LMB', label:eatLabel(k)}; eatTips.set(k, eatTip); }
   }
+  const PURIFIER_STATUS = /^(Purifying|Purifier:|Fire is full)/;
   function promptTip() { // watering hints only when actionable or while holding a cup (never hides the hook's "Throw")
     if (DECOR_TYPES.includes(heldKind())) return null; // place mode: prompts.js placePrompt stacks the aim row itself
     if (eatTip) return eatTip;
     if (netAim >= 0) return NET_TIPS[Math.min(NET_CAPACITY, world.nets[netAim]?.items.length ?? 0)]; // [nets] "Empty net (n)"
-    const p = waterAim?.prompt; return p && (p.startsWith('<kbd>') || CUP_KINDS.includes(selectedKind())) ? tipFor(p) : null;
+    const p = waterAim?.prompt; return p && (p.startsWith('<kbd>') || CUP_KINDS.includes(selectedKind()) || PURIFIER_STATUS.test(p)) ? tipFor(p) : null; // purifier status: a muted prompt (prompts.js keeps it out of the feed)
   }
   let contextHtml = null, contentPromptOff = null; // content hook: contextHtml also feeds main's #lrPrompt via raftPrompts
   function updateContext(dialog) {
@@ -1115,7 +1121,7 @@ export function mount(transfer = null) {
     let why;
     if (kind === 'net') { const v = netSpot(world.tiles, world.nets, p.x, p.z); if (v && !v.blocked && !inReach(physics.x, physics.z, netCenterX(v) / 2, netCenterZ(v) / 2)) v.blocked = 'reach'; return v; } // [nets] edge spot {x, z, d}
     if (kind === 'hammer') why = floorBlock(world.tiles, x, z) ?? (netOnCell(world.nets, x, z) ? 'net' : null); // [nets] no floor over a net
-    else if (DECOR_TYPES.includes(kind)) { if (fc?.hasGrill(x, z)) return null; why = decorBlock(world.tiles, world.decor, x, z, world.pieces) || content?.placeBlock(kind, x, z) || null; } // [fishing-cooking] grill tiles // [fishtrap] placeBlock
+    else if (DECOR_TYPES.includes(kind)) { if (fc?.hasGrill(x, z)) return null; why = decorBlock(world.tiles, world.decor, x, z, world.pieces, kind) || content?.placeBlock(kind, x, z) || null; } // [fishing-cooking] grill tiles; [anchor] edge tiles only // [fishtrap] placeBlock
     else return null;
     if (why === 'nofloor' && !nearDeck(x, z)) return null; // just off the deck edge still shows a red ghost instead of nothing
     if (why && !BLOCK_TEXT[why]) return null;
@@ -1131,7 +1137,7 @@ export function mount(transfer = null) {
     const out = [], ok = (x, z) => inReach(physics.x, physics.z, x, z);
     if (kind === 'net') { for (const [tx, tz] of world.tiles) for (let d = 0; d < 4; d++) { const v = {x:tx, z:tz, d}; if (!netBlock(world.tiles, world.nets, tx, tz, d) && ok(netCenterX(v) / 2, netCenterZ(v) / 2)) out.push(v); } return out; } // [nets]
     if (kind === 'hammer') { const seen = new Set(); for (const [tx, tz] of world.tiles) for (const [a, b] of NEIGHBOURS) { const x = tx + a, z = tz + b, k = x + ',' + z; if (!seen.has(k) && !floorBlock(world.tiles, x, z) && !netOnCell(world.nets, x, z) && ok(x, z)) { seen.add(k); out.push({x, z}); } } }
-    else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (!decorBlock(world.tiles, world.decor, x, z, world.pieces) && !fc?.hasGrill(x, z) && !content?.placeBlock(kind, x, z) && ok(x, z)) out.push({x, z}); // [fishtrap] placeBlock
+    else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (!decorBlock(world.tiles, world.decor, x, z, world.pieces, kind) && !fc?.hasGrill(x, z) && !content?.placeBlock(kind, x, z) && ok(x, z)) out.push({x, z}); // [fishtrap] placeBlock
     return out;
   }
   let placeRot = 0, pointing = false; // decor placement rotation (radians) and the pointing-hand pose
@@ -1220,6 +1226,19 @@ export function mount(transfer = null) {
     if (before > 0 && s.durability === 0) emit({kind:'notice', text:'Hook worn out: shorter throws. R to repair'}, actor);
     else if (before > 25 && s.durability <= 25) emit({kind:'notice', text:'Hook getting worn. R repairs: ' + Object.entries(repairCost(s.kind) ?? REPAIR_COST).map(([k, n]) => n + ' ' + itemName(k)).join(', ')}, actor); // [progression-hook]
   }
+  // [anchor] Host: take a placed anchor back into the actor's bag (hammer held, in reach). The last one gone raises the raft.
+  function takeAnchor(a, actor, bag) {
+    if (!isInt(a.x) || !isInt(a.z)) return;
+    const i = world.decor.findIndex(d => d.type === 'anchor' && d.x === a.x && d.z === a.z); if (i < 0) return;
+    const who = actor === 'guest' ? other : physics;
+    if (!who || !inReach(who.x, who.z, a.x, a.z, BUILD_REACH + (actor === 'guest' ? GUEST_REACH_SLACK : .01))) { emit({kind:'notice', text:BLOCK_TEXT.reach}, actor); return; }
+    if (toolRole(bag.slots[bag.selectedIndex]?.kind ?? null) !== 'hammer') { emit({kind:'notice', text:ANCHOR_TEXT.hammer}, actor); return; }
+    if (bag.add('anchor', 1) > 0) { emit({kind:'full', text:ANCHOR_TEXT.full}, actor); return; }
+    world.decor.splice(i, 1);
+    const raised = !!world.sailing?.anchored && anchorCount(world.decor) === 0;
+    if (raised) world.sailing.anchored = false;
+    rebuildRaft(); fitShadow(); emit({kind:'build', text:raised ? ANCHOR_TEXT.removed + ' · ' + ANCHOR_TEXT.raised : ANCHOR_TEXT.removed, sound:'place'}, 'all');
+  }
   function applyAction(a, actor = 'host') {
     if (!a || typeof a !== 'object' || role === 'guest') return;
     if (prog?.apply(a, actor)) return; // [progression-hook] locked crafts + 'prog:*' actions
@@ -1228,6 +1247,7 @@ export function mount(transfer = null) {
     if (typeof a.kind === 'string' && a.kind.startsWith('fc:')) { fc?.applyAction(a, actor, {count:k => bag.count(k), remove:(k, n) => bag.remove(k, n), add:(k, n) => bag.add(k, n), emit:text => emit({kind:'notice', text}, actor)}); return; } // [fishing-cooking]
     if (a.kind === 'selectSlot') { bag.select(a.index); return; }
     if (paddle?.apply(a, actor, bag)) return; // [paddle] validates the stroker, applies the sail op, wears the paddle
+    if (a.kind === 'sail' && a.op === 'takeAnchor') { takeAnchor(a, actor, bag); return; } // [anchor] hammer + X
     if (a.kind === 'sail') { const t = sailing?.apply(a, actor); if (t) emit({kind:'notice', text:t}, actor); return; } // [sailing]
     if (a.kind === 'moveSlot') { bag.move(a.from, a.to, a.amount ?? undefined); return; }
     if (a.kind === 'craft') {
@@ -1287,7 +1307,7 @@ export function mount(transfer = null) {
         if (!spend(bag, FLOOR_COST)) { emit({kind:'notice', text:'Floor needs ' + missingText(bag, FLOOR_COST)}, actor); return; }
         world.tiles.push([a.x, a.z]);
       } else if (DECOR_TYPES.includes(a.recipe)) {
-        const why = decorBlock(world.tiles, world.decor, a.x, a.z, world.pieces);
+        const why = decorBlock(world.tiles, world.decor, a.x, a.z, world.pieces, a.recipe); // [anchor] 'rim': edge tiles only
         if (why) { if (BLOCK_TEXT[why]) emit({kind:'notice', text:BLOCK_TEXT[why]}, actor); return; } if (fc?.hasGrill(a.x, a.z)) return; // [fishing-cooking] grill tiles
         const inWay = playerInWay(decorBlockers({type:a.recipe, x:a.x, z:a.z, rot:a.rot}, BLOCK_RADIUS), [physics, other], PLAYER_CONSTANTS.BODY_RADIUS); // host pose, guest pose
         if (inWay >= 0) { emit({kind:'notice', text:BLOCK_TEXT[(inWay === 0) === (actor === 'host') ? 'self' : 'brother']}, actor); return; }
@@ -1297,7 +1317,7 @@ export function mount(transfer = null) {
         if (sel?.kind === a.recipe) { sel.count--; if (sel.count <= 0) bag.slots[bag.selectedIndex] = null; }
         else if (!bag.remove(a.recipe, 1)) { emit({kind:'notice', text:`Craft a ${itemName(a.recipe)} first`}, actor); return; }
         const antennasBefore = countAntennas(world.decor);
-        const rot = Number.isFinite(a.rot) ? Math.round(wrapRot(a.rot) * 1000) / 1000 : 0;
+        const rot = a.recipe === 'anchor' ? outwardRot(world.tiles, a.x, a.z, a.rot) : Number.isFinite(a.rot) ? Math.round(wrapRot(a.rot) * 1000) / 1000 : 0; // [anchor] the arm always faces the open sea
         world.decor.push(rot ? {type:a.recipe, x:a.x, z:a.z, rot} : {type:a.recipe, x:a.x, z:a.z});
         content?.placed?.(a.recipe, a.x, a.z, actor); // [bed] a new bed is its placer's wake-up spot
         if (a.recipe === 'antenna') { const n = countAntennas(world.decor); placedText = n > antennasBefore ? `Antenna placed · signal ${n}/3` : antennasBefore >= 3 ? 'Antenna placed' : 'Antenna placed (put it 2+ tiles from the receiver)'; }
@@ -1345,8 +1365,11 @@ export function mount(transfer = null) {
       emit({kind:'loot', text:'+ ' + Object.entries(loot).map(([k, c]) => `${c} ${itemName(k)}`).join(' · ')}, actor); return;
     }
     if (a.kind === 'fish') {
-      if (bag.count('fishingrod') < 1) return;
+      const ri = rodSlot(bag.slots, bag.selectedIndex); if (ri < 0) return;
       if (bag.add('fish', 1) > 0) { emit({kind:'full', text:'Bag full: the fish swam away'}, actor); return; }
+      const rw = wearRod(bag.slots[ri], wearPerUse('fishingrod')); // Raft: 10 catches, then the rod snaps
+      if (rw?.broke) { bag.slots[ri] = null; bag.version++; emit({kind:'notice', text:'Your fishing rod broke!'}, actor); }
+      else if (rw && rw.before > 25 && rw.after <= 25) emit({kind:'notice', text:'Fishing rod getting worn: about ' + Math.round(rw.after / wearPerUse('fishingrod')) + ' catches left'}, actor);
       world.fish++; emit({kind:'loot', text:'You caught a fish!', loot:{fish:1}}, actor);
       award({kind:'fish'}); content?.observe({kind:'fish'}, actor); return; // [tasks] observe
     }
@@ -1791,7 +1814,7 @@ export function mount(transfer = null) {
     const floor = kind === 'hammer';
     if (!hover || ghostHold && (ghostHold.kind !== kind || ghostHold.rot !== (floor ? 0 : placeRot) || hover.x !== ghostHold.x || hover.z !== ghostHold.z)) ghostHold = null; // keep the ghost off the piece just placed until the aim moves
     if (!hover || ghostHold) { ghosts.hide(); return; }
-    ghosts.show(floor ? 'floor' : kind, hover.x * 2, floor ? .015 : .22, hover.z * 2, floor ? 0 : placeRot, !hover.blocked && !(floor && !canAfford(localBag(), FLOOR_COST)), elapsed);
+    ghosts.show(floor ? 'floor' : kind, hover.x * 2, floor ? .015 : .22, hover.z * 2, floor ? 0 : kind === 'anchor' ? outwardRot(world.tiles, hover.x, hover.z, placeRot) : placeRot, !hover.blocked && !(floor && !canAfford(localBag(), FLOOR_COST)), elapsed);
   }
   const HOST_CAPS = Object.freeze({undecor:1}); // [undecor] top-level host capabilities (cleanWorld would strip them inside world); add new flags here
   function hostState() {
@@ -1972,7 +1995,7 @@ export function mount(transfer = null) {
   });
   on(window, 'keyup', e => {
     keys[e.code] = false; if (e.code === 'KeyR') sailing?.release(); // [sailing]
-    if (e.code === 'KeyX' && building?.removing) { const a = building.removeAction(); if (a && running) { swing = 1; action(a); } } // building-pieces lane hook
+    if (e.code === 'KeyX' && building?.removing) { const a = building.removeAction() ?? sailing?.removeAnchorAction() ?? null; if (a && running) { swing = 1; action(a); } } // building-pieces lane hook; [anchor] hammer + X on an anchor
   });
   on(window, LIVE_STATUS_EVENT, e => { if (!running || !e.detail?.text) return; notice(e.detail.text); e.preventDefault(); }); // live.js update notices -> feed
   on(window, 'keydown', e => { if (e.key === 'Escape' && !e.repeat) { escHeld = true; relockOnEscUp = false; } }, {capture:true});
@@ -2139,7 +2162,7 @@ export function mount(transfer = null) {
       if (data.type === 'state') {
         lastHostMessage = performance.now();
         hostCaps = data.caps && typeof data.caps === 'object' ? data.caps : null; hostUndecor = hostCanUndecor(data); // [undecor] old hosts send no caps
-        const w = cleanWorld(data.world, true); if (!w) return;
+        const w = cleanWorld(data.world, true, true); if (!w) return;
         const first = !networkReady;
         if (!Array.isArray(data.world.pieces) && !first) w.pieces = world.pieces; // building-pieces lane hook: host omits unchanged pieces
         if (!Array.isArray(data.world.nets) && !first) w.nets = world.nets; // [nets] older host: keep what we had
@@ -2390,6 +2413,8 @@ export function mount(transfer = null) {
     }),
     look:() => ({look:{...lookState.look}, unlocked:[...lookState.unlocked], open:!!lookUI?.isOpen}), // [look]
     give(kind, n = 1) { return spearRep?.give(kind, n) ?? -1; }, // [spear-repair] test helper: add items to the local (host/solo) bag
+    act(a) { if (a && typeof a === 'object' && typeof a.kind === 'string') action({...a}); }, // [anchor] test helper: send one action as the local player
+    selectSlot(i) { selectSlot(i); }, // [anchor] test helper
     setTileHp(x, z, hp) { spearRep?.setTileHp(x, z, hp); }, // [spear-repair] test helper
     spearTestHit() { return spearRep?.testHit() ?? false; }, // [spear-repair] test helper: fake a landed thrust
     spearPose(p) { spearRep?.pinPoke(p); }, // [spear-repair] test helper: freeze the jab for screenshots

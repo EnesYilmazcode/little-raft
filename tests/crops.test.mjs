@@ -27,10 +27,10 @@ test('items: crop plot recipe, beet/potato food + seeds, grill recipes, barrel l
   assert.equal(stationRecipeFor('grill', 'potato')?.id, 'cookedpotato');
   assert.deepEqual([FOOD.beet.food, FOOD.potato.food, FOOD.cookedbeet.food, FOOD.cookedpotato.food], [10, 10, 15, 15]);
   for (const k of ['beet', 'potato', 'cookedbeet', 'cookedpotato']) assert.ok(isEdible(k), k);
-  for (const k of ['beet', 'potato']) { const row = BARREL_LOOT.find(e => e.kind === k); assert.equal(row?.pool, 'treasure'); assert.ok(row.weight > 0 && row.weight <= 6); }
+  for (const k of ['beet', 'potato']) { const row = BARREL_LOOT.find(e => e.kind === k); assert.equal(row?.pool, 'basic'); assert.ok(row.weight > 0 && row.weight <= 20); } // Raft's seeds-and-food barrel share
   let r = 1; const rand = () => (r = (r * 16807) % 2147483647) / 2147483647;
   let crops = 0; for (let i = 0; i < 2000; i++) { const l = rollBarrel(rand); crops += (l.beet ? 1 : 0) + (l.potato ? 1 : 0); }
-  assert.ok(crops > 80 && crops < 300, `about 1 barrel in 12 gives a crop (${crops}/2000)`);
+  assert.ok(crops > 80 && crops < 300, `about 1 barrel in 8 gives a crop (${crops}/2000)`);
   assert.equal(CROPS.beet.grow, 50); assert.equal(CROPS.potato.grow, 300); // real Raft numbers
 });
 

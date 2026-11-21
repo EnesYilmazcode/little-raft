@@ -1197,3 +1197,81 @@ No regressions. Intended differences:
 - Lower the net rope segment count (about 5k tris).
 - Measure decor and deck chunk culling on rafts of 144+ tiles.
 - Check whether three.js's `setValueV3f` boxing (8–11 KB/frame) can be avoided.
+
+## 2026-11-21 · loop-fidelity-202611210821 (raft fidelity, round 2b)
+Base: raft-master 77b1cb6. Research: docs/loop/research/fidelity-r2b-stations.md and fidelity-r2b-world.md (the wiki hosts were DNS-blocked, so the numbers come from search snippets).
+Skipped because the parallel fidelity run (loop-fidelity-202611210804) already claims them: crop plots, collection net, foundation armor, 2x2 start, Raft recipe costs.
+Claimed and landed:
+- **Station fuel and timings.** The purifier burns fuel: a plank gives 50 s and a leaf 25 s, capped at 150 s. A cup takes 60 s and only advances while lit. It has a flame and a plank-tray visual, and its prompts show the time and fuel. The grill burns 50 s per plank, holds 2 planks, cooks in 28 + 0.4*cm s, and chars only after 120 s. The cook times in items.js now match cooking.js.
+- **Drowning.** You get 33 s of air, or 17 s when food or water is at 0. Out of air you float up and take 3.5 HP/s through hurtPlayer. The air bar turns red below 25%.
+- **Stone Axe and palm chopping** (axe-model.js, islands-layout.js chop action):
+  - Recipe 6 planks + 3 stone + 2 rope, 50 chops.
+  - A palm takes 5 chops and drops 5 planks + 2 leaves. Each chop rolls 17.6% for a coconut and 11.8% for a palm seed.
+  - Bare hands can no longer gather wood from palms. A felled palm leaves a stump.
+  - New coconut food: +5 food, +20 water.
+- **Paddle** (paddle.js, paddle-model.js):
+  - Recipe 4 planks + 2 rope + 2 plastic, 60 strokes.
+  - LMB from an edge tile pushes the raft the way you face. Host checks: the stroke's slot holds a paddle, you stand on an edge tile, the raft is not anchored, and the 0.8 s cooldown has passed (the local cooldown is 0.85 s).
+  - PADDLE_CAP raised to 1.1.
+- **Debris follows raft motion** (debris-budget.js). It spawns at 0.6 items per metre travelled plus 0.05/s, with at most 3 banked. Anchoring stops the water flow and the item drift.
+- **Fix:** items.js HOTBAR_SIZE is now 10 (it was 8), so a saved selection of slot 9 or 0 no longer resets.
+Fleet: 2 researchers, 3 builders (worktrees), 2 reviewers.
+Review fixes:
+- the host no longer finds a paddle anywhere in the bag; it uses the stroke's slot
+- a NaN angle wore the paddle
+- held paddle and coconut poses
+- the coconut icon
+- the purifier countdown spammed the pickup feed
+- the felled-palm fronds
+- the axe head tones
+Checks:
+- npm test 753/753 (base 724).
+- shoot.py `errors: []`.
+- Frame time 154 ms (base 159 ms on the same machine).
+Open:
+- In old saves a boiling cup waits for fuel.
+- Islands still sail in, dock and leave, while Raft's islands stay fixed and you sail to them (the top world gap for next round).
+- The axe uses the generic tool swing.
+- The paddle can't be repaired with R.
+- coop.js's held-item list lacks paddle, axe and spear.
+- Rope never drops from barrels (Raft about 7%).
+- Raft wind never changes direction; ours shifts every 70-140 s.
+Next gaps: fixed-position islands, crafting tabs (Navigation, Food/Water), bed as a respawn point, tool durability (hook 40, rod 10), Tinker's Desk cost 14 planks + 2 scrap.
+
+## 2026-11-21 · loop-fidelity-202611210900 (raft fidelity, round 3)
+Base: raft-master 0cf1e15 merged with loop-fidelity-202611210821 (db942be7, ported by hand: import build suffixes, juicer coconut unified to Raft's +5/+20, dive gear oxy x drowning air).
+This branch carries round 2b too, so merge it instead of 202611210821.
+Claimed and landed:
+- **Islands stay put** (islands-layout.js, islands.js, sailing-world.js):
+  - An island sits at a fixed seabed position and moves only by the sailing seabed offset. You steer, paddle or anchor to reach it, or drift past it. The old dock timeline is gone.
+  - The first island spawns 60-80 m ahead and later ones 120-160 m, 20-40 m to the side.
+  - It despawns more than 150 m behind or more than 220 m away, but never while a player is on it.
+  - It shows a "Land ahead!" notice and a compass badge, and the raft can beach on it.
+  - Save format v2 (bx, bz); v1 saves migrate. The host owns spawn and despawn.
+- **Bed respawn point** (sleep.js spawn[role], content respawn hook): sleeping in a bed, or E on it by day, sets your respawn. A faint wakes you beside that bed if it still stands.
+- **Crafted anchor** (anchor-rules.js, anchor-model.js):
+  - Costs 2 wood + 4 rope + 4 stone and is placed on an edge tile. E drops or raises it; hammer + X takes it back.
+  - The raft can't drop anchor without one. Old anchored saves get one placed for free.
+- **Fishing rod** lasts 10 catches; it now wears per catch and breaks at 0.
+- **Six crafting tabs**: Tools, Sailing, Food, Parts, Build, Other. Every recipe sits in exactly one tab, and labels hide below 440 px.
+- **Barrel loot** follows Raft's shape: 4-6 items (plank 37.7, leaf 18.9, plastic 14.2, scrap 9.4, rope 7.1, stone 6.1, flower seed and coconut 3.3 each, plus 1 treasure roll).
+- **Tinker's Desk** costs 14 planks + 2 scrap.
+Fleet: 1 porter, 3 builders (worktrees), 2 reviewers.
+Review fixes:
+- a rod already at 0 never broke
+- islands dispose left the compass marker and blocker live
+- the anchor had a floating brace and no rope run
+- the compass island glyph read as "H"; the compass also jumped when its label changed
+- seven recipes had blank icons (rug, pennant, fern, hammock, glass lamp, receiver, sinker)
+- the land notice wrapped
+Checks:
+- npm test 1041/1041.
+- shoot.py `errors: []`; Esc from the inventory: no pause, still locked.
+- Frame time 151 ms vs raft-master 147 ms on the same machine (+3%, within pose noise).
+Open:
+- PlayerPhysics pulls you aboard at 50 m, so a drifting raft yanks you off an island.
+- migrateAnchor ignores grill tiles.
+- The palm planter and lantern onboarding steps may wait on the 14-plank desk in a fresh world; check it in play.
+- The anchor has no held model.
+- The sailing spec and engine docs still mention the anchor post.
+Next gaps: seagull crop raids + scarecrow (after the crops lane lands), swimming back to a drifting raft instead of the 50 m teleport, a hook range and reel speed check against Raft, a Medium Crop Plot, backpack +10 slots, constant wind direction.

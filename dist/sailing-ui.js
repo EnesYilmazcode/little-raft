@@ -1,13 +1,13 @@
-// Sailing HUD: a compass badge (wind, sail heading, north) plus a prompt line.
+// Sailing HUD: a compass badge (wind, sail heading, north, the nearest island) plus a prompt line.
 // Touches the DOM only when quantized values change.
 const NS = 'http://www.w3.org/2000/svg';
 const DEG = 180 / Math.PI;
 const CSS = `
-#sailBadge{position:fixed;top:64px;right:16px;z-index:30;display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;
+#sailBadge{position:fixed;top:64px;right:16px;z-index:30;display:flex;flex-direction:column;align-items:flex-end;/* compass never shifts with the label width */gap:4px;pointer-events:none;
   color:#f6ecd6;font:600 12px/1.3 var(--ui-font,system-ui,sans-serif);user-select:none}
 #sailBadge[hidden],#sailPrompt[hidden]{display:none}
 #sailBadge svg{width:84px;height:84px;display:block;border-radius:50%;background:rgba(43,30,18,.7);box-shadow:0 0 0 1.5px rgba(246,236,214,.5),0 4px 14px rgba(43,30,18,.3)}
-#sailBadge .sail-label{padding:2px 8px;border-radius:8px;background:rgba(43,30,18,.7);box-shadow:0 0 0 1px rgba(246,236,214,.5);white-space:nowrap}
+#sailBadge .sail-label{box-sizing:border-box;min-width:84px;text-align:center;padding:2px 8px;border-radius:8px;background:rgba(43,30,18,.7);box-shadow:0 0 0 1px rgba(246,236,214,.5);white-space:nowrap}
 #sailBadge .sail-dim{opacity:.3}
 #sailPrompt{position:fixed;left:calc(50% + 22px);top:calc(50% + 84px);text-align:left;padding:3px 10px;border-radius:8px;
   background:rgba(43,30,18,.7);box-shadow:0 0 0 1px rgba(246,236,214,.5);color:#f6ecd6;font:600 13px/1.3 var(--ui-font,system-ui,sans-serif);pointer-events:none;z-index:30;white-space:nowrap}
@@ -20,7 +20,13 @@ const SVG = '<circle cx="0" cy="0" r="38" fill="none" stroke="rgba(246,236,214,.
   + '<g data-k="w"><path d="M-3 22Q2 10-2 0T2-18" fill="none" stroke="#9fd8e6" stroke-width="3" stroke-linecap="round"/>'
   + '<path d="M2-27L-5-15L8-16Z" fill="#9fd8e6"/></g>'
   + '<g data-k="s"><path d="M0-36L-6-26H6Z" fill="#ffb355" stroke="#473b26" stroke-width=".8" stroke-linejoin="round"/></g>'
-  + '<path d="M0-6L4 5L0 3L-4 5Z" fill="#f6ecd6"/>';
+  + '<path d="M0-6L4 5L0 3L-4 5Z" fill="#f6ecd6"/>'
+  // Island: an upright round marker (sand hump + palm) moved around the ring like N; drawn last so it sits on
+  // top of the sail pointer and the ring ticks.
+  + '<g data-k="i" visibility="hidden"><circle r="7.4" fill="#2b1e12" stroke="#e8d29a" stroke-width="1.1"/>'
+  + '<path d="M-5.6 4.2Q0-.8 5.6 4.2Z" fill="#e8d29a"/>'
+  + '<path d="M.6 2.6Q1.6-.8-.2-3.8" fill="none" stroke="#c79a5e" stroke-width="1.3" stroke-linecap="round"/>'
+  + '<path d="M-.2-3.8Q-3-5.6-4.9-3M-.2-3.8Q2.6-5.6 4.6-3M-.2-3.8Q-1-6.6-3-6.2" fill="none" stroke="#86d06c" stroke-width="1.5" stroke-linecap="round"/></g>';
 
 export function createSailingUI({ signal } = {}) {
   if (typeof document === 'undefined') return { update() {}, setPrompt() {}, dispose() {} };
@@ -36,7 +42,7 @@ export function createSailingUI({ signal } = {}) {
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', '-42 -42 84 84'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false');
   svg.innerHTML = SVG;
-  const north = svg.querySelector('[data-k="n"]'), wind = svg.querySelector('[data-k="w"]'), sail = svg.querySelector('[data-k="s"]');
+  const north = svg.querySelector('[data-k="n"]'), wind = svg.querySelector('[data-k="w"]'), sail = svg.querySelector('[data-k="s"]'), isle = svg.querySelector('[data-k="i"]');
   const label = document.createElement('div'); label.className = 'sail-label'; label.setAttribute('aria-hidden', 'true');
   const live = document.createElement('div'); live.className = 'sail-sr'; live.setAttribute('aria-live', 'polite');
   badge.append(svg, label, live);
@@ -46,7 +52,7 @@ export function createSailingUI({ signal } = {}) {
 
   // Last-written quantized values (NaN forces the first write).
   let qN = NaN, qW = NaN, qWs = NaN, qS = NaN, sDim = null, shown = null, labelText = null, liveState = null, promptHtml = null;
-  let qSpeed = NaN, mode = '';
+  let qSpeed = NaN, mode = '', qI = NaN, iShown = false;
   const norm = d => ((d % 360) + 360) % 360;
   // World angle a (direction (sin a, cos a)) -> clockwise screen degrees, 0 = camera forward.
   const toScreen = (a, yaw) => norm(Math.round((Math.PI + yaw - a) * DEG));
@@ -67,6 +73,13 @@ export function createSailingUI({ signal } = {}) {
     if (w !== qW || ws !== qWs) { qW = w; qWs = ws; wind.setAttribute('transform', 'rotate(' + w + ') scale(' + ws + ')'); }
     const s = toScreen(+info.heading || 0, yaw);
     if (s !== qS) { qS = s; sail.setAttribute('transform', 'rotate(' + s + ')'); }
+    // Island marker on the ring: the bearing to the live island (islands.js -> sailing.markIsland).
+    const iOn = !!info.islandOn;
+    if (iOn !== iShown) { iShown = iOn; isle.setAttribute('visibility', iOn ? 'visible' : 'hidden'); }
+    if (iOn) { // moved around the ring, kept upright
+      const b = toScreen(+info.islandDir || 0, yaw);
+      if (b !== qI) { qI = b; const r = b / DEG; isle.setAttribute('transform', 'translate(' + (30 * Math.sin(r)).toFixed(1) + ' ' + (-30 * Math.cos(r)).toFixed(1) + ')'); }
+    }
     const hasSail = (info.nSails | 0) > 0;
     const motor = !info.anchored && +info.motor > .01; // engine: a running motor pushes along the heading
     const dim = !motor && (!hasSail || !info.raised || !!info.anchored);
