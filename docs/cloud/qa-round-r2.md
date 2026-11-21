@@ -73,3 +73,21 @@ Scripts (scratchpad): `qa2_shots.py`, `qa2_wind.py`, `qa2_inv.py`. Baseline run:
 The decor-pack Wind Pennant points about 90 degrees from downwind, while the Flagpole (and the sail's own pennant) point downwind.
 - **Evidence:** measured bearings of about 2.2 rad against a wind of 0.6 rad, versus 0.59 to 0.66 rad for the flag (issue 1), plus shots h3 and h4.
 - **Fix:** a one-line change at `dist/decor-pack.js:173`, adding `- Math.PI / 2`.
+
+## After fixes
+
+Re-shot with the same rig and scripts (`qa2_shots.py` modes `pick,flag,phone,sit,coop`; the `sit` mode now levels the gaze *before* sitting and no longer re-aims after, so e1 shows what the sit itself does). Updated JPEGs in `docs/cloud/shots/r2/`: a1, a2, c2, d2, e1, f2. `npm test`: 954 pass, 0 fail (two new tests: the sit pitch ease, and the emblem outline).
+
+| # | Issue | Status | What changed / evidence |
+|---|---|---|---|
+| 1 | Pennant 90 degrees off the wind | Fixed earlier | Not touched in this pass. |
+| 2 | Seated partner's legs straight, feet floating | **Fixed** | `avatar.js`: each leg has a `leftKnee`/`rightKnee` pivot 0.3 m below the hip holding the shin and shoe (the rest pose is unchanged). `coop-avatar.js` bakes the knees as their own pivots (10 draw calls instead of 8) and sets `knee.rotation.x = 1.45 * A.sit`, so the thighs are level, the shins hang, and the shoes rest on the deck (f2). |
+| 3 | No seated cue on a bench | **Fixed (stronger pitch)** | `sitting.js` eases the pitch once on sitting, over about 0.5 s, only if the view is above the target. `game.js` exposes `ctx.pitch` and `ctx.facePitch`. The ease stops as soon as the pitch differs from the value it last set (the player moved the mouse), so it never fights the mouse. **The target is -0.45, not -0.22:** at -0.22 an edge bench still showed only sea, because the deck is about 1 m deep in front of the seat and the hotbar covers the bottom of the frame. At -0.45 the deck edge shows above the hotbar (e1). |
+| 4 | Pickup ghost reads as a solid salmon item | **Fixed** | `game.js` `hideDecorUnder()` hides the matching `decorGroups` entry while the remove ghost shows and restores it when the aim leaves, X is released, the item is swapped, or the raft is rebuilt. It looks the group up only when the target changes. Raycasts still hit the hidden group (three.js ignores `visible`). The red ghost now shows the deck through it (a1, a2). Probe: visible goes true, then false while X is held, then true on aim away, false on aim back, and true on item swap, and the decor is kept. |
+| 5 | Card shows "Foundation 2 wood…" and a stale "Point at an empty space" hint | **Fixed** | `build-menu.js` adds `setTarget(name, verb, id)`. `building.js` uses it to name the target, showing "Crate · Pick up" for decor (the icon tile is hidden) and "Wall · Remove" with the piece icon for pieces. It restores the recipe card afterwards. `pickup-feed.js` adds `dismiss(text)`, and `game.js` dismisses the hammer place hint on the X-down edge (a1: no stale line). |
+| 6 | Partner nameplate overlaps the top banner up close | **Fixed** | The tag opacity is multiplied by `smooth((level distance - 2.1) / 0.7)`, so it is hidden within 2.1 m and full from about 2.8 m (the 40 m far fade is unchanged). It is gone in f2 (about 2 m) and still shown in f1. |
+| 7 | Emblem disappears on a same-coloured pattern | **Fixed** | `paintFlag` strokes the emblem path (2 px outer edge at 64 px tall, round joins) under the fill. The stroke uses the background colour, or cream or dark teal when the emblem matches the background. The cream shell on cream stripes now reads clearly (c2). |
+| 8 | Phone dialog rows orphan | **Fixed** | Under `@media (max-width:420px)` the option rows are grids: 8 swatches on one row (they shrink on narrower phones), patterns 3+3, and emblems 5+4. At 390x844 the dialog is 367x633 (it was 728 tall) with no horizontal scroll (d2). |
+| 9, 10 | | Skipped | As agreed. |
+
+**Console:** no new errors. The pick run sometimes logs `Cannot read properties of undefined (reading 'isReady')` from three.js `compileAsync` (from `warmKinds()` shader warm-up). It reproduces on the stashed pre-fix `dist/` too (1 in 3 runs), so it is an existing SwiftShader race and these changes did not cause it.

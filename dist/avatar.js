@@ -113,15 +113,20 @@ export function createAvatar(T, colorOrLook) {
   const shortLegGeo = geo(new T.CylinderGeometry(0.1, 0.11, 0.25, 8));
   const legGeo = geo(new T.CylinderGeometry(0.065, 0.058, 0.5, 8));
   const shoeGeo = geo(new T.SphereGeometry(0.075, 10, 6));
+  const KNEE = 0.3; // knee pivot, below the hip
   const makeLeg = (side) => {
     const hip = new T.Group();
     hip.name = side < 0 ? 'leftLeg' : 'rightLeg';
     hip.position.set(0.1 * side, 0.8, 0);
     add(hip, shortLegGeo, M.shorts, 0, -0.125, 0);
-    add(hip, legGeo, M.skin, 0, -0.47, 0);
-    const shoe = add(hip, shoeGeo, M.shoe, 0, -0.755, 0.035);
+    const knee = new T.Group(); // shin + shoe pivot (co-op sitting bends it); rest pose matches the old straight leg
+    knee.name = side < 0 ? 'leftKnee' : 'rightKnee';
+    knee.position.set(0, -KNEE, 0); hip.add(knee);
+    add(knee, legGeo, M.skin, 0, -0.47 + KNEE, 0);
+    const shoe = add(knee, shoeGeo, M.shoe, 0, -0.755 + KNEE, 0.035);
     shoe.scale.set(1, 0.6, 1.5); // bottom lands exactly at y = 0
     root.add(hip);
+    hip.userData.knee = knee;
     return hip;
   };
   // Avatar faces +Z, so its left side is +X.
@@ -276,7 +281,7 @@ export function createAvatar(T, colorOrLook) {
     head.rotation.x = -Math.max(-0.6, Math.min(0.6, pitch)) * 0.5 * (1 - swim) - 0.6 * swim;
   }
 
-  root.userData.parts = { head, leftArm, rightArm, leftLeg, rightLeg };
+  root.userData.parts = { head, leftArm, rightArm, leftLeg, rightLeg, leftKnee: leftLeg.userData.knee, rightKnee: rightLeg.userData.knee };
   root.userData.setHeld = setHeld;
   root.userData.animate = animate;
   root.userData.eyeHeight = 1.65;

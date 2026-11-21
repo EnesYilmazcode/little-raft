@@ -97,6 +97,8 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
       const row = rows.get('k:' + kind); if (!row?.box) return;
       const ic = icon(kind); if (ic) row.box.replaceChildren(ic);
     },
+    /** Fade out a live text note early (a hint that no longer applies). */
+    dismiss(text) { const k = 't:' + String(text ?? '').trim().slice(0, 90), row = rows.get(k); if (row) drop(k, row); },
     clear() { for (const [k, r] of [...rows]) { rows.delete(k); clear(r.hold); r.el.remove(); } },
     get rows() { return [...rows.values()].map(r => r.label.textContent); },
   };
@@ -110,6 +112,7 @@ export const pickupFeed = Object.freeze({
   note: text => feed().note(text),
   setIconProvider: fn => feed().setIconProvider(fn),
   refresh: kind => shared?.refresh(kind),
+  dismiss: text => shared?.dismiss(text),
   clear: () => feed().clear(),
   get rows() { return shared ? shared.rows : []; },
 });

@@ -315,7 +315,9 @@ export function mount(transfer = null) {
   let joinTimer = 0, joinDeadline = Number.isFinite(X?.joinDeadline) ? X.joinDeadline : 0;
   let waterClock = 0, waterAim = null; const wateringGroups = new Map(); // tileKey -> palm/purifier group
   const decorGroups = [], undecorHits = []; let hostCaps = null, hostUndecor = false, undecorPreview = null, undecorD = null, undecorText = '', undecorAct = null; // [undecor] decor meshes (rebuildRaft), guest's last host caps, QA preview tile, cached chip/action per target
-  const undecorOut = {text:'', action:null, d:null, deny:null}; // [undecor] reused every frame
+  const undecorOut = {text:'', action:null, d:null, deny:null, name:''}; // [undecor] reused every frame
+  let undecorHid = null, undecorHidD = null, undecorName = '', wasRemoving = false; // [undecor] real decor hidden under the pickup ghost; chip name; X edge
+  const HAMMER_HINT = 'Point at an empty space beside the raft';
   let netClock = 0, lastSaveAt = performance.now(), lastNetSendAt = 0, toastTimer = 0, wheelAcc = 0, peerHidden = !!X?.peerHidden, heartbeat = 0;
   let noticeText = '', noticeUntil = 0, noticeCache = null, contextCache = null, uiFailed = false; let fishShown = null;
   const hintsDone = X?.hintsDone instanceof Set ? X.hintsDone : freshSave ? new Set() : loadHints(window.localStorage); // loop-ux: first-run hint chain, once per save
@@ -431,7 +433,7 @@ export function mount(transfer = null) {
     get building() { return building; }, get brush() { return hands?.itemModel('brush') ?? null; }, woodMat: c => woodMat(c), aim: () => frameAim, // content hook (paint)
     openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
     hurtPlayer: (n, cause) => hurtPlayer(n, cause), get vitals() { return vitals; }, // [vitals] damage the LOCAL player; vitals is read-only for modules
-    faceYaw: y => { if (Number.isFinite(y)) yaw = y; }, award: ev => award(ev), // [sit] seat facing + host achievements
+    faceYaw: y => { if (Number.isFinite(y)) yaw = y; }, get pitch() { return pitch; }, facePitch: p => { if (Number.isFinite(p)) pitch = clamp(p, -PITCH_LIMIT, PITCH_LIMIT); }, award: ev => award(ev), // [sit] seat facing + host achievements
   };
   function init() {
     const assetBuild = new URL(import.meta.url).searchParams.get('build') || 'dev'; document.querySelectorAll('use[href*="icons.svg"]').forEach(el => el.setAttribute('href', 'icons.svg?build=' + assetBuild + '#' + el.getAttribute('href').split('#')[1]));
@@ -935,10 +937,10 @@ export function mount(transfer = null) {
       d = targetFromAim(world.decor, key, key ? null : frameAim?.point);
     }
     if (!d) { undecorD = null; return null; }
-    if (!undecorD || d.x !== undecorD.x || d.z !== undecorD.z || d.type !== undecorD.type) { undecorText = 'Release X to pick up the ' + (ITEM_INFO[d.type]?.name ?? d.type); undecorAct = {kind:'undecor', x:d.x, z:d.z, t:d.type}; }
+    if (!undecorD || d.x !== undecorD.x || d.z !== undecorD.z || d.type !== undecorD.type) { undecorName = ITEM_INFO[d.type]?.name ?? d.type; undecorText = 'Release X to pick up the ' + undecorName; undecorAct = {kind:'undecor', x:d.x, z:d.z, t:d.type}; }
     undecorD = d;
     const old = role === 'guest' && !hostUndecor;
-    undecorOut.d = d; undecorOut.action = old ? null : undecorAct; undecorOut.deny = old ? denyOldHost : null;
+    undecorOut.d = d; undecorOut.name = undecorName; undecorOut.action = old ? null : undecorAct; undecorOut.deny = old ? denyOldHost : null;
     undecorOut.text = old ? UNDECOR_TEXT.oldHost : !inReach(physics.x, physics.z, d.x, d.z, BUILD_REACH) ? UNDECOR_TEXT.reach : coreUndecorBlock(world, d) || undecorText;
     return undecorOut;
   }
@@ -1303,7 +1305,7 @@ export function mount(transfer = null) {
     }
     if (kind === 'hammer' || DECOR_TYPES.includes(kind)) {
       const v = placementFor(kind, p);
-      if (!v) { notice(kind === 'hammer' ? 'Point at an empty space beside the raft' : 'Point at an empty raft floor'); return; }
+      if (!v) { notice(kind === 'hammer' ? HAMMER_HINT : 'Point at an empty raft floor'); return; }
       if (v.blocked) { notice(BLOCK_TEXT[v.blocked]); return; }
       if (kind === 'hammer' && !canAfford(bag, FLOOR_COST)) { notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
       swing = 1; ghostHold = {kind, x:v.x, z:v.z, rot:kind === 'hammer' ? 0 : placeRot}; action({kind:'build', recipe:kind === 'hammer' ? 'floor' : kind, x:v.x, z:v.z, ...(kind !== 'hammer' && placeRot ? {rot:placeRot} : {})}); return;
@@ -1601,13 +1603,25 @@ export function mount(transfer = null) {
     hookStage = hook.stage;
     if (hook.stage === 'done') endHook();
   }
+  // [undecor] hide the real decor while its red pickup ghost shows (so the ghost reads as see-through), restore after.
+  // Re-finds the group only when the target or the raft rebuild changes (decorGroups is refilled by rebuildRaft).
+  function hideDecorUnder(d) {
+    if (d === undecorHidD && (!undecorHid || undecorHid.parent)) return;
+    if (undecorHid) undecorHid.visible = true;
+    undecorHid = null; undecorHidD = d;
+    if (!d) return;
+    const k = tileKey(d.x, d.z);
+    for (let i = 0; i < decorGroups.length; i++) if (decorGroups[i].userData.tileKey === k) { undecorHid = decorGroups[i]; undecorHid.visible = false; break; }
+  }
   function updateGhost() {
     const kind = heldKind();
     const pieces = kind === 'hammer' && !hook && building && building.piece !== 'foundation'; // building-pieces lane hook
     if (undecorPreview && kind === 'hammer' && !building?.removing) building?.key('KeyX', true, true); // [undecor] QA preview holds X
     building?.update(raft, frameAim, camera.position, running && kind === 'hammer' && !hook && !uiBlocked(), localBag(), yaw, deckY());
     spearRep?.updateAim(hook ? null : kind, frameAim); spearRep?.tick(); // [spear-repair]
-    const undecorEx = building?.removing ? building.removeExtra : null; // [undecor] red see-through ghost of the aimed decor
+    const removing = !!building?.removing; if (removing && !wasRemoving) pickupFeed.dismiss(HAMMER_HINT); wasRemoving = removing; // [undecor] X held: the place hint no longer applies
+    const undecorEx = removing ? building.removeExtra : null; // [undecor] red see-through ghost of the aimed decor
+    hideDecorUnder(undecorEx?.d ?? null);
     if (undecorEx?.d) { const d = undecorEx.d; hover = null; ghostHold = null; ghosts.show(d.type, d.x * 2, .22, d.z * 2, d.rot || 0, false, elapsed); return; }
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing ? placementFor(kind, frameAim.point) : null;
     const floor = kind === 'hammer';

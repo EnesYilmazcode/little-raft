@@ -98,6 +98,10 @@ export function createBuilding(T, scene) {
       }
     }
     if (text !== chipText) { chipText = text; menu.setChip(text); }
+    // [undecor] the card names what X would take away (strings are cached per target; no per-frame allocation)
+    if (removeTarget) menu.setTarget?.(PIECES[removeTarget.t].name, 'Remove', removeTarget.t);
+    else if (removeExtra?.d && removeExtra.name) menu.setTarget?.(removeExtra.name, 'Pick up', null);
+    else menu.setTarget?.(null);
   }
   // Paint (content hook): instance colours only; the shared material colour is never touched.
   function retint() {
