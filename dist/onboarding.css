@@ -73,9 +73,11 @@ body:has(#welcome.ob-on:not([hidden])) header{display:none!important}
 .ob-item{all:unset;box-sizing:border-box;position:relative;display:flex;flex-direction:column;justify-content:center;min-height:44px;padding:4px 14px 4px 16px;
   cursor:pointer;font:600 18px/1.2 var(--ui-font,system-ui,sans-serif);color:#f6ecd6;text-shadow:0 1px 3px rgba(0,0,0,.75);transition:transform .16s ease,color .16s ease}
 .ob-item::before{content:"";position:absolute;left:0;top:50%;width:3px;height:0;border-radius:2px;background:#e9a640;transform:translateY(-50%);transition:height .16s ease}
-.ob-item:hover,.ob-item:focus-visible{transform:translateX(6px);color:#fff7e4}
-.ob-item:hover::before,.ob-item:focus-visible::before,.ob-item:focus::before{height:26px}
-.ob-item:focus-visible{outline:2px solid #ffc96b;outline-offset:2px;border-radius:3px}
+.ob-item:hover,.ob-menu:not(:has(.ob-item:hover)) .ob-item:focus-visible{transform:translateX(6px);color:#fff7e4}
+/* One highlight per menu: the hovered item, else the focused one (focus styles drop while another item is hovered) */
+.ob-item:hover::before,.ob-menu:not(:has(.ob-item:hover)) .ob-item:focus::before{height:26px}
+.ob-menu:not(:has(.ob-item:hover)) .ob-item:focus-visible{outline:2px solid #ffc96b;outline-offset:2px;border-radius:3px}
+.ob-menu:has(.ob-item:hover) .ob-item:focus-visible:not(:hover){outline:0}
 .ob-item:disabled{cursor:default;opacity:.45;transform:none}
 .ob-item small{display:block;margin-top:2px;font:500 11px/1.2 var(--ui-font,system-ui,sans-serif);color:#a9b3b8;letter-spacing:.02em}
 .ob-item.ob-confirm{color:#ffc96b}
@@ -98,7 +100,7 @@ body:has(#welcome.ob-on:not([hidden])) header{display:none!important}
   .ob-row.ob-out{max-height:0}
   body.playing .ob-notes,.ob-logo,.ob-menu,.ob-shimmer .ob-ch{animation:none!important}
   .ob-shimmer .ob-ch{color:#ffc96b}
-  .ob-item:hover,.ob-item:focus-visible{transform:none}
+  .ob-item:hover,.ob-menu:not(:has(.ob-item:hover)) .ob-item:focus-visible{transform:none}
 }
 
 /* --- Notes as a manual popover (onboarding.js, review lane): undo the UA [popover] box (inset:0;margin:auto;border;

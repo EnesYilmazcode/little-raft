@@ -73,11 +73,12 @@ const CSS = `
 #options .rs-eyebrow{font:600 11px/1 var(--ui-font);letter-spacing:3.2px;color:var(--bronze-lt,#c9a46b);margin-bottom:10px}
 #options .rs-menu h2{margin:0 0 30px;padding-right:28px;font:600 clamp(34px,4vw,52px)/1 var(--display-font,Georgia,serif);color:var(--cream,#f1e7d0);text-shadow:0 2px 14px rgba(0,0,0,.5)}
 #options .rs-menu button{position:relative;display:block;width:100%;text-align:left;cursor:pointer;background:none;border:0;border-radius:0;box-shadow:none;
-  padding:11px 0 11px 22px;color:var(--cream-dim,#c9bfa8);font:600 clamp(20px,2vw,26px)/1.15 var(--display-font,Georgia,serif);transition:color .12s,padding .12s}
+  padding:11px 0 11px 22px;color:var(--cream-dim,#c9bfa8);font:600 clamp(18px,1.8vw,23px)/1.15 var(--ui-font,system-ui,sans-serif);transition:color .12s,padding .12s}
 #options .rs-menu button::before{content:"";position:absolute;left:0;top:50%;width:10px;height:2px;background:var(--amber,#e9a640);opacity:0;transform:translateY(-50%) scaleX(.2);transform-origin:left;transition:.12s}
-#options .rs-menu button:hover,#options .rs-menu button:focus-visible,#options .rs-menu button[aria-expanded=true]{color:var(--amber-lt,#ffc96b);padding-left:28px;transform:none;outline:0;
+#options .rs-menu button:hover,#options .rs-menu:not(:has(button:hover)) button:focus-visible,#options .rs-menu:not(:has(button:hover)) button[aria-expanded=true]{color:var(--amber-lt,#ffc96b);padding-left:28px;transform:none;outline:0;
   background:linear-gradient(90deg,rgba(233,166,64,.14),rgba(233,166,64,0) 85%)}
-#options .rs-menu button:hover::before,#options .rs-menu button:focus-visible::before,#options .rs-menu button[aria-expanded=true]::before{opacity:1;transform:translateY(-50%) scaleX(1)}
+#options .rs-menu button:hover::before,#options .rs-menu:not(:has(button:hover)) button:focus-visible::before,#options .rs-menu:not(:has(button:hover)) button[aria-expanded=true]::before{opacity:1;transform:translateY(-50%) scaleX(1)}
+#options .rs-menu:has(button:hover) button:focus-visible:not(:hover){outline:0} /* one highlight: the hovered item only, never the focused one as well */
 #options .rs-title [data-act=resume],#options .rs-title [data-act=quit]{display:none}
 #options .rs-menu .rs-quit{margin-top:22px;border-top:1px solid rgba(201,164,107,.18);padding-top:20px;font-size:clamp(16px,1.5vw,19px);color:var(--muted,#8f9aa0)}
 #options .rs-panel{width:min(520px,100%);max-height:calc(100vh - 80px);overflow:auto;padding:22px 24px 24px;border-radius:6px;background:var(--plate-strong,rgba(8,17,26,.92));
