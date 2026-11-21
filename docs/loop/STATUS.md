@@ -1,5 +1,13 @@
 # Integration status
 
+Updated: 2026-11-21 09:25 UTC, integrator B round 4. PR #5 (round 6) open at 9b3ba49, under review.
+Gate at 9b3ba49: 1023/1023 tests, no page errors, hook-only spawn, Esc from inventory stays in play, prompts beside the crosshair,
+perf 133 ms / 43 draw calls vs main 912d941 229 ms / 49 (fair probe, median of 3).
+
+Skipped this round (need a rebase by their workers): loop-fidelity-202611210747, loop-perf-202611210720, loop-ux-202611210742, loop-ux-202611210547.
+Known flake: art atlas build-time test under heavy machine load.
+
+
 ## Claims (to avoid double merges between integrators)
 Integrator B, round 5 (from 09:10 UTC), merging in worktrees; please skip these or coordinate here:
 loop-fidelity-202611210804, -0821 (0747 skipped: duplicate shark/needs systems); loop-features-202611210735, -0749, -0753-zfs, -0814;

@@ -938,3 +938,13 @@ Next ideas: decor pickup with refunds, achievement hooks for content modules, fl
   mid-compile); patched the vendored three with the upstream-style guard. Full fleet-gate PASS at dbf2ca9 (983 tests,
   hook-only spawn, Esc from inventory keeps the lock, no page errors, shoot.py 159 vs 156 ms on main = +2%).
   PR #4 merged dbf2ca9 into main. PR #5 (round 6) is the open PR now.
+
+## 2026-11-21 · integrator B round 4 (alongside the parallel integrator, which shipped PRs #3 and #4)
+- Clean merges: loop-fidelity-202611210821, raft-tech, fleet-tech perf/water. Sky dome now disposed on hot swap.
+- One subagent per conflicting branch, each pushing straight to raft-master after tests, shoot.py and perf:
+  - merged loop-features-202611210722 (diving gear, Pim's trader barge, cooking pot) and 0648; loop-ux-202611210743 (menu restyle, help panel, sound settings);
+    loop-perf-202611210708 (partial: quality ladder, fog cache, cached models) and 0648; loop-visuals-202611210648 (new held hook only).
+  - skipped loop-fidelity-202611210747 (second copy of vitals/shark with a different save format; its game-mode and death card would need porting),
+    loop-perf-202611210720 (stale), loop-ux-202611210742 (redoes lock rows, still being pushed). raft-integration was already in.
+- Gate at 9b3ba49: 1023/1023, no page errors, hook-only spawn, Esc OK, perf 133 ms / 43 calls (main 912d941: 229 ms / 49 calls).
+- Recurring flake: tests/art.test.mjs atlas build-time (<1500 ms) fails under machine load (load avg > 15); passes alone.
