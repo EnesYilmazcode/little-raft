@@ -34,13 +34,17 @@ world = {
     'hostInventory': bag, 'guestInventory': {'slots': [None] * 28, 'selected': 0},
 }
 report = {'errors': [], 'console': [], 'shots': [], 'steps': {}}
-def shot(page, name):
-    p = out / f'{name}.png'; page.screenshot(path=str(p)); report['shots'].append(str(p))
+def shot(page, name, around=None):  # around=(x, y, z): crop a close-up of that world point
+    p = out / f'{name}.png'; clip = None
+    if around:
+        s = page.evaluate(f'raftDebug.project({around[0]},{around[1]},{around[2]})')
+        clip = {'x': max(0, s['x'] - 160), 'y': max(0, s['y'] - 150), 'width': 320, 'height': 220}
+    page.screenshot(path=str(p), clip=clip, timeout=120000); report['shots'].append(str(p))
 def farm(page): return {f"{d['x']},{d['z']}": [d['s'], round(d['w']), d['shown']] for d in page.evaluate('raftDebug.state.farm')}
 def counts(page): s = page.evaluate('raftDebug.state.stock'); return {k: s.get(k, 0) for k in ('water', 'cup', 'seed', 'leaf')}
 def aim(page, x, y, z):
-    s = page.evaluate(f'raftDebug.project({x},{y},{z})'); page.mouse.move(s['x'], s['y']); page.wait_for_timeout(150)
-def click(page, x, y, z): aim(page, x, y, z); page.mouse.down(); page.mouse.up(); page.wait_for_timeout(400)
+    s = page.evaluate(f'raftDebug.project({x},{y},{z})'); page.mouse.move(s['x'], s['y']); page.wait_for_timeout(700)
+def click(page, x, y, z): aim(page, x, y, z); page.mouse.down(); page.mouse.up(); page.wait_for_timeout(900)
 
 with sync_playwright() as p:
     b = p.chromium.launch(channel='chrome', headless=True, args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'])
@@ -48,13 +52,14 @@ with sync_playwright() as p:
     page.on('pageerror', lambda e: report['errors'].append(str(e)))
     page.on('console', lambda m: m.type in ('error', 'warning') and report['console'].append(m.text[:300]))
     seed = json.dumps(json.dumps(world))  # init script: lands before the game reads it, and beforeunload saves cannot clobber it
+    page.add_init_script('delete Element.prototype.requestPointerLock')  # cursor aiming, so the mouse does not turn the camera
     page.add_init_script(f"if (!sessionStorage.getItem('farmSeeded')) {{ sessionStorage.setItem('farmSeeded', '1'); localStorage.setItem('little-raft-v1', {seed}); }}")
     page.goto(url)
     page.wait_for_function('!!window.raftDebug', timeout=20000)
-    page.locator('#solo').click(); page.wait_for_function('raftDebug.state.running', timeout=15000)
+    page.evaluate("document.querySelector('#solo').click()"); page.wait_for_function('raftDebug.state.running', timeout=15000)
     page.wait_for_timeout(1200)
     report['steps']['loaded'] = farm(page)
-    shot(page, '01-stages')
+    shot(page, '01-stages'); shot(page, '02-seedling-dry', (0, .7, -2))
     report['me'] = page.evaluate('raftDebug.state.me')
     # water the dry seedling at (0,-2)
     page.keyboard.press('2'); page.wait_for_timeout(200)
@@ -62,7 +67,7 @@ with sync_playwright() as p:
     report['steps']['prompt'] = page.evaluate("document.querySelector('#contextPrompt')?.textContent")
     click(page, 0, .72, -2)
     report['steps']['watered'] = {'farm': farm(page), 'bag': counts(page)}
-    shot(page, '04-watered')
+    page.mouse.move(5, 5); page.wait_for_timeout(300); shot(page, '04-seedling-watered', (0, .7, -2))
     # harvest the legacy palm at (-1,-2) with E
     page.keyboard.press('1'); aim(page, -2, .9, -2); page.keyboard.press('e'); page.wait_for_timeout(400)
     report['steps']['harvested'] = {'farm': farm(page), 'bag': counts(page)}
@@ -79,7 +84,7 @@ with sync_playwright() as p:
     shot(page, '06-after-growth')
     page.wait_for_timeout(3500)
     page.reload(); page.wait_for_function('!!window.raftDebug', timeout=20000)
-    page.locator('#solo').click(); page.wait_for_function('raftDebug.state.running', timeout=15000); page.wait_for_timeout(800)
+    page.evaluate("document.querySelector('#solo').click()"); page.wait_for_function('raftDebug.state.running', timeout=15000); page.wait_for_timeout(800)
     report['steps']['after-reload'] = farm(page)
     b.close()
 srv.shutdown()
