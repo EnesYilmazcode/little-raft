@@ -256,3 +256,64 @@ test('items: the scarecrow crafts from its cost and has a 0.25 m radius', () => 
   assert.equal(bag.canCraft('scarecrow').ok, true); assert.ok(bag.craft('scarecrow')); assert.equal(bag.count('scarecrow'), 1);
   assert.equal(BLOCK_RADII.scarecrow, 0.25);
 });
+
+// ---------------------------------------------------------------- review fixes
+
+test('review: a game aim (with decor) uses the watering planter, never a neighbour', () => {
+  const { ctx, setMod } = stubCtx(), wild = fakeWild();
+  const m = createScarecrow(ctx, n => (n === 'wildlife' ? wild : null)); setMod(m);
+  wild.list = [{ i: 0, key: '0,0' }]; m.update(1);
+  assert.deepEqual([...m.pecked], ['0,0']);
+  const away = { x: 0, y: 1, z: 0 }; // the ray fallback would miss: only aim.decor counts
+  assert.ok(m.palmPrompt({ dir: away, decor: { key: '0,0', type: 'palm', x: 0, z: 0 } }, 'Growing… (watered)'));
+  assert.equal(m.palmPrompt({ dir: AIM.dir, decor: { key: '1,0', type: 'palm', x: 1, z: 0 } }, 'Growing… (watered)'), null, 'the other planter is aimed');
+  assert.equal(m.interact({ dir: AIM.dir, decor: { key: '0,0', type: 'purifier', x: 0, z: 0 } }), false, 'a purifier E falls through');
+  assert.equal(m.interact({ dir: AIM.dir, decor: null }), false, 'nothing aimed: E falls through');
+  ctx.physics = { x: 0, y: 1.7, z: 8 };
+  assert.equal(m.interact({ dir: AIM.dir, decor: { key: '0,0', type: 'palm', x: 0, z: 0 } }), false, 'out of reach');
+  ctx.physics = { x: 0, y: 1.7, z: 2.5 };
+  assert.equal(m.interact({ dir: away, decor: { key: '0,0', type: 'palm', x: 0, z: 0 } }), true);
+  assert.deepEqual(ctx.actions.at(-1), { kind: 'scarecrow.shoo', x: 0, z: 0 });
+});
+
+test('review: the shoo prompt reaches window.raftPrompts (contextPrompt is hidden); dispose cleans up', () => {
+  const prev = globalThis.window; let rec = null, removed = 0;
+  globalThis.window = { raftPrompts: { provide: o => { rec = o; return () => { removed++; }; } } };
+  try {
+    const { ctx, setMod } = stubCtx(), wild = fakeWild();
+    const m = createScarecrow(ctx, n => (n === 'wildlife' ? wild : null)); setMod(m);
+    assert.equal(rec.id, 'scarecrow'); assert.ok(rec.priority >= 1);
+    const aim = { dir: AIM.dir, decor: { key: '0,0', type: 'palm', x: 0, z: 0 } };
+    m.update(1); m.palmPrompt(aim, 'Growing… (watered)');
+    assert.equal(rec.prompt({ state: {} }), null, 'not pecked');
+    wild.list = [{ i: 0, key: '0,0' }]; m.update(1); m.palmPrompt(aim, 'Growing… (watered)');
+    assert.deepEqual(rec.prompt({ state: {} }), [{ key: 'E', label: 'Shoo the gull' }, { label: 'Growing… (watered)', muted: true }]);
+    assert.equal(rec.prompt({ state: { pickup: { type: 'wood' } } }), null, 'pick-up wins');
+    m.update(0); assert.equal(rec.prompt({ state: {} }), null, 'looked away: no palmPrompt this frame');
+    assert.equal(wild.pecking, m.pecked);
+    m.dispose(); assert.equal(removed, 1); assert.equal(wild.pecking.size, 0, 'no stale head-bob');
+  } finally { if (prev === undefined) delete globalThis.window; else globalThis.window = prev; }
+});
+
+test('review: gulls 0-2 land on the same planters on every quality setting', () => {
+  const run = graphics => {
+    const ctx = wildCtx(); ctx.options = { graphics }; const w = createWildlife(ctx), buf = [], out = [];
+    for (let slot = 0; slot < 60; slot++) for (let s = 0; s < GULL_SLOT; s += 0.5) {
+      w.debug.setTime(slot * GULL_SLOT + s); w.update(0);
+      w.onPalm(buf); if (buf.length) out.push(slot * GULL_SLOT + s + ':' + buf.map(e => e.i + '@' + e.key).join('|'));
+    }
+    w.dispose(); return out;
+  };
+  const low = run('low');
+  assert.ok(low.length > 0);
+  assert.deepEqual(run('high'), low); assert.deepEqual(run('medium'), low);
+});
+
+test('review: no exceptions without a garden or decor', () => {
+  const { ctx } = stubCtx(); delete ctx.world.garden; const wild = fakeWild(); wild.list = [{ i: 0, key: '0,0' }];
+  const m = createScarecrow(ctx, n => (n === 'wildlife' ? wild : null));
+  for (let k = 0; k < 3; k++) m.update(1);
+  assert.equal(m.pecked.size, 0);
+  ctx.world = {}; m.update(1); assert.equal(m.interact(AIM), false); assert.equal(m.palmPrompt(AIM, 'x'), null);
+  ctx.world = null; m.update(1); assert.equal(m.interact({ decor: { type: 'palm', x: 0, z: 0 } }), false);
+});

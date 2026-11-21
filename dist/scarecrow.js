@@ -90,6 +90,15 @@ export function createScarecrow(ctx, peer) {
   const find = name => (typeof peer === 'function' ? peer(name) : null);
   let st = freshState(), pecked = new Set(), r = 0, clock = 0, acc = 0, cache = null, cacheR = -1;
   let netP = [], netSet = new Set(), hostHasScarecrow = true;
+  // #contextPrompt is hidden by prompts.css, so the shoo prompt reaches the screen through window.raftPrompts:
+  // palmPrompt (game.js updateContext, after update() in the same frame) records the aimed pecked planter.
+  let aimKey = null, aimLabel = '', unprompt = null;
+  function promptFor(pc) {
+    const s = pc && pc.state;
+    if (!aimKey || oldHost() || !isPecked(aimKey) || (s && (s.pickup || s.swimming))) return null;
+    return aimLabel ? [{ key: 'E', label: 'Shoo the gull' }, { label: aimLabel, muted: true }] : { key: 'E', label: 'Shoo the gull' };
+  }
+  try { unprompt = globalThis.window?.raftPrompts?.provide?.({ id: 'scarecrow', priority: 1, prompt: promptFor }) ?? null; } catch { unprompt = null; }
   const buf = [], EMPTY = new Set();
   const crows = new Map(); // tile key -> craft_scarecrow group in ctx.raft
   let scanLen = -1, scanFirst = null, scanRaft = null;
@@ -181,6 +190,7 @@ export function createScarecrow(ctx, peer) {
     name: 'scarecrow',
     get pecked() { return pecked; },
     update(dt) {
+      aimKey = null; // set again by this frame's palmPrompt
       if (T) animate();
       if (ctx.running && !guest()) {
         const s = dt > 0 && Number.isFinite(dt) ? Math.min(dt, 1) : 0;
@@ -210,6 +220,7 @@ export function createScarecrow(ctx, peer) {
       if (oldHost()) return null;
       const t = target(aim); if (!t || !isPecked(t.key)) return null;
       const rest = typeof base === 'string' ? base.replace(KBD_RE, '') : '';
+      aimKey = t.key; aimLabel = rest.replace(/<[^>]*>/g, '').trim();
       return '<kbd>E</kbd>Shoo the gull' + (rest ? ' · ' + rest : '');
     },
     interact(aim) {
@@ -236,6 +247,7 @@ export function createScarecrow(ctx, peer) {
     debug: {
       state: () => ({ ...JSON.parse(JSON.stringify(st)), pecked: [...pecked], netP: [...netP], clock }),
       target: aim => target(aim),
+      prompt: () => promptFor(null), // what window.raftPrompts shows for the shoo
       /** Host QA: two watered palms by the player and a scarecrow 3 tiles off (or 1 tile with protect). */
       scene({ protect = false } = {}) {
         const w = ctx.world; if (guest() || !w || !Array.isArray(w.tiles) || !Array.isArray(w.decor)) return null;
@@ -281,7 +293,11 @@ export function createScarecrow(ctx, peer) {
         return true;
       },
     },
-    dispose() { crows.clear(); },
+    dispose() {
+      crows.clear(); aimKey = null;
+      try { unprompt?.(); } catch {} unprompt = null;
+      const wild = find('wildlife'); if (wild && (wild.pecking === pecked || wild.pecking === netSet)) wild.pecking = EMPTY; // no stale head-bob
+    },
   };
   return mod;
 }
