@@ -300,8 +300,11 @@ are always present, so every lit material evaluates four extra lights. That is t
 frame-time cost; it is fixed and never recompiles shaders. Frame time under headless SwiftShader
 on a heavily loaded 4-core sandbox (load average ~15, so the numbers are noisy): baseline stub
 ~1.1 to 1.7 s per frame, this module ~1.8 s by day and ~2.0 s at night with three lanterns. That is
-roughly +10 to 30%, almost all from per-fragment lighting in software GL. The per-frame update
-does no allocation and stays well under 0.1 ms of JS.
+roughly +10 to 30%, almost all from per-fragment lighting in software GL. `update()` contains
+no `new`, literals, closures or `.clone()`. Lantern emissive writes and cloud scaling are skipped
+while their inputs are unchanged. In node, with 24 clouds and 8 lanterns, it takes about 5 us per
+call. V8 still boxes some float property writes, measured at about 0.5 KB per frame in steady
+state, which is one minor GC roughly every two minutes at 60 fps.
 
 **Known issues**
 
