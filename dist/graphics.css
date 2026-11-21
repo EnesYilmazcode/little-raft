@@ -7,6 +7,8 @@
   --navy-3:#1a3245;
   --plate:rgba(9,20,30,.80);
   --plate-strong:rgba(8,17,26,.92);
+  /* HUD plates sit over the live WebGL canvas: no backdrop blur (it re-blurs every frame), so a touch more opaque. */
+  --plate-hud:rgba(9,20,30,.87);
   --bronze:#9c7445;
   --bronze-lt:#c9a46b;
   --bronze-dk:#5b4127;
@@ -35,12 +37,10 @@ button,input{font-family:var(--ui-font)}
 button:focus-visible,input:focus-visible{outline:2px solid var(--amber-lt);outline-offset:2px}
 
 /* Shared plate treatment: dark lacquered navy, fine bronze inlay, engraved top highlight */
-.inventory,.goal,.tools,#recipes,#durability,.durability-meter{
+.inventory,.goal,#recipes,#durability,.durability-meter{
   background:
     linear-gradient(180deg,rgba(255,240,210,.05),rgba(255,240,210,0) 40%),
-    var(--plate);
-  -webkit-backdrop-filter:blur(10px) saturate(1.1);
-  backdrop-filter:blur(10px) saturate(1.1);
+    var(--plate-hud);
   border:0;
   border-radius:6px;
   box-shadow:var(--frame),var(--edge);
@@ -49,7 +49,6 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--amber-lt);outli
 
 /* Generic icon slot (SVG swap-in) */
 .icon{width:28px;height:28px;display:inline-block;vertical-align:middle;fill:currentColor;flex:none}
-.tools .icon{width:28px;height:28px}
 #recipes .icon{width:24px;height:24px}
 .inventory .icon{width:18px;height:18px;margin-right:6px;vertical-align:-2px}
 .brand-icon .icon{width:26px;height:26px}
@@ -98,67 +97,20 @@ body.playing header{opacity:.9}
 .inventory strong{font:600 22px/1.1 var(--ui-font);color:var(--cream);font-variant-numeric:tabular-nums;text-shadow:0 1px 0 rgba(0,0,0,.6)}
 .inventory small{font:500 11px/1.2 var(--ui-font);letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-top:4px}
 
-/* ---------- Goal ---------- */
-.goal{top:84px;right:28px;width:260px;padding:12px 16px 14px}
-.goal>span{font:500 14px/1.4 var(--ui-font);color:var(--cream);margin:10px 0 12px}
-.progress{
-  height:6px;border-radius:1px;background:rgba(0,0,0,.55);
-  box-shadow:inset 0 1px 2px rgba(0,0,0,.7),0 0 0 1px rgba(201,164,107,.3);overflow:hidden;
-}
-.progress i{background:linear-gradient(180deg,var(--amber-lt),var(--amber) 55%,#b8772a);box-shadow:0 0 8px var(--amber-glow)}
-
 /* ---------- Hotbar ---------- */
+/* The hotbar itself is styled by survival-ui.js (sv-hotbar). */
 .bottom{bottom:20px;gap:10px}
-.tools{
-  position:relative;gap:6px;padding:8px;border-radius:7px;
-  background:
-    repeating-linear-gradient(90deg,rgba(255,230,190,.018) 0 2px,transparent 2px 7px),
-    linear-gradient(180deg,rgba(255,240,210,.05),rgba(255,240,210,0) 40%),
-    var(--plate);
-}
-/* rope-like lashing along the top edge */
-.tools::before{
-  content:"";position:absolute;left:14px;right:14px;top:-3px;height:3px;border-radius:2px;pointer-events:none;
-  background:repeating-linear-gradient(115deg,var(--rope) 0 3px,var(--bronze-dk) 3px 5px);
-  opacity:.75;box-shadow:0 1px 0 rgba(0,0,0,.5);
-}
-.tools button{
-  width:96px;height:74px;border-radius:4px;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
-  background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(0,0,0,.18));
-  color:var(--cream-dim);font:600 11px/1 var(--ui-font);letter-spacing:1.6px;text-transform:uppercase;
-  box-shadow:inset 0 0 0 1px rgba(201,164,107,.18),inset 0 1px 0 rgba(255,236,200,.06);
-  transition:background .15s,color .15s,box-shadow .15s;
-}
-.tools button:hover{transform:none;color:var(--cream);background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(0,0,0,.12))}
-.tools button>span{display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:24px;line-height:1;color:var(--bronze-lt)}
-/* suppress legacy glyph/emoji text until SVG icon is swapped in; show a neutral emblem */
-.tools button>span:not(:has(.icon)),
 #recipes button>span:not(:has(.icon)){font-size:0;color:transparent}
-.tools button>span:not(:has(.icon))::before,
 #recipes button>span:not(:has(.icon))::before{
   content:"";display:block;width:12px;height:12px;transform:rotate(45deg);
   border:1.5px solid var(--bronze-lt);box-shadow:inset 0 0 0 2px rgba(0,0,0,.4);
 }
-.tools button.selected{
-  background:linear-gradient(180deg,rgba(233,166,64,.16),rgba(233,166,64,.04) 60%,rgba(0,0,0,.15));
-  color:#fff3da;
-  box-shadow:inset 0 0 0 1px var(--amber),inset 0 0 14px rgba(233,166,64,.18),0 0 0 1px rgba(0,0,0,.6);
-}
-.tools button.selected>span{color:var(--amber-lt)}
-.tools button.selected>span:not(:has(.icon))::before{border-color:var(--amber-lt)}
-.tools button.selected::after{
-  content:"";position:absolute;left:50%;bottom:-1px;width:28px;height:3px;transform:translateX(-50%);
-  border-radius:2px 2px 0 0;background:var(--amber-lt);box-shadow:0 0 8px var(--amber-glow);pointer-events:none;
-}
-.tools kbd,.controls kbd{
+.controls kbd{
   font:600 10px/1 var(--ui-font);color:var(--cream);opacity:1;
   background:linear-gradient(180deg,#2a3a47,#16232e);
   border:1px solid rgba(201,164,107,.45);border-radius:2px;padding:2px 4px;
   box-shadow:inset 0 1px 0 rgba(255,236,200,.12),0 1px 0 rgba(0,0,0,.6);
 }
-.tools kbd{left:6px;top:5px;padding:2px 4px;color:var(--cream-dim)}
-.tools button.selected kbd{color:var(--navy-0);background:linear-gradient(180deg,var(--amber-lt),var(--amber));border-color:#7a5420}
 
 /* Controls strip */
 .controls{gap:18px;font:500 11px/1 var(--ui-font);letter-spacing:.6px;color:var(--cream-dim);text-shadow:0 1px 2px rgba(0,0,0,.85)}
@@ -185,23 +137,6 @@ body.playing header{opacity:.9}
 #recipes button.active small{color:var(--cream-dim)}
 #recipes button:disabled{opacity:.45}
 
-/* ---------- Hints & toast (kept off-center) ---------- */
-#aimHint{
-  bottom:168px;padding:7px 14px;border-radius:3px;
-  background:rgba(7,15,23,.62);color:var(--cream);
-  font:500 12px/1.2 var(--ui-font);letter-spacing:.8px;
-  box-shadow:0 0 0 1px rgba(201,164,107,.3);text-shadow:0 1px 0 rgba(0,0,0,.6);
-}
-body.build #aimHint{bottom:268px}
-#toast{
-  top:18%;border-radius:4px;padding:10px 20px;
-  background:var(--plate-strong);color:var(--cream);
-  font:600 13px/1.35 var(--ui-font);letter-spacing:.6px;
-  box-shadow:var(--frame),var(--edge);
-}
-#toast::before,#toast::after{content:"";display:inline-block;width:5px;height:5px;transform:rotate(45deg);background:var(--amber);vertical-align:2px}
-#toast::before{margin-right:10px}
-#toast::after{margin-left:10px}
 
 /* ---------- Crosshair: four ticks + 2px center ---------- */
 #crosshair{
@@ -327,22 +262,14 @@ input::placeholder{color:#6f7b82;letter-spacing:1.5px}
   .inventory small{font-size:10px}
   .inventory>span,.goal small{font-size:10px;letter-spacing:2px;padding-bottom:6px}
 
-  /* stack goal beneath inventory so the two plates never collide */
-  .goal{top:152px;left:12px;right:auto;width:min(250px,calc(100vw - 24px));padding:9px 12px 11px}
-  .goal>span{font-size:12px;margin:7px 0 9px}
 
   .bottom{bottom:14px;gap:8px}
-  .tools{padding:6px;gap:5px}
-  .tools button{width:82px;height:66px;font-size:10px;letter-spacing:1.2px}
-  .tools .icon{width:24px;height:24px}
   .controls{gap:12px;font-size:10px}
 
   #recipes{bottom:116px;max-width:94vw}
   #recipes button{min-width:74px;font-size:11px}
   #recipes button small{font-size:10px}
 
-  #aimHint{font-size:11px;bottom:140px;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
-  body.build #aimHint{bottom:252px}
 
   #durability,.durability-meter{left:12px;bottom:178px;width:150px;padding:8px 10px 10px}
   body.build #durability,body.build .durability-meter{bottom:290px}
@@ -359,29 +286,23 @@ input::placeholder{color:#6f7b82;letter-spacing:1.5px}
 }
 
 @media(prefers-reduced-motion:reduce){
-  .tools button,.progress i,.durability-track>i,#toast{transition:none}
+  .progress i,.durability-track>i,#toast{transition:none}
 }
 
-#repairButton{margin-top:10px;width:100%;display:flex;align-items:center;justify-content:center;gap:7px;padding:8px;background:#20363de8;color:#fff0ce;border:1px solid #aa85594d;border-radius:3px;font-size:12px;flex-wrap:wrap}
-#repairButton .icon{width:20px;height:20px}#repairButton small{width:100%;font-size:10px;color:#b9c9c4}#repairButton kbd{font:600 10px sans-serif;opacity:.6}#conditionBar{width:100%}
 #chargeMeter{position:fixed;left:50%;top:calc(50% + 44px);transform:translateX(-50%);width:158px;height:23px;background:#11252ad9;border:1px solid #d3ae70;border-radius:3px;pointer-events:none;overflow:hidden;z-index:4}
 #chargeMeter span{position:absolute;inset:0;display:grid;place-items:center;color:#fff4d6;font-size:10px;font-weight:700;letter-spacing:1.5px;z-index:1;text-shadow:0 1px 3px #000}#chargeMeter i{display:block;height:100%;width:0;background:#b8833e;transition:width .04s linear}
 .close .icon{width:20px;height:20px}.guide-note{font-size:12px}#resumeHint{max-width:90vw;white-space:normal;text-align:center}
 
 body.playing header{justify-content:flex-end}body.playing .brand,body.playing .goal{display:none}
-.playing .inventory{padding:11px 16px;background:#273732c9}.playing .inventory>span{font-size:10px}.playing .inventory small{font-size:12px}
-.tools{gap:5px;padding:7px;background:linear-gradient(#987944,#6f4e2c);border:2px solid #c4ac71;border-radius:5px;box-shadow:0 0 0 2px #51391e,0 4px 14px #0005}
-.tools button{width:66px;height:70px;padding:5px 2px;background:#4b3525cc;box-shadow:inset 0 0 0 1px #c1a66b44;border-radius:2px}
-.tools button.selected{background:#b19759aa;box-shadow:inset 0 0 0 2px #ffdfa0,0 0 0 1px #4b3726}
-.tools button>span{margin-top:2px}.tools button em{font:600 10px/1.15 'Segoe UI',sans-serif;color:#fff1d1;letter-spacing:0;text-transform:none;max-width:64px}.tools .icon{width:31px;height:31px}
-.controls{background:#142d30c9!important;color:#f5e9ca!important;border-radius:3px;padding:7px 13px;font-size:12px;gap:19px}.controls kbd{color:#ffdd95;border-color:#e0bd7144;font-size:11px}
+.playing .inventory{padding:11px 16px;background:#273732d8}.playing .inventory>span{font-size:10px}.playing .inventory small{font-size:12px}
+.controls{background:#142d30d8!important;color:#f5e9ca!important;border-radius:3px;padding:7px 13px;font-size:12px;gap:19px}.controls kbd{color:#ffdd95;border-color:#e0bd7144;font-size:11px}
 .playing #durability{left:auto;right:28px;width:176px}.playing #aimHint{font-size:14px;letter-spacing:.2px;text-transform:none;bottom:137px}.playing.locked.build #aimHint{bottom:137px}
 body.locked #recipes{display:none!important}#recipes button.unaffordable{opacity:.52}#recipes button small{font-size:12px}#recipes button{min-width:106px;font-size:13px}
 #resumeHint{font-size:13px;letter-spacing:.4px;text-transform:none;max-width:440px}
-@media(max-width:760px){.tools{max-width:94vw;overflow-x:auto}.tools button{min-width:49px;width:49px;height:65px}.tools button em{font-size:9px}.tools .icon{width:25px;height:25px}.playing #durability{right:12px;bottom:160px;width:146px}.controls{font-size:10px;gap:9px}.playing #aimHint{font-size:11px}.playing .inventory{top:65px}}
+@media(max-width:760px){.controls{font-size:10px;gap:9px}.playing #aimHint{font-size:11px}.playing .inventory{top:65px}}
 body.playing header,body.playing .goal,body.playing #toast,body.playing .controls{display:none!important}
 .playing .inventory{top:14px;left:14px}.playing #aimHint{bottom:112px;background:#162e3199;padding:7px 13px;font-size:13px;color:#f4eddd;box-shadow:none}
-#crosshair{width:23px;height:23px;border:1px solid #fff9;border-radius:50%;background:none!important;filter:drop-shadow(0 1px 1px #0005)}#crosshair::after{background:#fff9;border-radius:50%}
+#crosshair{margin:0;width:23px;height:23px;border:1px solid #fff9;border-radius:50%;background:none!important;filter:drop-shadow(0 1px 1px #0005)}#crosshair::after{background:#fff9;border-radius:50%}
 
 /* live-qa */
 

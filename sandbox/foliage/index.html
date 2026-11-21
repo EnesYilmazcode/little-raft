@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Foliage Sandbox</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #cbd2c0; overflow: hidden; font: 13px system-ui, sans-serif; }
+  #hud { position: fixed; left: 12px; top: 12px; background: rgba(255,255,255,.85); padding: 8px 12px; border-radius: 8px; line-height: 1.7; }
+  #hud input[type=range] { width: 140px; vertical-align: middle; }
+  #stats { font-family: ui-monospace, monospace; color: #234; }
+  body.shot #hud { display: none; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div>view
+    <select id="view"><option>raft</option><option>beach</option><option>canopy</option><option>over</option><option>far</option><option>lod</option></select>
+    wind <input id="wind" type="range" min="0" max="1" step="0.01" value="0.4">
+  </div>
+  <div id="stats"></div>
+  <div style="opacity:.7">URL: ?view=&amp;density=sparse|normal|dense&amp;leaves=geo|card&amp;mat=lambert|standard&amp;wind=&amp;t=&amp;shadows=0</div>
+</div>
+<script type="module">
+import * as T from '../../dist/vendor/three.module.js';
+import { createOcean } from '../../dist/ocean.js';
+import { createSky } from '../../dist/sky.js';
+import { createFloor } from '../../dist/deck.js';
+import { createCraft } from '../../dist/crafts.js';
+import { createFoliage } from './foliage.js';
+import { createFoliageKit, buildIsland, DENSITY, GRASS } from './island.js';
+
+const q = new URLSearchParams(location.search);
+const shot = q.has('t');
+if (shot) document.body.classList.add('shot');
+const renderer = new T.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(shot ? 1 : Math.min(devicePixelRatio, 1.5));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = q.get('shadows') !== '0';
+renderer.shadowMap.type = T.PCFSoftShadowMap;
+renderer.outputColorSpace = T.SRGBColorSpace;
+renderer.toneMapping = T.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+
+// lighting / fog copied from dist/game.js so the look matches the game
+const scene = new T.Scene();
+scene.background = new T.Color('#cbd2c0');
+scene.fog = new T.Fog('#cbd2c0', 25, 125);
+const camera = new T.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 200);
+scene.add(camera);
+scene.add(new T.HemisphereLight('#f2ead4', '#3d6b6a', 1.8));
+const sun = new T.DirectionalLight('#fff0c7', 2.5);
+sun.position.set(-15, 28, 12); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
+Object.assign(sun.shadow.camera, { left: -25, right: 25, top: 25, bottom: -25 }); sun.shadow.bias = -0.001;
+scene.add(sun, sun.target);
+const sky = createSky(T); scene.add(sky.group);
+const ocean = createOcean(T, { sunDirection: sun.position.clone(), skyColor: '#cbd2c0', fadeNear: 28, fadeFar: 125 });
+ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0');
+ocean.mesh.receiveShadow = true; scene.add(ocean.mesh);
+
+// ---- foliage
+const F = createFoliage(T, { lambert: q.get('mat') !== 'standard', strength: +(q.get('wind') ?? 0.4) });
+// ?grass=count,blades,width,spread overrides the grass recipe; ?grassB=... builds a second grass set on the hero
+// island (hidden) so lab.abGrass() can alternate A and B frame by frame in one page
+const grassOpt = k => { const v = (q.get(k) || '').split(',').map(Number); return q.has(k) ? { count: v[0], blades: v[1], width: v[2] ?? 1, spread: v[3] ?? 1 } : GRASS; };
+const kit = createFoliageKit(T, F, { leaves: q.get('leaves') || 'geo', grass: grassOpt('grass') });
+const density = DENSITY[q.get('density') || 'normal'] ?? 1, plants = q.get('foliage') !== '0';
+const islands = [
+  buildIsland(T, F, kit, { seed: 3, radius: 7, x: -3, z: -18, density, plants }),
+  buildIsland(T, F, kit, { seed: 8, radius: 5, x: -34, z: -52, density, top: 0.7, plants }),
+  buildIsland(T, F, kit, { seed: 5, radius: 9, x: 40, z: -88, density, top: 1.1, plants }),
+];
+islands.forEach(i => scene.add(i));
+const hero = islands[0];
+let grassB = null;
+if (q.has('grassB')) {
+  const kitB = { ...kit, ...createFoliageKit(T, F, { grass: grassOpt('grassB') }) };
+  grassB = buildIsland(T, F, kitB, { seed: 3, radius: 7, x: -3, z: -18, density, plants, grassOnly: true });
+  grassB.visible = false; scene.add(grassB);
+}
+
+// ---- raft: 2x2 deck tiles from dist/deck.js + the crafts.js palm decor, swayed by the same wind
+const mats = new Map(), getMat = c => (mats.has(c) || mats.set(c, new T.MeshStandardMaterial({ color: c, roughness: 0.85 })), mats.get(c));
+const raft = new T.Group(); raft.position.y = 0.02; scene.add(raft);
+for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const t = createFloor(T, x * 719 + z * 311, getMat); t.position.set(x, 0, z); raft.add(t); }
+const craftPalm = plants ? F.swayCraftPalm(createCraft(T, 'palm')) : createCraft(T, 'palm');
+craftPalm.position.set(1, 0.22, -1); raft.add(craftPalm);
+raft.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+
+// ---- views
+const H = hero.position, hy = (x, z) => hero.userData.heightAt(x - H.x, z - H.z);
+const VIEWS = {
+  raft:   () => { camera.position.set(-0.4, 1.75, 1.0); camera.lookAt(H.x + 0.5, 1.6, H.z); },
+  beach:  () => { const x = H.x + 4.2, z = H.z + 5.4; camera.position.set(x, hy(x, z) + 1.65, z); camera.lookAt(H.x - 1, 1.4, H.z - 1); },
+  canopy: () => { const p = hero.userData.palms[0], x = H.x + p.x + 1.6, z = H.z + p.z + 1.4; camera.position.set(x, hy(x, z) + 1.6, z); camera.lookAt(H.x + p.x, 4.2, H.z + p.z); },
+  over:   () => { camera.position.set(H.x + 13, 10, H.z + 13); camera.lookAt(H.x, 0.4, H.z); },
+  far:    () => { camera.position.set(0.5, 1.75, 1.5); camera.lookAt(10, 1.5, -60); },
+  // inside the palm near/far crossfade band (hero LOD 49 m +-5): both meshes dithered, ?lod=<dist> to sweep
+  lod:    () => { const d = +(q.get('lod') ?? 49); camera.position.set(H.x, 1.75, H.z + d); camera.lookAt(H.x, 2.2, H.z); camera.zoom = 3.5; camera.updateProjectionMatrix(); },
+};
+const $ = id => document.getElementById(id);
+let view = q.get('view') || 'raft';
+$('view').value = view; $('view').onchange = e => { view = e.target.value; VIEWS[view](); };
+$('wind').value = F.wind.uWindStrength.value;
+$('wind').oninput = e => { F.wind.uWindStrength.value = +e.target.value; };
+VIEWS[view]();
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+function step(t) {
+  F.update(t, camera);
+  ocean.update(t, camera);
+  sky.update(t, camera);
+}
+const fixedT = shot ? +q.get('t') : null;
+const clock = new T.Clock();
+let frames = 0, acc = 0, fps = 0;
+function info() {
+  const r = renderer.info;
+  return { calls: r.render.calls, triangles: r.render.triangles, geometries: r.memory.geometries, textures: r.memory.textures, programs: r.programs.length };
+}
+function frame() {
+  const dt = clock.getDelta();
+  step(fixedT ?? clock.elapsedTime);
+  renderer.render(scene, camera);
+  frames++; acc += dt;
+  if (acc > 0.5) { fps = frames / acc; frames = 0; acc = 0; const i = info(); $('stats').textContent = `${fps.toFixed(0)} fps  ${i.calls} calls  ${(i.triangles / 1000).toFixed(1)}k tris  ${i.programs} programs`; }
+  if (!window.lab.busy) requestAnimationFrame(frame);
+}
+window.lab = {
+  ready: false, busy: false, counts: hero.userData.counts,
+  // render n frames synchronously (readPixels forces the GPU to finish) and time each one
+  probe(n = 30) {
+    this.busy = true;
+    const gl = renderer.getContext(), px = new Uint8Array(4), ms = [];
+    for (let i = 0; i < 5; i++) { step((fixedT ?? 0) + i / 60); renderer.render(scene, camera); }
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    for (let i = 0; i < n; i++) {
+      const t0 = performance.now();
+      step((fixedT ?? 0) + i / 60);
+      renderer.render(scene, camera);
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      ms.push(performance.now() - t0);
+    }
+    step(fixedT ?? 0); renderer.render(scene, camera);
+    const avg = ms.reduce((a, b) => a + b, 0) / n, med = [...ms].sort((a, b) => a - b)[n >> 1];
+    return { avg: +avg.toFixed(2), median: +med.toFixed(2), worst: +Math.max(...ms).toFixed(2), ...info() };
+  },
+  // interleaved A/B under a noisy machine: alternate frames with every foliage mesh shown / hidden
+  ab(n = 12, mode = 'hide') {
+    this.busy = true;
+    const gl = renderer.getContext(), px = new Uint8Array(4), on = [], off = [];
+    const fol = []; scene.traverse(o => { if (o.name.startsWith('foliage_')) fol.push(o); });
+    for (let i = 0; i < 2 * n + 2; i++) {
+      step((fixedT ?? 0) + i / 60);
+      const show = i % 2 === 0;
+      if (mode === 'hide' && !show) fol.forEach(o => { o.visible = false; });
+      if (mode === 'shadow') fol.forEach(o => { o.castShadow = show && o.name !== 'foliage_grass'; });
+      const t0 = performance.now();
+      renderer.render(scene, camera);
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      if (i >= 2) (show ? on : off).push(performance.now() - t0);
+    }
+    step(fixedT ?? 0); renderer.render(scene, camera);
+    const med = a => [...a].sort((x, y) => x - y)[a.length >> 1];
+    return { mode, on: +med(on).toFixed(1), off: +med(off).toFixed(1), deltaMs: +(med(on) - med(off)).toFixed(1), meshes: fol.length };
+  },
+  // interleaved A/B of two grass recipes on the hero island (needs ?grassB=)
+  abGrass(n = 12) {
+    this.busy = true;
+    const gl = renderer.getContext(), px = new Uint8Array(4), A = [], B = [];
+    const gA = hero.children.filter(o => o.name === 'foliage_grass');
+    for (let i = 0; i < 2 * n + 2; i++) {
+      step((fixedT ?? 0) + i / 60);
+      const a = i % 2 === 0;
+      gA.forEach(o => { o.visible = a; }); grassB.visible = !a;
+      const t0 = performance.now();
+      renderer.render(scene, camera);
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      if (i >= 2) (a ? A : B).push(performance.now() - t0);
+    }
+    gA.forEach(o => { o.visible = true; }); grassB.visible = false;
+    step(fixedT ?? 0); renderer.render(scene, camera);
+    const med = a => [...a].sort((x, y) => x - y)[a.length >> 1];
+    return { A: +med(A).toFixed(1), B: +med(B).toFixed(1), deltaMs: +(med(B) - med(A)).toFixed(1) };
+  },
+  // deterministic fill cost: rasterised fragments of the named foliage meshes (additive count, no depth test)
+  // and the share of screen pixels they cover. pre = mesh-name prefix, e.g. 'foliage_grass' or 'foliage_'
+  overdraw(pre = 'foliage_grass', scope = null) {
+    this.busy = true;
+    const gl = renderer.getContext(), W = gl.drawingBufferWidth, Hh = gl.drawingBufferHeight;
+    const rt = new T.WebGLRenderTarget(W, Hh), list = [];
+    (scope === 'hero' ? hero : scene).traverse(o => { if (o.name.startsWith(pre) && o.visible) list.push(o); });
+    const saved = list.map(o => [o, o.material, o.layers.mask]);
+    for (const o of list) {
+      const m = new T.MeshBasicMaterial({ color: new T.Color(1 / 255, 0, 0), blending: T.AdditiveBlending, depthTest: false, depthWrite: false, side: T.DoubleSide, toneMapped: false });
+      const u = o.material.userData.foliage;
+      F.patch(m, { base: u.uBase.value, height: u.uHeight.value, bend: u.uBend.value, flutter: u.uFlutter.value, reach: u.uReach.value, crown: u.uCrown.value.toArray(), fade: o.material.defines.FOL_FADE !== undefined ? u.uFade.value.toArray() : null, tree: o.material.defines.FOL_TREE !== undefined });
+      o.material = m; o.layers.set(5);
+    }
+    step(fixedT ?? 0);
+    const cam = camera.clone(); cam.layers.set(5);
+    const bg = scene.background, fog = scene.fog, ce = renderer.outputColorSpace;
+    scene.background = null; scene.fog = null;
+    renderer.setRenderTarget(rt); renderer.setClearColor(0, 0); renderer.clear(); renderer.render(scene, cam); renderer.setRenderTarget(null);
+    scene.background = bg; scene.fog = fog;
+    const buf = new Uint8Array(W * Hh * 4); renderer.readRenderTargetPixels(rt, 0, 0, W, Hh, buf);
+    let frags = 0, cov = 0, max = 0;
+    for (let i = 0; i < buf.length; i += 4) { const v = buf[i]; frags += v; if (v) cov++; if (v > max) max = v; }
+    for (const [o, m, mask] of saved) { o.material.dispose(); o.material = m; o.layers.mask = mask; }
+    rt.dispose();
+    return { meshes: list.length, fragsPerPixel: +(frags / (W * Hh)).toFixed(3), coverage: +(cov / (W * Hh)).toFixed(3), depthComplexity: +(frags / Math.max(1, cov)).toFixed(2), maxLayers: max };
+  },
+  // fraction of pixels in rect [x0, y0, x1, y1] (0..1, y down) that change between two wind times
+  motion(t1, t2, rect = [0, 0, 1, 1]) {
+    this.busy = true;
+    const gl = renderer.getContext(), W = gl.drawingBufferWidth, Hh = gl.drawingBufferHeight;
+    const x = Math.round(rect[0] * W), w = Math.round((rect[2] - rect[0]) * W);
+    const y = Math.round((1 - rect[3]) * Hh), h = Math.round((rect[3] - rect[1]) * Hh);
+    const grab = t => { step(t); renderer.render(scene, camera); const b = new Uint8Array(w * h * 4); gl.readPixels(x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, b); return b; };
+    const a = grab(t1), b = grab(t2);
+    let c = 0;
+    for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > 30) c++;
+    step(fixedT ?? 0); renderer.render(scene, camera);
+    return +(c / (w * h)).toFixed(4);
+  },
+};
+frame();
+window.lab.ready = true;
+</script>
+</body>
+</html>

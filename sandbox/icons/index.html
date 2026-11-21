@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Icon Atlas Sandbox</title>
+<style>
+  :root { --bg: #14232b; --fg: #dfe9ec; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.3 system-ui, sans-serif; }
+  body.sheet { padding: 14px 16px; }
+  h2 { font-size: 14px; margin: 14px 0 6px; font-weight: 600; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  figure { margin: 0; text-align: center; width: 100px; }
+  figcaption { opacity: .8; margin-top: 2px; }
+  .checker { width: 96px; height: 96px; margin: 0 auto; border-radius: 6px;
+    background: #2b3f48 repeating-conic-gradient(#33494f 0 25%, #2b3f48 0 50%) 0 0/16px 16px; }
+  .checker img { width: 96px; height: 96px; display: block; }
+  .strip { display: flex; gap: 6px; padding: 6px; border-radius: 4px; width: max-content;
+    background: linear-gradient(#9a7643, #6a4a2a); border: 2px solid #c9a66b; box-shadow: 0 0 0 2px #3e2a17; }
+  .strip.light { background: #e8dcc0; border-color: #b9a77f; }
+  .strip.sea { background: #3f8c88; border-color: #a9c1c0; }
+  .cell { position: relative; width: var(--s); height: var(--s); border-radius: 3px;
+    background: linear-gradient(180deg, #5a3f28e8, #3d2a19e8); box-shadow: inset 0 0 0 1px #d4b07a55, inset 0 2px 6px #0006; }
+  .strip.light .cell, .strip.sea .cell { background: none; box-shadow: none; }
+  .cell > * { position: absolute; inset: var(--i); width: calc(100% - 2 * var(--i)); height: calc(100% - 2 * var(--i)); display: block; }
+  .cell svg { filter: drop-shadow(0 1px 1px #0008); }
+  .pair { display: grid; grid-template-columns: 40px repeat(15, 52px); gap: 4px; align-items: center; }
+  .pair b { font-weight: 600; opacity: .7; }
+  #stats { white-space: pre-wrap; word-break: break-all; max-width: 1200px; font: 11px/1.35 ui-monospace, monospace; opacity: .8; }
+  /* UI mode: real dist/survival-ui.js (patched copy) over a game canvas */
+  body.ui #game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  body.ui .bottom { position: fixed; left: 0; right: 0; bottom: 14px; display: flex; justify-content: center; }
+  body.sheet #game { width: 240px; height: 90px; display: block; border-radius: 6px; }
+</style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="sheetRoot"></div>
+  <div class="bottom"><div class="tools"></div></div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
