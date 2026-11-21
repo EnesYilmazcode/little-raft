@@ -53,6 +53,9 @@ test('HUD-4: the build chip starts right of the vitals panel and stops short of 
   assert.ok(px(/left:(\d+)px/, mid) >= 188 + 8);
   assert.ok(px(/max-width:calc\(100vw - (\d+)px\)/, mid) - px(/left:(\d+)px/, mid) >= 236 + 8); // tracker: right 16 + width 220
   assert.ok(px(/--bm-chip-bottom:(\d+)px/, mid) > HOTBAR_TOP + 6);
+  // short windows: the chip rises level with the prompt column, so its right edge stops at the crosshair (50% + 22px)
+  assert.equal(152 - px(/@media\(max-width:760px\) and \(max-height:480px\)\{\.bm-chip\{max-width:calc\(50vw - (\d+)px\)/, css), 22);
+  assert.equal(200 - px(/@media\(min-width:761px\) and \(max-width:1000px\) and \(max-height:480px\)\{\.bm-chip\{max-width:calc\(50vw - (\d+)px\)/, css), 22);
 });
 
 test('HUD-5: sail and anchor prompts go through the one prompt column, not a boxed #sailPrompt', () => {
@@ -97,6 +100,9 @@ test('HUD-2/3: Notes stop above whatever shares their column', () => {
   assert.match(js, /function layoutColumn\(\)/);
   assert.match(js, /setAttribute\('data-ob-yield'/);
   assert.match(css, /\.ob-notes\.ob-capped\{overflow:hidden\}/);
+  assert.match(css, /\.ob-notes\.ob-capped \.ob-cut\{visibility:hidden\}/); // no half row peeking through the padding
+  assert.match(js, /innerHeight \+ 1\}/); // short windows: never past the bottom edge
+  assert.match(js, /visRect\(\$\('\.tools\.sv-hotbar'\)\)/); // nor over the hotbar
   assert.match(css, /\.ob-notes\.ob-clear\{opacity:0;visibility:hidden\}/);
   assert.match(css, /#craftTracker\[data-ob-yield\]\{opacity:0;visibility:hidden\}/);
 });
