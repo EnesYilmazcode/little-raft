@@ -81,6 +81,7 @@ export function statePrompt(s, opt = {}) {
     const m = missingText(s.stock, FLOOR_COST);
     return [{label:'Needs ' + costText(FLOOR_COST), muted:true}, ...(m && m !== costText(FLOOR_COST) ? [{label:'Missing ' + m, muted:true}] : [])];
   }
+  if (held === 'spear') return {key:'LMB', label:'Stab'}; // [spear]
   if (held === 'fishingrod') {
     if (stage === 'fishing' || s.fishWait) return {label:'Waiting for a bite…', muted:true}; // bites land automatically (game.js fishWait)
     return stage === 'idle' ? {key:'LMB', label:'Cast line'} : null;
