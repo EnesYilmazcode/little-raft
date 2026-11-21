@@ -5,10 +5,11 @@
 //   button.addEventListener('pointerdown', () => audio.resume());   // user gesture
 //   audio.play('build', 1);
 //
-// API: createOceanAudio({context=null, volume=.5, ambience=true}={}) ->
+// API: createOceanAudio({context=null, volume=.5, ambience=true}={}) ->   (ambience: false = no surf, number = surf level 0..1)
 //   context          getter, latest AudioContext (null until resume() creates one)
 //   resume()         creates (lazily) / resumes the context, starts quiet surf; Promise<boolean>
 //   setVolume(v)     master volume, clamped 0..1; returns the clamped value
+//   setAmbience(v)   surf level, clamped 0..1 (0 = silent); returns the clamped value
 //   play(ev, s=1)    ev in EVENTS; s clamped 0..1; returns true if scheduled, else false (never throws)
 //   destroy()        stops + disconnects only this instance's nodes; never closes the context
 //
@@ -29,6 +30,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 export function createOceanAudio({ context = null, volume = 0.5, ambience = true } = {}) {
   let ctx = context && typeof context.createGain === 'function' ? context : null;
   let vol = clamp01(volume, 0.5);
+  let ambLevel = typeof ambience === 'number' ? clamp01(ambience, 1) : 1; // surf level 0..1
   let destroyed = false;
   let graph = null;          // { master, limiter, tone, noise, brown }
   let amb = null;            // { nodes, sources }
@@ -76,7 +78,7 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
   }
 
   function startAmbience() {
-    if (!ambience || amb || !graph || destroyed) return;
+    if (ambience === false || amb || !graph || destroyed) return;
     try {
       const t = ctx.currentTime;
       const src = ctx.createBufferSource();
@@ -95,9 +97,10 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
       const lfoF = ctx.createGain(); lfoF.gain.value = 120;  // filter breathes with the swell
       lfo1.connect(d1); lfo2.connect(d2); d1.connect(swell.gain); d2.connect(swell.gain);
       lfo1.connect(lfoF); lfoF.connect(lp.frequency);
-      src.connect(hp); hp.connect(lp); lp.connect(swell); swell.connect(graph.tone);
+      const level = ctx.createGain(); level.gain.value = ambLevel; // Ocean ambience slider
+      src.connect(hp); hp.connect(lp); lp.connect(swell); swell.connect(level); level.connect(graph.tone);
       src.start(t, Math.random() * 5); lfo1.start(t); lfo2.start(t);
-      amb = { sources: [src, lfo1, lfo2], nodes: [src, lfo1, lfo2, hp, lp, swell, d1, d2, lfoF] };
+      amb = { level, sources: [src, lfo1, lfo2], nodes: [src, lfo1, lfo2, hp, lp, swell, level, d1, d2, lfoF] };
     } catch (_) { amb = null; }
   }
 
@@ -287,6 +290,15 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     return vol;
   }
 
+  function setAmbience(v) {
+    ambLevel = clamp01(v, ambLevel);
+    if (amb && ctx) {
+      try { amb.level.gain.setTargetAtTime(ambLevel, ctx.currentTime, 0.05); }
+      catch (_) { try { amb.level.gain.value = ambLevel; } catch (__) {} }
+    }
+    return ambLevel;
+  }
+
   function play(event, strength = 1) {
     try {
       if (destroyed || !graph || !ctx || ctx.state !== 'running' || vol <= 0) return false;
@@ -329,6 +341,7 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     get context() { return ctx; },
     resume,
     setVolume,
+    setAmbience,
     play,
     destroy,
   };
