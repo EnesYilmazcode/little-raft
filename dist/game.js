@@ -228,7 +228,7 @@ export function mount(transfer = null) {
     const t = world.tiles.find(t => t[0] === 0 && t[1] === 0) ?? world.tiles[0]; return {x:t[0] * 2, z:t[1] * 2};
   }
 
-  function hasTile(x, z) { for (const t of world.tiles) if (t[0] === x && t[1] === z) return true; return false; }
+  function hasTile(x, z) { const ts = world.tiles; for (let i = 0; i < ts.length; i++) if (ts[i][0] === x && ts[i][1] === z) return true; return false; }
   const isLocked = () => !!canvas && document.pointerLockElement === canvas;
   const dialogOpen = () => !!document.querySelector('dialog[open]');
   const uiBlocked = () => dialogOpen() || !!survivalUI?.isOpen;
