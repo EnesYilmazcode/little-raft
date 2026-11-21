@@ -40,13 +40,32 @@ let provider = null;
 let gl = null, scene = null, camera = null, failed = false, releaseTimer = 0, pumping = false;
 let out = null, tmp = null;
 
-// Hot swap (live.js) loads a new build's copy of this module next to the old one. The copy that was
-// used last owns the idle queue; the other stops rendering (its engine is gone) instead of running a
-// second GL context in parallel.
-const SELF = {};
-const OWNER_KEY = '__littleRaftItemIconsOwner';
-function claim() { try { globalThis[OWNER_KEY] = SELF; } catch {} }
-function superseded() { try { const o = globalThis[OWNER_KEY]; return !!o && o !== SELF; } catch { return false; } }
+// Hot swap (live.js) loads a new build's copy of this module next to the old one. Only one copy runs
+// the idle queue (one GL context at a time): the copy that claimed last (setModelProvider / iconURL)
+// among those still in use, i.e. with listeners or waiters. A copy whose engine is gone has neither:
+// the new engine's dispose() on a failed mount() drops the new copy's listeners, so the old copy owns
+// the queue again; on a successful swap the old engine's dispose() drops the old copy's listeners.
+// If no copy is in use, the last claimer owns it.
+const REG_KEY = '__littleRaftItemIconsCopies';
+const SELF = { seq: 0, live: () => listeners.size > 0 || waiters.size > 0 };
+function registry() {
+  try { return globalThis[REG_KEY] || (globalThis[REG_KEY] = { seq: 0, copies: [] }); } catch { return null; }
+}
+function claim() {
+  const r = registry(); if (!r) return;
+  SELF.seq = ++r.seq;
+  if (!r.copies.includes(SELF)) r.copies.push(SELF);
+}
+function owner() {
+  const r = registry(); if (!r) return null;
+  let best = null, bestLive = null;
+  for (const c of r.copies) {
+    if (!best || c.seq > best.seq) best = c;
+    if (c.live() && (!bestLive || c.seq > bestLive.seq)) bestLive = c;
+  }
+  return bestLive || best;
+}
+function superseded() { try { const o = owner(); return !!o && o !== SELF; } catch { return false; } }
 
 // Per-kind display pose (radians) for provider / fallback models, so long tools read diagonally.
 const POSE = {

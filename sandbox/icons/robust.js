@@ -39,7 +39,8 @@ async function run() {
   // hot swap: copy B takes over; A stops rendering new kinds (null) but keeps what it has
   const Bm = await import(`../../dist/item-icons.js?build=${B}&copy=B`);   // importing alone claims nothing
   A.warmIcons(['lantern', 'fish', 'wood', 'rope', 'scrap']);
-  Bm.setModelProvider(k => getModel(k));   // the new engine's UI mounts: B owns the queue from here
+  const offB = Bm.onIconReady(() => {});   // the new engine's UI subscribes and sets its provider
+  Bm.setModelProvider(k => getModel(k));   // B owns the queue from here (A's engine is disposed next)
   const t = performance.now();
   const aLate = await Promise.all(['lantern', 'fish', 'wood', 'rope', 'scrap'].map(k => A.loadItemIcon(k)));
   R.aLateNulls = aLate.filter(u => u === null).length;
@@ -47,6 +48,20 @@ async function run() {
   R.cases.oldCopyStops = R.aLateNulls === 5 && A.getItemIcon('hook') === hookBefore;
   const bIcons = await Promise.all(['lantern', 'fish', 'hammer'].map(k => Bm.loadItemIcon(k)));
   R.cases.newCopyRenders = bIcons.every(isPng);
+  // failed hot swap: copy C's mount() claims, subscribes, queues, then throws; its dispose() drops the
+  // listener and live.js keeps B's engine. B must own the queue again; C must not render.
+  const glsBeforeC = gls.length;
+  const C = await import(`../../dist/item-icons.js?build=${B}&copy=C`);
+  const offC = C.onIconReady(() => {});
+  C.setModelProvider(k => getModel(k));
+  C.warmIcons(['wood', 'rope', 'scrap', 'crate']);
+  R.cases.failedSwapNewOwns = Bm.getItemIcon('wood') === null && Bm.getItemIcon('rope') === null;   // C owns while mounting
+  offC();                                   // mount() failed: C's engine is disposed
+  const bAfter = await Promise.all(['wood', 'rope', 'scrap'].map(k => Bm.loadItemIcon(k)));
+  R.cases.failedSwapOldRenders = bAfter.every(isPng);
+  await wait(200);
+  R.cases.failedSwapDeadCopyIdle = C.getItemIcon('crate') === null && gls.length - glsBeforeC <= 1;
+  offB();
   await wait(3200);
   R.liveContextsAfterRelease = gls.filter(c => !c.isContextLost()).length;
   R.cases.contextsReleased = R.liveContextsAfterRelease === 0;

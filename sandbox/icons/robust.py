@@ -1,7 +1,7 @@
 """Failure paths of the merged item-icons.js in Chromium. Usage: python sandbox/icons/robust.py
 Temp tree = dist/ copy patched with adopt_patch.apply + sandbox/icons/. Cases: provider throws, provider
 returns an empty model, kind without model, own stand-in model, context loss mid-queue, provider swap,
-hot swap (two module copies), contexts released after the queue drains. Prints JSON; exit 1 on a failed case."""
+hot swap (two module copies), failed hot swap (new copy claims then is disposed: old copy owns again), contexts released after the queue drains. Prints JSON; exit 1 on a failed case."""
 import sys, json, shutil, tempfile, threading, functools, http.server, socketserver
 from pathlib import Path
 from playwright.sync_api import sync_playwright
