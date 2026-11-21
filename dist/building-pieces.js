@@ -77,6 +77,8 @@ export class BuildGrid {
     this._prevHead = Infinity; this._px = 0; this._pz = 0; this._pvy = 0;
     this._refused = null; this._rx = 0; this._rz = 0; this._rvy = 0;
     this._pre = {deckY: 0, tiles: this._tileArr};
+    this.blocker = null; // optional (i, j) => true when decor stands on deck cell (i, j): level-0 stairs refuse it (BUILD-5)
+    this._loading = false;
   }
 
   setTiles(tiles) {
@@ -100,10 +102,13 @@ export class BuildGrid {
     // Canonical order so the result does not depend on input order; then place until stable.
     cand.sort((a, b) => a.l - b.l || ORDER_OF[a.t] - ORDER_OF[b.t] || a.i - b.i || a.j - b.j || a.r - b.r);
     const done = new Uint8Array(cand.length);
-    for (let progress = true; progress;) {
-      progress = false;
-      for (let k = 0; k < cand.length; k++) if (!done[k] && this.canPlace(cand[k]) === '') { this.place(cand[k]); done[k] = 1; progress = true; }
-    }
+    this._loading = true; // saves keep what they hold: the decor blocker only gates new placements
+    try {
+      for (let progress = true; progress;) {
+        progress = false;
+        for (let k = 0; k < cand.length; k++) if (!done[k] && this.canPlace(cand[k]) === '') { this.place(cand[k]); done[k] = 1; progress = true; }
+      }
+    } finally { this._loading = false; }
     return this.list.map(p => ({t: p.t, i: p.i, j: p.j, l: p.l, r: p.r}));
   }
 
@@ -168,6 +173,7 @@ export class BuildGrid {
     if (this.list.length >= MAX_PIECES) return 'Too many pieces';
     if (s === 1 && this._get(0, i, j, l + 1, 0)) return 'Floor above is in the way';
     if (s === 0 && this._get(1, i, j, l - 1, 0)) return 'Stairs are in the way';
+    if (s === 1 && l === 0 && !this._loading && this.blocker?.(i, j)) return 'Something is in the way';
     if (!this._supported(t, i, j, l, r)) return 'Needs support below';
     return '';
   }

@@ -13,7 +13,7 @@ import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { PlayerPhysics, PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 import { floorBlock, decorBlock, inReach, BUILD_REACH, GUEST_REACH_SLACK, BLOCK_TEXT, placePrompt, removePrompt } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
-import { nearestTarget, targetName, removeWhy, removeAction } from './remove-target.js?build=v3-survival-ae77fa84ac2b'; // hammer + X: one target, one rule set (prompt, ghost, host)
+import { nearestTarget, tileOccupied, targetName, removeWhy, removeAction } from './remove-target.js?build=v3-survival-ae77fa84ac2b'; // hammer + X: one target, one rule set (prompt, ghost, host)
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createContent, cleanExt } from './content.js?build=v3-survival-ae77fa84ac2b'; // content hook (islands, wildlife, storage, day/night)
@@ -434,6 +434,7 @@ export function mount(transfer = null) {
     setOwnedElsewhere(id => Object.prototype.hasOwnProperty.call(PROG_ITEMS, id)); // [progression-hook] items.js unlocks own the catalogue
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
     building = createBuilding(T, scene); // building-pieces lane hook
+    building.grid.blocker = (i, j) => occupied(i, j); // BUILD-5: level-0 stairs and decor share one "tile occupied" rule
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging}); for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
@@ -836,12 +837,14 @@ export function mount(transfer = null) {
       else paintPlanter(g, plantStage(world.garden?.[k]), world.garden?.[k]?.water === 1);
     }
   }
+  // Something already stands on deck cell (x, z): decor, a grill or level-0 stairs. Decor placement and stairs (grid.blocker) share it.
+  const occupied = (x, z) => tileOccupied(x, z, {decor:world.decor, pieces:world.pieces, hasGrill:fc ? (a, b) => fc.hasGrill(a, b) : null});
   // Returns null when the cell is not a build spot at all, else {x, z} plus `blocked` ('bound' | 'cap' | 'reach') when refused.
   function placementFor(kind, p) {
     if (!p) return null; const x = Math.round(p.x / 2), z = Math.round(p.z / 2);
     let why;
     if (kind === 'hammer') why = floorBlock(world.tiles, x, z);
-    else if (DECOR_TYPES.includes(kind)) { if (fc?.hasGrill(x, z)) return null; why = decorBlock(world.tiles, world.decor, x, z); } // [fishing-cooking] grill tiles
+    else if (DECOR_TYPES.includes(kind)) why = decorBlock(world.tiles, world.decor, x, z) || (occupied(x, z) ? 'occupied' : null); // decor, [fishing-cooking] grill or stairs on the tile
     else return null;
     if (why && !BLOCK_TEXT[why]) return null;
     if (!why && !inReach(physics.x, physics.z, x, z)) why = 'reach';
@@ -851,7 +854,7 @@ export function mount(transfer = null) {
   function placementCandidates(kind) {
     const out = [], ok = (x, z) => inReach(physics.x, physics.z, x, z);
     if (kind === 'hammer') { const seen = new Set(); for (const [tx, tz] of world.tiles) for (const [a, b] of NEIGHBOURS) { const x = tx + a, z = tz + b, k = x + ',' + z; if (!seen.has(k) && !floorBlock(world.tiles, x, z) && ok(x, z)) { seen.add(k); out.push({x, z}); } } }
-    else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (!decorBlock(world.tiles, world.decor, x, z) && !fc?.hasGrill(x, z) && ok(x, z)) out.push({x, z});
+    else if (DECOR_TYPES.includes(kind)) for (const [x, z] of world.tiles) if (!decorBlock(world.tiles, world.decor, x, z) && !occupied(x, z) && ok(x, z)) out.push({x, z});
     return out;
   }
   let placeRot = 0, pointing = false; // decor placement rotation (radians) and the pointing-hand pose
@@ -1024,7 +1027,7 @@ export function mount(transfer = null) {
         if (!spend(bag, FLOOR_COST)) { emit({kind:'notice', text:'Floor needs ' + missingText(bag, FLOOR_COST)}, actor); return; }
         world.tiles.push([a.x, a.z]);
       } else if (DECOR_TYPES.includes(a.recipe)) {
-        if (decorBlock(world.tiles, world.decor, a.x, a.z)) return; if (fc?.hasGrill(a.x, a.z)) return; // [fishing-cooking] grill tiles
+        if (decorBlock(world.tiles, world.decor, a.x, a.z) || occupied(a.x, a.z)) return; // decor, [fishing-cooking] grill or stairs on the tile
         if (a.recipe === 'receiver' && world.decor.some(d => d.type === 'receiver')) { emit({kind:'notice', text:'Your raft already has a receiver'}, actor); return; }
         { const inWay = playerInWay(decorBlockers({type:a.recipe, x:a.x, z:a.z, rot:Number.isFinite(a.rot) ? a.rot : 0}, BLOCK_RADIUS), [physics, other], PLAYER_CONSTANTS.BODY_RADIUS); // host pose, guest pose
           if (inWay >= 0) { emit({kind:'notice', text:BLOCK_TEXT[(inWay === 0) === (actor === 'host') ? 'self' : 'brother']}, actor); return; } }

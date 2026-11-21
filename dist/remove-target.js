@@ -13,6 +13,14 @@ export function nearestTarget(...cands) {
   return best;
 }
 
+// Does something already stand on deck cell (x, z)? Decor, a cooking-lane grill, or level-0 stairs.
+// Shared by decor placement and stairs placement so neither can go on top of the other (BUILD-5).
+export function tileOccupied(x, z, {decor = [], pieces = [], hasGrill = null} = {}) {
+  if (decor.some(d => d && d.x === x && d.z === z)) return true;
+  if (hasGrill?.(x, z)) return true;
+  return Array.isArray(pieces) && pieces.some(p => p && p.t === 'stairs' && p.l === 0 && p.i === x && p.j === z);
+}
+
 // Display name of a target.
 export const targetName = (t, nameOf = k => k) => !t ? '' : t.what === 'floor' ? 'floor' : t.what === 'piece' ? nameOf(t.rec.t, 'piece') : nameOf(t.type, 'decor');
 

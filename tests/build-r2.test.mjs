@@ -148,7 +148,7 @@ test('BUILD-5: the hammer prompt offers X Remove', () => {
 });
 
 // ============================================================= round 3: one removal targeter
-const { nearestTarget, targetName, removeWhy, removeAction, removePrompt } = await import(new URL('remove-target.js', base));
+const { nearestTarget, tileOccupied, targetName, removeWhy, removeAction, removePrompt } = await import(new URL('remove-target.js', base));
 const { decorHit, pickBox, PICK_DEFAULT } = await import(new URL('placement.js', base));
 const { BuildGrid } = await import(new URL('building-pieces.js', base));
 const { PLACEABLE_IDS } = await import(new URL('items.js', base));
@@ -238,6 +238,20 @@ test('BUILD-4 / BUILD-6 r3: the nearest of piece, decor and floor is the one tar
   const t = {what:'piece', rec:wall}, none = [];
   for (let n = 0; n < 3; n++) assert.equal(removeWhy(t, {grid:spy, memo, tiles:START, decor:none}), 'Something rests on this');
   assert.equal(calls, 1); spy.version++; removeWhy(t, {grid:spy, memo, tiles:START, decor:none}); assert.equal(calls, 2);
+});
+
+test('BUILD-5 r3: one tile-occupied rule keeps stairs and decor off each other', () => {
+  const decor = [{type:'crate', x:1, z:0}], pieces = [{t:'stairs', i:-1, j:0, l:0, r:0}, {t:'stairs', i:0, j:1, l:1, r:0}, {t:'wall', i:0, j:0, l:0, r:0}];
+  assert.ok(tileOccupied(1, 0, {decor, pieces}), 'crate');
+  assert.ok(tileOccupied(-1, 0, {decor, pieces}), 'stairs on the deck');
+  assert.ok(!tileOccupied(0, 1, {decor, pieces}), 'upper-floor stairs do not stand on the deck');
+  assert.ok(!tileOccupied(0, 0, {decor, pieces}), 'walls sit on edges');
+  assert.ok(tileOccupied(0, 0, {hasGrill:(x, z) => x === 0 && z === 0}), 'grill');
+  const g = new BuildGrid(); g.setTiles(START); g.blocker = (i, j) => tileOccupied(i, j, {decor});
+  assert.equal(g.canPlace({t:'stairs', i:1, j:0, l:0, r:0}), 'Something is in the way', 'stairs over the crate');
+  assert.equal(g.canPlace({t:'stairs', i:0, j:0, l:0, r:0}), '');
+  assert.equal(g.canPlace({t:'wall', i:1, j:0, l:0, r:0}), '', 'edges are not blocked');
+  assert.equal(g.load([{t:'stairs', i:1, j:0, l:0, r:0}]).length, 1, 'an old save keeps what it has');
 });
 
 test('BUILD-4 r3: holding X hides the "Aim at the raft edge" hint so only the removal prompt speaks', async () => {
