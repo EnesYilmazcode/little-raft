@@ -163,15 +163,16 @@ Perf (`walk` scene, 120 frames after a 30-frame warm-up; `report.json` has the f
 with the rest of the fleet while this ran, so the millisecond columns swing 2-5x between runs and the GPU-synced
 worst case hit tens of seconds; only the structural `renderer.info` columns are stable.
 
-| Mode | CPU `render()` avg ms (run 1 / run 2) | GPU-synced avg ms | calls | triangles | geometries | textures | programs | `vm.update()` |
+| Mode | CPU `render()` avg ms (prototype run 1 / run 2 / with fill+strike) | GPU-synced avg ms (prototype / now) | calls | triangles | geometries | textures | programs | `vm.update()` (now) |
 |---|---|---|---|---|---|---|---|---|
-| vm (proposed) | 1.19 / 3.28 | 719 | 169 | 107,440 | 120 | 1 | 5 | 1.05 us |
-| legacy (ships) | 2.55 / 2.17 | 840 | 170 | 107,442 | 121 | 1 | 6 | n/a |
-| naive | 0.98 / 9.57 | 946 | 169 | 107,440 | 120 | 1 | 4 | n/a |
-| vm, no ocean | 7.60 | 520 | 168 | 87,440 | 119 | 1 | 4 | 0.80 us |
-| legacy, no ocean | 4.08 | 590 | 169 | 87,442 | 120 | 1 | 5 | n/a |
+| vm (proposed) | 1.19 / 3.28 / 1.87 | 719 / 752 | 169 | 107,440 | 120 | 1 | 5 | 0.90 us |
+| legacy (ships) | 2.55 / 2.17 / 4.62 | 840 / 640 | 170 | 107,442 | 121 | 1 | 6 | n/a |
+| naive | 0.98 / 9.57 / 1.61 | 946 / 696 | 169 | 107,440 | 120 | 1 | 4 | n/a |
+| vm, no ocean | 7.60 / 17.2 | 520 / 473 | 168 | 87,440 | 119 | 1 | 4 | 1.6 us |
+| legacy, no ocean | 4.08 / 3.77 | 590 / 491 | 169 | 87,442 | 120 | 1 | 5 | n/a |
 
-Reading: the new layer removes one draw call, one geometry and one program (the depth-clear marker and its
+The shade fill (two uniforms, a few ALU ops per hand fragment), the strike curve and the longer sleeve (same lathe
+segment count) left every `renderer.info` column identical to the prototype. Reading: the new layer removes one draw call, one geometry and one program (the depth-clear marker and its
 MeshBasicMaterial), adds one program variant for the patched hand materials compared with naive, and costs about
 1 microsecond of JS per frame for springs/equip/sway. No extra render pass, no extra shadow pass. The ms columns show no
 regression beyond noise; they are not usable as absolute numbers (SwiftShader, shared CPU).

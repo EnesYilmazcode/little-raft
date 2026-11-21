@@ -214,8 +214,11 @@ blow.
 
 ## Verify
 
-Steps 1-7 were applied verbatim to `dist/` in a scratch copy and the real game was run headless (solo start, charge,
-throw, hotbar scroll to the hammer): no page or console errors. `dist/` is untouched on this branch.
+Steps 1-7 were applied verbatim to a scratch copy of `dist/` (a script asserting every quoted line, then the edits) and
+the real game was run headless: solo start, hotbar to the hammer, build a floor tile (strike plays: cock, then the
+head lands on the deck, frame-stepped), hotbar back to the hook, full charge (whole hook on screen), throw (rope from
+the coil). No page errors; the only console errors are two 404s that the unpatched game logs too. `dist/` is
+untouched on this branch.
 
 1. `python sandbox/viewmodel/shoot.py` (writes `sandbox/viewmodel/shots/*.png`, prints JSON). Look at
    `11-wall-vm.png` (hook drawn in front of a wall 0.17 m from the eye), `14-shade-vm.png` (hands shadowed under
