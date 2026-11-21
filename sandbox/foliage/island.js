@@ -20,7 +20,7 @@ export function createFoliageKit(T, F, { leaves = 'geo' } = {}) {
 
 export const DENSITY = { sparse: 0.35, normal: 1, dense: 2 };
 
-export function buildIsland(T, F, kit, { seed = 1, radius = 7, top = 0.9, density = 1, x = 0, z = 0, plants = true } = {}) {
+export function buildIsland(T, F, kit, { seed = 1, radius = 7, top = 0.35, density = 1, x = 0, z = 0, plants = true } = {}) {
   const r = rng(seed), g = new T.Group();
   g.position.set(x, 0, z);
   g.name = 'island_' + seed;
@@ -97,13 +97,14 @@ export function buildIsland(T, F, kit, { seed = 1, radius = 7, top = 0.9, densit
   // palms: lean outward toward the sea, near/far LOD pairs
   const palms = scatter({ count: Math.max(1, Math.round(6 * D)), radius, seed: seed * 3 + 2, minDist: 2.2, accept: (px, pz) => rr(px, pz) < 0.78 && rr(px, pz) > 0.15, heightAt, scale: [0.85, 1.15] });
   palms.forEach(p => { p.rot = Math.atan2(-p.z, p.x) + (r() - 0.5) * 0.8; p.y -= 0.05; p.tint = 0.92 + r() * 0.16; });
-  const LOD_PALM = 42 + radius;
+  // near/far swap at LOD_PALM, screen-door crossfaded per instance over +-LOD_BAND (both meshes drawn only there)
+  const LOD_PALM = 42 + radius, LOD_BAND = 5;
   kit.palm.forEach((geo, v) => {
     const set = palms.filter((_, i) => i % kit.palm.length === v);
     if (!set.length) return;
-    add(F.instanced(kit.palmKind, geo, set), LOD_PALM);
-    const far = F.instanced('palmFar', kit.palmFar[v], set);
-    g.add(far); F.lod(far, 1e9, LOD_PALM, center);
+    add(F.instanced(kit.palmKind, geo, set, { dither: [LOD_PALM + LOD_BAND, LOD_PALM - LOD_BAND] }), LOD_PALM + LOD_BAND + radius);
+    const far = F.instanced('palmFar', kit.palmFar[v], set, { dither: [LOD_PALM - LOD_BAND, LOD_PALM + LOD_BAND] });
+    g.add(far); F.lod(far, 1e9, LOD_PALM - LOD_BAND - radius, center);
   });
   const avoid = palms.map(p => ({ x: p.x, z: p.z, r: 0.45 }));
 

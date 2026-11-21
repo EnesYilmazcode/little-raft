@@ -15,7 +15,7 @@
 <body>
 <div id="hud">
   <div>view
-    <select id="view"><option>raft</option><option>beach</option><option>canopy</option><option>over</option><option>far</option></select>
+    <select id="view"><option>raft</option><option>beach</option><option>canopy</option><option>over</option><option>far</option><option>lod</option></select>
     wind <input id="wind" type="range" min="0" max="1" step="0.01" value="0.4">
   </div>
   <div id="stats"></div>
@@ -86,6 +86,8 @@ const VIEWS = {
   canopy: () => { const p = hero.userData.palms[0], x = H.x + p.x + 1.6, z = H.z + p.z + 1.4; camera.position.set(x, hy(x, z) + 1.6, z); camera.lookAt(H.x + p.x, 4.2, H.z + p.z); },
   over:   () => { camera.position.set(H.x + 13, 10, H.z + 13); camera.lookAt(H.x, 0.4, H.z); },
   far:    () => { camera.position.set(0.5, 1.75, 1.5); camera.lookAt(10, 1.5, -60); },
+  // inside the palm near/far crossfade band (hero LOD 49 m +-5): both meshes dithered, ?lod=<dist> to sweep
+  lod:    () => { const d = +(q.get('lod') ?? 49); camera.position.set(H.x, 1.75, H.z + d); camera.lookAt(H.x, 2.2, H.z); camera.zoom = 3.5; camera.updateProjectionMatrix(); },
 };
 const $ = id => document.getElementById(id);
 let view = q.get('view') || 'raft';

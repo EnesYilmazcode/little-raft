@@ -22,6 +22,10 @@ uniform vec3 uEye;
 uniform float uBase, uHeight, uBend, uFlutter, uReach;
 uniform vec3 uCrown;
 uniform vec2 uFade;
+uniform vec3 uSunDir;
+#ifdef FOL_DITHER
+varying float vFolVis;
+#endif
 `;
 
 // Runs in object space right after <begin_vertex>. Order: flutter (leaf detail), main bend (whole plant leans
@@ -66,7 +70,46 @@ const BODY = /* glsl */`
     float fD = smoothstep(uFade.x, uFade.y, distance(uEye, fOrg));
     transformed *= 1.0 - fD;
   #endif
+  #ifdef FOL_DITHER
+    // screen-door crossfade between near/far LOD meshes: visibility ramps linearly from uFade.x to uFade.y
+    vFolVis = clamp((distance(uEye, fOrg) - uFade.x) / (uFade.y - uFade.x), 0.0, 1.0);
+  #endif
+
+  #ifdef FOL_COLOR_PASS
+    // cheap normal tilt: the slope of the h^2 bend plus the flutter bob, rotated into view space
+    vec3 fTilt = vec3(fWd.x, 0.0, fWd.y) * (2.0 * uBend * fS * fSw * fH + fFl * fA * 1.4);
+    #ifndef FLAT_SHADED
+      mat3 fIm = mat3(1.0);
+      #ifdef USE_INSTANCING
+        fIm = mat3(instanceMatrix) / length(instanceMatrix[0].xyz);
+      #endif
+      vNormal = normalize(normalize(transformedNormal) + normalMatrix * (fIm * fTilt));
+    #endif
+    #if defined(FOL_TREE) && (defined(USE_COLOR) || defined(USE_INSTANCING_COLOR))
+      // canopy seen from below: leaves darken toward their undersides and glow yellow-green against the sun
+      vec4 fWp = vec4(transformed, 1.0);
+      #ifdef USE_INSTANCING
+        fWp = instanceMatrix * fWp;
+      #endif
+      vec3 fV = normalize((modelMatrix * fWp).xyz - cameraPosition);
+      float fLeaf = smoothstep(0.12, 0.35, length(fRc.xz) / uReach) * smoothstep(0.6, 0.8, fH);
+      float fUp = clamp(fV.y * 1.8, 0.0, 1.0) * fLeaf;
+      float fSun = pow(max(dot(fV, uSunDir), 0.0), 4.0);
+      vColor.rgb = vColor.rgb * (1.0 - 0.38 * fUp) + vec3(0.2, 0.24, 0.03) * fSun * fUp;
+    #endif
+  #endif
 }
+`;
+
+// fragment: screen-door discard for the LOD crossfade. Near and far meshes use complementary thresholds
+// (uFade.x > uFade.y means "fading out"), so during the band each pixel shows exactly one of them.
+const DITHER_FRAG = /* glsl */`
+#include <clipping_planes_fragment>
+#ifdef FOL_DITHER
+  float fN = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  if (uFade.x < uFade.y) fN = 1.0 - fN;
+  if (fN >= vFolVis) discard;
+#endif
 `;
 
 const DEFAULT_PARAMS = {
@@ -86,32 +129,38 @@ export function createFoliage(T, options = {}) {
     uWindDir: { value: new T.Vector2(wd[0], wd[1]).normalize() },
     uWindStrength: { value: options.strength ?? 0.4 },
     uEye: { value: new T.Vector3() },
+    // light direction for the canopy translucency tint (game.js sun.position, normalised)
+    uSunDir: { value: new T.Vector3().fromArray(options.sunDir || [-15, 28, 12]).normalize() },
   };
   const lambert = options.lambert ?? true;
   const owned = new Set(), lods = [];
 
   // Patch any built-in material (Lambert/Standard/Phong/Depth). params: see DEFAULT_PARAMS. Returns mat.
   function patch(mat, params = {}) {
-    const p = Object.assign({ base: 0, height: 1, bend: 0.15, flutter: 0.6, reach: 1, crown: [0, 0, 0], fade: null, tree: false, twoSided: false }, params);
+    const p = Object.assign({ base: 0, height: 1, bend: 0.15, flutter: 0.6, reach: 1, crown: [0, 0, 0], fade: null, dither: null, tree: false, twoSided: false }, params);
     const u = mat.userData.foliage = {
       uBase: { value: p.base }, uHeight: { value: p.height }, uBend: { value: p.bend }, uFlutter: { value: p.flutter },
       uReach: { value: p.reach }, uCrown: { value: new T.Vector3().fromArray(p.crown) },
-      uFade: { value: new T.Vector2().fromArray(p.fade || [1e4, 1e4 + 1]) },
+      uFade: { value: new T.Vector2().fromArray(p.fade || p.dither || [1e4, 1e4 + 1]) },
     };
     const defs = mat.defines = Object.assign({}, mat.defines);
     if (p.tree) defs.FOL_TREE = '';
     if (p.fade) defs.FOL_FADE = '';
+    if (p.dither) defs.FOL_DITHER = '';
     mat.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, wind, u);
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\n' + PARS)
-        .replace('#include <begin_vertex>', BODY);
+        .replace('#include <begin_vertex>', '#define FOL_COLOR_PASS\n' + BODY);
+      if (p.dither) shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform vec2 uFade;\nvarying float vFolVis;')
+        .replace('#include <clipping_planes_fragment>', DITHER_FRAG);
       // leaves: light both faces with the authored (up-biased) normal instead of flipping it for back faces,
       // so undersides and grass backs read as soft translucent green rather than black
       if (p.twoSided) shader.fragmentShader = shader.fragmentShader
         .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n#ifdef DOUBLE_SIDED\n normal *= faceDirection;\n#endif');
     };
-    const key = 'foliage' + (p.tree ? 'T' : '') + (p.fade ? 'F' : '') + (p.twoSided ? '2' : '');
+    const key = 'foliage' + (p.tree ? 'T' : '') + (p.fade ? 'F' : '') + (p.dither ? 'X' : '') + (p.twoSided ? '2' : '');
     mat.customProgramCacheKey = () => key;
     mat.needsUpdate = true;
     return mat;
@@ -122,6 +171,7 @@ export function createFoliage(T, options = {}) {
     const d = new T.MeshDepthMaterial({ depthPacking: T.RGBADepthPacking, map: src.map || null, alphaTest: src.alphaTest || 0, side: src.side });
     const u = src.userData.foliage;
     d.defines = Object.assign({}, src.defines);
+    delete d.defines.FOL_DITHER; // both LOD meshes cast during the crossfade band; the shadow union is fine
     d.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, wind, u);
       shader.vertexShader = shader.vertexShader
@@ -259,6 +309,12 @@ function makeBuilder(T) {
       if (uvs) { useUv = true; uv.push(...uvs); } else uv.push(0.03, 0.008, 0.03, 0.008, 0.03, 0.008);
     },
     quad(a, b, c, d, ca, cb = ca, cc = cb, cd = cc) { api.tri(a, b, c, ca, cb, cc); api.tri(a, c, d, ca, cc, cd); },
+    // quad with explicit per-corner normals (smooth-shaded trunk)
+    quadN(a, b, c, d, ca, cb, cc, cd, na, nb, nc, nd) {
+      for (const [v, k, n] of [[a, ca, na], [b, cb, nb], [c, cc, nc], [a, ca, na], [c, cc, nc], [d, cd, nd]]) {
+        pos.push(v.x, v.y, v.z); col.push(k.r, k.g, k.b); nrm.push(n.x, n.y, n.z); uv.push(0.03, 0.008);
+      }
+    },
     setNormals(fn) { normalBias = fn; },
     build(userData = {}) {
       const g = new T.BufferGeometry();
@@ -320,7 +376,7 @@ function frond(T, B, C, ang, L, peak, drop, n, pal, detail, r, leafLen = 0.42) {
     const side = new T.Vector3().crossVectors(tan, UP).normalize();
     const nrm = new T.Vector3().crossVectors(side, tan).normalize();
     const ll = L * leafLen * (0.2 + 0.8 * Math.pow(Math.sin(Math.PI * Math.min(1, t - 0.02)), 0.6)) * (1 - 0.3 * t);
-    const ao = 0.62 + 0.38 * Math.min(1, t * 1.6); // darker toward the crown: cheap depth for the canopy
+    const ao = 0.5 + 0.5 * Math.min(1, t * 1.8); // darker toward the crown: cheap depth for the canopy
     const cbt = cb.clone().multiplyScalar(ao), cmt = cm.clone().multiplyScalar(0.8 + 0.2 * ao);
     const lw = L * (0.028 + 0.02 * (1 - t)) * (detail === 1 ? 2.2 : 1);
     for (const sgn of [-1, 1]) {
@@ -340,7 +396,8 @@ function frond(T, B, C, ang, L, peak, drop, n, pal, detail, r, leafLen = 0.42) {
   }
 }
 
-function lowBlob(T, B, c, rad, sq, colA, colB, r, detail = 0) {
+function lowBlob(T, B, c, rad, sq, colA, colB, r, detail = 0, smooth = false) {
+  if (smooth) B.setNormals((v) => v.clone().sub(c).normalize());
   const g = new T.IcosahedronGeometry(rad, detail);
   const p = g.attributes.position, v = [new T.Vector3(), new T.Vector3(), new T.Vector3()];
   // deterministic jitter keyed by quantised position so shared vertices stay welded
@@ -354,6 +411,7 @@ function lowBlob(T, B, c, rad, sq, colA, colB, r, detail = 0) {
     B.tri(v[0], v[1], v[2], k);
   }
   g.dispose();
+  if (smooth) B.setNormals(null);
 }
 
 const BUILDERS = {
@@ -464,27 +522,46 @@ function palmGeo(T, o, detail) {
   const r = rng(o.seed ?? 7), B = makeBuilder(T), V = (x, y, z) => new T.Vector3(x, y, z);
   const H = o.height ?? 4.3, lean = o.lean ?? 0.5;
   const curve = new T.CatmullRomCurve3([V(0, 0, 0), V(lean * 0.12, H * 0.3, 0), V(lean * 0.45, H * 0.65, 0.02), V(lean, H, 0.04)]);
-  // trunk: stacked flared rings (leaf-scar silhouette)
-  const NS = detail === 2 || detail === 'card' ? 14 : 5, RAD = detail === 1 ? 5 : 7;
-  const barkA = new T.Color(0x9a7a52), barkB = new T.Color(0x7d6143), barkD = new T.Color(0x5a442e);
+  // trunk: smooth-shaded tapered tube along the curve. Each segment starts with a slightly proud, darker ring
+  // band (leaf scar) and tapers in toward the next one, so the silhouette is ringed but the surface reads round.
+  const near = detail !== 1, NS = near ? 15 : 5, RAD = near ? 7 : 5;
+  const barkA = new T.Color(0xa4835a), barkB = new T.Color(0x86684a), barkD = new T.Color(0x604934);
+  const radius = t => (0.18 - 0.075 * t) * (1 + 0.45 * Math.pow(Math.max(0, 1 - t * 9), 2)); // root flare
+  // rows: [t, radius scale, colour]. Near: each ring starts proud and dark and tapers in, lightening, to the
+  // next ring (a sawtooth of thin leaf-scar bands). Far: plain smooth taper.
+  const rows = [];
   for (let i = 0; i < NS; i++) {
-    const t0 = i / NS, t1 = (i + 1) / NS;
-    const p0 = curve.getPointAt(t0), p1 = curve.getPointAt(t1);
-    const r0 = (0.19 - 0.08 * t0) * (i === 0 ? 1.35 : 0.9), r1 = (0.19 - 0.08 * t1) * 1.05;
-    const cb = (i % 2 ? barkA : barkB).clone().lerp(barkD, 0.35), ct = i % 2 ? barkA : barkB;
-    for (let k = 0; k < RAD; k++) {
-      const a0 = (k / RAD) * Math.PI * 2 + i * 0.4, a1 = ((k + 1) / RAD) * Math.PI * 2 + i * 0.4;
-      const q = (p, rr, a) => V(p.x + Math.cos(a) * rr, p.y, p.z + Math.sin(a) * rr);
-      B.quad(q(p0, r0, a0), q(p1, r1, a0), q(p1, r1, a1), q(p0, r0, a1), cb, ct, ct, cb);
+    const t0 = i / NS, t1 = (i + 1) / NS, tone = 0.94 + 0.12 * r();
+    if (near) {
+      rows.push([t0, 1.035, barkD.clone().multiplyScalar(tone)]);
+      rows.push([t1 - 0.002, 0.97, barkA.clone().lerp(barkB, r() * 0.6).multiplyScalar(tone)]);
+    } else {
+      rows.push([t0, 1.0, barkB]);
+      if (i === NS - 1) rows.push([t1, 0.95, barkA]);
     }
   }
+  const ring = rows.map(([t, k, c]) => {
+    const p = curve.getPointAt(Math.min(1, t)), tan = curve.getTangentAt(Math.min(1, t));
+    const sx = new T.Vector3(1, 0, 0).addScaledVector(tan, -tan.x).normalize(), sz = new T.Vector3().crossVectors(sx, tan).normalize();
+    const rr = radius(t) * k, ps = [], ns = [];
+    for (let j = 0; j <= RAD; j++) {
+      const a = (j / RAD) * Math.PI * 2, n = sx.clone().multiplyScalar(Math.cos(a)).addScaledVector(sz, Math.sin(a));
+      ps.push(p.clone().addScaledVector(n, rr)); ns.push(n);
+    }
+    return { ps, ns, c };
+  });
+  for (let i = 0; i + 1 < ring.length; i++) {
+    const A = ring[i], Bq = ring[i + 1];
+    for (let j = 0; j < RAD; j++)
+      B.quadN(A.ps[j], Bq.ps[j], Bq.ps[j + 1], A.ps[j + 1], A.c, Bq.c, Bq.c, A.c, A.ns[j], Bq.ns[j], Bq.ns[j + 1], A.ns[j + 1]);
+  }
   const top = curve.getPointAt(1);
-  // crown + coconuts
-  lowBlob(T, B, top.clone().add(V(0, 0.02, 0)), 0.17, 0.8, new T.Color(0x5b4630), new T.Color(0x76603e), r);
+  // crown knob (fibrous, lighter than the bark) + coconuts: smooth normals so they read round, not as dark facets
+  lowBlob(T, B, top.clone().add(V(0, 0.03, 0)), 0.17, 0.8, new T.Color(0x7a6040), new T.Color(0x9c8255), r, 0, true);
   if (detail !== 1 || o.coconuts) {
     for (let k = 0; k < 3; k++) {
       const a = 0.5 + k * 2.1 + r() * 0.3;
-      lowBlob(T, B, top.clone().add(V(Math.cos(a) * 0.14, -0.13, Math.sin(a) * 0.14)), 0.1, 1, new T.Color(0x7d7a34), new T.Color(0x9a9440), r);
+      lowBlob(T, B, top.clone().add(V(Math.cos(a) * 0.15, -0.12, Math.sin(a) * 0.15)), 0.115, 1, new T.Color(0x9aa23e), new T.Color(0xc9c25a), r, 0, true);
     }
   }
   // fronds: soft up-biased normals so the canopy reads bright from below and from above
