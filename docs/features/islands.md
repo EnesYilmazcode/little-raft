@@ -8,6 +8,97 @@ This revision targets the content registry (`dist/content.js`, `docs/features/co
 Everything lives in `dist/islands.js` (plus an optional `dist/islands-layout.js` for pure logic)
 and needs **no game.js edits**.
 
+## As built
+
+Built on `claude/raft-content-islands`. No shared files were touched: game.js, content.js and
+inventory-state.js are unchanged, and no new hook was needed.
+
+| File | What it holds |
+| --- | --- |
+| `dist/islands.js` | `createIslands(ctx)`: timeline, placement, stand on sand, E to gather, save/sync, debug. Re-exports the pure helpers. |
+| `dist/islands-layout.js` | Pure logic with no THREE: `layoutFor`, `pathAt`, `clean`, `lootFor`, `groundHeight`, `nextDelay`, `dockOffset`, `applyGather`, `standOnSand`. |
+| `dist/islands-models.js` | Cached geometries and materials, built once per game. |
+| `tests/islands.test.mjs` | 20 tests: layout, timeline, save validation, loot and host rules, stand on sand with the real `PlayerPhysics`, and a stub-ctx run of the module. |
+
+![Island approaching the raft](../cloud/shots/content/islands-approach.png)
+![Standing on the beach, aiming at a palm](../cloud/shots/content/islands-gather-prompt.png)
+![After three gathers: wood, leaves and a seed in the bag, and the palm turns yellow](../cloud/shots/content/islands-after-gather.png)
+
+**What changed from the plan below, and why:**
+
+- **The dome profile is flatter.** The planned `TOP - (TOP+DROP)·u²` left only about 2.5 m of
+  walkable sand. Built: `TOP - FALL·u⁴`, with `TOP = 0.9` and `FALL = 1.8`, times a gentle
+  shoreline wobble `shape(θ)`, rotated per seed. The shore is at `u ≈ 0.84`, the walkable top
+  reaches about `0.69 R`, R is 6 to 9 m, and the mesh ends at `u = 1.15`. All nodes sit within
+  `0.7 R`, on dry sand.
+- **Shallow water is a lagoon overlay, not a sunken disc.** The ocean shader is opaque, so nothing
+  under it shows. The lagoon is a ring mesh that reuses the ocean's own vertex shader (shared
+  `uTime`), so it rides the same waves 5 cm above them. It has a small fragment shader: wet sand
+  near the shore fades to turquoise and then teal, the alpha fades out by about 2.4 R, and there is
+  a wobbling foam line plus foam rings rolling in. It shares `uSky` and the fade uniforms with the
+  ocean, so it fogs out the same way. If the ocean has no `material.vertexShader` (as in tests), a
+  flat fallback shader is used.
+- **Wading.** In the shallows, a swimmer whose feet would sink into the sand is lifted to stand on it
+  while still swimming. The eye rises smoothly as you swim ashore, with no 1.4 m pop, and walking
+  off the beach eases back into swimming.
+- **Solid trunks and rocks.** `afterMove` pushes the player out of palm trunks and rocks, using
+  circles scaled by node size.
+- **Riding along.** While you stand on the sand, `afterMove` adds the island's motion since the
+  last frame, so an island that departs with you on it carries you along. At the end it sinks, you
+  swim, and the existing 50 m safety returns you to the raft.
+- **Waiting and the warning.** While someone is within `R + 6` m, the island holds with 31 s left
+  (up to the 600 s cap). The warning "The island is starting to drift away" goes to everyone
+  (`emit(..., 'all')`) once, when the 30 s countdown really starts. On spawn everyone also gets
+  "An island is drifting this way. Swim over and take a look!".
+- **Placement.** `off` = raft x-edge + gap (10 to 13 m, seeded) + shore radius, on the side where the
+  raft extends less (ties use the seed's parity). `clean` clamps `off` to 8..60 instead of 8..38,
+  so a wide raft cannot pull the island on top of itself. The swim from the raft edge to the shore
+  is 10 to 13 m.
+- **Rendering: 6 draw calls, not 7.** Trunk, fronds and coconuts are one palm geometry, since the
+  fronds sit at the trunk top in the same local frame. Fronds are two-sided by duplicating
+  triangles with reversed winding and upward normals, not with `DoubleSide`. That way the
+  undersides are lit like leaves instead of going dark.
+- **Prompts** show uses left, e.g. `E Gather palm: wood and leaves (2 left)`. They are prebuilt per
+  kind and count. The aimed node gets a slight highlight (an instance colour, written only when
+  the aim changes).
+- **Feedback.** A gather makes the node pop for 0.3 s (one instance matrix per frame). Bushes and
+  rocks shrink with each gather, and sand mounds flatten. A spent node turns dry yellow and stops
+  prompting.
+
+**Rendering budget (as built).** The island adds 6 draw calls: the dome, the lagoon, and the palm,
+bush, rock and sand InstancedMeshes. Shadow passes add 3 more (palms, bushes, rocks). Triangles: dome 2.1k, lagoon 2.8k, palm 1.8k
+each (13 fronds, two-sided), bush 460, rock 144, sand mound 320. A full 14-node island is about
+13.6k triangles, and a typical one is about 9k. There is no texture and no light. Every geometry and
+material is created once, and the meshes stay in the scene with `visible = false` while calm.
+`update()` allocates nothing: it uses scratch vectors, a reused `pathAt` output object and no
+closures, and instance matrices are rewritten only on re-layout, on a gather, or during the
+0.3 s pop.
+
+**Jumping on sand.** `PlayerPhysics` only jumps off raft tiles, so `standOnSand` reads the
+private `physics._prevJump`, which holds the jump key as of this frame's `update()`. If a future
+`PlayerPhysics` drops it, `_prevJump === true` is never satisfied and jumping on sand is simply
+off. Nothing breaks, and a test covers that fallback.
+
+**Debug** (`raftDebug.content.islands`): `spawnNear(seed = 1234, t = 25)` (`t` is seconds into the
+timeline, so `t < 25` gives an approaching island), `phase()`, `skip(s)`, `teleportAshore(dx, dz)`,
+`aimAt(i)` (stands you on the inland side of node `i` and returns it with `yaw`, the camera yaw
+that faces it), `yawTo()`, `nodes()`, `pick()` (node under the screen centre), `drain()`,
+`clear()`, `state()`, `groundAt(x, z)`. Headless Chrome holds pointer lock, so screenshot scripts
+turn the view with synthetic `mousemove` `movementX/Y` events (0.0022 rad per pixel).
+
+**Known issues.**
+
+- In co-op, the guest's own gather only pops locally. The drained colour arrives with the next
+  state message (≤125 ms), as planned.
+- Seed items use the placeholder leaf icon from `content-items.js`.
+- On a big raft (x-edge > 28 m) the island docks more than 38 m from the nearest tile. The 50 m
+  safety still has margin, but it is a longer swim.
+- At software-GL frame rates (about 3 fps), the 0.3 s host cooldown is counted in game time, which
+  `dt` caps at 0.05 per frame. Rapid E presses there are dropped. That is harmless, but scripts
+  should wait about 2.5 s between gathers.
+- The ray pick prefers the nearest sphere. A sand mound right under a palm crown can pick the palm
+  first, so step around it.
+
 ## What Raft does
 
 raft.wiki.gg did not resolve from this session (DNS blocked, as before it returned HTTP 401), and

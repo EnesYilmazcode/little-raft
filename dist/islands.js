@@ -98,9 +98,9 @@ export function createIslands(ctx) {
   }
   function paintNode(k) {
     const n = layout.nodes[k], ki = nodeKind[k], m = meshes[ki], frac = st.isl.used[k] / n.max;
-    if (frac >= 1) col.setRGB(.78, .72, .52); // spent: dry and dim
+    if (frac >= 1) col.setRGB(.92, .66, .34); // spent: dry, yellowed and dim
     else col.setRGB(1 - .12 * frac, 1 - .12 * frac, 1 - .2 * frac);
-    if (k === hoverNode && frac < 1) col.multiplyScalar(1.18);
+    if (k === hoverNode && frac < 1) col.multiplyScalar(1.12);
     m.setColorAt(nodeInst[k], col); m.instanceColor.needsUpdate = true;
   }
 
@@ -343,6 +343,7 @@ export function createIslands(ctx) {
     drain() { if (!st.isl) return false; st.isl.used.forEach((_, k) => { st.isl.used[k] = layout.nodes[k].max; writeNode(k); }); return true; },
     clear() { st.isl = null; st.next = st.clock + ISLAND.CALM_MIN; relayout(); place(); return debug.phase(); },
     state: () => ({ onSand: sandState.onSand, shown, cx, cz, gy, hover: hoverNode }),
+    pick: () => pickNode(null), // node under the camera centre, or -1
     groundAt,
   };
 
