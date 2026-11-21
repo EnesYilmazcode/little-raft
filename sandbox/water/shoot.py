@@ -34,6 +34,19 @@ with sync_playwright() as p:
         page.screenshot(path=str(out / name))
         report['runs'].append({'tier': t, 'view': v, 'amp': a, 'avgMs': round(ms['avg'], 1), 'worstMs': round(ms['worst'], 1),
                                **{k: ms[k] for k in ('calls', 'triangles', 'geometries', 'textures', 'programs')}, 'shot': name})
+    # Interleaved timing (fp view, calm): the machine is shared, so alternate tiers each round and keep medians.
+    rounds = int(os.environ.get('ROUNDS', '3'))
+    samples = {t: [] for t in tiers}
+    for _ in range(rounds):
+        for t in tiers:
+            page.goto(f'http://127.0.0.1:{port}/sandbox/water/index.html?tier={t}&view=fp&amp=1&t=12.5')
+            page.wait_for_function('window.lab && window.lab.ready', timeout=20000)
+            page.evaluate('lab.probe(10)')   # warm-up (shader compile, first shadow map)
+            samples[t].append(page.evaluate('lab.probe(40)'))
+    med = lambda xs: sorted(xs)[len(xs) // 2]
+    report['timing'] = {t: {'avgMs': round(med([s['avg'] for s in v]), 1), 'worstMs': round(med([s['worst'] for s in v]), 1),
+                            'samplesAvgMs': [round(s['avg'], 1) for s in v], **{k: v[-1][k] for k in ('calls', 'triangles', 'geometries', 'textures', 'programs')}}
+                        for t, v in samples.items() if v}
     b.close()
 srv.shutdown()
 print(json.dumps(report, indent=1))

@@ -15,8 +15,7 @@ const WAVES = [
 ];
 const SPEED = 0.6;
 const BASE_Y = -0.24;
-const SDF_RES = 64;       // texels per side
-const SDF_SPAN = 32;      // metres covered, centred on the raft
+const SDF_RES = 128;      // texels per side; the covered square fits the raft's bounding box + SDF_MAX margin
 const SDF_MAX = 8;        // distance encoded in [-2, SDF_MAX] metres
 const MAX_FLOATERS = 8;
 
@@ -86,6 +85,7 @@ uniform float uFoamStart;    // 1 - J where crest foam begins (absolute, so calm
 uniform int uDebug;          // 1 planar refl, 2 water thickness, 3 crest pinch, 4 raft sdf
 uniform sampler2D tRaftSdf;
 uniform vec3 uRaft;          // x, z, yaw
+uniform vec3 uSdfBox;        // raft-local centre x, z and side length (m) of the baked square
 uniform float uDeckLift;     // deck height above water for the fake shadow
 uniform vec3 uFloaters[${MAX_FLOATERS}];
 #ifdef USE_PREPASS
@@ -125,7 +125,7 @@ float raftDist(vec2 world) {
   vec2 l = world - uRaft.xy;
   float c = cos(uRaft.z), s = sin(uRaft.z);
   l = vec2(c * l.x - s * l.y, s * l.x + c * l.y);
-  vec2 uv = l / ${SDF_SPAN.toFixed(1)} + 0.5;
+  vec2 uv = (l - uSdfBox.xy) / uSdfBox.z + 0.5;
   if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return ${SDF_MAX.toFixed(1)};
   return texture2D(tRaftSdf, uv).r * ${(SDF_MAX + 2).toFixed(1)} - 2.0;
 }
@@ -218,7 +218,7 @@ void main() {
 
   // Foam 2: hugging band on the logs + lacy wake rings that pulse outward and fade by ~1.3 m.
   float ring = 0.5 + 0.5 * sin(rd * 5.0 - uTime * 1.8 + n1 * 3.0);
-  float raftCore = 1.0 - smoothstep(0.04, 0.2 + 0.18 * n1, rd);
+  float raftCore = 1.0 - smoothstep(0.02, 0.1 + 0.14 * n1, rd);
   float raftLace = (1.0 - smoothstep(0.0, 1.1, rd)) * (0.35 + 0.65 * ring);
   float floatLace = 0.0;
   for (int i = 0; i < ${MAX_FLOATERS}; i++) {
@@ -229,7 +229,8 @@ void main() {
   float laceMask = max(max(raftLace, floatLace * 0.8), contact);
   float lace = clamp((0.01 + laceMask * 0.055 - iso) / isoAA + 0.5, 0.0, 1.0) * step(0.02, laceMask);
   float foam = max(max(crest * 0.85, lace * 0.9), raftCore * 0.92);
-  foam *= 1.0 - smoothstep(30.0, 90.0, dist);
+  foam *= (1.0 - smoothstep(30.0, 90.0, dist)) * smoothstep(-0.7, -0.3, rd);   // none deep under the deck (plank gaps)
+  col *= mix(0.55, 1.0, smoothstep(-1.2, 0.1, rd));                               // occluded water under the raft
   col = mix(col, uFoam * (0.8 + 0.2 * shadow), foam);
 
   gl_FragColor = vec4(col, 1.0);
@@ -278,6 +279,7 @@ export function createWater(T, options = {}) {
     uFadeFar: { value: options.fadeFar ?? 125 },
     tRaftSdf: { value: sdfTex },
     uRaft: { value: new T.Vector3() },
+    uSdfBox: { value: new T.Vector3(0, 0, 32) },
     uDeckLift: { value: options.deckLift ?? 0.45 },
     uFloaters: { value: Array.from({ length: MAX_FLOATERS }, () => new T.Vector3(1e4, 1e4, 0)) },
     tScene: { value: null },
@@ -374,13 +376,18 @@ export function createWater(T, options = {}) {
     renderer.render(scene, camera);
   }
 
-  // Bake the raft footprint (2 m tiles at tile*2) into a signed distance texture.
+  // Bake the raft footprint (2 m tiles centred at tile*2, raft-local) into a signed distance texture.
+  // Runs only when tiles change; cost is SDF_RES^2 x tiles (7 tiles ~0.3 ms, 400 tiles ~25 ms).
   function setRaft(tiles, x = 0, z = 0, yaw = 0) {
-    const texel = SDF_SPAN / SDF_RES;
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const [tx, tz] of tiles) { x0 = Math.min(x0, tx * 2 - 1); x1 = Math.max(x1, tx * 2 + 1); z0 = Math.min(z0, tz * 2 - 1); z1 = Math.max(z1, tz * 2 + 1); }
+    if (!tiles.length) { x0 = z0 = -1; x1 = z1 = 1; }
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, span = Math.max(x1 - x0, z1 - z0) + SDF_MAX * 2;
+    const texel = span / SDF_RES;
     for (let j = 0; j < SDF_RES; j++) {
       for (let i = 0; i < SDF_RES; i++) {
-        const px = (i + 0.5) * texel - SDF_SPAN / 2, pz = (j + 0.5) * texel - SDF_SPAN / 2;
-        let d = 1e9;
+        const px = cx + (i + 0.5) * texel - span / 2, pz = cz + (j + 0.5) * texel - span / 2;
+        let d = tiles.length ? 1e9 : SDF_MAX;
         for (const [tx, tz] of tiles) {
           const qx = Math.abs(px - tx * 2) - 1, qz = Math.abs(pz - tz * 2) - 1;
           const out = Math.hypot(Math.max(qx, 0), Math.max(qz, 0)), inside = Math.min(Math.max(qx, qz), 0);
@@ -390,12 +397,23 @@ export function createWater(T, options = {}) {
       }
     }
     sdfTex.needsUpdate = true;
+    uniforms.uSdfBox.value.set(cx, cz, span);
     uniforms.uRaft.value.set(x, z, yaw);
   }
   function setRaftPose(x, z, yaw) { uniforms.uRaft.value.set(x, z, yaw); }
-  function setFloaters(list) {
-    uniforms.uFloaters.value.forEach((v, i) => (list[i] ? v.set(list[i][0], list[i][1], list[i][2]) : v.set(1e4, 1e4, 0)));
+  // list: [[x, z, radius], ...]. With (cx, cz) only the MAX_FLOATERS closest to that point get foam.
+  const pick = [];
+  function setFloaters(list, cx, cz) {
+    let src = list;
+    if (cx !== undefined && list.length > MAX_FLOATERS) {
+      pick.length = 0;
+      for (const f of list) pick.push(f);
+      pick.sort((a, b) => (a[0] - cx) ** 2 + (a[1] - cz) ** 2 - (b[0] - cx) ** 2 - (b[1] - cz) ** 2);
+      src = pick;
+    }
+    uniforms.uFloaters.value.forEach((v, i) => (src[i] ? v.set(src[i][0], src[i][1], src[i][2]) : v.set(1e4, 1e4, 0)));
   }
+
 
   const pre = WAVES.map(([dx, dz, a, l, q]) => {
     const len = Math.hypot(dx, dz), k = (Math.PI * 2) / l;
@@ -414,7 +432,7 @@ export function createWater(T, options = {}) {
     let px = x, pz = z;
     for (let i = 0; i < 2; i++) { displace(px, pz, t); px = x - tmp[0]; pz = z - tmp[2]; }
     displace(px, pz, t);
-    return BASE_Y + tmp[1];
+    return mesh.position.y + tmp[1];
   }
   function getSlope(x, z, t = time, e = 0.6) {
     return {
@@ -428,4 +446,10 @@ export function createWater(T, options = {}) {
   }
 
   return { mesh, tier, update, render, getHeight, getSlope, setRaft, setRaftPose, setFloaters, uniforms, material, dispose };
+}
+
+// Drop-in name for dist/ocean.js: same options, same getHeight/getSlope/update/uniforms/mesh contract,
+// tier 'a' (single pass) unless options.tier says otherwise.
+export function createOcean(T, options = {}) {
+  return createWater(T, { tier: 'a', ...options });
 }
