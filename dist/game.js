@@ -1102,7 +1102,17 @@ export function mount(transfer = null) {
     if (role === 'guest') { if (!networkReady) return; localBag().move(from, to, a.amount); }
     action(a);
   }
-  function craft(recipe) { if (typeof recipe === 'string') action({kind:'craft', recipe}); }
+  // Crafting-book gate: progression (items.js) first, then the content locks (Tinker's Desk study).
+  const recipeGate = id => prog?.recipeGate(id) ?? content?.recipeGate?.(id) ?? null;
+  // Host: true only if the bag actually changed (a refused craft returns false, so a hold denies).
+  // Guest: true once the action is sent; the host answers asynchronously.
+  function craft(recipe) {
+    if (typeof recipe !== 'string') return false;
+    if (role === 'guest') return action({kind:'craft', recipe}) !== false;
+    const bag = localBag(), v = bag.version;
+    action({kind:'craft', recipe});
+    return bag.version !== v;
+  }
   function repair() { if (!running) return; const bag = localBag(); action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH)}); }
   function openInventory() { if (!running || !survivalUI) return; pauseInput(); releaseLock(); survivalUI.open?.(); play('open'); hintDone('bag'); } // pauseInput: held W/Shift survive the panel
   function interact() {
@@ -2016,7 +2026,7 @@ export function mount(transfer = null) {
       onResume:guard(() => { play('close'); requestLock(); }),
       onPause:guard(pauseInput), // held movement keys survive the bag
       getModel:modelOf, // 3D icons rendered from models.js
-      recipeGate:id => prog?.recipeGate(id), // [progression-hook]
+      recipeGate, // [progression-hook] + content (Tinker's Desk) locks
     });
     prog.installUI(); // [progression-hook]
     logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock())});

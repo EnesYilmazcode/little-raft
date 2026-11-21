@@ -139,7 +139,10 @@ export function fittingTimes(bag, id, cap = 99) {
 }
 
 /** 'ready' | 'missing' | 'full' given the rows and an optional Bag.canCraft() result. */
-export function recipeState(rows, check = null) {
+/** One state for the book row, the detail card and the pinned tracker. `gate` is the host's
+ *  recipeGate(id) result ({locked, reason}): a research/station/study lock wins over materials. */
+export function recipeState(rows, check = null, gate = null) {
+  if (gate && gate.locked) return 'gated';
   if (rows.some(r => !r.enough)) return 'missing';
   if (check && check.full) return 'full';
   if (check && check.ok === false) return 'missing';
@@ -259,13 +262,15 @@ export function placeRefusal(kind, t, max) {
 
 // ---- recipe order ----
 // Inside a tab, recipes you can make right now come first, then ones blocked only by bag space,
-// then the rest, closest-to-done first (fewest ingredients short, then fewest units short).
+// then the rest, closest-to-done first (fewest ingredients short, then fewest units short), and
+// locked (gated) recipes last, nearest unlock first (the gate's rank).
 // The sort is stable, so recipes keep their book order within each group.
-const STATE_RANK = Object.freeze({ ready: 0, full: 1, missing: 2 });
+const STATE_RANK = Object.freeze({ ready: 0, full: 1, missing: 2, gated: 3 });
 
 /** views: [{state, rows}] (rows from ingredientRows). Returns a new, sorted array. */
 export function sortCraftableFirst(views) {
   const key = v => {
+    if (v?.state === 'gated') return [STATE_RANK.gated, Number(v.rank) || 0, 0]; // locked last, nearest unlock first
     let kinds = 0, units = 0;
     for (const r of v?.rows || []) if (!r.enough) { kinds++; units += r.short; }
     return [STATE_RANK[v?.state] ?? 3, kinds, units];
@@ -343,13 +348,13 @@ export function savePin(storage, id) {
  * crafts the materials cover, and how many ingredient lines are complete.
  * `check` is an optional Bag.canCraft() result. Returns null without a recipe.
  */
-export function trackerView(recipe, countOf, check = null) {
+export function trackerView(recipe, countOf, check = null, gate = null) {
   if (!recipe) return null;
   const rows = ingredientRows(recipe.reqs, countOf);
-  const times = craftableTimes(rows);
+  const times = craftableTimes(rows), state = recipeState(rows, check, gate);
   return {
     id: recipe.id, name: recipe.name, kind: recipe.out?.kind ?? recipe.id, rows,
-    state: recipeState(rows, check), times: Number.isFinite(times) ? times : 0,
+    state, reason: state === 'gated' ? String(gate.reason || '') : '', times: Number.isFinite(times) ? times : 0,
     met: rows.filter(r => r.enough).length, total: rows.length,
   };
 }

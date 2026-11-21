@@ -46,6 +46,13 @@ export function learnedFrom(seen, learned = []) {
   return [...out].sort();
 }
 export const isLearned = (state, id) => STARTER.includes(id) || state.all === true || state.learned.includes(id) || !!ownedElsewhere(id);
+/** Crafting-book gate for a recipe this table teaches: null once learned, else locked with what to study. */
+export function studyGate(state, id) {
+  if (typeof id !== 'string' || !hasOwn(RECIPES, id) || isLearned(state, id)) return null;
+  const seen = new Set(state.seen || []);
+  const miss = Object.keys(RECIPES[id].cost || {}).filter(k => !seen.has(k)).map(nameOf);
+  return { locked: true, source: 'study', rank: miss.length * 1000 + 999, reason: (miss.length ? 'Study ' + miss.join(' + ') : 'Study it') + ' at a Tinker\u2019s Desk' };
+}
 /** Recipe ids that are still locked for this state. */
 export function lockedRecipes(state) {
   return Object.keys(RECIPES).filter(id => !isLearned(state, id));
@@ -384,6 +391,7 @@ export function createStorage(ctx) {
       if (typeof recipe !== 'string' || !hasOwn(RECIPES, recipe)) return null;
       return isLearned(st, recipe) ? null : LOCK_REASON;
     },
+    recipeGate: recipe => studyGate(st, recipe),
     interact(aim) {
       const d = target(aim); if (!d) return false;
       if (oldHost()) { ctx.notice?.(OLD_HOST, 2400); return true; }

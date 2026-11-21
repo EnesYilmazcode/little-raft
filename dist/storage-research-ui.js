@@ -95,16 +95,8 @@ const CSS = `
 .lr-sr-lock svg{display:block;width:15px;height:15px}
 /* craft list in #inventory */
 #inventory .sv-rlist{display:flex;flex-direction:column}
-#inventory .sv-recipe[data-locked]{order:1;pointer-events:none;cursor:default;opacity:1!important;background:linear-gradient(#3f2b1a,#33231a);box-shadow:inset 0 0 0 1px #d4b07a22}
-#inventory .sv-recipe[data-locked] .sv-rart{position:relative}
-#inventory .sv-recipe[data-locked] .sv-rart .sv-icon{filter:grayscale(1) brightness(.75);opacity:.6}
-#inventory .sv-recipe[data-locked] .sv-rname{color:#d9c9a6}
-#inventory .sv-recipe[data-locked] .sv-reqs{opacity:.5}
-#inventory .sv-recipe[data-locked] .sv-why{display:none}
+#inventory .sv-recipe .sv-rart{position:relative}
 #inventory .sv-recipe .lr-sr-lock{position:absolute;right:-6px;bottom:-6px}
-#inventory .sv-recipe .lr-sr-needs{display:block;margin-top:4px;font:700 12px/1.2 ${FONT};color:#ffcf9a}
-#inventory .sv-recipe.lr-sr-first{position:relative;margin-top:30px}
-#inventory .sv-recipe.lr-sr-first::before{content:'Discover at a Tinker\\2019s Desk';position:absolute;left:2px;top:-22px;font:800 11px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#d9c9a6}
 #inventory .sv-recipe.lr-sr-fresh{animation:lrSrFresh 2.4s ease-out}
 #inventory .lr-sr-more{display:block;width:100%;margin:0 0 8px;padding:6px 8px;border:0;border-radius:4px;background:#24170caa;box-shadow:inset 0 0 0 1px #ffbd6655;color:#ffcf9a;font:700 12px/1.2 ${FONT};text-align:left;letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
 #inventory .lr-sr-more:hover{box-shadow:inset 0 0 0 1px #ffe3a6}
@@ -175,10 +167,9 @@ export function createStorageUI(api) {
   let mode = null, tx = 0, tz = 0, isOpen = false, lastRev = -1, prevKnown = null, prevSeen = null, bannerTimer = 0;
   const prevKind = new Array(SLOT_COUNT).fill(null), prevCount = new Int32Array(SLOT_COUNT), prevDur = new Float64Array(SLOT_COUNT);
   let inv = null, invWasOpen = false, invRev = -1, invRow = null, invTable = false;
-  let lockedRows = []; // craft-list rows we marked locked (aria-label is re-applied if survival-ui repaints it)
+  let lockedRows = []; // craft-list rows that still need study (survival-ui greys them through the recipe gate)
   const timers = new Set(); // craft-list glow timeouts
   const ac = new AbortController(), on = { signal: ac.signal };
-  const LOCKED_LABEL = 'Locked — needs research';
 
   // ---------- painting ----------
   function bagChanged(bag) {
@@ -328,37 +319,27 @@ export function createStorageUI(api) {
   }
 
   // ---------- craft list annotation (#inventory) ----------
-  const setAttr = (el, k, v) => { if (el.getAttribute(k) !== v) el.setAttribute(k, v); };
   const setClass = (el, c, on) => { if (el.classList.contains(c) !== on) el.classList.toggle(c, on); };
   function annotate() {
-    const rows = inv.querySelectorAll('.sv-recipe[data-recipe]'), seen = new Set(api.state.seen), fresh = api.takeFresh();
+    const rows = inv.querySelectorAll('.sv-recipe[data-recipe]'), fresh = api.takeFresh();
     const beckon = api.locked().length > 0 && !api.hasTable();
-    let first = null;
     lockedRows = [];
     rows.forEach(el => {
       const id = el.dataset.recipe, r = RECIPES[id], locked = !!r && !api.isLearned(id);
-      const body = el.querySelector('.sv-rbody'), art = el.querySelector('.sv-rart');
-      let badge = el.querySelector('.lr-sr-lock'), needs = el.querySelector('.lr-sr-needs');
+      const art = el.querySelector('.sv-rart');
+      let badge = el.querySelector('.lr-sr-lock');
       setClass(el, 'lr-sr-beckon', beckon && id === 'research');
       if (!locked) {
-        if (el.dataset.locked) unlockRow(el);
-        setClass(el, 'lr-sr-first', false);
-        badge?.remove(); needs?.remove();
+        badge?.remove();
         if (fresh.includes(id)) {
           el.classList.remove('lr-sr-fresh'); void el.offsetWidth; el.classList.add('lr-sr-fresh');
           const t = setTimeout(() => { timers.delete(t); el.classList.remove('lr-sr-fresh'); }, 2500); timers.add(t);
         }
         return;
       }
-      const miss = Object.keys(r.cost).filter(k => !seen.has(k)).map(k => itemName(k));
-      const text = miss.length ? 'Study ' + miss.join(' + ') : 'Study at a Tinker\u2019s Desk';
-      if (!el.dataset.locked) { el.dataset.locked = '1'; el.dataset.srAria = el.getAttribute('aria-label') ?? ''; }
-      setAttr(el, 'title', 'Needs research: ' + (miss.join(', ') || 'visit a Tinker\u2019s Desk'));
-      setAttr(el, 'tabindex', '-1'); setAttr(el, 'aria-label', LOCKED_LABEL); lockedRows.push(el);
-      setClass(el, 'lr-sr-first', !first); first ??= el;
+      // The row's state and reason ('Locked: Study Plastic at a Tinker's Desk') come from the recipe gate.
+      lockedRows.push(el);
       if (!badge && art) { badge = document.createElement('span'); badge.className = 'lr-sr-lock'; badge.innerHTML = LOCK; art.append(badge); }
-      if (!needs && body) { needs = document.createElement('span'); needs.className = 'lr-sr-needs'; body.append(needs); }
-      if (needs && needs.textContent !== text) needs.textContent = text;
     });
     // "N more recipes to discover" at the top of the craft list (outside .sv-rlist, which survival-ui owns)
     const list = inv.querySelector('.sv-rlist'), box = list?.parentElement;
@@ -366,24 +347,17 @@ export function createStorageUI(api) {
     if (!lockedRows.length || !box) { more?.remove(); return; }
     if (!more) {
       more = document.createElement('button'); more.type = 'button'; more.className = 'lr-sr-more';
-      more.addEventListener('click', () => { box.querySelector('.sv-recipe[data-locked]')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); });
+      more.addEventListener('click', () => { box.querySelector('.sv-rsection:not([hidden])')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); });
       box.insertBefore(more, list);
     }
     const n = lockedRows.length, label = `${n} more recipe${n > 1 ? 's' : ''} to discover ↓`;
     if (more.textContent !== label) more.textContent = label;
   }
-  function unlockRow(el) {
-    const aria = el.dataset.srAria;
-    delete el.dataset.locked; delete el.dataset.srAria;
-    el.removeAttribute('title'); el.removeAttribute('tabindex');
-    if (aria) el.setAttribute('aria-label', aria); else el.removeAttribute('aria-label');
-  }
   function unannotate() {
     const host = inv?.isConnected ? inv : document.getElementById('inventory'); if (!host) return;
     host.querySelectorAll('.sv-recipe').forEach(el => {
-      if (el.dataset.locked) unlockRow(el);
-      el.querySelector('.lr-sr-lock')?.remove(); el.querySelector('.lr-sr-needs')?.remove();
-      el.classList.remove('lr-sr-first', 'lr-sr-fresh', 'lr-sr-beckon');
+      el.querySelector('.lr-sr-lock')?.remove();
+      el.classList.remove('lr-sr-fresh', 'lr-sr-beckon');
     });
     host.querySelectorAll('.lr-sr-more').forEach(el => el.remove());
     lockedRows = [];
@@ -402,7 +376,6 @@ export function createStorageUI(api) {
       const row = inv.querySelector('.sv-recipe'), table = api.hasTable();
       if (!invWasOpen || invRev !== api.rev || invRow !== row || invTable !== table) { invRev = api.rev; invRow = row; invTable = table; annotate(); }
     }
-    if (invOpen) for (let i = 0; i < lockedRows.length; i++) if (lockedRows[i].getAttribute('aria-label') !== LOCKED_LABEL) lockedRows[i].setAttribute('aria-label', LOCKED_LABEL);
     invWasOpen = invOpen;
   }
 

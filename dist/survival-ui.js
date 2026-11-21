@@ -223,6 +223,9 @@ const CSS = `
 #inventory .sv-recipe.sv-locked .sv-rart>*{filter:grayscale(.7);opacity:.8}
 #inventory .sv-recipe.sv-locked .sv-rname{color:#a9b0b2}
 #inventory .sv-recipe.sv-gated .sv-rart>*{filter:grayscale(1) brightness(.55)} /* [progression-hook] research-locked */
+#inventory .sv-recipe.sv-gated .sv-rsub{color:#ffcf9a}
+#inventory .sv-rsection{flex:none;margin:8px 2px 1px;font:800 11px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#c9cfd0}
+#inventory .sv-rsection[hidden]{display:none}
 #inventory .sv-recipe:focus-visible{outline:2px solid #fff6e0;outline-offset:1px}
 #inventory .sv-rart{display:grid;place-items:center;width:42px;height:42px;border-radius:3px;background:radial-gradient(circle at 50% 40%,#20282c,#0d1215 75%);box-shadow:inset 0 0 0 1px #ffffff55}
 #inventory .sv-rart .sv-icon{width:36px;height:36px}
@@ -319,6 +322,7 @@ const CSS = `
 #craftTracker .ct-name{display:block;font:700 14px/1.15 ${FONT};color:#f8f3e6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #craftTracker .ct-state{display:block;margin-top:2px;font:700 10px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#f4efe280}
 #craftTracker.ct-ready .ct-state{color:#a9e48a}
+#craftTracker.ct-gated .ct-state{color:#ffcf9a;letter-spacing:0;text-transform:none;font-size:12px;line-height:1.2;white-space:normal}
 #craftTracker.ct-ready{box-shadow:inset 0 0 0 1px #8fd36a88,0 0 12px #8fd36a33,0 6px 18px #0006}
 #craftTracker ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
 #craftTracker li{display:grid;grid-template-columns:20px 1fr auto;gap:7px;align-items:center;padding:2px 6px 2px 3px;border-radius:4px;background:#ffffff0a;box-shadow:inset 2px 0 0 #e06a4a}
@@ -528,7 +532,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!groups.some(g => g.id === activeTab)) activeTab = groups[0]?.id ?? null;
     if (!recipes.some(r => r.id === pickId)) pickId = null;
     const key = recipes.map(r => r.id).join(',') + '|book';
-    if (dlg.dataset.svRecipes !== key || rlist.childElementCount !== recipes.length || !recipes.length) {
+    if (dlg.dataset.svRecipes !== key || rlist.querySelectorAll(':scope>.sv-recipe').length !== recipes.length || !recipes.length) {
       tabsEl.style.setProperty('--tabs', String(Math.max(1, groups.length)));
       tabsEl.innerHTML = groups.map(g => `<button type="button" class="sv-tab" role="tab" data-cat="${esc(g.id)}" aria-selected="false" tabindex="-1">${iconSVG(g.icon)}<span>${esc(g.name)}</span><i class="sv-tbadge"></i></button>`).join('');
       // Rows in tab order so the list reads naturally inside each category.
@@ -553,6 +557,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1;
     });
     for (const v of recipeEls) v.el.hidden = v.cat !== activeTab;
+    placeSections();
     const inTab = recipeEls.filter(v => v.cat === activeTab);
     if (!inTab.some(v => v.r.id === pickId)) pickId = (inTab.find(v => v.state === 'ready') || inTab[0])?.r.id ?? null;
     if (activeTab) dlg.dataset.svTab = activeTab;
@@ -631,9 +636,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const rows = ingredientRows(r.reqs, k => countOf(bag, k));
     let check = null;
     if (typeof bag.canCraft === 'function') { try { check = bag.canCraft(r.id); } catch (e) { console.error(e); } }
-    const g = gate(r.id); // [progression-hook] research/station lock wins over materials
-    if (g?.locked) return { rows, state: 'gated', reason: g.reason || '', times: 0 };
-    const state = recipeState(rows, check);
+    const g = gate(r.id); // [progression-hook] research/station/study lock wins over materials
+    const state = recipeState(rows, check, g);
+    if (state === 'gated') return { rows, state, reason: g.reason || '', rank: Number(g.rank) || 0, times: 0 };
     let times = craftableTimes(rows);
     if (state === 'ready') { const fit = fittingTimes(bag, r.id, Math.min(HOLD.max, times)); if (fit != null) times = fit; }
     return { rows, state, reason: '', times };
@@ -642,8 +647,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const readyPer = new Map();
     for (const v of recipeEls) {
       const r = v.r;
-      const { rows, state, times, reason } = evaluate(bag, r);
-      v.rows = rows; v.state = state; v.times = times; v.reason = reason; // [progression-hook] reason
+      const { rows, state, times, reason, rank } = evaluate(bag, r);
+      v.rows = rows; v.state = state; v.times = times; v.reason = reason; v.rank = rank; // [progression-hook] reason, gated order
       if (state === 'ready') readyPer.set(v.cat, (readyPer.get(v.cat) || 0) + 1);
       const sig = state + times + (v.reason || '') + ':' + rows.map(x => x.have).join(','); // [progression-hook] reason
       if (v.sig === sig) continue;
@@ -665,6 +670,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       if (tipAnchor === v.el) showTipFor(v.el);
     }
     reorderRecipes();
+    placeSections();
     tabsEl.querySelectorAll('.sv-tab').forEach(t => {
       const n = readyPer.get(t.dataset.cat) || 0, b = t.querySelector('.sv-tbadge');
       if (b && b.textContent !== (n ? String(n) : '')) b.textContent = n ? String(n) : '';
@@ -706,15 +712,18 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const t = ensureTracker();
     const r = pinId && !isOpen ? recipes.find(x => x.id === pinId) : null;
     if (!r) { if (!t.hidden) t.hidden = true; trackSig = null; return; }
-    const key = sig + '|' + pinId;
+    const g = gate(r.id); // same gate as the book row, so a locked recipe never reads Ready here
+    const key = sig + '|' + pinId + '|' + (g?.locked ? g.reason || 'locked' : '');
     if (key === trackSig) return;
     trackSig = key;
     let check = null;
     if (typeof bag.canCraft === 'function') { try { check = bag.canCraft(r.id); } catch {} }
-    const tv = trackerView(r, k => countOf(bag, k), check);
+    const tv = trackerView(r, k => countOf(bag, k), check, g);
     const ready = tv.state === 'ready';
     t.classList.toggle('ct-ready', ready);
-    const state = ready ? `Ready${tv.times > 1 ? ' ×' + Math.min(tv.times, 99) : ''}` : tv.state === 'full' ? 'Bag is full' : `${tv.met} of ${tv.total} gathered`;
+    t.classList.toggle('ct-gated', tv.state === 'gated');
+    const state = tv.state === 'gated' ? 'Locked: ' + (tv.reason || 'not learned yet')
+      : ready ? `Ready${tv.times > 1 ? ' ×' + Math.min(tv.times, 99) : ''}` : tv.state === 'full' ? 'Bag is full' : `${tv.met} of ${tv.total} gathered`;
     t.innerHTML = `<div class="ct-head"><span class="ct-art" aria-hidden="true">${art(tv.kind)}</span><span><b class="ct-name">${esc(tv.name)}</b><small class="ct-state">${esc(state)}</small></span></div>`
       + `<ul>${tv.rows.map(x => `<li class="${x.enough ? 'ct-ok' : ''}" aria-label="${esc(itemName(x.kind))}: have ${x.have}, need ${x.need}">${art(x.kind)}<span>${esc(itemName(x.kind))}</span><b>${esc(amountLabel(x))}</b></li>`).join('')}</ul>`
       + (ready ? '<div class="ct-foot">Open your bag with <kbd>Tab</kbd> to craft</div>' : '');
@@ -730,6 +739,23 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     recipeEls = next;
     if (focused && focused !== document.activeElement && rlist.contains(focused)) { try { focused.focus({ preventScroll: true }); } catch {} }
     if (tipAnchor && rlist.contains(tipAnchor)) placeTipAt(tipAnchor);
+  }
+
+  // A real header row above the first locked recipe of each tab (locked rows sort last).
+  const sections = new Map();
+  function placeSections() {
+    for (const g of groups) {
+      const first = recipeEls.find(v => v.cat === g.id && v.state === 'gated');
+      let h = sections.get(g.id);
+      if (!first) { if (h) h.hidden = true; continue; }
+      if (!h || !rlist.contains(h)) {
+        h = document.createElement('div'); h.className = 'sv-rsection'; h.dataset.cat = g.id;
+        h.setAttribute('role', 'heading'); h.setAttribute('aria-level', '3'); h.textContent = 'Locked';
+        sections.set(g.id, h);
+      }
+      if (h.nextElementSibling !== first.el) rlist.insertBefore(h, first.el);
+      h.hidden = g.id !== activeTab;
+    }
   }
 
   // ---------- hold to craft ----------
@@ -749,10 +775,13 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function craftNow(id) {
     const v = freshView(id);
     if (!v || v.state !== 'ready') return false;
+    const bag = bagNow(), mark = b => (b && typeof b.version === 'number' ? b.version : JSON.stringify(b?.slots ?? null));
+    const before = mark(bag);
     let r;
     try { r = onCraft?.(id); } catch (e) { console.error(e); r = false; }
     lastSig = null;
-    if (r === false) return false;
+    // true: crafted (or sent to the host); otherwise only a bag that changed counts, so a refused craft denies.
+    if (r === false || (r !== true && mark(bag) === before)) return false;
     render(false);
     return true;
   }
