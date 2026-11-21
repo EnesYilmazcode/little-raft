@@ -650,3 +650,4 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
 }
 
 export default createSurvivalUI;
+export { iconSVG, slotSig, paintSlot, itemName }; // content hook (storage-research)

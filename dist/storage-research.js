@@ -1,4 +1,389 @@
-// storage-research content module (stub; see docs/features/storage-research.md and dist/content.js for the module shape).
+// Storage chests and the Research Table (see docs/features/storage-research.md).
+// The placed Crate decor becomes a 12-slot chest; the Research Table decor learns recipes from the
+// ingredient kinds you feed it. Slice: world.ext.storage. Host-authoritative actions 'storage.*'.
+// The top half of this file is pure (no DOM, no THREE) and exported for tests.
+import { Bag, RECIPES, ITEM_INFO, SLOT_COUNT, HOTBAR_SIZE } from './inventory-state.js';
+import { buildResearchTable } from './storage-research-model.js';
+
+export const CHEST_SLOTS = 12;
+export const MAX_CHESTS = 400;
+export const REACH = 3.2;             // metres from the actor to the tile centre
+export const STARTER = Object.freeze(['rope', 'hook', 'hammer', 'crate', 'research']);
+export const LOCK_REASON = 'Research it first at a Research Table';
+const NOTHING_NEW = 'That doesn’t teach anything new';
+
+const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+const isInt = Number.isInteger;
+const isIndex = (i, n) => isInt(i) && i >= 0 && i < n;
+const isKind = k => typeof k === 'string' && hasOwn(ITEM_INFO, k);
+const maxStack = k => ITEM_INFO[k]?.maxStack ?? 1;
+const nameOf = k => ITEM_INFO[k]?.name ?? RECIPES[k]?.name ?? String(k);
+const keyOf = (x, z) => x + ',' + z;
+const sortedUnique = a => [...new Set(a)].sort();
+
+// ------------------------------------------------------------------ recipe tree
+
+export const recipeIds = () => Object.keys(RECIPES);
+/** Every kind that appears in any recipe cost. */
+export function ingredientKinds() {
+  const out = new Set();
+  for (const r of Object.values(RECIPES)) for (const k of Object.keys(r.cost || {})) out.add(k);
+  return [...out].sort();
+}
+/** Learned list (sorted, unique, beyond STARTER): the old list plus every recipe whose cost kinds are all seen. */
+export function learnedFrom(seen, learned = []) {
+  const s = new Set(seen), out = new Set(learned);
+  for (const [id, r] of Object.entries(RECIPES)) {
+    if (STARTER.includes(id)) continue;
+    if (Object.keys(r.cost || {}).every(k => s.has(k))) out.add(id);
+  }
+  return [...out].sort();
+}
+export const isLearned = (state, id) => STARTER.includes(id) || state.all === true || state.learned.includes(id);
+/** Recipe ids that are still locked for this state. */
+export function lockedRecipes(state) {
+  return Object.keys(RECIPES).filter(id => !isLearned(state, id));
+}
+/** Kinds the table accepts right now: ingredients of a locked recipe that are not yet seen. */
+export function researchableKinds(state) {
+  const out = new Set();
+  for (const id of lockedRecipes(state)) for (const k of Object.keys(RECIPES[id].cost || {})) if (!state.seen.includes(k)) out.add(k);
+  return [...out].sort();
+}
+
+// ------------------------------------------------------------------ validation
+
+const BLANK = new Array(SLOT_COUNT).fill(null);
+/** One slot through Bag's own rules (kind, count, maxStack, durability). Bad -> null. */
+export function cleanSlot(raw) {
+  if (raw === null || raw === undefined) return null;
+  try { const snap = BLANK.slice(); snap[0] = raw; return new Bag({ slots: snap, selected: 0 }).slots[0]; } catch { return null; }
+}
+export function cleanChest(raw) {
+  const out = new Array(CHEST_SLOTS).fill(null);
+  if (!Array.isArray(raw)) return out;
+  for (let i = 0; i < CHEST_SLOTS && i < raw.length; i++) out[i] = cleanSlot(raw[i]);
+  return out;
+}
+const chestEmpty = c => c.every(s => !s);
+const kindList = v => (Array.isArray(v) && v.every(k => typeof k === 'string' && k.length > 0 && k.length < 40) ? sortedUnique(v) : null);
+
+/** Validate a world.ext.storage slice field by field. Never throws. Bad fields come back as null. */
+export function cleanSlice(data) {
+  const d = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+  const chests = {};
+  let n = 0;
+  if (d.chests && typeof d.chests === 'object' && !Array.isArray(d.chests)) {
+    for (const k of Object.keys(d.chests)) {
+      if (n >= MAX_CHESTS) break;
+      const m = /^(-?\d{1,2}),(-?\d{1,2})$/.exec(k); if (!m) continue;
+      const x = +m[1], z = +m[2]; if (Math.abs(x) > 25 || Math.abs(z) > 25) continue;
+      const c = cleanChest(d.chests[k]); if (chestEmpty(c)) continue;
+      chests[keyOf(x, z)] = c; n++;
+    }
+  }
+  return {
+    chests,
+    seen: kindList(d.seen),
+    learned: kindList(d.learned),
+    legacy: d.legacy === true,
+    r: isInt(d.r) && d.r >= 0 && d.r < Number.MAX_SAFE_INTEGER ? d.r : 0,
+    s: typeof d.s === 'string' && d.s.length <= 24 ? d.s : '',
+  };
+}
+
+const bagKinds = snap => (snap && Array.isArray(snap.slots) ? snap.slots.map(s => s && s.kind).filter(Boolean) : []);
+/** True when the world shows play, matching the built/untouched test in game.js bagsFromWorld(). */
+export function isProgressed(w) {
+  if (!w || typeof w !== 'object') return false;
+  if ((Array.isArray(w.tiles) && w.tiles.length > 9) || (Array.isArray(w.decor) && w.decor.length > 0)) return true;
+  if (w.collected > 0 || w.fish > 0) return true;
+  const outputs = new Set(Object.values(RECIPES).map(r => r.output.kind)); outputs.delete('hook');
+  for (const k of [...bagKinds(w.hostInventory), ...bagKinds(w.guestInventory)]) if (outputs.has(k)) return true;
+  if (!w.hostInventory || !Array.isArray(w.hostInventory.slots)) { // legacy stock-only save: anything but the untouched kit counts
+    const s = w.stock && typeof w.stock === 'object' ? w.stock : {};
+    const n = k => (isInt(s[k]) && s[k] > 0 ? s[k] : 0);
+    if (!(n('wood') === 5 && n('leaf') === 3 && n('scrap') === 1 && !n('plastic'))) return true;
+  }
+  return false;
+}
+
+/** Turn a slice (maybe undefined/garbage) into live state, applying the backward-compat rules. */
+export function stateFrom(data, from, world) {
+  const c = cleanSlice(data);
+  const st = { chests: c.chests, seen: [], learned: [], legacy: c.legacy, all: false, r: c.r, s: c.s };
+  if (from === 'net') {
+    if (data === undefined || c.learned === null) st.all = true; // old host without this module allows every craft
+    st.seen = c.seen ?? []; st.learned = c.learned ?? [];
+    return st;
+  }
+  if (c.learned === null) { // old save (or bad list): grandfather progressed worlds
+    if (isProgressed(world)) { st.seen = ingredientKinds(); st.learned = learnedFrom(st.seen, recipeIds().filter(id => !STARTER.includes(id))); st.legacy = true; }
+    else { st.seen = c.seen ?? []; st.learned = learnedFrom(st.seen); }
+    return st;
+  }
+  st.seen = c.seen ?? [];
+  st.learned = learnedFrom(st.seen, c.learned);
+  return st;
+}
+
+export function sliceOf(st) {
+  const chests = {};
+  for (const k of Object.keys(st.chests)) chests[k] = st.chests[k].map(s => (s ? { ...s } : null));
+  const out = { v: 1, chests, seen: st.seen.slice(), learned: st.learned.slice(), r: st.r, s: st.s };
+  if (st.legacy) out.legacy = true;
+  return out;
+}
+
+// ------------------------------------------------------------------ stack moves (pure, in place)
+
+/**
+ * Move up to `amount` items from src[i] into dst. With `to`, only that slot (empty or same stackable kind).
+ * Without, merge into partial stacks first, then empty slots (index order). Returns the count moved.
+ * Items are moved, never created. Tools travel as whole slots, keeping their durability.
+ */
+export function moveStack(src, i, dst, to, amount) {
+  const s = src[i]; if (!s) return 0;
+  const want = amount === undefined || amount === null ? s.count : Math.min(amount, s.count);
+  if (!(want >= 1)) return 0;
+  const max = maxStack(s.kind);
+  let left = want;
+  const place = j => {
+    const d = dst[j];
+    if (!d) {
+      if (left === s.count) { dst[j] = s; src[i] = null; left = 0; return; } // whole slot keeps durability / id
+      const put = Math.min(max, left); dst[j] = { kind: s.kind, count: put }; s.count -= put; left -= put; return;
+    }
+    if (d.kind !== s.kind || max <= 1 || d.count >= max) return;
+    const put = Math.min(max - d.count, left); d.count += put; s.count -= put; left -= put;
+    if (s.count === 0) src[i] = null;
+  };
+  if (to !== undefined && to !== null) place(to);
+  else {
+    if (max > 1) for (let j = 0; j < dst.length && left > 0; j++) if (dst[j] && dst[j].kind === s.kind && dst[j].count < max) place(j);
+    for (let j = 0; j < dst.length && left > 0 && src[i]; j++) if (!dst[j]) place(j);
+  }
+  return want - left;
+}
+/** Every non-hotbar bag stack (8..27) into the chest while it fits. Returns the count moved. */
+export function putAll(bagSlots, chest) {
+  let n = 0;
+  for (let i = HOTBAR_SIZE; i < bagSlots.length; i++) if (bagSlots[i]) n += moveStack(bagSlots, i, chest, null, null);
+  return n;
+}
+
+// ------------------------------------------------------------------ actions
+
+const optIndex = (v, n) => v === undefined || v === null || isIndex(v, n);
+const expectOk = (e, s) => !!(e && typeof e === 'object' && s && e.kind === s.kind && e.count === s.count);
+
+/**
+ * Apply one 'storage.*' action to `st` and the actor's `bag` (anything with a 28-length .slots array).
+ * env: { decorAt(x,z) -> type|null, pos(actor) -> {x,z}|null }. Everything is checked before anything
+ * changes, then chest, bag and r change together. Returns {ok, reason?, moved?, learned?, kind?}.
+ */
+export function applyStorageAction(st, a, actor, bag, env) {
+  const no = reason => ({ ok: false, reason });
+  if (!a || typeof a !== 'object' || typeof a.kind !== 'string') return no('bad');
+  const verb = a.kind.slice(8);
+  if (!['put', 'take', 'putAll', 'research'].includes(verb)) return no('bad');
+  if (!bag || !Array.isArray(bag.slots) || bag.slots.length !== SLOT_COUNT) return no('bad');
+  if (!isInt(a.x) || !isInt(a.z) || Math.abs(a.x) > 25 || Math.abs(a.z) > 25) return no('bad');
+  const type = env?.decorAt?.(a.x, a.z) ?? null;
+  if (type !== (verb === 'research' ? 'research' : 'crate')) return no('missing');
+  const p = env?.pos?.(actor);
+  if (p && Number.isFinite(p.x) && Number.isFinite(p.z) && Math.hypot(p.x - a.x * 2, p.z - a.z * 2) > REACH) return no('reach');
+  const key = keyOf(a.x, a.z), slots = bag.slots;
+
+  if (verb === 'research') {
+    if (!isIndex(a.slot, SLOT_COUNT)) return no('bad');
+    const s = slots[a.slot];
+    if (!s || !a.expect || typeof a.expect !== 'object' || a.expect.kind !== s.kind) return no('expect');
+    if (!researchableKinds(st).includes(s.kind)) return no('nothing');
+    const before = st.learned;
+    s.count -= 1; if (s.count <= 0) slots[a.slot] = null;
+    st.seen = sortedUnique([...st.seen, s.kind]);
+    st.learned = learnedFrom(st.seen, st.learned);
+    st.r++;
+    return { ok: true, kind: s.kind, learned: st.learned.filter(id => !before.includes(id)) };
+  }
+
+  const chest = st.chests[key] ?? new Array(CHEST_SLOTS).fill(null);
+  let moved = 0;
+  if (verb === 'put' || verb === 'take') {
+    const [srcArr, srcN, dstArr, dstN] = verb === 'put' ? [slots, SLOT_COUNT, chest, CHEST_SLOTS] : [chest, CHEST_SLOTS, slots, SLOT_COUNT];
+    if (!isIndex(a.from, srcN) || !optIndex(a.to, dstN)) return no('bad');
+    const s = srcArr[a.from];
+    if (!s) return no('empty');
+    if (!expectOk(a.expect, s)) return no('expect');
+    if (!(a.amount === undefined || a.amount === null || (isInt(a.amount) && a.amount >= 1 && a.amount <= s.count))) return no('bad');
+    moved = moveStack(srcArr, a.from, dstArr, a.to, a.amount);
+    if (!moved) return no(verb === 'put' ? 'chestFull' : 'bagFull');
+  } else {
+    moved = putAll(slots, chest);
+    if (!moved) return no(slots.slice(HOTBAR_SIZE).some(Boolean) ? 'chestFull' : 'nothingToPut');
+  }
+  if (chestEmpty(chest)) delete st.chests[key]; else st.chests[key] = chest;
+  st.r++;
+  return { ok: true, moved };
+}
+
+const REFUSALS = {
+  missing: 'That spot has nothing to open', reach: 'Step a little closer', nothing: NOTHING_NEW,
+  chestFull: 'The crate is full', bagFull: 'Your bag is full', nothingToPut: 'Nothing in your backpack to store',
+};
+
+// ------------------------------------------------------------------ the content module
+
 export function createStorage(ctx) {
-  return { name: 'storage' };
+  const T = ctx.T;
+  const session = Math.random().toString(36).slice(2, 10);
+  let st = stateFrom(undefined, 'save', null); st.s = session;
+  let cache = null, cacheSt = null, cacheR = -1, netR = -1, netS = null, ver = 0; // ver: local view revision (UI repaint)
+  let ui = null, uiLoading = null, model = null, flicker = 0;
+  const fresh = new Set(); // learned this session, glow once in the craft list
+  const scratch = T ? new T.Vector3() : null;
+
+  const decorAt = (x, z) => { const d = ctx.world?.decor; if (!Array.isArray(d)) return null; for (let i = 0; i < d.length; i++) if (d[i].x === x && d[i].z === z) return d[i].type; return null; };
+  const posOf = actor => { if (actor === 'guest') return ctx.other ?? null; const p = ctx.physics; return p ? { x: p.x, z: p.z } : null; };
+  const bump = () => { st.r++; ver++; };
+
+  // Nearest crate/research decor along the view ray (or the camera forward when no aim), within reach.
+  function target(aim) {
+    const w = ctx.world, p = ctx.physics, cam = ctx.camera; if (!w || !p || !cam || !Array.isArray(w.decor)) return null;
+    let best = null, bestScore = Infinity;
+    const ox = cam.position.x, oy = cam.position.y, oz = cam.position.z;
+    let dx, dy, dz;
+    if (aim && aim.dir) { dx = aim.dir.x; dy = aim.dir.y; dz = aim.dir.z; }
+    else { cam.getWorldDirection(scratch); dx = scratch.x; dy = scratch.y; dz = scratch.z; }
+    for (let i = 0; i < w.decor.length; i++) {
+      const d = w.decor[i]; if (d.type !== 'crate' && d.type !== 'research') continue;
+      const cx = d.x * 2, cz = d.z * 2;
+      if (Math.hypot(p.x - cx, p.z - cz) > REACH) continue;
+      const cy = (ctx.raft?.position.y ?? 0) + .65;
+      const vx = cx - ox, vy = cy - oy, vz = cz - oz, along = vx * dx + vy * dy + vz * dz;
+      if (along <= 0) continue;
+      const ex = vx - dx * along, ey = vy - dy * along, ez = vz - dz * along, off = Math.sqrt(ex * ex + ey * ey + ez * ez);
+      if (off > .85) continue;
+      const score = off + along * .05;
+      if (score < bestScore) { bestScore = score; best = d; }
+    }
+    return best;
+  }
+
+  function loadUI() {
+    if (ui || uiLoading || typeof document === 'undefined') return uiLoading;
+    uiLoading = import('./storage-research-ui.js').then(m => { ui = m.createStorageUI(api); return ui; }).catch(e => { console.error('storage ui failed', e); uiLoading = null; return null; });
+    return uiLoading;
+  }
+  function open(type, x, z) {
+    ctx.releaseLock?.();
+    const go = u => u && u.open(type, x, z);
+    if (ui) go(ui); else loadUI()?.then(go);
+    return true;
+  }
+
+  function run(a, actor, bag) {
+    const res = applyStorageAction(st, a, actor, bag, { decorAt, pos: posOf });
+    if (res.ok) ver++;
+    if (res.ok && a.kind === 'storage.research') {
+      if (res.learned.length) for (const id of res.learned) { fresh.add(id); ctx.emit({ kind: 'craft', text: `New recipe: ${nameOf(id)}!` }, 'all'); }
+      else ctx.emit({ kind: 'notice', text: `Researched ${nameOf(res.kind)}! It helps with something new` }, actor);
+    } else if (!res.ok && REFUSALS[res.reason]) ctx.emit({ kind: 'notice', text: REFUSALS[res.reason] }, actor);
+    return res;
+  }
+
+  // Interface used by the UI (kept tiny so the UI never touches engine internals).
+  const api = {
+    ctx,
+    get state() { return st; },
+    get rev() { return ver; },
+    chestAt: (x, z) => st.chests[keyOf(x, z)] ?? null,
+    decorAt,
+    bag: () => ctx.localBag(),
+    send: a => { ctx.action(a); },
+    researchable: () => researchableKinds(st),
+    locked: () => lockedRecipes(st),
+    isLearned: id => isLearned(st, id),
+    takeFresh: () => { const out = [...fresh]; fresh.clear(); return out; },
+    nameOf,
+    reach: REACH,
+  };
+
+  function load(data, from) {
+    if (from === 'net') {
+      if (data && typeof data === 'object' && data.r === netR && data.s === netS) return; // unchanged host state
+      st = stateFrom(data, 'net', ctx.world);
+      netR = data && typeof data === 'object' ? data.r : -1; netS = data && typeof data === 'object' ? data.s : null;
+      ver++;
+      return;
+    }
+    netR = -1; netS = null;
+    st = stateFrom(data, from, ctx.world);
+    st.s = session; bump();
+  }
+
+  function serialize() {
+    if (cache && cacheSt === st && cacheR === st.r) return cache;
+    cache = sliceOf(st); cacheSt = st; cacheR = st.r;
+    return cache;
+  }
+
+  return {
+    name: 'storage',
+    serialize,
+    load,
+    action(a, actor, bag) {
+      if (!a || typeof a.kind !== 'string' || !a.kind.startsWith('storage.')) return false;
+      run(a, actor, bag);
+      return true;
+    },
+    craftLocked(recipe) {
+      if (typeof recipe !== 'string' || !hasOwn(RECIPES, recipe)) return null;
+      return isLearned(st, recipe) ? null : LOCK_REASON;
+    },
+    interact(aim) {
+      const d = target(aim); if (!d) return false;
+      return open(d.type, d.x, d.z);
+    },
+    prompt(aim) {
+      const d = target(aim); if (!d) return null;
+      return d.type === 'crate' ? '<kbd>E</kbd>Open crate' : '<kbd>E</kbd>Use research table';
+    },
+    decorModel(type) {
+      if (type !== 'research' || !T) return null;
+      model ??= buildResearchTable(T);
+      return model.instance();
+    },
+    update(dt) {
+      if (model) { flicker += dt; model.flicker(flicker); }
+      if (ui) ui.update(dt);
+      else if (typeof document !== 'undefined' && ctx.running) loadUI(); // craft-list lock badges need the UI module
+    },
+    debug: {
+      openChest(x = 0, z = 0) {
+        if (!isInt(x) || !isInt(z)) return false;
+        const w = ctx.world;
+        if (decorAt(x, z) !== 'crate') {
+          if (decorAt(x, z) || !w.tiles.some(t => t[0] === x && t[1] === z)) return false;
+          w.decor.push({ type: 'crate', x, z }); ctx.rebuildRaft();
+        }
+        return open('crate', x, z);
+      },
+      openResearch(x = 0, z = 0) { return decorAt(x, z) === 'research' ? open('research', x, z) : false; },
+      research(kind) {
+        if (ctx.role === 'guest' || !researchableKinds(st).includes(kind)) return [];
+        const before = st.learned;
+        st.seen = sortedUnique([...st.seen, kind]); st.learned = learnedFrom(st.seen, st.learned); bump();
+        const out = st.learned.filter(id => !before.includes(id)); for (const id of out) fresh.add(id);
+        return out;
+      },
+      unlockAll() { if (ctx.role === 'guest') return false; st.seen = ingredientKinds(); st.learned = learnedFrom(st.seen, recipeIds().filter(id => !STARTER.includes(id))); bump(); return true; },
+      lockAll() { if (ctx.role === 'guest') return false; st.seen = []; st.learned = []; st.legacy = false; st.all = false; bump(); return true; },
+      fill(x, z, slots) { if (ctx.role === 'guest') return false; const c = cleanChest(slots); if (chestEmpty(c)) delete st.chests[keyOf(x, z)]; else st.chests[keyOf(x, z)] = c; bump(); return true; },
+      close() { ui?.close(); },
+      state() { return { ...JSON.parse(JSON.stringify(sliceOf(st))), all: st.all, open: ui?.openInfo() ?? null, locked: lockedRecipes(st) }; },
+    },
+    dispose() { ui?.destroy(); ui = null; model?.dispose(); model = null; },
+  };
 }
