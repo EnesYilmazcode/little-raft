@@ -266,7 +266,7 @@ const LIGHT_Y_MIN = 0.42, LIGHT_Y_MAX = 0.66;
 // sun crosses the horizon, so its intensity fades to 0 over this band of |sunHeight| around the swap.
 export const SWAP_FADE = 0.12;
 export const POOL_PEAK = 2.8, POOL_RANGE = 4.5;
-export const HEMI_NIGHT = 0.5, MOON_I = 0.4, HEMI_DAY = 0.65, SUN_DAY = 3.4; // night floors: hemi intensity and moon (directional) intensity
+export const HEMI_NIGHT = 0.5, MOON_I = 0.4, HEMI_DAY = 0.8, SUN_DAY = 3.4; // night floors: hemi intensity and moon (directional) intensity
 
 // ---------------------------------------------------------------- opt out
 export function dayNightOptedOut() {
@@ -518,7 +518,7 @@ export function createDayNight(ctx) {
     if (sun) { sun.color.copy(cSun); sun.intensity = Math.max(dayI + moonI, MOON_I * smooth(0.3, 0.7, nf)) * swap; } // position: per frame in applyVisuals
     if (hemi) {
       hemi.color.copy(cHemiSky); hemi.groundColor.copy(cHemiGround);
-      hemi.intensity = HEMI_NIGHT + (HEMI_DAY - HEMI_NIGHT) * (L.light - NIGHT_FLOOR) / (1 - NIGHT_FLOOR) * (1 - 0.08 * wet); // day 0.65: a cool fill under the warm key, dark nights
+      hemi.intensity = HEMI_NIGHT + (HEMI_DAY - HEMI_NIGHT) * (L.light - NIGHT_FLOOR) / (1 - NIGHT_FLOOR) * (1 - 0.08 * wet); // day 0.8: a cool fill under the warm key, dark nights
     }
     if (renderer) renderer.toneMappingExposure = 1.1 - 0.25 * nf;
     // ocean
