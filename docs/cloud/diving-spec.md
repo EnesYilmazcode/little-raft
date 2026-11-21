@@ -15,7 +15,7 @@ World facts (from game.js / player-physics.js):
 - PlayerPhysics lifts anyone inside a tile footprint below deck onto the deck, so
   while diving the dive controller REPLACES `physics.update` (it writes physics
   x/y/z/vx/vy/vz itself) and hands control back at the surface.
-- Player must stay within 50 m of origin (MAX_RAFT_DISTANCE); clamp the same.
+- Dive leash: `DIVE.MAX_DISTANCE` 420 m from the nearest tile, just past the 400 m "raft lost" faint (swim-drift.js); PlayerPhysics keeps a 2000 m out-of-world guard.
 - Decorative islands: `islands = [{x, z, r}]`, 12 of them at 65–90 m, r ≈ 5.
 - Existing scene: `scene.fog = THREE.Fog('#cbd2c0', 25, 125)`, background same colour;
   ocean ShaderMaterial (fog:false, FrontSide) follows the camera.

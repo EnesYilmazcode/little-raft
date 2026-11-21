@@ -22,7 +22,7 @@ import { createDivingUI } from './diving-ui.js?build=v3-survival-ae77fa84ac2b';
 
 export const DIVE = Object.freeze({ SPEED: 2.4, FAST: 3.4, VERTICAL: 2.2, BUOYANCY: 0.15, OXY_SECONDS: 33,
   REFILL_RATE: 6, STARVED_BREATH: 0.5, DROWN_HP: 3.5, DROWN_TICK: 0.5, GATHER_SECONDS: 1.0, GATHER_SLOW: Object.freeze({ metalore: 1.4 }), REACH: 2.8, EYE_FLOOR_CLEAR: 0.6,
-  RAFT_CLEAR: 0.75, SURFACE_EXIT: 0.15, MAX_DISTANCE: 50, RISE_SPEED: 3, ACCEL: 4, RAFT_MARGIN: 0.25, ENTRY_GRACE: 0.4,
+  RAFT_CLEAR: 0.75, SURFACE_EXIT: 0.15, MAX_DISTANCE: 420, /* just past swim-drift LOST 400: losing the raft faints you first */ RISE_SPEED: 3, ACCEL: 4, RAFT_MARGIN: 0.25, ENTRY_GRACE: 0.4,
   GATHER_CONE: 30 * Math.PI / 180, REGROW: 120, DRIFT: 1.5, PENDING: 1.5 });
 
 const fin = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -227,7 +227,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
       if (needDownRelease || !(physics?.swimming && lastInput.down && !physics.climbing && oxygen >= 0.3)) return false;
       body = new DiveBody({ x: physics.x, y: physics.y, z: physics.z, vx: physics.vx, vy: Math.min(physics.vy, -1.2), vz: physics.vz, oxygen });
       body.grace = DIVE.ENTRY_GRACE; owner = physics;
-    }
+    } else if (Number.isFinite(physics.x) && Number.isFinite(physics.z)) { body.x = physics.x; body.z = physics.z; } // keep outside pushes since the last step (swim-drift.js: the raft sails away from a diver too)
     env.waterY = ocean.getHeight(body.x, body.z); env.floorY = seafloor.heightAt(body.x, body.z);
     env.tiles = getTiles(); env.deckY = getDeckY(); env.swimMul = mods.swim; env.oxyMul = mods.oxy; env.breath = breathScale();
     const wasRising = body.rising;

@@ -11,9 +11,10 @@ files get small hooks, each marked `// [sailing]`. The design contract is in [sa
 - **Current.** A constant 0.30 m/s current points toward +z, the same way as the existing debris drift.
   - An unanchored raft without a sail drifts with the current. Islands slide past slowly.
   - Waves and debris are carried by the water, so they keep their old relative motion.
-- **Wind.** The wind has a direction and a strength between 0.55 and 1. The host wanders it slowly:
-  - Every 70–140 s it picks a new target within ±60° of the current wind, kept within ±100° of the current so the two roughly agree.
-  - The direction turns at no more than 0.05 rad/s.
+- **Wind.** As in Raft, the wind never changes (`SAIL.WIND_FIXED`):
+  - A new world rolls its direction once, within ±30° of the current (+z), and saves it. Strength is a steady 0.9 (`WIND_STEADY`).
+  - Old saves keep their saved direction and stop re-rolling (`cleanSailing` snaps `windTarget` to `windDir`); their strength eases onto 0.9.
+  - The legacy wander (±60° every 70–140 s, at most 0.05 rad/s) is still in `stepSailing`, behind `WIND_FIXED: false`.
   - The wind is shown in-world by the sail's own red pennant, which now points downwind. A small compass badge
     (top right) shows the wind arrow, the sail heading, speed, and a state label ("Sail up · 1.4 m/s", "Drifting",
     "Anchored", "No sail — craft one").
@@ -35,7 +36,12 @@ files get small hooks, each marked `// [sailing]`. The design contract is in [sa
 - **Debris** gets the sail-relative flow added to its baseline drift.
   - When sailing exists, the old +z despawn box is replaced by a flow-aware test measured from the raft centre.
   - Respawns are rotated upstream around the raft centre. A unit test covers several raft shapes and 24 flow directions.
-  - The floating hook drifts with the water. A swimmer more than 10 m from the raft is carried by the water.
+  - The floating hook drifts with the water. So does every swimmer and diver (`swim-drift.js`, any distance): they slide
+    back by the raft's water-relative motion (sail, paddle, engine), so a sailing raft leaves you behind and you swim back.
+    The current moves raft and swimmer alike and cancels out; at anchor nothing drifts. Island sand carries players who stand on it.
+  - Nothing teleports you home. Past 120 m from the nearest tile the HUD says "Your raft is drifting away!" and an edge
+    arrow (`#raftMarker`) points to the raft. Past 400 m the raft is lost: you pass out and wake in your bed or on the raft.
+    PlayerPhysics `MAX_RAFT_DISTANCE` (2000 m) is only an out-of-world guard. Co-op: each client drifts its own player from the synced state.
 - **Paddle:** the core model supports a `paddle` op (0.25 m/s nudge, 0.8 s cooldown, capped at 0.9 m/s), but nothing
   in the UI triggers it yet.
 

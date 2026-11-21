@@ -35,7 +35,7 @@ export const PLAYER_CONSTANTS = Object.freeze({
   AIR_ACCEL: 3.5,
   WATER_ACCEL: 4.5,
   // Safety
-  MAX_RAFT_DISTANCE: 50,
+  MAX_RAFT_DISTANCE: 2000,   // hard out-of-world guard only; game.js warns at 120 m and faints at 400 m (swim-drift.js)
   MAX_FALL_SPEED: 30,
 });
 export const MOVE_MUL = { walk: 1, swim: 1, jump: 1 }; // live multipliers for local buffs (cookpot.js); 1 = neutral

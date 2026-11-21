@@ -69,6 +69,7 @@ export const FAINT_LINES = Object.freeze({
   shark: 'Something with too many teeth got the last word',
   hunger: 'Your stomach gave up a little before you did',
   thirst: 'All that water, and not a drop to drink',
+  lost: 'The raft drifted out of sight', // [swim-drift]
 });
 
 export function createVitalsUI(doc = document) {

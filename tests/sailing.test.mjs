@@ -20,7 +20,7 @@ test('defaults and cleanSailing on garbage', () => {
   const d = defaultSailing();
   assert.deepEqual(Object.keys(d).sort(), KEYS);
   assert.equal(d.raised, false); assert.equal(d.anchored, false);
-  assert.equal(d.heading, 0); near(d.windDir, 0.6); near(d.windStr, 0.8);
+  assert.equal(d.heading, 0); near(d.windDir, 0.4); near(d.windStr, 0.9);
   for (const g of [null, undefined, 'x', 42, NaN, [], [1, 2], () => 1, true]) assert.deepEqual(cleanSailing(g), d);
   const c = cleanSailing({
     windDir: NaN, windStr: 99, windClock: -5, heading: 1e300, raised: 'yes', anchored: 1,
@@ -28,7 +28,7 @@ test('defaults and cleanSailing on garbage', () => {
   });
   assert.deepEqual(Object.keys(c).sort(), KEYS);
   for (const k of KEYS) if (typeof d[k] === 'number') assert.ok(Number.isFinite(c[k]), k);
-  near(c.windDir, 0.6); assert.equal(c.windStr, 1); assert.equal(c.windClock, 0);
+  near(c.windDir, 0.4); assert.equal(c.windStr, 1); assert.equal(c.windClock, 0);
   assert.equal(c.raised, false); assert.equal(c.anchored, false);
   assert.equal(c.vx, 3); assert.equal(c.vz, 0);
   assert.ok(c.heading > -Math.PI && c.heading <= Math.PI);
@@ -80,7 +80,7 @@ test('sail push: zero when lowered / anchored / no sails / facing upwind; max do
 test('windVector', () => {
   const s = defaultSailing(); const w = {};
   windVector(s, w);
-  near(w.x, Math.sin(0.6) * 0.8); near(w.z, Math.cos(0.6) * 0.8);
+  near(w.x, Math.sin(0.4) * 0.9); near(w.z, Math.cos(0.4) * 0.9);
 });
 
 test('velocity converges to sail target (framerate independent)', () => {
@@ -145,30 +145,36 @@ test('offsets stay finite and bounded over 1e6 seconds; deltas are raw', () => {
   assert.ok(sum !== 0);
 });
 
-test('wind wanders only on host, slowly, and stays near target', () => {
+test('wind is fixed: direction never changes, strength settles on WIND_STEADY', () => {
+  assert.equal(SAIL.WIND_FIXED, true);
   const g = defaultSailing(); run(g, 500, { nSails: 0, host: false });
-  near(g.windDir, 0.6); near(g.windStr, 0.8);
-  const s = defaultSailing(); const rng = seeded(3); const o = out();
-  let prev = s.windDir, prevStr = s.windStr, maxRate = 0, maxStrStep = 0, rolls = 0, lastT = s.windTarget;
-  for (let i = 0; i < 20000; i++) {
-    const dirAtRoll = s.windDir;
+  near(g.windDir, 0.4); near(g.windStr, 0.9);
+  // An old save mid-shift (target off to the side, weak gust): keeps its direction, stops re-rolling.
+  const s = cleanSailing({ ...defaultSailing(), windDir: -1.2, windTarget: 0.9, windStr: 0.6, windStrTarget: 0.55, windClock: 1 });
+  near(s.windTarget, -1.2); near(s.windStrTarget, SAIL.WIND_STEADY);
+  const rng = seeded(3), o = out();
+  let prevStr = s.windStr, maxStrStep = 0;
+  for (let i = 0; i < 20000; i++) { // 2000 s, many old re-roll periods
     stepSailing(s, 0.1, { nSails: 0, host: true, rng }, o);
-    if (s.windTarget !== lastT) {
-      const d = Math.abs(Math.atan2(Math.sin(s.windTarget - dirAtRoll), Math.cos(s.windTarget - dirAtRoll)));
-      assert.ok(d <= Math.PI / 3 + 1e-9, `swing ${d}`);
-      assert.ok(Math.abs(s.windTarget) <= SAIL.WIND_LIMIT + 1e-9, 'target near +z');
-    }
-    assert.ok(Math.abs(s.windDir) <= SAIL.WIND_LIMIT + 1e-9, `windDir ${s.windDir}`);
+    assert.equal(s.windDir, -1.2);
     maxStrStep = Math.max(maxStrStep, Math.abs(s.windStr - prevStr)); prevStr = s.windStr;
-    assert.ok(s.windStrTarget >= 0.55 && s.windStrTarget <= 1);
-    const d = Math.abs(Math.atan2(Math.sin(s.windDir - prev), Math.cos(s.windDir - prev)));
-    maxRate = Math.max(maxRate, d / 0.1); prev = s.windDir;
-    if (s.windTarget !== lastT) { rolls++; lastT = s.windTarget; }
-    assert.ok(s.windClock <= 140 && s.windStr >= 0.55 && s.windStr <= 1);
   }
-  assert.ok(maxRate <= SAIL.WIND_RATE + 1e-9, `rate ${maxRate}`);
+  assert.equal(s.windStr, SAIL.WIND_STEADY);
   assert.ok(maxStrStep < 0.005, `windStr eases (step ${maxStrStep})`);
-  assert.ok(rolls >= 2000 / 140 - 1 && rolls <= 2000 / 70 + 1, `rolls ${rolls}`);
+});
+
+test('a new world rolls its fixed wind once, near +z', () => {
+  const rng = seeded(11); const seen = new Set();
+  for (let i = 0; i < 200; i++) {
+    const s = cleanSailing(undefined, rng);
+    assert.ok(Math.abs(s.windDir) <= SAIL.WIND_SPREAD + 1e-12, `windDir ${s.windDir}`);
+    near(s.windTarget, s.windDir); near(s.windStr, SAIL.WIND_STEADY);
+    seen.add(Math.round(s.windDir * 100));
+  }
+  assert.ok(seen.size > 20, 'varies per world');
+  // A saved world keeps its direction; the rng is only for a world with no sailing state yet.
+  near(cleanSailing({ windDir: 2.5 }, () => 0).windDir, 2.5);
+  near(defaultSailing(() => NaN).windDir, 0.4); near(defaultSailing(() => { throw new Error('x'); }).windDir, 0.4);
 });
 
 test('grounding stops approach to a blocker but allows leaving', () => {
