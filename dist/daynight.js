@@ -125,8 +125,8 @@ export const PALETTE_KEYS = Object.freeze([
   //   phase  horizon    zenith     deep       shallow    sun        hemi sky   hemi gnd   cloud
   key(0.00, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#ffdcc8'), // sunrise peach
   key(0.04, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#ffdcc8'), // ... held a little
-  key(0.13, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'), // bright tropical day (visuals loop)
-  key(0.54, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'),
+  key(0.13, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffe1b3', '#a9d4ff', '#7a6a55', '#f4fbfc'), // bright tropical day: warm key, cool sky fill, sand-neutral bounce
+  key(0.54, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffe1b3', '#a9d4ff', '#7a6a55', '#f4fbfc'),
   key(0.635, '#eaa98e', '#b79fb0', '#1d4a5e', '#4d7f88', '#ffb27e', '#f4c3a6', '#4b5a68', '#ffc9b0'), // dusk coral
   key(0.70, '#6f6f9e', '#58679a', '#173c54', '#2f6276', '#c3b0dc', '#a9a6d2', '#2c3b55', '#8e88b2'), // blue hour
   key(0.77, '#34486f', '#2e4170', '#0f3046', '#1f5066', '#a8bff0', '#9bb4e6', '#1f3044', '#5e6f98'), // cosy blue night
@@ -258,12 +258,15 @@ const LANTERN_MULT = [2.4, 2.2, 1.1, 3.0];
 const GLASS_NIGHT = '#ffb35c'; // glass emissive is tinted toward this at night so it reads amber, not cream
 const MAX_LANTERNS = 64, MAX_PARTS = MAX_LANTERNS * 4;
 const STAR_COUNT = 700, STAR_RADIUS = 140, MOON_DIST = 120, RAIN_STREAKS = 600;
-const SUN_RADIUS = Math.hypot(-15, 28, 12);
+const SUN_RADIUS = Math.hypot(-20, 20, 14); // matches game.js SUN_OFFSET (shadow near/far)
+// The light (not the sky disk) stays between these heights (sin of elevation): low enough for long readable
+// shadows at midday, high enough that the shadow box still covers the raft.
+const LIGHT_Y_MIN = 0.42, LIGHT_Y_MAX = 0.66;
 // The one shadow-casting light is the sun by day and the moon by night. Its direction swaps when the
 // sun crosses the horizon, so its intensity fades to 0 over this band of |sunHeight| around the swap.
 export const SWAP_FADE = 0.12;
 export const POOL_PEAK = 2.8, POOL_RANGE = 4.5;
-export const HEMI_NIGHT = 0.5, MOON_I = 0.4; // night floors: hemi intensity and moon (directional) intensity
+export const HEMI_NIGHT = 0.5, MOON_I = 0.4, HEMI_DAY = 0.65, SUN_DAY = 3.4; // night floors: hemi intensity and moon (directional) intensity
 
 // ---------------------------------------------------------------- opt out
 export function dayNightOptedOut() {
@@ -509,13 +512,13 @@ export function createDayNight(ctx) {
     vMoon.set(-AXIS.x * ct - SIDE.x * 0.6, -st * 0.5, -AXIS.z * ct - SIDE.z * 0.6).normalize(); // the moon rides low, opposite the sun
     if (up) vDir.set(AXIS.x * ct - SIDE.x * 0.32, st, AXIS.z * ct - SIDE.z * 0.32).normalize();
     else vDir.copy(vMoon);
-    const dayI = 3.0 * (1 - 0.15 * wet) * smooth(-0.02, 0.2, L.sunHeight);
+    const dayI = SUN_DAY * (1 - 0.15 * wet) * smooth(-0.02, 0.2, L.sunHeight);
     const moonI = MOON_I * (1 - 0.3 * wet) * smooth(-0.02, 0.2, -L.sunHeight);
     const swap = smooth(0, SWAP_FADE, Math.abs(L.sunHeight)); // 0 exactly where sun and moon trade places
     if (sun) { sun.color.copy(cSun); sun.intensity = Math.max(dayI + moonI, MOON_I * smooth(0.3, 0.7, nf)) * swap; } // position: per frame in applyVisuals
     if (hemi) {
       hemi.color.copy(cHemiSky); hemi.groundColor.copy(cHemiGround);
-      hemi.intensity = HEMI_NIGHT + (1.0 - HEMI_NIGHT) * (L.light - NIGHT_FLOOR) / (1 - NIGHT_FLOOR) * (1 - 0.08 * wet); // day 1.0 (visuals: blue sky fill), dark nights
+      hemi.intensity = HEMI_NIGHT + (HEMI_DAY - HEMI_NIGHT) * (L.light - NIGHT_FLOOR) / (1 - NIGHT_FLOOR) * (1 - 0.08 * wet); // day 0.65: a cool fill under the warm key, dark nights
     }
     if (renderer) renderer.toneMappingExposure = 1.1 - 0.25 * nf;
     // ocean
@@ -566,7 +569,10 @@ export function createDayNight(ctx) {
       refreshSky(Number.isFinite(pinPhase) ? pinPhase : phaseAt(clock), scene);
     }
     // the sun keeps its offset from the shadow-fitted target, which can move between refreshes
-    if (sun) sun.position.set(vDir.x * SUN_RADIUS, Math.max(vDir.y, 0.42) * SUN_RADIUS, vDir.z * SUN_RADIUS).add(sun.target.position);
+    if (sun) {
+      const ly = Math.min(LIGHT_Y_MAX, Math.max(vDir.y, LIGHT_Y_MIN)), h = Math.hypot(vDir.x, vDir.z) || 1, k = Math.sqrt(1 - ly * ly) / h;
+      sun.position.set(vDir.x * k * SUN_RADIUS, ly * SUN_RADIUS, vDir.z * k * SUN_RADIUS).add(sun.target.position);
+    }
     // clouds drift
     const drift = (W.wind - 0.15) * 0.9 * dt;
     if (drift > 0) for (let i = 0; i < cloudGroups.length; i++) { const g = cloudGroups[i]; g.position.x += drift; if (g.position.x > 85) g.position.x -= 170; }

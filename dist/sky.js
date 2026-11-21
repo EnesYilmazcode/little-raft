@@ -116,6 +116,26 @@ function bakeNoise(T, size = 256, octaves = 6) {
   return tex;
 }
 
+const GLARE_DIST = 120, GLARE_PEAK = 0.55;
+const smoothUnit = x => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
+
+// Radial glare: hot core, soft wide falloff to zero at the edge (no visible sprite square).
+function bakeGlare(T) {
+  const n = 128, cv = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+  if (!cv) return new T.Texture();
+  cv.width = cv.height = n;
+  const g = cv.getContext('2d'), r = n / 2, grd = g.createRadialGradient(r, r, 0, r, r, r);
+  grd.addColorStop(0, 'rgba(255,255,255,1)');
+  grd.addColorStop(0.06, 'rgba(255,255,255,0.85)');
+  grd.addColorStop(0.18, 'rgba(255,255,255,0.32)');
+  grd.addColorStop(0.45, 'rgba(255,255,255,0.08)');
+  grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, n, n);
+  const tex = new T.CanvasTexture(cv);
+  tex.colorSpace = T.SRGBColorSpace;
+  return tex;
+}
+
 const lum = c => .2126 * c.r + .7152 * c.g + .0722 * c.b;
 
 export function createSky(T, options = {}) {
@@ -159,16 +179,42 @@ export function createSky(T, options = {}) {
   group.name = 'sky';
   group.add(mesh);
 
+  // Sun glare: one additive sprite along the sun direction that swells as the view turns into the sun
+  // (veiling glare without a post pass). Drawn last, over everything, so it also washes over the hands.
+  const glareTex = bakeGlare(T);
+  const glareMat = new T.SpriteMaterial({ map: glareTex, color: 0xffffff, transparent: true, opacity: 0,
+    blending: T.AdditiveBlending, depthTest: false, depthWrite: false, fog: false, toneMapped: false });
+  const glare = new T.Sprite(glareMat);
+  glare.name = 'sun-glare';
+  glare.frustumCulled = false;
+  glare.renderOrder = 999;
+  glare.visible = false;
+  group.add(glare);
+
   function update(time, camera) {
     uniforms.uTime.value = time || 0;
     if (camera) {
       const p = camera.getWorldPosition ? camera.getWorldPosition(_tmp) : camera.position;
       group.position.x = p.x;
       group.position.z = p.z;
+      // glare: facing = dot(view forward, sun); brightness follows the sun colour (dims at dusk, rain, night)
+      const sun = uniforms.uSunDir.value, c = uniforms.uSunColor.value;
+      camera.getWorldDirection(_fwd);
+      const f = _fwd.dot(sun), b = Math.min(1, lum(c) * 1.4) * smoothUnit((sun.y + 0.02) / 0.12);
+      const face = smoothUnit((f - 0.55) / 0.45);
+      const a = face * face * b * GLARE_PEAK;
+      glare.visible = a > 0.004;
+      if (glare.visible) {
+        glare.position.set(sun.x * GLARE_DIST, p.y + sun.y * GLARE_DIST, sun.z * GLARE_DIST);
+        const s = GLARE_DIST * (0.55 + 0.35 * face);
+        glare.scale.set(s, s, 1);
+        glareMat.opacity = a;
+        glareMat.color.copy(c).lerp(_white, 0.35);
+      }
     }
   }
 
-  const _tmp = new T.Vector3();
+  const _tmp = new T.Vector3(), _fwd = new T.Vector3(), _white = new T.Color(1, 1, 1);
 
   // Follow the live palette (day/night drives the ocean uniforms and scene.background every frame):
   // horizon from the background, zenith from the ocean's sky reflection, sun from the ocean glint
@@ -187,7 +233,9 @@ export function createSky(T, options = {}) {
   }
 
   function dispose() {
-    group.remove(mesh);
+    group.remove(mesh, glare);
+    glareMat.dispose();
+    glareTex.dispose();
     geometry.dispose();
     material.dispose();
     uniforms.uNoise.value.dispose();
