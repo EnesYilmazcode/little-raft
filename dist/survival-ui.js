@@ -181,6 +181,10 @@ const CSS = `
 #inventory.sv-inv button.sv-slot.sv-deny{box-shadow:inset 0 0 0 2px #e06a4a,0 0 6px #e06a4a88;animation:svShake .26s}
 @keyframes svShake{25%{translate:-3px 0}75%{translate:3px 0}}
 #inventory .sv-slot.sv-dragging{opacity:.4}
+#inventory .sv-slot.sv-src:not([data-pick]) .sv-art,#inventory .sv-slot.sv-src:not([data-pick]) .sv-count{opacity:.3}
+#inventory .sv-held{position:fixed;left:0;top:0;z-index:11;width:52px;height:52px;pointer-events:none;filter:drop-shadow(0 6px 6px #000a)}
+#inventory .sv-held .sv-art{position:absolute;inset:0;display:block;scale:1.15}
+#inventory .sv-held .sv-count{position:absolute;right:0;bottom:0;font:800 14px/1 ${FONT};color:#fff6df;text-shadow:1px 1px 0 #1a0f06,-1px 1px 0 #1a0f06,1px -1px 0 #1a0f06,-1px -1px 0 #1a0f06}
 #inventory .sv-slot[data-pick]::after{content:attr(data-pick);position:absolute;right:-5px;top:-6px;z-index:2;min-width:16px;padding:2px 3px;border-radius:8px;
   background:#ffbd66;color:#2a1b0e;font:700 11px/1 ${FONT};text-align:center;box-shadow:0 1px 2px #0008}
 #inventory .sv-rope{width:100%;height:4px;border-radius:2px;background:repeating-linear-gradient(115deg,#c99560 0 3px,#6b4a2b 3px 5px);opacity:.85}
@@ -243,6 +247,7 @@ function mountDialog() {
         <p class="sv-hint">Click a stack to pick it up, then click a slot to place it. Right-click takes half. Drag to move.</p>
       </section>
       <div class="sv-tip" role="tooltip" hidden></div>
+      <div class="sv-held" aria-hidden="true" hidden><i class="sv-art"></i><i class="sv-count"></i></div>
     </div>`;
     d.dataset.sv = VERSION;
     delete d.dataset.svRecipes;
@@ -314,6 +319,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   const wrap = dlg.querySelector('.sv-wrap');
   const rlist = dlg.querySelector('.sv-rlist');
   const tip = dlg.querySelector('.sv-tip');
+  const held = dlg.querySelector('.sv-held'), heldArt = held.firstElementChild, heldCnt = held.lastElementChild;
+  let heldKind = null, px = 0, py = 0;
   const invEls = [];
   dlg.querySelectorAll('.sv-slot[data-index]').forEach(el => {
     invEls[+el.dataset.index] = el; el._svSig = undefined;
@@ -442,13 +449,19 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!el) return;
     const s = curSlots[src];
     if (s && srcAmt < s.count) el.dataset.pick = String(srcAmt); else delete el.dataset.pick;
+    // The picked stack rides under the pointer until it is placed.
+    if (heldKind !== srcKind) { heldArt.innerHTML = iconHTML(srcKind); heldKind = srcKind; }
+    heldCnt.textContent = srcAmt > 1 ? String(srcAmt) : '';
+    held.hidden = false; placeHeld();
   }
+  function placeHeld() { held.style.transform = `translate(${px - 26}px,${py - 26}px)`; }
   function clearSrc() {
     if (src != null && invEls[src]) {
       const el = invEls[src];
       el.classList.remove('sv-src'); el.removeAttribute('aria-pressed'); delete el.dataset.pick;
     }
     src = null; srcAmt = 0; srcKind = null;
+    held.hidden = true;
   }
   // Brief, subtle red outline on a slot that refused the held stack.
   function clearDeny() {
@@ -632,7 +645,11 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     dragAmt = src === i ? srcAmt : e.shiftKey ? Math.ceil(s.count / 2) : s.count;
     hideTip();
     el.classList.add('sv-dragging');
-    try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(i)); } catch {}
+    held.hidden = true;
+    try {
+      e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(i));
+      const img = el.querySelector('.sv-icon'); if (img) e.dataTransfer.setDragImage(img, img.offsetWidth / 2, img.offsetHeight / 2);
+    } catch {}
   }, opt);
   dlg.addEventListener('dragover', e => {
     if (!dragging) return;
@@ -652,14 +669,18 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       if (to !== from && amt > 0) { if (planMove(from, to, amt).ok) sendMove(from, to, amt, el); else deny(el); }
     }
   }, opt);
-  dlg.addEventListener('dragend', () => { if (dragging) endDrag(); }, opt);
+  dlg.addEventListener('dragend', () => { if (dragging) endDrag(); if (src != null) held.hidden = false; }, opt);
   dlg.addEventListener('pointerover', e => {
     const el = slotFrom(e);
     if (!el) { if (hoverIdx != null) { hoverIdx = null; hideTip(); } return; }
     const i = +el.dataset.index;
     if (i !== hoverIdx) { hoverIdx = i; showTip(i); placeTip(e.clientX, e.clientY); }
   }, opt);
-  dlg.addEventListener('pointermove', e => { if (hoverIdx != null) placeTip(e.clientX, e.clientY); }, opt);
+  dlg.addEventListener('pointermove', e => {
+    px = e.clientX; py = e.clientY;
+    if (src != null) placeHeld();
+    if (hoverIdx != null) placeTip(px, py);
+  }, opt);
   dlg.addEventListener('pointerleave', () => { hoverIdx = null; hideTip(); }, opt);
   // Keep scroll inside the panel from reaching the engine's hotbar wheel handler.
   dlg.addEventListener('wheel', e => e.stopPropagation(), { ...opt, passive: true });
