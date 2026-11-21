@@ -542,7 +542,7 @@ test('CraftBook: every recipe lands in exactly one known tab, in CATEGORIES orde
   assert.deepEqual(ids, ['tools', 'navigation', 'food', 'materials', 'building', 'other']);
   const tab = id => groups.find(g => g.id === id).recipes.map(r => r.id);
   assert.deepEqual(tab('tools'), ['hook', 'hammer', 'fishingrod', 'sinker', 'brush', 'fins', 'airjug', 'goggles', 'scraper', 'metalhook', 'spear', 'metalspear', 'paddle', 'axe', 'binoculars', 'finder', 'spade']); // [treasure]
-  assert.deepEqual(tab('navigation'), ['sail', 'motor', 'wheel', 'receiver', 'antenna', 'maptable']);
+  assert.deepEqual(tab('navigation'), ['sail', 'motor', 'wheel', 'receiver', 'antenna', 'anchor', 'maptable']);
   assert.deepEqual(tab('food'), ['palm', 'glasscups', 'brickplanter', 'nestbox', 'cookpot', 'bowl', 'cup', 'purifier', 'rainbarrel', 'sprinkler', 'honeyfish', 'flowerbox', 'beehive', 'juicer', 'grill']);
   assert.deepEqual(tab('materials'), ['rope', 'paint_seafoam', 'paint_coral', 'paint_sunshell', 'paint_lagoon', 'paint_pebble', 'nail', 'bolt', 'hinge']);
   assert.deepEqual(tab('building'), ['bench', 'crate', 'research', 'kiln', 'bed', 'researchtable', 'smelter']);

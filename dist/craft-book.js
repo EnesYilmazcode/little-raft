@@ -21,7 +21,7 @@ const CATEGORY_OF = Object.freeze({
   metalhook: 'tools', binoculars: 'tools', spear: 'tools', metalspear: 'tools', finder: 'tools', spade: 'tools', paddle: 'tools', axe: 'tools',
   fins: 'tools', airjug: 'tools', goggles: 'tools', scraper: 'tools', sinker: 'tools',
   // navigation: moving and steering the raft, finding the way
-  sail: 'navigation', motor: 'navigation', wheel: 'navigation', receiver: 'navigation', antenna: 'navigation', maptable: 'navigation',
+  sail: 'navigation', anchor: 'navigation', motor: 'navigation', wheel: 'navigation', receiver: 'navigation', antenna: 'navigation', maptable: 'navigation',
   // food & water: drink, cooking, growing
   cup: 'food', purifier: 'food', grill: 'food', cookpot: 'food', bowl: 'food', palm: 'food',
   rainbarrel: 'food', sprinkler: 'food', // [rain-sprinkler]
@@ -62,7 +62,8 @@ export const ITEM_TEXT = Object.freeze({
   research:   { desc: 'A tinker\u2019s desk for studying finds.', use: 'Place it, then study parts to learn signal and water gear.' },
   motor:      { desc: 'A little outboard motor that burns leaves, wood or plastic.', use: 'Place it, fuel it, and it pushes the raft along.' },
   wheel:      { desc: 'A rope-lashed steering wheel.', use: 'Place it, then grab it to steer the raft.' },
-  bed:        { desc: 'A plank bed with a leaf mattress.', use: 'Lie down at night to sleep until morning.' },
+  anchor:     { desc: 'A stone anchor on a rope reel.', use: 'Place it at the raft edge; E drops or raises it. Remove it with the hammer (X).' },
+  bed:        { desc: 'A plank bed with a leaf mattress.', use: 'Lie down at night to sleep until morning. It is also your respawn point.' },
   brush:      { desc: 'A paint brush with stiff bristles.', use: 'Click walls, floors or deck to paint; right click picks a colour.' },
   paint_seafoam:  { desc: 'A pot of soft seafoam green paint.', use: 'One pot paints one piece with the brush.' },
   paint_coral:    { desc: 'A pot of warm coral paint.', use: 'One pot paints one piece with the brush.' },

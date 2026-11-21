@@ -16,7 +16,7 @@ const { canSleep, cleanSleep, allInBed, bedPose, getUpSpot, createSleep, TEXT, H
 const { DAY_SECONDS: DAY, MORNING, phaseAt, skipClock, createDayNight } = DN;
 
 const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) <= eps, `${msg ?? ''} expected ${b} got ${a}`);
-const DEFAULTS = { v: 1, in: { host: null, guest: null }, fade: 0, skips: 0 };
+const DEFAULTS = { v: 1, in: { host: null, guest: null }, fade: 0, skips: 0, spawn: { host: null, guest: null } };
 const night = { phase: .8, optOut: false, ready: true };
 const noon = { phase: .3, optOut: false, ready: true };
 
@@ -103,7 +103,7 @@ test('cleanSleep + load: junk becomes defaults; a save/restore never leaves anyo
   for (const junk of [undefined, null, 'x', 5, [], { in: 'no' }, { in: { host: [1.5, 0], guest: ['a', 1] } }, { in: { host: [1] } }, { skips: -1 }, { skips: 1.5 }, { skips: 2e9 }, { fade: 'yes' }]) {
     assert.deepEqual(cleanSleep(junk), DEFAULTS, JSON.stringify(junk));
   }
-  assert.deepEqual(cleanSleep({ in: { host: [1, 0], guest: [-2, 3] }, fade: 1, skips: 7 }), { v: 1, in: { host: [1, 0], guest: [-2, 3] }, fade: 1, skips: 7 });
+  assert.deepEqual(cleanSleep({ in: { host: [1, 0], guest: [-2, 3] }, fade: 1, skips: 7 }), { ...DEFAULTS, in: { host: [1, 0], guest: [-2, 3] }, fade: 1, skips: 7 });
   const { mod } = makeSleep();
   mod.load(undefined, 'save'); assert.deepEqual(mod.serialize(), DEFAULTS);
   for (const from of ['save', 'restore']) {
@@ -254,7 +254,8 @@ test('prompts follow the clock, the opt-out and the other sleeper', () => {
   const { mod, ctx, dayRef } = makeSleep();
   ctx.camera = { position: new T.Vector3(2, 1.8, 1.5), getWorldDirection: v => v.set(0, -.6, -.4).normalize() };
   assert.equal(mod.prompt(null), TEXT.sleep);
-  Object.assign(dayRef, noon); assert.equal(mod.prompt(null), TEXT.notSleepy);
+  Object.assign(dayRef, noon); assert.equal(mod.prompt(null), TEXT.spawn); // by day the bed still sets your respawn point
+  mod.action({ kind: 'sleep.spawn', x: 1, z: 0 }, 'host'); assert.equal(mod.prompt(null), TEXT.notSleepy);
   Object.assign(dayRef, { ...night, optOut: true }); assert.equal(mod.prompt(null), TEXT.tooBright);
   Object.assign(dayRef, night);
   ctx.other = { x: 2, z: 0 }; mod.action({ kind: 'sleep.lie', x: 1, z: 0 }, 'guest');

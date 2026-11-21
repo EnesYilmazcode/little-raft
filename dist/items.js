@@ -152,9 +152,9 @@ const LIST = [
     recipe: hand({ wood: 4, rope: 2 }), unlock: START,
     tip: 'Builds new floor tiles (2 planks + 2 plastic each). Make room for friends!' }),
   item('fishingrod', 'Fishing Rod', 'tool', { icon: 'icon-hook', placeholder: true, iconTint: '#c69860',
-    tool: true, durability: 40,
+    tool: true, durability: 10, // Raft: a wooden rod lasts 10 catches, then snaps
     recipe: hand({ wood: 6, rope: 8 }), unlock: discover('rope'),
-    tip: 'Cast, wait for a nibble, and reel in a fish. Good for about 40 catches between repairs.' }),
+    tip: 'Cast, wait for a nibble, and reel in a fish. Good for about 10 catches before it snaps.' }),
   item('spear', 'Wooden Spear', 'tool', { iconTint: '#bb8650', tool: true, durability: 20,
     recipe: hand({ wood: 8, rope: 3 }), unlock: discover('rope'),
     tip: 'A long pole with a sharp lashed tip. Click to jab at things in the water; wears only when it lands.' }),
@@ -238,6 +238,10 @@ const LIST = [
   item('net', 'Collection Net', 'build', { icon: 'icon-net', placeholder: false, placeable: true,
     recipe: hand({ wood: 3, rope: 3, nail: 2 }), unlock: discover('nail'),
     tip: 'Place it near the edge and it scoops up passing debris (even barrels!) for you.' }),
+  // Raft's Throwable Anchor (2 planks, 4 rope, 4 stone): placed on an edge tile, E drops / raises it (anchor-rules.js)
+  item('anchor', 'Anchor', 'build', { iconTint: '#5e5a52', placeable: true,
+    recipe: hand({ wood: 2, rope: 4, stone: 4 }), unlock: discover('rope', 'stone'),
+    tip: 'A stone anchor on a rope reel. Place it at the raft edge, then press E on it to stop the raft or let it drift again.' }),
   item('maptable', 'Map Table', 'decor', { iconTint: '#c9a46a', stack: 5, placeable: true,
     recipe: hand({ wood: 6, rope: 3, nail: 2, copperingot: 1 }), unlock: research('copperingot'),
     tip: 'A little chart table. It remembers the islands you meet and points the sail where you like.' }),
@@ -267,6 +271,7 @@ export const BLOCK_RADII = deepFreeze({
   flowerbox: 0.3, beehive: 0.35, candle: 0.1, // [bees]
   perch: 0.2, // [gull]
   juicer: 0.3, // [juicer]
+  anchor: 0.3,
 });
 
 /** Damage one landed spear thrust deals (spear lane; see docs/loop/research/fidelity-r1-shark.md). */

@@ -1,17 +1,21 @@
 // Sailing lane, THREE side: drives world.sailing each frame, moves scenery relative to the raft, animates sails,
-// owns the anchor fixture, points each sail's own pennant downwind, and handles aiming (E toggles sail/anchor, hold R steers the sail).
+// animates the placed anchors (crafted 'anchor' decor, anchor-model.js), points each sail's own pennant downwind, and handles
+// aiming (E toggles sail/anchor, hold R steers the sail, hammer + X takes an anchor up).
 // See docs/cloud/sailing-spec.md. The raft never moves in x/z: the world drifts past it instead.
 import { SAIL, cleanSailing, defaultSailing, stepSailing, sailTarget, applySailAction, wrapAxis, placeUpstream, driftedOut, windVector } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
 import { createSailingUI } from './sailing-ui.js?build=v3-survival-ae77fa84ac2b';
-import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
+import { ANCHOR_MODEL, poseAnchor } from './anchor-model.js?build=v3-survival-ae77fa84ac2b';
+import { anchorBlock, anchorCount } from './anchor-rules.js?build=v3-survival-ae77fa84ac2b';
 
 const WRAP = SAIL.ISLAND_WRAP > 0 ? SAIL.ISLAND_WRAP : 150, LEASH = 10, STEER_RATE = 1.6, REACH = 3.2, MAST_H = 3.6, MAST_R = .25, ANCHOR_R = .35, DECK_Y = .22, WHEEL_Y = 1.05, WHEEL_R = .5;
 const CLOTH_R = 1.2, CLOTH_Y0 = 1, CLOTH_Y1 = 3.4; // raised cloth hit volume around the mast axis (cheap approximation)
-const FURL = .04, FURL_Z = .3, ROLL_AT = .3, ROLL_R = .07, BASE_FLOW_Z = .22, ITEM_MARGIN = 26, ROPE_DOWN = 3.4, ROPE_UP = .07, GROUND_CLEAR = 2.5, OP_GAP = 250, SNAP2 = 36;
+const FURL = .04, FURL_Z = .3, ROLL_AT = .3, ROLL_R = .07, BASE_FLOW_Z = .22, ITEM_MARGIN = 26, GROUND_CLEAR = 2.5, OP_GAP = 250, SNAP2 = 36;
+const ANCHOR_AIM_Y = .22 + ANCHOR_MODEL.DRUM_Y; // raft-local height of the drum (the aim point)
 const CLOTH_NAMES = new Set(['sailCloth', 'sailSeams', 'sailPatch', 'sailStitches']);
 const LIMITED_OPS = new Set(['toggle', 'raise', 'lower', 'anchor', 'unanchor', 'toggleAnchor']);
 const P_STEER = 'Steering the sail — look where to go', P_WHEEL = 'Steering — look where to go', P_RAISE = '<kbd>E</kbd>Raise sail · hold <kbd>R</kbd> to steer',
-  P_LOWER = '<kbd>E</kbd>Lower sail · hold <kbd>R</kbd> to steer', P_DROP = '<kbd>E</kbd>Drop anchor', P_WEIGH = '<kbd>E</kbd>Raise anchor';
+  P_LOWER = '<kbd>E</kbd>Lower sail · hold <kbd>R</kbd> to steer', P_DROP = '<kbd>E</kbd>Drop anchor', P_WEIGH = '<kbd>E</kbd>Raise anchor',
+  P_DROP_H = P_DROP + ' · <kbd>X</kbd>Remove', P_WEIGH_H = P_WEIGH + ' · <kbd>X</kbd>Remove'; // hammer held: X takes the anchor up
 const HW = SAIL.WATER_WRAP / 2, HG = SAIL.GROUND_WRAP / 2;
 const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 
@@ -31,40 +35,17 @@ export function createSailing(T, ctx) {
   let state = defaultSailing(), speed = 0, travelDir = 0, nSails = 0, raftR = 3.5, halfDiag = 3, dispOk = false;
   let steering = false, grabYaw = 0, grabHeading = 0, steerHeading = 0, predicted = 0, predictUntil = 0, sentHeading = NaN, sendClock = 0, clock = 0;
   let aimKind = 0, aimIndex = -1, grabKind = 0, lastPrompt = undefined, anchorShown = 0, disposed = false;
-  const anchorPos = { x: 0, z: 0, ok: false };
+  const anchors = []; // placed anchors: {group, x, z (tile), px, pz (raft-local aim point)}, pooled entries
+  let nAnchors = 0;
 
   // ---------- shared geometry / materials (created once) ----------
+  // The anchor is a crafted, placed item now (anchor-model.js draws it inside rebuildRaft); only the sail rolls live here.
   const M = {
-    wood: new T.MeshStandardMaterial({ color: '#906f48', roughness: .9 }),
-    woodLight: new T.MeshStandardMaterial({ color: '#b4824b', roughness: .9 }),
-    rope: new T.MeshStandardMaterial({ color: '#b99a62', roughness: 1 }),
-    iron: new T.MeshStandardMaterial({ color: '#5e5a52', roughness: .6, metalness: .3 }),
     canvas: new T.MeshStandardMaterial({ color: '#e6dcc1', roughness: .95 }),
     tie: new T.MeshStandardMaterial({ color: '#87683f', roughness: 1 }),
   };
-  const ropeGeo = new T.CylinderGeometry(.022, .022, 1, 6); ropeGeo.translate(0, -.5, 0);
   const rollGeo = new T.CylinderGeometry(ROLL_R, ROLL_R, 1, 10); rollGeo.rotateZ(Math.PI / 2); // unit length along x, scaled per sail
-  const G = {
-    post: new T.CylinderGeometry(.065, .08, 1, 8), drum: new T.CylinderGeometry(.075, .075, .34, 10),
-    coil: new T.CylinderGeometry(.08, .08, .24, 10), crank: new T.BoxGeometry(.03, .18, .03), arm: new T.BoxGeometry(.06, .06, .6),
-    anchor: anchorGeometry(T), rope: ropeGeo, roll: rollGeo, tie: new T.TorusGeometry(ROLL_R + .004, .009, 5, 12).rotateY(Math.PI / 2),
-  };
-  const mesh = (geo, mat, x, y, z, parent, shadow = true) => { const m = new T.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = shadow; parent.add(m); return m; };
-
-  const fixture = new T.Group(); fixture.name = 'sailingFixture'; scene.add(fixture);
-  const anchorRoot = new T.Group(); fixture.add(anchorRoot);
-  // Post, crank and arm share M.wood and never move: baked into one mesh (one draw, one shadow draw). The small
-  // drum and coil skip the shadow pass; the coil stays separate because animateAnchor scales it.
-  G.post.translate(0, .5, 0); G.crank.translate(.2, .84, 0); G.arm.translate(0, .97, .3);
-  G.postParts = mergeGeometries(T, [G.post, G.crank, G.arm]);
-  for (const k of ['post', 'crank', 'arm']) { G[k].dispose(); delete G[k]; }
-  mesh(G.postParts, M.wood, 0, 0, 0, anchorRoot);
-  mesh(G.drum, M.woodLight, 0, .9, 0, anchorRoot, false).rotation.z = Math.PI / 2;
-  const coil = mesh(G.coil, M.rope, 0, .9, 0, anchorRoot, false); coil.rotation.z = Math.PI / 2;
-  const anchorRope = mesh(G.rope, M.rope, 0, .95, .57, anchorRoot, false);
-  const hook = new T.Group(); anchorRoot.add(hook);
-  mesh(G.anchor, M.iron, 0, 0, 0, hook, false);
-  hook.position.set(0, .95 - ROPE_UP, .57);
+  const G = { roll: rollGeo, tie: new T.TorusGeometry(ROLL_R + .004, .009, 5, 12).rotateY(Math.PI / 2) };
 
   // Furled-canvas roll (pooled, one per sail): a cream cylinder with two ties, re-parented onto each sail group.
   function roll(i) {
@@ -117,7 +98,7 @@ export function createSailing(T, ctx) {
     }
   }
 
-  // ---------- raft rebuild: find sail groups, place anchor ----------
+  // ---------- raft rebuild: find sail groups and placed anchors ----------
   function onRaftBuilt() {
     restoreSails(); sails.length = 0;
     const w = ctx.getWorld(), decor = Array.isArray(w?.decor) ? w.decor : [], tiles = Array.isArray(w?.tiles) ? w.tiles : [];
@@ -133,8 +114,10 @@ export function createSailing(T, ctx) {
     if (x0 <= x1) { centre.x = x0 + x1; centre.z = z0 + z1; halfDiag = Math.hypot(x1 - x0 + 1, z1 - z0 + 1); }
     else { centre.x = centre.z = 0; halfDiag = 1.42; }
     for (const d of drifters) if (d.b) d.b.r = d.r + GROUND_CLEAR + raftR;
+    nAnchors = 0;
     for (const c of raft.children) {
       const ct = c.userData?.craftType;
+      if (ct === 'anchor') { addAnchor(c, decor); continue; }
       if (ct !== undefined && ct !== 'sail') continue;
       if (!decor.some(d => d?.type === 'sail' && d.x === Math.round(c.position.x / 2) && d.z === Math.round(c.position.z / 2))) continue;
       const cloth = []; let main = null, flag = null;
@@ -158,11 +141,17 @@ export function createSailing(T, ctx) {
       sails.push({ group: c, cloth, py: cloth.map(m => m.position.y), pz: cloth.map(m => m.position.z), top, zp, roll: r,
         flag, flagRot: flag ? flag.rotation.y : 0, h: state.heading, s: state.raised ? 1 : FURL, bz: state.raised ? 1 : FURL_Z });
     }
-    let best = null;
-    for (const t of tiles) if (Array.isArray(t) && (!best || t[1] > best[1] || (t[1] === best[1] && t[0] < best[0]))) best = t;
-    anchorPos.ok = !!best; anchorRoot.visible = !!best;
-    if (best) { anchorPos.x = best[0] * 2 - .7; anchorPos.z = best[1] * 2 + .7; anchorRoot.position.set(anchorPos.x, .2, anchorPos.z); }
+    anchors.length = nAnchors;
+    for (let i = 0; i < nAnchors; i++) poseAnchor(anchors[i].group, anchorShown);
     if (grabLost()) steering = false; // a wheel grab survives a raft with no sail, and the other way round
+  }
+  function addAnchor(group, decor) {
+    const x = Math.round(group.position.x / 2), z = Math.round(group.position.z / 2);
+    if (!decor.some(d => d?.type === 'anchor' && d.x === x && d.z === z)) return;
+    const e = anchors[nAnchors] ?? (anchors[nAnchors] = { group: null, x: 0, z: 0, px: 0, pz: 0 });
+    const r = group.rotation.y;
+    e.group = group; e.x = x; e.z = z; e.px = group.position.x + Math.sin(r) * ANCHOR_MODEL.POST_Z; e.pz = group.position.z + Math.cos(r) * ANCHOR_MODEL.POST_Z;
+    nAnchors++;
   }
   function restoreSails() {
     for (const e of sails) {
@@ -195,10 +184,11 @@ export function createSailing(T, ctx) {
     }
   }
   function animateAnchor(dt) {
-    anchorShown += ((state.anchored ? 1 : 0) - anchorShown) * Math.min(1, dt * 1.6);
-    const len = ROPE_UP + (ROPE_DOWN - ROPE_UP) * anchorShown;
-    anchorRope.scale.y = len; hook.position.y = .95 - len;
-    coil.scale.x = coil.scale.z = 1.2 - .45 * anchorShown;
+    const target = state.anchored ? 1 : 0;
+    if (anchorShown === target) return;
+    anchorShown += (target - anchorShown) * Math.min(1, dt * 1.6);
+    if (Math.abs(target - anchorShown) < 1e-3) anchorShown = target;
+    for (let i = 0; i < nAnchors; i++) poseAnchor(anchors[i].group, anchorShown);
   }
 
   // ---------- aiming ----------
@@ -230,11 +220,12 @@ export function createSailing(T, ctx) {
       const hit = (y >= 0 && y <= MAST_H && d2 < MAST_R * MAST_R) || (raised && y >= CLOTH_Y0 && y <= CLOTH_Y1 && d2 < CLOTH_R * CLOTH_R);
       if (hit && t < best) { best = t; aimKind = 1; aimIndex = i; }
     }
-    if (anchorPos.ok) {
-      raft.localToWorld(vA.set(anchorPos.x, 1.15, anchorPos.z)); vA.sub(vO);
+    for (let i = 0; i < nAnchors; i++) {
+      const a = anchors[i];
+      raft.localToWorld(vA.set(a.px, ANCHOR_AIM_Y, a.pz)); vA.sub(vO);
       const t = Math.min(REACH, Math.max(0, vA.dot(vD)));
       const dx = vD.x * t - vA.x, dy = vD.y * t - vA.y, dz = vD.z * t - vA.z;
-      if (dx * dx + dy * dy + dz * dz < ANCHOR_R * ANCHOR_R && t < best) { best = t; aimKind = 2; aimIndex = -1; }
+      if (dx * dx + dy * dy + dz * dz < ANCHOR_R * ANCHOR_R && t < best) { best = t; aimKind = 2; aimIndex = i; }
     }
     const wheels = ctx.steerTargets?.() || []; // engine: steering wheels (raft-local x,z), a second hold-R grab point
     for (let i = 0; i < wheels.length; i++) {
@@ -250,7 +241,7 @@ export function createSailing(T, ctx) {
     if (ctx.isRunning() && ctx.canInput() && !ctx.isBusy?.()) { // busy: the player's own hook/rope is out
       if (steering) p = grabKind === 3 ? P_WHEEL : P_STEER; // aimKind 3 (wheel): the engine module's prompt covers E and R
       else if (aimKind === 1) p = state.raised ? P_LOWER : P_RAISE;
-      else if (aimKind === 2) p = state.anchored ? P_WEIGH : P_DROP;
+      else if (aimKind === 2) p = ctx.getHeld?.() === 'hammer' ? (state.anchored ? P_WEIGH_H : P_DROP_H) : state.anchored ? P_WEIGH : P_DROP;
     }
     if (p !== lastPrompt) { lastPrompt = p; ui.setPrompt(p); }
   }
@@ -273,6 +264,7 @@ export function createSailing(T, ctx) {
     dt = Number.isFinite(dt) && dt > 0 ? Math.min(dt, .25) : 0; clock += dt;
     ensureState();
     const guest = ctx.getRole() === 'guest';
+    if (!guest && state.anchored && anchorCount(ctx.getWorld()?.decor) === 0) state.anchored = false; // the last anchor was taken up or lost with its tile
     stepOpts.nSails = nSails; stepOpts.host = !guest;
     steer(dt);
     stepOpts.push.x = stepOpts.push.z = 0; ctx.getPush?.(state, stepOpts.push); // engine: motor push (same synced data on every peer)
@@ -289,7 +281,6 @@ export function createSailing(T, ctx) {
     moveDrifters();
     const ph = ctx.getPhysics?.();
     if (ph?.swimming && ph.x * ph.x + ph.z * ph.z > LEASH * LEASH) { ph.x -= out.dwx; ph.z -= out.dwz; }
-    fixture.position.copy(raft.position); fixture.quaternion.copy(raft.quaternion);
     animateSails(dt, elapsed); animateAnchor(dt);
     updateAim(); updatePrompt();
     info.running = !!ctx.isRunning(); info.yaw = ctx.getYaw(); info.windDir = state.windDir; info.windStr = state.windStr;
@@ -322,6 +313,13 @@ export function createSailing(T, ctx) {
     if (aimKind === 2) { ctx.action({ kind: 'sail', op: state.anchored ? 'unanchor' : 'anchor' }); return true; }
     return false;
   }
+  /** Hammer + X on a placed anchor: the host action that takes it up (game.js applies it), or null. */
+  function removeAnchorAction() {
+    if (!ctx.canInput()) return null;
+    updateAim();
+    if (aimKind !== 2 || !anchors[aimIndex]) return null;
+    return { kind: 'sail', op: 'takeAnchor', x: anchors[aimIndex].x, z: anchors[aimIndex].z };
+  }
   function grab() {
     if (!ctx.canInput()) return false;
     updateAim();
@@ -343,7 +341,9 @@ export function createSailing(T, ctx) {
       if (t !== undefined && now - t < OP_GAP) return '';
       lastOp.set(key, now);
     }
-    const s = ensureState(), text = applySailAction(s, a);
+    const s = ensureState(), need = anchorBlock(ctx.getWorld()?.decor, a.op, s.anchored); // Raft: no anchor item, no anchoring
+    if (need) return need;
+    const text = applySailAction(s, a);
     // A guest re-aimed the sail while the host holds it: continue steering from the new heading.
     if (a.op === 'heading' && Number.isFinite(a.heading) && steering && actor !== 'host' && ctx.getRole() !== 'guest') {
       steerHeading = grabHeading = s.heading; grabYaw = ctx.getYaw();
@@ -357,39 +357,17 @@ export function createSailing(T, ctx) {
     sailTarget(s, nSails, t); windVector(s, w);
     return { ...s, nSails, steering, speed, push: { ...stepOpts.push }, motor: info.motor, grabKind, travelDir, sails: sails.length, flow: { ...flow }, flowDir: { ...flowDir }, target: t, wind: w,
       raftR, centre: { ...centre }, halfDiag, itemRange: halfDiag + ITEM_MARGIN, display: { ...disp },
-      anchorPos: anchorPos.ok ? { x: anchorPos.x, z: anchorPos.z } : null, drifters: drifters.length, current: [SAIL.CURRENT_X, SAIL.CURRENT_Z] };
+      anchors: anchors.slice(0, nAnchors).map(a => ({ x: a.x, z: a.z })), anchorShown, drifters: drifters.length, current: [SAIL.CURRENT_X, SAIL.CURRENT_Z] };
   }
   function dispose() {
     if (disposed) return; disposed = true;
     steering = false; restoreSails(); sails.length = 0;
-    scene.remove(fixture); ui.dispose(); abort.abort();
+    ui.dispose(); abort.abort(); anchors.length = 0; nAnchors = 0;
     for (const k in G) G[k].dispose();
     for (const k in M) M[k].dispose();
     for (const r of rolls) r.parent?.remove(r);
     rolls.length = 0; lastOp.clear(); drifters.length = 0; stepOpts.blockers.length = 0;
   }
-  return { update, onRaftBuilt, addDrifter, addBlocker, blockerClear, groundOffset, markIsland, itemFlow, respawned, outOfRange, interact, grab, release, apply, paddleReady, debug, dispose,
+  return { update, onRaftBuilt, addDrifter, addBlocker, blockerClear, groundOffset, markIsland, itemFlow, respawned, outOfRange, interact, removeAnchorAction, grab, release, apply, paddleReady, debug, dispose,
     get steering() { return steering; } };
-}
-
-// Anchor (one merged geometry, ring at the origin, hanging down -y): top ring, stock bar, shank, two flukes in a V.
-function anchorGeometry(T) {
-  const parts = [
-    new T.TorusGeometry(.045, .012, 6, 14),
-    new T.CylinderGeometry(.014, .014, .26, 6).rotateX(Math.PI / 2).translate(0, -.08, 0),
-    new T.CylinderGeometry(.022, .026, .36, 8).translate(0, -.23, 0),
-  ];
-  for (const s of [-1, 1]) {
-    parts.push(new T.CylinderGeometry(.016, .022, .2, 6).translate(0, .1, 0).rotateZ(s * .95).translate(0, -.4, 0));
-    parts.push(new T.ConeGeometry(.034, .08, 4).rotateZ(s * .5).translate(-s * .17, -.27, 0)); // fluke tips
-  }
-  let n = 0;
-  const flat = parts.map(g => { const f = g.index ? g.toNonIndexed() : g; if (f !== g) g.dispose(); n += f.attributes.position.count; return f; });
-  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3);
-  let o = 0;
-  for (const f of flat) { pos.set(f.attributes.position.array, o); nor.set(f.attributes.normal.array, o); o += f.attributes.position.array.length; f.dispose(); }
-  const out = new T.BufferGeometry();
-  out.setAttribute('position', new T.BufferAttribute(pos, 3)); out.setAttribute('normal', new T.BufferAttribute(nor, 3));
-  out.computeBoundingSphere();
-  return out;
 }
