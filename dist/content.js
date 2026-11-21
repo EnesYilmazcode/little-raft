@@ -40,7 +40,8 @@ export function createContent(ctx, features = FEATURES) {
   for (const make of features) {
     try { const m = make(ctx); if (m) mods.push(m); } catch (e) { console.error('content module failed to start', e); }
   }
-  const off = m => { if (!m.dead) { m.dead = true; console.error('content module disabled:', m.name); } };
+  // A failing module is disabled and disposed once, so shared engine state (fog, lights…) is restored.
+  const off = m => { if (m.dead) return; m.dead = true; console.error('content module disabled:', m.name); try { m.dispose?.(); } catch (e) { console.error(`content ${m.name}.dispose failed`, e); } };
   const call = (m, fn, ...a) => { if (m.dead || typeof m[fn] !== 'function') return undefined; try { return m[fn](...a); } catch (e) { console.error(`content ${m.name}.${fn} failed`, e); off(m); return undefined; } };
   const first = (fn, ...a) => { for (const m of mods) { const r = call(m, fn, ...a); if (r) return r; } return null; };
   const debug = {};
