@@ -81,14 +81,15 @@ export function createShells(ctx, peer) {
   };
   const day = () => { const d = typeof ctx.dayIndex === 'function' ? ctx.dayIndex() : null; return Number.isInteger(d) && d >= 0 ? d : 0; };
   const heldKind = () => { const b = ctx.localBag ? ctx.localBag() : null; const s = b && b.slots ? b.slots[b.selectedIndex] : null; return s ? s.kind : null; };
-  const safe = fn => { try { return fn(); } catch { return false; } };
-  function canPick() {
+  function canPick() { // runs every frame via prompt(): no closures
     if (!ctx.running) return false;
     const p = ctx.physics; if (!p || p.swimming || p.diving) return false;
-    if (safe(() => peer && peer('sit')?.seated?.())) return false;
-    if (safe(() => peer && peer('paddleboard')?.riding?.())) return false;
+    try {
+      if (peer && peer('sit')?.seated?.()) return false;
+      if (peer && peer('paddleboard')?.riding?.()) return false;
+      if (typeof ctx.uiOpen === 'function' && ctx.uiOpen()) return false;
+    } catch { return false; }
     if (heldKind() === 'spade') return false;
-    if (typeof ctx.uiOpen === 'function' && safe(() => ctx.uiOpen())) return false;
     return true;
   }
   function nearHere() {
@@ -118,9 +119,11 @@ export function createShells(ctx, peer) {
     group.visible = !!now;
     if (!now) return;
     group.position.set(now.cx, now.gy, now.cz);
-    // twinkle: brightness per glint from a few sines (no allocation)
+    // twinkle: brightness per glint from a few sines (no allocation); fades up close so the shell itself shows
+    const sp = spotsNow(), me = ctx.physics, hasMe = !!me && Number.isFinite(me.x) && Number.isFinite(me.z);
     for (let k = 0; k < MAX; k++) {
-      const b = vis[k] ? 0.35 + 0.65 * Math.max(0, Math.sin(clock * 2.3 + k * 1.9)) ** 3 + 0.15 * Math.sin(clock * 7.1 + k) : 0;
+      let b = vis[k] ? 0.35 + 0.65 * Math.max(0, Math.sin(clock * 2.3 + k * 1.9)) ** 3 + 0.15 * Math.sin(clock * 7.1 + k) : 0;
+      if (b > 0 && hasMe && sp[k]) { const d = Math.hypot(me.x - now.cx - sp[k].x, me.z - now.cz - sp[k].z); b *= Math.min(1, Math.max(0.15, (d - 0.8) / 2.5)); }
       pCol[k * 3] = pCol[k * 3 + 1] = pCol[k * 3 + 2] = b > 0 ? b : 0;
     }
     pGeo.attributes.color.needsUpdate = true;
@@ -191,7 +194,7 @@ export function createShells(ctx, peer) {
     if (!canPick()) return false;
     const k = nearHere(); if (k < 0) return false;
     const sent = ctx.action({ kind: 'shells.take', seed: st.seed, spot: k });
-    if (sent !== false && !st.taken[k]) { pending[k] = 1.5; syncSparkles(); }
+    if (sent !== false && !st.taken[k] && !authority()) { pending[k] = 1.5; syncSparkles(); } // guest: hide until the host answers (the host already knows)
     return true;
   }
   function prompt() {

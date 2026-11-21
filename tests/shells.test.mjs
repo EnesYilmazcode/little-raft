@@ -374,3 +374,18 @@ test('content registry: logbookTabs fan-out includes the shells tab', async () =
   assert.equal(list.find(t => t.id === 'shells').view().badge, '0/12');
   c.dispose();
 });
+
+test('module: a host take that fails (bag full) does not hide the sparkle', () => {
+  const w = stubWorld();
+  w.isl.debug.spawnNear(1234, 30); w.isl.update(0); w.sh.update(1 / 60);
+  w.sh.debug.fill();
+  for (let i = 0; i < w.bag.slots.length; i++) w.bag.slots[i] = { kind: 'stone', count: 20 };
+  const s = sparklesFor(1234)[0], r = Math.hypot(s.x, s.z);
+  assert.equal(w.isl.debug.teleportAshore(s.x - s.x / r * 1.0, s.z - s.z / r * 1.0), true);
+  w.sh.update(0);
+  assert.equal(w.sh.interact(), true);
+  assert.equal(w.emits.at(-1).e.kind, 'full');
+  assert.equal(w.sh.debug.state().taken[0], 0);
+  assert.equal(w.sh.prompt(), '<kbd>E</kbd> Pick up shell', 'still there to take once there is room');
+  w.dispose();
+});
