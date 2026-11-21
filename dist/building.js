@@ -8,7 +8,7 @@ import { createBuildMenu } from './build-menu.js?build=v3-survival-ae77fa84ac2b'
 import { Bag } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 export { cleanPieces };
-const FLOOR_Y = .2, REACH = 7, GHOST_OK = '#9dffc0', GHOST_BAD = '#ff8a73';
+const FLOOR_Y = .2, REACH = 7, EYE = 1.6, HEAD = .15, NEAR = .3, GHOST_OK = '#9dffc0', GHOST_BAD = '#ff8a73';
 const STORED = PIECE_ORDER.filter(id => PIECES[id].slot !== 'tile');
 
 export function createBuilding(T, scene) {
@@ -92,10 +92,12 @@ export function createBuilding(T, scene) {
         }
         else text = 'Point at a piece to remove';
       } else if (freePiece()) {
+        grid.setBody(camPos.x, camPos.z, camPos.y - EYE, camPos.y + HEAD); // never build onto yourself
         const r = grid.aim(origin.x, origin.y, origin.z, d.x, d.y, d.z, piece(), (yawDir(yaw) + rot) % 4, deckY, REACH, aimOut);
         if (r) { showGhost(r, r.ok && afford(PIECES[r.t].cost) ? okColor : badColor); text = r.ok ? (afford(PIECES[r.t].cost) ? '' : 'Not enough materials') : r.reason; }
       }
     }
+    if (ghost.visible && camInside(ghost.userData.rec, camPos, deckY)) ghost.visible = false; // never fill the screen from inside a ghost
     if (text !== chipText) { chipText = text; menu.setChip(text); }
   }
   // Paint (content hook): instance colours only; the shared material colour is never touched.
@@ -107,7 +109,13 @@ export function createBuilding(T, scene) {
   }
   function setTint(fn) { tintOf = typeof fn === 'function' ? fn : null; retint(); }
   function preview(p, hex) { showGhost(p, tmp.set(hex)); }
+  // Is the camera within NEAR of piece p's box (the ghost sits FLOOR_Y above deckY - FLOOR_Y; slack covers it)?
+  function camInside(p, c, deckY) {
+    if (!p) return false; const b = grid.pieceBox(p), y = c.y - deckY;
+    return c.x > b[0] - NEAR && c.x < b[3] + NEAR && c.z > b[2] - NEAR && c.z < b[5] + NEAR && y > b[1] - NEAR && y < b[4] + NEAR;
+  }
   function showGhost(p, color) {
+    ghost.userData.rec = p;
     ghost.geometry = geos[p.t]; place(ghost, p); ghost.scale.setScalar(1.015); ghostMat.color.copy(color); ghost.visible = true;
   }
 
@@ -165,6 +173,8 @@ export function createBuilding(T, scene) {
   }
 
   return {grid, menu, group, sync, update, use, removeAction, apply, key, dispose, setTint, retint, preview, // setTint/retint/preview: content hook (paint)
-    get removing() { return removing; }, get piece() { return piece(); }, get rotation() { return rot; },
+    get removing() { return removing; }, get chip() { return chipText; }, // chip: the refusal/status line under the build chip ('' = none)
+    get ready() { return ghost.visible && !removing && freePiece() && aimOut.ok && afford(PIECES[aimOut.t]?.cost || {}); }, // a click builds
+    get aiming() { return ghost.visible; }, get piece() { return piece(); }, get rotation() { return rot; },
     preStep:(phys, deckY) => grid.preStep(phys, deckY), postStep:(phys, deckY) => grid.postStep(phys, deckY)};
 }

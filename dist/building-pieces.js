@@ -24,6 +24,7 @@ export const PIECES = Object.freeze({
   stairs: piece('stairs', 'Stairs', 'cell', {wood: 3}, false, LEVEL_H),
   roof: piece('roof', 'Roof', 'cell', {wood: 1, leaf: 2}, false, ROOF_RISE),
 });
+export const BODY_TEXT = 'You\u2019re standing there';
 export const PIECE_ORDER = Object.freeze(['foundation', 'floor', 'wall', 'halfwall', 'window', 'door', 'pillar', 'stairs', 'roof']);
 
 // Null-prototype lookups: `t in SLOT_OF` must not accept 'constructor' / '__proto__' / 'toString' from saves or guests.
@@ -77,6 +78,27 @@ export class BuildGrid {
     this._prevHead = Infinity; this._px = 0; this._pz = 0; this._pvy = 0;
     this._refused = null; this._rx = 0; this._rz = 0; this._rvy = 0;
     this._pre = {deckY: 0, tiles: this._tileArr};
+    this._body = null; this._bb = new Float64Array(6); // aim(): the local player's capsule {x, z, feet, head}; scratch box
+  }
+
+  // The aim refuses slots whose piece would overlap this capsule (world == raft-local XZ; feet/head absolute y). null clears it.
+  setBody(x, z, feet, head) { this._body = Number.isFinite(x) && Number.isFinite(z) ? {x, z, feet, head} : null; }
+  // Axis-aligned box [x0, y0, z0, x1, y1, z1] of piece record p (y relative to deckY), into out.
+  pieceBox(p, out = this._bb) {
+    const s = SLOT_OF[p.t], y0 = p.l * LEVEL_H, cx = 2 * p.i, cz = 2 * p.j;
+    if (s === 0 || s === 1) {
+      const top = s === 1 ? LEVEL_H : p.t === 'roof' ? ROOF_RISE : 0;
+      out[0] = cx - 1; out[1] = y0 - (s === 1 ? 0 : FLOOR_THICK); out[2] = cz - 1; out[3] = cx + 1; out[4] = y0 + top; out[5] = cz + 1;
+    } else if (s === 3) {
+      const h = PILLAR_HALF; out[0] = cx - 1 - h; out[1] = y0; out[2] = cz - 1 - h; out[3] = cx - 1 + h; out[4] = y0 + LEVEL_H; out[5] = cz - 1 + h;
+    } else this._box(out, 0, p.r ? cz - 1 : cx - 1, p.r ? cz + 1 : cx + 1, y0, y0 + PIECES[p.t].height, (p.r ? cx - 1 : cz - 1) - WALL_HALF, (p.r ? cx - 1 : cz - 1) + WALL_HALF, p.r);
+    return out;
+  }
+  // Would piece p (at deck height deckY) overlap the body set by setBody? Ramps count whole: never build stairs onto yourself.
+  bodyHit(p, deckY) {
+    const b = this._body; if (!b) return false;
+    const o = this.pieceBox(p), R = BODY_R + 0.05;
+    return b.x > o[0] - R && b.x < o[3] + R && b.z > o[2] - R && b.z < o[5] + R && b.head > o[1] + deckY && b.feet + 0.05 < o[4] + deckY;
   }
 
   setTiles(tiles) {
@@ -295,7 +317,8 @@ export class BuildGrid {
             const score = perp + Math.max(0, tp - hit - 0.3) * 0.5;
             if (score >= bestA && score >= bestV) continue;
             c.i = i; c.j = j; c.l = l; c.r = s === 2 ? a : s === 3 ? 0 : r;
-            const reason = this.canPlace(c);
+            let reason = this.canPlace(c);
+            if (reason === '' && this.bodyHit(c, deckY)) reason = BODY_TEXT;
             if (reason === '') { if (score >= bestV) continue; bestV = score; } // valid slots beat invalid ones
             else { if (bestV < Infinity || score >= bestA) continue; bestA = score; }
             found = true;
