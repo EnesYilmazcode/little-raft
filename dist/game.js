@@ -1009,7 +1009,7 @@ export function mount(transfer = null) {
 
   on(window, 'keydown', e => {
     if (e.target?.matches?.('input, textarea, select') || uiBlocked()) return;
-    if (running && building?.key(e.code, true, heldKind() === 'hammer', e.repeat)) { if (e.code === 'KeyX' || e.code === 'KeyR') e.preventDefault(); return; } // building-pieces lane hook
+    if (running && building?.key(e.code, true, heldKind() === 'hammer', e.repeat)) { e.stopImmediatePropagation(); if (e.code === 'KeyX' || e.code === 'KeyR') e.preventDefault(); return; } // building-pieces lane hook
     if (controls) { if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault(); return; } // controls lane: actions come from the action map
     keys[e.code] = true;
     const m = /^(?:Digit|Numpad)([1-8])$/.exec(e.code);
@@ -1028,7 +1028,7 @@ export function mount(transfer = null) {
     controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
       look:(dx, dy) => { if (!building?.menu.isOpen) look(dx, dy, 1); }, hotbarSize:HOTBAR, // building wheel steals mouse look while open
       slot:() => localBag().selectedIndex, selectSlot:i => running && selectSlot(i),
-      interact, inventory:openInventory, repair:() => { if (!sailing?.grab()) repair(); }, // [sailing] hold R at a sail to steer
+      interact, inventory:openInventory, repair:() => { if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer
       pause:() => settingsController?.open(),
       useDown:() => { if (castOut()) reeling = true; else if (!hook && !fishWait) { if (selectedKind() === 'hook') beginCharge(null); else useSelected(pickCenter()); } },
       useUp:() => { reeling = false; if (charging) releaseCharge(pickCenter()); }, useCancel:() => { reeling = false; if (charging?.x === null) charging = null; }, reelDown:() => { if (castOut()) reeling = true; }, reelUp:() => { reeling = false; }});

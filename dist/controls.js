@@ -38,6 +38,7 @@ export function createControls(g) {
       else if (id === 'buildMenu') openRadial();
       else if ((id === 'use' || id === 'aim') && pad) return; // pad triggers handled analog in frame()
     } else if (id === 'buildMenu') radial?.confirm();
+    else if (id === 'rotate') call('release'); // let go of a steered sail on any device
   };
   const input = createInput({element:g.canvas, map, onAction, sensitivity:g.sensitivity,
     isBlocked:() => [...tabs].some(t => t.capturing) || (!!g.isBlocked?.() && !radial?.isOpen)});
