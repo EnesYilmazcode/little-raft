@@ -25,6 +25,8 @@ export function createBuilding(T, scene) {
   let curBag = null; // the local bag of the last update(); afford() is one function, not a per-frame closure
   const afford = cost => { if (!curBag) return true; for (const k in cost) if (curBag.count(k) < cost[k]) return false; return true; };
   const okColor = new T.Color(GHOST_OK), badColor = new T.Color(GHOST_BAD);
+  const WHITE = new T.Color(1, 1, 1), tmp = new T.Color(), tintCount = {};
+  let tintOf = null; // content hook (paint): p -> T.Color instance tint or null (white = untinted)
 
   const menu = createBuildMenu({pieces:PIECE_ORDER.map(id => ({id, name:PIECES[id].name, cost:PIECES[id].cost})), onPick:() => { rot = 0; }});
   menu.setAfford(afford);
@@ -49,8 +51,8 @@ export function createBuilding(T, scene) {
       }
       meshes[id] = m; if (m) m.count = 0;
     }
-    for (const p of grid.list) { const m = meshes[p.t]; place(dummy, p); dummy.updateMatrix(); m.setMatrixAt(m.count++, dummy.matrix); }
-    for (const id of STORED) { const m = meshes[id]; if (m) { m.instanceMatrix.needsUpdate = true; m.computeBoundingSphere(); } }
+    for (const p of grid.list) { const m = meshes[p.t]; place(dummy, p); dummy.updateMatrix(); m.setColorAt(m.count, tintOf?.(p) || WHITE); m.setMatrixAt(m.count++, dummy.matrix); }
+    for (const id of STORED) { const m = meshes[id]; if (m) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); } }
     version = grid.version;
   }
 
@@ -96,6 +98,15 @@ export function createBuilding(T, scene) {
     }
     if (text !== chipText) { chipText = text; menu.setChip(text); }
   }
+  // Paint (content hook): instance colours only; the shared material colour is never touched.
+  function retint() {
+    if (grid.version !== version) { rebuild(); return; }
+    for (const id of STORED) tintCount[id] = 0;
+    for (const p of grid.list) { const m = meshes[p.t]; if (m) m.setColorAt(tintCount[p.t]++, tintOf?.(p) || WHITE); }
+    for (const id of STORED) { const m = meshes[id]; if (m?.instanceColor) m.instanceColor.needsUpdate = true; }
+  }
+  function setTint(fn) { tintOf = typeof fn === 'function' ? fn : null; retint(); }
+  function preview(p, hex) { showGhost(p, tmp.set(hex)); }
   function showGhost(p, color) {
     ghost.geometry = geos[p.t]; place(ghost, p); ghost.scale.setScalar(1.015); ghostMat.color.copy(color); ghost.visible = true;
   }
@@ -153,7 +164,7 @@ export function createBuilding(T, scene) {
     ghostMat.dispose(); material.map?.dispose(); material.dispose();
   }
 
-  return {grid, menu, group, sync, update, use, removeAction, apply, key, dispose,
+  return {grid, menu, group, sync, update, use, removeAction, apply, key, dispose, setTint, retint, preview, // setTint/retint/preview: content hook (paint)
     get removing() { return removing; }, get piece() { return piece(); }, get rotation() { return rot; },
     preStep:(phys, deckY) => grid.preStep(phys, deckY), postStep:(phys, deckY) => grid.postStep(phys, deckY)};
 }

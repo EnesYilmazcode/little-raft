@@ -219,6 +219,7 @@ export function createFloor(T, index = 0, getMaterial) {
   for (const p of floorParts(T, index)) {
     const mesh = new T.Mesh(p.geometry, mat(p.color)); mesh.name = p.name;
     mesh.castShadow = p.castShadow; mesh.receiveShadow = true; g.add(mesh);
+    if (p.name === 'floor-planks') mesh.userData.color = p.color; // paint: base colour for tinting
   }
   g.userData.kind = 'floor';
   g.userData.index = index;
@@ -231,21 +232,23 @@ export function createFloor(T, index = 0, getMaterial) {
 // Whole raft floor in as few draw calls as possible: every tile is built, its transform baked in,
 // and all parts sharing a material and shadow mode are merged into one mesh.
 // tiles: [{index, x, z}] (x,z = tile origin in raft-local units). Returns a Group; dispose via userData.dispose().
-export function createRaftMesh(T, tiles, getMaterial) {
+// tint(t, plankColor) -> hex|null (optional, paint): painted tiles' planks go in their own bucket, drawn with tintMat(hex).
+export function createRaftMesh(T, tiles, getMaterial, tint = null, tintMat = null) {
   const mat = getMaterial || defaultMat(T);
   const buckets = new Map(), m4 = new T.Matrix4();
   for (const t of tiles) {
     m4.makeTranslation(t.x, 0, t.z);
     for (const p of floorParts(T, t.index)) {
       p.geometry.applyMatrix4(m4);
-      const key = p.color + '|' + p.castShadow;
-      if (!buckets.has(key)) buckets.set(key, {name:p.name, color:p.color, castShadow:p.castShadow, list:[]});
+      const hex = tint && p.name === 'floor-planks' ? tint(t, p.color) : null;
+      const key = hex ? 'tint|' + hex : p.color + '|' + p.castShadow;
+      if (!buckets.has(key)) buckets.set(key, {name:p.name, color:hex || p.color, tinted:!!hex, castShadow:p.castShadow, list:[]});
       buckets.get(key).list.push(p.geometry);
     }
   }
   const g = new T.Group(); g.name = 'raft-floors';
   for (const b of buckets.values()) {
-    const mesh = new T.Mesh(merge(T, b.list), mat(b.color)); mesh.name = b.name;
+    const mesh = new T.Mesh(merge(T, b.list), b.tinted && tintMat ? tintMat(b.color) : mat(b.color)); mesh.name = b.name;
     mesh.castShadow = b.castShadow; mesh.receiveShadow = true; g.add(mesh);
   }
   g.userData.kind = 'floors';

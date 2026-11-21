@@ -10,6 +10,7 @@
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
+import { createBrush } from './brush-model.js?build=v3-survival-ae77fa84ac2b'; // content hook (paint)
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
@@ -19,7 +20,7 @@ export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'ben
 // Items you aim at the raft to place: the free hand points at the spot while one of these is held.
 export const PLACEABLE_KINDS = Object.freeze(['hammer', ...DECOR_KINDS, 'planter', 'seed', 'seeds']);
 export const isPlaceable = (kind) => PLACEABLE_KINDS.includes(kind);
-const TOOL_KINDS = ['hook', 'hammer', 'fishingrod'];
+const TOOL_KINDS = ['hook', 'hammer', 'fishingrod', 'brush'];
 const HOOK_SCALE = 0.4;                     // compact: the held hook stays in the lower-right corner
 // Right-hand kinds that still prefer the shared models.js mesh (so the held cup matches its icon and the world).
 const FACTORY_FIRST = ['cup', 'water'];
@@ -30,6 +31,7 @@ export const HOLD = Object.freeze({
   hook:       { hand: 'right', pose: 'grip' },
   hammer:     { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2 },
   fishingrod: { hand: 'right', pose: 'grip', rx: -0.15, rz: 0.6 },
+  brush:      { hand: 'right', pose: 'grip', rx: -0.25, ry: 0.35, rz: 0.35 }, // content hook (paint)
   wood:       { hand: 'right', pose: 'grip', rx: 0.25, ry: 0.5, rz: 0.15 },
   leaf:       { hand: 'right', pose: 'grip', rx: -0.35, ry: 0.4, rz: 0.35 },
   scrap:      { hand: 'right', pose: 'grip', rx: 1.1, ry: 0.3, rz: -0.3 },
@@ -159,8 +161,8 @@ export function buildItemModel(T, kind, factory = null) {
     root = new T.Group(); root.add(m);
     root.userData.size = { x: m.userData.size.x * k, y: m.userData.size.y * k, z: m.userData.size.z * k };
     root.userData.grip = [gp.x, gp.y, gp.z];
-  } else if (kind === 'hammer' || kind === 'fishingrod') {
-    const m = kind === 'hammer' ? createHammer(T) : createFishingTool(T), s = kind === 'hammer' ? 0.6 : 0.55;
+  } else if (kind === 'hammer' || kind === 'fishingrod' || kind === 'brush') {
+    const m = kind === 'hammer' ? createHammer(T) : kind === 'brush' ? createBrush(T) : createFishingTool(T), s = kind === 'fishingrod' ? 0.55 : 0.6;
     m.scale.setScalar(s);
     root = new T.Group(); root.add(m);
     const gp = m.userData.grip.clone().multiplyScalar(s), sz = m.userData.size || { x: 0.1, y: 0.8, z: 0.1 };

@@ -21,6 +21,19 @@ export const MORNING = 0.10;       // default phase for a new world
 const clamp01 = v => (v < 0 ? 0 : v > 1 ? 1 : v);
 const smooth = (a, b, v) => { const t = clamp01((v - a) / (b - a)); return t * t * (3 - 2 * t); };
 
+// Clock time of the next `toPhase` after `clock` (same day if it is still ahead, else the next day).
+export function skipClock(clock, toPhase) {
+  const cur = phaseAt(clock);
+  const day = Math.floor((Number.isFinite(clock) && clock > 0 ? clock : 0) / DAY_SECONDS) + (cur >= toPhase ? 1 : 0);
+  return day * DAY_SECONDS + toPhase * DAY_SECONDS;
+}
+
+// Live read-only mirror for other content modules (sleep.js). Written by update(), no allocation.
+export const DAYNIGHT_LIVE = { phase: MORNING, optOut: false, ready: false };
+// sleep.js SLEEP_START / SLEEP_END plus slack: a lie-down at .019 reaches the skip ~2 s later (after the hold and
+// fade). Still well before MORNING (.10), so a second skip right after one stays refused.
+const sleepable = p => p >= 0.66 || p < 0.04;
+
 export function phaseAt(clock) {
   if (!Number.isFinite(clock) || clock < 0) return 0;
   const p = (clock % DAY_SECONDS) / DAY_SECONDS;
@@ -597,6 +610,7 @@ export function createDayNight(ctx) {
       else clock += dt;
     } else if (!frozen) clock += dt;
     if (clock > MAX_CLOCK) clock = 0;
+    DAYNIGHT_LIVE.phase = Number.isFinite(pinPhase) ? pinPhase : phaseAt(clock); DAYNIGHT_LIVE.ready = true; // the day-only opt-out is a no-op now, so DAYNIGHT_LIVE.optOut stays false
     applyVisuals(dt);
   }
 
@@ -627,7 +641,18 @@ export function createDayNight(ctx) {
     return { v: 1, clock: Math.round(clock * 100) / 100, seed };
   }
 
+  // Host only: 'daynight.skipTo' (sleep.js). Claims the kind always; applies only at dusk/night.
+  function action(a, actor) {
+    if (!a || a.kind !== 'daynight.skipTo') return false;
+    if (actor !== 'host' || ctx.role === 'guest') return true;
+    const to = a.phase;
+    if (typeof to !== 'number' || !Number.isFinite(to) || to < 0 || to >= 1 || !sleepable(phaseAt(clock))) return true;
+    clock = skipClock(clock, to); pinPhase = NaN;
+    return true;
+  }
+
   function dispose() {
+    DAYNIGHT_LIVE.ready = false;
     restoreParts();
     attach(null);
     for (let i = 0; i < cloudMeshes.length; i++) cloudMeshes[i].material = cloudOrig[i];
@@ -677,5 +702,5 @@ export function createDayNight(ctx) {
     },
   };
 
-  return { name: 'daynight', update, serialize, load, dispose, debug, get wind() { return W.wind; }, get rain() { return W.rain; } };
+  return { name: 'daynight', update, serialize, load, action, dispose, debug, get wind() { return W.wind; }, get rain() { return W.rain; } };
 }
