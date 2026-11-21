@@ -220,7 +220,7 @@ export function createFishingCooking(T, host) {
   }
   function toggleJournal() {
     if (!HAS_DOC) return;
-    panel ??= createJournalPanel({ getJournal: () => journal, onClose: () => {} });
+    panel ??= createJournalPanel({ getJournal: () => journal, onClose: () => { try { host.resume?.(); } catch {} } });
     if (!panel.isOpen) try { document.exitPointerLock?.(); } catch {} // free the cursor so the tabs can be clicked
     panel.toggle();
   }
