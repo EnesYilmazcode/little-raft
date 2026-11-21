@@ -92,7 +92,7 @@ export const ITEM_TEXT = Object.freeze({
   freshcup:   { desc: 'A cup of clean fresh water.', use: 'Water a palm planter.' },
   seed:       { desc: 'A palm seed.', use: 'Plant it in an empty palm planter.' },
   rainbarrel: { desc: 'A tub with a leaf funnel that catches the rain.', use: 'Fills by itself in the rain. Hold an empty cup and press E.' },
-  sprinkler:  { desc: 'A little spinning head with its own tank.', use: 'Waters nearby palm planters for you. Fill it with fresh water, or put it next to a rain barrel.' },
+  sprinkler:  { desc: 'A little spinning head with its own tank.', use: 'Waters nearby palm planters and crop plots for you. Fill it with fresh water, or put it next to a rain barrel.' },
   water:      { desc: 'A filtered cup of fresh water.', use: 'Water a palm planter.' },
   purifier:   { desc: 'A small still that boils off the salt.', use: 'Turns sea water into fresh water.' },
   // progression catalogue (items.js; its tooltips also show the item's own tip)
@@ -160,7 +160,7 @@ export const ITEM_TEXT = Object.freeze({
   potato:     { desc: 'A knobbly brown potato.', use: 'Eat raw (+10 food), grill it, or plant it in a crop plot.' }, // [crops]
   cookedbeet: { desc: 'A beet grilled sweet and soft.', use: 'A tasty snack (+15 food).' }, // [crops]
   cookedpotato: { desc: 'A potato baked on the grill.', use: 'A warm, filling snack (+15 food).' }, // [crops]
-  cropplot:   { desc: 'A three-slot box of dark soil.', use: 'Plant beets or potatoes; water each slot with fresh water.' }, // [crops]
+  cropplot:   { desc: 'A three-slot box of dark soil.', use: 'Plant beets or potatoes; water each slot with fresh water. Rain and a sprinkler next to it water it too.' }, // [crops]
   goatpen:    { desc: 'A cosy fenced corner with a pile of hay.', use: 'Place it on the raft and set out greens; a bramblegoat may come to stay.' },
   bucket:     { desc: 'A little wooden pail with a rope handle.', use: 'Hold it and press E on a bramblegoat with milk.' },
   milk:       { desc: 'A pail of fresh, creamy goat milk.', use: 'Drink it (+10 food, +25 water); the pail comes back.' },

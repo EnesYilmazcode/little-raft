@@ -772,7 +772,7 @@ export function mount(transfer = null) {
     if (DECOR_TYPES.includes(heldKind())) return null; // place mode: prompts.js placePrompt stacks the aim row itself
     if (eatTip) return eatTip;
     if (netAim >= 0) return NET_TIPS[Math.min(NET_CAPACITY, world.nets[netAim]?.items.length ?? 0)]; // [nets] "Empty net (n)"
-    const p = waterAim?.prompt; return p && (p.startsWith('<kbd>') || CUP_KINDS.includes(selectedKind())) ? tipFor(p) : null;
+    const p = waterAim?.prompt; return p ? tipFor(p) : null;
   }
   let contextHtml = null, contentPromptOff = null; // content hook: contextHtml also feeds main's #lrPrompt via raftPrompts
   function updateContext(dialog) {
@@ -785,7 +785,7 @@ export function mount(transfer = null) {
       else if (canHarvestShark()) html = '<kbd>E</kbd>Harvest the shark'; // shark lane
       else if (hover?.blocked) html = esc(BLOCK_TEXT[hover.blocked]);
       else if (eatTip && !bt && !(contextHtml = content?.prompt(frameAim) ?? null)?.startsWith('<kbd>E</kbd>')) { contextHtml = null; html = '<kbd>Click</kbd>' + esc(eatTip.label); } // [vitals] kbd markup: a prompt, not a feed notice [juicer] an E content prompt wins [buildpack] so does E on a hatch / gate (interact() toggles it first)
-      else if (waterAim?.prompt) html = content?.palmPrompt?.(frameAim, waterAim.prompt) ?? waterAim.prompt; // [scarecrow]
+      else if (waterAim?.prompt?.startsWith('<kbd>')) html = content?.palmPrompt?.(frameAim, waterAim.prompt) ?? waterAim.prompt; // [scarecrow] status lines ("Purifying… 12s") go to the crosshair via promptTip
       else if (!contextHtml && bt && (contextHtml = building.promptOf(bt))) html = contextHtml; // [buildpack] Open / Close hatch or gate
       else if (contextHtml ||(contextHtml = content?.prompt(frameAim) ?? null)) html = contextHtml; // content hook [juicer] reuse when set above
       else if (fc?.prompt) html = fc.prompt; // [fishing-cooking] trusted static markup from the lane module

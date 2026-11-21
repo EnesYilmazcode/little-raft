@@ -45,6 +45,7 @@
 //   effect(e)                 a host/peer effect message; return true if consumed (game.js then skips its notice/sound) [fireworks]
 //   ride(dt, p, inp) / riding() [zipline] glide line ride, [paddleboard] driftboard (game.js movePlayer); return true to skip PlayerPhysics
 // Second make() argument: peer(name) -> another live module (scarecrow), with peer.peek(name) -> its serialize().
+//   bindRain(fn)              called once at start with fn() -> live 0..1 rain // [crops]
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   observe(ev, actor)        host only: game events after success ({kind:'craft'|'collect'|'fish'|'build'|
 //                             'bottle'|'cook'|'water'|'harvest'|'gather'|'repair', ...}). Never from net/effects.
@@ -130,6 +131,8 @@ export function createContent(ctx, features = FEATURES) {
   }
   const first = (fn, ...a) => { for (const m of mods) { if (m.dead || typeof m[fn] !== 'function') continue; const r = call(m, fn, ...a); if (r) return r; } return null; };
   const seatedMod = () => { for (const m of mods) if (!m.dead && typeof m.seated === 'function' && call(m, 'seated')) return m; return null; }; // [sit]
+  const rain = () => { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }; // rain-sprinkler: live 0..1 rain
+  for (const m of mods) call(m, 'bindRain', rain); // [crops] rain waters crop plots
   const debug = {}; let loaded = {};
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
   const dn = () => mods.find(m => m.name === 'daynight' && !m.dead), num = (v, d) => (Number.isFinite(v) ? v : d); // [power]
@@ -164,7 +167,7 @@ export function createContent(ctx, features = FEATURES) {
     decorModel: (type, d) => first('decorModel', type, d),
     sailPush: (s, out) => !!first('sailPush', s, out),
     steerTargets: () => first('steerTargets'),
-    rain() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }, // rain-sprinkler: live 0..1 rain
+    rain, // rain-sprinkler: live 0..1 rain
     pecked() { const m = peer('scarecrow'); return m?.pecked ?? null; }, // [scarecrow] palm keys paused by a pecking gull (host)
     palmPrompt(aim, base) { const m = peer('scarecrow'); try { return m?.palmPrompt?.(aim, base) ?? null; } catch (e) { console.error('content scarecrow.palmPrompt failed', e); off(m); return null; } }, // [scarecrow]
     effect(e) { for (const m of mods) if (call(m, 'effect', e)) return true; return false; }, // [fireworks]

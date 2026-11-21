@@ -12,6 +12,7 @@
 // Host-authoritative: the host ticks growth and applies 'crops.*' actions (guests reach it through
 // ctx.action, like waterPlant). The top half of this file is pure (no DOM, no THREE, no clocks).
 import { swapOne } from './watering.js?build=v3-survival-ae77fa84ac2b';
+import { sprinkleOther } from './rain.js?build=v3-survival-ae77fa84ac2b';
 import { createCropPlot, cropKit, SLOT_X, SOIL_Y } from './crops-model.js?build=v3-survival-ae77fa84ac2b';
 
 export const PLOT_TYPE = 'cropplot', SLOTS = 3;
@@ -20,7 +21,7 @@ export const CROPS = Object.freeze({
   potato: Object.freeze({ name: 'Potato', plural: 'potatoes', grow: 300 }),
 });
 export const CROP_KINDS = Object.freeze(Object.keys(CROPS));
-export const YIELD = 2, WATER_SECONDS = 150, MAX_TICK = 60, REACH = 3, HOST_SLACK = 2;
+export const YIELD = 2, WATER_SECONDS = 150, MAX_TICK = 60, REACH = 3, HOST_SLACK = 2, RAIN_WET = .2; // RAIN_WET: same 'raining' cut as game.js
 export const SPROUT = 0, LEAFY = 1, RIPE = 2; // visual stages
 export const STAGE_NAMES = Object.freeze(['Sprout', 'Growing', 'Ripe']);
 export const TEXT = Object.freeze({
@@ -80,6 +81,31 @@ export function tickCrops(decor, dt) {
     }
   }
   return ripened;
+}
+
+// A slot that wants water: planted, not ripe, soil at most half wet (the same rule as a hand-poured cup).
+const thirsty = (s) => !!s && isCrop(s.c) && !isRipe(s) && s.w < WATER_SECONDS / 2;
+const plotThirsty = (d) => isPlot(d) && Array.isArray(d.crop) && d.crop.some(thirsty);
+
+/**
+ * Host, once per second before tickCrops: rain (0..1, above RAIN_WET) soaks every planted slot, like Raft's
+ * rain; each sprinkler with water (rain.js: own tank, else a neighbouring barrel) soaks one thirsty crop plot
+ * on the 8 tiles around it for one unit. world = {decor, sprinklers, collectors}. -> {rain, sprinkled: plot keys}.
+ */
+export function soakCrops(world, rain) {
+  const out = { rain: 0, sprinkled: [] };
+  const decor = Array.isArray(world?.decor) ? world.decor : null; if (!decor) return out;
+  let plots = null;
+  for (const d of decor) if (isPlot(d)) (plots ??= new Map()).set(`${d.x},${d.z}`, d);
+  if (!plots) return out;
+  if (Number.isFinite(rain) && rain > RAIN_WET) {
+    for (const d of plots.values()) if (Array.isArray(d.crop)) for (const s of d.crop) if (s && isCrop(s.c) && !isRipe(s) && s.w < WATER_SECONDS) { s.w = WATER_SECONDS; out.rain++; }
+    return out; // every slot is wet: sprinklers keep their water
+  }
+  out.sprinkled = sprinkleOther(world, keys => keys.find(k => plotThirsty(plots.get(k))) ?? null, (k) => {
+    for (const s of plots.get(k).crop) if (thirsty(s)) s.w = WATER_SECONDS;
+  });
+  return out;
 }
 
 const plotAt = (decor, x, z) => { if (Array.isArray(decor)) for (const d of decor) if (isPlot(d) && d.x === x && d.z === z) return d; return null; };
@@ -170,6 +196,8 @@ export function createCrops(ctx) {
     if (unprovide || typeof window === 'undefined') return;
     try { const p = window.raftPrompts; if (p?.provide) unprovide = p.provide({ id: 'crops', priority: 1, prompt: crosshairPrompt }); } catch {}
   }
+  let rainLevel = null; // content.js bindRain(): live 0..1 rain from the day/night module
+  const rainNow = () => { try { const r = rainLevel?.(); return Number.isFinite(r) ? r : 0; } catch { return 0; } };
   let kit = null; // shared plant geometries + materials (never disposed by rebuildRaft)
   const decor = () => (Array.isArray(ctx.world?.decor) ? ctx.world.decor : []);
   const heldKind = () => { const b = ctx.localBag?.(); const s = b?.slots?.[b.selectedIndex]; return s ? s.kind : null; };
@@ -268,6 +296,7 @@ export function createCrops(ctx) {
 
   return {
     name: 'crops',
+    bindRain(fn) { rainLevel = typeof fn === 'function' ? fn : null; },
     update(dt) {
       if (T) paint();
       if (!unprovide) providePrompt();
@@ -275,6 +304,7 @@ export function createCrops(ctx) {
       clock += dt > 0 ? dt : 0;
       if (clock >= 1) {
         const n = Math.floor(clock); clock -= n;
+        if (ctx.world) soakCrops(ctx.world, rainNow());
         if (tickCrops(ctx.world?.decor, n) > 0) ctx.emit?.({ kind: 'notice', text: 'A crop is ripe' }, 'all');
       }
     },

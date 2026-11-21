@@ -57,15 +57,21 @@ export function edgeTiles(tiles, armor) {
   return out;
 }
 // A random edge tile and one of its open sides (the side the shark bites from): {x, z, nx, nz} or null.
-export function pickTarget(tiles, armor, rnd = Math.random) {
+// nets (optional, dist/nets.js {x, z, d}): sides with a collection net hanging off them are only used when no other side
+// is open, so the shark does not swim into the net frame.
+const NET_SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]]; // = nets.js NET_DIRS
+const netted = (nets, x, z, a, b) => Array.isArray(nets) && nets.some(n => n && n.x === x && n.z === z && NET_SIDES[n.d] && NET_SIDES[n.d][0] === a && NET_SIDES[n.d][1] === b);
+export function pickTarget(tiles, armor, rnd = Math.random, nets = null) {
   const list = edgeTiles(tiles, armor);
   if (!list.length) return null;
   const [x, z] = list[Math.min(list.length - 1, Math.floor(rnd() * list.length))];
-  const open = N4.filter(([a, b]) => !hasTile(tiles, x + a, z + b));
+  let open = N4.filter(([a, b]) => !hasTile(tiles, x + a, z + b));
+  const free = open.filter(([a, b]) => !netted(nets, x, z, a, b)); if (free.length) open = free;
   const [nx, nz] = open[Math.min(open.length - 1, Math.floor(rnd() * open.length))];
   return { x, z, nx, nz };
 }
-// Removes a tile and everything standing on it: decor, garden/purifier state, its HP and armor entries, unsupported pieces.
+// Removes a tile and everything standing on it: decor, garden/purifier state, its HP and armor entries, collection nets
+// hanging from it (with their catch), unsupported pieces.
 // Never removes the last tile. Returns true when the tile was removed.
 export function removeTile(world, x, z) {
   const tiles = world && world.tiles;
@@ -77,6 +83,7 @@ export function removeTile(world, x, z) {
   if (Array.isArray(world.decor)) world.decor = world.decor.filter(d => !(d && d.x === x && d.z === z));
   if (world.tileHp) delete world.tileHp[k];
   if (world.tileArmor && typeof world.tileArmor === 'object' && !Array.isArray(world.tileArmor) && !(world.tileArmor instanceof Set)) delete world.tileArmor[k]; // the armor goes down with its tile
+  if (Array.isArray(world.nets)) world.nets = world.nets.filter(n => !(n && n.x === x && n.z === z)); // a net hanging off it sinks with it
   if (world.garden) delete world.garden[k];
   if (world.purifiers) delete world.purifiers[k];
   if (Array.isArray(world.pieces)) world.pieces = cleanPieces(world.pieces, tiles);
@@ -138,7 +145,7 @@ function flee(s) { endAttack(s); setState(s, 'flee'); }
 // Starts an attack now: picks a target, or skips this round (every edge armored). Returns true if it attacks.
 export function startAttack(s, world, rnd = Math.random) {
   if (s.state === 'dead') return false;
-  const t = pickTarget(world && world.tiles, world && world.tileArmor, rnd);
+  const t = pickTarget(world && world.tiles, world && world.tileArmor, rnd, world && world.nets);
   if (!t) { endAttack(s); if (s.state !== 'hunt') setState(s, 'circle'); return false; }
   s.hasTarget = true; s.tx = t.x; s.tz = t.z; s.nx = t.nx; s.nz = t.nz; s.leg = 0; s.attackDmg = 0; s.warned = false;
   const wx = s.tx * 2 + s.nx * (1 + SHARK.APPROACH_OFF), wz = s.tz * 2 + s.nz * (1 + SHARK.APPROACH_OFF);
