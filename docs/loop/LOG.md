@@ -228,3 +228,15 @@ Fleet: 8 subsystem bug hunters, 2 independent adversarial verifiers per bug repo
 - In plain Chrome, Esc from the pause menu still needs one click to relock. The Electron shell covers it.
 - The inventory and pause panels are still centred modals (UX-2/UX-8). Consider docked or side-sheet layouts.
 - Title screen copy and the pause menu styling (UX-7/UX-8).
+
+## 2026-11-21 · integrator A, round 2/3
+Two integrator sessions are running on claude/raft-master; each merges the other's pushes before pushing.
+- Merged loop-visuals-202611210451 (driftwood palette, scenery-islands.js, sky.follow() tracks day/night) and resolved it
+  against the other integrator's raft-integration merge: one sky-sync path (sky.follow), the visuals palette on the 10-slot
+  hotbar, combined ocean foam (soft crest + raft/item collars), single-tap wood bump with driftwood values.
+- Verified at 0ebcf17: npm test 628/628, shoot.py errors [], fresh spawn hook only, Esc from inventory: no pause, pointer stays locked.
+- Under heavy machine load (4 merge agents), the art "atlas build stays fast" timing test and stock shoot.py time out on
+  untouched bases too; both pass once load drops.
+- Next: lane agents merging the newest loop-features/perf/ux/visuals/fidelity and raft-content/tests/integration + lane-placement.
+- Still skipped: raft-reference (scraped commercial-game stills). Farming (farming.js) is merged but not reachable in play:
+  it and the watering lane drive the same palm planter; it needs a design decision.
