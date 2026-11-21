@@ -37,7 +37,7 @@ import { cleanRain, copyRain, tickRain, takeRain, fillSprinkler, rainTarget, RAI
 import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, hookableItems, decorBlockers, playerInWay, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
 import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan, LIVE_STATUS_EVENT } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
-import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
+import { releaseShouldFire, castInput, castPrompt, fishOutcome } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
@@ -1078,9 +1078,10 @@ export function mount(transfer = null) {
     }
     if (a.kind === 'fish') {
       if (bag.count('fishingrod') < 1) return;
-      if (bag.add('fish', 1) > 0) { emit({kind:'full', text:'Bag full: the fish swam away'}, actor); return; }
-      world.fish++; emit({kind:'loot', text:'You caught a fish!', loot:{fish:1}}, actor);
-      award({kind:'fish'}); return;
+      const fit = bag.add('fish', 1) === 0, o = fishOutcome(fit, a.basket === true); // basket: rod v2 already stored it
+      emit(fit ? {kind:o.kind, text:o.text, loot:{fish:1}} : {kind:o.kind, text:o.text}, actor);
+      if (!o.keep) return;
+      world.fish++; award({kind:'fish'}); return;
     }
     if (a.kind === 'repair') {
       const i = repairHookSlot(bag.slots, a.slot, MAX_HEALTH);

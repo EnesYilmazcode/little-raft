@@ -275,7 +275,7 @@ export function createFishingCooking(T, host) {
   function onCatch(c) {
     const sp = speciesById(c?.species); if (!sp) return;
     const prev = journal.entry(sp.id), res = journal.recordCatch(c);
-    host.action({ kind: 'fish' });
+    host.action({ kind: 'fish', basket: !!res.basketed }); // basket: the host keeps it even when the bag copy will not fit
     const stars = Math.max(1, Math.min(3, c.stars | 0 || 1));
     host.notice(`${sp.name} · ${c.cm.toFixed(1)} cm ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}`, 2600);
     host.beep(sp.rarity === 'legendary' ? 880 : 660);

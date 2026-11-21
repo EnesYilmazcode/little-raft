@@ -208,3 +208,15 @@ test('HOOK-R3-5: underwater E picks up floating debris unless a seafloor node is
   assert.ok(fn.indexOf("action({kind:'collect'") > fn.indexOf('const target = pickupFrom(currentAim());'));
   assert.match(gameSrc, /pickTarget = diving\?\.state\.gatherTarget \? null : pickupFrom\(frameAim\);/, 'the prompt agrees with E');
 });
+
+test('HOOK-R3-6: a rod catch with a full bag goes to the basket instead of "swimming away"', async () => {
+  const { fishOutcome } = await import(new URL('fishing-rules.js', base));
+  assert.deepEqual(fishOutcome(true, true), { keep: true, kind: 'loot', text: 'You caught a fish!' });
+  const b = fishOutcome(false, true);
+  assert.equal(b.keep, true); assert.doesNotMatch(b.text, /swam away/); assert.match(b.text, /basket/);
+  const lost = fishOutcome(false, false);
+  assert.equal(lost.keep, false); assert.match(lost.text, /swam away/, 'no basket copy: the old rejection holds');
+  assert.match(gameSrc, /fishOutcome\(fit, a\.basket === true\)/);
+  const fc = readFileSync(fileURLToPath(new URL('fishing-cooking.js', base)), 'utf8');
+  assert.match(fc, /host\.action\(\{ kind: 'fish', basket: !!res\.basketed \}\)/, 'v2 catches say whether the basket kept it');
+});
