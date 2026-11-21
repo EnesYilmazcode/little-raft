@@ -1,5 +1,5 @@
 // Held spear model (first-person). Original procedural meshes, no textures. ES module.
-// Usage: import { createSpear } from './spear-model.js'; const g = createSpear(THREE, {metal:false});
+// Usage: import { createSpear } from './spear-model.js?build=v3-survival-ae77fa84ac2b'; const g = createSpear(THREE, {metal:false});
 // Orientation: shaft along +Y, butt at -Y, point at +Y. Length ~1.9.
 // Wooden: knotty driftwood shaft, chipped flint/scrap point lashed with rope.
 // Metal: smooth darker shaft, leaf-shaped steel point on a bolted collar.

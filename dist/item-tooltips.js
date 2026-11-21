@@ -1,6 +1,6 @@
 // Little Raft item tooltips: one floating card for hotbar/inventory slots, crafting rows and any
 // [data-item-kind] element. Read-only view over ITEMS + bag + progression; never mutates anything.
-import { ITEMS } from './items.js';
+import { ITEMS } from './items.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_TEXT } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // craft-book text covers every ITEM_INFO kind (content, diving, signal...)
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 

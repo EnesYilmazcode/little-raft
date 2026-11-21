@@ -10,7 +10,9 @@ export const PRESETS = Object.freeze({
 
 export const QUALITY_CONSTANTS = Object.freeze({
   ALPHA: 0.05,            // EMA weight of each new sample
-  MAX_SAMPLE_MS: 250,     // longer frames (tab switch, GC, load hitch) are ignored
+  MAX_SAMPLE_MS: 250,     // longer frames count as this long (a very slow machine still steps down)
+  DROP_SAMPLE_MS: 1000,   // longer than this (tab switch, load hitch) is ignored
+  MAX_REVERTS: 3,         // this many reverted step-ups to one level stops stepping up until a full reset
   SLOW_MS: 20,            // EMA above this...
   DOWN_AFTER_MS: 2000,    // ...for this long steps quality down
   FAST_MS: 17.5,          // EMA below this...
@@ -59,7 +61,7 @@ export function createQuality({ renderer, sun, dpr = globalThis.devicePixelRatio
   let level = 0;
   let ema = null, time = 0, slowFor = 0, fastFor = 0;
   let lastChangeAt = -Infinity, lastUpAt = -Infinity;
-  let upAfter = C.UP_AFTER_MS;
+  let upAfter = C.UP_AFTER_MS, reverts = [];
 
   function info(reason) {
     const l = levels[level];
@@ -94,15 +96,19 @@ export function createQuality({ renderer, sun, dpr = globalThis.devicePixelRatio
   }
 
   function tick(rawMs) {
-    const ms = Number(rawMs);
-    if (!Number.isFinite(ms) || ms <= 0 || ms > C.MAX_SAMPLE_MS) return false;
+    let ms = Number(rawMs);
+    if (!Number.isFinite(ms) || ms <= 0 || ms > C.DROP_SAMPLE_MS) return false;
+    ms = Math.min(ms, C.MAX_SAMPLE_MS);
     time += ms;
     ema = ema == null ? ms : ema + C.ALPHA * (ms - ema);
     slowFor = ema > C.SLOW_MS ? slowFor + ms : 0;
     fastFor = ema < C.FAST_MS ? fastFor + ms : 0;
     if (time - lastChangeAt < C.COOLDOWN_MS) return false;
     if (slowFor >= C.DOWN_AFTER_MS && level < levels.length - 1) {
-      if (time - lastUpAt < C.COOLDOWN_MS + C.REVERT_MS) upAfter = Math.min(C.MAX_UP_AFTER_MS, upAfter * 2);
+      if (time - lastUpAt < C.COOLDOWN_MS + C.REVERT_MS) {
+        reverts[level] = (reverts[level] || 0) + 1;
+        upAfter = reverts[level] >= C.MAX_REVERTS ? Infinity : Math.min(C.MAX_UP_AFTER_MS, upAfter * 2);
+      }
       lastUpAt = -Infinity;
       changeTo(level + 1, 'down');
       return true;
@@ -120,7 +126,7 @@ export function createQuality({ renderer, sun, dpr = globalThis.devicePixelRatio
     ema = null; slowFor = 0; fastFor = 0;
     lastChangeAt = time; // restart cooldown so the first post-pause frames can't trigger a change
     if (full) {
-      upAfter = C.UP_AFTER_MS; lastUpAt = -Infinity;
+      upAfter = C.UP_AFTER_MS; lastUpAt = -Infinity; reverts = [];
       if (level !== 0) { level = 0; apply('reset'); }
     }
   }
@@ -132,7 +138,7 @@ export function createQuality({ renderer, sun, dpr = globalThis.devicePixelRatio
     level = 0;
     ema = null; slowFor = 0; fastFor = 0;
     lastChangeAt = time; lastUpAt = -Infinity;
-    upAfter = C.UP_AFTER_MS;
+    upAfter = C.UP_AFTER_MS; reverts = [];
     apply('cap');
   }
 

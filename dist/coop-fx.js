@@ -66,7 +66,10 @@ export function createPings(T, scene) {
 
   const cam = new T.Vector3();
   function update(dt, time, camera) {
-    if (camera) camera.getWorldPosition(cam);
+    let any = false;
+    for (const s of slots) if (s.born >= 0) { any = true; break; }
+    if (!any) return;
+    if (camera) cam.setFromMatrixPosition(camera.matrixWorld); // the game updates the camera's matrices before this runs
     for (const s of slots) {
       if (s.born < 0) continue;
       s.age += dt;
