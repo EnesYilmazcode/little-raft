@@ -138,6 +138,24 @@ export const ITEM_ICONS = Object.freeze({
     <g fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><path d="M10 31 C10.5 29.5 11.5 28.8 13 28.5"/><path d="M32 31 C32.5 29.5 33.5 28.8 35 28.5"/></g>
     <path d="M7 16 V21 M29 16 V21" stroke="#9fd6d0" stroke-width="1.5" stroke-linecap="round"/>`,
 
+  // [camera] Little Camera, Photo Frame
+  camera: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M10 14 C12 6 18 4 24 4 C30 4 36 6 38 14" fill="none" stroke="#c9a46a" stroke-width="2.4"/>
+    <rect x="4" y="14" width="40" height="27" rx="5" fill="#fff2cc"/>
+    <path d="M4 21 V19 C4 16 6 14 9 14 H39 C42 14 44 16 44 19 V21 Z" fill="#e07a5f"/>
+    <rect x="30" y="9" width="8" height="5" rx="1.5" fill="#e07a5f"/>
+    <rect x="8" y="23" width="7" height="5" rx="1" fill="#ffffff"/>
+    <circle cx="26" cy="29" r="9" fill="#2b3a40"/><circle cx="26" cy="29" r="5.5" fill="#bfe6ef"/></g>
+    <path d="M23.5 26.8 C24.3 25.8 25.4 25.3 26.6 25.3" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>`,
+  photoframe: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M14 40 L10 46 M34 40 L38 46" fill="none" stroke-width="2.4"/>
+    <rect x="3" y="6" width="42" height="34" rx="3" fill="#c99560"/>
+    <rect x="9" y="12" width="30" height="22" fill="#9fd6e8"/>
+    <path d="M9 26 H39 V34 H9 Z" fill="#54a6a4"/></g>
+    <circle cx="32" cy="20" r="3.5" fill="#ffbd66"/>
+    <path d="M14 19 Q16.5 16.5 19 19 Q21.5 16.5 24 19" fill="none" stroke="#153e49" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M12 30 Q16 28.5 20 30 M26 31 Q30 29.5 35 31" fill="none" stroke="#d9f2f2" stroke-width="1.3" stroke-linecap="round"/>`,
+
   // [instruments] Tide Drum, Reed Pipes, Bell Bars
   drum: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <path d="M7 17 L10 39 C14 43 34 43 38 39 L41 17 Z" fill="#bb8650"/>

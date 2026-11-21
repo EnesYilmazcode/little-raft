@@ -165,6 +165,9 @@ const LIST = [
     tip: 'Breathy little tubes tied in a row. Look up for high notes, down for low ones.' }),
   item('bells', 'Bell Bars', 'tool', { iconTint: '#c9b26a', stack: 1, recipe: hand({ wood: 2, scrap: 3, nail: 2 }), unlock: research('nail'),
     tip: 'Scrap-metal bars on a little frame. They ring bright and fade out softly.' }),
+  // [camera] Little Camera (dist/camera.js): no durability, photos stay in this browser
+  item('camera', 'Little Camera', 'tool', { iconTint: '#e07a5f', stack: 1, recipe: hand({ glass: 1, plastic: 2, scrap: 2, rope: 1 }), unlock: research('glass'),
+    tip: 'Click to snap a photo. Press P to open your album.' }),
 
   // ----- food -----
   item('cookedfish', 'Grilled Fish', 'food', { iconTint: '#e0a060', stack: 10,
@@ -191,6 +194,8 @@ const LIST = [
   item('candle', 'Beeswax Candle', 'decor', { placeable: true, iconTint: '#ffd27a',
     recipe: hand({ wax: 2, rope: 1 }), unlock: discover('wax'),
     tip: 'A little jar candle that glows warmly at night.' }),
+  item('photoframe', 'Photo Frame', 'decor', { placeable: true, iconTint: '#c69860', recipe: hand({ wood: 3, glass: 1, nail: 1 }), unlock: research('glass', 'nail'), // [camera]
+    tip: 'Hang a favourite photo on your raft. Press E on it to choose one.' }),
   item('taskboard', 'Task Board', 'decor', { placeable: true, iconTint: '#c9a26b', recipe: hand({ wood: 3, leaf: 1 }), unlock: START, // [tasks] model in dist/tasks-model.js
     tip: 'Pin up the crew tasks for the day.' }),
   item('sail', 'Sail', 'build', { icon: 'icon-sail', placeholder: false, placeable: true,
@@ -232,6 +237,7 @@ export const BLOCK_RADII = deepFreeze({
   palm: 0.42, crate: 0.55, bench: 0.45, sail: 0.14, lantern: 0.12, net: 0,
   smelter: 0.5, researchtable: 0.55, grill: 0.45,
   flowerbox: 0.3, beehive: 0.35, candle: 0.1, // [bees]
+  photoframe: 0.15, // [camera]
   taskboard: 0.3, // [tasks]
   recycler: 0.45, // [recycler]
 });
