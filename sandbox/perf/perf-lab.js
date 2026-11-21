@@ -202,8 +202,8 @@ function fitShadow(r) {
 fitShadow(cfg.shadow === 'cached' ? raftRadius + 1 : 25);
 let shadowClock = 0;
 
-// ---------- overlay + adaptive DPR (the in-game proposal, perf-overlay.js) ----------
-const perf = createPerfOverlay({ renderer, maxPixelRatio: maxDpr, dynamic: cfg.dpr === 'auto', visible: true });
+// ---------- overlay (the in-game proposal, perf-overlay.js; dynamic resolution now lives in dist/quality.js) ----------
+const perf = createPerfOverlay({ renderer, visible: true });
 
 // ---------- loop ----------
 let t = 0;

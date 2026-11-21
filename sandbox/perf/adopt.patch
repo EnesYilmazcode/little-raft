@@ -1,344 +1,285 @@
-diff --git a/dist/game.js b/dist/game.js
+diff -ruN a/dist/deck-cache.js b/dist/deck-cache.js
+--- a/dist/deck-cache.js
++++ b/dist/deck-cache.js
+@@ -0,0 +1,74 @@
++// Incremental raft deck for dist/game.js rebuildRaft(). ES module, no imports (takes T like every dist module).
++//
++// createRaftMesh (deck.js) regenerates every tile's procedural planks, logs and lashings on every call, and game.js
++// calls it from rebuildRaft() on every floor, decoration, world sync and save load. This keeps each tile's
++// generated, translated geometry (CPU only, never uploaded) and only generates tiles that are new:
++//  - tiles unchanged (a decoration placed, a guest's world update): build() returns the SAME group, no work at all;
++//  - tiles added or removed: new tiles are generated, then all tiles are concatenated per material (typed-array copies).
++// The merged deck is vertex-for-vertex what createRaftMesh(T, tiles, mat) returns for the same list (same bucket
++// order, same tile order inside each bucket), so it renders identically.
++//
++//   const deck = createDeckCache(T, createRaftMesh, mat);
++//   const g = deck.build(tiles);      // tiles: [{index, x, z}] as for createRaftMesh
++//   if (g !== deck.previous) { ...old group out, g in... }
++//   deck.dispose();                   // frees the cached tile geometry
++export function createDeckCache(T, createRaftMesh, getMaterial) {
++  const tiles = new Map(); // key -> [{bucket, name, castShadow, material, geometry}] in createRaftMesh part order
++  let last = null, lastSig = '', previous = null;
++  const keyOf = t => t.index + '|' + t.x + '|' + t.z;
++
++  function tileParts(t) {
++    const k = keyOf(t);
++    let parts = tiles.get(k);
++    if (!parts) {
++      const g = createRaftMesh(T, [t], getMaterial); // one tile: one mesh per bucket, geometry already translated
++      parts = g.children.filter(m => m.isMesh).map(m => ({ bucket: m.material.uuid + '|' + m.castShadow, name: m.name, castShadow: m.castShadow, receiveShadow: m.receiveShadow, material: m.material, geometry: m.geometry }));
++      tiles.set(k, parts);
++    }
++    return parts;
++  }
++
++  function concat(list) {
++    const names = Object.keys(list[0].attributes), out = new T.BufferGeometry();
++    for (const n of names) {
++      const size = list[0].attributes[n].itemSize; let len = 0;
++      for (const g of list) len += g.attributes[n].array.length;
++      const arr = new Float32Array(len); let o = 0;
++      for (const g of list) { arr.set(g.attributes[n].array, o); o += g.attributes[n].array.length; }
++      out.setAttribute(n, new T.BufferAttribute(arr, size));
++    }
++    out.computeBoundingBox(); out.computeBoundingSphere();
++    return out;
++  }
++
++  function build(list) {
++    previous = last;
++    const sig = list.map(keyOf).join(',');
++    if (last && sig === lastSig) return last;
++    const want = new Set(list.map(keyOf));
++    for (const [k, parts] of tiles) if (!want.has(k)) { for (const p of parts) p.geometry.dispose(); tiles.delete(k); }
++    const buckets = new Map();
++    for (const t of list) for (const p of tileParts(t)) {
++      if (!buckets.has(p.bucket)) buckets.set(p.bucket, { ...p, list: [] });
++      buckets.get(p.bucket).list.push(p.geometry);
++    }
++    const g = new T.Group(); g.name = 'raft-floors';
++    for (const b of buckets.values()) {
++      const mesh = new T.Mesh(concat(b.list), b.material); mesh.name = b.name;
++      mesh.castShadow = b.castShadow; mesh.receiveShadow = b.receiveShadow; g.add(mesh);
++    }
++    g.userData.kind = 'floors';
++    g.userData.topY = 0.2;
++    g.userData.tiles = list.map(t => ({ ...t }));
++    g.userData.dispose = () => g.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
++    last = g; lastSig = sig;
++    return g;
++  }
++
++  function dispose() {
++    for (const parts of tiles.values()) for (const p of parts) p.geometry.dispose();
++    tiles.clear(); last = null; lastSig = ''; previous = null;
++  }
++
++  return { build, dispose, get last() { return last; }, get previous() { return previous; }, get size() { return tiles.size; } };
++}
+diff -ruN a/dist/game.js b/dist/game.js
 --- a/dist/game.js
 +++ b/dist/game.js
-@@ -2,6 +2,8 @@
- import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
- import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
+@@ -5,7 +5,7 @@
  import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
-+import { mergeMeshesByMaterial, createStaticBatch } from './merge.js?build=v3-survival-ae77fa84ac2b';
-+import { createPerfOverlay } from './perf-overlay.js?build=v3-survival-ae77fa84ac2b';
  import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
  import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
- import { createSettings } from './settings.js?build=v3-survival-ae77fa84ac2b';
-@@ -58,7 +60,7 @@
+-import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-survival-ae77fa84ac2b';
++import { createSettings, SETTINGS_DEFAULTS, SETTINGS_STORAGE_KEY, validateSettings } from './settings.js?build=v3-survival-ae77fa84ac2b';
+ import { createRaftMesh, createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
+ import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
+ import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
+@@ -37,8 +37,11 @@
+ export { PROTOCOL }; // live.js reads the running engine's protocol from here
+ import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
+ import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
++import { createPerfOverlay } from './perf-overlay.js?build=v3-survival-ae77fa84ac2b'; // perf: F3 / ?perf panel
+ const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
++const storedGraphics = () => { try { return validateSettings(JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY))).graphics; } catch { return null; } }; // perf: the saved preset, before createSettings() runs
+ import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
++import { createDeckCache } from './deck-cache.js?build=v3-survival-ae77fa84ac2b'; // perf: incremental raft rebuilds
+ import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
+ import { attachProgression } from './progression-hooks.js'; // [progression-hook]
+ import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
+@@ -101,7 +104,7 @@
    const clamp = T.MathUtils.clamp;
    const ac = new AbortController(), signal = ac.signal;
    const timers = new Set();
 -  let disposed = false, active = false, rafId = 0;
-+  let disposed = false, active = false, rafId = 0, perf = null;
++  let disposed = false, active = false, rafId = 0, perfHud = null; // perfHud: perf-overlay.js (F3)
  
    // ---------- Small utilities ----------
    const newToken = () => crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36);
-@@ -289,6 +291,7 @@
-     sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(-15, 28, 12); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, {left:-25, right:25, top:25, bottom:-25}); sun.shadow.bias = -.001; scene.add(sun);
-     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.receiveShadow = true; scene.add(ocean.mesh); ocean.update(elapsed);
-     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
-+    deckBatch = createStaticBatch(T, 'raft-deck'); raft.add(deckBatch.group); // all floor tiles, one mesh per material (perf)
-     itemsGroup = new T.Group(); scene.add(itemsGroup);
-     player = makeAvatar('#efae55'); friend = makeAvatar('#70a7e4'); friend.visible = false; scene.add(player, friend); // world space, not raft-parented
-     ghost = new T.Mesh(new T.BoxGeometry(1.9, .13, 1.9), new T.MeshBasicMaterial({color:'#b6ffd0', transparent:true, opacity:.55, depthWrite:false})); ghost.visible = false; scene.add(ghost);
-@@ -297,8 +300,12 @@
-     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
-     clothMat = new T.MeshStandardMaterial({color:'#fff3cf', side:T.DoubleSide, roughness:1});
-     buildViewmodels();
--    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scene.add(g); }
--    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; scene.add(g); }
-+    const scenery = []; // islands and clouds never move: bake ~190 meshes into one mesh per material (perf)
-+    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scenery.push(g); }
-+    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; scenery.push(g); }
-+    for (const g of scenery) g.traverse(c => { c.castShadow = false; }); // 65 m+ out, beyond any shadow camera: their shadows were never drawn
-+    for (const m of mergeMeshesByMaterial(T, scenery, {name:'scenery'})) scene.add(m);
-+    for (const g of scenery) g.traverse(c => c.geometry?.dispose());
-     rebuildRaft();
-     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
-     syncItems(); refreshPointerUI(true);
-@@ -348,9 +355,23 @@
+@@ -375,7 +378,7 @@
+     prepareDom();
+     scene = new T.Scene(); scene.background = new T.Color('#cbd2c0'); scene.fog = new T.Fog('#cbd2c0', 25, 125);
+     camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 200); camera.rotation.order = 'YXZ'; scene.add(camera);
+-    renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:devicePixelRatio < 1.5}); // dense screens get their smoothing from pixels, not MSAA
++    renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:devicePixelRatio < 1.5 && storedGraphics() !== 'low'}); // dense screens get their smoothing from pixels, not MSAA; 'low' skips MSAA (~1/3 of software-GL raster; applies from the next load)
+     renderer.setSize(innerWidth, innerHeight);
+     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+     hemi = new T.HemisphereLight('#f2ead4', '#3d6b6a', 1.8); scene.add(hemi); // content hook: kept for day/night
+@@ -488,14 +491,27 @@
      for (let i = 0; i < 7; i++) { const l = new T.Mesh(new T.ConeGeometry(.28, 1.5, 4), mat(i % 2 ? '#519b55' : '#72ae59')); l.rotation.z = 1.2; l.rotation.y = i * Math.PI * 2 / 7; l.position.set(Math.sin(i * Math.PI * 2 / 7) * .5, 1.65, Math.cos(i * Math.PI * 2 / 7) * .5); g.add(l); }
      parent.add(g);
    }
-+  let deckBatch = null; // all floor tiles, baked into one mesh per material (merge.js createStaticBatch)
-+  // The sun's shadow only lands on the deck, decor and avatars (the ocean shader ignores lights), so fit the
-+  // shadow camera to the raft and size the map to keep roughly the old texel density.
-+  function fitShadow() {
-+    const r = Math.max(1, ...world.tiles.map(([x, z]) => Math.max(Math.abs(x), Math.abs(z)))) * 2 + 5, size = r > 14 ? 1024 : 512;
-+    Object.assign(sun.shadow.camera, {left:-r, right:r, top:r, bottom:-r}); sun.shadow.camera.updateProjectionMatrix();
-+    if (sun.shadow.mapSize.x !== size) { sun.shadow.mapSize.set(size, size); sun.shadow.map?.dispose(); sun.shadow.map = null; }
-+  }
++  // perf: rebuildRaft() runs on every floor, decoration, synced world and save load. Floor tiles are generated once
++  // (deck-cache.js; the deck group is kept while the tile list is unchanged) and a decoration whose save entry is
++  // unchanged keeps its model (a sail is ~46 ms of geometry), so a build costs one tile or one model, not the raft.
++  let deckCache = null;
    function rebuildRaft() {
 -    for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
--    world.tiles.forEach(([x, z]) => { const g = createFloor(T, x * 719 + z * 311, mat); g.position.set(x * 2, 0, z * 2); raft.add(g); });
-+    for (const c of [...raft.children]) if (c !== deckBatch.group) { raft.remove(c); disposeGeometry(c); }
-+    // Floor tiles are baked into the deck batch once; a rebuild only builds tiles that are new. If a tile vanished
-+    // (e.g. a guest received a different raft), start over.
-+    const key = ([x, z]) => x + ',' + z, want = new Set(world.tiles.map(key));
-+    if ([...deckBatch.keys].some(k => !want.has(k))) deckBatch.clear();
-+    const fresh = world.tiles.filter(t => !deckBatch.keys.has(key(t)));
-+    deckBatch.add(fresh.map(([x, z]) => { const g = createFloor(T, x * 719 + z * 311, mat); g.position.set(x * 2, 0, z * 2); return g; }), fresh.map(key));
-+    fitShadow();
++    deckCache ??= createDeckCache(T, createRaftMesh, mat);
++    const floors = deckCache.build(world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2}))), reuse = new Map();
++    for (const c of [...raft.children]) {
++      if (c === floors) continue;
++      const k = c.userData.decorKey;
++      if (k !== undefined) { if (!reuse.has(k)) reuse.set(k, []); reuse.get(k).push(c); continue; }
++      raft.remove(c); disposeGeometry(c);
++    }
+     wateringGroups.clear();
+-    raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat));
++    if (floors.parent !== raft) raft.add(floors);
      for (const d of world.decor) {
-       let detailed = null; try { detailed = createCraft(T, d.type); } catch (e) { console.warn('craft model failed', e); }
-       if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); raft.add(detailed); continue; }
-@@ -369,8 +390,11 @@
-   // ---------- Floating supplies ----------
-   function makeItem(id) { const edge = Math.min(...world.tiles.map(t => t[1])) * 2 - 1, spread = Math.max(11, Math.max(...world.tiles.map(t => Math.abs(t[0]))) * 2 + 6); return {id, token:newToken(), type:SPAWN_TABLE[Math.floor(Math.random() * SPAWN_TABLE.length)], x:(Math.random() - .5) * spread * 2, z:edge - 3 - Math.random() * 17, phase:Math.random() * 6}; }
-   function itemModel(item) {
--    if (item.type !== 'plastic') return createDebris(T, item.type, mat, {seed:item.id});
--    const g = new T.Group(), jug = createPlastic(T); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
-+    let g;
-+    if (item.type !== 'plastic') g = createDebris(T, item.type, mat, {seed:item.id});
-+    else { const jug = createPlastic(T); g = new T.Group(); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); }
-+    g.traverse(o => { if (o.isMesh) o.castShadow = false; }); // nothing out at sea receives shadows: skip ~160 shadow draws
-+    return g;
++      const decorKey = JSON.stringify(d), kept = reuse.get(decorKey)?.pop();
++      if (kept) { if (kept.userData.tileKey !== undefined) wateringGroups.set(kept.userData.tileKey, kept); continue; }
+       let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
+-      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); detailed.rotation.y = d.rot || 0; raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; }
+-      const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2); g.rotation.y = d.rot || 0;
++      if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); detailed.rotation.y = d.rot || 0; detailed.userData.decorKey = decorKey; raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; }
++      const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2); g.rotation.y = d.rot || 0; g.userData.decorKey = decorKey;
+       if (d.type === 'sail') { cylinder(.065, .08, 3.8, '#906f48', 0, 1.9, 0, g); box(2.5, .07, .07, '#906f48', 0, 3.2, 0, g); const s = new T.Mesh(new T.PlaneGeometry(2.35, 2.1), clothMat); s.position.set(0, 2.15, .06); g.add(s); }
+       if (d.type === 'palm') { cylinder(.38, .28, .5, '#db8764', 0, .25, 0, g); palm(g, 0, .5, 0); }
+       if (d.type === 'lantern') { cylinder(.055, .075, 1.8, '#725942', 0, .9, 0, g); box(.32, .42, .32, '#ffe197', .43, 1.5, 0, g); }
+@@ -504,6 +520,7 @@
+       if (d.type === 'crate') { box(.8, .8, .8, '#a97d4c', 0, .4, 0, g); }
+       raft.add(g);
+     }
++    for (const list of reuse.values()) for (const c of list) { raft.remove(c); disposeGeometry(c); } // decor that was removed or changed
+     blockList = world.decor.flatMap(d => decorBlockers(d, BLOCK_RADIUS));
+     building?.sync(world); // building-pieces lane hook
+     sailing?.onRaftBuilt(); // [sailing] re-find sail models
+@@ -1215,6 +1232,7 @@
    }
-   // Meshes are keyed by token, not id: a respawned item keeps its id but may change type.
-   const itemMeshes = new Map();
-@@ -818,6 +842,7 @@
-   }
-   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, swimming:physics.swimming});
+   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, held:heldKind()});
    function frame() {
-+    perf?.begin();
-     const now = performance.now(), dt = Math.min((now - last) / 1000, .05); last = now; elapsed += dt;
++    perfHud?.begin();
+     const now = performance.now(), rawMs = now - last, dt = Math.min(rawMs / 1000, .05); last = now; elapsed += dt;
      const dialog = uiBlocked();
-     if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { closeConnection(); toast('Host disconnected. You are back on your own raft.'); }
-@@ -840,6 +865,7 @@
-     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
-     refreshPointerUI(); updateCharge(); updateContext(dialog);
-     renderer.render(scene, camera);
-+    perf?.end();
+     if (running && !dialog && !document.hidden && !PIN_QUALITY) quality.tick(rawMs);
+@@ -1249,6 +1267,7 @@
+     refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud();
+     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
+     renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
++    perfHud?.end();
    }
-   function animate() {
-     if (!active || disposed) return;
-@@ -1169,6 +1195,7 @@
-     if (disposed) return;
-     pause(); disposed = true; ac.abort();
+   // Peer liveness. rAF stops in hidden tabs, so a timer keeps the channel warm and each side says when it is
+   // hidden; a hidden peer is never timed out (the data channel's 'close' still ends the session).
+@@ -1717,7 +1736,7 @@
+     for (const m of mats) { try { for (const v of Object.values(m)) if (v?.isTexture) v.dispose(); m.dispose(); } catch {} }
+     try { content?.dispose(); } catch {} content = null; // content hook
+     try { ocean?.dispose(); } catch {}
+-    materialCache.clear(); itemMeshes.clear(); scene.clear();
++    materialCache.clear(); itemMeshes.clear(); scene.clear(); deckCache?.dispose(); deckCache = null; // perf: cached tile geometry
+     scene = null; // renderer, canvas, AudioContext, peer and conn are left untouched
+   }
+   function dispose() {
+@@ -1725,6 +1744,7 @@
+     pause(); disposed = true; ac.abort(); sfx.destroy(); offIconReady?.();
+     try { coop?.dispose(); } catch {} coop = null; // coop
      try { settingsController?.destroy(); } catch {}
-+    try { perf?.dispose(); } catch {}
++    try { perfHud?.dispose(); } catch {} perfHud = null; // perf
      try { survivalUI?.destroy?.(); } catch {}
-     for (const id of timers) clearTimeout(id); timers.clear();
-     unlisten(bindings.splice(0));
-@@ -1180,7 +1207,8 @@
-   try {
+     try { sailing?.dispose(); } catch {} // [sailing]
+     try { fc?.dispose(); } catch {} fc = null; // [fishing-cooking]
+@@ -1742,6 +1762,7 @@
      if (!canvas) throw new Error('#world canvas missing');
+     prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), resume:() => requestLock(), pause:clearInput}); // [progression-hook]
      init();
--    settingsController = createSettings({onChange:next => { options = next; if (renderer) { renderer.setPixelRatio(Math.min(devicePixelRatio, next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3)); renderer.shadowMap.enabled = next.graphics !== 'low'; } }, onPause:clearInput, onResume:() => requestLock()});
-+    perf = createPerfOverlay({renderer, maxPixelRatio:1.3, dynamic:/[?&]dynres\b/.test(location.search)}); // F3 or ?perf shows it
-+    settingsController = createSettings({onChange:next => { options = next; if (renderer) { const cap = next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3; renderer.setPixelRatio(Math.min(devicePixelRatio, cap)); perf?.setMaxPixelRatio(cap); renderer.shadowMap.enabled = next.graphics !== 'low'; } }, onPause:clearInput, onResume:() => requestLock()});
++    try { perfHud = createPerfOverlay({renderer, quality}); } catch (e) { console.warn('perf overlay unavailable', e); } // perf: hidden until F3 / ?perf
+     try { coop = createCoop(coopContext(), X?.coop); } catch (e) { console.warn('co-op layer unavailable', e); coop = null; } // coop
+     settingsController = createSettings({onChange:applyOptions, onPause:clearInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});
      survivalUI = createSurvivalUI({
-       getBag:() => localBag(),
-       onSelect:guard(i => selectSlot(i)),
-diff --git a/dist/merge.js b/dist/merge.js
-new file mode 100644
---- /dev/null
-+++ b/dist/merge.js
-@@ -0,0 +1,135 @@
-+// Static batching for Little Raft: bake many meshes into one mesh per (material, shadow flags, renderOrder).
-+// Drop-in for dist/ (no imports; pass the three namespace like the other dist modules):
-+//   import { mergeMeshesByMaterial, createStaticBatch } from './merge.js?build=...';
-+//   scene.add(...mergeMeshesByMaterial(T, [groupA, groupB], {name:'scenery'}));   // one-shot
-+//   const deck = createStaticBatch(T, 'raft-deck'); raft.add(deck.group);         // growable
-+//   deck.add([tileGroup], ['x,z']);  deck.keys.has('x,z');  deck.clear();
-+// - Each mesh's transform is baked relative to `relativeTo` (default: the roots' own world space, i.e. roots that
-+//   are not in the scene are baked in their local space), so results go under `relativeTo` with identity transform.
-+// - Output is non-indexed position/normal/uv (+color when every source in the bucket has it); uv is zero-filled
-+//   where a source has none (in a static batch, pieces without colour get white, i.e. untinted). mergeMeshesByMaterial leaves sources alone; createStaticBatch.add disposes them.
-+// - Only visible meshes are merged; skinned/instanced/multi-material meshes are skipped (they stay unmerged).
-+
-+function bake(T, roots, relativeTo) {
-+  const inv = new T.Matrix4(), mw = new T.Matrix4(), nm = new T.Matrix3();
-+  if (relativeTo) { relativeTo.updateMatrixWorld(true); inv.copy(relativeTo.matrixWorld).invert(); }
-+  const buckets = new Map();
-+  for (const root of roots) {
-+    root.updateMatrixWorld(true);
-+    root.traverseVisible(o => {
-+      if (!o.isMesh || o.isSkinnedMesh || o.isInstancedMesh || Array.isArray(o.material)) return;
-+      const key = o.material.uuid + (o.castShadow ? 'C' : '-') + (o.receiveShadow ? 'R' : '-') + (o.renderOrder | 0);
-+      let b = buckets.get(key);
-+      if (!b) buckets.set(key, b = { key, material: o.material, cast: o.castShadow, receive: o.receiveShadow, order: o.renderOrder | 0, list: [], count: 0, color: true });
-+      const g = o.geometry;
-+      b.list.push({ g, matrix: mw.multiplyMatrices(inv, o.matrixWorld).clone() });
-+      b.count += g.index ? g.index.count : g.attributes.position.count;
-+      if (!g.attributes.color) b.color = false;
-+    });
-+  }
-+  const out = [];
-+  for (const b of buckets.values()) {
-+    const pos = new Float32Array(b.count * 3), nor = new Float32Array(b.count * 3), uv = new Float32Array(b.count * 2);
-+    const col = b.color ? new Float32Array(b.count * 3) : null;
-+    let o = 0;
-+    for (const { g, matrix } of b.list) {
-+      nm.getNormalMatrix(matrix);
-+      const e = matrix.elements, q = nm.elements, flip = matrix.determinant() < 0;
-+      const A = g.attributes, I = g.index ? g.index.array : null, n = I ? I.length : A.position.count;
-+      // Plain (non-interleaved) Float32 attributes are read straight from their arrays; anything else via getX.
-+      const arr = (a, size) => (a && !a.isInterleavedBufferAttribute && !a.normalized && a.itemSize === size && a.array instanceof Float32Array ? a.array : null);
-+      const P = arr(A.position, 3), N = arr(A.normal, 3), U = arr(A.uv, 2), C = col ? arr(A.color, 3) : null;
-+      for (let k = 0; k < n; k++) {
-+        const kk = flip ? k - (k % 3) + (k % 3 === 0 ? 0 : 3 - (k % 3)) : k; // mirrored transform: keep winding
-+        const i = I ? I[kk] : kk, w = o + k;
-+        let x, y, z;
-+        if (P) { x = P[i * 3]; y = P[i * 3 + 1]; z = P[i * 3 + 2]; } else { x = A.position.getX(i); y = A.position.getY(i); z = A.position.getZ(i); }
-+        pos[w * 3] = e[0] * x + e[4] * y + e[8] * z + e[12];
-+        pos[w * 3 + 1] = e[1] * x + e[5] * y + e[9] * z + e[13];
-+        pos[w * 3 + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
-+        if (A.normal) {
-+          if (N) { x = N[i * 3]; y = N[i * 3 + 1]; z = N[i * 3 + 2]; } else { x = A.normal.getX(i); y = A.normal.getY(i); z = A.normal.getZ(i); }
-+          const nx = q[0] * x + q[3] * y + q[6] * z, ny = q[1] * x + q[4] * y + q[7] * z, nz = q[2] * x + q[5] * y + q[8] * z;
-+          const l = Math.hypot(nx, ny, nz) || 1;
-+          nor[w * 3] = nx / l; nor[w * 3 + 1] = ny / l; nor[w * 3 + 2] = nz / l;
-+        }
-+        if (A.uv) { if (U) { uv[w * 2] = U[i * 2]; uv[w * 2 + 1] = U[i * 2 + 1]; } else { uv[w * 2] = A.uv.getX(i); uv[w * 2 + 1] = A.uv.getY(i); } }
-+        if (col) { if (C) { col[w * 3] = C[i * 3]; col[w * 3 + 1] = C[i * 3 + 1]; col[w * 3 + 2] = C[i * 3 + 2]; } else { col[w * 3] = A.color.getX(i); col[w * 3 + 1] = A.color.getY(i); col[w * 3 + 2] = A.color.getZ(i); } }
-+      }
-+      o += n;
-+    }
-+    out.push({ key: b.key, material: b.material, cast: b.cast, receive: b.receive, order: b.order, pos, nor, uv, col });
-+  }
-+  return out;
-+}
-+
-+function toMesh(T, b, name) {
-+  const geo = new T.BufferGeometry();
-+  geo.setAttribute('position', new T.BufferAttribute(b.pos, 3));
-+  geo.setAttribute('normal', new T.BufferAttribute(b.nor, 3));
-+  geo.setAttribute('uv', new T.BufferAttribute(b.uv, 2));
-+  if (b.col) geo.setAttribute('color', new T.BufferAttribute(b.col, 3));
-+  geo.computeBoundingBox(); geo.computeBoundingSphere();
-+  const mesh = new T.Mesh(geo, b.material);
-+  mesh.name = name; mesh.castShadow = b.cast; mesh.receiveShadow = b.receive; mesh.renderOrder = b.order;
-+  mesh.userData.batchKey = b.key;
-+  mesh.matrixAutoUpdate = false; mesh.updateMatrix();
-+  return mesh;
-+}
-+
-+export function mergeMeshesByMaterial(T, roots, { name = 'merged', relativeTo = null } = {}) {
-+  return bake(T, roots, relativeTo).map(b => toMesh(T, b, name));
-+}
-+
-+// A growable static batch. Each (material, shadow flags) bucket is one mesh whose vertex arrays have spare capacity:
-+// add() writes the new pieces after the used part and uploads only that range (addUpdateRange), and reallocates
-+// (to 1.5x what is used) only when full. Adding one tile to a 49-tile deck therefore costs one tile of work and one tile of upload,
-+// not a copy and re-upload of the whole deck. Unused capacity is outside drawRange, so it is never drawn.
-+export function createStaticBatch(T, name = 'batch') {
-+  const group = new T.Group(); group.name = name;
-+  const keys = new Set();
-+  const ATTRS = [['position', 'pos', 3], ['normal', 'nor', 3], ['uv', 'uv', 2], ['color', 'col', 3]];
-+  function realloc(mesh, cap, color) { // new arrays with room for `cap` vertices; keeps the used part
-+    const old = mesh.geometry, used = mesh.userData.used, geo = new T.BufferGeometry();
-+    for (const [a, , size] of ATTRS) {
-+      if (a === 'color' && !color) continue;
-+      const arr = new Float32Array(cap * size), src = old?.attributes[a];
-+      if (src) arr.set(src.array.subarray(0, used * size));
-+      else if (a === 'color') arr.fill(1, 0, used * size); // pieces added before any had colours: white = untinted
-+      geo.setAttribute(a, new T.BufferAttribute(arr, size));
-+    }
-+    geo.setDrawRange(0, used); geo.boundingBox = mesh.userData.box.clone(); geo.boundingSphere = mesh.userData.box.getBoundingSphere(new T.Sphere());
-+    mesh.geometry = geo; old?.dispose(); mesh.userData.fresh = true; // a fresh geometry uploads whole; no ranges needed
-+  }
-+  function append(b) {
-+    let mesh = group.children.find(m => m.userData.batchKey === b.key);
-+    const n = b.pos.length / 3;
-+    if (!mesh) {
-+      mesh = new T.Mesh(undefined, b.material); mesh.geometry.dispose();
-+      Object.assign(mesh, { name, castShadow: b.cast, receiveShadow: b.receive, renderOrder: b.order, matrixAutoUpdate: false });
-+      mesh.userData = { batchKey: b.key, used: 0, box: new T.Box3() }; mesh.geometry = null;
-+      realloc(mesh, Math.ceil(n * 1.5), !!b.col); group.add(mesh);
-+    } else {
-+      const want = mesh.userData.used + n, color = !!(b.col || mesh.geometry.attributes.color);
-+      if (want > mesh.geometry.attributes.position.count || color !== !!mesh.geometry.attributes.color)
-+        realloc(mesh, Math.ceil(want * 1.5), color);
-+    }
-+    const geo = mesh.geometry, used = mesh.userData.used, fresh = mesh.userData.fresh;
-+    for (const [a, k, size] of ATTRS) {
-+      const attr = geo.attributes[a]; if (!attr) continue;
-+      if (b[k]) attr.array.set(b[k], used * size); else attr.array.fill(1, used * size, (used + n) * size);
-+      if (!fresh) attr.addUpdateRange(used * size, n * size);
-+      attr.needsUpdate = true;
-+    }
-+    const box = new T.Box3().setFromArray(b.pos);
-+    mesh.userData.box.union(box); mesh.userData.used = used + n; mesh.userData.fresh = false;
-+    geo.setDrawRange(0, used + n); geo.boundingBox = mesh.userData.box.clone(); geo.boundingSphere = mesh.userData.box.getBoundingSphere(new T.Sphere());
-+  }
-+  function add(roots, rootKeys = []) {
-+    if (roots.length) for (const b of bake(T, roots, null)) append(b);
-+    for (const r of roots) r.traverse(o => o.geometry?.dispose());
-+    for (const k of rootKeys) keys.add(k);
-+  }
-+  function clear() { for (const m of [...group.children]) { group.remove(m); m.geometry.dispose(); } keys.clear(); }
-+  return { group, keys, add, clear };
-+}
-diff --git a/dist/perf-overlay.js b/dist/perf-overlay.js
-new file mode 100644
---- /dev/null
+diff -ruN a/dist/live.js b/dist/live.js
+--- a/dist/live.js
++++ b/dist/live.js
+@@ -219,6 +219,7 @@
+   let manifest;
+   try {
+     manifest = await fetchManifest();
++    if (state.updating) return { status: 'busy', build: state.build }; // another check() started a swap while this one waited
+   } catch (e) {
+     // Silent: network hiccups must not disturb play.
+     state.pollDelay = Math.min(state.pollDelay * 2, MAX_BACKOFF_MS);
+diff -ruN a/dist/perf-overlay.js b/dist/perf-overlay.js
+--- a/dist/perf-overlay.js
 +++ b/dist/perf-overlay.js
-@@ -0,0 +1,69 @@
-+// Lightweight in-game perf overlay + optional dynamic resolution. Proposal for dist/perf-overlay.js.
+@@ -0,0 +1,54 @@
++// In-game perf panel for dist/perf-overlay.js. Pure ES module, nothing happens on import.
 +//   import { createPerfOverlay } from './perf-overlay.js?build=...';
-+//   const perf = createPerfOverlay({renderer, maxPixelRatio:1.7, dynamic:false});
-+//   // in frame(): perf.begin(); ...update + renderer.render(...)...; perf.end();
++//   const perf = createPerfOverlay({renderer, quality});   // quality: the quality.js scaler (optional)
++//   // in frame(): perf.begin(); ...update + render...; perf.end();
 +//   // F3 (or ?perf in the URL) toggles the panel. perf.dispose() on unmount.
-+// Cost when hidden: two performance.now() calls and an EMA per frame; no DOM writes, no allocations.
++// Dynamic resolution is NOT done here any more: quality.js owns pixel ratio, shadow map size and shadows
++// (its ladder steps down after 2 s over 20 ms and back up after 8 s+ under 17.5 ms). The panel shows its level.
++// Cost when hidden: two performance.now() calls and two EMA updates per frame; no DOM writes, no allocations.
 +// Cost when shown: one textContent write every 500 ms.
 +//
 +// Numbers shown:
-+//   fps / frame: from rAF-to-rAF gaps (what the player feels, includes GPU stalls and vsync)
++//   fps / frame / p95: from begin-to-begin gaps (what the player feels, includes GPU stalls and vsync)
 +//   cpu: begin()->end() time on the main thread (JS + WebGL command submission, not GPU time)
-+//   p95: 95th percentile frame gap over the last 120 frames
-+//   calls/tris: INCLUDING the shadow pass (three resets renderer.info after the shadow pass by default, which hides
-+//              about half of the real draw calls); we switch info.autoReset off and reset in begin().
-+//   geo/tex/prog: live GPU resources (leak watch: these should be flat while playing)
-+//   dpr: current pixel ratio (moves when dynamic resolution is on)
-+export function createPerfOverlay({ renderer, maxPixelRatio = 1.7, minPixelRatio = 0.6, dynamic = false, key = 'F3', visible = false, parent = document.body } = {}) {
++//   calls/tris: renderer.info as game.js leaves it (it resets before render, so the shadow pass and diving's
++//              overlay pass are counted too; stock three resets after the shadow pass and hides those)
++//   geo/tex/prog: live GPU resources (leak watch: these should stay flat while playing)
++//   quality: quality.describe() -> preset, level, pixel ratio, shadow map, frame EMA
++export function createPerfOverlay({ renderer, quality = null, key = 'F3', visible = false, parent = document.body } = {}) {
 +  const el = document.createElement('div');
 +  el.id = 'perfOverlay';
-+  el.style.cssText = 'position:fixed;right:8px;top:8px;z-index:50;pointer-events:none;white-space:pre;font:11px/1.35 ui-monospace,Menlo,monospace;color:#eaf2ee;background:rgba(14,26,28,.72);padding:6px 8px;border-radius:6px';
++  el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:50;pointer-events:none;white-space:pre;font:11px/1.35 ui-monospace,Menlo,monospace;color:#eaf2ee;background:rgba(14,26,28,.72);padding:6px 8px;border-radius:6px';
 +  let shown = visible || /[?&]perf\b/.test(location.search);
 +  el.hidden = !shown; parent.appendChild(el);
-+  const onKey = e => { if (e.code === key) { shown = !shown; el.hidden = !shown; e.preventDefault(); } };
++  const onKey = e => { if (e.code === key && !e.repeat) { shown = !shown; el.hidden = !shown; e.preventDefault(); } };
 +  addEventListener('keydown', onKey);
-+  renderer.info.autoReset = false;
 +
 +  const gaps = new Float32Array(120); let gi = 0, filled = 0;
-+  let last = 0, t0 = 0, cpuEma = 0, gapEma = 16.7, minGap = 1000, hudClock = 0;
-+  // dynamic resolution: hysteresis on the frame-gap EMA against the display's own refresh budget
-+  let over = 0, under = 0, dpr = Math.min(devicePixelRatio, maxPixelRatio);
++  let last = 0, t0 = 0, cpuEma = 0, gapEma = 16.7, hudClock = 0;
 +
-+  function begin() { t0 = performance.now(); renderer.info.reset(); }
-+  function end() {
-+    const now = performance.now(), cpu = now - t0;
-+    const gap = last ? now - last : 16.7; last = now;
++  function begin() {
++    const now = performance.now(), gap = last ? now - last : 16.7; last = t0 = now;
 +    if (gap > 250) return; // tab was hidden / paused: ignore
-+    cpuEma += (cpu - cpuEma) * 0.05; gapEma += (gap - gapEma) * 0.05;
-+    minGap = Math.min(minGap * 1.0005, gap); // slowly forget: tracks the display refresh interval
-+    gaps[gi] = gap; gi = (gi + 1) % gaps.length; filled = Math.min(filled + 1, gaps.length);
-+    if (dynamic) {
-+      const budget = Math.max(minGap, 1000 / 144);
-+      if (gapEma > budget * 1.25) { over += gap; under = 0; } else if (gapEma < budget * 1.08) { under += gap; over = 0; } else over = under = 0;
-+      let next = dpr;
-+      if (over > 1000) next = Math.max(minPixelRatio, dpr - 0.15);
-+      else if (under > 4000) next = Math.min(Math.min(devicePixelRatio, maxPixelRatio), dpr + 0.1);
-+      if (next !== dpr) { dpr = +next.toFixed(2); renderer.setPixelRatio(dpr); over = under = 0; }
-+    }
++    gapEma += (gap - gapEma) * 0.05; gaps[gi] = gap; gi = (gi + 1) % gaps.length; filled = Math.min(filled + 1, gaps.length);
 +    hudClock += gap;
-+    if (shown && hudClock > 500) {
-+      hudClock = 0;
-+      const s = Array.from(gaps.subarray(0, filled)).sort((a, b) => a - b), p95 = s[Math.floor(s.length * 0.95)] ?? 0;
-+      const i = renderer.info, mem = performance.memory ? (performance.memory.usedJSHeapSize / 1048576).toFixed(0) + 'MB' : '-';
-+      el.textContent = `${(1000 / gapEma).toFixed(0)} fps  ${gapEma.toFixed(1)} ms  p95 ${p95.toFixed(1)}\n`
-+        + `cpu ${cpuEma.toFixed(2)} ms  heap ${mem}\n`
-+        + `calls ${i.render.calls}  tris ${(i.render.triangles / 1000).toFixed(1)}k\n`
-+        + `geo ${i.memory.geometries}  tex ${i.memory.textures}  prog ${i.programs?.length ?? 0}\n`
-+        + `dpr ${renderer.getPixelRatio().toFixed(2)}${dynamic ? ' auto' : ''}  shadow ${renderer.shadowMap.enabled ? (renderer.shadowMap.autoUpdate ? 'on' : 'cached') : 'off'}`;
-+    }
++  }
++  function end() {
++    cpuEma += (performance.now() - t0 - cpuEma) * 0.05;
++    if (!shown || hudClock < 500) return;
++    hudClock = 0;
++    const s = Array.from(gaps.subarray(0, filled)).sort((a, b) => a - b), p95 = s[Math.floor(s.length * 0.95)] ?? 0;
++    const i = renderer.info, mem = performance.memory ? (performance.memory.usedJSHeapSize / 1048576).toFixed(0) + 'MB' : '-';
++    el.textContent = `${(1000 / gapEma).toFixed(0)} fps  ${gapEma.toFixed(1)} ms  p95 ${p95.toFixed(1)}\n`
++      + `cpu ${cpuEma.toFixed(2)} ms  heap ${mem}\n`
++      + `calls ${i.render.calls}  tris ${(i.render.triangles / 1000).toFixed(1)}k\n`
++      + `geo ${i.memory.geometries}  tex ${i.memory.textures}  prog ${i.programs?.length ?? 0}\n`
++      + (quality?.describe ? quality.describe() : `dpr ${renderer.getPixelRatio().toFixed(2)}  shadows ${renderer.shadowMap.enabled ? 'on' : 'off'}`);
 +  }
 +  return {
 +    begin, end, el,
 +    show(v = true) { shown = !!v; el.hidden = !shown; },
-+    setDynamic(v) { dynamic = !!v; if (!v) { dpr = Math.min(devicePixelRatio, maxPixelRatio); renderer.setPixelRatio(dpr); } },
-+    // call after the game applies its own pixel-ratio cap (settings change); dynamic mode then works under the new cap
-+    setMaxPixelRatio(v) { maxPixelRatio = v; if (dynamic) { dpr = Math.min(dpr, v, devicePixelRatio); renderer.setPixelRatio(dpr); } else dpr = Math.min(devicePixelRatio, v); },
-+    get pixelRatio() { return dpr; },
-+    dispose() { removeEventListener('keydown', onKey); el.remove(); renderer.info.autoReset = true; },
++    get shown() { return shown; },
++    dispose() { removeEventListener('keydown', onKey); el.remove(); },
 +  };
 +}
-diff --git a/dist/wood.js b/dist/wood.js
+diff -ruN a/dist/wood.js b/dist/wood.js
 --- a/dist/wood.js
 +++ b/dist/wood.js
-@@ -13,5 +13,7 @@
+@@ -13,8 +13,7 @@
    for(let r=1;r<6;r++){ctx.beginPath();ctx.ellipse(x,y,r*1.4,r*4.7,.1,0,Math.PI*2);ctx.strokeStyle=`rgba(68,37,19,${.18-r*.02})`;ctx.lineWidth=.7;ctx.stroke();}
   }
   const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=4;
-- return new T.MeshStandardMaterial({map:texture,bumpMap:texture,bumpScale:.018,roughness:.86,metalness:0});
-+ // No bumpMap: at bumpScale .018 it changed no pixel by more than 8/255 even looking straight down at the deck, but its
-+ // 3 extra taps per pixel were ~1/3 of the deck's shading cost (docs/tech/perf.md).
+- // The bump term samples its map three times per pixel; anisotropic filtering there is invisible at this bump
+- // scale but costly on software GL, so the bump reads the same canvas through an isotropic twin.
+- const bump=texture.clone();bump.anisotropy=1;
+- return new T.MeshStandardMaterial({map:texture,bumpMap:bump,bumpScale:.018,roughness:.86,metalness:0});
++ // No bump map: at bumpScale .018 it changed no pixel by more than 8/255 (deck diff 0.01 of 255), but even through
++ // an isotropic twin its three extra taps per pixel were 11-18% of a SwiftShader frame (docs/tech/perf.md).
 + return new T.MeshStandardMaterial({map:texture,roughness:.86,metalness:0});
  }
