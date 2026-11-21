@@ -3,7 +3,7 @@
 // API (window.raftPrompts): register({id, object?, test?, range, priority, prompt}) -> unregister,
 //   provide({id, priority, prompt}) -> unregister, current(), refresh(), feed(text).
 // prompt(ctx, hit) returns {key:'E', label:'Pick up', hold?, muted?} | up to 2 of them | null.
-// ctx = {state, camera, T}. Highest priority wins; raycast beats provider at equal priority; nearest hit next.
+// ctx = {state, camera, T, scene}. Highest priority wins; raycast beats provider at equal priority; nearest hit next.
 
 const SAMPLE_MS = 100, FEED_MAX = 4, FEED_MS = 4000, DUP_MS = 600;
 const PICK_NAMES = {wood:'plank', leaf:'leaves', plastic:'plastic jug', scrap:'scrap', barrel:'barrel'};
@@ -35,7 +35,8 @@ export function formatFeed(text) { return String(text ?? '').replace(/\s+/g, ' '
 // Is a #contextPrompt text a notice worth feeding (vs a persistent prompt we already render)?
 export function isNotice(text, hasKbd) {
   const t = formatFeed(text);
-  return !!t && !hasKbd && !/^Hold click to reel/i.test(t) && !/^Waiting for your brother/i.test(t);
+  // "Floor needs" doubles as game.js's hover prompt; the muted "Needs …" prompt already covers it.
+  return !!t && !hasKbd && !/^(Hold click to reel|Waiting for your brother|Floor needs)/i.test(t);
 }
 export function shouldPost(last, text, now) { return !(last && last.text === text && now - last.at < DUP_MS); }
 const missing = (stock, cost) => Object.entries(cost).filter(([k, n]) => (stock?.[k] ?? 0) < n).map(([k, n]) => `${n - (stock?.[k] ?? 0)} ${k}`);
@@ -64,7 +65,9 @@ const MOUSE = side => `<svg class="lr-mouse" viewBox="0 0 12 16" width="11" heig
 
 function createPrompts(win, doc) {
   const rays = new Map(), providers = new Map(); let order = 0, shown = null, sig = null, visible = false, lastFeed = null;
-  let promptEl = null, feedEl = null, ctxEl = null, observer = null, ray = null, rayT = null;
+  let promptEl = null, feedEl = null, ctxEl = null, observer = null, ray = null, rayT = null, aimAt = null, placed = '';
+  let mouse = null; win.addEventListener('pointermove', e => { mouse = {x:e.clientX, y:e.clientY}; }, {passive:true, capture:true});
+  win.addEventListener('pointerout', e => { if (!e.relatedTarget) mouse = null; }, {passive:true, capture:true});
   const safe = (f, fb = null) => { try { return f(); } catch { return fb; } };
   const mount = () => safe(() => win.raftMount) || null;
   function ensureEls() {
@@ -81,7 +84,7 @@ function createPrompts(win, doc) {
       safe(() => observer?.disconnect()); ctxEl = c; let lastText = '';
       observer = new win.MutationObserver(() => safe(() => {
         const t = formatFeed(ctxEl.textContent);
-        if (t !== lastText) { lastText = t; if (!ctxEl.hidden && isNotice(t, !!ctxEl.querySelector('kbd')) && !(/^Floor needs/i.test(t) && shown?.[0]?.muted)) feed(t); }
+        if (t !== lastText) { lastText = t; if (!ctxEl.hidden && isNotice(t, !!ctxEl.querySelector('kbd'))) feed(t); }
       }));
       observer.observe(ctxEl, {childList:true, characterData:true, subtree:true, attributes:true, attributeFilter:['hidden']});
     }
@@ -110,11 +113,13 @@ function createPrompts(win, doc) {
   function rayHits(ctx) {
     const out = [], {T, camera} = ctx; if (!rays.size || !T || !camera) return out;
     if (rayT !== T) { ray = new T.Raycaster(); rayT = T; }
-    ray.setFromCamera(new T.Vector2(0, 0), camera);
+    ray.setFromCamera(new T.Vector2(aimAt ? aimAt.x / win.innerWidth * 2 - 1 : 0, aimAt ? 1 - aimAt.y / win.innerHeight * 2 : 0), camera);
     for (const r of rays.values()) safe(() => {
       let d = null;
       if (r.test) d = r.test(ray.ray, ctx);
-      else if (r.object) { const h = ray.intersectObject(r.object, true)[0]; d = h ? h.distance : null; }
+      else if (r.object) {
+        let o = r.object; while (o.parent) o = o.parent; if (ctx.scene && o !== ctx.scene) return; // stale: left behind by a live reload
+        const h = ray.intersectObject(r.object, true)[0]; d = h ? h.distance : null; }
       if (!Number.isFinite(d) || d > r.range) return;
       out.push({prompts:r.prompt(ctx, {distance:d}), priority:r.priority, ray:true, distance:d, order:r.order});
     });
@@ -124,9 +129,13 @@ function createPrompts(win, doc) {
     safe(() => {
       if (!doc.body) return; ensureEls();
       const m = mount(), debug = safe(() => win.raftDebug) || m?.debug, state = safe(() => debug?.state);
-      const ctx = {state, camera:m?.camera ?? null, T:m?.T ?? null};
+      const ctx = {state, camera:m?.camera ?? null, T:m?.T ?? null, scene:m?.scene ?? null};
       const blocked = !!doc.querySelector('dialog[open]') || !!state?.inventoryOpen;
-      const show = !!state?.running && doc.body.classList.contains('playing') && !blocked;
+      // Unlocked (resume hint up) shows nothing; drag-to-look fallback aims at the cursor, so the prompt follows it.
+      const fallback = !!state?.lockFallback && !state?.pointerLocked; aimAt = fallback ? mouse : null;
+      const show = !!state?.running && !state.disposed && (state.pointerLocked || (fallback && !!mouse)) && doc.body.classList.contains('playing') && !blocked;
+      const pos = aimAt ? `left:${Math.round(aimAt.x + 22)}px;top:${Math.round(aimAt.y + 14)}px` : '';
+      if (pos !== placed) { placed = pos; promptEl.style.cssText = pos; }
       let list = null;
       if (show) {
         const cands = rayHits(ctx);
