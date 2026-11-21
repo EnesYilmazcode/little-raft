@@ -14,7 +14,7 @@ const CSS_FILES = ['style.css', 'graphics.css'];
 // flattens the 6-level import waterfall. tests/live-preload.test.mjs keeps this list in step with the imports;
 // a stale entry only costs a wasted request, a missing one just loads late via the normal import.
 const PRELOAD = [
-  'animals-core.js', 'animals-models.js', 'animals.js', 'audio.js', 'avatar.js', 'bake.js', 'bees-model.js',
+  'animals-core.js', 'animals-models.js', 'animals.js', 'audio.js', 'avatar.js', 'bake.js', 'bees-model.js', 'boar-core.js', 'boar-model.js', 'boar.js', // [boar]
   'bees.js', 'bottle.js', 'brush-model.js', 'build-menu.js', 'build-radial.js', 'build-rules.js',
   'building-models.js', 'building-pieces.js', 'building.js', 'content-items.js', 'content.js', 'controls.js',
   'cooking.js', 'cookpot-core.js', 'cookpot-model.js', 'cookpot.js', 'coop-avatar.js', 'coop-delta.js', 'coop-feed.js', 'coop-fx.js', 'coop-interp.js',
@@ -25,7 +25,7 @@ const PRELOAD = [
   'hud.js', 'icon-models.js', 'input-map.js', 'input-rules.js', 'input.js', 'instrument-models.js', 'instruments.js',
   'inventory-state.js', 'islands-layout.js', 'islands-models.js', 'islands.js', 'item-icons.js', 'item-svg.js',
   'item-tooltips.js', 'items.js', 'juicer-model.js', 'juicer.js' /* [juicer] */, 'kiln-core.js', 'kiln-model.js', 'kiln.js', 'lock-rules.js', 'logbook-ui.js',
-  'logbook.js', 'look-ui.js', 'look.js', 'maptable-model.js', 'maptable.js', 'materials.js', 'merge-geo.js',
+  'logbook.js', 'look-ui.js', 'look.js', 'maptable-model.js', 'maptable.js', 'materials.js', 'melee-targets.js', 'merge-geo.js', // [boar] melee-targets
   'models.js', 'move-feel.js', 'ocean.js', 'paint.js', 'pickup-feed.js', 'placement.js', 'plastic.js',
   'player-physics.js', 'progression-hooks.js', 'progression.js', 'purifier-model.js', 'quality.js', 'rain-model.js',
   'rain.js', 'repair.js', 'sailing-core.js', 'sailing-ui.js', 'sailing-world.js', 'scenery-islands.js',
