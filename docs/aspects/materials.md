@@ -18,7 +18,7 @@ Images examined (all under references/raft/):
 **Wood: deck and foundations**
 
 C1. **Starter foundation boards are wide.** Each starter foundation tile is made of 3-4 boards. Each board is about 40-60% of the tile across. In screenshot_foundations.jpg the left tile is about 370 px wide (x 40-410). Its front boards span x 40-270 (62%) and x 232-410 (48%), and one full-length board lies behind them. The same chunky 2-3 boards per tile show in 0726-05, store_16.jpg and iVT88Yq-PU0_0120.jpg. **[VERIFIED: viewed all four; 2-4 boards per starter tile.]**
-The upgraded foundation has 4-5 planks across (about 20-25% of the tile each; screenshot_foundations.jpg, right). The refined wooden floor has 6 planks across 265 px, so each plank is about 17% of the tile (screenshot_floors.jpg, x 710-975). **[VERIFIED]**
+The upgraded foundation has 4-5 planks across (about 20-25% of the tile each; screenshot_foundations.jpg, right). The refined wooden floor has 6 planks across 265 px, so each plank is about 17% of the tile (screenshot_floors.jpg, x 710-975).
 
 C2. **Wood is low in contrast, and most of its variation is broad.** Luminance std inside a board is 6-9 everywhere:
 - 0726-05 tiles A-F: Lstd 6.3-8.7, p5-p95 range about 105-132 (spread 17-26 levels)
@@ -225,10 +225,10 @@ C16. **Stylisation level: stylised-realistic.** Albedo looks hand-painted with b
 
 ## Verification log
 
-Counts, over 16 claims, 13 change items and the tagged section-3 bullets: **VERIFIED 42, CORRECTED 21, UNSURE 2**.
+Counts, over 16 claims, 13 change items and the tagged section-3 bullets: **VERIFIED 41, CORRECTED 21, UNSURE 2**.
 - Claims C1-C16: 10 VERIFIED, 5 CORRECTED (C2, C7, C8, C10, C14), 1 UNSURE (C4).
 - Change items: 7 VERIFIED, 6 CORRECTED (#2, #3, #5, #7, #8, #9). #7 is downgraded to Impact L-M; I kept the list order but treat #7 as below #10-#12. #2 is downgraded to Impact M.
-- Section 3: 25 VERIFIED, 10 CORRECTED (line numbers, LR downsample figures, plastic grime, leaf hue), 1 UNSURE.
+- Section 3: 24 VERIFIED, 10 CORRECTED (line numbers, LR downsample figures, plastic grime, leaf hue), 1 UNSURE.
 
 Most important findings:
 1. **The vertex-colour sRGB/linear bug is real.** The vendored Three.js is r170, ColorManagement.enabled defaults to true and nothing in dist/ turns it off, the working space is linear, the output is sRGB, and BufferAttribute colours are never converted. All other vertex-coloured files go through T.Color(hex). Two corrections: the suggested `T.Color.convertSRGBToLinear` static does not exist, and the plastic grime numbers were wrong. Visible impact is limited to the scrap sheet and the plastic jug.
