@@ -163,12 +163,6 @@ export function gullPlan(seed, i, t, perches, out, scareAt = -Infinity, visit = 
   if (p && scareValid(v, scareAt)) leaveAt = scareAt;
   const state = !p || t < v.start || t >= leaveAt + GULL_LEAVE ? 'circle' : t >= leaveAt ? 'leave' : t < v.start + GULL_DESCEND ? 'descend' : 'perched';
   out.state = state;
-  // heading from the path a moment ahead
-  gullSky(seed, i, t + 0.15, _sky2, ext);
-  const b2 = p ? gullBlend(v, t + 0.15, scareAt) : 0;
-  const dx = _sky2.sx + (out.px - _sky2.sx) * b2 - out.x, dz = _sky2.sz + (out.pz - _sky2.sz) * b2 - out.z;
-  const dy = _sky2.sy + (out.py - _sky2.sy) * b2 - out.y;
-  const flyYaw = Math.atan2(dx, dz), hz = Math.hypot(dx, dz);
   if (state === 'perched') {
     const k = (t - v.start - GULL_DESCEND) / 2.3, f = k - Math.floor(k);
     out.yaw = v.yaw + Math.floor(k + 0.2) * 0.9; // a little turn with every hop
@@ -177,6 +171,12 @@ export function gullPlan(seed, i, t, perches, out, scareAt = -Infinity, visit = 
     out.pitch = 0; out.roll = 0; out.fold = 1 - 0.1 * hop; // wings stay tucked, just a twitch
     out.flap = -0.1 + 0.35 * hop;
   } else {
+    // heading from the path a moment ahead (a perched gull keeps its own yaw)
+    gullSky(seed, i, t + 0.15, _sky2, ext);
+    const b2 = p ? gullBlend(v, t + 0.15, scareAt) : 0;
+    const dx = _sky2.sx + (out.px - _sky2.sx) * b2 - out.x, dz = _sky2.sz + (out.pz - _sky2.sz) * b2 - out.z;
+    const dy = _sky2.sy + (out.py - _sky2.sy) * b2 - out.y;
+    const flyYaw = Math.atan2(dx, dz), hz = Math.hypot(dx, dz);
     const landing = state === 'descend' ? smooth(((t - v.start) / GULL_DESCEND - 0.7) / 0.3) : 0;
     let dyaw = v.yaw - flyYaw; dyaw -= TAU * Math.round(dyaw / TAU);
     out.yaw = flyYaw + dyaw * landing;
