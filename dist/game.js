@@ -15,6 +15,7 @@ import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -200,6 +201,7 @@ export function mount(transfer = null) {
   let charging = X?.charging && Number.isFinite(X.charging.start) ? {...X.charging} : null, reeling = !!X?.reeling && !!hook;
   let lastCaughtCount = isInt(X?.lastCaughtCount) ? X.lastCaughtCount : (hook?.caughtItems?.length ?? (hook?.caught ? 1 : 0));
   const pending = new Map(X?.pending instanceof Map ? X.pending : []); // item token -> expiry; hides supplies we reeled in while the host confirms
+  const guestHeld = createGuestHeld(); // host only: tokens on the guest's hook, from its move messages
   const wornCasts = {host:X?.wornCasts?.host ?? null, guest:X?.wornCasts?.guest ?? null}; // one wear per successful throw
   let seq = isInt(X?.seq) ? X.seq : 0, lastSeqSent = Number.isFinite(X?.lastSeqSent) ? X.lastSeqSent : 0, guestAck = isInt(X?.guestAck) ? X.guestAck : 0;
   let lastHostMessage = X?.lastHostMessage || performance.now(), lastGuestMessage = X?.lastGuestMessage || performance.now();
@@ -363,7 +365,7 @@ export function mount(transfer = null) {
       if (d.type === 'crate') { box(.8, .8, .8, '#a97d4c', 0, .4, 0, g); }
       raft.add(g);
     }
-    blockList = world.decor.filter(d => BLOCK_RADIUS[d.type]).map(d => ({x:d.x * 2, z:d.z * 2, r:BLOCK_RADIUS[d.type]}));
+    blockList = world.decor.flatMap(d => decorBlockers(d, BLOCK_RADIUS));
   }
 
   // ---------- Floating supplies ----------
@@ -745,12 +747,13 @@ export function mount(transfer = null) {
       friend.rotation.y = (other.yaw ?? 0) + Math.PI;
     }
   }
+  const allHeldTokens = () => new Set([...caughtList(castOut()).map(c => c.token), ...(role === 'guest' ? [] : guestHeld.tokens(performance.now()))]);
   function updateItems(dt) {
-    const heldTokens = new Set(caughtList(castOut()).map(c => c.token));
+    const heldTokens = allHeldTokens();
     if (role !== 'guest') {
       let respawned = false; const end = Math.max(...world.tiles.map(t => t[1])) * 2 + 24, side = Math.max(...world.tiles.map(t => Math.abs(t[0]))) * 2 + 24;
       for (const it of world.items) {
-        if (heldTokens.has(it.token)) continue; // our hook holds it; don't let it drift away or respawn
+        if (heldTokens.has(it.token)) continue; // a hook (ours or the guest's) holds it; don't let it drift away or respawn
         it.z += dt * .22; it.x += Math.sin(elapsed * .13 + it.phase) * dt * .04;
         if (it.z > end || Math.abs(it.x) > side || hasTile(Math.round(it.x / 2), Math.round(it.z / 2))) { Object.assign(it, makeItem(it.id)); respawned = true; }
       }
@@ -831,12 +834,12 @@ export function mount(transfer = null) {
     if (running && role !== 'guest') {
       netClock += dt;
       if (netClock > .8) { // nets gather into the host's bag (trusted shared machine) and never consume when full
-        netClock = 0; const heldTokens = new Set(caughtList(castOut()).map(c => c.token));
-        for (const net of world.decor.filter(d => d.type === 'net')) { const it = world.items.find(it => !heldTokens.has(it.token) && !isPending(it) && Math.hypot(it.x - net.x * 2, it.z - net.z * 2) < 4); if (it) applyAction({kind:'collect', id:it.id, token:it.token, net:true}, 'host'); }
+        netClock = 0; const heldTokens = allHeldTokens(), fits = it => lootFits(actorBag('host'), LOOT[it.type]);
+        for (const net of world.decor.filter(d => d.type === 'net')) { const it = pickNetItem(world.items, net, {held:heldTokens, isPending, fits}); if (it) applyAction({kind:'collect', id:it.id, token:it.token, net:true}, 'host'); }
       }
     }
     if (running) { saveClock += dt; if (saveClock > 3) { saveClock = 0; save(); } }
-    if (conn?.open) { networkTick += dt; if (networkTick > .12) { networkTick = 0; send(role === 'host' ? hostState() : {type:'move', me:pose()}); } }
+    if (conn?.open) { networkTick += dt; if (networkTick > .12) { networkTick = 0; send(role === 'host' ? hostState() : {type:'move', me:pose(), held:caughtList(castOut()).map(c => c.token)}); } }
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     refreshPointerUI(); updateCharge(); updateContext(dialog);
     renderer.render(scene, camera);
@@ -1006,7 +1009,7 @@ export function mount(transfer = null) {
       if (isHost) {
         lastGuestMessage = performance.now();
         if (data.type === 'action' && data.a && typeof data.a === 'object') { applyAction(data.a, 'guest'); if (isInt(data.a.seq) && data.a.seq > guestAck) guestAck = data.a.seq; }
-        if (data.type === 'move') other = validPose(data.me) ?? other;
+        if (data.type === 'move') { other = validPose(data.me) ?? other; guestHeld.note(cleanHeldTokens(data.held), performance.now()); }
         return;
       }
       if (data.type === 'state') {
