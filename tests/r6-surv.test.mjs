@@ -93,3 +93,41 @@ test('V4b: R with a spear repairs that spear, not a hook elsewhere', () => {
   assert.ok(block.indexOf('PROG_ITEMS[sel.kind]?.tool') < block.indexOf('repairHookSlot('), 'held tool checked before the hook fallback');
   assert.match(block, /bag\.slots\[a\.slot\]\.durability = MAX_HEALTH/, 're-reads the slot after spend() replaced it');
 });
+
+// V5: the real trackWarm / disposeGeometry code from game.js, run against stub meshes and materials.
+function warmRig(settleMs) {
+  const from = game.indexOf('  const WARM_SETTLE_MS'), to = game.indexOf('\n', game.indexOf('  function disposeGeometry(o)'));
+  assert.ok(from > 0 && to > from, 'warm/dispose block found');
+  const src = game.slice(from, to).replace(/const WARM_SETTLE_MS = \d+;/, `const WARM_SETTLE_MS = ${settleMs};`);
+  return new Function('materialCache', 'clothMat', src + '\nreturn { trackWarm, disposeGeometry, get pending() { return warmPending; }, get queued() { return warmDisposeQueue.size; } };')(new Map(), null);
+}
+const stubMesh = () => {
+  const m = { disposed: 0, userData: {}, dispose() { this.disposed++; } };
+  const mesh = { geometry: { userData: {}, dispose() {} }, material: m, traverse(f) { f(this); } };
+  return { mesh, m };
+};
+const tick = (ms) => new Promise((r) => setTimeout(r, ms));
+
+test('V5: materials removed while a shader warm-up polls are freed only after it settles', async () => {
+  for (const name of ['warmShaders', 'warmNoShadow', 'warmKinds']) assert.match(fnBody(name), /trackWarm\(renderer\.compileAsync\(scene, camera\)\)/, name + ' is tracked');
+  assert.doesNotMatch(game, /[^(]renderer\.compileAsync\(scene, camera\)\.catch/, 'no untracked compileAsync left');
+  const w = warmRig(10000);
+  let resolve; const p = new Promise((r) => { resolve = r; });
+  w.trackWarm(p);
+  const a = stubMesh(); w.disposeGeometry(a.mesh);
+  assert.equal(a.m.disposed, 0, 'queued while the poll may still read it');
+  assert.equal(w.queued, 1);
+  resolve(); await tick(0);
+  assert.equal(a.m.disposed, 1, 'freed once the warm-up settled');
+  assert.equal(w.pending, 0);
+  const b = stubMesh(); w.disposeGeometry(b.mesh);
+  assert.equal(b.m.disposed, 1, 'no warm-up: freed at once');
+});
+
+test('V5: a warm-up whose poll died (promise never settles) still releases the queue after the timeout', async () => {
+  const w = warmRig(20);
+  w.trackWarm(new Promise(() => {})); w.trackWarm(Promise.reject(new Error('x')).catch(() => {}));
+  const a = stubMesh(); w.disposeGeometry(a.mesh);
+  await tick(0); assert.equal(a.m.disposed, 0, 'one warm-up still pending');
+  await tick(60); assert.equal(a.m.disposed, 1, 'timeout fallback flushed it'); assert.equal(w.pending, 0);
+});

@@ -385,7 +385,22 @@ export function mount(transfer = null) {
   // three r170 draws transparent DoubleSide materials as two passes and flips material.side (a full program-parameter
   // rebuild) around each; these thin, depth-tested parts look the same in one pass.
   function singlePass(o) { o.traverse(c => { for (const m of [].concat(c.material || [])) if (m.transparent && m.side === T.DoubleSide) m.forceSinglePass = true; }); return o; }
-  function disposeGeometry(o) { const cached = new Set(materialCache.values()), materials = new Set(); o.traverse(c => { if (!c.geometry?.userData.shared) c.geometry?.dispose(); for (const m of [].concat(c.material || [])) if (!cached.has(m) && m !== clothMat && !m.userData.shared) materials.add(m); }); for (const m of materials) { m.map?.dispose(); m.dispose(); } }
+  // three's compileAsync polls every material it compiled until its program is ready; a material disposed meanwhile has no
+  // program and the poll throws ("reading 'isReady'"). So while any warm-up is in flight, material disposal is queued and
+  // flushed when the last one settles (or after WARM_SETTLE_MS: a poll that threw never settles its promise).
+  const WARM_SETTLE_MS = 20000;
+  let warmPending = 0; const warmDisposeQueue = new Set();
+  function freeMaterial(m) { try { m.map?.dispose(); m.dispose(); } catch {} }
+  function flushWarmDisposals() { const q = [...warmDisposeQueue]; warmDisposeQueue.clear(); for (const m of q) freeMaterial(m); }
+  function trackWarm(p) {
+    if (!p || typeof p.then !== 'function') return p;
+    warmPending++; let done = false;
+    const settle = () => { if (done) return; done = true; clearTimeout(t); if (--warmPending <= 0) { warmPending = 0; flushWarmDisposals(); } };
+    const t = setTimeout(settle, WARM_SETTLE_MS); // plain timer (not later()): it must settle even after dispose so the queue never leaks
+    p.then(settle, settle);
+    return p;
+  }
+  function disposeGeometry(o) { const cached = new Set(materialCache.values()), materials = new Set(); o.traverse(c => { if (!c.geometry?.userData.shared) c.geometry?.dispose(); for (const m of [].concat(c.material || [])) if (!cached.has(m) && m !== clothMat && !m.userData.shared) materials.add(m); }); for (const m of materials) { if (warmPending > 0) warmDisposeQueue.add(m); else freeMaterial(m); } }
   function woodMat(hex) { // content hook (paint): tinted plank materials, cached forever (disposeGeometry skips them)
     const k = 'wood:' + hex;
     if (!materialCache.has(k)) { let m = null; try { m = createWoodMaterial(T, hex); } catch (e) { console.warn('wood material failed', e); } materialCache.set(k, m ?? new T.MeshStandardMaterial({color:hex, roughness:.85, metalness:0})); }
@@ -576,7 +591,7 @@ export function mount(transfer = null) {
   function warmShaders() {
     if (typeof renderer.compileAsync !== 'function') return;
     hands?.preload(['hammer', 'fishingrod', 'spear']);
-    try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
+    try { trackWarm(renderer.compileAsync(scene, camera)).catch(e => console.warn('shader warm-up failed', e)); }
     catch (e) { console.warn('shader warm-up failed', e); }
   }
   // Also build the no-shadow variant (adaptive floor / Shadows off), else that switch relinks every lit program mid-game.
@@ -585,7 +600,7 @@ export function mount(transfer = null) {
   function warmNoShadow() {
     if (!sun?.castShadow || typeof renderer?.compileAsync !== 'function') return;
     sun.castShadow = false;
-    try { renderer.compileAsync(scene, camera).catch(() => {}); } catch {}
+    try { trackWarm(renderer.compileAsync(scene, camera)).catch(() => {}); } catch {}
     sun.castShadow = true;
   }
   // Held models and build ghosts for every kind in the bag are built ahead and their shaders compiled
@@ -599,7 +614,7 @@ export function mount(transfer = null) {
       warmedKinds.add(k); fresh = true; hands.preload([k]);
       if (k === 'hammer') ghosts.preload(['floor']); else if (DECOR_TYPES.includes(k)) ghosts.preload([k]);
     }
-    if (fresh) { try { ghosts.warm(() => renderer.compileAsync(scene, camera).catch(() => {})); } catch (e) { console.warn('shader warm-up failed', e); } }
+    if (fresh) { try { ghosts.warm(() => trackWarm(renderer.compileAsync(scene, camera)).catch(() => {})); } catch (e) { console.warn('shader warm-up failed', e); } }
   }
   function palm(parent, x, y, z, s = 1) {
     const g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); cylinder(.09, .17, 1.6, '#ad8153', 0, .8, 0, g);
@@ -2250,6 +2265,7 @@ export function mount(transfer = null) {
       if (o.isLight && o.shadow?.dispose) o.shadow.dispose();
     });
     for (const m of materialCache.values()) mats.add(m);
+    for (const m of warmDisposeQueue) mats.add(m); warmDisposeQueue.clear(); // removed while a warm-up ran: not in the scene any more
     if (clothMat) mats.add(clothMat);
     for (const g of geos) { try { g.dispose(); } catch {} }
     for (const m of mats) { try { for (const v of Object.values(m)) if (v?.isTexture) v.dispose(); m.dispose(); } catch {} }
