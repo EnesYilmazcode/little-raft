@@ -34,6 +34,12 @@ for (const k of KINDS) {
 }
 const itemName = k => (ITEM_INFO[k] && ITEM_INFO[k].name) || k;
 
+// Read-only view of the live island for sibling modules (treasure.js). Import this file with the same
+// ?build= specifier content.js uses, or a second module instance is loaded and this stays null.
+// Returns one cached object (do not keep or mutate it) or null when no island is shown.
+let live = null;
+export function islandNow() { return live ? live() : null; }
+
 export function createIslands(ctx) {
   const T = ctx.T;
   const st = DEFAULTS();              // {v, clock, next, isl}
@@ -400,11 +406,22 @@ export function createIslands(ctx) {
   }
 
   function dispose() {
+    if (live === mine) live = null;
     if (group.parent) group.parent.remove(group);
     if (lagoon.parent) lagoon.parent.remove(lagoon);
     for (const m of veg) m.dispose?.();
     models.dispose();
   }
+
+  // ---------- live accessor (islandNow) ----------
+  const now = { seed: 0, cx: 0, cz: 0, gy: 0, R: 0, rot: 0, phase: 'gone', onSand: false, hover: -1, groundAt };
+  function mine() {
+    if (!shown || !st.isl || !layout) return null;
+    now.seed = st.isl.seed; now.cx = cx; now.cz = cz; now.gy = gy; now.R = layout.R; now.rot = layout.rot;
+    now.phase = path.phase; now.onSand = sandState.onSand; now.hover = hoverNode;
+    return now;
+  }
+  live = mine;
 
   // ---------- QA helpers (raftDebug.content.islands) ----------
   const debug = {

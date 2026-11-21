@@ -21,7 +21,7 @@
 // Notes: no DOM timers. Voices clean themselves up on the sources' 'ended' event.
 
 export const EVENTS = Object.freeze(['throw', 'splash', 'collect', 'build', 'place', 'craft', 'repair', 'plant', 'water', 'jump',
-  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny']);
+  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny', 'detect', 'chime']);
 // friendlier names other modules may use; play() resolves them to a recipe above
 export const ALIASES = Object.freeze({ pickup: 'collect', cast: 'throw', hook: 'throw', pour: 'water', click: 'ui' });
 export const BUSES = Object.freeze(['master', 'effects', 'ambience', 'music']);
@@ -359,6 +359,9 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
       tone(v, t + 0.04, 'triangle', base, 0.1 * s, 0.004, 0.12, 0, lp);
       tone(v, t + 0.1, 'triangle', base * 1.5, 0.09 * s, 0.004, 0.16, 0, lp);
     },
+    // Seashell Finder tick (pitch and level rise with closeness s) and the soft lock-on chime (treasure.js)
+    detect(v, t, s) { const f = 700 + 500 * s; tone(v, t, 'sine', f, 0.05 + 0.04 * s, 0.002, 0.05); tone(v, t, 'triangle', f * 2, 0.015 * s, 0.001, 0.03); },
+    chime(v, t, s) { tone(v, t, 'sine', 880, 0.09 * s, 0.002, 0.4); tone(v, t + 0.07, 'sine', 1318.5, 0.06 * s, 0.002, 0.35); tone(v, t + 0.14, 'sine', 1760, 0.04 * s, 0.002, 0.3); },
     repair(v, t, s) {
       // scrape: grainy band noise with fast tremolo, ending on a soft knock
       const g = gain(v, v.bus);
