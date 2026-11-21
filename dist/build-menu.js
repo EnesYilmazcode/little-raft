@@ -78,6 +78,9 @@ body.bm-wheel-up #lrPrompt,body.bm-wheel-up #contextPrompt{visibility:hidden}
 @media(min-width:761px) and (max-width:1000px){.bm-chip{--bm-chip-bottom:96px;left:200px;max-width:calc(100vw - 444px)}}
 @media(max-width:760px){.bm-chip{--bm-chip-bottom:118px;left:152px;max-width:calc(100vw - 352px);gap:8px;padding:5px 10px 5px 5px}.bm-chip>i{width:32px;height:32px}.bm-chip>i svg{width:22px;height:22px}
   .bm-mid b{font-size:14px;margin:3px 0 5px}.bm-req{font-size:12px}.bm-req em{display:none}.bm-mid small{font-size:8.5px}}
+/* short narrow windows: the chip rises level with the prompt column; stop it left of the crosshair (50% + 22px) */
+@media(min-width:761px) and (max-width:1000px) and (max-height:480px){.bm-chip{max-width:calc(50vw - 178px);overflow:hidden}}
+@media(max-width:760px) and (max-height:480px){.bm-chip{max-width:calc(50vw - 130px);overflow:hidden}}
 @media(prefers-reduced-motion:reduce){.bm-wheel{transition:none}}`;
 
 const NS = 'http://www.w3.org/2000/svg';
