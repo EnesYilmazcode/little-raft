@@ -1,7 +1,7 @@
 // Little Raft survival UI: shared-play hotbar (.tools) + inventory/crafting dialog (#inventory).
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { iconURL, peekIcon, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
 const VERSION = 'sv3';
 const HB = Number(HOTBAR_SIZE) || 8;
@@ -77,8 +77,11 @@ function durFrac(s) {
   return d <= 1 ? clamp01(d) : 1;
 }
 // Rendered 3D icon when ready, flat sprite until then. data-icon lets a late render swap it in place.
+// 3D renders start only once play has settled (iconsLive), so they never compete with loading.
+let iconsLive = false;
+const ICONS_AFTER_MS = 2000;
 function iconHTML(kind) {
-  const url = iconURL(kind);
+  const url = iconsLive ? iconURL(kind) : peekIcon(kind);
   if (url) return `<img class="sv-icon sv-3d" data-icon="${esc(kind)}" src="${url}" alt="" draggable="false">`;
   return iconSVG(kind).replace('<svg ', `<svg data-icon="${esc(kind)}" `);
 }
@@ -555,11 +558,27 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     }
   }
 
+  // Hotbar icons render ~2 s into play (or when the inventory opens); the rest on demand.
+  let playSince = 0;
+  // Queue a render for every flat placeholder showing under root.
+  function warmShown(root) {
+    iconsLive = true;
+    const kinds = new Set();
+    root?.querySelectorAll('svg[data-icon]').forEach(n => kinds.add(n.dataset.icon));
+    warmIcons(kinds);
+  }
+  function liveIcons() {
+    if (!document.body?.classList.contains('playing')) { playSince = 0; return; }
+    const now = performance.now();
+    if (!playSince) playSince = now;
+    if (now - playSince >= ICONS_AFTER_MS) warmShown(tools);
+  }
   function render(force) {
     if (!alive) return;
     const bag = bagNow();
     ensureTools();
     if (!bag) return;
+    if (!iconsLive) liveIcons(); // before the early return, or an idle hotbar never goes live
     // Nothing changed and nothing pending a repaint: skip the snapshot/signature work entirely.
     if (!force && unchanged(bag) && (!isOpen || dragging || lastSig !== null)) return;
     const snap = readSnap(bag);
@@ -597,6 +616,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     invEls.forEach(el => { el._svCount = undefined; }); // no pop for changes made while closed
     recipeEls.forEach(v => { v.sig = null; });
     render(true);
+    warmShown(tools); warmShown(dlg);
     try { wrap.focus({ preventScroll: true }); } catch {}
   }
   function close() {
@@ -735,8 +755,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   }, { ...opt, capture: true });
 
   buildRecipes();
-  if (isOpen) render(true);
-  warmIcons(Object.keys(ITEM_INFO || {}));
+  if (isOpen) { render(true); warmShown(tools); warmShown(dlg); }
 
   const api = {
     update() { render(false); },

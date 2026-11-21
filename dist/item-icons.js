@@ -1,10 +1,10 @@
 // Little Raft item icons: each item kind is rendered ONCE as a lit 3/4 view on a transparent
-// background by a small dedicated WebGL renderer, then cached as a PNG data URL.
-// The renderer is created lazily, works through a queue in idle time, and is released once the
-// queue drains. Models come from setModelProvider(fn) (fn(kind) -> Object3D | null, e.g. models.js
-// getModel; never disposed here) and fall back to the game's own procedural models.
-// Public API: getItemIcon(kind) (sync, data URL or null while rendering / without WebGL),
-// loadItemIcon(kind) (Promise of the same), warmIcons, onIconReady, setModelProvider.
+// background by a small dedicated WebGL renderer, then cached as a PNG object URL.
+// The renderer is created lazily, renders everything queued in one idle-time batch, and is
+// released once the queue drains. Models come from setModelProvider(fn) (fn(kind) -> Object3D | null,
+// e.g. models.js getModel; never disposed here) and fall back to the game's own procedural models.
+// Public API: getItemIcon(kind) (sync, URL or null while rendering / without WebGL),
+// loadItemIcon(kind) (Promise of the same), peekIcon (cache only), warmIcons, onIconReady, setModelProvider.
 import * as T from './vendor/three.module.js';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
@@ -18,8 +18,9 @@ const SIZE = 128;
 const MODEL_ALIAS = { fishingrod: 'rod' };
 const RELEASE_MS = 2500;
 
-const cache = new Map();   // kind -> data URL ('' = failed, use the SVG)
+const cache = new Map();   // kind -> URL ('' = failed, use the SVG)
 const queued = new Set();
+const inflight = new Set(); // rendered, PNG still encoding
 const listeners = new Set();
 const waiters = new Map(); // kind -> [resolve] for loadItemIcon
 let provider = null;
@@ -81,15 +82,20 @@ export function buildFallbackModel(kind) {
 }
 
 // ---------- renderer ----------
+// One canvas holds a grid of SIZE cells: a batch renders every queued kind into its own cell
+// (viewport + scissor), then copies each cell to a small 2D canvas in the same task, so the
+// drawing buffer need not be preserved and the shaders compile once per batch.
+const COLS = 6;
 function ensureGL() {
   if (gl || failed) return !!gl;
   try {
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = SIZE;
-    gl = new T.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true, powerPreference: 'low-power' });
+    gl = new T.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'low-power' });
     gl.setPixelRatio(1);
     gl.setSize(SIZE, SIZE, false);
     gl.setClearColor(0x000000, 0);
+    gl.autoClear = false;
     gl.toneMapping = T.ACESFilmicToneMapping;
     gl.toneMappingExposure = 1.15;
   } catch (e) { failed = true; gl = null; console.warn('item icons: no WebGL, using flat icons', e); return false; }
@@ -120,18 +126,18 @@ function freeModel(root) {
   });
 }
 
+// Draws kind into the current viewport. Returns false when there is nothing to show.
 function renderKind(kind) {
-  if (!ensureGL()) return '';
   let model = null, own = false;
   if (provider) { try { model = provider(MODEL_ALIAS[kind] || kind) || provider(kind) || null; } catch (e) { console.warn('item icon provider failed', kind, e); } }
   if (!model) { try { model = buildFallbackModel(kind); own = true; } catch (e) { console.warn('item icon model failed', kind, e); } }
-  if (!model) return '';
+  if (!model) return false;
   const pivot = new T.Group();
   pivot.add(model);
   const p = (own ? null : PROVIDER_POSE[kind]) || POSE[kind]; if (p) pivot.rotation.set(p[0], p[1], p[2]);
   pivot.updateMatrixWorld(true);
   _box.setFromObject(pivot, true);
-  if (_box.isEmpty()) { if (own) freeModel(model); return ''; }
+  if (_box.isEmpty()) { if (own) freeModel(model); return false; }
   _box.getBoundingSphere(_sphere);
   pivot.position.sub(_sphere.center);
   _box.translate(_v.copy(_sphere.center).negate());
@@ -150,40 +156,81 @@ function renderKind(kind) {
   camera.near = r; camera.far = r * 7;
   camera.updateProjectionMatrix();
   scene.add(pivot);
-  let url = '';
-  try { gl.render(scene, camera); url = gl.domElement.toDataURL('image/png'); }
-  catch (e) { console.warn('item icon render failed', kind, e); }
+  let ok = true;
+  try { gl.render(scene, camera); } catch (e) { ok = false; console.warn('item icon render failed', kind, e); }
   scene.remove(pivot);
   if (own) freeModel(model);
-  return url;
+  return ok;
 }
 
-// ---------- queue ----------
-const idle = typeof requestIdleCallback === 'function' ? cb => requestIdleCallback(cb, { timeout: 120 }) : cb => setTimeout(cb, 16);
+// PNG object URL (a data URL where blobs are unavailable) for a finished cell canvas.
+function encode(cv, done) {
+  if (typeof cv.toBlob === 'function' && typeof URL?.createObjectURL === 'function') {
+    try { cv.toBlob(b => done(b ? URL.createObjectURL(b) : ''), 'image/png'); return; } catch (e) { console.warn('item icon encode failed', e); }
+  }
+  let url = ''; try { url = cv.toDataURL('image/png'); } catch (e) { console.warn('item icon encode failed', e); }
+  done(url);
+}
 
-function pump() {
-  pumping = false;
-  const it = queued.values().next();
-  if (it.done) return;
-  const kind = it.value;
-  queued.delete(kind);
-  if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = 0; }
-  const url = renderKind(kind);
+function finish(kind, url) {
+  inflight.delete(kind);
   cache.set(kind, url);
   const w = waiters.get(kind); if (w) { waiters.delete(kind); for (const r of w) r(url || null); }
   if (url) for (const fn of listeners) { try { fn(kind, url); } catch (e) { console.error(e); } }
+}
+
+// Renders every kind in one pass, one grid cell each.
+function renderBatch(kinds) {
+  if (!ensureGL()) { for (const k of kinds) finish(k, ''); return; }
+  const cols = Math.min(kinds.length, COLS), rows = Math.ceil(kinds.length / COLS);
+  const W = cols * SIZE, H = rows * SIZE, cv = gl.domElement;
+  if (cv.width !== W || cv.height !== H) gl.setSize(W, H, false);
+  gl.setScissorTest(false);
+  gl.clear();
+  gl.setScissorTest(true);
+  const drawn = kinds.map((kind, i) => {
+    const x = (i % COLS) * SIZE, y = H - (Math.floor(i / COLS) + 1) * SIZE; // GL origin is bottom-left
+    gl.setViewport(x, y, SIZE, SIZE); gl.setScissor(x, y, SIZE, SIZE);
+    return renderKind(kind);
+  });
+  gl.setScissorTest(false);
+  // Copy the cells out now, before the drawing buffer is presented and discarded.
+  kinds.forEach((kind, i) => {
+    if (!drawn[i]) { finish(kind, ''); return; }
+    let out = null;
+    try {
+      out = document.createElement('canvas'); out.width = out.height = SIZE;
+      out.getContext('2d').drawImage(cv, (i % COLS) * SIZE, Math.floor(i / COLS) * SIZE, SIZE, SIZE, 0, 0, SIZE, SIZE);
+    } catch (e) { console.warn('item icon copy failed', kind, e); out = null; }
+    if (out) encode(out, url => finish(kind, url)); else finish(kind, '');
+  });
+}
+
+// ---------- queue ----------
+const idle = typeof requestIdleCallback === 'function' ? cb => requestIdleCallback(cb, { timeout: 1000 }) : cb => setTimeout(cb, 16);
+
+function pump() {
+  pumping = false;
+  if (!queued.size) return;
+  const kinds = [...queued];
+  queued.clear();
+  for (const k of kinds) inflight.add(k);
+  if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = 0; }
+  renderBatch(kinds);
   if (queued.size) schedule();
   else if (gl) releaseTimer = setTimeout(release, RELEASE_MS);
 }
 function schedule() { if (!pumping) { pumping = true; idle(pump); } }
 
+/** Cached icon URL for kind if it has already rendered; never queues a render. */
+export function peekIcon(kind) { return (kind && cache.get(kind)) || null; }
 /** Cached icon URL for kind, or null while it renders (it is queued; listeners fire when ready). */
 export function iconURL(kind) {
   if (!kind) return null;
   const hit = cache.get(kind);
   if (hit !== undefined) return hit || null;
   if (failed) return null;
-  if (!queued.has(kind)) { queued.add(kind); schedule(); }
+  if (!queued.has(kind) && !inflight.has(kind)) { queued.add(kind); schedule(); }
   return null;
 }
 export const getItemIcon = iconURL;
@@ -193,7 +240,7 @@ export function loadItemIcon(kind) {
   if (url || !kind || cache.has(kind) || failed) return Promise.resolve(url);
   return new Promise(r => { let w = waiters.get(kind); if (!w) waiters.set(kind, w = []); w.push(r); });
 }
-/** Queue several kinds ahead of time (one render per idle slice). */
+/** Queue several kinds ahead of time (they render together in the next idle slice). */
 export function warmIcons(kinds) { for (const k of kinds) iconURL(k); }
 /** Called with (kind, url) whenever an icon (re)renders. Returns an unsubscribe function. */
 export function onIconReady(fn) { listeners.add(fn); return () => listeners.delete(fn); }
