@@ -132,6 +132,11 @@ becomes
 
 ## Verify
 
+Steps 1-6 were applied verbatim to `dist/game.js` in the prototype worktree and the real game was run headless
+(solo start, charge, throw, hotbar scroll): no page or console errors, hook framed as in the lab, rope leaving the
+left-hand coil. The edit was then reverted; `dist/` is untouched on this branch.
+
+
 1. `python sandbox/viewmodel/shoot.py` (writes `sandbox/viewmodel/shots/*.png`, prints JSON). Look at
    `11-wall-vm.png` (hook drawn in front of a wall 0.17 m from the eye), `14-shade-vm.png` (hands shadowed under
    the sail), `16-fov95-vm.png` vs `17-fov95-legacy.png` (no stretched arms at FOV 95), `18-rope-anchor-vm.png`
