@@ -186,7 +186,7 @@ test('build costs: bag names and per-material have/need colouring', async () => 
   const b = src('building.js');
   assert.match(b, /countOf:k => \(curBag \? curBag\.count\(k\) : 0\), nameOf:k => ITEM_INFO\[k\]\?\.name/);
   assert.match(b, /if \(active\) menu\.refresh\(\);/, 'the chip follows the bag');
-  assert.match(src('build-menu.js'), /<kbd>Q<\/kbd> \/ <kbd>Right-click<\/kbd> pieces/);
+  assert.match(src('build-menu.js'), /"bm-hint"><kbd>Right-click<\/kbd> pieces/);
 });
 
 test('help text matches the real hotbar and mentions the build wheel', async () => {
@@ -198,5 +198,6 @@ test('help text matches the real hotbar and mentions the build wheel', async () 
   if (HOTBAR_SIZE >= 10) assert.match(slots, /or 0/);
   const set = src('settings.js');
   assert.doesNotMatch(set, /'1 - 8 \/ Wheel'/);
-  assert.match(set, /\['Q \/ Right-click', 'Build wheel \(hammer\)'\]/);
+  assert.match(set, /\['Right-click', 'Build wheel \(hammer\)'\]/);
+  assert.match(set, /\['Q \/ Shift \+ Q', 'Drop one \/ the stack'\]/);
 });
