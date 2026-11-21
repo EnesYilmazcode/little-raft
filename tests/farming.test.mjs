@@ -18,6 +18,14 @@ test('a new planter holds a dry seedling, not a grown palm', () => {
   assert.equal(F.progress(p), 0);
 });
 
+test('a placed planter is empty: a seed makes the seedling, water alone does nothing', () => {
+  const p = F.newPlanter();
+  assert.equal(p.s, F.EMPTY); assert.equal(F.plotAction(p, 'water'), null);
+  const w = worldWith(p), bag = bagWith([{ kind: 'seed', count: 1 }]);
+  assert.equal(F.applyFarmAction(w, bag, { op: 'plant', ...at }).ok, true);
+  assert.equal(w.decor[0].farm.s, F.SEEDLING); assert.equal(bag.count('seed'), 0);
+});
+
 test('a dry plant never grows, however long it waits', () => {
   const p = F.newPlant();
   for (let i = 0; i < 1000; i++) assert.equal(F.tickPlant(p, 1), false);
@@ -85,7 +93,7 @@ test('harvest only a mature palm; it gives leaves and a seed and empties the pla
   assert.equal(F.applyFarmAction(w, bag, { op: 'harvest', ...at }).ok, false);
   w.decor[0].farm.s = F.MATURE;
   const r = F.applyFarmAction(w, bag, { op: 'harvest', ...at });
-  assert.equal(r.ok, true);
+  assert.equal(r.ok, true); assert.deepEqual(r.items, { ...F.HARVEST });
   assert.equal(bag.count('leaf'), F.HARVEST.leaf); assert.equal(bag.count('seed'), F.HARVEST.seed);
   assert.equal(w.decor[0].farm.s, F.EMPTY); assert.equal(w.decor[0].farm.h, 1);
   assert.equal(F.applyFarmAction(w, bag, { op: 'harvest', ...at }).ok, false);

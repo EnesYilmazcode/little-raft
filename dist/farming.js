@@ -1,9 +1,10 @@
 // Farming rules for palm planters. Pure ES module: no DOM, no THREE, no timers.
 //
-// Loop (after Raft's crop plots): place a Palm Planter and it holds a SEEDLING, dry.
-// Fill a Filter Cup at the sea for a Cup of Fresh Water, pour it on the planter, and
-// the plant grows through 4 stages, but only while the soil is wet. A mature palm is
-// harvested with E for leaves and a seed; the empty planter takes that seed again.
+// Loop (after Raft's crop plots): craft and place a Palm Planter (empty, dry soil), click it
+// holding a Palm Seed (barrels and harvests drop them) and a SEEDLING appears. Fill a Filter
+// Cup at the sea for a Cup of Fresh Water, pour it on the planter, and the plant grows through
+// 4 stages, but only while the soil is wet. A mature palm is harvested with E for leaves and
+// a seed; the empty planter takes that seed again.
 //
 // State lives on the palm decor entry as d.farm = {s, g, w, h}:
 //   s stage (-1 empty, 0 seedling, 1 sprout, 2 young, 3 mature)
@@ -29,6 +30,7 @@ const isNum = Number.isFinite;
 const clampN = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 export const newPlant = () => ({ s: SEEDLING, g: 0, w: 0, h: 0 });
+export const newPlanter = () => ({ s: EMPTY, g: 0, w: 0, h: 0 }); // what a freshly placed planter holds
 export const isPlot = (d) => !!d && d.type === PLOT_TYPE;
 export const isWet = (p) => !!p && p.w > 0;
 
@@ -112,7 +114,8 @@ function takeOne(bag, kind) {
 
 // Host-authoritative farm action. a = {kind:'farm', op, x, z}; op is plant | water | harvest | fill.
 // Mutates world.decor and bag. Returns {ok, text, effect, changed} where effect is the emit kind
-// ('build' | 'loot' | 'notice' | 'full') and changed means the plot's look changed.
+// ('build' | 'loot' | 'notice' | 'full'), changed means the plot's look changed and items
+// ({kind: count}) lists what entered the bag, for pickup toasts.
 export function applyFarmAction(world, bag, a) {
   const fail = (text, effect = 'notice') => ({ ok: false, text, effect, changed: false });
   if (!a || typeof a.op !== 'string') return fail('');
@@ -121,7 +124,7 @@ export function applyFarmAction(world, bag, a) {
     const scratch = new bag.constructor(bag.snapshot());
     if (!takeOne(scratch, 'cup') || scratch.add('water', 1) > 0) return fail('Your bag is full', 'full');
     for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i];
-    return { ok: true, text: 'Filled a cup with fresh water', effect: 'loot', changed: false };
+    return { ok: true, text: '+1 Cup of Fresh Water', effect: 'loot', changed: false, items: { water: 1 } };
   }
   if (!Number.isInteger(a.x) || !Number.isInteger(a.z)) return fail('');
   const d = world.decor.find((e) => isPlot(e) && e.x === a.x && e.z === a.z);
@@ -147,7 +150,7 @@ export function applyFarmAction(world, bag, a) {
     if (p.s < MATURE) return fail(p.s === EMPTY ? 'Nothing to harvest' : 'Not ready yet');
     if (!giveAll(bag, HARVEST)) return fail('Your bag is full', 'full');
     p.s = EMPTY; p.g = 0; p.h++;
-    return { ok: true, text: '+ 3 palm leaves · 1 palm seed', effect: 'loot', changed: true };
+    return { ok: true, text: `+${HARVEST.leaf} Leaves · +${HARVEST.seed} Palm Seed`, effect: 'loot', changed: true, items: { ...HARVEST } };
   }
   return fail('');
 }

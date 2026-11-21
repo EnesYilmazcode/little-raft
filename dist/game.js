@@ -581,12 +581,12 @@ export function mount(transfer = null) {
         const sel = bag.slots[bag.selectedIndex];
         if (sel?.kind === a.recipe) { sel.count--; if (sel.count <= 0) bag.slots[bag.selectedIndex] = null; }
         else if (!bag.remove(a.recipe, 1)) { emit({kind:'notice', text:`Craft a ${itemName(a.recipe)} first`}, actor); return; }
-        world.decor.push(Farm.PLOT_TYPE === a.recipe ? {type:a.recipe, x:a.x, z:a.z, farm:Farm.newPlant()} : {type:a.recipe, x:a.x, z:a.z}); // farming: a seedling, never grown
+        world.decor.push(Farm.PLOT_TYPE === a.recipe ? {type:a.recipe, x:a.x, z:a.z, farm:Farm.newPlanter()} : {type:a.recipe, x:a.x, z:a.z}); // farming: empty planter, plant a seed in it
       } else return;
       rebuildRaft(); emit({kind:'build', text:a.recipe === 'floor' ? 'A little more room!' : `${ITEM_INFO[a.recipe].name} placed`}, 'all');
       return;
     }
-    if (a.kind === 'farm') { const r = Farm.applyFarmAction(world, bag, a); if (r.text) emit({kind:r.effect, text:r.text}, actor); if (r.changed) farmSeen = null; return; } // farming
+    if (a.kind === 'farm') { const r = Farm.applyFarmAction(world, bag, a); if (r.text) emit(r.items ? {kind:r.effect, text:r.text, items:r.items} : {kind:r.effect, text:r.text}, actor); if (r.changed) farmSeen = null; return; } // farming
     if (a.kind === 'fish') {
       if (bag.count('fishingrod') < 1) return;
       if (bag.add('fish', 1) > 0) { emit({kind:'full', text:'Bag full: the fish swam away'}, actor); return; }
@@ -652,11 +652,12 @@ export function mount(transfer = null) {
   }
   // ---------- Farming (rules in farming.js, meshes in farming-view.js) ----------
   function farmPlot(aim) { const d = farmView?.plotAt(world.decor, aim?.point, aim?.dir); return d && Math.hypot(d.x * 2 - physics.x, d.z * 2 - physics.z) <= PICKUP_REACH + 1.6 ? d : null; }
+  const farmNotify = text => notice(text); // farming hints: one hook for the notification feed
   function farmUse(aim, interacting) {
     const kind = selectedKind(), d = farmPlot(aim);
-    if (d) { const op = Farm.plotAction(d.farm, kind, interacting); if (op) { swing = .6; action({kind:'farm', op, x:d.x, z:d.z}); return true; } if (!interacting && (kind === 'seed' || kind === 'water')) { notice(Farm.promptFor(d.farm, kind)); return true; } }
+    if (d) { const op = Farm.plotAction(d.farm, kind, interacting); if (op) { swing = .6; action({kind:'farm', op, x:d.x, z:d.z}); return true; } if (!interacting && (kind === 'seed' || kind === 'water')) { farmNotify(Farm.promptFor(d.farm, kind)); return true; } }
     if (interacting || kind !== 'cup') return false;
-    const p = aim?.point; if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2)) || Math.hypot(p.x - physics.x, p.z - physics.z) > 6) { notice('Point at the sea next to the raft to fill the cup'); return true; }
+    const p = aim?.point; if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2)) || Math.hypot(p.x - physics.x, p.z - physics.z) > 6) { farmNotify('Point at the sea next to the raft to fill the cup'); return true; }
     swing = .6; action({kind:'farm', op:'fill'}); return true;
   }
   function beginCharge(at) {
