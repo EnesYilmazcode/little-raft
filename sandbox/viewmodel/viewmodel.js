@@ -117,8 +117,8 @@ export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange
     // ---- use kick: rising edge of the game's swing timer (1 = click use, .6 = pickup tap)
     const swing = p.swing ?? 0;
     if (swing > st.prevSwing + 0.3) {
-      if (swing >= 0.9 && strikeKinds.includes(p.held)) st.hitAt = st.t + Math.max(1e-3, (swing - 0.64) / 3); // swing -= dt*3, impact at p=.36
-      else kick.impulse(0, 0.5 * amp * (swing >= 0.9 ? 1 : 0.4), 1.4 * amp * (swing >= 0.9 ? 1 : 0.4));
+      if (swing > 0.7 && strikeKinds.includes(p.held)) st.hitAt = st.t + Math.max(1e-3, (swing - 0.64) / 3); // swing -= dt*3, impact at p=.36
+      else kick.impulse(0, 0.5 * amp * (swing > 0.7 ? 1 : 0.4), 1.4 * amp * (swing > 0.7 ? 1 : 0.4));
     }
     if (st.hitAt && st.t >= st.hitAt) { st.hitAt = 0; kick.impulse(0, -0.9 * amp, 0.5 * amp); }
     st.prevSwing = swing;

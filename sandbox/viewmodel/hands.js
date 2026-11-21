@@ -336,7 +336,7 @@ export function createHands(T, { modelFactory = null, prepare = null, strikeKind
     st.toolW = hasHookOut ? 0 : st.toolW + (1 - st.toolW) * k(8);
     if (casting > 0 && (st.lastCasting <= 0 || casting > st.lastCasting + 0.25)) {
       st.releaseCharge = Math.max(st.chargeS, charge, 0.35);
-      st.strikeOn = casting >= 0.9;   // a click use (swing 1) strikes; a pickup tap (swing .6) keeps the light sweep
+      st.strikeOn = casting > 0.7;    // a click use (swing 1) strikes; a pickup tap (swing .6) keeps the light sweep
     }
     if (casting <= 0) st.strikeOn = false;
     st.lastCasting = casting;
