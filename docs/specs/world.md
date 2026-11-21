@@ -386,13 +386,16 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
 7. **#7 Size the sun disc to Raft's readability, in our own style.** (dist/sky.js: a soft-edged
    core about 5 to 6 deg across, about 4 to 6 % W at the default FOV, with a wide warm halo out to
    about 25 % W (C6). The current fleet disc is 3.6 deg. Scale the bloom down when the sun is
-   high.) Impact M, effort S.
+   high.) Impact M, effort S. **[VERIFIED: core 5.1 % W (L>=250) to 7.9 % W (L>=240) re-measured;
+   the "25 % W" halo is approximate.]**
 8. **#8 Add a slow, gentle day/night cycle.** (dist/game.js:288-289 lights, dist/sky.js uniforms,
    and the ocean `uSunDir`/`uSunColor`: animate the sun direction and colour over about 20 min (C19,
    from memory). Keep night navy, never black: sky L 35 or more and sea L 15 or more (C9). Add
    long pink or orange dawn and dusk bands. Have the hemisphere light follow. In co-op, drive it
-   from the host clock.) Impact M, effort M.
-9. **#9 Night sky: a moon disc and sparse stars.** (dist/sky.js: a hard-edged moon about 4 to 5 %
+   from the host clock.) Impact M, effort M. **[UNSURE: the 20 min cycle is from memory (wiki
+   unreachable). The "sea L 15 or more" floor is a design choice; Raft's near sea goes to about L10
+   (C9), so L15 is a safe readability floor, not a Raft value.]**
+9. **#9 Night sky: a moon disc and sparse stars.** (dist/sky.js: a hard-edged moon about 5 to 6 %
    W with a faint halo (C5), in our own flat style with no copied craters. Stars: about 50 to 150
    1 to 2 px points across the whole sky, dimmed to near-zero within about 40 deg of the moon, so a
    moonlit view shows a handful (C8).) Impact M, effort M.
