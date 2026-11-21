@@ -50,6 +50,18 @@ export function dockFeed(feed, host) {
   if (!feed || !host || feed === host || feed.parentNode === host) return false;
   host.prepend(feed); return true;
 }
+// game.js object prompts are HTML ('<kbd>E</kbd>Open crate', 'Grill · fire 30s'): turn one into prompt rows.
+// The <kbd> becomes the key cap ('Click' is the mouse glyph), text after ' · ' a muted second row; no <kbd> = a muted hint.
+const ENT = {amp:'&', lt:'<', gt:'>', quot:'"', '#39':"'", nbsp:' '};
+const plainText = h => String(h ?? '').replace(/<[^>]*>/g, ' ').replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (_, e) => ENT[e]).replace(/\s+/g, ' ').trim();
+export function parseContextPrompt(html) {
+  const h = String(html ?? ''), m = h.match(/<kbd[^>]*>([\s\S]*?)<\/kbd>/i);
+  const text = plainText(m ? h.replace(m[0], ' ') : h); if (!text) return null;
+  const [head, ...rest] = text.split(' · ');
+  let key = m ? plainText(m[1]) : ''; if (/^click$/i.test(key)) key = 'LMB';
+  const first = key ? {key, label:head || key} : {label:head, muted:true};
+  return rest.length ? [first, {label:rest.join(' · '), muted:true}] : first;
+}
 export function shouldPost(last, text, now) { return !(last && last.text === text && now - last.at < DUP_MS); }
 const have = (stock, k) => { const n = Number(stock?.[k]); return Number.isFinite(n) && n > 0 ? n : 0; };
 export const costText = cost => Object.entries(cost).map(([k, n]) => `${n} ${k}`).join(' · ');

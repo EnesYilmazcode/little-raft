@@ -43,6 +43,7 @@ const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); 
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
+import { parseContextPrompt } from './prompts.js'; // same URL as index.html's script: one shared instance
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
@@ -596,18 +597,25 @@ export function mount(transfer = null) {
   }
   // Old tone API (fishing-cooking lane, logbook): routed to the procedural sound recipes in audio.js.
   function beep(f = 500) { play(f >= 850 ? 'bite' : f >= 600 ? 'catch' : f >= 420 ? 'collect' : f >= 260 ? 'ui' : f >= 200 ? 'throw' : 'splash', .8); }
-  let contextHtml = null;
+  let contextHtml = null, objectHtml = '', objectPromptOff = null;
+  // Object prompts (content hook: crate, tinker's desk, bees, islands; grill; purifier and planter; stations) go to the
+  // crosshair prompt through raftPrompts, above the held tool's tip. #contextPrompt is hidden (prompts.css), so they skip it.
+  function provideObjectPrompt() {
+    const rp = window.raftPrompts; if (objectPromptOff || typeof rp?.provide !== 'function') return;
+    objectPromptOff = rp.provide({id:'game-objects', priority:2, prompt:() => (running && objectHtml ? parseContextPrompt(objectHtml) : null)});
+  }
   const buildPromptInfo = () => ({remove:removeTarget ? (removeTarget.what === 'floor' ? 'floor' : ITEM_INFO[removeTarget.type]?.name ?? removeTarget.type) : '', name:ITEM_INFO[heldKind()]?.name ?? heldKind(),
     cost:Object.entries(FLOOR_COST).map(([k, n]) => `${n} ${itemName(k)}`).join(', '), missing:heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST) ? missingText(localBag(), FLOOR_COST) : ''});
   function updateContext(dialog) {
-    let html = '';
+    let html = '', obj = '', stationHtml = null; provideObjectPrompt();
     if (running && !dialog) {
       if (guestWaiting()) html = 'Waiting for your brother’s raft…';
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
       else if (hover?.blocked) html = placePrompt(hover, heldKind(), buildPromptInfo()); // why a red ghost is refused
-      else if (waterAim?.prompt) html = waterAim.prompt;
-      else if ((contextHtml = content?.prompt(frameAim) ?? null)) html = contextHtml; // content hook
-      else if (fc?.prompt) html = fc.prompt; // [fishing-cooking] trusted static markup from the lane module
+      else if (waterAim?.prompt) obj = waterAim.prompt;
+      else if ((contextHtml = content?.prompt(frameAim) ?? null)) obj = contextHtml; // content hook
+      else if (fc?.prompt) obj = fc.prompt; // [fishing-cooking] trusted static markup from the lane module
+      else if ((stationHtml = prog?.prompt?.(frameAim) ?? null)) obj = stationHtml; // [progression-hook] smelter / research table
       else if (hover || removeTarget) html = placePrompt(hover, heldKind(), buildPromptInfo()); // what a click does (cost, R rotate, X remove), or why it can't
       else if (hook?.fishing) html = esc(castPrompt(hook, fishWait));
       else if (hookFull && castOut()) html = 'Bag full: free a slot to reel it in';
@@ -615,6 +623,7 @@ export function mount(transfer = null) {
     }
     const usable = !!(running && !dialog && (pickTarget || waterAim?.click || waterAim?.e));
     if (usable !== crossUsable) { crossUsable = usable; $('#crosshair')?.classList.toggle('usable', usable); } // dot grows over interactables
+    objectHtml = obj;
     if (html === contextCache) return; contextCache = html;
     const el = $('#contextPrompt'); if (!el) return; el.innerHTML = html; el.hidden = !html;
   }

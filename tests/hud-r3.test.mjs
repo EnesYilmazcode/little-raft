@@ -76,6 +76,53 @@ test('HUD-5: hovering a pause item moves focus to it, and :hover is no longer a 
   assert.match(s, /#options \.rs-menu button:focus,#options \.rs-menu button\[aria-expanded=true\]\{/);
 });
 
+// ---------------------------------------------------------------- UX3-1 station / crate look-at prompts
+
+test('UX3-1: object prompt HTML becomes crosshair prompt rows', () => {
+  assert.deepEqual(P.parseContextPrompt('<kbd>E</kbd>Open crate'), {key:'E', label:'Open crate'});
+  assert.deepEqual(P.parseContextPrompt('<kbd>E</kbd>Use tinker’s desk'), {key:'E', label:'Use tinker’s desk'});
+  assert.deepEqual(P.parseContextPrompt('<kbd>E</kbd> Grill Pomfret (21.0 cm) · cooking 4s'), [{key:'E', label:'Grill Pomfret (21.0 cm)'}, {label:'cooking 4s', muted:true}]);
+  assert.deepEqual(P.parseContextPrompt('<kbd>Click</kbd>Water the planter'), {key:'LMB', label:'Water the planter'});
+  assert.deepEqual(P.parseContextPrompt('Bees are busy… 40%'), {label:'Bees are busy… 40%', muted:true});
+  assert.deepEqual(P.parseContextPrompt('<kbd>E</kbd>Take Tom &amp; Jerry &lt;3'), {key:'E', label:'Take Tom & Jerry <3'});
+  for (const empty of ['', null, undefined, '<kbd></kbd>']) assert.equal(P.parseContextPrompt(empty), null);
+  const rows = P.normalizePrompt(P.parseContextPrompt('<kbd>E</kbd>Open crate'));
+  assert.deepEqual(rows, [{key:'E', label:'Open crate', hold:false, muted:false}]);
+});
+
+test('UX3-1: game.js feeds content, grill, watering and station prompts to raftPrompts above the tool tip', () => {
+  const g = src('game.js');
+  assert.match(g, /import \{ parseContextPrompt \} from '\.\/prompts\.js';/, 'same URL as the page script: one prompts instance');
+  assert.match(g, /rp\.provide\(\{id:'game-objects', priority:2, prompt:\(\) => \(running && objectHtml \? parseContextPrompt\(objectHtml\) : null\)\}\)/);
+  assert.match(g, /\(contextHtml = content\?\.prompt\(frameAim\) \?\? null\)\) obj = contextHtml/);
+  assert.match(g, /\(stationHtml = prog\?\.prompt\?\.\(frameAim\) \?\? null\)\) obj = stationHtml/);
+  assert.match(g, /objectHtml = obj;/);
+});
+
+const PH = await import(new URL('progression-hooks.js', base));
+const { Bag, SLOT_COUNT } = await import(new URL('inventory-state.js', base));
+function stationGame(decor, pose) {
+  const m = new Map();
+  globalThis.localStorage = {getItem:k => (m.has(k) ? m.get(k) : null), setItem:(k, v) => m.set(k, String(v)), removeItem:k => m.delete(k), clear:() => m.clear()};
+  const world = {tiles:[[0, 0], [1, 0], [0, 1], [-1, 1]], decor, items:[], collected:0}, bag = new Bag({slots:Array(SLOT_COUNT).fill(null), selected:0});
+  return PH.attachProgression({T:null, role:() => 'solo', ready:() => false, running:() => false, world:() => world, bag:() => bag,
+    localBag:() => bag, action() {}, emit() {}, notice() {}, pose:() => pose});
+}
+
+test('UX3-1: looking at a station in reach shows "E Use …"; just out of reach says move closer; looking away shows nothing', () => {
+  const pose = {x:0, z:0, yaw:0};
+  const p = stationGame([{type:'smelter', x:1, z:0}, {type:'researchtable', x:-1, z:1}], pose);
+  const at = (x, z) => ({dir:{x, y:-0.3, z}, point:null});
+  assert.equal(p.prompt(at(1, 0)), '<kbd>E</kbd>Use Smelter', 'smelter 2 m ahead');
+  pose.x = -1.2; pose.z = 1.2;
+  assert.equal(p.prompt(at(-1, 1)), '<kbd>E</kbd>Research');
+  pose.x = 0; pose.z = 0;
+  assert.match(p.prompt(at(-1, 1)), /^Research Table: move closer$/);
+  assert.equal(p.prompt(at(0, -1)), null, 'looking away');
+  assert.equal(p.prompt({dir:{x:0, y:1, z:0}}), null, 'looking straight up');
+  assert.equal(p.prompt(null), null);
+  p.dispose();
+});
 // ---------------------------------------------------------------- HUD-6 shader warm-up page error
 
 test('HUD-6: shader warm-ups use the synchronous compile, so no timer poll can trip over a disposed material', () => {
