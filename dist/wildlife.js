@@ -2,12 +2,15 @@
 // friendly dolphin or sea turtle circling at a distance. Pure scenery, see docs/features/wildlife.md.
 // Everything is a closed-form plan of a shared clock t, so host and guest see the same animals.
 // Rendering: 4 draw calls (gull bodies, gull wings, fish, the visible circler). No per-frame allocations.
-import { gullBodyGeometry, gullWingGeometry, dolphinGeometry, turtleGeometry, fishGeometry, GULL_SHOULDER } from './wildlife-models.js';
+import { gullBodyGeometry, gullWingGeometry, dolphinGeometry, turtleGeometry, fishGeometry, GULL_SHOULDER, GULL_HIP } from './wildlife-models.js';
 
 export const WILDLIFE_SEED = 0x5eaf00d;
 export const GULL_MAX = 6, SCHOOL_MAX = 2, FISH_PER_SCHOOL = 12;
 export const GULL_SLOT = 40, CIRCLER_SLOT = 180;
-export const GULL_DESCEND = 4, GULL_LEAVE = 4, SCARE_RADIUS = 2.25, CIRCLER_MIN_R = 7;
+export const GULL_DESCEND = 4, GULL_LEAVE = 4, SCARE_RADIUS = 3, CIRCLER_MIN_R = 7;
+export const AVOID_RADIUS = 3.5; // a gull starting a visit skips perches this close (horizontal) to either player
+export const FOLD_H = 0.8, WING_LEN = 0.68; // wings are fully folded below FOLD_H m above the perch
+const FISH_SCALE = 1.3, FISH_ALPHA = 0.6, AWAY = 5; // AWAY: how far (m) a spooked gull swerves away from the player
 const ARRIVE = 10, TAU = Math.PI * 2;
 export const SLEW_RATE = 0.5, SNAP_GAP = 10; // guest clock: ease at <= 0.5 s/s, hard-snap only past 10 s
 const FLOOR_Y = 0.2, DECOR_Y = 0.22;
@@ -161,6 +164,13 @@ export function gullPlan(seed, i, t, perches, out, scareAt = -Infinity, visit = 
     const amp = state === 'circle' ? 0.12 + 0.55 * burst : 0.75;
     out.flap = 0.08 + amp * Math.sin(t * (state === 'circle' ? 8 : 11) + i * 1.7);
     out.fold = landing;
+    if (p) { // near the perch the height drives the wings: folded below FOLD_H, and a downstroke never reaches the deck
+      const hh = out.y - out.py;
+      out.fold = Math.max(out.fold, 1 - smooth((hh - FOLD_H) / 0.7));
+      out.flap = 0.08 + (out.flap - 0.08) * (1 - out.fold);
+      const lo = -Math.asin(Math.min(1, Math.max(0, hh + GULL_SHOULDER[1] - 0.03) / WING_LEN));
+      if (out.flap < lo) out.flap = lo;
+    }
   }
   return out;
 }
@@ -208,6 +218,24 @@ function circlerPos(v, u, o, push) {
 }
 const _cp = { x: 0, z: 0 }, _cp2 = { x: 0, z: 0 };
 
+// Dolphin rhythm, a 3 s cycle: a leap out of the water (1 s), then a porpoising roll (2 s) where the head and
+// rounded back break the surface, nose up on the way up and nose down going under. Returns false for a turtle.
+export const DOLPHIN_CYCLE = 3, DOLPHIN_LEAP = 1;
+const DOLPHIN_BASE = -0.3;
+function dolphinMotion(u, out) {
+  if (out.kind !== 'dolphin') return false;
+  const k = u / DOLPHIN_CYCLE, f = (k - Math.floor(k)) * DOLPHIN_CYCLE;
+  if (f < DOLPHIN_LEAP) { const q = f / DOLPHIN_LEAP; out.y = DOLPHIN_BASE + 1.15 * Math.sin(Math.PI * q); out.pitch = -0.9 * Math.cos(Math.PI * q); }
+  else {
+    const q = (f - DOLPHIN_LEAP) / (DOLPHIN_CYCLE - DOLPHIN_LEAP), roll = -0.35 * Math.cos(Math.PI * q);
+    out.y = DOLPHIN_BASE + 0.34 * Math.sin(Math.PI * q);
+    const a = smooth(q / 0.25), b = smooth((q - 0.8) / 0.2); // ease out of the leap's dive and into the next leap
+    out.pitch = (0.9 + (roll - 0.9) * a) * (1 - b) - 0.9 * b;
+  }
+  out.roll = 0;
+  return true;
+}
+
 // out: {kind:null|'dolphin'|'turtle', x, y (relative to the water surface), z, heading, pitch, roll}
 // force: a visit object (debug summon) that replaces the schedule while it lasts. ext: raft half-size.
 export function circlerAt(seed, t, out, force = null, ext = 0) {
@@ -218,13 +246,8 @@ export function circlerAt(seed, t, out, force = null, ext = 0) {
   circlerPos(v, u, _cp, push); circlerPos(v, u + 0.2, _cp2, push);
   out.kind = v.kind; out.x = _cp.x; out.z = _cp.z;
   out.heading = Math.atan2(_cp2.x - _cp.x, _cp2.z - _cp.z);
-  if (v.kind === 'dolphin') { // cruise with the fin showing, then a happy arc out of the water every ~5 s
-    const k = u / 5.2, f = k - Math.floor(k), J = 0.32;
-    if (f < J) { const q = f / J; out.y = -0.16 + 1.0 * Math.sin(Math.PI * q); out.pitch = -0.9 * Math.cos(Math.PI * q); }
-    else { out.y = -0.16 + 0.04 * Math.sin(u * 2); out.pitch = 0; } // back and fin show
-    out.roll = 0;
-  } else {
-    out.y = 0.08 + 0.03 * Math.sin(u * 1.3); out.pitch = 0.04 * Math.sin(u * 0.9); out.roll = 0.06 * Math.sin(u * 0.7);
+  if (!dolphinMotion(u, out)) { // turtle: low in the water, the waterline cuts mid-shell
+    out.y = -0.06 + 0.02 * Math.sin(u * 1.3); out.pitch = 0.04 * Math.sin(u * 0.9); out.roll = 0.06 * Math.sin(u * 0.7);
   }
   return out;
 }
@@ -237,34 +260,51 @@ export function createWildlife(ctx) {
   const net = { t: 0 };
   let perches = [], perchMap = new Map(), ext = 0, tilesRef = null, decorRef = null, tilesLen = -1, decorLen = -1, hash = 0, rebuilds = 0, changed = false;
   const scareAt = new Float64Array(GULL_MAX).fill(-Infinity), scareSlot = new Int32Array(GULL_MAX).fill(-1);
+  const awayX = new Float32Array(GULL_MAX), awayZ = new Float32Array(GULL_MAX); // swerve direction of a spooked gull
+  let spookX = 0, spookZ = 0;
   // Per gull: the scheduled visit of the current slot and the perch latched when it began (kept for the visit).
   const vis = [], lat = [];
   for (let i = 0; i < GULL_MAX; i++) { vis.push({ on: false, start: 0, stay: 0, perch: -1, yaw: 0 }); lat.push({ slot: -1, done: false, on: false, key: '', x: 0, y: 0, z: 0 }); }
   const forced = []; for (let i = 0; i < GULL_MAX; i++) forced.push({ on: false, start: 0, stay: 0, perch: -1, yaw: 0, scare: false, key: '', x: 0, y: 0, z: 0 });
   const forceC = { kind: null, start: 0, a0: 0, r: 10, speed: 2.6, dir: 1, laps: 1, dur: 0, arrive: false };
   const pinned = []; for (let i = 0; i < SCHOOL_MAX; i++) pinned.push({ on: false, x: 0, z: 0, heading: 0 });
+  const plan2 = { state: 'circle', x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, flap: 0, fold: 0, blend: 0, sx: 0, sy: 0, sz: 0, px: 0, py: 0, pz: 0, perch: -1 };
   const plan = { state: 'circle', x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, flap: 0, fold: 0, blend: 0, sx: 0, sy: 0, sz: 0, px: 0, py: 0, pz: 0, perch: -1 };
   const sc = { x: 0, y: 0, z: 0, heading: 0 }, fo = { side: 0, along: 0, ph: 0, size: 1, depth: 0 };
   const cir = { kind: null, x: 0, y: 0, z: 0, heading: 0, pitch: 0, roll: 0 };
   const last = { gx: new Float32Array(GULL_MAX * 3), gs: new Array(GULL_MAX).fill('hidden'), sx: new Float32Array(SCHOOL_MAX * 2), nG: 0, nS: 0 };
 
-  let built = false, disposed = false, group = null, gullBody = null, gullWing = null, fish = null, dolphin = null, turtle = null, material = null, fishMat = null;
-  let m4, mA, mB, mC, mD, v3, v3b, sc3, q4, qR, eul, col, zero, UP, fishDark, fishWater;
+  let built = false, disposed = false, group = null, gullBody = null, gullWing = null, fish = null, dolphin = null, turtle = null, material = null, gullMat = null, fishMat = null, tuck = null;
+  let m4, mA, mB, mC, mD, mE, vP, v3, v3b, sc3, q4, qR, eul, col, zero, UP, fishDark, fishWater;
 
   function build() {
     const T = ctx.T;
-    m4 = new T.Matrix4(); mA = new T.Matrix4(); mB = new T.Matrix4(); mC = new T.Matrix4(); mD = new T.Matrix4();
+    m4 = new T.Matrix4(); mA = new T.Matrix4(); mB = new T.Matrix4(); mC = new T.Matrix4(); mD = new T.Matrix4(); mE = new T.Matrix4(); vP = new T.Vector3();
     v3 = new T.Vector3(); v3b = new T.Vector3(); sc3 = new T.Vector3(1, 1, 1); q4 = new T.Quaternion(); qR = new T.Quaternion();
     eul = new T.Euler(0, 0, 0, 'YXZ'); col = new T.Color(); zero = new T.Matrix4().makeScale(0, 0, 0); UP = new T.Vector3(0, 1, 0);
     fishDark = new T.Color('#0b2f36'); fishWater = new T.Color('#3f8c88');
     material = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: T.DoubleSide });
-    fishMat = new T.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.7, depthWrite: false, side: T.DoubleSide, forceSinglePass: true }); // one pass: transparent DoubleSide would draw twice
+    // Gull bodies get their own copy with a tiny vertex tweak: leg vertices (legW = 1) swing back under the belly
+    // by the per-instance `tuck` (0 standing, 1 in flight). One extra program, compiled once at startup.
+    gullMat = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: T.DoubleSide });
+    const hy = GULL_HIP[0].toFixed(3), hz = GULL_HIP[1].toFixed(3);
+    gullMat.onBeforeCompile = sh => {
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float legW;\nattribute float tuck;')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+  if (legW > 0.5) { float ph = tuck * 1.45, k = 1.0 - 0.6 * tuck, ly = (transformed.y - ${hy}) * k, lz = (transformed.z - ${hz}) * k;
+    transformed.y = ${hy} + ly * cos(ph) - lz * sin(ph); transformed.z = ${hz} + ly * sin(ph) + lz * cos(ph); }`);
+    };
+    gullMat.customProgramCacheKey = () => 'wildlife-gull-legs';
+    fishMat = new T.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: FISH_ALPHA, depthWrite: false, side: T.DoubleSide, forceSinglePass: true }); // one pass: transparent DoubleSide would draw twice
     group = new T.Group(); group.name = 'wildlife';
     const inst = (geo, mat, n, name) => {
       const m = new T.InstancedMesh(geo, mat, n); m.name = name; m.frustumCulled = false; m.castShadow = false; m.receiveShadow = false;
       m.instanceMatrix.setUsage(T.DynamicDrawUsage); for (let i = 0; i < n; i++) m.setMatrixAt(i, zero); group.add(m); return m;
     };
-    gullBody = inst(gullBodyGeometry(T), material, GULL_MAX, 'gullBody');
+    const bodyGeo = gullBodyGeometry(T);
+    tuck = new T.InstancedBufferAttribute(new Float32Array(GULL_MAX).fill(1), 1); tuck.setUsage(T.DynamicDrawUsage);
+    bodyGeo.setAttribute('tuck', tuck);
+    gullBody = inst(bodyGeo, gullMat, GULL_MAX, 'gullBody');
     gullWing = inst(gullWingGeometry(T), material, GULL_MAX * 2, 'gullWing');
     fish = inst(fishGeometry(T), fishMat, SCHOOL_MAX * FISH_PER_SCHOOL, 'fish');
     for (let i = 0; i < SCHOOL_MAX * FISH_PER_SCHOOL; i++) fish.setColorAt(i, fishDark);
@@ -299,22 +339,43 @@ export function createWildlife(ctx) {
   // Is a player pose ({x,y,z}, y may be null for the friend) close enough to v3 to spook a gull?
   function spooks(p) {
     if (!p || !fin(p.x) || !fin(p.z)) return false;
-    const y = fin(p.y) ? p.y : deckEye();
-    return Math.hypot(p.x - v3.x, p.z - v3.z) < SCARE_RADIUS && Math.abs(y - v3.y) < 3;
+    const y = fin(p.y) ? p.y : deckEye(), dx = v3.x - p.x, dz = v3.z - p.z, d = Math.hypot(dx, dz);
+    if (d >= SCARE_RADIUS || Math.abs(y - v3.y) >= 3) return false;
+    spookX = d > 1e-3 ? dx / d : 0; spookZ = d > 1e-3 ? dz / d : 0; // fly away from whoever came close
+    return true;
+  }
+  // Is perch p (raft frame) free for gull i: no other gull holds it and no player stands within AVOID_RADIUS?
+  function perchFree(p, i, slot, nG, players = true) {
+    for (let j = 0; j < nG; j++) {
+      if (j === i) continue;
+      if (forced[j].on && forced[j].key === p.key) return false;
+      if (!forced[j].on && lat[j].on && lat[j].slot === slot && lat[j].key === p.key) return false;
+    }
+    if (!vP || !players) return true;
+    vP.set(p.x, p.y, p.z); if (ctx.raft) vP.applyMatrix4(ctx.raft.matrixWorld);
+    for (let k = 0; k < 2; k++) {
+      const q = k ? ctx.other : ctx.physics;
+      if (q && fin(q.x) && fin(q.z) && Math.hypot(q.x - vP.x, q.z - vP.z) < AVOID_RADIUS) return false;
+    }
+    return true;
   }
 
+  // Folding swings the wing back (Y), turns it on edge along the flank with the grey top facing out (X twist
+  // about its own length), and drops the shoulder so the wing lies along the flank instead of standing above it.
   function setWing(index, side, flap, fold) {
-    mA.makeTranslation(side * GULL_SHOULDER[0], GULL_SHOULDER[1], GULL_SHOULDER[2]);
+    mA.makeTranslation(side * (GULL_SHOULDER[0] + 0.035 * fold), GULL_SHOULDER[1] - 0.09 * fold, GULL_SHOULDER[2]);
     mB.makeScale(side, 1, 1);
-    mC.makeRotationY(fold * 1.42);
-    mD.makeRotationZ(flap - fold * 0.25);
-    mA.multiply(mB).multiply(mC).multiply(mD);
+    mC.makeRotationY(fold * 1.55);
+    mD.makeRotationX(fold * 1.4);
+    mE.makeRotationZ(flap * (1 - 0.8 * fold));
+    mA.multiply(mB).multiply(mC).multiply(mD).multiply(mE);
+    mC.makeScale(1 - 0.3 * fold, 1, 1); mA.multiply(mC); // folded, the hand tucks under: the tips just cross the tail
     mB.multiplyMatrices(m4, mA);
     gullWing.setMatrixAt(index, mB);
   }
 
   // The visit and latched perch gull i uses at t. Returns the perch ({key,x,y,z}) or null; fills vis[i].
-  function gullPerch(i, t, slot) {
+  function gullPerch(i, t, slot, nG) {
     const f = forced[i];
     if (f.on) return f;
     const L = lat[i], V = vis[i], n = perches.length;
@@ -323,7 +384,13 @@ export function createWildlife(ctx) {
       gullVisit(seed, i, slot, n, V);
       if (t >= V.start) { // the visit begins: latch its perch and keep it to the end
         L.done = true;
-        if (V.on && V.perch >= 0 && V.perch < n) { const p = perches[V.perch]; L.on = true; L.key = p.key; L.x = p.x; L.y = p.y; L.z = p.z; }
+        if (V.on && V.perch >= 0 && V.perch < n) { // the scheduled perch, or the next free one after it
+          for (let k = 0; k < n; k++) {
+            const j = (V.perch + k) % n, p = perches[j];
+            if (!perchFree(p, i, slot, nG)) continue;
+            V.perch = j; L.on = true; L.key = p.key; L.x = p.x; L.y = p.y; L.z = p.z; break;
+          }
+        }
       }
     }
     if (L.done && !L.on) V.on = false;
@@ -337,10 +404,10 @@ export function createWildlife(ctx) {
       if (i >= nG) { last.gs[i] = 'hidden'; continue; }
       const f = forced[i];
       if (f.on && t >= f.start + GULL_DESCEND + f.stay + GULL_LEAVE + 1) f.on = false;
-      const P = gullPerch(i, t, slot);
+      const P = gullPerch(i, t, slot, nG);
       if (changed && P) { // the layout changed: a gull whose perch went away (or moved) takes off
         const q = perchMap.get(P.key);
-        if (!q || q.y !== P.y) { scareAt[i] = t; scareSlot[i] = slot; if (f.on) f.scare = true; }
+        if (!q || q.y !== P.y) { scareAt[i] = t; scareSlot[i] = slot; awayX[i] = awayZ[i] = 0; if (f.on) f.scare = true; }
       }
       const sAt = f.on ? (f.scare ? scareAt[i] : -Infinity) : scareSlot[i] === slot ? scareAt[i] : -Infinity;
       gullPlan(seed, i, t, perches, plan, sAt, f.on ? f : vis[i], P, ext);
@@ -348,12 +415,25 @@ export function createWildlife(ctx) {
       v3.set(plan.px, plan.state === 'perched' ? plan.y : plan.py, plan.pz); if (raft) v3.applyMatrix4(raft.matrixWorld);
       // either player walking up spooks it; both clients see both poses, so they agree
       if (plan.state === 'perched' && (!f.on || f.scare) && (spooks(ctx.physics) || spooks(ctx.other))) {
-        scareAt[i] = t; scareSlot[i] = slot;
+        scareAt[i] = t; scareSlot[i] = slot; awayX[i] = spookX; awayZ[i] = spookZ;
         gullPlan(seed, i, t, perches, plan, t, f.on ? f : vis[i], P, ext);
       }
       const b = plan.blend;
       v3b.set(plan.sx + (v3.x - plan.sx) * b, plan.sy + (v3.y - plan.sy) * b, plan.sz + (v3.z - plan.sz) * b);
-      eul.set(plan.pitch, plan.yaw, plan.roll, 'YXZ'); q4.setFromEuler(eul);
+      let yaw = plan.yaw, pitch = plan.pitch;
+      const sA = f.on ? (f.scare ? scareAt[i] : -Infinity) : scareSlot[i] === slot ? scareAt[i] : -Infinity;
+      if (plan.state === 'leave' && sA > -Infinity && (awayX[i] !== 0 || awayZ[i] !== 0)) {
+        // a spooked gull swerves away from the player and up before it rejoins its circle
+        const k = Math.sin(Math.PI * (1 - b));
+        v3b.x += awayX[i] * AWAY * k; v3b.z += awayZ[i] * AWAY * k; v3b.y += 1.5 * k;
+        gullPlan(seed, i, t + 0.15, perches, plan2, sA, f.on ? f : vis[i], P, ext);
+        const b2 = plan2.blend, k2 = Math.sin(Math.PI * (1 - b2));
+        const nx = plan2.sx + (v3.x - plan2.sx) * b2 + awayX[i] * AWAY * k2 - v3b.x, nz = plan2.sz + (v3.z - plan2.sz) * b2 + awayZ[i] * AWAY * k2 - v3b.z;
+        const ny = plan2.sy + (v3.y - plan2.sy) * b2 + 1.5 * k2 - v3b.y, nh = Math.hypot(nx, nz);
+        if (nh > 1e-4) { yaw = Math.atan2(nx, nz); pitch = Math.max(-0.5, Math.min(0.5, -Math.atan2(ny, nh))); }
+      }
+      tuck.array[i] = plan.state === 'perched' ? 0 : 1 - plan.fold; // legs down only close to the deck
+      eul.set(pitch, yaw, plan.roll, 'YXZ'); q4.setFromEuler(eul);
       if (raft && b > 0) { qR.identity().slerp(raft.quaternion, b); q4.premultiply(qR); }
       sc3.set(1, 1, 1);
       m4.compose(v3b, q4, sc3);
@@ -363,7 +443,7 @@ export function createWildlife(ctx) {
       last.gx[i * 3] = v3b.x; last.gx[i * 3 + 1] = v3b.y; last.gx[i * 3 + 2] = v3b.z; last.gs[i] = plan.state;
     }
     changed = false;
-    gullBody.instanceMatrix.needsUpdate = true; gullWing.instanceMatrix.needsUpdate = true;
+    gullBody.instanceMatrix.needsUpdate = true; gullWing.instanceMatrix.needsUpdate = true; tuck.needsUpdate = true;
   }
 
   function updateFish(t, nS, wiggle, ocean) {
@@ -383,7 +463,7 @@ export function createWildlife(ctx) {
         const yaw = sc.heading + 0.18 * Math.sin(t * 0.6 + fo.ph) + (wiggle ? 0.22 * Math.sin(t * 7 + fo.ph * 3) : 0);
         const depth = sc.y + fo.depth; // plan depth, about -1.15 .. -0.45 m. Drawn on the surface; it only sets the tint
         const h = ocean ? ocean.getHeight(x, z) : -0.24;
-        v3.set(x, h + 0.035, z); q4.setFromAxisAngle(UP, yaw); sc3.set(fo.size, 1, fo.size);
+        v3.set(x, h + 0.035, z); q4.setFromAxisAngle(UP, yaw); sc3.set(fo.size * FISH_SCALE, 1, fo.size * FISH_SCALE);
         m4.compose(v3, q4, sc3); fish.setMatrixAt(k, m4);
         col.copy(fishDark).lerp(fishWater, Math.min(0.85, Math.max(0, (-depth - 0.4) / 0.8 * 0.7)));
         fish.setColorAt(k, col);
@@ -447,7 +527,7 @@ export function createWildlife(ctx) {
       if (!built) return;
       group.removeFromParent();
       for (const m of [gullBody, gullWing, fish, dolphin, turtle]) { m.geometry.dispose(); if (m.dispose) m.dispose(); }
-      material.dispose(); fishMat.dispose();
+      material.dispose(); gullMat.dispose(); fishMat.dispose();
       built = false; group = null;
     },
     get clock() { return now(); },
@@ -484,8 +564,12 @@ export function createWildlife(ctx) {
     landGull(i = 0, opts = {}) {
       i = Math.max(0, Math.min(GULL_MAX - 1, i | 0)); refreshPerches();
       if (!perches.length) return null;
-      const L = lookPoint(); let best = 0, bd = Infinity;
-      if (L) { if (ctx.raft) ctx.raft.worldToLocal(L); for (let k = 0; k < perches.length; k++) { const d = Math.hypot(perches[k].x - L.x, perches[k].z - L.z); if (d < bd) { bd = d; best = k; } } }
+      const L = lookPoint(), slot = Math.floor(now() / GULL_SLOT); let best = 0, bd = Infinity;
+      if (L && ctx.raft) ctx.raft.worldToLocal(L);
+      for (let pass = 0; pass < 2 && bd === Infinity; pass++) for (let k = 0; k < perches.length; k++) { // nearest free perch (any, if all are taken)
+        if (pass === 0 && !perchFree(perches[k], i, slot, GULL_MAX, false)) continue;
+        const d = L ? Math.hypot(perches[k].x - L.x, perches[k].z - L.z) : k; if (d < bd) { bd = d; best = k; }
+      }
       if (Number.isInteger(opts.perch) && opts.perch >= 0 && opts.perch < perches.length) best = opts.perch;
       const p = perches[best];
       Object.assign(forced[i], { key: p.key, x: p.x, y: p.y, z: p.z, on: true, start: now() - (opts.instant ? GULL_DESCEND : 0), stay: fin(opts.stay) ? opts.stay : 15, perch: best, yaw: fin(opts.yaw) ? opts.yaw : TAU * Math.random(), scare: !!opts.scare });

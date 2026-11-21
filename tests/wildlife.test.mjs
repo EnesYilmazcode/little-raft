@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
 const W = await import(new URL('wildlife.js', base));
 const { WILDLIFE_SEED: SEED, mulberry32, perchesFrom, gullPlan, gullVisit, schoolCenter, fishOffset, circlerAt, createWildlife, GULL_MAX, GULL_SLOT, CIRCLER_MIN_R,
-  raftExtent, layoutHash, GULL_MARGIN, FISH_MARGIN, CIRCLER_MARGIN } = W;
+  raftExtent, layoutHash, GULL_MARGIN, FISH_MARGIN, CIRCLER_MARGIN, FOLD_H, WING_LEN, AVOID_RADIUS, DOLPHIN_CYCLE } = W;
 const T = await import(new URL('vendor/three.module.js', base));
 
 const TILES = [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, -1], [-1, 1], [1, -1]];
@@ -309,4 +309,61 @@ test('a perched gull stays put when the perch list changes, and takes off when i
   let prev = snap(); step(m, ctx);
   assert.equal(snap().state, 'leave');
   for (let k = 0; k < 120; k++) { step(m, ctx); const q = snap(); assert.ok(Math.hypot(q.x - prev.x, q.y - prev.y, q.z - prev.z) < 0.3); prev = q; }
+});
+
+test('wings fold near the perch and a downstroke never reaches the deck', () => {
+  const per = perchesFrom(TILES, DECOR);
+  let low = 0;
+  for (let i = 0; i < GULL_MAX; i++) for (let s = 0; s < 8000; s++) {
+    const o = gullPlan(SEED, i, s / 20, per, fresh());
+    if (o.perch < 0 || o.state === 'circle' || o.state === 'perched') continue;
+    const hh = o.y - o.py;
+    if (hh < FOLD_H) { low++; assert.ok(o.fold > 0.999, `fold ${o.fold} at h ${hh}`); }
+    assert.ok(hh + 0.27 + WING_LEN * Math.sin(o.flap) >= 0, `wing tip under the deck at h ${hh}, flap ${o.flap}`);
+  }
+  assert.ok(low > 50);
+});
+
+test('the dolphin leaps every cycle and its back breaks the surface in between', () => {
+  let present = 0;
+  for (let t = 0; t < 20000 && present < 5; t += 7) {
+    const o = circlerAt(SEED, t, fresh()); if (o.kind !== 'dolphin') continue;
+    present++;
+    let leaps = 0, lastUp = t;
+    for (let k = 0; k <= 120; k++) { // 12 s at 10 Hz
+      const q = circlerAt(SEED, t + k / 10, fresh()); if (q.kind !== 'dolphin') break;
+      if (q.y > 0.5) leaps++;
+      if (q.y > -0.1) { assert.ok(t + k / 10 - lastUp <= 2, `under for ${t + k / 10 - lastUp} s`); lastUp = t + k / 10; }
+      assert.ok(Number.isFinite(q.pitch) && Math.abs(q.pitch) <= 0.9 + 1e-9);
+    }
+    assert.ok(leaps >= Math.floor(12 / DOLPHIN_CYCLE) - 1);
+  }
+  assert.ok(present >= 3);
+});
+
+test('landGull never stacks two gulls on one perch', () => {
+  const ctx = sceneCtx(), m = createWildlife(ctx);
+  step(m, ctx);
+  const keys = new Set();
+  for (let i = 0; i < 4; i++) keys.add(m.debug.landGull(i, { instant: true }).key);
+  assert.equal(keys.size, 4);
+});
+
+test('gulls skip perches next to a player and fly away when spooked', () => {
+  const ctx = sceneCtx({ physics: { x: -2, y: 1.8, z: -2 } }), m = createWildlife(ctx);
+  let perched = 0;
+  for (let k = 0; k < 2400; k++) {
+    step(m, ctx, 1, 0.25);
+    for (const g of m.debug.snapshot().gulls) if (g.state === 'perched') {
+      perched++; assert.ok(Math.hypot(g.x + 2, g.z + 2) >= AVOID_RADIUS - 1e-6, `perched ${Math.hypot(g.x + 2, g.z + 2)} m from the player`);
+    }
+  }
+  assert.ok(perched > 20);
+  // walk up to a perched gull: it leaves, and moves away from the player while it climbs
+  const p = m.debug.landGull(0, { instant: true, perch: 4, scare: true }); step(m, ctx, 3);
+  ctx.physics = { x: p.x - 1, y: 1.8, z: p.z }; step(m, ctx, 2);
+  assert.equal(m.debug.snapshot().gulls[0].state, 'leave');
+  step(m, ctx, 40, 0.05);
+  const g = m.debug.snapshot().gulls[0];
+  assert.ok(g.x - p.x > 1.5 && g.y > p.y + 1, `gull at ${g.x - p.x}, ${g.y}`);
 });
