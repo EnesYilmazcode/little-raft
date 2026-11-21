@@ -76,8 +76,8 @@ export function normaliseDecor(d, types, hasTile) {
 // material that turns red when the spot is invalid. Follows the raft's sway.
 export function createGhosts(T, scene, raft, {floor, craft}) {
   const OK = new T.Color('#4dff8f'), BAD = new T.Color('#ff4a3a');
-  const mat = new T.MeshLambertMaterial({color:OK, emissive:OK.clone(), emissiveIntensity:.55, transparent:true, opacity:.5, depthWrite:false});
-  const depth = new T.MeshBasicMaterial({colorWrite:false, transparent:true}); // depth pre-pass after the opaque scene: only the ghost's front surface is tinted
+  const mat = new T.MeshLambertMaterial({color:OK, emissive:OK.clone(), emissiveIntensity:.55, transparent:true, opacity:.5, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1});
+  const depth = new T.MeshBasicMaterial({colorWrite:false, transparent:true, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1}); // offset: a ghost over a coincident placed piece wins cleanly instead of z-fighting // depth pre-pass after the opaque scene: only the ghost's front surface is tinted
   const root = new T.Group(); root.name = 'build-ghost'; scene.add(root);
   const cache = new Map();
   let shown = null, wasOk = true;

@@ -192,6 +192,7 @@ export function mount(transfer = null) {
   let yaw = Number.isFinite(X?.yaw) ? X.yaw : 0, pitch = Number.isFinite(X?.pitch) ? X.pitch : 0;
   let walking = false, walkPhase = Number.isFinite(X?.walkPhase) ? X.walkPhase : 0, swing = 0;
   const pointer = new T.Vector2(), ray = new T.Raycaster(), plane = new T.Plane(new T.Vector3(0, 1, 0), -.22);
+  let ghostHold = null; // just-placed spot: the ghost stays hidden there until the aim moves off it
   let hover = null, mouse = {x:0, y:0, inside:false}, frameAim = null, pickTarget = null;
   const raftPose = {y:X?.raftPose?.y ?? 0, rx:X?.raftPose?.rx ?? 0, rz:X?.raftPose?.rz ?? 0};
   let physics = makePhysics(X);
@@ -719,7 +720,7 @@ export function mount(transfer = null) {
       const v = placementFor(kind, aim?.local ?? null);
       if (!v || (!v.ok && kind !== 'hammer')) { play('deny', .6); return; }
       if (!v.ok) { notice('Floor needs ' + missingText(bag, FLOOR_COST)); return; }
-      swing = 1; action({kind:'build', recipe:v.kind, x:v.x, z:v.z, rot:v.rot}); return;
+      swing = 1; ghostHold = {kind:v.kind, x:v.x, z:v.z, rot:v.rot}; action({kind:'build', recipe:v.kind, x:v.x, z:v.z, rot:v.rot}); return;
     }
     if (kind === 'fishingrod') {
       if (!p || hasTile(Math.round(p.x / 2), Math.round(p.z / 2))) { notice('Point at the water to fish'); return; }
@@ -960,7 +961,8 @@ export function mount(transfer = null) {
   function updateGhost() {
     const kind = heldKind();
     hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook ? placementFor(kind, frameAim.local) : null;
-    if (hover) ghosts.show(hover.kind, hover.kind === 'floor' ? hover.x * 2 : hover.x, hover.kind === 'floor' ? .015 : .22, hover.kind === 'floor' ? hover.z * 2 : hover.z, hover.rot, hover.ok, elapsed);
+    if (!hover || ghostHold && (hover.kind !== ghostHold.kind || hover.rot !== ghostHold.rot || Math.hypot(hover.x - ghostHold.x, hover.z - ghostHold.z) > (hover.kind === 'floor' ? 0 : .3))) ghostHold = null;
+    if (hover && !ghostHold) ghosts.show(hover.kind, hover.kind === 'floor' ? hover.x * 2 : hover.x, hover.kind === 'floor' ? .015 : .22, hover.kind === 'floor' ? hover.z * 2 : hover.z, hover.rot, hover.ok, elapsed);
     else ghosts.hide();
   }
   function hostState() {
@@ -1071,7 +1073,7 @@ export function mount(transfer = null) {
     const m = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
     if (m && running) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
     if (e.code === 'KeyE' && !e.repeat) interact();
-    if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? -ROT_STEP : ROT_STEP); else repair(); }
+    if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? FINE_STEP : ROT_STEP); else repair(); }
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
   on(window, 'keyup', e => { keys[e.code] = false; });
