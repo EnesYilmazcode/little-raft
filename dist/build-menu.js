@@ -4,7 +4,7 @@
 const STYLE_ID = 'lr-build-menu-style';
 const SPRITE = (() => { try { return new URL('icons.svg', import.meta.url).href; } catch { return 'icons.svg'; } })();
 const MAT_SPRITE = { wood: 'wood', leaf: 'leaf', scrap: 'scrap' };
-const MAT_NAME = { wood: 'wood', leaf: 'leaf', plastic: 'plastic', scrap: 'scrap', rope: 'rope' };
+const MAT_NAME = { wood: 'plank', leaf: 'leaf', plastic: 'plastic', scrap: 'scrap', rope: 'rope' };
 
 // Original 24x24 line icons (stroke = currentColor).
 const ICONS = {
@@ -55,7 +55,7 @@ const CSS = `
 .bm-req.bm-short{color:#ff9f86}
 .bm-req.bm-short svg{opacity:.5;filter:grayscale(.7)}
 .bm-free{font:600 12px/1 ${FONT};color:#d9c9a6}
-.bm-chip{position:fixed;left:max(16px,calc(50% - 253px));bottom:var(--bm-chip-bottom,178px);z-index:3;text-align:left;display:flex;align-items:center;gap:10px;
+.bm-chip{position:fixed;left:max(16px,calc(50% - 253px));bottom:var(--bm-chip-bottom,112px);z-index:3;text-align:left;display:flex;align-items:center;gap:10px;
   padding:7px 14px 7px 7px;border-radius:12px;pointer-events:none;max-width:calc(100vw - 32px);
   background:repeating-linear-gradient(90deg,#0000000f 0 2px,transparent 2px 21px),linear-gradient(#5d4129f0,#3d2a19f0);
   border:1.5px solid #c9a66b;box-shadow:0 0 0 1.5px #3e2a17,0 4px 14px #0006;color:#fff2cc;font:500 13px/1.25 ${FONT};transition:opacity .12s}
