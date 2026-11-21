@@ -42,6 +42,11 @@ export const PLAYER_CONSTANTS = Object.freeze({
 const C = PLAYER_CONSTANTS;
 const HALF = C.TILE_SIZE / 2;
 const fin = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+
+// Distance from (x, z) to the edge of one prop blocker ({x, z, r} circle); negative inside.
+export function blockerGap(b, x, z) {
+  return Math.hypot(x - b.x, z - b.z) - Math.max(0, fin(b.r, 0));
+}
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const isTile = t => Array.isArray(t) && Number.isFinite(t[0]) && Number.isFinite(t[1]);
 
