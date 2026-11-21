@@ -25,6 +25,7 @@ import { createRocket } from './fireworks-model.js?build=v3-survival-ae77fa84ac2
 import { createScarecrow3D } from './scarecrow-model.js?build=v3-survival-ae77fa84ac2b'; // [scarecrow]
 import { createHive, createFlowerBox, createCandle } from './bees-model.js?build=v3-survival-ae77fa84ac2b'; // [bees]
 import { createSpyglassModel } from './spyglass-model.js?build=v3-survival-ae77fa84ac2b'; // [spyglass]
+import { createSnackFloat } from './snack-float-model.js?build=v3-survival-ae77fa84ac2b'; // [snackfloat]
 
 export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
 // Items you aim at the raft to place: the free hand points at the spot while one of these is held.
@@ -75,7 +76,8 @@ const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.22, fi
   drum: 0.15, pipes: 0.2, bells: 0.2, // [instruments]
   camera: 0.13, // [camera]
   glidehandle: 0.24, // [zipline]
-  skyrocket: 0.2, scarecrow: 0.24, glidepost: 0.24, glidestep: 0.2, candle: 0.11, beehive: 0.18, flowerbox: 0.2 };
+  skyrocket: 0.2, scarecrow: 0.24, glidepost: 0.24, glidestep: 0.2, candle: 0.11, beehive: 0.18, flowerbox: 0.2,
+  snackfloat: 0.16 }; // [snackfloat]
 // Kind -> its own world model (one fresh copy per held build; hands.js caches the held model per kind).
 const MODEL_KINDS = {
   skyrocket: (T) => createRocket(T),
@@ -83,6 +85,7 @@ const MODEL_KINDS = {
   glidepost: (T) => createGlidePost(T, 3.4, 'held_glidepost'), // wheel heights match POSTS in zipline.js
   glidestep: (T) => createGlidePost(T, 2.4, 'held_glidestep'),
   candle: (T) => createCandle(T), beehive: (T) => createHive(T), flowerbox: (T) => createFlowerBox(T),
+  snackfloat: (T) => createSnackFloat(T), // [snackfloat]
 };
 
 function fit(T, model, maxDim, gripFn) {

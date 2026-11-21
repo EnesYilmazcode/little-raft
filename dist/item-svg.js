@@ -648,4 +648,17 @@ export const ITEM_ICONS = Object.freeze({
     <circle cx="12" cy="4" r="2.4" fill="#ffbd66"/></g>
     <g fill="none" stroke="#f1c84d" stroke-width="1.1" stroke-linecap="round"><path d="M26.5 12 V20"/><path d="M23 13.5 L24.8 20"/><path d="M30 13.5 L28.2 20"/></g>
     <path d="M16 9 C20 7.5 24 9 28 8.6" fill="none" stroke="#fff2cc" stroke-width="1.5" stroke-linecap="round"/>`, // [flags]
+
+  // [snackfloat] cork bobber with a teal band and a stick, a green seaweed parcel with a tan twine cross, a silver fish tail, water arcs
+  snackfloat: `<g fill="none" stroke="#9fd6d0" stroke-width="2" stroke-linecap="round"><path d="M5 41 C10 38 15 38 20 41"/><path d="M26 43 C32 40 38 40 43 43"/></g>
+    <g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M8 22 L3 15 L4 26 Z" fill="#9fb1bf"/>
+      <ellipse cx="17" cy="29" rx="11" ry="8.5" fill="#4f9a5c"/>
+      <path d="M33 9 V16" fill="none" stroke="#bb8650" stroke-width="2.6"/>
+      <path d="M26 18 C26 15.5 40 15.5 40 18 V32 C40 35 26 35 26 32 Z" fill="#f3e2b8"/>
+      <path d="M26 23 H40 V27 H26 Z" fill="#54a6a4" stroke-width="1.4"/></g>
+    <circle cx="33" cy="8" r="2.2" fill="#e36a4f" stroke="${O}" stroke-width="1.4"/>
+    <g fill="none" stroke="#d9c38c" stroke-width="1.8" stroke-linecap="round"><path d="M10 23 L24 35"/><path d="M24 23 L10 35"/></g>
+    <path d="M11 24 C13 22.5 16 21.6 19 21.8" fill="none" stroke="#9ad6a0" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M28.5 19.5 C31 18.4 35 18.4 37.5 19.5" fill="none" stroke="#fff2cc" stroke-width="1.4" stroke-linecap="round"/>`,
 });

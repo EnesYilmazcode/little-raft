@@ -152,6 +152,9 @@ const LIST = [
   item('hinge', 'Hinge', 'refined', { iconTint: '#c3c9d1',
     recipe: hand({ metalingot: 1, nail: 2 }, 2), unlock: research('metalingot', 'nail'),
     tip: 'A tiny hinge that swings just right. Binoculars fold up thanks to these.' }),
+  item('snackfloat', 'Snack Float', 'refined', { stack: 10, iconTint: '#e0b070', // [snackfloat] see docs/specs/snack-float.md
+    recipe: hand({ fish: 2, seaweed: 1, rope: 1 }), unlock: discover('fish', 'seaweed'),
+    tip: 'A little seaweed parcel of fish tied to a cork. Toss it in the water and the shark will happily nibble it instead of your raft.' }),
 
   // ----- tools -----
   item('hook', 'Hook', 'tool', { icon: 'icon-hook', placeholder: false, tool: true, durability: 40, // Raft's plastic hook: 40 uses

@@ -27,6 +27,7 @@ const CATEGORY_OF = Object.freeze({
   shelf: 'survival', trophystand: 'survival', // [display]
   turbine: 'survival', battery: 'survival', stringlights: 'survival', lamppost: 'survival', // [power]
   fishtrap: 'survival', // [fishtrap]
+  snackfloat: 'survival', // [snackfloat]
 
   taskboard: 'survival', // [tasks]
   skyrocket: 'survival', // [fireworks]
@@ -175,6 +176,7 @@ export const ITEM_TEXT = Object.freeze({
   stringlights: { desc: 'A post with a wire of warm little bulbs.', use: 'Glows at night near a charged battery.' }, // [power]
   lamppost:   { desc: 'A tall lamp with a glass head.', use: 'Lights the deck at night near a charged battery.' }, // [power]
   fishtrap:   { desc: 'A woven fish basket on a little arm.', use: 'Place on an edge tile. Seaweed bait helps. Collect with E.' }, // [fishtrap]
+  snackfloat: { desc: 'A fish parcel tied to a bobbing cork.', use: 'Click the water within 12 m. The shark snacks for 2 min, then leaves the raft alone a while.' }, // [snackfloat]
   skyrocket:  { desc: 'A little sky rocket on a stand.', use: 'Place on a tile, then press E to launch it.' }, // [fireworks]
   scarecrow:  { desc: 'A driftwood post in a leaf skirt and a bucket hat.', use: 'Place it near palm planters; gulls will not peck within about two tiles.' }, // [scarecrow]
   glidepost:  { desc: 'A tall mast with a grooved wheel on top.', use: 'Hold a Glide Handle and press E on two posts to string a line.' }, // [zipline]
