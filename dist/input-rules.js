@@ -25,3 +25,12 @@ export function createLookFilter({floor = 400, ratio = 4, keep = .25} = {}) {
   function reset({dropFirst = false} = {}) { held = null; avg = 0; dropNext = !!dropFirst; }
   return {filter, reset};
 }
+
+// Frame stepping: split a real frame time into n equal steps of at most maxStep seconds,
+// after capping the frame at cap seconds (a long stall must not teleport the player).
+export function splitSteps(dt, maxStep = .05, cap = .25) {
+  dt = Number.isFinite(dt) && dt > 0 ? Math.min(dt, cap) : 0;
+  if (dt <= 0) return {n: 0, step: 0};
+  const n = Math.ceil(dt / maxStep - 1e-9);
+  return {n, step: dt / n};
+}

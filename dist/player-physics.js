@@ -151,7 +151,7 @@ export class PlayerPhysics {
     }
 
     if (!this.grounded) {
-      const prevFeet = this.y - C.EYE_OFFSET;
+      const prevFeet = this.y - C.EYE_OFFSET, vy0 = this.vy;
       if (this.swimming) {
         const target = waterY + C.SWIM_EYE_ABOVE_WATER + (jump ? C.SWIM_RISE_BONUS : 0);
         const ay = C.BUOY_SPRING * (target - this.y) - C.BUOY_DAMP * this.vy;
@@ -160,7 +160,8 @@ export class PlayerPhysics {
         this.vy -= C.GRAVITY * dt;
       }
       this.vy = clamp(this.vy, -C.MAX_FALL_SPEED, C.MAX_FALL_SPEED);
-      this.y += this.vy * dt;
+      // Falling uses the mean velocity over the step (exact for constant gravity), so jump height is the same at any fps.
+      this.y += (this.swimming ? this.vy : (vy0 + this.vy) / 2) * dt;
       const feet = this.y - C.EYE_OFFSET;
 
       // Land on deck only when falling and feet cross the deck plane over a tile.

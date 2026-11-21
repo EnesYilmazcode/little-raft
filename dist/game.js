@@ -27,7 +27,7 @@ import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?bui
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint } from './hud.js?build=v3-survival-ae77fa84ac2b';
 import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
-import { keyDecision, createLookFilter } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
+import { keyDecision, createLookFilter, splitSteps } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -800,8 +800,15 @@ export function mount(transfer = null) {
     if (!running) { walking = false; return; }
     const fwd = input ? held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown') : 0, side = input ? held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft') : 0;
     const jumpFrom = physics.grounded && input && held('Space');
-    const ev = physics.update(dt, {forward:fwd, strafe:side, yaw, jump:input && held('Space'), sprint:input && held('ShiftLeft', 'ShiftRight'),
-      tiles:world.tiles, deckY:deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList});
+    // Real frame time in equal substeps (<= MAX_DT) so walking speed holds at low fps. Jump stays held on every
+    // substep: PlayerPhysics fires the impulse only on the press edge, i.e. the first substep, never again.
+    const {n, step} = splitSteps(dt), ev = {splashed:false};
+    for (let i = 0; i < n; i++) {
+      const e = physics.update(step, {forward:fwd, strafe:side, yaw, jump:input && held('Space'), sprint:input && held('ShiftLeft', 'ShiftRight'),
+        tiles:world.tiles, deckY:deckY(), waterY:ocean.getHeight(physics.x, physics.z), blocked:blockList});
+      if (e?.splashed) ev.splashed = true;
+    }
+    dt = n * step;
     const speed = Math.hypot(physics.vx, physics.vz);
     walking = physics.grounded && speed > .4; if (walking) walkPhase += dt * 9 * Math.min(1.6, speed / 2.6);
     if (ev?.splashed) sfx('splash');
@@ -942,11 +949,11 @@ export function mount(transfer = null) {
   }
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, swimming:physics.swimming});
   function frame() {
-    const now = performance.now(), dt = Math.min((now - last) / 1000, .05); last = now; elapsed += dt;
+    const now = performance.now(), realDt = (now - last) / 1000, dt = Math.min(realDt, .05); last = now; elapsed += dt;
     const dialog = uiBlocked();
     checkPeerStale(now);
     ocean.update(elapsed, camera);
-    updateRaft(dt); movePlayer(dt, running && !dialog);
+    updateRaft(dt); movePlayer(realDt, running && !dialog); // player substeps the real frame time
     updateAvatars(dt); updateCamera(dt);
     frameAim = running && !dialog ? currentAim() : null;
     pickTarget = pickupFrom(frameAim);

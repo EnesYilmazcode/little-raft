@@ -69,3 +69,55 @@ test('INPUT-2: game.js no longer clamps movementX and does not ask for unadjuste
   assert.match(gameSrc, /lookFilter\.filter\(e\.movementX, e\.movementY\)/);
   assert.doesNotMatch(gameSrc, /unadjustedMovement/);
 });
+
+// ---------------------------------------------------------------- INPUT-3 frame-rate independent movement
+
+const { PlayerPhysics, PLAYER_CONSTANTS: PC } = await import(new URL('player-physics.js', base));
+const raft = () => { const t = []; for (let x = -3; x <= 3; x++) for (let z = -3; z <= 3; z++) t.push([x, z]); return t; };
+// Mirrors movePlayer: each frame's real dt is split into equal substeps, the same input on each.
+function simulate(fps, seconds, input) {
+  const p = new PlayerPhysics({x:0, y:.2 + PC.EYE_OFFSET, z:0}), tiles = raft();
+  let apex = -Infinity, jumps = 0;
+  for (let f = 0; f < Math.round(fps * seconds); f++) {
+    const {n, step} = R.splitSteps(1 / fps);
+    for (let i = 0; i < n; i++) {
+      const wasGrounded = p.grounded || f + i === 0;
+      p.update(step, {yaw:0, tiles, deckY:.2, waterY:-.24, ...input(f)});
+      if (wasGrounded && !p.grounded && p.vy > 0) jumps++;
+      apex = Math.max(apex, p.y - PC.EYE_OFFSET - .2);
+    }
+  }
+  return {p, apex, jumps};
+}
+
+test('INPUT-3: splitSteps makes equal steps no longer than 0.05 s and caps long stalls', () => {
+  assert.deepEqual(R.splitSteps(1 / 60), {n:1, step:1 / 60});
+  assert.deepEqual(R.splitSteps(.05), {n:1, step:.05});
+  const s = R.splitSteps(.1); assert.equal(s.n, 2); assert.ok(Math.abs(s.step - .05) < 1e-12);
+  const t = R.splitSteps(1 / 3); assert.equal(t.n, 5); assert.ok(Math.abs(t.step * t.n - .25) < 1e-12);
+  assert.deepEqual(R.splitSteps(0), {n:0, step:0});
+  assert.deepEqual(R.splitSteps(NaN), {n:0, step:0});
+  assert.deepEqual(R.splitSteps(-1), {n:0, step:0});
+});
+
+test('INPUT-3: walking covers the same real distance at 10, 20, 60 and 144 fps', () => {
+  const d = [10, 20, 60, 144].map(fps => -simulate(fps, 1, () => ({forward:1})).p.z);
+  for (const x of d) assert.ok(Math.abs(x - d[2]) < .1, `walked ${d.map(v => v.toFixed(3))}`);
+  assert.ok(d[0] > 2.2, `10 fps walked ${d[0]}`);
+});
+
+test('INPUT-3: jump apex is the same at 30, 60, 144 and 240 fps', () => {
+  const ideal = PC.JUMP_IMPULSE ** 2 / (2 * PC.GRAVITY);
+  for (const fps of [10, 30, 60, 144, 240]) {
+    const {apex, jumps} = simulate(fps, .5, f => ({jump:f === 0}));
+    assert.equal(jumps, 1);
+    assert.ok(Math.abs(apex - ideal) < .005, `${fps} fps apex ${apex} vs ${ideal}`);
+  }
+});
+
+test('INPUT-3: holding jump through a slow multi-substep frame jumps once, on the first substep', () => {
+  const {jumps} = simulate(4, 2, () => ({jump:true})); // lands and keeps holding: no auto re-jump
+  assert.equal(jumps, 1);
+  assert.match(gameSrc, /splitSteps\(dt\)/);
+  assert.match(gameSrc, /movePlayer\(realDt,/);
+});
