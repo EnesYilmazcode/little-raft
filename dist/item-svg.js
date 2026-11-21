@@ -290,6 +290,40 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M35 18 L39 14.5 M35 30 L39 26.5" stroke="${O}" stroke-width="1.2" stroke-opacity=".5" stroke-linecap="round"/>
     <g fill="#fff2cc"><circle cx="8" cy="19" r=".9"/><circle cx="30" cy="19" r=".9"/><circle cx="8" cy="40" r=".9"/><circle cx="30" cy="40" r=".9"/></g>`,
 
+  // [power] wind turbine, battery, string lights, lamp post
+  turbine: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M22 44 L23 17 H25 L26 44 Z" fill="#b9c2c9"/>
+    <rect x="15" y="40" width="18" height="4" rx="1.5" fill="#8d979e"/>
+    <path d="M24 15 L21.5 3 C23 2 25 2 26.5 3 Z" fill="#f4f1ea"/>
+    <path d="M24 15 L35 21 C35 23 34 24.5 32.5 25 Z" fill="#f4f1ea"/>
+    <path d="M24 15 L13 21 C13 23 14 24.5 15.5 25 Z" fill="#f4f1ea"/>
+    <circle cx="24" cy="15" r="3.2" fill="#e07a5f"/></g>
+    <path d="M38 8 C41 7 43 9 45 8 M37 13 C40 12 42 14 44 13" fill="none" stroke="#9fd6d0" stroke-width="1.6" stroke-linecap="round"/>`, // [power]
+
+  battery: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="13" y="7" width="6" height="5" rx="1" fill="#d9483b"/>
+    <rect x="29" y="7" width="6" height="5" rx="1" fill="#2b2b2b"/>
+    <rect x="6" y="12" width="36" height="30" rx="3" fill="#4a5a6a"/>
+    <rect x="6" y="12" width="36" height="5" rx="2" fill="#36424e"/>
+    <path d="M26 20 L18 31 H24 L21 39 L30 27 H24 Z" fill="#f2c14e" stroke-width="1.6"/></g>
+    <path d="M10 22 V36" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".5"/>`, // [power]
+
+  stringlights: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M7 44 V8" fill="none" stroke="#906f48" stroke-width="3.2"/>
+    <path d="M41 44 V24" fill="none" stroke="#906f48" stroke-width="2.6"/>
+    <path d="M7 9 C16 26 30 28 41 24" fill="none" stroke="#2b2b2b" stroke-width="1.6"/>
+    <g stroke-width="1.4"><circle cx="13" cy="20" r="3" fill="#ffd27a"/><circle cx="20" cy="26" r="3" fill="#ffb35a"/><circle cx="28" cy="28.5" r="3" fill="#fff1c4"/><circle cx="35" cy="27.5" r="3" fill="#ffd27a"/></g></g>
+    <g fill="#ffe8b0" fill-opacity=".45"><circle cx="13" cy="20" r="5.5"/><circle cx="28" cy="28.5" r="5.5"/></g>`, // [power]
+
+  lamppost: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M22.5 44 V18 H25.5 V44 Z" fill="#5d6b78"/>
+    <rect x="16" y="41" width="16" height="4" rx="1.5" fill="#4c5864"/>
+    <path d="M25.5 30 C30 30 31 27 31 25" fill="none" stroke="#4c5864" stroke-width="1.8"/>
+    <rect x="17" y="9" width="14" height="10" rx="1" fill="#ffe2a8"/>
+    <path d="M14 9 L24 3 L34 9 Z" fill="#4c5864"/></g>
+    <circle cx="24" cy="14" r="2.6" fill="#fff6dc"/>
+    <path d="M10 15 H5 M38 15 H43 M12 22 L8 25 M36 22 L40 25" stroke="#ffd27a" stroke-width="1.6" stroke-linecap="round"/>`, // [power]
+
   // [bees] flower seed, flower box, beehive, honey, beeswax, candle, honey glazed fish
   flowerseed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <path d="M24 44 C15 44 11 37 13 31 C15 25 20 22 24 17 C28 22 33 25 35 31 C37 37 33 44 24 44 Z" fill="#c99560"/>
@@ -390,6 +424,42 @@ export const ITEM_ICONS = Object.freeze({
     <circle cx="27.5" cy="8.5" r="1.1" fill="${O}"/>
     <path d="M31 9.8 L34.5 10 L31 11.3 Z" fill="#f39a24" stroke="none"/>
     <path d="M32 31 L36 31 M37 31 L40 31" stroke="#8e6c3e" stroke-width="1.1" stroke-linecap="round"/>`,
+  // [display] display shelf with three little finds, trophy stand with a fish and a brass plaque
+  shelf: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="13" y="13" width="9" height="11" rx="1.5" fill="#9fd6d0"/>
+    <path d="M26 24 L30 13 L34 24 Z" fill="#f2b134"/>
+    <circle cx="39" cy="19.5" r="4.5" fill="#d98a6a"/>
+    <path d="M6 10 V44 M42 10 V44" fill="none" stroke="#906f48" stroke-width="4"/>
+    <path d="M6 10 V44 M42 10 V44" fill="none" stroke-width="1"/>
+    <rect x="4" y="24" width="40" height="5" rx="1" fill="#b4824b"/>
+    <rect x="4" y="38" width="40" height="5" rx="1" fill="#b4824b"/></g>
+    <path d="M8 26 H40" stroke="#e8c08a" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M15 15 V21" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-opacity=".8"/>`, // [display]
+
+  trophystand: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M24 17 V21" fill="none" stroke-width="2.4"/>
+    <path d="M9 11 C14 4 27 4 32 10 L39 5 V17 L32 12 C27 18 14 18 9 11 Z" fill="#54a6a4"/>
+    <rect x="12" y="21" width="24" height="5" rx="1" fill="#6e4f33"/>
+    <rect x="14" y="26" width="20" height="14" fill="#b4824b"/>
+    <rect x="11" y="40" width="26" height="5" rx="1" fill="#7d5c37"/>
+    <rect x="18" y="30" width="12" height="5" rx="1" fill="#c9a24a" stroke-width="1.4"/></g>
+    <circle cx="13" cy="10" r="1.2" fill="${O}"/>
+    <path d="M15 8 C18 6.5 21 6.5 24 7" fill="none" stroke="#c8f0ea" stroke-width="1.4" stroke-linecap="round"/>`, // [display]
+
+  // [fishtrap] woven basket with a crosshatch, a funnel mouth, a rope loop and a little fish tail at the mouth
+  fishtrap: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M24 3 C20 3 19 8 24 9 C29 8 28 3 24 3 Z" fill="none" stroke="#d8c39a" stroke-width="2.2"/>
+    <path d="M24 9 V14" fill="none" stroke="#d8c39a" stroke-width="2.2"/>
+    <path d="M9 17 C9 15 39 15 39 17 L36 40 C35 44 13 44 12 40 Z" fill="#b98a4e"/></g>
+    <g fill="none" stroke="#7a5530" stroke-width="1.3" stroke-linecap="round">
+      <path d="M12 22 L30 41 M11 30 L22 42 M17 17 L37 37 M25 17 L38 29 M33 17 L38.5 22"/>
+      <path d="M36 22 L18 41 M37 30 L26 42 M31 17 L11 37 M23 17 L10 29 M15 17 L9.5 22"/></g>
+    <path d="M10 22 H38 M11 30 H37" fill="none" stroke="#93683a" stroke-width="1.6"/>
+    <g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+      <ellipse cx="24" cy="17" rx="15" ry="4" fill="#93683a"/>
+      <ellipse cx="24" cy="17.4" rx="6" ry="1.9" fill="#3b2a1a" stroke-width="1.4"/>
+      <path d="M27 17 L33 11 L35 16 L31 18 Z" fill="#54a6a4" stroke-width="1.5"/></g>
+    <path d="M13 34 C13 37 14 39 16 40" fill="none" stroke="#fff2cc" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".8"/>`,
 
   seaweed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <path d="M16 44 C8 36 18 29 12 21 C8 15 11 9 14 4 C23 9 21 16 25 22 C29 30 22 36 24 44 Z" fill="#3f8f5a"/>
