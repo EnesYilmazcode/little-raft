@@ -3,8 +3,9 @@
 //        const g = createSmelterModel(THREE); g.position.set(x, .22, z);  // same origin rule as crafts.js
 // Local origin = centre of the 2x2 raft floor top surface; everything builds upward from y = 0 inside a
 // ~1.3 x 1.3 footprint. Meshes are merged per material (flat-shaded, vertex coloured, low poly).
-// Opaque materials are shared per THREE instance (module cache): disposing them is harmless because
-// three re-uploads a disposed material on next use. Each glow material is per instance so it can flicker.
+// Each model is built once per THREE instance; the create functions return clones that share its
+// geometries and opaque materials (userData.shared: the engine's disposeGeometry() skips them).
+// Each glow material is per instance so it can flicker on its own.
 //
 // Exports: createSmelterModel(T) (child 'glow' + group 'ingotTray' with a hidden child 'ingot'),
 //          createResearchTableModel(T), createGrillModel(T) (child 'glow' too),
@@ -26,6 +27,21 @@ function mats(T) {
   };
   MATS.set(T, m);
   return m;
+}
+const TEMPLATES = new WeakMap();
+function instance(T, type, build) {
+  let byType = TEMPLATES.get(T);
+  if (!byType) TEMPLATES.set(T, byType = new Map());
+  let tpl = byType.get(type);
+  if (!tpl) {
+    tpl = build(T);
+    tpl.traverse(o => { if (o.isMesh) { o.geometry.userData.shared = true; if (o.name !== 'glow') o.material.userData.shared = true; } });
+    byType.set(type, tpl);
+  }
+  const g = tpl.clone(true);
+  const glow = g.getObjectByName('glow');
+  if (glow) { glow.material = glowMaterial(T); g.userData.glow = glow; }
+  return g;
 }
 const glowMaterial = T => new T.MeshStandardMaterial({ color: 0x2a1810, emissive: 0xff6a1c, emissiveIntensity: 0, roughness: 1, flatShading: true });
 
@@ -113,7 +129,8 @@ function finish(T, g, type) {
 }
 
 // ---------------------------------------------------------------- SMELTER (~1.24 x 1.24, ~1.3 tall)
-export function createSmelterModel(T) {
+export function createSmelterModel(T) { return instance(T, 'smelter', buildSmelter); }
+function buildSmelter(T) {
   const M = mats(T), K = kit(T, 0x5e17e2);
   const g = new T.Group(); g.name = 'smelter';
   const W = [], C = [], S = [], GL = [], MT = [];
@@ -170,23 +187,19 @@ export function createSmelterModel(T) {
   GL.push(K.bake(new T.ShapeGeometry(glowShape, 4), 0, B, BZ + 0.56));
   for (const [x, s] of [[-0.06, 0.065], [0.06, 0.07]]) GL.push(K.bake(new T.IcosahedronGeometry(s, 0), x, B + HS + 0.02, BZ + 0.6, K.rnd(), K.rnd(), 0, 1, 0.6, 1));
 
-  K.add(g, W, M.wood, 'smelterPallet');
-  K.add(g, C, M.clay, 'smelterClay');
-  K.add(g, S, M.stone, 'smelterStone');
+  // output tray on the front-right of the pallet; 'ingotTray' origin sits on the tray floor.
+  // Its timber is baked into the one body mesh (pallet, clay, stone: all rough flat-shaded vertex colour).
+  const tray = new T.Group(); tray.name = 'ingotTray'; tray.position.set(0.46, B + 0.03, 0.43); tray.rotation.y = -0.35;
+  tray.updateMatrix();
+  W.push(K.plank(0.28, 0.02, 0.22, 0x7a5636, 0, -0.01, 0).applyMatrix4(tray.matrix));
+  for (const s of [-1, 1]) W.push(K.plank(0.3, 0.045, 0.025, 0x6a4a2e, 0, 0.012, s * 0.1).applyMatrix4(tray.matrix));
+  K.add(g, [...W, ...C, ...S], M.wood, 'smelterBody');
   const glow = K.add(g, GL, glowMaterial(T), 'glow', false);
   glow.receiveShadow = true;
-
-  // output tray on the front-right of the pallet; 'ingotTray' origin sits on the tray floor
-  const tray = new T.Group(); tray.name = 'ingotTray'; tray.position.set(0.46, B + 0.03, 0.43); tray.rotation.y = -0.35;
-  const TW = [K.plank(0.28, 0.02, 0.22, 0x7a5636, 0, -0.01, 0)];
-  for (const s of [-1, 1]) TW.push(K.plank(0.3, 0.045, 0.025, 0x6a4a2e, 0, 0.012, s * 0.1));
-  K.add(tray, TW, M.wood, 'ingotTrayWood');
   MT.push(K.solid(new T.CylinderGeometry(0.06, 0.085, 0.045, 4, 1), 0xd9dde0, 0, 0.0225, 0, 0, Math.PI / 4, 0, 1.5, 1, 0.8));
   const ingot = K.add(tray, MT, M.metal, 'ingot');
   ingot.visible = false;
   g.add(tray);
-
-  g.userData.glow = glow;
   return finish(T, g, 'smelter');
 }
 
@@ -205,7 +218,8 @@ export function setSmelterGlow(group, amount = 0, timeSec = 0) {
 }
 
 // ---------------------------------------------------------------- RESEARCH TABLE (~1.12 x 0.7, ~0.95 tall)
-export function createResearchTableModel(T) {
+export function createResearchTableModel(T) { return instance(T, 'researchTable', buildResearchTableModel); }
+function buildResearchTableModel(T) {
   const M = mats(T), K = kit(T, 0x7ab1e5);
   const g = new T.Group(); g.name = 'researchTable';
   const W = [], P = [], BR = [], GS = [], ST = [];
@@ -246,17 +260,16 @@ export function createResearchTableModel(T) {
   W.push(K.bake(K.paint(new T.CylinderGeometry(0.045, 0.04, 0.04, 6, 1), 0xb58a5a), 0.4, H + 0.145, 0.06));
   ST.push(K.pebble(0.03, 0x6fb0a0, 0.39, H + 0.03, 0.07, 0.9));
 
-  K.add(g, W, M.wood, 'tableWood');
-  K.add(g, P, M.paper, 'tablePaper');
-  K.add(g, BR, M.brass, 'tableBrass');
-  K.add(g, ST, M.stone, 'tableStones');
+  K.add(g, [...W, ...ST, ...P], M.paper, 'tableBody'); // wood, stones and paper in one double-sided rough mesh
+  K.add(g, BR, M.brass, 'tableBrass', false);
   const glass = K.add(g, GS, M.glass, 'tableGlass', false);
   glass.renderOrder = 1;
   return finish(T, g, 'researchTable');
 }
 
 // ---------------------------------------------------------------- GRILL (~0.8 x 0.8, ~0.55 tall)
-export function createGrillModel(T) {
+export function createGrillModel(T) { return instance(T, 'grill', buildGrill); }
+function buildGrill(T) {
   const M = mats(T), K = kit(T, 0x96111e);
   const g = new T.Group(); g.name = 'grill';
   const MT = [], S = [], GL = [], FS = [];
@@ -289,10 +302,8 @@ export function createGrillModel(T) {
   for (const s of [-1, 1]) FS.push(K.bake(K.paint(new T.SphereGeometry(0.014, 4, 3), 0x111111), 0.03 + ca * 0.16 + sa * s * 0.05, Y + 0.1, 0.02 - sa * 0.16 + s * 0.05 * ca));
 
   K.add(g, MT, M.metal, 'grillIron');
-  K.add(g, S, M.stone, 'grillStones');
-  K.add(g, FS, M.clay, 'grillFish');
+  K.add(g, [...S, ...FS], M.stone, 'grillStones'); // stones + fish
   const glow = K.add(g, GL, glowMaterial(T), 'glow', false);
   glow.receiveShadow = true;
-  g.userData.glow = glow;
   return finish(T, g, 'grill');
 }

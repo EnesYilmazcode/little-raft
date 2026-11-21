@@ -72,7 +72,7 @@ export function createHive(T) {
   const body = new T.Mesh(bake(T, parts), bodyMat(T, true)); body.name = 'hiveBody'; body.castShadow = true; body.receiveShadow = true;
   g.add(body);
   // honeycomb slabs
-  const combMat = new T.MeshStandardMaterial({ color: '#f2b134', emissive: '#7a4a00', emissiveIntensity: .25, roughness: .45, flatShading: true });
+  const combMat = new T.MeshStandardMaterial({ color: '#b8600c', roughness: .35, flatShading: true }); // deep amber: reads against the straw by day, no emissive needed
   const combGeo = new T.CylinderGeometry(.07, .07, .03, 6);
   const combs = [];
   COMB_X.forEach((x, i) => {
@@ -160,6 +160,7 @@ export function createCandle(T) {
   const glow = new T.Mesh(new T.SphereGeometry(.032, 10, 8).translate(0, .14, 0),
     new T.MeshStandardMaterial({ color: '#ffe8b0', emissive: '#ffd27a', emissiveIntensity: .5, transparent: true, opacity: .6, depthWrite: false }));
   glow.name = 'lanternGlow'; g.add(glow);
+  glow.userData.pool = { color: '#ffdcb0', gain: .55 }; // daynight: a candle's night pool is smaller and paler than a lantern's
   // daynight puts its night pool light (5 cd, decay 2) at this geometry's bounding-sphere centre. At the flame
   // (.14 m over the deck) it blows the floor out to white, so lift the centre to about lantern-foot height and
   // grow the radius so the sphere still encloses the glow (culling and raycasts stay correct).

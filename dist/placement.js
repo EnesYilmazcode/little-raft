@@ -146,7 +146,7 @@ export function createGhosts(T, scene, raft, {floor, craft}) {
       const meshes = [];
       g.traverse(o => { if (o.isMesh) meshes.push(o); });
       for (const o of meshes) {
-        for (const m of [].concat(o.material)) if (m !== m0) m.dispose();
+        for (const m of [].concat(o.material)) if (m !== m0 && !m.userData.shared) m.dispose(); // shared: still drawn on the raft
         o.material = m0; o.castShadow = false; o.receiveShadow = false; o.renderOrder = 6;
         const pre = new T.Mesh(o.geometry, depth); pre.renderOrder = 5; o.add(pre);
       }

@@ -18,5 +18,5 @@ export function castInput(cast, fishWait, source = 'click') {
 // The prompt shown while the line is out.
 export function castPrompt(cast, fishWait) {
   if (!cast?.fishing) return '';
-  return cast.t > fishWait ? 'A bite! Click to reel in' : 'Waiting for a bite… click to reel in';
+  return cast.t > fishWait ? 'A bite! Reeling in…' : 'Waiting for a bite… click to cancel';
 }

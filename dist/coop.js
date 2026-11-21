@@ -224,7 +224,7 @@ export function createCoop(ctx, saved = null) {
   ctx.canvas?.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); }, {signal:ac.signal});
   addEventListener('keydown', e => {
     const kind = EMOTE_KEYS[e.code];
-    if (!kind || e.repeat || ctx.blocked() || e.target?.matches?.('input, textarea, select')) return;
+    if (!kind || !peer || e.repeat || ctx.blocked() || e.target?.matches?.('input, textarea, select')) return; // emotes only with a crewmate aboard (X/Z alone did nothing useful)
     if (kind === 'point') ping();
     if (peer) event('emote', {e:kind});
     feed.push(kind === 'wave' ? 'You wave.' : 'You point.', 'emote');
