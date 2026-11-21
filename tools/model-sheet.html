@@ -1,0 +1,72 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Model sheet</title>
+<style>html,body{margin:0;background:#2c3b44;font:12px system-ui,sans-serif;color:#e8eef0}#lab div{position:absolute;padding:2px 5px;background:#0006;border-radius:3px}canvas{display:block}</style></head>
+<body><div id="lab" style="position:absolute;left:0;top:0"></div>
+<script type="module">
+// Contact sheet: ?set=new|old  &view=hand (first-person check)  &cell=200  &cols=8  &only=kind,kind  &lod=1  &cached=1
+import * as T from '../dist/vendor/three.module.js';
+const q = new URLSearchParams(location.search);
+const set = q.get('set') || 'new', cell = +(q.get('cell') || 200), cols = +(q.get('cols') || 8);
+let entries = [], M = null;
+const hand = q.get('view') === 'hand';
+if (set === 'old') {
+  const [{ createCraft }, { createDebris }, { createPlastic }, { createHammer }, { createHook }, { createFloor }, { createFishingTool }] = await Promise.all(
+    ['crafts', 'debris', 'plastic', 'hammer', 'hook', 'deck', 'fishing-tool'].map(n => import(`../dist/${n}.js`)));
+  const mats = new Map(), gm = c => mats.get(c) || (mats.set(c, new T.MeshStandardMaterial({ color: c, roughness: .8 })), mats.get(c));
+  for (const t of ['wood', 'leaf', 'scrap', 'barrel']) entries.push([t, () => createDebris(T, t, gm, { seed: 3 })]);
+  entries.push(['plastic', () => createPlastic(T)], ['hammer', () => createHammer(T)], ['hook', () => createHook(T)],
+    ['rod', () => createFishingTool(T)], ['foundation', () => createFloor(T, 0, gm)]);
+  for (const t of ['sail', 'palm', 'lantern', 'net', 'bench', 'crate']) entries.push([t, () => createCraft(T, t)]);
+} else {
+  M = await import('../dist/models.js');
+  const only = q.get('only');
+  const kinds = only ? only.split(',') : M.MODEL_KINDS;
+  const lod = +(q.get('lod') || 0), cached = q.get('cached') === '1';
+  entries = kinds.map(k => [k, () => cached ? M.getModel(k) : M.buildModel(k, { lod })]);
+}
+const rows = Math.ceil(entries.length / cols);
+const W = cols * cell, H = rows * cell;
+const r = new T.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+r.setPixelRatio(1); r.setSize(W, H); r.setScissorTest(true);
+r.toneMapping = T.ACESFilmicToneMapping; r.outputColorSpace = T.SRGBColorSpace;
+document.body.appendChild(r.domElement);
+const lab = document.getElementById('lab');
+const cam = new T.PerspectiveCamera(30, 1, .01, 100);
+const stats = [];
+entries.forEach(([name, make], i) => {
+  const scene = new T.Scene();
+  scene.background = new T.Color(i % 2 ? 0x8fb7c9 : 0x86afc2);
+  scene.add(new T.HemisphereLight(0xdff1ff, 0x5a4a38, 1.1));
+  const sun = new T.DirectionalLight(0xfff1dc, 2.2); sun.position.set(3, 5, 2.5); scene.add(sun);
+  let obj;
+  try { obj = make(); } catch (e) { console.error(name + ': ' + e.stack); return; }
+  if (hand) {
+    // first-person check: tool held at lower right, deck below, sea behind
+    scene.background = new T.Color(0x6fa9c4);
+    const deck = M.getModel('foundation'); deck.position.set(0, -1.65, -1); deck.rotation.y = 0.3; scene.add(deck);
+    const g = obj.userData.grip || [0, 0, 0];
+    const hold = new T.Group(); hold.add(obj); obj.position.set(-g[0], -g[1], -g[2]);
+    hold.position.set(0.34, -0.42, -0.62); hold.rotation.set(-0.35, 0.45, 0.28); scene.add(hold);
+    cam.fov = 70; cam.position.set(0, 0, 0); cam.lookAt(0, -0.05, -1); cam.updateProjectionMatrix();
+  } else {
+    scene.add(obj);
+    if (cell < 120 && obj.userData.iconRot) obj.rotation.set(...obj.userData.iconRot);
+  }
+  obj.updateMatrixWorld(true);
+  const box = new T.Box3().setFromObject(obj), sph = box.getBoundingSphere(new T.Sphere());
+  if (!hand) {
+    cam.fov = 30;
+    const d = sph.radius / Math.sin(T.MathUtils.degToRad(15)) * 1.02;
+    const dir = new T.Vector3(1, .75, 1.25).normalize();
+    cam.position.copy(sph.center).addScaledVector(dir, d); cam.lookAt(sph.center); cam.updateProjectionMatrix();
+  }
+  const x = (i % cols) * cell, y = Math.floor(i / cols) * cell;
+  r.setViewport(x, H - y - cell, cell, cell); r.setScissor(x, H - y - cell, cell, cell);
+  r.render(scene, cam);
+  let t = 0, m = 0;
+  obj.traverse(o => { if (o.isMesh) { m++; const g = o.geometry; t += (g.index ? g.index.count : g.attributes.position.count) / 3; } });
+  stats.push({ name, tris: Math.round(t), meshes: m, size: box.getSize(new T.Vector3()).toArray().map(v => +v.toFixed(2)) });
+  const el = document.createElement('div'); el.textContent = cell >= 120 ? `${name} ${Math.round(t)}t/${m}m` : name;
+  el.style.left = x + 3 + 'px'; el.style.top = y + 3 + 'px'; if (cell < 120) el.style.fontSize = '9px'; lab.appendChild(el);
+});
+window.sheetStats = stats; window.sheetDone = true;
+</script></body></html>
