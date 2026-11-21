@@ -1222,3 +1222,11 @@ No regressions. Intended differences:
 - Not changed: reviewer asked to centre the crosshair prompt; the gate requires no centred text, so it stays beside the crosshair.
 - Gate at fd3724d: 1402/1402, no page errors, hook-only spawn, Esc from bag keeps lock and no pause, perf 138 vs 141 ms/frame, 49 vs 51 draw calls. Merged PR #5 into main (c3a29df). PR #6 open.
 - Open nits: hookableItems/updateNotices allocate per frame (game.js hook update, updateNotices); tooltip on the detail icon covers the Requires rows.
+
+## 2026-11-21 · integrator B: PR #5 (round 6) merged
+- Reviews on PR #5: juicer hopper was a new shadow caster (fixed); floating junk (sea jars, tin cans) drew as separate meshes,
+  pushing draw calls +10-14% over main (now drawn through the instanced item batch; the parallel integrator landed the same fix).
+- Perf probe is now seeded (Math.random replaced by a fixed PRNG in an init script), so draw-call counts are repeatable (main: 53.0 on every run).
+- Gate at fd3724d: 1402/1402, no page errors, hook-only spawn, Esc OK, 135 vs 225 ms, 50.8 vs 53.0 calls. Merged as c3a29df.
+- Open, pre-existing: in the browser, Esc with the hammer build wheel open closes the wheel but leaves the cursor free (Chrome needs a click
+  to relock after a user exit). Fix idea: have the wheel release the lock itself, like the inventory does.
