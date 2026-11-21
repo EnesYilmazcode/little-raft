@@ -156,6 +156,20 @@ export function createCrops(ctx) {
   let scanLen = -1, scanFirst = null, scanRaft = null, scanDecor = null, scanDecorLen = -1;
   const camPos = T ? new T.Vector3() : null, dirV = T ? new T.Vector3() : null;
   const hit = { d: null, slot: 0 };
+  let lastAim = null, unprovide = null; // lastAim: game.js's reused per-frame aim object (from prompt())
+  const tip = { key: '', label: '', muted: false };
+  // Crosshair prompt (dist/prompts.js provider, sampled ~10x/s): plant / water / harvest, or the slot's growth.
+  function crosshairPrompt(c) {
+    const st = c?.state; if (!st || !st.running || st.pickup || st.swimming) return null;
+    const t = target(lastAim); if (!t) return null;
+    const { key, text } = describe(t);
+    tip.key = key === 'Click' ? 'LMB' : key ?? ''; tip.label = text; tip.muted = !key;
+    return tip;
+  }
+  function providePrompt() { // prompts.js may load after us: retried from update() until it exists
+    if (unprovide || typeof window === 'undefined') return;
+    try { const p = window.raftPrompts; if (p?.provide) unprovide = p.provide({ id: 'crops', priority: 1, prompt: crosshairPrompt }); } catch {}
+  }
   let kit = null; // shared plant geometries + materials (never disposed by rebuildRaft)
   const decor = () => (Array.isArray(ctx.world?.decor) ? ctx.world.decor : []);
   const heldKind = () => { const b = ctx.localBag?.(); const s = b?.slots?.[b.selectedIndex]; return s ? s.kind : null; };
@@ -185,7 +199,19 @@ export function createCrops(ctx) {
     hit.d = best; hit.slot = slotAt(best, px, pz);
     return hit;
   }
-  const slotOf = (t) => (Array.isArray(t.d.crop) ? cleanSlot(t.d.crop[t.slot]) : emptySlot());
+  const EMPTY = Object.freeze(emptySlot());
+  const slotOf = (t) => (Array.isArray(t.d.crop) && t.d.crop[t.slot] ? t.d.crop[t.slot] : EMPTY); // decor is cleaned on load and by every action
+  // Prompt text for the aimed slot, rebuilt only when what it shows changes (prompt() runs every frame).
+  const said = { d: null, slot: -1, c: '', pct: -1, wet: -1, held: null, key: null, text: '' };
+  function describe(t) {
+    const s = slotOf(t), held = heldKind(), pct = isCrop(s.c) ? Math.floor(progress(s) * 100) : -1, wet = s.w >= WATER_SECONDS / 2 ? 2 : s.w > 0 ? 1 : 0;
+    if (said.d !== t.d || said.slot !== t.slot || said.c !== s.c || said.pct !== pct || said.wet !== wet || said.held !== held) {
+      const [key, text] = slotPrompt(s, held);
+      said.d = t.d; said.slot = t.slot; said.c = s.c; said.pct = pct; said.wet = wet; said.held = held; said.key = key; said.text = text;
+      said.html = key ? `<kbd>${key}</kbd>${ctx.esc ? ctx.esc(text) : text}` : null;
+    }
+    return said;
+  }
 
   // What a left click with `kind` does at the aimed slot: an action, a notice, or null (not ours).
   function useFor(kind, aim) {
@@ -244,6 +270,7 @@ export function createCrops(ctx) {
     name: 'crops',
     update(dt) {
       if (T) paint();
+      if (!unprovide) providePrompt();
       if (!ctx.running || ctx.role === 'guest') return;
       clock += dt > 0 ? dt : 0;
       if (clock >= 1) {
@@ -257,10 +284,11 @@ export function createCrops(ctx) {
       if (u.a) ctx.action(u.a); else ctx.notice?.(u.notice);
       return true;
     },
+    // #contextPrompt (hidden under prompts.css; its plain-text lines would be fed as notices): actionable lines only.
     prompt(aim) {
+      lastAim = aim;
       const t = target(aim); if (!t) return null;
-      const [key, text] = slotPrompt(slotOf(t), heldKind());
-      return key ? `<kbd>${key}</kbd>${ctx.esc ? ctx.esc(text) : text}` : (ctx.esc ? ctx.esc(text) : text);
+      return describe(t).html;
     },
     interact(aim) {
       const t = target(aim); if (!t) return false;
@@ -301,7 +329,7 @@ export function createCrops(ctx) {
       act(op, x, z, slot, crop) { if (ctx.role === 'guest') return null; return applyCrop(ctx.world?.decor, ctx.localBag(), { kind: 'crops.' + op, x, z, slot, crop }); },
     },
     dispose() {
-      plots.length = 0;
+      plots.length = 0; try { unprovide?.(); } catch {} unprovide = null;
       if (kit) { for (const g of Object.values(kit.geos)) g.dispose(); kit.wetGeo.dispose(); kit.plantMat.dispose(); kit.wetMat.dispose(); kit = null; }
     },
   };

@@ -41,7 +41,7 @@ function parts(T) {
   return { list, add };
 }
 // Tiny deterministic jitter so the model is the same on every machine.
-const jit = (i, k = 1) => (Math.sin(i * 12.9898 + k * 78.233) * 43758.5453 % 1);
+const jit = (i, k = 1) => { const v = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return v - Math.floor(v); }; // 0..1
 
 export function createCropPlot(T) {
   const g = new T.Group(); g.name = 'craft_cropplot';
@@ -63,8 +63,8 @@ export function createCropPlot(T) {
     add(new T.TorusGeometry(.2, .028, 5, 14), '#4d3726', x, SOIL_Y, 0, Math.PI / 2);
   }
   for (let i = 0; i < 9; i++) {
-    const x = (jit(i) - .5) * (W - .3), z = (jit(i, 2) > 0 ? .21 : -.21) + jit(i, 3) * .03;
-    add(new T.DodecahedronGeometry(.03 + Math.abs(jit(i, 4)) * .02, 0), i % 2 ? '#4a3424' : '#2f2116', x, SOIL_Y + .005, z, jit(i, 5), jit(i, 6), 0);
+    const x = (jit(i) - .5) * (W - .3), z = (jit(i, 2) > .5 ? .21 : -.21) + (jit(i, 3) - .5) * .04;
+    add(new T.DodecahedronGeometry(.025 + jit(i, 4) * .015, 0), i % 2 ? '#4a3424' : '#2f2116', x, SOIL_Y, z, jit(i, 5) * 3, jit(i, 6) * 3, 0);
   }
   const body = new T.Mesh(bake(T, list), new T.MeshStandardMaterial({ vertexColors: true, roughness: .9, metalness: 0, flatShading: true }));
   body.name = 'cropPlotBody'; body.castShadow = false; body.receiveShadow = true;
@@ -97,7 +97,7 @@ function beet(T, ripe) {
     add(new T.CylinderGeometry(.03, .05, .05, 7), '#a8324a', 0, .085, 0);
   }
   for (let i = 0; i < n; i++) {
-    const a = i * Math.PI * 2 / n + jit(i) * .3, tilt = .35 + (i % 2) * .25, s = L * (.85 + Math.abs(jit(i, 2)) * .3);
+    const a = i * Math.PI * 2 / n + (jit(i) - .5) * .5, tilt = .35 + (i % 2) * .25, s = L * (.85 + jit(i, 2) * .3);
     stem(T, add, a, s * .55, tilt + .3, '#b23a55');
     const r = s * .55 * Math.sin(tilt + .3), h = s * .55 * Math.cos(tilt + .3);
     add(new T.IcosahedronGeometry(1, 0), i % 2 ? '#3f8f4a' : '#4fa356', Math.sin(a) * (r + s * .32 * Math.cos(tilt)), h + s * .32 * Math.sin(tilt) + (ripe ? .06 : 0), Math.cos(a) * (r + s * .32 * Math.cos(tilt)), -tilt, a, 0, s * .28, .012, s * .38, 'YXZ');
@@ -112,7 +112,7 @@ function potato(T, ripe) {
   }
   add(new T.CylinderGeometry(.012, .018, ripe ? .2 : .12, 5), '#4c8a3c', 0, ripe ? .1 : .06, 0);
   for (let i = 0; i < n; i++) { // two layers of rounded leaves: a bush, not a fan
-    const a = i * 2.4 + jit(i, 7) * .4, up = i % 3, y = (ripe ? .07 : .04) + up * (ripe ? .055 : .03), s = L * (.8 + Math.abs(jit(i, 8)) * .35);
+    const a = i * 2.4 + (jit(i, 7) - .5) * .6, up = i % 3, y = (ripe ? .07 : .04) + up * (ripe ? .055 : .03), s = L * (.8 + jit(i, 8) * .35);
     leaf(T, add, a, s, s * .42, .25 + up * .25, up === 2 ? '#64b052' : i % 2 ? '#4e9a46' : '#438a3e', y);
   }
   if (ripe) for (let i = 0; i < 4; i++) { const a = i * 1.7 + .3; add(new T.IcosahedronGeometry(.02, 0), i % 2 ? '#f3ecff' : '#d8c6f0', Math.sin(a) * .07, .24 + (i % 2) * .02, Math.cos(a) * .07); add(new T.IcosahedronGeometry(.008, 0), '#f2c94c', Math.sin(a) * .07, .255 + (i % 2) * .02, Math.cos(a) * .07); }

@@ -134,6 +134,7 @@ test('content module: host action checks reach, applies, emits; paint shows stag
   assert.equal(world.decor[0].crop[1].c, '');
   assert.ok(!mod.action({ kind: 'bees.harvest', x: 0, z: 0 }, 'host', bag));
   mod.update(0); assert.deepEqual(mod.debug.shown(), [['sprout', '', '']]);
+  assert.equal(mod.prompt(aim), null, 'status lines stay off #contextPrompt (prompts.js would feed them as notices)');
   assert.ok(mod.use('freshcup', aim)); mod.action(actions.pop(), 'host', bag);
   mod.update(0); assert.deepEqual(mod.debug.shown(), [['sprout+wet', '', '']]);
   mod.debug.fastForward(30); mod.update(0); assert.equal(mod.debug.shown()[0][0], 'beet1+wet');
