@@ -2,7 +2,7 @@
 // game.js owns the world/bags/network; this module only turns them into pieces. See docs/cloud/building-pieces.md.
 // Usage (game.js): const building = createBuilding(T, scene); building.sync(world) after world/tiles change;
 //   building.update(raft, aim, origin, active, bag, yaw) every frame; building.preStep/postStep around physics.update.
-import { BuildGrid, PIECES, PIECE_ORDER, LEVEL_H, cleanPieces } from './building-pieces.js?build=v3-survival-ae77fa84ac2b';
+import { BuildGrid, PIECES, PIECE_ORDER, LEVEL_H, STATEFUL, cleanPieces, toRec } from './building-pieces.js?build=v3-survival-ae77fa84ac2b';
 import { createPieceGeometry, createPieceMaterial } from './building-models.js?build=v3-survival-ae77fa84ac2b';
 import { createBuildMenu } from './build-menu.js?build=v3-survival-ae77fa84ac2b';
 import { Bag } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
@@ -10,12 +10,16 @@ import { Bag } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 export { cleanPieces };
 const FLOOR_Y = .2, REACH = 7, GHOST_OK = '#9dffc0', GHOST_BAD = '#ff8a73';
 const STORED = PIECE_ORDER.filter(id => PIECES[id].slot !== 'tile');
+const VARIANTS = ['hatchOpen', 'gateOpen'], KINDS = STORED.concat(VARIANTS); // open stateful pieces: own instanced mesh
+const meshKey = p => p.o ? p.t + 'Open' : p.t;
+const REACH_E = 2.5; // E toggles a hatch / gate within this reach
 
 export function createBuilding(T, scene) {
   const grid = new BuildGrid(), group = new T.Group(), material = createPieceMaterial(T);
   const geos = {}, meshes = {};
   group.name = 'buildingPieces'; scene.add(group);
   for (const id of STORED) geos[id] = createPieceGeometry(T, id);
+  for (const k of VARIANTS) geos[k] = createPieceGeometry(T, k.slice(0, -4), true);
 
   const ghostMat = new T.MeshBasicMaterial({color:GHOST_OK, transparent:true, opacity:.45, depthWrite:false});
   const ghost = new T.Mesh(geos.wall, ghostMat); ghost.visible = false; ghost.renderOrder = 2; group.add(ghost);
@@ -41,8 +45,8 @@ export function createBuilding(T, scene) {
   }
   function rebuild() {
     const counts = {};
-    for (const p of grid.list) counts[p.t] = (counts[p.t] || 0) + 1;
-    for (const id of STORED) {
+    for (const p of grid.list) { const k = meshKey(p); counts[k] = (counts[k] || 0) + 1; }
+    for (const id of KINDS) {
       const n = counts[id] || 0; let m = meshes[id];
       if (m && m.instanceMatrix.count < n) { group.remove(m); m.dispose(); m = null; }
       if (!m && n) {
@@ -51,8 +55,8 @@ export function createBuilding(T, scene) {
       }
       meshes[id] = m; if (m) m.count = 0;
     }
-    for (const p of grid.list) { const m = meshes[p.t]; place(dummy, p); dummy.updateMatrix(); m.setColorAt(m.count, tintOf?.(p) || WHITE); m.setMatrixAt(m.count++, dummy.matrix); }
-    for (const id of STORED) { const m = meshes[id]; if (m) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); } }
+    for (const p of grid.list) { const m = meshes[meshKey(p)]; place(dummy, p); dummy.updateMatrix(); m.setColorAt(m.count, tintOf?.(p) || WHITE); m.setMatrixAt(m.count++, dummy.matrix); }
+    for (const id of KINDS) { const m = meshes[id]; if (m) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); } }
     version = grid.version;
   }
 
@@ -101,14 +105,14 @@ export function createBuilding(T, scene) {
   // Paint (content hook): instance colours only; the shared material colour is never touched.
   function retint() {
     if (grid.version !== version) { rebuild(); return; }
-    for (const id of STORED) tintCount[id] = 0;
-    for (const p of grid.list) { const m = meshes[p.t]; if (m) m.setColorAt(tintCount[p.t]++, tintOf?.(p) || WHITE); }
-    for (const id of STORED) { const m = meshes[id]; if (m?.instanceColor) m.instanceColor.needsUpdate = true; }
+    for (const id of KINDS) tintCount[id] = 0;
+    for (const p of grid.list) { const k = meshKey(p), m = meshes[k]; if (m) m.setColorAt(tintCount[k]++, tintOf?.(p) || WHITE); }
+    for (const id of KINDS) { const m = meshes[id]; if (m?.instanceColor) m.instanceColor.needsUpdate = true; }
   }
   function setTint(fn) { tintOf = typeof fn === 'function' ? fn : null; retint(); }
   function preview(p, hex) { showGhost(p, tmp.set(hex)); }
   function showGhost(p, color) {
-    ghost.geometry = geos[p.t]; place(ghost, p); ghost.scale.setScalar(1.015); ghostMat.color.copy(color); ghost.visible = true;
+    ghost.geometry = geos[meshKey(p)] || geos[p.t]; place(ghost, p); ghost.scale.setScalar(1.015); ghostMat.color.copy(color); ghost.visible = true;
   }
 
   // Click with the hammer: returns an engine action or null (foundation stays with the engine's own flow).
@@ -139,9 +143,37 @@ export function createBuilding(T, scene) {
       grid.remove(found);
     }
     for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i];
-    world.pieces = lastPieces = grid.list.map(q => ({t:q.t, i:q.i, j:q.j, l:q.l, r:q.r}));
+    world.pieces = lastPieces = grid.list.map(toRec);
     rebuild();
     return {ok:true, text:a.kind === 'piece' ? def.name + ' built' : def.name + ' removed (materials back)'};
+  }
+
+  // ---------- E toggle (hatch / gate) ----------
+  // The nearest piece under the aim within REACH_E, if it is a stateful one (no toggling through a wall).
+  function target(camPos, aim, deckY) {
+    const d = aim?.dir; if (!d || !camPos || menu.isOpen || removing) return null;
+    const rec = grid.pick(camPos.x, camPos.y, camPos.z, d.x, d.y, d.z, deckY, REACH_E);
+    return rec && STATEFUL[rec.t] ? rec : null;
+  }
+  const PROMPTS = {hatch:['<kbd>E</kbd>Open hatch', '<kbd>E</kbd>Close hatch'], gate:['<kbd>E</kbd>Open gate', '<kbd>E</kbd>Close gate']};
+  const promptOf = r => (r && STATEFUL[r.t] ? PROMPTS[r.t][r.o ? 1 : 0] : null); // static markup, no user text
+  function prompt(camPos, aim, deckY) { return promptOf(target(camPos, aim, deckY)); }
+  function interact(camPos, aim, deckY) { const r = target(camPos, aim, deckY); return r ? {kind:'piecetoggle', t:r.t, i:r.i, j:r.j, l:r.l, r:r.r} : null; }
+  // Host-authoritative toggle. pose = the actor's body, bodies = everyone who could be in the way.
+  function toggle(a, world, pose, bodies, deckY) {
+    sync(world);
+    if (!a || typeof a.t !== 'string' || !STATEFUL[a.t] || ![a.i, a.j, a.l, a.r].every(Number.isInteger)) return {ok:false, text:''};
+    const rec = grid.find(a);
+    if (!rec || rec.t !== a.t) return {ok:false, text:''};
+    const s = PIECES[rec.t].slot, cy = deckY + rec.l * LEVEL_H;
+    const cx = s === 'edge' ? (rec.r ? rec.i * 2 - 1 : rec.i * 2) : rec.i * 2, cz = s === 'edge' ? (rec.r ? rec.j * 2 : rec.j * 2 - 1) : rec.j * 2;
+    const far = REACH_E + 1.5;
+    if (!pose || !(Math.hypot(pose.x - cx, pose.z - cz) <= far) || !(Math.abs(pose.y - cy) <= far)) return {ok:false, text:''};
+    if (rec.o === 1) for (const b of bodies || []) if (b && grid.occupied(rec, b.x, b.y, b.z, deckY)) return {ok:false, text:'Someone is in the way'};
+    grid.toggle(rec);
+    world.pieces = lastPieces = grid.list.map(toRec);
+    rebuild();
+    return {ok:true, text:(rec.t === 'hatch' ? 'Hatch ' : 'Gate ') + (rec.o ? 'opened' : 'closed')};
   }
   const costText = c => Object.entries(c).map(([k, n]) => n + ' ' + k).join(' + ');
 
@@ -160,11 +192,12 @@ export function createBuilding(T, scene) {
 
   function dispose() {
     blur.abort(); menu.dispose(); scene.remove(group);
-    for (const id of STORED) { meshes[id]?.dispose(); geos[id].dispose(); }
+    for (const id of KINDS) { meshes[id]?.dispose(); geos[id].dispose(); }
     ghostMat.dispose(); material.map?.dispose(); material.dispose();
   }
 
   return {grid, menu, group, sync, update, use, removeAction, apply, key, dispose, setTint, retint, preview, // setTint/retint/preview: content hook (paint)
+    target, prompt, promptOf, interact, toggle, climb:(...a) => grid.climb(...a),
     get removing() { return removing; }, get piece() { return piece(); }, get rotation() { return rot; },
-    preStep:(phys, deckY) => grid.preStep(phys, deckY), postStep:(phys, deckY) => grid.postStep(phys, deckY)};
+    preStep:(phys, deckY, c) => grid.preStep(phys, deckY, c), postStep:(phys, deckY) => grid.postStep(phys, deckY)};
 }

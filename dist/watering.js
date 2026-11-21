@@ -8,7 +8,7 @@ import { FUEL_VALUE } from './items.js?build=v3-survival-ae77fa84ac2b';
 
 export const PURIFY_SECONDS = 60, FUEL_SECONDS = 50, FUEL_CAP = 150, GROW_SECONDS = 90, STAGE_SECONDS = 45, MAX_TICK = 60;
 export const FILL_REACH = 6, USE_REACH = 3, HOST_SLACK = 2; // metres (horizontal)
-export const HARVEST = Object.freeze({leaf:2}), BONUS = Object.freeze({wood:1}), BONUS_CHANCE = .25;
+export const HARVEST = Object.freeze({leaf:2, coconut:1}) /* [juicer] */, BONUS = Object.freeze({wood:1}), BONUS_CHANCE = .25;
 export const WATER_ACTIONS = Object.freeze(['fillCup', 'loadPurifier', 'takeWater', 'waterPlant', 'harvestPlant', 'fuelPurifier']);
 /** Seconds of purifier fire one item gives (plank 50, palm leaf 25); 0 = not a fuel. */
 export const purifierFuel = (kind) => (typeof kind === 'string' && Object.prototype.hasOwnProperty.call(FUEL_VALUE, kind) ? Math.round(FUEL_VALUE[kind] * FUEL_SECONDS) : 0);
@@ -21,7 +21,7 @@ export const tileKey = (x, z) => x + ',' + z;
 const KEY_RE = /^-?\d+,-?\d+$/;
 const TEXT = Object.freeze({
   fillCup:'Scooped a cup of sea water', loadPurifier:'The purifier is bubbling away', takeWater:'+ 1 cup of fresh water',
-  water:'The planter drinks it up', harvest:'+ 2 palm leaf', harvestBonus:'+ 2 palm leaf · 1 wood',
+  water:'The planter drinks it up', harvest:'+ 2 palm leaf · 1 coconut', harvestBonus:'+ 2 palm leaf · 1 coconut · 1 wood', // [juicer]
   full:'Your bag is full', fuel:'The fire crackles', fuelfull:'The fire is full of fuel', nofuel:'That will not burn', nocup:'You need a cup', busy:'It is already purifying', notready:'Almost ready…',
   watered:'Already watered', ripe:'Harvest it first', notripe:'Still growing', notarget:'Nothing to use that on',
 });

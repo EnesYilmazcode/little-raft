@@ -7,8 +7,10 @@
 //   import { createDiving } from './diving.js?build=v3-survival-ae77fa84ac2b';
 //   init:   diving = createDiving({T, scene, camera, ocean, islands, getTiles:() => world.tiles, getDeckY:deckY,
 //             onGather:id => action({kind:'gather', id}), restore:savedDiveState,
-//             getVitals:() => vitals, onDrown:(hp, first) => hurtPlayer(hp, 'drown')});
+//             getVitals:() => vitals, onDrown:(hp, first) => hurtPlayer(hp, 'drown'),
+//             getMods:out => content?.diveMods?.(out)});
 //   onDrown gets whole-HP chunks (about 3 calls per second at DROWN_HP 3.5); `first` is true once per dive.
+//   getMods(out): fills a {swim, oxy, fog, gather} multiplier object (1 = neutral) each frame; clamped here (docs/specs/diving-gear.md).
 //   gather success (host): broadcast so EVERY client (host too) calls diving.markGathered(id).
 //   movePlayer: if (!diving?.move(dt, physics, {forward, strafe, yaw, pitch, up, down, fast, gather})) physics.update(...)
 //             (replacing `physics` mid-dive drops the dive automatically; diving.cancel() forces it.)
@@ -109,10 +111,11 @@ export class DiveBody {
     const inp = input && typeof input === 'object' ? input : {}, e = env && typeof env === 'object' ? env : {};
     const waterY = fin(e.waterY, -0.24), floorY = fin(e.floorY, -11), deckY = fin(e.deckY, 0.2);
     const tiles = Array.isArray(e.tiles) ? e.tiles : [];
+    const sm = clamp(fin(e.swimMul, 1), 0.5, 2), om = clamp(fin(e.oxyMul, 1), 0.5, 3);
     if (!(Number.isFinite(this.x) && Number.isFinite(this.y) && Number.isFinite(this.z))) { this.x = 0; this.z = 0; this.y = waterY - 1; }
     if (!(Number.isFinite(this.vx) && Number.isFinite(this.vy) && Number.isFinite(this.vz))) this.vx = this.vy = this.vz = 0;
 
-    const ox = stepOxygen(this.oxygen, dt, true, fin(e.airSeconds, DIVE.OXY_SECONDS));
+    const ox = stepOxygen(this.oxygen, dt, true, fin(e.airSeconds, DIVE.OXY_SECONDS) * om); // vitals-adjusted air x diving-gear multiplier
     this.oxygen = ox.oxygen;
     if (ox.empty) this.rising = true;
     this.grace = Math.max(0, this.grace - dt);
@@ -121,13 +124,13 @@ export class DiveBody {
     const len = Math.hypot(f, s); if (len > 1) { f /= len; s /= len; }
     const yaw = fin(inp.yaw, 0), pitch = this.rising ? 0 : fin(inp.pitch, 0);
     const sy = Math.sin(yaw), cy = Math.cos(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
-    const speed = inp.fast ? DIVE.FAST : DIVE.SPEED;
+    const speed = (inp.fast ? DIVE.FAST : DIVE.SPEED) * sm;
     let tx = (-sy * cp * f + cy * s) * speed, tz = (-cy * cp * f - sy * s) * speed, ty;
     if (this.rising) ty = DIVE.RISE_SPEED;
     else {
       ty = sp * f * speed + ((inp.up ? 1 : 0) - (inp.down ? 1 : 0)) * DIVE.VERTICAL + (inp.gather ? 0 : DIVE.BUOYANCY);
       const m = Math.hypot(tx, ty, tz);
-      if (m > DIVE.FAST) { const c = DIVE.FAST / m; tx *= c; ty *= c; tz *= c; }
+      if (m > DIVE.FAST * sm) { const c = DIVE.FAST * sm / m; tx *= c; ty *= c; tz *= c; }
     }
     // Under the raft and floating up (out of air, or idle against the underside): drift toward open water.
     const ceil = deckY - DIVE.RAFT_CLEAR;
@@ -169,7 +172,7 @@ export class DiveBody {
 const NAMES = { sand: 'Sand', clay: 'Clay', scrap: 'Scrap', metalore: 'Metal ore' };
 const token = () => `${Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) * 1000).toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-export function createDiving({ T, scene, camera, ocean, islands = [], getTiles = () => [], getDeckY = () => 0.2, onGather, restore, hideAbove = [], getVitals = null, onDrown = null } = {}) {
+export function createDiving({ T, scene, camera, ocean, islands = [], getTiles = () => [], getDeckY = () => 0.2, onGather, restore, hideAbove = [], getVitals = null, onDrown = null, getMods = null } = {}) {
   const mount = token();
   let seafloor = null, fx = null, ui = null;
   try {
@@ -196,11 +199,14 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
   let gather = 0, targetId = null, targetType = null, needRelease = false, labelId = null, label = '';
   let completed = false, needDownRelease = false; // completed: a gather finished since the last UI update
   const regrow = new Map(), pending = new Map(), listeners = new Set(), filters = new Map();
-  const env = { waterY: 0, floorY: 0, tiles: null, deckY: 0, airSeconds: DIVE.OXY_SECONDS };
+  const env = { waterY: 0, floorY: 0, tiles: null, deckY: 0, airSeconds: DIVE.OXY_SECONDS, swimMul: 1, oxyMul: 1 };
   let drownAcc = 0, drowned = false; // HP owed to drowning (paid out in whole HP), and whether this dive has drowned yet
-  const fxState = { underwater: false, depth: 0, time: 0, lowOxygen: false, breath01: 1 };
+  const fxState = { underwater: false, depth: 0, time: 0, lowOxygen: false, breath01: 1, fogMul: 1 };
   const uiState = { underwater: false, oxygen01: 1, gather01: 0, rising: false, lowOxygen: false, gatherLabel: '', completed: false };
   const detail = { underwater: false, depth: 0, mount };
+  const mods = { swim: 1, oxy: 1, fog: 1, gather: 1 };
+  function readMods() { mods.swim = mods.oxy = mods.fog = mods.gather = 1; if (getMods) { try { getMods(mods); } catch (e) { console.error('dive mods failed', e); } }
+    mods.swim = clamp(fin(mods.swim, 1), 0.5, 2); mods.oxy = clamp(fin(mods.oxy, 1), 0.5, 3); mods.fog = clamp(fin(mods.fog, 1), 0.5, 2); mods.gather = clamp(fin(mods.gather, 1), 0.25, 2); }
 
   function resetGather() {
     gather = 0; needRelease = false;
@@ -218,7 +224,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
       body.grace = DIVE.ENTRY_GRACE; owner = physics;
     }
     env.waterY = ocean.getHeight(body.x, body.z); env.floorY = seafloor.heightAt(body.x, body.z);
-    env.tiles = getTiles(); env.deckY = getDeckY();
+    env.tiles = getTiles(); env.deckY = getDeckY(); env.swimMul = mods.swim; env.oxyMul = mods.oxy;
     let vit = null; try { vit = getVitals?.() ?? null; } catch {}
     env.airSeconds = airSeconds(vit);
     const wasRising = body.rising;
@@ -275,7 +281,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
       try { seafloor.highlight?.(id); } catch {}
     }
     if (id === null || !lastInput.gather || needRelease) { gather = 0; return; }
-    gather += dt / (DIVE.GATHER_SLOW[targetType] ?? DIVE.GATHER_SECONDS);
+    gather += dt / ((DIVE.GATHER_SLOW[targetType] ?? DIVE.GATHER_SECONDS) * mods.gather);
     if (gather >= 1) {
       gather = 0; needRelease = true; pending.set(id, DIVE.PENDING);
       targetId = targetType = null; try { seafloor.highlight?.(null); } catch {}
@@ -300,6 +306,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
 
   function update(dt, time) {
     dt = Math.max(0, fin(dt, 0));
+    readMods();
     const p = camera.position, surf = ocean.getHeight(p.x, p.z);
     setUnderwater(p.y < surf - 0.05, Math.max(0, surf - p.y));
     if (!body) { oxygen = stepOxygen(oxygen, dt, false).oxygen; rising = false; }
@@ -307,7 +314,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
     tick(regrow, dt, unGather); tick(pending, dt, null);
     const lowOxygen = !!body && oxygen < 0.25;
     if (!failed.has('fx')) {
-      fxState.underwater = underwater; fxState.depth = depth; fxState.time = time; fxState.lowOxygen = lowOxygen; fxState.breath01 = oxygen;
+      fxState.underwater = underwater; fxState.depth = depth; fxState.time = time; fxState.lowOxygen = lowOxygen; fxState.breath01 = oxygen; fxState.fogMul = mods.fog;
       try { fx.update(dt, fxState); } catch (e) { killFx(e); }
     }
     // The ocean is opaque from above, so the floor only matters once the eye nears the surface: the margin covers the
@@ -344,7 +351,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
     capture() { return { oxygen, regrow: [...regrow] }; },
     get state() {
       return { diving: !!body, underwater, depth, oxygen, gather: clamp(gather, 0, 1),
-        gatherTarget: targetId ? { id: targetId, type: targetType } : null, rising };
+        gatherTarget: targetId ? { id: targetId, type: targetType } : null, rising, mods: { ...mods } };
     },
     seafloor,
     dispose() {

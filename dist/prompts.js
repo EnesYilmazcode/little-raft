@@ -43,6 +43,19 @@ export function isNotice(text, hasKbd) {
   // "Floor needs" doubles as game.js's hover prompt; the muted "Needs …" prompt already covers it.
   return !!t && !hasKbd && !/^(Hold click to reel|Waiting for your brother|Floor needs)/i.test(t);
 }
+// Converts a game.js/content-module prompt string ('<kbd>E</kbd>Label', escaped HTML) into prompt rows:
+// a leading <kbd> becomes the key ('Click' -> the LMB glyph); text without a key becomes a muted status line.
+const ENT = {amp:'&', lt:'<', gt:'>', quot:'"', '#39':"'", apos:"'", nbsp:' '};
+const unescapeHtml = s => s.replace(/&(amp|lt|gt|quot|#39|apos|nbsp);/g, (_, e) => ENT[e]);
+export function promptFromHtml(html) {
+  const src = String(html ?? ''); if (!src.trim()) return null;
+  const m = /^\s*<kbd>([^<]*)<\/kbd>/i.exec(src);
+  const label = unescapeHtml((m ? src.slice(m[0].length) : src).replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim();
+  if (!label) return null;
+  if (!m) return {label, muted:true};
+  let key = unescapeHtml(m[1]).trim(); if (/^(left\s*)?click$/i.test(key)) key = 'LMB'; else if (/^right\s*click$/i.test(key)) key = 'RMB';
+  return key ? {key, label} : {label, muted:true};
+}
 export function shouldPost(last, text, now) { return !(last && last.text === text && now - last.at < DUP_MS); }
 const have = (stock, k) => { const n = Number(stock?.[k]); return Number.isFinite(n) && n > 0 ? n : 0; };
 export const costText = cost => Object.entries(cost).map(([k, n]) => `${n} ${k}`).join(' · ');

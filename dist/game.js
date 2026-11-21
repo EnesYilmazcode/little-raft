@@ -49,7 +49,7 @@ import { attachProgression } from './progression-hooks.js?build=v3-survival-ae77
 import { attachSpearRepair } from './spear-repair-hooks.js?build=v3-survival-ae77fa84ac2b'; // [spear-repair]
 import { attachPaddle } from './paddle.js?build=v3-survival-ae77fa84ac2b'; // [paddle] LMB at the raft edge sends the 'paddle' sail op
 import { DEBRIS, debrisSpeed, stepDebrisBudget, spendDebris } from './debris-budget.js?build=v3-survival-ae77fa84ac2b'; // [debris-budget] flotsam follows raft motion
-import { newVitals, tickVitals, damage as damageVitals, consume as consumeVitals, cleanVitals, saveVitals, isEdible, eatLabel, FOOD, SPRINT_MULT, EAT_SECONDS, RESPAWN } from './vitals.js?build=v3-survival-ae77fa84ac2b'; // [vitals] hunger, thirst, health
+import { newVitals, tickVitals, damage as damageVitals, consume as consumeVitals, cleanVitals, saveVitals, isEdible, isDrink /* [juicer] */, eatLabel, FOOD, SPRINT_MULT, EAT_SECONDS, RESPAWN } from './vitals.js?build=v3-survival-ae77fa84ac2b'; // [vitals] hunger, thirst, health
 import { createVitalsUI } from './vitals-ui.js?build=v3-survival-ae77fa84ac2b'; // [vitals] HUD bars, damage vignette, faint overlay
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
@@ -457,7 +457,7 @@ export function mount(transfer = null) {
     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     hemi = new T.HemisphereLight('#bfe6ff', '#2f6f7a', 1.0); scene.add(hemi); // content hook: kept for day/night; blue sky fill from above, teal sea bounce from below
     sun = new T.DirectionalLight('#ffeccb', 3.0); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.0004; sun.shadow.normalBias = .03; sun.shadow.radius = 3; scene.add(sun, sun.target); // shadow box is fitted to the raft each frame
-    quality = createQuality({sun, preset:options.graphics, onChange:() => applyUserGraphics()}); applyUserGraphics(); // owns the level (shadow map size, sun.castShadow); applyUserGraphics sets the pixel ratio once, with the render scale
+    quality = createQuality({sun, preset:options.graphics, onChange:() => { applyUserGraphics(); warmBeforeShadowsOff(); }}); applyUserGraphics(); // owns the level (shadow map size, sun.castShadow); applyUserGraphics sets the pixel ratio once, with the render scale
     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#a6e9f2', fadeNear:28, fadeFar:190}); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
     if (ART.artEnabled()) ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T}); // art lane hook
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
@@ -478,7 +478,7 @@ export function mount(transfer = null) {
     for (let i = 0; i < 12; i++) { const j = rand(); if (i < isl.length) { const [a, d, r] = isl[i], rr = r * (.9 + j * .2), g = createIsland(T, {seed:i + 1, radius:rr}); g.position.set(Math.sin(a) * d, 0, Math.cos(a) * d); g.rotation.y = j * 6.28; islands.push({x:g.position.x, z:g.position.z, r:rr * .6}); aboveWater.push(g); scene.add(g); scenery.push([g, rr * .7]); } } // [sailing] islands drift past; diving: seafloor rises toward these (createIsland merges its own meshes)
     // Clouds are wisps in the sky dome (sky.js); the old puffy cloud groups are gone, so content's day/night gets clouds = [].
     aboveWater.push(sky.group); // diving lane hook: no sky dome underwater
-    setOwnedElsewhere(id => Object.prototype.hasOwnProperty.call(PROG_ITEMS, id)); // [progression-hook] items.js unlocks own the catalogue
+    setOwnedElsewhere(id => Object.prototype.hasOwnProperty.call(PROG_ITEMS, id) || id === 'shellwreath'); // [progression-hook] items.js unlocks own the catalogue + trader plan gates shellwreath
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
     try { vitalsUI = createVitalsUI(); } catch (e) { console.warn('vitals HUD unavailable', e); vitalsUI = null; } // [vitals]
     building = createBuilding(T, scene); // building-pieces lane hook
@@ -486,7 +486,7 @@ export function mount(transfer = null) {
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
       getPush:(s, o) => { content?.sailPush(s, o); }, steerTargets:() => content?.steerTargets() ?? null}); /* engine: motor push + wheel grab points */ for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
-    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id}), getVitals:() => vitals, onDrown:(n, first) => { if (hurtPlayer(n, 'drown') > 0 && first) notice('Out of air! You are drowning', 2000); }}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
+    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id}), getVitals:() => vitals, onDrown:(n, first) => { if (hurtPlayer(n, 'drown') > 0 && first) notice('Out of air! You are drowning', 2000); }, getMods:out => content?.diveMods?.(out)}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     initShark(); // shark lane
     netView = createNetView(T, {scene, raft, merge:mergeGeometries, itemModel:(type, id) => itemModel({type, id}), dispose:disposeGeometry}); // [nets]
     rebuildRaft(); fitShadow();
@@ -598,8 +598,13 @@ export function mount(transfer = null) {
     catch (e) { console.warn('shader warm-up failed', e); }
   }
   // Also build the no-shadow variant (adaptive floor / Shadows off), else that switch relinks every lit program mid-game.
-  // Runs once, a few seconds into play (after lazily built materials such as wildlife exist), so boot compiles only what the first frame draws.
-  let lateNoShadowWarm = true;
+  // Warm it only when the scaler is one step from turning shadows off, so fast machines never pay for the extra programs.
+  let noShadowWarmed = false;
+  function warmBeforeShadowsOff() {
+    if (noShadowWarmed || !quality) return;
+    const L = quality.levels, i = quality.level;
+    if (L[i]?.shadows && L[i + 1] && !L[i + 1].shadows) { noShadowWarmed = true; warmNoShadow(); }
+  }
   function warmNoShadow() {
     if (!sun?.castShadow || typeof renderer?.compileAsync !== 'function') return;
     sun.castShadow = false;
@@ -663,7 +668,7 @@ export function mount(transfer = null) {
   const itemMeshes = new Map();
   function syncItems() {
     if (!itemsGroup) return;
-    if (!itemsGroup.userData.batch) itemsGroup.add(itemsGroup.userData.batch = createItemBatch(T)); // one instanced draw per item variant
+    if (!itemsGroup.userData.batch) itemsGroup.add(itemsGroup.userData.batch = createItemBatch(T, {camera:() => camera})); // one instanced draw per item variant; culls and LODs against the view camera
     const live = new Set(world.items.map(x => x.token));
     for (const [token, m] of itemMeshes) if (!live.has(token)) { itemsGroup.remove(m); disposeGeometry(m); itemMeshes.delete(token); }
     for (const token of pending.keys()) if (!live.has(token)) pending.delete(token);
@@ -739,7 +744,7 @@ export function mount(transfer = null) {
   function updateEatTip(dialog) {
     const k = running && !dialog && fainted < 0 && !hook && !fishWait && !pickTarget && netAim < 0 && !waterAim?.click && !content?.claims(selectedKind(), frameAim) ? eatKind() : null; // [nets] E on a net wins; [crops] a click plants/waters instead
     if (!k) { eatTip = null; return; }
-    if (eating) { EATING_TIP.label = FOOD[k].food > 0 ? 'Eating…' : 'Drinking…'; eatTip = EATING_TIP; return; }
+    if (eating) { EATING_TIP.label = isDrink(k) ? 'Drinking…' : 'Eating…' /* [juicer] */; eatTip = EATING_TIP; return; }
     eatTip = eatTips.get(k); if (!eatTip) { eatTip = {key:'LMB', label:eatLabel(k)}; eatTips.set(k, eatTip); }
   }
   function promptTip() { // watering hints only when actionable or while holding a cup (never hides the hook's "Throw")
@@ -751,21 +756,23 @@ export function mount(transfer = null) {
   function updateContext(dialog) {
     let html = ''; contextHtml = null; // content hook: cleared each frame so a stale content prompt never lingers
     if (!contentPromptOff && window.raftPrompts) contentPromptOff = window.raftPrompts.provide({id:'content', priority:1, prompt:() => promptParts(contextHtml)}); // content hook: #contextPrompt is hidden by prompts.css
+    const bt = running && !dialog ? building?.target(camera.position, frameAim, deckY()) ?? null : null; // [buildpack] hatch / gate under the aim (once per frame)
     if (running && !dialog) {
       if (guestWaiting()) html = 'Waiting for your brother’s raft…';
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
       else if (canHarvestShark()) html = '<kbd>E</kbd>Harvest the shark'; // shark lane
       else if (hover?.blocked) html = esc(BLOCK_TEXT[hover.blocked]);
-      else if (eatTip) html = '<kbd>Click</kbd>' + esc(eatTip.label); // [vitals] kbd markup: a prompt, not a feed notice
+      else if (eatTip && !(contextHtml = content?.prompt(frameAim) ?? null)?.startsWith('<kbd>E</kbd>')) { contextHtml = null; html = '<kbd>Click</kbd>' + esc(eatTip.label); } // [vitals] kbd markup: a prompt, not a feed notice [juicer] an E content prompt wins
       else if (waterAim?.prompt) html = waterAim.prompt;
-      else if ((contextHtml = content?.prompt(frameAim) ?? null)) html = contextHtml; // content hook
+      else if (!contextHtml && bt && (contextHtml = building.promptOf(bt))) html = contextHtml; // [buildpack] Open / Close hatch or gate
+      else if (contextHtml ||(contextHtml = content?.prompt(frameAim) ?? null)) html = contextHtml; // content hook [juicer] reuse when set above
       else if (fc?.prompt) html = fc.prompt; // [fishing-cooking] trusted static markup from the lane module
       else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
       else if (hook?.fishing) html = esc(castPrompt(hook, fishWait));
       else if (hookFull && castOut()) html = 'Bag full: free a slot to reel it in';
       else if (castOut() && castOut().stage === 'floating') html = caughtList(castOut()).length ? 'Hold click to reel it in' : 'Hold click to reel';
     }
-    const usable = !!(running && !dialog && (pickTarget || waterAim?.click || waterAim?.e));
+    const usable = !!(running && !dialog && (pickTarget || waterAim?.click || waterAim?.e || bt)); // [buildpack] bt
     if (usable !== crossUsable) { crossUsable = usable; $('#crosshair')?.classList.toggle('usable', usable); } // dot grows over interactables
     if (html === contextCache) return; contextCache = html;
     const el = $('#contextPrompt'); if (!el) return; el.innerHTML = html; el.hidden = !html;
@@ -1043,7 +1050,7 @@ export function mount(transfer = null) {
   function effect(e) {
     if (!e || typeof e !== 'object') return;
     if (Array.isArray(e.tokens)) for (const t of e.tokens) if (typeof t === 'string') pending.delete(t);
-    if (e.kind === 'ate') { if (fainted < 0 && consumeVitals(vitals, e.item)) gulp(FOOD[e.item].food > 0); return; } // [vitals]
+    if (e.kind === 'ate') { if (fainted < 0 && consumeVitals(vitals, e.item)) gulp(!isDrink(e.item)); return; } // [vitals] [juicer] isDrink
     if (e.kind === 'shark') { sharkEffect(e); return; } // shark lane
     if (prog?.effect(e)) return; // [progression-hook]
     if (e.loot && typeof e.loot === 'object') { for (const [k, n] of Object.entries(e.loot)) if (ITEM_INFO[k] && isInt(n) && n > 0) pickupFeed.add(k, n); } // pickup feed rows with icons
@@ -1187,6 +1194,7 @@ export function mount(transfer = null) {
       award({kind:'build'});
       return;
     }
+    if (a.kind === 'piecetoggle' && building) { const r = building.toggle(a, world, actor === 'guest' ? other : physics, [physics, other], deckY()); if (r.ok) emit({kind:'build', text:r.text, sound:'place'}, 'all'); else if (r.text) emit({kind:'notice', text:r.text}, actor); return; } // [buildpack] host opens / closes a hatch or gate
     if ((a.kind === 'piece' || a.kind === 'unpiece') && building) { // building-pieces lane hook
       const r = building.apply(a, bag, world);
       if (r.ok) emit({kind:'build', text:r.text}, 'all'); else if (r.text) emit({kind:'notice', text:r.text}, actor);
@@ -1281,6 +1289,7 @@ export function mount(transfer = null) {
     if (netAim >= 0) { if (guestWaiting()) { notice('Wait for your raft to connect'); return; } const n = world.nets[netAim]; swing = .6; action({kind:'emptyNet', x:n.x, z:n.z, d:n.d}); return; } // [nets]
     if (canHarvestShark()) { if (guestWaiting()) { notice('Wait for your raft to connect'); return; } swing = .6; action({kind:'shark:loot'}); return; } // shark lane
     const w = wateringTarget(currentAim()); if (w?.e) { if (guestWaiting()) { notice('Wait for your raft to connect'); return; } action(w.e); swing = .6; return; } // same order as the updateContext prompt: water action beats content / grill
+    const pt = building?.interact(camera.position, currentAim(), deckY()); if (pt) { if (guestWaiting()) { notice('Wait for your raft to connect'); return; } swing = .4; action(pt); return; } // [buildpack] E opens / closes a hatch or gate
     if (content?.interact(currentAim())) return; // content hook: chest, research table, island nodes
     if (fc?.interact()) return; // [fishing-cooking] grill
     if (prog?.interact(currentAim())) return; // [progression-hook] smelter / grill / research table in reach
@@ -1418,6 +1427,7 @@ export function mount(transfer = null) {
   let swimStroke = 0; // swim stroke sound timer
   const held = (a, b) => !!(keys[a] || (b && keys[b]));
   const moveInput = {forward:0, strafe:0, yaw:0, jump:false, sprint:false, tiles:null, deckY:0, waterY:0, blocked:null}; // reused every frame
+  const climbIn = {forward:0, jump:false, yaw:0}; // [buildpack] ladder input, reused every frame
   const steps = {n:0, step:0}; // splitSteps fills this every frame (no allocation)
   function movePlayer(frameDt, input) {
     splitSteps(frameDt, .05, .25, steps); // real frame time in equal steps; a long stall must not teleport the player
@@ -1425,7 +1435,9 @@ export function mount(transfer = null) {
     const ci = controls?.movement(laneDt, running && input, physics); // controls lane: polls input, applies look, shapes movement
     if (!running) { walking = false; return; }
     const fwd = ci ? ci.forward : input ? held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown') : 0, side = ci ? ci.strafe : input ? held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft') : 0;
-    const surf = building ? building.preStep(physics, deckY()) : null; // building-pieces lane hook
+    if (building) { climbIn.forward = fwd; climbIn.jump = !!(ci ? ci.jump : input && held('Space')); climbIn.yaw = yaw; } // [buildpack] reused, no per-frame object
+    const climb = building && !diving?.state.diving ? building.climb(controls?.feel ?? null, physics, deckY(), climbIn, dt) : undefined; // [buildpack] ladder (MoveFeel)
+    const surf = building ? building.preStep(physics, deckY(), climb) : null; // building-pieces lane hook [buildpack] climb
     const dive = diving?.move(laneDt, physics, {forward:fwd, strafe:side, yaw, pitch, up:ci ? ci.jump : input && held('Space'), down:ci ? !!ci.crouch : input && held('KeyC'), fast:ci ? ci.sprint : input && held('ShiftLeft', 'ShiftRight'), gather:input && (controls ? controls.input.down('interact') : held('KeyE'))}); // diving lane hook
     if (dive && !diveWarmed) warmDive(); // first dive before the idle warm-up ran: compile now, before its first underwater frame
     // Real frame time in equal substeps (<= .05 s) so walking speed holds at low fps. Jump stays held on every
@@ -1682,7 +1694,6 @@ export function mount(transfer = null) {
     if (achList.length !== seenAch || achList !== seenAchList) { seenAch = achList.length; seenAchList = achList; const n = noteAchievements(lookState.unlocked, achList); if (n.length) { saveLook(lookState.look, lookState.unlocked); lookUI?.refresh(); notice('New hat for your Look: ' + n.map(id => LOOK_HATS.find(h => h.id === id)?.label ?? id).join(', ')); } } // [look] hat unlocks (host or guest view of the list)
     refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud(); updateNotices(dialog); warmKinds();
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
-    if (lateNoShadowWarm && running) { lateNoShadowWarm = false; later(warmNoShadow, 4000); }
     // Behind a blurred pause/settings backdrop the world only redraws at ~10 fps (the inventory has no blur).
     const veiled = dialog && !!document.querySelector('dialog[open]:not(#inventory)');
     if (veiled && now - lastDraw < 100) return;
@@ -2327,7 +2338,7 @@ export function mount(transfer = null) {
       onResume:guard(() => { play('close'); requestLock(); }),
       onPause:guard(pauseInput),
       getModel:modelOf, // 3D icons rendered from models.js
-      recipeGate:id => prog?.recipeGate(id), // [progression-hook]
+      recipeGate:id => prog?.recipeGate(id) ?? (id === 'shellwreath' && content?.craftLocked(id) ? {locked:true, reason:String(content.craftLocked(id))} : null), // [progression-hook] + content hook: trader plan greys the wreath row
     });
     prog.installUI(); // [progression-hook]
     logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock())});

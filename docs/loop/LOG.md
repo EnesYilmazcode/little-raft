@@ -589,6 +589,18 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
 - Fixed after the merges: honey/wax/flower-seed sources, context prompt moved beside the crosshair, held-item and sprite-list conflicts with the beehive/instrument lanes.
 - Perf probe now compares against the current main (144c94a): 216 vs 322 ms, 96 vs 152 draw calls.
 - PR #2 merged into main (3031d67). Review fixes: inventory width at 900px, recipe tracker overlap, Pin button contrast. Reviewer low-priority notes left open: per-frame allocations in rain.js rainTarget and the physics substep input, sky.dispose() missing on hot swap, passive wheel listener.
+
+## 2026-11-21 · loop-features-202611210722 (features, round 3)
+Base: origin/claude/raft-master (6ab9b24, already holding round 1) + round 2 (loop-features-202611210534) merged in (re-based 3-way merge; kiln metal now uses master's `metalingot`/`glass`/`brick`; decor-pack rotation kept via `userData.ownRot`). raft-integration (newer timestamp) was skipped as base: it is a divergent line 558 commits behind master without the lanes.
+Avoided features already taken by other loop-features runs (paint, sleep, motor/wheel, beehive, rain barrel, instruments, treasure, map table, customise).
+- **Diving gear** (`divegear`) — Puff-Feather Fins (swim ×1.3), Breath Jug (45→75 s air), Seaglass Goggles (fog ×1.53, lighter vignette, lens frame overlay), Tide Scraper (gather ×0.6); works while in the bag. New shared registry hook `content.diveMods(out)` → diving.js `getMods`; underwater-fx `fogMul`/`uVig`.
+- **Cooking pot & meals** (`cookpot`, last in FEATURES) — clay/stone/scrap pot, Driftwood Bowls, 6 meals from fish/seaweed/eggs/seeds/fresh water giving one timed per-player buff (swim, walk/jump, breath, reel, night vision, all-round). MOVE_MUL (player-physics) and HOOK_MUL (hook-physics) multipliers; buffs `{host, guest}` host-owned, applied locally.
+- **Pim's Barge** (`trader`) — visiting trade barge (first at 4 min, then every 10–14 min) docking at the bow; Bright Shell currency, 6 seeded offers per visit, Shell Wreath plan (plan-gated recipe) and rare Glass Float decor; trade dialog.
+Fleet: 1 merge agent, 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (14 agents).
+Review/QA fixes: diveMods per-frame allocation; rain hidden underwater; night-vision floor restored after buff/without daynight; guest wore-off toast; stale net flag after leaving; wreath craft row locked until plan; trade dialog per-frame string; Tinker's Desk heading wrap in Tools tab; goggles lenses on portrait phones; "Move closer to Pim" wording.
+Checks: npm test 609/609; shoot2.py errors []; coop2 loopback: only base failures (3 join feed, 6 remote hook); guest buff isolation and guest trade verified over loopback.
+Harness note: master's title menu hides #solo/#welcomeCrew, so shoot.py and tests/coop-e2e.mjs time out as written; patched copies click via JS.
+Known limits: barge has no collision (you can swim through it); held meal steals E from grill/stations (prompt says Eat); leftover guest buff can pass to the next guest until reload; journal chip overlaps hotbar slot 1 on phones (master); pale seabed fade band (pre-existing).
 ## 2026-11-21 · integrator C, round 2
 - Merged into raft-master: content-islands, fishing-cooking, building-pieces, content (+wildlife, storage, daynight), sailing,
   onboarding (tracker and left-aligned title menu now loaded from index.html), loop-features-0451 (logbook, signal caches,
@@ -624,3 +636,129 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
 - Open nits: "Discover at a Tinker's Desk" ::before header shows above the detail card when locked rows are scrolled out of view;
   co-op HELD lacks metalhook/sharkmeat/brush/decor kinds; content.js EXT_MAX drops all world.ext at once when exceeded;
   per-frame stroke closure in hands.update; adaptive quality starts later after New game (check for an extra reset on that path).
+
+## Perf round 3, 2026-11-21 (branch `claude/loop-perf-202611210648`, base `origin/claude/raft-master` 8cfdbcd)
+
+Fleet: 6 profilers (draw calls, allocations, DOM, startup/contexts, heap/GL leaks, GPU pipeline), 11 optimizers,
+1 regression checker (read every shoot.py pair plus close-ups of the anchor, gull, deck shadows, locked recipes and dusk/night), 1 measurer.
+Files owned by the unmerged `loop-perf-202611210548` branch (ocean, debris, plastic, deck, crafts, hands, bake, item-icons rewrite)
+were left alone. Two of the `loop-perf-202611210540` commits applied cleanly and were cherry-picked (input bindings, controls tabs).
+
+Numbers. The perf gate runs with quality pinned (`?pinQuality`, new default) so builds compare at the same tier, alternating B/A/B/A,
+SwiftShader 640x360, load average 6-17. Means of 2 runs:
+
+| area | metric | before | after | change |
+|---|---|---|---|---|
+| gate | draw calls mean / p95 | 152.3 / 161 | 142.1 / 152 | -6.7% / -5.6% |
+| gate | shadow-pass draws mean | 10.0 | 7.1 | -29% |
+| gate | triangles mean | 113.5k | 118.0k | +3.9% (random debris mix + fitted shadow box; not a model change) |
+| gate | DOM growth (elements) | 40 / 27 | -4 / 2 | about -100% |
+| gate | script ms/frame | 3.5 | 3.0 | -14% (noisy) |
+| gate | hitches | 0 | 0 | 0 |
+| gate | result (new accounting) | pass | pass | — |
+| alloc | KB/frame idle / walk / hook / inventory | 126 / 91 / 103 / 85 | 111 / 72 / 73 / 67 | -12% / -20% / -30% / -21% |
+| alloc | timer KB/s walk / hook / inventory | 50 / 29 / 54 | 29 / 22 / 39 | -41% / -23% / -28% |
+| startup | nav → raftDebug ready (median of 6) | 597 ms | 528 ms | -11.5% |
+| startup | mount end | 1234 ms | 1070 ms | -13.3% |
+| startup | JS requests / decoded KB | 108 / 2764 | 103 / 2725 | -4.6% / -1.4% |
+| startup | WebGL contexts at title | 2 | 1 | -50% |
+| startup | solo createCoop | 328 ms | 4 ms | -99% |
+| shaders | programs at spawn | 38 | 35 | -8% |
+| shaders | shadows-off switch relinks | 9 (≈1 s frame on SwiftShader) | 0 | -100% |
+| first key | brown-noise build | 125 ms, 4.6 MB garbage | 34 ms, 2.3 MB | -73% / -50% |
+
+What landed:
+- Rendering:
+  - anchor post, crank and arm merged; drum and coil no longer cast shadows
+  - grill smoke hidden while no puff is alive
+  - gull body 424 → 164 triangles
+  - shadow camera fitted to the raft at init
+- Allocation:
+  - input bindings read in place (cherry-picked)
+  - wildlife constants cached in typed arrays (output bit-identical over 36k frames)
+  - daynight sky, palette and sun refreshed at 10 Hz of game clock
+  - game.js reuses scratch objects for held tokens, hook params, rope points and signal options; forced camera matrix update dropped
+  - coop-fx returns early when no ping is alive
+  - `raftDebug.hud` light view for the prompts and onboarding polls
+- Startup:
+  - item icons warmed after gameplay starts; icon renderer kept 60 s so it isn't re-created
+  - co-op remote avatar built on first peer hello
+  - diving shaders warmed at idle
+  - every module import carries the build stamp: 5 modules no longer load twice, and the split module state bug is gone (new test)
+  - shorter crossfaded noise loop
+- Adaptive quality:
+  - frames over 250 ms are clamped instead of ignored, so very slow machines now step down
+  - stops stepping up after 3 reverts at a level
+  - pixel ratio set once per change
+  - no-shadow shaders warmed only when the scaler is one step from shadows off, so fast machines keep 35 programs
+- DOM:
+  - craft-list lock badge and research hint drawn with CSS pseudo-elements
+  - onboarding skips unchanged writes and places Notes once per bag open
+- Perf gate:
+  - starts from the visible title button
+  - heap late half budgeted on JS objects only (V8 compiled code excluded)
+  - GL objects counted per context, freed on context loss
+  - context budget is now peak simultaneous contexts
+  - quality pinned by default
+
+Regression check: PASS (no page errors, same console warnings; only expected differences: drum shadow gone, gull head slightly
+more faceted). Rust/WASM: no; no JS function is over 1 ms/frame (see `docs/loop/rust-wasm.md`).
+
+Left for later:
+- render icons with the main renderer, which needs the item-icons rewrite branch
+- bake each scenery island into one mesh (on the 0548 branch)
+- `tests/coop-e2e.mjs` clicks the hidden `#welcomeCrew` and no longer runs
+- slow bounded GL buffer creep (+52 buffers over minutes 2-8 of play)
+- "Discover at a Tinker's Desk" heading squeezed to 3 px (pre-existing UI bug)
+- `ocean.sampleAt` to remove double-argument boxing in `updateItems`
+## 2026-11-21 · loop-features-202611210648 (features)
+Base: origin/claude/raft-master (8cfdbcd). Branch: claude/loop-features-202611210648.
+
+Features (research in docs/features, specs in docs/specs):
+- **Rain Barrel + Sprinkler**: the barrel fills during rain (1 fresh cup per 30 s, with a slow dew trickle as a fallback), and E fills a cup at it. The sprinkler waters one dry, unripe palm per second in the 8 tiles around it, from its own tank or from a barrel beside it. State is in `world.collectors` / `world.sprinklers`, which old saves load as {}. New `get rain()` in daynight. Files: dist/rain.js, rain-model.js.
+- **Instruments**: three held instruments, Tide Drum, Reed Pipes and Bell Bars. LMB or RT plays; camera pitch picks one of 8 D-pentatonic notes. New `audio.note()` on the effects bus (50 ms gap, 10-voice cap). Co-op sends a transient `inst` message with validation, rate limits and distance falloff; HELD enum appended. Files: dist/instruments.js, instrument-models.js.
+- **Beehive + Flower Box**: honey and beeswax for a Beeswax Candle (night glow) and Honey Glazed Fish. Combs fill from flower boxes within 2 tiles, up to 3 combs. Flower seed comes from island bushes and treasure barrels. State in `world.ext.bees`, with an OLD_HOST guard. Files: dist/bees.js, bees-model.js.
+
+Fleet: 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA, 1 QA fixer (14 agents).
+Review fixes:
+- The candle's night light blew the deck out.
+- Hidden sprinkler spray stole the aim; pip materials leaked on raft rebuild.
+- The instrument prompt hid the pickup and swim prompts; the rate limit ran before validation; note sprites are now pooled.
+QA found that every content-module and watering prompt (round 1 purifier, storage, grill, plus this round's) went into the CSS-hidden `#contextPrompt` and leaked status lines into the notice feed. They now go through `raftPrompts.provide` via `promptFromHtml`.
+Checks: `npm test` 568/568 (was 533); shoot.py `errors: []`.
+Known limits: live two-peer co-op not run (co-op reviewed by code and unit tests). Mixed-version co-op unsupported (older builds drop the new decor and reset bags holding new kinds). Removing a barrel, sprinkler or hive with the hammer discards its contents. Fishing labels over 48 characters get cut off.
+Next ideas: hammer pickup that refunds contents, a placeable music stand, flower variety, sprinkler range ring while aiming.
+
+## claude/loop-visuals-202611210648 (visuals, round 2)
+Base: origin/claude/raft-master (d56c3ef). Fleet: critic, 6 builders (sky, water, materials, hands-and-items, UI, models), art judge, perf checker (10 agents).
+- Accepted (judge: all 6 clearly better):
+  - sky.js dome wired in and driven by a new 9th daynight palette column (blue zenith, pale cyan horizon, white wispy clouds); mesh clouds hidden.
+  - ocean shader: saturated blue, crisp horizon with a pale far band, sharp glints, foam only near the raft.
+  - deck: weathered grey-tan per-board tones, dark gap underlay, worn wood texture; deck meshes 7 -> 5.
+  - held hook rebuilt as a stick with a white bottle grip and orange plastic claws; fingers wrap the grip.
+  - warm wood-and-parchment HUD, inventory, pause menu and quest card.
+  - scenery islands: sand shelf, rocks, lumpy canopy, leaning palms (same draw calls).
+- Judge fixes: solid slot numbers, outlined slot icons, warmer sand and boards.
+- Perf: first A/B FAILED (deck +78%, horizon +36%). Cause: the plank texture's bump map and 4x aniso after the new board UVs, plus the sky's second fbm. Fixed (no bump, 2x aniso, one-octave detail).
+- Re-measured ABAB with the seeded probe:
+  - horizon 236 -> 232 ms
+  - deck 433 -> 410 ms
+  - draw calls 154 -> 140
+  - PASS
+- npm test 532/532.
+- Next:
+  - hotbar/inventory hook icon still shows the old steel gaff; icons need painted look with dark outlines
+  - square foundation tiles instead of long planks
+  - contact foam ring around the raft, more cyan near water
+  - bigger islands with cliffs
+  - coop-fx.js remote hook still steel
+  - thumb blob on the hook grip
+  - faint banding in the pause panel
+- Integrator merge into raft-master: only the orange-claw hook (hook.js) was taken; sky, daynight, ocean, deck, wood, islands, hands and HUD were stale parallel copies of work already on raft-master, so raft-master kept its versions (sky stays driven by daynight via sky.follow).
+
+## 2026-11-21 · integrator round 5 (integrator A)
+- Merged into raft-master: fleet-tech procedural-models/foliage/audio/perf/water/icons, loop-perf-0708, loop-features-0648, raft-tech, raft-content, raft-tests, lane-models, loop-perf-0648 (daynight refresh at 10 Hz, late no-shadow warm, idle dive warm), loop-perf-0720 (ghost hold after place, Shift+R 15° steps; Alt+R now turns backwards), loop-features-0703, loop-ux-0603/0648 remainders (bee item sources, title save line), loop-features-0831 (juicer, gull, building pack; restored after the earlier revert once the branch was finished).
+- Skipped: lane-placement (old placement model, superseded), raft-reference (third-party reference frames, not game code).
+- PR #2 review (2 reviewers, comments on the PR). Fixed: items.js still had an 8-slot hotbar, so slots 9/0 reset on load and for co-op guests; red off-deck ghost said "Place"; slot 9/0 onboarding hint; pickup feed covered the vitals panel; vitals panel overlapped the 10-slot hotbar below 1100px; resume hint forced next to the crosshair by an !important rule; sky noise texture leaked on hot swap.
+- Gate at dbf2ca9: 983/983, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text. Perf vs main (pinned, median of 3, interleaved): 185/191 vs 195/192 ms, 49-52 vs 51-55 draw calls.
+- Merged PR #4 into main (912d941).

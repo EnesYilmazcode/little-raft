@@ -476,6 +476,6 @@ test('setOwnedElsewhere: recipes owned by the progression catalogue are never lo
     assert.ok(locked.length > 0);
     for (const id of locked) assert.ok(!ITEMS[id], `${id} is a catalogue recipe`);
     assert.equal(SR.isLearned(st, 'sail'), true);
-    assert.deepEqual(SR.learnedFrom(['wood', 'rope', 'leaf']), ['bed', 'brush', 'fern', 'hammock', 'pennant', 'rug', 'sign', 'wheel']); // content recipes (sleep, paint, engine, decor pack) are the table's own
+    assert.deepEqual(SR.learnedFrom(['wood', 'rope', 'leaf']), ['bed', 'bowl', 'brush', 'fern', 'hammock', 'pennant', 'rug', 'sign', 'wheel']); // content recipes (sleep, paint, engine, decor pack, cookpot bowl) are the table's own
   } finally { SR.setOwnedElsewhere(id => !TABLE_TREE.has(id)); }
 });

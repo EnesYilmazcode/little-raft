@@ -166,7 +166,8 @@ void main() {
     float m = mix(mix(texture2D(uRaftMask, i0).r, texture2D(uRaftMask, i0 + vec2(k, 0.0)).r, fr.x),
                   mix(texture2D(uRaftMask, i0 + vec2(0.0, k)).r, texture2D(uRaftMask, i0 + vec2(k)).r, fr.x), fr.y);
     float edge = m * (0.85 + 0.15 * sin(uTime * 1.7 + wp.x * 2.0 + wp.y * 1.3));
-    for (int i = 0; i < ${MAX_FOAM}; i++) {
+    // Foam points live within FOAM_FAR (15 m) of the camera, rings are under 1 m: skip the loop beyond.
+    if (dist < ${(FOAM_FAR + 2).toFixed(1)}) for (int i = 0; i < ${MAX_FOAM}; i++) {
       vec4 f = uFoamPts[i];
       if (f.z <= 0.0) break;  // live points are packed first
       vec2 dv = wp - f.xy;
@@ -187,11 +188,55 @@ void main() {
 }
 `;
 
+// Symmetric axis coordinates: `step` spacing for |v| <= inner, then spacings growing by `grow`
+// (rescaled so the last line lands exactly on `half`).
+function lodAxis(half, inner, step, grow) {
+  const n0 = Math.round(inner / step), rest = half - n0 * step;
+  const outer = [];
+  for (let s = step * grow, sum = 0; ; s *= grow) {
+    if (sum + s / 2 > rest) break; // stop at the count whose total is nearest `rest`
+    outer.push(s); sum += s;
+  }
+  const k = rest / outer.reduce((a, b) => a + b, 0);
+  const pos = [];
+  for (let i = 0; i <= n0; i++) pos.push(i * step);
+  let v = n0 * step;
+  for (const s of outer) { v += s * k; pos.push(v); }
+  pos[pos.length - 1] = half;
+  return [...pos.slice(1).reverse().map((x) => -x), ...pos];
+}
+// Flat XZ grid (normal +y, upward-facing) from one coordinate list used for both axes.
+// Same vertex/uv layout as a PlaneGeometry rotated -90 degrees about X.
+function gridGeometry(T, axis, size) {
+  const n = axis.length, half = size / 2;
+  const pos = new Float32Array(n * n * 3), nor = new Float32Array(n * n * 3), uv = new Float32Array(n * n * 2);
+  for (let j = 0, v = 0; j < n; j++) for (let i = 0; i < n; i++, v++) {
+    pos[v * 3] = axis[i]; pos[v * 3 + 2] = axis[j]; nor[v * 3 + 1] = 1;
+    uv[v * 2] = (axis[i] + half) / size; uv[v * 2 + 1] = (half - axis[j]) / size;
+  }
+  const idx = [];
+  for (let j = 0; j < n - 1; j++) for (let i = 0; i < n - 1; i++) {
+    const a = j * n + i, b = a + n, c = b + 1, d = a + 1;
+    idx.push(a, b, d, b, c, d);
+  }
+  const g = new T.BufferGeometry();
+  g.setIndex(idx);
+  g.setAttribute('position', new T.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new T.BufferAttribute(nor, 3));
+  g.setAttribute('uv', new T.BufferAttribute(uv, 2));
+  return g;
+}
+
 export function createOcean(T, options = {}) {
   const size = options.size ?? 280;
-  const segments = options.segments ?? 100;
-  const geometry = new T.PlaneGeometry(size, size, segments, segments);
-  geometry.rotateX(-Math.PI / 2);
+  // Uniform 2.8 m cells only where the sea is seen up close; beyond the inner square the
+  // spacing grows ~1.25x per step out to the edge (same x and z coordinates, so no T-junctions).
+  // `segments` forces a uniform grid (tests).
+  const step = options.segments ? size / options.segments : (options.step ?? 2.8);
+  const axis = options.segments
+    ? Array.from({ length: options.segments + 1 }, (_, i) => -size / 2 + i * step)
+    : lodAxis(size / 2, options.inner ?? 28, step, options.grow ?? 1.25);
+  const geometry = gridGeometry(T, axis, size);
 
   const sun = options.sunDirection ?? new T.Vector3(-15, 28, 12);
   const maskData = new Uint8Array(GRID * GRID);
@@ -228,7 +273,6 @@ export function createOcean(T, options = {}) {
   mesh.position.y = BASE_Y;
   mesh.frustumCulled = false; // displaced vertices; plane always surrounds the player
 
-  const step = size / segments;
   let time = 0;
   let foamGroup = null;
   const camPos = new T.Vector3(); // last camera passed to update(); collars beyond 48 m are skipped

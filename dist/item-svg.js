@@ -359,6 +359,47 @@ export const ITEM_ICONS = Object.freeze({
     <circle cx="12" cy="24" r="1.4" fill="${O}"/>
     <path d="M17 22 C20 21 22 21.5 24 22" fill="none" stroke="#ffe39a" stroke-width="1.5" stroke-linecap="round"/>`,
 
+  // [juicer] island berries (the coconut icon is the [axe] one above), three smoothie cups with a straw, the juicer
+  berries: `<path d="M24 14 C22 9 18 7 14 7 M24 14 C27 9 32 8 35 9" fill="none" stroke="#3f7a3a" stroke-width="2" stroke-linecap="round"/>
+    <path d="M24 13 C29 9 35 11 36 15 C31 17 27 16 24 13 Z" fill="#5fae6b" stroke="${O}" stroke-width="1.6" stroke-linejoin="round"/>
+    <g stroke="${O}" stroke-width="2" fill="#c2335a"><circle cx="17" cy="24" r="6"/><circle cx="30" cy="23" r="6"/><circle cx="23" cy="33" r="6.5"/><circle cx="33" cy="35" r="5.5"/><circle cx="13" cy="36" r="5"/></g>
+    <g fill="#ff9fb8"><circle cx="15" cy="22" r="1.6"/><circle cx="28" cy="21" r="1.6"/><circle cx="21" cy="31" r="1.7"/><circle cx="31" cy="33" r="1.4"/><circle cx="11.5" cy="34.5" r="1.3"/></g>`,
+
+
+  berrycup: `<path d="M29 4 L26 22" fill="none" stroke="${O}" stroke-width="4.5" stroke-linecap="round"/><path d="M29 4 L26 22" fill="none" stroke="#ff7aa2" stroke-width="2.4" stroke-linecap="round"/>
+    <g stroke="${O}" stroke-width="2" stroke-linejoin="round"><path d="M11 16 H37 L34 43 H14 Z" fill="#cfeef0"/><path d="M12.2 22 H35.8 L33.6 41 H14.4 Z" fill="#c2335a" stroke="none"/><path d="M10 16 H38" fill="none"/></g>
+    <path d="M16 25 V37" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-opacity=".6"/>`,
+
+  coconutcup: `<path d="M29 4 L26 22" fill="none" stroke="${O}" stroke-width="4.5" stroke-linecap="round"/><path d="M29 4 L26 22" fill="none" stroke="#54a6a4" stroke-width="2.4" stroke-linecap="round"/>
+    <g stroke="${O}" stroke-width="2" stroke-linejoin="round"><path d="M11 16 H37 L34 43 H14 Z" fill="#cfeef0"/><path d="M12.2 22 H35.8 L33.6 41 H14.4 Z" fill="#f1e8d6" stroke="none"/><path d="M10 16 H38" fill="none"/></g>
+    <path d="M16 25 V37" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-opacity=".8"/><circle cx="30" cy="28" r="1.4" fill="#b99a74"/>`,
+
+  mixcup: `<path d="M29 4 L26 22" fill="none" stroke="${O}" stroke-width="4.5" stroke-linecap="round"/><path d="M29 4 L26 22" fill="none" stroke="#ffbd66" stroke-width="2.4" stroke-linecap="round"/>
+    <g stroke="${O}" stroke-width="2" stroke-linejoin="round"><path d="M11 16 H37 L34 43 H14 Z" fill="#cfeef0"/><path d="M12.2 22 H35.8 L33.6 41 H14.4 Z" fill="#e9835f" stroke="none"/><path d="M10 16 H38" fill="none"/></g>
+    <path d="M16 25 V37" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-opacity=".6"/><circle cx="20" cy="18" r="3" fill="#c2335a" stroke="${O}" stroke-width="1.4"/>`,
+
+  juicer: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M9 44 V36 M39 44 V36" fill="none"/><rect x="6" y="33" width="36" height="4" rx="1" fill="#9c7649"/>
+    <path d="M14 6 H34 L28 14 H20 Z" fill="#8d97a3"/>
+    <rect x="16" y="14" width="16" height="13" rx="2" fill="#a9b4c2"/>
+    <path d="M32 19 H38 V12" fill="none" stroke="#5d6b78" stroke-width="2.4"/><circle cx="38" cy="10" r="2.6" fill="#c69860"/>
+    <path d="M22 27 V29 H26 V27" fill="#8d97a3"/>
+    <path d="M18 29 H30 V33 H18 Z" fill="#cfeef0"/><path d="M19 30.5 H29 V33 H19 Z" fill="#e9835f" stroke="none"/></g>`,
+
+  // [gull] gull perch: T-shaped driftwood post, woven tray, a gull on top
+  perch: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <ellipse cx="24" cy="43" rx="10" ry="2.6" fill="#7a5a36"/>
+    <path d="M22.5 42 L23 17 H26 L25.5 42 Z" fill="#a88457"/>
+    <rect x="13" y="15" width="22" height="4" rx="2" fill="#b89466"/>
+    <path d="M25 30 H33" fill="none" stroke-width="2.2"/>
+    <path d="M29 28 H43 L41 34 H31 Z" fill="#c9a46a"/>
+    <path d="M28.5 28 H43.5" fill="none" stroke="#8e6c3e" stroke-width="2.4"/>
+    <path d="M17 15 C15 10 18 6 23 6 C27 6 29 8 30 10 L34 10 L30 12.5 C29 15 26 15.5 24 15.5 Z" fill="#f6f6f1"/>
+    <path d="M18 11 C21 8.5 25 9 28 12" fill="#a9b3bc" stroke-width="1.4"/></g>
+    <circle cx="27.5" cy="8.5" r="1.1" fill="${O}"/>
+    <path d="M31 9.8 L34.5 10 L31 11.3 Z" fill="#f39a24" stroke="none"/>
+    <path d="M32 31 L36 31 M37 31 L40 31" stroke="#8e6c3e" stroke-width="1.1" stroke-linecap="round"/>`,
+
   seaweed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <path d="M16 44 C8 36 18 29 12 21 C8 15 11 9 14 4 C23 9 21 16 25 22 C29 30 22 36 24 44 Z" fill="#3f8f5a"/>
     <path d="M25 44 C21 35 30 30 27 20 C26 14 30 9 36 7 C39 15 35 19 37 25 C39 33 32 37 33 44 Z" fill="#5fae6b"/>
