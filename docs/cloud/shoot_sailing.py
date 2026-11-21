@@ -25,7 +25,7 @@ def look(page, dx, dy=0):  # drag-to-look fallback (pointer lock is unavailable 
     page.mouse.move(640, 360); page.mouse.down(); page.mouse.move(640 + dx, 360 + dy, steps=8); page.mouse.up()
 
 with sync_playwright() as p:
-    b = p.chromium.launch(headless=True, args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'])
+    b = p.chromium.launch(headless=True, executable_path=__import__('os').environ.get('CHROME_PATH') or None, args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'])
     page = b.new_context(viewport={'width': 1280, 'height': 720}).new_page()
     page.on('pageerror', lambda e: report['errors'].append(str(e)))
     page.on('console', lambda m: m.type in ('error', 'warning') and report['console'].append(m.text[:300]))

@@ -15,6 +15,8 @@ import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+import { createSailing } from './sailing-world.js?build=v3-survival-ae77fa84ac2b'; // [sailing] see docs/cloud/sailing.md
+import { cleanSailing } from './sailing-core.js?build=v3-survival-ae77fa84ac2b'; // [sailing]
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -137,11 +139,11 @@ export function mount(transfer = null) {
         items.push({id:it.id, token:it.token, type:it.type, x:it.x, z:it.z, phase:Number.isFinite(it.phase) ? it.phase : 0});
     }
     return {tiles, decor, stock, fish:count(v.fish), collected:count(v.collected), hookHealth:Number.isFinite(v.hookHealth) ? clamp(Math.round(v.hookHealth), 0, MAX_HEALTH) : MAX_HEALTH, items,
-      hostInventory:validSnapshot(v.hostInventory), guestInventory:validSnapshot(v.guestInventory)};
+      hostInventory:validSnapshot(v.hostInventory), guestInventory:validSnapshot(v.guestInventory), sailing:cleanSailing(v.sailing)}; // [sailing]
   }
   function copyWorld(w) { // isolation from the previous engine's live object (rollback safety)
     return {...w, tiles:w.tiles.map(t => [t[0], t[1]]), decor:Array.isArray(w.decor) ? w.decor.map(d => ({...d})) : [], items:Array.isArray(w.items) ? w.items.map(i => ({...i})) : [], stock:{...(w.stock || {})},
-      fish:isInt(w.fish) ? w.fish : 0, collected:isInt(w.collected) ? w.collected : 0};
+      fish:isInt(w.fish) ? w.fish : 0, collected:isInt(w.collected) ? w.collected : 0, sailing:cleanSailing(w.sailing)}; // [sailing]
   }
   const liveWorld = w => cleanWorld(w, true) ?? copyWorld(w);
   function validPose(p) {
@@ -211,6 +213,7 @@ export function mount(transfer = null) {
   let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = '';
   const chargeMeter = $('#chargeMeter'), chargeFill = chargeMeter?.querySelector('i');
   let blockList = [];
+  let sailing = null; const scenery = [], sailFlow = {x:0, z:0}; // [sailing]
 
   function makePhysics(src) {
     const deck = raftPose.y + FLOOR_Y + EYE_OFFSET;
@@ -297,8 +300,11 @@ export function mount(transfer = null) {
     hookMesh = createHook(T); hookMesh.scale.setScalar(.5); hookMesh.visible = false; scene.add(hookMesh);
     clothMat = new T.MeshStandardMaterial({color:'#fff3cf', side:T.DoubleSide, roughness:1});
     buildViewmodels();
-    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scene.add(g); }
-    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; scene.add(g); }
+    for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); scene.add(g); scenery.push([g, 6]); } // [sailing] islands drift past
+    for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; scene.add(g); scenery.push([g, 0]); } // [sailing] clouds drift past
+    // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
+    try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
+      action:a => action(a), notice, canInput:() => running && !uiBlocked()}); for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
     rebuildRaft();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     syncItems(); refreshPointerUI(true);
@@ -364,6 +370,7 @@ export function mount(transfer = null) {
       raft.add(g);
     }
     blockList = world.decor.filter(d => BLOCK_RADIUS[d.type]).map(d => ({x:d.x * 2, z:d.z * 2, r:BLOCK_RADIUS[d.type]}));
+    sailing?.onRaftBuilt(); // [sailing] re-find sail models
   }
 
   // ---------- Floating supplies ----------
@@ -540,6 +547,7 @@ export function mount(transfer = null) {
     if (!a || typeof a !== 'object' || role === 'guest') return;
     const bag = actorBag(actor);
     if (a.kind === 'selectSlot') { bag.select(a.index); return; }
+    if (a.kind === 'sail') { sailing?.apply(a, actor); return; } // [sailing]
     if (a.kind === 'moveSlot') { bag.move(a.from, a.to, a.amount ?? undefined); return; }
     if (a.kind === 'craft') {
       const r = bag.craft(a.recipe);
@@ -612,6 +620,7 @@ export function mount(transfer = null) {
   function openInventory() { if (!running || !survivalUI) return; clearInput(); releaseLock(); survivalUI.open?.(); }
   function interact() {
     if (!running || uiBlocked()) return;
+    if (sailing?.interact()) return; // [sailing] E on a sail / anchor
     const target = pickupFrom(currentAim());
     if (target) {
       if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
@@ -747,12 +756,14 @@ export function mount(transfer = null) {
   }
   function updateItems(dt) {
     const heldTokens = new Set(caughtList(castOut()).map(c => c.token));
+    if (sailing) sailing.itemFlow(sailFlow); // [sailing]
     if (role !== 'guest') {
       let respawned = false; const end = Math.max(...world.tiles.map(t => t[1])) * 2 + 24, side = Math.max(...world.tiles.map(t => Math.abs(t[0]))) * 2 + 24;
       for (const it of world.items) {
         if (heldTokens.has(it.token)) continue; // our hook holds it; don't let it drift away or respawn
         it.z += dt * .22; it.x += Math.sin(elapsed * .13 + it.phase) * dt * .04;
-        if (it.z > end || Math.abs(it.x) > side || hasTile(Math.round(it.x / 2), Math.round(it.z / 2))) { Object.assign(it, makeItem(it.id)); respawned = true; }
+        it.x += sailFlow.x * dt; it.z += sailFlow.z * dt; // [sailing] water flows past a sailing/anchored raft
+        if (it.z > end || Math.abs(it.x) > side || sailing?.outOfRange(it) || hasTile(Math.round(it.x / 2), Math.round(it.z / 2))) { Object.assign(it, makeItem(it.id)); sailing?.respawned(it); respawned = true; }
       }
       if (respawned) syncItems();
     }
@@ -814,7 +825,7 @@ export function mount(transfer = null) {
   function hostState() {
     const c = guestBag.counts();
     return {type:'state', v:3, ack:guestAck, bag:guestBag.snapshot(), other:pose(),
-      world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items}};
+      world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items, sailing:world.sailing}}; // [sailing]
   }
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, swimming:physics.swimming});
   function frame() {
@@ -823,7 +834,8 @@ export function mount(transfer = null) {
     if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { closeConnection(); toast('Host disconnected. You are back on your own raft.'); }
     if (role === 'host' && conn?.open && now - lastGuestMessage > 8000) { const stale = conn; conn = null; unbindTarget(stale); stale.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); }
     ocean.update(elapsed, camera);
-    updateRaft(dt); movePlayer(dt, running && !dialog);
+    updateRaft(dt); if (sailing) sailing.update(dt, elapsed); // [sailing]
+    movePlayer(dt, running && !dialog);
     updateAvatars(dt); updateCamera(dt);
     frameAim = running && !dialog ? currentAim() : null;
     pickTarget = pickupFrom(frameAim);
@@ -906,11 +918,11 @@ export function mount(transfer = null) {
     const m = /^(?:Digit|Numpad)([1-8])$/.exec(e.code);
     if (m && running) selectSlot(+m[1] - 1);
     if (e.code === 'KeyE' && !e.repeat) interact();
-    if (e.code === 'KeyR' && !e.repeat) repair();
+    if (e.code === 'KeyR' && !e.repeat && !sailing?.grab()) repair(); // [sailing] hold R at a sail to steer
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
-  on(window, 'keyup', e => { keys[e.code] = false; });
-  on(window, 'blur', clearInput);
+  on(window, 'keyup', e => { keys[e.code] = false; if (e.code === 'KeyR') sailing?.release(); }); // [sailing]
+  on(window, 'blur', clearInput); on(window, 'blur', () => sailing?.release()); // [sailing]
   on(window, 'beforeunload', () => { save(); send({type:'leaving'}); try { conn?.close(); peer?.destroy(); } catch {} });
   on(window, 'resize', () => { if (!camera) return; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
@@ -1111,6 +1123,7 @@ export function mount(transfer = null) {
         avatars:{local:worldPos(player), remote:worldPos(friend)},
         camera:camera ? {x:camera.position.x, y:camera.position.y, z:camera.position.z, yaw, pitch, roll:camera.rotation.z, fov:camera.fov} : null,
         raft:raft ? {y:raft.position.y, pitch:raft.rotation.x, roll:raft.rotation.z} : null,
+        sailing:sailing ? sailing.debug() : null, // [sailing]
         hand:{x:handPos.x, y:handPos.y, z:handPos.z}, hover:hover ? {...hover} : null,
       };
     },
@@ -1170,6 +1183,7 @@ export function mount(transfer = null) {
     pause(); disposed = true; ac.abort();
     try { settingsController?.destroy(); } catch {}
     try { survivalUI?.destroy?.(); } catch {}
+    try { sailing?.dispose(); } catch {} // [sailing]
     for (const id of timers) clearTimeout(id); timers.clear();
     unlisten(bindings.splice(0));
     try { if (window.raftDebug === debugApi) delete window.raftDebug; } catch {}
