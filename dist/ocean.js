@@ -25,6 +25,7 @@ const glslWaves = WAVES.map(([dx, dz, a, l, q]) => {
 
 const vertexShader = /* glsl */`
 uniform float uTime;
+uniform vec2 uFlow; // [sailing] raft travel relative to the water (sailing-world.js)
 varying vec3 vWorld;
 varying vec3 vNormalW;
 varying float vHeight;
@@ -43,7 +44,7 @@ void wave(vec2 d, float a, float L, float Q, vec2 p, inout vec3 disp, inout vec3
 
 void main() {
   vec4 wp = modelMatrix * vec4(position, 1.0);
-  vec2 p = wp.xz;
+  vec2 p = wp.xz + uFlow; // [sailing]
   vec3 disp = vec3(0.0);
   vec3 tng = vec3(1.0, 0.0, 0.0);
   vec3 bin = vec3(0.0, 0.0, 1.0);
@@ -58,6 +59,7 @@ void main() {
 
 const fragmentShader = /* glsl */`
 uniform float uTime;
+uniform vec2 uFlow; // [sailing] raft travel relative to the water (sailing-world.js)
 uniform vec3 uSunDir;
 uniform vec3 uSunColor;
 uniform vec3 uSky;
@@ -97,7 +99,7 @@ void main() {
   // Detail ripples fade with distance to avoid shimmering / aliasing.
   float near = 1.0 - smoothstep(8.0, 60.0, dist);
   vec2 g = vec2(0.0);
-  vec2 p = vWorld.xz;
+  vec2 p = vWorld.xz + uFlow; // [sailing]
   ripple(normalize(vec2(0.8, 0.6)), 0.010, 2.10, 1.30, p, g);
   ripple(normalize(vec2(-0.5, 0.9)), 0.008, 2.90, 1.70, p, g);
   ripple(normalize(vec2(0.95, -0.3)), 0.006, 4.30, 2.10, p, g);
@@ -160,6 +162,7 @@ export function createOcean(T, options = {}) {
   const sun = options.sunDirection ?? new T.Vector3(-15, 28, 12);
   const uniforms = {
     uTime: { value: 0 },
+    uFlow: { value: new T.Vector2() }, // [sailing] wave-field offset written by sailing-world.js
     uCamera: { value: new T.Vector3() },
     uSunDir: { value: sun.clone().normalize() },
     uSunColor: { value: new T.Color('#fff3d6') },
@@ -222,6 +225,7 @@ export function createOcean(T, options = {}) {
   }
   const tmp = [0, 0, 0];
   function getHeight(x, z, t = time) {
+    const fl = uniforms.uFlow.value; x += fl.x; z += fl.y; // [sailing] match shader offset
     let px = x, pz = z;
     for (let i = 0; i < 2; i++) {
       displace(px, pz, t, tmp);
