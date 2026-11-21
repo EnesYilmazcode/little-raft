@@ -1,5 +1,4 @@
 import * as T from '../../dist/vendor/three.module.js';
-import { createWater } from './water.js';
 import { createOcean } from '../../dist/ocean.js';
 
 const q = new URLSearchParams(location.search);
@@ -7,6 +6,10 @@ const tier = q.get('tier') ?? 'a';
 const view = q.get('view') ?? 'fp';
 const amp = Number(q.get('amp') ?? 1);
 const fixedT = q.has('t') ? Number(q.get('t')) : null;   // freeze time for screenshots
+// src=shots/water-a0.js loads another copy of the water module (A/B against a saved version);
+// prof=NO_X,NO_Y passes shader #defines (term knock-outs used by profile.py).
+const { createWater } = await import(q.get('src') ? './' + q.get('src') : './water.js');
+const profDefines = Object.fromEntries((q.get('prof') ?? '').split(',').filter(Boolean).map((k) => [k, '']));
 
 document.querySelectorAll('[data-view],[data-amp]').forEach((a) => a.addEventListener('click', (e) => {
   e.preventDefault();
@@ -60,9 +63,9 @@ if (tier === 'cur') {
   const o = createOcean(T, { sunDirection: sun.position.clone(), skyColor: HORIZON, fadeNear: 28, fadeFar: 125 });
   o.uniforms.uDeep.value.set('#14505a'); o.uniforms.uShallow.value.set('#3f8c88'); o.uniforms.uZenith.value.set('#a9c1c0');
   o.mesh.receiveShadow = true;
-  water = Object.assign(o, { setRaft() {}, setFloaters() {}, render: (r, s, c) => { r.setRenderTarget(null); r.render(s, c); } });
+  water = Object.assign(o, { setRaft() {}, setFloaters() {}, setBobber() {}, render: (r, s, c) => { r.setRenderTarget(null); r.render(s, c); } });
 } else {
-  water = createWater(T, { tier, amp, debug: Number(q.get('debug') ?? 0), sunDirection: sun.position, skyColor: HORIZON, zenithColor: ZENITH });
+  water = createWater(T, { tier, amp, defines: profDefines, debug: Number(q.get('debug') ?? 0), sunDirection: sun.position, skyColor: HORIZON, zenithColor: ZENITH });
 }
 scene.add(water.mesh);
 
@@ -86,20 +89,25 @@ for (const [x, z] of TILES) {
 scene.add(raft);
 
 const floaters = [
-  { x: 4.6, z: -3.2, r: 0.35, kind: 'barrel' },
-  { x: -3.8, z: -5.5, r: 0.35, kind: 'barrel' },
-  { x: 1.2, z: -6.5, r: 0.5, kind: 'plank' },
-  { x: -6, z: 1.5, r: 0.5, kind: 'plank' },
+  { x: 4.6, z: -3.2, yaw: 0.5, kind: 'barrel' },
+  { x: -3.8, z: -5.5, yaw: -0.9, kind: 'barrel' },
+  { x: 1.2, z: -6.5, yaw: 0.4, kind: 'plank' },
+  { x: -6, z: 1.5, yaw: 1.2, kind: 'plank' },
 ];
 const barrelMat = new T.MeshStandardMaterial({ color: '#7b5a3a', roughness: .8 });
 for (const f of floaters) {
   f.mesh = f.kind === 'barrel'
     ? new T.Mesh(new T.CylinderGeometry(0.33, 0.33, 0.9, 16), barrelMat)
     : new T.Mesh(new T.BoxGeometry(1.0, 0.08, 0.3), plankMat);
+  if (f.kind === 'barrel') f.mesh.rotation.set(Math.PI / 2, 0, f.yaw); else f.mesh.rotation.set(0, f.yaw, 0);
   f.mesh.castShadow = true;
   scene.add(f.mesh);
 }
-water.setFloaters(floaters.map((f) => [f.x, f.z, f.r]));
+// Hook bobber sitting on the water in front of the deck (fp view).
+const bobber = new T.Mesh(new T.SphereGeometry(0.07, 12, 8), new T.MeshStandardMaterial({ color: '#c8402c', roughness: .6 }));
+bobber.castShadow = true;
+scene.add(bobber);
+const BOB = { x: 2.6, z: -6.2 };
 
 const views = {
   fp: { pos: [0.4, 1.55, -1.6], look: [2.2, -0.4, -12] },
@@ -121,8 +129,12 @@ function frame(now) {
   for (const f of floaters) {
     const y = water.getHeight(f.x, f.z);
     f.mesh.position.set(f.x, y + (f.kind === 'barrel' ? 0.05 : 0.0), f.z);
-    if (f.kind === 'barrel') f.mesh.rotation.set(Math.PI / 2, 0, 0.5);
   }
+  if (water.footprint) water.setFloaters(floaters.map((f) => water.footprint(f.mesh).slice()));
+  else water.setFloaters(floaters.map((f) => [f.x, f.z, 0.35]));
+  bobber.position.set(BOB.x, water.getHeight(BOB.x, BOB.z) + 0.02, BOB.z);
+  water.setBobber?.(bobber.position);
+  if (fixedT !== null && water.uniforms.uBobber) water.uniforms.uBobber.value.w = fixedT - 0.5;   // frozen shot: landed 0.5 s ago
   camera.position.set(v.pos[0], v.pos[1] + raft.position.y, v.pos[2]);
   camera.lookAt(...v.look);
   sky.position.copy(camera.position);
