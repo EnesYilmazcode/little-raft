@@ -15,10 +15,38 @@ raft.wiki.gg could not be reached. An earlier pass got HTTP 401 (Cloudflare). Th
 
 ## Our friendlier version
 
-- **Gulls (3 to 6).** They glide on wide circles 8 to 14 m above the raft. Every 20 to 50 s a gull picks a free perch (a raft tile with no decor, or the top of a `sail`, `crate` or `bench`), glides down, folds its wings, and hops around for 6 to 15 s before leaving. If the local player comes within 2.25 m it takes off early. Gulls never touch items, crops or inventory.
+- **Gulls (3 to 6).** They glide on wide circles 6.5 to 11.5 m above the raft, 7 to 12 m out. Every 20 to 50 s a gull picks a free perch (a raft tile with no decor, or the top of a `sail`, `crate` or `bench`), glides down, folds its wings, and hops around for 6 to 15 s before leaving. If the local player comes within 2.25 m it takes off early. Gulls never touch items, crops or inventory.
 - **Fish schools (2 of 12).** Each school swims a loose loop 0.4 to 1.2 m under the surface, 6 to 18 m out, and shows through the shallow water colour.
 - **Friendly circler (one at a time).** This takes the shark's place. Every 90 to 180 s a dolphin (70%) or a turtle (30%) makes one or two slow laps at 9 to 14 m, never closer than 7 m, then leaves.
 - Nothing has collision or any gameplay effect.
+
+## As built
+
+Status: implemented in `dist/wildlife.js` (module, plan, debug) and `dist/wildlife-models.js` (merged low-poly
+geometries). No game.js, content.js or inventory-state.js edits; no new hooks.
+
+![Gull perched on the deck](../cloud/shots/content/wildlife-gull.png)
+
+- **Gulls.** White body and head, grey mantle and wings with black, white-spotted tips, orange beak with a red
+  spot, orange legs and webbed feet, black eyes (~0.6 m long, 1.4 m span). They bank on their circle and glide
+  with bursts of flapping. A visit runs inside a 40 s slot per gull: glide down over 4 s, then perch 6 to 15 s
+  with a small hop and turn every 2.3 s, then 4 s to climb back to the circle. 72% of slots have a visit.
+  Perches: free tiles (deck y .2), the sail mast top (3.84), a crate lid (1.07) or a bench seat (.69). In
+  one slot, gulls take consecutive perch indices from a shared base, so two never share a perch. A gull with
+  no free perch (index >= perch count) keeps circling. Perched gulls take the raft's bob and tilt.
+- **Scare.** When the local player is within 2.25 m (horizontal, and within 3 m vertically) of a perched gull,
+  that gull leaves early. This is local only (`scareAt[i]`, kept for the current slot).
+- **Fish.** Two schools of 12 dark fish silhouettes (one on `low`). The ocean shader is opaque, so fish can't
+  be drawn below it: each fish is a flat, transparent silhouette laid 3.5 cm over the CPU wave height
+  (`ocean.getHeight` per fish, 24 calls a frame). Its plan depth (-1.15 to -0.45 m) tints it toward the
+  water colour through `instanceColor`, so deeper fish look fainter. Tail wiggle is a fast yaw (off on `low`).
+- **Circler.** A 180 s window holds at most one visit: dolphin 70% (r 10 to 14 m, 2.6 m/s, 1 or 2 laps) or
+  turtle 30% (r 9 to 12 m, 0.9 m/s, 1 lap), arriving and leaving over 10 s from 25 m further out. It is
+  present ~40% of the time and never closer than 7 m. The dolphin cruises with its back and fin showing and
+  leaps in an arc every 5.2 s. The 2.1 m turtle paddles at the surface with a gentle roll. The faceted shell
+  uses four greens like scutes.
+- **Materials.** One `MeshLambertMaterial({vertexColors, flatShading, DoubleSide})` shared by gulls, wings,
+  dolphin and turtle. One `MeshBasicMaterial` (transparent, opacity .7, no depth write) for fish.
 
 ## Module shape (content registry)
 
@@ -52,11 +80,11 @@ Everything is created once and cached. Per-frame work writes only to scratch `Ma
 
 | Mesh | Geometry | Material | Instances |
 |---|---|---|---|
-| `gullBody` InstancedMesh | merged body, head and beak, about 40 tris, vertex colours | shared `MeshLambertMaterial({vertexColors:true})` | 6 |
-| `gullWing` InstancedMesh | bent quad, 4 tris, pivot at the shoulder | same material | 12 (2 per gull; the left wing is mirrored with `scale.x = -1`). The flap is a roll in the matrix, folded when perched. |
-| `fish` InstancedMesh | 8-tri diamond with a tail notch | `MeshBasicMaterial` tinted toward the shallow colour, `transparent`, opacity .55, `depthWrite:false` | 24. The tail wiggle is a yaw in the matrix. |
-| `dolphin` Mesh | merged body, fin and flukes, about 120 tris | shared Lambert | 1 |
-| `turtle` Mesh | merged shell, 4 flippers and head, about 100 tris | shared Lambert | 1 (only one circler is visible at a time) |
+| `gullBody` InstancedMesh | merged body, mantle, head, beak, eyes, tail, legs and feet, 424 tris, vertex colours | shared `MeshLambertMaterial({vertexColors:true, flatShading:true, side:DoubleSide})` | 6 |
+| `gullWing` InstancedMesh | 3-panel wing with a black tip and white mirror spot, 6 tris, pivot at the shoulder | same material | 12 (2 per gull; the left wing is mirrored with `scale.x = -1`). The flap is a roll in the matrix, folded when perched. |
+| `fish` InstancedMesh | 8-tri diamond with a tail notch | `MeshBasicMaterial`, `transparent`, opacity .7, `depthWrite:false`, depth tint through `instanceColor` | 24. Laid on the wave surface (the ocean is opaque). The tail wiggle is a yaw in the matrix. |
+| `dolphin` Mesh | merged body, tail stock, rostrum, dorsal fin, flukes, pectoral fins, eyes, 479 tris | shared Lambert | 1 |
+| `turtle` Mesh | merged faceted shell, rim, plastron, neck, head, eyes, 4 flippers, tail, 537 tris (scaled 1.5x) | shared Lambert | 1 (only one circler is visible at a time) |
 
 **Draw calls: 4** (gull bodies, gull wings, fish, the visible circler). There are no new lights and no shader edits, so nothing recompiles. Wildlife casts no shadows. The instanced meshes use `frustumCulled = false`, because their bounds would otherwise need per-frame updates.
 
@@ -68,7 +96,7 @@ Everything is created once and cached. Per-frame work writes only to scratch `Ma
 | `medium` | 5 | 2 schools (24) | yes |
 | `high` | 6 | 2 schools (24) | yes |
 
-The circler takes one `ctx.ocean.getHeight` sample per frame. Fish use the mean water level.
+The circler takes one `ctx.ocean.getHeight` sample per frame. Fish take one each (24, or 12 on `low`), because a flat silhouette at the mean level would sink under the crests.
 
 ## Pure plan (exported for tests, no THREE)
 
@@ -76,25 +104,43 @@ The circler takes one `ctx.ocean.getHeight` sample per frame. Fish use the mean 
 export const WILDLIFE_SEED = 0x5eaf00d;
 export function mulberry32(a)                       // -> () => [0,1)
 export function perchesFrom(tiles, decor)           // -> [{x,y,z,key}] sorted by key: free tiles + sail/crate/bench tops
-export function gullPlan(seed, i, t, perches, out)  // fills out {state:'circle'|'descend'|'perched'|'leave', x,y,z, yaw, flap}
+export function gullVisit(seed, i, slot, n, v)      // fills v {on, start, stay, perch, yaw} for gull i's slot
+export function gullPlan(seed, i, t, perches, out, scareAt = -1, visit = null)
+                                                    // fills out {state:'circle'|'descend'|'perched'|'leave', x,y,z, yaw,pitch,roll, flap,fold, blend, sx,sy,sz, px,py,pz, perch}
 export function schoolCenter(seed, i, t, out)       // fills out {x, z, heading}
-export function circlerAt(seed, t, out)             // fills out {kind:null|'dolphin'|'turtle', x,y,z, heading}
+export function fishOffset(seed, i, j, out)         // fills out {side, along, ph, size, depth} for fish j of school i
+export function circlerAt(seed, t, out, force = null) // fills out {kind:null|'dolphin'|'turtle', x,y (above water),z, heading, pitch, roll}
 ```
 
-Each function fills an `out` object, so `update` reuses scratch objects. The PRNG is seeded per window (`seed ^ i * 0x9e37 ^ slot`, where `slot = floor(t / SLOT)`), so each result depends only on its inputs. `perchesFrom` reruns only when the `world.tiles` or `world.decor` reference or length changes.
+Each function fills an `out` object, so `update` reuses scratch objects. The PRNG is a stateless mulberry32 step (`rnd(s, n)` is the nth output of `mulberry32(s)`), keyed per window as `seed ^ imul(i+1, 0x9e37) ^ imul(slot+1, k)` with `slot = floor(t / SLOT)`, so each result depends only on its inputs and nothing allocates. `perchesFrom` reruns only when the `world.tiles` or `world.decor` reference or length changes.
 
 ## Debug (`raftDebug.content.wildlife`)
 
 | Helper | Effect |
 |---|---|
-| `snapshot()` | `{t, gulls:[{x,y,z,state}], schools:[{x,z}], circler:{kind,x,z}\|null}` |
-| `summonCircler(kind)` | Takes `'dolphin'` or `'turtle'`. That circler arrives now, 10 m out in front of the camera, swims one lap, and then the schedule resumes. |
-| `landGull(i = 0)` | Gull `i` perches for 15 s on the perch nearest the camera's look point. |
-| `schoolHere(i = 0)` | Pins school `i` 5 m ahead of the camera on the water plane until `release()`. |
+| `snapshot()` | `{t, offset, perches, gulls:[{x,y,z,state}], schools:[{x,z}], circler:{kind,x,z}\|null, built}` |
+| `summonCircler(kind)` | `'dolphin'` or `'turtle'`. That circler is on its circle now, in the direction the camera faces (radius clamped to 9 to 14 m). It swims one lap and leaves, then the schedule resumes. |
+| `landGull(i = 0, {instant, perch, stay, yaw, scare})` | Gull `i` perches for `stay` (15) s on the perch nearest the camera's look point (or perch index `perch`). `instant` skips the glide down. Forced gulls ignore the player unless `scare: true`. |
+| `schoolHere(i = 0, dist = 5)` | Pins school `i` `dist` m ahead of the camera (pushed out past the deck edge), broadside to the view, until `release()`. |
 | `release()` | Clears all overrides. |
 | `setTime(t)` | Sets the offset so the clock reads `t`, for repeatable shots. |
+| `perches` | Copy of the current perch list. |
+| `setVisible(on)`, `renderCalls()` | Hide or show the wildlife group, and read `renderer.info.render.calls`, for draw-call checks. |
 
 Overrides are local and are never serialized.
+
+## How to verify
+
+1. `npm test`: `tests/wildlife.test.mjs` covers determinism, smooth paths, perch rules, scare, fish depth and
+   range, circler distance and dolphin share, and the co-op clock (load garbage, host/guest sync, snap vs jitter).
+2. Play solo and wait about 10 s of game time: gulls drop onto the deck. Walk up to one and it flies off.
+   Look out to sea for dark fish shapes. Within a few minutes a dolphin or turtle swims a lap.
+3. In the console: `const w = raftDebug.content.wildlife; w.landGull(0, {instant:true}); w.schoolHere(0);
+   w.summonCircler('dolphin')`, then `w.summonCircler('turtle')`, and `w.release()` afterwards.
+4. Draw calls: `w.renderCalls()`, then `w.setVisible(false)`, wait a frame, and `w.renderCalls()` again.
+5. Co-op: host and guest should see the same gulls on the same tiles (the guest's clock follows `ext.wildlife.t`).
+
+Screenshots (headless Chromium, software GL): `docs/cloud/shots/content/wildlife-*.png`.
 
 ## Save format
 

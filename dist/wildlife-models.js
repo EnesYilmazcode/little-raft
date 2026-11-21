@@ -79,7 +79,7 @@ export function gullWingGeometry(T) {
 
 // Dolphin: ~2.4 m, centred, blue-grey back, pale belly, swept dorsal fin and flukes.
 export function dolphinGeometry(T) {
-  const back = 0x58788f, belly = 0xdfe7ea, fin = 0x4b697f;
+  const back = 0x7097b3, belly = 0xe8eef0, fin = 0x5f86a2;
   const shade = (f, x, y) => (y > -0.25 ? back : belly);
   const P = [];
   P.push(part(T, ball(T, 14, 9), shade, [0, 0, 0, 0, 0, 0, 0.34, 0.33, 1.0]));
@@ -87,7 +87,7 @@ export function dolphinGeometry(T) {
   P.push(part(T, new T.CylinderGeometry(0.06, 0.11, 0.32, 8), 0xa9bcc8, [0, -0.07, 1.06, Math.PI / 2, 0, 0])); // rostrum
   P.push(part(T, ball(T, 8, 6), 0xa9bcc8, [0, -0.05, 1.2, 0, 0, 0, 0.065, 0.055, 0.06]));
   // dorsal fin: a swept, curved triangle with a little thickness
-  const D = [0, 0, 0.28, 0, 0, -0.18, -0.02, 0.42, -0.33], dz = 0.035;
+  const D = [0, 0, 0.3, 0, 0, -0.16, 0, 0.3, -0.34], dz = 0.035;
   P.push(part(T, tri(T, [-dz, D[1], D[2], -dz, D[4], D[5], 0, D[7], D[8], dz, D[1], D[2], 0, D[7], D[8], dz, D[4], D[5], -dz, D[1], D[2], 0, D[7], D[8], dz, D[1], D[2]]), fin, [0, 0.28, -0.05]));
   // flukes
   for (const s of [-1, 1]) {
@@ -113,7 +113,7 @@ export function turtleGeometry(T) {
     P.push(part(T, ball(T, 6, 4), skin, [s * 0.36, -0.05, -0.55, 0, s * -0.6, 0, 0.18, 0.03, 0.09])); // rear flipper
   }
   P.push(part(T, new T.ConeGeometry(0.05, 0.16, 5), skin, [0, -0.03, -0.72, -Math.PI / 2, 0, 0]));
-  return merge(T, P);
+  const g = merge(T, P); g.scale(1.5, 1.5, 1.5); g.computeBoundingSphere(); return g; // big enough to read at 10 m
 }
 
 // Fish silhouette seen from above: lies flat in xz, nose +z, ~0.55 m with a notched tail (8 tris).

@@ -137,7 +137,7 @@ export function schoolCenter(seed, i, t, out) {
 export function fishOffset(seed, i, j, out) {
   const s = (seed ^ Math.imul(i + 3, 0x2c1b3c6d) ^ Math.imul(j + 1, 0x297a2d39)) | 0;
   const a = TAU * rnd(s, 0), r = Math.sqrt(rnd(s, 1));
-  out.side = Math.cos(a) * r * 1.2; out.along = Math.sin(a) * r * 2.0; out.ph = TAU * rnd(s, 2); out.size = 0.8 + 0.4 * rnd(s, 3);
+  out.side = Math.cos(a) * r * 1.2; out.along = Math.sin(a) * r * 2.0; out.ph = TAU * rnd(s, 2); out.size = 1.1 + 0.5 * rnd(s, 3);
   out.depth = 0.2 * (rnd(s, 4) - 0.5);
   return out;
 }
@@ -176,11 +176,11 @@ export function circlerAt(seed, t, out, force = null) {
   out.heading = Math.atan2(_cp2.x - _cp.x, _cp2.z - _cp.z);
   if (v.kind === 'dolphin') { // cruise with the fin showing, then a happy arc out of the water every ~5 s
     const k = u / 5.2, f = k - Math.floor(k), J = 0.32;
-    if (f < J) { const q = f / J; out.y = -0.3 + 1.05 * Math.sin(Math.PI * q); out.pitch = -0.9 * Math.cos(Math.PI * q); }
-    else { out.y = -0.3 + 0.04 * Math.sin(u * 2); out.pitch = 0; }
+    if (f < J) { const q = f / J; out.y = -0.16 + 1.0 * Math.sin(Math.PI * q); out.pitch = -0.9 * Math.cos(Math.PI * q); }
+    else { out.y = -0.16 + 0.04 * Math.sin(u * 2); out.pitch = 0; } // back and fin show
     out.roll = 0;
   } else {
-    out.y = -0.06 + 0.03 * Math.sin(u * 1.3); out.pitch = 0.04 * Math.sin(u * 0.9); out.roll = 0.06 * Math.sin(u * 0.7);
+    out.y = 0.08 + 0.03 * Math.sin(u * 1.3); out.pitch = 0.04 * Math.sin(u * 0.9); out.roll = 0.06 * Math.sin(u * 0.7);
   }
   return out;
 }
@@ -209,9 +209,9 @@ export function createWildlife(ctx) {
     m4 = new T.Matrix4(); mA = new T.Matrix4(); mB = new T.Matrix4(); mC = new T.Matrix4(); mD = new T.Matrix4();
     v3 = new T.Vector3(); v3b = new T.Vector3(); sc3 = new T.Vector3(1, 1, 1); q4 = new T.Quaternion(); qR = new T.Quaternion();
     eul = new T.Euler(0, 0, 0, 'YXZ'); col = new T.Color(); zero = new T.Matrix4().makeScale(0, 0, 0); UP = new T.Vector3(0, 1, 0);
-    fishDark = new T.Color('#103c44'); fishWater = new T.Color('#3f8c88');
+    fishDark = new T.Color('#0b2f36'); fishWater = new T.Color('#3f8c88');
     material = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: T.DoubleSide });
-    fishMat = new T.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.62, depthWrite: false, side: T.DoubleSide });
+    fishMat = new T.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.7, depthWrite: false, side: T.DoubleSide });
     group = new T.Group(); group.name = 'wildlife';
     const inst = (geo, mat, n, name) => {
       const m = new T.InstancedMesh(geo, mat, n); m.name = name; m.frustumCulled = false; m.castShadow = false; m.receiveShadow = false;
@@ -394,13 +394,18 @@ export function createWildlife(ctx) {
       return { ...perches[best] };
     },
     schoolHere(i = 0, dist = 5) {
-      i = Math.max(0, Math.min(SCHOOL_MAX - 1, i | 0)); const L = lookPoint(dist); if (!L) return null;
+      i = Math.max(0, Math.min(SCHOOL_MAX - 1, i | 0)); refreshPerches();
+      let L = lookPoint(dist); if (!L) return null;
+      const onRaft = (x, z) => perches.some(p => Math.abs(p.x - x) < 2.6 && Math.abs(p.z - z) < 2.6); // keep clear of the deck
+      for (let k = 0; k < 40 && onRaft(L.p.x, L.p.z); k++) L.p.addScaledVector(L.d, 0.5);
       Object.assign(pinned[i], { on: true, x: L.p.x, z: L.p.z, heading: Math.atan2(L.d.z, -L.d.x) }); // broadside to the view
       return { x: L.p.x, z: L.p.z };
     },
     release() { for (const f of forced) f.on = false; for (const p of pinned) p.on = false; forceC.kind = null; },
     setTime(t) { if (fin(t)) offset = t - (fin(ctx.elapsed) ? ctx.elapsed : 0); return now(); },
     get perches() { return perches.map(p => ({ ...p })); },
+    setVisible(on) { if (group) group.visible = !!on; return !!group; }, // for draw-call measurements
+    renderCalls() { const r = ctx.renderer; return r && r.info ? r.info.render.calls : null; },
   };
   return mod;
 }
