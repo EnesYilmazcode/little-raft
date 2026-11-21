@@ -46,10 +46,18 @@ export function perchesFrom(tiles, decor) {
   return out;
 }
 
+// Per-gull constants (5 doubles each: r, h, dir, w, ph), computed once per seed so the per-frame path calls no rnd.
+const SKY_N = 5, skyK = new Float64Array(GULL_MAX * SKY_N), skySeed = new Float64Array(GULL_MAX).fill(NaN);
+function skyConsts(seed, i, o) { // writes the constants for gull i at skyK[o..o+4]
+  const s = gullKey(seed, i), dir = rnd(s, 3) < 0.5 ? -1 : 1;
+  skyK[o] = 7 + 5 * rnd(s, 0); skyK[o + 1] = 6.5 + 4 * rnd(s, 1); skyK[o + 2] = dir;
+  skyK[o + 3] = (0.17 + 0.1 * rnd(s, 2)) * dir; skyK[o + 4] = TAU * rnd(s, 4);
+}
 function gullSky(seed, i, t, o) { // continuous circling path, raft frame
-  const s = gullKey(seed, i);
-  const r = 7 + 5 * rnd(s, 0), h = 6.5 + 4 * rnd(s, 1), dir = rnd(s, 3) < 0.5 ? -1 : 1;
-  const w = (0.17 + 0.1 * rnd(s, 2)) * dir, ph = TAU * rnd(s, 4);
+  let k;
+  if (i >= 0 && i < GULL_MAX) { k = i * SKY_N; if (skySeed[i] !== seed) { skyConsts(seed, i, k); skySeed[i] = seed; } }
+  else { k = 0; skySeed[0] = NaN; skyConsts(seed, i, 0); }
+  const r = skyK[k], h = skyK[k + 1], dir = skyK[k + 2], w = skyK[k + 3], ph = skyK[k + 4];
   const a = ph + w * t, rr = r + 1.5 * Math.sin(t * 0.07 + ph);
   o.sx = Math.cos(a) * rr; o.sz = Math.sin(a) * rr; o.sy = h + 0.8 * Math.sin(t * 0.23 + ph * 2);
   o.bank = -dir * 0.32; o.ph = ph;
@@ -69,6 +77,20 @@ export function gullVisit(seed, i, slot, n, v) {
 
 const _sky = { sx: 0, sy: 0, sz: 0, bank: 0, ph: 0 }, _sky2 = { sx: 0, sy: 0, sz: 0, bank: 0, ph: 0 };
 const _visit = { on: false, start: 0, stay: 0, perch: -1, yaw: 0 };
+// gullVisit only changes with (seed, slot, n): cache it per gull (key: seed, slot, n; value: on, start, stay, perch, yaw).
+const visKey = new Float64Array(GULL_MAX * 3).fill(NaN), visVal = new Float64Array(GULL_MAX * 5);
+function cachedVisit(seed, i, slot, n, v) {
+  if (!(i >= 0 && i < GULL_MAX)) return gullVisit(seed, i, slot, n, v);
+  const k = i * 3, o = i * 5;
+  if (visKey[k] !== seed || visKey[k + 1] !== slot || visKey[k + 2] !== n) {
+    gullVisit(seed, i, slot, n, v);
+    visKey[k] = seed; visKey[k + 1] = slot; visKey[k + 2] = n;
+    visVal[o] = v.on ? 1 : 0; visVal[o + 1] = v.start; visVal[o + 2] = v.stay; visVal[o + 3] = v.perch; visVal[o + 4] = v.yaw;
+    return v;
+  }
+  v.on = visVal[o] === 1; v.start = visVal[o + 1]; v.stay = visVal[o + 2]; v.perch = visVal[o + 3]; v.yaw = visVal[o + 4];
+  return v;
+}
 
 function gullBlend(v, t, scareAt) { // 0 = in the sky, 1 = on the perch
   if (!v || !v.on || v.perch < 0 || t < v.start) return 0;
@@ -83,7 +105,7 @@ function gullBlend(v, t, scareAt) { // 0 = in the sky, 1 = on the perch
 // scareAt: clock time the local player spooked this gull (or -1). visit: forced visit (debug) or null.
 export function gullPlan(seed, i, t, perches, out, scareAt = -1, visit = null) {
   const n = Array.isArray(perches) ? perches.length : 0;
-  const v = visit && visit.on ? visit : gullVisit(seed, i, Math.floor(t / GULL_SLOT), n, _visit);
+  const v = visit && visit.on ? visit : cachedVisit(seed, i, Math.floor(t / GULL_SLOT), n, _visit);
   gullSky(seed, i, t, _sky);
   const p = v.on && v.perch >= 0 && v.perch < n ? perches[v.perch] : null;
   const b = p ? gullBlend(v, t, scareAt) : 0;
