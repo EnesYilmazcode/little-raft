@@ -1027,8 +1027,8 @@ export function mount(transfer = null) {
     newGame(); requestLock(); refreshTitle();
   });
   if (!running) refreshTitle();
-  setHandler($('#crewButton'), 'onclick', () => openDialog('crew'));
-  setHandler($('#welcomeCrew'), 'onclick', () => openDialog('crew'));
+  setHandler($('#crewButton'), 'onclick', () => { loadPeer(); openDialog('crew'); });
+  setHandler($('#welcomeCrew'), 'onclick', () => { loadPeer(); openDialog('crew'); });
   setHandler($('#helpButton'), 'onclick', () => settingsController?.open());
   setHandler($('#repairButton'), 'onclick', repair);
   document.querySelectorAll('[data-close]').forEach(b => setHandler(b, 'onclick', () => $('#' + b.dataset.close)?.close()));
@@ -1151,20 +1151,36 @@ export function mount(transfer = null) {
     });
     listen(c, 'error', () => { if (conn === c) setStatus('Connection failed. Check the code and try again.'); });
   }
-  setHandler($('#host'), 'onclick', () => {
+  // PeerJS (~90 KB) is only needed for Play together: load it on first use, shared across hot swaps.
+  function loadPeer() {
+    if (typeof globalThis.Peer === 'function') return Promise.resolve(true);
+    return (globalThis.__raftPeerLoad ??= new Promise(resolve => {
+      const s = document.createElement('script'); s.src = new URL('./vendor/peerjs.min.js', import.meta.url).href; s.async = true;
+      s.onload = () => resolve(typeof globalThis.Peer === 'function');
+      s.onerror = () => { globalThis.__raftPeerLoad = null; s.remove(); resolve(false); }; // a later click retries
+      document.head.appendChild(s);
+    }));
+  }
+  async function peerReady(failText) {
+    if (typeof globalThis.Peer !== 'function') { setStatus('Getting online play ready…'); await loadPeer(); }
+    if (disposed) return false;
+    if (typeof globalThis.Peer !== 'function') { setStatus(failText); return false; }
+    return true;
+  }
+  setHandler($('#host'), 'onclick', async () => {
+    if (!(await peerReady('Online play is unavailable. Solo play still works.'))) return;
     if (role === 'host' && peer && !peer.destroyed) { setStatus('Your room is open. Share the code below.'); return; }
     closeConnection();
-    if (typeof globalThis.Peer !== 'function') { setStatus('Online play is unavailable. Solo play still works.'); return; }
     role = 'host'; room = Array.from(crypto.getRandomValues(new Uint8Array(6)), v => 'abcdefghjkmnpqrstuvwxyz'[v % 22]).join('');
     setStatus('Opening your room…');
     try { peer = new globalThis.Peer('little-raft-' + room); bindPeer(peer, true); }
     catch { closeConnection(); setStatus('Online play is unavailable. Solo play still works.'); }
   });
-  setHandler($('#joinForm'), 'onsubmit', e => {
+  setHandler($('#joinForm'), 'onsubmit', async e => {
     e.preventDefault(); const code = ($('#roomInput')?.value ?? '').trim().toLowerCase();
     if (!/^[a-z]{6}$/.test(code)) return setStatus('Enter the six letters from your brother’s screen.');
+    if (!(await peerReady('Online play is unavailable. Try solo for now.'))) return;
     closeConnection();
-    if (typeof globalThis.Peer !== 'function') { setStatus('Online play is unavailable. Try solo for now.'); return; }
     save(); // role is still solo here: persist our own raft before leaving it
     ownWorldBackup = {world, host:hostBag.snapshot(), guest:guestBag.snapshot(), physics:physics.capture()};
     role = 'guest'; room = code; hook = null; fishWait = 0; charging = null; reeling = false; remoteBag = null; seq = 0; lastSeqSent = 0;
@@ -1300,6 +1316,9 @@ export function mount(transfer = null) {
     });
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
     active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
+    // After the first frame is up, link every shader the scene can need (hook, rope, viewmodel hands, friend, poses):
+    // compile() walks hidden objects too, so starting a game or throwing never stalls on a program link.
+    requestAnimationFrame(() => later(() => { try { if (scene) renderer.compileAsync?.(scene, camera).catch(() => {}); } catch (e) { console.warn('shader warm-up failed', e); } }, 0));
   } catch (e) {
     console.error(e); dispose();
     try { if (previousDebug && !Object.getOwnPropertyDescriptor(window, 'raftDebug')) Object.defineProperty(window, 'raftDebug', previousDebug); } catch {}

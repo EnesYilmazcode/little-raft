@@ -11,7 +11,7 @@ def promote(source, label='release'):
  digest=hashlib.sha256(b''.join(str(k).encode()+v for k,v in sorted(files.items()) if k.name!='version.json')).hexdigest()[:12]
  build=label+'-'+digest
  for rel,data in list(files.items()):
-  if rel.suffix=='.js' and rel.parent==Path('.'):
+  if rel.suffix in ('.js','.html') and rel.parent==Path('.'): # index.html modulepreload hrefs must match the imports
    text=data.decode('utf-8')
    def spec(m):
     name=m[2][2:]
