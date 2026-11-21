@@ -219,6 +219,8 @@ export function createFishingCooking(T, host) {
     toastBox = document.createElement('div'); toastBox.id = 'fcToast'; toastBox.setAttribute('role', 'status'); document.body.appendChild(toastBox);
   }
   function toast(text, soft = false) {
+    let sink = null; try { sink = typeof window !== 'undefined' ? window.raftPickupFeed : null; } catch {}
+    if (typeof sink?.note === 'function') { sink.note(text, soft ? 'info' : undefined); return; } // one notice system: the bottom-left feed
     if (!toastBox) return;
     while (toasts.length >= 2) toasts.shift().el.remove();
     const el = document.createElement('div'); el.textContent = text; if (soft) el.className = 'soft';
