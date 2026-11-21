@@ -1,138 +1,111 @@
 # Kite flying: research
 
-This note replaces the earlier Sky Kite note (hand-held steering, tying to railings). The new design is
-**Kite Post first**. You craft a kite, place a Kite Post on the deck, and press E with the kite to clip it on.
-It then flies downwind on the live wind. Hand-flying is an optional extra. The closed-form flight model from
-the old note still fits, so it is kept and simplified. All anchors are file:line in the current tree on
-2026-11-21 (`claude/loop-features-202611210952`, based on `92cd4ea`). Re-grep before you edit.
+Craft a small kite, fly it from the deck on the real sailing wind, steer it with the mouse, let line out or
+reel it in, and tie it to a railing or pillar so it keeps flying as decoration. It is cosy and mostly
+cosmetic, with one small, rare reward. Line numbers are from the tree on 2026-11-21 (mid-merge), so grep the
+quoted anchor before you edit.
 
-## (a) Patterns and an original cosy take
-- **The genre.** Raft and island sandboxes use decor that reacts to wind: pennants, wind chimes, turbines,
-  flags. Kite games (beach kite toys, festival kites in life sims) read well because of a few cues: the kite
-  sits high downwind on a *visibly sagging* line, it bobs and swings in figure-eights, the tail ribbons lag and
-  flutter, and in calm air it sinks or droops. Most players never need "real" aerodynamics. They need the
-  kite to point the right way, hang at a believable height, and move all the time.
-- **Our take, "Kite Post".**
-  1. Craft a **Kite** (cloth, or plastic in this tree, plus wood and rope) in 4-5 colours. Each colour is its
-     own bag kind (`kite_coral` and so on), stack 1. The names are ours: Coral, Sunshell, Seafoam, Lagoon, Plum.
-  2. Craft and place a **Kite Post**: a short stout post with a spool/reel on top. It is a placeable decor
-     with a small block radius.
-  3. Hold a kite and press **E** at an empty post: the kite clips on and climbs over about 3 s. Press E at a
-     post with a kite (empty hand, or any item): the kite reels in and goes back to the bag.
-  4. **Flight.** The kite flies downwind at 8-15 m altitude. The line length is about 14-20 m, and the
-     elevation follows wind strength. It bobs, rolls a little, and swings slowly side to side. The line sags
-     more in weak wind. Two or three tail ribbons trail downwind with a travelling sine wave.
-  5. **Calm.** At low weather wind (daynight `wind` ≈ 0.15) the kite hovers low (about 4-6 m), droops nose-down,
-     and the tail hangs. In a storm it climbs to the top of the range and twitches faster. It never breaks,
-     which keeps it cosy.
-  6. **Optional: hold by hand.** With a kite selected, LMB launches it from your fist for about 60 s. The line
-     starts at the right hand, and the kite lands on its own when the time ends or you switch slots. This is
-     purely local flair and can be skipped in v1.
-  7. **Optional tiny reward.** Logbook line "Kites flown: N", or a gull that sometimes circles a high kite
-     (wildlife already has gulls). No economy hook is needed.
+## Conventions that apply
+- Content registry module: `dist/kite.js` exports `createKite(ctx)` and is appended to `FEATURES`
+  (`dist/content.js:58`). Pure maths goes in `dist/kite-core.js` with `tests/kite.test.mjs`. Models go in
+  `dist/kite-model.js`. Items, recipes and icons follow `dist/content-items.js` (`CONTENT_ITEMS` :9, `CONTENT_RECIPES` :69), `dist/icons.svg`, and `SPRITES` in `dist/survival-ui.js:22`.
+- State lives in `world.ext.kite` through `serialize()`/`load()`. Shared changes are host-authoritative
+  through `action(a, actor, bag)`. Guests call `ctx.action(a)`. `load(data,'net')` must not rebuild meshes unless `rev` changed (paint pattern, `dist/paint.js` `load`).
+- Clicks: `use(aim, kind)` is left click (`dist/content.js:104`, called at the end of `useSelected()`,
+  `dist/game.js:1279`, and only on press). `alt(aim, kind)` is right click (`content.js:105`, `game.js:1683`).
+  There is no hold or release hook, so the design uses single clicks only. Copy `dist/paint.js` `use`/`alt`/`prompt` and its `raftPrompts` provider, including `heldKind()` from `ctx.localBag()`.
+- Names and art are original: "Sky Kite", patterns "Sunburst", "Gullwing", "Tidestripe".
 
-## (b) Code anchors
+## Wind sources (what is real)
+- **The main source is `world.sailing`** (`dist/sailing-core.js`). `windDir` is in radians and gives the
+  direction the wind blows *toward*, with vector `(sin a, cos a)` in world x/z (`windVector()` :100).
+  `windStr` stays in `WIND_MIN..WIND_MAX` = 0.55..1 and changes slowly: direction ≤0.05 rad/s, strength
+  τ = 20 s (:13-17). The host steps it and it reaches guests in `hostState` (`game.js:1581`, `sailing:world.sailing`).
+  The pennant already reads it this way (`dist/decor-pack.js:168`). There is always some wind, so a kite always flies.
+- **Raft motion:** `world.sailing.vx/vz` is the raft's virtual velocity (the world moves, the raft stays at
+  the origin). The kite should use the apparent wind `W = windVector - (vx, vz)`, so it leans back harder when the raft runs under sail. Clamp |W| to ≥0.3.
+- **Weather:** the daynight module exposes `get wind()` (`dist/daynight.js:734`). This is a weather wind of
+  0.15 (calm), 0.7 (breezy) or 0.5 (rain), blended between states (`W_WIND` :99). It is deterministic from the seed and clock on both peers. Read it like `content.rain()` does (`content.js:112`):
+  `ctx.content?.mods.find(m => m.name==='daynight' && !m.dead)?.wind`. A one-line `wind()` getter next to `rain()` would be tidier. This tree has no storm, and `grep storm dist` finds nothing.
+- **Strength:** `s = clamp(|W| * (0.75 + 0.6*weatherWind), 0.3, 1.25)`. Calm weather gives a lazy, low kite. A breezy day gives a high, lively one.
 
-### Wind (both sources are shared in co-op)
-- **Sailing wind (direction plus base strength):** `dist/sailing-core.js`. `windDir` is the heading the wind
-  blows *toward*, and `windVector()` at :100-102 gives `(sin a, cos a) * windStr`. `windStr` stays in
-  `WIND_MIN..WIND_MAX` = 0.55..1 (:17) and eases with τ = `WIND_STR_TAU` 20 s (:16). The wander in
-  `stepSailing` :113 runs **host-only** (`if (o.host)` :123, with `Math.random`), so it is *not* deterministic.
-  Guests take `world.sailing` from `hostState()` (`dist/game.js:1797`, the `sailing:world.sailing` field
-  at :1800). The values change slowly, so a guest kite matches without any extra sync.
-- **Raft velocity:** `world.sailing.vx/vz` (`sailTarget` :86). Use the apparent wind `W = windVector - (vx,vz)`
-  so a sailing raft makes the kite lean back and climb.
-- **Weather wind (gustiness or strength scalar):** `dist/daynight.js`. `W_WIND = [0.15, 0.7, 0.5]` (:101) is
-  blended at :104, and the getter `get wind()` is at :782. Weather is a pure function of (seed, clock)
-  (header :3-4), so both peers compute the same value. Content-side access: `ctx.content.wind()`
-  (`dist/content.js:171`), or the `link(env)` hook (`content.js:34`, called at :137), which is how `dist/power.js:136`
-  reads it. The storm level is on the same module, `get storm()` (`daynight.js:782`, `STORM_LIVE` :34).
-- **How existing cloth reacts (copy these conventions):**
-  - Sail pennant: `dist/sailing-world.js:142-143` (downwind = `windDir - heading - PI/2` in the group frame)
-    and :182 (yaw plus `amp*sin(t*(5+4*windStr))`).
-  - Wind Pennant decor: `dist/decor-pack.js:167-174` (`amp = .08 + .35*ws*ws`, swing `rotation.y = wd - PI/2 - g.rotation.y`).
-  - Raft flag: `dist/flags.js:15-16` (frame note), :192-199 (per-frame pivot yaw, uniforms only).
-- **Raft frame:** "The raft never moves in x/z: the world drifts past it instead" (`sailing-world.js:3`).
-  Raft-local and world x/z are the same, and the raft never yaws. Only y bobs, via `ctx.deckY()` (content ctx,
-  `content.js:55`). A kite anchored to a post needs no scrolling compensation. Just re-add `deckY()` every
-  frame. The sky and islands drift, which sells the motion.
+## Flight model (closed form, stable, cheap)
+The kite has no integrator, so it cannot diverge. The pose is a pure function of
+`(anchor A, azimuth az, s, L, steer, t, phase)` in `kite-core.js`:
+- `az = atan2(Wx, Wz) + steer` and `steer ∈ [-0.9, 0.9]` rad. Elevation is `e = lerp(0.25, 1.05, smooth(s)) * (0.6 + 0.4*cos(steer)) + tugLift`, so the kite sinks at the edge of the wind window.
+- Position: `K = A + L*(cos e*sin az, sin e, cos e*cos az)`, plus wobble `0.5*s*sin(1.3t+φ)` sideways and `0.35*sin(0.9t+2φ)` up. Clamp `K.y ≥ water + 2`.
+- Eased inputs, framerate-independent with `1-exp(-k dt)`: L follows its target at about 2 m/s, steer
+  at k = 3, and launch ramps e from 0.1 over 3 s. A "tug" adds +0.25 rad that decays over 1.2 s, plus a small roll flourish.
+- Orientation: the kite faces A (`lookAt`) and rolls by `-steer*0.6 + d(steer)/dt*0.3`.
+- Line: about 16 points on a parabola from A to K with sag `L*0.05*(1.3 - s)`. Tail: 8 points trailing
+  downwind of K with a travelling sine. Both write into preallocated `Float32Array`s with no allocations.
+- The model is pure, so every client renders every kite locally from a few synced numbers.
 
-### Line and rope rendering (prior art)
-- `dist/rope.js:19` `createRope(T,{segments,radius})` is a tube with no allocations in `update()`. Its radius
-  is clamped to 0.002-0.02 (:7-8). Nothing in dist imports it except `textures.js`. A 1-2 cm tube at 15 m is
-  sub-pixel and shimmers, so do **not** use it for the kite line.
-- Fishing line: `T.Line` + `LineBasicMaterial` (`game.js:495`). `setRope(points)` at :1629 writes into a
-  preallocated attribute and calls `setDrawRange`. **This is the pattern to copy:** one `T.Line` per kite, about
-  16-20 points on a sagging catenary-ish parabola, `frustumCulled=false`.
-- Glide lines: `dist/zipline-model.js:73` `createRopeLines`, one `InstancedMesh` of straight cylinders
-  (`userData.set(i, a, b)` :80). These are straight with no sag. They are useful only if a thicker line is wanted near the post.
+## Controls (held "kite" item)
+- **LMB** while the kite is stowed and you stand on the deck: launch. While it flies, LMB is a tug (climb flourish and a little "flap" sound via `ctx.play`).
+- **RMB** (`alt`): line length cycles 8 → 16 → 24 m, eased (prompt "RMB Let out / Reel in").
+- **Steering** comes from the look direction, with no new keys: `steer = clamp(angDiff(camYaw, az), ±0.9)`.
+  Looking left of downwind pulls the kite left. WASD keeps moving the player, and free keys are scarce (A C D E G I J L N O Q R S W X Z are used).
+- Switching the hotbar slot, swimming, opening a UI or walking >30 m from the anchor auto-lands the kite (it reels in over 1 s). The item never leaves the bag while it is hand-held.
+- **E** with the kite flying, aimed at a railing or pillar: tie off. E at a tied kite's piece: untie, and
+  the kite goes back to the bag. Picking uses `ctx.building.grid.pick(cam…, dir…, ctx.deckY(), 4)`, the same as `paint.js findTarget()`.
 
-### Fluttering cloth (prior art)
-- `dist/flags-model.js:11-18`: the `WAVE` vertex-shader chunk injected after `<begin_vertex>`. The hoist is
-  pinned, the phase comes from the model matrix (no per-instance uniform), `famp = .04+.14*uStr²`, and the
-  fly end droops in weak wind (`y -= .06*fu²*(1.2-uStr)`). The uniforms `uTime/uStr` are set once per frame
-  (`flags.js:195`). **Reuse this idea for the tail ribbons:** a thin strip mesh (8-10 segments) with the same
-  shader trick, so the CPU only moves the kite transform. The sail itself can get a tiny billow on the same material.
+## Tie-off
+- Anchor point from the piece record `{t,i,j,l,r}` (`dist/building-pieces.js:3`). For edge (i,j,0) it is
+  (2i, 2j-1). For edge (i,j,1) it is (2i-1, 2j). For a pillar corner it is (2i-1, 2j-1). The height is
+  `deckY + l*2.2 + RAIL_H(0.95)` for a railing and +2.0 for a pillar. Valid types are railing, pillar, gate and halfwall. The raft never yaws, so raft-local equals world x/z.
+- Tied kites use the same flight model with their own `steer` (the steer at tie time) and `L`. They add the deck bob through `ctx.deckY()`.
+- Allow at most 6 tied kites. The host prunes entries whose piece is gone from `world.pieces` (check once
+  when `world.pieces` changes identity, like paint's `prune()`) and returns the kite to the host bag, or drops nothing if the bag is full.
 
-### Decor placement, models and pickup
-- **Which item system:** the crafting UI merges `CONTENT_ITEMS/CONTENT_RECIPES` and then `infoTable()/recipeTable()` from
-  `dist/items.js` (`inventory-state.js:33,55,83,91`). items.js wins. The newest decor (glide posts) lives in
-  items.js: `item('glidepost', …, {placeable:true, recipe: hand({...}), unlock: discover('nail')})` at
-  `items.js:308-313`. Put **Kite Post and the kite kinds in items.js**. Materials are `wood` :82, `leaf` :84,
-  `plastic` :86 and `rope` :131. There is no "cloth" kind, so use plastic or leaf as the sail cloth.
-- `PLACEABLE_IDS` (`items.js:338`) feeds `DECOR_TYPES` (`game.js:86`). Add `kitepost: 0.12` to `BLOCK_RADII`
-  (`items.js:341`, zipline entry at :356). These merge into `BLOCK_RADIUS` (`game.js:96`).
-- Model: content `decorModel(type, d)` (`content.js:21`, dispatch at :164). game.js calls it for ghosts (:493)
-  and for the built decor (:655). Copy `zipline.js:496-500`.
-- E order: `interact()` at `game.js:1421`. Pickups, sails, nets and building go first, then `content.interact`
-  at :1436. Aim-test the post like `flags.js:90-100` (a ray against the vertical mast segment).
-- Pickup with the hammer (hold X): `beforeUndecor`/`undecorLoot` (`content.js:35-41`, `NO_UNDECOR` :95,161).
-  A post with a kite on it must return the kite through `undecorLoot` (as `[kind,1]`) and then drop its
-  `ext` entry, so the kite is never lost.
-- Hold model (optional hand-flying): `HOLD` (`dist/held-items.js:42`). Remote held prop: `HELD` (`dist/coop.js:27`)
-  is **append-only** because its index is the wire format.
+## Co-op
+- Slice `world.ext.kite = {v:1, rev, fly:{h:null|F, g:null|F}, tied:[{k, p, L, s}]}` where `F = {p, L, s}` (pattern index, line target, steer quantised to 0.05 rad).
+- Actions: `kite.fly {p,L,s}` is sent on launch and when L or the quantised steer changes, throttled to
+  ≥250 ms. `kite.land`, `kite.tie {k}` (host validates the piece and removes one `kite_*` from the actor's
+  bag) and `kite.untie {i}` (host gives the item back). The host clears `fly.g` when the guest leaves (`ctx.other` is null).
+- Rendering: the local kite uses local inputs right away and never waits for the echo. The remote kite uses
+  `fly` from ext, anchored near `ctx.other` (pos + yaw-rotated fist offset 0.35 forward, 0.3 right, -0.25 down). Both peers share the wind, so the shapes match.
+- Remote held prop: append `'kite'` to `HELD` in `dist/coop.js:27`. The list is append-only and its index
+  is the wire format, so check whether spyglass, which is on `origin/claude/loop-features-202611210849` and
+  not yet in this tree, already took 21. Also add `BUILD.kite` (spool cylinder + small diamond) and
+  `TOOL_TILT.kite` in `dist/coop-avatar.js:49/127`. See commit `07af8ca` ("co-op held prop") for the exact 3-line pattern. Old clients map unknown kinds to index 0 (empty hand), which is harmless.
 
-### Colours
-- Paint: `dist/paint.js:8-15` `PALETTE` (Seafoam #9fd3c1, Coral #e9a08c, Sunshell #f1d78d, Lagoon #86b3d6,
-  Pebble). Flag: `dist/flags-core.js:5-6` (8 colours including Plum #8a5a8f and Navy). Use the flag palette
-  hexes so kites match flags. A recipe can take a `paint_<id>` pot (`PAINT_KINDS` paint.js:16) as the dye,
-  or the colours can be free per recipe. Vertex colours (sail, plus a contrasting stripe and tail) keep one
-  material for every colour.
+## Save
+- Only `tied` and `rev` are saved, and `fly` is reset on `load(…,'save')`. `load(undefined)` gives an empty
+  slice. Cleaning keeps entries with a valid piece key (paint `PIECE_RE` style), `p ∈ 0..2`, `L ∈ {8,16,24}`, `|s| ≤ 0.9`, and at most 6 of them.
+- Items are `kite_sunburst`, `kite_gullwing` and `kite_tidestripe`, with maxStack 1 and `placeholder:false`.
+  Recipes cost `{leaf 4, wood 2, rope 3}`, and Tidestripe also takes `paint_lagoon: 1` (paint pots exist: `content-items.js:36`). Add a craft-book group `tools` (`dist/craft-book.js:32`) and one icon
+  `icon-kite` shared by all three, with different pattern colours in the swatch.
 
-### Per-frame budget
-- `update(dt)` allocates nothing (`content.js:8`). Use module scratch vectors and `Float32Array` line buffers.
-- Per kite: the sail plus spars merged into 1 mesh with vertex colours (about 40 tris), 1 `T.Line`, and 1 tail
-  strip (shader-waved). That is 3 draws. Merging the tail into the sail mesh brings it to **2 draws**, and
-  merging all kites into one instanced sail mesh plus one `LineSegments` gives about 2 draws total. Cap posts
-  at 6-8. `castShadow=false` for kite and line, because a shadow on the deck from 15 m is mostly off-raft anyway.
-- Merge helper: `dist/merge-geo.js` (used at `sailing-world.js:6`).
+## Model budget
+- World kite: one merged `BufferGeometry` with vertex colours for the pattern: a diamond or delta sail
+  (8 tris, double-sided), two spars (2 boxes, 24 tris) and a bridle. Under 60 tris total, 1 material,
+  `castShadow=false`. The tail is a vertex-coloured ribbon of 8 quads (CPU-updated) or a second `T.Line`.
+  The string is a `T.Line` of 17 points, the same as the fishing line (`game.js:451-452`, `setRope` :1428).
+- Kites use at most 3 draw calls each, with a cap of 2 flying + 6 tied = 24 calls worst case. Typical is 2-3 kites, so about 6 calls.
+- `dist/rope.js` (`createRope(T,{segments,radius})` gives `{mesh, update(points,{tension,visible}), dispose}`,
+  with radius clamped to 0.002-0.02 and no allocations in update) is **not used anywhere in dist**. A 0.012 m
+  tube is subpixel at 10-24 m and would shimmer, so it is not used for the string. Optional use: a 1.5 m tube stub near the fist for close-ups.
+- Held model (first person): a spool with the folded kite in the right fist. Add `kite_*` to `HOLD` in
+  `dist/held-items.js:32` (`hand:'right', pose:'grip'`) and add a `buildItemModel` branch, mirroring
+  spyglass `07af8ca` (`held-items.js` +6 lines). Unknown kinds otherwise fall back to a generic bundle. While flying, hide the folded sail part. This needs a tiny `contentCtx` getter, for example
+  `heldModel: k => hands?.itemModel(k)`, next to `get brush()` (`game.js:428`).
+- String start (first person): `camera.localToWorld(0.36, -0.30, -0.72)`, which is about where the right fist
+  grips (`hands.js:15-16`). The viewmodel is drawn with a depth clear and no eye-scale (`dist/viewmodel.js` is not in dist), so a world-space point there lines up. This needs no engine edit.
 
-### Co-op
-- Slice `world.ext.kite = {v:1, r, p:{'x,z': colourIdx}}`: the post tile and the clipped kite colour, small
-  ints only (flags-core style). Actions `kite.clip {x,z,k}` and `kite.unclip {x,z}` are host-validated: the
-  decor is a `kitepost`, the actor's bag has or can take the kind, and reach is checked (`flags-core.js:23`
-  `REACH=3.2, HOST_SLACK=.8`). `load(…,'net')` rebuilds only when `r` changes, and
-  `hostState` re-sends ext about 8x/s (`game.js:1848`, `wallTick … 120`).
-- The pose is **not synced**. Each peer computes the pose from `(post x,z, deckY, sailing.windDir/windStr/vx/vz,
-  daynight.wind, elapsed, per-post phase hash(x,z))`. Daynight is deterministic and sailing comes from the
-  host, so the only mismatch is the `elapsed` phase of the bob. That is invisible.
-- Hand-held kites are local cosmetics only. Optionally, show the remote one through the `HELD` prop.
+## Small reward (keep it simple)
+Every 90-150 s that a kite has been flying high (`s > 0.85`, `L = 24`), the host emits one notice, "Your
+kite spots driftwood off the bow", and nudges the nearest free `world.items` debris toward the raft. If
+that is too invasive, it can instead start a wildlife gull circling near the kite. Otherwise the kite is
+purely cosmetic. Expose `debug.forceSpot()`, `debug.launch(p)`, `debug.setWind(s)` and `debug.tie(key)`.
 
-## (c) Risks
-1. **Stale anchors.** Master moves fast. This note's spec (`docs/specs/kite.md`) and its INDEX line describe the
-   *old* hand-steer design and must be rewritten for the post design, or builders will follow the wrong one.
-2. **Item system split.** Putting kinds in content-items.js gets overridden by, or misses, items.js
-   (unlock gating, icons through `iconTint`). Use items.js like glidepost.
-3. **Line through geometry.** A downwind line can pass through a roof, sail or mast. Accept it, or raise the
-   elevation when the line hits a piece AABB (`zipline.js:115` `lineBlocked` is prior art). The line may
-   also cross the main sail cloth. Keep posts low and kites high to reduce this.
-4. **Wind frame bugs.** `windDir` is "toward", not "from", and model +x versus +z needs the `-PI/2` quirk.
-   Get it wrong and the kite flies upwind of the pennant. Add a test that compares the kite azimuth with `windVector`.
-5. **Guest wind lag.** The host steps the wind and the guest sees it about 120 ms late, smoothed. That is fine
-   for a kite. Do not dead-reckon the wind on the guest.
-6. **Pickup or loss.** Post pickup and unclip with a full bag must refuse gently (`UNDECOR_TEXT.full`,
-   `decor-pickup.js:7`), never delete the kite. Old saves without `ext.kite` must give an empty slice.
-7. **Visual noise and perf.** Eight kites with tails could clutter the sky and add about 24 draws. Cap the
-   count, merge geometry, and fade the tail amplitude with distance.
-8. **Shared IDs.** `HELD` and coop indices are append-only, so check them against concurrent branches (zipline
-   and spyglass already appended). The names "Kite", "Kite Post" and the colours are generic and original.
+## Integration points
+| Where | What |
+|---|---|
+| `dist/content.js:58` FEATURES | append `createKite` (before cookpot, which stays last) |
+| `dist/content-items.js:9/69` | 3 items + 3 recipes |
+| `dist/held-items.js:32` HOLD, `buildItemModel` | held spool/kite (spyglass pattern) |
+| `dist/coop.js:27` HELD, `dist/coop-avatar.js:49,127` | remote held prop (append only) |
+| `dist/game.js:428` contentCtx | optional `heldModel(k)` getter (one line) |
+| `dist/icons.svg`, `dist/survival-ui.js:22`, `dist/craft-book.js:32` | icon, sprite id, book group and text |
+| reads `world.sailing.{windDir,windStr,vx,vz}`, daynight `.wind`, `ctx.building.grid.pick`, `ctx.other`, `ctx.deckY()` | wind, tie-off, co-op anchor |
