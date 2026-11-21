@@ -46,7 +46,7 @@ export function createRainBarrel(T) {
   add(g, new T.CylinderGeometry(.34, .2, .18, 12, 1, true), std(0x6f9a4a, .85, 0, {side:T.DoubleSide, flatShading:true}), 'barrelFunnel', 0, .63, 0);
   const water = add(g, new T.CircleGeometry(.22, 16), std(0x7fc4dc, .2, 0, {emissive:0x2a6f8a, emissiveIntensity:.25}), 'barrelWater', 0, .06, 0, false);
   water.rotation.x = -Math.PI / 2; water.visible = false;
-  const ripple = add(g, new T.RingGeometry(.08, .1, 20), new T.MeshBasicMaterial({color:0xe8f7ff, transparent:true, opacity:.7, depthWrite:false, side:T.DoubleSide}), 'barrelRipple', 0, .065, 0, false);
+  const ripple = add(g, new T.RingGeometry(.08, .1, 20), new T.MeshBasicMaterial({color:0xe8f7ff, transparent:true, opacity:.7, depthWrite:false, side:T.DoubleSide, forceSinglePass:true}), 'barrelRipple', 0, .065, 0, false);
   ripple.rotation.x = -Math.PI / 2; ripple.visible = false;
   pips('barrelPips', 4, .14, .1, .27, .05);
   g.userData.craftType = 'rainbarrel';

@@ -301,7 +301,7 @@ export function createGrillModel(T, opts = {}) {
   add(kit.embers, emberMat, 'grillEmbers', false);
 
   // --- three flickering cone flames: one instanced draw call, additive, no shadows
-  const flameMat = new T.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, toneMapped: false });
+  const flameMat = new T.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, forceSinglePass: true, toneMapped: false });
   const FL = [[-0.1, 0.04, 0.27, 1.0], [0.11, -0.04, 0.24, 1.1], [0, 0, 0.36, 1.3]].map(([x, z, h, w], i) => ({ x, z, h, w, ph: i * 2.1 }));
   const flames = new T.InstancedMesh(kit.flame, flameMat, FL.length);
   flames.instanceMatrix.setUsage(T.DynamicDrawUsage);

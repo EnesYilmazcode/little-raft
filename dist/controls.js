@@ -6,7 +6,6 @@
 import { ActionMap } from './input-map.js?build=v3-survival-ae77fa84ac2b';
 import { createInput } from './input.js?build=v3-survival-ae77fa84ac2b';
 import { MoveFeel } from './move-feel.js?build=v3-survival-ae77fa84ac2b';
-import { createControlsTab } from './controls-tab.js?build=v3-survival-ae77fa84ac2b';
 import { createBuildRadial } from './build-radial.js?build=v3-survival-ae77fa84ac2b';
 
 const BUILD_PIECES = [
@@ -92,8 +91,21 @@ export function createControls(g) {
   const api = {map, input, feel, movement, afterMove, camera,
     get radialOpen() { return !!radial?.isOpen; },
     clear() { input.clear(); padUse = padReel = false; radial?.close(); },
-    mountTab(container) { // the tab's own dispose() should be paired with api.unmountTab(tab)
-      const t = createControlsTab({map, input}); t.mount(container); tabs.add(t); return t; },
+    // controls-tab.js is only fetched the first time a menu mounts the tab. mountTab() returns a handle at once
+    // (capturing/refresh/dispose work before the module arrives); handle.ready resolves to the real tab.
+    mountTab(container) { // the handle's dispose() should be paired with api.unmountTab(handle)
+      let tab = null, gone = false;
+      const handle = {
+        get element() { return tab?.element ?? null; },
+        get capturing() { return !!tab?.capturing; },
+        refresh() { tab?.refresh(); },
+        dispose() { gone = true; tab?.dispose?.(); tab = null; },
+        ready: import('./controls-tab.js?build=v3-survival-ae77fa84ac2b').then(m => {
+          if (gone) return null;
+          tab = m.createControlsTab({map, input}); tab.mount(container); return tab;
+        }).catch(e => { console.error('controls: tab failed to load', e); return null; }),
+      };
+      tabs.add(handle); return handle; },
     unmountTab(t) { tabs.delete(t); t?.dispose?.(); },
     dispose() { input.dispose(); radial?.dispose(); for (const t of tabs) t.dispose?.(); tabs.clear(); if (globalThis.raftControls === api) delete globalThis.raftControls; }};
   globalThis.raftControls = api; // menus lane: raftControls.mountTab(el); QA: raftControls.feel / .input

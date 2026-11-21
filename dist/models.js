@@ -187,7 +187,7 @@ function kit(kind, lod) {
   return K;
 }
 // Merge indexed/non-indexed geometries with position/normal/uv/color into one indexed geometry. Disposes inputs.
-function merge(list) {
+export function merge(list) {
   let nv = 0, ni = 0;
   for (const g of list) { nv += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; }
   const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), uv = new Float32Array(nv * 2), col = new Float32Array(nv * 3);

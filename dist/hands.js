@@ -73,6 +73,7 @@ function mergeByMaterial(T, root) {
   return made;
 }
 
+const smoothK = (rate, dt) => 1 - Math.exp(-rate * dt); // frame-rate independent smoothing (no per-frame closure)
 export function createHands(T, { modelFactory = null } = {}) {
   const V = (x = 0, y = 0, z = 0) => new T.Vector3(x, y, z);
   const UP = V(0, 1, 0);
@@ -413,7 +414,6 @@ export function createHands(T, { modelFactory = null } = {}) {
     const casting = clamp01(params.casting || 0);
     const reeling = !!params.reeling, walking = !!params.walking;
     const amp = clamp01(params.motion ?? 0.35) / 0.35;
-    const k = (rate) => 1 - Math.exp(-rate * dt);
 
     // ---- swap / pose change: ease down, switch while hidden, pop back up
     if (st.shown !== st.target) {
@@ -431,8 +431,8 @@ export function createHands(T, { modelFactory = null } = {}) {
     const pose = poseOf(st.shown), pointer = applyFingers(pose, hasHookOut, leftRope);
     const charge = pose === 'throw' ? 1 : isHook ? charge0 : 0;
     // pointing blends in; a left hand that only shows up to point slides in from below
-    st.ptR += ((pointer === 'R' ? 1 : 0) - st.ptR) * k(12);
-    st.ptL += ((pointer === 'L' ? 1 : 0) - st.ptL) * k(12);
+    st.ptR += ((pointer === 'R' ? 1 : 0) - st.ptR) * smoothK(12, dt);
+    st.ptL += ((pointer === 'L' ? 1 : 0) - st.ptL) * smoothK(12, dt);
     const leftNeeded = usesLeft(st.shown), lIn = leftNeeded ? 1 : st.ptL;
     L.pose.visible = st.shown !== null && (leftNeeded || st.ptL > 0.02);
     const rightIdle = !!st.shown && holdFor(st.shown).hand === 'left', rIn = rightIdle ? st.ptR : 1;   // empty right hand stays down
@@ -447,17 +447,17 @@ export function createHands(T, { modelFactory = null } = {}) {
       st.lastYaw = params.yaw; st.lastPitch = params.pitch;
       const inv = dt > 0 ? 1 / dt : 0, cap = 0.07 * amp;
       const tx = Math.max(-cap, Math.min(cap, -dp * inv * 0.012)), ty = Math.max(-cap, Math.min(cap, -dy * inv * 0.012));
-      st.lagX += (tx - st.lagX) * k(9); st.lagY += (ty - st.lagY) * k(9);
+      st.lagX += (tx - st.lagX) * smoothK(9, dt); st.lagY += (ty - st.lagY) * smoothK(9, dt);
     }
     lagRoot.rotation.set(st.lagX, st.lagY, -st.lagY * 0.6);
 
-    st.walkW += ((walking ? 1 : 0) - st.walkW) * k(5);
-    st.reelW += ((reeling ? 1 : 0) - st.reelW) * k(9);
-    st.outW += ((hasHookOut ? 1 : 0) - st.outW) * k(7);
-    st.toolW = hasHookOut ? 0 : st.toolW + (1 - st.toolW) * k(8);
+    st.walkW += ((walking ? 1 : 0) - st.walkW) * smoothK(5, dt);
+    st.reelW += ((reeling ? 1 : 0) - st.reelW) * smoothK(9, dt);
+    st.outW += ((hasHookOut ? 1 : 0) - st.outW) * smoothK(7, dt);
+    st.toolW = hasHookOut ? 0 : st.toolW + (1 - st.toolW) * smoothK(8, dt);
     if (casting > 0 && (st.lastCasting <= 0 || casting > st.lastCasting + 0.25)) st.releaseCharge = Math.max(st.chargeS, charge, 0.35);
     st.lastCasting = casting;
-    st.chargeS += (charge - st.chargeS) * k(charge > st.chargeS ? 22 : 14);
+    st.chargeS += (charge - st.chargeS) * smoothK(charge > st.chargeS ? 22 : 14, dt);
 
     // ---- cast / strike curve: p 0 (just released) -> 1 (done)
     const p = casting > 0 ? 1 - casting : 1;
@@ -518,8 +518,10 @@ export function createHands(T, { modelFactory = null } = {}) {
     toolHolder.scale.setScalar(hasHookOut ? 1 : 0.7 + 0.3 * easeOutBack(tw));  // little "catch" pop on return
 
     last.lag[0] = st.lagX; last.lag[1] = st.lagY;
-    Object.assign(last, { held: st.shown, target: st.target, pose, pointHand: pointer, dip: down, charge: chargeEff, chargeEased: ce, throw: a,
-      pull: pull * rW, pullR: pullR * rW, rightHand: handPoses.R, leftHand: handPoses.L, ropeW: rW * oW, walkW: st.walkW, reelW: rW, hookOutW: oW, toolW: tw, spool: st.spool, models: mounts.size });
+    last.held = st.shown; last.target = st.target; last.pose = pose; last.pointHand = pointer; last.dip = down; // written in place: no per-frame object
+    last.charge = chargeEff; last.chargeEased = ce; last.throw = a;
+    last.pull = pull * rW; last.pullR = pullR * rW; last.rightHand = handPoses.R; last.leftHand = handPoses.L; last.ropeW = rW * oW;
+    last.walkW = st.walkW; last.reelW = rW; last.hookOutW = oW; last.toolW = tw; last.spool = st.spool; last.models = mounts.size;
     return last;
   }
 
