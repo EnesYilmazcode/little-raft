@@ -164,7 +164,7 @@ export function attachProgression(ctx) {
 #researchPanel::backdrop{background:rgba(12,9,5,.42)}
 #researchPanel .rp-wrap{padding:12px;border-radius:6px;background:linear-gradient(#b48d55,#8a663a);border:3px solid #3e2a17;box-shadow:0 0 0 2px #d6b67e,0 18px 50px #000a;outline:none}
 #researchPanel .rp-head{display:flex;justify-content:space-between;align-items:center;margin:-2px 2px 10px}
-#researchPanel h2{margin:0;font:800 19px/1.1 inherit;font-family:inherit;color:#2a1b0e}
+#researchPanel h2{margin:0;font:800 19px/1.1 system-ui,sans-serif;font-family:inherit;color:#2a1b0e}
 #researchPanel .rp-x{width:30px;height:30px;border:0;border-radius:4px;background:#3a2716;color:#fff2cc;font:700 18px/1 sans-serif;cursor:pointer}
 #researchPanel section{background:#3a2716eb;border-radius:4px;padding:10px;margin-top:8px}
 #researchPanel .rp-sub{margin:0 0 6px;font:700 11px/1 sans-serif;letter-spacing:1.4px;text-transform:uppercase;color:#d9c9a6}
