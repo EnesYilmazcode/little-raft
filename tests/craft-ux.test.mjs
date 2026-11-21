@@ -127,4 +127,5 @@ test('sourceOf: every item and recipe ingredient has a source the player can act
     assert.ok(s && s.tag && s.how, `${q.kind} (in ${r.id}) has a source`);
   }
   for (const k of Object.keys(ITEM_INFO)) assert.ok(CB.sourceOf(k, recipes), `${k} has a source`);
+  for (const k of ['berries', 'coconut', 'berrycup', 'coconutcup', 'mixcup']) assert.equal(CB.sourceOf(k, recipes).recipe, null, k); // [juicer]
 });

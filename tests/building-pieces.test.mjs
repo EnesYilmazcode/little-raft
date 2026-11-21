@@ -31,7 +31,7 @@ test('constants and piece catalogue match the contract', () => {
   assert.equal(LEVEL_H, 2.2);
   assert.equal(FLOOR_THICK, 0.12);
   assert.deepEqual(DIR.map(d => [...d]), [[0, 1], [1, 0], [0, -1], [-1, 0]]);
-  assert.deepEqual([...PIECE_ORDER], ['foundation', 'floor', 'wall', 'halfwall', 'window', 'door', 'pillar', 'stairs', 'roof']);
+  assert.deepEqual([...PIECE_ORDER], ['foundation', 'floor', 'wall', 'halfwall', 'window', 'door', 'pillar', 'stairs', 'roof', 'railing', 'hatch', 'ladder', 'gate']);
   for (const id of PIECE_ORDER) assert.equal(PIECES[id].id, id);
   assert.equal(PIECES.foundation.slot, 'tile');
   assert.deepEqual(PIECES.foundation.cost, { wood: 2, plastic: 2 });
