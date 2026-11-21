@@ -533,10 +533,25 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   }
 
   // ---------- render ----------
+  // Runs every frame: compares the live slots with what was last painted (no allocation) and only
+  // snapshots + repaints when something changed.
+  const seen = { bag: null, hot: null, open: null, drag: null, sel: null, k: new Array(TOTAL), c: new Array(TOTAL), d: new Array(TOTAL) };
+  function unchanged(bag) {
+    const slots = bag.slots;
+    if (!Array.isArray(slots) || slots.length !== TOTAL) return false;
+    let same = seen.bag === bag && seen.hot === hotEls && seen.open === isOpen && seen.drag === dragging && seen.sel === bag.selectedIndex;
+    seen.bag = bag; seen.hot = hotEls; seen.open = isOpen; seen.drag = dragging; seen.sel = bag.selectedIndex;
+    for (let i = 0; i < TOTAL; i++) {
+      const s = slots[i], k = s?.kind ?? null, c = s?.count ?? 0, d = s?.durability ?? null;
+      if (seen.k[i] !== k || seen.c[i] !== c || seen.d[i] !== d) { seen.k[i] = k; seen.c[i] = c; seen.d[i] = d; same = false; }
+    }
+    return same;
+  }
   function render(force) {
     if (!alive) return;
     const bag = bagNow();
     ensureTools();
+    if (bag && unchanged(bag) && !force) return;
     const snap = bag && readSnap(bag);
     if (!snap) return;
     const slots = snap.slots;

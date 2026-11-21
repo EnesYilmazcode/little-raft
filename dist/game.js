@@ -224,7 +224,7 @@ export function mount(transfer = null) {
     resCheckAt = now + (next < resScale ? 1000 : 3000);
     if (next !== resScale) { resScale = +next.toFixed(2); renderer.setPixelRatio(baseRatio * resScale); }
   }
-  let netClock = 0, saveClock = 0, networkTick = 0, wheelAcc = 0;
+  let netClock = 0, saveClock = 0, networkTick = 0, wheelAcc = 0, lastDraw = 0;
   let contextCache = null, uiFailed = false, crossUsable = false;
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
@@ -388,6 +388,18 @@ export function mount(transfer = null) {
     depthClear.onBeforeRender = (r, _s, cam) => { if (cam !== camera) return; r.state?.buffers?.depth?.setMask?.(true); r.clearDepth(); };
     camera.add(depthClear);
     camera.add(hands.group);
+  }
+  // Held models and build ghosts for every kind in the bag are built ahead and their shaders compiled
+  // (renderer.compile covers hidden meshes), so the first switch to an item never links programs mid-play.
+  const warmedKinds = new Set();
+  function warmKinds() {
+    const slots = localBag().slots; let fresh = false;
+    for (let i = 0; i < slots.length; i++) {
+      const k = slots[i]?.kind; if (!k || warmedKinds.has(k)) continue;
+      warmedKinds.add(k); fresh = true; hands.preload([k]);
+      if (k === 'hammer') ghosts.preload(['floor']); else if (DECOR_TYPES.includes(k)) ghosts.preload([k]);
+    }
+    if (fresh) { try { renderer.compileAsync(scene, camera).catch(() => {}); } catch (e) { console.warn('shader warm-up failed', e); } }
   }
 
   function palm(parent, x, y, z, s = 1) {
@@ -980,10 +992,14 @@ export function mount(transfer = null) {
     if (running) { if (!saveClock) saveClock = now; if (now - saveClock > 3000) { saveClock = now; save(); } } // wall clock: dt is capped, so low fps would stretch the interval
     if (conn?.open) { networkTick += dt; if (networkTick > .12) { networkTick = 0; send(role === 'host' ? hostState() : {type:'move', me:pose()}); } }
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
-    refreshPointerUI(); updateCharge(); updateContext(dialog);
+    refreshPointerUI(); updateCharge(); updateContext(dialog); warmKinds();
+    // Behind a blurred pause/settings backdrop the world only redraws at ~10 fps (the inventory has no blur).
+    const veiled = dialog && !!document.querySelector('dialog[open]:not(#inventory)');
+    if (veiled && now - lastDraw < 100) return;
+    lastDraw = now;
     renderer.render(scene, camera);
     cpuMsAvg += (performance.now() - now - cpuMsAvg) * .05;
-    adaptResolution(now);
+    if (!veiled) adaptResolution(now);
   }
   function animate() {
     if (!active || disposed) return;

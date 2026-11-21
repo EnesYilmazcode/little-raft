@@ -106,5 +106,7 @@ export function createGhosts(T, scene, raft, {floor, craft}) {
     if (ok !== wasOk) { wasOk = ok; mat.color.copy(ok ? OK : BAD); mat.emissive.copy(ok ? OK : BAD); }
     mat.opacity = .5 + Math.sin(time * 4) * .06;
   }
-  return {show, hide, get visible() { return !!shown; }};
+  // Builds ghosts ahead (e.g. for every placeable in the bag) so the first preview does no mesh work.
+  function preload(kinds) { for (const k of kinds) model(k); }
+  return {show, hide, preload, get visible() { return !!shown; }};
 }
