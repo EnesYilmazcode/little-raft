@@ -17,12 +17,12 @@ const CATEGORY_OF = Object.freeze({
   net: 'survival', palm: 'survival', lantern: 'survival',
   sail: 'building', bench: 'building', crate: 'building',
   // progression catalogue (items.js)
-  metalhook: 'tools', binoculars: 'tools',
+  metalhook: 'tools', binoculars: 'tools', finder: 'tools', spade: 'tools',
   drum: 'tools', pipes: 'tools', bells: 'tools', // [instruments]
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
-  researchtable: 'building', grill: 'building', smelter: 'building',
+  researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
@@ -81,6 +81,9 @@ export const ITEM_TEXT = Object.freeze({
   wax:        { desc: 'Soft beeswax from the comb.', use: 'Make beeswax candles.' }, // [bees]
   candle:     { desc: 'A little jar candle.', use: 'Glows warmly at night; place on a tile.' }, // [bees]
   honeyfish:  { desc: 'Grilled fish with a honey glaze.', use: 'A sweet treat.' }, // [bees]
+  finder:     { desc: 'A driftwood wand with a brass coil.', use: 'Hold it on island sand: it ticks faster near buried bundles.' },
+  spade:      { desc: 'A little wooden spade with a metal blade.', use: 'E on island sand digs up bundles (or a pinch of sand).' },
+  maptable:   { desc: 'A little driftwood chart table with brass fittings.', use: 'Place it, press E: see charted islands, drop pins, set a course.' },
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
   grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },
