@@ -4,12 +4,12 @@
 import {
   ISLAND, NODE_MAX, SHORE_U, layoutFor, pathAt, clean, lootFor, groundHeight, nextDelay, dockOffset,
   applyGather, standOnSand, DEFAULTS,
-} from './islands-layout.js';
-import { createIslandModels, PALM_H, PALM_BEND } from './islands-models.js';
+} from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
+import { createIslandModels, PALM_H, PALM_BEND } from './islands-models.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 
-export * from './islands-layout.js';
+export * from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
 
 const EYE = PLAYER_CONSTANTS.EYE_OFFSET;
 const KINDS = ['palm', 'bush', 'rock', 'sand'];
@@ -33,6 +33,12 @@ for (const k of KINDS) {
   for (let left = 0; left <= NODE_MAX[k]; left++) PROMPTS[k][left] = `<kbd>E</kbd>${LABEL[k]} (${left} left)`;
 }
 const itemName = k => (ITEM_INFO[k] && ITEM_INFO[k].name) || k;
+
+// Read-only view of the live island for sibling modules (treasure.js). Import this file with the same
+// ?build= specifier content.js uses, or a second module instance is loaded and this stays null.
+// Returns one cached object (do not keep or mutate it) or null when no island is shown.
+let live = null;
+export function islandNow() { return live ? live() : null; }
 
 export function createIslands(ctx) {
   const T = ctx.T;
@@ -400,11 +406,22 @@ export function createIslands(ctx) {
   }
 
   function dispose() {
+    if (live === mine) live = null;
     if (group.parent) group.parent.remove(group);
     if (lagoon.parent) lagoon.parent.remove(lagoon);
     for (const m of veg) m.dispose?.();
     models.dispose();
   }
+
+  // ---------- live accessor (islandNow) ----------
+  const now = { seed: 0, cx: 0, cz: 0, gy: 0, R: 0, rot: 0, phase: 'gone', onSand: false, hover: -1, groundAt };
+  function mine() {
+    if (!shown || !st.isl || !layout) return null;
+    now.seed = st.isl.seed; now.cx = cx; now.cz = cz; now.gy = gy; now.R = layout.R; now.rot = layout.rot;
+    now.phase = path.phase; now.onSand = sandState.onSand; now.hover = hoverNode;
+    return now;
+  }
+  live = mine;
 
   // ---------- QA helpers (raftDebug.content.islands) ----------
   const debug = {

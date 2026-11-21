@@ -128,9 +128,12 @@ test('grill model and smoke construct, animate and dispose headless', () => {
 
   const sm = createSmoke(T, { max: 8 });
   assert.ok(sm.points.isPoints);
+  assert.equal(sm.points.visible, false, 'no draw call while idle');
   sm.emit(0, 1, 0, 20, true);
+  assert.equal(sm.points.visible, true, 'shown as soon as a puff spawns');
   for (let i = 0; i < 300; i++) sm.update(1 / 60, { x: 0.3, z: 0 });
   const a = sm.points.geometry.attributes.aAlpha.array;
   assert.ok(Array.from(a).every(v => v === 0), 'all faded after 5 s');
+  assert.equal(sm.points.visible, false, 'hidden again once every puff is gone');
   sm.update(0.1); sm.dispose();
 });

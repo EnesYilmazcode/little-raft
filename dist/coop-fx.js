@@ -6,7 +6,7 @@
 
 const MINE = '#efae55', THEIRS = '#70a7e4';
 const ROPE = '#e9d39a', GHOST_REMOTE = '#3d8ff0', GHOST_BAD = '#ee8e75';
-const DECOR = new Set(['sail', 'palm', 'lantern', 'net', 'bench', 'crate']);
+const DECOR = new Set(['sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign']);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const fin = Number.isFinite;   // fixed-arity checks below: no rest-arg arrays in per-frame paths
 const fin2 = (a, b) => fin(a) && fin(b);
@@ -66,7 +66,10 @@ export function createPings(T, scene) {
 
   const cam = new T.Vector3();
   function update(dt, time, camera) {
-    if (camera) camera.getWorldPosition(cam);
+    let any = false;
+    for (const s of slots) if (s.born >= 0) { any = true; break; }
+    if (!any) return;
+    if (camera) cam.setFromMatrixPosition(camera.matrixWorld); // the game updates the camera's matrices before this runs
     for (const s of slots) {
       if (s.born < 0) continue;
       s.age += dt;

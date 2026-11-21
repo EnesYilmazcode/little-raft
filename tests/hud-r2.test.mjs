@@ -55,7 +55,7 @@ test('HUD-2/HUD-4: a docked feed is an in-flow box inside the panel lane, not a 
 
 test('HUD-3: feed rows stay left of the hotbar, and lift above it below 1000px wide', () => {
   assert.match(gameSrc, /#pickupFeed \.pf-row\{max-width:max\(200px,calc\(50vw - 287px\)\);white-space:normal/);
-  assert.match(gameSrc, /@media\(max-width:1000px\)\{#pickupFeed\[popover\]\{inset:auto auto \d+px 10px\}/); // height clears the vitals panel (132px, like #coopFeed)
+  assert.match(gameSrc, /@media\(max-width:1000px\)\{#pickupFeed\[popover\]\{inset:auto auto (?:\d+px|calc\(\d+px \+ var\(--coop-feed-h, 0px\)\)) 10px\}/); // height clears the vitals panel (132px, like #coopFeed)
   // The hotbar is 506px wide and centred, so its left edge is 50vw - 253px; the feed sits at left 22px.
   for (let w = 1001; w <= 3840; w++) {
     const right = 22 + Math.max(200, w / 2 - 287), hotbarLeft = w / 2 - 253;
@@ -95,4 +95,23 @@ test('UX-2: the bag keeps its top edge across crafting tabs (pinned top, fixed-h
   assert.ok(book, 'crafting-book column rule');
   assert.match(book, /;height:min\(560px,calc\(94vh - 30px\)\)/, 'fixed height, so the panel height does not follow the tab');
   assert.match(ui, /@media\(max-width:860px\),\(max-height:520px\)\{#inventory \.sv-craft\{[^}]*height:auto;max-height:none/, 'stacked layout resets the height');
+});
+
+// ---------------------------------------------------------------- co-op feed stacking
+test('co-op: the pickup feed stacks above #coopFeed instead of overlapping it', async () => {
+  const { createFeed } = await import(new URL('coop-feed.js', base));
+  const props = new Map();
+  const el = tag => ({ tagName: tag, children: [], style: {}, classList: { add() {}, contains: () => false }, setAttribute() {},
+    get childElementCount() { return this.children.length; }, offsetHeight: 0, isConnected: true,
+    append(...c) { this.children.push(...c); }, appendChild(c) { this.children.push(c); c.isConnected = true; }, remove() {} });
+  const doc = { head: el('head'), body: el('body'), getElementById: () => null, createElement: el,
+    documentElement: { style: { setProperty: (k, v) => props.set(k, v), removeProperty: k => props.delete(k) } },
+    defaultView: { setTimeout: () => 0, clearTimeout() {} } };
+  const feed = createFeed({ doc });
+  const box = doc.body.children.find(c => c.tagName === 'div');
+  box.offsetHeight = 40; feed.push('Brother joined', 'join');
+  assert.equal(props.get('--coop-feed-h'), '46px');
+  feed.dispose();
+  assert.equal(props.has('--coop-feed-h'), false);
+  assert.match(src('style.css'), /#pickupFeed\{[^}]*bottom:calc\(132px \+ var\(--coop-feed-h, 0px\)\)/);
 });

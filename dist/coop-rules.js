@@ -1,6 +1,6 @@
 // Small pure helpers for nets, co-op hook state and decor colliders. No DOM, no Three.js.
 
-import { blockerGap } from './player-physics.js';
+import { blockerGap } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 
 export const NET_RANGE = 4;
 export const GUEST_HELD_TTL = 1500; // ms a guest's reported hook contents stay valid without a fresh move

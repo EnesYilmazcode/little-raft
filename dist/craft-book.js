@@ -17,11 +17,15 @@ const CATEGORY_OF = Object.freeze({
   net: 'survival', palm: 'survival', lantern: 'survival',
   sail: 'building', bench: 'building', crate: 'building',
   // progression catalogue (items.js)
-  metalhook: 'tools', binoculars: 'tools', spear: 'tools', metalspear: 'tools',
+  metalhook: 'tools', binoculars: 'tools', spear: 'tools', metalspear: 'tools', finder: 'tools', spade: 'tools',
   drum: 'tools', pipes: 'tools', bells: 'tools', // [instruments]
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
+  researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
+  rug: 'building', pennant: 'building', fern: 'building', chime: 'building', hammock: 'building', pots: 'building', sign: 'building', // decor pack
+  kiln: 'building', glasslamp: 'survival', sinker: 'survival', // kiln
+  nestbox: 'survival', cushion: 'building', // raft animals
   researchtable: 'building', grill: 'building', smelter: 'building',
   // content (engine, sleep, paint)
   motor: 'building', wheel: 'building', bed: 'building', brush: 'tools',
@@ -95,6 +99,23 @@ export const ITEM_TEXT = Object.freeze({
   wax:        { desc: 'Soft beeswax from the comb.', use: 'Make beeswax candles.' }, // [bees]
   candle:     { desc: 'A little jar candle.', use: 'Glows warmly at night; place on a tile.' }, // [bees]
   honeyfish:  { desc: 'Grilled fish with a honey glaze.', use: 'A sweet treat.' }, // [bees]
+  finder:     { desc: 'A driftwood wand with a brass coil.', use: 'Hold it on island sand: it ticks faster near buried bundles.' },
+  spade:      { desc: 'A little wooden spade with a metal blade.', use: 'E on island sand digs up bundles (or a pinch of sand).' },
+  maptable:   { desc: 'A little driftwood chart table with brass fittings.', use: 'Place it, press E: see charted islands, drop pins, set a course.' },
+  rug:        { desc: 'A woven mat of leaves and rope.', use: 'Place it on a deck tile; E turns it.' },
+  pennant:    { desc: 'A little flag that flutters in the wind.', use: 'Place it on the raft; it shows which way the wind blows.' },
+  fern:       { desc: 'A post with a hanging fern basket.', use: 'Place it on the raft for some green.' },
+  chime:      { desc: 'Metal tubes that tinkle in the breeze.', use: 'Place it on the raft; E turns it.' },
+  hammock:    { desc: 'A rope hammock between two posts.', use: 'Place it on the raft for a cosy corner.' },
+  pots:       { desc: 'Three clay pots with little flowers.', use: 'Place it on the raft; E turns it.' },
+  sign:       { desc: 'A wooden board you can write on.', use: 'Place it, then press E to write up to three lines.' },
+  kiln:       { desc: 'A stone and clay kiln with a wood fire.', use: 'Place it, load ore, sand or clay and some wood; collect ingots, glass and bricks.' },
+  glasslamp:  { desc: 'A lantern with clear glass panes.', use: 'Place it for a warm light on the raft.' },
+  sinker:     { desc: 'A small metal weight for the hook line.', use: 'Keep it in your bag: the hook wears half as fast.' },
+  puffegg:    { desc: 'A speckled egg from a puffhen.', use: 'Make an Egg Lantern.' },
+  feather:    { desc: 'A soft puffhen feather.', use: 'Stuff a Feather Cushion.' },
+  nestbox:    { desc: 'A cosy box of straw for puffhens.', use: 'Place it on the raft and a puffhen may come to stay.' },
+  cushion:    { desc: 'A plump cushion stuffed with feathers.', use: 'Place it on the raft for a soft seat.' },
   cookedsharkmeat: { desc: 'A shark steak grilled through.', use: 'A filling meal (+30 food).' },
   sharkmeat:  { desc: 'A raw slab of shark meat.', use: 'Grill it for a proper meal; four come from every shark.' },
   sharkhead:  { desc: 'The head of a shark you beat.', use: 'A trophy, and proof the raft is safe for a while.' },
@@ -313,10 +334,10 @@ export const ITEM_SOURCE = Object.freeze({
   metalore:    Object.freeze({ tag: 'barrels, seafloor', how: 'Hook floating barrels or dive to the seafloor.' }),
   copperore:   Object.freeze({ tag: 'barrels', how: 'Hook floating barrels; copper ore is rare.' }),
   seaweed:     Object.freeze({ tag: 'barrels', how: 'Hook floating barrels.' }),
-  brick:       Object.freeze({ tag: 'grill', how: 'Fire clay on a grill.' }),
-  metalingot:  Object.freeze({ tag: 'smelter', how: 'Smelt metal ore in a smelter.' }),
+  brick:       Object.freeze({ tag: 'grill, kiln', how: 'Fire clay on a grill or in a Seaside Kiln.' }),
+  metalingot:  Object.freeze({ tag: 'smelter, kiln', how: 'Smelt metal ore in a smelter or a Seaside Kiln.' }),
   copperingot: Object.freeze({ tag: 'smelter', how: 'Smelt copper ore in a smelter.' }),
-  glass:       Object.freeze({ tag: 'smelter', how: 'Melt sand in a smelter.' }),
+  glass:       Object.freeze({ tag: 'smelter, kiln', how: 'Melt sand in a smelter or a Seaside Kiln.' }),
   saltcup:     Object.freeze({ tag: 'fill a cup', how: 'Hold an empty cup and click the sea.' }),
   freshcup:    Object.freeze({ tag: 'purifier', how: 'Pour sea water into a purifier and wait.' }),
   cookedfish:  Object.freeze({ tag: 'grill', how: 'Cook a fish on a grill.' }),
@@ -324,6 +345,9 @@ export const ITEM_SOURCE = Object.freeze({
   flowerseed: Object.freeze({ tag: 'bushes, barrels', how: 'Pick it from island bushes, or find it in floating barrels.' }),
   honey:     Object.freeze({ tag: 'beehive', how: 'Put a beehive near flower boxes, then collect the honeycomb with E.' }),
   wax:       Object.freeze({ tag: 'beehive', how: 'Collect honeycomb from a beehive with E; each comb gives honey and beeswax.' }),
+  // raft animals (animals.js)
+  puffegg:     Object.freeze({ tag: 'puffhen', how: 'Place a Nest Box; a puffhen moves in and lays eggs. Press E on the nest to collect.' }),
+  feather:     Object.freeze({ tag: 'puffhen', how: 'Sometimes left with the eggs in a puffhen nest box; collect with E.' }),
   // shark lane (shark.js): harvest the beaten shark with E
   sharkmeat:   Object.freeze({ tag: 'beaten shark', how: 'Fight off the shark with a spear, then press E on its body.' }),
   sharkhead:   Object.freeze({ tag: 'beaten shark', how: 'Harvested with the meat from a beaten shark (E).' }),

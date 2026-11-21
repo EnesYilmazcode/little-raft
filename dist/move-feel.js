@@ -3,7 +3,7 @@
 // Everything is framerate independent: ramps are linear in time, smoothing uses exp(-rate*dt),
 // bob phase advances by distance travelled and the landing dip is an analytic spring curve.
 
-import {PLAYER_CONSTANTS as PC} from './player-physics.js';
+import {PLAYER_CONSTANTS as PC} from './player-physics.js?build=v3-survival-ae77fa84ac2b';
 
 export const FEEL = Object.freeze({
   START_TIME: 0.14,       // s, input engagement 0 -> 1 (smoothstep eased: weighty start)

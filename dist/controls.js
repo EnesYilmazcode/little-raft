@@ -3,11 +3,11 @@
 // game.js only needs tiny hooks (search "controls lane" there). rotate (and buildPick when g.buildPick is missing)
 // is also emitted as a window 'little-raft-action' CustomEvent,
 // footfalls as 'little-raft-footstep', so other lanes can listen without touching this file.
-import { ActionMap } from './input-map.js';
-import { createInput } from './input.js';
-import { MoveFeel } from './move-feel.js';
-import { createControlsTab } from './controls-tab.js';
-import { createBuildRadial } from './build-radial.js';
+import { ActionMap } from './input-map.js?build=v3-survival-ae77fa84ac2b';
+import { createInput } from './input.js?build=v3-survival-ae77fa84ac2b';
+import { MoveFeel } from './move-feel.js?build=v3-survival-ae77fa84ac2b';
+import { createControlsTab } from './controls-tab.js?build=v3-survival-ae77fa84ac2b';
+import { createBuildRadial } from './build-radial.js?build=v3-survival-ae77fa84ac2b';
 
 const BUILD_PIECES = [
   {id:'floor', label:'Floor'}, {id:'sail', label:'Sail'}, {id:'palm', label:'Palm'},
@@ -44,8 +44,9 @@ export function createControls(g) {
     } else if (id === 'buildMenu') radial?.confirm();
     else if (id === 'rotate') call('release'); // let go of a steered sail on any device
   };
+  const tabCapturing = () => { for (const t of tabs) if (t.capturing) return true; return false; }; // per frame: no array copy
   const input = createInput({element:g.canvas, map, onAction, sensitivity:g.sensitivity, blockedActions:['inventory', 'pause'],
-    isBlocked:() => [...tabs].some(t => t.capturing) || (!!g.isBlocked?.() && !radial?.isOpen)});
+    isBlocked:() => tabCapturing() || (!!g.isBlocked?.() && !radial?.isOpen)});
 
   function openRadial() {
     if (g.isBlocked?.()) return;

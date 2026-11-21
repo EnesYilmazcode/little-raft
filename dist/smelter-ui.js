@@ -5,7 +5,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const SPRITE_URL = (() => { try { return new URL('icons.svg', import.meta.url).href; } catch { return 'icons.svg'; } })();
 const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'repair', 'hammer', 'compass']);
 let ICONS = {};
-const iconsReady = import('./item-svg.js').then(m => { ICONS = m.ITEM_ICONS || m.default || {}; }).catch(() => {});
+const iconsReady = import('./item-svg.js?build=v3-survival-ae77fa84ac2b').then(m => { ICONS = m.ITEM_ICONS || m.default || {}; }).catch(() => {});
 
 const CSS = `
 #stationPanel.st-dlg{padding:0;margin:auto;border:0;background:transparent;box-shadow:none;width:max-content;max-width:96vw;color:#fff2cc;font:500 14px/1.35 ${FONT};overflow:visible}

@@ -264,23 +264,29 @@ export class ActionMap {
 }
 
 // Radial deadzone, rescale to 0..1 past the deadzone, magnitude^curve, clamp length <= 1.
-export function shapeStick(x, y, deadzone = 0.15, curve = 2) {
+// Pass `out` (a 2-array) to fill and return it instead of allocating.
+export function shapeStick(x, y, deadzone = 0.15, curve = 2, out = null) {
+  const r = out || [0, 0];
   const m = Math.hypot(x, y);
   const dz = Math.min(0.99, Math.max(0, deadzone || 0));
-  if (!Number.isFinite(m) || m <= dz) return [0, 0];
+  if (!Number.isFinite(m) || m <= dz) { r[0] = 0; r[1] = 0; return r; }
   const t = (Math.min(1, m) - dz) / (1 - dz);
   const s = Math.pow(t, curve > 0 ? curve : 1) / m;
-  return [x * s, y * s];
+  r[0] = x * s; r[1] = y * s;
+  return r;
 }
 
 // Exponential averaging of look deltas; smoothing 0 is an exact passthrough.
-export function smoothLook(state, dx, dy, smoothing = 0) {
+// Pass `out` (a 2-array) to fill and return it instead of allocating.
+export function smoothLook(state, dx, dy, smoothing = 0, out = null) {
+  const r = out || [0, 0];
   if (!(smoothing > 0)) {
     state.x = dx; state.y = dy;
-    return [dx, dy];
+  } else {
+    const k = 1 - Math.min(0.95, smoothing);
+    state.x = (state.x || 0) + (dx - (state.x || 0)) * k;
+    state.y = (state.y || 0) + (dy - (state.y || 0)) * k;
   }
-  const k = 1 - Math.min(0.95, smoothing);
-  state.x = (state.x || 0) + (dx - (state.x || 0)) * k;
-  state.y = (state.y || 0) + (dy - (state.y || 0)) * k;
-  return [state.x, state.y];
+  r[0] = state.x; r[1] = state.y;
+  return r;
 }

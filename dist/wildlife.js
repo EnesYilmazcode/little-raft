@@ -2,7 +2,7 @@
 // friendly dolphin or sea turtle circling at a distance. Pure scenery, see docs/features/wildlife.md.
 // Everything is a closed-form plan of a shared clock t, so host and guest see the same animals.
 // Rendering: 4 draw calls (gull bodies, gull wings, fish, the visible circler). No per-frame allocations.
-import { gullBodyGeometry, gullWingGeometry, dolphinGeometry, turtleGeometry, fishGeometry, GULL_SHOULDER, GULL_HIP } from './wildlife-models.js';
+import { gullBodyGeometry, gullWingGeometry, dolphinGeometry, turtleGeometry, fishGeometry, GULL_SHOULDER, GULL_HIP } from './wildlife-models.js?build=v3-survival-ae77fa84ac2b';
 
 export const WILDLIFE_SEED = 0x5eaf00d;
 export const GULL_MAX = 6, SCHOOL_MAX = 2, FISH_PER_SCHOOL = 12;
@@ -85,13 +85,21 @@ export function perchesFrom(tiles, decor) {
   return out;
 }
 
+// Per-gull sky constants (r, h, w, ph, 2ph, 3ph, bank), seeded: computed once per seed, so the per-frame path calls no rnd.
+const SKY_N = 7, skyK = new Float64Array((GULL_MAX + 1) * SKY_N), skySeed = new Float64Array(GULL_MAX).fill(NaN);
+function skyConsts(seed, i, o) { // writes gull i's constants at skyK[o..]
+  const s = gullKey(seed, i), dir = rnd(s, 3) < 0.5 ? -1 : 1, ph = TAU * rnd(s, 4);
+  skyK[o] = 7 + 5 * rnd(s, 0); skyK[o + 1] = 6.5 + 4 * rnd(s, 1); skyK[o + 2] = (0.17 + 0.1 * rnd(s, 2)) * dir;
+  skyK[o + 3] = ph; skyK[o + 4] = ph * 2; skyK[o + 5] = ph * 3; skyK[o + 6] = -dir * 0.32;
+}
 function gullSky(seed, i, t, o, ext) { // continuous circling path, raft frame
-  const s = gullKey(seed, i);
-  const r = 7 + 5 * rnd(s, 0) + pushOut(ext, GULL_MARGIN, GULL_R0), h = 6.5 + 4 * rnd(s, 1), dir = rnd(s, 3) < 0.5 ? -1 : 1;
-  const w = (0.17 + 0.1 * rnd(s, 2)) * dir, ph = TAU * rnd(s, 4);
-  const a = ph + w * t, rr = r + 1.5 * Math.sin(t * 0.07 + ph);
-  o.sx = Math.cos(a) * rr; o.sz = Math.sin(a) * rr; o.sy = h + 0.8 * Math.sin(t * 0.23 + ph * 2);
-  o.bank = -dir * 0.32; o.ph = ph;
+  let k = GULL_MAX * SKY_N; // spare row for an out-of-range i
+  if (i >= 0 && i < GULL_MAX) { k = i * SKY_N; if (skySeed[i] !== seed) { skyConsts(seed, i, k); skySeed[i] = seed; } }
+  else skyConsts(seed, i, k);
+  const r = skyK[k] + pushOut(ext, GULL_MARGIN, GULL_R0), ph = skyK[k + 3];
+  const a = ph + skyK[k + 2] * t, rr = r + 1.5 * Math.sin(t * 0.07 + ph);
+  o.sx = Math.cos(a) * rr; o.sz = Math.sin(a) * rr; o.sy = skyK[k + 1] + 0.8 * Math.sin(t * 0.23 + skyK[k + 4]);
+  o.bank = skyK[k + 6]; o.ph = ph; o.ph3 = skyK[k + 5];
 }
 
 // Fills v with gull i's perch visit for its slot: {on, start, stay, perch, yaw}. Two gulls never share
@@ -106,8 +114,22 @@ export function gullVisit(seed, i, slot, n, v) {
   return v;
 }
 
-const _sky = { sx: 0, sy: 0, sz: 0, bank: 0, ph: 0 }, _sky2 = { sx: 0, sy: 0, sz: 0, bank: 0, ph: 0 };
-const _visit = { on: false, start: 0, stay: 0, perch: -1, yaw: 0 };
+const _sky = { sx: 0.5, sy: 0.5, sz: 0.5, bank: 0.5, ph: 0.5, ph3: 0.5 }, _sky2 = { sx: 0.5, sy: 0.5, sz: 0.5, bank: 0.5, ph: 0.5, ph3: 0.5 };
+const _visit = { on: false, start: 0.5, stay: 0.5, perch: -1, yaw: 0.5 };
+// gullVisit only changes with (seed, slot, n): cached per gull. Key: seed, slot, n; value: on, start, stay, perch, yaw.
+const visKey = new Float64Array(GULL_MAX * 3).fill(NaN), visVal = new Float64Array(GULL_MAX * 5);
+function cachedVisit(seed, i, slot, n, v) {
+  if (!(i >= 0 && i < GULL_MAX)) return gullVisit(seed, i, slot, n, v);
+  const k = i * 3, o = i * 5;
+  if (visKey[k] !== seed || visKey[k + 1] !== slot || visKey[k + 2] !== n) {
+    gullVisit(seed, i, slot, n, v);
+    visKey[k] = seed; visKey[k + 1] = slot; visKey[k + 2] = n;
+    visVal[o] = v.on ? 1 : 0; visVal[o + 1] = v.start; visVal[o + 2] = v.stay; visVal[o + 3] = v.perch; visVal[o + 4] = v.yaw;
+    return v;
+  }
+  v.on = visVal[o] === 1; v.start = visVal[o + 1]; v.stay = visVal[o + 2]; v.perch = visVal[o + 3]; v.yaw = visVal[o + 4];
+  return v;
+}
 
 function baseBlend(v, t, leaveAt) {
   if (t < v.start + GULL_DESCEND) return smooth((t - v.start) / GULL_DESCEND);
@@ -129,7 +151,7 @@ function gullBlend(v, t, scareAt) { // 0 = in the sky, 1 = on the perch
 // ext: raft half-size (raftExtent), pushes the sky circle out on big rafts.
 export function gullPlan(seed, i, t, perches, out, scareAt = -Infinity, visit = null, perch = undefined, ext = 0) {
   const n = Array.isArray(perches) ? perches.length : 0;
-  const v = visit && visit.on ? visit : gullVisit(seed, i, Math.floor(t / GULL_SLOT), n, _visit);
+  const v = visit && visit.on ? visit : cachedVisit(seed, i, Math.floor(t / GULL_SLOT), n, _visit);
   gullSky(seed, i, t, _sky, ext);
   const p = perch !== undefined ? (v.on && perch ? perch : null) : v.on && v.perch >= 0 && v.perch < n ? perches[v.perch] : null;
   const b = p ? gullBlend(v, t, scareAt) : 0;
@@ -141,12 +163,6 @@ export function gullPlan(seed, i, t, perches, out, scareAt = -Infinity, visit = 
   if (p && scareValid(v, scareAt)) leaveAt = scareAt;
   const state = !p || t < v.start || t >= leaveAt + GULL_LEAVE ? 'circle' : t >= leaveAt ? 'leave' : t < v.start + GULL_DESCEND ? 'descend' : 'perched';
   out.state = state;
-  // heading from the path a moment ahead
-  gullSky(seed, i, t + 0.15, _sky2, ext);
-  const b2 = p ? gullBlend(v, t + 0.15, scareAt) : 0;
-  const dx = _sky2.sx + (out.px - _sky2.sx) * b2 - out.x, dz = _sky2.sz + (out.pz - _sky2.sz) * b2 - out.z;
-  const dy = _sky2.sy + (out.py - _sky2.sy) * b2 - out.y;
-  const flyYaw = Math.atan2(dx, dz), hz = Math.hypot(dx, dz);
   if (state === 'perched') {
     const k = (t - v.start - GULL_DESCEND) / 2.3, f = k - Math.floor(k);
     out.yaw = v.yaw + Math.floor(k + 0.2) * 0.9; // a little turn with every hop
@@ -155,12 +171,18 @@ export function gullPlan(seed, i, t, perches, out, scareAt = -Infinity, visit = 
     out.pitch = 0; out.roll = 0; out.fold = 1 - 0.1 * hop; // wings stay tucked, just a twitch
     out.flap = -0.1 + 0.35 * hop;
   } else {
+    // heading from the path a moment ahead (a perched gull keeps its own yaw)
+    gullSky(seed, i, t + 0.15, _sky2, ext);
+    const b2 = p ? gullBlend(v, t + 0.15, scareAt) : 0;
+    const dx = _sky2.sx + (out.px - _sky2.sx) * b2 - out.x, dz = _sky2.sz + (out.pz - _sky2.sz) * b2 - out.z;
+    const dy = _sky2.sy + (out.py - _sky2.sy) * b2 - out.y;
+    const flyYaw = Math.atan2(dx, dz), hz = Math.hypot(dx, dz);
     const landing = state === 'descend' ? smooth(((t - v.start) / GULL_DESCEND - 0.7) / 0.3) : 0;
     let dyaw = v.yaw - flyYaw; dyaw -= TAU * Math.round(dyaw / TAU);
     out.yaw = flyYaw + dyaw * landing;
     out.pitch = hz > 1e-4 ? Math.max(-0.5, Math.min(0.5, -Math.atan2(dy, hz))) * (1 - landing) : 0;
     out.roll = state === 'circle' ? _sky.bank : _sky.bank * (1 - b);
-    const burst = Math.max(0, Math.sin(t * 0.45 + _sky.ph * 3)); // glide most of the time, flap in bursts
+    const burst = Math.max(0, Math.sin(t * 0.45 + _sky.ph3)); // glide most of the time, flap in bursts
     const amp = state === 'circle' ? 0.12 + 0.55 * burst : 0.75;
     out.flap = 0.08 + amp * Math.sin(t * (state === 'circle' ? 8 : 11) + i * 1.7);
     out.fold = landing;
@@ -175,10 +197,18 @@ export function gullPlan(seed, i, t, perches, out, scareAt = -Infinity, visit = 
   return out;
 }
 
-export function schoolCenter(seed, i, t, out, ext = 0) {
+// Per-school seeded constants (ph1, ph2, ph3, w), computed once per seed.
+const SCH_N = 4, schK = new Float64Array((SCHOOL_MAX + 1) * SCH_N), schSeed = new Float64Array(SCHOOL_MAX).fill(NaN);
+function schoolConsts(seed, i, o) {
   const s = (seed ^ Math.imul(i + 7, 0x51ed27)) | 0;
-  const ph1 = TAU * rnd(s, 0), ph2 = TAU * rnd(s, 1), ph3 = TAU * rnd(s, 2), dir = rnd(s, 3) < 0.5 ? -1 : 1;
-  const w = 0.045 * dir, R = 12 + 5 * Math.sin(t * 0.031 + ph1) + pushOut(ext, FISH_MARGIN, FISH_R0), dR = 5 * 0.031 * Math.cos(t * 0.031 + ph1);
+  schK[o] = TAU * rnd(s, 0); schK[o + 1] = TAU * rnd(s, 1); schK[o + 2] = TAU * rnd(s, 2); schK[o + 3] = 0.045 * (rnd(s, 3) < 0.5 ? -1 : 1);
+}
+export function schoolCenter(seed, i, t, out, ext = 0) {
+  let k = SCHOOL_MAX * SCH_N; // spare row for an out-of-range i
+  if (i >= 0 && i < SCHOOL_MAX) { k = i * SCH_N; if (schSeed[i] !== seed) { schoolConsts(seed, i, k); schSeed[i] = seed; } }
+  else schoolConsts(seed, i, k);
+  const ph1 = schK[k], ph2 = schK[k + 1], ph3 = schK[k + 2];
+  const w = schK[k + 3], R = 12 + 5 * Math.sin(t * 0.031 + ph1) + pushOut(ext, FISH_MARGIN, FISH_R0), dR = 5 * 0.031 * Math.cos(t * 0.031 + ph1);
   const a = ph2 + w * t, ca = Math.cos(a), sa = Math.sin(a);
   out.x = ca * R; out.z = sa * R;
   out.y = -0.8 + 0.25 * Math.sin(t * 0.11 + ph3);
@@ -268,10 +298,19 @@ export function createWildlife(ctx) {
   const forced = []; for (let i = 0; i < GULL_MAX; i++) forced.push({ on: false, start: 0, stay: 0, perch: -1, yaw: 0, scare: false, key: '', x: 0, y: 0, z: 0 });
   const forceC = { kind: null, start: 0, a0: 0, r: 10, speed: 2.6, dir: 1, laps: 1, dur: 0, arrive: false };
   const pinned = []; for (let i = 0; i < SCHOOL_MAX; i++) pinned.push({ on: false, x: 0, z: 0, heading: 0 });
-  const plan2 = { state: 'circle', x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, flap: 0, fold: 0, blend: 0, sx: 0, sy: 0, sz: 0, px: 0, py: 0, pz: 0, perch: -1 };
-  const plan = { state: 'circle', x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, flap: 0, fold: 0, blend: 0, sx: 0, sy: 0, sz: 0, px: 0, py: 0, pz: 0, perch: -1 };
-  const sc = { x: 0, y: 0, z: 0, heading: 0 }, fo = { side: 0, along: 0, ph: 0, size: 1, depth: 0 };
-  const cir = { kind: null, x: 0, y: 0, z: 0, heading: 0, pitch: 0, roll: 0 };
+  // Scratch outputs start with double fields (0.5), so V8 keeps them as in-place doubles instead of boxing each store.
+  const newPlan = () => ({ state: 'circle', x: 0.5, y: 0.5, z: 0.5, yaw: 0.5, pitch: 0.5, roll: 0.5, flap: 0.5, fold: 0.5, blend: 0.5, sx: 0.5, sy: 0.5, sz: 0.5, px: 0.5, py: 0.5, pz: 0.5, perch: -1 });
+  const plan2 = newPlan(), plan = newPlan();
+  const sc = { x: 0.5, y: 0.5, z: 0.5, heading: 0.5 };
+  // Fish layouts are seeded constants: computed once (side, along, ph, 2ph, 3ph, scaled size, depth per fish), not per frame.
+  const FO_N = 7, foK = new Float64Array(SCHOOL_MAX * FISH_PER_SCHOOL * FO_N);
+  { const fo = { side: 0, along: 0, ph: 0, size: 1, depth: 0 };
+    for (let i = 0; i < SCHOOL_MAX; i++) for (let j = 0; j < FISH_PER_SCHOOL; j++) {
+      fishOffset(seed, i, j, fo); const o = (i * FISH_PER_SCHOOL + j) * FO_N;
+      foK[o] = fo.side; foK[o + 1] = fo.along; foK[o + 2] = fo.ph; foK[o + 3] = fo.ph * 2; foK[o + 4] = fo.ph * 3;
+      foK[o + 5] = fo.size * FISH_SCALE; foK[o + 6] = fo.depth;
+    } }
+  const cir = { kind: null, x: 0.5, y: 0.5, z: 0.5, heading: 0.5, pitch: 0.5, roll: 0.5 };
   const last = { gx: new Float32Array(GULL_MAX * 3), gs: new Array(GULL_MAX).fill('hidden'), sx: new Float32Array(SCHOOL_MAX * 2), nG: 0, nS: 0 };
 
   let built = false, disposed = false, group = null, gullBody = null, gullWing = null, fish = null, dolphin = null, turtle = null, material = null, gullMat = null, fishMat = null, tuck = null;
@@ -362,14 +401,14 @@ export function createWildlife(ctx) {
 
   // Folding swings the wing back (Y), turns it on edge along the flank with the grey top facing out (X twist
   // about its own length), and drops the shoulder so the wing lies along the flank instead of standing above it.
+  // Local wing matrix: translate(shoulder) * scale(side,1,1) * Ry(1.55 fold) * Rx(1.4 fold) * Rz(flap) * scale(1 - 0.3 fold,1,1)
+  // (folded, the hand tucks under: the tips just cross the tail). The mirror commutes through as Ry(side*a) Rx(b) Rz(side*c),
+  // so it is one Euler 'YXZ' compose with x-scale side*(1 - 0.3 fold) and one multiply. Reuses v3/q4/eul/sc3: the body is composed already.
   function setWing(index, side, flap, fold) {
-    mA.makeTranslation(side * (GULL_SHOULDER[0] + 0.035 * fold), GULL_SHOULDER[1] - 0.09 * fold, GULL_SHOULDER[2]);
-    mB.makeScale(side, 1, 1);
-    mC.makeRotationY(fold * 1.55);
-    mD.makeRotationX(fold * 1.4);
-    mE.makeRotationZ(flap * (1 - 0.8 * fold));
-    mA.multiply(mB).multiply(mC).multiply(mD).multiply(mE);
-    mC.makeScale(1 - 0.3 * fold, 1, 1); mA.multiply(mC); // folded, the hand tucks under: the tips just cross the tail
+    v3.set(side * (GULL_SHOULDER[0] + 0.035 * fold), GULL_SHOULDER[1] - 0.09 * fold, GULL_SHOULDER[2]);
+    eul.set(fold * 1.4, side * fold * 1.55, side * flap * (1 - 0.8 * fold), 'YXZ'); q4.setFromEuler(eul);
+    sc3.set(side * (1 - 0.3 * fold), 1, 1);
+    mA.compose(v3, q4, sc3);
     mB.multiplyMatrices(m4, mA);
     gullWing.setMatrixAt(index, mB);
   }
@@ -381,7 +420,7 @@ export function createWildlife(ctx) {
     const L = lat[i], V = vis[i], n = perches.length;
     if (L.slot !== slot) { L.slot = slot; L.done = false; L.on = false; }
     if (!L.done) {
-      gullVisit(seed, i, slot, n, V);
+      cachedVisit(seed, i, slot, n, V);
       if (t >= V.start) { // the visit begins: latch its perch and keep it to the end
         L.done = true;
         if (V.on && V.perch >= 0 && V.perch < n) { // the scheduled perch, or the next free one after it
@@ -457,13 +496,13 @@ export function createWildlife(ctx) {
       last.sx[i * 2] = sc.x; last.sx[i * 2 + 1] = sc.z;
       for (let j = 0; j < FISH_PER_SCHOOL; j++) {
         const k = i * FISH_PER_SCHOOL + j;
-        fishOffset(seed, i, j, fo);
-        const along = fo.along + 0.35 * Math.sin(t * 0.5 + fo.ph), side = fo.side + 0.25 * Math.sin(t * 0.37 + fo.ph * 2);
+        const o = k * FO_N, ph = foK[o + 2], size = foK[o + 5];
+        const along = foK[o + 1] + 0.35 * Math.sin(t * 0.5 + ph), side = foK[o] + 0.25 * Math.sin(t * 0.37 + foK[o + 3]);
         const x = sc.x + sh * along + ch * side, z = sc.z + ch * along - sh * side;
-        const yaw = sc.heading + 0.18 * Math.sin(t * 0.6 + fo.ph) + (wiggle ? 0.22 * Math.sin(t * 7 + fo.ph * 3) : 0);
-        const depth = sc.y + fo.depth; // plan depth, about -1.15 .. -0.45 m. Drawn on the surface; it only sets the tint
+        const yaw = sc.heading + 0.18 * Math.sin(t * 0.6 + ph) + (wiggle ? 0.22 * Math.sin(t * 7 + foK[o + 4]) : 0);
+        const depth = sc.y + foK[o + 6]; // plan depth, about -1.15 .. -0.45 m. Drawn on the surface; it only sets the tint
         const h = ocean ? ocean.getHeight(x, z) : -0.24;
-        v3.set(x, h + 0.035, z); q4.setFromAxisAngle(UP, yaw); sc3.set(fo.size * FISH_SCALE, 1, fo.size * FISH_SCALE);
+        v3.set(x, h + 0.035, z); q4.setFromAxisAngle(UP, yaw); sc3.set(size, 1, size);
         m4.compose(v3, q4, sc3); fish.setMatrixAt(k, m4);
         col.copy(fishDark).lerp(fishWater, Math.min(0.85, Math.max(0, (-depth - 0.4) / 0.8 * 0.7)));
         fish.setColorAt(k, col);
