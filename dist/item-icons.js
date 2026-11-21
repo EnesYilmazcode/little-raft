@@ -183,21 +183,26 @@ function encode(kind, canvas) {
 
 // ---------- queue ----------
 // Idle time only (the timeout is a late fallback for a page that never idles): no icon work lands in a busy frame.
-const idle = typeof requestIdleCallback === 'function' ? cb => requestIdleCallback(cb, { timeout: 1500 }) : cb => setTimeout(() => cb(null), 16);
-const SLICE_MS = 8;
+// Warm-up starts on the title screen; a short timeout plus a ~5 ms drain per callback finishes it there even
+// when the page never goes idle (busy render loop), instead of one icon per 1.5 s spilling into play.
+const idle = typeof requestIdleCallback === 'function' ? cb => requestIdleCallback(cb, { timeout: 300 }) : cb => setTimeout(() => cb(null), 16);
+const SLICE_MS = 8;   // leave this much of a real idle period unused
+const BUDGET_MS = 5;  // drain budget for a timed-out callback (or no requestIdleCallback)
 
 function pump(deadline) {
   pumping = false;
   if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = 0; }
   const t0 = performance.now();
-  // At least one icon per callback; more while the slice has room (cheap once the shaders exist).
+  // At least one icon per callback; more while the idle period (or the timed-out budget) has room.
+  const idleMs = deadline && !deadline.didTimeout ? deadline.timeRemaining() - SLICE_MS : 0;
+  const budget = Math.max(BUDGET_MS, idleMs);
   do {
     const it = queued.values().next();
     if (it.done) break;
     const kind = it.value;
     queued.delete(kind);
     encode(kind, renderKind(kind));
-  } while (queued.size && (deadline ? !deadline.didTimeout && deadline.timeRemaining() > SLICE_MS : performance.now() - t0 < 4));
+  } while (queued.size && performance.now() - t0 < budget);
   if (queued.size) schedule();
   else if (gl) releaseTimer = setTimeout(release, RELEASE_MS);
 }
