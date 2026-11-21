@@ -381,7 +381,7 @@ body.locked #recipes{display:none!important}#recipes button.unaffordable{opacity
 @media(max-width:760px){.tools{max-width:94vw;overflow-x:auto}.tools button{min-width:49px;width:49px;height:65px}.tools button em{font-size:9px}.tools .icon{width:25px;height:25px}.playing #durability{right:12px;bottom:160px;width:146px}.controls{font-size:10px;gap:9px}.playing #aimHint{font-size:11px}.playing .inventory{top:65px}}
 body.playing header,body.playing .goal,body.playing #toast,body.playing .controls{display:none!important}
 .playing .inventory{top:14px;left:14px}.playing #aimHint{bottom:112px;background:#162e3199;padding:7px 13px;font-size:13px;color:#f4eddd;box-shadow:none}
-#crosshair{width:23px;height:23px;border:1px solid #fff9;border-radius:50%;background:none!important;filter:drop-shadow(0 1px 1px #0005)}#crosshair::after{background:#fff9;border-radius:50%}
+#crosshair{margin:0;width:23px;height:23px;border:1px solid #fff9;border-radius:50%;background:none!important;filter:drop-shadow(0 1px 1px #0005)}#crosshair::after{background:#fff9;border-radius:50%}
 
 /* live-qa */
 
