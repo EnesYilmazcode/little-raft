@@ -79,6 +79,12 @@ Programs went 54 → 56 (`lp-solid`, `lp-glow`). Geometries 331 → 281. There w
 every cross-lane contract held. SwiftShader frame times at load ~25 were noise (1.6–2.1 s per frame on both) and
 are not evidence either way.
 
+**Low preset, tier mode** (`adopt_check.py --mode tier`: both builds on `graphics: 'low'`, so there is no shadow
+pass): 120 → 111 calls and 129,668 → 90,166 triangles facing the sail; 75 → 63 calls and 101,522 → 65,432
+triangles facing the palm. With no shadow pass the call saving halves, and most of what is left is triangles
+(−30 to −36%). The patched build's placed crafts were the lowpoly ones (`sailSolid` present), with 0 errors and all
+contracts intact.
+
 **Decision (supersedes the one below).** Do not adopt the deck, debris or jug. For crafts, the saving is real but
 moderate: 35 draw calls and ~100k triangles on a raft with all six crafts, about 6 calls and 12k triangles per
 craft. The look is a sidegrade. Two ways to take it, both in `procedural-models-ADOPT.md` and both checked by
@@ -87,8 +93,9 @@ craft. The look is a sidegrade. Two ways to take it, both in `procedural-models-
 - `--mode tier`: use lowpoly crafts only on the `low` graphics preset. Detailed crafts stay the default, and weak
   machines get the cheap set.
 
-The tier option is the recommended one, because it keeps the better-looking default and still gives low-end
-machines the saving. If the team would rather have one model source, the real follow-up is to make `models.js` the
+The tier option is the recommended one, because it keeps the better-looking default. Be clear about its size,
+though: on `low` it saves about 10 calls and a third of the triangles on a fully decorated raft. That is worth having
+on weak GPUs, but it is not a headline win. Skipping the adoption entirely is a defensible call too. If the team would rather have one model source, the real follow-up is to make `models.js` the
 world-prop builder (names and footprints matched to crafts.js), not to add lowpoly as a third style.
 
 ## What was wrong with the current models
