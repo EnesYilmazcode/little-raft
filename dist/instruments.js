@@ -100,7 +100,8 @@ export function createInstruments(T, host) {
   const geo = new T.PlaneGeometry(0.14, 0.14);
   const textures = new Map();
   const fx = [];                               // {mesh, mat, age}
-  const tmp = new T.Vector3(), q = new T.Quaternion(), col = new T.Color();
+  const free = [];                             // faded sprites, out of the scene, reused by spawn()
+  const tmp = new T.Vector3(), off = new T.Vector3(), at = new T.Vector3(), q = new T.Quaternion(), col = new T.Color();
   let played = 0, disposed = false;
 
   const tex = (kind) => { if (!textures.has(kind)) textures.set(kind, glyphTexture(T, kind)); return textures.get(kind); };
@@ -108,6 +109,7 @@ export function createInstruments(T, host) {
   function spawn(kind, step, pos, size = 1) {
     let f = null;
     if (fx.length >= FX_MAX) { f = fx.shift(); }  // recycle the oldest
+    else if (free.length) { f = free.pop(); host.scene?.add(f.mesh); }
     else {
       const mat = new T.MeshBasicMaterial({ transparent: true, depthWrite: false, opacity: 0.9, side: T.DoubleSide });
       const mesh = new T.Mesh(geo, mat);
@@ -133,7 +135,7 @@ export function createInstruments(T, host) {
     const c = host.camera;
     if (!c || !camPos(tmp)) return null;
     if (c.getWorldQuaternion) c.getWorldQuaternion(q); else q.copy(c.quaternion);
-    return tmp.clone().add(new T.Vector3(0.15, -0.15, -0.5).applyQuaternion(q));
+    return tmp.add(off.set(0.15, -0.15, -0.5).applyQuaternion(q));
   }
 
   function use(kind) {
@@ -148,16 +150,16 @@ export function createInstruments(T, host) {
   }
 
   function onNet(data) {
-    if (disposed || !recvGate(now())) return false;
-    const m = cleanNoteMsg(data);
-    if (!m) return false;
+    if (disposed) return false;
+    const m = cleanNoteMsg(data);               // validate first: junk must not use up the receive window
+    if (!m || !recvGate(now())) return false;
     const fp = host.friendPos?.();
     const me = camPos(tmp);
     const d = fp && me ? fp.distanceTo(me) : NaN;
     const s = m.v * distanceGain(d);
     if (!(s > 0)) return false;
     try { host.note?.(m.i, m.n, s); } catch {}
-    spawn(m.i, m.n, new T.Vector3(fp.x, fp.y + 1.5, fp.z));
+    spawn(m.i, m.n, at.set(fp.x, fp.y + 1.5, fp.z));
     return true;
   }
 
@@ -174,12 +176,15 @@ export function createInstruments(T, host) {
       f.mesh.scale.setScalar(f.size * (1 + 0.4 * k));
       f.mat.opacity = 0.9 * (1 - k);
       if (c) f.mesh.quaternion.copy(q);
-      if (k >= 1) { f.mesh.visible = false; f.mesh.removeFromParent(); f.mat.dispose(); fx.splice(i, 1); }
+      if (k >= 1) { f.mesh.visible = false; f.mesh.removeFromParent(); fx.splice(i, 1); free.push(f); }
     }
   }
 
   function prompt(ctx) {
-    if (!isInstrument(ctx?.state?.heldKind)) return null;
+    const st = ctx?.state;
+    if (!isInstrument(st?.heldKind)) return null;
+    // priority 1 beats the built-in prompt, so step aside for its higher-value lines (pick up, climb, waiting)
+    if (st.pickup || st.swimming || (st.role === 'guest' && !st.networkReady)) return null;
     const out = [{ key: 'LMB', label: 'Play' }];
     if (played < TEACH_NOTES) out.push({ key: '↕', label: 'Look up/down: change note', muted: true });
     return out;
@@ -192,7 +197,8 @@ export function createInstruments(T, host) {
     disposed = true;
     try { unprompt?.(); } catch {}
     for (const f of fx) { f.mesh.removeFromParent(); f.mat.dispose(); }
-    fx.length = 0;
+    for (const f of free) f.mat.dispose();
+    fx.length = 0; free.length = 0;
     geo.dispose();
     for (const t of textures.values()) t?.dispose?.();
     textures.clear();
