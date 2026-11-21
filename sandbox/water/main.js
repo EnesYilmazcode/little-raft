@@ -131,7 +131,7 @@ function frame(now) {
     const y = water.getHeight(f.x, f.z);
     f.mesh.position.set(f.x, y + (f.kind === 'barrel' ? 0.05 : 0.0), f.z);
   }
-  if (water.footprint) water.setFloaters(floaters.map((f) => water.footprint(f.mesh).slice()));
+  if (water.footprint) water.setFloaters(floaters.map((f) => water.footprint(f.mesh).slice()), camera.position.x, camera.position.z);
   else water.setFloaters(floaters.map((f) => [f.x, f.z, 0.35]));
   bobber.position.set(BOB.x, water.getHeight(BOB.x, BOB.z) + 0.02, BOB.z);
   water.setBobber?.(bobber.position);

@@ -1,12 +1,16 @@
 // Authoritative per-player inventory ("bag") for the raft survival game.
 // Pure ES module: no DOM, no THREE, no timers, no randomness.
+import { infoTable, recipeTable, TOOL_IDS, registerBagKinds } from './items.js'; // [progression-hook]
 
 export const STACK_SIZE = 20;
 export const SLOT_COUNT = 28;
 export const HOTBAR_SIZE = 8;
 export const TOOL_DURABILITY = 100;
 
-const TOOL_KINDS = new Set(['hook', 'hammer', 'fishingrod']);
+// content hook: islands/storage item kinds and recipes live in content-items.js
+import { CONTENT_ITEMS, CONTENT_RECIPES } from './content-items.js?build=v3-survival-ae77fa84ac2b';
+
+const TOOL_KINDS = new Set(['hook', 'hammer', 'fishingrod', ...TOOL_IDS]); // [progression-hook]
 
 // icon = symbol id in dist/icons.svg. placeholder:true means the icon is
 // borrowed from a related item until a dedicated asset exists.
@@ -26,7 +30,25 @@ export const ITEM_INFO = Object.freeze({
   net:        Object.freeze({ kind: 'net',        name: 'Net',          icon: 'icon-net',     maxStack: STACK_SIZE, tool: false, placeholder: false }),
   bench:      Object.freeze({ kind: 'bench',      name: 'Bench',        icon: 'icon-repair',  maxStack: STACK_SIZE, tool: false, placeholder: true }),
   crate:      Object.freeze({ kind: 'crate',      name: 'Crate',        icon: 'icon-barrel',  maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  ...CONTENT_ITEMS, // content hook
+  // Diving lane (docs/cloud/diving.md): seafloor resources gathered underwater.
+  sand:       Object.freeze({ kind: 'sand',       name: 'Sand',         icon: 'icon-scrap' ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  clay:       Object.freeze({ kind: 'clay',       name: 'Clay',         icon: 'icon-scrap' ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  metalore:   Object.freeze({ kind: 'metalore',   name: 'Metal Ore',    icon: 'icon-scrap'  ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  receiver:   Object.freeze({ kind: 'receiver',   name: 'Receiver',     icon: 'icon-compass', maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  antenna:    Object.freeze({ kind: 'antenna',    name: 'Antenna',      icon: 'icon-antenna', maxStack: STACK_SIZE, tool: false, placeholder: false }),
+  cup:        Object.freeze({ kind: 'cup',        name: 'Cup',          icon: 'icon-cup',     maxStack: 5,          tool: false, placeholder: false }),
+  saltcup:    Object.freeze({ kind: 'saltcup',    name: 'Cup of Sea Water', icon: 'icon-saltcup', maxStack: 5,      tool: false, placeholder: false }),
+  freshcup:   Object.freeze({ kind: 'freshcup',   name: 'Cup of Fresh Water', icon: 'icon-freshcup', maxStack: 5,   tool: false, placeholder: false }),
+  purifier:   Object.freeze({ kind: 'purifier',   name: 'Water Purifier', icon: 'icon-purifier', maxStack: STACK_SIZE, tool: false, placeholder: false }),
+  // farming.js (raft-integration) kinds. Palm planters run on the watering lane above (cup -> saltcup -> purifier ->
+  // freshcup), so the farming rules' 'cup' is this Cup; seed/water are known to the bag but not dropped in play yet.
+  seed:       Object.freeze({ kind: 'seed',       name: 'Palm Seed',    icon: 'icon-leaf',    maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  water:      Object.freeze({ kind: 'water',      name: 'Cup of Fresh Water', icon: 'icon-freshcup', maxStack: 5, tool: false, placeholder: true }),
+
+  ...infoTable(), // [progression-hook] items.js overrides legacy rows and adds new kinds
 });
+registerBagKinds(ITEM_INFO); // keep lane-owned kinds through migrateSnapshot (save/load, co-op)
 
 export const ITEM_KINDS = Object.freeze(Object.keys(ITEM_INFO));
 
@@ -52,6 +74,13 @@ export const RECIPES = Object.freeze({
   net:        recipe('net',        'Net',          1, { wood: 3, rope: 3 }),
   bench:      recipe('bench',      'Bench',        1, { wood: 3 }),
   crate:      recipe('crate',      'Crate',        1, { wood: 4, scrap: 1 }),
+  ...CONTENT_RECIPES, // content hook
+  receiver:   recipe('receiver',   'Receiver',     1, { wood: 3, scrap: 4, plastic: 3, rope: 2 }),
+  antenna:    recipe('antenna',    'Antenna',      1, { wood: 2, scrap: 1, rope: 1 }),
+  cup:        recipe('cup',        'Cup',          1, { plastic: 1 }),
+  purifier:   recipe('purifier',   'Water Purifier', 1, { wood: 2, scrap: 2, plastic: 1 }),
+
+  ...recipeTable(), // [progression-hook] every hand recipe from items.js (new costs win)
 });
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -120,6 +149,11 @@ function emptySlots() {
 }
 
 export class Bag {
+  // Monotonic mutation counter: bumped by every mutating method (never by reads),
+  // so observers (the HUD) can skip work when nothing changed. Direct writes to
+  // .slots bypass it; observers must not rely on it alone.
+  version = 0;
+
   /**
    * @param {{slots:Array, selected:number}|null} snapshot
    * Throws TypeError if a provided snapshot is malformed.
@@ -165,6 +199,24 @@ export class Bag {
       const qty = toCount(src[kind]);
       if (qty > 0) bag.add(kind, qty);
     }
+    return bag;
+  }
+
+  /**
+   * Lenient load for saves and hot-swap transfers: keeps every usable slot and
+   * repairs or drops the rest (unknown kinds from other builds, over-cap stacks,
+   * bad durability), so one bad slot never wipes the whole bag. Null if hopeless.
+   */
+  static salvage(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.slots)) return null;
+    const bag = new Bag({ slots: emptySlots(), selected: 0 });
+    for (let i = 0; i < SLOT_COUNT; i++) {
+      const raw = snapshot.slots[i];
+      if (!raw || typeof raw !== 'object' || !isKind(raw.kind)) continue;
+      const count = Math.min(toCount(raw.count), maxStackOf(raw.kind));
+      if (count > 0) bag.slots[i] = makeSlot(raw.kind, count, raw);
+    }
+    if (isIndex(snapshot.selected, HOTBAR_SIZE)) bag.selectedIndex = snapshot.selected;
     return bag;
   }
 
@@ -215,6 +267,7 @@ export class Bag {
       if (meta.id !== undefined) meta = { ...meta, id: undefined };
       left -= put;
     }
+    if (left !== toCount(count)) this.version++;
     return left;
   }
 
@@ -232,6 +285,7 @@ export class Bag {
       left -= take;
       if (s.count === 0) this.slots[i] = null;
     }
+    this.version++;
     return true;
   }
 
@@ -263,6 +317,7 @@ export class Bag {
         this.slots[to] = { kind: src.kind, count: amt };
         src.count -= amt;
       }
+      this.version++;
       return true;
     }
 
@@ -274,18 +329,21 @@ export class Bag {
         // Both full stacks of same kind: swapping is a no-op but harmless.
         this.slots[to] = src;
         this.slots[from] = dst;
+        this.version++;
         return true;
       }
       const put = Math.min(space, amt);
       dst.count += put;
       src.count -= put;
       if (src.count === 0) this.slots[from] = null;
+      this.version++;
       return true;
     }
 
     if (!whole) return false;
     this.slots[to] = src;
     this.slots[from] = dst;
+    this.version++;
     return true;
   }
 
@@ -295,13 +353,16 @@ export class Bag {
 
   select(index) {
     if (!isIndex(index, HOTBAR_SIZE)) return false;
+    if (this.selectedIndex !== index) this.version++;
     this.selectedIndex = index;
     return true;
   }
 
   cycle(delta) {
     const d = typeof delta === 'number' && Number.isFinite(delta) ? Math.trunc(delta) : 0;
-    this.selectedIndex = (((this.selectedIndex + d) % HOTBAR_SIZE) + HOTBAR_SIZE) % HOTBAR_SIZE;
+    const next = (((this.selectedIndex + d) % HOTBAR_SIZE) + HOTBAR_SIZE) % HOTBAR_SIZE;
+    if (next !== this.selectedIndex) this.version++;
+    this.selectedIndex = next;
     return this.selectedIndex;
   }
 
@@ -340,6 +401,7 @@ export class Bag {
     // Commit only after every step succeeded on the scratch copy.
     // Keep the same array object so external references to bag.slots stay valid.
     for (let i = 0; i < SLOT_COUNT; i++) this.slots[i] = scratch.slots[i];
+    this.version++;
     return { ok: true, crafted: { kind: r.output.kind, count: r.output.count } };
   }
 }

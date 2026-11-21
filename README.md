@@ -19,6 +19,9 @@ Online play uses PeerJS's public signaling broker and browser WebRTC data channe
 - Space: jump; Shift: run. You can fall into the water; hold Space near the edge to climb aboard.
 - Craft a hammer to build foundations (2 wood + 2 plastic); craft decorations before placing them.
 - Craft a fishing rod, then click water and wait for a catch.
+- L: open the raft logbook (message-bottle notes and achievements).
+- Purifier: scoop sea water with a cup, pour it into a purifier, take fresh water and water palm planters; harvest ripe palms with E.
+- Receiver: place one with up to 3 antennas (2+ tiles away) to detect drifting signal caches; follow the SIGNAL readout and hook the buoy.
 - Escape: release the cursor and open settings; Resume returns to play.
 
 Supplies regenerate indefinitely. Nets automatically gather nearby supplies into the host's bag. Resources stack to 20. A fresh game starts with one hook and no free supplies or tools. Earned legacy supplies are migrated into stacks. No paid services or keys are required to play solo.

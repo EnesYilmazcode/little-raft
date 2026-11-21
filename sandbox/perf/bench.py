@@ -1,4 +1,5 @@
-"""Headless perf-lab sweep. Usage: python sandbox/perf/bench.py [out_dir]
+"""Headless perf-lab sweep. Usage: python sandbox/perf/bench.py [out_dir]   (synthetic scene; the real-game profiler is shoot.py)
+Note: calls now include the shadow pass (perf-overlay sets renderer.info.autoReset = false).
 Serves the repo root, runs each config through window.runBench(), screenshots it, prints JSON lines.
 SwiftShader renders on the CPU, so compare configs to each other, not to a real GPU."""
 import sys, json, threading, functools, http.server, socketserver
@@ -12,7 +13,7 @@ class Q(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
 srv = socketserver.ThreadingTCPServer(('127.0.0.1', 0), functools.partial(Q, directory=str(root)))
 threading.Thread(target=srv.serve_forever, daemon=True).start()
-base = f'http://127.0.0.1:{srv.server_address[1]}/sandbox/perf/index.html'
+base = f'http://127.0.0.1:{srv.server_address[1]}/sandbox/perf/synthetic.html'
 
 CONFIGS = [
     'mode=naive&shadow=every', 'mode=naive&shadow=cached', 'mode=naive&shadow=off',
@@ -22,7 +23,7 @@ CONFIGS = [
     'mode=naive&shadow=every&items=600&tiles=64', 'mode=instanced&shadow=cached&items=600&tiles=64', 'mode=batched&shadow=cached&items=600&tiles=64',
 ]
 with sync_playwright() as p:
-    b = p.chromium.launch(channel='chrome', headless=True, args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-precise-memory-info'])
+    b = p.chromium.launch(executable_path='/opt/pw-browsers/chromium-1243/chrome-linux64/chrome', args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-precise-memory-info'])
     for c in CONFIGS:
         page = b.new_page(viewport={'width': 960, 'height': 540})
         errs = []
