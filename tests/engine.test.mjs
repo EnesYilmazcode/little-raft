@@ -217,3 +217,41 @@ test('co-op: guest push from synced data equals the host push; guest never burns
   guest.mod.load({ v: 1, motors: { '1,0': { on: false, fuel: 3 } } }, 'net');
   guest.mod.sailPush(gWorld.sailing, b); assert.deepEqual(b, { x: 0, z: 0 });
 });
+
+test('review: keys for negative tiles; rebuild with the same child count is rescanned', () => {
+  assert.deepEqual(motorKeys([M(-3, 2), M(0, -1)]), ['-3,2', '0,-1']);
+  const st = slice({ '-3,2': { on: true, fuel: 5 } });
+  assert.equal(runningCount(st, [M(-3, 2)], false), 1);
+  // fake raft: a rebuild swaps a plain decor child for a motor model, child count unchanged
+  const prop = { rotation: { z: 0 } }, child = (engine, x) => ({ userData: engine ? { engine } : {}, position: { x, z: 0 },
+    getObjectByName: n => (engine && n === 'engineProp' ? prop : null) });
+  const raft = { position: { y: 0 }, children: [child(null, 0), child(null, 2)] };
+  const { ctx, mod, world } = makeCtx();
+  ctx.raft = raft; mod.debug.fuel(1, 0, 60); mod.debug.set(1, 0, true);
+  mod.update(.1); assert.equal(prop.rotation.z, 0);
+  raft.children = [child(null, 0), child('motor', 2)]; // rebuildRaft recreates every child
+  mod.update(.1); assert.ok(prop.rotation.z > 0, 'new motor model found');
+  assert.equal(world.decor.length, 2);
+});
+
+test('review: a null decor entry never throws (module would be disabled)', () => {
+  const { mod, world } = makeCtx();
+  world.decor.push(null);
+  assert.doesNotThrow(() => { mod.update(.1); mod.sailPush(world.sailing, { x: 0, z: 0 }); mod.steerTargets(); mod.prompt(null); });
+});
+
+test('review: prompt rows for prompts.js (the visible prompt) match the HTML prompt', () => {
+  const { ctx, mod } = makeCtx();
+  ctx.camera = { position: { x: 0, y: 1.6, z: 0 } }; ctx.physics = { x: 0, z: 0 };
+  const at = (x, y, z) => { const v = [x, y - 1.6, z], l = Math.hypot(...v); return { dir: { x: v[0] / l, y: v[1] / l, z: v[2] / l } }; };
+  const motor = at(2, .65, 0), wheel = at(0, 1.05, 2);
+  assert.deepEqual(mod.promptRows(motor), [{ key: 'E', label: 'Add wood (+45 s)' }]); // host holds wood
+  mod.debug.fuel(1, 0, 130);
+  ctx.localBag = () => bagFrom([]);
+  assert.deepEqual(mod.promptRows(motor), [{ key: 'E', label: 'Start motor' }, { label: '2:10 fuel', muted: true }]);
+  assert.match(mod.prompt(motor), /Start motor · 2:10 fuel/);
+  assert.deepEqual(mod.promptRows(wheel), [{ key: 'E', label: 'Start motors' }, { key: 'R', hold: true, label: 'Steer' }]);
+  assert.equal(mod.promptRows(at(0, 1.6, -3)), null);
+  ctx.world.decor = [{ type: 'wheel', x: 0, z: 1 }];
+  assert.deepEqual(mod.promptRows(wheel)[1], { label: 'No motors yet', muted: true });
+});

@@ -19,7 +19,14 @@ const KEY_RE = /^-?\d+,-?\d+$/;
 const NONE = Object.freeze([]);
 const isInt = Number.isInteger;
 const fin = x => typeof x === 'number' && Number.isFinite(x);
-const keyOf = (x, z) => x + ',' + z;
+const KEYS = new Map(); // interned "x,z" keys: the per-frame push/burn/animation lookups allocate no strings
+const keyOf = (x, z) => {
+  if (!isInt(x) || !isInt(z) || Math.abs(x) > 500 || Math.abs(z) > 500) return x + ',' + z;
+  const n = (x + 512) * 1024 + z + 512;
+  let k = KEYS.get(n);
+  if (k === undefined) { k = x + ',' + z; if (KEYS.size < 4096) KEYS.set(n, k); }
+  return k;
+};
 const okXZ = (x, z) => isInt(x) && isInt(z) && Math.abs(x) <= 25 && Math.abs(z) <= 25;
 const NAMES = { leaf: 'leaf', wood: 'wood', plastic: 'plastic' };
 
@@ -111,6 +118,7 @@ export function burn(slice, decor, dt, anchored) {
 }
 
 const hasMotor = (decor, x, z) => Array.isArray(decor) && decor.some(d => d && d.type === 'motor' && d.x === x && d.z === z);
+const anyMotor = decor => { if (Array.isArray(decor)) for (let i = 0; i < decor.length; i++) if (decor[i]?.type === 'motor') return true; return false; };
 function slot(slice, k) {
   let e = slice.motors[k];
   if (e) return e;
@@ -162,7 +170,7 @@ export function createEngine(ctx) {
   let st = cleanEngine(undefined);
   const lastOp = new Map(), spots = [], models = [];
   const lastPush = { x: 0, z: 0 };
-  let motorModel = null, wheelModel = null, childCount = -1, decorRef = null, decorLen = -1, clock = 0;
+  let motorModel = null, wheelModel = null, childCount = -1, firstChild = null, decorRef = null, decorLen = -1, clock = 0;
   const scratch = T ? new T.Vector3() : null;
 
   const world = () => ctx.world;
@@ -171,7 +179,7 @@ export function createEngine(ctx) {
   const anchored = () => !!ctx.world?.sailing?.anchored;
   const fuelOf = (x, z) => st.motors[keyOf(x, z)]?.fuel ?? 0;
   const onOf = (x, z) => st.motors[keyOf(x, z)]?.on === true;
-  const anyOn = () => { for (const d of decor()) if (d.type === 'motor' && onOf(d.x, d.z)) return true; return false; };
+  const anyOn = () => { const a = decor(); for (let i = 0; i < a.length; i++) if (a[i]?.type === 'motor' && onOf(a[i].x, a[i].z)) return true; return false; };
   const heldKind = () => { const b = ctx.localBag?.(); return b?.slots?.[b.selectedIndex]?.kind ?? null; };
 
   // Nearest motor/wheel along the view ray within reach (same scoring as storage-research.js target()).
@@ -183,7 +191,7 @@ export function createEngine(ctx) {
     if (aim && aim.dir) { dx = aim.dir.x; dy = aim.dir.y; dz = aim.dir.z; }
     else { cam.getWorldDirection(scratch); dx = scratch.x; dy = scratch.y; dz = scratch.z; }
     for (let i = 0; i < w.decor.length; i++) {
-      const d = w.decor[i]; if (d.type !== 'motor' && d.type !== 'wheel') continue;
+      const d = w.decor[i]; if (!d || (d.type !== 'motor' && d.type !== 'wheel')) continue;
       const cx = d.x * 2, cz = d.z * 2;
       if (Math.hypot(p.x - cx, p.z - cz) > ENGINE.REACH) continue;
       const cy = (ctx.raft?.position.y ?? 0) + (d.type === 'motor' ? .65 : 1.05);
@@ -199,8 +207,10 @@ export function createEngine(ctx) {
 
   function rescan() {
     const raft = ctx.raft; if (!raft) return;
-    if (raft.children.length === childCount && (!models.length || models[0].obj.parent === raft)) return;
-    childCount = raft.children.length; models.length = 0;
+    // rebuildRaft() recreates every child, so a new first child means a rebuild even when the count is unchanged
+    // (e.g. a crate swapped for a motor in one guest snapshot).
+    if (raft.children.length === childCount && raft.children[0] === firstChild) return;
+    childCount = raft.children.length; firstChild = raft.children[0] ?? null; models.length = 0;
     for (const c of raft.children) {
       const kind = c.userData?.engine; if (!kind) continue;
       models.push({ obj: c, kind, x: Math.round(c.position.x / 2), z: Math.round(c.position.z / 2),
@@ -223,7 +233,28 @@ export function createEngine(ctx) {
   }
 
   const MAX_HINT = ' · Max ' + ENGINE.MAX_MOTORS + ' motors help';
-  return {
+  // The visible key prompt is prompts.js (#lrPrompt); game.js's #contextPrompt (fed by prompt() below) is hidden by
+  // prompts.css. So the same texts are also provided to window.raftPrompts as {key,label} rows (no HTML).
+  function promptRows(aim) {
+    const d = target(aim); if (!d) return null;
+    const many = runningCount(st, decor(), anchored()) > ENGINE.MAX_MOTORS ? { label: 'Max ' + ENGINE.MAX_MOTORS + ' motors help', muted: true } : null;
+    const rows = [];
+    if (d.type === 'wheel') {
+      if (!anyMotor(decor())) return [{ key: 'R', hold: true, label: 'Steer' }, { label: 'No motors yet', muted: true }];
+      rows.push({ key: 'E', label: (anyOn() ? 'Stop' : 'Start') + ' motors' }, many ?? { key: 'R', hold: true, label: 'Steer' });
+      return rows;
+    }
+    const held = heldKind(), fuel = fuelOf(d.x, d.z);
+    if (held && ENGINE.FUEL[held] && fuel < ENGINE.FUEL_CAP - 1) return [{ key: 'E', label: 'Add ' + NAMES[held] + ' (+' + ENGINE.FUEL[held] + ' s)' }];
+    rows.push({ key: 'E', label: (onOf(d.x, d.z) ? 'Stop' : 'Start') + ' motor' }, many ?? { label: fuel > 0 ? fmtFuel(fuel) + ' fuel' : 'Needs fuel', muted: true });
+    return rows;
+  }
+  let unprovide = null, mod = null;
+  function provide() {
+    const P = globalThis.raftPrompts; if (unprovide || typeof P?.provide !== 'function') return;
+    unprovide = P.provide({ id: 'engine', priority: 1, prompt: () => (mod?.dead || !ctx.running ? null : promptRows(null)) });
+  }
+  return (mod = {
     name: 'engine',
     serialize: () => st,
     load(data) { st = cleanEngine(data); }, // cheap (<= 64 entries); never touches meshes
@@ -240,6 +271,7 @@ export function createEngine(ctx) {
     },
     update(dt) {
       dt = fin(dt) && dt > 0 ? dt : 0; clock += dt;
+      if (!unprovide) provide();
       const anch = anchored();
       if (ctx.role !== 'guest') {
         prune();
@@ -267,7 +299,7 @@ export function createEngine(ctx) {
       const d = target(aim); if (!d) return null;
       const many = runningCount(st, decor(), anchored()) > ENGINE.MAX_MOTORS ? MAX_HINT : '';
       if (d.type === 'wheel') {
-        if (!motorKeys(decor()).length) return 'Hold <kbd>R</kbd> to steer · no motors yet';
+        if (!anyMotor(decor())) return 'Hold <kbd>R</kbd> to steer · no motors yet';
         return '<kbd>E</kbd>' + (anyOn() ? 'Stop' : 'Start') + ' motors · hold <kbd>R</kbd> to steer' + many;
       }
       const held = heldKind(), fuel = fuelOf(d.x, d.z);
@@ -309,6 +341,7 @@ export function createEngine(ctx) {
         return { x: lastPush.x, z: lastPush.z, speed: Math.hypot(lastPush.x, lastPush.z), running: n, target: engineSpeed(n, nTiles()), heading: s?.heading ?? null };
       },
     },
-    dispose() { motorModel?.dispose(); wheelModel?.dispose(); motorModel = wheelModel = null; models.length = 0; lastOp.clear(); },
-  };
+    promptRows,
+    dispose() { try { unprovide?.(); } catch { /* ignore */ } unprovide = null; motorModel?.dispose(); wheelModel?.dispose(); motorModel = wheelModel = null; models.length = 0; lastOp.clear(); },
+  });
 }
