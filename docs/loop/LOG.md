@@ -1400,6 +1400,56 @@ Claimed for round 4 (research: docs/loop/research/fidelity-r4-gaps.md):
   - the bag covered the compass
   - the settings panel ran off-screen
 - Note: quality level 3 now renders at a 0.7 pixel ratio (main had 0.85), so part of the frame-time gain is resolution.
+## 2026-11-21 · loop-fidelity-202611210947 (raft fidelity, worker A round 3)
+Base: origin/claude/raft-master (ed5d6c8d). Branch: claude/loop-fidelity-202611210947.
+Research: 2 researchers (world/navigation, UI/tools). The wiki hosts were DNS-blocked, so the numbers come from search summaries.
+Claimed and landed:
+- **Islands fixed in the world** (islands-layout.js, islands.js, sailing-world.js blockers, maptable.js):
+  - An island spawns 120-160 m ahead along the raft's travel over the seabed (downwind), 0-40 m to the side, and stays put on the seabed. The raft drifts past it unless you anchor, sail or motor to it.
+  - Removed: the dock timer, the near-player extension and the "drifting away" warning. New notices: "An island on the horizon" and, once it is 60 m behind, "The island is falling behind".
+  - It sinks once it is 150 m behind (or 260 m away in any direction), then the calm delay starts.
+  - The raft runs aground on the island.
+  - The save format is now v2 (seabed position). v1 saves are migrated.
+- **Wind, sail and engine like Raft** (sailing-core.js, engine.js):
+  - Wind: the direction is constant, and the current (0.30 m/s) follows the wind. Debris and the floating hook drift along it and arrive from upwind.
+  - Sail: the course is clamped to 90° off the wind. Speed is 1.5 x drift x (0.5 + 0.5 cos): 0.45 m/s downwind, 0.225 m/s at 90°. Sails don't stack.
+  - Engine: needs a steering wheel and ignores the wind. 0.6 m/s, with gains 1 / 1.25. One motor per 100 tiles. When sail and motor are both active, the faster one wins.
+- **Drop key and tool breakage** (drop.js, items.js wearSlot):
+  - Dropping:
+    - Q drops one of the held item and Shift+Q drops the stack. The gamepad's Back button drops. Dragging a stack out of the bag drops it.
+    - A dropped item floats as a pooled debris model, can be collected with the hook or E, and sinks after 90 s.
+    - The host checks every drop: reach of 3 m or less and at most 40 drops at once.
+    - Q no longer opens the build wheel (right-click does).
+  - Durability:
+    - Hook 40, metal hook 100, rod 15 (the rod now wears on each catch).
+    - At 0 a tool breaks and the feed says "Hook broke".
+    - R repairs while durability is above 0.
+    - The hammer is unbreakable and has no bar.
+Fleet: 2 researchers, 3 builders (worktrees), 2 reviewers.
+Review fixes:
+- leftover "Q" build-wheel hints
+- the hook ignored drops when the bag was full
+- islands spawned along +z at anchor or before the first reading
+- new supplies spawned off to the side of a non-+z current
+- stack wording "plank ×19"
+Checks: npm test 1286/1286 (base 1022 before raft-master moved). shoot.py `errors: []`. Frame time is noisy on swiftshader but shows no regression (after 73-170 ms, base 120-228 ms). Draw calls 41 vs 40, with no new meshes.
+Known limits:
+- At the 0.30 m/s base drift an island takes about 8 min to reach, so islands are rarer unless you sail.
+- Top speeds are lower than before (sail 0.45, motors up to 0.75 m/s).
+- Drops are not saved.
+- Old saves with motors but no wheel lose engine power.
+- Drop notices use lowercase item names.
+Next gaps to consider:
+- Receiver/Antenna to a fixed destination, with battery power and an altitude check
+- a large island with a Radio Tower story note
+- blueprints gating the Receiver, Wheel and Motor at the Research Table
+- crafting categories: Food & Water, Navigation, Weapons, Decorations
+- bag 20 + Backpack
+- **Overlap note for the integrator** (found after pushing). Two other fidelity branches built the same things at the same time:
+  - `loop-fidelity-0900` also made stationary islands, with the first island at 60-80 m and a crafted anchor.
+  - `loop-fidelity-0910` also added Q drop bundles and hook breakage.
+  - Merge only one islands version and one drop version. This branch's own additions are the constant wind with the current following it, the sail curve, the engine rules (steering wheel, 1/1.25, 100 tiles per motor), debris drifting along the current, and the rod/metal-hook numbers.
+  - If 0900's islands are taken, port only its `travelOf` → `currentVector` change from here.
 
 ## 2026-11-21 · integrator A, QA round (head fbfc100 → dfe019b)
 - QA fixes pushed: Continue on the title after quitting (and focused, so Enter resumes), the world hotbar hidden under the bag,

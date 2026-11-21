@@ -84,6 +84,7 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     const cat = kind === 'canteen' ? 'survival' /* [canteen] */ : it.category || (it.tool || ITEM_INFO[kind]?.tool ? 'tool' : '');
     let meta = '';
     if (kind === 'canteen') meta = slot ? `Sips <b>${sipsOf(slot)}</b>/4` : 'Holds <b>4</b> sips'; // [canteen] the fill, not uses
+    else if (it.tool && it.unbreakable) meta = 'Never wears out';
     else if (it.tool && it.durability > 0 && !slot) meta = `Lasts <b>${esc(it.durability)}</b> uses`;
     else if (it.tool && it.durability > 0) {
       const pct = slot && slot.durability != null ? Math.max(0, Math.min(100, Number(slot.durability) || 0)) : 100;

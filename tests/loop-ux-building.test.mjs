@@ -52,19 +52,10 @@ function pick(b, id) {
 
 // ============================================================ B1: Q auto-repeat
 
-test('B1: holding Q opens the wheel once; auto-repeat neither closes it nor commits a sector', () => {
+test('B1: Q no longer toggles the build wheel (Q drops; right-click opens the wheel)', () => {
   const b = createBuilding(T, new T.Scene());
-  assert.equal(b.piece, 'foundation');
-  assert.equal(b.key('KeyQ', true, true, false), true);
-  assert.equal(b.menu.isOpen, true);
-  b.menu.move(200, 0); // highlight a sector while still holding Q
-  for (let n = 0; n < 6; n++) assert.equal(b.key('KeyQ', true, true, true), true, 'repeat stays consumed');
-  assert.equal(b.menu.isOpen, true, 'auto-repeat must not toggle the wheel');
-  assert.equal(b.piece, 'foundation', 'no repeat commit');
-  b.key('KeyQ', false, true, false);
-  b.key('KeyQ', true, true, false); // a fresh press still closes and commits
+  assert.equal(b.key('KeyQ', true, true, false), false);
   assert.equal(b.menu.isOpen, false);
-  assert.notEqual(b.piece, 'foundation');
   b.dispose();
 });
 

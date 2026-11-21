@@ -7,7 +7,7 @@ import {
   ISLAND, NODE_MAX, SHORE_U, layoutFor, clean, lootFor, groundHeight, nextDelay, dockOffset,
   applyGather, standOnSand, DEFAULTS, CHOP, isAxe, spawnRel, islandRel, shouldDespawn, phaseAt, wrapGround,
 } from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
-import { SAIL } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
+import { currentVector } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
 import { createIslandModels, PALM_H, PALM_BEND } from './islands-models.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
@@ -230,6 +230,7 @@ export function createIslands(ctx) {
     st.isl = { seed, born: st.clock - Math.max(0, t), bx: wrapGround(gnd.x + rx), bz: wrapGround(gnd.z + rz), used: lay.nodes.map(() => 0) };
     relayout(); place();
   }
+  const cur = { x: 0, z: 0 };
   const pickSeed = seed => ((Number.isInteger(seed) && seed >= 0 && seed < 4294967296) ? seed : (Math.random() * 4294967296) >>> 0);
   // The real spawn: SPAWN_MIN..SPAWN_MAX m ahead of the raft's travel over the seabed (sail + current), a
   // seeded 20-40 m to one side. The first island of a fresh world comes FIRST_MIN..FIRST_MAX ahead: that is
@@ -238,7 +239,8 @@ export function createIslands(ctx) {
     seed = pickSeed(seed);
     const s = ctx.world && ctx.world.sailing;
     const vx = s && Number.isFinite(s.vx) ? s.vx : 0, vz = s && Number.isFinite(s.vz) ? s.vz : 0;
-    spawnRel(seed, vx + SAIL.CURRENT_X, vz + SAIL.CURRENT_Z, ahead, st.next === ISLAND.FIRST);
+    currentVector(s, cur); // the current follows the (constant) wind
+    spawnRel(seed, vx + cur.x, vz + cur.z, ahead, st.next === ISLAND.FIRST);
     spawnAt(seed, ahead.x, ahead.z, 0);
     emitAll('Land ahead! Steer in and drop anchor');
   }

@@ -110,7 +110,12 @@ test('items: every entry is complete and self-consistent', () => {
     assert.ok(Number.isInteger(it.stack) && it.stack >= 1, `${id} stack`);
     assert.equal(typeof it.tool, 'boolean');
     assert.equal(typeof it.placeable, 'boolean');
-    if (it.tool) {
+    if (it.tool && it.unbreakable) {
+      assert.equal(it.stack, 1, `${id} tool stack`);
+      assert.equal(it.durability, undefined, `${id} unbreakable: no durability`);
+      assert.equal(repairCost(id), null, `${id} unbreakable: nothing to repair`);
+      assert.equal(wearPerUse(id), 0, `${id} unbreakable: never wears`);
+    } else if (it.tool) {
       assert.equal(it.stack, 1, `${id} tool stack`);
       assert.ok(Number.isInteger(it.durability) && it.durability > 0, `${id} durability uses`);
       if (id === 'canteen') assert.equal(repairCost(id), null, 'canteen is refilled, never repaired'); // [canteen] durability is the fill
@@ -213,7 +218,7 @@ test('items: infoTable and recipeTable have Bag shapes', () => {
     assert.equal(row.maxStack, ITEMS[k].stack);
     assert.equal(row.tool, ITEMS[k].tool);
     assert.equal(typeof row.placeholder, 'boolean');
-    if (row.tool) assert.equal(row.maxDurability, 100); else assert.equal(row.maxDurability, undefined);
+    if (row.tool && !row.unbreakable) assert.equal(row.maxDurability, 100); else assert.equal(row.maxDurability, undefined);
     assert.ok(Object.isFrozen(row));
   }
   const RT = recipeTable();
@@ -249,8 +254,10 @@ test('items: exports are deeply frozen and helpers return safe values', () => {
   }
   assert.equal(fuelValue('constructor'), 0);
   assert.equal(fuelValue('__proto__'), 0);
-  assert.equal(wearPerUse('hook'), 2.5); // 40 uses (Raft's plastic hook)
-  assert.ok(Math.abs(wearPerUse('metalhook') - 100 / 150) < 1e-12);
+  assert.equal(wearPerUse('hook'), 2.5); // Raft: plastic hook 40 uses
+  assert.equal(wearPerUse('metalhook'), 1); // metal hook 100
+  assert.ok(Math.abs(wearPerUse('fishingrod') - 100 / 10) < 1e-12); // rod 10
+  assert.equal(wearPerUse('hammer'), 0); // the hammer never wears
   assert.equal(toolRole('metalhook'), 'hook');
   assert.equal(toolRole('hook'), 'hook');
   assert.equal(toolRole('nope'), 'nope');

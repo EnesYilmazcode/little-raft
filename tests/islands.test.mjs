@@ -91,6 +91,7 @@ test('islandRel: the island moves only by the seabed offset, like the scenery', 
   assert.deepEqual(o, { x: 30, z: 140 });
   // drifting with the current: the seabed offset grows along +z and the island comes closer
   const SC = SAIL_CORE, s = SC.defaultSailing(), out = {};
+  s.windDir = s.windTarget = 0; // the current follows the wind: point it along +z
   let gz0 = s.gz;
   for (let i = 0; i < 600; i++) SC.stepSailing(s, 0.1, { nSails: 0, host: false }, out); // 60 s of drift
   islandRel(isl, s.gx, s.gz, o);
@@ -113,7 +114,7 @@ test('anchored: the island stays put relative to the raft', () => {
   SC.applySailAction(s, { op: 'unanchor' });
   for (let i = 0; i < 600; i++) SC.stepSailing(s, 0.1, { nSails: 1, host: true, rng: () => 0.5 }, out);
   const after = islandRel(isl, s.gx, s.gz, {});
-  assert.ok(Math.hypot(after.x - before.x, after.z - before.z) > 0.3 * 60 * 1.5, 'sailing moves the world past faster than the current');
+  assert.ok(Math.hypot(after.x - before.x, after.z - before.z) > 0.3 * 60, 'sailing moves the world past faster than the current'); // Raft sail: 1.5x drift downwind, eased in
 });
 
 test('shouldDespawn: 150 m behind the travel, or 220 m anywhere; never ahead or while anchored', () => {
@@ -305,7 +306,7 @@ function stubWorld({ role = 'solo', wave = () => -0.24 } = {}) {
   const ctx = {
     T, scene: new T.Scene(), camera: new T.PerspectiveCamera(70, 1, 0.05, 200),
     ocean: { mesh: { position: { y: -0.24 } }, getHeight: (x, z) => wave(x, z) },
-    world: { tiles: RAFT3, sailing: { gx: 0, gz: 0, vx: 0, vz: 0 } }, role, running: true, physics, other: null,
+    world: { tiles: RAFT3, sailing: { gx: 0, gz: 0, vx: 0, vz: 0, windDir: 0 } }, role, running: true, physics, other: null, // windDir 0: the current runs along +z
     notice: s => emits.push({ e: { kind: 'notice', text: s }, to: 'local' }),
     emit: (e, to) => emits.push({ e, to }),
     action: a => { actions.push(a); if (role !== 'guest') mod.action(a, 'host', bag); return true; },
