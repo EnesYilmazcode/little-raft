@@ -2,7 +2,7 @@
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, holdDelay, holdHint, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, holdDelay, holdHint, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 
 const VERSION = 'sv4';
 const HB = Number(HOTBAR_SIZE) || 8;
@@ -214,6 +214,9 @@ const CSS = `
 #inventory .sv-req .sv-icon{width:22px;height:22px}
 #inventory .sv-req svg.sv-icon{width:16px;height:16px;margin:3px}
 #inventory .sv-req.sv-short{color:#ff9c84;background:#5a1d1240}
+#inventory .sv-rsub .sv-req{margin-right:4px;padding:0 6px 0 1px;font-size:11px;vertical-align:middle}
+#inventory .sv-rsub .sv-req .sv-icon{width:16px;height:16px}
+#inventory .sv-rsub .sv-req svg.sv-icon{width:13px;height:13px;margin:1px}
 #inventory .sv-why{display:block;margin-top:4px;font:600 12px/1.2 ${FONT};color:#ffc98f}
 #inventory .sv-why:empty{display:none}
 #inventory .sv-empty-list{margin:6px;color:#f4efe299;font-size:14px}
@@ -616,11 +619,14 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       v.el.classList.toggle('sv-full', state === 'full');
       v.el.classList.toggle('sv-locked', state === 'missing');
       const lacking = rows.filter(x => !x.enough);
-      v.sub.textContent = state === 'ready' ? 'Ready to craft'
+      const subText = state === 'ready' ? 'Ready to craft'
         : state === 'full' ? 'No room in your bag'
         : 'Need ' + lacking.map(x => `${x.short} ${itemName(x.kind)}`).join(', ');
+      // Missing: owned/needed chip per ingredient (short ones in red), like the detail card.
+      if (state === 'missing') v.sub.innerHTML = rows.map(x => `<span class="sv-req${x.enough ? '' : ' sv-short'}">${art(x.kind)}${x.have}/${x.need}</span>`).join('');
+      else v.sub.textContent = subText;
       v.badge.textContent = state === 'ready' && Number.isFinite(times) && times > 0 ? '×' + Math.min(times, 99) : '';
-      v.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${rows.map(x => `${x.need} ${itemName(x.kind)}, have ${x.have}`).join('; ') || 'nothing'}. ${v.sub.textContent}.`);
+      v.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${rows.map(x => `${x.need} ${itemName(x.kind)}, have ${x.have}`).join('; ') || 'nothing'}. ${subText}.`);
       if (tipAnchor === v.el) showTipFor(v.el);
     }
     reorderRecipes();
@@ -923,7 +929,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!kind) { hideTip(); return; }
     let extra = '';
     const v = el.classList.contains('sv-recipe') ? viewOf(el.dataset.recipe) : null;
-    if (v) extra = v.r.reqs.length ? 'Needs ' + v.r.reqs.map(q => `${q.count} ${itemName(q.kind)}`).join(', ') : '';
+    if (v) extra = haveNeedLine(v.rows, itemName);
     tipAnchor = el;
     tip.innerHTML = tipHTML(kind, extra, !v);
     tip.hidden = false;
@@ -933,7 +939,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const s = curSlots[i], el = invEls[i];
     if (!s || !slotSig(s) || dragging || !el) { hideTip(); return; }
     const f = durFrac(s), max = stackMax(s.kind);
-    const sub = f != null ? `Durability ${Math.round(f * 100)}%` : s.count > 1 || max > 1 ? (max ? `${s.count} / ${max}` : String(s.count)) : '';
+    const sub = f != null ? `Durability ${Math.round(f * 100)}%` : s.count > 1 || max > 1 ? stackLabel(s.count, max) : '';
     tipAnchor = el;
     tip.innerHTML = tipHTML(s.kind, sub);
     tip.hidden = false;
