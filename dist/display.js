@@ -255,7 +255,12 @@ export function createDisplay(ctx) {
     const box = new T.Box3(), part = new T.Box3(), size = new T.Vector3();
     const measure = () => {
       inner.updateMatrixWorld(true); box.makeEmpty();
-      inner.traverseVisible(o => { if (!o.isMesh || !o.geometry) return; if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); part.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld); box.union(part); });
+      inner.traverseVisible(o => {
+        if (!o.isMesh || !o.geometry) return;
+        if (o.isInstancedMesh) { if (!o.count) return; if (!o.boundingBox) o.computeBoundingBox(); part.copy(o.boundingBox); } // rod guide rings
+        else { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); part.copy(o.geometry.boundingBox); }
+        box.union(part.applyMatrix4(o.matrixWorld));
+      });
       if (box.isEmpty()) box.setFromObject(inner);
       return box.getSize(size);
     };

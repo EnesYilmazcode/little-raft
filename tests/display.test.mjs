@@ -381,3 +381,30 @@ test('items: recipes, radii, placeable, the bag accepts both kinds', () => {
   const back = new Bag(bagWith([{ kind: 'shelf', count: 2 }, { kind: 'trophystand', count: 1 }]).snapshot());
   assert.equal(back.count('shelf'), 2); assert.equal(back.count('trophystand'), 1);
 });
+
+test('templates: every item fits the slot box, sits on the surface, and tall tools stand up', () => {
+  const { ctx } = modCtx('solo', true);
+  ctx.world.decor = [shelf(0, 0), shelf(1, 0), stand(2, 0)];
+  const m = D.createDisplay(ctx);
+  m.load({ d: { '0,0': [{ kind: 'hammer', count: 1, durability: 50 }, { kind: 'wood', count: 1 }, { kind: 'fishingrod', count: 1, durability: 20 }],
+    '1,0': [{ kind: 'cup', count: 1 }, { kind: 'fish', count: 1 }, { kind: 'rope', count: 1 }], '2,0': [{ kind: 'hook', count: 1, durability: 9 }] } }, 'save');
+  const raft = new T.Group();
+  for (const d of ctx.world.decor) { const g = m.decorModel(d.type); g.position.set(d.x * 2, .22, d.z * 2); raft.add(g); }
+  raft.updateMatrixWorld(true); ctx.raft = raft;
+  m.update(0.016); raft.updateMatrixWorld(true);
+  let n = 0;
+  raft.traverse(o => {
+    if (o.name !== 'display_item') return;
+    n++;
+    const lim = o.parent.parent.name === 'craft_trophystand' ? D.STAND_SIZE : D.SHELF_SIZE;
+    const box = new T.Box3(), part = new T.Box3();
+    o.traverseVisible(c => { if (!c.isMesh) return; if (c.isInstancedMesh) { c.computeBoundingBox(); part.copy(c.boundingBox); } else { c.geometry.computeBoundingBox(); part.copy(c.geometry.boundingBox); } box.union(part.applyMatrix4(c.matrixWorld)); });
+    const size = box.getSize(new T.Vector3()), top = o.parent.getWorldPosition(new T.Vector3()).y;
+    assert.ok(Math.max(size.x, size.y, size.z) <= lim + 1e-3, `${o.parent.userData.dispKind} fits ${lim}`);
+    assert.ok(Math.abs(box.min.y - top) < 1e-3, `${o.parent.userData.dispKind} sits on the surface`);
+    const kind = o.parent.userData.dispKind;
+    if (kind === 'hammer' || kind === 'fishingrod') assert.ok(size.y > Math.max(size.x, size.z), `${kind} stands up`);
+    if (kind === 'wood') assert.ok(size.y < Math.max(size.x, size.z), 'a plank lies down');
+  });
+  assert.equal(n, 7);
+});
