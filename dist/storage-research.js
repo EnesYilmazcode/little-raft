@@ -9,7 +9,7 @@ export const CHEST_SLOTS = 12;
 export const MAX_CHESTS = 400;
 export const REACH = 3.2;             // metres from the actor to the tile centre
 export const STARTER = Object.freeze(['rope', 'hook', 'hammer', 'crate', 'research']);
-export const LOCK_REASON = 'Research it first at a Research Table';
+export const LOCK_REASON = 'Study it first at a Tinker\u2019s Desk';
 export const MAX_SLICE_CHARS = 150000; // a put that would grow the JSON slice past this is refused (content.js caps all of ext at 200k)
 export const OLD_HOST = 'Your friend’s raft doesn’t have chests yet';
 const NOTHING_NEW = 'That doesn’t teach anything new';
@@ -25,6 +25,10 @@ const sortedUnique = a => [...new Set(a)].sort();
 
 // ------------------------------------------------------------------ recipe tree
 
+// Recipes another system unlocks (game.js hands in the progression catalogue: items.js owns those unlocks,
+// so this table only teaches the rest). Default: none, i.e. the table gates every RECIPES entry.
+let ownedElsewhere = () => false;
+export function setOwnedElsewhere(fn) { ownedElsewhere = typeof fn === 'function' ? fn : () => false; }
 export const recipeIds = () => Object.keys(RECIPES);
 /** Every kind that appears in any recipe cost. */
 export function ingredientKinds() {
@@ -36,12 +40,12 @@ export function ingredientKinds() {
 export function learnedFrom(seen, learned = []) {
   const s = new Set(seen), out = new Set(learned);
   for (const [id, r] of Object.entries(RECIPES)) {
-    if (STARTER.includes(id)) continue;
+    if (STARTER.includes(id) || ownedElsewhere(id)) continue;
     if (Object.keys(r.cost || {}).every(k => s.has(k))) out.add(id);
   }
   return [...out].sort();
 }
-export const isLearned = (state, id) => STARTER.includes(id) || state.all === true || state.learned.includes(id);
+export const isLearned = (state, id) => STARTER.includes(id) || state.all === true || state.learned.includes(id) || !!ownedElsewhere(id);
 /** Recipe ids that are still locked for this state. */
 export function lockedRecipes(state) {
   return Object.keys(RECIPES).filter(id => !isLearned(state, id));

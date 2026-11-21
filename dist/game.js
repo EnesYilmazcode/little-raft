@@ -41,6 +41,9 @@ import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?bui
 import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
+import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js'; // [progression-hook]
+import { attachProgression } from './progression-hooks.js'; // [progression-hook]
+import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -50,7 +53,7 @@ import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 // (the brother's, persisted in the save) and applies every action against the actor's bag.
 
 // ---------- Immutable configuration ----------
-const DECOR_TYPES = Object.freeze(['sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'receiver', 'antenna', 'purifier', ...CONTENT_DECOR]); // content hook: + CONTENT_DECOR // placeable bag items
+const DECOR_TYPES = Object.freeze([...new Set(['sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'receiver', 'antenna', 'purifier', ...CONTENT_DECOR, ...PLACEABLE_IDS])]); // [progression-hook] + PLACEABLE_IDS; // content hook: + CONTENT_DECOR // placeable bag items
 const ITEM_TYPES = Object.freeze(['wood', 'leaf', 'scrap', 'barrel', 'plastic', 'cache']); // floating debris kinds ('cache' = signal cache, never spawned by SPAWN_TABLE)
 const ITEM_NAMES = Object.freeze({wood:'plank', leaf:'bundle of leaves', scrap:'piece of scrap', barrel:'barrel', plastic:'plastic jug', cache:'signal cache', bottle:'message in a bottle'});
 const SPAWN_TABLE = Object.freeze(['wood', 'wood', 'wood', 'plastic', 'plastic', 'plastic', 'leaf', 'leaf', 'leaf', 'scrap', 'barrel']);
@@ -58,7 +61,7 @@ const LOOT = Object.freeze({wood:{wood:2}, leaf:{leaf:1}, scrap:{scrap:1}, plast
 const STOCK_KEYS = Object.freeze(['wood', 'leaf', 'scrap', 'plastic']); // legacy world.stock (derived)
 const FLOOR_COST = Object.freeze({wood:2, plastic:2});
 const REPAIR_COST = Object.freeze({wood:2, scrap:1});
-const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12, receiver:.35, antenna:.1, purifier:.3, ...CONTENT_BLOCK_RADIUS}); // content hook
+const BLOCK_RADIUS = Object.freeze({palm:.42, crate:.55, bench:.45, sail:.14, lantern:.12, receiver:.35, antenna:.1, purifier:.3, ...CONTENT_BLOCK_RADIUS, ...BLOCK_RADII}); // content hook, [progression-hook]
 const SAVE = 'little-raft-v1';
 const FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 8, PICKUP_REACH = 2.5;
 const LOOK_SENSITIVITY = .0022, DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
@@ -104,7 +107,7 @@ export function mount(transfer = null) {
   let seed = 20240917; const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
 
   // ---------- Bags ----------
-  const snapBag = s => { if (!s || typeof s !== 'object') return null; try { return new Bag(s); } catch { return null; } };
+  const snapBag = s => { if (!s || typeof s !== 'object') return null; try { return new Bag(migrateSnapshot(s) ?? s); } catch { return null; } }; // [progression-hook]
   const validSnapshot = s => snapBag(s)?.snapshot() ?? null;
   const commit = (bag, scratch) => { for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i]; };
   const canAfford = (bag, cost) => Object.entries(cost).every(([k, n]) => bag.count(k) >= n);
@@ -116,9 +119,9 @@ export function mount(transfer = null) {
     commit(bag, s); return true;
   }
   function hookIndex(bag, prefer) {
-    if (isInt(prefer) && bag.slots[prefer]?.kind === 'hook') return prefer;
-    if (bag.slots[bag.selectedIndex]?.kind === 'hook') return bag.selectedIndex;
-    return bag.slots.findIndex(s => s?.kind === 'hook');
+    if (isInt(prefer) && toolRole(bag.slots[prefer]?.kind) === 'hook') return prefer; // [progression-hook]
+    if (toolRole(bag.slots[bag.selectedIndex]?.kind) === 'hook') return bag.selectedIndex; // [progression-hook]
+    return bag.slots.findIndex(s => toolRole(s?.kind) === 'hook'); // [progression-hook]
   }
   const hookDurability = (bag, prefer) => { const i = hookIndex(bag, prefer); return i < 0 ? 0 : clamp(bag.slots[i].durability ?? MAX_HEALTH, 0, MAX_HEALTH); };
   const legacyStock = bag => { const c = bag.counts(); return Object.fromEntries(STOCK_KEYS.map(k => [k, c[k] ?? 0])); };
@@ -270,6 +273,7 @@ export function mount(transfer = null) {
     const r = canvas.getBoundingClientRect(); aimNdc.x = (mouse.x - r.left) / r.width * 2 - 1; aimNdc.y = -(mouse.y - r.top) / r.height * 2 + 1; return aimNdc;
   }
   let coop = null; // coop: hub from coop.js, created after init(); every use is optional (coop?.)
+  let prog = null; // [progression-hook]
 
   function makePhysics(src) {
     const deck = raftPose.y + FLOOR_Y + EYE_OFFSET;
@@ -293,7 +297,7 @@ export function mount(transfer = null) {
   const chargeValue = () => (charging ? clamp((performance.now() - charging.start) / CHARGE_MS, MIN_CHARGE, 1) : 0);
   const localBag = () => (role === 'guest' && networkReady && remoteBag ? remoteBag : hostBag);
   const actorBag = actor => (actor === 'guest' ? guestBag : hostBag);
-  const selectedKind = () => localBag().slots[localBag().selectedIndex]?.kind ?? null;
+  const selectedKind = () => toolRole(localBag().slots[localBag().selectedIndex]?.kind ?? null); // [progression-hook] metalhook acts as 'hook'
   const heldKind = () => (hook?.fishing ? 'fishingrod' : hook ? 'hook' : selectedKind());
   const caughtList = h => (Array.isArray(h?.caughtItems) ? h.caughtItems : h?.caught ? [h.caught] : []);
   const deckY = () => (raft ? raft.position.y : raftPose.y) + FLOOR_Y;
@@ -381,6 +385,7 @@ export function mount(transfer = null) {
     islands.length = 0; aboveWater.length = 0; // diving lane hook: seafloor rises toward islands; these groups hide underwater
     for (let i = 0; i < 12; i++) { const g = new T.Group(), a = i * 2.4, d = 65 + rand() * 25; g.position.set(Math.sin(a) * d, -.1, Math.cos(a) * d); islands.push({x:g.position.x, z:g.position.z, r:5}); aboveWater.push(g); cylinder(3, 5, .8, '#e6d7a3', 0, 0, 0, g); sphere(3.4, '#4f9b72', 0, 1.4, 0, g); palm(g, 0, 1, 0, 1.4); bakeGroup(g); scene.add(g); scenery.push([g, 6]); } // [sailing] islands drift past; diving: seafloor rises toward these
     for (let i = 0; i < 24; i++) { const g = new T.Group(); for (let j = 0; j < 3; j++) sphere(1.3 + j * .35, '#e7f9eb', j * 1.4, Math.sin(j) * .5, 0, g); g.position.set((rand() - .5) * 170, 17 + rand() * 8, (rand() - .5) * 170); g.scale.y = .5; bakeGroup(g); scene.add(g); clouds.push(g); aboveWater.push(g); scenery.push([g, 0]); } // content + sailing: clouds
+    setOwnedElsewhere(id => Object.prototype.hasOwnProperty.call(PROG_ITEMS, id)); // [progression-hook] items.js unlocks own the catalogue
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
     building = createBuilding(T, scene); // building-pieces lane hook
     // [sailing] raft velocity, sail, anchor, wind HUD; the world moves past the raft (sailing-world.js)
@@ -498,7 +503,7 @@ export function mount(transfer = null) {
     wateringGroups.clear();
     raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat));
     for (const d of world.decor) {
-      let detailed = null; try { detailed = d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type) ?? null; } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel
+      let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
       if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; }
       const g = new T.Group(); g.position.set(d.x * 2, .22, d.z * 2);
       if (d.type === 'sail') { cylinder(.065, .08, 3.8, '#906f48', 0, 1.9, 0, g); box(2.5, .07, .07, '#906f48', 0, 3.2, 0, g); const s = new T.Mesh(new T.PlaneGeometry(2.35, 2.1), clothMat); s.position.set(0, 2.15, .06); g.add(s); }
@@ -764,6 +769,7 @@ export function mount(transfer = null) {
   function effect(e) {
     if (!e || typeof e !== 'object') return;
     if (Array.isArray(e.tokens)) for (const t of e.tokens) if (typeof t === 'string') pending.delete(t);
+    if (prog?.effect(e)) return; // [progression-hook]
     if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90));
     if (e.kind === 'note' || e.kind === 'achievement') logbookUI?.celebrate?.(e);
     beep(e.kind === 'signal' ? 760 : e.kind === 'build' ? 640 : e.kind === 'craft' ? 560 : e.kind === 'full' ? 220 : 440);
@@ -810,12 +816,13 @@ export function mount(transfer = null) {
   function wearHook(bag, slot, actor) {
     const i = hookIndex(bag, slot); if (i < 0) return;
     const s = bag.slots[i], before = clamp(s.durability ?? MAX_HEALTH, 0, MAX_HEALTH);
-    s.durability = Math.max(0, before - WEAR_PER_CATCH);
+    s.durability = Math.max(0, before - (wearPerUse(s.kind) || WEAR_PER_CATCH)); // [progression-hook]
     if (before > 0 && s.durability === 0) emit({kind:'notice', text:'Hook worn out: shorter throws. R to repair'}, actor);
-    else if (before > 25 && s.durability <= 25) emit({kind:'notice', text:'Hook getting worn. R repairs: 2 wood, 1 scrap'}, actor);
+    else if (before > 25 && s.durability <= 25) emit({kind:'notice', text:'Hook getting worn. R repairs: ' + Object.entries(repairCost(s.kind) ?? REPAIR_COST).map(([k, n]) => n + ' ' + itemName(k)).join(', ')}, actor); // [progression-hook]
   }
   function applyAction(a, actor = 'host') {
     if (!a || typeof a !== 'object' || role === 'guest') return;
+    if (prog?.apply(a, actor)) return; // [progression-hook] locked crafts + 'prog:*' actions
     const bag = actorBag(actor);
     if (typeof a.kind === 'string' && a.kind.startsWith('fc:')) { fc?.applyAction(a, actor, {count:k => bag.count(k), remove:(k, n) => bag.remove(k, n), add:(k, n) => bag.add(k, n), emit:text => emit({kind:'notice', text}, actor)}); return; } // [fishing-cooking]
     if (a.kind === 'selectSlot') { bag.select(a.index); return; }
@@ -834,7 +841,7 @@ export function mount(transfer = null) {
       const i = world.items.findIndex(it => it.id === a.id && it.token === a.token); if (i < 0) return; // token guard: each supply counts once
       if (world.items[i].type === 'bottle') { collectBottle(i, a, bag, actor); return; }
       const it = world.items[i]; if (it.type === 'cache' && a.net) return; // nets never take the signal cache
-      const isCache = it.type === 'cache', loot = isCache ? cacheLoot(countAntennas(world.decor), Math.random) : LOOT[it.type]; if (!loot) return;
+      const isCache = it.type === 'cache', loot = isCache ? cacheLoot(countAntennas(world.decor), Math.random) : it.type === 'barrel' ? rollBarrel(Math.random, prog?.barrelLuck) : LOOT[it.type]; if (!loot) return; // [progression-hook] barrel table
       const scratch = new Bag(bag.snapshot());
       for (const [k, n] of Object.entries(loot)) if (scratch.add(k, n) > 0) { // atomic: all loot fits or nothing changes
         if (!a.net) emit({kind:'full', text:'Your bag is full', tokens:[it.token]}, actor);
@@ -897,7 +904,8 @@ export function mount(transfer = null) {
       const i = repairHookSlot(bag.slots, a.slot, MAX_HEALTH);
       if (i < 0) { emit({kind:'notice', text:'No hook to repair'}, actor); return; }
       if ((bag.slots[i].durability ?? MAX_HEALTH) >= MAX_HEALTH) { emit({kind:'notice', text:'Your hook is in great shape'}, actor); return; }
-      if (!spend(bag, REPAIR_COST)) { emit({kind:'notice', text:'Repair needs ' + missingText(bag, REPAIR_COST)}, actor); return; }
+      const cost = repairCost(bag.slots[i].kind) ?? REPAIR_COST; // [progression-hook]
+      if (!spend(bag, cost)) { emit({kind:'notice', text:'Repair needs ' + missingText(bag, cost)}, actor); return; }
       bag.slots[i].durability = MAX_HEALTH; emit({kind:'build', text:'Hook repaired!'}, actor);
       award({kind:'repair'}); return;
     }
@@ -934,6 +942,7 @@ export function mount(transfer = null) {
     }
     if (content?.interact(currentAim())) return; // content hook: chest, research table, island nodes
     if (fc?.interact()) return; // [fishing-cooking] grill
+    if (prog?.interact(currentAim())) return; // [progression-hook] smelter / grill / research table in reach
     const w = wateringTarget(currentAim()); if (w?.e) { if (guestWaiting()) { notice('Wait for your raft to connect'); return; } action(w.e); swing = .6; return; }
     openInventory();
   }
@@ -976,7 +985,7 @@ export function mount(transfer = null) {
   // Ballistic: the camera ray is the throw direction. Aim up + charge decide the arc. Misses are real.
   function throwHook(aim, charge) {
     const bag = localBag(), idx = bag.selectedIndex, slot = bag.slots[idx];
-    if (slot?.kind !== 'hook') return;
+    if (toolRole(slot?.kind) !== 'hook') return; // [progression-hook] metalhook throws too
     const durability = clamp(slot.durability ?? MAX_HEALTH, 0, MAX_HEALTH), maxRange = 16 + durability * .16;
     const direction = aim?.dir ?? camera.getWorldDirection(new T.Vector3());
     const deckAt = (x, z) => (hasTile(Math.round(x / 2), Math.round(z / 2)) ? deckY() : null); // stop on the planks
@@ -1208,6 +1217,7 @@ export function mount(transfer = null) {
     }
     if (running) { const t = wallTick(now, lastSaveAt, 3000); lastSaveAt = t.next; if (t.due) save(); } // wall clock: dt is capped
     if (conn?.open) { const t = wallTick(now, lastNetSendAt, 120); lastNetSendAt = t.next; if (t.due) send(role === 'host' ? hostState() : {type:'move', me:pose(), held:caughtList(castOut()).map(c => c.token)}); }
+    try { prog?.tick(dt); } catch (e) { console.error('progression tick failed', e); } // [progression-hook]
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     try { logbookUI?.update?.(); } catch (e) { console.error('logbook update failed', e); logbookUI = null; }
     refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud();
@@ -1614,6 +1624,7 @@ export function mount(transfer = null) {
     get logbook() {
       return {notes:[...world.notes], nextNote:nextNote(world.notes), achievements:[...world.achievements], totals:{notes:12, achievements:15}, bottleAfloat:world.items.some(i => i.type === 'bottle')};
     },
+    get progression() { return prog?.debug ?? null; }, // [progression-hook]
     get targets() {
       return world.items.map(it => {
         const m = itemMeshes.get(it.token), p = m ? m.position : {x:it.x, y:ITEM_FLOAT, z:it.z};
@@ -1687,6 +1698,7 @@ export function mount(transfer = null) {
     try { fc?.dispose(); } catch {} fc = null; // [fishing-cooking]
     for (const id of ['signalReadout', 'signalMarker']) { const el = document.getElementById(id); if (el) el.hidden = true; }
     try { logbookUI?.destroy?.(); } catch {}
+    try { prog?.dispose(); } catch {} // [progression-hook]
     for (const id of timers) clearTimeout(id); timers.clear(); clearInterval(heartbeat);
     unlisten(bindings.splice(0));
     try { if (window.raftDebug === debugApi) delete window.raftDebug; } catch {}
@@ -1696,6 +1708,7 @@ export function mount(transfer = null) {
   const optionsDialog = document.getElementById('options'), previousSettingsOwner = optionsDialog?.dataset.owner;
   try {
     if (!canvas) throw new Error('#world canvas missing');
+    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), resume:() => requestLock(), pause:clearInput}); // [progression-hook]
     init();
     try { coop = createCoop(coopContext(), X?.coop); } catch (e) { console.warn('co-op layer unavailable', e); coop = null; } // coop
     settingsController = createSettings({onChange:next => { options = next; if (quality && quality.info.preset !== next.graphics) quality.setCap(next.graphics); }, onPause:clearInput, onResume:() => { quality?.reset(); requestLock(); }});
@@ -1707,7 +1720,9 @@ export function mount(transfer = null) {
       onResume:guard(() => requestLock()),
       onPause:guard(clearInput),
       iconFor:kind => itemIcons.get(kind),
+      recipeGate:id => prog?.recipeGate(id), // [progression-hook]
     });
+    prog.installUI(); // [progression-hook]
     logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(clearInput), onResume:guard(() => requestLock())});
     if (role !== 'guest') retroAward();
     later(() => { try { itemIcons.prime(); } catch (e) { console.warn('item icons', e); } }, 1500); // render 3D recipe icons off the first-open path
