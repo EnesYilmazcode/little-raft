@@ -73,7 +73,7 @@ export function createCoop(ctx, saved = null) {
       if (key === itemKey && now() - lastItemsAt < ITEMS_MS && lastItems) m = {...m, world:{...m.world, items:lastItems}};
       else { itemKey = key; lastItemsAt = now(); lastItems = quantize(items, 2); m = {...m, world:{...m.world, items:lastItems}}; }
       const {other, ...rest} = m; // the guest rebuilds `other` from our cp stream
-      return enc.encode(quantize(rest, 3));
+      return enc.encode(quantize(rest, 3), {owned:true}); // quantize() already made a private copy
     }
     return m;
   }
@@ -129,7 +129,7 @@ export function createCoop(ctx, saved = null) {
     if (t - lastSend < (moving || !settled ? SEND_MS : IDLE_MS)) return;
     settled = !moving;
     lastSend = t; lastSent = key; s.t = Math.round(t);
-    sendRaw(enc.encode(s));
+    sendRaw(enc.encode(s, {owned:true}));
   }
 
   // ---------- remote rendering ----------

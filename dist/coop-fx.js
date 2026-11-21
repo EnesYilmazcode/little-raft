@@ -103,26 +103,26 @@ export function createPings(T, scene) {
 // ---------------------------------------------------------------- remote rope + hook
 const SEGS = 16, FLAT_Y = 0.05;   // FLAT_Y = hook-physics WATER_Y
 
-// Low-poly third-person stand-in for hook.js's scrap hook (~270 tris / 6 meshes instead of 8.8k / 18):
+// Low-poly third-person stand-in for hook.js's scrap hook (286 tris / 6 meshes instead of 8.8k / 18):
 // same frame and proportions (wooden handle down -Y with rope wrap + dangling rope eye, iron shank
 // curving up and over toward -Z, cone point), re-centred on its bounding box like createHook.
 function createFlyingHook(T, tint) {
   const root = new T.Group(), inner = new T.Group(); root.add(inner);
-  const M = (c, metalness, roughness) => new T.MeshStandardMaterial({ color: new T.Color(c).lerp(tint, 0.3), metalness, roughness, flatShading: true });
+  const M = (c, metalness, roughness) => new T.MeshStandardMaterial({ color: new T.Color(c).lerp(tint, 0.3), metalness, roughness });
   const steel = M(0x8ca8ac, 0.7, 0.3), iron = M(0x5f7376, 0.75, 0.45), wood = M(0x8a6a45, 0, 0.9), rope = M(0xb89a64, 0, 0.95);
   const add = (g, m, x = 0, y = 0, z = 0) => { const o = new T.Mesh(g, m); o.position.set(x, y, z); o.castShadow = false; inner.add(o); return o; };
   const HX = 0.2, R = 0.022;
   const curve = new T.CatmullRomCurve3([[HX, -0.08, 0], [HX, 0.12, -0.01], [0.17, 0.27, -0.05], [0.06, 0.38, -0.12], [-0.1, 0.4, -0.2],
     [-0.25, 0.34, -0.26], [-0.34, 0.2, -0.28], [-0.33, 0.06, -0.25], [-0.24, 0, -0.2], [-0.15, 0.04, -0.16], [-0.11, 0.11, -0.13]]
     .map(p => new T.Vector3(p[0], p[1], p[2])), false, 'centripetal');
-  add(new T.TubeGeometry(curve, 12, R, 5, false), steel);                       // 120 tris
+  add(new T.TubeGeometry(curve, 18, R, 5, false), steel);                       // 180 tris
   const end = curve.getPoint(1), dir = curve.getTangent(1).normalize();
   const tip = add(new T.ConeGeometry(R, 0.075, 5), steel);                      // 10
   tip.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), dir); tip.position.copy(end).addScaledVector(dir, 0.0375);
-  add(new T.CylinderGeometry(0.05, 0.053, 0.075, 6), iron, HX, -0.09, 0);       // ferrule, 24
-  add(new T.CylinderGeometry(0.042, 0.046, 0.265, 6), wood, HX, -0.2575, 0);   // handle, 24
-  add(new T.CylinderGeometry(0.05, 0.05, 0.16, 6), rope, HX, -0.25, 0);         // rope wrap, 24
-  const eye = add(new T.TorusGeometry(0.04, 0.01, 4, 8), rope, HX + 0.13, -0.305, 0.03); // rope eye, 64
+  add(new T.CylinderGeometry(0.05, 0.053, 0.075, 5), iron, HX, -0.09, 0);       // ferrule, 20
+  add(new T.CylinderGeometry(0.042, 0.046, 0.265, 5), wood, HX, -0.2575, 0);   // handle, 20
+  add(new T.CylinderGeometry(0.05, 0.05, 0.16, 5), rope, HX, -0.25, 0);         // rope wrap, 20
+  const eye = add(new T.TorusGeometry(0.04, 0.01, 3, 6), rope, HX + 0.13, -0.305, 0.03); // rope eye, 36
   eye.rotation.set(0.2, 0.3, 0.5);
   const box = new T.Box3().setFromObject(inner), c = new T.Vector3();
   inner.position.sub(box.getCenter(c));
