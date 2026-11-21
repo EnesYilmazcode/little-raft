@@ -31,7 +31,7 @@ REQUIRE = [
     "import { createOceanAudio } from './audio.js?build={BUILD}';\n",
     "  const sfx = createOceanAudio({context:X?.audio ?? null, volume:sound ? options.volume : 0, output:ctx => diving?.audioOut(ctx) ?? null}); // diving lane hook: muffled underwater\n",
     "  if (X?.audio) sfx.resume(); // hot swap: the old context is already unlocked\n",
-    "hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio:sfx.context, peer,",
+    "fishWait, sound, audio:sfx.context,",
     "    pause(); disposed = true; ac.abort(); sfx.destroy(); offIconReady?.();\n",
 ]
 

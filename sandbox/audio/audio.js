@@ -14,6 +14,8 @@
 //   context (getter) | music (getter) | resume() -> Promise<bool> | setVolume(v) -> v
 //   setBus(name, v) -> clamped v | null for an unknown name; getBus(name) -> v | null   (BUSES: master effects ambience music)
 //   setMusic(on) -> bool | play(ev, s=1) -> bool (ALIASES resolved, never throws) | tick(dt, st) | destroy()
+//   note(i, step, s=1) -> bool   [instruments] i in drum|pipes|bells, integer step 0..7 (D4..F#5); 50 ms gap
+//       per instrument, at most 10 live instrument voices inside MAX_VOICES; never throws
 //   output(ctx) -> AudioNode|null: where the limiter goes instead of ctx.destination (diving's underwater
 //   low-pass). It is retried from tick() until it returns a node, so a hot-update mount that builds the
 //   engine before diving exists still ends up muffled underwater.
@@ -44,7 +46,7 @@
 // dist/audio.js's EVENTS first, in its order; then the sandbox events; then the feature events.
 export const EVENTS = Object.freeze([
   'throw', 'splash', 'collect', 'build', 'place', 'craft', 'repair', 'plant', 'water', 'jump',
-  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny',
+  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny', 'detect', 'chime',
   'hammer', 'grab', 'error', 'return', 'creak', 'gull', 'hover',
   // cooking (grill), smelter, sailing, diving
   'sizzle', 'stoke', 'clank', 'ingot', 'sail', 'anchor', 'dive', 'surface',
@@ -65,8 +67,8 @@ const AMB_LEVEL = 1, AMB_DEFAULT = 0.7;
 // In-game mix presets (option `mix`), trims in dB on top of the buses.
 // 'main' (default): the levels of the dist/audio.js engine this replaces, so an update changes the sound
 //   but not the balance players are used to. Measured in the game (same settings, same recorder: the
-//   100 ms RMS peak of each of dist/audio.js's 20 events with the sea muted, and the sea bed's median):
-//   every one of the 20 lands within 2 dB of main's, and the bed within 1 dB. Events main does not have
+//   100 ms RMS peak of each of dist/audio.js's 22 events with the sea muted, and the sea bed's median):
+//   every one of them lands within 2 dB of main's, and the bed within 1 dB. Events main does not have
 //   (stations, sailing, diving, hammer, ...) get `other`, the median shift of main's events, so they keep
 //   their place among the ones they sit next to.
 // 'engine': no trims, the balance the sandbox's loudness hierarchy was tuned at (sea about 24 dB louder,
@@ -75,21 +77,22 @@ const MIX = {
   main: {
     ambience: -24, other: -3,
     events: { splash: -6.5, collect: -4.5, build: -3, place: -2, craft: -3, plant: -2.5, water: 2, jump: -5, land: -2,
-      swim: -4, reel: -3.5, catch: -7.5, open: 3.5, deny: -4.5 },
+      swim: -4, reel: -3.5, catch: -7.5, open: 3.5, deny: -4.5,
+      note: -2 },  // note(): all three instruments (drum, pipes, bells), measured like the events
   },
   engine: { ambience: 0, other: 0, events: {} },
 };
-const MAIN_EVENTS = new Set(EVENTS.slice(0, 20));
+const MAIN_EVENTS = new Set(EVENTS.slice(0, 22));
 const fromDb = (d) => Math.pow(10, d / 20);
 const MAX_VOICES = 24;
 const SILENT = 0.0001;
 const MIN_GAP = {
   throw: 0.08, splash: 0.06, collect: 0.03, build: 0.05, place: 0.06, craft: 0.1, repair: 0.12, plant: 0.12, water: 0.25,
-  jump: 0.1, land: 0.12, step: 0.16, swim: 0.11, reel: 0.075, catch: 0.08, bite: 0.2, ui: 0.025, open: 0.08, close: 0.08,
-  deny: 0.15, hammer: 0.06, grab: 0.03, error: 0.15, return: 0.1, creak: 0.15, gull: 0.3, hover: 0.04,
+  jump: 0.1, land: 0.12, step: 0.16, swim: 0.11, reel: 0.4, catch: 0.08, bite: 0.2, ui: 0.025, open: 0.08, close: 0.08,
+  deny: 0.15, detect: 0.05, chime: 0.5, hammer: 0.06, grab: 0.03, error: 0.15, return: 0.1, creak: 0.15, gull: 0.3, hover: 0.04,
   sizzle: 0.25, stoke: 0.2, clank: 0.1, ingot: 0.1, sail: 0.3, anchor: 0.5, dive: 0.4, surface: 0.4, pluck: 0.2,
 };
-const UI_EVENTS = new Set(['ui', 'hover', 'error', 'deny', 'craft', 'open', 'close']);
+const UI_EVENTS = new Set(['ui', 'hover', 'error', 'deny', 'craft', 'open', 'close', 'detect', 'chime']);
 const INTERNAL = new Set(['pluck']);           // recipes play() refuses (music bed only)
 // metres at which a spatial voice is at full level (inverse model: gain = ref / d beyond it; default 2 m).
 // The hook works 8-32 m out, so its cues get large refs: the catch is the reward and must stay one of the
@@ -99,6 +102,9 @@ const DUCK = { splash: 0.35, catch: 0.4, hammer: 0.25, build: 0.25, craft: 0.2, 
 // calm D-major-ish pad (dist/audio.js's music bed): Dadd9, Bm7, Gmaj7, A6; D pentatonic plucks
 const CHORDS = [[146.83, 220, 329.63], [123.47, 185, 293.66], [98, 196, 246.94], [110, 164.81, 277.18]];
 const SCALE = [587.33, 659.25, 739.99, 880, 987.77, 1174.66];
+// [instruments] note() steps 0..7, D4..F#5 (dist/instruments.js SCALE_HZ)
+const NOTE_HZ = Object.freeze([293.66, 329.63, 369.99, 440, 493.88, 587.33, 659.25, 739.99]);
+const NOTE_GAP = 0.05, NOTE_VOICES = 10;
 
 function mulberry32(a) {
   a |= 0;
@@ -1031,6 +1037,10 @@ export function createOceanAudio({
       tone(v, t, 'triangle', f, 0.05 * s, 0.01, 1.6, 0, lp);
       tone(v, t, 'sine', f * 2, 0.012 * s, 0.01, 0.9, 0, lp);
     },
+    // Seashell Finder tick (pitch and level rise with closeness s) and the soft lock-on / dig-up chime
+    // (dist/treasure.js); dist/audio.js's recipes, on the ui bus (dry, in the hand)
+    detect(v, t, s) { const f = 700 + 500 * s; tone(v, t, 'sine', f, 0.05 + 0.04 * s, 0.002, 0.05); tone(v, t, 'triangle', f * 2, 0.015 * s, 0.001, 0.03); },
+    chime(v, t, s) { tone(v, t, 'sine', 880, 0.09 * s, 0.002, 0.4); tone(v, t + 0.07, 'sine', 1318.5, 0.06 * s, 0.002, 0.35); tone(v, t + 0.14, 'sine', 1760, 0.04 * s, 0.002, 0.3); },
   };
 
   // ---- continuous reel --------------------------------------------------------
@@ -1291,6 +1301,52 @@ export function createOceanAudio({
     return true;
   }
 
+  // [instruments] held instruments (dist/instruments.js): dist/audio.js's note recipes (v, t, s, f), every
+  // tail 1.5 s or less, on the sfx bus (effects slider) with the mix preset's 'note' trim
+  const lastNote = Object.create(null);
+  const NOTES = Object.freeze({
+    drum(v, t, s, f) {
+      tone(v, t, 'sine', f / 2, 0.28 * s, 0.002, 0.55, f / 2 * 0.6);
+      burst(v, t, 'lowpass', 900, 0.7, 0.35 * s, 0.001, 0.06);
+    },
+    pipes(v, t, s, f) {
+      const o = tone(v, t, 'triangle', f, 0.22 * s, 0.04, 0.5);
+      o.frequency.linearRampToValueAtTime(f * 1.008, t + 0.25);
+      o.frequency.linearRampToValueAtTime(f, t + 0.5);
+      tone(v, t, 'sine', f * 2, 0.05 * s, 0.05, 0.35);
+      burst(v, t, 'bandpass', f * 2, 1.2, 0.08 * s, 0.03, 0.25);
+    },
+    bells(v, t, s, f) {
+      tone(v, t, 'sine', f * 2, 0.3 * s, 0.002, 1.2);
+      tone(v, t, 'sine', f * 2 * 2.76, 0.12 * s, 0.002, 0.6);
+      tone(v, t, 'sine', f * 2 * 5.4, 0.06 * s, 0.002, 0.3);
+    },
+  });
+  function note(instr, step, strength = 1) {
+    try {
+      if (destroyed || !graph || !ctx || vol <= 0) return false;
+      if (ctx.state === 'closed' || (ctx.state !== 'running' && !wantRun)) return false;
+      if (typeof instr !== 'string' || !Object.prototype.hasOwnProperty.call(NOTES, instr)) return false;
+      if (!Number.isInteger(step) || step < 0 || step > 7) return false;
+      const s = clamp01(strength, 1);
+      if (s <= 0.001 || voices.size >= MAX_VOICES) return false;
+      const now = ctx.currentTime;
+      if (now - (lastNote[instr] ?? -1) < NOTE_GAP) return false;
+      let inst = 0;
+      for (const v of voices) if (v.inst) inst++;
+      if (inst >= NOTE_VOICES) return false;
+      lastNote[instr] = now;
+      const v = newVoice(graph.sfxBus);
+      v.inst = true;
+      const tr = evTrim('note'); if (tr !== 1) v.bus.gain.value = tr;
+      voices.add(v);
+      try { NOTES[instr](v, now + 0.005, s, NOTE_HZ[step]); }
+      catch (_) { killVoice(v); return false; }
+      if (v.live === 0) finishVoice(v);
+      return true;
+    } catch (_) { return false; }
+  }
+
   // dist/audio.js: tick(dt, {swimming}) once per frame. Allocation-free; the ocean params are only
   // re-targeted when the shaped sea changes by more than 0.02.
   let sail0 = null, anchor0 = null, lastWind = -1, lastSpeed = -1, lastSwim = null;
@@ -1408,7 +1464,7 @@ export function createOceanAudio({
   return {
     get context() { return ctx; },
     get music() { return musicOn; },
-    resume, setVolume, setBus, getBus, setMusic, play, tick, destroy,
+    resume, setVolume, setBus, getBus, setMusic, play, note, tick, destroy,
     setListener, setOcean, setReel, duck, creak, stats,
   };
 }
