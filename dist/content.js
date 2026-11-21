@@ -22,10 +22,10 @@
 // running, physics, elapsed, options, localBag(), actorBag(actor), action(a), emit(e, to), notice(s),
 // esc(s), mat(color), rebuildRaft(), deckY(), uiOpen().
 
-import { createIslands } from './islands.js';
-import { createWildlife } from './wildlife.js';
-import { createStorage } from './storage-research.js';
-import { createDayNight } from './daynight.js';
+import { createIslands } from './islands.js?build=v3-survival-ae77fa84ac2b';
+import { createWildlife } from './wildlife.js?build=v3-survival-ae77fa84ac2b';
+import { createStorage } from './storage-research.js?build=v3-survival-ae77fa84ac2b';
+import { createDayNight } from './daynight.js?build=v3-survival-ae77fa84ac2b';
 
 const FEATURES = [createIslands, createWildlife, createStorage, createDayNight];
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
@@ -40,7 +40,8 @@ export function createContent(ctx, features = FEATURES) {
   for (const make of features) {
     try { const m = make(ctx); if (m) mods.push(m); } catch (e) { console.error('content module failed to start', e); }
   }
-  const off = m => { if (!m.dead) { m.dead = true; console.error('content module disabled:', m.name); } };
+  // A failing module is disabled and disposed once, so shared engine state (fog, lights…) is restored.
+  const off = m => { if (m.dead) return; m.dead = true; console.error('content module disabled:', m.name); try { m.dispose?.(); } catch (e) { console.error(`content ${m.name}.dispose failed`, e); } };
   const call = (m, fn, ...a) => { if (m.dead || typeof m[fn] !== 'function') return undefined; try { return m[fn](...a); } catch (e) { console.error(`content ${m.name}.${fn} failed`, e); off(m); return undefined; } };
   const first = (fn, ...a) => { for (const m of mods) { const r = call(m, fn, ...a); if (r) return r; } return null; };
   const debug = {};
