@@ -49,12 +49,19 @@ export const CONTENT_ITEMS = Object.freeze({
   glassfloat: item('glassfloat', 'Glass Float',  'icon-float',  false),
   // cooking pot (cookpot.js); meals come out of the pot, never the craft list
   cookpot: item('cookpot', 'Cooking Pot', 'icon-cookpot', false), bowl: item('bowl', 'Driftwood Bowl', 'icon-bowl', false),
+  // buoy ring course (buoycourse.js)
+  courseflag: item('courseflag', 'Start Flag', 'icon-buoyflag', false), scoreboard: item('scoreboard', 'Race Scoreboard', 'icon-scoreboard', false),
+  // game table (gametable.js)
+  gametable: item('gametable', 'Driftwood Game Table', 'icon-gametable', false),
   meal_chowder:  Object.freeze({ kind: 'meal_chowder',  name: 'Tide Chowder',    icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
   meal_omelette: Object.freeze({ kind: 'meal_omelette', name: 'Puff Omelette',   icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
   meal_broth:    Object.freeze({ kind: 'meal_broth',    name: 'Kelp Broth',      icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
   meal_fishbowl: Object.freeze({ kind: 'meal_fishbowl', name: 'Smoky Fish Bowl', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
   meal_custard:  Object.freeze({ kind: 'meal_custard',  name: 'Coconut Custard', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
   meal_stew:     Object.freeze({ kind: 'meal_stew',     name: 'Captain\u2019s Stew', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
+  // driftboard paddleboard (paddleboard.js): launched from the bag, never lost
+  driftboard: Object.freeze({ kind: 'driftboard', name: 'Driftboard', icon: 'icon-driftboard', maxStack: 1, tool: false, placeholder: false }),
+  flagpole: item('flagpole', 'Flagpole', 'icon-flag', true), // raft flag (flags.js); placeholder: no icon-flag sprite, item-svg.js draws it
 });
 
 // Same shape as recipe() in inventory-state.js.
@@ -62,6 +69,15 @@ const recipe = (id, name, count, cost) => Object.freeze({ id, name, output: Obje
 
 export const CONTENT_RECIPES = Object.freeze({
   research: recipe('research', 'Tinker\u2019s Desk', 1, { wood: 6, scrap: 2 }),
+  motor:    recipe('motor', 'Little Motor', 1, { wood: 6, scrap: 4, rope: 2 }),
+  wheel:    recipe('wheel', 'Steering Wheel', 1, { wood: 5, rope: 2 }),
+  bed:      recipe('bed', 'Bed', 1, { wood: 6, leaf: 4 }),
+  brush:          recipe('brush', 'Paint Brush', 1, { wood: 2, rope: 1 }), // paint: one pot paints one piece, each recipe makes 4
+  paint_seafoam:  recipe('paint_seafoam', 'Seafoam Paint', 4, { leaf: 1, sand: 1 }),
+  paint_coral:    recipe('paint_coral', 'Coral Paint', 4, { clay: 2 }),
+  paint_sunshell: recipe('paint_sunshell', 'Sunshell Paint', 4, { sand: 1, seed: 1 }),
+  paint_lagoon:   recipe('paint_lagoon', 'Lagoon Paint', 4, { plastic: 1, leaf: 1 }),
+  paint_pebble:   recipe('paint_pebble', 'Pebble Paint', 4, { stone: 1, clay: 1 }),
   // decor pack (decor-pack.js)
   rug:     recipe('rug',     'Woven Deck Mat',    1, { leaf: 4, rope: 2 }),
   pennant: recipe('pennant', 'Wind Pennant',      1, { wood: 2, leaf: 2, rope: 1 }),
@@ -99,8 +115,16 @@ export const CONTENT_RECIPES = Object.freeze({
   // cooking pot (cookpot.js)
   cookpot: recipe('cookpot', 'Cooking Pot', 1, { clay: 3, stone: 2, scrap: 1 }),
   bowl:    recipe('bowl', 'Driftwood Bowl', 2, { wood: 1 }),
+  // buoy ring course (buoycourse.js); the kit makes the Start Flag
+  coursekit: Object.freeze({ id: 'coursekit', name: 'Course Kit', output: Object.freeze({ kind: 'courseflag', count: 1 }), cost: Object.freeze({ plastic: 4, rope: 3, wood: 3 }) }),
+  scoreboard: recipe('scoreboard', 'Race Scoreboard', 1, { wood: 3, scrap: 1 }),
+  // game table (gametable.js)
+  gametable: recipe('gametable', 'Driftwood Game Table', 1, { wood: 6, rope: 1, stone: 2 }),
+  // driftboard paddleboard (paddleboard.js)
+  driftboard: recipe('driftboard', 'Driftboard', 1, { wood: 6, plastic: 3, rope: 2 }),
+  flagpole: recipe('flagpole', 'Flagpole', 1, { wood: 4, rope: 2, leaf: 2 }), // raft flag (flags.js)
 });
 
 // Placeable decor added by content modules (models come from content.decorModel()).
-export const CONTENT_DECOR = Object.freeze(['research', 'bed', 'motor', 'wheel', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign', 'kiln', 'glasslamp', 'nestbox', 'cushion', 'cookpot', 'shellwreath', 'glassfloat']);
-export const CONTENT_BLOCK_RADIUS = Object.freeze({ research: .5, bed: .55, motor: .45, wheel: .4, pennant: .1, fern: .12, chime: .12, hammock: .45, pots: .3, sign: .1, kiln: .45, glasslamp: .12, nestbox: .35, cushion: .3, cookpot: .35, shellwreath: .12, glassfloat: .2 });
+export const CONTENT_DECOR = Object.freeze(['research', 'bed', 'motor', 'wheel', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign', 'kiln', 'glasslamp', 'nestbox', 'cushion', 'cookpot', 'shellwreath', 'glassfloat', 'flagpole', 'gametable', 'courseflag', 'scoreboard']);
+export const CONTENT_BLOCK_RADIUS = Object.freeze({ research: .5, bed: .55, motor: .45, wheel: .4, pennant: .1, fern: .12, chime: .12, hammock: .45, pots: .3, sign: .1, kiln: .45, glasslamp: .12, nestbox: .35, cushion: .3, cookpot: .35, shellwreath: .12, glassfloat: .2, flagpole: .1, gametable: .45, courseflag: .15, scoreboard: .3 });

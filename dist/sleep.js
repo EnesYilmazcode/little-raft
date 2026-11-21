@@ -298,6 +298,8 @@ export function createSleep(ctx, opts = {}) {
 
   return {
     name: 'sleep',
+    beforeUndecor(d) { return d?.type === 'bed' && (same(slice.in.host, d.x, d.z) || same(slice.in.guest, d.x, d.z)) ? 'Someone is in that bed' : null; }, // [undecor]
+    afterUndecor(d) { if (d?.type === 'bed') for (const r of ROLES) if (same(slice.in[r], d.x, d.z)) slice.in[r] = null; }, // [undecor] stale only: beforeUndecor refuses an occupied bed
     serialize() { return slice; },
     placed, respawnSpot, // [bed] content hooks (game.js: a bed was built; where to wake up)
     load,

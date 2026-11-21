@@ -1,126 +1,108 @@
-# Zipline research
+# Zipline: research
 
-Feature (round loop-features-202611210855): two posts plus a rope line on the raft, upper floors included,
-ridden with E. Anchors were checked against the current tree (branch base 16aedaa). All paths are under `dist/`.
+Goal: put up two posts on the raft, string a line between them, and glide along it while holding a handle.
+The ride is friendly: there is no damage and no fall damage, and a drop into the sea just means a swim.
+Line numbers are for branch `claude/loop-features-202611210749` as checked out.
 
-## (a) Genre patterns and our take
+## 1. How Raft does it (reference only. Our version is original.)
+- **Pieces.** Raft has a *Zipline Base*, a post with a pulley wheel that is built as a piece on foundations or floors. It
+  also has a *Zipline Tool*, a hand-held trolley/handle. In Raft you use the tool on one base and then on a second
+  base to connect them, and a rope line appears between the two pulleys.
+- **Riding.** With the tool equipped, you look at a line or base and press use to hook on. You hang below the line
+  and travel fast along it. Gravity drives the speed: going downhill speeds you up, and a flat or uphill run is slow
+  or stops you. You can jump off at any point, and you are released automatically when you reach the far base.
+  The line can join bases on different levels, so the usual use is a tower top to a lower deck, or across a large raft.
+- **Materials** (approximate, they changed between versions): the base costs planks, rope and some scrap or metal.
+  The tool needs metal and rope. Linking uses no extra rope in most versions. Do not copy the numbers. Use our own.
+- **What we take:** two anchors, a link step, and a hanging glide that is faster downhill and gentle uphill, ending
+  with a jump or at the end. **What we change:** our own names, models, numbers and cozy rules (below).
 
-How survival and sandbox games usually do ziplines:
-- Two anchor poles or bases, linked by a rope or cable that the player strings between them by hand,
-  often with a length limit and a rule that nothing may block the line.
-- You ride by holding a tool or item (a handle or hook) and interacting near one end. You hang under the line,
-  and the camera is locked to the line direction or free-look.
-- Ziplines are used to cross floors and towers, so the two ends sit at different heights.
-- Speed builds going downhill. Going uphill is either blocked or slow (some games need a motor for it).
-- The ride stops at the far anchor with a small brake. Usually you can drop off mid-line with jump.
+## 2. Proposed original take (names are suggestions)
+- `glidepost` **Glide Post** (decor, `placeable:true`): a tall wooden mast with a grooved wheel at the top.
+  Height `POST_TOP` is about 3.0 m above the deck. An optional `glidestep` **Low Glide Post** has its top at about 1.4 m,
+  so a tall-to-low link makes a downhill line on a flat raft. Decor only sits at deck level (see section 3), so slope has to come from post height.
+- `glidehandle` **Glide Handle** (`tool:false`, stack 1, like the instruments at `items.js:154-158`): a wooden
+  T-bar with a little wheel. To link, hold it and press E on post A, then E on post B. That costs `rope` scaled to the length (e.g. 1 per 4 m).
+  To ride, hold it and press E near a post or line end. Space drops off. Pressing E on a post again lets you unlink and get the rope back.
+- Speed rule (pure function, testable): `v' = v + (g*sin(slope) - drag*v)*dt`. Clamp `v` to `[V_MIN, V_MAX]`,
+  with `V_MIN` about 1.2 m/s so you never get stuck on a flat line and `V_MAX` about 9 m/s. Forward/back input adds ±1 m/s².
+- Recipes: Glide Post `hand({wood:6, rope:3, nail:2})` and Glide Handle `hand({wood:2, rope:2, scrap:2})`, both unlocking on
+  `discover('nail')`.
 
-Little Raft take, kept cozy (no damage, no hunger):
-- **Zipline Post**: a small wooden post with a pulley wheel on top. It can stand on the deck or on any
-  upper-floor `floor` piece.
-- **Link**: hold Rope and press E on post A, then E on post B. This uses 1 rope (maybe 1 per 4 m) and draws a
-  sagging line between them. A post holds at most 2 lines, so you can build chains.
-- **Ride**: press E near a post that has a line. You hang about 1.1 m under the rope and glide along it.
-  Proposed speed: a constant gentle 3.5 m/s with a slight boost downhill (up to 5 m/s) and a slowdown uphill
-  (down to 2.5 m/s). Uphill never stalls, so nobody gets stuck.
-- **Drop off**: press Space at any time. You land wherever you are, and there is never fall damage (none
-  exists in the game). At the far post you are set down on its tile.
-- **Length**: 3 to 12 m. The guard text says "Too far for one rope" or "Too close".
-- Look stays free the whole ride. WASD does nothing. A soft rope creak plays while you glide.
+## 3. Hosting it in Little Raft's code
+**Content module.** Add a new file `dist/zipline.js` exporting `createZipline(ctx)`, imported in `dist/content.js:25-31`
+(append to `FEATURES`, using the `?build=v3-survival-ae77fa84ac2b` suffix). Put models in `dist/zipline-model.js` (it receives THREE and imports nothing).
+The registry (`content.js:39-64`) isolates failures: a throwing module is disabled once and the game keeps running. The module shape is
+documented at `content.js:7-23`. `dist/bees.js` is the best template (spec `docs/specs/beehive.md`), with its pure top half and `createBees` at `bees.js:102`.
 
-## (b) Code anchors
+**Items.** Add entries to the `LIST` catalogue in `dist/items.js` (`item()` at `:62`, decor at `:169-198`). A `placeable:true` item lands in
+`PLACEABLE_IDS` (`:215`), which game.js spreads into `DECOR_TYPES` (`game.js:68`). Add a collision radius to
+`BLOCK_RADII` (`items.js:218-222`), about `glidepost:0.15`, because tests need a radius for every placeable. Add icons to `dist/icons.svg` or leave
+`icon` out so the item falls back to `placeholder`. The alternative route through `content-items.js` (`CONTENT_DECOR`) is older, so prefer items.js the way bees does.
+Held pose: if nothing is added, held-items.js uses its generic fallback (`holdFor`, `held-items.js:45`). A tuned T-bar needs a `HOLD` entry (`:29`) and a
+model in `buildItemModel` (`:143`).
 
-**Player physics and taking control**
-- `player-physics.js:12` sets `GRAVITY: 12`. `update()` at :91 takes `{deckY, tiles, blocked}`. The deck snap is at
-  :118 and :131, and the fall plus landing at :172-190. Physics x/y/z is the EYE position (`EYE_OFFSET` 1.6, :3).
-- `game.js:1373-1394` is `movePlayer`. The order is `building.preStep` (:1381), then `physics.update` substeps (:1388),
-  then `building.postStep` (:1393), then `content.afterMove(physics, dt)` (:1394). The content hook runs last,
-  so a module can pin the player there.
-- Prior art for pinning the player is the sleep module (`sleep.js:283-288`, `afterMove`). It overwrites
-  `physics.x/y/z`, zeroes `vx/vy/vz` and sets `grounded = true` every frame. The zipline should copy this,
-  with `grounded = false` so the remote avatar shows the airborne pose.
-- Space to drop: physics applies the jump impulse on the press edge (:165/:190). A rider reported as grounded
-  gets `vy = JUMP_IMPULSE` on the next update. The module can treat `physics.vy > 0` in afterMove as
-  "dismount" and then stop pinning. That way the player keeps the hop, and gravity and the deck snap do the
-  landing. This avoids reading keys directly.
-- E routing: `game.js:1239` calls `content?.interact(currentAim())`. Steering prior art is `sailing-world.js`
-  (hold R) plus `content.js:20` `steerTargets()`.
+**Decor placement and save.** In practice decor is **tile-integer**. `cleanWorld` (`game.js:177-183`) keeps only `isInt(x,z)`,
+allows one decor per tile, and accepts an optional `rot`. The place action is at `game.js:907-916` and pushes `{type, x, z, rot?}`. `rebuildRaft()`
+(`game.js:519-539`) puts each model at `(x*2, .22, z*2)` with `rotation.y = rot`, and gets content models through `content.decorModel(type)`
+(`:525`, used again for the ghost at `:400`). `placement.js:1-3` describes float free placement (`decorCheck`, `normaliseDecor`), but
+game.js does not use it yet (see GAP-LIST item 9). **Write the zipline against tile ints and compute the post top as
+`(x*2, deckY()+POST_TOP, z*2)`** in raft-local metres, which equal world XZ (`building-pieces.js:2`). This also keeps working if decor becomes float later.
+Decor cannot be removed (no such action exists), so every line must be pruned whenever an end post is missing.
 
-**Upper floors and the world y of a post**
-- `building-pieces.js:4,6`: `base(l) = deckY + l*LEVEL_H` with `LEVEL_H = 2.2` and `MAX_L = 5` (:11). Records are
-  `{t,i,j,l,r}`. Cell (i,j) is centred at raft-local (2i, 2j). A `floor` piece at level l puts its walk surface
-  at `deckY + l*2.2` (see `_scan`, :330-345).
-- `game.js:364`: `deckY() = raft.position.y + FLOOR_Y(.2)`. Content modules get it as `ctx.deckY()`.
-  Post foot y = `ctx.deckY() + l*LEVEL_H`, and the rope top is about +2.0 m above that.
-- `building.js:64` syncs `world.pieces`. `apply()` at :124-144 places and removes pieces with
-  `grid.canPlace/canRemove`. It has no content veto, so a post cannot stop its floor being removed.
-- `ctx.building` (content.js:30) exposes the live grid.
+**State in `world.ext.zipline`.** Use `{v:1, s, r, L:[[ax,az,bx,bz], ...]}`. `s` is the session id and `r` the revision (the same as `cleanBees`, `bees.js:26`).
+Validate in a pure `cleanZip(v, decor)`: both ends must be glide posts, the two ends must differ, the length must be ≤ `MAX_LEN` (about 24 m), duplicates are dropped, and keep at most 2 lines per post.
+The save path is `syncWorldInventories()`, which runs `world.ext = content.serialize()` (`game.js:1067`). Restore is
+`content.load(world.ext,'save')` (`:416`). `cleanExt` (`content.js:34`) caps the whole ext at 200k chars. Cache `serialize()` by `r` (`bees.js:180`),
+because the host sends it about 8 times per second in `hostState()` (`game.js:1267`).
 
-**Decor placement**
-- Decor is deck-only. Records are `{type,x,z,rot?}` with no y or level (`game.js:1139`), the
-  `build-rules.js:37` `decorBlock` needs a deck tile, and `placement.js:56-63` `decorCheck` tests deck tiles.
-- So a post on an upper floor cannot be a CONTENT_DECOR entry. Store posts in `world.ext.zipline.posts =
-  [{id,i,j,l}]`, placed through a module action (`zipline.post`) that checks
-  `l===0 ? tile exists : grid has floor(i,j,l)`. A deck-level post could still be decor, but one storage path
-  for both is simpler.
-- Deck decor model prior art: `content-items.js:78` `CONTENT_DECOR`, and `decorModel(type, d)` (content.js:17).
+**Linking is host-authoritative.** In `interact(aim)` (game.js calls it at `:984`, after pickups and sails), call
+`ctx.action({kind:'zip.link', ax, az, bx, bz})`. A guest's `action()` (`game.js:789-795`) sends `{type:'action', a, seq}`, and the host runs
+`applyAction(a,'guest')`, which ends in `content.action(a, actor, bag)` (`:951`) with the actor's bag. Check reach against
+`actor === 'guest' ? ctx.other : ctx.physics` plus slack (`bees.js:226-227`), and spend rope with `bag.remove`. Report back with
+`ctx.emit({kind:'notice'|'build', text}, actor)`. Prompts come from `prompt(aim)` (`game.js:589`), and the module must escape them itself.
+Keep the "first post picked" state local to the module, because it is per player. Do not save it.
 
-**Rope rendering**
-- `rope.js:19` `createRope(T,{segments,radius})` builds one preallocated tube from a polyline, with no
-  allocations per update. It could be reused per line, but a static line only needs a TubeGeometry built
-  once when the line changes.
-- `coop-fx.js:138-180` `createRemoteRope` draws a skewed catenary-ish sag
-  (`y = lerp + lift*bow - sag*bow*...`, :171-173). `hook-physics.js:370` `ropePoints` uses sag = span*0.12*slack.
-- For the zipline, a parabola `y(t) = lerp(yA,yB,t) - 4*S*t*(1-t)` with S = 0.04*span works for both drawing
-  and riding, so the rider follows the drawn rope exactly.
+**Riding is local (client-side), the same as walking.** Each client simulates only its own body and sends the pose, so no host action is needed.
+There are two options for the override:
+1. **No game.js edit:** use `afterMove(physics, dt)` (`game.js:1108`, which runs after `physics.update`, `building.postStep` and
+   `controls.afterMove`). While riding, overwrite `physics.x/y/z` with the point on the line minus the hang offset (eye about 1.4 m below the wheel), and
+   set `vx/vz` to the line velocity, `vy=0`, `grounded=false`, `swimming=false`. Islands already move the player this way
+   (`islands.js:240-263`). The cost is that the next `physics.update` applies one step of gravity and collision before the override.
+   That is harmless because the dt is ≤ .05 s, but `blockList` can push the body sideways near posts.
+2. **Cleaner, with a one-line hook** modelled on diving: in `movePlayer` (`game.js:1097-1102`), `if (!dive)` skips `physics.update`. Add
+   `const ride = !dive && content?.ride?.(laneDt, physics, {forward:fwd, jump})` and skip physics when it is truthy. This also needs a
+   `ride` passthrough in `content.js`. `diving.move` (`diving.js:198-212`) is the template, since it writes x/y/z/v back into `physics`.
+The ctx has no input getter. For a jump to drop off, read `physics._prevJump` (islands does this, `islands.js:244`), or add `get input()` to
+`contentCtx` (`game.js:375-383`). On dismount, keep the line velocity as `vx/vz`, set `vy` to about 2, and let `PlayerPhysics` take over again.
+It lands on tiles or splashes (`player-physics.js:176-186`), and the existing auto-clamber (`:189`) brings a swimmer back aboard.
+Ladder climbing is in `move-feel.js:166-201` (`setLadder` / `ladderInput`). It is only an animation feel and nothing calls `setLadder` in game.js,
+so it is not a ride hook. Its `onLadder` bob flag (`controls.js:84`) is a pattern we could copy for a gentle hang sway.
 
-**Raft coordinates**
-- `sailing-world.js:3`: "The raft never moves in x/z: the world drifts past it instead." `game.js:446`: the
-  raft group has only y bob plus small pitch/roll (:1428-1429), with no yaw. Physics x/z equals raft-local
-  x/z. Only y needs `deckY()`, which bobs. Store posts in grid cells, compute world y each frame, and parent
-  the meshes to `ctx.raft` so they bob and tilt for free.
+**Co-op avatars.** Poses go out through `coop.js` `snapshot()` (`coop.js:125-130`) as `cp` messages: `p:[x,y,z,yaw,pitch]`,
+flags `f` (1 = swimming, 2 = grounded, 4 = reeling), and `h` (an index into `HELD`, `coop.js:25`, **append-only**). The source is `ctx.local()` (`game.js:1612`).
+The remote avatar draws at `y - 1.6` (`coop.js:151`), so a rider already appears hanging in the right place with nothing extra.
+To show the hang pose, add flag bit `8 = riding`, which old clients ignore because they read only bits 1/2/4, and teach `coop-avatar.js` to raise both arms.
+Append `glidehandle` to `HELD` (index 17) or it shows as empty-handed. The legacy fallback avatar uses `other` from
+`validPose` (`game.js:203-207`): y must be in -16..30 and xz within 120, and a rider stays well inside that.
 
-**Co-op avatar**
-- `game.js:1952` sends the local pose `{x,y,z,yaw,pitch,swimming,grounded,held,...}`. `coop-avatar.js:5,183-196`
-  draws the remote avatar at that position and uses the air pose (legs tucked) when `grounded === false`.
-  A rider pinned by the rider's own client therefore shows up correctly on the other screen with no new
-  fields. Optional: add `ride:true` for arms raised, as a follow-up.
-- `coop-interp.js:51` `SnapshotBuffer` smooths the remote pose at about 8 Hz, and a constant glide
-  interpolates well.
-
-**Content hooks and prompts**
-- Module shape: `content.js:7-27`. Register the module in FEATURES (:47). Save goes through `world.ext[name]`
-  via serialize/load (`EXT_MAX` 200k).
-- Prompts: content prompt HTML is now bridged to `#lrPrompt` (`game.js:735` provides id 'content',
-  priority 1, through `promptParts`, content.js:62). A separate `raftPrompts.provide` is only needed
-  for a higher priority. Engine (`engine.js:254`) and instruments (`instruments.js:193`) are prior art for that.
-- Rope item: `items.js:114` (progression system). Recipes live there (`hand({...})`, `unlock: discover('rope')`,
-  as in :152). Suggested Zipline Post recipe: wood 4, rope 1.
-- Tests to imitate: `tests/sleep.test.mjs` (pinning and actions), `tests/paint.test.mjs` (pruning against
-  pieces), `tests/content-prompts.test.mjs`.
-
-## (c) Risks
-
-- **Desync.** The host owns posts and lines (`zipline.post`, `zipline.link`, `zipline.unlink`, consuming rope
-  from the actor's bag). Riding is local and client-driven, like walking, so there are no ride actions. The
-  rider moves their own physics, and the pose reaches the other player through the normal pose stream.
-  `load(data,'net')` should compare a revision counter and rebuild line meshes only when it changes.
-- **Getting stuck.** Line validation should reject a line that passes through walls, roofs or floors: sample
-  about 12 points against the grid boxes (or only require clear headroom). Walls built after linking are
-  still possible, so `building.postStep` may shove a rider. While riding, ignore that shove by pinning in
-  afterMove. On a stall (UI opens, line vanishes, NaN) auto-drop: stop pinning and let the player fall
-  softly. Dismount at a post should use `getUpSpot`-style logic (`sleep.js:63`) so the player lands on a
-  real tile.
-- **Links outliving piece removal.** `building.apply` cannot veto removal. Use paint's pattern
-  (`paint.js:55` `prunePaint`, called on a `world.pieces` identity change, :208): drop posts whose floor or tile is
-  gone, drop their lines, refund rope to the host or let it be lost (cozy choice: drop a rope item). Also
-  prune posts whose deck tile was removed. `floorRemoveBlock` (`placement.js:97`) only knows decor, not ext.
-- **A rider when a line is pruned.** Release the pin that same frame.
-- **Save compatibility.** `load(undefined)` gives `{posts:[],lines:[],rev:0}`. Validate integers, clamp l to 0..5,
-  drop lines that point at missing ids, and cap counts (for example 40 posts and 40 lines). No core
-  save fields change.
-- **Sleep, diving and steering conflicts.** Refuse to ride while lying down, diving or steering. Sleep's afterMove
-  would fight the zipline's, so check `raftDebug.content.sleep` state, or simply refuse to start when not
-  grounded on the deck.
-- **Two riders on one line.** Allowed, since there is no collision between players. Keep it simple.
-- **Hammer removal of the post itself.** A post is not decor, so the X/hammer path will not find it.
-  It needs its own aim test and a `zipline.remove` action that refunds wood and rope.
+## 4. Risks
+- **Save compatibility.** An old save has no `ext.zipline`, so `load(undefined)` gives defaults. A **downgrade** drops the posts, because an older
+  `DECOR_TYPES` does not know `glidepost` and `cleanWorld` filters it out at `:179`, and the old bag rejects the unknown kind. That matches what bees accepted.
+  `cleanZip` must drop any line whose post is gone.
+- **Co-op with an old host:** a guest gets `ext.zipline === undefined`. Show "Your friend's raft doesn't have ziplines yet", like `OLD_HOST`
+  (`bees.js:9,112`). Riding still needs lines from the host, so there is nothing to ride. With an old guest and a new host, the guest
+  sees bare posts with no line (it has no model) and the rider moving through the air, which is acceptable.
+- **Remote interpolation:** at 15 Hz with Catmull-Rom plus extrapolation (`coop-interp.js`), a fast 9 m/s rider can overshoot the line end
+  by up to 250 ms × 9 m ≈ 2 m. Cap `V_MAX` or send one more snap on dismount. `snapDistance=4` must not be crossed in one snap,
+  which holds at ≤ 9 m/s × 67 ms ≈ 0.6 m.
+- **Collision with raft pieces:** `world.pieces` (walls, roofs, pillars, `building-pieces.js:16-26`) can cross the line. When linking, test
+  the segment against the piece boxes, using a pure test over `world.pieces` records `{t,i,j,l,r}` (see `BuildGrid.pick`, `:246`) or simply refuse a line that
+  crosses a cell holding `wall/window/door/roof` at a level the line passes. While riding, the player's capsule is not collided, so pieces
+  added after linking are a known clipping case. Re-validate on every `rebuildRaft` (scan like `bees.js:138`). Sails (decor, 3.8 m tall) can also clip.
+- **Dismount into water:** this is friendly. Swimming and auto-clamber already handle it, with no damage. `PlayerPhysics._safety` teleports the player home only beyond
+  50 m (`player-physics.js:38,218`), so keep `MAX_LEN` well inside the raft (tiles are capped at |x|≤25 → 50 m).
+- **Raft bobbing:** `deckY()` = `raft.position.y + FLOOR_Y` (`game.js:325`) moves every frame. Recompute the line endpoints each frame
+  from `deckY()` so the rider bobs with the raft rather than sinking into the line.
+- **Sailing and diving:** block mounting while diving (`diving.state.diving`) or steering a sail. Islands' `afterMove` carry can fight
+  ours, so do not mount when standing on sand.
