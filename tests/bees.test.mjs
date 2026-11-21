@@ -187,6 +187,9 @@ test('models: hive combs and bees, candle parts, sizes', () => {
   assert.equal(c.name, 'craft_candle');
   for (const n of ['candle', 'flame', 'lanternGlow']) assert.ok(c.children.some(k => k.name === n && k.isMesh), n);
   assert.ok(c.children.some(k => k.userData.glass));
+  { const gl = c.children.find(k => k.name === 'lanternGlow').geometry, bs = gl.boundingSphere, bb = new T.Box3().setFromBufferAttribute(gl.attributes.position);
+    assert.ok(bs.center.y >= 0.5, 'night pool light anchor sits well above the deck');
+    for (const p of [bb.min, bb.max]) assert.ok(bs.containsPoint(p), 'glow bounding sphere still encloses the glow'); }
   const f = M.createFlowerBox(T); assert.equal(f.name, 'craft_flowerbox');
   for (const g of [h, f, c]) {
     const bees = g.getObjectByName('bees'); if (bees) bees.visible = false;

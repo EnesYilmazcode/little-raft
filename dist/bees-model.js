@@ -160,6 +160,10 @@ export function createCandle(T) {
   const glow = new T.Mesh(new T.SphereGeometry(.032, 10, 8).translate(0, .14, 0),
     new T.MeshStandardMaterial({ color: '#ffe8b0', emissive: '#ffd27a', emissiveIntensity: .5, transparent: true, opacity: .6, depthWrite: false }));
   glow.name = 'lanternGlow'; g.add(glow);
+  // daynight puts its night pool light (5 cd, decay 2) at this geometry's bounding-sphere centre. At the flame
+  // (.14 m over the deck) it blows the floor out to white, so lift the centre to about lantern-foot height and
+  // grow the radius so the sphere still encloses the glow (culling and raycasts stay correct).
+  glow.geometry.computeBoundingSphere(); glow.geometry.boundingSphere.center.set(0, .8, 0); glow.geometry.boundingSphere.radius = .72;
   const jar = new T.Mesh(new T.CylinderGeometry(.075, .072, .17, 18, 1, true).translate(0, .097, 0),
     new T.MeshStandardMaterial({ color: '#cfeef0', transparent: true, opacity: .3, roughness: .1, side: T.DoubleSide, depthWrite: false }));
   jar.name = 'jar'; jar.userData.glass = true; g.add(jar);
