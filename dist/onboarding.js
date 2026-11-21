@@ -98,6 +98,9 @@ function decorCounts(S) {
 }
 // A frozen stock (Bag.counts' cached object) never changes under us, so it is kept by reference instead of copied.
 const stockOf = st => (st && typeof st === 'object' ? (Object.isFrozen(st) ? st : {...st}) : {});
+// for-in over the ~90-key stock allocates its key list each pass (dictionary-mode object); cache per stock object.
+let keysSrc = null, keysList = [];
+const keysOf = st => (st === keysSrc ? keysList : (keysSrc = st, keysList = Object.keys(st)));
 const snap = S => ({tiles:num(S.tiles), fish:num(S.fish), collected:num(S.collected), hookHealth:num(S.hookHealth), decor:decorCounts(S),
   stock:stockOf(S.stock), me:S.me ? {x:num(S.me.x), z:num(S.me.z), yaw:num(S.me.yaw)} : null});
 function ctxFor(rec, S, prev, silent) {
@@ -176,7 +179,10 @@ export function evaluate(steps, P, rawS, {silent = false} = {}) {
   const vis = visibleSteps(steps, P, S), keep = {}, now = snap(S); // one snapshot per poll, shared read-only by every step
   for (const s of swapped ? [] : vis) {
     const rec = P.track[s.id] ?? track(s, S, now);
-    for (const k in now.stock) { const d = inv(now, k) - inv(rec.last, k); if (d > 0) rec.gained[k] = num(rec.gained[k]) + d; }
+    if (rec.last.stock !== now.stock) { // same (frozen) stock object as last poll: nothing gained
+      const keys = keysOf(now.stock);
+      for (let i = 0; i < keys.length; i++) { const k = keys[i], d = inv(now, k) - inv(rec.last, k); if (d > 0) rec.gained[k] = num(rec.gained[k]) + d; }
+    }
     if (now.me && rec.last.me) {
       rec.yaw += Math.abs(wrapPi(now.me.yaw - rec.last.me.yaw));
       const d = Math.hypot(now.me.x - rec.last.me.x, now.me.z - rec.last.me.z); if (d < 3) rec.walk += d; // >3 m in 250 ms: a teleport
