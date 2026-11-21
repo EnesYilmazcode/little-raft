@@ -48,7 +48,7 @@ import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse
 import { attachProgression } from './progression-hooks.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { attachSpearRepair } from './spear-repair-hooks.js?build=v3-survival-ae77fa84ac2b'; // [spear-repair]
 import { cleanTileArmor } from './armor.js?build=v3-survival-ae77fa84ac2b'; // [armor] foundation armor (world.tileArmor)
-import { newVitals, tickVitals, damage as damageVitals, consume as consumeVitals, cleanVitals, saveVitals, isEdible, eatLabel, FOOD, SPRINT_MULT, EAT_SECONDS, RESPAWN } from './vitals.js?build=v3-survival-ae77fa84ac2b'; // [vitals] hunger, thirst, health
+import { newVitals, tickVitals, damage as damageVitals, consume as consumeVitals, cleanVitals, saveVitals, isEdible, eatLabel, FOOD, SPRINT_MULT, EAT_SECONDS, RESPAWN, BED_RESPAWN } from './vitals.js?build=v3-survival-ae77fa84ac2b'; // [vitals] hunger, thirst, health
 import { createVitalsUI } from './vitals-ui.js?build=v3-survival-ae77fa84ac2b'; // [vitals] HUD bars, damage vignette, faint overlay
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
@@ -703,9 +703,10 @@ export function mount(transfer = null) {
     if (fainted >= 0) { // passed out: a short dark beat, then wake up on the raft
       fainted += dt; vitalsUI?.faint(true);
       if (fainted >= 2.6) {
-        fainted = -1; const c = cleanVitals(RESPAWN); vitals.hp = c.hp; vitals.food = c.food; vitals.water = c.water; vitals.hurtAt = -Infinity; vitals.starving = false;
-        diving?.cancel(); const s = spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); pitch = -.28; // fresh physics: dry, grounded, not diving
-        vitalsUI?.faint(false); notice('You wake up on the raft, hungry and thirsty', 3200);
+        let bed = null; try { bed = content?.mods?.find(m => m.name === 'sleep')?.respawnSpot?.() ?? null; } catch {} // [sleep] Raft: wake beside your respawn bed
+        fainted = -1; const c = cleanVitals(bed ? BED_RESPAWN : RESPAWN); vitals.hp = c.hp; vitals.food = c.food; vitals.water = c.water; vitals.hurtAt = -Infinity; vitals.starving = false;
+        diving?.cancel(); const s = bed ?? spawnPoint(0, 0); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); pitch = -.28; // fresh physics: dry, grounded, not diving
+        vitalsUI?.faint(false); notice(bed ? 'You wake up beside your bed, weak and hungry' : 'You wake up on the raft, hungry and thirsty', 3200);
       }
       return;
     }

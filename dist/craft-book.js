@@ -55,7 +55,7 @@ export const ITEM_TEXT = Object.freeze({
   research:   { desc: 'A tinker\u2019s desk for studying finds.', use: 'Place it, then study parts to learn signal and water gear.' },
   motor:      { desc: 'A little outboard motor that burns leaves, wood or plastic.', use: 'Place it, fuel it, and it pushes the raft along.' },
   wheel:      { desc: 'A rope-lashed steering wheel.', use: 'Place it, then grab it to steer the raft.' },
-  bed:        { desc: 'A plank bed with a leaf mattress.', use: 'Lie down at night to sleep until morning.' },
+  bed:        { desc: 'A plank bed with a leaf mattress.', use: 'Sleep at night to skip to morning (costs 20 food and 20 water, heals 40). The last bed you use is where you wake if you pass out.' },
   brush:      { desc: 'A paint brush with stiff bristles.', use: 'Click walls, floors or deck to paint; right click picks a colour.' },
   paint_seafoam:  { desc: 'A pot of soft seafoam green paint.', use: 'One pot paints one piece with the brush.' },
   paint_coral:    { desc: 'A pot of warm coral paint.', use: 'One pot paints one piece with the brush.' },

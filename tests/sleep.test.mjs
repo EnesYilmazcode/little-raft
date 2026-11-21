@@ -16,19 +16,20 @@ const { canSleep, cleanSleep, allInBed, bedPose, getUpSpot, createSleep, TEXT, H
 const { DAY_SECONDS: DAY, MORNING, phaseAt, skipClock, createDayNight } = DN;
 
 const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) <= eps, `${msg ?? ''} expected ${b} got ${a}`);
-const DEFAULTS = { v: 1, in: { host: null, guest: null }, fade: 0, skips: 0 };
+const DEFAULTS = { v: 1, in: { host: null, guest: null }, fade: 0, skips: 0, spawn: { host: null, guest: null } };
+const V = await import(new URL('vitals.js', base));
 const night = { phase: .8, optOut: false, ready: true };
 const noon = { phase: .3, optOut: false, ready: true };
 
 // ---------------------------------------------------------------- stubs
 const grid3 = () => Array.from({ length: 9 }, (_, i) => [i % 3 - 1, Math.floor(i / 3) - 1]);
-function makeSleep({ role = 'solo', decor = [{ type: 'bed', x: 1, z: 0 }], tiles = grid3(), dayRef = { ...night } } = {}) {
+function makeSleep({ role = 'solo', decor = [{ type: 'bed', x: 1, z: 0 }], tiles = grid3(), dayRef = { ...night }, vitals = null } = {}) {
   const calls = [], emits = [], notices = [];
   const world = { tiles, decor };
   const ctx = {
     T, world, role, physics: { x: 2, y: 1.8, z: 1, vx: 0, vy: 0, vz: 0, grounded: true }, other: null, camera: null, raft: null,
     deckY: () => .2, uiOpen: () => false, emit: (e, to) => emits.push({ e, to }), notice: s => notices.push(s),
-    localBag: () => null,
+    localBag: () => null, vitals,
   };
   const mod = createSleep(ctx, { day: () => dayRef });
   ctx.action = a => { calls.push(a); if (role !== 'guest' && a.kind.startsWith('sleep.')) mod.action(a, 'host'); };
@@ -103,12 +104,14 @@ test('cleanSleep + load: junk becomes defaults; a save/restore never leaves anyo
   for (const junk of [undefined, null, 'x', 5, [], { in: 'no' }, { in: { host: [1.5, 0], guest: ['a', 1] } }, { in: { host: [1] } }, { skips: -1 }, { skips: 1.5 }, { skips: 2e9 }, { fade: 'yes' }]) {
     assert.deepEqual(cleanSleep(junk), DEFAULTS, JSON.stringify(junk));
   }
-  assert.deepEqual(cleanSleep({ in: { host: [1, 0], guest: [-2, 3] }, fade: 1, skips: 7 }), { v: 1, in: { host: [1, 0], guest: [-2, 3] }, fade: 1, skips: 7 });
+  assert.deepEqual(cleanSleep({ in: { host: [1, 0], guest: [-2, 3] }, fade: 1, skips: 7 }), { ...DEFAULTS, in: { host: [1, 0], guest: [-2, 3] }, fade: 1, skips: 7 });
+  assert.deepEqual(cleanSleep({ spawn: { host: [1, 0], guest: [99, 0] } }).spawn, { host: [1, 0], guest: null });
+  assert.deepEqual(cleanSleep({ spawn: [1, 0] }).spawn, { host: null, guest: null });
   const { mod } = makeSleep();
   mod.load(undefined, 'save'); assert.deepEqual(mod.serialize(), DEFAULTS);
   for (const from of ['save', 'restore']) {
-    mod.load({ v: 1, in: { host: [1, 0], guest: [1, 0] }, fade: 1, skips: 4 }, from);
-    assert.deepEqual(mod.serialize(), { ...DEFAULTS, skips: 4 });
+    mod.load({ v: 1, in: { host: [1, 0], guest: [1, 0] }, fade: 1, skips: 4, spawn: { host: [1, 0], guest: null } }, from);
+    assert.deepEqual(mod.serialize(), { ...DEFAULTS, skips: 4, spawn: { host: [1, 0], guest: null } }, 'respawn beds survive a save');
     mod.update(1 / 60); assert.equal(mod.debug.state().lying, false);
   }
   for (const g of [null, 42, 'x', [], { in: [] }]) for (const from of ['save', 'net', 'restore']) assert.doesNotThrow(() => mod.load(g, from));
@@ -123,14 +126,19 @@ test('sleep.lie: refused off-bed, out of reach, daytime, bed taken; accepted oth
   mod.action({ kind: 'sleep.lie', x: 5, z: 5 }, 'host'); assert.equal(mod.serialize().in.host, null);
   ctx.physics.x = 20; mod.action({ kind: 'sleep.lie', x: 1, z: 0 }, 'host'); assert.equal(mod.serialize().in.host, null); assert.equal(last(), TEXT.reach);
   ctx.physics.x = 2;
-  Object.assign(dayRef, noon); mod.action({ kind: 'sleep.lie', x: 1, z: 0 }, 'host'); assert.equal(mod.serialize().in.host, null); assert.equal(last(), TEXT.notSleepy);
+  assert.equal(mod.serialize().spawn.host, null, 'refusals before the bed checks never set a respawn');
+  Object.assign(dayRef, noon); mod.action({ kind: 'sleep.lie', x: 1, z: 0 }, 'host'); assert.equal(mod.serialize().in.host, null); assert.equal(last(), TEXT.spawnSet + ' · ' + TEXT.notSleepy);
+  assert.deepEqual(mod.serialize().spawn.host, [1, 0], 'E on a bed by day still sets the respawn point');
+  mod.action({ kind: 'sleep.lie', x: 1, z: 0 }, 'host'); assert.equal(last(), TEXT.notSleepy);
   Object.assign(dayRef, night);
   // guest with no pose is refused; guest in reach takes the bed
   mod.action({ kind: 'sleep.lie', x: 1, z: 0 }, 'guest'); assert.equal(mod.serialize().in.guest, null);
   ctx.other = { x: 2.5, z: 0 };
   mod.action({ kind: 'sleep.lie', x: 1, z: 0 }, 'guest'); assert.deepEqual(mod.serialize().in.guest, [1, 0]);
+  assert.deepEqual(mod.serialize().spawn.guest, [1, 0]); assert.equal(last(), TEXT.spawnSet);
   mod.action({ kind: 'sleep.lie', x: 1, z: 0 }, 'host'); assert.equal(mod.serialize().in.host, null); assert.equal(last(), TEXT.taken);
   ctx.physics.x = -1; mod.action({ kind: 'sleep.lie', x: -1, z: 0 }, 'host'); assert.deepEqual(mod.serialize().in.host, [-1, 0]);
+  assert.deepEqual(mod.serialize().spawn, { host: [-1, 0], guest: [1, 0] }, 'the last bed used wins, per player');
   // claims only sleep.* kinds; junk never throws
   assert.equal(mod.action({ kind: 'build' }, 'host'), false);
   assert.equal(mod.action({ kind: 'sleep.lie', x: 'a' }, 'host'), true);
@@ -254,7 +262,9 @@ test('prompts follow the clock, the opt-out and the other sleeper', () => {
   const { mod, ctx, dayRef } = makeSleep();
   ctx.camera = { position: new T.Vector3(2, 1.8, 1.5), getWorldDirection: v => v.set(0, -.6, -.4).normalize() };
   assert.equal(mod.prompt(null), TEXT.sleep);
-  Object.assign(dayRef, noon); assert.equal(mod.prompt(null), TEXT.notSleepy);
+  Object.assign(dayRef, noon); assert.equal(mod.prompt(null), TEXT.notSleepySpawn);
+  mod.interact(null); assert.deepEqual(mod.serialize().spawn.host, [1, 0], 'E by day sets the respawn point');
+  assert.equal(mod.prompt(null), TEXT.notSleepy);
   Object.assign(dayRef, { ...night, optOut: true }); assert.equal(mod.prompt(null), TEXT.tooBright);
   Object.assign(dayRef, night);
   ctx.other = { x: 2, z: 0 }; mod.action({ kind: 'sleep.lie', x: 1, z: 0 }, 'guest');
@@ -277,12 +287,13 @@ test('getUpSpot picks a free neighbour tile and falls back when surrounded', () 
 });
 
 // ---------------------------------------------------------------- 10. content items + model
-test('content items: bed costs 6 wood + 4 leaf, is placeable decor, learned at the research table', () => {
-  assert.deepEqual({ ...RECIPES.bed.cost }, { wood: 6, leaf: 4 });
+test('content items: bed costs 6 wood + 10 leaf + 4 plastic + 3 nails (Raft), is placeable decor, learned at the research table', () => {
+  assert.deepEqual({ ...RECIPES.bed.cost }, { wood: 6, leaf: 10, plastic: 4, nail: 3 });
   assert.equal(ITEM_INFO.bed.name, 'Bed');
   assert.ok(CONTENT_DECOR.includes('bed')); assert.equal(CONTENT_BLOCK_RADIUS.bed, .55);
   assert.ok(!STARTER.includes('bed'));
-  assert.ok(learnedFrom(['wood', 'leaf']).includes('bed'));
+  assert.ok(!learnedFrom(['wood', 'leaf']).includes('bed'));
+  assert.ok(learnedFrom(['wood', 'leaf', 'plastic', 'nail']).includes('bed'));
 });
 
 test('bed model: one shared mesh per instance, survives a dispose by rebuildRaft', () => {
@@ -358,4 +369,55 @@ test('review: the sleep provider yields to the pickup and waiting-for-host promp
     assert.equal(provider.prompt({ state: { role: 'guest', networkReady: false } }), null);
     mod.dispose();
   } finally { delete globalThis.raftPrompts; }
+});
+
+// ---------------------------------------------------------------- Raft fidelity: vitals + respawn
+test('a night\'s sleep costs 20 food + 20 water and heals 40, once per skip (host applies its own)', () => {
+  const vitals = { hp: 50, food: 60, water: 15, hurtAt: 0, clock: 0, starving: false };
+  const { mod } = makeSleep({ vitals });
+  mod.debug.lie(1, 0); run(mod, HOLD + FADE + BLACK + 2);
+  assert.deepEqual([vitals.hp, vitals.food, vitals.water], [90, 40, 0]);
+  run(mod, 10); assert.deepEqual([vitals.hp, vitals.food, vitals.water], [90, 40, 0], 'once');
+  assert.deepEqual(V.SLEEP_COST, { food: 20, water: 20, hp: 40 });
+  const v2 = { hp: 0, food: 50, water: 50 }; V.applySleep(v2); assert.deepEqual(v2, { hp: 0, food: 50, water: 50 }, 'no rest while passed out');
+});
+
+test('guest: rests when the host\'s skip arrives while in bed; not when awake', () => {
+  const vitals = { hp: 30, food: 80, water: 80 };
+  const g = makeSleep({ role: 'guest', vitals });
+  g.mod.load({ v: 1, in: { host: [1, 0], guest: [-1, 0] }, fade: 1, skips: 2 }, 'net'); g.mod.update(1 / 60);
+  g.mod.load({ v: 1, in: { host: [1, 0], guest: [-1, 0] }, fade: 1, skips: 3 }, 'net');
+  assert.deepEqual([vitals.hp, vitals.food, vitals.water], [70, 60, 60]);
+  g.mod.load({ v: 1, in: { host: null, guest: null }, fade: 0, skips: 3 }, 'net');
+  assert.equal(vitals.hp, 70, 'the wake-up state does not rest twice');
+  const awake = { hp: 30, food: 80, water: 80 }, h = makeSleep({ role: 'guest', vitals: awake });
+  h.mod.load({ v: 1, in: { host: null, guest: null }, fade: 0, skips: 0 }, 'net'); h.mod.update(1 / 60);
+  h.mod.load({ v: 1, in: { host: null, guest: null }, fade: 0, skips: 1 }, 'net');
+  assert.equal(awake.hp, 30);
+});
+
+test('respawnSpot: beside the last bed used, null when none or the bed is gone; guest reads its own slot', () => {
+  const s = makeSleep();
+  assert.equal(s.mod.respawnSpot(), null);
+  s.mod.debug.lie(1, 0); s.mod.update(1 / 60);
+  assert.deepEqual(s.mod.respawnSpot(), { x: 0, z: 0 });
+  assert.deepEqual(s.mod.debug.respawn(), { x: 0, z: 0 });
+  s.world.decor.length = 0; s.mod.update(1 / 60);
+  assert.equal(s.mod.respawnSpot(), null); assert.equal(s.mod.serialize().spawn.host, null, 'host forgets a removed bed');
+  const g = makeSleep({ role: 'guest' });
+  g.mod.load({ v: 1, in: { host: null, guest: null }, fade: 0, skips: 0, spawn: { host: null, guest: [1, 0] } }, 'net');
+  assert.deepEqual(g.mod.respawnSpot(), { x: 0, z: 0 });
+  g.mod.load({ v: 1, in: { host: null, guest: null }, fade: 0, skips: 0, spawn: { host: [1, 0], guest: null } }, 'net');
+  assert.equal(g.mod.respawnSpot(), null, 'spawn changes are not skipped by the same-data shortcut');
+  assert.deepEqual(V.BED_RESPAWN, { hp: 25, food: 50, water: 50 });
+});
+
+test('guest E on a bed by day asks the host to set the respawn point (once)', () => {
+  const g = makeSleep({ role: 'guest', dayRef: { ...noon } });
+  g.mod.load({ v: 1, in: { host: null, guest: null }, fade: 0, skips: 0 }, 'net');
+  g.ctx.camera = { position: new T.Vector3(2, 1.8, 1.5), getWorldDirection: v => v.set(0, -.6, -.4).normalize() };
+  assert.equal(g.mod.interact(null), true); assert.deepEqual(g.calls.at(-1), { kind: 'sleep.lie', x: 1, z: 0 });
+  g.mod.load({ v: 1, in: { host: null, guest: null }, fade: 0, skips: 0, spawn: { host: null, guest: [1, 0] } }, 'net');
+  const n = g.calls.length; g.mod.interact(null);
+  assert.equal(g.calls.length, n); assert.equal(g.notices.at(-1), TEXT.notSleepy);
 });

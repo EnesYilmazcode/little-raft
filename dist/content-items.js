@@ -65,7 +65,7 @@ export const CONTENT_RECIPES = Object.freeze({
   egglamp: Object.freeze({ id: 'egglamp', name: 'Egg Lantern', output: Object.freeze({ kind: 'lantern', count: 1 }), cost: Object.freeze({ puffegg: 1, wood: 2 }) }),
   motor:    recipe('motor', 'Little Motor', 1, { wood: 6, scrap: 4, rope: 2 }),
   wheel:    recipe('wheel', 'Steering Wheel', 1, { wood: 5, rope: 2 }),
-  bed:      recipe('bed', 'Bed', 1, { wood: 6, leaf: 4 }),
+  bed:      recipe('bed', 'Bed', 1, { wood: 6, leaf: 10, plastic: 4, nail: 3 }), // Raft's Simple Bed
   brush:          recipe('brush', 'Paint Brush', 1, { wood: 2, rope: 1 }), // paint: one pot paints one piece, each recipe makes 4
   paint_seafoam:  recipe('paint_seafoam', 'Seafoam Paint', 4, { leaf: 1, sand: 1 }),
   paint_coral:    recipe('paint_coral', 'Coral Paint', 4, { clay: 2 }),

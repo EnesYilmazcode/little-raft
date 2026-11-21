@@ -9,8 +9,9 @@
 //   cleanVitals(raw)                     // save validation: -> {hp, food, water} (missing/invalid -> full)
 //   saveVitals(v)                        // -> {hp, food, water} rounded to 0.1 for the save
 //
-// Death is gentle (like Raft's Easy mode): at hp 0 the player "passes out", then wakes at the raft centre with
-// RESPAWN bars and keeps the whole inventory. game.js owns that flow and exposes hurtPlayer(n, cause)
+// Death is gentle (like Raft's Easy mode): at hp 0 the player "passes out", then wakes beside the last bed they
+// used (BED_RESPAWN bars; dist/sleep.js respawnSpot) or at the raft centre (RESPAWN bars) and keeps the whole inventory.
+// applySleep(v) is the once-per-night cost/heal the sleep module applies to the LOCAL player's vitals. game.js owns that flow and exposes hurtPlayer(n, cause)
 // (contentCtx.hurtPlayer for content modules, raftDebug.hurt for tests); it always hurts the LOCAL player.
 
 export const MAX = 100;
@@ -21,7 +22,9 @@ export const STARVE_HP = 0.75;    // HP/s per empty bar (they stack)
 export const REGEN_HP = 0.25;     // HP/s while food > 0 and water > 0
 export const REGEN_DELAY = 3;     // seconds without damage before regen [G]
 export const EAT_SECONDS = 0.8;   // hold-free eat/drink action [G]
-export const RESPAWN = Object.freeze({hp:100, food:75, water:75}); // [G]
+export const RESPAWN = Object.freeze({hp:100, food:75, water:75}); // [G] waking at the raft centre (no bed)
+export const BED_RESPAWN = Object.freeze({hp:25, food:50, water:50}); // Raft: waking at your bed after passing out
+export const SLEEP_COST = Object.freeze({food:20, water:20, hp:40});  // Raft: a night's sleep costs 20 food + 20 water, heals 40
 
 export const FOOD = {
   fish:            {food:12.5, water:-10},
@@ -81,6 +84,15 @@ export function consume(v, kind) {
   v.food = clampBar(num(v.food) + num(e.food));
   v.water = clampBar(num(v.water) + num(e.water));
   return e;
+}
+
+/** One night's sleep (Raft): -20 food, -20 water, +40 HP, clamped. No-op while passed out. Returns v. */
+export function applySleep(v) {
+  if (!v || !(num(v.hp) > 0)) return v;
+  v.food = clampBar(num(v.food) - SLEEP_COST.food);
+  v.water = clampBar(num(v.water) - SLEEP_COST.water);
+  v.hp = clampBar(num(v.hp) + SLEEP_COST.hp);
+  return v;
 }
 
 /** Short prompt label, e.g. "Eat (+35 food)" / "Drink (+40 water)". */

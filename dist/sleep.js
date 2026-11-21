@@ -1,10 +1,14 @@
 // Bed + sleep through the night (see docs/specs/sleep.md). Content module 'sleep'.
 // E on a bed at dusk/night lies you down; when everyone aboard is in bed the screen fades to black,
-// the host skips the clock to morning and everyone wakes beside their bed. Cozy only: no penalties,
-// nothing happens unless every player chose to lie down, and E always gets you up again.
-// Slice world.ext.sleep = { v:1, in:{host:[x,z]|null, guest:[x,z]|null}, fade:0|1, skips }.
+// the host skips the clock to morning and everyone wakes beside their bed. Nothing happens unless every player
+// chose to lie down, and E always gets you up again.
+// Raft rules: a night's sleep costs 20 food + 20 water and heals 40 HP (vitals.js applySleep), applied once per
+// skip by each sleeper's own client to its local vitals (host at the skip, guest when the net copy's skips bumps).
+// The last bed a player lay in (or pressed E on) is their respawn point: game.js asks respawnSpot() on waking
+// from a faint. Slice world.ext.sleep = { v:1, in:{host,guest}, fade:0|1, skips, spawn:{host,guest} } ([x,z]|null).
 // Host-authoritative actions 'sleep.lie' / 'sleep.up'; the skip itself is 'daynight.skipTo'.
 import { DAYNIGHT_LIVE, MORNING } from './daynight.js?build=v3-survival-ae77fa84ac2b';
+import { applySleep } from './vitals.js?build=v3-survival-ae77fa84ac2b';
 import { buildBed } from './sleep-model.js?build=v3-survival-ae77fa84ac2b';
 
 export const SLEEP_START = .66, SLEEP_END = .02;
@@ -15,6 +19,8 @@ const ROLES = Object.freeze(['host', 'guest']);
 export const TEXT = Object.freeze({
   sleep: '<kbd>E</kbd>Sleep',
   notSleepy: 'Not sleepy yet. Come back after sunset',
+  notSleepySpawn: 'Not sleepy yet · <kbd>E</kbd>Set respawn',
+  spawnSet: 'Bed set as your respawn point',
   tooBright: 'Too bright to sleep',
   taken: 'Your brother is in this bed',
   sleeping: 'Sleeping… <kbd>E</kbd>Get up',
@@ -37,7 +43,7 @@ export function canSleep(day) {
   return day.phase >= SLEEP_START || day.phase < SLEEP_END ? null : TEXT.notSleepy;
 }
 
-export const defaultSleep = () => ({ v: 1, in: { host: null, guest: null }, fade: 0, skips: 0 });
+export const defaultSleep = () => ({ v: 1, in: { host: null, guest: null }, fade: 0, skips: 0, spawn: { host: null, guest: null } });
 
 /** Validate a world.ext.sleep slice. Never throws; junk becomes defaults field by field. */
 export function cleanSleep(d) {
@@ -48,6 +54,9 @@ export function cleanSleep(d) {
   if (isTile(inn.guest)) out.in.guest = [inn.guest[0], inn.guest[1]];
   out.fade = d.fade === 1 ? 1 : 0;
   out.skips = isInt(d.skips) && d.skips >= 0 && d.skips <= MAX_SKIPS ? d.skips : 0;
+  const sp = d.spawn && typeof d.spawn === 'object' && !Array.isArray(d.spawn) ? d.spawn : {};
+  if (isTile(sp.host)) out.spawn.host = [sp.host[0], sp.host[1]];
+  if (isTile(sp.guest)) out.spawn.guest = [sp.guest[0], sp.guest[1]];
   return out;
 }
 
@@ -81,7 +90,7 @@ export function createSleep(ctx, opts = {}) {
   let slice = defaultSleep();
   let seq = 'idle', t = 0, fadeT = 0, seqKey = 0, fadeDur = FADE, motionChecked = false;
   let hostHas = true, netSeen = false, netUndef = false;
-  let nHx = NaN, nHz = NaN, nGx = NaN, nGz = NaN, nFade = -1, nSkips = -1; // last net copy (primitives)
+  let nHx = NaN, nHz = NaN, nGx = NaN, nGz = NaN, nFade = -1, nSkips = -1, nSx = NaN, nSz = NaN; // last net copy (primitives; nS = my spawn)
   let guestFadeHeld = 0, lastSkips = 0;
   let lying = false, lx = 0, lz = 0, upSent = false, otherWasIn = false;
   let model = null, veil = null, veilOpacity = -1;
@@ -133,16 +142,25 @@ export function createSleep(ctx, opts = {}) {
     if (decorAt(a.x, a.z) !== 'bed') { refuse(TEXT.noBed, actor); return; }
     const p = posOf(actor);
     if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.z) || Math.hypot(p.x - a.x * 2, p.z - a.z * 2) > REACH) { refuse(TEXT.reach, actor); return; }
-    const why = canSleep(day()); if (why) { refuse(why, actor); return; }
+    const moved = !same(slice.spawn[actor], a.x, a.z); // Raft: the bed you use becomes your respawn point
+    if (moved) slice.spawn[actor] = [a.x, a.z];
+    const tag = t => (moved ? TEXT.spawnSet + ' · ' + t : t);
+    const why = canSleep(day()); if (why) { refuse(tag(why), actor); return; }
     const other = actor === 'host' ? 'guest' : 'host';
-    if (same(slice.in[other], a.x, a.z)) { refuse(TEXT.taken, actor); return; }
+    if (same(slice.in[other], a.x, a.z)) { refuse(tag(TEXT.taken), actor); return; }
     slice.in[actor] = [a.x, a.z];
+    if (moved) ctx.emit?.({ kind: 'notice', text: TEXT.spawnSet }, actor);
   }
+  // A night's sleep for the LOCAL player (each client applies its own once per skip).
+  function rest() { try { if (ctx.vitals) applySleep(ctx.vitals); } catch {} }
 
   const keyOf = () => (slice.in.host ? 1 : 0) + (slice.in.guest ? 2 : 0) + (ctx.other ? 4 : 0);
   function hostStep(dt) {
     if (!ctx.other && slice.in.guest) slice.in.guest = null;
-    for (const r of ROLES) { const b = slice.in[r]; if (b && decorAt(b[0], b[1]) !== 'bed') slice.in[r] = null; }
+    for (const r of ROLES) {
+      const b = slice.in[r]; if (b && decorAt(b[0], b[1]) !== 'bed') slice.in[r] = null;
+      const sp = slice.spawn[r]; if (sp && decorAt(sp[0], sp[1]) !== 'bed') slice.spawn[r] = null; // the bed is gone
+    }
     const all = allInBed(slice.in, !!ctx.other), key = keyOf();
     if ((seq === 'hold' || seq === 'out') && (!all || key !== seqKey)) seq = 'idle'; // someone got up or left: fade back in
     if (seq === 'idle') {
@@ -155,6 +173,7 @@ export function createSleep(ctx, opts = {}) {
         fadeT = fadeDur; seq = 'black'; t = 0;
         ctx.action({ kind: 'daynight.skipTo', phase: MORNING });
         slice.skips = Math.min(MAX_SKIPS, slice.skips + 1);
+        if (slice.in.host) rest();
       }
     } else if (seq === 'black') {
       t += dt;
@@ -212,18 +231,20 @@ export function createSleep(ctx, opts = {}) {
       if (data === undefined) { if (!netUndef) { netUndef = true; hostHas = false; slice = defaultSleep(); } return; }
       const h = data && data.in && data.in.host, g = data && data.in && data.in.guest;
       const hx = Array.isArray(h) ? h[0] : NaN, hz = Array.isArray(h) ? h[1] : NaN, gx = Array.isArray(g) ? g[0] : NaN, gz = Array.isArray(g) ? g[1] : NaN;
-      const f = data && data.fade, s = data && data.skips;
-      if (netSeen && !netUndef && Object.is(hx, nHx) && Object.is(hz, nHz) && Object.is(gx, nGx) && Object.is(gz, nGz) && f === nFade && s === nSkips) return;
-      nHx = hx; nHz = hz; nGx = gx; nGz = gz; nFade = f; nSkips = s; netUndef = false; hostHas = true;
+      const f = data && data.fade, s = data && data.skips, sp = data && data.spawn && data.spawn[myRole()];
+      const sx = Array.isArray(sp) ? sp[0] : NaN, sz = Array.isArray(sp) ? sp[1] : NaN;
+      if (netSeen && !netUndef && Object.is(hx, nHx) && Object.is(hz, nHz) && Object.is(gx, nGx) && Object.is(gz, nGz) && f === nFade && s === nSkips && Object.is(sx, nSx) && Object.is(sz, nSz)) return;
+      nHx = hx; nHz = hz; nGx = gx; nGz = gz; nFade = f; nSkips = s; nSx = sx; nSz = sz; netUndef = false; hostHas = true;
+      const wasIn = lying || !!slice.in[myRole()];
       slice = cleanSleep(data);
-      if (netSeen && slice.skips > lastSkips) ctx.notice?.(TEXT.morning, 2600);
+      if (netSeen && slice.skips > lastSkips) { ctx.notice?.(TEXT.morning, 2600); if (wasIn || slice.in[myRole()]) rest(); }
       lastSkips = slice.skips; netSeen = true;
       return;
     }
-    // save / restore: only the counter survives; nobody starts a session in bed
+    // save / restore: the counter and respawn beds survive; nobody starts a session in bed
     const c = cleanSleep(data);
-    slice = defaultSleep(); slice.skips = c.skips;
-    seq = 'idle'; t = 0; fadeT = 0; netSeen = false; netUndef = false; hostHas = true; nFade = -1; nSkips = -1;
+    slice = defaultSleep(); slice.skips = c.skips; slice.spawn = c.spawn;
+    seq = 'idle'; t = 0; fadeT = 0; netSeen = false; netUndef = false; hostHas = true; nFade = -1; nSkips = -1; nSx = NaN; nSz = NaN;
     lastSkips = slice.skips; guestFadeHeld = 0; forgetLying();
   }
 
@@ -234,7 +255,7 @@ export function createSleep(ctx, opts = {}) {
     if (lying) return otherPresent() && !slice.in[otherRole()] ? 'waiting' : 'sleeping';
     const d = target(aim); if (!d) return null;
     if (oldHost()) return 'oldHost';
-    const why = canSleep(day()); if (why) return why === TEXT.tooBright ? 'tooBright' : 'notSleepy';
+    const why = canSleep(day()); if (why) return why === TEXT.tooBright ? 'tooBright' : same(slice.spawn[myRole()], d.x, d.z) ? 'notSleepy' : 'notSleepySpawn';
     if (same(slice.in[otherRole()], d.x, d.z)) return 'taken';
     return 'sleep';
   }
@@ -245,6 +266,7 @@ export function createSleep(ctx, opts = {}) {
     sleeping: Object.freeze([{ label: 'Sleeping…', muted: true }, GET_UP]),
     waiting: Object.freeze([{ label: 'Waiting for your brother (1/2)', muted: true }, GET_UP]),
     notSleepy: Object.freeze({ label: TEXT.notSleepy, muted: true }),
+    notSleepySpawn: Object.freeze([{ label: 'Not sleepy yet', muted: true }, { key: 'E', label: 'Set respawn' }]),
     tooBright: Object.freeze({ label: TEXT.tooBright, muted: true }),
     taken: Object.freeze({ label: TEXT.taken, muted: true }),
     oldHost: Object.freeze({ label: TEXT.oldHost, muted: true }),
@@ -259,7 +281,7 @@ export function createSleep(ctx, opts = {}) {
     } });
   }
 
-  return {
+  const api = {
     name: 'sleep',
     serialize() { return slice; },
     load,
@@ -274,10 +296,17 @@ export function createSleep(ctx, opts = {}) {
       if (lying) { upSent = true; send({ kind: 'sleep.up' }); return true; }
       const d = target(aim); if (!d) return false;
       if (oldHost()) { ctx.notice?.(TEXT.oldHost, 2400); return true; }
-      const why = canSleep(day()); if (why) { ctx.notice?.(why, 2400); return true; }
-      if (same(slice.in[otherRole()], d.x, d.z)) { ctx.notice?.(TEXT.taken, 2400); return true; }
+      // Refusals still go to the host when this bed is not yet our respawn point: it sets the point, then refuses.
+      const here = same(slice.spawn[myRole()], d.x, d.z);
+      const why = canSleep(day()); if (why) { if (here || why === TEXT.tooBright) ctx.notice?.(why, 2400); else send({ kind: 'sleep.lie', x: d.x, z: d.z }); return true; }
+      if (same(slice.in[otherRole()], d.x, d.z)) { if (here) ctx.notice?.(TEXT.taken, 2400); else send({ kind: 'sleep.lie', x: d.x, z: d.z }); return true; }
       send({ kind: 'sleep.lie', x: d.x, z: d.z });
       return true;
+    },
+    /** Where the LOCAL player wakes after passing out: beside their respawn bed (raft-frame metres), or null. */
+    respawnSpot(out = {}) {
+      const sp = slice.spawn[myRole()]; if (!sp || oldHost() || decorAt(sp[0], sp[1]) !== 'bed') return null;
+      return getUpSpot(ctx.world, sp[0], sp[1], out);
     },
     prompt(aim) { lastAim = aim ?? null; return TEXT[promptKey(aim)] ?? null; },
     afterMove(physics) {
@@ -310,7 +339,9 @@ export function createSleep(ctx, opts = {}) {
       up() { send({ kind: 'sleep.up' }); return true; },
       stand(x, z) { const p = ctx.physics; if (!p || !Number.isFinite(x) || !Number.isFinite(z)) return false; p.x = x; p.z = z; p.vx = 0; p.vz = 0; return true; }, // QA: move the local player (metres, raft frame)
       state() { return { ...JSON.parse(JSON.stringify(slice)), seq, lying, opacity: opacity(), hostHas, fadeDur }; },
+      respawn() { const r = api.respawnSpot(); return r ? { x: r.x, z: r.z } : null; }, // QA: where a faint would wake you
     },
     dispose() { try { unprovide?.(); } catch {} unprovide = null; veil?.remove(); veil = null; veilOpacity = -1; model?.dispose(); model = null; },
   };
+  return api;
 }

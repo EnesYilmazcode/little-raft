@@ -1,6 +1,18 @@
 # Spec: bed + sleep through the night
 
-Source: `docs/features/sleep-research.md`. Cozy only: no penalties, the skip never happens by itself.
+Source: `docs/features/sleep-research.md`. The skip never happens by itself.
+
+> **Raft fidelity update (round 3, `docs/loop/research/fidelity-r3-seagull-bed-fuel.md`)** supersedes the
+> "cozy, no penalties" parts below:
+> - Recipe: 6 wood + 10 leaf + 4 plastic + 3 nail (learned at the table once plastic and nails are seen).
+> - Each skip costs the sleepers 20 food + 20 water and heals 40 HP (`vitals.js applySleep`). Each client
+>   applies it to its own local vitals: the host at the skip, a guest when the net copy's `skips` bumps while
+>   it was in bed.
+> - Respawn point: the slice gains `spawn:{host:[x,z]|null, guest:[x,z]|null}`, set by the host on any
+>   `sleep.lie` that passes the bed + reach checks (even if then refused for daytime or a taken bed), kept
+>   across saves, cleared when the bed is removed. `respawnSpot()` gives the get-up spot beside it; game.js
+>   wakes a fainted player there with `BED_RESPAWN` (25 hp / 50 food / 50 water), else at the raft centre
+>   with `RESPAWN`.
 New: `dist/sleep.js` (content module `name:'sleep'`), `dist/sleep-model.js`, `tests/sleep.test.mjs`.
 
 ## Rules
