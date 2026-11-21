@@ -461,7 +461,7 @@ export function mount(transfer = null) {
     for (let i = 0; i < 12; i++) { const j = rand(); if (i < isl.length) { const [a, d, r] = isl[i], rr = r * (.9 + j * .2), g = createIsland(T, {seed:i + 1, radius:rr}); g.position.set(Math.sin(a) * d, 0, Math.cos(a) * d); g.rotation.y = j * 6.28; islands.push({x:g.position.x, z:g.position.z, r:rr * .6}); aboveWater.push(g); scene.add(g); scenery.push([g, rr * .7]); } } // [sailing] islands drift past; diving: seafloor rises toward these (createIsland merges its own meshes)
     // Clouds are wisps in the sky dome (sky.js); the old puffy cloud groups are gone, so content's day/night gets clouds = [].
     aboveWater.push(sky.group); // diving lane hook: no sky dome underwater
-    setOwnedElsewhere(id => Object.prototype.hasOwnProperty.call(PROG_ITEMS, id)); // [progression-hook] items.js unlocks own the catalogue
+    setOwnedElsewhere(id => Object.prototype.hasOwnProperty.call(PROG_ITEMS, id) || id === 'shellwreath'); // [progression-hook] items.js unlocks own the catalogue + trader plan gates shellwreath
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
     try { vitalsUI = createVitalsUI(); } catch (e) { console.warn('vitals HUD unavailable', e); vitalsUI = null; } // [vitals]
     building = createBuilding(T, scene); // building-pieces lane hook
@@ -469,7 +469,7 @@ export function mount(transfer = null) {
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging,
       getPush:(s, o) => { content?.sailPush(s, o); }, steerTargets:() => content?.steerTargets() ?? null}); /* engine: motor push + wheel grab points */ for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
-    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
+    try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id}), getMods:out => content?.diveMods?.(out)}); diveWarmed = false; } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
     initShark(); // shark lane
     rebuildRaft(); fitShadow();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
@@ -2257,7 +2257,7 @@ export function mount(transfer = null) {
       onResume:guard(() => { play('close'); requestLock(); }),
       onPause:guard(pauseInput),
       getModel:modelOf, // 3D icons rendered from models.js
-      recipeGate:id => prog?.recipeGate(id), // [progression-hook]
+      recipeGate:id => prog?.recipeGate(id) ?? (id === 'shellwreath' && content?.craftLocked(id) ? {locked:true, reason:String(content.craftLocked(id))} : null), // [progression-hook] + content hook: trader plan greys the wreath row
     });
     prog.installUI(); // [progression-hook]
     logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock())});

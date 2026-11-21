@@ -589,6 +589,18 @@ Next gaps to consider: foundation armor item; starter raft 2x2 + Raft hook/found
 - Fixed after the merges: honey/wax/flower-seed sources, context prompt moved beside the crosshair, held-item and sprite-list conflicts with the beehive/instrument lanes.
 - Perf probe now compares against the current main (144c94a): 216 vs 322 ms, 96 vs 152 draw calls.
 - PR #2 merged into main (3031d67). Review fixes: inventory width at 900px, recipe tracker overlap, Pin button contrast. Reviewer low-priority notes left open: per-frame allocations in rain.js rainTarget and the physics substep input, sky.dispose() missing on hot swap, passive wheel listener.
+
+## 2026-11-21 · loop-features-202611210722 (features, round 3)
+Base: origin/claude/raft-master (6ab9b24, already holding round 1) + round 2 (loop-features-202611210534) merged in (re-based 3-way merge; kiln metal now uses master's `metalingot`/`glass`/`brick`; decor-pack rotation kept via `userData.ownRot`). raft-integration (newer timestamp) was skipped as base: it is a divergent line 558 commits behind master without the lanes.
+Avoided features already taken by other loop-features runs (paint, sleep, motor/wheel, beehive, rain barrel, instruments, treasure, map table, customise).
+- **Diving gear** (`divegear`) — Puff-Feather Fins (swim ×1.3), Breath Jug (45→75 s air), Seaglass Goggles (fog ×1.53, lighter vignette, lens frame overlay), Tide Scraper (gather ×0.6); works while in the bag. New shared registry hook `content.diveMods(out)` → diving.js `getMods`; underwater-fx `fogMul`/`uVig`.
+- **Cooking pot & meals** (`cookpot`, last in FEATURES) — clay/stone/scrap pot, Driftwood Bowls, 6 meals from fish/seaweed/eggs/seeds/fresh water giving one timed per-player buff (swim, walk/jump, breath, reel, night vision, all-round). MOVE_MUL (player-physics) and HOOK_MUL (hook-physics) multipliers; buffs `{host, guest}` host-owned, applied locally.
+- **Pim's Barge** (`trader`) — visiting trade barge (first at 4 min, then every 10–14 min) docking at the bow; Bright Shell currency, 6 seeded offers per visit, Shell Wreath plan (plan-gated recipe) and rare Glass Float decor; trade dialog.
+Fleet: 1 merge agent, 3 researchers, 3 designers, 3 builders, 3 reviewers, 1 visual QA (14 agents).
+Review/QA fixes: diveMods per-frame allocation; rain hidden underwater; night-vision floor restored after buff/without daynight; guest wore-off toast; stale net flag after leaving; wreath craft row locked until plan; trade dialog per-frame string; Tinker's Desk heading wrap in Tools tab; goggles lenses on portrait phones; "Move closer to Pim" wording.
+Checks: npm test 609/609; shoot2.py errors []; coop2 loopback: only base failures (3 join feed, 6 remote hook); guest buff isolation and guest trade verified over loopback.
+Harness note: master's title menu hides #solo/#welcomeCrew, so shoot.py and tests/coop-e2e.mjs time out as written; patched copies click via JS.
+Known limits: barge has no collision (you can swim through it); held meal steals E from grill/stations (prompt says Eat); leftover guest buff can pass to the next guest until reload; journal chip overlaps hotbar slot 1 on phones (master); pale seabed fade band (pre-existing).
 ## 2026-11-21 · integrator C, round 2
 - Merged into raft-master: content-islands, fishing-cooking, building-pieces, content (+wildlife, storage, daynight), sailing,
   onboarding (tracker and left-aligned title menu now loaded from index.html), loop-features-0451 (logbook, signal caches,
@@ -699,3 +711,30 @@ Left for later:
 - slow bounded GL buffer creep (+52 buffers over minutes 2-8 of play)
 - "Discover at a Tinker's Desk" heading squeezed to 3 px (pre-existing UI bug)
 - `ocean.sampleAt` to remove double-argument boxing in `updateItems`
+
+## claude/loop-visuals-202611210648 (visuals, round 2)
+Base: origin/claude/raft-master (d56c3ef). Fleet: critic, 6 builders (sky, water, materials, hands-and-items, UI, models), art judge, perf checker (10 agents).
+- Accepted (judge: all 6 clearly better):
+  - sky.js dome wired in and driven by a new 9th daynight palette column (blue zenith, pale cyan horizon, white wispy clouds); mesh clouds hidden.
+  - ocean shader: saturated blue, crisp horizon with a pale far band, sharp glints, foam only near the raft.
+  - deck: weathered grey-tan per-board tones, dark gap underlay, worn wood texture; deck meshes 7 -> 5.
+  - held hook rebuilt as a stick with a white bottle grip and orange plastic claws; fingers wrap the grip.
+  - warm wood-and-parchment HUD, inventory, pause menu and quest card.
+  - scenery islands: sand shelf, rocks, lumpy canopy, leaning palms (same draw calls).
+- Judge fixes: solid slot numbers, outlined slot icons, warmer sand and boards.
+- Perf: first A/B FAILED (deck +78%, horizon +36%). Cause: the plank texture's bump map and 4x aniso after the new board UVs, plus the sky's second fbm. Fixed (no bump, 2x aniso, one-octave detail).
+- Re-measured ABAB with the seeded probe:
+  - horizon 236 -> 232 ms
+  - deck 433 -> 410 ms
+  - draw calls 154 -> 140
+  - PASS
+- npm test 532/532.
+- Next:
+  - hotbar/inventory hook icon still shows the old steel gaff; icons need painted look with dark outlines
+  - square foundation tiles instead of long planks
+  - contact foam ring around the raft, more cyan near water
+  - bigger islands with cliffs
+  - coop-fx.js remote hook still steel
+  - thumb blob on the hook grip
+  - faint banding in the pause panel
+- Integrator merge into raft-master: only the orange-claw hook (hook.js) was taken; sky, daynight, ocean, deck, wood, islands, hands and HUD were stale parallel copies of work already on raft-master, so raft-master kept its versions (sky stays driven by daynight via sky.follow).
