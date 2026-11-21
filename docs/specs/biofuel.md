@@ -129,3 +129,25 @@ Ownership: new `biofuel.js` owns refiners and tanks (`world.ext.biofuel`); motor
 New: `dist/biofuel-core.js`, `dist/biofuel.js`, `dist/biofuel-model.js`, `tests/biofuel.test.mjs`.
 Edited: `dist/engine.js` (:13, :31, after :127, :263), `dist/content-items.js` (:57, :101, :105, :106), `dist/content.js` (:59, :69),
 `dist/craft-book.js` (:45, :71, :167, :458), `tests/engine.test.mjs` (additions only).
+
+## Build notes
+- Built as specced; hook lines in shared files are tagged `// [biofuel]`. `live.js` PRELOAD gained `biofuel-core.js`,
+  `biofuel-model.js`, `biofuel.js` (tests/live-preload.test.mjs requires the full static graph). All imports use the
+  sibling `?build=v3-survival-ae77fa84ac2b` stamp.
+- Choices beyond the spec:
+  - `stepAll` also reports a change when a refiner crosses a whole second of progress, not only on q/n changes, so
+    `st.r` bumps about once a second while refining and guests see the % move (serialize is cached by `r`).
+  - `cleanSlice` accepts only canonical keys (`"1,01"` is dropped, kiln would rename it to `"1,1"`).
+  - `bio.fill` pours `min(held stack, bag total, 8 - k)`. With no jug selected (an old or odd client), it falls back
+    to the bag total.
+  - `topUp` keeps a per-call set of fed motors, so two tanks next to one motor still pour at most one jug a second.
+  - `pourFuel` checks `cur + sec <= FUEL_CAP` before `slot()`, so a refused pour never creates an engine entry.
+  - Prompts: when the refiner queue is full and an organic item is held, the prompt reads `Biofuel Refiner · full · …`
+    (no `<kbd>`). The tank reads `Fuel Tank · full 8/8 · …` when it is full and jugs are held.
+  - Extra `debug.give(kind, n)` (host) like kiln's, for QA.
+- Known and accepted, the same as the kiln: picking up a refiner or tank drops its queued items, tray or stored jugs on
+  the next 1 s prune.
+- Verified: `npm test` passes (1216 at the time, incl. the new tests/biofuel.test.mjs (14) and 3 engine additions),
+  `node --check` is clean, and `shoot.py` reports `errors: []`. The close-up script is
+  `scratchpad/r4/biofuel/biofuel_shot.py`. Its 7 checks all pass: the host top-up moved one jug (tank 5→4, motor
+  40→~190 s), the refiner Load/Take prompts work, E loads a batch, and the tank Pour/Take prompts work.
