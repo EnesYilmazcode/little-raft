@@ -13,7 +13,7 @@
 //   beep:   o.connect(g).connect(diving ? diving.audioOut(audio) : audio.destination)
 //   hot-swap: const saved = diving?.capture(); diving?.dispose(); ... createDiving({..., restore:saved})
 //   'raft:underwater' event / onChange detail: {underwater, depth, mount} (mount = unique per-instance token).
-import { createSeafloor } from './seafloor.js';
+import { createSeafloor } from './seafloor.js?build=v3-survival-ae77fa84ac2b';
 import { createUnderwaterFx } from './underwater-fx.js';
 import { createDivingUI } from './diving-ui.js';
 
