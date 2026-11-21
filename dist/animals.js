@@ -2,6 +2,7 @@
 // hops around the deck near its box, lays eggs and sometimes drops a feather. Never hungry, never leaves.
 // Slice: world.ext.animals (host-authoritative, actions 'animals.*'). Wander is a closed-form plan of the
 // synced clock, seed, born and deck layout, so no positions are ever sent. 3 draw calls, no per-frame allocations.
+import { instancedDepthMaterial } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import {
   MAX_ANIMALS, BEAT, TILE, REACH, FULL_AT, FOODS, cleanAnimals, cleanName, buildGraph, homeDist, plan, pose, newPlan,
   tick, feed, pet, collect, lure, rename, rnd, findId, findHome, lureAt,
@@ -113,7 +114,7 @@ export function createAnimals(ctx) {
     birdMat = vertexMaterial(T);
     birds = new T.InstancedMesh(puffhenGeometry(T), birdMat, MAX_ANIMALS); birds.name = 'puffhens';
     eggs = new T.InstancedMesh(eggGeometry(T), birdMat, MAX_ANIMALS * 3); eggs.name = 'puffEggs';
-    for (const m of [birds, eggs]) { m.instanceMatrix.setUsage(T.DynamicDrawUsage); m.frustumCulled = false; m.castShadow = true; for (let i = 0; i < m.count; i++) m.setMatrixAt(i, zero); }
+    for (const m of [birds, eggs]) { m.instanceMatrix.setUsage(T.DynamicDrawUsage); m.frustumCulled = false; m.castShadow = true; m.customDepthMaterial = instancedDepthMaterial(T); for (let i = 0; i < m.count; i++) m.setMatrixAt(i, zero); }
     heartMat = new T.MeshBasicMaterial({ color: 0xff7d9c, transparent: true, opacity: 0, depthWrite: false });
     heart = new T.Mesh(heartGeometry(T), heartMat); heart.name = 'puffHeart'; heart.visible = false; heart.renderOrder = 3;
     group.add(birds, eggs, heart);

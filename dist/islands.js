@@ -1,6 +1,7 @@
 // Islands content module: small islands drift past the raft, dock for a few minutes, and let players
 // gather wood, leaves, seeds, stone and sand with E. Host-authoritative; saved in world.ext.islands.
 // Design and notes: docs/features/islands.md. Pure logic lives in islands-layout.js (unit tested).
+import { instancedDepthMaterial } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import {
   ISLAND, NODE_MAX, SHORE_U, layoutFor, pathAt, clean, lootFor, groundHeight, nextDelay, dockOffset,
   applyGather, standOnSand, DEFAULTS,
@@ -65,7 +66,7 @@ export function createIslands(ctx) {
   const lagoon = new T.Mesh(models.geos.lagoon, models.mats.lagoon); lagoon.name = 'islandLagoon'; lagoon.frustumCulled = false; lagoon.renderOrder = 1;
   const meshes = KINDS.map((k, i) => {
     const m = new T.InstancedMesh(models.geos[k], models.mats[k], MAX_PER_KIND[i]);
-    m.name = 'island-' + k; m.count = 0; m.castShadow = k !== 'sand'; m.receiveShadow = true;
+    m.name = 'island-' + k; m.count = 0; m.castShadow = k !== 'sand'; m.receiveShadow = true; m.customDepthMaterial = instancedDepthMaterial(T, true);
     m.instanceMatrix.setUsage(T.DynamicDrawUsage);
     for (let j = 0; j < MAX_PER_KIND[i]; j++) m.setColorAt(j, new T.Color(1, 1, 1)); // init instanceColor once (no recompiles later)
     return m;
@@ -73,7 +74,7 @@ export function createIslands(ctx) {
   // Palms have two extra instanced meshes: the spent (straw, drooped) palm and the coconut cluster.
   const extra = ['palmSpent', 'nuts'].map(k => {
     const m = new T.InstancedMesh(models.geos[k], models.mats[k], MAX_PER_KIND[0]);
-    m.name = 'island-' + k; m.count = 0; m.castShadow = true; m.receiveShadow = true;
+    m.name = 'island-' + k; m.count = 0; m.castShadow = true; m.receiveShadow = true; m.customDepthMaterial = instancedDepthMaterial(T, true);
     m.frustumCulled = false; // instances swap in after relayout, so a cached bounding sphere would be stale
     m.instanceMatrix.setUsage(T.DynamicDrawUsage);
     for (let j = 0; j < MAX_PER_KIND[0]; j++) m.setColorAt(j, new T.Color(1, 1, 1));

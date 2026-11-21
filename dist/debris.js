@@ -474,6 +474,21 @@ export function createDebris(T, type, getMaterial, opts = {}) {
   return root;
 }
 
+// Shadow-pass depth material for InstancedMesh casters (set as customDepthMaterial). three r170 shares one
+// default depth material between plain and instanced casters, so every switch between them in the shadow
+// pass forces a program re-lookup (parameters + cache key, allocated per draw, even for an empty mesh).
+// Pass colored=true for meshes with instanceColor: that is part of the program too, so they get their own.
+export function instancedDepthMaterial(T, colored = false) {
+  const key = colored ? 'mat|itemDepthColor' : 'mat|itemDepth';
+  let m = cacheFor(T).get(key);
+  if (!m) {
+    m = new T.MeshDepthMaterial({ depthPacking: T.RGBADepthPacking });
+    m.userData.shared = true;
+    cacheFor(T).set(key, m);
+  }
+  return m;
+}
+
 // Instanced drawing for items made of shared geometry. Add the returned object to the group that holds the
 // item roots: each frame (from the scene's matrix update, after all gameplay moves) it gathers every
 // descendant mesh flagged userData.batch with a userData.shared geometry, hides it, and draws all of them as
@@ -487,14 +502,7 @@ export function createItemBatch(T) {
   const adopted = new WeakMap(), slots = new Map(), slotList = [], local = new T.Matrix4(), world = new T.Matrix4(), sphere = new T.Sphere();
   const frustums = [];
   const noRaycast = () => {};
-  // Shadow pass: a depth material only ever used instanced, so sharing three's default one with plain meshes
-  // doesn't force a program re-lookup on every switch between instanced and non-instanced casters.
-  let depthMat = cacheFor(T).get('mat|itemDepth');
-  if (!depthMat) {
-    depthMat = new T.MeshDepthMaterial({ depthPacking: T.RGBADepthPacking });
-    depthMat.userData.shared = true;
-    cacheFor(T).set('mat|itemDepth', depthMat);
-  }
+  const depthMat = instancedDepthMaterial(T);
   function entries(item) {
     let list = adopted.get(item);
     if (list) return list;

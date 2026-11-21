@@ -2,6 +2,7 @@
 // game.js owns the world/bags/network; this module only turns them into pieces. See docs/cloud/building-pieces.md.
 // Usage (game.js): const building = createBuilding(T, scene); building.sync(world) after world/tiles change;
 //   building.update(raft, aim, origin, active, bag, yaw) every frame; building.preStep/postStep around physics.update.
+import { instancedDepthMaterial } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { BuildGrid, PIECES, PIECE_ORDER, LEVEL_H, STATEFUL, cleanPieces, toRec } from './building-pieces.js?build=v3-survival-ae77fa84ac2b';
 import { createPieceGeometry, createPieceMaterial } from './building-models.js?build=v3-survival-ae77fa84ac2b';
 import { createBuildMenu } from './build-menu.js?build=v3-survival-ae77fa84ac2b';
@@ -51,7 +52,7 @@ export function createBuilding(T, scene) {
       if (m && m.instanceMatrix.count < n) { group.remove(m); m.dispose(); m = null; }
       if (!m && n) {
         m = new T.InstancedMesh(geos[id], material, Math.max(16, 1 << Math.ceil(Math.log2(n))));
-        m.castShadow = true; m.receiveShadow = true; m.name = 'piece-' + id; group.add(m);
+        m.castShadow = true; m.receiveShadow = true; m.customDepthMaterial = instancedDepthMaterial(T, true); m.name = 'piece-' + id; group.add(m);
       }
       meshes[id] = m; if (m) m.count = 0;
     }
