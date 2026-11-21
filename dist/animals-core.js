@@ -86,7 +86,7 @@ export function cleanAnimals(v, decor) {
 
 // ------------------------------------------------------------------ walk graph
 
-const WALLS = new Set(['wall', 'halfwall', 'window']);
+const WALLS = new Set(['wall', 'halfwall', 'window', 'railing']); // [buildpack] a gate blocks only while closed
 // Neighbour order: +x, -x, +z, -z. Edge (i,j,r:0) lies between (i,j) and (i,j-1); r:1 between (i,j) and (i-1,j).
 const DX = [1, -1, 0, 0], DZ = [0, 0, 1, -1];
 const edgeOf = (x, z, d) => (d === 0 ? (x + 1) + ',' + z + ',1' : d === 1 ? x + ',' + z + ',1' : d === 2 ? x + ',' + (z + 1) + ',0' : x + ',' + z + ',0');
@@ -98,8 +98,8 @@ export function buildGraph(tiles, decor, pieces, hasGrill) {
   const stairs = new Set(), walls = new Set();
   if (Array.isArray(pieces)) for (const p of pieces) {
     if (!p || p.l !== 0 || !isInt(p.i) || !isInt(p.j)) continue;
-    if (p.t === 'stairs') stairs.add(keyOf(p.i, p.j));
-    else if (WALLS.has(p.t)) walls.add(p.i + ',' + p.j + ',' + (p.r & 1));
+    if (p.t === 'stairs' || p.t === 'ladder') stairs.add(keyOf(p.i, p.j)); // [buildpack] ladder
+    else if (WALLS.has(p.t) || (p.t === 'gate' && !p.o)) walls.add(p.i + ',' + p.j + ',' + (p.r & 1));
   }
   const cells = [], seen = new Set();
   if (Array.isArray(tiles)) for (const tl of tiles) {

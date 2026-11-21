@@ -22,6 +22,7 @@
 //   alt(aim, kind)            right click while holding `kind`. Return true if consumed (paint: brush colour).
 //   afterRebuild()            after rebuildRaft() recreated the deck/decor meshes (paint: re-tint planks)
 //   tileTint(x, z, base)      plank colour for deck tile x,z (base = the plank's own colour) or null (paint)
+//   diveMods(m)               multiply m.swim/oxy/fog/gather in place (local player, per frame, no allocations; docs/specs/diving-gear.md)
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   dispose()
 //
@@ -43,8 +44,13 @@ import { createAnimals } from './animals.js?build=v3-survival-ae77fa84ac2b';
 import { createBees } from './bees.js?build=v3-survival-ae77fa84ac2b'; // [bees]
 import { createTreasure } from './treasure.js?build=v3-survival-ae77fa84ac2b';
 import { createMapTable } from './maptable.js?build=v3-survival-ae77fa84ac2b';
+import { createGull } from './gull.js?build=v3-survival-ae77fa84ac2b'; // [gull]
+import { createJuicer } from './juicer.js?build=v3-survival-ae77fa84ac2b'; // [juicer]
+import { createDivingGear } from './diving-gear.js?build=v3-survival-ae77fa84ac2b';
+import { createTrader } from './trader.js?build=v3-survival-ae77fa84ac2b';
+import { createCookpot } from './cookpot.js?build=v3-survival-ae77fa84ac2b';
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees]; // [bees] + createBees
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createJuicer, createGull, createDivingGear, createTrader, createCookpot]; // [bees] + createBees; round 3 diving gear, trader, cookpot; [juicer] + createJuicer [gull] + createGull
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -71,6 +77,7 @@ export function createContent(ctx, features = FEATURES) {
   // A failing module is disabled and disposed once, so shared engine state (fog, lights…) is restored.
   const off = m => { if (m.dead) return; m.dead = true; console.error('content module disabled:', m.name); try { m.dispose?.(); } catch (e) { console.error(`content ${m.name}.dispose failed`, e); } };
   const call = (m, fn, ...a) => { if (m.dead || typeof m[fn] !== 'function') return undefined; try { return m[fn](...a); } catch (e) { console.error(`content ${m.name}.${fn} failed`, e); off(m); return undefined; } };
+  const call1 = (m, out) => { try { m.diveMods(out); } catch (e) { console.error(`content ${m.name}.diveMods failed`, e); off(m); } };
   // Sibling peek: a module may read another's live serialize() (e.g. the map table reads islands). Read, never keep.
   const peek = name => { const m = mods.find(x => x.name === name && !x.dead); return m ? call(m, 'serialize') : undefined; };
   for (const make of features) {
@@ -97,6 +104,7 @@ export function createContent(ctx, features = FEATURES) {
     sailPush: (s, out) => !!first('sailPush', s, out),
     steerTargets: () => first('steerTargets'),
     rain() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }, // rain-sprinkler: live 0..1 rain
+    diveMods(out) { out.swim = out.oxy = out.fog = out.gather = 1; for (let i = 0; i < mods.length; i++) { const m = mods[i]; if (!m.dead && typeof m.diveMods === 'function') call1(m, out); } return out; }, // shared dive modifier hook (no per-frame rest-arg arrays)
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };
 }

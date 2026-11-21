@@ -129,6 +129,9 @@ test('lootFor table', () => {
   assert.ok(seeds > 120 && seeds < 280, `bush seed rate ${seeds}/400`);
   const flowers = Array.from({ length: 400 }, (_, s) => lootFor('bush', s, 0, 0).some(([k]) => k === 'flowerseed') ? 1 : 0).reduce((a, b) => a + b); // [bees]
   assert.ok(flowers > 40 && flowers < 130, `bush flower seed rate ${flowers}/400`);
+  const berries = Array.from({ length: 400 }, (_, s) => { const r = lootFor('bush', s, 0, 0); return r.length === 1 && r[0][0] === 'berries' && r[0][1] === 2 ? 1 : 0; }).reduce((a, b) => a + b); // [juicer]
+  assert.ok(berries > 60 && berries < 140, `bush berry rate ${berries}/400`); // [juicer]
+  for (let s = 0; s < 400; s++) { const r = lootFor('bush', s, 0, 0); if (r.some(([k]) => k === 'berries')) assert.deepEqual(r, [['berries', 2]], 'berries never come with a seed'); } // [juicer]
 });
 
 function gatherSetup() {

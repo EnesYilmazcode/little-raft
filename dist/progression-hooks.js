@@ -257,7 +257,7 @@ export function attachProgression(ctx) {
     if (!show) { if (hud) hud.hidden = true; return; }
     if (!hud) {
       hud = document.createElement('div'); hud.id = 'binocularsHud'; hud.setAttribute('role', 'status');
-      hud.style.cssText = 'position:fixed;left:50%;top:18%;transform:translateX(-50%);padding:4px 12px;border-radius:8px;background:rgba(8,22,36,.6);color:#f6ecd6;font:700 15px/1.3 system-ui,sans-serif;pointer-events:none;z-index:30;white-space:nowrap';
+      hud.style.cssText = 'position:fixed;left:16px;top:56px;padding:4px 12px;border-radius:8px;background:rgba(8,22,36,.6);color:#f6ecd6;font:700 15px/1.3 system-ui,sans-serif;pointer-events:none;z-index:30;white-space:nowrap';
       document.body.append(hud);
     }
     const me = ctx.pose(); let best = null, bd = Infinity;
