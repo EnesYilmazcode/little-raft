@@ -75,6 +75,25 @@ test('DiveBody: empty oxygen forces a rising ascent ignoring down input', () => 
   assert.equal(b.rising, false);
 });
 
+test('DiveBody: out of air under a 2x2 raft drifts to open water and surfaces', () => {
+  const env = { ...ENV, tiles: [[0, 0], [1, 0], [0, 1], [1, 1]] };
+  for (const [x, z] of [[1, 1], [0, 0], [2.5, 1]]) {
+    const b = new DiveBody({ x, y: -3, z, oxygen: 0 });
+    const evs = run(b, 15, {}, env);
+    assert.ok(evs.at(-1).surfaced, `surfaced from (${x},${z}) at ${b.x.toFixed(2)},${b.z.toFixed(2)}`);
+    assert.ok(evs.length / 60 < 15);
+  }
+});
+
+test('DiveBody: combined swim speed capped at FAST; no buoyancy while gathering', () => {
+  const b = new DiveBody({ x: 10, y: -6, z: 0 });
+  run(b, 3, { forward: 1, strafe: 1, pitch: 0.7, up: true, fast: true });
+  assert.ok(Math.hypot(b.vx, b.vy, b.vz) <= DIVE.FAST + 1e-6);
+  const g = new DiveBody({ x: 10, y: -6, z: 0 });
+  run(g, 2, { gather: true });
+  assert.ok(Math.abs(g.y + 6) < 1e-9, `y ${g.y}`);
+});
+
 test('DiveBody: horizontal distance clamped to MAX_DISTANCE from origin', () => {
   const b = new DiveBody({ x: 49.5, y: -4, z: 0 });
   run(b, 3, { forward: 1, yaw: -Math.PI / 2, fast: true }); // yaw -pi/2 faces +x
