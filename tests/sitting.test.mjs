@@ -243,3 +243,24 @@ test('real module: E while seated stands up through the registry even with an ea
   assert.equal(st(s.mod).in.host, null);
   assert.equal(s.ctx.physics.vx, 0); assert.equal(s.ctx.physics.grounded, true);
 });
+
+// ---------------------------------------------------------------- QA r2: pitch eases down on sitting, then the mouse wins
+test('sitting eases the view pitch to about -0.45 once, and stops when the player looks', () => {
+  const { mod, ctx } = makeSit();
+  let pitch = 0; Object.defineProperty(ctx, 'pitch', { get: () => pitch }); ctx.facePitch = p => { pitch = p; };
+  ctx.physics.x = 0; ctx.physics.z = .6;
+  mod.debug.sit(0, 0, 0); mod.update(1 / 60);
+  assert.equal(mod.seated(), true);
+  for (let i = 0; i < 60; i++) mod.update(1 / 60);
+  near(pitch, -.45, 1e-9, 'eased to the seat pitch');
+  pitch = .4; for (let i = 0; i < 30; i++) mod.update(1 / 60);
+  assert.equal(pitch, .4, 'the mouse wins after the ease');
+  mod.debug.up(); mod.update(1 / 60);
+  const b = makeSit(); let p2 = 0; Object.defineProperty(b.ctx, 'pitch', { get: () => p2 }); b.ctx.facePitch = p => { p2 = p; };
+  b.ctx.physics.x = 0; b.ctx.physics.z = .6; b.mod.debug.sit(0, 0, 0); b.mod.update(1 / 60); b.mod.update(1 / 60);
+  p2 = .3; for (let i = 0; i < 30; i++) b.mod.update(1 / 60);
+  assert.equal(p2, .3, 'a look mid-ease cancels it');
+  const c = makeSit(); let p3 = -.7; Object.defineProperty(c.ctx, 'pitch', { get: () => p3 }); c.ctx.facePitch = p => { p3 = p; };
+  c.ctx.physics.x = 0; c.ctx.physics.z = .6; c.mod.debug.sit(0, 0, 0); for (let i = 0; i < 30; i++) c.mod.update(1 / 60);
+  assert.equal(p3, -.7, 'already looking further down: untouched');
+});
