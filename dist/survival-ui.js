@@ -20,7 +20,7 @@ const SPRITE_URL = (() => {
 
 // Symbols that actually exist in icons.svg.
 const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'crew', 'help', 'sound', 'close', 'repair', 'hammer', 'compass', 'antenna', 'cup', 'saltcup', 'freshcup', 'purifier', 'rainbarrel', 'sprinkler', 'research',
-  'brush', 'paint-seafoam', 'paint-coral', 'paint-sunshell', 'paint-lagoon', 'paint-pebble']); // + rain-sprinkler, research (storage-research); content hook (paint)
+  'brush', 'paint-seafoam', 'paint-coral', 'paint-sunshell', 'paint-lagoon', 'paint-pebble', 'bed', 'motor', 'wheel', 'kiln', 'ingot', 'glass', 'brick', 'egg', 'feather', 'nest', 'cushion']); // + rain-sprinkler, research (storage-research); content hook (paint); kiln, animals
 // Item kind (normalised) -> sprite symbol.
 const SPRITE_FOR = {
   hook: 'hook', plastichook: 'hook', grapplinghook: 'hook',
@@ -33,6 +33,7 @@ const SPRITE_FOR = {
   barrel: 'barrel', net: 'net', collectionnet: 'net', sail: 'sail',
   lantern: 'lantern', compass: 'compass', repair: 'repair', palm: 'palm',
   antenna: 'antenna', receiver: 'compass',
+  puffegg: 'egg', feather: 'feather', nestbox: 'nest', cushion: 'cushion',
 };
 // Hand-drawn fallbacks for kinds without a sprite (same palette as icons.svg).
 const CUSTOM = {
@@ -62,6 +63,38 @@ const CUSTOM = {
     <circle cx="38" cy="33" r="4.2" fill="#f0e4c6" stroke="#153e49" stroke-width="2"/>
     <path d="M33.8 33 A4.2 4.2 0 0 1 42.2 33 Z" fill="#c8352b" stroke="#153e49" stroke-width="2"/>
     <path d="M38 27.5 V29" stroke="#153e49" stroke-width="1.6"/></g>`,
+  // Raw materials (kiln inputs) so Sand / Stone / Clay / Metal Ore no longer share the scrap sprite.
+  sand: `<g stroke="#153e49" stroke-width="2" stroke-linejoin="round">
+    <path d="M4 40 C10 22 18 14 24 14 C30 14 38 22 44 40 Z" fill="#ecd394"/>
+    <path d="M12 30 C16 23 20 19 24 18" fill="none" stroke="#fff2cc" stroke-width="1.8" stroke-linecap="round" stroke-opacity=".9"/></g>
+    <g fill="#b8955a"><circle cx="20" cy="30" r="1.3"/><circle cx="28" cy="26" r="1.3"/><circle cx="31" cy="34" r="1.3"/><circle cx="16" cy="36" r="1.3"/><circle cx="24" cy="36" r="1.3"/></g>`,
+  stone: `<g stroke="#153e49" stroke-width="2" stroke-linejoin="round">
+    <path d="M6 36 C5 27 12 21 20 22 C27 23 30 30 28 37 C26 42 9 42 6 36 Z" fill="#9aa7aa"/>
+    <path d="M24 22 C26 13 35 10 41 15 C46 20 44 30 37 31 C31 32 26 29 24 22 Z" fill="#c3cccd"/></g>
+    <path d="M11 29 C13 26 16 25 19 25 M29 16 C31 14 34 13 36 14" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".7"/>`,
+  clay: `<g stroke="#153e49" stroke-width="2" stroke-linejoin="round">
+    <path d="M7 34 C5 24 13 15 24 15 C35 15 43 23 41 33 C40 40 33 42 24 42 C15 42 8 40 7 34 Z" fill="#c97a4f"/>
+    <path d="M14 27 C19 23 29 23 34 27" fill="none" stroke="#8f4f2e" stroke-width="2.4" stroke-linecap="round"/></g>
+    <path d="M13 21 C16 18 20 17 23 17" fill="none" stroke="#f2b48a" stroke-width="2" stroke-linecap="round"/>`,
+  metalore: `<g stroke="#153e49" stroke-width="2" stroke-linejoin="round">
+    <path d="M5 33 L10 17 L22 9 L36 12 L44 26 L38 40 L18 42 Z" fill="#6d7378"/>
+    <path d="M10 17 L22 22 L36 12 M22 22 L18 42 M22 22 L44 26" fill="none" stroke-width="1.2" stroke-opacity=".55"/></g>
+    <g stroke="#153e49" stroke-width="1"><path d="M27 27 L32 25 L33 30 L28 32 Z" fill="#e8a04a"/><path d="M12 28 L16 26 L17 30 L13 31 Z" fill="#7fd3cf"/><path d="M24 13 L28 14 L27 17 L23 16 Z" fill="#e8a04a"/></g>`,
+  pots: `<g stroke="#153e49" stroke-width="2" stroke-linejoin="round">
+    <path d="M17 13 C14 9 12 6 13 4 M17 13 C19 8 22 6 24 6 M33 19 C33 14 36 11 39 11" fill="none" stroke="#5f9e4f" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M6 22 H22 L20 42 H8 Z" fill="#b8653d"/><rect x="5" y="19" width="18" height="5" rx="1" fill="#d59a72"/>
+    <path d="M27 28 H41 L39 42 H29 Z" fill="#c9774a"/><rect x="26" y="25" width="16" height="4.5" rx="1" fill="#d59a72"/></g>
+    <circle cx="13" cy="4.5" r="2.6" fill="#f2c14e" stroke="#153e49" stroke-width="1"/><circle cx="25" cy="6" r="2.6" fill="#e86f8a" stroke="#153e49" stroke-width="1"/><circle cx="39.5" cy="10.5" r="2.6" fill="#fff4e0" stroke="#153e49" stroke-width="1"/>`,
+  chime: `<g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M24 3 V8 M14 12 L24 8 L34 12 M14 12 V16 M21 11 V18 M27 11 V18 M34 12 V16" fill="none" stroke="#d8c89a" stroke-width="1.4"/>
+    <rect x="8" y="9" width="32" height="4" rx="1.5" fill="#8a6a45"/>
+    <rect x="12" y="16" width="4.5" height="18" rx="2" fill="#c3cccd"/><rect x="19" y="18" width="4.5" height="22" rx="2" fill="#9fd6d0"/>
+    <rect x="25.5" y="18" width="4.5" height="16" rx="2" fill="#c3cccd"/><rect x="32" y="16" width="4.5" height="12" rx="2" fill="#9fd6d0"/>
+    <path d="M21 40 C16 44 20 47 24 47 C28 47 32 44 27 40 Z" fill="#f6c9b0"/></g>`,
+  sign: `<g stroke="#153e49" stroke-width="2" stroke-linejoin="round">
+    <rect x="21" y="18" width="6" height="26" fill="#7a5a3a"/>
+    <rect x="5" y="6" width="38" height="20" rx="2" fill="#b98a55"/></g>
+    <path d="M10 13 H38 M12 19 H34" stroke="#4a2e1a" stroke-width="2.2" stroke-linecap="round"/>`,
 };
 
 Object.assign(CUSTOM, ITEM_ICONS); // [progression-hook] dedicated drawings for placeholder kinds
