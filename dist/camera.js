@@ -8,12 +8,14 @@
 // are kept in memory only (LRU 32), never in the album or the save.
 import { sharedPhotoStore, newId, ID_RE, validPhotoData, PHOTO_CAP } from './photo-store.js?build=v3-survival-ae77fa84ac2b';
 
-export const SHOT_GAP = 0.6, PHOTO_W = 256, PHOTO_H = 144, SHARE_GAP_MS = 10000, WANT_GAP_MS = 15000, FOREIGN_CAP = 32;
+export const SHOT_GAP = 0.6, PHOTO_W = 256, PHOTO_H = 144, SHARE_GAP_MS = 10000, WANT_GAP_MS = 15000, REPLY_GAP_MS = 3000, FOREIGN_CAP = 32;
+export const STUCK_S = 12;   // a save still "in flight" after this long is treated as lost (hung storage), so the camera never locks up
 export const JPEG_BYTES = 17000; // re-encode above this so the data URL stays under MAX_DATA (24000 chars)
 
-/** True when a new shot may start: not busy and at least SHOT_GAP seconds since the last one. */
+/** True when a new shot may start: not busy (or busy for longer than STUCK_S) and at least SHOT_GAP seconds since the last one. */
 export function shotGate(now, last, busy) {
-  if (busy || !Number.isFinite(now)) return false;
+  if (!Number.isFinite(now)) return false;
+  if (busy) return Number.isFinite(last) && now - last >= STUCK_S;
   return !Number.isFinite(last) || now - last >= SHOT_GAP;
 }
 
@@ -63,8 +65,8 @@ export const photoNet = { current: null };
 
 // ---------------------------------------------------------------- engine half
 const FLASH_ID = 'cameraFlash', FLASH_STYLE = 'little-raft-camera-style';
-const FLASH_CSS = `#${FLASH_ID}{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:60;transition:opacity .18s ease-out}
-#${FLASH_ID}.cf-on{transition:none;opacity:.9}
+const FLASH_CSS = `#${FLASH_ID}{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:60;transition:opacity .32s ease-out}
+#${FLASH_ID}.cf-on{transition:none;opacity:.95}
 @media (prefers-reduced-motion:reduce){#${FLASH_ID}.cf-on{opacity:.4}}`;
 
 function flashEl() {
@@ -81,7 +83,8 @@ export function createCamera(T, host = {}) {
   const now = () => (typeof host.now === 'function' ? host.now() : performance.now());
   const get = f => { try { return typeof f === 'function' ? f() : f; } catch { return null; } };
   const notice = (s, ms) => { try { host.notice?.(s, ms); } catch {} };
-  const foreignCache = createForeignCache(), shareGate = idGate(SHARE_GAP_MS), wantGate = idGate(WANT_GAP_MS);
+  const foreignCache = createForeignCache(), shareGate = idGate(SHARE_GAP_MS), wantGate = idGate(WANT_GAP_MS), replyGate = idGate(REPLY_GAP_MS);
+  let flashTimer = 0, shotSeq = 0;
   const listeners = new Set();
   let disposed = false, busy = false, lastShot = -Infinity, shots = 0, lastBytes = 0, lastId = null, canvas = null, ctx2d = null;
   let store = null;
@@ -121,8 +124,8 @@ export function createCamera(T, host = {}) {
   function flash() {
     const el = flashEl(); if (!el) return;
     el.classList.add('cf-on');
-    void el.offsetWidth;                              // commit the bright frame, then fade
-    requestAnimationFrame(() => el.classList.remove('cf-on'));
+    void el.offsetWidth;                              // hold the bright frame a moment (one rAF was too faint to notice), then fade
+    clearTimeout(flashTimer); flashTimer = setTimeout(() => el.classList.remove('cf-on'), 70);
   }
 
   function dayNow() {
@@ -136,7 +139,7 @@ export function createCamera(T, host = {}) {
     return blob;
   }
 
-  async function save(at, day) {
+  async function save(at, day, seq) {
     try {
       const blob = await encode();
       if (!blob) throw new Error('encode failed');
@@ -152,16 +155,17 @@ export function createCamera(T, host = {}) {
     } catch (e) {
       console.warn('[camera] save failed', e);
       notice('The camera jammed. Try again.');
-    } finally { busy = false; }
+    } finally { if (seq === shotSeq) busy = false; }   // a stale (hung) save never unlocks a newer shot
   }
 
   function capture() {
-    busy = true; lastShot = now() / 1000;
+    if (busy) console.warn('[camera] previous save never finished; starting a new shot');
+    busy = true; lastShot = now() / 1000; const seq = ++shotSeq;
     try { grab(); }
     catch (e) { busy = false; console.warn('[camera] capture failed', e); notice('The camera jammed. Try again.'); return false; }
     try { flash(); } catch {}
     try { host.sfx?.play?.('shutter'); } catch {}
-    save(Date.now(), dayNow());
+    save(Date.now(), dayNow(), seq);
     return true;
   }
 
@@ -176,7 +180,7 @@ export function createCamera(T, host = {}) {
   const netOk = () => { try { return !!host.netReady?.(); } catch { return false; } };
   async function share(id, force = false) {
     if (disposed || !ID_RE.test(id || '') || !netOk()) return false;
-    if (!force && !shareGate(id, now())) return false;
+    if (!(force ? replyGate(id, now()) : shareGate(id, now()))) return false;
     const s = store || await storeP; if (!s || !s.has(id)) return false;
     const data = await s.dataURL(id);
     if (!validPhotoData(data) || !netOk()) return false;
@@ -192,7 +196,7 @@ export function createCamera(T, host = {}) {
   function onNet(data) {
     if (disposed) return false;
     const m = cleanPhotoMsg(data); if (!m) return false;
-    if (m.want) { share(m.id); return true; }
+    if (m.want) { share(m.id, true); return true; }   // an explicit ask: own gate, so a recent broadcast (that missed them) can't block it
     if (store?.has(m.id)) return true;               // our own photo coming back: the album already has it
     foreignCache.set(m.id, m.data);
     for (const fn of listeners) { try { fn(m.id); } catch (e) { console.warn('[camera]', e); } }

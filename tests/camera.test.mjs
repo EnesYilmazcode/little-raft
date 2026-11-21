@@ -153,7 +153,9 @@ test('cooldown: shotGate blocks inside 0.6 s and while busy', () => {
   assert.equal(C.shotGate(10, -Infinity, false), true);
   assert.equal(C.shotGate(10, 9.5, false), false);
   assert.equal(C.shotGate(10, 9.35, false), true);
-  assert.equal(C.shotGate(10, 0, true), false);
+  assert.equal(C.shotGate(20, 0, true), true, 'a save hung for longer than STUCK_S never locks the camera');
+  assert.equal(C.shotGate(10, 9, true), false);
+  assert.equal(C.shotGate(10, 10 - C.STUCK_S + 0.5, true), false);
   assert.equal(C.shotGate(NaN, 0, false), false);
   assert.deepEqual(C.centerCrop(1920, 1080), { sx: 0, sy: 0, sw: 1920, sh: 1080 });
   assert.deepEqual(C.centerCrop(390, 844), { sx: 0, sy: 312, sw: 390, sh: 219 });
@@ -199,5 +201,33 @@ test('frame state: cleanFrames validates keys, ids, owners and decor; host set /
   mod.load({ v: 1, f: { '0,1': { id: 'p7654321', owner: 'host' } } }, 'net');
   assert.equal(mod.serialize().f['0,1'].id, 'p7654321');
   assert.equal(JSON.stringify(mod.serialize()).includes('data:'), false, 'never image bytes in the save');
+  // the frame moves to another tile (same decor count): the old tile's entry is pruned, not kept by the cache
+  world.decor[0] = { type: 'photoframe', x: 0, z: 0 };
+  assert.deepEqual(mod.serialize().f, {}, 'moved frame drops the stale entry');
   mod.dispose();
+});
+
+test('net: an explicit ask is answered even right after a broadcast of the same photo, but not flooded', async () => {
+  const sent = [];
+  let t = 0;
+  const cam = C.createCamera({}, { netReady: () => true, send: m => sent.push(m), now: () => t });
+  const store = await cam.storeReady;
+  const id = 'pask12345';
+  assert.equal((await store.add({ id, at: 1, data: JPEG })).ok, true);
+  assert.equal(await cam.share(id), true, 'broadcast');
+  assert.equal(await cam.share(id), false, 'broadcast gate');
+  assert.equal(cam.onNet({ type: 'photo', id, want: 1 }), true);
+  await new Promise(r => setTimeout(r, 20));
+  cam.onNet({ type: 'photo', id, want: 1 });                  // flood: gated per id
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(sent.filter(m => m.id === id && m.data).length, 2, 'one broadcast + one answer');
+  t += C.REPLY_GAP_MS + 1;
+  cam.onNet({ type: 'photo', id, want: 1 });
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(sent.filter(m => m.id === id && m.data).length, 3);
+  cam.onNet({ type: 'photo', id: 'pnotmine1', want: 1 });     // not in our album: nothing sent
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(sent.some(m => m.id === 'pnotmine1'), false);
+  await store.remove(id);
+  cam.dispose();
 });

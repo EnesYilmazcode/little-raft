@@ -165,13 +165,13 @@ export function createPhotoFrame(ctx) {
     st = cleanFrames(data, ctx.world?.decor); rev++; dirty = true;
   }
 
-  let serCache = null, serRev = -1, serDecor = -1;
+  let serCache = null, serRev = -1, serDecor = null;
   function serialize() {
-    const d = decor();
-    if (serCache && serRev === rev && serDecor === d.length) return serCache;
+    const d = decor(), sig = [...frameKeys(d)].join(';');   // frame tiles, not decor.length: a moved frame keeps the count
+    if (serCache && serRev === rev && serDecor === sig) return serCache;
     const clean = cleanFrames(st, d);
     if (Object.keys(clean.f).length !== Object.keys(st.f).length) { st = clean; rev++; dirty = true; }
-    serCache = JSON.parse(JSON.stringify(st)); serRev = rev; serDecor = d.length;
+    serCache = JSON.parse(JSON.stringify(st)); serRev = rev; serDecor = sig;
     return serCache;
   }
 
