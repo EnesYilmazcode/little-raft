@@ -30,7 +30,7 @@ cases += [dict(view='over', density='sparse'), dict(view='over', density='dense'
           dict(view='raft', mat='standard'), dict(view='raft', shadows='0'), dict(view='far', density='dense')]
 only = next((a.split('=', 1)[1].split(',') for a in sys.argv if a.startswith('--only=')), None)
 if quick:
-    cases = cases[:5]
+    cases = cases[:8]  # 5 views + the 3 LOD crossfade shots
 if only:
     cases = [c for c in cases if c['view'] in only]
 

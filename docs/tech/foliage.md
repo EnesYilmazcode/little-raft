@@ -24,8 +24,12 @@ Prototype: `sandbox/foliage/`, with `foliage.js` (drop-in module), `island.js` (
      toward the base between `uFade.x` and `uFade.y` metres from the eye. They sink into the ground, with no
      dither and no transparency.
   2. Whole kind per island: `F.lod(mesh, maxDist)` hides each `InstancedMesh` once the island is past its fade
-     distance, so the vertices stop costing anything. Palms swap from the 2.2k-triangle near mesh to a
-     410-triangle `palmFar` mesh with 2-triangle leaflets, 5 trunk segments and no coconuts. Fog hides the pop.
+     distance, so the vertices stop costing anything. Palms swap from the 2.4k-triangle near mesh to a
+     410-triangle `palmFar` mesh with 2-triangle leaflets, 5 trunk segments and no coconuts.
+  3. The palm swap is a **screen-door crossfade** (`dither: [from, to]` material param, `FOL_DITHER`): over
+     ±5 m around the switch distance both meshes draw, each discarding a complementary half of an
+     interleaved-gradient-noise pattern. The ramp uses the distance to the mesh origin (the island centre),
+     the same distance `F.lod` uses, so the extra draw calls exist only inside that 10 m band.
 
 ## Wind model
 
@@ -42,6 +46,13 @@ All of the wind code lives in `foliage.js` as the `BODY` string. It runs in obje
 4. **Fade** (optional define). `transformed *= 1 - smoothstep(near, far, distance(uEye, instanceOrigin))`.
    `uEye` is a uniform set in `F.update`. It deliberately does not use `cameraPosition`, because in the
    shadow pass `cameraPosition` is the light, and the shadows would then fade differently from the plants.
+5. **Normal tilt** (colour pass only, `FOL_COLOR_PASS`). The view-space normal is tilted downwind by the slope
+   of the bend (`2 * bend * strength * h`) plus the flutter bob, so lighting shimmers on fluttering leaflets
+   and stays right in a storm. It is one extra `normalMatrix` multiply per vertex. The depth twin skips it.
+6. **Canopy underside tint** (trees only, colour pass). Per vertex: `up = clamp(viewDir.y * 1.8)` times a leaf
+   mask (far from the crown, high on the tree). The vertex colour is darkened by up to 38% when seen from
+   below, and a yellow-green glow is added when looking toward the sun (`uSunDir`, shared, defaults to the
+   game's sun position). This is the cheap translucency: it costs a few ALU ops per vertex and nothing per pixel.
 
 There is one shared uniform object for time, wind direction, strength and eye position, so a frame costs one
 write. Per-material uniforms hold the shape parameters: base, height, bend, flutter, crown, reach and fade.
@@ -54,22 +65,27 @@ On a `DoubleSide` material, three flips the normal for back faces. Leaves get up
 for a soft look. With the flip, grass backs and frond undersides rendered nearly black: this was the first
 iteration, and the grass read as dark spikes. Foliage materials therefore undo the flip
 (`normal *= faceDirection` again after `<normal_fragment_begin>`), so both faces use the authored normal.
-Depth from below comes from a vertex-colour AO term instead: leaflets darken toward the crown.
+Depth from below comes from a vertex-colour AO term instead: leaflets darken toward the crown (base of each
+leaflet at 50%, ramping to 100% by 55% along the frond), plus the view-dependent underside tint above.
 
 ## Art
 
-- **Palm** (island, about 4.3 m): a trunk of 14 flared, alternating-tone rings, which gives a leaf-scar
-  silhouette, a crown knob, 3 coconuts and 10 fronds on a golden-angle spiral in 3 tiers (high arching, mid,
-  low drooping). The last 2 fronds are dry and golden and hang lower. Each frond has 22 V-folded leaflet pairs
-  on a parabolic rib. Triangles: 2176 near, 410 far.
+- **Palm** (island, about 4.3 m): a smooth-shaded 7-sided tube along a curved, tapering spine with a root
+  flare. Its 15 ring bands each start slightly proud and dark (leaf scar) and taper in, lightening, to the
+  next band, so the silhouette is ringed but the surface reads round. On top: a fibrous crown knob and 3
+  green-yellow coconuts with spherical normals (readable from below), and 10 fronds on a golden-angle spiral
+  in 3 tiers (high arching, mid, low drooping). The last 2 fronds are dry and golden and hang lower. Each frond
+  has 22 V-folded leaflet pairs on a parabolic rib. Triangles: 2386 near (trunk 406), 410 far (trunk 50).
 - **Bush**: 3 to 5 squashed, jittered icosahedron lumps (detail 1) with spherical normals, plus 7 five-petal
   flowers (pink, yellow or none per variant). 355 triangles.
 - **Fern**: a rosette of 7 short pinnate fronds that reuses the palm-frond builder. 602 triangles.
 - **Broadleaf**: an elephant-ear rosette of 6 paddle leaves on stems. 132 triangles, and the strongest
   silhouette for its cost.
-- **Grass tuft**: 10 curved 3-triangle blades with up normals. 30 triangles. A paler beach-grass variant
-  scatters sparsely on the sand.
-- **Island**: a polar-grid sand dome with a wobbly coastline. Its vertex colours are wet sand, dry sand, a
+- **Grass tuft**: 8 curved 3-triangle blades with up normals, 1.5x wider blades spread over a 1.7x wider
+  footprint than the first version. 24 triangles. A paler 5-blade beach-grass variant scatters sparsely on the
+  sand. The recipe is `GRASS` in `island.js` (`?grass=count,blades,width,spread` in the lab).
+- **Island**: a polar-grid sand dome with a wobbly coastline, 0.35 m high at the centre by default (the islands
+  plan value; the two background islands in the lab pass 0.7 and 1.1 for variety). Its vertex colours are wet sand, dry sand, a
   grass-edge band and a grassy interior, flat shaded. A few dodecahedron rocks sit at the shore. Palms lean
   out toward the sea.
 
@@ -83,7 +99,8 @@ average around 35). The absolute milliseconds are meaningless. Read only the int
 alternate frames inside one page so that load spikes hit both sides. The full JSON comes from
 `python sandbox/foliage/shoot.py`.
 
-Hero island counts at normal density: 6 palms, 12 bushes, 16 ferns, 9 broadleaf plants and 520 grass tufts.
+Hero island counts at normal density: 6 palms, 12 bushes, 16 ferns, 9 broadleaf plants and 260 grass tufts
+(520 in the first version; the table below is the first version, see "Improver pass" for the current numbers).
 Sparse density (×0.35) roughly matches the islands plan (1 to 3 palms, 2 to 4 bushes). Dense is ×2.
 Three islands are in the scene. The table excludes the ocean and sky.
 
