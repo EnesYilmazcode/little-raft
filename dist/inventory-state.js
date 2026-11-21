@@ -4,7 +4,7 @@ import { infoTable, recipeTable, TOOL_IDS, registerBagKinds } from './items.js?b
 
 export const STACK_SIZE = 20;
 export const SLOT_COUNT = 28;
-export const HOTBAR_SIZE = 8;
+export const HOTBAR_SIZE = 10;
 export const TOOL_DURABILITY = 100;
 
 // content hook: islands/storage item kinds and recipes live in content-items.js

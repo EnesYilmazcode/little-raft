@@ -333,10 +333,16 @@ Everything above is implemented through the content registry, with one shared-fi
 - `dist/storage-research-ui.js`: the `<dialog id="lrStorage">` and the craft-list lock badges. It
   is loaded with a dynamic `import()` the first frame the game runs, so node never loads it.
 - `dist/storage-research-model.js`: the Research Table model.
-- `tests/storage-research.test.mjs`: 23 tests (section 9's unit plan, the model cache, and the
-  review fixes below).
-- Shared-file edit: one line at the end of `dist/survival-ui.js`:
-  `export { iconSVG, slotSig, paintSlot, itemName }; // content hook (storage-research)`.
+- `tests/storage-research.test.mjs`: 24 tests (section 9's unit plan, the model cache, the
+  review fixes below, and the research icon).
+- Shared-file edits, each marked `// content hook` where the format allows:
+  - one line at the end of `dist/survival-ui.js`:
+    `export { iconSVG, slotSig, paintSlot, itemName }; // content hook (storage-research)`;
+  - `'research'` added to the `SPRITES` set in `dist/survival-ui.js`, so the new symbol is used;
+  - a new `<symbol id="icon-research">` in `dist/icons.svg` (an open book on a desk with a
+    spark), drawn in the same palette and 2 px `#153e49` outline style as the other icons;
+  - `dist/content-items.js`: the Research Table uses `icon-research` instead of the Bench's
+    `icon-repair`.
   Nothing in `game.js`, `content.js` or `inventory-state.js` changed.
 
 **Backward compatibility** follows section 4 exactly. `stateFrom(data, from, world)` holds the
@@ -404,8 +410,38 @@ save/load, and shows in `debug.state()` for QA.
 - After a mouse click a slot button gives focus back to the panel, so Space or Enter cannot click
   it again. Keyboard activation keeps focus as usual.
 
+**Visual QA fixes (Nov 2026)**
+- Study tiles for a kind you do not carry say how to get one. A kind with a recipe says
+  "Craft one first (2 Palm Leaf)". Only raw materials say "Find one first".
+- Layout: the dialog is anchored near the top (`margin-top: min(10vh, 72px)`) instead of being
+  centred, so it no longer jumps when tiles disappear. In research mode the banner row is always
+  reserved. The header and banner stay put and only the body scrolls. The two research columns
+  now stack only below 700 px wide (they fit side by side in about 662 x 533). Study tiles are
+  capped at 96 px wide.
+- A study that completes no recipe shows a soft in-dialog banner: "Studied Palm Leaf. One step
+  closer to Palm Planter, Sail." The toast is hidden behind the modal.
+- A tile's hint reads "Helps: X, Y" instead of "A step closer". Tiles that unlock a recipe sort
+  first. "almost!" shows only when a recipe has more than one ingredient and all but one are
+  studied.
+- The craft list starts with a "N more recipes to discover ↓" button (outside `.sv-rlist`, which
+  survival-ui owns). Clicking it scrolls to the first locked row. While recipes are locked and
+  no Research Table is placed or carried, the Research Table row glows gently.
+- At 100% the research panel collapses to "Bookworm! You know every recipe." plus the studied
+  chips.
+- The HUD hotbar (`.tools.sv-hotbar`) is hidden while the panel is open (`body.lr-sr-open`).
+- The craft-list annotation only writes when something changes: `update()` re-runs it only when
+  the view revision, the first row element (survival-ui rebuilt the list) or the has-table flag
+  changes, and each write is skipped when the value is already there. A MutationObserver on
+  `#inventory` saw zero mutations over 2.5 s with Tab open. The Playwright click timeouts were not
+  caused by moving rows: the click lands ("click action done"), then Playwright times out in
+  "waiting for scheduled navigations" while the slow software-GL frame runs. The row's box is
+  identical across 8 frames.
+- At 100% the reserved banner space is dropped, so the small "Bookworm!" panel has no gap.
+
 **Screenshots** are in `docs/cloud/shots/content/`: `storage-world.png` (table and crate on the
-raft), `storage-chest.png`, `storage-research.png` and `storage-recipes-locked.png`.
+raft), `storage-chest.png`, `storage-research.png`, `storage-recipes-locked.png` and
+`storage-research-800x600.png`. They were re-shot after the visual QA fixes (256 colours, each under
+250 KB).
 
 **Headless check** (Playwright, solo, preloaded save): walking up to the table and pressing E opens
 the research panel. Escape closes it without opening the pause menu. A click puts a bag stack

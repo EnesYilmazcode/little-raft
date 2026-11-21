@@ -12,11 +12,12 @@ export function lootFits(bag, loot) {
   return true;
 }
 
-// First item near the net (tile coords) that is not held or pending and whose loot fits.
-export function pickNetItem(items, net, {held = new Set(), isPending = () => false, fits = () => true} = {}) {
+// First item near the net that is not held or pending and whose loot fits.
+// unit: metres per net coordinate (2 = legacy tile cells, 1 = raft-local metres as placement.js stores decor).
+export function pickNetItem(items, net, {held = new Set(), isPending = () => false, fits = () => true, unit = 2} = {}) {
   for (const it of items) {
     if (held.has(it.token) || isPending(it)) continue;
-    if (Math.hypot(it.x - net.x * 2, it.z - net.z * 2) >= NET_RANGE) continue;
+    if (Math.hypot(it.x - net.x * unit, it.z - net.z * unit) >= NET_RANGE) continue;
     if (fits(it)) return it;
   }
   return null;
@@ -39,12 +40,13 @@ export function createGuestHeld(ttl = GUEST_HELD_TTL) {
 }
 
 // Collision circles for one decor piece. The bench is long and thin, so it gets three small circles
-// along its seat (x -0.5, 0, 0.5, r 0.22) rotated by the decor's yaw, if it has one.
+// along its seat (x -0.5, 0, 0.5, r 0.22) rotated by the decor's yaw (or placement rot), if it has one.
+// unit: metres per decor coordinate (2 = legacy tile cells, 1 = raft-local metres).
 export const BENCH_CIRCLES = Object.freeze([[-.5, 0], [0, 0], [.5, 0]].map(([x, z]) => Object.freeze({x, z, r:.22})));
-export function decorBlockers(d, radii) {
-  const cx = d.x * 2, cz = d.z * 2;
+export function decorBlockers(d, radii, unit = 2) {
+  const cx = d.x * unit, cz = d.z * unit;
   if (d.type === 'bench') {
-    const yaw = Number.isFinite(d.yaw) ? d.yaw : 0, c = Math.cos(yaw), s = Math.sin(yaw);
+    const yaw = Number.isFinite(d.yaw) ? d.yaw : Number.isFinite(d.rot) ? d.rot : 0, c = Math.cos(yaw), s = Math.sin(yaw);
     return BENCH_CIRCLES.map(b => ({x:cx + b.x * c + b.z * s, z:cz - b.x * s + b.z * c, r:b.r}));
   }
   return radii[d.type] ? [{x:cx, z:cz, r:radii[d.type]}] : [];

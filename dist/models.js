@@ -564,7 +564,8 @@ const B = {
   cup(K) { cupBody(K); },
   water(K) {
     cupBody(K);
-    K.add(new T.CircleGeometry(0.069, K.seg(14)), 0x2f9fd8, { m: 'glass', p: [0, 0.152, 0], r: [-Math.PI / 2, 0, 0], jit: 0, col: (c, x, y) => c.lerp(_c2.set(0xbfe9f7), smooth(0.035, 0.069, Math.hypot(x, y)) * 0.7) });
+    // filled to the brim with a slightly domed, saturated blue surface so it reads apart from the empty cup in icons
+    K.add(lathe([[0.0705, 0.166], [0.05, 0.171], [0, 0.173]], K.seg(14)), 0x1f86e6, { m: 'plastic', jit: 0, col: (c, x, y, z) => { const r = Math.hypot(x, z); if (r > 0.06) c.set(0x9fe0ff); else if (Math.hypot(x + 0.022, z + 0.012) < 0.016) c.lerp(_c2.set(0xffffff), 0.55); } });
   },
   planter(K) {
     // terracotta pot sized for farming-view.js (height 0.5, open top r 0.36): the view adds its own soil disc

@@ -52,8 +52,8 @@
 export const WATER_Y = 0.05;
 
 const GRAVITY = 9.8;              // m/s^2
-const BASE_SPEED = 7;             // m/s launch speed at charge 0
-const CHARGE_SPEED = 11;          // extra m/s at charge 1
+const BASE_SPEED = 5;             // m/s launch speed at charge 0 (Raft-like: ~10 m level, ~18 m max)
+const CHARGE_SPEED = 7;           // extra m/s at charge 1
 const UP_BOOST = 1.0;             // m/s added to vertical launch velocity (throw flick)
 const MAX_DT = 0.05;              // s, frame dt clamp
 const SUBSTEP = 0.01;             // s, max integration step (≤ ~0.2 m per step at full speed)

@@ -14,21 +14,22 @@ const CSS_FILES = ['style.css', 'graphics.css'];
 // flattens the 6-level import waterfall. tests/live-preload.test.mjs keeps this list in step with the imports;
 // a stale entry only costs a wasted request, a missing one just loads late via the normal import.
 const PRELOAD = [
-  'audio.js', 'avatar.js', 'bake.js', 'bees-model.js', 'bees.js', 'bottle.js', 'build-menu.js', 'build-radial.js',
-  'build-rules.js', 'building-models.js', 'building-pieces.js', 'building.js', 'content-items.js', 'content.js',
-  'controls.js', 'cooking.js', 'coop-avatar.js', 'coop-delta.js', 'coop-feed.js', 'coop-fx.js', 'coop-interp.js',
-  'coop-loopback.js', 'coop-rules.js', 'coop.js', 'craft-book.js', 'crafts.js', 'daynight.js', 'debris.js',
-  'deck.js', 'diving-ui.js', 'diving.js', 'fish-journal.js', 'fish-models.js', 'fish-species.js',
-  'fishing-cooking.js', 'fishing-rules.js', 'fishing-tool.js', 'fishing-v2.js', 'hammer.js', 'hands.js',
-  'held-items.js', 'hook-physics.js', 'hook.js', 'input-map.js', 'input.js', 'instrument-models.js',
-  'instruments.js', 'inventory-state.js', 'islands-layout.js', 'islands-models.js', 'islands.js', 'item-icons.js',
-  'item-svg.js', 'item-tooltips.js', 'items.js', 'logbook-ui.js', 'logbook.js', 'materials.js', 'merge-geo.js',
-  'models.js', 'move-feel.js', 'ocean.js', 'pickup-feed.js', 'placement.js', 'plastic.js', 'player-physics.js',
-  'progression-hooks.js', 'progression.js', 'purifier-model.js', 'quality.js', 'rain-model.js', 'rain.js',
-  'sailing-core.js', 'sailing-ui.js', 'sailing-world.js', 'seafloor.js', 'session-rules.js', 'settings.js',
-  'signal-models.js', 'signal.js', 'smelter-model.js', 'smelter-ui.js', 'smelter.js', 'storage-research-model.js',
-  'storage-research.js', 'survival-ui.js', 'textures.js', 'underwater-fx.js', 'watering.js', 'wildlife-models.js',
-  'wildlife.js', 'wood.js',
+  'audio.js', 'avatar.js', 'bake.js', 'bees-model.js', 'bees.js', 'bottle.js', 'brush-model.js', 'build-menu.js',
+  'build-radial.js', 'build-rules.js', 'building-models.js', 'building-pieces.js', 'building.js', 'content-items.js',
+  'content.js', 'controls.js', 'cooking.js', 'coop-avatar.js', 'coop-delta.js', 'coop-feed.js', 'coop-fx.js',
+  'coop-interp.js', 'coop-loopback.js', 'coop-rules.js', 'coop.js', 'craft-book.js', 'crafts.js', 'daynight.js',
+  'debris.js', 'deck.js', 'diving-ui.js', 'diving.js', 'engine-models.js', 'engine.js', 'fish-journal.js',
+  'fish-models.js', 'fish-species.js', 'fishing-cooking.js', 'fishing-rules.js', 'fishing-tool.js', 'fishing-v2.js',
+  'hammer.js', 'hands.js', 'held-items.js', 'hook-physics.js', 'hook.js', 'hud.js', 'input-map.js', 'input-rules.js',
+  'input.js', 'instrument-models.js', 'instruments.js', 'inventory-state.js', 'islands-layout.js',
+  'islands-models.js', 'islands.js', 'item-icons.js', 'item-svg.js', 'item-tooltips.js', 'items.js', 'lock-rules.js',
+  'logbook-ui.js', 'logbook.js', 'materials.js', 'merge-geo.js', 'models.js', 'move-feel.js', 'ocean.js', 'paint.js',
+  'pickup-feed.js', 'placement.js', 'plastic.js', 'player-physics.js', 'progression-hooks.js', 'progression.js',
+  'purifier-model.js', 'quality.js', 'rain-model.js', 'rain.js', 'sailing-core.js', 'sailing-ui.js',
+  'sailing-world.js', 'scenery-islands.js', 'seafloor.js', 'session-rules.js', 'settings.js', 'signal-models.js',
+  'signal.js', 'sky.js', 'sleep-model.js', 'sleep.js', 'smelter-model.js', 'smelter-ui.js', 'smelter.js',
+  'storage-research-model.js', 'storage-research.js', 'survival-ui.js', 'textures.js', 'underwater-fx.js',
+  'watering.js', 'wildlife-models.js', 'wildlife.js', 'wood.js',
 ];
 
 const state = {
