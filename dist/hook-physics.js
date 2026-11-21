@@ -32,7 +32,9 @@
 //     onDeck      : true while the hook rests on (or is reeled across) the deck
 //     flightT     : seconds spent in flight (used by game.js for the spin animation)
 //
-//   update(dt, { hand, items, reeling = false, time, skip })
+//   update(dt, { hand, items, reeling = false, time, skip, flow })
+//     flow : optional {x,z} m/s extra water flow this frame (e.g. a sailing raft), added to the
+//            floating drift; a hook resting on the deck ignores it, and the hull revert undoes it.
 //     -> null | { kind:'collected', items:[{id,token,type}...], id, token } | { kind:'returned' }
 //     items: Array of { id, token, type, x, z } (or with .position). Never mutated.
 //     skip : optional predicate skip(item) -> truthy to ignore that item, exactly as if it were
@@ -118,6 +120,7 @@ export class HookCast {
     this._skip = null; // per-update skip predicate (see update)
     this._h = 0.01;    // current substep length (s) and its sim time, set by update()
     this._t = 0.01;
+    this._fx = 0; this._fz = 0; // per-update extra water flow (see update)
 
     // Thrown from at/below the water: it is simply in the water where it is.
     if (this.position.y <= WATER_Y) this._splash(this.position.x, this.position.z, null);
@@ -246,8 +249,8 @@ export class HookCast {
       if (dy !== null) { this.position.set(b.x, dy, b.z); return; }
       this.onDeck = false; // dragged off the edge: back in the water
     }
-    const vx = this.drift ? this.drift.x : Math.sin(time * 0.13) * 0.04;
-    const vz = this.drift ? this.drift.z : 0.22;
+    const vx = (this.drift ? this.drift.x : Math.sin(time * 0.13) * 0.04) + this._fx;
+    const vz = (this.drift ? this.drift.z : 0.22) + this._fz;
     b.x += vx * h; b.z += vz * h;
     const dragged = this._tether(b); // a walking player drags the floating hook along
     const dy = this._deckAt(b.x, b.z);
@@ -277,9 +280,10 @@ export class HookCast {
     return rem <= COLLECT_DIST;
   }
 
-  update(dt, { hand, items, reeling = false, time, skip } = {}) {
+  update(dt, { hand, items, reeling = false, time, skip, flow } = {}) {
     if (this.stage === 'done') return null;
     this._skip = typeof skip === 'function' ? skip : null;
+    this._fx = flow && fin(flow.x) ? flow.x : 0; this._fz = flow && fin(flow.z) ? flow.z : 0;
     dt = clamp(fin(dt) ? dt : 0, 0, MAX_DT);
     if (finVec(hand)) this._hand.set(hand.x, hand.y, hand.z);
     this._clock += dt;

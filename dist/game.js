@@ -1387,7 +1387,6 @@ export function mount(transfer = null) {
   }
   function updateHook(dt) {
     if (!hook) { rope.visible = false; hookMesh.visible = false; if (bobber) bobber.visible = false; return; }
-    if (hook.stage === 'floating' && hook.base) { hook.base.x += sailFlow.x * dt; hook.base.z += sailFlow.z * dt; } // [sailing] a floating hook drifts with the water
     if (hook.fishing) { // simple bobber animation, separate from HookCast
       hook.t += dt; const f = hook.t / hook.duration, u = Math.min(1, f * 5);
       const pos = fishPos.copy(handPos).lerp(hook.end, u);
@@ -1399,7 +1398,7 @@ export function mount(transfer = null) {
     }
     hookFull = holdForFullBag(hook, c => lootFits(localBag(), catchLoot(c, caughtLoot))); // full bag: keep the catch on the hook in the water
     // Each side skips the other's catch, but never lets go of what its own hook already holds (the first hook to claim an item keeps it).
-    const ev = hook.update(dt, {hand:handPos, items:hookableItems(world.items, {isPending, otherHeld:otherHeldTokens(), ownHeld:ownHeldTokens()}), reeling:reeling && !hookFull, time:elapsed});
+    const ev = hook.update(dt, {hand:handPos, items:hookableItems(world.items, {isPending, otherHeld:otherHeldTokens(), ownHeld:ownHeldTokens()}), reeling:reeling && !hookFull, time:elapsed, flow:sailFlow}); // [sailing] flow: the hook drifts with the water, but not while resting on the deck
     const hp = hook.position, pos = hookPos.set(hp.x, hook.onDeck ? hp.y : surfaceY(hp.x, hp.z, hp.y), hp.z); // on the planks it rests at deck height
     hookMesh.visible = true; hookMesh.position.copy(pos); bobber.visible = false;
     if (hook.stage === 'flying') hookMesh.rotation.set(-hook.flightT * Math.PI * 2, yaw, 0);

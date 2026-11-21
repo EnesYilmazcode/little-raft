@@ -102,6 +102,33 @@ test('HOOK-5: a hook that snags a supply and lands on the far deck keeps the cat
 });
 
 // ---------- round 3 ----------
+test('HOOK-R3-4: a hook resting on the deck ignores the sailing flow; a floating one drifts but never into the hull', () => {
+  const deckAt = (x, z) => (z > -3 && z < 3 && Math.abs(x) < 3 ? 0.22 : null), flow = { x: 0, z: 1.2 };
+  const hand = { x: 0, y: 1.25, z: 2 };
+  let h = null;
+  for (let c = 0; c <= 1 && !h; c += 0.05) {
+    const t = new HookCast(T, { origin: hand, direction: { x: 0, y: -0.2, z: -1 }, charge: c, deckAt });
+    for (let i = 0; i < 400 && t.stage === 'flying'; i++) t.update(1 / 60, { hand, items: [] });
+    if (t.onDeck) h = t;
+  }
+  assert.ok(h, 'a short throw lands on the planks');
+  const at = h.position.clone();
+  for (let i = 0; i < 240; i++) h.update(1 / 60, { hand, items: [], flow });
+  assert.equal(h.onDeck, true, 'still on the deck');
+  assert.ok(h.position.distanceTo(at) < 1e-6, `did not slide (${at.z} -> ${h.position.z})`);
+
+  const f = new HookCast(T, { origin: { x: 0, y: WATER_Y, z: -4 }, direction: { x: 0, y: 0, z: -1 }, drift: { x: 0, z: 0 }, deckAt });
+  f.update(0.02, { hand, items: [] }); assert.equal(f.stage, 'floating');
+  for (let i = 0; i < 300; i++) f.update(1 / 60, { hand, items: [], flow });
+  assert.ok(f.position.z <= -3 && !f.onDeck, `held off the hull, not clipped under the planks (z=${f.position.z})`);
+  const g = new HookCast(T, { origin: { x: 0, y: WATER_Y, z: -10 }, direction: { x: 0, y: 0, z: -1 }, drift: { x: 0, z: 0 } });
+  g.update(0.02, { hand, items: [] }); const gz = g.position.z;
+  for (let i = 0; i < 60; i++) g.update(1 / 60, { hand, items: [], flow });
+  assert.ok(Math.abs(g.position.z - gz - 1.2) < 0.05, 'open water: drifts with the flow');
+  assert.doesNotMatch(gameSrc, /hook\.base\.x \+= sailFlow/, 'game.js no longer pushes the hook itself');
+  assert.match(gameSrc, /time:elapsed, flow:sailFlow\}\)/);
+});
+
 test('HOOK-R3-2: catchLoot takes a per-item loot function (a barrel\'s own roll)', () => {
   const rolled = { a: { clay: 1, wood: 2 } };
   assert.deepEqual(catchLoot([{ token: 'a', type: 'barrel' }, { token: 'b', type: 'wood' }], it => rolled[it.token] ?? { wood: 2 }), { clay: 1, wood: 4 });
