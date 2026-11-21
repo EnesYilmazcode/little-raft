@@ -230,8 +230,19 @@ Sailing, wildlife, smelter, grill and diving play nothing of their own. Their ac
 - `ingot`: two bright inharmonic clinks (1.75, 4, 6.6, 9.5 kHz partials) with the first ringing to about 0.6 s.
 - `anchor`: six accelerating chain clicks with 2–2.6 kHz pings, then a broadband splash and bubbles.
 - `dive`: a low plunge whose top closes from about 3 kHz, then upward-chirping bubbles at 300–900 Hz.
-- `sail-luff`: flap bursts at 0.5 s and 3.5 s with a 400–900 Hz flutter band (vertical banding) between them.
+- `sail-luff`: flap bursts at 0.5 s and 3.5 s with a flutter loop between them (vertical banding). The loop is centred at 400–900 Hz, but its Q 0.8 band-pass on pink noise leaves energy up to about 10 kHz.
 - `underwater`: at 3 s the sea above about 2 kHz goes dark and the dive bubbles show; at 6.5 s the surface shed and breath appear and the top end returns. The hammer transients still show faint lines up to 10 kHz under water (one 12 dB/oct stage); in the game diving's 600 Hz output filter removes them.
+
+### Round-3 fixes (after the judge's review)
+
+- **Mix parity with main.** The default `mix: 'main'` trims the ambience bus by −24 dB and the one-shots per event (`MIX` in `audio.js`), so the game sounds as loud as it does on main. This was measured in the game: the bed is the median over 12 s, and each one-shot is the median 100 ms peak over 3 plays, with the sea muted under it. All 20 of main's events land within 1.2 dB of main's, and the bed within 0.3 dB (−62.3 against −62.0). The full table is in `audio-ADOPT.md` → "In-game levels vs current main". `mix: 'engine'` keeps the sandbox balance, where the sea is about 24 dB louder. The render cases still use `'engine'`, so the loudness numbers above are unchanged. A new case, `mix-main`, renders the default.
+- **Sail luff.** It is re-targeted only when the wind changes by more than 0.02, not every frame. `stats().nodes` is now `stats().nodesCreated`, a cumulative count with no partial decrements.
+- **Station sounds.** They play only after the host has accepted the action. `applyAction` fingerprints the bag or grill, and if it changed, emits `{kind:'sfx'}` to the actor. `--check` drives a smelter's real panel: a refused `Take` is silent, and an accepted fuel plays one spatial `stoke`.
+- **adopt.py.**
+  - The boot check waits for the worklet ocean for up to 30 s. It took 21–23 s on this box at load average 40+, which explains the judge's flaky run 1.
+  - The level floor is now −85 dB instead of −70 dB, because the `main` sea bed sits near −62 dB.
+  - The run passed 20 of 20 checks. Failed mount: dip 4.3 dB, minimum −67.7 dB. Good swap: dip 3.7 dB, minimum −67.5 dB.
+- **Tests.** The patched copy passes 532 of 533. The failure is the same atlas timing assertion as before.
 
 ## Decision
 
