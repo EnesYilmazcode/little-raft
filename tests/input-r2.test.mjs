@@ -8,6 +8,23 @@ import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
 const R = await import(new URL('input-rules.js', base));
 const gameSrc = readFileSync(fileURLToPath(new URL('game.js', base)), 'utf8');
+const { createInput } = await import(new URL('input.js', base));
+const { ActionMap } = await import(new URL('input-map.js', base));
+
+// Live-path harness: createInput on fake EventTargets, the same code players run (controls.js wraps it).
+function fire(t, type, props = {}) { const e = new Event(type, {cancelable:true}); for (const [k, v] of Object.entries(props)) Object.defineProperty(e, k, {value:v, configurable:true}); t.dispatchEvent(e); return e; }
+function live(opts = {}) {
+  const doc = new EventTarget(); doc.pointerLockElement = null; doc.visibilityState = 'visible';
+  const win = new EventTarget(); win.document = doc; const canvas = new EventTarget();
+  let blocked = false; const actions = [];
+  const input = createInput({target:win, element:canvas, map:new ActionMap({}), doc, isBlocked:() => blocked,
+    onAction:(id, p) => actions.push(id + ':' + p), getGamepads:() => [], ...opts});
+  return {doc, win, canvas, input, actions, block:v => { blocked = v; }, tick:(dt = 1 / 60) => input.update(dt),
+    down:(c, x = {}) => fire(win, 'keydown', {code:c, key:c, target:win, ...x}), up:c => fire(win, 'keyup', {code:c, key:c, target:win}),
+    lock() { doc.pointerLockElement = canvas; fire(doc, 'pointerlockchange'); },
+    move:(x, y = 0) => fire(doc, 'mousemove', {movementX:x, movementY:y}),
+    wheel:(props) => fire(canvas, 'wheel', {deltaMode:0, deltaX:0, deltaY:0, ...props})};
+}
 
 // ---------------------------------------------------------------- INPUT-1 held keys across panels
 
@@ -26,6 +43,38 @@ test('INPUT-1: opening a panel keeps held keys; only window blur wipes them', ()
   assert.doesNotMatch(fn('openInventory'), /clearInput/);
   assert.doesNotMatch(gameSrc, /onPause:\s*(guard\()?clearInput/);
   assert.match(gameSrc, /on\(window, 'blur', \(\) => \{ clearInput\(\)/);
+});
+
+test('INPUT3-1: W held through a panel walks on when it closes (createInput, autorepeat firing)', () => {
+  const s = live();
+  s.down('KeyW'); s.down('ShiftLeft'); s.tick();
+  assert.equal(s.input.move().forward, 1);
+  s.block(true); s.tick(); s.down('KeyW', {repeat:true}); s.tick();
+  assert.equal(s.input.move().forward, 0, 'no movement while the panel is open');
+  assert.equal(s.input.down('moveForward'), false);
+  s.block(false); s.down('KeyW', {repeat:true}); s.tick();
+  assert.equal(s.input.move().forward, 1);
+  assert.equal(s.input.sprinting(), true);
+  assert.equal(s.input.pressed('moveForward'), false, 'no new edge on close');
+  s.up('KeyW'); s.tick();
+  assert.equal(s.input.move().forward, 0);
+});
+
+test('INPUT3-1: a key pressed while blocked is recorded but fires nothing, even after the panel closes', () => {
+  const s = live();
+  s.block(true); s.down('KeyI'); s.down('KeyD'); s.tick();
+  s.block(false); s.tick();
+  assert.ok(!s.actions.includes('inventory:down'), 'the I that closed the bag must not reopen it');
+  assert.equal(s.input.pressed('inventory'), false);
+  assert.equal(s.input.move().strafe, 1, 'a movement key pressed behind the panel still moves');
+  s.up('KeyI'); s.tick(); s.down('KeyI'); s.tick();
+  assert.ok(s.actions.includes('inventory:down'), 'a fresh press after release acts again');
+});
+
+test('INPUT3-1: blur still forgets held keys', () => {
+  const s = live();
+  s.down('KeyW'); s.tick(); fire(s.win, 'blur'); s.tick();
+  assert.equal(s.input.move().forward, 0);
 });
 
 // ---------------------------------------------------------------- INPUT-2 look spike filter
