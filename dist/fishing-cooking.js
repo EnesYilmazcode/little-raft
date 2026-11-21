@@ -31,7 +31,7 @@ color:#fffdf4;background:#0d2a3a99;padding:5px 9px;border-radius:10px;text-shado
 padding:7px 14px;box-shadow:0 4px 14px #0005;animation:fcIn .25s ease-out;transition:opacity .4s}
 #fcToast div.soft{background:#d7e8f2f0;border-color:#8fb4c9}#fcToast div.out{opacity:0}
 @keyframes fcIn{from{transform:translateY(-14px);opacity:0}}
-@media(max-width:900px){#fcChip{bottom:auto;top:12px}}`;
+@media(max-width:900px){#fcChip{bottom:auto;top:12px}#fcToast{left:12px;top:58px;max-width:min(420px,calc(100vw - 130px))}} /* below the chip and #lb-toast, left of the compass */`;
 
 function cleanFish(f) {
   const sp = f && speciesById(f.species);
@@ -162,6 +162,8 @@ export function createFishingCooking(T, host) {
     if (a.kind === 'fc:take') {
       let slot = Number.isInteger(a.slot) ? a.slot : st.slots.findIndex((s) => s && s.state !== 'raw');
       if (!st.slots[slot] || st.slots[slot].state === 'raw') return;
+      // a cooked fish becomes an edible bag 'cookedfish' (actor's bag: the host fills a guest's here); no room -> it stays on the grill
+      if (st.slots[slot].state === 'cooked' && bag?.add && bag.add('cookedfish', 1) > 0) return say('Bag full: the grilled fish stays on the grill');
       const item = st.take(slot); syncFish(g); markChanged();
       give(actor, item); if (item.state === 'cooked') host.observe?.({ kind: 'cook', item: 'fish' }, actor); // [tasks]
       return say(`Took ${dishName(item.species, item.state)}`);
@@ -287,6 +289,7 @@ export function createFishingCooking(T, host) {
   function dropHeld() { if (!held) return; held.parent?.remove(held); held.userData.dispose?.(); held = null; }
   function onCatch(c) {
     const sp = speciesById(c?.species); if (!sp) return;
+    if (host.bagFits?.('fish', 1) === false) { host.action({ kind: 'fish' }); return; } // game.js says 'Bag full: the fish swam away': no journal/basket entry for it
     const prev = journal.entry(sp.id), res = journal.recordCatch(c);
     host.action({ kind: 'fish' });
     const stars = Math.max(1, Math.min(3, c.stars | 0 || 1));
