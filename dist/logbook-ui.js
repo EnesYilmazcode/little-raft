@@ -30,7 +30,7 @@ const CSS = `
 #logbook .lb-close:hover{transform:none;background:#00000022}
 #logbook .lb-close svg{width:22px;height:22px}
 #logbook .lb-close:focus-visible{outline:2px solid #ffe3a6;outline-offset:1px}
-#logbook .lb-tabs{display:flex;gap:6px}
+#logbook .lb-tabs{display:flex;flex-wrap:wrap;gap:6px}
 .lb [role=tab]{background:linear-gradient(180deg,#5a3f28e8,#3d2a19e8);box-shadow:inset 0 0 0 1px #d4b07a55;border:0;border-radius:4px;padding:8px 14px;color:#fff2cc;font:600 14px/1.2 ${FONT};cursor:pointer;transform:none}
 .lb [role=tab]:hover{transform:none;filter:brightness(1.08)}
 .lb [role=tab][aria-selected=true]{background:linear-gradient(180deg,#b3925acc,#8a6a3ccc);box-shadow:inset 0 0 0 2px #ffe3a6}
