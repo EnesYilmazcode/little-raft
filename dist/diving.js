@@ -7,6 +7,7 @@
 //   init:   diving = createDiving({T, scene, camera, ocean, islands, getTiles:() => world.tiles, getDeckY:deckY,
 //             onGather:id => action({kind:'gather', id}), restore:savedDiveState, getMods:out => content?.diveMods?.(out)});
 //   getMods(out): fills a {swim, oxy, fog, gather} multiplier object (1 = neutral) each frame; clamped here (docs/specs/diving-gear.md).
+//   getTargets(x,y,z,r,out): push extra hold-E targets {id,x,y,z,secs,label,done(id),hover(id|null)} into out (docs/specs/shipwreck.md)
 //   gather success (host): broadcast so EVERY client (host too) calls diving.markGathered(id).
 //   movePlayer: if (!diving?.move(dt, physics, {forward, strafe, yaw, pitch, up, down, fast, gather})) physics.update(...)
 //             (replacing `physics` mid-dive drops the dive automatically; diving.cancel() forces it.)
@@ -159,7 +160,7 @@ export class DiveBody {
 const NAMES = { sand: 'Sand', clay: 'Clay', scrap: 'Scrap', metalore: 'Metal ore' };
 const token = () => `${Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) * 1000).toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-export function createDiving({ T, scene, camera, ocean, islands = [], getTiles = () => [], getDeckY = () => 0.2, onGather, restore, hideAbove = [], getMods = null } = {}) {
+export function createDiving({ T, scene, camera, ocean, islands = [], getTiles = () => [], getDeckY = () => 0.2, onGather, restore, hideAbove = [], getMods = null, getTargets = null } = {}) {
   const mount = token();
   let seafloor = null, fx = null, ui = null;
   try {
@@ -191,12 +192,13 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
   const uiState = { underwater: false, oxygen01: 1, gather01: 0, rising: false, lowOxygen: false, gatherLabel: '', completed: false };
   const detail = { underwater: false, depth: 0, mount };
   const mods = { swim: 1, oxy: 1, fog: 1, gather: 1 };
+  const extra = []; let targetExt = null; // extra (content) targets, reused array
   function readMods() { mods.swim = mods.oxy = mods.fog = mods.gather = 1; if (getMods) { try { getMods(mods); } catch (e) { console.error('dive mods failed', e); } }
     mods.swim = clamp(fin(mods.swim, 1), 0.5, 2); mods.oxy = clamp(fin(mods.oxy, 1), 0.5, 3); mods.fog = clamp(fin(mods.fog, 1), 0.5, 2); mods.gather = clamp(fin(mods.gather, 1), 0.25, 2); }
 
   function resetGather() {
     gather = 0; needRelease = false;
-    if (targetId !== null) { targetId = targetType = null; try { seafloor.highlight?.(null); } catch {} }
+    if (targetId !== null) { targetId = targetType = null; try { seafloor.highlight?.(null); } catch {} if (targetExt) { try { targetExt.hover?.(null); } catch {} targetExt = null; } }
   }
   function cancel() { body = null; owner = null; rising = false; resetGather(); }
 
@@ -254,19 +256,26 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
       const ang = Math.acos(clamp((vx * dx + vy * dy + vz * dz) / dist, -1, 1));
       if (ang <= DIVE.GATHER_CONE && ang + dist * 0.05 < bestScore) { bestScore = ang + dist * 0.05; best = n; }
     }
+    let bestExt = null;
+    if (getTargets) { extra.length = 0; try { getTargets(p.x, p.y, p.z, DIVE.REACH + 0.5, extra); } catch (e) { console.error('dive targets failed', e); extra.length = 0; }
+      for (let i = 0; i < extra.length; i++) { const t = extra[i]; if (!t || typeof t.id !== 'string' || pending.has(t.id)) continue;
+        const vx = t.x - p.x, vy = t.y - p.y, vz = t.z - p.z, dist = Math.hypot(vx, vy, vz);
+        if (!(dist <= DIVE.REACH) || dist < 1e-4) continue;
+        const ang = Math.acos(clamp((vx * dx + vy * dy + vz * dz) / dist, -1, 1));
+        if (ang <= DIVE.GATHER_CONE && ang + dist * 0.05 < bestScore) { bestScore = ang + dist * 0.05; best = null; bestExt = t; } } }
     if (!lastInput.gather) needRelease = false;
-    const id = best ? best.id : null;
+    const id = bestExt ? bestExt.id : best ? best.id : null;
     if (id !== targetId) {
-      gather = 0; targetId = id; targetType = best ? best.type : null;
-      try { seafloor.highlight?.(id); } catch {}
+      gather = 0; targetId = id; targetType = bestExt ? 'ext' : best ? best.type : null; try { seafloor.highlight?.(best ? id : null); } catch {} if (targetExt && targetExt !== bestExt) { try { targetExt.hover?.(null); } catch {} } targetExt = bestExt; if (bestExt) { try { bestExt.hover?.(id); } catch {} }
     }
     if (id === null || !lastInput.gather || needRelease) { gather = 0; return; }
-    gather += dt / ((DIVE.GATHER_SLOW[targetType] ?? DIVE.GATHER_SECONDS) * mods.gather);
+    gather += dt / ((targetExt ? clamp(fin(targetExt.secs, 1), 0.2, 5) : (DIVE.GATHER_SLOW[targetType] ?? DIVE.GATHER_SECONDS)) * mods.gather);
     if (gather >= 1) {
       gather = 0; needRelease = true; pending.set(id, DIVE.PENDING);
+      const ext = targetExt; targetExt = null;
       targetId = targetType = null; try { seafloor.highlight?.(null); } catch {}
       completed = true;
-      try { onGather?.(id); } catch (e) { console.error('gather failed', e); }
+      try { if (ext) { ext.hover?.(null); ext.done?.(id); } else onGather?.(id); } catch (e) { console.error('gather failed', e); }
     }
   }
 
@@ -304,7 +313,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
     if (show !== floorShown) { floorShown = show; seafloor.group.visible = show; }
     if (show && !failed.has('seafloor')) { try { seafloor.update(dt, camera, time); } catch (e) { fail('seafloor', e); } }
     if (ui && !failed.has('ui')) {
-      if (labelId !== targetId) { labelId = targetId; label = targetId ? `Hold E · ${NAMES[targetType] ?? targetType}` : ''; }
+      if (labelId !== targetId || targetExt) { labelId = targetId; label = targetId ? (targetExt ? String(targetExt.label || 'Hold E') : `Hold E · ${NAMES[targetType] ?? targetType}`) : ''; }
       uiState.underwater = underwater; uiState.oxygen01 = oxygen; uiState.gather01 = gather; uiState.rising = rising;
       uiState.lowOxygen = lowOxygen; uiState.gatherLabel = label; uiState.completed = completed;
       try { ui.update(uiState); } catch (e) { fail('ui', e); try { ui.dispose(); } catch {} }
@@ -326,6 +335,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
   return {
     warm(r) { try { fx.warm?.(r); } catch (e) { console.error('dive warm failed', e); } }, // optional shader pre-compile
     move, update, audioOut, markGathered, cancel, mount,
+    warp(physics, x, y, z) { if (!body) { body = new DiveBody({ x, y, z, vx: 0, vy: 0, vz: 0, oxygen }); owner = physics; } body.x = x; body.y = y; body.z = z; body.vx = body.vy = body.vz = 0; return true; }, // [shipwreck] QA warp
     render(renderer) { if (!failed.has('fx')) { try { fx.render(renderer); } catch (e) { killFx(e); } } },
     onChange(fn) { if (typeof fn === 'function') listeners.add(fn); return () => listeners.delete(fn); },
     capture() { return { oxygen, regrow: [...regrow] }; },
