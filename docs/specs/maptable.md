@@ -158,3 +158,18 @@ docked, `raftDebug.content.maptable` helpers to add 3 islands, 3 pins and a trai
 Shots: (a) desktop 1280×800 dialog at 600 m with raft, trail, islands + ticks, pins, signal wedge (receiver + 1
 antenna placed); (b) desktop 10 km scale; (c) phone 390×844 dialog: canvas fits, list below, 44 px buttons,
 no horizontal scroll; (d) the table model on the deck + prompt "E Read the chart". Check console clean, `npm test` green.
+
+## Build notes (deviations from the spec above)
+- **Net cheap path**: `load(d,'net')` skips only when the previous load was also `'net'` and `rev` matches. A plain
+  `rev` check would let a guest's own saved chart (same `rev` by chance) hide the host's chart forever.
+- **Model API**: `createMapTableModel(T)` returns a new Group each call; geometries/materials are cached per `T` and
+  marked `userData.shared` with a no-op `dispose()` (the ghost preview in `placement.js` disposes original materials).
+  7 meshes (legs + stretcher merged into one geometry, ink cross = 2 thin boxes).
+- **craft-book.js** also needed `maptable` in `CATEGORY_OF` ('building') and `ITEM_TEXT` (survival.test requires text
+  for every kind); icon drawn in `item-svg.js` `ITEM_ICONS.maptable`.
+- **Canvas size**: `min(92vw - 28px, 70dvh, 560px)` (the wood frame padding would overflow at 92vw); on
+  `max-width:520px` `min(100vw - 44px, 62dvh)` with the list forced open and the tool row split in two.
+- **Extras**: scale bar (quarter width) and a faint range ring at half scale; mouse wheel / `+` `-` keys zoom; the list
+  refreshes distances at most 1 Hz. `debug` also has `place(x,z,type)` (QA: put a decor without the bag/unlock route),
+  `aimAt()`, `target()`, `ui()` (dialog debug incl. `select(seed)`, `tap(x,y)`, `screen(x,z)`).
+- "Charted …" notice goes to everyone (`emit(...,'all')`); the course notice is local (`ctx.notice`).
