@@ -111,6 +111,7 @@ export function companionBodyGeometry(T) {
   const ball = (w, h) => new T.SphereGeometry(1, w, h);
   P.push(piece(T, ball(10, 7), (x, y, z) => (y > .42 && z < .55 ? grey : white), [0, .215, -.03, 0, 0, 0, .12, .11, .25])); // body, grey saddle on top
   P.push(piece(T, ball(10, 7), white, [0, .355, .2, 0, 0, 0, .092, .088, .095])); // a big round head
+  P.push(piece(T, ball(8, 6), white, [0, .295, .12, 0, 0, 0, .085, .08, .095])); // neck: joins the head to the body from every side
   P.push(piece(T, new T.ConeGeometry(.026, .11, 5), 0xf5c518, [0, .338, .31, Math.PI / 2, 0, 0])); // yellow beak
   P.push(piece(T, ball(4, 3), 0xe0452b, [0, .327, .34, 0, 0, 0, .011, .01, .011])); // the red beak spot
   for (const s of [-1, 1]) {
