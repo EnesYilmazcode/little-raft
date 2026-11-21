@@ -395,11 +395,23 @@ function toCount(v) {
   return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), Number.MAX_SAFE_INTEGER) : 0;
 }
 
+// Bag kinds owned by other lanes (watering, signal, farming...) that live in ITEM_INFO but not in ITEMS.
+// inventory-state.js registers them so save/load and co-op snapshots keep them instead of dropping them.
+const EXTRA_KINDS = new Map();
+export function registerBagKinds(info) {
+  for (const [id, e] of Object.entries(info || {})) {
+    if (hasOwn(ITEMS, id) || !e || typeof e !== 'object') continue;
+    const stack = Math.max(1, Math.floor(num(e.maxStack)) || 1);
+    EXTRA_KINDS.set(id, Object.freeze({ id, stack, tool: !!e.tool }));
+  }
+}
+const known = (k) => isItem(k) || EXTRA_KINDS.has(k);
+
 function resolveKind(kind) {
   if (typeof kind !== 'string') return null;
-  if (isItem(kind)) return kind;
+  if (known(kind)) return kind;
   const k = kind.trim().toLowerCase();
-  if (isItem(k)) return k;
+  if (known(k)) return k;
   return hasOwn(LEGACY_ALIASES, k) ? LEGACY_ALIASES[k] : null;
 }
 
@@ -427,7 +439,7 @@ export function migrateSnapshot(snap) {
     const kind = resolveKind(raw.kind);
     let count = toCount(raw.count);
     if (!kind || count === 0) continue;
-    const it = ITEMS[kind];
+    const it = ITEMS[kind] || EXTRA_KINDS.get(kind);
     const base = { kind };
     if (it.tool) base.durability = durOf(raw.durability);
     if (typeof raw.id === 'string' && raw.id && !ids.has(raw.id)) { ids.add(raw.id); base.id = raw.id; }
@@ -441,7 +453,7 @@ export function migrateSnapshot(snap) {
     }
   }
   for (const o of overflow) {
-    const max = ITEMS[o.kind].stack;
+    const max = (ITEMS[o.kind] || EXTRA_KINDS.get(o.kind)).stack;
     let left = o.count;
     if (max > 1) {
       for (const s of slots) {
