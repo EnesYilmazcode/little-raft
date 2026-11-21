@@ -31,9 +31,9 @@ export const ITEM_INFO = Object.freeze({
   crate:      Object.freeze({ kind: 'crate',      name: 'Crate',        icon: 'icon-barrel',  maxStack: STACK_SIZE, tool: false, placeholder: true }),
   ...CONTENT_ITEMS, // content hook
   // Diving lane (docs/cloud/diving.md): seafloor resources gathered underwater.
-  sand:       Object.freeze({ kind: 'sand',       name: 'Sand',         icon: 'icon-sand' ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
-  clay:       Object.freeze({ kind: 'clay',       name: 'Clay',         icon: 'icon-clay' ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
-  metalore:   Object.freeze({ kind: 'metalore',   name: 'Metal Ore',    icon: 'icon-ore'  ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  sand:       Object.freeze({ kind: 'sand',       name: 'Sand',         icon: 'icon-scrap' ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  clay:       Object.freeze({ kind: 'clay',       name: 'Clay',         icon: 'icon-scrap' ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  metalore:   Object.freeze({ kind: 'metalore',   name: 'Metal Ore',    icon: 'icon-scrap'  ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
 });
 
 export const ITEM_KINDS = Object.freeze(Object.keys(ITEM_INFO));
