@@ -1,4 +1,5 @@
-// Little Raft vitals HUD: health / food / water bars (lower left, above the fish-journal chip),
+// Little Raft vitals HUD: health / food / water bars (lower left, above the fish-journal chip and below the
+// #lrFeed / #coopFeed event feeds, which sit at bottom:132px (184px on narrow screens) to clear it),
 // a red vignette while hunger or thirst drains health, a short red flash on any hit, and the
 // "You passed out" overlay. DOM is written only when a rounded value or a state flag changes.
 //
@@ -39,7 +40,7 @@ const CSS = `
 #lrFaint.on{opacity:1}
 #lrFaint div{font:700 30px/1.2 ${FONT};color:#f6ecd6;letter-spacing:.04em;text-shadow:0 2px 6px #000}
 #lrFaint small{display:block;margin-top:8px;font:500 14px/1.3 ${FONT};letter-spacing:0;opacity:.8;text-align:center}
-@media(max-width:760px){#lrVitals{bottom:96px;width:132px;padding:5px 7px 6px 5px;gap:4px}#lrVitals .lv-row{grid-template-columns:14px 1fr 22px;gap:4px}
+@media(max-width:760px){#lrVitals{bottom:108px;width:132px;padding:5px 7px 6px 5px;gap:4px}#lrVitals .lv-row{grid-template-columns:14px 1fr 22px;gap:4px}
   #lrVitals svg{width:14px;height:14px}#lrVitals .lv-track{height:7px}}
 @media(prefers-reduced-motion:reduce){#lrVitals .lv-fill{transition:none}#lrVitals .lv-low .lv-track,#lrVitalsVignette.on{animation:none}#lrVitalsFlash.hit{animation-duration:.2s}}
 `;
