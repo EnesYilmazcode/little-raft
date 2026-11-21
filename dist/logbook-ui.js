@@ -57,7 +57,7 @@ const CSS = `
 #lb-toast[hidden]{display:none}
 #lb-toast .lb-icon{width:24px;height:24px;flex:none}#lb-toast span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 @media (prefers-reduced-motion:reduce){#lb-toast{transition:none;transform:none}}
-@media (max-width:760px){#lb-toast{top:12px;right:12px;max-width:calc(100vw - 140px)}} /* narrow: right of #fcChip (top-left), above the compass */
+@media (max-width:760px){#lb-toast{top:12px;right:12px;max-width:calc(100vw - 180px);max-height:52px;white-space:normal;line-height:1.2}} /* narrow: right of #fcChip (top-left), wraps to two lines, ends above the compass (top:64px) */
 /* One line, at most 40px tall: ends above #sailBadge (top:64px, sailing-ui.js); the width cap keeps it right of the centred signal pill. */
 .lb-tk-head{margin:0 0 8px;font:600 12px/1.3 ${FONT};letter-spacing:.06em;text-transform:uppercase;color:#d6b67e}
 .lb-tk-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}

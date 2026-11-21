@@ -31,7 +31,7 @@ color:#fffdf4;background:#0d2a3a99;padding:5px 9px;border-radius:10px;text-shado
 padding:7px 14px;box-shadow:0 4px 14px #0005;animation:fcIn .25s ease-out;transition:opacity .4s}
 #fcToast div.soft{background:#d7e8f2f0;border-color:#8fb4c9}#fcToast div.out{opacity:0}
 @keyframes fcIn{from{transform:translateY(-14px);opacity:0}}
-@media(max-width:900px){#fcChip{bottom:auto;top:12px}#fcToast{left:12px;top:58px;max-width:min(420px,calc(100vw - 130px))}} /* below the chip and #lb-toast, left of the compass */`;
+@media(max-width:900px){#fcChip{bottom:auto;top:12px}#fcToast{left:12px;top:66px;max-width:min(420px,calc(100vw - 130px))}} /* below the chip and #lb-toast, left of the compass */`;
 
 function cleanFish(f) {
   const sp = f && speciesById(f.species);
