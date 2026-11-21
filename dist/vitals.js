@@ -8,6 +8,10 @@
 //   FOOD[kind] = {food, water, returns?} // other lanes may add entries (addFood helper validates)
 //   cleanVitals(raw)                     // save validation: -> {hp, food, water} (missing/invalid -> full)
 //   saveVitals(v)                        // -> {hp, food, water} rounded to 0.1 for the save
+//
+// Death is gentle (like Raft's Easy mode): at hp 0 the player "passes out", then wakes at the raft centre with
+// RESPAWN bars and keeps the whole inventory. game.js owns that flow and exposes hurtPlayer(n, cause)
+// (contentCtx.hurtPlayer for content modules, raftDebug.hurt for tests); it always hurts the LOCAL player.
 
 export const MAX = 100;
 export const HUNGER_RATE = 0.09;  // food per second

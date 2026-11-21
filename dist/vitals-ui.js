@@ -35,7 +35,7 @@ const CSS = `
 #lrVitalsFlash{background:radial-gradient(ellipse at center,rgba(200,20,0,.12) 30%,rgba(190,15,0,.6) 100%)}
 #lrVitalsFlash.hit{animation:lvHit .45s ease-out}
 @keyframes lvHit{from{opacity:1}to{opacity:0}}
-#lrFaint{position:fixed;inset:0;z-index:40;pointer-events:none;display:grid;place-items:center;background:#0b0604e6;opacity:0;transition:opacity .5s ease}
+#lrFaint{position:fixed;inset:0;z-index:2147482000;pointer-events:none;display:grid;place-items:center;background:#0b0604e6;opacity:0;transition:opacity .5s ease}
 #lrFaint.on{opacity:1}
 #lrFaint div{font:700 30px/1.2 ${FONT};color:#f6ecd6;letter-spacing:.04em;text-shadow:0 2px 6px #000}
 #lrFaint small{display:block;margin-top:8px;font:500 14px/1.3 ${FONT};letter-spacing:0;opacity:.8;text-align:center}
