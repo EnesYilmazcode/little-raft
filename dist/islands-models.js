@@ -152,7 +152,7 @@ function bushGeometry(T) {
 
 function rockGeometry(T) {
   const g = lumpy(T, new T.DodecahedronGeometry(.5, 1), .16, 1, .8, 1);
-  const a = new T.Color('#8d8f8a'), b = new T.Color('#b5b4ac'), moss = new T.Color('#6f7f5a');
+  const a = new T.Color('#7d807e'), b = new T.Color('#a7a9a5'), moss = new T.Color('#6f7f5a');
   paint(T, g, (x, y, z, c) => { c.copy(a).lerp(b, smooth(-.3, .4, y) * (.6 + noise(x, y, z) * .4)); if (y < -.18) c.lerp(moss, .35); });
   g.translate(0, .22, 0);
   return merge(T, [g]);
