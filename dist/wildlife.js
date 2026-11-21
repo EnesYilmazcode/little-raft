@@ -452,6 +452,7 @@ export function createWildlife(ctx) {
     },
     get clock() { return now(); },
     get offset() { return offset; },
+    get circler() { return built && cir.kind ? cir : null; }, // live dolphin/turtle pose (raft frame), read by shark.js to keep out of its lane
   };
 
   // ------------------------------------------------------------------ QA helpers (local only, never serialized)
