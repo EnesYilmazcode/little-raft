@@ -6,9 +6,14 @@ folders, pixel-diff them with numpy and write a labelled contact sheet (PNG + HT
       frames. A scene over --self-fail-over percent is a failure (exit 1).
 
   python3.13 tools/visual-diff.py --base <main-dist> --head <branch-dist> [--out <dir>] [--fail-on-diff]
-      Informational diff between two builds. Diffs are reported in metrics and on the sheet; they only fail
-      the run with --fail-on-diff (scene over --fail-over percent). Add --check-determinism to also render
-      head a second time and gate on its noise floor.
+      The fleet gate's call. Renders base once and head twice. Head must be deterministic, boot and render every
+      scene without page errors (else exit 1). The diff vs base is informational: differentScenes and
+      perScenePct in metrics plus the sheet; it fails the run only with --fail-on-diff (scene over --fail-over
+      percent). --no-check-determinism renders head once and skips the noise gate.
+
+Base renders are cached in $RAFT_VISUAL_CACHE (default ~/.cache/raft-visual), keyed by a hash of the base dist
+tree, this tool, determinism.js, harness.py, the Chromium version and the seed, since every branch is compared
+with the same main. Only successful renders are cached; --no-cache re-renders. Delete the directory to reset.
 
 Every scene runs in a fresh browser context with tools/determinism.js injected and the page opened at
 ?seed=<n>&freeze=1: Math.random is seeded; performance.now, Date, setTimeout/setInterval and
@@ -16,14 +21,15 @@ requestAnimationFrame run on a virtual clock advanced only by window.__det.step(
 are removed (the game falls back to drag-to-look); WebGL draws are skipped on every stepped frame except the
 last one before a screenshot; any request that is not to the local server is blocked (today only the Google
 Fonts stylesheet, so text uses fallback fonts). live.js still polls version.json, but on the virtual clock, and
-an unchanged build never swaps. Runs go side by side in --jobs browsers. Same build twice is byte-identical
-under swiftshader, across runs and processes. Timing on a loaded 4-core box: about 3.5 min for --dist or
---base/--head, about 7 min with --check-determinism.
+an unchanged build never swaps. Scene renders are spread over --jobs browsers (one per thread, fresh context
+per render) from one queue, longest scenes first. A render that fails without any page error (a timeout on a
+busy box) is retried once and listed in metrics.retried. Same build twice is byte-identical under swiftshader,
+across runs, browsers and processes, also with other instances and a CPU burner running.
 
 Last stdout line is one JSON object {tool, pass, failures, metrics, artifacts}. Exit 0 pass, 1 failure
 (nondeterminism, page error, scene unreachable, or --fail-on-diff diff), 2 harness/infra error.
 """
-import argparse, html, json, sys, threading, time, traceback
+import argparse, hashlib, html, json, os, queue, shutil, sys, threading, time, traceback
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -102,7 +108,13 @@ def run_steps(page, steps):
     for s in steps:
         k = s[0]
         if k == 'frames': step(s[1])
-        elif k == 'click': page.click(s[1], timeout=10000)
+        elif k == 'click':
+            # Playwright's actionability wait (visible, stable over two real compositor frames, receives events) can
+            # exceed any timeout on a box at load 30, and the virtual clock means nothing moves anyway. Check the
+            # target is there and visible ourselves, then send the same real mouse click without that wait.
+            loc = page.locator(s[1])
+            loc.wait_for(state='visible', timeout=60000)
+            loc.click(force=True, timeout=60000)
         elif k == 'key': page.keyboard.press(s[1])
         elif k == 'hold':
             page.keyboard.down(s[1]); step(s[2]); page.keyboard.up(s[1])
@@ -125,56 +137,99 @@ def wait_js(page, expr, timeout_s):
     return False
 
 
-def capture(browser, dist, out, names, seed, label):
-    """Render every scene of one dist into out/<scene>.png. Returns {scene: info}."""
-    out.mkdir(parents=True, exist_ok=True)
-    meta = {}
-    with StaticServer(dist) as srv:
-        url = f'{srv.url}?seed={seed}&freeze=1'
-        for name in names:
-            t0 = time.time(); info = {'ok': False, 'errors': [], 'console': [], 'blocked': []}
-            ctx = browser.new_context(viewport={'width': W, 'height': H}, device_scale_factor=1,
-                                      reduced_motion='reduce', locale='en-US', timezone_id='UTC',
-                                      service_workers='block')
-            ctx.add_init_script(SHIM)
+def render_scene(browser, url, name, png):
+    """Render one scene in a fresh context of `browser` (page at `url`) into `png`. Returns the scene info."""
+    t0 = time.time(); info = {'ok': False, 'errors': [], 'console': [], 'blocked': []}
+    ctx = browser.new_context(viewport={'width': W, 'height': H}, device_scale_factor=1,
+                              reduced_motion='reduce', locale='en-US', timezone_id='UTC',
+                              service_workers='block')
+    try:
+        ctx.add_init_script(SHIM)
 
-            def route(r, _req, i=info['blocked']):
-                host = urlparse(r.request.url).hostname
-                if host in ('127.0.0.1', 'localhost') or r.request.url.startswith('data:'):
-                    r.continue_()
-                else:
-                    i.append(r.request.url[:200]); r.abort()
-            ctx.route('**/*', route)
-            page = ctx.new_page()
-            page.on('pageerror', lambda e, i=info: i['errors'].append('pageerror: ' + str(e)[:300]))
-            page.on('console', lambda m, i=info: m.type == 'error' and i['console'].append(m.text[:300]))
-            try:
-                page.goto(url, wait_until='load', timeout=60000)
-                if not wait_js(page, '!!window.__det && !!window.__det.step', 10):
-                    raise RuntimeError('determinism shim did not install (window.__det missing)')
-                wait_js(page, "!!window.raftDebug || !!document.getElementById('raftLiveError')", 45)
-                if not page.evaluate('!!window.raftDebug'):
-                    # The page loaded and the shim ran, so a missing raftDebug with live.js's fatal panel, a page error or
-                    # a console error means the game build is broken (exit 1); a silent stall stays an infra error.
-                    fatal = page.evaluate("document.getElementById('raftLiveError')?.innerText || ''")
-                    info['booted'] = bool(fatal or info['errors'] or info['console'])
-                    why = fatal or '; '.join(info['errors'] + info['console'])
-                    raise RuntimeError('window.raftDebug never appeared (game did not boot): ' + ' '.join(why.split())[:300])
-                info['booted'] = True
-                run_steps(page, SCENES[name])
-                page.screenshot(path=str(out / f'{name}.png'), caret='hide', timeout=60000)
-                try: info['state'] = page.evaluate(STATE_JS)
-                except Exception as e: info['errors'].append('state: ' + str(e).splitlines()[0][:200])
-                info['ok'] = True
-            except Exception as e:
-                info['exception'] = str(e).splitlines()[0][:300]
-            info['seconds'] = round(time.time() - t0, 2)
-            meta[name] = info
-            ctx.close()
-            print(f'  {label}:{name} {"ok" if info["ok"] else "FAILED " + info.get("exception", "")} {info["seconds"]}s',
-                  file=sys.stderr)
-    (out / 'capture.json').write_text(json.dumps(meta, indent=1), encoding='utf-8')
-    return meta
+        def route(r, _req, i=info['blocked']):
+            host = urlparse(r.request.url).hostname
+            if host in ('127.0.0.1', 'localhost') or r.request.url.startswith('data:'):
+                r.continue_()
+            else:
+                i.append(r.request.url[:200]); r.abort()
+        ctx.route('**/*', route)
+        page = ctx.new_page()
+        page.set_default_timeout(120000)
+        page.on('pageerror', lambda e, i=info: i['errors'].append('pageerror: ' + str(e)[:300]))
+        page.on('console', lambda m, i=info: m.type == 'error' and i['console'].append(m.text[:300]))
+        try:
+            page.goto(url, wait_until='load', timeout=120000)
+            if not wait_js(page, '!!window.__det && !!window.__det.step', 30):
+                raise RuntimeError('determinism shim did not install (window.__det missing)')
+            wait_js(page, "!!window.raftDebug || !!document.getElementById('raftLiveError')", 120)
+            if not page.evaluate('!!window.raftDebug'):
+                # The page loaded and the shim ran, so a missing raftDebug with live.js's fatal panel, a page error or
+                # a console error means the game build is broken (exit 1); a silent stall stays an infra error.
+                fatal = page.evaluate("document.getElementById('raftLiveError')?.innerText || ''")
+                info['booted'] = bool(fatal or info['errors'] or info['console'])
+                why = fatal or '; '.join(info['errors'] + info['console'])
+                raise RuntimeError('window.raftDebug never appeared (game did not boot): ' + ' '.join(why.split())[:300])
+            info['booted'] = True
+            run_steps(page, SCENES[name])
+            page.screenshot(path=str(png), caret='hide', timeout=120000)
+            try: info['state'] = page.evaluate(STATE_JS)
+            except Exception as e: info['errors'].append('state: ' + str(e).splitlines()[0][:200])
+            info['ok'] = True
+        except Exception as e:
+            info['exception'] = str(e).splitlines()[0][:300]
+    finally:
+        try: ctx.close()
+        except Exception: pass
+    info['seconds'] = round(time.time() - t0, 2)
+    return info
+
+
+def tree_hash(root):
+    """sha256 over every file path and content under root (sorted), so any change to a dist tree changes it."""
+    h = hashlib.sha256()
+    for p in sorted(root.rglob('*')):
+        if p.is_file():
+            h.update(str(p.relative_to(root)).encode() + b'\0')
+            h.update(hashlib.sha256(p.read_bytes()).digest())
+    return h.hexdigest()
+
+
+def cache_root():
+    return Path(os.environ.get('RAFT_VISUAL_CACHE') or Path.home() / '.cache' / 'raft-visual')
+
+
+def cache_key(base, seed, browser_version):
+    """Key for cached base renders: the base dist tree, the renderer (this tool, the shim, the harness, Chromium)
+    and the seed. Editing any of them re-renders base; the same main build is rendered once per machine."""
+    h = hashlib.sha256()
+    for part in (tree_hash(base), (HERE / 'determinism.js').read_bytes(), Path(__file__).read_bytes(),
+                 (ROOT / 'tests' / 'e2e' / 'harness.py').read_bytes(), browser_version, str(seed), f'{W}x{H}'):
+        h.update(part if isinstance(part, bytes) else part.encode()); h.update(b'\0')
+    return h.hexdigest()[:32]
+
+
+def cache_get(cdir, name, png):
+    meta = cdir / f'{name}.json'
+    try:
+        info = json.loads(meta.read_text(encoding='utf-8'))
+        shutil.copyfile(cdir / f'{name}.png', png)
+    except Exception:
+        return None
+    info['cached'] = True
+    return info
+
+
+def cache_put(cdir, name, png, info):
+    # Only good renders are cached (a timeout under load must not stick). Written to temp names and renamed, so a
+    # concurrent run sees either nothing or a complete entry; the .json is published last and marks it complete.
+    try:
+        cdir.mkdir(parents=True, exist_ok=True)
+        tag = f'.{os.getpid()}.{threading.get_ident()}.tmp'
+        shutil.copyfile(png, cdir / f'{name}.png{tag}'); os.replace(cdir / f'{name}.png{tag}', cdir / f'{name}.png')
+        (cdir / f'{name}.json{tag}').write_text(json.dumps(info), encoding='utf-8')
+        os.replace(cdir / f'{name}.json{tag}', cdir / f'{name}.json')
+    except OSError as e:
+        print(f'  cache write failed for {name}: {e}', file=sys.stderr)
 
 
 def diff(a_png, b_png, d_png, tol):
@@ -296,8 +351,12 @@ def main():
     ap.add_argument('--self-fail-over', type=float, default=0.05, help='self-check: percent of changed pixels that counts as nondeterminism (default 0.05)')
     ap.add_argument('--self-tol', type=int, default=2, help='per-channel tolerance for the determinism comparison (default 2: same build must be near pixel-identical)')
     ap.add_argument('--fail-on-diff', action='store_true', help='base/head: fail (exit 1) when a scene differs over --fail-over')
-    ap.add_argument('--check-determinism', action='store_true', help='base/head: also render head twice and gate on its noise')
-    ap.add_argument('--jobs', type=int, default=2, help='browsers rendering runs side by side (default 2; 1 = sequential)')
+    ap.add_argument('--check-determinism', action=argparse.BooleanOptionalAction, default=True,
+                    help='base/head: render head twice and fail on its noise (default on; --no-check-determinism renders head once)')
+    ap.add_argument('--jobs', type=int, default=min(4, os.cpu_count() or 2),
+                    help='browsers rendering scenes side by side (default min(4, cpus); 1 = sequential)')
+    ap.add_argument('--no-cache', action='store_true', help='base/head: always re-render base instead of using the cache '
+                    '($RAFT_VISUAL_CACHE, default ~/.cache/raft-visual, keyed by a hash of the base dist and renderer)')
     ap.add_argument('--only', default='', help='comma list of scene names')
     ap.add_argument('--list', action='store_true', help='print scene names and exit')
     args = ap.parse_args()
@@ -330,31 +389,87 @@ def main():
     base, head = base.resolve(), head.resolve()
     out.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
-    jobs = [(head, 'A', 'run1'), (head, 'B', 'run2')] if mode == 'self' else \
-        [(base, 'A', 'base'), (head, 'B', 'head')] + ([(head, 'C', 'head2')] if args.check_determinism else [])
-    metas, errors = {}, []
+    if mode == 'self':
+        runs = [('A', head, 'run1'), ('B', head, 'run2')]
+    else:
+        runs = [('A', base, 'base'), ('B', head, 'head')] + ([('C', head, 'head2')] if args.check_determinism else [])
+    for sub, _, _ in runs: (out / sub).mkdir(parents=True, exist_ok=True)
+    metas = {sub: {} for sub, _, _ in runs}
+    errors, versions, work = [], [], queue.Queue()
+    launched, ready, lock = threading.Semaphore(0), threading.Event(), threading.Lock()
 
-    def worker(batch):
-        # One Playwright driver + browser per thread (the sync API is per-thread). Runs are independent, and
-        # frames are a pure function of seed + steps, so running them side by side cannot change pixels.
+    def worker():
+        # One Playwright driver + browser per thread (the sync API is per-thread), each pulling single scene renders
+        # off a shared queue so the threads finish together. Every render gets a fresh context; frames are a pure
+        # function of seed + steps, so which browser renders what cannot change pixels.
+        servers = {}
         try:
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
                 browser = launch_chromium(p)
+                with lock: versions.append(browser.version)
+                launched.release()
+                ready.wait()
                 try:
-                    for dist, sub, label in batch:
-                        metas[sub] = capture(browser, dist, out / sub, names, args.seed, label)
+                    while (unit := work.get()) is not None:
+                        sub, dist, label, name = unit
+                        if dist not in servers: servers[dist] = StaticServer(dist).__enter__()
+                        url = f'{servers[dist].url}?seed={args.seed}&freeze=1'
+                        for attempt in (1, 2):
+                            if not browser.is_connected(): browser = launch_chromium(p)
+                            try:
+                                info = render_scene(browser, url, name, out / sub / f'{name}.png')
+                            except Exception as e:  # context creation failed: the browser itself went away
+                                info = {'ok': False, 'errors': [], 'console': [], 'blocked': [], 'seconds': 0,
+                                        'exception': 'browser: ' + (str(e).splitlines() or [repr(e)])[0][:300]}
+                            info['attempts'] = attempt
+                            # A render that failed without any page error (a timeout or a crashed renderer on a busy
+                            # box) is retried once; a real game failure fails the same way again.
+                            if info['ok'] or info['errors']: break
+                            print(f'  {label}:{name} retrying after: {info.get("exception")}', file=sys.stderr)
+                        with lock: metas[sub][name] = info
+                        print(f'  {label}:{name} {"ok" if info["ok"] else "FAILED " + str(info.get("exception"))} '
+                              f'{info["seconds"]}s', file=sys.stderr)
                 finally:
                     browser.close()
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
-            errors.append(str(e).splitlines()[0][:300] if str(e) else repr(e))
+            with lock: errors.append(str(e).splitlines()[0][:300] if str(e) else repr(e))
+            launched.release()
+        finally:
+            for srv in servers.values(): srv.__exit__(None, None, None)
 
-    n_threads = max(1, min(args.jobs, len(jobs)))
-    threads = [threading.Thread(target=worker, args=(jobs[i::n_threads],)) for i in range(n_threads)]
+    # Scenes with more simulated frames take longer; start those first so no thread is left with a long tail.
+    cost = lambda n: sum(s[1] if s[0] == 'frames' else s[2] if s[0] == 'hold' else 0 for s in SCENES[n])
+    units = [(sub, dist, label, n) for n in sorted(names, key=cost, reverse=True) for sub, dist, label in runs]
+    n_threads = max(1, min(args.jobs, len(units)))
+    threads = [threading.Thread(target=worker, daemon=True) for _ in range(n_threads)]
     for t in threads: t.start()
+    for _ in threads: launched.acquire()
+    cache = {'status': 'off'}
+    if errors and not versions:
+        ready.set(); return infra(f'browser run failed: {errors[0]}')
+    if mode == 'compare' and not args.no_cache:
+        cdir = cache_root() / cache_key(base, args.seed, versions[0])
+        hits = {}
+        for n in names:
+            info = cache_get(cdir, n, out / 'A' / f'{n}.png')
+            if info is not None: hits[n] = info
+        metas['A'].update(hits)
+        units = [u for u in units if not (u[0] == 'A' and u[3] in hits)]
+        cache = {'status': 'hit' if len(hits) == len(names) else 'partial' if hits else 'miss', 'dir': str(cdir),
+                 'hits': len(hits)}
+    for u in units: work.put(u)
+    for _ in threads: work.put(None)
+    ready.set()
     for t in threads: t.join()
-    if errors: return infra(f'browser run failed: {errors[0]}')
+    if any(n not in metas[sub] for sub, _, _ in runs for n in names):
+        return infra(f'browser run failed: {errors[0] if errors else "renders missing"}')
+    if cache['status'] in ('miss', 'partial'):
+        for n, info in metas['A'].items():
+            if info['ok'] and not info.get('cached'): cache_put(Path(cache['dir']), n, out / 'A' / f'{n}.png', info)
+    for sub, _, _ in runs:
+        (out / sub / 'capture.json').write_text(json.dumps(metas[sub], indent=1), encoding='utf-8')
     ma, mb, mc = metas['A'], metas['B'], metas.get('C')
 
     allinfo = [i for m in (ma, mb) for i in m.values()]
@@ -422,6 +537,9 @@ def main():
         'worstPct': max((r['pct'] for r in results.values()), default=None),
         'perScenePct': {n: results[n]['pct'] if n in results else None for n in names},
         'perSceneExactPct': {n: results[n]['exactPct'] for n in results},
+        'baseCache': cache.get('status'),
+        'renders': sum(1 for m in metas.values() for i in m.values() if not i.get('cached')),
+        'retried': sorted(f'{sub}:{n}' for sub, m in metas.items() for n, i in m.items() if i.get('attempts', 1) > 1),
         'blockedRequests': sorted({u for m in (ma, mb) for i in m.values() for u in i['blocked']})[:20],
     }
     if mode == 'compare':
