@@ -660,7 +660,7 @@ export function mount(transfer = null) {
     if (item.type === 'bottle') { const g = new T.Group(), b = createBottle(T); b.position.y = .04; b.rotation.y = (item.id % 7) * .9; g.add(b); return singlePass(g); }
     if (JUNK_TYPES.includes(item.type)) { const g = new T.Group(), m = getModel(item.type); if (m) { m.rotation.y = (item.id % 7) * .9; m.position.y = .03; g.add(m); } return singlePass(g); } // [recycler] before createDebris (it throws on unknown types)
     if (item.type !== 'plastic') { const d = createDebris(T, item.type, mat, {seed:item.id, pool:4}); if (ART.artEnabled() && item.type === 'scrap') d.traverse(o => { if (o.isMesh && o.material.vertexColors) { o.material.dispose(); o.material = mat('#8e9aa2'); } }); /* art lane hook */ return singlePass(d); } // pooled geometry, drawn instanced by the item batch
-    const g = new T.Group(), jug = createPlastic(T); if (ART.artEnabled()) { const b = jug.getObjectByName('jugBody'); if (b) { b.material.dispose(); b.material = mat('#f2f0e6'); } } /* art lane hook */ singlePass(jug); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
+    const g = new T.Group(), jug = createPlastic(T, item.id); if (ART.artEnabled()) { const b = jug.getObjectByName('jugBody'); if (b) { b.material.dispose(); b.material = mat('#f2f0e6'); } } /* art lane hook */ singlePass(jug); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
   }
   // Meshes are keyed by token, not id: a respawned item keeps its id but may change type.
   const itemMeshes = new Map();
