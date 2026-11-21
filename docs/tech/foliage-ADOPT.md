@@ -128,6 +128,7 @@ For `dist/islands.js`, copy `createFoliageKit` and the scatter block of `buildIs
 1. Run `python sandbox/foliage/shoot.py`. It should report 0 page errors and write PNGs to `sandbox/foliage/shots/`.
 2. In game, place a palm decor and stand next to it. The fronds should flutter and the trunk should lean
    gently downwind, while the pot stays still. The shadow on the deck moves with the fronds.
-3. Check `renderer.info.programs.length` before and after placing a palm. It should grow by 2: one foliage
-   program and one depth program, shared by every palm.
+3. Check `renderer.info.programs.length` before and after placing the first palm. It should grow by at most
+   about 5: three colour variants (vertex-coloured trunk, plain Standard parts, double-sided fronds) plus two
+   depth variants. A second palm adds 0, because programs are shared through `customProgramCacheKey`.
 4. Low graphics, with shadows off, still sways. The depth twin is simply unused.
