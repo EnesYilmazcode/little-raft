@@ -127,3 +127,15 @@ export function canteenTarget(world, d, slot) // d = {key, type, x, z} -> {promp
   Then place a purifier, make it ready, aim, and check the prompt "E Fill canteen (1/4)". Press E, then `state().sips === 2`.
   Click to drink, then `sips === 1`. Empty it and check the notice reads EMPTY. Take a held-model close-up.
 - **Out of scope:** salt water in a canteen, pouring from the canteen back into a cup, the Clay Jug (later: the same code with `durability: 8`).
+
+## Build notes
+- **Files.** New: `dist/canteen.js`, `dist/canteen-model.js`, `tests/canteen.test.mjs`. Hooks (all tagged `// [canteen]`): `items.js` (item row, `startEmpty`, `freshDurability`), `vitals.js` FOOD row, `inventory-state.js` craft durability, `progression.js` craft durability, `craft-book.js` CATEGORY_OF + ITEM_TEXT, `survival-ui.js` bar colour + aria, `item-tooltips.js` "Sips n/4" + survival chip, `held-items.js`, `icon-models.js`, `item-svg.js`, `live.js` PRELOAD, `game.js`.
+- **game.js.** Import line after the rain import; `hostCanteen()` sits beside `localBag` (not near HOST_CAPS) so it is defined before any input handler. `applyCanteen` sits before `applyRain`. `interact()` also refuses an E-fill with `OLD_HOST` on an old host (the spec named click, E and pour; E needed its own check because it goes through `w.e`).
+- **Busy purifier.** `canteenTarget` returns the "Purifying… (canteen n/4)" prompt as specified, but `wateringTarget` only uses it when it has a click, so a busy purifier keeps the game's own countdown ("Purifying… 9s").
+- **No per-frame allocation.** `canteenTarget` caches its last answer (same tile, same sips, same busy state → the same object) and prompt strings are prebuilt; the empty-canteen tip is one constant object.
+- **pourCup** accepts and ignores a third `amount` argument; the host ignores `a.amount` on a pour. The guest skips its local predicted move for a pour and waits for `state.bag`.
+- **Held model.** `SIZE.canteen` is 0.16 (not 0.2) and the grip is low on the flask (`-0.3 * height`): at 0.2 with a centre grip the fist covered the flask and the cork sat under the hotbar. The model has a small pale glint disc on the face; no fill mesh.
+- **Debug.** `raftDebug.canteen` = `{give(sips), fill(sips), move(from, to), state()}`; `move` runs the real bag-drag path (`moveSlot`), used by the smoke test to pour.
+- **Existing test changed.** `tests/progression.test.mjs`: the canteen is the one tool with no repair cost (asserted null), and it is added to the `TOOL_IDS` list.
+- **QA (headless Chrome, solo).** give(1) → hotbar bar 25% `#4fb6e8`, aria "1 of 4 sips", tooltip "Sips 1/4" + Survival chip; aim at a ready purifier → "E Fill canteen (1/4)", E → 2 sips and the purifier entry is gone; click → water 30 → 70, 1 sip; dragging a fresh cup ×2 onto it → fresh ×1 + an empty cup, 2 sips; empty + click → notice and muted tip "Empty: fill at a purifier or rain barrel". No console errors.
+- **Known gaps.** Mixed-version co-op is unsupported (old host: notice only). Co-op not exercised in a browser (host paths are shared with solo; guest pour/fill branches are covered by code review only).

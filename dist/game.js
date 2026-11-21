@@ -1935,6 +1935,7 @@ export function mount(transfer = null) {
     const wheelOpen = !!building?.menu.isOpen; // building wheel open: no hotbar swap (drops the hammer, closes the wheel) and no interact
     if (m && running && !wheelOpen) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
     if (e.code === 'KeyE' && !e.repeat && !wheelOpen) interact();
+    if (e.code === 'KeyF' && !e.repeat && running && !uiBlocked()) dispatchEvent(new CustomEvent('little-raft-action', {detail:{id:'stash'}})); // [crate-labels]
     if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? FINE_STEP : e.altKey ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration (Shift+R in 15 degree steps, Alt+R back)
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
@@ -2362,6 +2363,7 @@ export function mount(transfer = null) {
         return i;
       },
       fill(sips) { if (role === 'guest') return false; const s = hostBag.slots[hostBag.selectedIndex]; if (s?.kind !== 'canteen') return false; s.durability = clamp(Math.round(Number(sips) || 0), 0, 4) * 25; return true; },
+      move(from, to) { moveSlot(from, to); return localBag().snapshot().slots; }, // the real bag drag path (a fresh cup onto the canteen pours)
       state() { const b = localBag(), s = b.slots[b.selectedIndex]; return {selected:s?.kind === 'canteen', sips:sipsOf(s), durability:s?.kind === 'canteen' ? s.durability : null, hostCaps:role === 'guest' ? hostCaps : HOST_CAPS}; },
     }),
     give(kind, n = 1) { return spearRep?.give(kind, n) ?? -1; }, // [spear-repair] test helper: add items to the local (host/solo) bag

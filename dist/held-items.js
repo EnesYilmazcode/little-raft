@@ -72,7 +72,7 @@ const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.22, fi
   planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11,
   drum: 0.15, pipes: 0.2, bells: 0.2, // [instruments]
   camera: 0.13, // [camera]
-  canteen: 0.2, // [canteen]
+  canteen: 0.16, // [canteen] (spec 0.2 hid most of the flask under the hotbar)
   glidehandle: 0.24, // [zipline]
   skyrocket: 0.2, scarecrow: 0.24, glidepost: 0.24, glidestep: 0.2, candle: 0.11, beehive: 0.18, flowerbox: 0.2 };
 // Kind -> its own world model (one fresh copy per held build; hands.js caches the held model per kind).
@@ -305,7 +305,7 @@ export function buildItemModel(T, kind, factory = null) {
   } else if (kind === 'planter') {
     root = fit(T, createCraft(T, 'palm'), dim('planter'), (s) => new T.Vector3(0, -s.y / 2, 0));
   }
-  if (!root && kind === 'canteen') root = fit(T, createCanteenModel(T), SIZE.canteen); // [canteen]
+  if (!root && kind === 'canteen') root = fit(T, createCanteenModel(T), SIZE.canteen, (s) => new T.Vector3(0, -s.y * 0.3, 0)); // [canteen] fist on the lower flask, neck and cork stand clear
   if (!root && kind === 'camera') { const cm = buildCameraModel(T), gf = cm.userData.gripFrac; root = fit(T, cm, SIZE.camera, (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z)); } // [camera]
   if (!root) { const ins = buildInstrument(T, kind), gf = ins?.userData.gripFrac; if (ins) root = fit(T, ins, SIZE[kind], gf ? (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z) : null); } // [instruments]
   if (!root) root = fit(T, buildBundle(T), left ? HELD_LEFT_MAX : 0.12, (s) => new T.Vector3(0, left ? -s.y / 2 : 0, 0));
