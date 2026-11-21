@@ -13,7 +13,7 @@ socketserver.TCPServer.allow_reuse_address = True
 srv = socketserver.ThreadingTCPServer(('127.0.0.1', port), functools.partial(Quiet, directory=str(dist)))
 port = srv.server_address[1]
 threading.Thread(target=srv.serve_forever, daemon=True).start()
-url = f'http://127.0.0.1:{port}/?fixedres'  # pin render scale so shots stay sharp
+url = f'http://127.0.0.1:{port}/?fixedres&pinQuality'  # pin render scale and adaptive quality so shots stay sharp and comparable
 
 report = {'errors': [], 'console': [], 'shots': []}
 def shot(page, name):
