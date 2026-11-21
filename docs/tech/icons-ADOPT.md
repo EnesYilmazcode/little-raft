@@ -34,19 +34,23 @@ API all stay.
    hook.js), hammer (hammer.js, thickened), fishing rod (thick, with reel and bobber), lantern
    (without its 1.9 m post), net (light frame with floats) and nail (three thick nails). These models
    come from the fleet baker's `item-models.js`; the nail is new.
-2. **Navy outline** (`#0e2630` at 95%, 3.5 px at 128 px) in the same colour family as the
-   `icons.svg` stroke. Thin tools (hook, hammer, rod, nail) also get a 2 px light rim. It is a
-   2D-canvas pass, so it needs no GL program.
+2. **Cream rim for thin dark tools** (hook, hammer, rod, nail; 3.5 px at 128 px) so they read on
+   the navy slots. It is a 2D-canvas pass, so it needs no GL program. Every other icon is encoded
+   straight from the GL canvas, one readback as on main. (Round 3 also put a navy outline on every
+   icon; it was invisible on the slots and cost two extra readbacks per icon, so it was dropped.)
 3. **Material unify** for the render only. Each mesh gets a stand-in MeshStandardMaterial with the
    same uniforms, DoubleSide + vertexColors, no map, flatShading kept, and metalness capped at 0.35
    (the rig has no env map). This keeps the compile budget at main's level: 4 program links for all
    34 kinds. Without it the stand-in models cost 14 to 15 links.
 4. **Robustness:**
-   - a blank render returns null, so the slot keeps its SVG;
+   - a blank render returns null, so the slot keeps its SVG (detected by PNG size: no extra readback);
    - after a WebGL context loss the module drops the context and retries the kind, up to 2 times;
    - `setModelProvider` re-renders only the kinds the provider supplied, not the stand-in kinds;
-   - after a live.js hot swap, the module copy used last owns the queue, and the old copy stops
-     rendering instead of running a second GL context.
+   - after a live.js hot swap only one module copy renders (one GL context at a time): the copy
+     that claimed last among those still in use (listeners or waiters). On a successful swap the
+     old engine's `dispose()` drops the old copy's listeners, so the new copy owns the queue; if
+     the new `mount()` throws, its `dispose()` drops the new copy's listeners and the old copy owns
+     it again (`robust.py` case `failedSwapOldRenders`, `hotswap.py merged fail`).
 
 ## One command
 
@@ -111,11 +115,27 @@ Real game, same seeded save, unpatched main vs patched:
 Shots: `shots/main-hotbar.png` / `shots/main-bag.png` (main) vs `shots/adopt-hotbar.png` /
 `shots/adopt-bag.png` (merged).
 
+Cost vs main (details in `icons.md`, Cost). Do not read this as "free":
+
+| | main | merged (round 3, judge) | merged (now) |
+|---|---|---|---|
+| sandbox, all 34 ready, cold | 3.7 to 5.0 s (judge), 4.8 to 6.1 s (now) | 6.6 to 6.9 s, **~1.3 to 1.9x main** | 3.7 to 8.0 s, median ~1.1x main (within noise) |
+| sandbox, worst game frame, cold | 0.27 to 0.55 s (judge), 0.5 to 1.8 s (now) | 0.93 to 1.23 s | 0.63 to 1.8 s |
+| real game, Solo to 8 hotbar icons | 72.7 s | 72.0 / 53.5 / 74.5 s (equal) | equal (`--check` / `hotswap.py`) |
+| data URL memory per module copy | 161 KB | 319 KB | 248 KB |
+| GL links / contexts | 4 / 1 | 4 / 1 | 4 / 1 |
+
+Hot swap through the real live.js (`python sandbox/icons/hotswap.py merged ok|fail`):
+- `ok`: B's hotbar shows 8 3D icons, icon-context peak 1 during the swap, 0 live after both copies
+  drain, bag 31 3D icons;
+- `fail` (B's `mount()` throws after its UI claims the queue): live.js keeps the old engine and the
+  old copy renders on (7 icons before, 19 after; the round-3 latch stopped at 11).
+
 ## Verify by hand
 
 1. Start the game with `?build=` bumped and open the bag (Tab).
 2. Hook, rod and hammer should be thick diagonal tools with a light rim. Wood should be a log pile,
-   nails three thick nails, and every 3D icon should have a dark outline.
+   nails three thick nails. The other 3D icons have no outline, as on main.
 3. Kinds with no model (sand, ingots, bolt, hinge, metal hook, binoculars, cooked fish, research
    table, grill, smelter, clay, stone, ores, seaweed, brick, glass) keep their SVG, as they do on main.
 4. Hot swap to a new build (live.js): the icons come back and the console shows no "item icon" warnings.

@@ -37,7 +37,9 @@ Each icon is shown on a 52 px dark slot, as an 18 px chip and on a light strip.
 - **Merged** uses the fleet stand-ins for the 10 kinds whose world model does not read (wood, scrap,
   rope, fish, hook, hammer, rod, lantern, net, plus a new chunky nail). The other 6 rendered kinds
   (leaf, plastic, bench, palm, sail, crate) come from models.js as on main, so they match the world.
-  Every icon gets the navy outline (`icons.svg` stroke family), and thin tools also get a light rim.
+  Thin dark tools (hook, hammer, rod, nail) get a cream rim so they pop on the navy slots. An
+  earlier version also gave every icon a navy outline; it was invisible on the dark slots (it only
+  showed on the sheet's light strip) and cost a second readback per icon, so it was dropped.
   The same 18 kinds stay SVG.
 
 Real game, same seeded save:
@@ -47,36 +49,54 @@ Real game, same seeded save:
 
 ### Cost (`python sandbox/icons/shoot.py`, SwiftShader)
 
-Load average was 35 to 58 on 4 cores, so the numbers swing 3 to 5x between runs. The table gives
-medians of 4 interleaved runs each, with a 480x270 game-like scene rendering every rAF:
+Load average was 35 to 58 on 4 cores, so the numbers swing 2 to 5x between runs. A 480x270
+game-like scene renders every rAF while the icons render. Two builds of the merge were measured:
 
-| | main | merged | fleet (round 2) |
-|---|---|---|---|
-| kinds with a 3D icon | 16 / 34 | 16 / 34 | 15 / 34 |
-| GL program links (icon work) | 4 | 4 | 4 (on the game renderer) |
-| all 34 queued -> last ready, cold | ~8.2 s | ~8.8 s | 4 to 9 s (atlas bake) |
-| worst game frame while rendering, cold | ~1.7 s (0.6 to 2.8) | ~1.7 s (0.6 to 3.5) | 0.3 to 3.0 s |
-| worst frame, warm reload | ~0.9 s | ~0.7 s | 0.1 to 0.8 s (localStorage hit, 0 links) |
-| data URL bytes in memory | 161 KB | 319 KB | 260 KB + 260 KB localStorage |
-| extra WebGL contexts | 1, released after 2.5 s | 1, released after 2.5 s | 0 |
-| game `renderer.info` after (programs / geometries / textures) | unchanged | unchanged | unchanged |
+- **Round 3 (navy outline on every icon, 2D pass + `getImageData` + second `toDataURL` per kind).**
+  The judge's 4 interleaved cold runs (`shoot.py main merged` / `merged main`): merged was slower
+  every time, **about 1.3 to 1.9x main**: all 34 ready in 6.6 to 6.9 s against 3.7 to 5.0 s, worst
+  game frame 0.93 to 1.23 s against 0.27 to 0.55 s, about twice the frames over 100 ms. Data URLs
+  319 KB against 161 KB. The earlier claim here that "merged and main cost the same" was wrong.
+- **Now (outline dropped, rim pass only for the 4 thin tools, blank check by PNG size instead of a
+  pixel readback).** 4 cold runs each, interleaved (`shoot.py`, `main merged`, `merged main`,
+  `main merged`): merged 3.7 / 5.6 / 6.0 / 8.0 s against main 4.8 / 4.8 / 5.6 / 6.1 s; worst
+  frame 0.63 / 0.63 / 0.72 / 1.8 s against 0.50 / 0.77 / 0.83 / 1.8 s. Medians 5.8 s vs 5.2 s
+  (about 1.1x), inside this box's noise, but not shown to be equal.
+- **Real game** (`adopt_patch.py --check`, `hotswap.py`): time from Solo to 8 hotbar icons is the
+  same on both (the judge: 72.7 s main vs 72.0 / 53.5 / 74.5 s merged). In play the extra cost is
+  idle-time only.
 
-On this box merged and main cost the same. The first version of the merge did not: the stand-in
-models brought their own material flag sets and cost **14 to 15 program links** and twice the worst
-frame. Two fixes brought it back to 4 links:
+| | main | merged (now) | merged (round 3) | fleet (round 2) |
+|---|---|---|---|---|
+| kinds with a 3D icon | 16 / 34 | 16 / 34 | 16 / 34 | 15 / 34 |
+| GL program links (icon work) | 4 | 4 | 4 | 4 (on the game renderer) |
+| all 34 queued -> last ready, cold (sandbox) | 4.8 to 6.1 s | 3.7 to 8.0 s | 6.6 to 6.9 s (judge; main 3.7 to 5.0) | 4 to 9 s (atlas bake) |
+| worst game frame, cold (sandbox) | 0.5 to 1.8 s | 0.63 to 1.8 s | 0.93 to 1.23 s (judge; main 0.27 to 0.55) | 0.3 to 3.0 s |
+| readbacks per icon | 1 (`toDataURL`) | 1; 2 for the 4 rim tools | 3 (`drawImage`, `getImageData`, `toDataURL`) | atlas |
+| time to 8 hotbar icons, real game | 72.7 s | equal | 72.0 / 53.5 / 74.5 s | n/a |
+| data URL bytes in memory | 161 KB | 248 KB | 319 KB | 260 KB + 260 KB localStorage |
+| extra WebGL contexts | 1, released after 2.5 s | 1, released after 2.5 s | same | 0 |
+| game `renderer.info` after (programs / geometries / textures) | unchanged | unchanged | unchanged | unchanged |
+
+The data URLs stay resident in every module copy a hot swap leaves behind (modules are never
+unloaded); main has the same pattern at 161 KB per copy.
+
+The first version of the merge was worse still: the stand-in models brought their own material
+flag sets and cost **14 to 15 program links** and twice the worst frame. Two fixes brought it back
+to 4 links:
 - unify the materials for the render;
 - keep the stand-in materials alive until the context is released, because three frees a program
   together with its last material.
 
 Per-kind timing showed that the cost is almost entirely the GPU sync at the first read of each
-render, which waits for any new shader compile. Model building (1 to 70 ms), PNG encode (2 to 16 ms)
-and the 2D outline pass are small next to it.
+render, which waits for any new shader compile. Model building (1 to 70 ms) and PNG encode (2 to 16 ms)
+are small next to it, but each extra readback is another sync, which is why the outline pass went.
 
 ### What was taken, what was left
 
 Taken from the fleet:
 - the icon-only models;
-- the outline look, done as a 2D-canvas pass instead of a GLSL resolve, so it adds no program;
+- the light rim for thin tools, done as a 2D-canvas pass instead of a GLSL resolve, so it adds no program;
 - material unify with a metal cap;
 - `userData.shared`-aware disposal;
 - hot-swap ownership, so a stale engine stops working.
@@ -92,7 +112,7 @@ Left out:
   wanted later, put it in IndexedDB or the Cache API, keyed by build, behind the same API.
 - **Blob URLs.** They would need revoke ownership in survival-ui. Data URLs keep the contract (`getItemIcon` -> data URL) unchanged.
 
-Robustness (`python sandbox/icons/robust.py`, all 12 cases pass on the merged module):
+Robustness (`python sandbox/icons/robust.py`, all 15 cases pass on the merged module):
 - the provider throwing falls back to the old builders;
 - an empty model, or a kind with no model, resolves null (the SVG stays);
 - `onIconReady` fires only for real icons;
@@ -100,6 +120,16 @@ Robustness (`python sandbox/icons/robust.py`, all 12 cases pass on the merged mo
 - a provider swap keeps the stand-in icons and re-renders the provider kinds;
 - **hot swap**: once copy B claims the queue, copy A's pending kinds resolve null within 5 ms and A
   keeps its finished icons. B renders, and no live contexts remain after release.
+- **failed hot swap**: copy C claims, subscribes and queues (as a `mount()` does), then drops its
+  listener (the failed engine's `dispose()`); B owns the queue again and renders, and C stays idle.
+  Ownership is "the last claimer still in use (listeners or waiters)", not a permanent latch.
+
+Real live.js swap (`python sandbox/icons/hotswap.py merged ok|fail`, the judge's probe, committed):
+- `ok`: B's hotbar shows 8 3D icons, the icon-context peak during the swap is 1, and no icon
+  context is live once both copies drain. The bag after the swap shows 31 3D icons.
+- `fail` (B's `mount()` throws right after its survival UI is built, so the new copy has claimed):
+  live.js keeps the old engine and the old copy goes on rendering its uncached kinds (7 before
+  the swap, 19 after). With the round-3 permanent latch the same run stopped at 11.
 
 By code reading, main renders a lost context into a blank PNG and caches it for the session (an
 invisible icon). Its old module copy also keeps rendering its whole queue after a hot swap.
