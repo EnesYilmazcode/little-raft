@@ -312,7 +312,9 @@ export function mount(transfer = null) {
 
   function hasTile(x, z) { const ts = world.tiles; for (let i = 0; i < ts.length; i++) if (ts[i][0] === x && ts[i][1] === z) return true; return false; }
   const isLocked = () => !!canvas && document.pointerLockElement === canvas;
-  const dialogOpen = () => !!document.querySelector('dialog[open]');
+  // Same as querySelector('dialog[open]') but walks only the (live, browser-cached) list of dialogs: it runs many times a frame.
+  const dialogs = document.getElementsByTagName('dialog');
+  const dialogOpen = () => { for (let i = 0; i < dialogs.length; i++) if (dialogs[i].hasAttribute('open')) return true; return false; };
   const uiBlocked = () => dialogOpen() || !!survivalUI?.isOpen;
   const castOut = () => (hook && !hook.fishing ? hook : null);
   const guestWaiting = () => role === 'guest' && !networkReady;
@@ -1177,7 +1179,13 @@ export function mount(transfer = null) {
       friend.userData.animate?.(dt, {speed:Math.min(6, Math.hypot(friend.position.x - before.x, friend.position.z - before.z) / dt), swimming:other.swimming, pitch:other.pitch});
     }
   }
-  const allHeldTokens = () => new Set([...caughtList(castOut()).map(c => c.token), ...(role === 'guest' ? [] : guestHeld.tokens(performance.now()))]);
+  const allHeld = new Set(); // reused every call (several a frame): callers use it before asking again
+  function allHeldTokens() { // ours and, on the host, the guest's hook
+    allHeld.clear();
+    for (const c of caughtList(castOut())) allHeld.add(c.token);
+    if (role !== 'guest') for (const t of guestHeld.tokens(performance.now())) allHeld.add(t);
+    return allHeld;
+  }
   function updateItems(dt) {
     const heldTokens = allHeldTokens();
     if (sailing) sailing.itemFlow(sailFlow); // [sailing]
