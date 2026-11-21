@@ -14,6 +14,12 @@ const HOTBAR_IDS = ['hotbar1', 'hotbar2', 'hotbar3', 'hotbar4', 'hotbar5', 'hotb
 const MOUSE_CODES = ['Mouse0', 'Mouse1', 'Mouse2', 'Mouse3', 'Mouse4'];
 const PAD_BACK = 'Pad1';            // standard-mapping B / cancel: closes menus while input is blocked
 const NO_PADS = [];
+// pad focus layer (menuNav): while blocked these pad codes drive the open panel instead of the game
+const NAV_CODES = { Pad12: 'navUp', Pad13: 'navDown', Pad14: 'navLeft', Pad15: 'navRight',
+  'PadAxis1-': 'navUp', 'PadAxis1+': 'navDown', 'PadAxis0-': 'navLeft', 'PadAxis0+': 'navRight',
+  Pad0: 'activate', Pad4: 'tabPrev', Pad5: 'tabNext' };
+const NAV_REPEATS = new Set(['navUp', 'navDown', 'navLeft', 'navRight']);
+const NAV_DELAY = 0.36, NAV_REPEAT = 0.11; // s: hold a direction -> first repeat after the delay, then every NAV_REPEAT
 // interned pad code strings so polling never builds them per frame
 const PAD_CODES = [], AXIS_NEG = [], AXIS_POS = [];
 const padCode = i => PAD_CODES[i] ?? (PAD_CODES[i] = 'Pad' + i);
@@ -32,6 +38,10 @@ export function createInput({
   // action ids whose pad bindings still fire a 'down' edge while blocked (onAction(id, 'down', {blocked:true})),
   // plus PAD_BACK as 'back', so a gamepad can close the menu it opened. Nothing else reacts while blocked.
   blockedActions = [],
+  // menuNav: while blocked also emit onAction(id, phase, {blocked:true, nav:true}) for the pad focus layer:
+  // navUp/navDown/navLeft/navRight (D-pad or left stick, repeating while held), activate (A, 'down' and 'up'),
+  // tabPrev/tabNext (LB/RB). Only fresh presses count: anything held when the panel opened stays suppressed.
+  menuNav = false,
 } = {}) {
   if (!map) throw new Error('createInput: map (ActionMap) required');
   const ids = ACTIONS.map(a => a.id);
@@ -53,6 +63,8 @@ export function createInput({
   let step = 0, slot = -1;
   const look = { dx: 0, dy: 0 }, moveVec = { forward: 0, strafe: 0 }, leftStick = [0, 0], rightStick = [0, 0], padLook = [0, 0], trig = { throw: 0, reel: 0 };
   let sprintOn = false, crouchOn = false;
+  const navArmed = new Set(), nav = []; // nav: [id, phase] pairs emitted this frame
+  let navRepeatCode = null, navTimer = 0, lastPad = null;
   const connected = new Set(), lastActive = new Map(), padSig = new Map();
   let activeIndex = -1;
   const api = { activeDevice: 'kbm' };
@@ -165,6 +177,7 @@ export function createInput({
       const p = pads[i];
       if (usable(p) && lastActive.has(p.index) && (!pad || lastActive.get(p.index) > bestT)) { pad = p; bestT = lastActive.get(p.index); }
     }
+    lastPad = pad;
     if (!pad) { activeIndex = -1; padHeld.clear(); resetPadAnalog(); padLook[0] = padLook[1] = 0; return padLook; }
     if (pad.index !== activeIndex) { padHeld.clear(); activeIndex = pad.index; }
     const next = padNext, buttons = pad.buttons || NO_PADS, axes = pad.axes || NO_PADS;
@@ -212,7 +225,41 @@ export function createInput({
     return 0;
   }
 
-  function update(dt = 0) {
+  // raw state of a pad code on the active pad (release hysteresis), independent of suppression
+  function rawOn(code) {
+    const p = lastPad; if (!p) return false;
+    if (code.startsWith('PadAxis')) { const a = p.axes?.[+code[7]] || 0; return (code.endsWith('-') ? -a : a) > TRIGGER_OFF; }
+    const b = p.buttons?.[+code.slice(3)]; return btnValue(b) > TRIGGER_OFF || !!b?.pressed;
+  }
+  function resetNav() { navArmed.clear(); navRepeatCode = null; navTimer = 0; }
+  // blocked frame: fresh nav presses arm (and fire), held directions repeat, released A sends activate 'up'
+  function pollNav(dt, skip) {
+    for (const code of navArmed) if (!rawOn(code)) {
+      navArmed.delete(code);
+      if (NAV_CODES[code] === 'activate') nav.push('activate', 'up');
+      if (code === navRepeatCode) navRepeatCode = null;
+    }
+    let fresh = null;
+    for (const code in NAV_CODES) {
+      if (!taps.get(code) || navArmed.has(code) || skip.has(code)) continue;
+      const id = NAV_CODES[code];
+      // stick diagonal: only the dominant axis moves the focus
+      if (code.startsWith('PadAxis') && lastPad) {
+        const ax = lastPad.axes || NO_PADS, x = Math.abs(ax[0] || 0), y = Math.abs(ax[1] || 0);
+        if ((code[7] === '0' && y > x) || (code[7] === '1' && x >= y)) continue;
+      }
+      navArmed.add(code); nav.push(id, 'down');
+      if (NAV_REPEATS.has(id)) fresh = code;
+    }
+    if (fresh) { navRepeatCode = fresh; navTimer = NAV_DELAY; }
+    else if (navRepeatCode) {
+      navTimer -= dt;
+      if (navTimer <= 0) { nav.push(NAV_CODES[navRepeatCode], 'down'); navTimer += NAV_REPEAT; if (navTimer <= 0) navTimer = NAV_REPEAT; }
+    }
+  }
+
+  // lookDt: real frame time for time-based pad work (right-stick look, menu repeat); dt is the (capped) sim step
+  function update(dt = 0, lookDt = dt) {
     const blocked = isBlocked();
     // resuming from a panel: keys still held become down without a pressed edge, so the key that
     // closed the panel (Tab/E/Esc) does not re-fire its action
@@ -221,14 +268,19 @@ export function createInput({
     if (blocked) quiet();                          // held pad buttons become suppressed: the opening press never closes
     let pl = null;
     if (connected.size && (!blocked || menuIds.size)) {
-      pl = pollPad(dt);
+      pl = pollPad(lookDt);
       if (blocked) { pl = null; resetPadAnalog(); }
     }
-    menu.length = 0;
+    menu.length = 0; nav.length = 0;
     if (blocked && menuIds.size) {
       for (const id of menuIds) if (tapsIn(bindingOf(id)?.pad)) menu.push(id);
       if (taps.get(PAD_BACK) && !menu.length) menu.push('back');
-    }
+      if (menuNav) {
+        const skip = new Set([PAD_BACK]); // codes that open/close menus never also navigate
+        for (const id of menuIds) for (const c of bindingOf(id)?.pad || NO_PADS) if (c) skip.add(c);
+        pollNav(Number.isFinite(lookDt) ? lookDt : 0, skip);
+      }
+    } else resetNav();
     let stepNow = 0;
     for (let a = 0; a < ids.length; a++) {
       const id = ids[a], st = states[a], was = st.down, b = blocked ? null : bindingOf(id);
@@ -243,6 +295,9 @@ export function createInput({
     step += stepNow;
     for (let i = 0; i < HOTBAR_IDS.length; i++) if (state.get(HOTBAR_IDS[i])?.pressed) slot = i;
     if (onAction) for (let i = 0; i < menu.length; i++) { try { onAction(menu[i], 'down', { blocked: true }); } catch (e) { console.error('onAction', menu[i], e); } }
+    if (onAction) for (let i = 0; i < nav.length; i += 2) { try { onAction(nav[i], nav[i + 1], { blocked: true, nav: true }); } catch (e) { console.error('onAction', nav[i], e); } }
+    // a pad press that closed the panel (Resume, a close button) must not leak into play: suppress what is held
+    if (blocked && (menu.length || nav.length) && !isBlocked()) { quiet(); resetNav(); }
     if (onAction) for (let a = 0; a < ids.length; a++) {
       const id = ids[a], st = states[a];
       try { if (st.pressed) onAction(id, 'down'); if (st.released) onAction(id, 'up'); } catch (e) { console.error('onAction', id, e); }

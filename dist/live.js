@@ -26,7 +26,7 @@ const PRELOAD = [
   'inventory-state.js', 'islands-layout.js', 'islands-models.js', 'islands.js', 'item-icons.js', 'item-svg.js',
   'item-tooltips.js', 'items.js', 'kiln-core.js', 'kiln-model.js', 'kiln.js', 'lock-rules.js', 'logbook-ui.js',
   'logbook.js', 'look-ui.js', 'look.js', 'maptable-model.js', 'maptable.js', 'materials.js', 'merge-geo.js',
-  'models.js', 'move-feel.js', 'ocean.js', 'paint.js', 'pickup-feed.js', 'placement.js', 'plastic.js',
+  'models.js', 'move-feel.js', 'ocean.js', 'pad-nav.js', 'paint.js', 'pickup-feed.js', 'placement.js', 'plastic.js',
   'player-physics.js', 'progression-hooks.js', 'progression.js', 'purifier-model.js', 'quality.js', 'rain-model.js',
   'rain.js', 'repair.js', 'sailing-core.js', 'sailing-ui.js', 'sailing-world.js', 'scenery-islands.js',
   'seafloor.js', 'session-rules.js', 'settings.js', 'shark-model.js', 'shark.js', 'signal-models.js', 'signal.js',

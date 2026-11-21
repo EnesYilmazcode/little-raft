@@ -15,7 +15,7 @@ const pct = (v) => Math.round(v * 100) + '%';
 // type: range | toggle | select. tab: which settings tab shows it.
 const SPEC = {
   sensitivity: { tab: 'controls', label: 'Mouse sensitivity', type: 'range', min: 0.2, max: 3, step: 0.05, def: 1, fmt: (v) => v.toFixed(2) + 'x' },
-  invertY: { tab: 'controls', label: 'Invert look Y', type: 'toggle', def: false },
+  invertY: { tab: 'controls', label: 'Invert mouse Y', type: 'toggle', def: false }, // the one mouse Invert Y: also written to the input map (pushInvert)
   fov: { tab: 'controls', label: 'Field of view', type: 'range', min: 60, max: 100, step: 1, def: 75, fmt: (v) => Math.round(v) + '°' },
   cameraMotion: { tab: 'controls', label: 'Camera sway', type: 'range', min: 0, max: 1, step: 0.05, def: 0.35, fmt: pct },
   graphics: { tab: 'graphics', label: 'Quality preset', type: 'select', options: ['low', 'medium', 'high'], def: 'medium' },
@@ -79,7 +79,7 @@ const CSS = `
 #options .rs-menu button:hover::before,#options .rs-menu button:focus-visible::before,#options .rs-menu button[aria-expanded=true]::before{opacity:1;transform:translateY(-50%) scaleX(1)}
 #options .rs-title [data-act=resume],#options .rs-title [data-act=quit]{display:none}
 #options .rs-menu .rs-quit{margin-top:22px;border-top:1px solid rgba(201,164,107,.18);padding-top:20px;font-size:clamp(16px,1.5vw,19px);color:var(--muted,#8f9aa0)}
-#options .rs-panel{width:min(520px,100%);max-height:calc(100vh - 80px);overflow:auto;padding:22px 24px 24px;border-radius:6px;background:var(--plate-strong,rgba(8,17,26,.92));
+#options .rs-panel{width:min(520px,100%);max-height:calc(100vh - max(24px,calc(50vh - 236px)) - 24px);overflow:auto;padding:22px 24px 24px;border-radius:6px;background:var(--plate-strong,rgba(8,17,26,.92));
   box-shadow:0 0 0 1px var(--bronze-lt,#c9a46b),0 0 0 4px var(--navy-0,#070f17),0 24px 70px rgba(0,0,0,.55)}
 #options .rs-tabs{display:flex;gap:4px;margin:0 0 18px;border-bottom:1px solid rgba(201,164,107,.3)}
 #options .rs-tabs button{cursor:pointer;background:none;border:0;border-radius:0;box-shadow:none;padding:10px 14px;margin-bottom:-1px;color:var(--muted,#8f9aa0);
@@ -104,6 +104,8 @@ const CSS = `
 #options .rs-wide{cursor:pointer;justify-self:start;padding:9px 14px;border-radius:4px;border:0;background:rgba(7,15,23,.6);color:var(--cream,#f1e7d0);
   font:600 12px/1 var(--ui-font);letter-spacing:1.2px;text-transform:uppercase;box-shadow:inset 0 0 0 1px rgba(201,164,107,.6)}
 #options .rs-wide:hover{background:rgba(17,35,50,.85);transform:none}
+#options .rs-ctab{margin-top:6px}
+#options .rs-ctab:empty{display:none}
 #options :focus-visible{outline:2px solid var(--amber,#e9a640);outline-offset:2px}
 @media (max-width:760px){#options .rs-form{flex-direction:column;align-items:stretch;justify-content:center;gap:18px;overflow:auto;padding:24px 16px}
   #options .rs-menu{width:auto;padding:20px 0 20px 20px;border-radius:6px}#options .rs-foot{display:none}
@@ -135,9 +137,9 @@ function markup() {
   const keys = KEYMAP.map(([k, v]) => `<kbd>${k}</kbd><span>${v}</span>`).join('');
   const tabs = TABS.map(([id, name]) => `<button type="button" role="tab" data-tab="${id}" aria-selected="false">${name}</button>`).join('');
   const pages = TABS.map(([id]) => `<div class="rs-page" role="tabpanel" data-page="${id}" hidden>` +
-    (id === 'controls' ? `<div class="rs-keys">${keys}</div>` : '') + page(id) +
+    (id === 'controls' ? `<div class="rs-keys">${keys}</div>` : '') + page(id) + (id === 'controls' ? '<div class="rs-ctab"></div>' : '') +
     (id === 'graphics' ? '<button type="button" class="rs-wide" data-act="fullscreen">Enter fullscreen</button>' : '') + '</div>').join('');
-  return `<form class="rs-form" method="dialog" data-raft-settings="4">
+  return `<form class="rs-form" method="dialog" data-raft-settings="5">
 <nav class="rs-menu"><div class="rs-eyebrow">PAUSED</div><h2>Little Raft</h2>
 <button type="button" data-act="resume">Resume</button>
 <button type="button" data-act="settings" aria-expanded="false">Settings</button>
@@ -158,7 +160,7 @@ function ensureDialog() {
     dialog.id = DIALOG_ID;
     document.body.appendChild(dialog);
   }
-  if (dialog.querySelector('[data-raft-settings]')?.dataset.raftSettings !== '4') { // missing or an older layout
+  if (dialog.querySelector('[data-raft-settings]')?.dataset.raftSettings !== '5') { // missing or an older layout
     reused = false;
     dialog.replaceChildren();
     dialog.insertAdjacentHTML('beforeend', markup());
@@ -216,11 +218,32 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     if (btn) btn.textContent = document.fullscreenElement ? 'Exit fullscreen' : 'Enter fullscreen';
   }
 
+  // One Invert Y: the controls lane (input.js) applies map.settings.invertY to the mouse, so this toggle writes there.
+  const pushInvert = () => { try { window.raftControls?.map?.setSetting?.('invertY', !!values.invertY); } catch { /* controls lane absent */ } };
+
+  // Rebinding + gamepad feel (controls-tab.js via raftControls.mountTab) live on the Controls page while it is shown.
+  let ctab = null;
+  const capturing = () => !!ctab?.capturing;
+  function mountControlsTab() {
+    const host = form.querySelector('.rs-ctab'), rc = window.raftControls;
+    if (ctab || !host || !rc?.mountTab) return;
+    pushInvert();
+    ctab = rc.mountTab(host, { hide: ['invertY'] }); // Invert mouse Y is the toggle above; the tab keeps "Invert gamepad Y"
+    ctab.owner = rc;
+  }
+  function unmountControlsTab() {
+    if (!ctab) return;
+    const t = ctab; ctab = null;
+    try { t.owner?.unmountTab ? t.owner.unmountTab(t) : t.dispose?.(); } catch (err) { console.error(err); }
+  }
+  const syncControlsTab = () => { if (dialog.open && panelOpen() && !form.querySelector('[data-page="controls"]')?.hidden) mountControlsTab(); else unmountControlsTab(); };
+
   function update(raw) {
     const next = validateSettings({ ...values, ...raw });
     if (same(next, values)) { syncControls(); return; }
     values = next;
     save(values);
+    pushInvert();
     syncControls();
     call(onChange, { ...values });
   }
@@ -228,6 +251,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   function showTab(id) {
     for (const b of form.querySelectorAll('[data-tab]')) b.setAttribute('aria-selected', String(b.dataset.tab === id));
     for (const p of form.querySelectorAll('[data-page]')) p.hidden = p.dataset.page !== id;
+    syncControlsTab();
   }
   const panelOpen = () => !panel.hidden;
   function setPanel(open) {
@@ -236,6 +260,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     btn?.setAttribute('aria-expanded', String(open));
     if (open && dialog.contains(document.activeElement) && document.activeElement !== btn) btn?.focus({ preventScroll: true }); // one highlight, not two
     if (open && !form.querySelector('[data-tab][aria-selected=true]')) showTab('controls');
+    syncControlsTab();
   }
 
   const gameActive = () => document.body.classList.contains('playing') || document.body.classList.contains('first-person');
@@ -268,6 +293,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   // Closes the menu. resume=false is used when handing over to another menu.
   function close(resume = true) {
     if (!owns()) return;
+    unmountControlsTab();
     if (dialog.open) dialog.close();
     if (resume) call(onResume);
   }
@@ -276,6 +302,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   function escape() {
     if (!owns()) return false;
     esc.keydown(performance.now(), { handled: true });
+    if (dialog.open && capturing()) { ctab.cancel?.(); return true; } // desktop app: Esc cancels a rebind, never closes the menu
     const inv = document.getElementById('inventory');
     if (inv?.open) { inv.dispatchEvent(new Event('cancel', { cancelable: true })); return true; } // survival UI closes and relocks
     if (dialog.open) { if (panelOpen()) { setPanel(false); form.querySelector('[data-act="settings"]')?.focus({ preventScroll: true }); } else close(true); return true; }
@@ -303,6 +330,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   // Browser: Escape arrives as a normal keydown when the pointer is free.
   window.addEventListener('keydown', guard((event) => {
     if (event.key !== 'Escape') return;
+    if (dialog.open && capturing()) { esc.keydown(performance.now(), { handled: true }); return; } // controls-tab.js cancels the rebind
     const now = performance.now();
     // Held Escape: repeats keep this press "handled" so its late keyup never opens the pause menu.
     if (event.repeat) { esc.keydown(now, { repeat: true }); if (dialog.open) event.preventDefault(); return; }
@@ -369,9 +397,11 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   // Focus lost (alt-tab): show the cursor and the "away" resume hint again; a click on return relocks.
   window.addEventListener('blur', () => document.body.classList.remove('relock'), { signal: ac.signal });
 
+  dialog.addEventListener('close', unmountControlsTab, sig); // however the menu closed, drop the rebinding tab
   // Native dialog Escape: route through our escape so the engine resumes.
   dialog.addEventListener('cancel', guard((event) => {
     event.preventDefault();
+    if (capturing()) return; // Esc while rebinding: the tab cancels the capture
     if (performance.now() - esc.handledAt < 100) return; // already handled by keydown
     escape();
   }), sig);
@@ -416,7 +446,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   document.addEventListener('fullscreenchange', guard(syncFullscreen), sig);
 
   // --- Initial state ---------------------------------------------------------
-  syncControls(); syncFullscreen();
+  syncControls(); syncFullscreen(); pushInvert();
   call(onChange, { ...values });
   if (dialog.open) call(onPause); // hot creation while paused: tell the new engine it is paused
 
@@ -425,8 +455,11 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     get isOpen() { return dialog.open; },
     open,
     close: () => close(true),
+    // gamepad B: folds the settings panel back to the menu (true), or returns false when the menu itself should close
+    back() { if (!owns() || !dialog.open || !panelOpen()) return false; setPanel(false); form.querySelector('[data-act="settings"]')?.focus({ preventScroll: true }); return true; },
     destroy() {
       if (destroyed) return;
+      unmountControlsTab();
       destroyed = true;
       ac.abort();
       // #options, its <style> and window.raftEscape are shared: a newer instance may already own them.
