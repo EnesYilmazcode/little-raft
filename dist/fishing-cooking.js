@@ -160,7 +160,8 @@ export function createFishingCooking(T, host) {
       let slot = Number.isInteger(a.slot) ? a.slot : st.slots.findIndex((s) => s && s.state !== 'raw');
       if (!st.slots[slot] || st.slots[slot].state === 'raw') return;
       const item = st.take(slot); syncFish(g); markChanged();
-      give(actor, item); return say(`Took ${dishName(item.species, item.state)}`);
+      give(actor, item); if (item.state === 'cooked') host.observe?.({ kind: 'cook', item: 'fish' }, actor); // [tasks]
+      return say(`Took ${dishName(item.species, item.state)}`);
     }
   }
 
