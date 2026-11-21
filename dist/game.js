@@ -2550,7 +2550,7 @@ export function mount(transfer = null) {
       recipeGate:id => mergeGate(prog?.recipeGate(id), content?.craftLocked(id, myActor())), // [progression-hook] + content locks the host would refuse
     });
     prog.installUI(); // [progression-hook]
-    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock()), tasks:{view:() => content?.tasksView?.() ?? null, claim:id => action({kind:'tasks.claim', i:id})}}); // [tasks] Tasks tab
+    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock()), tasks:{view:() => content?.tasksView?.() ?? null, claim:id => action({kind:'tasks.claim', i:id})}, tabs:{list:() => content?.logbookTabs?.() ?? []}}); // [tasks] Tasks tab [lbtabs] extra tabs
     try { lookUI = createLookUI({getState:() => lookState, onChange:guard(applyLook), onSend:guard(() => coop?.sendLook?.()), onPause:guard(pauseInput), onResume:guard(() => { if (running) requestLock(); })}); } catch (e) { console.error('look UI failed', e); lookUI = null; } // [look]
     try { albumUI = createPhotoAlbumUI({store:sharedPhotoStore({notice:s => notice(s, 3200)}), onPause:guard(pauseInput), onResume:guard(() => requestLock())}); } catch (e) { console.error('photo album failed', e); albumUI = null; } // [camera]
     if (role !== 'guest') retroAward();

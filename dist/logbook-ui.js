@@ -1,6 +1,8 @@
 // Raft logbook view: bottled notes and achievements in a wood-panel dialog, plus unlock toasts.
 // createLogbookUI({getProgress, onPause, onResume, tasks}) -> {open, close, toggle, update, celebrate, destroy, isOpen}
 // tasks (optional, [tasks]): {view: () => taskView object | null, claim: id => void}; null view hides the Tasks tab.
+// tabs (optional, [lbtabs]): {list: () => [{id, label, view, render?, act?}]} extra content tabs after Tasks (docs/specs/shells.md).
+//   view() -> null (tab hidden) or {sig, html, badge?}; render(v) -> HTML used instead of v.html; act(name, el) on [data-lb-act] clicks.
 import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { NOTES, NOTE_COUNT, ACHIEVEMENTS, cleanProgress } from './logbook.js?build=v3-survival-ae77fa84ac2b';
 
@@ -131,7 +133,7 @@ export function notesHTML(found, newest = -1) {
   return rows;
 }
 
-export function createLogbookUI({ getProgress, onPause, onResume, tasks } = {}) {
+export function createLogbookUI({ getProgress, onPause, onResume, tasks, tabs: extraTabs } = {}) {
   const prev = window[INST_KEY];
   const ac = new AbortController();
   const opt = { signal: ac.signal };
@@ -152,6 +154,54 @@ export function createLogbookUI({ getProgress, onPause, onResume, tasks } = {}) 
   const taskBox = dlg.querySelector('.lb-tasks');
   const taskTab = tabs.find(t => t.dataset?.tab === 'tasks');
   let taskSig = null;
+
+  // ---------- [lbtabs] extra content tabs (shells, stars...) ----------
+  const EXTRA_ID = /^[a-z][a-z0-9-]{0,15}$/, EXTRA_MAX = 4, BUILTIN = new Set(['notes', 'ach', 'tasks']);
+  const extras = new Map(); // id -> {btn, panel, entry, sig, broken}
+  const tabList = dlg.querySelector('[role=tablist]');
+  function extraSlot(id) {
+    let x = extras.get(id);
+    if (x) return x;
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.setAttribute('role', 'tab'); btn.id = `lb-tab-${id}`; btn.dataset.tab = id;
+    btn.setAttribute('aria-controls', `lb-panel-${id}`); btn.setAttribute('aria-selected', 'false'); btn.tabIndex = -1; btn.hidden = true;
+    const panel = document.createElement('section');
+    panel.setAttribute('role', 'tabpanel'); panel.id = `lb-panel-${id}`; panel.setAttribute('aria-labelledby', btn.id); panel.tabIndex = 0; panel.hidden = true;
+    tabList.append(btn); wrap.append(panel); tabs.push(btn); panels[id] = panel;
+    x = { btn, panel, entry: null, sig: undefined, broken: false };
+    extras.set(id, x);
+    return x;
+  }
+  function hideExtra(x) { x.btn.hidden = true; x.panel.hidden = true; x.sig = undefined; if (tab === x.btn.dataset.tab) select('notes'); }
+  function refreshExtras() {
+    if (!extraTabs) return;
+    const got = safe(extraTabs.list);
+    const seen = new Set();
+    if (Array.isArray(got)) for (const e of got) {
+      if (seen.size >= EXTRA_MAX) break;
+      if (!e || typeof e !== 'object' || typeof e.id !== 'string' || !EXTRA_ID.test(e.id) || BUILTIN.has(e.id) || seen.has(e.id) || typeof e.view !== 'function') continue;
+      seen.add(e.id);
+      const x = extraSlot(e.id);
+      x.entry = e;
+      if (x.broken) { hideExtra(x); continue; }
+      let v, html;
+      try {
+        v = e.view();
+        if (v && typeof v === 'object') {
+          const label = String(e.label ?? e.id) + (v.badge != null && v.badge !== '' ? ' ' + v.badge : '');
+          if (x.btn.textContent !== label) x.btn.textContent = label;
+          if (v.sig !== x.sig || x.sig === undefined) {
+            html = typeof e.render === 'function' ? e.render(v) : v.html;
+            x.panel.innerHTML = typeof html === 'string' ? html : '';
+            x.sig = v.sig;
+          }
+        }
+      } catch (err) { console.warn('[logbook] tab', e.id, err); x.broken = true; hideExtra(x); continue; }
+      if (!v || typeof v !== 'object') { hideExtra(x); continue; }
+      x.btn.hidden = false;
+    }
+    for (const [id, x] of extras) if (!seen.has(id) && !x.btn.hidden) hideExtra(x);
+  }
 
   // ---------- [tasks] crew tasks tab ----------
   const tasksView = () => { const v = safe(tasks?.view); return v && typeof v === 'object' && Array.isArray(v.rows) ? v : null; };
@@ -199,7 +249,7 @@ export function createLogbookUI({ getProgress, onPause, onResume, tasks } = {}) 
   }
 
   function select(name, focus = false) {
-    tab = name === 'ach' ? 'ach' : name === 'tasks' && taskTab && !taskTab.hidden ? 'tasks' : 'notes';
+    tab = name === 'ach' ? 'ach' : name === 'tasks' && taskTab && !taskTab.hidden ? 'tasks' : extras.has(name) && !extras.get(name).btn.hidden ? name : 'notes';
     for (const t of tabs) {
       const on = t.dataset.tab === tab;
       t.setAttribute('aria-selected', on ? 'true' : 'false');
@@ -209,6 +259,7 @@ export function createLogbookUI({ getProgress, onPause, onResume, tasks } = {}) 
     panels.notes.hidden = tab !== 'notes';
     panels.ach.hidden = tab !== 'ach';
     panels.tasks.hidden = tab !== 'tasks';
+    for (const [id, x] of extras) x.panel.hidden = tab !== id; // [lbtabs]
     if (tab === 'notes' && isOpen) {
       // Keep the dot for this opening, then remember it was seen.
       if (seenBase == null) seenBase = readSeen();
@@ -225,6 +276,7 @@ export function createLogbookUI({ getProgress, onPause, onResume, tasks } = {}) 
     exitLock(document); // marked page-initiated (lock-rules.js), so the game does not pause on it
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     renderTasks();
+    refreshExtras(); // [lbtabs]
     select(want || tab, true);
     render();
   }
@@ -243,6 +295,8 @@ export function createLogbookUI({ getProgress, onPause, onResume, tasks } = {}) 
     if (e.target?.closest?.('.lb-close')) { close(); return; }
     const c = e.target?.closest?.('[data-claim]');
     if (c && !c.disabled) { const id = c.dataset.claim; c.disabled = true; safe(tasks?.claim, /^\d$/.test(id) ? Number(id) : id); setTimeout(() => { if (alive && isOpen && c.isConnected) renderTasks(); }, 1500); return; } // update() redraws on a new view; this only re-arms a refused claim
+    const act = e.target?.closest?.('[data-lb-act]'); // [lbtabs] extra tab buttons
+    if (act) { for (const x of extras.values()) if (x.panel.contains(act)) { safe(x.entry?.act, act.dataset.lbAct, act); return; } }
     const t = e.target?.closest?.('[role=tab]');
     if (t) select(t.dataset.tab, true);
   }, opt);
@@ -301,6 +355,7 @@ export function createLogbookUI({ getProgress, onPause, onResume, tasks } = {}) 
     const p = progress();
     if (sigOf(p) !== lastSig) render();
     else { const v = tasksView(); if ((v ? v.sig : null) !== taskSig) renderTasks(v); }
+    refreshExtras(); // [lbtabs] re-renders a panel only when its sig changes
   }
 
   const api = {
@@ -309,6 +364,8 @@ export function createLogbookUI({ getProgress, onPause, onResume, tasks } = {}) 
       if (!alive) return;
       alive = false;
       ac.abort();
+      for (const [id, x] of extras) { x.btn.remove(); x.panel.remove(); delete panels[id]; } // [lbtabs]
+      extras.clear();
       clearTimeout(toastTimer); clearTimeout(hideTimer);
       queued.length = 0; showing = false;
       toast.hidden = true; toast.classList.remove('lb-show');

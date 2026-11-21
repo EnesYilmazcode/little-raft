@@ -48,6 +48,7 @@
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   observe(ev, actor)        host only: game events after success ({kind:'craft'|'collect'|'fish'|'build'|
 //                             'bottle'|'cook'|'water'|'harvest'|'gather'|'repair', ...}). Never from net/effects.
+//   logbookTabs(out)          [lbtabs] push {id, label, view, render?, act?} extra logbook tabs; view() -> {sig, html, badge?} | null
 //   dispose()
 //
 // ctx (live getters, set up by game.js): T, scene, camera, raft, ocean, sun, hemi, clouds, world, role,
@@ -131,6 +132,7 @@ export function createContent(ctx, features = FEATURES) {
   const first = (fn, ...a) => { for (const m of mods) { if (m.dead || typeof m[fn] !== 'function') continue; const r = call(m, fn, ...a); if (r) return r; } return null; };
   const seatedMod = () => { for (const m of mods) if (!m.dead && typeof m.seated === 'function' && call(m, 'seated')) return m; return null; }; // [sit]
   const debug = {}; let loaded = {};
+  const tabsOut = []; // [lbtabs] reused by logbookTabs()
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
   const dn = () => mods.find(m => m.name === 'daynight' && !m.dead), num = (v, d) => (Number.isFinite(v) ? v : d); // [power]
   const env = { wind: () => num(dn()?.wind, .15), night: () => num(dn()?.night, 0) }; // [power] live getters, never spread
@@ -172,6 +174,7 @@ export function createContent(ctx, features = FEATURES) {
     diveMods(out) { out.swim = out.oxy = out.fog = out.gather = 1; for (let i = 0; i < mods.length; i++) { const m = mods[i]; if (!m.dead && typeof m.diveMods === 'function') call1(m, out); } return out; }, // shared dive modifier hook (no per-frame rest-arg arrays)
     day() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const d = m?.day; return Number.isInteger(d) ? d : null; }, // [tasks] in-game day index
     tasksView() { const m = mods.find(m => m.name === 'tasks' && !m.dead); if (!m) return null; try { return m.view?.() ?? null; } catch { return null; } }, // [tasks] logbook tab
+    logbookTabs() { tabsOut.length = 0; for (const m of mods) { if (m.dead || typeof m.logbookTabs !== 'function') continue; try { const r = m.logbookTabs(tabsOut); if (Array.isArray(r) && r !== tabsOut) tabsOut.push(...r); } catch (e) { console.error(`content ${m.name}.logbookTabs failed`, e); } } return tabsOut; }, // [lbtabs] extra logbook tabs {id, label, view, render?, act?}
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };
 }
