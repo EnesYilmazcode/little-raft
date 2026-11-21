@@ -94,8 +94,7 @@ const CSS = `#lrSpyVignette{position:fixed;inset:0;pointer-events:none;z-index:2
 #lrSpyLabel{position:fixed;left:50%;top:calc(50% + 30px);transform:translateX(-50%);padding:3px 10px;border-radius:8px;
   background:rgba(8,22,36,.6);color:#f6ecd6;font:700 14px/1.3 system-ui,sans-serif;white-space:nowrap;pointer-events:none;z-index:4}
 body.lr-spy #lrPrompt,body.lr-spy #binocularsHud,body.lr-spy #treasureHud,body.lr-spy #chargeMeter{visibility:hidden!important}
-body.lr-spy #crosshair:before{opacity:0}
-body.lr-spy #crosshair i{width:4px;height:4px;margin:-2px 0 0 -2px}`;
+body.lr-spy #crosshair{width:6px;height:6px;opacity:1;background:#fff!important;box-shadow:0 0 0 1.5px rgba(8,22,36,.9),0 0 5px rgba(0,0,0,.7)!important}`; // graphics.css dot (#fffd, faint shadow) vanishes on bright sky at zoom
 
 export function createSpyglass(ctx) {
   const T = ctx.T;

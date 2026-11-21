@@ -190,3 +190,13 @@ test('module: zoom gate, debug force/snap, menus snap to 1, nothing saved', () =
   m.dispose();
   assert.equal(globalThis.raftSpyglass, undefined);
 });
+
+test('zoomed crosshair CSS targets the current graphics.css dot, not the old ring markup', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('spyglass.js', base), 'utf8');
+  assert.ok(!/#crosshair i\b|#crosshair:before/.test(src), 'old style.css selectors removed');
+  const rule = /body\.lr-spy #crosshair\{([^}]*)\}/.exec(src);
+  assert.ok(rule, 'body.lr-spy #crosshair rule present');
+  assert.match(rule[1], /background:[^;]*!important/, 'beats graphics.css #crosshair background !important');
+  assert.match(rule[1], /box-shadow:[^;]*rgba\(8,22,36,\.9\)/, 'dark outline so the dot reads on bright sky');
+});
