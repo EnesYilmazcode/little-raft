@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 
 const S = await import('../dist/shark.js');
 const { SHARK, SHARK_LOOT, edgeTiles, pickTarget, removeTile, damageTile, tileHpOf, cleanTileHp, isArmored, createSharkState, cleanShark, saveShark,
-  step, hit, kill, loot, lootable, startAttack, forceAttack, spearHits, segSegDist } = S;
+  step, hit, kill, loot, lootable, startAttack, forceAttack, spearHits, segSegDist,
+  BAIT, SHARK_STATES, STATE_CODE, baitSpot, setBait, clearBait, baitActive } = S;
+const { raftExtent } = await import('../dist/wildlife.js');
 
 const grid = (n = 3) => { const t = []; for (let z = -1; z < n - 1; z++) for (let x = -1; x < n - 1; x++) t.push([x, z]); return t; };
 const world = (tiles = grid()) => ({ tiles, decor: [], tileHp: {}, pieces: [], garden: {}, purifiers: {} });
@@ -164,4 +166,127 @@ test('spear capsule test', () => {
   assert.ok(spearHits(1.5, 0, 1.2, -1, 0, 0, 2.8, 0, 0, 0, 0), 'near the head');
   assert.ok(!spearHits(1.5, 0, 1.2, -1, 0, 0, 2.8, 0, 0, 0, Math.PI / 2), 'turned away: that spot is empty water');
   assert.ok(Math.abs(segSegDist(0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1) - 1) < 1e-9);
+});
+
+// ------------------------------------------------------------------ Snack Float (docs/specs/snack-float.md section 9)
+
+test('snack float: BAIT constants, snack state appended, STATE_CODE unchanged', () => {
+  assert.ok(Object.isFrozen(BAIT));
+  assert.equal(BAIT.TIME, 120); assert.equal(BAIT.MAX, 180); assert.equal(BAIT.REACH, 12); assert.equal(BAIT.PAD, 2); assert.equal(BAIT.OUT, 10);
+  assert.equal(SHARK_STATES.at(-1), 'snack'); assert.deepEqual(SHARK_STATES.slice(0, 6), ['circle', 'approach', 'bite', 'flee', 'hunt', 'dead']);
+  assert.equal(STATE_CODE.gone, 6); assert.equal(Object.keys(STATE_CODE).length, 7); assert.equal(STATE_CODE.snack, undefined);
+});
+
+test('snack float: baitSpot keeps the float in the water, clear of the deck and not too far out', () => {
+  const t = grid(3);
+  assert.equal(baitSpot(t, 0, 0), null); assert.equal(baitSpot(t, 2.5, 0), null, 'on the deck');
+  assert.equal(baitSpot(t, NaN, 0), null); assert.equal(baitSpot(t, 500, 0), null); assert.equal(baitSpot(t, 0, Infinity), null);
+  const a = baitSpot(t, 3.4, 0); assert.ok(a.x >= 5 && a.z === 0, 'pushed out by PAD: ' + a.x);
+  assert.ok(Math.abs(t.reduce((m, [x, z]) => Math.min(m, Math.max(Math.abs(a.x - x * 2), Math.abs(a.z - z * 2))), Infinity) - 1) >= BAIT.PAD - 1e-9);
+  const b = baitSpot(t, 40, 0); assert.equal(raftExtent(t), 3); assert.deepEqual(b, { x: 13, z: 0 });
+  assert.deepEqual(baitSpot(t, 3.4, 0), a, 'deterministic');
+  const out = { x: 0, z: 0 }; assert.equal(baitSpot(t, 8, 0, out), out); assert.deepEqual(out, { x: 8, z: 0 });
+});
+
+test('snack float: setBait ok / busy / water, t clamped', () => {
+  const t = grid(3), s = createSharkState(null, seq(0.4));
+  assert.equal(baitActive(s), false);
+  assert.equal(setBait(s, t, 8, 0), 'ok'); assert.equal(s.bt, 120); assert.equal(s.bx, 8); assert.equal(s.bz, 0); assert.ok(baitActive(s));
+  assert.equal(setBait(s, t, -8, 3, 50), 'busy'); assert.deepEqual([s.bx, s.bz, s.bt], [8, 0, 120]);
+  const w2 = createSharkState(null, seq(0.4));
+  assert.equal(setBait(w2, t, 1, 1), 'water'); assert.equal(w2.bt, 0);
+  assert.equal(setBait(w2, t, 8, 0, 999), 'ok'); assert.equal(w2.bt, 180);
+});
+
+const snackEnv = (log, preys = []) => ({ rnd: seq(0.3, 0.6), preys, hooks: {
+  bite: () => log.push('bite'), nibble: (x, z) => log.push(['nibble', x, z]), ate: () => log.push('ate'), hurt: () => log.push('hurt') } });
+
+test('snack float: blocks raft attacks', () => {
+  const w = world(), s = createSharkState(null, seq(0.4)), log = [];
+  s.timer = 0; assert.equal(setBait(s, w.tiles, 8, 0), 'ok');
+  run(s, w, snackEnv(log), 30);
+  assert.ok(!log.includes('bite')); assert.deepEqual(w.tileHp, {}); assert.equal(s.state, 'snack'); assert.equal(w.tiles.length, 9);
+});
+
+test('snack float: the 120 s drain only at the float', () => {
+  const w = world(), s = createSharkState(null, seq(0.4)), log = [], env = snackEnv(log);
+  assert.ok(Math.hypot(s.x, s.z) > 25);
+  setBait(s, w.tiles, 8, 0);
+  run(s, w, env, 1); assert.ok(s.bt > 119.9, 'travel is free: ' + s.bt);
+  const t = run(s, w, env, 20, x => x.bitten); assert.ok(t < 20, 'reaches the float');
+  const bt0 = s.bt; run(s, w, env, 10);
+  assert.ok(Math.abs(bt0 - s.bt - 10) <= 0.1, 'drained ' + (bt0 - s.bt));
+  assert.ok(Math.hypot(s.x - 8, s.z) <= BAIT.NIBBLE_R);
+});
+
+test('snack float: nibble hook every 2 s at the float', () => {
+  const w = world(), s = createSharkState(null, seq(0.4)), log = [], env = snackEnv(log);
+  setBait(s, w.tiles, 8, 0); run(s, w, env, 20, x => x.bitten);
+  log.length = 0; let maxAnim = 0;
+  for (let t = 0; t < 10; t += 0.05) { step(s, 0.05, w, env); maxAnim = Math.max(maxAnim, s.anim); }
+  const n = log.filter(e => e[0] === 'nibble');
+  assert.ok(Math.abs(n.length - 5) <= 1, 'nibbles: ' + n.length);
+  for (const e of n) assert.deepEqual(e, ['nibble', 8, 0]);
+  assert.equal(maxAnim, 1);
+});
+
+test('snack float: when it is eaten the attack timer starts over from 300 s', () => {
+  const w = world(), s = createSharkState(null, seq(0.4)), log = [], env = snackEnv(log);
+  s.timer = 5; setBait(s, w.tiles, 8, 0);
+  assert.notEqual(run(s, w, env, 200, x => x.bt <= 0), Infinity);
+  assert.equal(s.state, 'circle'); assert.ok(Math.abs(s.timer - 300) <= 0.2, 'timer ' + s.timer);
+  assert.equal(log.filter(e => e === 'ate').length, 1); assert.equal(s.bitten, false);
+  const t = run(s, w, env, 310, x => x.state === 'approach');
+  assert.ok(Math.abs(t - 300) <= 0.2, 'next attack after ' + t);
+  assert.ok(!log.includes('bite'));
+});
+
+test('snack float: a toss mid-attack drops the attack at once', () => {
+  const w = world(), s = createSharkState(null, seq(0.4)), env = snackEnv([]);
+  assert.ok(forceAttack(s, w, seq(0.2))); assert.equal(s.state, 'approach'); assert.ok(s.hasTarget);
+  s.attackDmg = 5; setBait(s, w.tiles, 8, 0); step(s, 0.05, w, env);
+  assert.equal(s.state, 'snack'); assert.equal(s.hasTarget, false); assert.equal(s.attackDmg, 0);
+});
+
+test('snack float: swimmers are ignored while it snacks, hunted again right after', () => {
+  const w = world(), s = createSharkState(null, seq(0.4)), log = [];
+  const prey = { x: 9, z: 0, swimming: true }, env = snackEnv(log, [prey]);
+  setBait(s, w.tiles, 8, 0); s.bt = BAIT.MAX;
+  run(s, w, env, 60);
+  assert.ok(!log.includes('hurt')); assert.equal(s.state, 'snack');
+  clearBait(s); step(s, 0.05, w, env); assert.equal(s.state, 'circle'); assert.equal(s.bt, 0);
+  assert.ok(run(s, w, env, 1, x => x.state === 'hunt') < 1);
+});
+
+test('snack float: a spear hit makes it flee, then it comes back to the float', () => {
+  const w = world(), s = createSharkState(null, seq(0.4)), env = snackEnv([]);
+  setBait(s, w.tiles, 8, 0); run(s, w, env, 20, x => x.bitten);
+  assert.ok(hit(s, 15)); assert.equal(s.state, 'flee');
+  const bt = s.bt; let t = 0;
+  for (; t < 10 && s.state === 'flee'; t += 0.05) { step(s, 0.05, w, env); if (s.state === 'flee') assert.equal(s.bt, bt); }
+  assert.ok(Math.abs(t - SHARK.FLEE_TIME) <= 0.1, 'flee ' + t);
+  assert.ok(run(s, w, env, 0.2, x => x.state === 'snack') <= 0.2);
+});
+
+test('snack float: a dead shark leaves the float waiting; after respawn it goes back to it', () => {
+  const w = world(), s = createSharkState(null, seq(0.4)), env = snackEnv([]);
+  setBait(s, w.tiles, 8, 0); kill(s);
+  run(s, w, env, 60); assert.equal(s.bt, 120); assert.equal(s.state, 'dead');
+  assert.ok(loot(s)); run(s, w, env, 181);
+  assert.equal(s.state, 'snack'); assert.ok(s.bt > 0);
+});
+
+test('snack float: save/load and junk bait', () => {
+  const s = createSharkState(); s.timer = 42.25; s.hp = 90;
+  const plain = saveShark(s);
+  assert.ok(!('bait' in plain)); assert.deepEqual(plain, { v: 1, hp: 90, timer: 42.3, dead: false, looted: false, respawn: 0 });
+  setBait(s, grid(3).map(t => t), 8, -2); s.bt = 77.26;
+  const v = saveShark(s); assert.deepEqual(v.bait, { x: 8, z: -2, t: 77.3 });
+  const b = createSharkState(JSON.parse(JSON.stringify(v))); assert.deepEqual([b.bx, b.bz, b.bt], [8, -2, 77.3]);
+  for (const bait of ['x', [1, 2, 3], { x: NaN, z: 0, t: 5 }, { x: 1, z: 1, t: 0 }, { x: 1, z: 1, t: -5 }, { x: 900, z: 0, t: 5 }, null, { x: 1, z: 1 }])
+    assert.ok(!('bait' in cleanShark({ v: 1, hp: 50, timer: 10, bait })), JSON.stringify(bait));
+  assert.deepEqual(cleanShark({ bait: { x: 1.234, z: -3.456, t: 999 } }).bait, { x: 1.23, z: -3.46, t: 180 });
+  const old = { v: 1, hp: 90, timer: 42 };
+  assert.deepEqual(cleanShark(old), { v: 1, hp: 90, timer: 42, dead: false, looted: false, respawn: 0 });
+  assert.deepEqual(Object.keys(cleanShark(old)), ['v', 'hp', 'timer', 'dead', 'looted', 'respawn']);
 });

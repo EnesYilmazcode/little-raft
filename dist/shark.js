@@ -12,10 +12,11 @@
 //   world.tiles     [[x, z], ...] integer tile coords (2 m tiles, raft centred on the origin)
 //   world.tileHp    {"x,z": 1..99} foundation HP. Missing key = full (TILE_HP = 100). 0 = the tile is removed.
 //   world.tileArmor optional: {"x,z": truthy} | Set of "x,z" | ["x,z", ...]. Armored tiles are never targeted.
-//   world.shark     saved {v, hp, timer, dead, looted, respawn} (cleanShark)
+//   world.shark     saved {v, hp, timer, dead, looted, respawn, bait?: {x, z, t}} (cleanShark; bait only while a Snack Float is out)
 import { raftExtent } from './wildlife.js?build=v3-survival-ae77fa84ac2b';
 import { cleanPieces } from './building-pieces.js?build=v3-survival-ae77fa84ac2b';
 import { sharkBodyGeometry, sharkTailGeometry, SHARK_TAIL_PIVOT, SHARK_LENGTH } from './shark-model.js?build=v3-survival-ae77fa84ac2b';
+import { createSnackFloat, disposeSnackFloat } from './snack-float-model.js?build=v3-survival-ae77fa84ac2b'; // [snackfloat]
 
 export const SHARK = Object.freeze({
   HP: 150, SPEED: 3.5, ATTACK_SPEED: 5, FLEE_SPEED: 6.5, TURN: 2.4,
@@ -25,11 +26,15 @@ export const SHARK = Object.freeze({
   HARVEST_REACH: 4, BODY_R: 0.62,
 });
 export const SHARK_LOOT = Object.freeze({ sharkmeat: 4, sharkhead: 1 });
-export const SHARK_STATES = Object.freeze(['circle', 'approach', 'bite', 'flee', 'hunt', 'dead']);
+// Snack Float (docs/specs/snack-float.md): a tossed bait the shark nibbles for TIME s (counted only at the float), then the attack timer restarts.
+export const BAIT = Object.freeze({ TIME: 120, MAX: 180, REACH: 12, SLACK: 1.5, PAD: 2, OUT: 10, LIM: 200,
+  EAT_OFF: 1.2, NIBBLE_R: 3, NIBBLE_EVERY: 2, FAST_R: 6, SLOW: 2.5 });
+export const SHARK_STATES = Object.freeze(['circle', 'approach', 'bite', 'flee', 'hunt', 'dead', 'snack']); // 'snack' appended (never a net code)
 const TAU = Math.PI * 2, N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const fin = v => typeof v === 'number' && Number.isFinite(v);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const wrap = a => a - TAU * Math.round(a / TAU);
+const r2 = v => Math.round(v * 100) / 100, r1 = v => Math.round(v * 10) / 10;
 export const tileKey = (x, z) => x + ',' + z;
 
 // ------------------------------------------------------------------ tiles (pure)
@@ -114,6 +119,7 @@ export function createSharkState(saved = null, rnd = Math.random) {
     x: Math.cos(a) * r, z: Math.sin(a) * r, heading: 0, dir: rnd() < 0.5 ? -1 : 1, ring: 0,
     hasTarget: false, tx: 0, tz: 0, nx: 0, nz: 0, leg: 0, biteClock: 0, attackDmg: 0, stateT: 0,
     lunge: 0, prey: -1, warned: false, anim: 0, hurtT: 0, floatSet: false, fx: 0, fz: 0, under: false,
+    bx: v.bait ? v.bait.x : 0, bz: v.bait ? v.bait.z : 0, bt: v.bait ? v.bait.t : 0, bitten: false, // [snackfloat]
   };
   s.heading = Math.atan2(-Math.sin(a) * s.dir, Math.cos(a) * s.dir);
   return s;
@@ -121,14 +127,20 @@ export function createSharkState(saved = null, rnd = Math.random) {
 export function cleanShark(v) {
   const o = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
   const dead = o.dead === true, looted = dead && o.looted === true;
-  return {
+  const out = {
     v: 1, hp: fin(o.hp) && o.hp > 0 ? clamp(Math.round(o.hp), 1, SHARK.HP) : SHARK.HP,
     timer: fin(o.timer) ? clamp(o.timer, 0, SHARK.ATTACK_EVERY) : SHARK.ATTACK_EVERY,
     dead, looted, respawn: looted && fin(o.respawn) ? clamp(o.respawn, 0, SHARK.RESPAWN) : looted ? SHARK.RESPAWN : 0,
   };
+  const b = o.bait; // [snackfloat] only a sane float survives; the key is absent otherwise (old saves clean as before)
+  if (b && typeof b === 'object' && !Array.isArray(b) && fin(b.x) && fin(b.z) && Math.abs(b.x) <= BAIT.LIM && Math.abs(b.z) <= BAIT.LIM && fin(b.t) && b.t > 0)
+    out.bait = { x: r2(b.x), z: r2(b.z), t: clamp(r1(b.t), 0.1, BAIT.MAX) };
+  return out;
 }
 export function saveShark(s) {
-  return { v: 1, hp: Math.round(s.hp), timer: Math.round(s.timer * 10) / 10, dead: s.state === 'dead', looted: s.state === 'dead' && s.looted, respawn: Math.round(s.respawn * 10) / 10 };
+  const o = { v: 1, hp: Math.round(s.hp), timer: Math.round(s.timer * 10) / 10, dead: s.state === 'dead', looted: s.state === 'dead' && s.looted, respawn: Math.round(s.respawn * 10) / 10 };
+  if (s.bt > 0) o.bait = { x: r2(s.bx), z: r2(s.bz), t: clamp(r1(s.bt), 0.1, BAIT.MAX) }; // [snackfloat]
+  return o;
 }
 const attacking = s => s.state === 'approach' || s.state === 'bite' || (s.state === 'hunt' && s.hasTarget);
 
@@ -168,6 +180,33 @@ export function loot(s) {
   return SHARK_LOOT;
 }
 export const lootable = s => s.state === 'dead' && !s.looted;
+
+// ------------------------------------------------------------------ Snack Float (pure) [snackfloat]
+export const baitActive = s => s.bt > 0;
+// Where a float tossed at (x, z) settles: null on the deck / junk / too far out; else pushed out along the ray from the origin
+// until PAD m clear of every tile, then clamped to raftExtent + OUT. Rounded to 0.01. No allocation.
+export function baitSpot(tiles, x, z, out = { x: 0, z: 0 }) {
+  if (!fin(x) || !fin(z) || Math.abs(x) > BAIT.LIM || Math.abs(z) > BAIT.LIM) return null;
+  const ts = Array.isArray(tiles) ? tiles : [];
+  if (overRaft(ts, x, z, 0.2)) return null;
+  let r = Math.hypot(x, z), px = x, pz = z;
+  const ux = r > 1e-6 ? x / r : 1, uz = r > 1e-6 ? z / r : 0;
+  for (let i = 0; i < 40 && overRaft(ts, px, pz, BAIT.PAD); i++) { r += 0.25; px = ux * r; pz = uz * r; }
+  if (overRaft(ts, px, pz, BAIT.PAD)) return null;
+  const max = raftExtent(ts) + BAIT.OUT;
+  if (r > max) { r = max; px = ux * r; pz = uz * r; }
+  out.x = r2(px); out.z = r2(pz);
+  return out;
+}
+const SPOT = { x: 0, z: 0 };
+export function setBait(s, tiles, x, z, t = BAIT.TIME) {
+  if (s.bt > 0) return 'busy';
+  const p = baitSpot(tiles, x, z, SPOT);
+  if (!p) return 'water';
+  s.bx = p.x; s.bz = p.z; s.bt = clamp(fin(t) ? t : BAIT.TIME, 0.1, BAIT.MAX); s.bitten = false;
+  return 'ok';
+}
+export function clearBait(s) { s.bt = 0; } // debug: the next step leaves 'snack' through the normal end path
 
 // Turn toward (tx, tz) at the turn rate and swim forward. Returns the distance that was left.
 function steer(s, tx, tz, speed, dt) {
@@ -231,8 +270,10 @@ export function step(s, dt, world, env = NOOP) {
     if (d > 0.05) { const k = Math.min(1, Math.min(2, 0.5 + 0.25 * d) * dt / d); s.x += dx * k; s.z += dz * k; } // drifts in faster from afar
     return s;
   }
+  // [snackfloat] a float in the water beats planks and swimmers: drop whatever it was doing (not while fleeing)
+  if (s.bt > 0 && s.state !== 'flee' && s.state !== 'snack') { s.hasTarget = false; s.prey = -1; s.attackDmg = 0; s.warned = false; s.leg = 0; s.biteClock = 0.5; setState(s, 'snack'); }
   // a swimmer nearby is more interesting than planks (not while fleeing)
-  if (s.state !== 'flee' && s.state !== 'hunt') {
+  if (s.state !== 'flee' && s.state !== 'hunt' && s.state !== 'snack') {
     const p = nearestPrey(s, env, SHARK.HUNT_RANGE);
     if (p >= 0) { s.prey = p; s.lunge = Math.max(s.lunge, 1); setState(s, 'hunt'); }
   }
@@ -288,6 +329,20 @@ export function step(s, dt, world, env = NOOP) {
       if (s.stateT >= SHARK.FLEE_TIME) { s.dir = rnd() < 0.5 ? -1 : 1; setState(s, 'circle'); }
       break;
     }
+    case 'snack': { // [snackfloat] swim to the float, nibble it; the clock only runs while it is at the float
+      if (s.bt > 0) {
+        const dx = s.bx - s.x, dz = s.bz - s.z, d = Math.hypot(dx, dz);
+        if (d > BAIT.EAT_OFF + 0.05) steer(s, s.bx - dx / d * BAIT.EAT_OFF, s.bz - dz / d * BAIT.EAT_OFF, d > BAIT.FAST_R ? SHARK.ATTACK_SPEED : BAIT.SLOW, dt);
+        else s.heading = wrap(s.heading + clamp(wrap(Math.atan2(dx, dz) - s.heading), -3 * dt, 3 * dt));
+        s.bitten = d <= BAIT.NIBBLE_R;
+        if (s.bitten) {
+          s.bt = Math.max(0, s.bt - dt); s.biteClock -= dt;
+          if (s.biteClock <= 0) { s.biteClock += BAIT.NIBBLE_EVERY; s.anim = 1; if (hooks.nibble) hooks.nibble(s.bx, s.bz); }
+        }
+      }
+      if (s.bt <= 0) { s.bt = 0; s.bitten = false; endAttack(s); setState(s, 'circle'); if (hooks.ate) hooks.ate(s.bx, s.bz); }
+      break;
+    }
   }
   s.under = s.state !== 'bite' && overRaft(tiles, s.x, s.z, 0.4); // dive under the deck so the fin never cuts through planks
   return s;
@@ -313,13 +368,15 @@ export function spearHits(ox, oy, oz, dx, dy, dz, reach, x, y, z, heading) {
   return segSegDist(ox, oy, oz, dx * reach, dy * reach, dz * reach, x - ax * half, y, z - az * half, ax * 2 * half, 0, az * 2 * half) <= SHARK.BODY_R;
 }
 
-// Compact pose for co-op: [x, z, heading, stateCode, depth, anim, hp]
+// Compact pose for co-op: [x, z, heading, stateCode, depth, anim, hp, baitX, baitZ, baitT] (7-9 appended for the Snack Float;
+// a snacking shark is sent as approach (swimming to it) or bite (nibbling): never a new code, old guests clamp 7+ to 'gone')
 export const STATE_CODE = Object.freeze({ circle: 0, approach: 1, bite: 2, flee: 3, hunt: 4, dead: 5, gone: 6 });
 
 // ------------------------------------------------------------------ view
 
 // host: {scene, ocean, raft(), world(), role(), preys(out) fills [{x,z,swimming}], circler() -> {x,z}|null,
-//        onBite(x, z, hp), onBroke(x, z), onHurt(i, n), onWarn(x, z), sendHit(dmg), sendLoot(), waterFx?}
+//        onBite(x, z, hp), onBroke(x, z), onHurt(i, n), onWarn(x, z), sendHit(dmg), sendLoot(), waterFx?,
+//        onNibble?(x, z), onAte?(x, z)}  (the last two are local view events of the shown float, host and guest alike)
 export function createShark(T, host, saved = null) {
   let sim = createSharkState(saved);
   const preys = [{ x: 0, z: 0, swimming: false }, { x: 0, z: 0, swimming: false }];
@@ -331,8 +388,8 @@ export function createShark(T, host, saved = null) {
   } };
   // shown pose (host: the sim; guest: smoothed toward the last net pose)
   const view = { x: sim.x, z: sim.z, heading: sim.heading, depth: -0.55, roll: 0, pitch: 0, code: STATE_CODE[sim.state], anim: 0, hp: sim.hp, visible: false, swim: 0 };
-  const net = { x: 0, z: 0, heading: 0, code: 0, depth: -0.55, anim: 0, hp: SHARK.HP, have: false };
-  const pose = [0, 0, 0, 0, 0, 0, 0];
+  const net = { x: 0, z: 0, heading: 0, code: 0, depth: -0.55, anim: 0, hp: SHARK.HP, have: false, hostBait: false, bx: 0, bz: 0, bt: 0 };
+  const pose = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
   let extTiles = null, extLen = -1, ext = 0, overlayKey = 0, ovTilesRef = null, bitePulse = 0, biteX = 0, biteZ = 0;
 
   const group = new T.Group(); group.name = 'shark';
@@ -349,6 +406,29 @@ export function createShark(T, host, saved = null) {
   overlay.castShadow = false; overlay.receiveShadow = false; overlay.renderOrder = 3; overlay.instanceMatrix.setUsage(T.DynamicDrawUsage);
   const deck = new T.Group(); deck.name = 'sharkDeckFx'; deck.add(overlay);
   host.scene.add(group, deck);
+  // [snackfloat] the tossed float: raft-relative like the sim (stays beside the raft while sailing), hidden when none is out
+  const float = createSnackFloat(T); float.visible = false; group.add(float);
+  const fl = { lastT: 0, lastAnim: 0, dip: 0, x: 0, z: 0, yaw: 0 }, baitOut = { x: 0, z: 0, t: 0 };
+  const shownBt = () => isGuest() ? (net.have && net.hostBait ? net.bt : 0) : sim.bt;
+  const shownBx = () => isGuest() ? net.bx : sim.bx, shownBz = () => isGuest() ? net.bz : sim.bz;
+  function showFloat(dt, t) {
+    const bt = shownBt(), ocean = host.ocean;
+    if (!(bt > 0)) {
+      if (fl.lastT > 0) { const y = ocean ? ocean.getHeight(fl.x, fl.z) : 0; host.waterFx?.splash(fl.x, y, fl.z, 0.5); if (host.onAte) host.onAte(fl.x, fl.z); }
+      fl.lastT = 0; fl.lastAnim = view.anim; float.visible = false; return;
+    }
+    const x = shownBx(), z = shownBz(), h = ocean ? ocean.getHeight(x, z) : 0;
+    fl.x = x; fl.z = z; fl.lastT = bt;
+    const y = h + 0.02 + 0.025 * Math.sin(t * 2.2);
+    if (view.code === STATE_CODE.bite && view.anim - fl.lastAnim > 0.5 && Math.hypot(view.x - x, view.z - z) <= BAIT.NIBBLE_R + 1) {
+      host.waterFx?.splash(x, y, z, 0.35); fl.dip = 0.3; if (host.onNibble) host.onNibble(x, z);
+    }
+    fl.lastAnim = view.anim; fl.dip = Math.max(0, fl.dip - dt); fl.yaw = wrap(fl.yaw + 0.3 * dt);
+    float.position.set(x, y - (fl.dip > 0 ? 0.06 * Math.sin(fl.dip / 0.3 * Math.PI) : 0), z);
+    float.rotation.set(0.08 * Math.sin(t * 1.7), fl.yaw, 0.05 * Math.sin(t * 1.3), 'YXZ');
+    float.scale.setScalar(0.55 + 0.45 * Math.min(1, bt / BAIT.TIME));
+    float.visible = true;
+  }
   const m4 = new T.Matrix4(), col = new T.Color(), white = new T.Color(0xffffff), dark = new T.Color(0x3a2a1e);
   const ovTiles = []; // [x, z] of the overlay instances, rebuilt when tileHp keys change
 
@@ -405,14 +485,15 @@ export function createShark(T, host, saved = null) {
     // active = false (title screen): nothing moves and the shark stays hidden, so the attack timer only runs in play.
     update(dt, t, active = true) {
       const world = host.world(); if (!world) return;
-      if (!active) { body.visible = false; overlay.visible = false; return; }
+      if (!active) { body.visible = false; overlay.visible = false; float.visible = false; return; }
       if (!isGuest()) {
         host.preys(preys);
         env.ringR = ringR(world.tiles);
         step(sim, dt, world, env);
-        const v = view; v.x = sim.x; v.z = sim.z; v.heading = sim.heading; v.code = sim.state === 'dead' && sim.looted ? STATE_CODE.gone : STATE_CODE[sim.state];
+        const v = view, snack = sim.state === 'snack'; v.x = sim.x; v.z = sim.z; v.heading = sim.heading;
+        v.code = snack ? (sim.bitten ? STATE_CODE.bite : STATE_CODE.approach) : sim.state === 'dead' && sim.looted ? STATE_CODE.gone : STATE_CODE[sim.state];
         v.anim = sim.anim; v.hp = sim.hp;
-        const target = sim.under ? -1.4 : sim.state === 'bite' ? -0.32 : -0.55;
+        const target = sim.under ? -1.4 : sim.state === 'bite' || (snack && sim.bitten) ? -0.32 : -0.55;
         v.depth += (target - v.depth) * Math.min(1, dt * 2.5);
       } else if (net.have) {
         const v = view, k = Math.min(1, dt * 8);
@@ -421,6 +502,7 @@ export function createShark(T, host, saved = null) {
         v.depth += (net.depth - v.depth) * k; v.code = net.code; v.anim = net.anim; v.hp = net.hp;
       } else view.code = STATE_CODE.gone;
       showPose(dt, t);
+      showFloat(dt, t);
       const raft = host.raft(); if (raft) { deck.position.copy(raft.position); deck.quaternion.copy(raft.quaternion); }
       refreshOverlay(world, dt);
       host.waterFx?.update(dt);
@@ -445,29 +527,41 @@ export function createShark(T, host, saved = null) {
     fx(kind, x, z) {
       const ocean = host.ocean, y = ocean ? ocean.getHeight(x, z) : 0;
       if (kind === 'bite') { bitePulse = 1; host.waterFx?.splash(x, y, z, 1.2); }
+      else if (kind === 'snack') host.waterFx?.splash(x, y, z, 0.6);
       else host.waterFx?.splash(x, y, z, 0.7);
     },
     markBite(tx, tz) { biteX = tx; biteZ = tz; bitePulse = 1; },
     save() { return saveShark(sim); },
-    load(saved) { sim = createSharkState(saved); view.x = sim.x; view.z = sim.z; },
+    load(saved) { sim = createSharkState(saved); view.x = sim.x; view.z = sim.z; fl.lastT = 0; },
     net() { // compact pose for hostState
       const v = view;
       pose[0] = Math.round(v.x * 100) / 100; pose[1] = Math.round(v.z * 100) / 100; pose[2] = Math.round(v.heading * 100) / 100;
       pose[3] = v.code; pose[4] = Math.round(v.depth * 100) / 100; pose[5] = Math.round(v.anim * 10) / 10; pose[6] = Math.round(v.hp);
+      const bt = shownBt(); // [snackfloat] appended: old guests read 0..6 only
+      pose[7] = bt > 0 ? r2(shownBx()) : 0; pose[8] = bt > 0 ? r2(shownBz()) : 0; pose[9] = bt > 0 ? r1(bt) : 0;
       return pose;
     },
     applyNet(p) {
       if (!Array.isArray(p) || p.length < 7 || !p.every(fin)) return;
       net.x = clamp(p[0], -200, 200); net.z = clamp(p[1], -200, 200); net.heading = p[2]; net.code = clamp(p[3] | 0, 0, 6);
       net.depth = clamp(p[4], -3, 0.5); net.anim = clamp(p[5], 0, 1); net.hp = clamp(p[6], 0, SHARK.HP);
+      net.hostBait = p.length >= 10; // [snackfloat] an old host sends 7 numbers: no floats there
+      if (net.hostBait) { net.bx = clamp(p[7], -BAIT.LIM, BAIT.LIM); net.bz = clamp(p[8], -BAIT.LIM, BAIT.LIM); net.bt = clamp(p[9], 0, BAIT.MAX); }
+      else net.bt = 0;
       if (!net.have) { view.x = net.x; view.z = net.z; view.heading = net.heading; view.depth = net.depth; }
       net.have = true;
     },
-    clearNet() { net.have = false; },
+    clearNet() { net.have = false; net.hostBait = false; net.bt = 0; fl.lastT = 0; },
+    // [snackfloat] the float that is shown (host: sim, guest: net) or null; hostBait: can this raft take a toss at all
+    get bait() { const bt = shownBt(); if (!(bt > 0)) return null; baitOut.x = shownBx(); baitOut.z = shownBz(); baitOut.t = bt; return baitOut; },
+    get hostBait() { return !isGuest() || (net.have && net.hostBait); },
+    toss(x, z) { return isGuest() ? null : setBait(sim, host.world()?.tiles, x, z); }, // host: 'ok' | 'busy' | 'water'
+    setBait(x, z, t = BAIT.TIME) { return isGuest() ? null : setBait(sim, host.world()?.tiles, x, z, t); }, // debug
+    clearBait() { if (!isGuest()) clearBait(sim); }, // debug
     get view() { return view; },
     dispose() {
       group.removeFromParent(); deck.removeFromParent();
-      body.geometry.dispose(); tail.geometry.dispose(); material.dispose(); ovGeo.dispose(); ovMat.dispose(); overlay.dispose();
+      body.geometry.dispose(); tail.geometry.dispose(); material.dispose(); ovGeo.dispose(); ovMat.dispose(); overlay.dispose(); disposeSnackFloat(float);
     },
   };
   return mod;
