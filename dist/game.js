@@ -27,7 +27,7 @@ export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints, feedPlacement, hintsFromState } from './hud.js?build=v3-survival-ae77fa84ac2b';
-import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, escReleasePlan, dragLook } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
@@ -491,6 +491,7 @@ export function mount(transfer = null) {
     if (!force && signature === uiSignature) return; uiSignature = signature;
     const b = document.body.classList;
     b.toggle('pointer-locked', locked); b.toggle('locked', locked); b.toggle('first-person', running); b.toggle('playing', running);
+    b.toggle('drag-look', dragLook({running, supported:lockSupported, fallback:lockFallback}));
     const crosshair = $('#crosshair'); if (crosshair) crosshair.hidden = !(running && locked);
     const resume = $('#resumeHint'); if (resume) resume.hidden = !(running && !locked && lockSupported && !dialog);
   }
@@ -503,7 +504,14 @@ export function mount(transfer = null) {
   // While Escape is still held (it just closed a panel), Chrome may treat the held key as the user leaving
   // the new lock, so the relock waits for the release (no gesture needed: the page released the lock itself).
   let escHeld = false, relockOnEscUp = false;
-  function escReleased() { escHeld = false; if (relockOnEscUp) { relockOnEscUp = false; requestLock(); } }
+  // A browser keyup defers (escReleasePlan): Chrome can revoke a lock granted inside the Escape keyup itself, so the relock runs
+  // just after it. The desktop shell's released() stays synchronous to keep its executeJavaScript user gesture.
+  function escReleased(fromShell = false) {
+    const plan = escReleasePlan({running, pending:relockOnEscUp, fromShell});
+    escHeld = relockOnEscUp = false;
+    if (plan.relock === 'defer') setTimeout(guard(requestLock), 0); else if (plan.relock === 'now') requestLock();
+    return plan;
+  }
   function requestLock() {
     if (!shouldRequestLock({running, supported:lockSupported, blocked:uiBlocked()}) || isLocked()) return;
     if (escHeld) { relockOnEscUp = true; return; }
@@ -1169,7 +1177,8 @@ export function mount(transfer = null) {
   on(window, 'keyup', e => { keys[e.code] = false; });
   on(window, LIVE_STATUS_EVENT, e => { if (!running || !e.detail?.text) return; notice(e.detail.text); e.preventDefault(); }); // live.js update notices -> feed
   on(window, 'keydown', e => { if (e.key === 'Escape' && !e.repeat) { escHeld = true; relockOnEscUp = false; } }, {capture:true});
-  on(window, 'keyup', e => { if (e.key === 'Escape') escReleased(); }, {capture:true});
+  // preventDefault: an unhandled Escape keyup makes Chrome drop the lock it just granted (LOCK-1).
+  on(window, 'keyup', e => { if (e.key === 'Escape' && escReleased().preventDefault) e.preventDefault(); }, {capture:true});
   on(window, 'pointerdown', () => { escHeld = relockOnEscUp = false; }, {capture:true}); // a click relocks on its own
   // Focus loss (alt-tab): drop held input and show the hint at the top edge; one click on return relocks.
   on(window, 'blur', () => { clearInput(); escHeld = relockOnEscUp = false; document.body.classList.toggle('away', running); refreshPointerUI(true); });
@@ -1422,7 +1431,7 @@ export function mount(transfer = null) {
   // user gesture; hold() first marks the key as held so a relock waits for released(), sent on the key's release.
   const shellApi = {
     hold:guard(() => { escHeld = true; relockOnEscUp = false; }),
-    released:guard(() => escReleased()),
+    released:guard(() => { escReleased(true); }),
   };
   const previousShell = Object.getOwnPropertyDescriptor(window, 'raftShell'), previousEscape = Object.getOwnPropertyDescriptor(window, 'raftEscape');
   window.raftShell = shellApi;

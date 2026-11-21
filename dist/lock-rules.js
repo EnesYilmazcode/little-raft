@@ -37,23 +37,52 @@ export function shouldRelockAfterClose({ running, locked, blocked, returnToPause
   return !!running && !locked && !blocked && !returnToPause;
 }
 
+// Escape released with a relock waiting on it. A browser keyup (fromShell=false) is preventDefaulted while
+// running, because Chrome revokes a lock granted inside an unhandled Escape keyup, and the relock is deferred
+// past the keyup. The desktop shell's released() relocks synchronously to keep its user gesture.
+// Returns { preventDefault, relock: 'now' | 'defer' | null }.
+export function escReleasePlan({ running, pending, fromShell = false } = {}) {
+  return { preventDefault: !fromShell && !!running, relock: !pending ? null : fromShell ? 'now' : 'defer' };
+}
+
+// Drag-look mode (no pointer lock available): the cursor must stay visible, so body.drag-look excludes body.relock.
+export function dragLook({ running, supported = true, fallback = false } = {}) {
+  return !!running && (!supported || !!fallback);
+}
+
+// body.relock (no cursor, no resume hint) is a short pending state after a panel closes unlocked. It ends
+// when the lock arrives, a pointerlockchange leaves the page unlocked, pointerlockerror fires, or after
+// timeout ms, so a refused or revoked relock always shows the resume hint again.
+export const RELOCK_TIMEOUT = 600;
+export function relockPending({ locked = false, event = null, elapsed = 0, timeout = RELOCK_TIMEOUT } = {}) {
+  if (locked || event === 'unlocked' || event === 'error') return false;
+  return elapsed < timeout;
+}
+
 // Escape bookkeeping for the pause menu's keyup fallback (browsers often swallow the keydown that
 // ends pointer lock). A press whose keydown was handled never pauses on keyup, however long it is
 // held: key-repeat keeps it handled. Lock losses the page caused itself are not recorded.
+// Holding an unhandled Escape (the one that ended the lock) keeps its keyup eligible: repeats refresh the
+// lock-loss time. An unhandled keyup while the page still holds the lock also pauses: the browser is
+// exiting the lock for this Escape but has not reported it yet (it can land after the keyup).
 export function createEscGate({ handledWindow = 600, lockWindow = 1500 } = {}) {
   let handledAt = -Infinity, lockLostAt = -Infinity, pressHandled = false;
   return {
     get handledAt() { return handledAt; },
     keydown(now, { repeat = false, handled = false } = {}) {
-      if (repeat) { if (pressHandled) handledAt = now; return; }
+      if (repeat) {
+        if (pressHandled) handledAt = now;
+        else if (now - lockLostAt <= lockWindow) lockLostAt = now;
+        return;
+      }
       pressHandled = !!handled;
       if (handled) handledAt = now;
     },
     lockLost(now, { selfCaused = false } = {}) { if (!selfCaused) lockLostAt = now; },
-    keyupOpensPause(now) {
+    keyupOpensPause(now, { locked = false } = {}) {
       const handled = pressHandled; pressHandled = false;
       if (handled || now - handledAt < handledWindow) return false;
-      if (now - lockLostAt > lockWindow) return false;
+      if (!locked && now - lockLostAt > lockWindow) return false;
       lockLostAt = -Infinity;
       return true;
     },
