@@ -259,7 +259,7 @@ export function createPieceGeometry(T, type) {
 
 export function createPieceMaterial(T) {
   const m = createWoodMaterial(T, '#ffffff');
-  m.map.wrapS = m.map.wrapT = T.RepeatWrapping;
+  for (const t of [m.map, m.bumpMap]) if (t) t.wrapS = t.wrapT = T.RepeatWrapping;
   m.vertexColors = true; m.color.set('#ffffff'); m.name = 'building-pieces';
   return m;
 }

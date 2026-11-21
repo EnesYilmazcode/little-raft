@@ -234,6 +234,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
 
   const gameActive = () => document.body.classList.contains('playing') || document.body.classList.contains('first-person');
   const otherDialogs = () => [...document.querySelectorAll('dialog[open]')].filter((d) => d !== dialog);
+  const buildWheelOpen = () => !!document.querySelector?.('.bm-wheel.bm-open'); // hammer piece wheel: Escape just closes it
 
   function releasePointer() {
     if (document.pointerLockElement) { try { document.exitPointerLock?.(); } catch { /* ignore */ } }
@@ -268,8 +269,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     if (dialog.open) { if (panelOpen()) { setPanel(false); form.querySelector('[data-act="settings"]')?.focus({ preventScroll: true }); } else close(true); return true; }
     const others = otherDialogs();
     if (others.length) { others[others.length - 1].close(); return true; }
-    const wheel = globalThis.raftBuildMenu;
-    if (wheel?.isOpen) { wheel.close(false); return true; } // hammer build wheel: Escape closes it, never the pause menu
+    if (buildWheelOpen()) return false; // the game's own key handler closes the wheel
     if (!gameActive()) { // title screen: Escape only leaves fullscreen (the desktop app swallows the native one)
       if (!document.fullscreenElement) return false;
       Promise.resolve(document.exitFullscreen?.()).catch(() => {});
@@ -300,7 +300,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     if (now - escHandledAt < 600) return;
     if (now - lockLostAt > 1500) return; // only pause for the Escape that just released the lock
     lockLostAt = -Infinity;
-    if (!dialog.open && !otherDialogs().length && gameActive()) { event.preventDefault(); open(); }
+    if (!dialog.open && !otherDialogs().length && !buildWheelOpen() && gameActive()) { event.preventDefault(); open(); }
   }), { capture: true, signal: ac.signal });
 
   // Remember lock loss only; never pause from lock loss alone (build mode, menus release it on purpose).
