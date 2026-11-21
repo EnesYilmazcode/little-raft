@@ -16,19 +16,22 @@
 //   craftLocked(recipe, actor)-> reason string if the recipe is locked, else null
 //   decorModel(type)          -> THREE.Object3D for a CONTENT_DECOR type, or null
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
+//   observe(ev, actor)        host only: game events after success ({kind:'craft'|'collect'|'fish'|'build'|
+//                             'bottle'|'cook'|'water'|'harvest'|'gather'|'repair', ...}). Never from net/effects.
 //   dispose()
 //
 // ctx (live getters, set up by game.js): T, scene, camera, raft, ocean, sun, hemi, clouds, world, role,
 // running, physics, elapsed, options, localBag(), actorBag(actor), action(a), emit(e, to), notice(s),
-// esc(s), mat(color), rebuildRaft(), deckY(), uiOpen().
+// esc(s), mat(color), rebuildRaft(), deckY(), uiOpen(), observe(ev, actor), dayIndex(), hasGrill().
 
 import { createIslands } from './islands.js?build=v3-survival-ae77fa84ac2b';
 import { createWildlife } from './wildlife.js?build=v3-survival-ae77fa84ac2b';
 import { createStorage } from './storage-research.js?build=v3-survival-ae77fa84ac2b';
 import { createDayNight } from './daynight.js?build=v3-survival-ae77fa84ac2b';
 import { createBees } from './bees.js?build=v3-survival-ae77fa84ac2b'; // [bees]
+import { createTasks } from './tasks.js?build=v3-survival-ae77fa84ac2b'; // [tasks]
 
-const FEATURES = [createIslands, createWildlife, createStorage, createDayNight, createBees]; // [bees] + createBees
+const FEATURES = [createIslands, createWildlife, createStorage, createDayNight, createBees, createTasks]; // [bees] + createBees, [tasks] + createTasks
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -54,11 +57,14 @@ export function createContent(ctx, features = FEATURES) {
     serialize() { const out = {}; for (const m of mods) { const d = call(m, 'serialize'); if (d !== undefined && m.name) out[m.name] = d; } return out; },
     load(ext, from) { const e = ext && typeof ext === 'object' ? ext : {}; for (const m of mods) call(m, 'load', e[m.name], from); },
     action(a, actor, bag) { for (const m of mods) if (call(m, 'action', a, actor, bag)) return true; return false; },
+    observe(ev, actor) { for (const m of mods) call(m, 'observe', ev, actor); }, // [tasks] host-side game events
     interact: aim => !!first('interact', aim),
     prompt: aim => first('prompt', aim),
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
     decorModel: type => first('decorModel', type),
     rain() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }, // rain-sprinkler: live 0..1 rain
+    day() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const d = m?.day; return Number.isInteger(d) ? d : null; }, // [tasks] in-game day index
+    tasksView() { const m = mods.find(m => m.name === 'tasks' && !m.dead); if (!m) return null; try { return m.view?.() ?? null; } catch { return null; } }, // [tasks] logbook tab
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };
 }
