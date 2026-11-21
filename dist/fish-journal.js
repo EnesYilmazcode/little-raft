@@ -122,32 +122,33 @@ export function fishSvg(look, uid = 'x') {
     + `<circle cx="84" cy="26" r="3.2" fill="#fff"/><circle cx="85" cy="26" r="1.7" fill="#1b1b1b"/></svg>`;
 }
 
-const CSS = `#fcJournal{padding:0;border:0;background:transparent;width:min(880px,96vw);max-height:92vh;color:#3b2a1a;font:500 14px/1.35 'Segoe UI',system-ui,sans-serif}
-#fcJournal::backdrop{background:rgba(12,9,5,.45)}
-#fcJournal .fj-book{display:flex;flex-direction:column;max-height:92vh;border-radius:10px;border:3px solid #5a3d22;box-shadow:0 0 0 2px #c9a66b,0 18px 50px #000a;
- background:repeating-linear-gradient(#0000 0 25px,#8fb3c422 25px 26px),radial-gradient(circle at 30% 20%,#fffaf0,#f1e2c2 70%,#e6d1a8);overflow:hidden}
-#fcJournal .fj-head{display:flex;align-items:center;gap:12px;padding:14px 18px 8px;border-bottom:2px dashed #b9976455;flex-wrap:wrap}
-#fcJournal h2{margin:0;font:700 22px/1 Georgia,serif;letter-spacing:.5px;flex:1;color:#3b2a1a}
-#fcJournal .fj-prog{font-weight:700;color:#7a5530}
-#fcJournal button{font:inherit;cursor:pointer;border:0;border-radius:6px;transition:background .12s}
-#fcJournal .fj-x{width:34px;height:34px;background:#5a3d22;color:#fff2cc;font-size:18px;font-weight:700}
-#fcJournal .fj-tabs{display:flex;gap:6px;padding:8px 18px 0}
-#fcJournal .fj-tabs button{padding:7px 14px;background:#e3cfa6;color:#5a3d22;font-weight:700;border-radius:6px 6px 0 0}
-#fcJournal .fj-tabs button[aria-selected=true]{background:#5a3d22;color:#fff2cc}
-#fcJournal button:focus-visible{outline:2px solid #e07a1f;outline-offset:2px}
-#fcJournal .fj-body{overflow:auto;padding:14px 18px 18px;overscroll-behavior:contain}
-#fcJournal .fj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
-#fcJournal .fj-card{background:#fffaf0cc;border:1px solid #c9a66b;border-radius:8px;padding:10px;box-shadow:0 2px 0 #c9a66b55;transform:rotate(-.4deg)}
-#fcJournal .fj-card:nth-child(even){transform:rotate(.5deg)}
-#fcJournal .fj-card.fj-unk{opacity:.7}
+// Shared slate palette and --ui-font (graphics.css tokens), like the bag, the logbook and the pause panels.
+const F = "var(--ui-font,'Segoe UI',system-ui,sans-serif)";
+const CSS = `#fcJournal{padding:0;border:0;background:transparent;width:min(880px,96vw);max-height:92vh;color:var(--cream,#f4efe2);font:500 14px/1.35 ${F}}
+#fcJournal::backdrop{background:rgba(6,10,12,.42)}
+#fcJournal .fj-book{display:flex;flex-direction:column;max-height:92vh;border-radius:10px;background:var(--glass,#11181bf2);box-shadow:var(--frame,inset 0 0 0 1px #ffffff17,0 10px 28px rgba(0,0,0,.45));overflow:hidden}
+#fcJournal .fj-head{display:flex;align-items:center;gap:12px;padding:14px 18px 8px;border-bottom:1px solid var(--line,#ffffff17);flex-wrap:wrap}
+#fcJournal h2{margin:0;font:800 22px/1 ${F};letter-spacing:-.2px;flex:1;color:var(--cream-hi,#fff6e0)}
+#fcJournal .fj-prog{font-weight:700;color:var(--amber,#ffc66e)}
+#fcJournal button{font:inherit;cursor:pointer;border:0;border-radius:6px;transition:background .12s;transform:none}
+#fcJournal .fj-x{width:34px;height:34px;background:#ffffff0d;color:var(--cream,#f4efe2);font-size:18px;font-weight:700}
+#fcJournal .fj-x:hover{background:#ffffff22}
+#fcJournal .fj-tabs{display:flex;gap:4px;padding:10px 18px 0}
+#fcJournal .fj-tabs button{padding:8px 14px;background:#ffffff0b;box-shadow:inset 0 0 0 1px #ffffff12;color:var(--cream-dim,#f4efe2b3);font-weight:700}
+#fcJournal .fj-tabs button[aria-selected=true]{color:var(--cream-hi,#fff6e0);background:linear-gradient(180deg,#46545ad0,#1c2529dc);box-shadow:inset 0 0 0 1px #fff6e0a8}
+#fcJournal button:focus-visible{outline:2px solid var(--cream-hi,#fff6e0);outline-offset:2px}
+#fcJournal .fj-body{overflow:auto;padding:14px 18px 18px;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#ffffff52 transparent}
+#fcJournal .fj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+#fcJournal .fj-card{background:#ffffff0a;box-shadow:inset 0 0 0 1px var(--line,#ffffff17);border-radius:8px;padding:10px}
+#fcJournal .fj-card.fj-unk{opacity:.6}
 #fcJournal .fj-card svg{width:100%;height:64px;display:block}
-#fcJournal .fj-card h3{margin:4px 0 2px;font:700 15px/1.2 Georgia,serif;display:flex;justify-content:space-between;gap:6px;align-items:center}
-#fcJournal .fj-chip{font:700 10px/1 'Segoe UI',sans-serif;padding:3px 6px;border-radius:9px;color:#2a1b0e;letter-spacing:.4px;text-transform:uppercase;white-space:nowrap}
-#fcJournal .fj-card p{margin:4px 0 0;font-size:12px;color:#6b4f33}
-#fcJournal .fj-stats{display:flex;gap:10px;font-size:12px;font-weight:700;color:#5a3d22}
+#fcJournal .fj-card h3{margin:4px 0 2px;font:700 15px/1.2 ${F};color:var(--cream-hi,#fff6e0);display:flex;justify-content:space-between;gap:6px;align-items:center}
+#fcJournal .fj-chip{font:800 10px/1 ${F};padding:3px 6px;border-radius:9px;color:#1a1206;letter-spacing:.4px;text-transform:uppercase;white-space:nowrap}
+#fcJournal .fj-card p{margin:4px 0 0;font-size:12px;color:var(--cream-dim,#f4efe2b3)}
+#fcJournal .fj-stats{display:flex;gap:10px;font-size:12px;font-weight:700;color:var(--amber-lt,#ffd98f)}
 #fcJournal ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-#fcJournal li{display:flex;justify-content:space-between;gap:10px;padding:7px 10px;background:#fffaf0aa;border-bottom:1px dashed #c9a66b}
-#fcJournal .fj-empty{text-align:center;color:#8a6a48;font-style:italic;padding:24px}
+#fcJournal li{display:flex;justify-content:space-between;gap:10px;padding:7px 10px;background:#ffffff0a;border-radius:6px}
+#fcJournal .fj-empty{text-align:center;color:var(--muted,#f4efe280);font-style:italic;padding:24px}
 @media(max-width:560px){#fcJournal .fj-grid{grid-template-columns:repeat(2,1fr);gap:8px}#fcJournal .fj-card p{display:none}#fcJournal h2{font-size:18px}}`;
 
 export function createJournalPanel({ getJournal, onClose } = {}) {

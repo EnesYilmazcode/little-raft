@@ -23,13 +23,19 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 const store = () => { try { return globalThis.localStorage || null; } catch { return null; } };
 const isGuest = (r) => r === 'guest';
 const ESCAPE_TEXT = { early: 'Too early — wait for the dunk', missed: 'It got away…', snapped: 'The line slipped — ease off when it goes red' };
-const CSS = `#fcChip{position:fixed;left:12px;bottom:12px;z-index:3;pointer-events:none;font:600 12px/1 system-ui,sans-serif;
-color:#fffdf4;background:#0d2a3a99;padding:5px 9px;border-radius:10px;text-shadow:0 1px 1px #0008}
-#fcToast{position:fixed;left:28px;top:20px;z-index:5;pointer-events:none;display:grid;gap:6px;justify-items:start;text-align:left}
-#fcToast div{font:600 14px/1.3 system-ui,sans-serif;color:#1a3245;background:#f1e7d0f0;border:1px solid #c9a46b;border-radius:10px;
-padding:7px 14px;box-shadow:0 4px 14px #0005;animation:fcIn .25s ease-out;transition:opacity .4s}
-#fcToast div.soft{background:#d7e8f2f0;border-color:#8fb4c9}#fcToast div.out{opacity:0}
-@keyframes fcIn{from{transform:translateY(-14px);opacity:0}}`;
+// Journal chip: bottom-left edge under the notice stack, in the shared HUD palette (graphics.css tokens). Catch news goes
+// through host.notice (the bottom-left notice stack) once per catch: there is no second toast.
+const CSS = `#fcChip{position:fixed;left:22px;bottom:12px;z-index:3;pointer-events:none;font:600 12px/1 var(--ui-font,system-ui,sans-serif);
+color:var(--cream,#f4efe2);background:var(--plate-hud,rgba(16,22,25,.9));padding:5px 9px;border-radius:6px;box-shadow:var(--edge,inset 0 1px 0 #ffffff12),0 0 0 1px var(--line,#ffffff17)}
+#fcChip kbd{display:inline-block;min-width:1.3em;margin:0 3px 0 6px;padding:1px 4px;border-radius:4px;font:700 11px/1.2 var(--ui-font,system-ui,sans-serif);text-align:center;color:var(--cream-hi,#fff6e0);background:#0008;box-shadow:inset 0 0 0 1px #fff6e099}
+@media(max-width:760px){#fcChip{left:10px}}`;
+
+// The single catch notice: "New species! Pomfret · 26.0 cm ★★☆" (tag only when there is news).
+export function catchLine(sp, c, stars, res = {}, prev = null) {
+  const tag = sp.rarity === 'legendary' ? 'Legendary! ' : res.isNew ? 'New species! ' : res.isRecord ? 'New record! ' : '';
+  const was = !res.isNew && res.isRecord && prev?.bestCm ? ` (was ${prev.bestCm.toFixed(1)})` : '';
+  return `${tag}${sp.name} · ${c.cm.toFixed(1)} cm ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}${was}${res.basketed === false ? ' · basket full' : ''}`;
+}
 
 function cleanFish(f) {
   const sp = f && speciesById(f.species);
@@ -122,7 +128,7 @@ export function createFishingCooking(T, host) {
     const state = item.state === 'cooked' || item.state === 'burnt' ? item.state : 'raw';
     if (state !== 'raw') {
       const r = journal.recordDish(f.species, state);
-      if (r && r.isNew) toast(`New dish! ${dishName(f.species, state)}`);
+      if (r && r.isNew) host.notice(`New dish! ${dishName(f.species, state)}`);
     }
     journal.addToBasket({ ...f, stars: item.stars || 1, state });
     dirty = true;
@@ -192,30 +198,18 @@ export function createFishingCooking(T, host) {
     try { store()?.setItem(FC_SAVE_KEY, JSON.stringify({ v: 1, journal: journal.snapshot(), grills: isGuest(host.role()) ? (stash || []) : snapshots() })); } catch {}
   }
 
-  // ---------- DOM: chip, toast, journal ----------
-  let chip = null, toastBox = null, chipN = -1, chipAt = -1e9, panel = null, ownStyle = null;
-  const toasts = [];
+  // ---------- DOM: chip, journal ----------
+  let chip = null, chipN = -1, chipAt = -1e9, panel = null, ownStyle = null;
   if (HAS_DOC) {
     if (!document.getElementById('fc-style-glue')) { ownStyle = document.createElement('style'); ownStyle.id = 'fc-style-glue'; ownStyle.textContent = CSS; document.head.appendChild(ownStyle); }
     chip = document.createElement('div'); chip.id = 'fcChip'; chip.setAttribute('aria-hidden', 'true'); document.body.appendChild(chip);
-    toastBox = document.createElement('div'); toastBox.id = 'fcToast'; toastBox.setAttribute('role', 'status'); document.body.appendChild(toastBox);
-  }
-  function toast(text, soft = false) {
-    if (!toastBox) return;
-    while (toasts.length >= 2) toasts.shift().el.remove();
-    const el = document.createElement('div'); el.textContent = text; if (soft) el.className = 'soft';
-    toastBox.appendChild(el); toasts.push({ el, until: elapsed + 3 });
   }
   function updateDom() {
-    for (let i = toasts.length - 1; i >= 0; i--) {
-      const t = toasts[i];
-      if (elapsed > t.until + 0.45) { t.el.remove(); toasts.splice(i, 1); } else if (elapsed > t.until && !t.out) { t.out = true; t.el.classList.add('out'); }
-    }
     if (!chip) return;
     const show = host.running();
     if (Math.abs(elapsed - chipAt) >= 0.5) { // speciesSeen() allocates: poll it at 2 Hz, not per frame
       chipAt = elapsed; const n = journal.speciesSeen().length;
-      if (n !== chipN) { chipN = n; chip.textContent = `🎣 ${n}/${SPECIES.length} · J journal`; }
+      if (n !== chipN) { chipN = n; chip.innerHTML = `Fish ${n}/${SPECIES.length}<kbd>J</kbd>journal`; }
     }
     if (chip.hidden === show) chip.hidden = !show;
   }
@@ -278,13 +272,8 @@ export function createFishingCooking(T, host) {
     const prev = journal.entry(sp.id), res = journal.recordCatch(c);
     host.action({ kind: 'fish' });
     const stars = Math.max(1, Math.min(3, c.stars | 0 || 1));
-    host.notice(`${sp.name} · ${c.cm.toFixed(1)} cm ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}`, 2600);
+    host.notice(catchLine(sp, c, stars, res, prev), 2600); // one line per catch, in the notice stack
     host.beep(sp.rarity === 'legendary' ? 880 : 660);
-    if (sp.rarity === 'legendary') toast(`✦ Legendary! ${sp.name} ✦`);
-    if (res.isNew) toast(`New species! ${sp.name} added to your journal`);
-    else if (res.isRecord) toast(`New record! ${sp.name} ${c.cm.toFixed(1)} cm (was ${prev.bestCm.toFixed(1)})`);
-    else if (sp.rarity !== 'legendary') toast(`Caught a ${sp.name} · ${c.cm.toFixed(1)} cm`);
-    if (!res.basketed) toast('Basket full. Cook a few on a grill.', true);
     if (host.netReady() && host.role() !== 'solo') host.send({ type: 'fc', catchFx: { species: sp.id, cm: c.cm } });
     dropHeld();
     if (camera) {
@@ -303,7 +292,7 @@ export function createFishingCooking(T, host) {
       case 'bite': host.beep(180); host.notice('Bite! Click!', 1100); break;
       case 'missed': host.notice('It nibbled and swam off… stay ready'); break;
       case 'caught': onCatch(ev.catch); break;
-      case 'escaped': host.notice(ESCAPE_TEXT[ev.reason] || ESCAPE_TEXT.missed, 2200); if (ev.reason === 'snapped') toast('The line slipped. It got away!', true); break;
+      case 'escaped': host.notice(ESCAPE_TEXT[ev.reason] || ESCAPE_TEXT.missed, 2200); break;
     }
   }
 
@@ -433,7 +422,7 @@ export function createFishingCooking(T, host) {
     for (const g of [...grills.values()]) removeGrill(g);
     grillGroup.parent?.remove(grillGroup);
     scene?.remove(smoke.points); smoke.dispose(); fx.dispose();
-    panel?.destroy(); chip?.remove(); toastBox?.remove();
+    panel?.destroy(); chip?.remove();
     if (HAS_DOC && !document.getElementById('fcChip')) document.getElementById('fc-style-glue')?.remove(); // hot swap: the new engine still uses it
     if (typeof window !== 'undefined' && window.raftFC === debug) delete window.raftFC;
   }
