@@ -1048,4 +1048,4 @@ Open for next round:
 - Merged loop-features-202611210855: docs only, research notes and specs for zipline, night light (hand lantern, firefly jar) and crops.
 - Skipped loop-fidelity-202611210900: it is loop-fidelity-202611210821 (paddle, stone axe) merged with raft-master, and integrator B claimed -0821.
 - Skipped loop-fidelity-202611210910: conflicts in 11 dist files, and its edge collection nets (nets.js, world.nets) replace raft-master's decor net collection. Needs a rebase by its worker. It also brings crops, foundation armor, a 2x2 start and Raft costs.
-- Gate: 1148/1148 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text.
+- Gate after merging raft-master: 1277/1277 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text, 198 ms/frame, 46 draw calls. Kept the raft-master zipline spec over the older one in -0855.
