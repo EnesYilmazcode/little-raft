@@ -484,7 +484,7 @@ export function createDayNight(ctx) {
     for (let i = lanternCount; i < MAX_LANTERNS; i++) lanternGroups[i] = null;
     for (let i = partCount; i < MAX_PARTS; i++) partMat[i] = null;
     scanRaft = raft; scanFirst = raft.children.length ? raft.children[0] : null; scanLen = raft.children.length; scanRev = raft.userData?.rev;
-    if (lanternCount > 0) poolWanted = true;
+    for (let i = 0; i < lanternCount && !poolWanted; i++) if (!lanternNoPool[i]) poolWanted = true; // noPool-only lights (string lights) never turn the pool on
     rankClock = 1e9;
   }
   function rankLanterns(raft, cam) {
