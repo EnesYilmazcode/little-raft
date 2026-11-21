@@ -29,3 +29,36 @@ test('game.js passes the toolRole hook check to both repairHookSlot callers', ()
   for (const c of calls) assert.match(c, /, isHookSlot\)$/);
   assert.match(gameSrc, /const isHookSlot = s => toolRole\(s\?\.kind\) === 'hook'/);
 });
+
+// ---------------------------------------------------------------- G2: a cast loses its hook
+const { Bag, SLOT_COUNT } = await import(new URL('inventory-state.js', base));
+const SR = await import(new URL('storage-research.js', base));
+
+test('castHookGone: moving the cast hook out of its slot is detected; a metal hook swapped in keeps the cast', () => {
+  const bag = new Bag(); // starter bag: hook in slot 0
+  assert.equal(rules.castHookGone(bag.slots, 0, isHook), false);
+  bag.move(0, 15);
+  assert.equal(rules.castHookGone(bag.slots, 0, isHook), true);
+  const s = new Array(SLOT_COUNT).fill(null); s[0] = { kind: 'metalhook', count: 1, durability: 100 };
+  assert.equal(rules.castHookGone(s, 0, isHook), false);
+  assert.equal(rules.castHookGone(s, 0), true, 'default predicate is plain hooks only');
+  assert.equal(rules.castHookGone(s, -1, isHook), true);
+  assert.equal(rules.castHookGone(null, 0, isHook), true);
+});
+
+test('castHookGone: putting the cast hook into a crate is detected', () => {
+  const w = { tiles: [[1, 0]], decor: [{ type: 'crate', x: 1, z: 0 }], items: [], ext: {} };
+  const st = SR.stateFrom({ v: 1, chests: {}, seen: [], learned: [], r: 0 }, 'save', w), bag = new Bag();
+  const env = { decorAt: (x, z) => (x === 1 && z === 0 ? 'crate' : null), pos: () => null };
+  const r = SR.applyStorageAction(st, { kind: 'storage.put', x: 1, z: 0, from: 0, expect: { kind: 'hook', count: 1 } }, 'host', bag, env);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(rules.castHookGone(bag.slots, 0, isHook), true);
+});
+
+test('game.js retracts a hook cast whose hook left its slot, and the host drops hookless cast collects', () => {
+  const upd = gameSrc.slice(gameSrc.indexOf('function updateHook('));
+  assert.match(upd.slice(0, 800), /if \(!hook\.fishing && castHookGone\(localBag\(\)\.slots, hookSlot, isHookSlot\)\) \{ hook\.cancel\?\.\(\); endHook\(\); return; \}/);
+  const col = gameSrc.slice(gameSrc.indexOf("if (a.kind === 'collect') {"));
+  const drop = col.indexOf('a.cast && hookIndex(bag, a.slot) < 0) return;'), roll = col.indexOf('rollBarrel(');
+  assert.ok(drop > 0 && drop < roll, 'cast collect without a hook returns before loot is rolled');
+});

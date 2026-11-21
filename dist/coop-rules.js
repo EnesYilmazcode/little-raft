@@ -52,6 +52,13 @@ export function decorBlockers(d, radii, unit = 2) {
   return radii[d.type] ? [{x:cx, z:cz, r:radii[d.type]}] : [];
 }
 
+// True when a cast thrown from `slot` no longer has a hook there (moved in the bag or put in a crate),
+// so the line should be pulled in. isHook as for repairHookSlot.
+export function castHookGone(slots, slot, isHook = s => s?.kind === 'hook') {
+  if (!Array.isArray(slots) || !Number.isInteger(slot) || slot < 0 || slot >= slots.length) return true;
+  return !slots[slot] || !isHook(slots[slot]);
+}
+
 // Which hook slot R repairs: the preferred (selected) slot if it holds a hook, else the most worn
 // hook below `max`, else the first hook (already in great shape). -1 when there is no hook.
 // isHook decides what counts as a hook (game.js passes the toolRole check so a metal hook counts).
