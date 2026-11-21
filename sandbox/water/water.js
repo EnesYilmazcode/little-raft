@@ -257,7 +257,7 @@ export function createWater(T, options = {}) {
   const geometry = new T.PlaneGeometry(size, size, segments, segments);
   geometry.rotateX(-Math.PI / 2);
 
-  const sdfData = new Uint8Array(SDF_RES * SDF_RES);
+  const sdfData = new Uint8Array(SDF_RES * SDF_RES), sdfDist = new Float32Array(SDF_RES * SDF_RES);
   const sdfTex = new T.DataTexture(sdfData, SDF_RES, SDF_RES, T.RedFormat, T.UnsignedByteType);
   sdfTex.magFilter = sdfTex.minFilter = T.LinearFilter;
   sdfTex.needsUpdate = true;
@@ -377,25 +377,31 @@ export function createWater(T, options = {}) {
   }
 
   // Bake the raft footprint (2 m tiles centred at tile*2, raft-local) into a signed distance texture.
-  // Runs only when tiles change; cost is SDF_RES^2 x tiles (7 tiles ~0.3 ms, 400 tiles ~25 ms).
+  // Runs only when tiles change (see sandbox/water/cpu-cost.mjs for timings).
   function setRaft(tiles, x = 0, z = 0, yaw = 0) {
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
     for (const [tx, tz] of tiles) { x0 = Math.min(x0, tx * 2 - 1); x1 = Math.max(x1, tx * 2 + 1); z0 = Math.min(z0, tz * 2 - 1); z1 = Math.max(z1, tz * 2 + 1); }
     if (!tiles.length) { x0 = z0 = -1; x1 = z1 = 1; }
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, span = Math.max(x1 - x0, z1 - z0) + SDF_MAX * 2;
-    const texel = span / SDF_RES;
-    for (let j = 0; j < SDF_RES; j++) {
-      for (let i = 0; i < SDF_RES; i++) {
-        const px = cx + (i + 0.5) * texel - span / 2, pz = cz + (j + 0.5) * texel - span / 2;
-        let d = tiles.length ? 1e9 : SDF_MAX;
-        for (const [tx, tz] of tiles) {
-          const qx = Math.abs(px - tx * 2) - 1, qz = Math.abs(pz - tz * 2) - 1;
-          const out = Math.hypot(Math.max(qx, 0), Math.max(qz, 0)), inside = Math.min(Math.max(qx, qz), 0);
-          d = Math.min(d, out + inside);
+    const texel = span / SDF_RES, ox = cx - span / 2, oz = cz - span / 2, reach = 1 + SDF_MAX;
+    sdfDist.fill(SDF_MAX);
+    // Stamp each tile into the texels within its reach (min-combine), instead of every texel testing every tile.
+    for (const [tx, tz] of tiles) {
+      const wx = tx * 2, wz = tz * 2;
+      const i0 = Math.max(0, Math.floor((wx - reach - ox) / texel)), i1 = Math.min(SDF_RES - 1, Math.ceil((wx + reach - ox) / texel));
+      const j0 = Math.max(0, Math.floor((wz - reach - oz) / texel)), j1 = Math.min(SDF_RES - 1, Math.ceil((wz + reach - oz) / texel));
+      for (let j = j0; j <= j1; j++) {
+        const qz = Math.abs(oz + (j + 0.5) * texel - wz) - 1, mz = qz > 0 ? qz : 0;
+        for (let i = i0; i <= i1; i++) {
+          const qx = Math.abs(ox + (i + 0.5) * texel - wx) - 1, mx = qx > 0 ? qx : 0;
+          const inside = qx > qz ? qx : qz;
+          const d = Math.sqrt(mx * mx + mz * mz) + (inside < 0 ? inside : 0);
+          const k = j * SDF_RES + i;
+          if (d < sdfDist[k]) sdfDist[k] = d;
         }
-        sdfData[j * SDF_RES + i] = Math.round(Math.min(Math.max((d + 2) / (SDF_MAX + 2), 0), 1) * 255);
       }
     }
+    for (let k = 0; k < sdfData.length; k++) sdfData[k] = Math.round(Math.min(Math.max((sdfDist[k] + 2) / (SDF_MAX + 2), 0), 1) * 255);
     sdfTex.needsUpdate = true;
     uniforms.uSdfBox.value.set(cx, cz, span);
     uniforms.uRaft.value.set(x, z, yaw);
