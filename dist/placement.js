@@ -67,6 +67,54 @@ export function decorCheck(hasTile, decor, d) {
   return 'ok';
 }
 
+// ---------- Removal (hammer + X) ----------
+// Height of each piece's pick box above its base, in metres (roughly the model's solid part).
+export const PICK_HEIGHT = Object.freeze({sail:1.9, palm:.6, lantern:1.9, net:.25, bench:.55, crate:.85});
+const DECOR_BASE_Y = .22;
+
+// Nearest decor whose footprint box (rotated, PICK_HEIGHT tall) the raft-local ray o + t*d crosses
+// within maxT metres, or null. o and d are {x, y, z}.
+export function decorOnRay(decor, o, d, maxT = DECOR_REACH + 2) {
+  let best = null, bestT = maxT;
+  for (const p of decor) {
+    const f = FOOTPRINT[p.type]; if (!f) continue;
+    const c = Math.cos(p.rot || 0), s = Math.sin(p.rot || 0), ox = o.x - p.x, oz = o.z - p.z;
+    const lo = [ox * c - oz * s, o.y - DECOR_BASE_Y, ox * s + oz * c], ld = [d.x * c - d.z * s, d.y, d.x * s + d.z * c];
+    const hi = [f[0], PICK_HEIGHT[p.type] ?? 1, f[1]], low = [-f[0], 0, -f[1]];
+    let t0 = 0, t1 = bestT;
+    for (let i = 0; i < 3 && t0 <= t1; i++) {
+      if (Math.abs(ld[i]) < 1e-9) { if (lo[i] < low[i] || lo[i] > hi[i]) t0 = Infinity; continue; }
+      let a = (low[i] - lo[i]) / ld[i], b = (hi[i] - lo[i]) / ld[i]; if (a > b) [a, b] = [b, a];
+      t0 = Math.max(t0, a); t1 = Math.min(t1, b);
+    }
+    if (t0 <= t1 && t0 < bestT) { bestT = t0; best = p; }
+  }
+  return best;
+}
+
+// Why floor cell (tx, tz) can't be removed: 'missing' | 'last' (the raft's only tile) | 'decor'
+// (something stands on it) | 'split' (the raft would break in two), or null when it can.
+export function floorRemoveBlock(tiles, decor, tx, tz) {
+  const key = (x, z) => x + ',' + z, all = new Set(tiles.map(t => key(t[0], t[1])));
+  if (!all.has(key(tx, tz))) return 'missing';
+  if (all.size <= 1) return 'last';
+  const rest = new Set(all); rest.delete(key(tx, tz));
+  const now = (x, z) => all.has(key(x, z)), after = (x, z) => rest.has(key(x, z));
+  for (const d of decor) {
+    if (tileAt(d.x) === tx && tileAt(d.z) === tz) return 'decor';
+    if (decorCheck(now, [], d) === 'ok' && decorCheck(after, [], d) !== 'ok') return 'decor'; // its footprint rests partly on this tile
+  }
+  const start = rest.values().next().value, seen = new Set([start]), queue = [start];
+  while (queue.length) {
+    const [x, z] = queue.pop().split(',').map(Number);
+    for (const [a, b] of ADJ) { const k = key(x + a, z + b); if (rest.has(k) && !seen.has(k)) { seen.add(k); queue.push(k); } }
+  }
+  return seen.size === rest.size ? null : 'split';
+}
+
+// About half of a build cost back (at least one of each ingredient).
+export const refundOf = cost => Object.fromEntries(Object.entries(cost || {}).map(([k, n]) => [k, Math.max(1, Math.floor(n / 2))]));
+
 // Validates one saved decor entry. Current entries carry rot and raft-local metres; older saves
 // stored integer tile cells with no rot and are moved to that tile's centre.
 export function normaliseDecor(d, types, hasTile) {

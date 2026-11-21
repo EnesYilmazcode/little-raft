@@ -10,7 +10,7 @@ const { PLAYER_CONSTANTS: PC } = await import(new URL('player-physics.js', base)
 const { BLOCK_TEXT, placePrompt } = await import(new URL('build-rules.js', base));
 const T = await import(new URL('vendor/three.module.js', base));
 const { createFarmView } = await import(new URL('farming-view.js', base));
-const { createGhosts, decorCheck, FOOTPRINT, wheelDelta } = await import(new URL('placement.js', base));
+const { createGhosts, decorCheck, FOOTPRINT, wheelDelta, decorOnRay, floorRemoveBlock, refundOf } = await import(new URL('placement.js', base));
 const { PlayerPhysics, blockerGap } = await import(new URL('player-physics.js', base));
 const { createCraft } = await import(new URL('crafts.js', base));
 
@@ -108,4 +108,41 @@ test('UX-1: the edge prompt shows what a click builds, its cost, R rotate, and w
   assert.equal(placePrompt({kind:'crate', ok:false, blocked:'edge'}, 'crate', {name:'Crate'}), 'Needs floor underneath · <kbd>R</kbd>Rotate');
   assert.equal(placePrompt({kind:'crate', ok:true, blocked:''}, 'crate', {name:'<b>'}), '<kbd>Click</kbd>Place &lt;b&gt; · <kbd>R</kbd>Rotate', 'names are escaped');
   assert.equal(placePrompt(null, 'crate'), '');
+});
+
+// ------------------------------------------------------------- BUILD-5
+test('BUILD-5: X picks the decor under the crosshair, nearest first', () => {
+  const crate = {type:'crate', x:0, z:-2, rot:0}, bench = {type:'bench', x:0, z:-4, rot:0};
+  const eye = {x:0, y:1.8, z:0};
+  const toward = (x, y, z) => { const v = {x:x - eye.x, y:y - eye.y, z:z - eye.z}, n = Math.hypot(v.x, v.y, v.z); return {x:v.x / n, y:v.y / n, z:v.z / n}; };
+  assert.equal(decorOnRay([bench, crate], eye, toward(0, .6, -2)), crate, 'looking at the crate side');
+  assert.equal(decorOnRay([bench, crate], eye, toward(0, .4, -4)), crate, 'the crate in front hides the bench behind it');
+  assert.equal(decorOnRay([bench], eye, toward(0, .4, -4)), bench);
+  assert.equal(decorOnRay([crate], eye, toward(1.5, .2, -2)), null, 'aiming beside it');
+  assert.equal(decorOnRay([crate], eye, toward(.6, .5, -2)), crate, 'grazing the wide side');
+  assert.equal(decorOnRay([{type:'crate', x:0, z:-2, rot:Math.PI / 2}], eye, toward(.6, .5, -2)), null, 'turned crate is narrower along x');
+});
+
+test('BUILD-5: a floor tile is removable only when bare and the raft stays connected', () => {
+  const line = [[0, 0], [1, 0], [2, 0]];
+  assert.equal(floorRemoveBlock(line, [], 1, 0), 'split');
+  assert.equal(floorRemoveBlock(line, [], 2, 0), null);
+  assert.equal(floorRemoveBlock(line, [], 5, 5), 'missing');
+  assert.equal(floorRemoveBlock([[0, 0]], [], 0, 0), 'last');
+  assert.equal(floorRemoveBlock(line, [{type:'crate', x:4, z:0, rot:0}], 2, 0), 'decor', 'decor centred on it');
+  assert.equal(floorRemoveBlock(line, [{type:'bench', x:2.9, z:0, rot:0}], 2, 0), 'decor', 'a bench centred next door overhangs it');
+  assert.equal(floorRemoveBlock(line, [{type:'crate', x:2, z:0, rot:0}], 2, 0), null, 'decor on another tile is fine');
+  assert.equal(floorRemoveBlock([[0, 0], [1, 0], [0, 1], [1, 1]], [], 0, 0), null, 'a loop survives');
+});
+
+test('BUILD-5: removal refunds about half the cost', () => {
+  assert.deepEqual(refundOf({wood:2, plastic:2}), {wood:1, plastic:1});
+  assert.deepEqual(refundOf({wood:4, scrap:1}), {wood:2, scrap:1});
+  assert.deepEqual(refundOf(undefined), {});
+});
+
+test('BUILD-5: the hammer prompt offers X Remove', () => {
+  assert.equal(placePrompt(null, 'hammer', {remove:'Crate'}), '<kbd>X</kbd>Remove Crate');
+  assert.equal(placePrompt({kind:'floor', ok:true, blocked:''}, 'hammer', {cost:'2 wood, 2 plastic', remove:'floor'}), '<kbd>Click</kbd>Build floor · 2 wood, 2 plastic · <kbd>X</kbd>Remove floor');
+  assert.equal(placePrompt(null, 'crate', {remove:'Crate'}), '', 'only with the hammer');
 });
