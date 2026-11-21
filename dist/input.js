@@ -2,7 +2,7 @@
 // per-frame action state driven by an ActionMap (see input-map.js). Call update(dt) once per
 // frame before reading anything; edges (pressed/released), look delta, hotbar step and slot
 // are all consumed per frame.
-import { ACTIONS, SETTINGS_DEFAULTS, shapeStick, smoothLook } from './input-map.js';
+import { ACTIONS, SETTINGS_DEFAULTS, shapeStick, smoothLook } from './input-map.js?build=v3-survival-ae77fa84ac2b';
 
 const MOUSE_LOOK = 0.0022;          // radians per pixel at sensitivity 1
 const SPIKE = 300;                  // |movementX/Y| above this is a Chrome pointer-lock glitch: drop it

@@ -4,7 +4,7 @@
 //
 // getModel(kind) hook: return an Object3D to replace a placeholder, or null to keep it.
 // Kinds: 'planter', 'palm-0' (seedling), 'palm-1', 'palm-2', 'palm-3' (mature).
-import { isPlot, MATURE, EMPTY, farmSignature } from './farming.js';
+import { isPlot, MATURE, EMPTY, farmSignature } from './farming.js?build=v3-survival-ae77fa84ac2b';
 
 const DECK_Y = .22, POT_H = .5, PICK_R = .9; // PICK_R: aim within this many metres of a planter centre
 
