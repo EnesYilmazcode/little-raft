@@ -694,10 +694,10 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (e.detail > 0) b.blur();
   }, opt);
 
-  // Tab / I toggle while playing.
+  // Tab / I toggle while playing; E (which opens the bag from the game) also closes it.
   document.addEventListener('keydown', e => {
     if (!alive || e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
-    if (e.code !== 'Tab' && e.code !== 'KeyI') return;
+    if (e.code !== 'Tab' && e.code !== 'KeyI' && !(e.code === 'KeyE' && isOpen)) return;
     const t = e.target;
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
     if (isOpen) { e.preventDefault(); e.stopPropagation(); close(); return; }
