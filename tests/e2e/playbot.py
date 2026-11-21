@@ -1,0 +1,711 @@
+"""Scripted play session ("play-bot") for Little Raft, Solo mode, with invariants checked every ~0.5 s.
+
+Usage:
+  python3.13 tests/e2e/playbot.py --dist <dist_dir> [--out <dir>] [--duration 300] [--seed 1]
+                                  [--kit starter|fresh] [--stall-ms 8000] [--headed]
+
+The bot walks, looks around, jumps, swaps hotbar slots 1-5, throws the hook at floating debris
+(aimed from raftDebug.targets), reels it in, presses E near debris, opens/closes the inventory
+(Tab, and Esc-from-inventory), opens/closes the pause menu (Esc), builds floor tiles with the hammer
+(aimed from raftDebug.placements) and fishes with the rod.
+
+Determinism: the action script is drawn from random.Random(--seed) and the page's Math.random is
+replaced with a seeded PRNG before any game script runs, so `--seed N` replays the same session
+(wall-clock timing on software GL still varies a little).
+
+--kit starter (default) pre-loads a save through the game's own localStorage format holding a hook,
+hammer, fishing rod, 20 wood, 20 plastic and 10 leaves so that building and fishing get exercised in
+a short run. --kit fresh starts a brand-new raft (hook only); build/fish actions then just notice the
+missing tool.
+
+Mouse-look is sent as `mousemove` events with movementX/Y on document (the game's pointer-lock look
+handler), because Playwright's absolute mouse cannot express unbounded relative motion. Clicks,
+keys and wheel are real Playwright input.
+
+Last stdout line is one JSON object (see tests/e2e contract). Exit 0 pass, 1 game invariant failed,
+2 harness/infra error.
+"""
+import argparse, json, math, random, sys, time, traceback
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent.parent / 'tools'))
+
+TOOL = 'playbot'
+LOOK_K = .0022            # game.js LOOK_SENSITIVITY (options.sensitivity defaults to 1)
+PITCH_LIMIT = 1.35        # game.js PITCH_LIMIT
+FOV_RANGE = (60, 95)      # settings.js fov min/max while running
+HOOK_STAGES = {'idle', 'flying', 'floating', 'reeling', 'done', 'fishing'}
+# Stage transitions the bot may observe between two samples (skips allowed when the sim is fast).
+HOOK_NEXT = {
+    'idle': {'idle', 'flying', 'floating', 'fishing', 'done'},
+    'flying': {'flying', 'floating', 'reeling', 'done', 'idle'},
+    'floating': {'floating', 'reeling', 'done', 'idle'},
+    'reeling': {'reeling', 'floating', 'done', 'idle'},
+    'done': {'done', 'idle'},
+    'fishing': {'fishing', 'idle'},
+}
+
+PAGE_INIT = r"""
+(() => {
+  // Seeded Math.random so item spawns / fish bites replay with --seed.
+  let s = (%(seed)d >>> 0) || 1;
+  Math.random = function () { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  // Independent rAF probe: worst gap between animation frames since the last read.
+  const pb = window.__playbot = {maxGap: 0, frames: 0, last: 0};
+  const f = t => { if (pb.last) pb.maxGap = Math.max(pb.maxGap, t - pb.last); pb.last = t; pb.frames++; requestAnimationFrame(f); };
+  requestAnimationFrame(f);
+  pb.read = () => { const r = {maxGap: pb.maxGap, frames: pb.frames}; pb.maxGap = 0; pb.frames = 0; return r; };
+  pb.reset = () => { pb.maxGap = 0; pb.last = 0; };
+  %(save)s
+})();
+"""
+
+SAMPLE_JS = """(() => {
+  const s = raftDebug.state, od = document.querySelector('#options');
+  const otherDialogs = [...document.querySelectorAll('dialog')].filter(d => d.open && d.id !== 'options' && d.id !== 'inventory').map(d => d.id || '?');
+  return {running: s.running, active: s.active, disposed: s.disposed, tool: s.tool, heldKind: s.heldKind,
+    selectedIndex: s.selectedIndex, pointerLocked: s.pointerLocked, lockFallback: s.lockFallback,
+    tiles: s.tiles, tileList: s.tileList, decor: s.decor.length, stock: s.stock, inventory: s.inventory, fish: s.fish,
+    collected: s.collected, items: s.items, me: s.me, camera: s.camera, raft: s.raft, physics: s.physics,
+    grounded: s.grounded, swimming: s.swimming, hookStage: s.hookStage, hook: s.hook, fishWait: s.fishWait,
+    hookHealth: s.hookHealth, charge: s.charge, charging: s.charging, reeling: s.reeling,
+    inventoryOpen: s.inventoryOpen, pauseOpen: !!(od && od.open), otherDialogs,
+    build: {active: s.build.active, candidates: s.build.candidates, affordable: s.build.affordable, hover: s.build.hover},
+    probe: window.__playbot ? window.__playbot.read() : null, now: performance.now()};
+})()"""
+
+
+def starter_save():
+    slots = [None] * 28
+    slots[0] = {'kind': 'hook', 'count': 1, 'durability': 100}
+    slots[1] = {'kind': 'hammer', 'count': 1, 'durability': 100}
+    slots[2] = {'kind': 'fishingrod', 'count': 1, 'durability': 100}
+    slots[3] = {'kind': 'wood', 'count': 20}
+    slots[4] = {'kind': 'plastic', 'count': 20}
+    slots[8] = {'kind': 'leaf', 'count': 10}
+    return {'tiles': [[i % 3 - 1, i // 3 - 1] for i in range(9)], 'decor': [], 'stock': {}, 'fish': 0, 'collected': 0,
+            'hookHealth': 100, 'items': [], 'hostInventory': {'slots': slots, 'selected': 0},
+            'guestInventory': {'slots': [None] * 28, 'selected': 0}}
+
+
+def finite(*v):
+    return all(isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) for x in v)
+
+
+def wrap(a):
+    return (a + math.pi) % (2 * math.pi) - math.pi
+
+
+class InfraError(Exception):
+    pass
+
+
+class TimeUp(Exception):
+    """Raised inside an action once the session is past --duration (+ a short grace)."""
+
+
+class Bot:
+    def __init__(self, page, args, out):
+        self.page, self.args, self.out = page, args, out
+        self.rng = random.Random(args.seed)
+        self.t0 = time.monotonic()
+        self.log = []            # (elapsed, text)
+        self.failures = []
+        self.fail_ids = {}
+        self.page_errors, self.console_errors, self.console_warnings = [], [], 0
+        self.prev = None
+        self.samples = 0
+        self.next_check = 0
+        self.next_shot = 0
+        self.shots, self.shot_labels = [], []
+        self.expect_tiles_until = -1   # tiles may grow until this elapsed time (after a build click)
+        self.hook_stage_since = (None, 0)
+        self.frozen_since = None
+        self.active_bad = 0
+        self.max_tiles = None
+        self.m = {'actions': {}, 'throws': 0, 'catches': 0, 'builds_tried': 0, 'tiles_built': 0, 'fish_casts': 0,
+                  'fish_caught': 0, 'collected': 0, 'menus': 0, 'max_raf_gap_ms': 0, 'raf_frames': 0,
+                  'min_y': None, 'max_dist': 0, 'swim_samples': 0, 'pause_open_after_inv_esc': None,
+                  'relock_failures': 0, 'sample_ms_max': 0}
+
+    # ---------- bookkeeping ----------
+    def el(self):
+        return time.monotonic() - self.t0
+
+    def act(self, text):
+        self.log.append((round(self.el(), 2), text))
+
+    def repro(self):
+        tail = '; '.join(f'{t:.1f}s {a}' for t, a in self.log[-12:])
+        return (f'python3.13 tests/e2e/playbot.py --dist <dist> --seed {self.args.seed} --duration {self.args.duration:g} '
+                f'--kit {self.args.kit}  (failed at t={self.el():.1f}s; last actions: {tail})')
+
+    def fail(self, fid, detail, shot=True):
+        n = self.fail_ids.get(fid, 0)
+        self.fail_ids[fid] = n + 1
+        if n >= 3:  # keep the report readable: first 3 of each id, rest counted
+            return
+        self.failures.append({'id': fid, 'detail': detail, 'repro': self.repro(), 't': round(self.el(), 2)})
+        if shot:
+            self.screenshot('!' + fid)
+
+    def screenshot(self, label):
+        p = self.out / 'frames' / f'{len(self.shots):03d}-{self.el():06.1f}s-{label.strip("!")}.png'
+        try:
+            self.page.screenshot(path=str(p), timeout=30000)
+            self.shots.append(str(p))
+            self.shot_labels.append(f'{label} {self.el():.0f}s')
+        except Exception as e:
+            self.act(f'screenshot failed: {e}')
+        self.page.evaluate('window.__playbot && window.__playbot.reset()')  # screenshot time is not a stall
+
+    # ---------- core loop ----------
+    def wait(self, ms):
+        """Sleep in <=250 ms chunks, checking invariants and taking periodic screenshots."""
+        end = time.monotonic() + ms / 1000
+        while True:
+            e = self.el()
+            if self.stopping and e > self.args.duration + 8:
+                raise TimeUp()
+            if e >= self.next_check:
+                self.check()
+                self.next_check = e + self.args.check_interval
+            if e >= self.next_shot:
+                self.screenshot(self.log[-1][1].split(' ')[0] if self.log else 'start')
+                self.next_shot = self.el() + self.args.shot_interval
+            left = end - time.monotonic()
+            if left <= 0:
+                return
+            self.page.wait_for_timeout(int(min(left, .25) * 1000) + 1)
+
+    def sample(self):
+        t = time.monotonic()
+        s = self.page.evaluate(SAMPLE_JS)
+        self.m['sample_ms_max'] = max(self.m['sample_ms_max'], round((time.monotonic() - t) * 1000))
+        return s
+
+    def check(self):
+        try:
+            s = self.sample()
+        except Exception as e:
+            self.fail('sample_failed', f'raftDebug.state could not be read: {e}')
+            return
+        self.samples += 1
+        p, el = self.prev, self.el()
+        for msg in self.page_errors[len(self._seen_pe):] if hasattr(self, '_seen_pe') else self.page_errors:
+            self.fail('pageerror', msg[:400])
+        self._seen_pe = list(self.page_errors)
+        for msg in self.console_errors[len(self._seen_ce):] if hasattr(self, '_seen_ce') else self.console_errors:
+            self.fail('console_error', msg[:400])
+        self._seen_ce = list(self.console_errors)
+
+        if not s['running']:
+            self.fail('not_running', 'raftDebug.state.running became false during Solo play')
+        if s['disposed']:
+            self.fail('disposed', 'engine reports disposed=true during play')
+
+        # rAF stall
+        pr = s.get('probe') or {}
+        gap = pr.get('maxGap') or 0
+        self.m['raf_frames'] += pr.get('frames') or 0
+        self.m['max_raf_gap_ms'] = max(self.m['max_raf_gap_ms'], round(gap))
+        if gap > self.args.stall_ms:
+            self.fail('frame_stall', f'requestAnimationFrame gap of {gap:.0f} ms (threshold {self.args.stall_ms} ms)')
+
+        # player
+        me, ph = s['me'] or {}, s['physics'] or {}
+        x, y, z = me.get('x'), me.get('y'), me.get('z')
+        if not finite(x, y, z, me.get('yaw'), me.get('pitch')):
+            self.fail('player_nonfinite', f'player pose not finite: {me}')
+        else:
+            self.m['min_y'] = y if self.m['min_y'] is None else min(self.m['min_y'], y)
+            self.m['max_dist'] = max(self.m['max_dist'], math.hypot(x, z))
+            if s['swimming']:
+                self.m['swim_samples'] += 1
+            if y < self.args.y_floor:
+                self.fail('player_below_floor', f'player eye y={y:.2f} < {self.args.y_floor} (swimming={s["swimming"]}) at x={x:.2f} z={z:.2f}')
+            if math.hypot(x, z) > 100:
+                self.fail('player_far_away', f'player at distance {math.hypot(x, z):.1f} from the raft origin')
+            ry = (s['raft'] or {}).get('y', 0)
+            tx, tz = round(x / 2), round(z / 2)
+            over = any(t[0] == tx and t[1] == tz for t in s['tileList']) and abs(x / 2 - tx) < .4 and abs(z / 2 - tz) < .4
+            if over and not s['swimming'] and not ph.get('climbing') and y < ry + 1.0:
+                self.fail('fell_through_deck', f'eye y={y:.2f} is below deck+1.0 ({ry + 1.0:.2f}) while standing inside tile ({tx},{tz}), not swimming')
+        if not finite(*(ph.get(k) for k in ('vx', 'vy', 'vz'))):
+            self.fail('velocity_nonfinite', f'physics velocity not finite: {ph}')
+        elif max(abs(ph['vx']), abs(ph['vy']), abs(ph['vz'])) > 60:
+            self.fail('velocity_huge', f'physics velocity implausible: {ph}')
+
+        # camera
+        cam = s['camera'] or {}
+        if not finite(cam.get('x'), cam.get('y'), cam.get('z'), cam.get('fov'), cam.get('pitch'), cam.get('roll')):
+            self.fail('camera_nonfinite', f'camera not finite: {cam}')
+        else:
+            if not FOV_RANGE[0] - .01 <= cam['fov'] <= FOV_RANGE[1] + .01:
+                self.fail('camera_fov', f'camera fov {cam["fov"]} outside {FOV_RANGE} while running')
+            if abs(cam['pitch']) > PITCH_LIMIT + 1e-6:
+                self.fail('camera_pitch', f'camera pitch {cam["pitch"]:.3f} beyond +-{PITCH_LIMIT}')
+            if abs(cam['roll']) > .35:
+                self.fail('camera_roll', f'camera roll {cam["roll"]:.3f} rad is implausible')
+
+        # inventory
+        inv = s['inventory'] or {}
+        for i, sl in enumerate(inv.get('slots') or []):
+            if sl is None:
+                continue
+            c = sl.get('count')
+            if not isinstance(c, int) or isinstance(c, bool) or c < 1:
+                self.fail('inventory_count', f'slot {i} {sl.get("kind")} has count {c!r}')
+            d = sl.get('durability')
+            if d is not None and not (finite(d) and 0 <= d <= 100):
+                self.fail('inventory_durability', f'slot {i} {sl.get("kind")} durability {d!r}')
+        for k, v in (s['stock'] or {}).items():
+            if not isinstance(v, int) or isinstance(v, bool) or v < 0:
+                self.fail('stock_count', f'stock[{k}] = {v!r}')
+        si = s['selectedIndex']
+        if not isinstance(si, int) or not 0 <= si < 8:
+            self.fail('selected_index', f'selectedIndex {si!r} not a hotbar slot')
+        if p:
+            for k in ('fish', 'collected'):
+                if isinstance(s[k], int) and isinstance(p[k], int) and s[k] < p[k]:
+                    self.fail(f'{k}_decreased', f'world.{k} went {p[k]} -> {s[k]}')
+            self.m['collected'] = s['collected']
+
+        # tiles
+        tiles = s['tiles']
+        if self.max_tiles is not None:
+            if tiles < self.max_tiles:
+                self.fail('tiles_decreased', f'raft tiles went {self.max_tiles} -> {tiles} with no removal action')
+            elif tiles > self.max_tiles:
+                if el > self.expect_tiles_until:
+                    self.fail('tiles_unexpected_growth', f'raft tiles went {self.max_tiles} -> {tiles} without a recent build click')
+                self.m['tiles_built'] += tiles - self.max_tiles
+        self.max_tiles = max(tiles, self.max_tiles or 0)
+        if len({tuple(t) for t in s['tileList']}) != len(s['tileList']):
+            self.fail('tiles_duplicate', f'duplicate tile coords in {s["tileList"]}')
+
+        # hook state machine
+        st = s['hookStage']
+        if st not in HOOK_STAGES:
+            self.fail('hook_stage_invalid', f'hookStage {st!r}')
+        elif p and p['hookStage'] in HOOK_NEXT and st not in HOOK_NEXT[p['hookStage']]:
+            self.fail('hook_transition', f'hook stage jumped {p["hookStage"]} -> {st}')
+        if (st == 'idle') != (s['hook'] is None):
+            self.fail('hook_state_mismatch', f'hookStage={st} but hook={s["hook"]}')
+        h = s['hook'] or {}
+        if h and not h.get('fishing'):
+            if not finite(h.get('x'), h.get('y'), h.get('z'), h.get('tension'), h.get('distance')):
+                self.fail('hook_nonfinite', f'hook state not finite: {h}')
+            elif not -1e-6 <= h['tension'] <= 1 + 1e-6:
+                self.fail('hook_tension', f'hook tension {h["tension"]} outside [0,1]')
+            elif h['distance'] > 80:
+                self.fail('hook_far', f'hook {h["distance"]:.1f} m away (range is {s["hookRange"] if "hookRange" in s else "~32"})')
+        if st != self.hook_stage_since[0]:
+            self.hook_stage_since = (st, el)
+        elif st in ('flying', 'done') and el - self.hook_stage_since[1] > self.args.hook_stuck_s:
+            self.fail('hook_stuck', f'hook stuck in stage {st!r} for {el - self.hook_stage_since[1]:.0f}s')
+            self.hook_stage_since = (st, el)
+        if not (0 <= (s['charge'] or 0) <= 1):
+            self.fail('charge_range', f'charge {s["charge"]}')
+
+        # menus
+        if s['inventoryOpen'] and s['pauseOpen']:
+            self.fail('inventory_and_pause_open', 'inventory and pause menu are both open at the same time')
+        menu = s['inventoryOpen'] or s['pauseOpen'] or bool(s['otherDialogs'])
+        if not menu and not s['active']:
+            self.active_bad += 1
+            if self.active_bad == 3:
+                self.fail('engine_inactive', 'no menu is open but the engine stayed inactive (active=false) for 3 samples')
+        else:
+            self.active_bad = 0
+
+        # liveness: raft bob or camera must change while unpaused
+        sig = ((s['raft'] or {}).get('y'), (s['raft'] or {}).get('roll'))
+        if not menu and p and sig == self.last_sig:
+            self.frozen_since = self.frozen_since or el
+            if el - self.frozen_since > self.args.stall_ms / 1000 + 2:
+                self.fail('world_frozen', f'raft pose unchanged for {el - self.frozen_since:.1f}s while unpaused')
+                self.frozen_since = el
+        else:
+            self.frozen_since = None
+        self.last_sig = sig
+        self.prev = s
+
+    last_sig = None
+    stopping = False
+
+    # ---------- input helpers ----------
+    def state(self):
+        return self.page.evaluate('raftDebug.state')
+
+    def look(self, dx, dy):
+        """Relative mouse look, sent in <=150 px events (the game clamps each to +-200)."""
+        n = max(1, int(max(abs(dx), abs(dy)) // 150) + 1)
+        self.page.evaluate("""([dx, dy, n]) => { for (let i = 0; i < n; i++)
+            document.dispatchEvent(new MouseEvent('mousemove', {movementX: dx / n, movementY: dy / n, bubbles: true})); }""", [dx, dy, n])
+
+    def aim_at(self, wx, wy, wz):
+        st = self.state()
+        cam = st['camera']
+        dx, dy, dz = wx - cam['x'], wy - cam['y'], wz - cam['z']
+        tyaw = math.atan2(-dx, -dz)
+        tpitch = max(-PITCH_LIMIT + .02, min(PITCH_LIMIT - .02, math.atan2(dy, math.hypot(dx, dz))))
+        self.look(wrap(st['me']['yaw'] - tyaw) / LOOK_K, (st['me']['pitch'] - tpitch) / LOOK_K)
+
+    def set_view(self, yaw, pitch):
+        st = self.state()
+        self.look(wrap(st['me']['yaw'] - yaw) / LOOK_K, (st['me']['pitch'] - pitch) / LOOK_K)
+
+    def ensure_lock(self):
+        """Close stray menus and get pointer lock back (first canvas click only locks)."""
+        for _ in range(4):
+            s = self.page.evaluate("({lock: raftDebug.state.pointerLocked, inv: raftDebug.state.inventoryOpen, fb: raftDebug.state.lockFallback,"
+                                   " dlg: [...document.querySelectorAll('dialog')].some(d => d.open)})")
+            if s['inv']:
+                self.page.keyboard.press('Tab'); self.wait(400); continue
+            if s['dlg']:
+                self.page.keyboard.press('Escape'); self.wait(500); continue
+            if s['lock'] or s['fb']:
+                return True
+            self.page.mouse.click(640, 360); self.wait(700)
+        self.m['relock_failures'] += 1
+        self.act('could not regain pointer lock')
+        return False
+
+    def select(self, kind):
+        st = self.state()
+        if st['heldKind'] == kind:
+            return True
+        slots = st['inventory']['slots']
+        i = next((j for j in range(8) if slots[j] and slots[j]['kind'] == kind), None)
+        if i is None:
+            self.act(f'no {kind} in hotbar')
+            return False
+        self.page.keyboard.press(f'Digit{i + 1}')
+        self.wait(250)
+        return True
+
+    def wait_idle_hook(self, max_s):
+        end = self.el() + max_s
+        while self.el() < end:
+            if self.page.evaluate('raftDebug.state.hookStage') == 'idle':
+                return True
+            self.wait(400)
+        return False
+
+    # ---------- actions ----------
+    def a_walk(self):
+        st = self.state()
+        me = st['me']
+        if math.hypot(me['x'], me['z']) > 2.2 or st['swimming']:   # head back to the raft centre
+            self.aim_at(0, me['y'], 0)
+            self.set_view(self.state()['me']['yaw'], -.2)
+            key, ms = 'KeyW', 1500 + self.rng.randint(0, 1500)
+            self.act(f'walk home {key} {ms}ms')
+        else:
+            key = self.rng.choice(['KeyW', 'KeyA', 'KeyS', 'KeyD'])
+            ms = self.rng.randint(400, 1600)
+            self.act(f'walk {key} {ms}ms')
+        self.page.keyboard.down(key)
+        try:
+            if self.rng.random() < .25:
+                self.page.keyboard.down('ShiftLeft')
+            self.wait(ms)
+        finally:
+            self.page.keyboard.up(key); self.page.keyboard.up('ShiftLeft')
+
+    def a_jump(self):
+        self.act('jump Space')
+        self.page.keyboard.down('Space'); self.wait(200); self.page.keyboard.up('Space'); self.wait(600)
+
+    def a_look(self):
+        dx, dy = self.rng.uniform(-700, 700), self.rng.uniform(-250, 250)
+        if self.rng.random() < .15:
+            dy = self.rng.choice([-1, 1]) * 2000   # slam into the pitch limit
+        self.act(f'look dx={dx:.0f} dy={dy:.0f}')
+        steps = 4
+        for _ in range(steps):
+            self.look(dx / steps, dy / steps); self.wait(120)
+
+    def a_hotbar(self):
+        keys = [f'Digit{self.rng.randint(1, 5)}' for _ in range(self.rng.randint(2, 5))]
+        self.act('hotbar ' + ','.join(keys))
+        for k in keys:
+            self.page.keyboard.press(k); self.wait(200)
+        if self.rng.random() < .3:
+            self.act('wheel')
+            self.page.mouse.wheel(0, 120); self.wait(200)
+
+    def a_throw(self):
+        if not self.select('hook'):
+            return
+        st = self.state()
+        if st['hookStage'] != 'idle':
+            self.act('throw skipped: hook busy'); return
+        coll0 = st['collected']
+        tg = [t for t in self.page.evaluate('raftDebug.targets') if not t['pending'] and t['distance'] < 18]
+        if tg:
+            tg.sort(key=lambda t: (t['distance'], t['id']))
+            t = tg[min(len(tg) - 1, self.rng.randint(0, 2))]
+            self.aim_at(t['x'], t['y'] + t['distance'] * .12, t['z'])   # a little above for the arc
+            desc = f'debris#{t["id"]} {t["type"]} d={t["distance"]:.1f}'
+        else:
+            self.set_view(self.rng.uniform(-math.pi, math.pi), .1); desc = 'open water'
+        hold = self.rng.randint(350, 900)
+        self.act(f'throw hook at {desc} hold={hold}ms')
+        self.m['throws'] += 1
+        self.page.mouse.move(640, 360); self.page.mouse.down(); self.wait(hold); self.page.mouse.up()
+        # let it fly / land, then reel
+        end = self.el() + self.args.hook_wait_s
+        while self.el() < end:
+            stg = self.page.evaluate('raftDebug.state.hookStage')
+            if stg in ('floating', 'idle', 'done'):
+                break
+            self.wait(400)
+        if self.page.evaluate('raftDebug.state.hookStage') in ('floating', 'reeling'):
+            self.act('reel (hold LMB)')
+            self.page.mouse.down()
+            try:
+                self.wait_idle_hook(self.args.hook_wait_s)
+            finally:
+                self.page.mouse.up()
+        if not self.wait_idle_hook(4):
+            self.act('hook still out after reel')
+        got = self.state()['collected'] - coll0
+        if got > 0:
+            self.m['catches'] += got
+            self.act(f'caught {got}')
+
+    def a_collect(self):
+        tg = sorted(self.page.evaluate('raftDebug.targets'), key=lambda t: t['distance'])
+        if tg and tg[0]['distance'] < 4:
+            self.aim_at(tg[0]['x'], tg[0]['y'], tg[0]['z'])
+        self.act('press E (collect / inventory)')
+        self.page.keyboard.press('KeyE'); self.wait(600)
+        if self.page.evaluate('raftDebug.state.inventoryOpen'):
+            self.page.keyboard.press('Tab'); self.wait(400)
+
+    def a_inventory(self):
+        self.m['menus'] += 1
+        self.act('open inventory Tab')
+        self.page.keyboard.press('Tab'); self.wait(500)
+        if not self.page.evaluate('raftDebug.state.inventoryOpen'):
+            self.fail('inventory_did_not_open', 'Tab while playing did not open the inventory')
+            return
+        if self.rng.random() < .5:
+            self.act('close inventory Esc')
+            self.page.keyboard.press('Escape'); self.wait(600)
+            r = self.page.evaluate("({inv: raftDebug.state.inventoryOpen, pause: !!document.querySelector('#options')?.open})")
+            if self.m['pause_open_after_inv_esc'] is None:
+                self.m['pause_open_after_inv_esc'] = r['pause']
+            if r['inv'] and r['pause']:
+                self.fail('esc_inventory_both_open', 'Esc from the inventory left both inventory and pause open')
+            elif r['inv']:
+                self.fail('esc_inventory_stuck', 'Esc did not close the inventory')
+        else:
+            self.act('close inventory Tab')
+            self.page.keyboard.press('Tab'); self.wait(500)
+            if self.page.evaluate('raftDebug.state.inventoryOpen'):
+                self.fail('tab_inventory_stuck', 'Tab did not close the inventory')
+        self.ensure_lock()
+
+    def a_pause(self):
+        self.m['menus'] += 1
+        self.ensure_lock()
+        self.act('pause Esc')
+        self.page.keyboard.press('Escape'); self.wait(700)
+        r = self.page.evaluate("({pause: !!document.querySelector('#options')?.open, active: raftDebug.state.active})")
+        if not r['pause']:
+            self.fail('pause_did_not_open', 'Esc while playing (pointer locked) did not open the pause menu')
+        self.wait(self.rng.randint(300, 1200))
+        self.act('resume Esc')
+        self.page.keyboard.press('Escape'); self.wait(700)
+        if self.page.evaluate("!!document.querySelector('#options')?.open"):
+            self.fail('pause_did_not_close', 'second Esc did not close the pause menu')
+        self.ensure_lock()
+
+    def a_build(self):
+        if not self.select('hammer'):
+            return
+        pl = self.page.evaluate('raftDebug.placements')
+        if not pl:
+            self.act('no placements'); return
+        me = self.state()['me']
+        pl.sort(key=lambda c: (math.hypot(c['world']['x'] - me['x'], c['world']['z'] - me['z']), c['x'], c['z']))
+        c = pl[min(len(pl) - 1, self.rng.randint(0, 3))]
+        self.aim_at(c['world']['x'], c['world']['y'], c['world']['z'])
+        self.wait(500)   # let the frame compute hover
+        st = self.state()
+        self.act(f'build floor at ({c["x"]},{c["z"]}) hover={st["build"]["hover"]} affordable={st["build"]["affordable"]}')
+        self.m['builds_tried'] += 1
+        self.expect_tiles_until = self.el() + 8
+        t0 = st['tiles']
+        self.page.mouse.click(640, 360); self.wait(1200)
+        if st['build']['hover'] and st['build']['affordable'] and self.state()['tiles'] == t0:
+            self.wait(2000)
+            if self.state()['tiles'] == t0:
+                self.fail('build_no_effect', f'clicked with hammer while hover={st["build"]["hover"]} and affordable, but tiles stayed {t0}')
+
+    def a_fish(self):
+        if not self.select('fishingrod'):
+            return
+        if self.page.evaluate('raftDebug.state.hookStage') != 'idle':
+            self.act('fish skipped: hook busy'); return
+        st = self.state()
+        me = st['me']
+        # aim at open water ~6 m out, away from the tiles
+        ang = self.rng.uniform(-math.pi, math.pi)
+        wx, wz = me['x'] - math.sin(ang) * 7, me['z'] - math.cos(ang) * 7
+        self.aim_at(wx, 0, wz)
+        self.wait(300)
+        fish0 = self.state()['fish']
+        self.act(f'cast rod toward ({wx:.1f},{wz:.1f})')
+        self.m['fish_casts'] += 1
+        self.page.mouse.click(640, 360); self.wait(600)
+        if self.page.evaluate('raftDebug.state.hookStage') == 'fishing':
+            self.wait_idle_hook(self.args.fish_wait_s)
+        got = self.state()['fish'] - fish0
+        if got > 0:
+            self.m['fish_caught'] += got
+            self.act(f'fish +{got}')
+
+    ACTIONS = [('walk', 5), ('look', 4), ('hotbar', 2), ('jump', 1), ('throw', 3), ('collect', 1),
+               ('inventory', 2), ('pause', 1), ('build', 2), ('fish', 1)]
+
+    def plan(self):
+        names = [n for n, w in self.ACTIONS for _ in range(w)]
+        # every action appears early so even a short run touches all of them, then weighted random
+        first = [n for n, _ in self.ACTIONS]
+        self.rng.shuffle(first)
+        yield from first
+        while True:
+            yield self.rng.choice(names)
+
+    def run(self):
+        dur = self.args.duration
+        for name in self.plan():
+            if self.el() >= dur:
+                break
+            self.m['actions'][name] = self.m['actions'].get(name, 0) + 1
+            self.stopping = True
+            try:
+                self.ensure_lock()
+                getattr(self, 'a_' + name)()
+                self.wait(self.rng.randint(100, 400))
+            except TimeUp:
+                self.act(f'time up during {name}')
+                break
+            finally:
+                self.stopping = False
+                for k in ('KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'Space'):
+                    self.page.keyboard.up(k)
+                self.page.mouse.up()
+        self.check()
+        self.screenshot('end')
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
+    ap.add_argument('--dist', required=True)
+    ap.add_argument('--out', default='artifacts/playbot')
+    ap.add_argument('--duration', type=float, default=300, help='seconds of scripted play (default 300)')
+    ap.add_argument('--seed', type=int, default=1)
+    ap.add_argument('--kit', choices=['starter', 'fresh'], default='starter')
+    ap.add_argument('--check-interval', type=float, default=.5)
+    ap.add_argument('--shot-interval', type=float, default=None, help='seconds between screenshots (default duration/14)')
+    ap.add_argument('--stall-ms', type=float, default=8000, help='max rAF gap before frame_stall (swiftshader-generous)')
+    ap.add_argument('--y-floor', type=float, default=-4.0, help='player eye y below this is a failure')
+    ap.add_argument('--hook-wait-s', type=float, default=25)
+    ap.add_argument('--hook-stuck-s', type=float, default=60)
+    ap.add_argument('--fish-wait-s', type=float, default=15)
+    ap.add_argument('--headed', action='store_true')
+    args = ap.parse_args()
+    args.shot_interval = args.shot_interval or max(5.0, args.duration / 14)
+    out = Path(args.out).resolve()
+    (out / 'frames').mkdir(parents=True, exist_ok=True)
+    for f in (out / 'frames').glob('*.png'):
+        f.unlink()
+    result = {'tool': TOOL, 'pass': False, 'failures': [], 'metrics': {}, 'artifacts': []}
+    code = 2
+    bot = None
+    try:
+        dist = Path(args.dist).resolve()
+        if not (dist / 'index.html').is_file():
+            raise InfraError(f'no index.html in {dist}')
+        from harness import StaticServer, launch_chromium
+        from playwright.sync_api import sync_playwright
+        save = ''
+        if args.kit == 'starter':
+            save = "try { localStorage.setItem('little-raft-v1', %s); } catch (e) {}" % json.dumps(json.dumps(starter_save()))
+        else:
+            save = "try { localStorage.removeItem('little-raft-v1'); } catch (e) {}"
+        with StaticServer(dist) as srv, sync_playwright() as p:
+            browser = launch_chromium(p, headless=not args.headed)
+            try:
+                page = browser.new_page(viewport={'width': 1280, 'height': 720})
+                page.set_default_timeout(60000)
+                page.add_init_script(PAGE_INIT % {'seed': args.seed, 'save': save})
+                bot = Bot(page, args, out)
+                page.on('pageerror', lambda e: bot.page_errors.append(str(e)))
+
+                def on_console(m):
+                    if m.type == 'error':
+                        bot.console_errors.append(m.text[:400])
+                    elif m.type == 'warning':
+                        bot.console_warnings += 1
+                page.on('console', on_console)
+                try:
+                    page.goto(srv.url, timeout=60000)
+                    page.wait_for_function('!!window.raftDebug', timeout=60000)
+                    page.wait_for_timeout(500)
+                    page.locator('#solo').click()
+                    page.wait_for_function('raftDebug.state.running', timeout=30000)
+                except Exception as e:
+                    if bot.page_errors:
+                        bot.fail('boot_failed', f'game did not start: {e}; pageerrors: {bot.page_errors[:3]}', shot=False)
+                    else:
+                        raise InfraError(f'could not start Solo game: {e}')
+                if not bot.failures:
+                    bot.t0 = time.monotonic()
+                    bot.act('solo start')
+                    page.wait_for_timeout(1000)
+                    bot.check()
+                    bot.run()
+            finally:
+                browser.close()
+        from timeline_strip import build_strip
+        strip = out / 'timeline.png'
+        if build_strip(bot.shots, strip, labels=bot.shot_labels, cols=6):
+            result['artifacts'].append(str(strip))
+        result['artifacts'] += bot.shots
+        (out / 'actions.log').write_text('\n'.join(f'{t:8.2f}  {a}' for t, a in bot.log) + '\n')
+        result['artifacts'].append(str(out / 'actions.log'))
+        result['failures'] = bot.failures
+        result['pass'] = not bot.failures
+        code = 0 if result['pass'] else 1
+    except InfraError as e:
+        result['failures'] = [{'id': 'infra', 'detail': str(e), 'repro': 'check --dist and the Chromium install'}]
+    except Exception as e:
+        result['failures'] = [{'id': 'infra', 'detail': f'{type(e).__name__}: {e}', 'repro': traceback.format_exc()[-1500:]}]
+        if bot:
+            result['failures'] += bot.failures
+            if bot.failures:
+                code = 1
+    if bot:
+        m = bot.m
+        m.update(seed=args.seed, kit=args.kit, duration_s=round(bot.el(), 1), requested_duration_s=args.duration,
+                 samples=bot.samples, page_errors=len(bot.page_errors), console_errors=len(bot.console_errors),
+                 console_warnings=bot.console_warnings, failure_counts=bot.fail_ids,
+                 min_y=None if m['min_y'] is None else round(m['min_y'], 3), max_dist=round(m['max_dist'], 2),
+                 avg_fps=round(m['raf_frames'] / max(bot.el(), 1e-6), 2),
+                 mean_check_interval_s=round(bot.el() / max(bot.samples, 1), 2))
+        result['metrics'] = m
+    print(json.dumps(result))
+    sys.exit(code)
+
+
+if __name__ == '__main__':
+    main()
