@@ -19,6 +19,7 @@ export const PRESETS = {
   plank:   { cell: 'plank',   roughness: 1,    metalness: 0,    normalScale: 0.9, repeat: [1, 3] }, // deck board: u across (0.34 m), v along
   bark:    { cell: 'bark',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [2, 1] },
   plastic: { cell: 'plastic', roughness: 1,    metalness: 0,    normalScale: 1.3, repeat: [1, 1], transparent: true, opacity: 0.95, side: 'double' },
+  foliage: { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [10, 5] }, // dense bush/island canopy, opaque
   leaf:    { cell: 'leaf',    roughness: 1,    metalness: 0,    normalScale: 1.0, repeat: [1, 1], alphaTest: 0.5, side: 'double' },
   rope:    { cell: 'rope',    roughness: 1,    metalness: 0,    normalScale: 1.2, repeat: [1, 3] },
   scrap:   { cell: 'scrap',   roughness: 1,    metalness: 0.5,  normalScale: 1.0, repeat: [1, 1], metalMap: true }, // x metal mask in albedo alpha; capped: no env map in game
@@ -47,7 +48,8 @@ export const COLOR_PRESETS = {
   bark: ['#5e4029', '#5e3b20'],
   rope: ['#a8946c', '#b89a64', '#e9d39a'],
   scrap: ['#4b4844', '#8e9aa2', '#6f6964', '#6d757b', '#9a5a32'],
-  leaf: ['#4f9b72', '#72ae59', '#519b55', '#6bb84c', '#5fae45', '#7d8a3d'],
+  foliage: ['#4f9b72'],
+  leaf: ['#72ae59', '#519b55', '#6bb84c', '#5fae45', '#7d8a3d'],
   sand: ['#e6d7a3'],
   cloth: ['#fff3cf'],
 };
@@ -105,9 +107,14 @@ export function getMaterial(T, name, opts = {}) {
 }
 
 // Game palette hook: returns a textured material for known palette colours, else null.
+// Clouds are lit spheres in game.js: a soft self-lit white keeps their undersides from going teal.
+const SOFT = { '#e7f9eb': { emissive: '#e6f0f5', emissiveIntensity: 0.6 } };
 export function materialForColor(T, color) {
-  const preset = COLOR_TO_PRESET.get(String(color).toLowerCase());
-  return preset ? getMaterial(T, preset, { color }) : null;
+  const hex = String(color).toLowerCase(), preset = COLOR_TO_PRESET.get(hex);
+  if (preset) return getMaterial(T, preset, { color });
+  if (!SOFT[hex]) return null;
+  if (!cache.has(hex)) cache.set(hex, new T.MeshStandardMaterial({ color: hex, roughness: 1, metalness: 0, ...SOFT[hex] }));
+  return cache.get(hex);
 }
 
 // Apply LIGHTING to an existing scene (adjusts the first hemisphere/directional light it finds). With
