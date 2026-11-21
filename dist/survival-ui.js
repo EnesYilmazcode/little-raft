@@ -16,7 +16,7 @@ const SPRITE_URL = (() => {
 })();
 
 // Symbols that actually exist in icons.svg.
-const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'crew', 'help', 'sound', 'close', 'repair', 'hammer', 'compass']);
+const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'crew', 'help', 'sound', 'close', 'repair', 'hammer', 'compass', 'antenna', 'cup', 'saltcup', 'freshcup', 'purifier']);
 // Item kind (normalised) -> sprite symbol.
 const SPRITE_FOR = {
   hook: 'hook', plastichook: 'hook', grapplinghook: 'hook',
@@ -28,6 +28,7 @@ const SPRITE_FOR = {
   scrap: 'scrap', metal: 'scrap',
   barrel: 'barrel', net: 'net', collectionnet: 'net', sail: 'sail',
   lantern: 'lantern', compass: 'compass', repair: 'repair', palm: 'palm',
+  antenna: 'antenna', receiver: 'compass',
 };
 // Hand-drawn fallbacks for kinds without a sprite (same palette as icons.svg).
 const CUSTOM = {

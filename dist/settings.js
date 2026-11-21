@@ -81,6 +81,7 @@ function markup() {
 <button type="button" data-act="fullscreen">Enter fullscreen</button>
 <button type="button" data-act="help">How to play</button>
 <button type="button" data-act="crew">Play together</button>
+<button type="button" data-act="logbook">Raft logbook</button>
 </div>
 <div class="rs-panel" role="group" aria-label="Options">${rows}
 <div class="rs-row"><label for="rs-graphics">Graphics quality</label><output id="rs-graphics-out" for="rs-graphics"></output>
@@ -243,6 +244,7 @@ export function createSettings({ onChange, onResume, onPause } = {}) {
       Promise.resolve(req).catch(() => {}).finally(syncFullscreen);
       return;
     }
+    if (act === 'logbook') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-logbook')); return; }
     if (act === 'help' || act === 'crew') {
       const target = document.getElementById(act);
       if (!(target instanceof HTMLDialogElement)) return;

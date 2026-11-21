@@ -26,6 +26,12 @@ export const ITEM_INFO = Object.freeze({
   net:        Object.freeze({ kind: 'net',        name: 'Net',          icon: 'icon-net',     maxStack: STACK_SIZE, tool: false, placeholder: false }),
   bench:      Object.freeze({ kind: 'bench',      name: 'Bench',        icon: 'icon-repair',  maxStack: STACK_SIZE, tool: false, placeholder: true }),
   crate:      Object.freeze({ kind: 'crate',      name: 'Crate',        icon: 'icon-barrel',  maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  receiver:   Object.freeze({ kind: 'receiver',   name: 'Receiver',     icon: 'icon-compass', maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  antenna:    Object.freeze({ kind: 'antenna',    name: 'Antenna',      icon: 'icon-antenna', maxStack: STACK_SIZE, tool: false, placeholder: false }),
+  cup:        Object.freeze({ kind: 'cup',        name: 'Cup',          icon: 'icon-cup',     maxStack: 5,          tool: false, placeholder: false }),
+  saltcup:    Object.freeze({ kind: 'saltcup',    name: 'Cup of Sea Water', icon: 'icon-saltcup', maxStack: 5,      tool: false, placeholder: false }),
+  freshcup:   Object.freeze({ kind: 'freshcup',   name: 'Cup of Fresh Water', icon: 'icon-freshcup', maxStack: 5,   tool: false, placeholder: false }),
+  purifier:   Object.freeze({ kind: 'purifier',   name: 'Water Purifier', icon: 'icon-purifier', maxStack: STACK_SIZE, tool: false, placeholder: false }),
 });
 
 export const ITEM_KINDS = Object.freeze(Object.keys(ITEM_INFO));
@@ -52,6 +58,10 @@ export const RECIPES = Object.freeze({
   net:        recipe('net',        'Net',          1, { wood: 3, rope: 3 }),
   bench:      recipe('bench',      'Bench',        1, { wood: 3 }),
   crate:      recipe('crate',      'Crate',        1, { wood: 4, scrap: 1 }),
+  receiver:   recipe('receiver',   'Receiver',     1, { wood: 3, scrap: 4, plastic: 3, rope: 2 }),
+  antenna:    recipe('antenna',    'Antenna',      1, { wood: 2, scrap: 1, rope: 1 }),
+  cup:        recipe('cup',        'Cup',          1, { plastic: 1 }),
+  purifier:   recipe('purifier',   'Water Purifier', 1, { wood: 2, scrap: 2, plastic: 1 }),
 });
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);

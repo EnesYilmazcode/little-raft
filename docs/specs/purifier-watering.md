@@ -155,3 +155,12 @@ Run `npm test` and shoot.py. The `errors` list must be empty.
   one `WATER_ACTIONS` line in `applyAction`, one line each in `interact`/`useSelected`/`updateContext`/`frame`. It never edits `ITEM_TYPES`, `SPAWN_TABLE` or `LOOT`.
   An achievements lane may read `world.garden`, or hook into harvest results, without this module knowing about it.
 - The farming lane may reuse `freshcup` and `water()`/`tick()`. Its keys must not collide with palm tiles.
+
+## Implementation notes
+- **Old-save welcome harvest (coordinator change, replaces the first bullet of section 12).** `cleanWatering(v, decor, opts)` takes an optional third argument. game.js's `cleanWorld` passes `{seedMissing:true}`. When the input object has **no `garden` property at all**, every palm in the cleaned decor is seeded `{water:0, grow:90}` (ripe), so old palms keep full size and can be harvested once. A save or host snapshot that has a `garden` field (even `{}` or `null`) is used as-is. Called without the option, `cleanWatering` matches section 3 exactly.
+- **Purifier footprint.** The coordinates in section 9 make the model about 0.86 m wide (base from -0.35 to the shelf edge at +0.51), not 0.75 m. I kept the coordinates. The test checks that it is at most 0.9 x 0.6 x 0.85.
+- `swapOne` is exported from watering.js so tests can reach it. Gains use a private `trade(bag, take, give)` helper with the scratch-then-commit pattern.
+- `pickNdc` delegates to `pickWateringDecor(point)` in game.js. That function also holds the deck-plane fallback.
+- The purifier group sets `userData.height = .78` so it works with code that reads craft heights.
+- No CSS was needed: `#contextPrompt kbd` is already styled in game.js.
+- `cupWater` and `potWater` are `CircleGeometry` discs rotated flat. Embers sit in a Group named `embers` (5 icosahedra), and legs sit in a Group named `purifierLegs`.
