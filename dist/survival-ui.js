@@ -125,7 +125,7 @@ function durFrac(s) {
   return d <= 1 ? clamp01(d) : 1;
 }
 // Rendered 3D icon when ready, flat sprite until then. data-icon lets a late render swap it in place.
-// 3D icons need a second WebGL context, so none are requested on the title screen (see liveIcons).
+// 3D icons are not requested on the title screen (see liveIcons): their first draws compile shaders.
 let iconsLive = false;
 function iconHTML(kind) {
   const url = iconsLive ? iconURL(kind) : null;
