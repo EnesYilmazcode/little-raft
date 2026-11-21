@@ -24,10 +24,13 @@ function makeCtx({ role = 'host', islands = null, sailing = { gx: 100, gz: -200,
   const mod = createMapTable(ctx, { peek: name => peekState[name] });
   return { ctx, mod, emits, notices, actions, peekState };
 }
-// An islands serialize() snapshot with the island `t` seconds after birth.
-function islandsAt(seed, t, { side = 1, off = 20, dock = ISLAND.DOCK, used } = {}) {
+// An islands serialize() snapshot: the island `t` seconds after birth at raft-relative (rx, rz) for the
+// default sailing offset (gx 100, gz -200). Islands sit still on the seabed at (bx, bz).
+function islandsAt(seed, t, { rx = 20, rz = 0, end, used } = {}) {
   const lay = layoutFor(seed);
-  return { v: 1, clock: 1000 + t, next: 9999, isl: { seed, born: 1000, dock, side, off, used: used ?? lay.nodes.map(() => 0) } };
+  const isl = { seed, born: 1000, bx: 100 + rx, bz: -200 + rz, used: used ?? lay.nodes.map(() => 0) };
+  if (end !== undefined) isl.end = 1000 + end;
+  return { v: 2, clock: 1000 + t, next: 9999, isl };
 }
 const tick = (mod, seconds = 0.5) => mod.update(seconds);
 
@@ -92,18 +95,18 @@ test('pushTrail: spacing, wrap seam and decimation', () => {
 });
 
 // ---------------------------------------------------------------- 3. discovery
-test('discovery: approach records nothing, docked records once at gx + side*off, gz + dockZ', () => {
-  const seed = 4242, lay = layoutFor(seed);
+test('discovery: a far island records nothing; within CHART_R it records once at its seabed spot', () => {
+  const seed = 4242;
   const { mod, peekState, emits } = makeCtx();
   tick(mod); // first tick with no island
-  peekState.islands = islandsAt(seed, 5, { side: -1, off: 30 });
+  peekState.islands = islandsAt(seed, 5, { rx: -30, rz: 140 }); // just spawned, far ahead
   tick(mod);
   assert.equal(mod.serialize().isl.length, 0);
-  peekState.islands = islandsAt(seed, ISLAND.APPROACH + 10, { side: -1, off: 30 });
+  peekState.islands = islandsAt(seed, 300, { rx: -30, rz: M.CHART_R - 20 }); // the raft drifted closer
   tick(mod);
   const isl = mod.serialize().isl;
   assert.equal(isl.length, 1);
-  assert.deepEqual(isl[0], { s: seed, x: Math.round(100 - 30), z: Math.round(-200 + lay.dockZ), f: 0 });
+  assert.deepEqual(isl[0], { s: seed, x: 100 - 30, z: -200 + M.CHART_R - 20, f: 0 });
   assert.ok(emits.some(e => e.e.text === `Charted ${islandName(seed)}`));
   tick(mod); tick(mod);
   assert.equal(mod.serialize().isl.length, 1);
@@ -113,7 +116,7 @@ test('discovery: an island already showing at the first tick is recorded; gone i
   const a = makeCtx({ islands: islandsAt(11, 3) });
   tick(a.mod);
   assert.equal(a.mod.serialize().isl.length, 1);
-  const b = makeCtx({ islands: islandsAt(12, ISLAND.APPROACH + ISLAND.DOCK + ISLAND.DEPART + 5) });
+  const b = makeCtx({ islands: islandsAt(12, 400, { end: 400 - ISLAND.RISE - 1 }) }); // finished sinking
   tick(b.mod);
   assert.equal(b.mod.serialize().isl.length, 0);
 });
@@ -121,32 +124,32 @@ test('discovery: an island already showing at the first tick is recorded; gone i
 test('discovery: visited and gathered flags', () => {
   const seed = 99, lay = layoutFor(seed);
   const { mod, ctx, peekState } = makeCtx();
-  peekState.islands = islandsAt(seed, ISLAND.APPROACH + 1, { side: 1, off: 20 });
+  peekState.islands = islandsAt(seed, 30, { rx: 20, rz: -3 });
   tick(mod);
   assert.equal(mod.serialize().isl[0].f, 0);
-  ctx.physics = { x: 20 + lay.R * 0.5, z: lay.dockZ };
+  ctx.physics = { x: 20 + lay.R * 0.5, z: -3 };
   tick(mod);
   assert.equal(mod.serialize().isl[0].f, 1);
   ctx.physics = { x: 500, z: 500 };
   ctx.other = null;
-  peekState.islands = islandsAt(seed, ISLAND.APPROACH + 2, { side: 1, off: 20, used: lay.nodes.map(n => n.max) });
+  peekState.islands = islandsAt(seed, 32, { rx: 20, rz: -3, used: lay.nodes.map(n => n.max) });
   tick(mod);
   assert.equal(mod.serialize().isl[0].f, 3);
   // guest pose counts too
   const g = makeCtx();
-  g.peekState.islands = islandsAt(5, ISLAND.APPROACH + 1, { off: 15 });
-  g.ctx.physics = { x: 999, z: 999 }; g.ctx.other = { x: 15, z: layoutFor(5).dockZ };
+  g.peekState.islands = islandsAt(5, 30, { rx: 15, rz: -2 });
+  g.ctx.physics = { x: 999, z: 999 }; g.ctx.other = { x: 15, z: -2 };
   tick(g.mod);
   assert.equal(g.mod.serialize().isl[0].f & 1, 1);
 });
 
 test('discovery: 41 seeds keep 40 (oldest gone); a guest never appends', () => {
   const { mod, peekState } = makeCtx();
-  for (let s = 1; s <= 41; s++) { peekState.islands = islandsAt(s, ISLAND.APPROACH + 1); tick(mod); }
+  for (let s = 1; s <= 41; s++) { peekState.islands = islandsAt(s, 30); tick(mod); }
   const isl = mod.serialize().isl;
   assert.equal(isl.length, ISL_MAX);
   assert.equal(isl[0].s, 2); assert.equal(isl.at(-1).s, 41);
-  const g = makeCtx({ role: 'guest', islands: islandsAt(3, ISLAND.APPROACH + 1) });
+  const g = makeCtx({ role: 'guest', islands: islandsAt(3, 30) });
   for (let k = 0; k < 5; k++) tick(g.mod);
   assert.equal(g.mod.serialize().isl.length, 0);
   assert.equal(g.mod.serialize().trail.length, 0);
