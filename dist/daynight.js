@@ -242,7 +242,7 @@ void main() {
 const LANTERN_PARTS = ['lanternGlow', 'flame', 'lanternGlass', 'candle'];
 const LANTERN_MULT = [2.4, 1.6, 1.6, 2.0];
 const MAX_LANTERNS = 64, MAX_PARTS = MAX_LANTERNS * 4;
-const UNLIT = 0.15; // [power] emissive scale of an unpowered light (base * UNLIT)
+export const UNLIT = 0.05; // [power] emissive scale of an unpowered light (base * UNLIT)
 const STAR_COUNT = 450, STAR_RADIUS = 140, MOON_DIST = 120, RAIN_STREAKS = 600;
 const SUN_RADIUS = Math.hypot(-15, 28, 12);
 // The one shadow-casting light is the sun by day and the moon by night. Its direction swaps when the

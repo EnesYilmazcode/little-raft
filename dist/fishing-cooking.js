@@ -270,7 +270,7 @@ export function createFishingCooking(T, host) {
     if (wasCharging && session.stage === 'flying') { camera.getWorldDirection(castDir); clampToWater(); }
     return true;
   }
-  let held = null, heldT = 0;
+  let held = null, heldT = 0, heldUntil = 0; // heldUntil: wall-clock deadline, so the caught fish leaves on time when game dt is clamped on slow frames
   function dropHeld() { if (!held) return; held.parent?.remove(held); held.userData.dispose?.(); held = null; }
   function onCatch(c) {
     const sp = speciesById(c?.species); if (!sp) return;
@@ -291,7 +291,7 @@ export function createFishingCooking(T, host) {
       held.scale.setScalar(Math.min(1, 0.36 / (held.userData.length || c.cm / 100)));
       held.position.set(-0.1, -0.17, -0.6); held.rotation.set(0.15, 0.3, 0.45); // held up left of centre, clear of the rod
       held.traverse((o) => { o.renderOrder = 999; o.castShadow = false; }); // viewmodel: no shadow pass
-      camera.add(held); heldT = 2.2;
+      camera.add(held); heldT = 2.2; heldUntil = performance.now() + 2200;
     }
     dirty = true;
   }
@@ -378,7 +378,7 @@ export function createFishingCooking(T, host) {
     const out = !!session && session.stage !== 'idle' && session.stage !== 'charging';
     const ud = host.rodModel?.userData;
     if (out && ud) { if (ud.float) ud.float.visible = false; if (ud.leader) ud.leader.visible = false; }
-    if (held) { heldT -= dt; wiggle(held, time, 1.2); if (heldT <= 0) dropHeld(); }
+    if (held) { heldT -= dt; wiggle(held, time, 1.2); if (heldT <= 0 || performance.now() >= heldUntil) dropHeld(); }
     // grills
     const sim = !isGuest(role);
     for (const g of grills.values()) {

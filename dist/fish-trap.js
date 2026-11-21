@@ -223,7 +223,9 @@ export function createFishTrap(ctx) {
       let move = true;
       if (near) { g.getWorldPosition(bound.center); move = bound.center.distanceToSquared(camPos) <= 900 && (!cull || frustum.intersectsSphere(bound)); }
       const e = old ? null : st.t[k];
-      paintTrap(g, !!e && e.f.length >= TRAP_MAX, elapsed, phase, move); // fish silhouette always tracks the state; bob only when seen
+      const c = traps[i].cue ??= { n: 0, full: false, baited: false }; // reused per trap: no per-frame allocation
+      c.n = e ? e.f.length : 0; c.full = c.n >= TRAP_MAX; c.baited = !!e && e.b > 0;
+      paintTrap(g, c, elapsed, phase, move); // state cues (tails, bait tuft) always track the state; bob only when seen
     }
   }
 

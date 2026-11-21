@@ -252,6 +252,15 @@ test('model: parts, paint, bounds', () => {
   M.paintTrap(g, true, 1.2, .5); assert.equal(fish.visible, true);
   M.paintTrap(g, false, 1.3, .5); assert.equal(fish.visible, false);
   M.paintTrap(g, false, 0, 0);
+  const t0 = g.getObjectByName('tail0'), t1 = g.getObjectByName('tail1'), bait = g.getObjectByName('bait');
+  assert.ok(t0 && t1 && bait); assert.equal(t0.visible || t1.visible || bait.visible, false);
+  M.paintTrap(g, { n: 1, full: false, baited: false }, .4, .5);
+  assert.deepEqual([t0.visible, t1.visible, fish.visible, bait.visible], [true, false, false, false], 'one fish: a tail pokes out');
+  M.paintTrap(g, { n: 3, full: true, baited: true }, .5, .5);
+  assert.deepEqual([t0.visible, t1.visible, fish.visible, bait.visible], [true, true, true, true], 'full + baited');
+  M.paintTrap(g, { n: 0, full: false, baited: true }, .6, .5, false);
+  assert.deepEqual([t0.visible, t1.visible, fish.visible, bait.visible], [false, false, false, true], 'baited, empty; cues update even when not moving');
+  M.paintTrap(g, false, 0, 0);
   const basket = g.getObjectByName('basket'); g.updateMatrixWorld(true);
   const bb = new T.Box3().setFromObject(basket), c = bb.getCenter(new T.Vector3());
   assert.ok(bb.min.y < -.3, `basket bottom ${bb.min.y}`);

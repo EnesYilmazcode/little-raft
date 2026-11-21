@@ -4,7 +4,7 @@
 // Static parts are merged into one vertex-coloured mesh; the hanging basket is a second merged mesh.
 
 export const OVERHANG = 1.15;
-const PIVOT_Y = .48, PIVOT_Z = OVERHANG + .1;
+const PIVOT_Y = .48, PIVOT_Z = OVERHANG + .1, POST_X = .34, POST_Z = .62;
 // basket, relative to the pivot: a bellied creel woven as a checker of light and dark cells (ROWS x COLS),
 // "over" cells standing a little proud of "under" cells, with thin dark gaps between the rows.
 const BASKET_TOP = -.5, ROW_H = .08, ROW_GAP = .012, COLS = 12;
@@ -51,10 +51,13 @@ export function createFishTrap(T) {
   const g = new T.Group(); g.name = 'craft_fishtrap';
   // --- static: post and arm
   const st = kit(T);
-  st.add(new T.BoxGeometry(.08, .5, .08), '#8a6640', 0, .25, .6);
-  st.add(new T.BoxGeometry(.06, .06, .75), '#9c7649', 0, PIVOT_Y, .925);
-  st.add(new T.BoxGeometry(.14, .03, .14), '#7a5530', 0, .015, .6); // little foot plate on the deck
-  st.add(new T.BoxGeometry(.04, .14, .04), '#7a5530', 0, .4, .68, -.8, 0, 0); // brace
+  // the post stands toward a tile corner (+x) so it does not hide the basket from the deck; the arm angles in to the pivot
+  const ax = -POST_X, az = PIVOT_Z + .04 - POST_Z, alen = Math.hypot(ax, az), yaw = Math.atan2(ax, az);
+  st.add(new T.BoxGeometry(.08, .5, .08), '#8a6640', POST_X, .25, POST_Z);
+  st.add(new T.BoxGeometry(.06, .06, alen + .06), '#9c7649', POST_X + ax / 2, PIVOT_Y, POST_Z + az / 2, 0, yaw, 0);
+  st.add(new T.BoxGeometry(.14, .03, .14), '#7a5530', POST_X, .015, POST_Z); // little foot plate on the deck
+  const bq = new T.Quaternion().setFromEuler(new T.Euler(-.8, yaw, 0, 'YXZ')), bo = .08 / alen; // brace, tilted along the arm
+  st.parts.push([new T.BoxGeometry(.04, .14, .04), '#7a5530', new T.Matrix4().compose(new T.Vector3(POST_X + ax * bo, .4, POST_Z + az * bo), bq, new T.Vector3(1, 1, 1))]);
   const body = new T.Mesh(bake(T, st.parts), new T.MeshStandardMaterial({ vertexColors: true, roughness: .85, flatShading: true }));
   body.name = 'trapBody'; body.castShadow = true; body.receiveShadow = true; g.add(body);
 
@@ -97,19 +100,47 @@ export function createFishTrap(T) {
   const fin = new T.Mesh(new T.ConeGeometry(.025, .05, 3), fm); fin.position.set(.02, .065, 0); fin.scale.set(1, 1, .3); fish.add(fin);
   hang.add(fish);
 
-  g.userData.hang = hang; g.userData.fish = fish; g.userData.sig = -1;
+  // --- state cues readable from the deck: fish tails poking out of the mouth (1 = some fish, 2 = full), a seaweed tuft when baited
+  const tm = new T.MeshStandardMaterial({ vertexColors: true, roughness: .45, metalness: .1, flatShading: true });
+  const tails = [[.035, -.03, .3, '#8fb6cc'], [-.05, .035, -.4, '#c4d3da']].map(([x, z, tilt, hex], i) => {
+    const tk = kit(T);
+    tk.add(new T.ConeGeometry(.034, .14, 5), hex, 0, -.02, 0, Math.PI); // tapering tail stalk, thick end down in the mouth
+    tk.add(new T.ConeGeometry(.05, .085, 3), hex, -.035, .085, 0, 0, 0, .65); // forked tail fin, two flattened lobes
+    tk.add(new T.ConeGeometry(.05, .085, 3), hex, .035, .085, 0, 0, 0, -.65);
+    const geo = bake(T, tk.parts); geo.scale(1.5, 1.5, .55); // big enough to read from the deck
+    const m = new T.Mesh(geo, tm);
+    m.name = 'tail' + i; m.visible = false; m.castShadow = true;
+    m.position.set(x, BASKET_TOP + .06, z); m.rotation.set(0, i ? 1.1 : .2, tilt); hang.add(m); return m;
+  });
+  const sk = kit(T), SEA = ['#3f8f3a', '#5fae4a', '#2f7a34'];
+  for (let i = 0; i < 7; i++) { // fronds draped over the rim on the deck side (-z), leaning out
+    const a = Math.PI + (i - 3) * .2, r = PROFILE[ROWS] + .005, lean = .5 + (i % 3) * .15, h = .1 + (i % 2) * .05;
+    sk.add(new T.ConeGeometry(.018, h, 4), SEA[i % 3], Math.sin(a) * r, BASKET_TOP + h * .3, Math.cos(a) * r, -Math.cos(a) * lean, 0, Math.sin(a) * lean);
+  }
+  sk.add(new T.SphereGeometry(.045, 6, 4), '#3a8236', 0, BASKET_TOP - .06, -.03); // a clump in the funnel mouth
+  const bait = new T.Mesh(bake(T, sk.parts), new T.MeshStandardMaterial({ vertexColors: true, roughness: .7, flatShading: true }));
+  bait.name = 'bait'; bait.visible = false; hang.add(bait);
+
+  g.userData.hang = hang; g.userData.fish = fish; g.userData.tails = tails; g.userData.bait = bait; g.userData.sig = -1;
   return g;
 }
 
-/** Bob and sway the basket; the fish silhouette shows when full (cached). No allocation. */
-export function paintTrap(g, full, elapsed, phase = 0, move = true) { // move=false: off-screen or far, only the fish visibility updates
+/** Bob and sway the basket; state cues (cached): `state` is a boolean (full) or {n, full, baited}.
+ *  n > 0 pokes a tail above the rim, full adds a second tail and the silhouette, baited shows the seaweed tuft. No allocation. */
+export function paintTrap(g, state, elapsed, phase = 0, move = true) { // move=false: off-screen or far, only the cues update
   const u = g?.userData; if (!u || !u.hang) return;
-  const f = full ? 1 : 0;
-  if (u.sig !== f) { u.sig = f; u.fish.visible = !!full; }
+  const o = state && typeof state === 'object', full = o ? !!state.full : !!state, n = o ? Number(state.n) || 0 : full ? 1 : 0, baited = o && !!state.baited;
+  const f = (full ? 1 : 0) | (n > 0 || full ? 2 : 0) | (baited ? 4 : 0);
+  if (u.sig !== f) {
+    u.sig = f; u.fish.visible = full;
+    if (u.tails) { u.tails[0].visible = !!(f & 2); u.tails[1].visible = full; }
+    if (u.bait) u.bait.visible = baited;
+  }
   if (!move) return;
   const h = u.hang;
   h.position.y = PIVOT_Y + .025 * Math.sin(elapsed * 1.4 + phase);
   h.rotation.x = .05 * Math.sin(elapsed * 1.1 + phase);
   h.rotation.z = .04 * Math.sin(elapsed * .9 + phase * 2);
   if (full) u.fish.rotation.y = .25 * Math.sin(elapsed * 5 + phase);
+  if (f & 2 && u.tails) { u.tails[0].rotation.y = .2 + .35 * Math.sin(elapsed * 3.1 + phase); u.tails[1].rotation.y = 1.1 + .3 * Math.sin(elapsed * 2.6 + phase * 3); } // a lazy flick
 }

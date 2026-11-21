@@ -75,14 +75,16 @@ export function createTurbine(T) {
 
 // ------------------------------------------------------------------ battery
 
-const PIP_ON = '#7dff9a', PIP_OFF = '#2e3b33';
+const PIP_ON = '#7dff9a', PIP_OFF = '#26302a';
 
 export function createBattery(T) {
   const g = new T.Group(); g.name = 'craft_battery';
   const { parts, add } = kit(T);
-  add(new T.BoxGeometry(.45, .34, .3), '#4a5a6a', 0, .17, 0);                        // case
-  add(new T.BoxGeometry(.47, .04, .32), '#36424e', 0, .36, 0);                       // lid strip
-  add(new T.BoxGeometry(.3, .1, .012), '#3b4955', 0, .2, .156);                      // pip panel
+  // Review: a lighter slate-blue case so it is not a black slab at night; the lid stays a shade darker for shape
+  add(new T.BoxGeometry(.45, .34, .3), '#7a8ea3', 0, .17, 0);                        // case
+  add(new T.BoxGeometry(.47, .04, .32), '#5b6d80', 0, .36, 0);                       // lid strip
+  add(new T.BoxGeometry(.3, .1, .012), '#4a5a6a', 0, .2, .156);                      // pip panel
+  add(new T.BoxGeometry(.3, .006, .07), '#3b4955', 0, .382, .095);                   // top gauge well (charge pips read from the deck)
   add(new T.CylinderGeometry(.03, .032, .05, 10), '#d9483b', .13, .405, 0);          // + terminal (red)
   add(new T.CylinderGeometry(.03, .032, .05, 10), '#222222', -.13, .405, 0);         // - terminal (black)
   add(new T.BoxGeometry(.05, .012, .012), '#ffffff', .13, .435, 0);                  // + mark
@@ -99,6 +101,11 @@ export function createBattery(T) {
     m.name = 'pip' + i; m.position.set(-.105 + i * .07, .2, .167); m.castShadow = false;
     g.add(m); pips.push(m);
   }
+  // top-face charge gauge, read from the deck: one emissive strip that grows left to right with the pips (one draw call)
+  const strip = new T.Mesh(new T.BoxGeometry(.27, .008, .045).translate(.135, 0, 0),
+    new T.MeshStandardMaterial({ color: PIP_ON, emissive: PIP_ON, emissiveIntensity: .9, roughness: .5 }));
+  strip.name = 'chargeStrip'; strip.position.set(-.135, .388, .095); strip.castShadow = false; strip.visible = false;
+  g.add(strip); g.userData.strip = strip;
   g.userData.pips = pips; g.userData.sig = -1;
   return g;
 }
@@ -112,14 +119,15 @@ export function paintBattery(g, n) {
     const m = u.pips[i].material, on = i < n;
     m.color.set(on ? PIP_ON : PIP_OFF); m.emissiveIntensity = on ? .9 : 0;
   }
+  const s = u.strip; if (s) { const f = Math.max(0, Math.min(1, n / u.pips.length)); s.visible = f > 0; s.scale.x = f || 1; }
 }
 
 // ------------------------------------------------------------------ string lights
 
 export const HOOK = [0, 1.05, 0], ANCHOR = [.78, .55, 0];
-// Review: darker amber glass so an unpowered bulb reads dark; the warm glow comes from the emissive
-// (base BULB_BASE, x2.0 at night in daynight, x UNLIT when unpowered).
-const BULBS = ['#c98d3e', '#b8722f', '#d6a35a'];
+// Review: smoky, desaturated glass so an unpowered bulb reads dark grey; all the warm colour comes from the
+// emissive (base BULB_BASE, x2.0 at night in daynight, x UNLIT when unpowered), so a lit string stands out.
+const BULBS = ['#6a625a', '#5e5750', '#736a60'];
 export const BULB_BASE = .9, GLOW_BASE = .9, GLASS_BASE = .5;
 
 function wireCurve(T) {
@@ -176,11 +184,11 @@ export function createLampPost(T) {
   const body = solid(T, new T.Mesh(bake(T, parts), bodyMat(T, true)), 'lampBody');
   g.add(body);
   const glass = new T.Mesh(new T.BoxGeometry(.16, .21, .16).translate(0, LAMP_Y, 0),
-    new T.MeshStandardMaterial({ color: '#cfc3a8', emissive: '#ffa850', emissiveIntensity: GLASS_BASE, transparent: true, opacity: .45, roughness: .15, depthWrite: false }));
+    new T.MeshStandardMaterial({ color: '#8f8c86', emissive: '#ffa850', emissiveIntensity: GLASS_BASE, transparent: true, opacity: .45, roughness: .15, depthWrite: false }));
   glass.name = 'lanternGlass'; glass.userData.glass = true; glass.castShadow = false; glass.receiveShadow = false;
   g.add(glass);
   const glow = new T.Mesh(new T.SphereGeometry(.065, 10, 8).translate(0, LAMP_Y, 0),
-    new T.MeshStandardMaterial({ color: '#b98a4a', emissive: '#ffb850', emissiveIntensity: GLOW_BASE, transparent: true, opacity: .9, depthWrite: false }));
+    new T.MeshStandardMaterial({ color: '#5f5a54', emissive: '#ffb850', emissiveIntensity: GLOW_BASE, transparent: true, opacity: .9, depthWrite: false }));
   glow.name = 'lanternGlow'; glow.castShadow = false; glow.receiveShadow = false;
   glow.userData.pool = { color: '#fff1d6', gain: .8 }; // daynight: a lamp post's night pool is a little softer than a lantern's
   g.add(glow);

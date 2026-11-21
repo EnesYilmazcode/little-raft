@@ -10,7 +10,7 @@ const P = await import(new URL('power.js', base));
 const M = await import(new URL('power-model.js', base));
 const { ITEMS, BLOCK_RADII, PROGRESSION_PLAN } = await import(new URL('items.js', base));
 const { ITEM_INFO } = await import(new URL('inventory-state.js', base));
-const { createDayNight } = await import(new URL('daynight.js', base));
+const { createDayNight, UNLIT } = await import(new URL('daynight.js', base));
 const { promptFromHtml } = await import(new URL('prompts.js', base));
 const { cleanPower, turbinesNear, servingBattery, tickPower, batteryInfo, CAP, MAX_TICK, OLD_HOST, NIGHT_ON } = P;
 
@@ -163,11 +163,13 @@ test('models: names, parts, no shared materials, pips, size and draw calls', () 
   const b2 = M.createBattery(T); M.paintBattery(bt, 2);
   assert.deepEqual([0, 1, 2, 3].map(i => bt.getObjectByName('pip' + i).material.emissiveIntensity), [.9, .9, 0, 0]);
   assert.equal(b2.getObjectByName('pip0').material.emissiveIntensity, 0, 'pips are per copy');
+  { const st = bt.getObjectByName('chargeStrip'); assert.ok(st.visible && Math.abs(st.scale.x - .5) < 1e-9, 'top gauge shows half charge');
+    assert.equal(b2.getObjectByName('chargeStrip').visible, false, 'empty battery: no top gauge'); }
   assert.deepEqual([0, 1, 1800, 1, 450, 451].map(P.pipsFor), [0, 1, 4, 1, 1, 2]);
   for (const g of [tb, bt, s1, l]) { const s = sizeOf(g); assert.ok(s.x <= .9 && s.z <= .9, `${g.name} ${s.x.toFixed(2)} x ${s.z.toFixed(2)}`); }
   { const h = sizeOf(tb).y; assert.ok(h >= 2.2 && h <= 2.6, `turbine height ${h.toFixed(2)}`); } // review: deck-sized turbine
   const meshes = g => { let n = 0; g.traverse(o => { if (o.isMesh) n++; }); return n; };
-  assert.deepEqual([tb, bt, s1, l].map(meshes), [2, 5, 2, 3]);
+  assert.deepEqual([tb, bt, s1, l].map(meshes), [2, 6, 2, 3]); // battery: body + 4 pips + top charge strip
   const m = P.createPower({ T, world: { decor: [] }, role: 'solo' });
   for (const t of P.POWER_TYPES) assert.equal(m.decorModel(t).name, 'craft_' + t);
   assert.equal(m.decorModel('palm'), null);
@@ -202,7 +204,8 @@ test('daynight: unlit lights read base*UNLIT, a lit flip applies next frame, lam
   m.debug.setPhase(0.82); m.debug.freeze(true);
   for (let i = 0; i < 40; i++) m.update(1 / 30);
   const bulbs = s.children.find(c => c.name === 'candle').material;
-  assert.ok(Math.abs(bulbs.emissiveIntensity - M.BULB_BASE * .15) < 1e-6, `unlit ${bulbs.emissiveIntensity}`);
+  assert.ok(Math.abs(bulbs.emissiveIntensity - M.BULB_BASE * UNLIT) < 1e-6, `unlit ${bulbs.emissiveIntensity}`);
+  assert.ok(UNLIT <= .08, 'unpowered lights stay dark at night');
   assert.equal(m.debug.state().lanterns, 1);
   s.userData.power.lit = 1; m.update(1 / 30);
   assert.ok(Math.abs(bulbs.emissiveIntensity - M.BULB_BASE * 2.0) < 1e-6, `lit ${bulbs.emissiveIntensity}`);
@@ -217,7 +220,7 @@ test('daynight: unlit lights read base*UNLIT, a lit flip applies next frame, lam
   const glow = l.children.find(c => c.name === 'lanternGlow').material;
   assert.ok(Math.abs(glow.emissiveIntensity - M.GLOW_BASE * 2.4) < 1e-6);
   l.userData.power.lit = 0; m.update(1 / 30);
-  assert.equal(m.debug.state().poolLit, 0); assert.ok(Math.abs(glow.emissiveIntensity - M.GLOW_BASE * .15) < 1e-6);
+  assert.equal(m.debug.state().poolLit, 0); assert.ok(Math.abs(glow.emissiveIntensity - M.GLOW_BASE * UNLIT) < 1e-6);
   m.dispose();
 });
 
