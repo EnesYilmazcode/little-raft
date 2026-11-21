@@ -186,29 +186,54 @@ microtask. This pauses WAAPI animations, CSS transitions and CSS animations alik
   `#toast` is already hidden by HUD_CSS, and game.js routes `toast()` to `notice()`. With ui-feel adopted,
   loot, craft, build and full events go to the stack and hints stay under the reticle.
 
+## In the real game (`realgame.py`)
+
+`python sandbox/ui-feel/realgame.py [--hook-tries N] [--phone]` copies `dist/` to a temp folder, applies every
+ADOPT step as an exact-once string replacement (so it fails loudly if ADOPT drifts from dist), boots Solo
+headless and drives a pickup. It writes `shots/rg-*.png`:
+
+| File | What it shows |
+|---|---|
+| `rg-01-charge.png` | First hook throw being charged (pointer lock is refused headless, so the game is in its drag/aim fallback and hides `#crosshair` by design) |
+| `rg-03-loot-fly-330ms.png` | Real barrel loot (wood 3, leaf 2, scrap 1, plastic 1) through `applyAction -> emit -> effect -> feelEffect -> uiFeel.pickup`: four icons with `+3`/`+2` popping out of the screen centre |
+| `rg-04-flight-600ms.png` | The same icons mid-curve toward hotbar slots 2-5 (new kinds, so each targets the empty slot the Bag just filled) |
+| `rg-05-toasts.png` | Everything landed, the loot toasts at rest at the bottom right |
+| `rg-06-inventory-craft.png` | Inventory open, Rope crafted: the "Crafted Rope" toast sits above the backdrop (top layer) |
+
+The hook is tried first: aim at the nearest supply, charge, throw, then hold to reel. In this headless
+SwiftShader run, on a shared machine, the game renders at about 1 frame every 2-3 s. The ballistic throw
+has not landed a catch in 5 tries over 4 runs. After N misses the script falls back to a scratch-only line,
+`window.__qaAction = a => action(a)`, which sends the exact `{kind:'collect'}` action that `updateHook` sends
+on a catch. The only part not exercised is the physical catch. Everything after it is the real game path.
+At that frame rate, wall-clock waits are meaningless: WAAPI animations stay pending for several seconds, and a
+screenshot takes longer than a toast's 3.2 s life. So the script freezes like `shoot.py`: it pauses at a
+`currentTime` in the same task as the pickup and pins `performance.now` while it inspects the HUD.
+
 ## Known weaknesses
 
-- **The loot fly is not exercised in the real game by the harness.** I applied the ADOPT steps to a scratch
-  copy of `dist/` and drove it headless. It booted with the feel layer attached: the new reticle, the hotbar
-  cursor, the inventory transitions, and a craft that showed the recipe flash plus the "Crafted Rope"
-  toast, with no console errors besides a pre-existing 404. Scripted hook throws did not land a catch
-  headless, so the `loot` path, `effect()` with `e.loot`, was only verified in the sandbox with the real
-  Bag and survival-ui.
-- **Guest pickups can target the wrong slot.** A guest's predicted bag may not contain the loot yet when the
-  host's effect arrives. The fly then goes to the first stack of that kind, or to the hotbar end for a new
-  kind. It is cosmetic.
-- **Toasts and the cursor sit under the inventory's `::backdrop`.** They are not in the top layer, so a
-  craft toast shows dimmed behind the open panel. The recipe flash and slot bump carry the craft feedback
-  there instead. A `popover="manual"` stack would fix it, at the cost of more code.
-- **The main-thread style tick per animated frame**, described above. It is measured only on SwiftShader
-  headless, and is not profiled on a real GPU.
+- **The physical hook catch is not landed headless.** See above. The loot path from the `collect` action
+  onward is exercised in the real game. The catch-to-collect step (`updateHook` -> `action`) is unchanged
+  game code, and `check_hook.py` covers it on a GPU Chrome.
+- **In the drag/aim fallback (no pointer lock), loot still flies from the screen centre**, while the player
+  aimed with the mouse. `pickup(items, {x, y})` accepts an origin. game.js could pass the last `mouse`
+  position when `lockFallback` is set. ADOPT leaves this out to keep 3e small.
+- **The guest fallback is a generic target, not the right slot.** When the effect arrives before the
+  guest's predicted bag shows the gain, icons fly to the hotbar's top centre and shrink in. The correct slot
+  bumps a moment later, when survival-ui paints the host snapshot. That is honest but less precise than a
+  host pickup. A backpack-bound pickup looks the same, by design.
+- **The hotbar cursor stays under the inventory backdrop.** This is deliberate: it marks the outside
+  hotbar, which is dimmed too, and the panel's own hotbar row has its own selection. Fly icons also stay
+  under the backdrop. A pickup while the bag is open (rare: a net) shows dimmed.
+- **The top-layer toast stack needs popover support** (Chrome 114+, Safari 17+, Firefox 125+). Older browsers
+  keep the old behaviour: toasts at `z-index: 5`, dimmed behind an open inventory.
+- **The main-thread style tick per animated frame.** In this headless/SwiftShader build, each animated frame
+  still costs about 0.2 ms of style recalc. It is not profiled on a real GPU, where transform/opacity WAAPI
+  runs on the compositor.
 - **Stat bars have nothing to drive them.** The game has no health, hunger or thirst yet, so the bars are a
   ready component. The hook condition can use them today; see ADOPT 3j.
 - **The inventory transitions need Chrome 117+ or Safari 17.4+.** Firefox has no `overlay` property, so
   there it closes instantly (open still animates where `@starting-style` exists). That is graceful, not
   broken.
-- **The `:active` press state is subtle.** Scale 0.9 plus a darken on a 58 px slot is easy to miss in a
-  still frame (`18-slot-pressed.png`). That is deliberate, but it is a matter of taste.
-- **The phone layout is tolerable, not designed.** At 390 px the stats panel in the top left is large
-  relative to the screen. The game's own `.inventory` plate sits there too when it is not hidden, though
-  HUD_CSS hides it while playing.
+- **At 390 px, survival-ui's in-panel hotbar row is clipped at the left** (`23-phone-inv-craft.png`, slot
+  1). That comes from survival-ui's own narrow layout, not from ui-feel, and the same row is clipped with
+  `?nofeel`.

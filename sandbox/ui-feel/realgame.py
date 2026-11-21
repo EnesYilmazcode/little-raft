@@ -97,12 +97,13 @@ ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-
 # Wrap the live instance's pickup: run it, and once effect() has also queued its toasts (a microtask later, same
 # task) pause every animation at currentTime = ms. Wall-clock waits do not work here: SwiftShader renders the game
 # at a few fps, so 330 ms after the pickup its animations have often not had their first frame yet. After the
-# first pickup the game's rAF is throttled to one frame per 1.5 s (harness only), so the compositor keeps up and
-# the toasts, whose 3.2 s life is wall-clock, are seen in their real timing.
+# first pickup the harness also pins performance.now(): a screenshot here can take longer than a toast's 3.2 s
+# life (which reads performance.now), and the game simply stops advancing (dt = 0) while the HUD is inspected.
 FREEZE = """ms => { const f = window.__littleRaftUIFeel, orig = f.pickup; window.__flies = 0;
   f.pickup = (items, from) => { orig(items, from); window.__loot = items;
-    if (window.__flies === 0) { const raf = window.requestAnimationFrame.bind(window); window.requestAnimationFrame = cb => setTimeout(() => raf(cb), 1500); }
-    if (++window.__flies === 1) queueMicrotask(() => { for (const a of document.getAnimations()) { a.pause(); a.currentTime = ms; } window.__frozen = 1; }); }; }"""
+    if (++window.__flies === 1) queueMicrotask(() => {
+      for (const a of document.getAnimations()) { a.pause(); a.currentTime = ms; }
+      const t0 = performance.now(); performance.now = () => t0; window.__frozen = 1; }); }; }"""
 SEEK = '(ms) => { for (const a of document.getAnimations()) { a.pause(); a.currentTime = ms; } }'
 log, errors = {'adopt': 'all steps matched exactly once', 'viewport': [W, H]}, []
 shots = []
@@ -149,8 +150,7 @@ with sync_playwright() as p:
     log['hookTries'] = tries
     if not log['via']:
         # Fallback: the same collect action a catch sends, on the nearest visible supply (prefer a barrel: 4 items).
-        ts = pg.evaluate(f'raftDebug.targets.filter({VIS}).sort((a,b)=>(b.type==="barrel")-(a.type==="barrel")||a.distance-b.distance)')
-        if not ts: ts = pg.evaluate('raftDebug.targets.filter(t=>!t.pending)')
+        ts = pg.evaluate('raftDebug.targets.filter(t=>!t.pending).sort((a,b)=>(b.type==="barrel")-(a.type==="barrel")||a.distance-b.distance)')
         t = ts[0]; log['via'] = 'qa collect action (' + t['type'] + ')'
         pg.evaluate('t => window.__qaAction({kind:"collect", id:t.id, token:t.token})', t)
         pg.wait_for_function('window.__frozen === 1', timeout=15000)
@@ -162,14 +162,15 @@ with sync_playwright() as p:
     log['loot'] = pg.evaluate('window.__loot')
     log['hotbar'] = pg.evaluate('raftDebug.state.inventory.slots.slice(0,8).map(s => s ? s.kind + "x" + s.count : null)')
     pg.evaluate(SEEK, 600); pg.wait_for_timeout(150); shot('04-flight-600ms')
+    pg.evaluate(SEEK, 5000); pg.wait_for_timeout(150); shot('05-toasts')   # every fly landed, toasts at rest
     pg.evaluate('document.getAnimations().forEach(a => a.play())')
-    pg.wait_for_timeout(900); shot('05-toasts')
     # open the inventory and craft whatever the loot allows (craft toast must sit above the backdrop)
     pg.keyboard.press('Tab'); pg.wait_for_timeout(600)
     btn = pg.locator('#inventory .sv-recipe:not([disabled])')
     log['craftable'] = btn.count()
     if btn.count():
-        btn.first.click(); pg.wait_for_timeout(500)
+        btn.first.click(); pg.wait_for_timeout(300)
+    pg.evaluate(SEEK, 5000); pg.wait_for_timeout(150)   # dialog transition and craft toast at rest
     shot('06-inventory-craft')
     log['toastsAboveInventory'] = pg.evaluate("document.getElementById('uf-toasts').matches(':popover-open') && document.getElementById('inventory').open")
     log['errors'] = errors
