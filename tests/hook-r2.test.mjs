@@ -147,3 +147,23 @@ test('HOOK-R3-2: game.js rolls a barrel once and commits pity only after a succe
   assert.match(gameSrc, /holdForFullBag\(hook, c => lootFits\(localBag\(\), catchLoot\(c, caughtLoot\)\)\)/);
   assert.match(gameSrc, /lootFits\(actorBag\('host'\), lootOf\(it\)\)/, 'nets use the same roll');
 });
+
+test('HOOK-R3-1: quitting to the title mid-dive cancels the dive and clears the underwater look', async () => {
+  const { createDiving } = await import(new URL('diving.js', base));
+  const scene = new T.Scene(), camera = new T.PerspectiveCamera(), ocean = { getHeight: () => 0, mesh: { visible: true } };
+  const d = createDiving({ T, scene, camera, ocean });
+  const physics = { x: -9, y: -0.2, z: -9, vx: 0, vy: 0, vz: 0, swimming: true };
+  assert.equal(d.move(0.05, physics, { down: true }), true);
+  camera.position.set(physics.x, -1.5, physics.z); d.update(0.05, 0);
+  assert.equal(d.state.underwater, true); assert.equal(ocean.mesh.visible, false);
+  d.cancel(); // quitToTitle
+  camera.position.set(0, 16, 0); d.update(0.05, 0); // the title cinematic, now updated every frame
+  assert.equal(d.state.diving, false);
+  assert.equal(d.state.underwater, false);
+  assert.equal(ocean.mesh.visible, true, 'the ocean surface is back on the title');
+  d.dispose();
+  const quit = gameSrc.slice(gameSrc.indexOf('function quitToTitle()'), gameSrc.indexOf('function newGame()'));
+  assert.match(quit, /diving\?\.cancel\(\)/);
+  assert.doesNotMatch(gameSrc, /if \(running\) diving\?\.update/, 'diving.update runs on the title too');
+  assert.match(gameSrc, /updateCamera\(dt\); diving\?\.update\(dt, elapsed\);/);
+});

@@ -1203,7 +1203,7 @@ export function mount(transfer = null) {
   // Pause menu "quit to title": save, leave any crew, show the title. The world stays loaded for Continue.
   function quitToTitle() {
     save(); if (role !== 'solo') closeConnection();
-    hook = null; fishWait = 0; clearInput(); releaseLock();
+    hook = null; fishWait = 0; clearInput(); releaseLock(); diving?.cancel(); // no dive survives the title
     running = false; const w = $('#welcome'); if (w) w.hidden = false; const h = $('#hud'); if (h) h.hidden = true;
     refreshTitle(); refreshPointerUI(true);
   }
@@ -1451,7 +1451,7 @@ export function mount(transfer = null) {
     ocean.update(elapsed, camera); sfx.tick(dt, {swimming:physics.swimming});
     updateRaft(dt); if (sailing) sailing.update(dt, elapsed); // [sailing]
     const realDt = rawMs / 1000; movePlayer(realDt, running && !dialog); // the player substeps the real frame time (splitSteps)
-    updateAvatars(dt); updateCamera(dt); if (running) diving?.update(dt, elapsed); // diving lane hook
+    updateAvatars(dt); updateCamera(dt); diving?.update(dt, elapsed); // diving lane hook: every frame, so the title camera (above water) clears the underwater look
     coop?.update(dt, elapsed); // coop: interpolated remote avatar, rope, ghost, pings, pose stream, reconnect
     frameAim = running && !dialog ? currentAim(aimScratch) : null;
     pickTarget = pickupFrom(frameAim);
