@@ -117,7 +117,7 @@ export function mount(transfer = null) {
   let seed = 20240917; const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
 
   // ---------- Bags ----------
-  const snapBag = s => { if (!s || typeof s !== 'object') return null; let m = s; try { m = migrateSnapshot(s) ?? s; } catch {} try { return new Bag(m); } catch { return Bag.salvage(m); } }; // [progression-hook] migrate; one bad slot never wipes a bag
+  const snapBag = s => { if (!s || typeof s !== 'object') return null; let m = s; try { m = migrateSnapshot(s, ITEM_INFO) ?? s; } catch {} try { return new Bag(m); } catch { return Bag.salvage(m); } }; // [progression-hook] migrate; one bad slot never wipes a bag
   const validSnapshot = s => snapBag(s)?.snapshot() ?? null;
   const commit = (bag, scratch) => { for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i]; };
   const canAfford = (bag, cost) => Object.entries(cost).every(([k, n]) => bag.count(k) >= n);
