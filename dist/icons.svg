@@ -353,6 +353,21 @@
     </g>
     <circle cx="24" cy="10" r="3" fill="#ffbd66" stroke="#153e49" stroke-width="2"/>
   </symbol>
+  <symbol id="icon-receiver" viewBox="0 0 48 48">
+    <path d="M30 21 L37 4" stroke="#153e49" stroke-width="4" stroke-linecap="round"/>
+    <path d="M30 21 L37 4" stroke="#c0c6c8" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="37" cy="4.5" r="2.4" fill="#ffbd66" stroke="#153e49" stroke-width="1.6"/>
+    <g stroke="#153e49" stroke-width="2" stroke-linejoin="round">
+      <rect x="5" y="19" width="38" height="23" rx="3" fill="#8c6745"/>
+      <path d="M5 24 H43" fill="none" stroke-width="1.2" stroke-opacity=".5"/>
+      <rect x="9" y="26" width="19" height="11" rx="1.5" fill="#1f4a52"/>
+      <circle cx="35.5" cy="31.5" r="4.6" fill="#ffbd66"/>
+      <path d="M35.5 31.5 L37.8 28.6" fill="none" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M9 42 V45 M39 42 V45" fill="none" stroke-width="3" stroke-linecap="round"/>
+    </g>
+    <path d="M12 33.5 C14 29 16 29 18 32 C20 35 22 35 25 29" fill="none" stroke="#7fe0c8" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M8 21.5 H24" stroke="#fff2cc" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".6"/>
+  </symbol>
   <symbol id="icon-bottle" viewBox="0 0 48 48">
     <g transform="rotate(-35 24 24)" stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
       <path d="M18 18 C18 14.5 20.5 13 21.5 11 V8 H26.5 V11 C27.5 13 30 14.5 30 18 V40 C30 41.7 28.7 43 27 43 H21 C19.3 43 18 41.7 18 40 Z" fill="#9fd6d0"/>
