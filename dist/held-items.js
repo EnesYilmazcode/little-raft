@@ -267,14 +267,14 @@ export function buildItemModel(T, kind, factory = null) {
   } else if (kind === 'fish') {
     root = fit(T, buildFish(T), SIZE.fish, (s) => new T.Vector3(s.x * 0.42, 0, 0));   // tail in the fist, head out to the left
   } else if (DECOR_KINDS.includes(kind)) {
-    const c = createCraft(T, kind);
+    const c = createCraft(T, kind, { fresh: true });
     if (c) root = fit(T, c, dim(kind), (s) => new T.Vector3(0, -s.y / 2, 0)); // grip = base centre
   } else if (kind === 'cup' || kind === 'water') {
     root = fit(T, buildCup(T, kind === 'water'), SIZE[kind], () => new T.Vector3(0, 0, 0));
   } else if (kind === 'seed' || kind === 'seeds') {
     root = fit(T, buildSeeds(T), dim(kind), (s) => new T.Vector3(0, -s.y / 2, 0));
   } else if (kind === 'planter') {
-    root = fit(T, createCraft(T, 'palm'), dim('planter'), (s) => new T.Vector3(0, -s.y / 2, 0));
+    root = fit(T, createCraft(T, 'palm', { fresh: true }), dim('planter'), (s) => new T.Vector3(0, -s.y / 2, 0));
   }
   if (!root) { const ins = buildInstrument(T, kind), gf = ins?.userData.gripFrac; if (ins) root = fit(T, ins, SIZE[kind], gf ? (s) => new T.Vector3(gf[0] * s.x, gf[1] * s.y, gf[2] * s.z) : null); } // [instruments]
   if (!root) root = fit(T, buildBundle(T), left ? HELD_LEFT_MAX : 0.12, (s) => new T.Vector3(0, left ? -s.y / 2 : 0, 0));

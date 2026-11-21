@@ -1,27 +1,80 @@
-// Raft craft models (ES module, no imports, no textures).
+// Raft craft models (ES module, no textures).
 // Usage: import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b'; const g = createCraft(THREE, 'sail');
 // Returns a THREE.Group (or null for an unknown type). Local origin = centre of the 2x2 raft
 // floor top surface; place the group at the floor (y = .22). Everything builds upward from y = 0
-// inside a ~1.7 x 1.7 footprint. Every call creates its own geometries and materials, so the
-// caller may dispose them freely. Meshes are merged per material to keep draw calls low.
+// inside a ~1.7 x 1.7 footprint. The builders are deterministic, so each type is built once per THREE
+// and createCraft() returns a clone that shares its geometries and materials (userData.shared = true:
+// the engine's disposeGeometry() skips them). The palm's soil material is per instance (paintPlanter
+// tints it). Pass { fresh: true } for a private copy the caller may dispose or re-material freely.
+// Meshes are merged per material class (timber, thin rope, metal, cloth) to keep draw calls low.
 //
 // Types: sail (~3.76 tall), palm (~2.25), lantern (~1.2), net (~0.21), bench (~0.9), crate (~0.84).
+import { mergeChildMeshes } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 
-export function createCraft(T, type) {
+const BUILDERS = { sail: buildSail, palm: buildPalm, lantern: buildLantern, net: buildNet, bench: buildBench, crate: buildCrate };
+const TEMPLATES = new WeakMap(); // THREE namespace -> Map(type -> template group)
+
+export function createCraft(T, type, opts = {}) {
   const key = String(type || '').toLowerCase();
-  const builders = { sail: buildSail, palm: buildPalm, lantern: buildLantern, net: buildNet, bench: buildBench, crate: buildCrate };
-  const build = builders[key];
-  if (!build) return null;
+  if (!Object.hasOwn(BUILDERS, key)) return null;
+  if (opts && opts.fresh) return buildCraft(T, key);
+  let byType = TEMPLATES.get(T);
+  if (!byType) TEMPLATES.set(T, byType = new Map());
+  let tpl = byType.get(key);
+  if (!tpl) {
+    tpl = buildCraft(T, key);
+    tpl.traverse(o => {
+      if (!o.isMesh) return;
+      o.geometry.userData.shared = true;
+      if (!o.userData.ownMaterial) o.material.userData.shared = true;
+    });
+    byType.set(key, tpl);
+  }
+  const g = tpl.clone(true);
+  g.traverse(o => { if (o.isMesh && o.userData.ownMaterial) o.material = o.material.clone(); });
+  return g;
+}
+
+// Merge groups per type: [merged name, member mesh names, material class, casts shadow].
+// Names the game reads stay: sailCloth / pennant (sailing), trunk / coconuts / fronds / soil (planter),
+// lantern glass / glow / candle / flame (day-night).
+const MERGE = {
+  sail: [['sailRope', ['sailRope', 'sailLashing'], 'thin', false], ['sailCloth', ['sailCloth', 'sailSeams', 'sailPatch', 'sailStitches'], 'cloth', true]],
+  palm: [['pot', ['pot', 'palmBase', 'pebbles'], 'solidDS', true], ['trunk', ['trunk', 'crown', 'frondRibs'], 'bark', true]],
+  lantern: [['lanternSteel', ['lanternSteel', 'lanternBrass'], 'darkMetal', true]],
+  net: [['netFrame', ['netFrame', 'netFloats'], 'solid', true], ['netRope', ['netRope', 'netKnots'], 'thin', false]],
+};
+const CLASSES = {
+  solid: () => ({ roughness: 0.88 }),
+  solidDS: T => ({ roughness: 0.86, side: T.DoubleSide }),
+  thin: () => ({ roughness: 0.96 }),
+  cloth: T => ({ roughness: 0.93, side: T.DoubleSide }),
+  bark: () => ({ roughness: 0.95 }),
+  darkMetal: () => ({ roughness: 0.48, metalness: 0.72 }),
+};
+
+function buildCraft(T, key) {
   const K = makeKit(T);
   const g = new T.Group();
   g.name = 'craft_' + key;
-  build(T, K, g);
+  BUILDERS[key](T, K, g);
   g.traverse(o => {
     if (!o.isMesh) return;
     const glass = !!o.userData.glass;
     o.castShadow = !glass && !THIN.test(o.name);
     o.receiveShadow = !glass;
   });
+  for (const [name, members, cls, cast] of MERGE[key] || []) {
+    const meshes = members.map(n => g.children.find(c => c.isMesh && c.name === n)).filter(Boolean);
+    if (meshes.length < 2) continue;
+    const mat = new T.MeshStandardMaterial(Object.assign({ color: 0xffffff, metalness: 0, vertexColors: true }, CLASSES[cls](T)));
+    for (const m of meshes) if (m.geometry.attributes.uv) m.geometry.deleteAttribute('uv'); // untextured
+    const set = new Set(meshes);
+    const mesh = mergeChildMeshes(T, g, { colorize: true, skip: c => !set.has(c), material: () => mat })[0];
+    for (const m of meshes) { m.geometry.dispose(); m.material.dispose(); }
+    mesh.name = name;
+    mesh.castShadow = cast;
+  }
   g.updateMatrixWorld(true);
   const box = new T.Box3().setFromObject(g);
   const size = box.getSize(new T.Vector3());
@@ -348,7 +401,7 @@ function buildPalm(T, K, g) {
       }
     }
     soil.computeVertexNormals();
-    K.addTo(g, K.bake(soil, 0, B + 0.455, 0), K.std(0x4a3322, 1), 'soil');
+    K.addTo(g, K.bake(soil, 0, B + 0.455, 0), K.std(0x4a3322, 1), 'soil').userData.ownMaterial = true; // paintPlanter tints it per tile
     const peb = [];
     for (let i = 0; i < 6; i++) {
       const a = i * 1.07 + 0.4, r = 0.17 + 0.12 * K.rnd();
