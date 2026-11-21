@@ -520,6 +520,26 @@ export const ITEM_ICONS = Object.freeze({
       <path d="M27 17 L33 11 L35 16 L31 18 Z" fill="#54a6a4" stroke-width="1.5"/></g>
     <path d="M13 34 C13 37 14 39 16 40" fill="none" stroke="#fff2cc" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".8"/>`,
 
+  // [bait] seaweed wad with a tiny hook, a pail of pink chum, a gold pellet with a sparkle
+  seaweedbait: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M30 6 V14 C30 18 25 18 25 15" fill="none" stroke="#c9d3d6" stroke-width="2.4"/>
+    <path d="M11 30 C8 21 16 14 24 16 C33 13 41 21 38 30 C40 39 30 44 24 41 C17 44 8 38 11 30 Z" fill="#4f9a5c"/></g>
+    <g fill="none" stroke="#2f6e3c" stroke-width="1.6" stroke-linecap="round">
+      <path d="M15 27 C19 24 22 30 26 26"/><path d="M19 35 C23 32 27 37 32 33"/><path d="M28 21 C31 22 33 25 34 28"/></g>
+    <path d="M15 22 C17 20 19 19 21 19" fill="none" stroke="#bde6b4" stroke-width="1.6" stroke-linecap="round"/>`, // [bait]
+  chumbait: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M12 16 C12 8 36 8 36 16" fill="none" stroke="#8d96a3" stroke-width="2.2"/>
+    <path d="M9 18 H39 L35 42 C34 44 14 44 13 42 Z" fill="#b07a5a"/>
+    <ellipse cx="24" cy="18" rx="15" ry="4" fill="#e88a9a"/></g>
+    <g fill="#f6b6c0" stroke="${O}" stroke-width="1.2"><circle cx="18" cy="17" r="2.2"/><circle cx="26" cy="16" r="2"/><circle cx="31" cy="18.5" r="1.8"/></g>
+    <path d="M14 26 H34" fill="none" stroke="#8a5a3c" stroke-width="1.6"/>
+    <path d="M15 31 C15 35 16 38 17 40" fill="none" stroke="#f3d6c2" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".8"/>`, // [bait]
+  goldbait: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+    <path d="M10 30 C10 21 17 16 24 16 C33 16 39 22 38 31 C37 39 30 43 23 42 C15 41 10 37 10 30 Z" fill="#f2b134"/></g>
+    <path d="M16 26 C18 22 22 20 26 20" fill="none" stroke="#fff2b8" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M18 36 C23 39 30 38 34 33" fill="none" stroke="#c27f12" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M38 4 L40 10 L46 12 L40 14 L38 20 L36 14 L30 12 L36 10 Z" fill="#fff6c8" stroke="${O}" stroke-width="1.4" stroke-linejoin="round"/>`, // [bait]
+
   // [recycler] floating junk + Sorting Tub
   oldboot: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <path d="M13 8 H27 L28 26 C34 27 41 29 43 34 V39 H7 V31 C9 25 11 18 13 8 Z" fill="#8a6242"/>
