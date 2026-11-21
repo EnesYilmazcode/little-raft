@@ -118,7 +118,7 @@ export function mount(transfer = null) {
   let seed = 20240917; const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
 
   // ---------- Bags ----------
-  const snapBag = s => { if (!s || typeof s !== 'object') return null; let m = s; try { m = migrateSnapshot(s) ?? s; } catch {} try { return new Bag(m); } catch { return Bag.salvage(m); } }; // [progression-hook] migrate; one bad slot never wipes a bag
+  const snapBag = s => { if (!s || typeof s !== 'object') return null; let m = s; try { m = migrateSnapshot(s, ITEM_INFO) ?? s; } catch {} try { return new Bag(m); } catch { return Bag.salvage(m); } }; // [progression-hook] migrate; one bad slot never wipes a bag
   const validSnapshot = s => snapBag(s)?.snapshot() ?? null;
   const commit = (bag, scratch) => { for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i]; };
   const canAfford = (bag, cost) => Object.entries(cost).every(([k, n]) => bag.count(k) >= n);
@@ -955,7 +955,14 @@ export function mount(transfer = null) {
     if (role === 'guest') { if (!networkReady) return; localBag().move(from, to, a.amount); }
     action(a);
   }
-  function craft(recipe) { if (typeof recipe === 'string') action({kind:'craft', recipe}); }
+  // Recipe gate for the local player: progression lock first, then content locks (research). Null = open.
+  function craftGate(id) {
+    let g = null; try { g = prog?.recipeGate(id) || null; } catch {} if (g) return g; // [progression-hook]
+    let why = null; try { why = content?.craftLocked(id, role === 'guest' ? 'guest' : 'host'); } catch {} // content hook
+    return why ? {locked:true, reason:String(why)} : null;
+  }
+  // false = the craft was refused here (locked); the action still goes out so the player hears why.
+  function craft(recipe) { if (typeof recipe !== 'string') return false; const g = craftGate(recipe); action({kind:'craft', recipe}); return !g; }
   function repair() { if (!running) return; const bag = localBag(); action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH)}); }
   // Pad build radial pick: hold the hammer (from the hotbar) and select that piece on the building wheel.
   function pickBuildPiece(id) {
@@ -1808,7 +1815,7 @@ export function mount(transfer = null) {
       onResume:guard(() => { play('close'); requestLock(); }),
       onPause:guard(clearInput),
       getModel:modelOf, // 3D icons rendered from models.js
-      recipeGate:id => prog?.recipeGate(id), // [progression-hook]
+      recipeGate:id => craftGate(id), // [progression-hook] + content (research) locks
     });
     prog.installUI(); // [progression-hook]
     logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(clearInput), onResume:guard(() => requestLock())});

@@ -395,12 +395,25 @@ function toCount(v) {
   return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), Number.MAX_SAFE_INTEGER) : 0;
 }
 
-function resolveKind(kind) {
+// `info` is an optional ITEM_INFO-shaped table (the bag's own, passed in by the
+// caller so this module never imports inventory-state.js): kinds the bag knows
+// but ITEMS does not (cups, receiver, seed, ...) survive migration.
+const knownIn = (info, k) => !!info && typeof info === 'object' && hasOwn(info, k) && !!info[k] && typeof info[k] === 'object';
+
+function resolveKind(kind, info) {
   if (typeof kind !== 'string') return null;
-  if (isItem(kind)) return kind;
+  if (isItem(kind) || knownIn(info, kind)) return kind;
   const k = kind.trim().toLowerCase();
-  if (isItem(k)) return k;
+  if (isItem(k) || knownIn(info, k)) return k;
   return hasOwn(LEGACY_ALIASES, k) ? LEGACY_ALIASES[k] : null;
+}
+
+// { stack, tool } for a resolved kind: ITEMS first, then the bag's info table.
+function specOf(kind, info) {
+  if (isItem(kind)) return ITEMS[kind];
+  const e = info[kind];
+  const n = toCount(e.maxStack);
+  return { stack: n > 0 ? n : 1, tool: e.tool === true };
 }
 
 /**
@@ -410,8 +423,10 @@ function resolveKind(kind) {
  * fit is dropped), tool durability filled/clamped to 0..100, non-tool
  * durability removed, duplicate ids removed, `selected` kept when valid.
  * Non-object input returns null (new Bag(null) = fresh starter bag).
+ * `info` (optional): the bag's ITEM_INFO, so kinds outside ITEMS are kept with
+ * that table's maxStack/tool instead of being dropped.
  */
-export function migrateSnapshot(snap) {
+export function migrateSnapshot(snap, info) {
   if (!snap || typeof snap !== 'object' || Array.isArray(snap)) return null;
   const src = Array.isArray(snap.slots) ? snap.slots : [];
   const slots = new Array(SLOT_COUNT).fill(null);
@@ -424,10 +439,10 @@ export function migrateSnapshot(snap) {
   for (let i = 0; i < src.length; i++) {
     const raw = src[i];
     if (!raw || typeof raw !== 'object') continue;
-    const kind = resolveKind(raw.kind);
+    const kind = resolveKind(raw.kind, info);
     let count = toCount(raw.count);
     if (!kind || count === 0) continue;
-    const it = ITEMS[kind];
+    const it = specOf(kind, info);
     const base = { kind };
     if (it.tool) base.durability = durOf(raw.durability);
     if (typeof raw.id === 'string' && raw.id && !ids.has(raw.id)) { ids.add(raw.id); base.id = raw.id; }
@@ -441,7 +456,7 @@ export function migrateSnapshot(snap) {
     }
   }
   for (const o of overflow) {
-    const max = ITEMS[o.kind].stack;
+    const max = specOf(o.kind, info).stack;
     let left = o.count;
     if (max > 1) {
       for (const s of slots) {
