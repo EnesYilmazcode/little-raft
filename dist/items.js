@@ -194,10 +194,10 @@ const LIST = [
   item('candle', 'Beeswax Candle', 'decor', { placeable: true, iconTint: '#ffd27a',
     recipe: hand({ wax: 2, rope: 1 }), unlock: discover('wax'),
     tip: 'A little jar candle that glows warmly at night.' }),
-  item('photoframe', 'Photo Frame', 'decor', { placeable: true, iconTint: '#c69860', recipe: hand({ wood: 3, glass: 1, nail: 1 }), unlock: research('glass', 'nail'), // [camera]
-    tip: 'Hang a favourite photo on your raft. Press E on it to choose one.' }),
   item('taskboard', 'Task Board', 'decor', { placeable: true, iconTint: '#c9a26b', recipe: hand({ wood: 3, leaf: 1 }), unlock: START, // [tasks] model in dist/tasks-model.js
     tip: 'Pin up the crew tasks for the day.' }),
+  item('photoframe', 'Photo Frame', 'decor', { placeable: true, iconTint: '#c69860', recipe: hand({ wood: 3, glass: 1, nail: 1 }), unlock: research('glass', 'nail'), // [camera]
+    tip: 'Hang a favourite photo on your raft. Press E on it to choose one.' }),
   item('sail', 'Sail', 'build', { icon: 'icon-sail', placeholder: false, placeable: true,
     recipe: hand({ wood: 4, rope: 3, leaf: 3 }), unlock: discover('rope', 'plastic'),
     tip: 'Catch the breeze and look the part of a proper sea captain.' }),
@@ -237,8 +237,8 @@ export const BLOCK_RADII = deepFreeze({
   palm: 0.42, crate: 0.55, bench: 0.45, sail: 0.14, lantern: 0.12, net: 0,
   smelter: 0.5, researchtable: 0.55, grill: 0.45,
   flowerbox: 0.3, beehive: 0.35, candle: 0.1, // [bees]
-  photoframe: 0.15, // [camera]
   taskboard: 0.3, // [tasks]
+  photoframe: 0.15, // [camera]
   recycler: 0.45, // [recycler]
 });
 
