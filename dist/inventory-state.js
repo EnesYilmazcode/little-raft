@@ -296,6 +296,27 @@ export class Bag {
     return true;
   }
 
+  /** Atomic: removes `count` from slot `index` only (the held stack, e.g. eating). False if that slot holds fewer. */
+  takeAt(index, count = 1) {
+    if (!isIndex(index, SLOT_COUNT)) return false;
+    if (typeof count !== 'number' || !Number.isInteger(count) || count < 1) return false;
+    const s = this.slots[index];
+    if (!s || s.count < count) return false;
+    s.count -= count;
+    if (s.count === 0) this.slots[index] = null;
+    this.version++;
+    return true;
+  }
+
+  /** Puts `count` of `kind` into the EMPTY slot `index` (e.g. an empty cup back into the hand). False otherwise. */
+  putAt(index, kind, count = 1) {
+    if (!isIndex(index, SLOT_COUNT) || this.slots[index] || !isKind(kind)) return false;
+    if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > maxStackOf(kind)) return false;
+    this.slots[index] = makeSlot(kind, count, {});
+    this.version++;
+    return true;
+  }
+
   /**
    * Move/split/merge/swap between slots.
    * - amount omitted -> whole stack.

@@ -704,7 +704,7 @@ export function mount(transfer = null) {
       const bag = localBag();
       if (dialog) eating = null; // a menu opened mid-bite: cancel, the item stays in the bag
       else if (bag.selectedIndex !== eating.slot || bag.slots[eating.slot]?.kind !== eating.item) eating = null; // switched slot or item gone
-      else if ((eating.t += dt) >= EAT_SECONDS) { const item = eating.item; eating = null; action({kind:'eat', item}); }
+      else if ((eating.t += dt) >= EAT_SECONDS) { const {item, slot} = eating; eating = null; action({kind:'eat', item, slot}); }
     }
     if (vitals.hp <= 0) { passOut(); return; } // HP 0 always faints (hurtPlayer, or a pause that froze the clock at 0)
     if (role === 'solo' && settingsController?.isOpen) return; // only the solo pause menu stops the clock (the bag, journal, crafting do not)
@@ -1189,8 +1189,10 @@ export function mount(transfer = null) {
     }
     if (a.kind === 'eat') { // [vitals] host removes the item (and gives the cup back); the eater applies the bars on 'ate'
       const k = a.item; if (!isEdible(k) || bag.count(k) < 1) return;
-      const s = new Bag(bag.snapshot()); if (!s.remove(k, 1)) return;
-      const back = FOOD[k].returns; if (back && s.add(back, 1) > 0) { emit({kind:'full', text:'No room for the empty cup'}, actor); return; }
+      const s = new Bag(bag.snapshot()), at = isInt(a.slot) && s.slots[a.slot]?.kind === k ? a.slot : -1; // the held slot, else any stack
+      if (!(at >= 0 ? s.takeAt(at, 1) : s.remove(k, 1))) return;
+      const back = FOOD[k].returns; // the empty cup goes back into the hand that held the drink when that slot emptied
+      if (back && !(at >= 0 && s.putAt(at, back, 1)) && s.add(back, 1) > 0) { emit({kind:'full', text:'No room for the empty cup'}, actor); return; }
       commit(bag, s); emit({kind:'ate', item:k}, actor); return;
     }
     if (a.kind === 'shark:loot') { // shark lane: harvest the floating body (E)
