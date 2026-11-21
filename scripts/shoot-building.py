@@ -60,7 +60,9 @@ try { Object.defineProperty(Element.prototype, 'requestPointerLock', {value: und
 
 report = {'errors': [], 'console': [], 'shots': [], 'checks': {}}
 
+def log(*a): print(*a, file=sys.stderr, flush=True)
 def shot(page, name, note=''):
+    log('shot', name)
     p = out / f'{name}.jpg'; page.screenshot(path=str(p), type='jpeg', quality=80)
     report['shots'].append({'file': str(p), 'note': note})
 
@@ -119,6 +121,7 @@ with sync_playwright() as pw:
         for _ in range(tries):
             me = S()['me']; d = math.hypot(x - me['x'], z - me['z'])
             if d < tol: return True
+            log('walk', round(me['x'], 2), round(me['z'], 2), '->', x, z)
             face(x, z, 0)
             page.keyboard.down('KeyW'); page.wait_for_timeout(int(min(d / 2.6, 0.6) * 1000 * 0.8) + 40); page.keyboard.up('KeyW')
             page.wait_for_timeout(120)

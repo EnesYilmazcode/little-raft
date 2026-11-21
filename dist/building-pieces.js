@@ -41,21 +41,21 @@ const isInt = v => Number.isInteger(v);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const inside = u => u < 0.98 && u > -0.98;
 
-// Slab test scratch (module level, zero allocation).
-let tn = 0, tf = 0;
+// Slab test scratch: a Float64Array, not module-level `let`s (a double stored to a context slot allocates a HeapNumber).
+const TT = new Float64Array(2); // [near, far]
 function slab(o, d, lo, hi) {
   if (d > -1e-9 && d < 1e-9) return o >= lo && o <= hi;
   let a = (lo - o) / d, b = (hi - o) / d;
   if (a > b) { const t = a; a = b; b = t; }
-  if (a > tn) tn = a;
-  if (b < tf) tf = b;
-  return tn <= tf;
+  if (a > TT[0]) TT[0] = a;
+  if (b < TT[1]) TT[1] = b;
+  return TT[0] <= TT[1];
 }
 // Entry distance of a ray into box b[k..k+5] (y relative to deckY), or -1 (miss, or origin inside).
 function rayBox(ox, oy, oz, dx, dy, dz, b, k, dy0) {
-  tn = -Infinity; tf = Infinity;
+  TT[0] = -Infinity; TT[1] = Infinity;
   if (!slab(ox, dx, b[k], b[k + 3]) || !slab(oy, dy, b[k + 1] + dy0, b[k + 4] + dy0) || !slab(oz, dz, b[k + 2], b[k + 5])) return -1;
-  return tn >= 0 ? tn : -1;
+  return TT[0] >= 0 ? TT[0] : -1;
 }
 
 export class BuildGrid {
@@ -68,9 +68,14 @@ export class BuildGrid {
     this._boxVersion = -1;
     this._pick = new Float64Array(64); this._pickRec = []; this._pickN = 0;
     this._solid = new Float64Array(64); this._solidN = 0;
+    this._slabs = new Float64Array(64); this._slabN = 0; // floor / roof slabs (solid edges, ceilings)
     this._c = {t: '', i: 0, j: 0, l: 0, r: 0};
     this._aimOut = {ok: false, reason: '', t: '', i: 0, j: 0, l: 0, r: 0, x: 0, y: 0, z: 0};
-    this._cell = [[0, 0]];
+    this._cells = []; this._lists = [];
+    for (let n = 0; n <= 9; n++) { this._cells.push([0, 0]); this._lists.push(new Array(n).fill(null)); }
+    this._deck = false; this._grounded = false;
+    this._prevHead = Infinity; this._px = 0; this._pz = 0; this._pvy = 0;
+    this._refused = null; this._rx = 0; this._rz = 0; this._rvy = 0;
     this._pre = {deckY: 0, tiles: this._tileArr};
   }
 
@@ -206,13 +211,15 @@ export class BuildGrid {
     const n = this.list.length;
     if (this._pick.length < n * 6) this._pick = new Float64Array(n * 12);
     if (this._solid.length < n * 18) this._solid = new Float64Array(n * 36);
-    this._pickRec.length = n; this._pickN = 0; this._solidN = 0;
+    if (this._slabs.length < n * 6) this._slabs = new Float64Array(n * 12);
+    this._pickRec.length = n; this._pickN = 0; this._solidN = 0; this._slabN = 0;
     for (const p of this.list) {
       const y0 = p.l * LEVEL_H, cx = 2 * p.i, cz = 2 * p.j, s = SLOT_OF[p.t];
       this._pickRec[this._pickN] = p;
       if (s === 0 || s === 1) {
         const top = s === 1 ? LEVEL_H : p.t === 'roof' ? ROOF_RISE : 0;
         this._box(this._pick, this._pickN++, cx - 1, cx + 1, y0 - (s === 1 ? 0 : FLOOR_THICK), y0 + top, cz - 1, cz + 1, 0);
+        if (s === 0) this._box(this._slabs, this._slabN++, cx - 1, cx + 1, y0 - FLOOR_THICK, y0, cz - 1, cz + 1, 0);
       } else if (s === 3) {
         const x = cx - 1, z = cz - 1, h = PILLAR_HALF;
         this._box(this._pick, this._pickN++, x - h, x + h, y0, y0 + LEVEL_H, z - h, z + h, 0);
@@ -249,7 +256,7 @@ export class BuildGrid {
 
   aim(ox, oy, oz, dx, dy, dz, type, rot, deckY, reach, out = this._aimOut) {
     const s = SLOT_OF[type];
-    const len = Math.hypot(dx, dy, dz);
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (s === undefined || !(len > 1e-9)) return null;
     dx /= len; dy /= len; dz /= len;
     this._rebuild();
@@ -302,19 +309,26 @@ export class BuildGrid {
   }
 
   // ---------- walking ----------
-  // Highest walkable surface under the feet (step-up STEP_UP), fed to PlayerPhysics.update as {deckY, tiles}.
-  preStep(phys, deckY) {
-    const x = phys.x, z = phys.z, feet = phys.y - EYE, limit = feet + STEP_UP, ext = 1 + MARGIN;
+  // Walkable surfaces near (x,z). With best = -Infinity: returns the usable surface (step-up STEP_UP;
+  // _deck = a tile is in reach). Otherwise: fills _cells with every nearby cell holding a surface
+  // within DROP below `best` and returns their count, so physics keeps support while crossing from one raised
+  // cell to the next (floor -> stairs, stairs -> stairs) instead of dropping off the single chosen cell.
+  _scan(x, z, feet, deckY, best) {
+    const collect = best > -Infinity, limit = feet + STEP_UP, ext = 1 + MARGIN;
+    const lo = best > feet + 0.04 ? best - 1e-9 : best - DROP; // stepping up: only the target cell(s)
     const ci = Math.round(x / 2), cj = Math.round(z / 2);
-    let deck = false, best = -Infinity, bi = 0, bj = 0;
+    let top = -Infinity, topIn = -Infinity, n = 0;
     for (let i = ci - 1; i <= ci + 1; i++) {
       const ux = x - 2 * i;
       if (ux > ext || ux < -ext) continue;
       for (let j = cj - 1; j <= cj + 1; j++) {
         const uz = z - 2 * j;
         if (uz > ext || uz < -ext) continue;
-        if (!deck && this._tile(i, j)) deck = true;
-        for (let l = 0; l <= MAX_L; l++) {
+        const tile = this._tile(i, j);
+        const under = ux <= 1 && ux >= -1 && uz <= 1 && uz >= -1; // the cell under the body centre
+        if (tile && !collect) { this._deck = true; if (under && deckY <= limit && deckY > topIn) topIn = deckY; }
+        let keep = collect && tile && deckY >= lo && deckY <= limit;
+        for (let l = 0; l <= MAX_L && !keep; l++) {
           const y = deckY + l * LEVEL_H;
           if (y > limit) break;
           for (let s = 0; s < 2; s++) {
@@ -325,62 +339,150 @@ export class BuildGrid {
               const u = clamp((ux * DIR[p.r][0] + uz * DIR[p.r][1] + 1) / 2, 0, 1);
               h += u * (p.t === 'stairs' ? LEVEL_H : ROOF_RISE);
             }
-            // Stepping up needs the centre inside the cell (physics pushes out of a raised footprint otherwise).
-            if (h > best && (h <= feet + 0.04 || (h <= limit && inside(ux) && inside(uz)))) { best = h; bi = i; bj = j; }
+            // Stepping up needs the centre inside the cell (physics only lifts a body inside a footprint);
+            // a grounded body is snapped anyway, so its centre may be anywhere over the cell.
+            if (!(h <= feet + 0.04 || (h <= limit && (inside(ux) && inside(uz) || (under && this._grounded))))) continue;
+            if (collect) { if (h >= lo && h <= best + 1e-9) { keep = true; break; } } else { if (h > top) top = h; if (under && h > topIn) topIn = h; }
+          }
+        }
+        if (keep) { const c = this._cells[n++]; c[0] = i; c[1] = j; }
+      }
+    }
+    // Prefer the surface under the centre over a ledge-margin one when it is within DROP (no snap when
+    // stepping from a floor down onto stairs); keep the margin surface over a real drop (ledge catch).
+    return collect ? n : topIn > -Infinity && top - topIn <= DROP ? topIn : top;
+  }
+
+  // Highest walkable surface under the feet, fed to PlayerPhysics.update as {deckY, tiles}.
+  preStep(phys, deckY) {
+    const feet = phys.y - EYE;
+    this._prevHead = phys.y + HEAD; this._px = phys.x; this._pz = phys.z; this._pvy = phys.vy;
+    this._deck = false; this._grounded = phys.grounded;
+    const best = this._scan(phys.x, phys.z, feet, deckY, -Infinity);
+    const pre = this._pre;
+    const deckH = this._deck && deckY <= feet + STEP_UP ? deckY : -Infinity;
+    let ground;
+    if (best > deckH + 1e-6) {
+      const n = this._scan(phys.x, phys.z, feet, deckY, best), list = this._lists[n];
+      for (let k = 0; k < n; k++) list[k] = this._cells[k];
+      pre.deckY = ground = best; pre.tiles = list;
+    } else {
+      pre.deckY = deckY; pre.tiles = this._tileArr; ground = deckY;
+    }
+    // Walked off a ledge: fall instead of snapping down. Stepping up (stairs a frame behind, raft rising): lift
+    // now, so physics never sees grounded feet below its deck (its hull push-out would shove us off the cell).
+    if (phys.grounded && feet - ground > DROP) phys.grounded = false;
+    else if (phys.grounded && ground > feet) phys.y = ground + EYE;
+    return pre;
+  }
+
+  // Push the body circle out of the XZ box [x0,x1]x[z0,z1] and remove velocity into it.
+  _push(phys, x0, x1, z0, z1) {
+    const R = BODY_R, x = phys.x, z = phys.z;
+    if (x < x0 - R || x > x1 + R || z < z0 - R || z > z1 + R) return;
+    const px = clamp(x, x0, x1), pz = clamp(z, z0, z1);
+    let nx = x - px, nz = z - pz;
+    const d = Math.sqrt(nx * nx + nz * nz);
+    if (d >= R) return;
+    if (d > 1e-6) {
+      nx /= d; nz /= d;
+      phys.x = px + nx * R; phys.z = pz + nz * R;
+    } else { // centre inside the box: leave by the shallowest side
+      const l = x - x0, r = x1 - x, f = z - z0, bk = z1 - z, m = Math.min(l, r, f, bk);
+      nx = m === l ? -1 : m === r ? 1 : 0; nz = nx ? 0 : m === f ? -1 : 1;
+      if (nx) phys.x = nx < 0 ? x0 - R : x1 + R; else phys.z = nz < 0 ? z0 - R : z1 + R;
+    }
+    const vn = phys.vx * nx + phys.vz * nz;
+    if (vn < 0) { phys.vx -= vn * nx; phys.vz -= vn * nz; }
+  }
+
+  // Stairs / roof undersides: the part of a ramp that is too high to step onto but below the head is solid
+  // (a band across the cell), so you cannot walk into stairs from the side/back and pop up onto them.
+  _ramps(phys, deckY) {
+    const R = BODY_R, x = phys.x, z = phys.z, feet = phys.y - EYE, head = phys.y + HEAD;
+    const ci = Math.round(x / 2), cj = Math.round(z / 2), L = Math.floor((feet - deckY) / LEVEL_H);
+    for (let i = ci - 1; i <= ci + 1; i++) {
+      if (Math.abs(x - 2 * i) > 1 + R) continue;
+      for (let j = cj - 1; j <= cj + 1; j++) {
+        if (Math.abs(z - 2 * j) > 1 + R) continue;
+        for (let l = Math.max(0, L - 1); l <= L + 1 && l <= MAX_L; l++) {
+          const base = deckY + l * LEVEL_H;
+          if (feet < base - 0.5) continue; // a storey above: its slab is a ceiling, not a wall
+          for (let s = 0; s < 2; s++) {
+            const p = this._get(s, i, j, l, 0);
+            if (!p || p.t === 'floor') continue;
+            const rise = s === 1 ? LEVEL_H : ROOF_RISE;
+            const u1 = Math.max(0, (feet + STEP_UP - base) / rise), u2 = Math.min(1, (head - base) / rise);
+            if (u1 >= u2) continue;
+            const dx = DIR[p.r][0], dz = DIR[p.r][1], a0 = 2 * u1 - 1, a1 = 2 * u2 - 1;
+            if (dx) this._push(phys, 2 * i + (dx > 0 ? a0 : -a1), 2 * i + (dx > 0 ? a1 : -a0), 2 * j - 1, 2 * j + 1);
+            else this._push(phys, 2 * i - 1, 2 * i + 1, 2 * j + (dz > 0 ? a0 : -a1), 2 * j + (dz > 0 ? a1 : -a0));
           }
         }
       }
     }
-    const pre = this._pre;
-    const deckH = deck && deckY <= limit ? deckY : -Infinity;
-    let ground;
-    if (best > deckH + 1e-6) {
-      this._cell[0][0] = bi; this._cell[0][1] = bj;
-      pre.deckY = ground = best; pre.tiles = this._cell;
-    } else {
-      pre.deckY = deckY; pre.tiles = this._tileArr; ground = deckY;
-    }
-    // Walked off a ledge: fall instead of snapping down.
-    if (phys.grounded && feet - ground > DROP) phys.grounded = false;
-    return pre;
   }
 
-  // Push the body circle out of solid boxes and keep the head under ceilings.
+  // Auto clamber (PlayerPhysics._climb) through a wall standing on the deck is refused (after first retrying
+  // towards the tile centre). The physics zeroes the swimmer's velocity when a climb
+  // starts, so the refusal waits one frame (the climb's clock then holds dt) and undoes it, swim speed included.
+  _clamber(phys, deckY) {
+    const c = phys._climb;
+    if (!c) return;
+    if (c === this._refused) {
+      if (!(c.t > 0)) return;
+      phys.vx = (c.sx - this._rx) / c.t; phys.vz = (c.sz - this._rz) / c.t; phys.vy = this._rvy;
+      phys.x = c.sx + phys.vx * c.t; phys.y = c.sy; phys.z = c.sz + phys.vz * c.t; // the frame the climb took
+      phys._climb = null; phys.climbing = false; phys.swimming = true; phys.grounded = false;
+      this._refused = null;
+      return;
+    }
+    if (c.t !== 0 || !this._pathHit(c.sx, c.sz, c.tx, c.tz, deckY)) return;
+    const tx = Math.round(c.tx / 2) * 2, tz = Math.round(c.tz / 2) * 2;
+    if (!this._pathHit(c.sx, c.sz, tx, tz, deckY)) { c.tx = tx; c.tz = tz; return; }
+    this._refused = c; this._rx = this._px; this._rz = this._pz; this._rvy = this._pvy;
+  }
+  _pathHit(sx, sz, tx, tz, deckY) {
+    const R = BODY_R, b = this._solid, lo = deckY + 0.05, hi = deckY + EYE + HEAD + 0.12;
+    for (let k = 0; k < this._solidN * 6; k += 6) {
+      if (b[k + 4] + deckY <= lo || b[k + 1] + deckY >= hi) continue;
+      if (b[k + 3] - b[k] < 0.3 && b[k + 5] - b[k + 2] < 0.3) continue; // pillars: brush past (pushed out later)
+      TT[0] = 0; TT[1] = 1;
+      if (slab(sx, tx - sx, b[k] - R, b[k + 3] + R) && slab(sz, tz - sz, b[k + 2] - R, b[k + 5] + R)) return true;
+    }
+    return false;
+  }
+
+  // Push the body circle out of boxes b[0..6n) whose top is above `lo`; boxes that were above the head before
+  // this step (slab bottoms, door lintels, walls upstairs) bonk the head of an airborne body instead.
+  _solids(phys, deckY, b, count, lo) {
+    const R = BODY_R;
+    for (let k = 0; k < count * 6; k += 6) {
+      const x = phys.x, z = phys.z;
+      if (x < b[k] - R || x > b[k + 3] + R || z < b[k + 2] - R || z > b[k + 5] + R) continue;
+      const y0 = b[k + 1] + deckY;
+      if (b[k + 4] + deckY <= lo || y0 >= phys.y + HEAD) continue;
+      if (!phys.grounded && y0 >= this._prevHead - 0.02) {
+        const px = clamp(x, b[k], b[k + 3]) - x, pz = clamp(z, b[k + 2], b[k + 5]) - z;
+        if (px * px + pz * pz < R * R) { phys.y = y0 - HEAD; if (phys.vy > 0) phys.vy = 0; }
+        continue;
+      }
+      this._push(phys, b[k], b[k + 3], b[k + 2], b[k + 5]);
+    }
+  }
+
+  // Push the body circle out of walls, slab edges and ramp undersides; keep the head under ceilings.
   postStep(phys, deckY) {
     this._rebuild();
-    const R = BODY_R, b = this._solid;
     for (let pass = 0; pass < 2; pass++) {
-      const lo = phys.y - EYE + 0.05, hi = phys.y + HEAD;
-      for (let n = 0, k = 0; n < this._solidN; n++, k += 6) {
-        const x = phys.x, z = phys.z;
-        if (x < b[k] - R || x > b[k + 3] + R || z < b[k + 2] - R || z > b[k + 5] + R) continue;
-        if (b[k + 4] + deckY <= lo || b[k + 1] + deckY >= hi) continue;
-        const px = clamp(x, b[k], b[k + 3]), pz = clamp(z, b[k + 2], b[k + 5]);
-        let nx = x - px, nz = z - pz, d = Math.hypot(nx, nz);
-        if (d >= R) continue;
-        if (d > 1e-6) {
-          nx /= d; nz /= d;
-          phys.x = px + nx * R; phys.z = pz + nz * R;
-        } else { // centre inside the box: leave by the shallowest side
-          const l = x - b[k], r = b[k + 3] - x, f = z - b[k + 2], bk = b[k + 5] - z, m = Math.min(l, r, f, bk);
-          nx = m === l ? -1 : m === r ? 1 : 0; nz = nx ? 0 : m === f ? -1 : 1;
-          if (nx) phys.x = nx < 0 ? b[k] - R : b[k + 3] + R; else phys.z = nz < 0 ? b[k + 2] - R : b[k + 5] + R;
-        }
-        const vn = phys.vx * nx + phys.vz * nz;
-        if (vn < 0) { phys.vx -= vn * nx; phys.vz -= vn * nz; }
-      }
+      const feet = phys.y - EYE;
+      // Grounded bodies step over box tops within STEP_UP (e.g. a wall under the top edge of stairs);
+      // thin slab edges can always be stepped onto.
+      this._solids(phys, deckY, this._slabs, this._slabN, feet + STEP_UP);
+      this._solids(phys, deckY, this._solid, this._solidN, phys.grounded ? feet + STEP_UP : feet + 0.05);
+      this._ramps(phys, deckY);
     }
-    // Ceiling: lowest floor/roof slab bottom above the feet over the body centre.
-    if (phys.vy > 0 || !phys.grounded) {
-      const ci = Math.round(phys.x / 2), cj = Math.round(phys.z / 2), feet = phys.y - EYE;
-      for (let l = 1; l <= MAX_L; l++) {
-        if (!this._get(0, ci, cj, l, 0)) continue;
-        const bottom = deckY + l * LEVEL_H - FLOOR_THICK;
-        if (bottom < feet + 0.3) continue;
-        if (phys.y + HEAD > bottom) { phys.y = bottom - HEAD; if (phys.vy > 0) phys.vy = 0; }
-        break;
-      }
-    }
+    this._clamber(phys, deckY);
   }
 }
 
