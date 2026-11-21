@@ -16,10 +16,9 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 
 const WOOD = 'repeating-linear-gradient(90deg,#00000012 0 2px,transparent 2px 23px),linear-gradient(#b48d55,#8a663a)';
 const CSS = `
-#logbook.lb{padding:0;margin:auto;border:0;background:transparent;box-shadow:none;color:#fff2cc;width:min(640px,calc(100vw - 32px));max-height:88dvh;overflow:visible;font:500 14px/1.45 ${FONT}}
-#logbook.lb::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
-#logbook .lb-wrap{display:flex;flex-direction:column;gap:10px;padding:12px;max-height:88dvh;box-sizing:border-box;border-radius:6px;outline:none;
-  background:${WOOD};border:3px solid #3e2a17;box-shadow:0 0 0 2px #d6b67e,0 18px 50px #000a}
+#logbook.lb{color:#fff2cc;font:500 14px/1.45 ${FONT}} /* layout: dialog.lr-sheet (graphics.css) */
+#logbook .lb-wrap{display:flex;flex-direction:column;gap:10px;box-sizing:border-box;outline:none;overflow:hidden;
+  background:${WOOD};box-shadow:inset 3px 0 0 #3e2a17,inset 5px 0 0 #d6b67e}
 #logbook .lb-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .lb h2{font:700 20px/1.2 ${FONT};margin:0;color:#fff2cc;letter-spacing:0;text-shadow:0 1px 0 #3e2a17}
 #logbook .lb-close{width:32px;height:32px;min-width:32px;padding:0;display:grid;place-items:center;background:transparent;border:0;border-radius:4px;color:#fff2cc;cursor:pointer;box-shadow:none}
@@ -83,7 +82,7 @@ function mountDialog() {
     d = document.createElement('dialog'); d.id = 'logbook';
     document.body.append(d);
   }
-  d.className = 'lb';
+  d.className = 'lb lr-sheet';
   d.setAttribute('aria-labelledby', 'lb-title');
   if (!d.querySelector('.lb-wrap [role=tablist]') || !d.querySelector('.lb-notes') || !d.querySelector('.lb-grid')) d.innerHTML = MARKUP;
   return d;

@@ -1646,8 +1646,9 @@ export function mount(transfer = null) {
   setHandler($('#welcomeCrew'), 'onclick', () => openDialog('crew'));
   setHandler($('#helpButton'), 'onclick', () => settingsController?.open());
   document.querySelectorAll('[data-close]').forEach(b => setHandler(b, 'onclick', () => $('#' + b.dataset.close)?.close()));
-  // Crew/Help closed during play go back to locked play; opened from the pause menu, settings.js reopens it instead.
-  for (const id of ['crew', 'help']) on($('#' + id), 'close', e => {
+  // Crew closed during play goes back to locked play; opened from the pause menu, settings.js reopens it instead.
+  // How to play is a page inside the pause menu (settings.js), not a dialog.
+  for (const id of ['crew']) on($('#' + id), 'close', e => {
     if (shouldRelockAfterClose({running, locked:isLocked(), blocked:uiBlocked(), returnToPause:!!e.target?.dataset?.fromPause})) requestLock();
   });
   const soundLabel = () => setText('#soundButton', 'Sound: ' + (!sound ? 'off' : options.volume > 0 ? 'on' : 'on (volume is 0%)'));

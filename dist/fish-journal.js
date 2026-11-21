@@ -122,9 +122,8 @@ export function fishSvg(look, uid = 'x') {
     + `<circle cx="84" cy="26" r="3.2" fill="#fff"/><circle cx="85" cy="26" r="1.7" fill="#1b1b1b"/></svg>`;
 }
 
-const CSS = `#fcJournal{padding:0;border:0;background:transparent;width:min(880px,96vw);max-height:92vh;color:#3b2a1a;font:500 14px/1.35 'Segoe UI',system-ui,sans-serif}
-#fcJournal::backdrop{background:rgba(12,9,5,.45)}
-#fcJournal .fj-book{display:flex;flex-direction:column;max-height:92vh;border-radius:10px;border:3px solid #5a3d22;box-shadow:0 0 0 2px #c9a66b,0 18px 50px #000a;
+const CSS = `#fcJournal{color:#3b2a1a;font:500 14px/1.35 'Segoe UI',system-ui,sans-serif} /* layout: dialog.lr-sheet.lr-sheet-wide (graphics.css) */
+#fcJournal .fj-book{display:flex;flex-direction:column;padding:0;box-shadow:inset 3px 0 0 #5a3d22,inset 5px 0 0 #c9a66b;
  background:repeating-linear-gradient(#0000 0 25px,#8fb3c422 25px 26px),radial-gradient(circle at 30% 20%,#fffaf0,#f1e2c2 70%,#e6d1a8);overflow:hidden}
 #fcJournal .fj-head{display:flex;align-items:center;gap:12px;padding:14px 18px 8px;border-bottom:2px dashed #b9976455;flex-wrap:wrap}
 #fcJournal h2{margin:0;font:700 22px/1 Georgia,serif;letter-spacing:.5px;flex:1;color:#3b2a1a}
@@ -156,7 +155,7 @@ export function createJournalPanel({ getJournal, onClose } = {}) {
     const st = doc.createElement('style'); st.id = 'fc-style-journal'; st.textContent = CSS; doc.head.appendChild(st);
   }
   const el = (tag, cls, text) => { const e = doc.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-  const dlg = el('dialog'); dlg.id = 'fcJournal'; dlg.setAttribute('aria-labelledby', 'fcJournalTitle');
+  const dlg = el('dialog', 'lr-sheet lr-sheet-wide'); dlg.id = 'fcJournal'; dlg.setAttribute('aria-labelledby', 'fcJournalTitle');
   const book = el('div', 'fj-book');
   const head = el('div', 'fj-head'); // not <header>: the game hides `body.playing header`
   const title = el('h2', null, "Fisher's Notebook"); title.id = 'fcJournalTitle';
