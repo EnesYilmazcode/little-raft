@@ -18,12 +18,14 @@ const SPEC = {
   graphics: { tab: 'graphics', label: 'Quality preset', type: 'select', options: ['low', 'medium', 'high'], def: 'medium' },
   renderScale: { tab: 'graphics', label: 'Render scale', type: 'range', min: 0.5, max: 1, step: 0.05, def: 1, fmt: pct },
   shadows: { tab: 'graphics', label: 'Shadows', type: 'toggle', def: true },
+  adaptive: { tab: 'graphics', label: 'Adaptive resolution', type: 'toggle', def: true }, // lowers render scale while frames are slow
   volume: { tab: 'audio', label: 'Master volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.5, fmt: pct },
   effects: { tab: 'audio', label: 'Effects', type: 'range', min: 0, max: 1, step: 0.05, def: 1, fmt: pct },
   ambience: { tab: 'audio', label: 'Ocean ambience', type: 'range', min: 0, max: 1, step: 0.05, def: 0.7, fmt: pct },
 };
-// Picking a preset also sets the knobs it implies; they stay editable afterwards.
-const PRESETS = { low: { renderScale: 0.7, shadows: false }, medium: { renderScale: 0.85, shadows: true }, high: { renderScale: 1, shadows: true } };
+// Picking a preset also sets the knobs it implies; they stay editable afterwards. Medium matches the defaults.
+// The engine also derives the pixel-ratio cap and shadow map (medium 1024 PCF, high 2048 soft) from the preset.
+const PRESETS = { low: { renderScale: 0.7, shadows: false }, medium: { renderScale: 1, shadows: true }, high: { renderScale: 1, shadows: true } };
 const DEFAULTS = Object.freeze(Object.fromEntries(Object.entries(SPEC).map(([k, s]) => [k, s.def])));
 const KEYS = Object.keys(SPEC);
 const TABS = [['controls', 'Controls'], ['graphics', 'Graphics'], ['audio', 'Audio']];
