@@ -636,7 +636,7 @@ export function mount(transfer = null) {
       itemsGroup.add(g); itemMeshes.set(item.token, g);
     }
   }
-  const isPending = it => (pending.get(it.token) ?? 0) > performance.now();
+  const isPending = it => pending.size !== 0 && (pending.get(it.token) ?? 0) > performance.now(); // empty map: skip the per-item clock read
 
   // ---------- Feedback: pickups and notes go to the bottom-left feed, never the screen centre ----------
   const setText = (sel, v) => { const el = $(sel); if (el) el.textContent = v; };
@@ -1297,7 +1297,7 @@ export function mount(transfer = null) {
   const fishPos = new T.Vector3(), hookPos = new T.Vector3(), fishRope = Array.from({length:ROPE_SEGMENTS + 1}, () => new T.Vector3()), freeItems = [], ropeScratch = [];
   let freeXZ = new Float64Array(64); // x,z of freeItems[i] at [2i], [2i+1]: HookCast sweeps read these instead of the item records
   const handParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0, yaw:0, pitch:0};
-  const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3(), oceanSample = {h:0, sx:0, sz:0};
+  const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3(), oceanSample = {h:0, sx:0, sz:0, x:0, z:0}; // x/z: query point for ocean.sampleXZ
   const hookParams = {hand:handPos, items:freeItems, xz:freeXZ, reeling:false, time:0}; // freeItems is already filtered for pending items
   // Hook physics floats at a flat WATER_Y; map heights near the water onto the visible waves.
   const deckAt = (x, z) => (hasTile(Math.round(x / 2), Math.round(z / 2)) ? deckY() + .06 : null);
@@ -1388,7 +1388,7 @@ export function mount(transfer = null) {
       const ix = it.x, iz = it.z;
       if (role === 'guest' && u.ok && Math.hypot(ix - u.x, iz - u.z) < 3) { const k = Math.min(1, dt * 8); u.x += (ix - u.x) * k; u.z += (iz - u.z) * k; }
       else { u.x = ix; u.z = iz; u.ok = true; }
-      const s = ocean.sample(u.x, u.z, oceanSample);
+      oceanSample.x = u.x; oceanSample.z = u.z; const s = ocean.sampleXZ(oceanSample);
       m.position.set(u.x, s.h + ITEM_FLOAT, u.z);
       m.rotation.set(-s.sz * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.sx * 1.2 + Math.sin(elapsed + it.phase) * .05);
     }

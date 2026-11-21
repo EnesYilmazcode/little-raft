@@ -50,6 +50,9 @@ test('inlined sample() is bit-identical to the getHeight-based version (with flo
       const r = ref(x, z, t, e);
       ocean.sample(x, z, out, t, e);
       assert.ok(Object.is(out.h, r.h) && Object.is(out.sx, r.sx) && Object.is(out.sz, r.sz), `mismatch at ${x},${z},${t},${e}`);
+      ocean.update(t); const q = { x, z, h: 0, sx: 0, sz: 0 }, r6 = ref(x, z, t);
+      assert.equal(ocean.sampleXZ(q), q);
+      assert.ok(Object.is(q.h, r6.h) && Object.is(q.sx, r6.sx) && Object.is(q.sz, r6.sz) && q.x === x && q.z === z, `sampleXZ mismatch at ${x},${z},${t}`);
     }
     for (const [x, z] of [[0, 0], [-0, -0], [1e-300, -1e-300]]) {
       ocean.update(7.25);
