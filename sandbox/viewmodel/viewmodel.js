@@ -1,26 +1,28 @@
 // First-person viewmodel layer for Little Raft (three r170, ES module). Drop-in target: dist/viewmodel.js.
 //
 // One render pass, no depth clear, no transparent-queue hack. Viewmodel meshes stay in the world scene (so they get
-// the exact world lights, tone mapping and real sun shadows), but their material vertex shader:
+// the exact world lights, fog, tone mapping and real sun shadows), but their material vertex shader:
 //   1. projects with its own camera (own FOV, independent of the player's FOV setting), and
 //   2. squashes clip-space depth into the front `depthRange` of the depth buffer, so the world can never clip them.
 // The whole rig is scaled by `shrink` about the eye. Perspective is scale-invariant about the eye, so the picture
 // is unchanged, but the hands' true world position sits inside the player's head: shadows sampled there are the
 // shadows the player stands in, even with the face pressed against a wall.
 //
+// It wraps the game's single hands controller (dist/hands.js createHands), which already owns the swap
+// (lower/raise), look lag, walk bob and breathing. This layer adds only what hands.js lacks: a landing dip, a
+// use kick (timed to the hammer's strike impact), and a charge brace that keeps the hook on screen.
+//
 // Usage:
-//   const vm = createViewmodel(T, {camera, fov:70});
-//   vm.add('hook', hookHands); vm.add('hammer', hammerHands, {use:'strike'}); ...   // createHands() controllers
-//   each frame, after the camera transform is set and before hands.update():
-//   vm.update({dt, kind, yaw, pitch, walking, walkPhase, grounded, vy, charge, swing, motion});
-//   vm.shown                     -> kind whose hands are drawn now (lags `kind` during an equip swap)
-//   vm.anchor(obj, out)          -> world point that renders under obj's on-screen position (rope start)
+//   const vm = createViewmodel(T, { camera, fov: 70 });
+//   const hands = createHands(T, { modelFactory, prepare: vm.prepare });   // every mesh, incl. lazily built models
+//   vm.attach(hands);                                                      // parents hands.group under the rig
+//   each frame, before camera.updateMatrixWorld():
+//   vm.update({ dt, held: hands.state.held, grounded, vy, charge, swing, motion });
+//   vm.anchor(hands.ropeAnchor(), out)  -> world point that renders under the anchor's on-screen position
 //   vm.setAspect(a); vm.setFov(f); vm.setFill(rim, lift)   // shade fill, 0,0 = off
 
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const smooth = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
-const easeOutBack = (x) => { const c = 1.4, u = x - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
-const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
 // Fixed-step damped spring (120 Hz semi-implicit Euler): same feel at 30 and 144 fps.
 export class Spring3 {
@@ -40,15 +42,21 @@ export class Spring3 {
   }
 }
 
-export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange = 0.02, near = 0.01, rim = 0.6, lift = 0.14 } = {}) {
+export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange = 0.02, near = 0.01, rim = 0.6, lift = 0.14, strikeKinds = ['hammer'] } = {}) {
   const projCam = new T.PerspectiveCamera(fov, camera.aspect, near, 100);
   const uniforms = { vmProj: { value: projCam.projectionMatrix }, vmDepth: { value: depthRange }, vmRim: { value: rim }, vmLift: { value: lift } };
-  const patched = new WeakSet();
+  const own = new Map(), copies = new WeakSet();   // source material -> patched viewmodel copy
 
   // Vertex patch: own projection + depth squash. Lighting (view-space normals, vViewPosition) is untouched.
-  function patchMaterial(m) {
-    if (!m || patched.has(m)) return; patched.add(m);
-    const prevCompile = m.onBeforeCompile, prevKey = m.customProgramCacheKey;
+  // Held models from models.js share their materials with inventory icons (own renderer) and other users, so the
+  // layer patches a private copy and never touches the source material.
+  function patchMaterial(src) {
+    if (!src) return src;
+    if (own.has(src)) return own.get(src);
+    if (copies.has(src)) return src;                           // already a viewmodel copy
+    const m = src.clone(); own.set(src, m); copies.add(m);
+    const prevCompile = src.onBeforeCompile, prevKey = src.customProgramCacheKey;
+    const prevTag = prevCompile && prevCompile !== T.Material.prototype.onBeforeCompile ? prevCompile.toString() : '';
     m.onBeforeCompile = (sh, r) => {
       prevCompile?.call(m, sh, r);
       Object.assign(sh.uniforms, uniforms);
@@ -62,69 +70,41 @@ export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange
           .replace('#include <common>', '#include <common>\nuniform float vmRim;\nuniform float vmLift;')
           .replace('#include <opaque_fragment>', '{ float vmF = 1.0 - abs(dot(normal, normalize(vViewPosition)));\n\toutgoingLight += diffuseColor.rgb * (vmLift + vmRim * vmF * vmF * vmF); }\n#include <opaque_fragment>');
     };
-    m.customProgramCacheKey = () => 'vm|' + (prevKey ? prevKey.call(m) : '');
+    // The key must tell apart materials whose earlier patches differ: include the previous key AND the previous
+    // onBeforeCompile source (three's default key is that source, which is now this wrapper for every copy).
+    const prevKeyVal = prevKey && prevKey !== T.Material.prototype.customProgramCacheKey ? prevKey.call(src) : '';
+    m.customProgramCacheKey = () => 'vm|' + prevKeyVal + '|' + prevTag;
     m.needsUpdate = true;
+    return m;
   }
+  // Per-mesh setup. Pass as createHands(T, { prepare: vm.prepare }) so lazily mounted held models get it too.
   function prepare(group) {
     group.traverse((o) => {
       if (!o.isMesh && !o.isLine && !o.isPoints) return;
       o.frustumCulled = false; o.castShadow = false; o.receiveShadow = !!o.isMesh; o.renderOrder = 0;
-      for (const m of [].concat(o.material)) patchMaterial(m);
+      o.material = Array.isArray(o.material) ? o.material.map(patchMaterial) : patchMaterial(o.material);
     });
   }
 
-  // rig (camera child, scaled about the eye) > motion (springs, bob, breath) > equip (raise/lower) > hands.group
+  // rig (camera child, scaled about the eye) > motion (land dip, use kick, charge brace) > hands.group
   const rig = new T.Group(); rig.name = 'viewmodelRig'; rig.scale.setScalar(shrink);
-  const motionG = new T.Group(); const equipG = new T.Group();
-  rig.add(motionG); motionG.add(equipG); camera.add(rig);
-  const slots = new Map();
-
-  // opts.use = 'strike' (hammer): the use kick lands at the hands.js strike impact (~.12 s after the click) and
-  // jolts down instead of recoiling up and back like a throw.
-  function add(kind, hands, opts = {}) {
-    prepare(hands.group);
-    hands.vmUse = opts.use === 'strike' ? 'strike' : 'throw';
-    if (hands.group.parent) hands.group.parent.remove(hands.group);
-    hands.group.visible = false; equipG.add(hands.group);
-    slots.set(kind, hands);
+  const motionG = new T.Group(); motionG.name = 'viewmodelMotion';
+  rig.add(motionG); camera.add(rig);
+  function attach(hands) {
+    const g = hands.group ?? hands;
+    prepare(g);
+    if (g.parent) g.parent.remove(g);
+    motionG.add(g);
     return hands;
   }
 
-  const sway = new Spring3(T, 90, 12), bob = new Spring3(T, 160, 18), kick = new Spring3(T, 220, 16), land = new Spring3(T, 140, 13);
-  const st = { shown: null, e: 0, prevYaw: null, prevPitch: 0, walkW: 0, chargeW: 0, prevSwing: 0, hitAt: 0, wasGrounded: true, t: 0, airW: 0, airVy: 0 };
+  const kick = new Spring3(T, 220, 16), land = new Spring3(T, 140, 13);
+  const st = { prevSwing: 0, hitAt: 0, wasGrounded: true, t: 0, airW: 0, airVy: 0, chargeW: 0 };
 
   function update(p = {}) {
     const dt = clamp(p.dt ?? 1 / 60, 0, 0.1); st.t += dt;
     const amp = clamp(p.motion ?? 0.35, 0, 1) / 0.35;  // the game's cameraMotion comfort slider (default .35 -> 1)
-    const kind = slots.has(p.kind) ? p.kind : null;
     const k = (rate) => 1 - Math.exp(-rate * dt);
-
-    // ---- equip state machine: lower the old tool, swap, raise the new one
-    if (kind !== st.shown) {
-      st.e = Math.max(0, st.e - dt / 0.16);
-      if (st.e === 0) { st.shown = kind; sway.reset(); }
-    } else if (kind) st.e = Math.min(1, st.e + dt / 0.30);
-    for (const [kd, h] of slots) h.group.visible = kd === st.shown && st.shown !== null;
-    const raising = kind === st.shown;
-    const down = raising ? 1 - easeOutBack(st.e) : 1 - smooth(st.e);  // 0 = in hand, 1 = lowered out of view
-    equipG.position.set(0.06 * down, -0.42 * down, 0.10 * down);
-    equipG.rotation.set(-0.85 * down, 0.15 * down, 0.35 * down);
-
-    // ---- look sway: hands lag the look, a little roll into turns
-    const yaw = p.yaw ?? 0, pitch = p.pitch ?? 0;
-    if (st.prevYaw === null) { st.prevYaw = yaw; st.prevPitch = pitch; }
-    const inv = 1 / Math.max(dt, 1e-3);
-    const yawRate = clamp(wrapPi(yaw - st.prevYaw) * inv, -8, 8), pitchRate = clamp((pitch - st.prevPitch) * inv, -8, 8);
-    st.prevYaw = yaw; st.prevPitch = pitch;
-    sway.target.set(clamp(yawRate * 0.010, -0.045, 0.045) * amp, clamp(-pitchRate * 0.010, -0.035, 0.035) * amp, 0);
-    const s = sway.update(dt);
-
-    // ---- walk bob: figure-eight, vertical in phase with the camera bob (game: sin(walkPhase))
-    st.walkW += ((p.walking ? 1 : 0) - st.walkW) * k(6);
-    const ph = p.walkPhase ?? st.t * 9;
-    const w = st.walkW * amp;
-    bob.target.set(Math.sin(ph * 0.5) * 0.014 * w, -(0.5 - 0.5 * Math.cos(ph)) * 0.014 * w, 0);
-    const b = bob.update(dt);
 
     // ---- jump / land: lift slightly while airborne, dip on landing
     const grounded = p.grounded ?? true;
@@ -134,33 +114,24 @@ export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange
     st.wasGrounded = grounded;
     const l = land.update(dt);
 
-    // ---- use kick: rising edge of the game's swing timer
+    // ---- use kick: rising edge of the game's swing timer (1 = click use, .6 = pickup tap)
     const swing = p.swing ?? 0;
     if (swing > st.prevSwing + 0.3) {
-      if (slots.get(st.shown)?.vmUse === 'strike') st.hitAt = st.t + Math.max(1e-3, (swing - 0.64) / 3); // game: swing -= dt*3, impact at p=.36
-      else kick.impulse(0, 0.5 * amp, 1.4 * amp);
+      if (swing > 0.7 && strikeKinds.includes(p.held)) st.hitAt = st.t + Math.max(1e-3, (swing - 0.64) / 3); // swing -= dt*3, impact at p=.36
+      else kick.impulse(0, 0.5 * amp * (swing > 0.7 ? 1 : 0.4), 1.4 * amp * (swing > 0.7 ? 1 : 0.4));
     }
     if (st.hitAt && st.t >= st.hitAt) { st.hitAt = 0; kick.impulse(0, -0.9 * amp, 0.5 * amp); }
     st.prevSwing = swing;
     const r = kick.update(dt);
 
-    // ---- charge: brace (hands pull in, slight tension shake on top of hands.js windup). hands.js pulls the hook back
-    //      and right by ~.1 at full charge, which pushed it off the right edge: shift the whole rig left to reframe.
-    st.chargeW += ((p.charge ?? 0) - st.chargeW) * k(10);
+    // ---- charge brace: slight tension shake on top of hands.js windup, and pull left/up a touch so the hook stays
+    //      framed (hands.js winds the hook back and right by ~.1 at full charge)
+    st.chargeW += ((p.held === 'hook' ? p.charge ?? 0 : 0) - st.chargeW) * k(10);
     const c = st.chargeW, shake = smooth((c - 0.7) / 0.3) * 0.0016 * (Math.sin(st.t * 41) + Math.sin(st.t * 27.7));
 
-    // ---- idle breathing (slow, 0.25 Hz), muted while walking
-    const br = Math.sin(st.t * Math.PI * 2 * 0.25) * (1 - 0.7 * st.walkW) * amp;
-
-    motionG.position.set(
-      s.x + b.x + shake - 0.08 * c,
-      s.y + b.y + l.y + 0.012 * st.airW * amp + 0.0030 * br + r.y * 0.02 + 0.025 * c + shake,
-      r.z * 0.04 + 0.010 * c);
-    motionG.rotation.set(
-      s.y * 1.6 + r.y * 0.06 + 0.004 * br + l.y * 0.8,
-      -s.x * 1.8,
-      -s.x * 1.2 + b.x * 0.8);
-    return { shown: st.shown, equip: st.e };
+    motionG.position.set(shake - 0.05 * c, l.y + 0.012 * st.airW * amp + r.y * 0.02 + 0.02 * c + shake, r.z * 0.04);
+    motionG.rotation.set(r.y * 0.06 + l.y * 0.8, 0, 0);
+    return { kick: r.y, land: l.y, charge: c };
   }
 
   // World point that renders at obj's on-screen position, at obj's true (un-shrunk) distance from the eye.
@@ -177,8 +148,9 @@ export function createViewmodel(T, { camera, fov = 70, shrink = 0.15, depthRange
     return out.copy(tmp).transformDirection(camera.matrixWorld).multiplyScalar(depth).add(eye);
   }
 
-  function setAspect(a) { projCam.aspect = a; projCam.updateProjectionMatrix(); }
+  function setAspect(a) { if (projCam.aspect !== a) { projCam.aspect = a; projCam.updateProjectionMatrix(); } }
   function setFill(r = rim, l = lift) { uniforms.vmRim.value = r; uniforms.vmLift.value = l; }
   function setFov(f) { if (projCam.fov !== f) { projCam.fov = f; projCam.updateProjectionMatrix(); } }
-  return { rig, add, update, anchor, setAspect, setFov, setFill, prepare, projCam, get shown() { return st.shown; }, get equip() { return st.e; } };
+  function dispose() { rig.removeFromParent(); for (const m of own.values()) m.dispose(); own.clear(); }
+  return { rig, attach, prepare, update, anchor, setAspect, setFov, setFill, dispose, projCam };
 }
