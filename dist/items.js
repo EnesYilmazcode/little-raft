@@ -180,7 +180,7 @@ const LIST = [
     tip: 'A cosy, smoky meal. Click with it in hand to eat (+35 food).' }),
   item('honeyfish', 'Honey Glazed Fish', 'food', { iconTint: '#e8a83a', stack: 10, // [bees]
     recipe: hand({ cookedfish: 1, honey: 1 }), unlock: discover('honey'),
-    tip: 'Grilled fish with a honey glaze. The seagull is very jealous.' }),
+    tip: 'Grilled fish with a honey glaze. Click with it in hand to eat (+45 food, +5 water).' }),
   item('cookedsharkmeat', 'Grilled Shark Meat', 'food', { iconTint: '#c7764a', stack: 10,
     recipe: cook('grill', 'sharkmeat', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
     tip: 'A thick, smoky steak. Click with it in hand to eat (+30 food).' }),
