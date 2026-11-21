@@ -175,7 +175,7 @@ export function createTrader(ctx) {
   function prompt(aim) {
     if (!target(aim)) return null;
     if (path.phase === 'approach') return 'Pim is still tying up…';
-    if (!localInReach()) return 'Swim a little closer to Pim';
+    if (!localInReach()) return 'Move a little closer to Pim';
     const sec = Math.ceil(path.left); // the prompt string changes once a second, not every frame
     if (sec !== pSec || !pOut) { pSec = sec; pOut = '<kbd>E</kbd>Trade with Pim (' + mmss(sec) + ')'; }
     return pOut;
@@ -183,7 +183,7 @@ export function createTrader(ctx) {
   function interact(aim) {
     if (!target(aim)) return false;
     if (path.phase === 'approach') return true;
-    if (!localInReach()) { ctx.notice?.('Swim a little closer to Pim'); return true; }
+    if (!localInReach()) { ctx.notice?.('Move a little closer to Pim'); return true; }
     openUI();
     return true;
   }
