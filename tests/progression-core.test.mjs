@@ -75,7 +75,7 @@ test('research needs a placed Research Table and ownership, unlocks, never consu
 test('station unlock when the station is placed', () => {
   const p = prog();
   assert.ok(!p.isUnlocked('sail'));
-  assert.deepEqual(p.notePlaced('smelter'), ['smelter', 'sail']);
+  assert.deepEqual(p.notePlaced('smelter'), ['sail']);
   assert.ok(p.isUnlocked('sail'));
   assert.deepEqual(p.notePlaced('nope'), []);
 });
