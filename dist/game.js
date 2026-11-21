@@ -45,6 +45,8 @@ import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse
 import { attachProgression } from './progression-hooks.js'; // [progression-hook]
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
+import { createShark, cleanShark, cleanTileHp, lootable, SHARK, SHARK_LOOT } from './shark.js?build=v3-survival-ae77fa84ac2b'; // shark lane (dist/shark.js)
+import { createWaterEffects } from './waterfx.js?build=v3-survival-ae77fa84ac2b'; // shark lane: bite splashes
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -150,7 +152,7 @@ export function mount(transfer = null) {
   // ---------- World ----------
   function newWorld() {
     const fresh = new Bag().snapshot();
-    return {tiles:Array.from({length:9}, (_, i) => [i % 3 - 1, Math.floor(i / 3) - 1]), decor:[], stock:{wood:0, leaf:0, scrap:0, plastic:0}, fish:0, collected:0, hookHealth:MAX_HEALTH, items:[], hostInventory:fresh, guestInventory:new Bag().snapshot(), signal:null, notes:[], achievements:[], garden:{}, purifiers:{}, pieces:[]};
+    return {tiles:Array.from({length:9}, (_, i) => [i % 3 - 1, Math.floor(i / 3) - 1]), decor:[], stock:{wood:0, leaf:0, scrap:0, plastic:0}, fish:0, collected:0, hookHealth:MAX_HEALTH, items:[], hostInventory:fresh, guestInventory:new Bag().snapshot(), signal:null, notes:[], achievements:[], garden:{}, purifiers:{}, pieces:[], tileHp:{}, shark:cleanShark(null)};
   }
   // Validates a saved world or a host snapshot. Returns a fresh clean object or null.
   function cleanWorld(v, withItems = false) {
@@ -179,12 +181,14 @@ export function mount(transfer = null) {
     return {tiles, decor, stock, fish:count(v.fish), collected:count(v.collected), hookHealth:Number.isFinite(v.hookHealth) ? clamp(Math.round(v.hookHealth), 0, MAX_HEALTH) : MAX_HEALTH, items,
       hostInventory:validSnapshot(v.hostInventory), guestInventory:validSnapshot(v.guestInventory), signal:cleanSignal(v.signal), ext:cleanExt(v.ext), pieces:cleanPieces(v.pieces, tiles), sailing:cleanSailing(v.sailing), // content + building-pieces + sailing hooks
       notes:progress.notes, achievements:progress.achievements,
+      tileHp:cleanTileHp(v.tileHp, tiles), shark:cleanShark(v.shark), // shark lane: foundation HP + saved shark (old saves: full HP, fresh 300 s timer)
       ...cleanWatering(v, decor, {seedMissing:true})};
   }
   function copyWorld(w) { // isolation from the previous engine's live object (rollback safety)
     return {...w, tiles:w.tiles.map(t => [t[0], t[1]]), decor:Array.isArray(w.decor) ? w.decor.map(d => ({...d})) : [], items:Array.isArray(w.items) ? w.items.map(i => ({...i})) : [], stock:{...(w.stock || {})}, pieces:Array.isArray(w.pieces) ? w.pieces.map(p => ({...p})) : [],
       fish:isInt(w.fish) ? w.fish : 0, collected:isInt(w.collected) ? w.collected : 0, signal:cleanSignal(w.signal), ext:cleanExt(w.ext), sailing:cleanSailing(w.sailing), // content + sailing hooks
       ...cleanProgress(w), // fresh, validated notes/achievements arrays
+      tileHp:cleanTileHp(w.tileHp, w.tiles), shark:cleanShark(w.shark), // shark lane
       ...copyWatering(w)};
   }
   const liveWorld = w => cleanWorld(w, true) ?? copyWorld(w);
@@ -275,6 +279,10 @@ export function mount(transfer = null) {
   }
   let coop = null; // coop: hub from coop.js, created after init(); every use is optional (coop?.)
   let prog = null; // [progression-hook]
+  // shark lane (dist/shark.js): host/solo simulate, the guest shows the host's pose. shark.trySpear(origin, dir, reach, dmg) -> boolean
+  let shark = null, sharkFx = null, wildlifeMod = null, shakeAmp = 0; const sharkHitAt = {host:0, guest:0};
+  // vitals hook: set to fn(amount, cause) to take damage (the shark calls hurtPlayer(30, 'shark')). Unset: falls back to raftDebug.hurt, else no-op.
+  let hurtPlayer = null;
 
   function makePhysics(src) {
     const deck = raftPose.y + FLOOR_Y + EYE_OFFSET;
@@ -394,10 +402,46 @@ export function mount(transfer = null) {
     try { sailing = createSailing(T, {scene, raft, ocean, camera, getWorld:() => world, getRole:() => role, getPhysics:() => physics, getYaw:() => yaw, isRunning:() => running,
       action:a => action(a), notice, canInput:() => running && !uiBlocked() && !guestWaiting(), getAimNdc, isBusy:() => !!hook || !!charging}); for (const [g, r] of scenery) sailing.addDrifter(g, r); } catch (e) { console.error('sailing failed', e); sailing = null; }
     try { diving = createDiving({T, scene, camera, ocean, islands, restore:X?.dive, hideAbove:aboveWater, getTiles:() => world.tiles, getDeckY:deckY, onGather:id => action({kind:'gather', id})}); diving?.warm(renderer); } catch (e) { diving = null; console.warn('diving disabled', e); } // diving lane hook
+    initShark(); // shark lane
     rebuildRaft();
     if (!world.items.length && role !== 'guest') for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     syncItems(); refreshPointerUI(true);
   }
+
+  // ---------- Shark (shark lane, dist/shark.js) ----------
+  function initShark() {
+    wildlifeMod = content?.mods?.find(m => m.name === 'wildlife') ?? null;
+    try {
+      sharkFx = createWaterEffects(T); scene.add(sharkFx.group);
+      shark = createShark(T, {scene, ocean, raft:() => raft, world:() => world, role:() => role, waterFx:sharkFx,
+        preys:out => { // swimmers the shark may hunt: [0] = us, [1] = the guest (host only)
+          out[0].x = physics.x; out[0].z = physics.z; out[0].swimming = running && physics.swimming;
+          const o = other; out[1].swimming = !!(o && o.swimming && networkReady && role === 'host'); if (o) { out[1].x = o.x; out[1].z = o.z; }
+        },
+        circler:() => wildlifeMod?.circler ?? null,
+        onBite:(x, z) => emit({kind:'shark', fx:'bite', x, z}, 'all'),
+        onBroke:(x, z) => { fc?.dropTile?.(x, z); rebuildRaft(); fitShadow(); emit({kind:'shark', fx:'broke', x, z, text:'The shark tore a foundation off the raft!'}, 'all'); },
+        onHurt:(i, n) => { if (i === 0) hurtLocal(n); else emit({kind:'shark', hurt:n}, 'guest'); },
+        onWarn:() => emit({kind:'shark', text:'The shark is biting the raft!'}, 'all'),
+        sendHit:dmg => action({kind:'shark:hit', dmg}),
+      }, world.shark);
+    } catch (e) { console.error('shark failed', e); shark = null; }
+  }
+  function hurtLocal(n) {
+    shakeAmp = Math.max(shakeAmp, .2); beep(140); notice('The shark bit you!', 1400);
+    if (typeof hurtPlayer === 'function') hurtPlayer(n, 'shark'); else window.raftDebug?.hurt?.(n, 'shark');
+  }
+  function sharkEffect(e) { // host and guest: cues for a bite, a broken tile or a bite on the guest
+    if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90), 2600);
+    if (Number.isFinite(e.hurt) && e.hurt > 0 && role === 'guest') hurtLocal(Math.min(e.hurt, 100));
+    if (!isInt(e.x) || !isInt(e.z) || !shark) return;
+    const v = shark.view, d = Math.hypot(physics.x - e.x * 2, physics.z - e.z * 2), near = clamp(1 - d / 14, .25, 1);
+    shark.markBite(e.x, e.z); shark.fx('bite', v.x + Math.sin(v.heading) * 1.3, v.z + Math.cos(v.heading) * 1.3);
+    shakeAmp = Math.max(shakeAmp, (e.fx === 'broke' ? .16 : .08) * near);
+    if (raft) { raft.rotation.x += (Math.random() - .5) * .03; raft.rotation.z += (Math.random() - .5) * .03; } // the whole raft jolts; updateRaft eases it back
+    beep(e.fx === 'broke' ? 90 : 120);
+  }
+  const canHarvestShark = () => !!shark && running && !diving?.state.diving && shark.canHarvest(physics.x, physics.z);
 
   // [fishing-cooking] adapter: the lane module only sees the engine through these functions.
   function fcHost() {
@@ -566,6 +610,7 @@ export function mount(transfer = null) {
       if (guestWaiting()) html = 'Waiting for your brother’s raft…';
       else if (performance.now() < noticeUntil) html = esc(noticeText);
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
+      else if (canHarvestShark()) html = '<kbd>E</kbd>Harvest the shark'; // shark lane
       else if (hover?.blocked) html = esc(BLOCK_TEXT[hover.blocked]);
       else if (waterAim?.prompt) html = waterAim.prompt;
       else if ((contextHtml = content?.prompt(frameAim) ?? null)) html = contextHtml; // content hook
@@ -771,6 +816,7 @@ export function mount(transfer = null) {
   function effect(e) {
     if (!e || typeof e !== 'object') return;
     if (Array.isArray(e.tokens)) for (const t of e.tokens) if (typeof t === 'string') pending.delete(t);
+    if (e.kind === 'shark') { sharkEffect(e); return; } // shark lane
     if (prog?.effect(e)) return; // [progression-hook]
     if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90));
     if (e.kind === 'note' || e.kind === 'achievement') logbookUI?.celebrate?.(e);
@@ -911,6 +957,20 @@ export function mount(transfer = null) {
       bag.slots[i].durability = MAX_HEALTH; emit({kind:'build', text:'Hook repaired!'}, actor);
       award({kind:'repair'}); return;
     }
+    if (a.kind === 'shark:loot') { // shark lane: harvest the floating body (E)
+      const p = actor === 'guest' ? other : physics;
+      if (!shark || !p || !lootable(shark.sim) || shark.distanceTo(p.x, p.z) > SHARK.HARVEST_REACH + (actor === 'guest' ? 1.5 : .01)) return;
+      const scratch = new Bag(bag.snapshot());
+      for (const [k, n] of Object.entries(SHARK_LOOT)) if (scratch.add(k, n) > 0) { emit({kind:'full', text:'Your bag is full'}, actor); return; }
+      commit(bag, scratch); shark.harvest();
+      emit({kind:'loot', text:'+ ' + Object.entries(SHARK_LOOT).map(([k, n]) => `${n} ${itemName(k)}`).join(' · ')}, actor);
+      return;
+    }
+    if (a.kind === 'shark:hit') { // shark lane: a guest's spear hit (the host's own hits go straight to the sim)
+      const p = actor === 'guest' ? other : physics, now = performance.now();
+      if (!shark || !p || !Number.isFinite(a.dmg) || now - sharkHitAt[actor] < 450 || shark.distanceTo(p.x, p.z) > 6) return;
+      sharkHitAt[actor] = now; shark.applyHit(a.dmg); return;
+    }
     if (content?.action(a, actor, bag)) return; // content hook: module actions (chest, research, gather…)
     if (WATER_ACTIONS.includes(a.kind)) { applyWatering(a, actor, bag); return; }
     // 'wear' (legacy clients wore the hook on every throw) is ignored: wear now happens only on a successful catch.
@@ -942,6 +1002,7 @@ export function mount(transfer = null) {
       action({kind:'collect', id:target.id, token:target.token});
       return;
     }
+    if (canHarvestShark()) { if (guestWaiting()) { notice('Wait for your raft to connect'); return; } swing = .6; action({kind:'shark:loot'}); return; } // shark lane
     if (content?.interact(currentAim())) return; // content hook: chest, research table, island nodes
     if (fc?.interact()) return; // [fishing-cooking] grill
     if (prog?.interact(currentAim())) return; // [progression-hook] smelter / grill / research table in reach
@@ -1005,6 +1066,7 @@ export function mount(transfer = null) {
     world.hostInventory = hostBag.snapshot(); world.guestInventory = guestBag.snapshot();
     world.stock = legacyStock(hostBag); world.hookHealth = hookDurability(hostBag);
     if (content) world.ext = content.serialize(); // content hook
+    if (shark) world.shark = shark.save(); // shark lane
   }
   function blockSave() {
     if (saveBlocked) return; saveBlocked = true;
@@ -1071,6 +1133,7 @@ export function mount(transfer = null) {
       const bob = cf ? cf.y : walking ? Math.sin(walkPhase) * .025 * options.cameraMotion : 0;
       camera.position.set(physics.x + (cf?.x ?? 0), physics.y + bob, physics.z + (cf?.z ?? 0));
       camera.rotation.set(pitch, yaw, (physics.grounded ? raft.rotation.z * CAMERA_ROLL * options.cameraMotion : 0) + (cf?.roll ?? 0), 'YXZ');
+      if (shakeAmp > .002) { const k = shakeAmp * (.4 + options.cameraMotion); camera.position.x += (Math.random() - .5) * k; camera.position.y += (Math.random() - .5) * k; camera.rotation.z += (Math.random() - .5) * k * .3; shakeAmp *= Math.exp(-dt * 7); } else shakeAmp = 0; // shark lane: bite shake
     } else { // gentle cinematic view for the welcome screen
       const focus = TITLE_FOCUS, d = 23, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .77;
       camera.position.set(focus.x + Math.sin(cy) * d * Math.cos(cp), d * Math.sin(cp), focus.z + Math.cos(cy) * d * Math.cos(cp)); camera.lookAt(focus);
@@ -1187,7 +1250,7 @@ export function mount(transfer = null) {
   function hostState() {
     const c = guestBag.counts();
     return {type:'state', v:3, ack:guestAck, bag:guestBag.snapshot(), other:pose(),
-      world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items, ext:content ? content.serialize() : world.ext, sailing:world.sailing, signal:world.signal, notes:world.notes, achievements:world.achievements, garden:world.garden, purifiers:world.purifiers, ...(world.pieces !== sentPieces ? {pieces:(sentPieces = world.pieces)} : {})}}; // content hook: ext
+      world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items, ext:content ? content.serialize() : world.ext, sailing:world.sailing, signal:world.signal, notes:world.notes, achievements:world.achievements, garden:world.garden, purifiers:world.purifiers, tileHp:world.tileHp, ...(world.pieces !== sentPieces ? {pieces:(sentPieces = world.pieces)} : {})}, ...(shark ? {shark:shark.net().slice()} : {})}; // content hook: ext; shark lane: tileHp + compact shark pose
   }
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, swimming:physics.swimming});
   function frame() {
@@ -1205,6 +1268,7 @@ export function mount(transfer = null) {
     waterAim = pickTarget ? null : wateringTarget(frameAim);
     updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost();
     content?.update(dt); // content hook
+    if (shark) { try { shark.update(dt, elapsed, running); } catch (e) { console.error('shark update failed', e); try { shark.dispose(); } catch {} shark = null; } } // shark lane
     if (fc) { try { fc.update(dt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
     if (running && role !== 'guest') {
       const itemCount = world.items.length, sigEvents = signalTick(world, dt, {token:newToken, held:new Set(caughtList(castOut()).map(c => c.token))});
@@ -1388,6 +1452,7 @@ export function mount(transfer = null) {
     if (b.physics) physics = new PlayerPhysics(b.physics); else { const s = spawnPoint(0, 1.2); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); }
     if (!world.items.length) for (let i = 0; i < 30; i++) world.items.push(makeItem(i));
     content?.load(world.ext, 'restore'); // content hook
+    shark?.clearNet(); shark?.load(world.shark); // shark lane: our own shark again
     if (scene) { syncItems(); rebuildRaft(); fitShadow(); }
     queueMicrotask(guard(retroAward)); // callers set role = 'solo' right after this returns
   }
@@ -1473,6 +1538,7 @@ export function mount(transfer = null) {
           const b = Bag.fromCounts(w.stock, {tools:['hook', 'hammer', 'fishingrod']}); if (remoteBag) b.select(remoteBag.selectedIndex); remoteBag = b;
         }
         content?.load(w.ext, 'net'); // content hook
+        shark?.applyNet(data.shark); // shark lane: older hosts send none, so no shark is shown
         syncItems(); if (changed && scene) { rebuildRaft(); fitShadow(); } else if (piecesChanged && scene) building?.sync(world); // building-pieces lane hook
         if (first) {
           networkReady = true; joinTimer = cancelTimer(joinTimer); joinDeadline = 0;
@@ -1579,6 +1645,24 @@ export function mount(transfer = null) {
     return {x:r.left + (v.x + 1) / 2 * r.width, y:r.top + (1 - v.y) / 2 * r.height, visible:inFront && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1, inFront};
   }
   const worldPos = o => { if (!o) return null; const p = o.getWorldPosition(new T.Vector3()); return {x:p.x, y:p.y, z:p.z, visible:o.visible}; };
+  // shark lane: QA helpers (forceAttack/kill/hit act on the host or solo simulation only)
+  const sharkDebug = Object.freeze({
+    get state() { return shark ? (role === 'guest' ? ['circle', 'approach', 'bite', 'flee', 'hunt', 'dead', 'gone'][shark.view.code] : shark.sim.state) : null; },
+    get hp() { return shark ? (role === 'guest' ? shark.view.hp : shark.sim.hp) : null; },
+    get timer() { return shark && role !== 'guest' ? shark.sim.timer : null; },
+    get target() { const s = shark?.sim; return s?.hasTarget ? {x:s.tx, z:s.tz, nx:s.nx, nz:s.nz} : null; },
+    get looted() { return !!shark?.sim.looted; }, get respawn() { return shark?.sim.respawn ?? null; },
+    get tileHp() { return {...(world.tileHp || {})}; },
+    get pose() { const v = shark?.view; return v ? {x:v.x, z:v.z, heading:v.heading, visible:shark.visible, y:shark.visible ? ocean.getHeight(v.x, v.z) + v.depth : null} : null; },
+    get canHarvest() { return canHarvestShark(); },
+    forceAttack() { return role !== 'guest' && !!shark?.forceAttack(); },
+    kill() { if (role !== 'guest') shark?.kill(); return shark?.sim.state ?? null; },
+    hit(n = 5) { return role !== 'guest' && !!shark?.applyHit(+n); },
+    setTimer(t) { if (shark && role !== 'guest' && Number.isFinite(+t)) shark.sim.timer = Math.max(0, +t); return shark?.sim.timer ?? null; },
+    trySpear(reach = 2.8, dmg = 5) { if (!shark || !camera) return false; const d = camera.getWorldDirection(new T.Vector3()); return shark.trySpear(camera.position, d, reach, dmg); },
+    harvest() { interact(); return shark?.sim.looted ?? null; },
+    setTileHp(x, z, hp) { if (role === 'guest' || !hasTile(x, z) || !Number.isFinite(+hp)) return false; world.tileHp ??= {}; if (+hp >= SHARK.TILE_HP) delete world.tileHp[x + ',' + z]; else world.tileHp[x + ',' + z] = clamp(Math.round(+hp), 1, SHARK.TILE_HP - 1); return true; },
+  });
   const debugApi = Object.freeze({
     get renderInfo() {
       if (!renderer) return null;
@@ -1627,6 +1711,7 @@ export function mount(transfer = null) {
       return {notes:[...world.notes], nextNote:nextNote(world.notes), achievements:[...world.achievements], totals:{notes:12, achievements:15}, bottleAfloat:world.items.some(i => i.type === 'bottle')};
     },
     get progression() { return prog?.debug ?? null; }, // [progression-hook]
+    get shark() { return sharkDebug; }, // shark lane
     get targets() {
       return world.items.map(it => {
         const m = itemMeshes.get(it.token), p = m ? m.position : {x:it.x, y:ITEM_FLOAT, z:it.z};
@@ -1675,6 +1760,7 @@ export function mount(transfer = null) {
     if (!scene) return;
     try { building?.dispose(); } catch {} building = null; // building-pieces lane hook
     try { diving?.dispose(); } catch {} diving = null; // diving lane hook
+    try { shark?.dispose(); } catch {} shark = null; try { sharkFx?.dispose(); } catch {} sharkFx = null; // shark lane
     const mats = new Set(), geos = new Set();
     scene.traverse(o => {
       if (o.geometry) geos.add(o.geometry);

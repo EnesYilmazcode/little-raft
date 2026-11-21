@@ -227,7 +227,7 @@ export function step(s, dt, world, env = NOOP) {
       s.floatSet = true;
     }
     const dx = s.fx - s.x, dz = s.fz - s.z, d = Math.hypot(dx, dz);
-    if (d > 0.05) { const k = Math.min(1, 0.6 * dt / d); s.x += dx * k; s.z += dz * k; }
+    if (d > 0.05) { const k = Math.min(1, Math.min(2, 0.5 + 0.25 * d) * dt / d); s.x += dx * k; s.z += dz * k; } // drifts in faster from afar
     return s;
   }
   // a swimmer nearby is more interesting than planks (not while fleeing)
@@ -288,7 +288,7 @@ export function step(s, dt, world, env = NOOP) {
       break;
     }
   }
-  s.under = overRaft(tiles, s.x, s.z, 0.9);
+  s.under = s.state !== 'bite' && overRaft(tiles, s.x, s.z, 0.4); // dive under the deck so the fin never cuts through planks
   return s;
 }
 
@@ -374,7 +374,7 @@ export function createShark(T, host, saved = null) {
     overlay.count = ovTiles.length;
     for (let i = 0; i < ovTiles.length; i++) {
       const [x, z, h] = ovTiles[i], hit = x === biteX && z === biteZ ? bitePulse : 0;
-      const k = clamp((1 - h / SHARK.TILE_HP) * 0.55 + hit * 0.35, 0, 0.85);
+      const k = clamp((1 - h / SHARK.TILE_HP) * 0.7 + hit * 0.3, 0, 0.9);
       m4.makeTranslation(x * 2 + (hit ? (Math.random() - 0.5) * 0.04 : 0), 0.222, z * 2 + (hit ? (Math.random() - 0.5) * 0.04 : 0));
       overlay.setMatrixAt(i, m4); overlay.setColorAt(i, col.copy(white).lerp(dark, k));
     }
@@ -401,8 +401,10 @@ export function createShark(T, host, saved = null) {
   const mod = {
     get sim() { return sim; },
     get visible() { return body.visible; },
-    update(dt, t) {
+    // active = false (title screen): nothing moves and the shark stays hidden, so the attack timer only runs in play.
+    update(dt, t, active = true) {
       const world = host.world(); if (!world) return;
+      if (!active) { body.visible = false; overlay.visible = false; return; }
       if (!isGuest()) {
         host.preys(preys);
         env.ringR = ringR(world.tiles);
