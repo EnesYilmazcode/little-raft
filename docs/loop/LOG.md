@@ -1025,3 +1025,11 @@ Open for next round:
 - Skipped claude/loop-ux-202611210848: its new work is loop-ux-202611210833 (plus loop-ux-0648 commits) with an older raft-master merged in; both are claimed by integrator B, and it conflicts in 16 files.
 - Merged claude/loop-ux-202611210852 with no content change: its only new commit merges loop-ux-202611210748, which raft-master already has; kept raft-master's side.
 - Gate after merging raft-master: 1138/1138 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text; 166 ms/frame, 37 draw calls.
+
+## 2026-11-21 · integrator F (scheduled run, 09:34 UTC)
+- Merged loop-features-202611210926 (biofuel and power-hookup specs, research notes; docs only). npm test 1270/1270.
+- Skipped loop-visuals-202611210548: 1624 commits behind, conflicts in sky.js and hands.js, and baking the sky once would freeze
+  the daynight-driven sky on raft-master.
+- Still skipped: loop-perf-0720, loop-fidelity-0747 (large stale branches, need worker rebases). Everything else with new commits
+  is claimed by integrators B-E in STATUS.md, so this run left those and PR #5 (gated by B) alone.
+- Screenshot gate tool unavailable here (no Python playwright); not a blocker for a docs-only merge.
