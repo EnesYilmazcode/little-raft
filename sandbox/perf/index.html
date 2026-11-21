@@ -43,7 +43,7 @@
 
   <h2>Fixes, one at a time <span class="m" id="runinfo"></span></h2>
   <div class="wrap"><table id="t"><thead><tr><th>scenario</th><th>draw calls<br>(incl. shadow)</th><th>triangles</th><th>submit ms<br>(median)</th><th>renderer CPU<br>ms/frame</th><th>GPU-process CPU<br>ms/frame</th><th>Δ GPU</th><th>pixel diff<br>deck / changed px</th><th>looks</th><th>what it does</th></tr></thead><tbody></tbody></table></div>
-  <p class="m">Click a row to compare its screenshot with the baseline. Drag the slider to wipe between them.</p>
+  <p class="m">Click a row to compare its screenshot with the baseline. Drag the slider to wipe between them. Screenshots are not committed: run <code>python sandbox/perf/shoot.py</code> to make them (only the stock and patched baselines ship, as JPEGs).</p>
   <div class="diffbox" id="wipe"><img id="wa" alt="baseline"><img id="wb" class="top" alt="fix"></div>
   <input type="range" id="cut" min="0" max="100" value="50" aria-label="wipe position">
   <div class="cmp"><figure><img id="ia" alt=""><figcaption id="ca"></figcaption></figure><figure><img id="ib" alt=""><figcaption id="cb"></figcaption></figure></div>
@@ -81,7 +81,12 @@ const fmt = (v, d = 1) => v == null ? '–' : (+v).toFixed(d);
 const delta = (v, b) => { if (v == null || !b) return '<span class=m>–</span>'; const p = 100 * (v - b) / b; return `<span class="${p < -3 ? 'g' : p > 3 ? 'b' : 'm'}">${p > 0 ? '+' : ''}${p.toFixed(0)}%</span>`; };
 const shot = r => '../../' + r.shot;
 // Same metric as imgdiff.py: mean |a-b| over the deck strip (0-255) and % of pixels off by more than 8/255.
-const img = src => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+// PNG screenshots are not in git (*.png is ignored): shoot.py / verify_adopt.py write them locally. Only the stock and
+// patched baselines are committed, as small JPEGs, so a missing PNG falls back to a .jpg of the same name.
+const jpg = src => src.replace(/\.png$/, '.jpg');
+document.addEventListener('error', e => { const t = e.target; if (t.tagName === 'IMG' && /\.png$/.test(t.src)) t.src = jpg(t.src); }, true);
+const load = src => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+const img = async src => (await load(src)) ?? (/\.png$/.test(src) ? load(jpg(src)) : null);
 const pixels = async src => { const i = await img(src); if (!i) return null; const c = document.createElement('canvas'); c.width = i.naturalWidth; c.height = i.naturalHeight; const x = c.getContext('2d'); x.drawImage(i, 0, 0); return x.getImageData(0, 0, c.width, c.height); };
 async function pxdiff(a, b) {
   const [A, B] = await Promise.all([pixels(a), pixels(b)]); if (!A || !B || A.width !== B.width) return '–';
