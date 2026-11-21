@@ -284,6 +284,7 @@ def main():
     ap.add_argument('--tol', type=int, default=24, help='per-channel delta (0-255) that counts a pixel as changed (default 24)')
     ap.add_argument('--fail-over', type=float, default=0.5, help='base/head: percent of changed pixels that marks a scene as different (default 0.5)')
     ap.add_argument('--self-fail-over', type=float, default=0.05, help='self-check: percent of changed pixels that counts as nondeterminism (default 0.05)')
+    ap.add_argument('--self-tol', type=int, default=2, help='per-channel tolerance for the determinism comparison (default 2: same build must be near pixel-identical)')
     ap.add_argument('--fail-on-diff', action='store_true', help='base/head: fail (exit 1) when a scene differs over --fail-over')
     ap.add_argument('--check-determinism', action='store_true', help='base/head: also render head twice and gate on its noise')
     ap.add_argument('--jobs', type=int, default=2, help='browsers rendering runs side by side (default 2; 1 = sequential)')
@@ -352,17 +353,18 @@ def main():
         return infra(f'no scene could be captured in either run; first error: {first.get("exception")}')
 
     (out / 'diff').mkdir(exist_ok=True)
-    results = {n: diff(out / 'A' / f'{n}.png', out / 'B' / f'{n}.png', out / 'diff' / f'{n}.png', args.tol)
+    tol = args.self_tol if mode == 'self' else args.tol
+    results = {n: diff(out / 'A' / f'{n}.png', out / 'B' / f'{n}.png', out / 'diff' / f'{n}.png', tol)
                for n in names if ma[n]['ok'] and mb[n]['ok']}
     noise = {}
     if mc is not None:
         (out / 'noise').mkdir(exist_ok=True)
-        noise = {n: diff(out / 'B' / f'{n}.png', out / 'C' / f'{n}.png', out / 'noise' / f'{n}.png', args.tol)
+        noise = {n: diff(out / 'B' / f'{n}.png', out / 'C' / f'{n}.png', out / 'noise' / f'{n}.png', args.self_tol)
                  for n in names if mb[n]['ok'] and mc[n]['ok']}
 
     limit = args.self_fail_over if mode == 'self' else args.fail_over
     la, lb = (f'{head} run 1', f'{head} run 2') if mode == 'self' else (f'base {base}', f'head {head}')
-    title = ('Little Raft self-determinism' if mode == 'self' else 'Little Raft visual diff') + f' · seed {args.seed} · tol {args.tol}'
+    title = ('Little Raft self-determinism' if mode == 'self' else 'Little Raft visual diff') + f' · seed {args.seed} · tol {tol}'
     contact_png(out / 'contact-sheet.png', la, lb, names, results, limit, title)
     contact_html(out / 'index.html', la, lb, names, results, ma, mb, limit, title)
 
@@ -390,7 +392,7 @@ def main():
     for n, r in det.items():
         if r['pct'] > args.self_fail_over:
             fails.append({'id': f'nondeterministic:{n}',
-                          'detail': f'same build, same seed rendered differently: {r["pct"]}% of pixels over tol {args.tol} '
+                          'detail': f'same build, same seed rendered differently: {r["pct"]}% of pixels over tol {args.self_tol} '
                                     f'(limit {args.self_fail_over}%), box {r["box"]}; raftDebug state delta '
                                     f'{json.dumps(state_delta(sa[n].get("state"), sb[n].get("state")))[:400]}',
                           'repro': repro(n, head) + ' -- run it twice and compare'})
@@ -404,7 +406,7 @@ def main():
                                    f'open {out / "index.html"}#{n}'})
 
     result['metrics'] = {
-        'mode': mode, 'seed': args.seed, 'tol': args.tol, 'threshold': limit, 'scenes': len(names),
+        'mode': mode, 'seed': args.seed, 'tol': tol, 'threshold': limit, 'scenes': len(names),
         'captured': sum(1 for n in names if ma[n]['ok'] and mb[n]['ok']),
         'seconds': round(time.time() - t0, 1),
         'worstPct': max((r['pct'] for r in results.values()), default=None),
@@ -418,7 +420,7 @@ def main():
             result['metrics']['baseCaptureFailed'] = base_only
         if noise:
             result['metrics']['headNoisePct'] = {n: r['pct'] for n, r in noise.items()}
-    report = {'mode': mode, 'base': str(base), 'head': str(head), 'seed': args.seed, 'tol': args.tol,
+    report = {'mode': mode, 'base': str(base), 'head': str(head), 'seed': args.seed, 'tol': tol,
               'scenes': {n: {'steps': describe(SCENES[n], args.seed), 'diff': results.get(n), 'noise': noise.get(n),
                              'a': ma[n], 'b': mb[n]} for n in names}}
     (out / 'report.json').write_text(json.dumps(report, indent=1), encoding='utf-8')

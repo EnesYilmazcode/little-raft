@@ -28,6 +28,17 @@
       t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
+    if (window.crypto && crypto.getRandomValues) {
+      const real = crypto.getRandomValues.bind(crypto);
+      try {
+        crypto.getRandomValues = arr => {
+          if (!ArrayBuffer.isView(arr) || arr instanceof Float32Array || arr instanceof Float64Array) return real(arr);
+          const bytes = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
+          for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+          return arr;
+        };
+      } catch {}
+    }
     if (window.crypto && crypto.randomUUID) {
       let n = 0;
       try { crypto.randomUUID = () => '00000000-0000-4000-8000-' + (++n).toString(16).padStart(12, '0'); } catch {}
