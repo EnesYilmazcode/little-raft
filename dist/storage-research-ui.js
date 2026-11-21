@@ -88,6 +88,7 @@ const CSS = `
 #lrStorage[data-done] .lr-sr-rhint,#lrStorage[data-done] .lr-sr-slabel{display:none}
 #lrStorage[data-done] .lr-sr-study{width:auto;min-width:300px}
 #lrStorage[data-done] .lr-sr-tiles{display:block}
+#lrStorage[data-done] .lr-sr-banner:not(.show){display:none}
 #lrStorage .lr-sr-banner .sv-icon{width:26px;height:26px}
 @keyframes lrSrGlow{0%{transform:scale(.96);box-shadow:0 0 0 2px #3e2a17,0 0 0 #ffbd6600}30%{transform:scale(1.02);box-shadow:0 0 0 2px #3e2a17,0 0 28px #ffe3a6}100%{transform:none;box-shadow:0 0 0 2px #3e2a17,0 0 18px #ffbd66aa}}
 .lr-sr-lock{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#3e2a17;box-shadow:0 0 0 1.5px #ffcf9a,0 1px 3px #000a}
