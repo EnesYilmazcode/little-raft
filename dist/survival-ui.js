@@ -48,6 +48,16 @@ const CUSTOM = {
     <ellipse cx="23" cy="25" rx="9.5" ry="7.5" stroke="#153e49" stroke-width="1.1" stroke-dasharray="2 3.5" stroke-opacity=".55"/>
     <path d="M35 35 C38 40 42 42 45 41" stroke="#153e49" stroke-width="6"/>
     <path d="M35 35 C38 40 42 42 45 41" stroke="#bb8650" stroke-width="3"/></g>`,
+  fishingrod: `<g stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 43 L40 6" stroke="#153e49" stroke-width="6"/>
+    <path d="M7 43 L40 6" stroke="#d9b36a" stroke-width="3.4"/>
+    <path d="M7 43 L14 35" stroke="#7a4a2a" stroke-width="3.6"/>
+    <path d="M19 31.5 L21 29.3 M27 22.5 L29 20.3 M34 14.6 L35.6 12.8" stroke="#153e49" stroke-width="1.3" stroke-opacity=".7"/>
+    <circle cx="15.5" cy="37.5" r="4.2" fill="#9ba5a7" stroke="#153e49" stroke-width="2"/>
+    <path d="M40 6 C43 14 42 22 38 29" fill="none" stroke="#153e49" stroke-width="1.4"/>
+    <circle cx="38" cy="33" r="4.2" fill="#f0e4c6" stroke="#153e49" stroke-width="2"/>
+    <path d="M33.8 33 A4.2 4.2 0 0 1 42.2 33 Z" fill="#c8352b" stroke="#153e49" stroke-width="2"/>
+    <path d="M38 27.5 V29" stroke="#153e49" stroke-width="1.6"/></g>`,
 };
 
 const norm = k => String(k ?? '').toLowerCase().replace(/[\s_\-]/g, '');
