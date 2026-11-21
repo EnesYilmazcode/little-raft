@@ -50,7 +50,7 @@ const CSS = `
 #options .rs-row label{color:#f3e6cc;font-weight:600}
 #options .rs-row output{color:#f0b04a;font-variant-numeric:tabular-nums;min-width:4ch;text-align:right}
 #options .rs-row input,#options .rs-row select{grid-column:1/-1}
-#options input[type=range]{width:100%;accent-color:#e8a23a;margin:0}
+#options input[type=range]{width:100%;accent-color:#e8a23a;margin:6px 0 2px;padding:0;background:none;box-shadow:none;border:0}
 #options select{width:100%;padding:6px 8px;border-radius:7px;border:1px solid #b07a3c;background:#0f2442;color:#f3e6cc;font:inherit}
 #options select:focus-visible,#options input:focus-visible,#options button:focus-visible{outline:2px solid #f0b04a;outline-offset:2px}
 #options .rs-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
