@@ -12,7 +12,7 @@
 //   res.stats        -> timings, renderer.info deltas, memory
 // items: [{ kind, make: () => Object3D, pose: { yaw, pitch, roll }, dispose?(obj) }]
 
-export const ICON_ATLAS_VERSION = 'ia3';
+export const ICON_ATLAS_VERSION = 'ia4';
 const DEG = Math.PI / 180;
 const LS_PREFIX = 'littleRaft.icons.';
 
@@ -78,12 +78,47 @@ function makeEnv(T, renderer) {
   return tex;
 }
 
+// Shader-compile budget: every distinct material flag set (map, vertexColors, side, envMap, ...)
+// is its own GL program, and on the first bake each one compiles inside a game frame. unify()
+// swaps each mesh's material, for the bake only, for a MeshStandardMaterial with ONE flag set
+// (vertexColors + DoubleSide, map kept, bump/normal maps dropped: invisible at 96 px), so the
+// whole bake needs 1-2 lit programs + the resolve. Same uniforms (color, roughness, emissive,
+// opacity), so the look is unchanged. Originals are put back before the item's dispose().
+function unify(T, obj, cache, metalCap) {
+  const undo = [];
+  const conv = m => {
+    if (!m || m.isShaderMaterial) return m;
+    let u = cache.get(m);
+    if (!u) {
+      u = new T.MeshStandardMaterial({
+        color: m.color ? m.color.clone() : 0xffffff, roughness: m.roughness ?? 0.8,
+        metalness: Math.min(m.metalness ?? 0, metalCap), map: m.map || null,
+        emissive: m.emissive ? m.emissive.clone() : 0, emissiveIntensity: m.emissiveIntensity ?? 1,
+        transparent: !!m.transparent, opacity: m.opacity ?? 1, depthWrite: m.depthWrite !== false,
+        side: T.DoubleSide, vertexColors: true,
+      });
+      cache.set(m, u);
+    }
+    return u;
+  };
+  obj.traverse(n => {
+    if (!n.isMesh || !n.material) return;
+    const g = n.geometry;
+    if (g && !g.attributes.color && g.attributes.position) {
+      const c = new Float32Array(g.attributes.position.count * 3).fill(1);
+      g.setAttribute('color', new T.BufferAttribute(c, 3));
+    }
+    undo.push([n, n.material]);
+    n.material = Array.isArray(n.material) ? n.material.map(conv) : conv(n.material);
+  });
+  return () => { for (const [n, m] of undo) n.material = m; };
+}
+
 // One lighting rig for every icon: hemisphere fill, warm key from top-left-front, cool rim behind.
 function makeStage(T, env) {
   const scene = new T.Scene();
-  scene.environment = env;
-  scene.environmentIntensity = 0.8;
-  scene.add(new T.HemisphereLight(0xeaf6ff, 0x50422e, 1.2));
+  if (env) { scene.environment = env; scene.environmentIntensity = 0.8; }
+  scene.add(new T.HemisphereLight(0xeaf6ff, 0x50422e, env ? 1.2 : 1.7));
   const key = new T.DirectionalLight(0xfff1dc, 2.6); key.position.set(-2, 3, 4); scene.add(key);
   const rim = new T.DirectionalLight(0xa8e0ff, 1.8); rim.position.set(3, 1.5, -4); scene.add(rim);
   const camera = new T.OrthographicCamera(-1, 1, 1, -1, 0.01, 100);
@@ -136,6 +171,7 @@ export async function bakeIconAtlas(T, renderer, items, {
   outlinePx = 2.6, outline = [0.055, 0.15, 0.18, 0.95],   // navy #0e2630-ish, same family as icons.svg #153e49
   shadow = [0.0, 0.0, 0.0, 0.38], shadowOff = [2.2, 2.6, 1.3],
   exposure = 0.9, cacheKey = '', yieldEvery = 1, onTile = null, precompile = false,
+  env: useEnv = false, unify: useUnify = true, metalCap = 0.3,
 } = {}) {
   const t0 = performance.now();
   const cached = readIconCache(cacheKey);
@@ -144,7 +180,12 @@ export async function bakeIconAtlas(T, renderer, items, {
   const n = items.length;
   cols = cols || Math.ceil(Math.sqrt(n));
   const rows = Math.ceil(n / cols), W = cols * size, H = rows * size, S = size * ss;
-  const env = makeEnv(T, renderer), stage = makeStage(T, env);
+  // PMREM env (5 extra programs: cube render + blur) only on request; with unify() the lights
+  // alone carry metal because metalness is capped (metalCap) for the bake.
+  const env = useEnv ? makeEnv(T, renderer) : null, stage = makeStage(T, env);
+  const uCache = new Map();
+  const progBefore = new Set(renderer.info.programs || []), progNew = new Set();
+  const seeProgs = () => { for (const p of renderer.info.programs || []) if (!progBefore.has(p)) progNew.add(p); };
   const hi = new T.WebGLRenderTarget(S, S, { type: T.HalfFloatType, samples: 4 });
   const atlas = new T.WebGLRenderTarget(W, H, { depthBuffer: false });
   const quadMat = new T.ShaderMaterial({
@@ -164,8 +205,9 @@ export async function bakeIconAtlas(T, renderer, items, {
   // inside the first tiles' draws. Off by default: on SwiftShader (no parallel compile) it turned
   // one 11 s hitch into one 17 s hitch. Worth enabling where KHR_parallel_shader_compile exists.
   const built = precompile && renderer.compileAsync ? items.map(it => it.make()) : null;
+  const preUndo = [];
   if (built) {
-    built.forEach(o => o && stage.pivot.add(o));
+    built.forEach((o, i) => { if (!o) return; if (useUnify) preUndo[i] = unify(T, o, uCache, useEnv ? 1 : metalCap); stage.pivot.add(o); });
     try { await renderer.compileAsync(stage.scene, stage.camera); await renderer.compileAsync(quadScene, quadCam); } catch {}
     stage.pivot.clear();
   }
@@ -189,6 +231,7 @@ export async function bakeIconAtlas(T, renderer, items, {
     const it = items[i], ti = performance.now();
     const obj = built ? built[i] : it.make();
     if (!obj) continue;
+    const undoUnify = built ? preUndo[i] : useUnify ? unify(T, obj, uCache, useEnv ? 1 : metalCap) : null;
     frame(T, stage, obj, it.pose || {}, pad);
     const col = i % cols, row = Math.floor(i / cols);
     const x = col * size, yTop = row * size;
@@ -201,7 +244,9 @@ export async function bakeIconAtlas(T, renderer, items, {
     renderer.setRenderTarget(atlas); renderer.render(quadScene, quadCam);
     acc.calls += info.render.calls; acc.triangles += info.render.triangles;
     restore(s);
+    seeProgs();
     stage.pivot.clear();
+    undoUnify?.();
     (it.dispose || defaultDispose)(obj);
     rects[it.kind] = [x, yTop, size, size];
     tiles.push({ kind: it.kind, ms: +(performance.now() - ti).toFixed(1) });
@@ -231,7 +276,10 @@ export async function bakeIconAtlas(T, renderer, items, {
   const tEncode = performance.now();
 
   const vram = { hiMSAA: S * S * 8 * 4, hiResolve: S * S * 8, atlas: W * H * 4, pmrem: null };
-  hi.dispose(); atlas.dispose(); quadMat.dispose(); quad.geometry.dispose(); env.dispose();
+  seeProgs();
+  const programsCompiled = progNew.size, programKeys = [...progNew].map(p => p.name || p.cacheKey?.slice(0, 24));
+  hi.dispose(); atlas.dispose(); quadMat.dispose(); quad.geometry.dispose(); env?.dispose();
+  for (const m of uCache.values()) m.dispose();
   const urlBytes = Object.values(urls).reduce((a, u) => a + u.length, 0);
   const result = {
     version: ICON_ATLAS_VERSION, size, urls,
@@ -241,7 +289,7 @@ export async function bakeIconAtlas(T, renderer, items, {
   result.stats = {
     items: n, setupMs: +setupMs.toFixed(1), drawMs: +(tDraw - t0 - setupMs).toFixed(1), readbackMs: +(tRead - tDraw).toFixed(1),
     encodeMs: +(tEncode - tRead).toFixed(1), totalMs: +(performance.now() - t0).toFixed(1), tiles,
-    bakeRender: acc, rendererMemoryAfter: memInfo,
+    bakeRender: acc, rendererMemoryAfter: memInfo, programsCompiled, programKeys, unify: useUnify, env: useEnv,
     transientVRAMBytes: vram, atlasPx: [W, H], cpuPixelBytes: pixels.byteLength,
     dataUrlBytes: urlBytes, atlasDataUrlBytes: atlasUrl.length, cached: cachedOk,
   };

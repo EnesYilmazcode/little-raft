@@ -61,7 +61,12 @@ async function bake() {
   report.infoBeforeBake = infoSnap();
   tag = 'bake';
   const items = makeIconItems(T, mat).filter(it => KINDS.includes(it.kind));
-  const res = await bakeIconAtlas(T, renderer, items, { size: SIZE });
+  const bakeOpts = { size: SIZE };
+  if (q.has('unify')) bakeOpts.unify = q.get('unify') !== '0';
+  if (q.has('env')) bakeOpts.env = q.get('env') !== '0';
+  if (q.has('precompile')) bakeOpts.precompile = q.get('precompile') !== '0';
+  report.bakeOpts = bakeOpts;
+  const res = await bakeIconAtlas(T, renderer, items, bakeOpts);
   tag = 'post';
   await wait(600);
   report.stats = res.stats;
