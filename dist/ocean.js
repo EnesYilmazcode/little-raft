@@ -91,6 +91,12 @@ void ripple(vec2 d, float a, float k, float w, vec2 p, inout vec2 g) {
 void main() {
   vec3 toCam = cameraPosition - vWorld;
   float dist = length(toCam.xz);
+  // Beyond uFadeFar the fade below is exactly 1, so the pixel is pure uSky: skip all shading.
+  if (dist >= uFadeFar) {
+    gl_FragColor = vec4(uSky, 1.0);
+    #include <colorspace_fragment>
+    return;
+  }
   vec3 V = normalize(toCam);
   vec3 L = normalize(uSunDir);
 
@@ -98,12 +104,14 @@ void main() {
   float near = 1.0 - smoothstep(8.0, 60.0, dist);
   vec2 g = vec2(0.0);
   vec2 p = vWorld.xz;
-  ripple(normalize(vec2(0.8, 0.6)), 0.010, 2.10, 1.30, p, g);
-  ripple(normalize(vec2(-0.5, 0.9)), 0.008, 2.90, 1.70, p, g);
-  ripple(normalize(vec2(0.95, -0.3)), 0.006, 4.30, 2.10, p, g);
-  ripple(normalize(vec2(-0.9, -0.4)), 0.004, 6.70, 2.60, p, g);
-  ripple(normalize(vec2(0.2, 1.0)), 0.003, 9.10, 3.10, p, g);
-  g *= near;
+  if (dist < 60.0) { // near == 0 from 60 on, so the ripple gradient would be zeroed anyway
+    ripple(normalize(vec2(0.8, 0.6)), 0.010, 2.10, 1.30, p, g);
+    ripple(normalize(vec2(-0.5, 0.9)), 0.008, 2.90, 1.70, p, g);
+    ripple(normalize(vec2(0.95, -0.3)), 0.006, 4.30, 2.10, p, g);
+    ripple(normalize(vec2(-0.9, -0.4)), 0.004, 6.70, 2.60, p, g);
+    ripple(normalize(vec2(0.2, 1.0)), 0.003, 9.10, 3.10, p, g);
+    g *= near;
+  }
   vec3 n = normalize(vec3(vNormalW.x - g.x, vNormalW.y, vNormalW.z - g.y));
 
   float ndv = max(dot(n, V), 0.0);
@@ -131,16 +139,18 @@ void main() {
   spec = min(spec, 1.4) * (1.0 - smoothstep(40.0, 120.0, dist) * 0.7);
   col += uSunColor * spec;
 
-  // Thin, sparse lacy foam riding the crests.
-  vec2 fp = p + vec2(uTime * 0.35, uTime * 0.12);
-  float n1 = vnoise(fp * 0.9);
-  float n2 = vnoise(fp * 2.6 + vec2(uTime * -0.2, uTime * 0.15));
-  float lace = 1.0 - smoothstep(0.0, 0.035, abs(n1 * 0.7 + n2 * 0.3 - 0.5));
-  float crest = smoothstep(0.06, 0.17, vHeight);
-  float speck = smoothstep(0.86, 0.93, vnoise(fp * 3.7)) * smoothstep(0.0, 0.12, vHeight);
-  float foam = clamp(lace * crest * 0.55 + speck * 0.35, 0.0, 0.6);
-  foam *= 1.0 - smoothstep(30.0, 90.0, dist);
-  col = mix(col, uFoam, foam);
+  // Thin, sparse lacy foam riding the crests (fully faded out from 90 on, so skipped there).
+  if (dist < 90.0) {
+    vec2 fp = p + vec2(uTime * 0.35, uTime * 0.12);
+    float n1 = vnoise(fp * 0.9);
+    float n2 = vnoise(fp * 2.6 + vec2(uTime * -0.2, uTime * 0.15));
+    float lace = 1.0 - smoothstep(0.0, 0.035, abs(n1 * 0.7 + n2 * 0.3 - 0.5));
+    float crest = smoothstep(0.06, 0.17, vHeight);
+    float speck = smoothstep(0.86, 0.93, vnoise(fp * 3.7)) * smoothstep(0.0, 0.12, vHeight);
+    float foam = clamp(lace * crest * 0.55 + speck * 0.35, 0.0, 0.6);
+    foam *= 1.0 - smoothstep(30.0, 90.0, dist);
+    col = mix(col, uFoam, foam);
+  }
 
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
