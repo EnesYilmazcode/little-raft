@@ -86,9 +86,10 @@ The 12 decorative islands (line 300) use the cone-leaf `palm()` helper. To make 
 which is cheaper than the current 7 cones plus the trunk:
 
 ```js
+// new line directly before the `for (let i = 0; i < 12; i++)` island loop on line 300:
 const farPalm = foliage.geometry('palmFar', {seed:7, lean:.5}), farMat = foliage.material('palmFar', farPalm.userData.foliage);
-// inside the loop, replace palm(g, 0, 1, 0, 1.4):
-const pm = new T.Mesh(farPalm, farMat); pm.position.y = .9; pm.scale.setScalar(.9); pm.rotation.y = a; g.add(pm);
+// inside that loop, replace `palm(g, 0, 1, 0, 1.4);` with (sits on top of the 3.4 m green hill):
+{ const pm = new T.Mesh(farPalm, farMat); pm.position.y = 4.3; pm.scale.setScalar(1.1); pm.rotation.y = a; g.add(pm); }
 ```
 
 `foliage.material` is also exported on `F`. Distant palms do not need shadows.
@@ -124,6 +125,11 @@ For `dist/islands.js`, copy `createFoliageKit` and the scatter block of `buildIs
 4. Island ground in the sandbox is about 0.9 m high at the centre. The islands doc says 0.35 m, so pass `top: .35`.
 
 ## 4. Verify
+
+These exact replacements, including the optional one, were applied by script to a copy of `dist/`
+(each search string occurs exactly once in the current `game.js`). That copy was loaded headless with a palm
+pre-placed in `decor`. A solo game starts with no page errors, the raft palm renders and sways, and the
+background islands show the new far palms.
 
 1. Run `python sandbox/foliage/shoot.py`. It should report 0 page errors and write PNGs to `sandbox/foliage/shots/`.
 2. In game, place a palm decor and stand next to it. The fronds should flutter and the trunk should lean
