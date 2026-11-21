@@ -7,12 +7,10 @@ import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84a
 import { createSettings } from './settings.js?build=v3-survival-ae77fa84ac2b';
 import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
-import { createHands } from './hands.js?build=v3-survival-ae77fa84ac2b';
+import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { PlayerPhysics } from './player-physics.js?build=v3-survival-ae77fa84ac2b';
-import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
-import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 
@@ -180,7 +178,7 @@ export function mount(transfer = null) {
     const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
   }
   let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghost, rope, ropeAttr, hookMesh, friend, player, sun;
-  let hookHands = null, hammerHands = null, rodHands = null, rodModel = null, rodTip = null, clothMat;
+  let hands = null, clothMat;
   let survivalUI = null, settingsController = null, options = {sensitivity:1, fov:75, cameraMotion:.35, volume:.5, graphics:'medium'};
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
@@ -316,20 +314,9 @@ export function mount(transfer = null) {
     return fallbackAvatar(color);
   }
 
-  // First-person viewmodels: one hands controller per held tool; only the held one is shown.
-  // createHands grips its tool at a fixed hook-handle point, so other tools are wrapped so their own grip lands there.
-  function holdable(model, grip, {rx = 0, ry = 0, rz = 0, scale = 1} = {}) {
-    const w = new T.Group(), p = new T.Group();
-    p.position.set(.19, -.272, .11); p.rotation.set(rx, ry, rz); p.scale.setScalar(scale / .55);
-    if (grip) model.position.copy(grip).negate();
-    p.add(model); w.add(p); return w;
-  }
+  // First-person viewmodel: one hands controller that swaps the held item model per hotbar kind.
   function buildViewmodels() {
-    hookHands = createHands(T, createHook(T));
-    const hammer = createHammer(T);
-    hammerHands = createHands(T, holdable(hammer, hammer.userData.grip, {ry:Math.PI / 2, rz:.2, scale:.6}));
-    rodModel = createFishingTool(T); rodTip = rodModel.userData.tipNode ?? rodModel;
-    rodHands = createHands(T, holdable(rodModel, rodModel.userData.grip, {rx:-.15, rz:.6, scale:.55}));
+    hands = createHands(T); hands.preload(['hook']);
     // Viewmodels draw last (transparent queue, renderOrder 1000) after a camera-owned marker clears depth, so the
     // world never clips them while fingers and tools still depth-sort correctly against each other.
     const depthClear = new T.Mesh(new T.PlaneGeometry(1e-4, 1e-4), new T.MeshBasicMaterial({colorWrite:false, depthWrite:false, depthTest:false, transparent:true}));
@@ -337,10 +324,7 @@ export function mount(transfer = null) {
     depthClear.renderOrder = 999; depthClear.position.set(0, 0, -.1);
     depthClear.onBeforeRender = (r, _s, cam) => { if (cam !== camera) return; r.state?.buffers?.depth?.setMask?.(true); r.clearDepth(); };
     camera.add(depthClear);
-    for (const h of [hookHands, hammerHands, rodHands]) {
-      h.group.traverse(c => { if (c.isMesh) { c.castShadow = false; c.receiveShadow = false; c.renderOrder = 1000; c.frustumCulled = false; for (const m of [].concat(c.material)) { m.depthTest = true; m.depthWrite = true; if (!m.transparent) { m.transparent = true; m.opacity = m.opacity ?? 1; } m.needsUpdate = true; } } });
-      h.group.visible = false; camera.add(h.group);
-    }
+    camera.add(hands.group);
   }
 
   function palm(parent, x, y, z, s = 1) {
@@ -723,17 +707,13 @@ export function mount(transfer = null) {
     swing = Math.max(0, swing - dt * 3);
     const kind = heldKind(), motion = options.cameraMotion;
     const ch = charging ? clamp((performance.now() - charging.start) / CHARGE_MS, 0, 1) : 0;
-    hookHands.group.visible = running && kind === 'hook';
-    hammerHands.group.visible = running && kind === 'hammer';
-    rodHands.group.visible = running && kind === 'fishingrod';
-    if (hookHands.group.visible) hookHands.update({dt, time:elapsed, charge:ch, reeling:reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion});
-    if (hammerHands.group.visible) hammerHands.update({dt, time:elapsed, charge:0, reeling:false, casting:swing, walking, hasHookOut:false, motion});
-    if (rodHands.group.visible) {
-      const out = !!hook?.fishing; if (rodModel.userData.float) rodModel.userData.float.visible = !out; if (rodModel.userData.leader) rodModel.userData.leader.visible = !out;
-      rodHands.update({dt, time:elapsed, charge:0, reeling:out && hook.t > fishWait, casting:swing, walking, hasHookOut:false, motion});
-    }
+    hands.setHeld(running ? kind : null);
+    hands.setPose(isPlaceable(kind) ? 'point' : null);   // free hand points at the build / placement spot
+    const rod = kind === 'fishingrod' ? hands.itemModel('fishingrod') : null, out = !!hook?.fishing;
+    if (rod?.userData.float) { rod.userData.float.visible = !out; rod.userData.leader.visible = !out; }
+    hands.update({dt, time:elapsed, charge:ch, reeling:rod ? out && hook.t > fishWait : reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch});
     camera.updateMatrixWorld(true);
-    (kind === 'fishingrod' ? rodTip : hookHands.handTip).getWorldPosition(handPos);
+    hands.ropeAnchor().getWorldPosition(handPos);
   }
   function updateAvatars(dt) {
     player.position.set(physics.x, physics.y - EYE_OFFSET, physics.z); player.rotation.y = yaw + Math.PI;
@@ -1099,7 +1079,7 @@ export function mount(transfer = null) {
         running, tool:mode, recipe:kind === 'hammer' ? 'floor' : DECOR_TYPES.includes(kind) ? kind : null, role, networkReady, pointerLocked:isLocked(), lockSupported, lockFallback, active, disposed,
         tiles:world.tiles.length, tileList:world.tiles.map(t => [...t]), decor:world.decor.map(d => ({...d})),
         stock:counts, fish:world.fish, collected:world.collected, items:world.items.length,
-        inventory:bag.snapshot(), selectedItem:bag.selected, selectedIndex:bag.selectedIndex, heldKind:kind,
+        inventory:bag.snapshot(), selectedItem:bag.selected, selectedIndex:bag.selectedIndex, heldKind:kind, viewmodel:hands ? {...hands.state} : null,
         ownedTools:['hook', 'hammer', 'fishingrod'].filter(k => counts[k] > 0), inventoryOpen:!!survivalUI?.isOpen,
         physics:physics.capture(), grounded:physics.grounded, swimming:physics.swimming,
         hook:hook ? (hook.fishing ? {fishing:true, id:null, t:hook.t, duration:hook.duration} : {fishing:false, id:hc.caught?.id ?? null, stage:hc.stage, x:hc.position.x, y:hc.position.y, z:hc.position.z, tension:hc.tension, distance:hc.distance, caughtCount:caughtList(hc).length}) : null,
