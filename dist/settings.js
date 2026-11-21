@@ -1,5 +1,6 @@
 // Little Raft pause menu + tabbed settings. Pure ES module: nothing happens on import.
-// createSettings({onChange,onResume,onPause,onQuit}) -> { values, isOpen, open(), close(), destroy() }
+// createSettings({onChange,onResume,onPause,onQuit,initial}) -> { values, isOpen, open(), close(), escape(), set(raw), destroy() }
+// initial: values the caller owns (e.g. sound, saved under its own key) that win over stored settings.
 // Escape routing lives here: inventory -> sub-menu -> settings panel -> pause -> game.
 // In the desktop app the main process claims Escape and calls window.raftEscape() with a user gesture,
 // so closing a menu can relock the mouse without a click.
@@ -11,6 +12,8 @@ const DIALOG_ID = 'options';
 const STYLE_ID = 'little-raft-settings-style';
 
 const pct = (v) => Math.round(v * 100) + '%';
+// Picking a preset also sets the knobs it implies; they stay editable afterwards.
+const PRESETS = { low: { renderScale: 0.7, shadows: false }, medium: { renderScale: 0.85, shadows: true }, high: { renderScale: 1, shadows: true } };
 // type: range | toggle | select. tab: which settings tab shows it.
 const SPEC = {
   sensitivity: { tab: 'controls', label: 'Mouse sensitivity', type: 'range', min: 0.2, max: 3, step: 0.05, def: 1, fmt: (v) => v.toFixed(2) + 'x' },
@@ -18,14 +21,13 @@ const SPEC = {
   fov: { tab: 'controls', label: 'Field of view', type: 'range', min: 60, max: 100, step: 1, def: 75, fmt: (v) => Math.round(v) + '°' },
   cameraMotion: { tab: 'controls', label: 'Camera sway', type: 'range', min: 0, max: 1, step: 0.05, def: 0.35, fmt: pct },
   graphics: { tab: 'graphics', label: 'Quality preset', type: 'select', options: ['low', 'medium', 'high'], def: 'medium' },
-  renderScale: { tab: 'graphics', label: 'Render scale', type: 'range', min: 0.5, max: 1, step: 0.05, def: 1, fmt: pct },
+  renderScale: { tab: 'graphics', label: 'Render scale', type: 'range', min: 0.5, max: 1, step: 0.05, def: PRESETS.medium.renderScale, fmt: pct }, // matches the default 'medium' preset
   shadows: { tab: 'graphics', label: 'Shadows', type: 'toggle', def: true },
+  sound: { tab: 'audio', label: 'Sound', type: 'toggle', def: true }, // mirrors #soundButton / little-raft-sound (game.js)
   volume: { tab: 'audio', label: 'Master volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.5, fmt: pct },
   effects: { tab: 'audio', label: 'Effects', type: 'range', min: 0, max: 1, step: 0.05, def: 1, fmt: pct },
   ambience: { tab: 'audio', label: 'Ocean ambience', type: 'range', min: 0, max: 1, step: 0.05, def: 0.7, fmt: pct },
 };
-// Picking a preset also sets the knobs it implies; they stay editable afterwards.
-const PRESETS = { low: { renderScale: 0.7, shadows: false }, medium: { renderScale: 0.85, shadows: true }, high: { renderScale: 1, shadows: true } };
 const DEFAULTS = Object.freeze(Object.fromEntries(Object.entries(SPEC).map(([k, s]) => [k, s.def])));
 const KEYS = Object.keys(SPEC);
 const TABS = [['controls', 'Controls'], ['graphics', 'Graphics'], ['audio', 'Audio']];
@@ -76,6 +78,7 @@ const CSS = `
 #options .rs-menu button:hover,#options .rs-menu button:focus-visible,#options .rs-menu button[aria-expanded=true]{color:var(--amber-lt,#ffc96b);padding-left:28px;transform:none;outline:0;
   background:linear-gradient(90deg,rgba(233,166,64,.14),rgba(233,166,64,0) 85%)}
 #options .rs-menu button:hover::before,#options .rs-menu button:focus-visible::before,#options .rs-menu button[aria-expanded=true]::before{opacity:1;transform:translateY(-50%) scaleX(1)}
+#options .rs-menu button[hidden]{display:none}
 #options .rs-menu .rs-quit{margin-top:22px;border-top:1px solid rgba(201,164,107,.18);padding-top:20px;font-size:clamp(16px,1.5vw,19px);color:var(--muted,#8f9aa0)}
 #options .rs-panel{width:min(520px,100%);max-height:calc(100vh - 80px);overflow:auto;padding:22px 24px 24px;border-radius:6px;background:var(--plate-strong,rgba(8,17,26,.92));
   box-shadow:0 0 0 1px var(--bronze-lt,#c9a46b),0 0 0 4px var(--navy-0,#070f17),0 24px 70px rgba(0,0,0,.55)}
@@ -135,7 +138,7 @@ function markup() {
   const pages = TABS.map(([id]) => `<div class="rs-page" role="tabpanel" data-page="${id}" hidden>` +
     (id === 'controls' ? `<div class="rs-keys">${keys}</div>` : '') + page(id) +
     (id === 'graphics' ? '<button type="button" class="rs-wide" data-act="fullscreen">Enter fullscreen</button>' : '') + '</div>').join('');
-  return `<form class="rs-form" method="dialog" data-raft-settings="3">
+  return `<form class="rs-form" method="dialog" data-raft-settings="4">
 <nav class="rs-menu"><div class="rs-eyebrow">PAUSED</div><h2>Little Raft</h2>
 <button type="button" data-act="resume">Resume</button>
 <button type="button" data-act="settings" aria-expanded="false">Settings</button>
@@ -154,7 +157,7 @@ function ensureDialog() {
     dialog.id = DIALOG_ID;
     document.body.appendChild(dialog);
   }
-  if (dialog.querySelector('[data-raft-settings]')?.dataset.raftSettings !== '3') { // missing or an older layout
+  if (dialog.querySelector('[data-raft-settings]')?.dataset.raftSettings !== '4') { // missing or an older layout
     reused = false;
     dialog.replaceChildren();
     dialog.insertAdjacentHTML('beforeend', markup());
@@ -174,7 +177,7 @@ function readControls(form) {
   return raw;
 }
 
-export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
+export function createSettings({ onChange, onResume, onPause, onQuit, initial } = {}) {
   ensureStyle();
   const { dialog, reused } = ensureDialog();
   const form = dialog.querySelector('[data-raft-settings]');
@@ -191,7 +194,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   const esc = createEscGate();  // Escape keydown/keyup/lock-loss bookkeeping (lock-rules.js)
 
   // Hot creation: the live controls are the freshest truth; otherwise storage.
-  let values = reused ? validateSettings({ ...load(), ...readControls(form) }) : load();
+  let values = validateSettings({ ...(reused ? { ...load(), ...readControls(form) } : load()), ...(initial || {}) });
   save(values);
 
   const call = (fn, ...args) => { if (owns() && typeof fn === 'function') { try { fn(...args); } catch (err) { console.error(err); } } };
@@ -244,10 +247,14 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     releasePointer();
     document.body.classList.remove('relock');
     syncControls(); syncFullscreen();
+    // From the title (no game running) only settings/help/crew make sense: hide Resume and Save-and-quit.
+    const inGame = gameActive();
+    for (const b of form.querySelectorAll('[data-act="resume"],[data-act="quit"]')) b.hidden = !inGame;
+    const eyebrow = form.querySelector('.rs-eyebrow'); if (eyebrow) eyebrow.textContent = inGame ? 'PAUSED' : 'MENU';
     if (!dialog.open) {
       setPanel(false);
       try { dialog.showModal(); } catch { dialog.setAttribute('open', ''); }
-      form.querySelector('[data-act="resume"]')?.focus({ preventScroll: true });
+      form.querySelector(inGame ? '[data-act="resume"]' : '[data-act="settings"]')?.focus({ preventScroll: true });
     }
     call(onPause);
   }
@@ -350,7 +357,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     const act = btn.dataset.act;
     if (act === 'resume') { close(true); return; }
     if (act === 'settings') { setPanel(!panelOpen()); return; }
-    if (act === 'quit') { setPanel(false); close(false); call(onQuit); return; }
+    if (act === 'quit') { if (!gameActive()) return; setPanel(false); close(false); call(onQuit); return; }
     if (act === 'fullscreen') {
       const req = document.fullscreenElement ? document.exitFullscreen?.() : document.documentElement.requestFullscreen?.();
       Promise.resolve(req).catch(() => {}).finally(syncFullscreen);
@@ -378,6 +385,8 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     get isOpen() { return dialog.open; },
     open,
     close: () => close(true),
+    escape, // one Escape step (inventory -> panel -> pause -> game); the desktop shell calls this too
+    set: (raw) => { if (owns()) update(raw); },
     destroy() {
       if (destroyed) return;
       destroyed = true;

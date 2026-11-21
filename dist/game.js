@@ -718,6 +718,7 @@ export function mount(transfer = null) {
   }
   // Pause menu "quit to title": save, leave any crew, show the title. The world stays loaded for Continue.
   function quitToTitle() {
+    if (!running) return; // title screen: nothing to save or leave
     save(); if (role !== 'solo') closeConnection();
     if (rope) endHook(); hook = null; fishWait = 0; clearInput(); releaseLock();
     running = false; const w = $('#welcome'); if (w) w.hidden = false; const h = $('#hud'); if (h) h.hidden = true;
@@ -1055,7 +1056,9 @@ export function mount(transfer = null) {
     if (shouldRelockAfterClose({running, locked:isLocked(), blocked:uiBlocked(), returnToPause:!!e.target?.dataset?.fromPause})) requestLock();
   });
   const soundLabel = () => setText('#soundButton', 'Sound: ' + (!sound ? 'off' : options.volume > 0 ? 'on' : 'on (volume is 0%)'));
-  setHandler($('#soundButton'), 'onclick', () => { sound = !sound; saveSoundPref(window.localStorage, sound); soundLabel(); oceanAudio?.setVolume(audioVolume()); if (sound) oceanAudio?.resume(); });
+  // Sound on/off: #soundButton (help) and the Settings > Audio toggle share this; SOUND_KEY stays the saved pref.
+  function setSound(on) { sound = !!on; saveSoundPref(window.localStorage, sound); soundLabel(); oceanAudio?.setVolume(audioVolume()); if (sound) oceanAudio?.resume(); }
+  setHandler($('#soundButton'), 'onclick', () => { setSound(!sound); settingsController?.set({sound}); });
   soundLabel();
 
   // ---------- Networking (PeerJS, host authoritative) ----------
@@ -1271,10 +1274,11 @@ export function mount(transfer = null) {
       if (disposed) return false;
       if (held) { escHeld = true; relockOnEscUp = false; }
       if (survivalUI?.isOpen) { survivalUI.close(); return true; }
-      if (settingsController?.isOpen) { settingsController.close(); return true; } // close(true) resumes and relocks
+      // Same steps as browser Esc (settings.js escape): panel, pause, crew/help, title fullscreen. Closing relocks via onResume/close listeners.
+      if (settingsController) return settingsController.escape();
       const d = [...document.querySelectorAll('dialog[open]')].pop();
-      if (!d) { if (running && settingsController) { settingsController.open(); return true; } return false; } // stale shell state: plain pause
-      d.close(); // crew/help: back to the pause menu or to locked play (close listeners)
+      if (!d) return false; // no settings module (mount failed early): just close the top dialog
+      d.close();
       if (!uiBlocked()) requestLock();
       return true;
     }),
@@ -1336,8 +1340,8 @@ export function mount(transfer = null) {
   try {
     if (!canvas) throw new Error('#world canvas missing');
     init();
-    settingsController = createSettings({onChange:next => { applyOptions(next); oceanAudio?.setVolume(audioVolume()); soundLabel(); }, onPause:clearInput, onResume:() => requestLock(), onQuit:guard(quitToTitle)});
-    oceanAudio = createOceanAudio({context:audio, volume:audioVolume()});
+    settingsController = createSettings({initial:{sound}, onChange:next => { applyOptions(next); if (next.sound !== sound) setSound(next.sound); oceanAudio?.setVolume(audioVolume()); oceanAudio?.setAmbience(next.ambience); soundLabel(); }, onPause:clearInput, onResume:() => requestLock(), onQuit:guard(quitToTitle)});
+    oceanAudio = createOceanAudio({context:audio, volume:audioVolume(), ambience:options.ambience});
     if (audio && audio.state === 'running') oceanAudio.resume(); // hot reload: context already unlocked
     const wakeAudio = () => { if (sound && !disposed) oceanAudio?.resume(); }; // browsers need a user gesture first
     for (const t of ['pointerdown', 'keydown']) on(window, t, wakeAudio, {capture:true});
