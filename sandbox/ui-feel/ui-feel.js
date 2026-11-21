@@ -185,6 +185,8 @@ html.uf-rm .uf-stat.uf-low>.uf-track>.uf-fill,html.uf-rm .uf-stat.uf-low>.uf-si{
 #uf-toasts:is(.uf-top,.uf-bot)>.uf-toast{left:0;right:auto;translate:-50% 0;height:30px;min-width:0;width:min(64vw,250px);max-width:none;
   padding:0 11px 0 7px;gap:6px;border-radius:6px;font-size:12px}
 #uf-toasts.uf-top>.uf-toast{top:0;bottom:auto}
+#uf-toasts.uf-tight>.uf-toast{height:24px;font-size:11.5px;padding:0 9px 0 6px}
+#uf-toasts.uf-tight>.uf-toast>.uf-ti,#uf-toasts.uf-tight>.uf-toast>.uf-ti svg{width:16px;height:16px}
 #uf-toasts:is(.uf-top,.uf-bot)>.uf-toast>.uf-ti,#uf-toasts:is(.uf-top,.uf-bot)>.uf-toast>.uf-ti svg{width:20px;height:20px}
 #uf-toasts:is(.uf-top,.uf-bot)>.uf-toast>.uf-tn{padding-left:8px}
 @media(max-width:760px){
@@ -500,8 +502,8 @@ export function createUIFeel({
   // gap fits the 230px column, else the larger of the top/bottom gaps, capped at the rows that fit (1-2).
   const LIFE = 3200; // a row merges repeats for as long as it is on screen
   const narrowMQ = matchMedia('(max-width:760px)');
-  let narrow = narrowMQ.matches, mode = 'br', rowCap = 5;
-  const rowY = i => mode === 'top' ? i * 34 : mode === 'bot' ? -i * 34 : -i * 40;
+  let narrow = narrowMQ.matches, mode = 'br', rowCap = 5, tight = false;
+  const rowY = i => mode === 'top' ? i * (tight ? 28 : 34) : mode === 'bot' ? -i * (tight ? 28 : 34) : -i * 40;
   let stack = null;
   if (toasts) {
     stack = document.getElementById('uf-toasts') || Object.assign(document.createElement('div'), { id: 'uf-toasts' });
@@ -525,7 +527,7 @@ export function createUIFeel({
   // One layout read per dialog open/close or viewport change; never per frame.
   function relayout() {
     if (!stack) return;
-    let m = narrow ? 'top' : 'br', cap = narrow ? 3 : 5, ty = 12;
+    let m = narrow ? 'top' : 'br', cap = narrow ? 3 : 5, ty = 12, tt = false;
     const d = openModal();
     if (d) {
       const L = d.offsetLeft, T = d.offsetTop, R = innerWidth - L - d.offsetWidth, B = innerHeight - T - d.offsetHeight;
@@ -533,13 +535,15 @@ export function createUIFeel({
         const gap = Math.max(T, B);
         m = T >= B ? 'top' : 'bot';
         cap = Math.max(1, Math.min(2, Math.floor((gap - 4) / 34)));
-        ty = Math.max(4, (gap - cap * 34 + 4) / 2);
+        tt = gap < 38; // a ~20 px band (tall panel): one compact 24 px row centred in it, clear of the panel content
+        ty = tt ? Math.max(2, (gap - 24) / 2) : Math.max(4, (gap - cap * 34 + 4) / 2);
       }
     }
     stack.classList.toggle('uf-top', m === 'top'); stack.classList.toggle('uf-bot', m === 'bot');
+    stack.classList.toggle('uf-tight', tt);
     stack.style.setProperty('--uf-ty', ty.toFixed(0) + 'px');
-    if (m === mode && cap === rowCap) return;
-    mode = m; rowCap = cap;
+    if (m === mode && cap === rowCap && tt === tight) return;
+    mode = m; rowCap = cap; tight = tt;
     while (shown.length > rowCap) expire(shown[shown.length - 1], true);
     shown.forEach(r => { r.slot = -1; }); restack(); // re-place without animating
   }

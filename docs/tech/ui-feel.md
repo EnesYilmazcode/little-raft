@@ -303,7 +303,8 @@ this frame rate), and restores both before crafting.
 - **Fly icons stay under the inventory backdrop.** A pickup while the bag is open (rare: a net) shows dimmed.
 - **The standalone toast stack needs popover support** (Chrome 114+, Safari 17+, Firefox 125+) to sit above
   modals and fullscreen; older browsers keep it at `z-index: 5`. With a tall modal (1024x600, 800x600) the only
-  room is a ~20 px band above the panel, so one row overlaps the panel's padding (not its content). Not used
+  room is a ~20 px band above the panel: one compact 24 px row (`uf-tight`) touches the panel's outer frame
+  but not its content (`toastPlacement` in shoot.py: `overlapPanelContent: 0` at all three sizes). Not used
   in the game.
 - **No live two-machine run.** The partner-build rule is tested by injecting `{kind:'build', by}` effects
   into the real `effect()`; a two-browser `check_multiplayer.py` run on a GPU machine is still owed.
