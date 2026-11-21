@@ -20,7 +20,8 @@ const MODEL_ALIAS = { fishingrod: 'rod' };
 const RELEASE_MS = 2500;
 
 const cache = new Map();   // kind -> object/data URL ('' = failed, use the SVG)
-const queued = new Set();
+const queued = new Set();  // background warm-up (warmIcons)
+const urgent = new Set();  // asked for by a visible slot (iconURL): rendered before the warm-up
 const encoding = new Map(); // kind -> token while its PNG encodes
 const listeners = new Set();
 const waiters = new Map(); // kind -> [resolve] for loadItemIcon
@@ -197,26 +198,28 @@ function pump(deadline) {
   const idleMs = deadline && !deadline.didTimeout ? deadline.timeRemaining() - SLICE_MS : 0;
   const budget = Math.max(BUDGET_MS, idleMs);
   do {
-    const it = queued.values().next();
+    const q = urgent.size ? urgent : queued, it = q.values().next();
     if (it.done) break;
     const kind = it.value;
-    queued.delete(kind);
+    q.delete(kind);
     encode(kind, renderKind(kind));
-  } while (queued.size && performance.now() - t0 < budget);
-  if (queued.size) schedule();
+  } while ((urgent.size || queued.size) && performance.now() - t0 < budget);
+  if (urgent.size || queued.size) schedule();
   else if (gl) releaseTimer = setTimeout(release, RELEASE_MS);
 }
 function schedule() { if (!pumping) { pumping = true; idle(pump); } }
 
-/** Cached icon URL for kind, or null while it renders (it is queued; listeners fire when ready). */
-export function iconURL(kind) {
+function request(kind, now) {
   if (!kind) return null;
   const hit = cache.get(kind);
   if (hit !== undefined) return hit || null;
-  if (failed) return null;
-  if (!queued.has(kind) && !encoding.has(kind)) { queued.add(kind); schedule(); }
+  if (failed || urgent.has(kind) || encoding.has(kind)) return null;
+  if (now) { queued.delete(kind); urgent.add(kind); } else if (!queued.has(kind)) queued.add(kind); else return null;
+  schedule();
   return null;
 }
+/** Cached icon URL for kind, or null while it renders (queued ahead of the warm-up; listeners fire when ready). */
+export function iconURL(kind) { return request(kind, true); }
 export const getItemIcon = iconURL;
 /** Promise of the icon URL (null if it cannot be rendered, e.g. no WebGL). */
 export function loadItemIcon(kind) {
@@ -225,7 +228,7 @@ export function loadItemIcon(kind) {
   return new Promise(r => { let w = waiters.get(kind); if (!w) waiters.set(kind, w = []); w.push(r); });
 }
 /** Queue several kinds ahead of time (rendered in idle slices). */
-export function warmIcons(kinds) { for (const k of kinds) iconURL(k); }
+export function warmIcons(kinds) { for (const k of kinds) request(k, false); }
 /** Called with (kind, url) whenever an icon (re)renders. Returns an unsubscribe function. */
 export function onIconReady(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 /** Swap the model source (e.g. hands.js buildItemModel). Re-renders every icon seen so far. */
