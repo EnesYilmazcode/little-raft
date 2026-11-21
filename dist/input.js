@@ -3,9 +3,9 @@
 // frame before reading anything; edges (pressed/released), look delta, hotbar step and slot
 // are all consumed per frame.
 import { ACTIONS, SETTINGS_DEFAULTS, shapeStick, smoothLook } from './input-map.js';
+import { keyDecision, createLookFilter } from './input-rules.js';
 
 const MOUSE_LOOK = 0.0022;          // radians per pixel at sensitivity 1
-const SPIKE = 300;                  // |movementX/Y| above this is a Chrome pointer-lock glitch: drop it
 const WHEEL_STEP = 40;              // pixel-mode wheel delta per hotbar notch
 const TRIGGER_ON = 0.5, TRIGGER_OFF = 0.4; // analog -> digital hysteresis (triggers, axis codes)
 const ACTIVE_AXIS = 0.3;            // stick deflection that marks a pad as "in use"
@@ -18,6 +18,7 @@ const len = (x, y) => Math.hypot(x, y);
 
 export function createInput({
   target = globalThis.window, element = null, map, isBlocked = () => false, onAction = null,
+  ownsWheel = () => false, // e => true when the game uses this wheel event itself (Shift/Ctrl+wheel fine rotate)
   sensitivity = 1, // number or () => number (game's options.sensitivity)
   getGamepads = () => globalThis.navigator?.getGamepads?.() ?? [],
   now = () => globalThis.performance?.now?.() ?? Date.now(),
@@ -28,18 +29,20 @@ export function createInput({
   const ac = new AbortController(), signal = ac.signal;
   const on = (t, type, fn, opts = {}) => t?.addEventListener?.(type, fn, { ...opts, signal });
 
-  const held = new Set();             // keyboard + mouse codes physically down (as far as we know)
+  const held = new Set();             // keyboard + mouse codes physically down (as far as we know), kept while blocked
+  const quiet = new Set();            // codes that went down while blocked: count as held, but never give a pressed edge
   const taps = new Map();             // code -> down-event count since last update (catches sub-frame taps, wheel notches)
   let padHeld = new Set();            // pad codes active this frame
   const padSuppressed = new Set();    // pad codes held through a clear(): ignored until released
-  const state = new Map(ids.map(id => [id, { down: false, pressed: false, released: false }]));
-  let mouseX = 0, mouseY = 0, skipMove = false, wheelAcc = 0;
+  const state = new Map(ids.map(id => [id, { held: false, down: false, pressed: false, released: false }]));
+  let mouseX = 0, mouseY = 0, wheelAcc = 0;
+  const lookFilter = createLookFilter(); // per instance: drops pointer-lock spikes, keeps real fast flicks
   const smooth = {};
   let look = { dx: 0, dy: 0 }, step = 0, slot = -1, moveVec = { forward: 0, strafe: 0 };
   let leftStick = [0, 0], trig = { throw: 0, reel: 0 };
   let sprintOn = false, crouchOn = false;
   const connected = new Set(), lastActive = new Map(), padSig = new Map();
-  let activeIndex = -1;
+  let activeIndex = -1, wasBlocked = false;
   const api = { activeDevice: 'kbm' };
 
   const settings = () => ({ ...SETTINGS_DEFAULTS, ...(map.settings || {}) });
@@ -49,19 +52,27 @@ export function createInput({
 
   function press(code) { if (!held.has(code)) { held.add(code); tap(code); } api.activeDevice = 'kbm'; }
   function releaseMouse() { for (const c of MOUSE_CODES) held.delete(c); }
-  function clear() {
-    held.clear(); taps.clear(); releaseMouse();
+  // A panel opening (blocked) keeps held keys: their keyups still arrive, so W held through the bag walks on
+  // when it closes. Only transient state is dropped: taps, mouse/wheel accumulators, pad state.
+  function pause() {
+    taps.clear();
     for (const c of padHeld) padSuppressed.add(c);
     padHeld = new Set();
-    mouseX = mouseY = wheelAcc = 0; for (const k in smooth) delete smooth[k];
-    leftStick = [0, 0]; trig = { throw: 0, reel: 0 }; sprintOn = false; crouchOn = false;
+    mouseX = mouseY = wheelAcc = 0; for (const k in smooth) delete smooth[k]; lookFilter.reset();
+    leftStick = [0, 0]; trig = { throw: 0, reel: 0 };
+  }
+  // Blur / hidden tab / dispose: keyups may be lost, so forget every held key too.
+  function clear() {
+    pause(); held.clear(); quiet.clear(); releaseMouse(); sprintOn = false; crouchOn = false;
   }
 
   // ---------- keyboard ----------
   on(target, 'keydown', e => {
-    if (isField(e.target) || isBlocked()) return;
+    const kd = keyDecision({ inField: isField(e.target), blocked: isBlocked() });
+    if (!kd.record) return;                     // typing in a form field neither records nor acts
     if (e.repeat) return;                       // never an edge; also keeps a cleared key released until re-pressed
     if (e.metaKey && !/^Meta/.test(e.code)) return; // Cmd+X: macOS swallows the keyup, so never record it
+    if (!kd.act) { if (!held.has(e.code)) { held.add(e.code); quiet.add(e.code); } return; } // behind a panel: state only
     press(e.code);
     // Ctrl chords pass through (Ctrl+R, devtools) unless Ctrl is itself a held binding (crouch): then crouch+S/D/A
     // must not open the browser's save/bookmark/select-all, which also blurs the window mid-move.
@@ -69,8 +80,8 @@ export function createInput({
     if ((!e.ctrlKey || ctrlBound) && !e.altKey && map.actionFor?.(e.code)?.length && e.code !== 'Escape') e.preventDefault?.();
   });
   on(target, 'keyup', e => {                    // always honoured, even from form fields, so nothing sticks
-    if (/^Meta/.test(e.code)) { held.clear(); return; } // mac: keyups for other keys were lost while Meta was down
-    held.delete(e.code);
+    if (/^Meta/.test(e.code)) { held.clear(); quiet.clear(); return; } // mac: keyups for other keys were lost while Meta was down
+    held.delete(e.code); quiet.delete(e.code);
   });
 
   // ---------- mouse ----------
@@ -81,22 +92,22 @@ export function createInput({
   on(target, 'mouseup', e => { held.delete('Mouse' + e.button); });
   on(doc, 'mousemove', e => {
     if (!locked() || isBlocked()) return;
-    if (skipMove) { skipMove = false; return; }  // first sample after lock carries the jump to centre
-    const x = e.movementX || 0, y = e.movementY || 0;
-    if (Math.abs(x) > SPIKE || Math.abs(y) > SPIKE) return;
+    const [x, y] = lookFilter.filter(e.movementX, e.movementY); // the first sample after lock is dropped (reset below)
     mouseX += x; mouseY += y; api.activeDevice = 'kbm';
   });
   on(element || target, 'wheel', e => {
     if (isBlocked() || !locked()) return;
     if (element) e.preventDefault?.();
+    let owned = false; try { owned = !!ownsWheel(e); } catch (err) { console.error('ownsWheel', err); }
+    if (owned) return;                            // never also step the hotbar for the same event
     wheelAcc += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
     // at most one slot per event: a mouse notch is deltaY 100 (or 3 lines) and must not skip a slot; trackpads accumulate
     if (Math.abs(wheelAcc) >= WHEEL_STEP) { tap(wheelAcc > 0 ? 'WheelDown' : 'WheelUp'); wheelAcc = 0; }
     api.activeDevice = 'kbm';
   }, { passive: false });
   on(doc, 'pointerlockchange', () => {
-    if (doc.pointerLockElement && (!element || doc.pointerLockElement === element)) skipMove = true;
-    else { releaseMouse(); mouseX = mouseY = 0; }
+    if (doc.pointerLockElement && (!element || doc.pointerLockElement === element)) lookFilter.reset({ dropFirst: true });
+    else { releaseMouse(); mouseX = mouseY = 0; lookFilter.reset(); }
   });
 
   // ---------- focus ----------
@@ -158,17 +169,23 @@ export function createInput({
   // ---------- frame ----------
   function update(dt = 0) {
     const s = settings(), blocked = isBlocked();
-    if (blocked) clear();
+    if (blocked && !wasBlocked) pause();          // rising edge: drop taps/mouse/pad, keep held keys
+    wasBlocked = blocked;
+    if (blocked) taps.clear();
     const padLook = !blocked && connected.size ? pollPad(dt, s) : [0, 0];
     const isOn = c => held.has(c) || padHeld.has(c);
     const tapsOf = list => list.reduce((n, c) => n + (taps.get(c) || 0), 0);
     let stepNow = 0;
     for (const id of ids) {
       const b = map.bindingsFor(id) || {}, codes = [...(b.keys || []), ...(b.pad || [])];
-      const st = state.get(id), was = st.down, n = blocked ? 0 : tapsOf(codes);
-      st.down = !blocked && codes.some(isOn);
-      st.pressed = !was && (st.down || n > 0);
-      st.released = (was && !st.down) || (!was && !st.down && n > 0); // a sub-frame tap is pressed+released
+      // st.held tracks the physical state even while blocked, so closing a panel with a key still down
+      // gives no pressed edge (the I that closed the bag must not reopen it); down() reads false while blocked.
+      const st = state.get(id), was = st.held, n = blocked ? 0 : tapsOf(codes);
+      st.held = codes.some(isOn);
+      const live = codes.some(c => isOn(c) && !quiet.has(c));
+      st.down = !blocked && st.held;
+      st.pressed = !blocked && !was && (live || n > 0);
+      st.released = (was && !st.held) || (!blocked && !was && !st.held && n > 0); // a sub-frame tap is pressed+released
       if (id === 'hotbarNext') stepNow += Math.max(st.pressed ? 1 : 0, n);
       if (id === 'hotbarPrev') stepNow -= Math.max(st.pressed ? 1 : 0, n);
     }
@@ -186,7 +203,7 @@ export function createInput({
     let f = d('moveForward') - d('moveBack') - (leftStick[1] || 0), r = d('moveRight') - d('moveLeft') + (leftStick[0] || 0);
     const m = len(f, r); if (m > 1) { f /= m; r /= m; }
     moveVec = { forward: f, strafe: r };
-    if (s.sprintMode === 'toggle') { if (state.get('sprint').pressed) sprintOn = !sprintOn; if (m < 0.1) sprintOn = false; }
+    if (s.sprintMode === 'toggle') { if (state.get('sprint').pressed) sprintOn = !sprintOn; if (m < 0.1 && !blocked) sprintOn = false; }
     if (s.crouchMode === 'toggle' && state.get('crouch').pressed) crouchOn = !crouchOn;
     // look: mouse (smoothed, sensitivity, invertY) + right stick (already radians)
     const [sx, sy] = smoothLook(smooth, mouseX, mouseY, s.mouseSmoothing || 0);

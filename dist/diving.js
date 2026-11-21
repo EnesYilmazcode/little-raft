@@ -16,6 +16,7 @@
 import { createSeafloor } from './seafloor.js';
 import { createUnderwaterFx } from './underwater-fx.js';
 import { createDivingUI } from './diving-ui.js';
+import { splitSteps } from './input-rules.js';
 
 export const DIVE = Object.freeze({ SPEED: 2.4, FAST: 3.4, VERTICAL: 2.2, BUOYANCY: 0.15, OXY_SECONDS: 45,
   REFILL_RATE: 6, GATHER_SECONDS: 1.0, GATHER_SLOW: Object.freeze({ metalore: 1.4 }), REACH: 2.8, EYE_FLOOR_CLEAR: 0.6,
@@ -90,9 +91,17 @@ export class DiveBody {
   }
 
   // input {forward, strafe, yaw, pitch, up, down, fast, gather}; env {waterY, floorY, tiles, deckY}
-  // Returns a scratch event object reused across calls.
+  // Returns a scratch event object reused across calls. The real frame time is split into equal
+  // substeps of at most 0.05 s (splitSteps, same rule as walking), so swim speed holds at low fps.
   step(dt, input, env) {
     const ev = this.ev; ev.surfaced = false; ev.hitFloor = false;
+    const { n, step } = splitSteps(fin(dt, 0));
+    for (let i = 0; i < n && !ev.surfaced; i++) this._step1(step, input, env);
+    return ev;
+  }
+
+  _step1(dt, input, env) {
+    const ev = this.ev;
     dt = clamp(fin(dt, 0), 0, 0.05);
     if (dt <= 0) return ev;
     const inp = input && typeof input === 'object' ? input : {}, e = env && typeof env === 'object' ? env : {};

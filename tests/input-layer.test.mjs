@@ -123,15 +123,19 @@ test('Meta keyup clears keys whose keyup macOS swallowed', () => {
   assert.equal(s.input.down('moveLeft'), false);
 });
 
-test('isBlocked suppresses input and releases what was held', () => {
+test('isBlocked suppresses actions but keeps held keys (no pressed edge when it ends)', () => {
   const s = setup();
   s.down('KeyW'); s.tick();
   s.block(true); s.tick();
   assert.equal(s.input.down('moveForward'), false);
+  assert.deepEqual(s.input.move(), { forward: 0, strafe: 0 });
   s.down('KeyS'); s.tick();
   assert.equal(s.input.down('moveBack'), false);
   s.block(false); s.tick();
-  assert.equal(s.input.down('moveBack'), false);
+  assert.equal(s.input.down('moveForward'), true, 'W held through the block walks on');
+  assert.equal(s.input.pressed('moveForward'), false);
+  assert.equal(s.input.pressed('moveBack'), false, 'a key pressed while blocked gives no edge');
+  assert.ok(!s.actions.includes('moveBack:down'));
 });
 
 test('hold vs toggle sprint; toggle auto-clears when movement stops', () => {
