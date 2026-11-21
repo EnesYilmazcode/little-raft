@@ -668,7 +668,7 @@ function buildCrate(T, K, g) {
   R.push(K.bake(new T.SphereGeometry(0.022, 8, 6), -0.396, 0.66, -0.396, 0, 0, 0, 1, 0.8, 1));
   R.push(K.tube([V(0.398, 0.19, 0.402), V(0.405, 0.13, 0.407), V(0.402, 0.09, 0.408)], 0.01, 8));
   // one rusty scrap hasp: plate over the lid edge, staple and pin on the front wall
-  ST.push(K.box(0.1, 0.13, 0.008, 0, 0.765, 0.406, -0.06, 0, 0.05));
+  ST.push(K.box(0.07, 0.09, 0.008, 0, 0.765, 0.406, -0.06, 0, 0.05));
   ST.push(K.box(0.1, 0.008, 0.05, 0, 0.826, 0.385, 0, 0, 0.05));
   ST.push(K.torus(0.022, 0.006, 0, 0.7, 0.412, 0, 0, 0, Math.PI));
   ST.push(K.rod(V(-0.035, 0.708, 0.414), V(0.04, 0.712, 0.414), 0.005, 0.005, 5));
@@ -680,6 +680,6 @@ function buildCrate(T, K, g) {
     }
   }
   K.addTo(g, W, K.woodMat(), 'crateTimber');
-  K.addTo(g, ST, K.std(0x8a4f2c, 0.78, 0.35, { flatShading: true }), 'crateSteel'); // rusty scrap: nails, brackets, hasp
+  K.addTo(g, ST, K.std(0x6b4430, 0.78, 0.35, { flatShading: true }), 'crateSteel'); // rusty scrap: nails, brackets, hasp
   K.addTo(g, R, K.std(0xb99a62, 0.95), 'crateRope');
 }
