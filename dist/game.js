@@ -954,7 +954,7 @@ export function mount(transfer = null) {
   setHandler($('#solo'), 'onclick', () => { start(); requestLock(); });
   setHandler($('#newGame'), 'onclick', e => {
     const b = e.currentTarget;
-    if (hasSave() && !b.dataset.confirm) { b.dataset.confirm = '1'; b.textContent = 'Wipe my raft and start over?'; return; }
+    if (hasSave() && !b.dataset.confirm) { b.dataset.confirm = '1'; b.textContent = 'Start over? Click again'; return; }
     newGame(); requestLock(); refreshTitle();
   });
   if (!running) refreshTitle();

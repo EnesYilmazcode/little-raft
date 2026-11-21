@@ -63,7 +63,7 @@ const CSS = `
 #options .rs-form{display:flex;align-items:stretch;gap:clamp(24px,5vw,72px);width:100%;height:100%;margin:0;padding:0 clamp(16px,5vw,80px) 0 0}
 #options .rs-menu{display:flex;flex-direction:column;justify-content:center;align-items:stretch;flex:none;width:clamp(280px,26vw,360px);padding:0 0 0 clamp(28px,4vw,56px);
   background:linear-gradient(90deg,rgba(5,11,17,.94),rgba(5,11,17,.82));box-shadow:1px 0 0 rgba(201,164,107,.28),18px 0 50px rgba(0,0,0,.35)}
-#options .rs-panel{align-self:center;min-height:min(468px,calc(100vh - 80px))} /* tabs keep one height */
+#options .rs-panel{align-self:flex-start;margin-top:max(24px,calc(50vh - 236px))} /* top edge stays put across tabs */
 #options .rs-foot{margin-top:34px;padding-right:28px;font:600 11px/1 var(--ui-font);letter-spacing:1.6px;text-transform:uppercase;color:var(--muted,#8f9aa0)}
 #options .rs-foot kbd{margin-right:8px;padding:3px 7px;border-radius:3px;color:var(--cream,#f1e7d0);background:rgba(0,0,0,.4);box-shadow:inset 0 0 0 1px rgba(201,164,107,.45);font:700 10px/1.3 var(--ui-font)}
 #options .rs-eyebrow{font:600 11px/1 var(--ui-font);letter-spacing:3.2px;color:var(--bronze-lt,#c9a46b);margin-bottom:10px}
@@ -103,7 +103,7 @@ const CSS = `
 #options :focus-visible{outline:2px solid var(--amber,#e9a640);outline-offset:2px}
 @media (max-width:760px){#options .rs-form{flex-direction:column;align-items:stretch;justify-content:center;gap:18px;overflow:auto;padding:24px 16px}
   #options .rs-menu{width:auto;padding:20px 0 20px 20px;border-radius:6px}#options .rs-foot{display:none}
-  #options h2{margin-bottom:14px}#options .rs-menu button{padding:6px 0 6px 18px}#options .rs-panel{max-height:none;min-height:0}#options .rs-keys{grid-template-columns:auto 1fr}}
+  #options h2{margin-bottom:14px}#options .rs-menu button{padding:6px 0 6px 18px}#options .rs-panel{max-height:none;margin-top:0}#options .rs-keys{grid-template-columns:auto 1fr}}
 /* Waiting to relock after a menu closed without a gesture (browser Esc): no cursor, no centred hint. */
 body.relock #world{cursor:none}
 body.relock #resumeHint{display:none!important}
