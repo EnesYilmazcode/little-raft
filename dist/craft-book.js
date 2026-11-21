@@ -134,6 +134,8 @@ export const ITEM_TEXT = Object.freeze({
   sharkhead:  { desc: 'The head of a shark you beat.', use: 'A trophy, and proof the raft is safe for a while.' },
   goo:        { desc: 'Sticky green goo from a Bloatfish.', use: 'Cook it in the smelter into Blast Powder.' }, // [puffer]
   blastpowder: { desc: 'A gritty powder that fizzes when shaken.', use: 'Keep it for things that go bang.' }, // [puffer]
+  rawmeat:    { desc: 'A raw cut from an island tusker.', use: 'Grill it into Grilled Meat; edible raw in a pinch.' }, // [boar]
+  cookedmeat: { desc: 'Tusker meat grilled through.', use: 'A big meal (+35 food).' }, // [boar]
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
   grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },
@@ -389,6 +391,8 @@ export const ITEM_SOURCE = Object.freeze({
   goo:         Object.freeze({ tag: 'Bloatfish', how: 'Spear a Bloatfish near an island before it bursts.' }), // [puffer]
   blastpowder: Object.freeze({ tag: 'smelter', how: 'Cook Puffer Goo in a smelter.' }), // [puffer]
   cookedsharkmeat: Object.freeze({ tag: 'grill', how: 'Cook raw shark meat on a grill.' }),
+  rawmeat:     Object.freeze({ tag: 'island tusker', how: 'Beat the tusker on a big island with a spear, then press E on it.' }), // [boar]
+  cookedmeat:  Object.freeze({ tag: 'grill', how: 'Cook raw meat on a grill.' }), // [boar]
   // Pim's trading barge (trader.js)
   shell:       Object.freeze({ tag: 'trader', how: 'Trade fish or puff eggs to Pim at his trading barge.' }),
   glassfloat:  Object.freeze({ tag: 'trader', how: 'A rare offer at Pim\u2019s trading barge; pay in Bright Shells.' }),

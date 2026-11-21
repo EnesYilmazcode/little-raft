@@ -135,6 +135,22 @@ export const ITEM_ICONS = Object.freeze({
     <g fill="#4d5440"><circle cx="35" cy="40" r=".9"/><circle cx="39" cy="39.5" r=".9"/><circle cx="41.5" cy="41" r=".8"/></g>
     <path d="M19 30 C21 27 25 27 27 30" fill="none" stroke="#fff2cc" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".7"/>
     <g stroke="#ffbd66" stroke-width="2" stroke-linecap="round"><path d="M38 9 V15 M35 12 H41 M35.8 9.8 L40.2 14.2 M40.2 9.8 L35.8 14.2"/></g>`,
+  // [boar] tusker meat: a raw haunch on the bone, then the same haunch seared with grill marks and steam.
+  rawmeat: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M30 17 L39 8" fill="none" stroke-width="7"/><path d="M30 17 L39 8" fill="none" stroke="#f3ead3" stroke-width="3.6"/>
+    <circle cx="40" cy="6.5" r="3.4" fill="#f3ead3"/><circle cx="42.5" cy="10" r="3.2" fill="#f3ead3"/>
+    <path d="M8 31 C6 22 14 13 24 13 C31 13 35 18 34 24 C33 33 27 41 18 42 C12 42 9 37 8 31 Z" fill="#d4605e"/>
+    <path d="M12 30 C12 23 17 18 23 18 C27 18 29 21 28.5 24 C25 22 17 24 12 30 Z" fill="#ec9188" stroke="none"/>
+    <path d="M9 34 C12 40 17 42 21 41.6 C15 40 11 37 9 34 Z" fill="#f4e2cf" stroke-width="1.4"/></g>
+    <path d="M16 31 C19 28 23 27 27 28" fill="none" stroke="#a8403f" stroke-width="1.5" stroke-linecap="round"/>`,
+
+  cookedmeat: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M30 19 L39 10" fill="none" stroke-width="7"/><path d="M30 19 L39 10" fill="none" stroke="#efe2c4" stroke-width="3.6"/>
+    <circle cx="40" cy="8.5" r="3.4" fill="#efe2c4"/><circle cx="42.5" cy="12" r="3.2" fill="#efe2c4"/>
+    <path d="M8 33 C6 24 14 15 24 15 C31 15 35 20 34 26 C33 35 27 43 18 44 C12 44 9 39 8 33 Z" fill="#a8603a"/>
+    <path d="M12 32 C12 25 17 20 23 20 C27 20 29 23 28.5 26 C25 24 17 26 12 32 Z" fill="#cf8a4f" stroke="none"/></g>
+    <path d="M13 37 L19 25 M19 40 L25 27 M25 39 L30 29" fill="none" stroke="#4a2410" stroke-width="2.3" stroke-linecap="round"/>
+    <g fill="none" stroke="#fff2cc" stroke-width="2" stroke-linecap="round" stroke-opacity=".9"><path d="M12 13 C10 10 14 8 12 4"/><path d="M20 11 C18 8 22 6 20 2"/></g>`,
 
   sharkhead: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round">
     <path d="M4 30 C6 20 16 12 30 12 C38 12 44 18 44 26 L44 38 C36 40 26 40 18 38 C10 37 5 34 4 30 Z" fill="#7f8f99"/>

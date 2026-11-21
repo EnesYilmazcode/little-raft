@@ -115,6 +115,8 @@ const LIST = [
     tip: 'A grim trophy from a beaten shark. Proof that your raft bites back.' }),
   item('goo', 'Puffer Goo', 'material', { iconTint: '#8fd14f', // [puffer] dropped by a speared Bloatfish (dist/puffer.js)
     tip: 'Sticky green goo from a Bloatfish you speared before it burst. The smelter cooks it into Blast Powder.' }),
+  item('rawmeat', 'Raw Meat', 'food', { iconTint: '#d4605e', // [boar] from a beaten island tusker
+    tip: 'A raw cut from an island tusker. Edible, but grill it for a proper meal.' }),
 
   // ----- refined (hand crafted or station) -----
   item('rope', 'Rope', 'refined', { icon: 'icon-net', placeholder: true, iconTint: '#d9c38c',
@@ -202,6 +204,9 @@ const LIST = [
   item('cookedsharkmeat', 'Grilled Shark Meat', 'food', { iconTint: '#c7764a', stack: 10,
     recipe: cook('grill', 'sharkmeat', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
     tip: 'A thick, smoky steak. Click with it in hand to eat (+30 food).' }),
+  item('cookedmeat', 'Grilled Meat', 'food', { iconTint: '#a8603a', stack: 10, // [boar]
+    recipe: cook('grill', 'rawmeat', { time: 20, fuel: 0.5 }), unlock: atStation('grill'),
+    tip: 'Tusker meat grilled until it sizzles. Click with it in hand to eat (+35 food).' }),
 
   // ----- build / decor (placeable on raft tiles) -----
   item('bench', 'Bench', 'decor', { icon: 'icon-repair', placeholder: true, placeable: true,
