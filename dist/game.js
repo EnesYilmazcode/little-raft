@@ -941,8 +941,12 @@ export function mount(transfer = null) {
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     refreshPointerUI(); updateCharge(); updateContext(dialog);
     if (!renderer.shadowMap.autoUpdate && ++shadowFrame % 2 === 0) renderer.shadowMap.needsUpdate = true; // adaptive bottom step: shadows at half rate
-    renderer.render(scene, camera);
+    // Behind a menu (pause, settings, help; not the inventory) the world is blurred: redraw at ~10 fps.
+    const menu = dialog && !!document.querySelector('dialog[open]:not(#inventory)');
+    if (!menu || !menuDrawn || now - menuDrawn >= MENU_FRAME_MS) { menuDrawn = menu ? now : 0; renderer.render(scene, camera); }
   }
+  const MENU_FRAME_MS = 100;
+  let menuDrawn = 0;
   function animate() {
     if (!active || disposed) return;
     rafId = requestAnimationFrame(animate);
