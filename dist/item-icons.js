@@ -176,10 +176,12 @@ function renderKind(kind) {
   return out;
 }
 
+const stale = new Map();    // kind -> blob URL replaced by setModelProvider, revoked once the new icon lands
 function finish(kind, url) {
   cache.set(kind, url);
   const w = waiters.get(kind); if (w) { waiters.delete(kind); for (const r of w) r(url || null); }
   if (url) for (const fn of listeners) { try { fn(kind, url); } catch (e) { console.error(e); } }
+  const old = stale.get(kind); if (old) { stale.delete(kind); URL.revokeObjectURL(old); }
 }
 function encode(kind, canvas) {
   if (!canvas) { finish(kind, ''); return; }
@@ -239,6 +241,7 @@ export function onIconReady(fn) { listeners.add(fn); return () => listeners.dele
 export function setModelProvider(fn) {
   provider = typeof fn === 'function' ? fn : null;
   const kinds = [...cache.keys(), ...encoding.keys()];
+  for (const [k, u] of cache) if (u.startsWith('blob:')) { if (stale.has(k)) URL.revokeObjectURL(stale.get(k)); stale.set(k, u); }
   cache.clear(); encoding.clear();
   warmIcons(kinds);
 }
