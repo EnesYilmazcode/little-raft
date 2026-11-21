@@ -315,14 +315,16 @@ export class HookCast {
       this._updateMetrics();
       if (this._emitted) return null;
       this._emitted = true;
-      if (this.caughtItems.length) {
-        const out = this.caughtItems.map(({ id, token, type }) => ({ id, token, type }));
-        return { kind: 'collected', items: out, id: out[0].id, token: out[0].token };
-      }
-      return { kind: 'returned' };
+      return this._result();
     }
     this._updateMetrics();
     return null;
+  }
+
+  _result() {
+    if (!this.caughtItems.length) return { kind: 'returned' };
+    const out = this.caughtItems.map(({ id, token, type }) => ({ id, token, type }));
+    return { kind: 'collected', items: out, id: out[0].id, token: out[0].token };
   }
 
   _updateMetrics() {
@@ -384,3 +386,29 @@ export class HookCast {
 }
 
 export default HookCast;
+
+// ---------- throw start (used by game.js) ----------
+export const MIN_THROW_Y = WATER_Y + 0.3; // a swimmer's hand sits under the 0.05 plane: start the throw above it
+
+/** Throw origin from the hand: same x/z, y lifted to at least MIN_THROW_Y. Pure. */
+export function throwOrigin(hand, out) {
+  const o = out || { x: 0, y: 0, z: 0 };
+  o.x = hand.x; o.y = Math.max(hand.y, MIN_THROW_Y); o.z = hand.z;
+  return o;
+}
+
+// ---------- bag-full reel stop (used by game.js) ----------
+export const FULL_HOLD_DIST = 2; // m: a catch that will not fit stops this far out, still in the water
+
+/** Sums the loot of every caught item (table: type -> {kind: count}). Pure. */
+export function catchLoot(items, table) {
+  const out = {};
+  for (const it of items || []) for (const [k, n] of Object.entries(table?.[it?.type] || {})) out[k] = (out[k] || 0) + n;
+  return out;
+}
+
+/** True when the reel must stop short of the hand because the catch will not fit. fits(caughtItems) -> bool. */
+export function holdForFullBag(hook, fits) {
+  const c = hook?.caughtItems;
+  return !!c?.length && fin(hook.distance) && hook.distance <= FULL_HOLD_DIST && !fits(c);
+}

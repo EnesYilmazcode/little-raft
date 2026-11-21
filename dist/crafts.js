@@ -442,7 +442,7 @@ function buildPalm(T, K, g) {
   K.addTo(g, R, K.std(0xb99a62, 0.95), 'palmRope');
 }
 
-// ---------------------------------------------------------------- LANTERN (~1.0 x 0.74, 1.9 tall)
+// ---------------------------------------------------------------- LANTERN (~1.17 x 0.74, 1.9 tall, centred)
 function buildLantern(T, K, g) {
   const { V } = K;
   const W = [], ST = [], BR = [], R = [];
@@ -516,6 +516,7 @@ function buildLantern(T, K, g) {
   K.addTo(g, BR, K.std(0xb48b3c, 0.35, 0.8), 'lanternBrass');
   K.addTo(g, R, K.std(0xb99a62, 0.95), 'lanternRope');
   g.scale.setScalar(0.65); // a waist-high post lantern (~1.2 m), well below eye level
+  for (const m of g.children) m.position.x += 0.085; // centre the feet-to-crook span on the origin (the footprint and collider centre)
 }
 
 // ---------------------------------------------------------------- NET (1.62 x 1.62, ~0.21 tall)
