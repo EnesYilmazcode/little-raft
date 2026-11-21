@@ -10,6 +10,66 @@ const rules = await import(new URL('lock-rules.js', base));
 const src = (f) => readFile(new URL(f, base), 'utf8');
 const dom = (name) => Object.assign(new Error(name), { name });
 
+// ---- LOCK-R3-1: one Esc in locked play opens pause, even when no key event reaches the page ----
+const play = { gameActive: true, focused: true, visible: true, heldMs: 5000 };
+
+test('LOCK-R3-1: a lock loss the page did not cause opens the pause menu', () => {
+  assert.equal(rules.lockLossOpensPause(play), true);
+});
+
+test('LOCK-R3-1: alt-tab, menus, the build wheel, drag-look and a pending relock never pause', () => {
+  for (const [k, v] of [['focused', false], ['visible', false], ['away', true], ['dialogOpen', true], ['wheelOpen', true],
+    ['dragLook', true], ['selfCaused', true], ['relockPending', true], ['locked', true], ['gameActive', false]]) {
+    assert.equal(rules.lockLossOpensPause({ ...play, [k]: v }), false, k);
+  }
+});
+
+test('LOCK-R3-1: a granted-then-revoked lock (held under the minimum) never pauses', () => {
+  assert.equal(rules.lockLossOpensPause({ ...play, heldMs: 40 }), false);
+  assert.equal(rules.lockLossOpensPause({ ...play, heldMs: rules.LOCK_LOSS_MIN_HELD }), true);
+});
+
+test('LOCK-R3-1: desktop orphan Escape keyUp in locked play runs the full press', () => {
+  assert.equal(rules.orphanEscPlan({ gameActive: true, sinceLockLoss: 90 }), 'press');
+  assert.equal(rules.orphanEscPlan({ gameActive: true, locked: true }), 'press');
+});
+
+test('LOCK-R3-1: an orphan keyUp after leaving fullscreen, or outside locked play, only opens pause', () => {
+  assert.equal(rules.orphanEscPlan({ gameActive: true, sinceLockLoss: 90, sinceFullscreenChange: 120 }), 'pause');
+  assert.equal(rules.orphanEscPlan({ gameActive: true, sinceFullscreenChange: 50 }), 'pause');
+  assert.equal(rules.orphanEscPlan({ gameActive: true }), 'pause');
+});
+
+test('LOCK-R3-1: an orphan keyUp never closes an open panel or the pause menu, and does nothing on the title', () => {
+  assert.equal(rules.orphanEscPlan({ gameActive: true, dialogOpen: true, sinceLockLoss: 90 }), 'none');
+  assert.equal(rules.orphanEscPlan({ gameActive: true, dialogOpen: true, sinceFullscreenChange: 50 }), 'none');
+  assert.equal(rules.orphanEscPlan({ gameActive: true, wheelOpen: true, sinceLockLoss: 90 }), 'none');
+  assert.equal(rules.orphanEscPlan({ gameActive: false, sinceFullscreenChange: 50 }), 'none');
+});
+
+test('LOCK-R3-1: main.cjs runs an orphan keyUp through the page in one gesture call', async () => {
+  const main = await readFile(new URL('../desktop/main.cjs', import.meta.url), 'utf8');
+  assert.match(main, /raftOrphanEscape/);
+  const orphan = main.match(/const ORPHAN_ESC='([^\n]*)';/)?.[1];
+  assert.ok(orphan, 'ORPHAN_ESC snippet');
+  assert.match(orphan, /hold\(\).*raftEscape\(\).*released\(\)/, 'hold, raftEscape, released in order');
+  assert.match(main, /executeJavaScript\(ORPHAN_ESC,true\)/);
+  assert.match(await src('settings.js'), /window\.raftOrphanEscape = raftOrphanEscape/);
+});
+
+test('LOCK-R3-1: the ORPHAN_ESC snippet presses only on "press"', async () => {
+  const main = await readFile(new URL('../desktop/main.cjs', import.meta.url), 'utf8');
+  const code = main.match(/const ORPHAN_ESC='([^\n]*)';/)[1];
+  for (const plan of ['press', 'pause', 'none']) {
+    const log = [];
+    const window = { raftOrphanEscape: () => plan, raftEscape: () => log.push('esc'),
+      raftShell: { hold: () => log.push('hold'), released: () => log.push('released') } };
+    assert.equal(new Function('window', 'return ' + code)(window), plan);
+    assert.deepEqual(log, plan === 'press' ? ['hold', 'esc', 'released'] : [], plan);
+  }
+  assert.equal(new Function('window', 'return ' + code)({}), 'none', 'an old page without the hook does nothing');
+});
+
 // ---- LOCK-R3-2: body.relock follows the lock request for every panel ----
 test('LOCK-R3-2: the relock safety timeout is long enough for a slow grant', () => {
   assert.ok(rules.RELOCK_SAFETY_TIMEOUT >= 2000 && rules.RELOCK_SAFETY_TIMEOUT <= 5000);

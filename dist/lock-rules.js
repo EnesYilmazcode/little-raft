@@ -71,6 +71,7 @@ export function createEscGate({ handledWindow = 600, lockWindow = 1500 } = {}) {
   let handledAt = -Infinity, lockLostAt = -Infinity, pressHandled = false;
   return {
     get handledAt() { return handledAt; },
+    get lockLostAt() { return lockLostAt; },
     keydown(now, { repeat = false, handled = false } = {}) {
       if (repeat) {
         if (pressHandled) handledAt = now;
@@ -95,8 +96,35 @@ export function createEscGate({ handledWindow = 600, lockWindow = 1500 } = {}) {
 // when it settles. This long timeout is only a safety net for a browser whose requestPointerLock has no promise.
 export const RELOCK_SAFETY_TIMEOUT = 3000;
 
+// Pointer lock lost without the page asking (the browser ate the Escape keydown that ended it, so no key event
+// may reach the page at all): open the pause menu. Never for alt-tab (unfocused/hidden/away), a menu the page
+// opened (selfCaused, dialogOpen), the build wheel, drag-look, a pending relock, or a lock held under heldMs
+// (a granted-then-revoked relock).
+export const LOCK_LOSS_MIN_HELD = 250;
+export function lockLossOpensPause({ gameActive = false, focused = true, visible = true, away = false, dialogOpen = false,
+  wheelOpen = false, dragLook = false, selfCaused = false, relockPending = false, locked = false, heldMs = 0 } = {}) {
+  return !!gameActive && !!focused && !!visible && !away && !dialogOpen && !wheelOpen && !dragLook && !selfCaused
+    && !relockPending && !locked && heldMs >= LOCK_LOSS_MIN_HELD;
+}
+
+// Desktop shell: an Escape keyUp arrived without its keyDown (Chromium's exclusive-access handler consumed the
+// keyDown to end pointer lock or HTML fullscreen). 'press' runs the full press (hold, raftEscape, released);
+// 'pause' only opens the pause menu; 'none' does nothing. It never closes an open panel: the same orphan keyUp
+// follows an Escape that only left fullscreen.
+export const FULLSCREEN_ESC_WINDOW = 300;
+export function orphanEscPlan({ gameActive = false, dialogOpen = false, wheelOpen = false, locked = false,
+  sinceLockLoss = Infinity, sinceFullscreenChange = Infinity, lockWindow = 1500 } = {}) {
+  if (!gameActive || dialogOpen || wheelOpen) return 'none';
+  const lockedPlay = locked || sinceLockLoss <= lockWindow;
+  return lockedPlay && sinceFullscreenChange > FULLSCREEN_ESC_WINDOW ? 'press' : 'pause';
+}
+
 // Soft drag-look (entered after repeated refusals, not a missing API): a plain canvas click retries the lock,
 // at most once per interval ms. Hard fallback (no API, NotSupportedError) never retries.
 export function softRelockTry({ fallback = false, hard = false, now = 0, lastTry = -Infinity, interval = 1500 } = {}) {
   return !!fallback && !hard && now - lastTry >= interval;
 }
+
+// Shared stamp: when the page itself last released the lock (game.js releaseLock, engine dispose). settings.js
+// treats a lock loss right after it as self-caused, so it never opens the pause menu.
+export const selfRelease = { at: -Infinity };

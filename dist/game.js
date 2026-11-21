@@ -55,7 +55,7 @@ import { createGhosts, FOOTPRINT, wheelDelta, decorHit, refundOf, wrapRot, ROT_S
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints, feedPlacement, hintsFromState } from './hud.js?build=v3-survival-ae77fa84ac2b';
-import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, escReleasePlan, dragLook, relockPending, RELOCK_SAFETY_TIMEOUT, softRelockTry } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, escReleasePlan, dragLook, relockPending, RELOCK_SAFETY_TIMEOUT, softRelockTry, selfRelease } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { keyDecision, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
@@ -770,7 +770,7 @@ export function mount(transfer = null) {
     const wasFallback = lockFallback; lockFallback = true; refreshPointerUI(true);
     if (!wasFallback && running) notice('Mouse lock unavailable: drag to look, click to use', 3000);
   }
-  function releaseLock() { if (isLocked()) document.exitPointerLock?.(); }
+  function releaseLock() { if (isLocked()) { selfRelease.at = performance.now(); document.exitPointerLock?.(); } } // settings.js: not an Escape, never pauses
   function look(dx, dy, k) { yaw -= dx * k; pitch = clamp(pitch - (options.invertY ? -dy : dy) * k, -PITCH_LIMIT, PITCH_LIMIT); }
   function clearInput() { charging = null; reeling = false; down = null; controls?.clear(); } // controls lane: also release the input layer
   // A panel opening keeps held keys (keyup still arrives; input.js keeps them while blocked); only window blur really loses keyups.
@@ -2048,7 +2048,7 @@ export function mount(transfer = null) {
   }
   function dispose() {
     if (disposed) return;
-    pause(); disposed = true; ac.abort(); clearTimeout(relockTimer); sfx.destroy(); offIconReady?.();
+    pause(); disposed = true; ac.abort(); clearTimeout(relockTimer); selfRelease.at = performance.now(); // a hot swap's lock change is not an Escape sfx.destroy(); offIconReady?.();
     try { coop?.dispose(); } catch {} coop = null; // coop
     try { settingsController?.destroy(); } catch {}
     try { survivalUI?.destroy?.(); } catch {}
