@@ -65,6 +65,8 @@ body.bm-wheel-up #lrPrompt,body.bm-wheel-up #contextPrompt{visibility:hidden}
   background:repeating-linear-gradient(90deg,#0000000f 0 2px,transparent 2px 21px),linear-gradient(#5d4129f0,#3d2a19f0);
   border:1.5px solid #c9a66b;box-shadow:0 0 0 1.5px #3e2a17,0 4px 14px #0006;color:#fff2cc;font:500 13px/1.25 ${FONT};transition:opacity .12s}
 .bm-chip.bm-dim{opacity:0}
+/* while the chip shows, the lifted left feed (<=1100px wide, game.js/style.css) adds this to its bottom so it sits above the chip */
+body:has(.bm-chip:not([hidden])){--bm-chip-h:76px}
 .bm-chip>i{flex:0 0 auto;display:grid;place-items:center;width:38px;height:38px;border-radius:8px;background:#24170caa;box-shadow:inset 0 0 0 1px #d4b07a44;color:#ffe3a6}
 .bm-chip>i svg{width:26px;height:26px}
 .bm-chip>div{min-width:0}
