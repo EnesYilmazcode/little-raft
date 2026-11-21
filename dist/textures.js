@@ -32,84 +32,135 @@ const b8 = v => (v <= 0 ? 0 : v >= 1 ? 255 : (v * 255 + 0.5) | 0);
 const word = (r, g, b, a) => new Uint32Array(new Uint8Array([r, g, b, a]).buffer)[0];
 const FLAT_NORMAL = word(128, 128, 255, 230), WHITE = word(255, 255, 255, 255);
 
+// sRGB -> linear for the coverage-weighted mean, looked up on the stored 8-bit value (what the GPU decodes).
+const LIN = new Float64Array(256); for (let i = 0; i < 256; i++) LIN[i] = srgbToLin(i / 255);
+
 // Copy a CELL x CELL block's wrapped 16 px gutter from the tile already written at (ox+PAD, oy+PAD).
-// Works on 32-bit texels (one RGBA8 texel per word) with copyWithin (memmove), no per-byte loop.
-function wrapGutter(P, ox, oy, S) {
+// P: 32-bit texel view (one RGBA8 texel per word), W: row stride in texels. copyWithin = memmove.
+function wrapGutter(P, W, ox, oy, S) {
   for (let y = 0; y < S; y++) {
-    const r = (oy + PAD + y) * ATLAS + ox, t = r + PAD; // row start of the cell, row start of the tile
-    P.copyWithin(r, t + S - PAD, t + S);                 // left gutter  <- right edge of the tile
-    P.copyWithin(t + S, t, t + PAD);                     // right gutter <- left edge of the tile
+    const r = (oy + PAD + y) * W + ox, t = r + PAD; // row start of the cell, row start of the tile
+    P.copyWithin(r, t + S - PAD, t + S);             // left gutter  <- right edge of the tile
+    P.copyWithin(t + S, t, t + PAD);                 // right gutter <- left edge of the tile
   }
   for (let y = 0; y < PAD; y++) {
-    const top = (oy + y) * ATLAS + ox, bot = (oy + PAD + S + y) * ATLAS + ox; // gutter rows (full cell width)
-    P.copyWithin(top, top + S * ATLAS, top + S * ATLAS + CELL);               // <- tile row S-PAD+y
-    P.copyWithin(bot, bot - S * ATLAS, bot - S * ATLAS + CELL);               // <- tile row y
+    const top = (oy + y) * W + ox, bot = (oy + PAD + S + y) * W + ox; // gutter rows (full cell width)
+    P.copyWithin(top, top + S * W, top + S * W + CELL);               // <- tile row S-PAD+y
+    P.copyWithin(bot, bot - S * W, bot - S * W + CELL);               // <- tile row y
   }
 }
 
+// Run one generator and write its cell (tile + gutter) into albedo/normal (RGBA8, row stride W texels)
+// with the cell's top-left texel at (ox, oy). Returns the coverage-weighted linear mean colour.
+function packCell(gen, albedo, normal, W, ox, oy) {
+  const S = TILE, out = (gen.default ?? gen)(S, N), strength = gen.normalStrength ?? out.normalStrength ?? 4;
+  const { albedo: A, height: H, rough: R, alpha: M, metal: MT } = out; // metal: opaque cells only, stored in albedo alpha
+  // Normals and roughness once per tile texel (Sobel on wrapped height), written straight into place,
+  // then the gutter is wrapped from the tile itself.
+  let m0 = 0, m1 = 0, m2 = 0;
+  for (let y = 0; y < S; y++) {
+    const ym = ((y + S - 1) % S) * S, y0 = y * S, yp = ((y + 1) % S) * S;
+    let d = ((oy + PAD + y) * W + ox + PAD) * 4;
+    for (let x = 0; x < S; x++, d += 4) {
+      const xm = x === 0 ? S - 1 : x - 1, xp = x === S - 1 ? 0 : x + 1, s = y0 + x;
+      const gx = (H[ym + xp] + 2 * H[y0 + xp] + H[yp + xp] - H[ym + xm] - 2 * H[y0 + xm] - H[yp + xm]) / 8;
+      const gy = (H[yp + xm] + 2 * H[yp + x] + H[yp + xp] - H[ym + xm] - 2 * H[ym + x] - H[ym + xp]) / 8;
+      const nx = -gx * strength, ny = -gy * strength, l = Math.sqrt(nx * nx + ny * ny + 1);
+      normal[d] = b8(nx / l * 0.5 + 0.5); normal[d + 1] = b8(ny / l * 0.5 + 0.5); normal[d + 2] = b8(0.5 / l + 0.5); normal[d + 3] = b8(R ? R[s] : 0.8);
+      const a = M ? M[s] : 1, r = b8(A[s * 3]), g = b8(A[s * 3 + 1]), b = b8(A[s * 3 + 2]);
+      albedo[d] = r; albedo[d + 1] = g; albedo[d + 2] = b; albedo[d + 3] = b8(M ? a : MT ? MT[s] : 1);
+      m0 += LIN[r] * a; m1 += LIN[g] * a; m2 += LIN[b] * a;
+    }
+  }
+  wrapGutter(new Uint32Array(normal.buffer, normal.byteOffset, normal.length >> 2), W, ox, oy, S);
+  wrapGutter(new Uint32Array(albedo.buffer, albedo.byteOffset, albedo.length >> 2), W, ox, oy, S);
+  let cover = S * S; if (M) { cover = 0; for (let i = 0; i < S * S; i++) cover += M[i]; }
+  return [m0, m1, m2].map(v => v / Math.max(1, cover));
+}
+
+const cellOrigin = index => [(index % GRID) * CELL, ((index / GRID) | 0) * CELL];
+const cellInfo = (index, mean) => { const [ox, oy] = cellOrigin(index); return { index, uv: [(ox + PAD) / ATLAS, (oy + PAD) / ATLAS, TILE / ATLAS, TILE / ATLAS], mean }; };
+function emptyAtlas() {
+  const albedo = new Uint8Array(ATLAS * ATLAS * 4), normal = new Uint8Array(ATLAS * ATLAS * 4);
+  new Uint32Array(albedo.buffer).fill(WHITE); new Uint32Array(normal.buffer).fill(FLAT_NORMAL); // unused cells: white opaque, flat normal, roughness 0.9
+  return { albedo, normal };
+}
+
 export function buildAtlasData(gens = GENERATORS) {
-  const t0 = (globalThis.performance ?? Date).now();
-  const albedo = new Uint8Array(ATLAS * ATLAS * 4), normal = new Uint8Array(ATLAS * ATLAS * 4), cells = {};
-  const A32 = new Uint32Array(albedo.buffer), N32 = new Uint32Array(normal.buffer);
-  A32.fill(WHITE); N32.fill(FLAT_NORMAL); // unused cells: white opaque albedo, flat normal, roughness 0.9
-  const S = TILE;
-  // sRGB -> linear for the coverage-weighted mean, looked up on the stored 8-bit value (what the GPU decodes).
-  const LIN = new Float64Array(256); for (let i = 0; i < 256; i++) LIN[i] = srgbToLin(i / 255);
+  const t0 = (globalThis.performance ?? Date).now(), { albedo, normal } = emptyAtlas(), cells = {};
   Object.entries(gens).forEach(([name, gen], index) => {
     if (index >= GRID * GRID) throw new Error('texture atlas full');
-    const out = (gen.default ?? gen)(S, N), strength = gen.normalStrength ?? out.normalStrength ?? 4;
-    const { albedo: A, height: H, rough: R, alpha: M, metal: MT } = out; // metal: opaque cells only, stored in albedo alpha
-    const col = index % GRID, row = (index / GRID) | 0, ox = col * CELL, oy = row * CELL;
-    // Normals and roughness once per tile texel (Sobel on wrapped height), written straight into the atlas,
-    // then the gutter is wrapped from the tile itself.
-    let m0 = 0, m1 = 0, m2 = 0;
-    for (let y = 0; y < S; y++) {
-      const ym = ((y + S - 1) % S) * S, y0 = y * S, yp = ((y + 1) % S) * S;
-      let d = ((oy + PAD + y) * ATLAS + ox + PAD) * 4;
-      for (let x = 0; x < S; x++, d += 4) {
-        const xm = x === 0 ? S - 1 : x - 1, xp = x === S - 1 ? 0 : x + 1, s = y0 + x;
-        const gx = (H[ym + xp] + 2 * H[y0 + xp] + H[yp + xp] - H[ym + xm] - 2 * H[y0 + xm] - H[yp + xm]) / 8;
-        const gy = (H[yp + xm] + 2 * H[yp + x] + H[yp + xp] - H[ym + xm] - 2 * H[ym + x] - H[ym + xp]) / 8;
-        const nx = -gx * strength, ny = -gy * strength, l = Math.sqrt(nx * nx + ny * ny + 1);
-        normal[d] = b8(nx / l * 0.5 + 0.5); normal[d + 1] = b8(ny / l * 0.5 + 0.5); normal[d + 2] = b8(0.5 / l + 0.5); normal[d + 3] = b8(R ? R[s] : 0.8);
-        const a = M ? M[s] : 1, r = b8(A[s * 3]), g = b8(A[s * 3 + 1]), b = b8(A[s * 3 + 2]);
-        albedo[d] = r; albedo[d + 1] = g; albedo[d + 2] = b; albedo[d + 3] = b8(M ? a : MT ? MT[s] : 1);
-        m0 += LIN[r] * a; m1 += LIN[g] * a; m2 += LIN[b] * a;
-      }
-    }
-    wrapGutter(N32, ox, oy, S); wrapGutter(A32, ox, oy, S);
-    let cover = S * S; if (M) { cover = 0; for (let i = 0; i < S * S; i++) cover += M[i]; }
-    cells[name] = { index, uv: [(ox + PAD) / ATLAS, (oy + PAD) / ATLAS, S / ATLAS, S / ATLAS], mean: [m0, m1, m2].map(v => v / Math.max(1, cover)) };
+    const [ox, oy] = cellOrigin(index);
+    cells[name] = cellInfo(index, packCell(gen, albedo, normal, ATLAS, ox, oy));
   });
   N.clearNoiseCache(); // lattice tables are only needed during the build
   return { albedo, normal, cells, size: ATLAS, ms: Math.round((globalThis.performance ?? Date).now() - t0) };
 }
 
-let cached = null;
-// THREE wrapper. Builds once; CPU copies are dropped after the first GPU upload.
+// Worker side of getAtlasAsync: build some GENERATORS cells into standalone CELL x CELL buffers.
+function buildCells(names) {
+  const out = [];
+  for (const name of names) {
+    const albedo = new Uint8Array(CELL * CELL * 4), normal = new Uint8Array(CELL * CELL * 4);
+    out.push({ name, albedo, normal, mean: packCell(GENERATORS[name], albedo, normal, CELL, 0, 0) });
+  }
+  N.clearNoiseCache();
+  return out;
+}
+
+let cached = null, pending = null, regen = null;
+// CPU pixels for a texture whose copy was dropped: three only asks again on a context restore, a
+// texture.clone()/copy() (bumps the shared Source version) or a manual needsUpdate. Rebuild both atlases
+// once (synchronous, ~0.3-0.6 s, rare); the unused buffer is dropped after the current task.
+function rebuilt(key) {
+  if (!regen) {
+    regen = buildAtlasData(); console.warn(`texture atlas: CPU data needed again, rebuilt in ${regen.ms} ms`);
+    setTimeout(() => { regen = null; }, 0);
+  }
+  return regen[key];
+}
+// THREE wrapper. Builds once; CPU copies are dropped after each GPU upload (8 MB of JS memory back).
 export function getAtlas(T, data = null) {
   if (cached) return cached;
   const d = data ?? buildAtlasData();
-  const make = (buf, srgb) => {
-    const t = new T.DataTexture(buf, d.size, d.size, T.RGBAFormat, T.UnsignedByteType);
+  const make = (key, srgb) => {
+    const t = new T.DataTexture(d[key], d.size, d.size, T.RGBAFormat, T.UnsignedByteType);
+    let buf = d[key];
+    // image.data is read by WebGLTextures.uploadTexture (texSubImage2D); null after release, so it
+    // regenerates on demand instead of uploading "no pixels" (black atlas after webglcontextrestored).
+    t.image = { width: d.size, height: d.size, get data() { return buf ?? (buf = rebuilt(key)); }, set data(v) { buf = v; } };
     t.colorSpace = srgb ? T.SRGBColorSpace : T.NoColorSpace; t.wrapS = t.wrapT = T.ClampToEdgeWrapping;
     t.magFilter = T.LinearFilter; t.minFilter = T.LinearMipmapLinearFilter; t.generateMipmaps = true; t.anisotropy = 4;
-    t.needsUpdate = true; t.onUpdate = () => { t.image.data = null; t.onUpdate = null; };
+    t.needsUpdate = true; t.onUpdate = () => { buf = null; };
     return t;
   };
-  cached = { map: make(d.albedo, true), normalMap: make(d.normal, false), cells: d.cells, ms: d.ms, gpuBytes: Math.round(2 * d.size * d.size * 4 * 4 / 3) };
+  cached = { map: make('albedo', true), normalMap: make('normal', false), cells: d.cells, ms: d.ms, gpuBytes: Math.round(2 * d.size * d.size * 4 * 4 / 3) };
   return cached;
 }
 
-// Optional off-main-thread build: `await getAtlasAsync(T)` builds in a module worker when available.
-export async function getAtlasAsync(T) {
-  if (cached || typeof Worker === 'undefined') return getAtlas(T);
-  try {
-    const w = new Worker(import.meta.url, { type: 'module' });
-    const d = await new Promise((res, rej) => { w.onmessage = e => res(e.data); w.onerror = rej; w.postMessage('build'); });
-    w.terminate(); return getAtlas(T, d);
-  } catch (e) { console.warn('texture worker failed, building inline', e); return getAtlas(T); }
+// Off-main-thread build: `await getAtlasAsync(T)` builds in a module worker when available (main thread
+// only receives two transferred 4 MB buffers), else inline. Concurrent calls share one build.
+export function getAtlasAsync(T) {
+  if (cached) return Promise.resolve(cached);
+  if (pending) return pending;
+  if (typeof Worker === 'undefined') return Promise.resolve(getAtlas(T));
+  pending = new Promise(res => {
+    let w = null;
+    const done = d => { w?.terminate(); w = null; pending = null; res(cached ?? getAtlas(T, d)); };
+    const fail = e => { console.warn('texture worker failed, building inline', e); done(null); };
+    try {
+      w = new Worker(import.meta.url, { type: 'module' });
+      w.onmessage = e => (e.data?.albedo instanceof Uint8Array ? done(e.data) : fail(e.data?.error ?? 'bad message'));
+      w.onerror = e => { e.preventDefault?.(); fail(e.message ?? e); };
+      w.onmessageerror = fail;
+      w.postMessage('build');
+    } catch (e) { fail(e); }
+  });
+  return pending;
 }
 if (typeof WorkerGlobalScope !== 'undefined' && globalThis instanceof WorkerGlobalScope) {
-  globalThis.onmessage = () => { const d = buildAtlasData(); globalThis.postMessage(d, [d.albedo.buffer, d.normal.buffer]); };
+  globalThis.onmessage = () => {
+    try { const d = buildAtlasData(); globalThis.postMessage(d, [d.albedo.buffer, d.normal.buffer]); }
+    catch (e) { globalThis.postMessage({ error: String(e?.stack ?? e) }); }
+  };
 }
