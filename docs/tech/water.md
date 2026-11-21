@@ -102,10 +102,29 @@ interleaved over 3 rounds (`fp` view, calm, 1280x720, 40 frames after a 10-frame
 the median is reported. `renderer.info` is for one whole frame, including the shadow map pass
 (sun shadows are on, as in the game).
 
-TIMING_TABLE
+Interleaved medians from two full runs (run 1 had 8 floater slots and per-pixel Jacobian; run 2
+the final shader with vertex Jacobian, final.json; the 16-slot bump landed during run 2):
 
-The real game (`shoot_game.py`, 40 frames at spawn, same loaded machine) gave 1470 ms with
-the current ocean and 1741 to 1773 ms with tier A, about +20% for the whole frame. Draw calls,
+| tier | avg ms run 1 | avg ms run 2 | x cur (1 / 2) | worst ms (run 2) | calls | triangles | geometries | textures | programs |
+|------|-------------:|-------------:|--------------:|-----------------:|------:|----------:|-----------:|---------:|---------:|
+| cur (dist/ocean.js) | 475 | 502 | 1.0 / 1.0 | 1667 | 42 | 21,648 | 35 | 1 | 4 |
+| **a** (ship) | 705 | 1012 | 1.5 / 2.0 | 2150 | 42 | 21,648 | 35 | 2 | 4 |
+| b (+prepass) | 1208 | 1370 | 2.5 / 2.7 | 2850 | 83 | 23,296 | 35 | 4 | 6 |
+| c (+prepass +reflection) | 1095 | 1159 | 2.3 / 2.3 | 3617 | 120 | 24,896 | 35 | 5 | 8 |
+
+Per-view single samples from run 2 (20 frames each, same order cur→a→b→c, so later rows saw
+different load): cur fp/over/sun 332/324/407 ms; a 501/691/552; b 579/805/1077; c 1148/1686/1268.
+`calls` doubles for b (scene rendered twice) and triples for c; the `over` view has more calls
+(73 / 145 / 217) because more of the scene is in frame. "calls" includes the sun shadow-map pass.
+
+Read: tier A is ~1.5–2x the SwiftShader frame of the current ocean at identical draw calls and
+triangles. SwiftShader is a CPU rasteriser where a full-screen fragment shader dominates
+everything, so this overstates the GPU cost; it does mean A has a fatter fragment shader
+(2 SDF fetches, 16-slot floater loop, fwidth lace) than today's.
+
+The real game (`shoot_game.py`, 40 frames after spawn, same loaded machine, not interleaved)
+gave 1470 ms with the current ocean and 1741 / 1773 / 1898 / 2546 ms in four runs with tier A,
+so somewhere around +20–70% for the whole frame; the load from other agents swamps the signal. Draw calls,
 programs and geometries are unchanged. Tier A adds one 16 KB texture.
 
 JS per frame: `setFloaters` with 30 items and a nearest-16 sort takes about 0.015 to 0.1 ms.
@@ -137,14 +156,14 @@ Tiers B and C stay in `water.js` behind `#define`s for reference. They cost noth
 
 ## Honest weaknesses
 
-- About +50% fragment cost for the water in the SwiftShader lab and about +20% for the whole
-  game frame. On a real GPU one full-screen pass of this size is trivial, but it is not free,
+- Roughly 1.5–2x the current ocean's frame time in the SwiftShader lab and +20–70% for the
+  whole game frame (very noisy, shared machine). On a real GPU one full-screen pass of this size is trivial, but it is not free,
   and nothing here was measured on real hardware.
 - Floater foam uses circles (r = .35 for every item). Long planks get a round ring, and items
   beyond the nearest 16 get no foam (30 items spawn; 8 slots was visibly too few in the game shot). Items more than about 30 m away fade out anyway.
 - Contact foam only knows the raft tiles and the item circles. The hook bobber, swimmers and
   the islands' shores get none. That would need tier B or more circles. Adding the bobber as
-  a 9th circle is a one-line follow-up.
+  one more circle is a one-line follow-up (it would take a slot from an item).
 - The raft SDF assumes the raft does not move or turn in x/z, which is true today because the
   raft group only bobs and tilts. If the raft ever drifts, call `setRaftPose(x, z, yaw)` each
   frame.
