@@ -15,7 +15,7 @@ const CSS_FILES = ['style.css', 'graphics.css'];
 // a stale entry only costs a wasted request, a missing one just loads late via the normal import.
 const PRELOAD = [
   'animals-core.js', 'animals-models.js', 'animals.js', 'audio.js', 'avatar.js', 'bake.js', 'bees-model.js',
-  'bees.js', 'bottle.js', 'camera-models.js', 'camera.js' /* [camera] */, 'brush-model.js', 'build-menu.js', 'build-radial.js', 'build-rules.js',
+  'bees.js', 'bottle.js', 'camera-models.js', 'camera.js' /* [camera] */, 'canteen-model.js', 'canteen.js' /* [canteen] */, 'brush-model.js', 'build-menu.js', 'build-radial.js', 'build-rules.js',
   'building-models.js', 'building-pieces.js', 'building.js', 'content-items.js', 'content.js', 'controls.js',
   'cooking.js', 'cookpot-core.js', 'cookpot-model.js', 'cookpot.js', 'coop-avatar.js', 'coop-delta.js', 'coop-feed.js', 'coop-fx.js', 'coop-interp.js',
   'coop-loopback.js', 'coop-rules.js', 'coop.js', 'craft-book.js', 'crafts.js', 'daynight.js', 'debris.js',

@@ -7,6 +7,7 @@ import { createSmelterModel, createResearchTableModel, createGrillModel } from '
 import { buildResearchTable } from './storage-research-model.js?build=v3-survival-ae77fa84ac2b';
 import { createSignalModel } from './signal-models.js?build=v3-survival-ae77fa84ac2b';
 import { createPurifier } from './purifier-model.js?build=v3-survival-ae77fa84ac2b';
+import { createCanteenModel } from './canteen-model.js?build=v3-survival-ae77fa84ac2b'; // [canteen]
 import { createRainBarrel, createSprinkler } from './rain-model.js?build=v3-survival-ae77fa84ac2b';
 import { createHive, createFlowerBox, createCandle } from './bees-model.js?build=v3-survival-ae77fa84ac2b';
 import { buildInstrument } from './instrument-models.js?build=v3-survival-ae77fa84ac2b';
@@ -195,6 +196,7 @@ const SMALL = {
   honeyfish: T => grilledFish(T, '#d9952e', '#ffcf4a'),
   saltcup: T => cup(T, '#4f93b8', true),
   freshcup: T => cup(T, '#8fd8f2', false),
+  canteen: T => createCanteenModel(T), // [canteen]
 };
 
 /** Kinds this module can build. */

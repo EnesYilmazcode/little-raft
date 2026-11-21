@@ -196,6 +196,15 @@ export const ITEM_ICONS = Object.freeze({
     <rect x="8" y="23" width="7" height="5" rx="1" fill="#ffffff"/>
     <circle cx="26" cy="29" r="9" fill="#2b3a40"/><circle cx="26" cy="29" r="5.5" fill="#bfe6ef"/></g>
     <path d="M23.5 26.8 C24.3 25.8 25.4 25.3 26.6 25.3" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>`,
+  // [canteen] Seaglass Canteen: sea-glass flask, pale water disc, cork and rope strap
+  canteen: `<path d="M10 22 C9 10 16 6 24 6 C32 6 39 10 38 22" fill="none" stroke="${O}" stroke-width="4.4" stroke-linecap="round"/>
+    <path d="M10 22 C9 10 16 6 24 6 C32 6 39 10 38 22" fill="none" stroke="#b0805a" stroke-width="2.4" stroke-linecap="round"/>
+    <g stroke="${O}" stroke-width="2" stroke-linejoin="round">
+      <rect x="19.5" y="9" width="9" height="7" rx="2" fill="#c69860"/>
+      <rect x="20" y="14" width="8" height="6" fill="#4f93b8"/>
+      <circle cx="24" cy="31" r="14" fill="#8fd8f2"/>
+      <circle cx="24" cy="31" r="8" fill="#d6f4fb" stroke-width="1.2" stroke-opacity=".5"/></g>
+    <path d="M15.5 27 C16.5 24 18.5 22 21.5 21" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>`,
   musicbox: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <path d="M7 20 L11 5 H37 L33 20 Z" fill="#a87443"/>
     <path d="M15 9 H33" fill="none" stroke="#fff2cc" stroke-width="1.4"/>

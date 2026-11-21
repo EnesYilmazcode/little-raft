@@ -113,7 +113,8 @@ test('items: every entry is complete and self-consistent', () => {
     if (it.tool) {
       assert.equal(it.stack, 1, `${id} tool stack`);
       assert.ok(Number.isInteger(it.durability) && it.durability > 0, `${id} durability uses`);
-      assert.ok(repairCost(id), `${id} tool needs a repair cost`);
+      if (id === 'canteen') assert.equal(repairCost(id), null, 'canteen is refilled, never repaired'); // [canteen] durability is the fill
+      else assert.ok(repairCost(id), `${id} tool needs a repair cost`);
     } else {
       assert.equal(it.durability, undefined, `${id} non-tool durability`);
     }
@@ -171,7 +172,7 @@ test('items: legacy kinds keep their ids and Bag-compatible stack/tool shape', (
     assert.equal(INFO[k].tool, Inv.ITEM_INFO[k].tool, `${k} tool flag matches Bag`);
   }
   assert.equal(ITEMS.wood.name, 'Plank');
-  assert.deepEqual([...TOOL_IDS].sort(), ['fishingrod', 'hammer', 'hook', 'metalhook', 'metalspear', 'spade', 'spear']);
+  assert.deepEqual([...TOOL_IDS].sort(), ['canteen' /* [canteen] */, 'fishingrod', 'hammer', 'hook', 'metalhook', 'metalspear', 'spade', 'spear']);
   for (const s of ['smelter', 'researchtable', 'grill']) assert.ok(STATION_IDS.includes(s) && PLACEABLE_IDS.includes(s));
   for (const k of ['sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'juicer' /* [juicer] */]) assert.ok(PLACEABLE_IDS.includes(k));
   assert.ok(!STATION_IDS.includes('juicer')); // [juicer] decor, not a slot-panel station
