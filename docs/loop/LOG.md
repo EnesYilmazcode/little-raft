@@ -1206,3 +1206,35 @@ No regressions. Intended differences:
 - Co-op: the host simulates the bait. A guest sends `bait:throw` (origin must be within 4 m of the guest); the bait rides as 4 extra numbers on the shark pose (older guests read only the first 7). On a guest the lure shows as the hunt pose code.
 - Not saved: an active bait is dropped on reload, rejoin or hot swap; the shark simply resumes circling.
 - Files: dist/bait.js (rules, low-poly lure model, game glue), tests/bait.test.mjs, tests/e2e/bait_probe.py; game.js edits marked `// [bait]`.
+
+## 2026-11-21 · loop-fidelity-202611210954 (raft fidelity, worker B round 3)
+Base: raft-master 9b3ba495, then merged with raft-master 752cddbb. These gaps were claimed by neither fidelity worker before this round.
+- **Shark Bait** (bait.js, shark.js lure state):
+  - recipe 2 rope + 2 fish; left click throws it; it floats 80 s
+  - the shark circles it and bites it, any raft attack is cancelled, and swimmers are ignored; afterwards the next raft attack comes a full interval later
+  - a bait that lands on island sand rolls back out to sea
+  - host-authoritative; guests see it from 4 extra numbers on the shark pose; it is not saved
+- **Tusker** (boar-core/model/boar.js; our own island boar, after Raft's warthog):
+  - one per island with radius ≥ 7 m
+  - charges a player within 12 m (0.55 s wind-up, 8.5 m/s), 20 damage, 1.5 s trot-back; side-step or jump to dodge
+  - 18 HP; butcher with E for 2 Raw Meat (+20 food / -5 water), which grills to Grilled Meat (+35 food)
+  - no respawn on the same island; host-authoritative pose in ext.tusker
+- **Bloatfish** (puffer-core/model/puffer.js; our own puffer hazard):
+  - 2-4 hover by docked islands; triggered within 4 m by a swimmer or diver
+  - inflates for 1.2 s, then bursts for 20 damage within 3 m, then a poison cloud does 5/s for 9 s (3 m)
+  - 8 HP; spear kill drops Puffer Goo (+33% chance of a second), which smelts to Blast Powder
+  - local per player, like diving
+- One spear target registry (spear-targets.js) that creatures register with; the jab chain is shark, then targets, with the first hit winning.
+Review fixes:
+- tusker guests snapped every packet (now eased); gore counter reset on restore
+- bait onto island sand
+- held bait pose; backlit tusker legs; goo and blast-powder icons; "Throw bait" prompt
+Checks: npm test 1442/1442 after the merge. shoot.py errors: []. Frame time and draw calls within noise of base: 38-41 calls vs 38-42.
+Open:
+- the first target along the jab wins, not the nearest
+- the host accepts puffer goo near an island without proof of a kill
+- a lured shark ignores spear drive-offs
+- no leather
+- Blast Powder has no use yet
+- ITEM_TEXT has duplicate sharkmeat/sharkhead keys with identical text
+Worker B round 2 (claude/loop-fidelity-202611210914: Simple Bed respawn + drowning) is still unmerged.
