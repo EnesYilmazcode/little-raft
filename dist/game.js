@@ -125,7 +125,7 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
 #pickupFeed .pf-row{max-width:max(200px,calc(50vw - 287px));white-space:normal;line-height:1.25}
 @media(max-width:1000px){#pickupFeed[popover]{inset:auto auto calc(182px + var(--coop-feed-h, 0px)) 10px}#pickupFeed .pf-row{max-width:calc(50vw - 120px)}}
 .feed-lane{display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(transparent,#000 22px);mask-image:linear-gradient(transparent,#000 22px)}
-#inventory .sv-bag>.feed-lane{flex:1 1 0;min-height:88px;align-self:stretch}
+#inventory .sv-bag>.feed-lane{flex:1 1 0;min-height:40px;align-self:stretch}
 /* Pause rail: the lane fills the space under "Esc Back"; an equal spacer on top keeps the menu centred. */
 #options .rs-menu::before,#options .rs-menu>.feed-lane{content:"";flex:1 1 0;min-height:0;margin:0;padding:0}
 #options .rs-menu>.feed-lane{margin-top:18px;padding:0 16px 16px 0}#options .rs-menu::before{margin-bottom:18px;padding-bottom:16px}
@@ -459,9 +459,8 @@ export function mount(transfer = null) {
     heldKind: () => heldKind(), // [zipline] content hook
   };
   function init() {
-    // The page loads icons.svg with no query (one fetch). Only a hot swap re-points the sprite at the new build so a
-    // changed icons.svg shows up; survival-ui.js reads the sprite URL back from these <use> elements.
-    if (X) { const b = new URL(import.meta.url).searchParams.get('build'), href = b ? 'icons.svg?build=' + encodeURIComponent(b) : 'icons.svg';
+    // Point the sprite at this build so a deploy never shows a stale cached icons.svg; survival-ui.js reads the URL back.
+    { const b = new URL(import.meta.url).searchParams.get('build'), href = b ? 'icons.svg?build=' + encodeURIComponent(b) : 'icons.svg';
       document.querySelectorAll('use[href*="icons.svg"]').forEach(el => { const [url, id] = el.getAttribute('href').split('#'); if (url !== href) el.setAttribute('href', href + '#' + id); }); }
     prepareDom();
     scene = new T.Scene(); sky = createSky(T, {sunDirection:new T.Vector3(-15, 28, 12)}); scene.add(sky.group); scene.background = sky.horizonColor.clone(); scene.fog = new T.Fog(sky.horizonColor.clone(), 90, 260);
@@ -679,7 +678,7 @@ export function mount(transfer = null) {
   function itemModel(item) {
     if (item.type === 'cache') return createSignalModel(T, 'cache');
     if (item.type === 'bottle') { const g = new T.Group(), b = createBottle(T); b.position.y = .04; b.rotation.y = (item.id % 7) * .9; g.add(b); return singlePass(g); }
-    if (JUNK_TYPES.includes(item.type)) { const g = new T.Group(), m = getModel(item.type); if (m) { m.rotation.y = (item.id % 7) * .9; m.position.y = .03; g.add(m); } return singlePass(g); } // [recycler] before createDebris (it throws on unknown types)
+    if (JUNK_TYPES.includes(item.type)) { const g = new T.Group(), m = modelOf(item.type); if (m) { m.traverse(o => { if (o.geometry) o.geometry.userData.shared = true; for (const x of [].concat(o.material || [])) x.userData.shared = true; }); /* shared models.js cache: never disposed on pickup */ m.rotation.y = (item.id % 7) * .9; m.position.y = .03; g.add(m); } return singlePass(g); } // [recycler] before createDebris (it throws on unknown types)
     if (item.type !== 'plastic') { const d = createDebris(T, item.type, mat, {seed:item.id, pool:4}); if (ART.artEnabled() && item.type === 'scrap') d.traverse(o => { if (o.isMesh && o.material.vertexColors) { o.material.dispose(); o.material = mat('#8e9aa2'); } }); /* art lane hook */ return singlePass(d); } // pooled geometry, drawn instanced by the item batch
     const g = new T.Group(), jug = createPlastic(T); if (ART.artEnabled()) { const b = jug.getObjectByName('jugBody'); if (b) { b.material.dispose(); b.material = mat('#f2f0e6'); } } /* art lane hook */ singlePass(jug); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
   }

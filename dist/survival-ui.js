@@ -224,7 +224,7 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 /* Raft-style layout: [categories | recipe list] on the left, [detail over backpack] on the right.
    The crafting column has a fixed height, so switching tabs or recipes never resizes the panel. */
 #inventory .sv-side{flex:none;display:flex;flex-direction:column;justify-content:flex-end;gap:12px;min-height:0;min-width:0}
-#inventory .sv-bag{flex:none;min-width:max-content;display:flex;flex-direction:column;align-items:center;gap:8px;padding:9px 12px 11px}
+#inventory .sv-bag{flex:1 1 auto;min-width:max-content;display:flex;flex-direction:column;align-items:center;gap:8px;padding:9px 12px 11px}
 #inventory .sv-grid{display:grid;grid-template-columns:repeat(${HB},var(--s));gap:var(--g);align-self:center}
 #inventory .sv-hotrow{display:grid;grid-template-columns:repeat(${HB},var(--s));gap:var(--g)}
 #inventory .sv-h{align-self:stretch;margin:2px 2px 1px;font:800 11px/1 ${FONT};letter-spacing:2.2px;text-transform:uppercase;color:#f6e8c6;text-shadow:0 1px 0 #3e2a1799}
@@ -289,7 +289,7 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-locked .sv-rsub{color:#a3321a}
 #inventory .sv-rbadge{font:800 12px/1 ${FONT};color:#3f6a26;font-variant-numeric:tabular-nums}
 /* detail: big icon, name, what it is for, have / need rows and the Craft button */
-#inventory .sv-detail{flex:1 1 0;min-height:0;display:flex;flex-direction:column;gap:7px;padding:10px 11px 11px;border-radius:4px;background:#e6d6adf7;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1733}
+#inventory .sv-detail{flex:0 1 auto;min-height:0;display:flex;flex-direction:column;gap:7px;padding:10px 11px 11px;border-radius:4px;background:#e6d6adf7;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1733}
 #inventory .sv-detail[hidden]{display:none}
 #inventory .sv-dhead{flex:none;display:grid;grid-template-columns:64px 1fr auto;gap:11px;align-items:center}
 #inventory .sv-dart{display:grid;place-items:center;width:64px;height:64px;border-radius:4px;background:#b89f6e;box-shadow:inset 0 0 0 1px #7a5a34}
@@ -304,7 +304,7 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-dstate[hidden]{display:none}
 #inventory .sv-dlabel{flex:none;display:flex;justify-content:space-between;font:700 10px/1 ${FONT};letter-spacing:1.5px;text-transform:uppercase;color:#6b5638}
 #inventory .sv-dlabel i{font-style:normal;letter-spacing:.6px;text-transform:none;font-weight:700;padding-right:8px}
-#inventory .sv-ings{flex:0 1 auto;min-height:0;overflow-y:auto;list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;scrollbar-width:thin;scrollbar-color:#a08a5e transparent}
+#inventory .sv-ings{flex:none;max-height:100px;overflow-y:auto;list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;scrollbar-width:thin;scrollbar-color:#a08a5e transparent}
 #inventory .sv-ing{flex:none;display:grid;grid-template-columns:26px 1fr auto;gap:8px;align-items:center;padding:3px 8px 3px 5px;border-radius:3px;background:#d6c397;box-shadow:inset 3px 0 0 #b0391e}
 #inventory .sv-ing.sv-ok{box-shadow:inset 3px 0 0 #5f9c3a}
 #inventory .sv-ing .sv-icon{width:26px;height:26px}
