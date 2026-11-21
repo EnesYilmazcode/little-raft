@@ -8,6 +8,17 @@ const MAX_BACKOFF_MS = 60000;
 const FAILED_RETRY_MS = 60000;
 const CSS_TIMEOUT_MS = 15000;
 const CSS_FILES = ['style.css', 'graphics.css'];
+// Every module in game.js' static import graph. Preloading them all at once flattens the import waterfall
+// (live.js -> game.js -> its imports -> held-items/hammer/fishing-tool). tests/live-preload.test.mjs keeps these
+// lists in step with the imports; a stale entry only costs a wasted request, a missing one just loads late.
+const PRELOAD = [
+  'audio.js', 'avatar.js', 'crafts.js', 'debris.js', 'deck.js', 'far-islands.js', 'farming-view.js', 'farming.js',
+  'fishing-tool.js', 'hammer.js', 'hands.js', 'held-items.js', 'hook-physics.js', 'hook.js', 'inventory-state.js',
+  'item-icons.js', 'models.js', 'ocean.js', 'pickup-feed.js', 'placement.js', 'plastic.js', 'player-physics.js',
+  'settings.js', 'sky.js', 'survival-ui.js', 'wood.js',
+];
+// Imported without a build query (vendored, never rewritten by publish_local.py).
+const PRELOAD_VENDOR = ['vendor/three.module.js'];
 
 const state = {
   engine: null,
@@ -120,6 +131,22 @@ async function importGame(build, retry) {
   return mod;
 }
 
+// Each <link rel=modulepreload> URL must equal the URL the import resolves to ('./x.js?build=<build>').
+function preloadGraph(build) {
+  if (!build || typeof document === 'undefined') return;
+  const head = document.head || document.documentElement;
+  // three.module.js (1.3 MB) is the long pole: request it first so the small modules do not queue ahead of it.
+  const urls = PRELOAD_VENDOR.map((name) => new URL('./' + name, BASE).href);
+  for (const name of PRELOAD) { const u = new URL('./' + name, BASE); u.searchParams.set('build', build); urls.push(u.href); }
+  for (const href of urls) {
+    if (document.querySelector('link[rel="modulepreload"][href="' + href + '"]')) continue;
+    const link = document.createElement('link');
+    link.rel = 'modulepreload';
+    link.href = href;
+    head.appendChild(link);
+  }
+}
+
 // ---------- staged CSS ----------
 function cssName(link) {
   try {
@@ -172,16 +199,27 @@ function stageCss(build) {
 }
 
 // ---------- boot ----------
+// The build baked into moduleUrl() (publish_local.py rewrites it in step with version.json).
+const BAKED_BUILD = new URL(moduleUrl(null)).searchParams.get('build');
+
 async function boot() {
+  const retry = state.retryCount ? state.retryCount : 0;
+  // Start fetching game.js and its whole import graph (in parallel) while version.json is in flight.
+  // Request order: version.json, game.js, then the preloads.
+  const manifestP = fetchManifest();
+  const early = importGame(null, retry);
+  early.catch(() => {}); // only awaited if the manifest agrees (or is unavailable)
+  preloadGraph(BAKED_BUILD);
   let manifest = null;
   try {
-    manifest = await fetchManifest();
+    manifest = await manifestP;
   } catch (e) {
     console.warn('[raftLive] version.json unavailable, booting unversioned game.js', e);
   }
   const build = manifest ? manifest.build : null;
   try {
-    const mod = await importGame(build, state.retryCount ? state.retryCount : 0);
+    if (build && build !== BAKED_BUILD) preloadGraph(build);
+    const mod = await (!build || build === BAKED_BUILD ? early : importGame(build, retry));
     const engine = mod.mount(null);
     if (!validEngine(engine)) throw new Error('mount() did not return { capture, dispose }');
     state.engine = engine;
@@ -237,6 +275,7 @@ async function swap(manifest) {
   let paused = false;
   try {
     // 1. Load new code and CSS while the old engine keeps running.
+    preloadGraph(manifest.build);
     const modP = importGame(manifest.build, retry);
     css = stageCss(manifest.build);
     const [mod] = await Promise.all([modP, css.ready]);
