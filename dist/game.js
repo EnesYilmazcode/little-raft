@@ -1092,6 +1092,12 @@ export function mount(transfer = null) {
   }
   const worldPos = o => { if (!o) return null; const p = o.getWorldPosition(new T.Vector3()); return {x:p.x, y:p.y, z:p.z, visible:o.visible}; };
   const debugApi = Object.freeze({
+    get renderInfo() {
+      if (!renderer) return null;
+      const i = renderer.info, c = {meshes:0, visible:0, lights:0, shadowCasters:0};
+      scene?.traverse(o => { if (o.isMesh || o.isLine || o.isPoints) { c.meshes++; if (o.visible) c.visible++; if (o.castShadow) c.shadowCasters++; } if (o.isLight) c.lights++; });
+      return {calls:i.render.calls, triangles:i.render.triangles, lines:i.render.lines, points:i.render.points, geometries:i.memory.geometries, textures:i.memory.textures, programs:i.programs?.length ?? null, pixelRatio:renderer.getPixelRatio(), shadows:renderer.shadowMap.enabled, ...c};
+    },
     get state() {
       const hc = castOut(), bag = localBag(), counts = bag.counts(), kind = heldKind();
       const mode = kind === 'hammer' ? 'build' : kind === 'fishingrod' ? 'fish' : kind === 'hook' ? 'hook' : DECOR_TYPES.includes(kind) ? 'place' : 'none';
