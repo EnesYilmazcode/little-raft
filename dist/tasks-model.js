@@ -6,7 +6,7 @@ export function createTaskBoard(T) {
   const wood = new T.MeshStandardMaterial({ color: '#a8794a', roughness: .85 });
   const dark = new T.MeshStandardMaterial({ color: '#6e4a2c', roughness: .9 });
   const cork = new T.MeshStandardMaterial({ color: '#c9a26b', roughness: 1 });
-  const paper = new T.MeshStandardMaterial({ color: '#f6ecd2', roughness: .95 });
+  const paper = new T.MeshStandardMaterial({ color: '#f6ecd2', emissive: '#f6ecd2', emissiveIntensity: .18, roughness: .95 }); // reads as paper even in the board's shade
   const pin = new T.MeshStandardMaterial({ color: '#d9573f', roughness: .5 });
   const ink = new T.MeshStandardMaterial({ color: '#7c6a52', roughness: 1 });
   const add = (geo, mat, x, y, z, rz = 0, name = '') => { const m = new T.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.z = rz; if (name) m.name = name; m.castShadow = true; g.add(m); return m; };
