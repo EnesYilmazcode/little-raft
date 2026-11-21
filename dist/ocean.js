@@ -255,7 +255,12 @@ export function createOcean(T, options = {}) {
     mask.needsUpdate = true;
   }
   // Children of this group (floating items) each get a foam collar, read every update.
+  // update() snapshots the candidates (near, visible items); just before the ocean draws, the ones whose
+  // collar is outside the camera frustum are dropped and the rest packed first, since every pixel within
+  // 45 m loops over the live points until the first empty one.
   function trackFoam(group) { foamGroup = group; }
+  const foamCand = Array.from({ length: MAX_FOAM }, () => new T.Vector4());
+  let foamCount = 0;
   function syncFoam() {
     const kids = foamGroup ? foamGroup.children : null, cam = camPos;
     let n = 0;
@@ -265,10 +270,25 @@ export function createOcean(T, options = {}) {
       const cx = c.position.x - cam.x, cz = c.position.z - cam.z;
       if (cx * cx + cz * cz > 2304) continue; // the shader only draws collars within 45 m
       const r = c.userData.foamRadius ?? 0.7;
-      foamPts[n++].set(c.position.x, c.position.z, r * c.scale.x, 0);
+      foamCand[n++].set(c.position.x, c.position.z, r * c.scale.x, 0);
+    }
+    foamCount = n;
+  }
+  const frustum = new T.Frustum(), viewProj = new T.Matrix4(), sphere = new T.Sphere();
+  // A collar's pixels lie within its radius (xz) of the item and within the wave height range of the base
+  // level (amplitudes sum to .255 m), so this sphere bounds them.
+  function packFoam(camera) {
+    viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    frustum.setFromProjectionMatrix(viewProj);
+    let n = 0;
+    for (let i = 0; i < foamCount; i++) {
+      const f = foamCand[i];
+      sphere.center.set(f.x, mesh.position.y, f.y); sphere.radius = f.z + 0.3;
+      if (frustum.intersectsSphere(sphere)) foamPts[n++].copy(f);
     }
     for (; n < MAX_FOAM; n++) foamPts[n].z = 0;
   }
+  mesh.onBeforeRender = (_r, _s, camera) => packFoam(camera);
 
   function update(t, camera) {
     time = t;
