@@ -18,6 +18,7 @@ import { floorTarget, decorCheck, normaliseDecor, createGhosts, tileAt, wrapRot,
 import * as Farm from './farming.js?build=v3-survival-ae77fa84ac2b'; // farming
 import { createFarmView } from './farming-view.js?build=v3-survival-ae77fa84ac2b'; // farming
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
+import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -40,6 +41,7 @@ const SAVE = 'little-raft-v1';
 const FLOOR_Y = .2, EYE_OFFSET = 1.6, HOTBAR = 8, PICKUP_REACH = 2.5;
 const LOOK_SENSITIVITY = .0022, DRAG_SENSITIVITY = .005, PITCH_LIMIT = 1.35;
 const FISH_REACH = 26, PENDING_MS = 2500, JOIN_TIMEOUT = 15000, ACK_TIMEOUT = 2000;
+const SUN_OFFSET = [-15, 28, 12], SHADOW_MARGIN = 4, SHADOW_MIN = 8, SHADOW_MAX = 25; // sun offset from its target; shadow box half-size limits (m)
 const CHARGE_MS = 900, MIN_CHARGE = .15, WEAR_PER_CATCH = 2, MAX_HEALTH = 100;
 const ROPE_SEGMENTS = 16, ITEM_FLOAT = .05, CAMERA_ROLL = .2;
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -178,6 +180,7 @@ export function mount(transfer = null) {
     if (raw) { try { const v = cleanWorld(JSON.parse(raw)); if (v) world = v; } catch {} }
     const b = bagsFromWorld(world); hostBag = b.host; guestBag = b.guest;
   }
+  let quality = null, shadowFrame = 0, shadowKey = ''; // adaptive render scale (dist/quality.js); shadow map setup last applied
   let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghosts, rope, ropeAttr, hookMesh, friend, player, sun;
   let hands = null, clothMat;
   let farmView = null, farmSeen = null, farmLast = 0; // farming
@@ -284,10 +287,10 @@ export function mount(transfer = null) {
     scene = new T.Scene(); scene.background = new T.Color('#cbd2c0'); scene.fog = new T.Fog('#cbd2c0', 25, 125);
     camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 200); camera.rotation.order = 'YXZ'; scene.add(camera);
     renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:true});
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7)); renderer.setSize(innerWidth, innerHeight);
-    renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+    renderer.setPixelRatio(pixelRatioFor(options)); renderer.setSize(innerWidth, innerHeight); // options are loaded already: one resize
+    renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
     scene.add(new T.HemisphereLight('#f2ead4', '#3d6b6a', 1.8));
-    sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(-15, 28, 12); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, {left:-25, right:25, top:25, bottom:-25}); sun.shadow.bias = -.001; scene.add(sun);
+    sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(...SUN_OFFSET); sun.shadow.bias = -.001; scene.add(sun, sun.target); applyShadows(options); // shadow box: fitShadow()
     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#cbd2c0', fadeNear:28, fadeFar:125}); ocean.uniforms.uDeep.value.set('#14505a'); ocean.uniforms.uShallow.value.set('#3f8c88'); ocean.uniforms.uZenith.value.set('#a9c1c0'); ocean.mesh.receiveShadow = true; scene.add(ocean.mesh); ocean.update(elapsed);
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
     farmView = createFarmView(T, {getModel:k => getModel(k)}); scene.add(farmView.group); // farming
@@ -352,6 +355,19 @@ export function mount(transfer = null) {
       g.userData.partKey = k; raft.add(g); raftParts.set(k, g);
     }
     blockList = world.decor.filter(d => BLOCK_RADIUS[d.type]).map(d => ({x:d.x, z:d.z, r:BLOCK_RADIUS[d.type]}));
+    fitShadow();
+  }
+  // Fits the sun's shadow box to the raft plus a margin for decor, avatars and the hook; it never grows past the old ±25 m.
+  // Called on every raft change. The raft group never moves in x/z, but the box follows it if it ever does.
+  function fitShadow() {
+    if (!sun || !world.tiles.length) return;
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const [x, z] of world.tiles) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+    const cx = raft.position.x + x0 + x1, cz = raft.position.z + z0 + z1; // tiles are 2 m: centre = sum of the ends
+    const r = clamp(Math.hypot(x1 - x0 + 1, z1 - z0 + 1) + SHADOW_MARGIN, SHADOW_MIN, SHADOW_MAX), d = Math.hypot(...SUN_OFFSET), cam = sun.shadow.camera;
+    sun.target.position.set(cx, 0, cz); sun.position.set(cx + SUN_OFFSET[0], SUN_OFFSET[1], cz + SUN_OFFSET[2]);
+    Object.assign(cam, {left:-r, right:r, top:r, bottom:-r, near:Math.max(.5, d - r - 8), far:d + r + 8}); cam.updateProjectionMatrix();
+    if (renderer) renderer.shadowMap.needsUpdate = true;
   }
 
   // ---------- Floating supplies ----------
@@ -689,13 +705,30 @@ export function mount(transfer = null) {
     if (!saveAvailable) setText('#saveStatus', 'Browser storage is unavailable. This session will not be saved.');
     refreshPointerUI(true);
   }
-  function applyOptions(next) {
-    const shadowsChanged = options.shadows !== next.shadows; options = next;
+  // Preset -> pixel-ratio cap and shadow map; the render scale is the user's, lowered further by the adaptive controller.
+  function pixelRatioFor(o) {
+    const cap = o.graphics === 'high' ? 1.7 : o.graphics === 'low' ? 1 : 1.3, scale = Math.min(o.renderScale ?? 1, o.adaptive !== false && quality ? quality.scale : 1);
+    return Math.max(.5, Math.min(devicePixelRatio, cap) * scale);
+  }
+  function applyShadows(o) {
+    const on = o.shadows !== false, size = o.graphics === 'high' ? 2048 : 1024, type = o.graphics === 'high' ? T.PCFSoftShadowMap : T.PCFShadowMap, key = on + ':' + size + ':' + type;
+    if (!renderer || !sun || key === shadowKey) return;
+    const recompile = shadowKey !== '' && (renderer.shadowMap.enabled !== on || renderer.shadowMap.type !== type); // r170 keeps old programs otherwise
+    shadowKey = key; renderer.shadowMap.enabled = on; renderer.shadowMap.type = type; sun.castShadow = on;
+    if (sun.shadow.mapSize.x !== size) { sun.shadow.map?.dispose(); sun.shadow.map = null; sun.shadow.mapSize.set(size, size); }
+    renderer.shadowMap.needsUpdate = true;
+    if (recompile) scene?.traverse(c => { for (const m of [].concat(c.material || [])) m.needsUpdate = true; });
+  }
+  function applyRender() {
     if (!renderer) return;
-    const cap = next.graphics === 'high' ? 1.7 : next.graphics === 'low' ? 1 : 1.3;
-    renderer.setPixelRatio(Math.max(.5, Math.min(devicePixelRatio, cap) * (next.renderScale ?? 1)));
-    renderer.shadowMap.enabled = next.shadows !== false;
-    if (shadowsChanged) scene?.traverse(o => { const m = o.material; if (m) for (const x of Array.isArray(m) ? m : [m]) x.needsUpdate = true; });
+    const pr = pixelRatioFor(options); if (renderer.getPixelRatio() !== pr) renderer.setPixelRatio(pr);
+    renderer.shadowMap.autoUpdate = !quality || quality.shadowEvery === 1; renderer.shadowMap.needsUpdate = true;
+  }
+  function applyOptions(next) {
+    const prev = options; options = next;
+    if (quality) { quality.setEnabled(next.adaptive !== false); if (prev.renderScale !== next.renderScale || prev.shadows !== next.shadows) quality.setCap(next.renderScale ?? 1, next.shadows !== false); }
+    else quality = createQuality({cap:next.renderScale ?? 1, shadows:next.shadows !== false, enabled:next.adaptive !== false, onChange:applyRender});
+    applyShadows(next); applyRender();
   }
   // Pause menu "quit to title": save, leave any crew, show the title. The world stays loaded for Continue.
   function quitToTitle() {
@@ -867,8 +900,9 @@ export function mount(transfer = null) {
   }
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, swimming:physics.swimming});
   function frame() {
-    const now = performance.now(), dt = Math.min((now - last) / 1000, .05); last = now; elapsed += dt;
+    const now = performance.now(), rawMs = now - last, dt = Math.min(rawMs / 1000, .05); last = now; elapsed += dt;
     const dialog = uiBlocked();
+    if (running && !dialog && !document.hidden) quality?.tick(rawMs); else quality?.reset(); // menus and hidden tabs are not measured
     if (role === 'guest' && networkReady && now - lastHostMessage > 8000) { closeConnection(); notice('Host disconnected. You are back on your own raft.'); }
     if (role === 'host' && conn?.open && now - lastGuestMessage > 8000) { const stale = conn; conn = null; unbindTarget(stale); stale.close(); other = null; networkReady = false; setConnectionLabel('BROTHER LEFT · ROOM OPEN'); }
     ocean.update(elapsed, camera);
@@ -890,6 +924,7 @@ export function mount(transfer = null) {
     if (conn?.open) { networkTick += dt; if (networkTick > .12) { networkTick = 0; send(role === 'host' ? hostState() : {type:'move', me:pose()}); } }
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     refreshPointerUI(); updateCharge(); updateContext(dialog);
+    if (!renderer.shadowMap.autoUpdate && ++shadowFrame % 2 === 0) renderer.shadowMap.needsUpdate = true; // adaptive bottom step: shadows at half rate
     renderer.render(scene, camera);
   }
   function animate() {
@@ -1174,6 +1209,7 @@ export function mount(transfer = null) {
       };
     },
     project,
+    get quality() { return quality ? {...quality.info, pixelRatio:renderer?.getPixelRatio() ?? null, shadowMapSize:sun?.castShadow ? sun.shadow.mapSize.x : 0, shadowBox:sun ? sun.shadow.camera.right : null} : null; },
     get targets() {
       return world.items.map(it => {
         const m = itemMeshes.get(it.token), p = m ? m.position : {x:it.x, y:ITEM_FLOAT, z:it.z};
@@ -1237,8 +1273,8 @@ export function mount(transfer = null) {
   const optionsDialog = document.getElementById('options'), previousSettingsOwner = optionsDialog?.dataset.owner;
   try {
     if (!canvas) throw new Error('#world canvas missing');
-    init();
-    settingsController = createSettings({onChange:applyOptions, onPause:clearInput, onResume:() => requestLock(), onQuit:guard(quitToTitle)});
+    settingsController = createSettings({onChange:applyOptions, onPause:clearInput, onResume:() => requestLock(), onQuit:guard(quitToTitle)}); // before init: the renderer starts at the saved quality
+    init(); applyOptions(options);
     survivalUI = createSurvivalUI({
       getBag:() => localBag(),
       onSelect:guard(i => selectSlot(i)),
