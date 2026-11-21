@@ -756,7 +756,7 @@ export function mount(transfer = null) {
     if (!lane) { lane = document.createElement('div'); lane.className = 'feed-lane'; host.appendChild(lane); }
     return lane;
   }
-  // First-run hints sit at the top of the bottom-left pickup feed. While the bag or pause menu is open the
+  // First-run hints are still tracked (hintDone) but never drawn (R3.3.5). While the bag or pause menu is open the
   // feed moves into that panel's lane; for other dialogs it stays hidden under their backdrop.
   function updateNotices(dialog) {
     if (survivalUI?.isOpen) hintDone('bag');
@@ -768,11 +768,7 @@ export function mount(transfer = null) {
     if (sig === noticeCache) return; noticeCache = sig;
     let el = $('#pickupFeed');
     if (!el) { el = document.createElement('div'); el.id = 'pickupFeed'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite'); document.body.appendChild(el); }
-    let row = el.querySelector(':scope>.pf-hint');
-    if (hint) {
-      if (!row) { row = document.createElement('div'); row.className = 'pf-row pf-note pf-hint'; row.append(document.createElement('i'), document.createElement('span')); }
-      row.lastChild.textContent = hint.text; if (el.firstChild !== row) el.prepend(row);
-    } else row?.remove();
+    el.querySelector(':scope>.pf-hint')?.remove(); // R3.3.5: no hint pills; the Notes card and the key prompt teach instead
     const lane = feedLane(place);
     if (lane) { // docked: an ordinary in-flow box inside the panel, not a top-layer popover over it
       try { if (el.matches(':popover-open')) el.hidePopover(); } catch {}
