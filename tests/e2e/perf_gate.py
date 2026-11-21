@@ -9,7 +9,7 @@ from playwright.sync_api import sync_playwright
 
 ap = argparse.ArgumentParser()
 ap.add_argument('dist'); ap.add_argument('--json'); ap.add_argument('--baseline'); ap.add_argument('--frames', type=int, default=240)
-ap.add_argument('--chrome', default='/usr/bin/google-chrome'); ap.add_argument('--swim', action='store_true', help='also measure swimming off the raft')
+ap.add_argument('--chrome', default='/usr/bin/google-chrome'); ap.add_argument('--swim', action='store_true', help='also measure swimming off the raft'); ap.add_argument('--warm', type=int, default=600, help='JIT warm-up frames at a tiny viewport before measuring (0 = off)')
 a = ap.parse_args()
 
 class Quiet(http.server.SimpleHTTPRequestHandler):
@@ -54,7 +54,13 @@ with sync_playwright() as p:
     page.locator('#solo').wait_for(state='visible')
     rep['startup']['soloToFirstFrameMs'] = page.evaluate("new Promise(r=>{const t=performance.now();document.querySelector('#solo').click();requestAnimationFrame(()=>requestAnimationFrame(()=>r(Math.round(performance.now()-t))))})")
     page.wait_for_function('raftDebug.state.running', timeout=30000)
+    # JIT warm-up: at full size software GL runs ~1-3 fps, so per-frame code never gets optimized by V8 and every double
+    # gets boxed, inflating allocation figures. Run frames at a tiny viewport first, then measure at full size.
+    if a.warm:
+        page.set_viewport_size({'width': 240, 'height': 136}); page.evaluate(COUNT, a.warm)
+        page.set_viewport_size({'width': 1280, 'height': 720})
     page.evaluate(COUNT, 30)
+    rep['warmFrames'] = a.warm
     rep['idle'] = phase(page, cdp, 'idle at spawn', a.frames)
     page.mouse.move(640, 360)
     # walk back and forth on the deck (W/S alternate every 0.6 s) so the phase measures deck walking, not swimming
