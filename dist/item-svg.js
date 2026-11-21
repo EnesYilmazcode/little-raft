@@ -212,6 +212,16 @@ export const ITEM_ICONS = Object.freeze({
     <path d="M35 18 L39 14.5 M35 30 L39 26.5" stroke="${O}" stroke-width="1.2" stroke-opacity=".5" stroke-linecap="round"/>
     <g fill="#fff2cc"><circle cx="8" cy="19" r=".9"/><circle cx="30" cy="19" r=".9"/><circle cx="8" cy="40" r=".9"/><circle cx="30" cy="40" r=".9"/></g>`,
 
+  // [tasks] Task Board
+  taskboard: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M11 30 V45 M37 30 V45" fill="none" stroke="#9c7649" stroke-width="3.2"/>
+    <rect x="5" y="9" width="38" height="25" rx="2" fill="#bb8650"/>
+    <rect x="8.5" y="12.5" width="31" height="18" rx="1" fill="#c9a26b" stroke-width="1.4"/>
+    <path d="M3 8.5 H45" stroke-width="3.4"/>
+    <g fill="#fff2cc" stroke-width="1.3"><path d="M11 15 L20 14 L21 27 L12 28 Z"/><path d="M22.5 14.5 H30 V27.5 H22.5 Z"/><path d="M31 14 L37.5 15 L36.5 27 L30.5 26 Z"/></g></g>
+    <g fill="#d9573f" stroke="${O}" stroke-width=".9"><circle cx="15.5" cy="15.5" r="1.6"/><circle cx="26.2" cy="15.6" r="1.6"/><circle cx="34.3" cy="16" r="1.6"/></g>
+    <path d="M13.5 20 H18.5 M13.8 23.5 H18 M24 20 H28.5 M24 23.5 H27.5 M32.5 20.5 H35.5" stroke="${O}" stroke-width="1" stroke-opacity=".5" stroke-linecap="round"/>`,
+
   // [bees] flower seed, flower box, beehive, honey, beeswax, candle, honey glazed fish
   flowerseed: `<g stroke="${O}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <path d="M24 44 C15 44 11 37 13 31 C15 25 20 22 24 17 C28 22 33 25 35 31 C37 37 33 44 24 44 Z" fill="#c99560"/>
