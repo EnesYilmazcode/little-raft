@@ -370,6 +370,7 @@ export function mount(transfer = null) {
     get world() { return world; }, get role() { return role; }, get running() { return running; }, get physics() { return physics; },
     get elapsed() { return elapsed; }, get options() { return options; }, get other() { return other; },
     localBag: () => localBag(), actorBag: a => actorBag(a), action: a => action(a), emit: (e, to) => emit(e, to), notice: (s, ms) => notice(s, ms),
+    play: (ev, s) => play(ev, s), // [treasure-hook] local sound only (finder beeps), never sent
     esc: s => esc(s), mat: c => mat(c), rebuildRaft: () => rebuildRaft(), deckY: () => deckY(), uiOpen: () => uiBlocked(),
     openInventory: () => openInventory(), releaseLock: () => { clearInput(); releaseLock(); }, requestLock: () => requestLock(),
   };
@@ -942,7 +943,9 @@ export function mount(transfer = null) {
     action(a);
   }
   function craft(recipe) { if (typeof recipe === 'string') action({kind:'craft', recipe}); }
-  function repair() { if (!running) return; const bag = localBag(); action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH)}); }
+  function repair() { if (!running) return; const bag = localBag();
+    const sel = bag.slots[bag.selectedIndex]; if (sel?.kind === 'spade') { action({kind:'treasure.repair'}); return; } // [treasure-hook] R on a held spade
+    action({kind:'repair', slot:repairHookSlot(bag.slots, bag.selectedIndex, MAX_HEALTH)}); }
   function openInventory() { if (!running || !survivalUI) return; clearInput(); releaseLock(); survivalUI.open?.(); play('open'); }
   function interact() {
     if (!running || uiBlocked() || diving?.state.diving) return; // diving lane hook: E gathers underwater
