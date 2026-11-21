@@ -6,14 +6,98 @@ nothing that costs frame time after the bake.
 
 Today `dist/survival-ui.js` draws icons from `dist/icons.svg` plus hand-drawn SVG fallbacks.
 Several kinds share a sprite (`plastic` and `scrap` both use `icon-scrap`, `fishingrod` uses
-`icon-hook`, `rope` uses `icon-net`). Ten kinds already have a real model builder:
-`createHook`, `createHammer`, `createFishingTool`, `createPlastic` and `createCraft(T, type)` for
-sail, palm, lantern, net, bench and crate. Those are the first icons to bake.
+`icon-hook`, `rope` uses `icon-net`, `bench` uses `icon-repair`, `crate` uses `icon-barrel`).
 
-Working prototype: `sandbox/icons/` (`index.html`, `main.js`, `icon-baker.js`). Check it with
-`python sandbox/icons/verify.py <out_dir>`, which prints a timing report and writes
-`icons.png`. It bakes all ten models with approach A and again with approach B so the two can
-be compared side by side.
+## Decision (final)
+
+Runtime-baked atlas with the game's own renderer, cached per build, SVG fallback. Working code:
+
+- `sandbox/icons/icon-atlas.js`: `bakeIconAtlas(T, renderer, items, opts)`. No imports, drops into dist unchanged.
+- `sandbox/icons/item-models.js`: kind -> model builder + icon pose for all 15 `ITEM_INFO` kinds,
+  and the engine entry `bakeItemIcons(T, renderer, mat, build, kinds)` -> `{ kind: blobURL }`.
+  12 kinds use dist builders (`createHook`, `createHammer`, `createFishingTool`, `createPlastic`,
+  `createDebris` wood/leaf/scrap, `createCraft` x6). Fish and rope have no world model, so two
+  small procedural ones live here (ellipsoid fish with gradient + fins; braided rope coil).
+- `sandbox/icons/adopt_patch.py`: exact anchored patches for `dist/survival-ui.js` and `dist/game.js`
+  (`--check`, `--apply`). See `icons-ADOPT.md`.
+- `sandbox/icons/shoot.py`: headless run, writes `sandbox/icons/shots/*.png` and `shots/report.json`.
+  The UI shots use a patched copy of the CURRENT `dist/survival-ui.js`, not a mock.
+
+How the bake works (per item, then once at the end):
+
+1. Build the model, pose it (`ICON_POSES`: long tools on the diagonal, placeables 3/4 from above,
+   flat things tipped up), fit a square ortho camera to the posed view-space box (`pad` 1.1, per-kind override).
+2. Render into a 192 px 4x MSAA HalfFloat target with one fixed rig: hemisphere fill, warm key
+   top-left-front, cool rim from behind, tiny PMREM studio env (so metal is not black). Shadow maps off.
+3. One resolve pass draws the 96 px tile straight into its cell of a 384x384 RGBA8 atlas target
+   (`atlas.viewport`): 2x2 box downsample, ACES + sRGB (render targets are linear in r170),
+   a 2.6 px navy outline (`#0e2630`-ish, same family as the sprite's `#153e49`) from a 16-tap
+   dilation, and a soft drop shadow (offset 2.2/2.6 px, 12-tap disc). Premultiplied compositing,
+   so thin parts have no dark fringe.
+4. Yield a frame between tiles. After the last tile: ONE `readRenderTargetPixelsAsync` for the
+   whole atlas, flip rows, slice 15 PNG data URLs (these go to `localStorage`), convert to blob
+   URLs for the DOM.
+5. Restore renderer state: render target, clear color/alpha, `shadowMap.enabled`, `autoClear`,
+   `info.autoReset`. Dispose targets, env, quad and every model (materials from the engine's
+   `mat()` cache are tracked and never disposed).
+
+Gotcha that cost a run: `renderer.render()` with `autoClear` clears the WHOLE render target, not
+the viewport, so only the last tile survived. The baker sets `autoClear = false` while baking.
+
+## Measured (`python sandbox/icons/shoot.py`, `shots/report.json`)
+
+Headless Chromium + SwiftShader on a 4-core box with load average ~32 (other fleet agents), so
+treat ms as relative and noisy. 15 icons at 96 px:
+
+| | DPR 1 run | DPR 2 run |
+|---|---|---|
+| setup (env, targets, shader) | 119 ms | 58 ms |
+| per-tile CPU submit | 14 to 609 ms | 7 to 661 ms |
+| total incl. per-tile frame yields | 35.2 s | 21.0 s |
+| single readback of the 384x384 atlas | 217 ms | 144 ms |
+| PNG encode + slice (15 data URLs) | 17 ms | 14 ms |
+| cache hit (`localStorage` -> 15 blob URLs) | | 5.5 ms |
+| game frame worst during bake | 16.6 s | 8.8 s |
+| game frame avg steady / after bake | 571 / 144 ms | 117 / 173 ms |
+
+Most of the "total" is the game frames between tiles: SwiftShader runs the queued tile work and
+compiles each new program lazily at the next flush, so the frame right after tile 1 takes the hit
+(resolve shader + PMREM + envmap variants of MeshStandardMaterial). A first resolve shader with a
+9x32-tap nested shadow loop took 27 s to compile on SwiftShader; the current 12-tap disc is the fix.
+`renderer.compileAsync` up front (option `precompile`) moved that into one 17 s block on
+SwiftShader, so it is off by default; turn it on where `KHR_parallel_shader_compile` exists.
+On a real GPU, expect a few ms per tile and one short compile hitch; with the cache every load
+after the first per build does no GL work at all.
+
+`renderer.info`:
+- bake total: 128 draw calls, 115,598 triangles for all 15 tiles (fishing rod and palm dominate).
+- game scene before -> after bake: calls 25 -> 25, triangles 41,734 -> 41,734, geometries 25 -> 25
+  (no leak), textures 2 -> 4 and programs 6 -> 8: the sandbox's shared `mat()` cache gained the
+  debris timber texture and its env-lit variants (owned by the engine cache, same as in game).
+
+Memory:
+- transient VRAM during the bake: 1.18 MB MSAA renderbuffer + 0.29 MB HalfFloat resolve
+  + 0.59 MB atlas + PMREM env (~0.4 MB at 256 px), all freed after the bake.
+- CPU: 590 KB readback buffer (freed), 225 KB of PNG data URLs (15 icons, ~15 KB each) in
+  `localStorage`, 15 blob URLs for the DOM. Nothing stays on the GPU.
+
+## Visual check (read the PNGs)
+
+- `shots/sheet-1x.png`, `shots/sheet-2x.png`, `shots/sheet-2x-native.png`: all 15 at native 96 px,
+  in 58/52 px slots, on a light 40 px strip and at 18 px cost-chip size, and SVG vs baked.
+- `shots/ui-inventory-1x.png`, `shots/ui-inventory-2x-panel.png`, `shots/ui-hotbar-2x-bar.png`:
+  the real survival UI with baked icons. `shots/ui-inventory-svg-1x.png`: same UI, current SVG.
+- `shots/game-adopted-inventory.png`: the real game (`shoot.py` at repo root) run on a copy of
+  dist with `adopt_patch.py --apply`: hook in the hotbar and all recipe icons are baked.
+
+Reads well: hammer, fish, rope, palm, crate, bench, net, leaf, plastic jug. Consistent light
+direction and outline across the set; at 2x every icon is crisp; at 1x 40 px still distinct.
+
+Weak: the fishing rod is a 1-2 px diagonal line at 40 px (the model is a thin rod); the hook
+model reads more like a knife than a hook; scrap looks like a sheet of paper; wood is one pale
+plank (the debris model) where the SVG shows a log pile; sail and lantern are tall and narrow, so
+they use little of the square slot. These are model/pose issues, not baker issues: per-kind
+`pose.pad`, yaw, or a dedicated icon variant of the model would fix them.
 
 ## Three facts that shape every approach
 
@@ -58,7 +142,7 @@ await renderer.readRenderTargetPixelsAsync(lo, 0, 0, S, S, pixels); // PBO + fen
 // flip rows -> ImageData -> putImageData -> toBlob -> object URL; createImageBitmap(imageData)
 ```
 
-Resolve shader core (full version in `sandbox/icons/icon-baker.js`):
+Resolve shader core of the first pass (the current one, with drop shadow, is in `sandbox/icons/icon-atlas.js`):
 
 ```glsl
 vec4 c = 0.25 * (tap(-t,-t) + tap(t,-t) + tap(-t,t) + tap(t,t)); // premultiplied (clear = 0,0,0,0)
@@ -82,7 +166,7 @@ Costs: about 120 lines, and one extra shader to maintain. The 2x HalfFloat targe
 material type pays its shader compile, so call `renderer.compileAsync(stage, cam)` on a
 throwaway scene holding all models before the loop if hitches show up.
 
-## B. Dedicated small renderer on its own canvas
+## B. Dedicated small renderer on its own canvas (first-pass comparison; code removed, see git history of icon-baker.js)
 
 Create a second `WebGLRenderer({ alpha: true, antialias: true })` at 2x icon size with the
 game's `outputColorSpace` and `toneMapping`. Render, then in the same task (no
@@ -133,7 +217,7 @@ so 8 slots plus a 30-slot bag gets into hundreds of draws). The icons must sit u
 canvas or be punched through it, which clashes with the DOM hotbar and its drop shadows. It
 also has layout reads every frame. Too expensive for a mid laptop as the main icon path.
 
-## Recommendation
+## Recommendation (first pass, superseded by the decision above)
 
 Use A for every item icon. Bake the kinds in `ITEM_INFO` that have a builder at startup, after
 the first game frame, one per `requestIdleCallback` (or awaited in a loop, since each bake
@@ -150,7 +234,7 @@ about 100 to 150 KB as base64.
 Resolution: bake at 96 px for slots shown at 48 CSS px, so it stays sharp at
 devicePixelRatio 2. On a 1x screen the browser downsamples, which looks fine.
 
-## Measured in the sandbox
+## Measured in the first pass (per-icon readback, kept for history)
 
 Headless Chrome with SwiftShader (CPU rasterizer, so this is a worst case and far slower than
 any real GPU), 10 models at 96 px:
