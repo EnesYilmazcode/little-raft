@@ -114,9 +114,9 @@ body.playing #hud .controls,body.playing #recipes,body.playing #aimHint,body.pla
   border:2px solid #fff3cf;box-shadow:0 0 8px rgba(255,189,102,.7);pointer-events:none;z-index:29}
 #signalMarker.edge{opacity:.7}
 #signalReadout[hidden],#signalMarker[hidden]{display:none}
-/* Rows wrap inside the gutter left of the hotbar (its left edge is 50vw - 253px); below 1000px wide that gutter is too narrow, so the feed lifts above the hotbar. */
+/* Rows wrap inside the gutter left of the hotbar (its left edge is 50vw - 253px); at 1100px wide and below the vitals panel lifts (vitals-ui.js), so the feed lifts above it, and above the hammer chip (--bm-chip-h, build-menu.js) while that shows. */
 #pickupFeed .pf-row{max-width:max(200px,calc(50vw - 287px));white-space:normal;line-height:1.25}
-@media(max-width:1000px){#pickupFeed[popover]{inset:auto auto calc(182px + var(--coop-feed-h, 0px)) 10px}#pickupFeed .pf-row{max-width:calc(50vw - 120px)}}
+@media(max-width:1100px){#pickupFeed[popover]{inset:auto auto calc(182px + var(--coop-feed-h, 0px) + var(--bm-chip-h, 0px)) 10px}#pickupFeed .pf-row{max-width:calc(50vw - 120px)}}
 .feed-lane{display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(transparent,#000 22px);mask-image:linear-gradient(transparent,#000 22px)}
 #inventory .sv-bag>.feed-lane{flex:1 1 0;min-height:88px;align-self:stretch}
 /* Pause rail: the lane fills the space under "Esc Back"; an equal spacer on top keeps the menu centred. */

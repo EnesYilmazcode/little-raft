@@ -38,7 +38,7 @@ dialog{max-height:calc(100dvh - 30px);overflow:auto;overscroll-behavior:contain}
 #pickupFeed:has(>.pf-danger:not(.out))>.pf-hint{display:none}
 @keyframes pf-in{from{opacity:0;transform:translateX(-22px)}to{opacity:1;transform:none}}
 @keyframes pf-bump{40%{transform:scale(1.18)}}@keyframes pf-bump2{40%{transform:scale(1.18)}}
-@media(max-width:1000px){#pickupFeed{max-width:calc(50vw - 134px)}} /* too little room beside the hotbar: still above the vitals panel, so it can run wider */
+@media(max-width:1100px){#pickupFeed{bottom:calc(182px + var(--coop-feed-h, 0px) + var(--bm-chip-h, 0px));max-width:calc(50vw - 134px)}} /* same breakpoint as the vitals lift (vitals-ui.js): the feed sits above the lifted vitals panel and the hammer chip, so it can run wider */
 @media(max-width:760px){#pickupFeed{left:10px;bottom:calc(184px + var(--coop-feed-h, 0px));font-size:13px;max-width:max(150px,calc(50vw - 112px));max-height:calc(50vh - 210px)}.pf-icon,.pf-icon>*{width:32px;height:32px}}
 @media(prefers-reduced-motion:reduce){.pf-row,.pf-row.bump .pf-icon,.pf-row.bump2 .pf-icon{animation:none;transition:opacity .2s}}
 /* Interaction prompt sits just above the hotbar, never on the reticle */

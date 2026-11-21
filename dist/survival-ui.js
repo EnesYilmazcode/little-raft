@@ -367,7 +367,11 @@ const CSS = `
 #craftTracker li.ct-ok b{color:#9ee07a}
 #craftTracker .ct-foot{margin-top:6px;font:600 11px/1.3 ${FONT};color:#f4efe299}
 #craftTracker .ct-foot kbd{font:800 10px/1 ${FONT};padding:1px 4px;border-radius:3px;box-shadow:inset 0 0 0 1px #ffffff40;color:#fff6e0}
-@media(max-width:760px){#craftTracker{bottom:110px;right:10px;width:180px}}
+/* no room beside the centred 570px hotbar below 570 + 2*(220 + 24) = 1058px: lift above it (hotbar top is 82px up) and cap the height;
+   the top-right Notes (top 184px, ~48px of head and padding) clip their rows above the 150px reserve so the two never meet */
+@media(max-width:1060px){#craftTracker{bottom:90px;max-height:150px;overflow:hidden}body:has(#craftTracker:not([hidden])) .ob-notes .ob-rows{max-height:max(24px,calc(100vh - 480px));overflow:hidden}}
+@media(max-width:1060px) and (max-height:720px){body:has(#craftTracker:not([hidden])) .ob-notes .ob-rows{-webkit-mask-image:linear-gradient(#000 calc(100% - 20px),transparent);mask-image:linear-gradient(#000 calc(100% - 20px),transparent)}}
+@media(max-width:760px){#craftTracker{bottom:110px;right:10px;width:180px}body:has(#craftTracker:not([hidden])) .ob-notes .ob-rows{max-height:max(24px,calc(100vh - 500px))}}
 `;
 
 function ensureStyle() {

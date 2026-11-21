@@ -3,7 +3,8 @@
 #contextPrompt{display:none!important}
 #lrPrompt,#lrFeed{position:fixed;z-index:30;pointer-events:none;color:#f6ecd6;font:600 14px/1.25 var(--ui-font,system-ui,-apple-system,'Segoe UI',sans-serif);
   text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 8px rgba(0,0,0,.55);text-align:left;user-select:none}
-#lrPrompt{left:calc(50% + 34px);top:calc(50% + 26px);opacity:0;transform:translateY(2px);transition:opacity .18s ease,transform .18s ease;white-space:nowrap}
+/* max-width stops 8px short of the top-right Notes (.ob-notes: right 16px, 248px wide); long prompts wrap instead of running under it */
+#lrPrompt{left:calc(50% + 34px);top:calc(50% + 26px);max-width:max(90px,calc(50vw - 306px));opacity:0;transform:translateY(2px);transition:opacity .18s ease,transform .18s ease;white-space:normal}
 #lrPrompt.lr-on{opacity:1;transform:none;transition-duration:.12s}
 #lrPrompt .lr-row{display:flex;align-items:center;gap:6px;min-height:20px}
 #lrPrompt .lr-row+.lr-row{margin-top:3px}
@@ -18,7 +19,7 @@
 #lrFeed .lr-line{animation:lrIn .16s ease-out;transition:opacity .4s ease,transform .4s ease;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 #lrFeed .lr-line.lr-out{opacity:0;transform:translateX(-6px)}
 @keyframes lrIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-@media(max-width:1000px){#lrFeed{max-width:calc(50vw - 134px)}}
+@media(max-width:1100px){#lrFeed{bottom:182px;max-width:calc(50vw - 134px)}} /* same breakpoint as the vitals lift (vitals-ui.js) */
 @media(max-width:760px){#lrFeed{left:10px;bottom:184px;max-height:calc(50vh - 210px);font-size:13px;max-width:max(150px,calc(50vw - 112px))}#lrPrompt{font-size:13px}}
 @media(prefers-reduced-motion:reduce){#lrPrompt,#lrPrompt.lr-on,#lrFeed .lr-line{transition:none;animation:none;transform:none}}
 /* The resume hint sits at the top edge (graphics.css); the throw charge is a thin ring on the reticle (graphics.css). */
