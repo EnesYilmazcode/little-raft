@@ -2,6 +2,8 @@
 // Usage: import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b'; const g = createHook(THREE);
 // Group is re-centered on its bounding box: ~0.70 wide (X), ~0.84 tall (Y), ~0.40 deep (Z).
 // Handle at bottom (-Y), curved hook with point at top (+Y), hook bend leans toward -Z (front).
+// All parts are baked into one mesh (root.children[0] = the re-centred `inner` group holding it).
+import { bakeMeshes } from './bake.js?build=v3-survival-ae77fa84ac2b';
 export function createHook(T) {
   const root = new T.Group();
   root.name = 'scrapHook';
@@ -40,7 +42,7 @@ export function createHook(T) {
   ].map(p => new T.Vector3(p[0], p[1], p[2]));
   const curve = new T.CatmullRomCurve3(pts, false, 'centripetal');
   const R = 0.022;
-  add(new T.TubeGeometry(curve, 96, R, 12, false), steel);
+  add(new T.TubeGeometry(curve, 48, R, 8, false), steel);
 
   // ---------- 2. tapered point (aimed along curve end tangent) ----------
   const up = new T.Vector3(0, 1, 0);
@@ -114,7 +116,7 @@ export function createHook(T) {
     }
   }
   const wrapTop = -0.17, wrapBot = -0.33;
-  add(new T.TubeGeometry(new Helix(wrapBot, wrapTop, 0.048, 9), 360, 0.0075, 6, false), rope);
+  add(new T.TubeGeometry(new Helix(wrapBot, wrapTop, 0.048, 9), 140, 0.0075, 5, false), rope);
 
   // ---------- 12-13. tied rope bands at wrap ends ----------
   const band = new T.TorusGeometry(0.05, 0.009, 6, 20);
@@ -146,11 +148,19 @@ export function createHook(T) {
 
   // Meshes: hook, tip, barb, ferrule, 4 rivets, handle, pommel, wrap, 2 bands, knot, cord, coil, bind, lash = 19
 
-  inner.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
-
-  // ---------- recenter on bounding box ----------
+  // ---------- recenter on bounding box (of the separate parts, as before baking) ----------
   inner.updateMatrixWorld(true);
   const box = new T.Box3().setFromObject(inner);
+
+  // ---------- bake every part into one mesh ----------
+  const parts = inner.children.slice();
+  const mesh = bakeMeshes(parts, inner, 'scrapHookBaked');
+  for (const m of parts) { inner.remove(m); m.geometry.dispose(); }
+  for (const m of [steel, darkSteel, rivetMat, wood, rope, ropeDark]) m.dispose();
+  mesh.castShadow = true; mesh.receiveShadow = false;
+  inner.add(mesh);
+  root.userData.dispose = mesh.userData.dispose;
+
   const center = box.getCenter(new T.Vector3());
   inner.position.sub(center);
   const size = box.getSize(new T.Vector3());
