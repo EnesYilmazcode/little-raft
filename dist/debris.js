@@ -137,7 +137,7 @@ function leafletGeo(T, base, dir, len, wid, droop, out) {
   // out = {pos:[], uv:[], idx:[]} single-sided top
   const up = new T.Vector3(0, 1, 0);
   const perp = new T.Vector3().crossVectors(up, dir).normalize();
-  const rows = 4, start = out.pos.length / 3;
+  const rows = 3, start = out.pos.length / 3;
   for (let i = 0; i <= rows; i++) {
     const t = i / rows;
     const prof = Math.pow(Math.sin(Math.PI * Math.min(1, t * 0.92 + 0.08)), 0.8) * (1 - 0.35 * t);
@@ -178,7 +178,7 @@ function frondGeo(T, r, length, count) {
   blades.computeVertexNormals();
   // rachis (midrib of the frond)
   const curve = new T.CatmullRomCurve3([0, 0.25, 0.5, 0.75, 1].map(P));
-  const rib = new T.TubeGeometry(curve, 16, 0.009, 5, false);
+  const rib = new T.TubeGeometry(curve, 8, 0.009, 3, false);
   return merge(T, [blades, rib]);
 }
 
@@ -187,19 +187,19 @@ function buildLeaf(T, getMaterial, root, inner, r) {
   const fronds = 4;
   const sx = -0.42;
   for (let f = 0; f < fronds; f++) {
-    const g = frondGeo(T, r, 0.78 + r() * 0.12, 9);
+    const g = frondGeo(T, r, 0.78 + r() * 0.12, 7);
     const yaw = -0.5 + (f / (fronds - 1)) * 1.0 + (r() - 0.5) * 0.15;
     place(T, g, sx, 0.015 * f, 0, (r() - 0.5) * 0.35, yaw, 0.05 + r() * 0.06);
     mesh(T, g, getMaterial(greens[f % greens.length]), inner);
   }
   // central stem the fronds sprout from
-  const stem = new T.CylinderGeometry(0.022, 0.034, 0.36, 8);
+  const stem = new T.CylinderGeometry(0.022, 0.034, 0.36, 6);
   place(T, stem, sx - 0.12, 0.01, 0, 0, 0, Math.PI / 2 - 0.08);
   mesh(T, stem, getMaterial('#7d8a3d'), inner);
   // twine tie binding the bundle
   const tie = merge(T, [
-    place(T, new T.TorusGeometry(0.037, 0.008, 6, 14), sx - 0.08, 0.012, 0, 0, Math.PI / 2, 0),
-    place(T, new T.TorusGeometry(0.035, 0.008, 6, 14), sx - 0.045, 0.014, 0, 0, Math.PI / 2, 0),
+    place(T, new T.TorusGeometry(0.037, 0.008, 4, 10), sx - 0.08, 0.012, 0, 0, Math.PI / 2, 0),
+    place(T, new T.TorusGeometry(0.035, 0.008, 4, 10), sx - 0.045, 0.014, 0, 0, Math.PI / 2, 0),
   ]);
   mesh(T, tie, getMaterial('#b89a64'), inner);
 }
@@ -276,11 +276,11 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
   for (let s = 0; s < staves; s++) {
     const dr = (r() - 0.5) * 0.006, dy = (r() - 0.5) * 0.012;
     const prof = [];
-    for (let i = 0; i <= 8; i++) { const y = -hh + (H * i) / 8; prof.push(new T.Vector2(rad(y) + dr, y + (i === 0 || i === 8 ? dy : 0))); }
-    for (let i = 8; i >= 0; i--) { const y = -hh + (H * i) / 8; prof.push(new T.Vector2(rad(y) + dr - thick, y + (i === 0 || i === 8 ? dy : 0))); }
+    for (let i = 0; i <= 6; i++) { const y = -hh + (H * i) / 6; prof.push(new T.Vector2(rad(y) + dr, y + (i === 0 || i === 6 ? dy : 0))); }
+    for (let i = 6; i >= 0; i--) { const y = -hh + (H * i) / 6; prof.push(new T.Vector2(rad(y) + dr - thick, y + (i === 0 || i === 6 ? dy : 0))); }
     prof.push(prof[0].clone());
     const phi = (s / staves) * Math.PI * 2;
-    sets[s % 2].push(new T.LatheGeometry(prof, 3, phi + gap / 2, (Math.PI * 2) / staves - gap));
+    sets[s % 2].push(new T.LatheGeometry(prof, 2, phi + gap / 2, (Math.PI * 2) / staves - gap));
   }
   mesh(T, merge(T, sets[0]), getMaterial('#a8703f'), body);
   mesh(T, merge(T, sets[1]), getMaterial('#b98148'), body);
@@ -288,8 +288,8 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
   // recessed end caps (chime)
   const capR = rEnd - thick + 0.004, capY = hh - 0.045;
   mesh(T, merge(T, [
-    place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, capY, 0),
-    place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, -capY, 0),
+    place(T, new T.CylinderGeometry(capR, capR, 0.03, 14), 0, capY, 0),
+    place(T, new T.CylinderGeometry(capR, capR, 0.03, 14), 0, -capY, 0),
   ]), getMaterial('#9a6538'), body);
   // board seams on top cap
   const seams = [-0.18, -0.06, 0.06, 0.18].map((z) => {
@@ -308,22 +308,22 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
       new T.Vector2(R + 0.015, y), new T.Vector2(R + 0.012, y + w - 0.004),
       new T.Vector2(R - 0.004, y + w), new T.Vector2(R - 0.004, y - w),
     ];
-    return new T.LatheGeometry(prof, 40);
+    return new T.LatheGeometry(prof, 20);
   });
   mesh(T, merge(T, hoops), hoopMat, body);
   const rivets = [];
   for (const y of hoopYs) {
     const R = rad(y) + 0.014;
-    for (let k = 0; k < 10; k++) {
-      const a = (k / 10) * Math.PI * 2 + 0.2;
-      rivets.push(place(T, new T.SphereGeometry(0.011, 6, 4), Math.sin(a) * R, y, Math.cos(a) * R));
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2 + 0.2;
+      rivets.push(place(T, new T.SphereGeometry(0.011, 4, 3), Math.sin(a) * R, y, Math.cos(a) * R));
     }
   }
   mesh(T, merge(T, rivets), metalMat(T, root, '#6d757b', { roughness: 0.4 }), body);
 
   // bung plug on top
   const bx = 0.17, bz = 0;
-  mesh(T, place(T, new T.TorusGeometry(0.045, 0.01, 6, 16), bx, capY + 0.017, bz, Math.PI / 2, 0, 0), hoopMat, body);
+  mesh(T, place(T, new T.TorusGeometry(0.045, 0.01, 4, 10), bx, capY + 0.017, bz, Math.PI / 2, 0, 0), hoopMat, body);
   mesh(T, merge(T, [
     place(T, new T.CylinderGeometry(0.036, 0.04, 0.035, 12), bx, capY + 0.03, bz),
     place(T, new T.BoxGeometry(0.05, 0.012, 0.012), bx, capY + 0.052, bz),
