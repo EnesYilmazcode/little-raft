@@ -8,7 +8,6 @@
 //     left hand when the right holds a tool such as the hammer). Blends in, no lower/raise.
 //     'throw': forces the wind-up (full charge) pose.
 //   hands.setModelFactory(fn | null);              // swap the model source later; rebuilds cached models
-//   hands.setLook({skin, shirt});                  // hex strings (dist/look.js lookColors): recolours skin + sleeves, no rebuild
 //   hands.update({ dt, time, charge, reeling, casting, walking, hasHookOut, motion, yaw, pitch, fov });
 //   hands.ropeAnchor().getWorldPosition(v);        // rope start: rod tip, right fist while the hook is out, else left hand
 //   hands.itemModel('fishingrod')                  // the held model (rod userData: float, leader, tipNode)
@@ -74,6 +73,7 @@ function mergeByMaterial(T, root) {
   return made;
 }
 
+const smoothK = (rate, dt) => 1 - Math.exp(-rate * dt); // frame-rate independent smoothing (no per-frame closure)
 export function createHands(T, { modelFactory = null } = {}) {
   const V = (x = 0, y = 0, z = 0) => new T.Vector3(x, y, z);
   const UP = V(0, 1, 0);
@@ -111,24 +111,27 @@ export function createHands(T, { modelFactory = null } = {}) {
   const skinPalm = keyShade(mat(0xbb8274, 0.64, { emissive: 0x160805, map: tx.skin }));
   const nail = keyShade(mat(0xd8ae9c, 0.38, { emissive: 0x120806 }));
   const crease = mat(0x7a4a3a, 0.8);
-  // Cloth is baked relative to the sleeve colour (sleeve white, cuff ~3/4 shade) and tinted by clothV, so setLook can
-  // recolour both with one material colour.
-  const sleeveMat = keyShade(mat(0xffffff, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
-  const cuffMat = keyShade(mat(0xffffff, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 })); cuffMat.color.multiplyScalar(0.78);
+  const sleeveMat = keyShade(mat(0x5a7462, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
+  const cuffMat = keyShade(mat(0x465c4e, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
   const ropeMat = mat(0xc4a46c, 1.0, { map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
-  const BODY_SKIN = new T.Color('#f2c29b');           // avatar.js default skin (dist/look.js PALETTE.skin[0])
-  const inv = (c) => new T.Color(1 / c.r, 1 / c.g, 1 / c.b);
-  const BODY_SKIN_INV = inv(BODY_SKIN);
   const ropeDarkMat = mat(0x8a6e44, 1.0, { map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
   // Baked parts: one vertex-coloured material per surface type (the flat ones above only supply the colours;
   // the baked ones carry the surface textures and the key shade).
-  const skinV = keyShade(mat(0xffffff, 0.6, { emissive: 0x160805, vertexColors: true, map: tx.skin }));
-  const clothV = keyShade(mat(0x5a7462, 1.0, { vertexColors: true, map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 })); // sleeve colour until setLook
+  // [look] skin and cloth bake their colour RELATIVE to a base (vertex colour = part / base) and the shared material
+  // carries the base, so setLook() recolours every baked hand and sleeve by setting one material colour.
+  const BODY_SKIN = new T.Color('#f2c29b');           // avatar.js default skin (dist/look.js PALETTE.skin[0])
+  const toneOf = (m) => { const c = m.color.clone(); return new T.Color(c.r / BODY_SKIN.r, c.g / BODY_SKIN.g, c.b / BODY_SKIN.b); };
+  const skinTones = [skin, skinPalm, nail, crease].map((m) => [m, toneOf(m)]);
+  const SLEEVE_BASE = sleeveMat.color.clone();
+  const skinV = keyShade(mat(0xffffff, 0.6, { emissive: 0x160805, vertexColors: true, map: tx.skin })); skinV.color.copy(BODY_SKIN);
+  const clothV = keyShade(mat(0xffffff, 1.0, { vertexColors: true, map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 })); clothV.color.copy(SLEEVE_BASE);
   const ropeV = mat(0xffffff, 1.0, { vertexColors: true, map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
   const tint = (m) => m.material.color;
+  const relTo = (base) => (m) => { const c = m.material.color; return new T.Color(c.r / base.r, c.g / base.g, c.b / base.b); };
+  const TINT_FOR = new Map([[skinV, relTo(BODY_SKIN)], [clothV, relTo(SLEEVE_BASE)]]);
   const meshesOf = (...objs) => { const out = []; for (const o of objs) o.traverse((c) => { if (c.isMesh) out.push(c); }); return out; };
   const bake = (owner, objs, material) => {
-    const mesh = new T.Mesh(G(mergeGeometry(T, owner, meshesOf(...objs), tint)), material);
+    const mesh = new T.Mesh(G(mergeGeometry(T, owner, meshesOf(...objs), TINT_FOR.get(material) ?? tint)), material);
     owner.add(mesh); return mesh;
   };
 
@@ -411,7 +414,6 @@ export function createHands(T, { modelFactory = null } = {}) {
     const casting = clamp01(params.casting || 0);
     const reeling = !!params.reeling, walking = !!params.walking;
     const amp = clamp01(params.motion ?? 0.35) / 0.35;
-    const k = (rate) => 1 - Math.exp(-rate * dt);
 
     // ---- swap / pose change: ease down, switch while hidden, pop back up
     if (st.shown !== st.target) {
@@ -429,8 +431,8 @@ export function createHands(T, { modelFactory = null } = {}) {
     const pose = poseOf(st.shown), pointer = applyFingers(pose, hasHookOut, leftRope);
     const charge = pose === 'throw' ? 1 : isHook ? charge0 : 0;
     // pointing blends in; a left hand that only shows up to point slides in from below
-    st.ptR += ((pointer === 'R' ? 1 : 0) - st.ptR) * k(12);
-    st.ptL += ((pointer === 'L' ? 1 : 0) - st.ptL) * k(12);
+    st.ptR += ((pointer === 'R' ? 1 : 0) - st.ptR) * smoothK(12, dt);
+    st.ptL += ((pointer === 'L' ? 1 : 0) - st.ptL) * smoothK(12, dt);
     const leftNeeded = usesLeft(st.shown), lIn = leftNeeded ? 1 : st.ptL;
     L.pose.visible = st.shown !== null && (leftNeeded || st.ptL > 0.02);
     const rightIdle = !!st.shown && holdFor(st.shown).hand === 'left', rIn = rightIdle ? st.ptR : 1;   // empty right hand stays down
@@ -445,17 +447,17 @@ export function createHands(T, { modelFactory = null } = {}) {
       st.lastYaw = params.yaw; st.lastPitch = params.pitch;
       const inv = dt > 0 ? 1 / dt : 0, cap = 0.07 * amp;
       const tx = Math.max(-cap, Math.min(cap, -dp * inv * 0.012)), ty = Math.max(-cap, Math.min(cap, -dy * inv * 0.012));
-      st.lagX += (tx - st.lagX) * k(9); st.lagY += (ty - st.lagY) * k(9);
+      st.lagX += (tx - st.lagX) * smoothK(9, dt); st.lagY += (ty - st.lagY) * smoothK(9, dt);
     }
     lagRoot.rotation.set(st.lagX, st.lagY, -st.lagY * 0.6);
 
-    st.walkW += ((walking ? 1 : 0) - st.walkW) * k(5);
-    st.reelW += ((reeling ? 1 : 0) - st.reelW) * k(9);
-    st.outW += ((hasHookOut ? 1 : 0) - st.outW) * k(7);
-    st.toolW = hasHookOut ? 0 : st.toolW + (1 - st.toolW) * k(8);
+    st.walkW += ((walking ? 1 : 0) - st.walkW) * smoothK(5, dt);
+    st.reelW += ((reeling ? 1 : 0) - st.reelW) * smoothK(9, dt);
+    st.outW += ((hasHookOut ? 1 : 0) - st.outW) * smoothK(7, dt);
+    st.toolW = hasHookOut ? 0 : st.toolW + (1 - st.toolW) * smoothK(8, dt);
     if (casting > 0 && (st.lastCasting <= 0 || casting > st.lastCasting + 0.25)) st.releaseCharge = Math.max(st.chargeS, charge, 0.35);
     st.lastCasting = casting;
-    st.chargeS += (charge - st.chargeS) * k(charge > st.chargeS ? 22 : 14);
+    st.chargeS += (charge - st.chargeS) * smoothK(charge > st.chargeS ? 22 : 14, dt);
 
     // ---- cast / strike curve: p 0 (just released) -> 1 (done)
     const p = casting > 0 ? 1 - casting : 1;
@@ -516,8 +518,10 @@ export function createHands(T, { modelFactory = null } = {}) {
     toolHolder.scale.setScalar(hasHookOut ? 1 : 0.7 + 0.3 * easeOutBack(tw));  // little "catch" pop on return
 
     last.lag[0] = st.lagX; last.lag[1] = st.lagY;
-    Object.assign(last, { held: st.shown, target: st.target, pose, pointHand: pointer, dip: down, charge: chargeEff, chargeEased: ce, throw: a,
-      pull: pull * rW, pullR: pullR * rW, rightHand: handPoses.R, leftHand: handPoses.L, ropeW: rW * oW, walkW: st.walkW, reelW: rW, hookOutW: oW, toolW: tw, spool: st.spool, models: mounts.size });
+    last.held = st.shown; last.target = st.target; last.pose = pose; last.pointHand = pointer; last.dip = down; // written in place: no per-frame object
+    last.charge = chargeEff; last.chargeEased = ce; last.throw = a;
+    last.pull = pull * rW; last.pullR = pullR * rW; last.rightHand = handPoses.R; last.leftHand = handPoses.L; last.ropeW = rW * oW;
+    last.walkW = st.walkW; last.reelW = rW; last.hookOutW = oW; last.toolW = tw; last.spool = st.spool; last.models = mounts.size;
     return last;
   }
 
@@ -559,11 +563,12 @@ export function createHands(T, { modelFactory = null } = {}) {
     preload(kinds) { for (const k of kinds) mountFor(k); },
     setLook(colors) {
       const { skin: skinHex, shirt } = colors && typeof colors === 'object' ? colors : {};
-      // The viewmodel skin keeps its own darker, warmer shading: the arms are baked into vertex-coloured meshes (the
-      // flat materials' colours at build time, never changed), so the look is a per-channel multiplier on the shared
-      // baked materials, (chosen tone / default body skin): the default look gives exactly the old colours.
-      if (typeof skinHex === 'string') skinV.color.set(skinHex).multiply(BODY_SKIN_INV);
-      if (typeof shirt === 'string') clothV.color.set(shirt); // cuff is baked at 3/4 of this
+      // The viewmodel skin keeps its own darker, warmer shading: each skin material is the chosen tone scaled per
+      // channel by (old hard-coded colour / default body skin), so the default tone gives exactly the old colours.
+      if (typeof skinHex === 'string') for (const [m, c] of skinTones) m.color.set(skinHex).multiply(c);
+      if (typeof shirt === 'string') { sleeveMat.color.set(shirt); cuffMat.color.set(shirt).multiplyScalar(0.75); }
+      if (typeof skinHex === 'string') skinV.color.set(skinHex);   // baked hands (vertex colours are relative to BODY_SKIN)
+      if (typeof shirt === 'string') clothV.color.set(shirt);      // baked sleeve + cuff (relative to the default sleeve)
     },
   };
 }

@@ -25,7 +25,7 @@ import { loadLook, cleanLook, createLookGate, PARTNER_DEFAULT } from './look.js?
 
 export const COOP_VERSION = 1;
 export const HELD = Object.freeze([null, 'hook', 'hammer', 'fishingrod', 'wood', 'leaf', 'scrap', 'plastic', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate',
-  'drum', 'pipes', 'bells', 'spade', 'finder']); // append only: index is the wire format ([instruments] 14-16, treasure 17-18; older peers read new indices as null)
+  'drum', 'pipes', 'bells', 'spade', 'finder', 'spear', 'metalspear']); // append only: index is the wire format ([instruments] 14-16, [treasure] 17-18, [spear-repair] 19-20)
 const STAGES = ['flying', 'floating', 'reeling', 'done', 'fishing'];
 const SEND_MS = 1000 / 15, IDLE_MS = 250, ITEMS_MS = 500;
 const SILENCE_MS = 3000, RECONNECT_WINDOW_MS = 30000, ATTEMPT_MS = 12000; // an attempt in flight gets 12 s (ICE can be slow)
@@ -72,7 +72,7 @@ export function createCoop(ctx, saved = null) {
     const l = cleanLook(x, PARTNER_DEFAULT);
     setPeerLook(lookGate.offer(l, now()));
   }
-  function setPeerLook(l) { if (l) { peerLook = l; avatar.setLook(l); } }
+  function setPeerLook(l) { if (l) { peerLook = l; avatar?.setLook(l); } }
 
   // A new DataConnection means a fresh session: drop baselines and announce ourselves.
   function track() {

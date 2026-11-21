@@ -34,11 +34,11 @@ export const HOLD = Object.freeze({
   hook:       { hand: 'right', pose: 'grip', arm: [0.03, -0.025, 0] },          // hook tip stays right of the screen centre
   hammer:     { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2, arm: [0.02, -0.06, 0], tilt: 0.55 }, // tilt: head leans forward
   fishingrod: { hand: 'right', pose: 'grip', rx: -0.15, rz: 0.6 },
+  spade:      { hand: 'right', pose: 'grip', rx: 0.2, rz: 0.35 },
+  finder:     { hand: 'right', pose: 'grip', rx: -1.1, rz: 0.25 },
   spear:      { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 }, // [spear-repair] point forward, a ready jab
   metalspear: { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 },
   brush:      { hand: 'right', pose: 'grip', rx: -0.25, ry: 0.35, rz: 0.35 }, // content hook (paint)
-  spade:      { hand: 'right', pose: 'grip', rx: 0.2, rz: 0.35 },
-  finder:     { hand: 'right', pose: 'grip', rx: -1.1, rz: 0.25 },
   wood:       { hand: 'right', pose: 'grip', rx: 0.25, ry: 0.5, rz: 0.15 },
   leaf:       { hand: 'right', pose: 'grip', rx: -0.35, ry: 0.4, rz: 0.35 },
   scrap:      { hand: 'right', pose: 'grip', rx: 1.1, ry: 0.3, rz: -0.3 },

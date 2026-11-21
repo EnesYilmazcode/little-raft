@@ -37,7 +37,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', loo
     wood: M('#9a6b3f'), woodDark: M('#6e4a2b'), steel: M('#9fb3b6', { metalness: 0.6, roughness: 0.4 }),
     rope: M('#c9a76a'), leaf: M('#5fae4a'), leafDark: M('#3f8a3a'), scrap: M('#8c969a', { metalness: 0.5, roughness: 0.5 }),
     rust: M('#a8643a'), plastic: M('#dfeef5', { roughness: 0.5 }), cap: M('#e2574c'), cloth: M('#f3ead2'),
-    glow: M('#ffd27a', { emissive: '#ffb347', emissiveIntensity: 1.2 }), net: M('#d9c48f', { side: T.DoubleSide, transparent: true, opacity: 0.7 }),
+    glow: M('#ffd27a', { emissive: '#ffb347', emissiveIntensity: 1.2 }), net: M('#d9c48f', { side: T.DoubleSide, transparent: true, opacity: 0.7, forceSinglePass: true }),
   });
   // part(parent, geometry, material, x,y,z, rx,ry,rz)
   const part = (p, g, m, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => {
@@ -80,6 +80,18 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', loo
       part(g, new T.TorusGeometry(0.08, 0.014, 4, 12), K.glow, 0, 0.36, 0.05, Math.PI / 2);
       return [0, 0.36, 0.05];
     },
+    spear(g, K) {   // [spear-repair] wooden shaft, bound tip
+      part(g, Cyl(0.015, 0.018, 0.9), K.wood, 0, 0.25);
+      part(g, Cyl(0.02, 0.02, 0.06), K.rope, 0, 0.66);
+      part(g, new T.ConeGeometry(0.022, 0.12, 5), K.woodDark, 0, 0.76);
+      return [0, 0.76, 0];
+    },
+    metalspear(g, K) {   // [spear-repair] same shaft, steel head
+      part(g, Cyl(0.015, 0.018, 0.9), K.wood, 0, 0.25);
+      part(g, Cyl(0.02, 0.02, 0.06), K.rope, 0, 0.66);
+      part(g, new T.ConeGeometry(0.026, 0.14, 4), K.steel, 0, 0.77);
+      return [0, 0.77, 0];
+    },
     wood(g, K) { part(g, Box(0.13, 0.5, 0.035), K.wood, 0, 0.12); part(g, Box(0.135, 0.03, 0.04), K.woodDark, 0, 0.3); return [0, 0.12, 0]; },
     leaf(g, K) {
       part(g, Cyl(0.006, 0.008, 0.16, 4), K.leafDark, 0, 0.04);
@@ -112,7 +124,7 @@ export function createRemoteAvatar(T, { color = '#70a7e4', name = 'Brother', loo
   const holder = new T.Group();
   holder.position.set(0, -0.5, 0.03);
   P.rightArm.add(holder);
-  const TOOL_TILT = { hook: 1.25, hammer: 1.35, fishingrod: 0.95, lantern: 1.45, drum: 1.5, pipes: 0.4, bells: 1.2, spade: 1.1, finder: 0.9 }; // [instruments]
+  const TOOL_TILT = { hook: 1.25, hammer: 1.35, fishingrod: 0.95, lantern: 1.45, drum: 1.5, pipes: 0.4, bells: 1.2, spade: 1.1, finder: 0.9, spear: 1.0, metalspear: 1.0 }; // [instruments] [treasure]
   const cache = new Map();
   let curKind, cur = null;
   const getModel = (kind) => {

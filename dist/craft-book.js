@@ -23,6 +23,9 @@ const CATEGORY_OF = Object.freeze({
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
   researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
+  rug: 'building', pennant: 'building', fern: 'building', chime: 'building', hammock: 'building', pots: 'building', sign: 'building', // decor pack
+  kiln: 'building', glasslamp: 'survival', sinker: 'survival', // kiln
+  nestbox: 'survival', cushion: 'building', // raft animals
   // content (engine, sleep, paint)
   motor: 'building', wheel: 'building', bed: 'building', brush: 'tools',
   paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
@@ -47,7 +50,6 @@ export const ITEM_TEXT = Object.freeze({
   crate:      { desc: 'A nailed wooden crate.', use: 'Decorates the raft; place it on a floor tile.' },
   sand:       { desc: 'Fine sand from barrels and the seafloor.', use: 'Melt it into glass in the smelter.' },
   stone:      { desc: 'A smooth, heavy stone.', use: 'Part of the smelter; sturdier builds and island tools.' },
-  seed:       { desc: 'A palm seed washed up on an island.', use: 'Plant it in a palm planter.' },
   research:   { desc: 'A tinker\u2019s desk for studying finds.', use: 'Place it, then study parts to learn signal and water gear.' },
   motor:      { desc: 'A little outboard motor that burns leaves, wood or plastic.', use: 'Place it, fuel it, and it pushes the raft along.' },
   wheel:      { desc: 'A rope-lashed steering wheel.', use: 'Place it, then grab it to steer the raft.' },
@@ -87,10 +89,7 @@ export const ITEM_TEXT = Object.freeze({
   drum:       { desc: 'A wooden hand drum with a palm-leaf head.', use: 'Click to play; look up or down to change the note.' }, // [instruments]
   pipes:      { desc: 'Plastic reed tubes tied in a row.', use: 'Click to play soft breathy notes with your friend.' }, // [instruments]
   bells:      { desc: 'Brass-bright scrap bars on a small frame.', use: 'Click to ring a note that fades out softly.' }, // [instruments]
-  finder:     { desc: 'A driftwood wand with a brass coil.', use: 'Hold it on island sand: it ticks faster near buried bundles.' },
-  spade:      { desc: 'A little wooden spade with a metal blade.', use: 'E on island sand digs up bundles (or a pinch of sand).' },
   cookedfish: { desc: 'A fish grilled golden.', use: 'A hearty snack.' },
-  maptable:   { desc: 'A little driftwood chart table with brass fittings.', use: 'Place it, press E: see charted islands, drop pins, set a course.' },
   flowerseed: { desc: 'A tiny seed from an island bush.', use: 'Plant it in a flower box.' }, // [bees]
   flowerbox:  { desc: 'A planter full of bright blooms.', use: 'Place near a beehive; bees love it.' }, // [bees]
   beehive:    { desc: 'A cosy straw hive of friendly bees.', use: 'Place by flower boxes; collect honeycomb with E.' }, // [bees]
@@ -98,6 +97,23 @@ export const ITEM_TEXT = Object.freeze({
   wax:        { desc: 'Soft beeswax from the comb.', use: 'Make beeswax candles.' }, // [bees]
   candle:     { desc: 'A little jar candle.', use: 'Glows warmly at night; place on a tile.' }, // [bees]
   honeyfish:  { desc: 'Grilled fish with a honey glaze.', use: 'A sweet treat.' }, // [bees]
+  finder:     { desc: 'A driftwood wand with a brass coil.', use: 'Hold it on island sand: it ticks faster near buried bundles.' },
+  spade:      { desc: 'A little wooden spade with a metal blade.', use: 'E on island sand digs up bundles (or a pinch of sand).' },
+  maptable:   { desc: 'A little driftwood chart table with brass fittings.', use: 'Place it, press E: see charted islands, drop pins, set a course.' },
+  rug:        { desc: 'A woven mat of leaves and rope.', use: 'Place it on a deck tile; E turns it.' },
+  pennant:    { desc: 'A little flag that flutters in the wind.', use: 'Place it on the raft; it shows which way the wind blows.' },
+  fern:       { desc: 'A post with a hanging fern basket.', use: 'Place it on the raft for some green.' },
+  chime:      { desc: 'Metal tubes that tinkle in the breeze.', use: 'Place it on the raft; E turns it.' },
+  hammock:    { desc: 'A rope hammock between two posts.', use: 'Place it on the raft for a cosy corner.' },
+  pots:       { desc: 'Three clay pots with little flowers.', use: 'Place it on the raft; E turns it.' },
+  sign:       { desc: 'A wooden board you can write on.', use: 'Place it, then press E to write up to three lines.' },
+  kiln:       { desc: 'A stone and clay kiln with a wood fire.', use: 'Place it, load ore, sand or clay and some wood; collect ingots, glass and bricks.' },
+  glasslamp:  { desc: 'A lantern with clear glass panes.', use: 'Place it for a warm light on the raft.' },
+  sinker:     { desc: 'A small metal weight for the hook line.', use: 'Keep it in your bag: the hook wears half as fast.' },
+  puffegg:    { desc: 'A speckled egg from a puffhen.', use: 'Make an Egg Lantern.' },
+  feather:    { desc: 'A soft puffhen feather.', use: 'Stuff a Feather Cushion.' },
+  nestbox:    { desc: 'A cosy box of straw for puffhens.', use: 'Place it on the raft and a puffhen may come to stay.' },
+  cushion:    { desc: 'A plump cushion stuffed with feathers.', use: 'Place it on the raft for a soft seat.' },
   cookedsharkmeat: { desc: 'A shark steak grilled through.', use: 'A filling meal (+30 food).' },
   sharkmeat:  { desc: 'A raw slab of shark meat.', use: 'Grill it for a proper meal; four come from every shark.' },
   sharkhead:  { desc: 'The head of a shark you beat.', use: 'A trophy, and proof the raft is safe for a while.' },
@@ -177,6 +193,17 @@ export function usedIn(kind, recipes) {
 /** "owned / needed" label for an ingredient row. */
 export const amountLabel = row => `${row.have} / ${row.need}`;
 
+/** Recipe tooltip line: owned/needed for every ingredient, e.g. "Have/need: 20/4 Wood · 0/2 Rope". */
+export function haveNeedLine(rows, nameOf = k => k) {
+  return (rows || []).length ? 'Have/need: ' + rows.map(x => `${x.have}/${x.need} ${nameOf(x.kind)}`).join(' · ') : '';
+}
+
+/** Slot tooltip stack size, worded so it can't be read as have/need: "stack 20/20". */
+export function stackLabel(count, max) {
+  const n = Math.max(0, Math.floor(Number(count) || 0));
+  return max > 0 ? `stack ${n}/${max}` : String(n);
+}
+
 // ---- hold-to-craft schedule ----
 // A press crafts one immediately. Keep holding: the 2nd craft lands after HOLD.first ms, then each
 // interval shrinks by HOLD.decay down to HOLD.min ms.
@@ -229,7 +256,7 @@ export const backdropCloses = (downOnBackdrop, upOnBackdrop) => !!downOnBackdrop
  * E never opens here: in play it is the pick-up key and the game opens the bag itself.
  */
 export function bagKeyAction(code, isOpen) {
-  if (isOpen) return code === 'KeyI' || code === 'KeyE' ? 'close' : null;
+  if (isOpen) return code === 'Tab' || code === 'KeyI' || code === 'KeyE' ? 'close' : null; // Tab toggles the bag; arrows move focus
   return code === 'Tab' || code === 'KeyI' ? 'open' : null;
 }
 
@@ -305,13 +332,17 @@ export const ITEM_SOURCE = Object.freeze({
   metalore:    Object.freeze({ tag: 'barrels, seafloor', how: 'Hook floating barrels or dive to the seafloor.' }),
   copperore:   Object.freeze({ tag: 'barrels', how: 'Hook floating barrels; copper ore is rare.' }),
   seaweed:     Object.freeze({ tag: 'barrels', how: 'Hook floating barrels.' }),
-  brick:       Object.freeze({ tag: 'grill', how: 'Fire clay on a grill.' }),
-  metalingot:  Object.freeze({ tag: 'smelter', how: 'Smelt metal ore in a smelter.' }),
+  brick:       Object.freeze({ tag: 'grill, kiln', how: 'Fire clay on a grill or in a Seaside Kiln.' }),
+  metalingot:  Object.freeze({ tag: 'smelter, kiln', how: 'Smelt metal ore in a smelter or a Seaside Kiln.' }),
   copperingot: Object.freeze({ tag: 'smelter', how: 'Smelt copper ore in a smelter.' }),
-  glass:       Object.freeze({ tag: 'smelter', how: 'Melt sand in a smelter.' }),
+  glass:       Object.freeze({ tag: 'smelter, kiln', how: 'Melt sand in a smelter or a Seaside Kiln.' }),
   saltcup:     Object.freeze({ tag: 'fill a cup', how: 'Hold an empty cup and click the sea.' }),
   freshcup:    Object.freeze({ tag: 'purifier', how: 'Pour sea water into a purifier and wait.' }),
   cookedfish:  Object.freeze({ tag: 'grill', how: 'Cook a fish on a grill.' }),
+  // [bees] beehive harvest and island bushes
+  // raft animals (animals.js)
+  puffegg:     Object.freeze({ tag: 'puffhen', how: 'Place a Nest Box; a puffhen moves in and lays eggs. Press E on the nest to collect.' }),
+  feather:     Object.freeze({ tag: 'puffhen', how: 'Sometimes left with the eggs in a puffhen nest box; collect with E.' }),
   // shark lane (shark.js): harvest the beaten shark with E
   sharkmeat:   Object.freeze({ tag: 'beaten shark', how: 'Fight off the shark with a spear, then press E on its body.' }),
   sharkhead:   Object.freeze({ tag: 'beaten shark', how: 'Harvested with the meat from a beaten shark (E).' }),
@@ -368,8 +399,75 @@ export function trackerView(recipe, countOf, check = null) {
   };
 }
 
+/** Craft button label. Right after a batch (`done` = { n, name }) it reports the success, even
+ *  though the batch has usually used the materials up, instead of a grey 'Missing materials'. */
+export function craftButtonText(state, done = null) {
+  if (done && done.n > 0) return `Crafted ${done.n}${done.name ? ' ' + done.name : ''}`;
+  return state === 'ready' ? 'Craft' : state === 'full' ? 'Bag is full' : 'Missing materials';
+}
+
 /** Craft button hint: how many a hold would make right now ('' when one or none). */
 export function holdHint(times, cap = HOLD.max) {
   const n = Math.min(Number.isFinite(times) ? Math.floor(times) : cap, cap);
   return n > 1 ? `hold: up to ${n}` : '';
+}
+
+/**
+ * Craft button text while a hold is running ('Crafting 2 / 4') and just after it ends ('Crafted 4').
+ * `out` = items each craft makes, so a nail recipe (x3) reads 'Crafted 12' after 4 crafts.
+ */
+export function holdLabel(done, cap, holding = true, out = 1) {
+  const d = Math.max(0, Math.floor(Number(done) || 0));
+  const per = Math.max(1, Math.floor(Number(out) || 1));
+  if (!holding) return d > 0 ? `Crafted ${d * per}` : '';
+  const c = Math.max(d, Math.floor(Number(cap) || 0));
+  return c > 1 ? `Crafting ${d} / ${c}` : 'Crafting';
+}
+
+// ---- tooltip facts ----
+/**
+ * Hand recipes (RECIPES-like: {id, name, output:{kind,count}, cost}) plus station and catalogue
+ * recipes (ITEMS-like: {id, name, recipe:{cost, count, station}}) as one normalised list
+ * ({id, name, out:{kind,count}, reqs, station}). A hand recipe wins over a catalogue one with the same id.
+ */
+export function catalogueRecipes(recipes, items) {
+  const out = [], seen = new Set();
+  const reqsOf = cost => Object.entries(cost || {}).map(([kind, count]) => ({ kind, count: Number(count) || 0 }));
+  for (const [key, r] of Object.entries(recipes || {})) {
+    if (!r || typeof r !== 'object') continue;
+    const id = String(r.id ?? key);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name: String(r.name ?? id), out: { kind: r.output?.kind ?? id, count: r.output?.count ?? 1 }, reqs: reqsOf(r.cost), station: null });
+  }
+  for (const [key, it] of Object.entries(items || {})) {
+    const r = it && it.recipe;
+    if (!r || typeof r !== 'object') continue;
+    const id = String(it.id ?? key);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name: String(it.name ?? id), out: { kind: id, count: r.count ?? 1 }, reqs: reqsOf(r.cost), station: r.station ?? null });
+  }
+  return out;
+}
+
+/**
+ * The "where to get it" and "used in" lines for an item tooltip.
+ * get: one sentence or null. uses: names of recipes that consume the item, at most `max`
+ * entries (the last one becomes '+N more' when the list is longer).
+ * @param {string} kind @param {Array} recipes normalised recipes @param {(k:string)=>string} [nameOf]
+ */
+export function tipFacts(kind, recipes, nameOf = k => k, max = 4) {
+  const src = sourceOf(kind, recipes, nameOf);
+  const all = [...new Set((recipes || []).filter(r => r && (r.reqs || []).some(q => q.kind === kind))
+    .map(r => r.station ? `${r.name} (${nameOf(r.station)})` : r.name))];
+  const m = Math.max(1, Math.floor(max));
+  const uses = all.length > m ? [...all.slice(0, m - 1), `+${all.length - (m - 1)} more`] : all;
+  let get = src ? src.how : null;
+  const made = src && src.recipe ? (recipes || []).find(r => r && r.id === src.recipe) : null;
+  if (made && made.station && !ITEM_SOURCE[kind]) {
+    const cost = (made.reqs || []).map(q => `${q.count} ${nameOf(q.kind)}`).join(' + ');
+    get = `Make it at the ${nameOf(made.station)}${cost ? ` from ${cost}` : ''}.`;
+  }
+  return { get, uses };
 }

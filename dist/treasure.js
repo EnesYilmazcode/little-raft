@@ -270,7 +270,7 @@ export function createTreasure(ctx) {
       const b = ctx.localBag(); if (!b) return false;
       let i = b.slots.findIndex(s => s && s.kind === kind);
       if (i < 0) return false;
-      if (i >= 8) { let j = b.slots.findIndex((s, n) => n < 8 && !s); if (j < 0) j = 7; b.move(i, j); i = j; }
+      if (i >= 10) { let j = b.slots.findIndex((s, n) => n < 10 && !s); if (j < 0) j = 9; b.move(i, j); i = j; }
       b.select(i); return true;
     },
     standAt(i = 0, off = 1.2) {

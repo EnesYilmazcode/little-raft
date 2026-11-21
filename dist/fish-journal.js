@@ -228,7 +228,7 @@ export function createJournalPanel({ getJournal, onClose } = {}) {
   dlg.addEventListener('close', () => { try { onClose && onClose(); } catch (e) { console.error(e); } });
   dlg.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
   dlg.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' || e.key === 'j' || e.key === 'J') { e.preventDefault(); e.stopPropagation(); close(); }
+    if (e.code === 'KeyJ' || e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
   });
   dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); }); // backdrop click
   x.addEventListener('click', close);

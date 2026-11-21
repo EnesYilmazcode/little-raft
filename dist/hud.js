@@ -39,16 +39,40 @@ export const HINT_KEY = 'little-raft-hints';
 export const HINTS = Object.freeze([
   {id:'throw', text:'Hold click to charge, release to throw at floating supplies', when:c => c.heldKind === 'hook' && !c.castOut},
   {id:'bag', text:'Press Tab or E to open your bag and craft', when:c => c.hasLoot},
-  {id:'slots', text:'Press 1–8 to choose what you hold', when:() => true},
+  {id:'slots', text:'Press 1–9 or 0 to choose what you hold', when:() => true},
+  // Loot -> rope -> hammer -> first floor. Each is also marked done from bag/world state (hintsFromState),
+  // so a player who already has rope or a hammer, or has built, never gets stuck on an earlier step.
+  {id:'rope', text:'Open your bag (Tab) → Materials → craft Rope from palm leaves', when:c => c.hasLeaf},
+  {id:'hammer', text:'Craft a Hammer in Tools: 4 wood, 2 rope', when:() => true},
+  {id:'build', text:'With the Hammer, click the water beside the raft to add floor', when:c => c.heldKind === 'hammer'},
 ]);
+// Hint ids already satisfied by what the player owns or has built (c: {hasRope, hasHammer, built}).
+export function hintsFromState(c) {
+  const out = [];
+  if (c?.hasRope || c?.hasHammer) out.push('rope');
+  if (c?.hasHammer) out.push('hammer');
+  if (c?.built) out.push('build');
+  return out;
+}
 export function loadHints(storage) {
   try { const v = JSON.parse(storage?.getItem(HINT_KEY) ?? '[]'); return new Set(Array.isArray(v) ? v.filter(x => typeof x === 'string') : []); } catch { return new Set(); }
 }
 export function saveHints(storage, done) {
   try { storage?.setItem(HINT_KEY, JSON.stringify([...done])); return true; } catch { return false; }
 }
+// New game starts a new save, so the hint chain starts over too (in place: the engine keeps one Set).
+export function resetHints(storage, done) { done.clear(); return saveHints(storage, done); }
 // The first unfinished hint, if its condition holds now. Later hints wait for earlier ones.
 export function nextHint(done, ctx) {
   const h = HINTS.find(x => !done.has(x.id));
   return h && h.when(ctx || {}) ? h : null;
+}
+
+// Where the bottom-left feed lives while a panel is open. The bag and the pause rail each have a lane
+// for it inside the panel, so rows never paint over panel controls; reading dialogs (help, crew) leave
+// the transient rows under their backdrop. 'hud' is the normal corner during play.
+export function feedPlacement({inventoryOpen = false, optionsOpen = false, dialog = false} = {}) {
+  if (inventoryOpen) return 'inventory';
+  if (optionsOpen) return 'options';
+  return dialog ? 'hidden' : 'hud';
 }

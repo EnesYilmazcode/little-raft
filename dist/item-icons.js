@@ -28,14 +28,20 @@ const listeners = new Set();
 const waiters = new Map(); // kind -> [resolve] for loadItemIcon
 let provider = null;
 let gl = null, scene = null, camera = null, failed = false, releaseTimer = 0, pumping = false;
+let hostGL = null, rt = null, pixels = null; // shared main renderer: icons draw into a render target, no second WebGL context
+/** Render icons with the game's renderer (one WebGL context) instead of a private one. */
+export function setIconRenderer(r) { if (r === hostGL) return; if (gl && gl !== hostGL) release(); hostGL = r || null; }
 
 // Per-kind display pose (radians) so long tools read diagonally like a hotbar icon.
-const POSE = {
-  hook: [0, 0.7, -0.2], hammer: [0, 0.5, -0.75], fishingrod: [0, 0.3, -0.8],
+export const POSE = {
+  hook: [0, 0.7, -0.2], hammer: [0, 1.57, -0.75], fishingrod: [0, 1.57, -0.75], // hammer head and rod reel side-on
   plastic: [0, 0.4, 0.5], fish: [0, -0.4, 0.15], rope: [0.9, 0, 0.2],
   wood: [0, -0.35, 0.12], leaf: [0.5, 0.4, 0], scrap: [0.3, 0.4, 0],
   net: [0.55, 0.5, 0], bench: [0, 0.5, 0], crate: [0, 0.5, 0],
 };
+// Icon-only thickening of long, thin procedural tools (length on local Y): scale X/Z so the
+// silhouette still reads at hotbar size. The held model is untouched.
+export const ICON_FATTEN = { hammer: 1.4, fishingrod: 2.2 };
 // models.js tools stand upright (grip at origin, working end +Y): tilt them onto the diagonal.
 const PROVIDER_POSE = { hook: [0, 0.5, -0.75] };
 // Per-kind framing for models.js items: pose, view direction, crop of the projected bounds
@@ -95,7 +101,10 @@ export function buildFallbackModel(kind) {
 // ---------- renderer ----------
 function ensureGL() {
   if (gl || failed) return !!gl;
-  try {
+  if (hostGL) {
+    gl = hostGL;
+    pixels = new Uint8Array(SIZE * SIZE * 16);
+  } else try {
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = SIZE;
     gl = new T.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true, powerPreference: 'low-power' });
@@ -118,11 +127,12 @@ function ensureGL() {
 function release() {
   releaseTimer = 0;
   if (!gl) return;
+  if (gl === hostGL) { try { rt?.dispose(); } catch {} rt = null; pixels = null; gl = null; return; }
   try { gl.dispose(); gl.forceContextLoss(); } catch {}
   gl = null;
 }
 
-const _box = new T.Box3(), _sphere = new T.Sphere(), _v = new T.Vector3(), _dir = new T.Vector3(1, 0.85, 1.35).normalize();
+const _clear = new T.Color(), _box = new T.Box3(), _sphere = new T.Sphere(), _v = new T.Vector3(), _dir = new T.Vector3(1, 0.85, 1.35).normalize();
 
 function freeModel(root) {
   root.traverse(o => {
@@ -149,7 +159,8 @@ function renderKind(kind) {
   const { model, own } = resolveIconModel(kind);
   if (!model) return null;
   const pivot = new T.Group();
-  pivot.add(model);
+  const fat = own ? ICON_FATTEN[kind] : 0;
+  if (fat) { const g = new T.Group(); g.scale.set(fat, 1, fat); g.add(model); pivot.add(g); } else pivot.add(model);
   const f = (!own && FRAME[kind]) || {};
   const p = f.pose || (own ? null : PROVIDER_POSE[kind]) || POSE[kind]; if (p) pivot.rotation.set(p[0], p[1], p[2]);
   pivot.updateMatrixWorld(true);
@@ -177,10 +188,29 @@ function renderKind(kind) {
   scene.add(pivot);
   let out = null;
   try {
-    gl.toneMappingExposure = f.exp || 1.15;
-    gl.render(scene, camera);
     out = document.createElement('canvas'); out.width = out.height = SIZE;
-    out.getContext('2d').drawImage(gl.domElement, 0, 0);       // GPU copy; the PNG encode happens later, async
+    if (gl === hostGL) {
+      const prevRT = gl.getRenderTarget(), prevExp = gl.toneMappingExposure, prevTM = gl.toneMapping, prevAlpha = gl.getClearAlpha(), prevClear = gl.getClearColor(_clear), prevAuto = gl.autoClear, prevShadow = gl.shadowMap.enabled;
+      try {
+        gl.toneMapping = T.ACESFilmicToneMapping; gl.toneMappingExposure = f.exp || 1.15; gl.autoClear = true; gl.shadowMap.enabled = false;
+        // A fresh target per icon (a few dozen, once): a reused one looks like a per-frame pass to frame-skipping probes.
+        rt = new T.WebGLRenderTarget(SIZE * 2, SIZE * 2); // no MSAA (the XR flag below skips its resolve): supersample 2x instead
+        rt.texture.colorSpace = T.SRGBColorSpace;
+        rt.isXRRenderTarget = true; // three applies renderer tone mapping only to the screen or XR targets; icons want it
+        gl.setRenderTarget(rt); gl.setClearColor(0x000000, 0); gl.clear(); gl.render(scene, camera);
+        gl.readRenderTargetPixels(rt, 0, 0, SIZE * 2, SIZE * 2, pixels);
+      } finally {
+        gl.setRenderTarget(prevRT); try { rt?.dispose(); } catch {} rt = null; gl.toneMapping = prevTM; gl.toneMappingExposure = prevExp; gl.setClearColor(prevClear, prevAlpha); gl.autoClear = prevAuto; gl.shadowMap.enabled = prevShadow;
+      }
+      const N = SIZE * 2, img = new ImageData(N, N), row = N * 4;
+      for (let y = 0; y < N; y++) img.data.set(pixels.subarray((N - 1 - y) * row, (N - y) * row), y * row); // GL rows are bottom-up
+      const big = document.createElement('canvas'); big.width = big.height = N; big.getContext('2d').putImageData(img, 0, 0);
+      const ctx = out.getContext('2d'); ctx.imageSmoothingQuality = 'high'; ctx.drawImage(big, 0, 0, SIZE, SIZE);
+    } else {
+      gl.toneMappingExposure = f.exp || 1.15;
+      gl.render(scene, camera);
+      out.getContext('2d').drawImage(gl.domElement, 0, 0);       // GPU copy; the PNG encode happens later, async
+    }
   } catch (e) { out = null; console.warn('item icon render failed', kind, e); }
   scene.remove(pivot);
   if (own) freeModel(model);
@@ -194,9 +224,11 @@ function finish(kind, url) {
   if (url) for (const fn of listeners) { try { fn(kind, url); } catch (e) { console.error(e); } }
   const old = stale.get(kind); if (old) { stale.delete(kind); URL.revokeObjectURL(old); }
 }
+// Deterministic probes (virtual clock) need icons ready in a known frame: encode synchronously there.
+const SYNC_ENCODE = typeof window !== 'undefined' && !!window.__det;
 function encode(kind, canvas) {
   if (!canvas) { finish(kind, ''); return; }
-  if (typeof canvas.toBlob !== 'function') { let url = ''; try { url = canvas.toDataURL('image/png'); } catch {} finish(kind, url); return; }
+  if (SYNC_ENCODE || typeof canvas.toBlob !== 'function') { let url = ''; try { url = canvas.toDataURL('image/png'); } catch {} finish(kind, url); return; }
   const token = {};
   encoding.set(kind, token);
   canvas.toBlob(blob => {

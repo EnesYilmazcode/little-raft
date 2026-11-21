@@ -41,7 +41,7 @@
 
 const STACK = 20;
 const SLOT_COUNT = 28;   // mirrors inventory-state.js
-const HOTBAR_SIZE = 8;   // mirrors inventory-state.js
+const HOTBAR_SIZE = 10;  // mirrors inventory-state.js
 const MAX_DURABILITY = 100;
 
 const deepFreeze = (o) => {
@@ -255,9 +255,9 @@ const REPAIRS = deepFreeze({
   metalhook: { scrap: 2, nail: 2 },
   hammer: { wood: 2, rope: 1 },
   fishingrod: { wood: 1, rope: 2 },
+  spade: { wood: 2, scrap: 1 },
   spear: { wood: 2, rope: 1 },
   metalspear: { metalingot: 1, rope: 1 },
-  spade: { wood: 2, scrap: 1 },
 });
 
 /** Alternate / older names that may appear in saves or network messages. */
