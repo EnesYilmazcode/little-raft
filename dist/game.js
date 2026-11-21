@@ -416,7 +416,7 @@ export function mount(transfer = null) {
       + '<li><kbd>X</kbd><span><b>Remove</b> the Foundation or piece you aim at while holding the Hammer. You get about half its materials back.</span></li>'
       + '<li><kbd>R</kbd><span><b>Rotate</b> the piece you are placing (<kbd>Shift</kbd> + wheel turns it finely), or <b>repair</b> a worn hook for 2 Plank and 1 Scrap.</span></li>'
       + '<li><kbd>Esc</kbd><span><b>Menu.</b> Settings, Play together and this guide.</span></li>';
-    const note = $('#help .guide-note'); if (note) note.textContent = 'Everyone has their own bag; the raft and the sea are shared. Nothing can hurt you, and your raft never sinks. Mouse won\'t lock? Drag the ocean to look instead.';
+    const note = $('#help .guide-note'); if (note) note.textContent = 'Everyone has their own bag; the raft and the sea are shared. Keep your food and water bars up: grill fish to eat, and purify sea water in a cup to drink. A shark bites edge foundations off the raft and bites swimmers: hit it with a spear to drive it off. Mouse won\'t lock? Drag the ocean to look instead.';
   }
 
   // ---------- Scene ----------
