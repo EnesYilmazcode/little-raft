@@ -393,16 +393,21 @@ export function mount(transfer = null) {
   }
   // Held models and build ghosts for every kind in the bag are built ahead and their shaders compiled
   // (renderer.compile covers hidden meshes), so the first switch to an item never links programs mid-play.
-  const warmedKinds = new Set();
-  function warmKinds() {
+  const warmedKinds = new Set(['hook']); // buildViewmodels() preloads the hook, the only item in a fresh bag
+  function preloadBagKinds() {
     const slots = localBag().slots; let fresh = false;
     for (let i = 0; i < slots.length; i++) {
       const k = slots[i]?.kind; if (!k || warmedKinds.has(k)) continue;
       warmedKinds.add(k); fresh = true; hands.preload([k]);
       if (k === 'hammer') ghosts.preload(['floor']); else if (DECOR_TYPES.includes(k)) ghosts.preload([k]);
     }
-    if (fresh) { try { renderer.compileAsync(scene, camera).catch(() => {}); } catch (e) { console.warn('shader warm-up failed', e); } }
+    return fresh;
   }
+  function compileScene() {
+    try { return renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
+    catch (e) { console.warn('shader warm-up failed', e); return Promise.resolve(); }
+  }
+  function warmKinds() { if (preloadBagKinds()) compileScene(); }
 
   // Incremental: only parts whose key changed are built or disposed, so placing one thing never rebuilds the raft.
   const raftParts = new Map();
@@ -1395,6 +1400,10 @@ export function mount(transfer = null) {
     });
     pickupFeed.setIconProvider(getItemIcon); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
+    // Link every scene program (world, hidden viewmodel and held models, hook, rope, ghosts) right after settings picked
+    // the shadow variants, so the first in-game frame never compiles shaders. The loop starts at once: waiting on
+    // compileAsync before the first title frame measured slower than letting that frame finish the link.
+    preloadBagKinds(); compileScene();
     active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
   } catch (e) {
     console.error(e); dispose();
