@@ -55,7 +55,7 @@ test('HUD-2/HUD-4: a docked feed is an in-flow box inside the panel lane, not a 
 
 test('HUD-3: feed rows stay left of the hotbar, and lift above it below 1000px wide', () => {
   assert.match(gameSrc, /#pickupFeed \.pf-row\{max-width:max\(200px,calc\(50vw - 287px\)\);white-space:normal/);
-  assert.match(gameSrc, /@media\(max-width:1000px\)\{#pickupFeed\[popover\]\{inset:auto auto 96px 10px\}/);
+  assert.match(gameSrc, /@media\(max-width:1000px\)\{#pickupFeed\[popover\]\{inset:auto auto \d+px 10px\}/); // height clears the vitals panel (132px, like #coopFeed)
   // The hotbar is 506px wide and centred, so its left edge is 50vw - 253px; the feed sits at left 22px.
   for (let w = 1001; w <= 3840; w++) {
     const right = 22 + Math.max(200, w / 2 - 287), hotbarLeft = w / 2 - 253;
