@@ -4,10 +4,10 @@ import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 import { createSky } from './sky.js?build=v3-survival-ae77fa84ac2b';
 import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
-import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
+import { createWoodMaterial, createWoodAtlas } from './wood.js?build=v3-survival-ae77fa84ac2b';
 import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-survival-ae77fa84ac2b';
-import { createRaftMesh, createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
+import { createRaftMesh, createFloor, FLOOR_WOODS } from './deck.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
@@ -336,6 +336,20 @@ export function mount(transfer = null) {
   // ---------- Small mesh helpers ----------
   const materialCache = new Map();
   let diving = null; const islands = [], aboveWater = [], gatheredIds = new Set(); // gatheredIds: host-side guard against re-gathering; // diving lane hook
+  // Default look: the floor's timber keys share one wood atlas and rope/nails one vertex-coloured material, so the
+  // whole floor is two draws plus one shadow draw. null (per-colour materials) with ?art or if the atlas fails.
+  let floorKit;
+  function floorShared() {
+    if (floorKit !== undefined) return floorKit;
+    floorKit = null;
+    if (!ART.artEnabled()) {
+      try {
+        floorKit = {atlas:createWoodAtlas(T, FLOOR_WOODS), flat:new T.MeshStandardMaterial({color:'#ffffff', vertexColors:true, roughness:.85, metalness:0})};
+        floorKit.atlas.material.userData.shared = true; floorKit.flat.userData.shared = true;
+      } catch (e) { console.warn('floor atlas failed', e); }
+    }
+    return floorKit;
+  }
   function mat(color) {
     if (!materialCache.has(color)) {
       let m = ART.artEnabled() ? ART.materialForColor(T, color) : null; // art lane hook
@@ -545,7 +559,7 @@ export function mount(transfer = null) {
     ocean.setRaftTiles(world.tiles);
     for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
     wateringGroups.clear();
-    raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat));
+    raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat, floorShared()));
     for (const d of world.decor) {
       let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'rainbarrel' ? createRainBarrel(T) : d.type === 'sprinkler' ? createSprinkler(T) : d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
       if (detailed) { detailed.position.set(d.x * 2, .22, d.z * 2); detailed.rotation.y = d.rot || 0; raft.add(detailed); if (d.type === 'palm' || d.type === 'purifier' || d.type === 'rainbarrel' || d.type === 'sprinkler') { if (d.type === 'palm') preparePlanter(T, detailed); detailed.userData.tileKey = tileKey(d.x, d.z); wateringGroups.set(detailed.userData.tileKey, detailed); } continue; }
@@ -1856,11 +1870,12 @@ export function mount(transfer = null) {
     });
     for (const m of materialCache.values()) mats.add(m);
     if (clothMat) mats.add(clothMat);
+    if (floorKit) mats.add(floorKit.atlas.material).add(floorKit.flat);
     for (const g of geos) { try { g.dispose(); } catch {} }
     for (const m of mats) { try { for (const v of Object.values(m)) if (v?.isTexture) v.dispose(); m.dispose(); } catch {} }
     try { content?.dispose(); } catch {} content = null; // content hook
     try { ocean?.dispose(); } catch {}
-    materialCache.clear(); itemMeshes.clear(); scene.clear();
+    materialCache.clear(); floorKit = undefined; itemMeshes.clear(); scene.clear();
     scene = null; // renderer, canvas, AudioContext, peer and conn are left untouched
   }
   function dispose() {

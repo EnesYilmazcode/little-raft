@@ -10,6 +10,8 @@ export const FLOOR_BOUNDS = Object.freeze({minX:-1, maxX:1, minY:0, maxY:0.2, mi
 // Material keys (game.js TIMBER); wood.js draws them as bleached olive-tan driftwood (#9c8a5e / #a6956e / #8e7f57).
 const PLANK_COLORS = ['#bb8a53', '#c69860', '#ad7c4a'];
 const BEAM_COLOR = '#5e4029', BEAM_END_COLOR = '#9c7649', ROPE_COLOR = '#a8946c', NAIL_COLOR = '#4b4844';
+// Timber keys for createWoodAtlas (similar tints adjacent); rope and nails are plain colours.
+export const FLOOR_WOODS = Object.freeze([...PLANK_COLORS, BEAM_END_COLOR, BEAM_COLOR]);
 const BEV = 0.011, BEV_T = 0.01, THICK = 0.052;
 const BEAM_R = 0.064, BEAM_Y = 0.072, BEAM_HALF = 0.985;
 
@@ -20,11 +22,12 @@ function makeRng(index) {
   return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
-// Merge geometries into one non-indexed BufferGeometry (position/normal/uv). Sources are disposed.
+// Merge geometries into one non-indexed BufferGeometry (position/normal/uv, plus color when the first has one). Sources are disposed.
 function merge(T, geos) {
   let count = 0;
   const parts = geos.map(g => { const n = g.index ? g.toNonIndexed() : g; if (n !== g) g.dispose(); count += n.attributes.position.count; return n; });
   const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3), uv = new Float32Array(count * 2);
+  const col = parts[0]?.attributes.color ? new Float32Array(count * 3) : null;
   let o = 0;
   for (const g of parts) {
     const c = g.attributes.position.count;
@@ -32,6 +35,7 @@ function merge(T, geos) {
       pos[(o + i) * 3] = g.attributes.position.getX(i); pos[(o + i) * 3 + 1] = g.attributes.position.getY(i); pos[(o + i) * 3 + 2] = g.attributes.position.getZ(i);
       if (g.attributes.normal) { nor[(o + i) * 3] = g.attributes.normal.getX(i); nor[(o + i) * 3 + 1] = g.attributes.normal.getY(i); nor[(o + i) * 3 + 2] = g.attributes.normal.getZ(i); }
       if (g.attributes.uv) { uv[(o + i) * 2] = g.attributes.uv.getX(i); uv[(o + i) * 2 + 1] = g.attributes.uv.getY(i); }
+      if (col && g.attributes.color) { col[(o + i) * 3] = g.attributes.color.getX(i); col[(o + i) * 3 + 1] = g.attributes.color.getY(i); col[(o + i) * 3 + 2] = g.attributes.color.getZ(i); }
     }
     o += c; g.dispose();
   }
@@ -39,6 +43,7 @@ function merge(T, geos) {
   out.setAttribute('position', new T.BufferAttribute(pos, 3));
   out.setAttribute('normal', new T.BufferAttribute(nor, 3));
   out.setAttribute('uv', new T.BufferAttribute(uv, 2));
+  if (col) out.setAttribute('color', new T.BufferAttribute(col, 3));
   out.computeBoundingBox(); out.computeBoundingSphere();
   return out;
 }
@@ -121,7 +126,9 @@ function lashing(T, rng, x, zb, surf, out) {
   const Ry = (topC - bottomC) / 2, yc = (topC + bottomC) / 2, ky = Ry / R;
   const wraps = 3;
   for (let w = 0; w < wraps; w++) {
-    const t = new T.TorusGeometry(R, tube, 3, 8);
+    // Hexagonal loop with corners at top and bottom; sides pushed out by 1/cos30 so the flats still clear the log.
+    const t = new T.TorusGeometry(R, tube, 3, 6);
+    t.rotateZ(Math.PI / 2); t.scale(1 / Math.cos(Math.PI / 6), 1, 1);
     t.rotateY(Math.PI / 2); t.scale(1, ky, 1);
     t.rotateZ((rng() - 0.5) * 0.12);
     t.translate(x + (w - (wraps - 1) / 2) * 0.019, yc, zb);
@@ -193,7 +200,7 @@ function floorParts(T, index) {
       const xs = lashed.has(i + ':' + bi) ? [xc - hw * 0.7, xc + hw * 0.7] : rng() < 0.5 ? [xc - hw * 0.55, xc + hw * 0.55] : [xc - hw * 0.62, xc + (rng() - 0.5) * hw * 0.2, xc + hw * 0.62];
       for (const x of xs) {
         const z = z0 + (rng() - 0.5) * 0.03;
-        const h = new T.CylinderGeometry(0.012, 0.0135, 0.007, 10);
+        const h = new T.CylinderGeometry(0.012, 0.0135, 0.007, 8);
         h.setIndex(Array.from(h.index.array.slice(0, h.groups[2].start))); // bottom cap is buried in the plank
         h.rotateY(rng() * 1.05); h.translate(x, plankSurface(p, x, z) + 0.0005, z);
         nails.push(h);
@@ -213,13 +220,36 @@ function floorParts(T, index) {
 
 const defaultMat = T => c => new T.MeshStandardMaterial({color:c, roughness:0.95});
 
-export function createFloor(T, index = 0, getMaterial) {
-  const mat = getMaterial || defaultMat(T);
-  const g = new T.Group(); g.name = 'raft-floor';
-  for (const p of floorParts(T, index)) {
-    const mesh = new T.Mesh(p.geometry, mat(p.color)); mesh.name = p.name;
-    mesh.castShadow = p.castShadow; mesh.receiveShadow = true; g.add(mesh);
+// Buckets parts by (material, shadow mode) and merges each bucket into one mesh. With
+// shared = {atlas, flat} (atlas from wood.js createWoodAtlas, flat a vertexColors material with a white colour)
+// the atlas colours share the atlas material (uv moved into their column) and the rest share `flat`, their colour
+// baked into vertices: one shadow-casting timber mesh plus one non-casting rope/nail mesh.
+function mergedGroup(T, parts, mat, shared) {
+  const buckets = new Map();
+  for (const p of parts) {
+    let m;
+    if (shared?.atlas.has(p.color)) { shared.atlas.remap(p.geometry, p.color); m = shared.atlas.material; }
+    else if (shared?.flat) {
+      const c = new T.Color(p.color), n = p.geometry.attributes.position.count, a = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+      p.geometry.setAttribute('color', new T.BufferAttribute(a, 3)); m = shared.flat;
+    } else m = mat(p.color);
+    if (!buckets.has(m)) buckets.set(m, new Map());
+    const byCast = buckets.get(m);
+    if (!byCast.has(p.castShadow)) byCast.set(p.castShadow, {name:p.name, list:[]});
+    byCast.get(p.castShadow).list.push(p.geometry);
   }
+  const g = new T.Group();
+  for (const [m, byCast] of buckets) for (const [castShadow, b] of byCast) {
+    const mesh = new T.Mesh(b.list.length === 1 ? b.list[0] : merge(T, b.list), m);
+    mesh.name = m === shared?.atlas.material ? 'floor-timber' : m === shared?.flat ? 'floor-ties' : b.name;
+    mesh.castShadow = castShadow; mesh.receiveShadow = true; g.add(mesh);
+  }
+  return g;
+}
+
+export function createFloor(T, index = 0, getMaterial, shared = null) {
+  const g = mergedGroup(T, floorParts(T, index), getMaterial || defaultMat(T), shared); g.name = 'raft-floor';
   g.userData.kind = 'floor';
   g.userData.index = index;
   g.userData.topY = FLOOR_TOP;
@@ -229,25 +259,15 @@ export function createFloor(T, index = 0, getMaterial) {
 }
 
 // Whole raft floor in as few draw calls as possible: every tile is built, its transform baked in,
-// and all parts sharing a material and shadow mode are merged into one mesh.
+// and all parts sharing a material and shadow mode are merged into one mesh (see mergedGroup for `shared`).
 // tiles: [{index, x, z}] (x,z = tile origin in raft-local units). Returns a Group; dispose via userData.dispose().
-export function createRaftMesh(T, tiles, getMaterial) {
-  const mat = getMaterial || defaultMat(T);
-  const buckets = new Map(), m4 = new T.Matrix4();
+export function createRaftMesh(T, tiles, getMaterial, shared = null) {
+  const parts = [], m4 = new T.Matrix4();
   for (const t of tiles) {
     m4.makeTranslation(t.x, 0, t.z);
-    for (const p of floorParts(T, t.index)) {
-      p.geometry.applyMatrix4(m4);
-      const key = p.color + '|' + p.castShadow;
-      if (!buckets.has(key)) buckets.set(key, {name:p.name, color:p.color, castShadow:p.castShadow, list:[]});
-      buckets.get(key).list.push(p.geometry);
-    }
+    for (const p of floorParts(T, t.index)) { p.geometry.applyMatrix4(m4); parts.push(p); }
   }
-  const g = new T.Group(); g.name = 'raft-floors';
-  for (const b of buckets.values()) {
-    const mesh = new T.Mesh(merge(T, b.list), mat(b.color)); mesh.name = b.name;
-    mesh.castShadow = b.castShadow; mesh.receiveShadow = true; g.add(mesh);
-  }
+  const g = mergedGroup(T, parts, getMaterial || defaultMat(T), shared); g.name = 'raft-floors';
   g.userData.kind = 'floors';
   g.userData.topY = FLOOR_TOP;
   g.userData.tiles = tiles.map(t => ({...t}));

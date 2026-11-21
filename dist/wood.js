@@ -16,7 +16,7 @@ function bleach(hex) {
  return '#'+f(r)+f(g)+f(b);
 }
 
-export function createWoodMaterial(T, color) {
+function paintWood(color) {
  const base=WEATHERED[color]??bleach(color);
  const W=128,H=512;
  const canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
@@ -46,6 +46,9 @@ export function createWoodMaterial(T, color) {
  // Grey-green bleach wash over everything, then darker worn board edges.
  ctx.fillStyle='rgba(146,146,128,.08)';ctx.fillRect(0,0,W,H);
  for(const [x0,x1] of [[0,16],[W,W-16]]){const g=ctx.createLinearGradient(x0,0,x1,0);g.addColorStop(0,'rgba(44,38,24,.2)');g.addColorStop(1,'rgba(44,38,24,0)');ctx.fillStyle=g;ctx.fillRect(Math.min(x0,x1),0,16,H);}
+ return canvas;
+}
+function woodMaterial(T, canvas) {
  const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=4;
  // The bump reads the same canvas through an isotropic twin (anisotropy is invisible at this bump scale but
  // costly on software GL), and with one tap instead of three: the height slope comes from screen derivatives.
@@ -54,6 +57,30 @@ export function createWoodMaterial(T, color) {
  const chunk=oneTapBump(T);
  if(chunk){m.onBeforeCompile=sh=>{sh.fragmentShader=sh.fragmentShader.replace('#include <bumpmap_pars_fragment>',chunk);};m.customProgramCacheKey=()=>'lr-wood-bump1';}
  return m;
+}
+export function createWoodMaterial(T, color) { return woodMaterial(T, paintWood(color)); }
+
+// Several timber keys side by side in one texture, so differently tinted parts share one material and one draw.
+// Each column is the exact createWoodMaterial canvas, flanked by 32px gutters repeating its edge texels (the
+// clamp-to-edge look; columns stay separate down to mip level 5).
+// Returns {material, has(color), remap(geometry, color)}: remap moves a geometry's uv into that colour's column.
+export function createWoodAtlas(T, colors) {
+ const PAD=32,CW=128+PAD*2,W=colors.length*CW;
+ const canvas=document.createElement('canvas');canvas.width=W;canvas.height=512;
+ const ctx=canvas.getContext('2d'),cols=new Map();
+ colors.forEach((c,i)=>{
+  const x=i*CW,src=paintWood(c);
+  ctx.drawImage(src,x+PAD,0);
+  ctx.drawImage(src,0,0,1,512,x,0,PAD,512);ctx.drawImage(src,127,0,1,512,x+PAD+128,0,PAD,512);
+  cols.set(c,{u0:(x+PAD)/W,us:128/W});
+ });
+ const material=woodMaterial(T,canvas);
+ function remap(g,color){
+  const col=cols.get(color),uv=g.attributes.uv;
+  for(let i=0;i<uv.count;i++)uv.setX(i,col.u0+Math.min(1,Math.max(0,uv.getX(i)))*col.us);
+  uv.needsUpdate=true;
+ }
+ return {material,remap,has:c=>cols.has(c)};
 }
 // three's bump chunk with the two offset taps replaced by dFdx/dFdy of the centre tap; null if the chunk changed shape.
 let bumpChunk;
