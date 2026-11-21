@@ -1,5 +1,5 @@
 // Held raft-building hammer model (first-person). ES module, procedural only.
-// Usage: import { createHammer } from './hammer.js?build=942dfc8214a8'; const g = createHammer(THREE);
+// Usage: import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b'; const g = createHammer(THREE);
 // Root group is re-centered on its bounding box (origin = box center).
 // Orientation: handle along Y with the butt at -Y, head at +Y.
 //   Head axis runs along Z: square striking face points -Z (forward), split claw points +Z.

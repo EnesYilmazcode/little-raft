@@ -1,5 +1,5 @@
 // Held bamboo fishing rod (first-person). Original procedural model, ES module, no textures.
-// Usage: import { createFishingTool } from './fishing-tool.js?build=1ceb16c8e7fe'; const rod = createFishingTool(THREE);
+// Usage: import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b'; const rod = createFishingTool(THREE);
 //
 // Model space (root at origin, rod axis on the Y axis, x = z = 0):
 //   butt cap  y = -0.75 ... tip top y = +0.75  (rod length 1.5, long axis +Y)

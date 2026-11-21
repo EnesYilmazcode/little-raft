@@ -1,6 +1,6 @@
 // First-person viewmodel hands (original procedural meshes, no textures). ES module.
 // Usage:
-//   import { createHands } from './hands.js?build=f5c56add2b31';
+//   import { createHands } from './hands.js?build=v3-survival-ae77fa84ac2b';
 //   const hands = createHands(THREE, createHook(THREE));
 //   camera.add(hands.group);              // camera must be in the scene
 //   hands.update({ dt, time, charge, reeling, casting, walking, hasHookOut, motion });

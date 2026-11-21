@@ -1,5 +1,5 @@
 // Original procedural raft foundation tile: hand-cut weathered planks lashed onto two round logs.
-// Usage: import { createFloor } from './deck.js?build=3e95222a4eac';
+// Usage: import { createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
 //        const g = createFloor(T, index, color => material); g.position.set(x * 2, 0, z * 2);
 // Local bounds: x,z in [-1, 1], y in [0, ~0.2]. Walkable top surface FLOOR_TOP = 0.20 (unevenness <= 0.017).
 // All geometry is created per tile (dispose via g.userData.dispose()). Materials come from getMaterial and are never disposed here.

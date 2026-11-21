@@ -196,6 +196,8 @@ export function createSettings({ onChange, onResume, onPause } = {}) {
     if (event.key !== 'Escape') return;
     if (event.repeat) { if (dialog.open) event.preventDefault(); return; }
     if (dialog.open) { event.preventDefault(); escHandledAt = performance.now(); close(true); return; }
+    // Another menu (inventory/crew/help) owns this Escape; suppress the keyup pause fallback.
+    if (otherDialogOpen()) { escHandledAt = performance.now(); return; }
     if (tryOpenFromEscape(event)) escHandledAt = performance.now();
   }), { capture: true, signal: ac.signal });
 

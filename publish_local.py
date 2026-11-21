@@ -7,17 +7,17 @@ def promote(source, label='release'):
  source=Path(source).resolve()
  if not (source/'game.js').is_file():raise ValueError('Candidate game.js missing')
  files={p.relative_to(source):p.read_bytes() for p in source.rglob('*') if p.is_file()}
- hashes={str(k).replace('\\','/'):hashlib.sha256(v).hexdigest()[:12] for k,v in files.items()}
+ names={str(k).replace('\\','/') for k in files}
+ digest=hashlib.sha256(b''.join(str(k).encode()+v for k,v in sorted(files.items()) if k.name!='version.json')).hexdigest()[:12]
+ build=label+'-'+digest
  for rel,data in list(files.items()):
   if rel.suffix=='.js' and rel.parent==Path('.'):
    text=data.decode('utf-8')
    def spec(m):
     name=m[2][2:]
-    return m[1]+m[2]+'?build='+hashes[name]+m[1] if name in hashes else m[0]
+    return m[1]+m[2]+'?build='+build+m[1] if name in names else m[0]
    text=re.sub(r"""(['"])(\./[a-z][a-z0-9-]*\.js)(?:\?[^'"]*)?\1""",spec,text)
    files[rel]=text.encode()
- digest=hashlib.sha256(b''.join(str(k).encode()+v for k,v in sorted(files.items()) if k.name!='version.json')).hexdigest()[:12]
- build=label+'-'+digest
  for rel,data in files.items():
   if rel.name=='version.json':continue
   dest=ROOT/'dist'/rel

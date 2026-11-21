@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as T from '../dist/vendor/three.module.js';
-import { HookCast } from '../dist/hook-physics.js';
+import { pathToFileURL } from 'node:url';
+import { resolve } from 'node:path';
+const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
+const T = await import(new URL('vendor/three.module.js', base));
+const { HookCast } = await import(new URL('hook-physics.js', base));
 
 const origin=()=>new T.Vector3(0,1.6,0);
 const item=()=>({id:7,token:'spawn-one',type:'wood',x:10,z:0});

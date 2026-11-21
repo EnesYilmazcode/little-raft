@@ -1,6 +1,6 @@
 // Little Raft - calm hazy ocean sky.
 // Usage:
-//   import { createSky } from './sky.js?build=08258b8ff69a';
+//   import { createSky } from './sky.js?build=v3-survival-ae77fa84ac2b';
 //   const sky = createSky(THREE);
 //   scene.add(sky.group);
 //   // per frame: sky.update(elapsedSeconds, camera);

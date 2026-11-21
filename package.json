@@ -1,1 +1,15 @@
-{"name":"little-raft","version":"0.1.0","private":true,"description":"A first-person cooperative raft sandbox","main":"desktop/main.cjs","scripts":{"start":"electron .","test":"node --test tests/hook.test.mjs"},"devDependencies":{"electron":"45.4.1"}}
+{
+  "name": "little-raft",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A first-person cooperative raft sandbox",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/survival.test.mjs"
+  },
+  "devDependencies": {
+    "electron": "45.4.1"
+  },
+  "type": "module"
+}

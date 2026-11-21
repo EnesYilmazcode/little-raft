@@ -1,5 +1,5 @@
 // Raft craft models (ES module, no imports, no textures).
-// Usage: import { createCraft } from './crafts.js?build=82efd1a03941'; const g = createCraft(THREE, 'sail');
+// Usage: import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b'; const g = createCraft(THREE, 'sail');
 // Returns a THREE.Group (or null for an unknown type). Local origin = centre of the 2x2 raft
 // floor top surface; place the group at the floor (y = .22). Everything builds upward from y = 0
 // inside a ~1.7 x 1.7 footprint. Every call creates its own geometries and materials, so the

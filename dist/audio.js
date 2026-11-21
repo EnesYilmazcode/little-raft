@@ -1,6 +1,6 @@
 // audio.js - original procedural sound for Little Raft (Web Audio only, no files).
 // Usage:
-//   import { createOceanAudio } from './audio.js?build=9f6fa7add10e';
+//   import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
 //   const audio = createOceanAudio({ context: previous?.context ?? null, volume: 0.5 });
 //   button.addEventListener('pointerdown', () => audio.resume());   // user gesture
 //   audio.play('build', 1);

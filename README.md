@@ -6,7 +6,7 @@ Run `python -m http.server 8766 --directory dist`, then open http://localhost:87
 
 ## Playing together
 
-Open the same hosted game on both computers. One player chooses Play together → Host our raft and shares the six-letter code. The second chooses Join raft. The host keeps their tab open. Materials, building, fishing, and the world are shared; each player has their own character and camera. The host's browser saves the raft. Guest worlds do not overwrite the guest's own save.
+Open the same hosted game on both computers. One player chooses Play together → Host our raft and shares the six-letter code. The second chooses Join raft. The host keeps the app open. The raft and floating supplies are shared; each player has a personal inventory, character and camera. The host saves the raft and both bags. Guest worlds do not overwrite the guest's own save.
 
 Online play uses PeerJS's public signaling broker and browser WebRTC data channels. Some networks require a TURN relay, which this small prototype does not provide. Errors and connection timeouts are shown in the room dialog. No chat, microphone, or camera access is used. This is a cooperative prototype for trusted players, without server-side anti-cheat.
 
@@ -14,12 +14,14 @@ Online play uses PeerJS's public signaling broker and browser WebRTC data channe
 
 - Hold left mouse to charge, release to throw, then hold left mouse to reel.
 - WASD / arrows: walk in first person; mouse: look.
-- 1 / 2 / 3: hook / build / fish.
-- Build: choose a recipe, then an adjacent cell (floor) or empty existing floor (decoration).
-- Fish: click water and wait for a catch.
+- 1–8 / mouse wheel: select a real hotbar slot.
+- Tab / I: inventory and crafting. E: pick up a nearby supply or open inventory.
+- Space: jump; Shift: run. You can fall into the water; hold Space near the edge to climb aboard.
+- Craft a hammer to build foundations (2 wood + 2 plastic); craft decorations before placing them.
+- Craft a fishing rod, then click water and wait for a catch.
 - Escape: release the cursor and open settings; Resume returns to play.
 
-Supplies regenerate indefinitely. Nets automatically gather nearby supplies. Building consumes the shared stock. No paid services or keys are required to play solo.
+Supplies regenerate indefinitely. Nets automatically gather nearby supplies into the host's bag. Resources stack to 20. A fresh game starts with one hook and no free supplies or tools. Earned legacy supplies are migrated into stacks. No paid services or keys are required to play solo.
 
 ## Desktop and live releases
 
@@ -29,4 +31,6 @@ Active apps poll `/version.json` every six seconds. A changed compatible build s
 
 Worker checkouts under `.team/` and QA builds under `.qa/` are separate from the live feed. Publish an already tested candidate with `python publish_local.py <candidate-dist> --label <release>`. The publisher writes the manifest last; the server uses `RAFT_RELEASE_MODE=1` to advertise only committed releases. `check_live_feed.py` exercises a real automatic publication with two connected headless clients and checks connection, supplies, and raft preservation.
 
-The currently published visual release has first-person controls, detailed deck/tools/hands, charged hook throws, durability, and pause settings. Hook-only spawning, personal inventory stacks, jumping/swimming, and fully ballistic multicatch are being integrated separately and are not yet part of that release.
+The release watcher starts with the Windows launcher and also runs as `python release_queue.py --watch`. It serves an isolated candidate, runs every configured check, rejects failures, and publishes passing snapshots automatically. See [release_queue_README.md](release_queue_README.md) for queue/status details. `enqueue_release.py` snapshots a candidate and marks it ready; worker output is integrated before being queued.
+
+The published v3 release includes hook-only spawning, personal inventory stacks, crafting, jumping/swimming, and ballistic multicatch. The release gate runs 22 module tests, settings checks, real-input survival checks, and a connected v2-to-v3 rolling upgrade. The upgrade test confirms earned supplies, room connection, movement, and guest save restoration without navigation.

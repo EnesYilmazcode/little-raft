@@ -103,7 +103,7 @@ async function fetchManifest() {
 }
 
 function moduleUrl(build, retry) {
-  const url = new URL('./game.js?build=e5cbd1cc2341', BASE);
+  const url = new URL('./game.js?build=v3-survival-ae77fa84ac2b', BASE);
   if (build) url.searchParams.set('build', build);
   // A failed module record stays cached per URL; give retries a fresh URL.
   if (retry) url.searchParams.set('retry', String(retry));

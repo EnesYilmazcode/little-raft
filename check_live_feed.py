@@ -1,7 +1,7 @@
 """Verify automatic polling on the real feed, including a connected pair."""
 from playwright.sync_api import sync_playwright
 from pathlib import Path
-import json, subprocess, sys, time
+import json, os, subprocess, sys, time
 
 with sync_playwright() as p:
     b=p.chromium.launch(channel='chrome',headless=True)
@@ -21,7 +21,7 @@ with sync_playwright() as p:
     for page in pages:page.wait_for_function('window.raftDebug.state.networkReady')
     before=[page.evaluate('({build:raftLive.build,state:raftDebug.state})') for page in pages]
     # Publish identical, already tested code under a new release id. No forced check().
-    subprocess.run([sys.executable,'publish_local.py','.qa/release/dist','--label','v2-auto-verified'],check=True)
+    subprocess.run([sys.executable,'publish_local.py',os.environ.get('RAFT_FEED_CANDIDATE','dist'),'--label','live-verified'],check=True)
     target=json.loads(Path('dist/version.json').read_text())['build']
     started=time.monotonic()
     for page in pages:
