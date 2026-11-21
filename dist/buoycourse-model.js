@@ -115,7 +115,7 @@ export function buildCourseModels(T) {
   function flag() {
     const g = new T.Group(); g.name = 'buoy_flag';
     g.add(mesh(flagGeo, body));
-    const pen = mesh(penGeo, cloth); pen.position.set(-.22, 1.78, 0); pen.name = 'pennant'; g.add(pen);
+    const pen = mesh(penGeo, cloth, false); pen.position.set(-.22, 1.78, 0); pen.name = 'pennant'; g.add(pen);
     const t = mesh(boardPlane, board.mat, false); t.position.set(.3, .85, .012); t.name = 'boardText'; g.add(t);
     g.userData.buoyFlag = true;
     return g;
