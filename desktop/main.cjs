@@ -14,18 +14,38 @@ app.whenReady().then(()=>{
  win=new BrowserWindow({title:'Little Raft',width:1366,height:850,minWidth:900,minHeight:620,backgroundColor:'#0b2931',autoHideMenuBar:true,icon:path.join(__dirname,'little-raft.png'),webPreferences:{...(fs.existsSync(preloadPath)?{preload:preloadPath}:{}),nodeIntegration:false,contextIsolation:true,sandbox:true,backgroundThrottling:false}});
  ipcMain.on('raft:claim-escape',(e,on)=>{if(win&&e.sender===win.webContents)escClaimed=!!on;});
  win.webContents.on('did-start-navigation',d=>{if(d.isMainFrame&&!d.isSameDocument)escClaimed=false;}); // a reload must claim again
- // Escape never reaches the page while claimed: the page handles it with a user gesture, so closing a
- // menu (inventory, pause) can take the mouse back without a click and without flashing the cursor.
- win.webContents.on('before-input-event',(event,input)=>{
-  if(!escClaimed||input.key!=='Escape'||(input.type!=='keyDown'&&input.type!=='keyUp'))return;
-  event.preventDefault();
-  if(input.type==='keyDown'&&!input.isAutoRepeat)win.webContents.executeJavaScript('window.raftEscape&&window.raftEscape()',true).catch(()=>{});
- });
  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
  win.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith(origin+'/')&&!url.startsWith('data:'))event.preventDefault();});
  win.webContents.session.setPermissionRequestHandler((wc,permission,callback)=>callback(permission==='pointerLock'||permission==='fullscreen'));
  win.webContents.session.setPermissionCheckHandler((wc,permission)=>permission==='pointerLock'||permission==='fullscreen');
  win.webContents.on('did-fail-load',(_e,code,_desc,url,isMain)=>{if(!isMain||code===-3)return;clearTimeout(retry);retry=setTimeout(()=>win&&!win.isDestroyed()&&win.loadURL(origin).catch(()=>{}),2500);});
+ // Escape is handled in the page with userGesture=true (executeJavaScript(code, true)), so closing a menu
+ // (inventory, crafting, pause, crew, help) can take the mouse back without a click and without flashing the cursor.
+ // When the page claimed Escape (preload + settings.js), every Escape goes through window.raftEscape(). Without the
+ // preload, only an Escape while a game panel is open is swallowed; the page announces panel state with a console
+ // sentinel (contextIsolation stays on) and main also re-queries it. The relock waits for the key release.
+ const wc=win.webContents;let panelOpen=false,swallowEsc=false;
+ const refreshPanel=()=>{if(!win||win.isDestroyed())return;wc.executeJavaScript('!!(window.raftShell&&window.raftShell.panelOpen())').then(v=>{panelOpen=!!v;},()=>{});};
+ const ESCAPE_JS='(window.raftShell?window.raftShell.escape(true):window.raftEscape?(window.raftEscape(),true):(()=>{const d=[...document.querySelectorAll("dialog[open]")].pop();if(d){d.close();return true;}return false;})())';
+ wc.on('console-message',(e,level,message)=>{const m=typeof e?.message==='string'?e.message:message;if(typeof m==='string'&&m.startsWith('[raft-shell] panel='))panelOpen=m.endsWith('=true');});
+ wc.on('before-input-event',(event,input)=>{
+  if(input.key!=='Escape'){if(input.type==='keyUp')refreshPanel();return;}
+  if(input.type==='keyDown'){
+   if(!escClaimed&&!panelOpen&&!swallowEsc)return; // unclaimed, no panel: normal Escape (leave pointer lock, page opens the pause menu)
+   event.preventDefault();
+   if(swallowEsc||input.isAutoRepeat)return;
+   swallowEsc=true;panelOpen=false;
+   wc.executeJavaScript(ESCAPE_JS,true).then(refreshPanel,refreshPanel);
+  }else if(input.type==='keyUp'&&swallowEsc){
+   // Relock on release, with a gesture: relocking while Escape is still held would count as leaving the lock.
+   event.preventDefault();swallowEsc=false;
+   wc.executeJavaScript('window.raftShell&&window.raftShell.released()',true).then(refreshPanel,refreshPanel);
+  }else if(escClaimed&&input.type==='keyUp')event.preventDefault(); // claimed: the page never sees a native Escape
+ });
+ // Focus never auto-locks; the next click in the page relocks with its own gesture.
+ win.on('blur',()=>{swallowEsc=false;}); // the page drops its held-Escape state on blur too
+ win.on('focus',refreshPanel);
+ wc.on('did-start-navigation',(_e,_url,_inPlace,isMain)=>{if(isMain!==false)panelOpen=false;});
  win.on('closed',()=>{clearTimeout(retry);win=null;});
  win.loadURL(origin).catch(()=>{});
 });

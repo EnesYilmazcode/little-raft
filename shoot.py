@@ -20,7 +20,7 @@ def shot(page, name):
     p = out / f'{name}.png'; page.screenshot(path=str(p)); report['shots'].append(str(p))
 
 with sync_playwright() as p:
-    b = p.chromium.launch(channel='chrome', headless=True, args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'])
+    b = p.chromium.launch(executable_path='/usr/bin/google-chrome', headless=True, args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'])
     ctx = b.new_context(viewport={'width': 1280, 'height': 720})
     page = ctx.new_page()
     page.on('pageerror', lambda e: report['errors'].append(str(e)))

@@ -4,7 +4,7 @@
 // and do not claim to reproduce, any other game's internals.
 //
 // API
-//   new HookCast(T, { origin, direction, target, maxRange = 32, charge = 1, drift })
+//   new HookCast(T, { origin, direction, target, maxRange = 32, charge = 1, drift, deckAt })
 //     T         : the THREE namespace (only T.Vector3 is used)
 //     origin    : Vector3-like throw start (player hand, y ~ 1.2). Copied, never mutated.
 //     direction : Vector3-like camera aim. Copied and normalized. Elevation decides the arc/range.
@@ -14,6 +14,9 @@
 //     charge    : [0,1]; launch speed = 7 + charge * 11 m/s (+1.0 m/s upward throw boost).
 //     drift     : optional {x,z} m/s water drift for the floating hook. Default mirrors game.js
 //                 item drift (z += .22/s, x += sin(time*.13)*.04/s) so hook and supplies co-drift.
+//     deckAt    : optional (x, z) -> deck top y over a raft tile, or null over open water. A flying
+//                 hook that comes down onto the deck stops there (onDeck = true, stage 'done') and
+//                 that update returns { kind:'returned' }.
 //
 //   Public fields
 //     position    : Vector3  current hook position
@@ -26,6 +29,7 @@
 //     tethered    : true once the rope hit maxRange during flight (horizontal motion stopped)
 //     landing     : null while flying, then Vector3 splash point (actual ballistic x/z, y = WATER_Y)
 //     flightT     : seconds spent in flight (used by game.js for the spin animation)
+//     onDeck      : true when the flight ended on a raft tile instead of the water
 //
 //   update(dt, { hand, items, reeling = false, time })
 //     -> null | { kind:'collected', items:[{id,token,type}...], id, token } | { kind:'returned' }
@@ -72,7 +76,7 @@ function segDist2(ax, az, bx, bz, px, pz) {
 }
 
 export class HookCast {
-  constructor(T, { origin, direction, target, maxRange = 32, charge = 1, drift } = {}) {
+  constructor(T, { origin, direction, target, maxRange = 32, charge = 1, drift, deckAt } = {}) {
     this.T = T;
     const o = finVec(origin) ? origin : { x: 0, y: 1.2, z: 0 };
     this.origin = new T.Vector3(o.x, o.y, o.z);
@@ -103,6 +107,8 @@ export class HookCast {
     this.tethered = false;
     this.landing = null;
     this.flightT = 0;
+    this.onDeck = false;
+    this.deckAt = typeof deckAt === 'function' ? deckAt : null;
     this.floatTime = 0;
     this.base = this.origin.clone(); // floating anchor on the water (bob applied on top)
     this._hand = this.origin.clone();
@@ -186,6 +192,14 @@ export class HookCast {
     v.y -= GRAVITY * h;
     if (this._tether(n)) { v.x = 0; v.z = 0; this.tethered = true; } // rope taut: just drop
     this.flightT += h;
+    const top = this.deckAt ? this.deckAt(n.x, n.z) : null;
+    if (fin(top) && top > WATER_Y && ny <= top && py > top) { // came down on the raft: stop on the planks
+      p.set(n.x, top, n.z);
+      v.set(0, 0, 0);
+      this.onDeck = true;
+      this.stage = 'done';
+      return;
+    }
     if (ny <= WATER_Y || this.flightT >= MAX_FLIGHT_TIME) {
       const f = ny <= WATER_Y && py > ny ? clamp((py - WATER_Y) / (py - ny), 0, 1) : 1;
       const sx = px + (n.x - px) * f, sz = pz + (n.z - pz) * f;
@@ -249,6 +263,11 @@ export class HookCast {
       arrived = Math.hypot(this._hand.x - this.position.x, this._hand.z - this.position.z) <= COLLECT_DIST;
     }
 
+    if (this.onDeck && !this._emitted) { // came down on the deck this update: end the cast once, nothing caught
+      this._emitted = true;
+      this._updateMetrics();
+      return { kind: 'returned' };
+    }
     if (arrived) {
       this.stage = 'done';
       this._updateMetrics();

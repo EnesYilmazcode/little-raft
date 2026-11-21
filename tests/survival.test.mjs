@@ -602,3 +602,131 @@ test('a fresh bag (new game) holds only the hook', () => {
   const kinds = new Bag().slots.filter(Boolean).map(s => s.kind);
   assert.deepEqual(kinds, ['hook']);
 });
+
+// =================================================================== Crafting book (pure UI logic)
+
+const CB = await import(new URL('craft-book.js', base));
+const { RECIPES, ITEM_INFO } = await import(new URL('inventory-state.js', base));
+const normRecipes = () => Object.values(RECIPES).map(r => ({
+  id: r.id, name: r.name, out: { ...r.output }, reqs: Object.entries(r.cost).map(([kind, count]) => ({ kind, count })),
+}));
+
+test('CraftBook: every recipe lands in exactly one known tab, in CATEGORIES order', () => {
+  const recipes = normRecipes();
+  const groups = CB.groupRecipes(recipes, ITEM_INFO);
+  const ids = CB.CATEGORIES.map(c => c.id);
+  assert.deepEqual(groups.map(g => g.id), ids.filter(id => groups.some(g => g.id === id)), 'tab order');
+  const seen = groups.flatMap(g => g.recipes.map(r => r.id));
+  assert.equal(seen.length, recipes.length);
+  assert.deepEqual([...seen].sort(), recipes.map(r => r.id).sort());
+  for (const g of groups) assert.ok(g.recipes.length > 0, `${g.id} not empty`);
+  assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod']);
+  assert.deepEqual(groups.find(g => g.id === 'materials').recipes.map(r => r.id), ['rope']);
+});
+
+test('CraftBook: unknown outputs fall back to tools (tool flag) or building', () => {
+  assert.equal(CB.categoryOf('spear'), 'tools');
+  assert.equal(CB.categoryOf('mystery', { tool: true }), 'tools');
+  assert.equal(CB.categoryOf('mystery'), 'building');
+  assert.deepEqual(CB.groupRecipes([]), []);
+  const g = CB.groupRecipes([{ id: 'x', out: { kind: 'x' } }, null]);
+  assert.deepEqual(g.map(c => c.id), ['building']);
+});
+
+test('CraftBook: every item kind has description and use text', () => {
+  for (const k of Object.keys(ITEM_INFO)) {
+    assert.ok(CB.ITEM_TEXT[k]?.desc, `${k} desc`);
+    assert.ok(CB.ITEM_TEXT[k]?.use, `${k} use`);
+  }
+});
+
+test('CraftBook: ingredient rows report owned vs needed and the shortfall', () => {
+  const bag = bagFrom([null, null, null, null, null, null, null, null, { kind: 'wood', count: 3 }, { kind: 'rope', count: 5 }]);
+  const rows = CB.ingredientRows([{ kind: 'wood', count: 4 }, { kind: 'rope', count: 2 }], k => bag.count(k));
+  assert.deepEqual(rows, [
+    { kind: 'wood', need: 4, have: 3, enough: false, short: 1 },
+    { kind: 'rope', need: 2, have: 5, enough: true, short: 0 },
+  ]);
+  assert.equal(CB.amountLabel(rows[0]), '3 / 4');
+  assert.equal(CB.amountLabel(rows[1]), '5 / 2');
+  assert.equal(CB.craftableTimes(rows), 0);
+  assert.equal(CB.recipeState(rows, bag.canCraft('hammer')), 'missing');
+  // A throwing counter is treated as owning nothing.
+  assert.equal(CB.ingredientRows([{ kind: 'wood', count: 1 }], () => { throw new Error('x'); })[0].have, 0);
+});
+
+test('CraftBook: craftableTimes and recipeState follow the Bag', () => {
+  const bag = bagFrom([null, null, null, null, null, null, null, null, { kind: 'leaf', count: 9 }]);
+  const rope = CB.ingredientRows([{ kind: 'leaf', count: 2 }], k => bag.count(k));
+  assert.equal(CB.craftableTimes(rope), 4);
+  assert.equal(CB.recipeState(rope, bag.canCraft('rope')), 'ready');
+  assert.equal(CB.craftableTimes([]), Infinity);
+  // Materials present but no room for the output -> 'full'.
+  const slots = new Array(SLOT_COUNT).fill(null).map(() => ({ kind: 'fish', count: STACK_SIZE }));
+  slots[5] = { kind: 'wood', count: STACK_SIZE };
+  slots[6] = { kind: 'scrap', count: STACK_SIZE };
+  const full = new Bag({ slots, selected: 0 });
+  const lantern = CB.ingredientRows([{ kind: 'wood', count: 2 }, { kind: 'scrap', count: 2 }], k => full.count(k));
+  assert.equal(CB.recipeState(lantern, full.canCraft('lantern')), 'full');
+  assert.equal(CB.recipeState(lantern, null), 'ready');
+});
+
+test('CraftBook: usedIn lists the recipes that consume an item', () => {
+  const recipes = normRecipes();
+  assert.deepEqual(CB.usedIn('scrap', recipes).sort(), ['Crate', 'Lantern']);
+  assert.ok(CB.usedIn('rope', recipes).includes('Hammer'));
+  assert.deepEqual(CB.usedIn('fish', recipes), []);
+});
+
+test('CraftBook: hold-to-craft interval starts slow, accelerates, and floors at the minimum', () => {
+  const H = CB.HOLD;
+  assert.equal(CB.holdDelay(1), H.first);
+  let prev = Infinity;
+  for (let n = 1; n < 40; n++) {
+    const d = CB.holdDelay(n);
+    assert.ok(d <= prev, `non-increasing at ${n}`);
+    assert.ok(d >= H.min, `floor at ${n}`);
+    prev = d;
+  }
+  assert.ok(CB.holdDelay(2) < CB.holdDelay(1));
+  assert.equal(CB.holdDelay(100), H.min);
+  assert.equal(CB.holdDelay(0), CB.holdDelay(1), 'junk counts clamp to the first step');
+  const s = CB.holdSchedule(5);
+  assert.equal(s[0], 0, 'press crafts immediately');
+  assert.equal(s[1], H.first);
+  for (let i = 2; i < s.length; i++) assert.ok(s[i] - s[i - 1] <= s[i - 1] - s[i - 2]);
+});
+
+test('CraftBook: a click crafts one; holding crafts more, capped', () => {
+  assert.equal(CB.craftsForHold(0), 1);
+  assert.equal(CB.craftsForHold(CB.HOLD.first - 1), 1);
+  assert.equal(CB.craftsForHold(CB.HOLD.first), 2);
+  const sched = CB.holdSchedule(12);
+  for (let i = 1; i < sched.length; i++) {
+    assert.equal(CB.craftsForHold(sched[i]), i + 1);
+    assert.equal(CB.craftsForHold(sched[i] - 1), i);
+  }
+  assert.equal(CB.craftsForHold(60000, 4), 4);
+  assert.ok(CB.craftsForHold(2000) > 6, 'a two second hold crafts plenty');
+});
+
+test('CraftBook: tooltip anchors beside the element, never off-screen', () => {
+  const vw = 1280, vh = 720;
+  const right = CB.anchorTip({ left: 100, top: 200, right: 150, bottom: 250 }, 200, 80, vw, vh);
+  assert.deepEqual(right, { x: 158, y: 200, side: 'right' });
+  const left = CB.anchorTip({ left: 1100, top: 200, right: 1200, bottom: 250 }, 200, 80, vw, vh);
+  assert.equal(left.side, 'left');
+  assert.equal(left.x + 200, 1100 - 8);
+  const below = CB.anchorTip({ left: 10, top: 100, right: 1270, bottom: 150 }, 200, 80, vw, vh);
+  assert.equal(below.side, 'below');
+  assert.equal(below.y, 158);
+  const above = CB.anchorTip({ left: 10, top: 600, right: 1270, bottom: 700 }, 200, 80, vw, vh);
+  assert.equal(above.side, 'above');
+  assert.equal(above.y, 600 - 8 - 80);
+  // Near the bottom edge the tip is pulled up so it stays inside the viewport.
+  const low = CB.anchorTip({ left: 100, top: 690, right: 150, bottom: 715 }, 200, 80, vw, vh);
+  assert.ok(low.y + 80 <= vh - 6);
+  for (const p of [right, left, below, above, low]) {
+    assert.ok(p.x >= 6 && p.x + 200 <= vw - 6 && p.y >= 6 && p.y + 80 <= vh - 6, JSON.stringify(p));
+  }
+});
