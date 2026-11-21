@@ -107,10 +107,10 @@ export function createHands(T, { modelFactory = null } = {}) {
     m.customProgramCacheKey = () => 'vmKeyShade';
     return m;
   };
-  const skin = keyShade(mat(0xb6786a, 0.6, { emissive: 0x160805, map: tx.skin }));
-  const skinPalm = keyShade(mat(0xbb8274, 0.64, { emissive: 0x160805, map: tx.skin }));
-  const nail = keyShade(mat(0xd8ae9c, 0.38, { emissive: 0x120806 }));
-  const crease = mat(0x7a4a3a, 0.8);
+  const skin = keyShade(mat(0xd49c78, 0.6, { emissive: 0x0a0503, map: tx.skin }));
+  const skinPalm = keyShade(mat(0xe2b192, 0.64, { emissive: 0x0a0503, map: tx.skin }));
+  const nail = keyShade(mat(0xecc6ae, 0.38, { emissive: 0x0a0503 }));
+  const crease = mat(0x9a6448, 0.8);
   const sleeveMat = keyShade(mat(0x5a7462, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
   const cuffMat = keyShade(mat(0x465c4e, 1.0, { map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 }));
   const ropeMat = mat(0xc4a46c, 1.0, { map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
@@ -123,7 +123,7 @@ export function createHands(T, { modelFactory = null } = {}) {
   const toneOf = (m) => { const c = m.color.clone(); return new T.Color(c.r / BODY_SKIN.r, c.g / BODY_SKIN.g, c.b / BODY_SKIN.b); };
   const skinTones = [skin, skinPalm, nail, crease].map((m) => [m, toneOf(m)]);
   const SLEEVE_BASE = sleeveMat.color.clone();
-  const skinV = keyShade(mat(0xffffff, 0.6, { emissive: 0x160805, vertexColors: true, map: tx.skin })); skinV.color.copy(BODY_SKIN);
+  const skinV = keyShade(mat(0xffffff, 0.6, { emissive: 0x0a0503, vertexColors: true, map: tx.skin })); skinV.color.copy(BODY_SKIN);
   const clothV = keyShade(mat(0xffffff, 1.0, { vertexColors: true, map: tx.weave, bumpMap: tx.weave, bumpScale: 1.2 })); clothV.color.copy(SLEEVE_BASE);
   const ropeV = mat(0xffffff, 1.0, { vertexColors: true, map: tx.rope, bumpMap: tx.rope, bumpScale: 1.5 });
   const tint = (m) => m.material.color;
@@ -219,8 +219,8 @@ export function createHands(T, { modelFactory = null } = {}) {
     seg(thumbExt, skin, t0, u1, 0.0135, 0.0118);
     seg(thumbExt, skin, u1, u2, 0.0118, 0.0094);
     const w1 = V(-0.024 * k, 0.030, 0.026 * k), w2 = V(-0.026 * k, 0.012, 0.004 * k);   // tucked over the curled middle finger
-    seg(thumbTuck, skin, t0, w1, 0.0135, 0.0118);
-    seg(thumbTuck, skin, w1, w2, 0.0118, 0.0094);
+    seg(thumbTuck, skin, t0, w1, 0.0108, 0.0094);     // slimmer than the gripping thumb: no blob on the empty fist
+    seg(thumbTuck, skin, w1, w2, 0.0094, 0.0075);
     parent.add(thumbCurl, thumbExt, thumbTuck);
     // Each pose is baked into one mesh (palm + its finger and thumb variants): one draw call per hand.
     const poses = {
@@ -433,8 +433,10 @@ export function createHands(T, { modelFactory = null } = {}) {
     // pointing blends in; a left hand that only shows up to point slides in from below
     st.ptR += ((pointer === 'R' ? 1 : 0) - st.ptR) * smoothK(12, dt);
     st.ptL += ((pointer === 'L' ? 1 : 0) - st.ptL) * smoothK(12, dt);
-    const leftNeeded = usesLeft(st.shown), lIn = leftNeeded ? 1 : st.ptL;
-    L.pose.visible = st.shown !== null && (leftNeeded || st.ptL > 0.02);
+    // Raft framing: only the right hand at idle. The hook's left hand (rope coil) comes in only once the
+    // hook is out, so it never floats beside the hotbar while idle or winding up.
+    const leftNeeded = usesLeft(st.shown), lIn = isHook ? Math.max(st.outW, st.ptL) : leftNeeded ? 1 : st.ptL;
+    L.pose.visible = st.shown !== null && lIn > 0.02;
     const rightIdle = !!st.shown && holdFor(st.shown).hand === 'left', rIn = rightIdle ? st.ptR : 1;   // empty right hand stays down
     R.pose.visible = st.shown !== null && (!rightIdle || st.ptR > 0.02);
     coil.visible = lead.visible = isHook && pointer !== 'L' && !leftRope;
@@ -484,26 +486,27 @@ export function createHands(T, { modelFactory = null } = {}) {
     const hold = st.shown ? holdFor(st.shown) : {}, nW = (1 - oW) * (1 - st.ptR), arm = hold.arm || [0, 0, 0];
 
     // ---- right arm
-    // hook out: the fist closes on the line and comes in toward the middle; reeling pulls it back and down
-    const rpx = 0.03 * ce - 0.10 * a + 0.010 * wA * Math.sin(ph) + 0.002 * amp * Math.sin(t * 0.7) - 0.03 * oW + (0.03 * pullR - 0.015) * rW + trem;
-    const rpy = 0.06 * a - 0.012 * wA * bob + 0.0045 * amp * br + 0.035 * oW + (0.015 - 0.045 * pullR) * rW - 0.025 * catchDip + trem * 0.7 - 0.45 * down - 0.45 * (1 - rIn);
-    const rpz = 0.04 * ce - 0.20 * a - 0.04 * oW + (0.10 * pullR - 0.05) * rW;
-    const rrx = 0.35 * ce - 0.65 * a + 0.010 * amp * br - 0.15 * oW + 0.30 * pullR * rW + 0.12 * catchDip - 0.5 * down;
-    const rry = 0.20 * ce - 0.15 * a;
-    const rrz = -0.20 * ce + 0.25 * a + 0.03 * wA * Math.sin(ph) + 0.15 * pullR * rW + 0.25 * down;
+    // hook out: the empty fist closes on the line low on the right, knuckles up; reeling pulls it back and down
+    const rpx = 0.03 * ce - 0.10 * a + 0.010 * wA * Math.sin(ph) + 0.002 * amp * Math.sin(t * 0.7) + (0.015 - 0.02 * rW) * oW + (0.03 * pullR - 0.015) * rW + trem;
+    const rpy = 0.06 * a - 0.012 * wA * bob + 0.0045 * amp * br + 0.03 * rW * oW + (0.015 - 0.045 * pullR) * rW - 0.025 * catchDip + trem * 0.7 - 0.45 * down - 0.45 * (1 - rIn);
+    const rpz = 0.04 * ce - 0.20 * a + 0.02 * oW + (0.10 * pullR - 0.05) * rW;
+    const rrx = 0.35 * ce - 0.65 * a + 0.010 * amp * br + 0.65 * oW + 0.30 * pullR * rW + 0.12 * catchDip - 0.5 * down;
+    const rry = 0.20 * ce - 0.15 * a - 0.4 * oW;
+    const rrz = -0.20 * ce + 0.25 * a + 0.03 * wA * Math.sin(ph) + 0.15 * pullR * rW + 0.25 * down - 0.8 * oW;
     const rwx = 0.30 * ce - 0.45 * a - 0.10 * oW + 0.22 * pullR * rW - (hold.tilt || 0) * nW;
     const rwz = -0.15 * ce + 0.12 * a;
     applyArm(R, rpx + arm[0] * nW, rpy + arm[1] * nW, rpz + arm[2] * nW, rrx, rry, rrz, rwx, 0, rwz, smooth(0, 1, st.ptR));
 
     // ---- left arm
     const lw = rW * oW;                                          // left fist on the line, reaching and pulling in turn
+    const cw = isHook ? oW * (1 - lw) : 0;                       // hook out, not reeling: coil fist low and out, left of the hotbar
     const lpx = 0.02 * ce + 0.02 * a + (0.015 * pull + 0.03 * oW) * rW * (1 - lw) - 0.010 * wA * Math.sin(ph) + 0.002 * amp * Math.sin(t * 0.63 + 1);
     const lpy = 0.03 * ce + 0.02 * a + (0.010 - 0.035 * pull) * rW * (1 - lw) - 0.012 * wA * (0.5 - 0.5 * Math.cos(2 * ph + Math.PI)) + 0.004 * amp * brL - 0.45 * down - 0.45 * (1 - lIn);
     const lpz = -0.03 * ce - 0.06 * a + (0.09 * pull - 0.03) * rW * (1 - lw);
     const lrx = -0.10 * ce + 0.30 * pull * rW + 0.008 * amp * brL - 0.4 * down;
     const lry = 0.08 * ce;
     const lrz = -0.15 * pull * rW - 0.03 * wA * Math.sin(ph) - 0.2 * down;
-    applyArm(L, lpx + lw * 0.03 * pull, lpy - lw * 0.04 * pull, lpz + lw * 0.08 * pull, lrx - lw * 0.25 * pull, lry, lrz + lw * 0.10 * pull,
+    applyArm(L, lpx + lw * 0.03 * pull - 0.07 * cw, lpy - lw * 0.04 * pull + 0.08 * cw, lpz + lw * 0.08 * pull, lrx - lw * 0.25 * pull + 0.25 * cw, lry + 0.5 * cw, lrz + lw * 0.10 * pull - 0.5 * cw,
       0.22 * pull * rW * (1 - lw) - 0.08 * ce, 0, -0.10 * ce + 0.12 * a, smooth(0, 1, st.ptL), lw);
 
     // ---- coil: spool turns while reeling (in) / casting (out); pendulum swing about grip axis
