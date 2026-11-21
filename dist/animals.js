@@ -315,7 +315,7 @@ export function createAnimals(ctx) {
   function openRename(id) {
     const a = findId(st, id); if (!a) return false;
     const go = u => u && u.open(a.id, a.name);
-    if (ui) go(ui); else loadUI()?.then(go);
+    if (ui) go(ui); else loadUI()?.then(u => { if (u && !ctx.uiOpen?.()) go(u); }); // first use: another panel may have opened meanwhile
     return true;
   }
 

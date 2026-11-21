@@ -108,9 +108,11 @@ export function createDecorPack(ctx) {
     uiLoading = import('./signs-ui.js?build=v3-survival-ae77fa84ac2b').then(m => { if (disposed) return null; ui = m.createSignUI(api); return ui; }).catch(e => { console.error('sign ui failed', e); uiLoading = null; return null; });
     return uiLoading;
   }
+  // The lock is released only once the dialog can open: on a first use the import resolves later, and by then
+  // another panel may have opened (it owns the cursor) or the load may have failed (keep the lock: no free cursor).
   function openSign(x, z) {
-    const go = u => u && u.open(x, z);
-    if (ui) go(ui); else loadUI()?.then(go);
+    const go = u => { if (!u) return; ctx.releaseLock?.(); u.open(x, z); };
+    if (ui) go(ui); else loadUI()?.then(u => { if (u && !ctx.uiOpen?.()) go(u); });
     return true;
   }
 
@@ -202,7 +204,7 @@ export function createDecorPack(ctx) {
     interact(aim) {
       if (ctx.uiOpen?.()) return false;
       const d = target(aim); if (!d) return false;
-      if (d.type === 'sign') { ctx.releaseLock?.(); openSign(d.x, d.z); }
+      if (d.type === 'sign') openSign(d.x, d.z); // releases the lock when the dialog opens
       else ctx.action({ kind: 'decor.turn', x: d.x, z: d.z });
       return true;
     },
