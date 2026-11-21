@@ -783,7 +783,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function startHold() {
     if (!pickId) return;
     stopHold();
-    justMade = null; clearTimeout(countTimer);
+    clearTimeout(countTimer);
     const v = freshView(pickId);
     if (!v || v.state !== 'ready') { denyBtn(); paintDetail(); return; }
     // Cap at what the materials on hand cover, so a lagging (networked) bag cannot overshoot.
@@ -813,7 +813,6 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     cancelAnimationFrame(hold.raf);
     const made = hold.done, out = viewOf(hold.id)?.r.out.count || 1;
     hold = null;
-    justMade = made > 0 && v ? { id: v.r.id, n: made * (v.r.out.count || 1), name: v.r.name } : null;
     D.btn.classList.remove('sv-holding');
     setFill(0);
     clearTimeout(countTimer);
