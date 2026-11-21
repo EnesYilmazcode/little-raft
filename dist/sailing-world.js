@@ -10,8 +10,11 @@ const CLOTH_R = 1.2, CLOTH_Y0 = 1, CLOTH_Y1 = 3.4; // raised cloth hit volume ar
 const FURL = .04, FURL_Z = .3, ROLL_AT = .3, ROLL_R = .07, BASE_FLOW_Z = .22, ITEM_MARGIN = 26, ROPE_DOWN = 3.4, ROPE_UP = .07, GROUND_CLEAR = 2.5, OP_GAP = 250, SNAP2 = 36;
 const CLOTH_NAMES = new Set(['sailCloth', 'sailSeams', 'sailPatch', 'sailStitches']);
 const LIMITED_OPS = new Set(['toggle', 'raise', 'lower', 'anchor', 'unanchor', 'toggleAnchor']);
-const P_STEER = 'Steering the sail — look where to go', P_WHEEL = 'Steering — look where to go', P_RAISE = '<kbd>E</kbd>Raise sail · hold <kbd>R</kbd> to steer',
-  P_LOWER = '<kbd>E</kbd>Lower sail · hold <kbd>R</kbd> to steer', P_DROP = '<kbd>E</kbd>Drop anchor', P_WEIGH = '<kbd>E</kbd>Raise anchor';
+// Prompt rows for the one crosshair-side prompt column (prompts.js #lrPrompt via raftPrompts.provide), not a separate box.
+const STEER_R = Object.freeze({ key: 'R', hold: true, label: 'Steer' });
+const P_STEER = [{ label: 'Steering the sail · look where to go', muted: true }], P_WHEEL = [{ label: 'Steering · look where to go', muted: true }],
+  P_RAISE = [{ key: 'E', label: 'Raise sail' }, STEER_R], P_LOWER = [{ key: 'E', label: 'Lower sail' }, STEER_R],
+  P_DROP = [{ key: 'E', label: 'Drop anchor' }], P_WEIGH = [{ key: 'E', label: 'Raise anchor' }];
 const HW = SAIL.WATER_WRAP / 2, HG = SAIL.GROUND_WRAP / 2;
 const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 
@@ -241,7 +244,14 @@ export function createSailing(T, ctx) {
       else if (aimKind === 1) p = state.raised ? P_LOWER : P_RAISE;
       else if (aimKind === 2) p = state.anchored ? P_WEIGH : P_DROP;
     }
-    if (p !== lastPrompt) { lastPrompt = p; ui.setPrompt(p); }
+    lastPrompt = p;
+    if (!unprovide) provide();
+  }
+  let unprovide = null;
+  function provide() {
+    const P = globalThis.raftPrompts; if (unprovide || typeof P?.provide !== 'function') return;
+    // priority 1 beats the built-in tool hints (0); a pickup under the crosshair still wins E in game.js, so yield to it
+    unprovide = P.provide({ id: 'sailing', priority: 1, prompt: pc => (disposed || !lastPrompt || (!steering && pc?.state?.pickup) ? null : lastPrompt) }); // ctx.state is built lazily: read it only when aiming at a sail
   }
   function grabLost() { return grabKind === 3 ? !(ctx.steerTargets?.()?.length) : !sails.length; } // the grabbed kind is gone
   function steer(dt) {
@@ -351,6 +361,7 @@ export function createSailing(T, ctx) {
     if (disposed) return; disposed = true;
     steering = false; restoreSails(); sails.length = 0;
     scene.remove(fixture); ui.dispose(); abort.abort();
+    try { unprovide?.(); } catch {} unprovide = null;
     for (const k in G) G[k].dispose();
     for (const k in M) M[k].dispose();
     for (const r of rolls) r.parent?.remove(r);
