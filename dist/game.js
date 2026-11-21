@@ -49,6 +49,13 @@ import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { createGhosts, wrapRot, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { getItemIcon, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+// [needs] survival needs (hunger, thirst, health) and game modes. combat-bus.js is imported WITHOUT a query string
+// so needs, shark and spear share one bus instance.
+import { bus, MODES, DEFAULT_MODE, modeRules } from './combat-bus.js'; // [needs]
+import { createNeeds, cleanNeeds, isFood, isDrink, FOOD } from './needs.js'; // [needs]
+import { createNeedsHUD } from './needs-ui.js'; // [needs]
+import { SETTINGS_STORAGE_KEY } from './settings.js?build=v3-survival-ae77fa84ac2b'; // [needs]
+const newGameMode = () => { try { const m = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || 'null')?.gameMode; return MODES[m] ? m : DEFAULT_MODE; } catch { return DEFAULT_MODE; } }; // [needs]
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -154,7 +161,8 @@ export function mount(transfer = null) {
   // ---------- World ----------
   function newWorld() {
     const fresh = new Bag().snapshot();
-    return {tiles:Array.from({length:9}, (_, i) => [i % 3 - 1, Math.floor(i / 3) - 1]), decor:[], stock:{wood:0, leaf:0, scrap:0, plastic:0}, fish:0, collected:0, hookHealth:MAX_HEALTH, items:[], hostInventory:fresh, guestInventory:new Bag().snapshot(), signal:null, notes:[], achievements:[], garden:{}, purifiers:{}, pieces:[]};
+    return {tiles:Array.from({length:9}, (_, i) => [i % 3 - 1, Math.floor(i / 3) - 1]), decor:[], stock:{wood:0, leaf:0, scrap:0, plastic:0}, fish:0, collected:0, hookHealth:MAX_HEALTH, items:[], hostInventory:fresh, guestInventory:new Bag().snapshot(), signal:null, notes:[], achievements:[], garden:{}, purifiers:{}, pieces:[],
+      mode:newGameMode(), needs:null}; // [needs] new rafts use the Settings game mode
   }
   // Validates a saved world or a host snapshot. Returns a fresh clean object or null.
   function cleanWorld(v, withItems = false) {
@@ -184,6 +192,7 @@ export function mount(transfer = null) {
     return {tiles, decor, stock, fish:count(v.fish), collected:count(v.collected), hookHealth:Number.isFinite(v.hookHealth) ? clamp(Math.round(v.hookHealth), 0, MAX_HEALTH) : MAX_HEALTH, items,
       hostInventory:validSnapshot(v.hostInventory), guestInventory:validSnapshot(v.guestInventory), signal:cleanSignal(v.signal), ext:cleanExt(v.ext), pieces:cleanPieces(v.pieces, tiles), sailing:cleanSailing(v.sailing), // content + building-pieces + sailing hooks
       notes:progress.notes, achievements:progress.achievements,
+      mode:MODES[v.mode] ? v.mode : 'relaxed', needs:v.needs ? cleanNeeds(v.needs) : null, // [needs] saves from before game modes stay relaxed
       ...cleanWatering(v, decor, {seedMissing:true})};
   }
   function copyWorld(w) { // isolation from the previous engine's live object (rollback safety)
@@ -284,6 +293,11 @@ export function mount(transfer = null) {
   }
   let coop = null; // coop: hub from coop.js, created after init(); every use is optional (coop?.)
   let prog = null; // [progression-hook]
+  // [needs] Personal survival needs: each player simulates its own (host and guest alike); the mode follows the world
+  // being played (a guest uses the host's). deadUntil > 0 while the death card shows (performance.now() ms).
+  const needs = createNeeds({mode:world.mode, state:X?.needs ?? world.needs});
+  let needsHud = null, deadUntil = 0, offNeedsPrompt = null; const needsHints = new Map();
+  bus.mode = needs.mode; bus.needs = needs;
 
   function makePhysics(src) {
     const deck = raftPose.y + FLOOR_Y + EYE_OFFSET;
@@ -765,6 +779,7 @@ export function mount(transfer = null) {
   function effect(e) {
     if (!e || typeof e !== 'object') return;
     if (Array.isArray(e.tokens)) for (const t of e.tokens) if (typeof t === 'string') pending.delete(t);
+    if (e.kind === 'needs:eat') needs.eat(e.food); // [needs] the host took the item from our bag
     if (prog?.effect(e)) return; // [progression-hook]
     if (e.loot && typeof e.loot === 'object') { for (const [k, n] of Object.entries(e.loot)) if (ITEM_INFO[k] && isInt(n) && n > 0) pickupFeed.add(k, n); } // pickup feed rows with icons
     else if (typeof e.text === 'string' && e.text) notice(e.text.slice(0, 90));
@@ -823,6 +838,7 @@ export function mount(transfer = null) {
     const bag = actorBag(actor);
     if (typeof a.kind === 'string' && a.kind.startsWith('fc:')) { fc?.applyAction(a, actor, {count:k => bag.count(k), remove:(k, n) => bag.remove(k, n), add:(k, n) => bag.add(k, n), emit:text => emit({kind:'notice', text}, actor)}); return; } // [fishing-cooking]
     if (a.kind === 'selectSlot') { bag.select(a.index); return; }
+    if (a.kind === 'needs:eat' || a.kind === 'needs:died') { applyNeeds(a, actor, bag); return; } // [needs]
     if (a.kind === 'sail') { const t = sailing?.apply(a, actor); if (t) emit({kind:'notice', text:t}, actor); return; } // [sailing]
     if (a.kind === 'moveSlot') { bag.move(a.from, a.to, a.amount ?? undefined); return; }
     if (a.kind === 'craft') {
@@ -951,6 +967,8 @@ export function mount(transfer = null) {
     if (!running || hook || fishWait) return;
     if (guestWaiting()) { notice('Wait for your raft to connect'); return; }
     const kind = selectedKind(), bag = localBag(), p = aim?.point ?? null;
+    if (deadUntil) return; // [needs]
+    if (needs.active && isFood(kind) && !(CUP_KINDS.includes(kind) && wateringTarget(aim)?.click)) { eatSelected(kind); return; } // [needs] Raft style: click eats / drinks
     if (kind === 'hammer' && building && building.piece !== 'foundation') { // building-pieces lane hook
       if (building.removing) return;
       const a = building.use(); if (a) { swing = 1; action(a); } else notice('Point at a green spot'); return;
@@ -992,7 +1010,50 @@ export function mount(transfer = null) {
     if (durability <= 0) notice('Worn hook: shorter throws. R to repair');
   }
 
+  // ---------- [needs] Survival needs: tick, eating, death and respawn (rules in needs.js) ----------
+  function tickNeeds(dt) {
+    if (needs.mode !== world.mode) needs.setMode(world.mode);
+    bus.mode = needs.mode;
+    if (!offNeedsPrompt && window.raftPrompts?.provide) offNeedsPrompt = window.raftPrompts.provide({id:'needs-eat', priority:0, prompt:needsPrompt});
+    if (deadUntil) { if (performance.now() >= deadUntil) respawnNeeds(); }
+    else { if (running && !dialogOpen() && !guestWaiting()) needs.tick(dt); if (!needs.alive) dieNeeds(); } // starved, or bus.needs.damage() from the shark / spear lanes
+    needsHud?.update(needs, running);
+  }
+  function needsPrompt() { // held-item hint next to the crosshair (prompts.js provider)
+    const k = selectedKind();
+    if (!running || deadUntil || !needs.active || !isFood(k) || (CUP_KINDS.includes(k) && waterAim?.click)) return null;
+    let h = needsHints.get(k); if (!h) needsHints.set(k, h = {key:'LMB', label:(isDrink(k) ? 'Drink ' : 'Eat ') + itemName(k)});
+    return h;
+  }
+  function eatSelected(kind) {
+    if (!needs.canEat(kind)) { notice(isDrink(kind) ? 'You are not thirsty' : 'You are full'); return; }
+    swing = 1; action({kind:'needs:eat', slot:localBag().selectedIndex, food:kind});
+  }
+  function dieNeeds() { deadUntil = performance.now() + 3500; charging = null; needsHud?.death(needs.cause); play('splash', .8); }
+  function respawnNeeds() {
+    deadUntil = 0; needs.respawn(); needsHud?.alive();
+    const n = world.tiles.length, cx = world.tiles.reduce((a, t) => a + t[0], 0) * 2 / n, cz = world.tiles.reduce((a, t) => a + t[1], 0) * 2 / n;
+    const s = spawnPoint(cx, cz); physics = new PlayerPhysics({x:s.x, y:deckY() + EYE_OFFSET, z:s.z}); // raft centre (a new physics also ends a dive)
+    if (!modeRules(world.mode).keepBag) action({kind:'needs:died'});
+    notice('You wake up on your raft', 2400);
+  }
+  function applyNeeds(a, actor, bag) { // host: validates against the actor's bag
+    if (a.kind === 'needs:died') { // lose the bag but never the hook
+      if (modeRules(world.mode).keepBag) return;
+      const h = hookIndex(bag); for (let i = 0; i < bag.slots.length; i++) if (i !== h) bag.slots[i] = null;
+      if (h < 0) bag.add('hook', 1);
+      emit({kind:'notice', text:'Your bag sank. You kept your hook'}, actor); return;
+    }
+    const i = isInt(a.slot) ? a.slot : -1, s = bag.slots[i];
+    if (!s || s.kind !== a.food || !isFood(s.kind)) return;
+    const scratch = new Bag(bag.snapshot()), t = scratch.slots[i], back = FOOD[s.kind].returns;
+    t.count--; if (t.count <= 0) scratch.slots[i] = null;
+    if (back && scratch.add(back, 1) > 0) { emit({kind:'full', text:'Your bag is full'}, actor); return; }
+    commit(bag, scratch); emit({kind:'needs:eat', food:s.kind, sound:isDrink(s.kind) ? 'water' : 'collect'}, actor);
+  }
+  // ---------- [needs] end ----------
   function start() {
+    if (role === 'solo' && !X) { let saved = true; try { saved = localStorage.getItem(SAVE) != null; } catch {} if (!saved) { world.mode = newGameMode(); needs.setMode(world.mode); } } // [needs] title-screen Settings change before New Game
     running = true; const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false;
     if (!saveAvailable) setText('#saveStatus', 'Browser storage is unavailable. This session will not be saved.');
     refreshPointerUI(true);
@@ -1021,6 +1082,7 @@ export function mount(transfer = null) {
     world.hostInventory = hostBag.snapshot(); world.guestInventory = guestBag.snapshot();
     world.stock = legacyStock(hostBag); world.hookHealth = hookDurability(hostBag);
     if (content) world.ext = content.serialize(); // content hook
+    world.needs = needs.snapshot(); // [needs] the owner's own bars
   }
   function blockSave() {
     if (saveBlocked) return; saveBlocked = true;
@@ -1211,7 +1273,7 @@ export function mount(transfer = null) {
   function hostState() {
     const c = guestBag.counts();
     return {type:'state', v:3, ack:guestAck, bag:guestBag.snapshot(), other:pose(),
-      world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items, ext:content ? content.serialize() : world.ext, sailing:world.sailing, signal:world.signal, notes:world.notes, achievements:world.achievements, garden:world.garden, purifiers:world.purifiers, ...(world.pieces !== sentPieces ? {pieces:(sentPieces = world.pieces)} : {})}}; // content hook: ext
+      world:{mode:world.mode /* [needs] */, tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items, ext:content ? content.serialize() : world.ext, sailing:world.sailing, signal:world.signal, notes:world.notes, achievements:world.achievements, garden:world.garden, purifiers:world.purifiers, ...(world.pieces !== sentPieces ? {pieces:(sentPieces = world.pieces)} : {})}}; // content hook: ext
   }
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, held:heldKind()});
   function frame() {
@@ -1247,6 +1309,7 @@ export function mount(transfer = null) {
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
     try { logbookUI?.update?.(); } catch (e) { console.error('logbook update failed', e); logbookUI = null; }
     refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud();
+    tickNeeds(dt); // [needs]
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
     renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
   }
@@ -1689,6 +1752,7 @@ export function mount(transfer = null) {
       physics:physics.capture(), me:{x:physics.x, y:physics.y, z:physics.z}, other:other ? {...other} : null, yaw, pitch, running, elapsed, walkPhase,
       hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio:sfx.context, peer, conn, role, networkReady, room, ownWorldBackup, pending:new Map(pending),
       dive:diving?.capture?.() ?? null, // diving lane hook
+      needs:needs.snapshot(), // [needs]
       wornCasts:{...wornCasts}, seq, lastSeqSent, guestAck,
       joinDeadline:joinTimer ? joinDeadline : 0, saveAvailable, lockFallback, keys:{...keys},
       charging:charging ? {...charging} : null, reeling, down:down ? {...down} : null,
@@ -1726,6 +1790,7 @@ export function mount(transfer = null) {
     try { coop?.dispose(); } catch {} coop = null; // coop
     try { settingsController?.destroy(); } catch {}
     try { survivalUI?.destroy?.(); } catch {}
+    try { needsHud?.dispose(); offNeedsPrompt?.(); } catch {} if (bus.needs === needs) bus.needs = null; // [needs]
     try { sailing?.dispose(); } catch {} // [sailing]
     try { fc?.dispose(); } catch {} fc = null; // [fishing-cooking]
     for (const id of ['signalReadout', 'signalMarker']) { const el = document.getElementById(id); if (el) el.hidden = true; }
@@ -1755,6 +1820,7 @@ export function mount(transfer = null) {
       recipeGate:id => prog?.recipeGate(id), // [progression-hook]
     });
     prog.installUI(); // [progression-hook]
+    try { needsHud = createNeedsHUD(); } catch (e) { console.warn('needs HUD unavailable', e); } // [needs]
     logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(clearInput), onResume:guard(() => requestLock())});
     if (role !== 'guest') retroAward();
     pickupFeed.setIconProvider(getItemIcon); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
