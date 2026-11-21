@@ -91,7 +91,7 @@ const CSS = `#lrSpyVignette{position:fixed;inset:0;pointer-events:none;z-index:2
   background:radial-gradient(circle at 50% 50%,transparent 0 33vmin,rgba(6,14,20,.55) 39vmin,rgba(4,10,14,.97) 45vmin)}
 #lrSpyVignette:after{content:'';position:absolute;left:50%;top:50%;width:78vmin;height:78vmin;margin:-39vmin 0 0 -39vmin;
   border-radius:50%;box-shadow:inset 0 0 5vmin rgba(0,0,0,.5),0 0 0 2px rgba(201,161,90,.35)}
-#lrSpyLabel{position:fixed;left:50%;top:calc(50% + 30px);transform:translateX(-50%);padding:3px 10px;border-radius:8px;
+#lrSpyLabel{position:fixed;left:calc(50% + 28px);top:calc(50% + 22px);padding:3px 10px;border-radius:8px;
   background:rgba(8,22,36,.6);color:#f6ecd6;font:700 14px/1.3 system-ui,sans-serif;white-space:nowrap;pointer-events:none;z-index:4}
 body.lr-spy #lrPrompt,body.lr-spy #binocularsHud,body.lr-spy #treasureHud,body.lr-spy #chargeMeter{visibility:hidden!important}
 body.lr-spy #crosshair{width:6px;height:6px;opacity:1;background:#fff!important;box-shadow:0 0 0 1.5px rgba(8,22,36,.9),0 0 5px rgba(0,0,0,.7)!important}`; // graphics.css dot (#fffd, faint shadow) vanishes on bright sky at zoom

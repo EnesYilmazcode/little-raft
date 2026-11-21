@@ -93,6 +93,15 @@ body:has(#welcome.ob-on:not([hidden])) header{display:none!important}
   .ob-logo-name{font-size:44px}
 }
 @media (max-height:520px){.ob-logo-name{font-size:40px}.ob-logo{top:18px}#welcome.ob-on{padding-bottom:20px}}
+/* Short screens (phone landscape): under the compass the Notes ran into the crosshair prompt and over the hotbar.
+   Tuck a compact card into the top-right corner left of the compass instead: no hints, at most two rows. */
+@media (max-height:520px){
+  .ob-notes{top:12px;right:128px;width:200px;padding:6px 12px 8px}
+  .ob-notes .ob-hint{display:none}
+  .ob-notes .ob-row{padding-top:5px}
+  .ob-notes .ob-rows{max-height:52px;overflow:hidden}
+  body.lr-spy .ob-notes{opacity:0}
+}
 @media (prefers-reduced-motion:reduce){
   .ob-notes,.ob-row,.ob-box,.ob-box svg,.ob-title::after,.ob-item,.ob-item::before,.ob-chev{transition:opacity .2s ease!important}
   .ob-row.ob-in,.ob-row.ob-out{transform:none;max-height:80px}
