@@ -77,34 +77,43 @@ export function createContent(ctx, features = FEATURES) {
   // A failing module is disabled and disposed once, so shared engine state (fog, lights…) is restored.
   const off = m => { if (m.dead) return; m.dead = true; console.error('content module disabled:', m.name); try { m.dispose?.(); } catch (e) { console.error(`content ${m.name}.dispose failed`, e); } };
   const call = (m, fn, ...a) => { if (m.dead || typeof m[fn] !== 'function') return undefined; try { return m[fn](...a); } catch (e) { console.error(`content ${m.name}.${fn} failed`, e); off(m); return undefined; } };
-  const call1 = (m, out) => { try { m.diveMods(out); } catch (e) { console.error(`content ${m.name}.diveMods failed`, e); off(m); } };
+  // Fixed-arity twins of call for the per-frame hooks (update, afterMove, prompt…): no rest/spread arrays.
+  const fail = (m, fn, e) => { console.error(`content ${m.name}.${fn} failed`, e); off(m); return undefined; };
+  const call0 = (m, fn) => { if (m.dead || typeof m[fn] !== 'function') return undefined; try { return m[fn](); } catch (e) { return fail(m, fn, e); } };
+  const call1 = (m, fn, a) => { if (m.dead || typeof m[fn] !== 'function') return undefined; try { return m[fn](a); } catch (e) { return fail(m, fn, e); } };
+  const call2 = (m, fn, a, b) => { if (m.dead || typeof m[fn] !== 'function') return undefined; try { return m[fn](a, b); } catch (e) { return fail(m, fn, e); } };
+  const call3 = (m, fn, a, b, c) => { if (m.dead || typeof m[fn] !== 'function') return undefined; try { return m[fn](a, b, c); } catch (e) { return fail(m, fn, e); } };
+  const callDive = (m, out) => { try { m.diveMods(out); } catch (e) { console.error(`content ${m.name}.diveMods failed`, e); off(m); } };
   // Sibling peek: a module may read another's live serialize() (e.g. the map table reads islands). Read, never keep.
   const peek = name => { const m = mods.find(x => x.name === name && !x.dead); return m ? call(m, 'serialize') : undefined; };
   for (const make of features) {
     try { const m = make(ctx, { peek }); if (m) mods.push(m); } catch (e) { console.error('content module failed to start', e); }
   }
-  const first = (fn, ...a) => { for (const m of mods) { const r = call(m, fn, ...a); if (r) return r; } return null; };
+  const first0 = fn => { for (let i = 0; i < mods.length; i++) { const r = call0(mods[i], fn); if (r) return r; } return null; };
+  const first1 = (fn, a) => { for (let i = 0; i < mods.length; i++) { const r = call1(mods[i], fn, a); if (r) return r; } return null; };
+  const first2 = (fn, a, b) => { for (let i = 0; i < mods.length; i++) { const r = call2(mods[i], fn, a, b); if (r) return r; } return null; };
+  const first3 = (fn, a, b, c) => { for (let i = 0; i < mods.length; i++) { const r = call3(mods[i], fn, a, b, c); if (r) return r; } return null; };
   const debug = {};
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
   return {
     mods, debug,
-    update(dt) { for (const m of mods) call(m, 'update', dt); },
-    afterMove(physics, dt) { for (const m of mods) call(m, 'afterMove', physics, dt); },
+    update(dt) { for (let i = 0; i < mods.length; i++) call1(mods[i], 'update', dt); },
+    afterMove(physics, dt) { for (let i = 0; i < mods.length; i++) call2(mods[i], 'afterMove', physics, dt); },
     serialize() { const out = {}; for (const m of mods) { const d = call(m, 'serialize'); if (d !== undefined && m.name) out[m.name] = d; } return out; },
     load(ext, from) { const e = ext && typeof ext === 'object' ? ext : {}; for (const m of mods) call(m, 'load', e[m.name], from); },
     action(a, actor, bag) { for (const m of mods) if (call(m, 'action', a, actor, bag)) return true; return false; },
-    interact: aim => !!first('interact', aim),
-    prompt: aim => first('prompt', aim),
-    use: (aim, kind) => !!first('use', aim, kind), // content hook (paint)
-    alt: (aim, kind) => !!first('alt', aim, kind), // content hook (paint)
-    afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)
-    tileTint: (x, z, base) => first('tileTint', x, z, base), // content hook (paint): plank hex for a painted deck tile, else null
-    craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
-    decorModel: (type, d) => first('decorModel', type, d),
-    sailPush: (s, out) => !!first('sailPush', s, out),
-    steerTargets: () => first('steerTargets'),
+    interact: aim => !!first1('interact', aim),
+    prompt: aim => first1('prompt', aim),
+    use: (aim, kind) => !!first2('use', aim, kind), // content hook (paint)
+    alt: (aim, kind) => !!first2('alt', aim, kind), // content hook (paint)
+    afterRebuild() { for (let i = 0; i < mods.length; i++) call0(mods[i], 'afterRebuild'); }, // content hook (paint)
+    tileTint: (x, z, base) => first3('tileTint', x, z, base), // content hook (paint): plank hex for a painted deck tile, else null
+    craftLocked: (recipe, actor) => first2('craftLocked', recipe, actor),
+    decorModel: (type, d) => first2('decorModel', type, d),
+    sailPush: (s, out) => !!first2('sailPush', s, out),
+    steerTargets: () => first0('steerTargets'),
     rain() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const r = m?.rain; return Number.isFinite(r) ? r : 0; }, // rain-sprinkler: live 0..1 rain
-    diveMods(out) { out.swim = out.oxy = out.fog = out.gather = 1; for (let i = 0; i < mods.length; i++) { const m = mods[i]; if (!m.dead && typeof m.diveMods === 'function') call1(m, out); } return out; }, // shared dive modifier hook (no per-frame rest-arg arrays)
+    diveMods(out) { out.swim = out.oxy = out.fog = out.gather = 1; for (let i = 0; i < mods.length; i++) { const m = mods[i]; if (!m.dead && typeof m.diveMods === 'function') callDive(m, out); } return out; }, // shared dive modifier hook (no per-frame rest-arg arrays)
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };
 }
