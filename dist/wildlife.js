@@ -313,7 +313,7 @@ export function createWildlife(ctx) {
   const cir = { kind: null, x: 0.5, y: 0.5, z: 0.5, heading: 0.5, pitch: 0.5, roll: 0.5 };
   const last = { gx: new Float32Array(GULL_MAX * 3), gs: new Array(GULL_MAX).fill('hidden'), sx: new Float32Array(SCHOOL_MAX * 2), nG: 0, nS: 0 };
 
-  let built = false, disposed = false, group = null, gullBody = null, gullWing = null, fish = null, dolphin = null, turtle = null, material = null, gullMat = null, fishMat = null, tuck = null;
+  let built = false, disposed = false, group = null, gullBody = null, gullWing = null, fish = null, dolphin = null, turtle = null, material = null, plainMat = null, gullMat = null, fishMat = null, tuck = null;
   let m4, mA, mB, mC, mD, mE, vP, v3, v3b, sc3, q4, qR, eul, col, zero, UP, fishDark, fishWater;
 
   function build() {
@@ -323,6 +323,7 @@ export function createWildlife(ctx) {
     eul = new T.Euler(0, 0, 0, 'YXZ'); col = new T.Color(); zero = new T.Matrix4().makeScale(0, 0, 0); UP = new T.Vector3(0, 1, 0);
     fishDark = new T.Color('#0b2f36'); fishWater = new T.Color('#3f8c88');
     material = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true }); // FrontSide like the shark's (one program): thin sheets carry real back faces (tri())
+    plainMat = material.clone(); // dolphin/turtle are plain Meshes: a material shared with the instanced wings would recompile-check (instancing flip) every frame
     // Gull bodies get their own copy with a tiny vertex tweak: leg vertices (legW = 1) swing back under the belly
     // by the per-instance `tuck` (0 standing, 1 in flight). One extra program, compiled once at startup.
     gullMat = new T.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: T.DoubleSide });
@@ -349,8 +350,8 @@ export function createWildlife(ctx) {
     for (let i = 0; i < SCHOOL_MAX * FISH_PER_SCHOOL; i++) fish.setColorAt(i, fishDark);
     fish.instanceColor.setUsage(T.DynamicDrawUsage);
     fish.renderOrder = 1; // after the opaque ocean
-    dolphin = new T.Mesh(dolphinGeometry(T), material); dolphin.name = 'dolphin';
-    turtle = new T.Mesh(turtleGeometry(T), material); turtle.name = 'turtle';
+    dolphin = new T.Mesh(dolphinGeometry(T), plainMat); dolphin.name = 'dolphin';
+    turtle = new T.Mesh(turtleGeometry(T), plainMat); turtle.name = 'turtle';
     dolphin.visible = turtle.visible = false; dolphin.castShadow = turtle.castShadow = false;
     dolphin.matrixAutoUpdate = turtle.matrixAutoUpdate = false;
     group.add(dolphin, turtle);
@@ -566,7 +567,7 @@ export function createWildlife(ctx) {
       if (!built) return;
       group.removeFromParent();
       for (const m of [gullBody, gullWing, fish, dolphin, turtle]) { m.geometry.dispose(); if (m.dispose) m.dispose(); }
-      material.dispose(); gullMat.dispose(); fishMat.dispose();
+      material.dispose(); plainMat.dispose(); gullMat.dispose(); fishMat.dispose();
       built = false; group = null;
     },
     get clock() { return now(); },
