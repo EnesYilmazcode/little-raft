@@ -12,7 +12,7 @@
 //   hands.ropeAnchor().getWorldPosition(v);        // rope start: rod tip while the rod is held, else left hand
 //   hands.itemModel('fishingrod')                  // the held model (rod userData: float, leader, tipNode)
 //
-// Camera space: origin at the eye, looking -Z, +Y up, +X right. The right fist grips near (0.38,-0.32,-0.80),
+// Camera space: origin at the eye, looking -Z, +Y up, +X right. The right fist grips near (0.42,-0.36,-0.80),
 // the left near (-0.34,-0.35,-0.70). Each arm is posed ABSOLUTELY every frame from smoothed weights, so
 // nothing accumulates or drifts. Held models are built lazily once per kind and cached.
 import { buildItemModel, holdFor, isPlaceable, PLACEABLE_KINDS } from './held-items.js?build=v3-survival-ae77fa84ac2b';
@@ -38,9 +38,9 @@ export function createHands(T, { modelFactory = null } = {}) {
     const m = new T.MeshStandardMaterial({ color, roughness, metalness: 0, ...extra });
     mats.push(m); return m;
   };
-  const skin = mat(0xc89068, 0.62, { emissive: 0x1c0e06 });
-  const skinPalm = mat(0xc08562, 0.66, { emissive: 0x1a0c05 });
-  const nail = mat(0xe0b294, 0.4, { emissive: 0x1c0e06 });
+  const skin = mat(0xb98163, 0.72);
+  const skinPalm = mat(0xc48e70, 0.76);
+  const nail = mat(0xd9ad94, 0.5);
   const crease = mat(0x8e5a3c, 0.8);
   const sleeveMat = mat(0x52705e, 0.95);
   const cuffMat = mat(0x3e5648, 0.95);
@@ -96,11 +96,11 @@ export function createHands(T, { modelFactory = null } = {}) {
       const R = gripR + f.r * 1.02;
       const mcp = P(-12, R + 0.003, f.y);
       const curl = new T.Group(), ext = new T.Group(), tight = new T.Group();
-      const pip = P(f.a1, R, f.y), tip = P(f.a2, R * 0.97, f.y + (i === 0 ? 0.001 : 0));
+      const pip = P(f.a1 + 12, R, f.y), tip = P(f.a2 + 36, R * 0.97, f.y + (i === 0 ? 0.001 : 0));
       seg(curl, skin, mcp, pip, f.r * 1.05, f.r * 0.96);
       seg(curl, skin, pip, tip, f.r * 0.96, f.r * 0.78);
       if (i < 3) {
-        const c = P(f.a1 + 3, R + f.r * 0.9, f.y);
+        const c = P(f.a1 + 15, R + f.r * 0.9, f.y);
         seg(curl, crease, c.clone().setY(f.y - 0.0052), c.clone().setY(f.y + 0.0052), 0.0013, 0.0013, 6);
       }
       // tight curl into the palm (empty fist, used beside a pointing index)
@@ -167,7 +167,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     return { pose, frame, wrist, hand, H, qBase, toLocal, basePos: basePos.clone(), r, u, f };
   }
 
-  const R = buildArm({ name: 'rightArm', basePos: V(0.38, -0.32, -0.80), u: V(0.27, 0.95, -0.15), F: V(0.35, -0.50, 1.0), gripR: 0.032, mirror: false });
+  const R = buildArm({ name: 'rightArm', basePos: V(0.42, -0.36, -0.80), u: V(0.27, 0.95, -0.15), F: V(0.35, -0.50, 1.0), gripR: 0.025, mirror: false });
   const L = buildArm({ name: 'leftArm', basePos: V(-0.34, -0.35, -0.70), u: V(0.85, 0.30, 0.10), F: V(-0.40, -0.50, 1.0), gripR: 0.028, mirror: true });
   lagRoot.add(R.pose, L.pose);
   // Pointing frames: hand half-prone, index aimed just below the crosshair. The left one is the mirror
