@@ -192,7 +192,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     const fingers = defs.map((f, i) => {
       const R = gripR + f.r * 1.02;
       const mcp = P(-12, R + 0.003, f.y);
-      const curl = new T.Group(), ext = new T.Group(), tight = new T.Group();
+      const curl = new T.Group(), ext = new T.Group(), tight = new T.Group(), pt = i === 0 ? new T.Group() : null;
       const pip = P(f.a1 + 12, R, f.y), tip = P(f.a2 + 36, R * 0.97, f.y + (i === 0 ? 0.001 : 0));
       // slightly slimmer than the finger spacing, so a thin shadow line separates the fingers
       seg(curl, skin, mcp, pip, f.r * 0.97, f.r * 0.90);
@@ -213,36 +213,60 @@ export function createHands(T, { modelFactory = null } = {}) {
       seg(ext, skinTip, e1, e2, f.r * 0.95, f.r * 0.78);
       ellipsoid(ext, nail, e2.clone().add(V(0.0045, 0, 0.004)), 0.0035, f.r * 0.62, 0.008);
       seg(ext, crease, e1.clone().add(V(f.r * 0.85, -0.0052, 0)), e1.clone().add(V(f.r * 0.85, 0.0052, 0)), 0.0013, 0.0013, 6);
+      if (pt) {   // pointing index: near-straight and a touch slimmer, three phalanges so it reads as a finger, not a sausage
+        const q1 = mcp.clone().add(V(-0.003, 0.002, -f.len * 0.42));
+        const q2 = q1.clone().add(V(-0.002, 0.001, -f.len * 0.31));
+        const q3 = q2.clone().add(V(-0.003, 0.000, -f.len * 0.25));
+        seg(pt, skin, mcp, q1, f.r * 0.98, f.r * 0.86);
+        seg(pt, skin, q1, q2, f.r * 0.86, f.r * 0.78);
+        seg(pt, skinTip, q2, q3, f.r * 0.76, f.r * 0.64);
+        ellipsoid(pt, nail, q3.clone().add(V(0.0038, 0, 0.0035)), 0.0028, f.r * 0.52, 0.0068);
+        for (const q of [q1, q2]) seg(pt, crease, q.clone().add(V(f.r * 0.80, -0.0046, 0)), q.clone().add(V(f.r * 0.80, 0.0046, 0)), 0.0011, 0.0011, 6);
+      }
       // knuckle cap: a small lighter bump over each MCP joint on the back of the hand
       const kn = P(-12, R + 0.003 + f.r * 0.45, f.y);
-      for (const g of [curl, ext, tight]) ellipsoid(g, knuckle, kn, f.r * 0.8, f.r * 0.92, f.r * 0.8);
-      parent.add(curl, ext, tight);
-      return { curl, ext, tight };
+      for (const g of [curl, ext, tight, pt]) if (g) ellipsoid(g, knuckle, kn, f.r * 0.8, f.r * 0.92, f.r * 0.8);
+      parent.add(curl, ext, tight); if (pt) parent.add(pt);
+      return { curl, ext, tight, pt };
     });
     const thumbCurl = new T.Group(), thumbExt = new T.Group(), thumbTuck = new T.Group();
     const t0 = V(0.0, 0.032, 0.055 * k);
     // grip thumb: lies snug along the grip, wrapping over the index finger rather than bulging off it
     const Rt = gripR + 0.0088;
-    const tA = P(238, Rt + 0.004, 0.034), tB = P(200, Rt, 0.040), tC = P(162, Rt * 0.98, 0.042);
-    seg(thumbCurl, skin, t0, tA, 0.0128, 0.0108);
-    seg(thumbCurl, skin, tA, tB, 0.0104, 0.0094);
-    seg(thumbCurl, skinTip, tB, tC, 0.0094, 0.0078);
-    const u1 = V(-0.026 * k, 0.062, 0.030 * k), u2 = V(-0.040 * k, 0.083, 0.004 * k);
-    seg(thumbExt, skin, t0, u1, 0.0118, 0.0104);
-    seg(thumbExt, skinTip, u1, u2, 0.0104, 0.0082);
-    const w1 = V(-0.024 * k, 0.030, 0.026 * k), w2 = V(-0.026 * k, 0.012, 0.004 * k);   // tucked over the curled middle finger
+    // [r5] thumbs ~20% longer and set off the palm so they read in silhouette; lengthened and angled, never fattened
+    const tA = P(240, Rt + 0.005, 0.034), tB = P(196, Rt + 0.001, 0.042), tC = P(148, Rt * 0.98, 0.047);
+    seg(thumbCurl, skin, t0, tA, 0.0128, 0.0106);
+    seg(thumbCurl, skin, tA, tB, 0.0104, 0.0092);
+    seg(thumbCurl, skinTip, tB, tC, 0.0092, 0.0074);
+    const u1 = V(-0.030 * k, 0.068, 0.028 * k), u2 = V(-0.048 * k, 0.093, -0.002 * k);
+    seg(thumbExt, skin, t0, u1, 0.0118, 0.0102);
+    seg(thumbExt, skinTip, u1, u2, 0.0102, 0.0078);
+    const w1 = V(-0.024 * k, 0.030, 0.026 * k), w2 = V(-0.026 * k, 0.012, 0.004 * k);   // rope fist: tucked over the curled middle finger
     seg(thumbTuck, skin, t0, w1, 0.0118, 0.0104);
     seg(thumbTuck, skinTip, w1, w2, 0.0104, 0.0082);
-    parent.add(thumbCurl, thumbExt, thumbTuck);
+    // pointing thumb: rides along the curled middle finger, swung ~25 deg off the palm so its tip shows past the fist
+    const thumbPoint = new T.Group();
+    const v1 = V(-0.017 * k, 0.037, 0.024 * k), v2 = V(-0.027 * k, 0.034, 0.000 * k);
+    seg(thumbPoint, skin, t0, v1, 0.0112, 0.0096);
+    seg(thumbPoint, skinTip, v1, v2, 0.0094, 0.0072);
+    parent.add(thumbCurl, thumbExt, thumbTuck, thumbPoint);
     // Each pose is baked into one mesh (palm + its finger and thumb variants): one draw call per hand.
     const poses = {
       grip: [fingers.map((f) => f.curl), thumbCurl],
       open: [fingers.map((f) => f.ext), thumbExt],
-      point: [fingers.map((f, i) => (i === 0 ? f.ext : f.tight)), thumbTuck],
+      point: [fingers.map((f, i) => (i === 0 ? f.pt : f.tight)), thumbPoint],
       fist: [fingers.map((f) => f.tight), thumbTuck],                       // rope grip: closed round a thin line
     };
     const parts = [...parent.children];
-    for (const p in poses) poses[p] = bake(parent, [...palm, ...poses[p][0], poses[p][1]], skinV);
+    for (const p in poses) {
+      poses[p] = bake(parent, [...palm, ...poses[p][0], poses[p][1]], skinV);
+      // soft skin gradient: the palm side (-X) sits ~15% darker than the back of the hand (baked into vertex colours)
+      const pos = poses[p].geometry.attributes.position, col = poses[p].geometry.attributes.color;
+      for (let i = 0; i < pos.count; i++) {
+        const m = 1 - 0.15 * smooth(0.014 * k, -0.026 * k, pos.getX(i));
+        col.setXYZ(i, col.getX(i) * m, col.getY(i) * m * 0.985, col.getZ(i) * m * 0.985);
+      }
+    }
     for (const o of parts) o.removeFromParent();
     return { wristPt: V(0.018 * k, -0.006, 0.084 * k), poses };
   }
@@ -271,21 +295,23 @@ export function createHands(T, { modelFactory = null } = {}) {
 
     const Fl = toLocal(F).normalize();
     const at = (s) => W.clone().addScaledVector(Fl, s);
-    const forearm = seg(frame, skin, at(0), at(0.24), 0.031, 0.042, 12);
+    // slim forearm: a slight neck just above the wrist, then a steady taper out to the elbow (two capsules, equal radii at the seam)
+    const wristNeck = seg(frame, skin, at(0), at(0.035), 0.0275, 0.0258, 12);
+    const forearm = seg(frame, skin, at(0.035), at(0.24), 0.0258, 0.040, 12);
     const cuff = seg(frame, cuffMat, at(0.19), at(0.225), 0.047, 0.050, 14);    // rolled cuff
     const sleeve = seg(frame, sleeveMat, at(0.23), at(0.60), 0.051, 0.070, 14); // sleeve (runs off-screen)
-    const fa = bake(frame, [forearm], skinV); bake(frame, [cuff, sleeve], clothV);
+    const fa = bake(frame, [wristNeck, forearm], skinV); bake(frame, [cuff, sleeve], clothV);
     {   // soft forearm shading: darker toward the elbow and on the underside (baked into vertex colours)
       const pos = fa.geometry.attributes.position, col = fa.geometry.attributes.color, d = V();
       const down = toLocal(V(0, -1, 0)); down.addScaledVector(Fl, -down.dot(Fl)).normalize();
       for (let i = 0; i < pos.count; i++) {
         d.fromBufferAttribute(pos, i).sub(W);
         const s = clamp01(d.dot(Fl) / 0.24), under = clamp01(d.addScaledVector(Fl, -d.dot(Fl)).normalize().dot(down));
-        const m = (1 - 0.20 * s) * (1 - 0.16 * under);
+        const m = (1 - 0.20 * s) * (1 - 0.26 * under);
         col.setXYZ(i, col.getX(i) * m, col.getY(i) * m * 0.98, col.getZ(i) * m * 0.98);
       }
     }
-    for (const o of [forearm, cuff, sleeve]) o.removeFromParent();
+    for (const o of [wristNeck, forearm, cuff, sleeve]) o.removeFromParent();
 
     return { pose, frame, wrist, hand, H, qBase, toLocal, basePos: basePos.clone(), r, u, f };
   }
