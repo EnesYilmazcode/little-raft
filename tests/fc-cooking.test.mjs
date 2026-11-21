@@ -22,6 +22,23 @@ test('fuel is capped at maxFuel wood', () => {
   assert.equal(g.lit, true);
 });
 
+test('Raft Simple Grill numbers: 50 s per plank, 2 planks, ~40 s for a 30 cm fish, no early charring', () => {
+  assert.equal(COOK_TUNING.fuelPerWood, 50); assert.equal(COOK_TUNING.maxFuel, 2);
+  assert.equal(cookTime({ cm: 30 }), 40);
+  assert.ok(COOK_TUNING.burnAfter >= 120);
+  const g = new GrillState(); g.addFuel(2); g.place({ species: 'pomfret', cm: 30 });
+  const ev = run(g, 100);
+  assert.deepEqual(ev, [{ kind: 'cooked', slot: 0 }, { kind: 'out' }], 'one full grill cooks it and runs out before any charring');
+  assert.equal(g.slots[0].state, 'cooked');
+});
+
+test('items.js grill recipes agree with cooking.js', async () => {
+  const { ITEMS } = await import(new URL('items.js', base));
+  assert.equal(ITEMS.cookedfish.recipe.time, cookTime({ cm: 30 }));
+  assert.ok(ITEMS.cookedsharkmeat.recipe.time >= ITEMS.cookedfish.recipe.time);
+  for (const id of ['cookedfish', 'cookedsharkmeat']) assert.ok(Math.abs(ITEMS[id].recipe.fuel - ITEMS[id].recipe.time / COOK_TUNING.fuelPerWood) < 1e-9, id);
+});
+
 test('no cooking without fire', () => {
   const g = new GrillState();
   assert.equal(g.place(fish), 0);
@@ -38,8 +55,10 @@ test('raw -> cooked -> burnt timing', () => {
   assert.equal(run(g, ct - 1).length, 0);
   assert.deepEqual(run(g, 1.5), [{ kind: 'cooked', slot: 0 }]);
   assert.equal(g.slots[0].state, 'cooked');
-  assert.equal(run(g, COOK_TUNING.burnAfter - 2).length, 0);
-  assert.deepEqual(run(g, 2), [{ kind: 'burnt', slot: 0 }]);
+  // charring takes longer than a full grill burns, so keep feeding it planks
+  const feed = secs => { const ev = []; for (let t = 0; t < secs - 1e-9; t += 0.5) { if (g.fuel < 10) g.addFuel(1); ev.push(...g.update(0.5)); } return ev; };
+  assert.equal(feed(COOK_TUNING.burnAfter - 2).length, 0);
+  assert.deepEqual(feed(2), [{ kind: 'burnt', slot: 0 }]);
   assert.deepEqual(g.take(0), { species: 'pomfret', cm: 25, state: 'burnt' });
   assert.equal(g.update(0.1), g.update(0.1), 'no-event result is a shared constant');
 });

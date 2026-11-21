@@ -109,7 +109,7 @@ export function createFishTrap(T) {
     tk.add(new T.ConeGeometry(.05, .085, 3), hex, .035, .085, 0, 0, 0, -.65);
     const geo = bake(T, tk.parts); geo.scale(1.5, 1.5, .55); // big enough to read from the deck
     const m = new T.Mesh(geo, tm);
-    m.name = 'tail' + i; m.visible = false; m.castShadow = true;
+    m.name = 'tail' + i; m.visible = false; m.castShadow = false;
     m.position.set(x, BASKET_TOP + .06, z); m.rotation.set(0, i ? 1.1 : .2, tilt); hang.add(m); return m;
   });
   const sk = kit(T), SEA = ['#3f8f3a', '#5fae4a', '#2f7a34'];

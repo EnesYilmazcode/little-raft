@@ -17,12 +17,12 @@ const CSS = `
 .diveO2Track{flex:1;height:7px;border-radius:5px;background:rgba(0,0,0,.5);overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.6)}
 .diveO2Fill{height:100%;width:100%;border-radius:5px;transform-origin:left center;
   background:linear-gradient(180deg,#7ff0e6,#2fc1c4 55%,#096b82);transition:transform .15s linear,background .4s}
-.diveO2.low .diveO2Fill{background:linear-gradient(180deg,#ffd58a,#f0aa48 55%,#b8772a)}
+.diveO2.low .diveO2Fill{background:linear-gradient(180deg,#ff9a8a,#e5493a 55%,#9c1f1a)}
 .diveO2.low .diveO2Pill{animation:divePulse 1.6s ease-in-out infinite}
 .diveO2Cap{height:14px;text-shadow:0 1px 2px rgba(0,0,0,.8);letter-spacing:.4px;visibility:hidden}
-.diveO2.rising .diveO2Cap{visibility:visible}
+.diveO2.rising .diveO2Cap{visibility:visible;color:#ffb3a8}
 @keyframes divePulse{0%,100%{box-shadow:0 0 0 1px rgba(201,164,107,.45),0 4px 14px rgba(0,0,0,.35)}
-  50%{box-shadow:0 0 0 1px #ffc96b,0 0 14px rgba(255,190,90,.55)}}
+  50%{box-shadow:0 0 0 1px #ff6b5a,0 0 14px rgba(255,80,60,.6)}}
 .diveRing{position:fixed;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;z-index:3;pointer-events:none;display:none}
 .diveRing.on,.diveRingLabel.on{display:block}
 .diveRing circle{fill:none;stroke-width:3.5}
@@ -36,7 +36,7 @@ const CSS = `
   font:600 13px/1.25 var(--ui-font,'Segoe UI',system-ui,sans-serif)} /* side prompt column (prompts.css), never a centred panel */
 @media(max-width:760px){.diveO2{bottom:110px}.diveO2Pill{width:180px}}
 @media(prefers-reduced-motion:reduce){.diveO2,.diveO2Fill{transition:none}.diveO2.low .diveO2Pill{animation:none;
-  box-shadow:0 0 0 2px #ffc96b,0 4px 14px rgba(0,0,0,.35)}}
+  box-shadow:0 0 0 2px #ff6b5a,0 4px 14px rgba(0,0,0,.35)}}
 `;
 
 // Original bubble icon: one big bubble with a highlight and two small companions.
@@ -60,7 +60,7 @@ export function createDivingUI(doc = document) {
 
   const o2 = doc.createElement('div');
   o2.className = 'diveO2';
-  o2.innerHTML = `<div class="diveO2Pill" role="meter" aria-label="Oxygen" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">${BUBBLE}<div class="diveO2Track"><div class="diveO2Fill"></div></div></div><div class="diveO2Cap">Out of breath, floating up</div>`;
+  o2.innerHTML = `<div class="diveO2Pill" role="meter" aria-label="Oxygen" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">${BUBBLE}<div class="diveO2Track"><div class="diveO2Fill"></div></div></div><div class="diveO2Cap">Out of air, drowning! Floating up</div>`;
   const ring = doc.createElement('div');
   ring.className = 'diveRing';
   ring.setAttribute('aria-hidden', 'true');

@@ -38,7 +38,7 @@ export const CONTENT_ITEMS = Object.freeze({
   research: item('research', 'Tinker\u2019s Desk', 'icon-research', false),
   motor:    item('motor',    'Little Motor',   'icon-motor',  false),
   wheel:    item('wheel',    'Steering Wheel', 'icon-wheel',  false),
-  bed:      item('bed',      'Bed',            'icon-bed',    false),
+  bed:      item('bed',      'Simple Bed',     'icon-bed',    false), // [bed] Raft's Simple Bed; same 'bed' kind, so old saves keep their beds
   // paint (dist/paint.js): the brush is not a TOOL_KIND (no durability), pots are plain stacks, not decor
   brush:         item('brush',         'Paint Brush',   'icon-brush',         false, 1),
   paint_seafoam: item('paint_seafoam', 'Seafoam Paint', 'icon-paint-seafoam', false),
@@ -77,15 +77,6 @@ const recipe = (id, name, count, cost) => Object.freeze({ id, name, output: Obje
 
 export const CONTENT_RECIPES = Object.freeze({
   research: recipe('research', 'Tinker\u2019s Desk', 1, { wood: 6, scrap: 2 }),
-  motor:    recipe('motor', 'Little Motor', 1, { wood: 6, scrap: 4, rope: 2 }),
-  wheel:    recipe('wheel', 'Steering Wheel', 1, { wood: 5, rope: 2 }),
-  bed:      recipe('bed', 'Bed', 1, { wood: 6, leaf: 4 }),
-  brush:          recipe('brush', 'Paint Brush', 1, { wood: 2, rope: 1 }), // paint: one pot paints one piece, each recipe makes 4
-  paint_seafoam:  recipe('paint_seafoam', 'Seafoam Paint', 4, { leaf: 1, sand: 1 }),
-  paint_coral:    recipe('paint_coral', 'Coral Paint', 4, { clay: 2 }),
-  paint_sunshell: recipe('paint_sunshell', 'Sunshell Paint', 4, { sand: 1, seed: 1 }),
-  paint_lagoon:   recipe('paint_lagoon', 'Lagoon Paint', 4, { plastic: 1, leaf: 1 }),
-  paint_pebble:   recipe('paint_pebble', 'Pebble Paint', 4, { stone: 1, clay: 1 }),
   // decor pack (decor-pack.js)
   rug:     recipe('rug',     'Woven Deck Mat',    1, { leaf: 4, rope: 2 }),
   pennant: recipe('pennant', 'Wind Pennant',      1, { wood: 2, leaf: 2, rope: 1 }),
@@ -112,7 +103,7 @@ export const CONTENT_RECIPES = Object.freeze({
   bucket:  recipe('bucket',  'Wooden Pail',     1, { wood: 3, rope: 1 }),
   motor:    recipe('motor', 'Little Motor', 1, { wood: 6, scrap: 4, rope: 2 }),
   wheel:    recipe('wheel', 'Steering Wheel', 1, { wood: 5, rope: 2 }),
-  bed:      recipe('bed', 'Bed', 1, { wood: 6, leaf: 4 }),
+  bed:      recipe('bed', 'Simple Bed', 1, { leaf: 10, wood: 6, plastic: 4, nail: 3 }), // [bed]
   brush:          recipe('brush', 'Paint Brush', 1, { wood: 2, rope: 1 }), // paint: one pot paints one piece, each recipe makes 4
   paint_seafoam:  recipe('paint_seafoam', 'Seafoam Paint', 4, { leaf: 1, sand: 1 }),
   paint_coral:    recipe('paint_coral', 'Coral Paint', 4, { clay: 2 }),

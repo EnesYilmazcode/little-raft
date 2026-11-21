@@ -6,7 +6,7 @@
 //   const ui = createVitalsUI();
 //   ui.update(v, show)   // v = {hp, food, water, starving}; show = HUD visible (running, not title)
 //   ui.flash()           // one damage flash
-//   ui.faint(on)         // passed-out overlay
+//   ui.faint(on, cause, home) // passed-out overlay; cause 'drown'|'shark'|'hunger'|'thirst' adds a line, home: wakes in a bed
 //   ui.dispose()
 
 const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
@@ -63,6 +63,14 @@ export function hpColor(hp) { // green (full) -> amber -> red (empty)
   return `hsl(${hue} 62% ${46 + Math.round((1 - t) * 6)}%)`;
 }
 
+// [drown] [bed] faint overlay lines by cause
+export const FAINT_LINES = Object.freeze({
+  drown: 'You stayed down one breath too long',
+  shark: 'Something with too many teeth got the last word',
+  hunger: 'Your stomach gave up a little before you did',
+  thirst: 'All that water, and not a drop to drink',
+});
+
 export function createVitalsUI(doc = document) {
   let style = doc.getElementById('lrVitalsStyle');
   if (!style) { style = doc.createElement('style'); style.id = 'lrVitalsStyle'; doc.head.appendChild(style); }
@@ -74,6 +82,7 @@ export function createVitalsUI(doc = document) {
   root.setAttribute('aria-label', 'Health, food and water'); root.hidden = true;
   const vignette = make('lrVitalsVignette'), flashEl = make('lrVitalsFlash');
   const faintEl = make('lrFaint', '<div>You passed out<small>You wake up back on the raft</small></div>'); faintEl.setAttribute('role', 'status');
+  const faintSmall = faintEl.querySelector('small'), faintText = {}; // [bed] [drown] "cause|home" -> cached line
   // The onboarding Notes panel is a top-layer popover that no z-index can cover, so the overlay joins the top layer
   // too (shown later = stacked above). Without popover support it stays a plain z-indexed layer.
   const pop = typeof faintEl.showPopover === 'function'; if (pop) faintEl.popover = 'manual';
@@ -98,8 +107,12 @@ export function createVitalsUI(doc = document) {
     }
   }
   function flash() { flashEl.classList.remove('hit'); void flashEl.offsetWidth; flashEl.classList.add('hit'); }
-  function faint(on) {
+  function faint(on, cause = null, home = false) {
     on = !!on; if (on === fainted) return; fainted = on;
+    if (on && faintSmall) { // [bed] [drown] what got you, and where you will wake
+      const k = `${cause}|${home ? 1 : 0}`;
+      faintSmall.textContent = faintText[k] ??= (FAINT_LINES[cause] ? FAINT_LINES[cause] + '. ' : '') + (home ? 'You wake up in your bed' : 'You wake up back on the raft');
+    }
     if (faintHide) { clearTimeout(faintHide); faintHide = 0; }
     if (pop) try { if (on) { if (faintEl.matches(':popover-open')) faintEl.hidePopover(); faintEl.showPopover(); } else faintHide = setTimeout(() => { faintHide = 0; try { if (!fainted) faintEl.hidePopover(); } catch {} }, 520); } catch {}
     faintEl.classList.toggle('on', on);

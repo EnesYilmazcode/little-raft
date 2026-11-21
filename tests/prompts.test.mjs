@@ -46,6 +46,7 @@ test('feed helpers: formatting, notice detection, dedupe', () => {
   assert.ok(!P.isNotice('', false));
   assert.ok(!P.isNotice('Hold click to reel it in', false));
   assert.ok(!P.isNotice('Floor needs 1 wood', false)); // hover prompt, not a notice
+  assert.ok(!P.isNotice('Purifying… 0:53 (fuel 1:58)', false)); // ticking hover status, not a notice per second
   assert.ok(!P.shouldPost({text:'a', at:1000}, 'a', 1500));
   assert.ok(P.shouldPost({text:'a', at:1000}, 'a', 1700));
   assert.ok(P.shouldPost({text:'a', at:1000}, 'b', 1100));

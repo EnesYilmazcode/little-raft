@@ -15,6 +15,8 @@ import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createSpear } from './spear-model.js?build=v3-survival-ae77fa84ac2b'; // [spear-repair]
+import { createPaddle } from './paddle-model.js?build=v3-survival-ae77fa84ac2b'; // [paddle]
+import { createAxe } from './axe-model.js?build=v3-survival-ae77fa84ac2b'; // [axe]
 import { buildInstrument } from './instrument-models.js?build=v3-survival-ae77fa84ac2b'; // [instruments]
 import { createSpade, createFinder } from './treasure-models.js?build=v3-survival-ae77fa84ac2b';
 import { buildCameraModel } from './camera-models.js?build=v3-survival-ae77fa84ac2b'; // [camera]
@@ -30,7 +32,7 @@ export const DECOR_KINDS = Object.freeze(['sail', 'palm', 'lantern', 'net', 'ben
 const LANE_DECOR = ['skyrocket', 'scarecrow', 'glidepost', 'glidestep', 'candle', 'beehive', 'flowerbox'];
 export const PLACEABLE_KINDS = Object.freeze(['hammer', ...DECOR_KINDS, 'planter', 'seed', 'seeds', ...LANE_DECOR]);
 export const isPlaceable = (kind) => PLACEABLE_KINDS.includes(kind);
-const TOOL_KINDS = ['hook', 'hammer', 'fishingrod', 'brush', 'spear', 'metalspear'];
+const TOOL_KINDS = ['hook', 'hammer', 'fishingrod', 'brush', 'spear', 'metalspear', 'paddle', 'axe'];
 const HOOK_SCALE = 0.4;                     // compact: the held hook stays in the lower-right corner
 // Right-hand kinds that still prefer the shared models.js mesh (so the held cup matches its icon and the world).
 const FACTORY_FIRST = ['cup', 'water'];
@@ -47,6 +49,8 @@ export const HOLD = Object.freeze({
   spyglass:   { hand: 'right', pose: 'grip', rx: -0.85, rz: 0.3 }, // [spyglass]
   spear:      { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 }, // [spear-repair] point forward, a ready jab
   metalspear: { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 },
+  paddle:     { hand: 'right', pose: 'grip', rx: -1.3, ry: 0, rz: 1.3, arm: [-0.02, 0.03, 0] }, // [paddle] shaft across the view, blade out front-left (the stroke dips it)
+  axe:        { hand: 'right', pose: 'grip', rx: 0, ry: Math.PI / 2, rz: 0.2, arm: [0.02, -0.05, 0], tilt: 0.5 }, // [axe] held like the hammer, blade leaning forward
   brush:      { hand: 'right', pose: 'grip', rx: -0.25, ry: 0.35, rz: 0.35 }, // content hook (paint)
   wood:       { hand: 'right', pose: 'grip', rx: 0.25, ry: 0.5, rz: 0.15 },
   leaf:       { hand: 'right', pose: 'grip', rx: -0.35, ry: 0.4, rz: 0.35 },
@@ -67,8 +71,8 @@ export const holdFor = (kind) => HOLD[kind] || (isPlaceable(kind) ? HOLD.crate :
 // Left-fist (placeable) models are capped to a small carried size so they never fill the lower left.
 export const HELD_LEFT_MAX = 0.11;
 const SIZE = { wood: 0.36, leaf: 0.42, scrap: 0.2, plastic: 0.19, rope: 0.22, fish: 0.3, sail: 0.22, palm: 0.2, lantern: 0.2, net: 0.2, bench: 0.16, crate: 0.13,
-  planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11,
-  drum: 0.15, pipes: 0.2, bells: 0.2, // [instruments]
+  planter: 0.2, seed: 0.12, seeds: 0.12, cup: 0.11, water: 0.11, coconut: 0.11, // coconut: a palm-sized nut, not a melon
+  drum: 0.24, pipes: 0.2, bells: 0.26, // [instruments]
   camera: 0.13, // [camera]
   glidehandle: 0.24, // [zipline]
   skyrocket: 0.2, scarecrow: 0.24, glidepost: 0.24, glidestep: 0.2, candle: 0.11, beehive: 0.18, flowerbox: 0.2 };
@@ -260,10 +264,19 @@ export function buildItemModel(T, kind, factory = null) {
     root = new T.Group(); root.add(m);
     root.userData.size = { x: m.userData.size.x * k, y: m.userData.size.y * k, z: m.userData.size.z * k };
     root.userData.grip = [gp.x, gp.y, gp.z];
-  } else if (kind === 'hammer' || kind === 'fishingrod' || kind === 'brush' || kind === 'spear' || kind === 'metalspear') {
+  } else if (kind === 'axe') { // [axe]
+    const m = createAxe(T), s = 0.62;
+    m.scale.setScalar(s);
+    root = new T.Group(); root.add(m);
+    const gp = m.userData.grip.clone().multiplyScalar(s), sz = m.userData.size;
+    root.userData.size = { x: sz.x * s, y: sz.y * s, z: sz.z * s };
+    root.userData.grip = [gp.x, gp.y, gp.z];
+    root.userData.model = m;
+  } else if (kind === 'hammer' || kind === 'fishingrod' || kind === 'brush' || kind === 'spear' || kind === 'metalspear' || kind === 'paddle') {
     const spear = kind === 'spear' || kind === 'metalspear'; // [spear-repair] spear-repair-hooks.js slides userData.model along +Y to jab
-    const m = kind === 'hammer' ? createHammer(T) : kind === 'brush' ? createBrush(T) : spear ? createSpear(T, { metal: kind === 'metalspear' }) : createFishingTool(T), s = kind === 'fishingrod' ? 0.55 : kind === 'hammer' ? 0.42 : spear ? 0.62 : 0.6; // compact hammer
+    const m = kind === 'hammer' ? createHammer(T) : kind === 'paddle' ? createPaddle(T) : kind === 'brush' ? createBrush(T) : spear ? createSpear(T, { metal: kind === 'metalspear' }) : createFishingTool(T), s = kind === 'fishingrod' ? 0.55 : kind === 'hammer' ? 0.42 : kind === 'paddle' ? 0.55 : spear ? 0.62 : 0.6; // compact hammer
     m.scale.setScalar(s); if (kind === 'hammer') finishMaterials(T, m);
+    if (kind === 'paddle') m.rotation.y = -0.9; // [paddle] turn the blade face toward the camera (else it reads edge-on)
     root = new T.Group(); root.add(m);
     const gp = m.userData.grip.clone().multiplyScalar(s), sz = m.userData.size || { x: 0.1, y: 0.8, z: 0.1 };
     root.userData.size = { x: sz.x * s, y: sz.y * s, z: sz.z * s };
