@@ -20,6 +20,7 @@ import { createPalette, bakeGeometry, visibleMeshes } from './bake.js?build=v3-s
 export { buildItemModel, isPlaceable, PLACEABLE_KINDS };
 const POSES = ['point', 'throw', 'grip', 'open'];
 
+const smoothK = (rate, dt) => 1 - Math.exp(-rate * dt); // frame-rate independent smoothing
 export function createHands(T, { modelFactory = null } = {}) {
   const V = (x = 0, y = 0, z = 0) => new T.Vector3(x, y, z);
   const UP = V(0, 1, 0);
@@ -275,7 +276,7 @@ export function createHands(T, { modelFactory = null } = {}) {
   const st = { walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0,
     shown: null, target: null, poseOverride: null, ptR: 0, ptL: 0, lowering: false, dip: 1, down: 1, raise: 1, lagX: 0, lagY: 0, lastYaw: null, lastPitch: 0 };
   const qOff = new T.Quaternion(), eul = new T.Euler(0, 0, 0, 'XYZ'), qSwing = new T.Quaternion(), AX = V(1, 0, 0);
-  const last = {};
+  const last = { lag: [0, 0] }; // written in place each update (no per-frame objects)
   setPose(L.H, 'grip');
 
   // Resolved pose of the shown item ('point' | 'throw' | 'grip' | 'open') and which hand points.
@@ -316,7 +317,6 @@ export function createHands(T, { modelFactory = null } = {}) {
     const casting = clamp01(params.casting || 0);
     const reeling = !!params.reeling, walking = !!params.walking;
     const amp = clamp01(params.motion ?? 0.35) / 0.35;
-    const k = (rate) => 1 - Math.exp(-rate * dt);
 
     // ---- swap / pose change: ease down, switch while hidden, pop back up
     if (st.shown !== st.target) {
@@ -330,8 +330,8 @@ export function createHands(T, { modelFactory = null } = {}) {
     const isHook = st.shown === 'hook', hasHookOut = isHook && !!params.hasHookOut;
     const charge = pose === 'throw' ? 1 : isHook ? charge0 : 0;
     // pointing blends in; a left hand that only shows up to point slides in from below
-    st.ptR += ((pointer === 'R' ? 1 : 0) - st.ptR) * k(12);
-    st.ptL += ((pointer === 'L' ? 1 : 0) - st.ptL) * k(12);
+    st.ptR += ((pointer === 'R' ? 1 : 0) - st.ptR) * smoothK(12, dt);
+    st.ptL += ((pointer === 'L' ? 1 : 0) - st.ptL) * smoothK(12, dt);
     const leftNeeded = usesLeft(st.shown), lIn = leftNeeded ? 1 : st.ptL;
     L.pose.visible = st.shown !== null && (leftNeeded || st.ptL > 0.02);
     coil.visible = lead.visible = isHook && pointer !== 'L';
@@ -344,17 +344,17 @@ export function createHands(T, { modelFactory = null } = {}) {
       st.lastYaw = params.yaw; st.lastPitch = params.pitch;
       const inv = dt > 0 ? 1 / dt : 0, cap = 0.07 * amp;
       const tx = Math.max(-cap, Math.min(cap, -dp * inv * 0.012)), ty = Math.max(-cap, Math.min(cap, -dy * inv * 0.012));
-      st.lagX += (tx - st.lagX) * k(9); st.lagY += (ty - st.lagY) * k(9);
+      st.lagX += (tx - st.lagX) * smoothK(9, dt); st.lagY += (ty - st.lagY) * smoothK(9, dt);
     }
     lagRoot.rotation.set(st.lagX, st.lagY, -st.lagY * 0.6);
 
-    st.walkW += ((walking ? 1 : 0) - st.walkW) * k(5);
-    st.reelW += ((reeling ? 1 : 0) - st.reelW) * k(9);
-    st.outW += ((hasHookOut ? 1 : 0) - st.outW) * k(7);
-    st.toolW = hasHookOut ? 0 : st.toolW + (1 - st.toolW) * k(8);
+    st.walkW += ((walking ? 1 : 0) - st.walkW) * smoothK(5, dt);
+    st.reelW += ((reeling ? 1 : 0) - st.reelW) * smoothK(9, dt);
+    st.outW += ((hasHookOut ? 1 : 0) - st.outW) * smoothK(7, dt);
+    st.toolW = hasHookOut ? 0 : st.toolW + (1 - st.toolW) * smoothK(8, dt);
     if (casting > 0 && (st.lastCasting <= 0 || casting > st.lastCasting + 0.25)) st.releaseCharge = Math.max(st.chargeS, charge, 0.35);
     st.lastCasting = casting;
-    st.chargeS += (charge - st.chargeS) * k(charge > st.chargeS ? 22 : 14);
+    st.chargeS += (charge - st.chargeS) * smoothK(charge > st.chargeS ? 22 : 14, dt);
 
     // ---- cast / strike curve: p 0 (just released) -> 1 (done)
     const p = casting > 0 ? 1 - casting : 1;
@@ -409,8 +409,9 @@ export function createHands(T, { modelFactory = null } = {}) {
     }
     toolHolder.scale.setScalar(hasHookOut ? 1 : 0.7 + 0.3 * easeOutBack(tw));  // little "catch" pop on return
 
-    Object.assign(last, { held: st.shown, target: st.target, pose, pointHand: pointer, dip: down, lag: [st.lagX, st.lagY], charge: chargeEff, chargeEased: ce, throw: a,
-      pull: pull * rW, walkW: st.walkW, reelW: rW, hookOutW: oW, toolW: tw, spool: st.spool, models: mounts.size });
+    last.held = st.shown; last.target = st.target; last.pose = pose; last.pointHand = pointer; last.dip = down;
+    last.lag[0] = st.lagX; last.lag[1] = st.lagY; last.charge = chargeEff; last.chargeEased = ce; last.throw = a;
+    last.pull = pull * rW; last.walkW = st.walkW; last.reelW = rW; last.hookOutW = oW; last.toolW = tw; last.spool = st.spool; last.models = mounts.size;
     return last;
   }
 

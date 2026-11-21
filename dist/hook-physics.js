@@ -109,6 +109,7 @@ export class HookCast {
     this._clock = 0;
     this._emitted = false;
     this._ropePts = [];
+    this._n = { x: 0, z: 0 }; // flight substep scratch (avoids an object per substep)
 
     // Thrown from at/below the water: it is simply in the water where it is.
     if (this.position.y <= WATER_Y) this._splash(this.position.x, this.position.z, null);
@@ -181,7 +182,7 @@ export class HookCast {
   _stepFlight(h, items) {
     const p = this.position, v = this.velocity;
     const px = p.x, py = p.y, pz = p.z;
-    const n = { x: px + v.x * h, z: pz + v.z * h };
+    const n = this._n; n.x = px + v.x * h; n.z = pz + v.z * h;
     let ny = py + v.y * h - 0.5 * GRAVITY * h * h;
     v.y -= GRAVITY * h;
     if (this._tether(n)) { v.x = 0; v.z = 0; this.tethered = true; } // rope taut: just drop

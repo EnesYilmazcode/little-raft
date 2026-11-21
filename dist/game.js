@@ -211,7 +211,7 @@ export function mount(transfer = null) {
   let contextCache = null, uiFailed = false;
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
-  let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = '';
+  let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = -1;
   const chargeMeter = $('#chargeMeter'), chargeFill = chargeMeter?.querySelector('i');
   let blockList = [];
 
@@ -419,7 +419,7 @@ export function mount(transfer = null) {
   // Body classes, crosshair and resume hint follow running and pointer-lock state.
   function refreshPointerUI(force = false) {
     const locked = isLocked(), dialog = uiBlocked();
-    const signature = [running, locked, dialog, lockFallback].join();
+    const signature = (running ? 1 : 0) | (locked ? 2 : 0) | (dialog ? 4 : 0) | (lockFallback ? 8 : 0);
     if (!force && signature === uiSignature) return; uiSignature = signature;
     const b = document.body.classList;
     b.toggle('pointer-locked', locked); b.toggle('locked', locked); b.toggle('first-person', running); b.toggle('playing', running);
@@ -778,6 +778,7 @@ export function mount(transfer = null) {
   }
 
   // ---------- Frame ----------
+  const handParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0, yaw:0, pitch:0};
   const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3();
   // Hook physics floats at a flat WATER_Y; map heights near the water onto the visible waves.
   function surfaceY(x, z, y) {
@@ -814,7 +815,10 @@ export function mount(transfer = null) {
     hands.setPose(pointing ? 'point' : null);
     const rod = kind === 'fishingrod' ? hands.itemModel('fishingrod') : null, out = !!hook?.fishing;
     if (rod?.userData.float) { rod.userData.float.visible = !out; rod.userData.leader.visible = !out; }
-    hands.update({dt, time:elapsed, charge:ch, reeling:rod ? out && hook.t > fishWait : reeling && !!castOut(), casting:swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch});
+    const hp = handParams; // reused each frame (hands.update only reads it)
+    hp.dt = dt; hp.time = elapsed; hp.charge = ch; hp.reeling = rod ? out && hook.t > fishWait : reeling && !!castOut(); hp.casting = swing;
+    hp.walking = walking; hp.hasHookOut = !!castOut(); hp.motion = motion; hp.yaw = yaw; hp.pitch = pitch;
+    hands.update(hp);
     camera.updateMatrixWorld(true);
     hands.ropeAnchor().getWorldPosition(handPos);
   }
@@ -828,10 +832,19 @@ export function mount(transfer = null) {
       friend.rotation.y = (other.yaw ?? 0) + Math.PI;
     }
   }
+  // Reused per frame: tokens our hook holds, and raft extents cached until the tile list changes.
+  const heldTokens = new Set();
+  let extentTiles = null, extentLen = -1, extentEnd = 0, extentSide = 0;
   function updateItems(dt) {
-    const heldTokens = new Set(caughtList(castOut()).map(c => c.token));
+    const out = castOut();
+    if (heldTokens.size) heldTokens.clear();
+    if (out) { const caught = caughtList(out); for (let i = 0; i < caught.length; i++) heldTokens.add(caught[i].token); }
     if (role !== 'guest') {
-      let respawned = false; const end = Math.max(...world.tiles.map(t => t[1])) * 2 + 24, side = Math.max(...world.tiles.map(t => Math.abs(t[0]))) * 2 + 24;
+      if (extentTiles !== world.tiles || extentLen !== world.tiles.length) {
+        extentTiles = world.tiles; extentLen = world.tiles.length;
+        extentEnd = Math.max(...world.tiles.map(t => t[1])) * 2 + 24; extentSide = Math.max(...world.tiles.map(t => Math.abs(t[0]))) * 2 + 24;
+      }
+      let respawned = false; const end = extentEnd, side = extentSide;
       for (const it of world.items) {
         if (heldTokens.has(it.token)) continue; // our hook holds it; don't let it drift away or respawn
         it.z += dt * .22; it.x += Math.sin(elapsed * .13 + it.phase) * dt * .04;
@@ -851,19 +864,21 @@ export function mount(transfer = null) {
     }
   }
   function endHook() { hook = null; lastCaughtCount = 0; reeling = false; rope.visible = false; hookMesh.visible = false; }
+  const hookPos = new T.Vector3(), hookItems = [], ropePts = Array.from({length:ROPE_SEGMENTS + 1}, () => new T.Vector3());
   function updateHook(dt) {
     if (!hook) { rope.visible = false; hookMesh.visible = false; return; }
     if (hook.fishing) { // simple bobber animation, separate from HookCast
       hook.t += dt; const f = hook.t / hook.duration, u = Math.min(1, f * 5);
-      const pos = handPos.clone().lerp(hook.end, u);
+      const pos = hookPos.copy(handPos).lerp(hook.end, u);
       if (u >= 1) pos.y = ocean.getHeight(pos.x, pos.z) + .05 + Math.sin(elapsed * 5) * .03 - (hook.t > fishWait ? .12 : 0); else pos.y += Math.sin(u * Math.PI) * 1.2;
-      const pts = []; for (let i = 0; i <= ROPE_SEGMENTS; i++) pts.push(handPos.clone().lerp(pos, i / ROPE_SEGMENTS));
-      setRope(pts); hookMesh.visible = true; hookMesh.position.copy(pos); hookMesh.rotation.set(0, yaw, 1.1);
+      for (let i = 0; i <= ROPE_SEGMENTS; i++) ropePts[i].copy(handPos).lerp(pos, i / ROPE_SEGMENTS);
+      setRope(ropePts); hookMesh.visible = true; hookMesh.position.copy(pos); hookMesh.rotation.set(0, yaw, 1.1);
       if (f >= 1) { action({kind:'fish'}); fishWait = 0; endHook(); }
       return;
     }
-    const ev = hook.update(dt, {hand:handPos, items:world.items.filter(it => !isPending(it)), reeling, time:elapsed});
-    const hp = hook.position, pos = new T.Vector3(hp.x, surfaceY(hp.x, hp.z, hp.y), hp.z);
+    hookItems.length = 0; for (let i = 0; i < world.items.length; i++) if (!isPending(world.items[i])) hookItems.push(world.items[i]);
+    const ev = hook.update(dt, {hand:handPos, items:hookItems, reeling, time:elapsed});
+    const hp = hook.position, pos = hookPos.set(hp.x, surfaceY(hp.x, hp.z, hp.y), hp.z);
     hookMesh.visible = true; hookMesh.position.copy(pos);
     if (hook.stage === 'flying') hookMesh.rotation.set(-hook.flightT * Math.PI * 2, yaw, 0);
     else if (hook.stage === 'reeling') hookMesh.rotation.set(-.6, yaw, 0);
@@ -1192,7 +1207,7 @@ export function mount(transfer = null) {
         running, tool:mode, recipe:kind === 'hammer' ? 'floor' : DECOR_TYPES.includes(kind) ? kind : null, role, networkReady, pointerLocked:isLocked(), lockSupported, lockFallback, active, disposed,
         tiles:world.tiles.length, tileList:world.tiles.map(t => [...t]), decor:world.decor.map(d => ({...d})),
         stock:counts, fish:world.fish, collected:world.collected, items:world.items.length,
-        inventory:bag.snapshot(), selectedItem:bag.selected, selectedIndex:bag.selectedIndex, heldKind:kind, viewmodel:hands ? {...hands.state} : null,
+        inventory:bag.snapshot(), selectedItem:bag.selected, selectedIndex:bag.selectedIndex, heldKind:kind, viewmodel:hands ? {...hands.state, lag:[...(hands.state.lag ?? [])]} : null,
         ownedTools:['hook', 'hammer', 'fishingrod'].filter(k => counts[k] > 0), inventoryOpen:!!survivalUI?.isOpen,
         physics:physics.capture(), grounded:physics.grounded, swimming:physics.swimming,
         hook:hook ? (hook.fishing ? {fishing:true, id:null, t:hook.t, duration:hook.duration} : {fishing:false, id:hc.caught?.id ?? null, stage:hc.stage, x:hc.position.x, y:hc.position.y, z:hc.position.z, tension:hc.tension, distance:hc.distance, caughtCount:caughtList(hc).length}) : null,

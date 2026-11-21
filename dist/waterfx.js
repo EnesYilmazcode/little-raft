@@ -71,6 +71,7 @@ export function createWaterEffects(T) {
       opacity: 0,
       depthWrite: false,
       side: T.DoubleSide,
+      forceSinglePass: true, // flat ring: the two-pass back/front split buys nothing
       polygonOffset: true,
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -2,
