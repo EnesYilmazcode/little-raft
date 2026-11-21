@@ -1367,7 +1367,7 @@ export function mount(transfer = null) {
   }
   // Pause menu "quit to title": save, leave any crew, show the title. The world stays loaded for Continue.
   function quitToTitle() {
-    save(); if (role !== 'solo') closeConnection();
+    save(); if (role !== 'solo') { send({type:'leaving'}); closeConnection(); } // tell the peer first: the guest goes home now, not after a timeout
     hook = null; fishWait = 0; clearInput(); releaseLock();
     running = false; const w = $('#welcome'); if (w) w.hidden = false; const h = $('#hud'); if (h) h.hidden = true;
     refreshTitle(); refreshPointerUI(true);
