@@ -1,4 +1,4 @@
-// Raft craft models (ES module, no imports, no textures).
+// Raft craft models (ES module; the crate borrows the shared driftwood texture from wood.js, the rest are untextured).
 // Usage: import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b'; const g = createCraft(THREE, 'sail');
 // Returns a THREE.Group (or null for an unknown type). Local origin = centre of the 2x2 raft
 // floor top surface; place the group at the floor (y = .22). Everything builds upward from y = 0
@@ -6,6 +6,8 @@
 // caller may dispose them freely. Meshes are merged per material to keep draw calls low.
 //
 // Types: sail (~3.76 tall), palm (~2.25), lantern (~1.2), net (~0.21), bench (~0.9), crate (~0.84).
+
+import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
 
 export function createCraft(T, type) {
   const key = String(type || '').toLowerCase();
@@ -604,41 +606,72 @@ function buildBench(T, K, g) {
 }
 
 // ---------------------------------------------------------------- CRATE (~0.96 x 0.84, 0.84 tall)
+// Light sandy plank crate: boards wear the shared driftwood texture (wood.js) with a per-board tone in the vertex colours.
+// UVs run u across each board and v along it, so the texture's darker edges and grimy ends read as board seams.
+// Darker timber corner battens and lid cleats; only small dark-brown iron (nails, handle cleats). Without a DOM
+// (node tests) the texture is skipped and the boards fall back to the kit's vertex-colour grain.
 function buildCrate(T, K, g) {
   const { V } = K;
   const W = [], ST = [], R = [];
-  const tones = [0x8b6943, 0x9a7650, 0x7f5e3b];
-  for (const s of [-1, 1]) W.push(K.plank(0.09, 0.06, 0.84, 0x6c4c2f, s * 0.28, 0.03, 0));
-  W.push(K.plank(0.8, 0.03, 0.8, 0x7a5838, 0, 0.075, 0));
+  let mat = null;
+  try {
+    mat = createWoodMaterial(T, '#ffffff');
+    mat.map.wrapS = mat.map.wrapT = T.RepeatWrapping;
+    mat.vertexColors = true; mat.color.set('#ffffff'); mat.roughness = 0.9;
+  } catch { mat = null; }
+  const tint = new T.Color();
+  const board = (w, h, d, hex, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => {
+    if (!mat) return K.plank(w, h, d, hex, x, y, z, rx, ry, rz, 0.15);
+    const geo = new T.BoxGeometry(w, h, d), dim = [w, h, d];
+    const L = dim.indexOf(Math.max(w, h, d));
+    const p = geo.attributes.position, n = geo.attributes.normal, uv = geo.attributes.uv;
+    const fu = K.rnd() < 0.5, fv = K.rnd() < 0.5, v0 = K.rnd() * 0.04;
+    for (let i = 0; i < p.count; i++) {
+      const P = [p.getX(i), p.getY(i), p.getZ(i)], N = [n.getX(i), n.getY(i), n.getZ(i)].map(Math.abs);
+      const nAx = N.indexOf(Math.max(...N));
+      const rest = [0, 1, 2].filter(a => a !== nAx && a !== L);
+      let u, v;
+      if (nAx !== L) { u = P[rest[0]] / dim[rest[0]] + 0.5; v = v0 + (P[L] / dim[L] + 0.5) * (1 - 2 * v0); }
+      else { const a = dim[rest[0]] >= dim[rest[1]] ? rest[0] : rest[1], b = a === rest[0] ? rest[1] : rest[0]; u = P[a] / dim[a] + 0.5; v = 0.01 + (P[b] / dim[b] + 0.5) * 0.04; } // end grain: the grimy board end
+      uv.setXY(i, fu ? 1 - u : u, fv ? 1 - v : v);
+    }
+    tint.set(hex).multiplyScalar(0.93 + K.rnd() * 0.14);
+    K.paint(geo, (px, py, pz, c) => c.copy(tint));
+    return K.bake(geo, x, y, z, rx, ry, rz);
+  };
+  const tones = [0xc99d69, 0xb98d5b, 0xd2a873], DARK = 0x80593a, MID = 0xa97d4e;
+  for (const s of [-1, 1]) W.push(board(0.09, 0.06, 0.84, DARK, s * 0.28, 0.03, 0));
+  W.push(board(0.8, 0.03, 0.8, MID, 0, 0.075, 0));
   [0.1975, 0.4325, 0.6675].forEach((y, i) => {
     for (const s of [-1, 1]) {
-      W.push(K.plank(0.8, 0.215, 0.03, tones[(i + (s > 0 ? 0 : 1)) % 3], 0, y, s * 0.385));
-      W.push(K.plank(0.03, 0.215, 0.74, tones[(i + 2) % 3], s * 0.385, y, 0));
-      for (const t of [-1, 1]) {
-        ST.push(K.nail(t * 0.34, y, s * 0.402, 'z'));
-        ST.push(K.nail(s * 0.402, y, t * 0.3, 'x'));
+      W.push(board(0.8, 0.215, 0.03, tones[(i + (s > 0 ? 0 : 1)) % 3], 0, y, s * 0.385));
+      W.push(board(0.03, 0.215, 0.74, tones[(i + 2) % 3], s * 0.385, y, 0));
+      for (const t of [-1, 1]) { // nail heads on the corner battens
+        ST.push(K.nail(t * 0.365, y, s * 0.422, 'z'));
+        ST.push(K.nail(s * 0.422, y, t * 0.37, 'x'));
       }
     }
   });
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) W.push(K.plank(0.06, 0.69, 0.06, 0x6a4a2e, sx * 0.34, 0.435, sz * 0.34));
-  for (const s of [-1, 1]) W.push(K.beam(V(-0.33 * s, 0.12, s * 0.41), V(0.33 * s, 0.75, s * 0.41), 0.09, 0.025, 0x86643f));
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    W.push(board(0.06, 0.69, 0.06, DARK, sx * 0.34, 0.435, sz * 0.34)); // inner corner posts
+    W.push(board(0.07, 0.69, 0.022, DARK, sx * 0.365, 0.435, sz * 0.411)); // L-shaped outer corner battens
+    W.push(board(0.022, 0.69, 0.092, DARK, sx * 0.411, 0.435, sz * 0.376));
+  }
+  const bdx = 0.58, bdy = 0.55, blen = Math.hypot(bdx, bdy), ba = Math.atan2(bdx, bdy);
+  for (const s of [-1, 1]) W.push(board(0.08, blen, 0.025, MID, 0, 0.435, s * 0.41, 0, 0, -s * ba)); // diagonal brace
   [-0.3, -0.1, 0.1, 0.3].forEach((z, i) => {
-    W.push(K.plank(0.82, 0.035, 0.19, tones[i % 3], 0, 0.7925, z));
+    W.push(board(0.82, 0.035, 0.19, tones[(i + 1) % 3], 0, 0.7925, z));
     for (const sx of [-1, 1]) ST.push(K.nail(sx * 0.3, 0.841, z));
   });
-  for (const sx of [-1, 1]) W.push(K.plank(0.08, 0.03, 0.78, 0x6a4a2e, sx * 0.3, 0.825, 0));
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) for (const y of [0.72, 0.14]) {
-    ST.push(K.box(0.1, 0.1, 0.006, sx * 0.35, y, sz * 0.403));
-    ST.push(K.box(0.006, 0.1, 0.1, sx * 0.403, y, sz * 0.35));
-  }
+  for (const sx of [-1, 1]) W.push(board(0.08, 0.03, 0.78, DARK, sx * 0.3, 0.825, 0)); // lid cleats
   for (const sx of [-1, 1]) {
     R.push(K.tube([V(sx * 0.4, 0.56, -0.13), V(sx * 0.46, 0.5, -0.08), V(sx * 0.48, 0.47, 0), V(sx * 0.46, 0.5, 0.08), V(sx * 0.4, 0.56, 0.13)], 0.014, 24));
     for (const sz of [-1, 1]) {
-      ST.push(K.box(0.012, 0.05, 0.05, sx * 0.405, 0.56, sz * 0.13));
+      ST.push(K.box(0.012, 0.04, 0.04, sx * 0.405, 0.56, sz * 0.13));
       R.push(K.bake(new T.SphereGeometry(0.022, 8, 6), sx * 0.415, 0.56, sz * 0.13));
     }
   }
-  K.addTo(g, W, K.woodMat(), 'crateTimber');
-  K.addTo(g, ST, K.std(0x76838a, 0.42, 0.75), 'crateSteel');
+  K.addTo(g, W, mat ?? K.woodMat(), 'crateTimber');
+  K.addTo(g, ST, K.std(0x4a3a2d, 0.6, 0.5), 'crateSteel');
   K.addTo(g, R, K.std(0xb99a62, 0.95), 'crateRope');
 }
