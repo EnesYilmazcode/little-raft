@@ -43,3 +43,8 @@ test('C2: drag-look fallback never hides the cursor waiting for a relock', () =>
   assert.match(s, /body\.relock:not\(\.drag-look\) #resumeHint\{display:none!important\}/);
   assert.match(s, /!document\.body\.classList\.contains\('drag-look'\)\) document\.body\.classList\.add\('relock'\)/);
 });
+
+test('C3: window blur drops body.relock so the away resume hint is visible', () => {
+  const s = read('settings.js');
+  assert.match(s, /window\.addEventListener\('blur', \(\) => document\.body\.classList\.remove\('relock'\)/);
+});

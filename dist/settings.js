@@ -333,6 +333,8 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
     }), 150);
   }), { capture: true, signal: ac.signal });
   window.addEventListener('pointerdown', () => document.body.classList.remove('relock'), { capture: true, signal: ac.signal });
+  // Focus lost (alt-tab): show the cursor and the "away" resume hint again; a click on return relocks.
+  window.addEventListener('blur', () => document.body.classList.remove('relock'), { signal: ac.signal });
 
   // Native dialog Escape: route through our escape so the engine resumes.
   dialog.addEventListener('cancel', guard((event) => {
