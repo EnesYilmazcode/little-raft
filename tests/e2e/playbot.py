@@ -789,7 +789,8 @@ def main():
         dist = Path(args.dist).resolve()
         if not (dist / 'index.html').is_file():
             raise InfraError(f'no index.html in {dist}')
-        from harness import StaticServer, launch_chromium
+        from harness import StaticServer, launch_chromium, click_start, START_SELECTORS
+        CONTINUE_FIRST = ['.ob-item[data-act="continue"]', '#solo', *[x for x in START_SELECTORS if x != '#solo']]
         from playwright.sync_api import sync_playwright
         save = ''
         if args.kit == 'starter':
@@ -823,9 +824,22 @@ def main():
                     page.wait_for_timeout(500)
                     if page.evaluate("!window.raftDebug && !!document.getElementById('raftLiveError')"):
                         raise RuntimeError('live.js reported that the game failed to start (#raftLiveError shown)')
-                    # Title buttons differ between branches: #solo may be a hidden "Continue" with #newGame next to it.
-                    btn = page.locator('#solo:visible, #newGame:visible').first
-                    btn.click()
+                    # Title controls differ between branches (onboarding menu, #solo/#newGame, legacy #solo).
+                    # With the starter kit saved, prefer Continue: New Game would ask to wipe the save (onboarding)
+                    # or start a fresh raft (#newGame).
+                    sels = CONTINUE_FIRST if args.kit == 'starter' else START_SELECTORS
+                    # The onboarding menu disables Continue/New while #solo is disabled (still loading); clicking then
+                    # would fall through to New Game, so wait for #solo to be enabled first.
+                    page.wait_for_function("!document.querySelector('#solo')?.disabled", timeout=60000)
+                    used = None
+                    for _ in range(60):
+                        used = click_start(page, sels)
+                        if used:
+                            break
+                        page.wait_for_timeout(500)
+                    if not used:
+                        raise RuntimeError(f'no visible start control among {sels}')
+                    bot.m['start_control'] = used
                     page.wait_for_function('raftDebug.state.running', timeout=30000)
                 except Exception as e:
                     errs = bot.page_errors + bot.console_errors
