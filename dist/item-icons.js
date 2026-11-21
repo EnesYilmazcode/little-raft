@@ -84,10 +84,10 @@ export function createItemIcons(T, { size = 96 } = {}) {
       renderer.setClearColor(0x000000, 0);
       renderer.outputColorSpace = T.SRGBColorSpace;
       renderer.toneMapping = T.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.5;
+      renderer.toneMappingExposure = 1.05;
       const scene = new T.Scene();
-      scene.add(new T.HemisphereLight(0xfff4dc, 0x6a5a48, 2.4));
-      const key = new T.DirectionalLight(0xffffff, 3); key.position.set(3, 5, 4); scene.add(key);
+      scene.add(new T.HemisphereLight(0xfff4dc, 0x6a5a48, 1.5));
+      const key = new T.DirectionalLight(0xffffff, 2.4); key.position.set(3, 5, 4); scene.add(key);
       const rim = new T.DirectionalLight(0xbfe6ff, 1.4); rim.position.set(-4, 2, -3); scene.add(rim);
       // Soft studio environment so metal parts reflect something instead of rendering black.
       try {
@@ -105,7 +105,7 @@ export function createItemIcons(T, { size = 96 } = {}) {
         const pmrem = new T.PMREMGenerator(renderer);
         envTarget = pmrem.fromScene(envScene, 0.04);
         scene.environment = envTarget.texture;
-        scene.environmentIntensity = 0.9;
+        scene.environmentIntensity = 0.6;
         pmrem.dispose(); geo.dispose(); envMat.dispose();
       } catch (e) { console.warn('icon environment', e); }
       const cam = new T.PerspectiveCamera(28, 1, 0.01, 100);
