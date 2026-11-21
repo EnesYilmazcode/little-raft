@@ -170,7 +170,6 @@ export function createOcean(T, options = {}) {
   const sun = options.sunDirection ?? new T.Vector3(-15, 28, 12);
   const uniforms = {
     uTime: { value: 0 },
-    uCamera: { value: new T.Vector3() },
     uSunDir: { value: sun.clone().normalize() },
     uSunColor: { value: new T.Color('#fff3d6') },
     uSky: { value: new T.Color(options.skyColor ?? '#99dfe1') },
@@ -202,13 +201,10 @@ export function createOcean(T, options = {}) {
   function update(t, camera) {
     time = t;
     uniforms.uTime.value = t;
-    if (camera) {
-      uniforms.uCamera.value.copy(camera.position);
-      if (options.followCamera) {
-        // Snap to grid spacing so vertices never swim (waves use world coords).
-        mesh.position.x = Math.round(camera.position.x / step) * step;
-        mesh.position.z = Math.round(camera.position.z / step) * step;
-      }
+    if (camera && options.followCamera) {
+      // Snap to grid spacing so vertices never swim (waves use world coords).
+      mesh.position.x = Math.round(camera.position.x / step) * step;
+      mesh.position.z = Math.round(camera.position.z / step) * step;
     }
   }
 
