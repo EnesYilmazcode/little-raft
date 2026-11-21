@@ -96,7 +96,7 @@ test('CTL-1: Shift+R rotates backwards through the controls repair callback', ()
   fire(target, 'keydown', { code: 'KeyR', target: null }); s.tick(); fire(target, 'keyup', { code: 'KeyR' }); s.tick();
   const reps = s.calls.filter(c => Array.isArray(c) && c[0] === 'repair');
   assert.deepEqual(reps, [['repair', true], ['repair', false]]);
-  assert.match(gameSrc, /repair:back => \{ if \(running && DECOR_TYPES\.includes\(heldKind\(\)\)\) rotatePlacement\(back \? -ROT_STEP : ROT_STEP\)/);
+  assert.match(gameSrc, /repair:back => \{ (?:if \(running && heldKind\(\) === 'hammer'[^;]*\) return; )?if \(running && DECOR_TYPES\.includes\(heldKind\(\)\)\) rotatePlacement\(back \? -ROT_STEP : ROT_STEP\)/);
   s.done();
 });
 
