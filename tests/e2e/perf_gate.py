@@ -49,7 +49,7 @@ with sync_playwright() as p:
     page = b.new_context(viewport={'width': 1280, 'height': 720}).new_page()
     page.on('pageerror', lambda e: rep['errors'].append(str(e)))
     cdp = page.context.new_cdp_session(page); cdp.send('Performance.enable'); cdp.send('HeapProfiler.enable')
-    t0 = time.time(); page.goto(url); page.wait_for_function('!!window.raftDebug', timeout=30000)
+    t0 = time.time(); page.goto(url); page.wait_for_function('!!window.raftDebug', timeout=30000, polling=20)
     rep['startup'] = {'toDebugMs': round((time.time() - t0) * 1000), 'nav': page.evaluate("(()=>{const n=performance.getEntriesByType('navigation')[0];return n?{domContentLoaded:Math.round(n.domContentLoadedEventEnd),load:Math.round(n.loadEventEnd),transferKB:Math.round(performance.getEntriesByType('resource').reduce((s,r)=>s+(r.decodedBodySize||0),0)/1024)}:null})()")}
     page.locator('#solo').wait_for(state='visible')
     rep['startup']['soloToFirstFrameMs'] = page.evaluate("new Promise(r=>{const t=performance.now();document.querySelector('#solo').click();requestAnimationFrame(()=>requestAnimationFrame(()=>r(Math.round(performance.now()-t))))})")
