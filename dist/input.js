@@ -269,6 +269,7 @@ export function createInput({
     update, clear,
     down: id => !!state.get(id)?.down,
     shiftHeld: () => held.has('ShiftLeft') || held.has('ShiftRight'),
+    altHeld: () => held.has('AltLeft') || held.has('AltRight'),
     pressed: id => !!state.get(id)?.pressed,
     released: id => !!state.get(id)?.released,
     move: () => ({ ...moveVec }),

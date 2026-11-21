@@ -22,6 +22,9 @@ export function wheelDelta(e) {
 const TAU = Math.PI * 2;
 export const tileAt = v => Math.round(v / TILE);
 export const wrapRot = r => ((r % TAU) + TAU) % TAU;
+// Snap to a whole number of FINE_STEPs in [0, TAU): 8 x 45 degrees comes back to exactly 0 (no 6.283 drift).
+const FINE_TURN = Math.round(TAU / FINE_STEP);
+export const snapRot = r => { const n = Math.round((Number.isFinite(r) ? r : 0) / FINE_STEP) % FINE_TURN; return (n < 0 ? n + FINE_TURN : n) * FINE_STEP; };
 const round3 = v => Math.round(v * 1000) / 1000;
 const ADJ = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const adjacent = (hasTile, x, z) => ADJ.some(([a, b]) => hasTile(x + a, z + b));

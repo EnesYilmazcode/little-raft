@@ -161,3 +161,32 @@ test('K1: R does not repair a hook while the build wheel is open', () => {
   assert.equal(s.calls.filter(c => c[0] === 'repair').length, 1, 'works again once closed');
   s.c.dispose();
 });
+
+// ============================================================ K2: decor rotation steps
+
+const { snapRot, ROT_STEP, FINE_STEP } = await import(new URL('placement.js', base));
+
+test('K2: rotation snaps to whole 15 degree steps, so 8 x 45 and 24 x 15 come back to exactly 0', () => {
+  for (const [step, n] of [[ROT_STEP, 8], [-ROT_STEP, 8], [FINE_STEP, 24], [-FINE_STEP, 24]]) {
+    let r = 0; for (let k = 0; k < n; k++) r = snapRot(r + step);
+    assert.equal(r, 0, `${n} x ${step}`);
+  }
+  assert.equal(snapRot(0.785), 3 * FINE_STEP, 'an old 3-decimal save value lands on 45 degrees');
+  assert.equal(snapRot(-ROT_STEP), 21 * FINE_STEP);
+  assert.ok(snapRot(1e9) >= 0 && snapRot(NaN) === 0);
+});
+
+test('K2: Shift+R and Alt+R reach game.js as {shift, alt}; both lanes map Shift = 15 degrees, Alt = 45 back', () => {
+  const s = setupControls();
+  key('keydown', 'ShiftLeft'); key('keydown', 'KeyR', { shiftKey: true }); s.tick(); key('keyup', 'KeyR'); key('keyup', 'ShiftLeft'); s.tick();
+  key('keydown', 'AltLeft'); key('keydown', 'KeyR', { altKey: true }); s.tick(); key('keyup', 'KeyR'); key('keyup', 'AltLeft'); s.tick();
+  key('keydown', 'KeyR'); s.tick(); key('keyup', 'KeyR'); s.tick();
+  assert.deepEqual(s.calls.filter(c => c[0] === 'repair').map(c => c[1]),
+    [{ shift: true, alt: false }, { shift: false, alt: true }, { shift: false, alt: false }]);
+  s.c.dispose();
+  assert.match(gameSrc, /const rotStep = \(shift, alt\) => \(shift \? FINE_STEP : alt \? -ROT_STEP : ROT_STEP\);/);
+  assert.match(gameSrc, /rotatePlacement\(rotStep\(e\.shiftKey, e\.altKey\)\)/, 'legacy keyboard lane');
+  assert.match(gameSrc, /rotatePlacement\(rotStep\(!!m\.shift, !!m\.alt\)\)/, 'controls lane');
+  assert.match(gameSrc, /function rotatePlacement\(step\) \{ placeRot = snapRot\(placeRot \+ step\);/);
+  assert.match(gameSrc, /<kbd>Shift<\/kbd> \+ <kbd>R<\/kbd>[^']*15°, <kbd>Alt<\/kbd> \+ <kbd>R<\/kbd> turns it back/, 'help documents both');
+});

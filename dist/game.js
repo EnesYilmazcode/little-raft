@@ -55,7 +55,7 @@ import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createSurvivalUI, iconSVG } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { mergeGate } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
-import { createGhosts, wrapRot, wheelDelta, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
+import { createGhosts, wrapRot, snapRot, wheelDelta, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, onIconReady, setIconRenderer } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints, feedPlacement, hintsFromState } from './hud.js?build=v3-survival-ae77fa84ac2b'; // loop-ux: saved sound toggle, drag-look sensitivity, first-run hints
@@ -413,7 +413,7 @@ export function mount(transfer = null) {
       + '<li><kbd>E</kbd><span><b>Sail.</b> Look at a sail and press E to raise or lower it; hold <kbd>R</kbd> and turn to steer it. The pennant shows the wind. E at the anchor post stops the raft.</span></li>' // [sailing]
       + '<li><kbd>Craft</kbd><span><b>Make tools.</b> A Hammer builds raft floors (2 wood, 2 plastic each). A Fishing Rod catches fish. Crafted decorations are placed one at a time.</span></li>'
       + '<li><kbd>X</kbd><span><b>Remove</b> the floor or piece you aim at while holding the Hammer. You get about half its materials back.</span></li>'
-      + '<li><kbd>R</kbd><span><b>Rotate</b> the piece you are placing (<kbd>Shift</kbd> + wheel turns it finely), or <b>repair</b> a worn hook for 2 wood and 1 scrap.</span></li>'
+      + '<li><kbd>R</kbd><span><b>Rotate</b> what you are placing by 45°: <kbd>Shift</kbd> + <kbd>R</kbd> (or <kbd>Shift</kbd> + wheel) turns it 15°, <kbd>Alt</kbd> + <kbd>R</kbd> turns it back. Otherwise R <b>repairs</b> a worn hook for 2 wood and 1 scrap.</span></li>'
       + '<li><kbd>Esc</kbd><span><b>Menu.</b> Settings, Play together and this guide.</span></li>';
     const note = $('#help .guide-note'); if (note) note.textContent = 'Everyone has their own bag; the raft and the sea are shared. Nothing can hurt you, and your raft never sinks. Mouse won\'t lock? Drag the ocean to look instead.';
   }
@@ -999,7 +999,9 @@ export function mount(transfer = null) {
     return out;
   }
   let placeRot = 0, pointing = false; // decor placement rotation (radians) and the pointing-hand pose
-  function rotatePlacement(step) { placeRot = Math.round(wrapRot(placeRot + step) * 1000) / 1000; play('ui', .6); }
+  function rotatePlacement(step) { placeRot = snapRot(placeRot + step); play('ui', .6); } // whole 15 degree steps: 8 x 45 is exactly 0 again
+  // R on a held decoration: 45 degrees; Shift+R 15 degrees (FINE_STEP); Alt+R 45 degrees back. Same on both input lanes.
+  const rotStep = (shift, alt) => (shift ? FINE_STEP : alt ? -ROT_STEP : ROT_STEP);
 
   // ---------- Actions (host is authoritative; actor = 'host' | 'guest') ----------
   function send(data) { if (coop) data = coop.encode(data); if (data && conn?.open) { try { conn.send(data); } catch {} } } // coop: delta-encode
@@ -1759,7 +1761,7 @@ export function mount(transfer = null) {
     const wheelOpen = !!building?.menu.isOpen; // building wheel open: no hotbar swap (drops the hammer, closes the wheel) and no interact
     if (m && running && !wheelOpen) selectSlot((+m[1] + 9) % 10); // 1..9 then 0 = slot 10
     if (e.code === 'KeyE' && !e.repeat && !wheelOpen) interact();
-    if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(e.shiftKey ? FINE_STEP : e.altKey ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration (Shift+R in 15 degree steps, Alt+R back)
+    if (e.code === 'KeyR' && !e.repeat) { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(rotStep(e.shiftKey, e.altKey)); else if (!sailing?.grab()) repair(); } // [sailing] hold R at a sail to steer; R turns a held decoration (Shift+R in 15 degree steps, Alt+R back)
     if (running && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault();
   });
   on(window, 'keyup', e => {
@@ -1779,7 +1781,7 @@ export function mount(transfer = null) {
     controls = createControls({canvas, isBlocked:() => !running || uiBlocked(), sensitivity:() => options.sensitivity, motion:() => options.cameraMotion / .35,
       look:(dx, dy) => { if (!building?.menu.isOpen) look(dx, dy, 1); }, hotbarSize:HOTBAR, // building wheel steals mouse look while open
       slot:() => localBag().selectedIndex, selectSlot:i => running && selectSlot(i),
-      interact, inventory:openInventory, repair:back => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(back ? -ROT_STEP : ROT_STEP); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
+      interact, inventory:openInventory, repair:(m = {}) => { if (running && DECOR_TYPES.includes(heldKind())) rotatePlacement(rotStep(!!m.shift, !!m.alt)); else if (!sailing?.grab()) repair(); }, release:() => sailing?.release(), // [sailing] hold R at a sail to steer; R turns a held decoration
       pause:() => settingsController?.open(), buildWheelOpen:() => !!building?.menu.isOpen, // hotbar + interact are swallowed while the build wheel is open
       buildPieces:() => PIECE_ORDER.map(id => ({id, label:PIECES[id].name})), buildPick:pickBuildPiece, // pad build radial = the hammer's wheel
       menuBack:() => { if (!running) return; if (survivalUI?.isOpen) survivalUI.close(); else if (settingsController?.isOpen) settingsController.close(); }, // pad Y/Start/B: same close + relock as the keyboard

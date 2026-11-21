@@ -88,15 +88,15 @@ test('CTL-1: game.js wheel handler fine-rotates on modifier even while controls 
   assert.ok(h.indexOf('selectSlot(') > h.indexOf('if (fine)'), 'slot change only after the modifier branch returned');
 });
 
-test('CTL-1: Shift+R rotates backwards through the controls repair callback', () => {
+test('CTL-1: Shift+R reaches the controls repair callback as a fine turn (r6 K2: Shift = 15 degrees, Alt = back)', () => {
   const s = controlsSetup();
   const target = win;
   fire(target, 'keydown', { code: 'ShiftLeft', target: null }); fire(target, 'keydown', { code: 'KeyR', target: null, shiftKey: true }); s.tick();
   fire(target, 'keyup', { code: 'KeyR' }); fire(target, 'keyup', { code: 'ShiftLeft' }); s.tick();
   fire(target, 'keydown', { code: 'KeyR', target: null }); s.tick(); fire(target, 'keyup', { code: 'KeyR' }); s.tick();
   const reps = s.calls.filter(c => Array.isArray(c) && c[0] === 'repair');
-  assert.deepEqual(reps, [['repair', true], ['repair', false]]);
-  assert.match(gameSrc, /repair:back => \{ if \(running && DECOR_TYPES\.includes\(heldKind\(\)\)\) rotatePlacement\(back \? -ROT_STEP : ROT_STEP\)/);
+  assert.deepEqual(reps, [['repair', {shift:true, alt:false}], ['repair', {shift:false, alt:false}]]);
+  assert.match(gameSrc, /repair:\(m = \{\}\) => \{[^}]*if \(running && DECOR_TYPES\.includes\(heldKind\(\)\)\) rotatePlacement\(rotStep\(!!m\.shift, !!m\.alt\)\)/);
   s.done();
 });
 
