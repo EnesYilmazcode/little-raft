@@ -5,17 +5,20 @@
 
 const TAU = Math.PI * 2;
 
+// Raft-like model: the wind never changes direction and the ocean current flows with it, so an unsailed raft
+// drifts downwind at DRIFT_SPEED. A raised sail steers up to 90° off the wind (slower when wider); one sail's
+// worth only. Motors (engine.js) ignore the wind entirely.
+const DRIFT = 0.30;
 export const SAIL = Object.freeze({
-  SAIL_SPEED: 1.3,          // m/s at full wind with one sail facing downwind
-  CURRENT_X: 0, CURRENT_Z: 0.30, // constant ocean current (m/s), same as baseline debris drift (+z)
+  DRIFT_SPEED: DRIFT,       // ocean current (m/s), always along windDir: the unsailed drift
+  SAIL_MULT: 1.5,           // sail ground speed straight downwind = 1.5x drift
+  SAIL_SPEED: 1.5 * DRIFT,  // m/s, ground speed with the sail raised and heading straight downwind
+  SAIL_ABEAM: 0.2,          // at 90° off the wind the sail keeps 0.2 of its downwind multiplier
   TAU_UP: 4, TAU_DOWN: 3,   // velocity easing time-constants (s): speeding up / slowing down
   MAX_DT: 0.1,
-  WIND_RATE: 0.05,          // max wind direction change (rad/s)
-  WIND_SWING: Math.PI / 3,  // re-rolled target = windDir ± up to this ...
-  WIND_LIMIT: Math.PI * 100 / 180, // ... then clamped to ±100° of +z so wind and current roughly agree
-  WIND_STR_TAU: 20,         // windStr eases toward windStrTarget (s)
-  WIND_MIN: 0.55, WIND_MAX: 1,
-  WIND_CLOCK_MIN: 70, WIND_CLOCK_MAX: 140, WIND_CLOCK_CAP: 200,
+  WIND_SWING: 0,            // the wind never changes direction (windDir is saved and kept as is)
+  WIND_MIN: 0.55, WIND_MAX: 1, // windStr (constant per save; flags/billow only, not speed)
+  WIND_CLOCK_CAP: 200,      // legacy key, still validated so old saves round-trip
   PADDLE_IMPULSE: 0.25, PADDLE_CAP: 0.9, PADDLE_COOLDOWN: 0.8, // paddling alone never exceeds PADDLE_CAP
   V_CLAMP: 3,               // validator clamp on |vx|,|vz|
   // Offsets wrap per axis into [-W/2, W/2). Water offsets feed a float32 shader (hash noise) so they
@@ -23,8 +26,7 @@ export const SAIL = Object.freeze({
   WATER_WRAP: 65536,        // the ocean shader takes mod(uFlow, 512.) for its fine detail
   GROUND_WRAP: 105000,      // 350 * 2*ISLAND_WRAP, so wrapped islands never jump
   ISLAND_WRAP: 150,
-  MAX_SAILS: 3,
-  TARGET_CAP: 2.0,          // sail + engine target cap (m/s)
+  TARGET_CAP: 2.0,          // ground-speed target cap (m/s)
 });
 
 const DEFAULTS = Object.freeze({
@@ -60,10 +62,10 @@ export function cleanSailing(v) {
     if (fin(x)) s[k] = clamp(x, lo, hi);
   };
   num('windDir', -Infinity, Infinity); s.windDir = normAngle(s.windDir);
-  num('windTarget', -Infinity, Infinity); s.windTarget = normAngle(s.windTarget);
+  s.windTarget = s.windDir; // constant wind: an old save's mid-swing target is dropped
   num('heading', -Infinity, Infinity); s.heading = normAngle(s.heading);
   num('windStr', SAIL.WIND_MIN, SAIL.WIND_MAX);
-  num('windStrTarget', SAIL.WIND_MIN, SAIL.WIND_MAX);
+  s.windStrTarget = s.windStr;
   num('windClock', 0, SAIL.WIND_CLOCK_CAP);
   num('vx', -SAIL.V_CLAMP, SAIL.V_CLAMP);
   num('vz', -SAIL.V_CLAMP, SAIL.V_CLAMP);
@@ -76,23 +78,49 @@ export function cleanSailing(v) {
   return s;
 }
 
-/** Diminishing multi-sail bonus: 1, 1.1, 1.2 (capped at 3 sails); 0 with no sails. */
+/** Extra sails do not stack: 1 with any sail, 0 with none. */
 export function sailFactor(n) {
-  if (!fin(n) || n < 1) return 0;
-  return 1 + 0.1 * (Math.min(Math.floor(n), SAIL.MAX_SAILS) - 1);
+  return fin(n) && n >= 1 ? 1 : 0;
 }
 
-/** Target water-relative velocity from the sail; writes out.x, out.z. */
-export function sailTarget(state, nSails, out) {
+/**
+ * Sail ground-speed multiplier (x drift) for heading `off` radians off the wind:
+ * 1.5 * (0.2 + 0.8 * cos(off)) up to 90°; 0 beyond (the sail gives nothing upwind: the raft just drifts).
+ */
+export function sailMult(off) {
+  if (!fin(off)) return 0;
+  const c = Math.cos(off);
+  if (c < -1e-12) return 0;
+  return SAIL.SAIL_MULT * (SAIL.SAIL_ABEAM + (1 - SAIL.SAIL_ABEAM) * Math.max(0, c));
+}
+
+/** Ocean current (m/s): DRIFT_SPEED along the wind. Writes out.x, out.z. */
+export function currentVector(state, out) {
+  const d = state && fin(state.windDir) ? state.windDir : DEFAULTS.windDir;
+  out.x = Math.sin(d) * SAIL.DRIFT_SPEED;
+  out.z = Math.cos(d) * SAIL.DRIFT_SPEED;
+  return out;
+}
+
+/** Ground velocity the sail aims for (m/s, along the heading); zero when it gives nothing. Writes out.x, out.z. */
+export function sailGround(state, nSails, out) {
   out.x = 0; out.z = 0;
-  if (!state.raised || state.anchored) return out;
-  const f = sailFactor(nSails);
-  if (f <= 0) return out;
-  const c = Math.cos(state.heading - state.windDir);
-  if (!(c > 0)) return out;
-  const m = SAIL.SAIL_SPEED * state.windStr * c * f;
+  if (!state.raised || state.anchored || sailFactor(nSails) <= 0) return out;
+  const m = sailMult(state.heading - state.windDir) * SAIL.DRIFT_SPEED;
+  if (!(m > 0)) return out;
   out.x = Math.sin(state.heading) * m;
   out.z = Math.cos(state.heading) * m;
+  return out;
+}
+
+const _c = { x: 0, z: 0 }; // module scratch: no per-call allocation
+
+/** Target water-relative velocity from the sail (sail ground velocity minus the current); writes out.x, out.z. */
+export function sailTarget(state, nSails, out) {
+  sailGround(state, nSails, out);
+  if (out.x === 0 && out.z === 0) return out;
+  currentVector(state, _c);
+  out.x -= _c.x; out.z -= _c.z;
   return out;
 }
 
@@ -106,43 +134,32 @@ export function windVector(state, out) {
 const _t = { x: 0, z: 0 }; // module scratch: no per-call allocation
 
 /**
- * Advance the state by dt. opts = {nSails, host, rng, blockers, push}. push = optional {x,z} engine target (m/s)
- * added to the sail target (ignored while anchored; the sum is capped at SAIL.TARGET_CAP). out receives
- * dwx,dwz (water-relative raft displacement) and dgx,dgz (seabed displacement) for this step.
+ * Advance the state by dt. opts = {nSails, host, rng, blockers, push}. push = optional {x,z} engine ground velocity
+ * (m/s): the motor ignores the wind, so while it is faster than the sail it replaces the sail's ground target (no
+ * stacking; ignored while anchored; capped at SAIL.TARGET_CAP). out receives dwx,dwz (water-relative raft
+ * displacement) and dgx,dgz (seabed displacement) for this step. The wind never changes (host or guest).
  */
 export function stepSailing(state, dt, opts, out) {
   out.dwx = 0; out.dwz = 0; out.dgx = 0; out.dgz = 0;
   if (!fin(dt) || dt <= 0) return;
   if (dt > SAIL.MAX_DT) dt = SAIL.MAX_DT;
   const o = opts || DEFAULTS;
-  const CX = SAIL.CURRENT_X, CZ = SAIL.CURRENT_Z;
+  currentVector(state, _c);
+  const CX = _c.x, CZ = _c.z;
 
   if (state.paddleClock > 0) state.paddleClock = Math.max(0, state.paddleClock - dt);
 
-  // Wind wander (authoritative side only).
-  if (o.host) {
-    const rng = typeof o.rng === 'function' ? o.rng : Math.random;
-    state.windClock -= dt;
-    if (!(state.windClock > 0)) {
-      const L = SAIL.WIND_LIMIT;
-      state.windTarget = clamp(normAngle(state.windDir + (rng() * 2 - 1) * SAIL.WIND_SWING), -L, L);
-      state.windStrTarget = SAIL.WIND_MIN + rng() * (SAIL.WIND_MAX - SAIL.WIND_MIN);
-      state.windClock = SAIL.WIND_CLOCK_MIN + rng() * (SAIL.WIND_CLOCK_MAX - SAIL.WIND_CLOCK_MIN);
-    }
-    const diff = normAngle(state.windTarget - state.windDir);
-    const step = Math.min(Math.abs(diff) * 0.1, SAIL.WIND_RATE) * dt;
-    state.windDir = normAngle(state.windDir + clamp(diff, -step, step));
-    state.windStr = clamp(state.windStr + (state.windStrTarget - state.windStr) * (1 - Math.exp(-dt / SAIL.WIND_STR_TAU)),
-      SAIL.WIND_MIN, SAIL.WIND_MAX);
-  }
-
-  // Velocity eases toward the sail target (framerate independent).
-  sailTarget(state, o.nSails, _t);
+  // Velocity (water-relative) eases toward the target ground velocity minus the current (framerate independent).
+  // No sail target = 0: the raft drifts with the current.
+  sailGround(state, o.nSails, _t);
   const p = o.push;
-  if (p && !state.anchored && fin(p.x) && fin(p.z) && (p.x || p.z)) {
-    _t.x += p.x; _t.z += p.z;
+  if (p && !state.anchored && fin(p.x) && fin(p.z) && (p.x || p.z) && p.x * p.x + p.z * p.z > _t.x * _t.x + _t.z * _t.z) {
+    _t.x = p.x; _t.z = p.z;
+  }
+  if (_t.x !== 0 || _t.z !== 0) {
     const m2 = _t.x * _t.x + _t.z * _t.z, C = SAIL.TARGET_CAP;
     if (m2 > C * C) { const s = C / Math.sqrt(m2); _t.x *= s; _t.z *= s; }
+    _t.x -= CX; _t.z -= CZ;
   }
   const up = _t.x * _t.x + _t.z * _t.z > state.vx * state.vx + state.vz * state.vz;
   const k = 1 - Math.exp(-dt / (up ? SAIL.TAU_UP : SAIL.TAU_DOWN));

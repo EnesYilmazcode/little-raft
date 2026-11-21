@@ -1,7 +1,7 @@
 // Sailing lane, THREE side: drives world.sailing each frame, moves scenery relative to the raft, animates sails,
 // owns the anchor fixture, points each sail's own pennant downwind, and handles aiming (E toggles sail/anchor, hold R steers the sail).
 // See docs/cloud/sailing-spec.md. The raft never moves in x/z: the world drifts past it instead.
-import { SAIL, cleanSailing, defaultSailing, stepSailing, sailTarget, applySailAction, wrapAxis, placeUpstream, driftedOut, windVector } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
+import { SAIL, cleanSailing, defaultSailing, stepSailing, sailTarget, applySailAction, wrapAxis, placeUpstream, driftedOut, windVector, currentVector } from './sailing-core.js?build=v3-survival-ae77fa84ac2b';
 import { createSailingUI } from './sailing-ui.js?build=v3-survival-ae77fa84ac2b';
 import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 
@@ -344,7 +344,7 @@ export function createSailing(T, ctx) {
     sailTarget(s, nSails, t); windVector(s, w);
     return { ...s, nSails, steering, speed, push: { ...stepOpts.push }, motor: info.motor, grabKind, travelDir, sails: sails.length, flow: { ...flow }, flowDir: { ...flowDir }, target: t, wind: w,
       raftR, centre: { ...centre }, halfDiag, itemRange: halfDiag + ITEM_MARGIN, display: { ...disp },
-      anchorPos: anchorPos.ok ? { x: anchorPos.x, z: anchorPos.z } : null, drifters: drifters.length, current: [SAIL.CURRENT_X, SAIL.CURRENT_Z] };
+      anchorPos: anchorPos.ok ? { x: anchorPos.x, z: anchorPos.z } : null, drifters: drifters.length, current: (({ x, z }) => [x, z])(currentVector(s, {})) };
   }
   function dispose() {
     if (disposed) return; disposed = true;
