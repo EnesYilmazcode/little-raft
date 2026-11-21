@@ -16,13 +16,13 @@ paint (`brush`, `paint_*`), sleep/motor (`bed`, `motor`, `wheel`), rain (`rainba
   scraper: Object.freeze({ kind: 'scraper', name: 'Tide Scraper',      icon: 'icon-scraper', maxStack: 1, tool: false, placeholder: false }),
 ```
 Recipes (append to CONTENT_RECIPES with the file's `recipe()` helper):
-`fins {feather:3, plastic:2, rope:1}`, `airjug {plastic:3, ingot:1, rope:1}`, `goggles {glass:2, rope:1, leaf:1}`, `scraper {ingot:1, scrap:2, wood:1}`.
+`fins {feather:3, plastic:2, rope:1}`, `airjug {plastic:3, metalingot:1, rope:1}`, `goggles {glass:2, rope:1, leaf:1}`, `scraper {metalingot:1, scrap:2, wood:1}`.
 They are NOT added to CONTENT_DECOR or CONTENT_BLOCK_RADIUS, and they are not tools (no durability, TOOL_KINDS unchanged).
 
 **Research gating (reachability).** None of the ids is in items.js PROG_ITEMS, so `setOwnedElsewhere` leaves them to the Tinker's Desk.
-`learnedFrom` teaches a recipe once every cost kind is in `seen`. The kinds to study are: fins = feather+plastic+rope; airjug = plastic+ingot+rope;
-goggles = glass+rope+leaf; scraper = ingot+scrap+wood. Every one is already an ingredient of an existing recipe, so `researchableKinds` already accepts it.
-`ingot`/`glass` come from the research-gated kiln, and `feather` from the Nest Box (a starter item). `storage-research.js` `load()` re-runs
+`learnedFrom` teaches a recipe once every cost kind is in `seen`. The kinds to study are: fins = feather+plastic+rope; airjug = plastic+metalingot+rope;
+goggles = glass+rope+leaf; scraper = metalingot+scrap+wood. Every one is already an ingredient of an existing recipe, so `researchableKinds` already accepts it.
+`metalingot`/`glass` come from the research-gated kiln, and `feather` from the Nest Box (a starter item). `storage-research.js` `load()` re-runs
 `learnedFrom(st.seen, c.learned)` (line 132), so an old save that has already studied those kinds learns the gear on load. Nothing to add.
 Guard test: every cost kind of the 4 recipes is in `ingredientKinds()` minus the 4 gear ids (no gear needs another gear).
 
