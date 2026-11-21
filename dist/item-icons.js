@@ -33,12 +33,15 @@ let hostGL = null, rt = null, pixels = null; // shared main renderer: icons draw
 export function setIconRenderer(r) { if (r === hostGL) return; if (gl && gl !== hostGL) release(); hostGL = r || null; }
 
 // Per-kind display pose (radians) so long tools read diagonally like a hotbar icon.
-const POSE = {
-  hook: [0, 0.7, -0.2], hammer: [0, 0.5, -0.75], fishingrod: [0, 0.3, -0.8],
+export const POSE = {
+  hook: [0, 0.7, -0.2], hammer: [0, 1.57, -0.75], fishingrod: [0, 1.57, -0.75], // hammer head and rod reel side-on
   plastic: [0, 0.4, 0.5], fish: [0, -0.4, 0.15], rope: [0.9, 0, 0.2],
   wood: [0, -0.35, 0.12], leaf: [0.5, 0.4, 0], scrap: [0.3, 0.4, 0],
   net: [0.55, 0.5, 0], bench: [0, 0.5, 0], crate: [0, 0.5, 0],
 };
+// Icon-only thickening of long, thin procedural tools (length on local Y): scale X/Z so the
+// silhouette still reads at hotbar size. The held model is untouched.
+export const ICON_FATTEN = { hammer: 1.4, fishingrod: 2.2 };
 // models.js tools stand upright (grip at origin, working end +Y): tilt them onto the diagonal.
 const PROVIDER_POSE = { hook: [0, 0.5, -0.75] };
 // Per-kind framing for models.js items: pose, view direction, crop of the projected bounds
@@ -159,7 +162,8 @@ function renderKind(kind) {
   const { model, own } = resolveIconModel(kind);
   if (!model) return null;
   const pivot = new T.Group();
-  pivot.add(model);
+  const fat = own ? ICON_FATTEN[kind] : 0;
+  if (fat) { const g = new T.Group(); g.scale.set(fat, 1, fat); g.add(model); pivot.add(g); } else pivot.add(model);
   const f = (!own && FRAME[kind]) || {};
   const p = f.pose || (own ? null : PROVIDER_POSE[kind]) || POSE[kind]; if (p) pivot.rotation.set(p[0], p[1], p[2]);
   pivot.updateMatrixWorld(true);

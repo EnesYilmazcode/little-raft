@@ -3,6 +3,7 @@
 // Run: node --test tests/craft-ux.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 const base = process.env.RAFT_DIST ? pathToFileURL(resolve(process.env.RAFT_DIST) + '/').href : new URL('../dist/', import.meta.url).href;
@@ -72,7 +73,7 @@ test('sourceOf: gathered items say where they float, crafted ones link to their 
   assert.equal(rope.recipe, 'rope');
   assert.equal(rope.tag, 'craft it');
   assert.equal(rope.how, 'Craft it from 2 Palm Leaf.');
-  assert.equal(CB.sourceOf('hammer', recipes, name).how, `Craft it from 4 ${name('wood')} + 2 Rope.`);
+  assert.equal(CB.sourceOf('hammer', recipes, name).how, `Craft it from 4 ${name('wood')} + 2 ${name('rope')}.`); // wood is named Plank in the content lane
   assert.equal(CB.sourceOf('mystery', recipes, name), null);
   assert.equal(CB.sourceOf('wood', null).recipe, null);
 });
@@ -127,4 +128,76 @@ test('sourceOf: every item and recipe ingredient has a source the player can act
     assert.ok(s && s.tag && s.how, `${q.kind} (in ${r.id}) has a source`);
   }
   for (const k of Object.keys(ITEM_INFO)) assert.ok(CB.sourceOf(k, recipes), `${k} has a source`);
+});
+
+const { ITEMS } = await import(new URL('items.js', base));
+const book = () => CB.catalogueRecipes(RECIPES, ITEMS);
+const nameOfItem = k => ITEMS[k]?.name ?? ITEM_INFO[k]?.name ?? k;
+
+test('holdLabel counts up while held and says what was made on release', () => {
+  assert.equal(CB.holdLabel(1, 4), 'Crafting 1 / 4');
+  assert.equal(CB.holdLabel(3, 4), 'Crafting 3 / 4');
+  assert.equal(CB.holdLabel(5, 4), 'Crafting 5 / 5', 'never shows more done than the total');
+  assert.equal(CB.holdLabel(1, 1), 'Crafting', 'a single craft has no counter');
+  assert.equal(CB.holdLabel(4, 0, false), 'Crafted 4');
+  assert.equal(CB.holdLabel(4, 0, false, 3), 'Crafted 12', 'counts items, not crafts (nail makes 3)');
+  assert.equal(CB.holdLabel(0, 0, false), '');
+  assert.equal(CB.holdLabel('x', null, false), '');
+});
+
+test('catalogueRecipes: hand recipes plus station recipes, hand ones win', () => {
+  const all = book();
+  const ids = all.map(r => r.id);
+  assert.equal(new Set(ids).size, ids.length, 'no duplicate ids');
+  for (const id of Object.keys(RECIPES)) assert.ok(ids.includes(id), `${id} kept`);
+  const glass = all.find(r => r.id === 'glass');
+  assert.ok(glass, 'station recipe included');
+  assert.equal(glass.station, 'smelter');
+  assert.deepEqual(glass.reqs.map(q => q.kind), ['sand']);
+  const rope = all.find(r => r.id === 'rope');
+  assert.equal(rope.station, null);
+  assert.deepEqual(rope.reqs, [{ kind: 'leaf', count: 2 }]);
+  assert.deepEqual(CB.catalogueRecipes(null, null), []);
+  assert.deepEqual(CB.catalogueRecipes({ a: null }, { b: { name: 'B' } }), [], 'skips entries without a recipe');
+});
+
+test('tipFacts: tooltips say where to get an item and what it goes into', () => {
+  const all = book();
+  const wood = CB.tipFacts('wood', all, nameOfItem);
+  assert.equal(wood.get, CB.ITEM_SOURCE.wood.how);
+  assert.ok(wood.uses.length <= 4);
+  assert.match(wood.uses.at(-1), /^\+\d+ more$/, 'wood goes into many recipes, so the list is cut short');
+  const leaf = CB.tipFacts('leaf', all, nameOfItem, 99);
+  assert.ok(leaf.uses.includes('Rope'));
+  const sand = CB.tipFacts('sand', all, nameOfItem);
+  assert.ok(sand.uses.some(u => /\(Smelter\)$/i.test(u)), 'station recipes name their station: ' + sand.uses);
+  const rope = CB.tipFacts('rope', all, nameOfItem);
+  assert.equal(rope.get, 'Craft it from 2 ' + nameOfItem('leaf') + '.');
+  assert.deepEqual(CB.tipFacts('mystery', all), { get: null, uses: [] });
+  assert.deepEqual(CB.tipFacts('wood', null), { get: CB.ITEM_SOURCE.wood.how, uses: [] });
+  // Every catalogue item gets at least one useful line.
+  for (const k of Object.keys(ITEMS)) {
+    const f = CB.tipFacts(k, all, nameOfItem);
+    assert.ok(f.get || f.uses.length, `${k} has a get-it or used-in line`);
+  }
+});
+
+const src = f => readFileSync(new URL(f, base), 'utf8');
+
+test('recipe rows keep their order while the bag is open (no jumping under the pointer)', () => {
+  const ui = src('survival-ui.js');
+  const paint = ui.slice(ui.indexOf('function paintRecipes'), ui.indexOf('function togglePin'));
+  assert.ok(paint.length > 100, 'found paintRecipes');
+  assert.doesNotMatch(paint, /reorderRecipes\(/, 'live repaints do not reorder');
+  assert.match(ui, /render\(true\);\s*reorderRecipes\(\);/, 'the order is set when the bag opens');
+  assert.match(ui, /activeTab = id; pickId = null; (?:pickedByUser = false; )?reorderRecipes\(\)/, 'and when the tab changes');
+});
+
+test('item tooltips anchor beside the element instead of trailing the pointer', () => {
+  const tt = src('item-tooltips.js');
+  const place = tt.slice(tt.indexOf('function place()'), tt.indexOf('function show('));
+  assert.match(place, /anchorTip\(cur\.el\.getBoundingClientRect\(\)/);
+  assert.doesNotMatch(tt, /'pointermove'/, 'no pointer-follow placement');
+  assert.match(tt, /on\(root, 'close', hide, \{ capture: true \}\)/, 'hidden when the bag closes');
+  assert.match(tt, /tipFacts\(/, 'shows where to get it and what it is used in');
 });
