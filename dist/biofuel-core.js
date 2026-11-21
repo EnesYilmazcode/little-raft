@@ -14,6 +14,7 @@ export const TEXT = Object.freeze({
   reach: 'Step a little closer', missing: 'That spot has no refiner', notank: 'That spot has no fuel tank',
   refuse: 'That does not go in the refiner', full: 'The refiner is full', empty: 'Nothing ready yet', bagfull: 'Your bag is full',
   nojug: 'Hold a Biofuel Jug', tankfull: 'The tank is full', tankempty: 'The tank is empty', bad: 'That does not work here',
+  many: 'Too many busy refiners and tanks', busy: 'Wait for the refiner to finish', // review: caps; removal refusal
 });
 
 const isInt = Number.isInteger;
@@ -123,6 +124,7 @@ export function applyBioAction(st, a, actor, bag, env) {
     if (have < need) return { ok: false, reason: 'nothing', text: `Need ${need - have} more ${NAMES[a.item]}` };
     const e = st.f[key] ?? blank();
     if (e.q >= BIO.QUEUE) return no('full');
+    if (!st.f[key] && Object.keys(st.f).length >= BIO.MAX_REFINERS) return no('many'); // review: cleanSlice would drop it on the next load
     if (!scratch.remove(a.item, need)) return { ok: false, reason: 'nothing', text: `Need ${need} more ${NAMES[a.item]}` };
     commit(bag, scratch);
     e.q++; st.f[key] = e; st.r++;
@@ -143,6 +145,7 @@ export function applyBioAction(st, a, actor, bag, env) {
     if (total < 1) return no('nojug');
     const k = st.k[key] ?? 0;
     if (k >= BIO.TANK) return no('tankfull');
+    if (k === 0 && Object.keys(st.k).length >= BIO.MAX_TANKS) return no('many'); // review: cleanSlice would drop it on the next load
     const sel = bag.slots[bag.selectedIndex], held = sel && sel.kind === 'biofuel' ? sel.count : total;
     const n = Math.min(held, total, BIO.TANK - k);
     if (!scratch.remove('biofuel', n)) return no('nojug');
@@ -157,6 +160,26 @@ export function applyBioAction(st, a, actor, bag, env) {
   commit(bag, scratch);
   delete st.k[key]; st.r++;
   return { ok: true, text: `+ ${k} Biofuel Jug`, n: k };
+}
+
+/**
+ * Removal guard (review, item loss): call in the SAME host action that removes the refiner / tank decor at key.
+ * Tray or tank jugs go into the bag all-or-nothing; a refiner with queued batches refuses (the slice does not
+ * record which organic kinds were loaded, so they cannot be refunded exactly). Nothing stored -> ok, no change.
+ * Returns {ok, reason?, text, n}. A refusal changes nothing; the removal must then be refused too.
+ */
+export function refundBiofuel(st, key, bag) {
+  const e = st.f[key], k = st.k[key] ?? 0;
+  if (e && e.q > 0) return { ok: false, reason: 'busy', text: TEXT.busy, n: 0 };
+  const n = (e ? e.n : 0) + k;
+  if (n === 0) { if (e) { delete st.f[key]; st.r++; } return { ok: true, text: '', n: 0 }; }
+  if (!bag || !Array.isArray(bag.slots) || typeof bag.snapshot !== 'function') return { ok: false, reason: 'bagfull', text: TEXT.bagfull, n: 0 };
+  let scratch;
+  try { scratch = new bag.constructor(bag.snapshot()); } catch { return { ok: false, reason: 'bad', text: TEXT.bad, n: 0 }; }
+  if (scratch.add('biofuel', n) !== 0) return { ok: false, reason: 'bagfull', text: TEXT.bagfull, n: 0 };
+  commit(bag, scratch);
+  delete st.f[key]; delete st.k[key]; st.r++;
+  return { ok: true, text: `+ ${n} Biofuel Jug`, n };
 }
 
 /** Sorted "x,z" keys of the motor decor (same order as engine.js motorKeys). */

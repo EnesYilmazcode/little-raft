@@ -2,11 +2,12 @@
 // Host-authoritative actions 'bio.*'. The refiner turns organic scraps into Biofuel Jugs (no wood, no fire);
 // the fuel tank stores jugs and, once a second on the host, pours a whole jug into each running Little Motor
 // next to it (engine.pour). Motor fuel itself stays only in ext.engine. Pure rules live in biofuel-core.js.
-import { BIO, ORGANIC, NAMES, keyOf, blank, cleanSlice, sliceOf, stepAll, progress, applyBioAction, topUp } from './biofuel-core.js?build=v3-survival-ae77fa84ac2b';
+import { BIO, ORGANIC, NAMES, keyOf, blank, cleanSlice, sliceOf, stepAll, progress, applyBioAction, topUp, refundBiofuel } from './biofuel-core.js?build=v3-survival-ae77fa84ac2b';
 import { buildRefiner, buildTank, BULB } from './biofuel-model.js?build=v3-survival-ae77fa84ac2b';
 
 export const OLD_HOST = 'Your friend’s raft doesn’t have a biofuel refiner yet';
 const MAX_SHOWN = 164;
+const NEAR2 = 14 * 14; // bubbles animate only within 14 m of the player (raft-local, squared)
 const jugs = n => n + (n === 1 ? ' jug' : ' jugs');
 
 export function createBiofuel(ctx, peer) {
@@ -90,9 +91,9 @@ export function createBiofuel(ctx, peer) {
     }
     const d = dt > 0 && dt < 1 ? dt : 0;
     clock += d;
-    const old = oldHost();
+    const old = oldHost(), p = ctx.physics, px = p ? p.x : 0, pz = p ? p.z : 0;
     for (let i = 0; i < shown; i++) {
-      const b = groups[i].userData.bio;
+      const g = groups[i], b = g.userData.bio;
       if (gTank[i]) {
         const goal = old ? 0 : (st.k[gKeys[i]] ?? 0) / BIO.TANK, cur = b.cur ?? goal;
         if (b.cur === undefined || cur !== goal) {
@@ -105,7 +106,8 @@ export function createBiofuel(ctx, peer) {
       if (b.n !== e.n) { b.n = e.n; for (let j = 0; j < b.jugs.length; j++) b.jugs[j].visible = j < e.n; }
       const goal = .15 + .85 * progress(e), cur = b.cur ?? goal;
       if (b.cur === undefined || cur !== goal) { b.cur = b.cur === undefined || goal < cur - .3 ? goal : ease(cur, goal, .6, d); b.liquid.scale.y = b.cur; }
-      const busy = e.q > 0 && e.n < BIO.TRAY;
+      const ddx = g.position.x - px, ddz = g.position.z - pz;
+      const busy = e.q > 0 && e.n < BIO.TRAY && (!p || ddx * ddx + ddz * ddz <= NEAR2); // review: far refiners skip the bubble work
       if (busy || b.bub) {
         b.bub = busy;
         for (let j = 0; j < b.bubbles.length; j++) {
@@ -222,6 +224,16 @@ export function createBiofuel(ctx, peer) {
   return {
     name: 'biofuel',
     serialize, load, action, interact, prompt, update, debug,
+    // Review (item loss): game.js has no decor removal today (the hammer removes pieces only; a shark-broken tile takes
+    // its decor and contents, like chests). Any future removal must call this in the same host action: null = removed
+    // stock refunded (or nothing stored), a string = refuse the removal and show it. Host only; guests always refuse.
+    beforeRemove(type, x, z, actor, bag) {
+      if (type !== 'refiner' && type !== 'fueltank') return null;
+      if (!host()) return 'Ask the host to do that';
+      const r = refundBiofuel(st, keyOf(x, z), bag ?? ctx.actorBag?.(actor));
+      if (r.ok && r.n > 0) ctx.emit?.({ kind: 'loot', text: r.text }, actor);
+      return r.ok ? null : r.text;
+    },
     decorModel(type) {
       if (!T) return null;
       if (type === 'refiner') { refModel ??= buildRefiner(T); dirty = true; return refModel.instance(); }

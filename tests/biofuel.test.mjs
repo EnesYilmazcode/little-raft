@@ -325,3 +325,27 @@ test('module: visuals follow the slice (jugs, liquid, tank level)', () => {
   assert.equal(t.userData.bio.level.scale.y, .25);
   mod.dispose();
 });
+
+// Review: removal never loses items, and new entries past the save caps are refused (cleanSlice would drop them).
+test('refundBiofuel: all-or-nothing jugs, busy refiner refuses, empty is a no-op', () => {
+  const { refundBiofuel } = B;
+  const st = cleanSlice({ f: { '1,0': { q: 0, t: 0, n: 3 }, '4,0': { q: 1, t: 5, n: 2 } }, k: { '2,0': 5 } });
+  const full = nearlyFull(0), s0 = deep(st), b0 = deep(full.snapshot());
+  assert.equal(refundBiofuel(st, '1,0', full).reason, 'bagfull'); assert.deepEqual(deep(st), s0); assert.deepEqual(deep(full.snapshot()), b0);
+  assert.equal(refundBiofuel(st, '4,0', bagFrom([])).reason, 'busy'); assert.deepEqual(deep(st), s0);
+  const bag = bagFrom([]);
+  assert.deepEqual(refundBiofuel(st, '1,0', bag), { ok: true, text: '+ 3 Biofuel Jug', n: 3 });
+  assert.deepEqual(refundBiofuel(st, '2,0', bag), { ok: true, text: '+ 5 Biofuel Jug', n: 5 });
+  assert.equal(bag.count('biofuel'), 8); assert.equal(st.f['1,0'], undefined); assert.equal(st.k['2,0'], undefined);
+  const r = st.r; assert.deepEqual(refundBiofuel(st, '9,9', bag), { ok: true, text: '', n: 0 }); assert.equal(st.r, r);
+});
+test('caps: a new refiner or tank past MAX is refused, existing ones still work', () => {
+  const st = fresh();
+  for (let i = 0; i < BIO.MAX_TANKS; i++) st.k['k' + i] = 1;
+  const bag = bagFrom([{ kind: 'biofuel', count: 2 }]), before = deep(st);
+  assert.equal(act(st, { kind: 'bio.fill', x: 2, z: 0 }, bag).reason, 'many'); assert.deepEqual(deep(st), before); assert.equal(bag.count('biofuel'), 2);
+  for (let i = 0; i < BIO.MAX_REFINERS; i++) st.f['f' + i] = { q: 1, t: 0, n: 0 };
+  assert.equal(act(st, { kind: 'bio.load', x: 1, z: 0, item: 'coconut' }, bagFrom([{ kind: 'coconut', count: 1 }])).reason, 'many');
+  st.f['1,0'] = { q: 1, t: 0, n: 0 };
+  assert.ok(act(st, { kind: 'bio.load', x: 1, z: 0, item: 'coconut' }, bagFrom([{ kind: 'coconut', count: 1 }])).ok);
+});
