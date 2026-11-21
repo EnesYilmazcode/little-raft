@@ -245,7 +245,7 @@ export function createHands(T, { modelFactory = null } = {}) {
   // ---------------- animation state (weights only; transforms are rebuilt every frame) ----------------
   // dip: 0 = arms up, 1 = lowered out of view. A swap lowers, switches model/pose at the bottom, raises.
   const st = { walkW: 0, reelW: 0, outW: 0, toolW: 1, chargeS: 0, releaseCharge: 0.6, lastCasting: 0, spool: 0, t: 0,
-    shown: null, target: null, poseOverride: null, ptR: 0, ptL: 0, lowering: false, dip: 1, down: 1, raise: 1, lagX: 0, lagY: 0, lastYaw: null, lastPitch: 0 };
+    shown: null, target: null, poseOverride: null, pendingPose: null, ptR: 0, ptL: 0, lowering: false, dip: 1, down: 1, raise: 1, lagX: 0, lagY: 0, lastYaw: null, lastPitch: 0 };
   const qOff = new T.Quaternion(), eul = new T.Euler(0, 0, 0, 'XYZ'), qSwing = new T.Quaternion(), AX = V(1, 0, 0);
   const last = {};
   setPose(L.H, 'grip');
@@ -268,6 +268,7 @@ export function createHands(T, { modelFactory = null } = {}) {
     const next = st.shown && mountFor(st.shown);
     if (next) next.pivot.visible = st.shown !== 'hook' || st.outW < 0.5;
     R.pose.visible = st.shown !== null;
+    st.poseOverride = st.pendingPose;  // the new item comes up in its own pose
     st.raise = 0; st.lowering = false;
   }
 
@@ -295,7 +296,11 @@ export function createHands(T, { modelFactory = null } = {}) {
       if (!st.lowering) { st.lowering = true; st.dip = Math.sqrt(clamp01(st.down)); }
       st.dip = Math.min(1, st.dip + dt / 0.13);
       if (st.dip >= 1) swapNow();
+    } else if (st.lowering) {  // swap cancelled (switched back mid-lower): ease back up from where the arms stopped
+      st.dip = Math.max(0, st.dip - dt / 0.13);
+      if (st.dip <= 0) { st.lowering = false; st.raise = 1; }
     } else if (st.raise < 1) st.raise = Math.min(1, st.raise + dt / 0.26);
+    if (st.shown === st.target) st.poseOverride = st.pendingPose;  // a pose for the next item waits for its swap
     const down = st.down = st.shown === null ? 1 : st.lowering ? st.dip * st.dip : 1 - easeOutBack(st.raise);
     root.visible = st.shown !== null || st.target !== null;
     const pose = poseOf(st.shown), pointer = applyFingers(pose);
@@ -409,7 +414,7 @@ export function createHands(T, { modelFactory = null } = {}) {
   return {
     group: root, handTip, update, dispose, state: last,
     setHeld(kind) { st.target = kind ? String(kind) : null; },
-    setPose(pose) { st.poseOverride = POSES.includes(pose) ? pose : null; },
+    setPose(pose) { st.pendingPose = POSES.includes(pose) ? pose : null; },
     setModelFactory(fn) {
       factory = typeof fn === 'function' ? fn : null;
       const shown = st.shown; dropMounts();
