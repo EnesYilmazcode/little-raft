@@ -30,8 +30,9 @@ It keeps the contract that `dist/game.js` already uses:
 | `ocean.dispose()` (line 1164)                       | yes | same; also frees the SDF texture                                      |
 
 New methods (all optional to call): `setRaft`, `setRaftPose`, `setFloaters`, `footprint(object3d)`,
-`setBobber(position | null)`, and `setAmp(a)`. The ocean uniforms `uFloaters` and `uRaft` (vec3) from
-earlier drafts of this file are gone (now `uFloatA`/`uFloatB` and a vec4 `uRaft`); `game.js` never used them.
+`setBobber(position | null)`, and `setAmp(a)`. The uniforms `uFloaters`, `uDeckLift` and the vec3 `uRaft`
+from earlier drafts of this file are gone (now the `tFloatMap` texture, the `deckLift` option baked by
+`setRaft`, and a vec4 `uRaft`); `game.js` never used them.
 
 The import line stays as it is:
 
@@ -76,21 +77,22 @@ loop closes (after line 768) and before the function's closing brace, add:
 
 ```js
     floaters.length = 0; for (const m of itemMeshes.values()) if (m.visible) floaters.push(ocean.footprint?.(m) ?? [m.position.x, m.position.z, .35]);
-    ocean.setFloaters?.(floaters, camera.position.x, camera.position.z);
     ocean.setBobber?.(hookMesh?.visible ? hookMesh.position : null);
+    ocean.setFloaters?.(floaters, camera.position.x, camera.position.z);
 ```
 
 `footprint(m)` measures the item model's local bounding box once (cached in `m.userData`) and
 returns a reused `[x, z, r, hx, hz]` capsule: the long horizontal side, turned by the mesh's current
 rotation and scale, so a plank gets an elongated band of foam and a jug a small round one. It
-assumes `itemsGroup` is untransformed, which it is (line 292). `setFloaters` keeps the 16 items
-nearest the camera. Footprints plus the pick cost about 0.02 to 0.1 ms a frame with 30 items. It runs
-on host and guest, because it uses the mesh positions that both already update.
+assumes `itemsGroup` is untransformed, which it is (line 292). `setFloaters` stamps every item (no
+slot limit) into a 64 m distance map centred on the camera; footprints plus stamping cost about 0.02
+to 0.1 ms a frame with 30 items. It runs on host and guest, because it uses the mesh positions that
+both already update.
 
-`setBobber` gets the hook mesh from the previous frame (`updateHook` runs right after
-`updateItems`, line 830), which is invisible at this scale. The ocean decides "on the water" itself
-(within .25 m of `getHeight`), so the flying and reeled-in hook get no foam. While it floats it gets a
-small collar and ripple rings, plus one splash ring from the moment it lands.
+`setBobber` must come before `setFloaters`, which stamps the bobber into the same map. It gets the
+hook mesh from the previous frame (`updateHook` runs right after `updateItems`, line 830), which is
+invisible at this scale. The ocean decides "on the water" itself (within .25 m of `getHeight`), so the
+flying and reeled-in hook get no foam. While it floats it gets lace and ripple rings like an item.
 
 ## 4. Verify
 
