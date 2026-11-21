@@ -53,10 +53,19 @@ test('single spike or ignored hitches do not step down', () => {
   run(q, 10, 3000);
   q.tick(240); // one big frame
   run(q, 10, 3000);
-  for (let i = 0; i < 40; i++) q.tick(1000); // >250 ms samples ignored
+  for (let i = 0; i < 40; i++) q.tick(1500); // >1000 ms samples ignored
   q.tick(NaN); q.tick(-5); q.tick(0);
   run(q, 10, 1000);
   assert.equal(q.level, 0);
+});
+
+test('very slow frames (>250 ms) are clamped, not dropped, so the scaler still steps down', () => {
+  const { q } = make();
+  for (let i = 0; i < 10; i++) q.tick(600);
+  assert.ok(q.ema >= 200 && q.ema <= 250, `ema ${q.ema}`);
+  assert.equal(q.level, 1, 'stepped down after 2 s of clamped samples');
+  for (let i = 0; i < 200; i++) q.tick(600);
+  assert.equal(q.level, q.levels.length - 1, 'reaches the floor');
 });
 
 test('shadow map shrink disposes map; bottom level disables castShadow', () => {

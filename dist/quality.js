@@ -10,7 +10,8 @@ export const PRESETS = Object.freeze({
 
 export const QUALITY_CONSTANTS = Object.freeze({
   ALPHA: 0.05,            // EMA weight of each new sample
-  MAX_SAMPLE_MS: 250,     // longer frames (tab switch, GC, load hitch) are ignored
+  MAX_SAMPLE_MS: 250,     // longer frames count as this long (a very slow machine still steps down)
+  DROP_SAMPLE_MS: 1000,   // longer than this (tab switch, load hitch) is ignored
   SLOW_MS: 20,            // EMA above this...
   DOWN_AFTER_MS: 2000,    // ...for this long steps quality down
   FAST_MS: 17.5,          // EMA below this...
@@ -94,8 +95,9 @@ export function createQuality({ renderer, sun, dpr = globalThis.devicePixelRatio
   }
 
   function tick(rawMs) {
-    const ms = Number(rawMs);
-    if (!Number.isFinite(ms) || ms <= 0 || ms > C.MAX_SAMPLE_MS) return false;
+    let ms = Number(rawMs);
+    if (!Number.isFinite(ms) || ms <= 0 || ms > C.DROP_SAMPLE_MS) return false;
+    ms = Math.min(ms, C.MAX_SAMPLE_MS);
     time += ms;
     ema = ema == null ? ms : ema + C.ALPHA * (ms - ema);
     slowFor = ema > C.SLOW_MS ? slowFor + ms : 0;
