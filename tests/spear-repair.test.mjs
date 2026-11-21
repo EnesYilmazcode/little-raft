@@ -4,7 +4,7 @@ import { ITEMS, SPEAR_DAMAGE, wearPerUse, toolRole } from '../dist/items.js';
 import { RECIPES, Bag } from '../dist/inventory-state.js';
 import { ITEM_ICONS } from '../dist/item-svg.js';
 import { isSpear, spearDamage, canThrust, thrust, wearSpearSlot, SPEAR_COOLDOWN, SPEAR_REACH } from '../dist/spear.js';
-import { tileHpOf, damagedTile, repairTile, repairedHp, hpBarHtml, TILE_MAX_HP, REPAIR_HP, TILE_REPAIR_COST } from '../dist/repair.js';
+import { tileHpOf, damagedTile, repairTile, repairedHp, hpBarText, TILE_MAX_HP, REPAIR_HP, TILE_REPAIR_COST } from '../dist/repair.js';
 
 const bagWith = (items) => {
   const b = new Bag({ slots: new Array(28).fill(null), selected: 0 });
@@ -98,8 +98,8 @@ test('repair costs 1 plank, adds 50 HP and caps at 100', () => {
   assert.deepEqual(repairTile(fresh, 0, 0, bagWith({ wood: 1 })), { ok: false, reason: 'full' }, 'no tileHp map yet');
 });
 
-test('HP bar markup shows the rounded percentage', () => {
-  assert.match(hpBarHtml(42.4), /42%$/);
-  assert.match(hpBarHtml(200), /100%$/);
-  assert.match(hpBarHtml(NaN), /0%$/);
+test('HP bar text shows 10 cells and the rounded percentage', () => {
+  assert.equal(hpBarText(42.4), '\u25A0'.repeat(4) + '\u25A1'.repeat(6) + ' 42%');
+  assert.equal(hpBarText(200), '\u25A0'.repeat(10) + ' 100%');
+  assert.equal(hpBarText(NaN), '\u25A1'.repeat(10) + ' 0%');
 });

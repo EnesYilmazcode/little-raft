@@ -53,10 +53,9 @@ export function repairTile(world, x, z, bag) {
   return { ok: true, hp };
 }
 
-/** Small inline HP bar + percentage for the context prompt (trusted static markup). */
-export function hpBarHtml(hp) {
+/** Small text HP bar + percentage for the crosshair prompt (plain text, 10 cells): "■■■□□□□□□□ 30%". */
+export function hpBarText(hp) {
   const pct = Math.round(Math.min(TILE_MAX_HP, Math.max(0, Number(hp) || 0)));
-  const col = pct > 60 ? '#8fd18a' : pct > 30 ? '#ffbd66' : '#ee8e75';
-  return `<span style="display:inline-block;vertical-align:middle;width:46px;height:6px;margin:0 6px;border-radius:3px;background:rgba(0,0,0,.35);overflow:hidden">`
-    + `<span style="display:block;height:100%;width:${pct}%;background:${col}"></span></span>${pct}%`;
+  const full = Math.round(pct / 10);
+  return '\u25A0'.repeat(full) + '\u25A1'.repeat(10 - full) + ' ' + pct + '%';
 }
