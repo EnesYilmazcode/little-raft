@@ -19,6 +19,7 @@ const SIZE = 128;
 // Item ids whose name differs from the models.js kind.
 const MODEL_ALIAS = { fishingrod: 'rod' };
 const RELEASE_MS = 2500;
+const OUTLINE = ['2.5px 0', '-2.5px 0', '0 2.5px', '0 -2.5px'].map(o => `drop-shadow(${o} 0 #3b2a17)`).join(' ');
 
 const cache = new Map();   // kind -> object/data URL ('' = failed, use the SVG)
 const queued = new Set();  // background warm-up (warmIcons)
@@ -103,7 +104,7 @@ function ensureGL() {
     gl.setSize(SIZE, SIZE, false);
     gl.setClearColor(0x000000, 0);
     gl.toneMapping = T.ACESFilmicToneMapping;
-    gl.toneMappingExposure = 1.15;
+    gl.toneMappingExposure = 1.3;
   } catch (e) { failed = true; gl = null; console.warn('item icons: no WebGL, using flat icons', e); return false; }
   if (!scene) {
     scene = new T.Scene();
@@ -170,17 +171,22 @@ function renderKind(kind) {
     x0 = Math.min(x0, _v.x); x1 = Math.max(x1, _v.x); y0 = Math.min(y0, _v.y); y1 = Math.max(y1, _v.y);
   }
   if (f.crop) { const w = x1 - x0, h = y1 - y0, c = f.crop; x1 = x0 + w * c[1]; x0 += w * c[0]; y1 = y0 + h * c[3]; y0 += h * c[2]; }
-  const half = Math.max(x1 - x0, y1 - y0) * 0.5 * 1.06, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const half = Math.max(x1 - x0, y1 - y0) * 0.5 * 1.1, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
   camera.left = cx - half; camera.right = cx + half; camera.top = cy + half; camera.bottom = cy - half;
   camera.near = r; camera.far = r * 7;
   camera.updateProjectionMatrix();
   scene.add(pivot);
   let out = null;
   try {
-    gl.toneMappingExposure = f.exp || 1.15;
+    gl.toneMappingExposure = f.exp || 1.3;
     gl.render(scene, camera);
     out = document.createElement('canvas'); out.width = out.height = SIZE;
-    out.getContext('2d').drawImage(gl.domElement, 0, 0);       // GPU copy; the PNG encode happens later, async
+    const ctx = out.getContext('2d');
+    // Dark outline (4 hard drop-shadows) so the silhouette reads on tan slots, like Raft's bold icons.
+    // Done once per icon (cached); browsers without ctx.filter just draw the plain render.
+    try { if ('filter' in ctx) ctx.filter = OUTLINE; } catch {}
+    ctx.drawImage(gl.domElement, 0, 0);                          // GPU copy; the PNG encode happens later, async
+    try { if ('filter' in ctx) ctx.filter = 'none'; } catch {}
   } catch (e) { out = null; console.warn('item icon render failed', kind, e); }
   scene.remove(pivot);
   if (own) freeModel(model);
