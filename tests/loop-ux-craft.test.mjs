@@ -158,7 +158,7 @@ test('layout: vertical category column, tall recipe list with a scroll cue, deta
   assert.match(ui, /class="sv-tabs" role="tablist" aria-label="Recipe categories" aria-orientation="vertical"/);
   assert.match(ui, /#inventory \.sv-tabs\{display:flex;flex-direction:column;/);
   assert.match(ui, /e\.code === 'ArrowDown' \|\| e\.code === 'ArrowRight'/, 'up/down (and left/right) move between categories');
-  assert.match(ui, /<div class="sv-rcol"><div class="sv-rlist" role="tabpanel"><\/div><\/div>/);
+  assert.match(ui, /<div class="sv-rcol"><input type="search" class="sv-rsearch"[^>]*><div class="sv-rlist" role="tabpanel"><\/div><p class="sv-rnone"[^>]*><\/p><\/div>/);
   assert.match(ui, /#inventory \.sv-rcol\.sv-more::after\{opacity:1\}/, 'bottom fade while more rows are below');
   assert.match(ui, /#inventory \.sv-craft\{flex:none;box-sizing:border-box;height:var\(--ph\);/, 'fixed-height crafting column: tabs never resize the panel');
   const order = ['class="sv-craft"', 'class="sv-side"', 'class="sv-detail"', 'class="sv-bag"'].map(k => ui.indexOf(k));
