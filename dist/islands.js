@@ -15,25 +15,27 @@ import { PLAYER_CONSTANTS } from './player-physics.js?build=v3-survival-ae77fa84
 export * from './islands-layout.js?build=v3-survival-ae77fa84ac2b';
 
 const EYE = PLAYER_CONSTANTS.EYE_OFFSET;
-const KINDS = ['palm', 'bush', 'rock', 'sand'];
-const KIND_INDEX = { palm: 0, bush: 1, rock: 2, sand: 3 };
-const MAX_PER_KIND = [3, 4, 4, 3];
+const KINDS = ['palm', 'bush', 'rock', 'sand', 'fruit']; // [fruit]
+const KIND_INDEX = { palm: 0, bush: 1, rock: 2, sand: 3, fruit: 4 };
+const MAX_PER_KIND = [3, 4, 4, 3, 2];
+const FRUIT = 4;
 // Pick spheres per kind: centre height above the node base and radius (times node scale). Palms
 // instead use a trunk capsule (PALM_PICK_R) plus a small sphere round the coconuts at the crown;
 // PICK_Y[0] is only the aim point QA scripts look at (mid trunk).
-const PICK_Y = [1.6, .45, .3, .08], PICK_R = [.3, .75, .55, .55];
+const PICK_Y = [1.6, .45, .3, .08, .22], PICK_R = [.3, .75, .55, .55, .62];
 const PALM_PICK_R = .25; // trunk is ~0.15 m thick at mid height: about 10 cm of slack
 // Solid trunks and rocks the player walks around (radius times node scale; 0 = walk through).
-const SOLID_R = [.28, 0, .42, 0];
+const SOLID_R = [.28, 0, .42, 0, 0];
 const LOCAL_COOLDOWN = 0.35;
 const SLEW_SNAP = 1, SLEW_RATE = 4; // guest clock: snap past 1 s of error, else ease at 4/s
 
 // Prompt text, built once: PROMPTS[kind][left]. Palms need a Stone Axe (LMB chops, E works too).
 const LABEL = { palm: 'Chop palm', bush: 'Pick from bush: leaves, maybe a seed, a flower or berries', /* [juicer] */ rock: 'Gather stone', sand: 'Scoop sand' };
+const FRUIT_LABEL = ['', 'Pick the pineapple, maybe a seed', 'Pick the watermelon, maybe a seed']; // [fruit] by picks left (melon first)
 const PROMPTS = {};
 for (const k of KINDS) {
   PROMPTS[k] = [];
-  for (let left = 0; left <= NODE_MAX[k]; left++) PROMPTS[k][left] = k === 'palm' ? `<kbd>LMB</kbd>${LABEL[k]} (${left} left)` : `<kbd>E</kbd>${LABEL[k]} (${left} left)`;
+  for (let left = 0; left <= NODE_MAX[k]; left++) PROMPTS[k][left] = k === 'palm' ? `<kbd>LMB</kbd>${LABEL[k]} (${left} left)` : k === 'fruit' ? `<kbd>E</kbd>${FRUIT_LABEL[left] || 'Picked clean'}` : `<kbd>E</kbd>${LABEL[k]} (${left} left)`;
 }
 const NEED_AXE = 'Need a Stone Axe';
 const itemName = k => (ITEM_INFO[k] && ITEM_INFO[k].name) || k;
@@ -90,7 +92,16 @@ export function createIslands(ctx) {
     return m;
   });
   const [palmSpent, nuts] = extra;
-  const veg = [...meshes, ...extra]; // scaled down while the island rises or sinks
+  // [fruit] the two fruits of a fruit patch: hidden (zero matrix) once picked
+  const fruits = ['melon', 'pine'].map(k => {
+    const m = new T.InstancedMesh(models.geos[k], models.mats[k], MAX_PER_KIND[FRUIT]);
+    m.name = 'island-' + k; m.count = 0; m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
+    m.instanceMatrix.setUsage(T.DynamicDrawUsage);
+    for (let j = 0; j < MAX_PER_KIND[FRUIT]; j++) m.setColorAt(j, new T.Color(1, 1, 1));
+    return m;
+  });
+  const [melons, pines] = fruits;
+  const veg = [...meshes, ...extra, ...fruits]; // scaled down while the island rises or sinks
   group.add(dome, ...veg);
   if (ctx.scene) { ctx.scene.add(group); ctx.scene.add(lagoon); }
   lagoon.visible = false;
@@ -116,6 +127,7 @@ export function createIslands(ctx) {
     const n = layout.nodes[k], ki = nodeKind[k], m = meshes[ki], used = st.isl.used[k], frac = used / n.max;
     let sx = n.s, sy = n.s, sz = n.s, sink = 0;
     if (ki === 1) { const f = 1 - .16 * used; sx *= f; sy *= f; sz *= f; }
+    else if (ki === FRUIT) { const f = 1 - .08 * used; sx *= f; sy *= f; sz *= f; }
     else if (ki === 2) { const f = Math.max(.5, 1 - .17 * used); sx *= f * 1.05; sy *= f * .7; sz *= f * .92; sink = .05; }
     else if (ki === 3) { sy *= Math.max(.12, 1 - .8 * frac); }
     sx *= pulse; sy *= pulse; sz *= pulse;
@@ -133,6 +145,10 @@ export function createIslands(ctx) {
       const j = nodeInst[k], spent = frac >= 1;
       m.setMatrixAt(j, spent ? ZERO : mtx); nuts.setMatrixAt(j, spent ? ZERO : mtx); palmSpent.setMatrixAt(j, spent ? mtx : ZERO);
       nuts.instanceMatrix.needsUpdate = true; palmSpent.instanceMatrix.needsUpdate = true;
+    } else if (ki === FRUIT) { // [fruit] patch plants stay; the melon goes on the first pick, the pineapple on the second
+      const j = nodeInst[k];
+      m.setMatrixAt(j, mtx); melons.setMatrixAt(j, used >= 1 ? ZERO : mtx); pines.setMatrixAt(j, used >= 2 ? ZERO : mtx);
+      melons.instanceMatrix.needsUpdate = true; pines.instanceMatrix.needsUpdate = true;
     } else m.setMatrixAt(nodeInst[k], mtx);
     m.instanceMatrix.needsUpdate = true;
     paintNode(k);
@@ -154,14 +170,15 @@ export function createIslands(ctx) {
     for (const m of veg) m.count = 0;
     nodeCount = 0;
     if (!layout) return;
-    const counts = [0, 0, 0, 0];
+    const counts = [0, 0, 0, 0, 0];
     nodeCount = Math.min(N, layout.nodes.length);
     for (let k = 0; k < nodeCount; k++) {
       const ki = KIND_INDEX[layout.nodes[k].kind];
       nodeKind[k] = ki; nodeInst[k] = counts[ki]++;
     }
-    for (let i = 0; i < 4; i++) meshes[i].count = Math.min(counts[i], MAX_PER_KIND[i]);
+    for (let i = 0; i < meshes.length; i++) meshes[i].count = Math.min(counts[i], MAX_PER_KIND[i]);
     palmSpent.count = nuts.count = meshes[0].count;
+    melons.count = pines.count = meshes[FRUIT].count; // [fruit]
     for (let k = 0; k < nodeCount; k++) writeNode(k);
     for (const m of veg) { m.boundingSphere = null; m.computeBoundingSphere(); }
     // Per-seed sand tint, a few percent either way.
@@ -540,7 +557,7 @@ export function createIslands(ctx) {
     aimAt(i = 0, dist) {
       if (!shown || !(i >= 0 && i < nodeCount)) return null;
       const n = layout.nodes[i], ki = nodeKind[i];
-      const d = dist ?? [2.6, 2.1, 1.9, 1.7][ki];
+      const d = dist ?? [2.6, 2.1, 1.9, 1.7, 1.8][ki]; // [fruit] + fruit patch
       const r = Math.hypot(n.x, n.z), ux = r > .3 ? -n.x / r : 1, uz = r > .3 ? -n.z / r : 0;
       if (!debug.teleportAshore(n.x + ux * d, n.z + uz * d)) return null;
       const out = debug.nodes()[i];

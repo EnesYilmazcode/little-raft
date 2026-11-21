@@ -195,6 +195,56 @@ function bushGeometry(T) {
   return merge(T, parts);
 }
 
+// [fruit] Fruit patch: a watermelon vine (left, +x) beside a pineapple rosette (right, -x) on a little leaf mat.
+// fruitGeometry is the plants; melonGeometry and pineGeometry are the two fruits (own instanced meshes so a pick
+// can take one away). All three share the node's matrix.
+const MELON_AT = [.32, 0, .08], PINE_AT = [-.3, 0, -.06];
+function placed(T, g, hex, x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1, vary = .12) {
+  g.scale(sx, sy, sz); if (rx) g.rotateX(rx); if (rz) g.rotateZ(rz); if (ry) g.rotateY(ry); g.translate(x, y, z);
+  const c0 = new T.Color(hex);
+  return paint(T, g, (px, py, pz, c) => c.copy(c0).multiplyScalar(1 - vary / 2 + noise(px * 3, py * 3, pz * 3) * vary));
+}
+function fruitGeometry(T) {
+  const parts = [];
+  const [mx, , mz] = MELON_AT, [px, , pz] = PINE_AT;
+  for (let i = 0; i < 9; i++) { // melon runners and broad lobed leaves spread over the sand
+    const a = i * 0.7 + 0.3, r = .22 + (i % 3) * .1, x = mx + Math.cos(a) * r, z = mz + Math.sin(a) * r;
+    parts.push(placed(T, new T.IcosahedronGeometry(1, 0), i % 2 ? '#3f8a3e' : '#58a24a', x, .06 + (i % 2) * .03, z, -.2, -a, 0, .12, .018, .1));
+    parts.push(placed(T, new T.CylinderGeometry(.01, .012, r, 4), '#4f8a3a', mx + Math.cos(a) * r / 2, .03, mz + Math.sin(a) * r / 2, Math.PI / 2, -a + Math.PI / 2, 0, 1, 1, 1, .05));
+  }
+  for (let i = 0; i < 13; i++) { // stiff, spiky pineapple leaves fanning out of the rosette
+    const a = i * 2.4, tilt = .35 + (i % 3) * .25, L = .42 + (i % 4) * .06, r = L * .5 * Math.cos(tilt);
+    const g = new T.ConeGeometry(.04, L, 3); g.scale(1, 1, .35); g.rotateX(Math.PI / 2 - tilt); g.rotateY(a); g.translate(px + Math.sin(a) * r, L * .5 * Math.sin(tilt) + .02, pz + Math.cos(a) * r);
+    parts.push(placed(T, g, i % 2 ? '#4f8a52' : '#6aa05a', 0, 0, 0, 0, 0, 0, 1, 1, 1, .1));
+  }
+  return merge(T, parts);
+}
+function melonGeometry(T) {
+  const [x, , z] = MELON_AT, R = .2, cy = R * .7, parts = [];
+  parts.push(placed(T, lumpy(T, new T.IcosahedronGeometry(R, 2), .02), '#2f6b2c', x, cy, z, 0, .4, 0, 1.35, .9, 1, .08));
+  for (let k = 0; k < 8; k++) { // pale stripes round the long axis
+    const a = k * Math.PI / 4, g = new T.IcosahedronGeometry(1, 1);
+    g.scale(R * 1.3, .012, .022); g.rotateX(Math.PI / 2 - a); g.translate(0, Math.sin(a) * R * .88, Math.cos(a) * R * .97); g.rotateY(.4); g.translate(x, cy, z);
+    parts.push(placed(T, g, '#8fc463', 0, 0, 0, 0, 0, 0, 1, 1, 1, .08));
+  }
+  return merge(T, parts);
+}
+function pineGeometry(T) {
+  const [x, , z] = PINE_AT, R = .1, y = .3, parts = [];
+  parts.push(placed(T, new T.CylinderGeometry(.022, .03, .14, 5), '#5f7f3a', x, .14, z));
+  parts.push(placed(T, new T.IcosahedronGeometry(R, 1), '#d99a2b', x, y, z, 0, 0, 0, 1, 1.45, 1, .1));
+  for (let k = 0; k < 4; k++) for (let j = 0; j < 6; j++) { // dark eyes in a diamond pattern
+    const a = j * Math.PI / 3 + (k % 2) * Math.PI / 6, h = (k - 1.5) * .05, rr = R * Math.sqrt(Math.max(.15, 1 - (h / (R * 1.45)) ** 2)) * 1.02;
+    parts.push(placed(T, new T.IcosahedronGeometry(.011, 0), '#a8681c', x + Math.sin(a) * rr, y + h, z + Math.cos(a) * rr, 0, 0, 0, 1, 1, 1, 0));
+  }
+  for (let i = 0; i < 7; i++) { // leafy crown
+    const a = i * 2.2, t = .2 + (i % 2) * .3, g = new T.ConeGeometry(.022, .14, 3);
+    g.scale(1, 1, .4); g.rotateX(t); g.rotateY(a); g.translate(x + Math.sin(a) * .02, y + R * 1.45 + .05, z + Math.cos(a) * .02);
+    parts.push(placed(T, g, i % 2 ? '#4f8a52' : '#3f7a44', 0, 0, 0, 0, 0, 0, 1, 1, 1, .06));
+  }
+  return merge(T, parts);
+}
+
 function rockGeometry(T) {
   const g = lumpy(T, new T.DodecahedronGeometry(.5, 1), .16, 1, .8, 1);
   const a = new T.Color('#7d807e'), b = new T.Color('#a7a9a5'), moss = new T.Color('#6f7f5a');
@@ -289,7 +339,9 @@ export function createIslandModels(T, ocean) {
   const vert = ocean && ocean.material && typeof ocean.material.vertexShader === 'string' ? ocean.material.vertexShader : FALLBACK_VERT;
   const geos = {
     dome: domeGeometry(T), palm: palmGeometry(T), palmSpent: stumpGeometry(T), nuts: nutsGeometry(T), bush: bushGeometry(T), rock: rockGeometry(T), sand: sandGeometry(T), lagoon: lagoonGeometry(T),
+    fruit: fruitGeometry(T), melon: melonGeometry(T), pine: pineGeometry(T), // [fruit]
   };
+  const fruitMat = new T.MeshStandardMaterial({ vertexColors: true, roughness: .75, side: T.DoubleSide }); // [fruit] leaves seen from both sides
   const mats = {
     dome: new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 }),
     palm: new T.MeshStandardMaterial({ vertexColors: true, roughness: .85 }),
@@ -300,11 +352,12 @@ export function createIslandModels(T, ocean) {
     bush: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9 }),
     rock: new T.MeshStandardMaterial({ vertexColors: true, roughness: .95 }),
     sand: new T.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),
+    fruit: fruitMat, melon: fruitMat, pine: fruitMat, // [fruit] one material for the patch and both fruits
     lagoon: new T.ShaderMaterial({ uniforms: lagoonUniforms, vertexShader: vert, fragmentShader: LAGOON_FRAG, transparent: true, depthWrite: false, fog: false, lights: false,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
   };
   return {
     geos, mats, lagoonUniforms,
-    dispose() { for (const g of Object.values(geos)) g.dispose(); for (const m of Object.values(mats)) m.dispose(); },
+    dispose() { for (const g of Object.values(geos)) g.dispose(); for (const m of new Set(Object.values(mats))) m.dispose(); },
   };
 }

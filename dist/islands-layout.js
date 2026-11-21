@@ -24,14 +24,20 @@ export const ISLAND = Object.freeze({
   COOLDOWN: 0.3,        // host per-actor gather cooldown (s)
   NEAR: 6,              // the island never leaves while a player is within R + NEAR
   OFF_MIN: 8, OFF_MAX: 60,
-  MAX_NODES: 14,
+  MAX_NODES: 16,         // 3 palms + 4 bushes + 4 rocks + 3 sand + 2 fruit patches [fruit]
   WALK_MARGIN: 0.25,    // step onto sand only where it is this far above the local wave...
   STAY_MARGIN: -0.1,    // ...but once standing, stay until a wave covers it by this much (hysteresis)
   GUEST_SLACK: 1.0,     // extra gather reach for the guest (the host sees a pose up to ~0.12 s old)
 });
 
-export const NODE_KINDS = Object.freeze(['palm', 'bush', 'rock', 'sand']);
-export const NODE_MAX = Object.freeze({ palm: 5, bush: 2, rock: 3, sand: 4 });
+// [fruit] 'fruit' is last so every older kind keeps its seeded spot (the rng draws for it come after them).
+export const NODE_KINDS = Object.freeze(['palm', 'bush', 'rock', 'sand', 'fruit']);
+export const NODE_MAX = Object.freeze({ palm: 5, bush: 2, rock: 3, sand: 4, fruit: 2 });
+// [fruit] A fruit patch (a watermelon vine beside a pineapple plant) is picked by hand: the first pick takes the
+// watermelon, the second the pineapple, each with a FRUIT_SEED chance of its seed (deterministic per island seed).
+export const FRUIT_ORDER = Object.freeze(['watermelon', 'pineapple']);
+export const FRUIT_SEED = 0.5;
+const FRUIT_SEEDS = Object.freeze({ watermelon: 'melonseed', pineapple: 'pineseed' });
 // Palm chopping (Raft numbers, docs/loop/research/fidelity-r2b-world.md): a Stone Axe is needed, 5 chops
 // fell a palm, the felling chop gives 5 planks + 2 leaves, and every chop rolls a coconut and a palm seed.
 export const CHOP = Object.freeze({
@@ -89,6 +95,7 @@ export const SHORE_U = Math.pow(ISLAND.TOP / ISLAND.FALL, 0.25);
 const RANGES = {
   palm: [1, 3, 0.10, 0.50, 1.6], bush: [2, 4, 0.18, 0.62, 1.1],
   rock: [2, 4, 0.30, 0.70, 1.1], sand: [2, 3, 0.15, 0.62, 1.1],
+  fruit: [1, 2, 0.15, 0.58, 1.3], // [fruit]
 };
 
 const layoutCache = new Map();
@@ -264,6 +271,10 @@ export function lootFor(kind, seed, node, used) {
   if (kind === 'bush') { const h = hash3(seed, node, used); return h < 0.2 ? [['leaf', 1], ['flowerseed', 1]] : h < 0.5 ? [['leaf', 1], ['seed', 1]] : h < 0.75 ? [['leaf', 1]] : [['berries', 2]]; } // [bees] flower seeds [juicer] berries
   if (kind === 'rock') return [['stone', 1]];
   if (kind === 'sand') return [['sand', 1]];
+  if (kind === 'fruit') { // [fruit] watermelon first, then the pineapple; sometimes the seed too
+    const f = FRUIT_ORDER[used]; if (!f) return [];
+    return hash3(seed, (node | 0) * 8 + 103, used) < FRUIT_SEED ? [[f, 1], [FRUIT_SEEDS[f], 1]] : [[f, 1]];
+  }
   return [];
 }
 
