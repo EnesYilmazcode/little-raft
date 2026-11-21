@@ -113,8 +113,8 @@ function ensureStyle() {
 
 // One-line header over the locked rows: what to study, and where.
 export function studyHead(names) {
-  const what = names.length === 1 ? names[0] : names.length === 2 ? names.join(' and ') : 'items';
-  return `Study ${what || 'items'} at a Tinker\u2019s Desk to unlock`;
+  const what = names.length < 2 ? names.join('') : names.length === 2 ? names.join(' and ') : 'items';
+  return `Study ${what ? what + ' ' : ''}at a Tinker\u2019s Desk to unlock`;
 }
 
 export function createStorageUI(api) {
