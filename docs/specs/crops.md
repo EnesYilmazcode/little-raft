@@ -166,6 +166,9 @@ For **each** kind, the entries needed are:
   prompt and `content.prompt` is never reached. crops.js registers its own `raftPrompts.provide({id:'crops',
   priority:1})` that computes the bed prompt from `ctx.aim()` and steps aside for pickups, the guest waiting
   prompt, swimming and open UI. E still works because the E order reaches `content.interact` regardless.
+  `content.prompt()` returns only the `<kbd>E</kbd>` prompts: prompts.js feeds every plain #contextPrompt text
+  into the event feed, so "Sea Flax 41% · watered" would post a feed row per percent. The status lines come from
+  the provider only (`debug.promptText(aim)` returns the full text for tests).
 - **Barrel odds.** Adding 3 weight-1 rows raised the treasure total to 105 and shifted every rng threshold, which
   broke the seeded pity gap test (copper ore worst gap 16 > 15). Instead scrap (the last filler row) goes 30 -> 27:
   the total stays 102, every pick before scrap is bit-identical and pity behaviour is unchanged. Plain rate per
@@ -178,3 +181,7 @@ For **each** kind, the entries needed are:
 - Debug (host QA): `raftDebug.content.crops.{place, plant, setGrow, list, state, fastForward, grid, stand, hold}`.
 - Not done (still stretch): sprinkler feeding beds, click-to-water. Harvest also notifies 'A garden bed is ready
   to harvest' once when a crop ripens.
+- QA (scratchpad crops_probe.py, desktop 1280x720 and 390x844): 9 beds read as 3 crops x 3 stages, wet soil is
+  clearly darker than dry, E plant / water (freshcup -> cup) / harvest (pickup feed rows with icons, bed empties)
+  all work, forced rain wets every dry bed within about 1 game second, all 8 icons draw in the hotbar.
+  The co-op loopback run was not done; guest paths are covered by the fake-ctx module test.
