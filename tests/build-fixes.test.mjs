@@ -91,8 +91,8 @@ test('game.js host checks piece/unpiece reach and decor before building.apply', 
   assert.match(branch, /who && !inReach/); // missing guest pose is tolerated like the floor branch
   assert.match(branch, /pieceBlock\(world\.decor, a\)/);
   assert.match(branch, /emit\(\{kind:'notice', text:BLOCK_TEXT\[why\]\}, actor\)/);
-  assert.match(g, /decorBlock\(world\.tiles, world\.decor, a\.x, a\.z, world\.pieces\)/); // host decor branch
-  assert.match(g, /why = decorBlock\(world\.tiles, world\.decor, x, z, world\.pieces\)/); // client placementFor
+  assert.match(g, /decorBlock\(world\.tiles, world\.decor, a\.x, a\.z, world\.pieces(, a\.recipe)?\)/); // host decor branch
+  assert.match(g, /why = decorBlock\(world\.tiles, world\.decor, x, z, world\.pieces(, kind)?\)/); // client placementFor
 });
 
 // ---------------------------------------------------------------- BLD-1 / BLD-5 game.js guards
