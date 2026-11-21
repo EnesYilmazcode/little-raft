@@ -59,11 +59,16 @@ PAGE_INIT = r"""
   requestAnimationFrame(f);
   pb.read = () => { const r = {maxGap: pb.maxGap, frames: pb.frames}; pb.maxGap = 0; pb.frames = 0; return r; };
   pb.reset = () => { pb.maxGap = 0; pb.last = 0; };
-  %(save)s
-})();
-"""
-
-SAMPLE_JS = """(() => {
+  // In-page sampler: snapshots raftDebug.state every %(interval)d ms into a buffer that Python drains,
+  // so the invariant cadence does not depend on (slow) Playwright round-trips.
+  pb.buf = []; pb.on = false;
+  setInterval(() => {
+    if (!pb.on || !window.raftDebug) return;
+    try { pb.buf.push(pb.sample()); } catch (e) { pb.buf.push({err: String(e && e.stack || e), now: performance.now()}); }
+    if (pb.buf.length > 4000) pb.buf.shift();
+  }, %(interval)d);
+  pb.drain = () => { const b = pb.buf; pb.buf = []; return {now: performance.now(), samples: b}; };
+  pb.sample = () => {
   const s = raftDebug.state, od = document.querySelector('#options');
   const otherDialogs = [...document.querySelectorAll('dialog')].filter(d => d.open && d.id !== 'options' && d.id !== 'inventory').map(d => d.id || '?');
   return {running: s.running, active: s.active, disposed: s.disposed, tool: s.tool, heldKind: s.heldKind,
@@ -74,8 +79,12 @@ SAMPLE_JS = """(() => {
     hookHealth: s.hookHealth, charge: s.charge, charging: s.charging, reeling: s.reeling,
     inventoryOpen: s.inventoryOpen, pauseOpen: !!(od && od.open), otherDialogs,
     build: {active: s.build.active, candidates: s.build.candidates, affordable: s.build.affordable, hover: s.build.hover},
-    probe: window.__playbot ? window.__playbot.read() : null, now: performance.now()};
-})()"""
+    probe: pb.read(), now: performance.now()};
+  };
+  %(save)s
+})();
+"""
+
 
 
 def starter_save():
@@ -121,6 +130,8 @@ class Bot:
         self.next_check = 0
         self.next_shot = 0
         self.shots, self.shot_labels = [], []
+        self.shot_windows = []         # (start, end) elapsed of screenshots: rAF gaps there are ours
+        self.cx, self.cy = 480, 270
         self.expect_tiles_until = -1   # tiles may grow until this elapsed time (after a build click)
         self.hook_stage_since = (None, 0)
         self.frozen_since = None
@@ -129,38 +140,45 @@ class Bot:
         self.m = {'actions': {}, 'throws': 0, 'catches': 0, 'builds_tried': 0, 'tiles_built': 0, 'fish_casts': 0,
                   'fish_caught': 0, 'collected': 0, 'menus': 0, 'max_raf_gap_ms': 0, 'raf_frames': 0,
                   'min_y': None, 'max_dist': 0, 'swim_samples': 0, 'pause_open_after_inv_esc': None,
-                  'relock_failures': 0, 'sample_ms_max': 0}
+                  'relock_failures': 0}
 
     # ---------- bookkeeping ----------
     def el(self):
         return time.monotonic() - self.t0
 
+    def ft(self):
+        """Time of the failure: the sample's own time when checking a buffered sample."""
+        return self.sample_t if self.sample_t is not None else self.el()
+
     def act(self, text):
         self.log.append((round(self.el(), 2), text))
 
     def repro(self):
-        tail = '; '.join(f'{t:.1f}s {a}' for t, a in self.log[-12:])
+        ft = self.ft()
+        tail = '; '.join(f'{t:.1f}s {a}' for t, a in [x for x in self.log if x[0] <= ft + .5][-12:])
         return (f'python3.13 tests/e2e/playbot.py --dist <dist> --seed {self.args.seed} --duration {self.args.duration:g} '
-                f'--kit {self.args.kit}  (failed at t={self.el():.1f}s; last actions: {tail})')
+                f'--kit {self.args.kit}  (failed at t={self.ft():.1f}s; last actions: {tail})')
 
     def fail(self, fid, detail, shot=True):
         n = self.fail_ids.get(fid, 0)
         self.fail_ids[fid] = n + 1
         if n >= 3:  # keep the report readable: first 3 of each id, rest counted
             return
-        self.failures.append({'id': fid, 'detail': detail, 'repro': self.repro(), 't': round(self.el(), 2)})
+        self.failures.append({'id': fid, 'detail': detail, 'repro': self.repro(), 't': round(self.ft(), 2)})
         if shot:
             self.screenshot('!' + fid)
 
     def screenshot(self, label):
-        p = self.out / 'frames' / f'{len(self.shots):03d}-{self.el():06.1f}s-{label.strip("!")}.png'
+        p = self.out / 'frames' / f'{len(self.shots):03d}-{self.el():06.1f}s-{label.strip("!")}.jpg'
+        t0 = self.el()
         try:
-            self.page.screenshot(path=str(p), timeout=30000)
+            self.page.screenshot(path=str(p), timeout=30000, type='jpeg', quality=70, scale='css')
             self.shots.append(str(p))
             self.shot_labels.append(f'{label} {self.el():.0f}s')
         except Exception as e:
             self.act(f'screenshot failed: {e}')
-        self.page.evaluate('window.__playbot && window.__playbot.reset()')  # screenshot time is not a stall
+        self.shot_windows = self.shot_windows[-20:] + [(t0, self.el())]
+        self.m['screenshot_s'] = round(self.m.get('screenshot_s', 0) + self.el() - t0, 2)
 
     # ---------- core loop ----------
     def wait(self, ms):
@@ -172,7 +190,7 @@ class Bot:
                 raise TimeUp()
             if e >= self.next_check:
                 self.check()
-                self.next_check = e + self.args.check_interval
+                self.next_check = e + self.args.drain_interval
             if e >= self.next_shot:
                 self.screenshot(self.log[-1][1].split(' ')[0] if self.log else 'start')
                 self.next_shot = self.el() + self.args.shot_interval
@@ -181,20 +199,30 @@ class Bot:
                 return
             self.page.wait_for_timeout(int(min(left, .25) * 1000) + 1)
 
-    def sample(self):
-        t = time.monotonic()
-        s = self.page.evaluate(SAMPLE_JS)
-        self.m['sample_ms_max'] = max(self.m['sample_ms_max'], round((time.monotonic() - t) * 1000))
-        return s
-
     def check(self):
+        """Drain the in-page sample buffer and run every invariant on each sample in order."""
+        t = time.monotonic()
         try:
-            s = self.sample()
+            d = self.page.evaluate('window.__playbot.drain()')
         except Exception as e:
-            self.fail('sample_failed', f'raftDebug.state could not be read: {e}')
+            self.fail('sample_failed', f'sample buffer could not be read: {e}')
             return
+        now = self.el()
+        self.m['drain_s'] = round(self.m.get('drain_s', 0) + time.monotonic() - t, 2)
+        self.m['drain_ms_max'] = max(self.m.get('drain_ms_max', 0), round((time.monotonic() - t) * 1000))
+        for s in d['samples']:
+            self.sample_t = now - (d['now'] - s['now']) / 1000
+            if 'err' in s:
+                self.fail('sample_failed', f'raftDebug.state threw: {s["err"][:300]}')
+                continue
+            self.check_sample(s, self.sample_t)
+        self.sample_t = None
+
+    sample_t = None
+
+    def check_sample(self, s, el):
         self.samples += 1
-        p, el = self.prev, self.el()
+        p = self.prev
         for msg in self.page_errors[len(self._seen_pe):] if hasattr(self, '_seen_pe') else self.page_errors:
             self.fail('pageerror', msg[:400])
         self._seen_pe = list(self.page_errors)
@@ -212,7 +240,8 @@ class Bot:
         gap = pr.get('maxGap') or 0
         self.m['raf_frames'] += pr.get('frames') or 0
         self.m['max_raf_gap_ms'] = max(self.m['max_raf_gap_ms'], round(gap))
-        if gap > self.args.stall_ms:
+        ours = any(a - 1 <= el and el - gap / 1000 - 1 <= b for a, b in self.shot_windows)  # stall overlapped a screenshot
+        if gap > self.args.stall_ms and not ours:
             self.fail('frame_stall', f'requestAnimationFrame gap of {gap:.0f} ms (threshold {self.args.stall_ms} ms)')
 
         # player
@@ -339,7 +368,12 @@ class Bot:
 
     # ---------- input helpers ----------
     def state(self):
-        return self.page.evaluate('raftDebug.state')
+        t = time.monotonic()
+        try:
+            return self.page.evaluate('raftDebug.state')
+        finally:
+            self.m['state_calls'] = self.m.get('state_calls', 0) + 1
+            self.m['state_s'] = round(self.m.get('state_s', 0) + time.monotonic() - t, 2)
 
     def look(self, dx, dy):
         """Relative mouse look, sent in <=150 px events (the game clamps each to +-200)."""
@@ -370,7 +404,7 @@ class Bot:
                 self.page.keyboard.press('Escape'); self.wait(500); continue
             if s['lock'] or s['fb']:
                 return True
-            self.page.mouse.click(640, 360); self.wait(700)
+            self.page.mouse.click(self.cx, self.cy); self.wait(700)
         self.m['relock_failures'] += 1
         self.act('could not regain pointer lock')
         return False
@@ -457,7 +491,7 @@ class Bot:
         hold = self.rng.randint(350, 900)
         self.act(f'throw hook at {desc} hold={hold}ms')
         self.m['throws'] += 1
-        self.page.mouse.move(640, 360); self.page.mouse.down(); self.wait(hold); self.page.mouse.up()
+        self.page.mouse.move(self.cx, self.cy); self.page.mouse.down(); self.wait(hold); self.page.mouse.up()
         # let it fly / land, then reel
         end = self.el() + self.args.hook_wait_s
         while self.el() < end:
@@ -495,7 +529,8 @@ class Bot:
         if not self.page.evaluate('raftDebug.state.inventoryOpen'):
             self.fail('inventory_did_not_open', 'Tab while playing did not open the inventory')
             return
-        if self.rng.random() < .5:
+        n = self.m['actions'].get('inventory', 0)   # 1st close is Esc, 2nd Tab, then random
+        if n == 1 or (n > 2 and self.rng.random() < .5):
             self.act('close inventory Esc')
             self.page.keyboard.press('Escape'); self.wait(600)
             r = self.page.evaluate("({inv: raftDebug.state.inventoryOpen, pause: !!document.querySelector('#options')?.open})")
@@ -543,7 +578,7 @@ class Bot:
         self.m['builds_tried'] += 1
         self.expect_tiles_until = self.el() + 8
         t0 = st['tiles']
-        self.page.mouse.click(640, 360); self.wait(1200)
+        self.page.mouse.click(self.cx, self.cy); self.wait(1200)
         if st['build']['hover'] and st['build']['affordable'] and self.state()['tiles'] == t0:
             self.wait(2000)
             if self.state()['tiles'] == t0:
@@ -564,7 +599,7 @@ class Bot:
         fish0 = self.state()['fish']
         self.act(f'cast rod toward ({wx:.1f},{wz:.1f})')
         self.m['fish_casts'] += 1
-        self.page.mouse.click(640, 360); self.wait(600)
+        self.page.mouse.click(self.cx, self.cy); self.wait(600)
         if self.page.evaluate('raftDebug.state.hookStage') == 'fishing':
             self.wait_idle_hook(self.args.fish_wait_s)
         got = self.state()['fish'] - fish0
@@ -575,12 +610,12 @@ class Bot:
     ACTIONS = [('walk', 5), ('look', 4), ('hotbar', 2), ('jump', 1), ('throw', 3), ('collect', 1),
                ('inventory', 2), ('pause', 1), ('build', 2), ('fish', 1)]
 
+    FIRST_PASS = ['look', 'hotbar', 'walk', 'inventory', 'pause', 'jump', 'build', 'throw', 'collect', 'fish', 'inventory']
+
     def plan(self):
         names = [n for n, w in self.ACTIONS for _ in range(w)]
-        # every action appears early so even a short run touches all of them, then weighted random
-        first = [n for n, _ in self.ACTIONS]
-        self.rng.shuffle(first)
-        yield from first
+        # every action once first (cheap ones first) so even a short run touches all of them, then weighted random
+        yield from self.FIRST_PASS
         while True:
             yield self.rng.choice(names)
 
@@ -614,19 +649,24 @@ def main():
     ap.add_argument('--duration', type=float, default=300, help='seconds of scripted play (default 300)')
     ap.add_argument('--seed', type=int, default=1)
     ap.add_argument('--kit', choices=['starter', 'fresh'], default='starter')
-    ap.add_argument('--check-interval', type=float, default=.5)
+    ap.add_argument('--check-interval', type=float, default=.5, help='in-page invariant sample period (s)')
+    ap.add_argument('--drain-interval', type=float, default=2.0, help='how often Python drains/checks the samples (s)')
+    ap.add_argument('--viewport', default='960x540', help='WxH; smaller keeps swiftshader responsive')
     ap.add_argument('--shot-interval', type=float, default=None, help='seconds between screenshots (default duration/14)')
     ap.add_argument('--stall-ms', type=float, default=8000, help='max rAF gap before frame_stall (swiftshader-generous)')
     ap.add_argument('--y-floor', type=float, default=-4.0, help='player eye y below this is a failure')
-    ap.add_argument('--hook-wait-s', type=float, default=25)
+    ap.add_argument('--hook-wait-s', type=float, default=None, help='max wait for hook flight / reel (default min(25, duration/6))')
     ap.add_argument('--hook-stuck-s', type=float, default=60)
-    ap.add_argument('--fish-wait-s', type=float, default=15)
+    ap.add_argument('--fish-wait-s', type=float, default=None, help='max wait for a bite (default min(15, duration/10))')
     ap.add_argument('--headed', action='store_true')
     args = ap.parse_args()
-    args.shot_interval = args.shot_interval or max(5.0, args.duration / 14)
+    args.shot_interval = args.shot_interval or max(8.0, args.duration / 10)
+    # keep slow hook/fish waits proportional so a short run is not one long wait
+    args.hook_wait_s = args.hook_wait_s or min(25.0, max(8.0, args.duration / 6))
+    args.fish_wait_s = args.fish_wait_s or min(15.0, max(6.0, args.duration / 10))
     out = Path(args.out).resolve()
     (out / 'frames').mkdir(parents=True, exist_ok=True)
-    for f in (out / 'frames').glob('*.png'):
+    for f in [*(out / 'frames').glob('*.png'), *(out / 'frames').glob('*.jpg')]:
         f.unlink()
     result = {'tool': TOOL, 'pass': False, 'failures': [], 'metrics': {}, 'artifacts': []}
     code = 2
@@ -645,9 +685,10 @@ def main():
         with StaticServer(dist) as srv, sync_playwright() as p:
             browser = launch_chromium(p, headless=not args.headed)
             try:
-                page = browser.new_page(viewport={'width': 1280, 'height': 720})
+                vw, vh = (int(v) for v in args.viewport.lower().split('x'))
+                page = browser.new_page(viewport={'width': vw, 'height': vh})
                 page.set_default_timeout(60000)
-                page.add_init_script(PAGE_INIT % {'seed': args.seed, 'save': save})
+                page.add_init_script(PAGE_INIT % {'seed': args.seed, 'save': save, 'interval': max(50, int(args.check_interval * 1000))})
                 bot = Bot(page, args, out)
                 page.on('pageerror', lambda e: bot.page_errors.append(str(e)))
 
@@ -670,6 +711,8 @@ def main():
                         raise InfraError(f'could not start Solo game: {e}')
                 if not bot.failures:
                     bot.t0 = time.monotonic()
+                    bot.cx, bot.cy = vw // 2, vh // 2
+                    page.evaluate('window.__playbot.reset(); window.__playbot.on = true')
                     bot.act('solo start')
                     page.wait_for_timeout(1000)
                     bot.check()
@@ -701,7 +744,7 @@ def main():
                  console_warnings=bot.console_warnings, failure_counts=bot.fail_ids,
                  min_y=None if m['min_y'] is None else round(m['min_y'], 3), max_dist=round(m['max_dist'], 2),
                  avg_fps=round(m['raf_frames'] / max(bot.el(), 1e-6), 2),
-                 mean_check_interval_s=round(bot.el() / max(bot.samples, 1), 2))
+                 mean_sample_interval_s=round(bot.el() / max(bot.samples, 1), 2))
         result['metrics'] = m
     print(json.dumps(result))
     sys.exit(code)
