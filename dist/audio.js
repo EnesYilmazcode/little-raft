@@ -25,7 +25,8 @@ export const EVENTS = Object.freeze(['throw', 'splash', 'collect', 'build', 'pla
   'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny', 'detect', 'chime', 'shutter', // [camera] + shutter
   'whistle', 'pop', 'crackle', // [fireworks]
   'chop', // [axe]
-  'thunder']); // [storm]
+  'thunder', // [storm]
+  'twinkle']); // [stars]
 // friendlier names other modules may use; play() resolves them to a recipe above
 export const ALIASES = Object.freeze({ pickup: 'collect', cast: 'throw', hook: 'throw', pour: 'water', click: 'ui' });
 export const BUSES = Object.freeze(['master', 'effects', 'ambience', 'music']);
@@ -37,7 +38,8 @@ const MIN_GAP = { throw: 0.08, splash: 0.06, collect: 0.04, build: 0.05, place: 
   detect: 0.05, chime: 0.5, shutter: 0.25, // [camera] + shutter
   whistle: 0.25, pop: 0.12, crackle: 0.2, // [fireworks]
   chop: 0.2, // [axe]
-  thunder: 1.5 }; // [storm]
+  thunder: 1.5, // [storm]
+  twinkle: 0.3 }; // [stars]
 const SILENT = 0.0001;
 // calm D-major-ish pad: Dadd9, Bm7, Gmaj7, A6 (low register so it sits under the sea)
 const CHORDS = [[146.83, 220, 329.63], [123.47, 185, 293.66], [98, 196, 246.94], [110, 164.81, 277.18]];
@@ -386,6 +388,11 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     },
     // Seashell Finder tick (pitch and level rise with closeness s) and the soft lock-on chime (treasure.js)
     detect(v, t, s) { const f = 700 + 500 * s; tone(v, t, 'sine', f, 0.05 + 0.04 * s, 0.002, 0.05); tone(v, t, 'triangle', f * 2, 0.015 * s, 0.001, 0.03); },
+    twinkle(v, t, s) { // [stars] four high pentatonic pings 60 ms apart plus a faint shimmer
+      const o = Math.floor(Math.random() * 3);
+      for (let i = 0; i < 4; i++) tone(v, t + i * 0.06, 'sine', SCALE[(o + i) % SCALE.length] * 2, 0.05 * s, 0.003, rand(0.25, 0.4));
+      tone(v, t, 'triangle', 2600, 0.012 * s, 0.01, 0.35, 2900);
+    },
     chime(v, t, s) { tone(v, t, 'sine', 880, 0.09 * s, 0.002, 0.4); tone(v, t + 0.07, 'sine', 1318.5, 0.06 * s, 0.002, 0.35); tone(v, t + 0.14, 'sine', 1760, 0.04 * s, 0.002, 0.3); },
     repair(v, t, s) {
       // scrape: grainy band noise with fast tremolo, ending on a soft knock

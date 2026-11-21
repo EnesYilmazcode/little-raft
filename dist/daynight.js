@@ -315,6 +315,7 @@ export function createDayNight(ctx) {
   let target = clock, hasTarget = false, lastNetClock = NaN, netAge = 0, hostStill = false;
   let time = 0, frozen = false;
   let pinPhase = NaN, pinWeather = -1;
+  let skyA = 0; // [stars] last star opacity (night * clear sky)
   const L = { sunHeight: 0, nightFactor: 0, light: 1 };
   const W = { weather: 'calm', weatherNext: 'calm', blend: 0, rain: 0, wind: 0.15, cloud: 0.25 };
   const PAL = new Float32Array(N_COLORS * 3);
@@ -583,7 +584,7 @@ export function createDayNight(ctx) {
     }
     // stars and moon (the moon faces the camera from vMoon; its turn depends only on that direction)
     const starA = nf * (1 - 0.85 * W.cloud * W.cloud) * (1 - wet);
-    starUniforms.uOpacity.value = starA;
+    starUniforms.uOpacity.value = starA; skyA = starA; // [stars]
     stars.visible = starA > 0.01;
     const moonA = smooth(0.1, 0.7, nf) * smooth(-0.02, 0.1, vMoon.y) * (1 - 0.75 * wet);
     moonUniforms.uOpacity.value = moonA;
@@ -779,5 +780,5 @@ export function createDayNight(ctx) {
     },
   };
 
-  return { name: 'daynight', update, serialize, load, action, dispose, debug, get wind() { return W.wind; }, get night() { return L.nightFactor; } /* [power] */, get rain() { return W.rain; }, get day() { return Math.floor(clock / DAY_SECONDS); } /* [tasks] */, get storm() { return STORM_LIVE.level; } /* [storm] */ };
+  return { name: 'daynight', update, serialize, load, action, dispose, debug, get wind() { return W.wind; }, get night() { return L.nightFactor; } /* [power] */, get rain() { return W.rain; }, get day() { return Math.floor(clock / DAY_SECONDS); } /* [tasks] */, get clock() { return clock; }, get seed() { return seed; }, get skyA() { return skyA; } /* [stars] */, get storm() { return STORM_LIVE.level; } /* [storm] */ };
 }
