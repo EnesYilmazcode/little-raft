@@ -23,6 +23,7 @@ const vertexShader = /* glsl */ `
 uniform sampler2D uNoise;
 uniform float uTime;
 uniform float uCoverage;
+uniform float uWet;
 uniform vec3 uHorizon;
 uniform vec3 uZenith;
 uniform vec3 uMid;
@@ -70,9 +71,10 @@ void main() {
   // only repeats once a full turn.
   float h = dir.y / 0.09;
   vec3 cu = mix(uCloudShade, uCloudLit, 0.3 + 0.7 * smoothstep(0.0, 0.6, h));
-  vCuCol = mix(cu + uSunColor * (s4 * s2) * 0.2 * uSunVis, uHorizon, 0.2);
+  // Rain: the puffs sink into the overcast, greyed toward the horizon and fainter.
+  vCuCol = mix(cu + uSunColor * (s4 * s2) * 0.2 * uSunVis, uHorizon, 0.2 + 0.55 * uWet);
   float a = uv.x + uTime * 0.00015;
-  vCu = vec3(a, 5.0 * texture2D(uNoise, vec2(a * 3.0, 0.41)).r - 3.03, 0.7 + 0.5 * uCoverage);
+  vCu = vec3(a, 5.0 * texture2D(uNoise, vec2(a * 3.0, 0.41)).r - 3.03, (0.7 + 0.5 * uCoverage) * (1.0 - 0.55 * uWet));
 }
 `;
 
@@ -82,6 +84,7 @@ uniform vec3 uSunDir;
 uniform vec3 uCloudShade;
 uniform float uTime;
 uniform float uCoverage;
+uniform float uWet;
 uniform float uSunVis;
 uniform sampler2D uNoise;
 varying vec3 vWorldPos;
@@ -107,7 +110,7 @@ void main() {
     vec2 sp = vec2(cp.x * 0.45 + cp.y * 0.2, cp.y * 1.6 - cp.x * 0.3) + vec2(uTime * 0.004, uTime * 0.0015); // anisotropic stretch + drift
     float shape = texture2D(uNoise, sp * 0.25).r;
     float thr = 1.0 - uCoverage;
-    float density = smoothstep(thr, thr + 0.3, shape) * clamp((y - 0.02) * 5.56, 0.0, 1.0);
+    float density = smoothstep(thr, thr + 0.3 + 0.35 * uWet, shape) * clamp((y - 0.02) * 5.56, 0.0, 1.0);
     vec3 cloudCol = mix(vWisp, uCloudShade, max(density - 0.55, 0.0) * 0.78); // faint cool tint in the thickest cores
     col = mix(col, cloudCol, density * 0.85);
   }
@@ -119,7 +122,7 @@ void main() {
   if (y > 0.002 && y < 0.095 && vCu.y > -0.74) {
     float puff = texture2D(uNoise, vec2(vCu.x * 8.0, y * 1.3 + 0.21)).r;
     float h = y * 11.1; // 0 at the base, 1 near the tallest tops
-    float cu = clamp((puff + vCu.y - 0.3 * h * h) * 11.1, 0.0, 1.0) * clamp((y - 0.002) * 125.0, 0.0, 1.0) * vCu.z;
+    float cu = clamp((puff + vCu.y - 0.3 * h * h) * (11.1 - 7.5 * uWet), 0.0, 1.0) * clamp((y - 0.002) * 125.0, 0.0, 1.0) * vCu.z;
     col = mix(col, vCuCol, min(cu, 0.92));
   }
 
@@ -179,6 +182,7 @@ export function createSky(T, options = {}) {
     uTime: { value: 0 },
     uNoise: { value: bakeNoise(T) },
     uCoverage: { value: options.coverage ?? 0.56 }, // fbm threshold control
+    uWet: { value: 0 }, // 0..1 rain (daynight.js): softer, greyer clouds
   };
 
   const geometry = new T.SphereGeometry(150, 96, 64);
