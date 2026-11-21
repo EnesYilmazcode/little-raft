@@ -571,7 +571,7 @@ class Run:
             self.key('Escape', 'Esc (in play)'); time.sleep(.25)
             if self.js("!!document.querySelector('#options')?.open"):  # pause opened on the first Esc: close it, as a player would
                 self.key('Escape', 'Esc (close pause)', flush=False); time.sleep(.15)
-            self.click(vp['w'] * .5, vp['h'] * .55, f'click canvas {time.time() - self.last_esc:.1f} s after the last Esc', flush=False)
+            self.click(vp['w'] * .5, vp['h'] * .55, 'click canvas straight away (page-measured gap in the note below)', flush=False)
             self.wait_for(LOCK_OR_FALLBACK + ' || __lrProbe.calls.slice(' + str(vp['calls']) + ").some((c) => c.result !== 'pending')", timeout=8)
             self.settle(300)
             s = self.snap()
