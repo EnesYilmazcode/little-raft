@@ -167,9 +167,10 @@ Built as specced except:
 - `day` comes from `raftDebug.content.daynight.state().day`, because the daynight debug object has no `day` field. `quality` is passed to createCamera as a getter.
 - `game.js prepareDom()` replaces `#help .guide` at mount, so the P line is in both places: index.html and game.js's guide list.
 - Pick mode passes its callback in the open event (`detail.onPick`). game.js does not wire `onPick`. In the large view, Escape goes back to the grid; in the grid, it closes the album.
-- Held camera: `HOLD.camera.ry = 0` (with `Math.PI` the lens faced the player) and `SIZE.camera = 0.13`.
+- Held camera: `HOLD.camera = {rx: .1, rz: -1}` (with `ry: Math.PI` the lens faced the player; without the tilt the body sat behind the hotbar) and `SIZE.camera = 0.13`.
+- Review fixes: the flash holds full white for 70 ms, then fades over .32 s (one rAF of white was easy to miss). A save still in flight after 12 s (`STUCK_S`, hung storage) no longer locks the camera; its late finish can't unlock a newer shot. A partner's explicit `want` is answered under its own 3 s per-id gate, so a recent broadcast that the partner missed (reconnect) no longer delays it by 10-15 s. The frame module's serialize cache is keyed on the frame tiles, not the decor count.
 - The frame prompt provider uses priority 2, so when you aim at a frame "E Choose/Change photo" shows instead of the camera's own Snap prompt.
 - If the co-op link drops, the foreign photo cache is cleared and the partner's frames go back to the placeholder. camera.js exposes `photoNet.current` (`share`, `request`, `foreign`, `onPhoto`, `netReady`, `clearForeign`) to the frame module.
 - `rebuildRaft()`'s disposeGeometry also disposes the frame textures. They are uploaded again on the next draw, and the frame module marks itself dirty when its rescan sees new groups.
 - QA helpers: `raftDebug.camera` (shots, count, store kind, `snap()`, `list()`, `dataURL(id)`), `raftDebug.album`, and `raftDebug.content.photoframe` (`place`, `frames`, `textures`, `state`, `pick`).
-- Not yet verified: a two-tab co-op run (QA step 7) and diving-overlay capture.
+- Verified in a two-tab loopback run (host IndexedDB, guest memory store): each side sees the other's framed photo, the save has no image data, and the guest's frame returns to the placeholder on the host when the guest leaves. Not yet verified: diving-overlay capture.
