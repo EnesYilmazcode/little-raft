@@ -86,3 +86,23 @@ test('LOD grid follows the camera on the coarsest lattice, so vertices stay put 
   assert.deepEqual([...world()].sort(), [...w0].sort());
   ocean.dispose();
 });
+
+test('raft mask box covers every pixel whose bilinear taps reach a non-zero texel', () => {
+  const ocean = createOcean(T);
+  const box = ocean.uniforms.uMaskBox.value, tex = ocean.uniforms.uRaftMask.value, G = tex.image.width;
+  const empty = () => box.x >= box.z && box.y >= box.w;
+  assert.ok(empty(), 'empty before any tiles');
+  ocean.setRaftTiles([[0, 0], [1, 0], [-1, 2], [3, -2]]);
+  // a pixel taps texel k when floor(w / 0.5 + G/2 - 0.5) is k - 1 or k, i.e. w in [lo(k), hi(k))
+  const lo = (k) => (k - 0.5 - G / 2) * 0.5, hi = (k) => (k + 1.5 - G / 2) * 0.5;
+  let n = 0;
+  for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
+    if (!tex.image.data[j * G + i]) continue;
+    n++;
+    assert.ok(box.x < lo(i) && box.y < lo(j) && hi(i) <= box.z && hi(j) <= box.w, `texel ${i},${j}`);
+  }
+  assert.ok(n > 0);
+  ocean.setRaftTiles([]);
+  assert.ok(empty(), 'cleared');
+  ocean.dispose();
+});

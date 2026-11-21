@@ -91,6 +91,7 @@ uniform float uFadeNear;
 uniform float uFadeFar;
 uniform sampler2D uRaftMask;
 uniform vec4 uFoamPts[${MAX_FOAM}];
+uniform vec4 uMaskBox; // world xz bounds (x0, z0, x1, z1) of the non-zero raft mask texels
 varying vec3 vWorld;
 varying vec3 vNormalW;
 varying float vHeight;
@@ -156,30 +157,38 @@ void main() {
 
   // Sun: sharp glint + broad sheen.
   vec3 H = normalize(L + V);
-  float ndh = max(dot(n, H), 0.0);
-  float spec = pow(ndh, 420.0) * 2.6 + pow(ndh, 60.0) * 0.28;
-  spec = min(spec, 2.2) * (1.0 - smoothstep(60.0, 130.0, dist) * 0.6);
-  col += uSunColor * spec;
+  float ndh = dot(n, H);
+  if (ndh > 0.9) { // below this both lobes sum to < 6e-4: invisible, so skip the pows
+    float spec = pow(ndh, 420.0) * 2.6 + pow(ndh, 60.0) * 0.28;
+    spec = min(spec, 2.2) * (1.0 - smoothstep(60.0, 130.0, dist) * 0.6);
+    col += uSunColor * spec;
+  }
 
   // Foam, near only (nothing from 45 on, so skipped there): faint soft foam on the nearest crests,
   // plus contact collars around the raft edge and floating items.
   if (dist < 45.0) {
     vec2 fp = p + vec2(uTime * 0.35, uTime * 0.12);
-    float n1 = vnoise(fp * 0.9);
-    float n2 = vnoise(fp * 2.6 + vec2(uTime * -0.2, uTime * 0.15));
-    float lace = 1.0 - smoothstep(0.0, 0.06, abs(n1 * 0.7 + n2 * 0.3 - 0.5));
-    float crest = smoothstep(0.06, 0.17, vHeight);
-    float speck = smoothstep(0.86, 0.93, vnoise(fp * 3.7)) * smoothstep(0.0, 0.12, vHeight);
-    float foam = clamp(lace * crest * 0.2 + speck * 0.12, 0.0, 0.3) * (1.0 - smoothstep(12.0, 40.0, dist));
+    float foam = 0.0;
+    if (vHeight > 0.0 && dist < 40.0) { // crest and speck are 0 in troughs, and the fade is 0 from 40 m
+      float n1 = vnoise(fp * 0.9);
+      float n2 = vnoise(fp * 2.6 + vec2(uTime * -0.2, uTime * 0.15));
+      float lace = 1.0 - smoothstep(0.0, 0.06, abs(n1 * 0.7 + n2 * 0.3 - 0.5));
+      float crest = smoothstep(0.06, 0.17, vHeight);
+      float speck = smoothstep(0.86, 0.93, vnoise(fp * 3.7)) * smoothstep(0.0, 0.12, vHeight);
+      foam = clamp(lace * crest * 0.2 + speck * 0.12, 0.0, 0.3) * (1.0 - smoothstep(12.0, 40.0, dist));
+    }
     vec2 wp = vWorld.xz; // raft mask and item collars live in world space (no sailing flow)
     // Raft collar: CPU-built falloff field, filtered by hand so it is smooth on every GPU.
-    vec2 t = wp / ${TEXEL.toFixed(2)} + ${(GRID / 2 - 0.5).toFixed(1)};
-    vec2 i0 = floor(t), fr = t - i0;
-    i0 = (i0 + 0.5) / ${GRID.toFixed(1)};
-    float k = 1.0 / ${GRID.toFixed(1)};
-    float m = mix(mix(texture2D(uRaftMask, i0).r, texture2D(uRaftMask, i0 + vec2(k, 0.0)).r, fr.x),
-                  mix(texture2D(uRaftMask, i0 + vec2(0.0, k)).r, texture2D(uRaftMask, i0 + vec2(k)).r, fr.x), fr.y);
-    float edge = m * (0.85 + 0.15 * sin(uTime * 1.7 + wp.x * 2.0 + wp.y * 1.3));
+    float edge = 0.0;
+    if (all(greaterThan(wp, uMaskBox.xy)) && all(lessThan(wp, uMaskBox.zw))) { // mask is 0 outside
+      vec2 t = wp / ${TEXEL.toFixed(2)} + ${(GRID / 2 - 0.5).toFixed(1)};
+      vec2 i0 = floor(t), fr = t - i0;
+      i0 = (i0 + 0.5) / ${GRID.toFixed(1)};
+      float k = 1.0 / ${GRID.toFixed(1)};
+      float m = mix(mix(texture2D(uRaftMask, i0).r, texture2D(uRaftMask, i0 + vec2(k, 0.0)).r, fr.x),
+                    mix(texture2D(uRaftMask, i0 + vec2(0.0, k)).r, texture2D(uRaftMask, i0 + vec2(k)).r, fr.x), fr.y);
+      edge = m * (0.85 + 0.15 * sin(uTime * 1.7 + wp.x * 2.0 + wp.y * 1.3));
+    }
     for (int i = 0; i < ${MAX_FOAM}; i++) {
       vec4 f = uFoamPts[i];
       if (f.z <= 0.0) break;  // live points are packed first
@@ -188,8 +197,11 @@ void main() {
       float d = length(dv) / f.z;  // thin broken ring hugging the item's waterline
       edge = max(edge, smoothstep(0.35, 0.7, d) * (1.0 - smoothstep(0.7, 1.0, d)) * 0.35 * f.w);
     }
-    float cl = vnoise(fp * 1.7) * 0.6 + vnoise(fp * 4.3 - uTime * 0.25) * 0.4;
-    float collar = smoothstep(1.0 - edge, 1.0 - edge * 0.55, cl) * min(1.0, edge * 1.4) * 0.85;
+    float collar = 0.0;
+    if (edge > 0.0) { // no raft edge or item ring here: the collar term is 0
+      float cl = vnoise(fp * 1.7) * 0.6 + vnoise(fp * 4.3 - uTime * 0.25) * 0.4;
+      collar = smoothstep(1.0 - edge, 1.0 - edge * 0.55, cl) * min(1.0, edge * 1.4) * 0.85;
+    }
     col = mix(col, uFoam, max(foam, collar));
   }
 
@@ -269,6 +281,7 @@ export function createOcean(T, options = {}) {
     uFadeNear: { value: options.fadeNear ?? 52 },
     uFadeFar: { value: options.fadeFar ?? 135 },
     uRaftMask: { value: mask },
+    uMaskBox: { value: new T.Vector4(0, 0, 0, 0) }, // empty until setRaftTiles
     uFoamPts: { value: foamPts },
   };
 
@@ -294,11 +307,15 @@ export function createOcean(T, options = {}) {
   // Runs only when the raft changes; only texels near the raft are visited.
   function setRaftTiles(tiles) {
     maskData.fill(0);
+    uniforms.uMaskBox.value.set(0, 0, 0, 0);
     if (tiles.length) {
       let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
       for (const [x, z] of tiles) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
       const pad = 1 + COLLAR, half = GRID / 2;
       const toI = (w) => Math.max(0, Math.min(GRID - 1, Math.floor(w / TEXEL + half)));
+      // texels outside these bounds stay 0; the shader's bilinear taps reach one texel further out
+      const toW = (i) => (i - half) * TEXEL;
+      uniforms.uMaskBox.value.set(toW(toI(x0 * 2 - pad) - 1), toW(toI(z0 * 2 - pad) - 1), toW(toI(x1 * 2 + pad) + 2), toW(toI(z1 * 2 + pad) + 2));
       for (let j = toI(z0 * 2 - pad); j <= toI(z1 * 2 + pad); j++) {
         const wz = (j + 0.5 - half) * TEXEL;
         for (let i = toI(x0 * 2 - pad); i <= toI(x1 * 2 + pad); i++) {
