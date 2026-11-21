@@ -341,3 +341,16 @@ test('picking: an empty Hay Corner in front of another goat keeps the aim (lure 
   m.dispose();
 });
 
+test('prompts: the longest goat prompt fits the 48-char prompt label', () => {
+  const scene = new T.Scene(), camera = new T.PerspectiveCamera(60, 1, .1, 100);
+  camera.position.set(2, .9, 3.6); camera.lookAt(2, .5, 2); camera.updateMatrixWorld();
+  const s = stub({ scene, camera }), m = createAnimals(s);
+  m.load(save({ name: 'Abcdefghijklmn', hearts: 10 }), 'save');
+  s.bag.selectedIndex = 2; // holding milk at a goat with milk: the "has milk" tail
+  m.update(.016);
+  const label = m.prompt({}).replace(/^<kbd>E<\/kbd>/, '');
+  assert.match(label, /· has milk/);
+  assert.ok(label.length <= 48, `${label.length}: ${label}`);
+  m.dispose();
+});
+
