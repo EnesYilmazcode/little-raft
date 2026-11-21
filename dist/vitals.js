@@ -26,6 +26,7 @@ export const RESPAWN = Object.freeze({hp:100, food:75, water:75}); // [G]
 export const FOOD = {
   fish:            {food:12.5, water:-10},
   cookedfish:      {food:35,   water:0},
+  honeyfish:       {food:45,   water:5},   // [bees] cookedfish + honey
   freshcup:        {food:0,    water:40, returns:'cup'},
   saltcup:         {food:0,    water:-5, returns:'cup'},
   sharkmeat:       {food:10,   water:-5},
