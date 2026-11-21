@@ -64,10 +64,14 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
   darker than the horizon: 2018-07-13-development-blog-35-01 top (640,30) L123 against the horizon
   band (40,440) L203; 2021-04-01-devblog-46-03 top L173 against L237; store_20 top L215 against L231.
   Even the storm frame community_024 keeps this structure: top L169, horizon (900,480) L216.
+  **[VERIFIED: re-sampled 2018-07-13 L123/L203, store_20 top (640,20) L209, 2021-04-01 top L168 vs
+  horizon L229, community_024 L168/L216; zenith 7 to 40 % darker holds.]**
 - **C4 Clouds are thin, wispy and streaky.** They are high and flat, and none of them reads as a
   3D blob: 2021-04-01-devblog-46-03 (streaks fanning from the sun), store_20, community_008,
   community_024 (overcast bands). community_036 and screenshot_custom-raft show a few small flat
-  puffs low on the horizon. No cloud ever shows parallax against the raft.
+  puffs low on the horizon. No cloud ever shows parallax against the raft. **[VERIFIED: visual check of
+  2021-04-01, store_20 and community_024; thin streaky layers only. "No parallax" cannot be seen in
+  stills and is an inference.]**
 
 ### Sun, moon and stars
 
@@ -77,7 +81,13 @@ community_140, community_047, store_05). All "storm" claims rest on a single ima
   limb and a few large soft crater blotches. community_102 shows a 148 px (11.5 % W) moon, so it is
   probably zoomed or in photo mode, and I treat it as an outlier. Assuming a horizontal FOV of
   about 90 deg (from memory, unverified), 4 to 6 % W is roughly 4 to 6 deg of arc, about 10x the
-  real moon.
+  real moon. **[CORRECTED: was "4 to 6 % W" (51/57/61/76 px); the disc is about 5 to 7 % W. Raw row and
+  column profiles through each centre show a 1 px hard limb; limb-to-limb widths are 61 px (4.8 % W)
+  in community_094, 69 to 71 px (5.4 % W) in community_146, 66 px (5.2 % W) in community_053 and
+  83 to 87 px (6.6 to 6.8 % W) in community_007. The analyst's half-max cut fell inside the disc
+  because the moon has limb darkening and dark crater blotches (inner L135 to L216). community_102
+  is 136 px (10.6 % W, not 148 px), still an outlier. At an assumed 90 deg FOV this is about 5 to
+  7 deg.]**
 - **C6 The sun is a soft blown-out core of about 5 to 8 % W, inside a very wide bloom.** In
   2021-04-01-devblog-46-03, the core at L>=250 is 44 px (4.8 % W), at L>=240 it is 72 px (7.9 % W)
   and at L>=200 it is 228 px (25.1 % W). community_103 (low sun) gives 8.0 % W at L>=240 and

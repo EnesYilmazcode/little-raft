@@ -324,4 +324,27 @@ The view is in `dist/survival-ui.js`. Its CSS is injected from lines 116-187. **
 - **Equipment row (C6):** Little Raft has no wearables. I recommend skipping it unless equipment is planned.
 - **#5:** changing `SLOT_COUNT` affects multiplayer snapshots. Host and guest builds must agree, so ship it with a version bump.
 - **#6 against one-click crafting:** players are young (`index.html:11`, "Play with my brother"). One click may be part of the intended feel, so playtest before removing it. Double-click to craft is the compromise.
-- **The red "cannot craft" CRAFT button (C13)** appears in only 2 frames (`qVVltzNBaGw_0400`, `qdWZgcjkYNI_0720`). Both are night scenes, so the sampled colours are darker than daytime.
+- **The red "cannot craft" CRAFT button (C13)** appears in only 2 frames (`qVVltzNBaGw_0400`, `qdWZgcjkYNI_0720`). Both are night scenes, so the sampled colours are darker than daytime. **[CORRECTED: the red CRAFT button appears in 12 frames, not 2: `68lj91mBrDI_0210`, `_0219`, `_0238`, `_0244`, `qVVltzNBaGw_0030`, `_0135`, `_0305`, `_0325`, `_0345`, `_0400`, `qdWZgcjkYNI_0640` and `_0720`. Several are daytime. The daytime red is #96462c (`68lj91mBrDI_0210`, mask median around (324,90)), close to the night #94422d, so night barely shifts it]**
+
+## Verification log
+
+Skeptic pass on 2026-11-21. Tag counts in this file: **VERIFIED 63, CORRECTED 14, UNSURE 3**. The 19 numbered claims break down as 13 VERIFIED, 3 CORRECTED (C7, C11, C14) and 3 with UNSURE sub-points from memory (C15 lifetime, C18 shift-click, C19). C5's hidden-vs-greyed inference was already flagged UNSURE by the analyst and is not counted again.
+
+**Method**
+- Images: I built 4x4 contact sheets of all 45 yt frames and checked open and closed inventory by eye. I re-measured boxes on gridded 1-4x crops with luminance profiles and run detection. I re-sampled every cited hex as a 3x3 and a 5x5 median (Pillow and numpy). I computed WCAG ratios with the standard relative-luminance formula. I detected the red and green CRAFT states across all 45 frames with a colour mask over x 220-360, y 60-110.
+- Code: I read every cited file:line. I rendered `dist/survival-ui.js` with the real `Bag` in headless Chrome at 1280x720 and 1920x1080 (a harness in scratch, served locally) and measured `.sv-craft` clientHeight/scrollHeight, rows, grid columns and row counts, wrap, bag and hotbar sizes, and the computed `::backdrop`.
+- Contrast from the actual CSS: I alpha-composited `#3a2716eb` over the `.sv-wrap` gradient (#b48d55 to #8a663a), then the slot gradient `#5a3f28e8` to `#3d2a19e8` over that. Results: empty slot against section 1.03-1.33 (midpoint 1.10), not 1.22. Ink #153e49 against slot 1.00-1.18, which confirms 1.0:1. Ink against `style.css` `--paper` #f4fcf8 is 11.2:1, so the #2 direction is sound. In the HUD hotbar (#9a7643 to #6a4a2a background), slot against background is 1.4-2.5:1 and ink against slot is about 1.1:1.
+- Scratch: `/tmp/claude-0/-home-user-little-raft/357b287e-6b25-59b7-a94d-bb803559ea72/scratchpad/inventory-crafting/skeptic/` (samp.py, grid.py, contrast.py, web/h.html harness, crops).
+
+**Images re-checked:** `stills/steam/store_04.jpg` (and byte-identical `stills/press/steam-store-04.jpg`), `stills/wiki-items/storage-large-ui.jpg`, `stills/press/2021-06-24-hotfix-13-01-01.jpg`, and yt `68lj91mBrDI_0110`, `_0149`, `_0210`, `9qt0eezZZMs_0012`, `qVVltzNBaGw_0400`, `_0455`, `qdWZgcjkYNI_0140`, `_0640`, `_0720`, `_0945`, `_1045`, plus all 45 on contact sheets.
+
+**Corrections that matter**
+1. The dialog is about 830 px wide (65% W), not 770 px. The bag centre sits at 62% W, which strengthens #8.
+2. Empty-slot/section contrast is about 1.1:1, not 1.22:1, and Raft's is 3.07:1, not 2.99:1. Neither changes the #2 recommendation.
+3. The recipe list cap (520 px) and needed height (652 px measured; about 650 claimed) are confirmed. Exactly 2 recipes are hidden at both 720p and 1080p.
+4. `game.js:403` gating is confirmed, so the in-inventory craft notice really is invisible.
+5. The 7-column, 20-slot, 7/7/6 layout is confirmed in the rendered DOM.
+6. Smaller fixes: the frame and still counts (45, 42, 174, 283), C14 rows (12, not 13), the C11 strip height (about 35%, not 27%), the C7 540p slot size (33 px, with 36.7 px as the pitch), and the red CRAFT frames (12, not 2, and not only night).
+
+**Ranking:** no change item depends on a claim that flipped. The order stays the same. Originality guardrail: every change item uses Little Raft's own palette and generic states. None asks to copy Raft's art, icons, fonts or skin, so no rewrite was needed.
+
