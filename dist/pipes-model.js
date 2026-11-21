@@ -37,8 +37,8 @@ export function createWaterTank(T) {
   for (const y of [.3, .78]) parts.push([new T.TorusGeometry(.305, .014, 4, 20), '#b87333', 0, y, 0, Math.PI / 2]); // copper hoops
   parts.push([new T.ConeGeometry(.33, .15, 10), '#b87333', 0, .9 + .075, 0]); // lid
   parts.push([new T.CylinderGeometry(.03, .03, .03, 6), '#8a5a2b', 0, 1.06, 0]); // lid knob
-  parts.push([new T.CylinderGeometry(.03, .03, .14, 6), '#b87333', .36, .15, 0, 0, 0, Math.PI / 2]); // spigot
-  parts.push([new T.CylinderGeometry(.04, .04, .03, 6), '#b87333', .43, .15, 0, 0, 0, Math.PI / 2]);
+  parts.push([new T.CylinderGeometry(.03, .03, .1, 6), '#b87333', .34, .15, 0, 0, 0, Math.PI / 2]); // spigot
+  parts.push([new T.CylinderGeometry(.04, .04, .03, 6), '#b87333', .4, .15, 0, 0, 0, Math.PI / 2]);
   parts.push([new T.BoxGeometry(.09, WIN_H, .01), '#2b2118', 0, WIN_Y + WIN_H / 2, .302]); // dark window backing
   for (let i = 1; i <= 3; i++) parts.push([new T.BoxGeometry(.035, .012, .012), '#e8d9b8', .075, WIN_Y + WIN_H * i / 4, .305]); // tick marks
   const body = new T.Mesh(bake(T, parts), new T.MeshStandardMaterial({ vertexColors: true, roughness: .75, metalness: .15, flatShading: true }));
