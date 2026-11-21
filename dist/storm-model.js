@@ -81,7 +81,7 @@ export function stormMaterials(T) {
   const shard = new T.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.25, metalness: 0, emissive: 0x7fd8ff, emissiveIntensity: 0.6 }); shard.name = 'stormShard';
   const lampGlass = new T.MeshStandardMaterial({ color: 0x5fb8e8, transparent: true, opacity: 0.6, roughness: 0.2, emissive: 0x2f9fff, emissiveIntensity: 0.6, depthWrite: false }); lampGlass.name = 'stormLampGlass';
   const clearGlass = new T.MeshStandardMaterial({ color: 0xe6f6f4, transparent: true, opacity: 0.55, roughness: 0.08, depthWrite: false }); clearGlass.name = 'stormClearGlass';
-  const crystal = new T.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.4, emissive: 0xdfefff, emissiveIntensity: 0.25 }); crystal.name = 'stormCrystal';
+  const crystal = new T.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.4, emissive: 0xdfefff, emissiveIntensity: 0.45 }); crystal.name = 'stormCrystal';
   const list = [wood, metal, copper, shard, lampGlass, clearGlass, crystal];
   const free = shareable(T, list);
   return { wood, metal, copper, shard, lampGlass, clearGlass, crystal, dispose: free };
