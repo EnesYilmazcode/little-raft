@@ -631,12 +631,15 @@ export function mount(transfer = null) {
     if (!force && signature === uiSignature) return; uiSignature = signature;
     const b = document.body.classList;
     b.toggle('pointer-locked', locked); b.toggle('locked', locked); b.toggle('first-person', running); b.toggle('playing', running);
+    b.toggle('drag-look', lockFallback); if (lockFallback) b.remove('relock'); // drag-look needs the cursor: never hide it waiting for a relock
     const crosshair = $('#crosshair'); if (crosshair) crosshair.hidden = !(running && locked);
     const resume = $('#resumeHint'); if (resume) resume.hidden = !(running && !locked && lockSupported && !dialog);
   }
 
   // ---------- Pointer lock ----------
   let lockPromisePending = false, lockHasPromise = false, lockFailures = 0;
+  // Last lock loss the page did not cause (Esc, browser UI): Chrome refuses relock with SecurityError for ~1 s after it.
+  let userExitAt = -Infinity, pageReleaseAt = -Infinity;
   const windowFocused = () => { try { return document.hasFocus(); } catch { return true; } };
   // Always ask (no navigator.userActivation pre-gate): after the page itself released the lock (inventory,
   // crafting, crew) Chrome relocks without a gesture. Refusals are handled in lockFailed (lock-rules.js).
@@ -659,13 +662,13 @@ export function mount(transfer = null) {
     if (isLocked()) return;
     const isEvent = typeof Event !== 'undefined' && err instanceof Event;
     if (isEvent && (lockPromisePending || lockHasPromise)) { refreshPointerUI(true); return; } // the promise rejection carries the real reason
-    const verdict = lockFailureVerdict({supported:lockSupported, err:isEvent ? null : err, focused:windowFocused(), failures:lockFailures});
+    const verdict = lockFailureVerdict({supported:lockSupported, err:isEvent ? null : err, focused:windowFocused(), failures:lockFailures, sinceUserExit:performance.now() - userExitAt});
     lockFailures = verdict.failures;
     if (!verdict.fallback) { refreshPointerUI(true); return; }
     const wasFallback = lockFallback; lockFallback = true; refreshPointerUI(true);
     if (!wasFallback && running) notice('Mouse lock unavailable: drag to look, click to use', 3000);
   }
-  function releaseLock() { if (isLocked()) document.exitPointerLock?.(); }
+  function releaseLock() { if (isLocked()) { pageReleaseAt = performance.now(); document.exitPointerLock?.(); } }
   function look(dx, dy, k) { yaw -= dx * k; pitch = clamp(pitch - (options.invertY ? -dy : dy) * k, -PITCH_LIMIT, PITCH_LIMIT); }
   function clearInput() { keys = {}; charging = null; reeling = false; down = null; lookFilter.reset(); controls?.clear(); fc?.releaseInput(); } // controls lane: also release the input layer
   // A panel opening keeps held keys (keyup still arrives); only window blur really loses keyups. The controls lane drops its own while blocked.
@@ -1337,7 +1340,12 @@ export function mount(transfer = null) {
   on(document, 'pointerlockchange', () => {
     lookFilter.reset({dropFirst:isLocked()}); // the first move after lock is often a bogus jump
     if (isLocked()) { lockFallback = false; lockFailures = 0; }
-    else { if (charging && charging.x === null) charging = null; reeling = false; if (!lockFallback) fc?.releaseInput(); } // [fishing-cooking] its pointerup may never come
+    else {
+      if (charging && charging.x === null) charging = null; reeling = false; if (!lockFallback) fc?.releaseInput(); // [fishing-cooking] its pointerup may never come
+      // A loss the page caused (menus, panels) comes with a dialog/panel open or a recent releaseLock(); anything else is the user.
+      const now = performance.now();
+      if (!(now - pageReleaseAt < 500 || uiBlocked() || document.querySelector('dialog[open]'))) { userExitAt = now; lockFailures = 0; }
+    }
     if (!isLocked() && !lockFallback && building?.menu.isOpen) building.menu.close(false); // building-pieces lane hook
     down = null; refreshPointerUI(true);
   });
@@ -1761,6 +1769,9 @@ export function mount(transfer = null) {
   const shellApi = {
     hold:guard(() => { escHeld = true; relockOnEscUp = false; }),
     released:guard(() => escReleased()),
+    // Escape with the hammer wheel open (the shell swallows the keydown the game would see). Cancels the wheel
+    // only; pointer lock is untouched, so play continues with no cursor. True when a wheel was open.
+    closeBuildWheel:guard(() => { if (!building?.menu.isOpen) return false; building.menu.close(false); return true; }),
   };
   window.raftShell = shellApi;
   window.raftDebug = debugApi;
