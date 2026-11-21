@@ -57,6 +57,7 @@
 // observe(ev, actor), dayIndex(), hasGrill() ([tasks]).
 
 import { createIslands } from './islands.js?build=v3-survival-ae77fa84ac2b';
+import { createMast } from './mast.js?build=v3-survival-ae77fa84ac2b'; // story: the Old Beacon Mast (receiver target)
 import { createWildlife } from './wildlife.js?build=v3-survival-ae77fa84ac2b';
 import { createStorage } from './storage-research.js?build=v3-survival-ae77fa84ac2b';
 import { createDecorPack } from './decor-pack.js?build=v3-survival-ae77fa84ac2b';
@@ -91,7 +92,7 @@ import { createZipline } from './zipline.js?build=v3-survival-ae77fa84ac2b'; // 
 import { createSpyglass } from './spyglass.js?build=v3-survival-ae77fa84ac2b'; // [spyglass]
 import { createStorm } from './storm.js?build=v3-survival-ae77fa84ac2b'; // [storm]
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createStorm, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createCrops, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createSpyglass, createCookpot]; // round 4: game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); // [bees] + createBees; [scarecrow] after wildlife; [sit] + createSitting; [flags] + createFlags; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [storm] after daynight; [crops] + createCrops; [spyglass]; [juicer] + createJuicer [gull] + createGull
+const FEATURES = [createIslands, createMast, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createStorm, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createCrops, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createSpyglass, createCookpot]; // round 4: game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); // [bees] + createBees; [scarecrow] after wildlife; [sit] + createSitting; [flags] + createFlags; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [storm] after daynight; [crops] + createCrops; [spyglass]; [juicer] + createJuicer [gull] + createGull
 // [undecor] decor whose module stores items per tile but has no beforeUndecor/undecorLoot/afterUndecor yet:
 // picking it up would lose what it holds, so the host refuses (display, fish trap, cooking pot, gull perch tray).
 const NO_UNDECOR = new Set(['shelf', 'trophystand', 'fishtrap', 'cookpot', 'perch', 'cropplot']); // [crops] slots live on the decor entry
@@ -171,6 +172,8 @@ export function createContent(ctx, features = FEATURES) {
     wind: () => env.wind(), night: () => env.night(), // [power] live daynight wind / nightFactor (fallbacks .15 / 0)
     diveMods(out) { out.swim = out.oxy = out.fog = out.gather = 1; for (let i = 0; i < mods.length; i++) { const m = mods[i]; if (!m.dead && typeof m.diveMods === 'function') call1(m, out); } return out; }, // shared dive modifier hook (no per-frame rest-arg arrays)
     day() { const m = mods.find(m => m.name === 'daynight' && !m.dead); const d = m?.day; return Number.isInteger(d) ? d : null; }, // [tasks] in-game day index
+    beacon: yaw => first('beacon', yaw), // story: signal pill readout for the Old Beacon Mast (mast.js), or null
+    storyNotes: () => first('storyNotes') || null, // story: landmark logbook notes [{id, title, text}]
     tasksView() { const m = mods.find(m => m.name === 'tasks' && !m.dead); if (!m) return null; try { return m.view?.() ?? null; } catch { return null; } }, // [tasks] logbook tab
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };

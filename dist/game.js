@@ -845,12 +845,14 @@ export function mount(transfer = null) {
     try { if (el.matches(':popover-open')) el.hidePopover(); if (place === 'hud') el.showPopover(); } catch {} // re-show so it sits above the HUD
   }
   let lastReadout = null, signalHtml = null, markerCss = null;
+  const sigPart = (live, arrow, label) => `<span class="sig-arrow" style="transform:rotate(${live ? Math.round(arrow) : 0}deg)">${live ? '↑' : '◌'}</span>` + esc(label);
   function updateSignalHud() { // receiver pill + cache marker (see signal.js)
     const n = countAntennas(world.decor), r = signalReadout(world.signal, {x:physics.x, z:physics.z, yaw}, n, elapsed); lastReadout = r;
     const el = document.getElementById('signalReadout'), mk = document.getElementById('signalMarker');
     if (el) {
-      const show = !!(running && r); if (el.hidden === show) el.hidden = !show;
-      const html = show ? `<span class="sig-arrow" style="transform:rotate(${r.listening ? 0 : Math.round(r.arrow)}deg)">${r.listening ? '◌' : '↑'}</span>` + esc(r.label) : '';
+      const b = content?.beacon?.(yaw) ?? null, cacheOn = !!(r && !r.listening); // story: the Old Beacon Mast (mast.js) takes the pill unless a cache is being tracked
+      const show = !!(running && (r || b)); if (el.hidden === show) el.hidden = !show;
+      const html = !show ? '' : (r && (cacheOn || !b) ? sigPart(cacheOn, r.arrow, r.label) : '') + (b ? (r && cacheOn ? ' &nbsp;·&nbsp; ' : '') + sigPart(b.live, b.arrow, b.label) : '');
       if (html !== signalHtml) { signalHtml = html; el.innerHTML = html; }
     }
     const c = world.signal?.cache, m = c ? itemMeshes.get(c.token) : null;
@@ -2575,7 +2577,7 @@ export function mount(transfer = null) {
       recipeGate:id => mergeGate(prog?.recipeGate(id), content?.craftLocked(id, myActor())), // [progression-hook] + content locks the host would refuse
     });
     prog.installUI(); // [progression-hook]
-    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock()), tasks:{view:() => content?.tasksView?.() ?? null, claim:id => action({kind:'tasks.claim', i:id})}}); // [tasks] Tasks tab
+    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock()), tasks:{view:() => content?.tasksView?.() ?? null, claim:id => action({kind:'tasks.claim', i:id})}, story:() => content?.storyNotes?.() ?? null}); // [tasks] Tasks tab; story notes (mast.js) // [tasks] Tasks tab
     try { lookUI = createLookUI({getState:() => lookState, onChange:guard(applyLook), onSend:guard(() => coop?.sendLook?.()), onPause:guard(pauseInput), onResume:guard(() => { if (running) requestLock(); })}); } catch (e) { console.error('look UI failed', e); lookUI = null; } // [look]
     try { albumUI = createPhotoAlbumUI({store:sharedPhotoStore({notice:s => notice(s, 3200)}), onPause:guard(pauseInput), onResume:guard(() => requestLock())}); } catch (e) { console.error('photo album failed', e); albumUI = null; } // [camera]
     if (role !== 'guest') retroAward();
