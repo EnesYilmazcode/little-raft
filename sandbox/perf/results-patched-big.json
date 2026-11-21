@@ -3,15 +3,15 @@
  "scenarios": {
   "stock dist": {
    "frames": 12,
-   "frameMs": 7203.65,
-   "frameP95": 10847.3,
-   "frameWorst": 10847.3,
-   "renderMs": 7202.96,
-   "submitMs": 11.5,
-   "submitMin": 5,
-   "logicMs": 0.69,
-   "logicP95": 1,
-   "rafGapMs": 7290.62,
+   "frameMs": 5004.67,
+   "frameP95": 7875.1,
+   "frameWorst": 7875.1,
+   "renderMs": 5003.03,
+   "submitMs": 11.9,
+   "submitMin": 5.9,
+   "logicMs": 1.63,
+   "logicP95": 5,
+   "rafGapMs": 5110.4,
    "calls": 1026,
    "triangles": 685494,
    "geometries": 711,
@@ -22,14 +22,14 @@
     1280,
     720
    ],
-   "heapDeltaKB": 478,
+   "heapDeltaKB": -477,
    "shadow": "every frame",
    "cpuMsPerFrame": {
-    "browser": 1.4,
-    "utility": 0.9,
-    "renderer": 38.2,
-    "gpu-process": 3037.7,
-    "total": 3078.2
+    "browser": 0.9,
+    "utility": 0.5,
+    "renderer": 36.4,
+    "gpu-process": 3071.4,
+    "total": 3109.2
    },
    "census": {
     "meshes": 833,
@@ -96,41 +96,41 @@
   },
   "patched dist": {
    "frames": 12,
-   "frameMs": 3479.35,
-   "frameP95": 4713.8,
-   "frameWorst": 4713.8,
-   "renderMs": 3477.82,
-   "submitMs": 7.2,
-   "submitMin": 4.6,
-   "logicMs": 1.53,
-   "logicP95": 5,
-   "rafGapMs": 3593.8,
-   "calls": 362,
-   "triangles": 721006,
+   "frameMs": 1819.86,
+   "frameP95": 2350,
+   "frameWorst": 2350,
+   "renderMs": 1818.57,
+   "submitMs": 6.3,
+   "submitMin": 3.3,
+   "logicMs": 1.29,
+   "logicP95": 3,
+   "rafGapMs": 1815.07,
+   "calls": 360,
+   "triangles": 720238,
    "geometries": 333,
-   "textures": 15,
+   "textures": 8,
    "programs": 12,
    "pixelRatio": 1,
    "drawingBuffer": [
     1280,
     720
    ],
-   "heapDeltaKB": -85,
+   "heapDeltaKB": 100,
    "shadow": "every frame",
    "cpuMsPerFrame": {
-    "browser": 0.9,
-    "utility": 0.9,
-    "renderer": 24.1,
-    "gpu-process": 2328.2,
-    "total": 2354.1
+    "browser": 0.5,
+    "utility": 0.5,
+    "renderer": 18.2,
+    "gpu-process": 2088.2,
+    "total": 2107.4
    },
    "census": {
     "meshes": 315,
-    "casters": 82,
-    "verts": 1475502,
+    "casters": 80,
+    "verts": 1815312,
     "materials": 189,
     "geometries": 308,
-    "textures": 14,
+    "textures": 7,
     "byOwner": {
      "camera(viewmodels)": {
       "objects": 1,
@@ -150,7 +150,7 @@
       "objects": 1,
       "meshes": 85,
       "casters": 80,
-      "verts": 1103556,
+      "verts": 1443366,
       "materials": 85
      },
      "floating items": {
@@ -163,7 +163,7 @@
      "scenery": {
       "objects": 6,
       "meshes": 6,
-      "casters": 2,
+      "casters": 0,
       "verts": 24480,
       "materials": 1
      }
