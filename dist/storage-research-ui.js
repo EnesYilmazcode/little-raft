@@ -95,8 +95,8 @@ const CSS = `
 #inventory .sv-recipe[data-locked] .sv-why{display:none}
 #inventory .sv-recipe .lr-sr-lock{position:absolute;right:-6px;bottom:-6px}
 #inventory .sv-recipe .lr-sr-needs{display:block;margin-top:4px;font:700 12px/1.2 ${FONT};color:#ffcf9a}
-#inventory .sv-recipe.lr-sr-first{position:relative;margin-top:30px}
-#inventory .sv-recipe.lr-sr-first::before{content:'Discover at a Research Table';position:absolute;left:2px;top:-22px;font:800 11px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#d9c9a6}
+#inventory .sv-recipe.lr-sr-first{position:relative;margin-top:28px}
+#inventory .sv-recipe.lr-sr-first::before{content:'Discover at a Research Table';position:absolute;left:2px;right:2px;top:-20px;bottom:auto;width:auto;height:auto;border-radius:0;background:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:800 11px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#d9c9a6}
 #inventory .sv-recipe.lr-sr-fresh{animation:lrSrFresh 2.4s ease-out}
 @keyframes lrSrFresh{0%,30%{box-shadow:inset 0 0 0 2px #ffe3a6,0 0 16px #ffbd66}100%{box-shadow:inset 0 0 0 1px #d4b07a44}}
 @media(max-width:860px),(max-height:560px){#lrStorage .lr-sr-body{flex-direction:column}#lrStorage .lr-sr-next,#lrStorage .lr-sr-study{width:auto;max-height:none}
