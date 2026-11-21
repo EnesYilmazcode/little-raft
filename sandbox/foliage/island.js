@@ -100,14 +100,14 @@ export function buildIsland(T, F, kit, { seed = 1, radius = 7, top = 0.35, densi
   // palms: lean outward toward the sea, near/far LOD pairs
   const palms = scatter({ count: Math.max(1, Math.round(6 * D)), radius, seed: seed * 3 + 2, minDist: 2.2, accept: (px, pz) => rr(px, pz) < 0.78 && rr(px, pz) > 0.15, heightAt, scale: [0.85, 1.15] });
   palms.forEach(p => { p.rot = Math.atan2(-p.z, p.x) + (r() - 0.5) * 0.8; p.y -= 0.05; p.tint = 0.92 + r() * 0.16; });
-  // near/far swap at LOD_PALM, screen-door crossfaded per instance over +-LOD_BAND (both meshes drawn only there)
+  // near/far swap at LOD_PALM (island centre distance), screen-door crossfaded over +-LOD_BAND; both meshes draw only there
   const LOD_PALM = 42 + radius, LOD_BAND = 5;
   kit.palm.forEach((geo, v) => {
     const set = palms.filter((_, i) => i % kit.palm.length === v);
     if (!set.length) return;
-    add(F.instanced(kit.palmKind, geo, set, { dither: [LOD_PALM + LOD_BAND, LOD_PALM - LOD_BAND] }), LOD_PALM + LOD_BAND + radius);
+    add(F.instanced(kit.palmKind, geo, set, { dither: [LOD_PALM + LOD_BAND, LOD_PALM - LOD_BAND] }), LOD_PALM + LOD_BAND);
     const far = F.instanced('palmFar', kit.palmFar[v], set, { dither: [LOD_PALM - LOD_BAND, LOD_PALM + LOD_BAND] });
-    g.add(far); F.lod(far, 1e9, LOD_PALM - LOD_BAND - radius, center);
+    g.add(far); F.lod(far, 1e9, LOD_PALM - LOD_BAND, center);
   });
   const avoid = palms.map(p => ({ x: p.x, z: p.z, r: 0.45 }));
 

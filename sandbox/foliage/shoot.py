@@ -53,6 +53,8 @@ with sync_playwright() as p:
         name = '-'.join([c['view']] + [f'{k}{v}' for k, v in c.items() if k not in ('view', 't')] + ([f't{c["t"]}'] if 'wind' in c else [])) + '.png'
         page.screenshot(path=str(out / name))
         run = {**c, **r, 'shot': name, 'hero': page.evaluate('lab.counts')}
+        if c.get('foliage') != '0':  # deterministic fill proxy: foliage fragments rasterised per screen pixel
+            run['overdraw'] = {k: page.evaluate(f"lab.overdraw('{k}')") for k in ('foliage_', 'foliage_grass')}
         if look: report['runs'].append(run); continue
         if c.get('foliage') != '0':
             run['ab'] = page.evaluate('lab.ab(10)')
