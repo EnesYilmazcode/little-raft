@@ -98,7 +98,7 @@ function plateGeometry(T) {
  */
 export function createArmorView(T, scene) {
   const geo = plateGeometry(T);
-  const mat = new T.MeshStandardMaterial({ color: 0x8e9aa4, metalness: 0.35, roughness: 0.48 });
+  const mat = new T.MeshStandardMaterial({ color: 0xaab5be, metalness: 0.15, roughness: 0.5 });
   let cap = 0, mesh = null, key = -1;
   const group = new T.Group(); group.name = 'foundationArmor';
   scene.add(group);
