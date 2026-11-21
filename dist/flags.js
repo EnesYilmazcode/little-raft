@@ -12,6 +12,9 @@ const REFUSALS = { far: 'Step a little closer', full: `This raft already flies $
 export const OLD_HOST = 'Host’s game is older';
 const RESCAN_S = 2;
 const POLE_Y0 = .2, POLE_Y1 = 3.5; // aimable span of the mast above the tile top
+// windDir is the heading the wind blows toward, world (sin, cos); the cloth runs along local +X, which rotation.y = a
+// maps to (cos a, -sin a), so downwind is a = windDir - PI/2 (as the sail pennant in sailing-world.js does).
+const QUARTER = Math.PI / 2;
 
 export function createFlags(ctx) {
   const T = ctx.T;
@@ -94,7 +97,7 @@ export function createFlags(ctx) {
     else { if (!scratch) return null; cam.getWorldDirection(scratch); dx = scratch.x; dy = scratch.y; dz = scratch.z; }
     const dl = Math.hypot(dx, dy, dz) || 1; dx /= dl; dy /= dl; dz /= dl;
     const top = (ctx.raft?.position.y ?? 0) + .22, s = w.sailing, wd = Number.isFinite(s?.windDir) ? s.windDir : 0;
-    const fx = Math.cos(wd), fz = -Math.sin(wd); // cloth runs along local +X, yawed downwind
+    const fx = Math.sin(wd), fz = Math.cos(wd); // the cloth streams downwind
     for (let i = 0; i < w.decor.length; i++) {
       const d = w.decor[i]; if (!d || d.type !== 'flagpole' || !isInt(d.x) || !isInt(d.z)) continue;
       const cx = d.x * 2, cz = d.z * 2;
@@ -135,7 +138,7 @@ export function createFlags(ctx) {
   }
   function openFlag(x, z) {
     const go = u => u && u.open(x, z);
-    if (ui) go(ui); else loadUI()?.then(go);
+    if (ui) go(ui); else loadUI()?.then(u => { if (ctx.running !== false && !ctx.uiOpen?.()) go(u); }); // the game may have paused while the UI loaded
     return true;
   }
 
@@ -167,7 +170,7 @@ export function createFlags(ctx) {
       st = cleanSlice(data); // no decor pruning: the guest's decor may lag, the host is authoritative
       netR = data?.r; netS = data?.s;
     } else {
-      st = cleanSlice(data, ctx.world?.decor); st.s = session; st.r = prev.r + st.r + 1;
+      st = cleanSlice(data, ctx.world?.decor); st.s = session; st.r = prev.r + 1; // monotonic in this session (a huge saved r cannot stall r++)
       netR = -1; netS = null; hostHasFlags = true;
     }
     apply(prev.f);
@@ -179,8 +182,11 @@ export function createFlags(ctx) {
     let n = 0;
     for (let i = 0; i < anim.length; i++) if (anim[i].g.parent) anim[n++] = anim[i];
     anim.length = n;
-    for (const [k, g] of live) if (!g.parent) live.delete(k);
+    let gone = false;
+    for (const [k, g] of live) if (!g.parent) { live.delete(k); gone = true; }
+    if (ui?.isOpen) { const [x, z] = ui.tile.split(',').map(Number); if (decorAt(x, z) !== 'flagpole') ui.close(); } // pole broke or was picked up
     hostPrune();
+    if (gone) prune(); // a dead pole may have held the only DEFAULT cloth
   }
 
   function update(dt) {
@@ -189,7 +195,7 @@ export function createFlags(ctx) {
     if (models) { models.uniforms.uTime.value = t; models.uniforms.uStr.value = ws; }
     for (let i = 0; i < anim.length; i++) {
       const a = anim[i];
-      a.pivot.rotation.y = wd - a.g.rotation.y + .06 * Math.sin(t * 1.3 + a.ph);
+      a.pivot.rotation.y = wd - QUARTER - a.g.rotation.y + .06 * Math.sin(t * 1.3 + a.ph);
     }
     if (decorChanged()) dirty = true;
     if (isHost()) { scanT += Number.isFinite(dt) ? dt : 0; if (scanT >= RESCAN_S) dirty = true; }
@@ -202,7 +208,7 @@ export function createFlags(ctx) {
     if (ui?.isOpen && ui.tile === k) ui.close();
     if (!isHost() || !st.f[k]) return;
     const prevF = { ...st.f };
-    delete st.f[k]; st.r++;
+    delete st.f[k]; st.r++; live.delete(k); // its group is about to be rebuilt away: do not re-dress it
     apply(prevF);
   }
 
