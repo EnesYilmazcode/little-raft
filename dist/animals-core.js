@@ -273,7 +273,7 @@ export const eggPeriod = a => (a.content > 0 ? EGG_CONTENT : EGG_BASE) * (1 - HE
 export const milkPeriod = a => (a.content > 0 ? MILK_CONTENT : MILK_BASE) * (1 - HEART_CUT * a.hearts);
 export const gone = id => `That ${typeof id === 'string' && id[0] === 'g' ? 'Bramblegoat' : 'Puffhen'} wandered off`;
 const labelOf = a => (a && a.kind === 'goat' ? SPECIES.goat.label : SPECIES.puffhen.label);
-const kindCount = (st, kind, lures) => { let n = 0; for (const a of st.list) if (a.kind === kind) n++; if (lures) for (const l of st.lures) if ((l.kind || 'puffhen') === kind) n++; return n; };
+export const kindCount = (st, kind, lures) => { let n = 0; for (const a of st.list) if (a.kind === kind) n++; if (lures) for (const l of st.lures) if ((l.kind || 'puffhen') === kind) n++; return n; };
 const homeKey = h => h[0] + ',' + h[1];
 const findId = (st, id) => { for (const a of st.list) if (a.id === id) return a; return null; };
 const findHome = (st, x, z) => { for (const a of st.list) if (a.home[0] === x && a.home[1] === z) return a; return null; };

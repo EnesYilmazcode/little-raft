@@ -1,12 +1,14 @@
 // Raft animals v1: the Puffhen (see docs/specs/raft-animals.md). A Nest Box decor lures a Puffhen that
 // hops around the deck near its box, lays eggs and sometimes drops a feather. Never hungry, never leaves.
 // Slice: world.ext.animals (host-authoritative, actions 'animals.*'). Wander is a closed-form plan of the
-// synced clock, seed, born and deck layout, so no positions are ever sent. 3 draw calls, no per-frame allocations.
+// synced clock, seed, born and deck layout, so no positions are ever sent. 3 draw calls (5 while goats live), no per-frame allocations.
+// The Bramblegoat (docs/specs/goats.md) lives on a Hay Corner, wades up the raft edge, and gives a Pail of Milk to a held Wooden Pail.
 import {
-  MAX_ANIMALS, BEAT, TILE, REACH, FULL_AT, FOODS, cleanAnimals, cleanName, buildGraph, homeDist, plan, pose, newPlan,
+  MAX_ANIMALS, BEAT, TILE, REACH, FULL_AT, cleanAnimals, cleanName, buildGraph, homeDist, plan, pose, newPlan,
   tick, feed, pet, collect, lure, rename, rnd, findId, findHome, lureAt,
+  MAX_SLOTS, SPECIES, milk, edgeStart, GOAT_BEAT, GOAT_HOP_T, ARRIVE_GOAT_T, gone, kindCount,
 } from './animals-core.js?build=v3-survival-ae77fa84ac2b';
-import { puffhenGeometry, eggGeometry, heartGeometry, nestBoxModel, cushionModel, vertexMaterial } from './animals-models.js?build=v3-survival-ae77fa84ac2b';
+import { puffhenGeometry, eggGeometry, heartGeometry, nestBoxModel, cushionModel, vertexMaterial, goatBodyGeometry, goatHeadGeometry, goatPenModel, GOAT_NECK } from './animals-models.js?build=v3-survival-ae77fa84ac2b';
 
 const FLOOR_Y = .2, DECOR_Y = .22, BOX_LIFT = .18, BIRD_R = .24, BIRD_CY = .18, BOX_R = .4, BOX_CY = .3;
 const EGG_SLOTS = [[-.11, .05], [.1, .07], [0, -.1]], EGG_Y = .24;
@@ -15,6 +17,9 @@ const fin = v => typeof v === 'number' && Number.isFinite(v);
 const isInt = Number.isInteger;
 const round = v => Math.round(v);
 const FOOD_NAME = { seed: 'Palm Seed', leaf: 'Leaf' };
+const GOAT_FOOD_NAME = { leaf: 'Palm Leaf', seaweed: 'Seaweed' };
+const GOAT_R = .34, GOAT_CY = .3, PEN_R = .45, PEN_CY = .3, GOAT_LIFT = .03, GOAT_CAP = SPECIES.goat.cap, EAT_T = 2.5;
+const TAU = Math.PI * 2;
 const REASON_KIND = { full: 'notice' };
 
 export function createAnimals(ctx) {
@@ -22,20 +27,24 @@ export function createAnimals(ctx) {
   let st = cleanAnimals(undefined, null);
   let clock = 0, gotNet = false, lastR = -1;
   let cache = null, cacheR = -1, cacheAt = -1e9;
-  let built = false, group = null, birds = null, eggs = null, heart = null, birdMat = null, heartMat = null;
+  let built = false, group = null, birds = null, eggs = null, heart = null, birdMat = null, heartMat = null, goats = null, goatHeads = null;
   let ui = null, uiLoading = null, disposed = false;
   // graph
   let graph = null, tilesRef = null, decorRef = null, piecesRef = null, tilesLen = -1, decorLen = -1, piecesLen = -1, grillSig = 0, grillTimer = 0, pruneDecorRef = null, pruneDecorLen = -1;
   let worldSigV = 0, sigTimer = 0, pruneSig = 0, pruneTick = 0;
-  const homeIdx = new Int32Array(MAX_ANIMALS).fill(-1), dists = new Array(MAX_ANIMALS).fill(null), beatOf = new Int32Array(MAX_ANIMALS).fill(-1);
-  const plans = Array.from({ length: MAX_ANIMALS }, newPlan), slotId = new Array(MAX_ANIMALS).fill(null);
+  const homeIdx = new Int32Array(MAX_SLOTS).fill(-1), dists = new Array(MAX_SLOTS).fill(null), beatOf = new Int32Array(MAX_SLOTS).fill(-1);
+  const plans = Array.from({ length: MAX_SLOTS }, newPlan), slotId = new Array(MAX_SLOTS).fill(null);
   const p = { x: 0, z: 0, yaw: 0, hop: 0, moving: false, f: 0, lift: 0 };
-  const yawNow = new Float32Array(MAX_ANIMALS), lastPos = new Float32Array(MAX_ANIMALS * 3), shown = new Uint8Array(MAX_ANIMALS);
-  const squishAt = new Float64Array(MAX_ANIMALS).fill(-1e9);
+  const yawNow = new Float32Array(MAX_SLOTS), lastPos = new Float32Array(MAX_SLOTS * 3), shown = new Uint8Array(MAX_SLOTS);
+  const squishAt = new Float64Array(MAX_SLOTS).fill(-1e9), eatAt = new Float64Array(MAX_SLOTS).fill(-1e9);
+  const inst = new Int8Array(MAX_SLOTS), edgeX = new Float32Array(MAX_SLOTS), edgeZ = new Float32Array(MAX_SLOTS); // instance in its species mesh; wade-in start (raft metres)
+  const henShown = new Uint8Array(MAX_ANIMALS), goatShown = new Uint8Array(GOAT_CAP);
+  let tileKeys = new Set();
   let heartSlot = -1, heartAge = HEART_T, local = 0; // local: wall clock for local-only effects
   // scratch
   const v3 = T ? new T.Vector3() : null, vO = T ? new T.Vector3() : null, vD = T ? new T.Vector3() : null, sc = T ? new T.Vector3() : null;
   const q = T ? new T.Quaternion() : null, qY = T ? new T.Quaternion() : null, qX = T ? new T.Quaternion() : null, m4 = T ? new T.Matrix4() : null;
+  const mN = T ? new T.Matrix4() : null, mH = T ? new T.Matrix4() : null, eH = T ? new T.Euler(0, 0, 0, 'YXZ') : null, qH = T ? new T.Quaternion() : null;
   const zero = T ? new T.Matrix4().makeScale(0, 0, 0) : null, UP = T ? new T.Vector3(0, 1, 0) : null, RIGHT = T ? new T.Vector3(1, 0, 0) : null, FWD = T ? new T.Vector3(0, 0, 1) : null;
   const hit = { type: null, i: -1, x: 0, z: 0 };
 
@@ -66,14 +75,21 @@ export function createAnimals(ctx) {
   function rebuildGraph() {
     const w = ctx.world;
     graph = buildGraph(w?.tiles, w?.decor, w?.pieces, hasGrill);
+    tileKeys = new Set(); if (Array.isArray(w?.tiles)) for (const t of w.tiles) if (Array.isArray(t)) tileKeys.add(t[0] + ',' + t[1]);
     rehome();
   }
-  function rehome() { // per-animal home index + distance field, and force a re-plan
-    for (let i = 0; i < MAX_ANIMALS; i++) {
+  function rehome() { // per-animal home index + distance field, instance index and wade-in start; forces a re-plan
+    let nh = 0, ng = 0;
+    for (let i = 0; i < MAX_SLOTS; i++) {
       const a = st.list[i]; beatOf[i] = -1; slotId[i] = a ? a.id : null;
+      if (a) inst[i] = a.kind === 'goat' ? ng++ : nh++;
+      if (a && a.kind === 'goat') {
+        const e = edgeStart(tileKeys, a.home[0], a.home[1]), dx = Math.sign(e[0] - a.home[0]), dz = Math.sign(e[1] - a.home[1]);
+        edgeX[i] = TILE * e[0] - dx * TILE * .52; edgeZ[i] = TILE * e[1] - dz * TILE * .52; // just inside the deck edge
+      }
       if (!a || !graph) { homeIdx[i] = -1; continue; }
       const h = graph.index.get(a.home[0] + ',' + a.home[1]);
-      homeIdx[i] = h !== undefined && graph.box[h] ? h : -1;
+      homeIdx[i] = h !== undefined && graph.box[h] === SPECIES[a.kind].code ? h : -1;
       dists[i] = homeDist(graph, homeIdx[i], dists[i]);
     }
   }
@@ -113,10 +129,12 @@ export function createAnimals(ctx) {
     birdMat = vertexMaterial(T);
     birds = new T.InstancedMesh(puffhenGeometry(T), birdMat, MAX_ANIMALS); birds.name = 'puffhens';
     eggs = new T.InstancedMesh(eggGeometry(T), birdMat, MAX_ANIMALS * 3); eggs.name = 'puffEggs';
-    for (const m of [birds, eggs]) { m.instanceMatrix.setUsage(T.DynamicDrawUsage); m.frustumCulled = false; m.castShadow = true; for (let i = 0; i < m.count; i++) m.setMatrixAt(i, zero); }
+    goats = new T.InstancedMesh(goatBodyGeometry(T), birdMat, GOAT_CAP); goats.name = 'bramblegoats';
+    goatHeads = new T.InstancedMesh(goatHeadGeometry(T), birdMat, GOAT_CAP); goatHeads.name = 'bramblegoatHeads';
+    for (const m of [birds, eggs, goats, goatHeads]) { m.instanceMatrix.setUsage(T.DynamicDrawUsage); m.frustumCulled = false; m.castShadow = true; for (let i = 0; i < m.count; i++) m.setMatrixAt(i, zero); }
     heartMat = new T.MeshBasicMaterial({ color: 0xff7d9c, transparent: true, opacity: 0, depthWrite: false });
     heart = new T.Mesh(heartGeometry(T), heartMat); heart.name = 'puffHeart'; heart.visible = false; heart.renderOrder = 3;
-    group.add(birds, eggs, heart);
+    group.add(birds, eggs, goats, goatHeads, heart);
     ctx.scene.add(group);
     built = true;
   }
@@ -130,11 +148,21 @@ export function createAnimals(ctx) {
     return q;
   }
 
-  function renderBirds() {
-    for (let i = 0; i < MAX_ANIMALS; i++) {
+  function renderAnimals() {
+    let nh = 0, ng = 0;
+    for (let i = 0; i < MAX_SLOTS; i++) {
       const a = st.list[i];
-      if (!a) { if (shown[i]) { birds.setMatrixAt(i, zero); shown[i] = 0; } continue; }
+      if (!a) { shown[i] = 0; continue; }
       if (slotId[i] !== a.id) rehome();
+      if (a.kind === 'goat') { renderGoat(i, a); ng++; } else { renderHen(i, a); nh++; }
+    }
+    for (let k = nh; k < MAX_ANIMALS; k++) if (henShown[k]) { birds.setMatrixAt(k, zero); henShown[k] = 0; }
+    for (let k = ng; k < GOAT_CAP; k++) if (goatShown[k]) { goats.setMatrixAt(k, zero); goatHeads.setMatrixAt(k, zero); goatShown[k] = 0; }
+    birds.instanceMatrix.needsUpdate = true; goats.instanceMatrix.needsUpdate = true; goatHeads.instanceMatrix.needsUpdate = true;
+  }
+
+  function renderHen(i, a) {
+    {
       const life = clock - a.born;
       let x = TILE * a.home[0], z = TILE * a.home[1], lift = 1, hop = 0, yaw = yawNow[i], moving = false, f = 0, idle = -1, beat = 0;
       const h = homeIdx[i];
@@ -165,23 +193,71 @@ export function createAnimals(ctx) {
       lastPos[i * 3] = wp.x; lastPos[i * 3 + 1] = wp.y; lastPos[i * 3 + 2] = wp.z;
       sc.set(sxz, sy, sxz);
       m4.compose(wp, raftQuat(yaw + look, pitch, roll), sc);
-      birds.setMatrixAt(i, m4); shown[i] = 1;
+      birds.setMatrixAt(inst[i], m4); henShown[inst[i]] = 1; shown[i] = 1;
     }
-    birds.instanceMatrix.needsUpdate = true;
+  }
+
+  function renderGoat(i, a) { // walks with a gentle bob and sway (no hop); wades up the raft edge on arrival
+    const life = clock - a.born, h = homeIdx[i], hx = TILE * a.home[0], hz = TILE * a.home[1];
+    let x = hx, z = hz, y = FLOOR_Y + GOAT_LIFT, yaw = yawNow[i], moving = false, f = 0, idle = -1, u = 0, sxz = 1, sy = 1;
+    let roll = 0, hp = 0, hy = 0, turn = 4, target = yaw;
+    if (life < ARRIVE_GOAT_T) {
+      const ex = edgeX[i], ez = edgeZ[i];
+      target = Math.atan2(hx - ex, hz - ez);
+      if (life < 1.2) { // climb out of the water at the deck edge with a little shake
+        const k = Math.max(0, life) / 1.2, s = k * k * (3 - 2 * k);
+        x = ex; z = ez; y = -.35 + (FLOOR_Y + GOAT_LIFT + .35) * s; sxz *= 1 + .06 * Math.sin(clock * 30); yaw = target;
+      } else { // then walk straight to the pen
+        const k = (life - 1.2) / (ARRIVE_GOAT_T - 1.2), s = k * k * (3 - 2 * k), steps = Math.max(1, Math.round(Math.hypot(hx - ex, hz - ez) / TILE));
+        x = ex + (hx - ex) * s; z = ez + (hz - ez) * s; moving = k < 1; f = (s * steps) % 1; turn = 12;
+      }
+    } else if (h >= 0) {
+      const wl = life - ARRIVE_GOAT_T, beat = Math.max(0, Math.floor(wl / GOAT_BEAT));
+      u = wl - beat * GOAT_BEAT;
+      if (beat !== beatOf[i]) { plan(a.seed, beat, graph, dists[i], h, plans[i]); beatOf[i] = beat; }
+      pose(plans[i], graph, a.seed, beat, u, p, GOAT_HOP_T);
+      x = p.x; z = p.z; moving = p.moving; f = p.f; target = p.yaw; turn = moving ? 12 : 4;
+      if (!plans[i].n) idle = plans[i].idle;
+    }
+    let dy = target - yaw; dy -= TAU * Math.round(dy / TAU);
+    yaw += dy * Math.min(1, turn * frameDt);
+    yawNow[i] = yaw;
+    const w = Math.sin(TAU * 2 * f);
+    if (moving) { y += .015 * Math.abs(w); roll = w * .05; hp = .08 * w; }
+    else if (idle === 0 && u >= 1 && u < 4) hp = .55 + .12 * Math.sin(clock * 10); // graze and chew
+    else if (idle === 1) roll = .06 * Math.sin(clock * 7);
+    else if (idle === 2) hy = .7 * Math.sin(clock * 1.1 + a.seed % 7);
+    if (local - eatAt[i] < EAT_T) { hp = .55 + .12 * Math.sin(local * 10); hy = 0; } // munching what you gave it
+    const sq = local - squishAt[i];
+    if (sq >= 0 && sq < 1) { const s = 1 - .12 * Math.exp(-8 * sq) * (1 - sq); sy *= s; sxz /= Math.sqrt(s); }
+    const wp = toWorld(x, y, z);
+    lastPos[i * 3] = wp.x; lastPos[i * 3 + 1] = wp.y; lastPos[i * 3 + 2] = wp.z;
+    sc.set(sxz, sy, sxz);
+    m4.compose(wp, raftQuat(yaw, 0, roll), sc);
+    const k = inst[i];
+    goats.setMatrixAt(k, m4);
+    eH.set(hp, hy, 0); qH.setFromEuler(eH);
+    mN.makeTranslation(GOAT_NECK[0], GOAT_NECK[1], GOAT_NECK[2]); mH.makeRotationFromQuaternion(qH); mN.multiply(mH);
+    mH.multiplyMatrices(m4, mN);
+    goatHeads.setMatrixAt(k, mH); goatShown[k] = 1; shown[i] = 1;
   }
 
   function renderEggs() {
-    for (let i = 0; i < MAX_ANIMALS; i++) {
+    let nh = 0;
+    for (let i = 0; i < MAX_SLOTS; i++) {
       const a = st.list[i];
+      if (!a || a.kind === 'goat') continue;
+      nh++;
       for (let j = 0; j < 3; j++) {
-        const k = i * 3 + j;
-        if (!a || j >= a.eggs) { eggs.setMatrixAt(k, zero); continue; }
+        const k = inst[i] * 3 + j;
+        if (j >= a.eggs) { eggs.setMatrixAt(k, zero); continue; }
         const s = EGG_SLOTS[j], wp = toWorld(TILE * a.home[0] + s[0], EGG_Y, TILE * a.home[1] + s[1]);
         sc.set(1, 1, 1);
         m4.compose(wp, raftQuat(j * 1.9, .25 * (j - 1), .2 * (j % 2 ? 1 : -1)), sc);
         eggs.setMatrixAt(k, m4);
       }
     }
+    for (let k = nh * 3; k < MAX_ANIMALS * 3; k++) eggs.setMatrixAt(k, zero);
     eggs.instanceMatrix.needsUpdate = true;
   }
 
@@ -190,7 +266,7 @@ export function createAnimals(ctx) {
     heartAge += dt;
     const k = Math.min(1, heartAge / HEART_T), i = heartSlot;
     heart.visible = true;
-    heart.position.set(lastPos[i * 3], lastPos[i * 3 + 1] + .5 + .6 * k, lastPos[i * 3 + 2]);
+    heart.position.set(lastPos[i * 3], lastPos[i * 3 + 1] + (st.list[i].kind === 'goat' ? .75 : .5) + .6 * k, lastPos[i * 3 + 2]);
     if (ctx.camera) heart.quaternion.copy(ctx.camera.quaternion);
     heart.scale.setScalar(.8 + .4 * Math.min(1, k * 4));
     heartMat.opacity = k < .7 ? .95 : .95 * (1 - (k - .7) / .3);
@@ -210,18 +286,24 @@ export function createAnimals(ctx) {
     } else clock += d;
     if (!built) { if (!T || !ctx.scene) return; build(); }
     const any = st.list.length > 0;
-    birds.visible = eggs.visible = any;
-    if (!any) { heart.visible = false; for (let i = 0; i < MAX_ANIMALS; i++) if (shown[i]) { birds.setMatrixAt(i, zero); shown[i] = 0; birds.instanceMatrix.needsUpdate = true; } return; } // nothing to draw or wander
+    let anyHen = false, anyGoat = false;
+    for (let i = 0; i < st.list.length; i++) if (st.list[i].kind === 'goat') anyGoat = true; else anyHen = true;
+    birds.visible = eggs.visible = anyHen;
+    goats.visible = goatHeads.visible = anyGoat;
+    if (!any) { heart.visible = false; for (let i = 0; i < MAX_SLOTS; i++) shown[i] = 0; return; } // nothing to draw or wander
     refreshGraph(d);
-    renderBirds(); renderEggs(); renderHeart(d);
+    renderAnimals(); renderEggs(); renderHeart(d);
   }
   function step(d) { // host: one production tick, then arrivals and lays
     const res = tick(st, d, Math.random);
     if (res.arrived.length) {
-      for (const id of res.arrived) { const a = findId(st, id); if (a) emit({ kind: 'build', text: `A Puffhen settled in! Say hi to ${a.name}` }, 'all'); }
+      for (const id of res.arrived) {
+        const a = findId(st, id);
+        if (a) emit({ kind: 'build', text: a.kind === 'goat' ? `A Bramblegoat climbed aboard! Say hi to ${a.name}` : `A Puffhen settled in! Say hi to ${a.name}` }, 'all');
+      }
       rehome();
     }
-    if (res.laid.length || res.arrived.length) bump();
+    if (res.laid.length || res.arrived.length || res.ready.length) bump();
   }
 
   // ------------------------------------------------------------------ picking
@@ -244,27 +326,52 @@ export function createAnimals(ctx) {
     hit.type = null; hit.i = -1;
     if (!built || !camRay(aim)) return null;
     let best = REACH;
-    for (let i = 0; i < MAX_ANIMALS; i++) {
-      if (!st.list[i] || !shown[i]) continue;
-      const t = sphere(lastPos[i * 3], lastPos[i * 3 + 1] + BIRD_CY, lastPos[i * 3 + 2], BIRD_R, best);
-      if (t < best) { best = t; hit.type = 'bird'; hit.i = i; }
+    for (let i = 0; i < MAX_SLOTS; i++) {
+      const a = st.list[i];
+      if (!a || !shown[i]) continue;
+      const goat = a.kind === 'goat';
+      const t = sphere(lastPos[i * 3], lastPos[i * 3 + 1] + (goat ? GOAT_CY : BIRD_CY), lastPos[i * 3 + 2], goat ? GOAT_R : BIRD_R, best);
+      if (t < best) { best = t; hit.type = goat ? 'goat' : 'bird'; hit.i = i; }
     }
+    const goatI = hit.type === 'goat' ? hit.i : -1; // a goat in its open Hay Corner keeps the aim (feed/pet/milk); rename via the pen when it wanders
     const dec = ctx.world?.decor;
     if (Array.isArray(dec)) for (let k = 0; k < dec.length; k++) {
-      const d = dec[k]; if (d.type !== 'nestbox') continue;
-      const wp = toWorld(TILE * d.x, FLOOR_Y + BOX_CY, TILE * d.z);
-      const t = sphere(wp.x, wp.y, wp.z, BOX_R, best);
-      if (t < best) { best = t; hit.type = 'box'; hit.x = d.x; hit.z = d.z; hit.i = -1; }
+      const d = dec[k]; if (d.type !== 'nestbox' && d.type !== 'goatpen') continue;
+      const pen = d.type === 'goatpen';
+      const wp = toWorld(TILE * d.x, FLOOR_Y + (pen ? PEN_CY : BOX_CY), TILE * d.z);
+      const t = sphere(wp.x, wp.y, wp.z, pen ? PEN_R : BOX_R, best);
+      if (t < best) { best = t; hit.type = pen ? 'pen' : 'box'; hit.x = d.x; hit.z = d.z; hit.i = -1; }
     }
+    if (hit.type === 'pen' && goatI >= 0) { hit.type = 'goat'; hit.i = goatI; }
     return hit.type ? hit : null;
   }
-  const heldFood = () => { const k = ctx.localBag?.()?.selected?.kind; return FOODS.includes(k) ? k : null; };
-  const lureFood = () => { const b = ctx.localBag?.(); if (!b) return null; return b.count('seed') >= 1 ? 'seed' : b.count('leaf') >= 3 ? 'leaf' : null; };
+  const heldKind = () => ctx.localBag?.()?.selected?.kind;
+  const heldFood = a => { const k = heldKind(); return SPECIES[a ? a.kind : 'puffhen'].foods.includes(k) ? k : null; };
+  const heldPail = () => heldKind() === 'bucket';
+  const lureFood = (kind = 'puffhen') => { const b = ctx.localBag?.(); if (!b) return null; for (const [k, n] of SPECIES[kind].lure) if (b.count(k) >= n) return k; return null; };
   const esc = s => (ctx.esc ? ctx.esc(s) : String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])));
 
+  function goatPrompt(a) {
+    const food = heldFood(a), pail = heldPail();
+    if (food) return a.content >= FULL_AT ? `${esc(a.name)} is full and happy` : `<kbd>E</kbd>Feed ${esc(a.name)} (${GOAT_FOOD_NAME[food]})`;
+    if (pail && a.milk) return `<kbd>E</kbd>Milk ${esc(a.name)}`;
+    const tail = a.milk ? ' · has milk (hold a Wooden Pail)' : pail ? ' · milk soon' : a.content > 0 ? ' · content' : '';
+    return `<kbd>E</kbd>Pet ${esc(a.name)} ♥ ${a.hearts}${tail}`;
+  }
+  function penPrompt(h) {
+    const a = findHome(st, h.x, h.z);
+    if (a) return heldPail() && a.milk ? `<kbd>E</kbd>Milk ${esc(a.name)}` : `<kbd>E</kbd>Rename ${esc(a.name)}`;
+    if (lureAt(st, h.x, h.z)) return 'Hay Corner · a Bramblegoat is on its way…';
+    if (kindCount(st, 'goat', true) >= GOAT_CAP) return `Hay Corner · the raft has ${GOAT_CAP} Bramblegoats`;
+    const f = lureFood('goat');
+    if (!f) return 'Hay Corner · needs 3 Seaweed or 4 Leaves';
+    return f === 'seaweed' ? '<kbd>E</kbd>Set out greens to lure a Bramblegoat (3 seaweed)' : '<kbd>E</kbd>Set out greens to lure a Bramblegoat (4 leaves)';
+  }
   function promptFor(h) {
+    if (h.type === 'goat') return goatPrompt(st.list[h.i]);
+    if (h.type === 'pen') return penPrompt(h);
     if (h.type === 'bird') {
-      const a = st.list[h.i]; const food = heldFood();
+      const a = st.list[h.i]; const food = heldFood(a);
       if (food) return a.content >= FULL_AT ? `${esc(a.name)} is full and happy` : `<kbd>E</kbd>Feed ${esc(a.name)} (${FOOD_NAME[food]})`;
       return `<kbd>E</kbd>Pet ${esc(a.name)} ♥ ${a.hearts}${a.content > 0 ? ' · content' : ''}`;
     }
@@ -279,7 +386,7 @@ export function createAnimals(ctx) {
       return `<kbd>E</kbd>Rename ${esc(a.name)}`;
     }
     if (lureAt(st, h.x, h.z)) return 'Nest Box · a Puffhen is on its way…';
-    if (st.list.length + st.lures.length >= MAX_ANIMALS) return `Nest Box · the raft has ${MAX_ANIMALS} Puffhens`;
+    if (kindCount(st, 'puffhen', true) >= MAX_ANIMALS) return `Nest Box · the raft has ${MAX_ANIMALS} Puffhens`;
     const f = lureFood();
     if (!f) return 'Nest Box · needs 1 Palm Seed or 3 Leaves';
     return f === 'seed' ? '<kbd>E</kbd>Scatter seeds to lure a Puffhen' : '<kbd>E</kbd>Scatter seeds to lure a Puffhen (3 leaves)';
@@ -290,13 +397,19 @@ export function createAnimals(ctx) {
   function interact(aim) {
     const h = pick(aim); if (!h) return false;
     if (ctx.role === 'guest' && !gotNet) { ctx.notice?.('Wait for your raft to connect'); return true; }
-    if (h.type === 'bird') {
-      const a = st.list[h.i], food = heldFood();
-      if (food) { if (a.content < FULL_AT) popAt(h.i); ctx.action({ kind: 'animals.feed', id: a.id, food }); }
+    if (h.type === 'bird' || h.type === 'goat') {
+      const a = st.list[h.i], food = heldFood(a);
+      if (food) { if (a.content < FULL_AT) { popAt(h.i); eatAt[h.i] = local; } ctx.action({ kind: 'animals.feed', id: a.id, food }); }
+      else if (a.kind === 'goat' && heldPail() && a.milk) { popAt(h.i); ctx.action({ kind: 'animals.milk', id: a.id }); }
       else { popAt(h.i); ctx.action({ kind: 'animals.pet', id: a.id }); }
       return true;
     }
     const a = findHome(st, h.x, h.z);
+    if (a && h.type === 'pen') {
+      if (heldPail() && a.milk) { const i = st.list.indexOf(a); if (i >= 0) popAt(i); ctx.action({ kind: 'animals.milk', id: a.id }); }
+      else openRename(a.id);
+      return true;
+    }
     if (a) {
       if (a.eggs || a.feather) ctx.action({ kind: 'animals.collect', x: h.x, z: h.z });
       else openRename(a.id);
@@ -314,7 +427,7 @@ export function createAnimals(ctx) {
   }
   function openRename(id) {
     const a = findId(st, id); if (!a) return false;
-    const go = u => u && u.open(a.id, a.name);
+    const go = u => u && u.open(a.id, a.name, SPECIES[a.kind].label);
     if (ui) go(ui); else loadUI()?.then(go);
     return true;
   }
@@ -343,23 +456,30 @@ export function createAnimals(ctx) {
     let res;
     if (verb === 'lure' || verb === 'collect') {
       if (!tileOk) return true;
-      if (decorAt(a.x, a.z) !== 'nestbox') return fail(actor, 'That spot has no nest box');
+      const type = decorAt(a.x, a.z);
+      if (type !== 'nestbox' && !(verb === 'lure' && type === 'goatpen')) return fail(actor, 'That spot has no nest box');
       const wp = toWorld(TILE * a.x, FLOOR_Y, TILE * a.z);
       if (!near(actor, wp.x, wp.z)) return fail(actor, 'Step a little closer');
       if (!bag) return true;
-      res = verb === 'lure' ? lure(st, a.x, a.z, bag, t, Math.random) : collect(st, a.x, a.z, bag);
+      res = verb === 'lure' ? lure(st, a.x, a.z, bag, t, Math.random, type === 'goatpen' ? 'goat' : 'puffhen') : collect(st, a.x, a.z, bag);
+    } else if (verb === 'milk') {
+      if (!idOk) return true;
+      const an = findId(st, a.id); if (!an) return fail(actor, gone(a.id));
+      if (!near(actor, birdPos(an, tmp).x, tmp.z)) return fail(actor, 'Step a little closer');
+      if (!bag) return true;
+      res = milk(st, a.id, bag);
     } else if (verb === 'feed' || verb === 'pet' || verb === 'name') {
       if (!idOk) return true;
-      const an = findId(st, a.id); if (!an) return fail(actor, 'That Puffhen wandered off');
+      const an = findId(st, a.id); if (!an) return fail(actor, gone(a.id));
       if (verb === 'name') { const wp = toWorld(TILE * an.home[0], FLOOR_Y, TILE * an.home[1]); tmp.x = wp.x; tmp.z = wp.z; } // the dialog opens at the box
       else birdPos(an, tmp);
       if (!near(actor, tmp.x, tmp.z)) return fail(actor, 'Step a little closer');
-      if (verb === 'feed') { if (!FOODS.includes(a.food) || !bag) return true; res = feed(st, a.id, a.food, bag, t); }
+      if (verb === 'feed') { if (!SPECIES[an.kind].foods.includes(a.food) || !bag) return true; res = feed(st, a.id, a.food, bag, t); }
       else if (verb === 'pet') res = pet(st, a.id, t);
       else { if (typeof a.name !== 'string' || a.name.length > 64) return true; res = rename(st, a.id, a.name); }
     } else return true;
     if (res.ok) { bump(); if (res.text) emit({ kind: res.kind, text: res.text }, actor); }
-    else fail(actor, res.text, res.reason === 'full' && verb === 'collect' ? 'full' : REASON_KIND[res.reason] ?? 'notice');
+    else fail(actor, res.text, res.reason === 'full' && (verb === 'collect' || verb === 'milk') ? 'full' : REASON_KIND[res.reason] ?? 'notice');
     return true;
   }
 
@@ -371,9 +491,12 @@ export function createAnimals(ctx) {
     if (!cache || cacheR !== st.r || st.t - cacheAt >= CACHE_EVERY || st.t < cacheAt) {
       cache = {
         v: 1, r: st.r, t: r1(st.t), next: st.next,
-        list: st.list.map(a => ({ id: a.id, kind: 'puffhen', name: a.name, seed: a.seed, home: [a.home[0], a.home[1]], born: r1(a.born), hearts: a.hearts,
-          content: round(a.content), prod: round(a.prod), eggs: a.eggs, feather: a.feather, bondAt: Math.max(-1e9, round(a.bondAt)), featherAt: Math.max(-1e9, round(a.featherAt)) })),
-        lures: st.lures.map(l => ({ home: [l.home[0], l.home[1]], at: round(l.at) })),
+        list: st.list.map(a => (a.kind === 'goat'
+          ? { id: a.id, kind: 'goat', name: a.name, seed: a.seed, home: [a.home[0], a.home[1]], born: r1(a.born), hearts: a.hearts,
+            content: round(a.content), prod: round(a.prod), milk: a.milk, bondAt: Math.max(-1e9, round(a.bondAt)) }
+          : { id: a.id, kind: 'puffhen', name: a.name, seed: a.seed, home: [a.home[0], a.home[1]], born: r1(a.born), hearts: a.hearts,
+            content: round(a.content), prod: round(a.prod), eggs: a.eggs, feather: a.feather, bondAt: Math.max(-1e9, round(a.bondAt)), featherAt: Math.max(-1e9, round(a.featherAt)) })),
+        lures: st.lures.map(l => (l.kind === 'goat' ? { home: [l.home[0], l.home[1]], at: round(l.at), kind: 'goat' } : { home: [l.home[0], l.home[1]], at: round(l.at) })),
       };
       cacheR = st.r; cacheAt = st.t;
     }
@@ -402,22 +525,23 @@ export function createAnimals(ctx) {
   // ------------------------------------------------------------------ QA helpers
 
   const debug = {
-    spawn(x, z) {
+    spawn(x, z, kind = 'puffhen') {
       if (!isHost()) return null;
+      const S = SPECIES[kind === 'goat' ? 'goat' : 'puffhen'], home = S.home;
       const w = ctx.world; if (!w || !Array.isArray(w.tiles)) return null;
-      if (st.list.length >= MAX_ANIMALS) return null;
+      if (kindCount(st, kind === 'goat' ? 'goat' : 'puffhen', false) >= S.cap) return null;
       let tx = x, tz = z;
       if (!isInt(tx) || !isInt(tz)) {
         const free = w.tiles.filter(t => !decorAt(t[0], t[1]) && !hasGrill(t[0], t[1])).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
         if (!free.length) return null; [tx, tz] = free[0];
       }
       const type = decorAt(tx, tz);
-      if (type && type !== 'nestbox') return null;
+      if (type && type !== home) return null;
       if (!w.tiles.some(t => t[0] === tx && t[1] === tz)) return null;
       if (findHome(st, tx, tz)) return findHome(st, tx, tz).id;
-      if (!type) { w.decor.push({ type: 'nestbox', x: tx, z: tz }); ctx.rebuildRaft?.(); }
+      if (!type) { w.decor.push({ type: home, x: tx, z: tz }); ctx.rebuildRaft?.(); }
       st.lures = st.lures.filter(l => l.home[0] !== tx || l.home[1] !== tz);
-      st.lures.push({ home: [tx, tz], at: st.t });
+      st.lures.push(home === 'goatpen' ? { home: [tx, tz], at: st.t, kind: 'goat' } : { home: [tx, tz], at: st.t });
       step(0);
       const a = findHome(st, tx, tz);
       return a ? a.id : null;
@@ -437,7 +561,10 @@ export function createAnimals(ctx) {
       const pl = plans[i];
       return { beat: beatOf[i], kind: pl.kind, cells: Array.from(pl.cells.slice(0, pl.n + 1)).map(c => (graph && c >= 0 ? [graph.x[c], graph.z[c]] : null)), pos: [lastPos[i * 3], lastPos[i * 3 + 1], lastPos[i * 3 + 2]] };
     },
-    give() { const b = ctx.localBag?.(); if (!b) return false; b.add('puffegg', 3); b.add('feather', 3); return true; },
+    spawnGoat(x, z) { return debug.spawn(x, z, 'goat'); },
+    milkNow() { if (!isHost()) return 0; let n = 0; for (const a of st.list) if (a.kind === 'goat') { a.milk = 1; a.prod = 0; n++; } if (n) bump(); return n; },
+    edge(id) { const i = st.list.findIndex(a => a.id === id); return i < 0 ? null : [edgeX[i], edgeZ[i]]; },
+    give() { const b = ctx.localBag?.(); if (!b) return false; b.add('puffegg', 3); b.add('feather', 3); b.add('bucket', 1); return true; },
     rename(id, name) { if (!isHost()) return false; const r = rename(st, id, name); if (r.ok) bump(); return r; },
     openRename: id => openRename(id),
     closeRename() { ui?.close(); },
@@ -459,6 +586,7 @@ export function createAnimals(ctx) {
       if (!T) return null;
       if (type === 'nestbox') return nestBoxModel(T);
       if (type === 'cushion') return cushionModel(T);
+      if (type === 'goatpen') return goatPenModel(T);
       return null;
     },
     debug,
@@ -466,7 +594,7 @@ export function createAnimals(ctx) {
       disposed = true; ui?.destroy(); ui = null;
       if (!built) return;
       group.removeFromParent();
-      for (const m of [birds, eggs, heart]) { m.geometry.dispose(); m.dispose?.(); }
+      for (const m of [birds, eggs, goats, goatHeads, heart]) { m.geometry.dispose(); m.dispose?.(); }
       birdMat.dispose(); heartMat.dispose();
       built = false; group = null;
     },
