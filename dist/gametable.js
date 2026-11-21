@@ -88,6 +88,7 @@ export function createGameTable(ctx) {
   }
   function gullNow(key) {
     const gm = st.t[key]; if (!gm || gm.w !== -1 || gm.s[gm.p] !== 'ai') return false;
+    const c = key.indexOf(','); if (decorAt(+key.slice(0, c), +key.slice(c + 1)) !== 'gametable') return false; // table removed: prune drops it
     const hops = gullMove(gm, Math.random, gm.lv === 1); if (!hops.length) return false;
     let g = gm;
     for (let i = 0; i < hops.length; i++) {
@@ -120,8 +121,11 @@ export function createGameTable(ctx) {
 
   // ---- visuals
   function rescan() {
+    const raft = ctx.raft;
+    // groups dropped by rebuildRaft: free their per-instance matrix buffers (disposeGeometry skips InstancedMesh.dispose)
+    for (let i = 0; i < shown; i++) { const g = groups[i]; if (g && g.parent !== raft) { const u = g.userData.gt; u.shell.dispose(); u.pebble.dispose(); u.knot.dispose(); u.hoop.dispose(); } }
     shown = 0;
-    const raft = ctx.raft; if (!raft) return;
+    if (!raft) return;
     for (let c = 0; c < raft.children.length && shown < MAX_SHOWN; c++) {
       const g = raft.children[c]; if (g.name !== 'game_table' || !g.userData.gt) continue;
       groups[shown] = g; gKeys[shown] = keyOf(Math.round(g.position.x / 2), Math.round(g.position.z / 2)); gN[shown] = -1; gRound[shown] = -1; gG[shown] = null; slideT[shown] = -1; shown++;
@@ -208,7 +212,7 @@ export function createGameTable(ctx) {
     if (disposed || uiFailed || typeof document === 'undefined') return false;
     ctx.releaseLock?.();
     if (ui) { setKey(key); if (inReach(uiX, uiZ)) ui.open(key); return true; }
-    uiLoading ??= import('./gametable-ui.js').then(m => { ui = m.createGameTableUI(api); return ui; })
+    uiLoading ??= import('./gametable-ui.js').then(m => { if (disposed) return null; ui = m.createGameTableUI(api); return ui; })
       .catch(e => { console.error('game table ui failed', e); uiFailed = true; uiLoading = null; return null; });
     uiLoading.then(u => {
       if (!u || disposed || ctx.uiOpen?.()) return;

@@ -259,12 +259,13 @@ export function cleanGame(raw) {
     const g = raw.g; if (g !== 'd' && g !== 'n') return null;
     const b = raw.b; if (typeof b !== 'string' || !CHARS[g].test(b)) return null;
     if (g === 'd') { let na = 0, nb = 0; for (let i = 0; i < 32; i++) { const s = sideOf(b[i]); if (s === 0) na++; else if (s === 1) nb++; } if (na > 12 || nb > 12) return null; }
+    else { let nx = 0, no = 0; for (let i = 0; i < 9; i++) { if (b[i] === 'x') nx++; else if (b[i] === 'o') no++; } if (nx - no !== 0 && nx - no !== 1) return null; if (raw.p !== nx - no) return null; } // Knots move first; keeps marks <= 5 each (model capacity)
     const s = raw.s;
     if (!Array.isArray(s) || s.length !== 2 || !SEATS.includes(s[0]) || !SEATS.includes(s[1]) || s[0] === s[1] || (s[0] === 'ai' && s[1] === 'ai')) return null;
     if (!intIn(raw.lv, 0, 1) || !intIn(raw.p, 0, 1) || !intIn(raw.w, -1, 2) || !intIn(raw.q, 0, GT.QUIET_DRAW) || !intIn(raw.n, 0, 1e6) || !intIn(raw.round, 0, 1e6)) return null;
     const last = raw.last; if (!Array.isArray(last) || last.length !== 2 || !intIn(last[0], -1, 31) || !intIn(last[1], -1, 31)) return null;
     let j = intIn(raw.j, -1, 31) ? raw.j : -1;
-    if (g === 'n' || (j >= 0 && sideOf(b[j]) !== raw.p)) j = -1;
+    if (g === 'n' || (j >= 0 && (sideOf(b[j]) !== raw.p || !jumpsFrom(b, j, []).length))) j = -1; // a chain piece with no jump left would lose on the spot
     const gm = { g, b, p: raw.p, s: [s[0], s[1]], lv: raw.lv, j, w: raw.w, q: raw.q, n: raw.n, last: [last[0], last[1]], round: raw.round };
     if (gm.w === -1) gm.w = outcome(gm);
     return gm;

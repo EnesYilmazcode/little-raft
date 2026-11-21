@@ -275,7 +275,12 @@ test('cleanSlice and cleanGame: garbage in, clean slice out', () => {
   for (const b of bad) assert.equal(cleanGame(b), null, JSON.stringify(b));
   assert.equal(cleanGame({ ...good, j: 15 }).j, -1, 'j without a piece');
   assert.equal(cleanGame({ ...good, p: 1, j: 2 }).j, -1, 'j on the wrong side');
-  assert.equal(cleanGame({ ...good, j: 2 }).j, 2);
+  assert.equal(cleanGame({ ...good, j: 2 }).j, -1, 'j on a piece with no jump left');
+  assert.equal(cleanGame({ ...good, j: 2 }).w, -1, 'a stale j must not end the game');
+  { const b = '.'.repeat(32).split(''); b[9] = 'a'; b[13] = 'b'; b[30] = 'b'; const jb = b.join(''); // a on 9 can jump the b on 13
+    assert.equal(cleanGame({ ...good, b: jb, j: 9 }).j, 9); }
+  assert.equal(cleanGame({ ...newGame('n', ['host', 'ai'], 0), b: 'x.x.x.x..', p: 0 }), null, 'noughts mark counts must alternate');
+  assert.equal(cleanGame({ ...newGame('n', ['host', 'ai'], 0), b: 'xo.......', p: 1 }), null, 'noughts p must match the marks');
   // a corrupt "playing" board that is actually finished ends cleanly
   assert.equal(cleanGame({ ...newGame('n', ['host', 'ai'], 0), b: 'xxxoo....', p: 1 }).w, 0);
   assert.equal(cleanGame({ ...good, w: 1 }).w, 1); // resigned games keep their result
