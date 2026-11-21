@@ -61,3 +61,12 @@ test('sample() equals getHeight + getSlope and reuses out objects', () => {
   }
   const fresh = o.sample(1, 2); assert.deepEqual(Object.keys(fresh).sort(), ['h', 'sx', 'sz']);
 });
+
+test('sample() stays bit-identical to getHeight/getSlope with a sailing flow offset', () => {
+  const o = createOcean(T); const out = { h: 0, sx: 0, sz: 0 };
+  o.uniforms.uFlow.value.set(3.7, -1.3);
+  for (const [x, z, t, e] of points) {
+    o.sample(x, z, out, t, e); const s = o.getSlope(x, z, t, e);
+    assert.equal(out.h, o.getHeight(x, z, t)); assert.equal(out.sx, s.x); assert.equal(out.sz, s.z);
+  }
+});

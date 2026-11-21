@@ -400,11 +400,36 @@ export function createOcean(T, options = {}) {
   //   h  === getHeight(x, z, t)
   //   sx === getSlope(x, z, t, e).x,  sz === getSlope(x, z, t, e).z  (same central difference)
   // Replaces a getHeight + getSlope pair with one call; pass a reused `out` to avoid allocation.
+  // The five heights are evaluated inline into a scratch Float64Array (same arithmetic, same order as getHeight,
+  // so results are bit-identical): calling getHeight five times boxed every double argument and return value.
+  const SH = new Float64Array(5);
   function sample(x, z, out, t = time, e = 0.6) {
     const r = out ?? { h: 0, sx: 0, sz: 0 };
-    r.h = getHeight(x, z, t);
-    r.sx = (getHeight(x + e, z, t) - getHeight(x - e, z, t)) / (2 * e);
-    r.sz = (getHeight(x, z + e, t) - getHeight(x, z - e, t)) / (2 * e);
+    const fl = uniforms.uFlow.value, flx = fl.x, flz = fl.y;
+    for (let n = 0; n < 5; n++) {
+      // n: 0 centre, 1 +x, 2 -x, 3 +z, 4 -z
+      let qx = n === 1 ? x + e : n === 2 ? x - e : x, qz = n === 3 ? z + e : n === 4 ? z - e : z;
+      qx += flx; qz += flz;
+      let px = qx, pz = qz;
+      for (let it = 0; it < 2; it++) {
+        let ox = 0, oz = 0;
+        for (let i = 0, o = 0; i < NW; i++, o += 6) {
+          const co = Math.cos(W[o] * (W[o + 1] * px + W[o + 2] * pz - W[o + 3] * t));
+          ox += W[o + 4] * co;
+          oz += W[o + 5] * co;
+        }
+        px = qx - ox;
+        pz = qz - oz;
+      }
+      let oy = 0;
+      for (let i = 0, o = 0; i < NW; i++, o += 6) {
+        oy += AMP[i] * Math.sin(W[o] * (W[o + 1] * px + W[o + 2] * pz - W[o + 3] * t));
+      }
+      SH[n] = mesh.position.y + oy;
+    }
+    r.h = SH[0];
+    r.sx = (SH[1] - SH[2]) / (2 * e);
+    r.sz = (SH[3] - SH[4]) / (2 * e);
     return r;
   }
 
