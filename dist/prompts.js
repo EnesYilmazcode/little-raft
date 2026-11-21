@@ -9,6 +9,11 @@ const SAMPLE_MS = 100, FEED_MAX = 4, FEED_MS = 4000, DUP_MS = 600;
 const PICK_NAMES = {wood:'plank', leaf:'leaves', plastic:'plastic jug', scrap:'scrap', barrel:'barrel'};
 const DECOR_NAMES = {sail:'sail', palm:'palm planter', lantern:'lantern', net:'net', bench:'bench', crate:'crate'};
 const FLOOR_COST = {wood:2, plastic:2};
+const SLOT_X = 34, SLOT_Y = 26; // prompt offset from the aim point (keep in sync with #lrPrompt in prompts.css)
+const STORE_KEY = 'little-raft-prompts-v1';
+export const THROW_TEACH = 5; // tool prompts teach, then get out of the way (Raft-style)
+const CLIMB_REACH = 1.25; // player-physics: tile-edge distance - BODY_RADIUS(.25) <= CLAMBER_REACH(.8); a little slack while swimming in
+const TILE = 2, HALF = TILE / 2;
 
 // ---------- pure helpers (tested in node) ----------
 export function normalizePrompt(p) {
@@ -39,24 +44,48 @@ export function isNotice(text, hasKbd) {
   return !!t && !hasKbd && !/^(Hold click to reel|Waiting for your brother|Floor needs)/i.test(t);
 }
 export function shouldPost(last, text, now) { return !(last && last.text === text && now - last.at < DUP_MS); }
-const missing = (stock, cost) => Object.entries(cost).filter(([k, n]) => (stock?.[k] ?? 0) < n).map(([k, n]) => `${n - (stock?.[k] ?? 0)} ${k}`);
-// Built-in, state-derived prompts (replicates + extends game.js updateContext).
-export function statePrompt(s) {
+const have = (stock, k) => { const n = Number(stock?.[k]); return Number.isFinite(n) && n > 0 ? n : 0; };
+export const costText = cost => Object.entries(cost).map(([k, n]) => `${n} ${k}`).join(' · ');
+export const missingText = (stock, cost) => Object.entries(cost).filter(([k, n]) => have(stock, k) < n).map(([k, n]) => `${n - have(stock, k)} ${k}`).join(' · ');
+// Horizontal distance (m) from (x, z) to the nearest raft tile's edge; 0 when over a tile, Infinity with no tiles.
+export function raftDistance(x, z, tiles) {
+  let best = Infinity; if (!Number.isFinite(x) || !Number.isFinite(z)) return best;
+  for (const t of Array.isArray(tiles) ? tiles : []) {
+    if (!Array.isArray(t) || !Number.isFinite(t[0]) || !Number.isFinite(t[1])) continue;
+    const dx = Math.max(0, Math.abs(x - t[0] * TILE) - HALF), dz = Math.max(0, Math.abs(z - t[1] * TILE) - HALF);
+    best = Math.min(best, Math.hypot(dx, dz));
+  }
+  return best;
+}
+// Counts hook throws: a hook leaving 'idle' for 'flying' (not a rod cast, which shows as 'fishing').
+export const isThrow = (prev, stage) => stage === 'flying' && prev !== 'flying';
+// Built-in, state-derived prompts (replicates + extends game.js updateContext). opt.throws hides the hook's Throw tip once learned.
+export function statePrompt(s, opt = {}) {
   if (!s || !s.running) return null;
   if (s.role === 'guest' && !s.networkReady) return {label:'Waiting for your brother’s raft…', muted:true};
   if (s.pickup) return {key:'E', label:'Pick up ' + (PICK_NAMES[s.pickup.type] ?? 'supply')};
+  if (s.swimming && !s.physics?.climbing) { // physics: hold jump near a tile edge to clamber
+    const d = raftDistance(s.me?.x, s.me?.z, s.tileList);
+    if (d <= CLIMB_REACH) return {key:'Space', hold:true, label:'Climb aboard'};
+    if (Number.isFinite(d)) return {label:'Swim to the raft edge', muted:true};
+  }
   const held = s.heldKind, stage = s.hookStage, pitch = s.me?.pitch ?? 0;
   if (held === 'hook') {
     if (stage === 'flying' || stage === 'floating' || stage === 'reeling') return {key:'LMB', hold:true, label:s.hookCaughtItems?.length ? 'Reel in catch' : 'Reel in'};
-    if (stage === 'idle' && pitch > -0.5) return {key:'LMB', hold:true, label:'Throw'};
+    if (stage === 'idle' && pitch > -0.5 && !((opt.throws ?? 0) >= THROW_TEACH)) return {key:'LMB', hold:true, label:'Throw'};
     return null;
   }
-  if (held === 'hammer' && s.build?.hover) {
-    if (s.build.affordable) return {key:'LMB', label:'Build floor'};
-    const m = missing(s.stock, FLOOR_COST); return {label:'Needs ' + (m.length ? m : ['2 wood', '2 plastic']).join(' · '), muted:true};
+  if (held === 'hammer') {
+    if (!s.build?.hover) return {label:'Aim at the raft edge', muted:true};
+    if (s.build.affordable) return [{key:'LMB', label:'Build floor'}, {label:costText(FLOOR_COST), muted:true}];
+    const m = missingText(s.stock, FLOOR_COST);
+    return [{label:'Needs ' + costText(FLOOR_COST), muted:true}, ...(m && m !== costText(FLOOR_COST) ? [{label:'Missing ' + m, muted:true}] : [])];
   }
-  if (held === 'fishingrod') return stage === 'idle' && !s.fishWait ? {key:'LMB', label:'Cast line'} : null; // no reel action while fishing
-  if (DECOR_NAMES[held] && s.tool === 'place' && s.build?.hover) return {key:'LMB', label:'Place ' + DECOR_NAMES[held]};
+  if (held === 'fishingrod') {
+    if (stage === 'fishing' || s.fishWait) return {label:'Waiting for a bite…', muted:true}; // bites land automatically (game.js fishWait)
+    return stage === 'idle' ? {key:'LMB', label:'Cast line'} : null;
+  }
+  if (DECOR_NAMES[held] && s.tool === 'place') return s.build?.hover ? {key:'LMB', label:'Place ' + DECOR_NAMES[held]} : {label:'Aim at the raft floor', muted:true};
   return null;
 }
 
@@ -66,10 +95,12 @@ const MOUSE = side => `<svg class="lr-mouse" viewBox="0 0 12 16" width="11" heig
 function createPrompts(win, doc) {
   const rays = new Map(), providers = new Map(); let order = 0, shown = null, sig = null, visible = false, lastFeed = null;
   let promptEl = null, feedEl = null, ctxEl = null, observer = null, ray = null, rayT = null, aimAt = null, placed = '';
+  let throws = 0, lastStage; // undefined until the first sample, so a restored in-flight hook is not counted
   let mouse = null; win.addEventListener('pointermove', e => { mouse = {x:e.clientX, y:e.clientY}; }, {passive:true, capture:true});
   win.addEventListener('pointerout', e => { if (!e.relatedTarget) mouse = null; }, {passive:true, capture:true});
   const safe = (f, fb = null) => { try { return f(); } catch { return fb; } };
   const mount = () => safe(() => win.raftMount) || null;
+  safe(() => { const n = JSON.parse(win.localStorage.getItem(STORE_KEY) || '{}')?.throws; if (Number.isFinite(n) && n > 0) throws = Math.floor(n); });
   function ensureEls() {
     if (!promptEl || !promptEl.isConnected) {
       promptEl = doc.getElementById('lrPrompt') || doc.createElement('div');
@@ -130,17 +161,20 @@ function createPrompts(win, doc) {
       if (!doc.body) return; ensureEls();
       const m = mount(), debug = safe(() => win.raftDebug) || m?.debug, state = safe(() => debug?.state);
       const ctx = {state, camera:m?.camera ?? null, T:m?.T ?? null, scene:m?.scene ?? null};
+      const stage = state?.hookStage ?? null;
+      if (state?.running && lastStage !== undefined && isThrow(lastStage, stage) && throws < 1e6) { throws++; safe(() => win.localStorage.setItem(STORE_KEY, JSON.stringify({throws}))); }
+      lastStage = stage;
       const blocked = !!doc.querySelector('dialog[open]') || !!state?.inventoryOpen;
       // Unlocked (resume hint up) shows nothing; drag-to-look fallback aims at the cursor, so the prompt follows it.
       const fallback = !!state?.lockFallback && !state?.pointerLocked; aimAt = fallback ? mouse : null;
       const show = !!state?.running && !state.disposed && (state.pointerLocked || (fallback && !!mouse)) && doc.body.classList.contains('playing') && !blocked;
-      const pos = aimAt ? `left:${Math.round(aimAt.x + 22)}px;top:${Math.round(aimAt.y + 14)}px` : '';
+      const pos = aimAt ? `left:${Math.round(aimAt.x + SLOT_X)}px;top:${Math.round(aimAt.y + SLOT_Y)}px` : '';
       if (pos !== placed) { placed = pos; promptEl.style.cssText = pos; }
       let list = null;
       if (show) {
         const cands = rayHits(ctx);
         for (const p of providers.values()) safe(() => cands.push({prompts:p.prompt(ctx), priority:p.priority, ray:false, order:p.order}));
-        cands.push({prompts:statePrompt(state), priority:0, ray:false}); // built-ins lose ties to registered providers
+        cands.push({prompts:statePrompt(state, {throws}), priority:0, ray:false}); // built-ins lose ties to registered providers
         list = pickPrompt(cands);
       }
       shown = list; const s = signature(list);

@@ -26,18 +26,24 @@ test('meeting conditions completes steps and advances', () => {
   let r = O.evaluate(S, P, fresh({hookStage:'flying'}));
   assert.deepEqual(r.newly, ['throw']);
   assert.deepEqual(r.visible, ['look', 'walk', 'reel']);
-  for (const yaw of [.8, 1.6, 2.4]) r = O.evaluate(S, P, fresh({me:{x:0, z:0, yaw}}));
+  r = O.evaluate(S, P, fresh({me:{x:0, z:0, yaw:.8}}));
+  assert.deepEqual(r.counts.look, [46, 80, '°']); // progress shows while you sweep
+  r = O.evaluate(S, P, fresh({me:{x:0, z:0, yaw:1.5}}));
   assert.ok(P.done.look);
-  r = O.evaluate(S, P, fresh({me:{x:2, z:0, yaw:2.4}}));
+  r = O.evaluate(S, P, fresh({me:{x:2, z:0, yaw:1.5}}));
+  assert.deepEqual(r.counts.walk, [2, 4, ' m']);
+  r = O.evaluate(S, P, fresh({me:{x:0, z:0, yaw:1.5}})); // walked path, not distance from the start
   assert.deepEqual(r.newly, ['walk']);
   r = O.evaluate(S, P, fresh({collected:1, stock:{wood:2}}));
   assert.deepEqual(r.newly, ['reel']);
   assert.deepEqual(r.visible, ['wood', 'leaves', 'bag']);
+  assert.deepEqual(r.counts.wood, [2, 6]); // wood already held counts
   r = O.evaluate(S, P, fresh({collected:2, stock:{wood:4}}));
-  assert.deepEqual(r.counts.wood, [2, 6]); // gained since activation, not the raw count
-  r = O.evaluate(S, P, fresh({collected:2, stock:{wood:1}})); // spending never lowers the gained sum
+  assert.deepEqual(r.counts.wood, [4, 6]);
+  r = O.evaluate(S, P, fresh({collected:2, stock:{wood:1}})); // spending never lowers the count
+  assert.deepEqual(r.counts.wood, [4, 6]);
   r = O.evaluate(S, P, fresh({collected:3, stock:{wood:5}}));
-  assert.ok(P.done.wood && r.newly.includes('wood')); // 2 + 4 gained
+  assert.ok(P.done.wood && r.newly.includes('wood')); // 4 gained after the step showed
 });
 
 test('returning player with a hammer silently skips the hammer chain', () => {
@@ -103,7 +109,7 @@ test('joining or leaving a host world re-baselines instead of reading the jump a
   const host = {role:'guest', networkReady:true, collected:300, tiles:30, fish:9, decor:[{type:'palm', x:0, z:0}], stock:{hook:1, wood:20, hammer:1}, ownedTools:['hook', 'hammer']};
   let r = O.evaluate(S, P, fresh(host));
   assert.deepEqual(r.newly, []); assert.ok(!P.done.floor);
-  const P2 = O.createProgress(O.STEPS.filter(s => s.chapter !== 'ch3').map(s => s.id));
+  const P2 = O.createProgress(O.STEPS.filter(s => s.chapter !== 'ch3').map(s => s.id).concat('rodwood', 'rope8', 'rod'));
   O.evaluate(S, P2, fresh({tiles:10}));
   r = O.evaluate(S, P2, fresh({...host, fish:9}));
   r = O.evaluate(S, P2, fresh({...host, fish:12})); // host's catches are not ours
@@ -129,4 +135,36 @@ test('barrel and hand-grab need the real thing', () => {
   O.evaluate(S, P, fresh({collected:11, pickup:{id:3, token:'t', type:'barrel'}, stock:{hook:1, wood:4, leaf:2, scrap:1, plastic:1}}));
   r = O.evaluate(S, P, fresh({collected:12, stock:{hook:1, wood:7, leaf:4, scrap:2, plastic:2}}));
   assert.ok(P.done.barrel && P.done.grab, JSON.stringify(r));
+});
+
+test('gather steps count what you already hold', () => {
+  const S = steps(), P = O.createProgress(['look', 'walk', 'throw', 'reel', 'wood', 'leaves', 'bag', 'rope', 'hammer']);
+  const r = O.evaluate(S, P, fresh({collected:9, stock:{hook:1, hammer:1, plastic:5}, ownedTools:['hook', 'hammer']}));
+  assert.ok(P.done.plastic && r.newly.includes('plastic'));
+});
+
+test('rope for the rod counts rope held or spent on the rod; the rod comes after a wood top-up', () => {
+  const S = steps(), P = O.createProgress(O.STEPS.filter(s => s.chapter !== 'ch3').map(s => s.id));
+  let r = O.evaluate(S, P, fresh({collected:50, tiles:12, stock:{hook:1, hammer:1, rope:3}, ownedTools:['hook', 'hammer']}));
+  assert.deepEqual(r.visible, ['rodwood', 'rope8', 'seat']);
+  assert.deepEqual(r.counts.rope8, [3, 8]);
+  for (let i = 0; i < 2; i++) r = O.evaluate(S, P, fresh({collected:60, tiles:12, stock:{hook:1, hammer:1, fishingrod:1}, ownedTools:['hook', 'hammer', 'fishingrod']}));
+  for (const id of ['rodwood', 'rope8', 'rod']) assert.ok(P.done[id], id);
+  assert.ok(r.visible.includes('fish1'));
+});
+
+test('hints name the hotbar key; swimming shows a climb-back step in any chapter', () => {
+  const slots = Array(28).fill(null); slots[0] = {kind:'hook', count:1}; slots[5] = {kind:'hammer', count:1};
+  const floor = O.STEPS.find(s => s.id === 'floor');
+  assert.match(O.hintOf(floor, fresh({inventory:{slots}, selectedIndex:0})), /^2 wood \+ 2 plastic\. Press \[6\] to hold your hammer/);
+  assert.doesNotMatch(O.hintOf(floor, fresh({inventory:{slots}, selectedIndex:5})), /Press/);
+  assert.match(O.hintOf(floor, fresh()), /Hammer in hand/);
+  const S = steps(), P = O.createProgress(O.STEPS.filter(s => s.chapter === 'ch1' && s.id !== 'swim').map(s => s.id));
+  O.evaluate(S, P, fresh({collected:9}), {silent:true});
+  assert.ok(!P.done.swim);
+  let r = O.evaluate(S, P, fresh({collected:9, swimming:true, grounded:false}));
+  assert.equal(r.visible[0], 'swim'); assert.equal(r.chapter, 'ch2'); assert.match(r.hints.swim, /\[Space\]/);
+  r = O.evaluate(S, P, fresh({collected:9, swimming:false, grounded:true}));
+  assert.deepEqual(r.newly, ['swim']);
+  assert.ok(!O.evaluate(S, P, fresh({collected:9})).visible.includes('swim'));
 });

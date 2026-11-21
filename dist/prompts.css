@@ -2,11 +2,11 @@
 #contextPrompt{display:none!important}
 #lrPrompt,#lrFeed{position:fixed;z-index:30;pointer-events:none;color:#f6ecd6;font:600 14px/1.25 var(--ui-font,system-ui,-apple-system,'Segoe UI',sans-serif);
   text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 8px rgba(0,0,0,.55);text-align:left;user-select:none}
-#lrPrompt{left:calc(50% + 22px);top:calc(50% + 14px);opacity:0;transform:translateY(2px);transition:opacity .18s ease,transform .18s ease;white-space:nowrap}
+#lrPrompt{left:calc(50% + 34px);top:calc(50% + 26px);opacity:0;transform:translateY(2px);transition:opacity .18s ease,transform .18s ease;white-space:nowrap}
 #lrPrompt.lr-on{opacity:1;transform:none;transition-duration:.12s}
 #lrPrompt .lr-row{display:flex;align-items:center;gap:6px;min-height:20px}
 #lrPrompt .lr-row+.lr-row{margin-top:3px}
-#lrPrompt .lr-muted{opacity:.72;font-weight:500;font-size:13px}
+#lrPrompt .lr-muted{opacity:.88;font-weight:500;font-size:13px}
 #lrPrompt .lr-key{display:inline-grid;place-items:center;min-width:19px;height:19px;padding:0 5px;box-sizing:border-box;border-radius:5px;
   border:1px solid rgba(246,236,214,.75);border-bottom-width:2px;background:rgba(20,16,10,.28);font:700 11px/1 var(--ui-font,system-ui,sans-serif);text-shadow:none;
   box-shadow:0 1px 3px rgba(0,0,0,.35)}
@@ -20,9 +20,9 @@
 @media(max-width:760px){#lrFeed{left:16px;bottom:150px;font-size:13px}#lrPrompt{font-size:13px}}
 @media(prefers-reduced-motion:reduce){#lrPrompt,#lrPrompt.lr-on,#lrFeed .lr-line{transition:none;animation:none;transform:none}}
 /* Keep the screen centre clear: charge meter + resume hint join the prompt column (beats graphics.css). */
-body #chargeMeter{left:calc(50% + 22px)!important;top:calc(50% + 40px)!important;transform:none!important;width:96px!important;height:4px!important;
+body #chargeMeter{left:calc(50% + 34px)!important;top:calc(50% + 52px)!important;transform:none!important;width:96px!important;height:4px!important;
   border:0!important;border-radius:2px!important;background:rgba(20,16,10,.45)!important;box-shadow:0 1px 3px rgba(0,0,0,.5)!important;z-index:30!important}
 body #chargeMeter span{display:none!important}
 body #chargeMeter i{background:#f6ecd6!important;border-radius:2px}
-body #resumeHint{left:calc(50% + 22px)!important;top:calc(50% + 62px)!important;transform:none!important;text-align:left!important;
-  max-width:min(340px,calc(50vw - 38px))!important;white-space:normal!important;pointer-events:auto!important;cursor:pointer;z-index:30}
+body #resumeHint{left:calc(50% + 34px)!important;top:calc(50% + 74px)!important;transform:none!important;text-align:left!important;
+  max-width:min(340px,calc(50vw - 50px))!important;white-space:normal!important;pointer-events:auto!important;cursor:pointer;z-index:30}

@@ -61,11 +61,46 @@ test('statePrompt: built-in providers', () => {
   assert.equal(s({heldKind:'hook', me:{pitch:-0.9}}), null);
   assert.equal(s({heldKind:'hook', hookStage:'floating'})[0].label, 'Reel in');
   assert.equal(s({heldKind:'hammer', build:{hover:{x:1, z:0}, affordable:true}})[0].label, 'Build floor');
-  const need = s({heldKind:'hammer', stock:{wood:1}, build:{hover:{x:1, z:0}, affordable:false}})[0];
-  assert.equal(need.label, 'Needs 1 wood · 2 plastic'); assert.ok(need.muted);
-  assert.equal(s({heldKind:'hammer', build:{hover:null}}), null);
+  assert.deepEqual(s({heldKind:'hammer', build:{hover:{x:1, z:0}, affordable:true}})[1], {key:'', label:'2 wood · 2 plastic', hold:false, muted:true});
+  const need = s({heldKind:'hammer', stock:{wood:1}, build:{hover:{x:1, z:0}, affordable:false}});
+  assert.equal(need[0].label, 'Needs 2 wood · 2 plastic'); assert.ok(need[0].muted && need[1].muted);
+  assert.equal(need[1].label, 'Missing 1 wood · 2 plastic');
+  assert.equal(s({heldKind:'hammer', stock:{}, build:{hover:{x:1, z:0}, affordable:false}}).length, 1); // missing == cost: no duplicate line
+  assert.equal(s({heldKind:'hammer', stock:{wood:5, plastic:5}, build:{hover:{x:1, z:0}, affordable:false}}).length, 1); // nothing computably missing
+  assert.deepEqual(s({heldKind:'hammer', build:{hover:null}}), [{key:'', label:'Aim at the raft edge', hold:false, muted:true}]);
   assert.equal(s({heldKind:'fishingrod'})[0].label, 'Cast line');
-  assert.equal(s({heldKind:'fishingrod', hookStage:'fishing', fishWait:3}), null);
+  assert.deepEqual(s({heldKind:'fishingrod', hookStage:'fishing', fishWait:3})[0], {key:'', label:'Waiting for a bite…', hold:false, muted:true});
   assert.equal(s({heldKind:'lantern', tool:'place', build:{hover:{x:0, z:0}}})[0].label, 'Place lantern');
+  assert.equal(s({heldKind:'lantern', tool:'place', build:{hover:null}})[0].label, 'Aim at the raft floor');
   assert.ok(s({role:'guest', networkReady:false})[0].muted);
+});
+
+test('statePrompt: Throw tip retires after THROW_TEACH throws; reel always shows', () => {
+  const base = {running:true, role:'host', networkReady:true, hookStage:'idle', me:{pitch:-0.2}, heldKind:'hook', build:{}};
+  assert.equal(P.statePrompt(base, {throws:P.THROW_TEACH - 1}).label, 'Throw');
+  assert.equal(P.statePrompt(base, {throws:P.THROW_TEACH}), null);
+  assert.equal(P.statePrompt({...base, hookStage:'reeling'}, {throws:99}).label, 'Reel in');
+  assert.equal(P.statePrompt({...base, pickup:{type:'wood'}}, {throws:99}).label, 'Pick up plank');
+  assert.ok(P.isThrow('idle', 'flying')); assert.ok(!P.isThrow('flying', 'flying')); assert.ok(!P.isThrow('idle', 'fishing'));
+});
+
+test('raftDistance + swimming prompts', () => {
+  const tiles = [[0, 0], [1, 0]];
+  assert.equal(P.raftDistance(0.5, 0.5, tiles), 0);
+  assert.ok(Math.abs(P.raftDistance(4, 0, tiles) - 1) < 1e-9); // tile [1,0] spans x 1..3
+  assert.ok(Math.abs(P.raftDistance(0, -2, tiles) - 1) < 1e-9);
+  assert.equal(P.raftDistance(0, 0, []), Infinity);
+  assert.equal(P.raftDistance(NaN, 0, tiles), Infinity);
+  const sw = (x, o = {}) => P.normalizePrompt(P.statePrompt({running:true, role:'host', networkReady:true, hookStage:'idle', swimming:true, tileList:tiles, me:{x, z:0, pitch:0}, build:{}, ...o}));
+  assert.deepEqual(sw(3.8)[0], {key:'Space', label:'Climb aboard', hold:true, muted:false});
+  assert.deepEqual(sw(8)[0], {key:'', label:'Swim to the raft edge', hold:false, muted:true});
+  assert.equal(sw(3.8, {physics:{climbing:true}}), null);
+  assert.equal(sw(3.8, {pickup:{type:'scrap'}})[0].label, 'Pick up scrap');
+});
+
+test('costText / missingText', () => {
+  assert.equal(P.costText({wood:2, plastic:2}), '2 wood · 2 plastic');
+  assert.equal(P.missingText({wood:2, plastic:0}, {wood:2, plastic:2}), '2 plastic');
+  assert.equal(P.missingText({wood:'x'}, {wood:2}), '2 wood');
+  assert.equal(P.missingText({wood:3, plastic:3}, {wood:2, plastic:2}), '');
 });
