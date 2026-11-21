@@ -26,6 +26,10 @@ export const ITEM_INFO = Object.freeze({
   net:        Object.freeze({ kind: 'net',        name: 'Net',          icon: 'icon-net',     maxStack: STACK_SIZE, tool: false, placeholder: false }),
   bench:      Object.freeze({ kind: 'bench',      name: 'Bench',        icon: 'icon-repair',  maxStack: STACK_SIZE, tool: false, placeholder: true }),
   crate:      Object.freeze({ kind: 'crate',      name: 'Crate',        icon: 'icon-barrel',  maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  // Diving lane (docs/cloud/diving.md): seafloor resources gathered underwater.
+  sand:       Object.freeze({ kind: 'sand',       name: 'Sand',         icon: 'icon-sand' ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  clay:       Object.freeze({ kind: 'clay',       name: 'Clay',         icon: 'icon-clay' ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  metalore:   Object.freeze({ kind: 'metalore',   name: 'Metal Ore',    icon: 'icon-ore'  ,   maxStack: STACK_SIZE, tool: false, placeholder: true }),
 });
 
 export const ITEM_KINDS = Object.freeze(Object.keys(ITEM_INFO));
