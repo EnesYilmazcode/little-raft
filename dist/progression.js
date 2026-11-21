@@ -2,7 +2,7 @@
 // and unlocked. Pure ES module: no DOM, no timers, no randomness.
 // Every entry point takes an optional `items` table (defaults to ITEMS) so
 // tests can inject fixtures.
-import { ITEMS } from './items.js';
+import { ITEMS } from './items.js?build=v3-survival-ae77fa84ac2b';
 
 const hasOwn = (o, k) => o != null && Object.prototype.hasOwnProperty.call(o, k);
 const strList = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);

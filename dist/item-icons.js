@@ -17,7 +17,7 @@ import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 const SIZE = 128;
 // Item ids whose name differs from the models.js kind.
 const MODEL_ALIAS = { fishingrod: 'rod' };
-const RELEASE_MS = 2500;
+const RELEASE_MS = 60000; // long enough that the hotbar bake and the warm-all pass ~5 s later share one context
 
 const cache = new Map();   // kind -> object/data URL ('' = failed, use the SVG)
 const queued = new Set();

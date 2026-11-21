@@ -464,21 +464,27 @@ export function createDayNight(ctx) {
   }
 
   // ---- per frame
-  function applyVisuals(dt) {
-    const scene = ctx.scene, cam = ctx.camera, raft = ctx.raft;
-    attach(scene);
-    const phase = Number.isFinite(pinPhase) ? pinPhase : phaseAt(clock);
+  // Sky, palette, light and weather move over minutes (a 20 minute day, 25 s weather blends), so refreshSky()
+  // recomputes them at most every SKY_STEP seconds of game clock, and at once when something jumps (load, a
+  // debug pin or phase, a new seed, scene or ocean). Each frame only does the camera, sun-target, cloud
+  // drift, rain, lantern and flicker work. A 0.1 s step turns the sun by under 0.05 degrees: far below a
+  // shadow texel, so the shadow never visibly steps.
+  const SKY_STEP = 0.1;
+  let skyClock = NaN, skyPin = NaN, skyPinW = -2, skySeed = -1, skyScene = null, skyOcean = null, skyDirty = true;
+  let nf = 0, wet = 0, poolI = 0;
+  const mLook = new T.Matrix4(), ORIGIN = new T.Vector3();
+  function refreshSky(phase, scene) {
     lightAt(phase, L);
     if (pinWeather >= 0) { W.weather = W.weatherNext = WEATHERS[pinWeather]; W.blend = 0; weatherParams(pinWeather, pinWeather, 0, W); }
     else weatherAt(seed, clock, W);
     paletteAt(phase, W.rain, PAL);
-    const nf = L.nightFactor, wet = W.rain;
+    nf = L.nightFactor; wet = W.rain;
     setSRGB(cHorizon, 0); setSRGB(cZenith, 3); setSRGB(cDeep, 6); setSRGB(cShallow, 9);
     setSRGB(cSun, 12); setSRGB(cHemiSky, 15); setSRGB(cHemiGround, 18); setSRGB(cCloud, 21);
     const cool = Math.max(0, W.wind - 0.15) * (1 - wet) * 0.15 / 0.55; // breezy: cooler (0.15 at full breeze)
     cHorizon.r *= 1 - cool; cHorizon.g *= 1 - cool * 0.4; cCloud.r *= 1 - cool;
 
-    // sky, fog
+    // sky, fog (nothing else writes these per frame, so they only change here)
     if (scene) {
       if (scene.background?.isColor) scene.background.copy(cHorizon);
       if (scene.fog) { scene.fog.color.copy(cHorizon); scene.fog.near = 25 - 9 * wet; scene.fog.far = 125 - 45 * wet; }
@@ -493,10 +499,7 @@ export function createDayNight(ctx) {
     const dayI = 2.5 * (1 - 0.15 * wet) * smooth(-0.02, 0.2, L.sunHeight);
     const moonI = MOON_I * (1 - 0.3 * wet) * smooth(-0.02, 0.2, -L.sunHeight);
     const swap = smooth(0, SWAP_FADE, Math.abs(L.sunHeight)); // 0 exactly where sun and moon trade places
-    if (sun) {
-      sun.position.set(vDir.x * SUN_RADIUS, Math.max(vDir.y, 0.42) * SUN_RADIUS, vDir.z * SUN_RADIUS).add(sun.target.position); // offset from the shadow-fitted target
-      sun.color.copy(cSun); sun.intensity = Math.max(dayI + moonI, MOON_I * smooth(0.3, 0.7, nf)) * swap;
-    }
+    if (sun) { sun.color.copy(cSun); sun.intensity = Math.max(dayI + moonI, MOON_I * smooth(0.3, 0.7, nf)) * swap; }
     if (hemi) {
       hemi.color.copy(cHemiSky); hemi.groundColor.copy(cHemiGround);
       hemi.intensity = HEMI_NIGHT + (1.8 - HEMI_NIGHT) * (L.light - NIGHT_FLOOR) / (1 - NIGHT_FLOOR) * (1 - 0.08 * wet);
@@ -520,32 +523,50 @@ export function createDayNight(ctx) {
     const low = 1 - smooth(0.1, 0.5, Math.abs(L.sunHeight)); // sun near the horizon: lit from below, not dark
     cloudMat.color.copy(cCloud).multiplyScalar(1 - 0.35 * wet); // rain: darker grey
     cloudMat.emissive.copy(cCloud).multiplyScalar((0.32 + 0.18 * nf + 0.3 * low) * (1 - 0.5 * wet)); // soft self-lit undersides
-    const drift = (W.wind - 0.15) * 0.9 * dt, grow = 1 + (W.cloud - 0.25) * 0.8;
-    for (let i = 0; i < cloudGroups.length; i++) {
-      const g = cloudGroups[i];
-      if (drift > 0) { g.position.x += drift; if (g.position.x > 85) g.position.x -= 170; }
-      if (grow !== lastGrow) { g.scale.x = cloudBase[i * 3 + 1] * grow; g.scale.z = cloudBase[i * 3 + 2] * grow; }
+    const grow = 1 + (W.cloud - 0.25) * 0.8;
+    if (grow !== lastGrow) {
+      lastGrow = grow;
+      for (let i = 0; i < cloudGroups.length; i++) { const g = cloudGroups[i]; g.scale.x = cloudBase[i * 3 + 1] * grow; g.scale.z = cloudBase[i * 3 + 2] * grow; }
     }
-    lastGrow = grow;
-    // stars and moon
+    // stars and moon (the moon faces the camera from vMoon; its turn depends only on that direction)
     const starA = nf * (1 - 0.85 * W.cloud * W.cloud) * (1 - wet);
-    starUniforms.uTime.value = time; starUniforms.uOpacity.value = starA;
+    starUniforms.uOpacity.value = starA;
     stars.visible = starA > 0.01;
     const moonA = smooth(0.1, 0.7, nf) * smooth(-0.02, 0.1, vMoon.y) * (1 - 0.75 * wet);
     moonUniforms.uOpacity.value = moonA;
     moon.visible = moonA > 0.01;
+    mLook.lookAt(ORIGIN, vMoon, moon.up); moon.quaternion.setFromRotationMatrix(mLook);
+    // rain
+    rain.visible = wet > 0.01;
+    rainUniforms.uRain.value = wet; rainUniforms.uWind.value = W.wind;
+    cRain.copy(cHemiSky).lerp(cHorizon, 0.3).lerp(cRainCool, 0.5 * nf).multiplyScalar(0.8 + 0.6 * L.light);
+    rainUniforms.uColor.value.copy(cRain); rainUniforms.uAlpha.value = (0.85 + 0.15 * nf) * Math.min(1, wet * 1.5);
+    poolI = nf < 0.15 ? 0 : POOL_PEAK * smooth(0.15, 1, nf);
+  }
+
+  function applyVisuals(dt) {
+    const scene = ctx.scene, cam = ctx.camera, raft = ctx.raft;
+    attach(scene);
+    if (skyDirty || !(Math.abs(clock - skyClock) < SKY_STEP) || !Object.is(pinPhase, skyPin) || pinWeather !== skyPinW
+      || seed !== skySeed || scene !== skyScene || ctx.ocean !== skyOcean) {
+      skyDirty = false; skyClock = clock; skyPin = pinPhase; skyPinW = pinWeather; skySeed = seed; skyScene = scene; skyOcean = ctx.ocean;
+      refreshSky(Number.isFinite(pinPhase) ? pinPhase : phaseAt(clock), scene);
+    }
+    // the sun keeps its offset from the shadow-fitted target, which can move between refreshes
+    if (sun) sun.position.set(vDir.x * SUN_RADIUS, Math.max(vDir.y, 0.42) * SUN_RADIUS, vDir.z * SUN_RADIUS).add(sun.target.position);
+    // clouds drift
+    const drift = (W.wind - 0.15) * 0.9 * dt;
+    if (drift > 0) for (let i = 0; i < cloudGroups.length; i++) { const g = cloudGroups[i]; g.position.x += drift; if (g.position.x > 85) g.position.x -= 170; }
+    // stars and moon follow the camera
+    starUniforms.uTime.value = time;
     if (cam) {
       stars.position.copy(cam.position);
       moon.position.copy(cam.position).addScaledVector(vMoon, MOON_DIST);
-      moon.lookAt(cam.position);
     }
     // rain
-    rain.visible = wet > 0.01;
     if (rain.visible) {
-      rainUniforms.uTime.value = time; rainUniforms.uRain.value = wet; rainUniforms.uWind.value = W.wind;
+      rainUniforms.uTime.value = time;
       if (cam) rainUniforms.uCam.value.copy(cam.position);
-      cRain.copy(cHemiSky).lerp(cHorizon, 0.3).lerp(cRainCool, 0.5 * nf).multiplyScalar(0.8 + 0.6 * L.light);
-      rainUniforms.uColor.value.copy(cRain); rainUniforms.uAlpha.value = (0.85 + 0.15 * nf) * Math.min(1, wet * 1.5);
     }
     // lanterns
     if (raft) {
@@ -575,7 +596,6 @@ export function createDayNight(ctx) {
       if (rankClock >= 0.5) { rankClock = 0; rankLanterns(raft, cam); }
     }
     sizePool();
-    const poolI = nf < 0.15 ? 0 : POOL_PEAK * smooth(0.15, 1, nf);
     poolLit = 0;
     for (let i = 0; i < poolOn; i++) {
       const l = pool[i], k = poolPick[i];
@@ -601,6 +621,7 @@ export function createDayNight(ctx) {
   }
 
   function load(data, from) {
+    skyDirty = true;
     const d = cleanDayNight(data);
     if (!d) {
       // back on our own raft with no usable slice: start a fresh morning instead of keeping the host's sky
@@ -647,6 +668,7 @@ export function createDayNight(ctx) {
 
   const debug = {
     setPhase(p) {
+      skyDirty = true;
       if (p === null || p === undefined) { pinPhase = NaN; return; }
       const v = Number(p);
       if (!Number.isFinite(v)) return;
@@ -656,6 +678,7 @@ export function createDayNight(ctx) {
       pinPhase = NaN;
     },
     setWeather(w) {
+      skyDirty = true;
       if (w === null || w === undefined) { pinWeather = -1; return; }
       const i = WEATHERS.indexOf(w);
       if (i >= 0) pinWeather = i;
