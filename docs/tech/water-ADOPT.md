@@ -61,7 +61,7 @@ After the `world.tiles.forEach(... createFloor ...)` line, add:
 
 `rebuildRaft()` runs from `init()` (after the ocean is created at line 290), after every build
 action (line 579), and after host and guest world syncs (lines 949 and 1025), so the foam always
-matches the deck. The bake takes about 2 to 9 ms for 7 to 400 tiles and runs only on those
+matches the deck. The bake (raft SDF plus the baked deck shadow) takes a few ms for 7 to 400 tiles and runs only on those
 events. The raft group never moves in x/z (it only bobs and tilts), so the pose stays (0, 0, 0).
 
 ## 3. Feed floating items and the hook bobber (`dist/game.js`, `updateItems()`)
