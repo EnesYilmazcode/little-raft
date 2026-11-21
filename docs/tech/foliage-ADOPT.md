@@ -1,6 +1,8 @@
 # Foliage: adoption steps
 
-Checked against `dist/` as it is on `claude/raft-tech` (game.js imports use `?build=v3-survival-ae77fa84ac2b`).
+Checked against `dist/` as it is on `claude/raft-tech` and `main` (identical `dist/`; game.js imports use
+`?build=v3-survival-ae77fa84ac2b`). Re-verified 2026-11-21 after the improver pass: every search string below
+still occurs exactly once in `dist/game.js`, and the line numbers are current.
 The work is one new file and four small edits to `dist/game.js`. `dist/crafts.js` does not change.
 
 ## 1. Add the module
@@ -8,7 +10,7 @@ The work is one new file and four small edits to `dist/game.js`. `dist/crafts.js
 Copy `sandbox/foliage/foliage.js` to `dist/foliage.js` without changes. It has no imports: the caller passes
 `T`, as with `crafts.js` and `ocean.js`. It exports:
 
-- `createFoliage(T, { windDir = [1, .35], strength = .4, lambert = true })` returns `F`
+- `createFoliage(T, { windDir = [1, .35], strength = .4, lambert = true, sunDir = [-15, 28, 12] })` returns `F`
 - `scatter({ count, radius, seed, minDist, accept, heightAt, avoid, scale })` returns a list of placements
 - `rng(seed)`
 - `FOLIAGE_KINDS`
@@ -20,10 +22,11 @@ Copy `sandbox/foliage/foliage.js` to `dist/foliage.js` without changes. It has n
 | `F.update(elapsed, camera)` | once per frame. Writes the shared `uTime` and eye position, and runs the whole-object LOD toggles |
 | `F.swayCraftPalm(group)` | patches a `createCraft(T, 'palm')` group in place. Only trunk, crown, coconuts, fronds and ribs sway; pot and base stay rigid |
 | `F.geometry(kind, opts)` | returns a shared `BufferGeometry`. `kind` is one of `palm`, `palmFar`, `palmCard`, `bush`, `fern`, `broadleaf`, `grass` |
-| `F.instanced(kind, geo, placements)` | returns one `InstancedMesh` with sway, shadows, a per-instance tint and a matching `customDepthMaterial` |
+| `F.instanced(kind, geo, placements, params = {})` | returns one `InstancedMesh` with sway, shadows, a per-instance tint and a matching `customDepthMaterial`. `params` overrides the material params, e.g. `{dither: [from, to]}` for the LOD crossfade |
 | `F.lod(object, maxDist, minDist = 0, center = object.position)` | shows the object only while the camera is within `[min, max)` of `center` |
 | `F.patch(material, params)` / `F.depth(material)` | low level: add wind to any Lambert or Standard material |
 | `F.wind.uWindStrength.value` | 0 to 1. A weather system can drive it |
+| `F.wind.uSunDir.value` | normalised sun direction for the canopy translucency tint. `createFoliage(T, {sunDir})` sets it; the default is game.js `sun.position` (-15, 28, 12). A day/night cycle can copy the sun direction into it |
 | `F.dispose()` | disposes every geometry, material and texture that `F` created |
 
 ## 2. dist/game.js edits
@@ -73,7 +76,7 @@ Change it to:
 for (const m of [].concat(c.material || [], c.customDepthMaterial || []))
 ```
 
-In `disposeScene()` (around line 1166, beside `try { ocean?.dispose(); } catch {}`), add:
+In `disposeScene()` (line 1164, `try { ocean?.dispose(); } catch {}`), add after it:
 
 ```js
 try { foliage?.dispose(); } catch {}
@@ -92,7 +95,8 @@ const farPalm = foliage.geometry('palmFar', {seed:7, lean:.5}), farMat = foliage
 { const pm = new T.Mesh(farPalm, farMat); pm.position.y = 4.3; pm.scale.setScalar(1.1); pm.rotation.y = a; g.add(pm); }
 ```
 
-`foliage.material` is also exported on `F`. Distant palms do not need shadows.
+`foliage.material` is also exported on `F`. Distant palms do not need shadows. These plain meshes sit at 65 to
+90 m, past the crossfade band, so they do not need the `dither` param.
 
 ## 3. How an islands module uses it
 
@@ -117,19 +121,28 @@ For `dist/islands.js`, copy `createFoliageKit` and the scatter block of `buildIs
    `m.material.dispose(); m.customDepthMaterial.dispose()`. Never dispose the kit geometries.
 2. Register LOD with the island root's position as the centre, as `buildIsland` does. The current code
    moves the island along z while it drifts. `F.lod` keeps a reference to that position vector, so LOD
-   follows the island for free.
+   follows the island for free. For the palm crossfade, give the near and far palm meshes complementary
+   `dither` ranges and overlapping `F.lod` ranges, exactly as `buildIsland` does:
+   `F.instanced(kind, geo, set, {dither:[L + 5, L - 5]})` with `F.lod(near, L + 5)`, and
+   `F.instanced('palmFar', farGeo, set, {dither:[L - 5, L + 5]})` with `F.lod(far, 1e9, L - 5)`. The ramp
+   uses the distance to the mesh origin, so the InstancedMeshes must be children of the island root at its
+   origin (they are in `buildIsland`).
 3. Gathering a palm, for example drooping fronds after 3 gathers, means editing that instance:
    `mesh.setMatrixAt(i, ...)` to swap it out, or `setColorAt(i, dryColor)` followed by
    `instanceColor.needsUpdate = true`. The placements list in `island.userData.palms` maps index i to an
    instance.
-4. Island ground in the sandbox is about 0.9 m high at the centre. The islands doc says 0.35 m, so pass `top: .35`.
+4. Island ground height: `buildIsland` now defaults to `top: 0.35`, the value in `docs/features/islands.md`
+   (branch `wip/feature/islands`). `heightAt(x, z)` returns that dome, so plants and the player share it.
+5. Grass recipe: copy `GRASS` (260 tufts, 8 blades, width 1.5, spread 1.7) with `createFoliageKit`. Lower
+   `count` first on weak hardware; it is the largest fill cost when the player stands on the island.
 
 ## 4. Verify
 
 These exact replacements, including the optional one, were applied by script to a copy of `dist/`
 (each search string occurs exactly once in the current `game.js`). That copy was loaded headless with a palm
-pre-placed in `decor`. A solo game starts with no page errors, the raft palm renders and sways, and the
-background islands show the new far palms.
+pre-placed in `decor` (save key `little-raft-v1`), then `#solo` was clicked. Result on 2026-11-21: `running`
+true, 0 page errors and 0 console errors, 17 programs, 5 meshes with a `customDepthMaterial` (the craft palm),
+12 far-palm meshes on the background islands, and the raft palm renders with the smooth ringed trunk.
 
 1. Run `python sandbox/foliage/shoot.py`. It should report 0 page errors and write PNGs to `sandbox/foliage/shots/`.
 2. In game, place a palm decor and stand next to it. The fronds should flutter and the trunk should lean

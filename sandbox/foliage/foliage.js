@@ -71,8 +71,9 @@ const BODY = /* glsl */`
     transformed *= 1.0 - fD;
   #endif
   #ifdef FOL_DITHER
-    // screen-door crossfade between near/far LOD meshes: visibility ramps linearly from uFade.x to uFade.y
-    vFolVis = clamp((distance(uEye, fOrg) - uFade.x) / (uFade.y - uFade.x), 0.0, 1.0);
+    // screen-door crossfade between near/far LOD meshes: visibility ramps linearly from uFade.x to uFade.y.
+    // Distance is to the mesh origin (the island centre), matching F.lod, so both meshes draw only in the band.
+    vFolVis = clamp((distance(uEye, modelMatrix[3].xyz) - uFade.x) / (uFade.y - uFade.x), 0.0, 1.0);
   #endif
 
   #ifdef FOL_COLOR_PASS
