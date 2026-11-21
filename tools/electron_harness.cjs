@@ -5,7 +5,7 @@
 //   LR_WINDOW      hidden (default) | offscreen | show
 // Control channel: one JSON command per stdin line, {id, op, ...}; replies {reply: id, ok, value|error} on stdout.
 //   eval {code}           webContents.executeJavaScript(code) without a user gesture
-//   key {key, mods?}      real keyDown/char/keyUp through webContents.sendInputEvent
+//   key {key, mods?, hold?} real keyDown/char/keyUp through webContents.sendInputEvent
 //   click {x, y}          real mouseMove/mouseDown/mouseUp through sendInputEvent (a trusted gesture)
 //   move {x, y}           mouseMove
 //   focus                 show + focus the window and its webContents
@@ -78,11 +78,11 @@ const win = () => wins.find((w) => !w.isDestroyed());
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ops = {
   async eval({ code }) { return win().webContents.executeJavaScript(code, false); },
-  async key({ key, mods = [] }) {
+  async key({ key, mods = [], hold = 100 }) {
     const wc = win().webContents;
     wc.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers: mods });
     if (key.length === 1) wc.sendInputEvent({ type: 'char', keyCode: key, modifiers: mods });
-    await sleep(60);
+    await sleep(hold);
     wc.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers: mods });
     return true;
   },
