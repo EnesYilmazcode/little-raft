@@ -156,15 +156,30 @@ export function createInput({
   }
 
   // ---------- frame ----------
+  const isOn = c => held.has(c) || padHeld.has(c);
+  const isHeld = c => held.has(c), isPadHeld = c => padHeld.has(c);
+  const tapsOf = list => { let n = 0; for (const c of list) n += taps.get(c) || 0; return n; };
+  // Flat code lists per action, rebuilt only when the map's revision changes (every frame for maps without one).
+  // padMove drops the left-stick axis codes: the analog stick already covers movement.
+  let codeCache = null, codeRev;
+  function bound() {
+    const rev = map.revision;
+    if (codeCache && rev !== undefined && rev === codeRev) return codeCache;
+    codeCache = new Map(); codeRev = rev;
+    for (const id of ids) {
+      const b = map.bindingsFor(id) || {}, keys = (b.keys || []).filter(Boolean), pad = (b.pad || []).filter(Boolean);
+      codeCache.set(id, { all: [...keys, ...pad], keys, padMove: pad.filter(c => !/^PadAxis[01]/.test(c)) });
+    }
+    return codeCache;
+  }
   function update(dt = 0) {
     const s = settings(), blocked = isBlocked();
     if (blocked) clear();
     const padLook = !blocked && connected.size ? pollPad(dt, s) : [0, 0];
-    const isOn = c => held.has(c) || padHeld.has(c);
-    const tapsOf = list => list.reduce((n, c) => n + (taps.get(c) || 0), 0);
+    const codesOf = bound();
     let stepNow = 0;
     for (const id of ids) {
-      const b = map.bindingsFor(id) || {}, codes = [...(b.keys || []), ...(b.pad || [])];
+      const codes = codesOf.get(id).all;
       const st = state.get(id), was = st.down, n = blocked ? 0 : tapsOf(codes);
       st.down = !blocked && codes.some(isOn);
       st.pressed = !was && (st.down || n > 0);
@@ -181,8 +196,7 @@ export function createInput({
     }
     // movement: digital keys/buttons + shaped left stick, clamped to the unit circle
     // left-stick axis codes are excluded here: the analog stick below already covers them
-    const d = id => blocked ? 0 : (map.bindingsFor(id)?.keys || []).some(c => held.has(c)) ||
-      (map.bindingsFor(id)?.pad || []).some(c => padHeld.has(c) && !/^PadAxis[01]/.test(c)) ? 1 : 0;
+    const d = id => blocked ? 0 : codesOf.get(id).keys.some(isHeld) || codesOf.get(id).padMove.some(isPadHeld) ? 1 : 0;
     let f = d('moveForward') - d('moveBack') - (leftStick[1] || 0), r = d('moveRight') - d('moveLeft') + (leftStick[0] || 0);
     const m = len(f, r); if (m > 1) { f /= m; r /= m; }
     moveVec = { forward: f, strafe: r };

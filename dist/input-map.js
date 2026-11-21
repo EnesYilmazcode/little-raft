@@ -133,6 +133,7 @@ export class ActionMap {
 
   // Replace state with defaults overlaid by (sanitized) data; enforce invariants.
   _apply(data) {
+    this.revision = (this.revision || 0) + 1;
     this.bindings = {};
     for (const a of ACTIONS) this.bindings[a.id] = fill(blank(), DEFAULT_BINDINGS[a.id]);
     const src = data?.bindings && typeof data.bindings === 'object' ? data.bindings : {};
@@ -156,7 +157,8 @@ export class ActionMap {
     if (!pk.includes('Escape')) pk[pk.indexOf(null) >= 0 ? pk.indexOf(null) : 0] = 'Escape';
   }
 
-  _changed() { if (this.autoSave) this.save(); }
+  // revision bumps on every change so consumers (input.js) can cache derived code lists.
+  _changed() { this.revision++; if (this.autoSave) this.save(); }
 
   bindingsFor(id) {
     const e = this.bindings[id];
