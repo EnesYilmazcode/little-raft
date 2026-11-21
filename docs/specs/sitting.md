@@ -155,3 +155,31 @@ bench height, with the "Sitting" prompt. (3) rotate the bench to π/2 and re-sit
 clamped. (5) press W: you stand in front of the bench. (6) co-op (tests/coop-e2e.mjs harness): host sits on seat 0 and
 the guest sits: the guest gets seat 1, and both avatars are in the seated pose (check `raftDebug.avatars.remote` y ≈
 deck-.35). (7) the host removes the bench while the guest sits: the guest stands on deck. (8) cushion: low eye.
+
+## Build notes
+- **Files:** new `dist/sitting-core.js`, `dist/sitting.js`, `tests/sitting.test.mjs` (14 tests). Hooks tagged `// [sit]` /
+  `content hook (sit, zipline)` in content.js, game.js (contentCtx `faceYaw`/`award`, `rideIn` + `ride` in `movePlayer`,
+  exertion `.85`, `local().seated`), coop.js, coop-avatar.js, logbook.js, live.js PRELOAD; logbook test count 15 -> 16.
+- **coop.js:** the flag math moved into two exported pure helpers, `poseFlags(l)` and `readFlags(f)`, so the bit-16 round
+  trip is unit-testable without a DOM. `snapshot()` and `onPose()` call them; the wire format is unchanged apart from bit 16.
+  **Zipline merge:** add bit 8 inside `poseFlags`/`readFlags` instead of inline in `snapshot()`.
+- **Decor pickup:** `beforeUndecor(d)` returns "Someone is sitting there" while either seat entry points at d's position;
+  `afterUndecor(d)` clears any seat there. The per-frame `findDecor` sweep is still the safety net.
+- **Decor positions:** placement.js says decor can be fractional, but `cleanWorld` (game.js) keeps integer `x`/`z` only on
+  this base. A fractional bench works for the host but is dropped from the guest's copy and from saves. The module matches by
+  1e-3 either way. QA used the bench at **(0, 1)**, not (0, .5).
+- **Small choices the spec left open:** `update()` clamps dt to 1 s (sleep uses .25), so `update(1)` x30 awards exactly once.
+  A missing decor or a bad seat index is refused with "Nothing to sit on there". `sentDown` stops a second `sit.down` while
+  the first one is in flight. E while seated does the full local stand-up (teleport + `sit.up`), the same as WASD.
+  `awarded` resets on every save/restore load. `award()` dedupes, so an old save with `t >= 30` grants `sit1` once on load.
+- **QA debug extras:** `raftDebug.content.sit.remove(x, z)` (host: drop the seat decor, as a pickup or shark would),
+  `state().inMax` (the largest move input seen while seated) and `state().hostHas`.
+- **Headless smoke** (swiftshader, solo + loopback co-op, no page errors and no console errors):
+  E on the aimed bench gives "E Sit", and sitting puts the eye at deck + 1.45 (deckY + 1.25) facing yaw π. 150° back clamps to
+  seat + 100°. Holding W stands you in front of the bench. Rotated π/2 and re-sat, the facing is 3π/2. Cushion eye: deck + 1.15.
+  Co-op: the host sits on seat 0 and the guest asks for seat 0 and gets seat 1. Remote avatar y = deck - .35, in the seated
+  pose (thighs forward, hands on knees). When the host removes the bench, the guest stands at the front tile.
+- **Known gaps:** modules ahead of `sit` in FEATURES (storage crate, decor pack…) and pickups in aim still win E while
+  seated. WASD/Space always get you up. The move threshold `.3` applies after move-feel's ramp (.14 s), so a tap shorter
+  than about a frame is ignored. The avatar has no knee joint, so seated legs stick straight out and the feet dangle. It
+  reads fine at play distance.
