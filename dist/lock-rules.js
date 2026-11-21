@@ -15,13 +15,15 @@ export function classifyLockError(err) {
 
 // Decide whether a refusal switches to drag-look. Only a missing API, NotSupportedError, or repeated
 // refusals while the window has focus count. Unfocused refusals never count. SecurityError counts when
-// focused (a sandbox or permissions-policy denial is permanent) but one alone never switches.
-export function lockFailureVerdict({ supported = true, err, focused = true, failures = 0, maxFailures = 3 } = {}) {
+// focused (a sandbox or permissions-policy denial is permanent) but one alone never switches. Once this document
+// has held the lock (everLocked) a SecurityError is always transient: a policy denial refuses the very first
+// request, so a later one is Chromium's re-lock cooldown after an Escape exit, however long that lasts.
+export function lockFailureVerdict({ supported = true, err, focused = true, failures = 0, maxFailures = 3, everLocked = false } = {}) {
   if (!supported) return { fallback: true, failures };
   const kind = classifyLockError(err);
   if (kind === 'unsupported') return { fallback: true, failures };
   if (!focused) return { fallback: false, failures };
-  if (kind === 'transient' && err.name !== 'SecurityError') return { fallback: false, failures };
+  if (kind === 'transient' && (err.name !== 'SecurityError' || everLocked)) return { fallback: false, failures };
   const n = failures + 1;
   return { fallback: n >= maxFailures, failures: n };
 }
@@ -87,4 +89,10 @@ export function createEscGate({ handledWindow = 600, lockWindow = 1500 } = {}) {
       return true;
     },
   };
+}
+
+// Soft drag-look (entered after repeated refusals, not a missing API): a plain canvas click retries the lock,
+// at most once per interval ms. Hard fallback (no API, NotSupportedError) never retries.
+export function softRelockTry({ fallback = false, hard = false, now = 0, lastTry = -Infinity, interval = 1500 } = {}) {
+  return !!fallback && !hard && now - lastTry >= interval;
 }

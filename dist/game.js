@@ -55,7 +55,7 @@ import { createGhosts, FOOTPRINT, wheelDelta, decorHit, refundOf, wrapRot, ROT_S
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints, feedPlacement, hintsFromState } from './hud.js?build=v3-survival-ae77fa84ac2b';
-import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, escReleasePlan, dragLook } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
+import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, escReleasePlan, dragLook, softRelockTry } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { keyDecision, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
@@ -307,7 +307,7 @@ export function mount(transfer = null) {
   const hintsDone = X?.hintsDone instanceof Set ? X.hintsDone : freshSave ? new Set() : loadHints(saveStore.storage); // first-run hint chain, once per save (a part of the world save)
   const bindings = []; // [emitter, event, fn] registered by THIS mount on PeerJS objects
   const lockSupported = !!canvas && typeof canvas.requestPointerLock === 'function';
-  let lockFallback = !lockSupported || !!X?.lockFallback, down = X?.down ? {...X.down} : null, uiSignature = -1;
+  let lockFallback = !lockSupported || !!X?.lockFallback, lockFallbackHard = !lockSupported, everLocked = !!X?.everLocked, softTryAt = -Infinity, down = X?.down ? {...X.down} : null, uiSignature = -1;
   const chargeMeter = $('#chargeMeter'); // thin ring around the crosshair, filled by --c
   let crossUsable = false, lastDraw = 0;
   let blockList = [];
@@ -712,7 +712,8 @@ export function mount(transfer = null) {
     b.toggle('pointer-locked', locked); b.toggle('locked', locked); b.toggle('first-person', running); b.toggle('playing', running);
     b.toggle('drag-look', dragLook({running, supported:lockSupported, fallback:lockFallback}));
     const crosshair = $('#crosshair'); if (crosshair) crosshair.hidden = !(running && locked);
-    const resume = $('#resumeHint'); if (resume) resume.hidden = !(running && !locked && lockSupported && !dialog);
+    // In drag-look 'Click the ocean' would not relock (a click acts there), so the hint stays hidden.
+    const resume = $('#resumeHint'); if (resume) resume.hidden = !(running && !locked && lockSupported && !lockFallback && !dialog);
   }
 
   // ---------- Pointer lock ----------
@@ -746,9 +747,10 @@ export function mount(transfer = null) {
     if (isLocked()) return;
     const isEvent = typeof Event !== 'undefined' && err instanceof Event;
     if (isEvent && (lockPromisePending || lockHasPromise)) { refreshPointerUI(true); return; } // the promise rejection carries the real reason
-    const verdict = lockFailureVerdict({supported:lockSupported, err:isEvent ? null : err, focused:windowFocused(), failures:lockFailures});
+    const verdict = lockFailureVerdict({supported:lockSupported, err:isEvent ? null : err, focused:windowFocused(), failures:lockFailures, everLocked});
     lockFailures = verdict.failures;
     if (!verdict.fallback) { refreshPointerUI(true); return; }
+    if (!lockSupported || err?.name === 'NotSupportedError') lockFallbackHard = true; // soft fallback (repeated refusals) still retries on a click
     const wasFallback = lockFallback; lockFallback = true; refreshPointerUI(true);
     if (!wasFallback && running) notice('Mouse lock unavailable: drag to look, click to use', 3000);
   }
@@ -1546,7 +1548,7 @@ export function mount(transfer = null) {
   // ---------- Input ----------
   const on = (target, type, fn, opts = {}) => target?.addEventListener(type, guard(fn), {...opts, signal});
   on(document, 'pointerlockchange', () => {
-    if (isLocked()) { lockFallback = false; lockFailures = 0; }
+    if (isLocked()) { lockFallback = false; lockFallbackHard = !lockSupported; lockFailures = 0; everLocked = true; }
     else { if (charging && charging.x === null) charging = null; reeling = false; }
     if (!isLocked() && !lockFallback && building?.menu.isOpen) building.menu.close(false); // building-pieces lane hook
     down = null; refreshPointerUI(true);
@@ -1591,7 +1593,13 @@ export function mount(transfer = null) {
     if (charging) { if (wasClick && charging.x !== null) releaseCharge(pickScreen(charging.x, charging.y)); else charging = null; return; }
     if (!wasClick || !running) return;
     // Only a plain click acts, with the tool it was pressed with (a slot switch mid-press does nothing).
-    if (lockFallback) { if (!hook && selectedKind() !== 'hook' && releaseShouldFire(press, selectedKind())) useSelected(pickScreen(e.clientX, e.clientY)); return; }
+    if (lockFallback) {
+      // Soft drag-look (lock refused a few times, not missing): a click also retries the lock, at most every 1.5 s.
+      const now = performance.now();
+      if (!uiBlocked() && softRelockTry({fallback:lockFallback, hard:lockFallbackHard, now, lastTry:softTryAt})) { softTryAt = now; requestLock(); }
+      if (!hook && selectedKind() !== 'hook' && releaseShouldFire(press, selectedKind())) useSelected(pickScreen(e.clientX, e.clientY));
+      return;
+    }
     if (!uiBlocked()) requestLock(); // first click only locks; it never acts
   });
   on(canvas, 'pointerleave', () => { mouse.inside = false; });
@@ -1992,7 +2000,7 @@ export function mount(transfer = null) {
       hook, castId, hookSlot, lastCaughtCount, fishWait, sound, audio:sfx.context, hintsDone, peer, conn, role, networkReady, room, ownWorldBackup, pending:new Map(pending),
       dive:diving?.capture?.() ?? null, // diving lane hook
       wornCasts:{...wornCasts}, seq, lastSeqSent, guestAck,
-      joinDeadline:joinTimer ? joinDeadline : 0, saveAvailable, lockFallback,
+      joinDeadline:joinTimer ? joinDeadline : 0, saveAvailable, lockFallback, everLocked,
       charging:charging ? {...charging} : null, reeling, down:down ? {...down} : null,
       bindings:bindings.slice(), renderer, lastHostMessage, lastGuestMessage, peerHidden, saveRev, saveBlocked, coop:coop?.capture(), // coop: rejoin state
       raftPose:raft ? {y:raft.position.y, rx:raft.rotation.x, rz:raft.rotation.z} : {...raftPose},

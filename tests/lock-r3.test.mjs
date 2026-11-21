@@ -10,6 +10,33 @@ const rules = await import(new URL('lock-rules.js', base));
 const src = (f) => readFile(new URL(f, base), 'utf8');
 const dom = (name) => Object.assign(new Error(name), { name });
 
+// ---- LOCK-R3-3: the Escape cooldown never switches to drag-look ----
+test('LOCK-R3-3: after the first lock, SecurityError never counts as a failure', () => {
+  let v = { failures: 0 };
+  for (let i = 0; i < 10; i++) {
+    v = rules.lockFailureVerdict({ err: dom('SecurityError'), failures: v.failures, everLocked: true });
+    assert.equal(v.fallback, false); assert.equal(v.failures, 0);
+  }
+  // before any lock, a policy denial still falls back after repeated refusals
+  v = { failures: 0 };
+  for (let i = 0; i < 3; i++) v = rules.lockFailureVerdict({ err: dom('SecurityError'), failures: v.failures });
+  assert.equal(v.fallback, true);
+  assert.equal(rules.lockFailureVerdict({ err: dom('NotSupportedError'), everLocked: true }).fallback, true);
+});
+
+test('LOCK-R3-3: soft drag-look retries the lock on a click, rate-limited; hard fallback never does', () => {
+  assert.equal(rules.softRelockTry({ fallback: true, now: 1000 }), true);
+  assert.equal(rules.softRelockTry({ fallback: true, now: 1000, lastTry: 0 }), false);
+  assert.equal(rules.softRelockTry({ fallback: true, now: 1600, lastTry: 0 }), true);
+  assert.equal(rules.softRelockTry({ fallback: true, hard: true, now: 9999 }), false);
+  assert.equal(rules.softRelockTry({ fallback: false, now: 9999 }), false);
+});
+
+test('LOCK-R3-3: the "Click the ocean" hint is hidden in drag-look', async () => {
+  const game = await src('game.js');
+  assert.match(game, /resume\.hidden = !\(running && !locked && lockSupported && !lockFallback && !dialog\)/);
+});
+
 // ---- LOCK-R3-4: the Electron harness starts a game and presses Esc once ----
 test('LOCK-R3-4: electron_check finds the onboarding start buttons and pause_cycle sends one Esc', async () => {
   const py = await readFile(new URL('./e2e/electron_check.py', import.meta.url), 'utf8');
