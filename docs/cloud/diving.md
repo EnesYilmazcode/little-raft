@@ -135,6 +135,17 @@ These are in `docs/cloud/shots/diving/`, produced by `tests/dive_shots.py` on th
   - getting stuck under the raft with no oxygen
   - an fx failure leaving the underwater fog on
   - hot-swap state loss
+- **Adversarial review, second pass.** Fixed:
+  - an fx failure in render left the underwater look on
+  - starting a dive near far tiles teleported you
+  - an out-of-breath re-dive loop while holding C
+  - a failed hot swap removed the old HUD
+  - leftovers when building the controller partly failed
+  - a ring flash with nothing gathered
+  - an ambiguous mount id
+  - nodes desyncing between host and guest: gathered nodes now use their own
+    `{type:'gathered', id}` network message, which older clients ignore, and a
+    stale request gets that message back
 - **Performance:**
   - The seafloor is hidden and not updated above water, so draw calls above water match main.
   - Rebuilds take about 1.2 ms and happen on a 16 m recentre grid.
