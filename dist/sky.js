@@ -2,7 +2,7 @@
 //   const sky = createSky(THREE, {sunDirection});
 //   scene.add(sky.group); scene.background = sky.horizonColor;
 //   sky.update(elapsedSeconds, camera);   // per frame
-// Gradient, sun disc + halo and drifting cumulus are computed per pixel from the view direction.
+// Gradient and sun disc + halo are computed per pixel; drifting cumulus come from a baked texture.
 // Clouds are lit from the sun side (white tops, pale blue-grey bellies), never dark smudges.
 
 export const SKY = Object.freeze({
@@ -21,6 +21,8 @@ void main() {
 }
 `;
 
+// Clouds are baked once into a small tileable texture (R = density, G = sun-side lighting), so the
+// dome costs one texture fetch per pixel instead of a per-pixel fbm.
 const fragmentShader = /* glsl */ `
 uniform vec3 uHorizon;
 uniform vec3 uZenith;
@@ -28,25 +30,8 @@ uniform vec3 uSunColor;
 uniform vec3 uSunDir;
 uniform float uTime;
 uniform float uCoverage;
+uniform sampler2D uClouds;
 varying vec3 vDir;
-
-float hash(vec2 p) {
-  p = fract(p * vec2(123.34, 456.21));
-  p += dot(p, p + 45.32);
-  return fract(p.x * p.y);
-}
-float vnoise(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
-             mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0)), u.x), u.y);
-}
-float fbm(vec2 p) {
-  float v = 0.0, a = 0.5;
-  mat2 rot = mat2(0.8, -0.6, 0.6, 0.8);
-  for (int i = 0; i < 4; i++) { v += a * vnoise(p); p = rot * p * 2.07 + 13.7; a *= 0.5; }
-  return v;
-}
 
 void main() {
   vec3 dir = normalize(vDir);
@@ -56,36 +41,70 @@ void main() {
   // Deep blue overhead easing into a bright hazy band at the horizon.
   vec3 col = mix(uHorizon, uZenith, pow(up, 0.55));
   float sd = max(dot(dir, uSunDir), 0.0);
-  col += uSunColor * (pow(sd, 8.0) * 0.22 + pow(sd, 64.0) * 0.35);  // warm halo
+  float sd8 = sd * sd; sd8 *= sd8; sd8 *= sd8;
+  col += uSunColor * (sd8 * 0.22 + pow(sd, 64.0) * 0.35);              // warm halo
   col = mix(col, vec3(1.0, 0.99, 0.95), smoothstep(0.9993, 0.9997, sd)); // crisp disc
 
-  // Cumulus on a flat layer: foreshortened toward the horizon, puffy via a domain warp.
-  if (y > 0.0) {
-    vec2 cp = dir.xz / (y + 0.22) * 1.6 + vec2(uTime * 0.012, uTime * 0.004);
-    vec2 warp = vec2(vnoise(cp * 0.5), vnoise(cp * 0.5 + 5.2)) * 0.5;
-    float shape = fbm(cp + warp) * (0.75 + 0.25 * vnoise(cp * 0.23)); // fewer, separate puffs
+  // Cumulus on a flat layer, foreshortened toward the horizon.
+  if (y > 0.015) {
+    vec2 cp = dir.xz / (y + 0.22) * 0.2 + vec2(uTime * 0.0015, uTime * 0.0005);
+    vec2 c = texture2D(uClouds, cp).rg;
+    c.r += (texture2D(uClouds, cp * 4.0 + 0.37).r - 0.5) * 0.16;     // finer billows on the edges
     float thr = 1.0 - uCoverage;
-    float d = smoothstep(thr, thr + 0.09, shape);
-    d *= smoothstep(0.02, 0.16, y);
-    if (d > 0.002) {
-      // Self-shadow: denser toward the sun means a brighter rim on that side.
-      vec2 toSun = normalize(uSunDir.xz + 1e-4) * 0.25;
-      float behind = fbm(cp + warp + toSun);
-      float shade = clamp(0.5 + (shape - behind) * 4.0, 0.0, 1.0);
-      vec3 belly = mix(uHorizon, uZenith, 0.25) * 0.95;
-      vec3 cloud = mix(belly, vec3(1.0), shade * 0.75 + 0.25);
-      cloud += uSunColor * pow(sd, 12.0) * (1.0 - d) * 0.6;    // silver lining near the sun
-      cloud = mix(cloud, uHorizon, smoothstep(0.35, 0.02, y) * 0.6); // aerial haze
-      col = mix(col, cloud, d * 0.95);
-    }
+    float d = smoothstep(thr, thr + 0.07, c.r) * smoothstep(0.015, 0.16, y);
+    vec3 belly = mix(uHorizon, uZenith, 0.3) * 0.92;
+    vec3 cloud = mix(belly, vec3(1.0), c.g * 0.75 + 0.25);
+    cloud += uSunColor * sd8 * sd * (1.0 - d) * 0.6;                    // silver lining near the sun
+    cloud = mix(cloud, uHorizon, smoothstep(0.35, 0.02, y) * 0.6);      // aerial haze
+    col = mix(col, cloud, d * 0.95);
   }
   col = mix(col, uHorizon, smoothstep(0.02, -0.06, y)); // below the horizon: haze only
-  col += (hash(gl_FragCoord.xy) - 0.5) / 255.0;          // dither against banding
+  col += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 255.0; // dither
 
   gl_FragColor = vec4(col, 1.0);
   #include <colorspace_fragment>
 }
 `;
+
+// Tileable value-noise fbm, baked on the CPU. Period P lattice cells at the base octave.
+const TEX = 256, P = 8;
+function bakeClouds(T, sunDirection) {
+  const hash = (x, z, p) => {
+    x = ((x % p) + p) % p; z = ((z % p) + p) % p;
+    let h = Math.imul(x + 101 * p, 374761393) ^ Math.imul(z + 7 * p, 668265263);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+  const noise = (x, z, p) => {
+    const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz;
+    const ux = fx * fx * (3 - 2 * fx), uz = fz * fz * (3 - 2 * fz);
+    const a = hash(ix, iz, p), b = hash(ix + 1, iz, p), c = hash(ix, iz + 1, p), d = hash(ix + 1, iz + 1, p);
+    return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz;
+  };
+  // x, z in base-lattice units (0..P wraps).
+  const shape = (x, z) => {
+    const wx = noise(x * 0.5, z * 0.5, P / 2) * 0.5, wz = noise(x * 0.5 + 2.5, z * 0.5 + 1.5, P / 2) * 0.5;
+    let v = 0, a = 0.5, f = 1;
+    for (let o = 0; o < 4; o++) { v += a * noise((x + wx) * f, (z + wz) * f, P * f); f *= 2; a *= 0.5; }
+    return v * (0.75 + 0.25 * noise(x * 0.25, z * 0.25, P / 4)); // fewer, separate puffs
+  };
+  const len = Math.hypot(sunDirection.x, sunDirection.z) || 1;
+  const sx = sunDirection.x / len * 0.25, sz = sunDirection.z / len * 0.25;
+  const data = new Uint8Array(TEX * TEX * 4), k = P / TEX;
+  for (let j = 0; j < TEX; j++) for (let i = 0; i < TEX; i++) {
+    const x = i * k, z = j * k, s = shape(x, z);
+    const lit = Math.min(1, Math.max(0, 0.5 + (s - shape(x + sx, z + sz)) * 4)); // denser toward the sun: brighter rim
+    const o = (j * TEX + i) * 4;
+    data[o] = s * 255; data[o + 1] = lit * 255; data[o + 3] = 255;
+  }
+  const tex = new T.DataTexture(data, TEX, TEX, T.RGBAFormat, T.UnsignedByteType);
+  tex.wrapS = tex.wrapT = T.RepeatWrapping;
+  tex.magFilter = T.LinearFilter;
+  tex.minFilter = T.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.needsUpdate = true;
+  return tex;
+}
 
 export function createSky(T, options = {}) {
   const sunDirection = (options.sunDirection ?? new T.Vector3(-15, 28, 12)).clone().normalize();
@@ -96,6 +115,7 @@ export function createSky(T, options = {}) {
     uSunDir: { value: sunDirection },
     uTime: { value: 0 },
     uCoverage: { value: options.coverage ?? 0.5 },
+    uClouds: { value: bakeClouds(T, sunDirection) },
   };
   const geometry = new T.SphereGeometry(100, 32, 16);
   const material = new T.ShaderMaterial({
@@ -119,6 +139,7 @@ export function createSky(T, options = {}) {
     group.remove(mesh);
     geometry.dispose();
     material.dispose();
+    uniforms.uClouds.value.dispose();
   }
   return { group, update, dispose, sunDirection, horizonColor: uniforms.uHorizon.value, uniforms };
 }
