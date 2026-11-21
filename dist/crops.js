@@ -27,6 +27,7 @@ export const TEXT = Object.freeze({
   notarget: 'Point at a crop plot', taken: 'Something is already growing there', noseed: 'You need a beet or a potato',
   empty: 'Plant a beet or potato first', ripe: 'It is ripe: harvest it with E', wet: 'The soil is still wet',
   nocup: 'You need a cup of fresh water', full: 'Your bag is full', notripe: 'Still growing', nothing: 'Nothing to harvest',
+  mulched: 'Already mulched with kelp', noweed: 'You need seaweed for mulch', // [kelpline]
 });
 
 const isInt = Number.isInteger;
@@ -39,7 +40,7 @@ export const emptySlot = () => ({ c: '', g: 0, w: 0 });
 export function cleanSlot(v) {
   if (!v || typeof v !== 'object' || Array.isArray(v) || !isCrop(v.c)) return emptySlot();
   const g = clampInt(v.g, 0, CROPS[v.c].grow);
-  return { c: v.c, g, w: g >= CROPS[v.c].grow ? 0 : clampInt(v.w, 0, WATER_SECONDS) };
+  const out = { c: v.c, g, w: g >= CROPS[v.c].grow ? 0 : clampInt(v.w, 0, WATER_SECONDS) }; if (v.m === 1) out.m = 1; return out; // [kelpline] m = mulched (+1 at harvest), only when set
 }
 /** Validated d.crop field (always SLOTS slots). Old saves (no field) load as an empty plot. */
 export function cleanCrop(v) {
@@ -117,14 +118,23 @@ export function applyCrop(decor, bag, a) {
     s.w = WATER_SECONDS;
     return { ok: true, kind: 'build', text: `Watered the ${CROPS[s.c].name.toLowerCase()}. It grows while the soil is wet` };
   }
+  if (a.kind === 'crops.mulch') { // [kelpline] 1 seaweed on a planted, growing slot: +1 crop at harvest
+    if (!s.c) return fail('empty');
+    if (isRipe(s)) return fail('ripe');
+    if (s.m === 1) return fail('mulched');
+    if (bag.count('seaweed') < 1 || !takeOne(bag, 'seaweed')) return fail('noweed');
+    s.m = 1;
+    return { ok: true, kind: 'build', text: 'Mulched with kelp: +1 at harvest' };
+  }
   if (a.kind === 'crops.harvest') {
     if (!s.c) return fail('nothing');
     if (!isRipe(s)) return fail('notripe');
+    const n = YIELD + (s.m === 1 ? 1 : 0); // [kelpline] mulch bonus
     const scratch = new bag.constructor(bag.snapshot());
-    if (scratch.add(s.c, YIELD) !== 0) return fail('full');
+    if (scratch.add(s.c, n) !== 0) return fail('full');
     commit(bag, scratch);
     const crop = s.c; d.crop[a.slot] = emptySlot();
-    return { ok: true, kind: 'loot', text: `+ ${YIELD} ${CROPS[crop].plural}`, loot: { [crop]: YIELD } };
+    return { ok: true, kind: 'loot', text: `+ ${n} ${CROPS[crop].plural}`, loot: { [crop]: n } };
   }
   return fail('notarget');
 }
@@ -134,10 +144,11 @@ export function slotPrompt(s, held) {
   if (!s || !isCrop(s.c)) return isCrop(held) ? ['Click', `Plant ${CROPS[held].name.toLowerCase()}`] : [null, 'Empty slot: plant a beet or potato'];
   const name = CROPS[s.c].name;
   if (isRipe(s)) return ['E', `Harvest ${name.toLowerCase()}`];
-  const pct = Math.floor(progress(s) * 100);
+  if (held === 'seaweed' && s.m !== 1) return ['Click', `Mulch the ${name.toLowerCase()} with kelp`]; // [kelpline]
+  const pct = Math.floor(progress(s) * 100), mul = s.m === 1 ? ' · mulched' : ''; // [kelpline]
   if (held === 'freshcup' && s.w < WATER_SECONDS / 2) return ['Click', `Water the ${name.toLowerCase()} (${pct}%)`];
-  if (s.w > 0) return [null, `${name} ${pct}%: growing`];
-  return [null, `${name} ${pct}%: dry soil, needs fresh water`];
+  if (s.w > 0) return [null, `${name} ${pct}%: growing${mul}`];
+  return [null, `${name} ${pct}%: dry soil, needs fresh water${mul}`];
 }
 
 /** Slot index (0..SLOTS-1) under a point given in raft metres, for a plot at tile (x, z) with rotation rot. */
@@ -202,12 +213,12 @@ export function createCrops(ctx) {
   const EMPTY = Object.freeze(emptySlot());
   const slotOf = (t) => (Array.isArray(t.d.crop) && t.d.crop[t.slot] ? t.d.crop[t.slot] : EMPTY); // decor is cleaned on load and by every action
   // Prompt text for the aimed slot, rebuilt only when what it shows changes (prompt() runs every frame).
-  const said = { d: null, slot: -1, c: '', pct: -1, wet: -1, held: null, key: null, text: '' };
+  const said = { d: null, slot: -1, c: '', pct: -1, wet: -1, m: 0, held: null, key: null, text: '' };
   function describe(t) {
-    const s = slotOf(t), held = heldKind(), pct = isCrop(s.c) ? Math.floor(progress(s) * 100) : -1, wet = s.w >= WATER_SECONDS / 2 ? 2 : s.w > 0 ? 1 : 0;
-    if (said.d !== t.d || said.slot !== t.slot || said.c !== s.c || said.pct !== pct || said.wet !== wet || said.held !== held) {
+    const s = slotOf(t), held = heldKind(), pct = isCrop(s.c) ? Math.floor(progress(s) * 100) : -1, wet = s.w >= WATER_SECONDS / 2 ? 2 : s.w > 0 ? 1 : 0, m = s.m === 1 ? 1 : 0; // [kelpline] m
+    if (said.d !== t.d || said.slot !== t.slot || said.c !== s.c || said.pct !== pct || said.wet !== wet || said.m !== m || said.held !== held) {
       const [key, text] = slotPrompt(s, held);
-      said.d = t.d; said.slot = t.slot; said.c = s.c; said.pct = pct; said.wet = wet; said.held = held; said.key = key; said.text = text;
+      said.d = t.d; said.slot = t.slot; said.c = s.c; said.pct = pct; said.wet = wet; said.m = m; said.held = held; said.key = key; said.text = text;
       said.html = key ? `<kbd>${key}</kbd>${ctx.esc ? ctx.esc(text) : text}` : null;
     }
     return said;
@@ -215,10 +226,11 @@ export function createCrops(ctx) {
 
   // What a left click with `kind` does at the aimed slot: an action, a notice, or null (not ours).
   function useFor(kind, aim) {
-    if (!isCrop(kind) && kind !== 'freshcup') return null;
+    if (!isCrop(kind) && kind !== 'freshcup' && kind !== 'seaweed') return null; // [kelpline] seaweed = mulch
     const t = target(aim); if (!t) return null;
     const s = slotOf(t), at = { x: t.d.x, z: t.d.z, slot: t.slot };
     if (isCrop(kind)) return s.c ? { notice: isRipe(s) ? TEXT.ripe : TEXT.taken } : { a: { kind: 'crops.plant', ...at, crop: kind } };
+    if (kind === 'seaweed') return !s.c ? { notice: TEXT.empty } : isRipe(s) ? { notice: TEXT.ripe } : s.m === 1 ? { notice: TEXT.mulched } : { a: { kind: 'crops.mulch', ...at } }; // [kelpline]
     if (!s.c) return { notice: TEXT.empty };
     if (isRipe(s)) return { notice: TEXT.ripe };
     if (s.w >= WATER_SECONDS / 2) return { notice: TEXT.wet };
@@ -248,7 +260,10 @@ export function createCrops(ctx) {
       const wet = new T.Mesh(kit.wetGeo, kit.wetMat); wet.rotation.y = -i * 2.1; wet.visible = false; root.add(wet);
       const meshes = {};
       for (const key of Object.keys(kit.geos)) { const m = new T.Mesh(kit.geos[key], kit.plantMat); m.visible = false; m.castShadow = false; m.receiveShadow = true; root.add(m); meshes[key] = m; }
-      slots.push({ wet, meshes, shown: null, wetShown: false });
+      kit.mulchGeo ??= (() => { const r = new T.RingGeometry(.11, .19, 14); r.rotateX(-Math.PI / 2); r.translate(0, .012, 0); r.userData.shared = true; return r; })(); // [kelpline] dark green kelp mulch ring
+      kit.mulchMat ??= Object.assign(new T.MeshStandardMaterial({ color: '#2f5a2c', roughness: .85 }), { userData: { shared: true } }); // shared: rebuildRaft never disposes it
+      const mulch = new T.Mesh(kit.mulchGeo, kit.mulchMat); mulch.rotation.y = -i * 2.1; mulch.visible = false; mulch.receiveShadow = true; root.add(mulch);
+      slots.push({ wet, meshes, shown: null, wetShown: false, mulch, mulchShown: false });
     }
     g.userData.cropSlots = slots;
   }
@@ -262,6 +277,8 @@ export function createCrops(ctx) {
         if (key !== view.shown) { if (view.shown) view.meshes[view.shown].visible = false; if (key) view.meshes[key].visible = true; view.shown = key; }
         const wet = !!s && s.w > 0;
         if (wet !== view.wetShown) { view.wet.visible = wet; view.wetShown = wet; }
+        const mul = !!s && s.m === 1; // [kelpline]
+        if (mul !== view.mulchShown) { view.mulch.visible = mul; view.mulchShown = mul; }
       }
     }
   }
@@ -278,7 +295,7 @@ export function createCrops(ctx) {
         if (tickCrops(ctx.world?.decor, n) > 0) ctx.emit?.({ kind: 'notice', text: 'A crop is ripe' }, 'all');
       }
     },
-    claims(kind, aim) { return (isCrop(kind) || kind === 'freshcup') && !!target(aim); }, // no allocation: called per frame
+    claims(kind, aim) { return (isCrop(kind) || kind === 'freshcup' || kind === 'seaweed') && !!target(aim); }, // no allocation: called per frame // [kelpline] + seaweed
     use(aim, kind) { // same order as paint.js (content.js use(aim, kind))
       const u = useFor(kind, aim); if (!u) return false;
       if (u.a) ctx.action(u.a); else ctx.notice?.(u.notice);
@@ -310,7 +327,7 @@ export function createCrops(ctx) {
     debug: {
       plots: () => decor().filter(isPlot).map(d => ({ x: d.x, z: d.z, rot: d.rot || 0, crop: cleanCrop(d.crop) })),
       target: (aim) => { const t = target(aim); return t ? { x: t.d.x, z: t.d.z, slot: t.slot } : null; },
-      shown: () => plots.map(g => g.userData.cropSlots.map(v => (v.shown ?? '') + (v.wetShown ? '+wet' : ''))),
+      shown: () => plots.map(g => g.userData.cropSlots.map(v => (v.shown ?? '') + (v.wetShown ? '+wet' : '') + (v.mulchShown ? '+mulch' : ''))), // [kelpline] +mulch
       /** Host QA: put a crop plot on a free raft tile. */
       place(x, z, rot = 0) {
         const w = ctx.world;
@@ -325,12 +342,12 @@ export function createCrops(ctx) {
         while (left > 0) { const n = Math.min(MAX_TICK, left); tickCrops(ctx.world?.decor, n); left -= n; }
         return true;
       },
-      /** Host QA: apply a crop action for the local player, skipping aim (op: plant | water | harvest). */
+      /** Host QA: apply a crop action for the local player, skipping aim (op: plant | water | mulch | harvest). */
       act(op, x, z, slot, crop) { if (ctx.role === 'guest') return null; return applyCrop(ctx.world?.decor, ctx.localBag(), { kind: 'crops.' + op, x, z, slot, crop }); },
     },
     dispose() {
       plots.length = 0; try { unprovide?.(); } catch {} unprovide = null;
-      if (kit) { for (const g of Object.values(kit.geos)) g.dispose(); kit.wetGeo.dispose(); kit.plantMat.dispose(); kit.wetMat.dispose(); kit = null; }
+      if (kit) { for (const g of Object.values(kit.geos)) g.dispose(); kit.wetGeo.dispose(); kit.plantMat.dispose(); kit.wetMat.dispose(); kit.mulchGeo?.dispose(); kit.mulchMat?.dispose(); kit = null; } // [kelpline] mulch ring
     },
   };
 }

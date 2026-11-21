@@ -151,3 +151,37 @@ test('content registry exposes use/claims and lists the crops module', () => {
   const reg = createContent({ T: null, world: { decor: [] } }, [createCrops]);
   assert.ok(reg.debug.crops); assert.equal(reg.use(null, 'beet'), false); assert.equal(reg.claims('beet', null), false);
 });
+
+// [kelpline] kelp mulch (docs/specs/kelp.md section 9)
+test('mulch: cleanSlot keeps m:1 only; old slots have no m key', () => {
+  assert.deepEqual(cleanSlot({ c: 'beet', g: 10, w: 5, m: 1 }), { c: 'beet', g: 10, w: 5, m: 1 });
+  for (const m of [2, '1', true, 0, null]) assert.equal('m' in cleanSlot({ c: 'beet', g: 10, w: 5, m }), false, String(m));
+  assert.equal('m' in cleanSlot({ c: 'beet', g: 10, w: 5 }), false);
+  assert.equal('m' in cleanSlot({ c: '', m: 1 }), false, 'an empty slot is never mulched');
+  assert.deepEqual(cleanCrop([{ c: 'potato', g: 1, w: 0, m: 1 }])[0], { c: 'potato', g: 1, w: 0, m: 1 });
+});
+
+test('mulch: takes exactly 1 seaweed; refuses double, ripe and empty slots without touching the bag; +1 at harvest', () => {
+  const decor = [plot(0, 0, [{ c: 'beet', g: 0, w: 0 }, { c: 'beet', g: 50, w: 0 }, null])];
+  const bag = bagWith([{ kind: 'seaweed', count: 3 }, { kind: 'freshcup', count: 2 }]);
+  const r = act(decor, bag, 'mulch', 0); assert.ok(r.ok, r.text);
+  assert.equal(r.text, 'Mulched with kelp: +1 at harvest');
+  assert.equal(bag.count('seaweed'), 2); assert.equal(decor[0].crop[0].m, 1);
+  const snap = JSON.stringify(bag.snapshot());
+  assert.equal(act(decor, bag, 'mulch', 0).text, 'Already mulched with kelp');
+  assert.equal(act(decor, bag, 'mulch', 1).reason, 'ripe');
+  assert.equal(act(decor, bag, 'mulch', 2).reason, 'empty');
+  assert.equal(JSON.stringify(bag.snapshot()), snap);
+  const none = bagWith([]); assert.equal(act([plot(0, 0, [{ c: 'beet', g: 0, w: 0 }])], none, 'mulch', 0).text, 'You need seaweed for mulch');
+  // mulch does not replace water
+  grow(decor, 100); assert.equal(decor[0].crop[0].g, 0);
+  assert.ok(act(decor, bag, 'water', 0).ok); grow(decor, 60);
+  assert.equal(slotPrompt(decor[0].crop[1], 'seaweed')[0], 'E', 'ripe wins over mulch');
+  assert.deepEqual(slotPrompt(cleanSlot({ c: 'beet', g: 10, w: 50 }), 'seaweed'), ['Click', 'Mulch the beet with kelp']);
+  assert.deepEqual(slotPrompt(cleanSlot({ c: 'beet', g: 10, w: 50, m: 1 }), 'seaweed'), [null, 'Beet 20%: growing · mulched']);
+  const before = bag.count('beet');
+  const h = act(decor, bag, 'harvest', 0); assert.ok(h.ok); assert.deepEqual(h.loot, { beet: 3 }); assert.equal(h.text, '+ 3 beets');
+  assert.deepEqual(decor[0].crop[0], { c: '', g: 0, w: 0 }, 'harvest clears the mulch');
+  const h2 = act(decor, bag, 'harvest', 1); assert.deepEqual(h2.loot, { beet: YIELD });
+  assert.equal(bag.count('beet'), before + 3 + YIELD);
+});
