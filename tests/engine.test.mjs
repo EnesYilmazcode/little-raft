@@ -272,3 +272,44 @@ test('review: the engine provider yields to the pickup and waiting-for-host prom
     mod.dispose();
   } finally { delete globalThis.raftPrompts; }
 });
+
+// [biofuel] docs/specs/biofuel.md §3: the Biofuel Jug is a hand fuel; pourFuel is the fuel tank's waste-free path.
+test('biofuel: hand fuel texts and prompt', () => {
+  assert.equal(ENGINE.FUEL.biofuel, 150);
+  const s = slice({}), decor = [M(1, 0)];
+  const bag = bagFrom([{ kind: 'biofuel', count: 2 }]);
+  assert.deepEqual(applyEngineAction(s, { op: 'fuel', x: 1, z: 0, item: 'biofuel' }, decor, bag), { ok: true, text: '+150 s fuel' });
+  assert.equal(s.motors['1,0'].fuel, 150); assert.equal(bag.count('biofuel'), 1);
+  assert.deepEqual(applyEngineAction(slice({}), { op: 'fuel', x: 1, z: 0, item: 'biofuel' }, decor, bagFrom([])), { ok: false, text: 'No biofuel in your bag' });
+  const { ctx, mod } = makeCtx();
+  ctx.camera = { position: { x: 0, y: 1.6, z: 0 } };
+  ctx.localBag = () => bagFrom([{ kind: 'biofuel', count: 1 }]);
+  const v = [2, .65 - 1.6, 0], l = Math.hypot(...v);
+  const aim = { dir: { x: v[0] / l, y: v[1] / l, z: v[2] / l } };
+  assert.equal(mod.prompt(aim), '<kbd>E</kbd>Add biofuel (+150 s)');
+  assert.deepEqual(mod.promptRows(aim), [{ key: 'E', label: 'Add biofuel (+150 s)' }]);
+});
+
+test('biofuel: pourFuel accepts whole amounts up to the cap and refuses cleanly', () => {
+  const decor = [M(1, 0)], s = slice({ '1,0': { on: true, fuel: 150 } });
+  assert.equal(E.pourFuel(s, decor, 1, 0, 150), 150); assert.equal(s.motors['1,0'].fuel, 300);
+  const t = slice({ '1,0': { on: true, fuel: 150 } }), snap = JSON.stringify(t);
+  assert.equal(E.pourFuel(t, decor, 1, 0, 150.1), 0);
+  for (const sec of [NaN, 0, -5, Infinity, '150']) assert.equal(E.pourFuel(t, decor, 1, 0, sec), 0);
+  assert.equal(E.pourFuel(t, decor, 2, 0, 1), 0); // no motor there
+  assert.equal(E.pourFuel(t, decor, 1.5, 0, 1), 0);
+  assert.equal(JSON.stringify(t), snap);
+  const fresh = slice({});
+  assert.equal(E.pourFuel(fresh, decor, 1, 0, 150), 150); assert.deepEqual(fresh.motors['1,0'], { on: false, fuel: 150 });
+  // 65th entry: no slot, slice untouched
+  const many = {}; for (let i = 0; i < ENGINE.MAX_ENTRIES; i++) many['9,' + i] = { on: false, fuel: 0 };
+  const full = slice(many), before = JSON.stringify(full);
+  assert.equal(E.pourFuel(full, decor, 1, 0, 150), 0); assert.equal(JSON.stringify(full), before);
+});
+
+test('biofuel: mod.pour is host only', () => {
+  const h = makeCtx('host'); h.mod.debug.fuel(1, 0, 10);
+  assert.equal(h.mod.pour(1, 0, 150), 150); assert.equal(h.mod.serialize().motors['1,0'].fuel, 160);
+  const g = makeCtx('guest'); g.mod.load({ v: 1, motors: { '1,0': { on: true, fuel: 10 } } });
+  assert.equal(g.mod.pour(1, 0, 150), 0); assert.equal(g.mod.serialize().motors['1,0'].fuel, 10);
+});

@@ -55,6 +55,9 @@ export const CONTENT_ITEMS = Object.freeze({
   meal_fishbowl: Object.freeze({ kind: 'meal_fishbowl', name: 'Smoky Fish Bowl', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
   meal_custard:  Object.freeze({ kind: 'meal_custard',  name: 'Coconut Custard', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
   meal_stew:     Object.freeze({ kind: 'meal_stew',     name: 'Captain\u2019s Stew', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
+  refiner:  item('refiner',  'Biofuel Refiner', 'icon-kiln'), // [biofuel] biofuel.js; jugs come out of the refiner, never the craft list
+  fueltank: item('fueltank', 'Fuel Tank',       'icon-cup'), // [biofuel]
+  biofuel:  item('biofuel',  'Biofuel Jug',     'icon-cup', true, 10), // [biofuel]
 });
 
 // Same shape as recipe() in inventory-state.js.
@@ -99,8 +102,10 @@ export const CONTENT_RECIPES = Object.freeze({
   // cooking pot (cookpot.js)
   cookpot: recipe('cookpot', 'Cooking Pot', 1, { clay: 3, stone: 2, scrap: 1 }),
   bowl:    recipe('bowl', 'Driftwood Bowl', 2, { wood: 1 }),
+  refiner:  recipe('refiner', 'Biofuel Refiner', 1, { copperingot: 2, glass: 1, scrap: 2 }), // [biofuel]
+  fueltank: recipe('fueltank', 'Fuel Tank', 1, { scrap: 4, metalingot: 1, rope: 1 }), // [biofuel]
 });
 
 // Placeable decor added by content modules (models come from content.decorModel()).
-export const CONTENT_DECOR = Object.freeze(['research', 'bed', 'motor', 'wheel', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign', 'kiln', 'glasslamp', 'nestbox', 'cushion', 'cookpot', 'shellwreath', 'glassfloat']);
-export const CONTENT_BLOCK_RADIUS = Object.freeze({ research: .5, bed: .55, motor: .45, wheel: .4, pennant: .1, fern: .12, chime: .12, hammock: .45, pots: .3, sign: .1, kiln: .45, glasslamp: .12, nestbox: .35, cushion: .3, cookpot: .35, shellwreath: .12, glassfloat: .2 });
+export const CONTENT_DECOR = Object.freeze(['research', 'bed', 'motor', 'wheel', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign', 'kiln', 'glasslamp', 'nestbox', 'cushion', 'cookpot', 'shellwreath', 'glassfloat', 'refiner', 'fueltank']); // [biofuel] + refiner, fueltank
+export const CONTENT_BLOCK_RADIUS = Object.freeze({ research: .5, bed: .55, motor: .45, wheel: .4, pennant: .1, fern: .12, chime: .12, hammock: .45, pots: .3, sign: .1, kiln: .45, glasslamp: .12, nestbox: .35, cushion: .3, cookpot: .35, shellwreath: .12, glassfloat: .2, refiner: .45, fueltank: .38 }); // [biofuel] + refiner, fueltank

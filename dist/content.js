@@ -58,6 +58,7 @@ import { createJuicer } from './juicer.js?build=v3-survival-ae77fa84ac2b'; // [j
 import { createDivingGear } from './diving-gear.js?build=v3-survival-ae77fa84ac2b';
 import { createTrader } from './trader.js?build=v3-survival-ae77fa84ac2b';
 import { createCookpot } from './cookpot.js?build=v3-survival-ae77fa84ac2b';
+import { createBiofuel } from './biofuel.js?build=v3-survival-ae77fa84ac2b'; // [biofuel]
 import { createDisplay } from './display.js?build=v3-survival-ae77fa84ac2b'; // [display]
 import { createPower } from './power.js?build=v3-survival-ae77fa84ac2b'; // [power]
 import { createFishTrap } from './fish-trap.js?build=v3-survival-ae77fa84ac2b'; // [fishtrap]
@@ -66,8 +67,9 @@ import { createTasks } from './tasks.js?build=v3-survival-ae77fa84ac2b'; // [tas
 import { createScarecrow } from './scarecrow.js?build=v3-survival-ae77fa84ac2b'; // [scarecrow]
 import { createFireworks } from './fireworks.js?build=v3-survival-ae77fa84ac2b'; // [fireworks]
 import { createZipline } from './zipline.js?build=v3-survival-ae77fa84ac2b'; // [zipline]
+import { createPipes } from './pipes.js?build=v3-survival-ae77fa84ac2b'; // [pipes]
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createPower, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createCookpot]; // [bees] + createBees; [scarecrow] after wildlife; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [juicer] + createJuicer [gull] + createGull
+const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createSleep, createEngine, createPaint, createKiln, createAnimals, createBees, createPower, createPipes, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createBiofuel, createCookpot]; // [biofuel] before cookpot; [bees] + createBees; [scarecrow] after wildlife; [fireworks] [zipline]; [power] after bees; [pipes] after power; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [juicer] + createJuicer [gull] + createGull
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice

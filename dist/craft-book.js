@@ -32,6 +32,7 @@ const CATEGORY_OF = Object.freeze({
   skyrocket: 'survival', // [fireworks]
   scarecrow: 'survival', // [scarecrow]
   glidepost: 'building', glidestep: 'building', glidehandle: 'tools', // [zipline] (no 'decor' tab exists)
+  watertank: 'survival', waterpipe: 'survival', // [pipes]
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
   researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
   rug: 'building', pennant: 'building', fern: 'building', chime: 'building', hammock: 'building', pots: 'building', sign: 'building', // decor pack
@@ -43,6 +44,7 @@ const CATEGORY_OF = Object.freeze({
   cup: 'survival', purifier: 'survival', // water: scoop the sea, purify it
   fins: 'tools', airjug: 'tools', goggles: 'tools', scraper: 'tools',
   cookpot: 'building', bowl: 'survival',
+  refiner: 'building', fueltank: 'building', biofuel: 'materials', // [biofuel]
   shellwreath: 'building',
   cup: 'survival', purifier: 'survival', // water gear sits with the rain barrel and sprinkler
   research: 'building', antenna: 'building', receiver: 'building',
@@ -68,7 +70,7 @@ export const ITEM_TEXT = Object.freeze({
   sand:       { desc: 'Fine sand from barrels and the seafloor.', use: 'Melt it into glass in the smelter.' },
   stone:      { desc: 'A smooth, heavy stone.', use: 'Part of the smelter; sturdier builds and island tools.' },
   research:   { desc: 'A tinker\u2019s desk for studying finds.', use: 'Place it, then study parts to learn signal and water gear.' },
-  motor:      { desc: 'A little outboard motor that burns leaves, wood or plastic.', use: 'Place it, fuel it, and it pushes the raft along.' },
+  motor:      { desc: 'A little outboard motor that burns leaves, wood, plastic or biofuel.', use: 'Place it, fuel it, and it pushes the raft along.' },
   wheel:      { desc: 'A rope-lashed steering wheel.', use: 'Place it, then grab it to steer the raft.' },
   bed:        { desc: 'A plank bed with a leaf mattress.', use: 'Lie down at night to sleep until morning.' },
   brush:      { desc: 'A paint brush with stiff bristles.', use: 'Click walls, floors or deck to paint; right click picks a colour.' },
@@ -156,6 +158,8 @@ export const ITEM_TEXT = Object.freeze({
   glidepost:  { desc: 'A tall mast with a grooved wheel on top.', use: 'Hold a Glide Handle and press E on two posts to string a line.' }, // [zipline]
   glidestep:  { desc: 'A shorter glide post.', use: 'Run a line down to it from a tall post for a speedy glide.' }, // [zipline]
   glidehandle: { desc: 'A wooden T-bar with a little wheel.', use: 'E links posts or hooks you on a line; Space lets go.' }, // [zipline]
+  watertank: { desc: 'A wooden tank with copper hoops and a little glass window.', use: 'Press E with a fresh cup to pour it in, or with an empty cup to fill it. Pipes carry the water.' }, // [pipes]
+  waterpipe: { desc: 'Copper pipe on little wooden cleats.', use: 'Lay a line from the tank. Rain barrels next to it fill the tank; palms and sprinklers drink.' }, // [pipes]
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
   grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },
@@ -173,6 +177,9 @@ export const ITEM_TEXT = Object.freeze({
   meal_stew:     { desc: 'A hearty stew of fish, egg and seaweed.', use: 'Eat it: Cosy Glow, a little better at everything for 5 min.' },
   shell:      { desc: 'A bright, sun-bleached shell.', use: 'Pim takes these as coin at his trading barge.' },
   shellwreath:{ desc: 'A rope wreath set with bright shells.', use: 'Decorates the raft; place it on a tile.' },
+  refiner:    { desc: 'A copper still that cooks scraps into fuel, no fire needed.', use: 'Load leaves, seaweed, seeds, fruit or raw fish; a jug every 30 s.' }, // [biofuel]
+  fueltank:   { desc: 'A green drum that holds 8 Biofuel Jugs.', use: 'Place it next to a Little Motor; it tops up running motors.' }, // [biofuel]
+  biofuel:    { desc: 'A jug of amber biofuel from the refiner.', use: 'Fuel a Little Motor (+150 s) or pour it into a Fuel Tank.' }, // [biofuel]
   glassfloat: { desc: 'A blue glass float in a rope net.', use: 'A rare keepsake from Pim; place it on a tile.' },
 
   // [recycler] floating junk + Sorting Tub
@@ -456,6 +463,7 @@ export const ITEM_SOURCE = Object.freeze({
   meal_fishbowl: Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: cooked fish + palm leaf + seed; collect with a bowl.' }),
   meal_custard:  Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: puff egg + seed + fresh water; collect with a bowl.' }),
   meal_stew:     Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: cooked fish + puff egg + seaweed; collect with a bowl.' }),
+  biofuel: Object.freeze({ tag: 'biofuel refiner', how: 'Biofuel Refiner: load leaves, seaweed, seeds, fruit or raw fish; collect the jugs.' }), // [biofuel]
 
   oldboot:     Object.freeze({ tag: 'found floating', how: 'Hook it as it drifts by. Nets catch it too.' }), // [recycler]
   tincan:      Object.freeze({ tag: 'found floating', how: 'Hook it as it drifts by. Nets catch it too.' }),

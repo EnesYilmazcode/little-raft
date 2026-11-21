@@ -319,6 +319,16 @@ export function mount(transfer = null) {
   let lastHostMessage = X?.lastHostMessage || performance.now(), lastGuestMessage = X?.lastGuestMessage || performance.now();
   let joinTimer = 0, joinDeadline = Number.isFinite(X?.joinDeadline) ? X.joinDeadline : 0;
   let waterClock = 0, waterAim = null; const wateringGroups = new Map(); // tileKey -> palm/purifier group
+  const fastPurifiers = new Set(); // [power-hookups] reused: purifier keys with a charged battery within 2 tiles
+  function poweredPurifiers() { // [power-hookups] host only, from the host's own state, built before the tick
+    fastPurifiers.clear(); if (!content?.powerAt) return fastPurifiers;
+    for (const k in world.purifiers || {}) {
+      const e = world.purifiers[k]; if (!e || e.ready) continue;
+      const c = k.indexOf(','), x = +k.slice(0, c), z = +k.slice(c + 1);
+      if (content.powerAt(x, z)) { fastPurifiers.add(k); content.powerDraw(x, z, 1); }
+    }
+    return fastPurifiers;
+  }
   const netRefused = new Map(); // token -> time: barrels a net tried but whose real roll did not fit
   let netClock = 0, lastSaveAt = performance.now(), lastNetSendAt = 0, toastTimer = 0, wheelAcc = 0, peerHidden = !!X?.peerHidden, heartbeat = 0;
   let noticeText = '', noticeUntil = 0, noticeCache = null, contextCache = null, uiFailed = false; let fishShown = null, lookTaught = 0, walkTaught = 0, walkSeen = 0;
@@ -1023,7 +1033,7 @@ export function mount(transfer = null) {
         const e = world.purifiers?.[d.key];
         if (!e) return kind === 'saltcup' ? {prompt:'<kbd>E</kbd>Pour in sea water', click:{kind:'loadPurifier', ...at}, e:{kind:'loadPurifier', ...at}, why:null}
           : {...none, prompt:'Purifier: needs a cup of sea water', why:'Purifier: needs a cup of sea water'};
-        if (!e.ready) { const t = `Purifying… ${PURIFY_SECONDS - e.t}s`; return {...none, prompt:t, why:t}; }
+        if (!e.ready) { const pw = content?.powerAt?.(d.x, d.z) ? 1 : 0, left = PURIFY_SECONDS - e.t, t = pw ? `Purifying… ${Math.ceil(left / 2)}s · powered` : `Purifying… ${left}s`; return {...none, prompt:t, why:t}; } // [power-hookups]
         return {prompt:'<kbd>E</kbd>Take fresh water', click:cupHeld ? {kind:'takeWater', ...at} : null, e:{kind:'takeWater', ...at}, why:null};
       }
       const g = world.garden?.[d.key], stage = plantStage(g);
@@ -1724,7 +1734,7 @@ export function mount(transfer = null) {
         for (const [t, until] of netRefused) if (until <= nowMs) netRefused.delete(t);
         for (const net of world.decor.filter(d => d.type === 'net')) { const it = pickNetItem(world.items, net, {held:heldTokens, isPending, fits}); if (it) applyAction({kind:'collect', id:it.id, token:it.token, net:true}, 'host'); }
       }
-      waterClock += dt; if (waterClock >= 1) { waterClock -= 1; const r = tickWatering(world, 1, content?.pecked?.() ?? null); /* [scarecrow] */ tickRain(world, 1, content?.rain() ?? 0); if (r.ripe.length && performance.now() >= noticeUntil) emit({kind:'notice', text:'A palm is ready to harvest'}, 'all'); }
+      waterClock += dt; if (waterClock >= 1) { waterClock -= 1; const r = tickWatering(world, 1, content?.pecked?.() ?? null, poweredPurifiers()); /* [scarecrow] [power-hookups] */ tickRain(world, 1, content?.rain() ?? 0); if (r.ripe.length && performance.now() >= noticeUntil) emit({kind:'notice', text:'A palm is ready to harvest'}, 'all'); }
     }
     if (running) { const t = wallTick(now, lastSaveAt, 3000); lastSaveAt = t.next; if (t.due) save(); } // wall clock: dt is capped
     if (conn?.open) { const t = wallTick(now, lastNetSendAt, 120); lastNetSendAt = t.next; if (t.due) send(role === 'host' ? hostState() : {type:'move', me:pose(), held:caughtList(castOut()).map(c => c.token)}); }
@@ -2397,7 +2407,7 @@ export function mount(transfer = null) {
   const optionsDialog = document.getElementById('options'), previousSettingsOwner = optionsDialog?.dataset.owner;
   try {
     if (!canvas) throw new Error('#world canvas missing');
-    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), aim:() => frameAim, resume:() => requestLock(), pause:clearInput, observe:(ev, actor) => content?.observe(ev, actor)}); // [tasks] observe // [progression-hook]
+    prog = attachProgression({T, role:() => role, ready:() => networkReady, running:() => running, world:() => world, bag:actorBag, localBag, action, emit, notice, pose:() => ({x:physics.x, z:physics.z, yaw}), aim:() => frameAim, resume:() => requestLock(), pause:clearInput, observe:(ev, actor) => content?.observe(ev, actor), powerAt:(x, z) => content?.powerAt(x, z) ?? 0, powerDraw:(x, z, s) => content?.powerDraw(x, z, s)}); // [tasks] observe // [progression-hook] [power-hookups] powerAt/powerDraw
     init();
     try { coop = createCoop(coopContext(), X?.coop); } catch (e) { console.warn('co-op layer unavailable', e); coop = null; } // coop
     settingsController = createSettings({initial:{sound}, onChange:next => { applyOptions(next); if (next.sound !== sound) setSound(next.sound); sfx.setAmbience(next.ambience); soundLabel(); }, onPause:pauseInput, onResume:() => { quality?.reset(); requestLock(); }, onQuit:guard(quitToTitle)});

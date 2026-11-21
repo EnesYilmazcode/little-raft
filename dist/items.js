@@ -286,6 +286,10 @@ const LIST = [
   item('glidestep', 'Low Glide Post', 'decor', { placeable: true, iconTint: '#8b6a43',
     recipe: hand({ wood: 4, rope: 2, nail: 1 }), unlock: discover('nail'),
     tip: 'A shorter glide post. Run a line down to it from a tall one for a speedy glide.' }),
+  item('watertank', 'Water Tank', 'decor', { placeable: true, iconTint: '#b87333', recipe: hand({ wood: 6, plastic: 3, scrap: 2, rope: 1 }), unlock: discover('plastic', 'scrap'), // [pipes] (freshcup is not a catalogue item)
+    tip: 'A copper-banded tank for 12 cups. Pipe it to rain barrels, palms and sprinklers.' }), // [pipes]
+  item('waterpipe', 'Water Pipe', 'build', { iconTint: '#c98a4b', recipe: hand({ scrap: 1, plastic: 1 }, 4), unlock: discover('plastic', 'scrap'), // [pipes] NOT placeable: an overlay, not decor
+    tip: 'Click a deck tile to lay it, right click to lift it back up.' }), // [pipes]
 
   // ----- stations -----
   item('researchtable', 'Research Table', 'station', { iconTint: '#c69860', stack: 5, placeable: true,
@@ -324,6 +328,7 @@ export const BLOCK_RADII = deepFreeze({
   scarecrow: 0.25, // [scarecrow]
   skyrocket: 0.1, // [fireworks]
   glidepost: 0.15, glidestep: 0.15, // [zipline]
+  watertank: 0.35, // [pipes]
 });
 
 /** Damage one landed spear thrust deals (spear lane; see docs/loop/research/fidelity-r1-shark.md). */

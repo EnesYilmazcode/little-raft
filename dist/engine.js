@@ -10,7 +10,7 @@ export const ENGINE = Object.freeze({
   ENGINE_SPEED: 0.7,          // m/s, one motor on a small raft
   GAIN: Object.freeze([0, 1, 1.5, 1.8, 2.0]), // diminishing bonus by running motors
   MAX_MOTORS: 4,              // a 5th+ motor still burns but adds nothing
-  FUEL: Object.freeze({ leaf: 20, wood: 45, plastic: 60 }), // seconds of fuel per item
+  FUEL: Object.freeze({ leaf: 20, wood: 45, plastic: 60, biofuel: 150 }), // seconds of fuel per item // [biofuel] + biofuel
   FUEL_CAP: 300,
   MAX_ENTRIES: 64,
   REACH: 2.6, OP_GAP: 250, MAX_TICK: 1, PROP_SPIN: 14,
@@ -28,7 +28,7 @@ const keyOf = (x, z) => {
   return k;
 };
 const okXZ = (x, z) => isInt(x) && isInt(z) && Math.abs(x) <= 25 && Math.abs(z) <= 25;
-const NAMES = { leaf: 'leaf', wood: 'wood', plastic: 'plastic' };
+const NAMES = { leaf: 'leaf', wood: 'wood', plastic: 'plastic', biofuel: 'biofuel' }; // [biofuel] + biofuel
 
 /** Validator: always a fresh {v:1, motors:{}} with only valid entries. Never throws. */
 export function cleanEngine(v) {
@@ -124,6 +124,16 @@ function slot(slice, k) {
   if (e) return e;
   if (Object.keys(slice.motors).length >= ENGINE.MAX_ENTRIES) return null;
   return (slice.motors[k] = { on: false, fuel: 0 });
+}
+
+/** [biofuel] Pour `sec` seconds into the motor at x,z (fuel tank). Returns the accepted seconds: all of `sec` or 0. */
+export function pourFuel(slice, decor, x, z, sec) { // [biofuel]
+  if (!slice || !slice.motors || !okXZ(x, z) || !hasMotor(decor, x, z) || !fin(sec) || !(sec > 0)) return 0;
+  const k = keyOf(x, z), cur = slice.motors[k]?.fuel ?? 0;
+  if (!fin(cur) || cur + sec > ENGINE.FUEL_CAP) return 0;
+  const e = slot(slice, k); if (!e) return 0;
+  e.fuel = Math.round((e.fuel + sec) * 10) / 10;
+  return sec;
 }
 
 /** Host side of {kind:'engine', op}. Ops: toggle {x,z}, all {}, fuel {x,z,item}. Returns {ok, text}. */
@@ -261,6 +271,7 @@ export function createEngine(ctx) {
   return (mod = {
     name: 'engine',
     serialize: () => st,
+    pour(x, z, sec) { return ctx.role === 'guest' ? 0 : pourFuel(st, decor(), x, z, sec); }, // [biofuel] fuel tank top-up (host)
     load(data) { st = cleanEngine(data); }, // cheap (<= 64 entries); never touches meshes
     action(a, actor, bag) {
       if (!a || typeof a !== 'object' || a.kind !== 'engine') return false;
