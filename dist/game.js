@@ -1171,7 +1171,7 @@ export function mount(transfer = null) {
     if (a.kind === 'eat') { // [vitals] host removes the item (and gives the cup back); the eater applies the bars on 'ate'
       const k = a.item; if (!isEdible(k) || bag.count(k) < 1) return;
       const s = new Bag(bag.snapshot()); if (!s.remove(k, 1)) return;
-      const back = FOOD[k].returns; if (back && s.add(back, 1) > 0) { emit({kind:'full', text:'No room for the empty cup'}, actor); return; }
+      const back = FOOD[k].returns; if (back && s.add(back, 1) > 0) { emit({kind:'full', text:`No room for the empty ${itemName(back).replace(/^empty /, '')}`}, actor); return; }
       commit(bag, s); emit({kind:'ate', item:k}, actor); return;
     }
     if (a.kind === 'shark:loot') { // shark lane: harvest the floating body (E)
