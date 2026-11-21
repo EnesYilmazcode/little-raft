@@ -449,6 +449,8 @@ export function createSettings({ onChange, onResume, onPause, onQuit, initial, n
       if (quitStep({ now: performance.now(), armedAt: quitArmedAt }) === 'arm') { // first click only arms it
         quitArmedAt = performance.now(); quitBtn.textContent = 'Click again to quit'; quitBtn.classList.add('rs-armed');
         clearTimeout(quitTimer); quitTimer = setTimeout(guard(disarmQuit), 3000);
+        // A click focuses Quit; keep keyboard focus on Resume so a following Enter resumes, never quits.
+        if (event.detail !== 0) form.querySelector('[data-act="resume"]')?.focus({ preventScroll: true });
         return;
       }
       setPanel(false); close(false); call(onQuit); return;
