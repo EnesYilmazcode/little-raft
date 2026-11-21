@@ -3,10 +3,13 @@ Usage: python sandbox/viewmodel/adopt_check.py [out_dir]   (default out_dir: scr
 Env: SKIP_TESTS=1 skips the node test comparison; SKIP_BASE=1 skips booting the unpatched copy.
 
 1. cp dist -> <tmp>/patched (+ <tmp>/base untouched copy), cp sandbox/viewmodel/viewmodel.js -> patched/viewmodel.js
-2. applies every edit in adopt_edits.py, asserting each quoted anchor matches exactly once; prints its line number
+2. applies every edit in adopt_edits.py, asserting each quoted anchor matches exactly once; prints its line number;
+   node --check on every patched file
 3. node --test tests/*.test.mjs with RAFT_DIST=patched vs RAFT_DIST=base (tests without RAFT_DIST run dist/ twice)
 4. boots both copies headless with a seeded save, plays: spawn, idle, full charge + throw, hotbar swaps (fast too),
-   hammer build (strike frames), back to the hook; a second boot at FOV 100; screenshots each, prints JSON (errors, checks)."""
+   hammer build (strike frames), back to the hook; a second boot at FOV 100; screenshots each, prints JSON (errors, checks).
+   The boot seeds a non-default Look (sky-blue shirt, skin tone 7): the drawn hand/sleeve materials must carry it
+   (hands.setLook runs after vm.prepare has patched the materials)."""
 import os, sys, json, time, shutil, tempfile, subprocess, threading, functools, http.server, socketserver
 from pathlib import Path
 from playwright.sync_api import sync_playwright
@@ -29,6 +32,11 @@ apply(patched, EDITS, R['anchors'])
 # the sandbox hands.js must be exactly dist/hands.js + the hands edits (import path aside)
 sb = (HERE / 'hands.js').read_text().replace("from '../../dist/held-items.js", "from './held-items.js")
 if sb != (patched / 'hands.js').read_text(): R['fails'].append('sandbox/viewmodel/hands.js != dist/hands.js + adopt edits (run adopt_edits.py --sandbox)')
+R['nodeCheck'] = {}
+for f in sorted({e[1] for e in EDITS} | {'viewmodel.js'}):
+    r = subprocess.run(['node', '--check', str(patched / f)], capture_output=True, text=True)
+    R['nodeCheck'][f] = r.returncode == 0
+    if r.returncode: R['fails'].append(f'node --check {f}: {r.stderr.strip()[:200]}')
 
 # ---- 3: node tests
 def run_tests(d):
@@ -50,6 +58,12 @@ for i, (k, n) in enumerate([('hook', 1), ('hammer', 1), ('fishingrod', 1), ('cra
 for i, k in enumerate(['wood', 'wood', 'leaf', 'leaf', 'plastic', 'scrap', 'rope']): slots[8 + i] = {'kind': k, 'count': 20}
 SAVE = {'tiles': [[x, z] for z in (-1, 0, 1) for x in (-1, 0, 1)], 'decor': [], 'stock': {}, 'fish': 0, 'collected': 0, 'hookHealth': 60,
         'items': [], 'hostInventory': {'slots': slots, 'selected': 0}, 'guestInventory': None}
+
+LOOK = {'v': 1, 'shirt': 1, 'trousers': 0, 'skin': 6, 'hair': 0, 'hat': 'straw'}   # sky blue #70a7e4, tone 7 #6b3f27
+# colours of the materials the drawn hands use (vertex-coloured baked skin / cloth carry the Look colour)
+LOOK_PROBE = '''() => { let h = null; raftMount.scene.traverse((o) => { if (!h && o.name === 'fpHands') h = o; }); if (!h) return null;
+  const out = new Set(); h.traverse((o) => { if (o.isMesh) for (const m of [].concat(o.material)) if (m.vertexColors && m.color) out.add(m.color.getHexString()); });
+  return [...out].sort(); }'''
 
 class Quiet(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -73,13 +87,14 @@ def play(browser, d, tag, fov=None, short=False):
     page.on('pageerror', lambda e: run['errors'].append(str(e)[:300]))
     page.on('console', lambda m: m.type in ('error', 'warning') and run['console'].append(f'{m.type}: {m.text[:200]}'))
     page.add_init_script('if (!sessionStorage.seeded) { sessionStorage.seeded = 1; localStorage.setItem("little-raft-v1", ' + json.dumps(json.dumps(SAVE)) + ')'
+                         + '; localStorage.setItem("little-raft-look-v1", ' + json.dumps(json.dumps(LOOK)) + ')'
                          + (f'; localStorage.setItem("little-raft-settings", {json.dumps(json.dumps({"fov": fov}))})' if fov else '') + ' }')
     st = lambda: page.evaluate('raftDebug.state')
     def shot(name):
         p = out / f'{tag}-{name}.png'; page.screenshot(path=str(p)); run['shots'].append(p.name)
     def frames(n=6):  # let the game render a few frames (software GL is slow; wait on rAF, not the clock)
         page.evaluate(f'() => new Promise(r => {{ let n = {n}; const f = () => (--n ? requestAnimationFrame(f) : r()); requestAnimationFrame(f); }})')
-    page.goto(f'http://127.0.0.1:{srv.server_address[1]}/')
+    page.goto(f'http://127.0.0.1:{srv.server_address[1]}/', timeout=180000)  # software GL on a loaded box: slow first load
     if not wait_js(page, '!!window.raftDebug', 30000): run['errors'].append('no raftDebug'); return run
     page.evaluate("document.querySelector('#solo').click()")
     run['checks']['running'] = wait_js(page, 'raftDebug.state.running', 20000)
@@ -90,6 +105,7 @@ def play(browser, d, tag, fov=None, short=False):
     shot('01-spawn-hook')
     ri = page.evaluate('raftDebug.renderInfo'); run['renderInfo'] = {k: ri[k] for k in ('calls', 'triangles', 'programs', 'geometries')}
     run['checks']['fov'] = st()['camera']['fov']
+    run['checks']['lookColors'] = page.evaluate(LOOK_PROBE)
     if short: page.close(); srv.shutdown(); return run
     # full charge, then release (throw)
     page.mouse.move(480, 200); page.mouse.down()
@@ -164,6 +180,9 @@ with sync_playwright() as p:
 pr = R['runs']['patched']
 if pr['errors']: R['fails'].append('page errors in the patched game')
 if not pr['checks'].get('running'): R['fails'].append('patched game did not start')
+for tag in ('patched', 'base'):
+    lc = R['runs'].get(tag, {}).get('checks', {}).get('lookColors') or []
+    if tag in R['runs'] and not ('70a7e4' in lc and '6b3f27' in lc): R['fails'].append(f'{tag}: drawn hands do not carry the saved Look colours ({lc})')
 if not pr['checks'].get('reselectSettles'): R['fails'].append('fast re-select did not settle')
 if not (pr['checks'].get('strikeMin', 0) < -0.5 and pr['checks'].get('strikeMax', 0) > 0.6): R['fails'].append('hammer build did not play the strike (cock < -.5, hit > .6)')
 if pr['checks'].get('tiles', [0, 0])[1] <= pr['checks'].get('tiles', [0, 0])[0]: R['fails'].append('hammer build did not add a tile')
