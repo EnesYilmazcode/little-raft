@@ -1985,6 +1985,7 @@ export function mount(transfer = null) {
       getModel:modelOf, // 3D icons rendered from models.js
       recipeGate:id => prog?.recipeGate(id), // [progression-hook]
       onSfx:() => play('ui', .3), // soft tick per crafted item while holding Craft
+      onNotice:guard(text => notice(text, 2600)), // "Ready to craft: X" for the pinned recipe
       // Pinned recipe lives in the save (solo / host); a guest keeps its own for the session.
       getPin:() => (role === 'guest' ? guestPin : world.craftPin ?? null),
       setPin:guard(id => { if (role === 'guest') guestPin = id; else { world.craftPin = id; save(); } }),

@@ -14,11 +14,12 @@ test('INV-1: backdrop closes only when press and release are both on it', () => 
   assert.equal(backdropCloses(false, false), false);
 });
 
-test('INV-4/5: key mapping keeps Tab opening, lets Tab move focus while open, E closes only', () => {
+test('INV-4/5: key mapping: Tab toggles (moves focus inside a slot grid), E closes only', () => {
   assert.equal(bagKeyAction('Tab', false), 'open');
   assert.equal(bagKeyAction('KeyI', false), 'open');
   assert.equal(bagKeyAction('KeyE', false), null, 'E stays the pick-up key in play');
-  assert.equal(bagKeyAction('Tab', true), null, 'Tab moves focus while open');
+  assert.equal(bagKeyAction('Tab', true), 'close', 'Tab toggles the bag closed');
+  assert.equal(bagKeyAction('Tab', true, true), null, 'inside a slot grid Tab moves focus');
   assert.equal(bagKeyAction('KeyI', true), 'close');
   assert.equal(bagKeyAction('KeyE', true), 'close');
   assert.equal(bagKeyAction('KeyW', true), null);

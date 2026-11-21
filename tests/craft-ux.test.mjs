@@ -39,8 +39,9 @@ test('sortCraftableFirst: ready, then full, then closest-to-done missing', () =>
   assert.deepEqual(CB.sortCraftableFirst([{ id: 'x' }, { id: 'y', state: 'ready' }]).map(v => v.id), ['y', 'x']);
 });
 
-test('sortCraftableFirst: the building tab puts what wood alone makes above the sail', () => {
-  const recipes = CB.groupRecipes(normRecipes(), ITEM_INFO).find(g => g.id === 'building').recipes;
+test('sortCraftableFirst: the tools + building recipes put what wood alone makes above the sail', () => {
+  // The sail moved to Tools (it steers); sort the two tabs' recipes together to keep the comparison.
+  const g = CB.groupRecipes(normRecipes(), ITEM_INFO), recipes = [...g.find(x => x.id === 'tools').recipes, ...g.find(x => x.id === 'building').recipes].filter(r => ['sail', 'bench', 'crate'].includes(r.id));
   assert.equal(recipes[0].id, 'sail', 'book order starts with the sail');
   const bag = bagWith({ wood: 9, scrap: 1, leaf: 7, rope: 2 });
   const ids = CB.sortCraftableFirst(viewsFor(bag, recipes)).map(v => v.id);
@@ -66,8 +67,8 @@ test('holdHint previews how many a hold makes, capped', () => {
 test('sourceOf: gathered items say where they float, crafted ones link to their recipe', () => {
   const recipes = normRecipes();
   const name = k => ITEM_INFO[k]?.name ?? k;
-  assert.deepEqual(CB.sourceOf('wood', recipes, name), { tag: 'found floating', how: CB.ITEM_SOURCE.wood.how, recipe: null });
-  assert.match(CB.sourceOf('leaf', recipes, name).tag, /palm/);
+  assert.deepEqual(CB.sourceOf('wood', recipes, name), { tag: 'floating', how: CB.ITEM_SOURCE.wood.how, recipe: null });
+  assert.match(CB.sourceOf('leaf', recipes, name).how, /palm/);
   const rope = CB.sourceOf('rope', recipes, name);
   assert.equal(rope.recipe, 'rope');
   assert.equal(rope.tag, 'craft it');

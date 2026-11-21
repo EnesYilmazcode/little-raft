@@ -1,7 +1,7 @@
 // Little Raft item tooltips: one floating card for hotbar/inventory slots, crafting rows and any
 // [data-item-kind] element. Read-only view over ITEMS + bag + progression; never mutates anything.
 import { ITEMS } from './items.js';
-import { ITEM_TEXT } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // craft-book text covers every ITEM_INFO kind (content, diving, signal...)
+import { ITEM_TEXT, anchorTip, unlockInfo } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // craft-book text covers every ITEM_INFO kind (content, diving, signal...)
 import { ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 
 const STYLE_ID = 'item-tooltips-style';
@@ -23,13 +23,14 @@ const CSS = `
 .it-tip .it-cost span{white-space:nowrap}.it-tip .it-cost .it-short{color:#ffab8f}
 .it-tip .it-st{display:block;color:#ffcf9a}
 .it-tip .it-lock{margin-top:6px;padding:4px 6px;border-radius:3px;background:#5a2a1a99;color:#ffcf9a;font:600 12px/1.3 ${FONT}}
+.it-tip .it-lock small{display:block;margin-top:3px;font:500 12px/1.35 ${FONT};color:#f3e3c2}
 #inventory .sv-tip{display:none!important}
 @media(prefers-reduced-motion:reduce){.it-tip{transition:none}}
 `;
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const title = k => String(k ?? '').replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-const SEL = '.sv-slot[data-index],.sv-slot[data-slot],.sv-recipe[data-recipe],[data-item-kind],#inventory [data-tip-kind]'; // data-tip-kind: craft-book ingredient rows (their own .sv-tip is hidden below)
+const SEL = '.sv-slot[data-index],.sv-slot[data-slot],.sv-recipe[data-recipe],[data-item-kind],#inventory [data-tip-kind],#inventory [data-tip-unlock]'; // data-tip-kind: craft-book ingredient rows (their own .sv-tip is hidden below)
 
 export function installItemTooltips({ getBag, getProgression, items, root = document } = {}) {
   const table = items || ITEMS || {};
@@ -59,6 +60,8 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
 
   // Element -> { kind, slot } (slot only for bag slots, so live durability/count can be shown).
   function resolve(el) {
+    if (el.dataset.tipUnlock) return { kind: el.dataset.tipUnlock, slot: null, el, unlock: true }; // the card's "Unlock: …" line
+    if (el.matches('.sv-recipe.sv-pick')) return null; // the detail card beside it already says all of this
     if (el.dataset.itemKind) return { kind: el.dataset.itemKind, slot: null, el };
     if (el.dataset.tipKind && el.dataset.recipe == null) return { kind: el.dataset.tipKind, slot: null, el };
     if (el.dataset.recipe != null) {
@@ -71,9 +74,18 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     return s && s.kind && s.count > 0 ? { kind: s.kind, slot: s, el } : null;
   }
 
-  function html({ kind, slot, recipe }) {
+  function lockInfo(prog, kind) {
+    if (!prog || typeof prog.isUnlocked !== 'function' || call(() => prog.isUnlocked(kind)) !== false) return null;
+    return unlockInfo({ locked: true, reason: call(() => prog.whyLocked?.(kind)) || '' });
+  }
+
+  function html({ kind, slot, recipe, unlock }) {
     const it = table[kind] || {};
     const bag = call(getBag), prog = call(getProgression);
+    if (unlock) {
+      const u = lockInfo(prog, kind);
+      return u ? `<div class="it-head"><span class="it-name">How to unlock</span></div><p class="it-txt">${esc(u.how)}</p>` : '';
+    }
     const cat = it.category || (it.tool || ITEM_INFO[kind]?.tool ? 'tool' : '');
     let meta = '';
     if (it.tool && it.durability > 0 && !slot) meta = `Lasts <b>${esc(it.durability)}</b> uses`;
@@ -97,16 +109,26 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
       const st = r.station ? `<span class="it-st">${esc(nameOf(r.station))}${r.time ? ` · ${esc(r.time)}s each` : ''}${r.fuel ? ` · ${esc(r.fuel)} fuel` : ''}</span>` : '';
       out += `<div class="it-cost">${st}Needs ${parts.join(', ') || 'nothing'}${made}</div>`;
     }
-    if (prog && typeof prog.isUnlocked === 'function' && call(() => prog.isUnlocked(kind)) === false) {
-      const why = call(() => prog.whyLocked?.(kind));
-      out += `<div class="it-lock">Locked${why ? ': ' + esc(why) : ''}</div>`;
-    }
+    const u = lockInfo(prog, kind);
+    if (u) out += `<div class="it-lock">${esc(u.line)}<small>${esc(u.how)}</small></div>`;
     return out;
   }
 
   function place() {
     if (tip.hidden || !cur) return;
     const w = tip.offsetWidth, h = tip.offsetHeight, vw = innerWidth, vh = innerHeight;
+    // Inside the crafting column: beside the column, level with the row, never over the Craft button.
+    const col = cur.el.closest?.('#inventory .sv-craft');
+    if (col) {
+      const c = col.getBoundingClientRect(), r = cur.el.getBoundingClientRect();
+      let p = anchorTip({ left: c.left, right: c.right, top: r.top, bottom: r.bottom }, w, h, vw, vh);
+      const btn = col.querySelector('.sv-craftbtn')?.getBoundingClientRect();
+      if (btn && btn.width && p.x < btn.right && p.x + w > btn.left && p.y < btn.bottom && p.y + h > btn.top) {
+        p = { x: p.x, y: Math.max(6, Math.min(r.top, btn.top) - h - 8) }; // stacked layout: above the row instead
+      }
+      tip.style.transform = `translate(${Math.round(p.x)}px,${Math.round(p.y)}px)`;
+      return;
+    }
     let x = px + 16, y = py + 20;
     if (x + w > vw - 6) x = px - w - 12;
     if (y + h > vh - 6) y = py - h - 12;
@@ -122,6 +144,7 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     if (!cur || cur.el !== el) { prevDesc = el.getAttribute('aria-describedby'); el.setAttribute('aria-describedby', tip.id); }
     cur = res; px = x; py = y;
     tip.innerHTML = html(res);
+    if (!tip.innerHTML) { hide(); return; }
     tip.hidden = false; place();
     requestAnimationFrame(() => { if (cur) tip.classList.add('it-on'); });
   }

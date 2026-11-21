@@ -8,17 +8,18 @@ export const CATEGORIES = Object.freeze([
   Object.freeze({ id: 'materials', name: 'Materials', icon: 'wood' }),
   Object.freeze({ id: 'survival',  name: 'Survival',  icon: 'net' }),
   Object.freeze({ id: 'building',  name: 'Building',  icon: 'floor' }),
+  Object.freeze({ id: 'music',     name: 'Music',     icon: 'drum' }), // icon: the drum's item drawing
 ]);
 
 // Recipe output kind -> category id. Unknown kinds fall back by shape (see categoryOf).
 const CATEGORY_OF = Object.freeze({
-  hook: 'tools', hammer: 'tools', fishingrod: 'tools',
+  hook: 'tools', hammer: 'tools', fishingrod: 'tools', sail: 'tools', // the sail is how you steer
   rope: 'materials',
   net: 'survival', palm: 'survival', lantern: 'survival',
-  sail: 'building', bench: 'building', crate: 'building',
+  bench: 'building', crate: 'building',
   // progression catalogue (items.js)
   metalhook: 'tools', binoculars: 'tools',
-  drum: 'tools', pipes: 'tools', bells: 'tools', // [instruments]
+  drum: 'music', pipes: 'music', bells: 'music', // [instruments]
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
@@ -35,9 +36,9 @@ export const ITEM_TEXT = Object.freeze({
   rope:       { desc: 'Palm fibre twisted into a sturdy cord.', use: 'Binds hammers, rods, nets and sails.' },
   fish:       { desc: 'A fresh catch from the open water.', use: 'Proof of a good day out on the waves.' },
   hook:       { desc: 'A scrap hook on a rope. Throw it at floating supplies.', use: 'Pulls in floating wood, leaves, plastic and barrels.' },
-  hammer:     { desc: 'A rope-bound building hammer.', use: 'Adds raft floor tiles (2 wood + 2 plastic each).' },
+  hammer:     { desc: 'A rope-bound building hammer.', use: 'Adds raft floor tiles (2 planks + 2 plastic each).' },
   fishingrod: { desc: 'A bamboo rod with a float and line.', use: 'Cast into the sea and wait for a bite to catch fish.' },
-  sail:       { desc: 'A tall mast with a woven sail.', use: 'Decorates the raft; place it on a floor tile.' },
+  sail:       { desc: 'A tall mast with a woven sail that catches the wind.', use: 'Place it on a floor tile, then hold R beside it to steer and sail the raft.' },
   palm:       { desc: 'A clay pot with a small palm tree.', use: 'A bit of island on your raft; place on a tile.' },
   lantern:    { desc: 'A post lantern with a warm glow.', use: 'Lights the raft at night; place on a tile.' },
   net:        { desc: 'A rope net stretched over the water.', use: 'Catches nearby floating supplies for you.' },
@@ -206,11 +207,12 @@ export const backdropCloses = (downOnBackdrop, upOnBackdrop) => !!downOnBackdrop
 
 /**
  * What a key press does to the bag: 'open', 'close' or null (leave it alone).
- * Tab / I open it from play. While open, I / E close it and Tab is left to move focus.
+ * Tab / I open it from play. While open, I / E close it, and so does Tab (it toggles), unless focus is
+ * inside a slot grid (`inGrid`), where Tab keeps moving focus between slots.
  * E never opens here: in play it is the pick-up key and the game opens the bag itself.
  */
-export function bagKeyAction(code, isOpen) {
-  if (isOpen) return code === 'KeyI' || code === 'KeyE' ? 'close' : null;
+export function bagKeyAction(code, isOpen, inGrid = false) {
+  if (isOpen) return code === 'KeyI' || code === 'KeyE' || (code === 'Tab' && !inGrid) ? 'close' : null;
   return code === 'Tab' || code === 'KeyI' ? 'open' : null;
 }
 
@@ -252,7 +254,7 @@ export function placeRefusal(kind, t, max) {
 // Inside a tab, recipes you can make right now come first, then ones blocked only by bag space,
 // then the rest, closest-to-done first (fewest ingredients short, then fewest units short).
 // The sort is stable, so recipes keep their book order within each group.
-const STATE_RANK = Object.freeze({ ready: 0, full: 1, missing: 2 });
+const STATE_RANK = Object.freeze({ ready: 0, full: 1, missing: 2, gated: 3 }); // gated = research / station lock
 
 /** views: [{state, rows}] (rows from ingredientRows). Returns a new, sorted array. */
 export function sortCraftableFirst(views) {
@@ -267,23 +269,24 @@ export function sortCraftableFirst(views) {
 }
 
 // ---- where items come from ----
-// `tag` is the short text beside a missing ingredient; `how` is the tooltip line.
+// `tag` is the short text beside a missing ingredient (one or two short words, never cut off);
+// `how` is the full tooltip line.
 export const ITEM_SOURCE = Object.freeze({
-  flowerseed: Object.freeze({ tag: 'island bushes', how: 'Pick bushes on islands; some drop flower seeds.' }),
+  flowerseed: Object.freeze({ tag: 'islands', how: 'Pick bushes on islands; some drop flower seeds.' }),
   honey:   Object.freeze({ tag: 'beehive', how: 'Put a beehive near flower boxes, then press E on it to collect honeycomb.' }),
   wax:     Object.freeze({ tag: 'beehive', how: 'Collected with honey from a full beehive (E).' }),
-  wood:    Object.freeze({ tag: 'found floating', how: 'Hook floating planks. Barrels hold more.' }),
-  leaf:    Object.freeze({ tag: 'floating, palm', how: 'Hook floating leaf bundles, or harvest a grown palm.' }),
-  plastic: Object.freeze({ tag: 'found floating', how: 'Hook floating plastic jugs. Barrels hold some too.' }),
-  scrap:   Object.freeze({ tag: 'found floating', how: 'Hook floating scrap. Barrels hold some too.' }),
-  seed:    Object.freeze({ tag: 'barrels, palm', how: 'Hook floating barrels, or harvest a grown palm.' }),
+  wood:    Object.freeze({ tag: 'floating', how: 'Hook floating planks. Barrels hold more.' }),
+  leaf:    Object.freeze({ tag: 'floating', how: 'Hook floating leaf bundles, or harvest a grown palm.' }),
+  plastic: Object.freeze({ tag: 'floating', how: 'Hook floating plastic jugs. Barrels hold some too.' }),
+  scrap:   Object.freeze({ tag: 'floating', how: 'Hook floating scrap. Barrels hold some too.' }),
+  seed:    Object.freeze({ tag: 'barrels', how: 'Hook floating barrels, or harvest a grown palm.' }),
   fish:    Object.freeze({ tag: 'fishing rod', how: 'Cast the Fishing Rod into the sea and wait for a bite.' }),
   water:   Object.freeze({ tag: 'fill a cup', how: 'Fill a Filter Cup at the sea.' }),
   // raft-master materials (items.js): barrels, islands, the seafloor and the stations
-  sand:        Object.freeze({ tag: 'barrels, islands', how: 'Hook floating barrels, scoop it on an island or dive for it.' }),
-  clay:        Object.freeze({ tag: 'barrels, seafloor', how: 'Hook floating barrels or dive to the seafloor.' }),
-  stone:       Object.freeze({ tag: 'barrels, islands', how: 'Hook floating barrels or gather rocks on an island.' }),
-  metalore:    Object.freeze({ tag: 'barrels, seafloor', how: 'Hook floating barrels or dive to the seafloor.' }),
+  sand:        Object.freeze({ tag: 'barrels', how: 'Hook floating barrels, scoop it on an island or dive for it.' }),
+  clay:        Object.freeze({ tag: 'barrels', how: 'Hook floating barrels or dive to the seafloor.' }),
+  stone:       Object.freeze({ tag: 'barrels', how: 'Hook floating barrels or gather rocks on an island.' }),
+  metalore:    Object.freeze({ tag: 'barrels', how: 'Hook floating barrels or dive to the seafloor.' }),
   copperore:   Object.freeze({ tag: 'barrels', how: 'Hook floating barrels; copper ore is rare.' }),
   seaweed:     Object.freeze({ tag: 'barrels', how: 'Hook floating barrels.' }),
   brick:       Object.freeze({ tag: 'grill', how: 'Fire clay on a grill.' }),
@@ -343,6 +346,12 @@ export function trackerView(recipe, countOf, check = null) {
     state: recipeState(rows, check), times: Number.isFinite(times) ? times : 0,
     met: rows.filter(r => r.enough).length, total: rows.length,
   };
+}
+
+/** Caption under the Craft button: how hold and Shift work, with what Shift would make ('' for one-at-a-time items). */
+export function craftCaption(max, one = false) {
+  const n = Math.max(0, Math.floor(Number(max) || 0));
+  return !one && n > 1 ? `Hold to make more · Shift makes all (${n})` : '';
 }
 
 /** Craft button hint: how many a hold would make right now ('' when one or none). */
@@ -460,3 +469,123 @@ export function gainedSlots(before, after, kind) {
   }
   return out;
 }
+
+// ---- item icon framing (item-icons.js) ----
+/**
+ * Frame a projected item silhouette for a square icon. pts = flat [x0, y0, x1, y1, ...] in camera
+ * space (y up). Long items (extent along the main axis >= `long` x the extent across it) are rolled about the view
+ * axis so their main axis runs along the lower-left -> upper-right diagonal, keeping whichever end
+ * already pointed up-right. Returns {roll, cx, cy, half, aspect}: rotate the points by `roll`
+ * (counter-clockwise, radians), then the square [cx - half, cx + half] x [cy - half, cy + half] holds
+ * them with `pad` (fraction of the half size) to spare. `axis` (radians) overrides the main-axis
+ * search. null for no points.
+ */
+export function fitIconFrame(pts, { pad = 0.1, long = 1.8, diag = Math.PI / 4, axis } = {}) {
+  const n = Math.floor((pts?.length || 0) / 2);
+  if (!n) return null;
+  const ext = a => {
+    const c = Math.cos(a), s = Math.sin(a);
+    let lo = Infinity, hi = -Infinity, lo2 = Infinity, hi2 = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const x = pts[2 * i], y = pts[2 * i + 1], u = x * c + y * s, v = -x * s + y * c;
+      if (u < lo) lo = u; if (u > hi) hi = u; if (v < lo2) lo2 = v; if (v > hi2) hi2 = v;
+    }
+    return [hi - lo, hi2 - lo2];
+  };
+  // Main axis: the direction across which the silhouette is narrowest (a hammer's handle, not its
+  // vertex-heavy head), searched in 3 degree steps.
+  // A caller that knows the item's axis (its model's long side, projected) passes it as `axis`.
+  let theta = 0, best = Infinity;
+  if (Number.isFinite(axis)) theta = axis;
+  else for (let k = 0; k < 60; k++) {
+    const a = k * Math.PI / 60, [, w] = ext(a);
+    if (w < best - 1e-12) { best = w; theta = a; }
+  }
+  const [along, across] = ext(theta);
+  const aspect = along / Math.max(across, 1e-9);
+  let roll = 0;
+  if (aspect >= long) {
+    // The axis is undirected: of theta and theta + PI, take the one nearer the up-right diagonal.
+    const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+    const r1 = wrap(diag - theta), r2 = wrap(diag - theta - Math.PI);
+    roll = Math.abs(r1) <= Math.abs(r2) ? r1 : r2;
+  }
+  const c = Math.cos(roll), s = Math.sin(roll);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const x = pts[2 * i], y = pts[2 * i + 1], u = x * c - y * s, v = x * s + y * c;
+    if (u < x0) x0 = u; if (u > x1) x1 = u; if (v < y0) y0 = v; if (v > y1) y1 = v;
+  }
+  const half = Math.max(x1 - x0, y1 - y0, 1e-6) * 0.5 * (1 + Math.max(0, pad));
+  return { roll, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, half, aspect };
+}
+
+// ---- research-gated recipes ----
+const article = s => (/^(an?|the) /i.test(s) ? s : (/^[aeiou]/i.test(s) ? 'an ' : 'a ') + s);
+/**
+ * What a locked recipe shows, from a recipeGate() result ({locked, reason}): `line` is the one-line
+ * requirement for the row and card ("Unlock: Research Glass at a Research Table"), `how` the tooltip
+ * sentence saying what to do. null when the gate does not lock the recipe.
+ */
+export function unlockInfo(gate) {
+  if (!gate || !gate.locked) return null;
+  const reason = String(gate.reason || '').trim().replace(/\.$/, '');
+  if (!reason) return { line: 'Unlock: not learned yet', how: 'Keep exploring: new finds and research teach new recipes.' };
+  let how = reason + '.', m;
+  if ((m = /^Research (.+) at (?:an? )?(.+)$/i.exec(reason))) how = `Place ${article(m[2])} on your raft, press E on it and research ${m[1]}. The recipe unlocks right away.`;
+  else if ((m = /^Build (?:an? )?(.+)$/i.exec(reason))) how = `Build ${article(m[1])} and place it on your raft. The recipe unlocks once it stands.`;
+  else if ((m = /^Find (.+?)(?: first)?$/i.exec(reason))) how = `Pick up ${m[1]} once (hook it from the sea, open barrels or dive). The recipe is learned as soon as you hold it.`;
+  return { line: 'Unlock: ' + reason, how };
+}
+
+// ---- recipe search ----
+/** Lower-cased search words; '' or only spaces gives []. */
+export const searchTerms = q => String(q ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+
+/**
+ * Does a normalised recipe match the search? Every word must appear in the recipe name, its output
+ * item's name or an ingredient's name (case-insensitive). An empty query matches everything.
+ */
+export function matchRecipe(recipe, query, nameOf = k => k) {
+  const words = Array.isArray(query) ? query : searchTerms(query);
+  if (!words.length) return true;
+  if (!recipe) return false;
+  const hay = [recipe.name, nameOf(recipe.out?.kind ?? recipe.id), ...(recipe.reqs || []).map(q => nameOf(q.kind))]
+    .map(s => String(s ?? '').toLowerCase()).join('\n');
+  return words.every(w => hay.includes(w));
+}
+
+/** Search matches across all tabs: {ids: Set of matching recipe ids, perCat: Map cat -> count}. items = [{id, cat, recipe}]. */
+export function searchMatches(items, query, nameOf = k => k) {
+  const words = searchTerms(query), ids = new Set(), perCat = new Map();
+  for (const it of items || []) {
+    if (!it || !matchRecipe(it.recipe, words, nameOf)) continue;
+    ids.add(it.id); perCat.set(it.cat, (perCat.get(it.cat) || 0) + 1);
+  }
+  return { ids, perCat };
+}
+
+/**
+ * What Esc does in the search field: with text it only clears the field ('clear'; the key must not
+ * reach the dialog), when empty it is left to the normal Esc handling ('pass').
+ */
+export const searchEscape = value => (String(value ?? '') ? 'clear' : 'pass');
+
+// ---- newly craftable recipes ----
+/**
+ * Compare the recipes ready now with the previous check. prev = Set of ids ready last time, or null on
+ * the first check (nothing counts as new then, so loading a save is quiet). seen = ids that have been
+ * ready before this session. Returns {crossed, first, seen}: crossed = ids that just became ready,
+ * first = those of them ready for the first time, seen = the updated seen set (a new Set).
+ */
+export function readyTransitions(prev, now, seen = new Set()) {
+  const next = new Set(seen), crossed = [], first = [];
+  for (const id of now || []) {
+    if (prev && !prev.has(id)) { crossed.push(id); if (!next.has(id)) first.push(id); }
+    next.add(id);
+  }
+  return { crossed, first, seen: next };
+}
+
+/** Edge notice for a pinned recipe that just became craftable. */
+export const readyNotice = name => `Ready to craft: ${name}`;

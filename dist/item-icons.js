@@ -16,6 +16,8 @@ import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { getModel as getLibraryModel } from './models.js?build=v3-survival-ae77fa84ac2b';
+import { createSignalModel } from './signal-models.js?build=v3-survival-ae77fa84ac2b';
+import { fitIconFrame } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 
 const SIZE = 128;
 // Every bag item kind; warmIcons(ICON_KINDS) renders the full set ahead of the first bag open.
@@ -30,19 +32,29 @@ const encoding = new Map(); // kind -> token while its PNG encodes
 const listeners = new Set();
 const waiters = new Map(); // kind -> [resolve] for loadItemIcon
 let provider = null;
-let gl = null, scene = null, camera = null, envTarget = null, failed = false, releaseTimer = 0, pumping = false;
+let gl = null, scene = null, camera = null, rimLight = null, envTarget = null, failed = false, releaseTimer = 0, pumping = false;
 
-// Per-kind display pose (radians) so long tools read diagonally like a hotbar icon.
+// Per-kind display pose (radians). AXIS_ANGLE items are then rolled onto the diagonal automatically
+// (fitIconFrame), so for them a pose only picks which side faces the camera.
 const POSE = {
-  hook: [0, 0.7, -0.2], hammer: [0, 0.5, -0.75], fishingrod: [0, 0.3, -0.8],
+  hook: [0, 0.7, -0.2], hammer: [0, -0.93, 0], fishingrod: [0, 0.3, -0.8],
   plastic: [0, 0.4, 0.5], fish: [0, -0.4, 0.15], rope: [0.9, 0, 0.2],
-  wood: [0, -0.35, 0.12], leaf: [0.5, 0.4, 0], scrap: [0.3, 0.4, 0],
+  wood: [0, -0.35, 0.12], leaf: [0.5, 0.4, 0], scrap: [0.3, 0.4, 0], receiver: [0, -0.5, 0],
   net: [0.55, 0.5, 0], bench: [0, 0.5, 0], crate: [0, 0.5, 0],
 };
 // Thin, dark tools get a brighter exposure so they read on the dark slot tiles.
 const EXPOSURE = { hammer: 1.75, fishingrod: 1.75, hook: 1.35 };
 // models.js tools stand upright (grip at origin, working end +Y): tilt them onto the diagonal.
 const PROVIDER_POSE = { hook: [0, 0.5, -0.75] };
+// Thin tools are drawn thicker across their long axis so they still read at 40 px.
+const THICK = { fishingrod: 2.1, hook: 1.25, hammer: 1.2, metalhook: 1.25 };
+// Extra room around the silhouette (fraction of the half size); the halo needs a little.
+const PAD = { fishingrod: 0.08, hook: 0.08, hammer: 0.08 };
+const HALO = 'rgba(255,246,226,0.55)';
+// Screen angle (radians) a kind's long axis is rolled to: handheld, long items lie on the
+// lower-left -> upper-right diagonal, a fish swims level. Other kinds keep the plain 3/4 view.
+const D45 = Math.PI / 4;
+const AXIS_ANGLE = { hook: D45, hammer: D45, fishingrod: D45, metalhook: D45, wood: D45, fish: 0 };
 
 // ---------- fallback models ----------
 const mats = new Map(), shared = new Set();
@@ -85,6 +97,7 @@ export function buildFallbackModel(kind) {
     case 'fish': return fishModel();
     case 'wood': return woodModel();
     case 'leaf': case 'scrap': return createDebris(T, kind, mat, { seed: 7, tilt: 0 });
+    case 'receiver': return createSignalModel(T, 'receiver'); // no flat drawing exists for it
     default: return createCraft(T, kind);
   }
 }
@@ -107,7 +120,8 @@ function ensureGL() {
     scene = new T.Scene();
     scene.add(new T.HemisphereLight(0xfff4dc, 0x6a5a48, 1.5));
     const key = new T.DirectionalLight(0xfff0d8, 2.5); key.position.set(3, 5, 4); scene.add(key);
-    const rim = new T.DirectionalLight(0xbfe6ff, 1.4); rim.position.set(-4, 2, -3); scene.add(rim);
+    rimLight = new T.DirectionalLight(0xd8f0ff, 3.2); scene.add(rimLight);
+    const fill = new T.DirectionalLight(0xbfe6ff, 0.8); fill.position.set(-4, 2, 3); scene.add(fill);
     camera = new T.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
   }
   // Soft studio environment (per context) so metal parts reflect something instead of rendering black.
@@ -143,6 +157,47 @@ function release() {
 }
 
 const _box = new T.Box3(), _sphere = new T.Sphere(), _v = new T.Vector3(), _dir = new T.Vector3(1, 0.85, 1.35).normalize();
+const _m = new T.Matrix4();
+const MAX_POINTS = 6000;
+
+// Camera-space (x, y) of the model's vertices (strided past MAX_POINTS), for framing the icon on the
+// real silhouette rather than the loose box of a diagonal tool. Instanced meshes use their box corners.
+function silhouettePoints(root) {
+  const meshes = [];
+  let total = 0;
+  root.traverse(o => { if (o.isMesh && o.visible !== false && o.geometry?.attributes?.position) { meshes.push(o); total += o.geometry.attributes.position.count; } });
+  const stride = Math.max(1, Math.ceil(total / MAX_POINTS)), out = [];
+  for (const o of meshes) {
+    _m.multiplyMatrices(camera.matrixWorldInverse, o.matrixWorld);
+    if (o.isInstancedMesh) {
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      const b = o.geometry.boundingBox, im = new T.Matrix4();
+      for (let k = 0; k < o.count; k++) {
+        o.getMatrixAt(k, im); im.premultiply(_m);
+        for (let i = 0; i < 8; i++) { _v.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).applyMatrix4(im); out.push(_v.x, _v.y); }
+      }
+      continue;
+    }
+    const pos = o.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i += stride) { _v.fromBufferAttribute(pos, i).applyMatrix4(_m); out.push(_v.x, _v.y); }
+  }
+  return out;
+}
+
+// The model in a wrapper group, plus the wrapper-local axis its bounding box is longest along.
+// Thin tools read as hairlines at 40 px, so with k > 1 the wrapper draws them thicker across that axis.
+function wrapModel(model, k = 1) {
+  const wrap = new T.Group();
+  wrap.add(model);
+  wrap.updateMatrixWorld(true);
+  _box.setFromObject(wrap, true);
+  const axis = new T.Vector3(0, 1, 0);
+  if (_box.isEmpty()) return { wrap, axis };
+  const s = _box.getSize(_v), a = s.x >= s.y && s.x >= s.z ? 'x' : s.y >= s.z ? 'y' : 'z';
+  axis.set(a === 'x' ? 1 : 0, a === 'y' ? 1 : 0, a === 'z' ? 1 : 0);
+  if (k !== 1) wrap.scale.set(a === 'x' ? 1 : k, a === 'y' ? 1 : k, a === 'z' ? 1 : k);
+  return { wrap, axis };
+}
 
 function freeModel(root) {
   root.traverse(o => {
@@ -169,35 +224,47 @@ function renderKind(kind) {
   const { model, own } = resolveIconModel(kind);
   if (!model) return null;
   const pivot = new T.Group();
-  pivot.add(model);
+  const { wrap, axis } = wrapModel(model, THICK[kind] || 1);
+  pivot.add(wrap);
   const p = (own ? null : PROVIDER_POSE[kind]) || POSE[kind]; if (p) pivot.rotation.set(p[0], p[1], p[2]);
   pivot.updateMatrixWorld(true);
   _box.setFromObject(pivot, true);
   if (_box.isEmpty()) { if (own) freeModel(model); return null; }
   _box.getBoundingSphere(_sphere);
   pivot.position.sub(_sphere.center);
-  _box.translate(_v.copy(_sphere.center).negate());
-  // Orthographic 3/4 view framed tightly on the item's projected bounds, so long tools fill the slot.
+  pivot.updateMatrixWorld(true);
+  // Orthographic 3/4 view, rolled so long tools lie on the diagonal, framed on the projected silhouette.
   const r = _sphere.radius;
   camera.position.copy(_dir).multiplyScalar(r * 4);
+  camera.up.set(0, 1, 0);
   camera.lookAt(0, 0, 0);
   camera.updateMatrixWorld(true);
-  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-  for (let i = 0; i < 8; i++) {
-    _v.set(i & 1 ? _box.max.x : _box.min.x, i & 2 ? _box.max.y : _box.min.y, i & 4 ? _box.max.z : _box.min.z).applyMatrix4(camera.matrixWorldInverse);
-    x0 = Math.min(x0, _v.x); x1 = Math.max(x1, _v.x); y0 = Math.min(y0, _v.y); y1 = Math.max(y1, _v.y);
+  // A handheld item's main axis is its model's long axis (a hammer's handle), as seen by the camera.
+  axis.transformDirection(wrap.matrixWorld).transformDirection(camera.matrixWorldInverse);
+  const want = AXIS_ANGLE[kind], roll = want != null && Math.hypot(axis.x, axis.y) > 0.2;
+  const f = fitIconFrame(silhouettePoints(pivot), { pad: PAD[kind] ?? 0.12, long: roll ? 1.2 : Infinity, diag: roll ? want : undefined, axis: roll ? Math.atan2(axis.y, axis.x) : undefined })
+    || { roll: 0, cx: 0, cy: 0, half: r };
+  if (f.roll) {
+    camera.rotateZ(-f.roll);
+    camera.updateMatrixWorld(true);
   }
-  const half = Math.max(x1 - x0, y1 - y0) * 0.5 * 1.06, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-  camera.left = cx - half; camera.right = cx + half; camera.top = cy + half; camera.bottom = cy - half;
+  camera.left = f.cx - f.half; camera.right = f.cx + f.half; camera.top = f.cy + f.half; camera.bottom = f.cy - f.half;
   camera.near = r; camera.far = r * 7;
   camera.updateProjectionMatrix();
+  // Rim light from behind the item, opposite the camera, so dark edges separate from dark tiles.
+  rimLight.position.copy(_dir).multiplyScalar(-4).add(_v.set(0, 3, 0));
   scene.add(pivot);
   gl.toneMappingExposure = EXPOSURE[kind] || 1.1;
   let out = null;
   try {
     gl.render(scene, camera);
     out = document.createElement('canvas'); out.width = out.height = SIZE;
-    out.getContext('2d').drawImage(gl.domElement, 0, 0);       // GPU copy; the PNG encode happens later, async
+    const c2 = out.getContext('2d');
+    // Soft light halo around the silhouette (drawn under the item), then the item itself.
+    c2.shadowColor = HALO; c2.shadowBlur = 5;
+    c2.drawImage(gl.domElement, 0, 0);
+    c2.shadowColor = 'transparent'; c2.shadowBlur = 0;
+    c2.drawImage(gl.domElement, 0, 0);                          // GPU copy; the PNG encode happens later, async
   } catch (e) { out = null; console.warn('item icon render failed', kind, e); }
   scene.remove(pivot);
   if (own) freeModel(model);
@@ -205,6 +272,9 @@ function renderKind(kind) {
 }
 
 function finish(kind, url) {
+  const old = cache.get(kind);
+  if (!url && old) url = old;                        // a failed re-render keeps the icon it had
+  else if (old && old !== url && old.startsWith('blob:')) setTimeout(() => URL.revokeObjectURL(old), 5000); // after the DOM swapped
   cache.set(kind, url);
   const w = waiters.get(kind); if (w) { waiters.delete(kind); for (const r of w) r(url || null); }
   if (url) for (const fn of listeners) { try { fn(kind, url); } catch (e) { console.error(e); } }
@@ -264,11 +334,16 @@ export function warmIcons(kinds) { for (const k of kinds) iconURL(k); }
 /** Called with (kind, url) whenever an icon (re)renders. Returns an unsubscribe function. */
 export function onIconReady(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 /** Swap the model source (e.g. hands.js buildItemModel). Re-renders every icon seen so far. */
+// Icons already made stay on screen until their re-render is ready, then swap once (no flash back to
+// the flat sprite, no two different looks in a row).
 export function setModelProvider(fn) {
-  provider = typeof fn === 'function' ? fn : null;
+  const next = typeof fn === 'function' ? fn : null;
+  if (next === provider) return;
+  provider = next;
   const kinds = [...cache.keys(), ...encoding.keys()];
-  cache.clear(); encoding.clear();
-  warmIcons(kinds);
+  encoding.clear();
+  for (const k of kinds) queued.add(k);
+  if (queued.size && !failed) schedule();
 }
 
 /** Facade over the shared cache, e.g. for callers that want an object: get(kind) is sync (null while rendering). */
