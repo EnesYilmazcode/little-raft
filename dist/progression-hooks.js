@@ -270,6 +270,7 @@ export function attachProgression(ctx) {
   }
 
   // ---------- per frame ----------
+  const nodeCache = new WeakMap(); // station group -> {ingot, crank, pile}
   function tick(dt) {
     time += dt;
     if (isHost()) {
@@ -293,9 +294,10 @@ export function attachProgression(ctx) {
       const st = stationView(key), target = st?.cooking ? 1 : st && st.fuelUnits > 0 ? 0.25 : 0;
       const a = (glow.get(key) ?? 0) + (target - (glow.get(key) ?? 0)) * Math.min(1, dt * 2);
       glow.set(key, a); setSmelterGlow(g, a, time);
-      const ingot = g.getObjectByName('ingot'); if (ingot) ingot.visible = !!st?.output;
-      const crank = g.getObjectByName('recyclerCrank'); if (crank && st?.cooking) crank.rotation.z += dt * 4; // [recycler]
-      const pile = g.getObjectByName('recyclerPile'); if (pile) pile.visible = !!st?.output;
+      let n = nodeCache.get(g); if (!n) nodeCache.set(g, n = { ingot: g.getObjectByName('ingot'), crank: g.getObjectByName('recyclerCrank'), pile: g.getObjectByName('recyclerPile') }); // looked up once, not per frame
+      if (n.ingot) n.ingot.visible = !!st?.output;
+      if (n.crank && st?.cooking) n.crank.rotation.z = (n.crank.rotation.z + dt * 4) % (Math.PI * 2); // [recycler]
+      if (n.pile) n.pile.visible = !!st?.output;
     }
     if (panel?.isOpen) { if (!stationView(panel.stationId)) panel.close(); else panel.update(); }
     renderResearch(false);
