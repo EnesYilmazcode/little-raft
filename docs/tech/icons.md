@@ -14,20 +14,26 @@ Runtime-baked atlas with the game's own renderer, cached per build, SVG fallback
 
 - `sandbox/icons/icon-atlas.js`: `bakeIconAtlas(T, renderer, items, opts)`. No imports, drops into dist unchanged.
 - `sandbox/icons/item-models.js`: kind -> model builder + icon pose for all 15 `ITEM_INFO` kinds,
-  and the engine entry `bakeItemIcons(T, renderer, mat, build, kinds)` -> `{ kind: blobURL }`.
-  8 kinds use dist builders unchanged (`createHammer`, `createPlastic`, `createDebris` leaf,
-  `createCraft` palm/net/bench/crate) and the sail uses `createCraft` with its height squashed to 0.68.
-  Fish and rope have no world model, so two small procedural ones live here (ellipsoid fish with
-  gradient + fins; braided rope coil). Five kinds use icon-only variants because the world model
-  does not read at 40 px: `createRodIcon` (short thick bamboo rod, side reel, line hanging to a
-  red/white bobber), `createJHook` (J hook with eye, barb and a rope tied through the eye),
-  `createScrapIcon` (torn corrugated zinc sheet, folded corner, edge rust, rivets, bent strap),
-  `createLogPile` (three logs with ringed end grain) and `createLanternIcon` (the lantern without
-  its 1.9 m post).
+  and the engine entry `bakeItemIcons(T, renderer, mat, build, kinds, isCancelled)` ->
+  `{ kind: blobURL }` or `null` when cancelled. 5 kinds use dist builders unchanged
+  (`createPlastic`, `createDebris` leaf, `createCraft` palm/bench/crate). 2 use a dist model
+  rescaled: the hammer (`createHammer`, handle and head fattened 1.9x / 1.45x so it is not a
+  hairline) and the sail (`createCraft`, height squashed to 0.68). Fish and rope have no world
+  model, so two small procedural ones live here (ellipsoid fish with gradient + fins; braided rope
+  coil). 6 kinds use icon-only variants because the world model does not read at 40 px:
+  `createScrapHookIcon` (the held scrap hook of `dist/hook.js`: same curve, barb, riveted ferrule and
+  rope-wrapped wooden handle, laid flat and about twice as thick), `createRodIcon` (short thick
+  bamboo rod, side reel, line hanging to a red/white bobber), `createScrapIcon` (torn corrugated
+  zinc sheet with wide ridges, folded corner, heavy edge rust, rivets, bent strap), `createLogPile`
+  (three logs with ringed end grain), `createLanternIcon` (the lantern without its 1.9 m post) and
+  `createNetIcon` (light wooden frame, coarse grid of thick tan rope, orange floats).
 - `sandbox/icons/adopt_patch.py`: exact anchored patches for `dist/survival-ui.js` and `dist/game.js`
   (`--check`, `--apply`). See `icons-ADOPT.md`.
-- `sandbox/icons/shoot.py`: headless run, writes `sandbox/icons/shots/*.png` and `shots/report.json`.
+- `sandbox/icons/shoot.py`: headless run, writes `sandbox/icons/shots/*.png` and prints the JSON report.
   The UI shots use a patched copy of the CURRENT `dist/survival-ui.js`, not a mock.
+- `sandbox/icons/robust.py` (failure paths), `sandbox/icons/hotswap.py` (real live.js hot swap on a
+  patched copy), `sandbox/icons/game_probe.py` (real game: fresh bake, shots, in-game cache hit) and
+  `sandbox/icons/variants.py` (bake-config table below).
 
 How the bake works (per item, then once at the end):
 
@@ -48,8 +54,13 @@ How the bake works (per item, then once at the end):
    whole atlas, flip rows, slice 15 PNG data URLs (these go to `localStorage`), convert to blob
    URLs for the DOM.
 5. Restore renderer state: render target, clear color/alpha, `shadowMap.enabled`, `autoClear`,
-   `info.autoReset`. Dispose targets, quad, the unified materials and every model (materials from
-   the engine's `mat()` cache are tracked and never disposed).
+   `info.autoReset`. This is a `try/finally` around each tile's renders, so a throw cannot leave the
+   game rendering with `autoClear = false` into the atlas. An outer `try/finally` disposes the
+   targets, quad, unified materials and every model built so far on every path (success, throw,
+   cancel). Materials from the engine's `mat()` cache are tracked and never disposed.
+6. `isCancelled()` (game.js passes `() => disposed`) is checked before every tile and around the
+   readback. A disposed or hot-swapped engine's bake stops, returns `null`, and writes no cache
+   and no blob URLs. See `icons-ADOPT.md` for the cache read/write rules and the hot-swap numbers.
 
 Gotcha that cost a run: `renderer.render()` with `autoClear` clears the WHOLE render target, not
 the viewport, so only the last tile survived. The baker sets `autoClear = false` while baking.
@@ -59,8 +70,9 @@ the viewport, so only the last tile survived. The baker sets `autoClear = false`
 Headless Chromium + SwiftShader on a 4-core box with load average ~32 (other fleet agents), so
 treat ms as relative and noisy. 15 icons at 96 px.
 
-First-bake shader cost, same page and models, DPR 1, two runs each (scratch `variants.py`, query
-flags `?unify=0&env=1` etc. on `index.html?mode=sheet`):
+First-bake shader cost, same page and models, DPR 1, two runs each (`python sandbox/icons/variants.py
+<repo>`, query flags `?unify=0&env=1` etc. on `index.html?mode=sheet`; round-1 models, so absolute
+times differ a little from the table below):
 
 | bake config | programs compiled | bake total | worst game frame during bake |
 |---|---|---|---|
@@ -76,23 +88,29 @@ alone was not the cost: the env-mapped standard shader (`cube_uv` sampling) is w
 compiles slowly, so dropping the PMREM env took the worst hitch from ~11-16 s to ~1 s. Precompile
 adds nothing here and stays off.
 
-Default config, `shoot.py` run:
+Default config, `shoot.py` run (round 2, current models):
 
 | | DPR 1 run | DPR 2 run |
 |---|---|---|
-| setup (targets, shader, no env) | 1.5 ms | 0.5 ms |
-| per-tile CPU submit | 4 to 336 ms | 2 to 385 ms |
-| total incl. per-tile frame yields | 6.0 s | 7.0 s |
-| single readback of the 384x384 atlas | 105 ms | 554 ms |
-| PNG encode + slice (15 data URLs) | 13 ms | 32 ms |
-| cache hit (`localStorage` -> 15 blob URLs) | 8.3 ms | 7.5 ms |
-| game frame worst / avg during bake | 1.39 s / 399 ms | 1.08 s / 460 ms |
+| setup (targets, shader, no env) | 0.6 ms | 1.7 ms |
+| per-tile CPU submit | 4.7 to 343 ms | 4.2 to 153 ms |
+| total incl. per-tile frame yields | 5.7 s | 7.4 s |
+| single readback of the 384x384 atlas | 215 ms | 260 ms |
+| PNG encode + slice (15 data URLs) | 12 ms | 13 ms |
+| cache hit (`localStorage` -> 15 blob URLs) | 6.8 ms | 6.9 ms |
+| game frame worst / avg during bake (light sandbox scene) | 751 ms / 357 ms | 1.23 s / 463 ms |
+
+In the real game the scene is heavier, so the numbers differ: the bake takes about 15 game frames
+(one tile per frame), 25 to 30 s from mount in the judge's runs and 86 s from Solo in round 2 on a
+box at load average 42. Its hitch could not be told apart from the game's own frame times. The
+cache hit measured inside the running game was 7.4 to 192 ms over 5 calls (median 10 ms; the
+judge saw 63 ms). The sandbox 6.8 ms is the idle-page figure.
 
 On a real GPU, expect a few ms per tile and one short compile hitch for 4 small programs; with
 the cache every load after the first per build does no GL work at all.
 
 `renderer.info`:
-- bake total: 139 draw calls, 104,498 triangles for all 15 tiles.
+- bake total: 171 draw calls, 89,534 triangles for all 15 tiles.
 - game scene before -> after bake: calls 25 -> 25, triangles 41,734 -> 41,734, geometries 25 -> 25,
   textures 2 -> 2, programs 6 -> 6 (no leak; the previous version left the debris timber texture
   and two env-lit programs behind).
@@ -100,8 +118,9 @@ the cache every load after the first per build does no GL work at all.
 Memory:
 - transient VRAM during the bake: 1.18 MB MSAA renderbuffer + 0.29 MB HalfFloat resolve
   + 0.59 MB atlas, all freed after the bake. No PMREM target any more.
-- CPU: 590 KB readback buffer (freed), 251 KB of PNG data URLs (15 icons) in `localStorage`,
-  15 blob URLs for the DOM. Nothing stays on the GPU.
+- CPU: 590 KB readback buffer (freed), 259,814 chars (about 254 KB) of PNG data URLs (15 icons) in
+  `localStorage`, 15 blob URLs for the DOM (revoked when replaced and when the UI is destroyed).
+  Nothing stays on the GPU.
 
 ## Visual check (read the PNGs)
 
@@ -111,23 +130,23 @@ Memory:
   the real survival UI with baked icons. `shots/ui-inventory-svg-1x.png`: same UI, current SVG.
 - `shots/ui-inventory-late-2x-panel.png`: bag opened with SVG icons, then `setItemIcons()` lands
   with the bag still open (no reopen): 47 SVG icons -> 0, 47 baked (`lateSwap` in the report).
-- `shots/game-adopted-inventory.png`: the real game on a copy of dist with `adopt_patch.py --apply`
-  (fresh `localStorage`): hotbar hook and all recipe and cost icons are baked. In the real game the
-  bake (cleared cache) finishes on the title screen before Solo, so the bag opens already baked;
-  a reload hits the `ia4` cache.
+- `shots/game-adopted-hotbar.png`, `shots/game-adopted-bag.png`: the real game (booted through
+  index.html / live.js) on a copy of dist with `adopt_patch.py --apply`, fresh `localStorage`. At
+  spawn the hotbar slot 1 icon is the same curved scrap hook on a rope-wrapped handle that the
+  player holds; recipes and cost chips are baked. A reload hits the `ia4` cache.
 
-Reads well (now including the five reworked kinds): wood is a log pile with ringed ends like the
-SVG; the fishing rod is a thick diagonal rod with a visible reel and a red/white bobber hanging
-from the tip; the hook is a clear J with eye, barb and a rope tied through; scrap is corrugated
-galvanised sheet with a folded corner, edge rust and rivets; the lantern fills the slot; the sail
-fills more of it, tilted. Consistent light direction and outline across the set; at 2x every icon
-is crisp; at 1x 40 px and at the 18 px cost chips still distinct.
+Reads well: wood is a log pile with ringed ends like the SVG; the fishing rod is a thick diagonal
+rod with a visible reel and a red/white bobber; the hook is the held scrap hook (round 1 drew a thin
+J fish hook, which read as fishing gear next to the rod); scrap is a rusty corrugated sheet that stays
+rust-red with visible ridges at 18 px (round 1: a grey smear); the net is a light tan grid with
+orange floats at 18 px (round 1: a dark square); the lantern fills the slot. Hammer, rod and hook
+carry a 1.6 px cream rim outside the navy outline, so they are visible on the dark brown slots at
+1x in the 34 px recipe list (round 1: the hammer nearly disappeared). Stack counts keep the SVG's
+bottom-right inset (the art grows 2 px up-left only), so "20" and "14" no longer sit on the art.
 
-Still weak: the hook's wire is the thinnest silhouette in the set at 40 px (outline carries it);
-the hook icon is a J fish hook while the held tool in game is a scrap hook on a wooden handle
-(by request, it matches the SVG instead); scrap at 18 px is a grey rectangle with an orange
-fleck; metal (hammer head, lantern frame) is darker than with the env because metalness is
-capped and lit by lights only; the sail is still taller than wide.
+Still weak: the rim gives the three tools a slightly sticker-like edge that the other 12 icons do
+not have; the plastic jug is white and low contrast on the light strip; metal is darker than with
+the env because metalness is capped and lit by lights only; the sail is still taller than wide.
 
 ## Three facts that shape every approach
 
@@ -261,8 +280,8 @@ for an offline "export icons to PNG" tools page.
 
 Cache: the bake is cheap enough to redo every load (see the numbers below), so start with the
 in-memory `Map`. If startup time matters later, store the PNG data URLs in `localStorage`
-under the `?build=` id the game already carries, wrapped in try/catch. Fifteen 96 px PNGs are
-about 100 to 150 KB as base64.
+under the `?build=` id the game already carries, wrapped in try/catch. (First-pass estimate: 100
+to 150 KB as base64. Measured on the final models: 259,814 chars, about 254 KB.)
 
 Resolution: bake at 96 px for slots shown at 48 CSS px, so it stays sharp at
 devicePixelRatio 2. On a 1x screen the browser downsamples, which looks fine.
@@ -280,7 +299,10 @@ any real GPU), 10 models at 96 px:
 On SwiftShader most of A's time is the readback waiting for the CPU raster to finish
 (`read` column in the report), and PNG encode is 3 to 12 ms. On a real integrated GPU the
 render and resolve take a few ms per icon. Treat these numbers as relative only. Bake after
-the first frame and never in the middle of gameplay.
+the first frame. (The adopted version bakes 400 ms after mount, which is on the title screen
+for a page load. A live.js hot swap to a new build does mount mid-gameplay, so every such swap
+rebakes during play, with SVG icons until it lands; a remount with an unchanged build is a cache
+hit. See `icons-ADOPT.md`, Hot swaps.)
 
 Visual check (`icons.png`): A and B match in color and outline. The metal on the hook and the
 hammer head reads as metal. The game canvas renders normally after the bake.
