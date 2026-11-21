@@ -20,7 +20,7 @@ export const PALETTE = Object.freeze({
   woodEnd: '#e8c48c', drift: '#c4ad8a', bark: '#7c5a3c', barkDark: '#5d4029', barkLight: '#a07a50',
   rope: '#dcc28a', ropeDark: '#a98c58',
   leafDeep: '#3f7f3a', leaf: '#5fa548', leafLight: '#9cc957', leafTip: '#c4d667', stem: '#8d8a3f',
-  steel: '#93a8b1', steelDark: '#5d6d75', iron: '#3f4649', rust: '#c0662f', rustDark: '#82401f', rustLight: '#d98b4a',
+  steel: '#93a8b1', steelDark: '#5d6d75', iron: '#3f4649', rust: '#a9552b', rustDark: '#74391d', rustLight: '#c27d50',
   jug: '#f2eee2', jugGrime: '#d8d2bb', label: '#8cc6e8', cap: '#3c7fd6', capDark: '#2a5fa8',
   canvas: '#f1e6c8', canvasStain: '#d9c69e', stripe: '#d95a3c', patch: '#cfa56c',
   clay: '#cf7649', clayDark: '#9c4c2e', clayLight: '#e7a274', soil: '#5c3e2b', pebble: '#a39d90',
@@ -273,7 +273,7 @@ function buildPlank(T, K, P, r) {
   const tone = ['woodMid', 'woodLight', 'woodMid'][Math.floor(r() * 3)];
   const tp = timberPaint(T, 'x');
   P.add(K.box(L, H, W, 0.016), tone, { at: [-0.2, 0, 0], jitter: 0.012, paint: tp });
-  const fingers = [[0.085, 0.2 + j(0.06)], [0.08, 0.08 + j(0.04)], [0.085, 0.15 + j(0.06)]];
+  const fingers = [[0.085, 0.12 + j(0.04)], [0.08, 0.03 + j(0.02)], [0.085, 0.08 + j(0.03)]];
   let z = -W / 2;
   for (const [fw, fl] of fingers) {
     P.add(K.box(fl + 0.04, H * 0.96, fw - 0.014, 0.012), tone, { at: [0.3 - 0.02 + fl / 2, j(0.006), z + fw / 2], rot: [0, j(0.06), j(0.04)], jitter: 0.01, paint: tp });
@@ -355,7 +355,7 @@ function buildBarrel(T, K, P, r) {
     tint: 0,
     paint: (c, m, n) => {
       if (Math.abs(n.y) > 0.9 && Math.hypot(m.x, m.z) < rEnd - 0.04) { c.copy(lid); return; } // recessed lids
-      const a = Math.atan2(m.z, m.x), k = Math.floor(((a / (Math.PI * 2)) + 1) * seg + 0.5) % seg;
+      const a = Math.atan2(m.z, m.x), k = Math.floor(((a / (Math.PI * 2)) + 1) * seg) % seg; // column centres sit mid-bin: no float flicker
       c.copy(k % 2 ? sA : sB);
       if (k === 3) c.multiplyScalar(0.86);
     },

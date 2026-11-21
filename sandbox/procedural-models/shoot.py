@@ -32,8 +32,8 @@ with sync_playwright() as p:
         pg = b.new_page(viewport={"width": w, "height": h + 40})
         pg.on("pageerror", lambda e: errs.append(str(e)))
         pg.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
-        pg.goto(f"http://127.0.0.1:{port}/sandbox/procedural-models/index.html?{qs}")
-        pg.wait_for_function("window.__ready === true", timeout=300000)
+        pg.goto(f"http://127.0.0.1:{port}/sandbox/procedural-models/index.html?{qs}", wait_until="commit")
+        pg.wait_for_function("window.__ready === true", timeout=900000)
         results[name] = pg.evaluate("window.__stats")
         if name != "stats":
             pg.locator("#wrap").screenshot(path=str(OUT / f"{name}.png"))

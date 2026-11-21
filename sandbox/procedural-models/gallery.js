@@ -39,6 +39,7 @@ renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
 renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping;
 wrap.appendChild(renderer.domElement);
 renderer.setScissorTest(true);
+renderer.info.autoReset = false; // three resets info AFTER the shadow pass; reset by hand so shadow calls count
 
 function stage({ ground = true } = {}) {
   const s = new T.Scene(); s.background = new T.Color('#cbd2c0');
@@ -73,7 +74,7 @@ function shootCell(scene, obj, x, y, w, h, yaw, elev = 24) {
   camera.position.set(c.x, c.y + Math.sin(e) * dist, c.z + Math.cos(e) * dist); camera.lookAt(c);
   const H = renderer.domElement.height;
   renderer.setViewport(x, H - y - h, w, h); renderer.setScissor(x, H - y - h, w, h);
-  renderer.render(scene, camera);
+  renderer.info.reset(); renderer.render(scene, camera);
   const info = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
   scene.remove(holder);
   return info;
@@ -104,10 +105,11 @@ if (VIEW === 'grid' || VIEW === 'compare') {
   renderer.setSize(256, 256);
   const scene = stage({ ground: false }), gl = renderer.getContext();
   stats.models = {};
+  for (const n of NAMES) for (const set of ['current', 'new']) { const o = set === 'new' ? fresh(n, 3) : current(n, 3); disposeObj(o); } // JIT + material warm-up
   for (const n of NAMES) for (const set of ['current', 'new']) {
-    const make = () => (set === 'new' ? fresh(n, 11) : current(n, 11));
-    let o = make(); disposeObj(o);           // warm-up (material/texture creation)
-    const t0 = performance.now(); const builds = 5;
+    const make = (seed = 11) => (set === 'new' ? fresh(n, seed) : current(n, seed));
+    let o = make(); disposeObj(o);
+    const t0 = performance.now(); const builds = 4;
     for (let i = 0; i < builds; i++) { o = make(); if (i < builds - 1) disposeObj(o); }
     const buildMs = (performance.now() - t0) / builds;
     shade(o);
@@ -116,12 +118,20 @@ if (VIEW === 'grid' || VIEW === 'compare') {
     const noShadow = shootCell(scene, o, 0, 0, 256, 256, 35);
     renderer.shadowMap.enabled = true;
     const withShadow = shootCell(scene, o, 0, 0, 256, 256, 35);
-    // frame ms: 30 renders of this model alone (with shadows)
-    const hold = new T.Group(); hold.rotation.y = 35 * Math.PI / 180; hold.add(o); scene.add(hold);
-    renderer.render(scene, camera); gl.finish();
-    const f0 = performance.now(); for (let i = 0; i < 30; i++) renderer.render(scene, camera); gl.finish();
-    const frameMs = (performance.now() - f0) / 30; scene.remove(hold);
-    stats.models[`${n}:${set}`] = { ...g, drawCalls: noShadow.calls, drawCallsWithShadow: withShadow.calls, renderTris: noShadow.triangles, buildMs: +buildMs.toFixed(2), frameMs: +frameMs.toFixed(2) };
+    // frame cost: 16 separately built copies in a 4x4 grid (what the game does: one build per tile/item/craft)
+    const grid = new T.Group(); const sp = Math.max(1.2, (o.userData.size ? Math.max(o.userData.size.x, o.userData.size.z) : 2) * 1.15);
+    for (let i = 0; i < 16; i++) { const c = shade(make(100 + i)); c.position.set((i % 4 - 1.5) * sp, 0, (Math.floor(i / 4) - 1.5) * sp); grid.add(c); }
+    scene.add(grid);
+    const gcam = new T.PerspectiveCamera(45, 640 / 360, 0.1, 500); gcam.position.set(0, sp * 3.5, sp * 4); gcam.lookAt(0, 0, 0);
+    const sun = scene.userData.sun; sun.position.set(-15, 28, 12).normalize().multiplyScalar(sp * 12); sun.target.position.set(0, 0, 0);
+    Object.assign(sun.shadow.camera, { left: -sp * 3, right: sp * 3, top: sp * 3, bottom: -sp * 3, near: 0.1, far: sp * 30 }); sun.shadow.camera.updateProjectionMatrix();
+    renderer.setSize(640, 360); renderer.setViewport(0, 0, 640, 360); renderer.setScissor(0, 0, 640, 360);
+    renderer.info.reset(); renderer.render(scene, gcam); gl.finish();
+    const g16 = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
+    const f0 = performance.now(); for (let i = 0; i < 10; i++) renderer.render(scene, gcam); gl.finish();
+    g16.frameMs = +((performance.now() - f0) / 10).toFixed(2);
+    scene.remove(grid); disposeObj(grid); renderer.setSize(256, 256);
+    stats.models[`${n}:${set}`] = { ...g, drawCalls: noShadow.calls, drawCallsWithShadow: withShadow.calls, buildMs: +buildMs.toFixed(2), x16: g16 };
     disposeObj(o);
   }
   stats.renderer_info = { geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, programs: renderer.info.programs.length };
@@ -160,7 +170,7 @@ if (VIEW === 'grid' || VIEW === 'compare') {
   ['current', 'new'].forEach((set, i) => {
     const { s, buildMs } = build(set);
     renderer.setViewport(i * W, 0, W, H); renderer.setScissor(i * W, 0, W, H);
-    renderer.render(s, cam);
+    renderer.info.reset(); renderer.render(s, cam);
     const info = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
     let geos = 0, mats = new Set(); s.traverse(o => { if (o.isMesh) { geos++; for (const m of [].concat(o.material)) mats.add(m); } });
     const f0 = performance.now(); for (let k = 0; k < 20; k++) renderer.render(s, cam); gl.finish();
