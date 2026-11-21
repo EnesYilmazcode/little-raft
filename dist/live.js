@@ -35,7 +35,7 @@ const PRELOAD = [
   'spyglass-model.js', 'spyglass.js', // [spyglass]
   'storm-model.js', 'storm.js', // [storm]
   'stars-core.js', 'stars-model.js', 'stars.js', // [stars]
-  'survival-ui.js', 'tasks-model.js', 'tasks-rules.js', 'tasks.js' /* [tasks] */, 'textures.js', 'trader-core.js', 'trader-model.js', 'trader.js', 'treasure-models.js', 'treasure-rules.js', 'treasure.js', 'underwater-fx.js',
+  'survival-ui.js', 'tasks-model.js', 'tasks-rules.js', 'tasks.js' /* [tasks] */, 'textures.js', 'trader-core.js', 'trader-model.js', 'trader.js', 'treasure-models.js', 'treasure-rules.js', 'treasure.js', 'shells-rules.js', 'shells-book.js', 'shells.js' /* [shells] */, 'underwater-fx.js',
   'vitals-ui.js', 'vitals.js', 'waterfx.js', 'watering.js', 'wildlife-models.js', 'wildlife.js', 'wood.js', 'zipline-model.js', 'zipline.js' /* [zipline] */,
 ];
 

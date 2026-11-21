@@ -482,7 +482,7 @@ export const ITEM_SOURCE = Object.freeze({
   beet:        Object.freeze({ tag: 'barrels, crop plot', how: 'Hook floating barrels, or grow beets in a crop plot.' }), // [crops]
   potato:      Object.freeze({ tag: 'barrels, crop plot', how: 'Hook floating barrels, or grow potatoes in a crop plot.' }), // [crops]
   // Pim's trading barge (trader.js)
-  shell:       Object.freeze({ tag: 'trader', how: 'Trade fish or puff eggs to Pim at his trading barge.' }),
+  shell:       Object.freeze({ tag: 'trader', how: 'Pick up shell sparkles on island beaches, or trade fish or puff eggs to Pim at his trading barge.' }), // [shells]
   glassfloat:  Object.freeze({ tag: 'trader', how: 'A rare offer at Pim\u2019s trading barge; pay in Bright Shells.' }),
   // cooking pot (cookpot.js): meals are cooked, never crafted
   meal_chowder:  Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: fish + seaweed + fresh water; collect with a bowl.' }),

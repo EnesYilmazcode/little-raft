@@ -47,7 +47,7 @@
 // Second make() argument: peer(name) -> another live module (scarecrow), with peer.peek(name) -> its serialize().
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   observe(ev, actor)        host only: game events after success ({kind:'craft'|'collect'|'fish'|'build'|
-//                             'bottle'|'cook'|'water'|'harvest'|'gather'|'repair', ...}). Never from net/effects.
+//                             'bottle'|'cook'|'water'|'harvest'|'gather'|'repair'|'divegather' [shells], ...}). Never from net/effects.
 //   logbookTabs(out)          [lbtabs] push {id, label, view, render?, act?} extra logbook tabs; view() -> {sig, html, badge?} | null
 //   dispose()
 //
@@ -71,6 +71,7 @@ import { createAnimals } from './animals.js?build=v3-survival-ae77fa84ac2b';
 import { createBees } from './bees.js?build=v3-survival-ae77fa84ac2b'; // [bees]
 import { createCrops } from './crops.js?build=v3-survival-ae77fa84ac2b'; // [crops]
 import { createTreasure } from './treasure.js?build=v3-survival-ae77fa84ac2b';
+import { createShells } from './shells.js?build=v3-survival-ae77fa84ac2b'; // [shells]
 import { createMapTable } from './maptable.js?build=v3-survival-ae77fa84ac2b';
 import { createGull } from './gull.js?build=v3-survival-ae77fa84ac2b'; // [gull]
 import { createJuicer } from './juicer.js?build=v3-survival-ae77fa84ac2b'; // [juicer]
@@ -94,7 +95,7 @@ import { createSpyglass } from './spyglass.js?build=v3-survival-ae77fa84ac2b'; /
 import { createStorm } from './storm.js?build=v3-survival-ae77fa84ac2b'; // [storm]
 import { createStars } from './stars.js?build=v3-survival-ae77fa84ac2b'; // [stars]
 
-const FEATURES = [createIslands, createTreasure, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createStorm, createStars, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createCrops, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createSpyglass, createCookpot]; // round 4: game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); // [bees] + createBees; [scarecrow] after wildlife; [sit] + createSitting; [flags] + createFlags; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [storm] after daynight; [stars] after storm; [crops] + createCrops; [spyglass]; [juicer] + createJuicer [gull] + createGull
+const FEATURES = [createIslands, createTreasure, createShells, createMapTable, createWildlife, createScarecrow, createStorage, createDecorPack, createDayNight, createStorm, createStars, createSleep, createSitting, createEngine, createPaint, createKiln, createAnimals, createBees, createCrops, createPower, createFlags, createJuicer, createGull, createFishTrap, createDisplay, createTasks, createPhotoFrame, createFireworks, createZipline, createDivingGear, createTrader, createGameTable, createBuoyCourse, createPaddleboard, createSpyglass, createCookpot]; // round 4: game table, buoy course, paddleboard (buoycourse before paddleboard so its aimed E/prompts win while riding); // [bees] + createBees; [scarecrow] after wildlife; [sit] + createSitting; [flags] + createFlags; [fireworks] [zipline]; [power] after bees; [fishtrap] [display] [tasks] [camera]; round 3 diving gear, trader, cookpot (cookpot stays last); [storm] after daynight; [stars] after storm; [crops] + createCrops; [spyglass]; [juicer] + createJuicer [gull] + createGull
 FEATURES.push(createKelpLine); // [kelpline]
 // [undecor] decor whose module stores items per tile but has no beforeUndecor/undecorLoot/afterUndecor yet:
 // picking it up would lose what it holds, so the host refuses (display, fish trap, cooking pot, gull perch tray).
