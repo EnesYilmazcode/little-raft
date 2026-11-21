@@ -783,3 +783,7 @@ Checks: `npm test` 568/568 (was 533); shoot.py `errors: []`.
 Known limits: live two-peer co-op not run (co-op reviewed by code and unit tests). Mixed-version co-op unsupported (older builds drop the new decor and reset bags holding new kinds). Removing a barrel, sprinkler or hive with the hammer discards its contents. Fishing labels over 48 characters get cut off.
 Next ideas: hammer pickup that refunds contents, a placeable music stand, flower variety, sprinkler range ring while aiming.
 
+- Follow-up: the electron check caught an uncaught `isReady` TypeError (three r170 compileAsync polling a material disposed
+  mid-compile); patched the vendored three with the upstream-style guard. Full fleet-gate PASS at dbf2ca9 (983 tests,
+  hook-only spawn, Esc from inventory keeps the lock, no page errors, shoot.py 159 vs 156 ms on main = +2%).
+  PR #4 merged dbf2ca9 into main. PR #5 (round 6) is the open PR now.
