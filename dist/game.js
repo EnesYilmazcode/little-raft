@@ -350,7 +350,7 @@ export function mount(transfer = null) {
     camera.add(depthClear);
     for (const h of [hookHands, hammerHands, rodHands]) {
       h.group.traverse(c => { if (c.isMesh) { c.castShadow = false; c.receiveShadow = false; c.renderOrder = 1000; c.frustumCulled = false; for (const m of [].concat(c.material)) { m.depthTest = true; m.depthWrite = true; if (!m.transparent) { m.transparent = true; m.opacity = m.opacity ?? 1; } m.needsUpdate = true; } } });
-      singlePass(h.group); h.group.visible = false; camera.add(h.group);
+      singlePass(h.group); // attached to the camera only while held (see showViewmodel)
     }
   }
 
@@ -378,6 +378,13 @@ export function mount(transfer = null) {
       out.push(merged);
     }
     return out;
+  }
+  // Only the held viewmodel hangs under the camera, so per-frame matrix updates skip the other two entirely.
+  function showViewmodel(held) {
+    for (const h of [hookHands, hammerHands, rodHands]) {
+      if (h === held) { if (h.group.parent !== camera) camera.add(h.group); }
+      else if (h.group.parent) h.group.parent.remove(h.group);
+    }
   }
   function palm(parent, x, y, z, s = 1) {
     const g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); cylinder(.09, .17, 1.6, '#ad8153', 0, .8, 0, g);
@@ -769,18 +776,19 @@ export function mount(transfer = null) {
     swing = Math.max(0, swing - dt * 3);
     const kind = heldKind(), motion = options.cameraMotion;
     const ch = charging ? clamp((performance.now() - charging.start) / CHARGE_MS, 0, 1) : 0;
-    hookHands.group.visible = running && kind === 'hook';
-    hammerHands.group.visible = running && kind === 'hammer';
-    rodHands.group.visible = running && kind === 'fishingrod';
+    const vm = !running ? null : kind === 'hook' ? hookHands : kind === 'hammer' ? hammerHands : kind === 'fishingrod' ? rodHands : null;
+    showViewmodel(vm);
     const vp = vmParams; vp.dt = dt; vp.time = elapsed; vp.casting = swing; vp.walking = walking; vp.motion = motion; vp.charge = 0; vp.reeling = false; vp.hasHookOut = false;
-    if (hookHands.group.visible) { vp.charge = ch; vp.reeling = reeling && !!castOut(); vp.hasHookOut = !!castOut(); hookHands.update(vp); }
-    if (hammerHands.group.visible) hammerHands.update(vp);
-    if (rodHands.group.visible) {
+    if (vm === hookHands) { vp.charge = ch; vp.reeling = reeling && !!castOut(); vp.hasHookOut = !!castOut(); hookHands.update(vp); }
+    if (vm === hammerHands) hammerHands.update(vp);
+    if (vm === rodHands) {
       const out = !!hook?.fishing; if (rodModel.userData.float) rodModel.userData.float.visible = !out; if (rodModel.userData.leader) rodModel.userData.leader.visible = !out;
       vp.reeling = out && hook.t > fishWait; rodHands.update(vp);
     }
-    camera.updateMatrixWorld(true);
-    (kind === 'fishingrod' ? rodTip : hookHands.handTip).getWorldPosition(handPos);
+    camera.updateMatrixWorld(true); // camera, depth marker and the held viewmodel only
+    const tipOwner = kind === 'fishingrod' ? rodHands : hookHands, tip = kind === 'fishingrod' ? rodTip : hookHands.handTip;
+    if (tipOwner.group.parent === camera) tip.getWorldPosition(handPos);
+    else { tip.updateWorldMatrix(true, false); handPos.setFromMatrixPosition(tip.matrixWorld).applyMatrix4(camera.matrixWorld); } // detached: same spot as if held
   }
   function updateAvatars(dt) {
     player.position.set(physics.x, physics.y - EYE_OFFSET, physics.z); player.rotation.y = yaw + Math.PI;
