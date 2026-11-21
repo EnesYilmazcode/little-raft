@@ -262,6 +262,14 @@ export function createStorageUI(api) {
   dlg.addEventListener('close', onClosed, on);
   dlg.addEventListener('cancel', e => { e.preventDefault(); close(); }, on);
   dlg.addEventListener('keydown', e => { if (e.code === 'KeyE' && !e.repeat) { e.preventDefault(); e.stopPropagation(); close(); } }, on);
+  // Tab / Shift+Tab wrap inside the dialog (so focus never drops to the page behind it and E / Esc keep working).
+  dlg.addEventListener('keydown', e => {
+    if (e.code !== 'Tab' || !isOpen) return;
+    const els = [...dlg.querySelectorAll('button')].filter(el => !el.disabled && !el.closest('[hidden]') && el.offsetParent !== null);
+    if (!els.length) return;
+    const i = els.indexOf(document.activeElement);
+    if (e.shiftKey ? i <= 0 : i < 0 || i === els.length - 1) { e.preventDefault(); try { els[e.shiftKey ? els.length - 1 : 0].focus({ preventScroll: false }); } catch {} }
+  }, on);
   // Arrow keys move focus across slots / study tiles by layout (like the bag); from the panel itself they enter the first one.
   dlg.addEventListener('keydown', e => {
     if (!isOpen || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || !e.code.startsWith('Arrow')) return;

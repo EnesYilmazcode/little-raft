@@ -121,5 +121,6 @@ test('crate/desk dialog: Tab no longer closes, first slot gets focus, arrows nav
   assert.match(s, /function focusFirst\(\)/);
   const open = s.slice(s.indexOf('function open(type'), s.indexOf('function close()'));
   assert.match(open, /focusFirst\(\)/);
+  assert.match(s, /e\.code !== 'Tab' \|\| !isOpen/); // Tab wraps inside the dialog
   assert.match(s, /if \(ctx\.running\) ctx\.requestLock\?\.\(\)/); // closing still relocks
 });
