@@ -41,7 +41,7 @@ export function createNightlight(ctx) {
   const glow = T ? heldGlowMaterial(T) : null;
   const wallClock = () => (typeof performance !== 'undefined' && performance.now ? performance.now() / 1000 : time);
   const coolUntil = { host: -1e9, guest: -1e9 };
-  let time = 0, nf = 0, wantClock = 1, localCool = 0, lastReason = null;
+  let time = 0, nf = 0, wantClock = 1, bagVer = -2, localCool = 0, lastReason = null;
 
   // ---- swarm: one Points, always in the scene (its program links on the first frame), opacity 0 by day
   const swarm = T ? createSwarm(T, SWARM_POINTS) : null;
@@ -108,11 +108,19 @@ export function createNightlight(ctx) {
     if (loc.on) carryPoint(cam, loc);
     const o = ctx.other;
     par.on = !!o && o.held === 'handlantern' && !!cam && Math.hypot(o.x - cam.position.x, o.z - cam.position.z) <= PARTNER_RANGE;
-    if (par.on) { par.x = o.x; par.y = (Number.isFinite(o.y) ? o.y : (ctx.deckY ? ctx.deckY() : 0) + 1.6) + 0.15; par.z = o.z; }
+    if (par.on) { // at the partner's lantern hand, a little ahead of them (above their head it lit only hat and shoulders)
+      const yw = Number.isFinite(o.yaw) ? o.yaw : 0;
+      par.x = o.x - Math.sin(yw) * 0.35; par.y = (Number.isFinite(o.y) ? o.y : (ctx.deckY ? ctx.deckY() : 0) + 1.6) - 0.45; par.z = o.z - Math.cos(yw) * 0.35;
+    }
+    // Attach the pool once a lantern is owned: checked every second and at once when the bag changes (a slow
+    // first frame after crafting must not leave the pool off until the lantern is equipped at night).
     wantClock += dt;
-    if (wantClock >= 1) {
-      wantClock = 0;
-      if (!DAYNIGHT_CARRY.want) { const b = bag(); if ((b && b.count('handlantern') > 0) || par.on) DAYNIGHT_CARRY.want = true; }
+    if (!DAYNIGHT_CARRY.want) {
+      const b = bag(), v = b ? b.version : -1;
+      if (wantClock >= 1 || v !== bagVer) {
+        wantClock = 0; bagVer = v;
+        if ((b && b.count('handlantern') > 0) || par.on) DAYNIGHT_CARRY.want = true;
+      }
     }
     if (glow) glow.emissiveIntensity = 0.6 + 2.0 * nf;
     // swarm

@@ -139,7 +139,7 @@ export function createCoop(ctx, saved = null) {
       swimming:!!(f & 1), grounded:!!(f & 2), reeling:!!(f & 4), held:HELD[cp.h | 0] ?? null, charge:(cp.c | 0) / 100,
       hook:k ? {x:k[1], y:k[2], z:k[3]} : null, stage:k ? STAGES[k[0]] ?? null : null,
       ghost:g ? {x:g[0], z:g[1], kind:HELD[g[2]] ?? null, ok:!!g[3]} : null}, now());
-    lastPose = {x:p[0], y:p[1], z:p[2], yaw:p[3], swimming:!!(f & 1)};
+    lastPose = {x:p[0], y:p[1], z:p[2], yaw:p[3], swimming:!!(f & 1), held:HELD[cp.h | 0] ?? null}; // [nightlight] + held: content modules read ctx.other.held (partner's lantern)
     return ctx.role() === 'host' ? {type:'move', me:lastPose} : null; // keeps game.js `other` and liveness working
   }
 

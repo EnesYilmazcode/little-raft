@@ -145,7 +145,7 @@ test('no new lights: update at night with local + partner lanterns builds no Lig
     assert.equal(lights, 0);
     const st = w.nl.debug.state();
     assert.equal(st.local.on, true); assert.equal(st.partner.on, true); assert.equal(st.want, true);
-    assert.ok(Math.abs(st.partner.y - 1.95) < 1e-9, 'partner light at eye height + 0.15');
+    assert.ok(Math.abs(st.partner.y - 1.35) < 1e-9 && Math.abs(st.partner.z + 0.35) < 1e-9, 'partner light at hand height, a little ahead');
     assert.ok(st.local.y > w.ctx.camera.position.y + 0.2, 'carried light rides above the eye');
     assert.equal(st.swarm.lit, true); assert.ok(st.swarm.opacity > 0.5);
     const pts = []; w.ctx.scene.traverse(o => { if (o.isPoints) pts.push(o); });

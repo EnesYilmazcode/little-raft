@@ -37,7 +37,7 @@ export const HOLD = Object.freeze({
   fishingrod: { hand: 'right', pose: 'grip', rx: -0.15, rz: 0.6 },
   spade:      { hand: 'right', pose: 'grip', rx: 0.2, rz: 0.35 },
   finder:     { hand: 'right', pose: 'grip', rx: -1.1, rz: 0.25 },
-  handlantern: { hand: 'right', pose: 'grip', rx: 0.1, arm: [0, 0.02, 0] }, // [nightlight] hangs from the fist by its loop
+  handlantern: { hand: 'right', pose: 'grip', rx: 0.1, arm: [-0.06, 0.17, 0] }, // [nightlight] hangs from the fist by its loop
   spear:      { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 }, // [spear-repair] point forward, a ready jab
   metalspear: { hand: 'right', pose: 'grip', rx: -1.32, rz: 0.16 },
   brush:      { hand: 'right', pose: 'grip', rx: -0.25, ry: 0.35, rz: 0.35 }, // content hook (paint)

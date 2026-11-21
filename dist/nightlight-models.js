@@ -87,11 +87,11 @@ export function createFireflyJar(T) {
     { g: at(new T.CylinderGeometry(0.072, 0.07, 0.2, 14, 1, true), 0, 0.105, 0) },
     { g: at(new T.CircleGeometry(0.07, 14), 0, 0.006, 0, -Math.PI / 2) },
   ], false);
-  const glass = new T.Mesh(glassGeo, new T.MeshStandardMaterial({ color: '#d8f2ee', emissive: '#c8f060', emissiveIntensity: 0.12, roughness: 0.1,
+  const glass = new T.Mesh(glassGeo, new T.MeshStandardMaterial({ color: '#d8f2ee', emissive: '#c8f060', emissiveIntensity: 0.3, roughness: 0.1,
     transparent: true, opacity: 0.3, side: T.DoubleSide, forceSinglePass: true, depthWrite: false }));
   glass.name = 'jarGlass';
   const glow = new T.Mesh(at(new T.SphereGeometry(0.045, 8, 6), 0, 0.1, 0),
-    new T.MeshStandardMaterial({ color: '#eaffb8', emissive: '#c8f060', emissiveIntensity: 0.9, roughness: 1, transparent: true, opacity: 0.55, depthWrite: false }));
+    new T.MeshStandardMaterial({ color: '#eaffb8', emissive: '#c8f060', emissiveIntensity: 0.9, roughness: 1, transparent: true, opacity: 0.85, depthWrite: false }));
   glow.name = 'lanternGlow';
   // The night pool light sits at this bounding-sphere centre: lift it well above the jar (the candle lesson,
   // bees-model.js) so the deck around the jar glows instead of blowing out white. Radius still encloses the orb.
@@ -101,17 +101,31 @@ export function createFireflyJar(T) {
     const a = i * 2.4, r = 0.025 + 0.02 * ((i * 37) % 5) / 4, y = 0.05 + 0.022 * i;
     bugParts.push({ g: at(new T.OctahedronGeometry(0.008, 0), Math.cos(a) * r, y, Math.sin(a) * r) });
   }
-  const bugs = new T.Mesh(mergeParts(T, bugParts, false), new T.MeshStandardMaterial({ color: '#e8ff7a', emissive: '#e8ff7a', emissiveIntensity: 1.6, roughness: 1 }));
+  const bugs = new T.Mesh(mergeParts(T, bugParts, false), new T.MeshStandardMaterial({ color: '#e8ff7a', emissive: '#e8ff7a', emissiveIntensity: 2.4, roughness: 1 }));
   bugs.name = 'jarBugs';
   corkM.castShadow = true;
   g.add(corkM, glass, glow, bugs);
   return g;
 }
 
+// Soft round dot (16 x 16 white, radial alpha) so points read as glowing specks, not squares. One per THREE.
+let dotT = null, dotTex = null;
+function dotTexture(T) {
+  if (dotTex && dotT === T) return dotTex;
+  const N = 16, d = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const r = Math.hypot(x + 0.5 - N / 2, y + 0.5 - N / 2) / (N / 2), a = r >= 1 ? 0 : Math.pow(1 - r, 2.2), i = (y * N + x) * 4;
+    d[i] = d[i + 1] = d[i + 2] = 255; d[i + 3] = Math.round(a * 255);
+  }
+  dotTex = new T.DataTexture(d, N, N, T.RGBAFormat); dotTex.magFilter = T.LinearFilter; dotTex.minFilter = T.LinearFilter; dotTex.needsUpdate = true;
+  dotT = T;
+  return dotTex;
+}
+
 export function createSwarm(T, n = 40) {
   const geo = new T.BufferGeometry();
   geo.setAttribute('position', new T.BufferAttribute(new Float32Array(n * 3), 3));
-  const mat = new T.PointsMaterial({ size: 0.09, color: '#d8ff6a', transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false });
+  const mat = new T.PointsMaterial({ size: 0.09, map: dotTexture(T), color: '#d8ff6a', transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false });
   const p = new T.Points(geo, mat);
   p.name = 'nightlight-swarm'; p.frustumCulled = false;
   return p;
