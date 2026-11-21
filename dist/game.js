@@ -252,7 +252,22 @@ export function mount(transfer = null) {
 
   function hasTile(x, z) { const ts = world.tiles; for (let i = 0; i < ts.length; i++) if (ts[i][0] === x && ts[i][1] === z) return true; return false; }
   const isLocked = () => !!canvas && document.pointerLockElement === canvas;
-  const dialogOpen = () => !!document.querySelector('dialog[open]');
+  // dialog[open] is tracked, not queried per call: an observer marks the cache dirty when any 'open' attribute flips
+  // or a body child is added/removed; takeRecords() keeps it synchronous; the cached dialog is re-checked each call.
+  let shownDialog = null, dialogObs = null;
+  try {
+    dialogObs = new MutationObserver(() => { shownDialog = undefined; });
+    dialogObs.observe(document.documentElement, {subtree:true, attributes:true, attributeFilter:['open']});
+    if (document.body) dialogObs.observe(document.body, {childList:true});
+    signal.addEventListener('abort', () => dialogObs.disconnect());
+    shownDialog = undefined;
+  } catch { dialogObs = null; }
+  const dialogOpen = () => {
+    if (!dialogObs) return !!document.querySelector('dialog[open]');
+    if (dialogObs.takeRecords().length || (shownDialog && !(shownDialog.open && shownDialog.isConnected))) shownDialog = undefined;
+    if (shownDialog === undefined) shownDialog = document.querySelector('dialog[open]');
+    return !!shownDialog;
+  };
   const uiBlocked = () => dialogOpen() || !!survivalUI?.isOpen;
   const castOut = () => (hook && !hook.fishing ? hook : null);
   const guestWaiting = () => role === 'guest' && !networkReady;
@@ -1358,7 +1373,23 @@ export function mount(transfer = null) {
     return {x:r.left + (v.x + 1) / 2 * r.width, y:r.top + (1 - v.y) / 2 * r.height, visible:inFront && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1};
   }
   const worldPos = o => { if (!o) return null; const p = o.getWorldPosition(new T.Vector3()); return {x:p.x, y:p.y, z:p.z, visible:o.visible}; };
+  // Lightweight live view for per-tick HUD readers (prompts.js): same keys statePrompt() reads from .state, no copies.
+  const hudMe = {pitch:0}, hudBuild = {hover:false, affordable:false}, hudPickup = {type:null};
+  const hudMode = kind => (kind === 'hammer' ? 'build' : kind === 'fishingrod' ? 'fish' : kind === 'hook' ? 'hook' : DECOR_TYPES.includes(kind) ? 'place' : 'none');
+  const hudView = Object.freeze({
+    get running() { return running; }, get disposed() { return disposed; }, get role() { return role; }, get networkReady() { return networkReady; },
+    get pointerLocked() { return isLocked(); }, get lockFallback() { return lockFallback; },
+    get inventoryOpen() { return !!survivalUI?.isOpen; }, get dialogOpen() { return dialogOpen(); },
+    get heldKind() { return heldKind(); }, get tool() { return hudMode(heldKind()); }, get fishWait() { return fishWait; },
+    get hookStage() { return hook ? (hook.fishing ? 'fishing' : hook.stage) : 'idle'; },
+    get hookCaughtItems() { return caughtList(castOut()); }, // live list: read only
+    get pickup() { if (!pickTarget) return null; hudPickup.type = pickTarget.type; return hudPickup; },
+    get me() { hudMe.pitch = pitch; return hudMe; },
+    get build() { const mode = hudMode(heldKind()); hudBuild.hover = !!hover; hudBuild.affordable = mode === 'build' ? canAfford(localBag(), FLOOR_COST) : mode === 'place'; return hudBuild; },
+    get stock() { return localBag().counts(); },
+  });
   const debugApi = Object.freeze({
+    get hud() { return hudView; },
     get renderInfo() {
       if (!renderer) return null;
       const i = renderer.info, c = {meshes:0, visible:0, lights:0, shadowCasters:0};

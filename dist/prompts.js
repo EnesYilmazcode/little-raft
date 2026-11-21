@@ -128,9 +128,15 @@ function createPrompts(win, doc) {
   function tick() {
     safe(() => {
       if (!doc.body) return; ensureEls();
-      const m = mount(), debug = safe(() => win.raftDebug) || m?.debug, state = safe(() => debug?.state);
-      const ctx = {state, camera:m?.camera ?? null, T:m?.T ?? null, scene:m?.scene ?? null};
-      const blocked = !!doc.querySelector('dialog[open]') || !!state?.inventoryOpen;
+      const m = mount(), debug = safe(() => win.raftDebug) || m?.debug;
+      // debug.hud is a cheap live view; the full .state snapshot (big, grows with the raft) is only built if a
+      // registered prompt reads ctx.state, or when an older game.js without .hud is mounted.
+      const hud = safe(() => debug?.hud) || null;
+      let full = hud ? undefined : safe(() => debug?.state);
+      const state = hud || full;
+      const ctx = {get state() { if (full === undefined) full = safe(() => debug?.state); return full; }, camera:m?.camera ?? null, T:m?.T ?? null, scene:m?.scene ?? null};
+      const dialog = hud && typeof hud.dialogOpen === 'boolean' ? hud.dialogOpen : !!doc.querySelector('dialog[open]');
+      const blocked = dialog || !!state?.inventoryOpen;
       // Unlocked (resume hint up) shows nothing; drag-to-look fallback aims at the cursor, so the prompt follows it.
       const fallback = !!state?.lockFallback && !state?.pointerLocked; aimAt = fallback ? mouse : null;
       const show = !!state?.running && !state.disposed && (state.pointerLocked || (fallback && !!mouse)) && doc.body.classList.contains('playing') && !blocked;
