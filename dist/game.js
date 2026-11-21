@@ -388,6 +388,18 @@ export function mount(transfer = null) {
     camera.add(depthClear);
     camera.add(hands.group);
   }
+  // Held models and build ghosts for every kind in the bag are built ahead and their shaders compiled
+  // (renderer.compile covers hidden meshes), so the first switch to an item never links programs mid-play.
+  const warmedKinds = new Set();
+  function warmKinds() {
+    const slots = localBag().slots; let fresh = false;
+    for (let i = 0; i < slots.length; i++) {
+      const k = slots[i]?.kind; if (!k || warmedKinds.has(k)) continue;
+      warmedKinds.add(k); fresh = true; hands.preload([k]);
+      if (k === 'hammer') ghosts.preload(['floor']); else if (DECOR_TYPES.includes(k)) ghosts.preload([k]);
+    }
+    if (fresh) { try { renderer.compileAsync(scene, camera).catch(() => {}); } catch (e) { console.warn('shader warm-up failed', e); } }
+  }
 
   function palm(parent, x, y, z, s = 1) {
     const g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); cylinder(.09, .17, 1.6, '#ad8153', 0, .8, 0, g);
@@ -976,7 +988,7 @@ export function mount(transfer = null) {
     if (running) { saveClock += dt; if (saveClock > 3) { saveClock = 0; save(); } }
     if (conn?.open) { networkTick += dt; if (networkTick > .12) { networkTick = 0; send(role === 'host' ? hostState() : {type:'move', me:pose()}); } }
     if (survivalUI && !uiFailed) { try { survivalUI.update?.(); } catch (e) { uiFailed = true; console.error('survival UI update failed', e); } }
-    refreshPointerUI(); updateCharge(); updateContext(dialog);
+    refreshPointerUI(); updateCharge(); updateContext(dialog); warmKinds();
     renderer.render(scene, camera);
     cpuMsAvg += (performance.now() - now - cpuMsAvg) * .05;
     adaptResolution(now);
