@@ -57,7 +57,7 @@ Constants: `LINES=[8,16,24]`, `STEER_MAX=0.9`, `MAX_TIED=6`, `TUG=0.25`, `TUG_T=
 - Import `windOf…` from `./kite-core.js` and the models from `./kite-model.js` with no `?build` suffix, the same as neighbouring new modules (check `buoycourse.js`).
   Local state: `st` (eased inputs for my hand kite), `remote` (eased copy for the partner), `tiedViz[]` (up to 6 per-entry meshes and phases),
   and a preallocated `W`, `pose`, line and tail arrays. Weather comes from `ctx.content?.mods.find(m => m.name==='daynight' && !m.dead)?.wind`. Cache the module reference after the first lookup. `debug.setWind` overrides `s`.
-- **Held kind**: `const k = ctx.localBag().selectedKind?.()`. Copy how paint's `holding()` gets the selected kind, and use the same accessor. The kind is a kite when `k.startsWith('kite_')`; then `p = ['kite_sunburst','kite_gullwing','kite_tidestripe'].indexOf(k)`.
+- **Held kind**: `const b = ctx.localBag(), k = b?.slots[b.selectedIndex]?.kind ?? null`, copied from paint `heldKind()` (`paint.js:127`). The kind is a kite when `k.startsWith('kite_')`; then `p = ['kite_sunburst','kite_gullwing','kite_tidestripe'].indexOf(k)`.
 - **use(aim, kind)** (LMB on press, verified at `game.js:1279`) for `kite_*` kinds only:
   - When nothing is flying, a launch needs `ctx.physics.grounded && !ctx.physics.swimming`. If that fails, show the notice "Stand on the deck to launch".
     Otherwise set `st = {p, Lt:16, L:6, steer:0, launch:0, tug:0}`, call `ctx.play('throw', .5)` and send `ctx.action({kind:'kite.fly', p, L:16, s:0})`.
@@ -145,33 +145,15 @@ At most one spot per 90 s. Nothing is saved: `spotClock`, `n` and `pull` are run
 | `pose()` | returns the last pose of my kite |
 
 ## Tests (`tests/kite.test.mjs`, core only)
-1. `windOf`:
-   - apparent wind subtracts raft velocity
-   - min-0.3 clamp
-   - `s` bounded to 0.3..1.25, with calm weather lower than breezy
-   - NaN inputs fall back
-2. `kitePose`:
-   - deterministic: the same inputs give the same output
-   - |K-A| ≈ L before wobble, within 1 m
-   - elevation rises with `s`
-   - `e` drops at |steer| 0.9 compared with 0
-   - y never goes below waterY+2
-   - all outputs are finite for extreme or NaN inputs
-3. `easeInputs`:
-   - 1×1 s and 100×0.01 s steps end within 2%
-   - L moves at ≤2 m/s
-   - launch reaches 1 after 3 s
-   - landing returns true at 0
-   - tug decays to 0 by 1.2 s
-4. `steerFromYaw`:
-   - clamps to ±0.9
-   - holds `prev` when facing upwind
-   - sign: looking left of downwind steers left
+1. `windOf`: apparent wind subtracts raft velocity; min-0.3 clamp; `s` bounded to 0.3..1.25, with calm weather lower than breezy; NaN inputs fall back.
+2. `kitePose`: deterministic; |K-A| ≈ L before wobble (within 1 m); elevation rises with `s`; `e` drops at |steer| 0.9 compared with 0; y never below waterY+2; outputs finite for extreme or NaN inputs.
+3. `easeInputs`: 1×1 s and 100×0.01 s steps end within 2%; L moves at ≤2 m/s; launch reaches 1 after 3 s; landing returns true at 0; tug is 0 by 1.2 s.
+4. `steerFromYaw`: clamps to ±0.9; holds `prev` when facing upwind; looking left of downwind steers left.
 5. `anchorOf`: edge r0 and r1, pillar and level offsets, and null for a floor.
-6. `cleanKite`: junk becomes an empty slice, bad keys, p, L and s are dropped, duplicate keys are removed, the list caps at 6, a save drops fly, a net load keeps fly, and rev is clamped.
+6. `cleanKite`: junk gives an empty slice; bad keys, p, L and s are dropped; duplicate keys removed; caps at 6; a save drops fly, a net load keeps it; rev clamped.
 7. `spotDue`: deterministic and always within 90..150.
-8. `pickDebris`: excludes cache, bottle and unknown types and held tokens, respects 14..70 m, and returns the nearest.
-9. `linePoints` and `tailPoints`: endpoints equal A and K, the line sags below the chord, and no NaN.
+8. `pickDebris`: excludes cache, bottle, unknown types and held tokens; respects 14..70 m; returns the nearest.
+9. `linePoints` and `tailPoints`: endpoints equal A and K, the line sags below the chord, no NaN.
 10. `HELD` append check (import `dist/coop.js` only if it is side-effect-free under node; otherwise read the file and regex the array).
 
 ## Acceptance
