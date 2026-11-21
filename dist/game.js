@@ -42,7 +42,7 @@ import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, hookableItems,
 import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal, guestLeavePlan, LIVE_STATUS_EVENT } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
-import { createQuality, setShadows } from './quality.js?build=v3-survival-ae77fa84ac2b';
+import { createQuality, setShadows, probeGpu, wantMsaa } from './quality.js?build=v3-survival-ae77fa84ac2b';
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
@@ -272,7 +272,7 @@ export function mount(transfer = null) {
   let vitalsUI = null, eating = null, fainted = Number.isFinite(X?.fainted) ? X.fainted : -1, exertion = 1; // eating {item, slot, t}; fainted: seconds into the faint, -1 = awake
   const vitalsOpts = {mult:1};
   let building = null, sentPieces = null; // building-pieces lane hook (sentPieces: last pieces array sent to the guest)
-  let scene = null, camera = null, renderer = null, quality = null, ocean = null, sky = null, raft, itemsGroup, ghosts, rope, ropeAttr, hookMesh, bobber, friend, player, sun;
+  let scene = null, camera = null, renderer = null, gpu = null, quality = null, ocean = null, sky = null, raft, itemsGroup, ghosts, rope, ropeAttr, hookMesh, bobber, friend, player, sun;
   let hemi = null, clouds = [], content = null; // content hook: lights/clouds handed to content modules
   let hands = null, offIconReady = null, clothMat; // one hands controller swaps the held item model per hotbar kind
   const modelOf = k => { try { return getModel(k); } catch (e) { console.warn('model failed', k, e); return null; } };
@@ -434,13 +434,14 @@ export function mount(transfer = null) {
     prepareDom();
     scene = new T.Scene(); sky = createSky(T, {sunDirection:new T.Vector3(-15, 28, 12)}); scene.add(sky.group); scene.background = sky.horizonColor.clone(); scene.fog = new T.Fog(sky.horizonColor.clone(), 60, 260);
     camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 200); camera.rotation.order = 'YXZ'; scene.add(camera);
-    renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:devicePixelRatio < 1.5}); // dense screens get their smoothing from pixels, not MSAA
+    const reuse = X?.renderer && X.renderer.domElement === canvas; gpu = reuse && gpu ? gpu : probeGpu(document); // tier from the GL renderer string (SwiftShader/llvmpipe/basic render = weak); same detection with or without ?pinQuality
+    renderer = reuse ? X.renderer : new T.WebGLRenderer({canvas, antialias:wantMsaa(gpu.tier, devicePixelRatio)}); // MSAA on real GPUs at dpr<1.5 only: weak GL is fill-bound and dense screens smooth with pixels
     try { setIconRenderer(renderer); } catch {} // item icons share this WebGL context
     renderer.setSize(innerWidth, innerHeight);
     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     hemi = new T.HemisphereLight('#bfe6ff', '#2f6f7a', 1.0); scene.add(hemi); // content hook: kept for day/night; blue sky fill from above, teal sea bounce from below
     sun = new T.DirectionalLight('#ffeccb', 3.0); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.0004; sun.shadow.normalBias = .03; sun.shadow.radius = 3; scene.add(sun, sun.target); // shadow box is fitted to the raft each frame
-    quality = createQuality({sun, shadowMap:renderer.shadowMap, preset:options.graphics, onChange:() => applyUserGraphics()}); applyUserGraphics(); // owns the level (shadow map size, shadow pass on/off); applyUserGraphics sets the pixel ratio once, with the render scale
+    quality = createQuality({sun, shadowMap:renderer.shadowMap, preset:options.graphics, tier:gpu.tier, onChange:() => applyUserGraphics()}); applyUserGraphics(); // owns the level (shadow map size, shadow pass on/off); applyUserGraphics sets the pixel ratio once, with the render scale
     ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#a6e9f2', fadeNear:28, fadeFar:190}); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
     if (ART.artEnabled()) ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T}); // art lane hook
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
@@ -2070,7 +2071,7 @@ export function mount(transfer = null) {
       if (!renderer) return null;
       const i = renderer.info, c = {meshes:0, visible:0, lights:0, shadowCasters:0};
       scene?.traverse(o => { if (o.isMesh || o.isLine || o.isPoints) { c.meshes++; if (o.visible) c.visible++; if (o.castShadow) c.shadowCasters++; } if (o.isLight) c.lights++; });
-      return {calls:i.render.calls, triangles:i.render.triangles, lines:i.render.lines, points:i.render.points, geometries:i.memory.geometries, textures:i.memory.textures, programs:i.programs?.length ?? null, pixelRatio:renderer.getPixelRatio(), shadows:renderer.shadowMap.enabled && renderer.shadowMap.autoUpdate && !!sun?.castShadow && sun.shadow.intensity > 0, quality:quality ? {level:quality.level, levels:quality.levels.length, preset:quality.info.preset, pixelRatio:quality.info.pixelRatio, shadowMapSize:quality.info.shadowMapSize, ema:quality.info.ema} : null, ...c};
+      return {calls:i.render.calls, triangles:i.render.triangles, lines:i.render.lines, points:i.render.points, geometries:i.memory.geometries, textures:i.memory.textures, programs:i.programs?.length ?? null, pixelRatio:renderer.getPixelRatio(), msaa:!!renderer.getContext().getContextAttributes()?.antialias, gpuTier:gpu?.tier ?? null, gpuRenderer:gpu?.renderer ?? null, shadows:renderer.shadowMap.enabled && renderer.shadowMap.autoUpdate && !!sun?.castShadow && sun.shadow.intensity > 0, quality:quality ? {level:quality.level, levels:quality.levels.length, preset:quality.info.preset, pixelRatio:quality.info.pixelRatio, shadowMapSize:quality.info.shadowMapSize, ema:quality.info.ema} : null, ...c};
     },
     audio:sfx, // volume buses (setBus/getBus master|effects|ambience|music) and setMusic for the menus
     get state() {
