@@ -190,6 +190,11 @@ test('module: ride pins under the rope, clamps over the deck, lets go on Space, 
   assert.ok(minFeet >= .2 + .04, 'feet at ' + minFeet);
   physics._jumpBuffer = .1; mod.afterMove(physics, 1 / 60);
   assert.equal(mod.debug.ride, null); assert.equal(physics.vy, 2); assert.equal(physics._jumpBuffer, 0);
+  // low fps: the substeps already used the jump buffer, but the held-jump flag rises -> still lets go
+  Object.assign(physics, { x: -6, y: 1.8, z: 0, grounded: true, vy: 0, _prevJump: false });
+  assert.ok(mod.interact(null)); mod.afterMove(physics, 1 / 60);
+  physics._prevJump = true; mod.afterMove(physics, 1 / 60);
+  assert.equal(mod.debug.ride, null); physics._prevJump = false;
   // ride again to the end
   Object.assign(physics, { x: -6, y: 1.8, z: 0, grounded: true, vy: 0 });
   assert.ok(mod.interact(null));

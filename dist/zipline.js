@@ -148,7 +148,7 @@ export function createZipline(ctx, { peek } = {}) {
     if (!lineEnds(r)) return false;
     const len = Math.max(1, Math.hypot(tB.x - tA.x, tB.y - tA.y, tB.z - tA.z)), s0 = Math.min(.45, ZIP.START_S / len);
     if (post.id === pick[0]) { r.t = s0; r.dir = 1; } else { r.t = 1 - s0; r.dir = -1; }
-    ride = r; pending = null;
+    r.jumpWas = !!ph._prevJump; ride = r; pending = null;
     ctx.play?.('reel', .3);
     return true;
   }
@@ -166,7 +166,10 @@ export function createZipline(ctx, { peek } = {}) {
   function afterMove(ph, dt) {
     if (!ride || !ph) return;
     if (!lineEnds(ride) || !ctx.running || ctx.uiOpen?.() || ctx.steering?.()) { drop(ph, 0); return; }
-    if (ph._jumpBuffer > 0 || ph.vy > 0) { drop(ph, 2); return; } // Space: let go (gravity + floor snap land us)
+    // Space: let go (gravity + floor snap land us). The jump buffer alone is not enough: at low fps the
+    // frame's substeps use it up before this hook runs, so also watch the jump key's rising edge.
+    const jumpNow = !!ph._prevJump, jumpEdge = jumpNow && !ride.jumpWas; ride.jumpWas = jumpNow;
+    if (jumpEdge || ph._jumpBuffer > 0 || ph.vy > 0) { drop(ph, 2); return; }
     const r = hold ? '' : rideStep(ride, tA, tB, Number.isFinite(dt) ? Math.max(0, Math.min(dt, .1)) : 0);
     if (r === 'bad' || !Number.isFinite(ride.t)) { drop(ph, 0); return; }
     if (!hold) {
@@ -235,12 +238,12 @@ export function createZipline(ctx, { peek } = {}) {
     const held = heldKind();
     if (held === 'rope' && aimPost) {
       if (!pending) return '<kbd>E</kbd>Tie rope here';
-      if (pending.id === aimPost.id) return 'Now press E on another post';
+      if (pending.id === aimPost.id) return null; // a prompt without <kbd> turns into a feed notice; the E notice already said it
       return hasLine(state, pending.id, aimPost.id) ? '<kbd>E</kbd>Untie line' : '<kbd>E</kbd>Link to this post';
     }
     if (held === 'zippost') {
       if (aimPost) return '<kbd>Right click</kbd>Pick up post';
-      if (place) return place.why ? ctx.esc(ZIP_TEXT[place.why] ?? '') : '<kbd>Click</kbd>Place post';
+      if (place) return place.why ? null : '<kbd>Click</kbd>Place post'; // red ghost; the reason comes as a notice on click
       return null;
     }
     if (held !== 'rope' && nearPost()) return '<kbd>E</kbd>Ride the zipline';
@@ -295,7 +298,7 @@ export function createZipline(ctx, { peek } = {}) {
       state: () => JSON.parse(JSON.stringify(state)),
       get ride() { return ride ? { ...ride } : null; },
       get aimPost() { return aimPost ? { ...aimPost } : null; },
-      get place() { return place ? { ...place } : null; },
+      get target() { return place ? { ...place } : null; },
       get pending() { return pending ? { ...pending } : null; },
       place: (i, j, l = 0) => send({ kind: 'zipline.post', i, j, l }),
       link: (a, b) => send({ kind: 'zipline.link', a, b }),
@@ -308,6 +311,22 @@ export function createZipline(ctx, { peek } = {}) {
         const A = postById(state, l[0]), B = postById(state, l[1]);
         const p = ropePoint(topOf(A, {}), topOf(B, {}), t, {}); return { x: p.x, y: p.y + yOff(), z: p.z, local: p.y };
       },
+      demo() { // QA: a deck strip, an upper floor on pillars at cells (4..5, 0), posts at deck (0,0) and floor (4,0,1), linked
+        if (isGuest() || !ctx.building) return null;
+        const w = ctx.world, have = new Set(w.tiles.map(t => t[0] + ',' + t[1]));
+        for (let i = -1; i <= 6; i++) for (let j = -1; j <= 1; j++) if (!have.has(i + ',' + j)) w.tiles.push([i, j]);
+        w.tiles = w.tiles.slice();
+        const pieces = (w.pieces || []).filter(p => !(p.l >= 1 && p.i >= 3));
+        for (let i = 4; i <= 6; i++) for (let j = 0; j <= 1; j++) pieces.push({ t: 'pillar', i, j, l: 0, r: 0 });
+        pieces.push({ t: 'floor', i: 4, j: 0, l: 1, r: 0 }, { t: 'floor', i: 5, j: 0, l: 1, r: 0 });
+        w.pieces = pieces; ctx.building.sync(w); ctx.rebuildRaft?.();
+        const b = ctx.localBag(); b.add('zippost', 3); b.add('rope', 3);
+        const n = state.posts.length;
+        send({ kind: 'zipline.post', i: 0, j: 0, l: 0 }); send({ kind: 'zipline.post', i: 4, j: 0, l: 1 });
+        const ids = state.posts.slice(n).map(p => p.id); if (ids.length === 2) send({ kind: 'zipline.link', a: ids[0], b: ids[1] });
+        return { ids, state: JSON.parse(JSON.stringify(state)) };
+      },
+      standAt(x, y, z) { const p = ctx.physics; if (!p) return false; p.x = x; p.y = yOff() + y; p.z = z; p.vx = p.vy = p.vz = 0; p.grounded = false; return true; },
       grant(n = 2) { if (isGuest()) return false; const b = ctx.localBag(); b.add('zippost', n); b.add('rope', 2); return true; },
     },
   };
