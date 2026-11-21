@@ -1,5 +1,5 @@
-// Little Raft interaction prompts: a small key prompt just bottom-right of the crosshair (#lrPrompt)
-// plus a bottom-left event feed (#lrFeed) that takes over game.js's centred #contextPrompt notices.
+// Little Raft interaction prompts: one small key-prompt line 12px above the hotbar (#lrPrompt, R3.3.3)
+// plus notices taken over from game.js's centred #contextPrompt, posted into the bottom-left pickup feed.
 // API (window.raftPrompts): register({id, object?, test?, range, priority, prompt}) -> unregister,
 //   provide({id, priority, prompt}) -> unregister, current(), refresh(), feed(text).
 // prompt(ctx, hit) returns {key:'E', label:'Pick up', hold?, muted?} | up to 2 of them | null.
@@ -9,7 +9,7 @@ const SAMPLE_MS = 100, FEED_MAX = 4, FEED_MS = 4000, DUP_MS = 600;
 const PICK_NAMES = {wood:'plank', leaf:'leaves', plastic:'plastic jug', scrap:'scrap', barrel:'barrel'};
 const DECOR_NAMES = {sail:'sail', palm:'palm planter', lantern:'lantern', net:'net', bench:'bench', crate:'crate'};
 const FLOOR_COST = {wood:2, plastic:2};
-const SLOT_X = 34, SLOT_Y = 26; // prompt offset from the aim point (keep in sync with #lrPrompt in prompts.css)
+const HOTBAR_GAP = 12; // px between the prompt line and the hotbar top (R3.3.3); prompts.css holds the fallback
 const STORE_KEY = 'little-raft-prompts-v1';
 export const THROW_TEACH = 5; // tool prompts teach, then get out of the way (Raft-style)
 const CLIMB_REACH = 1.25; // player-physics: tile-edge distance - BODY_RADIUS(.25) <= CLAMBER_REACH(.8); a little slack while swimming in
@@ -124,8 +124,11 @@ function createPrompts(win, doc) {
     return safe(() => {
       const t = formatFeed(text), now = Date.now(); if (!t || !shouldPost(lastFeed, t, now)) return false;
       lastFeed = {text:t, at:now}; ensureEls();
-      const line = doc.createElement('div'); line.className = 'lr-line'; line.textContent = t; // untrusted: textContent only
-      feedEl.appendChild(line); while (feedEl.children.length > FEED_MAX) feedEl.firstElementChild.remove();
+      // Notices join the bottom-left pickup feed as a status row (R3.2.7); #lrFeed is only the fallback host.
+      const host = doc.getElementById('pickupFeed') || feedEl;
+      const line = doc.createElement('div'); line.className = 'lr-line pf-row pf-note';
+      const txt = doc.createElement('span'); txt.textContent = t; line.append(doc.createElement('i'), txt); // untrusted: textContent only
+      host.appendChild(line); const old = host.querySelectorAll(':scope>.lr-line'); for (let i = 0; i < old.length - FEED_MAX; i++) old[i].remove();
       win.setTimeout(() => line.classList.add('lr-out'), FEED_MS); win.setTimeout(() => line.remove(), FEED_MS + 450);
       return true;
     }, false);
@@ -173,7 +176,9 @@ function createPrompts(win, doc) {
       // Unlocked (resume hint up) shows nothing; drag-to-look fallback aims at the cursor, so the prompt follows it.
       const fallback = !!state?.lockFallback && !state?.pointerLocked; aimAt = fallback ? mouse : null;
       const show = !!state?.running && !state.disposed && (state.pointerLocked || (fallback && !!mouse)) && doc.body.classList.contains('playing') && !blocked;
-      const pos = aimAt ? `left:${Math.round(aimAt.x + SLOT_X)}px;top:${Math.round(aimAt.y + SLOT_Y)}px` : '';
+      // Never beside the crosshair (R3.0): sit just above the hotbar, wherever its current skin puts its top edge.
+      const bar = show ? doc.querySelector('.tools.sv-hotbar') : null, r = bar ? safe(() => bar.getBoundingClientRect()) : null;
+      const pos = r && r.height > 0 ? `bottom:${Math.round(win.innerHeight - r.top + HOTBAR_GAP)}px` : '';
       if (pos !== placed) { placed = pos; promptEl.style.cssText = pos; }
       let list = null;
       if (show) {
