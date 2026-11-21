@@ -13,7 +13,7 @@
 // uBase, horizontal distance from uCrown), so ANY geometry can sway without extra vertex attributes - that is
 // what lets the merged crafts.js palm use it unchanged. All foliage materials share one program per variant.
 
-export const FOLIAGE_KINDS = Object.freeze(['palm', 'palmFar', 'palmCard', 'bush', 'fern', 'broadleaf', 'grass']);
+export const FOLIAGE_KINDS = Object.freeze(['palm', 'palmFar', 'palmCard', 'coconuts', 'bush', 'fern', 'broadleaf', 'grass']);
 
 const PARS = /* glsl */`
 uniform float uTime, uWindStrength;
@@ -113,11 +113,18 @@ const DITHER_FRAG = /* glsl */`
 #endif
 `;
 
+// Program cache keys carry a hash of the shader source, so a hot-swapped build whose BODY changed never reuses a
+// stale program that an older engine left in the renderer's cache.
+// The hash covers the GLSL strings and createFoliage's own source (its onBeforeCompile string replacements).
+const fnv = (str) => { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 0x01000193); return (h >>> 0).toString(36); };
+let SRC_HASH = '';
+export const shaderVersion = () => SRC_HASH || (SRC_HASH = fnv(PARS + BODY + DITHER_FRAG + createFoliage.toString()));
+
 const DEFAULT_PARAMS = {
   palm:      { base: 0,    height: 4.3, bend: 0.10, flutter: 1.0, reach: 1.6, crown: [0, 4.3, 0], fade: null, tree: true },
   palmFar:   { base: 0,    height: 4.3, bend: 0.10, flutter: 0.7, reach: 1.6, crown: [0, 4.3, 0], fade: null, tree: true },
   palmCard:  { base: 0,    height: 4.3, bend: 0.10, flutter: 1.0, reach: 1.6, crown: [0, 4.3, 0], fade: null, tree: true },
-  bush:      { base: 0,    height: 0.9, bend: 0.12, flutter: 0.35, fade: [34, 46] },
+  bush:      { base: 0,    height: 0.9, bend: 0.12, flutter: 0.35, fade: [62, 74] },
   fern:      { base: 0,    height: 0.7, bend: 0.18, flutter: 0.9, fade: [24, 34] },
   broadleaf: { base: 0,    height: 1.0, bend: 0.16, flutter: 0.8, fade: [28, 40] },
   grass:     { base: 0,    height: 0.4, bend: 0.45, flutter: 0.9, fade: [17, 27] },
@@ -131,9 +138,11 @@ export function createFoliage(T, options = {}) {
     uWindStrength: { value: options.strength ?? 0.4 },
     uEye: { value: new T.Vector3() },
     // light direction for the canopy translucency tint (game.js sun.position, normalised)
-    uSunDir: { value: new T.Vector3().fromArray(options.sunDir || [-15, 28, 12]).normalize() },
+    // Pass sunDirUniform (e.g. ocean.uniforms.uSunDir, which daynight.js rewrites every frame) to share it.
+    uSunDir: options.sunDirUniform || { value: new T.Vector3().fromArray(options.sunDir || [-15, 28, 12]).normalize() },
   };
   const lambert = options.lambert ?? true;
+  shaderVersion();
   const owned = new Set(), lods = [];
 
   // Patch any built-in material (Lambert/Standard/Phong/Depth). params: see DEFAULT_PARAMS. Returns mat.
@@ -161,7 +170,7 @@ export function createFoliage(T, options = {}) {
       if (p.twoSided) shader.fragmentShader = shader.fragmentShader
         .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n#ifdef DOUBLE_SIDED\n normal *= faceDirection;\n#endif');
     };
-    const key = 'foliage' + (p.tree ? 'T' : '') + (p.fade ? 'F' : '') + (p.dither ? 'X' : '') + (p.twoSided ? '2' : '');
+    const key = 'foliage' + SRC_HASH + (p.tree ? 'T' : '') + (p.fade ? 'F' : '') + (p.dither ? 'X' : '') + (p.twoSided ? '2' : '');
     mat.customProgramCacheKey = () => key;
     mat.needsUpdate = true;
     return mat;
@@ -181,6 +190,10 @@ export function createFoliage(T, options = {}) {
     };
     const key = src.customProgramCacheKey();
     d.customProgramCacheKey = () => key + 'D';
+    // The twin lives and dies with its source material: whoever disposes the visible material (F.dispose,
+    // game.js disposeGeometry/disposeScene, islands models.dispose) also frees the shadow program.
+    src.addEventListener('dispose', () => d.dispose());
+    src.userData.foliageDepth = d;
     return d;
   }
 
@@ -251,7 +264,9 @@ export function createFoliage(T, options = {}) {
   }
 
   const _v = new T.Vector3();
-  function update(time, camera) {
+  // windTarget (optional, 0..1): eased toward, e.g. from daynight.js weather wind.
+  function update(time, camera, windTarget) {
+    if (windTarget != null && windTarget === windTarget) wind.uWindStrength.value += (windTarget - wind.uWindStrength.value) * 0.02;
     wind.uTime.value = time;
     if (camera) {
       camera.getWorldPosition(wind.uEye.value);
@@ -419,6 +434,12 @@ const BUILDERS = {
   palm(T, o = {}) { return palmGeo(T, o, 2); },
   palmFar(T, o = {}) { return palmGeo(T, o, 1); },
   palmCard(T, o = {}) { return palmGeo(T, o, 'card'); },
+  // Coconuts alone (islands.js hides them per instance once a palm is spent). o.top = crown point [x, y, z].
+  coconuts(T, o = {}) {
+    const B = makeBuilder(T), t = o.top || [0.5, 4.3, 0.04];
+    coconutCluster(T, B, new T.Vector3(t[0], t[1], t[2]), rng(o.seed ?? 7));
+    return B.build({ foliage: { height: t[1], crown: [t[0], t[1], t[2]], reach: 1 } });
+  },
 
   // Tropical shrub: 3-5 squashed low-poly lumps + a few hibiscus-like flowers.
   bush(T, o = {}) {
@@ -522,7 +543,9 @@ const BUILDERS = {
 function palmGeo(T, o, detail) {
   const r = rng(o.seed ?? 7), B = makeBuilder(T), V = (x, y, z) => new T.Vector3(x, y, z);
   const H = o.height ?? 4.3, lean = o.lean ?? 0.5;
-  const curve = new T.CatmullRomCurve3([V(0, 0, 0), V(lean * 0.12, H * 0.3, 0), V(lean * 0.45, H * 0.65, 0.02), V(lean, H, 0.04)]);
+  // o.points: explicit trunk spine [[x, y, z], ...] base to crown (islands.js passes its PALM_BEND curve so the
+  // pick capsule and coconut sphere stay on the trunk); otherwise a gentle lean along +x.
+  const curve = new T.CatmullRomCurve3(o.points ? o.points.map(p => V(p[0], p[1], p[2])) : [V(0, 0, 0), V(lean * 0.12, H * 0.3, 0), V(lean * 0.45, H * 0.65, 0.02), V(lean, H, 0.04)]);
   // trunk: smooth-shaded tapered tube along the curve. Each segment starts with a slightly proud, darker ring
   // band (leaf scar) and tapers in toward the next one, so the silhouette is ringed but the surface reads round.
   const near = detail !== 1, NS = near ? 15 : 5, RAD = near ? 7 : 5;
@@ -559,12 +582,7 @@ function palmGeo(T, o, detail) {
   const top = curve.getPointAt(1);
   // crown knob (fibrous, lighter than the bark) + coconuts: smooth normals so they read round, not as dark facets
   lowBlob(T, B, top.clone().add(V(0, 0.03, 0)), 0.17, 0.8, new T.Color(0x7a6040), new T.Color(0x9c8255), r, 0, true);
-  if (detail !== 1 || o.coconuts) {
-    for (let k = 0; k < 3; k++) {
-      const a = 0.5 + k * 2.1 + r() * 0.3;
-      lowBlob(T, B, top.clone().add(V(Math.cos(a) * 0.15, -0.12, Math.sin(a) * 0.15)), 0.115, 1, new T.Color(0x9aa23e), new T.Color(0xc9c25a), r, 0, true);
-    }
-  }
+  if (o.coconuts !== false && (detail !== 1 || o.coconuts)) coconutCluster(T, B, top, r);
   // fronds: soft up-biased normals so the canopy reads bright from below and from above
   B.setNormals((v, n) => n.clone().multiplyScalar(0.55).add(V(0, 0.7, 0)).normalize());
   const C = top.clone().add(V(0, 0.08, 0));
@@ -574,12 +592,20 @@ function palmGeo(T, o, detail) {
   for (let f = 0; f < NF; f++) {
     const ang = f * 2.39996 + (r() - 0.5) * 0.3;
     const tier = f % 3; // 0: high arching, 1: mid, 2: low drooping
-    const L = (tier === 0 ? 1.5 : tier === 1 ? 1.75 : 1.65) * (0.9 + r() * 0.2) * H / 4.3;
+    const L = (tier === 0 ? 1.5 : tier === 1 ? 1.75 : 1.65) * (0.9 + r() * 0.2) * H / 4.3 * (o.frondScale ?? 1);
     const peak = [0.45, 0.25, 0.08][tier] * H / 4.3, drop = [0.35, 0.8, 1.25][tier] * H / 4.3;
     const isDry = (o.dry ?? 2) > 0 && f >= NF - (o.dry ?? 2);
     frond(T, B, C, ang, L, peak, isDry ? drop * 1.6 : drop, NL, isDry ? dry : pal, detail, r);
   }
-  return B.build({ foliage: { height: H, crown: [C.x, C.y, C.z], reach: 1.7 * H / 4.3 } });
+  return B.build({ foliage: { height: H, crown: [C.x, C.y, C.z], reach: 1.7 * H / 4.3 * (o.frondScale ?? 1) } });
+}
+
+// Three green-yellow coconuts hanging under the crown knob at `top` (smooth normals, read round from below).
+function coconutCluster(T, B, top, r) {
+  for (let k = 0; k < 3; k++) {
+    const a = 0.5 + k * 2.1 + r() * 0.3;
+    lowBlob(T, B, top.clone().add(new T.Vector3(Math.cos(a) * 0.15, -0.12, Math.sin(a) * 0.15)), 0.115, 1, new T.Color(0x9aa23e), new T.Color(0xc9c25a), r, 0, true);
+  }
 }
 
 // Canvas-drawn pinnate frond for the alpha-tested card variant (comparison only).
