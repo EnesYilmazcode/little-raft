@@ -1268,6 +1268,7 @@ export function mount(transfer = null) {
   function openInventory() { if (!running || !survivalUI) return; pauseInput(); releaseLock(); survivalUI.open?.(); play('open'); hintDone('bag'); }
   function interact() {
     if (!running || uiBlocked() || diving?.state.diving) return; // diving lane hook: E gathers underwater
+    if (content?.seated?.() && content.interact(currentAim())) return; // [sit] E while seated always gets you up (beats pickups, sails, beds)
     if (!pickupFrom(currentAim()) && sailing?.interact()) return; // [sailing] E on a sail / anchor (pick-up wins)
     const target = pickupFrom(currentAim());
     if (target) {

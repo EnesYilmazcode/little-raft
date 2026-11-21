@@ -91,6 +91,7 @@ export function createContent(ctx, features = FEATURES) {
     try { const m = make(ctx, { peek }); if (m) mods.push(m); } catch (e) { console.error('content module failed to start', e); }
   }
   const first = (fn, ...a) => { for (const m of mods) { const r = call(m, fn, ...a); if (r) return r; } return null; };
+  const seatedMod = () => { for (const m of mods) if (!m.dead && typeof m.seated === 'function' && call(m, 'seated')) return m; return null; }; // [sit]
   const debug = {};
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
   return {
@@ -100,10 +101,10 @@ export function createContent(ctx, features = FEATURES) {
     serialize() { const out = {}; for (const m of mods) { const d = call(m, 'serialize'); if (d !== undefined && m.name) out[m.name] = d; } return out; },
     load(ext, from) { const e = ext && typeof ext === 'object' ? ext : {}; for (const m of mods) call(m, 'load', e[m.name], from); },
     action(a, actor, bag) { for (const m of mods) if (call(m, 'action', a, actor, bag)) return true; return false; },
-    interact: aim => !!first('interact', aim),
+    interact: aim => { const m = seatedMod(); return !!(m && call(m, 'interact', aim)) || !!first('interact', aim); }, // [sit] a seated module gets E first (stand up)
     ride: (p, dt, i) => !!first('ride', p, dt, i), // content hook (sit, zipline): first module to take over motion wins
     seated: () => !!first('seated'), // [sit]
-    prompt: aim => first('prompt', aim),
+    prompt: aim => { const m = seatedMod(); return (m && call(m, 'prompt', aim)) || first('prompt', aim); }, // [sit] a seated module's prompt wins (E gets you up)
     use: (aim, kind) => !!first('use', aim, kind), // content hook (paint)
     alt: (aim, kind) => !!first('alt', aim, kind), // content hook (paint)
     afterRebuild() { for (const m of mods) call(m, 'afterRebuild'); }, // content hook (paint)

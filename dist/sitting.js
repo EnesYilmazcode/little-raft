@@ -168,7 +168,7 @@ export function createSitting(ctx) {
     const P = globalThis.raftPrompts; if (unprovide || typeof P?.provide !== 'function') return;
     unprovide = P.provide({ id: 'sit', priority: 1, prompt: pc => {
       const s = pc?.state; // yield to the built-in pickup / waiting prompts, exactly like sleep
-      if (ctx.running === false || s?.pickup || (s?.role === 'guest' && !s.networkReady)) return null;
+      if (ctx.running === false || (s?.pickup && !seated()) || (s?.role === 'guest' && !s.networkReady)) return null; // seated: E gets you up, even over a pickup
       return PROVIDED[promptKey(lastAim)] ?? null;
     } });
   }

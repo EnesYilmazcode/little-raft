@@ -217,3 +217,29 @@ test('logbook: sit event grants sit1', () => {
   assert.ok(evaluate(w, [], { kind: 'sit' }).includes('sit1'));
   assert.ok(!evaluate(w, [], { kind: 'note' }).includes('sit1'));
 });
+
+test('registry: while seated, E and the prompt go to the seated module first (review fix)', () => {
+  const seen = [];
+  let sat = true;
+  const crate = () => ({ name: 'crate', interact: () => { seen.push('crate'); return true; }, prompt: () => '<kbd>E</kbd>Open crate' });
+  const sit = () => ({ name: 'sit', seated: () => sat, interact: () => { seen.push('sit'); sat = false; return true; }, prompt: () => (sat ? 'Sitting' : null) });
+  const c = createContent({}, [crate, sit]);
+  assert.equal(c.prompt({}), 'Sitting');
+  assert.equal(c.interact({}), true); assert.deepEqual(seen, ['sit'], 'seated module claims E before an earlier module');
+  seen.length = 0;
+  assert.equal(c.prompt({}), '<kbd>E</kbd>Open crate');
+  assert.equal(c.interact({}), true); assert.deepEqual(seen, ['crate'], 'standing: normal order');
+});
+
+test('real module: E while seated stands up through the registry even with an earlier E module', () => {
+  const s = makeSit();
+  const crate = () => ({ name: 'crate', interact: () => true, prompt: () => '<kbd>E</kbd>Open crate' });
+  const c = createContent(s.ctx, [crate, () => s.mod]);
+  s.mod.action({ kind: 'sit.down', x: 0, z: 0, seat: 0 }, 'host'); s.mod.update(.016);
+  assert.equal(c.seated(), true);
+  assert.equal(c.prompt(null), TEXT.seated);
+  assert.equal(c.interact(null), true);
+  assert.equal(c.seated(), false);
+  assert.equal(st(s.mod).in.host, null);
+  assert.equal(s.ctx.physics.vx, 0); assert.equal(s.ctx.physics.grounded, true);
+});

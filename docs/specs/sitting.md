@@ -179,7 +179,8 @@ deck-.35). (7) the host removes the bench while the guest sits: the guest stands
   seat + 100°. Holding W stands you in front of the bench. Rotated π/2 and re-sat, the facing is 3π/2. Cushion eye: deck + 1.15.
   Co-op: the host sits on seat 0 and the guest asks for seat 0 and gets seat 1. Remote avatar y = deck - .35, in the seated
   pose (thighs forward, hands on knees). When the host removes the bench, the guest stands at the front tile.
-- **Known gaps:** modules ahead of `sit` in FEATURES (storage crate, decor pack…) and pickups in aim still win E while
-  seated. WASD/Space always get you up. The move threshold `.3` applies after move-feel's ramp (.14 s), so a tap shorter
+- **Review fix (E while seated):** `game.interact()` checks `content.seated()` first, and `content.interact`/`content.prompt`
+  give the seated module first claim, so E (and the "Sitting" prompt) beats pickups, sails, beds and earlier modules.
+- **Known gaps:** WASD/Space always get you up. The move threshold `.3` applies after move-feel's ramp (.14 s), so a tap shorter
   than about a frame is ignored. The avatar has no knee joint, so seated legs stick straight out and the feet dangle. It
   reads fine at play distance.
