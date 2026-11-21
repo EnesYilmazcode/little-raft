@@ -15,6 +15,7 @@
 //   prompt(aim)               -> context prompt HTML (escaped by the module) or null
 //   craftLocked(recipe, actor)-> reason string if the recipe is locked, else null
 //   recipeGate(recipe)        -> {locked, reason, source, rank} for the crafting book, else null
+//                                rank = missing requirements * 1000 + tie-break (0..999); lower sorts first
 //   decorModel(type)          -> THREE.Object3D for a CONTENT_DECOR type, or null
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   dispose()

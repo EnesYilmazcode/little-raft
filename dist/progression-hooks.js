@@ -8,7 +8,7 @@
 // guest only renders the snapshots the host sends ({kind:'prog:sync'} effects) and sends
 // 'prog:*' actions. Limits: guest progression is tied to the host's save (a guest starts fresh on
 // another host's raft), and guest station/research views lag by one sync (~0.3 s).
-import { ITEMS, FUEL_VALUE, toolRole } from './items.js';
+import { ITEMS, FUEL_VALUE, toolRole, PROGRESSION_PLAN } from './items.js';
 import { Progression } from './progression.js';
 import { StationModel } from './smelter.js';
 import { createStationPanel } from './smelter-ui.js';
@@ -21,7 +21,13 @@ const COOKERS = new Set(Object.values(ITEMS).map((it) => it.recipe?.station).fil
 const STATIONS = new Set(Object.keys(ITEMS).filter((id) => ITEMS[id].category === 'station'));
 const MODELS = { smelter: createSmelterModel, researchtable: createResearchTableModel, grill: createGrillModel };
 const nameOf = (k) => ITEMS[k]?.name ?? k;
-const isHand = (id) => !!ITEMS[id]?.recipe && ITEMS[id].recipe.station == null;
+const PLAN_MINUTE = new Map();
+for (const step of PROGRESSION_PLAN) for (const id of step.ids) if (!PLAN_MINUTE.has(id)) PLAN_MINUTE.set(id, Math.min(998, step.minute));
+/** Crafting-book gate for an items.js recipe: null when unlocked (or not ours), else locked with its reason. */
+export function progressionGate(p, id) {
+  if (!ITEMS[id] || !p || p.isUnlocked(id)) return null;
+  return { locked: true, source: 'progression', reason: p.whyLocked(id), rank: p.missingFor(id).length * 1000 + (PLAN_MINUTE.get(id) ?? 999) };
+}
 const keyOf = (d) => d.x + ',' + d.z;
 const joinAnd = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -58,7 +64,7 @@ export function attachProgression(ctx) {
   const glow = new Map();
   let noteClock = NOTE_EVERY, saveClock = 0, syncClock = 0, time = 0, dirty = false, nearKey = null;
   let savedLuckSig = JSON.stringify(barrelLuck.misses);
-  let panel = null, research = null, tooltips = null, hud = null, gateCache = null;
+  let panel = null, research = null, tooltips = null, hud = null;
 
   const isRemote = () => ctx.role() === 'guest' && !!ctx.ready();
   const isHost = () => ctx.role() !== 'guest';
@@ -67,7 +73,7 @@ export function attachProgression(ctx) {
   const say = (text, actor) => ctx.emit({ kind: 'notice', text }, actor);
   const announce = (ids, actor) => {
     const names = ids.filter((id) => ITEMS[id]).map(nameOf);
-    if (names.length) { ctx.emit({ kind: 'unlock', text: `New recipe${names.length > 1 ? 's' : ''}: ${joinAnd(names)}!` }, actor); gateCache = null; dirty = true; }
+    if (names.length) { ctx.emit({ kind: 'unlock', text: `New recipe${names.length > 1 ? 's' : ''}: ${joinAnd(names)}!` }, actor); dirty = true; }
   };
 
   // ---------- host: stations follow the decor ----------
@@ -116,7 +122,7 @@ export function attachProgression(ctx) {
     const bag = ctx.bag(actor), p = progs[actor] ?? progs.host;
     if (a.kind === 'prog:research') {
       const r = p.research(String(a.item), { has: bag });
-      if (r.ok) { ctx.emit({ kind: 'craft', text: `Researched ${nameOf(a.item)}` }, actor); announce(r.unlocked, actor); dirty = true; gateCache = null; }
+      if (r.ok) { ctx.emit({ kind: 'craft', text: `Researched ${nameOf(a.item)}` }, actor); announce(r.unlocked, actor); dirty = true; }
       else say(r.reason, actor);
       return true;
     }
@@ -140,7 +146,7 @@ export function attachProgression(ctx) {
   function effect(e) {
     if (e.kind !== 'prog:sync') return false;
     if (!isRemote()) return true; // host never adopts snapshots it did not make
-    if (e.prog && typeof e.prog === 'object') { remote.prog = new Progression(e.prog); gateCache = null; }
+    if (e.prog && typeof e.prog === 'object') { remote.prog = new Progression(e.prog); }
     if (e.stations && typeof e.stations === 'object') remote.stations = e.stations;
     return true;
   }
@@ -227,14 +233,9 @@ export function attachProgression(ctx) {
     return true;
   }
 
-  // Survival-UI recipe gate: unlocked -> null; the 3 nearest hand-recipe goals -> greyed with reason; rest hidden.
-  function recipeGate(id) {
-    if (!ITEMS[id]) return null;
-    const p = myProg();
-    if (p.isUnlocked(id)) return null;
-    if (!gateCache || gateCache.p !== p) gateCache = { p, goals: new Set(p.nextGoals(99).filter(isHand).slice(0, 3)) };
-    return gateCache.goals.has(id) ? { locked: true, reason: p.whyLocked(id) } : { hidden: true };
-  }
+  // Survival-UI recipe gate: unlocked -> null; locked -> greyed with its reason, like Raft (never hidden).
+  // rank orders the locked rows: fewest missing requirements, then PROGRESSION_PLAN minute (smelter before bees).
+  const recipeGate = (id) => progressionGate(myProg(), id);
 
   // ---------- binoculars HUD ----------
   function updateHud() {

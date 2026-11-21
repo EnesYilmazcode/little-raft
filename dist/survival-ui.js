@@ -637,8 +637,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const readyPer = new Map();
     for (const v of recipeEls) {
       const r = v.r;
-      const { rows, state, times, reason } = evaluate(bag, r);
-      v.rows = rows; v.state = state; v.times = times; v.reason = reason; // [progression-hook] reason
+      const { rows, state, times, reason, rank } = evaluate(bag, r);
+      v.rows = rows; v.state = state; v.times = times; v.reason = reason; v.rank = rank; // [progression-hook] reason, gated order
       if (state === 'ready') readyPer.set(v.cat, (readyPer.get(v.cat) || 0) + 1);
       const sig = state + times + (v.reason || '') + ':' + rows.map(x => x.have).join(','); // [progression-hook] reason
       if (v.sig === sig) continue;

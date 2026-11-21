@@ -51,7 +51,7 @@ export function studyGate(state, id) {
   if (typeof id !== 'string' || !hasOwn(RECIPES, id) || isLearned(state, id)) return null;
   const seen = new Set(state.seen || []);
   const miss = Object.keys(RECIPES[id].cost || {}).filter(k => !seen.has(k)).map(nameOf);
-  return { locked: true, source: 'study', rank: miss.length, reason: (miss.length ? 'Study ' + miss.join(' + ') : 'Study it') + ' at a Tinker\u2019s Desk' };
+  return { locked: true, source: 'study', rank: miss.length * 1000 + 999, reason: (miss.length ? 'Study ' + miss.join(' + ') : 'Study it') + ' at a Tinker\u2019s Desk' };
 }
 /** Recipe ids that are still locked for this state. */
 export function lockedRecipes(state) {

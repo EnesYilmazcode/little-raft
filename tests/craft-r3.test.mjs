@@ -32,3 +32,29 @@ test('CRAFT-2: the pinned tracker shares the book state, so a gated recipe never
   assert.equal(tv.reason, lock.reason);
   assert.equal(tv.met, 2, 'materials still shown');
 });
+
+const { progressionGate } = await import(new URL('progression-hooks.js', base));
+const { Progression } = await import(new URL('progression.js', base));
+const { RECIPES } = await import(new URL('inventory-state.js', base));
+
+test('CRAFT-3: every locked recipe stays in the book with its reason; the smelter sorts before the bee items', () => {
+  const p = new Progression();
+  p.noteItems(['wood', 'leaf', 'plastic', 'scrap', 'rope', 'nail', 'fish', 'clay', 'stone']); p.notePlaced('researchtable'); p.notePlaced('grill');
+  p.research('clay', { has: true });
+  const locked = Object.keys(RECIPES).map(id => [id, progressionGate(p, id)]).filter(([, g]) => g);
+  for (const [id, g] of locked) { assert.equal(g.locked, true, id); assert.ok(!g.hidden, id + ' is never hidden'); assert.ok(g.reason, id + ' says why'); }
+  const ids = locked.map(([id]) => id);
+  for (const id of ['smelter', 'hinge', 'metalhook', 'binoculars', 'bolt', 'beehive', 'candle']) assert.ok(ids.includes(id), id + ' shown greyed');
+  assert.match(progressionGate(p, 'smelter').reason, /Research Stone/);
+  assert.equal(progressionGate(p, 'rope'), null, 'unlocked: no gate');
+  assert.equal(progressionGate(p, 'cup'), null, 'not an items.js recipe');
+  // Book order inside a tab: ready, then missing materials, then gated (nearest unlock, then plan order).
+  const views = [
+    { id: 'beehive', state: 'gated', rank: progressionGate(p, 'beehive').rank },
+    { id: 'smelter', state: 'gated', rank: progressionGate(p, 'smelter').rank },
+    { id: 'bench', state: 'missing', rows: [{ enough: false, short: 3 }] },
+    { id: 'purifier', state: 'gated', rank: SR.studyGate({ seen: [], learned: [], all: false }, 'purifier').rank },
+    { id: 'raftpiece', state: 'ready', rows: [] },
+  ];
+  assert.deepEqual(CB.sortCraftableFirst(views).map(v => v.id), ['raftpiece', 'bench', 'smelter', 'beehive', 'purifier']);
+});

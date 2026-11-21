@@ -263,13 +263,15 @@ export function placeRefusal(kind, t, max) {
 
 // ---- recipe order ----
 // Inside a tab, recipes you can make right now come first, then ones blocked only by bag space,
-// then the rest, closest-to-done first (fewest ingredients short, then fewest units short).
+// then the rest, closest-to-done first (fewest ingredients short, then fewest units short), and
+// locked (gated) recipes last, nearest unlock first (the gate's rank).
 // The sort is stable, so recipes keep their book order within each group.
-const STATE_RANK = Object.freeze({ ready: 0, full: 1, missing: 2 });
+const STATE_RANK = Object.freeze({ ready: 0, full: 1, missing: 2, gated: 3 });
 
 /** views: [{state, rows}] (rows from ingredientRows). Returns a new, sorted array. */
 export function sortCraftableFirst(views) {
   const key = v => {
+    if (v?.state === 'gated') return [STATE_RANK.gated, Number(v.rank) || 0, 0]; // locked last, nearest unlock first
     let kinds = 0, units = 0;
     for (const r of v?.rows || []) if (!r.enough) { kinds++; units += r.short; }
     return [STATE_RANK[v?.state] ?? 3, kinds, units];
