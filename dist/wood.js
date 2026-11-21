@@ -1,13 +1,11 @@
 // A small original procedural timber texture, shared by every plank material.
-// Look: weathered, sun-bleached driftwood. Broad soft mottling, faint grain, matte.
+// Look: weathered, sun-bleached driftwood. Broad soft mottling, faint grain, grimy scuffed ends, matte.
 
-// The deck keys (listed in game.js TIMBER) are drawn with a bleached olive-tan driftwood palette.
-const WEATHERED = {
- '#bb8a53':'#9c8a5e', '#c69860':'#a6956e', '#ad7c4a':'#8e7f57', // deck planks
- '#5e4029':'#5b4e38', '#9c7649':'#9a8b64', // deck logs and log ends
-};
+// Raft timber palette (deck boards, logs, log ends); already weathered, drawn as given.
+export const DRIFTWOOD = Object.freeze({plank:'#aa9a6a', plankLight:'#b4a478', plankDark:'#9c8c5f', log:'#5b4e38', logEnd:'#9a8b64'});
+const AS_IS = new Set(Object.values(DRIFTWOOD));
 
-// Other timber keeps its hue but is pulled toward grey-olive and slightly lightened (sun bleach).
+// Older warm timber colours keep their hue but are pulled toward grey-olive and slightly lightened (sun bleach).
 function bleach(hex) {
  const n=parseInt(hex.slice(1),16);let r=n>>16&255,g=n>>8&255,b=n&255;
  const l=.3*r+.59*g+.11*b;
@@ -17,7 +15,7 @@ function bleach(hex) {
 }
 
 export function createWoodMaterial(T, color) {
- const base=WEATHERED[color]??bleach(color);
+ const base=AS_IS.has(color)?color:bleach(color);
  const W=128,H=512;
  const canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
  const ctx=canvas.getContext('2d');ctx.fillStyle=base;ctx.fillRect(0,0,W,H);
@@ -26,17 +24,24 @@ export function createWoodMaterial(T, color) {
  for(let i=0;i<46;i++){
   const x=random()*W,y=random()*H,rx=10+random()*34,ry=30+random()*110,dark=random()<.55;
   const g=ctx.createRadialGradient(0,0,0,0,0,1);
-  const c=dark?'56,44,26':'208,202,180',a=dark?.07+random()*.09:.05+random()*.07;
+  const c=dark?'56,44,26':'208,202,180',a=dark?.08+random()*.1:.05+random()*.07;
   g.addColorStop(0,`rgba(${c},${a})`);g.addColorStop(1,`rgba(${c},0)`);
   ctx.save();ctx.translate(x,y);ctx.scale(rx,ry);ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,1,0,Math.PI*2);ctx.fill();ctx.restore();
  }
- // Grime toward the board ends.
- for(const [y0,y1] of [[0,70],[H,H-70]]){const g=ctx.createLinearGradient(0,y0,0,y1);g.addColorStop(0,'rgba(50,42,26,.16)');g.addColorStop(1,'rgba(50,42,26,0)');ctx.fillStyle=g;ctx.fillRect(0,Math.min(y0,y1),W,70);}
+ // Grime soaked into the board ends (the ends sit in the wet and get trodden on).
+ for(const [y0,y1] of [[0,96],[H,H-96]]){const g=ctx.createLinearGradient(0,y0,0,y1);g.addColorStop(0,'rgba(40,32,18,.34)');g.addColorStop(.35,'rgba(44,36,22,.14)');g.addColorStop(1,'rgba(44,36,22,0)');ctx.fillStyle=g;ctx.fillRect(0,Math.min(y0,y1),W,96);}
  // Faint long grain.
  for(let i=0;i<70;i++){
   const x=random()*W,y=random()*H,length=60+random()*420;
-  ctx.strokeStyle=i%3===0?'rgba(236,230,200,.08)':'rgba(48,40,24,.08)';ctx.lineWidth=.5+random()*1.8;
+  ctx.strokeStyle=i%3===0?'rgba(236,230,200,.08)':'rgba(48,40,24,.09)';ctx.lineWidth=.5+random()*1.8;
   ctx.beginPath();ctx.moveTo(x,y);ctx.bezierCurveTo(x+random()*6-3,y+length*.3,x+random()*9-4,y+length*.7,x+random()*5-2,y+length);ctx.stroke();
+ }
+ // Scuffs: short dark smears and scratches, mostly near the ends.
+ for(let i=0;i<34;i++){
+  const end=random()<.7,y=end?(random()<.5?random()*110:H-random()*110):random()*H,x=random()*W;
+  ctx.strokeStyle=`rgba(38,30,18,${.1+random()*.14})`;ctx.lineWidth=.6+random()*2.4;ctx.lineCap='round';
+  const a=(random()-.5)*1.4,l=4+random()*16;
+  ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+Math.sin(a)*l,y+Math.cos(a)*l*1.6);ctx.stroke();
  }
  // A couple of soft knots.
  for(let k=0;k<2;k++){
@@ -44,10 +49,10 @@ export function createWoodMaterial(T, color) {
   for(let r=1;r<5;r++){ctx.beginPath();ctx.ellipse(x,y,r*1.6,r*5,.1,0,Math.PI*2);ctx.strokeStyle=`rgba(56,46,28,${.1-r*.015})`;ctx.lineWidth=.9;ctx.stroke();}
  }
  // Grey-green bleach wash over everything, then darker worn board edges.
- ctx.fillStyle='rgba(146,146,128,.08)';ctx.fillRect(0,0,W,H);
- for(const [x0,x1] of [[0,16],[W,W-16]]){const g=ctx.createLinearGradient(x0,0,x1,0);g.addColorStop(0,'rgba(44,38,24,.2)');g.addColorStop(1,'rgba(44,38,24,0)');ctx.fillStyle=g;ctx.fillRect(Math.min(x0,x1),0,16,H);}
+ ctx.fillStyle='rgba(146,146,128,.07)';ctx.fillRect(0,0,W,H);
+ for(const [x0,x1] of [[0,18],[W,W-18]]){const g=ctx.createLinearGradient(x0,0,x1,0);g.addColorStop(0,'rgba(40,34,20,.26)');g.addColorStop(1,'rgba(40,34,20,0)');ctx.fillStyle=g;ctx.fillRect(Math.min(x0,x1),0,18,H);}
  const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=4;
  // No bumpMap: at bumpScale .018 it moved no pixel by more than 1/255 at spawn, looking down or along the deck, while
  // its three extra taps per pixel were the largest single cost of shading the deck (docs/tech/perf-ADOPT.md step 6).
- return new T.MeshStandardMaterial({map:texture,roughness:.86,metalness:0});
+ return new T.MeshStandardMaterial({map:texture,roughness:.95,metalness:0});
 }

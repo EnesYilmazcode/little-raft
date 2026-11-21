@@ -88,6 +88,7 @@ function tint(T, g, hex) {
 }
 
 // Module-level material cache (one set per THREE namespace). Shared across items: never dispose per item.
+const DRIFT_PLANK = '#a88d68'; // driftwood plank colour (getMaterial key)
 const SHARED = new WeakMap();
 function cacheFor(T) {
   let cache = SHARED.get(T);
@@ -192,7 +193,7 @@ function buildWood(T, getMaterial, root, inner, r) {
     p.setY(i, p.getY(i) + bow * u * u + twist * z * u);
   }
   p.needsUpdate = true;
-  const plankMat = getMaterial('#d5a265');
+  const plankMat = getMaterial(DRIFT_PLANK); // sea-weathered grey-tan, darker than the fresh deck
 
   // bent rusty nail near the chipped end, baked into the plank mesh: its vertex colour cancels the plank
   // albedo (the timber texture is filled with the plank colour) and folds in the old 0.55 metalness' darkening
@@ -201,7 +202,7 @@ function buildWood(T, getMaterial, root, inner, r) {
     place(T, new T.CylinderGeometry(0.005, 0.002, 0.045, 6), 0.627, 0.11, 0.06, 0, 0, 1.25),
     place(T, new T.CylinderGeometry(0.014, 0.014, 0.005, 8), 0.588, 0.034, 0.06),
   ]);
-  const base = plankMat.map ? new T.Color('#d5a265') : plankMat.color, nc = new T.Color('#6f6964');
+  const base = plankMat.map ? new T.Color(DRIFT_PLANK) : plankMat.color, nc = new T.Color('#6f6964');
   const k = [nc.r / base.r, nc.g / base.g, nc.b / base.b].map((v) => Math.min(1, v * 0.45));
   const nn = nail.attributes.position.count, ncol = new Float32Array(nn * 3);
   for (let i = 0; i < nn; i++) { ncol.set(k, i * 3); nail.attributes.uv.setXY(i, 0.5, 0.5); }
@@ -358,14 +359,14 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
     for (let i = rows; i >= 0; i--) { const y = -hh + (H * i) / rows; prof.push(new T.Vector2(rad(y) + dr - thick, y + (i === 0 || i === rows ? dy : 0))); }
     prof.push(prof[0].clone());
     const phi = (s / staves) * Math.PI * 2;
-    wood.push(tint(T, new T.LatheGeometry(prof, 3, phi + gap / 2, (Math.PI * 2) / staves - gap), s % 2 ? '#b98148' : '#a8703f'));
+    wood.push(tint(T, new T.LatheGeometry(prof, 3, phi + gap / 2, (Math.PI * 2) / staves - gap), s % 2 ? '#8e6a45' : '#7d5c3b'));
   }
 
   // recessed end caps (chime)
   const capR = rEnd - thick + 0.004, capY = hh - 0.045;
   wood.push(
-    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, capY, 0), '#9a6538'),
-    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, -capY, 0), '#9a6538'),
+    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, capY, 0), '#6f4e31'),
+    tint(T, place(T, new T.CylinderGeometry(capR, capR, 0.03, 28), 0, -capY, 0), '#6f4e31'),
   );
   // board seams on top cap
   for (const z of [-0.18, -0.06, 0.06, 0.18]) {
@@ -410,6 +411,50 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
   inner.add(pivot);
 }
 
+// ---------------------------------------------------------------- waterline foam
+// Per-type float offset (engine adds it to the ocean height) and foam ring footprint [x, z] (full size).
+const FLOAT = { wood: 0, leaf: 0, scrap: 0.06, barrel: -0.16 };
+const FOAM = { wood: [2.5, 0.7], scrap: [1.7, 1.5], barrel: [1.45, 1.45] };
+// One soft white ring (radial alpha texture on a flat quad) shared by every item: shared geometry + material.
+function foamParts(T) {
+  const cache = cacheFor(T);
+  let f = cache.get('foam');
+  if (f) return f;
+  const N = 64, data = new Uint8Array(N * N * 4);
+  const ss = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const u = (x + 0.5) / N * 2 - 1, v = (y + 0.5) / N * 2 - 1, r = Math.hypot(u, v), a = Math.atan2(v, u);
+    const breakup = 0.72 + 0.28 * Math.sin(a * 7 + Math.sin(a * 3) * 2) * Math.cos(a * 4 - 1);
+    const k = ss(0.42, 0.66, r) * (1 - ss(0.68, 0.98, r)) * breakup;
+    const i = (y * N + x) * 4;
+    data[i] = data[i + 1] = data[i + 2] = data[i + 3] = Math.round(255 * clamp01(k));
+  }
+  const tex = new T.DataTexture(data, N, N, T.RGBAFormat);
+  tex.magFilter = tex.minFilter = T.LinearFilter;
+  tex.needsUpdate = true;
+  const geo = new T.PlaneGeometry(1, 1);
+  geo.rotateX(-Math.PI / 2);
+  geo.userData.shared = true;
+  const mat = new T.MeshBasicMaterial({ color: 0xffffff, alphaMap: tex, transparent: true, opacity: 0.55, depthWrite: false });
+  mat.userData.shared = true;
+  f = { geo, mat };
+  cache.set('foam', f);
+  return f;
+}
+function addFoam(T, root, type, batch) {
+  const fp = FOAM[type];
+  if (!fp) return;
+  const { geo, mat } = foamParts(T);
+  const ring = new T.Mesh(geo, mat);
+  ring.name = 'debris-foam';
+  ring.raycast = () => {}; // never a hook/pickup target
+  ring.scale.set(fp[0], 1, fp[1]);
+  ring.position.y = -FLOAT[type] + 0.025; // just above the waterline (root sits at ocean height + FLOAT)
+  ring.renderOrder = 1;
+  if (batch) ring.userData.batch = true; // pooled items: createItemBatch draws every ring as one instanced mesh
+  root.add(ring);
+}
+
 function build(T, type, getMaterial, opts) {
   const r = rng(opts.seed != null ? opts.seed : Math.floor(Math.random() * 2 ** 31));
   const root = new T.Group();
@@ -431,7 +476,7 @@ function build(T, type, getMaterial, opts) {
 
 // One baked variant: every mesh's transform folded into its geometry, which is then shared (userData.shared).
 function variant(T, type, getMaterial, opts, v) {
-  const key = `pool|${type}|${opts.pool}|${v}|${opts.tilt}|${type === 'wood' ? getMaterial('#d5a265').uuid : ''}`;
+  const key = `pool|${type}|${opts.pool}|${v}|${opts.tilt}|${type === 'wood' ? getMaterial(DRIFT_PLANK).uuid : ''}`;
   const cache = cacheFor(T);
   let entry = cache.get(key);
   if (!entry) {
@@ -452,7 +497,8 @@ function variant(T, type, getMaterial, opts, v) {
 
 export function createDebris(T, type, getMaterial, opts = {}) {
   if (!TYPES.includes(type)) throw new Error(`createDebris: unknown type "${type}"`);
-  if (!(opts.pool > 0)) return build(T, type, getMaterial, opts);
+  // opts.foam: waterline foam ring (default: only for pooled items, i.e. ones floating in the sea; never in hand or icons)
+  if (!(opts.pool > 0)) return withFoam(T, build(T, type, getMaterial, opts), type, !!opts.foam, false);
   // opts.pool: share one of `pool` cached geometry variants (picked by seed) instead of building a new one
   const seed = opts.seed != null ? opts.seed : Math.floor(Math.random() * 2 ** 31);
   const entry = variant(T, type, getMaterial, opts, ((seed % opts.pool) + opts.pool) % opts.pool);
@@ -468,6 +514,13 @@ export function createDebris(T, type, getMaterial, opts = {}) {
     m.userData.batch = true; // createItemBatch may draw it instanced
     root.add(m);
   }
+  return withFoam(T, root, type, opts.foam !== false, true);
+}
+// Waterline: the engine floats the root at ocean height + userData.float; the foam ring is added after any
+// geometry baking (variant() must never fold the shared ring geometry into a pooled variant).
+function withFoam(T, root, type, foam, batch) {
+  root.userData.float = FLOAT[type];
+  if (foam) addFoam(T, root, type, batch);
   return root;
 }
 

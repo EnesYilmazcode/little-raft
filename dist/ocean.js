@@ -43,7 +43,13 @@ void wave(vec2 d, float a, float L, float Q, vec2 p, inout vec3 disp, inout vec3
 }
 
 void main() {
-  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vec3 pos = position;
+  #ifdef OCEAN_SKIRT
+  // Stretch the outer vertex ring out to a circle just inside camera.far so the water reaches
+  // the horizon instead of ending in a pale band of sky dome below it.
+  if (max(abs(pos.x), abs(pos.z)) > OCEAN_HALF - 0.01) pos.xz = normalize(pos.xz) * OCEAN_SKIRT;
+  #endif
+  vec4 wp = modelMatrix * vec4(pos, 1.0);
   vec2 p = wp.xz + uFlow; // [sailing]
   vec3 disp = vec3(0.0);
   vec3 tng = vec3(1.0, 0.0, 0.0);
@@ -101,9 +107,13 @@ void ripple(vec2 d, float a, float k, float w, vec2 p, inout vec2 g) {
 void main() {
   vec3 toCam = cameraPosition - vWorld;
   float dist = length(toCam.xz);
-  // Beyond uFadeFar the fade below is exactly 1, so the pixel is pure uSky: skip all shading.
+  // Distant water settles to a mid blue (a little sky mixed into the shallow colour, so day/night
+  // carries it), with only a thin haze toward the sky colour in the last stretch to the horizon.
+  vec3 farCol = mix(uShallow, uSky, 0.1);
+  float haze = smoothstep(uFadeFar * 0.82, uFadeFar * 1.02, dist) * 0.55;
+  // Beyond uFadeFar the fade below is exactly 1, so the pixel is the far colour: skip all shading.
   if (dist >= uFadeFar) {
-    gl_FragColor = vec4(uSky, 1.0);
+    gl_FragColor = vec4(mix(farCol, uSky, haze), 1.0);
     #include <colorspace_fragment>
     return;
   }
@@ -127,36 +137,36 @@ void main() {
   float ndv = max(dot(n, V), 0.0);
   float fresnel = min(0.02 + 0.98 * pow(1.0 - ndv, 5.0), 0.5);
   vec3 R = reflect(-V, n);
-  vec3 skyRefl = mix(uSky, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.25));
+  vec3 skyRefl = mix(uSky, uZenith, smoothstep(0.0, 0.6, R.y));
 
-  // Water body: looking steeply down near the raft you see clear turquoise; grazing and far
-  // away the light path is long, so it sinks to deep blue. Crests glow where sun passes through.
+  // Body colour: deep ocean blue in troughs, brighter blue on crests and in slow patches.
+  float patches = vnoise(p * 0.045 + uTime * 0.01) * 0.6 + vnoise(p * 0.13 - uTime * 0.02) * 0.4;
   float h = clamp(vHeight / 0.2 * 0.5 + 0.5, 0.0, 1.0);
-  float clear = pow(ndv, 1.4) * (1.0 - smoothstep(4.0, 45.0, dist));
-  float patches = vnoise(p * 0.05 + uTime * 0.01);
-  vec3 body = mix(uDeep, uShallow, clamp(clear * 0.85 + h * 0.25 + patches * 0.12, 0.0, 1.0));
-  float sss = smoothstep(0.5, 1.0, h) * pow(max(dot(-V, L) * 0.5 + 0.5, 0.0), 2.0) * 0.45;
+  float shallowMix = clamp(h * 0.55 + patches * 0.35 + (1.0 - ndv) * 0.15, 0.0, 1.0);
+  vec3 body = mix(uDeep, uShallow, shallowMix);
+  // Soft subsurface glow where sunlight passes through crests.
+  float sss = smoothstep(0.45, 1.0, h) * (0.5 + 0.5 * max(dot(n, L), 0.0)) * 0.35;
   body += uShallow * sss;
-  body *= mix(0.75, 1.0, ndv); // grazing water darkens toward deep blue
-  vec3 col = mix(body * (0.78 + 0.22 * max(dot(n, L), 0.0)), skyRefl, fresnel);
+  body *= mix(0.75, 1.0, ndv);
+  float diff = 0.7 + 0.3 * max(dot(n, L), 0.0);
+  vec3 col = mix(body * diff, skyRefl, fresnel);
 
-  // Sun: sharp glint + broad sheen.
+  // Sun highlights: sharp glint + broad sheen, clamped and faded to avoid flashing.
   vec3 H = normalize(L + V);
   float ndh = max(dot(n, H), 0.0);
   float spec = pow(ndh, 420.0) * 2.6 + pow(ndh, 60.0) * 0.28;
   spec = min(spec, 2.2) * (1.0 - smoothstep(60.0, 130.0, dist) * 0.6);
   col += uSunColor * spec;
 
-  // Foam, near only (nothing from 45 on, so skipped there): faint soft foam on the nearest crests,
-  // plus contact collars around the raft edge and floating items.
+  // Foam, near only (nothing from 45 on, so skipped there): faint soft blotches on the highest nearby
+  // crests, plus contact collars around the raft edge and floating items.
   if (dist < 45.0) {
     vec2 fp = p + vec2(uTime * 0.35, uTime * 0.12);
-    float n1 = vnoise(fp * 0.9);
-    float n2 = vnoise(fp * 2.6 + vec2(uTime * -0.2, uTime * 0.15));
-    float lace = 1.0 - smoothstep(0.0, 0.06, abs(n1 * 0.7 + n2 * 0.3 - 0.5));
-    float crest = smoothstep(0.06, 0.17, vHeight);
-    float speck = smoothstep(0.86, 0.93, vnoise(fp * 3.7)) * smoothstep(0.0, 0.12, vHeight);
-    float foam = clamp(lace * crest * 0.2 + speck * 0.12, 0.0, 0.3) * (1.0 - smoothstep(12.0, 40.0, dist));
+    float n1 = vnoise(fp * 0.7);
+    float n2 = vnoise(fp * 1.9 + vec2(uTime * -0.2, uTime * 0.15));
+    float blot = smoothstep(0.6, 0.85, n1 * 0.65 + n2 * 0.35);
+    float crest = smoothstep(0.09, 0.19, vHeight);
+    float foam = blot * crest * 0.16 * (1.0 - smoothstep(12.0, 40.0, dist));
     vec2 wp = vWorld.xz; // raft mask and item collars live in world space (no sailing flow)
     // Raft collar: CPU-built falloff field, filtered by hand so it is smooth on every GPU.
     vec2 t = wp / ${TEXEL.toFixed(2)} + ${(GRID / 2 - 0.5).toFixed(1)};
@@ -182,7 +192,8 @@ void main() {
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   // Fade toward the (untonemapped) sky colour after tone mapping so the horizon matches the background.
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, uSky, smoothstep(uFadeNear, uFadeFar, dist));
+  float fade = smoothstep(uFadeNear, uFadeFar, dist);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, mix(farCol, uSky, haze), fade);
   #include <colorspace_fragment>
 }
 `;
@@ -209,13 +220,14 @@ export function createOcean(T, options = {}) {
     uShallow: { value: new T.Color('#1a78b0') },
     uFoam: { value: new T.Color('#f4fbfc') },
     uFadeNear: { value: options.fadeNear ?? 52 },
-    uFadeFar: { value: options.fadeFar ?? 135 },
+    uFadeFar: { value: options.fadeFar ?? 190 },
     uRaftMask: { value: mask },
     uFoamPts: { value: foamPts },
   };
 
   const material = new T.ShaderMaterial({
     uniforms,
+    defines: { OCEAN_HALF: (size / 2).toFixed(2), OCEAN_SKIRT: (options.skirt ?? 190).toFixed(2) },
     vertexShader,
     fragmentShader,
     fog: false,

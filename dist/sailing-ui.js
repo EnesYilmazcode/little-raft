@@ -6,12 +6,16 @@ const CSS = `
 #sailBadge{position:fixed;top:64px;right:16px;z-index:30;display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;
   color:#f6ecd6;font:600 12px/1.3 var(--ui-font,system-ui,sans-serif);user-select:none}
 #sailBadge[hidden],#sailPrompt[hidden]{display:none}
-#sailBadge svg{width:84px;height:84px;display:block;border-radius:50%;background:rgba(43,30,18,.7);box-shadow:0 0 0 1.5px rgba(246,236,214,.5),0 4px 14px rgba(43,30,18,.3)}
-#sailBadge .sail-label{padding:2px 8px;border-radius:8px;background:rgba(43,30,18,.7);box-shadow:0 0 0 1px rgba(246,236,214,.5);white-space:nowrap}
+#sailBadge svg{width:84px;height:84px;display:block;border-radius:50%;background:rgba(58,40,24,.82);box-shadow:0 0 0 1px rgba(201,164,107,.5),0 4px 14px rgba(30,18,8,.35)}
+#sailBadge .sail-label{padding:2px 8px;border-radius:6px;background:rgba(58,40,24,.82);box-shadow:0 0 0 1px rgba(201,164,107,.5);white-space:nowrap}
 #sailBadge .sail-dim{opacity:.3}
 #sailPrompt{position:fixed;left:calc(50% + 22px);top:calc(50% + 84px);text-align:left;padding:3px 10px;border-radius:8px;
-  background:rgba(43,30,18,.7);box-shadow:0 0 0 1px rgba(246,236,214,.5);color:#f6ecd6;font:600 13px/1.3 var(--ui-font,system-ui,sans-serif);pointer-events:none;z-index:30;white-space:nowrap}
+  background:rgba(58,40,24,.82);box-shadow:0 0 0 1px rgba(201,164,107,.5);color:#f6ecd6;font:600 13px/1.3 var(--ui-font,system-ui,sans-serif);pointer-events:none;z-index:30;white-space:nowrap}
 #sailPrompt kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:0 4px;border:1px solid rgba(246,236,214,.6);border-radius:4px;font:inherit;text-align:center}
+/* stacked above the onboarding Notes (onboarding.css); on short screens the Notes move up and the badge sits to their left */
+@media (max-width:760px){#sailBadge{right:16px}#sailBadge svg{width:64px;height:64px}}
+@media (max-height:560px){#sailBadge{right:276px}}
+@media (max-height:560px) and (max-width:760px){#sailBadge{right:242px}}
 .sail-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 `;
 const SVG = '<circle cx="0" cy="0" r="38" fill="none" stroke="rgba(246,236,214,.35)" stroke-width="1.5"/>'

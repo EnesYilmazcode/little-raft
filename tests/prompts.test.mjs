@@ -104,3 +104,10 @@ test('costText / missingText', () => {
   assert.equal(P.missingText({wood:'x'}, {wood:2}), '2 wood');
   assert.equal(P.missingText({wood:3, plastic:3}, {wood:2, plastic:2}), '');
 });
+
+test('parseLoot: splits "+N item" lists, picks icons, rejects other text', () => {
+  assert.deepEqual(P.parseLoot('+2 Plank, +1 Palm Leaf'), [{n:'+2', text:'Plank', icon:'wood'}, {n:'+1', text:'Palm Leaf', icon:'leaf'}]);
+  assert.deepEqual(P.parseLoot('+3 Rope'), [{n:'+3', text:'Rope', icon:null}]);
+  assert.equal(P.parseLoot('\u2713 Toss your hook'), null);
+  assert.equal(P.parseLoot('+2 Plank, Your bag is full'), null);
+});

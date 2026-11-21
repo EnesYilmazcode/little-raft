@@ -116,22 +116,22 @@ export function weatherAt(seed, clock, out) {
 }
 
 // ---------------------------------------------------------------- palette
-// Colours (sRGB 0..1): 0 horizon (background, fog, ocean uSky), 1 ocean zenith, 2 ocean deep,
-// 3 ocean shallow, 4 sun/moon light, 5 hemi sky, 6 hemi ground, 7 cloud.
-export const N_COLORS = 8;
+// Colours (sRGB 0..1): 0 horizon (background, fog, ocean uSky, sky dome horizon), 1 ocean zenith, 2 ocean deep,
+// 3 ocean shallow, 4 sun/moon light, 5 hemi sky, 6 hemi ground, 7 cloud, 8 sky mid, 9 sky zenith.
+export const N_COLORS = 10;
 const hex = s => [parseInt(s.slice(1, 3), 16) / 255, parseInt(s.slice(3, 5), 16) / 255, parseInt(s.slice(5, 7), 16) / 255];
 const key = (phase, ...colors) => ({ phase, c: new Float32Array(colors.flatMap(hex)) });
 export const PALETTE_KEYS = Object.freeze([
-  //   phase  horizon    zenith     deep       shallow    sun        hemi sky   hemi gnd   cloud
-  key(0.00, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#ffdcc8'), // sunrise peach
-  key(0.04, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#ffdcc8'), // ... held a little
-  key(0.13, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'), // bright tropical day (visuals loop)
-  key(0.54, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#2f6f7a', '#f4fbfc'),
-  key(0.635, '#eaa98e', '#b79fb0', '#1d4a5e', '#4d7f88', '#ffb27e', '#f4c3a6', '#4b5a68', '#ffc9b0'), // dusk coral
-  key(0.70, '#6f6f9e', '#58679a', '#173c54', '#2f6276', '#c3b0dc', '#a9a6d2', '#2c3b55', '#8e88b2'), // blue hour
-  key(0.77, '#34486f', '#2e4170', '#0f3046', '#1f5066', '#a8bff0', '#9bb4e6', '#1f3044', '#5e6f98'), // cosy blue night
-  key(0.91, '#34486f', '#2e4170', '#0f3046', '#1f5066', '#a8bff0', '#9bb4e6', '#1f3044', '#5e6f98'),
-  key(0.94, '#6c7299', '#536392', '#163a50', '#2d5e70', '#c6b8da', '#aaaed2', '#2c3c52', '#aaa4c6'), // predawn
+  //   phase  horizon    zenith     deep       shallow    sun        hemi sky   hemi gnd   cloud      sky mid    sky zenith
+  key(0.00, '#f6bf98', '#7c9cc6', '#103a5c', '#2c6c94', '#ffc995', '#f0d2bf', '#33566a', '#ffdcc6', '#a9bfdc', '#5f86c2'), // sunrise peach
+  key(0.04, '#f6bf98', '#7c9cc6', '#103a5c', '#2c6c94', '#ffc995', '#f0d2bf', '#33566a', '#ffdcc6', '#a9bfdc', '#5f86c2'), // ... held a little (gentler sunrise)
+  key(0.09, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#5a5a48', '#ffffff', '#4fb8e6', '#1e86d2'), // bright tropical day
+  key(0.54, '#a6e9f2', '#2a8fd6', '#08355f', '#1a78b0', '#ffeccb', '#bfe6ff', '#5a5a48', '#ffffff', '#4fb8e6', '#1e86d2'),
+  key(0.635, '#f7a159', '#7d82b4', '#163a5c', '#35698c', '#ffa04e', '#f2bb8c', '#4a5266', '#ffc58e', '#eaa877', '#5f6ea6'), // warm orange dusk
+  key(0.70, '#6f6f9e', '#58679a', '#173c54', '#2f6276', '#c3b0dc', '#8f8cba', '#34465e', '#8e88b2', '#525e94', '#2e3a70'), // blue hour
+  key(0.77, '#2c4068', '#22355f', '#0b2840', '#184660', '#a8bff0', '#6a80b4', '#22364e', '#4c5c84', '#1d2d58', '#0f1a3c'), // deep blue night
+  key(0.91, '#2c4068', '#22355f', '#0b2840', '#184660', '#a8bff0', '#6a80b4', '#22364e', '#4c5c84', '#1d2d58', '#0f1a3c'),
+  key(0.94, '#6c7299', '#536392', '#163a50', '#2d5e70', '#c6b8da', '#9a9ec6', '#37495e', '#9490b0', '#4e5c8c', '#2a3768'), // predawn
 ]);
 // Rain pulls every colour toward a cool grey-green of similar brightness.
 export const RAIN_MIX = 0.65;
@@ -305,9 +305,10 @@ export function createDayNight(ctx) {
 
   // ---- scratch
   const cHorizon = new T.Color(), cZenith = new T.Color(), cDeep = new T.Color(), cShallow = new T.Color();
-  const cSun = new T.Color(), cHemiSky = new T.Color(), cHemiGround = new T.Color(), cCloud = new T.Color();
+  const cSun = new T.Color(), cHemiSky = new T.Color(), cHemiGround = new T.Color(), cCloud = new T.Color(), cSkyMid = new T.Color(), cSkyZenith = new T.Color();
   const cRain = new T.Color(), cRainCool = new T.Color('#a9c4e8'), cGlassNight = new T.Color(GLASS_NIGHT);
-  const vDir = new T.Vector3(), vMoon = new T.Vector3(), vTmp = new T.Vector3();
+  const vDir = new T.Vector3(), vMoon = new T.Vector3(), vSun = new T.Vector3(), vTmp = new T.Vector3();
+  const WHITE = new T.Color(1, 1, 1), vTmpC = new T.Color();
   const AXIS = new T.Vector3(-0.78, 0, 0.62).normalize(), SIDE = new T.Vector3(0.62, 0, 0.78).normalize();
   const setSRGB = (c, o) => c.setRGB(PAL[o], PAL[o + 1], PAL[o + 2], T.SRGBColorSpace);
 
@@ -493,7 +494,7 @@ export function createDayNight(ctx) {
     paletteAt(phase, W.rain, PAL);
     nf = L.nightFactor; wet = W.rain;
     setSRGB(cHorizon, 0); setSRGB(cZenith, 3); setSRGB(cDeep, 6); setSRGB(cShallow, 9);
-    setSRGB(cSun, 12); setSRGB(cHemiSky, 15); setSRGB(cHemiGround, 18); setSRGB(cCloud, 21);
+    setSRGB(cSun, 12); setSRGB(cHemiSky, 15); setSRGB(cHemiGround, 18); setSRGB(cCloud, 21); setSRGB(cSkyMid, 24); setSRGB(cSkyZenith, 27);
     const cool = Math.max(0, W.wind - 0.15) * (1 - wet) * 0.15 / 0.55; // breezy: cooler (0.15 at full breeze)
     cHorizon.r *= 1 - cool; cHorizon.g *= 1 - cool * 0.4; cCloud.r *= 1 - cool;
 
@@ -507,7 +508,8 @@ export function createDayNight(ctx) {
     const ct = Math.cos(th), st = Math.sin(th);
     const up = L.sunHeight >= 0;
     vMoon.set(-AXIS.x * ct - SIDE.x * 0.6, -st * 0.5, -AXIS.z * ct - SIDE.z * 0.6).normalize(); // the moon rides low, opposite the sun
-    if (up) vDir.set(AXIS.x * ct - SIDE.x * 0.32, st, AXIS.z * ct - SIDE.z * 0.32).normalize();
+    vSun.set(AXIS.x * ct - SIDE.x * 0.32, st, AXIS.z * ct - SIDE.z * 0.32).normalize();
+    if (up) vDir.copy(vSun);
     else vDir.copy(vMoon);
     const dayI = 3.0 * (1 - 0.15 * wet) * smooth(-0.02, 0.2, L.sunHeight);
     const moonI = MOON_I * (1 - 0.3 * wet) * smooth(-0.02, 0.2, -L.sunHeight);
@@ -531,6 +533,15 @@ export function createDayNight(ctx) {
         u.uSunColor.value.copy(oceanSunColor).multiply(cSun).multiplyScalar(spec);
       }
       if (u.uFoam) u.uFoam.value.copy(oceanFoam).lerp(cHemiSky, 0.35 * nf).multiplyScalar((1 - 0.6 * nf) * (1 - 0.35 * wet)); // soft moonlit foam
+    }
+    // sky dome (sky.js): gradient, sun glow and clouds follow the palette; its horizon is cHorizon
+    const sk = ctx.sky?.uniforms;
+    if (sk) {
+      sk.uHorizon.value.copy(cHorizon); sk.uMid.value.copy(cSkyMid); sk.uZenith.value.copy(cSkyZenith);
+      sk.uSunDir.value.copy(vSun); sk.uSunVis.value = smooth(-0.06, 0.04, L.sunHeight);
+      sk.uSunColor.value.copy(cSun).lerp(WHITE, 0.5);
+      sk.uCloudLit.value.copy(cCloud); sk.uCloudShade.value.copy(cCloud).multiply(vTmpC.copy(WHITE).lerp(cHemiSky, 0.7));
+      sk.uCoverage.value = 0.56 + 0.2 * (W.cloud - 0.25); // calm = the round-1 look, rain a bit heavier
     }
     // clouds
     const low = 1 - smooth(0.1, 0.5, Math.abs(L.sunHeight)); // sun near the horizon: lit from below, not dark

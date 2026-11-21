@@ -1,10 +1,10 @@
 import * as T from './vendor/three.module.js';
 import { createAvatar } from './avatar.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
-import { createSky } from './sky.js?build=v3-survival-ae77fa84ac2b';
+import { createSky, SKY_HORIZON } from './sky.js?build=v3-survival-ae77fa84ac2b';
 import { createOcean } from './ocean.js?build=v3-survival-ae77fa84ac2b';
 import { createHook } from './hook.js?build=v3-survival-ae77fa84ac2b';
-import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
+import { createWoodMaterial, DRIFTWOOD } from './wood.js?build=v3-survival-ae77fa84ac2b';
 import { HookCast, WATER_Y, catchLoot, holdForFullBag, throwOrigin } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-survival-ae77fa84ac2b';
 import { createRaftMesh, createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
@@ -17,6 +17,7 @@ import { floorBlock, decorBlock, inReach, BUILD_REACH, GUEST_REACH_SLACK, BLOCK_
 import { createHammer } from './hammer.js?build=v3-survival-ae77fa84ac2b';
 import { createFishingTool } from './fishing-tool.js?build=v3-survival-ae77fa84ac2b';
 import { createContent, cleanExt, promptParts } from './content.js?build=v3-survival-ae77fa84ac2b'; // content hook (islands, wildlife, storage, day/night)
+import { createIsland } from './island-art.js?build=v3-survival-ae77fa84ac2b'; // scenery islands (visual only; islands.js is the content lane's dockable islands)
 import { CONTENT_DECOR, CONTENT_BLOCK_RADIUS } from './content-items.js?build=v3-survival-ae77fa84ac2b'; // content hook
 import { createBuilding, cleanPieces } from './building.js?build=v3-survival-ae77fa84ac2b'; // building-pieces lane hook (docs/cloud/building-pieces.md)
 import { PIECES, PIECE_ORDER } from './building-pieces.js?build=v3-survival-ae77fa84ac2b'; // controls lane: pad build radial lists the hammer's pieces
@@ -62,7 +63,6 @@ import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, escRelea
 import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createShark, cleanShark, cleanTileHp, lootable, SHARK, SHARK_LOOT } from './shark.js?build=v3-survival-ae77fa84ac2b'; // shark lane (dist/shark.js)
 import { createWaterEffects } from './waterfx.js?build=v3-survival-ae77fa84ac2b'; // shark lane: bite splashes
-import { createIsland } from './scenery-islands.js?build=v3-survival-ae77fa84ac2b'; // decorative distant islands (islands.js is the content lane's dockable islands)
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -91,7 +91,7 @@ const CHARGE_MS = 900, MIN_CHARGE = .15, WEAR_PER_CATCH = 2, MAX_HEALTH = 100;
 const ROPE_SEGMENTS = 16, ITEM_FLOAT = .05, CAMERA_ROLL = .2;
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const SUN_OFFSET = Object.freeze([-15, 28, 12]), SHADOW_MARGIN = 4, SHADOW_MIN = 8, SHADOW_MAX = 25; // sun light offset from its target; shadow box half-size limits (m)
-const TIMBER = new Set(['#bb8a53','#c69860','#ad7c4a','#5e4029','#9c7649', '#c8995f', '#d3a368', '#8c6745', '#d5a265', '#a97d4c', '#b4824b', '#906f48', '#725942', '#756a49', '#ad8153']);
+const TIMBER = new Set([...Object.values(DRIFTWOOD), '#bb8a53','#c69860','#ad7c4a','#5e4029','#9c7649', '#c8995f', '#d3a368', '#8c6745', '#d5a265', '#a97d4c', '#b4824b', '#906f48', '#725942', '#756a49', '#ad8153']);
 const STYLE_ID = 'little-raft-engine-style';
 const HUD_CSS = `
 body.playing header,body.playing #hud .inventory,body.playing #hud .goal,body.playing #toast,
@@ -419,7 +419,7 @@ export function mount(transfer = null) {
   // content hook: live view of the engine for content modules (see dist/content.js)
   const contentCtx = {
     T, get scene() { return scene; }, get camera() { return camera; }, get raft() { return raft; }, get ocean() { return ocean; },
-    get sun() { return sun; }, get hemi() { return hemi; }, get clouds() { return clouds; }, get renderer() { return renderer; },
+    get sun() { return sun; }, get hemi() { return hemi; }, get sky() { return sky; }, get clouds() { return clouds; }, get renderer() { return renderer; },
     get world() { return world; }, get role() { return role; }, get running() { return running; }, get physics() { return physics; },
     get elapsed() { return elapsed; }, get options() { return options; }, get other() { return other; },
     localBag: () => localBag(), actorBag: a => actorBag(a), action: a => action(a), emit: (e, to) => emit(e, to), notice: (s, ms) => notice(s, ms),
@@ -432,16 +432,16 @@ export function mount(transfer = null) {
   function init() {
     const assetBuild = new URL(import.meta.url).searchParams.get('build') || 'dev'; document.querySelectorAll('use[href*="icons.svg"]').forEach(el => el.setAttribute('href', 'icons.svg?build=' + assetBuild + '#' + el.getAttribute('href').split('#')[1]));
     prepareDom();
-    scene = new T.Scene(); sky = createSky(T, {sunDirection:new T.Vector3(-15, 28, 12)}); scene.add(sky.group); scene.background = sky.horizonColor.clone(); scene.fog = new T.Fog(sky.horizonColor.clone(), 60, 260);
+    scene = new T.Scene(); sky = createSky(T, {sunDirection:new T.Vector3(...SUN_OFFSET)}); scene.add(sky.group); scene.background = sky.horizonColor.clone(); scene.fog = new T.Fog(sky.horizonColor.clone(), 60, 260); // day/night keeps these equal to sky.horizonColor
     camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 200); camera.rotation.order = 'YXZ'; scene.add(camera);
     renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:devicePixelRatio < 1.5}); // dense screens get their smoothing from pixels, not MSAA
     try { setIconRenderer(renderer); } catch {} // item icons share this WebGL context
     renderer.setSize(innerWidth, innerHeight);
     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
-    hemi = new T.HemisphereLight('#bfe6ff', '#2f6f7a', 1.0); scene.add(hemi); // content hook: kept for day/night; blue sky fill from above, teal sea bounce from below
+    hemi = new T.HemisphereLight('#bfe6ff', '#5a5a48', 1.0); scene.add(hemi); // content hook: kept for day/night; blue sky fill from above, neutral warm-grey bounce from below (no teal cast on the deck)
     sun = new T.DirectionalLight('#ffeccb', 3.0); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.0004; sun.shadow.normalBias = .03; sun.shadow.radius = 3; scene.add(sun, sun.target); // shadow box is fitted to the raft each frame
     quality = createQuality({sun, preset:options.graphics, onChange:() => applyUserGraphics()}); applyUserGraphics(); // owns the level (shadow map size, sun.castShadow); applyUserGraphics sets the pixel ratio once, with the render scale
-    ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:'#a6e9f2', fadeNear:28, fadeFar:190}); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
+    ocean = createOcean(T, {sunDirection:sun.position.clone(), skyColor:SKY_HORIZON, fadeNear:28, fadeFar:190}); ocean.mesh.renderOrder = 10; scene.add(ocean.mesh); ocean.update(elapsed); // renderOrder: after other opaques so early-Z skips covered sea pixels (viewmodels stay at 1000)
     if (ART.artEnabled()) ART.applyLighting(scene, renderer, ART.LIGHTING, {ocean, T}); // art lane hook
     raft = new T.Group(); raft.position.y = raftPose.y; raft.rotation.set(raftPose.rx, 0, raftPose.rz); scene.add(raft);
     itemsGroup = new T.Group(); scene.add(itemsGroup); ocean.trackFoam(itemsGroup);
@@ -458,9 +458,8 @@ export function mount(transfer = null) {
     islands.length = 0; aboveWater.length = 0; // diving lane hook: seafloor rises toward islands; these groups hide underwater
     // A few islands at varied distances [angle, distance, radius]; draws 12 rand() values so later world seeding is unchanged.
     const isl = [[3.6, 62, 11], [2.55, 96, 15], [.75, 80, 9], [-1.75, 112, 13]];
-    for (let i = 0; i < 12; i++) { const j = rand(); if (i < isl.length) { const [a, d, r] = isl[i], rr = r * (.9 + j * .2), g = createIsland(T, {seed:i + 1, radius:rr}); g.position.set(Math.sin(a) * d, 0, Math.cos(a) * d); g.rotation.y = j * 6.28; islands.push({x:g.position.x, z:g.position.z, r:rr * .6}); aboveWater.push(g); scene.add(g); scenery.push([g, rr * .7]); } } // [sailing] islands drift past; diving: seafloor rises toward these (createIsland merges its own meshes)
-    // Clouds are wisps in the sky dome (sky.js); the old puffy cloud groups are gone, so content's day/night gets clouds = [].
-    aboveWater.push(sky.group); // diving lane hook: no sky dome underwater
+    for (let i = 0; i < 12; i++) { const j = rand(); if (i < isl.length) { const [a, d, r] = isl[i], rr = r * (.9 + j * .2), g = createIsland(T, {seed:i + 1, radius:rr * .7}); g.position.set(Math.sin(a) * d, 0, Math.cos(a) * d); g.rotation.y = j * 6.28; islands.push({x:g.position.x, z:g.position.z, r:rr * .6}); aboveWater.push(g); scene.add(g); scenery.push([g, rr * .7]); } } // [sailing] islands drift past; diving: seafloor rises toward these (island-art.js merges its own meshes; its radius is the shoreline, rocks scale with it, palms do not)
+    aboveWater.push(sky.group); // diving: no sky dome underwater
     setOwnedElsewhere(id => Object.prototype.hasOwnProperty.call(PROG_ITEMS, id)); // [progression-hook] items.js unlocks own the catalogue
     content = createContent(contentCtx); content.load(world.ext, 'save'); // content hook
     try { vitalsUI = createVitalsUI(); } catch (e) { console.warn('vitals HUD unavailable', e); vitalsUI = null; } // [vitals]
@@ -1400,7 +1399,7 @@ export function mount(transfer = null) {
 
   // ---------- Frame ----------
   let chargeWidth = '', hookStage = '';
-  const TITLE_FOCUS = new T.Vector3(-5, 0, 2), vmParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0};
+  const TITLE_FOCUS = new T.Vector3(0, 0, 0), vmParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0};
   const fishPos = new T.Vector3(), hookPos = new T.Vector3(), fishRope = Array.from({length:ROPE_SEGMENTS + 1}, () => new T.Vector3()), freeItems = [], ropeScratch = [];
   const handParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0, yaw:0, pitch:0};
   const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3(), oceanSample = {h:0, sx:0, sz:0};
@@ -1433,8 +1432,12 @@ export function mount(transfer = null) {
       if (eating) { const k = Math.sin(Math.min(1, eating.t / EAT_SECONDS) * Math.PI); camera.rotation.x -= k * .09; camera.position.y -= k * .035; } // [vitals] hand-to-mouth nod
       if (shakeAmp > .002) { const k = shakeAmp * (.4 + options.cameraMotion); camera.position.x += (Math.random() - .5) * k; camera.position.y += (Math.random() - .5) * k; camera.rotation.z += (Math.random() - .5) * k * .3; shakeAmp *= Math.exp(-dt * 7); } else shakeAmp = 0; // shark lane: bite shake
     } else { // gentle cinematic view for the welcome screen
-      const focus = TITLE_FOCUS, d = 23, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .77;
-      camera.position.set(focus.x + Math.sin(cy) * d * Math.cos(cp), d * Math.sin(cp), focus.z + Math.cos(cy) * d * Math.cos(cp)); camera.lookAt(focus);
+      // Low, near-horizon framing: sky fills the top, raft at eye level right of centre (menu sits left).
+      const focus = TITLE_FOCUS, d = 11, cy = .68 + Math.sin(elapsed * .05) * .12, cp = .1, side = 1.6, ry = raft ? raft.position.y : 0;
+      const cx = focus.x + Math.sin(cy) * d * Math.cos(cp), cz = focus.z + Math.cos(cy) * d * Math.cos(cp);
+      const cyW = Math.max(ry + d * Math.sin(cp) + .6, ocean.getHeight(cx, cz) + 1.1); // never dip into a wave crest
+      camera.position.set(cx, cyW, cz);
+      camera.lookAt(focus.x - Math.cos(cy) * side, ry + 1.2, focus.z + Math.sin(cy) * side);
     }
     swing = Math.max(0, swing - dt * 3);
     const kind = heldKind(), motion = options.cameraMotion;
@@ -1497,7 +1500,7 @@ export function mount(transfer = null) {
       if (role === 'guest' && u.sx !== undefined && Math.hypot(it.x - u.sx, it.z - u.sz) < 3) { const k = Math.min(1, dt * 8); u.sx += (it.x - u.sx) * k; u.sz += (it.z - u.sz) * k; }
       else { u.sx = it.x; u.sz = it.z; }
       const s = ocean.sample(u.sx, u.sz, oceanSample);
-      m.position.set(u.sx, s.h + ITEM_FLOAT, u.sz);
+      m.position.set(u.sx, s.h + (u.float ?? (it.type === 'plastic' ? -.04 : ITEM_FLOAT)), u.sz); // per-type waterline (debris.js sets userData.float)
       m.rotation.set(-s.sz * 1.2 + Math.sin(elapsed * 1.3 + it.phase) * .04, it.phase + elapsed * .08, s.sx * 1.2 + Math.sin(elapsed + it.phase) * .05);
     }
   }
@@ -1596,7 +1599,7 @@ export function mount(transfer = null) {
     updateItems(dt); updateWateringVisuals(); updateHook(dt); updateGhost();
     content?.update(dt); // content hook
     if (shark) { try { shark.update(dt, elapsed, running); } catch (e) { console.error('shark update failed', e); try { shark.dispose(); } catch {} shark = null; } } // shark lane
-    sky?.follow(ocean.uniforms, scene.background); sky?.update(elapsed, camera); // sky dome tracks day/night's horizon, zenith and sun
+    sky?.update(elapsed, camera); // sky dome follows the camera; day/night (daynight.js) drives its colours through ctx.sky
     if (fc) { try { fc.update(dt, elapsed); } catch (e) { console.error('fishing-cooking update failed', e); try { fc.dispose(); } catch {} fc = null; } } // [fishing-cooking]
     if (instruments) { try { instruments.update(dt); } catch (e) { console.error('instruments update failed', e); try { instruments.dispose(); } catch {} instruments = null; } } // [instruments]
     if (running && role !== 'guest') {

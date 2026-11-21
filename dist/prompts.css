@@ -1,22 +1,31 @@
-/* Little Raft interaction prompts (prompts.js): crosshair-side key prompt + bottom-left event feed. */
+/* Little Raft interaction prompts (prompts.js): key cap under the crosshair + bottom-left pickup/event feed. */
 #contextPrompt{display:none!important}
-#lrPrompt,#lrFeed{position:fixed;z-index:30;pointer-events:none;color:#f6ecd6;font:600 14px/1.25 var(--ui-font,system-ui,-apple-system,'Segoe UI',sans-serif);
-  text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 8px rgba(0,0,0,.55);text-align:left;user-select:none}
-#lrPrompt{left:calc(50% + 34px);top:calc(50% + 26px);opacity:0;transform:translateY(2px);transition:opacity .18s ease,transform .18s ease;white-space:nowrap}
+#lrPrompt,#lrFeed{position:fixed;z-index:30;pointer-events:none;color:#f3e7cc;font:700 13px/1.2 var(--ui-font,system-ui,-apple-system,'Segoe UI',sans-serif);user-select:none}
+/* Prompt: cream key cap(s) centred under the crosshair, action word in caps beneath. */
+#lrPrompt{left:50%;top:calc(50% + 20px);translate:-50% 0;display:flex;align-items:flex-start;justify-content:center;gap:22px;
+  opacity:0;transform:translateY(3px);transition:opacity .18s ease,transform .18s ease;white-space:nowrap;text-align:center}
 #lrPrompt.lr-on{opacity:1;transform:none;transition-duration:.12s}
-#lrPrompt .lr-row{display:flex;align-items:center;gap:6px;min-height:20px}
-#lrPrompt .lr-row+.lr-row{margin-top:3px}
-#lrPrompt .lr-muted{opacity:.88;font-weight:500;font-size:13px}
-#lrPrompt .lr-key{display:inline-grid;place-items:center;min-width:19px;height:19px;padding:0 5px;box-sizing:border-box;border-radius:5px;
-  border:1px solid rgba(246,236,214,.75);border-bottom-width:2px;background:rgba(20,16,10,.28);font:700 11px/1 var(--ui-font,system-ui,sans-serif);text-shadow:none;
-  box-shadow:0 1px 3px rgba(0,0,0,.35)}
-#lrPrompt .lr-hold{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-variant:small-caps;opacity:.85}
-#lrPrompt .lr-glyph{display:inline-flex;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.7))}
-#lrPrompt .lr-mouse{display:block;fill:currentColor}
-#lrFeed{left:28px;bottom:318px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;max-width:min(360px,calc(100vw - 56px))}
-#lrFeed .lr-line{animation:lrIn .16s ease-out;transition:opacity .4s ease,transform .4s ease;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-#lrFeed .lr-line.lr-out{opacity:0;transform:translateX(-6px)}
-@keyframes lrIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-@media(max-width:760px){#lrFeed{left:16px;bottom:336px;font-size:13px}#lrPrompt{font-size:13px}}
+#lrPrompt .lr-row{display:flex;flex-direction:column;align-items:center;gap:5px}
+#lrPrompt .lr-key{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 5px;box-sizing:border-box;border-radius:3px;border:0;
+  background:#e8dcc0;color:#3a2614;font:800 12px/1 var(--ui-font,system-ui,sans-serif);text-shadow:none;
+  box-shadow:inset 0 -2px 0 rgba(58,38,20,.28),0 1px 2px rgba(0,0,0,.45),0 0 10px rgba(0,0,0,.22)}
+#lrPrompt .lr-key.lr-glyph{padding:0}
+#lrPrompt .lr-mouse{display:block;fill:currentColor;width:10px;height:14px}
+#lrPrompt .lr-label{text-transform:uppercase;letter-spacing:.07em;font-size:12px;
+  text-shadow:0 1px 1px rgba(0,0,0,.8),0 0 6px rgba(0,0,0,.6),0 0 14px rgba(0,0,0,.3)}
+#lrPrompt .lr-hold{opacity:.78;font-weight:600}
+#lrPrompt .lr-muted .lr-label{opacity:.78;font-weight:600;text-transform:none;letter-spacing:.02em;font-size:13px}
+/* Feed: warm tan pills stacked bottom-left, clear of the vitals panel (vitals-ui.js) and journal chip, sliding in from the edge. */
+#lrFeed{left:28px;bottom:318px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;max-width:min(360px,calc(100vw - 56px))}
+#lrFeed .lr-line{display:flex;align-items:center;gap:6px;max-width:100%;box-sizing:border-box;padding:4px 10px;border-radius:4px;
+  background:rgba(120,95,60,.75);box-shadow:0 1px 3px rgba(0,0,0,.3);text-shadow:0 1px 1px rgba(0,0,0,.5);
+  animation:lrIn .22s cubic-bezier(.2,.8,.3,1);transition:opacity .4s ease,transform .4s ease}
+#lrFeed .lr-ftext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+#lrFeed .lr-n{font-weight:800;color:#fff4dc;font-variant-numeric:tabular-nums}
+#lrFeed .lr-done .lr-n{color:#cfe6a0}
+#lrFeed .lr-ficon{flex:none;width:20px;height:20px;margin:-2px 0 -2px -3px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.5))}
+#lrFeed .lr-line.lr-out{opacity:0;transform:translateX(-12px)}
+@keyframes lrIn{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
+@media(max-width:760px){#lrFeed{left:16px;bottom:336px;font-size:12px}}
 @media(prefers-reduced-motion:reduce){#lrPrompt,#lrPrompt.lr-on,#lrFeed .lr-line{transition:none;animation:none;transform:none}}
 /* The resume hint sits at the top edge (graphics.css); the throw charge is a thin ring on the reticle (graphics.css). */

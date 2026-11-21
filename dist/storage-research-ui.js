@@ -17,7 +17,7 @@ const CSS = `
 #lrStorage.lr-sr{padding:0;margin:min(10vh,72px) auto auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#fff2cc;width:max-content;max-width:96vw;max-height:calc(100vh - min(10vh,72px) - 12px);overflow:visible;font:500 14px/1.35 ${FONT}}
 #lrStorage.lr-sr::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
 #lrStorage .lr-sr-wrap{display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:6px;outline:none;max-height:calc(100vh - min(10vh,72px) - 18px);box-sizing:border-box;overflow:hidden;
-  background:repeating-linear-gradient(90deg,#00000012 0 2px,transparent 2px 23px),linear-gradient(#b48d55,#8a663a);border:3px solid #3e2a17;box-shadow:0 0 0 2px #d6b67e,0 18px 50px #000a}
+  background:repeating-linear-gradient(90deg,#00000010 0 1px,transparent 1px 21px),repeating-linear-gradient(0deg,#ffffff0a 0 1px,transparent 1px 4px),linear-gradient(#a8844f,#9a7748 45%,#8a6a3e);border:2px solid #5e4426;box-shadow:inset 0 1px 0 #c9a76f88,0 12px 36px #0006}
 #lrStorage .lr-sr-head{display:flex;align-items:center;gap:10px;padding:2px 2px 0}
 #lrStorage .lr-sr-hicon{display:grid;place-items:center;width:40px;height:40px;border-radius:4px;background:#3a2716eb;box-shadow:inset 0 0 0 2px #24170c,inset 0 0 0 3px #b48d5544}
 #lrStorage .lr-sr-hicon .sv-icon{width:30px;height:30px;filter:drop-shadow(0 1px 1px #0008)}
@@ -28,28 +28,28 @@ const CSS = `
 #lrStorage .lr-sr-head,#lrStorage .lr-sr-banner{flex:none}
 #lrStorage .lr-sr-body{display:flex;gap:12px;align-items:stretch;flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-color:#b48d55 #2a1b0e}
 #lrStorage[data-mode=crate] .lr-sr-body{flex-direction:column;align-items:center}
-#lrStorage .lr-sr-panel{background:#3a2716eb;border-radius:4px;box-shadow:inset 0 0 0 2px #24170c,inset 0 0 0 3px #b48d5544;padding:10px 12px;box-sizing:border-box}
+#lrStorage .lr-sr-panel{border-radius:3px;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 6px #3e2a1766;background:repeating-linear-gradient(0deg,#ffffff09 0 1px,transparent 1px 3px),repeating-linear-gradient(90deg,#00000009 0 1px,transparent 1px 3px),repeating-linear-gradient(90deg,#00000012 0 2px,transparent 2px 37px),radial-gradient(ellipse at 50% 0,#9a7a4c,transparent 70%),linear-gradient(#846640,#76593a);padding:10px 12px;box-sizing:border-box}
 #lrStorage[data-mode=crate] .lr-sr-panel{width:100%;display:flex;flex-direction:column;align-items:center;gap:8px}
-#lrStorage .lr-sr-label{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;margin:0 0 2px;font:800 11px/1 ${FONT};letter-spacing:1.4px;text-transform:uppercase;color:#d9c9a6}
-#lrStorage .lr-sr-cgrid{display:grid;grid-template-columns:repeat(6,52px);gap:6px;padding:6px;border-radius:4px;background:#24170c88;box-shadow:inset 0 2px 6px #0007}
+#lrStorage .lr-sr-label{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;margin:0 0 2px;font:800 11px/1 ${FONT};letter-spacing:1.4px;text-transform:uppercase;color:#f6e8c6;text-shadow:0 1px 0 #3e2a1799}
+#lrStorage .lr-sr-cgrid{display:grid;grid-template-columns:repeat(6,52px);gap:6px;padding:6px;border-radius:4px;background:#3e2a1755;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 6px #3e2a1766}
 #lrStorage .lr-sr-grid{display:grid;grid-template-columns:repeat(7,52px);gap:6px}
 #lrStorage .lr-sr-hotrow{display:grid;grid-template-columns:repeat(${HOTBAR_SIZE},52px);gap:6px}
 #lrStorage .lr-sr-rope{width:100%;height:4px;border-radius:2px;background:repeating-linear-gradient(115deg,#c99560 0 3px,#6b4a2b 3px 5px);opacity:.85}
-#lrStorage button.sv-slot{position:relative;display:block;width:52px;height:52px;margin:0;padding:0;border:0;border-radius:3px;background:linear-gradient(180deg,#5a3f28e8,#3d2a19e8);
-  box-shadow:inset 0 0 0 1px #d4b07a55,inset 0 2px 6px #0006;color:#fff2cc;font:600 14px/1 ${FONT};cursor:pointer;transform:none;transition:box-shadow .08s,background .08s;outline:none}
-#lrStorage button.sv-slot.sv-hot{background:linear-gradient(180deg,#664730e8,#46301ce8)}
-#lrStorage .lr-sr-cgrid button.sv-slot{background:linear-gradient(180deg,#6b4a2ce8,#4a321de8)}
+#lrStorage button.sv-slot{position:relative;display:block;width:52px;height:52px;margin:0;padding:0;border:0;border-radius:3px;background:linear-gradient(180deg,#d6c397,#c4ae80);
+  box-shadow:inset 0 0 0 1px #7a5a34,inset 0 1px 3px #5e442633;color:#3e2a17;font:600 14px/1 ${FONT};cursor:pointer;transform:none;transition:box-shadow .08s,background .08s;outline:none}
+#lrStorage button.sv-slot.sv-hot{background:linear-gradient(180deg,#d0bc8e,#bea778)}
+#lrStorage .lr-sr-cgrid button.sv-slot{background:linear-gradient(180deg,#dccaa0,#cab587)}
 #lrStorage .sv-slot .sv-art{inset:8px}
-#lrStorage button.sv-slot:hover:not(.sv-empty){box-shadow:inset 0 0 0 2px #ffe3a6,inset 0 2px 6px #0005}
+#lrStorage button.sv-slot:hover:not(.sv-empty){background:linear-gradient(180deg,#f1e7cc,#e2d3ab);box-shadow:inset 0 0 0 2px #fffaea,inset 0 0 0 3px #7a5a34}
 #lrStorage button.sv-slot.sv-empty{cursor:default}
-#lrStorage button.sv-slot:focus-visible{outline:2px solid #ffe3a6;outline-offset:1px}
+#lrStorage button.sv-slot:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
 #lrStorage button.sv-slot.lr-sr-pop{animation:lrSrPop .28s ease-out}
-@keyframes lrSrPop{0%{box-shadow:inset 0 0 0 2px #9fe0d6,0 0 12px #9fe0d6aa}100%{box-shadow:inset 0 0 0 1px #d4b07a55,inset 0 2px 6px #0006}}
+@keyframes lrSrPop{0%{box-shadow:inset 0 0 0 2px #9fe0d6,0 0 12px #9fe0d6aa}100%{box-shadow:inset 0 0 0 1px #7a5a34,inset 0 1px 3px #5e442633}}
 #lrStorage .lr-sr-btn{padding:6px 11px;border:0;border-radius:4px;background:linear-gradient(#7a5631,#5d4026);color:#fff2cc;font:700 12px/1 ${FONT};letter-spacing:.2px;text-transform:none;
   box-shadow:inset 0 0 0 1px #d4b07a77,0 1px 0 #0006;cursor:pointer;transform:none}
 #lrStorage .lr-sr-btn:hover:not(:disabled){box-shadow:inset 0 0 0 1px #ffe3a6,0 1px 0 #0006;background:linear-gradient(#8a6338,#6a4a2b)}
 #lrStorage .lr-sr-btn:disabled{opacity:.45;cursor:default}
-#lrStorage .lr-sr-hint{margin:0;max-width:470px;font:500 12px/1.35 ${FONT};color:#d9c9a6;text-align:center}
+#lrStorage .lr-sr-hint{margin:0;max-width:470px;font:500 12px/1.35 ${FONT};color:#f6e8c6;text-align:center}
 #lrStorage .lr-sr-hint kbd{display:inline-block;padding:0 4px;border:1px solid #d9c9a688;border-radius:3px;font:inherit}
 /* research */
 #lrStorage .lr-sr-next{width:320px;max-height:min(470px,70vh);overflow:auto;overscroll-behavior:contain;scrollbar-color:#b48d55 #2a1b0e}
@@ -96,26 +96,26 @@ const CSS = `
 .lr-sr-lock svg{display:block;width:15px;height:15px}
 /* craft list in #inventory */
 #inventory .sv-rlist{display:flex;flex-direction:column}
-#inventory .sv-recipe[data-locked]{order:1;pointer-events:none;cursor:default;opacity:1!important;background:linear-gradient(#3f2b1a,#33231a);box-shadow:inset 0 0 0 1px #d4b07a22}
+#inventory .sv-recipe[data-locked]{order:1;pointer-events:none;cursor:default;opacity:1!important;background:linear-gradient(180deg,#b9a47a,#ab966c);box-shadow:inset 0 0 0 1px #6b4e2c88}
 #inventory .sv-recipe[data-locked] .sv-rart{position:relative}
 #inventory .sv-recipe[data-locked] .sv-rart .sv-icon{filter:grayscale(1) brightness(.75);opacity:.6}
-#inventory .sv-recipe[data-locked] .sv-rname{color:#d9c9a6}
+#inventory .sv-recipe[data-locked] .sv-rname{color:#4a3520}
 #inventory .sv-recipe[data-locked] .sv-reqs{opacity:.5}
 #inventory .sv-recipe[data-locked] .sv-why{display:none}
 #inventory .sv-recipe[data-locked] .sv-rart::after{content:'';position:absolute;right:-6px;bottom:-6px;width:22px;height:22px;border-radius:50%;
   background:#3e2a17 ${LOCK_URL} center/15px 15px no-repeat;box-shadow:0 0 0 1.5px #ffcf9a,0 1px 3px #000a}
 #inventory .sv-recipe.sv-locked[data-locked] .sv-rart::after{filter:grayscale(.85) brightness(.7);opacity:.75}
 #inventory .sv-recipe.sv-gated[data-locked] .sv-rart::after{filter:grayscale(1) brightness(.55)}
-#inventory .sv-recipe .sv-rbody[data-needs]::after{content:attr(data-needs);display:block;margin-top:4px;font:700 12px/1.2 ${FONT};color:#ffcf9a}
+#inventory .sv-recipe .sv-rbody[data-needs]::after{content:attr(data-needs);display:block;margin-top:4px;font:700 12px/1.2 ${FONT};color:#8a3a12}
 #inventory .sv-recipe.lr-sr-first{position:relative;margin-top:30px}
-#inventory .sv-recipe.lr-sr-first::before{content:'Discover at a Tinker\\2019s Desk';position:absolute;left:2px;top:-22px;width:max-content;white-space:nowrap;font:800 11px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#d9c9a6}
+#inventory .sv-recipe.lr-sr-first::before{content:'Discover at a Tinker\\2019s Desk';position:absolute;left:2px;right:auto;top:-22px;bottom:auto;width:max-content;height:auto;border-radius:0;background:none;box-shadow:none;white-space:nowrap;font:800 11px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#f6e8c6;text-shadow:0 1px 0 #3e2a17aa}
 #inventory .sv-recipe.lr-sr-fresh{animation:lrSrFresh 2.4s ease-out}
 #inventory .lr-sr-more{display:block;width:100%;margin:0 0 8px;padding:6px 8px;border:0;border-radius:4px;background:#24170caa;box-shadow:inset 0 0 0 1px #ffbd6655;color:#ffcf9a;font:700 12px/1.2 ${FONT};text-align:left;letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
 #inventory .lr-sr-more:hover{box-shadow:inset 0 0 0 1px #ffe3a6}
 #inventory .sv-recipe.lr-sr-beckon{animation:lrSrBeckon 2.6s ease-in-out infinite}
 @keyframes lrSrBeckon{0%,100%{box-shadow:inset 0 0 0 1px #d4b07a44}50%{box-shadow:inset 0 0 0 1px #ffbd66,0 0 10px #ffbd6688}}
 body.lr-sr-open .tools.sv-hotbar{visibility:hidden}
-@keyframes lrSrFresh{0%,30%{box-shadow:inset 0 0 0 2px #ffe3a6,0 0 16px #ffbd66}100%{box-shadow:inset 0 0 0 1px #d4b07a44}}
+@keyframes lrSrFresh{0%,30%{box-shadow:inset 0 0 0 2px #fffaea,0 0 16px #ffbd66}100%{box-shadow:inset 0 0 0 1px #7a5a34}}
 @media(max-width:700px){#lrStorage .lr-sr-body{flex-direction:column}#lrStorage .lr-sr-next,#lrStorage .lr-sr-study{width:auto;max-height:none;overflow:visible}
   #lrStorage .lr-sr-tiles{grid-template-columns:repeat(auto-fill,minmax(84px,96px))}}
 @media(max-width:700px),(max-height:600px){#lrStorage .lr-sr-cgrid{grid-template-columns:repeat(6,44px)}#lrStorage .lr-sr-grid{grid-template-columns:repeat(7,44px)}#lrStorage .lr-sr-hotrow{grid-template-columns:repeat(${HOTBAR_SIZE},44px)}

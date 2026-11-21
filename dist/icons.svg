@@ -1,218 +1,50 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-  <!-- Little Raft nautical icon sprite. Palette: navy #153e49, wood #bb8650, cream #fff2cc, teal #54a6a4, amber #ffbd66 -->
+  <!-- Little Raft icon sprite. Item icons are painted, filled shapes in warm natural colours:
+       outline #2a1a0e 1.5px, wood #b07a45, leaf #6aa84f, metal #9aa0a4, plastic white + #4f8fc9, rope #c9a46a.
+       UI chrome symbols (crew, help, sound, close, compass) keep the older navy #153e49 set. -->
 
   <symbol id="icon-hook" viewBox="0 0 48 48">
-    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-      <!-- rope trailing to eye -->
-      <path d="M26 6 C28 3 33 2 38 4 C42 5.5 43 8 44 10" stroke="#153e49" stroke-width="6"/>
-      <path d="M26 6 C28 3 33 2 38 4 C42 5.5 43 8 44 10" stroke="#bb8650" stroke-width="3"/>
-      <path d="M31 3.2 l1.2 2.4 M36 3.4 l0.4 2.6 M40.6 5.4 l-1 2.4" stroke="#153e49" stroke-width="1" stroke-opacity=".6"/>
-      <!-- steel shank and bend -->
-      <path d="M26 10 V30 A8 8 0 0 1 10 30 V25" stroke="#153e49" stroke-width="8"/>
-      <path d="M26 10 V30 A8 8 0 0 1 10 30 V25" stroke="#54a6a4" stroke-width="4"/>
-      <path d="M24.6 14 V30 A6.6 6.6 0 0 1 20 36.3" stroke="#fff2cc" stroke-width="1.3" stroke-opacity=".85"/>
-      <!-- eye -->
-      <circle cx="26" cy="8" r="3.6" stroke="#153e49" stroke-width="5"/>
-      <circle cx="26" cy="8" r="3.6" stroke="#54a6a4" stroke-width="2"/>
-    </g>
-    <!-- barbed point -->
-    <path d="M6.5 27 L10 17.5 L13.5 27 L10 25 Z" fill="#54a6a4" stroke="#153e49" stroke-width="2" stroke-linejoin="round"/>
-    <!-- rope lashing on shank -->
-    <g fill="#bb8650" stroke="#153e49" stroke-width="1.6" stroke-linejoin="round">
-      <rect x="21.5" y="13" width="9" height="3.2" rx="1.6"/>
-      <rect x="21.5" y="16.6" width="9" height="3.2" rx="1.6"/>
-    </g>
+    <ellipse cx="22" cy="44" rx="12" ry="2" fill="#2a1a0e" fill-opacity=".18"/><g transform="translate(11 42) rotate(-62)"><rect x="-2" y="-3.6" width="23" height="7.2" rx="3.2" fill="#b07a45" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M1 -1.6 H18" stroke="#d9a468" stroke-width="1.4" stroke-linecap="round"/><path d="M3 1.8 H9 M12 1.4 H17" stroke="#7d5129" stroke-width=".9" stroke-linecap="round"/><rect x="6" y="-4.4" width="3" height="8.8" rx="1.3" fill="#d2b07a" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><rect x="9" y="-4.4" width="3" height="8.8" rx="1.3" fill="#d2b07a" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><rect x="12" y="-4.4" width="3" height="8.8" rx="1.3" fill="#d2b07a" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M7 -3 l1 6 M10 -3 l1 6 M13 -3 l1 6" stroke="#9c7a45" stroke-width=".8"/></g><path d="M21.5 23 C22.5 15 25 9.5 31 7.5 C37.5 5.5 42.5 10 41.5 16 C40.8 20.5 37 23.5 32.5 22" fill="none" stroke="#2a1a0e" stroke-width="7.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M21.5 23 C22.5 15 25 9.5 31 7.5 C37.5 5.5 42.5 10 41.5 16 C40.8 20.5 37 23.5 32.5 22" fill="none" stroke="#9aa0a4" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M34.5 19 L29 24.6 L31.2 18.6 Z" fill="#9aa0a4" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M23.2 19.5 C24 13.5 26.5 10 31 8.8 M36 8.6 C38.5 9.4 40 11.2 40.2 13.5" fill="none" stroke="#eef1f2" stroke-width="1.3" stroke-linecap="round" stroke-opacity=".9"/><rect x="18.6" y="22" width="6" height="4" rx="1.4" fill="#6e7478" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" transform="rotate(-62 21.6 24)"/>
   </symbol>
 
   <symbol id="icon-floor" viewBox="0 0 48 48">
-    <g stroke="#153e49" stroke-width="2" stroke-linejoin="round">
-      <rect x="5" y="7" width="9.5" height="34" rx="1.5" fill="#bb8650"/>
-      <rect x="14.5" y="6" width="9.5" height="35" rx="1.5" fill="#c99560"/>
-      <rect x="24" y="7" width="9.5" height="34" rx="1.5" fill="#bb8650"/>
-      <rect x="33.5" y="6.5" width="9.5" height="34.5" rx="1.5" fill="#c99560"/>
-    </g>
-    <!-- timber grain -->
-    <g fill="none" stroke="#153e49" stroke-width="1" stroke-opacity=".45" stroke-linecap="round">
-      <path d="M8.5 19 C9.5 23 8 27 9 30 M11 33 V37"/>
-      <path d="M18 10 V13 M19.5 19 C21 23 19 27 20.5 30"/>
-      <path d="M27.5 19 C28.5 22 27 26 29 30 M30 34 V37"/>
-      <path d="M37 10 V13 M38.5 20 C40 24 37.5 27 39 30"/>
-      <ellipse cx="21" cy="35" rx="1.3" ry="2"/>
-    </g>
-    <!-- rope lashings -->
-    <g fill="#fff2cc" stroke="#153e49" stroke-width="1.8" stroke-linejoin="round">
-      <rect x="3.5" y="13" width="41" height="4" rx="2"/>
-      <rect x="3.5" y="31" width="41" height="4" rx="2"/>
-    </g>
-    <g stroke="#bb8650" stroke-width="1.2" stroke-linecap="round">
-      <path d="M9 13.8 l2 2.4 M17 13.8 l2 2.4 M25 13.8 l2 2.4 M33 13.8 l2 2.4 M41 13.8 l2 2.4"/>
-      <path d="M9 31.8 l2 2.4 M17 31.8 l2 2.4 M25 31.8 l2 2.4 M33 31.8 l2 2.4 M41 31.8 l2 2.4"/>
-    </g>
+    <ellipse cx="24" cy="44" rx="18" ry="1.8" fill="#2a1a0e" fill-opacity=".18"/><rect x="5" y="6" width="9.5" height="34.5" rx="1.6" fill="#b07a45" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M7.2 8.5 V38.5" stroke="#dcaa70" stroke-width="1.1" stroke-linecap="round" stroke-opacity=".9"/><path d="M11 20 C10 24 12 27 11 30" fill="none" stroke="#6f4622" stroke-width=".9" stroke-opacity=".8"/><rect x="14.5" y="7" width="9.5" height="34.5" rx="1.6" fill="#c08a52" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M16.7 9.5 V39.5" stroke="#dcaa70" stroke-width="1.1" stroke-linecap="round" stroke-opacity=".9"/><path d="M20.5 22 C19.5 26 21.5 29 20.5 32" fill="none" stroke="#6f4622" stroke-width=".9" stroke-opacity=".8"/><rect x="24" y="6" width="9.5" height="34.5" rx="1.6" fill="#a8733f" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M26.2 8.5 V38.5" stroke="#dcaa70" stroke-width="1.1" stroke-linecap="round" stroke-opacity=".9"/><path d="M30 24 C29 28 31 31 30 34" fill="none" stroke="#6f4622" stroke-width=".9" stroke-opacity=".8"/><rect x="33.5" y="7" width="9.5" height="34.5" rx="1.6" fill="#bb8550" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M35.7 9.5 V39.5" stroke="#dcaa70" stroke-width="1.1" stroke-linecap="round" stroke-opacity=".9"/><path d="M39.5 26 C38.5 30 40.5 33 39.5 36" fill="none" stroke="#6f4622" stroke-width=".9" stroke-opacity=".8"/><rect x="3.5" y="12.5" width="41" height="4.4" rx="2.2" fill="#d4b07a" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M7 13.1 l2 3.2 M13 13.1 l2 3.2 M19 13.1 l2 3.2 M25 13.1 l2 3.2 M31 13.1 l2 3.2 M37 13.1 l2 3.2" stroke="#9c7a45" stroke-width="1" stroke-linecap="round"/><rect x="3.5" y="31" width="41" height="4.4" rx="2.2" fill="#d4b07a" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M7 31.6 l2 3.2 M13 31.6 l2 3.2 M19 31.6 l2 3.2 M25 31.6 l2 3.2 M31 31.6 l2 3.2 M37 31.6 l2 3.2" stroke="#9c7a45" stroke-width="1" stroke-linecap="round"/>
   </symbol>
 
   <symbol id="icon-fish" viewBox="0 0 48 48">
-    <g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
-      <path d="M20 16 L24 9 L31 15" fill="#ffbd66"/>
-      <path d="M22 31 L25 37 L29 32" fill="#ffbd66"/>
-      <path d="M13 24 L3.5 15.5 L6.5 24 L3.5 32.5 Z" fill="#ffbd66"/>
-      <path d="M11 24 C17 13.5 34 12.5 42 24 C34 35.5 17 34.5 11 24 Z" fill="#54a6a4"/>
-      <path d="M13 25.5 C20 31.5 34 32 41 25.8 C33 29 21 29 13 25.5 Z" fill="#fff2cc" stroke-width="1.4"/>
-      <path d="M31 17.5 C28.5 21 28.5 26 31 29.5" fill="none"/>
-      <circle cx="35.5" cy="21.5" r="2.4" fill="#fff2cc" stroke-width="1.5"/>
-    </g>
-    <circle cx="36" cy="21.5" r="1.1" fill="#153e49"/>
-    <g fill="none" stroke="#153e49" stroke-width="1" stroke-opacity=".5" stroke-linecap="round">
-      <path d="M18 20 c1.5 1 1.5 3 0 4 M22 19 c1.5 1 1.5 3 0 4 M26 19.5 c1.5 1 1.5 3 0 4 M20 24.5 c1.5 1 1.5 2.5 0 3.5 M24 24.5 c1.5 1 1.5 2.5 0 3.5"/>
-    </g>
+    <ellipse cx="24" cy="42" rx="15" ry="2" fill="#2a1a0e" fill-opacity=".18"/><path d="M12.5 24 L3.5 15 L6.5 24 L3.5 33 Z" fill="#c58a4a" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M21 15.5 L25 9.5 L32 15.5 Z M22.5 31.5 L25.5 37 L29.5 32 Z" fill="#c58a4a" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M10.5 24 C16.5 13.5 34 12.5 43 24 C34 35.5 16.5 34.5 10.5 24 Z" fill="#6f98a8" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M12 25.5 C19 31 34 31.5 42 25.6 C34 33.6 18.5 33.6 12 25.5 Z" fill="#efe3c4"/><path d="M31 17.4 C28.6 21 28.6 26.6 31 30" fill="none" stroke="#3f6474" stroke-width="1.2"/><path d="M17 21 c1.4 1 1.4 3 0 4 M21 19.5 c1.4 1 1.4 3 0 4 M25 19.5 c1.4 1 1.4 3 0 4" fill="none" stroke="#4d7787" stroke-width=".9"/><circle cx="36" cy="21.6" r="2.2" fill="#f2ece0" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><circle cx="36.4" cy="21.6" r="1" fill="#2a1a0e"/><path d="M16 19.5 C21 16 28 15 34 16.2" fill="none" stroke="#e6f2f5" stroke-width="1.3" stroke-linecap="round" stroke-opacity=".8"/>
   </symbol>
 
   <symbol id="icon-wood" viewBox="0 0 48 48">
-    <g stroke="#153e49" stroke-width="2" stroke-linejoin="round">
-      <!-- bottom log -->
-      <path d="M9 24 H33 A5 7 0 0 1 33 38 H9 A5 7 0 0 1 9 24 Z" fill="#bb8650"/>
-      <ellipse cx="33" cy="31" rx="5" ry="7" fill="#fff2cc"/>
-      <!-- top log -->
-      <path d="M15 10 H39 A5 7 0 0 1 39 24 H15 A5 7 0 0 1 15 10 Z" fill="#c99560"/>
-      <ellipse cx="39" cy="17" rx="5" ry="7" fill="#fff2cc"/>
-    </g>
-    <g fill="none" stroke="#bb8650" stroke-width="1.2">
-      <ellipse cx="33" cy="31" rx="3" ry="4.4"/>
-      <ellipse cx="39" cy="17" rx="3" ry="4.4"/>
-    </g>
-    <circle cx="33" cy="31" r="1" fill="#bb8650"/>
-    <circle cx="39" cy="17" r="1" fill="#bb8650"/>
-    <g fill="none" stroke="#153e49" stroke-width="1" stroke-opacity=".5" stroke-linecap="round">
-      <path d="M8 28 H18 M14 31.5 H26 M7 35 H15 M20 35 H27"/>
-      <path d="M14 14 H24 M20 17.5 H32 M13 21 H21 M26 21 H33"/>
-      <path d="M33 25.5 l-1.5 -1.5 M39 11.5 l-1.5 -1.5"/>
-    </g>
-    <!-- sprouting leaf -->
-    <path d="M12 24 C10 19 11 15 15 13.5 C16.5 18 15.5 21.5 12 24 Z" fill="#5e9a55" stroke="#153e49" stroke-width="1.6" stroke-linejoin="round" transform="translate(-6 -6)"/>
+    <ellipse cx="24" cy="41" rx="17" ry="2.4" fill="#2a1a0e" fill-opacity=".18"/><g transform="rotate(-24 24 24)"><path d="M4 24.5 Q4 23 5.5 23 H40.5 Q42 23 42 24.5 V30.5 Q42 32 40.5 32 H5.5 Q4 32 4 30.5 Z" fill="#a46e3c" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M6 24.6 H39" stroke="#c99058" stroke-width="1.5" stroke-linecap="round"/><path d="M8 27.95 C14 27.05 18 29.3 25 28.4 M28 29.75 H37" fill="none" stroke="#6f4622" stroke-width=".9" stroke-linecap="round" stroke-opacity=".8"/><ellipse cx="31" cy="27.95" rx="1.8" ry="1.1" fill="none" stroke="#6f4622" stroke-width=".9"/><path d="M7 14.5 Q7 13 8.5 13 H43.5 Q45 13 45 14.5 V20.5 Q45 22 43.5 22 H8.5 Q7 22 7 20.5 Z" fill="#b07a45" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M9 14.6 H42" stroke="#dcaa70" stroke-width="1.5" stroke-linecap="round"/><path d="M11 17.95 C17 17.05 21 19.3 28 18.4 M31 19.75 H40" fill="none" stroke="#7d5129" stroke-width=".9" stroke-linecap="round" stroke-opacity=".8"/><ellipse cx="18" cy="17.95" rx="1.8" ry="1.1" fill="none" stroke="#7d5129" stroke-width=".9"/><g fill="#c6935a" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="40.5" y="13" width="4.5" height="9" rx="1.5"/></g><path d="M42 15.5 a1.2 2.3 0 0 0 0 4" fill="none" stroke="#7d5129" stroke-width=".8"/><g fill="#6b4a2a"><circle cx="10" cy="17.5" r=".9"/><circle cx="7.5" cy="27.5" r=".9"/></g></g>
   </symbol>
 
   <symbol id="icon-leaf" viewBox="0 0 48 48">
-    <g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
-      <path d="M11 37 L5 43" fill="none" stroke-width="3"/>
-      <path d="M11 37 C7 21 20 7 42 6 C42 28 28 40 11 37 Z" fill="#5e9a55"/>
-      <path d="M11 37 C14 33 17 30 21 26 C22 32 31 34 39 25 C29 36 17 39 11 37 Z" fill="#3f7341" stroke-width="1.4"/>
-      <path d="M11 37 C19 28 28 18 40 8" fill="none" stroke-width="1.6"/>
-    </g>
-    <g fill="none" stroke="#153e49" stroke-width="1.2" stroke-linecap="round" stroke-opacity=".7">
-      <path d="M17 30 C16 25 17 21 19 18 M23 24 C23 19 25 15 28 12 M29 18 C30 14 32 11 35 9"/>
-      <path d="M19 28 C24 29 28 28 32 25 M25 22 C29 22 33 21 36 18"/>
-    </g>
-    <path d="M16 22 C18 16 23 12 29 10" fill="none" stroke="#fff2cc" stroke-width="1.4" stroke-linecap="round" stroke-opacity=".6"/>
+    <ellipse cx="24" cy="44" rx="13" ry="2" fill="#2a1a0e" fill-opacity=".18"/><path d="M8.1 39.7 Q4.2 28.4 5.2 22.9 Q7.3 29.8 10.7 33.8 Z M11.3 32.7 Q8.8 21.4 10.6 16.3 Q11.8 23.1 14.6 27.2 Z M15.1 26.3 Q14.2 15.3 16.6 10.9 Q16.9 17.4 19.1 21.4 Z M19.7 20.6 Q20.3 10.1 23.2 6.7 Q22.6 12.6 24.4 16.2 Z M25.1 15.6 Q26.9 5.8 30.1 3.5 Q28.9 8.6 30.3 11.9 Z M31.1 11.2 Q34.0 2.4 37.2 1.1 Q35.6 5.4 36.8 8.2 Z M38.0 7.6 Q41.5 -0.1 44.5 -0.4 Q42.7 3.0 43.9 5.2 Z" fill="#5a9a40" stroke="#2a1a0e" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/><path d="M8.1 39.7 Q19.1 35.1 22.6 30.7 Q16.0 33.7 10.7 33.8 Z M11.3 32.7 Q22.4 29.7 26.1 25.8 Q19.5 27.9 14.6 27.2 Z M15.1 26.3 Q26.1 24.9 29.9 21.6 Q23.5 22.7 19.1 21.4 Z M19.7 20.6 Q30.3 20.7 33.8 18.0 Q27.9 18.2 24.4 16.2 Z M25.1 15.6 Q34.9 17.0 38.2 14.7 Q32.9 14.2 30.3 11.9 Z M31.1 11.2 Q40.0 13.7 42.9 11.8 Q38.4 10.7 36.8 8.2 Z M38.0 7.6 Q45.8 10.9 48.2 9.0 Q44.6 7.7 43.9 5.2 Z" fill="#7cbc5c" stroke="#2a1a0e" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/><path d="M7 43 Q16 16 42 6" fill="none" stroke="#2a1a0e" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 43 Q16 16 42 6" fill="none" stroke="#c9b56a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 31 Q15 19 25 12.5" fill="none" stroke="#f4f0c8" stroke-width="1" stroke-linecap="round" stroke-opacity=".8"/>
   </symbol>
 
   <symbol id="icon-scrap" viewBox="0 0 48 48">
-    <g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
-      <!-- broken plank -->
-      <path d="M20 31 L43 25 L45 33 L38 35 L36 32 L33 37 L29 36.5 L27 39 L22 40 Z" fill="#bb8650"/>
-      <!-- steel plate -->
-      <path d="M5 15 L27 7 L33 21 L28 24 L24 30 L8 29 Z" fill="#54a6a4"/>
-      <path d="M9 17 L25 11.5" fill="none" stroke="#fff2cc" stroke-width="1.4" stroke-opacity=".8"/>
-      <!-- bent nail -->
-      <path d="M8 34 L14 38 C16 39 17 41 15 43" fill="none" stroke-width="4.5"/>
-      <path d="M8 34 L14 38 C16 39 17 41 15 43" fill="none" stroke="#fff2cc" stroke-width="1.6"/>
-    </g>
-    <g fill="#fff2cc" stroke="#153e49" stroke-width="1.3">
-      <circle cx="10" cy="19" r="1.8"/>
-      <circle cx="24" cy="13" r="1.8"/>
-      <circle cx="13" cy="26" r="1.8"/>
-      <circle cx="27" cy="20" r="1.8"/>
-    </g>
-    <g fill="none" stroke="#153e49" stroke-width="1" stroke-opacity=".5" stroke-linecap="round">
-      <path d="M26 33 L38 29.5 M29 36 L34 34.5 M39 28 L43 27"/>
-    </g>
-    <path d="M16 22 l3 -1 l1 2.5" fill="none" stroke="#153e49" stroke-width="1" stroke-opacity=".6" stroke-linecap="round"/>
+    <ellipse cx="24" cy="43.5" rx="16" ry="2.2" fill="#2a1a0e" fill-opacity=".18"/><path d="M20 36 L22 28 L40 25.5 C42.5 25 44 26.5 43.6 28.6 L42 35.5 C41.6 37.4 40 38.4 38 38.4 L22.5 39 Z" fill="#7f868a" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><ellipse cx="21.2" cy="33.5" rx="2.6" ry="5.4" fill="#4c5256" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" transform="rotate(10 21.2 33.5)"/><path d="M26 29.5 L40 27.5" stroke="#c4c9cc" stroke-width="1.2" stroke-linecap="round"/><path d="M5 17 L24 8.5 L31 13.5 L33 22.5 L27.5 25 L26 30.5 L9 31 L7 25 Z" fill="#9aa0a4" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M22.5 16 L31 13.5 L33 22.5 L27.5 25 Z" fill="#80878b" stroke="none"/><path d="M24 8.5 L22.5 16 L31 13.5 M22.5 16 L27.5 25" fill="none" stroke="#6e7478" stroke-width="1" stroke-linejoin="round"/><path d="M9 26 C11 27 13 26 14 28 C12.5 29.5 10 29.5 9 28 Z M28 20 C29.5 19.5 31 20.5 30.5 22 C29 22.5 28 21.5 28 20 Z" fill="#a8653a" fill-opacity=".85"/><g fill="#d4d8da" stroke="#4c5256" stroke-width=".9"><circle cx="10" cy="20" r="1.4"/><circle cx="19" cy="16" r="1.4"/><circle cx="12.5" cy="27" r="1.2"/></g><path d="M8 18.8 L22.5 12" fill="none" stroke="#eef1f2" stroke-width="1.4" stroke-linecap="round" stroke-opacity=".9"/>
   </symbol>
 
   <symbol id="icon-barrel" viewBox="0 0 48 48">
-    <g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
-      <path d="M14 7 H34 C38.5 15 38.5 33 34 41 H14 C9.5 33 9.5 15 14 7 Z" fill="#bb8650"/>
-      <path d="M20 7 C18 17 18 31 20 41 M28 7 C30 17 30 31 28 41" fill="none" stroke-width="1.4"/>
-      <path d="M12.4 12.5 C20 14 28 14 35.6 12.5 L36.5 17 C28 18.5 20 18.5 11.5 17 Z" fill="#54a6a4"/>
-      <path d="M11.5 31 C20 29.5 28 29.5 36.5 31 L35.6 35.5 C28 34 20 34 12.4 35.5 Z" fill="#54a6a4"/>
-      <path d="M14 7 C20 8.6 28 8.6 34 7" fill="none" stroke-width="1.6"/>
-    </g>
-    <g fill="none" stroke="#153e49" stroke-width="1" stroke-opacity=".45" stroke-linecap="round">
-      <path d="M15 21 C14.5 24 14.5 26 15 28 M24 20 V24 M24.5 37 V39.5 M32.5 21 C33 23 33 25 32.5 27"/>
-    </g>
-    <path d="M15.5 20 C15 23 15 26 15.5 29" fill="none" stroke="#fff2cc" stroke-width="1.4" stroke-linecap="round" stroke-opacity=".6"/>
-    <g fill="#fff2cc"><circle cx="16" cy="14.9" r=".9"/><circle cx="32" cy="14.9" r=".9"/><circle cx="16" cy="33.1" r=".9"/><circle cx="32" cy="33.1" r=".9"/></g>
-    <circle cx="24" cy="25" r="2" fill="#ffbd66" stroke="#153e49" stroke-width="1.4"/>
+    <ellipse cx="24" cy="43.6" rx="13" ry="2" fill="#2a1a0e" fill-opacity=".18"/><path d="M14 6.5 H34 C38.6 14.5 38.6 33.5 34 41.5 H14 C9.4 33.5 9.4 14.5 14 6.5 Z" fill="#b07a45" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M33 8 C36.6 16 36.6 32 33 40 L34 41.5 C38.6 33.5 38.6 14.5 34 6.5 Z" fill="#8a5a2e" fill-opacity=".6"/><path d="M19.5 6.5 C17.8 17 17.8 31 19.5 41.5 M24 6.5 V41.5 M28.5 6.5 C30.2 17 30.2 31 28.5 41.5" fill="none" stroke="#7d5129" stroke-width="1"/><path d="M12.2 12 C20 13.6 28 13.6 35.8 12 L36.7 16.4 C28 18 20 18 11.3 16.4 Z" fill="#9aa0a4" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M11.3 31.6 C20 30 28 30 36.7 31.6 L35.8 36 C28 34.4 20 34.4 12.2 36 Z" fill="#9aa0a4" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M14 13.8 C20 14.9 26 14.9 31 14.2 M13.5 33.2 C19 32.2 25 32 30 32.4" stroke="#e4e8ea" stroke-width="1" stroke-linecap="round" fill="none"/><path d="M14 6.5 C20 8.3 28 8.3 34 6.5" fill="none" stroke="#2a1a0e" stroke-width="1.2"/><path d="M15.2 19 C14.4 23 14.4 26 15.2 29.5" fill="none" stroke="#f3cf98" stroke-width="1.8" stroke-linecap="round" stroke-opacity=".7"/>
   </symbol>
 
   <symbol id="icon-sail" viewBox="0 0 48 48">
-    <g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
-      <path d="M22.5 9 C32 14 39 24 39 34 H22.5 Z" fill="#fff2cc"/>
-      <path d="M18 13 V33 H8 C12 27 15 20 18 13 Z" fill="#54a6a4"/>
-      <rect x="18.5" y="4" width="4" height="34" rx="1" fill="#bb8650"/>
-      <path d="M5 38 H43 L38 44 H10 Z" fill="#bb8650"/>
-      <path d="M20.5 4 L20.5 2" fill="none"/>
-    </g>
-    <g fill="none" stroke="#153e49" stroke-width="1" stroke-opacity=".5" stroke-linecap="round">
-      <path d="M23 16 C28 18 32 21 34 24 M23 23 C29 24.5 33 27 36.5 29.5 M30 34 C30 28 28 22 25 12"/>
-      <path d="M12 41 H22 M26 41 H36"/>
-    </g>
-    <path d="M38 34 L43 38" fill="none" stroke="#153e49" stroke-width="1.4"/>
-    <path d="M21 2.5 L27 4.5 L21 6.5 Z" fill="#ffbd66" stroke="#153e49" stroke-width="1.4" stroke-linejoin="round"/>
+    <ellipse cx="24" cy="45" rx="17" ry="1.8" fill="#2a1a0e" fill-opacity=".18"/><path d="M22.5 9 C32 14 39 24 39 34 H22.5 Z" fill="#efe3c4" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M18 13 V33 H8 C12 27 15 20 18 13 Z" fill="#d9c49a" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M23.5 16 C28 18 32 21 34.5 24 M23.5 23 C29 24.5 33 27 36.5 29.5" fill="none" stroke="#b9a37a" stroke-width="1" stroke-linecap="round"/><rect x="18.5" y="4" width="4" height="34" rx="1.2" fill="#b07a45" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M5 38 H43 L38 44 H10 Z" fill="#a46e3c" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M9 40.2 H39" stroke="#dcaa70" stroke-width="1.1" stroke-linecap="round"/><path d="M21 2.5 L27 4.5 L21 6.5 Z" fill="#c8452e" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M24.5 12.5 C30 16.5 34 22 35.5 28" fill="none" stroke="#ffffff" stroke-width="1.3" stroke-linecap="round" stroke-opacity=".95"/>
   </symbol>
 
   <symbol id="icon-palm" viewBox="0 0 48 48">
-    <path d="M5 45 C13 37 33 37 43 45 Z" fill="#ffbd66" stroke="#153e49" stroke-width="2" stroke-linejoin="round"/>
-    <g fill="none" stroke-linecap="round">
-      <path d="M21 42 C23 33 23.5 24 28 15" stroke="#153e49" stroke-width="7"/>
-      <path d="M21 42 C23 33 23.5 24 28 15" stroke="#bb8650" stroke-width="3.5"/>
-      <path d="M20.5 37 h4.2 M21.5 32 h4 M22.5 27 h4 M24 22 h4" stroke="#153e49" stroke-width="1.2"/>
-    </g>
-    <g fill="#5e9a55" stroke="#153e49" stroke-width="1.8" stroke-linejoin="round">
-      <path d="M28 14 C35 15 41 20 44 29 C38 23 33 19 28 14 Z" fill="#3f7341"/>
-      <path d="M28 14 C21 14 14 19 11 28 C17 22 22 18 28 14 Z" fill="#3f7341"/>
-      <path d="M28 14 C22 6 12 5 5 11 C14 9.5 21 11 28 14 Z"/>
-      <path d="M28 14 C34 6 42 5.5 46 11 C39 9.5 33 11 28 14 Z"/>
-      <path d="M28 14 C26 8 29 3 35 2 C31.5 6 29.5 10 28 14 Z"/>
-    </g>
-    <g fill="#8a5a30" stroke="#153e49" stroke-width="1.4">
-      <circle cx="25.5" cy="17" r="2.6"/>
-      <circle cx="30.5" cy="17.5" r="2.6"/>
-    </g>
+    <ellipse cx="24" cy="45" rx="15" ry="2" fill="#2a1a0e" fill-opacity=".18"/><path d="M24 32 C24 26 25 21 27 16" fill="none" stroke="#2a1a0e" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 32 C24 26 25 21 27 16" fill="none" stroke="#9b6a3a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M27.7 16.1 Q20.0 19.8 17.3 18.1 Q21.3 16.6 22.8 14.2 Z M23.1 14.3 Q17.2 19.7 14.5 18.6 Q17.5 16.3 17.9 13.9 Z M17.5 13.9 Q13.4 20.0 10.9 19.0 Q12.9 16.7 12.3 14.7 Z M10.9 15.0 Q8.4 21.0 6.2 19.7 Q7.3 17.8 6.0 16.7 Z" fill="#5a9a40" stroke="#2a1a0e" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/><path d="M27.7 16.1 Q24.5 8.2 21.3 7.7 Q23.3 11.4 22.8 14.2 Z M23.1 14.3 Q18.1 8.0 15.2 8.7 Q17.8 11.4 17.9 13.9 Z M17.5 13.9 Q11.8 9.3 9.7 11.0 Q12.3 12.7 12.3 14.7 Z M10.9 15.0 Q5.4 11.7 4.4 14.1 Q6.4 15.0 6.0 16.7 Z" fill="#7cbc5c" stroke="#2a1a0e" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/><path d="M26.7 16.0 Q28.7 7.8 31.8 6.7 Q30.4 10.7 31.2 13.4 Z M31.1 13.4 Q35.5 6.7 38.4 7.1 Q36.1 10.0 36.2 12.5 Z M36.0 12.5 Q41.9 8.1 43.9 9.9 Q41.2 11.4 41.1 13.5 Z M41.4 13.6 Q47.4 11.3 48.0 13.8 Q45.8 14.3 45.9 16.0 Z" fill="#5a9a40" stroke="#2a1a0e" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/><path d="M26.7 16.0 Q34.8 18.5 37.2 16.4 Q33.1 15.6 31.2 13.4 Z M31.1 13.4 Q37.4 18.3 40.1 16.9 Q36.9 14.9 36.2 12.5 Z M36.0 12.5 Q39.8 18.7 42.3 17.8 Q40.5 15.4 41.1 13.5 Z M41.4 13.6 Q42.8 19.9 45.2 19.0 Q44.4 16.9 45.9 16.0 Z" fill="#7cbc5c" stroke="#2a1a0e" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/><path d="M27.0 16.7 Q20.6 12.1 21.2 9.3 Q23.9 11.7 26.3 11.5 Z M26.3 10.3 Q22.9 3.9 25.1 2.3 Q26.1 5.1 28.1 5.4 Z M28.9 4.1 Q28.5 -2.0 31.0 -1.6 Q30.9 0.3 32.6 0.4 Z" fill="#5a9a40" stroke="#2a1a0e" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/><path d="M27.0 16.7 Q32.0 10.7 30.7 8.1 Q28.7 11.1 26.3 11.5 Z M26.3 10.3 Q33.0 7.5 32.4 4.9 Q29.8 6.4 28.1 5.4 Z M28.9 4.1 Q35.1 4.5 34.6 2.0 Q32.7 2.1 32.6 0.4 Z" fill="#7cbc5c" stroke="#2a1a0e" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/><path d="M9 30 H39 L36.5 44 H11.5 Z" fill="#b07a45" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><rect x="7.5" y="28" width="33" height="5" rx="1.5" fill="#c99058" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M17.5 33 L18.5 44 M30.5 33 L29.5 44" stroke="#7d5129" stroke-width="1"/><path d="M10 29.6 H38" fill="none" stroke="#f3cf98" stroke-width="1.2" stroke-linecap="round" stroke-opacity=".8"/>
   </symbol>
 
   <symbol id="icon-lantern" viewBox="0 0 48 48">
-    <g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
-      <circle cx="24" cy="6" r="3" fill="none" stroke-width="2.4"/>
-      <path d="M14 15 L19.5 9 H28.5 L34 15 Z" fill="#54a6a4"/>
-      <rect x="14" y="15" width="20" height="21" rx="1.5" fill="#ffbd66"/>
-      <path d="M24 19 C28.5 23.5 28.5 29 24 31.5 C19.5 29 19.5 23.5 24 19 Z" fill="#fff2cc"/>
-      <path d="M24 24.5 C25.5 26.5 25.5 28.5 24 29.5 C22.5 28.5 22.5 26.5 24 24.5 Z" fill="#ffbd66" stroke-width="1.2"/>
-      <rect x="14" y="15" width="3.5" height="21" fill="#54a6a4"/>
-      <rect x="30.5" y="15" width="3.5" height="21" fill="#54a6a4"/>
-      <path d="M12.5 36 H35.5 L33 42 H15 Z" fill="#54a6a4"/>
-      <path d="M24 33 V36" fill="none" stroke-width="1.6"/>
-    </g>
-    <path d="M19.5 18 V33" stroke="#fff2cc" stroke-width="1.4" stroke-linecap="round" stroke-opacity=".8"/>
-    <g fill="#fff2cc"><circle cx="15.7" cy="18" r=".8"/><circle cx="32.3" cy="18" r=".8"/><circle cx="15.7" cy="33" r=".8"/><circle cx="32.3" cy="33" r=".8"/></g>
+    <ellipse cx="24" cy="44.5" rx="12" ry="2" fill="#2a1a0e" fill-opacity=".18"/><path d="M19.5 9 C19.5 3.5 28.5 3.5 28.5 9" fill="none" stroke="#2a1a0e" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M19.5 9 C19.5 3.5 28.5 3.5 28.5 9" fill="none" stroke="#80878b" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 15 L19 9 H29 L34 15 Z" fill="#9aa0a4" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><rect x="14.5" y="15" width="19" height="21" rx="1.5" fill="#ffcf6a" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><rect x="16" y="16.5" width="16" height="18" fill="#ffe7a8" fill-opacity=".7"/><path d="M24 19.5 C28 23.5 28 29 24 31.5 C20 29 20 23.5 24 19.5 Z" fill="#f09a3a" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M24 24.5 C25.4 26.4 25.4 28.4 24 29.4 C22.6 28.4 22.6 26.4 24 24.5 Z" fill="#fff4c8"/><rect x="14" y="15" width="3.4" height="21" fill="#80878b" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><rect x="30.6" y="15" width="3.4" height="21" fill="#80878b" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M12.5 36 H35.5 L33 42 H15 Z" fill="#9aa0a4" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M15 10.8 L19.4 10 M15.7 17 V34 M13.6 37.6 H34" fill="none" stroke="#eef1f2" stroke-width="1.1" stroke-linecap="round" stroke-opacity=".9"/>
   </symbol>
 
   <symbol id="icon-net" viewBox="0 0 48 48">
-    <path d="M8 10 C9.5 29 17 40 24 43 C31 40 38.5 29 40 10 Z" fill="#54a6a4" fill-opacity=".35" stroke="#153e49" stroke-width="2" stroke-linejoin="round"/>
-    <g fill="none" stroke="#153e49" stroke-width="1.6" stroke-linecap="round">
-      <path d="M16 10 C16.5 25 19.5 36 24 43 M24 10 V43 M32 10 C31.5 25 28.5 36 24 43"/>
-      <path d="M8.6 17.5 C18 21 30 21 39.4 17.5 M10.4 26 C19 29.5 29 29.5 37.6 26 M14 34 C20 36.5 28 36.5 34 34"/>
-    </g>
-    <!-- rope -->
-    <g fill="none" stroke-linecap="round">
-      <path d="M3 10 H45" stroke="#153e49" stroke-width="6"/>
-      <path d="M3 10 H45" stroke="#bb8650" stroke-width="3"/>
-      <path d="M7 8.6 l1.6 2.8 M13 8.6 l1.6 2.8 M19 8.6 l1.6 2.8 M27 8.6 l1.6 2.8 M33 8.6 l1.6 2.8 M39 8.6 l1.6 2.8" stroke="#153e49" stroke-width="1" stroke-opacity=".6"/>
-    </g>
-    <!-- cork floats -->
-    <g fill="#ffbd66" stroke="#153e49" stroke-width="1.8">
-      <ellipse cx="10" cy="10" rx="3.4" ry="4"/>
-      <ellipse cx="24" cy="10" rx="3.4" ry="4"/>
-      <ellipse cx="38" cy="10" rx="3.4" ry="4"/>
-    </g>
+    <ellipse cx="24" cy="45" rx="10" ry="1.8" fill="#2a1a0e" fill-opacity=".18"/><path d="M8 10 C9.5 29 17 40 24 43 C31 40 38.5 29 40 10 Z" fill="#c9a46a" fill-opacity=".25" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M16 10 C16.5 25 19.5 36 24 43 M24 10 V43 M32 10 C31.5 25 28.5 36 24 43" fill="none" stroke="#2a1a0e" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 10 C16.5 25 19.5 36 24 43 M24 10 V43 M32 10 C31.5 25 28.5 36 24 43" fill="none" stroke="#c9a46a" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8.6 17.5 C18 21 30 21 39.4 17.5 M10.4 26 C19 29.5 29 29.5 37.6 26 M14 34 C20 36.5 28 36.5 34 34" fill="none" stroke="#2a1a0e" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8.6 17.5 C18 21 30 21 39.4 17.5 M10.4 26 C19 29.5 29 29.5 37.6 26 M14 34 C20 36.5 28 36.5 34 34" fill="none" stroke="#c9a46a" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 10 H45" fill="none" stroke="#2a1a0e" stroke-width="6.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 10 H45" fill="none" stroke="#b07a45" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 9 H43" fill="none" stroke="#f3cf98" stroke-width="0.9" stroke-linecap="round" stroke-opacity=".8"/><ellipse cx="10" cy="10" rx="3.4" ry="4" fill="#d2a25e" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M8.4 8 Q10 6.8 11.4 7.8" stroke="#fbe2b4" stroke-width="1" fill="none" stroke-linecap="round"/><ellipse cx="24" cy="10" rx="3.4" ry="4" fill="#d2a25e" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M22.4 8 Q24 6.8 25.4 7.8" stroke="#fbe2b4" stroke-width="1" fill="none" stroke-linecap="round"/><ellipse cx="38" cy="10" rx="3.4" ry="4" fill="#d2a25e" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M36.4 8 Q38 6.8 39.4 7.8" stroke="#fbe2b4" stroke-width="1" fill="none" stroke-linecap="round"/>
   </symbol>
 
   <symbol id="icon-crew" viewBox="0 0 48 48">
@@ -294,14 +126,7 @@
   </symbol>
 
   <symbol id="icon-hammer" viewBox="0 0 48 48">
-    <g transform="rotate(-45 24 24)" stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
-      <rect x="3" y="21.5" width="30" height="5.5" rx="2.5" fill="#bb8650"/>
-      <path d="M8 22 L10 26.5 M11.5 22 L13.5 26.5 M15 22 L17 26.5" fill="none" stroke-width="1.4"/>
-      <path d="M31 13 H40 V35 H31 Z" fill="#54a6a4"/>
-      <rect x="29.5" y="29" width="12" height="7" rx="1.2" fill="#54a6a4"/>
-      <path d="M31 13 L29 7.5 L35.5 11 L40 6.5 L40 13 Z" fill="#54a6a4"/>
-      <path d="M33 15 V27" fill="none" stroke="#fff2cc" stroke-width="1.4" stroke-opacity=".8"/>
-    </g>
+    <ellipse cx="24" cy="44" rx="13" ry="2" fill="#2a1a0e" fill-opacity=".18"/><g transform="rotate(-40 24 24)"><rect x="21.5" y="15" width="5.4" height="30" rx="2.4" fill="#b07a45" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M23 18 V42" stroke="#dcaa70" stroke-width="1.1" stroke-linecap="round"/><rect x="20.8" y="35" width="6.8" height="2.6" rx="1.2" fill="#d2b07a" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><rect x="20.8" y="37.8" width="6.8" height="2.6" rx="1.2" fill="#d2b07a" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><rect x="20.8" y="40.6" width="6.8" height="2.6" rx="1.2" fill="#d2b07a" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M12 7 H32.5 C34.5 7 35.5 8.5 35.5 10 V15 C35.5 16.5 34.5 17.5 32.5 17.5 H12 L9.5 15.5 V9 Z" fill="#9aa0a4" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M35.5 9 L39.5 6.5 L38.5 12.2 L39.5 18 L35.5 15.5 Z" fill="#80878b" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M12 9.2 H32" stroke="#eef1f2" stroke-width="1.3" stroke-linecap="round"/><path d="M12 7 V17.5" stroke="#6e7478" stroke-width="1"/></g>
   </symbol>
 
   <symbol id="icon-brush" viewBox="0 0 48 48">
@@ -413,13 +238,7 @@
     <circle cx="24" cy="10" r="3" fill="#ffbd66" stroke="#153e49" stroke-width="2"/>
   </symbol>
   <symbol id="icon-bottle" viewBox="0 0 48 48">
-    <g transform="rotate(-35 24 24)" stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
-      <path d="M18 18 C18 14.5 20.5 13 21.5 11 V8 H26.5 V11 C27.5 13 30 14.5 30 18 V40 C30 41.7 28.7 43 27 43 H21 C19.3 43 18 41.7 18 40 Z" fill="#9fd6d0"/>
-      <rect x="21" y="3.5" width="6" height="5.5" rx="1.4" fill="#ffbd66"/>
-      <rect x="20.6" y="20" width="6.8" height="17" rx="2.2" fill="#fff2cc" stroke-width="1.6"/>
-      <path d="M20.6 28.5 H27.4" fill="none" stroke="#bb8650" stroke-width="1.6"/>
-    </g>
-    <path d="M19.4 21 V38" transform="rotate(-35 24 24)" fill="none" stroke="#ffffff" stroke-opacity=".7" stroke-width="1" stroke-linecap="round"/>
+    <ellipse cx="24" cy="44" rx="12" ry="2" fill="#2a1a0e" fill-opacity=".18"/><g transform="rotate(-35 24 24)"><path d="M18 18 C18 14.5 20.5 13 21.5 11 V8 H26.5 V11 C27.5 13 30 14.5 30 18 V40 C30 41.7 28.7 43 27 43 H21 C19.3 43 18 41.7 18 40 Z" fill="#8fc0a4" fill-opacity=".9" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><rect x="21" y="3.5" width="6" height="5.5" rx="1.4" fill="#c08a52" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><rect x="20.6" y="20" width="6.8" height="17" rx="2.2" fill="#f2e6c4" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M20.6 28.5 H27.4" fill="none" stroke="#b07a45" stroke-width="1.2"/><path d="M19.4 19 V39" fill="none" stroke="#ffffff" stroke-width="1.3" stroke-linecap="round" stroke-opacity=".85"/></g>
   </symbol>
   <symbol id="icon-cup" viewBox="0 0 48 48">
     <path d="M13 12 H35 L32 42 C31.8 43.3 30.8 44 29.6 44 H18.4 C17.2 44 16.2 43.3 16 42 Z" fill="#e8e2d0" stroke="#153e49" stroke-width="2" stroke-linejoin="round"/>
@@ -475,6 +294,7 @@
       <path d="M13 33 C13 31.5 14.3 30.5 16 30.5 H32 C33.7 30.5 35 31.5 35 33" fill="#e0a063"/>
     </g>
     <g fill="#9ad7f0" stroke="#153e49" stroke-width="1"><rect x="17" y="37" width="3.6" height="3.6"/><rect x="22.2" y="37" width="3.6" height="3.6"/><rect x="27.4" y="37" width="3.6" height="3.6"/></g>
+  </symbol>
   <symbol id="icon-kiln" viewBox="0 0 48 48">
     <g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
       <rect x="29" y="5" width="6" height="12" rx="1" fill="#bb8650"/>
@@ -580,5 +400,14 @@
       <circle cx="24" cy="24" r="4.5" fill="#54a6a4"/>
       <circle cx="24" cy="24" r="1.6" fill="#fff2cc" stroke-width="1.2"/>
     </g>
+  </symbol>
+  <symbol id="icon-plastic" viewBox="0 0 48 48">
+    <ellipse cx="24" cy="44" rx="14" ry="2" fill="#2a1a0e" fill-opacity=".18"/><g transform="rotate(28 24 24)"><rect x="20.5" y="4" width="7" height="5" rx="1.2" fill="#4f8fc9" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M21.5 6 H26.5" stroke="#a7cdf0" stroke-width="1" stroke-linecap="round"/><path d="M21.5 9 H26.5 V12 C31.5 14 33.5 17.5 33 22 L31.5 26 L33.5 30 L32.5 40 C32.3 42 30.7 43.5 28.7 43.5 H19.3 C17.3 43.5 15.7 42 15.5 40 L14.6 31 L16.5 26.5 L15 22 C14.5 17.5 16.5 14 21.5 12 Z" fill="#e9ede8" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M15.7 27.6 L32 27 L33.3 33 L15 33.6 Z" fill="#4f8fc9" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M17 22 L23 24 L31 21 M18 38 L24 36 L30 38.5" fill="none" stroke="#9fb0ba" stroke-width="1" stroke-linecap="round"/><path d="M18.6 15.5 C17.4 18 17.3 21 18.3 24 M18 35 L18.6 40.5" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" stroke-opacity=".95"/></g>
+  </symbol>
+  <symbol id="icon-rope" viewBox="0 0 48 48">
+    <ellipse cx="24" cy="42.5" rx="16" ry="2.2" fill="#2a1a0e" fill-opacity=".18"/><ellipse cx="24" cy="27" rx="17.5" ry="12" fill="#8a6a3c" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M8.5 28 A15.5 10 0 1 0 39.5 28 A15.5 10 0 1 0 8.5 28" fill="none" stroke="#2a1a0e" stroke-width="6.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M8.5 28 A15.5 10 0 1 0 39.5 28 A15.5 10 0 1 0 8.5 28" fill="none" stroke="#c9a46a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M8.5 28 A15.5 10 0 1 0 39.5 28 A15.5 10 0 1 0 8.5 28" fill="none" stroke="#8a6a3c" stroke-width="1" stroke-dasharray="1.4 2.6" stroke-opacity=".9"/><path d="M8.5 25 A15.5 10 0 1 0 39.5 25 A15.5 10 0 1 0 8.5 25" fill="none" stroke="#2a1a0e" stroke-width="6.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M8.5 25 A15.5 10 0 1 0 39.5 25 A15.5 10 0 1 0 8.5 25" fill="none" stroke="#d4b07a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M8.5 25 A15.5 10 0 1 0 39.5 25 A15.5 10 0 1 0 8.5 25" fill="none" stroke="#8a6a3c" stroke-width="1" stroke-dasharray="1.4 2.6" stroke-opacity=".9"/><path d="M14.5 24.5 A9.5 5.8 0 1 0 33.5 24.5 A9.5 5.8 0 1 0 14.5 24.5" fill="none" stroke="#2a1a0e" stroke-width="6.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.5 24.5 A9.5 5.8 0 1 0 33.5 24.5 A9.5 5.8 0 1 0 14.5 24.5" fill="none" stroke="#c9a46a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.5 24.5 A9.5 5.8 0 1 0 33.5 24.5 A9.5 5.8 0 1 0 14.5 24.5" fill="none" stroke="#8a6a3c" stroke-width="1" stroke-dasharray="1.4 2.6" stroke-opacity=".9"/><path d="M34 31 C37 36 40 39 44 38" fill="none" stroke="#2a1a0e" stroke-width="6.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 31 C37 36 40 39 44 38" fill="none" stroke="#d4b07a" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M42.5 36.2 l3 1.4 l-2.4 2.3 Z" fill="#e6cc96" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M13 20 C17 16.6 23 15.6 29 16.2" fill="none" stroke="#fff3d4" stroke-width="1.2" stroke-linecap="round" stroke-opacity=".9"/>
+  </symbol>
+  <symbol id="icon-rod" viewBox="0 0 48 48">
+    <ellipse cx="22" cy="44" rx="13" ry="2" fill="#2a1a0e" fill-opacity=".18"/><path d="M8 42 L40 6" fill="none" stroke="#2a1a0e" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 42 L40 6" fill="none" stroke="#c08a52" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 42 L15.5 33.6" fill="none" stroke="#2a1a0e" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 42 L15.5 33.6" fill="none" stroke="#6f4622" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.2 39 L14 33.6" stroke="#9c6b3a" stroke-width="1" stroke-linecap="round"/><circle cx="17.6" cy="35.6" r="4.2" fill="#9aa0a4" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><circle cx="17.6" cy="35.6" r="1.4" fill="#4c5256"/><path d="M15 33.4 A3 3 0 0 1 19.6 32.8" fill="none" stroke="#eef1f2" stroke-width="1.1" stroke-linecap="round" stroke-opacity=".9"/><path d="M40 6 C43 14 42.5 21 39 27" fill="none" stroke="#e9ede8" stroke-width="1" stroke-opacity=".9"/><path d="M40 6 C43 14 42.5 21 39 27" fill="none" stroke="#2a1a0e" stroke-width=".5" stroke-opacity=".6"/><circle cx="38.6" cy="31.4" r="4" fill="#f2ece0" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M34.6 31.4 A4 4 0 0 1 42.6 31.4 Z" fill="#c8452e" stroke="#2a1a0e" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M38.6 27.4 V25.8" stroke="#2a1a0e" stroke-width="1.5" stroke-linecap="round"/><path d="M36.4 29.6 A2.4 2.4 0 0 1 38.4 28.4" fill="none" stroke="#ffffff" stroke-width="1" stroke-linecap="round" stroke-opacity=".9"/>
   </symbol>
 </svg>

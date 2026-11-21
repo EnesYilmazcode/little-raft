@@ -20,49 +20,26 @@ const SPRITE_URL = (() => {
 
 // Symbols that actually exist in icons.svg.
 const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'crew', 'help', 'sound', 'close', 'repair', 'hammer', 'compass', 'antenna', 'cup', 'saltcup', 'freshcup', 'purifier', 'rainbarrel', 'sprinkler', 'research',
-  'brush', 'paint-seafoam', 'paint-coral', 'paint-sunshell', 'paint-lagoon', 'paint-pebble', 'bed', 'motor', 'wheel', 'kiln', 'ingot', 'glass', 'brick', 'egg', 'feather', 'nest', 'cushion']); // + rain-sprinkler, research (storage-research); content hook (paint); kiln, animals
+  'brush', 'paint-seafoam', 'paint-coral', 'paint-sunshell', 'paint-lagoon', 'paint-pebble', 'bed', 'motor', 'wheel', 'kiln', 'ingot', 'glass', 'brick', 'egg', 'feather', 'nest', 'cushion', 'plastic', 'rope', 'rod', 'bottle']); // + rain-sprinkler, research (storage-research); content hook (paint); kiln, animals; painted plastic/rope/rod
 // Item kind (normalised) -> sprite symbol.
 const SPRITE_FOR = {
   hook: 'hook', plastichook: 'hook', grapplinghook: 'hook',
   hammer: 'hammer', buildhammer: 'hammer',
-  fishingrod: 'fish', rod: 'fish', fish: 'fish', rawfish: 'fish', cookedfish: 'fish',
+  fishingrod: 'rod', rod: 'rod', fish: 'fish', rawfish: 'fish', cookedfish: 'fish',
   wood: 'wood', plank: 'wood', planks: 'wood', log: 'wood',
   floor: 'floor', foundation: 'floor', raft: 'floor',
   leaf: 'leaf', leaves: 'leaf', palmleaf: 'leaf', thatch: 'leaf',
-  scrap: 'scrap', metal: 'scrap',
+  scrap: 'scrap', metal: 'scrap', plastic: 'plastic', rope: 'rope', bottle: 'bottle',
   barrel: 'barrel', net: 'net', collectionnet: 'net', sail: 'sail',
   lantern: 'lantern', compass: 'compass', repair: 'repair', palm: 'palm',
   antenna: 'antenna', receiver: 'compass',
   puffegg: 'egg', feather: 'feather', nestbox: 'nest', cushion: 'cushion',
 };
-// Hand-drawn fallbacks for kinds without a sprite (same palette as icons.svg).
+// Kinds whose ITEM_INFO icon is a borrowed placeholder: draw their own painted symbol instead.
 const CUSTOM = {
-  plastic: `<g stroke="#153e49" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
-    <rect x="20" y="4" width="8" height="5.5" rx="1" fill="#ffbd66"/>
-    <path d="M21 9.5 H27 V13 C33 15 35 19 35 24 V40 C35 42.5 33 44 30.5 44 H17.5 C15 44 13 42.5 13 40 V24 C13 19 15 15 21 13 Z" fill="#9fd6d0"/>
-    <rect x="13" y="27" width="22" height="7" fill="#54a6a4"/>
-    <path d="M21 9.5 H27 V13 C33 15 35 19 35 24 V40 C35 42.5 33 44 30.5 44 H17.5 C15 44 13 42.5 13 40 V24 C13 19 15 15 21 13 Z" fill="none"/>
-    <path d="M28 18 L31 22 M24 37 L27 40" fill="none" stroke-width="1.2" stroke-opacity=".6"/></g>
-    <path d="M17 19 C16 23 16 30 17 39" fill="none" stroke="#fff2cc" stroke-width="1.8" stroke-linecap="round" stroke-opacity=".85"/>`,
-  rope: `<g fill="none" stroke-linecap="round">
-    <ellipse cx="23" cy="25" rx="17" ry="14" stroke="#153e49" stroke-width="7.5"/>
-    <ellipse cx="23" cy="25" rx="17" ry="14" stroke="#bb8650" stroke-width="4.2"/>
-    <ellipse cx="23" cy="25" rx="17" ry="14" stroke="#153e49" stroke-width="1.1" stroke-dasharray="2 3.5" stroke-opacity=".55"/>
-    <ellipse cx="23" cy="25" rx="9.5" ry="7.5" stroke="#153e49" stroke-width="7.5"/>
-    <ellipse cx="23" cy="25" rx="9.5" ry="7.5" stroke="#c99560" stroke-width="4.2"/>
-    <ellipse cx="23" cy="25" rx="9.5" ry="7.5" stroke="#153e49" stroke-width="1.1" stroke-dasharray="2 3.5" stroke-opacity=".55"/>
-    <path d="M35 35 C38 40 42 42 45 41" stroke="#153e49" stroke-width="6"/>
-    <path d="M35 35 C38 40 42 42 45 41" stroke="#bb8650" stroke-width="3"/></g>`,
-  fishingrod: `<g stroke-linecap="round" stroke-linejoin="round">
-    <path d="M7 43 L40 6" stroke="#153e49" stroke-width="6"/>
-    <path d="M7 43 L40 6" stroke="#d9b36a" stroke-width="3.4"/>
-    <path d="M7 43 L14 35" stroke="#7a4a2a" stroke-width="3.6"/>
-    <path d="M19 31.5 L21 29.3 M27 22.5 L29 20.3 M34 14.6 L35.6 12.8" stroke="#153e49" stroke-width="1.3" stroke-opacity=".7"/>
-    <circle cx="15.5" cy="37.5" r="4.2" fill="#9ba5a7" stroke="#153e49" stroke-width="2"/>
-    <path d="M40 6 C43 14 42 22 38 29" fill="none" stroke="#153e49" stroke-width="1.4"/>
-    <circle cx="38" cy="33" r="4.2" fill="#f0e4c6" stroke="#153e49" stroke-width="2"/>
-    <path d="M33.8 33 A4.2 4.2 0 0 1 42.2 33 Z" fill="#c8352b" stroke="#153e49" stroke-width="2"/>
-    <path d="M38 27.5 V29" stroke="#153e49" stroke-width="1.6"/></g>`,
+  plastic: `<use href="${SPRITE_URL}#icon-plastic"></use>`,
+  rope: `<use href="${SPRITE_URL}#icon-rope"></use>`,
+  fishingrod: `<use href="${SPRITE_URL}#icon-rod"></use>`,
   // Raw materials (kiln inputs) so Sand / Stone / Clay / Metal Ore no longer share the scrap sprite.
   sand: `<g stroke="#153e49" stroke-width="2" stroke-linejoin="round">
     <path d="M4 40 C10 22 18 14 24 14 C30 14 38 22 44 40 Z" fill="#ecd394"/>
@@ -143,9 +120,9 @@ function iconSVG(kind) {
   if (typeof id === 'string') id = id.replace(/^icon-/, ''); else id = null;
   if (!custom && (!id || !SPRITES.has(id))) id = SPRITE_FOR[n];
   if (!custom && id && SPRITES.has(id)) return `<svg class="sv-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><use href="${SPRITE_URL}#icon-${id}"></use></svg>`;
-  const body = CUSTOM[n] || `<rect x="7" y="9" width="34" height="30" rx="3" fill="#bb8650" stroke="#153e49" stroke-width="2"/>
-    <path d="M7 17 H41 M7 31 H41" stroke="#153e49" stroke-width="1.3" stroke-opacity=".55"/>
-    <text x="24" y="29" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="13" font-weight="700" fill="#fff2cc" stroke="#153e49" stroke-width=".7">${esc(itemName(kind).replace(/\s+/g, '').slice(0, 2))}</text>`;
+  const body = CUSTOM[n] || `<rect x="7" y="9" width="34" height="30" rx="3" fill="#b07a45" stroke="#2a1a0e" stroke-width="1.5"/>
+    <path d="M7 17 H41 M7 31 H41" stroke="#7d5129" stroke-width="1.1"/>
+    <text x="24" y="29" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="13" font-weight="700" fill="#fff6e0" stroke="#2a1a0e" stroke-width=".7">${esc(itemName(kind).replace(/\s+/g, '').slice(0, 2))}</text>`;
   return `<svg class="sv-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false">${body}</svg>`;
 }
 
@@ -174,12 +151,12 @@ function recipeList() {
 const FONT = "var(--ui-font,'Segoe UI',system-ui,sans-serif)";
 const CSS = `
 .tools.sv-hotbar{--s:clamp(52px,3.2vw,68px);--g:4px;--px:5px;--py:5px;position:relative;display:flex;flex-wrap:nowrap;gap:var(--g);padding:5px;border-radius:4px;max-width:96vw;overflow:visible;
-  background:repeating-linear-gradient(90deg,#00000010 0 1px,transparent 1px 17px),linear-gradient(#a8844f,#9a7748 45%,#8a6a3e);
+  background:repeating-linear-gradient(90deg,#00000010 0 1px,transparent 1px 17px),repeating-linear-gradient(0deg,#ffffff0a 0 1px,transparent 1px 4px),linear-gradient(#a8844f,#9a7748 45%,#8a6a3e);
   border:2px solid #5e4426;box-shadow:inset 0 1px 0 #c9a76f88,0 3px 10px #0004}
 .tools.sv-hotbar::before,.tools.sv-hotbar::after{content:none;display:none}
 .tools.sv-hotbar>button.sv-slot,#inventory.sv-inv button.sv-slot{
   position:relative;display:block;flex:0 0 auto;width:var(--s);height:var(--s);min-width:0;min-height:0;margin:0;padding:0;border:0;border-radius:3px;
-  background:linear-gradient(180deg,#d6c397,#c4ae80);
+  background:linear-gradient(180deg,#ddcca3,#cbb68a);
   box-shadow:inset 0 0 0 1px #7a5a34,inset 0 1px 3px #5e442633;
   color:#3e2a17;font:600 14px/1 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;outline:none;
   transition:transform .18s cubic-bezier(.3,1.5,.5,1),background .15s,box-shadow .15s}
@@ -191,7 +168,7 @@ const CSS = `
 .sv-slot .sv-icon{filter:drop-shadow(0 1px 0 #3e2a1799) drop-shadow(0 0 1px #3e2a1766)}
 .sv-slot svg.sv-icon{scale:.78}
 .sv-slot .sv-count{position:absolute;right:5px;bottom:4px;z-index:1;font:800 14px/1 ${FONT};color:#3e2a17;font-variant-numeric:tabular-nums;
-  text-shadow:0 0 2px #e6d6ad,0 0 1px #e6d6ad}
+  text-shadow:0 0 2px #efe3c2,0 0 1px #efe3c2}
 .sv-slot .sv-dur{position:absolute;left:8px;right:8px;bottom:5px;z-index:1;height:3px;border-radius:2px;background:#5e442666;box-shadow:0 0 0 1px #5e442644;display:block;overflow:hidden}
 .sv-slot .sv-dur[hidden]{display:none}
 .sv-slot .sv-dur>i{display:block;height:100%;width:100%;background:#5f9c3a;transition:width .3s}
@@ -215,9 +192,10 @@ const CSS = `
   width:max-content;min-width:0;max-width:96vw;max-height:94vh;overflow:visible;font:500 14px/1.35 ${FONT}}
 #inventory.sv-inv::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
 #inventory .sv-wrap{display:flex;gap:14px;align-items:stretch;padding:14px;outline:none;border-radius:6px;
-  background:repeating-linear-gradient(90deg,#00000010 0 1px,transparent 1px 21px),linear-gradient(#a8844f,#9a7748 45%,#8a6a3e);
+  background:repeating-linear-gradient(90deg,#00000010 0 1px,transparent 1px 21px),repeating-linear-gradient(0deg,#ffffff0a 0 1px,transparent 1px 4px),linear-gradient(#a8844f,#9a7748 45%,#8a6a3e);
   border:2px solid #5e4426;box-shadow:inset 0 1px 0 #c9a76f88,0 12px 36px #0006}
-#inventory .sv-craft,#inventory .sv-bag{background:#7f6039;border-radius:3px;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1755}
+#inventory .sv-craft,#inventory .sv-bag{border-radius:3px;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 6px #3e2a1766;
+  background:repeating-linear-gradient(0deg,#ffffff09 0 1px,transparent 1px 3px),repeating-linear-gradient(90deg,#00000009 0 1px,transparent 1px 3px),repeating-linear-gradient(90deg,#00000012 0 2px,transparent 2px 37px),radial-gradient(ellipse at 50% 0,#9a7a4c,transparent 70%),linear-gradient(#846640,#76593a)}
 #inventory .sv-bag{flex:none;min-width:max-content;display:flex;flex-direction:column;align-items:center;gap:9px;padding:10px 12px 12px}
 #inventory .sv-grid{display:grid;grid-template-columns:repeat(7,var(--s));gap:var(--g)}
 #inventory .sv-hotrow{display:grid;grid-template-columns:repeat(${HB},var(--s));gap:var(--g)}
@@ -242,13 +220,13 @@ const CSS = `
 #inventory .sv-hint.sv-warn{color:#ffb39a}
 #inventory .sv-tabs{display:grid;grid-template-columns:repeat(var(--tabs,4),1fr);gap:4px;flex:none}
 #inventory .sv-tab{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;height:auto;margin:0;padding:6px 2px 5px;border:0;border-radius:4px 4px 2px 2px;
-  background:linear-gradient(#c4ae80,#b39b6d);box-shadow:inset 0 0 0 1px #7a5a34;color:#4e3720;font:700 11px/1.1 ${FONT};letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
-#inventory .sv-tab .sv-icon{width:22px;height:22px;opacity:.8}
-#inventory .sv-tab:hover{color:#3e2a17;box-shadow:inset 0 0 0 1px #4a3520}
-#inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#e0cfa5,#d6c397);color:#3e2a17;box-shadow:inset 0 0 0 2px #4a3520,0 2px 0 #4a3520}
+  background:linear-gradient(#bea676,#ad9466);box-shadow:inset 0 0 0 1px #6b4e2c;color:#4a3520;font:700 11px/1.1 ${FONT};letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
+#inventory .sv-tab .sv-icon{width:22px;height:22px;opacity:.85}
+#inventory .sv-tab:hover{color:#2a1b0e;background:linear-gradient(#cbb586,#baa274);box-shadow:inset 0 0 0 1px #4a3520}
+#inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#f1e7cc,#e2d3ab);color:#2a1b0e;box-shadow:inset 0 0 0 2px #fffaea,inset 0 0 0 3px #7a5a34,0 2px 0 #5e4426}
 #inventory .sv-tab[aria-selected="true"] .sv-icon{opacity:1}
 #inventory .sv-tab:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
-#inventory .sv-tbadge{position:absolute;right:3px;top:3px;min-width:15px;padding:2px 3px;border-radius:8px;background:#6fbf4a;color:#14270b;font:800 10px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
+#inventory .sv-tbadge{position:absolute;right:3px;top:3px;min-width:15px;padding:2px 3px;border-radius:8px;background:#4f8a2e;color:#f4ffe6;font:800 10px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
 #inventory .sv-tbadge:empty{display:none}
 #inventory .sv-rlist{flex:1 1 auto;min-height:62px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:5px;padding-right:2px;scrollbar-color:#c4ae80 #5e4426}
 #inventory .sv-recipe{position:relative;display:grid;grid-template-columns:42px 1fr auto;gap:9px;align-items:center;flex:none;width:100%;height:auto;min-height:0;margin:0;padding:5px 8px 5px 6px;
@@ -256,34 +234,34 @@ const CSS = `
   color:#3e2a17;font:600 14px/1.25 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;transition:background .08s,box-shadow .08s}
 #inventory .sv-recipe[hidden]{display:none}
 #inventory .sv-recipe::before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:3px;border-radius:2px;background:transparent}
-#inventory .sv-recipe.sv-ready::before{background:#5f9c3a;box-shadow:0 0 4px #5f9c3a99}
-#inventory .sv-recipe.sv-ready{background:linear-gradient(180deg,#ddcca2,#cbb688)}
-#inventory .sv-recipe:hover{background:linear-gradient(180deg,#e0cfa5,#cdb88a);box-shadow:inset 0 0 0 2px #4a3520}
-#inventory .sv-recipe.sv-pick{background:linear-gradient(180deg,#bea676,#b2996a);box-shadow:inset 0 0 0 2px #4a3520,0 0 0 1px #3e2a17}
+#inventory .sv-recipe.sv-ready::before{background:#4f8a2e;box-shadow:0 0 4px #4f8a2e88}
+#inventory .sv-recipe.sv-ready{background:linear-gradient(180deg,#dccaa0,#cab587)}
+#inventory .sv-recipe:hover{background:linear-gradient(180deg,#e3d4ae,#d1bd91);box-shadow:inset 0 0 0 1px #4a3520}
+#inventory .sv-recipe.sv-pick{background:linear-gradient(180deg,#f1e7cc,#e2d3ab);box-shadow:inset 0 0 0 2px #fffaea,inset 0 0 0 3px #7a5a34,0 0 0 1px #5e4426}
 #inventory .sv-recipe.sv-locked .sv-rart>*{filter:grayscale(.7);opacity:.8}
-#inventory .sv-recipe.sv-locked .sv-rname{color:#6b5638}
-#inventory .sv-recipe.sv-gated .sv-rart>*{filter:grayscale(1) brightness(.55)} /* [progression-hook] research-locked */
+#inventory .sv-recipe.sv-locked .sv-rname{color:#6b5236}
+#inventory .sv-recipe.sv-gated .sv-rart>*{filter:grayscale(1) brightness(.7)} /* [progression-hook] research-locked */
 #inventory .sv-recipe:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
-#inventory .sv-rart{display:grid;place-items:center;width:42px;height:42px;border-radius:3px;background:#b89f6e;box-shadow:inset 0 0 0 1px #7a5a34}
+#inventory .sv-rart{display:grid;place-items:center;width:42px;height:42px;border-radius:3px;background:radial-gradient(circle at 50% 40%,#e9dcb8,#b89f6e 80%);box-shadow:inset 0 0 0 1px #7a5a34}
 #inventory .sv-rart .sv-icon{width:36px;height:36px}
 #inventory .sv-rbody{display:block;min-width:0}
 #inventory .sv-rname{display:block;font:700 14px/1.2 ${FONT};color:#3e2a17;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#inventory .sv-rsub{display:block;margin-top:2px;font:600 12px/1.2 ${FONT};color:#4e3720;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#inventory .sv-ready .sv-rsub{color:#3f6a26}
+#inventory .sv-rsub{display:block;margin-top:2px;font:600 12px/1.2 ${FONT};color:#5e4426;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#inventory .sv-ready .sv-rsub{color:#3b6b1c}
 #inventory .sv-full .sv-rsub{color:#8a4a12}
 #inventory .sv-locked .sv-rsub{color:#a3321a}
-#inventory .sv-rbadge{font:800 12px/1 ${FONT};color:#3f6a26;font-variant-numeric:tabular-nums}
-#inventory .sv-detail{flex:none;display:flex;flex-direction:column;gap:7px;padding:9px;border-radius:4px;background:#e6d6adf2;box-shadow:inset 0 0 0 1px #5e4426}
+#inventory .sv-rbadge{font:800 12px/1 ${FONT};color:#3b6b1c;font-variant-numeric:tabular-nums}
+#inventory .sv-detail{flex:none;display:flex;flex-direction:column;gap:7px;padding:9px;border-radius:4px;background:repeating-linear-gradient(0deg,#5e44260a 0 1px,transparent 1px 3px),linear-gradient(#e9ddbb,#dccb9f);box-shadow:inset 0 0 0 1px #7a5a34,0 1px 0 #c9a76f66}
 #inventory .sv-detail[hidden]{display:none}
 #inventory .sv-dhead{display:grid;grid-template-columns:60px 1fr auto;gap:10px;align-items:center}
-#inventory .sv-dart{display:grid;place-items:center;width:60px;height:60px;border-radius:4px;background:#b89f6e;box-shadow:inset 0 0 0 1px #7a5a34}
+#inventory .sv-dart{display:grid;place-items:center;width:60px;height:60px;border-radius:4px;background:radial-gradient(circle at 50% 40%,#f4ecd4,#c4ae80 80%);box-shadow:inset 0 0 0 1px #7a5a34}
 #inventory .sv-dart .sv-icon{width:54px;height:54px}
-#inventory .sv-dname{display:block;font:700 16px/1.2 ${FONT};color:#3e2a17}
+#inventory .sv-dname{display:block;font:700 16px/1.2 ${FONT};color:#2a1b0e}
 #inventory .sv-ddesc{display:block;margin-top:2px;font:500 12px/1.3 ${FONT};color:#5e4426}
-#inventory .sv-dlabel{font:700 10px/1 ${FONT};letter-spacing:1.5px;text-transform:uppercase;color:#6b5638}
+#inventory .sv-dlabel{font:700 10px/1 ${FONT};letter-spacing:1.5px;text-transform:uppercase;color:#7a5a34}
 #inventory .sv-ings{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
-#inventory .sv-ing{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:3px 8px 3px 4px;border-radius:3px;background:#d6c397;box-shadow:inset 3px 0 0 #b0391e}
-#inventory .sv-ing.sv-ok{box-shadow:inset 3px 0 0 #5f9c3a}
+#inventory .sv-ing{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:3px 8px 3px 4px;border-radius:3px;background:#cdb98d;box-shadow:inset 3px 0 0 #b0391e,inset 0 0 0 1px #7a5a3455}
+#inventory .sv-ing.sv-ok{box-shadow:inset 3px 0 0 #4f8a2e,inset 0 0 0 1px #7a5a3455}
 #inventory .sv-ing .sv-icon{width:24px;height:24px}
 #inventory .sv-iname{font:600 13px/1.2 ${FONT};color:#3e2a17}
 #inventory .sv-iname{display:flex;align-items:baseline;gap:7px;min-width:0}
@@ -295,13 +273,13 @@ const CSS = `
 #inventory button.sv-ijump:hover{background:#e0cfa5;color:#3e2a17}
 #inventory button.sv-ijump:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
 #inventory .sv-iamt{font:800 13px/1 ${FONT};font-variant-numeric:tabular-nums;color:#a3321a}
-#inventory .sv-ok .sv-iamt{color:#3f6a26}
+#inventory .sv-ok .sv-iamt{color:#3b6b1c}
 #inventory .sv-craftbtn{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;margin:0;padding:0 12px;overflow:hidden;border:0;border-radius:4px;
   background:linear-gradient(#5c8a3a,#3f6a26);box-shadow:inset 0 0 0 1px #c8f0a0aa,0 2px 0 #1f3612;color:#f4ffe6;font:800 15px/1 ${FONT};letter-spacing:.5px;text-transform:none;cursor:pointer;transform:none;
   user-select:none;-webkit-user-select:none;touch-action:none}
 #inventory .sv-craftbtn:hover{background:linear-gradient(#6c9c46,#4a7a2e)}
 #inventory .sv-craftbtn:focus-visible{outline:2px solid #3e2a17;outline-offset:2px}
-#inventory .sv-craftbtn[aria-disabled="true"]{background:linear-gradient(#b39b6d,#a08a5e);box-shadow:inset 0 0 0 1px #7a5a34;color:#5e4426;cursor:not-allowed}
+#inventory .sv-craftbtn[aria-disabled="true"]{background:linear-gradient(#bea676,#ad9466);box-shadow:inset 0 0 0 1px #6b4e2c;color:#5e4426;cursor:not-allowed}
 #inventory .sv-craftbtn.sv-deny{box-shadow:inset 0 0 0 2px #e06a4a,0 0 6px #e06a4a88}
 #inventory .sv-fill{position:absolute;inset:0;transform-origin:left center;transform:scaleX(var(--fill,0));background:linear-gradient(90deg,#d8f7a066,#f4ffd0aa);pointer-events:none}
 #inventory .sv-craftbtn:not(.sv-holding) .sv-fill{transition:transform .25s ease-out}
@@ -316,10 +294,10 @@ const CSS = `
 #inventory .sv-ccount:empty{display:none}
 #inventory .sv-empty-list{margin:6px;color:#f6e8c6;font-size:14px}
 #inventory .sv-tip{position:fixed;left:0;top:0;z-index:10;pointer-events:none;box-sizing:border-box;width:max-content;max-width:250px;padding:7px 10px;border-radius:4px;white-space:normal;
-  background:#e6d6adf7;border:1px solid #5e4426;color:#3e2a17;font:700 14px/1.3 ${FONT};box-shadow:0 4px 12px #0006}
+  background:#ece0bff7;border:1px solid #5e4426;color:#2a1b0e;font:700 14px/1.3 ${FONT};box-shadow:0 4px 12px #0006}
 #inventory .sv-tip[hidden]{display:none}
 #inventory .sv-tip small{display:block;margin-top:2px;font:500 12px/1.35 ${FONT};color:#5e4426}
-#inventory .sv-tip small em{font-style:normal;font-weight:700;color:#8a3a12}
+#inventory .sv-tip small em{font-style:normal;font-weight:700;color:#8a4a12}
 @media(max-width:860px),(max-height:520px){#inventory .sv-craft{flex:none;width:auto;min-width:0;height:auto;max-height:none;overflow:visible}#inventory.sv-inv{width:auto}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}#inventory .sv-rlist{max-height:30vh}#inventory .sv-bag{min-width:0}
   #inventory.sv-inv{--s:44px;--g:5px}#inventory .sv-slot .sv-art{inset:3px}}
 @media(max-width:440px){#inventory.sv-inv{--s:36px;--g:4px}#inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}}
