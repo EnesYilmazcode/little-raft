@@ -15,5 +15,16 @@ for (let t = 0; t < 60; t += 1.7) {
     n++;
   }
 }
-console.log(JSON.stringify({ samples: n, worstDiff: worst, ok: worst < 1e-9 }));
-process.exit(worst < 1e-9 ? 0 : 1);
+// setAmp must move the CPU side with the GPU uniform: runtime setAmp(2.6) == created with amp 2.6, and back to 1 == old.
+const rough = newOcean(T, { amp: 2.6 });
+let ampWorst = 0;
+for (const t of [0, 7.3, 31]) {
+  b.update(t); rough.update(t); a.update(t);
+  for (let x = -20; x <= 20; x += 4.1) for (let z = -20; z <= 20; z += 3.7) {
+    b.setAmp(2.6); ampWorst = Math.max(ampWorst, Math.abs(b.getHeight(x, z) - rough.getHeight(x, z)));
+    b.setAmp(1); ampWorst = Math.max(ampWorst, Math.abs(b.getHeight(x, z) - a.getHeight(x, z)));
+  }
+}
+const ok = worst < 1e-9 && ampWorst < 1e-9 && b.uniforms.uAmp.value === 1;
+console.log(JSON.stringify({ samples: n, worstDiff: worst, setAmpWorstDiff: ampWorst, ok }));
+process.exit(ok ? 0 : 1);
