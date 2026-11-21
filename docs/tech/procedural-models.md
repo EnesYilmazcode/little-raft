@@ -34,7 +34,7 @@ Prototype: `sandbox/procedural-models/`
 ## Approach
 
 Faceted low-poly built from a small kit. Every object is merged into one geometry per material, and all objects
-share 4 materials.
+share 3 materials (`lp-solid`, `lp-cloth`, `lp-glow`).
 
 | Kit piece | What it does |
 |---|---|
@@ -104,7 +104,7 @@ craft.
 | | draw calls (main + shadow) | triangles | meshes | materials |
 |---|---|---|---|---|
 | current | 271 | 251,208 | 137 | 78 |
-| **new** | **50** | **50,218** | **26** | **4** |
+| **new** | **50** | **50,218** | **26** | **4** (3 shared `lp-*` + water) |
 
 Frame ms on the loaded machine was 3.34 (current) vs 0.72 (new). The new set adds 0 textures.
 
@@ -136,7 +136,7 @@ SwiftShader ReadPixels notices. Floor, floating items, hands and HUD were all in
 
 Adopt `lowpoly-props.js` for all four builder modules (deck, debris, plastic, crafts). It is a one-file drop-in
 with the same contracts. It cuts triangles by about 5× and draw calls by about 5.4× on a typical raft, and
-materials from 78 to 4. The only `game.js` change besides the imports is one guard in `disposeGeometry` so shared
+scene materials from 78 to 4 (the 3 shared `lp-*` materials plus the water). The only `game.js` change besides the imports is one guard in `disposeGeometry` so shared
 materials are not disposed. Later, if raft size grows: instance the deck tile (salvage mode `c` showed 5 calls for
 25 tiles).
 
