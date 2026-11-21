@@ -148,3 +148,29 @@ Next ideas:
 - Also fixed: Escape with the hammer build wheel open opened the pause menu.
 - Gate: 533/533, no page errors, hook-only spawn, Esc from inventory OK, perf +0.8% vs main (fair probe), draw calls 148 vs 539.
 - Merged PR #1 into main.
+
+## 2026-11-21 · loop-fidelity round 1 (Raft fidelity worker)
+Base: raft-master 6ab9b24. Research: two web researchers. The wiki hosts were unreachable through WebFetch, so the numbers below come from search snippets of raft.fandom.com.
+Claimed and landed (the three biggest gaps: Raft is a survival game and we had no needs and no threat):
+- **Survival needs** (`needs.js`, `needs-ui.js`):
+  - hunger drains 0.09/s and thirst 0.11/s; at 0, health drops 0.75/s each; health regenerates 0.25/s while fed
+  - food: raw fish 12.5 food / -10 water, grilled fish 20, cup of fresh water +40 (cup returned), sea water -15; left click eats or drinks
+  - lower-left bars; death card, then respawn at 50/50/50
+  - game modes Relaxed / Peaceful / Easy / Normal / Hard (`combat-bus.js` MODES) in Settings → Gameplay. New games default to Normal; old saves load as Relaxed, the original no-needs sandbox. README updated.
+- **Shark** (`shark.js`):
+  - circles the raft at its extent + 4 m
+  - attacks an edge tile every 300 s on Normal (Easy 480, Hard 120); bites it for 12 s, then tears it off (never the last tile, an occupied tile, a grill or a crate)
+  - 15 damage during an attack drives it off for 25 s; 150 HP; respawns 180 s after death; bites swimmers for 30 damage every 2.5 s
+  - one draw call; host-authoritative, with an 8 Hz pose sent to the guest
+- **Wooden spear** (`spear.js`, `spear-model.js`): 8 wood + 3 rope, 20 uses, 5 damage, 2.6 m stab. Hit marker. A kill gives the killer 4 raw shark meat, which grills to Grilled Shark Meat.
+Reviews:
+- Logic: meat goes to the killer, not the host; a dead player is input-blocked; bite damage uses the engine's own needs; crate tiles are protected from tearing.
+- Visuals: the biting shark head-on read as a dome, so it got a snout, jaw and teeth; the death card hides the crosshair.
+Gate: 567/567. shoot.py: no page errors. Frame time 280 vs 276 ms (+1.6%), draw calls 149 vs 147.
+Open:
+- a guest's spear wears even on a hit the host rejects
+- hot swap during the death card keeps the player's position
+- the spear can be crafted in Relaxed
+- shark meat goes to the bag, not floating debris
+- the stab motion is subtle
+Next gaps to consider: Raft's crafting costs vs ours (hook 2 plank + 2 plastic? check), simple purifier/grill fuel by planks, item durability on the hook, oxygen bar while diving, receiver/antenna story islands, potato/beet crops and the cooking pot.
