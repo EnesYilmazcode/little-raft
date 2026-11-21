@@ -154,7 +154,8 @@ export function mount(transfer = null) {
   const commit = (bag, scratch) => { for (let i = 0; i < bag.slots.length; i++) bag.slots[i] = scratch.slots[i]; };
   const canAfford = (bag, cost) => Object.entries(cost).every(([k, n]) => bag.count(k) >= n);
   const itemName = k => (ITEM_INFO[k]?.name ?? k).toLowerCase();
-  const pickName = it => (it.type === 'drop' ? (it.count > 1 ? it.count + ' ' : '') + itemName(it.kind) : ITEM_NAMES[it.type] ?? 'supply'); // [drop]
+  const stackName = (kind, n) => itemName(kind) + (n > 1 ? ' \u00d7' + n : ''); // [drop] 'plank ×19': no plurals to guess
+  const pickName = it => (it.type === 'drop' ? stackName(it.kind, it.count) : ITEM_NAMES[it.type] ?? 'supply'); // [drop]
   const missingText = (bag, cost) => Object.entries(cost).filter(([k, n]) => bag.count(k) < n).map(([k, n]) => `${n - bag.count(k)} more ${itemName(k)}`).join(' and ');
   function spend(bag, cost) { // atomic
     const s = new Bag(bag.snapshot());
@@ -1249,7 +1250,7 @@ export function mount(transfer = null) {
       if (!r.ok) { if (r.reason === 'crowded') emit({kind:'notice', text:'Too much is floating here already'}, actor); else if (r.reason === 'nowater') emit({kind:'notice', text:'No open water to drop into'}, actor); return; }
       const taken = takeFromSlot(bag, r.slot, r.n);
       world.items.push(makeDrop(nextDropId(world.items), newToken(), taken, r.x, r.z, Math.random() * 6)); syncItems();
-      emit({kind:'notice', text:`Dropped ${taken.count > 1 ? taken.count + ' ' : ''}${itemName(taken.kind)}`, sound:'splash'}, actor);
+      emit({kind:'notice', text:`Dropped ${stackName(taken.kind, taken.count)}`, sound:'splash'}, actor);
       return;
     }
     if (a.kind === 'build') {
