@@ -66,6 +66,9 @@ const REEL_SKIM = 0.06, REEL_RISE_DIST = 2;           // reeling: skim height, r
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const fin = (v) => typeof v === 'number' && Number.isFinite(v);
 const finVec = (v) => !!v && fin(v.x) && fin(v.y) && fin(v.z);
+// Math.hypot is a varargs builtin that V8 does not lower: it allocates on every call. Hot paths use these.
+const len2 = (x, z) => Math.sqrt(x * x + z * z);
+const len3 = (x, y, z) => Math.sqrt(x * x + y * y + z * z);
 
 export class HookCast {
   constructor(T, { origin, direction, target, maxRange = 32, charge = 1, drift } = {}) {
@@ -106,6 +109,8 @@ export class HookCast {
     this._emitted = false;
     this._ropePts = [];
     this._skip = null; // per-update skip predicate (see update)
+    this._h = 0.01;    // current substep length (s) and its sim time, set by update()
+    this._t = 0.01;
 
     // Thrown from at/below the water: it is simply in the water where it is.
     if (this.position.y <= WATER_Y) this._splash(this.position.x, this.position.z, null);
@@ -170,7 +175,7 @@ export class HookCast {
 
   /** Keep (x,z) within maxRange of the hand. Returns true if it had to clamp. */
   _tether(p) {
-    const h = this._hand, dx = p.x - h.x, dz = p.z - h.z, d = Math.hypot(dx, dz);
+    const h = this._hand, dx = p.x - h.x, dz = p.z - h.z, d = len2(dx, dz);
     if (d <= this.maxRange || d < 1e-9) return false;
     const k = this.maxRange / d;
     p.x = h.x + dx * k; p.z = h.z + dz * k;
@@ -186,14 +191,15 @@ export class HookCast {
     if (items) this._sweep(items, x, z, x, z, CATCH_RADIUS);
   }
 
-  _stepFlight(h, items) {
+  _stepFlight(items) {
+    const h = this._h;
     const p = this.position, v = this.velocity;
     const px = p.x, py = p.y, pz = p.z;
     let nx = px + v.x * h, nz = pz + v.z * h;
     const ny = py + v.y * h - 0.5 * GRAVITY * h * h;
     v.y -= GRAVITY * h;
     { // tether (same as _tether, on scalars): rope taut -> stop horizontal motion, just drop
-      const hd = this._hand, dx = nx - hd.x, dz = nz - hd.z, d = Math.hypot(dx, dz);
+      const hd = this._hand, dx = nx - hd.x, dz = nz - hd.z, d = len2(dx, dz);
       if (d > this.maxRange && d >= 1e-9) {
         const k = this.maxRange / d;
         nx = hd.x + dx * k; nz = hd.z + dz * k;
@@ -208,11 +214,14 @@ export class HookCast {
       this._splash(sx, sz, items);
       return;
     }
-    this._sweepFlight(items, px, py, pz, nx, ny, nz);
+    // Guarded here so the common high-flight substep makes no call (double args would be boxed).
+    const lim = WATER_Y + FLIGHT_CATCH_HEIGHT;
+    if (items && (py <= lim || ny <= lim)) this._sweepFlight(items, px, py, pz, nx, ny, nz);
     p.set(nx, ny, nz);
   }
 
-  _stepFloat(h, items, time) {
+  _stepFloat(items) {
+    const h = this._h, time = this._t;
     const b = this.base, ax = b.x, az = b.z;
     const vx = this.drift ? this.drift.x : Math.sin(time * 0.13) * 0.04;
     const vz = this.drift ? this.drift.z : 0.22;
@@ -224,12 +233,13 @@ export class HookCast {
   }
 
   /** Returns true when the hook reached the hand. */
-  _stepReel(h, items) {
+  _stepReel(items) {
+    const h = this._h;
     const p = this.position, hd = this._hand, ax = p.x, az = p.z;
-    const dx = hd.x - ax, dz = hd.z - az, d = Math.hypot(dx, dz);
+    const dx = hd.x - ax, dz = hd.z - az, d = len2(dx, dz);
     if (d > 1e-9) { const k = Math.min(1, (REEL_SPEED * h) / d); p.x += dx * k; p.z += dz * k; }
     this._sweep(items, ax, az, p.x, p.z, CATCH_RADIUS);
-    const rem = Math.hypot(hd.x - p.x, hd.z - p.z);
+    const rem = len2(hd.x - p.x, hd.z - p.z);
     const rise = clamp(1 - rem / REEL_RISE_DIST, 0, 1);
     p.y = Math.max(WATER_Y, WATER_Y + REEL_SKIM + (hd.y - WATER_Y) * rise);
     this.base.set(p.x, WATER_Y, p.z);
@@ -257,12 +267,14 @@ export class HookCast {
     const steps = Math.max(1, Math.ceil(dt / SUBSTEP - 1e-9)), h = dt / steps;
     if (dt > 0) {
       for (let i = 0; i < steps && !arrived; i++) {
-        if (this.stage === 'flying') this._stepFlight(h, list);
-        else if (this.stage === 'floating') this._stepFloat(h, list, t + h * (i + 1) - dt);
-        else if (this.stage === 'reeling') arrived = this._stepReel(h, list);
+        // Substep inputs go through fields: double args to these (non-inlined) calls get boxed.
+        this._h = h; this._t = t + h * (i + 1) - dt;
+        if (this.stage === 'flying') this._stepFlight(list);
+        else if (this.stage === 'floating') this._stepFloat(list);
+        else if (this.stage === 'reeling') arrived = this._stepReel(list);
       }
     } else if (this.stage === 'reeling') {
-      arrived = Math.hypot(this._hand.x - this.position.x, this._hand.z - this.position.z) <= COLLECT_DIST;
+      arrived = len2(this._hand.x - this.position.x, this._hand.z - this.position.z) <= COLLECT_DIST;
     }
 
     this._skip = null; // don't retain the caller's closure between frames
@@ -283,7 +295,7 @@ export class HookCast {
 
   _updateMetrics() {
     const h = this._hand;
-    this.distance = Math.hypot(this.position.x - h.x, this.position.z - h.z);
+    this.distance = len2(this.position.x - h.x, this.position.z - h.z);
     const has = this.caughtItems.length > 0;
     if (this.stage === 'flying') this.tension = this.tethered ? 1 : 0;
     else if (this.stage === 'reeling' || this.stage === 'done') this.tension = has ? 1 : 0.8;
@@ -299,7 +311,7 @@ export class HookCast {
     if (index < 0 || index >= this.caughtItems.length) return null;
     const p = this.position, h = this._hand;
     let bx = p.x - h.x, bz = p.z - h.z;
-    const l = Math.hypot(bx, bz);
+    const l = len2(bx, bz);
     if (l > 1e-6) { bx /= l; bz /= l; } else { bx = 0; bz = 1; }
     // index 0 sits right behind the hook; the rest spiral around it (golden angle).
     const back = 0.15 + (index ? 0.2 : 0);
@@ -321,7 +333,7 @@ export class HookCast {
     }
     if (pts.length !== n + 1) pts.length = n + 1;
     const p = this.position;
-    const span = Math.hypot(p.x - h.x, p.y - h.y, p.z - h.z);
+    const span = len3(p.x - h.x, p.y - h.y, p.z - h.z);
     const slack = this.stage === 'flying' ? (this.tethered ? 0 : 0.15) : 1 - this.tension;
     const sag = span * 0.12 * slack;
     const floorY = WATER_Y - MAX_SAG_BELOW;
