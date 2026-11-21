@@ -338,7 +338,10 @@ export function mount(transfer = null) {
 
   // ---------- Scene ----------
   function init() {
-    const assetBuild = new URL(import.meta.url).searchParams.get('build') || 'dev'; document.querySelectorAll('use[href*="icons.svg"]').forEach(el => el.setAttribute('href', 'icons.svg?build=' + assetBuild + '#' + el.getAttribute('href').split('#')[1]));
+    // The page loads icons.svg with no query (one fetch). Only a hot swap re-points the sprite at the new build so a
+    // changed icons.svg shows up; survival-ui.js reads the sprite URL back from these <use> elements.
+    if (X) { const b = new URL(import.meta.url).searchParams.get('build'), href = b ? 'icons.svg?build=' + encodeURIComponent(b) : 'icons.svg';
+      document.querySelectorAll('use[href*="icons.svg"]').forEach(el => { const [url, id] = el.getAttribute('href').split('#'); if (url !== href) el.setAttribute('href', href + '#' + id); }); }
     prepareDom();
     scene = new T.Scene(); scene.background = new T.Color(SKY.horizon); scene.fog = new T.Fog(SKY.horizon, 40, 140);
     camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 260); camera.rotation.order = 'YXZ'; scene.add(camera);
