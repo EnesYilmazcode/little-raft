@@ -5,6 +5,8 @@
 //   scene.add(ocean.mesh);
 //   ocean.update(timeSeconds);               // each frame (optionally ocean.update(t, camera))
 //   ocean.getHeight(x, z)                    // CPU wave height (world y) for bobbing items/raft
+//   ocean.getSlope(x, z, t?, e?, out?)       // {x, z} gradient (shared object unless `out` is given)
+//   ocean.sample(x, z, out?, t?, e?)         // {h, sx, sz}: getHeight + getSlope in one call
 
 // Shared wave set (dirX, dirZ, amplitude, wavelength, steepness). Sum of amplitudes = .255,
 // so with base y -.24 crests peak near y = .015 — well under the raft floor at .2.
@@ -267,41 +269,76 @@ export function createOcean(T, options = {}) {
   }
 
   // CPU mirror of the vertex shader (inverts horizontal Gerstner shift with 2 iterations).
-  const pre = WAVES.map(([dx, dz, a, l, q]) => {
+  // Wave params are flattened into one Float64Array (stride 6: k, dx, dz, c, dx*q*a, dz*q*a; plus
+  // AMP) and sampled with indexed loops on scalar locals, so per-frame calls allocate nothing.
+  // Operation order matches the old object-based version, so results are bit-identical.
+  const NW = WAVES.length;
+  const W = new Float64Array(NW * 6);
+  const AMP = new Float64Array(NW);
+  WAVES.forEach(([dx, dz, a, l, q], i) => {
     const len = Math.hypot(dx, dz);
+    const ndx = dx / len, ndz = dz / len;
     const k = (Math.PI * 2) / l;
-    return { dx: dx / len, dz: dz / len, a, k, c: Math.sqrt(9.8 / k) * SPEED, q };
+    const o = i * 6;
+    W[o] = k; W[o + 1] = ndx; W[o + 2] = ndz; W[o + 3] = Math.sqrt(9.8 / k) * SPEED;
+    W[o + 4] = ndx * q * a; W[o + 5] = ndz * q * a;
+    AMP[i] = a;
   });
-  function displace(x, z, t, out) {
-    let ox = 0, oy = 0, oz = 0;
-    for (const w of pre) {
-      const f = w.k * (w.dx * x + w.dz * z - w.c * t);
-      const co = Math.cos(f);
-      ox += w.dx * w.q * w.a * co;
-      oz += w.dz * w.q * w.a * co;
-      oy += w.a * Math.sin(f);
+  // Inputs and results go through Float64Arrays (raw doubles) rather than arguments/returns, so
+  // the shared kernel never boxes numbers whether or not V8 decides to inline it.
+  // Sample points: 0 = (x, z), 1 = (x+e, z), 2 = (x-e, z), 3 = (x, z+e), 4 = (x, z-e).
+  const IN = new Float64Array(4);  // x, z, t, e
+  const HS = new Float64Array(5);  // world height at each sample point
+  function heights(from, to) {
+    const x0 = IN[0], z0 = IN[1], t = IN[2], e = IN[3], base = mesh.position.y;
+    for (let s = from; s < to; s++) {
+      const x = s === 1 ? x0 + e : s === 2 ? x0 - e : x0;
+      const z = s === 3 ? z0 + e : s === 4 ? z0 - e : z0;
+      let px = x, pz = z;
+      for (let it = 0; it < 2; it++) {
+        let ox = 0, oz = 0;
+        for (let i = 0, o = 0; i < NW; i++, o += 6) {
+          const co = Math.cos(W[o] * (W[o + 1] * px + W[o + 2] * pz - W[o + 3] * t));
+          ox += W[o + 4] * co;
+          oz += W[o + 5] * co;
+        }
+        px = x - ox;
+        pz = z - oz;
+      }
+      let oy = 0;
+      for (let i = 0, o = 0; i < NW; i++, o += 6) {
+        oy += AMP[i] * Math.sin(W[o] * (W[o + 1] * px + W[o + 2] * pz - W[o + 3] * t));
+      }
+      HS[s] = base + oy;
     }
-    out[0] = ox; out[1] = oy; out[2] = oz;
-    return out;
   }
-  const tmp = [0, 0, 0];
   function getHeight(x, z, t = time) {
-    let px = x, pz = z;
-    for (let i = 0; i < 2; i++) {
-      displace(px, pz, t, tmp);
-      px = x - tmp[0];
-      pz = z - tmp[2];
-    }
-    displace(px, pz, t, tmp);
-    return mesh.position.y + tmp[1];
+    IN[0] = x; IN[1] = z; IN[2] = t;
+    heights(0, 1);
+    return HS[0];
   }
   // Approximate surface slope for tilting floating objects: returns {x, z} tilt gradient.
-  // The returned object is reused between calls; read it before calling again.
+  // Without `out` the returned object is shared between calls (read it before calling again);
+  // with `out` its .x/.z are written and `out` is returned.
   const slope = { x: 0, z: 0 };
-  function getSlope(x, z, t = time, e = 0.6) {
-    slope.x = (getHeight(x + e, z, t) - getHeight(x - e, z, t)) / (2 * e);
-    slope.z = (getHeight(x, z + e, t) - getHeight(x, z - e, t)) / (2 * e);
-    return slope;
+  function getSlope(x, z, t = time, e = 0.6, out = slope) {
+    IN[0] = x; IN[1] = z; IN[2] = t; IN[3] = e;
+    heights(1, 5);
+    out.x = (HS[1] - HS[2]) / (2 * e);
+    out.z = (HS[3] - HS[4]) / (2 * e);
+    return out;
+  }
+  // Combined query: sample(x, z, out?, t = now, e = 0.6) -> {h, sx, sz} where
+  //   h === getHeight(x, z, t), sx/sz === getSlope(x, z, t, e).x/.z (same central difference).
+  // Replaces a getHeight + getSlope pair with one call. Without `out` a shared object is returned.
+  const sampled = { h: 0, sx: 0, sz: 0 };
+  function sample(x, z, out = sampled, t = time, e = 0.6) {
+    IN[0] = x; IN[1] = z; IN[2] = t; IN[3] = e;
+    heights(0, 5);
+    out.h = HS[0];
+    out.sx = (HS[1] - HS[2]) / (2 * e);
+    out.sz = (HS[3] - HS[4]) / (2 * e);
+    return out;
   }
 
   function dispose() {
@@ -310,5 +347,5 @@ export function createOcean(T, options = {}) {
     mask.dispose();
   }
 
-  return { mesh, update, getHeight, getSlope, setRaftTiles, trackFoam, uniforms, material, dispose };
+  return { mesh, update, getHeight, getSlope, sample, setRaftTiles, trackFoam, uniforms, material, dispose };
 }

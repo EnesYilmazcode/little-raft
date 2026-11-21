@@ -1,4 +1,4 @@
-// Unit tests for the survival-engine pure modules: Bag, PlayerPhysics, HookCast.
+// Unit tests for the survival-engine pure modules: Bag, PlayerPhysics, HookCast (+ ocean CPU sampling).
 // Run: node --test tests/survival.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,6 +11,7 @@ const {
 } = await import(new URL('inventory-state.js', base));
 const { PlayerPhysics, PLAYER_CONSTANTS: PC } = await import(new URL('player-physics.js', base));
 const { HookCast, WATER_Y } = await import(new URL('hook-physics.js', base));
+const { createOcean } = await import(new URL('ocean.js', base));
 
 // ---------------------------------------------------------------- helpers
 
@@ -847,4 +848,30 @@ test('audio waits for a gesture, starts ambience once and frees every one-shot v
   assert.equal(a.play('build'), false, 'muted master skips scheduling');
   a.destroy();
   assert.equal(live.size, 0, 'destroy disconnects the whole graph');
+});
+
+test('ocean: getSlope(out) and sample() match getHeight/getSlope exactly', () => {
+  const ocean = createOcean(T);
+  ocean.update(37.25);
+  const shared = ocean.getSlope(1, 2);
+  assert.equal(ocean.getSlope(3, 4), shared, 'without out the slope object is shared (back-compat)');
+  const out = { x: NaN, z: NaN }, s = { h: NaN, sx: NaN, sz: NaN };
+  for (let i = 0; i < 200; i++) {
+    const x = Math.sin(i * 1.7) * 60, z = Math.cos(i * 0.9) * 60, t = i * 0.37, e = i % 3 ? 0.6 : 2.2;
+    const g = ocean.getSlope(x, z, t, e), gx = g.x, gz = g.z;
+    assert.equal(ocean.getSlope(x, z, t, e, out), out, 'getSlope returns out');
+    assert.ok(Object.is(out.x, gx) && Object.is(out.z, gz));
+    assert.equal(ocean.sample(x, z, s, t, e), s, 'sample returns out');
+    assert.ok(Object.is(s.h, ocean.getHeight(x, z, t)) && Object.is(s.sx, gx) && Object.is(s.sz, gz));
+    const d = ocean.sample(x, z, undefined, t, e);
+    assert.ok(Object.is(d.h, s.h) && Object.is(d.sx, gx) && Object.is(d.sz, gz));
+  }
+  // Defaults: current time and e = 0.6; central difference of getHeight.
+  const d = ocean.sample(5, -7), e = 0.6;
+  assert.ok(Object.is(d.h, ocean.getHeight(5, -7, 37.25)));
+  assert.ok(Object.is(d.sx, (ocean.getHeight(5 + e, -7) - ocean.getHeight(5 - e, -7)) / (2 * e)));
+  assert.ok(Object.is(d.sz, (ocean.getHeight(5, -7 + e) - ocean.getHeight(5, -7 - e)) / (2 * e)));
+  ocean.mesh.position.y = 0.5;
+  assert.ok(Math.abs(ocean.getHeight(0, 0) - 0.5) <= 0.256, 'height follows the mesh base');
+  ocean.dispose();
 });
