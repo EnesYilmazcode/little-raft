@@ -59,14 +59,14 @@ few minutes and E harvests it. It never decays. Anchors were checked against the
 - `tickTraps(st, tiles, decor, dt)` whole-second host tick, which bumps `st.r` on any change and only
   runs for live edge tiles: :101-123.
 - All-or-nothing `collect` through a snapshot Bag: :133-148.
-- Module: `session`/`st.s`/`st.r` net dedupe in `load(...,'net')`: :259 (fn at ~:240-255). The
-  serialize cache is :248-252. Host 1 Hz clock in `update`: :265-274. `placeBlock` returns
-  `'trapedge'`: :275-277. `prompt`/`interact` are at :278-293 and `action` with the reach check
-  `REACH + HOST_SLACK` against `ctx.other` for a guest is at :294-320. `decorModel`: :321-324.
-  `debug.place/fastForward/fill`: :325-353.
-- Aim targeting along the view ray to an overhanging spot: :175-198. Mesh scan of the `craft_fishtrap`
-  groups in `ctx.raft`, rotated to face the open side: :200-212. Paint with frustum and 30 m cull:
-  :214-231.
+- Module: `session`/`st.s`/`st.r` net dedupe in `load(...,'net')`: :232-246. The
+  serialize cache is :247-251. Host 1 Hz clock in `update`: :259-268. `placeBlock` returns
+  `'trapedge'`: :269-271. `prompt`/`interact` are at :272-293 and `action` with the reach check
+  `REACH + HOST_SLACK` against `ctx.other` for a guest is at :294-321. `decorModel`: :322-325.
+  `debug.place/fastForward/fill`: :326-353.
+- Aim targeting along the view ray to an overhanging spot: :176-198. Mesh scan of the `craft_fishtrap`
+  groups in `ctx.raft`, rotated to face the open side: :200-213. Paint with frustum and 30 m cull:
+  :215-230.
 - Model: `dist/fish-trap-model.js`. `OVERHANG=1.15`: :6. `paintTrap` cheap sine bob (no ocean
   sampling): :130-145.
 - Wiring: import at content.js:84 and in `FEATURES` at :94. `NO_UNDECOR` at content.js:97 (add
@@ -97,14 +97,14 @@ few minutes and E harvests it. It never decays. Anchors were checked against the
 
 **Water surface for bobbing floats**
 - `ocean.getHeight(x, z, t)` at ocean.js:400 (world coords, includes the sailing flow offset) and
-  `sample(x,z,t,out)` at ~ocean.js:427-437. They are exposed on `ctx.ocean` (content.js:53, used in
+  `sample(x,z,t,out)` at ~ocean.js:432. They are exposed on `ctx.ocean` (content.js:53, used in
   buoycourse.js:309 and fishing-v2.js:196). The floats are raft children, so convert local to world
   and back, or do what `paintTrap` does: a cheap per-float sine bob with a phase. I recommend the sine
   bob, because the raft itself already rides the waves.
 
 **Crops (for the mulch hook)**
 - crops.js:1-13 explains the design. Slot `{c,g,w}` lives ON the decor entry (`d.crop`). `YIELD=2` and
-  `MAX_TICK`: :23. `cleanCrop`: ~:38-43 (it must accept and clamp a new `m`). `tickCrops`: :66-82.
+  `MAX_TICK`: :23. `cleanCrop`: :45 (it must accept and clamp a new `m`). `tickCrops`: :66-82.
   Actions are at :96-130. The crosshair provider `raftPrompts.provide({id:'crops'})` is at :171.
   game.js:74 and :2147 use the `withoutCrops` replacer so crop ticks do not count as a raft rebuild.
   **Do not** store kelp growth on the decor entry: it would trigger guest raft rebuilds unless
@@ -134,7 +134,7 @@ few minutes and E harvests it. It never decays. Anchors were checked against the
   on a *stage* or harvest change, not every second (the fish trap bumps every second; kelp can be
   cheaper by storing `g` but bumping `r` only on stage changes, with guests showing the stage only).
 - **Edge loss**: a floor built later can close in the line's open side. Freeze growth (no loss) and
-  still allow harvesting a lush line, the same as the fish trap's inner-trap rule (fish-trap.js:283).
+  still allow harvesting a lush line, the same as the fish trap's inner-trap rule (fish-trap.js:276).
 - **Undecor**: if `kelpline` is left out of `NO_UNDECOR` without hooks, picking up a lush line loses
   its seaweed. Either add it to the set or return `[['seaweed', n]]` from `undecorLoot`.
 - **Bonus sources**: daynight `night`/`rain` exist only on the host's live module (use
