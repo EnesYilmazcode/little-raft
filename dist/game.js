@@ -19,6 +19,7 @@ import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2
 import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
 import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
+import { createItemIcons } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -189,6 +190,7 @@ export function mount(transfer = null) {
   let saveBlocked = !!X?.saveBlocked;
   let scene = null, camera = null, renderer = null, ocean = null, raft, itemsGroup, ghost, rope, ropeAttr, hookMesh, friend, player, sun;
   let hookHands = null, hammerHands = null, rodHands = null, rodModel = null, rodTip = null, clothMat;
+  const itemIcons = createItemIcons(T);
   let survivalUI = null, settingsController = null, options = {sensitivity:1, fov:75, cameraMotion:.35, volume:.5, graphics:'medium'};
   let running = !!X?.running;
   let elapsed = Number.isFinite(X?.elapsed) ? X.elapsed : 0, last = performance.now();
@@ -1244,7 +1246,9 @@ export function mount(transfer = null) {
       onCraft:guard(id => craft(id)),
       onResume:guard(() => requestLock()),
       onPause:guard(clearInput),
+      iconFor:kind => itemIcons.get(kind),
     });
+    later(() => { try { itemIcons.prime(); } catch (e) { console.warn('item icons', e); } }, 1500); // render 3D recipe icons off the first-open path
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
     if ($('#toast')?.classList.contains('show')) toastTimer = later(() => { toastTimer = 0; $('#toast')?.classList.remove('show'); }, 2600);
     active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
