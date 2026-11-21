@@ -46,7 +46,7 @@ import { attachProgression } from './progression-hooks.js'; // [progression-hook
 import { setOwnedElsewhere } from './storage-research.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook] content Research Table teaches only non-catalogue recipes
 import * as ART from './materials.js?build=v3-survival-ae77fa84ac2b'; // art lane hook (docs/cloud/art.md), active only with ?art
 import { createPlastic } from './plastic.js?build=v3-survival-ae77fa84ac2b';
-import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
+import { createSurvivalUI, iconSVG } from './survival-ui.js?build=v3-survival-ae77fa84ac2b';
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { createGhosts, wrapRot, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
@@ -556,6 +556,7 @@ export function mount(transfer = null) {
   // ---------- Feedback: pickups and notes go to the bottom-left feed, never the screen centre ----------
   const setText = (sel, v) => { const el = $(sel); if (el) el.textContent = v; };
   function setStatus(s) { setText('#networkStatus', s); }
+  function feedSprite(k) { try { const t = document.createElement('template'); t.innerHTML = iconSVG(k); return t.content.firstElementChild; } catch { return null; } } // same flat sprite the hotbar shows until (or instead of) a 3D icon
   function notice(s, ms = 1800) { if (s == null || s === '') return; noticeText = String(s).slice(0, 90); noticeUntil = performance.now() + Math.min(ms, 400); pickupFeed.note(noticeText); } // bottom-left feed, never the screen centre
   function toast(s) {
     if (coop?.feed(s)) return; // coop: connection news goes to the bottom-left feed
@@ -1782,7 +1783,7 @@ export function mount(transfer = null) {
     logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(clearInput), onResume:guard(() => requestLock())});
     try { lookUI = createLookUI({getState:() => lookState, onChange:guard(applyLook), onSend:guard(() => coop?.sendLook?.()), onPause:guard(clearInput), onResume:guard(() => { if (running) requestLock(); })}); } catch (e) { console.error('look UI failed', e); lookUI = null; } // [look]
     if (role !== 'guest') retroAward();
-    pickupFeed.setIconProvider(getItemIcon); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
+    pickupFeed.setIconProvider(k => getItemIcon(k) || feedSprite(k)); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
     if ($('#toast')?.classList.contains('show')) toastTimer = later(() => { toastTimer = 0; $('#toast')?.classList.remove('show'); }, 2600);
     warmShaders(); // after settings: the saved graphics preset decides the light/shadow program variants
