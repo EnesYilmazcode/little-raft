@@ -258,8 +258,8 @@ export function createPieceMaterial(T) {
 const BOUNDS = {
   wall: [-1.075, 0, -0.1, 1.075, 2.2, 0.1], halfwall: [-1.075, 0, -0.1, 1.075, 1.12, 0.1],
   window: [-1.075, 0, -0.12, 1.075, 2.2, 0.12], door: [-1.075, 0, -0.1, 1.075, 2.2, 0.9],
-  pillar: [-0.13, 0, -0.13, 0.13, 2.2, 0.13], floor: [-1, -0.12, -1, 1, 0, 1],
-  stairs: [-0.95, 0, -1, 0.95, 2.2, 1], roof: [-1.05, -0.12, -1.15, 1.05, 1.1, 1.05],
+  pillar: [-0.145, 0, -0.145, 0.145, 2.2, 0.145], floor: [-1, -0.13, -1, 1, 0.008, 1],
+  stairs: [-0.95, 0, -1, 0.95, 2.2, 1], roof: [-1.0, -0.16, -1.18, 1.0, 1.12, 1.05],
 };
 export function pieceBounds(type) {
   const b = BOUNDS[type]; return b ? {minX: b[0], minY: b[1], minZ: b[2], maxX: b[3], maxY: b[4], maxZ: b[5]} : null;
