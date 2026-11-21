@@ -3,15 +3,15 @@
  "scenarios": {
   "stock dist": {
    "frames": 12,
-   "frameMs": 2204,
-   "frameP95": 2817.1,
-   "frameWorst": 2817.1,
-   "renderMs": 2202.38,
-   "submitMs": 10,
-   "submitMin": 5.5,
+   "frameMs": 5004.67,
+   "frameP95": 7875.1,
+   "frameWorst": 7875.1,
+   "renderMs": 5003.03,
+   "submitMs": 11.9,
+   "submitMin": 5.9,
    "logicMs": 1.63,
-   "logicP95": 4.9,
-   "rafGapMs": 2209.01,
+   "logicP95": 5,
+   "rafGapMs": 5110.4,
    "calls": 1026,
    "triangles": 685494,
    "geometries": 711,
@@ -22,14 +22,14 @@
     1280,
     720
    ],
-   "heapDeltaKB": 519,
+   "heapDeltaKB": -477,
    "shadow": "every frame",
    "cpuMsPerFrame": {
     "browser": 0.9,
     "utility": 0.5,
-    "renderer": 24.1,
-    "gpu-process": 3166.8,
-    "total": 3192.3
+    "renderer": 36.4,
+    "gpu-process": 3071.4,
+    "total": 3109.2
    },
    "census": {
     "meshes": 833,
@@ -96,17 +96,17 @@
   },
   "patched dist": {
    "frames": 12,
-   "frameMs": 2108.51,
-   "frameP95": 2788.8,
-   "frameWorst": 2788.8,
-   "renderMs": 2107.33,
-   "submitMs": 6,
-   "submitMin": 3.5,
-   "logicMs": 1.18,
-   "logicP95": 4.4,
-   "rafGapMs": 2089.31,
-   "calls": 362,
-   "triangles": 721006,
+   "frameMs": 1819.86,
+   "frameP95": 2350,
+   "frameWorst": 2350,
+   "renderMs": 1818.57,
+   "submitMs": 6.3,
+   "submitMin": 3.3,
+   "logicMs": 1.29,
+   "logicP95": 3,
+   "rafGapMs": 1815.07,
+   "calls": 360,
+   "triangles": 720238,
    "geometries": 333,
    "textures": 8,
    "programs": 12,
@@ -115,19 +115,19 @@
     1280,
     720
    ],
-   "heapDeltaKB": -106,
+   "heapDeltaKB": 100,
    "shadow": "every frame",
    "cpuMsPerFrame": {
-    "browser": 0.9,
+    "browser": 0.5,
     "utility": 0.5,
-    "renderer": 19.1,
-    "gpu-process": 1891.8,
-    "total": 1912.3
+    "renderer": 18.2,
+    "gpu-process": 2088.2,
+    "total": 2107.4
    },
    "census": {
     "meshes": 315,
-    "casters": 82,
-    "verts": 1475502,
+    "casters": 80,
+    "verts": 1815312,
     "materials": 189,
     "geometries": 308,
     "textures": 7,
@@ -150,7 +150,7 @@
       "objects": 1,
       "meshes": 85,
       "casters": 80,
-      "verts": 1103556,
+      "verts": 1443366,
       "materials": 85
      },
      "floating items": {
@@ -163,7 +163,7 @@
      "scenery": {
       "objects": 6,
       "meshes": 6,
-      "casters": 2,
+      "casters": 0,
       "verts": 24480,
       "materials": 1
      }
