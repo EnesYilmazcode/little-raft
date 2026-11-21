@@ -100,7 +100,7 @@ was not done.
 
 **Hitches: `rebuildRaft()` rebuilds everything.** Every build, decor placement or network world change disposes and
 regenerates all tiles (`createFloor`: ExtrudeGeometry per plank, about 6 ms CPU per tile in node), so about 50 ms at 9
-tiles and about 300 ms at 49 tiles. Static batching would add about 1 ms per tile on top if done naively. The adopt
+tiles and about 300 ms at 49 tiles. A naive full re-merge would add about 1 ms per tile on top. The adopt
 patch's `createStaticBatch` appends only new tiles, so placing anything costs about one tile of work.
 
 ## Fixes, one at a time (live A/B on the real game)
@@ -202,7 +202,7 @@ grow to hundreds, but it needs the 83 per-item materials folded into a few share
 
 - **Viewmodel draw calls** (60 meshes for the hook hands): skin the fingers, or merge the rigid segments per bone.
   This is hands.js work and belongs to the viewmodel topic.
-- **Leaf debris is 4.5k triangles per item** (debris.js `buildLeaf`), and items have 80 unique materials. Sharing the
+- **Leaf debris is 4.5k triangles per item** (debris.js `buildLeaf`), and items have 83 unique materials. Sharing the
   per-item metal and plastic materials through `getMaterial`, plus a 2-level LOD for items beyond about 25 m, would
   cut submit cost further, but changes debris.js and plastic.js internals.
 - **One wood texture, tinted**, instead of 15 canvases (wood.js). This saves uploads and memory, but the grain strokes
