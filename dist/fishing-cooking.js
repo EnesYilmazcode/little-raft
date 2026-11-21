@@ -8,6 +8,7 @@
 // Save: localStorage 'little-raft-fc-v1' {v:1, journal, grills}. Grills are the player's own (host world); while a
 // guest, own grills are stashed and the host's broadcast grills are shown instead.
 // Debug: window.raftFC = { state, session, journal, grills, forceBite(id), forceCatch(id) }.
+import { exitLock } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { FishingSession, createFishingV2 } from './fishing-v2.js?build=v3-survival-ae77fa84ac2b';
 import { Journal, createJournalPanel, BASKET_MAX } from './fish-journal.js?build=v3-survival-ae77fa84ac2b';
 import { SPECIES, speciesById, dishName } from './fish-species.js?build=v3-survival-ae77fa84ac2b';
@@ -222,7 +223,7 @@ export function createFishingCooking(T, host) {
   function toggleJournal() {
     if (!HAS_DOC) return;
     panel ??= createJournalPanel({ getJournal: () => journal, onClose: () => { try { host.resume?.(); } catch {} } });
-    if (!panel.isOpen) try { document.exitPointerLock?.(); } catch {} // free the cursor so the tabs can be clicked
+    if (!panel.isOpen) exitLock(document); // free the cursor so the tabs can be clicked (marked page-initiated, lock-rules.js)
     panel.toggle();
   }
   function placeGrillAtAim() {
