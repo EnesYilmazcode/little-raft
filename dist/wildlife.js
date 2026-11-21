@@ -85,10 +85,26 @@ export function perchesFrom(tiles, decor) {
   return out;
 }
 
+// gullSky's per-gull constants (r0, h, dir, w, ph) depend only on (seed, i): computed once per seed, not per call.
+// Slot GULL_MAX is scratch for out-of-range i.
+const _skyK = new Float64Array((GULL_MAX + 1) * 5), _skyOk = new Uint8Array(GULL_MAX);
+let _skySeed = NaN;
+function skyConsts(seed, i) {
+  const cached = Number.isInteger(i) && i >= 0 && i < GULL_MAX;
+  if (cached) {
+    if (seed !== _skySeed) { _skySeed = seed; _skyOk.fill(0); }
+    if (_skyOk[i]) return i * 5;
+    _skyOk[i] = 1;
+  }
+  const o = (cached ? i : GULL_MAX) * 5, s = gullKey(seed, i), dir = rnd(s, 3) < 0.5 ? -1 : 1;
+  _skyK[o] = 7 + 5 * rnd(s, 0); _skyK[o + 1] = 6.5 + 4 * rnd(s, 1); _skyK[o + 2] = dir;
+  _skyK[o + 3] = (0.17 + 0.1 * rnd(s, 2)) * dir; _skyK[o + 4] = TAU * rnd(s, 4);
+  return o;
+}
 function gullSky(seed, i, t, o, ext) { // continuous circling path, raft frame
-  const s = gullKey(seed, i);
-  const r = 7 + 5 * rnd(s, 0) + pushOut(ext, GULL_MARGIN, GULL_R0), h = 6.5 + 4 * rnd(s, 1), dir = rnd(s, 3) < 0.5 ? -1 : 1;
-  const w = (0.17 + 0.1 * rnd(s, 2)) * dir, ph = TAU * rnd(s, 4);
+  const k = skyConsts(seed, i);
+  const r = _skyK[k] + pushOut(ext, GULL_MARGIN, GULL_R0), h = _skyK[k + 1], dir = _skyK[k + 2];
+  const w = _skyK[k + 3], ph = _skyK[k + 4];
   const a = ph + w * t, rr = r + 1.5 * Math.sin(t * 0.07 + ph);
   o.sx = Math.cos(a) * rr; o.sz = Math.sin(a) * rr; o.sy = h + 0.8 * Math.sin(t * 0.23 + ph * 2);
   o.bank = -dir * 0.32; o.ph = ph;
@@ -272,6 +288,12 @@ export function createWildlife(ctx) {
   const plan = { state: 'circle', x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, flap: 0, fold: 0, blend: 0, sx: 0, sy: 0, sz: 0, px: 0, py: 0, pz: 0, perch: -1 };
   const sc = { x: 0, y: 0, z: 0, heading: 0 }, fo = { side: 0, along: 0, ph: 0, size: 1, depth: 0 };
   const cir = { kind: null, x: 0, y: 0, z: 0, heading: 0, pitch: 0, roll: 0 };
+  // Fish layout is fixed per seed: precomputed once (side, along, ph, size, depth per fish) instead of 5 rnd calls per fish per frame.
+  const fishLay = new Float64Array(SCHOOL_MAX * FISH_PER_SCHOOL * 5);
+  for (let i = 0; i < SCHOOL_MAX; i++) for (let j = 0; j < FISH_PER_SCHOOL; j++) {
+    fishOffset(seed, i, j, fo); const o = (i * FISH_PER_SCHOOL + j) * 5;
+    fishLay[o] = fo.side; fishLay[o + 1] = fo.along; fishLay[o + 2] = fo.ph; fishLay[o + 3] = fo.size; fishLay[o + 4] = fo.depth;
+  }
   const last = { gx: new Float32Array(GULL_MAX * 3), gs: new Array(GULL_MAX).fill('hidden'), sx: new Float32Array(SCHOOL_MAX * 2), nG: 0, nS: 0 };
 
   let built = false, disposed = false, group = null, gullBody = null, gullWing = null, fish = null, dolphin = null, turtle = null, material = null, gullMat = null, fishMat = null, tuck = null;
@@ -362,16 +384,20 @@ export function createWildlife(ctx) {
 
   // Folding swings the wing back (Y), turns it on edge along the flank with the grey top facing out (X twist
   // about its own length), and drops the shoulder so the wing lies along the flank instead of standing above it.
-  function setWing(index, side, flap, fold) {
-    mA.makeTranslation(side * (GULL_SHOULDER[0] + 0.035 * fold), GULL_SHOULDER[1] - 0.09 * fold, GULL_SHOULDER[2]);
-    mB.makeScale(side, 1, 1);
+  // The left wing (side -1) is the right one mirrored in local X: T(-x)·Sx·R = Sx·T(x)·R, so it is built once
+  // per gull and the mirror is applied by negating the first column of the body matrix.
+  function setWings(index, flap, fold) {
+    mA.makeTranslation(GULL_SHOULDER[0] + 0.035 * fold, GULL_SHOULDER[1] - 0.09 * fold, GULL_SHOULDER[2]);
     mC.makeRotationY(fold * 1.55);
     mD.makeRotationX(fold * 1.4);
     mE.makeRotationZ(flap * (1 - 0.8 * fold));
-    mA.multiply(mB).multiply(mC).multiply(mD).multiply(mE);
+    mA.multiply(mC).multiply(mD).multiply(mE);
     mC.makeScale(1 - 0.3 * fold, 1, 1); mA.multiply(mC); // folded, the hand tucks under: the tips just cross the tail
     mB.multiplyMatrices(m4, mA);
     gullWing.setMatrixAt(index, mB);
+    const e = mD.copy(m4).elements; e[0] = -e[0]; e[1] = -e[1]; e[2] = -e[2]; e[3] = -e[3];
+    mB.multiplyMatrices(mD, mA);
+    gullWing.setMatrixAt(index + 1, mB);
   }
 
   // The visit and latched perch gull i uses at t. Returns the perch ({key,x,y,z}) or null; fills vis[i].
@@ -438,8 +464,7 @@ export function createWildlife(ctx) {
       sc3.set(1, 1, 1);
       m4.compose(v3b, q4, sc3);
       gullBody.setMatrixAt(i, m4);
-      setWing(i * 2, 1, plan.flap, plan.fold);
-      setWing(i * 2 + 1, -1, plan.flap, plan.fold);
+      setWings(i * 2, plan.flap, plan.fold);
       last.gx[i * 3] = v3b.x; last.gx[i * 3 + 1] = v3b.y; last.gx[i * 3 + 2] = v3b.z; last.gs[i] = plan.state;
     }
     changed = false;
@@ -457,13 +482,13 @@ export function createWildlife(ctx) {
       last.sx[i * 2] = sc.x; last.sx[i * 2 + 1] = sc.z;
       for (let j = 0; j < FISH_PER_SCHOOL; j++) {
         const k = i * FISH_PER_SCHOOL + j;
-        fishOffset(seed, i, j, fo);
-        const along = fo.along + 0.35 * Math.sin(t * 0.5 + fo.ph), side = fo.side + 0.25 * Math.sin(t * 0.37 + fo.ph * 2);
+        const o = k * 5, fPh = fishLay[o + 2], fSize = fishLay[o + 3];
+        const along = fishLay[o + 1] + 0.35 * Math.sin(t * 0.5 + fPh), side = fishLay[o] + 0.25 * Math.sin(t * 0.37 + fPh * 2);
         const x = sc.x + sh * along + ch * side, z = sc.z + ch * along - sh * side;
-        const yaw = sc.heading + 0.18 * Math.sin(t * 0.6 + fo.ph) + (wiggle ? 0.22 * Math.sin(t * 7 + fo.ph * 3) : 0);
-        const depth = sc.y + fo.depth; // plan depth, about -1.15 .. -0.45 m. Drawn on the surface; it only sets the tint
+        const yaw = sc.heading + 0.18 * Math.sin(t * 0.6 + fPh) + (wiggle ? 0.22 * Math.sin(t * 7 + fPh * 3) : 0);
+        const depth = sc.y + fishLay[o + 4]; // plan depth, about -1.15 .. -0.45 m. Drawn on the surface; it only sets the tint
         const h = ocean ? ocean.getHeight(x, z) : -0.24;
-        v3.set(x, h + 0.035, z); q4.setFromAxisAngle(UP, yaw); sc3.set(fo.size * FISH_SCALE, 1, fo.size * FISH_SCALE);
+        v3.set(x, h + 0.035, z); q4.setFromAxisAngle(UP, yaw); sc3.set(fSize * FISH_SCALE, 1, fSize * FISH_SCALE);
         m4.compose(v3, q4, sc3); fish.setMatrixAt(k, m4);
         col.copy(fishDark).lerp(fishWater, Math.min(0.85, Math.max(0, (-depth - 0.4) / 0.8 * 0.7)));
         fish.setColorAt(k, col);
