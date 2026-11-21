@@ -21,6 +21,7 @@ const CATEGORY_OF = Object.freeze({
   drum: 'tools', pipes: 'tools', bells: 'tools', // [instruments]
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   flowerbox: 'survival', beehive: 'survival', candle: 'survival', honeyfish: 'survival', // [bees]
+  juicer: 'survival', berrycup: 'survival', coconutcup: 'survival', mixcup: 'survival', // [juicer]
   perch: 'survival', // [gull]
   rainbarrel: 'survival', sprinkler: 'survival', // [rain-sprinkler]
   researchtable: 'building', grill: 'building', smelter: 'building', maptable: 'building',
@@ -30,6 +31,9 @@ const CATEGORY_OF = Object.freeze({
   // content (engine, sleep, paint)
   motor: 'building', wheel: 'building', bed: 'building', brush: 'tools',
   paint_seafoam: 'materials', paint_coral: 'materials', paint_sunshell: 'materials', paint_lagoon: 'materials', paint_pebble: 'materials',
+  fins: 'tools', airjug: 'tools', goggles: 'tools', scraper: 'tools',
+  cookpot: 'building', bowl: 'survival',
+  shellwreath: 'building',
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
@@ -92,18 +96,18 @@ export const ITEM_TEXT = Object.freeze({
   bells:      { desc: 'Brass-bright scrap bars on a small frame.', use: 'Click to ring a note that fades out softly.' }, // [instruments]
   cookedfish: { desc: 'A fish grilled golden.', use: 'A hearty snack.' },
   flowerseed: { desc: 'A tiny seed from an island bush.', use: 'Plant it in a flower box.' }, // [bees]
-  berries:    { desc: 'Tart little berries from an island bush.', use: 'Snack on them, or juice them at a juicer.' }, // [juicer]
-  coconut:    { desc: 'A hairy brown coconut from your palm planter.', use: 'Juice it at a juicer with a cup of fresh water.' }, // [juicer]
-  berrycup:   { desc: 'A pink berry smoothie.', use: 'Drink it for food and water; you keep the cup.' }, // [juicer]
-  coconutcup: { desc: 'Cool, milky coconut in a cup.', use: 'Drink it for food and water; you keep the cup.' }, // [juicer]
-  mixcup:     { desc: 'Berries and coconut together.', use: 'The most filling drink; you keep the cup.' }, // [juicer]
-  juicer:     { desc: 'A hand-crank juicer.', use: 'Bring a cup of fresh water and two fruit, then press E.' }, // [juicer]
   flowerbox:  { desc: 'A planter full of bright blooms.', use: 'Place near a beehive; bees love it.' }, // [bees]
   beehive:    { desc: 'A cosy straw hive of friendly bees.', use: 'Place by flower boxes; collect honeycomb with E.' }, // [bees]
   honey:      { desc: 'Sweet, golden and sticky.', use: 'Glaze a grilled fish.' }, // [bees]
   wax:        { desc: 'Soft beeswax from the comb.', use: 'Make beeswax candles.' }, // [bees]
   candle:     { desc: 'A little jar candle.', use: 'Glows warmly at night; place on a tile.' }, // [bees]
   honeyfish:  { desc: 'Grilled fish with a honey glaze.', use: 'A sweet treat.' }, // [bees]
+  berries:    { desc: 'Tart little island berries.', use: 'Blend in a juicer, or eat as a snack.' }, // [juicer]
+  coconut:    { desc: 'A hairy brown coconut.', use: 'Blend in a juicer, or eat as a snack.' }, // [juicer]
+  juicer:     { desc: 'A hand-crank fruit juicer.', use: 'Press E with a cup of fresh water and 2 fruit.' }, // [juicer]
+  berrycup:   { desc: 'A pink berry smoothie in a cup.', use: 'Drink it for water and a little food; keep the cup.' }, // [juicer]
+  coconutcup: { desc: 'A cool coconut smoothie in a cup.', use: 'Drink it for lots of water; keep the cup.' }, // [juicer]
+  mixcup:     { desc: 'Berries and coconut, blended.', use: 'Drink it for water and food; keep the cup.' }, // [juicer]
   perch:      { desc: 'A tall perch with a woven tray.', use: 'Offer grilled fish to a visiting gull; it may move in.' }, // [gull]
   finder:     { desc: 'A driftwood wand with a brass coil.', use: 'Hold it on island sand: it ticks faster near buried bundles.' },
   spade:      { desc: 'A little wooden spade with a metal blade.', use: 'E on island sand digs up bundles (or a pinch of sand).' },
@@ -128,6 +132,21 @@ export const ITEM_TEXT = Object.freeze({
   researchtable: { desc: 'A table for showing off new finds.', use: 'Place it and research items to unlock recipes.' },
   grill:      { desc: 'A simple grill with a fire box.', use: 'Cooks fish and fires clay; feed it planks or leaves.' },
   smelter:    { desc: 'A brick furnace.', use: 'Melts ore into ingots and sand into glass.' },
+  fins:       { desc: 'Webbed fins stitched with puff feathers.', use: 'Works from your bag: swim 30% faster underwater.' },
+  airjug:     { desc: 'A sealed jug of fresh air.', use: 'Works from your bag: a dive lasts 75 s instead of 45 s.' },
+  goggles:    { desc: 'Goggles with seaglass lenses.', use: 'Works from your bag: see much further underwater.' },
+  scraper:    { desc: 'A flat metal scraper for the seafloor.', use: 'Works from your bag: gather sand, clay and ore faster.' },
+  cookpot:    { desc: 'A squat clay pot on three stones.', use: 'Add 3 ingredients and wood; cooks 2 servings into bowls.' },
+  bowl:       { desc: 'A little carved bowl.', use: 'Collect a meal from the Cooking Pot.' },
+  meal_chowder:  { desc: 'Fish and seaweed simmered in fresh water.', use: 'Eat it: Swift Fins, swim 35% faster for 3 min.' },
+  meal_omelette: { desc: 'A fluffy omelette of puff eggs and palm leaf.', use: 'Eat it: Springy Step, walk and jump 15% better for 3 min.' },
+  meal_broth:    { desc: 'A clear, salty kelp broth.', use: 'Eat it: Deep Breath, dives last 60% longer for 3 min.' },
+  meal_fishbowl: { desc: 'Grilled fish on palm leaf with toasted seeds.', use: 'Eat it: Steady Reel, reel 30% faster for 3 min.' },
+  meal_custard:  { desc: 'A sweet, wobbly custard.', use: 'Eat it: Night Owl, nights look brighter for 4 min.' },
+  meal_stew:     { desc: 'A hearty stew of fish, egg and seaweed.', use: 'Eat it: Cosy Glow, a little better at everything for 5 min.' },
+  shell:      { desc: 'A bright, sun-bleached shell.', use: 'Pim takes these as coin at his trading barge.' },
+  shellwreath:{ desc: 'A rope wreath set with bright shells.', use: 'Decorates the raft; place it on a tile.' },
+  glassfloat: { desc: 'A blue glass float in a rope net.', use: 'A rare keepsake from Pim; place it on a tile.' },
 });
 
 const TOOLISH = new Set(['hook', 'hammer', 'fishingrod', 'rod', 'axe', 'spear']);
@@ -323,14 +342,14 @@ export function sortCraftableFirst(views) {
 // ---- where items come from ----
 // `tag` is the short text beside a missing ingredient; `how` is the tooltip line.
 export const ITEM_SOURCE = Object.freeze({
-  berries:    Object.freeze({ tag: 'island bushes', how: 'Pick bushes on islands; some give berries.' }), // [juicer]
-  coconut:    Object.freeze({ tag: 'palm planter', how: 'Harvest a ripe palm planter; it sometimes drops a coconut.' }), // [juicer]
-  berrycup:   Object.freeze({ tag: 'juicer', how: 'Use a juicer with a cup of fresh water and two berries.' }), // [juicer]
-  coconutcup: Object.freeze({ tag: 'juicer', how: 'Use a juicer with a cup of fresh water and two coconuts.' }), // [juicer]
-  mixcup:     Object.freeze({ tag: 'juicer', how: 'Use a juicer with a cup of fresh water, a berry and a coconut.' }), // [juicer]
   flowerseed: Object.freeze({ tag: 'island bushes', how: 'Pick bushes on islands; some drop flower seeds.' }),
   honey:   Object.freeze({ tag: 'beehive', how: 'Put a beehive near flower boxes, then press E on it to collect honeycomb.' }),
   wax:     Object.freeze({ tag: 'beehive', how: 'Collected with honey from a full beehive (E).' }),
+  berries:    Object.freeze({ tag: 'island bushes', how: 'Pick bushes on islands; some drop berries.' }), // [juicer]
+  coconut:    Object.freeze({ tag: 'palm planter', how: 'Harvest a ripe palm planter.' }), // [juicer]
+  berrycup:   Object.freeze({ tag: 'juicer', how: 'Press E on a juicer with a cup of fresh water and 2 fruit.' }), // [juicer]
+  coconutcup: Object.freeze({ tag: 'juicer', how: 'Press E on a juicer with a cup of fresh water and 2 fruit.' }), // [juicer]
+  mixcup:     Object.freeze({ tag: 'juicer', how: 'Press E on a juicer with a cup of fresh water and 2 fruit.' }), // [juicer]
   wood:    Object.freeze({ tag: 'found floating', how: 'Hook floating planks. Barrels hold more.' }),
   leaf:    Object.freeze({ tag: 'floating, palm', how: 'Hook floating leaf bundles, or harvest a grown palm.' }),
   plastic: Object.freeze({ tag: 'found floating', how: 'Hook floating plastic jugs. Barrels hold some too.' }),
@@ -363,6 +382,16 @@ export const ITEM_SOURCE = Object.freeze({
   sharkmeat:   Object.freeze({ tag: 'beaten shark', how: 'Fight off the shark with a spear, then press E on its body.' }),
   sharkhead:   Object.freeze({ tag: 'beaten shark', how: 'Harvested with the meat from a beaten shark (E).' }),
   cookedsharkmeat: Object.freeze({ tag: 'grill', how: 'Cook raw shark meat on a grill.' }),
+  // Pim's trading barge (trader.js)
+  shell:       Object.freeze({ tag: 'trader', how: 'Trade fish or puff eggs to Pim at his trading barge.' }),
+  glassfloat:  Object.freeze({ tag: 'trader', how: 'A rare offer at Pim\u2019s trading barge; pay in Bright Shells.' }),
+  // cooking pot (cookpot.js): meals are cooked, never crafted
+  meal_chowder:  Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: fish + seaweed + fresh water; collect with a bowl.' }),
+  meal_omelette: Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: 2 puff eggs + palm leaf; collect with a bowl.' }),
+  meal_broth:    Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: 2 seaweed + fresh water; collect with a bowl.' }),
+  meal_fishbowl: Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: cooked fish + palm leaf + seed; collect with a bowl.' }),
+  meal_custard:  Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: puff egg + seed + fresh water; collect with a bowl.' }),
+  meal_stew:     Object.freeze({ tag: 'cooking pot', how: 'Cooking Pot: cooked fish + puff egg + seaweed; collect with a bowl.' }),
 });
 
 /**

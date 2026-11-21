@@ -11,7 +11,7 @@
 //     target    : LEGACY ONLY. Used solely to derive a direction (target - origin) when `direction`
 //                 is missing/invalid. The hook is never snapped/teleported to it.
 //     maxRange  : rope length (m), measured horizontally from the *current* hand.
-//     charge    : [0,1]; launch speed = 7 + charge * 11 m/s (+1.0 m/s upward throw boost).
+//     charge    : [0,1]; launch speed = BASE_SPEED + charge * CHARGE_SPEED = 5 + charge * 7 m/s (+1.0 m/s upward throw boost).
 //     drift     : optional {x,z} m/s water drift for the floating hook. Default mirrors game.js
 //                 item drift (z += .22/s, x += sin(time*.13)*.04/s) so hook and supplies co-drift.
 //     deck      : optional (x, z) -> deck surface y, or null over water. A hook coming down onto
@@ -60,6 +60,7 @@ const MAX_DT = 0.05;              // s, frame dt clamp
 const SUBSTEP = 0.01;             // s, max integration step (≤ ~0.2 m per step at full speed)
 const MAX_FLIGHT_TIME = 8;        // s, safety: force a splash if somehow never reaching water
 const REEL_SPEED = 8;             // m/s horizontal reel speed
+export const HOOK_MUL = { reel: 1 }; // live reel multiplier (cookpot.js)
 const CATCH_RADIUS = 1.0;         // m, swept catch radius while floating / reeling / at splash
 const CATCH_RADIUS_FLIGHT = 0.65; // m, swept catch radius during flight near the water
 const FLIGHT_CATCH_HEIGHT = 0.35; // m above WATER_Y where a flying hook can snag things
@@ -267,7 +268,7 @@ export class HookCast {
     const h = this._h;
     const p = this.position, hd = this._hand, ax = p.x, az = p.z;
     const dx = hd.x - ax, dz = hd.z - az, d = len2(dx, dz);
-    if (d > 1e-9) { const k = Math.min(1, (REEL_SPEED * h) / d); p.x += dx * k; p.z += dz * k; }
+    if (d > 1e-9) { const k = Math.min(1, (REEL_SPEED * HOOK_MUL.reel * h) / d); p.x += dx * k; p.z += dz * k; }
     this._sweep(items, ax, az, p.x, p.z, CATCH_RADIUS);
     const rem = len2(hd.x - p.x, hd.z - p.z);
     const rise = clamp(1 - rem / REEL_RISE_DIST, 0, 1);
@@ -380,7 +381,8 @@ export class HookCast {
     const span = len3(p.x - h.x, p.y - h.y, p.z - h.z);
     const slack = this.stage === 'flying' ? (this.tethered ? 0 : 0.15) : 1 - this.tension;
     const sag = span * 0.12 * slack;
-    const floorY = WATER_Y - MAX_SAG_BELOW;
+    // While the hook floats the slack line rests on the surface; a dip under the opaque sea would cut it from view.
+    const floorY = this.stage === 'flying' ? WATER_Y - MAX_SAG_BELOW : WATER_Y + 0.03;
     for (let i = 0; i <= n; i++) {
       const t = i / n, q = pts[i];
       q.set(h.x + (p.x - h.x) * t, h.y + (p.y - h.y) * t, h.z + (p.z - h.z) * t);

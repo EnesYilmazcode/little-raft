@@ -173,12 +173,13 @@ test('items: legacy kinds keep their ids and Bag-compatible stack/tool shape', (
   assert.equal(ITEMS.wood.name, 'Plank');
   assert.deepEqual([...TOOL_IDS].sort(), ['fishingrod', 'hammer', 'hook', 'metalhook', 'metalspear', 'spade', 'spear']);
   for (const s of ['smelter', 'researchtable', 'grill']) assert.ok(STATION_IDS.includes(s) && PLACEABLE_IDS.includes(s));
-  for (const k of ['sail', 'palm', 'lantern', 'net', 'bench', 'crate']) assert.ok(PLACEABLE_IDS.includes(k));
+  for (const k of ['sail', 'palm', 'lantern', 'net', 'bench', 'crate', 'juicer' /* [juicer] */]) assert.ok(PLACEABLE_IDS.includes(k));
+  assert.ok(!STATION_IDS.includes('juicer')); // [juicer] decor, not a slot-panel station
 });
 
 test('items: no unlock/recipe cycles and every item is reachable from the start', () => {
   // Raw sources: floating debris + barrel loot. Fish comes from the fishing rod.
-  const have = new Set(['wood', 'leaf', 'plastic', 'scrap', 'sharkmeat', 'sharkhead', ...BARREL_LOOT.map((e) => e.kind)]); // shark loot comes from a dead shark (shark.js)
+  const have = new Set(['wood', 'leaf', 'plastic', 'scrap', 'sharkmeat', 'sharkhead', 'berries' /* [juicer] island bushes */, ...BARREL_LOOT.map((e) => e.kind)]); // shark loot comes from a dead shark (shark.js)
   const unlocked = (id) => {
     const u = ITEMS[id].unlock;
     if (u.type === 'start') return true;
@@ -189,9 +190,8 @@ test('items: no unlock/recipe cycles and every item is reachable from the start'
     changed = false;
     if (have.has('fishingrod') && !have.has('fish')) { have.add('fish'); changed = true; }
     if (have.has('beehive') && have.has('flowerbox') && !have.has('honey')) { have.add('honey'); have.add('wax'); changed = true; } // [bees] hive harvest
-    if (!have.has('berries')) { have.add('berries'); changed = true; } // [juicer] island bushes (islands-layout lootFor)
-    if (have.has('palm') && !have.has('coconut')) { have.add('coconut'); changed = true; } // [juicer] palm planter harvest
-    if (have.has('juicer') && !have.has('mixcup')) { for (const k of ['berrycup', 'coconutcup', 'mixcup']) have.add(k); changed = true; } // [juicer] juicer output (cups of fresh water come from the watering lane's purifier)
+    if (have.has('palm') && !have.has('coconut')) { have.add('coconut'); changed = true; } // [juicer] planter harvest
+    if (have.has('juicer') && !have.has('berrycup')) { for (const k of ['berrycup', 'coconutcup', 'mixcup']) have.add(k); changed = true; } // [juicer] blend
     for (const id of ITEM_IDS) {
       const r = ITEMS[id].recipe;
       if (have.has(id) || !r || !unlocked(id)) continue;

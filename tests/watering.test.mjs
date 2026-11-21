@@ -137,15 +137,17 @@ test('water turns a fresh cup back into a cup and starts growth', () => {
   assert.deepEqual(w.garden[P], { water: 1, grow: 0 });
 });
 
-test('harvest: bonus wood by rng, leaves and a coconut otherwise, full bag keeps plant ripe', () => {
+test('harvest: bonus wood by rng, leaves only otherwise, full bag keeps plant ripe', () => {
   const ripe = () => mkWorld({ garden: { [P]: { water: 0, grow: 90 } } });
   let w = ripe(), bag = bagFrom([]), calls = 0;
   let r = W.harvest(w, P, bag, () => { calls++; return .1; });
-  assert.equal(r.ok, true); assert.equal(r.text, '+ 2 palm leaf · 1 coconut · 1 wood'); assert.equal(calls, 1);
-  assert.equal(bag.count('leaf'), 2); assert.equal(bag.count('wood'), 1); assert.equal(bag.count('coconut'), 1); /* [juicer] every harvest drops a coconut */ assert.equal(w.garden[P], undefined);
+  assert.equal(r.ok, true); assert.equal(r.text, '+ 2 palm leaf · 1 coconut · 1 wood'); assert.equal(calls, 1); // [juicer]
+  assert.equal(bag.count('coconut'), 1); // [juicer]
+  assert.equal(bag.count('leaf'), 2); assert.equal(bag.count('wood'), 1); assert.equal(w.garden[P], undefined);
   w = ripe(); bag = bagFrom([]);
   r = W.harvest(w, P, bag, () => .9);
-  assert.equal(r.text, '+ 2 palm leaf · 1 coconut'); assert.equal(bag.count('leaf'), 2); assert.equal(bag.count('wood'), 0);
+  assert.equal(r.text, '+ 2 palm leaf · 1 coconut'); assert.equal(bag.count('leaf'), 2); assert.equal(bag.count('wood'), 0); // [juicer]
+  assert.equal(bag.count('coconut'), 1); // [juicer]
   w = ripe(); const full = fullBag({ kind: 'cup', count: 1 }), before = JSON.stringify(full.snapshot()); calls = 0;
   r = W.harvest(w, P, full, () => { calls++; return .9; });
   assert.equal(r.reason, 'full'); assert.equal(calls, 1);
