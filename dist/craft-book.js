@@ -189,3 +189,27 @@ export function placeRefusal(kind, t, max) {
   if (t.count >= max) return 'That stack is full';
   return '';
 }
+
+// ---- recipe order ----
+// Inside a tab, recipes you can make right now come first, then ones blocked only by bag space,
+// then the rest, closest-to-done first (fewest ingredients short, then fewest units short).
+// The sort is stable, so recipes keep their book order within each group.
+const STATE_RANK = Object.freeze({ ready: 0, full: 1, missing: 2 });
+
+/** views: [{state, rows}] (rows from ingredientRows). Returns a new, sorted array. */
+export function sortCraftableFirst(views) {
+  const key = v => {
+    let kinds = 0, units = 0;
+    for (const r of v?.rows || []) if (!r.enough) { kinds++; units += r.short; }
+    return [STATE_RANK[v?.state] ?? 3, kinds, units];
+  };
+  return (views || []).map((v, i) => ({ v, i, k: key(v) }))
+    .sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1] || a.k[2] - b.k[2] || a.i - b.i)
+    .map(x => x.v);
+}
+
+/** Craft button hint: how many a hold would make right now ('' when one or none). */
+export function holdHint(times, cap = HOLD.max) {
+  const n = Math.min(Number.isFinite(times) ? Math.floor(times) : cap, cap);
+  return n > 1 ? `hold: up to ${n}` : '';
+}

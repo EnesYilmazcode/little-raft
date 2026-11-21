@@ -2,7 +2,7 @@
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, recipeState, usedIn, amountLabel, holdDelay, holdHint, sortCraftableFirst, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 
 const VERSION = 'sv3';
 const HB = Number(HOTBAR_SIZE) || 8;
@@ -529,7 +529,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     D.btn.setAttribute('aria-disabled', String(!ready));
     if (!hold) {
       D.label.textContent = ready ? 'Craft' : v.state === 'full' ? 'Bag is full' : 'Missing materials';
-      D.hint.textContent = ready && v.times > 1 ? 'hold for more' : '';
+      D.hint.textContent = ready ? holdHint(v.times) : '';
     }
     D.btn.setAttribute('aria-label', ready ? `Craft ${v.r.name}. Hold to craft several.` : `${v.r.name}: ${D.label.textContent}`);
   }
@@ -564,12 +564,24 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       v.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${rows.map(x => `${x.need} ${itemName(x.kind)}, have ${x.have}`).join('; ') || 'nothing'}. ${v.sub.textContent}.`);
       if (tipAnchor === v.el) showTipFor(v.el);
     }
+    reorderRecipes();
     tabsEl.querySelectorAll('.sv-tab').forEach(t => {
       const n = readyPer.get(t.dataset.cat) || 0, b = t.querySelector('.sv-tbadge');
       if (b && b.textContent !== (n ? String(n) : '')) b.textContent = n ? String(n) : '';
       t.setAttribute('aria-label', `${t.querySelector('span')?.textContent || ''}${n ? `, ${n} ready` : ''}`);
     });
     paintDetail();
+  }
+
+  // Craftable recipes float to the top of each tab (craft-book.js sortCraftableFirst).
+  function reorderRecipes() {
+    const next = groups.flatMap(g => sortCraftableFirst(recipeEls.filter(v => v.cat === g.id)));
+    if (next.length !== recipeEls.length || next.every((v, i) => v === recipeEls[i])) return;
+    const focused = document.activeElement;
+    for (const v of next) rlist.append(v.el);
+    recipeEls = next;
+    if (focused && focused !== document.activeElement && rlist.contains(focused)) { try { focused.focus({ preventScroll: true }); } catch {} }
+    if (tipAnchor && rlist.contains(tipAnchor)) placeTipAt(tipAnchor);
   }
 
   // ---------- hold to craft ----------
