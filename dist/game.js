@@ -1231,7 +1231,7 @@ export function mount(transfer = null) {
     const kind = heldKind();
     const pieces = kind === 'hammer' && !hook && building && building.piece !== 'foundation'; // building-pieces lane hook
     building?.update(raft, frameAim, camera.position, running && kind === 'hammer' && !hook && !uiBlocked(), localBag(), yaw, deckY());
-    hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing ? placementFor(kind, frameAim.point) : null;
+    hover = frameAim && (kind === 'hammer' || DECOR_TYPES.includes(kind)) && !hook && !pieces && !building?.removing && !building?.menu.isOpen ? placementFor(kind, frameAim.point) : null;
     if (!hover) { ghosts.hide(); return; }
     const floor = kind === 'hammer';
     ghosts.show(floor ? 'floor' : kind, hover.x * 2, floor ? .015 : .22, hover.z * 2, floor ? 0 : placeRot, !hover.blocked && !(floor && !canAfford(localBag(), FLOOR_COST)), elapsed);
