@@ -30,13 +30,13 @@ void main(){
   float snell = smoothstep(0.66, 0.72, up);
   float rim = smoothstep(0.64, 0.69, up) * (1.0 - smoothstep(0.69, 0.74, up));
   vec3 outside = uTint * (0.9 + 0.5 * r);
-  vec3 inside = mix(vec3(0.55, 0.85, 0.85), vec3(0.85, 0.95, 0.9), r) * 1.15 * (0.85 + 0.3 * r);
+  vec3 inside = mix(vec3(0.42, 0.78, 0.78), vec3(0.75, 0.92, 0.86), r * r) * (0.8 + 0.4 * r);
   vec3 col = mix(outside, inside, snell) + vec3(0.5, 0.75, 0.7) * rim * (0.6 + 0.6 * r);
   float sh = 0.0;
   for (int i = 0; i < ${MAX_TILES}; i++) {
     if (i >= uTileN) break;
     vec2 q = abs(p - uTiles[i]);
-    sh = max(sh, 1.0 - smoothstep(0.92, 1.12, max(q.x, q.y)));
+    sh = max(sh, 1.0 - smoothstep(0.85, 1.25, max(q.x, q.y)));
   }
   col *= 1.0 - 0.55 * sh;
   gl_FragColor = vec4(col, 1.0);
@@ -171,12 +171,12 @@ export function createUnderwaterFx(T, { scene, camera, ocean, seafloor = null, h
     const k = Math.min(1, Math.max(0, depth / DEEP_AT));
     fogColor.copy(shallow).lerp(deep, k); bg.copy(fogColor); fog.color.copy(fogColor); fog.near = FOG_NEAR;
     fogColor.getRGB(ceilUniforms.uFog.value, T.SRGBColorSpace);
-    fog.far = FOG_FAR - k * 6;
+    fog.far = FOG_FAR - k * 10;
     fade = Math.min(1, fade + dt / FADE_IN);
     camera.getWorldPosition(camPos); camera.getWorldDirection(camDir);
     surfaceY = ocean.getHeight(camPos.x, camPos.z);
     ceiling.position.set(camPos.x, surfaceY, camPos.z);
-    ceilUniforms.uTime.value = time; ceilUniforms.uFar.value = fog.far * 0.9;
+    ceilUniforms.uTime.value = time; ceilUniforms.uFar.value = fog.far * 0.7;
     ceilUniforms.uTint.value.setRGB(0.25 - 0.1 * k, 0.72 - 0.25 * k, 0.74 - 0.22 * k);
     updateTiles();
     ovUniforms.uTime.value = time; ovUniforms.uAlpha.value = fade; ovUniforms.uDeep.value = k;

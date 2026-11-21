@@ -282,6 +282,7 @@ export function createDiving({ T, scene, camera, ocean, islands = [], getTiles =
   }
 
   return {
+    warm(r) { try { fx.warm?.(r); } catch (e) { console.error('dive warm failed', e); } }, // optional shader pre-compile
     move, update, audioOut, markGathered, cancel, mount,
     render(renderer) { if (!failed.has('fx')) { try { fx.render(renderer); } catch (e) { fail('fx', e); } } },
     onChange(fn) { if (typeof fn === 'function') listeners.add(fn); return () => listeners.delete(fn); },
