@@ -8,7 +8,7 @@
 //     getTiles: () => world.tiles, getDeckY });    // optional: raft shadow on the surface
 //   fx.warm(renderer);                             // optional: pre-compile the fx shaders
 //   // each frame, after the camera moved:
-//   fx.update(dt, { underwater, depth, time, lowOxygen, breath01 });
+//   fx.update(dt, { underwater, depth, time, lowOxygen, breath01, fogMul });   // fogMul: dive-mods fog multiplier (1 = none)
 //   renderer.render(scene, camera); fx.render(renderer);   // overlay on top
 //   fx.dispose();
 // Above water everything is hidden, render() returns at once, no per-frame allocations.
@@ -46,7 +46,7 @@ void main(){
 }`;
 const OV_VS = `varying vec2 vUv;
 void main(){ vUv = position.xy * 0.5 + 0.5; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
-const OV_FS = `uniform float uTime, uAlpha, uDeep, uLow; varying vec2 vUv;
+const OV_FS = `uniform float uTime, uAlpha, uDeep, uLow, uVig; varying vec2 vUv;
 void main(){
   vec3 top = mix(vec3(0.36, 0.78, 0.78), vec3(0.16, 0.45, 0.5), uDeep);
   vec3 bot = mix(vec3(0.06, 0.32, 0.38), vec3(0.02, 0.13, 0.18), uDeep);
@@ -55,8 +55,8 @@ void main(){
   float x = vUv.x + (1.0 - vUv.y) * 0.35;
   float s = sin(x * 9.0 + uTime * 0.35) * sin(x * 23.0 - uTime * 0.6) * sin(x * 4.0 + uTime * 0.21);
   float shafts = max(s, 0.0) * smoothstep(0.15, 1.0, vUv.y) * (1.0 - uDeep * 0.7);
-  float a = 0.16 + 0.12 * (1.0 - vUv.y) + vig * (0.45 + 0.12 * uLow);
-  col = mix(col, vec3(0.02, 0.1, 0.13), vig * 0.7) + vec3(0.6, 0.95, 0.9) * shafts * 0.5;
+  float a = 0.16 + 0.12 * (1.0 - vUv.y) + vig * uVig * (0.45 + 0.12 * uLow);
+  col = mix(col, vec3(0.02, 0.1, 0.13), vig * uVig * 0.7) + vec3(0.6, 0.95, 0.9) * shafts * 0.5;
   a = clamp(a + shafts * 0.12, 0.0, 1.0);
   gl_FragColor = vec4(col, a * uAlpha);
 }`;
@@ -102,7 +102,7 @@ export function createUnderwaterFx(T, { scene, camera, ocean, seafloor = null, h
   // Overlay: one fullscreen triangle in its own scene.
   const ovGeo = new T.BufferGeometry();
   ovGeo.setAttribute('position', new T.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
-  const ovUniforms = { uTime: { value: 0 }, uAlpha: { value: 0 }, uDeep: { value: 0 }, uLow: { value: 0 } };
+  const ovUniforms = { uTime: { value: 0 }, uAlpha: { value: 0 }, uDeep: { value: 0 }, uLow: { value: 0 }, uVig: { value: 1 } };
   const ovMat = new T.ShaderMaterial({ uniforms: ovUniforms, vertexShader: OV_VS, fragmentShader: OV_FS, transparent: true,
     depthTest: false, depthWrite: false, toneMapped: false, fog: false });
   const ovMesh = new T.Mesh(ovGeo, ovMat); ovMesh.frustumCulled = false;
@@ -161,7 +161,7 @@ export function createUnderwaterFx(T, { scene, camera, ocean, seafloor = null, h
     bubAttr.needsUpdate = true;
   }
 
-  function update(dt, { underwater = false, depth = 0, time = 0, lowOxygen = false, breath01 = 0 } = {}) {
+  function update(dt, { underwater = false, depth = 0, time = 0, lowOxygen = false, breath01 = 0, fogMul = 1 } = {}) {
     if (seafloor?.uniforms) {
       if (seafloor.uniforms.uTime) seafloor.uniforms.uTime.value = time;
       if (seafloor.uniforms.uCaustic) seafloor.uniforms.uCaustic.value = Math.max(0.6, 1 - Math.max(0, depth) / 12);
@@ -171,7 +171,7 @@ export function createUnderwaterFx(T, { scene, camera, ocean, seafloor = null, h
     const k = Math.min(1, Math.max(0, depth / DEEP_AT));
     fogColor.copy(shallow).lerp(deep, k); bg.copy(fogColor); fog.color.copy(fogColor); fog.near = FOG_NEAR;
     fogColor.getRGB(ceilUniforms.uFog.value, T.SRGBColorSpace);
-    fog.far = FOG_FAR - k * 10;
+    fog.far = (FOG_FAR - k * 10) * fogMul;
     fade = Math.min(1, fade + dt / FADE_IN);
     camera.getWorldPosition(camPos); camera.getWorldDirection(camDir);
     surfaceY = ocean.getHeight(camPos.x, camPos.z);
@@ -180,7 +180,7 @@ export function createUnderwaterFx(T, { scene, camera, ocean, seafloor = null, h
     ceilUniforms.uTint.value.setRGB(0.25 - 0.1 * k, 0.72 - 0.25 * k, 0.74 - 0.22 * k);
     updateTiles();
     ovUniforms.uTime.value = time; ovUniforms.uAlpha.value = fade; ovUniforms.uDeep.value = k;
-    ovUniforms.uLow.value = lowOxygen ? 1 : 0;
+    ovUniforms.uLow.value = lowOxygen ? 1 : 0; ovUniforms.uVig.value = 1 / Math.max(1, fogMul);
     // Bubbles: gentle breath puffs, a steady trickle, lots more when low on oxygen.
     spawnAcc += dt * (lowOxygen ? 16 : 2.5 + 6 * Math.max(0, breath01 - 0.85) / 0.15);
     while (spawnAcc >= 1) { spawnAcc -= 1; spawn(Math.random() < 0.7); }

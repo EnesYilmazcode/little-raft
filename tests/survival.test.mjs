@@ -520,7 +520,7 @@ test('CraftBook: every recipe lands in exactly one known tab, in CATEGORIES orde
   assert.equal(seen.length, recipes.length);
   assert.deepEqual([...seen].sort(), recipes.map(r => r.id).sort());
   for (const g of groups) assert.ok(g.recipes.length > 0, `${g.id} not empty`);
-  assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod', 'metalhook', 'binoculars']);
+  assert.deepEqual(groups.find(g => g.id === 'tools').recipes.map(r => r.id), ['hook', 'hammer', 'fishingrod', 'fins', 'airjug', 'goggles', 'scraper', 'metalhook', 'binoculars']); // diving gear sits in tools (docs/specs/diving-gear.md)
   assert.deepEqual(groups.find(g => g.id === 'materials').recipes.map(r => r.id), ['rope', 'nail', 'bolt', 'hinge']);
 });
 

@@ -15,6 +15,7 @@
 //   prompt(aim)               -> context prompt HTML (escaped by the module) or null
 //   craftLocked(recipe, actor)-> reason string if the recipe is locked, else null
 //   decorModel(type, d)       -> THREE.Object3D for a CONTENT_DECOR type, or null (d = the world.decor entry, read-only)
+//   diveMods(m)               multiply m.swim/oxy/fog/gather in place (local player, per frame, no allocations; docs/specs/diving-gear.md)
 //   debug                     object exposed as raftDebug.content[name] (QA helpers)
 //   dispose()
 //
@@ -29,8 +30,11 @@ import { createDecorPack } from './decor-pack.js?build=v3-survival-ae77fa84ac2b'
 import { createDayNight } from './daynight.js?build=v3-survival-ae77fa84ac2b';
 import { createKiln } from './kiln.js?build=v3-survival-ae77fa84ac2b';
 import { createAnimals } from './animals.js?build=v3-survival-ae77fa84ac2b';
+import { createDivingGear } from './diving-gear.js?build=v3-survival-ae77fa84ac2b';
+import { createTrader } from './trader.js?build=v3-survival-ae77fa84ac2b';
+import { createCookpot } from './cookpot.js?build=v3-survival-ae77fa84ac2b';
 
-const FEATURES = [createIslands, createWildlife, createStorage, createDecorPack, createDayNight, createKiln, createAnimals];
+const FEATURES = [createIslands, createWildlife, createStorage, createDecorPack, createDayNight, createKiln, createAnimals, createDivingGear, createTrader, createCookpot];
 const EXT_MAX = 200000; // chars of JSON per world.ext, guards saves and the network
 
 export function cleanExt(v) { // used by game.js cleanWorld(); modules validate their own slice
@@ -60,6 +64,7 @@ export function createContent(ctx, features = FEATURES) {
     prompt: aim => first('prompt', aim),
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
     decorModel: (type, d) => first('decorModel', type, d),
+    diveMods(out) { out.swim = out.oxy = out.fog = out.gather = 1; for (const m of mods) call(m, 'diveMods', out); return out; }, // shared dive modifier hook
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };
 }

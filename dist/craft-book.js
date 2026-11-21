@@ -20,6 +20,9 @@ const CATEGORY_OF = Object.freeze({
   metalhook: 'tools', binoculars: 'tools',
   nail: 'materials', bolt: 'materials', hinge: 'materials',
   researchtable: 'building', grill: 'building', smelter: 'building',
+  fins: 'tools', airjug: 'tools', goggles: 'tools', scraper: 'tools',
+  cookpot: 'building', bowl: 'survival',
+  shellwreath: 'building',
 });
 
 // What each item is and what it is good for (shown in hover tooltips and the detail card).
@@ -84,6 +87,21 @@ export const ITEM_TEXT = Object.freeze({
   feather:    { desc: 'A soft Puffhen feather.', use: 'Stuff three into a Feather Cushion.' },
   nestbox:    { desc: 'A cosy nest box.', use: 'Place it and add a seed or leaves to lure a Puffhen.' },
   cushion:    { desc: 'A plump feather cushion.', use: 'A soft seat for your raft; place it on a tile.' },
+  fins:       { desc: 'Webbed fins stitched with puff feathers.', use: 'Works from your bag: swim 30% faster underwater.' },
+  airjug:     { desc: 'A sealed jug of fresh air.', use: 'Works from your bag: a dive lasts 75 s instead of 45 s.' },
+  goggles:    { desc: 'Goggles with seaglass lenses.', use: 'Works from your bag: see much further underwater.' },
+  scraper:    { desc: 'A flat metal scraper for the seafloor.', use: 'Works from your bag: gather sand, clay and ore faster.' },
+  cookpot:    { desc: 'A squat clay pot on three stones.', use: 'Add 3 ingredients and wood; cooks 2 servings into bowls.' },
+  bowl:       { desc: 'A little carved bowl.', use: 'Collect a meal from the Cooking Pot.' },
+  meal_chowder:  { desc: 'Fish and seaweed simmered in fresh water.', use: 'Eat it: Swift Fins, swim 35% faster for 3 min.' },
+  meal_omelette: { desc: 'A fluffy omelette of puff eggs and palm leaf.', use: 'Eat it: Springy Step, walk and jump 15% better for 3 min.' },
+  meal_broth:    { desc: 'A clear, salty kelp broth.', use: 'Eat it: Deep Breath, dives last 60% longer for 3 min.' },
+  meal_fishbowl: { desc: 'Grilled fish on palm leaf with toasted seeds.', use: 'Eat it: Steady Reel, reel 30% faster for 3 min.' },
+  meal_custard:  { desc: 'A sweet, wobbly custard.', use: 'Eat it: Night Owl, nights look brighter for 4 min.' },
+  meal_stew:     { desc: 'A hearty stew of fish, egg and seaweed.', use: 'Eat it: Cosy Glow, a little better at everything for 5 min.' },
+  shell:      { desc: 'A bright, sun-bleached shell.', use: 'Pim takes these as coin at his trading barge.' },
+  shellwreath:{ desc: 'A rope wreath set with bright shells.', use: 'Decorates the raft; place it on a tile.' },
+  glassfloat: { desc: 'A blue glass float in a rope net.', use: 'A rare keepsake from Pim; place it on a tile.' },
 });
 
 const TOOLISH = new Set(['hook', 'hammer', 'fishingrod', 'rod', 'axe', 'spear']);

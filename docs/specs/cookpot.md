@@ -168,3 +168,12 @@ numbers, oversize buffs and pots on tiles without a cookpot are cleaned. An olde
     every cost kind of `cookpot`/`bowl` is in `ingredientKinds()`; `learnedFrom(['stone','clay','scrap'])` includes `'cookpot'`; meals not in RECIPES.
 Run all of `npm test`, `shoot.py` (errors []), and `node tests/coop-e2e.mjs` (test 4 is a known failure). Browser QA: `raftDebug.content.cookpot
 .spawn(1,0)`, give egg×2 + leaf + wood, E×4, `run(20)`, take with a bowl, eat → chip shows "Springy Step 3:00" and `buff().mods.walk === 1.15`.
+
+## Implementation notes (builder)
+- `cleanBuff` returns null for `s <= 0` (an expired buff), not `{m, s:0}`; `tickBuffs` would drop it on the next frame anyway.
+- `cleanEntry` also requires `n === 0 || o === match(i)` before keeping `h = 1`, mirroring `step`'s start rule (a cook may not finish into a tray of a different meal).
+- `pot.add` with an unknown kind is `bad`; a known ingredient you do not hold is `nothing` with the text `You have no ${name}` (TEXT.nothing is the generic fallback). `pot.back` success text: `Took back ${name} · ${i.length}/3`.
+- Holding a meal while aiming at a pot eats it (prompt verb `Eat ${meal}`), as §4 interact(1) says.
+- Visuals: when servings wait and the pot is not cooking, the lid slides aside so the tinted stew shows; the steam puffs rise and grow on the 2.4 s phase (`model.flicker(time)` returns the phase). `buildCookpot` returns `{instance, flicker, dispose, LID_Y, STEAM_Y, stewMats}` rather than a `steam(time, on)` method (the steam opacity is one shared material, so one call per frame covers every pot).
+- `debug.buff()` also returns `light: {exposure, hemi}` (the live renderer exposure and hemisphere intensity) for night-floor QA.
+- content.js: the `diveMods(out)` registry function had already been added by the diving-gear builder; this module only implements `diveMods(m)`.

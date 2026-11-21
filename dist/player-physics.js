@@ -38,6 +38,7 @@ export const PLAYER_CONSTANTS = Object.freeze({
   MAX_RAFT_DISTANCE: 50,
   MAX_FALL_SPEED: 30,
 });
+export const MOVE_MUL = { walk: 1, swim: 1, jump: 1 }; // live multipliers for local buffs (cookpot.js); 1 = neutral
 
 const C = PLAYER_CONSTANTS;
 const HALF = C.TILE_SIZE / 2;
@@ -131,9 +132,9 @@ export class PlayerPhysics {
     const dirX = -s * forward + c * strafe;
     const dirZ = -c * forward - s * strafe;
     let speed, rate;
-    if (this.swimming) { speed = C.SWIM_SPEED; rate = C.WATER_ACCEL; }
-    else if (this.grounded) { speed = sprint ? C.SPRINT_SPEED : C.WALK_SPEED; rate = C.GROUND_ACCEL; }
-    else { speed = sprint ? C.SPRINT_SPEED : C.WALK_SPEED; rate = C.AIR_ACCEL; }
+    if (this.swimming) { speed = C.SWIM_SPEED * MOVE_MUL.swim; rate = C.WATER_ACCEL; }
+    else if (this.grounded) { speed = (sprint ? C.SPRINT_SPEED : C.WALK_SPEED) * MOVE_MUL.walk; rate = C.GROUND_ACCEL; }
+    else { speed = (sprint ? C.SPRINT_SPEED : C.WALK_SPEED) * MOVE_MUL.walk; rate = C.AIR_ACCEL; }
     const k = 1 - Math.exp(-rate * dt);
     if (!this.grounded && !this.swimming && len < 0.01) {
       // Keep momentum in the air when there is no input.
@@ -151,7 +152,7 @@ export class PlayerPhysics {
     if (this.grounded) {
       if (this._supported(tiles)) {
         this.y = deckY + C.EYE_OFFSET; this.vy = 0;
-        if (this._jumpBuffer > 0) { this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE; this.grounded = false; }
+        if (this._jumpBuffer > 0) { this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE * MOVE_MUL.jump; this.grounded = false; }
       } else {
         this.grounded = false; // walked off the edge
         if (this.vy > 0) this.vy = 0;
@@ -175,7 +176,7 @@ export class PlayerPhysics {
       if (this.vy <= 0 && prevFeet >= deckY - 0.02 && feet <= deckY && this._supported(tiles)) {
         this.y = deckY + C.EYE_OFFSET; this.vy = 0; this.grounded = true; out.landed = true;
         if (this.swimming) { this.swimming = false; out.leftWater = true; }
-        if (this._jumpBuffer > 0) { this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE; this.grounded = false; } // buffered jump
+        if (this._jumpBuffer > 0) { this._jumpBuffer = 0; this.vy = C.JUMP_IMPULSE * MOVE_MUL.jump; this.grounded = false; } // buffered jump
       } else if (!this.swimming && feet < waterY + C.WATER_ENTER) {
         this.swimming = true; out.splashed = true;
         this.vy *= C.SPLASH_DAMP;

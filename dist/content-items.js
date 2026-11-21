@@ -28,6 +28,23 @@ export const CONTENT_ITEMS = Object.freeze({
   feather:  item('feather', 'Puff Feather',    'icon-feather', false),
   nestbox:  item('nestbox', 'Nest Box',        'icon-nest',    false),
   cushion:  item('cushion', 'Feather Cushion', 'icon-cushion', false),
+  // diving gear (diving-gear.js): works from the bag, never breaks, one per slot
+  fins:    Object.freeze({ kind: 'fins',    name: 'Puff-Feather Fins', icon: 'icon-fins',    maxStack: 1, tool: false, placeholder: false }),
+  airjug:  Object.freeze({ kind: 'airjug',  name: 'Breath Jug',        icon: 'icon-airjug',  maxStack: 1, tool: false, placeholder: false }),
+  goggles: Object.freeze({ kind: 'goggles', name: 'Seaglass Goggles',  icon: 'icon-goggles', maxStack: 1, tool: false, placeholder: false }),
+  scraper: Object.freeze({ kind: 'scraper', name: 'Tide Scraper',      icon: 'icon-scraper', maxStack: 1, tool: false, placeholder: false }),
+  // Pim's trading barge (trader.js); the Glass Float is trade-only (no recipe)
+  shell:      item('shell',      'Bright Shell', 'icon-shell',  false),
+  shellwreath: item('shellwreath', 'Shell Wreath', 'icon-wreath', false),
+  glassfloat: item('glassfloat', 'Glass Float',  'icon-float',  false),
+  // cooking pot (cookpot.js); meals come out of the pot, never the craft list
+  cookpot: item('cookpot', 'Cooking Pot', 'icon-cookpot', false), bowl: item('bowl', 'Driftwood Bowl', 'icon-bowl', false),
+  meal_chowder:  Object.freeze({ kind: 'meal_chowder',  name: 'Tide Chowder',    icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
+  meal_omelette: Object.freeze({ kind: 'meal_omelette', name: 'Puff Omelette',   icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
+  meal_broth:    Object.freeze({ kind: 'meal_broth',    name: 'Kelp Broth',      icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
+  meal_fishbowl: Object.freeze({ kind: 'meal_fishbowl', name: 'Smoky Fish Bowl', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
+  meal_custard:  Object.freeze({ kind: 'meal_custard',  name: 'Coconut Custard', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
+  meal_stew:     Object.freeze({ kind: 'meal_stew',     name: 'Captain\u2019s Stew', icon: 'icon-meal', maxStack: 10, tool: false, placeholder: false }),
 });
 
 // Same shape as recipe() in inventory-state.js.
@@ -53,8 +70,18 @@ export const CONTENT_RECIPES = Object.freeze({
   nestbox: recipe('nestbox', 'Nest Box',        1, { wood: 3, leaf: 2, rope: 1 }),
   cushion: recipe('cushion', 'Feather Cushion', 1, { feather: 3, leaf: 2 }),
   egglamp: Object.freeze({ id: 'egglamp', name: 'Egg Lantern', output: Object.freeze({ kind: 'lantern', count: 1 }), cost: Object.freeze({ puffegg: 1, wood: 2 }) }),
+  // diving gear (diving-gear.js)
+  fins:    recipe('fins',    'Puff-Feather Fins', 1, { feather: 3, plastic: 2, rope: 1 }),
+  airjug:  recipe('airjug',  'Breath Jug',        1, { plastic: 3, metalingot: 1, rope: 1 }),
+  goggles: recipe('goggles', 'Seaglass Goggles',  1, { glass: 2, rope: 1, leaf: 1 }),
+  scraper: recipe('scraper', 'Tide Scraper',      1, { metalingot: 1, scrap: 2, wood: 1 }),
+  // Pim's trading barge (trader.js); gated by the Shell Wreath plan (trader craftLocked)
+  shellwreath: recipe('shellwreath', 'Shell Wreath', 1, { shell: 3, rope: 2, leaf: 2 }),
+  // cooking pot (cookpot.js)
+  cookpot: recipe('cookpot', 'Cooking Pot', 1, { clay: 3, stone: 2, scrap: 1 }),
+  bowl:    recipe('bowl', 'Driftwood Bowl', 2, { wood: 1 }),
 });
 
 // Placeable decor added by content modules (models come from content.decorModel()).
-export const CONTENT_DECOR = Object.freeze(['research', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign', 'kiln', 'glasslamp', 'nestbox', 'cushion']);
-export const CONTENT_BLOCK_RADIUS = Object.freeze({ research: .5, pennant: .1, fern: .12, chime: .12, hammock: .45, pots: .3, sign: .1, kiln: .45, glasslamp: .12, nestbox: .35, cushion: .3 });
+export const CONTENT_DECOR = Object.freeze(['research', 'rug', 'pennant', 'fern', 'chime', 'hammock', 'pots', 'sign', 'kiln', 'glasslamp', 'nestbox', 'cushion', 'cookpot', 'shellwreath', 'glassfloat']);
+export const CONTENT_BLOCK_RADIUS = Object.freeze({ research: .5, pennant: .1, fern: .12, chime: .12, hammock: .45, pots: .3, sign: .1, kiln: .45, glasslamp: .12, nestbox: .35, cushion: .3, cookpot: .35, shellwreath: .12, glassfloat: .2 });

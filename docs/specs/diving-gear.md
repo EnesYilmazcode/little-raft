@@ -145,3 +145,16 @@ Run the full `npm test`. The existing `tests/diving.test.mjs` and `tests/content
 - QA: `shoot.py` with a seeded bag that holds all 4 (errors []). In the browser: `raftDebug.content.divegear.give()`, then `.mods()`
   -> `{swim:1.3, oxy:1.667, fog:1.533, gather:0.6}`. After `swimAt`, `raftDebug.state.dive.mods` matches, and the badges plus the mask show underwater.
   `node tests/coop-e2e.mjs` must not regress (test 4 is a known failure).
+
+## Implementation notes
+- Built as specified: `content.diveMods` registry hook, `diving.js` multipliers (clamped), `underwater-fx.js` `fogMul`/`uVig`,
+  the one `getMods` edit in `game.js`, module `divegear`, 4 items/recipes, icons, SPRITES, craft-book tab/text.
+- Deviation (forced): `tests/survival.test.mjs` hard-codes the Craft Book tools tab list; it now includes `fins, airjug, goggles, scraper`
+  (between `fishingrod` and `metalhook`, the RECIPES order), since §1 puts the gear in `tools`.
+- `diving-gear.js` imports `./diving-gear-core.js` without a `?build=` suffix (same as kiln/animals and their cores).
+- `.dgMask` also sets the unprefixed `mask:` next to `-webkit-mask:` so non-WebKit browsers get the lens frame too.
+- Item names for the chip titles are a small local map in `diving-gear.js` (the module imports only the core).
+- `debug.give()` returns 0 on a guest or without a bag; it also forces the next `update` to re-read the bag.
+- Tests: 10 (the 9 listed + one that drives the real module through `createContent` with a fake bag, host and guest).
+- Browser QA (swiftshader, dt capped at 0.05 s/frame): no gear -> swim 3.23 m/s, oxygen drop implies a 45 s dive; seeded save with all 4 ->
+  `state.dive.mods` = {swim 1.3, oxy 1.667, fog 1.533, gather 0.6}, swim 4.18 m/s, 75 s dive; 4 chips and the goggles frame show underwater.
