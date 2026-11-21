@@ -161,3 +161,16 @@ At most one spot per 90 s. Nothing is saved: `spotClock`, `n` and `pull` are run
 - `shoot2.py` reports `errors: []`.
 - `raftDebug.content.kite.fly(1)` shows a kite downwind at about 24 m that rises in breezy weather. `tie()` keeps it flying with no item in hand. After save and reload the tied kite is still there.
 - In co-op through `coop2.mjs`, each peer sees the other's kite. A guest's tie and untie round-trip through the host.
+
+## Implementation notes
+- **Import suffixes:** the spec said "no `?build` suffix", but the merged lint (`tests/module-specifiers`) requires `?build=v3-survival-ae77fa84ac2b` on every relative import, so `kite.js`, `kite-model.js` and the `held-items.js` import carry it. `kite-core.js`, `kite-model.js` and `kite.js` are listed in `PRELOAD` in `dist/live.js`.
+- **World seed:** the world has no seed field, so `spotDue` uses a module constant (`SPOT_SEED = 7.31`). The thresholds are still deterministic.
+- **Kite model:** the shared resources live in `createKiteKit(T)` (per-pattern geometry, one sail material, one string material and per-pattern tail materials, plus the pool `make`/`setPattern`/`dispose`). `buildKiteMesh` became `buildKiteGeometry` + `kit.make(p)`. It has 30 tris. The sail triangles are wound so that the front faces the flyer. Their normals are tilted toward the nose, and the material has a faint emissive (`#2e2a26`), because a kite seen from the deck is back-lit and otherwise renders as a dark silhouette. The world kite is scaled ×1.5.
+- **Tail:** `tailPoints(K, …)` starts exactly at K. The module passes the kite's lower tip (`TAIL_Y` in kite space, transformed by the mesh matrix) as K.
+- **Prompts:** `game.js` reuses one `frameAim` object every frame, so the paint-style aim-identity cache would never refresh. `findTarget` runs on each prompt sample instead (a grid ray pick, at 10 Hz). The flying row reads `LMB Tug · RMB Line 24 m`, plus `E Tie to <piece>`, because prompts.js shows at most 2 rows.
+- **interact order:** a tied piece is checked first, so E on a piece that already has a kite unties it, even while flying. Otherwise E would land my kite only to get "That spot already has a kite".
+- **kite.tie:** the host clears the actor's `fly` slot before validating, because the actor already landed its kite locally. A refused tie therefore leaves no phantom kite on the partner's screen. The kite simply stays in the bag.
+- **kite.untie:** on success the host also sends the notice "Kite back in your bag".
+- **HELD test:** concurrent features may append after the kites, so the test asserts `metalspear` is at 20, that all three kites are present, and that `kite_tidestripe` is past 20. It does not require the tidestripe kite to be last.
+- **Extra debug helpers:** `give(p, actor?)` puts a kite in the host bag and selects it, or with `'guest'` puts one in the guest bag from the host. `fly(p, L, instant)` skips the launch ramp. `skip(sec)` fast-forwards the eased inputs, because swiftshader runs at about 3 fps. `poses()` returns every visible kite position.
+- **Pre-existing test lists** were updated for the 3 new recipes: the tools tab in `tests/survival.test.mjs`, and `learnedFrom` in `tests/storage-research.test.mjs`. `kite_tidestripe` needs lagoon paint, so it is not in `learnedFrom(['wood','rope','leaf'])`.

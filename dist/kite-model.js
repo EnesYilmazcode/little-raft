@@ -28,7 +28,7 @@ export function buildKiteGeometry(T, p) {
     for (const h of [ca, cb, cd]) { c.set(h); col.push(c.r, c.g, c.b); }
   };
   const cols = sailColours(p), V = [[MID, TOP, RIGHT], [MID, RIGHT, BOTTOM], [MID, BOTTOM, LEFT], [MID, LEFT, TOP]];
-  V.forEach((v, i) => tri(v[0], v[1], v[2], ...cols[i]));
+  V.forEach((v, i) => tri(v[0], v[2], v[1], cols[i][0], cols[i][2], cols[i][1])); // wound so the front face is +Z (toward the flyer)
   const box = (w, h, d, x, y, z) => {
     const g = new T.BoxGeometry(w, h, d).toNonIndexed(); g.translate(x, y, z);
     const a = g.attributes.position.array;
@@ -54,7 +54,7 @@ export function buildKiteGeometry(T, p) {
 /** Shared resources for the world kites: per-pattern geometry and tail material, one sail and one string material. */
 export function createKiteKit(T) {
   const geos = PATTERNS.map((_, i) => buildKiteGeometry(T, i));
-  const sail = new T.MeshLambertMaterial({ vertexColors: true, side: T.DoubleSide });
+  const sail = new T.MeshLambertMaterial({ vertexColors: true, side: T.DoubleSide, emissive: '#2e2a26' }); // a touch of glow: a back-lit sail never goes black
   const string = new T.LineBasicMaterial({ color: '#3b3126', transparent: true, opacity: 0.85 });
   const tails = PATTERNS.map(P => new T.LineBasicMaterial({ color: P.tail }));
   const line = n => {
@@ -88,13 +88,13 @@ export function createKiteHeld(T, p) {
   const root = new T.Group(); root.name = 'kiteSpool';
   const inner = new T.Group(); root.add(inner);
   const wood = new T.MeshStandardMaterial({ color: 0xbb8650, roughness: 0.85 });
-  const twine = new T.MeshStandardMaterial({ color: 0xd9c38c, roughness: 0.95 });
+  const twine = new T.MeshStandardMaterial({ color: 0xead6a0, roughness: 0.95 });
   const cloth = new T.MeshStandardMaterial({ color: new T.Color(P.a), roughness: 0.9 });
   const bar = new T.Mesh(new T.BoxGeometry(0.03, 0.2, 0.03), wood); inner.add(bar); // 12 tris: the handle the fist closes on
-  const spool = new T.Mesh(new T.CylinderGeometry(0.08, 0.08, 0.11, 12), twine); // 48 tris
-  spool.rotation.z = Math.PI / 2; spool.position.y = 0.17; inner.add(spool);
+  const spool = new T.Mesh(new T.CylinderGeometry(0.045, 0.045, 0.075, 12), twine); // 48 tris
+  spool.rotation.z = Math.PI / 2; spool.position.y = 0.13; inner.add(spool);
   const sail = new T.Mesh(new T.OctahedronGeometry(0.1, 0), cloth); // 8 tris: a slim folded diamond
-  sail.scale.set(0.7, 2.1, 0.16); sail.position.set(0, 0.42, -0.03); sail.rotation.x = -0.12; inner.add(sail);
+  sail.scale.set(0.7, 2.1, 0.16); sail.position.set(0, 0.38, -0.03); sail.rotation.x = -0.12; inner.add(sail);
   root.updateMatrixWorld(true);
   const box = new T.Box3().setFromObject(inner), c = box.getCenter(new T.Vector3()), s = box.getSize(new T.Vector3());
   inner.position.sub(c);

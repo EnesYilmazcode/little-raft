@@ -327,11 +327,13 @@ export function createKite(ctx) {
         if (instant) { st.L = L; st.launch = 1; }
         return true;
       },
-      give(p = 0) { // QA: put a kite in the (host/solo) bag and select it
-        const kind = KINDS[p], b = ctx.localBag(); if (!kind || !b || !host()) return false;
-        if (b.count(kind) < 1) b.add(kind, 1);
+      give(p = 0, actor) { // QA: put a kite in a bag (host: own, or actor 'guest') and select it locally
+        const kind = KINDS[p]; if (!kind) return false;
+        if (actor === 'guest') { const gb = host() ? ctx.actorBag?.('guest') : null; if (!gb) return false; if (gb.count(kind) < 1) gb.add(kind, 1); return true; }
+        const b = ctx.localBag(); if (!b) return false;
+        if (b.count(kind) < 1) { if (!host()) return false; b.add(kind, 1); }
         const i = b.slots.findIndex(s => s?.kind === kind);
-        if (i >= 0 && i < 10) ctx.action({ kind: 'selectSlot', index: i });
+        if (i >= 0 && i < 10) { if (!host()) b.select(i); ctx.action({ kind: 'selectSlot', index: i }); }
         return i;
       },
       land() { startLanding(); return !!st; },
