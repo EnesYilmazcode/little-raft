@@ -19,3 +19,11 @@ test('LOCK-R3-4: electron_check finds the onboarding start buttons and pause_cyc
   assert.doesNotMatch(cycle, /Esc again/);
 });
 
+// ---- LOCK-R3-5: the Logbook opened from pause returns to pause ----
+test('LOCK-R3-5: the pause menu hands the logbook a return-to-pause, and its resume skips the relock', async () => {
+  const settings = await src('settings.js'), game = await src('game.js');
+  const branch = settings.slice(settings.indexOf("if (act === 'logbook')"), settings.indexOf("if (act === 'help'"));
+  assert.match(branch, /returnToPause = target; target\.dataset\.fromPause = '1'/);
+  assert.ok(branch.indexOf('fromPause') < branch.indexOf('littleraft:open-logbook'), 'handoff set before the logbook opens');
+  assert.match(game, /createLogbookUI\(\{[^\n]*onResume:guard\(\(\) => \{ if \(!\$\('#logbook'\)\?\.dataset\.fromPause\) requestLock\(\); \}\)/);
+});

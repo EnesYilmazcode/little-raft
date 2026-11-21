@@ -2066,7 +2066,7 @@ export function mount(transfer = null) {
       storage:saveStore.storage, // the pinned recipe is a part of the world save
     });
     prog.installUI(); // [progression-hook]
-    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => requestLock()), storage:saveStore.storage});
+    logbookUI = createLogbookUI({getProgress:() => world, onPause:guard(pauseInput), onResume:guard(() => { if (!$('#logbook')?.dataset.fromPause) requestLock(); }), storage:saveStore.storage}); // opened from pause: settings.js reopens it
     if (role !== 'guest') retroAward();
     pickupFeed.setIconProvider(k => iconURL(k)); offIconReady = onIconReady(k => pickupFeed.refresh(k)); // feed rows show the same 3D icons as the hotbar
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }

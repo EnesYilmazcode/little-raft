@@ -340,7 +340,7 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
   }), sig);
   document.addEventListener('pointerlockerror', guard(() => endRelock('error')), sig);
 
-  // A menu closed while playing but the browser refused to relock (Escape is not a user gesture):
+  // Help, crew or logbook opened from the pause menu hands back to it. A menu closed while playing but the browser refused to relock (Escape is not a user gesture):
   // hide the cursor and the centred hint; the next click relocks.
   document.addEventListener('close', guard((event) => {
     const d = event.target;
@@ -385,7 +385,13 @@ export function createSettings({ onChange, onResume, onPause, onQuit } = {}) {
       Promise.resolve(req).catch(() => {}).finally(syncFullscreen);
       return;
     }
-    if (act === 'logbook') { close(false); document.dispatchEvent(new CustomEvent('littleraft:open-logbook')); return; }
+    if (act === 'logbook') {
+      close(false); // stay paused; Escape or close returns to this menu, like help and crew
+      const target = document.getElementById('logbook');
+      if (target instanceof HTMLDialogElement) { returnToPause = target; target.dataset.fromPause = '1'; } // game.js: do not relock
+      document.dispatchEvent(new CustomEvent('littleraft:open-logbook'));
+      return;
+    }
     if (act === 'help' || act === 'crew') {
       const target = document.getElementById(act);
       if (!(target instanceof HTMLDialogElement)) return;
