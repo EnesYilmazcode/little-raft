@@ -1,11 +1,11 @@
 // Little Raft survival UI: shared-play hotbar (.tools) + inventory/crafting dialog (#inventory).
 // Pure view layer. It never mutates the Bag; all changes go through the callbacks.
 import { RECIPES, ITEM_INFO, HOTBAR_SIZE, STACK_SIZE, SLOT_COUNT, TOOL_DURABILITY } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
-import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, holdDelay, holdHint, holdLabel, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
+import { CATEGORIES, ITEM_TEXT, groupRecipes, ingredientRows, craftableTimes, fittingTimes, recipeState, usedIn, amountLabel, haveNeedLine, stackLabel, holdDelay, holdHint, holdLabel, sortCraftableFirst, sourceOf, trackerView, loadPin, savePin, HOLD, anchorTip, anchorVisible, backdropCloses, bagKeyAction, arrowNeighbor, placeRefusal } from './craft-book.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_ICONS } from './item-svg.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { iconURL, warmIcons, onIconReady, setModelProvider } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
-const VERSION = 'sv4';
+const VERSION = 'sv5';
 const HB = Number(HOTBAR_SIZE) || 8;
 const TOTAL = Number(SLOT_COUNT) || 28;
 const DUR_MAX = Number(TOOL_DURABILITY) > 0 ? Number(TOOL_DURABILITY) : 0;
@@ -19,7 +19,7 @@ const SPRITE_URL = (() => {
 })();
 
 // Symbols that actually exist in icons.svg.
-const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'crew', 'help', 'sound', 'close', 'repair', 'hammer', 'compass', 'antenna', 'cup', 'saltcup', 'freshcup', 'purifier', 'rainbarrel', 'sprinkler', 'research',
+const SPRITES = new Set(['hook', 'floor', 'fish', 'wood', 'leaf', 'scrap', 'barrel', 'sail', 'palm', 'lantern', 'net', 'crew', 'help', 'sound', 'close', 'repair', 'hammer', 'compass', 'antenna', 'cup', 'saltcup', 'freshcup', 'purifier', 'rainbarrel', 'sprinkler', 'research', 'receiver',
   'brush', 'paint-seafoam', 'paint-coral', 'paint-sunshell', 'paint-lagoon', 'paint-pebble', 'bed', 'motor', 'wheel', 'kiln', 'ingot', 'glass', 'brick', 'egg', 'feather', 'nest', 'cushion', 'fins', 'airjug', 'goggles', 'scraper', 'cookpot', 'bowl', 'meal', 'shell', 'wreath', 'float']); // + rain-sprinkler, research (storage-research); content hook (paint); kiln, animals
 // Item kind (normalised) -> sprite symbol.
 const SPRITE_FOR = {
@@ -32,7 +32,7 @@ const SPRITE_FOR = {
   scrap: 'scrap', metal: 'scrap',
   barrel: 'barrel', net: 'net', collectionnet: 'net', sail: 'sail',
   lantern: 'lantern', compass: 'compass', repair: 'repair', palm: 'palm',
-  antenna: 'antenna', receiver: 'compass',
+  antenna: 'antenna', receiver: 'receiver',
   puffegg: 'egg', feather: 'feather', nestbox: 'nest', cushion: 'cushion',
   shell: 'shell', shellwreath: 'wreath', glassfloat: 'float', // trader.js
 };
@@ -213,18 +213,21 @@ const CSS = `
   transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),5px);transition:opacity .25s,transform .22s cubic-bezier(.3,1.3,.5,1)}
 .tools.sv-hotbar>.sv-label.sv-show{opacity:1;transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),0)}
 @media(max-width:760px){.tools.sv-hotbar{--s:min(42px,calc((96vw - 41px) / 10));--g:3px}.tools.sv-hotbar .sv-art{inset:3px}.tools.sv-hotbar .sv-count{font-size:12px}}
-#inventory.sv-inv{--s:min(56px,calc((96vw - 410px) / 10 - 6px));--g:6px;padding:0;margin:max(16px,calc(50vh - 300px)) auto auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#3e2a17;
+#inventory.sv-inv{--s:min(56px,calc((96vw - 410px) / 10 - 6px));--g:6px;--ph:min(600px,calc(94vh - 36px));padding:0;margin:max(16px,calc(50vh - 300px)) auto auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#3e2a17;
   width:max-content;min-width:0;max-width:96vw;max-height:94vh;overflow:visible;font:500 14px/1.35 ${FONT}}
 #inventory.sv-inv::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
-#inventory .sv-wrap{display:flex;gap:14px;align-items:stretch;padding:14px;outline:none;border-radius:6px;
+#inventory .sv-wrap{display:flex;gap:12px;align-items:stretch;padding:12px;outline:none;border-radius:6px;
   background:repeating-linear-gradient(90deg,#00000010 0 1px,transparent 1px 21px),linear-gradient(#a8844f,#9a7748 45%,#8a6a3e);
   border:2px solid #5e4426;box-shadow:inset 0 1px 0 #c9a76f88,0 12px 36px #0006}
 #inventory .sv-craft,#inventory .sv-bag{background:#7f6039;border-radius:3px;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1755}
-#inventory .sv-bag{flex:none;min-width:max-content;display:flex;flex-direction:column;align-items:center;gap:9px;padding:10px 12px 12px}
-#inventory .sv-grid{display:grid;grid-template-columns:repeat(7,var(--s));gap:var(--g)}
+/* Raft-style layout: [categories | recipe list] on the left, [detail over backpack] on the right.
+   The crafting column has a fixed height, so switching tabs or recipes never resizes the panel. */
+#inventory .sv-side{flex:none;display:flex;flex-direction:column;justify-content:flex-end;gap:12px;min-height:0;min-width:0}
+#inventory .sv-bag{flex:none;min-width:max-content;display:flex;flex-direction:column;align-items:center;gap:8px;padding:9px 12px 11px}
+#inventory .sv-grid{display:grid;grid-template-columns:repeat(${HB},var(--s));gap:var(--g);align-self:center}
 #inventory .sv-hotrow{display:grid;grid-template-columns:repeat(${HB},var(--s));gap:var(--g)}
 #inventory .sv-h{align-self:stretch;margin:2px 2px 1px;font:800 11px/1 ${FONT};letter-spacing:2.2px;text-transform:uppercase;color:#f6e8c6;text-shadow:0 1px 0 #3e2a1799}
-#inventory .sv-craft>.sv-h{margin:4px 2px 10px}
+#inventory .sv-craft>.sv-h{margin:3px 2px 1px}
 #inventory .sv-slot.sv-hot{background:linear-gradient(180deg,#d0bc8e,#bea778)}
 #inventory.sv-inv button.sv-slot.sv-sel{background:linear-gradient(180deg,#bea676,#b2996a);box-shadow:inset 0 0 0 2px #4a3520,inset 0 2px 4px #4a352055}
 #inventory.sv-inv button.sv-slot.sv-src{background:linear-gradient(180deg,#e3c98a,#d2b26e);box-shadow:inset 0 0 0 2px #c46a1c,0 0 8px #ffbd6699;transform:translateY(-3px)}
@@ -238,22 +241,30 @@ const CSS = `
 #inventory .sv-held .sv-count{position:absolute;right:0;bottom:0;font:800 14px/1 ${FONT};color:#fff;text-shadow:1px 1px 0 #000,-1px 1px 0 #000,1px -1px 0 #000,-1px -1px 0 #000}
 #inventory .sv-slot[data-pick]::after{content:attr(data-pick);position:absolute;right:-5px;top:-6px;z-index:2;min-width:16px;padding:2px 3px;border-radius:8px;
   background:#ffc66e;color:#1d1608;font:700 11px/1 ${FONT};text-align:center;box-shadow:0 1px 2px #0008}
-#inventory .sv-rope{width:100%;height:4px;margin:2px 0;border-radius:2px;background:repeating-linear-gradient(115deg,#c99560 0 3px,#6b4a2b 3px 5px);opacity:.85}
-#inventory .sv-hint{margin:0;width:calc(${HB} * (var(--s) + var(--g)) - var(--g));max-width:100%;font:500 12px/1.35 ${FONT};color:#f6e8c6;text-align:left;text-shadow:0 1px 0 #3e2a1799}
-#inventory .sv-craft{flex:0 0 324px;width:324px;min-width:324px;box-sizing:border-box;height:min(560px,calc(94vh - 30px));max-height:none;display:flex;flex-direction:column;gap:8px;padding:9px;overflow:hidden}
+#inventory .sv-rope{width:100%;height:4px;margin:1px 0;border-radius:2px;background:repeating-linear-gradient(115deg,#c99560 0 3px,#6b4a2b 3px 5px);opacity:.85}
+#inventory .sv-hint{margin:0;width:calc(${HB} * var(--s) + ${HB - 1} * var(--g));max-width:100%;font:500 12px/1.35 ${FONT};color:#f6e8c6;text-align:left;text-shadow:0 1px 0 #3e2a1799}
 #inventory .sv-hint.sv-warn{color:#ffb39a}
-#inventory .sv-tabs{display:grid;grid-template-columns:repeat(var(--tabs,4),1fr);gap:4px;flex:none}
-#inventory .sv-tab{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;height:auto;margin:0;padding:6px 2px 5px;border:0;border-radius:4px 4px 2px 2px;
-  background:linear-gradient(#c4ae80,#b39b6d);box-shadow:inset 0 0 0 1px #7a5a34;color:#4e3720;font:700 11px/1.1 ${FONT};letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
-#inventory .sv-tab .sv-icon{width:22px;height:22px;opacity:.8}
-#inventory .sv-tab:hover{color:#3e2a17;box-shadow:inset 0 0 0 1px #4a3520}
-#inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#e0cfa5,#d6c397);color:#3e2a17;box-shadow:inset 0 0 0 2px #4a3520,0 2px 0 #4a3520}
+#inventory .sv-craft{flex:none;box-sizing:border-box;height:var(--ph);display:flex;flex-direction:column;gap:8px;padding:9px;overflow:hidden}
+#inventory .sv-cbody{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:86px 270px;gap:8px}
+/* categories: a vertical column of icon + label buttons */
+#inventory .sv-tabs{display:flex;flex-direction:column;gap:5px;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
+#inventory .sv-tab{position:relative;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:100%;min-width:0;height:62px;margin:0;padding:6px 3px 5px;border:0;border-radius:4px;
+  background:linear-gradient(#b8a173,#a68e60);box-shadow:inset 0 0 0 1px #7a5a34;color:#3e2a17;font:700 12px/1.1 ${FONT};letter-spacing:.2px;text-transform:none;cursor:pointer;transform:none}
+#inventory .sv-tab .sv-icon{width:28px;height:28px;opacity:.8}
+#inventory .sv-tab:hover{background:linear-gradient(#c8b285,#b39b6d);box-shadow:inset 0 0 0 1px #4a3520}
+#inventory .sv-tab[aria-selected="true"]{background:linear-gradient(#ead9ae,#d6c397);color:#2e1f10;box-shadow:inset 0 0 0 2px #4a3520,inset 4px 0 0 #5f9c3a}
 #inventory .sv-tab[aria-selected="true"] .sv-icon{opacity:1}
-#inventory .sv-tab:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
-#inventory .sv-tbadge{position:absolute;right:3px;top:3px;min-width:15px;padding:2px 3px;border-radius:8px;background:#6fbf4a;color:#14270b;font:800 10px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
+#inventory .sv-tab:focus-visible{outline:2px solid #fff3d6;outline-offset:-4px}
+#inventory .sv-tbadge{position:absolute;right:4px;top:4px;min-width:15px;padding:2px 3px;border-radius:8px;background:#5f9c3a;color:#f4ffe6;font:800 10px/1 ${FONT};font-style:normal;text-align:center;box-shadow:0 1px 2px #0008}
 #inventory .sv-tbadge:empty{display:none}
-#inventory .sv-rlist{flex:1 1 auto;min-height:62px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:5px;padding-right:2px;scrollbar-color:#c4ae80 #5e4426}
-#inventory .sv-recipe{position:relative;display:grid;grid-template-columns:42px 1fr auto;gap:9px;align-items:center;flex:none;width:100%;height:auto;min-height:0;margin:0;padding:5px 8px 5px 6px;
+/* recipe list: fills the column height, visible scrollbar, and a bottom fade while more rows are below */
+#inventory .sv-rcol{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0}
+#inventory .sv-rlist{flex:1 1 auto;min-height:62px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;display:flex;flex-direction:column;gap:5px;padding-right:4px;
+  scrollbar-width:thin;scrollbar-color:#e0cfa5 #5e4426}
+#inventory .sv-rcol::after{content:"";position:absolute;left:0;right:14px;bottom:0;height:34px;border-radius:0 0 4px 4px;pointer-events:none;opacity:0;transition:opacity .15s;
+  background:linear-gradient(#7f603900,#7f6039f2 80%)}
+#inventory .sv-rcol.sv-more::after{opacity:1}
+#inventory .sv-recipe{position:relative;display:grid;grid-template-columns:42px 1fr auto;gap:9px;align-items:center;flex:none;width:100%;height:auto;min-height:52px;margin:0;padding:5px 8px 5px 6px;
   border:0;border-radius:4px;text-align:left;background:linear-gradient(180deg,#d6c397,#c4ae80);box-shadow:inset 0 0 0 1px #7a5a34;
   color:#3e2a17;font:600 14px/1.25 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none;transition:background .08s,box-shadow .08s}
 #inventory .sv-recipe[hidden]{display:none}
@@ -266,29 +277,37 @@ const CSS = `
 #inventory .sv-recipe.sv-locked .sv-rname{color:#6b5638}
 #inventory .sv-recipe.sv-gated .sv-rart>*{filter:grayscale(1) brightness(.55)} /* [progression-hook] research-locked */
 #inventory .sv-recipe:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
-#inventory .sv-rart{display:grid;place-items:center;width:42px;height:42px;border-radius:3px;background:#b89f6e;box-shadow:inset 0 0 0 1px #7a5a34}
+#inventory .sv-rart{position:relative;display:grid;place-items:center;width:42px;height:42px;border-radius:3px;background:#b89f6e;box-shadow:inset 0 0 0 1px #7a5a34}
 #inventory .sv-rart .sv-icon{width:36px;height:36px}
 #inventory .sv-rbody{display:block;min-width:0}
 #inventory .sv-rname{display:block;font:700 14px/1.2 ${FONT};color:#3e2a17;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #inventory .sv-rsub{display:block;margin-top:2px;font:600 12px/1.2 ${FONT};color:#4e3720;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#inventory .sv-gated .sv-rsub{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2}
 #inventory .sv-ready .sv-rsub{color:#3f6a26}
 #inventory .sv-full .sv-rsub{color:#8a4a12}
 #inventory .sv-locked .sv-rsub{color:#a3321a}
 #inventory .sv-rbadge{font:800 12px/1 ${FONT};color:#3f6a26;font-variant-numeric:tabular-nums}
-#inventory .sv-detail{flex:none;display:flex;flex-direction:column;gap:7px;padding:9px;border-radius:4px;background:#e6d6adf2;box-shadow:inset 0 0 0 1px #5e4426}
+/* detail: big icon, name, what it is for, have / need rows and the Craft button */
+#inventory .sv-detail{flex:1 1 0;min-height:0;display:flex;flex-direction:column;gap:7px;padding:10px 11px 11px;border-radius:4px;background:#e6d6adf7;box-shadow:inset 0 0 0 1px #5e4426,inset 0 2px 5px #3e2a1733}
 #inventory .sv-detail[hidden]{display:none}
-#inventory .sv-dhead{display:grid;grid-template-columns:60px 1fr auto;gap:10px;align-items:center}
-#inventory .sv-dart{display:grid;place-items:center;width:60px;height:60px;border-radius:4px;background:#b89f6e;box-shadow:inset 0 0 0 1px #7a5a34}
-#inventory .sv-dart .sv-icon{width:54px;height:54px}
-#inventory .sv-dname{display:block;font:700 16px/1.2 ${FONT};color:#3e2a17}
-#inventory .sv-ddesc{display:block;margin-top:2px;font:500 12px/1.3 ${FONT};color:#5e4426}
-#inventory .sv-dlabel{font:700 10px/1 ${FONT};letter-spacing:1.5px;text-transform:uppercase;color:#6b5638}
-#inventory .sv-ings{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
-#inventory .sv-ing{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:3px 8px 3px 4px;border-radius:3px;background:#d6c397;box-shadow:inset 3px 0 0 #b0391e}
+#inventory .sv-dhead{flex:none;display:grid;grid-template-columns:64px 1fr auto;gap:11px;align-items:center}
+#inventory .sv-dart{display:grid;place-items:center;width:64px;height:64px;border-radius:4px;background:#b89f6e;box-shadow:inset 0 0 0 1px #7a5a34}
+#inventory .sv-dart .sv-icon{width:58px;height:58px}
+#inventory .sv-dtext{min-width:0}
+#inventory .sv-dname{display:block;font:800 17px/1.2 ${FONT};color:#3e2a17}
+#inventory .sv-ddesc{display:block;margin-top:2px;font:500 12.5px/1.3 ${FONT};color:#5e4426}
+#inventory .sv-duse{flex:none;margin:0;font:500 12.5px/1.35 ${FONT};color:#4e3720}
+#inventory .sv-duse em{font-style:normal;font-weight:700;color:#8a3a12}
+#inventory .sv-duse[hidden]{display:none}
+#inventory .sv-dstate{flex:none;margin:0;padding:5px 8px;border-radius:3px;background:#a3321a1f;box-shadow:inset 3px 0 0 #a3321a;color:#7a2410;font:700 12.5px/1.3 ${FONT}}
+#inventory .sv-dstate[hidden]{display:none}
+#inventory .sv-dlabel{flex:none;display:flex;justify-content:space-between;font:700 10px/1 ${FONT};letter-spacing:1.5px;text-transform:uppercase;color:#6b5638}
+#inventory .sv-dlabel i{font-style:normal;letter-spacing:.6px;text-transform:none;font-weight:700;padding-right:8px}
+#inventory .sv-ings{flex:0 1 auto;min-height:0;overflow-y:auto;list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;scrollbar-width:thin;scrollbar-color:#a08a5e transparent}
+#inventory .sv-ing{flex:none;display:grid;grid-template-columns:26px 1fr auto;gap:8px;align-items:center;padding:3px 8px 3px 5px;border-radius:3px;background:#d6c397;box-shadow:inset 3px 0 0 #b0391e}
 #inventory .sv-ing.sv-ok{box-shadow:inset 3px 0 0 #5f9c3a}
-#inventory .sv-ing .sv-icon{width:24px;height:24px}
-#inventory .sv-iname{font:600 13px/1.2 ${FONT};color:#3e2a17}
-#inventory .sv-iname{display:flex;align-items:baseline;gap:7px;min-width:0}
+#inventory .sv-ing .sv-icon{width:26px;height:26px}
+#inventory .sv-iname{display:flex;align-items:baseline;gap:7px;min-width:0;font:600 13px/1.2 ${FONT};color:#3e2a17}
 #inventory .sv-iname>span{white-space:nowrap}
 #inventory .sv-isrc{font:600 11px/1.2 ${FONT};color:#6b5638;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #inventory .sv-ok .sv-isrc{display:none}
@@ -296,16 +315,16 @@ const CSS = `
   font:700 11px/1.2 ${FONT};letter-spacing:0;text-transform:none;cursor:pointer;transform:none}
 #inventory button.sv-ijump:hover{background:#e0cfa5;color:#3e2a17}
 #inventory button.sv-ijump:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
-#inventory .sv-iamt{font:800 13px/1 ${FONT};font-variant-numeric:tabular-nums;color:#a3321a}
+#inventory .sv-iamt{font:800 14px/1 ${FONT};font-variant-numeric:tabular-nums;color:#a3321a}
 #inventory .sv-ok .sv-iamt{color:#3f6a26}
-#inventory .sv-craftbtn{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;margin:0;padding:0 12px;overflow:hidden;border:0;border-radius:4px;
+#inventory .sv-craftbtn{position:relative;flex:none;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:44px;margin:auto 0 0;padding:0 12px;overflow:hidden;border:0;border-radius:4px;
   background:linear-gradient(#5c8a3a,#3f6a26);box-shadow:inset 0 0 0 1px #c8f0a0aa,0 2px 0 #1f3612;color:#f4ffe6;font:800 15px/1 ${FONT};letter-spacing:.5px;text-transform:none;cursor:pointer;transform:none;
   user-select:none;-webkit-user-select:none;touch-action:none}
 #inventory .sv-craftbtn:hover{background:linear-gradient(#6c9c46,#4a7a2e)}
 #inventory .sv-craftbtn:focus-visible{outline:2px solid #3e2a17;outline-offset:2px}
-#inventory .sv-craftbtn[aria-disabled="true"]{background:linear-gradient(#b39b6d,#a08a5e);box-shadow:inset 0 0 0 1px #7a5a34;color:#5e4426;cursor:not-allowed}
+#inventory .sv-craftbtn[aria-disabled="true"]{background:linear-gradient(#b39b6d,#a08a5e);box-shadow:inset 0 0 0 1px #7a5a34;color:#4e3720;cursor:not-allowed}
 #inventory .sv-craftbtn.sv-deny{box-shadow:inset 0 0 0 2px #e06a4a,0 0 6px #e06a4a88}
-#inventory .sv-fill{position:absolute;inset:0;transform-origin:left center;transform:scaleX(var(--fill,0));background:linear-gradient(90deg,#d8f7a066,#f4ffd0aa);pointer-events:none}
+#inventory .sv-fill{position:absolute;inset:0;transform-origin:left center;transform:scaleX(var(--fill,0));background:linear-gradient(90deg,#d8f7a040,#f4ffd0b0);box-shadow:inset -3px 0 0 #f4ffd0;pointer-events:none}
 #inventory .sv-craftbtn:not(.sv-holding) .sv-fill{transition:transform .25s ease-out}
 #inventory .sv-craftbtn.sv-done{background:linear-gradient(#5c8a3a,#3f6a26);box-shadow:inset 0 0 0 1px #c8f0a0aa,0 2px 0 #1f3612;color:#f4ffe6}
 #inventory .sv-craftbtn[aria-disabled="true"] .sv-fill{transition:none;transform:scaleX(0)}
@@ -322,9 +341,14 @@ const CSS = `
 #inventory .sv-tip[hidden]{display:none}
 #inventory .sv-tip small{display:block;margin-top:2px;font:500 12px/1.35 ${FONT};color:#5e4426}
 #inventory .sv-tip small em{font-style:normal;font-weight:700;color:#8a3a12}
-@media(max-width:860px),(max-height:520px){#inventory .sv-craft{flex:none;width:auto;min-width:0;height:auto;max-height:none;overflow:visible}#inventory.sv-inv{width:auto}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}#inventory .sv-rlist{max-height:30vh}#inventory .sv-bag{min-width:0}
-  #inventory.sv-inv{--s:44px;--g:5px}#inventory .sv-slot .sv-art{inset:3px}}
-@media(max-width:440px){#inventory.sv-inv{--s:36px;--g:4px}#inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}}
+/* smaller screens: slightly smaller slots, then a stacked, scrolling layout */
+@media(max-width:1040px){#inventory.sv-inv{--s:45px;--g:5px}#inventory .sv-cbody{grid-template-columns:80px 256px}}
+@media(max-height:640px){#inventory .sv-dart{width:52px;height:52px}#inventory .sv-dart .sv-icon{width:46px;height:46px}#inventory .sv-dhead{grid-template-columns:52px 1fr auto}
+  #inventory .sv-hint{font-size:11px;line-height:1.3}#inventory .sv-tab{height:56px}}
+@media(max-width:900px),(max-height:520px){#inventory.sv-inv{width:auto;--s:44px;--g:5px}#inventory .sv-wrap{flex-direction:column;max-height:94vh;overflow:auto;box-sizing:border-box}
+  #inventory .sv-craft{height:auto;max-height:none;overflow:visible}#inventory .sv-cbody{grid-template-columns:76px minmax(0,1fr)}#inventory .sv-rlist{max-height:40vh}
+  #inventory .sv-side{flex:none}#inventory .sv-detail{flex:none}#inventory .sv-bag{min-width:0}#inventory .sv-slot .sv-art{inset:3px}}
+@media(max-width:560px){#inventory.sv-inv{--s:min(36px,calc((92vw - 75px) / ${HB}));--g:4px}#inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.sv-slot,.sv-art,.sv-cursor,.sv-label,#inventory .sv-recipe,#inventory .sv-craftbtn .sv-fill{transition:none!important;animation:none!important}}
 /* pin a recipe to the HUD edge (craft-book.js trackerView) */
 #inventory button.sv-pinbtn{align-self:start;width:auto;height:auto;margin:0;padding:4px 8px;border:0;border-radius:5px;background:#3e2a1712;box-shadow:inset 0 0 0 1px #3e2a1759;color:#3e2a17cc;
@@ -381,22 +405,28 @@ function mountDialog() {
     d.innerHTML = `<div class="sv-wrap" tabindex="-1">
       <section class="sv-craft" aria-label="Crafting">
         <h3 class="sv-h">Crafting</h3>
-        <div class="sv-tabs" role="tablist" aria-label="Recipe categories"></div>
-        <div class="sv-rlist" role="tabpanel"></div>
+        <div class="sv-cbody">
+          <div class="sv-tabs" role="tablist" aria-label="Recipe categories" aria-orientation="vertical"></div>
+          <div class="sv-rcol"><div class="sv-rlist" role="tabpanel"></div></div>
+        </div>
+      </section>
+      <div class="sv-side">
         <div class="sv-detail" hidden>
-          <div class="sv-dhead"><span class="sv-dart" aria-hidden="true"></span><span><b class="sv-dname"></b><small class="sv-ddesc"></small></span><button type="button" class="sv-pinbtn" aria-pressed="false">Pin</button></div>
-          <span class="sv-dlabel">Requires</span>
+          <div class="sv-dhead"><span class="sv-dart" aria-hidden="true"></span><span class="sv-dtext"><b class="sv-dname"></b><small class="sv-ddesc"></small></span><button type="button" class="sv-pinbtn" aria-pressed="false">Pin</button></div>
+          <p class="sv-duse" hidden></p>
+          <p class="sv-dstate" hidden></p>
+          <span class="sv-dlabel">Requires <i>have / need</i></span>
           <ul class="sv-ings"></ul>
           <button type="button" class="sv-craftbtn"><i class="sv-fill"></i><span class="sv-clabel">Craft</span><small class="sv-chint"></small><b class="sv-ccount" aria-hidden="true"></b></button>
         </div>
-      </section>
-      <section class="sv-bag" aria-label="Inventory">
-        <h3 class="sv-h">Backpack</h3>
-        <div class="sv-grid" role="group" aria-label="Backpack">${grid}</div>
-        <div class="sv-rope" aria-hidden="true"></div>
-        <div class="sv-hotrow" role="group" aria-label="Hotbar">${hot}</div>
-        <p class="sv-hint" role="status" aria-live="polite">${HINT}</p>
-      </section>
+        <section class="sv-bag" aria-label="Inventory">
+          <h3 class="sv-h">Backpack</h3>
+          <div class="sv-grid" role="group" aria-label="Backpack">${grid}</div>
+          <div class="sv-rope" aria-hidden="true"></div>
+          <div class="sv-hotrow" role="group" aria-label="Hotbar">${hot}</div>
+          <p class="sv-hint" role="status" aria-live="polite">${HINT}</p>
+        </section>
+      </div>
       <div class="sv-tip" role="tooltip" hidden></div>
       <div class="sv-held" aria-hidden="true" hidden><i class="sv-art"></i><i class="sv-count"></i></div>
     </div>`;
@@ -479,7 +509,11 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     art: detail.querySelector('.sv-dart'), name: detail.querySelector('.sv-dname'), desc: detail.querySelector('.sv-ddesc'),
     ings: detail.querySelector('.sv-ings'), btn: detail.querySelector('.sv-craftbtn'), label: detail.querySelector('.sv-clabel'),
     hint: detail.querySelector('.sv-chint'), count: detail.querySelector('.sv-ccount'), pin: detail.querySelector('.sv-pinbtn'),
+    state: detail.querySelector('.sv-dstate'), use: detail.querySelector('.sv-duse'),
   };
+  const rcol = rlist.parentElement;
+  // Bottom fade on the recipe list while more rows sit below the fold.
+  const paintMore = () => { const more = rlist.scrollHeight - rlist.scrollTop - rlist.clientHeight > 2; if (rcol.classList.contains('sv-more') !== more) rcol.classList.toggle('sv-more', more); };
   const tip = dlg.querySelector('.sv-tip');
   const held = dlg.querySelector('.sv-held'), heldArt = held.firstElementChild, heldCnt = held.lastElementChild;
   let heldKind = null, px = 0, py = 0;
@@ -581,10 +615,11 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const tabEl = tabsEl.querySelector(`.sv-tab[data-cat="${activeTab}"]`);
     if (tabEl) rlist.setAttribute('aria-label', tabEl.textContent.trim() + ' recipes');
     applyPick();
+    paintMore();
   }
   function setTab(id, focus = false) {
     if (!groups.some(g => g.id === id)) return;
-    if (id !== activeTab) { stopHold(); flashUntil = 0; activeTab = id; pickId = null; pickedByUser = false; reorderRecipes(); applyTab(); }
+    if (id !== activeTab) { stopHold(); hideTip(); flashUntil = 0; activeTab = id; pickId = null; pickedByUser = false; reorderRecipes(); applyTab(); rlist.scrollTop = 0; paintMore(); }
     if (focus) tabsEl.querySelector(`.sv-tab[data-cat="${id}"]`)?.focus();
   }
   function setPick(id) {
@@ -611,7 +646,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       D.art.innerHTML = art(v.r.out.kind);
       D.art.dataset.tipKind = v.r.out.kind;
       D.name.textContent = v.r.name + (v.r.out.count > 1 ? ' ×' + v.r.out.count : '');
-      D.desc.textContent = t?.use || t?.desc || '';
+      D.desc.textContent = t?.desc || t?.use || '';
+      if (D.use) { D.use.innerHTML = t?.desc && t?.use ? `<em>Used for:</em> ${esc(t.use)}` : ''; D.use.hidden = !D.use.innerHTML; }
       // Each ingredient says where to get more when short; a craftable one links to its recipe.
       D.ings.innerHTML = v.r.reqs.map(q => {
         const src = sourceOf(q.kind, recipes, itemName);
@@ -635,6 +671,10 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       e.el.setAttribute('aria-label', `${itemName(row.kind)}: have ${row.have}, need ${row.need}${src ? '. ' + src.how : ''}`);
     });
     const ready = v.state === 'ready';
+    // Why it cannot be made, in full (the list row only has room for two lines).
+    const why = v.state === 'gated' ? 'Locked: ' + (v.reason || 'not learned yet') : v.state === 'full' ? 'No room in your bag for it' : '';
+    if (D.state && D.state.textContent !== why) D.state.textContent = why;
+    if (D.state) D.state.hidden = !why;
     D.btn.setAttribute('aria-disabled', String(!ready));
     if (!hold && performance.now() >= flashUntil) {
       D.btn.classList.remove('sv-done');
@@ -672,6 +712,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       v.el.classList.toggle('sv-full', state === 'full');
       v.el.classList.toggle('sv-locked', state === 'missing' || state === 'gated');
       v.el.classList.toggle('sv-gated', state === 'gated'); // [progression-hook]
+      if (state === 'gated') v.el.dataset.lockReason = v.reason || 'not learned yet'; else delete v.el.dataset.lockReason; // item tooltips show it
       const lacking = rows.filter(x => !x.enough);
       v.sub.textContent = state === 'gated' ? 'Locked: ' + (v.reason || 'not learned yet') // [progression-hook]
         : state === 'ready' ? 'Ready to craft'
@@ -679,8 +720,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
         : 'Need ' + lacking.map(x => `${x.short} ${itemName(x.kind)}`).join(', ');
       v.badge.textContent = state === 'ready' && Number.isFinite(times) && times > 0 ? '×' + Math.min(times, 99) : '';
       v.el.setAttribute('aria-label', `${r.name}${r.out.count > 1 ? ', makes ' + r.out.count : ''}. Needs ${rows.map(x => `${x.need} ${itemName(x.kind)}, have ${x.have}`).join('; ') || 'nothing'}. ${v.sub.textContent}.`);
-      if (tipAnchor === v.el) showTipFor(v.el);
+      if (tipAnchor === v.el) { if (anchorVisible(v.el)) showTipFor(v.el); else hideTip(); }
     }
+    paintMore();
     tabsEl.querySelectorAll('.sv-tab').forEach(t => {
       const n = readyPer.get(t.dataset.cat) || 0, b = t.querySelector('.sv-tbadge');
       if (b && b.textContent !== (n ? String(n) : '')) b.textContent = n ? String(n) : '';
@@ -750,8 +792,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   }
 
   // ---------- hold to craft ----------
-  // Press: craft one now. Keep holding: the fill bar sweeps and crafts again each time it fills,
-  // faster and faster (holdDelay), until materials or space run out.
+  // Press: craft one now (a click never makes more). Keep holding: the fill bar sweeps for
+  // HOLD.first ms before the next craft, then crafts again each time it fills, faster and faster
+  // (holdDelay), until materials or space run out.
   function freshView(id) {
     const v = viewOf(id), bag = bagNow();
     if (!v || !bag) return null;
@@ -778,8 +821,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function showCount(n) {
     if (!hold) return;
     clearTimeout(countTimer);
-    D.label.textContent = holdLabel(n, hold.cap, true);
-    D.hint.textContent = '';
+    // The first craft says what a longer hold does while the bar fills toward the second.
+    D.label.textContent = n === 1 ? holdLabel(1, 0, false, viewOf(hold.id)?.r.out.count || 1) : holdLabel(n, hold.cap, true);
+    D.hint.textContent = n === 1 && hold.cap > 1 ? 'keep holding for more' : '';
     D.count.textContent = '';
   }
   function startHold() {
@@ -982,19 +1026,24 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       + (src ? `<small><em>Get it:</em> ${esc(src.how)}</small>` : '')
       + (uses.length ? `<small><em>Ingredient in:</em> ${esc(uses.join(', '))}</small>` : '');
   }
+  // Crafting rows anchor beside their whole column (the list or the detail pane) and never cover
+  // the Craft button; a hidden or detached anchor hides the tooltip instead of pinning it top-left.
   function placeTipAt(el) {
     if (tip.hidden || !el) return;
-    const p = anchorTip(el.getBoundingClientRect(), tip.offsetWidth, tip.offsetHeight, innerWidth, innerHeight);
+    const col = el.closest('.sv-rcol,.sv-detail');
+    const p = el.isConnected && anchorTip(el.getBoundingClientRect(), tip.offsetWidth, tip.offsetHeight, innerWidth, innerHeight, 8, 6,
+      col ? { beside: col.getBoundingClientRect(), avoid: detail.hidden ? null : D.btn.getBoundingClientRect() } : null);
+    if (!p) { hideTip(); return; }
     tip.style.transform = `translate(${Math.round(p.x)}px,${Math.round(p.y)}px)`;
     tip.dataset.side = p.side;
   }
   function showTipFor(el) {
-    if (!el || dragging) { hideTip(); return; }
+    if (!el || dragging || !anchorVisible(el)) { hideTip(); return; }
     const kind = el.dataset.tipKind;
     if (!kind) { hideTip(); return; }
     let extra = '';
     const v = el.classList.contains('sv-recipe') ? viewOf(el.dataset.recipe) : null;
-    if (v) extra = haveNeedLine(v.rows, itemName);
+    if (v) extra = v.state === 'gated' ? 'Locked: ' + (v.reason || 'not learned yet') : haveNeedLine(v.rows, itemName);
     tipAnchor = el;
     tip.innerHTML = tipHTML(kind, extra, !v);
     tip.hidden = false;
@@ -1205,7 +1254,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (tipAnchor) hideTip();
   }, opt);
   dlg.addEventListener('pointerleave', () => { hoverIdx = null; hideTip(); }, opt);
-  rlist.addEventListener('scroll', () => { if (tipAnchor && rlist.contains(tipAnchor)) placeTipAt(tipAnchor); }, { ...opt, passive: true });
+  rlist.addEventListener('scroll', () => { paintMore(); if (tipAnchor && rlist.contains(tipAnchor)) placeTipAt(tipAnchor); }, { ...opt, passive: true });
   // Hold-to-craft on the craft button (mouse, touch, pen; Enter / Space).
   D.btn.addEventListener('pointerdown', e => {
     if (e.button !== 0 || !e.isPrimary) return;
@@ -1227,8 +1276,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const t = e.target.closest?.('.sv-tab'); if (!t) return;
     const ids = groups.map(g => g.id), i = ids.indexOf(t.dataset.cat);
     let n = -1;
-    if (e.code === 'ArrowRight') n = (i + 1) % ids.length;
-    else if (e.code === 'ArrowLeft') n = (i - 1 + ids.length) % ids.length;
+    if (e.code === 'ArrowDown' || e.code === 'ArrowRight') n = (i + 1) % ids.length;
+    else if (e.code === 'ArrowUp' || e.code === 'ArrowLeft') n = (i - 1 + ids.length) % ids.length;
     else if (e.code === 'Home') n = 0; else if (e.code === 'End') n = ids.length - 1;
     if (n < 0) return;
     e.preventDefault(); setTab(ids[n], true);
