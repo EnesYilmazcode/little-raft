@@ -11,6 +11,8 @@ const TOTAL = Number(SLOT_COUNT) || 28;
 const DUR_MAX = Number(TOOL_DURABILITY) > 0 ? Number(TOOL_DURABILITY) : 0;
 const TRANSIENT = ['sv-src', 'sv-over', 'sv-dragging', 'sv-deny'];
 const INST_KEY = '__littleRaftSurvivalUI';
+/** Fired on document whenever the local bag's contents or selection change (item-tooltips.js listens). */
+export const BAG_EVENT = 'littleraft:bagchange';
 
 const BUILD = (() => { try { return new URL(import.meta.url).searchParams.get('build') || 'dev'; } catch { return 'dev'; } })();
 const SPRITE_URL = (() => {
@@ -342,6 +344,8 @@ const CSS = `
 #craftTracker .ct-state{display:block;margin-top:2px;font:700 10px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#f4efe280}
 #craftTracker.ct-ready .ct-state{color:#a9e48a}
 #craftTracker.ct-ready{box-shadow:inset 0 0 0 1px #8fd36a88,0 0 12px #8fd36a33,0 6px 18px #0006}
+#craftTracker.ct-gated .ct-art>*{filter:grayscale(1) brightness(.6)}
+#craftTracker.ct-gated .ct-state{color:#e8c27a;line-height:1.2}
 #craftTracker ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
 #craftTracker li{display:grid;grid-template-columns:20px 1fr auto;gap:7px;align-items:center;padding:2px 6px 2px 3px;border-radius:4px;background:#ffffff0a;box-shadow:inset 2px 0 0 #e06a4a}
 #craftTracker li.ct-ok{box-shadow:inset 2px 0 0 #8fd36a}
@@ -495,7 +499,9 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   let downOnBackdrop = false, upOnBackdrop = false;
   let dragging = false, dragFrom = null, dragAmt = 0, overEl = null;
   let hoverIdx = null;
-  let lastSig = null;
+  let lastSig = null, bagSig = null;
+  let gateSig = null, gateAt = 0; // recipe gates seen by the open bag (goals / unlocks change mid-session)
+  const GATE_POLL_MS = 250;
   // Per-frame fast path: skip snapshot + string signatures when nothing visible changed.
   // Bag.version catches method mutations; the typed-array shadow catches direct .slots writes
   // (game.js edits counts/durability in place), so the HUD never goes stale.
@@ -574,7 +580,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     });
     for (const v of recipeEls) v.el.hidden = v.cat !== activeTab;
     const inTab = recipeEls.filter(v => v.cat === activeTab);
-    if (!inTab.some(v => v.r.id === pickId)) pickId = (inTab.find(v => v.state === 'ready') || inTab[0])?.r.id ?? null;
+    if (!inTab.some(v => v.r.id === pickId)) pickId = (inTab.find(v => v.state === 'ready') || inTab.find(v => v.state !== 'gated') || inTab[0])?.r.id ?? null;
     if (activeTab) dlg.dataset.svTab = activeTab;
     const tabEl = tabsEl.querySelector(`.sv-tab[data-cat="${activeTab}"]`);
     if (tabEl) rlist.setAttribute('aria-label', tabEl.textContent.trim() + ' recipes');
@@ -720,15 +726,17 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     const t = ensureTracker();
     const r = pinId && !isOpen ? recipes.find(x => x.id === pinId) : null;
     if (!r) { if (!t.hidden) t.hidden = true; trackSig = null; return; }
-    const key = sig + '|' + pinId;
+    const g = gate(r.id); // research / progression lock: never "Ready" while locked
+    const key = sig + '|' + pinId + '|' + (g ? (g.hidden ? 'h' : 'l') + (g.reason || '') : '');
     if (key === trackSig) return;
     trackSig = key;
     let check = null;
     if (typeof bag.canCraft === 'function') { try { check = bag.canCraft(r.id); } catch {} }
-    const tv = trackerView(r, k => countOf(bag, k), check);
+    const tv = trackerView(r, k => countOf(bag, k), check, g);
     const ready = tv.state === 'ready';
     t.classList.toggle('ct-ready', ready);
-    const state = ready ? `Ready${tv.times > 1 ? ' ×' + Math.min(tv.times, 99) : ''}` : tv.state === 'full' ? 'Bag is full' : `${tv.met} of ${tv.total} gathered`;
+    t.classList.toggle('ct-gated', tv.state === 'gated');
+    const state = ready ? `Ready${tv.times > 1 ? ' ×' + Math.min(tv.times, 99) : ''}` : tv.state === 'gated' ? 'Locked: ' + (tv.reason || 'not learned yet') : tv.state === 'full' ? 'Bag is full' : `${tv.met} of ${tv.total} gathered`;
     t.innerHTML = `<div class="ct-head"><span class="ct-art" aria-hidden="true">${art(tv.kind)}</span><span><b class="ct-name">${esc(tv.name)}</b><small class="ct-state">${esc(state)}</small></span></div>`
       + `<ul>${tv.rows.map(x => `<li class="${x.enough ? 'ct-ok' : ''}" aria-label="${esc(itemName(x.kind))}: have ${x.have}, need ${x.need}">${art(x.kind)}<span>${esc(itemName(x.kind))}</span><b>${esc(amountLabel(x))}</b></li>`).join('')}</ul>`
       + (ready ? '<div class="ct-foot">Open your bag with <kbd>Tab</kbd> to craft</div>' : '');
@@ -1012,12 +1020,28 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
   function hideTip() { if (tip) tip.hidden = true; tipAnchor = null; }
 
   // ---------- render ----------
+  // One string for every recipe's gate: '' open, 'h' hidden, 'l<reason>' locked.
+  function gateSignature() {
+    return recipeList().map(r => { const g = gate(r.id); return r.id + ':' + (g?.hidden ? 'h' : g?.locked ? 'l' + (g.reason || '') : ''); }).join('|');
+  }
+  // While the bag is open, a recipe that unlocks or becomes a goal shows up (or loses its lock) at once.
+  function syncGates(now) {
+    if (now < gateAt) return false;
+    gateAt = now + GATE_POLL_MS;
+    const gs = gateSignature();
+    if (gs === gateSig) return false;
+    gateSig = gs;
+    buildRecipes(); // rebuilds the rows only when the visible set changed
+    recipeEls.forEach(v => { v.sig = null; });
+    return true;
+  }
   function render(force) {
     if (!alive) return;
     if (!iconsLive && document.body?.classList.contains('playing')) liveIcons();
     const bag = bagNow();
     ensureTools();
     if (!bag) return;
+    if (isOpen && !dragging && syncGates(performance.now())) { force = true; lastSig = null; }
     const mode = (isOpen ? 1 : 0) | (dragging ? 2 : 0);
     const ver = bag.version, sel0 = bag.selectedIndex;
     if (!force && bag === fastBag && typeof ver === 'number' && ver === fastVer && sel0 === fastSel
@@ -1031,6 +1055,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     for (let i = 0; i < TOTAL; i++) { sigs[i] = slotSig(slots[i]); all += sigs[i] + '|'; }
     all += selected;
     curSlots = slots; curSelected = selected;
+    if (all !== bagSig) { const first = bagSig === null; bagSig = all; if (!first) document.dispatchEvent(new CustomEvent(BAG_EVENT)); } // item-tooltips.js re-reads its open card
     if (hotEls.length) paintHotbar(slots, sigs, selected);
     paintTracker(bag, all);
     if (isOpen && !dragging && (force || all !== lastSig)) {
@@ -1066,6 +1091,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (!dlg.open) { try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); } }
     if (trackEl) trackEl.hidden = true;
     buildRecipes();
+    gateSig = gateSignature(); gateAt = performance.now() + GATE_POLL_MS;
     invalidate();
     invEls.forEach(el => { el._svCount = undefined; }); // no pop for changes made while closed
     recipeEls.forEach(v => { v.sig = null; });
@@ -1242,7 +1268,8 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
       const n = arrowNeighbor(rects, +slot.dataset.index, e.code);
       if (n >= 0) next = invEls[n];
     } else if (rec && (e.code === 'ArrowDown' || e.code === 'ArrowUp')) {
-      const vis = recipeEls.map(v => v.el).filter(el => !el.hidden), i = vis.indexOf(rec);
+      // Locked (gated) rows are skipped: arrows walk the recipes you can work towards.
+      const vis = recipeEls.filter(v => !v.el.hidden && (v.state !== 'gated' || v.el === rec)).map(v => v.el), i = vis.indexOf(rec);
       next = vis[i + (e.code === 'ArrowDown' ? 1 : -1)] || null;
     }
     if (!next) return;

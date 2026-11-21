@@ -48,14 +48,14 @@ const CSS = `
 .lb-card em{display:inline-block;margin-top:3px;font:600 11px/1 ${FONT};font-style:normal;text-transform:uppercase;letter-spacing:.06em;color:#d6b67e}
 .lb-card.lb-locked{opacity:.5}
 .lb-card.lb-locked .lb-icon{filter:grayscale(1)}
-#lb-toast{position:fixed;top:16px;right:16px;z-index:40;max-width:calc(100vw - 32px);box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:8px 12px;
+#lb-toast{position:fixed;top:16px;right:16px;z-index:40;max-width:min(380px,calc(50vw - 130px));max-height:40px;overflow:hidden;white-space:nowrap;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:4px 10px;
   background:linear-gradient(180deg,#664730f2,#46301cf2);border:2px solid #3e2a17;border-radius:4px;box-shadow:0 0 0 2px #d6b67e,0 8px 24px #0008;
   color:#fff2cc;font:600 14px/1.35 ${FONT};pointer-events:none;opacity:0;transform:translateY(-6px);transition:opacity .2s,transform .2s}
 #lb-toast.lb-show{opacity:1;transform:none}
 #lb-toast[hidden]{display:none}
-#lb-toast .lb-icon{width:32px;height:32px;flex:none}
+#lb-toast .lb-icon{width:24px;height:24px;flex:none}#lb-toast span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 @media (prefers-reduced-motion:reduce){#lb-toast{transition:none;transform:none}}
-@media (max-width:760px){#lb-toast{top:52px}} /* clear the centred signal readout pill */
+/* One line, at most 40px tall: ends above #sailBadge (top:64px, sailing-ui.js); the width cap keeps it right of the centred signal pill. */
 @media (max-width:520px){.lb [role=tab]{flex:1}.lb-grid{grid-template-columns:1fr}.lb [role=tabpanel]{padding:8px}}
 `;
 
@@ -101,6 +101,16 @@ function mountToast() {
 const readSeen = () => { try { const v = parseInt(localStorage.getItem(SEEN_KEY), 10); return Number.isFinite(v) ? v : 0; } catch { return 0; } };
 const writeSeen = n => { try { localStorage.setItem(SEEN_KEY, String(n)); } catch {} };
 
+// Found notes in order, then one hint for the rest (not a row per missing note).
+export function notesHTML(found, newest = -1) {
+  let rows = '';
+  for (let i = 0; i < NOTE_COUNT; i++) if (found.includes(i))
+    rows += `<li class="lb-note"><span class="lb-no${i === newest ? ' lb-new' : ''}">No. ${i + 1}</span><p>${esc(NOTES[i])}</p></li>`;
+  const left = NOTE_COUNT - found.filter(i => i >= 0 && i < NOTE_COUNT).length;
+  if (left > 0) rows += `<li class="lb-note lb-missing lb-hint"><p>Hook floating bottles to find notes${found.length ? ` · ${left} still adrift` : ''}</p></li>`;
+  return rows;
+}
+
 export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
   const prev = window[INST_KEY];
   const ac = new AbortController();
@@ -128,14 +138,7 @@ export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
     tabs[1].textContent = `Achievements ${p.achievements.length}/${ACHIEVEMENTS.length}`;
     const seen = seenBase == null ? readSeen() : seenBase;
     const newest = p.notes.length && p.notes.length > seen ? p.notes[p.notes.length - 1] : -1;
-    let rows = '';
-    for (let i = 0; i < NOTE_COUNT; i++) {
-      const found = p.notes.includes(i);
-      rows += found
-        ? `<li class="lb-note"><span class="lb-no${i === newest ? ' lb-new' : ''}">No. ${i + 1}</span><p>${esc(NOTES[i])}</p></li>`
-        : `<li class="lb-note lb-missing"><span class="lb-no">No. ${i + 1}</span><p>Still adrift…</p></li>`;
-    }
-    list.innerHTML = rows;
+    list.innerHTML = notesHTML(p.notes, newest);
     grid.innerHTML = ACHIEVEMENTS.map(a => {
       const got = p.achievements.includes(a.id);
       return `<div class="lb-card${got ? '' : ' lb-locked'}">${icon(a.icon)}<div><b>${esc(a.name)}</b><span>${esc(a.desc)}</span>${got ? '' : '<em>Locked</em>'}</div></div>`;
@@ -175,12 +178,12 @@ export function createLogbookUI({ getProgress, onPause, onResume } = {}) {
     isOpen = false;
     seenBase = null;
     if (dlg.open) { try { dlg.close(); } catch { dlg.removeAttribute('open'); } }
-    safe(onResume);
+    if (!dlg.dataset.fromPause) safe(onResume); // opened from the pause menu: settings.js reopens it instead
   }
   const toggle = () => (isOpen ? close() : open());
 
   dlg.addEventListener('cancel', e => { e.preventDefault(); close(); }, opt);
-  dlg.addEventListener('close', () => { if (isOpen) { isOpen = false; seenBase = null; safe(onResume); } }, opt);
+  dlg.addEventListener('close', () => { if (isOpen) { isOpen = false; seenBase = null; if (!dlg.dataset.fromPause && !document.getElementById('options')?.open) safe(onResume); } }, opt);
   dlg.addEventListener('click', e => {
     if (e.target?.closest?.('.lb-close')) { close(); return; }
     const t = e.target?.closest?.('[role=tab]');

@@ -1,4 +1,5 @@
-/* Little Raft interaction prompts (prompts.js): crosshair-side key prompt + bottom-left event feed. */
+/* Little Raft interaction prompts (prompts.js): crosshair-side key prompt. Feed lines go to #pickupFeed (style.css);
+   #lrFeed is only a fallback before the game loads, in the same spot with the same caps. */
 #contextPrompt{display:none!important}
 #lrPrompt,#lrFeed{position:fixed;z-index:30;pointer-events:none;color:#f6ecd6;font:600 14px/1.25 var(--ui-font,system-ui,-apple-system,'Segoe UI',sans-serif);
   text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 8px rgba(0,0,0,.55);text-align:left;user-select:none}
@@ -13,11 +14,12 @@
 #lrPrompt .lr-hold{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-variant:small-caps;opacity:.85}
 #lrPrompt .lr-glyph{display:inline-flex;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.7))}
 #lrPrompt .lr-mouse{display:block;fill:currentColor}
-#lrFeed{left:28px;bottom:272px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;max-width:min(360px,calc(100vw - 56px))}
+#lrFeed{left:22px;bottom:132px;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;gap:3px;max-width:min(380px,calc(50vw - 287px));max-height:calc(50vh - 158px);overflow:hidden}
 #lrFeed .lr-line{animation:lrIn .16s ease-out;transition:opacity .4s ease,transform .4s ease;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 #lrFeed .lr-line.lr-out{opacity:0;transform:translateX(-6px)}
 @keyframes lrIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-@media(max-width:760px){#lrFeed{left:16px;bottom:290px;font-size:13px}#lrPrompt{font-size:13px}}
+@media(max-width:1000px){#lrFeed{max-width:calc(50vw - 134px)}}
+@media(max-width:760px){#lrFeed{left:10px;bottom:184px;max-height:calc(50vh - 210px);font-size:13px;max-width:max(150px,calc(50vw - 112px))}#lrPrompt{font-size:13px}}
 @media(prefers-reduced-motion:reduce){#lrPrompt,#lrPrompt.lr-on,#lrFeed .lr-line{transition:none;animation:none;transform:none}}
 /* Keep the screen centre clear: the resume hint joins the prompt column (beats graphics.css). The throw charge is a thin ring on the reticle (graphics.css). */
 body #resumeHint{left:calc(50% + 34px)!important;top:calc(50% + 74px)!important;transform:none!important;text-align:left!important;

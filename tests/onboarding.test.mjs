@@ -156,7 +156,7 @@ test('rope for the rod counts rope held or spent on the rod; the rod comes after
 test('hints name the hotbar key; swimming shows a climb-back step in any chapter', () => {
   const slots = Array(28).fill(null); slots[0] = {kind:'hook', count:1}; slots[5] = {kind:'hammer', count:1};
   const floor = O.STEPS.find(s => s.id === 'floor');
-  assert.match(O.hintOf(floor, fresh({inventory:{slots}, selectedIndex:0})), /^2 wood \+ 2 plastic\. Press \[6\] to hold your hammer/);
+  assert.match(O.hintOf(floor, fresh({inventory:{slots}, selectedIndex:0})), /^2 planks \+ 2 plastic\. Press \[6\] to hold your hammer/);
   assert.doesNotMatch(O.hintOf(floor, fresh({inventory:{slots}, selectedIndex:5})), /Press/);
   assert.match(O.hintOf(floor, fresh()), /Hammer in hand/);
   const S = steps(), P = O.createProgress(O.STEPS.filter(s => s.chapter === 'ch1' && s.id !== 'swim').map(s => s.id));

@@ -5,6 +5,7 @@ export const WORLD_BOUND = 25;      // |tx| and |tz| must stay within this
 export const MAX_TILES = 400;
 export const BUILD_REACH = 6;       // metres from the player to the cell centre
 export const GUEST_REACH_SLACK = 2; // extra metres the host allows a guest (pose lag)
+export const PIECE_REACH = 8;       // metres to a building piece's centre: building.js aims a 7 m ray, plus half a piece
 export const BLOCK_TEXT = Object.freeze({
   bound: 'Raft can’t grow further this way',
   cap: 'Raft can’t grow further this way',
@@ -17,7 +18,10 @@ export const BLOCK_TEXT = Object.freeze({
   split: 'That would split the raft in two',
   brother: 'Your brother is in the way',
   nofloor: 'Place it on the raft floor',
+  piece: 'Stairs are in the way',
 });
+// Building pieces that fill a deck cell (stairs at level 0; floor/roof only sit higher up, but count them too).
+const CELL_PIECES = ['floor', 'stairs', 'roof'];
 
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const isInt = Number.isInteger;
@@ -33,12 +37,31 @@ export function floorBlock(tiles, x, z) {
   return null;
 }
 
-// Why decor can't go at (x, z): 'invalid' | 'nofloor' | 'occupied', or null when it can.
-export function decorBlock(tiles, decor, x, z) {
+// Is there a level-0 cell piece (stairs) standing on deck cell (x, z)?
+export function deckPieceAt(pieces, x, z) {
+  return Array.isArray(pieces) && pieces.some(p => p && p.l === 0 && p.i === x && p.j === z && CELL_PIECES.includes(p.t));
+}
+
+// Why decor can't go at (x, z): 'invalid' | 'nofloor' | 'occupied' | 'piece', or null when it can.
+export function decorBlock(tiles, decor, x, z, pieces) {
   if (!isInt(x) || !isInt(z)) return 'invalid';
   if (!hasTile(tiles, x, z)) return 'nofloor';
   if (decor.some(d => d.x === x && d.z === z)) return 'occupied';
+  if (deckPieceAt(pieces, x, z)) return 'piece';
   return null;
+}
+
+// Why a building piece can't go at deck level: 'decor' when a level-0 cell piece would land on a decor tile, else null.
+export function pieceBlock(decor, p) {
+  if (!p || p.l !== 0 || !CELL_PIECES.includes(p.t)) return null;
+  return Array.isArray(decor) && decor.some(d => d.x === p.i && d.z === p.j) ? 'decor' : null;
+}
+
+// World XZ centre of a piece record {t, i, j, l, r} (edges sit on a cell side, pillars on a corner), in cell units for inReach.
+export function pieceCell(p) {
+  if (p.t === 'pillar') return [p.i - .5, p.j - .5];
+  if (p.t === 'wall' || p.t === 'halfwall' || p.t === 'window' || p.t === 'door') return p.r ? [p.i - .5, p.j] : [p.i, p.j - .5];
+  return [p.i, p.j];
 }
 
 // Is cell (x, z) within reach of a player standing at world (px, pz)?
