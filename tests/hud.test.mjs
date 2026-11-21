@@ -71,8 +71,12 @@ test('drag look scales with the sensitivity setting', () => {
   assert.equal(H.dragLookScale(.005, 0), .005);
 });
 
-test('first-run hints go throw -> bag -> slots and are stored once', () => {
+test('first-run hints go look -> walk -> throw -> bag -> slots and are stored once', () => {
   const s = memoryStorage(), done = H.loadHints(s);
+  assert.equal(H.nextHint(done, {heldKind:'hook', castOut:false})?.id, 'look');
+  done.add('look');
+  assert.equal(H.nextHint(done, {heldKind:'hook', castOut:false})?.id, 'walk');
+  done.add('walk');
   assert.equal(H.nextHint(done, {heldKind:'hook', castOut:false})?.id, 'throw');
   assert.equal(H.nextHint(done, {heldKind:'hook', castOut:true}), null);
   done.add('throw');
