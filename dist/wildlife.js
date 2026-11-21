@@ -152,7 +152,7 @@ export function gullPlan(seed, i, t, perches, out, scareAt = -Infinity, visit = 
     out.yaw = v.yaw + Math.floor(k + 0.2) * 0.9; // a little turn with every hop
     const hop = f > 0.7 && f < 0.92 ? Math.sin(Math.PI * (f - 0.7) / 0.22) : 0; // stand still first, then a little hop
     out.y = out.py + 0.09 * hop;
-    out.pitch = 0; out.roll = 0; out.fold = 1 - 0.3 * hop;
+    out.pitch = 0; out.roll = 0; out.fold = 1 - 0.1 * hop; // wings stay tucked, just a twitch
     out.flap = -0.1 + 0.35 * hop;
   } else {
     const landing = state === 'descend' ? smooth(((t - v.start) / GULL_DESCEND - 0.7) / 0.3) : 0;
