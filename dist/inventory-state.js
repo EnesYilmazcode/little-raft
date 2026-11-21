@@ -155,6 +155,10 @@ function emptySlots() {
   return new Array(SLOT_COUNT).fill(null);
 }
 
+// Bag -> {n, kinds, nums, out}: counts() result and the slot kinds/counts it was built from (kept off the
+// instance so snapshots, spreads and JSON of a bag are unchanged).
+const countsCache = new WeakMap();
+
 export class Bag {
   // Monotonic mutation counter: bumped by every mutating method (never by reads),
   // so observers (the HUD) can skip work when nothing changed. Direct writes to
@@ -238,11 +242,32 @@ export class Bag {
     return n;
   }
 
+  /**
+   * Totals for every kind. Returns a FROZEN object shared between calls until a slot's kind or count
+   * changes (checked against a per-bag shadow of the slots, so direct .slots writes are seen too):
+   * read it, never mutate it.
+   */
   counts() {
+    let c = countsCache.get(this);
+    const slots = this.slots, n = slots.length;
+    if (c && c.n === n) {
+      let same = true;
+      for (let i = 0; i < n; i++) {
+        const s = slots[i];
+        if ((s ? s.kind : null) !== c.kinds[i] || (s ? s.count : 0) !== c.nums[i]) { same = false; break; }
+      }
+      if (same) return c.out;
+    }
+    if (!c || c.n !== n) countsCache.set(this, c = { n, kinds: new Array(n), nums: new Array(n), out: null });
     const out = {};
     for (const k of ITEM_KINDS) out[k] = 0;
-    for (const s of this.slots) if (s && isKind(s.kind)) out[s.kind] += s.count;
-    return out;
+    for (let i = 0; i < n; i++) {
+      const s = slots[i];
+      c.kinds[i] = s ? s.kind : null; c.nums[i] = s ? s.count : 0;
+      if (s && isKind(s.kind)) out[s.kind] += s.count;
+    }
+    c.out = Object.freeze(out);
+    return c.out;
   }
 
   /**

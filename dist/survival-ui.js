@@ -1014,6 +1014,7 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     for (let i = 0; i < TOTAL; i++) { sigs[i] = slotSig(slots[i]); all += sigs[i] + '|'; }
     all += selected;
     curSlots = slots; curSelected = selected;
+    if (warmTimer < 0 && all !== warmSig) { warmSig = all; warmVisible(); } // new kinds (or unlocks) after the first warm
     if (hotEls.length) paintHotbar(slots, sigs, selected);
     paintTracker(bag, all);
     if (isOpen && !dragging && (force || all !== lastSig)) {
@@ -1030,19 +1031,31 @@ export function createSurvivalUI({ getBag, onSelect, onMove, onCraft, onResume, 
     if (document.querySelector('dialog[open]:not(#inventory)')) return false;
     return !!document.pointerLockElement || !!document.body?.classList.contains('playing');
   }
-  // Hotbar icons on the first play frame, the rest ~5 s later (or on first open), never at the title.
-  let warmTimer = 0;
+  // Hotbar icons on the first play frame, the rest of what the player can see ~5 s later (or on first open),
+  // never at the title. Only seen kinds are warmed (bag contents, craft-book recipes that are not hidden and
+  // their ingredients); kinds that show up later are warmed when the bag changes, anything else renders on
+  // demand when a slot asks (iconURL), so no model is built for an item the player has not met.
+  let warmTimer = 0, warmSig = null;
   function liveIcons() {
     iconsLive = true;
     warmIcons(curSlots.slice(0, HB).map(s => s?.kind).filter(Boolean));
-    if (!warmTimer) warmTimer = setTimeout(warmAll, 5000);
+    if (!warmTimer) warmTimer = setTimeout(warmVisible, 5000);
   }
-  function warmAll() { warmTimer = -1; iconsLive = true; warmIcons(Object.keys(ITEM_INFO || {})); }
+  function warmVisible() {
+    warmTimer = -1; iconsLive = true;
+    const kinds = new Set();
+    for (const s of curSlots) if (s?.kind) kinds.add(s.kind);
+    for (const r of recipeList()) {
+      if (gate(r.id)?.hidden) continue; // [progression-hook] hidden recipes are not in the craft book
+      kinds.add(r.out.kind); for (const q of r.reqs) kinds.add(q.kind);
+    }
+    warmIcons(kinds);
+  }
   function open() {
     if (!alive || isOpen) return;
     isOpen = true;
     downOnBackdrop = upOnBackdrop = false;
-    if (warmTimer >= 0) { clearTimeout(warmTimer); warmAll(); }
+    if (warmTimer >= 0) { clearTimeout(warmTimer); warmVisible(); }
     clearSrc(); clearSay();
     safe(onPause);
     if (document.pointerLockElement) { try { document.exitPointerLock(); } catch {} }

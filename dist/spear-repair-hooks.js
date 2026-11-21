@@ -99,7 +99,7 @@ export function attachSpearRepair(ctx) {
   let unprovide = null;
   function providePrompt() { // prompts.js may load after us: retried from tick() until it exists
     if (unprovide || typeof window === 'undefined') return;
-    try { const p = window.raftPrompts; if (p?.provide) unprovide = p.provide({ id: 'spear-repair', priority: 1, prompt: (c) => prompt(c?.state) }); } catch {}
+    try { const p = window.raftPrompts; if (p?.provide) unprovide = p.provide({ id: 'spear-repair', priority: 1, prompt: (c) => prompt(c?.hud || c?.state) }); } catch {} // only .pickup is read: the cheap hud view has it
   }
   /** LMB with the hammer: repairs the aimed damaged tile. Returns true when handled. */
   function useHammer() {

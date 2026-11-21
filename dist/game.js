@@ -143,7 +143,8 @@ export function mount(transfer = null) {
     return bag.slots.findIndex(s => toolRole(s?.kind) === 'hook'); // [progression-hook]
   }
   const hookDurability = (bag, prefer) => { const i = hookIndex(bag, prefer); return i < 0 ? 0 : clamp(bag.slots[i].durability ?? MAX_HEALTH, 0, MAX_HEALTH); };
-  const legacyStock = bag => { const c = bag.counts(); return Object.fromEntries(STOCK_KEYS.map(k => [k, c[k] ?? 0])); };
+  let stockSrc = null, stockOut = null; // bag.counts() is shared until the bag changes: rebuild the legacy view only then
+  const legacyStock = bag => { const c = bag.counts(); if (c !== stockSrc) { stockSrc = c; stockOut = Object.freeze(Object.fromEntries(STOCK_KEYS.map(k => [k, c[k] ?? 0]))); } return stockOut; };
 
   // Builds host/guest bags for a cleaned world. New saves carry snapshots; older saves only carry shared stock.
   function bagsFromWorld(w) {
@@ -589,7 +590,7 @@ export function mount(transfer = null) {
   function rebuildRaft() {
     ocean.setRaftTiles(world.tiles);
     for (const c of [...raft.children]) { raft.remove(c); disposeGeometry(c); }
-    wateringGroups.clear();
+    wateringGroups.clear(); wateringMix = -1;
     raft.add(createRaftMesh(T, world.tiles.map(([x, z]) => ({index:x * 719 + z * 311, x:x * 2, z:z * 2})), mat, content ? (t, c) => content.tileTint(t.x / 2, t.z / 2, c) : null, woodMat)); // content hook (paint): painted deck tiles
     for (const d of world.decor) {
       let detailed = null; try { detailed = prog?.modelFor(d.type, d) ?? (d.type === 'rainbarrel' ? createRainBarrel(T) : d.type === 'sprinkler' ? createSprinkler(T) : d.type === 'purifier' ? createPurifier(T) : createCraft(T, d.type) ?? createSignalModel(T, d.type) ?? content?.decorModel(d.type, d) ?? null); } catch (e) { console.warn('craft model failed', e); } // content hook: decorModel, [progression-hook] station models
@@ -887,9 +888,22 @@ export function mount(transfer = null) {
     return null;
   }
   const rainFrustum = new T.Frustum(), rainMat = new T.Matrix4(), rainSphere = new T.Sphere(new T.Vector3(), 1.2); // rain-sprinkler: spray only in view
+  const rainCamW = new T.Matrix4(), rainCamP = new T.Matrix4(); let rainCamOk = false; // camera matrices rainFrustum was built from
+  let wateringMix = -1; // bit 1: a rain barrel, bit 2: a sprinkler among wateringGroups (-1: recount after rebuildRaft)
   function updateWateringVisuals() {
+    if (!wateringGroups.size) return;
+    if (wateringMix < 0) { wateringMix = 0; for (const g of wateringGroups.values()) { const t = g.userData.craftType; if (t === 'rainbarrel') wateringMix |= 1; else if (t === 'sprinkler') wateringMix |= 2; } }
     let raining = false;
-    if (camera && (world.collectors || world.sprinklers)) { raining = (content?.rain() ?? 0) > .2; camera.updateMatrixWorld(); rainFrustum.setFromProjectionMatrix(rainMat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)); }
+    if (camera && (world.collectors || world.sprinklers)) {
+      if (wateringMix & 1) raining = (content?.rain() ?? 0) > .2;
+      if (wateringMix & 2) { // frustum only for sprinklers, rebuilt only when the camera moved or its projection changed
+        camera.updateMatrixWorld();
+        if (!rainCamOk || !rainCamW.equals(camera.matrixWorld) || !rainCamP.equals(camera.projectionMatrix)) {
+          rainCamOk = true; rainCamW.copy(camera.matrixWorld); rainCamP.copy(camera.projectionMatrix);
+          rainFrustum.setFromProjectionMatrix(rainMat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+        }
+      }
+    }
     for (const [k, g] of wateringGroups) {
       if (g.userData.craftType === 'rainbarrel') { paintRainBarrel(g, world.collectors?.[k], raining, elapsed); continue; } // rain-sprinkler
       if (g.userData.craftType === 'sprinkler') { g.getWorldPosition(rainSphere.center); paintSprinkler(g, world.sprinklers?.[k], elapsed, !!camera && rainFrustum.intersectsSphere(rainSphere)); continue; } // rain-sprinkler
@@ -1897,16 +1911,18 @@ export function mount(transfer = null) {
   }
   const worldPos = o => { if (!o) return null; const p = o.getWorldPosition(new T.Vector3()); return {x:p.x, y:p.y, z:p.z, visible:o.visible}; };
   // raftDebug.hud: a light live view for the timer-driven HUD readers (onboarding 4 Hz, prompts 10 Hz), holding only
-  // the keys they read from .state. No deep copies: arrays are the live world/bag lists (read only); bag counts and
-  // ownedTools are rebuilt at most once per rendered frame (or every 100 ms while rAF is idle). Objects handed out are
+  // the keys they read from .state. No deep copies: arrays are the live world/bag lists (read only); bag counts (the bag's
+  // shared frozen counts()) and ownedTools are re-checked at most once per rendered frame (or every 100 ms while rAF is
+  // idle) and rebuilt only when the bag changed. Objects handed out are
   // never mutated after the fact, so a reader may keep them (onboarding keeps the last pickup).
   let hudAt = -1, hudBuilt = 0, hudBag = null, hudStock = null, hudOwned = null, hudInv = null, hudPick = null, hudPickSrc = null, hudPickType = null;
   const hudModeOf = kind => (kind === 'hammer' ? 'build' : kind === 'fishingrod' ? 'fish' : kind === 'hook' ? 'hook' : DECOR_TYPES.includes(kind) ? 'place' : 'none');
   const hudCounts = () => {
     const bag = localBag(), now = performance.now();
     if (bag !== hudBag || hudAt !== last || now - hudBuilt > 100) {
-      hudBag = bag; hudAt = last; hudBuilt = now; hudStock = bag.counts();
-      hudOwned = []; if (hudStock.hook > 0) hudOwned.push('hook'); if (hudStock.hammer > 0) hudOwned.push('hammer'); if (hudStock.fishingrod > 0) hudOwned.push('fishingrod');
+      hudBag = bag; hudAt = last; hudBuilt = now;
+      const c = bag.counts(); if (c === hudStock && hudOwned) return hudStock; // shared until the bag changes
+      hudStock = c; hudOwned = []; if (hudStock.hook > 0) hudOwned.push('hook'); if (hudStock.hammer > 0) hudOwned.push('hammer'); if (hudStock.fishingrod > 0) hudOwned.push('fishingrod');
     }
     return hudStock;
   };

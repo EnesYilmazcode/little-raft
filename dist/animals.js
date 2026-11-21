@@ -228,8 +228,11 @@ export function createAnimals(ctx) {
 
   function camRay(aim) {
     const cam = ctx.camera; if (!cam) return false;
-    cam.getWorldPosition(vO);
-    if (aim && aim.dir && fin(aim.dir.x)) vD.copy(aim.dir).normalize(); else cam.getWorldDirection(vD);
+    // Straight from matrixWorld (current: the renderer updates it every frame) instead of getWorldPosition /
+    // getWorldDirection, which re-walk the parent chain on every pick. A camera looks down its local -Z.
+    const e = cam.matrixWorld.elements;
+    vO.set(e[12], e[13], e[14]);
+    if (aim && aim.dir && fin(aim.dir.x)) vD.copy(aim.dir).normalize(); else vD.set(-e[8], -e[9], -e[10]).normalize();
     return true;
   }
   function sphere(cx, cy, cz, r, best) { // ray distance to a sphere, or Infinity
