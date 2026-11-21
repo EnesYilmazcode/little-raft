@@ -48,7 +48,7 @@ import { createSurvivalUI } from './survival-ui.js?build=v3-survival-ae77fa84ac2
 import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { createGhosts, wrapRot, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
-import { getItemIcon, onIconReady } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
+import { getItemIcon, onIconReady, setIconRenderer } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
 
 // Module entry has no side effects beyond the imports above. Call mount(transfer) to run the game.
 // mount() returns {capture, pause, resume, dispose}; capture() output can be passed to a new mount().
@@ -376,7 +376,7 @@ export function mount(transfer = null) {
     scene = new T.Scene(); scene.background = new T.Color('#cbd2c0'); scene.fog = new T.Fog('#cbd2c0', 25, 125);
     camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 200); camera.rotation.order = 'YXZ'; scene.add(camera);
     renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:devicePixelRatio < 1.5}); // dense screens get their smoothing from pixels, not MSAA
-    renderer.setSize(innerWidth, innerHeight);
+    renderer.setSize(innerWidth, innerHeight); setIconRenderer(renderer); // 3D item icons share this context
     renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
     hemi = new T.HemisphereLight('#f2ead4', '#3d6b6a', 1.8); scene.add(hemi); // content hook: kept for day/night
     sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(...SUN_OFFSET); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -.001; scene.add(sun, sun.target);
@@ -1214,6 +1214,7 @@ export function mount(transfer = null) {
       world:{tiles:world.tiles, decor:world.decor, stock:{wood:c.wood, leaf:c.leaf, scrap:c.scrap, plastic:c.plastic}, fish:world.fish, collected:world.collected, hookHealth:hookDurability(guestBag), items:world.items, ext:content ? content.serialize() : world.ext, sailing:world.sailing, signal:world.signal, notes:world.notes, achievements:world.achievements, garden:world.garden, purifiers:world.purifiers, ...(world.pieces !== sentPieces ? {pieces:(sentPieces = world.pieces)} : {})}}; // content hook: ext
   }
   const pose = () => ({x:physics.x, y:physics.y, z:physics.z, yaw, pitch, swimming:physics.swimming, held:heldKind()});
+  let menuDrawAt = -Infinity; const MENU_DRAW_MS = 100; // world redraw interval behind a menu dialog
   function frame() {
     const now = performance.now(), rawMs = now - last, dt = Math.min(rawMs / 1000, .05); last = now; elapsed += dt;
     const dialog = uiBlocked();
@@ -1248,7 +1249,12 @@ export function mount(transfer = null) {
     try { logbookUI?.update?.(); } catch (e) { console.error('logbook update failed', e); logbookUI = null; }
     refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud();
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
-    renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
+    // perf: a menu dialog dims the world behind it, so redraw it at 10 Hz there (the bag keeps full rate: it shows the world lightly dimmed)
+    const menu = dialog && !!document.querySelector('dialog[open]:not(#inventory)');
+    if (!menu || now - menuDrawAt >= MENU_DRAW_MS) {
+      menuDrawAt = menu ? now : -Infinity; // the first frame after opening still draws; full rate on close
+      renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
+    }
   }
   // Peer liveness. rAF stops in hidden tabs, so a timer keeps the channel warm and each side says when it is
   // hidden; a hidden peer is never timed out (the data channel's 'close' still ends the session).
@@ -1642,6 +1648,22 @@ export function mount(transfer = null) {
         dive:diving?.state ?? null, // diving lane hook
         watering:{...copyWatering(world), target:waterAim ? {prompt:waterAim.prompt, click:waterAim.click?.kind ?? null, e:waterAim.e?.kind ?? null} : null},
         signal:world.signal ? cleanSignal(world.signal) : null, antennas:countAntennas(world.decor), signalReadout:lastReadout ? {...lastReadout} : null,
+      };
+    },
+    // Slim, read-only subset of `state` for the HUD pollers (prompts.js, onboarding.js): same field names and meanings,
+    // but arrays are live references (do not mutate) and nothing scans placements or copies the world.
+    get hud() {
+      const hc = castOut(), bag = localBag(), counts = bag.counts(), kind = heldKind();
+      const mode = kind === 'hammer' ? 'build' : kind === 'fishingrod' ? 'fish' : kind === 'hook' ? 'hook' : DECOR_TYPES.includes(kind) ? 'place' : 'none';
+      return {
+        running, disposed, role, networkReady, pointerLocked:isLocked(), lockFallback, tool:mode, heldKind:kind,
+        tiles:world.tiles.length, tileList:world.tiles, decor:world.decor, stock:counts, fish:world.fish, collected:world.collected,
+        inventory:{slots:bag.slots}, selectedIndex:bag.selectedIndex, inventoryOpen:!!survivalUI?.isOpen,
+        ownedTools:['hook', 'hammer', 'fishingrod'].filter(k => counts[k] > 0),
+        physics:{climbing:physics.climbing}, grounded:physics.grounded, swimming:physics.swimming, me:{x:physics.x, y:physics.y, z:physics.z, yaw, pitch},
+        fishWait, hookStage:hook ? (hook.fishing ? 'fishing' : hook.stage) : 'idle', hookCaughtItems:caughtList(hc), hookHealth:hookDurability(bag),
+        build:{hover, affordable:mode === 'build' ? canAfford(bag, FLOOR_COST) : mode === 'place'},
+        pickup:pickTarget ? {id:pickTarget.id, token:pickTarget.token, type:pickTarget.type} : null,
       };
     },
     get content() { return content?.debug ?? {}; }, // content hook: per-module QA helpers
