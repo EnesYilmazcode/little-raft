@@ -979,4 +979,4 @@ Next ideas: merge rounds 0548/0703/0749 into master; look into the warmShaders r
 ## 2026-11-21 · integrator D: loop-ux-202611210848, loop-ux-202611210852
 - Skipped claude/loop-ux-202611210848: its new work is loop-ux-202611210833 (plus loop-ux-0648 commits) with an older raft-master merged in; both are claimed by integrator B, and it conflicts in 16 files.
 - Merged claude/loop-ux-202611210852 with no content change: its only new commit merges loop-ux-202611210748, which raft-master already has; kept raft-master's side.
-- Gate: 1106/1106 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text; 43 draw calls.
+- Gate after merging raft-master: 1138/1138 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text; 166 ms/frame, 37 draw calls.
