@@ -158,7 +158,7 @@ test('items: every recipe, unlock, repair, alias, loot and fuel reference is a r
     const st = ITEMS[id].recipe?.station;
     if (st && st !== 'purifier') assert.ok(STATION_IDS.includes(st) && ITEMS[st].recipe, `station ${st}`);
   }
-  for (const t of TOOL_IDS) for (const k of Object.keys(repairCost(t))) assert.ok(valid(k), `repair ${t} ${k}`);
+  for (const t of TOOL_IDS) for (const k of Object.keys(repairCost(t) ?? {} /* [canteen] no repair cost */)) assert.ok(valid(k), `repair ${t} ${k}`);
   for (const [a, k] of Object.entries(LEGACY_ALIASES)) { assert.ok(valid(k), `alias ${a}`); assert.ok(!valid(a), `alias shadows item ${a}`); }
   for (const e of BARREL_LOOT) { assert.ok(valid(e.kind)); assert.ok(e.min >= 1 && e.max >= e.min && e.weight > 0); }
   for (const k of Object.keys(FUEL_VALUE)) assert.ok(valid(k) && FUEL_VALUE[k] > 0);
