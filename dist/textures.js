@@ -138,29 +138,55 @@ export function getAtlas(T, data = null) {
   return cached;
 }
 
-// Off-main-thread build: `await getAtlasAsync(T)` builds in a module worker when available (main thread
-// only receives two transferred 4 MB buffers), else inline. Concurrent calls share one build.
-export function getAtlasAsync(T) {
+// Off-main-thread build: `await getAtlasAsync(T)` splits the generators over up to `workers` module
+// workers (default: cores - 1, max 4); each returns finished CELL x CELL buffers (transferred, no copy)
+// and the main thread only blits 11 cells (~2 ms). Falls back to an inline build if workers fail.
+// Concurrent calls share one build; a getAtlas(T) call meanwhile builds inline and wins.
+export function getAtlasAsync(T, { workers } = {}) {
   if (cached) return Promise.resolve(cached);
   if (pending) return pending;
   if (typeof Worker === 'undefined') return Promise.resolve(getAtlas(T));
+  const names = Object.keys(GENERATORS);
+  const k = Math.max(1, Math.min(names.length, workers ?? Math.min(4, (globalThis.navigator?.hardwareConcurrency ?? 2) - 1)));
   pending = new Promise(res => {
-    let w = null;
-    const done = d => { w?.terminate(); w = null; pending = null; res(cached ?? getAtlas(T, d)); };
-    const fail = e => { console.warn('texture worker failed, building inline', e); done(null); };
+    const t0 = performance.now(), ws = [], parts = [];
+    let left = k, over = false;
+    const finish = d => { if (over) return; over = true; ws.forEach(w => w.terminate()); pending = null; res(cached ?? getAtlas(T, d)); };
+    const fail = e => { if (!over) console.warn('texture worker failed, building inline', e); finish(null); };
+    const assemble = () => {
+      if (names.length > GRID * GRID) throw new Error('texture atlas full');
+      const { albedo, normal } = emptyAtlas(), cells = {}, byName = new Map(parts.flat().map(c => [c.name, c]));
+      names.forEach((name, index) => {
+        const c = byName.get(name), [ox, oy] = cellOrigin(index);
+        for (let y = 0; y < CELL; y++) {
+          const src = y * CELL * 4, dst = ((oy + y) * ATLAS + ox) * 4;
+          albedo.set(c.albedo.subarray(src, src + CELL * 4), dst); normal.set(c.normal.subarray(src, src + CELL * 4), dst);
+        }
+        cells[name] = cellInfo(index, c.mean);
+      });
+      return { albedo, normal, cells, size: ATLAS, ms: Math.round(performance.now() - t0) };
+    };
     try {
-      w = new Worker(import.meta.url, { type: 'module' });
-      w.onmessage = e => (e.data?.albedo instanceof Uint8Array ? done(e.data) : fail(e.data?.error ?? 'bad message'));
-      w.onerror = e => { e.preventDefault?.(); fail(e.message ?? e); };
-      w.onmessageerror = fail;
-      w.postMessage('build');
+      for (let i = 0; i < k; i++) {
+        const w = new Worker(import.meta.url, { type: 'module' }); ws.push(w);
+        w.onmessage = e => {
+          if (!Array.isArray(e.data)) return fail(e.data?.error ?? 'bad message');
+          parts.push(e.data);
+          if (--left === 0) { try { finish(assemble()); } catch (err) { fail(err); } }
+        };
+        w.onerror = e => { e.preventDefault?.(); fail(e.message ?? e); };
+        w.onmessageerror = fail;
+        w.postMessage({ names: names.filter((_, j) => j % k === i) });
+      }
     } catch (e) { fail(e); }
   });
   return pending;
 }
 if (typeof WorkerGlobalScope !== 'undefined' && globalThis instanceof WorkerGlobalScope) {
-  globalThis.onmessage = () => {
-    try { const d = buildAtlasData(); globalThis.postMessage(d, [d.albedo.buffer, d.normal.buffer]); }
-    catch (e) { globalThis.postMessage({ error: String(e?.stack ?? e) }); }
+  globalThis.onmessage = e => {
+    try {
+      const out = buildCells(e.data?.names ?? Object.keys(GENERATORS));
+      globalThis.postMessage(out, out.flatMap(c => [c.albedo.buffer, c.normal.buffer]));
+    } catch (err) { globalThis.postMessage({ error: String(err?.stack ?? err) }); }
   };
 }
