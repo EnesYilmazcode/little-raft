@@ -21,7 +21,7 @@
 // Notes: no DOM timers. Voices clean themselves up on the sources' 'ended' event.
 
 export const EVENTS = Object.freeze(['throw', 'splash', 'collect', 'build', 'place', 'craft', 'repair', 'plant', 'water', 'jump',
-  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny', 'detect', 'chime']);
+  'land', 'step', 'swim', 'reel', 'catch', 'bite', 'ui', 'open', 'close', 'deny', 'detect', 'chime', 'thunder']);
 // friendlier names other modules may use; play() resolves them to a recipe above
 export const ALIASES = Object.freeze({ pickup: 'collect', cast: 'throw', hook: 'throw', pour: 'water', click: 'ui' });
 export const BUSES = Object.freeze(['master', 'effects', 'ambience', 'music']);
@@ -30,7 +30,7 @@ const OUTPUT_SCALE = 0.5;       // keeps full volume comfortable
 const MAX_VOICES = 24;
 const MIN_GAP = { throw: 0.08, splash: 0.06, collect: 0.04, build: 0.05, place: 0.06, plant: 0.12, water: 0.25, craft: 0.1, repair: 0.12, jump: 0.1, land: 0.12,
   step: 0.16, swim: 0.3, reel: 0.4, catch: 0.06, bite: 0.2, ui: 0.03, open: 0.08, close: 0.08, deny: 0.15,
-  detect: 0.05, chime: 0.5 };
+  detect: 0.05, chime: 0.5, thunder: 1.5 };
 const SILENT = 0.0001;
 // calm D-major-ish pad: Dadd9, Bm7, Gmaj7, A6 (low register so it sits under the sea)
 const CHORDS = [[146.83, 220, 329.63], [123.47, 185, 293.66], [98, 196, 246.94], [110, 164.81, 277.18]];
@@ -404,6 +404,14 @@ export function createOceanAudio({ context = null, volume = 0.5, ambience = true
     deny(v, t, s) {
       tone(v, t, 'triangle', 330, 0.07 * s, 0.003, 0.08, 300);
       tone(v, t + 0.09, 'triangle', 247, 0.07 * s, 0.003, 0.12, 220);
+    },
+    // [storm] distant friendly thunder: a soft crack, then a low rolling rumble (white noise, each burst <= 1.4 s)
+    thunder(v, t, s) {
+      v.bus = filter(v, 'lowpass', 300 + 900 * s, 0.6, v.bus);
+      burst(v, t, 'bandpass', 700, 0.8, 0.12 * s * s, 0.004, 0.25);
+      const a = burst(v, t + 0.03, 'lowpass', 160, 0.9, 0.5 * s, 0.08, 1.3);
+      a.frequency.exponentialRampToValueAtTime(70, t + 1.4);
+      burst(v, t + 0.55, 'lowpass', 110, 0.9, 0.35 * s, 0.25, 1.15);
     },
     // ambience one-shots (played from tick on the ambience bus)
     lap(v, t, s) {
