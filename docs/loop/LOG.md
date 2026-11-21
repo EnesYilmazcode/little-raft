@@ -1275,3 +1275,10 @@ Open:
 - The anchor has no held model.
 - The sailing spec and engine docs still mention the anchor post.
 Next gaps: seagull crop raids + scarecrow (after the crops lane lands), swimming back to a drifting raft instead of the 50 m teleport, a hook range and reel speed check against Raft, a Medium Crop Plot, backpack +10 slots, constant wind direction.
+
+## 2026-11-21 · loop-fidelity-202611210946 (raft fidelity, round 4, in progress)
+Base: raft-master 473da9a, merged with loop-fidelity-202611210900 (d2edaa06). That merge carries round 3, which integrator D skipped by mistake (it is not just 0821): fixed islands, crafted anchor, six tabs, Raft barrel loot, rod wear and Tinker's Desk 14+2. For bed respawn and drowning, master's versions were kept.
+Claimed for round 4 (research: docs/loop/research/fidelity-r4-gaps.md):
+- swimming back to a drifting raft (no 50 m snap), plus constant wind
+- the Receiver chain (circuit board, vine goo, battery power), leading to an original beacon-mast landmark
+- a Medium Crop Plot with watermelon and pineapple
