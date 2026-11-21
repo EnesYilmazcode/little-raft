@@ -75,3 +75,13 @@ test('HUD-5: keys inside guide sentences are small inline-block caps, not the la
   assert.ok(css.indexOf('.guide span kbd{') > css.indexOf('.guide kbd{flex:0 0 74px'), 'declared after the cap style');
   assert.match(gameSrc, /<span><b>Walk<\/b>, hold <kbd>Shift<\/kbd>/, 'guide still injects inline kbds inside spans');
 });
+
+// ---------------------------------------------------------------- HUD-6 / UX-7 title brand
+
+test('HUD-6/UX-7: the header sits above the welcome overlay so the brand is readable', () => {
+  const z = (css, sel) => { const m = [...css.matchAll(new RegExp(`(?:^|\\})\\s*${sel}\\{([^}]*)\\}`, 'gm'))].map(x => x[1].match(/z-index:(\d+)/)?.[1]).filter(Boolean); return +m.at(-1); };
+  const style = src('style.css'), gfx = src('graphics.css');
+  const headerZ = z(gfx, 'header') || z(style, 'header'), overlayZ = z(style, '\\.overlay');
+  assert.equal(overlayZ, 5);
+  assert.ok(headerZ > overlayZ, `header z ${headerZ} > overlay z ${overlayZ}`);
+});
