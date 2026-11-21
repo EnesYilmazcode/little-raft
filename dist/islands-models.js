@@ -82,6 +82,24 @@ function domeGeometry(T) {
   });
 }
 
+// Append a back-facing copy (reversed winding, flipped normals), so a thin sheet renders from both sides with a
+// FrontSide material: same pixels as DoubleSide, without its own shader program.
+function twoSided(T, g) {
+  const n = g.attributes.position.count, idx = g.index.array, ni = idx.length;
+  const out = new T.BufferGeometry();
+  for (const k of ['position', 'normal', 'color']) {
+    const a = g.attributes[k].array, b = new Float32Array(a.length * 2);
+    b.set(a); b.set(a, a.length);
+    if (k === 'normal') for (let i = a.length; i < b.length; i++) b[i] = -b[i];
+    out.setAttribute(k, new T.BufferAttribute(b, 3));
+  }
+  const ix = [];
+  for (let i = 0; i < ni; i++) ix.push(idx[i]);
+  for (let i = 0; i < ni; i += 3) ix.push(idx[i] + n, idx[i + 2] + n, idx[i + 1] + n);
+  out.setIndex(ix); g.dispose();
+  return out;
+}
+
 // Palm: curved segmented trunk + crown of drooping fronds + coconuts, one geometry in one frame.
 function palmGeometry(T) {
   const H = 3.5, BEND = 0.85, SEG = 16, RAD = 7, parts = [];
@@ -116,7 +134,7 @@ function palmGeometry(T) {
     for (let k = 0; k < N; k++) { const a = k * 3; idx.push(a, a + 3, a + 1, a + 1, a + 3, a + 4, a + 1, a + 4, a + 2, a + 2, a + 4, a + 5); }
     const g = new T.BufferGeometry();
     g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new T.Float32BufferAttribute(cols, 3));
-    g.setIndex(idx); g.computeVertexNormals(); return g;
+    g.setIndex(idx); g.computeVertexNormals(); return twoSided(T, g);
   };
   const F = 9;
   for (let i = 0; i < F; i++) {
@@ -228,9 +246,11 @@ export function createIslandModels(T, ocean) {
   };
   const mats = {
     dome: new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 }),
-    palm: new T.MeshStandardMaterial({ vertexColors: true, roughness: .85, side: T.DoubleSide }),
-    bush: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9, flatShading: true }),
-    rock: new T.MeshStandardMaterial({ vertexColors: true, roughness: .95, flatShading: true }),
+    // bush and rock are built from non-indexed polyhedra, so their vertex normals are already face normals (flat look)
+    // and palm fronds carry their own back faces: all five share one lit program
+    palm: new T.MeshStandardMaterial({ vertexColors: true, roughness: .85 }),
+    bush: new T.MeshStandardMaterial({ vertexColors: true, roughness: .9 }),
+    rock: new T.MeshStandardMaterial({ vertexColors: true, roughness: .95 }),
     sand: new T.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),
     lagoon: new T.ShaderMaterial({ uniforms: lagoonUniforms, vertexShader: vert, fragmentShader: LAGOON_FRAG, transparent: true, depthWrite: false, fog: false, lights: false,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
