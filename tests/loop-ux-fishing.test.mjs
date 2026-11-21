@@ -74,3 +74,14 @@ test('D1: game.js drops the rod hold on blur/clearInput, lock loss (not drag-loo
   const blur = gameSrc.match(/on\(window, 'blur', \(\) => \{([^\n]*)/)[1];
   assert.match(blur, /clearInput\(\)/);
 });
+
+test('D2: E runs the water action (purifier / planter) before the grill, matching the prompt order', () => {
+  const fnBody = (name) => { const i = gameSrc.indexOf(`function ${name}(`); assert.ok(i >= 0, name); return gameSrc.slice(i, gameSrc.indexOf('\n  }\n', i)); };
+  const ctx = fnBody('updateContext'), act = fnBody('interact');
+  // prompt: pick-up, water, content, grill
+  const order = (src, marks) => marks.map((m) => { const i = src.indexOf(m); assert.ok(i >= 0, m); return i; });
+  const p = order(ctx, ['pickTarget)', 'waterAim?.prompt', 'content?.prompt', 'fc?.prompt']);
+  assert.deepEqual([...p].sort((a, b) => a - b), p, 'updateContext prompt order');
+  const a = order(act, ['pickupFrom(currentAim());\n', 'wateringTarget(currentAim())', 'content?.interact', 'fc?.interact()', 'prog?.interact']);
+  assert.deepEqual([...a].sort((x, y) => x - y), a, 'interact() must try water right after pick-up, before content and the grill');
+});

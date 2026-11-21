@@ -981,10 +981,10 @@ export function mount(transfer = null) {
       action({kind:'collect', id:target.id, token:target.token});
       return;
     }
+    const w = wateringTarget(currentAim()); if (w?.e) { if (guestWaiting()) { notice('Wait for your raft to connect'); return; } action(w.e); swing = .6; return; } // same order as the updateContext prompt: water action beats content / grill
     if (content?.interact(currentAim())) return; // content hook: chest, research table, island nodes
     if (fc?.interact()) return; // [fishing-cooking] grill
     if (prog?.interact(currentAim())) return; // [progression-hook] smelter / grill / research table in reach
-    const w = wateringTarget(currentAim()); if (w?.e) { if (guestWaiting()) { notice('Wait for your raft to connect'); return; } action(w.e); swing = .6; return; }
     openInventory();
   }
 
