@@ -79,7 +79,7 @@ test('first-run hints go throw -> bag -> slots and are stored once', () => {
   assert.equal(H.nextHint(done, {heldKind:'hook', hasLoot:false}), null);
   assert.equal(H.nextHint(done, {heldKind:'hook', hasLoot:true})?.id, 'bag');
   done.add('bag');
-  assert.equal(H.nextHint(done, {})?.id, 'slots');
+  assert.equal(H.nextHint(done, {items:2})?.id, 'slots');
   done.add('slots'); H.saveHints(s, done);
   assert.equal(H.nextHint(H.loadHints(s), {heldKind:'hook', hasLoot:true}), null);
   assert.equal(H.loadHints(memoryStorage(true)).size, 0);

@@ -57,7 +57,7 @@ import { pickupFeed } from './pickup-feed.js?build=v3-survival-ae77fa84ac2b';
 import { createGhosts, wrapRot, wheelDelta, ROT_STEP, FINE_STEP } from './placement.js?build=v3-survival-ae77fa84ac2b'; // ghost preview + decor rotation (tile grid stays in build-rules.js)
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { iconURL, onIconReady, setIconRenderer } from './item-icons.js?build=v3-survival-ae77fa84ac2b';
-import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints, feedPlacement, hintsFromState } from './hud.js?build=v3-survival-ae77fa84ac2b'; // loop-ux: saved sound toggle, drag-look sensitivity, first-run hints
+import { loadSoundPref, saveSoundPref, dragLookScale, loadHints, saveHints, nextHint, resetHints, feedPlacement, hintsFromState, hintCovered } from './hud.js?build=v3-survival-ae77fa84ac2b'; // loop-ux: saved sound toggle, drag-look sensitivity, first-run hints
 import { lockFailureVerdict, shouldRequestLock, shouldRelockAfterClose, escReleasePlan, dragLook, lockedAtBlur as wasLockedAtBlur, refocusAction, escapeIsForBuild } from './lock-rules.js?build=v3-survival-ae77fa84ac2b';
 import { keyDecision, createLookFilter, splitSteps, wheelForGame } from './input-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createShark, cleanShark, cleanTileHp, lootable, SHARK, SHARK_LOOT } from './shark.js?build=v3-survival-ae77fa84ac2b'; // shark lane (dist/shark.js)
@@ -752,6 +752,14 @@ export function mount(transfer = null) {
     if (html === contextCache) return; contextCache = html;
     const el = $('#contextPrompt'); if (!el) return; el.innerHTML = html; el.hidden = !html;
   }
+  let coverAt = -1e9, cover = null; // what the checklist / crosshair prompt teach right now (sampled at 4 Hz)
+  function hintCover() {
+    const now = performance.now(); if (now - coverAt < 250) return cover; coverAt = now;
+    let steps = [], prompts = [];
+    try { steps = window.raftOnboarding?.state()?.visible ?? []; } catch {}
+    try { prompts = (window.raftPrompts?.current() ?? []).map(p => p.label); } catch {}
+    return (cover = {steps, prompts});
+  }
   function hintDone(id) { if (hintsDone.has(id)) return; hintsDone.add(id); saveHints(window.localStorage, hintsDone); }
   // A lane inside the open bag or pause rail that the feed docks into, so its rows never cover panel controls.
   function feedLane(place) {
@@ -767,7 +775,8 @@ export function mount(transfer = null) {
     if (survivalUI?.isOpen) hintDone('bag');
     const bag = localBag(), has = k => { try { return bag.count(k) > 0; } catch { return false; } };
     for (const id of hintsFromState({hasRope:has('rope'), hasHammer:has('hammer'), built:(world?.tiles?.length ?? 0) > START_TILES})) hintDone(id);
-    const hint = running && !dialog && !guestWaiting() ? nextHint(hintsDone, {heldKind:heldKind(), castOut:!!hook, hasLoot:hintsDone.has('loot'), hasLeaf:has('leaf')}) : null;
+    let hint = running && !dialog && !guestWaiting() ? nextHint(hintsDone, {heldKind:heldKind(), castOut:!!hook, hasLoot:hintsDone.has('loot'), hasLeaf:has('leaf'), items:bag.slots.reduce((n, x) => n + (x ? 1 : 0), 0)}) : null;
+    if (hint && hintCovered(hint, hintCover())) hint = null; // the checklist or the crosshair prompt already says it
     const place = feedPlacement({inventoryOpen:!!survivalUI?.isOpen, optionsOpen:!!$('#options')?.open, dialog:!!dialog});
     const sig = (hint?.id ?? '') + '|' + place;
     if (sig === noticeCache) return; noticeCache = sig;
@@ -2078,6 +2087,8 @@ export function mount(transfer = null) {
   const hudAffords = () => { const bag = localBag(); for (const k in FLOOR_COST) if (bag.count(k) < FLOOR_COST[k]) return false; return true; };
   const hudPhysics = {get climbing() { return !!physics.climbing; }};
   const hudMe = {get x() { return physics.x; }, get y() { return physics.y; }, get z() { return physics.z; }, get yaw() { return yaw; }, get pitch() { return pitch; }};
+  const hudPieces = {get piece() { return building?.piece ?? null; }, get chip() { return building?.chip ?? ''; }, get ready() { return !!building?.ready; }, get aiming() { return !!building?.aiming; }, get removing() { return !!building?.removing; },
+    get name() { const d = PIECES[building?.piece]; return d ? d.name : ''; }, get cost() { return PIECES[building?.piece]?.cost ?? null; }}; // building-pieces lane hook: prompts.js
   const hudBuild = {get hover() { return hover || null; }, get affordable() { const m = hudModeOf(heldKind()); return m === 'build' ? hudAffords() : m === 'place'; }};
   const hudView = Object.freeze({
     get running() { return running; }, get disposed() { return disposed; }, get role() { return role; }, get networkReady() { return networkReady; },
@@ -2088,8 +2099,6 @@ export function mount(transfer = null) {
     get hookHealth() { return hookDurability(localBag()); },
     get pickup() {
       if (!pickTarget) return null;
-  const hudPieces = {get piece() { return building?.piece ?? null; }, get chip() { return building?.chip ?? ''; }, get ready() { return !!building?.ready; }, get aiming() { return !!building?.aiming; }, get removing() { return !!building?.removing; },
-    get name() { const d = PIECES[building?.piece]; return d ? d.name : ''; }, get cost() { return PIECES[building?.piece]?.cost ?? null; }}; // building-pieces lane hook: prompts.js
       if (pickTarget !== hudPickSrc || pickTarget.type !== hudPickType) { hudPickSrc = pickTarget; hudPickType = pickTarget.type; hudPick = Object.freeze({type:hudPickType}); }
       return hudPick;
     },

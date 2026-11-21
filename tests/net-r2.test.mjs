@@ -133,9 +133,9 @@ test('NET-5: New game resets the first-run hint chain and its stored copy', () =
   const done = new Set(['throw', 'loot', 'bag', 'slots']); H.saveHints(storage, done);
   assert.equal(H.nextHint(done, {heldKind:'hook', castOut:false}), null);
   assert.equal(H.resetHints(storage, done), true);
-  assert.equal(done.size, 0);
-  assert.equal(H.loadHints(storage).size, 0);
-  assert.equal(H.nextHint(done, {heldKind:'hook', castOut:false})?.id, 'throw');
+  assert.deepEqual([...done].sort(), ['bag', 'slots', 'throw']); // learned control tips survive (r5: no re-teaching on a new raft)
+  assert.equal(H.loadHints(storage).size, 3);
+  assert.equal(H.nextHint(done, {heldKind:'hook', hasLeaf:true})?.id, 'rope');
   const g = src('game.js'), body = g.slice(g.indexOf('function newGame()'), g.indexOf('const hasSave'));
   assert.match(body, /resetHints\(window\.localStorage, hintsDone\)/);
 });

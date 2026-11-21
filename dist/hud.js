@@ -36,16 +36,26 @@ export function dragLookScale(base, sensitivity) {
 
 // First-run hints, shown one at a time and only until the player has done each thing once.
 export const HINT_KEY = 'little-raft-hints';
+// step: the onboarding checklist step teaching the same thing; verb: matches a crosshair prompt label that already says it.
+// skip: a hint whose condition does not hold yet lets later ones through (instead of holding the chain).
 export const HINTS = Object.freeze([
-  {id:'throw', text:'Hold click to charge, release to throw at floating supplies', when:c => c.heldKind === 'hook' && !c.castOut},
-  {id:'bag', text:'Press Tab or E to open your bag and craft', when:c => c.hasLoot},
-  {id:'slots', text:'Press 1–9 or 0 to choose what you hold', when:() => true},
+  {id:'throw', text:'Hold click to charge, release to throw at floating supplies', when:c => c.heldKind === 'hook' && !c.castOut, step:'throw', verb:/^throw\b/i},
+  {id:'bag', text:'Press Tab or E to open your bag and craft', when:c => c.hasLoot, step:'bag'},
+  {id:'slots', text:'Press 1–9 or 0 to choose what you hold', when:c => (c.items ?? 0) >= 2, skip:true}, // one item: nothing to choose
   // Loot -> rope -> hammer -> first floor. Each is also marked done from bag/world state (hintsFromState),
   // so a player who already has rope or a hammer, or has built, never gets stuck on an earlier step.
-  {id:'rope', text:'Open your bag (Tab) → Materials → craft Rope from palm leaves', when:c => c.hasLeaf},
-  {id:'hammer', text:'Craft a Hammer in Tools: 4 wood, 2 rope', when:() => true},
-  {id:'build', text:'With the Hammer, click the water beside the raft to add floor', when:c => c.heldKind === 'hammer'},
+  {id:'rope', text:'Open your bag (Tab) → Materials → craft Rope from palm leaves', when:c => c.hasLeaf, step:'rope'},
+  {id:'hammer', text:'Craft a Hammer in Tools: 4 wood, 2 rope', when:() => true, step:'hammer'},
+  {id:'build', text:'With the Hammer, click the water beside the raft to add floor', when:c => c.heldKind === 'hammer', step:'floor', verb:/^build\b/i},
 ]);
+// Control tips are learned once per player, not per raft: New game keeps them.
+export const LEARNED = Object.freeze(['throw', 'bag', 'slots']);
+// Is hint h already being taught right now? cover = {steps: visible checklist step ids, prompts: crosshair prompt labels}.
+export function hintCovered(h, cover) {
+  if (!h || !cover) return false;
+  if (h.step && Array.isArray(cover.steps) && cover.steps.includes(h.step)) return true;
+  return !!h.verb && Array.isArray(cover.prompts) && cover.prompts.some(l => typeof l === 'string' && h.verb.test(l));
+}
 // Hint ids already satisfied by what the player owns or has built (c: {hasRope, hasHammer, built}).
 export function hintsFromState(c) {
   const out = [];
@@ -61,11 +71,16 @@ export function saveHints(storage, done) {
   try { storage?.setItem(HINT_KEY, JSON.stringify([...done])); return true; } catch { return false; }
 }
 // New game starts a new save, so the hint chain starts over too (in place: the engine keeps one Set).
-export function resetHints(storage, done) { done.clear(); return saveHints(storage, done); }
-// The first unfinished hint, if its condition holds now. Later hints wait for earlier ones.
+// Learned control tips (LEARNED) survive: the player already knows how to throw or open the bag.
+export function resetHints(storage, done) { for (const id of [...done]) if (!LEARNED.includes(id)) done.delete(id); return saveHints(storage, done); }
+// The first unfinished hint, if its condition holds now. Later hints wait for earlier ones (except past a skip hint).
 export function nextHint(done, ctx) {
-  const h = HINTS.find(x => !done.has(x.id));
-  return h && h.when(ctx || {}) ? h : null;
+  for (const h of HINTS) {
+    if (done.has(h.id)) continue;
+    if (h.when(ctx || {})) return h;
+    if (!h.skip) return null;
+  }
+  return null;
 }
 
 // Where the bottom-left feed lives while a panel is open. The bag and the pause rail each have a lane
