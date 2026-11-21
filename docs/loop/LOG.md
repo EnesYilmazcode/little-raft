@@ -1071,3 +1071,8 @@ Next gaps to consider:
 - blueprints gating the Receiver, Wheel and Motor at the Research Table
 - crafting categories: Food & Water, Navigation, Weapons, Decorations
 - bag 20 + Backpack
+- **Overlap note for the integrator** (found after pushing). Two other fidelity branches built the same things at the same time:
+  - `loop-fidelity-0900` also made stationary islands, with the first island at 60-80 m and a crafted anchor.
+  - `loop-fidelity-0910` also added Q drop bundles and hook breakage.
+  - Merge only one islands version and one drop version. This branch's own additions are the constant wind with the current following it, the sail curve, the engine rules (steering wheel, 1/1.25, 100 tiles per motor), debris drifting along the current, and the rod/metal-hook numbers.
+  - If 0900's islands are taken, port only its `travelOf` → `currentVector` change from here.
