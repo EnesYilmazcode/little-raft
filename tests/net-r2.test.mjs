@@ -52,3 +52,30 @@ test('Title save status: inline on the title card, never a popup', () => {
   assert.doesNotMatch(rule, /position:\s*(fixed|absolute)/);
   assert.match(src('game.js'), /titleSaveNote\(\{available:saveAvailable, blocked:saveBlocked, storedRev:storedRev\(\), saveRev\}\)/);
 });
+
+test('NET-2: restoreGlobal puts back what a failed mount replaced, never over a newer owner', () => {
+  const oldShell = {hold(){}}, failed = {hold(){}}, newer = {hold(){}};
+  const w = {raftShell:oldShell};
+  const prev = Object.getOwnPropertyDescriptor(w, 'raftShell');
+  w.raftShell = failed; delete w.raftShell; // the failed mount's dispose() deletes its own shellApi
+  assert.equal(S.restoreGlobal(w, 'raftShell', prev, failed), true);
+  assert.equal(w.raftShell, oldShell);
+  w.raftShell = failed;
+  assert.equal(S.restoreGlobal(w, 'raftShell', prev, failed), true);
+  assert.equal(w.raftShell, oldShell);
+  w.raftShell = newer;
+  assert.equal(S.restoreGlobal(w, 'raftShell', prev, failed), false);
+  assert.equal(w.raftShell, newer);
+  const fresh = {raftEscape:() => {}};
+  assert.equal(S.restoreGlobal(fresh, 'raftEscape', undefined, fresh.raftEscape), true);
+  assert.equal('raftEscape' in fresh, false);
+});
+
+test('NET-2: the failed-mount path and settings.destroy() restore raftShell and raftEscape', () => {
+  const g = src('game.js'), st = src('settings.js');
+  const catchBlock = g.slice(g.indexOf('} catch (e) {\n    console.error(e); dispose();'));
+  assert.match(catchBlock, /restoreGlobal\(window, 'raftShell', previousShell, shellApi\)/);
+  assert.match(catchBlock, /restoreGlobal\(window, 'raftEscape', previousEscape/);
+  assert.ok(g.indexOf("previousShell = Object.getOwnPropertyDescriptor(window, 'raftShell')") < g.indexOf('window.raftShell = shellApi'));
+  assert.match(st, /destroy\(\) \{[^]*restoreGlobal\(window, 'raftEscape', previousEscape, raftEscape\)/);
+});

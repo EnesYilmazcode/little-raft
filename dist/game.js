@@ -21,7 +21,7 @@ import { createFarmView } from './farming-view.js?build=v3-survival-ae77fa84ac2b
 import { getModel } from './models.js?build=v3-survival-ae77fa84ac2b';
 import { floorBlock, GUEST_REACH_SLACK, BLOCK_TEXT } from './build-rules.js?build=v3-survival-ae77fa84ac2b';
 import { lootFits, pickNetItem, createGuestHeld, cleanHeldTokens, decorBlockers, repairHookSlot } from './coop-rules.js?build=v3-survival-ae77fa84ac2b';
-import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
+import { PROTOCOL, HEARTBEAT_MS, peerStale, wallTick, saveRevision, planSave, storageBlocks, adoptOnStart, newGameBaseRev, titleSaveNote, restoreGlobal } from './session-rules.js?build=v3-survival-ae77fa84ac2b';
 export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createOceanAudio } from './audio.js?build=v3-survival-ae77fa84ac2b';
@@ -1315,6 +1315,7 @@ export function mount(transfer = null) {
     hold:guard(() => { escHeld = true; relockOnEscUp = false; }),
     released:guard(() => escReleased()),
   };
+  const previousShell = Object.getOwnPropertyDescriptor(window, 'raftShell'), previousEscape = Object.getOwnPropertyDescriptor(window, 'raftEscape');
   window.raftShell = shellApi;
   window.raftDebug = debugApi;
 
@@ -1387,6 +1388,8 @@ export function mount(transfer = null) {
   } catch (e) {
     console.error(e); dispose();
     try { if (previousDebug && !Object.getOwnPropertyDescriptor(window, 'raftDebug')) Object.defineProperty(window, 'raftDebug', previousDebug); } catch {}
+    restoreGlobal(window, 'raftShell', previousShell, shellApi); // the old engine keeps its desktop shell hooks
+    if (previousEscape && window.raftEscape !== previousEscape.value) restoreGlobal(window, 'raftEscape', previousEscape, window.raftEscape); // and its Escape
     for (const [el, prop, previous, next] of propertyHandlers) if (el[prop] === next) el[prop] = previous;
     const od = document.getElementById('options'); if (od && previousSettingsOwner !== undefined) od.dataset.owner = previousSettingsOwner; // hand Escape back to the old engine's settings
     setText('#loadError', 'The 3D ocean could not start. Try a current Chrome, Edge, or Safari browser with WebGL enabled.');

@@ -31,6 +31,14 @@ export function planSave(storedRaw, baseRev) {
   return {ok:true, stored, rev:Math.max(stored, base) + 1};
 }
 
+// Puts back the property `key` of `target` (a descriptor from before we replaced it, or undefined), unless
+// something newer than `mine` has taken it since. Used when a hot-swap mount fails or a settings instance dies.
+export function restoreGlobal(target, key, previous, mine) {
+  const cur = Object.getOwnPropertyDescriptor(target, key);
+  if (cur && !('value' in cur && cur.value === mine)) return false;
+  try { if (previous) Object.defineProperty(target, key, previous); else delete target[key]; return true; } catch { return false; }
+}
+
 // Whether another tab's write (storage event) should stop this tab's autosave. Only a tab that is playing
 // has progress to protect; a tab on the title adopts the newer save when it starts (adoptOnStart).
 export function storageBlocks({running, role, newRaw, baseRev}) {
