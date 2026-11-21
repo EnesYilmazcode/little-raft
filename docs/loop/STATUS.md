@@ -1,6 +1,6 @@
 # Integration status
 
-Updated: 2026-11-21 10:05 UTC, round 6 (integrator A). PR #5 merged into main at c3a29df (raft-master fd3724d).
+Updated: 2026-11-21 10:10 UTC, round 6. PR #5 merged into main at c3a29df (raft-master fd3724d, gated and merged by the :00 integrator).
 Gate: 1398/1398 tests, no page errors, hook-only spawn, Esc from inventory keeps the lock with no pause, no centred text.
 Perf vs main 912d941 (median of 3): 99-103 vs 185-197 ms, 45-49 vs 46-52 draw calls.
 Open review nits (not blocking): display items all cast shadows; zipline re-uploads rope matrices with no lines; photoframe:set has no reach check; HELD lacks camera and new placeables; shelves/stands have no pickup hook yet.

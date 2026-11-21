@@ -1213,3 +1213,12 @@ No regressions. Intended differences:
 - Not bugs: the pause-menu double highlight is a headless stale-cursor hover. esc-relock.py is out of date (uses #newGame and #crewButton).
 - Gate at fd3724d: 1402/1402, no errors, hook-only spawn, Esc OK, perf 126/96 vs 255/159 ms, draws 51/45 vs 50/50. A merged it into main (c3a29df); PR #6 open.
 
+
+## 2026-11-21 · :00 integrator round (08:35-10:10 UTC)
+- Merged into raft-master: raft-tech, raft-integration, loop-perf-0648/-0823, loop-ux-0742 (partial: new-game grill reset, cup rename, title sim freeze, icon-models), loop-ux-0748, loop-visuals-0748, loop-features-0831/-0847-r2/-0849, loop-perf-0847.
+- Skipped, need a worker rebase: loop-perf-0708, loop-perf-0720, loop-ux-0743, loop-ux-0848, loop-visuals-0843, loop-fidelity-0747.
+- PR #2 review (2 reviewers, comments posted). Must-fix: crafting threw "justMade is not defined" (undeclared assignment brought back by a merge); fixed in survival-ui.js and checked with a craft probe.
+- Fixed: the bag's Requires list showed only one ingredient because an empty 88px feed lane squeezed the detail pane.
+- Not changed: reviewer asked to centre the crosshair prompt; the gate requires no centred text, so it stays beside the crosshair.
+- Gate at fd3724d: 1402/1402, no page errors, hook-only spawn, Esc from bag keeps lock and no pause, perf 138 vs 141 ms/frame, 49 vs 51 draw calls. Merged PR #5 into main (c3a29df). PR #6 open.
+- Open nits: hookableItems/updateNotices allocate per frame (game.js hook update, updateNotices); tooltip on the detail icon covers the Requires rows.
