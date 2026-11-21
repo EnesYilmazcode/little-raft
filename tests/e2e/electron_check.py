@@ -716,7 +716,8 @@ def main():
     if a.keep: run.metrics['work'] = str(run.work)
     report.update({'pass': not failures, 'failures': failures, 'metrics': run.metrics})
     print(json.dumps(report, default=str))
-    sys.exit(2 if infra else 1 if failures else 0)
+    # Game failures already found outrank a later infra error, so the gate still sees them.
+    sys.exit(1 if any(f['id'] != 'infra' for f in failures) else 2 if infra else 0)
 
 
 if __name__ == '__main__':
