@@ -136,7 +136,7 @@ export function cushionModel(T) {
   }
   const P = [part(T, geo, (f, x, y) => (y > 0.2 ? clothLt : cloth), [0, 0.075, 0, 0, 0, 0, 0.29, 0.075, 0.29])];
   for (const [cx, cz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-    P.push(part(T, new T.ConeGeometry(0.035, 0.09, 5), tuft, [cx * 0.3, 0.075, cz * 0.3, cz * 1.2, 0, -cx * 1.2]));
+    P.push(part(T, new T.SphereGeometry(0.045, 6, 4), tuft, [cx * 0.28, 0.08, cz * 0.28, 0, 0, 0, 1, 0.7, 1])); // soft puff, not a spike
   }
   P.push(part(T, new T.CylinderGeometry(0.035, 0.035, 0.03, 10), button, [0, 0.148, 0]));
   return group(T, decorMesh(T, merge(T, P)), 'decor_cushion');

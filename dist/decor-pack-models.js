@@ -144,7 +144,11 @@ export function buildDecorPack(T) {
         box(.04, .04, .46, 0x8a6a45, x, .96, z, 0, R, 0);
         box(.03, .2, .03, 0xd8c89a, sgn * .72, 1.06, sgn * .72);
       }
-      { const s = .12, lx = -half + 2 * half * s, [x, , z] = at(lx, 0, 0); box(.4, .1, .24, 0x7fae5a, x, .95 - .42 * Math.sin(Math.PI * s) + .05, z, 0, R + Math.PI / 2, 0); }
+      { // pillow lies on the sloped cloth (same frame + pitch as the slats)
+        const s = .14, lx = -half + 2 * half * s, [x, , z] = at(lx, 0, 0);
+        const pitch = Math.atan(-.42 * Math.PI * Math.cos(Math.PI * s) / (2 * half));
+        box(.24, .08, .36, 0x7fae5a, x, .95 - .42 * Math.sin(Math.PI * s) + .06, z, 0, R, pitch);
+      }
       return { body: b };
     },
     pots() {
