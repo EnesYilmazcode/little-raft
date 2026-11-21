@@ -210,3 +210,4 @@ export function goatPenModel(T) {
 }
 
 function group(T, mesh, name) { const g = new T.Group(); g.name = name; g.add(mesh); return g; }
+export { part, merge, ball, hash };
