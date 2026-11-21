@@ -65,7 +65,8 @@ test('craft panel wiring: chips, search box, tab badge tooltip, no hover card ov
   assert.match(ui, /recipeMatches\(v\.r, q, itemName\)/);
   assert.match(ui, /you can craft now/, 'green tab badges explain themselves');
   assert.match(ui, /\$\{iconHTML\(g\.icon\)\}<span>/, 'category icons are 3D like everything else');
-  assert.match(ui, /#inventory:has\(\.sv-recipe\[aria-describedby\^="it-tip-"\]\) \.it-tip\{display:none!important\}/);
+  assert.match(src('item-tooltips.js'), /el\.matches\?\.\('#inventory \.sv-recipe'\) \? null : el/, 'no hover card on crafting list rows');
+  assert.doesNotMatch(ui, /aria-describedby\^="it-tip-"/, 'the CSS workaround is gone');
   assert.match(ui, /@media\(max-width:900px\) and \(min-width:761px\)\{[^}]*--s:34px/, 'two columns down to 761px wide');
 });
 

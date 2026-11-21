@@ -3,6 +3,7 @@
 import { ITEMS } from './items.js?build=v3-survival-ae77fa84ac2b';
 import { ITEM_TEXT, anchorTip, anchorVisible, catalogueRecipes, tipFacts } from './craft-book.js?build=v3-survival-ae77fa84ac2b'; // craft-book text covers every ITEM_INFO kind (content, diving, signal...)
 import { ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
+import { CONTENT_RECIPES } from './content-items.js?build=v3-survival-ae77fa84ac2b';
 
 const STYLE_ID = 'item-tooltips-style';
 const BAG_EVENT = 'littleraft:bagchange'; // survival-ui.js BAG_EVENT (not imported: keeps this module DOM-light)
@@ -33,6 +34,13 @@ const CSS = `
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const title = k => String(k ?? '').replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+// Hand recipe by id when the catalogue (ITEMS) has none: content recipes whose id differs from what they
+// make (glasscups -> cup, egglamp -> lantern...) and recipes with no ITEMS entry (motor, kiln, spear...).
+export function recipeById(id) {
+  const own = (o, k) => !!o && typeof k === 'string' && Object.hasOwn(o, k);
+  const r = own(RECIPES, id) ? RECIPES[id] : own(CONTENT_RECIPES, id) ? CONTENT_RECIPES[id] : null;
+  return r && r.output && typeof r.output.kind === 'string' ? r : null;
+}
 const SEL = '.sv-slot[data-index],.sv-slot[data-slot],.sv-recipe[data-recipe],[data-item-kind],#inventory [data-tip-kind]'; // data-tip-kind: craft-book ingredient rows (their own .sv-tip is hidden below)
 
 export function installItemTooltips({ getBag, getProgression, items, root = document } = {}) {
@@ -69,15 +77,17 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     if (el.dataset.tipKind && el.dataset.recipe == null) return { kind: el.dataset.tipKind, slot: null, el };
     if (el.dataset.recipe != null) {
       const id = el.dataset.recipe;
-      const kind = table[id] ? id : (Object.values(table).find(it => it?.recipe && it.recipeId === id)?.id ?? id);
-      return { kind, slot: null, el, recipe: true };
+      const kind = table[id] ? id : Object.values(table).find(it => it?.recipe && it.recipeId === id)?.id;
+      if (kind) return { kind, slot: null, el, recipe: true };
+      const rec = recipeById(id); // not in the catalogue: the recipe table names it and says what it costs
+      return rec ? { kind: rec.output.kind, slot: null, el, recipe: true, rec } : { kind: id, slot: null, el, recipe: true };
     }
     const i = Number(el.dataset.index ?? el.dataset.slot);
     const s = Number.isInteger(i) ? slotsOf(call(getBag))[i] : null;
     return s && s.kind && s.count > 0 ? { kind: s.kind, slot: s, el } : null;
   }
 
-  function html({ kind, slot, recipe, el }) {
+  function html({ kind, slot, recipe, el, rec }) {
     const it = table[kind] || {};
     const bag = call(getBag), prog = call(getProgression);
     const cat = it.category || (it.tool || ITEM_INFO[kind]?.tool ? 'tool' : '');
@@ -88,12 +98,12 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
       const uses = Math.round(pct / 100 * it.durability);
       meta = `Durability <b class="${pct > 50 ? '' : pct > 25 ? 'it-mid' : 'it-low'}">${uses}/${it.durability}</b> uses`;
     } else if (it.stack > 0) meta = slot && slot.count > 1 ? `${slot.count} / ${it.stack} in stack` : `Stack ${it.stack}`;
-    let out = `<div class="it-head"><span class="it-name">${esc(nameOf(kind))}</span>${cat ? `<span class="it-cat" data-cat="${esc(cat)}">${esc(CATS[cat] || title(cat))}</span>` : ''}</div>`;
+    let out = `<div class="it-head"><span class="it-name">${esc(rec?.name || nameOf(kind))}</span>${cat ? `<span class="it-cat" data-cat="${esc(cat)}">${esc(CATS[cat] || title(cat))}</span>` : ''}</div>`;
     if (meta) out += `<div class="it-meta">${meta}</div>`;
     const txt = ITEM_TEXT[kind];
     if (it.tip) out += `<p class="it-txt">${esc(it.tip)}</p>`;
     else if (txt) out += `<p class="it-txt">${esc(txt.desc)} ${esc(txt.use)}</p>`; // non-catalogue kinds: craft-book text
-    const r = it.recipe;
+    const r = rec ? { cost: rec.cost, count: rec.output.count } : it.recipe;
     if (r && r.cost && (recipe || !slot)) {
       const parts = Object.entries(r.cost).map(([k, n]) => {
         const have = countOf(bag, k);
@@ -109,7 +119,7 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
       const lines = (f.get ? `<p><em>Get it:</em> ${esc(f.get)}</p>` : '') + (f.uses.length ? `<p><em>Used in:</em> ${esc(f.uses.join(', '))}</p>` : '');
       if (lines) out += `<div class="it-facts">${lines}</div>`;
     }
-    if (Object.hasOwn(table, kind) && prog && typeof prog.isUnlocked === 'function' && call(() => prog.isUnlocked(kind)) === false) { // catalogue items only: others are not progression's ('Unknown item')
+    if (Object.hasOwn(table, kind) && prog && typeof prog.isUnlocked === 'function' && !rec && call(() => prog.isUnlocked(kind)) === false) { // catalogue items only: others are not progression's ('Unknown item')
       const why = call(() => prog.whyLocked?.(kind));
       out += `<div class="it-lock">Locked${why ? ': ' + esc(why) : ''}</div>`;
     } else if (recipe && el?.dataset.lockReason) out += `<div class="it-lock">Locked: ${esc(el.dataset.lockReason)}</div>`; // survival-ui gated row (e.g. not studied yet)
@@ -152,7 +162,8 @@ export function installItemTooltips({ getBag, getProgression, items, root = docu
     restoreDesc(); cur = null;
     tip.hidden = true; tip.classList.remove('it-on');
   }
-  const target = e => e.target?.closest?.(SEL) || null;
+  // Crafting list rows get no card: the detail pane beside the list already shows that recipe (the card sat over it).
+  const target = e => { const el = e.target?.closest?.(SEL) || null; return el && el.matches?.('#inventory .sv-recipe') ? null : el; };
 
   on(root, 'pointerover', e => { const el = target(e); if (el) show(el, e.clientX, e.clientY); else if (cur) hide(); });
   on(root, 'pointerout', e => { if (cur && !cur.el.contains(e.relatedTarget)) hide(); });

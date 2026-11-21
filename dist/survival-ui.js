@@ -294,8 +294,6 @@ body:has(#inventory.sv-inv[open]) .tools.sv-hotbar{visibility:hidden} /* the bag
 #inventory .sv-rbadge{position:absolute;right:6px;top:6px;display:flex;align-items:baseline;gap:4px;padding:2px 6px;border-radius:8px;background:#5f9c3a;color:#f4ffe6;font:800 12px/1 ${FONT};font-style:normal;font-variant-numeric:tabular-nums;box-shadow:inset 0 0 0 1px #3f6a26;white-space:nowrap}
 #inventory .sv-rbadge small{font:700 10px/1 ${FONT};letter-spacing:.2px;opacity:.9}
 #inventory .sv-ready .sv-rname{padding-right:74px}
-/* No hover card on crafting list rows (item-tooltips.js): the detail pane beside the list shows that recipe, and the card sat over it. */
-#inventory:has(.sv-recipe[aria-describedby^="it-tip-"]) .it-tip{display:none!important}
 #inventory .sv-rbadge:empty{display:none}
 /* ingredient chips on each recipe row: 3D icon + have/need, red while short (Raft-style) */
 #inventory .sv-rchips{display:flex;flex-wrap:nowrap;gap:4px;margin-top:3px;min-width:0;overflow:hidden}
