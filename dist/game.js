@@ -389,7 +389,7 @@ export function mount(transfer = null) {
     camera.add(hands.group);
   }
   // Held models and build ghosts for every kind in the bag are built ahead and their shaders compiled
-  // (renderer.compile covers hidden meshes), so the first switch to an item never links programs mid-play.
+  // (ghosts are shown for the call: renderer.compile skips hidden meshes), so the first switch never links programs mid-play.
   const warmedKinds = new Set();
   function warmKinds() {
     const slots = localBag().slots; let fresh = false;
@@ -398,7 +398,7 @@ export function mount(transfer = null) {
       warmedKinds.add(k); fresh = true; hands.preload([k]);
       if (k === 'hammer') ghosts.preload(['floor']); else if (DECOR_TYPES.includes(k)) ghosts.preload([k]);
     }
-    if (fresh) { try { renderer.compileAsync(scene, camera).catch(() => {}); } catch (e) { console.warn('shader warm-up failed', e); } }
+    if (fresh) { try { ghosts.warm(() => renderer.compileAsync(scene, camera).catch(() => {})); } catch (e) { console.warn('shader warm-up failed', e); } }
   }
 
   // Incremental: only parts whose key changed are built or disposed, so placing one thing never rebuilds the raft.
