@@ -1,8 +1,44 @@
 # Islands
 
-Small islands drift past the raft every few minutes. You swim over, walk on the sand, gather
-from palms, bushes, rocks and sand patches by tapping E, and swim back before the island drifts
-off. Nothing hurts you, and nobody gets stranded.
+Small islands rise on the horizon ahead of the raft. They are fixed on the seabed, so the raft
+drifts past them unless you steer toward one with the sail and drop the anchor. You swim over,
+walk on the sand, gather from palms, bushes, rocks and sand patches by tapping E, and swim back
+before the raft drifts off without you. Nothing hurts you.
+
+## Fixed in the world (current behaviour)
+
+This replaces the old approach / docked / depart timeline described further down.
+
+- **Spawn.** After the calm (`nextDelay`: 90 s for the first island, then 150 to 240 s), the host
+  places the island `SPAWN_MIN..SPAWN_MAX` (120 to 160 m, seeded) ahead of the raft along its
+  travel over the seabed (water velocity plus current, latched while anchored), with a seeded
+  0 to 40 m side offset (`spawnSpot`). Everyone gets "An island on the horizon". It rises out of
+  the sea over `RISE` seconds.
+- **Drift.** The island is stored at a seabed position `(bx, bz)` and drawn at
+  `wrap(b - g)`, where `g` is the sailing seabed offset (`ctx.seabed`: sailing's displayed offset,
+  the same one the scenery islands use, so the guest is smoothed too). Each frame it therefore
+  moves by exactly the seabed delta: it stops when the raft is anchored and follows the sail and
+  engine. Players standing on the sand ride along with it.
+- **Raft grounding.** The island registers one moving blocker with sailing
+  (`ctx.addBlocker({x, z, rad})`): the raft stops about 2.5 m off the shoreline instead of
+  sailing through it.
+- **Passing.** Once it is more than `BEHIND` (60 m) behind the raft, everyone gets "The island is
+  falling behind" (once per island). Past `DESPAWN` (150 m) and behind, or past `FAR` (260 m) in
+  any direction, it sinks over `RISE` seconds and the next calm starts. It never sinks while a
+  player is within `R + NEAR` of it (that would drop them in open sea).
+- **Save shape v2:** `{v: 2, clock, next, isl: null | {seed, bx, bz, born, sink, used}}`; `sink` is
+  the clock when it started sinking, or -1. v1 saves (`born, dock, side, off`) are migrated by
+  `clean(data, layoutFor, world.sailing)`: an island that was still showing is put on the seabed at
+  the spot it occupied beside the raft, with its gathered nodes kept; one that was already gone is
+  dropped.
+- **Map table** charts an island once the raft comes within `CHART_R` (80 m), at its exact seabed
+  position `(bx, bz)`.
+- **QA:** `debug.spawnNear(seed, t)` still puts an island beside the raft (the old dock spot);
+  `debug.spawnAhead(seed)` makes a natural spawn on the horizon.
+
+Pure helpers in `islands-layout.js`: `sinkAt`, `relPos`, `spawnSpot`, `travelOf`, `driftState`
+(the old `pathAt` is gone). Tests: `tests/islands.test.mjs` (placement, drift by the seabed delta,
+anchor, sail, warning, despawn, migration, blocker).
 
 This revision targets the content registry (`dist/content.js`, `docs/features/content-hooks.md`).
 Everything lives in `dist/islands.js` (plus an optional `dist/islands-layout.js` for pure logic)
@@ -157,7 +193,7 @@ raft.fandom.com returns 402. The facts come from search snippets.
 
 | Raft | Little Raft |
 | --- | --- |
-| Raft drifts, island stays, anchor needed | Raft stays at the origin, the island glides past and docks. No anchor. |
+| Raft drifts, island stays, anchor needed | Same: the island is fixed on the seabed; steer with the sail and drop anchor to stay. (Drawn with the raft at the origin and the world moving.) |
 | Sharks attack on the swim | Nothing attacks. |
 | Axe chops, hook mining | Tap E on a node (no tool). One gather per tap, 0.35 s cooldown. |
 | Hand-built layouts | Layout generated from a uint32 seed, so co-op players build the same island from one number. |
@@ -176,7 +212,7 @@ showing a prompt. Palms stay standing. Kinds used: `wood`, `leaf` (core), `sand`
 (`dist/content-items.js`). Before granting, check the kind exists in the bag's item table
 (`bag.add` returning the full count means unknown/full); never throw.
 
-## Pacing
+## Pacing (old timeline, superseded: see "Fixed in the world" above)
 
 All timing uses the module's own clock, which advances by `dt` only while `ctx.running`.
 
@@ -196,7 +232,7 @@ Departure pauses while any player (host `ctx.physics`, guest `ctx.other`) is wit
 the existing 50 m safety teleport puts a lingering swimmer back on the raft. That is the only
 "penalty", and it is friendly.
 
-## Save shape: `world.ext.islands`
+## Save shape: `world.ext.islands` (v1, superseded: v2 is described at the top)
 
 ```js
 {
