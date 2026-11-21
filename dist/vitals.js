@@ -30,6 +30,12 @@ export const FOOD = {
   saltcup:         {food:0,    water:-5, returns:'cup'},
   sharkmeat:       {food:10,   water:-5},
   cookedsharkmeat: {food:30,   water:0},
+  honeyfish:       {food:45,   water:0},                  // [juicer] bug fix: was not edible
+  berries:         {food:4,    water:2},                  // [juicer]
+  coconut:         {food:6,    water:8},                  // [juicer]
+  berrycup:        {food:10,   water:35, returns:'cup'},  // [juicer]
+  coconutcup:      {food:6,    water:45, returns:'cup'},  // [juicer]
+  mixcup:          {food:14,   water:38, returns:'cup'},  // [juicer]
 };
 
 const num = (x, d = 0) => (typeof x === 'number' && Number.isFinite(x) ? x : d);
@@ -79,10 +85,13 @@ export function consume(v, kind) {
   return e;
 }
 
+/** True for drinks: water-only items, anything that hands a cup back, and *cup kinds. [juicer] */
+export const isDrink = kind => { const e = isEdible(kind) ? FOOD[kind] : null; return !!e && (!e.food && e.water !== 0 || !!e.returns || kind.endsWith('cup')); };
+
 /** Short prompt label, e.g. "Eat (+35 food)" / "Drink (+40 water)". */
 export function eatLabel(kind) {
   const e = isEdible(kind) ? FOOD[kind] : null; if (!e) return '';
-  const drink = !e.food && e.water !== 0 || kind.endsWith('cup');
+  const drink = isDrink(kind); // [juicer]
   const parts = [];
   if (e.food) parts.push(`${e.food > 0 ? '+' : ''}${e.food} food`);
   if (e.water) parts.push(`${e.water > 0 ? '+' : ''}${e.water} water`);

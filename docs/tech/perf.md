@@ -195,6 +195,9 @@ swap joins the deck seamlessly. Two things this found that are not caused by the
 - **The hook lands about 4.5 m out headless**, so the items (7+ m away) are never caught, on stock too: SwiftShader
   runs at 1-3 s per frame here and the game clamps `dt` to 50 ms, which shortens the throw. So pickup was not exercised here; the 30 items the
   patched `itemModel` builds at start render without errors, and pickup does not touch any patched code.
+- With water's new ocean in, the open water between the old raft and a separately built row of tiles shows a bright
+  white foam slab (`play-all-final-2-floors.png`). The same build without perf (`combine.py pm vm water`) shows it
+  too, so it comes from the water topic's raft SDF foam, not from the deck batch.
 - The JS heap grows by 10-40 MB per hot swap on stock and patched alike (probably the new `game.js?build=` module
   per swap, which the page never unloads). Not a GPU leak; worth a look by whoever owns live.js.
 

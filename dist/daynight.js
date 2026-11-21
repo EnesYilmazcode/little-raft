@@ -577,6 +577,8 @@ export function createDayNight(ctx) {
       moon.position.copy(cam.position).addScaledVector(vMoon, MOON_DIST);
     }
     // rain
+    const oc = ctx.ocean; // no rain streaks around an underwater camera (same test as diving.js setUnderwater)
+    rain.visible = wet > 0.01 && !(cam && typeof oc?.getHeight === 'function' && cam.position.y < oc.getHeight(cam.position.x, cam.position.z) - 0.05);
     if (rain.visible) {
       rainUniforms.uTime.value = time;
       if (cam) rainUniforms.uCam.value.copy(cam.position);
