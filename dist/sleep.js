@@ -55,7 +55,7 @@ export const allInBed = (inn, guestPresent) => !!(inn && inn.host) && (!guestPre
 
 /** Lying pose on bed tile (x,z): eye just above the pillow, head toward -z. */
 export function bedPose(x, z, deck, out = {}) {
-  out.x = x * 2; out.y = deck + .55; out.z = z * 2 - .55;
+  out.x = x * 2; out.y = deck + .8; out.z = z * 2 - .55; // eye ~.3 m above the blanket (spec said .55: inside the blanket lip)
   return out;
 }
 
@@ -223,6 +223,32 @@ export function createSleep(ctx, opts = {}) {
 
   const send = a => ctx.action(a);
 
+  // Which TEXT key the context prompt shows (null = nothing to say).
+  function promptKey(aim) {
+    if (lying) return otherPresent() && !slice.in[otherRole()] ? 'waiting' : 'sleeping';
+    const d = target(aim); if (!d) return null;
+    if (oldHost()) return 'oldHost';
+    const why = canSleep(day()); if (why) return why === TEXT.tooBright ? 'tooBright' : 'notSleepy';
+    if (same(slice.in[otherRole()], d.x, d.z)) return 'taken';
+    return 'sleep';
+  }
+  // The visible key prompt is prompts.js (#contextPrompt is hidden by prompts.css), so feed it plain labels too.
+  const GET_UP = Object.freeze({ key: 'E', label: 'Get up' });
+  const PROVIDED = Object.freeze({
+    sleep: Object.freeze({ key: 'E', label: 'Sleep' }),
+    sleeping: Object.freeze([{ label: 'Sleeping…', muted: true }, GET_UP]),
+    waiting: Object.freeze([{ label: 'Waiting for your brother (1/2)', muted: true }, GET_UP]),
+    notSleepy: Object.freeze({ label: TEXT.notSleepy, muted: true }),
+    tooBright: Object.freeze({ label: TEXT.tooBright, muted: true }),
+    taken: Object.freeze({ label: TEXT.taken, muted: true }),
+    oldHost: Object.freeze({ label: TEXT.oldHost, muted: true }),
+  });
+  let unprovide = null, lastAim = null; // lastAim: game.js passes its frame aim to prompt() every frame
+  function provide() {
+    const P = globalThis.raftPrompts; if (unprovide || typeof P?.provide !== 'function') return;
+    unprovide = P.provide({ id: 'sleep', priority: 1, prompt: () => (ctx.running === false ? null : PROVIDED[promptKey(lastAim)] ?? null) });
+  }
+
   return {
     name: 'sleep',
     serialize() { return slice; },
@@ -243,14 +269,7 @@ export function createSleep(ctx, opts = {}) {
       send({ kind: 'sleep.lie', x: d.x, z: d.z });
       return true;
     },
-    prompt(aim) {
-      if (lying) return otherPresent() && !slice.in[otherRole()] ? TEXT.waiting : TEXT.sleeping;
-      const d = target(aim); if (!d) return null;
-      if (oldHost()) return TEXT.oldHost;
-      const why = canSleep(day()); if (why) return why;
-      if (same(slice.in[otherRole()], d.x, d.z)) return TEXT.taken;
-      return TEXT.sleep;
-    },
+    prompt(aim) { lastAim = aim ?? null; return TEXT[promptKey(aim)] ?? null; },
     afterMove(physics) {
       if (!lying || !physics) return;
       bedPose(lx, lz, deck(), pose);
@@ -262,6 +281,7 @@ export function createSleep(ctx, opts = {}) {
       if (isGuest()) guestStep(dt); else hostStep(dt);
       localStep();
       paintVeil();
+      if (!unprovide) provide();
     },
     decorModel(type) {
       if (type !== 'bed' || !T) return null;
@@ -278,8 +298,9 @@ export function createSleep(ctx, opts = {}) {
         return true;
       },
       up() { send({ kind: 'sleep.up' }); return true; },
+      stand(x, z) { const p = ctx.physics; if (!p || !Number.isFinite(x) || !Number.isFinite(z)) return false; p.x = x; p.z = z; p.vx = 0; p.vz = 0; return true; }, // QA: move the local player (metres, raft frame)
       state() { return { ...JSON.parse(JSON.stringify(slice)), seq, lying, opacity: opacity(), hostHas, fadeDur }; },
     },
-    dispose() { veil?.remove(); veil = null; veilOpacity = -1; model?.dispose(); model = null; },
+    dispose() { try { unprovide?.(); } catch {} unprovide = null; veil?.remove(); veil = null; veilOpacity = -1; model?.dispose(); model = null; },
   };
 }

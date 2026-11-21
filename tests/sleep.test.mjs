@@ -154,7 +154,7 @@ test('sequence: a solo host sleeps, the clock skips once, everyone wakes beside 
   assert.equal(mod.debug.state().lying, true);
   assert.equal(mod.prompt(null), TEXT.sleeping);
   mod.afterMove(ctx.physics);
-  assert.deepEqual([ctx.physics.x, ctx.physics.y, ctx.physics.z], [2, .2 + .55, -.55]);
+  assert.deepEqual([ctx.physics.x, ctx.physics.y, ctx.physics.z], [2, .2 + .8, -.55]);
   run(mod, HOLD + FADE + .05);
   assert.deepEqual(skips(calls), [{ kind: 'daynight.skipTo', phase: .1 }]);
   assert.equal(mod.serialize().skips, 1); assert.equal(mod.serialize().fade, 1);
@@ -273,7 +273,7 @@ test('getUpSpot picks a free neighbour tile and falls back when surrounded', () 
   assert.deepEqual(getUpSpot({ tiles, decor: full }, 0, 0), { x: .8, z: 0 });
   assert.deepEqual(getUpSpot({ tiles: [[0, 0]], decor: [] }, 0, 0), { x: .8, z: 0 });
   assert.deepEqual(getUpSpot(null, 0, 0), { x: .8, z: 0 });
-  assert.deepEqual(bedPose(1, 2, .2), { x: 2, y: .75, z: 3.45 });
+  assert.deepEqual(bedPose(1, 2, .2), { x: 2, y: 1, z: 3.45 });
 });
 
 // ---------------------------------------------------------------- 10. content items + model
@@ -299,4 +299,19 @@ test('bed model: one shared mesh per instance, survives a dispose by rebuildRaft
   assert.equal(mod.decorModel('crate'), null);
   assert.equal(mod.decorModel('bed').userData.craftType, 'bed');
   mod.dispose();
+});
+
+test('prompts.js provider: plain labels for the visible key prompt, removed on dispose', () => {
+  let provider = null, removed = 0;
+  globalThis.raftPrompts = { provide: o => { provider = o; return () => { removed++; }; } };
+  try {
+    const { mod, ctx } = makeSleep();
+    ctx.camera = { position: new T.Vector3(2, 1.8, 1.5), getWorldDirection: v => v.set(0, -.6, -.4).normalize() };
+    mod.update(1 / 60);
+    assert.equal(provider.id, 'sleep');
+    assert.deepEqual(provider.prompt(), { key: 'E', label: 'Sleep' });
+    mod.debug.lie(1, 0); mod.update(1 / 60);
+    assert.deepEqual(provider.prompt().map(p => p.label), ['Sleeping…', 'Get up']);
+    mod.dispose(); assert.equal(removed, 1);
+  } finally { delete globalThis.raftPrompts; }
 });
