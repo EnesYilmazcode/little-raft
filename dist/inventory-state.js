@@ -26,6 +26,10 @@ export const ITEM_INFO = Object.freeze({
   net:        Object.freeze({ kind: 'net',        name: 'Net',          icon: 'icon-net',     maxStack: STACK_SIZE, tool: false, placeholder: false }),
   bench:      Object.freeze({ kind: 'bench',      name: 'Bench',        icon: 'icon-repair',  maxStack: STACK_SIZE, tool: false, placeholder: true }),
   crate:      Object.freeze({ kind: 'crate',      name: 'Crate',        icon: 'icon-barrel',  maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  // farming (definitions mirror FARM_ITEMS in farming.js)
+  seed:       Object.freeze({ kind: 'seed',       name: 'Palm Seed',    icon: 'icon-leaf',    maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  cup:        Object.freeze({ kind: 'cup',        name: 'Filter Cup',   icon: 'icon-scrap',   maxStack: STACK_SIZE, tool: false, placeholder: true }),
+  water:      Object.freeze({ kind: 'water',      name: 'Cup of Fresh Water', icon: 'icon-barrel', maxStack: STACK_SIZE, tool: false, placeholder: true }),
 });
 
 export const ITEM_KINDS = Object.freeze(Object.keys(ITEM_INFO));
@@ -52,6 +56,7 @@ export const RECIPES = Object.freeze({
   net:        recipe('net',        'Net',          1, { wood: 3, rope: 3 }),
   bench:      recipe('bench',      'Bench',        1, { wood: 3 }),
   crate:      recipe('crate',      'Crate',        1, { wood: 4, scrap: 1 }),
+  cup:        recipe('cup',        'Filter Cup',   1, { plastic: 2, leaf: 1 }), // farming
 });
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);

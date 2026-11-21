@@ -1,0 +1,101 @@
+// Palm planter meshes: pot, dry/wet soil, and one plant model per growth stage.
+// The group sits in the scene and copies the raft's transform each frame, so
+// rebuildRaft() never disposes it. Geometry and materials are built once and shared.
+//
+// getModel(kind) hook: return an Object3D to replace a placeholder, or null to keep it.
+// Kinds: 'planter', 'palm-0' (seedling), 'palm-1', 'palm-2', 'palm-3' (mature).
+import { isPlot, MATURE, EMPTY, farmSignature } from './farming.js';
+
+const DECK_Y = .22, POT_H = .5;
+
+export function createFarmView(T, { getModel = null } = {}) {
+  const group = new T.Group(); group.name = 'farm';
+  const std = (color, roughness = .85, extra = {}) => new T.MeshStandardMaterial({ color, roughness, ...extra });
+  const M = {
+    pot: std('#db8764'), rim: std('#b86a4c'), dry: std('#b58e62', 1), wet: std('#4b3324', .35),
+    trunk: std('#ad8153'), leaf: std('#72ae59', .8, { side: T.DoubleSide }), leaf2: std('#519b55', .8, { side: T.DoubleSide }),
+  };
+  const G = {
+    pot: new T.CylinderGeometry(.38, .28, POT_H, 10), rim: new T.TorusGeometry(.37, .035, 6, 14),
+    soil: new T.CylinderGeometry(.34, .34, .04, 12), stem: new T.CylinderGeometry(.06, .1, 1, 6),
+    leaf: new T.ConeGeometry(.28, 1.5, 4), puddle: new T.CircleGeometry(.3, 12),
+  };
+  const mesh = (g, m, parent, x = 0, y = 0, z = 0) => { const o = new T.Mesh(g, m); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
+
+  // A palm of a given height and leaf count, leaves fanned from the top of the stem.
+  function palmModel(height, leaves, leafScale) {
+    const g = new T.Group(), stem = mesh(G.stem, M.trunk, g, 0, height / 2, 0); stem.scale.set(leafScale + .3, height, leafScale + .3);
+    for (let i = 0; i < leaves; i++) {
+      const a = i * Math.PI * 2 / leaves, l = mesh(G.leaf, i % 2 ? M.leaf2 : M.leaf, g);
+      l.scale.setScalar(leafScale); l.rotation.set(0, a, 1.2 - (1 - leafScale) * .5, 'YXZ');
+      l.position.set(Math.sin(a) * .5 * leafScale, height + .05 * leafScale, Math.cos(a) * .5 * leafScale);
+    }
+    return g;
+  }
+  function planterModel() {
+    const g = new T.Group(); mesh(G.pot, M.pot, g, 0, POT_H / 2, 0);
+    const r = mesh(G.rim, M.rim, g, 0, POT_H, 0); r.rotation.x = Math.PI / 2; return g;
+  }
+  const defaults = {
+    planter: planterModel,
+    'palm-0': () => palmModel(.14, 3, .22),
+    'palm-1': () => palmModel(.32, 4, .36),
+    'palm-2': () => palmModel(.8, 6, .62),
+    'palm-3': () => palmModel(1.6, 7, 1),
+  };
+  const templates = new Map();
+  function model(kind) {
+    if (!templates.has(kind)) {
+      let o = null; try { o = getModel?.(kind) ?? null; } catch (e) { console.warn('farm model hook failed', kind, e); }
+      templates.set(kind, o && o.isObject3D ? o : defaults[kind]());
+    }
+    return templates.get(kind).clone(); // clones share geometry and materials
+  }
+
+  const plots = new Map(); // "x,z" -> {root, soil, puddle, plant, stage, sway}
+  let signature = null;
+  function build(d) {
+    const root = new T.Group(); root.position.set(d.x * 2, DECK_Y, d.z * 2);
+    root.add(model('planter'));
+    const soil = mesh(G.soil, M.dry, root, 0, POT_H - .03, 0); soil.receiveShadow = true;
+    const puddle = mesh(G.puddle, M.wet, root, .02, POT_H - .005, -.03); puddle.rotation.x = -Math.PI / 2; puddle.visible = false;
+    const p = { root, soil, puddle, plant: null, stage: null, sway: (d.x * 7 + d.z * 3) % 6 };
+    group.add(root); return p;
+  }
+  function apply(p, farm) {
+    const stage = farm ? farm.s : MATURE, wet = !!farm && farm.w > 0;
+    p.soil.material = wet ? M.wet : M.dry; p.puddle.visible = wet;
+    if (p.stage === stage) return;
+    if (p.plant) p.root.remove(p.plant);
+    p.plant = stage === EMPTY ? null : model('palm-' + stage);
+    if (p.plant) { p.plant.position.y = POT_H; p.root.add(p.plant); }
+    p.stage = stage;
+  }
+
+  // Call whenever decor may have changed; cheap when nothing did.
+  function sync(decor) {
+    const sig = farmSignature(decor); if (sig === signature) return false; signature = sig;
+    const live = new Set();
+    for (const d of decor) {
+      if (!isPlot(d)) continue; const k = d.x + ',' + d.z; live.add(k);
+      let p = plots.get(k); if (!p) { p = build(d); plots.set(k, p); }
+      apply(p, d.farm);
+    }
+    for (const [k, p] of plots) if (!live.has(k)) { group.remove(p.root); plots.delete(k); }
+    return true;
+  }
+  function update(t, raft) {
+    if (raft) { group.position.copy(raft.position); group.quaternion.copy(raft.quaternion); }
+    for (const p of plots.values()) if (p.plant) p.plant.rotation.z = Math.sin(t * 1.3 + p.sway) * (p.stage >= MATURE ? .02 : .05);
+  }
+  function dispose() {
+    group.removeFromParent(); plots.clear(); templates.clear();
+    for (const g of Object.values(G)) g.dispose(); for (const m of Object.values(M)) m.dispose();
+  }
+  // Tile under the plant the camera can reach, from a world-space aim point.
+  const plotAt = (decor, point) => {
+    if (!point) return null; const x = Math.round(point.x / 2), z = Math.round(point.z / 2);
+    return decor.find((d) => isPlot(d) && d.x === x && d.z === z) ?? null;
+  };
+  return { group, sync, update, dispose, plotAt, stageOf: (x, z) => plots.get(x + ',' + z)?.stage ?? null };
+}
