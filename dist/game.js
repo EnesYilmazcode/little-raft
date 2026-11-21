@@ -1264,7 +1264,11 @@ export function mount(transfer = null) {
       onPause:guard(clearInput),
     });
     if (running) { const w = $('#welcome'); if (w) w.hidden = true; const h = $('#hud'); if (h) h.hidden = false; }
-    active = true; last = performance.now(); rafId = requestAnimationFrame(animate);  } catch (e) {
+    active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
+    // After the first frame is up, link every shader the scene can need (hook, rope, viewmodel hands, friend, poses):
+    // compile() walks hidden objects too, so starting a game or throwing never stalls on a program link.
+    requestAnimationFrame(() => later(() => { try { if (scene) renderer.compileAsync?.(scene, camera).catch(() => {}); } catch (e) { console.warn('shader warm-up failed', e); } }, 0));
+  } catch (e) {
     console.error(e); dispose();
     try { if (previousDebug && !Object.getOwnPropertyDescriptor(window, 'raftDebug')) Object.defineProperty(window, 'raftDebug', previousDebug); } catch {}
     for (const [el, prop, previous, next] of propertyHandlers) if (el[prop] === next) el[prop] = previous;
