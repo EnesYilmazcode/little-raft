@@ -262,7 +262,8 @@ Measured base vs head run concurrently on the same loaded box (SwiftShader, 640x
 | Debug API ready -> 2 frames | 3258 ms | 1496 ms | -54% |
 | Play allocation (per frame) | | | -49% |
 | Retained heap after idle | 16.17 MB | 14.89 MB | -8% |
-| DOM node growth | 29-41 | 51-61 | regression, fix in progress |
+| DOM node growth / late half | 29-41 / - | 51-61 / 0 | bounded first-open UI, no leak (see below) |
+| Perf gate | fail (GL growth, 2 contexts) | **pass** | |
 
 What changed:
 - **GL leak / 2nd context:** item icons render through the main renderer (black/white two-pass alpha in a scissored
@@ -288,8 +289,13 @@ Regression check (every shoot.py pair viewed, plus seeded close-ups of deck, hel
 and a 90-frame screencast of the icon corner): no visual regressions; icons pixel-identical to base's 3D icons and now show
 immediately. shoot.py now passes `?pinQuality` so adaptive quality cannot soften later shots.
 
+DOM growth: traced element by element; same first-open UI on both builds (research lock badges, tooltip, craft tip),
+flat after 10-20 s. Base scored lower only because its SVG->3D icon swaps (removals) fell inside the window. The gate now
+budgets `domNodesLateHalf` (15) as the leak check and the total at 90. Final gate on head: pass, draws p50/p95 34/37,
+heap +1.3 MB (late half +0.45), GL late half -12, DOM late half 0.
+
 Rust/WASM: still no; nothing near 1 ms/frame (see `docs/loop/rust-wasm.md`).
 
-Next ideas: defer far islands / build menu / viewmodels out of `mount()` (longest startup task ~1.3 s); first-dive hitch
+Next ideas: perf gate ends with the inventory open despite close_overlays (both builds); defer far islands / build menu / viewmodels out of `mount()` (longest startup task ~1.3 s); first-dive hitch
 (1.3-2.2 s, seafloor/underwater setup); viewmodel hands forced transparent (hands.js:122, ~23 transparent draws); graphics
 panel should show the adaptive level; lower ocean grid density far out (flag: visual check).
