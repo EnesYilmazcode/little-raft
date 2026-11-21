@@ -39,26 +39,29 @@ function save(values) {
 const same = (a, b) => Object.keys(DEFAULTS).every((k) => a[k] === b[k]);
 
 const CSS = `
-#options{border:2px solid #b07a3c;border-radius:14px;padding:0;color:#f3e6cc;background:rgba(13,29,52,.9);
-  box-shadow:0 0 0 1px rgba(232,176,96,.25) inset,0 18px 48px rgba(0,0,0,.55);width:min(440px,92vw);
+#options{border:2px solid #5e4426;border-radius:6px;padding:0;color:#3e2a17;
+  background:repeating-linear-gradient(90deg,#00000010 0 1px,transparent 1px 21px),repeating-linear-gradient(0deg,#ffffff0a 0 1px,transparent 1px 4px),linear-gradient(#a8844f,#9a7748 45%,#8a6a3e);
+  box-shadow:inset 0 1px 0 #c9a76f88,0 18px 48px rgba(0,0,0,.5);width:min(440px,92vw);
   font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
-#options::backdrop{background:rgba(4,12,24,.55);backdrop-filter:blur(2px)}
-#options .rs-form{margin:0;padding:22px 24px 20px;display:grid;gap:14px}
-#options h2{margin:0;font:600 26px/1.1 Georgia,"Times New Roman",serif;letter-spacing:.04em;color:#f6ead2;text-align:center}
-#options .rs-panel{display:grid;gap:12px;padding:14px 16px;border:1px solid rgba(176,122,60,.6);border-radius:10px;background:rgba(22,44,74,.7)}
+#options::backdrop{background:rgba(24,16,8,.5);backdrop-filter:blur(2px)}
+#options .rs-form{margin:0;padding:18px 20px 20px;display:grid;gap:14px}
+#options h2{margin:0;font:700 26px/1.1 Georgia,"Times New Roman",serif;letter-spacing:.04em;color:#fff6e0;text-align:center;text-shadow:0 1px 0 #3e2a17,0 2px 6px #3e2a1766}
+#options .rs-panel{display:grid;gap:12px;padding:14px 16px;border:1px solid #7a5a34;border-radius:4px;
+  background:repeating-linear-gradient(0deg,#5e44260a 0 1px,transparent 1px 3px),repeating-linear-gradient(90deg,#5e442608 0 1px,transparent 1px 3px),linear-gradient(#ece0bf,#dfcea3);
+  box-shadow:inset 0 1px 3px #5e442633}
 #options .rs-row{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center}
-#options .rs-row label{color:#f3e6cc;font-weight:600}
-#options .rs-row output{color:#f0b04a;font-variant-numeric:tabular-nums;min-width:4ch;text-align:right}
+#options .rs-row label{color:#3e2a17;font-weight:700}
+#options .rs-row output{color:#8a4a12;font-weight:700;font-variant-numeric:tabular-nums;min-width:4ch;text-align:right}
 #options .rs-row input,#options .rs-row select{grid-column:1/-1}
-#options input[type=range]{width:100%;accent-color:#e8a23a;margin:0}
-#options select{width:100%;padding:6px 8px;border-radius:7px;border:1px solid #b07a3c;background:#0f2442;color:#f3e6cc;font:inherit}
-#options select:focus-visible,#options input:focus-visible,#options button:focus-visible{outline:2px solid #f0b04a;outline-offset:2px}
+#options input[type=range]{width:100%;accent-color:#8a5a26;margin:0}
+#options select{width:100%;padding:6px 8px;border-radius:4px;border:1px solid #7a5a34;background:#f6eed8;color:#3e2a17;font:inherit}
+#options select:focus-visible,#options input:focus-visible,#options button:focus-visible{outline:2px solid #fff6e0;outline-offset:2px}
 #options .rs-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-#options button{cursor:pointer;font:600 15px/1 system-ui,sans-serif;padding:11px 12px;border-radius:9px;
-  border:1px solid #b07a3c;background:rgba(30,58,96,.85);color:#f3e6cc}
-#options button:hover{background:rgba(44,78,122,.95);border-color:#d89a50}
-#options button.rs-primary{grid-column:1/-1;background:linear-gradient(#f0b04a,#c8812c);color:#1a1206;border-color:#e8b46a;font-size:17px}
-#options button.rs-primary:hover{background:linear-gradient(#f6c066,#d48f38)}
+#options button{cursor:pointer;font:600 15px/1 system-ui,sans-serif;padding:11px 12px;border-radius:4px;
+  border:1px solid #7a5a34;background:linear-gradient(180deg,#d6c397,#c4ae80);color:#3e2a17;box-shadow:inset 0 1px 0 #f3e8cc}
+#options button:hover{background:linear-gradient(180deg,#f1e7cc,#e2d3ab);border-color:#4a3520;box-shadow:inset 0 0 0 1px #fffaea}
+#options button.rs-primary{grid-column:1/-1;background:linear-gradient(#f0b04a,#c8812c);color:#1a1206;border-color:#6b4318;font-size:17px;box-shadow:inset 0 1px 0 #ffe2a8,0 2px 0 #5e4426}
+#options button.rs-primary:hover{background:linear-gradient(#f6c066,#d48f38);box-shadow:inset 0 0 0 2px #fff3cf,0 2px 0 #5e4426}
 `;
 
 function ensureStyle() {
