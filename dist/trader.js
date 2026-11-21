@@ -24,7 +24,7 @@ export function createTrader(ctx) {
   const park = { x: 0, z: 0 }, shown = { x: 0, z: 0 }; // target bow spot and the eased one
   let parkTiles = null, parkLen = -1, parkSet = false;
   const pos = { x: 0, y: 0, z: 0 }, stall = { x: 0, y: 0, z: 0 }; // barge centre and stall point (scene = raft-local x/z)
-  let pKey = '', pOut = null;
+  let pSec = -1, pOut = null;
   const scratch = T ? new T.Vector3() : null;
   // serialize() output, reused (no steady-state allocation)
   const out = { v: 1, r: 0, clock: 0, next: 0, plans: [], visit: null };
@@ -176,8 +176,8 @@ export function createTrader(ctx) {
     if (!target(aim)) return null;
     if (path.phase === 'approach') return 'Pim is still tying up…';
     if (!localInReach()) return 'Swim a little closer to Pim';
-    const key = mmss(path.left);
-    if (key !== pKey || !pOut) { pKey = key; pOut = '<kbd>E</kbd>Trade with Pim (' + key + ')'; }
+    const sec = Math.ceil(path.left); // the prompt string changes once a second, not every frame
+    if (sec !== pSec || !pOut) { pSec = sec; pOut = '<kbd>E</kbd>Trade with Pim (' + mmss(sec) + ')'; }
     return pOut;
   }
   function interact(aim) {

@@ -167,3 +167,29 @@ Replace the line tagged `[progression-hook] items.js unlocks own the catalogue` 
 - The 3 kinds are in ITEM_INFO, the recipe is in RECIPES, and the decor ids are in CONTENT_DECOR.
 QA: `npm test`; shoot.py `errors: []`. Browser: `summon(); aimAt(); open()`, screenshot; `give('fish',6); trade(0)` gives 2 shells; `skip(300)` departs and closes the dialog.
 coop-e2e: the host summons, the guest trades, and the host stock drops.
+
+## Implementation notes
+Built as specified (dist/trader-core.js, trader.js, trader-model.js, trader-ui.js, tests/trader.test.mjs: 14 tests). Deviations and
+choices where the spec was silent:
+- **FEATURES order**: `createTrader` sits just before `createCookpot` (the coordinator keeps the cookpot last), not at the very end.
+- **parkAt holes**: when the bow row has a gap under its mean x, x snaps to the bow tile nearest the mean, so the tested
+  `deckGap <= GAP` invariant holds for every raft shape (the plain mean is kept whenever it lies over a bow tile).
+- **cleanTrader**: a visit that is already gone also sets `next = clock + nextDelay(seed)` (so it does not respawn at once).
+  Non-numeric stock entries become the offer's full stock; numeric ones are floored and clamped. `bad` uses the text
+  "That trade isn’t on offer". `missing` lists every short kind joined with " and " using ITEM_INFO names ("Need 4 more Scrap").
+- **offersFor** keeps a one-entry memo (seed, has, pool) inside the core; it is a pure cache.
+- **UI api** adds `rev()`, `check(i)` (tradeCheck against the local bag, used for the disabled button text) and `running()`.
+  After a Trade click the button blurs and focus returns to the dialog wrap, so E/Tab/Esc still reach the dialog handler.
+- **Notices**: the plan and the float send only the 'all' notice (with a craft sound), not a second loot line to the actor; other
+  trades send the actor's loot line. The arrival notice uses the 'catch' sound.
+- **Reach**: the host reach check (`far`) runs only while docked; otherwise applyTrade answers `closed`. The stall is computed
+  from the shown (eased) barge position on each side.
+- **Guest net load**: clock and hold ease at 2/s (|err| <= 1 and same seed) else snap; `next` is a constant, so it is simply copied.
+- **Debug**: `give(kind, n, who)` takes `who = 'guest'` on the host for co-op QA. `trade`, `aimAt`, `open`, `close` and the reads work
+  on a guest; `summon/skip/clear/give` return false there. `clear()` drops the visit and sets `next = clock + FIRST`. `aimAt()` puts the
+  player on the bow row 2 m from the docked stall and turns the camera through `raftDebug.aim`.
+- **Models**: barge 5 draw calls (hull merged + shadow, cloth DoubleSide, Pim, lanternGlow, pennant); wreath 1 mesh; float 2 meshes.
+  craft-book: `shellwreath` is in the Building tab; ITEM_TEXT rows for shell, shellwreath and glassfloat.
+- **QA**: npm test green; shoot2.py errors []; Playwright flow (summon, approach, dock, E opens, real-click trades, plan + float,
+  craft the wreath, place the float, skip closes the dialog); coop2.mjs only the known 3 and 6 fail; a loopback guest trade
+  (E + click) moved the guest's fish to shells and dropped the host stock 4 -> 3, and the guest dialog closed when the host's visit ended.
