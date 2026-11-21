@@ -395,6 +395,7 @@ export function createDayNight(ctx) {
   // ---- lantern cache
   const partMat = new Array(MAX_PARTS).fill(null), partBase = new Float32Array(MAX_PARTS), partMult = new Float32Array(MAX_PARTS);
   const lanternGroups = new Array(MAX_LANTERNS).fill(null), lanternLocal = new Float32Array(MAX_LANTERNS * 3), lanternDist = new Float32Array(MAX_LANTERNS);
+  const POOL_COLOR = new T.Color('#ffb35c'), lanternTint = Array.from({length:MAX_LANTERNS}, () => POOL_COLOR.clone()), lanternGain = new Float32Array(MAX_LANTERNS).fill(1); // per-lantern pool tint/gain (lanternGlow.userData.pool)
   const poolPick = new Int32Array(POOL_LIGHTS).fill(-1);
   let partCount = 0, lanternCount = 0, signature = -1, scanClock = 0, rankClock = 0, poolLit = 0, lastNf = -1, lastGrow = -1;
   let scanRaft = null, scanFirst = null, scanLen = -1; // what raft.children looked like at the last scan
@@ -422,10 +423,12 @@ export function createDayNight(ctx) {
           if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
           const s = m.geometry.boundingSphere.center;
           lanternLocal[lanternCount * 3] = g.position.x + s.x; lanternLocal[lanternCount * 3 + 1] = g.position.y + s.y; lanternLocal[lanternCount * 3 + 2] = g.position.z + s.z;
+          const pc = m.userData.pool; // optional {color:'#rrggbb', gain:0..1} (JSON-safe, survives clone()): e.g. a candle's softer, paler pool
+          lanternTint[lanternCount].copy(POOL_COLOR); if (typeof pc?.color === 'string') lanternTint[lanternCount].setStyle(pc.color); lanternGain[lanternCount] = Number.isFinite(pc?.gain) ? Math.max(0, Math.min(1, pc.gain)) : 1;
           found = true;
         }
       }
-      if (!found) { lanternLocal[lanternCount * 3] = g.position.x + 0.3; lanternLocal[lanternCount * 3 + 1] = g.position.y + 1.24; lanternLocal[lanternCount * 3 + 2] = g.position.z; }
+      if (!found) { lanternTint[lanternCount].copy(POOL_COLOR); lanternGain[lanternCount] = 1; lanternLocal[lanternCount * 3] = g.position.x + 0.3; lanternLocal[lanternCount * 3 + 1] = g.position.y + 1.24; lanternLocal[lanternCount * 3 + 2] = g.position.z; }
       lanternGroups[lanternCount++] = g;
     }
     for (let i = lanternCount; i < MAX_LANTERNS; i++) lanternGroups[i] = null;
@@ -556,7 +559,8 @@ export function createDayNight(ctx) {
       if (k < 0 || k >= lanternCount || poolI <= 0 || !raft) { l.intensity = 0; continue; }
       l.position.set(lanternLocal[k * 3], lanternLocal[k * 3 + 1], lanternLocal[k * 3 + 2]);
       raft.localToWorld(l.position);
-      l.intensity = poolI * (0.94 + 0.06 * Math.sin(time * 7.3 + k * 1.7)); // gentle candle flicker
+      l.color.copy(lanternTint[k]);
+      l.intensity = poolI * lanternGain[k] * (0.94 + 0.06 * Math.sin(time * 7.3 + k * 1.7)); // gentle candle flicker
       poolLit++;
     }
   }

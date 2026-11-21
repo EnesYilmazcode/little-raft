@@ -25,6 +25,7 @@ import { createCoop } from './coop.js?build=v3-survival-ae77fa84ac2b'; // coop: 
 import { createDiving, DIVE } from './diving.js?build=v3-survival-ae77fa84ac2b'; // diving lane hook (docs/cloud/diving.md)
 import { nodeById, NODE_LOOT } from './seafloor.js?build=v3-survival-ae77fa84ac2b'; // diving lane hook
 import { createFishingCooking } from './fishing-cooking.js'; // [fishing-cooking] lane hook, see docs/cloud/fishing-cooking.md
+import { promptFromHtml } from './prompts.js'; // onboarding lane: same module URL as index.html, so one raftPrompts instance
 import { createInstruments } from './instruments.js?build=v3-survival-ae77fa84ac2b'; // [instruments] held drum / pipes / bells (docs/specs/instruments.md)
 import { cleanProgress, nextNote, shouldSpawnBottle, evaluate, achievementName, NOTE_COUNT } from './logbook.js?build=v3-survival-ae77fa84ac2b';
 import { createLogbookUI } from './logbook-ui.js?build=v3-survival-ae77fa84ac2b';
@@ -239,6 +240,7 @@ export function mount(transfer = null) {
   let hemi = null, clouds = [], content = null; // content hook: lights/clouds handed to content modules
   let hands = null, offIconReady = null, clothMat; // one hands controller swaps the held item model per hotbar kind
   const modelOf = k => { try { return getModel(k); } catch (e) { console.warn('model failed', k, e); return null; } };
+  const unprompt = []; // raftPrompts provider handles (aim prompts)
   let fc = null; // [fishing-cooking] rod fishing v2 + grills + journal (dist/fishing-cooking.js)
   let instruments = null; // [instruments]
   let logbookUI = null;
@@ -555,16 +557,16 @@ export function mount(transfer = null) {
   }
   // Old tone API (fishing-cooking lane, logbook): routed to the procedural sound recipes in audio.js.
   function beep(f = 500) { play(f >= 850 ? 'bite' : f >= 600 ? 'catch' : f >= 420 ? 'collect' : f >= 260 ? 'ui' : f >= 200 ? 'throw' : 'splash', .8); }
-  let contextHtml = null;
+  let contextHtml = null, aimHtml = ''; // aimHtml: watering/rain/content/fc prompt, drawn by dist/prompts.js (not #contextPrompt, which prompts.css hides)
   function updateContext(dialog) {
-    let html = '';
+    let html = ''; aimHtml = '';
     if (running && !dialog) {
       if (guestWaiting()) html = 'Waiting for your brother’s raft…';
       else if (pickTarget) html = `<kbd>E</kbd>Pick up ${esc(ITEM_NAMES[pickTarget.type] ?? 'supply')}`;
       else if (hover?.blocked) html = esc(BLOCK_TEXT[hover.blocked]);
-      else if (waterAim?.prompt) html = waterAim.prompt;
-      else if ((contextHtml = content?.prompt(frameAim) ?? null)) html = contextHtml; // content hook
-      else if (fc?.prompt) html = fc.prompt; // [fishing-cooking] trusted static markup from the lane module
+      else if (waterAim?.prompt) aimHtml = waterAim.prompt;
+      else if ((contextHtml = content?.prompt(frameAim) ?? null)) aimHtml = contextHtml; // content hook
+      else if (fc?.prompt) aimHtml = fc.prompt; // [fishing-cooking] trusted static markup from the lane module
       else if (hover && heldKind() === 'hammer' && !canAfford(localBag(), FLOOR_COST)) html = 'Floor needs ' + esc(missingText(localBag(), FLOOR_COST));
       else if (hook?.fishing) html = esc(castPrompt(hook, fishWait));
       else if (castOut() && castOut().stage === 'floating') html = caughtList(castOut()).length ? 'Hold click to reel it in' : 'Hold click to reel';
@@ -1645,7 +1647,7 @@ export function mount(transfer = null) {
         running, tool:mode, recipe:kind === 'hammer' ? 'floor' : DECOR_TYPES.includes(kind) ? kind : null, role, networkReady, pointerLocked:isLocked(), lockSupported, lockFallback, active, disposed,
         tiles:world.tiles.length, tileList:world.tiles.map(t => [...t]), decor:world.decor.map(d => ({...d})),
         stock:counts, fish:world.fish, collected:world.collected, items:world.items.length,
-        inventory:bag.snapshot(), selectedItem:bag.selected, selectedIndex:bag.selectedIndex, heldKind:kind, viewmodel:hands ? {...hands.state} : null,
+        inventory:bag.snapshot(), selectedItem:bag.selected, selectedIndex:bag.selectedIndex, heldKind:kind, viewmodel:hands ? {...hands.state} : null, aimPrompt:aimHtml || null,
         ownedTools:['hook', 'hammer', 'fishingrod'].filter(k => counts[k] > 0), inventoryOpen:!!survivalUI?.isOpen,
         notes:[...world.notes], achievements:[...world.achievements], logbookOpen:!!logbookUI?.isOpen,
         physics:physics.capture(), grounded:physics.grounded, swimming:physics.swimming,
@@ -1753,6 +1755,7 @@ export function mount(transfer = null) {
     try { sailing?.dispose(); } catch {} // [sailing]
     try { fc?.dispose(); } catch {} fc = null; // [fishing-cooking]
     try { instruments?.dispose(); } catch {} instruments = null; // [instruments]
+    unprompt.splice(0).forEach(f => { try { f(); } catch {} });
     for (const id of ['signalReadout', 'signalMarker']) { const el = document.getElementById(id); if (el) el.hidden = true; }
     try { logbookUI?.destroy?.(); } catch {}
     try { prog?.dispose(); } catch {} // [progression-hook]
@@ -1788,6 +1791,9 @@ export function mount(transfer = null) {
     warmShaders(); // after settings: the saved graphics preset decides the light/shadow program variants
     active = true; last = performance.now(); rafId = requestAnimationFrame(animate);
     // onboarding/prompts hook (docs/cloud/onboarding.md): lets dist/prompts.js raycast with the live camera.
+    unprompt.splice(0).forEach(f => f()); // aim prompts -> raftPrompts: actions outrank held-tool tips (instruments), status lines do not
+    const aimPrompt = want => () => { const p = running && aimHtml && !physics.swimming ? promptFromHtml(aimHtml) : null; return p && !!p.key === want ? p : null; };
+    try { const rp = window.raftPrompts; if (rp?.provide) unprompt.push(rp.provide({id:'game-aim', priority:2, prompt:aimPrompt(true)}), rp.provide({id:'game-aim-status', priority:0, prompt:aimPrompt(false)})); } catch {}
     try { window.raftMount = {T, scene, camera, debug:debugApi}; window.dispatchEvent(new CustomEvent('raft:mount', {detail:window.raftMount})); } catch {}
   } catch (e) {
     console.error(e); dispose();
