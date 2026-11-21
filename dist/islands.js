@@ -320,6 +320,7 @@ export function createIslands(ctx) {
     const r = applyGather(gatherState, a, actor, pos, bag);
     if (r.ok) {
       writeNode(a.node);
+      ctx.observe?.({ kind: 'gather', loot: r.loot }, actor); // [tasks]
       if (r.loot.length) {
         const text = r.loot.map(([k, n]) => `+${n} ${itemName(k)}`).join(', ');
         const loot = {}; for (const [k, n] of r.loot) loot[k] = (loot[k] || 0) + n;

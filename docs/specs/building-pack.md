@@ -179,7 +179,7 @@ All four pieces shipped, including the optional gate. There is no protocol bump,
   - The host `piecetoggle` branch.
   - E in `interact()`, before content.
   - A reused `climbIn` object, and `building.climb(...)` → `preStep(..., climb)`.
-- Tests: the new `tests/building-pack.test.mjs` (16 tests), and the `PIECE_ORDER` line in `tests/building-pieces.test.mjs`.
+- Tests: the new `tests/building-pack.test.mjs` (17 tests), and the `PIECE_ORDER` line in `tests/building-pieces.test.mjs`.
 
 **Deviations and additions (and why)**
 - **Railing and gate collision height is `RAIL_H + 0.25` (1.2 m).** The visible rail stays at 0.95. With the test raft bob of ±0.15 m, a running jump from a deck that is moving down rose more than 0.95 relative to the deck and cleared the rail (z went to 5.4). The taller invisible box fixes this and changes nothing else, since nothing stands on a railing.
@@ -189,6 +189,7 @@ All four pieces shipped, including the optional gate. There is no protocol bump,
 - **A long frame climbs in pieces of 0.1 s or less** (capped at 0.25 s), because MoveFeel clamps dt to 0.1. Without this, the climb crawled at low fps.
 - **`ladderAt` uses `L = floor((feet - deckY + 0.3) / LEVEL_H)`.** On a rising bob the feet sit a hair under the deck, and the plain floor gave L = -1, so the ladder never attached.
 - **Ladder input:** `climb()` reuses one input object, and `game.js` reuses `climbIn`, so climbing allocates nothing per frame apart from MoveFeel's own result object.
+- **New `postStep` → `_sweep`.** This fixes an existing bug with walls too. game.js runs up to five 0.05 s physics substeps before a single `postStep`. On a lag frame of 0.25 s or more, the body could move more than its radius, and the push-out then popped it to the far side of a thin wall or rail. In the close-up at low fps, the player walked straight through an upper-floor railing and fell. `_sweep` tests the frame's XZ segment against the solids it meets vertically, using the same `lo`/`hi` as `_solids`, and skips boxes it already overlapped at the start. It stops the body 1 cm before the first entry. It runs only when the frame moved more than 0.2 m. The new test "lag spike" covers this. Without the sweep, a wall is crossed at 4 fps (z 8.4).
 - **The gate opens towards local +z (as in the spec).** On a platform's +z edge it swings out over the drop. It is cosmetic only, because the open leaf has no collision.
 
 **Co-op:** the host-authoritative toggle resends `pieces` by identity. A guest climbs on its own synced grid. Mixed versions are unsupported: an old host ignores `piecetoggle` silently, and an old guest drops the new types.

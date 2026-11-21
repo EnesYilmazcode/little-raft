@@ -160,19 +160,22 @@ export function createBuilding(T, scene) {
   const PROMPTS = {hatch:['<kbd>E</kbd>Open hatch', '<kbd>E</kbd>Close hatch'], gate:['<kbd>E</kbd>Open gate', '<kbd>E</kbd>Close gate']};
   const promptOf = r => (r && STATEFUL[r.t] ? PROMPTS[r.t][r.o ? 1 : 0] : null); // static markup, no user text
   function prompt(camPos, aim, deckY) { return promptOf(target(camPos, aim, deckY)); }
-  function interact(camPos, aim, deckY) { const r = target(camPos, aim, deckY); return r ? {kind:'piecetoggle', t:r.t, i:r.i, j:r.j, l:r.l, r:r.r} : null; }
+  function interact(camPos, aim, deckY) { const r = target(camPos, aim, deckY); return r ? {kind:'piecetoggle', t:r.t, i:r.i, j:r.j, l:r.l, r:r.r, o:r.o === 1 ? 1 : 0} : null; } // o: the state the actor saw
   // Host-authoritative toggle. pose = the actor's body, bodies = everyone who could be in the way.
+  const TOGGLE_GAP = 150; let lastToggle = -Infinity; // ms between accepted toggles (any piece, either player)
   function toggle(a, world, pose, bodies, deckY) {
     sync(world);
     if (!a || typeof a.t !== 'string' || !STATEFUL[a.t] || ![a.i, a.j, a.l, a.r].every(Number.isInteger)) return {ok:false, text:''};
     const rec = grid.find(a);
     if (!rec || rec.t !== a.t) return {ok:false, text:''};
+    if ((a.o === 0 || a.o === 1) && (rec.o === 1 ? 1 : 0) !== a.o) return {ok:false, text:''}; // stale (a double press in flight): no flip back
+    const now = performance.now(); if (now - lastToggle < TOGGLE_GAP) return {ok:false, text:''}; // a spammed piecetoggle: no rebuild + pieces resend per message
     const s = PIECES[rec.t].slot, cy = deckY + rec.l * LEVEL_H;
     const cx = s === 'edge' ? (rec.r ? rec.i * 2 - 1 : rec.i * 2) : rec.i * 2, cz = s === 'edge' ? (rec.r ? rec.j * 2 : rec.j * 2 - 1) : rec.j * 2;
     const far = REACH_E + 1.5;
     if (!pose || !(Math.hypot(pose.x - cx, pose.z - cz) <= far) || !(Math.abs(pose.y - cy) <= far)) return {ok:false, text:''};
     if (rec.o === 1) for (const b of bodies || []) if (b && grid.occupied(rec, b.x, b.y, b.z, deckY)) return {ok:false, text:'Someone is in the way'};
-    grid.toggle(rec);
+    grid.toggle(rec); lastToggle = now;
     world.pieces = lastPieces = grid.list.map(toRec);
     rebuild();
     return {ok:true, text:(rec.t === 'hatch' ? 'Hatch ' : 'Gate ') + (rec.o ? 'opened' : 'closed')};

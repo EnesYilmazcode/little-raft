@@ -22,6 +22,7 @@
 //                cost:   {kind: n}  (station recipes have exactly one cost key = input)
 //                count:  output amount per craft / per smelted input
 //                station: null (hand craft) | 'smelter' | 'grill' | 'purifier'
+//                (the 'recycler' Sorting Tub has no ITEMS recipes: see stationExtraRecipes)
 //                time:   seconds per item (station only)
 //                fuel:   fuel units per item (station only; see FUEL_VALUE)
 //              }
@@ -88,6 +89,13 @@ const LIST = [
     tip: 'Rusty little metal bits. Handy for nails, lanterns and fixing your hook.' }),
   item('sand', 'Sand', 'material', { iconTint: '#e8d39a', unlock: START,
     tip: 'A pouch of fine beach sand from a barrel. The smelter melts it into glass.' }),
+  // [recycler] floating junk; a Sorting Tub turns it into materials (RECYCLE_YIELDS)
+  item('oldboot', 'Old Boot', 'material', { iconTint: '#6b4f3a', unlock: START,
+    tip: 'A soggy boot with a sturdy rubber sole. A Sorting Tub turns it into plastic.' }),
+  item('tincan', 'Tin Can', 'material', { iconTint: '#9aa4a8', unlock: START,
+    tip: 'A dented tin with no label. A Sorting Tub flattens it into scrap.' }),
+  item('seajar', 'Sea Jar', 'material', { iconTint: '#9fd0c8', unlock: START,
+    tip: 'A cloudy glass jar. A Sorting Tub crushes it into sand.' }),
   item('clay', 'Clay', 'material', { iconTint: '#c07a52',
     tip: 'Squishy river clay. Fire it on the grill to make bricks.' }),
   item('stone', 'Stone', 'material', { iconTint: '#9aa3a8',
@@ -188,6 +196,9 @@ const LIST = [
   item('spade', 'Little Spade', 'tool', { iconTint: '#bb8650', tool: true, durability: 60,
     recipe: hand({ wood: 3, scrap: 2 }), unlock: discover('sand'),
     tip: 'Press E on island sand to dig. Finds bundles, or at least a handful of sand. R fixes it.' }),
+  // [camera] Little Camera (dist/camera.js): no durability, photos stay in this browser
+  item('camera', 'Little Camera', 'tool', { iconTint: '#e07a5f', stack: 1, recipe: hand({ glass: 1, plastic: 2, scrap: 2, rope: 1 }), unlock: research('glass'),
+    tip: 'Click to snap a photo. Press P to open your album.' }),
 
   // ----- food -----
   item('coconut', 'Coconut', 'food', { iconTint: '#6b4a2a',
@@ -262,6 +273,10 @@ const LIST = [
   item('trophystand', 'Trophy Stand', 'decor', { placeable: true, iconTint: '#c9a24a', // [display]
     recipe: hand({ wood: 3, scrap: 1 }), unlock: discover('fish'),
     tip: 'A small pedestal for one treasure, or a trophy of your best catch.' }), // [display]
+  item('taskboard', 'Task Board', 'decor', { placeable: true, iconTint: '#c9a26b', recipe: hand({ wood: 3, leaf: 1 }), unlock: START, // [tasks] model in dist/tasks-model.js
+    tip: 'Pin up the crew tasks for the day.' }),
+  item('photoframe', 'Photo Frame', 'decor', { placeable: true, iconTint: '#c69860', recipe: hand({ wood: 3, glass: 1, nail: 1 }), unlock: research('glass', 'nail'), // [camera]
+    tip: 'Hang a favourite photo on your raft. Press E on it to choose one.' }),
   item('sail', 'Sail', 'build', { icon: 'icon-sail', placeholder: false, placeable: true,
     recipe: hand({ wood: 10, leaf: 20, scrap: 3 }), unlock: discover('leaf', 'scrap'), // Raft: 10 planks + 20 leaves + 3 scrap
     tip: 'Catch the breeze and look the part of a proper sea captain.' }),
@@ -292,6 +307,9 @@ const LIST = [
   item('smelter', 'Smelter', 'station', { iconTint: '#b5533c', stack: 5, placeable: true,
     recipe: hand({ wood: 6, brick: 10, stone: 7, nail: 6 }), unlock: research('clay', 'stone'),
     tip: 'A toasty brick furnace. Melts ore into ingots and sand into glass, one at a time.' }),
+  item('recycler', 'Sorting Tub', 'station', { iconTint: '#7fa7a0', stack: 5, placeable: true, // [recycler]
+    recipe: hand({ wood: 6, rope: 2, nail: 3 }), unlock: discover('nail'),
+    tip: 'A hand-cranked tub that sorts junk into scrap, plastic and sand. No fuel needed.' }),
 ];
 
 export const ITEMS = deepFreeze(Object.fromEntries(LIST.map((e) => [e.id, e])));
@@ -311,10 +329,30 @@ export const BLOCK_RADII = deepFreeze({
   shelf: 0.45, trophystand: 0.25, // [display]
   turbine: 0.2, battery: 0.3, stringlights: 0.1, lamppost: 0.12, // [power]
   fishtrap: 0.2, // [fishtrap] only the post stands on the deck
+  taskboard: 0.3, // [tasks]
+  photoframe: 0.15, // [camera]
+  recycler: 0.45, // [recycler]
 });
 
 /** Damage one landed spear thrust deals (spear lane; see docs/loop/research/fidelity-r1-shark.md). */
 export const SPEAR_DAMAGE = deepFreeze({ spear: 5, metalspear: 10 });
+
+/** [recycler] Sorting Tub yields: one junk item -> count of a gathered material, no fuel. */
+export const RECYCLE_YIELDS = deepFreeze({
+  tincan: { kind: 'scrap', count: 2, time: 12 },
+  oldboot: { kind: 'plastic', count: 2, time: 10 },
+  seajar: { kind: 'sand', count: 2, time: 10 },
+});
+export const JUNK_IDS = Object.freeze(Object.keys(RECYCLE_YIELDS));
+const EXTRA_RECIPES = deepFreeze({
+  recycler: Object.fromEntries(JUNK_IDS.map((k) => [k, { kind: RECYCLE_YIELDS[k].kind, in: 1, count: RECYCLE_YIELDS[k].count, time: RECYCLE_YIELDS[k].time, fuel: 0 }])),
+});
+
+/**
+ * Station recipes that are not ITEMS recipes (their outputs stay gathered materials):
+ * {inputKind: {kind, in, count, time, fuel}} for 'recycler', otherwise null.
+ */
+export function stationExtraRecipes(stationId) { return hasOwn(EXTRA_RECIPES, stationId) ? EXTRA_RECIPES[stationId] : null; }
 
 /** Fuel units per item put into a station. Plastic is never burned (friendly seas). */
 export const FUEL_VALUE = deepFreeze({ wood: 1, leaf: 0.5, seaweed: 0.5 });

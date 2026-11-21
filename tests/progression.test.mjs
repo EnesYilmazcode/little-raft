@@ -18,7 +18,7 @@ const { Bag, SLOT_COUNT, HOTBAR_SIZE } = Inv;
 
 const LEGACY = ['wood', 'leaf', 'plastic', 'scrap', 'rope', 'fish', 'hook', 'hammer', 'fishingrod', 'sail', 'palm', 'lantern', 'net', 'bench', 'crate'];
 const CATEGORIES = new Set(['material', 'refined', 'tool', 'station', 'build', 'food', 'decor']);
-const STATIONS_WITH_RECIPES = new Set(['smelter', 'grill', 'purifier']);
+const STATIONS_WITH_RECIPES = new Set(['smelter', 'grill', 'purifier', 'recycler']);
 const INFO = infoTable();
 const BAG_KNOWS_ALL = ITEM_IDS.every((k) => Inv.ITEM_KINDS.includes(k));
 
@@ -179,7 +179,7 @@ test('items: legacy kinds keep their ids and Bag-compatible stack/tool shape', (
 
 test('items: no unlock/recipe cycles and every item is reachable from the start', () => {
   // Raw sources: floating debris + barrel loot. Fish comes from the fishing rod.
-  const have = new Set(['wood', 'leaf', 'plastic', 'scrap', 'sharkmeat', 'sharkhead', 'berries' /* [juicer] island bushes */, ...BARREL_LOOT.map((e) => e.kind)]); // shark loot comes from a dead shark (shark.js)
+  const have = new Set(['wood', 'leaf', 'plastic', 'scrap', 'sharkmeat', 'sharkhead', 'berries' /* [juicer] island bushes */, ...(I.JUNK_IDS ?? []), ...BARREL_LOOT.map((e) => e.kind)]); // shark loot comes from a dead shark (shark.js); [recycler] junk floats too
   const unlocked = (id) => {
     const u = ITEMS[id].unlock;
     if (u.type === 'start') return true;
@@ -807,5 +807,19 @@ test('hooks: prog take with a full bag keeps the output; partial take returns th
   assert.equal(g.bags.guest.count('metalingot') + (b.debug.state().stations['0,0'].output?.count ?? 0), 25);
   b.apply({ kind: 'prog:take', key: '0,0' }, 'guest');
   assert.equal(g.bags.guest.count('metalingot') + (b.debug.state().stations['0,0'].output?.count ?? 0), 25);
+  b.dispose();
+});
+
+test('hooks: taking output leaves the queued input in the station', () => {
+  fakeStorage();
+  const g = fakeGame({ world: { tiles: [[0, 0]], decor: [{ type: 'smelter', x: 0, z: 0 }], items: [], collected: 1 } });
+  globalThis.localStorage.setItem(H.PROGRESSION_KEY, JSON.stringify({ v: 1, host: {}, guest: {}, stations: { '0,0': { station: 'smelter', input: { kind: 'metalore', count: 4 }, output: { kind: 'metalingot', count: 2 } } } }));
+  const b = H.attachProgression(g.ctx);
+  b.tick(0.016);
+  b.apply({ kind: 'prog:take', key: '0,0' }, 'host');
+  const st = b.debug.state().stations['0,0'];
+  assert.equal(g.bags.host.count('metalingot'), 2);
+  assert.equal(st.output, null);
+  assert.deepEqual(st.input, { kind: 'metalore', count: 4 }, 'ore stays queued');
   b.dispose();
 });
