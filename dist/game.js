@@ -6,7 +6,7 @@ import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
 import { HookCast, WATER_Y } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings } from './settings.js?build=v3-survival-ae77fa84ac2b';
 import { createRaftMesh } from './deck.js?build=v3-survival-ae77fa84ac2b';
-import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
+import { createDebris, createItemBatch } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createHands } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
@@ -515,13 +515,14 @@ export function mount(transfer = null) {
   // ---------- Floating supplies ----------
   function makeItem(id) { const edge = Math.min(...world.tiles.map(t => t[1])) * 2 - 1, spread = Math.max(11, Math.max(...world.tiles.map(t => Math.abs(t[0]))) * 2 + 6); return {id, token:newToken(), type:SPAWN_TABLE[Math.floor(Math.random() * SPAWN_TABLE.length)], x:(Math.random() - .5) * spread * 2, z:edge - 3 - Math.random() * 17, phase:Math.random() * 6}; }
   function itemModel(item) {
-    if (item.type !== 'plastic') return singlePass(createDebris(T, item.type, mat, {seed:item.id}));
+    if (item.type !== 'plastic') return singlePass(createDebris(T, item.type, mat, {seed:item.id, pool:4})); // pooled geometry, drawn instanced by the item batch
     const g = new T.Group(), jug = singlePass(createPlastic(T)); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
   }
   // Meshes are keyed by token, not id: a respawned item keeps its id but may change type.
   const itemMeshes = new Map();
   function syncItems() {
     if (!itemsGroup) return;
+    if (!itemsGroup.userData.batch) itemsGroup.add(itemsGroup.userData.batch = createItemBatch(T)); // one instanced draw per item variant
     const live = new Set(world.items.map(x => x.token));
     for (const [token, m] of itemMeshes) if (!live.has(token)) { itemsGroup.remove(m); disposeGeometry(m); itemMeshes.delete(token); }
     for (const token of pending.keys()) if (!live.has(token)) pending.delete(token);

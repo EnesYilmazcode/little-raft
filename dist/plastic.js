@@ -135,6 +135,7 @@ export function createPlastic(T) {
   const body = new T.Mesh(jug.solidGeo, jug.solidMat);
   body.name = 'jugBody';
   body.castShadow = true; body.receiveShadow = true;
+  body.userData.batch = true; // shared geometry: debris.js createItemBatch may draw it instanced
   root.add(body);
   root.userData.type = 'plastic';
   root.userData.size = { x: 0.65, y: 0.7, z: 0.4 };

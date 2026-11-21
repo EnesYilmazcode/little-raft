@@ -2,9 +2,12 @@
 // export createDebris(T, type, getMaterial, opts?) -> THREE.Group
 //   type: 'wood' | 'leaf' | 'scrap' | 'barrel'
 //   getMaterial(colorString) -> shared MeshStandardMaterial (owned by engine, never disposed here)
-//   opts (optional): { seed:number, tilt:number (barrel axis tilt, radians; default ~0.2) }
+//   opts (optional): { seed:number, tilt:number (barrel axis tilt, radians; default ~0.2),
+//                      pool:number (share one of `pool` cached, pre-transformed geometry variants picked by seed;
+//                      the geometry is marked userData.shared and must not be disposed per item) }
+// export createItemBatch(T) -> THREE.Group: draws pooled items instanced (see below).
 // Root is untransformed (engine positions/rotates it). Content is centered on the origin.
-// All geometry is created per call and owned by the returned group's meshes.
+// Without opts.pool all geometry is created per call and owned by the returned group's meshes.
 // Materials created here are cached per T and shared by every item (material.userData.shared = true);
 // they must not be disposed when one item is removed. root.userData.localMaterials stays empty.
 
@@ -403,8 +406,7 @@ function buildBarrel(T, getMaterial, root, inner, r, opts) {
   inner.add(pivot);
 }
 
-export function createDebris(T, type, getMaterial, opts = {}) {
-  if (!TYPES.includes(type)) throw new Error(`createDebris: unknown type "${type}"`);
+function build(T, type, getMaterial, opts) {
   const r = rng(opts.seed != null ? opts.seed : Math.floor(Math.random() * 2 ** 31));
   const root = new T.Group();
   root.name = `debris-${type}`;
@@ -421,6 +423,158 @@ export function createDebris(T, type, getMaterial, opts = {}) {
   const size = new T.Box3().setFromObject(inner).getSize(new T.Vector3());
   root.userData.size = { x: size.x, y: size.y, z: size.z };
   return root;
+}
+
+// One baked variant: every mesh's transform folded into its geometry, which is then shared (userData.shared).
+function variant(T, type, getMaterial, opts, v) {
+  const key = `pool|${type}|${opts.pool}|${v}|${opts.tilt}|${type === 'wood' ? getMaterial('#d5a265').uuid : ''}`;
+  const cache = cacheFor(T);
+  let entry = cache.get(key);
+  if (!entry) {
+    const src = build(T, type, getMaterial, { tilt: opts.tilt, seed: 0x5eed + v * 7919 });
+    src.updateMatrixWorld(true);
+    const parts = [];
+    src.traverse((o) => {
+      if (!o.isMesh) return;
+      o.geometry.applyMatrix4(o.matrixWorld);
+      o.geometry.computeBoundingSphere();
+      o.geometry.userData.shared = true;
+      parts.push({ geometry: o.geometry, material: o.material, castShadow: o.castShadow });
+    });
+    cache.set(key, (entry = { parts, size: src.userData.size }));
+  }
+  return entry;
+}
+
+export function createDebris(T, type, getMaterial, opts = {}) {
+  if (!TYPES.includes(type)) throw new Error(`createDebris: unknown type "${type}"`);
+  if (!(opts.pool > 0)) return build(T, type, getMaterial, opts);
+  // opts.pool: share one of `pool` cached geometry variants (picked by seed) instead of building a new one
+  const seed = opts.seed != null ? opts.seed : Math.floor(Math.random() * 2 ** 31);
+  const entry = variant(T, type, getMaterial, opts, ((seed % opts.pool) + opts.pool) % opts.pool);
+  const root = new T.Group();
+  root.name = `debris-${type}`;
+  root.userData.type = type;
+  root.userData.localMaterials = [];
+  root.userData.size = { ...entry.size };
+  for (const p of entry.parts) {
+    const m = new T.Mesh(p.geometry, p.material);
+    m.castShadow = p.castShadow;
+    m.receiveShadow = true;
+    m.userData.batch = true; // createItemBatch may draw it instanced
+    root.add(m);
+  }
+  return root;
+}
+
+// Instanced drawing for items made of shared geometry. Add the returned object to the group that holds the
+// item roots: each frame (from the scene's matrix update, after all gameplay moves) it gathers every
+// descendant mesh flagged userData.batch with a userData.shared geometry, hides it, and draws all of them as
+// InstancedMeshes per geometry+material. The hidden meshes stay in place for raycasting; item roots keep
+// their own position/rotation/scale/visible, which the instances follow. Remove an item root as usual.
+// Instances inside a shadow-casting light's frustum go to a shadow-casting InstancedMesh and the rest to one
+// that casts none, so the shadow pass draws no more items than per-item culling did.
+export function createItemBatch(T) {
+  const holder = new T.Group();
+  holder.name = 'item-batch';
+  const adopted = new WeakMap(), slots = new Map(), slotList = [], local = new T.Matrix4(), world = new T.Matrix4(), sphere = new T.Sphere();
+  const frustums = [];
+  const noRaycast = () => {};
+  // Shadow pass: a depth material only ever used instanced, so sharing three's default one with plain meshes
+  // doesn't force a program re-lookup on every switch between instanced and non-instanced casters.
+  let depthMat = cacheFor(T).get('mat|itemDepth');
+  if (!depthMat) {
+    depthMat = new T.MeshDepthMaterial({ depthPacking: T.RGBADepthPacking });
+    depthMat.userData.shared = true;
+    cacheFor(T).set('mat|itemDepth', depthMat);
+  }
+  function entries(item) {
+    let list = adopted.get(item);
+    if (list) return list;
+    list = [];
+    item.traverse((o) => {
+      if (!o.isMesh || !o.userData.batch || !o.geometry.userData.shared || Array.isArray(o.material)) return;
+      const m = new T.Matrix4();
+      for (let p = o; p && p !== item; p = p.parent) { if (p.matrixAutoUpdate) p.updateMatrix(); m.premultiply(p.matrix); }
+      o.visible = false; // drawn by the batch; Raycaster ignores visibility, so picking still hits it
+      if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+      list.push({ key: `${o.geometry.id}:${o.material.id}`, mesh: o, local: m });
+    });
+    adopted.set(item, list);
+    return list;
+  }
+  function grow(s, src, cap) {
+    const im = new T.InstancedMesh(src.geometry, src.material, cap);
+    im.name = 'item-batch-instances';
+    im.castShadow = s.cast;
+    im.customDepthMaterial = depthMat;
+    im.receiveShadow = src.receiveShadow;
+    im.raycast = noRaycast; // picking resolves through the hidden per-item meshes
+    im.instanceMatrix.setUsage(T.DynamicDrawUsage);
+    if (s.im) { im.instanceMatrix.array.set(s.im.instanceMatrix.array); holder.remove(s.im); s.im.dispose(); }
+    s.im = im; s.cap = cap;
+    holder.add(im);
+    im.updateMatrixWorld(true);
+  }
+  function put(s, src, m) {
+    if (!s.im) grow(s, src, 16);
+    else if (s.n >= s.cap) grow(s, src, s.cap * 2);
+    s.im.setMatrixAt(s.n++, m);
+  }
+  // Shadow frustums of the scene's top-level shadow-casting lights (as of their last shadow render).
+  function lights() {
+    frustums.length = 0;
+    let scene = holder;
+    while (scene.parent) scene = scene.parent;
+    for (let i = 0; i < scene.children.length; i++) {
+      const o = scene.children[i];
+      if (!o.isLight || !o.castShadow || !o.shadow) continue;
+      if (o.isDirectionalLight || o.isSpotLight) frustums.push(o.shadow.getFrustum());
+      else return false; // unknown shadow shape: let every instance cast
+    }
+    return true;
+  }
+  function casts(m, geo) {
+    sphere.copy(geo.boundingSphere).applyMatrix4(world.multiplyMatrices(holder.parent.matrixWorld, m));
+    sphere.radius += 0.5;
+    for (let i = 0; i < frustums.length; i++) if (frustums[i].intersectsSphere(sphere)) return true;
+    return false;
+  }
+  function sync() {
+    const parent = holder.parent;
+    if (!parent) return;
+    const known = lights();
+    for (let i = 0; i < slotList.length; i++) slotList[i].near.n = slotList[i].far.n = 0;
+    for (let i = 0; i < parent.children.length; i++) {
+      const item = parent.children[i];
+      if (item === holder) continue;
+      const parts = entries(item);
+      if (!parts.length || !item.visible) continue;
+      if (item.matrixAutoUpdate) item.updateMatrix();
+      for (let j = 0; j < parts.length; j++) {
+        const e = parts[j];
+        let s = slots.get(e.key);
+        if (!s) {
+          s = { near: { im: null, cap: 0, n: 0, cast: e.mesh.castShadow }, far: { im: null, cap: 0, n: 0, cast: false } };
+          slots.set(e.key, s); slotList.push(s);
+        }
+        local.multiplyMatrices(item.matrix, e.local);
+        put(e.mesh.castShadow && (!known || casts(local, e.mesh.geometry)) ? s.near : s.far, e.mesh, local);
+      }
+    }
+    for (let i = 0; i < slotList.length; i++) { finish(slotList[i].near); finish(slotList[i].far); }
+  }
+  function finish(b) {
+    if (!b.im) return;
+    b.im.count = b.n;
+    b.im.visible = b.n > 0;
+    if (b.n) { b.im.instanceMatrix.needsUpdate = true; b.im.computeBoundingSphere(); }
+  }
+  holder.updateMatrixWorld = function (force) {
+    T.Object3D.prototype.updateMatrixWorld.call(this, force);
+    sync();
+  };
+  return holder;
 }
 
 export default createDebris;
