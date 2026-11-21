@@ -50,6 +50,7 @@ export function createContent(ctx, features = FEATURES) {
   // A failing module is disabled and disposed once, so shared engine state (fog, lights…) is restored.
   const off = m => { if (m.dead) return; m.dead = true; console.error('content module disabled:', m.name); try { m.dispose?.(); } catch (e) { console.error(`content ${m.name}.dispose failed`, e); } };
   const call = (m, fn, ...a) => { if (m.dead || typeof m[fn] !== 'function') return undefined; try { return m[fn](...a); } catch (e) { console.error(`content ${m.name}.${fn} failed`, e); off(m); return undefined; } };
+  const call1 = (m, out) => { try { m.diveMods(out); } catch (e) { console.error(`content ${m.name}.diveMods failed`, e); off(m); } };
   const first = (fn, ...a) => { for (const m of mods) { const r = call(m, fn, ...a); if (r) return r; } return null; };
   const debug = {};
   for (const m of mods) if (m.name && m.debug) debug[m.name] = m.debug;
@@ -64,7 +65,7 @@ export function createContent(ctx, features = FEATURES) {
     prompt: aim => first('prompt', aim),
     craftLocked: (recipe, actor) => first('craftLocked', recipe, actor),
     decorModel: (type, d) => first('decorModel', type, d),
-    diveMods(out) { out.swim = out.oxy = out.fog = out.gather = 1; for (const m of mods) call(m, 'diveMods', out); return out; }, // shared dive modifier hook
+    diveMods(out) { out.swim = out.oxy = out.fog = out.gather = 1; for (let i = 0; i < mods.length; i++) { const m = mods[i]; if (!m.dead && typeof m.diveMods === 'function') call1(m, out); } return out; }, // shared dive modifier hook (no per-frame rest-arg arrays)
     dispose() { for (const m of mods) call(m, 'dispose'); },
   };
 }
