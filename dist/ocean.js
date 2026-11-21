@@ -305,6 +305,7 @@ export function createOcean(T, options = {}) {
     W[o + 4] = ndx * q * a; W[o + 5] = ndz * q * a;
   });
   const AMP = new Float64Array(WAVES.map((w) => w[2]));
+  const _H5 = new Float64Array(5);
   function getHeight(x, z, t = time) {
     const fl = uniforms.uFlow.value; x += fl.x; z += fl.y; // [sailing] match shader offset
     let px = x, pz = z;
@@ -339,9 +340,33 @@ export function createOcean(T, options = {}) {
   // Replaces a getHeight + getSlope pair with one call; pass a reused `out` to avoid allocation.
   function sample(x, z, out, t = time, e = 0.6) {
     const r = out ?? { h: 0, sx: 0, sz: 0 };
-    r.h = getHeight(x, z, t);
-    r.sx = (getHeight(x + e, z, t) - getHeight(x - e, z, t)) / (2 * e);
-    r.sz = (getHeight(x, z + e, t) - getHeight(x, z - e, t)) / (2 * e);
+    // Inlined 5-point getHeight (centre, +x, -x, +z, -z): no nested calls, results written to a
+    // scratch Float64Array. Offsets are built as (x + off) + flow exactly like getHeight(x + off, z)
+    // so every height is bit-identical to the getHeight-based version.
+    const fl = uniforms.uFlow.value, fx = fl.x, fz = fl.y, y0 = mesh.position.y;
+    for (let s = 0; s < 5; s++) {
+      const X = s === 1 ? (x + e) + fx : s === 2 ? (x - e) + fx : x + fx;
+      const Z = s === 3 ? (z + e) + fz : s === 4 ? (z - e) + fz : z + fz;
+      let px = X, pz = Z;
+      for (let it = 0; it < 2; it++) {
+        let ox = 0, oz = 0;
+        for (let i = 0, o = 0; i < NW; i++, o += 6) {
+          const co = Math.cos(W[o] * (W[o + 1] * px + W[o + 2] * pz - W[o + 3] * t));
+          ox += W[o + 4] * co;
+          oz += W[o + 5] * co;
+        }
+        px = X - ox;
+        pz = Z - oz;
+      }
+      let oy = 0;
+      for (let i = 0, o = 0; i < NW; i++, o += 6) {
+        oy += AMP[i] * Math.sin(W[o] * (W[o + 1] * px + W[o + 2] * pz - W[o + 3] * t));
+      }
+      _H5[s] = y0 + oy;
+    }
+    r.h = _H5[0];
+    r.sx = (_H5[1] - _H5[2]) / (2 * e);
+    r.sz = (_H5[3] - _H5[4]) / (2 * e);
     return r;
   }
 
