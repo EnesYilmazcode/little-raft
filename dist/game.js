@@ -217,7 +217,7 @@ export function mount(transfer = null) {
   let frameMsAvg = 16.7, cpuMsAvg = 0;
   // Adaptive resolution: render scale drops in steps while frames are slow, climbs back slowly once they are fast.
   // ?fixedres pins it (headless QA screenshots).
-  const RES_MIN = .7, fixedRes = new URLSearchParams(location.search).has('fixedres');
+  const RES_MIN = .7, fixedRes = /[?&](fixedres|pinQuality)\b/.test(location.search); // perf probes pin resolution
   let baseRatio = Math.min(devicePixelRatio, 1.3), resScale = 1, resCheckAt = performance.now() + 3000;
   function adaptResolution(now) {
     if (fixedRes || now < resCheckAt) return;
@@ -344,7 +344,7 @@ export function mount(transfer = null) {
     camera = new T.PerspectiveCamera(running ? 70 : 48, innerWidth / innerHeight, .05, 260); camera.rotation.order = 'YXZ'; scene.add(camera);
     renderer = X?.renderer && X.renderer.domElement === canvas ? X.renderer : new T.WebGLRenderer({canvas, antialias:true});
     renderer.setPixelRatio(baseRatio * resScale); renderer.setSize(innerWidth, innerHeight);
-    renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+    renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
     scene.add(new T.HemisphereLight('#eef6f8', '#3a7479', 1.8));
     sun = new T.DirectionalLight('#fff0c7', 2.5); sun.position.set(-15, 28, 12); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, {left:-25, right:25, top:25, bottom:-25}); sun.shadow.bias = -.001; scene.add(sun);
     sky = createSky(T, {sunDirection:sun.position}); scene.add(sky.group);
@@ -992,7 +992,7 @@ export function mount(transfer = null) {
     const veiled = dialog && !!document.querySelector('dialog[open]:not(#inventory)');
     if (veiled && now - lastDraw < 100) return;
     lastDraw = now;
-    renderer.render(scene, camera);
+    renderer.info.reset(); renderer.render(scene, camera); // manual reset so info counts the shadow pass too
     cpuMsAvg += (performance.now() - now - cpuMsAvg) * .05;
     if (!veiled) adaptResolution(now);
   }
@@ -1257,6 +1257,11 @@ export function mount(transfer = null) {
     return {x:r.left + (v.x + 1) / 2 * r.width, y:r.top + (1 - v.y) / 2 * r.height, visible:inFront && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1};
   }
   const worldPos = o => { if (!o) return null; const p = o.getWorldPosition(new T.Vector3()); return {x:p.x, y:p.y, z:p.z, visible:o.visible}; };
+  function sceneCounts() { // perf probes: mesh / shadow-caster / light counts
+    const c = {meshes:0, visible:0, lights:0, shadowCasters:0, lines:renderer.info.render.lines, points:renderer.info.render.points};
+    scene?.traverse(o => { if (o.isMesh || o.isLine || o.isPoints) { c.meshes++; if (o.visible) c.visible++; if (o.castShadow) c.shadowCasters++; } if (o.isLight) c.lights++; });
+    return c;
+  }
   const debugApi = Object.freeze({
     audio:sfx, // volume buses (setBus/getBus master|effects|ambience|music) and setMusic for the menus
     get state() {
@@ -1285,7 +1290,7 @@ export function mount(transfer = null) {
     project,
     get renderInfo() {
       const r = renderer?.info; if (!r) return null;
-      return {calls:r.render.calls, triangles:r.render.triangles, geometries:r.memory.geometries, textures:r.memory.textures, programs:r.programs?.length ?? 0, frameMsAvg:+frameMsAvg.toFixed(2), cpuMsAvg:+cpuMsAvg.toFixed(2), pixelRatio:renderer.getPixelRatio(), resScale};
+      return {calls:r.render.calls, triangles:r.render.triangles, geometries:r.memory.geometries, textures:r.memory.textures, programs:r.programs?.length ?? 0, frameMsAvg:+frameMsAvg.toFixed(2), cpuMsAvg:+cpuMsAvg.toFixed(2), pixelRatio:renderer.getPixelRatio(), resScale, shadows:renderer.shadowMap.enabled, ...sceneCounts()};
     },
     get targets() {
       return world.items.map(it => {
