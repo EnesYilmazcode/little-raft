@@ -49,7 +49,9 @@ export function createFeed({ doc = globalThis.document, now = () => performance.
     const t = now(), old = rows.get(key);
     if (old && t - old.at < MERGE_MS) {
       old.at = t; update(old);
-      old.el.classList.remove('bump'); void old.el.offsetWidth; old.el.classList.add('bump'); // restart the pop
+      // Restart the pop by alternating two classes bound to identical keyframes (no forced reflow).
+      const cl = old.el.classList, b = cl.contains('bump');
+      cl.remove(b ? 'bump' : 'bump2'); cl.add(b ? 'bump2' : 'bump');
       root().appendChild(old.el); rows.delete(key); rows.set(key, old); // newest sits at the bottom
       arm(key, old); return old;
     }
