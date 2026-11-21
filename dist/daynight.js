@@ -103,21 +103,21 @@ export function weatherAt(seed, clock, out) {
 }
 
 // ---------------------------------------------------------------- palette
-// Colours (sRGB 0..1): 0 horizon (background, fog, ocean uSky), 1 ocean zenith, 2 ocean deep,
-// 3 ocean shallow, 4 sun/moon light, 5 hemi sky, 6 hemi ground, 7 cloud.
-export const N_COLORS = 8;
+// Colours (sRGB 0..1): 0 horizon (background, fog, ocean uSky, sky dome band), 1 ocean zenith (sky the water
+// reflects), 2 ocean deep, 3 ocean shallow, 4 sun/moon light, 5 hemi sky, 6 hemi ground, 7 cloud, 8 sky dome zenith.
+export const N_COLORS = 9;
 const hex = s => [parseInt(s.slice(1, 3), 16) / 255, parseInt(s.slice(3, 5), 16) / 255, parseInt(s.slice(5, 7), 16) / 255];
 const key = (phase, ...colors) => ({ phase, c: new Float32Array(colors.flatMap(hex)) });
 export const PALETTE_KEYS = Object.freeze([
-  //   phase  horizon    zenith     deep       shallow    sun        hemi sky   hemi gnd   cloud
-  key(0.00, '#efc3a4', '#b5bcc8', '#1a4a5c', '#4a8784', '#ffcf9e', '#f3d9c4', '#3f5c66', '#f6d3c2'), // sunrise peach
-  key(0.13, '#cbd2c0', '#a9c1c0', '#14505a', '#3f8c88', '#fff0c7', '#f2ead4', '#3d6b6a', '#e7f9eb'), // day sage
-  key(0.54, '#cbd2c0', '#a9c1c0', '#14505a', '#3f8c88', '#fff0c7', '#f2ead4', '#3d6b6a', '#e7f9eb'),
-  key(0.635, '#eaa98e', '#b79fb0', '#1d4a5e', '#4d7f88', '#ffb27e', '#f4c3a6', '#4b5a68', '#f2b8aa'), // dusk coral
-  key(0.70, '#6f6f9e', '#58679a', '#173c54', '#2f6276', '#c3b0dc', '#a9a6d2', '#3a4c66', '#8e88b2'), // blue hour
-  key(0.77, '#34486f', '#2e4170', '#0f3046', '#1f5066', '#a8bff0', '#9bb4e6', '#2f4762', '#5e6f98'), // cosy blue night
-  key(0.91, '#34486f', '#2e4170', '#0f3046', '#1f5066', '#a8bff0', '#9bb4e6', '#2f4762', '#5e6f98'),
-  key(0.965, '#6c7299', '#536392', '#163a50', '#2d5e70', '#c6b8da', '#aaaed2', '#37495e', '#9490b0'), // predawn
+  //   phase  horizon    ocean zen  deep       shallow    sun        hemi sky   hemi gnd   cloud      sky zenith
+  key(0.00, '#efc3a4', '#8fb0d4', '#0f3d66', '#2c7da2', '#ffcf9e', '#f3d9c4', '#3f5c66', '#f6d3c2', '#5d8cc6'), // sunrise peach
+  key(0.13, '#cfe8f2', '#3f9be0', '#0b3f73', '#1b86b8', '#fff1d6', '#cfe6ff', '#3d6f7a', '#ffffff', '#2f8fe0'), // tropical day
+  key(0.54, '#cfe8f2', '#3f9be0', '#0b3f73', '#1b86b8', '#fff1d6', '#cfe6ff', '#3d6f7a', '#ffffff', '#2f8fe0'),
+  key(0.635, '#eaa98e', '#8e9cc2', '#15426c', '#367b9c', '#ffb27e', '#f4c3a6', '#4b5a68', '#f2b8aa', '#5874b0'), // dusk coral
+  key(0.70, '#6f6f9e', '#58679a', '#173c54', '#2f6276', '#c3b0dc', '#a9a6d2', '#3a4c66', '#8e88b2', '#3c4c86'), // blue hour
+  key(0.77, '#34486f', '#2e4170', '#0f3046', '#1f5066', '#a8bff0', '#9bb4e6', '#2f4762', '#5e6f98', '#1b2a52'), // cosy blue night
+  key(0.91, '#34486f', '#2e4170', '#0f3046', '#1f5066', '#a8bff0', '#9bb4e6', '#2f4762', '#5e6f98', '#1b2a52'),
+  key(0.965, '#6c7299', '#536392', '#163a50', '#2d5e70', '#c6b8da', '#aaaed2', '#37495e', '#9490b0', '#38487c'), // predawn
 ]);
 // Rain pulls every colour toward a cool grey-green of similar brightness.
 export const RAIN_MIX = 0.65;
@@ -290,8 +290,9 @@ export function createDayNight(ctx) {
   // ---- scratch
   const cHorizon = new T.Color(), cZenith = new T.Color(), cDeep = new T.Color(), cShallow = new T.Color();
   const cSun = new T.Color(), cHemiSky = new T.Color(), cHemiGround = new T.Color(), cCloud = new T.Color();
-  const cRain = new T.Color();
-  const vDir = new T.Vector3(), vMoon = new T.Vector3(), vTmp = new T.Vector3();
+  const cRain = new T.Color(), cSkyZenith = new T.Color();
+  const CLOUD_BELLY = new T.Color('#c9d6e0'); // cloud shade = cloud colour * this
+  const vDir = new T.Vector3(), vSun = new T.Vector3(), vMoon = new T.Vector3(), vTmp = new T.Vector3();
   const AXIS = new T.Vector3(-0.78, 0, 0.62).normalize(), SIDE = new T.Vector3(0.62, 0, 0.78).normalize();
   const setSRGB = (c, o) => c.setRGB(PAL[o], PAL[o + 1], PAL[o + 2], T.SRGBColorSpace);
 
@@ -459,21 +460,22 @@ export function createDayNight(ctx) {
     paletteAt(phase, W.rain, PAL);
     const nf = L.nightFactor, wet = W.rain;
     setSRGB(cHorizon, 0); setSRGB(cZenith, 3); setSRGB(cDeep, 6); setSRGB(cShallow, 9);
-    setSRGB(cSun, 12); setSRGB(cHemiSky, 15); setSRGB(cHemiGround, 18); setSRGB(cCloud, 21);
+    setSRGB(cSun, 12); setSRGB(cHemiSky, 15); setSRGB(cHemiGround, 18); setSRGB(cCloud, 21); setSRGB(cSkyZenith, 24);
     const cool = Math.max(0, W.wind - 0.15) * (1 - wet) * 0.08; // breezy: a touch cooler
     cHorizon.r *= 1 - cool; cHorizon.g *= 1 - cool * 0.4; cCloud.r *= 1 - cool;
 
     // sky, fog
     if (scene) {
       if (scene.background?.isColor) scene.background.copy(cHorizon);
-      if (scene.fog) { scene.fog.color.copy(cHorizon); scene.fog.near = 25 - 9 * wet; scene.fog.far = 125 - 45 * wet; }
+      if (scene.fog) { scene.fog.color.copy(cHorizon); scene.fog.near = 50 - 32 * wet; scene.fog.far = 155 - 70 * wet; }
     }
     // sun / moon direction
     const th = sunAngle(phaseAt(phase * DAY_SECONDS));
     const ct = Math.cos(th), st = Math.sin(th);
     const up = L.sunHeight >= 0;
     vMoon.set(-AXIS.x * ct - SIDE.x * 0.6, -st * 0.5, -AXIS.z * ct - SIDE.z * 0.6).normalize(); // the moon rides low, opposite the sun
-    if (up) vDir.set(AXIS.x * ct - SIDE.x * 0.32, st, AXIS.z * ct - SIDE.z * 0.32).normalize();
+    vSun.set(AXIS.x * ct - SIDE.x * 0.32, st, AXIS.z * ct - SIDE.z * 0.32).normalize();
+    if (up) vDir.copy(vSun);
     else vDir.copy(vMoon);
     const dayI = 2.5 * (1 - 0.15 * wet) * smooth(-0.02, 0.2, L.sunHeight);
     const moonI = 0.6 * (1 - 0.3 * wet) * smooth(-0.02, 0.2, -L.sunHeight);
@@ -498,6 +500,15 @@ export function createDayNight(ctx) {
         u.uSunColor.value.copy(oceanSunColor).multiply(cSun).multiplyScalar(spec);
       }
       if (u.uFoam) u.uFoam.value.copy(oceanFoam).lerp(cHemiSky, 0.35 * nf).multiplyScalar(1 - 0.5 * nf); // soft moonlit foam
+    }
+    // sky dome (sky.js): gradient, sun glow and shader clouds follow the palette
+    const sk = ctx.sky?.uniforms;
+    if (sk) {
+      sk.uHorizon?.value.copy(cHorizon); sk.uZenith?.value.copy(cSkyZenith);
+      sk.uSunColor?.value.copy(cSun); sk.uSunDir?.value.copy(vSun);
+      if (sk.uSunAmt) sk.uSunAmt.value = smooth(-0.04, 0.1, L.sunHeight) * (1 - 0.8 * wet);
+      sk.uCloudLit?.value.copy(cCloud); sk.uCloudShade?.value.copy(cCloud).multiply(CLOUD_BELLY);
+      if (sk.uCoverage) sk.uCoverage.value = 0.44 + 0.3 * W.cloud;
     }
     // clouds
     cloudMat.color.copy(cCloud); cloudMat.emissive.copy(cCloud).multiplyScalar(0.32 + 0.18 * nf); // soft self-lit undersides

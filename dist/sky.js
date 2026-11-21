@@ -1,4 +1,4 @@
-// Little Raft - calm hazy ocean sky.
+// Little Raft - tropical ocean sky (saturated blue dome, pale band at the horizon, wispy clouds).
 // Usage:
 //   import { createSky } from './sky.js?build=v3-survival-ae77fa84ac2b';
 //   const sky = createSky(THREE);
@@ -27,6 +27,7 @@ uniform vec3 uCloudLit;
 uniform vec3 uCloudShade;
 uniform float uTime;
 uniform float uCoverage;
+uniform float uSunAmt;
 varying vec3 vWorldPos;
 
 float hash(vec2 p) {
@@ -50,7 +51,7 @@ float fbm(vec2 p) {
   float v = 0.0;
   float a = 0.5;
   mat2 rot = mat2(0.8, -0.6, 0.6, 0.8);
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 4; i++) {
     v += a * vnoise(p);
     p = rot * p * 2.03 + vec2(17.1, 9.4);
     a *= 0.5;
@@ -62,36 +63,37 @@ void main() {
   vec3 dir = normalize(vWorldPos - cameraPosition);
   float y = dir.y;
 
-  // Base gradient: cream haze hugging the horizon, pale blue overhead.
+  // Base gradient: pale band hugging the horizon, saturated blue overhead.
   float up = clamp(y, 0.0, 1.0);
-  float t = 1.0 - pow(1.0 - up, 3.2);
+  float t = 1.0 - pow(1.0 - up, 4.0);
   vec3 col = mix(uHorizon, uZenith, t);
 
   // Sun: broad warm halo, softer wide glow, small soft disk.
   float sd = max(dot(dir, uSunDir), 0.0);
-  float glow = pow(sd, 6.0) * 0.18 + pow(sd, 40.0) * 0.32 + pow(sd, 400.0) * 0.45;
+  float glow = (pow(sd, 6.0) * 0.16 + pow(sd, 40.0) * 0.32 + pow(sd, 600.0) * 0.6) * uSunAmt;
   col = mix(col, uSunColor, clamp(glow, 0.0, 1.0));
   // Warm the horizon slightly on the sun side.
   float sunAz = max(dot(normalize(vec3(dir.x, 0.0, dir.z) + 1e-5), normalize(vec3(uSunDir.x, 0.0, uSunDir.z))), 0.0);
-  col = mix(col, uSunColor, pow(sunAz, 4.0) * (1.0 - t) * 0.12);
+  col = mix(col, uSunColor, pow(sunAz, 4.0) * (1.0 - t) * 0.12 * uSunAmt);
 
   // Clouds: project the view ray onto a high flat layer so puffs foreshorten
   // naturally toward the horizon, then fade them into the haze.
   if (y > 0.0) {
     vec2 cp = dir.xz / (y + 0.12) * 0.9;
     vec2 drift = vec2(uTime * 0.0035, uTime * 0.0012);
-    float n = fbm(cp + drift);
-    float detail = fbm(cp * 2.7 - drift * 1.6);
-    float shape = n * 0.78 + detail * 0.22;
+    float n = fbm(cp * vec2(0.55, 1.3) + drift);          // stretched: long wispy streaks
+    float detail = fbm(cp * vec2(1.6, 3.4) - drift * 1.6);
+    float shape = n * 0.72 + detail * 0.28;
     float thr = 1.0 - uCoverage;           // higher coverage -> lower threshold
-    float density = smoothstep(thr, thr + 0.22, shape);
+    float density = smoothstep(thr, thr + 0.3, shape);
     density *= smoothstep(0.03, 0.22, y);  // dissolve into horizon haze
     density *= 1.0 - smoothstep(0.75, 1.0, y) * 0.5; // thinner straight overhead
     // Cheap self-shading: denser core and away-from-sun side darker.
-    float lit = 0.55 + 0.45 * pow(sd, 3.0);
-    vec3 cloudCol = mix(uCloudShade, uCloudLit, clamp(lit * (1.15 - density * 0.5), 0.0, 1.0));
-    cloudCol = mix(cloudCol, uSunColor, pow(sd, 24.0) * 0.5); // silver lining near the sun
-    col = mix(col, cloudCol, density * 0.82);
+    // Thin edges stay bright white; thick cores get blue-grey bellies.
+    float lit = 0.7 + 0.3 * pow(sd, 3.0);
+    vec3 cloudCol = mix(uCloudShade, uCloudLit, clamp(lit * (1.25 - density * 0.7), 0.0, 1.0));
+    cloudCol = mix(cloudCol, uSunColor, pow(sd, 24.0) * 0.5 * uSunAmt); // silver lining near the sun
+    col = mix(col, cloudCol, density * 0.85);
   }
 
   // Below the horizon (rarely visible behind the ocean fade) stay hazy.
@@ -110,14 +112,15 @@ export function createSky(T, options = {}) {
   const sunDirection = (options.sunDirection ?? new T.Vector3(-15, 28, 12)).clone().normalize();
 
   const uniforms = {
-    uHorizon: { value: new T.Color(options.horizon ?? '#cbd2c0') },
-    uZenith: { value: new T.Color(options.zenith ?? '#9ebabb') },
-    uSunColor: { value: new T.Color(options.sunColor ?? '#fff0c4') },
+    uHorizon: { value: new T.Color(options.horizon ?? '#cfe8f2') },
+    uZenith: { value: new T.Color(options.zenith ?? '#2f8fe0') },
+    uSunColor: { value: new T.Color(options.sunColor ?? '#fff1d6') },
+    uSunAmt: { value: 1 }, // 0 hides the sun glow (night)
     uSunDir: { value: sunDirection },
-    uCloudLit: { value: new T.Color('#f4f1e6') },
-    uCloudShade: { value: new T.Color('#b9c4c0') },
+    uCloudLit: { value: new T.Color('#ffffff') },
+    uCloudShade: { value: new T.Color('#c9d6e0') },
     uTime: { value: 0 },
-    uCoverage: { value: options.coverage ?? 0.4 }, // fbm threshold control, ~15% visible sky
+    uCoverage: { value: options.coverage ?? 0.5 }, // fbm threshold control (daynight drives it from weather)
   };
 
   const geometry = new T.SphereGeometry(150, 48, 24);
