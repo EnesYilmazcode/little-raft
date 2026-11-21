@@ -69,3 +69,10 @@ test('statePrompt: built-in providers', () => {
   assert.equal(s({heldKind:'lantern', tool:'place', build:{hover:{x:0, z:0}}})[0].label, 'Place lantern');
   assert.ok(s({role:'guest', networkReady:false})[0].muted);
 });
+
+test('parseLoot: splits "+N item" lists, picks icons, rejects other text', () => {
+  assert.deepEqual(P.parseLoot('+2 Plank, +1 Palm Leaf'), [{n:'+2', text:'Plank', icon:'wood'}, {n:'+1', text:'Palm Leaf', icon:'leaf'}]);
+  assert.deepEqual(P.parseLoot('+3 Rope'), [{n:'+3', text:'Rope', icon:null}]);
+  assert.equal(P.parseLoot('\u2713 Toss your hook'), null);
+  assert.equal(P.parseLoot('+2 Plank, Your bag is full'), null);
+});
