@@ -348,3 +348,18 @@ test('models: every pack piece and both open variants build inside their bounds'
   }
   assert.throws(() => createPieceGeometry(T, 'hatchOpen'));
 });
+
+test('lag spike: a 0.25 s frame of physics substeps never carries a body through a railing or wall', () => {
+  for (const t of ['railing', 'wall', 'gate']) for (const sprint of [false, true]) {
+    const g = grid(tilesSq(2), [P(t, -1, 2, 0, 0), P(t, 0, 2, 0, 0), P(t, 1, 2, 0, 0)]); // z = 3
+    const ph = new PlayerPhysics({ x: 0.2, y: eyeAt(0), z: 1.5 });
+    let maxZ = -Infinity;
+    for (let f = 0; f < 12; f++) {
+      const surf = g.preStep(ph, D0);
+      for (let k = 0; k < 5; k++) ph.update(0.05, { forward: 1, sprint, yaw: yawTo(0.05, 1), tiles: surf.tiles, deckY: surf.deckY, waterY: WATER });
+      g.postStep(ph, D0);
+      maxZ = Math.max(maxZ, ph.z);
+    }
+    assert.ok(maxZ < 3 - 0.07 - R + 1e-6, `${t} sprint=${sprint}: stayed on the near side (z ${maxZ})`);
+  }
+});

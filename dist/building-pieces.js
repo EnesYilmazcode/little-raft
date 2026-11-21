@@ -563,9 +563,34 @@ export class BuildGrid {
     }
   }
 
+  // A long frame (lag spike: several physics substeps before one postStep) can carry the body more than its
+  // radius in one go, so the push-out below could pop it through a thin rail or wall to the far side. Sweep the
+  // frame's XZ move against the solids it vertically meets and stop just before the first one it enters.
+  _sweep(phys, deckY) {
+    const sx = this._px, sz = this._pz, dx = phys.x - sx, dz = phys.z - sz, d2 = dx * dx + dz * dz;
+    if (!(d2 > 0.04) || !Number.isFinite(d2)) return;
+    const R = BODY_R, b = this._solid, feet = phys.y - EYE, lo = phys.grounded ? feet + STEP_UP : feet + 0.05, hi = phys.y + HEAD;
+    let best = 2, bk = -1, ax = 0;
+    for (let k = 0; k < this._solidN * 6; k += 6) {
+      if (b[k + 4] + deckY <= lo || b[k + 1] + deckY >= hi) continue;
+      const x0 = b[k] - R, x1 = b[k + 3] + R, z0 = b[k + 2] - R, z1 = b[k + 5] + R;
+      if (sx > x0 && sx < x1 && sz > z0 && sz < z1) continue; // started overlapping: the push-out handles it
+      TT[0] = 0; TT[1] = 1;
+      if (!slab(sx, dx, x0, x1)) continue;
+      const tx = TT[0];
+      if (!slab(sz, dz, z0, z1) || TT[0] >= best) continue;
+      best = TT[0]; bk = k; ax = tx >= TT[0] ? 0 : 1; // the axis entered last is the face hit
+    }
+    if (bk < 0) return;
+    const t = Math.max(0, best - 0.01 / Math.sqrt(d2));
+    phys.x = sx + dx * t; phys.z = sz + dz * t;
+    if (ax === 0) { if (phys.vx * dx > 0) phys.vx = 0; } else if (phys.vz * dz > 0) phys.vz = 0;
+  }
+
   // Push the body circle out of walls, slab edges and ramp undersides; keep the head under ceilings.
   postStep(phys, deckY) {
     this._rebuild();
+    this._sweep(phys, deckY);
     for (let pass = 0; pass < 2; pass++) {
       const feet = phys.y - EYE;
       // Grounded bodies step over box tops within STEP_UP (e.g. a wall under the top edge of stairs);
