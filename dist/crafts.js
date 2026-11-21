@@ -19,7 +19,7 @@ export function createCraft(T, type) {
   g.traverse(o => {
     if (!o.isMesh) return;
     const glass = !!o.userData.glass;
-    o.castShadow = !glass;
+    o.castShadow = !glass && !THIN.test(o.name);
     o.receiveShadow = !glass;
   });
   g.updateMatrixWorld(true);
@@ -30,6 +30,9 @@ export function createCraft(T, type) {
   g.userData.height = box.max.y;
   return g;
 }
+
+// Thin or flush parts whose shadow is below shadow-map resolution: they only receive.
+const THIN = /Rope|Lashing|Knots|Nails|Stitches|Seams|Patch|pennant|frondRibs|^(sail|net|crate)Steel$/;
 
 // ---------------------------------------------------------------- shared kit (per instance)
 function makeKit(T) {
@@ -88,8 +91,12 @@ function makeKit(T) {
       c.copy(base).lerp(dark, grain * 0.32 + knot * 0.5).lerp(grey, 0.4 + wk * wx * 0.4);
     });
   };
-  const plank = (w, h, d, hex, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, weather) =>
-    bake(woodify(new T.BoxGeometry(w, h, d, sg(w), sg(h), sg(d)), hex, weather), x, y, z, rx, ry, rz);
+  // full subdivision only along the long axis (grain, knots); two rows across the face keep a grain
+  // streak, and the thin edge needs none
+  const plank = (w, h, d, hex, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, weather) => {
+    const [, mid, long] = [w, h, d].sort((p, q) => p - q), seg = v => (v === long ? sg(v) : v === mid ? Math.min(2, sg(v)) : 1);
+    return bake(woodify(new T.BoxGeometry(w, h, d, seg(w), seg(h), seg(d)), hex, weather), x, y, z, rx, ry, rz);
+  };
   const beam = (a, b, w, d, hex, weather) => {
     const len = a.distanceTo(b);
     return along(woodify(new T.BoxGeometry(w, len, d, 2, sg(len), 2), hex, weather), a, b);
@@ -113,10 +120,10 @@ function makeKit(T) {
       pts.push(axis === 'y' ? V(c.x + ca, c.y + h, c.z + sa)
         : axis === 'x' ? V(c.x + h, c.y + ca, c.z + sa) : V(c.x + ca, c.y + sa, c.z + h));
     }
-    return new T.TubeGeometry(new T.CatmullRomCurve3(pts), n * 3, tr, 5, false);
+    return new T.TubeGeometry(new T.CatmullRomCurve3(pts), Math.ceil(n * 1.5), tr, 4, false);
   };
   const torus = (r, tr, x, y, z, rx = 0, ry = 0, rz = 0, arc = Math.PI * 2) =>
-    bake(new T.TorusGeometry(r, tr, 6, 18, arc), x, y, z, rx, ry, rz);
+    bake(new T.TorusGeometry(r, tr, 4, 12, arc), x, y, z, rx, ry, rz);
   const nail = (x, y, z, axis = 'y') =>
     bake(new T.CylinderGeometry(0.012, 0.012, 0.01, 6), x, y, z, axis === 'z' ? Math.PI / 2 : 0, 0, axis === 'x' ? Math.PI / 2 : 0);
   const box = (w, h, d, x, y, z, rx = 0, ry = 0, rz = 0) => bake(new T.BoxGeometry(w, h, d), x, y, z, rx, ry, rz);
@@ -549,7 +556,7 @@ function buildNet(T, K, g) {
       RD.push(K.torus(0.068, 0.008, c, 0.04, s * E, 0, Math.PI / 2, 0)); // tie around lower beam
     }
   }
-  for (const x of lines) for (const z of lines) RD.push(K.bake(new T.SphereGeometry(0.02, 8, 6), x, S(x, z), z));
+  for (const x of lines) for (const z of lines) RD.push(K.bake(new T.SphereGeometry(0.021, 6, 4), x, S(x, z), z));
 
   // corner floats, steel straps and nails
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {

@@ -82,7 +82,7 @@ export function buildKiln(T) {
   const flameParts = [f1.toNonIndexed(), f2.toNonIndexed()]; f1.dispose(); f2.dispose();
   for (const g of flameParts) { g.setAttribute('color', new T.BufferAttribute(new Float32Array(g.attributes.position.count * 3).fill(1), 3)); g.deleteAttribute('uv'); }
   const flameGeo = mergeParts(T, flameParts);
-  const flameMat = new T.MeshBasicMaterial({ color: 0xffc46a, transparent: true, opacity: .8, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }); flameMat.name = 'kilnFlame';
+  const flameMat = new T.MeshBasicMaterial({ color: 0xffc46a, transparent: true, opacity: .8, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, forceSinglePass: true }); flameMat.name = 'kilnFlame';
 
   // tray goods (on the plank, y top .19)
   const ingotGeo = new T.BoxGeometry(.15, .04, .06);

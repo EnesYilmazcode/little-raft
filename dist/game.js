@@ -8,7 +8,7 @@ import { createWoodMaterial } from './wood.js?build=v3-survival-ae77fa84ac2b';
 import { HookCast, WATER_Y, catchLoot, holdForFullBag, throwOrigin } from './hook-physics.js?build=v3-survival-ae77fa84ac2b';
 import { createSettings, SETTINGS_DEFAULTS } from './settings.js?build=v3-survival-ae77fa84ac2b';
 import { createRaftMesh, createFloor } from './deck.js?build=v3-survival-ae77fa84ac2b';
-import { createDebris } from './debris.js?build=v3-survival-ae77fa84ac2b';
+import { createDebris, createItemBatch } from './debris.js?build=v3-survival-ae77fa84ac2b';
 import { createHands, isPlaceable } from './hands.js?build=v3-survival-ae77fa84ac2b';
 import { createCraft } from './crafts.js?build=v3-survival-ae77fa84ac2b';
 import { Bag, ITEM_INFO, RECIPES } from './inventory-state.js?build=v3-survival-ae77fa84ac2b';
@@ -44,7 +44,6 @@ export { PROTOCOL }; // live.js reads the running engine's protocol from here
 import { releaseShouldFire, castInput, castPrompt } from './fishing-rules.js?build=v3-survival-ae77fa84ac2b';
 import { createQuality } from './quality.js?build=v3-survival-ae77fa84ac2b';
 const PIN_QUALITY = /[?&]pinQuality\b/.test(globalThis.location?.search || ''); // perf probes hold quality at the preset's top level
-import { mergeGeometries } from './merge-geo.js?build=v3-survival-ae77fa84ac2b';
 import { ITEMS as PROG_ITEMS, PLACEABLE_IDS, BLOCK_RADII, rollBarrel, wearPerUse, toolRole, repairCost, migrateSnapshot } from './items.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { attachProgression } from './progression-hooks.js?build=v3-survival-ae77fa84ac2b'; // [progression-hook]
 import { attachSpearRepair } from './spear-repair-hooks.js?build=v3-survival-ae77fa84ac2b'; // [spear-repair]
@@ -568,29 +567,6 @@ export function mount(transfer = null) {
     const d = Math.hypot(...SUN_OFFSET), cam = sun.shadow.camera;
     Object.assign(cam, {left:-r, right:r, top:r, bottom:-r, near:Math.max(.5, d - r - 6), far:d + r + 6}); cam.updateProjectionMatrix();
   }
-  // Bakes a drifting scenery group (island or cloud) into one mesh per material, kept local so sailing can still move the group.
-  function bakeGroup(g) {
-    const pos = g.position.clone(), scl = g.scale.clone(); g.position.set(0, 0, 0); g.scale.set(1, 1, 1);
-    const holder = new T.Group(); holder.add(g); g.scale.copy(scl); // scale is baked in, position stays on the group
-    const merged = mergeStatic(holder); holder.remove(g);
-    for (const c of [...g.children]) g.remove(c);
-    g.scale.set(1, 1, 1); g.position.copy(pos); for (const m of merged) g.add(m);
-    return g;
-  }
-  // Bakes every mesh under `root` (world transforms) into one non-shadow-casting mesh per material; disposes the parts.
-  function mergeStatic(root) {
-    root.updateMatrixWorld(true);
-    const byMat = new Map();
-    root.traverse(o => { if (!o.isMesh) return; if (!byMat.has(o.material)) byMat.set(o.material, []); byMat.get(o.material).push(o); });
-    const out = [];
-    for (const [material, meshes] of byMat) {
-      const parts = meshes.map(m => { const g = m.geometry.clone().applyMatrix4(m.matrixWorld); for (const n of Object.keys(g.attributes)) if (n !== 'position' && n !== 'normal' && n !== 'uv') g.deleteAttribute(n); return g; });
-      const merged = new T.Mesh(mergeGeometries(T, parts), material); merged.castShadow = false; merged.receiveShadow = false; merged.matrixAutoUpdate = false;
-      for (const g of parts) g.dispose(); for (const m of meshes) m.geometry.dispose();
-      out.push(merged);
-    }
-    return out;
-  }
   // Compile every scene program up front (hidden viewmodels, hook, rope, ghost) so the first frame after #solo doesn't.
   // compile() walks the scene graph, so all viewmodels are attached just for the synchronous part of the call.
   function warmShaders() {
@@ -598,6 +574,15 @@ export function mount(transfer = null) {
     hands?.preload(['hammer', 'fishingrod', 'spear']);
     try { renderer.compileAsync(scene, camera).catch(e => console.warn('shader warm-up failed', e)); }
     catch (e) { console.warn('shader warm-up failed', e); }
+  }
+  // Also build the no-shadow variant (adaptive floor / Shadows off), else that switch relinks every lit program mid-game.
+  // Runs once, a few seconds into play (after lazily built materials such as wildlife exist), so boot compiles only what the first frame draws.
+  let lateNoShadowWarm = true;
+  function warmNoShadow() {
+    if (!sun?.castShadow || typeof renderer?.compileAsync !== 'function') return;
+    sun.castShadow = false;
+    try { renderer.compileAsync(scene, camera).catch(() => {}); } catch {}
+    sun.castShadow = true;
   }
   // Held models and build ghosts for every kind in the bag are built ahead and their shaders compiled
   // (ghosts are shown for the call: renderer.compile skips hidden meshes), so the first switch never links programs mid-play.
@@ -611,15 +596,6 @@ export function mount(transfer = null) {
       if (k === 'hammer') ghosts.preload(['floor']); else if (DECOR_TYPES.includes(k)) ghosts.preload([k]);
     }
     if (fresh) { try { ghosts.warm(() => renderer.compileAsync(scene, camera).catch(() => {})); } catch (e) { console.warn('shader warm-up failed', e); } }
-  }
-  // Also build the no-shadow variant (adaptive floor / Shadows off), else that switch relinks every lit program mid-game.
-  // Runs once, a few seconds into play (after lazily built materials such as wildlife exist), so boot compiles only what the first frame draws.
-  let lateNoShadowWarm = true;
-  function warmNoShadow() {
-    if (!sun?.castShadow || typeof renderer?.compileAsync !== 'function') return;
-    sun.castShadow = false;
-    try { renderer.compileAsync(scene, camera).catch(() => {}); } catch {}
-    sun.castShadow = true;
   }
   function palm(parent, x, y, z, s = 1) {
     const g = new T.Group(); g.position.set(x, y, z); g.scale.setScalar(s); cylinder(.09, .17, 1.6, '#ad8153', 0, .8, 0, g);
@@ -657,13 +633,14 @@ export function mount(transfer = null) {
   function itemModel(item) {
     if (item.type === 'cache') return createSignalModel(T, 'cache');
     if (item.type === 'bottle') { const g = new T.Group(), b = createBottle(T); b.position.y = .04; b.rotation.y = (item.id % 7) * .9; g.add(b); return singlePass(g); }
-    if (item.type !== 'plastic') { const d = createDebris(T, item.type, mat, {seed:item.id}); if (ART.artEnabled() && item.type === 'scrap') d.traverse(o => { if (o.isMesh && o.material.vertexColors) { o.material.dispose(); o.material = mat('#8e9aa2'); } }); /* art lane hook */ return singlePass(d); }
+    if (item.type !== 'plastic') { const d = createDebris(T, item.type, mat, {seed:item.id, pool:4}); if (ART.artEnabled() && item.type === 'scrap') d.traverse(o => { if (o.isMesh && o.material.vertexColors) { o.material.dispose(); o.material = mat('#8e9aa2'); } }); /* art lane hook */ return singlePass(d); } // pooled geometry, drawn instanced by the item batch
     const g = new T.Group(), jug = createPlastic(T); if (ART.artEnabled()) { const b = jug.getObjectByName('jugBody'); if (b) { b.material.dispose(); b.material = mat('#f2f0e6'); } } /* art lane hook */ singlePass(jug); jug.rotation.set(Math.PI / 2, 0, .4 + (item.id % 5) * .5); jug.position.y = .05; jug.scale.setScalar(.85); g.add(jug); return g;
   }
   // Meshes are keyed by token, not id: a respawned item keeps its id but may change type.
   const itemMeshes = new Map();
   function syncItems() {
     if (!itemsGroup) return;
+    if (!itemsGroup.userData.batch) itemsGroup.add(itemsGroup.userData.batch = createItemBatch(T)); // one instanced draw per item variant
     const live = new Set(world.items.map(x => x.token));
     for (const [token, m] of itemMeshes) if (!live.has(token)) { itemsGroup.remove(m); disposeGeometry(m); itemMeshes.delete(token); }
     for (const token of pending.keys()) if (!live.has(token)) pending.delete(token);
@@ -1424,6 +1401,7 @@ export function mount(transfer = null) {
   let chargeWidth = '', hookStage = '';
   const TITLE_FOCUS = new T.Vector3(-5, 0, 2), vmParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0};
   const fishPos = new T.Vector3(), hookPos = new T.Vector3(), fishRope = Array.from({length:ROPE_SEGMENTS + 1}, () => new T.Vector3()), freeItems = [], ropeScratch = [];
+  const handParams = {dt:0, time:0, charge:0, reeling:false, casting:0, walking:false, hasHookOut:false, motion:0, yaw:0, pitch:0};
   const handPos = new T.Vector3(physics.x, physics.y, physics.z), tmpV = new T.Vector3(), friendTarget = new T.Vector3(), oceanSample = {h:0, sx:0, sz:0};
   const hookParams = {hand:handPos, items:freeItems, reeling:false, time:0}; // freeItems is already filtered for pending items
   // Hook physics floats at a flat WATER_Y; map heights near the water onto the visible waves.
@@ -1467,7 +1445,10 @@ export function mount(transfer = null) {
     hands.setPose(pointing ? 'point' : null);
     const rod = kind === 'fishingrod' ? hands.itemModel('fishingrod') : null, out = !!hook?.fishing;
     if (rod?.userData.float) { rod.userData.float.visible = !out; rod.userData.leader.visible = !out; }
-    hands.update({dt, time:elapsed, charge:ch, reeling:rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(), casting:jab ? 0 : swing, walking, hasHookOut:!!castOut(), motion, yaw, pitch, fov:camera.fov}); // [fishing-cooking] rod reel pose from the lane
+    const hp = handParams; // reused each frame (hands.update only reads it)
+    hp.dt = dt; hp.time = elapsed; hp.charge = ch; hp.reeling = rod ? (fc ? fc.rodReeling : out && hook.t > fishWait) : reeling && !!castOut(); hp.casting = jab ? 0 : swing; // [fishing-cooking] rod reel pose from the lane
+    hp.walking = walking; hp.hasHookOut = !!castOut(); hp.motion = motion; hp.yaw = yaw; hp.pitch = pitch; hp.fov = camera.fov;
+    hands.update(hp);
     hands.ropeAnchor().getWorldPosition(handPos); // updates the anchor's parent chain (camera included); render refreshes the rest
   }
   function updateAvatars(dt) {
@@ -1638,12 +1619,12 @@ export function mount(transfer = null) {
     if (achList.length !== seenAch || achList !== seenAchList) { seenAch = achList.length; seenAchList = achList; const n = noteAchievements(lookState.unlocked, achList); if (n.length) { saveLook(lookState.look, lookState.unlocked); lookUI?.refresh(); notice('New hat for your Look: ' + n.map(id => LOOK_HATS.find(h => h.id === id)?.label ?? id).join(', ')); } } // [look] hat unlocks (host or guest view of the list)
     refreshPointerUI(); updateCharge(); updateContext(dialog); updateSignalHud(); updateNotices(dialog); warmKinds();
     if (world.fish !== fishShown) { const el = $('#fishCount'); if (el) { el.textContent = world.fish + ' fish caught'; fishShown = world.fish; } }
+    if (lateNoShadowWarm && running) { lateNoShadowWarm = false; later(warmNoShadow, 4000); }
     // Behind a blurred pause/settings backdrop the world only redraws at ~10 fps (the inventory has no blur).
     const veiled = dialog && !!document.querySelector('dialog[open]:not(#inventory)');
     if (veiled && now - lastDraw < 100) return;
     lastDraw = now;
     renderer.info.reset(); renderer.render(scene, camera); diving?.render(renderer); // perf: manual info reset counts the shadow pass too; diving lane hook
-    if (lateNoShadowWarm && running) { lateNoShadowWarm = false; later(warmNoShadow, 4000); }
   }
   // Peer liveness. rAF stops in hidden tabs, so a timer keeps the channel warm and each side says when it is
   // hidden; a hidden peer is never timed out (the data channel's 'close' still ends the session).
@@ -2108,7 +2089,7 @@ export function mount(transfer = null) {
         running, tool:mode, recipe:kind === 'hammer' ? 'floor' : DECOR_TYPES.includes(kind) ? kind : null, role, networkReady, pointerLocked:isLocked(), lockSupported, lockFallback, active, disposed,
         tiles:world.tiles.length, tileList:world.tiles.map(t => [...t]), decor:world.decor.map(d => ({...d})),
         stock:counts, fish:world.fish, collected:world.collected, items:world.items.length,
-        inventory:bag.snapshot(), selectedItem:bag.selected, selectedIndex:bag.selectedIndex, heldKind:kind, viewmodel:hands ? {...hands.state} : null,
+        inventory:bag.snapshot(), selectedItem:bag.selected, selectedIndex:bag.selectedIndex, heldKind:kind, viewmodel:hands ? {...hands.state, lag:[...(hands.state.lag ?? [])]} : null,
         ownedTools:['hook', 'hammer', 'fishingrod'].filter(k => counts[k] > 0), inventoryOpen:!!survivalUI?.isOpen,
         notes:[...world.notes], achievements:[...world.achievements], logbookOpen:!!logbookUI?.isOpen,
         physics:physics.capture(), grounded:physics.grounded, swimming:physics.swimming,

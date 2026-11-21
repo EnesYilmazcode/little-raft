@@ -10,6 +10,7 @@ const FONT = "'Segoe UI',system-ui,-apple-system,sans-serif";
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const slotInner = num => `${num ? `<i class="sv-num">${num}</i>` : ''}<i class="sv-art"></i><i class="sv-count"></i><i class="sv-dur" hidden><i></i></i>`;
 const LOCK = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.5" rx="1.5" fill="#ffcf9a" stroke="#2a1b0e" stroke-width="1.2"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.6 0V7" fill="none" stroke="#ffcf9a" stroke-width="1.7"/><circle cx="8" cy="10.6" r="1.1" fill="#2a1b0e"/></svg>';
+const LOCK_URL = `url("data:image/svg+xml,${encodeURIComponent(LOCK.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" '))}")`;
 const CHECK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="#9fe07a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 const CSS = `
@@ -101,8 +102,11 @@ const CSS = `
 #inventory .sv-recipe[data-locked] .sv-rname{color:#d9c9a6}
 #inventory .sv-recipe[data-locked] .sv-reqs{opacity:.5}
 #inventory .sv-recipe[data-locked] .sv-why{display:none}
-#inventory .sv-recipe .lr-sr-lock{position:absolute;right:-6px;bottom:-6px}
-#inventory .sv-recipe .lr-sr-needs{display:block;margin-top:4px;font:700 12px/1.2 ${FONT};color:#ffcf9a}
+#inventory .sv-recipe[data-locked] .sv-rart::after{content:'';position:absolute;right:-6px;bottom:-6px;width:22px;height:22px;border-radius:50%;
+  background:#3e2a17 ${LOCK_URL} center/15px 15px no-repeat;box-shadow:0 0 0 1.5px #ffcf9a,0 1px 3px #000a}
+#inventory .sv-recipe.sv-locked[data-locked] .sv-rart::after{filter:grayscale(.85) brightness(.7);opacity:.75}
+#inventory .sv-recipe.sv-gated[data-locked] .sv-rart::after{filter:grayscale(1) brightness(.55)}
+#inventory .sv-recipe .sv-rbody[data-needs]::after{content:attr(data-needs);display:block;margin-top:4px;font:700 12px/1.2 ${FONT};color:#ffcf9a}
 #inventory .sv-recipe.lr-sr-first{position:relative;margin-top:30px}
 #inventory .sv-recipe.lr-sr-first::before{content:'Discover at a Tinker\\2019s Desk';position:absolute;left:2px;top:-22px;width:max-content;white-space:nowrap;font:800 11px/1 ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:#d9c9a6}
 #inventory .sv-recipe.lr-sr-fresh{animation:lrSrFresh 2.4s ease-out}
@@ -337,13 +341,12 @@ export function createStorageUI(api) {
     lockedRows = [];
     rows.forEach(el => {
       const id = el.dataset.recipe, r = RECIPES[id], locked = !!r && !api.isLearned(id);
-      const body = el.querySelector('.sv-rbody'), art = el.querySelector('.sv-rart');
-      let badge = el.querySelector('.lr-sr-lock'), needs = el.querySelector('.lr-sr-needs');
+      const body = el.querySelector('.sv-rbody');
       setClass(el, 'lr-sr-beckon', beckon && id === 'research');
       if (!locked) {
         if (el.dataset.locked) unlockRow(el);
         setClass(el, 'lr-sr-first', false);
-        badge?.remove(); needs?.remove();
+        if (body?.dataset.needs != null) delete body.dataset.needs;
         if (fresh.includes(id)) {
           el.classList.remove('lr-sr-fresh'); void el.offsetWidth; el.classList.add('lr-sr-fresh');
           const t = setTimeout(() => { timers.delete(t); el.classList.remove('lr-sr-fresh'); }, 2500); timers.add(t);
@@ -356,9 +359,7 @@ export function createStorageUI(api) {
       setAttr(el, 'title', 'Needs research: ' + (miss.join(', ') || 'visit a Tinker\u2019s Desk'));
       setAttr(el, 'tabindex', '-1'); setAttr(el, 'aria-label', LOCKED_LABEL); lockedRows.push(el);
       setClass(el, 'lr-sr-first', !first); first ??= el;
-      if (!badge && art) { badge = document.createElement('span'); badge.className = 'lr-sr-lock'; badge.innerHTML = LOCK; art.append(badge); }
-      if (!needs && body) { needs = document.createElement('span'); needs.className = 'lr-sr-needs'; body.append(needs); }
-      if (needs && needs.textContent !== text) needs.textContent = text;
+      if (body && body.dataset.needs !== text) body.dataset.needs = text; // shown by .sv-rbody[data-needs]::after, the lock badge by .sv-rart::after
     });
     // "N more recipes to discover" at the top of the craft list (outside .sv-rlist, which survival-ui owns)
     const list = inv.querySelector('.sv-rlist'), box = list?.parentElement;
@@ -382,7 +383,7 @@ export function createStorageUI(api) {
     const host = inv?.isConnected ? inv : document.getElementById('inventory'); if (!host) return;
     host.querySelectorAll('.sv-recipe').forEach(el => {
       if (el.dataset.locked) unlockRow(el);
-      el.querySelector('.lr-sr-lock')?.remove(); el.querySelector('.lr-sr-needs')?.remove();
+      const body = el.querySelector('.sv-rbody'); if (body?.dataset.needs != null) delete body.dataset.needs;
       el.classList.remove('lr-sr-first', 'lr-sr-fresh', 'lr-sr-beckon');
     });
     host.querySelectorAll('.lr-sr-more').forEach(el => el.remove());

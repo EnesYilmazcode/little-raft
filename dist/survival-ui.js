@@ -211,7 +211,7 @@ const CSS = `
   transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),5px);transition:opacity .25s,transform .22s cubic-bezier(.3,1.3,.5,1)}
 .tools.sv-hotbar>.sv-label.sv-show{opacity:1;transform:translate(calc(var(--i,0) * (var(--s) + var(--g)) - 50%),0)}
 @media(max-width:760px){.tools.sv-hotbar{--s:min(42px,calc((96vw - 41px) / 10));--g:3px}.tools.sv-hotbar .sv-art{inset:3px}.tools.sv-hotbar .sv-count{font-size:12px}}
-#inventory.sv-inv{--s:min(56px,calc((96vw - 380px) / 10 - 6px));--g:6px;padding:0;margin:max(16px,calc(50vh - 300px)) auto auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#3e2a17;
+#inventory.sv-inv{--s:min(56px,calc((96vw - 410px) / 10 - 6px));--g:6px;padding:0;margin:max(16px,calc(50vh - 300px)) auto auto;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#3e2a17;
   width:max-content;min-width:0;max-width:96vw;max-height:94vh;overflow:visible;font:500 14px/1.35 ${FONT}}
 #inventory.sv-inv::backdrop{background:rgba(12,9,5,.42);-webkit-backdrop-filter:none;backdrop-filter:none}
 #inventory .sv-wrap{display:flex;gap:14px;align-items:stretch;padding:14px;outline:none;border-radius:6px;
@@ -237,7 +237,7 @@ const CSS = `
 #inventory .sv-slot[data-pick]::after{content:attr(data-pick);position:absolute;right:-5px;top:-6px;z-index:2;min-width:16px;padding:2px 3px;border-radius:8px;
   background:#ffc66e;color:#1d1608;font:700 11px/1 ${FONT};text-align:center;box-shadow:0 1px 2px #0008}
 #inventory .sv-rope{width:100%;height:4px;margin:2px 0;border-radius:2px;background:repeating-linear-gradient(115deg,#c99560 0 3px,#6b4a2b 3px 5px);opacity:.85}
-#inventory .sv-hint{margin:0;width:${HB * 62 - 6}px;max-width:100%;font:500 12px/1.35 ${FONT};color:#f6e8c6;text-align:left;text-shadow:0 1px 0 #3e2a1799}
+#inventory .sv-hint{margin:0;width:calc(${HB} * (var(--s) + var(--g)) - var(--g));max-width:100%;font:500 12px/1.35 ${FONT};color:#f6e8c6;text-align:left;text-shadow:0 1px 0 #3e2a1799}
 #inventory .sv-craft{flex:0 0 324px;width:324px;min-width:324px;box-sizing:border-box;height:min(560px,calc(94vh - 30px));max-height:none;display:flex;flex-direction:column;gap:8px;padding:9px;overflow:hidden}
 #inventory .sv-hint.sv-warn{color:#ffb39a}
 #inventory .sv-tabs{display:grid;grid-template-columns:repeat(var(--tabs,4),1fr);gap:4px;flex:none}
@@ -325,13 +325,13 @@ const CSS = `
 @media(max-width:440px){#inventory.sv-inv{--s:36px;--g:4px}#inventory .sv-slot .sv-art{inset:3px}#inventory .sv-slot .sv-count{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.sv-slot,.sv-art,.sv-cursor,.sv-label,#inventory .sv-recipe,#inventory .sv-craftbtn .sv-fill{transition:none!important;animation:none!important}}
 /* pin a recipe to the HUD edge (craft-book.js trackerView) */
-#inventory button.sv-pinbtn{align-self:start;width:auto;height:auto;margin:0;padding:4px 8px;border:0;border-radius:5px;background:#ffffff0f;box-shadow:inset 0 0 0 1px #ffffff26;color:#f4efe2b3;
+#inventory button.sv-pinbtn{align-self:start;width:auto;height:auto;margin:0;padding:4px 8px;border:0;border-radius:5px;background:#3e2a1712;box-shadow:inset 0 0 0 1px #3e2a1759;color:#3e2a17cc;
   font:700 11px/1.2 ${FONT};letter-spacing:.3px;text-transform:none;cursor:pointer;transform:none}
-#inventory button.sv-pinbtn:hover{background:#ffffff1f;color:#fff6e0}
-#inventory button.sv-pinbtn[aria-pressed="true"]{background:#ffc98f2e;box-shadow:inset 0 0 0 1px #ffc98fa0;color:#ffd7a8}
-#inventory button.sv-pinbtn:focus-visible{outline:2px solid #fff3d6;outline-offset:1px}
+#inventory button.sv-pinbtn:hover{background:#3e2a1726;color:#3e2a17}
+#inventory button.sv-pinbtn[aria-pressed="true"]{background:#c46a1c2e;box-shadow:inset 0 0 0 1px #c46a1ca0;color:#8a4410}
+#inventory button.sv-pinbtn:focus-visible{outline:2px solid #3e2a17;outline-offset:1px}
 #inventory .sv-recipe.sv-pinned .sv-rname::after{content:"  \\2022 pinned";font:700 10px/1 ${FONT};letter-spacing:.3px;color:#ffc98f}
-#craftTracker{position:fixed;left:16px;top:110px;z-index:4;width:220px;padding:9px 10px 8px;border-radius:9px;pointer-events:none;
+#craftTracker{position:fixed;right:16px;bottom:24px;z-index:4;width:220px;padding:9px 10px 8px;border-radius:9px;pointer-events:none;
   background:linear-gradient(180deg,#1a2226d9,#0e1417e0);box-shadow:inset 0 0 0 1px #ffffff17,0 6px 18px #0006;color:#f4efe2;font:500 13px/1.25 ${FONT}}
 #craftTracker[hidden]{display:none}
 #craftTracker .ct-head{display:grid;grid-template-columns:34px 1fr;gap:8px;align-items:center;margin-bottom:6px}
@@ -352,7 +352,7 @@ const CSS = `
 #craftTracker li.ct-ok b{color:#9ee07a}
 #craftTracker .ct-foot{margin-top:6px;font:600 11px/1.3 ${FONT};color:#f4efe299}
 #craftTracker .ct-foot kbd{font:800 10px/1 ${FONT};padding:1px 4px;border-radius:3px;box-shadow:inset 0 0 0 1px #ffffff40;color:#fff6e0}
-@media(max-width:760px){#craftTracker{top:90px;left:10px;width:180px}} /* left edge: the compass and Notes own the top-right, catch toasts the top-left corner */
+@media(max-width:760px){#craftTracker{bottom:110px;right:10px;width:180px}}
 `;
 
 function ensureStyle() {

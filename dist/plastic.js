@@ -110,16 +110,16 @@ function build(T) {
 
 export function createPlastic(T) {
   let c = CACHE.get(T);
-  if (!c) { c = build(T); CACHE.set(T, c); }
+  if (!c) { c = build(T); c.geo.userData.shared = true; c.mat.userData.shared = true; CACHE.set(T, c); }
   const root = new T.Group();
   root.name = 'plastic';
-  const geo = c.geo.clone();
-  const body = new T.Mesh(geo, c.mat);
+  const body = new T.Mesh(c.geo, c.mat); // shared geometry + material (userData.shared): nothing per jug to free
   body.name = 'jugBody';
-  body.castShadow = true; body.receiveShadow = true;
+  body.castShadow = false; body.receiveShadow = true; // perf: floating jug shadows never land on the water
+  body.userData.batch = true; // shared geometry: debris.js createItemBatch may draw it instanced
   root.add(body);
   root.userData.type = 'plastic';
   root.userData.size = { x: 0.65, y: 0.7, z: 0.4 };
-  root.userData.dispose = () => geo.dispose();
+  root.userData.dispose = () => {};
   return root;
 }

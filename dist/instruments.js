@@ -111,7 +111,7 @@ export function createInstruments(T, host) {
     if (fx.length >= FX_MAX) { f = fx.shift(); }  // recycle the oldest
     else if (free.length) { f = free.pop(); host.scene?.add(f.mesh); }
     else {
-      const mat = new T.MeshBasicMaterial({ transparent: true, depthWrite: false, opacity: 0.9, side: T.DoubleSide });
+      const mat = new T.MeshBasicMaterial({ transparent: true, depthWrite: false, opacity: 0.9, side: T.DoubleSide, forceSinglePass: true });
       const mesh = new T.Mesh(geo, mat);
       mesh.name = 'instrumentFx'; mesh.castShadow = false; mesh.receiveShadow = false; mesh.raycast = () => {};
       mesh.renderOrder = 25; mesh.frustumCulled = false;

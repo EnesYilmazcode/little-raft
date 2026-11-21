@@ -10,6 +10,31 @@ const MAX_BACKOFF_MS = 60000;
 const FAILED_RETRY_MS = 60000;
 const CSS_TIMEOUT_MS = 15000;
 const CSS_FILES = ['style.css', 'graphics.css'];
+// Every module in game.js' static import graph (dynamic import() targets stay out). Preloading them all at once
+// flattens the 6-level import waterfall. tests/live-preload.test.mjs keeps this list in step with the imports;
+// a stale entry only costs a wasted request, a missing one just loads late via the normal import.
+const PRELOAD = [
+  'animals-core.js', 'animals-models.js', 'animals.js', 'audio.js', 'avatar.js', 'bake.js', 'bees-model.js',
+  'bees.js', 'bottle.js', 'brush-model.js', 'build-menu.js', 'build-radial.js', 'build-rules.js',
+  'building-models.js', 'building-pieces.js', 'building.js', 'content-items.js', 'content.js', 'controls.js',
+  'cooking.js', 'coop-avatar.js', 'coop-delta.js', 'coop-feed.js', 'coop-fx.js', 'coop-interp.js',
+  'coop-loopback.js', 'coop-rules.js', 'coop.js', 'craft-book.js', 'crafts.js', 'daynight.js', 'debris.js',
+  'deck.js', 'decor-pack-models.js', 'decor-pack.js', 'diving-ui.js', 'diving.js', 'engine-models.js', 'engine.js',
+  'fish-journal.js', 'fish-models.js', 'fish-species.js', 'fishing-cooking.js', 'fishing-rules.js',
+  'fishing-tool.js', 'fishing-v2.js', 'hammer.js', 'hands.js', 'held-items.js', 'hook-physics.js', 'hook.js',
+  'hud.js', 'input-map.js', 'input-rules.js', 'input.js', 'instrument-models.js', 'instruments.js',
+  'inventory-state.js', 'islands-layout.js', 'islands-models.js', 'islands.js', 'item-icons.js', 'item-svg.js',
+  'item-tooltips.js', 'items.js', 'kiln-core.js', 'kiln-model.js', 'kiln.js', 'lock-rules.js', 'logbook-ui.js',
+  'logbook.js', 'look-ui.js', 'look.js', 'maptable-model.js', 'maptable.js', 'materials.js', 'merge-geo.js',
+  'models.js', 'move-feel.js', 'ocean.js', 'paint.js', 'pickup-feed.js', 'placement.js', 'plastic.js',
+  'player-physics.js', 'progression-hooks.js', 'progression.js', 'purifier-model.js', 'quality.js', 'rain-model.js',
+  'rain.js', 'repair.js', 'sailing-core.js', 'sailing-ui.js', 'sailing-world.js', 'scenery-islands.js',
+  'seafloor.js', 'session-rules.js', 'settings.js', 'shark-model.js', 'shark.js', 'signal-models.js', 'signal.js',
+  'signs-core.js', 'sky.js', 'sleep-model.js', 'sleep.js', 'smelter-model.js', 'smelter-ui.js', 'smelter.js',
+  'spear-model.js', 'spear-repair-hooks.js', 'spear.js', 'storage-research-model.js', 'storage-research.js',
+  'survival-ui.js', 'textures.js', 'treasure-models.js', 'treasure-rules.js', 'treasure.js', 'underwater-fx.js',
+  'vitals-ui.js', 'vitals.js', 'waterfx.js', 'watering.js', 'wildlife-models.js', 'wildlife.js', 'wood.js',
+];
 
 const state = {
   engine: null,
@@ -128,6 +153,21 @@ async function importGame(build, retry) {
   return mod;
 }
 
+// Each <link rel=modulepreload> URL must equal the URL the import resolves to ('./x.js?build=<build>').
+function preloadGraph(build) {
+  if (!build || typeof document === 'undefined') return;
+  const head = document.head || document.documentElement;
+  for (const name of PRELOAD) {
+    const url = new URL('./' + name, BASE);
+    url.searchParams.set('build', build);
+    if (document.querySelector('link[rel="modulepreload"][href="' + url.href + '"]')) continue;
+    const link = document.createElement('link');
+    link.rel = 'modulepreload';
+    link.href = url.href;
+    head.appendChild(link);
+  }
+}
+
 // ---------- staged CSS ----------
 function cssName(link) {
   try {
@@ -185,7 +225,8 @@ const BAKED_BUILD = new URL(moduleUrl(null)).searchParams.get('build');
 
 async function boot() {
   const retry = state.retryCount ? state.retryCount : 0;
-  // Start fetching game.js and its import graph while version.json is in flight.
+  // Start fetching game.js and its whole import graph (in parallel) while version.json is in flight.
+  preloadGraph(BAKED_BUILD);
   const early = importGame(null, retry);
   early.catch(() => {}); // only awaited if the manifest agrees (or is unavailable)
   let manifest = null;
@@ -196,6 +237,7 @@ async function boot() {
   }
   const build = manifest ? manifest.build : null;
   try {
+    if (build && build !== BAKED_BUILD) preloadGraph(build);
     const mod = await (!build || build === BAKED_BUILD ? early : importGame(build, retry));
     const engine = mod.mount(null);
     if (!validEngine(engine)) throw new Error('mount() did not return { capture, dispose }');
@@ -253,6 +295,7 @@ async function swap(manifest) {
   let paused = false;
   try {
     // 1. Load new code and CSS while the old engine keeps running.
+    preloadGraph(manifest.build);
     const modP = importGame(manifest.build, retry);
     css = stageCss(manifest.build);
     const [mod] = await Promise.all([modP, css.ready]);

@@ -85,7 +85,7 @@ export function createHive(T) {
   const bees = new T.Group(); bees.name = 'bees'; bees.visible = false;
   const beeBody = new T.SphereGeometry(.025, 8, 6), stripe = new T.CylinderGeometry(.0255, .0255, .012, 8), wing = new T.PlaneGeometry(.03, .018);
   const yellow = new T.MeshStandardMaterial({ color: '#f5c542', roughness: .6 }), dark = new T.MeshStandardMaterial({ color: '#2b2116', roughness: .7 });
-  const white = new T.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: .8, side: T.DoubleSide, roughness: .3 });
+  const white = new T.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: .8, side: T.DoubleSide, forceSinglePass: true, roughness: .3 });
   for (let i = 0; i < 3; i++) {
     const b = new T.Group(); b.name = 'bee' + i;
     const body0 = new T.Mesh(beeBody, yellow); body0.scale.set(1, .85, 1.25); b.add(body0);
@@ -165,7 +165,7 @@ export function createCandle(T) {
   // grow the radius so the sphere still encloses the glow (culling and raycasts stay correct).
   glow.geometry.computeBoundingSphere(); glow.geometry.boundingSphere.center.set(0, .8, 0); glow.geometry.boundingSphere.radius = .72;
   const jar = new T.Mesh(new T.CylinderGeometry(.075, .072, .17, 18, 1, true).translate(0, .097, 0),
-    new T.MeshStandardMaterial({ color: '#cfeef0', transparent: true, opacity: .3, roughness: .1, side: T.DoubleSide, depthWrite: false }));
+    new T.MeshStandardMaterial({ color: '#cfeef0', transparent: true, opacity: .3, roughness: .1, side: T.DoubleSide, forceSinglePass: true, depthWrite: false }));
   jar.name = 'jar'; jar.userData.glass = true; g.add(jar);
   const rim = new T.Mesh(new T.TorusGeometry(.075, .006, 6, 18).rotateX(Math.PI / 2).translate(0, .182, 0), new T.MeshStandardMaterial({ color: '#c9a46a', roughness: .6 }));
   rim.name = 'rim'; g.add(rim);

@@ -1,23 +1,24 @@
 # Integration status
 
-Updated: 2026-11-21, round 2 (integrator B, working alongside a parallel integrator on raft-master).
-PR #1 (claude/raft-master -> main): gate passed, merged with a merge commit. A fresh PR is open for the next round.
+Updated: 2026-11-21 08:10 UTC, round 3 (integrator B, alongside a parallel integrator on raft-master).
+PR #2 (claude/raft-master -> main) at 2608c32: gate passed, under review.
 
 | Check | State |
 |---|---|
-| npm test | 533/533 pass |
+| npm test | 688/688 pass (art atlas build-time test flakes under heavy machine load; passes alone) |
 | Page errors (shoot.py) | none |
 | Fresh spawn: hook only | yes |
 | Esc from inventory: no pause, no cursor | yes |
-| Esc from the hammer build wheel | closes the wheel only (fixed this round) |
-| Centred text on play screen | none |
-| Perf vs main (fair probe, same pose, median of 3) | 372 vs 369 ms/frame (+0.8%); 148 vs 539 GL draw calls |
+| Centred text on play screen | none (context prompt sits beside the crosshair) |
+| Perf vs main 144c94a (fair probe, median of 3) | 216 vs 322 ms/frame; 96 vs 152 GL draw calls |
 
-Perf method: the shoot.py camera pose differs per branch, so the gate now uses a probe that starts a fresh solo game,
-touches no input, waits 3 s, and counts WebGL draw calls per frame with an init-script hook (works on main, which has no renderInfo).
+Merged this round: raft-tests, raft-tech, loop-features-202611210648, fleet-tech icons/perf/procedural-models/water/audio/foliage,
+raft-content (+storage), raft-integration, loop-ux-202611210603 (+0451), loop-features-202611210548. lane-world in progress.
 
-Still unmerged (conflicts with raft-master; for the next round): loop-ux-*, loop-features-*, loop-perf-*, loop-visuals-202611210451,
-raft-integration (37 newer commits), lane-models, lane-placement, lane-world, raft-reference (docs only).
-
-Open nits from review: Notes panel sits 5px from the bag edge; islands cast shadows (consider off at low/medium);
-"Stretch your legs" hint wraps one word; host allocates a Set per frame at game.js heldTokens path.
+Skipped (need a rebase onto raft-master by their workers):
+- loop-perf-202611210548: parallel copy of round-1 perf; bakes islands/clouds into fixed meshes (breaks sailing drift, diving).
+- loop-perf-202611210540: 20 conflicting files; resolution leaves dead references (daynight SL, diving loadFx, plastic creaseGeo).
+- loop-visuals-202611210451: based on pre-integration main; its islands.js/sky.js clash with raft-master's.
+- loop-ux-202611210547: redoes crafting UX already in 0603; 50 conflicts in game.js/survival-ui.js.
+- loop-features-202611210534: 475 commits behind; Seaside Kiln duplicates the smelter (clashing glass item). Puffhens and decor pack worth rebasing.
+- raft-reference: docs only.
